@@ -297,7 +297,7 @@ fail:
 
 ## API documentation
 
-For complete documentation of libfyaml API, visit readthedocs.org (TODO)
+For complete documentation of libfyaml API, visit https://pantoniou.github.io/libfyaml/
 
 ## Missing features and omissions
 
