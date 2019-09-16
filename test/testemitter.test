@@ -1,0 +1,47 @@
+#!/bin/sh
+
+count=0
+for f in "${SRCDIR}"/emitter-examples/*.yaml; do
+	count=`expr $count + 1`
+done
+
+# output plan
+echo 1..$count
+
+i=0
+for f in "${SRCDIR}"/emitter-examples/*.yaml; do
+
+	i=`expr $i + 1`
+	tf=`basename $f`
+
+	t1=`mktemp`
+	t2=`mktemp`
+
+	res="not ok"
+
+	pass_parse=0
+	${TOP_BUILDDIR}/src/fy-tool --testsuite "$f" >"$t1"
+	if [ $? -eq 0 ]; then
+		${TOP_BUILDDIR}/src/fy-tool --dump "$f" | \
+			${TOP_BUILDDIR}/src/fy-tool --testsuite - >"$t2"
+		if [ $? -eq 0 ]; then
+			pass_parse=1
+		fi
+	fi
+
+	# all errors test are expected to fail
+	if [ "$pass_parse" == "1" ]; then
+		diff -u "$t1" "$t2"
+		if [ $? -eq 0 ]; then
+			res="ok"
+		else
+			res="not ok"
+		fi
+	else
+		res="not ok"
+	fi
+
+	rm -f "$t1" "$t2"
+
+	echo "$res $i $tf"
+done
