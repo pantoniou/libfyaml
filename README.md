@@ -251,7 +251,7 @@ Get the invoice number and the given name using a single call.
 	printf("# given name is %s\n", given);
 ```
 
-In sequence, increase the invoice number, add a spouce and a secondary
+In sequence, increase the invoice number, add a spouse and a secondary
 address.
 
 ```c
@@ -259,7 +259,7 @@ address.
 		/* set increased invoice number (modify existing node) */
 		fy_document_insert_at(fyd, "/invoice",
 			fy_node_buildf(fyd, "%u", invoice_nr + 1)) ||
-		/* add spouce (create new mapping pair) */
+		/* add spouse (create new mapping pair) */
 		fy_document_insert_at(fyd, "/bill-to",
 			fy_node_buildf(fyd, "spouse: %s", "Doris")) ||
 		/* add a second address */
