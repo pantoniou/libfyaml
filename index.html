@@ -1532,13 +1532,14 @@ int <code class="sig-name descname">fy_emit_document</code><span class="sig-pare
 <span id="id94"></span><h2>fy_emit_document_start<a class="headerlink" href="#fy-emit-document-start" title="Permalink to this headline">¶</a></h2>
 <dl class="function">
 <dt id="c.fy_emit_document_start">
-int <code class="sig-name descname">fy_emit_document_start</code><span class="sig-paren">(</span>struct fy_emitter<em> *emit</em>, struct fy_document<em> *fyd</em><span class="sig-paren">)</span><a class="headerlink" href="#c.fy_emit_document_start" title="Permalink to this definition">¶</a></dt>
+int <code class="sig-name descname">fy_emit_document_start</code><span class="sig-paren">(</span>struct fy_emitter<em> *emit</em>, struct fy_document<em> *fyd</em>, struct fy_node<em> *fyn</em><span class="sig-paren">)</span><a class="headerlink" href="#c.fy_emit_document_start" title="Permalink to this definition">¶</a></dt>
 <dd><p>Emit document start using the emitter</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>emit</strong> (<em>struct fy_emitter *</em>) – The emitter</p></li>
 <li><p><strong>fyd</strong> (<em>struct fy_document *</em>) – The document to use for emitting it’s start</p></li>
+<li><p><strong>fyn</strong> (<em>struct fy_node *</em>) – The root (or NULL for using the document’s root)</p></li>
 </ul>
 </dd>
 </dl>
