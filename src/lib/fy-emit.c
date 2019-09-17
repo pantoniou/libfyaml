@@ -882,7 +882,6 @@ void fy_emit_write_literal(struct fy_emitter *emit, int flags, int indent, const
 			breaks = true;
 		} else {
 			if (breaks) {
-				fy_notice(NULL, "Literal break");
 				fy_emit_write_indent(emit, indent);
 				breaks = false;
 			}
@@ -1339,7 +1338,8 @@ void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, in
 	}
 }
 
-int fy_emit_document_start(struct fy_emitter *emit, struct fy_document *fyd)
+int fy_emit_document_start(struct fy_emitter *emit, struct fy_document *fyd,
+			   struct fy_node *fyn_root)
 {
 	struct fy_document_state *fyds;
 	struct fy_node *root;
@@ -1357,7 +1357,7 @@ int fy_emit_document_start(struct fy_emitter *emit, struct fy_document *fyd)
 	if (!emit || !fyd || emit->fyd || !fyd->fyds)
 		return -1;
 
-	root = fy_document_root(fyd);
+	root = fyn_root ? : fy_document_root(fyd);
 
 	emit->fyd = fyd;
 	fyds = fyd->fyds;
@@ -1376,8 +1376,7 @@ int fy_emit_document_start(struct fy_emitter *emit, struct fy_document *fyd)
 		fy_emit_puts(emit, fyewt_document_indicator, "...");
 		emit->flags &= ~FYEF_WHITESPACE;
 		emit->flags |= FYEF_HAD_DOCUMENT_END;
-	} else
-		emit->flags &= ~FYEF_HAD_DOCUMENT_END;
+	}
 
 	if (!fy_emit_is_json_mode(emit) && vd) {
 		if (emit->column)
@@ -1425,6 +1424,12 @@ int fy_emit_document_start(struct fy_emitter *emit, struct fy_document *fyd)
 			  fyds->tags_explicit || fyds->version_explicit ||
 			  had_non_default_tag)) ||
 	       dsm_flags == FYECF_DOC_START_MARK_ON;
+
+	/* if there was previous output without document end */
+	if (!dsm && (emit->flags & FYEF_HAD_DOCUMENT_OUTPUT) &&
+	           !(emit->flags & FYEF_HAD_DOCUMENT_END))
+		dsm = true;
+
 	if (!fy_emit_is_json_mode(emit) && dsm) {
 		if (emit->column)
 			fy_emit_putc(emit, fyewt_linebreak, '\n');
@@ -1433,6 +1438,9 @@ int fy_emit_document_start(struct fy_emitter *emit, struct fy_document *fyd)
 		emit->flags |= FYEF_HAD_DOCUMENT_START;
 	} else
 		emit->flags &= ~FYEF_HAD_DOCUMENT_START;
+
+	/* clear that in any case */
+	emit->flags &= ~FYEF_HAD_DOCUMENT_END;
 
 	return 0;
 }
@@ -1469,6 +1477,9 @@ int fy_emit_document_end(struct fy_emitter *emit)
 	/* stop our association with the document */
 	emit->fyd = NULL;
 
+	/* mark that we did output a document earlier */
+	emit->flags |= FYEF_HAD_DOCUMENT_OUTPUT;
+
 	return 0;
 }
 
@@ -1489,6 +1500,12 @@ int fy_emit_explicit_document_end(struct fy_emitter *emit)
 		emit->flags |= FYEF_HAD_DOCUMENT_END;
 	} else
 		emit->flags &= ~FYEF_HAD_DOCUMENT_END;
+
+	/* stop our association with the document */
+	emit->fyd = NULL;
+
+	/* mark that we did output a document earlier */
+	emit->flags |= FYEF_HAD_DOCUMENT_OUTPUT;
 
 	return 0;
 }
@@ -1539,7 +1556,7 @@ int fy_emit_document(struct fy_emitter *emit, struct fy_document *fyd)
 {
 	int rc;
 
-	rc = fy_emit_document_start(emit, fyd);
+	rc = fy_emit_document_start(emit, fyd, NULL);
 	if (rc)
 		return rc;
 

@@ -951,11 +951,13 @@ int fy_emit_document(struct fy_emitter *emit, struct fy_document *fyd);
  *
  * @emit: The emitter
  * @fyd: The document to use for emitting it's start
+ * @fyn: The root (or NULL for using the document's root)
  *
  * Returns:
  * 0 on success, -1 on error
  */
-int fy_emit_document_start(struct fy_emitter *emit, struct fy_document *fyd);
+int fy_emit_document_start(struct fy_emitter *emit, struct fy_document *fyd,
+			   struct fy_node *fyn);
 
 /**
  * fy_emit_document_end() - Emit document end using the emitter
