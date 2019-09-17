@@ -3,7 +3,7 @@ libfyaml
 
 ====
 
-A fancy 1.3 YAML and JSON parser/writer.
+A fancy 1.2 YAML and JSON parser/writer.
 
 Fully feature complete YAML parser and emitter, supporting the latest YAML spec and
 passing the full YAML testsuite.
@@ -11,8 +11,13 @@ passing the full YAML testsuite.
 It is designed to be very efficient, avoiding copies of data, and
 has no artificial limits like the 1024 character limit for implicit keys.
 
+libfyaml is using https://github.com/yaml/yaml-test-suite as a core part
+of it's testsuite.
+
 ## Features
-* Fully supports YAML version 1.3.
+* Fully supports YAML version 1.2.
+* Attempts to adhere to features coming with YAML version 1.3 so that it
+  will be ready.
 * Zero content copy operation, which means that content is never copied to
   internal structures. On input types that support it (mmap files and
   constant strings) that means that memory usage is kept low, and arbitrary
@@ -37,10 +42,6 @@ has no artificial limits like the 1024 character limit for implicit keys.
 - [Usage and examples](#usage-and-examples)
 - [API documentation](#api-documentation)
 - [fy-tool reference](#fy-tool-reference)
-- [fy-dump reference](#fy-dump-reference)
-- [fy-testsuite reference](#fy-testsuite-reference)
-- [fy-filter reference](#fy-filter-reference)
-- [fy-join reference](#fy-join-reference)
 - [Missing Features](#missing-features)
 
 ## Prerequisites
@@ -129,7 +130,7 @@ CFLAGS+= `pkg-config --cflags libfyaml`
 LDFLAGS+= `pkg-config --libs libfyaml`
 ```
 
-For use in automake based project you may use the following fragment
+For use in an automake based project you may use the following fragment
 ```bash
 PKG_CHECK_MODULES(LIBFYAML, [ libfyaml ], HAVE_LIBFYAML=1, HAVE_LIBFYAML=0)
 
@@ -298,6 +299,167 @@ fail:
 ## API documentation
 
 For complete documentation of libfyaml API, visit https://pantoniou.github.io/libfyaml/
+
+## fy-tool reference
+
+A YAML manipulation tool is included in libfyaml, aptly name `fy-tool`.
+It's a multi tool application, acting differently according to the name it has
+when it's invoked. There are four tool modes, namely:
+
+* fy-testsuite: Used for outputing a test-suite specific event stream which is
+  used for comparison with the expected output of the suite.
+* fy-dump: General purpose YAML parser and dumper, with syntax coloring support,
+  visible whitespace options, and a number of output modes.
+* fy-filter: YAML filtering tool allows to extract information out of a YAML
+  document.
+* fy-join: YAML flexible join tool.
+
+### fy-testsuite usage
+
+```
+Usage: fy-testsuite [options] [args]
+
+Options:
+
+	--include, -I <path>     : Add directory to include path (default path "")
+	--debug-level, -d <lvl>  : Set debug level to <lvl>(default level 3)
+	--indent, -i <indent>    : Set dump indent to <indent> (default indent 2)
+	--width, -w <width>      : Set dump width to <width> (default width 80)
+	--resolve, -r            : Perform anchor and merge key resolution (default false)
+	--color, -C <mode>       : Color output can be one of on, off, auto (default auto)
+	--visible, -V            : Make all whitespace and linebreaks visible (default false)
+	--quiet, -q              : Quiet operation, do not output messages (default false)
+	--version, -v            : Display libfyaml version
+	--help, -h               : Display  help message
+
+	Parse and dump test-suite event format
+	$ fy-testsuite input.yaml
+	...
+
+	Parse and dump of event example
+	$ echo "foo: bar" | fy-testsuite -
+	+STR
+	+DOC
+	+MAP
+	=VAL :foo
+	=VAL :bar
+	-MAP
+	-DOC
+	-STR
+```
+
+### fy-dump usage
+
+```
+Usage: fy-dump [options] [args]
+
+Options:
+
+	--include, -I <path>     : Add directory to include path (default path "")
+	--debug-level, -d <lvl>  : Set debug level to <lvl>(default level 3)
+	--indent, -i <indent>    : Set dump indent to <indent> (default indent 2)
+	--width, -w <width>      : Set dump width to <width> (default width 80)
+	--resolve, -r            : Perform anchor and merge key resolution (default false)
+	--color, -C <mode>       : Color output can be one of on, off, auto (default auto)
+	--visible, -V            : Make all whitespace and linebreaks visible (default false)
+	--quiet, -q              : Quiet operation, do not output messages (default false)
+	--version, -v            : Display libfyaml version
+	--help, -h               : Display  help message
+	--sort, -s               : Perform mapping key sort (valid for dump) (default false)
+	--comment, -c            : Output comments (experimental) (default false)
+	--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline (default original)
+
+	Parse and dump generated YAML document tree in the original YAML form
+	$ fy-dump input.yaml
+	...
+
+	Parse and dump generated YAML document tree in block YAML form (and make whitespace visible)
+	$ fy-dump -V -mblock input.yaml
+	...
+
+	Parse and dump generated YAML document from the input string
+	$ fy-dump -mjson ">foo: bar"
+	{
+	  "foo": "bar"
+	}
+```
+
+### fy-filter usage
+
+```
+Usage: fy-filter [options] [args]
+
+Options:
+
+	--include, -I <path>     : Add directory to include path (default path "")
+	--debug-level, -d <lvl>  : Set debug level to <lvl>(default level 3)
+	--indent, -i <indent>    : Set dump indent to <indent> (default indent 2)
+	--width, -w <width>      : Set dump width to <width> (default width 80)
+	--resolve, -r            : Perform anchor and merge key resolution (default false)
+	--color, -C <mode>       : Color output can be one of on, off, auto (default auto)
+	--visible, -V            : Make all whitespace and linebreaks visible (default false)
+	--quiet, -q              : Quiet operation, do not output messages (default false)
+	--version, -v            : Display libfyaml version
+	--help, -h               : Display  help message
+	--sort, -s               : Perform mapping key sort (valid for dump) (default false)
+	--comment, -c            : Output comments (experimental) (default false)
+	--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline (default original)
+	--file, -f <file>        : Use given file instead of <stdin>
+	                           Note that using a string with a leading '>' is equivalent to a file with the trailing content
+	                           --file ">foo: bar" is as --file file.yaml with file.yaml "foo: bar"
+
+	Parse and filter YAML document tree starting from the '/foo' path followed by the '/bar' path
+	$ fy-filter --file input.yaml /foo /bar
+	...
+
+	Parse and filter for two paths (note how a multi-document stream is produced)
+	$ fy-filter --file -mblock --filter --file ">{ foo: bar, baz: [ frooz, whee ] }" /foo /baz
+	bar
+	---
+	- frooz
+	- whee
+
+	Parse and filter YAML document in stdin (note how the key may be complex)
+	$ echo "{ foo: bar }: baz" | fy-filter "/{foo: bar}/"
+	baz
+```
+
+### fy-join usage
+
+```
+Usage: fy-join [options] [args]
+
+Options:
+
+	--include, -I <path>     : Add directory to include path (default path "")
+	--debug-level, -d <lvl>  : Set debug level to <lvl>(default level 3)
+	--indent, -i <indent>    : Set dump indent to <indent> (default indent 2)
+	--width, -w <width>      : Set dump width to <width> (default width 80)
+	--resolve, -r            : Perform anchor and merge key resolution (default false)
+	--color, -C <mode>       : Color output can be one of on, off, auto (default auto)
+	--visible, -V            : Make all whitespace and linebreaks visible (default false)
+	--quiet, -q              : Quiet operation, do not output messages (default false)
+	--version, -v            : Display libfyaml version
+	--help, -h               : Display  help message
+	--sort, -s               : Perform mapping key sort (valid for dump) (default false)
+	--comment, -c            : Output comments (experimental) (default false)
+	--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline (default original)
+	--file, -f <file>        : Use given file instead of <stdin>
+	                           Note that using a string with a leading '>' is equivalent to a file with the trailing content
+	                           --file ">foo: bar" is as --file file.yaml with file.yaml "foo: bar"
+	--to, -T <path>          : Join to <path> (default /)
+	--from, -F <path>        : Join from <path> (default /)
+	--trim, -t <path>        : Output given path (default /)
+
+	Parse and join two YAML files
+	$ fy-join file1.yaml file2.yaml
+	...
+
+	Parse and join two YAML maps
+	$ fy-join ">foo: bar" ">baz: frooz"
+	foo: bar
+	baz: frooz
+```
 
 ## Missing features and omissions
 
