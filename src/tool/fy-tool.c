@@ -87,37 +87,43 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--resolve, -r            : Perform anchor and merge key resolution"
 						" (default %s)\n",
 						RESOLVE_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--sort, -s               : Perform mapping key sort (valid for dump)"
-						" (default %s)\n",
-						SORT_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--comment, -c            : Output comments (experimental)"
-						" (default %s)\n",
-						COMMENT_DEFAULT ? "true" : "false");
 	fprintf(fp, "\t--color, -C <mode>       : Color output can be one of on, off, auto"
 						" (default %s)\n",
 						COLOR_DEFAULT);
 	fprintf(fp, "\t--visible, -V            : Make all whitespace and linebreaks visible"
 						" (default %s)\n",
 						VISIBLE_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline"
-						" (default %s)\n",
-						MODE_DEFAULT);
 	fprintf(fp, "\t--quiet, -q              : Quiet operation, do not "
 						"output messages (default %s)\n",
 						QUIET_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--version, -v            : Display libfyaml version");
+	fprintf(fp, "\t--version, -v            : Display libfyaml version\n");
+	fprintf(fp, "\t--help, -h               : Display  help message\n");
 
-	if (tool_mode != OPT_DUMP && tool_mode != OPT_TESTSUITE) {
-		fprintf(fp, "\t--file, -f <file>        : Use given file instead of <stdin>\n");
-		fprintf(fp, "\t--trim, -t <path>        : Output given path (default %s)\n",
-							TRIM_DEFAULT);
+	if (tool_mode == OPT_TOOL || tool_mode != OPT_TESTSUITE) {
+		fprintf(fp, "\t--sort, -s               : Perform mapping key sort (valid for dump)"
+							" (default %s)\n",
+							SORT_DEFAULT ? "true" : "false");
+		fprintf(fp, "\t--comment, -c            : Output comments (experimental)"
+							" (default %s)\n",
+							COMMENT_DEFAULT ? "true" : "false");
+		fprintf(fp, "\t--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline"
+							" (default %s)\n",
+							MODE_DEFAULT);
 	}
 
-	if (tool_mode == OPT_JOIN) {
+	if (tool_mode == OPT_TOOL || (tool_mode != OPT_DUMP && tool_mode != OPT_TESTSUITE)) {
+		fprintf(fp, "\t--file, -f <file>        : Use given file instead of <stdin>\n"
+		            "\t                           Note that using a string with a leading '>' is equivalent to a file with the trailing content\n"
+			    "\t                           --file \">foo: bar\" is as --file file.yaml with file.yaml \"foo: bar\"\n");
+	}
+
+	if (tool_mode == OPT_TOOL || tool_mode == OPT_JOIN) {
 		fprintf(fp, "\t--to, -T <path>          : Join to <path> (default %s)\n",
 							TO_DEFAULT);
 		fprintf(fp, "\t--from, -F <path>        : Join from <path> (default %s)\n",
 							FROM_DEFAULT);
+		fprintf(fp, "\t--trim, -t <path>        : Output given path (default %s)\n",
+							TRIM_DEFAULT);
 	}
 
 	if (tool_mode == OPT_TOOL) {
@@ -127,10 +133,57 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--join                   : Join mode, [arguments] are <path>s, outputs to stdout\n");
 	}
 
-	fprintf(fp, "\t--help, -h               : Display  help message\n");
 	fprintf(fp, "\n");
 
-	fprintf(fp, "\ne.g. %s input.yaml\n", progname);
+	switch (tool_mode) {
+	case OPT_TOOL:
+	default:
+		break;
+	case OPT_TESTSUITE:
+		fprintf(fp, "\tParse and dump test-suite event format\n");
+		fprintf(fp, "\t$ %s input.yaml\n\t...\n", progname);
+		fprintf(fp, "\n");
+		fprintf(fp, "\tParse and dump of event example\n");
+		fprintf(fp, "\t$ echo \"foo: bar\" | %s -\n", progname);
+		fprintf(fp, "\t+STR\n\t+DOC\n\t+MAP\n\t=VAL :foo\n\t=VAL :bar\n\t-MAP\n\t-DOC\n\t-STR\n");
+		break;
+	case OPT_DUMP:
+		fprintf(fp, "\tParse and dump generated YAML document tree in the original YAML form\n");
+		fprintf(fp, "\t$ %s input.yaml\n\t...\n", progname);
+		fprintf(fp, "\n");
+		fprintf(fp, "\tParse and dump generated YAML document tree in block YAML form (and make whitespace visible)\n");
+		fprintf(fp, "\t$ %s -V -mblock input.yaml\n\t...\n", progname);
+		fprintf(fp, "\n");
+		fprintf(fp, "\tParse and dump generated YAML document from the input string\n");
+		fprintf(fp, "\t$ %s -mjson \">foo: bar\"\n", progname);
+		fprintf(fp, "\t{\n\t  \"foo\": \"bar\"\n\t}\n");
+		break;
+	case OPT_FILTER:
+		fprintf(fp, "\tParse and filter YAML document tree starting from the '/foo' path followed by the '/bar' path\n");
+		fprintf(fp, "\t$ %s --file input.yaml /foo /bar\n\t...\n", progname);
+		fprintf(fp, "\n");
+		fprintf(fp, "\tParse and filter for two paths (note how a multi-document stream is produced)\n");
+		fprintf(fp, "\t$ %s --file -mblock --filter --file \">{ foo: bar, baz: [ frooz, whee ] }\" /foo /baz\n", progname);
+		fprintf(fp, "\tbar\n\t---\n\t- frooz\n\t- whee\n");
+		fprintf(fp, "\n");
+		fprintf(fp, "\tParse and filter YAML document in stdin (note how the key may be complex)\n");
+		fprintf(fp, "\t$ echo \"{ foo: bar }: baz\" | %s \"/{foo: bar}/\"\n", progname);
+		fprintf(fp, "\tbaz\n");
+		break;
+	case OPT_JOIN:
+		fprintf(fp, "\tParse and join two YAML files\n");
+		fprintf(fp, "\t$ %s file1.yaml file2.yaml\n\t...\n", progname);
+		fprintf(fp, "\n");
+		fprintf(fp, "\tParse and join two YAML maps\n");
+		fprintf(fp, "\t$ %s \">foo: bar\" \">baz: frooz\"\n", progname);
+		fprintf(fp, "\tfoo: bar\n\tbaz: frooz\n");
+		fprintf(fp, "\n");
+		fprintf(fp, "\tParse and join two YAML sequences\n");
+		fprintf(fp, "\t$ %s -mblock \">[ foo ]\" \">[ bar ]\"\n", progname);
+		fprintf(fp, "\t- foo\n\t- bar\n");
+		fprintf(fp, "\n");
+		break;
+	}
 }
 
 static int modify_debug_level_flags(const char *what, unsigned int *flagsp)
@@ -602,10 +655,8 @@ int main(int argc, char *argv[])
 		tool_mode = OPT_DUMP;
 	else if (!strcmp(progname, "fy-join"))
 		tool_mode = OPT_JOIN;
-	else {
-		tool_mode = OPT_DUMP;
-		progname = "fy-dump";
-	}
+	else
+		tool_mode = OPT_TOOL;
 
 	emit_flags = (SORT_DEFAULT ? FYECF_SORT_KEYS : 0) |
 		     (COMMENT_DEFAULT ? FYECF_OUTPUT_COMMENTS : 0);
@@ -733,6 +784,10 @@ int main(int argc, char *argv[])
 			return EXIT_SUCCESS;
 		}
 	}
+
+	/* if we're still in tool mode, switch to dump */
+	if (tool_mode == OPT_TOOL)
+		tool_mode = OPT_DUMP;
 
 	/* as a special case for join, we resolve the document once */
 	if (tool_mode == OPT_JOIN) {
@@ -864,7 +919,7 @@ int main(int argc, char *argv[])
 				if (!fyn_emit)
 					continue;
 
-				rc = fy_emit_document_start(fye, fyd);
+				rc = fy_emit_document_start(fye, fyd, fyn_emit);
 				if (rc)
 					goto cleanup;
 
@@ -951,7 +1006,7 @@ int main(int argc, char *argv[])
 				fprintf(stderr, "warning: empty document\n");
 		}
 
-		rc = fy_emit_document_start(fye, fyd_join);
+		rc = fy_emit_document_start(fye, fyd_join, fyn_emit);
 		if (rc)
 			goto cleanup;
 
