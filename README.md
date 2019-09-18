@@ -1,5 +1,4 @@
-libfyaml
-&middot;
+# libfyaml &middot; ![](https://github.com/pantoniou/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)
 
 ====
 
