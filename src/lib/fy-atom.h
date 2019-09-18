@@ -73,6 +73,7 @@ struct fy_atom {
 	bool ends_with_lb : 1;		/* atom ends with linebreak */
 	bool trailing_lb : 1;		/* atom ends with trailing linebreaks > 1 */ 
 	bool size0 : 1;			/* atom contains absolutely nothing */
+	unsigned int tabsize : 4;
 };
 
 static inline bool fy_atom_is_set(const struct fy_atom *atom)

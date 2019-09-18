@@ -161,6 +161,7 @@ static void fy_input_from_data_setup(struct fy_input *fyi,
 	handle->chomp = FYAC_STRIP;
 	handle->increment = 0;
 	handle->fyi = fyi;
+	handle->tabsize = 0;
 
 	fyi->state = FYIS_PARSED;
 }

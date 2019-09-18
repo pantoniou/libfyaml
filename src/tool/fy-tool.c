@@ -41,6 +41,7 @@
 #define STRIP_TAGS_DEFAULT		false
 #define STRIP_DOC_DEFAULT		false
 #define STREAMING_DEFAULT		false
+#define TAB_DEFAULT			"none"
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -52,6 +53,7 @@
 #define OPT_STRIP_TAGS			2001
 #define OPT_STRIP_DOC			2002
 #define OPT_STREAMING			2003
+#define OPT_TAB				2004
 
 static struct option lopts[] = {
 	{"include",		required_argument,	0,	'I' },
@@ -64,6 +66,7 @@ static struct option lopts[] = {
 	{"color",		required_argument,	0,	'C' },
 	{"visible",		no_argument,		0,	'V' },
 	{"mode",		required_argument,	0,	'm' },
+	{"tab",			required_argument,	0,	OPT_TAB },
 	{"file",		required_argument,	0,	'f' },
 	{"trim",		required_argument,	0,	't' },
 	{"follow",		no_argument,		0,	'l' },
@@ -120,6 +123,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--strip-doc              : Strip document headers and indicators when emitting"
 						" (default %s)\n",
 						STRIP_DOC_DEFAULT ? "true" : "false");
+	fprintf(fp, "\t--tab                    : (Very experimental) tab for indent option\n"
+		    "\t                           Allowed values none, auto, [1-9] (default %s)\n",
+						TAB_DEFAULT);
 	fprintf(fp, "\t--quiet, -q              : Quiet operation, do not "
 						"output messages (default %s)\n",
 						QUIET_DEFAULT ? "true" : "false");
@@ -144,7 +150,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 
 	if (tool_mode == OPT_TOOL || (tool_mode != OPT_DUMP && tool_mode != OPT_TESTSUITE)) {
 		fprintf(fp, "\t--file, -f <file>        : Use given file instead of <stdin>\n"
-		            "\t                           Note that using a string with a leading '>' is equivalent to a file with the trailing content\n"
+			    "\t                           Note that using a string with a leading '>' is equivalent to a file with the trailing content\n"
 			    "\t                           --file \">foo: bar\" is as --file file.yaml with file.yaml \"foo: bar\"\n");
 	}
 
@@ -703,6 +709,13 @@ int main(int argc, char *argv[])
 		     (STRIP_DOC_DEFAULT ? FYECF_STRIP_DOC : 0);
 	apply_mode_flags(MODE_DEFAULT, &emit_flags);
 
+	if (!strcmp(TAB_DEFAULT, "none"))
+		cfg.flags |= FYPCF_TAB_NONE;
+	else if (!strcmp(TAB_DEFAULT, "auto"))
+		cfg.flags |= FYPCF_TAB_AUTO;
+	else if (strlen(TAB_DEFAULT) == 1 && TAB_DEFAULT[0] > '1' && TAB_DEFAULT[1] <= '9')
+		cfg.flags |= FYPCF_TAB(TAB_DEFAULT[0] - '0');
+
 	while ((opt = getopt_long_only(argc, argv,
 					"I:" "d:" "i:" "w:" "rsc" "C:" "m:" "V" "f:" "t:" "T:F:" "qhvl",
 					lopts, &lidx)) != -1) {
@@ -829,6 +842,20 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_STREAMING:
 			streaming = true;
+			break;
+		case OPT_TAB:
+			cfg.flags &= ~(FYPCF_TAB_MASK << FYPCF_TAB_SHIFT);
+			if (!strcmp(optarg, "none"))
+				cfg.flags |= FYPCF_TAB_NONE;
+			else if (!strcmp(optarg, "auto"))
+				cfg.flags |= FYPCF_TAB_AUTO;
+			else if (strlen(optarg) == 1 && optarg[0] > '1' && optarg[1] <= '9')
+				cfg.flags |= FYPCF_TAB(optarg[0] - '0');
+			else {
+				fprintf(stderr, "bad tab option %s\n", optarg);
+				display_usage(stderr, progname, tool_mode);
+				return EXIT_FAILURE;
+			}
 			break;
 		case 'h' :
 		default:

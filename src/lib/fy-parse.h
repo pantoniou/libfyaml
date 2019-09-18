@@ -149,6 +149,8 @@ struct fy_parser {
 
 	int line;			/* always on input */
 	int column;
+	int tabsize;			/* very experimental tab size for indent purposes */
+	int nontab_column;		/* column without accounting for tabs */
 
 	bool suppress_recycling : 1;
 	bool stream_start_produced : 1;
@@ -401,9 +403,15 @@ static inline void fy_advance(struct fy_parser *fyp, int c)
 
 	if (is_line_break) {
 		fyp->column = 0;
+		fyp->nontab_column = 0;
 		fyp->line++;
-	} else
+	} else if (fyp->tabsize && fy_is_tab(c)) {
+		fyp->column += (fyp->tabsize - (fyp->column % fyp->tabsize));
+		fyp->nontab_column++;
+	} else {
 		fyp->column++;
+		fyp->nontab_column++;
+	}
 }
 
 static inline int fy_parse_get(struct fy_parser *fyp)
