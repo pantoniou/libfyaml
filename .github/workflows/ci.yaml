@@ -11,7 +11,7 @@ jobs:
     - uses: actions/checkout@v1
 
     - name: apt-deps
-      run: apt-get update -qq && apt-get install --no-install-recommends -y gcc autoconf automake libtool git make libyaml-dev libltdl-dev pkg-config check python3 python3-pip python3-setuptools
+      run: sudo apt-get update -qq && sudo apt-get install --no-install-recommends -y gcc autoconf automake libtool git make libyaml-dev libltdl-dev pkg-config check python3 python3-pip python3-setuptools
 
     - name: boostrap
       run: ./bootstrap.sh
