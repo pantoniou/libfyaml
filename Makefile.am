@@ -1,5 +1,5 @@
-BUILT_SOURCES = $(top_srcdir)/.version
-$(top_srcdir)/.version:
+BUILT_SOURCES = .version
+.version:
 	echo $(VERSION) > $@-t && mv $@-t $@
 dist-hook:
 	echo $(VERSION) > $(distdir)/.tarball-version
@@ -22,7 +22,9 @@ MAINTAINERCLEANFILES = \
 	test-driver test/Makefile.in \
 	build-aux/ar-lib build-aux/compile build-aux/config.guess \
 	build-aux/config.sub build-aux/depcomp build-aux/install-sh \
-	build-aux/ltmain.sh build-aux/missing build-aux/tap-driver.sh \
+	build-aux/ltmain.sh build-aux/missing build-aux/tap-driver.sh
+
+DISTCLEANFILES = \
 	.version .tarball-version
 
 clean-local:

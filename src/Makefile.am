@@ -58,10 +58,10 @@ include_HEADERS = \
         $(top_srcdir)/include/libfyaml.h
 
 install-exec-hook:
-	(cd "$(bindir)" && $(LN_S) -f fy-tool fy-dump)
-	(cd "$(bindir)" && $(LN_S) -f fy-tool fy-filter)
-	(cd "$(bindir)" && $(LN_S) -f fy-tool fy-testsuite)
-	(cd "$(bindir)" && $(LN_S) -f fy-tool fy-join)
+	(cd "$(DESTDIR)$(bindir)" && $(LN_S) -f fy-tool fy-dump)
+	(cd "$(DESTDIR)$(bindir)" && $(LN_S) -f fy-tool fy-filter)
+	(cd "$(DESTDIR)$(bindir)" && $(LN_S) -f fy-tool fy-testsuite)
+	(cd "$(DESTDIR)$(bindir)" && $(LN_S) -f fy-tool fy-join)
 
 uninstall-hook:
-	(cd "$(bindir)" && rm -f fy-dump fy-filter fy-testsuite fy-join)
+	(cd "$(DESTDIR)$(bindir)" && rm -f fy-dump fy-filter fy-testsuite fy-join)
