@@ -65,3 +65,14 @@ test/test-suite-data/
 test/*.trs
 test/*.txt
 .version
+libfyaml-*/
+libfyaml[_-]*.deb
+libfyaml[_-]*.tar.*
+libfyaml[_-]*.build
+libfyaml[_-]*.dsc
+libfyaml[_-]*.changes
+libfyaml_*.orig.tar.gz
+debian/changelog
+debian/control
+debian/copyright
+artifacts/

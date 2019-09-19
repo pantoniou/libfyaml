@@ -23,7 +23,7 @@ TEST_LOG_DRIVER = env AM_TAP_AWK='$(AWK)' $(SHELL) $(top_srcdir)/build-aux/tap-d
 
 TESTS =
 
-if HAVE_CHECK
+if HAVE_COMPATIBLE_CHECK
 
 check_PROGRAMS = libfyaml-test
 libfyaml_test_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/valgrind/ \
@@ -41,6 +41,7 @@ TESTS += libfyaml.test
 
 endif
 
+if HAVE_NETWORK
 if HAVE_GIT
 
 TESTS += testsuite.test
@@ -55,6 +56,7 @@ check-local: test-suite-data
 distclean-local:
 	@rm -rf test-suite-data
 
+endif
 endif
 
 TESTS += testerrors.test

@@ -11,15 +11,20 @@ AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE([foreign 1.8.5 -Wall subdir-objects ])
 AM_EXTRA_RECURSIVE_TARGETS([doc-help doc-html doc-latexpdf doc-man doc-clean doc-markdown])
 
-m4_define(fyaml_major, `echo $VERSION | cut -d. -f1`)
-m4_define(fyaml_minor, `echo $VERSION | cut -d. -f2`)
+m4_define(fyaml_major, `echo $VERSION | cut -d. -f1 | cut -d- -f1`)
+m4_define(fyaml_minor, `echo $VERSION | cut -d. -f2 | cut -d- -f1`)
 m4_define(fyaml_patch, `echo $VERSION | cut -d. -f3- | cut -d- -f1`)
-m4_define(fyaml_extra, `echo $VERSION | cut -d. -f3- | cut -d- -f2-`)
+m4_define(fyaml_extra, `echo $VERSION | cut -d- -f2-`)
 
 AC_SUBST(MAJOR, fyaml_major)
 AC_SUBST(MINOR, fyaml_minor)
 AC_SUBST(PATCH, fyaml_patch)
 AC_SUBST(EXTRA, fyaml_extra)
+
+m4_define(fyaml_date, `git show -s --format=%ci`)
+AC_SUBST(DATE, fyaml_date)
+
+AC_SUBST(DEBVERSION, "$MAJOR.$MINOR")
 
 AX_CHECK_ENABLE_DEBUG()
 
@@ -102,9 +107,43 @@ AC_SUBST(CHECK_LIBS)
 AC_DEFINE_UNQUOTED([HAVE_CHECK], [$HAVE_CHECK], [Define to 1 if you have check available])
 AM_CONDITIONAL([HAVE_CHECK], [ test x$HAVE_CHECK = x1 ])
 
+HAVE_COMPATIBLE_CHECK=0
+if test "x$HAVE_CHECK" == "x1" ; then
+	save_LIBS="$LIBS"
+	save_CFLAGS="$CFLAGS"
+	LIBS="$LIBS $CHECK_LIBS"
+	CFLAGS="$CFLAGS $CHECK_CFLAGS"
+
+	# check if libcheck has srunner_set_tap (jessie has outdated libcheck)
+	AC_CHECK_FUNC([srunner_set_tap],
+		      HAVE_COMPATIBLE_CHECK=1,
+		      HAVE_COMPATIBLE_CHECK=0)
+
+	LIBS="$save_LIBS"
+	CFLAGS="$save_CFLAGS"
+fi
+
+AC_SUBST(HAVE_COMPATIBLE_CHECK)
+AC_DEFINE_UNQUOTED([HAVE_COMPATIBLE_CHECK], [$HAVE_COMPATIBLE_CHECK], [Define to 1 if you have a compatible version of check available])
+AM_CONDITIONAL([HAVE_COMPATIBLE_CHECK], [ test x$HAVE_COMPATIBLE_CHECK = x1 ])
+
+dnl enable internet available when checking
+AC_ARG_ENABLE([network],
+	      AS_HELP_STRING([--disable-network],
+			     [Disable tests requiring network access]))
+
+if test "x$enable_network" != "xno" ; then 
+	HAVE_NETWORK=1
+else
+	HAVE_NETWORK=0
+fi	
+AC_SUBST(HAVE_NETWORK)
+AM_CONDITIONAL([HAVE_NETWORK],
+	       [ test x$HAVE_NETWORK = x1 ])
+
 # check for sphinx
 AC_PATH_PROG([SPHINX], [sphinx-build])
-if test "x$SPHINX"  != "x" ; then
+if test "x$SPHINX" != "x" ; then
 	HAVE_SPHINX=1
 else
 	HAVE_SPHINX=0
@@ -114,7 +153,7 @@ AM_CONDITIONAL([HAVE_SPHINX], [ test x$HAVE_SPHINX = x1 ])
 
 # check for git
 AC_PATH_PROG([GIT], [git])
-if test "x$GIT"  != "x" ; then
+if test "x$GIT" != "x" ; then
 	HAVE_GIT=1
 else
 	HAVE_GIT=0
@@ -137,6 +176,26 @@ else
 fi
 AM_CONDITIONAL([HAVE_DOCKER], [ test x$HAVE_DOCKER = x1 ])
 
+# note that debian does not support cross compilation
+# so do not use it to build cross packages
+
+# check for dpkg
+AC_PATH_PROG([DPKG], [dpkg])
+if test "x$DPKG" != "x" ; then
+	HAVE_DPKG=1
+else
+	HAVE_DPKG=0
+fi
+AC_DEFINE_UNQUOTED([HAVE_DPKG], [$HAVE_DPKG], [Define to 1 if you have dpkg available])
+AM_CONDITIONAL([HAVE_DPKG], [ test x$HAVE_DPKG = x1 ])
+
+if test "x$HAVE_DPKG" = "x1" ; then
+	DPKG_ARCH=`$DPKG --print-architecture`
+else
+	DPKG_ARCH="unknown"
+fi
+AC_SUBST(DPKG_ARCH, "$DPKG_ARCH")
+
 # Shave by default
 SHAVE_INIT([build-aux], [enable])
 
@@ -148,6 +207,12 @@ AC_CONFIG_FILES([
 	test/Makefile
 	doc/Makefile
 	libfyaml.pc
+	debian/changelog
+	debian/control
+	debian/copyright
+	debian/$PACKAGE_NAME-$DEBVERSION.install:debian/$PACKAGE_NAME.install.in
+	debian/$PACKAGE_NAME-dev.install
+	debian/$PACKAGE_NAME-utils.install
 ])
 
 AC_REQUIRE_AUX_FILE([tap-driver.sh])
@@ -157,20 +222,24 @@ AC_OUTPUT
 echo "
  ---{ $PACKAGE_NAME $VERSION }---
 
-    VERSION:              ${VERSION}
-    MAJOR.MINOR:          ${MAJOR}.${MINOR}
-    PATCH:                ${PATCH}
-    EXTRA:                ${EXTRA}
-    prefix:               ${prefix}
-    C compiler:           ${CC}
-    CFLAGS:               ${CFLAGS}
-    Linker:               ${LD}
-    LDFLAGS:              ${LDFLAGS}
-    LIBS:                 ${LIBS}
-    CHECK:                ${HAVE_CHECK}
-    SPHINX:               $SPHINX
-    GIT:                  $GIT
-    DOCKER:               $DOCKER
-    TESTSUITEURL:         $TESTSUITEURL
+    VERSION:               ${VERSION}
+    MAJOR.MINOR:           ${MAJOR}.${MINOR}
+    PATCH:                 ${PATCH}
+    EXTRA:                 ${EXTRA}
+    prefix:                ${prefix}
+    C compiler:            ${CC}
+    CFLAGS:                ${CFLAGS}
+    Linker:                ${LD}
+    LDFLAGS:               ${LDFLAGS}
+    LIBS:                  ${LIBS}
+    HAVE_CHECK:            ${HAVE_CHECK}
+    HAVE_COMPATIBLE_CHECK: ${HAVE_COMPATIBLE_CHECK}
+    HAVE_NETWORK:          ${HAVE_NETWORK}
+    SPHINX:                $SPHINX
+    GIT:                   $GIT
+    DOCKER:                $DOCKER
+    HAVE_DPKG:             $HAVE_DPKG
+    DPKG_ARCH:             $DPKG_ARCH
+    TESTSUITEURL:          $TESTSUITEURL
 
 "

@@ -1,0 +1,50 @@
+Source: libfyaml
+Priority: optional
+Maintainer: Pantelis Antoniou <pantelis.antoniou@konsulko.com>
+Build-Depends: debhelper (>=9),autotools-dev,
+ dh-buildinfo (>= 0.9+nmu1~),
+ dh-autoreconf,pkg-config,libltdl-dev
+Standards-Version: 3.9.7
+Section: libs
+Homepage: https://github.com/pantoniou/libfyaml
+Vcs-Git: https://github.com/pantoniou/libfyaml.git
+
+Package: libfyaml-dev
+Section: libdevel
+Architecture: any
+Multi-Arch: same
+Depends: ${misc:Depends}, libfyaml-@DEBVERSION@ (= ${binary:Version})
+Description: Fully feature complete YAML parser and emitter.
+ Fully feature complete YAML parser and emitter, supporting the latest YAML
+ spec and passing the full YAML testsuite.
+ .
+ It is designed to be very efficient, avoiding copies of data, and has no
+ artificial limits like the 1024 character limit for implicit keys.
+ .
+ This package contains development headers and static libraries.
+
+Package: libfyaml-utils
+Section: devel
+Architecture: any
+Multi-Arch: same
+Depends: ${misc:Depends}, libfyaml-@DEBVERSION@ (= ${binary:Version})
+Description: Fully feature complete YAML parser and emitter.
+ Fully feature complete YAML parser and emitter, supporting the latest YAML
+ spec and passing the full YAML testsuite.
+ .
+ It is designed to be very efficient, avoiding copies of data, and has no
+ artificial limits like the 1024 character limit for implicit keys.
+ .
+ This package contains utilities manipulating YAML files.
+
+Package: libfyaml-@DEBVERSION@
+Architecture: any
+Multi-Arch: same
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Fully feature complete YAML parser and emitter.
+ Fully feature complete YAML parser and emitter, supporting the latest YAML
+ spec and passing the full YAML testsuite.
+ .
+ It is designed to be very efficient, avoiding copies of data, and has no
+ artificial limits like the 1024 character limit for implicit keys.
+
