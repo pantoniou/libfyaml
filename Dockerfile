@@ -18,4 +18,5 @@ RUN ./bootstrap.sh 2>&1
 RUN ./configure 2>&1 ${CONFIG_ARGS}
 RUN make
 RUN make check
+RUN make distcheck
 RUN make doc-html
