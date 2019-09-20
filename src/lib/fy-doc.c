@@ -3532,6 +3532,25 @@ const void *a, const void *b, void *arg
 	return ctx->key_cmp(*fynppa, *fynppb, ctx->arg);
 }
 
+/* not! thread safe! */
+#if !defined(HAVE_QSORT_R) || !HAVE_QSORT_R
+static struct fy_node_mapping_sort_ctx *fy_node_mapping_sort_ctx_no_qsort_r;
+
+static int fy_node_mapping_sort_cmp_no_qsort_r(const void *a, const void *b)
+{
+#ifdef __APPLE__
+	return fy_node_mapping_sort_cmp(
+			fy_node_mapping_sort_ctx_no_qsort_r,
+			a, b);
+#else
+	return fy_node_mapping_sort_cmp( a, b,
+			fy_node_mapping_sort_ctx_no_qsort_r);
+#endif
+}
+
+
+#endif
+
 /* the default sort method */
 static int fy_node_mapping_sort_cmp_default(const struct fy_node_pair *fynp_a,
 					    const struct fy_node_pair *fynp_b,
@@ -3602,10 +3621,17 @@ void fy_node_mapping_perform_sort(struct fy_node *fyn_map,
 	ctx.arg = arg;
 	ctx.fynpp = fynpp;
 	ctx.count = count;
+#if defined(HAVE_QSORT_R) && HAVE_QSORT_R
 #ifdef __APPLE__
 	qsort_r(fynpp, count, sizeof(*fynpp), &ctx, fy_node_mapping_sort_cmp);
 #else
 	qsort_r(fynpp, count, sizeof(*fynpp), fy_node_mapping_sort_cmp, &ctx);
+#endif
+#else
+	/* caution, not thread safe */
+	fy_node_mapping_sort_ctx_no_qsort_r = &ctx;
+	qsort(fynpp, count, sizeof(*fynpp), fy_node_mapping_sort_cmp_no_qsort_r);
+	fy_node_mapping_sort_ctx_no_qsort_r = NULL;
 #endif
 }
 

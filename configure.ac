@@ -85,6 +85,14 @@ fi
 # include -lm in the link
 AC_SEARCH_LIBS([llrintf], [m], [], [AC_MSG_ERROR([unable to find the llrintf() function])])
 
+# check if there's a qsort_r available (musl does not have it)
+AC_CHECK_FUNC([qsort_r],
+	      HAVE_QSORT_R=1,
+	      HAVE_QSORT_R=0)
+AC_SUBST(HAVE_QSORT_R)
+AC_DEFINE_UNQUOTED([HAVE_QSORT_R], [$HAVE_QSORT_R], [Define to 1 if you have qsort_r available])
+AM_CONDITIONAL([HAVE_QSORT_R], [ test x$HAVE_QSORT_R = x1 ])
+
 PKG_CHECK_MODULES(LIBYAML, [ yaml-0.1 ], HAVE_LIBYAML=1, HAVE_LIBYAML=0)
 
 # update with pkg-config's flags
