@@ -663,8 +663,11 @@ static int fy_atom_format_internal(const struct fy_atom *atom,
 			while (tlbe < nnlb && (tlb = fy_find_lb(tlbe, nnlb - tlbe)) != NULL) {
 
 				/* output white space for literal style */
-				if (style == FYAS_LITERAL && (tlb - tlbe) > chomp)
+				if (style == FYAS_LITERAL && (tlb - tlbe) > chomp && (!is_first || !is_empty_line)) {
 					O_CPY(tlbe + chomp, tlb - tlbe - chomp);
+					fy_atom_out_debug(atom, out, "last-block-keep ws: '%s'\n",
+						fy_utf8_format_text_a(tlbe + chomp, tlb - tlbe - chomp, fyue_singlequote));
+				}
 
 				tlbe = fy_skip_lb(tlb, nnlb - tlb);
 				O_CPY(tlb, tlbe - tlb);
