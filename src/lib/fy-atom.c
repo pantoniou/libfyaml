@@ -372,6 +372,7 @@ static int fy_atom_format_internal(const struct fy_atom *atom,
 	const char *tlb, *tlbe;
 	const char *fnspc;		/* first non space */
 	const char *fnwslb, *fnwslbs;	/* first non whitespace or linebreak, start */
+	bool has_trailing_breaks_ws;
 
 	s = fy_atom_data(atom);
 	len = fy_atom_size(atom);
@@ -522,6 +523,18 @@ static int fy_atom_format_internal(const struct fy_atom *atom,
 
 		/* is the next run indented in? */
 		next_is_indented = is_block && nnlbnws > nnlb && (nnlbnws - nnlb) > chomp;
+
+		has_trailing_breaks_ws = false;
+		if (!is_last && style == FYAS_FOLDED && has_trailing_breaks) {
+			tlbe = lbe;
+			while (tlbe < nnlb && (tlb = fy_find_lb(tlbe, nnlb - tlbe)) != NULL) {
+				if (chomp && (tlb - tlbe) > chomp) {
+					has_trailing_breaks_ws = true;
+					break;
+				}
+				tlbe = fy_skip_lb(tlb, nnlb - tlb);
+			}
+		}
 
 		fy_atom_out_debug(atom, out, "s->lb: '%s'\n",
 			fy_utf8_format_text_a(s, lb - s, fyue_singlequote));
@@ -682,7 +695,7 @@ static int fy_atom_format_internal(const struct fy_atom *atom,
 		}
 
 		/* output the folded linebreak only when this, or the next line change indentation */
-		if (!is_last && style == FYAS_FOLDED && (is_indented || next_is_indented)) {
+		if (!is_last && style == FYAS_FOLDED && (is_indented || next_is_indented || has_trailing_breaks_ws)) {
 
 			fy_atom_out_debug(atom, out, "folded-lb");
 
@@ -698,7 +711,7 @@ static int fy_atom_format_internal(const struct fy_atom *atom,
 			tlbe = lbe;
 			while (tlbe < nnlb && (tlb = fy_find_lb(tlbe, nnlb - tlbe)) != NULL) {
 				/* output white space for literal style */
-				if (chomp && style == FYAS_LITERAL && (tlb - tlbe) > chomp)
+				if (is_block && chomp && (tlb - tlbe) > chomp)
 					O_CPY(tlbe + chomp, tlb - tlbe - chomp);
 
 				/* output the linebreak */
