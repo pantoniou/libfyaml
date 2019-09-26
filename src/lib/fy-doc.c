@@ -150,7 +150,7 @@ struct fy_anchor *fy_document_anchor_iterate(struct fy_document *fyd, void **pre
 
 int fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn, const char *text, size_t len)
 {
-	struct fy_anchor *fya;
+	struct fy_anchor *fya = NULL;
 	struct fy_input *fyi = NULL;
 	struct fy_token *fyt = NULL;
 	struct fy_atom handle;
@@ -160,14 +160,6 @@ int fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn, const c
 
 	if (text && len == (size_t)-1)
 		len = strlen(text);
-
-	/* XXX only destroy if no references to this anchor exist */
-	fya = fy_document_lookup_anchor_by_node(fyd, fyn);
-	if (fya) {
-		fy_anchor_list_del(&fyd->anchors, fya);
-		fy_anchor_destroy(fya);
-	}
-	fya = NULL;
 
 	if (!text)
 		return 0;
@@ -336,8 +328,11 @@ struct fy_anchor *fy_document_lookup_anchor(struct fy_document *fyd, const char 
 
 	len = strlen(anchor);
 
+	/* note that we're performing the lookup in reverse creation order
+	 * so that we pick the most recent
+	 */
 	fyal = &fyd->anchors;
-	for (fya = fy_anchor_list_head(fyal); fya; fya = fy_anchor_next(fyal, fya)) {
+	for (fya = fy_anchor_list_tail(fyal); fya; fya = fy_anchor_prev(fyal, fya)) {
 		text = fy_anchor_get_text(fya, &text_len);
 		if (!text)
 			return NULL;
@@ -351,21 +346,74 @@ struct fy_anchor *fy_document_lookup_anchor(struct fy_document *fyd, const char 
 
 struct fy_anchor *fy_document_lookup_anchor_by_token(struct fy_document *fyd, struct fy_token *anchor)
 {
-	const char *text;
-	size_t len;
-	char *text0;
+	struct fy_anchor *fya, *fya_found, *fya_found2;
+	struct fy_anchor_list *fyal;
+	const char *anchor_text, *text;
+	size_t anchor_len, text_len;
+	int count;
 
 	if (!fyd || !anchor)
 		return NULL;
 
-	text = fy_token_get_text(anchor, &len);
-	if (!text)
+	anchor_text = fy_token_get_text(anchor, &anchor_len);
+	if (!anchor_text)
 		return NULL;
-	text0 = alloca(len + 1);
-	memcpy(text0, text, len);
-	text0[len] = '\0';
 
-	return fy_document_lookup_anchor(fyd, text0);
+	fyal = &fyd->anchors;
+
+	/* first pass, try with a single match */
+	count = 0;
+	fya_found = NULL;
+	for (fya = fy_anchor_list_head(fyal); fya; fya = fy_anchor_next(fyal, fya)) {
+		text = fy_anchor_get_text(fya, &text_len);
+		if (!text)
+			return NULL;
+
+		if (anchor_len == text_len && !memcmp(anchor_text, text, anchor_len)) {
+			count++;
+			fya_found = fya;
+		}
+	}
+	
+	/* not found */
+	if (!count)
+		return NULL;
+
+	/* single one? fine */
+	if (count == 1)
+		return fya_found;
+
+	/* multiple ones, must pick the one that's the last one before
+	 * the requesting token */
+	fy_notice(NULL, "multiple anchors for %.*s", (int)anchor_len, anchor_text);
+
+	/* only try the ones on the same input
+	 * we don't try to cover the case where the label is referenced
+	 * by other constructed documents
+	 */
+	fya_found2 = NULL;
+	for (fya = fy_anchor_list_head(fyal); fya; fya = fy_anchor_next(fyal, fya)) {
+
+		/* only on the same input */
+		if (fy_token_get_input(fya->anchor) != fy_token_get_input(anchor))
+			continue;
+
+		text = fy_anchor_get_text(fya, &text_len);
+		if (!text)
+			return NULL;
+
+		if (anchor_len == text_len && !memcmp(anchor_text, text, anchor_len) &&
+		    fy_token_start_pos(fya->anchor) < fy_token_start_pos(anchor)) {
+			fya_found2 = fya;
+		}
+	}
+
+	/* just return the one find earlier */
+	if (!fya_found2)
+		return fya_found;
+
+	/* return the one that was the latest */
+	return fya_found2;
 }
 
 struct fy_anchor *fy_document_lookup_anchor_by_node(struct fy_document *fyd, struct fy_node *fyn)
@@ -628,22 +676,16 @@ struct fy_input *fy_node_get_input(struct fy_node *fyn)
 int fy_parse_document_register_anchor(struct fy_parser *fyp, struct fy_document *fyd,
 				      struct fy_node *fyn, struct fy_token *anchor)
 {
-	struct fy_anchor *fyax, *fya = NULL;
+	struct fy_anchor *fya = NULL;
 	struct fy_token *anchor_new = NULL;
-	struct fy_error_ctx ec;
 	int rc;
-
-	fyax = fy_document_lookup_anchor_by_token(fyd, anchor);
-
-	FY_ERROR_CHECK(fyp, anchor, &ec, FYEM_DOC,
-			!fyax, err_duplicate_anchor);
 
 	anchor_new = fy_token_ref(anchor);
 	fya = fy_anchor_create(fyd, fyn, anchor_new);
 	fy_error_check(fyp, fya, err_out,
 			"fy_anchor_create() failed");
 
-	fy_anchor_list_add(&fyd->anchors, fya);
+	fy_anchor_list_add_tail(&fyd->anchors, fya);
 
 	return 0;
 
@@ -652,10 +694,6 @@ err_out:
 	fy_token_unref(anchor_new);
 	fy_anchor_destroy(fya);
 	return rc;
-
-err_duplicate_anchor:
-	fy_error_report(fyp, &ec, "duplicate anchor");
-	goto err_out;
 }
 
 bool fy_node_compare(struct fy_node *fyn1, struct fy_node *fyn2)

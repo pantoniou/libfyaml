@@ -134,6 +134,28 @@ const struct fy_atom *fy_token_atom(struct fy_token *fyt);
 const struct fy_mark *fy_token_start_mark(struct fy_token *fyt);
 const struct fy_mark *fy_token_end_mark(struct fy_token *fyt);
 
+static inline size_t fy_token_start_pos(struct fy_token *fyt)
+{
+	const struct fy_mark *start_mark;
+
+	if (!fyt)
+		return (size_t)-1;
+
+	start_mark = fy_token_start_mark(fyt);
+	return start_mark ? start_mark->input_pos : (size_t)-1;
+}
+
+static inline size_t fy_token_end_pos(struct fy_token *fyt)
+{
+	const struct fy_mark *end_mark;
+
+	if (!fyt)
+		return (size_t)-1;
+
+	end_mark = fy_token_end_mark(fyt);
+	return end_mark ? end_mark->input_pos : (size_t)-1;
+}
+
 static inline int fy_token_start_line(struct fy_token *fyt)
 {
 	const struct fy_mark *start_mark;

@@ -67,9 +67,6 @@ EXTRA_DIST = test-env $(TESTS)
 
 # Add the error test files
 EXTRA_DIST += \
-	test-errors/0001/=== \
-	test-errors/0001/in.yaml \
-	test-errors/0001/test.error \
 	test-errors/0002/=== \
 	test-errors/0002/in.yaml \
 	test-errors/0002/test.error \
