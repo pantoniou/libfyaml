@@ -1960,6 +1960,17 @@ err_bad_alias:
 	goto err_out;
 }
 
+static struct fy_node *fy_node_follow_alias(struct fy_node *fyn)
+{
+	struct fy_anchor *fya;
+
+	if (!fyn || !fy_node_is_alias(fyn))
+		return NULL;
+
+	fya = fy_document_lookup_anchor_by_token(fyn->fyd, fyn->scalar);
+	return fya ? fya->fyn : NULL;
+}
+
 static bool fy_node_pair_is_merge_key(struct fy_node_pair *fynp)
 {
 	struct fy_node *fyn = fynp->key;
@@ -2699,7 +2710,41 @@ struct fy_node *fy_node_mapping_lookup_by_string(struct fy_node *fyn, const char
 	return fyn_value;
 }
 
-struct fy_node *fy_node_by_path(struct fy_node *fyn, const char *path)
+#define FY_NODE_PATH_WALK_DEPTH_DEFAULT	16
+
+struct fy_node_walk_ctx {
+	unsigned int max_depth;
+	unsigned int next_slot;
+	struct fy_node *marked[0];
+};
+
+static inline void fy_node_walk_mark_init(struct fy_node_walk_ctx *ctx)
+{
+	ctx->next_slot = 0;
+}
+
+static inline bool fy_node_walk_mark(struct fy_node_walk_ctx *ctx, struct fy_node *fyn)
+{
+	unsigned int i;
+
+	if (ctx->next_slot >= ctx->max_depth)
+		return false;
+
+	/* check if it's already marked */
+	for (i = 0; i < ctx->next_slot; i++) {
+		if (fyn == ctx->marked[i])
+			return false;
+	}
+
+	ctx->marked[ctx->next_slot++] = fyn;
+
+	return true;
+}
+
+static struct fy_node *
+fy_node_by_path_internal(struct fy_node *fyn, const char *path,
+		         enum fy_node_walk_flags flags,
+			 struct fy_node_walk_ctx *ctx)
 {
 	const char *s, *e;
 	char *end_idx;
@@ -2707,7 +2752,22 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn, const char *path)
 	char c;
 	int idx;
 
-	if (!fyn || !path)
+#undef WALK_RESOLVE_ALIAS
+#define WALK_RESOLVE_ALIAS() \
+	do { \
+		if (flags & FYNWF_FOLLOW) { \
+			fy_node_walk_mark_init(ctx); \
+			while (fyn && fy_node_is_alias(fyn)) { \
+				if (!fy_node_walk_mark(ctx, fyn)) {\
+					fyn = NULL; \
+					break; \
+				} \
+				fyn = fy_node_follow_alias(fyn); \
+			} \
+		} \
+	} while(0)
+
+	if (!fyn || !path || ((flags & FYNWF_FOLLOW) && !ctx))
 		return NULL;
 
 	/* skip all prefixed / */
@@ -2716,11 +2776,16 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn, const char *path)
 
 	/* for a last component / always match this one */
 	if (!*path)
-		return fyn;
+		goto out;
+
+	/* it's an alias resolve it */
+	WALK_RESOLVE_ALIAS();
 
 	/* scalar can't match (it has no key) */
-	if (fy_node_is_scalar(fyn))
-		return NULL;
+	if (fy_node_is_scalar(fyn)) {
+		fyn = NULL;
+		goto out;
+	}
 
 	/* for a sequence the only allowed key is [n] where n is the index to follow */
 	if (fy_node_is_sequence(fyn)) {
@@ -2745,7 +2810,17 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn, const char *path)
 		while (*s && isspace(*s))
 			s++;
 		path = s;
-		return fy_node_by_path(fy_node_sequence_get_by_index(fyn, idx), path);
+
+		fyn = fy_node_sequence_get_by_index(fyn, idx);
+
+		/* it's an alias resolve it */
+		WALK_RESOLVE_ALIAS();
+
+		if (!fyn)
+			goto out;
+
+		fyn = fy_node_by_path_internal(fyn, path, flags, ctx);
+		goto out;
 	}
 
 	/* be a little bit paranoid */
@@ -2810,7 +2885,44 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn, const char *path)
 	/* point path to the next component (or NULL is end */
 	path = s;
 
-	return fy_node_by_path(fy_node_mapping_lookup_by_string(fyn, keybuf), path);
+	fyn = fy_node_mapping_lookup_by_string(fyn, keybuf);
+
+	/* it's an alias resolve it */
+	WALK_RESOLVE_ALIAS();
+
+	if (!fyn)
+		goto out;
+
+	fyn = fy_node_by_path_internal(fyn, path, flags, ctx);
+
+out:
+	WALK_RESOLVE_ALIAS();
+
+	return fyn;
+}
+
+struct fy_node *fy_node_by_path_ext(struct fy_node *fyn, const char *path,
+				         enum fy_node_walk_flags flags)
+{
+	struct fy_node_walk_ctx *ctx = NULL;
+	unsigned int max_depth;
+
+	if (flags & FYNWF_FOLLOW) {
+		max_depth = ((unsigned int)flags >> FYNWF_MAXDEPTH_SHIFT) & FYNWF_MAXDEPTH_MASK;
+		if (max_depth == 0)
+			max_depth = FY_NODE_PATH_WALK_DEPTH_DEFAULT;
+
+		ctx = alloca(sizeof(*ctx) + sizeof(struct fy_node *) * max_depth);
+		ctx->max_depth = max_depth;
+		ctx->next_slot = 0;
+	}
+
+	return fy_node_by_path_internal(fyn, path, flags, ctx);
+}
+
+struct fy_node *fy_node_by_path(struct fy_node *fyn, const char *path)
+{
+	return fy_node_by_path_ext(fyn, path, FYNWF_DONT_FOLLOW);
 }
 
 char *fy_node_get_parent_address(struct fy_node *fyn)

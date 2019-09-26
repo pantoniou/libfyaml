@@ -1240,6 +1240,23 @@ enum fy_node_style {
 	FYNS_ALIAS,
 };
 
+/* maximum depth is 256 */
+#define FYNWF_MAXDEPTH_SHIFT	4
+#define FYNWF_MAXDEPTH_MASK	0xff
+#define FYNWF_MAXDEPTH(x)	(((x) & FYNWF_MAXDEPTH_MASK) << FYNWF_MAXDEPTH_SHIFT)
+/**
+ * enum fy_node_walk_flags - Node walk flags
+ *
+ * @FYNWF_DONT_FOLLOW: Don't follow aliases during pathwalk
+ * @FYNWF_FOLLOW: Follow aliases during pathwalk
+ * @FYNWF_MAXDEPTH_DEFAULT: Max follow depth is automatically determined
+ */
+enum fy_node_walk_flags {
+	FYNWF_DONT_FOLLOW = 0,
+	FYNWF_FOLLOW = FY_BIT(0),
+	FYNWF_MAXDEPTH_DEFAULT = FYNWF_MAXDEPTH(0),
+};
+
 /**
  * fy_node_style_from_scalar_style() - Convert from scalar to node style
  *
@@ -1608,6 +1625,22 @@ struct fy_node *fy_node_buildf(struct fy_document *fyd, const char *fmt, ...)
  * The retrieved node, or NULL if not possible to be found.
  */
 struct fy_node *fy_node_by_path(struct fy_node *fyn, const char *path);
+
+/**
+ * fy_node_by_path_ext() - Retrieve a node using the provided path spec,
+ *                         using the flags for path control.
+ *
+ * see fy_node_by_path_ext() for details.
+ *
+ * @fyn: The node to use as start of the traversal operation
+ * @path: The path spec to use in the traversal operation
+ * @flags: The extra path walk flags
+ *
+ * Returns:
+ * The retrieved node, or NULL if not possible to be found.
+ */
+struct fy_node *fy_node_by_path_ext(struct fy_node *fyn, const char *path,
+				    enum fy_node_walk_flags flags);
 
 /**
  * fy_node_get_path() - Get the path of this nod

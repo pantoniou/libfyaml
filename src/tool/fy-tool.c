@@ -36,6 +36,7 @@
 #define TO_DEFAULT			"/"
 #define FROM_DEFAULT			"/"
 #define TRIM_DEFAULT			"/"
+#define FOLLOW_DEFAULT			false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -56,6 +57,7 @@ static struct option lopts[] = {
 	{"mode",		required_argument,	0,	'm' },
 	{"file",		required_argument,	0,	'f' },
 	{"trim",		required_argument,	0,	't' },
+	{"follow",		no_argument,		0,	'l' },
 	{"dump",		no_argument,		0,	OPT_DUMP },
 	{"testsuite",		no_argument,		0,	OPT_TESTSUITE },
 	{"filter",		no_argument,		0,	OPT_FILTER },
@@ -93,6 +95,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--visible, -V            : Make all whitespace and linebreaks visible"
 						" (default %s)\n",
 						VISIBLE_DEFAULT ? "true" : "false");
+	fprintf(fp, "\t--follow, -l             : Follow aliases when using paths"
+						" (default %s)\n",
+						FOLLOW_DEFAULT ? "true" : "false");
 	fprintf(fp, "\t--quiet, -q              : Quiet operation, do not "
 						"output messages (default %s)\n",
 						QUIET_DEFAULT ? "true" : "false");
@@ -621,6 +626,7 @@ int main(int argc, char *argv[])
 	int indent = INDENT_DEFAULT;
 	int width = WIDTH_DEFAULT;
 	bool visible = VISIBLE_DEFAULT;
+	bool follow = FOLLOW_DEFAULT;
 	const char *to = TO_DEFAULT;
 	const char *from = FROM_DEFAULT;
 	const char *color = COLOR_DEFAULT;
@@ -663,7 +669,7 @@ int main(int argc, char *argv[])
 	apply_mode_flags(MODE_DEFAULT, &emit_flags);
 
 	while ((opt = getopt_long_only(argc, argv,
-					"I:" "d:" "i:" "w:" "rsc" "C:" "m:" "V" "f:" "t:" "T:F:" "qhv",
+					"I:" "d:" "i:" "w:" "rsc" "C:" "m:" "V" "f:" "t:" "T:F:" "qhvl",
 					lopts, &lidx)) != -1) {
 		switch (opt) {
 		case 'I':
@@ -750,6 +756,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'V':
 			visible = true;
+			break;
+		case 'l':
+			follow = true;
 			break;
 		case 'q':
 			cfg.flags |= FYPCF_QUIET;
@@ -905,7 +914,8 @@ int main(int argc, char *argv[])
 
 			for (i = optind, j = 0; i < argc; i += step, j++) {
 
-				fyn = fy_node_by_path(fy_document_root(fyd), argv[i]);
+				fyn = fy_node_by_path_ext(fy_document_root(fyd), argv[i],
+							  follow ? FYNWF_FOLLOW : FYNWF_DONT_FOLLOW);
 
 				/* ignore not found paths */
 				if (!fyn) {
@@ -962,13 +972,16 @@ int main(int argc, char *argv[])
 					continue;
 				}
 
-				fyn_to = fy_node_by_path(fy_document_root(fyd_join), to);
+				fyn_to = fy_node_by_path_ext(fy_document_root(fyd_join), to,
+							     follow ? FYNWF_FOLLOW : FYNWF_DONT_FOLLOW);
 				if (!fyn_to) {
 					fprintf(stderr, "unable to find to=%s\n", to);
 					goto cleanup;
 				}
 
-				fyn_from = fy_node_by_path(fy_document_root(fyd), from);
+				fyn_from = fy_node_by_path_ext(fy_document_root(fyd), from,
+							       follow ? FYNWF_FOLLOW : FYNWF_DONT_FOLLOW);
+
 				if (!fyn_from) {
 					fprintf(stderr, "unable to find from=%s\n", from);
 					goto cleanup;
@@ -998,7 +1011,8 @@ int main(int argc, char *argv[])
 				goto cleanup;
 		}
 
-		fyn_emit = fy_node_by_path(fy_document_root(fyd_join), trim);
+		fyn_emit = fy_node_by_path_ext(fy_document_root(fyd_join), trim,
+					       follow ? FYNWF_FOLLOW : FYNWF_DONT_FOLLOW);
 
 		/* nothing to output ? */
 		if (!fyn_emit) {
