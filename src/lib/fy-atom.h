@@ -56,11 +56,13 @@ struct fy_atom {
 	struct fy_mark start_mark;
 	struct fy_mark end_mark;
 	size_t storage_hint;	/* guaranteed to fit in this amount of bytes */
-	bool direct_output;	/* can directly output */
-	enum fy_atom_style style;
-	enum fy_atom_chomp chomp;
-	int increment;
 	struct fy_input *fyi;	/* input on which atom is on */
+	/* save a little bit of space with bitfields */
+	enum fy_atom_style style : 6;
+	enum fy_atom_chomp chomp : 4;
+	unsigned int increment : 4;
+	bool direct_output : 1;	/* can directly output */
+	bool storage_hint_valid : 1;
 };
 
 static inline bool fy_atom_is_set(const struct fy_atom *atom)
@@ -68,9 +70,9 @@ static inline bool fy_atom_is_set(const struct fy_atom *atom)
 	return atom && atom->fyi;
 }
 
-int fy_atom_format_text_length(const struct fy_atom *atom);
-int fy_atom_format_text_length_hint(const struct fy_atom *atom);
-const char *fy_atom_format_text(const struct fy_atom *atom, char *buf, size_t maxsz);
+int fy_atom_format_text_length(struct fy_atom *atom);
+int fy_atom_format_text_length_hint(struct fy_atom *atom);
+const char *fy_atom_format_text(struct fy_atom *atom, char *buf, size_t maxsz);
 
 #define fy_atom_get_text_a(_atom) \
 	({ \
@@ -105,5 +107,8 @@ void fy_fill_atom_end(struct fy_parser *fyp, struct fy_atom *handle);
 struct fy_atom *fy_fill_atom(struct fy_parser *fyp, int advance, struct fy_atom *handle);
 
 #define fy_fill_atom_a(_fyp, _advance)  fy_fill_atom((_fyp), (_advance), alloca(sizeof(struct fy_atom)))
+
+/* internals */
+int fy_atom_format_internal(const struct fy_atom *atom, void *out, size_t *outszp);
 
 #endif

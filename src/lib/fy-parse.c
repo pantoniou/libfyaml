@@ -28,6 +28,7 @@
 
 #include "fy-utils.h"
 
+#define ATOM_SIZE_CHECK
 
 const char *fy_library_version(void)
 {
@@ -986,10 +987,12 @@ struct fy_input *fy_parse_input_from_data(struct fy_parser *fyp,
 	/* if it's plain, all is good */
 	if (simple || (aflags & FYACF_FLOW_PLAIN)) {
 		handle->storage_hint = size;	/* maximum */
+		handle->storage_hint_valid = false;
 		handle->direct_output = true;
 		handle->style = FYAS_PLAIN;
 	} else {
 		handle->storage_hint = 0;	/* just calculate */
+		handle->storage_hint_valid = false;
 		handle->direct_output = false;
 		handle->style = FYAS_DOUBLE_QUOTED_MANUAL;
 	}
@@ -1330,6 +1333,7 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 		handle->style = FYAS_COMMENT;
 		handle->direct_output = false;
 		handle->storage_hint = 0;
+		handle->storage_hint_valid = false;
 	}
 
 	return 0;
@@ -3213,10 +3217,12 @@ err_undefined_tag_prefix:
 	goto err_out;
 }
 
-int fy_scan_block_scalar_indent(struct fy_parser *fyp, int indent)
+int fy_scan_block_scalar_indent(struct fy_parser *fyp, int indent, int *breaks)
 {
 	int c, max_indent = 0, min_indent;
 	struct fy_error_ctx ec;
+
+	*breaks = 0;
 
 	/* minimum indent is 0 for zero indent scalars */
 	min_indent = fyp->document_first_content_token ? 0 : 1;
@@ -3235,11 +3241,14 @@ int fy_scan_block_scalar_indent(struct fy_parser *fyp, int indent)
 		FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_SCAN,
 				c != '\t' || !(!indent && fyp->column < indent),
 				err_invalid_tab_as_indentation);
+
 		/* non-empty line? */
 		if (!fy_is_break(c))
 			break;
 
 		fy_advance(fyp, c);
+
+		(*breaks)++;
 	}
 
 	if (!indent) {
@@ -3264,10 +3273,13 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 {
 	struct fy_atom handle;
 	enum fy_atom_chomp chomp = FYAC_CLIP;	/* default */
-	int rc, increment = 0, current_indent, new_indent, indent = 0;
-	bool doc_end_detected, empty;
+	int rc, increment = 0, current_indent, new_indent, indent = 0, breaks, prev_breaks;
+	bool doc_end_detected, empty, empty_line, prev_empty_line, needs_sep, indented, prev_indented, first;
 	struct fy_error_ctx ec;
 	struct fy_token *fyt;
+	size_t length, line_length, trailing_ws, trailing_breaks_length;
+	size_t leading_ws, prev_leading_ws;
+	size_t prefix_length, suffix_length;
 
 	fy_error_check(fyp, c == '|' || c == '>', err_out,
 			"bad start of block scalar ('%s')",
@@ -3351,27 +3363,65 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 		indent = current_indent >= 0 ? current_indent + increment : increment;
 	}
 
+	length = 0;
+	trailing_breaks_length = 0;
+
 	empty = true;
-	new_indent = fy_scan_block_scalar_indent(fyp, indent);
+
+	new_indent = fy_scan_block_scalar_indent(fyp, indent, &breaks);
 	fy_error_check(fyp, new_indent >= 0, err_out,
 			"fy_scan_block_scalar_indent() failed");
+
+	length = breaks;
 
 	indent = new_indent;
 
 	doc_end_detected = false;
+	prev_breaks = 0;
+	prev_empty_line = false;
+	prev_leading_ws = 0;
 
-	while ((c = fy_parse_peek(fyp)) > 0 && fyp->column == indent) {
+	prefix_length = 0;
+	suffix_length = 0;
+
+	needs_sep = false;
+	prev_indented = false;
+	first = true;
+
+	while ((c = fy_parse_peek(fyp)) > 0 && fyp->column >= indent) {
+
 		/* consume the list */
+		line_length = 0;
+		trailing_ws = 0;
+		empty_line = true;
+		leading_ws = 0;
+
+		indented = fy_is_ws(fy_parse_peek(fyp));
+
 		while (!(fy_is_breakz(c = fy_parse_peek(fyp)))) {
 			if (fyp->column == 0 &&
-			!fy_strncmp(fyp, "...", 3) && fy_is_blankz_at_offset(fyp, 3)) {
+			    !fy_strncmp(fyp, "...", 3) && fy_is_blankz_at_offset(fyp, 3)) {
 				doc_end_detected = true;
 				break;
 			}
-			if (!fy_is_space(c))
+
+			if (!fy_is_space(c)) {
 				empty = false;
+				empty_line = false;
+				trailing_ws = 0;
+			} else {
+				if (empty_line)
+					leading_ws++;
+				trailing_ws++;
+			}
+
 			fy_advance(fyp, c);
+
+			line_length += fy_utf8_width(c);
 		}
+
+		if (indented && empty_line)
+			indented = false;
 
 		FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_SCAN,
 				c >= 0,
@@ -3383,11 +3433,72 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 		/* eat line break */
 		fy_advance(fyp, c);
 
-		new_indent = fy_scan_block_scalar_indent(fyp, indent);
+		new_indent = fy_scan_block_scalar_indent(fyp, indent, &breaks);
 		fy_error_check(fyp, new_indent >= 0, err_out,
 				"fy_scan_block_scalar_indent() failed");
 
+		if (is_literal) {
+			if (!empty_line) {
+				prefix_length = trailing_breaks_length;
+				trailing_breaks_length = 0;
+			}
+
+			suffix_length = 1;
+			trailing_breaks_length += breaks;
+		} else {
+
+			if (!empty_line) {
+				prefix_length += trailing_breaks_length;
+				trailing_breaks_length = 0;
+			}
+
+			if (!empty_line && !indented) {
+				if (!first && needs_sep && !prev_breaks)
+					prefix_length++;
+			} else if (indented) {
+				if (!first && (!prev_indented || prev_breaks > 0))
+					prefix_length++;
+			}
+
+			if (!empty_line && !indented) {
+				needs_sep = !trailing_ws && breaks <= 0;
+			} else if (!empty_line && indented) {
+				if (prev_indented == 0 || prev_breaks == 0)
+					prefix_length++;
+				needs_sep = !trailing_ws && breaks < 0;
+			} else if (empty_line) {
+				if (prev_indented == 0)
+					prefix_length++;
+				suffix_length++;
+				needs_sep = false;
+			}
+
+			trailing_breaks_length += breaks;
+		}
+
+		length += prefix_length + line_length + suffix_length;
+
 		indent = new_indent;
+
+		prev_empty_line = empty_line;
+		prev_breaks = breaks;
+		prev_leading_ws = leading_ws;
+		prev_indented = indented;
+
+		prefix_length = 0;
+		suffix_length = 0;
+
+		first = false;
+	}
+
+	if (empty) {
+		trailing_breaks_length = breaks;
+		length = 0;
+	} else if (!is_literal) {
+		if ((needs_sep || trailing_breaks_length) && !prev_indented)
+			length++;
+		else if (prev_empty_line && prev_leading_ws)
+			length -= (prev_leading_ws + 1);
 	}
 
 	/* detect wrongly indented block scalar */
@@ -3398,10 +3509,37 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	/* end... */
 	fy_fill_atom_end(fyp, &handle);
 
+	switch (chomp) {
+	case FYAC_CLIP:
+		/* nothing */
+		break;
+	case FYAC_KEEP:
+		length += trailing_breaks_length;
+		break;
+	case FYAC_STRIP:
+		if (length > 0)
+			length--;
+		break;
+	}
+
 	/* need to process to present */
 	handle.style = is_literal ? FYAS_LITERAL : FYAS_FOLDED;
 	handle.chomp = chomp;
 	handle.increment = increment;
+
+	handle.storage_hint = length;
+	handle.storage_hint_valid = true;
+	handle.direct_output = handle.end_mark.line == handle.start_mark.line &&
+				is_literal &&
+				fy_atom_size(&handle) == length;
+#ifdef ATOM_SIZE_CHECK
+	length = fy_atom_format_internal(&handle, NULL, NULL);
+	fy_error_check(fyp,
+		length == handle.storage_hint,
+		err_out, "storage hint calculation failed real %zu != hint %zu - \"%s\"",
+		length, handle.storage_hint,
+		fy_utf8_format_text_a(fy_atom_data(&handle), fy_atom_size(&handle), fyue_doublequote));
+#endif
 
 	fyt = fy_token_queue(fyp, FYTT_SCALAR, &handle, is_literal ? FYSS_LITERAL : FYSS_FOLDED);
 	fy_error_check(fyp, fyt, err_out_rc,
@@ -3446,11 +3584,11 @@ err_wrongly_indented_flow:
 int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 {
 	struct fy_atom handle;
+	size_t length;
 	int rc = -1, code_length, i = 0, value, end_c, last_line;
-	bool is_single, is_multiline, is_complex;
+	int breaks_found, blanks_found;
+	bool is_single, is_multiline, is_complex, esc_lb;
 	struct fy_simple_key_mark skm;
-	size_t quoted_storage;
-	bool is_direct;
 	struct fy_error_ctx ec;
 	struct fy_mark mark;
 	struct fy_token *fyt;
@@ -3472,9 +3610,12 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 	/* skip over block scalar start */
 	fy_advance(fyp, c);
 
-	quoted_storage = 0;
-	is_direct = true;
 	fy_fill_atom_start(fyp, &handle);
+
+	length = 0;
+	breaks_found = 0;
+	blanks_found = 0;
+	esc_lb = false;
 
 	last_line = -1;
 	for (;;) {
@@ -3493,6 +3634,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 
 		while (!fy_is_blankz(c = fy_parse_peek(fyp))) {
 
+			esc_lb = false;
 			/* track line change (and first non blank) */
 			if (last_line != fyp->line) {
 				last_line = fyp->line;
@@ -3502,11 +3644,20 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 					err_wrongly_indented);
 			}
 
+			if (breaks_found) {
+				/* minimum 1 sep, or more for consecutive */
+				length += breaks_found > 1 ? (breaks_found - 1) : 1;
+				breaks_found = 0;
+				blanks_found = 0;
+			} else if (blanks_found) {
+				length += blanks_found;
+				blanks_found = 0;
+			}
+
 			/* escaped single quote? */
 			if (is_single && c == '\'' && fy_parse_peek_at(fyp, 1) == '\'') {
+				length++;
 				fy_advance_by(fyp, 2);
-				quoted_storage++;
-				is_direct = false;
 				continue;
 			}
 
@@ -3516,16 +3667,16 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 
 			/* escaped line break */
 			if (!is_single && c == '\\' && fy_is_break(fy_parse_peek_at(fyp, 1))) {
+
 				fy_advance_by(fyp, 2);
-				quoted_storage++;
-				is_direct = false;
-				continue;
+
+				esc_lb = true;
+				c = fy_parse_peek(fyp);
+				break;
 			}
 
 			/* escaped sequence? */
 			if (!is_single && c == '\\') {
-
-				is_direct = false;
 
 				/* note we don't generate formatted output */
 				/* we are merely checking for validity */
@@ -3539,7 +3690,6 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 					err_invalid_escape);
 
 				fy_advance_by(fyp, 2);
-				quoted_storage++;
 
 				/* hex, unicode marks */
 				if (c == 'x' || c == 'u' || c == 'U') {
@@ -3570,14 +3720,21 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 
 					fy_advance_by(fyp, code_length);
 
-					quoted_storage += code_length;
-				}
+					length += fy_utf8_width(value);
 
+				} else if (c == 'N' || c == '_') /* NEL, 0xa0 two bytes */
+					length += 2;
+				else if (c == 'L' || c == 'P')	/* LS, PS, 3 bytes */
+					length += 3;
+				else
+					length++; /* all others single byte */
 				continue;
 			}
 
 			/* regular character */
 			fy_advance(fyp, c);
+
+			length += fy_utf8_width(c);
 		}
 
 		/* end of scalar */
@@ -3585,11 +3742,18 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 			break;
 
 		/* consume blanks */
+		breaks_found = 0;
+		blanks_found = 0;
 		while (fy_is_blank(c = fy_parse_peek(fyp)) || fy_is_break(c)) {
 			fy_advance(fyp, c);
+
 			if (fy_is_break(c)) {
-				quoted_storage++;
-				is_direct = false;
+				breaks_found++;
+				blanks_found = 0;
+				esc_lb = false;
+			} else {
+				if (!esc_lb)
+					blanks_found++;
 			}
 		}
 	}
@@ -3602,11 +3766,21 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 
 	/* need to process to present */
 	handle.style = is_single ? FYAS_SINGLE_QUOTED : FYAS_DOUBLE_QUOTED;
-	handle.storage_hint = fy_atom_size(&handle) + quoted_storage;
-	handle.direct_output = is_direct;
+	handle.storage_hint = length;
+	handle.storage_hint_valid = true;
+	handle.direct_output = !is_multiline && fy_atom_size(&handle) == length;
 
 	/* skip over block scalar end */
 	fy_advance_by(fyp, 1);
+
+#ifdef ATOM_SIZE_CHECK
+	length = fy_atom_format_internal(&handle, NULL, NULL);
+	fy_error_check(fyp,
+		length == handle.storage_hint,
+		err_out, "storage hint calculation failed real %zu != hint %zu - \"%s\"",
+		length, handle.storage_hint,
+		fy_utf8_format_text_a(fy_atom_data(&handle), fy_atom_size(&handle), fyue_doublequote));
+#endif
 
 	/* and we're done */
 	fyt = fy_token_queue(fyp, FYTT_SCALAR, &handle, is_single ? FYSS_SINGLE_QUOTED : FYSS_DOUBLE_QUOTED);
@@ -3723,13 +3897,13 @@ err_wrongly_indented_flow:
 int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 {
 	struct fy_atom handle;
-	int rc = -1, indent, run, pos, nextc, i;
-	bool has_leading_blanks;
+	size_t length;
+	int rc = -1, indent, run, nextc, i, breaks_found, blanks_found;
+	bool has_leading_blanks, had_breaks;
 	const char *last_ptr;
 	struct fy_mark mark, last_mark;
 	bool target_simple_key_allowed, is_multiline, is_complex;
 	struct fy_simple_key_mark skm;
-	size_t extra_storage;
 	struct fy_error_ctx ec;
 	struct fy_token *fyt;
 
@@ -3758,14 +3932,16 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 	target_simple_key_allowed = false;
 	fy_get_simple_key_mark(fyp, &skm);
 
-	extra_storage = 0;
 	fy_fill_atom_start(fyp, &handle);
 
 	has_leading_blanks = false;
+	had_breaks = false;
+	length = 0;
+	breaks_found = 0;
+	blanks_found = 0;
 	indent = fyp->indent + 1;
 	last_ptr = NULL;
 	memset(&last_mark, 0, sizeof(last_mark));
-	pos = 0;
 	for (;;) {
 		/* break for document indicators */
 		if (fyp->column == 0 &&
@@ -3796,9 +3972,21 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 			if (fyp->flow_level && (c == ',' || c == '[' || c == ']' || c == '{' || c == '}'))
 				break;
 
+			if (breaks_found) {
+				/* minimum 1 sep, or more for consecutive */
+				length += breaks_found > 1 ? (breaks_found - 1) : 1;
+				breaks_found = 0;
+				blanks_found = 0;
+			} else if (blanks_found) {
+				/* just the blanks mam' */
+				length += blanks_found;
+				blanks_found = 0;
+			}
+
 			fy_advance(fyp, c);
 			run++;
-			pos++;
+
+			length += fy_utf8_width(c);
 
 			c = nextc;
 		}
@@ -3815,7 +4003,10 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 			break;
 
 		/* consume blanks */
-		while (fy_is_blank(c = fy_parse_peek(fyp)) || fy_is_break(c)) {
+		breaks_found = 0;
+		blanks_found = 0;
+		do {
+			fy_advance(fyp, c);
 
 			/* check for tab */
 
@@ -3823,15 +4014,22 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 					c != '\t' || !has_leading_blanks || fyp->column >= indent,
 					err_invalid_tab_indentation);
 
-			/* first break, turn on leading blanks */
-			if (fy_is_break(c)) {
-				extra_storage++;
-				has_leading_blanks = true;
-			}
+			nextc = fy_parse_peek(fyp);
 
-			fy_advance(fyp, c);
-			pos++;
-		}
+			/* if it's a break */
+			if (fy_is_break(c)) {
+				/* first break, turn on leading blanks */
+				if (!has_leading_blanks)
+					has_leading_blanks = true;
+				had_breaks = true;
+				breaks_found++;
+				blanks_found = 0;
+			} else
+				blanks_found++;
+
+			c = nextc;
+
+		} while (fy_is_blank(c) || fy_is_break(c));
 
 		/* break out if indentation is less */
 		if (!fyp->flow_level && fyp->column < indent)
@@ -3839,22 +4037,28 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 	}
 
 	/* end... */
-	if (!last_ptr) {
-		/* fy_scan_debug(fyp, "scalar ending (no ptr)"); */
+	if (!last_ptr)
 		fy_fill_atom_end(fyp, &handle);
-	} else {
-		/* fy_scan_debug(fyp, "scalar ending (ptr)"); */
+	else
 		fy_fill_atom_end_at(fyp, &handle, &last_mark);
-	}
 
 	is_multiline = handle.end_mark.line > handle.start_mark.line;
 	is_complex = fyp->pending_complex_key_column >= 0;
 
 	handle.style = FYAS_PLAIN;
 	handle.chomp = FYAC_STRIP;
-	handle.storage_hint = fy_atom_size(&handle) + extra_storage;
-	handle.direct_output = !extra_storage;
+	handle.storage_hint = length;
+	handle.storage_hint_valid = true;
+	handle.direct_output = !is_multiline && fy_atom_size(&handle) == length;
 
+#ifdef ATOM_SIZE_CHECK
+	length = fy_atom_format_internal(&handle, NULL, NULL);
+	fy_error_check(fyp,
+		length == handle.storage_hint,
+		err_out, "storage hint calculation failed real %zu != hint %zu - '%s'",
+		length, handle.storage_hint,
+		fy_utf8_format_text_a(fy_atom_data(&handle), fy_atom_size(&handle), fyue_singlequote));
+#endif
 	/* and we're done */
 	fyt = fy_token_queue(fyp, FYTT_SCALAR, &handle, FYSS_PLAIN);
 	fy_error_check(fyp, fyt, err_out_rc,
@@ -3875,8 +4079,7 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 				err_multiline_key);
 	}
 
-
-	target_simple_key_allowed = has_leading_blanks;
+	target_simple_key_allowed = had_breaks;
 
 	rc = fy_save_simple_key_mark(fyp, &skm, FYTT_SCALAR, &handle.end_mark);
 	fy_error_check(fyp, !rc, err_out_rc,

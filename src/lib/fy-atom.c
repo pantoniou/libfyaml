@@ -353,19 +353,19 @@ fy_atom_format_internal_line(const struct fy_atom *atom,
 	return len;
 }
 
-static int fy_atom_format_internal(const struct fy_atom *atom,
-				   void *out, size_t *outszp)
+int fy_atom_format_internal(const struct fy_atom *atom, void *out, size_t *outszp)
 {
 	enum fy_atom_style style = atom->style;
 	size_t len;
 	const char *s, *e;
 	char *o = NULL, *oe = NULL;
 	size_t outsz;
-	int chomp, fchomp, leading_line_ws, trailing_line_ws;
+	int chomp, fchomp, leading_line_ws;
 	bool is_first, is_last;
 	bool is_empty_line, has_trailing_breaks, has_break;
 	bool need_sep, last_need_sep, is_quoted, is_block;
 	bool is_indented, next_is_indented;
+	bool has_trailing_ws;
 	const char *lb, *lbe, *nnlb;	/* linebreak, after linebreak, next non linebreak */
 	const char *fnws, *lnws; 	/* first non whitespace, last non whitespace */
 	const char *nnlbnws;		/* next non linebreak, non whitespace */
@@ -429,6 +429,7 @@ static int fy_atom_format_internal(const struct fy_atom *atom,
 		fnwslbs = fnwslb;
 		while (fnwslbs > s && fy_is_ws(fnwslbs[-1]))
 			fnwslbs--;
+
 		fchomp = fnwslb - fnwslbs;
 
 		fy_atom_out_debug(atom, out, "detected fchomp=%d", fchomp);
@@ -472,8 +473,8 @@ static int fy_atom_format_internal(const struct fy_atom *atom,
 		if (!fnspc)
 			fnspc = fnws;
 
-		/* how many trailing whitespaces? */
-		trailing_line_ws = lb - lnws;
+		/* has trailing whitespace? */
+		has_trailing_ws = lb > lnws;
 
 		/* is this line nothing but whitespace? */
 		is_empty_line = fnws == lb;
@@ -547,14 +548,14 @@ static int fy_atom_format_internal(const struct fy_atom *atom,
 		fy_atom_out_debug(atom, out, "lbe->nnlb: '%s'\n",
 			fy_utf8_format_text_a(lbe, nnlb - lbe, fyue_singlequote));
 
-		fy_atom_out_debug(atom, out, "is_first=%s is_last=%s is_empty_line=%s has_break=%s has_trailing_breaks=%s leading_line_ws=%d trailing_line_ws=%d",
+		fy_atom_out_debug(atom, out, "is_first=%s is_last=%s is_empty_line=%s has_break=%s has_trailing_breaks=%s leading_line_ws=%d has_trailing_ws=%s",
 				is_first ? "true" : "false",
 				is_last ? "true" : "false",
 				is_empty_line ? "true" : "false",
 				has_break ? "true" : "false",
 				has_trailing_breaks ? "true" : "false",
 				leading_line_ws,
-				trailing_line_ws);
+				has_trailing_ws ? "true" : "false");
 		fy_atom_out_debug(atom, out, "need_sep=%s chomp=%d",
 				need_sep ? "true" : "false",
 				chomp);
@@ -618,12 +619,12 @@ static int fy_atom_format_internal(const struct fy_atom *atom,
 			}
 
 			/* quoted style, with trailing backslash just before lb, turn off seperator */
-			if (style == FYAS_DOUBLE_QUOTED && lnws > fnws && lnws[-1] == '\\' && !trailing_line_ws)
+			if (style == FYAS_DOUBLE_QUOTED && lnws > fnws && lnws[-1] == '\\' && !has_trailing_ws)
 				need_sep = false;
 		}
 
 		/* last run, quoted style with trailing white space (without extra linebreaks) */
-		if (is_last && is_quoted && !is_empty_line && trailing_line_ws && !has_break) {
+		if (is_last && is_quoted && !is_empty_line && has_trailing_ws && !has_break) {
 			fy_atom_out_debug(atom, out, "quoted-trailing-whitespace: '%.*s'",
 						(int)(lb - lnws), lnws);
 			O_CPY(lnws, lb - lnws);
@@ -735,20 +736,29 @@ static int fy_atom_format_internal(const struct fy_atom *atom,
 	return len;
 }
 
-int fy_atom_format_text_length(const struct fy_atom *atom)
+int fy_atom_format_text_length(struct fy_atom *atom)
 {
-	return fy_atom_format_internal(atom, NULL, NULL);
-}
+	int length;
 
-int fy_atom_format_text_length_hint(const struct fy_atom *atom)
-{
-	if (atom->storage_hint)
+	if (atom->storage_hint_valid)
 		return atom->storage_hint;
 
+	length = fy_atom_format_internal(atom, NULL, NULL);
+	if (length < 0)
+		return length;
+
+	atom->storage_hint = length;
+	atom->storage_hint_valid = true;
+	return length;
+}
+
+int fy_atom_format_text_length_hint(struct fy_atom *atom)
+{
+	/* now the hint is equal to text length */
 	return fy_atom_format_text_length(atom);
 }
 
-const char *fy_atom_format_text(const struct fy_atom *atom, char *buf, size_t maxsz)
+const char *fy_atom_format_text(struct fy_atom *atom, char *buf, size_t maxsz)
 {
 	if (!buf)
 		return NULL;
@@ -785,6 +795,7 @@ void fy_fill_atom_end_at(struct fy_parser *fyp, struct fy_atom *handle,
 	handle->chomp = FYAC_CLIP;
 	/* by default we don't do storage hints, it's the job of the caller */
 	handle->storage_hint = 0;
+	handle->storage_hint_valid = false;
 }
 
 void fy_fill_atom_end(struct fy_parser *fyp, struct fy_atom *handle)

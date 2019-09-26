@@ -3283,7 +3283,8 @@ int fy_node_set_tag(struct fy_node *fyn, const char *data, size_t len)
 
 	handle.style = FYAS_URI;
 	handle.direct_output = false;
-	handle.storage_hint = false;
+	handle.storage_hint = 0;
+	handle.storage_hint_valid = false;
 
 	fyt = fy_token_create(fyd->fyp, FYTT_TAG, &handle, prefix_length,
 				handle_length, uri_length, fyt_td);
