@@ -115,11 +115,6 @@ struct fy_document {
 /* only the list declaration/methods */
 FY_TYPE_DECL_LIST(document);
 
-static inline bool fy_node_is_alias(struct fy_node *fyn)
-{
-	return fyn && fyn->type == FYNT_SCALAR && fyn->style == FYNS_ALIAS;
-}
-
 struct fy_document_state *fy_document_state_alloc(void);
 void fy_document_state_free(struct fy_document_state *fyds);
 struct fy_document_state *fy_document_state_ref(struct fy_document_state *fyds);

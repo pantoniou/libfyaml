@@ -498,30 +498,6 @@ int fy_token_format_text_length(struct fy_token *fyt)
 	return length;
 }
 
-int fy_token_format_text_length_hint(struct fy_token *fyt)
-{
-	int length;
-
-	if (!fyt)
-		return 0;
-
-	switch (fyt->type) {
-
-	case FYTT_TAG:
-		return fy_tag_token_format_text_length(fyt);
-
-	case FYTT_TAG_DIRECTIVE:
-		return fy_tag_directive_token_format_text_length(fyt);
-
-	default:
-		break;
-	}
-
-	length = fy_atom_format_text_length_hint(&fyt->handle);
-
-	return length;
-}
-
 const char *fy_token_format_text(struct fy_token *fyt, char *buf, size_t maxsz)
 {
 	const char *str;
@@ -552,7 +528,7 @@ const char *fy_token_format_text(struct fy_token *fyt, char *buf, size_t maxsz)
 	return str;
 }
 
-const struct fy_atom *fy_token_atom(struct fy_token *fyt)
+struct fy_atom *fy_token_atom(struct fy_token *fyt)
 {
 	return fyt ? &fyt->handle : NULL;
 }
@@ -726,7 +702,8 @@ const char *fy_token_get_direct_output(struct fy_token *fyt, size_t *sizep)
 	const struct fy_atom *fya;
 
 	fya = fy_token_atom(fyt);
-	if (!fya || !fya->direct_output) {
+	if (!fya || !fya->direct_output ||
+	    (fyt->type == FYTT_TAG || fyt->type == FYTT_TAG_DIRECTIVE) ) {
 		*sizep = 0;
 		return NULL;
 	}
@@ -806,29 +783,40 @@ const char *fy_token_get_text0(struct fy_token *fyt)
 
 size_t fy_token_get_text_length(struct fy_token *fyt)
 {
-	if (!fyt)
-		return 0;
-
-	if (!fyt->text)
-		fy_token_prepare_text(fyt);
-
-	return fyt->text_len;
+	return fy_token_format_text_length(fyt);
 }
 
 unsigned int fy_analyze_scalar_content(const char *data, size_t size)
 {
 	const char *s, *e;
-	int c, nextc, w, ww, col;
+	int c, lastc, nextc, w, ww, col, break_run;
 	unsigned int flags;
+	bool first;
 
 	flags = FYACF_EMPTY | FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN |
-		FYACF_PRINTABLE | FYACF_SINGLE_QUOTED | FYACF_DOUBLE_QUOTED;
+		FYACF_PRINTABLE | FYACF_SINGLE_QUOTED | FYACF_DOUBLE_QUOTED |
+		FYACF_SIZE0;
 
 	s = data;
 	e = data + size;
+
 	col = 0;
+	first = true;
+	lastc = -1;
+	break_run = 0;
 	while (s < e && (c = fy_utf8_get(s, e - s, &w)) >= 0) {
 
+		flags &= ~FYACF_SIZE0;
+
+		lastc = c;
+
+		if (first) {
+			if (fy_is_ws(c))
+				flags |= FYACF_STARTS_WITH_WS;
+			else if (fy_is_lb(c))
+				flags |= FYACF_STARTS_WITH_LB;
+			first = false;
+		}
 		nextc = fy_utf8_get(s + w, e - (s + w), &ww);
 
 		/* anything other than white space or linebreak */
@@ -840,7 +828,13 @@ unsigned int fy_analyze_scalar_content(const char *data, size_t size)
 			flags |= FYACF_LB;
 			if (fy_is_lb(nextc))
 				flags |= FYACF_CONSECUTIVE_LB;
-		}
+			break_run++;
+		} else
+			break_run = 0;
+
+		/* white space */
+		if (fy_is_ws(c))
+			flags |= FYACF_WS;
 
 		/* anything not printable */
 		if (!fy_is_print(c)) {
@@ -874,6 +868,14 @@ unsigned int fy_analyze_scalar_content(const char *data, size_t size)
 
 		s += w;
 	}
+
+	if (fy_is_ws(lastc))
+		flags |= FYACF_ENDS_WITH_WS;
+	else if (fy_is_lb(lastc))
+		flags |= FYACF_ENDS_WITH_LB;
+
+	if (break_run > 1)
+		flags |= FYACF_TRAILING_LB;
 
 	return flags;
 }
@@ -975,4 +977,325 @@ out:
 	assert(rc != -1);
 
 	return buf;
+}
+
+int fy_token_memcmp(struct fy_token *fyt, const void *ptr, size_t len)
+{
+	const char *value = NULL;
+	size_t tlen = 0;
+
+	/* handle NULL cases */
+	if (!fyt && (!ptr || !len))
+		return 0;
+
+	if (!fyt && (ptr || len))
+		return -1;
+
+	if (fyt && (!ptr || !len))
+		return 1;
+
+	/* those two are special */
+	if (fyt->type == FYTT_TAG || fyt->type == FYTT_TAG_DIRECTIVE) {
+		value = fy_token_get_text(fyt, &tlen);
+		if (!value)
+			return -1;
+		return tlen == len ? memcmp(value, ptr, tlen) : tlen < len ? -1 : 1;
+	}
+
+	return fy_atom_memcmp(fy_token_atom(fyt), ptr, len);
+}
+
+int fy_token_strcmp(struct fy_token *fyt, const char *str)
+{
+	size_t len;
+
+	len = str ? strlen(str) : 0;
+
+	return fy_token_memcmp(fyt, str, len);
+}
+
+int fy_token_cmp(struct fy_token *fyt1, struct fy_token *fyt2)
+{
+	const char *t1, *t2;
+	size_t l1, l2, l;
+	int ret;
+
+	/* handles both NULL */
+	if (fyt1 == fyt2)
+		return 0;
+
+	/* fyt1 is null, 2 wins */
+	if (!fyt1 && fyt2)
+		return -1;
+
+	/* fyt2 is null, 1 wins */
+	if (fyt1 && !fyt2)
+		return 1;
+
+	/* tokens with different types can't be equal */
+	if (fyt1->type != fyt2->type)
+		return fyt2->type > fyt1->type ? -1 : 1;
+
+	/* special case, these can't use the atom comparisons */
+	if (fyt1->type == FYTT_TAG || fyt1->type == FYTT_TAG_DIRECTIVE) {
+		t1 = fy_token_get_text(fyt1, &l1);
+		t2 = fy_token_get_text(fyt2, &l2);
+		l = l1 > l2 ? l2 : l1;
+		ret = memcmp(t1, t2, l);
+		if (ret)
+			return ret;
+		return l1 == l2 ? 0 : l2 > l1 ? -1 : 1;
+	}
+
+	/* just pass it to the atom comparison methods */
+	return fy_atom_cmp(fy_token_atom(fyt1), fy_token_atom(fyt2));
+}
+
+void fy_token_iter_start(struct fy_token *fyt, struct fy_token_iter *iter)
+{
+	if (!iter)
+		return;
+
+	iter->unget_c = -1;
+
+	if (!fyt)
+		return;
+
+	iter->fyt = fyt;
+
+	/* TAG or TAG_DIRECTIVE may only work by getting the text */
+	if (fyt->type == FYTT_TAG || fyt->type == FYTT_TAG_DIRECTIVE)
+		iter->ic.str = fy_token_get_text(fyt, &iter->ic.len);
+	else /* try the direct output next  */
+		iter->ic.str = fy_token_get_direct_output(fyt, &iter->ic.len);
+
+	/* got it */
+	if (iter->ic.str) {
+		memset(&iter->atom_iter, 0, sizeof(iter->atom_iter));
+		return;
+	}
+
+	assert(fyt->type != FYTT_TAG && fyt->type != FYTT_TAG_DIRECTIVE);
+
+	/* fall back to the atom iterator */
+	fy_atom_iter_start(fy_token_atom(fyt), &iter->atom_iter);
+}
+
+void fy_token_iter_finish(struct fy_token_iter *iter)
+{
+	if (!iter)
+		return;
+
+	if (!iter->ic.str)
+		fy_atom_iter_finish(&iter->atom_iter);
+
+	memset(iter, 0, sizeof(*iter));
+}
+
+struct fy_token_iter *
+fy_token_iter_create(struct fy_token *fyt)
+{
+	struct fy_token_iter *iter;
+
+	iter = malloc(sizeof(*iter));
+	if (!iter)
+		return NULL;
+	memset(iter, 0, sizeof(*iter));
+	if (fyt)
+		fy_token_iter_start(fyt, iter);
+	return iter;
+}
+
+void fy_token_iter_destroy(struct fy_token_iter *iter)
+{
+	if (!iter)
+		return;
+
+	fy_token_iter_finish(iter);
+	free(iter);
+}
+
+const struct fy_iter_chunk *fy_token_iter_peek_chunk(struct fy_token_iter *iter)
+{
+	if (!iter)
+		return NULL;
+
+	/* direct mode? */
+	if (iter->ic.str)
+		return &iter->ic;
+
+	/* fallback to the atom iterator */
+	return fy_atom_iter_peek_chunk(&iter->atom_iter);
+}
+
+void fy_token_iter_advance(struct fy_token_iter *iter, size_t len)
+{
+	if (!iter)
+		return;
+
+	/* direct mode? */
+	if (iter->ic.str) {
+		if (len > iter->ic.len)
+			len = iter->ic.len;
+		iter->ic.str += len;
+		iter->ic.len -= len;
+		return;
+	}
+
+	/* fallback to the atom iterator */
+	fy_atom_iter_advance(&iter->atom_iter, len);
+}
+
+const struct fy_iter_chunk *
+fy_token_iter_chunk_next(struct fy_token_iter *iter, const struct fy_iter_chunk *curr, int *errp)
+{
+	if (!iter)
+		return NULL;
+
+	if (errp)
+		*errp = 0;
+
+	/* first time in */
+	if (!curr) {
+		if (iter->ic.str)
+			return iter->ic.len ? &iter->ic : NULL;
+		return fy_atom_iter_chunk_next(&iter->atom_iter, NULL, errp);
+	}
+
+	/* direct, all consumed */
+	if (curr == &iter->ic) {
+		iter->ic.str += iter->ic.len;
+		iter->ic.len = 0;
+		return NULL;
+	}
+
+	/* fallback */
+	return fy_atom_iter_chunk_next(&iter->atom_iter, curr, errp);
+}
+
+ssize_t fy_token_iter_read(struct fy_token_iter *iter, void *buf, size_t count)
+{
+	if (!iter || !buf)
+		return -1;
+
+	/* direct mode */
+	if (iter->ic.str) {
+		if (count > iter->ic.len)
+			count = iter->ic.len;
+		memcpy(buf, iter->ic.str, count);
+		iter->ic.str += count;
+		iter->ic.len -= count;
+		return count;
+	}
+
+	return fy_atom_iter_read(&iter->atom_iter, buf, count);
+}
+
+int fy_token_iter_getc(struct fy_token_iter *iter)
+{
+	int c;
+
+	if (!iter)
+		return -1;
+
+	/* first try the pushed ungetc */
+	if (iter->unget_c != -1) {
+		c = iter->unget_c;
+		iter->unget_c = -1;
+		return c;
+	}
+
+	/* direct mode */
+	if (iter->ic.str) {
+		if (!iter->ic.len)
+			return -1;
+		c = *iter->ic.str++;
+		iter->ic.len--;
+		return c;
+	}
+
+	return fy_atom_iter_getc(&iter->atom_iter);
+}
+
+int fy_token_iter_ungetc(struct fy_token_iter *iter, int c)
+{
+	if (iter->unget_c != -1)
+		return -1;
+	if (c == -1) {
+		iter->unget_c = -1;
+		return 0;
+	}
+	iter->unget_c = c & 0xff;
+	return c & 0xff;
+}
+
+int fy_token_iter_peekc(struct fy_token_iter *iter)
+{
+	int c;
+
+	c = fy_token_iter_getc(iter);
+	if (c == -1)
+		return -1;
+
+	return fy_token_iter_ungetc(iter, c);
+}
+
+int fy_token_iter_utf8_get(struct fy_token_iter *iter)
+{
+	int c, w, w1;
+
+	/* first try the pushed ungetc */
+	if (iter->unget_c != -1) {
+		c = iter->unget_c;
+		iter->unget_c = -1;
+		return c;
+	}
+
+	/* direct */
+	if (iter->ic.str) {
+
+		/* not even 1 octet */
+		if (!iter->ic.len)
+			return -1;
+
+		/* get width by the first octet */
+		w = fy_utf8_width_by_first_octet((uint8_t)*iter->ic.str);
+		if (!w || (unsigned int)w > iter->ic.len)
+			return -1;
+
+		/* get the next character */
+		c = fy_utf8_get(iter->ic.str, w, &w1);
+
+		iter->ic.str += w;
+		iter->ic.len -= w;
+
+		return c;
+	}
+
+	return fy_atom_iter_utf8_get(&iter->atom_iter);
+}
+
+int fy_token_iter_utf8_unget(struct fy_token_iter *iter, int c)
+{
+	if (iter->unget_c != -1)
+		return -1;
+
+	if (c == -1) {
+		iter->unget_c = -1;
+		return 0;
+	}
+
+	iter->unget_c = c;
+	return c;
+}
+
+int fy_token_iter_utf8_peek(struct fy_token_iter *iter)
+{
+	int c;
+
+	c = fy_token_iter_utf8_get(iter);
+	if (c == -1)
+		return -1;
+
+	return fy_token_iter_utf8_unget(iter, c);
 }

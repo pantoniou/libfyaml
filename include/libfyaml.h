@@ -43,6 +43,7 @@ struct fy_node;
 struct fy_node_pair;
 struct fy_anchor;
 struct fy_node_mapping_sort_ctx;
+struct fy_token_iter;
 
 #ifndef FY_BIT
 #define FY_BIT(x) (1U << (x))
@@ -644,10 +645,227 @@ const char *fy_token_get_text0(struct fy_token *fyt);
  * @fyt: The token
  *
  * Returns:
- * The size of the text representation of a token
- * A zero length is a valid return.
+ * The size of the text representation of a token, -1 in case of an error.
+ * Note that the NULL token will return a length of zero.
  */
 size_t fy_token_get_text_length(struct fy_token *fyt);
+
+/**
+ * struct fy_iter_chunk - An iteration chunk
+ *
+ * @str: Pointer to the start of the chunk
+ * @len: The size of the chunk
+ *
+ * The iterator produces a stream of chunks which
+ * cover the whole object.
+ */
+struct fy_iter_chunk {
+	const char *str;
+	size_t len;
+};
+
+/**
+ * fy_token_iter_create() - Create a token iterator
+ *
+ * Create an iterator for operating on the given token, or
+ * a generic iterator for use with fy_token_iter_start().
+ * The iterator must be destroyed with a matching call to
+ * fy_token_iter_destroy().
+ *
+ * @fyt: The token to iterate, or NULL.
+ *
+ * Returns:
+ * A pointer to the newly created iterator, or NULL in case of
+ * an error.
+ */
+struct fy_token_iter *fy_token_iter_create(struct fy_token *fyt);
+
+/**
+ * fy_token_iter_destroy() - Destroy the iterator
+ *
+ * Destroy the iterator created by fy_token_iter_create().
+ *
+ * @iter: The iterator to destroy.
+ */
+void fy_token_iter_destroy(struct fy_token_iter *iter);
+
+/**
+ * fy_token_iter_start() - Start iterating over the contents of a token
+ *
+ * Prepare an iterator for operating on the given token.
+ * The iterator must be created via a previous call to fy_token_iter_create()
+ * for user level API access.
+ *
+ * @fyt: The token to iterate over
+ * @iter: The iterator to prepare.
+ */
+void fy_token_iter_start(struct fy_token *fyt, struct fy_token_iter *iter);
+
+/**
+ * fy_token_iter_finish() - Stop iterating over the contents of a token
+ *
+ * Stop the iteration operation.
+ *
+ * @iter: The iterator.
+ */
+void fy_token_iter_finish(struct fy_token_iter *iter);
+
+/**
+ * fy_token_iter_peek_chunk() - Peek at the next iterator chunk
+ *
+ * Peek at the next iterator chunk
+ *
+ * @iter: The iterator.
+ *
+ * Returns:
+ * A pointer to the next iterator chunk, or NULL in case there's
+ * no other.
+ */
+const struct fy_iter_chunk *
+fy_token_iter_peek_chunk(struct fy_token_iter *iter);
+
+/**
+ * fy_token_iter_chunk_next() - Get next iterator chunk
+ *
+ * Get the next iterator chunk in sequence,
+ *
+ * @iter: The iterator.
+ * @curr: The current chunk, or NULL for the first one.
+ * @errp: Pointer to an error return value or NULL
+ *
+ * Returns:
+ * A pointer to the next iterator chunk, or NULL in case there's
+ * no other. When the return value is NULL, the errp variable
+ * will be filled with 0 for normal end, or -1 in case of an error.
+ */
+const struct fy_iter_chunk *
+fy_token_iter_chunk_next(struct fy_token_iter *iter,
+			 const struct fy_iter_chunk *curr, int *errp);
+
+/**
+ * fy_token_iter_advance() - Advance the iterator position
+ *
+ * Advance the read pointer of the iterator.
+ * Note that mixing calls of this with any call of fy_token_iter_ungetc() /
+ * fy_token_iter_utf8_unget() in a single iterator sequence leads
+ * to undefined behavior.
+ *
+ * @iter: The iterator.
+ * @len: Number of bytes to advance the iterator position
+ */
+void fy_token_iter_advance(struct fy_token_iter *iter, size_t len);
+
+/**
+ * fy_token_iter_read() - Read a block from an iterator
+ *
+ * Read a block from an iterator. Note than mixing calls of this
+ * and any of the ungetc methods leads to undefined behavior.
+ *
+ * @iter: The iterator.
+ * @buf: Pointer to a block of memory to receive the data. Must be at
+ *       least count bytes long.
+ * @count: Amount of bytes to read.
+ *
+ * Returns:
+ * The amount of data read, or -1 in case of an error.
+ */
+ssize_t fy_token_iter_read(struct fy_token_iter *iter, void *buf, size_t count);
+
+/**
+ * fy_token_iter_getc() - Get a single character from an iterator
+ *
+ * Reads a single character from an iterator. If the iterator is
+ * finished, it will return -1. If any calls to ungetc have pushed
+ * a character in the iterator it shall return that.
+ *
+ * @iter: The iterator.
+ *
+ * Returns:
+ * The next character in the iterator, or -1 in case of an error, or
+ * end of stream.
+ */
+int fy_token_iter_getc(struct fy_token_iter *iter);
+
+/**
+ * fy_token_iter_ungetc() - Ungets a single character from an iterator
+ *
+ * Pushes back a single character to an iterator stream. It will be
+ * returned in subsequent calls of fy_token_iter_getc(). Currently
+ * only a single character is allowed to be pushed back, and any
+ * further calls to ungetc will return an error.
+ *
+ * @iter: The iterator.
+ * @c: The character to push back, or -1 to reset the pushback buffer.
+ *
+ * Returns:
+ * The pushed back character given as argument, or -1 in case of an error.
+ * If the pushed back character was -1, then 0 will be returned.
+ */
+int fy_token_iter_ungetc(struct fy_token_iter *iter, int c);
+
+/**
+ * fy_token_iter_peekc() - Peeks at single character from an iterator
+ *
+ * Peeks at the next character to get from an iterator. If the iterator is
+ * finished, it will return -1. If any calls to ungetc have pushed
+ * a character in the iterator it shall return that. The character is not
+ * removed from the iterator stream.
+ *
+ * @iter: The iterator.
+ *
+ * Returns:
+ * The next character in the iterator, or -1 in case of an error, or end
+ * of stream.
+ */
+int fy_token_iter_peekc(struct fy_token_iter *iter);
+
+/**
+ * fy_token_iter_utf8_get() - Get a single utf8 character from an iterator
+ *
+ * Reads a single utf8 character from an iterator. If the iterator is
+ * finished, it will return -1. If any calls to ungetc have pushed
+ * a character in the iterator it shall return that.
+ *
+ * @iter: The iterator.
+ *
+ * Returns:
+ * The next utf8 character in the iterator, or -1 in case of an error, or end
+ * of stream.
+ */
+int fy_token_iter_utf8_get(struct fy_token_iter *iter);
+
+/**
+ * fy_token_iter_utf8_unget() - Ungets a single utf8 character from an iterator
+ *
+ * Pushes back a single utf8 character to an iterator stream. It will be
+ * returned in subsequent calls of fy_token_iter_utf8_getc(). Currently
+ * only a single character is allowed to be pushed back, and any
+ * further calls to ungetc will return an error.
+ *
+ * @iter: The iterator.
+ * @c: The character to push back, or -1 to reset the pushback buffer.
+ *
+ * Returns:
+ * The pushed back utf8 character given as argument, or -1 in case of an error.
+ * If the pushed back utf8 character was -1, then 0 will be returned.
+ */
+int fy_token_iter_utf8_unget(struct fy_token_iter *iter, int c);
+
+/**
+ * fy_token_iter_utf8_peek() - Peeks at single utf8 character from an iterator
+ *
+ * Peeks at the next utf8 character to get from an iterator. If the iterator is
+ * finished, it will return -1. If any calls to ungetc have pushed
+ * a character in the iterator it shall return that. The character is not
+ * removed from the iterator stream.
+ *
+ * @iter: The iterator.
+ *
+ * Returns:
+ * The next utf8 character in the iterator, or -1 in case of an error, or end
+ * of stream.
+ */
+int fy_token_iter_utf8_peek(struct fy_token_iter *iter);
 
 /**
  * fy_parse_load_document() - Parse the next document from the parser stream
@@ -1531,10 +1749,59 @@ static inline bool fy_node_is_mapping(struct fy_node *fyn)
 	return fy_node_get_type(fyn) == FYNT_MAPPING;
 }
 
+static inline bool fy_node_is_alias(struct fy_node *fyn)
+{
+	return fy_node_get_type(fyn) == FYNT_SCALAR &&
+	       fy_node_get_style(fyn) == FYNS_ALIAS;
+}
+
+/**
+ * fy_node_get_tag_token() - Gets the tag token of a node (if it exists)
+ *
+ * Gets the tag token of a node, if it exists
+ *
+ * @fyn: The node which has the tag token to be returned
+ *
+ * Returns:
+ * The tag token of the given node, or NULL if the tag does not
+ * exist.
+ */
+struct fy_token *fy_node_get_tag_token(struct fy_node *fyn);
+
+/**
+ * fy_node_get_scalar_token() - Gets the scalar token of a node (if it exists)
+ *
+ * Gets the scalar token of a node, if it exists and the node is a valid scalar
+ * node. Note that aliases are scalars, so if this call is issued on an alias
+ * node the return shall be of an alias token.
+ *
+ * @fyn: The node which has the scalar token to be returned
+ *
+ * Returns:
+ * The scalar token of the given node, or NULL if the node is not a scalar.
+ */
+struct fy_token *fy_node_get_scalar_token(struct fy_node *fyn);
+
+/**
+ * fy_node_resolve_alias() - Resolve an alias node
+ *
+ * Resolve an alias node, following any subsequent aliases until
+ * a non alias node has been found. This call performs cycle detection
+ * and excessive redirections checks so it's safe to call in any
+ * context.
+ *
+ * @fyn: The alias node to be resolved
+ *
+ * Returns:
+ * The resolved alias node, or NULL if either fyn is not an alias, or
+ * resolution fails due to a graph cycle.
+ */
+struct fy_node *fy_node_resolve_alias(struct fy_node *fyn);
+
 /**
  * fy_node_free() - Free a node
  *
- * Recursively Frees the given node releasing the memory it uses, removing
+ * Recursively frees the given node releasing the memory it uses, removing
  * any anchors on the document it contains, and releasing references
  * on the tokens it contains.
  *
@@ -1664,6 +1931,21 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn, const char *path, size_t le
  * The node's address, or NULL if fyn is the root.
  */
 char *fy_node_get_path(struct fy_node *fyn);
+
+/**
+ * fy_node_get_parent() - Get the parent node of a node
+ *
+ * Get the parent node of a node. The parent of a document's root
+ * is NULL, and so is the parent of the root of a key node's of a mapping.
+ * This is because the nodes of a key may not be addressed using a
+ * path expression.
+ *
+ * @fyn: The node
+ *
+ * Returns:
+ * The node's parent, or NULL if fyn is the root, or the root of a key mapping.
+ */
+struct fy_node *fy_node_get_parent(struct fy_node *fyn);
 
 /**
  * fy_node_get_parent_address() - Get the path address of this node's parent

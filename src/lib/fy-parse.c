@@ -28,7 +28,10 @@
 
 #include "fy-utils.h"
 
+/* only check atom sizes on debug */
+#ifndef NDEBUG
 #define ATOM_SIZE_CHECK
+#endif
 
 const char *fy_library_version(void)
 {
@@ -997,6 +1000,14 @@ struct fy_input *fy_parse_input_from_data(struct fy_parser *fyp,
 		handle->style = FYAS_DOUBLE_QUOTED_MANUAL;
 	}
 	handle->empty = !!(aflags & FYACF_EMPTY);
+	handle->has_lb = !!(aflags & FYACF_LB);
+	handle->has_ws = !!(aflags & FYACF_WS);
+	handle->starts_with_ws = !!(aflags & FYACF_STARTS_WITH_WS);
+	handle->starts_with_lb = !!(aflags & FYACF_STARTS_WITH_LB);
+	handle->ends_with_ws = !!(aflags & FYACF_ENDS_WITH_WS);
+	handle->ends_with_lb = !!(aflags & FYACF_ENDS_WITH_LB);
+	handle->trailing_lb = !!(aflags & FYACF_TRAILING_LB);
+	handle->size0 = !!(aflags & FYACF_SIZE0);
 
 	handle->chomp = FYAC_STRIP;
 	handle->increment = 0;
@@ -1281,6 +1292,7 @@ const void *fy_ensure_lookahead_slow_path(struct fy_parser *fyp, size_t size, si
 int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_line)
 {
 	int c, column, start_column, lines, scan_ahead;
+	bool has_ws;
 
 	c = fy_parse_peek(fyp);
 	if (c != '#')
@@ -1302,6 +1314,8 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 	column = fyp->column;
 	scan_ahead = 0;
 
+	has_ws = false;
+
 	/* continuation must be a # on the same column */
 	while (c == '#' && column == start_column) {
 
@@ -1309,13 +1323,19 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 		if (c == '#') {
 			/* chomp until line break */
 			fy_advance(fyp, c);
-			while (!(fy_is_breakz(c = fy_parse_peek(fyp))))
+			while (!(fy_is_breakz(c = fy_parse_peek(fyp)))) {
+				if (fy_is_ws(c))
+					has_ws = true;
 				fy_advance(fyp, c);
+			}
 
 			/* end of input break */
 			if (fy_is_z(c))
 				break;
 		}
+
+		if (fy_is_ws(c))
+			has_ws = true;
 
 		if (!fy_is_lb(c))
 			break;
@@ -1344,6 +1364,14 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 		handle->storage_hint = 0;
 		handle->storage_hint_valid = false;
 		handle->empty = false;
+		handle->has_lb = true;
+		handle->has_ws = has_ws;
+		handle->starts_with_ws = false; /* no-one cares for those */
+		handle->starts_with_lb = false;
+		handle->ends_with_ws = false;
+		handle->ends_with_lb = false;
+		handle->trailing_lb = false;
+		handle->size0 = lines > 0;
 	}
 
 	return 0;
@@ -3022,6 +3050,14 @@ int fy_fetch_anchor_or_alias(struct fy_parser *fyp, int c)
 	handle.storage_hint_valid = true;
 	handle.direct_output = true;
 	handle.empty = false;
+	handle.has_lb = false;
+	handle.has_ws = false;
+	handle.starts_with_ws = false;
+	handle.starts_with_lb = false;
+	handle.ends_with_ws = false;
+	handle.ends_with_lb = false;
+	handle.trailing_lb = false;
+	handle.size0 = false;
 
 	fyt = fy_token_queue(fyp, type, &handle);
 	fy_error_check(fyp, fyt, err_out_rc,
@@ -3273,14 +3309,19 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 {
 	struct fy_atom handle;
 	enum fy_atom_chomp chomp = FYAC_CLIP;	/* default */
-	int rc, increment = 0, current_indent, new_indent, indent = 0, breaks, prev_breaks;
-	bool doc_start_end_detected, empty, empty_line, prev_empty_line, needs_sep, indented, prev_indented, first;
+	int lastc, rc, increment = 0, current_indent, new_indent, indent = 0, breaks;
+	bool doc_start_end_detected, empty, empty_line, prev_empty_line, indented, prev_indented, first;
+	bool has_ws, has_lb, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb;
+	bool pending_nl;
 	struct fy_error_ctx ec;
 	struct fy_token *fyt;
 	size_t length, line_length, trailing_ws, trailing_breaks_length;
-	size_t leading_ws, prev_leading_ws;
+	size_t leading_ws;
 	size_t prefix_length, suffix_length;
 	unsigned int chomp_amt;
+#ifdef ATOM_SIZE_CHECK
+	size_t tlength;
+#endif
 
 	fy_error_check(fyp, c == '|' || c == '>', err_out,
 			"bad start of block scalar ('%s')",
@@ -3366,6 +3407,13 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	trailing_breaks_length = 0;
 
 	empty = true;
+	has_ws = false;
+	has_lb = false;
+	starts_with_ws = false;
+	starts_with_lb = false;
+	ends_with_ws = false;
+	ends_with_lb = false;
+	trailing_lb = false;
 
 	new_indent = fy_scan_block_scalar_indent(fyp, indent, &breaks);
 	fy_error_check(fyp, new_indent >= 0, err_out,
@@ -3376,20 +3424,28 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	indent = new_indent;
 
 	doc_start_end_detected = false;
-	prev_breaks = 0;
-	prev_empty_line = false;
-	prev_leading_ws = 0;
+	prev_empty_line = true;
 
 	prefix_length = 0;
 	suffix_length = 0;
 
-	needs_sep = false;
 	prev_indented = false;
 	first = true;
+	pending_nl = false;
 
 	chomp_amt = increment ? (unsigned int)(current_indent + increment) : (unsigned int)-1;
 
+	lastc = -1;
 	while ((c = fy_parse_peek(fyp)) > 0 && fyp->column >= indent) {
+
+		lastc = c;
+
+		if (first) {
+			if (fy_is_ws(c))
+				starts_with_ws = true;
+			else if (fy_is_lb(c))
+				starts_with_lb = true;
+		}
 
 		/* consume the list */
 		line_length = 0;
@@ -3400,11 +3456,13 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 		indented = fy_is_ws(fy_parse_peek(fyp));
 
 		while (!(fy_is_breakz(c = fy_parse_peek(fyp)))) {
+
+			lastc = c;
+
 			if (fyp->column == 0 &&
 			    (!fy_strncmp(fyp, "...", 3) || !fy_strncmp(fyp, "---", 3)) &&
 			    fy_is_blankz_at_offset(fyp, 3)) {
 				doc_start_end_detected = true;
-				fy_notice(fyp, "---/... doc detected");
 				break;
 			}
 
@@ -3412,13 +3470,10 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 				empty = false;
 				empty_line = false;
 				trailing_ws = 0;
-				if (chomp_amt == (unsigned int)-1) {
+				if (chomp_amt == (unsigned int)-1)
 					chomp_amt = fyp->column;
-					fy_notice(NULL, "setting chomp_amt=%u c='%s'",
-							chomp_amt, fy_utf8_format_a(c, fyue_singlequote));
-				}
-
 			} else {
+				has_ws = true;
 				if (empty_line)
 					leading_ws++;
 				trailing_ws++;
@@ -3439,56 +3494,67 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 		/* eat line break */
 		fy_advance(fyp, c);
 
+		has_lb = true;
 		new_indent = fy_scan_block_scalar_indent(fyp, indent, &breaks);
 		fy_error_check(fyp, new_indent >= 0, err_out,
 				"fy_scan_block_scalar_indent() failed");
 
 		if (is_literal) {
-			if (!empty_line) {
-				prefix_length = trailing_breaks_length;
-				trailing_breaks_length = 0;
+
+			prefix_length = 0;
+
+			if (pending_nl) {
+				pending_nl = false;
+				prefix_length++;
 			}
 
-			suffix_length = 1;
+			prefix_length += trailing_breaks_length;
+			trailing_breaks_length = 0;
+
+			suffix_length = 0;
 			trailing_breaks_length += breaks;
+
+			pending_nl = !empty_line || indented;
+
 		} else {
 
-			if (!empty_line) {
+			prefix_length = 0;
+
+			if (!trailing_breaks_length) {
+				if (prev_indented || (prev_empty_line && !first) || indented) {
+					/* previous line was indented or empty, force output newline */
+					if (pending_nl) {
+						prefix_length++;
+						pending_nl = false;
+					}
+				} else if (!prev_empty_line && !prev_indented && !indented && !empty_line) {
+					/* previous line was not empty and not indented
+					* while this is not indented and not empty need sep */
+					if (pending_nl) {
+						prefix_length++;
+						pending_nl = false;
+					}
+				}
+				pending_nl = true;
+			} else {
 				prefix_length += trailing_breaks_length;
-				trailing_breaks_length = 0;
+				if (prev_indented || indented)
+					prefix_length++;
+				pending_nl = true;
 			}
 
-			if (!empty_line && !indented) {
-				if (!first && needs_sep && !prev_breaks)
-					prefix_length++;
-			} else if (!empty_line && indented) {
-				if (!first && (!prev_indented || prev_breaks > 0))
-					prefix_length++;
-			}
+			trailing_breaks_length = 0;
 
-			if (!empty_line && !indented) {
-				needs_sep = !trailing_ws && breaks <= 0;
-			} else if (!empty_line && indented) {
-				if (prev_indented == 0 || prev_breaks == 0)
-					prefix_length++;
-				needs_sep = !trailing_ws && breaks < 0;
-			} else if (empty_line) {
-				if (prev_indented == 0)
-					prefix_length++;
-				suffix_length++;
-				needs_sep = false;
-			}
-
+			suffix_length = 0;
 			trailing_breaks_length += breaks;
 		}
+
 
 		length += prefix_length + line_length + suffix_length;
 
 		indent = new_indent;
 
 		prev_empty_line = empty_line;
-		prev_breaks = breaks;
-		prev_leading_ws = leading_ws;
 		prev_indented = indented;
 
 		prefix_length = 0;
@@ -3500,11 +3566,6 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	if (empty) {
 		trailing_breaks_length = breaks;
 		length = 0;
-	} else if (!is_literal) {
-		if ((needs_sep || trailing_breaks_length) && !prev_indented)
-			length++;
-		else if (prev_empty_line && prev_leading_ws)
-			length -= (prev_leading_ws + 1);
 	}
 
 	/* detect wrongly indented block scalar */
@@ -3518,18 +3579,34 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	if (chomp_amt == (unsigned int)-1)
 		chomp_amt = current_indent;
 
-	fy_notice(NULL, "chomp_amt=%u", chomp_amt);
-
 	switch (chomp) {
 	case FYAC_CLIP:
-		/* nothing */
+		if (pending_nl) {
+			length++;
+			ends_with_lb = true;
+			ends_with_ws = false;
+		} else {
+			if (trailing_breaks_length > 0)
+				ends_with_lb = true;
+			else if (fy_is_ws(lastc))
+				ends_with_ws = true;
+		}
 		break;
 	case FYAC_KEEP:
-		length += trailing_breaks_length;
+		length += trailing_breaks_length + (pending_nl ? 1 : 0);
+		trailing_lb = trailing_breaks_length > 0;
+		if (pending_nl || trailing_breaks_length) {
+			ends_with_lb = true;
+			ends_with_ws = false;
+		} else if (fy_is_ws(lastc)) {
+			ends_with_ws = true;
+			ends_with_lb = false;
+		}
 		break;
 	case FYAC_STRIP:
-		if (length > 0)
-			length--;
+		ends_with_lb = false;
+		if (fy_is_ws(lastc))
+			ends_with_ws = true;
 		break;
 	}
 
@@ -3538,21 +3615,30 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	handle.chomp = chomp;
 	handle.increment = increment ? (unsigned int)(current_indent + increment) : chomp_amt;
 
-	handle.storage_hint = length;
-	handle.storage_hint_valid = true;
 	handle.direct_output = handle.end_mark.line == handle.start_mark.line &&
 				is_literal &&
 				fy_atom_size(&handle) == length;
 	handle.empty = empty;
+	handle.has_lb = has_lb;
+	handle.has_ws = has_ws;
+	handle.starts_with_ws = starts_with_ws;
+	handle.starts_with_lb = starts_with_lb;
+	handle.ends_with_ws = ends_with_ws;
+	handle.ends_with_lb = ends_with_lb;
+	handle.trailing_lb = trailing_lb;
+	handle.size0 = length == 0;
 
 #ifdef ATOM_SIZE_CHECK
-	length = fy_atom_format_internal(&handle, NULL, NULL);
+	tlength = fy_atom_format_text_length(&handle);
 	fy_error_check(fyp,
-		length == handle.storage_hint,
+		tlength == length,
 		err_out, "storage hint calculation failed real %zu != hint %zu - \"%s\"",
-		length, handle.storage_hint,
+		tlength, length,
 		fy_utf8_format_text_a(fy_atom_data(&handle), fy_atom_size(&handle), fyue_doublequote));
 #endif
+
+	handle.storage_hint = length;
+	handle.storage_hint_valid = true;
 
 	fyt = fy_token_queue(fyp, FYTT_SCALAR, &handle, is_literal ? FYSS_LITERAL : FYSS_FOLDED);
 	fy_error_check(fyp, fyt, err_out_rc,
@@ -3598,13 +3684,19 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 {
 	struct fy_atom handle;
 	size_t length;
-	int rc = -1, code_length, i = 0, value, end_c, last_line;
-	int breaks_found, blanks_found;
-	bool is_single, is_multiline, is_complex, esc_lb, ws_lb_only;
+	int rc = -1, code_length, i = 0, value, end_c, last_line, lastc;
+	int breaks_found, blanks_found, break_run;
+	bool is_single, is_multiline, is_complex, esc_lb, ws_lb_only, has_ws, has_lb, has_esc;
+	bool first, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb = false;
 	struct fy_simple_key_mark skm;
 	struct fy_error_ctx ec;
 	struct fy_mark mark;
 	struct fy_token *fyt;
+	char escbuf[2];
+	const char *ep;
+#ifdef ATOM_SIZE_CHECK
+	size_t tlength;
+#endif
 
 	is_single = c == '\'';
 	end_c = c;
@@ -3630,8 +3722,18 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 	blanks_found = 0;
 	esc_lb = false;
 	ws_lb_only = true;
+	has_ws = false;
+	has_lb = false;
+	starts_with_ws = false;
+	starts_with_lb = false;
+	ends_with_ws = false;
+	ends_with_lb = false;
+	has_esc = false;
+	break_run = 0;
+	first = true;
 
 	last_line = -1;
+	lastc = -1;
 	for (;;) {
 		/* no document indicators please */
 		FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_SCAN,
@@ -3645,6 +3747,13 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 
 		FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_SCAN, c > 0,
 				err_end_of_stream);
+
+		if (first) {
+			if (fy_is_ws(c))
+				starts_with_ws = true;
+			else if (fy_is_lb(c))
+				starts_with_lb = true;
+		}
 
 		while (!fy_is_blankz(c = fy_parse_peek(fyp))) {
 
@@ -3668,6 +3777,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 				blanks_found = 0;
 			} else if (blanks_found) {
 				length += blanks_found;
+				lastc = ' ';
 				blanks_found = 0;
 			}
 
@@ -3675,6 +3785,8 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 			if (is_single && c == '\'' && fy_parse_peek_at(fyp, 1) == '\'') {
 				length++;
 				fy_advance_by(fyp, 2);
+				break_run = 0;
+				lastc = '\'';
 				continue;
 			}
 
@@ -3689,6 +3801,11 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 
 				esc_lb = true;
 				c = fy_parse_peek(fyp);
+				break_run = 0;
+				lastc = c;
+
+				has_esc = true;
+
 				break;
 			}
 
@@ -3699,17 +3816,11 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 				/* we are merely checking for validity */
 				c = fy_parse_peek_at(fyp, 1);
 
-				/* check if it's valid escape sequence */
-				/* TODO verify that removing ' is correct */
-
-				FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_SCAN,
-					c > 0 && fy_utf8_strchr("0abt\tnvfre \"/\\N_LPxuU", c),
-					err_invalid_escape);
-
-				fy_advance_by(fyp, 2);
-
 				/* hex, unicode marks */
 				if (c == 'x' || c == 'u' || c == 'U') {
+
+					fy_advance_by(fyp, 2);
+
 					code_length = c == 'x' ? 2 :
 						c == 'u' ? 4 : 8;
 					value = 0;
@@ -3737,21 +3848,38 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 
 					fy_advance_by(fyp, code_length);
 
-					length += fy_utf8_width(value);
+				} else {
+					escbuf[0] = '\\';
+					escbuf[1] = c;
 
-				} else if (c == 'N' || c == '_') /* NEL, 0xa0 two bytes */
-					length += 2;
-				else if (c == 'L' || c == 'P')	/* LS, PS, 3 bytes */
-					length += 3;
-				else
-					length++; /* all others single byte */
+					ep = escbuf;
+					value = fy_utf8_parse_escape(&ep, sizeof(escbuf));
+
+					FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_SCAN,
+						value >= 0, err_invalid_escape);
+
+					fy_advance_by(fyp, 2);
+				}
+
+				length += fy_utf8_width(value);
+
+				lastc = value;
+
+				if (lastc == '\n')
+					break_run++;
+
+				has_esc = true;
+
 				continue;
 			}
+
+			lastc = c;
 
 			/* regular character */
 			fy_advance(fyp, c);
 
 			length += fy_utf8_width(c);
+			break_run = 0;
 		}
 
 		/* end of scalar */
@@ -3762,18 +3890,30 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 		breaks_found = 0;
 		blanks_found = 0;
 		while (fy_is_blank(c = fy_parse_peek(fyp)) || fy_is_break(c)) {
+
+			break_run = 0;
+
 			fy_advance(fyp, c);
 
 			if (fy_is_break(c)) {
+				has_lb = true;
 				breaks_found++;
 				blanks_found = 0;
 				esc_lb = false;
 			} else {
+				has_ws = true;
 				if (!esc_lb)
 					blanks_found++;
 			}
 		}
+		first = false;
 	}
+
+	if (break_run > 0)
+		ends_with_lb = true;
+	else if (fy_is_ws(lastc))
+		ends_with_ws = true;
+	trailing_lb = break_run > 1;
 
 	/* end... */
 	fy_fill_atom_end(fyp, &handle);
@@ -3783,22 +3923,31 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 
 	/* need to process to present */
 	handle.style = is_single ? FYAS_SINGLE_QUOTED : FYAS_DOUBLE_QUOTED;
-	handle.storage_hint = length;
-	handle.storage_hint_valid = true;
-	handle.direct_output = !is_multiline && fy_atom_size(&handle) == length;
+	handle.direct_output = !is_multiline && !has_esc && fy_atom_size(&handle) == length;
 	handle.empty = ws_lb_only;
+	handle.has_lb = has_lb;
+	handle.has_ws = has_ws;
+	handle.starts_with_ws = starts_with_ws;
+	handle.starts_with_lb = starts_with_lb;
+	handle.ends_with_ws = ends_with_ws;
+	handle.ends_with_lb = ends_with_lb;
+	handle.trailing_lb = trailing_lb;
+	handle.size0 = length == 0;
 
 	/* skip over block scalar end */
 	fy_advance_by(fyp, 1);
 
 #ifdef ATOM_SIZE_CHECK
-	length = fy_atom_format_internal(&handle, NULL, NULL);
+	tlength = fy_atom_format_text_length(&handle);
 	fy_error_check(fyp,
-		length == handle.storage_hint,
+		length == tlength,
 		err_out, "storage hint calculation failed real %zu != hint %zu - \"%s\"",
-		length, handle.storage_hint,
+		tlength, length,
 		fy_utf8_format_text_a(fy_atom_data(&handle), fy_atom_size(&handle), fyue_doublequote));
 #endif
+
+	handle.storage_hint = length;
+	handle.storage_hint_valid = true;
 
 	/* and we're done */
 	fyt = fy_token_queue(fyp, FYTT_SCALAR, &handle, is_single ? FYSS_SINGLE_QUOTED : FYSS_DOUBLE_QUOTED);
@@ -3920,10 +4069,13 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 	bool has_leading_blanks, had_breaks;
 	const char *last_ptr;
 	struct fy_mark mark, last_mark;
-	bool target_simple_key_allowed, is_multiline, is_complex;
+	bool target_simple_key_allowed, is_multiline, is_complex, has_lb, has_ws;
 	struct fy_simple_key_mark skm;
 	struct fy_error_ctx ec;
 	struct fy_token *fyt;
+#ifdef ATOM_SIZE_CHECK
+	size_t tlength;
+#endif
 
 	/* may not start with blankz */
 	FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_SCAN,
@@ -3954,6 +4106,8 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 
 	has_leading_blanks = false;
 	had_breaks = false;
+	has_lb = false;
+	has_ws = false;
 	length = 0;
 	breaks_found = 0;
 	blanks_found = 0;
@@ -4042,8 +4196,11 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 				had_breaks = true;
 				breaks_found++;
 				blanks_found = 0;
-			} else
+				has_lb = true;
+			} else {
 				blanks_found++;
+				has_ws = true;
+			}
 
 			c = nextc;
 
@@ -4065,19 +4222,29 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 
 	handle.style = FYAS_PLAIN;
 	handle.chomp = FYAC_STRIP;
-	handle.storage_hint = length;
-	handle.storage_hint_valid = true;
 	handle.direct_output = !is_multiline && fy_atom_size(&handle) == length;
 	handle.empty = false;
+	handle.has_lb = has_lb;
+	handle.has_ws = has_ws;
+	handle.starts_with_ws = false;
+	handle.starts_with_lb = false;
+	handle.ends_with_ws = false;
+	handle.ends_with_lb = false;
+	handle.trailing_lb = false;
+	handle.size0 = length == 0;
 
 #ifdef ATOM_SIZE_CHECK
-	length = fy_atom_format_internal(&handle, NULL, NULL);
+	tlength = fy_atom_format_text_length(&handle);
 	fy_error_check(fyp,
-		length == handle.storage_hint,
+		tlength == length,
 		err_out, "storage hint calculation failed real %zu != hint %zu - '%s'",
-		length, handle.storage_hint,
+		tlength, length,
 		fy_utf8_format_text_a(fy_atom_data(&handle), fy_atom_size(&handle), fyue_singlequote));
 #endif
+
+	handle.storage_hint = length;
+	handle.storage_hint_valid = true;
+
 	/* and we're done */
 	fyt = fy_token_queue(fyp, FYTT_SCALAR, &handle, FYSS_PLAIN);
 	fy_error_check(fyp, fyt, err_out_rc,

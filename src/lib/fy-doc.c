@@ -751,8 +751,6 @@ bool fy_node_compare(struct fy_node *fyn1, struct fy_node *fyn2)
 {
 	struct fy_node *fyni1, *fyni2;
 	struct fy_node_pair *fynp1, *fynp2;
-	const char *t1, *t2;
-	size_t l1, l2;
 	bool ret, null1, null2;
 	struct fy_node_pair **fynpp1, **fynpp2;
 	int i, count1, count2;
@@ -838,11 +836,7 @@ bool fy_node_compare(struct fy_node *fyn1, struct fy_node *fyn2)
 		if (alias1 != alias2)
 			return false;
 
-		t1 = fy_token_get_text(fyn1->scalar, &l1);
-		t2 = fy_token_get_text(fyn2->scalar, &l2);
-		if (l1 != l2)
-			return false;
-		ret = !memcmp(t1, t2, l1);
+		ret = !fy_token_cmp(fyn1->scalar, fyn2->scalar);
 		break;
 	}
 
@@ -2724,6 +2718,21 @@ enum fy_node_style fy_node_get_style(struct fy_node *fyn)
 	return fyn ? fyn->style : FYNS_PLAIN;
 }
 
+struct fy_node *fy_node_get_parent(struct fy_node *fyn)
+{
+	return fyn ? fyn->parent : NULL;
+}
+
+struct fy_token *fy_node_get_tag_token(struct fy_node *fyn)
+{
+	return fyn ? fyn->tag : NULL;
+}
+
+struct fy_token *fy_node_get_scalar_token(struct fy_node *fyn)
+{
+	return fyn && fyn->type == FYNT_SCALAR ? fyn->scalar : NULL;
+}
+
 struct fy_node *fy_node_pair_key(struct fy_node_pair *fynp)
 {
 	return fynp ? fynp->key : NULL;
@@ -2912,8 +2921,6 @@ fy_node_mapping_lookup_value_by_simple_key(struct fy_node *fyn,
 					   const char *key, size_t len)
 {
 	struct fy_node_pair *fynpi;
-	const char *strk;
-	size_t lenk;
 
 	if (!fyn || fyn->type != FYNT_MAPPING || !key)
 		return NULL;
@@ -2930,8 +2937,7 @@ fy_node_mapping_lookup_value_by_simple_key(struct fy_node *fyn,
 		if (!fy_node_is_scalar(fynpi->key) || fy_node_is_alias(fynpi->key))
 			continue;
 
-		strk = fy_token_get_text(fynpi->key->scalar, &lenk);
-		if (lenk == len && !memcmp(key, strk, len))
+		if (!fy_token_memcmp(fynpi->key->scalar, key, len))
 			return fynpi->value;
 	}
 
@@ -3077,6 +3083,13 @@ fy_node_follow_aliases(struct fy_node *fyn, enum fy_node_walk_flags flags)
 	fy_node_walk_mark_end(ctx);
 
 	return fyn;
+}
+
+struct fy_node *fy_node_resolve_alias(struct fy_node *fyn)
+{
+	return fy_node_follow_aliases(fyn,
+			FYNWF_FOLLOW | FYNWF_MAXDEPTH_DEFAULT |
+			FYNWF_MARKER_DEFAULT);
 }
 
 static struct fy_node *
@@ -4250,28 +4263,16 @@ static int fy_node_mapping_sort_cmp_default(const struct fy_node_pair *fynp_a,
 					    const struct fy_node_pair *fynp_b,
 					    void *arg __attribute__((__unused__)))
 {
-	const char *str_a, *str_b;
 	int idx_a, idx_b;
-	size_t len_a = 0, len_b = 0, min_len;
-	bool alias_a, alias_b;
+	bool alias_a, alias_b, scalar_a, scalar_b;
+	struct fy_token *fyt1, *fyt2;
 
 	/* order is: maps first, followed by sequences, and last scalars sorted */
-	if (!fynp_a->key)
-		str_a = "";
-	else if (fy_node_is_scalar(fynp_a->key))
-		str_a = fy_token_get_text(fynp_a->key->scalar, &len_a);
-	else
-		str_a = NULL;
-
-	if (!fynp_b->key)
-		str_b = "";
-	else if (fy_node_is_scalar(fynp_b->key))
-		str_b = fy_token_get_text(fynp_b->key->scalar, &len_b);
-	else
-		str_b = NULL;
+	scalar_a = !fynp_a->key || fy_node_is_scalar(fynp_a->key);
+	scalar_b = !fynp_b->key || fy_node_is_scalar(fynp_b->key);
 
 	/* scalar? perform comparison */
-	if (str_a && str_b) {
+	if (scalar_a && scalar_b) {
 
 		/* if both are aliases, sort skipping the '*' */
 		alias_a = fy_node_is_alias(fynp_a->key);
@@ -4280,21 +4281,22 @@ static int fy_node_mapping_sort_cmp_default(const struct fy_node_pair *fynp_a,
 		/* aliases win */
 		if (alias_a && !alias_b)
 			return -1;
+
 		if (!alias_a && alias_b)
 			return 1;
 
-		min_len = len_a < len_b ? len_a : len_b;
+		fyt1 = fynp_a->key ? fynp_a->key->scalar : NULL;
+		fyt2 = fynp_b->key ? fynp_b->key->scalar : NULL;
 
-		/* all same, perform comparison */
-		return strncmp(str_a, str_b, min_len);
+		return fy_token_cmp(fyt1, fyt2);
 	}
 
 	/* b is scalar, a is not */
-	if (!str_a && str_b)
+	if (!scalar_a && scalar_b)
 		return -1;
 
 	/* a is scalar, b is not */
-	if (str_a && !str_b)
+	if (scalar_a && !scalar_b)
 		return 1;
 
 	/* different types, mappings win */

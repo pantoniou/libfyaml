@@ -56,17 +56,24 @@ static inline bool fy_token_type_is_content(enum fy_token_type type)
 }
 
 /* analyze content flags */
-#define FYACF_EMPTY		0x0001	/* is empty */
-#define FYACF_LB		0x0002	/* has a linebreak */
-#define FYACF_BLOCK_PLAIN	0x0004	/* can be a plain scalar in block context */
-#define FYACF_FLOW_PLAIN	0x0008	/* can be a plain scalar in flow context */
-#define FYACF_PRINTABLE		0x0010	/* every character is printable */
-#define FYACF_SINGLE_QUOTED	0x0020	/* can be a single quoted scalar */
-#define FYACF_DOUBLE_QUOTED	0x0040	/* can be a double quoted scalar */
-#define FYACF_CONTAINS_ZERO	0x0080	/* contains a zero */
-#define FYACF_DOC_IND		0x0100	/* contains document indicators */
-#define FYACF_CONSECUTIVE_LB 	0x0200	/* has consecutive linebreaks */
-#define FYACF_SIMPLE_KEY	0x0400	/* can be a simple key */
+#define FYACF_EMPTY		0x00001	/* is empty (only ws & lb) */
+#define FYACF_LB		0x00002	/* has a linebreak */
+#define FYACF_BLOCK_PLAIN	0x00004	/* can be a plain scalar in block context */
+#define FYACF_FLOW_PLAIN	0x00008	/* can be a plain scalar in flow context */
+#define FYACF_PRINTABLE		0x00010	/* every character is printable */
+#define FYACF_SINGLE_QUOTED	0x00020	/* can be a single quoted scalar */
+#define FYACF_DOUBLE_QUOTED	0x00040	/* can be a double quoted scalar */
+#define FYACF_CONTAINS_ZERO	0x00080	/* contains a zero */
+#define FYACF_DOC_IND		0x00100	/* contains document indicators */
+#define FYACF_CONSECUTIVE_LB 	0x00200	/* has consecutive linebreaks */
+#define FYACF_SIMPLE_KEY	0x00400	/* can be a simple key */
+#define FYACF_WS		0x00800	/* has at least one whitespace */
+#define FYACF_STARTS_WITH_WS	0x01000	/* starts with whitespace */
+#define FYACF_STARTS_WITH_LB	0x02000	/* starts with whitespace */
+#define FYACF_ENDS_WITH_WS	0x04000	/* ends with whitespace */
+#define FYACF_ENDS_WITH_LB	0x08000	/* ends with linebreak */
+#define FYACF_TRAILING_LB	0x10000	/* ends with trailing lb > 1 */
+#define FYACF_SIZE0		0x20000 /* contains absolutely nothing */
 
 enum fy_comment_placement {
 	fycp_top,
@@ -116,7 +123,6 @@ void fy_parse_token_free(struct fy_parser *fyp, struct fy_token *fyt);
 void fy_parse_token_free(struct fy_parser *fyp, struct fy_token *fyt);
 
 int fy_tag_token_format_text_length(const struct fy_token *fyt);
-int fy_token_format_text_length_hint(struct fy_token *fyt);
 const char *fy_tag_token_format_text(const struct fy_token *fyt, char *buf, size_t maxsz);
 
 struct fy_token *fy_token_create(struct fy_parser *fyp, enum fy_token_type type, ...);
@@ -130,7 +136,7 @@ int fy_token_format_text_length(struct fy_token *fyt);
 const char *fy_token_format_text(struct fy_token *fyt, char *buf, size_t maxsz);
 
 /* non-parser token methods */
-const struct fy_atom *fy_token_atom(struct fy_token *fyt);
+struct fy_atom *fy_token_atom(struct fy_token *fyt);
 const struct fy_mark *fy_token_start_mark(struct fy_token *fyt);
 const struct fy_mark *fy_token_end_mark(struct fy_token *fyt);
 
@@ -257,5 +263,16 @@ char *fy_token_debug_text(struct fy_token *fyt);
 		} \
 		_rbuf; \
 	})
+
+int fy_token_memcmp(struct fy_token *fyt, const void *ptr, size_t len);
+int fy_token_strcmp(struct fy_token *fyt, const char *str);
+int fy_token_cmp(struct fy_token *fyt1, struct fy_token *fyt2);
+
+struct fy_token_iter {
+	struct fy_token *fyt;
+	struct fy_iter_chunk ic;	/* direct mode */
+	struct fy_atom_iter atom_iter;
+	int unget_c;
+};
 
 #endif

@@ -458,13 +458,15 @@ void print_escaped(const char *str, int length)
 	}
 }
 
-void dump_testsuite_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize)
+void dump_testsuite_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize,
+			  struct fy_token_iter *iter)
 {
 	const char *anchor = NULL;
 	const char *tag = NULL;
-	const char *value = NULL;
-	size_t anchor_len = 0, tag_len = 0, value_len = 0;
+	size_t anchor_len = 0, tag_len = 0;
 	enum fy_scalar_style style;
+	const struct fy_iter_chunk *ic;
+	int ret;
 
 	switch (fye->type) {
 	case FYET_NONE:
@@ -546,11 +548,6 @@ void dump_testsuite_event(struct fy_parser *fyp, struct fy_event *fye, bool colo
 		if (fye->scalar.tag)
 			tag = fy_token_get_text(fye->scalar.tag, &tag_len);
 
-		if (fye->scalar.value)
-			value = fy_token_get_text(fye->scalar.value, &value_len);
-		else
-			value = "";
-
 		if (colorize)
 			fputs("\x1b[37;1m", stdout);
 		printf("=VAL");
@@ -595,7 +592,13 @@ void dump_testsuite_event(struct fy_parser *fyp, struct fy_event *fye, bool colo
 		default:
 			abort();
 		}
-		print_escaped(value, value_len);
+
+		fy_token_iter_start(fye->scalar.value, iter);
+		ic = NULL;
+		while ((ic = fy_token_iter_chunk_next(iter, ic, &ret)) != NULL)
+			print_escaped(ic->str, ic->len);
+		fy_token_iter_finish(iter);
+
 		break;
 	case FYET_ALIAS:
 		anchor = fy_token_get_text(fye->alias.anchor, &anchor_len);
@@ -660,6 +663,7 @@ int main(int argc, char *argv[])
 	int tool_mode = OPT_TOOL;
 	struct fy_event *fyev;
 	bool join_resolve = RESOLVE_DEFAULT;
+	struct fy_token_iter *iter;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -885,10 +889,17 @@ int main(int argc, char *argv[])
 			goto cleanup;
 		}
 
+		iter = fy_token_iter_create(NULL);
+		if (!iter) {
+			fprintf(stderr, "failed to create token iterator\n");
+			goto cleanup;
+		}
 		while ((fyev = fy_parser_parse(fyp)) != NULL) {
-			dump_testsuite_event(fyp, fyev, du.colorize);
+			dump_testsuite_event(fyp, fyev, du.colorize, iter);
 			fy_parser_event_free(fyp, fyev);
 		}
+		fy_token_iter_destroy(iter);
+		iter = NULL;
 		if (fy_parser_get_stream_error(fyp))
 			goto cleanup;
 		break;
