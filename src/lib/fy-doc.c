@@ -2676,14 +2676,21 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn, const char *path)
 		s = path;
 		while (*s && isspace(*s))
 			s++;
-		if (*s++ != '[')
+
+		c = *s;
+		if (c == '[')
+			s++;
+		else if (!isdigit(c) && c != '-')
 			return NULL;
+
 		idx = (int)strtol(s, &end_idx, 10);
 		s = end_idx;
 		while (*s && isspace(*s))
 			s++;
-		if (*s++ != ']')
+
+		if (c == '[' && *s++ != ']')
 			return NULL;
+
 		while (*s && isspace(*s))
 			s++;
 		path = s;
