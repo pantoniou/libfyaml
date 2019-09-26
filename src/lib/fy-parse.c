@@ -4487,9 +4487,10 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 	fyds = fyp->current_document_state;
 	assert(fyds);
 
-	fy_parse_debug(fyp, "parse_node: is_block=%s is_indentless=%s",
+	fy_parse_debug(fyp, "parse_node: is_block=%s is_indentless=%s - fyt %s",
 			is_block ? "true" : "false",
-			is_indentless_sequence ? "true" : "false");
+			is_indentless_sequence ? "true" : "false",
+			fy_token_type_txt[fyt->type]);
 
 	if (fyt->type == FYTT_ALIAS) {
 		fy_parse_state_set(fyp, fy_parse_state_pop(fyp));
@@ -4497,7 +4498,7 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 		fye->type = FYET_ALIAS;
 		fye->alias.anchor = fy_scan_remove(fyp, fyt);
 
-		return fyep;
+		goto return_ok;
 	}
 
 	while ((!anchor && fyt->type == FYTT_ANCHOR) || (!tag && fyt->type == FYTT_TAG)) {
@@ -4509,6 +4510,12 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 		fyt = fy_scan_peek(fyp);
 		fy_error_check(fyp, fyt, err_out,
 				"failed to peek token");
+
+		fy_parse_debug(fyp, "parse_node: ANCHOR|TAG got -  fyt %s",
+			fy_token_type_txt[fyt->type]);
+
+		FY_ERROR_CHECK(fyp, fyt, &ec, FYEM_PARSE,
+				fyt->type != FYTT_ALIAS, err_unexpected_alias);
 	}
 
 	/* check tag prefix */
@@ -4522,8 +4529,8 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 	}
 
 	if ((fyp->state == FYPS_BLOCK_NODE_OR_INDENTLESS_SEQUENCE ||
-	fyp->state == FYPS_BLOCK_MAPPING_VALUE ||
-	fyp->state == FYPS_BLOCK_MAPPING_FIRST_KEY)
+	     fyp->state == FYPS_BLOCK_MAPPING_VALUE ||
+	     fyp->state == FYPS_BLOCK_MAPPING_FIRST_KEY)
 		&& fyt->type == FYTT_BLOCK_ENTRY) {
 
 		fye->type = FYET_SEQUENCE_START;
@@ -4531,7 +4538,7 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 		fye->sequence_start.tag = tag;
 		fye->sequence_start.sequence_start = NULL;
 		fy_parse_state_set(fyp, FYPS_INDENTLESS_SEQUENCE_ENTRY);
-		return fyep;
+		goto return_ok;
 	}
 
 	if (fyt->type == FYTT_SCALAR) {
@@ -4541,7 +4548,7 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 		fye->scalar.anchor = anchor;
 		fye->scalar.tag = tag;
 		fye->scalar.value = fy_scan_remove(fyp, fyt);
-		return fyep;
+		goto return_ok;
 	}
 
 	if (fyt->type == FYTT_FLOW_SEQUENCE_START) {
@@ -4550,7 +4557,7 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 		fye->sequence_start.tag = tag;
 		fye->sequence_start.sequence_start = fy_scan_remove(fyp, fyt);
 		fy_parse_state_set(fyp, FYPS_FLOW_SEQUENCE_FIRST_ENTRY);
-		return fyep;
+		goto return_ok;
 	}
 
 	if (fyt->type == FYTT_FLOW_MAPPING_START) {
@@ -4559,7 +4566,7 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 		fye->mapping_start.tag = tag;
 		fye->mapping_start.mapping_start = fy_scan_remove(fyp, fyt);
 		fy_parse_state_set(fyp, FYPS_FLOW_MAPPING_FIRST_KEY);
-		return fyep;
+		goto return_ok;
 	}
 
 	if (is_block && fyt->type == FYTT_BLOCK_SEQUENCE_START) {
@@ -4568,7 +4575,7 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 		fye->sequence_start.tag = tag;
 		fye->sequence_start.sequence_start = fy_scan_remove(fyp, fyt);
 		fy_parse_state_set(fyp, FYPS_BLOCK_SEQUENCE_FIRST_ENTRY);
-		return fyep;
+		goto return_ok;
 	}
 
 	if (is_block && fyt->type == FYTT_BLOCK_MAPPING_START) {
@@ -4577,12 +4584,14 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 		fye->mapping_start.tag = tag;
 		fye->mapping_start.mapping_start = fy_scan_remove(fyp, fyt);
 		fy_parse_state_set(fyp, FYPS_BLOCK_MAPPING_FIRST_KEY);
-		return fyep;
+		goto return_ok;
 	}
 
 	FY_ERROR_CHECK(fyp, fyt, &ec, FYEM_PARSE,
 			anchor || tag,
 			err_unexpected_content);
+
+	fy_parse_debug(fyp, "parse_node: empty scalar...");
 
 	/* empty scalar */
 	fy_parse_state_set(fyp, fy_parse_state_pop(fyp));
@@ -4591,6 +4600,11 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 	fye->scalar.anchor = anchor;
 	fye->scalar.tag = tag;
 	fye->scalar.value = NULL;
+
+return_ok:
+	fy_parse_debug(fyp, "parse_node: > %s",
+			fy_event_type_txt[fye->type]);
+
 	return fyep;
 
 err_out:
@@ -4627,6 +4641,10 @@ err_undefined_tag_prefix:
 	ec.end_mark = *fy_token_end_mark(tag);
 	fy_error_report(fyp, &ec, "undefined tag prefix '%.*s'",
 					(int)handle_size, handle);
+	goto err_out;
+
+err_unexpected_alias:
+	fy_error_report(fyp, &ec, "unexpected alias");
 	goto err_out;
 }
 

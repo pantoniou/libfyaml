@@ -130,6 +130,8 @@ int fy_diag(struct fy_parser *fyp, unsigned int flags,
 
 /* topical debug methods */
 
+extern const char *fy_token_type_txt[];
+
 char *fy_token_dump_format(struct fy_token *fyt, char *buf, size_t bufsz);
 char *fy_token_list_dump_format(struct fy_token_list *fytl,
 		struct fy_token *fyt_highlight, char *buf, size_t bufsz);

@@ -28,84 +28,42 @@
 #include "fy-ctype.h"
 #include "fy-utf8.h"
 
+const char *fy_token_type_txt[] = {
+	[FYTT_NONE]			= "<NONE>",
+	[FYTT_STREAM_START]		= "STRM+",
+	[FYTT_STREAM_END]		= "STRM-",
+	[FYTT_VERSION_DIRECTIVE]	= "VRSD",
+	[FYTT_TAG_DIRECTIVE]		= "TAGD",
+	[FYTT_DOCUMENT_START]		= "DOC+",
+	[FYTT_DOCUMENT_END]		= "DOC-",
+	[FYTT_BLOCK_SEQUENCE_START]	= "BSEQ+",
+	[FYTT_BLOCK_MAPPING_START]	= "BMAP+",
+	[FYTT_BLOCK_END]		= "BEND",
+	[FYTT_FLOW_SEQUENCE_START]	= "FSEQ+",
+	[FYTT_FLOW_SEQUENCE_END]	= "FSEQ-",
+	[FYTT_FLOW_MAPPING_START]	= "FMAP+",
+	[FYTT_FLOW_MAPPING_END]		= "FMAP-",
+	[FYTT_BLOCK_ENTRY]		= "BENTR",
+	[FYTT_FLOW_ENTRY]		= "FENTR",
+	[FYTT_KEY]			= "KEY",
+	[FYTT_SCALAR]			= "SCLR",
+	[FYTT_VALUE]			= "VAL",
+	[FYTT_ALIAS]			= "ALIAS",
+	[FYTT_ANCHOR]			= "ANCHR",
+	[FYTT_TAG]			= "TAG",
+};
+
 char *fy_token_dump_format(struct fy_token *fyt, char *buf, size_t bufsz)
 {
-	const char *s = "-";
+	const char *s = NULL;
 
-	if (!fyt) {
-		s = "";
-		goto out;
-	}
+	if (fyt && (unsigned int)fyt->type < sizeof(fy_token_type_txt)/
+					     sizeof(fy_token_type_txt[0]))
+		s = fy_token_type_txt[fyt->type];
 
-	switch (fyt->type) {
-	case FYTT_NONE:
-		break;
-	case FYTT_STREAM_START:
-		s = "STRM+";
-		break;
-	case FYTT_STREAM_END:
-		s = "STRM-";
-		break;
-	case FYTT_VERSION_DIRECTIVE:
-		s = "VRSD";
-		break;
-	case FYTT_TAG_DIRECTIVE:
-		s = "TAGD";
-		break;
-	case FYTT_DOCUMENT_START:
-		s = "DOC+";
-		break;
-	case FYTT_DOCUMENT_END:
-		s = "DOC-";
-		break;
-	case FYTT_BLOCK_SEQUENCE_START:
-		s = "BSEQ+";
-		break;
-	case FYTT_BLOCK_MAPPING_START:
-		s = "BMAP+";
-		break;
-	case FYTT_BLOCK_END:
-		s = "BEND";
-		break;
-	case FYTT_FLOW_SEQUENCE_START:
-		s = "FSEQ+";
-		break;
-	case FYTT_FLOW_SEQUENCE_END:
-		s = "FSEQ-";
-		break;
-	case FYTT_FLOW_MAPPING_START:
-		s = "FMAP+";
-		break;
-	case FYTT_FLOW_MAPPING_END:
-		s = "FMAP-";
-		break;
-	case FYTT_BLOCK_ENTRY:
-		s = "BENTR";
-		break;
-	case FYTT_FLOW_ENTRY:
-		s = "FENTR";
-		break;
-	case FYTT_KEY:
-		s = "KEY";
-		break;
-	case FYTT_SCALAR:
-		s = "SCLR";
-		break;
-	case FYTT_VALUE:
-		s = "VAL";
-		break;
-	case FYTT_ALIAS:
-		s = "ALIAS";
-		break;
-	case FYTT_ANCHOR:
-		s = "ANCHR";
-		break;
-	case FYTT_TAG:
-		s = "TAG";
-		break;
-	}
+	if (!s)
+		s = "<NULL>";
 
-out:
 	snprintf(buf, bufsz, "%s", s);
 
 	return buf;

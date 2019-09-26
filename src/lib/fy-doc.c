@@ -217,6 +217,7 @@ struct fy_anchor *fy_node_get_anchor(struct fy_node *fyn)
 void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 {
 	struct fy_anchor *fya;
+	struct fy_anchor *fyan;
 
 	if (!fyp || !fyd)
 		return;
@@ -230,8 +231,10 @@ void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 	fy_node_free(fyd->root);
 
 	/* remove all anchors */
-	while ((fya = fy_anchor_list_pop(&fyd->anchors)) != NULL)
+	for (fya = fy_anchor_list_head(&fyd->anchors); fya; fya = fyan) {
+		fyan = fy_anchor_next(&fyd->anchors, fya);
 		fy_anchor_destroy(fya);
+	}
 
 	fy_document_state_unref(fyd->fyds);
 
@@ -460,12 +463,16 @@ void fy_node_free(struct fy_node *fyn)
 			fy_node_free(fyni);
 		fy_token_unref(fyn->sequence_start);
 		fy_token_unref(fyn->sequence_end);
+		fyn->sequence_start = NULL;
+		fyn->sequence_end = NULL;
 		break;
 	case FYNT_MAPPING:
 		while ((fynp = fy_node_pair_list_pop(&fyn->mapping)) != NULL)
 			fy_node_pair_free(fynp);
 		fy_token_unref(fyn->mapping_start);
 		fy_token_unref(fyn->mapping_end);
+		fyn->mapping_start = NULL;
+		fyn->mapping_end = NULL;
 		break;
 	}
 
@@ -491,9 +498,13 @@ struct fy_node *fy_node_alloc(struct fy_document *fyd, enum fy_node_type type)
 		break;
 	case FYNT_SEQUENCE:
 		fy_node_list_init(&fyn->sequence);
+		fyn->sequence_start = NULL;
+		fyn->sequence_end = NULL;
 		break;
 	case FYNT_MAPPING:
 		fy_node_pair_list_init(&fyn->mapping);
+		fyn->mapping_start = NULL;
+		fyn->mapping_end = NULL;
 		break;
 	}
 	return fyn;
@@ -912,7 +923,8 @@ int fy_parse_document_load_sequence(struct fy_parser *fyp, struct fy_document *f
 	if (fye->sequence_start.sequence_start) {
 		fyn->sequence_start = fye->sequence_start.sequence_start;
 		fye->sequence_start.sequence_start = NULL;
-	}
+	} else
+		fyn->sequence_start = NULL;
 
 	/* done with this */
 	fy_parse_eventp_recycle(fyp, fyep);
@@ -935,7 +947,8 @@ int fy_parse_document_load_sequence(struct fy_parser *fyp, struct fy_document *f
 	if (fye->sequence_end.sequence_end) {
 		fyn->sequence_end = fye->sequence_end.sequence_end;
 		fye->sequence_end.sequence_end = NULL;
-	}
+	} else
+		fyn->sequence_end = NULL;
 
 	*fynp = fyn;
 	fyn = NULL;
