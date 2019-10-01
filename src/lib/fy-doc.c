@@ -2862,7 +2862,7 @@ static inline bool fy_node_walk_mark(struct fy_node_walk_ctx *ctx, struct fy_nod
 	struct fy_document *fyd = fyn->fyd;
 	struct fy_parser *fyp = fyd->fyp;
 	struct fy_error_ctx ec;
-	struct fy_token *fyt;
+	struct fy_token *fyt = NULL;
 
 	switch (fyn->type) {
 	case FYNT_SCALAR:
