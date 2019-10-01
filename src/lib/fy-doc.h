@@ -66,6 +66,7 @@ struct fy_node {
 	enum fy_node_style style;
 	struct fy_node *parent;
 	struct fy_document *fyd;
+	unsigned int marks;
 	union {
 		struct fy_token *scalar;
 		struct fy_node_list sequence;

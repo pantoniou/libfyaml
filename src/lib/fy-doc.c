@@ -539,6 +539,7 @@ struct fy_node *fy_node_alloc(struct fy_document *fyd, enum fy_node_type type)
 	fyn->type = type;
 	fyn->style = FYNS_ANY;
 	fyn->fyd = fyd;
+	fyn->marks = 0;
 
 	switch (fyn->type) {
 	case FYNT_SCALAR:
@@ -2709,39 +2710,98 @@ struct fy_node *fy_node_mapping_lookup_by_string(struct fy_node *fyn, const char
 
 #define FY_NODE_PATH_WALK_DEPTH_DEFAULT	16
 
+static inline unsigned int
+fy_node_walk_max_depth_from_flags(enum fy_node_walk_flags flags)
+{
+	unsigned int max_depth;
+
+	max_depth = ((unsigned int)flags >> FYNWF_MAXDEPTH_SHIFT) & FYNWF_MAXDEPTH_MASK;
+	if (max_depth == 0)
+		max_depth = FY_NODE_PATH_WALK_DEPTH_DEFAULT;
+
+	return max_depth;
+}
+
 struct fy_node_walk_ctx {
 	unsigned int max_depth;
 	unsigned int next_slot;
+	unsigned int mark;
 	struct fy_node *marked[0];
 };
 
-static inline void fy_node_walk_mark_init(struct fy_node_walk_ctx *ctx)
+#define fy_node_walk_ctx_create_a(_max_depth, _mark) \
+	({ \
+		unsigned int __max_depth = (_max_depth); \
+		struct fy_node_walk_ctx *_ctx; \
+		\
+		_ctx = alloca(sizeof(*_ctx) + sizeof(struct fy_node *) * __max_depth); \
+		_ctx->max_depth = _max_depth; \
+		_ctx->next_slot = 0; \
+		_ctx->mark = (_mark); \
+		_ctx; \
+	})
+
+static inline void fy_node_walk_mark_start(struct fy_node_walk_ctx *ctx)
 {
 	ctx->next_slot = 0;
 }
 
+static inline void fy_node_walk_mark_end(struct fy_node_walk_ctx *ctx)
+{
+	struct fy_node *fyn;
+
+	while (ctx->next_slot > 0) {
+		fyn = ctx->marked[--ctx->next_slot];
+		fyn->marks &= ~ctx->mark;
+	}
+}
+
 static inline bool fy_node_walk_mark(struct fy_node_walk_ctx *ctx, struct fy_node *fyn)
 {
-	unsigned int i;
-
-	if (ctx->next_slot >= ctx->max_depth)
+	/* depth error */
+	if (ctx->next_slot >= ctx->max_depth) {
+		fy_notice(NULL, "node depth exceeded");
 		return false;
-
-	/* check if it's already marked */
-	for (i = 0; i < ctx->next_slot; i++) {
-		if (fyn == ctx->marked[i])
-			return false;
 	}
 
+	/* mark found, loop */
+	if (fyn->marks & ctx->mark) {
+		fy_notice(NULL, "mark node %p found 0x%x", fyn, ctx->mark);
+		return false;
+	}
+
+	fyn->marks |= ctx->mark;
 	ctx->marked[ctx->next_slot++] = fyn;
 
 	return true;
 }
 
 static struct fy_node *
+fy_node_follow_aliases(struct fy_node *fyn, enum fy_node_walk_flags flags)
+{
+	struct fy_node_walk_ctx *ctx;
+
+	if (!fyn || !fy_node_is_alias(fyn) || !(flags & FYNWF_FOLLOW))
+		return fyn;
+
+	ctx = fy_node_walk_ctx_create_a(fy_node_walk_max_depth_from_flags(flags), 1);
+
+	fy_node_walk_mark_start(ctx);
+	while (fyn && fy_node_is_alias(fyn)) {
+
+		if (!fy_node_walk_mark(ctx, fyn)) 
+			break;
+
+		fyn = fy_node_follow_alias(fyn);
+	}
+	fy_node_walk_mark_end(ctx);
+
+	return fyn;
+}
+
+static struct fy_node *
 fy_node_by_path_internal(struct fy_node *fyn, const char *path,
-		         enum fy_node_walk_flags flags,
-			 struct fy_node_walk_ctx *ctx)
+		         enum fy_node_walk_flags flags)
 {
 	const char *s, *e;
 	char *end_idx;
@@ -2749,22 +2809,7 @@ fy_node_by_path_internal(struct fy_node *fyn, const char *path,
 	char c;
 	int idx;
 
-#undef WALK_RESOLVE_ALIAS
-#define WALK_RESOLVE_ALIAS() \
-	do { \
-		if (flags & FYNWF_FOLLOW) { \
-			fy_node_walk_mark_init(ctx); \
-			while (fyn && fy_node_is_alias(fyn)) { \
-				if (!fy_node_walk_mark(ctx, fyn)) {\
-					fyn = NULL; \
-					break; \
-				} \
-				fyn = fy_node_follow_alias(fyn); \
-			} \
-		} \
-	} while(0)
-
-	if (!fyn || !path || ((flags & FYNWF_FOLLOW) && !ctx))
+	if (!fyn || !path)
 		return NULL;
 
 	/* skip all prefixed / */
@@ -2775,8 +2820,7 @@ fy_node_by_path_internal(struct fy_node *fyn, const char *path,
 	if (!*path)
 		goto out;
 
-	/* it's an alias resolve it */
-	WALK_RESOLVE_ALIAS();
+	fyn = fy_node_follow_aliases(fyn, flags);
 
 	/* scalar can't match (it has no key) */
 	if (fy_node_is_scalar(fyn)) {
@@ -2809,14 +2853,8 @@ fy_node_by_path_internal(struct fy_node *fyn, const char *path,
 		path = s;
 
 		fyn = fy_node_sequence_get_by_index(fyn, idx);
-
-		/* it's an alias resolve it */
-		WALK_RESOLVE_ALIAS();
-
-		if (!fyn)
-			goto out;
-
-		fyn = fy_node_by_path_internal(fyn, path, flags, ctx);
+		fyn = fy_node_follow_aliases(fyn, flags);
+		fyn = fy_node_by_path_internal(fyn, path, flags);
 		goto out;
 	}
 
@@ -2883,17 +2921,11 @@ fy_node_by_path_internal(struct fy_node *fyn, const char *path,
 	path = s;
 
 	fyn = fy_node_mapping_lookup_by_string(fyn, keybuf);
-
-	/* it's an alias resolve it */
-	WALK_RESOLVE_ALIAS();
-
-	if (!fyn)
-		goto out;
-
-	fyn = fy_node_by_path_internal(fyn, path, flags, ctx);
+	fyn = fy_node_follow_aliases(fyn, flags);
+	fyn = fy_node_by_path_internal(fyn, path, flags);
 
 out:
-	WALK_RESOLVE_ALIAS();
+	fyn = fy_node_follow_aliases(fyn, flags);
 
 	return fyn;
 }
@@ -2901,20 +2933,7 @@ out:
 struct fy_node *fy_node_by_path_ext(struct fy_node *fyn, const char *path,
 				         enum fy_node_walk_flags flags)
 {
-	struct fy_node_walk_ctx *ctx = NULL;
-	unsigned int max_depth;
-
-	if (flags & FYNWF_FOLLOW) {
-		max_depth = ((unsigned int)flags >> FYNWF_MAXDEPTH_SHIFT) & FYNWF_MAXDEPTH_MASK;
-		if (max_depth == 0)
-			max_depth = FY_NODE_PATH_WALK_DEPTH_DEFAULT;
-
-		ctx = alloca(sizeof(*ctx) + sizeof(struct fy_node *) * max_depth);
-		ctx->max_depth = max_depth;
-		ctx->next_slot = 0;
-	}
-
-	return fy_node_by_path_internal(fyn, path, flags, ctx);
+	return fy_node_by_path_internal(fyn, path, flags);
 }
 
 struct fy_node *fy_node_by_path(struct fy_node *fyn, const char *path)
