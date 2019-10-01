@@ -374,7 +374,7 @@ struct fy_anchor *fy_document_lookup_anchor_by_token(struct fy_document *fyd, st
 			fya_found = fya;
 		}
 	}
-	
+
 	/* not found */
 	if (!count)
 		return NULL;
@@ -700,6 +700,7 @@ bool fy_node_compare(struct fy_node *fyn1, struct fy_node *fyn2)
 	bool ret, null1, null2;
 	struct fy_node_pair **fynpp1, **fynpp2;
 	int i, count1, count2;
+	bool alias1, alias2;
 
 	/* equal pointers? */
 	if (fyn1 == fyn2)
@@ -774,6 +775,13 @@ bool fy_node_compare(struct fy_node *fyn1, struct fy_node *fyn2)
 		break;
 
 	case FYNT_SCALAR:
+		alias1 = fy_node_is_alias(fyn1);
+		alias2 = fy_node_is_alias(fyn2);
+
+		/* either both must be aliases or both not */
+		if (alias1 != alias2)
+			return false;
+
 		t1 = fy_token_get_text(fyn1->scalar, &l1);
 		t2 = fy_token_get_text(fyn2->scalar, &l2);
 		if (l1 != l2)
@@ -1926,11 +1934,6 @@ err_dup_diff_tag:
 	goto err_out;
 }
 
-static bool fy_node_is_alias(struct fy_node *fyn)
-{
-	return fyn && fyn->type == FYNT_SCALAR && fyn->style == FYNS_ALIAS;
-}
-
 static int fy_resolve_alias(struct fy_document *fyd, struct fy_node *fyn)
 {
 	struct fy_parser *fyp = fyd->fyp;
@@ -2123,9 +2126,12 @@ err_invalid_merge_key:
 /* the anchors are scalars that have the FYNS_ALIAS style */
 static int fy_resolve_anchor_node(struct fy_document *fyd, struct fy_node *fyn)
 {
+	struct fy_parser *fyp = fyd->fyp;
 	struct fy_node *fyni;
-	struct fy_node_pair *fynp, *fynpi;
+	struct fy_node_pair *fynp, *fynpi, *fynpit;
 	int rc, ret_rc = 0;
+	struct fy_error_ctx ec;
+	struct fy_token *fyt;
 
 	if (!fyn)
 		return 0;
@@ -2161,19 +2167,63 @@ static int fy_resolve_anchor_node(struct fy_document *fyd, struct fy_node *fyn)
 				}
 
 			} else {
+
 				rc = fy_resolve_anchor_node(fyd, fynp->key);
+
+				if (!rc) {
+
+					/* check whether the keys are duplicate */
+					for (fynpit = fy_node_pair_list_head(&fyn->mapping); fynpit;
+						fynpit = fy_node_pair_next(&fyn->mapping, fynpit)) {
+
+						/* skip this node pair */
+						if (fynpit == fynp)
+							continue;
+
+						if (!fy_node_compare(fynpit->key, fynp->key))
+							continue;
+
+						/* whoops, duplicate key after resolution */
+						fyt = NULL;
+						switch (fyn->type) {
+						case FYNT_SCALAR:
+							fyt = fyn->scalar;
+							break;
+						case FYNT_SEQUENCE:
+							fyt = fyn->sequence_start;
+							break;
+						case FYNT_MAPPING:
+							fyt = fyn->mapping_start;
+							break;
+						}
+
+						FY_ERROR_CHECK(fyp, fyt, &ec, FYEM_DOC,
+								false,
+								err_duplicate_key);
+
+					}
+
+				}
+
 				if (rc && !ret_rc)
 					ret_rc = rc;
 
 				rc = fy_resolve_anchor_node(fyd, fynp->value);
 				if (rc && !ret_rc)
 					ret_rc = rc;
-			}
 
+			}
 		}
 	}
 
 	return ret_rc;
+
+err_out:
+	return -1;
+
+err_duplicate_key:
+	fy_error_report(fyp, &ec, "duplicate key after resolving");
+	goto err_out;
 }
 
 static void fy_resolve_parent_node(struct fy_document *fyd, struct fy_node *fyn, struct fy_node *fyn_parent)
@@ -2212,13 +2262,70 @@ static void fy_resolve_parent_node(struct fy_document *fyd, struct fy_node *fyn,
 	}
 }
 
+typedef void (*fy_node_applyf)(struct fy_node *fyn);
+
+void fy_node_apply(struct fy_node *fyn, fy_node_applyf func)
+{
+	struct fy_node *fyni;
+	struct fy_node_pair *fynp;
+
+	if (!fyn || !func)
+		return;
+
+	(*func)(fyn);
+
+	switch (fyn->type) {
+	case FYNT_SCALAR:
+		break;
+
+	case FYNT_SEQUENCE:
+		for (fyni = fy_node_list_head(&fyn->sequence); fyni;
+				fyni = fy_node_next(&fyn->sequence, fyni))
+			fy_node_apply(fyni, func);
+		break;
+
+	case FYNT_MAPPING:
+		for (fynp = fy_node_pair_list_head(&fyn->mapping); fynp;
+				fynp = fy_node_pair_next(&fyn->mapping, fynp)) {
+
+			fy_node_apply(fynp->key, func);
+			fy_node_apply(fynp->value, func);
+		}
+		break;
+	}
+}
+
+static void clear_marks(struct fy_node *fyn)
+{
+	fyn->marks = 0;
+}
+
+/* clear all the markers */
+void fy_node_clear_marks(struct fy_node *fyn)
+{
+	fy_node_apply(fyn, clear_marks);
+}
+
 int fy_document_resolve(struct fy_document *fyd)
 {
 	int rc;
+	bool ret;
 
 	if (!fyd)
 		return 0;
 
+	fy_node_clear_marks(fyd->root);
+
+	/* for resolution to work, no reference loops should exist */
+	ret = fy_check_ref_loop(fyd, fyd->root,
+			FYNWF_MAXDEPTH_DEFAULT | FYNWF_FOLLOW, NULL);
+
+	fy_node_clear_marks(fyd->root);
+
+	if (ret)
+		return -1;
+
+	/* now resolve any anchor nodes */
 	rc = fy_resolve_anchor_node(fyd, fyd->root);
 
 	/* redo parent resolution */
@@ -2722,13 +2829,6 @@ fy_node_walk_max_depth_from_flags(enum fy_node_walk_flags flags)
 	return max_depth;
 }
 
-struct fy_node_walk_ctx {
-	unsigned int max_depth;
-	unsigned int next_slot;
-	unsigned int mark;
-	struct fy_node *marked[0];
-};
-
 #define fy_node_walk_ctx_create_a(_max_depth, _mark) \
 	({ \
 		unsigned int __max_depth = (_max_depth); \
@@ -2756,24 +2856,48 @@ static inline void fy_node_walk_mark_end(struct fy_node_walk_ctx *ctx)
 	}
 }
 
+/* fyn is guaranteed to be non NULL and an alias */
 static inline bool fy_node_walk_mark(struct fy_node_walk_ctx *ctx, struct fy_node *fyn)
 {
-	/* depth error */
-	if (ctx->next_slot >= ctx->max_depth) {
-		fy_notice(NULL, "node depth exceeded");
-		return false;
+	struct fy_document *fyd = fyn->fyd;
+	struct fy_parser *fyp = fyd->fyp;
+	struct fy_error_ctx ec;
+	struct fy_token *fyt;
+
+	switch (fyn->type) {
+	case FYNT_SCALAR:
+		fyt = fyn->scalar;
+		break;
+	case FYNT_SEQUENCE:
+		fyt = fyn->sequence_start;
+		break;
+	case FYNT_MAPPING:
+		fyt = fyn->mapping_start;
+		break;
 	}
 
+	/* depth error */
+	FY_ERROR_CHECK(fyp, fyt, &ec, FYEM_DOC,
+		ctx->next_slot < ctx->max_depth,
+		err_too_deep);
+
 	/* mark found, loop */
-	if (fyn->marks & ctx->mark) {
-		fy_notice(NULL, "mark node %p found 0x%x", fyn, ctx->mark);
-		return false;
-	}
+	FY_ERROR_CHECK(fyp, fyt, &ec, FYEM_DOC,
+		!(fyn->marks & ctx->mark),
+		err_cycle_detected);
 
 	fyn->marks |= ctx->mark;
 	ctx->marked[ctx->next_slot++] = fyn;
 
 	return true;
+
+err_too_deep:
+	fy_error_report(fyp, &ec, "max recursion depth exceeded (%u)", ctx->max_depth);
+	return false;
+
+err_cycle_detected:
+	fy_error_report(fyp, &ec, "cyclic reference detected");
+	return false;
 }
 
 static struct fy_node *
@@ -2789,7 +2913,7 @@ fy_node_follow_aliases(struct fy_node *fyn, enum fy_node_walk_flags flags)
 	fy_node_walk_mark_start(ctx);
 	while (fyn && fy_node_is_alias(fyn)) {
 
-		if (!fy_node_walk_mark(ctx, fyn)) 
+		if (!fy_node_walk_mark(ctx, fyn))
 			break;
 
 		fyn = fy_node_follow_alias(fyn);
@@ -2939,6 +3063,92 @@ struct fy_node *fy_node_by_path_ext(struct fy_node *fyn, const char *path,
 struct fy_node *fy_node_by_path(struct fy_node *fyn, const char *path)
 {
 	return fy_node_by_path_ext(fyn, path, FYNWF_DONT_FOLLOW);
+}
+
+bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
+		       enum fy_node_walk_flags flags,
+		       struct fy_node_walk_ctx *ctx)
+{
+	struct fy_node *fyni;
+	struct fy_node_pair *fynp, *fynpi;
+	struct fy_node_walk_ctx *ctxn;
+	bool ret;
+
+	if (!fyn)
+		return false;
+
+	/* visited? no need to check */
+	if (fyn->marks & FY_BIT(31))
+		return false;
+
+	/* marked node, it's a loop */
+	if (ctx && !fy_node_walk_mark(ctx, fyn))
+		return true;
+
+	ret = false;
+
+	switch (fyn->type) {
+	case FYNT_SCALAR:
+
+		/* if it's not an alias, we're done */
+		if (!fy_node_is_alias(fyn))
+			break;
+
+		ctxn = ctx;
+		if (!ctxn)
+			ctxn = fy_node_walk_ctx_create_a(
+				fy_node_walk_max_depth_from_flags(flags), 1);
+
+
+		if (!ctx) {
+			fy_node_walk_mark_start(ctxn);
+
+			/* mark this node */
+			fy_node_walk_mark(ctxn, fyn);
+		}
+
+		fyni = fy_node_follow_alias(fyn);
+
+		ret = fy_check_ref_loop(fyd, fyni, flags, ctxn);
+
+		if (!ctx)
+			fy_node_walk_mark_end(ctxn);
+
+		if (ret)
+			break;
+
+		break;
+
+	case FYNT_SEQUENCE:
+		for (fyni = fy_node_list_head(&fyn->sequence); fyni;
+				fyni = fy_node_next(&fyn->sequence, fyni)) {
+
+			ret = fy_check_ref_loop(fyd, fyni, flags, ctx);
+			if (ret)
+				break;
+		}
+		break;
+
+	case FYNT_MAPPING:
+		for (fynp = fy_node_pair_list_head(&fyn->mapping); fynp; fynp = fynpi) {
+
+			fynpi = fy_node_pair_next(&fyn->mapping, fynp);
+
+			ret = fy_check_ref_loop(fyd, fynp->key, flags, ctx);
+			if (ret)
+				break;
+
+			ret = fy_check_ref_loop(fyd, fynp->value, flags, ctx);
+			if (ret)
+				break;
+		}
+		break;
+	}
+
+	/* mark as visited */
+	fyn->marks |= FY_BIT(31);
+
+	return ret;
 }
 
 char *fy_node_get_parent_address(struct fy_node *fyn)

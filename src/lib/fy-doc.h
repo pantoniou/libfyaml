@@ -115,6 +115,11 @@ struct fy_document {
 /* only the list declaration/methods */
 FY_TYPE_DECL_LIST(document);
 
+static inline bool fy_node_is_alias(struct fy_node *fyn)
+{
+	return fyn && fyn->type == FYNT_SCALAR && fyn->style == FYNS_ALIAS;
+}
+
 struct fy_document_state *fy_document_state_alloc(void);
 void fy_document_state_free(struct fy_document_state *fyds);
 struct fy_document_state *fy_document_state_ref(struct fy_document_state *fyds);
@@ -147,5 +152,16 @@ int fy_parser_move_log_to_document(struct fy_parser *fyp, struct fy_document *fy
 bool fy_document_has_error(struct fy_document *fyd);
 const char *fy_document_get_log(struct fy_document *fyd, size_t *sizep);
 void fy_document_clear_log(struct fy_document *fyd);
+
+struct fy_node_walk_ctx {
+	unsigned int max_depth;
+	unsigned int next_slot;
+	unsigned int mark;
+	struct fy_node *marked[0];
+};
+
+bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
+		       enum fy_node_walk_flags flags,
+		       struct fy_node_walk_ctx *ctx);
 
 #endif
