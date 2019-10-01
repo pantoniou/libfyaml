@@ -315,8 +315,10 @@ when it's invoked. There are four tool modes, namely:
 
 ### fy-testsuite usage
 
+A number of options are common in every fy-tool invocation:
+
 ```
-Usage: fy-testsuite [options] [args]
+Usage : fy-tool [options] [args]
 
 Options:
 
@@ -327,9 +329,20 @@ Options:
 	--resolve, -r            : Perform anchor and merge key resolution (default false)
 	--color, -C <mode>       : Color output can be one of on, off, auto (default auto)
 	--visible, -V            : Make all whitespace and linebreaks visible (default false)
+	--follow, -l             : Follow aliases when using paths (default false)
+	--strip-labels           : Strip labels when emitting (default false)
+	--strip-tags             : Strip tags when emitting (default false)
+	--strip-doc              : Strip document headers and indicators when emitting (default false)
 	--quiet, -q              : Quiet operation, do not output messages (default false)
 	--version, -v            : Display libfyaml version
 	--help, -h               : Display  help message
+
+```
+
+```
+Usage: fy-testsuite [options] [args]
+
+	[common options]
 
 	Parse and dump test-suite event format
 	$ fy-testsuite input.yaml
@@ -354,19 +367,13 @@ Usage: fy-dump [options] [args]
 
 Options:
 
-	--include, -I <path>     : Add directory to include path (default path "")
-	--debug-level, -d <lvl>  : Set debug level to <lvl>(default level 3)
-	--indent, -i <indent>    : Set dump indent to <indent> (default indent 2)
-	--width, -w <width>      : Set dump width to <width> (default width 80)
-	--resolve, -r            : Perform anchor and merge key resolution (default false)
-	--color, -C <mode>       : Color output can be one of on, off, auto (default auto)
-	--visible, -V            : Make all whitespace and linebreaks visible (default false)
-	--quiet, -q              : Quiet operation, do not output messages (default false)
-	--version, -v            : Display libfyaml version
-	--help, -h               : Display  help message
+	[common options]
+
 	--sort, -s               : Perform mapping key sort (valid for dump) (default false)
 	--comment, -c            : Output comments (experimental) (default false)
 	--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline (default original)
+
+	[common options]
 
 	Parse and dump generated YAML document tree in the original YAML form
 	$ fy-dump input.yaml
@@ -390,16 +397,8 @@ Usage: fy-filter [options] [args]
 
 Options:
 
-	--include, -I <path>     : Add directory to include path (default path "")
-	--debug-level, -d <lvl>  : Set debug level to <lvl>(default level 3)
-	--indent, -i <indent>    : Set dump indent to <indent> (default indent 2)
-	--width, -w <width>      : Set dump width to <width> (default width 80)
-	--resolve, -r            : Perform anchor and merge key resolution (default false)
-	--color, -C <mode>       : Color output can be one of on, off, auto (default auto)
-	--visible, -V            : Make all whitespace and linebreaks visible (default false)
-	--quiet, -q              : Quiet operation, do not output messages (default false)
-	--version, -v            : Display libfyaml version
-	--help, -h               : Display  help message
+	[common options]
+
 	--sort, -s               : Perform mapping key sort (valid for dump) (default false)
 	--comment, -c            : Output comments (experimental) (default false)
 	--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline (default original)
@@ -430,16 +429,8 @@ Usage: fy-join [options] [args]
 
 Options:
 
-	--include, -I <path>     : Add directory to include path (default path "")
-	--debug-level, -d <lvl>  : Set debug level to <lvl>(default level 3)
-	--indent, -i <indent>    : Set dump indent to <indent> (default indent 2)
-	--width, -w <width>      : Set dump width to <width> (default width 80)
-	--resolve, -r            : Perform anchor and merge key resolution (default false)
-	--color, -C <mode>       : Color output can be one of on, off, auto (default auto)
-	--visible, -V            : Make all whitespace and linebreaks visible (default false)
-	--quiet, -q              : Quiet operation, do not output messages (default false)
-	--version, -v            : Display libfyaml version
-	--help, -h               : Display  help message
+	[common options]
+
 	--sort, -s               : Perform mapping key sort (valid for dump) (default false)
 	--comment, -c            : Output comments (experimental) (default false)
 	--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline (default original)

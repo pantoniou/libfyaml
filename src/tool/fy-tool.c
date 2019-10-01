@@ -37,12 +37,19 @@
 #define FROM_DEFAULT			"/"
 #define TRIM_DEFAULT			"/"
 #define FOLLOW_DEFAULT			false
+#define STRIP_LABELS_DEFAULT		false
+#define STRIP_TAGS_DEFAULT		false
+#define STRIP_DOC_DEFAULT		false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
 #define OPT_FILTER			1002
 #define OPT_JOIN			1003
 #define OPT_TOOL			1004
+
+#define OPT_STRIP_LABELS		2000
+#define OPT_STRIP_TAGS			2001
+#define OPT_STRIP_DOC			2002
 
 static struct option lopts[] = {
 	{"include",		required_argument,	0,	'I' },
@@ -62,6 +69,9 @@ static struct option lopts[] = {
 	{"testsuite",		no_argument,		0,	OPT_TESTSUITE },
 	{"filter",		no_argument,		0,	OPT_FILTER },
 	{"join",		no_argument,		0,	OPT_JOIN },
+	{"strip-labels",	no_argument,		0,	OPT_STRIP_LABELS },
+	{"strip-tags",		no_argument,		0,	OPT_STRIP_TAGS },
+	{"strip-doc",		no_argument,		0,	OPT_STRIP_DOC },
 	{"to",			required_argument,	0,	'T' },
 	{"from",		required_argument,	0,	'F' },
 	{"quiet",		no_argument,		0,	'q' },
@@ -98,6 +108,15 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--follow, -l             : Follow aliases when using paths"
 						" (default %s)\n",
 						FOLLOW_DEFAULT ? "true" : "false");
+	fprintf(fp, "\t--strip-labels           : Strip labels when emitting"
+						" (default %s)\n",
+						STRIP_LABELS_DEFAULT ? "true" : "false");
+	fprintf(fp, "\t--strip-tags             : Strip tags when emitting"
+						" (default %s)\n",
+						STRIP_TAGS_DEFAULT ? "true" : "false");
+	fprintf(fp, "\t--strip-doc              : Strip document headers and indicators when emitting"
+						" (default %s)\n",
+						STRIP_DOC_DEFAULT ? "true" : "false");
 	fprintf(fp, "\t--quiet, -q              : Quiet operation, do not "
 						"output messages (default %s)\n",
 						QUIET_DEFAULT ? "true" : "false");
@@ -665,7 +684,10 @@ int main(int argc, char *argv[])
 		tool_mode = OPT_TOOL;
 
 	emit_flags = (SORT_DEFAULT ? FYECF_SORT_KEYS : 0) |
-		     (COMMENT_DEFAULT ? FYECF_OUTPUT_COMMENTS : 0);
+		     (COMMENT_DEFAULT ? FYECF_OUTPUT_COMMENTS : 0) |
+		     (STRIP_LABELS_DEFAULT ? FYECF_STRIP_LABELS : 0) |
+		     (STRIP_TAGS_DEFAULT ? FYECF_STRIP_TAGS : 0) |
+		     (STRIP_DOC_DEFAULT ? FYECF_STRIP_DOC : 0);
 	apply_mode_flags(MODE_DEFAULT, &emit_flags);
 
 	while ((opt = getopt_long_only(argc, argv,
@@ -781,6 +803,15 @@ int main(int argc, char *argv[])
 		case OPT_JOIN:
 		case OPT_TOOL:
 			tool_mode = opt;
+			break;
+		case OPT_STRIP_LABELS:
+			emit_flags |= FYECF_STRIP_LABELS;
+			break;
+		case OPT_STRIP_TAGS:
+			emit_flags |= FYECF_STRIP_TAGS;
+			break;
+		case OPT_STRIP_DOC:
+			emit_flags |= FYECF_STRIP_DOC;
 			break;
 		case 'h' :
 		default:
