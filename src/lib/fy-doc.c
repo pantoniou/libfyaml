@@ -676,12 +676,9 @@ struct fy_input *fy_node_get_input(struct fy_node *fyn)
 int fy_parse_document_register_anchor(struct fy_parser *fyp, struct fy_document *fyd,
 				      struct fy_node *fyn, struct fy_token *anchor)
 {
-	struct fy_anchor *fya = NULL;
-	struct fy_token *anchor_new = NULL;
-	int rc;
+	struct fy_anchor *fya;
 
-	anchor_new = fy_token_ref(anchor);
-	fya = fy_anchor_create(fyd, fyn, anchor_new);
+	fya = fy_anchor_create(fyd, fyn, anchor);
 	fy_error_check(fyp, fya, err_out,
 			"fy_anchor_create() failed");
 
@@ -690,10 +687,7 @@ int fy_parse_document_register_anchor(struct fy_parser *fyp, struct fy_document 
 	return 0;
 
 err_out:
-	rc = -1;
-	fy_token_unref(anchor_new);
-	fy_anchor_destroy(fya);
-	return rc;
+	return -1;
 }
 
 bool fy_node_compare(struct fy_node *fyn1, struct fy_node *fyn2)
@@ -894,6 +888,7 @@ int fy_parse_document_load_scalar(struct fy_parser *fyp, struct fy_document *fyd
 			rc = fy_parse_document_register_anchor(fyp, fyd, fyn, fye->scalar.anchor);
 			fy_error_check(fyp, !rc, err_out_rc,
 					"fy_parse_document_register_anchor() failed");
+			fye->scalar.anchor = NULL;
 		}
 
 	} else {
@@ -956,6 +951,7 @@ int fy_parse_document_load_sequence(struct fy_parser *fyp, struct fy_document *f
 		rc = fy_parse_document_register_anchor(fyp, fyd, fyn, fye->sequence_start.anchor);
 		fy_error_check(fyp, !rc, err_out_rc,
 				"fy_parse_document_register_anchor() failed");
+		fye->sequence_start.anchor = NULL;
 	}
 
 	if (fye->sequence_start.sequence_start) {
@@ -1045,6 +1041,7 @@ int fy_parse_document_load_mapping(struct fy_parser *fyp, struct fy_document *fy
 		rc = fy_parse_document_register_anchor(fyp, fyd, fyn, fye->mapping_start.anchor);
 		fy_error_check(fyp, !rc, err_out_rc,
 				"fy_parse_document_register_anchor() failed");
+		fye->mapping_start.anchor = NULL;
 	}
 
 	if (fye->mapping_start.mapping_start) {
@@ -3730,6 +3727,7 @@ static int fy_node_mapping_sort_cmp_default(const struct fy_node_pair *fynp_a,
 	const char *str_a, *str_b;
 	int idx_a, idx_b;
 	size_t len_a = 0, len_b = 0, min_len;
+	bool alias_a, alias_b;
 
 	/* order is: maps first, followed by sequences, and last scalars sorted */
 	if (!fynp_a->key)
@@ -3746,11 +3744,24 @@ static int fy_node_mapping_sort_cmp_default(const struct fy_node_pair *fynp_a,
 	else
 		str_b = NULL;
 
-	min_len = len_a < len_b ? len_a : len_b;
-
 	/* scalar? perform comparison */
-	if (str_a && str_b)
+	if (str_a && str_b) {
+
+		/* if both are aliases, sort skipping the '*' */
+		alias_a = fy_node_is_alias(fynp_a->key);
+		alias_b = fy_node_is_alias(fynp_b->key);
+
+		/* aliases win */
+		if (alias_a && !alias_b)
+			return -1;
+		if (!alias_a && alias_b)
+			return 1;
+
+		min_len = len_a < len_b ? len_a : len_b;
+
+		/* all same, perform comparison */
 		return strncmp(str_a, str_b, min_len);
+	}
 
 	/* b is scalar, a is not */
 	if (!str_a && str_b)
