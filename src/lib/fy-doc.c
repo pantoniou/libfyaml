@@ -23,6 +23,33 @@
 
 #include "fy-utils.h"
 
+/* internal simple key to optimize string lookups */
+static inline bool is_simple_key(const char *str, size_t len)
+{
+	const char *s, *e;
+	char c;
+
+	if (!str)
+		return false;
+
+	if (len == (size_t)-1)
+		len = strlen(str);
+
+	for (s = str, e = s + len; s < e; s++) {
+
+		c = *s;
+
+		/* note no isalpha() it's locale specific */
+		if (!((c >= 'A' && c <= 'Z') ||
+		      (c >= 'a' && c <= 'z') ||
+		      (c >= '0' && c <= '9') ||
+		      (c == '_')))
+			break;
+	}
+
+	return s == e;
+}
+
 struct fy_document_state *fy_document_state_alloc(void)
 {
 	struct fy_document_state *fyds;
@@ -316,17 +343,19 @@ err_stream_start:
 	goto err_out;
 }
 
-struct fy_anchor *fy_document_lookup_anchor(struct fy_document *fyd, const char *anchor)
+static struct fy_anchor *
+fy_document_lookup_anchor_size(struct fy_document *fyd, const char *anchor, size_t len)
 {
 	struct fy_anchor *fya;
 	struct fy_anchor_list *fyal;
 	const char *text;
-	size_t len, text_len;
+	size_t text_len;
 
 	if (!fyd || !anchor)
 		return NULL;
 
-	len = strlen(anchor);
+	if (len == (size_t)-1)
+		len = strlen(anchor);
 
 	/* note that we're performing the lookup in reverse creation order
 	 * so that we pick the most recent
@@ -342,6 +371,11 @@ struct fy_anchor *fy_document_lookup_anchor(struct fy_document *fyd, const char 
 	}
 
 	return NULL;
+}
+
+struct fy_anchor *fy_document_lookup_anchor(struct fy_document *fyd, const char *anchor)
+{
+	return fy_document_lookup_anchor_size(fyd, anchor, (size_t)-1);
 }
 
 struct fy_anchor *fy_document_lookup_anchor_by_token(struct fy_document *fyd, struct fy_token *anchor)
@@ -2782,6 +2816,33 @@ struct fy_node_pair *fy_node_mapping_get_by_index(struct fy_node *fyn, int index
 	return fynpi;
 }
 
+static struct fy_node *fy_node_mapping_lookup_value_by_simple_key(struct fy_node *fyn, const char *key)
+{
+	struct fy_node_pair *fynpi;
+	const char *strk;
+	size_t len, lenk;
+
+	if (!fyn || fyn->type != FYNT_MAPPING || !key)
+		return NULL;
+
+	len = strlen(key);
+	if (!is_simple_key(key, len))
+		return NULL;
+
+	for (fynpi = fy_node_pair_list_head(&fyn->mapping); fynpi;
+		fynpi = fy_node_pair_next(&fyn->mapping, fynpi)) {
+
+		if (!fy_node_is_scalar(fynpi->key) || fy_node_is_alias(fynpi->key))
+			continue;
+
+		strk = fy_token_get_text(fynpi->key->scalar, &lenk);
+		if (lenk == len && !memcmp(key, strk, len))
+			return fynpi->value;
+	}
+
+	return NULL;
+}
+
 struct fy_node *fy_node_mapping_lookup_value_by_key(struct fy_node *fyn, struct fy_node *fyn_key)
 {
 	struct fy_node_pair *fynpi;
@@ -2803,6 +2864,11 @@ struct fy_node *fy_node_mapping_lookup_by_string(struct fy_node *fyn, const char
 {
 	struct fy_document *fyd;
 	struct fy_node *fyn_value;
+
+	/* try quick and dirty simple scan */
+	fyn_value = fy_node_mapping_lookup_value_by_simple_key(fyn, key);
+	if (fyn_value)
+		return fyn_value;
 
 	fyd = fy_document_build_from_string(NULL, key);
 	if (!fyd)
@@ -2927,6 +2993,7 @@ static struct fy_node *
 fy_node_by_path_internal(struct fy_node *fyn, const char *path,
 		         enum fy_node_walk_flags flags)
 {
+	struct fy_node *fynt, *fyni;
 	const char *s, *e;
 	char *end_idx;
 	char *keybuf, *d;
@@ -3044,7 +3111,34 @@ fy_node_by_path_internal(struct fy_node *fyn, const char *path,
 	/* point path to the next component (or NULL is end */
 	path = s;
 
+	fynt = fyn;
 	fyn = fy_node_mapping_lookup_by_string(fyn, keybuf);
+
+	/* failed! last ditch attempt, is there a merge key? */
+	if (!fyn && fynt && (flags & FYNWF_FOLLOW)) {
+		fyn = fy_node_mapping_lookup_by_string(fynt, "<<");
+		if (!fyn)
+			goto out;
+
+		fy_notice(NULL, "found merge key");
+
+		/* single alias '<<: *foo' */
+		if (fy_node_is_alias(fyn))
+			fyn = fy_node_mapping_lookup_by_string(fy_node_follow_aliases(fyn, flags), keybuf);
+		else if (fy_node_is_sequence(fyn)) {	/* multi aliases '<<: [ *foo, *bar ]' */
+			fynt = fyn;
+			for (fyni = fy_node_list_head(&fynt->sequence); fyni;
+					fyni = fy_node_next(&fynt->sequence, fyni)) {
+				if (!fy_node_is_alias(fyni))
+					continue;
+				fyn = fy_node_mapping_lookup_by_string(fy_node_follow_aliases(fyni, flags), keybuf);
+				if (fyn)
+					break;
+			}
+		} else
+			fyn = NULL;
+	}
+
 	fyn = fy_node_follow_aliases(fyn, flags);
 	fyn = fy_node_by_path_internal(fyn, path, flags);
 
@@ -3057,6 +3151,68 @@ out:
 struct fy_node *fy_node_by_path_ext(struct fy_node *fyn, const char *path,
 				         enum fy_node_walk_flags flags)
 {
+	struct fy_anchor *fya;
+	const char *s, *e, *anchor;
+	size_t len;
+	char c;
+
+	/* first path component may be an alias */
+	if ((flags & FYNWF_FOLLOW) && fyn && path) {
+		s = path;
+		while ((c = *s) && isspace(c))
+			s++;
+		if (c != '*')
+			goto regular_path_lookup;
+
+		s++;
+		for (e = s; (c = *e) != '\0'; e++) {
+			/* it ends on anything non alias */
+			if (c == '[' || c == ']' ||
+				c == '{' || c == '}' ||
+				c == ',' || c == ' ' || c == '\t' ||
+				c == '/')
+				break;
+		}
+
+		/* bad alias form for path */
+		if (c == '[' || c == ']' || c == '{' || c == '}' || c == ',')
+			return NULL;
+
+		anchor = s;
+		len = e - s;
+
+		/* empty '*' */
+		if (!len)
+			return NULL;
+
+		/* we must be terminated by '/' or space followed by '/' */
+		/* strip until spaces and '/' end */
+		while ((c = *e) && (c == ' ' || c == '\t'))
+			e++;
+
+		while ((c = *e) && c == '/')
+			e++;
+
+		/* update path */
+		path = e;
+
+		/* lookup anchor */
+		fya = fy_document_lookup_anchor_size(fyn->fyd, anchor, len);
+
+		/* no anchor found? */
+		if (!fya)
+			return NULL;
+
+		/* nothing more? we're done */
+		if (*path == '\0')
+			return fya->fyn;
+
+		fyn = fya->fyn;
+
+		/* and continue on path lookup with the rest */
+	}
+
+regular_path_lookup:
 	return fy_node_by_path_internal(fyn, path, flags);
 }
 

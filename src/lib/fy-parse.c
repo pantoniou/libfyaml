@@ -1180,11 +1180,9 @@ int fy_parse_input_reset(struct fy_parser *fyp)
 	struct fy_input *fyi, *fyin;
 
 	/* must not be in the middle of something */
-	if (fyp->state != FYPS_NONE && fyp->state != FYPS_END) {
-		fy_scan_debug(fyp, "parser cannot be reset at state '%s'",
-			state_txt[fyp->state]);
-		return -1;
-	}
+	fy_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
+			err_out, "parser cannot be reset at state '%s'",
+				state_txt[fyp->state]);
 
 	for (fyi = fy_input_list_head(&fyp->queued_inputs); fyi; fyi = fyin) {
 		fyin = fy_input_next(&fyp->queued_inputs, fyi);
@@ -1202,6 +1200,8 @@ int fy_parse_input_reset(struct fy_parser *fyp)
 	fyp->last_block_mapping_key_line = -1;
 
 	return 0;
+err_out:
+	return -1;
 }
 
 int fy_parse_input_append(struct fy_parser *fyp, const struct fy_input_cfg *fyic)
@@ -5469,7 +5469,7 @@ int fy_parser_set_input_file(struct fy_parser *fyp, const char *file)
 
 	rc = fy_parse_input_reset(fyp);
 	fy_error_check(fyp, !rc, err_out_rc,
-			"fy_input_parse_reset() failed");
+			"fy_parse_input_reset() failed");
 
 	rc = fy_parse_input_append(fyp, fyic);
 	fy_error_check(fyp, !rc, err_out_rc,
@@ -5501,7 +5501,7 @@ int fy_parser_set_string(struct fy_parser *fyp, const char *str)
 
 	rc = fy_parse_input_reset(fyp);
 	fy_error_check(fyp, !rc, err_out_rc,
-			"fy_input_parse_reset() failed");
+			"fy_parse_input_reset() failed");
 
 	rc = fy_parse_input_append(fyp, fyic);
 	fy_error_check(fyp, !rc, err_out_rc,
@@ -5533,7 +5533,7 @@ int fy_parser_set_input_fp(struct fy_parser *fyp, const char *name, FILE *fp)
 
 	rc = fy_parse_input_reset(fyp);
 	fy_error_check(fyp, !rc, err_out_rc,
-			"fy_input_parse_reset() failed");
+			"fy_parse_input_reset() failed");
 
 	rc = fy_parse_input_append(fyp, fyic);
 	fy_error_check(fyp, !rc, err_out_rc,
