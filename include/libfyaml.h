@@ -1256,17 +1256,22 @@ enum fy_node_style {
 #define FYNWF_MAXDEPTH_SHIFT	4
 #define FYNWF_MAXDEPTH_MASK	0xff
 #define FYNWF_MAXDEPTH(x)	(((x) & FYNWF_MAXDEPTH_MASK) << FYNWF_MAXDEPTH_SHIFT)
+#define FYNWF_MARKER_SHIFT	12
+#define FYNWF_MARKER_MASK	0x1f
+#define FYNWF_MARKER(x)		(((x) & FYNWF_MARKER_MASK) << FYNWF_MARKER_SHIFT)
 /**
  * enum fy_node_walk_flags - Node walk flags
  *
  * @FYNWF_DONT_FOLLOW: Don't follow aliases during pathwalk
  * @FYNWF_FOLLOW: Follow aliases during pathwalk
  * @FYNWF_MAXDEPTH_DEFAULT: Max follow depth is automatically determined
+ * @FYNWF_MARKER_DEFAULT: Default marker to use when scanning
  */
 enum fy_node_walk_flags {
 	FYNWF_DONT_FOLLOW = 0,
 	FYNWF_FOLLOW = FY_BIT(0),
 	FYNWF_MAXDEPTH_DEFAULT = FYNWF_MAXDEPTH(0),
+	FYNWF_MARKER_DEFAULT = FYNWF_MARKER(0),
 };
 
 /**

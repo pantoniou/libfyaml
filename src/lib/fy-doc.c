@@ -23,6 +23,31 @@
 
 #include "fy-utils.h"
 
+static struct fy_node *
+fy_node_by_path_internal(struct fy_node *fyn,
+			 const char *path, size_t pathlen,
+		         enum fy_node_walk_flags flags);
+
+#define FY_NODE_PATH_WALK_DEPTH_DEFAULT	16
+
+static inline unsigned int
+fy_node_walk_max_depth_from_flags(enum fy_node_walk_flags flags)
+{
+	unsigned int max_depth;
+
+	max_depth = ((unsigned int)flags >> FYNWF_MAXDEPTH_SHIFT) & FYNWF_MAXDEPTH_MASK;
+	if (max_depth == 0)
+		max_depth = FY_NODE_PATH_WALK_DEPTH_DEFAULT;
+
+	return max_depth;
+}
+
+static inline unsigned int
+fy_node_walk_marker_from_flags(enum fy_node_walk_flags flags)
+{
+	return ((unsigned int)flags >> FYNWF_MARKER_SHIFT) & FYNWF_MARKER_MASK;
+}
+
 /* internal simple key to optimize string lookups */
 static inline bool is_simple_key(const char *str, size_t len)
 {
@@ -1998,6 +2023,9 @@ static struct fy_node *
 fy_node_follow_alias(struct fy_node *fyn, enum fy_node_walk_flags flags)
 {
 	struct fy_anchor *fya;
+	const char *anchor_text, *s, *e;
+	size_t anchor_len;
+	unsigned int marker;
 
 	if (!fyn || !fy_node_is_alias(fyn))
 		return NULL;
@@ -2007,9 +2035,29 @@ fy_node_follow_alias(struct fy_node *fyn, enum fy_node_walk_flags flags)
 	if (fya)
 		return fya->fyn;
 
-	/* XXX extension */
+	anchor_text = fy_token_get_text(fyn->scalar, &anchor_len);
+	if (!anchor_text)
+		return NULL;
 
-	return NULL;
+	s = anchor_text;
+	e = s + anchor_len;
+
+	/* minimum is </> */
+	if ((e - s) < 3 || s[0] != '<' || s[1] != '/' || e[-1] != '>')
+		return NULL;
+
+	s++;
+	e--;
+
+	marker = fy_node_walk_marker_from_flags(flags);
+	if (marker >= 30)
+		return NULL;
+
+	/* use the next marker */
+	flags &= ~FYNWF_MARKER(FYNWF_MARKER_MASK);
+	flags |= FYNWF_MARKER(marker + 1);
+
+	return fy_node_by_path_internal(fyn->fyd->root, s, (size_t)(e - s), flags);
 }
 
 static bool fy_node_pair_is_merge_key(struct fy_node_pair *fynp)
@@ -2930,20 +2978,6 @@ fy_node_mapping_lookup_by_string(struct fy_node *fyn,
 	return fyn_value;
 }
 
-#define FY_NODE_PATH_WALK_DEPTH_DEFAULT	16
-
-static inline unsigned int
-fy_node_walk_max_depth_from_flags(enum fy_node_walk_flags flags)
-{
-	unsigned int max_depth;
-
-	max_depth = ((unsigned int)flags >> FYNWF_MAXDEPTH_SHIFT) & FYNWF_MAXDEPTH_MASK;
-	if (max_depth == 0)
-		max_depth = FY_NODE_PATH_WALK_DEPTH_DEFAULT;
-
-	return max_depth;
-}
-
 #define fy_node_walk_ctx_create_a(_max_depth, _mark) \
 	({ \
 		unsigned int __max_depth = (_max_depth); \
@@ -3019,17 +3053,24 @@ static struct fy_node *
 fy_node_follow_aliases(struct fy_node *fyn, enum fy_node_walk_flags flags)
 {
 	struct fy_node_walk_ctx *ctx;
+	unsigned int marker;
 
 	if (!fyn || !fy_node_is_alias(fyn) || !(flags & FYNWF_FOLLOW))
 		return fyn;
 
-	ctx = fy_node_walk_ctx_create_a(fy_node_walk_max_depth_from_flags(flags), 1);
+	marker = fy_node_walk_marker_from_flags(flags);
+	if (marker >= 30)	/* maximum marker */
+		return fyn;
+
+	ctx = fy_node_walk_ctx_create_a(fy_node_walk_max_depth_from_flags(flags), FY_BIT(marker));
 
 	fy_node_walk_mark_start(ctx);
 	while (fyn && fy_node_is_alias(fyn)) {
 
-		if (!fy_node_walk_mark(ctx, fyn))
+		if (!fy_node_walk_mark(ctx, fyn)) {
+			fyn = NULL;
 			break;
+		}
 
 		fyn = fy_node_follow_alias(fyn, flags);
 	}
@@ -3060,7 +3101,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 
 	/* and continue on path lookup with the rest */
 
-	/* fy_notice(NULL, "%s: path='%.*s'", __func__, (int)pathlen, path); */
+	fy_notice(NULL, "%s: path='%.*s'", __func__, (int)pathlen, path);
 
 	/* skip all prefixed / */
 	while (s < e && *s == '/')
@@ -3214,7 +3255,7 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 				enum fy_node_walk_flags flags)
 {
 	struct fy_anchor *fya;
-	const char *s, *e, *t, *anchor;
+	const char *s, *ss, *e, *t, *anchor;
 	size_t alen;
 	char c;
 
@@ -3236,6 +3277,7 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 		s++;
 
 		/* fy_notice(NULL, "%s: alias check: '%.*s'", __func__, (int)(e - s), s); */
+		ss = s;
 
 		for (t = s; t < e; t++) {
 			c = *t;
@@ -3275,16 +3317,29 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 		/* lookup anchor */
 		fya = fy_document_lookup_anchor(fyn->fyd, anchor, alen);
 
-		/* no anchor found? */
-		if (!fya)
-			return NULL;
+		if (fya) {
+			/* nothing more? we're done */
+			if (*path == '\0')
+				return fya->fyn;
 
-		/* nothing more? we're done */
-		if (*path == '\0')
-			return fya->fyn;
+			/* anchor found... all good */
 
-		fyn = fya->fyn;
+			fyn = fya->fyn;
+		} else {
+			/* no anchor found? try for *</path/foo> */
 
+			fy_notice(NULL, "anchor not found: %.*s", (int)alen, anchor);
+
+			s = ss;
+			if ((e - s) < 3 || s[0] != '<' || s[1] != '/' || e[-1] != '>')
+				return NULL;
+
+			path = ss + 1;
+			len = (e - 1) - (ss + 1);
+
+			fy_notice(NULL, "direct path: %.*s", (int)len, path);
+
+		}
 	}
 
 regular_path_lookup:
