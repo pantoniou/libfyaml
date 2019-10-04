@@ -343,8 +343,8 @@ err_stream_start:
 	goto err_out;
 }
 
-static struct fy_anchor *
-fy_document_lookup_anchor_size(struct fy_document *fyd, const char *anchor, size_t len)
+struct fy_anchor *
+fy_document_lookup_anchor(struct fy_document *fyd, const char *anchor, size_t len)
 {
 	struct fy_anchor *fya;
 	struct fy_anchor_list *fyal;
@@ -373,12 +373,9 @@ fy_document_lookup_anchor_size(struct fy_document *fyd, const char *anchor, size
 	return NULL;
 }
 
-struct fy_anchor *fy_document_lookup_anchor(struct fy_document *fyd, const char *anchor)
-{
-	return fy_document_lookup_anchor_size(fyd, anchor, (size_t)-1);
-}
-
-struct fy_anchor *fy_document_lookup_anchor_by_token(struct fy_document *fyd, struct fy_token *anchor)
+struct fy_anchor *
+fy_document_lookup_anchor_by_token(struct fy_document *fyd,
+				   struct fy_token *anchor)
 {
 	struct fy_anchor *fya, *fya_found, *fya_found2;
 	struct fy_anchor_list *fyal;
@@ -827,12 +824,12 @@ bool fy_node_compare(struct fy_node *fyn1, struct fy_node *fyn2)
 	return ret;
 }
 
-bool fy_node_compare_string(struct fy_node *fyn, const char *str)
+bool fy_node_compare_string(struct fy_node *fyn, const char *str, size_t len)
 {
 	struct fy_document *fyd = NULL;
 	bool ret;
 
-	fyd = fy_document_build_from_string(NULL, str);
+	fyd = fy_document_build_from_string(NULL, str, len);
 	if (!fyd)
 		return false;
 
@@ -1689,13 +1686,15 @@ err_out:
 	return -1;
 }
 
-int fy_document_insert_at(struct fy_document *fyd, const char *path, struct fy_node *fyn)
+int fy_document_insert_at(struct fy_document *fyd,
+			  const char *path, size_t pathlen,
+			  struct fy_node *fyn)
 {
 	int rc;
+	struct fy_node *fyn2;
 
-	rc = fy_node_insert(
-		fy_node_by_path(fy_document_root(fyd), path),
-		fyn);
+	fyn2 = fy_node_by_path(fy_document_root(fyd), path, pathlen, FYNWF_DONT_FOLLOW);
+	rc = fy_node_insert(fyn2, fyn);
 
 	fy_node_free(fyn);
 
@@ -1995,15 +1994,22 @@ err_bad_alias:
 	goto err_out;
 }
 
-static struct fy_node *fy_node_follow_alias(struct fy_node *fyn)
+static struct fy_node *
+fy_node_follow_alias(struct fy_node *fyn, enum fy_node_walk_flags flags)
 {
 	struct fy_anchor *fya;
 
 	if (!fyn || !fy_node_is_alias(fyn))
 		return NULL;
 
+	/* try regular label target */
 	fya = fy_document_lookup_anchor_by_token(fyn->fyd, fyn->scalar);
-	return fya ? fya->fyn : NULL;
+	if (fya)
+		return fya->fyn;
+
+	/* XXX extension */
+
+	return NULL;
 }
 
 static bool fy_node_pair_is_merge_key(struct fy_node_pair *fynp)
@@ -2470,25 +2476,45 @@ err_out:
 	return NULL;
 }
 
-struct fy_document_vbuildf_ctx {
-	const char *fmt;
-	va_list ap;
+struct fy_document_build_string_ctx {
+	const char *str;
+	size_t len;
 };
 
 static int parser_setup_from_string(struct fy_parser *fyp, void *user)
 {
-	return fy_parser_set_string(fyp, user);
+	struct fy_document_build_string_ctx *ctx = user;
+
+	return fy_parser_set_string(fyp, ctx->str, ctx->len);
 }
+
+struct fy_document_build_file_ctx {
+	const char *file;
+};
 
 static int parser_setup_from_file(struct fy_parser *fyp, void *user)
 {
-	return fy_parser_set_input_file(fyp, user);
+	struct fy_document_build_file_ctx *ctx = user;
+
+	return fy_parser_set_input_file(fyp, ctx->file);
 }
+
+struct fy_document_build_fp_ctx {
+	const char *name;
+	FILE *fp;
+};
 
 static int parser_setup_from_fp(struct fy_parser *fyp, void *user)
 {
-	return fy_parser_set_input_fp(fyp, NULL, user);
+	struct fy_document_build_fp_ctx *ctx = user;
+
+	return fy_parser_set_input_fp(fyp, ctx->name, ctx->fp);
 }
+
+struct fy_document_vbuildf_ctx {
+	const char *fmt;
+	va_list ap;
+};
 
 static int parser_setup_from_fmt_ap(struct fy_parser *fyp, void *user)
 {
@@ -2518,7 +2544,7 @@ static int parser_setup_from_fmt_ap(struct fy_parser *fyp, void *user)
 
 	buf[size] = '\0';
 
-	return fy_parser_set_string(fyp, buf);
+	return fy_parser_set_string(fyp, buf, size);
 
 err_out:
 	return -1;
@@ -2606,19 +2632,36 @@ err_out:
 	return NULL;
 }
 
-struct fy_document *fy_document_build_from_string(const struct fy_parse_cfg *cfg, const char *str)
+struct fy_document *fy_document_build_from_string(const struct fy_parse_cfg *cfg,
+						  const char *str, size_t len)
 {
-	return fy_document_build_internal(cfg, parser_setup_from_string, (void *)str);
+	struct fy_document_build_string_ctx ctx = {
+		.str = str,
+		.len = len,
+	};
+
+	return fy_document_build_internal(cfg, parser_setup_from_string, &ctx);
 }
 
-struct fy_document *fy_document_build_from_file(const struct fy_parse_cfg *cfg, const char *file)
+struct fy_document *fy_document_build_from_file(const struct fy_parse_cfg *cfg,
+						const char *file)
 {
-	return fy_document_build_internal(cfg, parser_setup_from_file, (void *)file);
+	struct fy_document_build_file_ctx ctx = {
+		.file = file,
+	};
+
+	return fy_document_build_internal(cfg, parser_setup_from_file, &ctx);
 }
 
-struct fy_document *fy_document_build_from_fp(const struct fy_parse_cfg *cfg, FILE *fp)
+struct fy_document *fy_document_build_from_fp(const struct fy_parse_cfg *cfg,
+					      FILE *fp)
 {
-	return fy_document_build_internal(cfg, parser_setup_from_fp, fp);
+	struct fy_document_build_fp_ctx ctx = {
+		.name = NULL,
+		.fp = fp,
+	};
+
+	return fy_document_build_internal(cfg, parser_setup_from_fp, &ctx);
 }
 
 enum fy_node_type fy_node_get_type(struct fy_node *fyn)
@@ -2816,16 +2859,20 @@ struct fy_node_pair *fy_node_mapping_get_by_index(struct fy_node *fyn, int index
 	return fynpi;
 }
 
-static struct fy_node *fy_node_mapping_lookup_value_by_simple_key(struct fy_node *fyn, const char *key)
+static struct fy_node *
+fy_node_mapping_lookup_value_by_simple_key(struct fy_node *fyn,
+					   const char *key, size_t len)
 {
 	struct fy_node_pair *fynpi;
 	const char *strk;
-	size_t len, lenk;
+	size_t lenk;
 
 	if (!fyn || fyn->type != FYNT_MAPPING || !key)
 		return NULL;
 
-	len = strlen(key);
+	if (len == (size_t)-1)
+		len = strlen(key);
+
 	if (!is_simple_key(key, len))
 		return NULL;
 
@@ -2860,17 +2907,19 @@ struct fy_node *fy_node_mapping_lookup_value_by_key(struct fy_node *fyn, struct 
 	return NULL;
 }
 
-struct fy_node *fy_node_mapping_lookup_by_string(struct fy_node *fyn, const char *key)
+struct fy_node *
+fy_node_mapping_lookup_by_string(struct fy_node *fyn,
+				 const char *key, size_t len)
 {
 	struct fy_document *fyd;
 	struct fy_node *fyn_value;
 
 	/* try quick and dirty simple scan */
-	fyn_value = fy_node_mapping_lookup_value_by_simple_key(fyn, key);
+	fyn_value = fy_node_mapping_lookup_value_by_simple_key(fyn, key, len);
 	if (fyn_value)
 		return fyn_value;
 
-	fyd = fy_document_build_from_string(NULL, key);
+	fyd = fy_document_build_from_string(NULL, key, len);
 	if (!fyd)
 		return NULL;
 
@@ -2982,7 +3031,7 @@ fy_node_follow_aliases(struct fy_node *fyn, enum fy_node_walk_flags flags)
 		if (!fy_node_walk_mark(ctx, fyn))
 			break;
 
-		fyn = fy_node_follow_alias(fyn);
+		fyn = fy_node_follow_alias(fyn, flags);
 	}
 	fy_node_walk_mark_end(ctx);
 
@@ -2990,25 +3039,35 @@ fy_node_follow_aliases(struct fy_node *fyn, enum fy_node_walk_flags flags)
 }
 
 static struct fy_node *
-fy_node_by_path_internal(struct fy_node *fyn, const char *path,
+fy_node_by_path_internal(struct fy_node *fyn,
+			 const char *path, size_t pathlen,
 		         enum fy_node_walk_flags flags)
 {
 	struct fy_node *fynt, *fyni;
 	const char *s, *e;
 	char *end_idx;
-	char *keybuf, *d;
 	char c;
 	int idx;
+	size_t len;
 
 	if (!fyn || !path)
 		return NULL;
 
+	s = path;
+	if (pathlen == (size_t)-1)
+		pathlen = strlen(path);
+	e = s + pathlen;
+
+	/* and continue on path lookup with the rest */
+
+	/* fy_notice(NULL, "%s: path='%.*s'", __func__, (int)pathlen, path); */
+
 	/* skip all prefixed / */
-	while (*path && *path == '/')
-		path++;
+	while (s < e && *s == '/')
+		s++;
 
 	/* for a last component / always match this one */
-	if (!*path)
+	if (s >= e)
 		goto out;
 
 	fyn = fy_node_follow_aliases(fyn, flags);
@@ -3021,8 +3080,8 @@ fy_node_by_path_internal(struct fy_node *fyn, const char *path,
 
 	/* for a sequence the only allowed key is [n] where n is the index to follow */
 	if (fy_node_is_sequence(fyn)) {
-		s = path;
-		while (*s && isspace(*s))
+
+		while (s < e && isspace(*s))
 			s++;
 
 		c = *s;
@@ -3033,19 +3092,22 @@ fy_node_by_path_internal(struct fy_node *fyn, const char *path,
 
 		idx = (int)strtol(s, &end_idx, 10);
 		s = end_idx;
-		while (*s && isspace(*s))
+		while (s < e && isspace(*s))
 			s++;
 
 		if (c == '[' && *s++ != ']')
 			return NULL;
 
-		while (*s && isspace(*s))
+		while (s < e && isspace(*s))
 			s++;
-		path = s;
+
+		/* fy_notice(NULL, "%s: seq: idx=%d", __func__, idx); */
+
+		len = e - s;
 
 		fyn = fy_node_sequence_get_by_index(fyn, idx);
 		fyn = fy_node_follow_aliases(fyn, flags);
-		fyn = fy_node_by_path_internal(fyn, path, flags);
+		fyn = fy_node_by_path_internal(fyn, s, len, flags);
 		goto out;
 	}
 
@@ -3057,81 +3119,78 @@ fy_node_by_path_internal(struct fy_node *fyn, const char *path,
 	 * escapes are regular ascii characters, i.e.
 	 * '/', '*', '&', '.', '{', '}', '[', ']' and '\\'
 	 */
-	keybuf = alloca(strlen(path) + 1);
-	d = keybuf;
 
-	s = path;
-	while (*s) {
-		c = *s++;
+	path = s;
+	pathlen = (size_t)(e - s);
+
+	/* fy_notice(NULL, "%s: left='%.*s'", __func__, (int)pathlen, path); */
+
+	while (s < e) {
+		c = *s;
 		/* end of path component? */
 		if (c == '/')
 			break;
+		s++;
 
 		if (c == '\\') {
 			/* it must be a valid escape */
-			if (!*s || !strchr("/*&.{}[]\\", *s))
+			if (s >= e || !strchr("/*&.{}[]\\", *s))
 				return NULL;
-			*d++ = *s++;
+			s++;
 		} else if (c == '"') {
-			*d++ = '"';
-			e = s;
-			while (*e && *e != '"') {
-				c = *e++;
-				if (c == '\\' && *e == '"')
-					e++;
+			while (s < e && *s != '"') {
+				c = *s++;
+				if (c == '\\' && (s < e && *s == '"'))
+					s++;
 			}
 			/* not a normal double quote end */
-			if (*e != '"')
+			if (s >= e || *s != '"')
 				return NULL;
-			e++;
-			memcpy(d, s, e - s);
-			d += e - s;
-			s = e;
+			s++;
 		} else if (c == '\'') {
-			*d++ = '\'';
-			e = s;
-			while (*e && *e != '\'') {
-				c = *e++;
-				if (c == '\'' && *e == '\'')
-					e++;
+			while (s < e && *s != '\'') {
+				c = *s++;
+				if (c == '\'' && (s < e && *s == '\''))
+					s++;
 			}
 			/* not a normal single quote end */
-			if (*e != '\'')
+			if (s >= e || *s != '\'')
 				return NULL;
-			e++;
-			memcpy(d, s, e - s);
-			d += e - s;
-			s = e;
-		} else
-			*d++ = c;
+			s++;
+		}
 	}
-	/* terminate component */
-	*d = '\0';
+	len = s - path;
 
-	/* point path to the next component (or NULL is end */
-	path = s;
+	/* fy_notice(NULL, "%s: lookup='%.*s'", __func__, (int)len, path); */
 
 	fynt = fyn;
-	fyn = fy_node_mapping_lookup_by_string(fyn, keybuf);
+	fyn = fy_node_mapping_lookup_by_string(fyn, path, len);
 
 	/* failed! last ditch attempt, is there a merge key? */
 	if (!fyn && fynt && (flags & FYNWF_FOLLOW)) {
-		fyn = fy_node_mapping_lookup_by_string(fynt, "<<");
+		fyn = fy_node_mapping_lookup_by_string(fynt, "<<", 2);
 		if (!fyn)
 			goto out;
 
 		fy_notice(NULL, "found merge key");
 
-		/* single alias '<<: *foo' */
-		if (fy_node_is_alias(fyn))
-			fyn = fy_node_mapping_lookup_by_string(fy_node_follow_aliases(fyn, flags), keybuf);
-		else if (fy_node_is_sequence(fyn)) {	/* multi aliases '<<: [ *foo, *bar ]' */
+		if (fy_node_is_alias(fyn)) {
+
+			/* single alias '<<: *foo' */
+			fyn = fy_node_mapping_lookup_by_string(
+					fy_node_follow_aliases(fyn, flags), path, len);
+
+		} else if (fy_node_is_sequence(fyn)) {
+
+			/* multi aliases '<<: [ *foo, *bar ]' */
 			fynt = fyn;
 			for (fyni = fy_node_list_head(&fynt->sequence); fyni;
 					fyni = fy_node_next(&fynt->sequence, fyni)) {
 				if (!fy_node_is_alias(fyni))
 					continue;
-				fyn = fy_node_mapping_lookup_by_string(fy_node_follow_aliases(fyni, flags), keybuf);
+				fyn = fy_node_mapping_lookup_by_string(
+						fy_node_follow_aliases(fyni, flags),
+						path, len);
 				if (fyn)
 					break;
 			}
@@ -3139,8 +3198,10 @@ fy_node_by_path_internal(struct fy_node *fyn, const char *path,
 			fyn = NULL;
 	}
 
+	len = e - s;
+
 	fyn = fy_node_follow_aliases(fyn, flags);
-	fyn = fy_node_by_path_internal(fyn, path, flags);
+	fyn = fy_node_by_path_internal(fyn, s, len, flags);
 
 out:
 	fyn = fy_node_follow_aliases(fyn, flags);
@@ -3148,24 +3209,36 @@ out:
 	return fyn;
 }
 
-struct fy_node *fy_node_by_path_ext(struct fy_node *fyn, const char *path,
-				         enum fy_node_walk_flags flags)
+struct fy_node *fy_node_by_path(struct fy_node *fyn,
+				const char *path, size_t len,
+				enum fy_node_walk_flags flags)
 {
 	struct fy_anchor *fya;
-	const char *s, *e, *anchor;
-	size_t len;
+	const char *s, *e, *t, *anchor;
+	size_t alen;
 	char c;
+
+	s = path;
+	if (len == (size_t)-1)
+		len = strlen(path);
+	e = s + len;
+
+	/* fy_notice(NULL, "%s: path='%.*s'", __func__, (int)len, path); */
 
 	/* first path component may be an alias */
 	if ((flags & FYNWF_FOLLOW) && fyn && path) {
-		s = path;
-		while ((c = *s) && isspace(c))
+		while (s < e && isspace(*s))
 			s++;
-		if (c != '*')
+
+		if (s >= e || *s != '*')
 			goto regular_path_lookup;
 
 		s++;
-		for (e = s; (c = *e) != '\0'; e++) {
+
+		/* fy_notice(NULL, "%s: alias check: '%.*s'", __func__, (int)(e - s), s); */
+
+		for (t = s; t < e; t++) {
+			c = *t;
 			/* it ends on anything non alias */
 			if (c == '[' || c == ']' ||
 				c == '{' || c == '}' ||
@@ -3179,25 +3252,28 @@ struct fy_node *fy_node_by_path_ext(struct fy_node *fyn, const char *path,
 			return NULL;
 
 		anchor = s;
-		len = e - s;
+		alen = t - s;
 
 		/* empty '*' */
-		if (!len)
+		if (!alen)
 			return NULL;
 
 		/* we must be terminated by '/' or space followed by '/' */
 		/* strip until spaces and '/' end */
-		while ((c = *e) && (c == ' ' || c == '\t'))
-			e++;
+		while (t < e && (*t == ' ' || *t == '\t'))
+			t++;
 
-		while ((c = *e) && c == '/')
-			e++;
+		while (t < e && *t == '/')
+			t++;
 
 		/* update path */
-		path = e;
+		path = t;
+		len = e - t;
+
+		/* fy_notice(NULL, "%s: looking up anchor='%.*s'", __func__, (int)alen, anchor); */
 
 		/* lookup anchor */
-		fya = fy_document_lookup_anchor_size(fyn->fyd, anchor, len);
+		fya = fy_document_lookup_anchor(fyn->fyd, anchor, alen);
 
 		/* no anchor found? */
 		if (!fya)
@@ -3209,16 +3285,10 @@ struct fy_node *fy_node_by_path_ext(struct fy_node *fyn, const char *path,
 
 		fyn = fya->fyn;
 
-		/* and continue on path lookup with the rest */
 	}
 
 regular_path_lookup:
-	return fy_node_by_path_internal(fyn, path, flags);
-}
-
-struct fy_node *fy_node_by_path(struct fy_node *fyn, const char *path)
-{
-	return fy_node_by_path_ext(fyn, path, FYNWF_DONT_FOLLOW);
+	return fy_node_by_path_internal(fyn, path, len, flags);
 }
 
 bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
@@ -3263,7 +3333,7 @@ bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
 			fy_node_walk_mark(ctxn, fyn);
 		}
 
-		fyni = fy_node_follow_alias(fyn);
+		fyni = fy_node_follow_alias(fyn, flags);
 
 		ret = fy_check_ref_loop(fyd, fyni, flags, ctxn);
 
@@ -3482,7 +3552,8 @@ err_bad_event:
 	goto err_out;
 }
 
-static struct fy_node *fy_node_build_internal(struct fy_document *fyd,
+static struct fy_node *
+fy_node_build_internal(struct fy_document *fyd,
 		int (*parser_setup)(struct fy_parser *fyp, void *user),
 		void *user)
 {
@@ -3532,19 +3603,33 @@ err_trailing_event:
 	goto err_out;
 }
 
-struct fy_node *fy_node_build_from_string(struct fy_document *fyd, const char *str)
+struct fy_node *fy_node_build_from_string(struct fy_document *fyd, const char *str, size_t len)
 {
-	return fy_node_build_internal(fyd, parser_setup_from_string, (void *)str);
+	struct fy_document_build_string_ctx ctx = {
+		.str = str,
+		.len = len,
+	};
+
+	return fy_node_build_internal(fyd, parser_setup_from_string, &ctx);
 }
 
 struct fy_node *fy_node_build_from_file(struct fy_document *fyd, const char *file)
 {
-	return fy_node_build_internal(fyd, parser_setup_from_file, (void *)file);
+	struct fy_document_build_file_ctx ctx = {
+		.file = file,
+	};
+
+	return fy_node_build_internal(fyd, parser_setup_from_file, &ctx);
 }
 
 struct fy_node *fy_node_build_from_fp(struct fy_document *fyd, FILE *fp)
 {
-	return fy_node_build_internal(fyd, parser_setup_from_fp, fp);
+	struct fy_document_build_fp_ctx ctx = {
+		.name = NULL,
+		.fp = fp,
+	};
+
+	return fy_node_build_internal(fyd, parser_setup_from_fp, &ctx);
 }
 
 void fy_document_set_root(struct fy_document *fyd, struct fy_node *fyn)
@@ -3597,18 +3682,18 @@ err_out:
 	return NULL;
 }
 
-struct fy_node *fy_node_create_alias(struct fy_document *fyd, const char *data)
+struct fy_node *fy_node_create_alias(struct fy_document *fyd, const char *alias, size_t len)
 {
 	struct fy_parser *fyp;
 	struct fy_node *fyn = NULL;
 	struct fy_input *fyi;
 	struct fy_atom handle;
-	size_t size;
 
-	if (!fyd || !data)
+	if (!fyd || !alias)
 		return NULL;
 
-	size = strlen(data);
+	if (len == (size_t)-1)
+		len = strlen(alias);
 
 	fyp = fyd->fyp;
 
@@ -3616,7 +3701,7 @@ struct fy_node *fy_node_create_alias(struct fy_document *fyd, const char *data)
 	fy_error_check(fyp, fyn, err_out,
 			"fy_node_alloc() failed");
 
-	fyi = fy_parse_input_from_data(fyp, data, size, &handle, false);
+	fyi = fy_parse_input_from_data(fyp, alias, len, &handle, false);
 	fy_error_check(fyp, fyi, err_out,
 			"fy_parse_input_from_data() failed");
 
@@ -4499,7 +4584,7 @@ int fy_node_vscanf(struct fy_node *fyn, const char *fmt, va_list ap)
 		s = t;
 
 		/* find by (relative) path */
-		fynv = fy_node_by_path(fyn, key);
+		fynv = fy_node_by_path(fyn, key, t - s, FYNWF_DONT_FOLLOW);
 		if (!fynv || fynv->type != FYNT_SCALAR)
 			break;
 

@@ -48,6 +48,9 @@ struct fy_node_mapping_sort_ctx;
 #define FY_BIT(x) (1U << (x))
 #endif
 
+/* NULL terminated string length specifier */
+#define FY_NT	((size_t)-1)
+
 /**
  * DOC: libfyaml public API
  *
@@ -490,11 +493,12 @@ int fy_parser_set_input_file(struct fy_parser *fyp, const char *file);
  *
  * @fyp: The parser
  * @str: The YAML string to parse.
+ * @len: The length of the string (or -1 if '\0' terminated)
  *
  * Returns:
  * zero on success, -1 on error
  */
-int fy_parser_set_string(struct fy_parser *fyp, const char *str);
+int fy_parser_set_string(struct fy_parser *fyp, const char *str, size_t len);
 
 /**
  * fy_parser_set_input_fp() - Set the parser to process the given file
@@ -1195,13 +1199,15 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from);
  *
  * @fyd: The document
  * @path: The path where the insert operation will target
+ * @pathlen: The length of the path (or -1 if '\0' terminated)
  * @fyn: The source node
  *
  * Returns:
  * 0 on success, -1 on error
  */
 int fy_document_insert_at(struct fy_document *fyd,
-			  const char *path, struct fy_node *fyn);
+			  const char *path, size_t pathlen,
+			  struct fy_node *fyn);
 
 /**
  * enum fy_node_type - Node type
@@ -1308,11 +1314,12 @@ bool fy_node_compare(struct fy_node *fyn1, struct fy_node *fyn2);
  *
  * @fyn: The node to use in the comparison
  * @str: The YAML string to compare against
+ * @len: The length of the string (or -1 if '\0' terminated)
  *
  * Returns:
  * true if the node and the string are equal.
  */
-bool fy_node_compare_string(struct fy_node *fyn, const char *str);
+bool fy_node_compare_string(struct fy_node *fyn, const char *str, size_t len);
 
 /**
  * fy_document_create() - Create an empty document
@@ -1358,11 +1365,12 @@ int fy_document_set_parent(struct fy_document *fyd, struct fy_document *fyd_chil
  *
  * @cfg: The parse configuration to use or NULL for the default.
  * @str: The YAML source to use.
+ * @len: The length of the string (or -1 if '\0' terminated)
  *
  * Returns:
  * The created document, or NULL on error.
  */
-struct fy_document *fy_document_build_from_string(const struct fy_parse_cfg *cfg, const char *str);
+struct fy_document *fy_document_build_from_string(const struct fy_parse_cfg *cfg, const char *str, size_t len);
 
 /**
  * fy_document_build_from_file() - Create a document parsing the given file
@@ -1535,11 +1543,12 @@ void fy_node_free(struct fy_node *fyn);
  *
  * @fyd: The document
  * @str: The YAML source to use.
+ * @len: The length of the string (or -1 if '\0' terminated)
  *
  * Returns:
  * The created node, or NULL on error.
  */
-struct fy_node *fy_node_build_from_string(struct fy_document *fyd, const char *str);
+struct fy_node *fy_node_build_from_string(struct fy_document *fyd, const char *str, size_t len);
 
 /**
  * fy_node_build_from_file() - Create a node using the provided YAML file.
@@ -1626,30 +1635,17 @@ struct fy_node *fy_node_buildf(struct fy_document *fyd, const char *fmt, ...)
  *
  * @fyn: The node to use as start of the traversal operation
  * @path: The path spec to use in the traversal operation
- *
- * Returns:
- * The retrieved node, or NULL if not possible to be found.
- */
-struct fy_node *fy_node_by_path(struct fy_node *fyn, const char *path);
-
-/**
- * fy_node_by_path_ext() - Retrieve a node using the provided path spec,
- *                         using the flags for path control.
- *
- * see fy_node_by_path_ext() for details.
- *
- * @fyn: The node to use as start of the traversal operation
- * @path: The path spec to use in the traversal operation
+ * @len: The length of the path (or -1 if '\0' terminated)
  * @flags: The extra path walk flags
  *
  * Returns:
  * The retrieved node, or NULL if not possible to be found.
  */
-struct fy_node *fy_node_by_path_ext(struct fy_node *fyn, const char *path,
-				    enum fy_node_walk_flags flags);
+struct fy_node *fy_node_by_path(struct fy_node *fyn, const char *path, size_t len,
+				enum fy_node_walk_flags flags);
 
 /**
- * fy_node_get_path() - Get the path of this nod
+ * fy_node_get_path() - Get the path of this node
  *
  * Retrieve the given node's path address relative to the document root.
  * The address is dynamically allocated and should be freed when
@@ -2005,11 +2001,13 @@ struct fy_node_pair *fy_node_mapping_get_by_index(struct fy_node *fyn, int index
  *
  * @fyn: The mapping node
  * @key: The YAML source to use as key
+ * @len: The length of the key (or -1 if '\0' terminated)
  *
  * Returns:
  * The value matching the given key, or NULL if not found.
  */
-struct fy_node *fy_node_mapping_lookup_by_string(struct fy_node *fyn, const char *key);
+struct fy_node *fy_node_mapping_lookup_by_string(struct fy_node *fyn,
+						 const char *key, size_t len);
 
 /**
  * fy_node_mapping_lookup_pair() - Lookup a node pair matching the provided key
@@ -2336,11 +2334,13 @@ int fy_document_tag_directive_remove(struct fy_document *fyd, const char *handle
  * 
  * @fyd: The document
  * @anchor: The anchor to look for
+ * @len: The length of the anchor (or -1 if '\0' terminated)
  *
  * Returns:
  * The anchor if found, NULL otherwise
  */
-struct fy_anchor *fy_document_lookup_anchor(struct fy_document *fyd, const char *anchor);
+struct fy_anchor *fy_document_lookup_anchor(struct fy_document *fyd,
+					    const char *anchor, size_t len);
 
 /**
  * fy_document_lookup_anchor_by_token() - Lookup an anchor by token text
@@ -2427,7 +2427,8 @@ struct fy_anchor *fy_document_anchor_iterate(struct fy_document *fyd, void **pre
  * Returns:
  * 0 on success, -1 on error.
  */
-int fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn, const char *text, size_t len);
+int fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn,
+			   const char *text, size_t len);
 
 /**
  * fy_node_set_anchor() - Place an anchor to the node's document
@@ -2480,10 +2481,12 @@ struct fy_anchor *fy_node_get_anchor(struct fy_node *fyn);
  *
  * @fyd: The document
  * @alias: The alias text
+ * @len: The length of the alias (or -1 if '\0' terminated)
  *
  * Returns:
  * The created alias node, or NULL in case of an error
  */
-struct fy_node *fy_node_create_alias(struct fy_document *fyd, const char *alias);
+struct fy_node *fy_node_create_alias(struct fy_document *fyd,
+				     const char *alias, size_t len);
 
 #endif

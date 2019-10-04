@@ -1040,7 +1040,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 
 	/****/
 
-	fydt = fy_document_build_from_string(cfg, "#comment \n[ 42, \n  12 ] # comment\n");
+	fydt = fy_document_build_from_string(cfg, "#comment \n[ 42, \n  12 ] # comment\n", FY_NT);
 	assert(fydt);
 
 	buf = fy_emit_document_to_string(fydt, 0);
@@ -1054,7 +1054,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 
 	/****/
 
-	fydt = fy_document_build_from_string(cfg, "plain-scalar # comment\n");
+	fydt = fy_document_build_from_string(cfg, "plain-scalar # comment\n", FY_NT);
 	assert(fydt);
 
 	scalar = fy_node_get_scalar(fy_document_root(fydt), &len);
@@ -1065,7 +1065,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 
 	/****/
 
-	fydt = fy_document_build_from_string(cfg, "[ 10, 11, foo ] # comment");
+	fydt = fy_document_build_from_string(cfg, "[ 10, 11, foo ] # comment", FY_NT);
 	assert(fydt);
 
 	buf = fy_emit_node_to_string(fy_document_root(fydt), 0);
@@ -1103,7 +1103,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 
 	/*****/
 
-	fydt = fy_document_build_from_string(cfg, "{ foo: 10, bar : 20, baz: [100, 101], [frob, 1]: boo }");
+	fydt = fy_document_build_from_string(cfg, "{ foo: 10, bar : 20, baz: [100, 101], [frob, 1]: boo }", FY_NT);
 	assert(fydt);
 
 	buf = fy_emit_node_to_string(fy_document_root(fydt), 0);
@@ -1161,28 +1161,28 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 
 	printf("key lookup based:");
 
-	fyn = fy_node_mapping_lookup_by_string(fy_document_root(fydt), "foo");
+	fyn = fy_node_mapping_lookup_by_string(fy_document_root(fydt), "foo", FY_NT);
 	assert(fyn);
 	buf = fy_emit_node_to_string(fyn, 0);
 	assert(buf);
 	printf("%s->\"%s\"\n", "foo", buf);
 	free(buf);
 
-	fyn = fy_node_mapping_lookup_by_string(fy_document_root(fydt), "bar");
+	fyn = fy_node_mapping_lookup_by_string(fy_document_root(fydt), "bar", FY_NT);
 	assert(fyn);
 	buf = fy_emit_node_to_string(fyn, 0);
 	assert(buf);
 	printf("%s->\"%s\"\n", "bar", buf);
 	free(buf);
 
-	fyn = fy_node_mapping_lookup_by_string(fy_document_root(fydt), "baz");
+	fyn = fy_node_mapping_lookup_by_string(fy_document_root(fydt), "baz", FY_NT);
 	assert(fyn);
 	buf = fy_emit_node_to_string(fyn, 0);
 	assert(buf);
 	printf("%s->\"%s\"\n", "baz", buf);
 	free(buf);
 
-	fyn = fy_node_mapping_lookup_by_string(fy_document_root(fydt), "[ frob, 1 ]");
+	fyn = fy_node_mapping_lookup_by_string(fy_document_root(fydt), "[ frob, 1 ]", FY_NT);
 	assert(fyn);
 	buf = fy_emit_node_to_string(fyn, 0);
 	assert(buf);
@@ -1200,95 +1200,95 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 		"foo: 10, bar : 20, baz:{ frob: boo }, "
 		"frooz: [ seq1, { key: value} ], \"zero\\0zero\" : 0, "
 		"{ key2: value2 }: { key3: value3 } "
-		"}");
+		"}", FY_NT);
 
 	assert(fydt);
 
-	fyn = fy_node_by_path(fy_document_root(fydt), "/");
+	fyn = fy_node_by_path(fy_document_root(fydt), "/", FY_NT, FYNWF_DONT_FOLLOW);
 	assert(fyn);
 	buf = fy_emit_node_to_string(fyn, 0);
 	assert(buf);
 	printf("%s is \"%s\"\n", "/", buf);
 	free(buf);
 
-	fyn = fy_node_by_path(fy_document_root(fydt), "foo");
+	fyn = fy_node_by_path(fy_document_root(fydt), "foo", FY_NT, FYNWF_DONT_FOLLOW);
 	assert(fyn);
 	buf = fy_emit_node_to_string(fyn, 0);
 	assert(buf);
 	printf("%s is \"%s\"\n", "foo", buf);
 	free(buf);
 
-	fyn = fy_node_by_path(fy_document_root(fydt), "bar");
+	fyn = fy_node_by_path(fy_document_root(fydt), "bar", FY_NT, FYNWF_DONT_FOLLOW);
 	assert(fyn);
 	buf = fy_emit_node_to_string(fyn, 0);
 	assert(buf);
 	printf("%s is \"%s\"\n", "bar", buf);
 	free(buf);
 
-	fyn = fy_node_by_path(fy_document_root(fydt), "baz");
+	fyn = fy_node_by_path(fy_document_root(fydt), "baz", FY_NT, FYNWF_DONT_FOLLOW);
 	assert(fyn);
 	buf = fy_emit_node_to_string(fyn, 0);
 	assert(buf);
 	printf("%s is \"%s\"\n", "baz", buf);
 	free(buf);
 
-	fyn = fy_node_by_path(fy_document_root(fydt), "baz/frob");
+	fyn = fy_node_by_path(fy_document_root(fydt), "baz/frob", FY_NT, FYNWF_DONT_FOLLOW);
 	assert(fyn);
 	buf = fy_emit_node_to_string(fyn, 0);
 	assert(buf);
 	printf("%s is \"%s\"\n", "baz/frob", buf);
 	free(buf);
 
-	fyn = fy_node_by_path(fy_document_root(fydt), "frooz");
+	fyn = fy_node_by_path(fy_document_root(fydt), "frooz", FY_NT, FYNWF_DONT_FOLLOW);
 	assert(fyn);
 	buf = fy_emit_node_to_string(fyn, 0);
 	assert(buf);
 	printf("%s is \"%s\"\n", "frooz", buf);
 	free(buf);
 
-	fyn = fy_node_by_path(fy_document_root(fydt), "/frooz/[0]");
+	fyn = fy_node_by_path(fy_document_root(fydt), "/frooz/[0]", FY_NT, FYNWF_DONT_FOLLOW);
 	assert(fyn);
 	buf = fy_emit_node_to_string(fyn, 0);
 	assert(buf);
 	printf("%s is \"%s\"\n", "/frooz/[0]", buf);
 	free(buf);
 
-	fyn = fy_node_by_path(fy_document_root(fydt), "/frooz/[1]");
+	fyn = fy_node_by_path(fy_document_root(fydt), "/frooz/[1]", FY_NT, FYNWF_DONT_FOLLOW);
 	assert(fyn);
 	buf = fy_emit_node_to_string(fyn, 0);
 	assert(buf);
 	printf("%s is \"%s\"\n", "/frooz/[1]", buf);
 	free(buf);
 
-	fyn = fy_node_by_path(fy_document_root(fydt), "/frooz/[1]/key");
+	fyn = fy_node_by_path(fy_document_root(fydt), "/frooz/[1]/key", FY_NT, FYNWF_DONT_FOLLOW);
 	assert(fyn);
 	buf = fy_emit_node_to_string(fyn, 0);
 	assert(buf);
 	printf("%s is \"%s\"\n", "/frooz/[1]/key", buf);
 	free(buf);
 
-	fyn = fy_node_by_path(fy_document_root(fydt), "\"foo\"");
+	fyn = fy_node_by_path(fy_document_root(fydt), "\"foo\"", FY_NT, FYNWF_DONT_FOLLOW);
 	assert(fyn);
 	buf = fy_emit_node_to_string(fyn, 0);
 	assert(buf);
 	printf("%s is \"%s\"\n", "\"foo\"", buf);
 	free(buf);
 
-	fyn = fy_node_by_path(fy_document_root(fydt), "\"zero\\0zero\"");
+	fyn = fy_node_by_path(fy_document_root(fydt), "\"zero\\0zero\"", FY_NT, FYNWF_DONT_FOLLOW);
 	assert(fyn);
 	buf = fy_emit_node_to_string(fyn, 0);
 	assert(buf);
 	printf("%s is \"%s\"\n", "zero\\0zero", buf);
 	free(buf);
 
-	fyn = fy_node_by_path(fy_document_root(fydt), "/{ key2: value2 }");
+	fyn = fy_node_by_path(fy_document_root(fydt), "/{ key2: value2 }", FY_NT, FYNWF_DONT_FOLLOW);
 	assert(fyn);
 	buf = fy_emit_node_to_string(fyn, 0);
 	assert(buf);
 	printf("%s is \"%s\"\n", "/{ key2: value2 }", buf);
 	free(buf);
 
-	fyn = fy_node_by_path(fy_document_root(fydt), "/{ key2: value2 }/key3");
+	fyn = fy_node_by_path(fy_document_root(fydt), "/{ key2: value2 }/key3", FY_NT, FYNWF_DONT_FOLLOW);
 	assert(fyn);
 	buf = fy_emit_node_to_string(fyn, 0);
 	assert(buf);
@@ -1297,22 +1297,22 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 
 	printf("\npaths....\n");
 
-	path = fy_node_get_path(fy_node_by_path(fy_document_root(fydt), "/"));
+	path = fy_node_get_path(fy_node_by_path(fy_document_root(fydt), "/", FY_NT, FYNWF_DONT_FOLLOW));
 	printf("%s path is %s\n", "/", path);
 	if (path)
 		free(path);
 
-	path = fy_node_get_path(fy_node_by_path(fy_document_root(fydt), "/frooz"));
+	path = fy_node_get_path(fy_node_by_path(fy_document_root(fydt), "/frooz", FY_NT, FYNWF_DONT_FOLLOW));
 	printf("%s path is %s\n", "/frooz", path);
 	if (path)
 		free(path);
 
-	path = fy_node_get_path(fy_node_by_path(fy_document_root(fydt), "/frooz/[0]"));
+	path = fy_node_get_path(fy_node_by_path(fy_document_root(fydt), "/frooz/[0]", FY_NT, FYNWF_DONT_FOLLOW));
 	printf("%s path is %s\n", "/frooz/[0]", path);
 	if (path)
 		free(path);
 
-	path = fy_node_get_path(fy_node_by_path(fy_document_root(fydt), "/{ key2: value2 }/key3"));
+	path = fy_node_get_path(fy_node_by_path(fy_document_root(fydt), "/{ key2: value2 }/key3", FY_NT, FYNWF_DONT_FOLLOW));
 	printf("%s path is %s\n", "/{ key2: value2 }/key3", path);
 	if (path)
 		free(path);
@@ -1325,7 +1325,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	fyd = fy_document_create(cfg);
 	assert(fyd);
 
-	fyn = fy_node_build_from_string(fyd, "{ }");
+	fyn = fy_node_build_from_string(fyd, "{ }", FY_NT);
 	assert(fyn);
 
 	buf = fy_emit_node_to_string(fyn, 0);
@@ -1419,9 +1419,9 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	fyn = fy_node_create_sequence(fyd);
 	assert(fyn);
 
-	fy_node_sequence_append(fyn, fy_node_create_scalar(fyd, "foo", 3));
-	fy_node_sequence_append(fyn, fy_node_create_scalar(fyd, "bar", 3));
-	fy_node_sequence_append(fyn, fy_node_build_from_string(fyd, "{ baz: frooz }"));
+	fy_node_sequence_append(fyn, fy_node_create_scalar(fyd, "foo", FY_NT));
+	fy_node_sequence_append(fyn, fy_node_create_scalar(fyd, "bar", FY_NT));
+	fy_node_sequence_append(fyn, fy_node_build_from_string(fyd, "{ baz: frooz }", FY_NT));
 
 	fy_document_set_root(fyd, fyn);
 
@@ -1441,16 +1441,16 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	fyn = fy_node_create_mapping(fyd);
 	assert(fyn);
 
-	rc = fy_node_mapping_append(fyn, NULL, fy_node_build_from_string(fyd, "[ 0, 1 ]"));
+	rc = fy_node_mapping_append(fyn, NULL, fy_node_build_from_string(fyd, "[ 0, 1 ]", FY_NT));
 	assert(!rc);
 
-	fynt = fy_node_build_from_string(fyd, "foo");
+	fynt = fy_node_build_from_string(fyd, "foo", FY_NT);
 	assert(fynt);
 	rc = fy_node_mapping_append(fyn, NULL, fynt);
 	assert(rc);
 	fy_node_free(fynt);
 
-	rc = fy_node_mapping_append(fyn, fy_node_build_from_string(fyd, "bar"), NULL);
+	rc = fy_node_mapping_append(fyn, fy_node_build_from_string(fyd, "bar", FY_NT), NULL);
 	assert(!rc);
 
 	fy_document_set_root(fyd, fyn);
@@ -1468,7 +1468,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	fyd = fy_document_create(cfg);
 	assert(fyd);
 
-	fy_document_set_root(fyd, fy_node_build_from_string(fyd, "scalar"));
+	fy_document_set_root(fyd, fy_node_build_from_string(fyd, "scalar", FY_NT));
 
 	buf = fy_emit_document_to_string(fyd, 0);
 	assert(buf);
@@ -1486,8 +1486,8 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	fyn = fy_node_create_sequence(fyd);
 	assert(fyn);
 
-	fy_node_sequence_append(fyn, fy_node_build_from_string(fyd, "foo"));
-	fy_node_sequence_append(fyn, fy_node_build_from_string(fyd, "bar"));
+	fy_node_sequence_append(fyn, fy_node_build_from_string(fyd, "foo", FY_NT));
+	fy_node_sequence_append(fyn, fy_node_build_from_string(fyd, "bar", FY_NT));
 
 	fy_document_set_root(fyd, fyn);
 
@@ -1501,21 +1501,21 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 
 	/******/
 
-	fyd = fy_document_build_from_string(cfg, "[ one, two, four ]");
+	fyd = fy_document_build_from_string(cfg, "[ one, two, four ]", FY_NT);
 
-	fy_node_sequence_append(fy_document_root(fyd), fy_node_build_from_string(fyd, "five"));
-	fy_node_sequence_prepend(fy_document_root(fyd), fy_node_build_from_string(fyd, "zero"));
+	fy_node_sequence_append(fy_document_root(fyd), fy_node_build_from_string(fyd, "five", FY_NT));
+	fy_node_sequence_prepend(fy_document_root(fyd), fy_node_build_from_string(fyd, "zero", FY_NT));
 
 	fy_node_sequence_insert_after(fy_document_root(fyd),
-			fy_node_by_path(fy_document_root(fyd), "/[2]"),
-			fy_node_build_from_string(fyd, "three"));
+			fy_node_by_path(fy_document_root(fyd), "/[2]", FY_NT, FYNWF_DONT_FOLLOW),
+			fy_node_build_from_string(fyd, "three", FY_NT));
 
 	fy_node_sequence_insert_before(fy_document_root(fyd),
-			fy_node_by_path(fy_document_root(fyd), "/[3]"),
-			fy_node_build_from_string(fyd, "two-and-a-half"));
+			fy_node_by_path(fy_document_root(fyd), "/[3]", FY_NT, FYNWF_DONT_FOLLOW),
+			fy_node_build_from_string(fyd, "two-and-a-half", FY_NT));
 
 	fyn = fy_node_sequence_remove(fy_document_root(fyd),
-			fy_node_by_path(fy_document_root(fyd), "/[3]"));
+			fy_node_by_path(fy_document_root(fyd), "/[3]", FY_NT, FYNWF_DONT_FOLLOW));
 
 	fy_node_free(fyn);
 
@@ -1529,22 +1529,22 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 
 	/******/
 
-	fyd = fy_document_build_from_string(cfg, "{ one: 1, two: 2, four: 4 }");
+	fyd = fy_document_build_from_string(cfg, "{ one: 1, two: 2, four: 4 }", FY_NT);
 
 	fy_node_mapping_append(fy_document_root(fyd),
-			fy_node_build_from_string(fyd, "three"),
-			fy_node_build_from_string(fyd, "3"));
+			fy_node_build_from_string(fyd, "three", FY_NT),
+			fy_node_build_from_string(fyd, "3", FY_NT));
 
 	fy_node_mapping_prepend(fy_document_root(fyd),
-			fy_node_build_from_string(fyd, "zero"),
-			fy_node_build_from_string(fyd, "0"));
+			fy_node_build_from_string(fyd, "zero", FY_NT),
+			fy_node_build_from_string(fyd, "0", FY_NT));
 
 	fy_node_mapping_append(fy_document_root(fyd),
-			fy_node_build_from_string(fyd, "two-and-a-half"),
-			fy_node_build_from_string(fyd, "2.5"));
+			fy_node_build_from_string(fyd, "two-and-a-half", FY_NT),
+			fy_node_build_from_string(fyd, "2.5", FY_NT));
 
 	fyn = fy_node_mapping_remove_by_key(fy_document_root(fyd),
-			fy_node_build_from_string(fyd, "two-and-a-half"));
+			fy_node_build_from_string(fyd, "two-and-a-half", FY_NT));
 	assert(fyn != NULL);
 
 	fy_node_free(fyn);
@@ -1559,7 +1559,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 
 	/******/
 
-	fyd = fy_document_build_from_string(cfg, "{ aaa: 1, zzz: 2, bbb: 4 }");
+	fyd = fy_document_build_from_string(cfg, "{ aaa: 1, zzz: 2, bbb: 4 }", FY_NT);
 
 	buf = fy_emit_document_to_string(fyd, 0);
 	assert(buf);
@@ -1571,7 +1571,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 
 	/******/
 
-	fyd = fy_document_build_from_string(cfg, "\naaa: 1\nzzz: 2\nbbb:\n  ccc: foo\n");
+	fyd = fy_document_build_from_string(cfg, "\naaa: 1\nzzz: 2\nbbb:\n  ccc: foo\n", FY_NT);
 
 	buf = fy_emit_document_to_string(fyd, FYECF_MODE_FLOW);
 	assert(buf);
@@ -1583,7 +1583,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 
 	/******/
 
-	fyd = fy_document_build_from_string(cfg, "{ aaa: 1, zzz: 2, bbb: 4 }");
+	fyd = fy_document_build_from_string(cfg, "{ aaa: 1, zzz: 2, bbb: 4 }", FY_NT);
 
 	buf = fy_emit_document_to_string(fyd, FYECF_MODE_BLOCK);
 	assert(buf);
@@ -1597,7 +1597,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 
 	/* {? {z: bar} : map-value1, ? {a: whee} : map-value2, ? [a, b, c] : seq-value, ? [z] : {frooz: ting}, aaa: 1, bbb: 4, zzz: 2} */
 	fyd = fy_document_build_from_string(cfg, "{ a: 5, { z: bar }: 1, z: 7, "
-					"[ a, b, c] : 3, { a: whee } : 2 , b: 6, [ z ]: 4 }");
+					"[ a, b, c] : 3, { a: whee } : 2 , b: 6, [ z ]: 4 }", FY_NT);
 
 	buf = fy_emit_document_to_string(fyd, FYECF_SORT_KEYS);
 	assert(buf);
@@ -1667,7 +1667,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	rc = fy_document_tag_directive_add(fyd, "!e!", "tag%21");
 	assert(!rc);
 
-	fyn = fy_node_build_from_string(fyd, "{ foo: bar }");
+	fyn = fy_node_build_from_string(fyd, "{ foo: bar }", FY_NT);
 	assert(fyn);
 
 	fy_document_set_root(fyd, fyn);
@@ -1675,29 +1675,29 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	/* rc = fy_node_set_tag(fyn, "!!", -1); */
 	/* rc = fy_node_set_tag(fyn, "!!int", -1); */
 	/* rc = fy_node_set_tag(fyn, "!<tag:clarkevans.com,2002:>", -1); */
-	rc = fy_node_set_tag(fyn, "!foo!baz", -1);
+	rc = fy_node_set_tag(fyn, "!foo!baz", FY_NT);
 	/* rc = fy_node_set_tag(fyn, "!e!tag%21", -1); */
 	/* rc = fy_node_set_tag(fyn, "!e!tag:12:", -1); */
 	assert(!rc);
 
 	// fy_document_tag_directive_remove(fyd, "!foo!");
 
-	rc = fy_node_set_anchor(fy_node_by_path(fyn, "/foo"), "anchor", -1);
+	rc = fy_node_set_anchor(fy_node_by_path(fyn, "/foo", FY_NT, FYNWF_DONT_FOLLOW), "anchor", FY_NT);
 	assert(!rc);
 
 	rc = fy_node_mapping_append(fyn,
-			fy_node_build_from_string(fyd, "!foo!whoa baz"),
-			fy_node_build_from_string(fyd, "frooz"));
+			fy_node_build_from_string(fyd, "!foo!whoa baz", FY_NT),
+			fy_node_build_from_string(fyd, "frooz", FY_NT));
 	assert(!rc);
 
 	rc = fy_node_mapping_append(fyn,
-			fy_node_build_from_string(fyd, "test"),
-			fy_node_build_from_string(fyd, "*anchor"));
+			fy_node_build_from_string(fyd, "test", FY_NT),
+			fy_node_build_from_string(fyd, "*anchor", FY_NT));
 	assert(!rc);
 
 	rc = fy_node_mapping_append(fyn,
-			fy_node_build_from_string(fyd, "test-2"),
-			fy_node_create_alias(fyd, "anchor"));
+			fy_node_build_from_string(fyd, "test-2", FY_NT),
+			fy_node_create_alias(fyd, "anchor", FY_NT));
 	assert(!rc);
 
 	if (cfg->flags & FYPCF_RESOLVE_DOCUMENT) {

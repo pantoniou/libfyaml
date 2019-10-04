@@ -621,7 +621,7 @@ static int set_parser_input(struct fy_parser *fyp, const char *what,
 	else if (*what == '<')
 		rc = fy_parser_set_input_file(fyp, what + 1);
 	else if (*what == '>')
-		rc = fy_parser_set_string(fyp, what + 1);
+		rc = fy_parser_set_string(fyp, what + 1, FY_NT);
 	else
 		rc = fy_parser_set_input_file(fyp, what);
 
@@ -945,8 +945,8 @@ int main(int argc, char *argv[])
 
 			for (i = optind, j = 0; i < argc; i += step, j++) {
 
-				fyn = fy_node_by_path_ext(fy_document_root(fyd), argv[i],
-							  follow ? FYNWF_FOLLOW : FYNWF_DONT_FOLLOW);
+				fyn = fy_node_by_path(fy_document_root(fyd), argv[i], FY_NT,
+						      follow ? FYNWF_FOLLOW : FYNWF_DONT_FOLLOW);
 
 				/* ignore not found paths */
 				if (!fyn) {
@@ -1003,15 +1003,15 @@ int main(int argc, char *argv[])
 					continue;
 				}
 
-				fyn_to = fy_node_by_path_ext(fy_document_root(fyd_join), to,
-							     follow ? FYNWF_FOLLOW : FYNWF_DONT_FOLLOW);
+				fyn_to = fy_node_by_path(fy_document_root(fyd_join), to, FY_NT,
+							 follow ? FYNWF_FOLLOW : FYNWF_DONT_FOLLOW);
 				if (!fyn_to) {
 					fprintf(stderr, "unable to find to=%s\n", to);
 					goto cleanup;
 				}
 
-				fyn_from = fy_node_by_path_ext(fy_document_root(fyd), from,
-							       follow ? FYNWF_FOLLOW : FYNWF_DONT_FOLLOW);
+				fyn_from = fy_node_by_path(fy_document_root(fyd), from, FY_NT,
+							   follow ? FYNWF_FOLLOW : FYNWF_DONT_FOLLOW);
 
 				if (!fyn_from) {
 					fprintf(stderr, "unable to find from=%s\n", from);
@@ -1042,8 +1042,8 @@ int main(int argc, char *argv[])
 				goto cleanup;
 		}
 
-		fyn_emit = fy_node_by_path_ext(fy_document_root(fyd_join), trim,
-					       follow ? FYNWF_FOLLOW : FYNWF_DONT_FOLLOW);
+		fyn_emit = fy_node_by_path(fy_document_root(fyd_join), trim, FY_NT,
+					   follow ? FYNWF_FOLLOW : FYNWF_DONT_FOLLOW);
 
 		/* nothing to output ? */
 		if (!fyn_emit) {

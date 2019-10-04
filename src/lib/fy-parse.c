@@ -5482,13 +5482,16 @@ err_out_rc:
 	return -1;
 }
 
-int fy_parser_set_string(struct fy_parser *fyp, const char *str)
+int fy_parser_set_string(struct fy_parser *fyp, const char *str, size_t len)
 {
 	struct fy_input_cfg *fyic;
 	int rc;
 
 	if (!fyp || !str)
 		return -1;
+
+	if (len == (size_t)-1)
+		len = strlen(str);
 
 	fyic = fy_parse_alloc(fyp, sizeof(*fyic));
 	fy_error_check(fyp, fyic, err_out,
@@ -5497,7 +5500,7 @@ int fy_parser_set_string(struct fy_parser *fyp, const char *str)
 
 	fyic->type = fyit_memory;
 	fyic->memory.data = str;
-	fyic->memory.size = strlen(str);
+	fyic->memory.size = len;
 
 	rc = fy_parse_input_reset(fyp);
 	fy_error_check(fyp, !rc, err_out_rc,
