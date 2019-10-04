@@ -9,7 +9,16 @@ AC_CONFIG_HEADER([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE([foreign 1.8.5 -Wall subdir-objects ])
-AM_EXTRA_RECURSIVE_TARGETS([doc-help doc-html doc-latexpdf doc-man doc-clean doc-markdown])
+
+m4_pattern_allow([^(AM_EXTRA_RECURSIVE_TARGETS|AM_PROG_AR)$])dnl
+
+# supoort older versions of automake
+# only define the recursive targets when it's defined
+# note that the top level makefile rules will not
+# include them
+m4_ifdef([AM_EXTRA_RECURSIVE_TARGETS],
+	 [AM_EXTRA_RECURSIVE_TARGETS([doc-help doc-html doc-latexpdf doc-man doc-clean doc-markdown])],
+	 [AC_MSG_WARN([Old automake version without AM_EXTRA_RECURSIVE_TARGETS, doc-* rules won't be available at top level])])
 
 m4_define(fyaml_major, `echo $VERSION | cut -d. -f1 | cut -d- -f1`)
 m4_define(fyaml_minor, `echo $VERSION | cut -d. -f2 | cut -d- -f1`)
@@ -26,15 +35,19 @@ AC_SUBST(DATE, fyaml_date)
 
 AC_SUBST(DEBVERSION, "$MAJOR.$MINOR")
 
-AX_CHECK_ENABLE_DEBUG()
+dnl AX_* requires 2.64
+m4_version_prereq(2.64, [AX_CHECK_ENABLE_DEBUG()], [true])
 
 AC_PROG_MKDIR_P
 AC_PROG_CC
 AC_PROG_CC_C99
 AM_PROG_CC_C_O
+
 AC_PROG_GCC_TRADITIONAL
 AC_USE_SYSTEM_EXTENSIONS
-AM_PROG_AR
+m4_ifdef([AM_PROG_AR], [AM_PROG_AR],
+	 [AC_MSG_WARN([Old automake version without AM_PROG_AR, library versioning will not be available])])
+
 AC_PROG_CXX
 AC_PROG_AWK
 AC_PROG_LN_S
@@ -72,14 +85,14 @@ AC_TYPE_SIGNAL
 AC_TYPE_UID_T
 AC_CHECK_DECLS(environ)
 
-AX_APPEND_COMPILE_FLAGS(
-    [-Wall -Wsign-compare],
-    [], [-pedantic -Werror])
+dnl for old autoconf version AX_APPEND_COMPILE_FLAGS does not work
+m4_version_prereq(2.64,
+	 [AX_APPEND_COMPILE_FLAGS([-Wall -Wsign-compare], [CFLAGS], [-pedantic -Werror])],
+         [CFLAGS="$CFLAGS -Wall -Wsign-compare"])
 
+dnl -O2 is universal no need for AX_APPEND_COMPILE_FLAGS
 if test "x$ax_enable_debug" != "xyes" ; then
-	AX_APPEND_COMPILE_FLAGS(
-		[-O2],
-		[], [])
+	CFLAGS="$CFLAGS -O2"
 fi
 
 # include -lm in the link
@@ -204,8 +217,9 @@ else
 fi
 AC_SUBST(DPKG_ARCH, "$DPKG_ARCH")
 
-# Shave by default
-SHAVE_INIT([build-aux], [enable])
+# Shave by default on supported autoconf versions
+dnl m4_version_prereq(2.64, SHAVE_INIT([build-aux], [enable]), [true])
+m4_ifdef([SHAVE_INIT], [SHAVE_INIT([build-aux], [enable])])
 
 AC_CONFIG_FILES([
         build-aux/shave

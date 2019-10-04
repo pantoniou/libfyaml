@@ -2,7 +2,7 @@
 
 AM_CPPFLAGS = \
         -I$(top_srcdir)/include
-AM_CFLAGS = -std=gnu11
+AM_CFLAGS =
 
 AM_TESTS_ENVIRONMENT= \
 	TOP_SRCDIR="${top_srcdir}" \

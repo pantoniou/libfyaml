@@ -9,7 +9,9 @@ EXTRA_DIST=bootstrap.sh \
 	   build-aux/shave.in build-aux/shave-libtool.in \
 	   build-aux/git-version-gen \
 	   README.md \
-	   debian
+	   debian \
+	   Dockerfile Dockerfile-build-deb \
+	   Dockerfile.alpine Dockerfile.centos
 
 MAINTAINERCLEANFILES = \
         Makefile.in src/Makefile.in config.h.in configure \

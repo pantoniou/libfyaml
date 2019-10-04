@@ -1,7 +1,7 @@
 AM_CPPFLAGS = \
         -I$(top_srcdir)/src \
         -I$(top_srcdir)/include
-AM_CFLAGS = -std=gnu11
+AM_CFLAGS =
 
 lib_LTLIBRARIES = libfyaml-@MAJOR@.@MINOR@.la
 libfyaml_@MAJOR@_@MINOR@_la_SOURCES = \
