@@ -1285,6 +1285,14 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 	if (c != '#')
 		return -1;
 
+	/* if it's no comment parsing is enabled just consume it */
+	if (!(fyp->cfg.flags & FYPCF_PARSE_COMMENTS)) {
+		fy_advance(fyp, c);
+		while (!(fy_is_breakz(c = fy_parse_peek(fyp))))
+			fy_advance(fyp, c);
+		return 0;
+	}
+
 	if (handle)
 		fy_fill_atom_start(fyp, handle);
 
@@ -1347,7 +1355,8 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 		return -1;
 
 	/* if a last comment exists and is valid */
-	if (fy_atom_is_set(&fyp->last_comment)) {
+	if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
+	    fy_atom_is_set(&fyp->last_comment)) {
 		memcpy(&fyt->comment[fycp_top], &fyp->last_comment, sizeof(fyp->last_comment));
 		memset(&fyp->last_comment, 0, sizeof(fyp->last_comment));
 
@@ -1366,10 +1375,6 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 		rc = fy_scan_comment(fyp, &fyt->comment[fycp_right], false);
 		fy_error_check(fyp, !rc, err_out_rc,
 				"fy_scan_comment() failed");
-
-		fy_notice(fyp, "token: %s attaching right comment:\n%s\n",
-				fy_token_debug_text_a(fyt),
-				fy_atom_get_text_a(&fyt->comment[fycp_right]));
 	}
 	return 0;
 
@@ -1420,9 +1425,6 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 			rc = fy_scan_comment(fyp, &fyp->last_comment, false);
 			fy_error_check(fyp, !rc, err_out_rc,
 					"fy_scan_comment() failed");
-
-			fy_notice(fyp, "unattached comment:\n%s\n",
-					fy_atom_get_text_a(&fyp->last_comment));
 		}
 
 		c = fy_parse_peek(fyp);
@@ -2592,14 +2594,9 @@ int fy_fetch_flow_collection_entry(struct fy_parser *fyp, int c)
 		if (fyt_last)
 			fyt = fyt_last;
 
-		fy_notice(fyp, "attaching to token: %s", fy_token_debug_text_a(fyt));
-
 		rc = fy_scan_comment(fyp, &fyt->comment[fycp_right], true);
 		fy_error_check(fyp, !rc, err_out_rc,
 				"fy_scan_comment() failed");
-
-		fy_notice(fyp, "attaching comment:\n%s\n",
-				fy_atom_get_text_a(&fyt->comment[fycp_right]));
 	}
 
 	return 0;
@@ -2961,10 +2958,6 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 			rc = fy_scan_comment(fyp, &fyt_insert->comment[fycp_right], false);
 			fy_error_check(fyp, !rc, err_out_rc,
 					"fy_scan_comment() failed");
-
-			fy_notice(fyp, "token: %s attaching right comment:\n%s\n",
-					fy_token_debug_text_a(fyt_insert),
-					fy_atom_get_text_a(&fyt_insert->comment[fycp_right]));
 		}
 	}
 

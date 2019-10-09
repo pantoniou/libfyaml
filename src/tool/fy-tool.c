@@ -751,6 +751,7 @@ int main(int argc, char *argv[])
 			emit_flags |= FYECF_SORT_KEYS;
 			break;
 		case 'c':
+			cfg.flags |= FYPCF_PARSE_COMMENTS;
 			emit_flags |= FYECF_OUTPUT_COMMENTS;
 			break;
 		case 'C':

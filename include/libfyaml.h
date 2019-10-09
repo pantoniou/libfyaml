@@ -195,6 +195,7 @@ enum fy_error_module {
  * @FYPCF_RESOLVE_DOCUMENT: When producing documents, automatically resolve them
  * @FYPCF_DISABLE_MMAP_OPT: Disable mmap optimization
  * @FYPCF_DISABLE_RECYCLING: Disable recycling optimization
+ * @FYPCF_PARSE_COMMENTS: Enable parsing of comments (experimental)
  */
 enum fy_parse_cfg_flags {
 	FYPCF_QUIET			= FY_BIT(0),
@@ -221,7 +222,8 @@ enum fy_parse_cfg_flags {
 	FYPCF_DEBUG_DIAG_MODULE		= FY_BIT(FYPCF_DEBUG_DIAG_SHIFT + 3),
 	FYPCF_RESOLVE_DOCUMENT		= FY_BIT(20),
 	FYPCF_DISABLE_MMAP_OPT		= FY_BIT(21),
-	FYPCF_DISABLE_RECYCLING		= FY_BIT(22)
+	FYPCF_DISABLE_RECYCLING		= FY_BIT(22),
+	FYPCF_PARSE_COMMENTS		= FY_BIT(23),
 };
 
 /* Enable diagnostic output by all modules */
