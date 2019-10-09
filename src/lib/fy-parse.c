@@ -3280,6 +3280,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	size_t length, line_length, trailing_ws, trailing_breaks_length;
 	size_t leading_ws, prev_leading_ws;
 	size_t prefix_length, suffix_length;
+	unsigned int chomp_amt;
 
 	fy_error_check(fyp, c == '|' || c == '>', err_out,
 			"bad start of block scalar ('%s')",
@@ -3358,10 +3359,8 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 
 	fy_fill_atom_start(fyp, &handle);
 
-	if (increment) {
-		current_indent = fyp->indent;
-		indent = current_indent >= 0 ? current_indent + increment : increment;
-	}
+	current_indent = fyp->indent >= 0 ? fyp->indent : 0;
+	indent = increment ? current_indent + increment : 0;
 
 	length = 0;
 	trailing_breaks_length = 0;
@@ -3388,6 +3387,8 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	prev_indented = false;
 	first = true;
 
+	chomp_amt = increment ? (unsigned int)(current_indent + increment) : (unsigned int)-1;
+
 	while ((c = fy_parse_peek(fyp)) > 0 && fyp->column >= indent) {
 
 		/* consume the list */
@@ -3409,6 +3410,12 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 				empty = false;
 				empty_line = false;
 				trailing_ws = 0;
+				if (chomp_amt == (unsigned int)-1) {
+					chomp_amt = fyp->column;
+					fy_notice(NULL, "setting chomp_amt=%u c='%s'",
+							chomp_amt, fy_utf8_format_a(c, fyue_singlequote));
+				}
+
 			} else {
 				if (empty_line)
 					leading_ws++;
@@ -3509,6 +3516,11 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	/* end... */
 	fy_fill_atom_end(fyp, &handle);
 
+	if (chomp_amt == (unsigned int)-1)
+		chomp_amt = current_indent;
+
+	fy_notice(NULL, "chomp_amt=%u", chomp_amt);
+
 	switch (chomp) {
 	case FYAC_CLIP:
 		/* nothing */
@@ -3525,7 +3537,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	/* need to process to present */
 	handle.style = is_literal ? FYAS_LITERAL : FYAS_FOLDED;
 	handle.chomp = chomp;
-	handle.increment = increment ? (fyp->indent + increment) : 0;
+	handle.increment = increment ? (unsigned int)(current_indent + increment) : chomp_amt;
 
 	handle.storage_hint = length;
 	handle.storage_hint_valid = true;

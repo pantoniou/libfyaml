@@ -23,19 +23,6 @@
 
 #include "fy-parse.h"
 
-#define O_CPY(_src, _len) \
-	do { \
-		int _l = (_len); \
-		if (o && _l) { \
-			int _cl = _l; \
-			if (_cl > (oe - o)) \
-				_cl = oe - o; \
-			memcpy(o, (_src), _cl); \
-			o += _cl; \
-		} \
-		len += _l; \
-	} while(0)
-
 #ifndef NDEBUG
 
 #define fy_atom_out_debug(_atom, _out, _fmt, ...) \
@@ -50,6 +37,20 @@
 	do { } while(0)
 
 #endif
+
+#define O_CPY(_src, _len) \
+	do { \
+		const void *_s = (_src); \
+		int _l = (_len); \
+		if (o && _l) { \
+			int _cl = _l; \
+			if (_cl > (oe - o)) \
+				_cl = oe - o; \
+			memcpy(o, _s, _cl); \
+			o += _cl; \
+		} \
+		len += _l; \
+	} while(0)
 
 static int
 fy_atom_format_internal_line(const struct fy_atom *atom,
@@ -360,7 +361,7 @@ int fy_atom_format_internal(const struct fy_atom *atom, void *out, size_t *outsz
 	const char *s, *e;
 	char *o = NULL, *oe = NULL;
 	size_t outsz;
-	int chomp, fchomp, leading_line_ws;
+	int chomp, leading_line_ws;
 	bool is_first, is_last;
 	bool is_empty_line, has_trailing_breaks, has_break;
 	bool need_sep, last_need_sep, is_quoted, is_block;
@@ -371,7 +372,6 @@ int fy_atom_format_internal(const struct fy_atom *atom, void *out, size_t *outsz
 	const char *nnlbnws;		/* next non linebreak, non whitespace */
 	const char *tlb, *tlbe;
 	const char *fnspc;		/* first non space */
-	const char *fnwslb, *fnwslbs;	/* first non whitespace or linebreak, start */
 	bool has_trailing_breaks_ws;
 
 	s = fy_atom_data(atom);
@@ -419,21 +419,6 @@ int fy_atom_format_internal(const struct fy_atom *atom, void *out, size_t *outsz
 	is_block = style == FYAS_LITERAL || style == FYAS_FOLDED;
 
 	chomp = is_block ? atom->increment : 0;
-	fchomp = 0;
-
-	/* scan forward for chomp */
-	if (!chomp && is_block) {
-		fnwslb = fy_find_non_ws_lb(s, e - s);
-
-		/* track back until start of line */
-		fnwslbs = fnwslb;
-		while (fnwslbs > s && fy_is_ws(fnwslbs[-1]))
-			fnwslbs--;
-
-		fchomp = fnwslb - fnwslbs;
-
-		fy_atom_out_debug(atom, out, "detected fchomp=%d", fchomp);
-	}
 
 	last_need_sep = false;
 
@@ -548,14 +533,15 @@ int fy_atom_format_internal(const struct fy_atom *atom, void *out, size_t *outsz
 		fy_atom_out_debug(atom, out, "lbe->nnlb: '%s'\n",
 			fy_utf8_format_text_a(lbe, nnlb - lbe, fyue_singlequote));
 
-		fy_atom_out_debug(atom, out, "is_first=%s is_last=%s is_empty_line=%s has_break=%s has_trailing_breaks=%s leading_line_ws=%d has_trailing_ws=%s",
+		fy_atom_out_debug(atom, out, "is_first=%s is_last=%s is_empty_line=%s has_break=%s has_trailing_breaks=%s leading_line_ws=%d has_trailing_ws=%s is_indented=%s",
 				is_first ? "true" : "false",
 				is_last ? "true" : "false",
 				is_empty_line ? "true" : "false",
 				has_break ? "true" : "false",
 				has_trailing_breaks ? "true" : "false",
 				leading_line_ws,
-				has_trailing_ws ? "true" : "false");
+				has_trailing_ws ? "true" : "false",
+				is_indented ? "true" : "false");
 		fy_atom_out_debug(atom, out, "need_sep=%s chomp=%d",
 				need_sep ? "true" : "false",
 				chomp);
@@ -576,26 +562,12 @@ int fy_atom_format_internal(const struct fy_atom *atom, void *out, size_t *outsz
 		}
 
 		/* literal style, output whitespaces after the chomp point */
-		if (style == FYAS_LITERAL && is_indented && chomp) {
+		if (is_block && is_indented && chomp) {
 			fy_atom_out_debug(atom, out, "literal-prefix-whitespace: '%.*s'",
 						(int)(fnws - s - chomp), s + chomp);
 			O_CPY(s + chomp, fnws - s - chomp);
-		}
-
-		/* literal style, output whitespaces after the chomp point */
-		if (style == FYAS_FOLDED && is_indented && !is_empty_line && chomp) {
-			fy_atom_out_debug(atom, out, "folded-prefix-whitespace: '%.*s'",
-						(int)(fnws - s - chomp), s + chomp);
-			O_CPY(s + chomp, fnws - s - chomp);
-			last_need_sep = false;
-		}
-
-		/* block style, before setting of chomp */
-		if (style == FYAS_FOLDED && !chomp && fchomp && fnws > fnspc) {
-			fy_atom_out_debug(atom, out, "folded-prefix-whitespace special: '%.*s'",
-						(int)(fnws - s - fchomp), s + fchomp);
-			O_CPY(s + fchomp, fnws - s - fchomp);
-			last_need_sep = false;
+			if (style == FYAS_FOLDED)
+				last_need_sep = false;
 		}
 
 		/* output the non-ws chunk */
@@ -696,7 +668,7 @@ int fy_atom_format_internal(const struct fy_atom *atom, void *out, size_t *outsz
 		}
 
 		/* output the folded linebreak only when this, or the next line change indentation */
-		if (!is_last && style == FYAS_FOLDED && (is_indented || next_is_indented || has_trailing_breaks_ws)) {
+		if (!is_last && style == FYAS_FOLDED && (is_empty_line || is_indented || next_is_indented || has_trailing_breaks_ws)) {
 
 			fy_atom_out_debug(atom, out, "folded-lb");
 
