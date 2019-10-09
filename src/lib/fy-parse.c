@@ -3023,6 +3023,10 @@ int fy_fetch_anchor_or_alias(struct fy_parser *fyp, int c)
 
 	fy_fill_atom_end(fyp, &handle);
 
+	handle.storage_hint = length;
+	handle.storage_hint_valid = true;
+	handle.direct_output = true;
+
 	fyt = fy_token_queue(fyp, type, &handle);
 	fy_error_check(fyp, fyt, err_out_rc,
 			"fy_token_queue() failed");
