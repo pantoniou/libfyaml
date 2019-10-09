@@ -3525,7 +3525,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	/* need to process to present */
 	handle.style = is_literal ? FYAS_LITERAL : FYAS_FOLDED;
 	handle.chomp = chomp;
-	handle.increment = increment;
+	handle.increment = increment ? (fyp->indent + increment) : 0;
 
 	handle.storage_hint = length;
 	handle.storage_hint_valid = true;

@@ -57,10 +57,10 @@ struct fy_atom {
 	struct fy_mark end_mark;
 	size_t storage_hint;	/* guaranteed to fit in this amount of bytes */
 	struct fy_input *fyi;	/* input on which atom is on */
+	unsigned int increment;
 	/* save a little bit of space with bitfields */
 	enum fy_atom_style style : 6;
 	enum fy_atom_chomp chomp : 4;
-	unsigned int increment : 4;
 	bool direct_output : 1;	/* can directly output */
 	bool storage_hint_valid : 1;
 };
