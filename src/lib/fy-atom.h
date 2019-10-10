@@ -61,8 +61,9 @@ struct fy_atom {
 	/* save a little bit of space with bitfields */
 	enum fy_atom_style style : 6;
 	enum fy_atom_chomp chomp : 4;
-	bool direct_output : 1;	/* can directly output */
+	bool direct_output : 1;		/* can directly output */
 	bool storage_hint_valid : 1;
+	bool empty : 1;			/* atom contains ws_lb_only */
 };
 
 static inline bool fy_atom_is_set(const struct fy_atom *atom)

@@ -996,6 +996,7 @@ struct fy_input *fy_parse_input_from_data(struct fy_parser *fyp,
 		handle->direct_output = false;
 		handle->style = FYAS_DOUBLE_QUOTED_MANUAL;
 	}
+	handle->empty = !!(aflags & FYACF_EMPTY);
 
 	handle->chomp = FYAC_STRIP;
 	handle->increment = 0;
@@ -1342,6 +1343,7 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 		handle->direct_output = false;
 		handle->storage_hint = 0;
 		handle->storage_hint_valid = false;
+		handle->empty = false;
 	}
 
 	return 0;
@@ -3019,6 +3021,7 @@ int fy_fetch_anchor_or_alias(struct fy_parser *fyp, int c)
 	handle.storage_hint = length;
 	handle.storage_hint_valid = true;
 	handle.direct_output = true;
+	handle.empty = false;
 
 	fyt = fy_token_queue(fyp, type, &handle);
 	fy_error_check(fyp, fyt, err_out_rc,
@@ -3541,6 +3544,8 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	handle.direct_output = handle.end_mark.line == handle.start_mark.line &&
 				is_literal &&
 				fy_atom_size(&handle) == length;
+	handle.empty = empty;
+
 #ifdef ATOM_SIZE_CHECK
 	length = fy_atom_format_internal(&handle, NULL, NULL);
 	fy_error_check(fyp,
@@ -3596,7 +3601,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 	size_t length;
 	int rc = -1, code_length, i = 0, value, end_c, last_line;
 	int breaks_found, blanks_found;
-	bool is_single, is_multiline, is_complex, esc_lb;
+	bool is_single, is_multiline, is_complex, esc_lb, ws_lb_only;
 	struct fy_simple_key_mark skm;
 	struct fy_error_ctx ec;
 	struct fy_mark mark;
@@ -3625,6 +3630,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 	breaks_found = 0;
 	blanks_found = 0;
 	esc_lb = false;
+	ws_lb_only = true;
 
 	last_line = -1;
 	for (;;) {
@@ -3642,6 +3648,9 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 				err_end_of_stream);
 
 		while (!fy_is_blankz(c = fy_parse_peek(fyp))) {
+
+			if (ws_lb_only && !fy_is_ws_lb(c) && c != end_c)
+				ws_lb_only = false;
 
 			esc_lb = false;
 			/* track line change (and first non blank) */
@@ -3778,6 +3787,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 	handle.storage_hint = length;
 	handle.storage_hint_valid = true;
 	handle.direct_output = !is_multiline && fy_atom_size(&handle) == length;
+	handle.empty = ws_lb_only;
 
 	/* skip over block scalar end */
 	fy_advance_by(fyp, 1);
@@ -4059,6 +4069,7 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 	handle.storage_hint = length;
 	handle.storage_hint_valid = true;
 	handle.direct_output = !is_multiline && fy_atom_size(&handle) == length;
+	handle.empty = false;
 
 #ifdef ATOM_SIZE_CHECK
 	length = fy_atom_format_internal(&handle, NULL, NULL);
