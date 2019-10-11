@@ -3427,9 +3427,6 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 			line_length += fy_utf8_width(c);
 		}
 
-		if (indented && empty_line)
-			indented = false;
-
 		FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_SCAN,
 				c >= 0,
 				err_eof_found);
@@ -3462,7 +3459,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 			if (!empty_line && !indented) {
 				if (!first && needs_sep && !prev_breaks)
 					prefix_length++;
-			} else if (indented) {
+			} else if (!empty_line && indented) {
 				if (!first && (!prev_indented || prev_breaks > 0))
 					prefix_length++;
 			}
