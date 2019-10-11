@@ -514,12 +514,22 @@ void fy_emit_node_internal(struct fy_emitter *emit, struct fy_node *fyn, int fla
 	}
 }
 
-void fy_emit_write_plain(struct fy_emitter *emit, int flags, int indent, const char *str, size_t len)
+void fy_emit_write_plain(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent)
 {
 	bool allow_breaks, should_indent, spaces, breaks;
 	const char *s, *e, *sr, *nlb;
 	int c, w, ww, srlen;
 	enum fy_emitter_write_type wtype;
+	const char *str = NULL;
+	size_t len = 0;
+
+	if (fyn && fyn->scalar)
+		str = fy_token_get_text(fyn->scalar, &len);
+
+	if (!str) {
+		str = "";
+		len = 0;
+	}
 
 	s = str;
 	e = str + len;
@@ -603,18 +613,36 @@ done:
 	emit->flags &= ~(FYEF_WHITESPACE | FYEF_INDENTATION);
 }
 
-void fy_emit_write_alias(struct fy_emitter *emit, int flags, int indent, const char *str, size_t len)
+void fy_emit_write_alias(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent)
 {
+	const char *str = NULL;
+	size_t len = 0;
+
+	assert(fyn);
+	assert(fyn->scalar);
+
+	str = fy_token_get_text(fyn->scalar, &len);
+
 	fy_emit_write_indicator(emit, di_star, flags, indent, fyewt_alias);
 	fy_emit_write(emit, fyewt_alias, str, len);
 }
 
-void fy_emit_write_quoted(struct fy_emitter *emit, int flags, int indent, const char *str, size_t len, char qc)
+void fy_emit_write_quoted(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent, char qc)
 {
 	bool allow_breaks, spaces, breaks;
 	const char *s, *e, *sr, *nnws, *stws, *etws;
 	int c, cn, w, ww, srlen;
 	enum fy_emitter_write_type wtype;
+	const char *str = NULL;
+	size_t len = 0;
+
+	if (fyn && fyn->scalar)
+		str = fy_token_get_text(fyn->scalar, &len);
+
+	if (!str) {
+		str = "";
+		len = 0;
+	}
 
 	s = str;
 	e = str + len;
@@ -851,12 +879,22 @@ out:
 	return explicit_chomp;
 }
 
-void fy_emit_write_literal(struct fy_emitter *emit, int flags, int indent, const char *str, size_t len)
+void fy_emit_write_literal(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent)
 {
 	bool breaks, explicit_chomp;
 	const char *s, *e, *sr;
 	int c, w;
 	char chomp;
+	const char *str = NULL;
+	size_t len = 0;
+
+	if (fyn && fyn->scalar)
+		str = fy_token_get_text(fyn->scalar, &len);
+
+	if (!str) {
+		str = "";
+		len = 0;
+	}
 
 	s = str;
 	e = str + len;
@@ -899,12 +937,23 @@ void fy_emit_write_literal(struct fy_emitter *emit, int flags, int indent, const
 	emit->flags &= ~FYEF_INDENTATION;
 }
 
-void fy_emit_write_folded(struct fy_emitter *emit, int flags, int indent, const char *str, size_t len)
+void fy_emit_write_folded(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent)
 {
 	bool leading_spaces, breaks, explicit_chomp;
 	const char *s, *e, *sr, *ss;
 	int c, cc, w, ww, srlen;
 	char chomp;
+	const char *str = NULL;
+	size_t len = 0;
+
+	if (fyn && fyn->scalar)
+		str = fy_token_get_text(fyn->scalar, &len);
+
+	if (!str) {
+		str = "";
+		len = 0;
+	}
+
 
 	s = str;
 	e = str + len;
@@ -989,9 +1038,9 @@ void fy_emit_write_auto_style_scalar(struct fy_emitter *emit, struct fy_node *fy
 
 	aflags = fy_token_text_analyze(fyn->scalar);
 	if (aflags & FYTTAF_DIRECT_OUTPUT)
-		fy_emit_write_plain(emit, flags, indent, str, len);
+		fy_emit_write_plain(emit, fyn, flags, indent);
 	else
-		fy_emit_write_quoted(emit, flags, indent, str, len, '"');
+		fy_emit_write_quoted(emit, fyn, flags, indent, '"');
 }
 
 static enum fy_node_style
@@ -1116,22 +1165,22 @@ void fy_emit_scalar(struct fy_emitter *emit, struct fy_node *fyn, int flags, int
 
 	switch (style) {
 	case FYNS_ALIAS:
-		fy_emit_write_alias(emit, flags, indent, value, len);
+		fy_emit_write_alias(emit, fyn, flags, indent);
 		break;
 	case FYNS_PLAIN:
-		fy_emit_write_plain(emit, flags, indent, value, len);
+		fy_emit_write_plain(emit, fyn, flags, indent);
 		break;
 	case FYNS_DOUBLE_QUOTED:
-		fy_emit_write_quoted(emit, flags, indent, value, len, '"');
+		fy_emit_write_quoted(emit, fyn, flags, indent, '"');
 		break;
 	case FYNS_SINGLE_QUOTED:
-		fy_emit_write_quoted(emit, flags, indent, value, len, '\'');
+		fy_emit_write_quoted(emit, fyn, flags, indent, '\'');
 		break;
 	case FYNS_LITERAL:
-		fy_emit_write_literal(emit, flags, indent, value, len);
+		fy_emit_write_literal(emit, fyn, flags, indent);
 		break;
 	case FYNS_FOLDED:
-		fy_emit_write_folded(emit, flags, indent, value, len);
+		fy_emit_write_folded(emit, fyn, flags, indent);
 		break;
 	default:
 		break;
