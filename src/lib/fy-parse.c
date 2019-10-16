@@ -3274,7 +3274,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	struct fy_atom handle;
 	enum fy_atom_chomp chomp = FYAC_CLIP;	/* default */
 	int rc, increment = 0, current_indent, new_indent, indent = 0, breaks, prev_breaks;
-	bool doc_end_detected, empty, empty_line, prev_empty_line, needs_sep, indented, prev_indented, first;
+	bool doc_start_end_detected, empty, empty_line, prev_empty_line, needs_sep, indented, prev_indented, first;
 	struct fy_error_ctx ec;
 	struct fy_token *fyt;
 	size_t length, line_length, trailing_ws, trailing_breaks_length;
@@ -3375,7 +3375,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 
 	indent = new_indent;
 
-	doc_end_detected = false;
+	doc_start_end_detected = false;
 	prev_breaks = 0;
 	prev_empty_line = false;
 	prev_leading_ws = 0;
@@ -3401,8 +3401,10 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 
 		while (!(fy_is_breakz(c = fy_parse_peek(fyp)))) {
 			if (fyp->column == 0 &&
-			    !fy_strncmp(fyp, "...", 3) && fy_is_blankz_at_offset(fyp, 3)) {
-				doc_end_detected = true;
+			    (!fy_strncmp(fyp, "...", 3) || !fy_strncmp(fyp, "---", 3)) &&
+			    fy_is_blankz_at_offset(fyp, 3)) {
+				doc_start_end_detected = true;
+				fy_notice(fyp, "---/... doc detected");
 				break;
 			}
 
@@ -3431,7 +3433,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 				c >= 0,
 				err_eof_found);
 
-		if (doc_end_detected)
+		if (doc_start_end_detected)
 			break;
 
 		/* eat line break */
@@ -3507,7 +3509,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 
 	/* detect wrongly indented block scalar */
 	FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_SCAN,
-		!empty || fyp->column <= fyp->indent || c == '#',
+		!empty || fyp->column <= fyp->indent || c == '#' || doc_start_end_detected,
 		err_wrongly_indented);
 
 	/* end... */
@@ -4202,8 +4204,8 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 
 	/* probable document start/end indicator */
 	if (fyp->column == 0 &&
-	(!fy_strncmp(fyp, "---", 3) || !fy_strncmp(fyp, "...", 3)) &&
-	fy_is_blankz_at_offset(fyp, 3)) {
+	    (!fy_strncmp(fyp, "---", 3) || !fy_strncmp(fyp, "...", 3)) &&
+	    fy_is_blankz_at_offset(fyp, 3)) {
 
 		FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_SCAN,
 				!fyp->bare_document_only,
