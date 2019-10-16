@@ -881,7 +881,7 @@ out:
 
 void fy_emit_write_literal(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent)
 {
-	bool breaks, explicit_chomp;
+	bool breaks;
 	const char *s, *e, *sr;
 	int c, w;
 	char chomp;
@@ -901,8 +901,8 @@ void fy_emit_write_literal(struct fy_emitter *emit, struct fy_node *fyn, int fla
 
 	fy_emit_write_indicator(emit, di_bar, flags, indent, fyewt_indicator);
 
-	explicit_chomp = fy_emit_write_block_hints(emit, flags, indent, str, len, &chomp);
-	if ((flags & DDNF_ROOT) || explicit_chomp)
+	fy_emit_write_block_hints(emit, flags, indent, str, len, &chomp);
+	if (flags & DDNF_ROOT)
 		indent += fy_emit_indent(emit);
 
 	fy_emit_putc(emit, fyewt_linebreak, '\n');
@@ -939,7 +939,7 @@ void fy_emit_write_literal(struct fy_emitter *emit, struct fy_node *fyn, int fla
 
 void fy_emit_write_folded(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent)
 {
-	bool leading_spaces, breaks, explicit_chomp;
+	bool leading_spaces, breaks;
 	const char *s, *e, *sr, *ss;
 	int c, cc, w, ww, srlen;
 	char chomp;
@@ -960,8 +960,8 @@ void fy_emit_write_folded(struct fy_emitter *emit, struct fy_node *fyn, int flag
 
 	fy_emit_write_indicator(emit, di_greater, flags, indent, fyewt_indicator);
 
-	explicit_chomp = fy_emit_write_block_hints(emit, flags, indent, str, len, &chomp);
-	if ((flags & DDNF_ROOT) || explicit_chomp)
+	fy_emit_write_block_hints(emit, flags, indent, str, len, &chomp);
+	if (flags & DDNF_ROOT)
 		indent += fy_emit_indent(emit);
 
 	fy_emit_putc(emit, fyewt_linebreak, '\n');
