@@ -182,4 +182,6 @@ static inline int fy_utf8_count(const void *ptr, size_t len)
 	return count;
 }
 
+int fy_utf8_parse_escape(const char **strp, size_t len);
+
 #endif

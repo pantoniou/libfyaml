@@ -228,3 +228,118 @@ const void *fy_utf8_memchr_generic(const void *s, int c, size_t n)
 
 	return NULL;
 }
+
+/* parse an escape and return utf8 value */
+int fy_utf8_parse_escape(const char **strp, size_t len)
+{
+	const char *s, *e;
+	char c;
+	int i, value, code_length;
+
+	if (!strp || !*strp || len < 2)
+		return -1;
+
+	s = *strp;
+	e = s + len;
+
+	c = *s++;
+	/* get '\\' */
+	if (c != '\\')
+		return -1;
+
+	c = *s++;
+
+	code_length = 0;
+	value = -1;
+	switch (c) {
+	case '0':
+		value = '\0';
+		break;
+	case 'a':
+		value = '\a';
+		break;
+	case 'b':
+		value = '\b';
+		break;
+	case 't':
+	case '\t':
+		value = '\t';
+		break;
+	case 'n':
+		value = '\n';
+		break;
+	case 'v':
+		value = '\v';
+		break;
+	case 'f':
+		value = '\f';
+		break;
+	case 'r':
+		value = '\r';
+		break;
+	case 'e':
+		value = '\e';
+		break;
+	case ' ':
+		value = ' ';
+		break;
+	case '"':
+		value = '"';
+		break;
+	case '/':
+		value = '/';
+		break;
+	case '\'':
+		value = '\'';
+		break;
+	case '\\':
+		value = '\\';
+		break;
+	case 'N':	
+		value = 0x85;	/* NEL */
+		break;
+	case '_':
+		value = 0xa0;
+		break;
+	case 'L':
+		value = 0x2028;	/* LS */
+		break;
+	case 'P':	/* PS 0x2029 */
+		value = 0x2029; /* PS */
+		break;
+	case 'x':
+		code_length = 2;
+		break;
+	case 'u':
+		code_length = 4;
+		break;
+	case 'U':
+		code_length = 8;
+		break;
+	default:
+		return -1;
+	}
+
+	if (value < 0) {
+		if (!code_length || code_length > (e - s))
+			return -1;
+
+		value = 0;
+		for (i = 0; i < code_length; i++) {
+			c = *s++;
+			value <<= 4;
+			if (c >= '0' && c <= '9')
+				value |= c - '0';
+			else if (c >= 'a' && c <= 'f')
+				value |= 10 + c - 'a';
+			else if (c >= 'A' && c <= 'F')
+				value |= 10 + c - 'A';
+			else
+				return -1;
+		}
+	}
+
+	*strp = s;
+
+	return value;
+}
