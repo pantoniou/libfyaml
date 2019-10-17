@@ -289,9 +289,6 @@ int fy_utf8_parse_escape(const char **strp, size_t len)
 	case '/':
 		value = '/';
 		break;
-	case '\'':
-		value = '\'';
-		break;
 	case '\\':
 		value = '\\';
 		break;
