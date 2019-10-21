@@ -86,7 +86,7 @@ struct fy_token *fy_token_ref(struct fy_token *fyt)
 	fyt->refs++;
 
 	/* fy_notice(NULL, "%s: %p #%d", __func__, fyt, fyt->refs); */
-	
+
 	return fyt;
 }
 

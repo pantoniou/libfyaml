@@ -3101,7 +3101,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 
 	/* and continue on path lookup with the rest */
 
-	fy_notice(NULL, "%s: path='%.*s'", __func__, (int)pathlen, path);
+	/* fy_notice(NULL, "%s: path='%.*s'", __func__, (int)pathlen, path); */
 
 	/* skip all prefixed / */
 	while (s < e && *s == '/')
@@ -3213,7 +3213,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 		if (!fyn)
 			goto out;
 
-		fy_notice(NULL, "found merge key");
+		/* fy_notice(NULL, "found merge key"); */
 
 		if (fy_node_is_alias(fyn)) {
 
@@ -3279,6 +3279,7 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 		/* fy_notice(NULL, "%s: alias check: '%.*s'", __func__, (int)(e - s), s); */
 		ss = s;
 
+		c = -1;
 		for (t = s; t < e; t++) {
 			c = *t;
 			/* it ends on anything non alias */
@@ -3328,7 +3329,7 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 		} else {
 			/* no anchor found? try for *</path/foo> */
 
-			fy_notice(NULL, "anchor not found: %.*s", (int)alen, anchor);
+			/* fy_notice(NULL, "anchor not found: %.*s", (int)alen, anchor); */
 
 			s = ss;
 			if ((e - s) < 3 || s[0] != '<' || s[1] != '/' || e[-1] != '>')
@@ -3337,7 +3338,7 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 			path = ss + 1;
 			len = (e - 1) - (ss + 1);
 
-			fy_notice(NULL, "direct path: %.*s", (int)len, path);
+			/* fy_notice(NULL, "direct path: %.*s", (int)len, path); */
 
 		}
 	}

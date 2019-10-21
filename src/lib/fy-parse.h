@@ -228,7 +228,6 @@ static inline bool fy_plain_atom_streq(const struct fy_atom *atom, const char *s
 	return !memcmp(str, fy_atom_data(atom), size);
 }
 
-
 enum fy_parser_state {
 	/** none state */
 	FYPS_NONE,

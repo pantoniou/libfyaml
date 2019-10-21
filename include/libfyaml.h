@@ -9,7 +9,7 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
  *
@@ -1428,7 +1428,7 @@ struct fy_document *fy_document_vbuildf(const struct fy_parse_cfg *cfg, const ch
  *
  * @cfg: The parse configuration to use or NULL for the default.
  * @fmt: The format string creating the YAML source to use.
- * @...: The printf arguments 
+ * @...: The printf arguments
  *
  * Returns:
  * The created document, or NULL on error.
@@ -1608,7 +1608,7 @@ struct fy_node *fy_node_vbuildf(struct fy_document *fyd, const char *fmt, va_lis
  *
  * @fyd: The document
  * @fmt: The format string creating the YAML source to use.
- * @...: The printf arguments 
+ * @...: The printf arguments
  *
  * Returns:
  * The created node, or NULL on error.
@@ -2338,7 +2338,7 @@ int fy_document_tag_directive_remove(struct fy_document *fyd, const char *handle
  * fy_document_lookup_anchor() - Lookup an anchor
  *
  * Lookup for an anchor having the name provided
- * 
+ *
  * @fyd: The document
  * @anchor: The anchor to look for
  * @len: The length of the anchor (or -1 if '\0' terminated)

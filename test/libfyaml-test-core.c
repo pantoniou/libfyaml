@@ -854,7 +854,7 @@ START_TEST(doc_join_tags)
 		"---\n"
 		"- !b!bar\n"
 		"  something: other\n", "/",
-		"/");	
+		"/");
 
 	ck_assert_str_eq(output, "[bar, baz]");
 	free(output);
