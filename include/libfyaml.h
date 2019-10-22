@@ -1161,6 +1161,23 @@ struct fy_emitter *fy_emitter_create(struct fy_emitter_cfg *cfg);
 void fy_emitter_destroy(struct fy_emitter *emit);
 
 /**
+ * fy_emit_event() - Queue (and possibly emit) an event
+ *
+ * Queue and output using the emitter. This is the streaming
+ * output method which does not require creating a document.
+ * Note that the event _must_ be previously created from
+ * a call to fy_parser_parse(), and that the parser must be
+ * not destroyed while emitting is in progress.
+ *
+ * @emit: The emitter to use
+ * @fye: The event to queue for emission
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int fy_emit_event(struct fy_emitter *emit, struct fy_event *fye);
+
+/**
  * fy_emit_document() - Emit the document using the emitter
  *
  * Emits a document in YAML format using the emitter.

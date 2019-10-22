@@ -372,6 +372,7 @@ Options:
 	--sort, -s               : Perform mapping key sort (valid for dump) (default false)
 	--comment, -c            : Output comments (experimental) (default false)
 	--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline (default original)
+	--streaming              : Use streaming output mode (default false)
 
 	[common options]
 
@@ -388,6 +389,13 @@ Options:
 	{
 	  "foo": "bar"
 	}
+
+	Parse and dump generated YAML document from the input string (using streaming mode)
+	$ fy-dump --streaming ">foo: bar"
+	foo: bar
+
+	Note that streaming mode can not perform document validity checks, like duplicate keys nor
+        support the sort keys option.
 ```
 
 ### fy-filter usage

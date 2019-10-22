@@ -1,0 +1,2 @@
+#!/bin/sh
+${SRCDIR}/testemitter.test --streaming

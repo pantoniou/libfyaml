@@ -28,6 +28,7 @@
 #include "fy-atom.h"
 #include "fy-ctype.h"
 #include "fy-token.h"
+#include "fy-event.h"
 #include "fy-doc.h"
 #include "fy-emit.h"
 
@@ -286,14 +287,6 @@ struct fy_parse_state_log {
 	enum fy_parser_state state;
 };
 FY_PARSE_TYPE_DECL(parse_state_log);
-
-/* private event type */
-struct fy_eventp {
-	struct list_head node;
-	struct fy_parser *fyp;
-	struct fy_event e;
-};
-FY_PARSE_TYPE_DECL(eventp);
 
 struct fy_parser {
 	struct fy_parse_cfg cfg;

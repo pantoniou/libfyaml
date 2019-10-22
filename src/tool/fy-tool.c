@@ -40,6 +40,7 @@
 #define STRIP_LABELS_DEFAULT		false
 #define STRIP_TAGS_DEFAULT		false
 #define STRIP_DOC_DEFAULT		false
+#define STREAMING_DEFAULT		false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -50,6 +51,7 @@
 #define OPT_STRIP_LABELS		2000
 #define OPT_STRIP_TAGS			2001
 #define OPT_STRIP_DOC			2002
+#define OPT_STREAMING			2003
 
 static struct option lopts[] = {
 	{"include",		required_argument,	0,	'I' },
@@ -72,6 +74,7 @@ static struct option lopts[] = {
 	{"strip-labels",	no_argument,		0,	OPT_STRIP_LABELS },
 	{"strip-tags",		no_argument,		0,	OPT_STRIP_TAGS },
 	{"strip-doc",		no_argument,		0,	OPT_STRIP_DOC },
+	{"streaming",		no_argument,		0,	OPT_STREAMING },
 	{"to",			required_argument,	0,	'T' },
 	{"from",		required_argument,	0,	'F' },
 	{"quiet",		no_argument,		0,	'q' },
@@ -133,6 +136,10 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline"
 							" (default %s)\n",
 							MODE_DEFAULT);
+		if (tool_mode == OPT_TOOL || tool_mode == OPT_DUMP)
+			fprintf(fp, "\t--streaming              : Use streaming output mode"
+								" (default %s)\n",
+								STREAMING_DEFAULT ? "true" : "false");
 	}
 
 	if (tool_mode == OPT_TOOL || (tool_mode != OPT_DUMP && tool_mode != OPT_TESTSUITE)) {
@@ -664,6 +671,7 @@ int main(int argc, char *argv[])
 	struct fy_event *fyev;
 	bool join_resolve = RESOLVE_DEFAULT;
 	struct fy_token_iter *iter;
+	bool streaming = STREAMING_DEFAULT;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -818,6 +826,9 @@ int main(int argc, char *argv[])
 		case OPT_STRIP_DOC:
 			emit_flags |= FYECF_STRIP_DOC;
 			break;
+		case OPT_STREAMING:
+			streaming = true;
+			break;
 		case 'h' :
 		default:
 			if (opt != 'h')
@@ -918,14 +929,23 @@ int main(int argc, char *argv[])
 				goto cleanup;
 			}
 
-			while ((fyd = fy_parse_load_document(fyp)) != NULL) {
+			if (!streaming) {
+				while ((fyd = fy_parse_load_document(fyp)) != NULL) {
 
-				rc = fy_emit_document(fye, fyd);
-				if (rc)
-					goto cleanup;
+					rc = fy_emit_document(fye, fyd);
+					if (rc)
+						goto cleanup;
 
-				fy_parse_document_destroy(fyp, fyd);
+					fy_parse_document_destroy(fyp, fyd);
 
+					count++;
+				}
+			} else {
+				while ((fyev = fy_parser_parse(fyp)) != NULL) {
+					rc = fy_emit_event(fye, fyev);
+					if (rc)
+						goto cleanup;
+				}
 				count++;
 			}
 

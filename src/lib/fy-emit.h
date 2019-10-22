@@ -18,6 +18,8 @@
 
 #include <libfyaml.h>
 
+#include "fy-event.h"
+
 #define FYEF_WHITESPACE			0x0001
 #define FYEF_INDENTATION		0x0002
 #define FYEF_OPEN_ENDED			0x0004
@@ -27,6 +29,7 @@
 
 struct fy_document;
 struct fy_emitter;
+struct fy_document_state;
 
 #define FYEA_INPLACE_SZ	256
 struct fy_emit_accum {
@@ -41,6 +44,44 @@ struct fy_emit_accum {
 	enum fy_emitter_write_type type;
 };
 
+enum fy_emitter_state {
+	FYES_NONE,		/* when not using the raw emitter interface */
+	FYES_STREAM_START,
+	FYES_FIRST_DOCUMENT_START,
+	FYES_DOCUMENT_START,
+	FYES_DOCUMENT_CONTENT,
+	FYES_DOCUMENT_END,
+	FYES_SEQUENCE_FIRST_ITEM,
+	FYES_SEQUENCE_ITEM,
+	FYES_MAPPING_FIRST_KEY,
+	FYES_MAPPING_KEY,
+	FYES_MAPPING_SIMPLE_VALUE,
+	FYES_MAPPING_VALUE,
+	FYES_END,
+};
+
+struct fy_emit_save_ctx {
+	bool flow_token : 1;
+	bool flow : 1;
+	bool empty : 1;
+	int old_indent;
+	int flags;
+	int indent;
+	struct fy_token *fyt_last_key;
+	struct fy_token *fyt_last_value;
+	int s_flags;
+	int s_indent;
+};
+
+/* internal flags */
+#define DDNF_ROOT		0x0001
+#define DDNF_SEQ		0x0002
+#define DDNF_MAP		0x0004
+#define DDNF_SIMPLE		0x0008
+#define DDNF_FLOW		0x0010
+#define DDNF_INDENTLESS		0x0020
+#define DDNF_SIMPLE_SCALAR_KEY	0x0040
+
 struct fy_emitter {
 	int line;
 	int column;
@@ -50,7 +91,23 @@ struct fy_emitter {
 	/* current document */
 	const struct fy_emitter_cfg *cfg;
 	struct fy_document *fyd;
+	struct fy_document_state *fyds;	/* fyd->fyds when fyd != NULL */
 	struct fy_emit_accum ea;
+
+	/* streaming event mode */
+	enum fy_emitter_state state;
+	enum fy_emitter_state *state_stack;
+	unsigned int state_stack_alloc;
+	unsigned int state_stack_top;
+	enum fy_emitter_state state_stack_inplace[64];
+	struct fy_eventp_list queued_events;
+	int s_indent;
+	int s_flags;
+	struct fy_emit_save_ctx s_sc;
+	struct fy_emit_save_ctx *sc_stack;
+	unsigned int sc_stack_alloc;
+	unsigned int sc_stack_top;
+	struct fy_emit_save_ctx sc_stack_inplace[16];
 };
 
 void fy_emit_write(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int len);

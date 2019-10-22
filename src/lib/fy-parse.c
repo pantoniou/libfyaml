@@ -43,6 +43,11 @@ const char *fy_library_version(void)
 #endif
 }
 
+void fy_eventp_release(struct fy_eventp *fyep)
+{
+	fy_parse_eventp_recycle(fyep->fyp, fyep);
+}
+
 int fy_parse_input_open(struct fy_parser *fyp, struct fy_input *fyi);
 void fy_input_close(struct fy_input *fyi);
 
@@ -5771,8 +5776,6 @@ void fy_parser_event_free(struct fy_parser *fyp, struct fy_event *fye)
 
 	if (!fyp || !fye)
 		return;
-
-	fyp = (struct fy_parser *)fyp;
 
 	fyep = container_of(fye, struct fy_eventp, e);
 
