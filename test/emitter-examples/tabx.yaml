@@ -1,0 +1,10 @@
+# hard tabs for vim: noet:ci:pi:sts=0:ts=4:sw=4
+---
+	foo:		# \t
+		bar: 0	# \t\t
+        baz: 1	# [ ]x8
+	    qux: 2	# \t[ ]x4
+	    quux: 3	# [ ]x4\t
+  	  	quz: 4	# [ ]x2\t[ ]x2\t
+    frooz:		# [ ]x4
+		whee: 1	# \t\t

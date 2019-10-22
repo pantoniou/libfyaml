@@ -1,0 +1,7 @@
+# hard tabs for vim: set noet ci pi sts=0 ts=8 sw=8 :
+--- |	# spaces indent
+        foo
+          bar
+--- |	# tab + spaces
+    	foo
+	  bar

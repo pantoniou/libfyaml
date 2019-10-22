@@ -1,0 +1,10 @@
+# hard tabs for vim: set noet ci pi sts=0 ts=8 sw=8 :
+---
+	foo:		# \t
+		bar: 0	# \t\t
+                baz: 1	# [ ]x16
+	        qux: 2	# \t[ ]x8
+        	quux: 3	# [ ]x8\t
+    	    	quz: 4	# [ ]x4\t[ ]x4\t
+        frooz:		# [ ]x8
+		whee: 1
