@@ -17,7 +17,8 @@ libfyaml_@MAJOR@_@MINOR@_la_SOURCES = \
 	lib/fy-talloc.c lib/fy-talloc.h \
 	lib/fy-doc.c lib/fy-doc.h \
 	lib/fy-emit.c lib/fy-emit.h \
-	lib/fy-utils.c lib/fy-utils.h
+	lib/fy-utils.c lib/fy-utils.h \
+	lib/fy-event.h
 
 libfyaml_@MAJOR@_@MINOR@_la_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/lib
 libfyaml_@MAJOR@_@MINOR@_la_CFLAGS = $(AM_CFLAGS)

@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 EXTRA_DUMP_ARGS=""
 
