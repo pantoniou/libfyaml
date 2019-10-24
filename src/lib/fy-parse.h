@@ -595,7 +595,7 @@ extern const char *fy_event_type_txt[];
 	do { \
 		struct fy_parser *__fyp = (_fyp); \
 		if (!(_cond)) { \
-			if (!_fyp || !__fyp->stream_error) {\
+			if (!__fyp || !__fyp->stream_error) {\
 				if (__fyp) \
 					__fyp->stream_error = true; \
 				fy_error(__fyp, _fmt, ## __VA_ARGS__); \

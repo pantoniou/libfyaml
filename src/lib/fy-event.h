@@ -19,7 +19,7 @@
 #include "fy-list.h"
 #include "fy-typelist.h"
 
-struct fy_parser *fyp;
+struct fy_parser;
 
 /* private event type */
 struct fy_eventp {
