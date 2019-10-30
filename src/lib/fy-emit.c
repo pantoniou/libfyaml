@@ -1165,7 +1165,7 @@ static void fy_emit_sequence_prolog(struct fy_emitter *emit, struct fy_emit_save
 		if (fy_emit_is_flow_mode(emit))
 			sc->flow = true;
 		else if (fy_emit_is_block_mode(emit))
-			sc->flow = false;
+			sc->flow = sc->empty;
 		else
 			sc->flow = emit->flow_level || sc->flow_token || sc->empty;
 
@@ -1277,7 +1277,7 @@ static void fy_emit_mapping_prolog(struct fy_emitter *emit, struct fy_emit_save_
 		if (fy_emit_is_flow_mode(emit))
 			sc->flow = true;
 		else if (fy_emit_is_block_mode(emit))
-			sc->flow = false;
+			sc->flow = sc->empty;
 		else
 			sc->flow = emit->flow_level || sc->flow_token || sc->empty;
 
