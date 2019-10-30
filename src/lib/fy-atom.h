@@ -82,6 +82,8 @@ static inline bool fy_atom_is_set(const struct fy_atom *atom)
 int fy_atom_format_text_length(struct fy_atom *atom);
 const char *fy_atom_format_text(struct fy_atom *atom, char *buf, size_t maxsz);
 
+int fy_atom_format_utf8_length(struct fy_atom *atom);
+
 #define fy_atom_get_text_a(_atom) \
 	({ \
 		struct fy_atom *_a = (_atom); \

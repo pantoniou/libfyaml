@@ -528,6 +528,31 @@ const char *fy_token_format_text(struct fy_token *fyt, char *buf, size_t maxsz)
 	return str;
 }
 
+int fy_token_format_utf8_length(struct fy_token *fyt)
+{
+	const char *str;
+	size_t len;
+
+	if (!fyt)
+		return 0;
+
+	switch (fyt->type) {
+
+	case FYTT_TAG:
+	case FYTT_TAG_DIRECTIVE:
+		str = fy_token_get_text(fyt, &len);
+		if (!str)
+			return 0;
+		return fy_utf8_count(str, len);
+
+	default:
+		break;
+	}
+
+	return fy_atom_format_utf8_length(&fyt->handle);
+}
+
+
 struct fy_atom *fy_token_atom(struct fy_token *fyt)
 {
 	return fyt ? &fyt->handle : NULL;

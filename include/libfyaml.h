@@ -651,6 +651,20 @@ const char *fy_token_get_text0(struct fy_token *fyt);
 size_t fy_token_get_text_length(struct fy_token *fyt);
 
 /**
+ * fy_token_get_utf8_length() - Get length of the text of a token
+ *
+ * This method will return the length of the text representation
+ * of a token as a utf8 string.
+ *
+ * @fyt: The token
+ *
+ * Returns:
+ * The size of the utf8 text representation of a token, -1 in case of an error.
+ * Note that the NULL token will return a length of zero.
+ */
+size_t fy_token_get_utf8_length(struct fy_token *fyt);
+
+/**
  * struct fy_iter_chunk - An iteration chunk
  *
  * @str: Pointer to the start of the chunk
@@ -2104,6 +2118,21 @@ const char *fy_node_get_scalar0(struct fy_node *fyn);
  * The size of the scalar content, or 0 if node is not scalar.
  */
 size_t fy_node_get_scalar_length(struct fy_node *fyn);
+
+/**
+ * fy_node_get_scalar_utf8_length() - Get the length of the scalar content
+ * 				      in utf8 characters
+ *
+ * This method will return the size of the scalar content of the node in
+ * utf8 characters.
+ * If the node is not a scalar it will return 0.
+ *
+ * @fyn: The scalar node
+ *
+ * Returns:
+ * The size of the scalar content in utf8 characters, or 0 if node is not scalar.
+ */
+size_t fy_node_get_scalar_utf8_length(struct fy_node *fyn);
 
 /**
  * fy_node_sequence_iterate() - Iterate over a sequence node

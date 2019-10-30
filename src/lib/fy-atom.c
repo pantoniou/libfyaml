@@ -919,6 +919,56 @@ const char *fy_atom_format_text(struct fy_atom *atom, char *buf, size_t maxsz)
 	return buf;
 }
 
+int fy_atom_format_utf8_length(struct fy_atom *atom)
+{
+	struct fy_atom_iter iter;
+	const struct fy_iter_chunk *ic;
+	const char *s, *e;
+	size_t len;
+	int ret, rem, run, w;
+
+	if (!atom)
+		return -1;
+
+	len = 0;
+	rem = 0;
+	fy_atom_iter_start(atom, &iter);
+	ic = NULL;
+	while ((ic = fy_atom_iter_chunk_next(&iter, ic, &ret)) != NULL) {
+		s = ic->str;
+		e = s + ic->len;
+
+		/* add the remainder */
+		run = (e - s) > rem ? rem : (e - s);
+		s += run;
+
+		/* count utf8 characters */
+		while (s < e) {
+			w = fy_utf8_width_by_first_octet(*(uint8_t *)s);
+
+			/* how many bytes of this run */
+			run = (e - s) > w ? w : (e - s);
+			/* the remainder of this run */
+			rem = w - run;
+			/* one more character */
+			len++;
+			/* and advance */
+			s += run;
+		}
+	}
+	fy_atom_iter_finish(&iter);
+
+	/* something funky going on here */
+	if ((int)len < 0)
+		return -1;
+
+	if (ret != 0)
+		return ret;
+
+	return (int)len;
+}
+
+
 struct fy_atom_iter *
 fy_atom_iter_create(const struct fy_atom *atom)
 {

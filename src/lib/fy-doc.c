@@ -2814,6 +2814,15 @@ size_t fy_node_get_scalar_length(struct fy_node *fyn)
 	return fy_token_get_text_length(fyn->scalar);
 }
 
+size_t fy_node_get_scalar_utf8_length(struct fy_node *fyn)
+{
+
+	if (!fyn || fyn->type != FYNT_SCALAR)
+		return 0;
+
+	return fy_token_format_utf8_length(fyn->scalar);
+}
+
 struct fy_node *fy_node_sequence_iterate(struct fy_node *fyn, void **prevp)
 {
 	if (!fyn || fyn->type != FYNT_SEQUENCE || !prevp)
