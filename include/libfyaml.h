@@ -1544,6 +1544,38 @@ fy_node_style_from_scalar_style(enum fy_scalar_style sstyle)
 }
 
 /**
+ * typedef fy_node_mapping_sort_fn - Mapping sorting method function
+ *
+ * @fynp_a: The first node_pair used in the comparison
+ * @fynp_b: The second node_pair used in the comparison
+ * @arg: The opaque user provided pointer to the sort operation
+ *
+ * Returns:
+ * <0 if @fynp_a is less than @fynp_b
+ * 0 if @fynp_a is equal to fynp_b
+ * >0 if @fynp_a is greater than @fynp_b
+ */
+typedef int (*fy_node_mapping_sort_fn)(const struct fy_node_pair *fynp_a,
+				       const struct fy_node_pair *fynp_b,
+				       void *arg);
+
+/**
+ * typedef fy_node_scalar_compare_fn - Node compare method function for scalars
+ *
+ * @fyn_a: The first scalar node used in the comparison
+ * @fyn_b: The second scalar node used in the comparison
+ * @arg: The opaque user provided pointer to the compare operation
+ *
+ * Returns:
+ * <0 if @fyn_a is less than @fyn_b
+ * 0 if @fyn_a is equal to fyn_b
+ * >0 if @fyn_a is greater than @fyn_b
+ */
+typedef int (*fy_node_scalar_compare_fn)(struct fy_node *fyn_a,
+					 struct fy_node *fyn_b,
+					 void *arg);
+
+/**
  * fy_node_compare() - Compare two nodes for equality
  *
  * Compare two nodes for equality.
@@ -1559,6 +1591,31 @@ fy_node_style_from_scalar_style(enum fy_scalar_style sstyle)
  * true if the nodes contain the same content, false otherwise
  */
 bool fy_node_compare(struct fy_node *fyn1, struct fy_node *fyn2);
+
+/**
+ * fy_node_compare_user() - Compare two nodes for equality using
+ * 			    user supplied sort and scalar compare methods
+ *
+ * Compare two nodes for equality using user supplied sot and scalar
+ * compare methods.
+ * The comparison is 'deep', i.e. it recurses in subnodes,
+ * and orders the keys of maps using the supplied mapping sort method for
+ * ordering. For scalars the comparison is performed using the supplied
+ * scalar node compare methods.
+ *
+ * @fyn1: The first node to use in the comparison
+ * @fyn2: The second node to use in the comparison
+ * @sort_fn: The method to use for sorting maps, or NULL for the default
+ * @sort_fn_arg: The extra user supplied argument to the @sort_fn
+ * @cmp_fn: The method to use for comparing scalars, or NULL for the default
+ * @cmp_fn_arg: The extra user supplied argument to the @cmp_fn
+ *
+ * Returns:
+ * true if the nodes contain the same content, false otherwise
+ */
+bool fy_node_compare_user(struct fy_node *fyn1, struct fy_node *fyn2,
+			 fy_node_mapping_sort_fn sort_fn, void *sort_fn_arg,
+			 fy_node_scalar_compare_fn cmp_fn, void *cmp_fn_arg);
 
 /**
  * fy_node_compare_string() - Compare a node for equality with a YAML string
@@ -2481,22 +2538,6 @@ int fy_node_mapping_remove(struct fy_node *fyn_map, struct fy_node_pair *fynp);
  * The value part of removed node pair, or NULL in case of an error.
  */
 struct fy_node *fy_node_mapping_remove_by_key(struct fy_node *fyn_map, struct fy_node *fyn_key);
-
-/**
- * typedef fy_node_mapping_sort_fn - Mapping sorting method function
- *
- * @fynp_a: The first node_pair used in the comparison
- * @fynp_b: The second node_pair used in the comparison
- * @arg: The opaque user provided pointer to the sort operation
- *
- * Returns:
- * <0 if @fynp_a is less than @fynp_b
- * 0 if @fynp_a is equal to fynp_b
- * >0 if @fynp_a is greater than @fynp_b
- */
-typedef int (*fy_node_mapping_sort_fn)(const struct fy_node_pair *fynp_a,
-				       const struct fy_node_pair *fynp_b,
-				       void *arg);
 
 /**
  * fy_node_sort() - Recursively sort node

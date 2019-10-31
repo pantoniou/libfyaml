@@ -747,7 +747,22 @@ err_out:
 	return -1;
 }
 
-bool fy_node_compare(struct fy_node *fyn1, struct fy_node *fyn2)
+struct fy_node_cmp_arg {
+	fy_node_scalar_compare_fn cmp_fn;
+	void *arg;
+};
+
+static int fy_node_scalar_cmp_default(struct fy_node *fyn_a,
+				      struct fy_node *fyn_b,
+				      void *arg);
+
+static int fy_node_mapping_sort_cmp_default(const struct fy_node_pair *fynp_a,
+					    const struct fy_node_pair *fynp_b,
+					    void *arg);
+
+bool fy_node_compare_user(struct fy_node *fyn1, struct fy_node *fyn2,
+			 fy_node_mapping_sort_fn sort_fn, void *sort_fn_arg,
+			 fy_node_scalar_compare_fn cmp_fn, void *cmp_fn_arg)
 {
 	struct fy_node *fyni1, *fyni2;
 	struct fy_node_pair *fynp1, *fynp2;
@@ -755,7 +770,21 @@ bool fy_node_compare(struct fy_node *fyn1, struct fy_node *fyn2)
 	struct fy_node_pair **fynpp1, **fynpp2;
 	int i, count1, count2;
 	bool alias1, alias2;
+	struct fy_node_cmp_arg def_arg;
 
+	if (!cmp_fn) {
+		cmp_fn = fy_node_scalar_cmp_default;
+		cmp_fn_arg = NULL;
+	}
+	if (!sort_fn) {
+		sort_fn = fy_node_mapping_sort_cmp_default;
+		def_arg.cmp_fn = cmp_fn;
+		def_arg.arg = cmp_fn_arg;
+		sort_fn_arg = &def_arg;
+	} else {
+		def_arg.cmp_fn = NULL;
+		def_arg.arg = NULL;
+	}
 	/* equal pointers? */
 	if (fyn1 == fyn2)
 		return true;
@@ -808,8 +837,8 @@ bool fy_node_compare(struct fy_node *fyn1, struct fy_node *fyn2)
 		fynpp1 = alloca(sizeof(*fynpp1) * (count1 + 1));
 		fynpp2 = alloca(sizeof(*fynpp2) * (count2 + 1));
 
-		fy_node_mapping_perform_sort(fyn1, NULL, NULL, fynpp1, count1);
-		fy_node_mapping_perform_sort(fyn2, NULL, NULL, fynpp2, count2);
+		fy_node_mapping_perform_sort(fyn1, sort_fn, sort_fn_arg, fynpp1, count1);
+		fy_node_mapping_perform_sort(fyn2, sort_fn, sort_fn_arg, fynpp2, count2);
 
 		for (i = 0; i < count1; i++) {
 			fynp1 = fynpp1[i];
@@ -836,11 +865,16 @@ bool fy_node_compare(struct fy_node *fyn1, struct fy_node *fyn2)
 		if (alias1 != alias2)
 			return false;
 
-		ret = !fy_token_cmp(fyn1->scalar, fyn2->scalar);
+		ret = !cmp_fn(fyn1, fyn2, cmp_fn_arg);
 		break;
 	}
 
 	return ret;
+}
+
+bool fy_node_compare(struct fy_node *fyn1, struct fy_node *fyn2)
+{
+	return fy_node_compare_user(fyn1, fyn2, NULL, NULL, NULL, NULL);
 }
 
 bool fy_node_compare_string(struct fy_node *fyn, const char *str, size_t len)
@@ -4264,17 +4298,36 @@ static int fy_node_mapping_sort_cmp_no_qsort_r(const void *a, const void *b)
 #endif
 }
 
-
 #endif
+
+static int fy_node_scalar_cmp_default(struct fy_node *fyn_a,
+				      struct fy_node *fyn_b,
+				      void *arg)
+{
+	/* handles NULL cases */
+	if (fyn_a == fyn_b)
+		return 0;
+	if (!fyn_a)
+		return 1;
+	if (!fyn_b)
+		return -1;
+	return fy_token_cmp(fyn_a->scalar, fyn_b->scalar);
+}
 
 /* the default sort method */
 static int fy_node_mapping_sort_cmp_default(const struct fy_node_pair *fynp_a,
 					    const struct fy_node_pair *fynp_b,
-					    void *arg __attribute__((__unused__)))
+					    void *arg)
 {
 	int idx_a, idx_b;
 	bool alias_a, alias_b, scalar_a, scalar_b;
-	struct fy_token *fyt1, *fyt2;
+	struct fy_node_cmp_arg *cmp_arg;
+	fy_node_scalar_compare_fn cmp_fn;
+	void *cmp_fn_arg;
+
+	cmp_arg = arg;
+	cmp_fn = cmp_arg ? cmp_arg->cmp_fn : fy_node_scalar_cmp_default;
+	cmp_fn_arg = cmp_arg ? cmp_arg->arg : NULL;
 
 	/* order is: maps first, followed by sequences, and last scalars sorted */
 	scalar_a = !fynp_a->key || fy_node_is_scalar(fynp_a->key);
@@ -4294,10 +4347,7 @@ static int fy_node_mapping_sort_cmp_default(const struct fy_node_pair *fynp_a,
 		if (!alias_a && alias_b)
 			return 1;
 
-		fyt1 = fynp_a->key ? fynp_a->key->scalar : NULL;
-		fyt2 = fynp_b->key ? fynp_b->key->scalar : NULL;
-
-		return fy_token_cmp(fyt1, fyt2);
+		return cmp_fn(fynp_a->key, fynp_b->key, cmp_fn_arg);
 	}
 
 	/* b is scalar, a is not */
@@ -4326,6 +4376,7 @@ void fy_node_mapping_perform_sort(struct fy_node *fyn_map,
 	int i;
 	struct fy_node_pair *fynpi;
 	struct fy_node_mapping_sort_ctx ctx;
+	struct fy_node_cmp_arg def_arg;
 
 	for (i = 0, fynpi = fy_node_pair_list_head(&fyn_map->mapping); i < count && fynpi;
 		fynpi = fy_node_pair_next(&fyn_map->mapping, fynpi), i++)
@@ -4336,8 +4387,15 @@ void fy_node_mapping_perform_sort(struct fy_node *fyn_map,
 		fynpp[i++] = NULL;
 	assert(i == count);
 
+	if (!key_cmp) {
+		def_arg.cmp_fn = fy_node_scalar_cmp_default;
+		def_arg.arg = arg;
+	} else {
+		def_arg.cmp_fn = NULL;
+		def_arg.arg = NULL;
+	}
 	ctx.key_cmp = key_cmp ? : fy_node_mapping_sort_cmp_default;
-	ctx.arg = arg;
+	ctx.arg = key_cmp ? arg : &def_arg;
 	ctx.fynpp = fynpp;
 	ctx.count = count;
 #if defined(HAVE_QSORT_R) && HAVE_QSORT_R
