@@ -1,7 +1,5 @@
 # libfyaml &middot; ![](https://github.com/pantoniou/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)
 
-====
-
 A fancy 1.2 YAML and JSON parser/writer.
 
 Fully feature complete YAML parser and emitter, supporting the latest YAML spec and
