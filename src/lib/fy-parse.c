@@ -150,6 +150,7 @@ int fy_parse_get_next_input(struct fy_parser *fyp)
 	return 1;
 
 err_out:
+	fy_input_unref(fyi);
 	return -1;
 }
 
