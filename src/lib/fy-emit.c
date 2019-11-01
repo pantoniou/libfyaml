@@ -577,10 +577,17 @@ void fy_emit_token_write_plain(struct fy_emitter *emit, struct fy_token *fyt, in
 	struct fy_atom *atom;
 	struct fy_atom_iter iter;
 
-	if (!fyt)
+	/* null and not json mode */
+	if (!fyt && !fy_emit_is_json_mode(emit))
 		goto out;
 
 	wtype = (flags & DDNF_SIMPLE_SCALAR_KEY) ? fyewt_plain_scalar_key : fyewt_plain_scalar;
+
+	/* null and json mode */
+	if (!fyt && fy_emit_is_json_mode(emit)) {
+		fy_emit_puts(emit, wtype, "null");
+		goto out;
+	}
 
 	/* simple case first (90% of cases) */
 	str = fy_token_get_direct_output(fyt, &len);
