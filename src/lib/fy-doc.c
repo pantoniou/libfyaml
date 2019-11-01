@@ -3495,6 +3495,8 @@ char *fy_node_get_parent_address(struct fy_node *fyn)
 	struct fy_node_pair *fynp;
 	char *path = NULL;
 	int idx, ret;
+	const char *str;
+	size_t len;
 
 	if (!fyn || !fyn->parent)
 		return NULL;
@@ -3509,7 +3511,7 @@ char *fy_node_get_parent_address(struct fy_node *fyn)
 			idx++;
 
 		if (fyni) {
-			ret = asprintf(&path, "[%d]", idx);
+			ret = asprintf(&path, "%d", idx);
 			if (ret == -1)
 				path = NULL;
 		}
@@ -3520,8 +3522,20 @@ char *fy_node_get_parent_address(struct fy_node *fyn)
 				fynp = fy_node_pair_next(&parent->mapping, fynp))
 			idx++;
 
-		if (fynp)
-			path = fy_emit_node_to_string(fynp->key, FYECF_MODE_FLOW_ONELINE | FYECF_WIDTH_INF);
+		if (fynp) {
+			/* if key is a plain scalar try to not use a complex style (even for quoted) */
+			if (fynp->key && fy_node_is_scalar(fynp->key) && !fy_node_is_alias(fynp->key) &&
+					(str = fy_token_get_direct_output(fynp->key->scalar, &len)) != NULL) {
+				path = malloc(len + 1);
+				if (path) {
+					memcpy(path, str, len);
+					path[len] = '\0';
+				}
+			} else
+				path = fy_emit_node_to_string(fynp->key,
+						FYECF_MODE_FLOW_ONELINE | FYECF_WIDTH_INF |
+						FYECF_STRIP_LABELS	| FYECF_STRIP_TAGS);
+		}
 
 	}
 

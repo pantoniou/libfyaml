@@ -325,7 +325,7 @@ START_TEST(doc_path_node)
 	free(path);
 
 	path = fy_node_get_path(fy_node_by_path(fy_document_root(fyd), "/frooz/[0]", FY_NT, FYNWF_DONT_FOLLOW));
-	ck_assert_str_eq(path, "/frooz/[0]");
+	ck_assert_str_eq(path, "/frooz/0");
 	free(path);
 
 	path = fy_node_get_path(fy_node_by_path(fy_document_root(fyd), "/{ key2: value2 }/key3", FY_NT, FYNWF_DONT_FOLLOW));
