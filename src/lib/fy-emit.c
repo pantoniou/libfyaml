@@ -591,7 +591,7 @@ void fy_emit_token_write_plain(struct fy_emitter *emit, struct fy_token *fyt, in
 
 	/* simple case first (90% of cases) */
 	str = fy_token_get_direct_output(fyt, &len);
-	if (str) {
+	if (str && fy_token_atom_style(fyt) == FYAS_PLAIN) {
 		fy_emit_write(emit, wtype, str, len);
 		goto out;
 	}
@@ -700,6 +700,7 @@ void fy_emit_token_write_quoted(struct fy_emitter *emit, struct fy_token *fyt, i
 	bool should_indent;
 	struct fy_atom *atom;
 	struct fy_atom_iter iter;
+	enum fy_atom_style target_style;
 
 	wtype = qc == '\'' ?
 		((flags & DDNF_SIMPLE_SCALAR_KEY) ?
@@ -715,9 +716,14 @@ void fy_emit_token_write_quoted(struct fy_emitter *emit, struct fy_token *fyt, i
 	if (!fyt)
 		goto out;
 
+	/* note that if the original target style and the target differ
+	 * we can note use direct output
+	 */
+	target_style = qc == '"' ? FYAS_DOUBLE_QUOTED : FYAS_SINGLE_QUOTED;
+
 	/* simple case of direct output (large amount of cases) */
 	str = fy_token_get_direct_output(fyt, &len);
-	if (str) {
+	if (str && fy_token_atom_style(fyt) == target_style) {
 		fy_emit_write(emit, wtype, str, len);
 		goto out;
 	}
