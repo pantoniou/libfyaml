@@ -933,10 +933,9 @@ int main(int argc, char *argv[])
 				while ((fyd = fy_parse_load_document(fyp)) != NULL) {
 
 					rc = fy_emit_document(fye, fyd);
+					fy_parse_document_destroy(fyp, fyd);
 					if (rc)
 						goto cleanup;
-
-					fy_parse_document_destroy(fyp, fyd);
 
 					count++;
 				}

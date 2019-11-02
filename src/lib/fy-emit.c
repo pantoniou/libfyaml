@@ -95,6 +95,72 @@ static inline bool fy_emit_output_comments(struct fy_emitter *emit)
 	return !!(emit->cfg->flags & FYECF_OUTPUT_COMMENTS);
 }
 
+static int fy_emit_node_check_json(struct fy_emitter *emit, struct fy_node *fyn, struct fy_parser *fyp)
+{
+	struct fy_node *fyni;
+	struct fy_node_pair *fynp, *fynpi;
+	struct fy_error_ctx ec;
+	int ret;
+
+	if (!fyn)
+		return 0;
+
+	switch (fyn->type) {
+	case FYNT_SCALAR:
+		FY_ERROR_CHECK(fyp, fyn->scalar, &ec, FYEM_INTERNAL,
+				!fy_node_is_alias(fyn), err_no_json_alias);
+
+		break;
+
+	case FYNT_SEQUENCE:
+		for (fyni = fy_node_list_head(&fyn->sequence); fyni;
+				fyni = fy_node_next(&fyn->sequence, fyni)) {
+			ret = fy_emit_node_check_json(emit, fyni, fyp);
+			if (ret)
+				return ret;
+		}
+		break;
+
+	case FYNT_MAPPING:
+		for (fynp = fy_node_pair_list_head(&fyn->mapping); fynp; fynp = fynpi) {
+
+			fynpi = fy_node_pair_next(&fyn->mapping, fynp);
+
+			ret = fy_emit_node_check_json(emit, fynp->key, fyp);
+			if (ret)
+				return ret;
+			ret = fy_emit_node_check_json(emit, fynp->value, fyp);
+			if (ret)
+				return ret;
+		}
+		break;
+	}
+	return 0;
+err_no_json_alias:
+	fy_error_report(fyp, &ec, "aliases not allowed in JSON emit mode");
+	return -1;
+}
+
+static int fy_emit_node_check(struct fy_emitter *emit, struct fy_node *fyn)
+{
+	struct fy_document *fyd;
+	struct fy_parser *fyp;
+	int ret;
+
+	if (!fyn)
+		return 0;
+
+	if (fy_emit_is_json_mode(emit)) {
+		fyd = fyn->fyd;
+		fyp = fyd ? fyd->fyp : NULL;
+		ret = fy_emit_node_check_json(emit, fyn, fyp);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
 void fy_emit_node_internal(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent);
 void fy_emit_scalar(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent);
 void fy_emit_sequence(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent);
@@ -1748,6 +1814,12 @@ void fy_emit_cleanup(struct fy_emitter *emit)
 
 int fy_emit_node(struct fy_emitter *emit, struct fy_node *fyn)
 {
+	int ret;
+
+	ret = fy_emit_node_check(emit, fyn);
+	if (ret)
+		return ret;
+
 	if (fyn)
 		fy_emit_node_internal(emit, fyn, DDNF_ROOT, -1);
 	return 0;
@@ -1755,8 +1827,14 @@ int fy_emit_node(struct fy_emitter *emit, struct fy_node *fyn)
 
 int fy_emit_root_node(struct fy_emitter *emit, struct fy_node *fyn)
 {
+	int ret;
+
 	if (!emit || !fyn)
 		return -1;
+
+	ret = fy_emit_node_check(emit, fyn);
+	if (ret)
+		return ret;
 
 	/* top comment first */
 	fy_emit_node_comment(emit, fyn, DDNF_ROOT, -1, fycp_top);

@@ -376,6 +376,11 @@ const void *fy_ensure_lookahead_slow_path(struct fy_parser *fyp, size_t size, si
 /* only allowed if input does not update */
 static inline void fy_get_mark(struct fy_parser *fyp, struct fy_mark *fym)
 {
+	if (!fyp) {
+		memset(fym, 0, sizeof(*fym));
+		return;
+	}
+
 	fym->input_pos = fyp->current_input_pos;
 	fym->line = fyp->line;
 	fym->column = fyp->column;
@@ -645,7 +650,7 @@ struct fy_error_ctx {
 				__ctx->end_mark = *_end_mark; \
 			else \
 				fy_get_mark(__fyp, &__ctx->end_mark); \
-			__ctx->fyi = __fyt ? fy_token_get_input(__fyt) : __fyp->current_input; \
+			__ctx->fyi = __fyt ? fy_token_get_input(__fyt) : (__fyp ? __fyp->current_input : NULL); \
 			goto _label; \
 		} \
 	} while(0)
