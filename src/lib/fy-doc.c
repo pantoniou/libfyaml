@@ -2879,12 +2879,17 @@ int fy_node_sequence_item_count(struct fy_node *fyn)
 	int count;
 
 	if (!fyn || fyn->type != FYNT_SEQUENCE)
-		return 0;
+		return -1;
 
 	count = 0;
 	for (fyni = fy_node_list_head(&fyn->sequence); fyni; fyni = fy_node_next(&fyn->sequence, fyni))
 		count++;
 	return count;
+}
+
+bool fy_node_sequence_is_empty(struct fy_node *fyn)
+{
+	return !fyn || fyn->type != FYNT_SEQUENCE || fy_node_list_empty(&fyn->sequence);
 }
 
 struct fy_node *fy_node_sequence_get_by_index(struct fy_node *fyn, int index)
@@ -2936,6 +2941,11 @@ int fy_node_mapping_item_count(struct fy_node *fyn)
 	for (fynpi = fy_node_pair_list_head(&fyn->mapping); fynpi; fynpi = fy_node_pair_next(&fyn->mapping, fynpi))
 		count++;
 	return count;
+}
+
+bool fy_node_mapping_is_empty(struct fy_node *fyn)
+{
+	return !fyn || fyn->type != FYNT_MAPPING || fy_node_pair_list_empty(&fyn->mapping);
 }
 
 struct fy_node_pair *fy_node_mapping_get_by_index(struct fy_node *fyn, int index)

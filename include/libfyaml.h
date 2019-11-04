@@ -2232,6 +2232,18 @@ struct fy_node *fy_node_sequence_reverse_iterate(struct fy_node *fyn, void **pre
 int fy_node_sequence_item_count(struct fy_node *fyn);
 
 /**
+ * fy_node_sequence_is_empty() - Check whether the sequence is empty
+ *
+ * Check whether the sequence contains items.
+ *
+ * @fyn: The sequence node
+ *
+ * Returns:
+ * true if the node is a sequence containing items, false otherwise
+ */
+bool fy_node_sequence_is_empty(struct fy_node *fyn);
+
+/**
  * fy_node_sequence_get_by_index() - Return a sequence item by index
  *
  * Retrieve a node in the sequence using it's index. If index
@@ -2365,6 +2377,18 @@ struct fy_node_pair *fy_node_mapping_reverse_iterate(struct fy_node *fyn, void *
  * The count of node pairs in the mapping or -1 in case of an error.
  */
 int fy_node_mapping_item_count(struct fy_node *fyn);
+
+/**
+ * fy_node_mapping_is_empty() - Check whether the mapping is empty
+ *
+ * Check whether the mapping contains any node pairs.
+ *
+ * @fyn: The mapping node
+ *
+ * Returns:
+ * true if the node is a mapping containing node pairs, false otherwise
+ */
+bool fy_node_mapping_is_empty(struct fy_node *fyn);
 
 /**
  * fy_node_mapping_get_by_index() - Return a node pair by index
