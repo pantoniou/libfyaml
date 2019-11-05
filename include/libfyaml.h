@@ -240,6 +240,16 @@ enum fy_parse_cfg_flags {
 #define FYPCF_GET_DEBUG_LEVEL(_f) \
 	(((unsigned int)(_f) >> FYPCF_DEBUG_LEVEL_SHIFT) & FYPCF_DEBUG_LEVEL_MASK)
 
+#define FYPCF_DEFAULT_PARSE (FYPCF_DEBUG_LEVEL_INFO | \
+			     FYPCF_DEBUG_DIAG_TYPE | \
+			     FYPCF_COLOR_AUTO | \
+			     FYPCF_DEBUG_ALL)
+
+#define FYPCF_DEFAULT_DOC    (FYPCF_QUIET | \
+			      FYPCF_DEBUG_LEVEL_WARNING | \
+			      FYPCF_DEBUG_DIAG_TYPE | \
+			      FYPCF_COLOR_NONE)
+
 /* for debugging without a parser context */
 void fy_set_default_parser_cfg_flags(enum fy_parse_cfg_flags pflags);
 

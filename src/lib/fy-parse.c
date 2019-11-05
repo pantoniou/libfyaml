@@ -509,8 +509,7 @@ err_duplicate_tag_directive:
 }
 
 static const struct fy_parse_cfg default_parse_cfg = {
-	.search_path = "",
-	.flags = FYPCF_DEBUG_LEVEL_INFO | FYPCF_DEBUG_DIAG_TYPE | FYPCF_COLOR_AUTO | FYPCF_DEBUG_ALL,
+	.flags = FYPCF_DEFAULT_PARSE,
 };
 
 int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)

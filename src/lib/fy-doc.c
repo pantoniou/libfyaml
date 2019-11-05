@@ -2503,9 +2503,7 @@ int fy_document_set_parent(struct fy_document *fyd, struct fy_document *fyd_chil
 }
 
 static const struct fy_parse_cfg doc_parse_default_cfg = {
-	.search_path = "",
-	.flags = FYPCF_QUIET | FYPCF_DEBUG_LEVEL_WARNING |
-		 FYPCF_DEBUG_DIAG_TYPE | FYPCF_COLOR_NONE,
+	.flags = FYPCF_DEFAULT_DOC,
 };
 
 struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
