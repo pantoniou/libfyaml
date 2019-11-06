@@ -2899,4 +2899,80 @@ struct fy_anchor *fy_node_get_anchor(struct fy_node *fyn);
 struct fy_node *fy_node_create_alias(struct fy_document *fyd,
 				     const char *alias, size_t len);
 
+/**
+ * fy_node_get_meta() - Get the meta pointer of a node
+ *
+ * Return the meta pointer of a node.
+ *
+ * @fyn: The node to get meta data from
+ *
+ * Returns:
+ * The stored meta data pointer
+ */
+void *fy_node_get_meta(struct fy_node *fyn);
+
+/**
+ * fy_node_set_meta() - Set the meta pointer of a node
+ *
+ * Set the meta pointer of a node. If @meta is NULL
+ * then clear the meta data.
+ *
+ * @fyn: The node to set meta data
+ * @meta: The meta data pointer
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int fy_node_set_meta(struct fy_node *fyn, void *meta);
+
+/**
+ * fy_node_clear_meta() - Clear the meta data of a node
+ *
+ * Clears the meta data of a node.
+ *
+ * @fyn: The node to clear meta data
+ */
+void fy_node_clear_meta(struct fy_node *fyn);
+
+/**
+ * typedef fy_node_meta_clear_fn - Meta data clear method
+ *
+ * This is the callback called when meta data are cleared.
+ *
+ * @fynp: The node which the meta data is being cleared
+ * @meta: The meta data of the node assigned via fy_node_set_meta()
+ * @meta_user: The user pointer of fy_document_register_meta()
+ *
+ */
+typedef void (*fy_node_meta_clear_fn)(struct fy_node *fyn, void *meta, void *user);
+
+/**
+ * fy_document_register_meta() - Register a meta cleanup hook
+ *
+ * Register a meta data cleanup hook, to be called when
+ * the node is freed via a final call to fy_node_free().
+ * The hook is active for all nodes belonging to the document.
+ *
+ * @fyd: The document which the hook is registered to
+ * @clear_fn: The clear hook method
+ * @user: Opaque user provided pointer to the clear method
+ *
+ * Returns:
+ * 0 on success, -1 if another hook is already registered.
+ */
+int fy_document_register_meta(struct fy_document *fyd,
+			      fy_node_meta_clear_fn clear_fn,
+			      void *user);
+
+/**
+ * fy_document_unregister_meta() - Unregister a meta cleanup hook
+ *
+ * Unregister the currently active meta cleanup hook.
+ * The previous cleanup hook will be called for every node in
+ * the document.
+ *
+ * @fyd: The document to unregister it's meta cleanup hook.
+ */
+void fy_document_unregister_meta(struct fy_document *fyd);
+
 #endif

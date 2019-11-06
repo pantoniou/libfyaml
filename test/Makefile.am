@@ -35,7 +35,8 @@ libfyaml_test_LDFLAGS = $(AM_LDFLAGS) $(CHECK_LDFLAGS)
 libfyaml_test_SOURCES = \
 	libfyaml-test.c \
 	libfyaml-test-private.c \
-	libfyaml-test-core.c
+	libfyaml-test-core.c \
+	libfyaml-test-meta.c
 
 TESTS += libfyaml.test
 

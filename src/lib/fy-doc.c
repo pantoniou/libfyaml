@@ -554,6 +554,8 @@ void fy_node_free(struct fy_node *fyn)
 		}
 	}
 
+	/* clear the meta data of this node */
+	fy_node_clear_meta(fyn);
 
 	fy_token_unref(fyn->tag);
 	fyn->tag = NULL;
@@ -4820,4 +4822,97 @@ bool fy_document_has_explicit_document_start(const struct fy_document *fyd)
 bool fy_document_has_explicit_document_end(const struct fy_document *fyd)
 {
 	return fyd ? !fyd->fyds->end_implicit : false;
+}
+
+void *fy_node_get_meta(struct fy_node *fyn)
+{
+	return fyn && fyn->has_meta ? fyn->meta : NULL;
+}
+
+int fy_node_set_meta(struct fy_node *fyn, void *meta)
+{
+	struct fy_document *fyd;
+
+	if (!fyn || !fyn->fyd)
+		return -1;
+
+	fyd = fyn->fyd;
+	if (fyn->has_meta && fyd->meta_clear_fn)
+		fyd->meta_clear_fn(fyn, fyn->meta, fyd->meta_user);
+	fyn->meta = meta;
+	fyn->has_meta = true;
+
+	return 0;
+}
+
+void fy_node_clear_meta(struct fy_node *fyn)
+{
+	struct fy_document *fyd;
+
+	if (!fyn || !fyn->has_meta || !fyn->fyd)
+		return;
+
+	fyd = fyn->fyd;
+	if (fyd->meta_clear_fn)
+		fyd->meta_clear_fn(fyn, fyn->meta, fyd->meta_user);
+	fyn->meta = NULL;
+	fyn->has_meta = false;
+}
+
+static void fy_node_clear_meta_internal(struct fy_node *fyn)
+{
+	struct fy_node *fyni;
+	struct fy_node_pair *fynp, *fynpi;
+
+	if (!fyn)
+		return;
+
+	switch (fyn->type) {
+	case FYNT_SCALAR:
+		break;
+
+	case FYNT_SEQUENCE:
+		for (fyni = fy_node_list_head(&fyn->sequence); fyni;
+				fyni = fy_node_next(&fyn->sequence, fyni)) {
+
+			fy_node_clear_meta_internal(fyni);
+		}
+		break;
+
+	case FYNT_MAPPING:
+		for (fynp = fy_node_pair_list_head(&fyn->mapping); fynp; fynp = fynpi) {
+
+			fynpi = fy_node_pair_next(&fyn->mapping, fynp);
+
+			fy_node_clear_meta_internal(fynp->key);
+			fy_node_clear_meta_internal(fynp->value);
+		}
+		break;
+	}
+
+	fy_node_clear_meta(fyn);
+}
+
+int fy_document_register_meta(struct fy_document *fyd,
+			      fy_node_meta_clear_fn clear_fn,
+			      void *user)
+{
+	if (!fyd || !clear_fn || fyd->meta_clear_fn)
+		return -1;
+
+	fyd->meta_clear_fn = clear_fn;
+	fyd->meta_user = user;
+
+	return 0;
+}
+
+void fy_document_unregister_meta(struct fy_document *fyd)
+{
+	if (!fyd)
+		return;
+
+	fy_node_clear_meta_internal(fy_document_root(fyd));
+
+	fyd->meta_clear_fn = NULL;
+	fyd->meta_user = NULL;
 }

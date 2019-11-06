@@ -61,12 +61,14 @@ FY_TYPE_DECL_LIST(node_pair);
 FY_TYPE_FWD_DECL_LIST(node);
 struct fy_node {
 	struct list_head node;
-	enum fy_node_type type;
 	struct fy_token *tag;
 	enum fy_node_style style;
 	struct fy_node *parent;
 	struct fy_document *fyd;
 	unsigned int marks;
+	enum fy_node_type type : 2;	/* 2 bits are enough for 3 types */
+	bool has_meta : 1;
+	void *meta;
 	union {
 		struct fy_token *scalar;
 		struct fy_node_list sequence;
@@ -111,6 +113,9 @@ struct fy_document {
 
 	struct fy_document *parent;
 	struct fy_document_list children;
+
+	fy_node_meta_clear_fn meta_clear_fn;
+	void *meta_user;
 };
 /* only the list declaration/methods */
 FY_TYPE_DECL_LIST(document);
