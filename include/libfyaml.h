@@ -1536,7 +1536,7 @@ enum fy_node_walk_flags {
 };
 
 /* the maximum user marker */
-#define FYNWF_MAX_USER_MARKER	30
+#define FYNWF_MAX_USER_MARKER	24
 
 /**
  * fy_node_style_from_scalar_style() - Convert from scalar to node style
@@ -2977,5 +2977,47 @@ int fy_document_register_meta(struct fy_document *fyd,
  * @fyd: The document to unregister it's meta cleanup hook.
  */
 void fy_document_unregister_meta(struct fy_document *fyd);
+
+/**
+ * fy_node_set_marker() - Set a marker of a node
+ *
+ * Sets the marker of the given node, while returning
+ * the previous state of the marker. Note that the
+ * markers use the same space as the node follow markers.
+ *
+ * @fyn: The node
+ * @marker: The marker to set
+ *
+ * Returns:
+ * The previous value of the marker
+ */
+bool fy_node_set_marker(struct fy_node *fyn, unsigned int marker);
+
+/**
+ * fy_node_clear_marker() - Clear a marker of a node
+ *
+ * Clears the marker of the given node, while returning
+ * the previous state of the marker. Note that the
+ * markers use the same space as the node follow markers.
+ *
+ * @fyn: The node
+ * @marker: The marker to clear
+ *
+ * Returns:
+ * The previous value of the marker
+ */
+bool fy_node_clear_marker(struct fy_node *fyn, unsigned int marker);
+
+/**
+ * fy_node_is_marker_set() - Checks whether a marker is set
+ *
+ * Check the state of the given marker.
+ *
+ * @fyn: The node
+ *
+ * Returns:
+ * The value of the marker (invalid markers return false)
+ */
+bool fy_node_is_marker_set(struct fy_node *fyn, unsigned int marker);
 
 #endif

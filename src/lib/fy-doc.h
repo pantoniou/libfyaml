@@ -165,5 +165,9 @@ bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
 		       struct fy_node_walk_ctx *ctx);
 
 #define FYNWF_VISIT_MARKER	(FYNWF_MAX_USER_MARKER + 1)
+#define FYNWF_REF_MARKER	(FYNWF_MAX_USER_MARKER + 2)
+
+#define FYNWF_SYSTEM_MARKS	(FY_BIT(FYNWF_VISIT_MARKER) | \
+				 FY_BIT(FYNWF_REF_MARKER))
 
 #endif

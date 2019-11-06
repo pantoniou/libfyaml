@@ -599,6 +599,9 @@ struct fy_node *fy_node_alloc(struct fy_document *fyd, enum fy_node_type type)
 	fyn->fyd = fyd;
 	fyn->marks = 0;
 
+	fyn->has_meta = false;
+	fyn->meta = NULL;
+
 	switch (fyn->type) {
 	case FYNT_SCALAR:
 		fyn->scalar = NULL;
@@ -2413,15 +2416,15 @@ void fy_node_apply(struct fy_node *fyn, fy_node_applyf func)
 	}
 }
 
-static void clear_marks(struct fy_node *fyn)
+static void clear_system_marks(struct fy_node *fyn)
 {
-	fyn->marks = 0;
+	fyn->marks &= ~FYNWF_SYSTEM_MARKS;
 }
 
-/* clear all the markers */
-void fy_node_clear_marks(struct fy_node *fyn)
+/* clear all the system markers */
+void fy_node_clear_system_marks(struct fy_node *fyn)
 {
-	fy_node_apply(fyn, clear_marks);
+	fy_node_apply(fyn, clear_system_marks);
 }
 
 int fy_document_resolve(struct fy_document *fyd)
@@ -2432,13 +2435,13 @@ int fy_document_resolve(struct fy_document *fyd)
 	if (!fyd)
 		return 0;
 
-	fy_node_clear_marks(fyd->root);
+	fy_node_clear_system_marks(fyd->root);
 
 	/* for resolution to work, no reference loops should exist */
 	ret = fy_check_ref_loop(fyd, fyd->root,
 			FYNWF_MAXDEPTH_DEFAULT | FYNWF_FOLLOW, NULL);
 
-	fy_node_clear_marks(fyd->root);
+	fy_node_clear_system_marks(fyd->root);
 
 	if (ret)
 		return -1;
@@ -3446,7 +3449,7 @@ bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
 		ctxn = ctx;
 		if (!ctxn)
 			ctxn = fy_node_walk_ctx_create_a(
-				fy_node_walk_max_depth_from_flags(flags), 1);
+				fy_node_walk_max_depth_from_flags(flags), FYNWF_REF_MARKER);
 
 
 		if (!ctx) {
@@ -4916,4 +4919,33 @@ void fy_document_unregister_meta(struct fy_document *fyd)
 
 	fyd->meta_clear_fn = NULL;
 	fyd->meta_user = NULL;
+}
+
+bool fy_node_set_marker(struct fy_node *fyn, unsigned int marker)
+{
+	unsigned int prev_marks;
+
+	if (!fyn || marker > FYNWF_MAX_USER_MARKER)
+		return false;
+	prev_marks = fyn->marks;
+	fyn->marks |= FY_BIT(marker);
+	return !!(prev_marks & FY_BIT(marker));
+}
+
+bool fy_node_clear_marker(struct fy_node *fyn, unsigned int marker)
+{
+	unsigned int prev_marks;
+
+	if (!fyn || marker > FYNWF_MAX_USER_MARKER)
+		return false;
+	prev_marks = fyn->marks;
+	fyn->marks &= ~FY_BIT(marker);
+	return !!(prev_marks & FY_BIT(marker));
+}
+
+bool fy_node_is_marker_set(struct fy_node *fyn, unsigned int marker)
+{
+	if (!fyn || marker > FYNWF_MAX_USER_MARKER)
+		return false;
+	return !!(fyn->marks & FY_BIT(marker));
 }
