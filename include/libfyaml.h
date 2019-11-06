@@ -1535,6 +1535,9 @@ enum fy_node_walk_flags {
 	FYNWF_MARKER_DEFAULT = FYNWF_MARKER(0),
 };
 
+/* the maximum user marker */
+#define FYNWF_MAX_USER_MARKER	30
+
 /**
  * fy_node_style_from_scalar_style() - Convert from scalar to node style
  *

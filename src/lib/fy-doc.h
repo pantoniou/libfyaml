@@ -164,4 +164,6 @@ bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
 		       enum fy_node_walk_flags flags,
 		       struct fy_node_walk_ctx *ctx);
 
+#define FYNWF_VISIT_MARKER	(FYNWF_MAX_USER_MARKER + 1)
+
 #endif

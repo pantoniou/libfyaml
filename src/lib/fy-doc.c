@@ -2080,7 +2080,7 @@ fy_node_follow_alias(struct fy_node *fyn, enum fy_node_walk_flags flags)
 	e--;
 
 	marker = fy_node_walk_marker_from_flags(flags);
-	if (marker >= 30)
+	if (marker >= FYNWF_MAX_USER_MARKER)
 		return NULL;
 
 	/* use the next marker */
@@ -3118,10 +3118,11 @@ fy_node_follow_aliases(struct fy_node *fyn, enum fy_node_walk_flags flags)
 		return fyn;
 
 	marker = fy_node_walk_marker_from_flags(flags);
-	if (marker >= 30)	/* maximum marker */
+	if (marker >= FYNWF_MAX_USER_MARKER)	/* maximum marker */
 		return fyn;
 
-	ctx = fy_node_walk_ctx_create_a(fy_node_walk_max_depth_from_flags(flags), FY_BIT(marker));
+	ctx = fy_node_walk_ctx_create_a(fy_node_walk_max_depth_from_flags(flags),
+					FY_BIT(marker));
 
 	fy_node_walk_mark_start(ctx);
 	while (fyn && fy_node_is_alias(fyn)) {
@@ -3426,7 +3427,7 @@ bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
 		return false;
 
 	/* visited? no need to check */
-	if (fyn->marks & FY_BIT(31))
+	if (fyn->marks & FY_BIT(FYNWF_VISIT_MARKER))
 		return false;
 
 	/* marked node, it's a loop */
@@ -3494,7 +3495,7 @@ bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
 	}
 
 	/* mark as visited */
-	fyn->marks |= FY_BIT(31);
+	fyn->marks |= FY_BIT(FYNWF_VISIT_MARKER);
 
 	return ret;
 }
