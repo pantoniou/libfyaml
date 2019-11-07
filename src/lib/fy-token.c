@@ -1009,6 +1009,10 @@ int fy_token_memcmp(struct fy_token *fyt, const void *ptr, size_t len)
 	const char *value = NULL;
 	size_t tlen = 0;
 
+	/* special zero length handling */
+	if (len == 0 && fyt && fy_token_get_text_length(fyt) == 0)
+		return 0;
+
 	/* handle NULL cases */
 	if (!fyt && (!ptr || !len))
 		return 0;
