@@ -3260,6 +3260,10 @@ fy_node_by_path_internal(struct fy_node *fyn,
 			if (idx == 0 && end_idx == s)
 				return NULL;
 
+			/* no negatives */
+			if (idx < 0)
+				return NULL;
+
 			s = end_idx;
 
 			if (s < e && *s == '/')
@@ -3437,6 +3441,8 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 	const char *s, *ss, *e, *t, *anchor;
 	size_t alen;
 	char c;
+	int idx;
+	char *end_idx;
 
 	s = path;
 	if (len == (size_t)-1)
@@ -3524,16 +3530,33 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 
 regular_path_lookup:
 
-	/* different option for path lookup start */
-	switch (flags & FYNWF_PTR(FYNWF_PTR_MASK)) {
-	default:
-	case FYNWF_PTR_YAML:
-		/* nothing for YAML pointer */
-		break;
-	case FYNWF_PTR_JSON:
-		break;
-	case FYNWF_PTR_RELJSON:
-		break;
+	/* if it's a relative json pointer... */
+	if ((flags & FYNWF_PTR(FYNWF_PTR_MASK)) == FYNWF_PTR_RELJSON) {
+
+		/* it must at least be one digit */
+		if (len == 0)
+			return NULL;
+
+		idx = (int)strtol(path, &end_idx, 10);
+
+		/* at least one digit must exist */
+		if (idx == 0 && path == end_idx)
+			return NULL;
+
+		e = path + len;
+		len = e - end_idx;
+		path = end_idx;
+
+		/* we don't do the trailing # here */
+		if (len == 1 && *path == '#')
+			return NULL;
+
+		while (idx-- > 0)
+			fyn = fy_node_get_parent(fyn);
+
+		/* convert to regular json pointer from now on */
+		flags &= ~FYNWF_PTR(FYNWF_PTR_MASK);
+		flags |= FYNWF_PTR_JSON;
 	}
 
 	return fy_node_by_path_internal(fyn, path, len, flags);

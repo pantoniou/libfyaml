@@ -1807,6 +1807,79 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	fy_document_destroy(fyd);
 	fyd = NULL;
 
+	/*****/
+
+	printf("\nRelative JSON pointer tests\n");
+
+	fyd = fy_document_build_from_string(cfg,
+		"{\n"
+		"  \"foo\": [\"bar\", \"baz\"],\n"
+		"  \"highly\": {\n"
+		"    \"nested\": {\n"
+		"      \"objects\": true\n"
+		"    }\n"
+		"  }\n"
+		"}\n", FY_NT);
+	assert(fyd);
+
+	fyn = fy_node_by_path(fy_document_root(fyd), "/", FY_NT, FYNWF_DONT_FOLLOW);
+	assert(fyn);
+	buf = fy_emit_node_to_string(fyn, 0);
+	assert(buf);
+	printf("%s is \"%s\"\n", "/", buf);
+	free(buf);
+
+	{
+		const char *reljson_paths[] = {
+			"0",
+			"1/0",
+			"2/highly/nested/objects",
+		};
+		unsigned int ii;
+
+		for (ii = 0; ii < sizeof(reljson_paths)/sizeof(reljson_paths[0]); ii++) {
+			fyn = fy_node_by_path(
+					fy_node_by_path(fy_document_root(fyd), "/foo/1", FY_NT, FYNWF_DONT_FOLLOW),	/* "baz" */
+					reljson_paths[ii], FY_NT, FYNWF_PTR_RELJSON);
+			if (!fyn) {
+				printf("Unable to lookup relative JSON path: '%s'\n", reljson_paths[ii]);
+			} else {
+				buf = fy_emit_node_to_string(fyn, 0);
+				assert(buf);
+				printf("Relative JSON path: '%s' is '%s'\n", reljson_paths[ii], buf);
+				free(buf);
+			}
+			printf("\n");
+		}
+	}
+
+	{
+		const char *reljson_paths[] = {
+			"0/objects",
+			"1/nested/objects",
+			"2/foo/0",
+		};
+		unsigned int ii;
+
+		for (ii = 0; ii < sizeof(reljson_paths)/sizeof(reljson_paths[0]); ii++) {
+			fyn = fy_node_by_path(
+					fy_node_by_path(fy_document_root(fyd), "/highly/nested", FY_NT, FYNWF_DONT_FOLLOW),	/* "baz" */
+					reljson_paths[ii], FY_NT, FYNWF_PTR_RELJSON);
+			if (!fyn) {
+				printf("Unable to lookup relative JSON path: '%s'\n", reljson_paths[ii]);
+			} else {
+				buf = fy_emit_node_to_string(fyn, 0);
+				assert(buf);
+				printf("Relative JSON path: '%s' is '%s'\n", reljson_paths[ii], buf);
+				free(buf);
+			}
+			printf("\n");
+		}
+	}
+
+	fy_document_destroy(fyd);
+	fyd = NULL;
+
 	return 0;
 }
 
