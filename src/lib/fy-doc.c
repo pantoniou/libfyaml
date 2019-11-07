@@ -2984,9 +2984,6 @@ fy_node_mapping_lookup_value_by_simple_key(struct fy_node *fyn,
 	if (len == (size_t)-1)
 		len = strlen(key);
 
-	if (!is_simple_key(key, len))
-		return NULL;
-
 	for (fynpi = fy_node_pair_list_head(&fyn->mapping); fynpi;
 		fynpi = fy_node_pair_next(&fyn->mapping, fynpi)) {
 
@@ -3025,9 +3022,11 @@ fy_node_mapping_lookup_by_string(struct fy_node *fyn,
 	struct fy_node *fyn_value;
 
 	/* try quick and dirty simple scan */
-	fyn_value = fy_node_mapping_lookup_value_by_simple_key(fyn, key, len);
-	if (fyn_value)
-		return fyn_value;
+	if (is_simple_key(key, len)) {
+		fyn_value = fy_node_mapping_lookup_value_by_simple_key(fyn, key, len);
+		if (fyn_value)
+			return fyn_value;
+	}
 
 	fyd = fy_document_build_from_string(NULL, key, len);
 	if (!fyd)
@@ -3117,7 +3116,8 @@ fy_node_follow_aliases(struct fy_node *fyn, enum fy_node_walk_flags flags)
 	struct fy_node_walk_ctx *ctx;
 	unsigned int marker;
 
-	if (!fyn || !fy_node_is_alias(fyn) || !(flags & FYNWF_FOLLOW))
+	if (!fyn || !fy_node_is_alias(fyn) || !(flags & FYNWF_FOLLOW) ||
+	    (flags & FYNWF_PTR(FYNWF_PTR_MASK)) != FYNWF_PTR_YAML)
 		return fyn;
 
 	marker = fy_node_walk_marker_from_flags(flags);
@@ -3154,15 +3154,19 @@ fy_node_by_path_internal(struct fy_node *fyn,
 			 const char *path, size_t pathlen,
 		         enum fy_node_walk_flags flags)
 {
+	enum fy_node_walk_flags ptr_flags;
 	struct fy_node *fynt, *fyni;
-	const char *s, *e;
-	char *end_idx;
+	const char *s, *e, *ss, *ee;
+	char *end_idx, *json_key, *t;
 	char c;
 	int idx;
-	size_t len;
+	size_t len, json_key_len;
+	bool has_json_key_esc;
 
 	if (!fyn || !path)
 		return NULL;
+
+	ptr_flags = flags & FYNWF_PTR(FYNWF_PTR_MASK);
 
 	s = path;
 	if (pathlen == (size_t)-1)
@@ -3171,15 +3175,32 @@ fy_node_by_path_internal(struct fy_node *fyn,
 
 	/* and continue on path lookup with the rest */
 
-	/* fy_notice(NULL, "%s: path='%.*s'", __func__, (int)pathlen, path); */
+	fy_notice(NULL, "%s: path='%.*s'", __func__, (int)pathlen, path);
 
 	/* skip all prefixed / */
-	while (s < e && *s == '/')
-		s++;
+	switch (ptr_flags) {
+	default:
+	case FYNWF_PTR_YAML:
+		while (s < e && *s == '/')
+			s++;
+		/* for a last component / always match this one */
+		if (s >= e)
+			goto out;
+		break;
 
-	/* for a last component / always match this one */
-	if (s >= e)
-		goto out;
+	case FYNWF_PTR_JSON:
+		/* "" -> everything here */
+		if (s == e)
+			return fyn;
+		/* it must have a separator here */
+		if (*s != '/')
+			return NULL;
+		s++;
+		break;
+
+	case FYNWF_PTR_RELJSON:
+		break;
+	}
 
 	fyn = fy_node_follow_aliases(fyn, flags);
 
@@ -3192,25 +3213,60 @@ fy_node_by_path_internal(struct fy_node *fyn,
 	/* for a sequence the only allowed key is [n] where n is the index to follow */
 	if (fy_node_is_sequence(fyn)) {
 
-		while (s < e && isspace(*s))
-			s++;
+		c = -1;
+		switch (ptr_flags) {
+		default:
+		case FYNWF_PTR_YAML:
+			while (s < e && isspace(*s))
+				s++;
 
-		c = *s;
-		if (c == '[')
-			s++;
-		else if (!isdigit(c) && c != '-')
-			return NULL;
+			c = *s;
+			if (c == '[')
+				s++;
+			else if (!isdigit(c) && c != '-')
+				return NULL;
 
-		idx = (int)strtol(s, &end_idx, 10);
-		s = end_idx;
-		while (s < e && isspace(*s))
-			s++;
+			idx = (int)strtol(s, &end_idx, 10);
 
-		if (c == '[' && *s++ != ']')
-			return NULL;
+			/* no digits found at all */
+			if (idx == 0 && end_idx == s)
+				return NULL;
 
-		while (s < e && isspace(*s))
-			s++;
+			s = end_idx;
+
+			while (s < e && isspace(*s))
+				s++;
+
+			if (c == '[' && *s++ != ']')
+				return NULL;
+
+			while (s < e && isspace(*s))
+				s++;
+
+			break;
+
+		case FYNWF_PTR_JSON:
+		case FYNWF_PTR_RELJSON:
+
+			fy_notice(NULL, "%s: json array path='%.*s'", __func__, (int)(e - s), s);
+
+			/* special array end - always fails */
+			if (*s == '-')
+				return NULL;
+
+			idx = (int)strtol(s, &end_idx, 10);
+
+			/* no digits found at all */
+			if (idx == 0 && end_idx == s)
+				return NULL;
+
+			s = end_idx;
+
+			if (s < e && *s == '/')
+				s++;
+
+			break;
+		}
 
 		/* fy_notice(NULL, "%s: seq: idx=%d", __func__, idx); */
 
@@ -3225,88 +3281,141 @@ fy_node_by_path_internal(struct fy_node *fyn,
 	/* be a little bit paranoid */
 	assert(fy_node_is_mapping(fyn));
 
-	/* scan ahead for the end of the path component
-	 * note that we don't do UTF8 here, because all the
-	 * escapes are regular ascii characters, i.e.
-	 * '/', '*', '&', '.', '{', '}', '[', ']' and '\\'
-	 */
-
 	path = s;
 	pathlen = (size_t)(e - s);
 
 	/* fy_notice(NULL, "%s: left='%.*s'", __func__, (int)pathlen, path); */
 
-	while (s < e) {
-		c = *s;
-		/* end of path component? */
-		if (c == '/')
-			break;
-		s++;
+	switch (ptr_flags) {
+	default:
+	case FYNWF_PTR_YAML:
 
-		if (c == '\\') {
-			/* it must be a valid escape */
-			if (s >= e || !strchr("/*&.{}[]\\", *s))
-				return NULL;
+		/* scan ahead for the end of the path component
+		* note that we don't do UTF8 here, because all the
+		* escapes are regular ascii characters, i.e.
+		* '/', '*', '&', '.', '{', '}', '[', ']' and '\\'
+		*/
+
+		while (s < e) {
+			c = *s;
+			/* end of path component? */
+			if (c == '/')
+				break;
 			s++;
-		} else if (c == '"') {
-			while (s < e && *s != '"') {
-				c = *s++;
-				if (c == '\\' && (s < e && *s == '"'))
-					s++;
+
+			if (c == '\\') {
+				/* it must be a valid escape */
+				if (s >= e || !strchr("/*&.{}[]\\", *s))
+					return NULL;
+				s++;
+			} else if (c == '"') {
+				while (s < e && *s != '"') {
+					c = *s++;
+					if (c == '\\' && (s < e && *s == '"'))
+						s++;
+				}
+				/* not a normal double quote end */
+				if (s >= e || *s != '"')
+					return NULL;
+				s++;
+			} else if (c == '\'') {
+				while (s < e && *s != '\'') {
+					c = *s++;
+					if (c == '\'' && (s < e && *s == '\''))
+						s++;
+				}
+				/* not a normal single quote end */
+				if (s >= e || *s != '\'')
+					return NULL;
+				s++;
 			}
-			/* not a normal double quote end */
-			if (s >= e || *s != '"')
-				return NULL;
-			s++;
-		} else if (c == '\'') {
-			while (s < e && *s != '\'') {
-				c = *s++;
-				if (c == '\'' && (s < e && *s == '\''))
-					s++;
-			}
-			/* not a normal single quote end */
-			if (s >= e || *s != '\'')
-				return NULL;
-			s++;
 		}
-	}
-	len = s - path;
+		len = s - path;
 
-	/* fy_notice(NULL, "%s: lookup='%.*s'", __func__, (int)len, path); */
+		/* fy_notice(NULL, "%s: mapping lookup='%.*s'", __func__, (int)len, path); */
 
-	fynt = fyn;
-	fyn = fy_node_mapping_lookup_by_string(fyn, path, len);
+		fynt = fyn;
+		fyn = fy_node_mapping_lookup_by_string(fyn, path, len);
 
-	/* failed! last ditch attempt, is there a merge key? */
-	if (!fyn && fynt && (flags & FYNWF_FOLLOW)) {
-		fyn = fy_node_mapping_lookup_by_string(fynt, "<<", 2);
-		if (!fyn)
-			goto out;
+		/* failed! last ditch attempt, is there a merge key? */
+		if (!fyn && fynt && (flags & FYNWF_FOLLOW) && ptr_flags == FYNWF_PTR_YAML) {
+			fyn = fy_node_mapping_lookup_by_string(fynt, "<<", 2);
+			if (!fyn)
+				goto out;
 
-		/* fy_notice(NULL, "found merge key"); */
+			/* fy_notice(NULL, "found merge key"); */
 
-		if (fy_node_is_alias(fyn)) {
+			if (fy_node_is_alias(fyn)) {
 
-			/* single alias '<<: *foo' */
-			fyn = fy_node_mapping_lookup_by_string(
-					fy_node_follow_aliases(fyn, flags), path, len);
-
-		} else if (fy_node_is_sequence(fyn)) {
-
-			/* multi aliases '<<: [ *foo, *bar ]' */
-			fynt = fyn;
-			for (fyni = fy_node_list_head(&fynt->sequence); fyni;
-					fyni = fy_node_next(&fynt->sequence, fyni)) {
-				if (!fy_node_is_alias(fyni))
-					continue;
+				/* single alias '<<: *foo' */
 				fyn = fy_node_mapping_lookup_by_string(
-						fy_node_follow_aliases(fyni, flags),
-						path, len);
-				if (fyn)
-					break;
+						fy_node_follow_aliases(fyn, flags), path, len);
+
+			} else if (fy_node_is_sequence(fyn)) {
+
+				/* multi aliases '<<: [ *foo, *bar ]' */
+				fynt = fyn;
+				for (fyni = fy_node_list_head(&fynt->sequence); fyni;
+						fyni = fy_node_next(&fynt->sequence, fyni)) {
+					if (!fy_node_is_alias(fyni))
+						continue;
+					fyn = fy_node_mapping_lookup_by_string(
+							fy_node_follow_aliases(fyni, flags),
+							path, len);
+					if (fyn)
+						break;
+				}
+			} else
+				fyn = NULL;
+		}
+		break;
+
+	case FYNWF_PTR_JSON:
+	case FYNWF_PTR_RELJSON:
+
+		has_json_key_esc = false;
+		while (s < e) {
+			c = *s;
+			/* end of path component? */
+			if (c == '/')
+				break;
+			s++;
+			if (c == '~')
+				has_json_key_esc = true;
+		}
+		len = s - path;
+
+		if (has_json_key_esc) {
+			/* note that the escapes reduce the length, so allocating the
+			 * same size is guaranteed safe */
+			json_key = alloca(len + 1);
+
+			ss = path;
+			ee = s;
+			t = json_key;
+			while (ss < ee) {
+				if (*ss != '~') {
+					*t++ = *ss++;
+					continue;
+				}
+				/* unterminated ~ escape, or neither ~0, ~1 */
+				if (ss + 1 >= ee || (ss[1] < '0' && ss[1] > '1'))
+					return NULL;
+				*t++ = ss[1] == '0' ? '~' : '/';
+				ss += 2;
 			}
-		} else
-			fyn = NULL;
+			json_key_len = t - json_key;
+
+			path = json_key;
+			len = json_key_len;
+		}
+
+		fy_notice(NULL, "%s: JSON mapping lookup='%.*s'", __func__, (int)(len), path);
+
+
+		fynt = fyn;
+		fyn = fy_node_mapping_lookup_value_by_simple_key(fyn, path, len);
+		break;
 	}
 
 	len = e - s;
@@ -3414,6 +3523,19 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 	}
 
 regular_path_lookup:
+
+	/* different option for path lookup start */
+	switch (flags & FYNWF_PTR(FYNWF_PTR_MASK)) {
+	default:
+	case FYNWF_PTR_YAML:
+		/* nothing for YAML pointer */
+		break;
+	case FYNWF_PTR_JSON:
+		break;
+	case FYNWF_PTR_RELJSON:
+		break;
+	}
+
 	return fy_node_by_path_internal(fyn, path, len, flags);
 }
 

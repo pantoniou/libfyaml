@@ -1022,8 +1022,11 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	struct fy_parse_cfg cfg_tmp;
 #endif
 	struct fy_document *fyd;
-	struct fy_node *fyn, *fynt;
-	char *buf, *path;
+	struct fy_node *fyn;
+	char *buf;
+#if 0
+	char *path;
+	struct fy_node *fynt;
 	struct fy_document *fydt;
 	struct fy_node_pair *fynp;
 	const char *scalar;
@@ -1742,6 +1745,67 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	free(buf);
 
 	fy_document_destroy(fyd);
+#endif
+	/*****/
+
+	printf("\nJSON pointer tests\n");
+
+	fyd = fy_document_build_from_string(cfg,
+		"{\n"
+		"  \"foo\": [\"bar\", \"baz\"],\n"
+		"  \"\": 0,\n"
+		"  \"a/b\": 1,\n"
+		"  \"c%d\": 2,\n"
+		"  \"e^f\": 3,\n"
+		"  \"g|h\": 4,\n"
+		"  \"i\\\\j\": 5,\n"
+		"  \"k\\\"l\": 6,\n"
+		"  \" \": 7,\n"
+		"  \"m~n\": 8\n"
+		"}" , FY_NT);
+
+	assert(fyd);
+
+	fyn = fy_node_by_path(fy_document_root(fyd), "/", FY_NT, FYNWF_DONT_FOLLOW);
+	assert(fyn);
+	buf = fy_emit_node_to_string(fyn, 0);
+	assert(buf);
+	printf("%s is \"%s\"\n", "/", buf);
+	free(buf);
+
+	{
+		const char *json_paths[] = {
+			"",
+			"/foo",
+			"/foo/0",
+			"/",
+			"/a~1b",
+			"/c%d",
+			"/e^f",
+			"/g|h",
+			"/i\\j",
+			"/k\"l", 
+			"/ ",
+			"/m~0n"
+		};
+		unsigned int ii;
+
+		for (ii = 0; ii < sizeof(json_paths)/sizeof(json_paths[0]); ii++) {
+			fyn = fy_node_by_path(fy_document_root(fyd), json_paths[ii], FY_NT, FYNWF_PTR_JSON);
+			if (!fyn) {
+				printf("Unable to lookup JSON path: '%s'\n", json_paths[ii]);
+			} else {
+				buf = fy_emit_node_to_string(fyn, 0);
+				assert(buf);
+				printf("JSON path: '%s' is '%s'\n", json_paths[ii], buf);
+				free(buf);
+			}
+			printf("\n");
+		}
+	}
+
+	fy_document_destroy(fyd);
+	fyd = NULL;
 
 	return 0;
 }
