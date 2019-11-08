@@ -2972,7 +2972,7 @@ struct fy_node_pair *fy_node_mapping_get_by_index(struct fy_node *fyn, int index
 	return fynpi;
 }
 
-static struct fy_node *
+struct fy_node *
 fy_node_mapping_lookup_value_by_simple_key(struct fy_node *fyn,
 					   const char *key, size_t len)
 {
