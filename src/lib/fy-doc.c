@@ -3157,11 +3157,13 @@ fy_node_by_path_internal(struct fy_node *fyn,
 	enum fy_node_walk_flags ptr_flags;
 	struct fy_node *fynt, *fyni;
 	const char *s, *e, *ss, *ee;
-	char *end_idx, *json_key, *t;
+	char *end_idx, *json_key, *t, *p, *uri_path;
 	char c;
-	int idx;
-	size_t len, json_key_len;
+	int idx, rlen;
+	size_t len, json_key_len, uri_path_len;
 	bool has_json_key_esc;
+	uint8_t code[4];
+	int code_length;
 
 	if (!fyn || !path)
 		return NULL;
@@ -3175,7 +3177,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 
 	/* and continue on path lookup with the rest */
 
-	fy_notice(NULL, "%s: path='%.*s'", __func__, (int)pathlen, path);
+	/* fy_notice(NULL, "%s: path='%.*s'", __func__, (int)pathlen, path); */
 
 	/* skip all prefixed / */
 	switch (ptr_flags) {
@@ -3248,7 +3250,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 		case FYNWF_PTR_JSON:
 		case FYNWF_PTR_RELJSON:
 
-			fy_notice(NULL, "%s: json array path='%.*s'", __func__, (int)(e - s), s);
+			/* fy_notice(NULL, "%s: json array path='%.*s'", __func__, (int)(e - s), s); */
 
 			/* special array end - always fails */
 			if (*s == '-')
@@ -3414,8 +3416,43 @@ fy_node_by_path_internal(struct fy_node *fyn,
 			len = json_key_len;
 		}
 
-		fy_notice(NULL, "%s: JSON mapping lookup='%.*s'", __func__, (int)(len), path);
+		/* URI encoded escaped */
+		if ((flags & FYNWF_URI_ENCODED) && memchr(path, '%', len)) {
+			/* escapes shrink, so safe to allocate as much */
+			uri_path = alloca(len + 1);
 
+			ss = path;
+			ee = path + len;
+			t = uri_path;
+			while (ss < ee) {
+				/* copy run until '%' or end */
+				p = memchr(ss, '%', ee - ss);
+				rlen = (p ? p : ee) - ss;
+				memcpy(t, ss, rlen);
+				ss += rlen;
+				t += rlen;
+
+				/* if end, break */
+				if (!p)
+					break;
+
+				/* collect a utf8 character sequence */
+				code_length = sizeof(code);
+				ss = fy_uri_esc(ss, ee - ss, code, &code_length);
+				if (!ss) {
+					/* bad % escape sequence */
+					return NULL;
+				}
+				memcpy(t, code, code_length);
+				t += code_length;
+			}
+			uri_path_len = t - uri_path;
+
+			path = uri_path;
+			len = uri_path_len;
+		}
+
+		/* fy_notice(NULL, "%s: JSON mapping lookup='%.*s'", __func__, (int)(len), path); */
 
 		fynt = fyn;
 		fyn = fy_node_mapping_lookup_value_by_simple_key(fyn, path, len);

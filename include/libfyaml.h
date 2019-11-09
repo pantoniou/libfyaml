@@ -1520,7 +1520,7 @@ enum fy_node_style {
 #define FYNWF_MARKER_SHIFT	12
 #define FYNWF_MARKER_MASK	0x1f
 #define FYNWF_MARKER(x)		(((x) & FYNWF_MARKER_MASK) << FYNWF_MARKER_SHIFT)
-#define FYNWF_PTR_SHIFT	16
+#define FYNWF_PTR_SHIFT		16
 #define FYNWF_PTR_MASK		0x03
 #define FYNWF_PTR(x)		(((x) & FYNWF_PTR_MASK) << FYNWF_PTR_SHIFT)
 
@@ -1532,6 +1532,7 @@ enum fy_node_style {
  * @FYNWF_PTR_YAML: YAML pointer path walks
  * @FYNWF_PTR_JSON: JSON pointer path walks
  * @FYNWF_PTR_RELJSON: Relative JSON pointer path walks
+ * @FYNWF_URI_ENCODED: The path is URI encoded
  * @FYNWF_MAXDEPTH_DEFAULT: Max follow depth is automatically determined
  * @FYNWF_MARKER_DEFAULT: Default marker to use when scanning
  * @FYNWF_PTR_DEFAULT: Default path type
@@ -1542,6 +1543,7 @@ enum fy_node_walk_flags {
 	FYNWF_PTR_YAML = FYNWF_PTR(0),
 	FYNWF_PTR_JSON = FYNWF_PTR(1),
 	FYNWF_PTR_RELJSON = FYNWF_PTR(2),
+	FYNWF_URI_ENCODED = FY_BIT(18),
 	FYNWF_MAXDEPTH_DEFAULT = FYNWF_MAXDEPTH(0),
 	FYNWF_MARKER_DEFAULT = FYNWF_MARKER(0),
 	FYNWF_PTR_DEFAULT = FYNWF_PTR(0),
