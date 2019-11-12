@@ -131,7 +131,6 @@ int fy_parse_get_next_input(struct fy_parser *fyp)
 		fy_scan_debug(fyp, "get next input: all inputs exhausted");
 		return 0;
 	}
-	fyi->on_list = NULL;
 
 	rc = fy_parse_input_open(fyp, fyi);
 	fy_error_check(fyp, !rc, err_out,
@@ -263,6 +262,9 @@ int fy_append_tag_directive(struct fy_parser *fyp,
 
 	if (!fy_tag_is_default(handle, handle_size, prefix, prefix_size))
 		fyds->tags_explicit = true;
+
+	/* take away the input reference */
+	fy_input_unref(fyi);
 
 	return 0;
 
@@ -704,10 +706,6 @@ void fy_input_free(struct fy_input *fyi)
 	assert(fyi->refs == 1);
 
 	/* fy_notice(NULL, "%s: %p #%d", __func__, fyi, fyi->refs); */
-	if (fyi->on_list) {
-		fy_input_list_del(fyi->on_list, fyi);
-		fyi->on_list = NULL;
-	}
 
 	switch (fyi->state) {
 	case FYIS_NONE:
@@ -945,8 +943,7 @@ int fy_parse_input_done(struct fy_parser *fyp)
 	fy_scan_debug(fyp, "moving current input to parsed inputs");
 
 	fyi->state = FYIS_PARSED;
-	fyi->on_list = &fyp->parsed_inputs;
-	fy_input_list_add_tail(fyi->on_list, fyi);
+	fy_input_list_add_tail(&fyp->parsed_inputs, fyi);
 
 	fyp->current_input = NULL;
 
@@ -1019,8 +1016,6 @@ struct fy_input *fy_parse_input_from_data(struct fy_parser *fyp,
 	handle->fyi = fyi;
 
 	fyi->state = FYIS_PARSED;
-	fyi->on_list = &fyp->parsed_inputs;
-	fy_input_list_add_tail(fyi->on_list, fyi);
 
 	return fyi;
 
@@ -1203,7 +1198,6 @@ int fy_parse_input_reset(struct fy_parser *fyp)
 
 	for (fyi = fy_input_list_head(&fyp->queued_inputs); fyi; fyi = fyin) {
 		fyin = fy_input_next(&fyp->queued_inputs, fyi);
-		fyi->on_list = NULL;
 		fy_input_unref(fyi);
 	}
 
@@ -1259,8 +1253,7 @@ int fy_parse_input_append(struct fy_parser *fyp, const struct fy_input_cfg *fyic
 	}
 
 	fyi->state = FYIS_QUEUED;
-	fyi->on_list = &fyp->queued_inputs;
-	fy_input_list_add_tail(fyi->on_list, fyi);
+	fy_input_list_add_tail(&fyp->queued_inputs, fyi);
 
 	return 0;
 

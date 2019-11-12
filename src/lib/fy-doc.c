@@ -230,6 +230,9 @@ int fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn, const c
 
 	fy_anchor_list_add(&fyd->anchors, fya);
 
+	/* take away the input reference */
+	fy_input_unref(fyi);
+
 	return 0;
 err_out:
 	fy_anchor_destroy(fya);
@@ -3997,6 +4000,9 @@ struct fy_node *fy_node_create_scalar(struct fy_document *fyd, const char *data,
 	fy_error_check(fyp, fyn->scalar, err_out,
 			"fy_token_create() failed");
 
+	/* take away the input reference */
+	fy_input_unref(fyi);
+
 	return fyn;
 
 err_out:
@@ -4032,6 +4038,9 @@ struct fy_node *fy_node_create_alias(struct fy_document *fyd, const char *alias,
 			"fy_token_create() failed");
 
 	fyn->style = FYNS_ALIAS;
+
+	/* take away the input reference */
+	fy_input_unref(fyi);
 
 	return fyn;
 
@@ -4252,6 +4261,9 @@ int fy_node_set_tag(struct fy_node *fyn, const char *data, size_t len)
 
 	fy_token_unref(fyn->tag);
 	fyn->tag = fyt;
+
+	/* take away the input reference */
+	fy_input_unref(fyi);
 
 	return 0;
 }

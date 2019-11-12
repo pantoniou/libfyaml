@@ -61,6 +61,9 @@ void fy_token_free(struct fy_token *fyt)
 	if (!fyt)
 		return;
 
+	/* release reference */
+	fy_input_unref(fyt->handle.fyi);
+
 	/* fy_notice(NULL, "%s: %p #%d", __func__, fyt, fyt->refs); */
 
 	switch (fyt->type) {
@@ -392,6 +395,9 @@ struct fy_token *fy_token_vcreate(struct fy_parser *fyp, enum fy_token_type type
 	}
 
 	assert(fyt->handle.fyi);
+
+	/* take reference */
+	fy_input_ref(fyt->handle.fyi);
 
 	return fyt;
 
