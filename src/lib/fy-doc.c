@@ -216,7 +216,7 @@ int fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn, const c
 	if (!text)
 		return 0;
 
-	fyi = fy_parse_input_from_data(fyd->fyp, text, len, &handle, true);
+	fyi = fy_input_from_data(text, len, &handle, true);
 	if (!fyi)
 		goto err_out;
 
@@ -3990,9 +3990,9 @@ struct fy_node *fy_node_create_scalar(struct fy_document *fyd, const char *data,
 	fy_error_check(fyp, fyn, err_out,
 			"fy_node_alloc() failed");
 
-	fyi = fy_parse_input_from_data(fyp, data, size, &handle, false);
+	fyi = fy_input_from_data(data, size, &handle, false);
 	fy_error_check(fyp, fyi, err_out,
-			"fy_parse_input_from_data() failed");
+			"fy_input_from_data() failed");
 
 	style = handle.style == FYAS_PLAIN ? FYSS_PLAIN : FYSS_DOUBLE_QUOTED;
 
@@ -4029,9 +4029,9 @@ struct fy_node *fy_node_create_alias(struct fy_document *fyd, const char *alias,
 	fy_error_check(fyp, fyn, err_out,
 			"fy_node_alloc() failed");
 
-	fyi = fy_parse_input_from_data(fyp, alias, len, &handle, false);
+	fyi = fy_input_from_data(alias, len, &handle, false);
 	fy_error_check(fyp, fyi, err_out,
-			"fy_parse_input_from_data() failed");
+			"fy_input_from_data() failed");
 
 	fyn->scalar = fy_token_create(fyp, FYTT_ALIAS, &handle);
 	fy_error_check(fyp, fyn->scalar, err_out,
@@ -4245,7 +4245,7 @@ int fy_node_set_tag(struct fy_node *fyn, const char *data, size_t len)
 	if (!fyt_td)
 		return -1;
 
-	fyi = fy_parse_input_from_data(fyd->fyp, data, len, &handle, true);
+	fyi = fy_input_from_data(data, len, &handle, true);
 	if (!fyi)
 		return -1;
 

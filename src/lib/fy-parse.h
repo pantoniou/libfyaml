@@ -196,9 +196,9 @@ static inline enum fy_input_state fy_input_get_state(struct fy_input *fyi)
 	return fyi->state;
 }
 
-struct fy_input *fy_parse_input_from_data(struct fy_parser *fyp,
-		const char *data, size_t size, struct fy_atom *handle,
-		bool simple);
+struct fy_input *fy_input_from_data(const char *data, size_t size,
+				    struct fy_atom *handle, bool simple);
+
 const void *fy_parse_input_try_pull(struct fy_parser *fyp, struct fy_input *fyi,
 				    size_t pull, size_t *leftp);
 

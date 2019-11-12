@@ -246,9 +246,9 @@ int fy_append_tag_directive(struct fy_parser *fyp,
 
 	snprintf(data, size + 1, "%s %s", handle, prefix);
 
-	fyi = fy_parse_input_from_data(fyp, data, size, &atom, true);
+	fyi = fy_input_from_data(data, size, &atom, true);
 	fy_error_check(fyp, fyi, err_out,
-			"fy_parse_input_from_data() failed");
+			"fy_input_from_data() failed");
 
 	handle_size = strlen(handle);
 	prefix_size = strlen(prefix);
@@ -947,9 +947,8 @@ err_out:
 	return -1;
 }
 
-struct fy_input *fy_parse_input_from_data(struct fy_parser *fyp,
-		const char *data, size_t size, struct fy_atom *handle,
-		bool simple)
+struct fy_input *fy_input_from_data(const char *data, size_t size,
+				    struct fy_atom *handle, bool simple)
 {
 	struct fy_input *fyi;
 	unsigned int aflags;
@@ -958,8 +957,8 @@ struct fy_input *fy_parse_input_from_data(struct fy_parser *fyp,
 		size = strlen(data);
 
 	fyi = fy_input_alloc();
-	fy_error_check(fyp, fyi, err_out,
-			"fy_input_alloc() failed");
+	if (!fyi)
+		return NULL;
 
 	fyi->cfg.type = fyit_memory;
 	fyi->cfg.userdata = NULL;
@@ -1012,10 +1011,6 @@ struct fy_input *fy_parse_input_from_data(struct fy_parser *fyp,
 	fyi->state = FYIS_PARSED;
 
 	return fyi;
-
-err_out:
-	fy_input_unref(fyi);
-	return NULL;
 }
 
 const void *fy_parse_input_try_pull(struct fy_parser *fyp, struct fy_input *fyi,
