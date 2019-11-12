@@ -535,7 +535,6 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 	fy_token_list_init(&fyp->queued_tokens);
 	fy_token_list_init(&fyp->recycled_token);
 
-	fy_input_list_init(&fyp->parsed_inputs);
 	fy_input_list_init(&fyp->queued_inputs);
 	fy_input_list_init(&fyp->recycled_input);
 
@@ -595,11 +594,6 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 
 	for (fyi = fy_input_list_head(&fyp->queued_inputs); fyi; fyi = fyin) {
 		fyin = fy_input_next(&fyp->queued_inputs, fyi);
-		fy_input_unref(fyi);
-	}
-
-	for (fyi = fy_input_list_head(&fyp->parsed_inputs); fyi; fyi = fyin) {
-		fyin = fy_input_next(&fyp->parsed_inputs, fyi);
 		fy_input_unref(fyi);
 	}
 
@@ -943,7 +937,7 @@ int fy_parse_input_done(struct fy_parser *fyp)
 	fy_scan_debug(fyp, "moving current input to parsed inputs");
 
 	fyi->state = FYIS_PARSED;
-	fy_input_list_add_tail(&fyp->parsed_inputs, fyi);
+	fy_input_unref(fyi);
 
 	fyp->current_input = NULL;
 

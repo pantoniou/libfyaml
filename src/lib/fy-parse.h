@@ -293,7 +293,6 @@ struct fy_parser {
 	struct fy_talloc_list tallocs;
 
 	struct fy_input_list queued_inputs;	/* all the inputs queued */
-	struct fy_input_list parsed_inputs;
 	struct fy_input *current_input;
 	size_t current_pos;		/* from start of stream */
 	size_t current_input_pos;	/* from start of input */
