@@ -159,6 +159,7 @@ void fy_parse_document_state_recycle(struct fy_parser *fyp, struct fy_document_s
 }
 
 static void fy_resolve_parent_node(struct fy_document *fyd, struct fy_node *fyn, struct fy_node *fyn_parent);
+
 int fy_document_state_merge(struct fy_document *fyd, struct fy_document *fydc);
 
 void fy_anchor_destroy(struct fy_anchor *fya)
@@ -1414,7 +1415,8 @@ err_bad_event:
 
 }
 
-struct fy_node *fy_node_copy(struct fy_document *fyd, struct fy_node *fyn_from)
+struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *fyn_from,
+				      struct fy_node *fyn_parent)
 {
 	struct fy_parser *fyp;
 	struct fy_document *fyd_from;
@@ -1438,6 +1440,7 @@ struct fy_node *fy_node_copy(struct fy_document *fyd, struct fy_node *fyn_from)
 
 	fyn->tag = fy_token_ref(fyn_from->tag);
 	fyn->style = fyn_from->style;
+	fyn->parent = fyn_parent;
 
 	switch (fyn->type) {
 	case FYNT_SCALAR:
@@ -1448,9 +1451,9 @@ struct fy_node *fy_node_copy(struct fy_document *fyd, struct fy_node *fyn_from)
 		for (fyni = fy_node_list_head(&fyn_from->sequence); fyni;
 				fyni = fy_node_next(&fyn_from->sequence, fyni)) {
 
-			fynit = fy_node_copy(fyd, fyni);
+			fynit = fy_node_copy_internal(fyd, fyni, fyn);
 			fy_error_check(fyp, fynit, err_out,
-					"fy_node_copy() failed");
+					"fy_node_copy_internal() failed");
 
 			fy_node_list_add_tail(&fyn->sequence, fynit);
 		}
@@ -1464,8 +1467,9 @@ struct fy_node *fy_node_copy(struct fy_document *fyd, struct fy_node *fyn_from)
 			fy_error_check(fyp, fynpt, err_out,
 					"fy_node_pair_alloc() failed");
 
-			fynpt->key = fy_node_copy(fyd, fynp->key);
-			fynpt->value = fy_node_copy(fyd, fynp->value);
+			fynpt->key = fy_node_copy_internal(fyd, fynp->key, NULL);
+			fynpt->value = fy_node_copy_internal(fyd, fynp->value, fyn);
+			fynp->parent = fyn;
 
 			fy_node_pair_list_add_tail(&fyn->mapping, fynpt);
 		}
@@ -1501,6 +1505,17 @@ struct fy_node *fy_node_copy(struct fy_document *fyd, struct fy_node *fyn_from)
 
 err_out:
 	return NULL;
+}
+
+struct fy_node *fy_node_copy(struct fy_document *fyd, struct fy_node *fyn_from)
+{
+	struct fy_node *fyn;
+
+	fyn = fy_node_copy_internal(fyd, fyn_from, NULL);
+	if (!fyn)
+		return NULL;
+
+	return fyn;
 }
 
 int fy_node_copy_to_scalar(struct fy_document *fyd, struct fy_node *fyn_to, struct fy_node *fyn_from)
@@ -1732,6 +1747,33 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 						"fy_node_copy() failed");
 			}
 		}
+	}
+
+	/* adjust parents */
+	switch (fyn_to->type) {
+	case FYNT_SCALAR:
+		break;
+
+	case FYNT_SEQUENCE:
+		for (fyni = fy_node_list_head(&fyn_to->sequence); fyni;
+				fyni = fy_node_next(&fyn_to->sequence, fyni)) {
+
+			fyni->parent = fyn_to;
+		}
+		break;
+
+	case FYNT_MAPPING:
+		for (fynp = fy_node_pair_list_head(&fyn_to->mapping); fynp; fynp = fynpi) {
+
+			fynpi = fy_node_pair_next(&fyn_to->mapping, fynp);
+
+			if (fynp->key)
+				fynp->key->parent = NULL;
+			if (fynp->value)
+				fynp->value->parent = fyn_to;
+			fynp->parent = fyn_to;
+		}
+		break;
 	}
 
 	/* if the documents differ, merge their states */
