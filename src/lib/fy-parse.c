@@ -3734,8 +3734,10 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 {
 	struct fy_atom handle;
 	size_t length;
-	int rc = -1, code_length, i = 0, value, end_c, last_line, lastc;
-	int breaks_found, blanks_found, break_run;
+	int rc = -1, code_length, i = 0, j, end_c, last_line, lastc;
+	int breaks_found, blanks_found, break_run, total_code_length, total_digits;
+	unsigned int value;
+	uint32_t hi_surrogate, lo_surrogate;
 	bool is_single, is_multiline, is_complex, esc_lb, ws_lb_only, has_ws, has_lb, has_esc;
 	bool first, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb = false;
 	struct fy_simple_key_mark skm;
@@ -3869,26 +3871,53 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 				/* hex, unicode marks */
 				if (c == 'x' || c == 'u' || c == 'U') {
 
-					fy_advance_by(fyp, 2);
+					total_code_length = 0;
+					total_digits = 0;
+					j = 0;
+					hi_surrogate = lo_surrogate = 0;
+					for (;;) {
+						total_code_length += 2;
 
-					code_length = c == 'x' ? 2 :
-						c == 'u' ? 4 : 8;
-					value = 0;
-					for (i = 0; i < code_length; i++) {
-						c = fy_parse_peek_at(fyp, i);
+						code_length = c == 'x' ? 2 :
+							c == 'u' ? 4 : 8;
+						value = 0;
+						for (i = 0; i < code_length; i++) {
+							c = fy_parse_peek_at(fyp, total_code_length + i);
 
+							FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_SCAN,
+								fy_is_hex(c),
+								err_invalid_hex_escape);
 
-						FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_SCAN,
-							fy_is_hex(c),
-							err_invalid_hex_escape);
+							value <<= 4;
+							if (c >= '0' && c <= '9')
+								value |= c - '0';
+							else if (c >= 'a' && c <= 'f')
+								value |= 10 + c - 'a';
+							else
+								value |= 10 + c - 'A';
+						}
 
-						value <<= 4;
-						if (c >= '0' && c <= '9')
-							value |= c - '0';
-						else if (c >= 'a' && c <= 'f')
-							value |= 10 + c - 'a';
-						else
-							value |= 10 + c - 'A';
+						total_code_length += code_length;
+						total_digits += code_length;
+						j++;
+
+						/* 0x10000 + (HI - 0xd800) * 0x400 + (LO - 0xdc00) */
+
+						/* high surrogate */
+						if (j == 1 && code_length == 4 && value >= 0xd800 && value <= 0xdbff &&
+						    fy_parse_peek_at(fyp, total_code_length) == '\\' && 
+						    fy_parse_peek_at(fyp, total_code_length + 1) == 'u') {
+							hi_surrogate = value;
+							c = 'u';
+							continue;
+						}
+
+						if (j == 2 && code_length == 4 && value >= 0xdc00 && value <= 0xdfff) {
+							lo_surrogate = value;
+							value = 0x10000 + (hi_surrogate - 0xd800) * 0x400 + (lo_surrogate - 0xdc00);
+						}
+
+						break;
 					}
 
 					/* check for validity */
@@ -3896,7 +3925,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 						!(value < 0 || (value >= 0xd800 && value <= 0xdfff) || value > 0x10ffff),
 						err_invalid_utf8_escape);
 
-					fy_advance_by(fyp, code_length);
+					fy_advance_by(fyp, total_code_length);
 
 				} else {
 					escbuf[0] = '\\';

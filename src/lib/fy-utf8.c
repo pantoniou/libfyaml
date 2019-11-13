@@ -235,6 +235,7 @@ int fy_utf8_parse_escape(const char **strp, size_t len)
 	const char *s, *e;
 	char c;
 	int i, value, code_length;
+	unsigned int hi_surrogate, lo_surrogate;
 
 	if (!strp || !*strp || len < 2)
 		return -1;
@@ -333,6 +334,30 @@ int fy_utf8_parse_escape(const char **strp, size_t len)
 				value |= 10 + c - 'A';
 			else
 				return -1;
+		}
+
+		/* hi/lo surrogate pair */
+		if (code_length == 4 && value >= 0xd800 && value <= 0xdbff &&
+		    (e - s) >= 6 && s[0] == '\\' && s[1] == 'u') {
+			hi_surrogate = value;
+
+			s += 2;
+
+			value = 0;
+			for (i = 0; i < code_length; i++) {
+				c = *s++;
+				value <<= 4;
+				if (c >= '0' && c <= '9')
+					value |= c - '0';
+				else if (c >= 'a' && c <= 'f')
+					value |= 10 + c - 'a';
+				else if (c >= 'A' && c <= 'F')
+					value |= 10 + c - 'A';
+				else
+					return -1;
+			}
+			lo_surrogate = value;
+			value = 0x10000 + (hi_surrogate - 0xd800) * 0x400 + (lo_surrogate - 0xdc00);
 		}
 	}
 
