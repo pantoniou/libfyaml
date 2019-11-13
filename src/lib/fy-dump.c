@@ -201,6 +201,10 @@ void fy_debug_dump_input(struct fy_parser *fyp, const struct fy_input_cfg *fyic,
 		fy_scan_debug(fyp, "%s: start=%p size=%zu\n", banner,
 				fyic->memory.data, fyic->memory.size);
 		break;
+	case fyit_alloc:
+		fy_scan_debug(fyp, "%s: start=%p size=%zu\n", banner,
+				fyic->alloc.data, fyic->alloc.size);
+		break;
 	default:
 		break;
 	}

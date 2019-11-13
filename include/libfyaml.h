@@ -514,6 +514,24 @@ int fy_parser_set_input_file(struct fy_parser *fyp, const char *file);
 int fy_parser_set_string(struct fy_parser *fyp, const char *str, size_t len);
 
 /**
+ * fy_parser_set_malloc_string() - Set the parser to process the given malloced string.
+ *
+ * Point the parser to the given (possible NULL terminated) string. Note that
+ * the string is expected to be allocated via malloc(3) and ownership is transferred
+ * to the created input. When the input is free'ed the memory will be automatically
+ * freed.
+ *
+ * In case of an error the string is not freed.
+ *
+ * @fyp: The parser
+ * @str: The YAML string to parse (allocated).
+ * @len: The length of the string (or -1 if '\0' terminated)
+ *
+ * Returns:
+ * zero on success, -1 on error
+ */
+int fy_parser_set_malloc_string(struct fy_parser *fyp, char *str, size_t len);
+/**
  * fy_parser_set_input_fp() - Set the parser to process the given file
  *
  * Point the parser to use @fp for processing.
@@ -1712,6 +1730,21 @@ int fy_document_set_parent(struct fy_document *fyd, struct fy_document *fyd_chil
  */
 struct fy_document *fy_document_build_from_string(const struct fy_parse_cfg *cfg, const char *str, size_t len);
 
+/**
+ * fy_document_build_from_malloc_string() - Create a document using the provided YAML source which was malloced.
+ *
+ * Create a document parsing the provided string as a YAML source. The string is expected to have been
+ * allocated by malloc(3) and when the document is destroyed it will be automatically freed.
+ *
+ * @cfg: The parse configuration to use or NULL for the default.
+ * @str: The YAML source to use.
+ * @len: The length of the string (or -1 if '\0' terminated)
+ *
+ * Returns:
+ * The created document, or NULL on error.
+ */
+struct fy_document *fy_document_build_from_malloc_string(const struct fy_parse_cfg *cfg,
+							 char *str, size_t len);
 /**
  * fy_document_build_from_file() - Create a document parsing the given file
  *

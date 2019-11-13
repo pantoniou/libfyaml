@@ -75,6 +75,7 @@ enum fy_input_type {
 	fyit_file,
 	fyit_stream,
 	fyit_memory,
+	fyit_alloc,
 	fyit_callback,
 };
 
@@ -94,6 +95,10 @@ struct fy_input_cfg {
 			const void *data;
 			size_t size;
 		} memory;
+		struct {
+			void *data;
+			size_t size;
+		} alloc;
 		struct {
 		} callback;
 	};
@@ -152,6 +157,10 @@ static inline const void *fy_input_start(const struct fy_input *fyi)
 		ptr = fyi->cfg.memory.data;
 		break;
 
+	case fyit_alloc:
+		ptr = fyi->cfg.alloc.data;
+		break;
+
 	default:
 		break;
 	}
@@ -179,6 +188,10 @@ static inline size_t fy_input_size(const struct fy_input *fyi)
 		size = fyi->cfg.memory.size;
 		break;
 
+	case fyit_alloc:
+		size = fyi->cfg.alloc.size;
+		break;
+
 	default:
 		size = 0;
 		break;
@@ -198,6 +211,8 @@ static inline enum fy_input_state fy_input_get_state(struct fy_input *fyi)
 
 struct fy_input *fy_input_from_data(const char *data, size_t size,
 				    struct fy_atom *handle, bool simple);
+struct fy_input *fy_input_from_malloc_data(char *data, size_t size,
+					   struct fy_atom *handle, bool simple);
 
 const void *fy_parse_input_try_pull(struct fy_parser *fyp, struct fy_input *fyi,
 				    size_t pull, size_t *leftp);
@@ -433,6 +448,10 @@ static inline void fy_advance_octets(struct fy_parser *fyp, size_t advance)
 
 	case fyit_memory:
 		left = fyi->cfg.memory.size - fyp->current_input_pos;
+		break;
+
+	case fyit_alloc:
+		left = fyi->cfg.alloc.size - fyp->current_input_pos;
 		break;
 
 	default:

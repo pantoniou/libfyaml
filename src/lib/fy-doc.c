@@ -2612,6 +2612,18 @@ static int parser_setup_from_string(struct fy_parser *fyp, void *user)
 	return fy_parser_set_string(fyp, ctx->str, ctx->len);
 }
 
+struct fy_document_build_malloc_string_ctx {
+	char *str;
+	size_t len;
+};
+
+static int parser_setup_from_malloc_string(struct fy_parser *fyp, void *user)
+{
+	struct fy_document_build_malloc_string_ctx *ctx = user;
+
+	return fy_parser_set_malloc_string(fyp, ctx->str, ctx->len);
+}
+
 struct fy_document_build_file_ctx {
 	const char *file;
 };
@@ -2656,7 +2668,7 @@ static int parser_setup_from_fmt_ap(struct fy_parser *fyp, void *user)
 			"vsnprintf() failed");
 
 	/* the buffer will stick around until the parser is destroyed */
-	buf = fy_parser_alloc(fyp, size + 1);
+	buf = malloc(size + 1);
 	fy_error_check(fyp, buf, err_out,
 			"fy_parser_alloc() failed");
 
@@ -2668,7 +2680,7 @@ static int parser_setup_from_fmt_ap(struct fy_parser *fyp, void *user)
 
 	buf[size] = '\0';
 
-	return fy_parser_set_string(fyp, buf, size);
+	return fy_parser_set_malloc_string(fyp, buf, size);
 
 err_out:
 	return -1;
@@ -2765,6 +2777,17 @@ struct fy_document *fy_document_build_from_string(const struct fy_parse_cfg *cfg
 	};
 
 	return fy_document_build_internal(cfg, parser_setup_from_string, &ctx);
+}
+
+struct fy_document *fy_document_build_from_malloc_string(const struct fy_parse_cfg *cfg,
+							 char *str, size_t len)
+{
+	struct fy_document_build_malloc_string_ctx ctx = {
+		.str = str,
+		.len = len,
+	};
+
+	return fy_document_build_internal(cfg, parser_setup_from_malloc_string, &ctx);
 }
 
 struct fy_document *fy_document_build_from_file(const struct fy_parse_cfg *cfg,

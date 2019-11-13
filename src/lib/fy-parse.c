@@ -91,6 +91,12 @@ const void *fy_ptr_slow_path(struct fy_parser *fyp, size_t *leftp)
 		p = fyi->cfg.memory.data + fyp->current_input_pos;
 		break;
 
+	case fyit_alloc:
+		left = fyi->cfg.alloc.size - fyp->current_input_pos;
+		p = fyi->cfg.alloc.data + fyp->current_input_pos;
+		break;
+
+
 	default:
 		assert(0);	/* no streams */
 		p = NULL;
@@ -240,13 +246,13 @@ int fy_append_tag_directive(struct fy_parser *fyp,
 	struct fy_atom atom;
 
 	size = strlen(handle) + 1 + strlen(prefix);
-	data = fy_parse_alloc(fyp, size + 1);
+	data = malloc(size + 1);
 	fy_error_check(fyp, data, err_out,
 			"fy_parse_alloc() failed");
 
 	snprintf(data, size + 1, "%s %s", handle, prefix);
 
-	fyi = fy_input_from_data(data, size, &atom, true);
+	fyi = fy_input_from_malloc_data(data, size, &atom, true);
 	fy_error_check(fyp, fyi, err_out,
 			"fy_input_from_data() failed");
 
@@ -271,6 +277,8 @@ int fy_append_tag_directive(struct fy_parser *fyp,
 err_out:
 	fy_token_unref(fyt);
 	fy_input_unref(fyi);
+	if (data)
+		free(data);
 	return -1;
 }
 
@@ -712,6 +720,16 @@ void fy_input_free(struct fy_input *fyi)
 		break;
 	}
 
+	/* always release the memory of the alloc memory */
+	switch (fyi->cfg.type) {
+	case fyit_alloc:
+		free(fyi->cfg.alloc.data);
+		break;
+
+	default:
+		break;
+	}
+
 	free(fyi);
 }
 
@@ -743,20 +761,6 @@ void fy_input_unref(struct fy_input *fyi)
 		fy_input_free(fyi);
 	else
 		fyi->refs--;
-}
-
-struct fy_input *fy_parse_input_alloc(struct fy_parser *fyp)
-{
-	struct fy_input *fyi;
-
-	if (!fyp)
-		return NULL;
-
-	fyi = fy_input_alloc();
-	if (!fyi)
-		return NULL;
-
-	return fyi;
 }
 
 void fy_parse_input_recycle(struct fy_parser *fyp, struct fy_input *fyi)
@@ -843,6 +847,10 @@ int fy_parse_input_open(struct fy_parser *fyp, struct fy_input *fyi)
 		/* nothing to do for memory */
 		break;
 
+	case fyit_alloc:
+		/* nothing to do for memory */
+		break;
+
 	default:
 		assert(0);
 		break;
@@ -891,6 +899,10 @@ void fy_input_close(struct fy_input *fyi)
 		break;
 
 	case fyit_memory:
+		/* nothing */
+		break;
+
+	case fyit_alloc:
 		/* nothing */
 		break;
 
@@ -947,23 +959,16 @@ err_out:
 	return -1;
 }
 
-struct fy_input *fy_input_from_data(const char *data, size_t size,
-				    struct fy_atom *handle, bool simple)
+static void fy_input_from_data_setup(struct fy_input *fyi,
+				     struct fy_atom *handle, bool simple)
 {
-	struct fy_input *fyi;
+	const char *data;
+	size_t size;
 	unsigned int aflags;
 
-	if (data && size == (size_t)-1)
-		size = strlen(data);
-
-	fyi = fy_input_alloc();
-	if (!fyi)
-		return NULL;
-
-	fyi->cfg.type = fyit_memory;
-	fyi->cfg.userdata = NULL;
-	fyi->cfg.memory.data = data;
-	fyi->cfg.memory.size = size;
+	/* this is an internal method, you'd better to pass garbage */
+	data = fy_input_start(fyi);
+	size = fy_input_size(fyi);
 
 	fyi->buffer = NULL;
 	fyi->allocated = 0;
@@ -1009,6 +1014,48 @@ struct fy_input *fy_input_from_data(const char *data, size_t size,
 	handle->fyi = fyi;
 
 	fyi->state = FYIS_PARSED;
+}
+
+struct fy_input *fy_input_from_data(const char *data, size_t size,
+				    struct fy_atom *handle, bool simple)
+{
+	struct fy_input *fyi;
+
+	if (data && size == (size_t)-1)
+		size = strlen(data);
+
+	fyi = fy_input_alloc();
+	if (!fyi)
+		return NULL;
+
+	fyi->cfg.type = fyit_memory;
+	fyi->cfg.userdata = NULL;
+	fyi->cfg.memory.data = data;
+	fyi->cfg.memory.size = size;
+
+	fy_input_from_data_setup(fyi, handle, simple);
+
+	return fyi;
+}
+
+struct fy_input *fy_input_from_malloc_data(char *data, size_t size,
+					   struct fy_atom *handle, bool simple)
+{
+	struct fy_input *fyi;
+
+	if (data && size == (size_t)-1)
+		size = strlen(data);
+
+	fyi = fy_input_alloc();
+	if (!fyi)
+		return NULL;
+
+	fyi->cfg.type = fyit_alloc;
+	fyi->cfg.userdata = NULL;
+	fyi->cfg.alloc.data = data;
+	fyi->cfg.alloc.size = size;
+
+	fy_input_from_data_setup(fyi, handle, simple);
 
 	return fyi;
 }
@@ -1132,6 +1179,18 @@ const void *fy_parse_input_try_pull(struct fy_parser *fyp, struct fy_input *fyi,
 		p = fyi->cfg.memory.data + pos;
 		break;
 
+	case fyit_alloc:
+		assert(fyi->cfg.alloc.size >= pos);
+
+		left = fyi->cfg.alloc.size - pos;
+		if (!left) {
+			fy_scan_debug(fyp, "alloc input exhausted");
+			break;
+		}
+		p = fyi->cfg.alloc.data + pos;
+		break;
+
+
 	default:
 		assert(0);
 		break;
@@ -1208,9 +1267,9 @@ int fy_parse_input_append(struct fy_parser *fyp, const struct fy_input_cfg *fyic
 {
 	struct fy_input *fyi = NULL;
 
-	fyi = fy_parse_input_alloc(fyp);
+	fyi = fy_input_alloc();
 	fy_error_check(fyp, fyp != NULL, err_out,
-			"fy_parse_input_alloc() failed!");
+			"fy_input_alloc() failed!");
 
 	fyi->cfg = *fyic;
 
@@ -1233,6 +1292,10 @@ int fy_parse_input_append(struct fy_parser *fyp, const struct fy_input_cfg *fyic
 		break;
 
 	case fyit_memory:
+		/* nothing to do for memory */
+		break;
+
+	case fyit_alloc:
 		/* nothing to do for memory */
 		break;
 
@@ -5657,7 +5720,7 @@ err_out_rc:
 
 int fy_parser_set_string(struct fy_parser *fyp, const char *str, size_t len)
 {
-	struct fy_input_cfg *fyic;
+	struct fy_input_cfg fyic;
 	int rc;
 
 	if (!fyp || !str)
@@ -5666,26 +5729,51 @@ int fy_parser_set_string(struct fy_parser *fyp, const char *str, size_t len)
 	if (len == (size_t)-1)
 		len = strlen(str);
 
-	fyic = fy_parse_alloc(fyp, sizeof(*fyic));
-	fy_error_check(fyp, fyic, err_out,
-			"fy_parse_alloc() failed");
-	memset(fyic, 0, sizeof(*fyic));
+	memset(&fyic, 0, sizeof(fyic));
 
-	fyic->type = fyit_memory;
-	fyic->memory.data = str;
-	fyic->memory.size = len;
+	fyic.type = fyit_memory;
+	fyic.memory.data = str;
+	fyic.memory.size = len;
 
 	rc = fy_parse_input_reset(fyp);
 	fy_error_check(fyp, !rc, err_out_rc,
 			"fy_parse_input_reset() failed");
 
-	rc = fy_parse_input_append(fyp, fyic);
+	rc = fy_parse_input_append(fyp, &fyic);
 	fy_error_check(fyp, !rc, err_out_rc,
 			"fy_parse_input_append() failed");
 
 	return 0;
-err_out:
-	rc = -1;
+err_out_rc:
+	return -1;
+}
+
+int fy_parser_set_malloc_string(struct fy_parser *fyp, char *str, size_t len)
+{
+	struct fy_input_cfg fyic;
+	int rc;
+
+	if (!fyp || !str)
+		return -1;
+
+	if (len == (size_t)-1)
+		len = strlen(str);
+
+	memset(&fyic, 0, sizeof(fyic));
+
+	fyic.type = fyit_alloc;
+	fyic.alloc.data = str;
+	fyic.alloc.size = len;
+
+	rc = fy_parse_input_reset(fyp);
+	fy_error_check(fyp, !rc, err_out_rc,
+			"fy_parse_input_reset() failed");
+
+	rc = fy_parse_input_append(fyp, &fyic);
+	fy_error_check(fyp, !rc, err_out_rc,
+			"fy_parse_input_append() failed");
+
+	return 0;
 err_out_rc:
 	return -1;
 }
