@@ -60,7 +60,7 @@ static inline bool fy_emit_is_block_mode(const struct fy_emitter *emit)
 {
 	enum fy_emitter_cfg_flags flags = emit->cfg->flags & FYECF_MODE(FYECF_MODE_MASK);
 
-	return flags == FYECF_MODE_BLOCK;
+	return flags == FYECF_MODE_BLOCK || flags == FYECF_MODE_DEJSON;
 }
 
 static inline bool fy_emit_is_oneline(const struct fy_emitter *emit)
@@ -68,6 +68,13 @@ static inline bool fy_emit_is_oneline(const struct fy_emitter *emit)
 	enum fy_emitter_cfg_flags flags = emit->cfg->flags & FYECF_MODE(FYECF_MODE_MASK);
 
 	return flags == FYECF_MODE_FLOW_ONELINE || flags == FYECF_MODE_JSON_ONELINE;
+}
+
+static inline bool fy_emit_is_pretty_mode(const struct fy_emitter *emit)
+{
+	enum fy_emitter_cfg_flags flags = emit->cfg->flags & FYECF_MODE(FYECF_MODE_MASK);
+
+	return flags == FYECF_MODE_DEJSON;
 }
 
 static inline int fy_emit_indent(struct fy_emitter *emit)
@@ -1119,8 +1126,9 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 {
 	const char *value = NULL;
 	size_t len = 0;
-	bool json, flow;
+	bool json, flow, is_json_plain;
 	struct fy_atom *atom;
+	int aflags = -1;
 
 	atom = fy_token_atom(fyt);
 
@@ -1136,14 +1144,17 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 		goto out;
 	}
 
-	if (json && style == FYNS_PLAIN &&
-		(!atom ||
-		 atom->size0 ||
-		 !fy_atom_strcmp(atom, "false") ||
-		 !fy_atom_strcmp(atom, "true") ||
-		 !fy_atom_strcmp(atom, "null") ||
-		 fy_atom_is_number(atom))) {
+	is_json_plain = false;
 
+	/* is this a plain json atom? */
+	is_json_plain = (json || fy_emit_is_pretty_mode(emit)) &&
+			(!atom || atom->size0 ||
+			!fy_atom_strcmp(atom, "false") ||
+			!fy_atom_strcmp(atom, "true") ||
+			!fy_atom_strcmp(atom, "null") ||
+			fy_atom_is_number(atom));
+
+	if (json && style == FYNS_PLAIN && is_json_plain) {
 		style = FYNS_PLAIN;
 		goto out;
 	}
@@ -1154,6 +1165,8 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 	}
 
 	flow = fy_emit_is_flow_mode(emit);
+
+	aflags = fy_token_text_analyze(fyt);
 
 	/* in flow mode, we can't let a bare plain */
 	if (flow && (!fyt || fy_token_get_text_length(fyt) == 0))
@@ -1179,12 +1192,19 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 		style = FYNS_DOUBLE_QUOTED;
 	}
 
+	if (!flow && fy_emit_is_pretty_mode(emit) &&
+		(style == FYNS_ANY || style == FYNS_DOUBLE_QUOTED || style == FYNS_SINGLE_QUOTED)) {
+
+		if ((aflags & FYTTAF_CAN_BE_PLAIN) && (style != FYNS_DOUBLE_QUOTED || !is_json_plain))
+			style = FYNS_PLAIN;
+	}
+
 out:
 	if (style == FYNS_ANY) {
 		if (fyt)
 			value = fy_token_get_text(fyt, &len);
 
-		style = (fy_token_text_analyze(fyt) & FYTTAF_DIRECT_OUTPUT) ?
+		style = (aflags & FYTTAF_CAN_BE_PLAIN) ?
 				FYNS_PLAIN : FYNS_DOUBLE_QUOTED;
 	}
 

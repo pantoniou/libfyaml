@@ -133,7 +133,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--comment, -c            : Output comments (experimental)"
 							" (default %s)\n",
 							COMMENT_DEFAULT ? "true" : "false");
-		fprintf(fp, "\t--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline"
+		fprintf(fp, "\t--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline, dejson"
 							" (default %s)\n",
 							MODE_DEFAULT);
 		if (tool_mode == OPT_TOOL || tool_mode == OPT_DUMP)
@@ -260,6 +260,7 @@ static int apply_mode_flags(const char *what, enum fy_emitter_cfg_flags *flagsp)
 		{ .name = "json",		.value = FYECF_MODE_JSON },
 		{ .name = "json-tp",		.value = FYECF_MODE_JSON_TP },
 		{ .name = "json-oneline",	.value = FYECF_MODE_JSON_ONELINE },
+		{ .name = "dejson",		.value = FYECF_MODE_DEJSON },
 	};
 	unsigned int i;
 

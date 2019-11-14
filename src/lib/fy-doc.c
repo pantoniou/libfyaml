@@ -2884,7 +2884,6 @@ const char *fy_node_get_tag(struct fy_node *fyn, size_t *lenp)
 	}
 
 	return fy_token_get_text(fyn->tag, lenp);
-
 }
 
 const char *fy_node_get_scalar(struct fy_node *fyn, size_t *lenp)

@@ -229,16 +229,21 @@ static inline struct fy_input *fy_token_get_input(struct fy_token *fyt)
 enum fy_atom_style fy_token_atom_style(struct fy_token *fyt);
 enum fy_scalar_style fy_token_scalar_style(struct fy_token *fyt);
 
-#define FYTTAF_HAS_LB			0x0001
-#define FYTTAF_HAS_WS			0x0002
-#define FYTTAF_HAS_CONSECUTIVE_LB	0x0004
-#define FYTTAF_HAS_CONSECUTIVE_WS	0x0008
-#define FYTTAF_EMPTY			0x0040
-#define FYTTAF_CAN_BE_SIMPLE_KEY	0x0080
-#define FYTTAF_HAS_ESCAPE		0x0100
-#define FYTTAF_DIRECT_OUTPUT		0x0200
-#define FYTTAF_NO_TEXT_TOKEN		0x0400
-#define FYTTAF_TEXT_TOKEN		0x0800
+#define FYTTAF_HAS_LB			FY_BIT(0)
+#define FYTTAF_HAS_WS			FY_BIT(1)
+#define FYTTAF_HAS_CONSECUTIVE_LB	FY_BIT(2)
+#define FYTTAF_HAS_CONSECUTIVE_WS	FY_BIT(4)
+#define FYTTAF_EMPTY			FY_BIT(5)
+#define FYTTAF_CAN_BE_SIMPLE_KEY	FY_BIT(6)
+#define FYTTAF_DIRECT_OUTPUT		FY_BIT(7)
+#define FYTTAF_NO_TEXT_TOKEN		FY_BIT(8)
+#define FYTTAF_TEXT_TOKEN		FY_BIT(9)
+#define FYTTAF_CAN_BE_PLAIN		FY_BIT(10)
+#define FYTTAF_CAN_BE_SINGLE_QUOTED	FY_BIT(11)
+#define FYTTAF_CAN_BE_DOUBLE_QUOTED	FY_BIT(12)
+#define FYTTAF_CAN_BE_LITERAL		FY_BIT(13)
+#define FYTTAF_CAN_BE_FOLDED		FY_BIT(14)
+#define FYTTAF_CAN_BE_PLAIN_FLOW	FY_BIT(15)
 
 int fy_token_text_analyze(struct fy_token *fyt);
 

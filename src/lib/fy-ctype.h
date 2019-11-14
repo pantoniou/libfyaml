@@ -120,10 +120,32 @@ static inline bool fy_is_ws_lb(int c)
 
 static inline bool fy_is_print(int c)
 {
-	return c == '\n' ||
+	return c == '\n' || c == '\r' ||
 	       (c >= 0x0020 && c <= 0x007e) ||
 	       (c >= 0x00a0 && c <= 0xd7ff) ||
 	       (c >= 0xe000 && c <= 0xfffd && c != FY_UTF8_BOM);
+}
+
+static inline bool fy_is_nb_char(int c)
+{
+	return (c >= 0x0020 && c <= 0x007e) ||
+	       (c >= 0x00a0 && c <= 0xd7ff) ||
+	       (c >= 0xe000 && c <= 0xfffd && c != FY_UTF8_BOM);
+}
+
+static inline bool fy_is_ns_char(int c)
+{
+	return fy_is_nb_char(c) && !fy_is_ws(c);
+}
+
+static inline bool fy_is_indicator(int c)
+{
+	return !!fy_utf8_strchr("-?:,[]{}#&*!|>'\"%%@`", c);
+}
+
+static inline bool fy_is_flow_indicator(int c)
+{
+	return !!fy_utf8_strchr(",[]{}", c);
 }
 
 #define FY_CTYPE_AT_BUILDER(_kind) \
@@ -173,6 +195,10 @@ FY_CTYPE_AT_BUILDER(blank);
 FY_CTYPE_AT_BUILDER(blankz);
 FY_CTYPE_AT_BUILDER(ws_lb);
 FY_CTYPE_AT_BUILDER(print);
+FY_CTYPE_AT_BUILDER(nb_char);
+FY_CTYPE_AT_BUILDER(ns_char);
+FY_CTYPE_AT_BUILDER(indicator);
+FY_CTYPE_AT_BUILDER(flow_indicator);
 
 /*
  * Very special linebreak/ws methods

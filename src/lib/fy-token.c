@@ -612,15 +612,16 @@ enum fy_scalar_style fy_token_scalar_style(struct fy_token *fyt)
 
 int fy_token_text_analyze(struct fy_token *fyt)
 {
-	const char *s, *e, *nwslb;
+	const char *s, *e;
 	const char *value = NULL;
 	enum fy_atom_style style;
-	int c, w, ww, cn;
+	int c, w, cn, cp, col;
 	size_t len;
 	int flags;
 
 	if (!fyt)
-		return FYTTAF_CAN_BE_SIMPLE_KEY | FYTTAF_DIRECT_OUTPUT | FYTTAF_EMPTY;
+		return FYTTAF_CAN_BE_SIMPLE_KEY | FYTTAF_DIRECT_OUTPUT |
+		       FYTTAF_EMPTY | FYTTAF_CAN_BE_DOUBLE_QUOTED;
 
 	if (fyt->analyze_flags)
 		return fyt->analyze_flags;
@@ -629,8 +630,11 @@ int fy_token_text_analyze(struct fy_token *fyt)
 	if (fyt->type != FYTT_SCALAR &&
 	    fyt->type != FYTT_TAG &&
 	    fyt->type != FYTT_ANCHOR &&
-	    fyt->type != FYTT_ALIAS)
-		return fyt->analyze_flags = FYTTAF_NO_TEXT_TOKEN;
+	    fyt->type != FYTT_ALIAS) {
+		flags = FYTTAF_NO_TEXT_TOKEN;
+		fyt->analyze_flags = flags;
+		return flags;
+	}
 
 	flags = FYTTAF_TEXT_TOKEN;
 
@@ -646,70 +650,124 @@ int fy_token_text_analyze(struct fy_token *fyt)
 
 	/* get value */
 	value = fy_token_get_text(fyt, &len);
-	if (!value || len == 0)
-		return fyt->analyze_flags = flags | FYTTAF_EMPTY;
+	if (!value || len == 0) {
+		flags |= FYTTAF_EMPTY | FYTTAF_CAN_BE_DOUBLE_QUOTED;
+		fyt->analyze_flags = flags;
+		return flags;
+	}
+
+	flags |= FYTTAF_CAN_BE_PLAIN |
+		 FYTTAF_CAN_BE_SINGLE_QUOTED |
+		 FYTTAF_CAN_BE_DOUBLE_QUOTED |
+		 FYTTAF_CAN_BE_LITERAL |
+		 FYTTAF_CAN_BE_LITERAL |
+		 FYTTAF_CAN_BE_FOLDED |
+		 FYTTAF_CAN_BE_PLAIN_FLOW;
 
 	s = value;
 	e = value + len;
 
-	/* escape for URI, single and double quoted */
-	if ((style == FYAS_URI && fy_utf8_memchr(s, '%', e - s)) ||
-	    (style == FYAS_SINGLE_QUOTED && fy_utf8_memchr(s, '\'', e - s)) ||
-	    (style == FYAS_DOUBLE_QUOTED && fy_utf8_memchr(s, '\\', e - s))) {
-		flags &= ~FYTTAF_DIRECT_OUTPUT;
-		flags |= FYTTAF_HAS_ESCAPE;
-	}
+	col = 0;
 
-	while (s < e && (c = fy_utf8_get(s, e - s, &w)) >= 0) {
+	/* get first character */
+	cn = fy_utf8_get(s, e - s, &w);
+	s += w;
+	col = fy_is_lb(cn) ? 0 : (col + 1);
 
-		/* zero can't be output */
+	/* disable folded right off the bat, it's a pain */
+	flags &= ~FYTTAF_CAN_BE_FOLDED;
+
+	/* plain scalars can't start with any indicator (or space/lb) */
+	if ((flags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW)) &&
+		(fy_is_indicator(cn) || fy_is_lb(cn) || fy_is_ws(cn)))
+		flags &= ~(FYTTAF_CAN_BE_PLAIN |
+			   FYTTAF_CAN_BE_PLAIN_FLOW);
+
+	/* plain scalars in flow mode can't start with a flow indicator */
+	if ((flags & FYTTAF_CAN_BE_PLAIN_FLOW) &&
+		fy_is_flow_indicator(cn))
+		flags &= ~FYTTAF_CAN_BE_PLAIN_FLOW;
+
+	cp = -1;
+	for (c = cn; c >= 0; s += w, cp = c, c = cn) {
+
+		/* can be -1 on end */
+		cn = fy_utf8_get(s, e - s, &w);
+
+		/* zero can't be output, only in double quoted mode */
 		if (c == 0) {
-			flags &= ~FYTTAF_DIRECT_OUTPUT;
-			flags |= FYTTAF_HAS_ESCAPE;
+			flags &= ~(FYTTAF_DIRECT_OUTPUT |
+				   FYTTAF_CAN_BE_PLAIN |
+				   FYTTAF_CAN_BE_SINGLE_QUOTED |
+				   FYTTAF_CAN_BE_LITERAL |
+				   FYTTAF_CAN_BE_FOLDED |
+				   FYTTAF_CAN_BE_PLAIN_FLOW);
+			flags |= FYTTAF_CAN_BE_DOUBLE_QUOTED;
 
-			s += w;
-			continue;
-		}
-
-		if (fy_is_ws(c)) {
-
-			cn = fy_utf8_get(s + w, e - (s + w), &ww);
+		} else if (fy_is_ws(c)) {
 
 			flags |= FYTTAF_HAS_WS;
 			if (fy_is_ws(cn))
 				flags |= FYTTAF_HAS_CONSECUTIVE_WS;
 
-			s += w;
-			continue;
-		}
-
-		if (fy_is_lb(c)) {
-
-			cn = fy_utf8_get(s + w, e - (s + w), &ww);
+		} else if (fy_is_lb(c)) {
 
 			flags |= FYTTAF_HAS_LB;
 			if (fy_is_lb(cn))
 				flags |= FYTTAF_HAS_CONSECUTIVE_LB;
-			/* any non double quoted style is a new line */
-			if (style != FYAS_DOUBLE_QUOTED)
-				flags &= ~FYTTAF_CAN_BE_SIMPLE_KEY;
+
+			/* only non linebreaks can be simple keys */
+			flags &= ~FYTTAF_CAN_BE_SIMPLE_KEY;
 
 			/* anything with linebreaks, can't be direct */
 			flags &= ~FYTTAF_DIRECT_OUTPUT;
-
-			s += w;
-			continue;
 		}
 
-		/* find next white space or linebreak */
-		nwslb = fy_find_ws_lb(s, e - s);
-		if (!nwslb)
-			nwslb = e;
+		/* illegal plain combination */
+		if ((flags & FYTTAF_CAN_BE_PLAIN) &&
+			((c == ':' && fy_is_blankz(cn)) ||
+			 (fy_is_blankz(c) && cn == '#') ||
+			 (cp < 0 && c == '#' && cn < 0) ||
+			 !fy_is_print(c))) {
+			flags &= ~(FYTTAF_CAN_BE_PLAIN |
+				   FYTTAF_CAN_BE_PLAIN_FLOW);
+		}
 
-		s = nwslb;
+		/* illegal plain flow combination */
+		if ((flags & FYTTAF_CAN_BE_PLAIN_FLOW) &&
+			(fy_is_flow_indicator(c) || (c == ':' && fy_is_flow_indicator(cn))))
+			flags &= ~FYTTAF_CAN_BE_PLAIN_FLOW;
+
+		/* non printable characters, turn off these styles */
+		if ((flags & (FYTTAF_CAN_BE_SINGLE_QUOTED |
+			      FYTTAF_CAN_BE_LITERAL |
+			      FYTTAF_CAN_BE_FOLDED)) && !fy_is_print(c))
+			flags &= ~(FYTTAF_CAN_BE_SINGLE_QUOTED |
+				   FYTTAF_CAN_BE_LITERAL |
+				   FYTTAF_CAN_BE_FOLDED);
+
+		/* if there's an escape, it can't be direct */
+		if ((flags & FYTTAF_DIRECT_OUTPUT) &&
+		    ((style == FYAS_URI && c == '%') ||
+		     (style == FYAS_SINGLE_QUOTED && c == '\'') ||
+		     (style == FYAS_DOUBLE_QUOTED && c == '\\')))
+			flags &= ~FYTTAF_DIRECT_OUTPUT;
+
+		col = fy_is_lb(c) ? 0 : (col + 1);
+
+		/* last character */
+		if (cn < 0) {
+			/* if ends with whitespace or linebreak, can't be plain */
+			if (fy_is_ws(cn) || fy_is_lb(cn)) {
+				fy_notice(NULL, "!PLAIN 2");
+				flags &= ~(FYTTAF_CAN_BE_PLAIN |
+					   FYTTAF_CAN_BE_PLAIN_FLOW);
+			}
+		}
 	}
 
-	return fyt->analyze_flags = flags;
+	fyt->analyze_flags = flags;
+	return flags;
 }
 
 const char *fy_tag_token_get_directive_handle(struct fy_token *fyt, size_t *td_handle_sizep)
