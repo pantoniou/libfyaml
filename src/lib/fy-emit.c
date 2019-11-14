@@ -1277,7 +1277,7 @@ static void fy_emit_sequence_prolog(struct fy_emitter *emit, struct fy_emit_save
 			sc->flags = (sc->flags | DDNF_FLOW) | (sc->flags & ~DDNF_INDENTLESS);
 			fy_emit_write_indicator(emit, di_left_bracket, sc->flags, sc->indent, fyewt_indicator);
 		} else {
-			sc->flags = (sc->flags & ~DDNF_FLOW) | ((sc->flags & DDNF_MAP) ? DDNF_INDENTLESS : 0);
+			sc->flags = (sc->flags & ~DDNF_FLOW);
 		}
 	} else {
 		sc->flags = (sc->flags | DDNF_FLOW) | (sc->flags & ~DDNF_INDENTLESS);
