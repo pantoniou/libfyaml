@@ -3736,7 +3736,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 	size_t length;
 	int rc = -1, code_length, i = 0, j, end_c, last_line, lastc;
 	int breaks_found, blanks_found, break_run, total_code_length, total_digits;
-	unsigned int value;
+	int value;
 	uint32_t hi_surrogate, lo_surrogate;
 	bool is_single, is_multiline, is_complex, esc_lb, ws_lb_only, has_ws, has_lb, has_esc;
 	bool first, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb = false;
