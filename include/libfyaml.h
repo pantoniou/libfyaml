@@ -165,6 +165,10 @@ enum fy_error_module {
 /* Mask of the debug diagnostric output options */
 #define FYPCF_DEBUG_DIAG_MASK		((1U << 4) - 1)
 
+/* guaranteed minimum depth limit for generated document */
+/* the actual limit is larger depending on the platform */
+#define FYPCF_GUARANTEED_MINIMUM_DEPTH_LIMIT	64
+
 /**
  * enum fy_parse_cfg_flags - Parse configuration flags
  *
@@ -197,6 +201,7 @@ enum fy_error_module {
  * @FYPCF_DISABLE_MMAP_OPT: Disable mmap optimization
  * @FYPCF_DISABLE_RECYCLING: Disable recycling optimization
  * @FYPCF_PARSE_COMMENTS: Enable parsing of comments (experimental)
+ * @FYPCF_DISABLE_DEPTH_LIMIT: Disable depth limit check, use with enlarged stack
  */
 enum fy_parse_cfg_flags {
 	FYPCF_QUIET			= FY_BIT(0),
@@ -225,6 +230,7 @@ enum fy_parse_cfg_flags {
 	FYPCF_DISABLE_MMAP_OPT		= FY_BIT(21),
 	FYPCF_DISABLE_RECYCLING		= FY_BIT(22),
 	FYPCF_PARSE_COMMENTS		= FY_BIT(23),
+	FYPCF_DISABLE_DEPTH_LIMIT	= FY_BIT(24),
 };
 
 /* Enable diagnostic output by all modules */

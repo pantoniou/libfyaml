@@ -241,6 +241,33 @@ static char *txt2esc_format(const char *s, int l, char *buf, int maxsz, int deli
 	return buf;
 }
 
+#define fy_atom_get_text_a(_atom) \
+	({ \
+		struct fy_atom *_a = (_atom); \
+		int _len; \
+		char *_buf; \
+		const char *_txt = ""; \
+		\
+		if (!_a->direct_output) { \
+			_len = fy_atom_format_text_length(_a); \
+			if (_len > 0) { \
+				_buf = alloca(_len + 1); \
+				memset(_buf, 0, _len + 1); \
+				fy_atom_format_text(_a, _buf, _len + 1); \
+				_buf[_len] = '\0'; \
+				_txt = _buf; \
+			} \
+		} else { \
+			_len = fy_atom_size(_a); \
+			_buf = alloca(_len + 1); \
+			memset(_buf, 0, _len + 1); \
+			memcpy(_buf, fy_atom_data(_a), _len); \
+			_buf[_len] = '\0'; \
+			_txt = _buf; \
+		} \
+		_txt; \
+	})
+
 #define txt2esc_a(_s, _l) \
 	({ \
 	 	const char *__s = (const void *)(_s); \

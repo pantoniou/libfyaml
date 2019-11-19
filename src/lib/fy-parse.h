@@ -374,6 +374,9 @@ struct fy_parser {
 	FILE *errfp;
 	char *errbuf;
 	size_t errsz;
+
+	int err_term_width;
+	int err_term_height;
 };
 
 int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg);
@@ -677,6 +680,7 @@ void fy_error_report(struct fy_parser *fyp, struct fy_error_ctx *fyec, const cha
 		__attribute__((format(printf, 3, 4)));
 
 FILE *fy_parser_get_error_fp(struct fy_parser *fyp);
+void fy_parser_get_error_terminal_extents(struct fy_parser *fyp, int *widthp, int *heightp);
 enum fy_parse_cfg_flags fy_parser_get_cfg_flags(const struct fy_parser *fyp);
 bool fy_parser_is_colorized(struct fy_parser *fyp);
 

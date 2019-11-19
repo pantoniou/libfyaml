@@ -14,6 +14,7 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <assert.h>
@@ -1439,10 +1440,6 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 	    fy_atom_is_set(&fyp->last_comment)) {
 		memcpy(&fyt->comment[fycp_top], &fyp->last_comment, sizeof(fyp->last_comment));
 		memset(&fyp->last_comment, 0, sizeof(fyp->last_comment));
-
-		fy_notice(fyp, "token: %s attaching top comment:\n%s\n",
-				fy_token_debug_text_a(fyt),
-				fy_atom_get_text_a(&fyt->comment[fycp_top]));
 	}
 
 	/* right hand comment */
@@ -5954,6 +5951,7 @@ void fy_error_vreport(struct fy_parser *fyp, struct fy_error_ctx *fyec, const ch
 
 	fyi = fyec->fyi;
 	assert(fyi);
+
 	fp = fy_parser_get_error_fp(fyp);
 	do_color = fy_parser_is_colorized(fyp);
 
@@ -6051,6 +6049,41 @@ FILE *fy_parser_get_error_fp(struct fy_parser *fyp)
 		abort();
 	}
 	return fyp->errfp;
+}
+
+void fy_parser_get_error_terminal_extents(struct fy_parser *fyp, int *widthp, int *heightp)
+{
+	struct winsize ws;
+	FILE *fp;
+	int fd, rc;
+
+	/* default */
+	*widthp = 0;
+	*heightp = 0;
+
+	if (fyp->err_term_width && fyp->err_term_height)
+		goto out;
+
+	if (!fyp || !(fyp->cfg.flags & FYPCF_COLLECT_DIAG))
+		fp = stderr;
+	else
+		fp = fyp->errfp;
+
+	/* fd must exist and be a tty */
+	if (!fp || (fd = fileno(fp)) < 0 || !isatty(fd))
+		return;
+
+	rc = ioctl(fd, TIOCGWINSZ, &ws);
+	if (rc < 0)
+		return;
+
+	fyp->err_term_width = ws.ws_col;
+	fyp->err_term_height = ws.ws_row;
+
+out:
+	*widthp = fyp->err_term_width;
+	*heightp = fyp->err_term_height;
+	return;
 }
 
 static enum fy_parse_cfg_flags default_parser_cfg_flags =
