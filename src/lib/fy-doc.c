@@ -372,6 +372,11 @@ err_stream_start:
 	goto err_out;
 }
 
+struct fy_document *fy_node_document(struct fy_node *fyn)
+{
+	return fyn ? fyn->fyd : NULL;
+}
+
 struct fy_anchor *
 fy_document_lookup_anchor(struct fy_document *fyd, const char *anchor, size_t len)
 {
@@ -4392,7 +4397,18 @@ struct fy_node *fy_node_create_mapping(struct fy_document *fyd)
 
 static int fy_node_sequence_insert_prepare(struct fy_node *fyn_seq, struct fy_node *fyn)
 {
+	struct fy_document *fyd;
+
 	if (!fyn_seq || !fyn || fyn_seq->type != FYNT_SEQUENCE)
+		return -1;
+
+	/* a document must be associated with the sequence */
+	fyd = fyn_seq->fyd;
+	if (!fyd)
+		return -1;
+
+	/* the documents of the nodes must match */
+	if (fyn->fyd != fyd)
 		return -1;
 
 	fyn->parent = fyn_seq;
@@ -4488,12 +4504,21 @@ fy_node_mapping_pair_insert_prepare(struct fy_node *fyn_map,
 	struct fy_document *fyd;
 	struct fy_node_pair *fynp;
 
-	if (!fyn_map || fyn_map->type != FYNT_MAPPING ||
-	    fy_node_mapping_key_is_duplicate(fyn_map, fyn_key))
+	if (!fyn_map || fyn_map->type != FYNT_MAPPING)
 		return NULL;
 
+	/* a document must be associated with the mapping */
 	fyd = fyn_map->fyd;
-	assert(fyd);
+	if (!fyd)
+		return NULL;
+
+	/* if not NULL, the documents of the nodes must match */
+	if ((fyn_key && fyn_key->fyd != fyd) ||
+	    (fyn_value && fyn_value->fyd != fyd))
+		return NULL;
+
+	 if (fy_node_mapping_key_is_duplicate(fyn_map, fyn_key))
+		return NULL;
 
 	fynp = fy_node_pair_alloc(fyd);
 	if (!fynp)

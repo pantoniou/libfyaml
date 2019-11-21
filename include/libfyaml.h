@@ -990,6 +990,21 @@ bool fy_document_has_explicit_document_start(const struct fy_document *fyd);
  */
 bool fy_document_has_explicit_document_end(const struct fy_document *fyd);
 
+/**
+ * fy_node_document() - Retreive the document the node belong to
+ *
+ * Returns the document of the node; not that while the node may not
+ * be reachable via a path expression, it may still be member of a
+ * document.
+ *
+ * @fyn: The node to retreive it's document
+ *
+ * Returns:
+ * The document of the node, or NULL in case of an error, or
+ * when the node has no document attached.
+ */
+struct fy_document *fy_node_document(struct fy_node *fyn);
+
 /*
  * enum fy_emitter_write_type - Type of the emitted output
  *
