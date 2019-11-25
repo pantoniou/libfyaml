@@ -2801,6 +2801,38 @@ struct fy_token *fy_document_tag_directive_iterate(struct fy_document *fyd, void
 struct fy_token *fy_document_tag_directive_lookup(struct fy_document *fyd, const char *handle);
 
 /**
+ * fy_tag_directive_token_handle() - Get a tag directive handle
+ *
+ * Retreives the tag directives token handle value. Only valid on
+ * tag directive tokens.
+ *
+ * @fyd: The tag directive token
+ * @lenp: Pointer to a variable that will hold the returned length
+ *
+ * Returns:
+ * A pointer to the tag directive's handle, while @lenp will be assigned the
+ * length of said handle.
+ * A NULL will be returned in case of an error.
+ */
+const char *fy_tag_directive_token_handle(struct fy_token *fyt, size_t *lenp);
+
+/**
+ * fy_tag_directive_token_prefix() - Get a tag directive prefix
+ *
+ * Retreives the tag directives token prefix value. Only valid on
+ * tag directive tokens.
+ *
+ * @fyd: The tag directive token
+ * @lenp: Pointer to a variable that will hold the returned length
+ *
+ * Returns:
+ * A pointer to the tag directive's prefix, while @lenp will be assigned the
+ * length of said prefix.
+ * A NULL will be returned in case of an error.
+ */
+const char *fy_tag_directive_token_prefix(struct fy_token *fyt, size_t *lenp);
+
+/**
  * fy_document_tag_directive_add() - Add a tag directive to a document
  *
  * Add tag directive to the document.
