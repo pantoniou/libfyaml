@@ -67,7 +67,7 @@ START_TEST(scan_simple)
 	fyt = fy_scan(fyp);
 	ck_assert_ptr_ne(fyt, NULL);
 	ck_assert(fyt->type == FYTT_STREAM_START);
-	fy_parse_token_recycle(fyp, fyt);
+	fy_token_unref(fyt);
 
 	/* SCALAR */
 	fyt = fy_scan(fyp);
@@ -75,13 +75,13 @@ START_TEST(scan_simple)
 	ck_assert(fyt->type == FYTT_SCALAR);
 	ck_assert(fyt->scalar.style == FYSS_PLAIN);
 	ck_assert_str_eq(fy_token_get_text0(fyt), "42");
-	fy_parse_token_recycle(fyp, fyt);
+	fy_token_unref(fyt);
 
 	/* STREAM_END */
 	fyt = fy_scan(fyp);
 	ck_assert_ptr_ne(fyt, NULL);
 	ck_assert(fyt->type == FYTT_STREAM_END);
-	fy_parse_token_recycle(fyp, fyt);
+	fy_token_unref(fyt);
 
 	/* EOF */
 	fyt = fy_scan(fyp);

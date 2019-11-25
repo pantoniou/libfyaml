@@ -584,7 +584,7 @@ int do_scan(struct fy_parser *fyp)
 
 	while ((fyt = fy_scan(fyp)) != NULL) {
 		dump_token(fyp, fyt);
-		fy_parse_token_recycle(fyp, fyt);
+		fy_token_unref(fyt);
 	}
 
 	return 0;
@@ -1051,22 +1051,25 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	struct fy_document *fyd;
 	struct fy_node *fyn;
 	char *buf;
+	void *iter;
+	struct fy_token *fyt;
+	const char *handle, *prefix;
+	size_t handle_size, prefix_size;
+	int rc __FY_DEBUG_UNUSED__;
 #if 0
 	char *path;
 	struct fy_node *fynt;
 	struct fy_document *fydt;
 	struct fy_node_pair *fynp;
 	const char *scalar;
-	void *iter;
 	size_t len;
 	int count, i, j;
 	int rc __FY_DEBUG_UNUSED__;
 	int ret __FY_DEBUG_UNUSED__;
 	char tbuf[80];
-	struct fy_token *fyt;
 	struct fy_anchor *fya;
-	const char *handle, *prefix, *anchor;
-	size_t handle_size, prefix_size, anchor_size;
+	const char *handle, *prefix;
+	size_t handle_size, prefix_size;
 
 	/****/
 
@@ -1772,7 +1775,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	free(buf);
 
 	fy_document_destroy(fyd);
-#endif
+
 	/*****/
 
 	printf("\nJSON pointer tests\n");
@@ -1903,6 +1906,64 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 			printf("\n");
 		}
 	}
+
+	fy_document_destroy(fyd);
+	fyd = NULL;
+#endif
+
+	fyd = fy_document_create(NULL);
+	assert(fyd);
+
+	fyn = fy_node_create_sequence(fyd);
+	assert(fyn);
+
+	fy_document_set_root(fyd, fyn);
+	fyn = NULL;
+
+	fyn = fy_node_build_from_string(fyd, "%TAG !e! tag:example.com,2000:app/\n---\n- foo\n- !e!foo bar\n", FY_NT);
+	assert(fyn);
+
+	rc = fy_node_sequence_append(fy_document_root(fyd), fyn);
+
+	buf = fy_emit_document_to_string(fyd, 0);
+	assert(buf);
+	printf("resulting document:\n");
+	fputs(buf, stdout);
+	free(buf);
+
+	printf("tag directives:\n");
+	iter = NULL;
+	while ((fyt = fy_document_tag_directive_iterate(fyd, &iter)) != NULL) {
+		handle = fy_tag_directive_token_handle(fyt, &handle_size);
+		prefix = fy_tag_directive_token_prefix(fyt, &prefix_size);
+		printf("> handle='%.*s' prefix='%.*s'\n",
+				(int)handle_size, handle,
+				(int)prefix_size, prefix);
+	}
+
+	rc = fy_document_tag_directive_add(fyd, "!f!", "tag:example.com,2019:f/");
+	assert(!rc);
+
+	printf("new tag directives:\n");
+	iter = NULL;
+	while ((fyt = fy_document_tag_directive_iterate(fyd, &iter)) != NULL) {
+		handle = fy_tag_directive_token_handle(fyt, &handle_size);
+		prefix = fy_tag_directive_token_prefix(fyt, &prefix_size);
+		printf("> handle='%.*s' prefix='%.*s'\n",
+				(int)handle_size, handle,
+				(int)prefix_size, prefix);
+	}
+
+	fyn = fy_node_build_from_string(fyd, "!f!whiz frooz\n", FY_NT);
+	assert(fyn);
+
+	rc = fy_node_sequence_append(fy_document_root(fyd), fyn);
+
+	buf = fy_emit_document_to_string(fyd, 0);
+	assert(buf);
+	printf("resulting document:\n");
+	fputs(buf, stdout);
+	free(buf);
 
 	fy_document_destroy(fyd);
 	fyd = NULL;

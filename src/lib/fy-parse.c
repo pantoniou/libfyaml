@@ -49,12 +49,6 @@ void fy_eventp_release(struct fy_eventp *fyep)
 	fy_parse_eventp_recycle(fyep->fyp, fyep);
 }
 
-int fy_parse_input_open(struct fy_parser *fyp, struct fy_input *fyi);
-void fy_input_close(struct fy_input *fyi);
-
-#define FY_DEFAULT_YAML_VERSION_MAJOR	1
-#define FY_DEFAULT_YAML_VERSION_MINOR	1
-
 const void *fy_ptr_slow_path(struct fy_parser *fyp, size_t *leftp)
 {
 	struct fy_input *fyi;
@@ -160,7 +154,7 @@ err_out:
 	return -1;
 }
 
-static const struct fy_tag * const fy_default_tags[] = {
+const struct fy_tag * const fy_default_tags[] = {
 	&(struct fy_tag) { .handle = "!", .prefix = "!", },
 	&(struct fy_tag) { .handle = "!!", .prefix = "tag:yaml.org,2002:", },
 	&(struct fy_tag) { .handle = "", .prefix = "", },
@@ -236,129 +230,25 @@ bool fy_token_tag_directive_is_overridable(struct fy_token *fyt_td)
 	return false;
 }
 
-int fy_append_tag_directive(struct fy_parser *fyp,
-			    struct fy_document_state *fyds,
-			    const char *handle, const char *prefix)
-{
-	struct fy_token *fyt = NULL;
-	struct fy_input *fyi = NULL;
-	char *data;
-	size_t size, handle_size, prefix_size;
-	struct fy_atom atom;
-
-	size = strlen(handle) + 1 + strlen(prefix);
-	data = malloc(size + 1);
-	fy_error_check(fyp, data, err_out,
-			"fy_parse_alloc() failed");
-
-	snprintf(data, size + 1, "%s %s", handle, prefix);
-
-	fyi = fy_input_from_malloc_data(data, size, &atom, true);
-	fy_error_check(fyp, fyi, err_out,
-			"fy_input_from_data() failed");
-
-	handle_size = strlen(handle);
-	prefix_size = strlen(prefix);
-
-	fyt = fy_token_create(fyp, FYTT_TAG_DIRECTIVE, &atom,
-			     handle_size, prefix_size);
-	fy_error_check(fyp, fyt, err_out,
-			"fy_token_create() failed");
-
-	fy_token_list_add_tail(&fyds->fyt_td, fyt);
-
-	if (!fy_tag_is_default(handle, handle_size, prefix, prefix_size))
-		fyds->tags_explicit = true;
-
-	/* take away the input reference */
-	fy_input_unref(fyi);
-
-	return 0;
-
-err_out:
-	fy_token_unref(fyt);
-	fy_input_unref(fyi);
-	if (data)
-		free(data);
-	return -1;
-}
-
-int fy_fill_default_document_state(struct fy_parser *fyp,
-				    struct fy_document_state *fyds,
-				    int version_major, int version_minor,
-				    const struct fy_tag * const *default_tags)
-{
-	const struct fy_tag *fytag;
-	int i, rc;
-
-	if (!default_tags)
-		default_tags = fy_default_tags;
-
-	fyds->version.major = version_major >= 0 ? version_major : FY_DEFAULT_YAML_VERSION_MAJOR;
-	fyds->version.minor = version_minor >= 0 ? version_minor : FY_DEFAULT_YAML_VERSION_MINOR;
-
-	fyds->version_explicit = false;
-	fyds->tags_explicit = false;
-	fyds->start_implicit = true;
-	fyds->end_implicit = true;
-
-	memset(&fyds->start_mark, 0, sizeof(fyds->start_mark));
-	memset(&fyds->end_mark, 0, sizeof(fyds->end_mark));
-
-	fyds->fyt_vd = NULL;
-	fy_token_list_init(&fyds->fyt_td);
-
-	for (i = 0; (fytag = default_tags[i]) != NULL; i++) {
-
-		rc = fy_append_tag_directive(fyp, fyds, fytag->handle, fytag->prefix);
-		fy_error_check(fyp, !rc, err_out,
-				"fy_append_tag_directive() failed");
-	}
-
-	return 0;
-
-err_out:
-	return -1;
-}
-
-int fy_set_default_document_state(struct fy_parser *fyp,
-				  int version_major, int version_minor,
-				  const struct fy_tag * const *default_tags)
-{
-	struct fy_document_state *fyds;
-	int rc;
-
-	if (fyp->current_document_state) {
-		fy_document_state_unref(fyp->current_document_state);
-		fyp->current_document_state = NULL;
-	}
-
-	fyds = fy_parse_document_state_alloc(fyp);
-	fy_error_check(fyp, fyds, err_out,
-			"fy_parse_document_state_alloc() failed");
-	fyp->current_document_state = fyds;
-
-	rc = fy_fill_default_document_state(fyp, fyds, version_major, version_minor, default_tags);
-	fy_error_check(fyp, !rc, err_out,
-			"fy_fill_default_document_state() failed");
-
-	return 0;
-err_out:
-	return -1;
-}
-
 int fy_reset_document_state(struct fy_parser *fyp)
 {
-	int rc;
+	struct fy_document_state *fyds_new = NULL;
 
-	if (fyp->external_document_state) {
-		fy_scan_debug(fyp, "not resetting document state");
-		return 0;
-	}
 	fy_scan_debug(fyp, "resetting document state");
-	rc = fy_set_default_document_state(fyp, -1, -1, NULL);
-	fy_error_check(fyp, !rc, err_out_rc,
-			"fy_set_default_document_state() failed");
+
+	if (!fyp->default_document_state) {
+		fyds_new = fy_document_state_default();
+		fy_error_check(fyp, fyds_new, err_out,
+				"fy_document_state_default() failed");
+	} else {
+		fyds_new = fy_document_state_copy(fyp->default_document_state);
+		fy_error_check(fyp, fyds_new, err_out,
+				"fy_document_state_copy() failed");
+	}
+
+	if (fyp->current_document_state)
+		fy_document_state_unref(fyp->current_document_state);
+	fyp->current_document_state = fyds_new;
 
 	/* TODO check when cleaning flow lists */
 	fyp->flow_level = 0;
@@ -367,8 +257,41 @@ int fy_reset_document_state(struct fy_parser *fyp)
 
 	return 0;
 
-err_out_rc:
-	return rc;
+err_out:
+	return -1;
+}
+
+int fy_parser_set_default_document_state(struct fy_parser *fyp,
+					 struct fy_document_state *fyds)
+{
+	if (!fyp)
+		return -1;
+
+	/* only in a safe state */
+	if (fyp->state != FYPS_NONE && fyp->state != FYPS_END)
+		return -1;
+
+	if (fyp->default_document_state != fyds) {
+		if (fyp->default_document_state) {
+			fy_document_state_unref(fyp->default_document_state);
+			fyp->default_document_state = NULL;
+		}
+
+		if (fyds)
+			fyp->default_document_state = fy_document_state_ref(fyds);
+	}
+
+	fy_reset_document_state(fyp);
+
+	return 0;
+}
+
+void fy_parser_set_next_single_document(struct fy_parser *fyp)
+{
+	if (!fyp)
+		return;
+
+	fyp->next_single_document = true;
 }
 
 int fy_check_document_version(struct fy_parser *fyp)
@@ -531,8 +454,6 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 
 	fyp->cfg = cfg ? *cfg : default_parse_cfg;
 
-	fy_talloc_list_init(&fyp->tallocs);
-
 	fy_indent_list_init(&fyp->indent_stack);
 	fy_indent_list_init(&fyp->recycled_indent);
 	fyp->indent = -2;
@@ -542,10 +463,8 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 	fy_simple_key_list_init(&fyp->recycled_simple_key);
 
 	fy_token_list_init(&fyp->queued_tokens);
-	fy_token_list_init(&fyp->recycled_token);
 
 	fy_input_list_init(&fyp->queued_inputs);
-	fy_input_list_init(&fyp->recycled_input);
 
 	fyp->state = FYPS_NONE;
 	fy_parse_state_log_list_init(&fyp->state_stack);
@@ -557,8 +476,6 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 	fyp->flow = FYFT_NONE;
 	fy_flow_list_init(&fyp->recycled_flow);
 
-	fy_document_state_list_init(&fyp->recycled_document_state);
-
 	fyp->pending_complex_key_column = -1;
 	fyp->last_block_mapping_key_line = -1;
 
@@ -569,6 +486,7 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 		fy_notice(fyp, "Suppressing recycling");
 
 	fyp->current_document_state = NULL;
+
 	rc = fy_reset_document_state(fyp);
 	fy_error_check(fyp, !rc, err_out_rc,
 			"fy_reset_document_state() failed");
@@ -598,8 +516,8 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 
 	fy_token_unref(fyp->stream_end_token);
 
-	if (fyp->current_document_state)
-		fy_document_state_unref(fyp->current_document_state);
+	fy_document_state_unref(fyp->current_document_state);
+	fy_document_state_unref(fyp->default_document_state);
 
 	for (fyi = fy_input_list_head(&fyp->queued_inputs); fyi; fyi = fyin) {
 		fyin = fy_input_next(&fyp->queued_inputs, fyi);
@@ -612,600 +530,9 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 	/* and vacuum (free everything) */
 	fy_parse_indent_vacuum(fyp);
 	fy_parse_simple_key_vacuum(fyp);
-	fy_parse_token_vacuum(fyp);
-	fy_parse_input_vacuum(fyp);
 	fy_parse_parse_state_log_vacuum(fyp);
 	fy_parse_eventp_vacuum(fyp);
 	fy_parse_flow_vacuum(fyp);
-	// fy_parse_document_state_vacuum(fyp);
-
-	/* and release all the remaining tracked memory */
-	fy_tfree_all(&fyp->tallocs);
-}
-
-/* open a file for reading respecting the search path */
-static int fy_path_open(struct fy_parser *fyp, const char *name, char **fullpathp)
-{
-	char *sp, *s, *e, *t, *newp;
-	size_t len, maxlen;
-	int fd;
-
-	if (!fyp || !name || name[0] == '\0')
-		return -1;
-
-	/* for a full path, or no search path, open directly */
-	if (name[0] == '/' || !fyp->cfg.search_path || !fyp->cfg.search_path[0])
-		return open(name, O_RDONLY);
-
-	len = strlen(fyp->cfg.search_path);
-	sp = alloca(len + 1);
-	memcpy(sp, fyp->cfg.search_path, len + 1);
-
-	/* allocate the maximum possible so that we don't deal with reallocations */
-	maxlen = len + 1 + strlen(name);
-	newp = fy_parser_alloc(fyp, maxlen + 1);
-	if (!newp)
-		return -1;
-
-	s = sp;
-	e = sp + strlen(s);
-	while (s < e) {
-		/* skip completely empty */
-		if (*s == ':') {
-			s++;
-			continue;
-		}
-
-		t = strchr(s, ':');
-		if (t)
-			*t++ = '\0';
-		else
-			t = e;
-
-		len = strlen(s) + 1 + strlen(name) + 1;
-		snprintf(newp, maxlen, "%s/%s", s, name);
-
-		/* try opening */
-		fd = open(newp, O_RDONLY);
-		if (fd != -1) {
-			fy_scan_debug(fyp, "opened file %s at %s", name, newp);
-
-			if (fullpathp)
-				*fullpathp = newp;
-			else
-				fy_parser_free(fyp, newp);
-			return fd;
-		}
-
-		s = t;
-	}
-
-	fy_parser_free(fyp, newp);
-	return -1;
-}
-
-struct fy_input *fy_input_alloc(void)
-{
-	struct fy_input *fyi;
-
-	fyi = malloc(sizeof(*fyi));
-	if (!fyi)
-		return NULL;
-	memset(fyi, 0, sizeof(*fyi));
-
-	fyi->state = FYIS_NONE;
-	fyi->refs = 1;
-
-	/* fy_notice(NULL, "%s: %p #%d", __func__, fyi, fyi->refs); */
-
-	return fyi;
-}
-
-void fy_input_free(struct fy_input *fyi)
-{
-	if (!fyi)
-		return;
-
-	assert(fyi->refs == 1);
-
-	/* fy_notice(NULL, "%s: %p #%d", __func__, fyi, fyi->refs); */
-
-	switch (fyi->state) {
-	case FYIS_NONE:
-	case FYIS_QUEUED:
-		/* nothing to do */
-		break;
-	case FYIS_PARSE_IN_PROGRESS:
-	case FYIS_PARSED:
-		fy_input_close(fyi);
-		break;
-	}
-
-	/* always release the memory of the alloc memory */
-	switch (fyi->cfg.type) {
-	case fyit_alloc:
-		free(fyi->cfg.alloc.data);
-		break;
-
-	default:
-		break;
-	}
-
-	free(fyi);
-}
-
-struct fy_input *fy_input_ref(struct fy_input *fyi)
-{
-	if (!fyi)
-		return NULL;
-
-
-	assert(fyi->refs + 1 > 0);
-
-	fyi->refs++;
-
-	/* fy_notice(NULL, "%s: %p #%d", __func__, fyi, fyi->refs); */
-
-	return fyi;
-}
-
-void fy_input_unref(struct fy_input *fyi)
-{
-	if (!fyi)
-		return;
-
-	assert(fyi->refs > 0);
-
-	/* fy_notice(NULL, "%s: %p #%d", __func__, fyi, fyi->refs); */
-
-	if (fyi->refs == 1)
-		fy_input_free(fyi);
-	else
-		fyi->refs--;
-}
-
-void fy_parse_input_recycle(struct fy_parser *fyp, struct fy_input *fyi)
-{
-	fy_input_unref(fyi);
-}
-
-int fy_parse_input_open(struct fy_parser *fyp, struct fy_input *fyi)
-{
-	struct stat sb;
-	int rc;
-
-	if (!fyi)
-		return -1;
-
-	assert(fyi->state == FYIS_QUEUED);
-
-	/* reset common data */
-	fyi->buffer = NULL;
-	fyi->allocated = 0;
-	fyi->read = 0;
-	fyi->chunk = 0;
-	fyi->fp = NULL;
-
-	switch (fyi->cfg.type) {
-	case fyit_file:
-		fy_error_check(fyp, fyp, err_out,
-				"parser association missing for file");
-		memset(&fyi->file, 0, sizeof(fyi->file));
-		fyi->file.fd = fy_path_open(fyp, fyi->cfg.file.filename, NULL);
-		fy_error_check(fyp, fyi->file.fd != -1, err_out,
-				"failed to open %s",  fyi->cfg.file.filename);
-
-		rc = fstat(fyi->file.fd, &sb);
-		fy_error_check(fyp, rc != -1, err_out,
-				"failed to fstat %s", fyi->cfg.file.filename);
-
-		fyi->file.length = sb.st_size;
-
-		/* only map if not zero (and is not disabled) */
-		if (sb.st_size > 0 && !(fyp->cfg.flags & FYPCF_DISABLE_MMAP_OPT)) {
-			fyi->file.addr = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE,
-					fyi->file.fd, 0);
-
-			/* convert from MAP_FAILED to NULL */
-			if (fyi->file.addr == MAP_FAILED)
-				fyi->file.addr = NULL;
-		}
-		/* if we've managed to mmap, we' good */
-		if (fyi->file.addr)
-			break;
-
-		fy_scan_debug(fyp, "direct mmap mode unavailable for file %s, switching to stream mode",
-				fyi->cfg.file.filename);
-
-		fyi->fp = fdopen(fyi->file.fd, "r");
-		fy_error_check(fyp, rc != -1, err_out,
-				"failed to fdopen %s", fyi->cfg.file.filename);
-
-		/* fd ownership assigned to file */
-		fyi->file.fd = -1;
-
-		/* switch to stream mode */
-		fyi->chunk = sysconf(_SC_PAGESIZE);
-		fyi->buffer = malloc(fyi->chunk);
-		fy_error_check(fyp, fyi->buffer, err_out,
-				"fy_alloc() failed");
-		fyi->allocated = fyi->chunk;
-		break;
-
-	case fyit_stream:
-		memset(&fyi->stream, 0, sizeof(fyi->stream));
-		fyi->chunk = fyi->cfg.stream.chunk;
-		if (!fyi->chunk)
-			fyi->chunk = sysconf(_SC_PAGESIZE);
-		fyi->buffer = malloc(fyi->chunk);
-		fy_error_check(fyp, fyi->buffer, err_out,
-				"fy_alloc() failed");
-		fyi->allocated = fyi->chunk;
-		fyi->fp = fyi->cfg.stream.fp;
-		break;
-
-	case fyit_memory:
-		/* nothing to do for memory */
-		break;
-
-	case fyit_alloc:
-		/* nothing to do for memory */
-		break;
-
-	default:
-		assert(0);
-		break;
-	}
-
-	fyi->state = FYIS_PARSE_IN_PROGRESS;
-
-	return 0;
-
-err_out:
-	fy_input_close(fyi);
-	return -1;
-}
-
-void fy_input_close(struct fy_input *fyi)
-{
-	if (!fyi)
-		return;
-
-	switch (fyi->cfg.type) {
-	case fyit_file:
-		if (fyi->file.fd != -1) {
-			close(fyi->file.fd);
-			fyi->file.fd = -1;
-		}
-		if (fyi->file.addr && fyi->file.addr && fyi->file.addr != MAP_FAILED) {
-			munmap(fyi->file.addr, fyi->file.length);
-			fyi->file.addr = NULL;
-		}
-		if (fyi->buffer) {
-			free(fyi->buffer);
-			fyi->buffer = NULL;
-		}
-		if (fyi->fp) {
-			fclose(fyi->fp);
-			fyi->fp = NULL;
-		}
-		break;
-
-	case fyit_stream:
-		if (fyi->buffer) {
-			free(fyi->buffer);
-			fyi->buffer = NULL;
-		}
-		memset(&fyi->stream, 0, sizeof(fyi->stream));
-		break;
-
-	case fyit_memory:
-		/* nothing */
-		break;
-
-	case fyit_alloc:
-		/* nothing */
-		break;
-
-	default:
-		break;
-	}
-}
-
-int fy_parse_input_done(struct fy_parser *fyp)
-{
-	struct fy_input *fyi;
-	void *buf;
-
-	if (!fyp)
-		return -1;
-
-	fyi = fyp->current_input;
-	if (!fyi)
-		return 0;
-
-	switch (fyi->cfg.type) {
-	case fyit_file:
-		if (fyi->file.addr)
-			break;
-
-		/* fall-through */
-
-	case fyit_stream:
-		fy_error_check(fyp, fyp, err_out,
-				"no parser associated with input");
-		/* chop extra buffer */
-		buf = realloc(fyi->buffer, fyp->current_input_pos);
-		fy_error_check(fyp, buf || !fyp->current_input_pos, err_out,
-				"realloc() failed");
-
-		fyi->buffer = buf;
-		fyi->allocated = fyp->current_input_pos;
-		break;
-	default:
-		break;
-
-	}
-
-	fy_scan_debug(fyp, "moving current input to parsed inputs");
-
-	fyi->state = FYIS_PARSED;
-	fy_input_unref(fyi);
-
-	fyp->current_input = NULL;
-
-	return 0;
-
-err_out:
-	return -1;
-}
-
-static void fy_input_from_data_setup(struct fy_input *fyi,
-				     struct fy_atom *handle, bool simple)
-{
-	const char *data;
-	size_t size;
-	unsigned int aflags;
-
-	/* this is an internal method, you'd better to pass garbage */
-	data = fy_input_start(fyi);
-	size = fy_input_size(fyi);
-
-	fyi->buffer = NULL;
-	fyi->allocated = 0;
-	fyi->read = 0;
-	fyi->chunk = 0;
-	fyi->fp = NULL;
-
-	if (size > 0)
-		aflags = fy_analyze_scalar_content(data, size);
-	else
-		aflags = FYACF_EMPTY | FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN;
-
-	handle->start_mark.input_pos = 0;
-	handle->start_mark.line = 0;
-	handle->start_mark.column = 0;
-	handle->end_mark.input_pos = size;
-	handle->end_mark.line = 0;
-	handle->end_mark.column = fy_utf8_count(data, size);
-	/* if it's plain, all is good */
-	if (simple || (aflags & FYACF_FLOW_PLAIN)) {
-		handle->storage_hint = size;	/* maximum */
-		handle->storage_hint_valid = false;
-		handle->direct_output = true;
-		handle->style = FYAS_PLAIN;
-	} else {
-		handle->storage_hint = 0;	/* just calculate */
-		handle->storage_hint_valid = false;
-		handle->direct_output = false;
-		handle->style = FYAS_DOUBLE_QUOTED_MANUAL;
-	}
-	handle->empty = !!(aflags & FYACF_EMPTY);
-	handle->has_lb = !!(aflags & FYACF_LB);
-	handle->has_ws = !!(aflags & FYACF_WS);
-	handle->starts_with_ws = !!(aflags & FYACF_STARTS_WITH_WS);
-	handle->starts_with_lb = !!(aflags & FYACF_STARTS_WITH_LB);
-	handle->ends_with_ws = !!(aflags & FYACF_ENDS_WITH_WS);
-	handle->ends_with_lb = !!(aflags & FYACF_ENDS_WITH_LB);
-	handle->trailing_lb = !!(aflags & FYACF_TRAILING_LB);
-	handle->size0 = !!(aflags & FYACF_SIZE0);
-
-	handle->chomp = FYAC_STRIP;
-	handle->increment = 0;
-	handle->fyi = fyi;
-
-	fyi->state = FYIS_PARSED;
-}
-
-struct fy_input *fy_input_from_data(const char *data, size_t size,
-				    struct fy_atom *handle, bool simple)
-{
-	struct fy_input *fyi;
-
-	if (data && size == (size_t)-1)
-		size = strlen(data);
-
-	fyi = fy_input_alloc();
-	if (!fyi)
-		return NULL;
-
-	fyi->cfg.type = fyit_memory;
-	fyi->cfg.userdata = NULL;
-	fyi->cfg.memory.data = data;
-	fyi->cfg.memory.size = size;
-
-	fy_input_from_data_setup(fyi, handle, simple);
-
-	return fyi;
-}
-
-struct fy_input *fy_input_from_malloc_data(char *data, size_t size,
-					   struct fy_atom *handle, bool simple)
-{
-	struct fy_input *fyi;
-
-	if (data && size == (size_t)-1)
-		size = strlen(data);
-
-	fyi = fy_input_alloc();
-	if (!fyi)
-		return NULL;
-
-	fyi->cfg.type = fyit_alloc;
-	fyi->cfg.userdata = NULL;
-	fyi->cfg.alloc.data = data;
-	fyi->cfg.alloc.size = size;
-
-	fy_input_from_data_setup(fyi, handle, simple);
-
-	return fyi;
-}
-
-const void *fy_parse_input_try_pull(struct fy_parser *fyp, struct fy_input *fyi,
-				    size_t pull, size_t *leftp)
-{
-	const void *p;
-	size_t left, pos, size, nread, nreadreq, missing;
-	size_t space __FY_DEBUG_UNUSED__;
-	void *buf;
-
-	if (!fyp || !fyi) {
-		if (leftp)
-			*leftp = 0;
-		return NULL;
-	}
-
-	p = NULL;
-	left = 0;
-	pos = fyp->current_input_pos;
-
-	switch (fyi->cfg.type) {
-	case fyit_file:
-
-		if (fyi->file.addr) {
-			assert(fyi->file.length >= pos);
-
-			left = fyi->file.length - pos;
-			if (!left) {
-				fy_scan_debug(fyp, "file input exhausted");
-				break;
-			}
-			p = fyi->file.addr + pos;
-			break;
-		}
-
-		/* fall-through */
-
-	case fyit_stream:
-
-		assert(fyi->read >= pos);
-
-		left = fyi->read - pos;
-		p = fyi->buffer + pos;
-
-		/* enough to satisfy directly */
-		if (left >= pull)
-			break;
-
-		/* no more */
-		if (feof(fyi->fp) || ferror(fyi->fp)) {
-			if (!left) {
-				fy_scan_debug(fyp, "input exhausted (EOF)");
-				p = NULL;
-			}
-			break;
-		}
-
-		space = fyi->allocated - pos;
-
-		/* if we're missing more than the buffer space */
-		missing = pull - left;
-
-		fy_scan_debug(fyp, "input: space=%zu missing=%zu", space, missing);
-
-		if (missing > 0) {
-
-			/* align size to chunk */
-			size = fyi->allocated + missing + fyi->chunk - 1;
-			size = size - size % fyi->chunk;
-
-			fy_scan_debug(fyp, "input buffer missing %zu bytes (pull=%zu)",
-					missing, pull);
-			buf = realloc(fyi->buffer, size);
-			fy_error_check(fyp, buf, err_out,
-					"realloc() failed");
-
-			fy_scan_debug(fyp, "stream read allocated=%zu new-size=%zu",
-					fyi->allocated, size);
-
-			fyi->buffer = buf;
-			fyi->allocated = size;
-
-			space = fyi->allocated - pos;
-			p = fyi->buffer + pos;
-		}
-
-		/* always try to read up to the allocated space */
-		do {
-			nreadreq = fyi->allocated - fyi->read;
-
-			fy_scan_debug(fyp, "performing read request of %zu", nreadreq);
-
-			nread = fread(fyi->buffer + fyi->read, 1, nreadreq, fyi->fp);
-
-			fy_scan_debug(fyp, "read returned %zu", nread);
-
-			if (!nread)
-				break;
-
-			fyi->read += nread;
-			left = fyi->read - pos;
-		} while (left < pull);
-
-		/* no more, move it to parsed input chunk list */
-		if (!left) {
-			fy_scan_debug(fyp, "input exhausted (can't read enough)");
-			p = NULL;
-		}
-		break;
-
-	case fyit_memory:
-		assert(fyi->cfg.memory.size >= pos);
-
-		left = fyi->cfg.memory.size - pos;
-		if (!left) {
-			fy_scan_debug(fyp, "memory input exhausted");
-			break;
-		}
-		p = fyi->cfg.memory.data + pos;
-		break;
-
-	case fyit_alloc:
-		assert(fyi->cfg.alloc.size >= pos);
-
-		left = fyi->cfg.alloc.size - pos;
-		if (!left) {
-			fy_scan_debug(fyp, "alloc input exhausted");
-			break;
-		}
-		p = fyi->cfg.alloc.data + pos;
-		break;
-
-
-	default:
-		assert(0);
-		break;
-
-	}
-
-	if (leftp)
-		*leftp = left;
-	return p;
-
-err_out:
-	if (leftp)
-		*leftp = 0;
-	return NULL;
 }
 
 static const char *state_txt[] __FY_DEBUG_UNUSED__ = {
@@ -1233,87 +560,9 @@ static const char *state_txt[] __FY_DEBUG_UNUSED__ = {
 	[FYPS_FLOW_MAPPING_KEY] = "FLOW_MAPPING_KEY",
 	[FYPS_FLOW_MAPPING_VALUE] = "FLOW_MAPPING_VALUE",
 	[FYPS_FLOW_MAPPING_EMPTY_VALUE] = "FLOW_MAPPING_EMPTY_VALUE",
+	[FYPS_SINGLE_DOCUMENT_END] = "SINGLE_DOCUMENT_END",
 	[FYPS_END] = "END"
 };
-
-int fy_parse_input_reset(struct fy_parser *fyp)
-{
-	struct fy_input *fyi, *fyin;
-
-	/* must not be in the middle of something */
-	fy_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
-			err_out, "parser cannot be reset at state '%s'",
-				state_txt[fyp->state]);
-
-	for (fyi = fy_input_list_head(&fyp->queued_inputs); fyi; fyi = fyin) {
-		fyin = fy_input_next(&fyp->queued_inputs, fyi);
-		fy_input_unref(fyi);
-	}
-
-	fy_parse_parse_state_log_list_recycle_all(fyp, &fyp->state_stack);
-
-	fyp->stream_end_produced = false;
-	fyp->stream_start_produced = false;
-	fyp->state = FYPS_NONE;
-
-	fyp->pending_complex_key_column = -1;
-	fyp->last_block_mapping_key_line = -1;
-
-	return 0;
-err_out:
-	return -1;
-}
-
-int fy_parse_input_append(struct fy_parser *fyp, const struct fy_input_cfg *fyic)
-{
-	struct fy_input *fyi = NULL;
-
-	fyi = fy_input_alloc();
-	fy_error_check(fyp, fyp != NULL, err_out,
-			"fy_input_alloc() failed!");
-
-	fyi->cfg = *fyic;
-
-	fyi->buffer = NULL;
-	fyi->allocated = 0;
-	fyi->read = 0;
-	fyi->chunk = 0;
-	fyi->fp = NULL;
-
-	switch (fyi->cfg.type) {
-	case fyit_file:
-		memset(&fyi->file, 0, sizeof(fyi->file));
-		fyi->file.fd = -1;
-		fyi->file.addr = MAP_FAILED;
-		break;
-
-		/* nothing for those two */
-	case fyit_stream:
-		memset(&fyi->stream, 0, sizeof(fyi->stream));
-		break;
-
-	case fyit_memory:
-		/* nothing to do for memory */
-		break;
-
-	case fyit_alloc:
-		/* nothing to do for memory */
-		break;
-
-	default:
-		assert(0);
-		break;
-	}
-
-	fyi->state = FYIS_QUEUED;
-	fy_input_list_add_tail(&fyp->queued_inputs, fyi);
-
-	return 0;
-
-err_out:
-	fy_input_unref(fyi);
-	return -1;
-}
 
 /* ensure that there are at least size octets available */
 const void *fy_ensure_lookahead_slow_path(struct fy_parser *fyp, size_t size, size_t *leftp)
@@ -2293,10 +1542,10 @@ int fy_scan_directive(struct fy_parser *fyp)
 	bool is_uri_valid;
 	struct fy_token *fyt;
 
-	if (!fy_strcmp(fyp, "YAML")) {
+	if (!fy_parse_strcmp(fyp, "YAML")) {
 		advance = 4;
 		type = FYTT_VERSION_DIRECTIVE;
-	} else if (!fy_strcmp(fyp, "TAG")) {
+	} else if (!fy_parse_strcmp(fyp, "TAG")) {
 		advance = 3;
 		type = FYTT_TAG_DIRECTIVE;
 	} else {
@@ -3507,7 +2756,8 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 			lastc = c;
 
 			if (fyp->column == 0 &&
-			    (!fy_strncmp(fyp, "...", 3) || !fy_strncmp(fyp, "---", 3)) &&
+			    (!fy_parse_strncmp(fyp, "...", 3) ||
+			     !fy_parse_strncmp(fyp, "---", 3)) &&
 			    fy_is_blankz_at_offset(fyp, 3)) {
 				doc_start_end_detected = true;
 				break;
@@ -3787,7 +3037,8 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 		/* no document indicators please */
 		FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_SCAN,
 			!(fyp->column == 0 &&
-				(!fy_strncmp(fyp, "---", 3) || !fy_strncmp(fyp, "...", 3)) &&
+				(!fy_parse_strncmp(fyp, "---", 3) ||
+				 !fy_parse_strncmp(fyp, "...", 3)) &&
 				fy_is_blankz_at_offset(fyp, 3)),
 			err_document_indicator);
 
@@ -4193,7 +3444,8 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 	for (;;) {
 		/* break for document indicators */
 		if (fyp->column == 0 &&
-		   (!fy_strncmp(fyp, "---", 3) || !fy_strncmp(fyp, "...", 3)) &&
+		   (!fy_parse_strncmp(fyp, "---", 3) ||
+		    !fy_parse_strncmp(fyp, "...", 3)) &&
 		   fy_is_blankz_at_offset(fyp, 3))
 			break;
 
@@ -4447,7 +3699,8 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 
 	/* probable document start/end indicator */
 	if (fyp->column == 0 &&
-	    (!fy_strncmp(fyp, "---", 3) || !fy_strncmp(fyp, "...", 3)) &&
+	    (!fy_parse_strncmp(fyp, "---", 3) ||
+	     !fy_parse_strncmp(fyp, "...", 3)) &&
 	    fy_is_blankz_at_offset(fyp, 3)) {
 
 		FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_SCAN,
@@ -4735,11 +3988,11 @@ enum fy_parser_state fy_parse_state_get(struct fy_parser *fyp)
 }
 
 static struct fy_eventp *
-fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fyep,
-		bool is_block, bool is_indentless_sequence)
+fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 {
-	struct fy_document_state *fyds;
-	struct fy_event *fye = &fyep->e;
+	struct fy_eventp *fyep = NULL;
+	struct fy_event *fye = NULL;
+	struct fy_document_state *fyds = NULL;
 	struct fy_token *anchor = NULL, *tag = NULL;
 	const char *handle;
 	size_t handle_size;
@@ -4749,13 +4002,17 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 	fyds = fyp->current_document_state;
 	assert(fyds);
 
-	fy_parse_debug(fyp, "parse_node: is_block=%s is_indentless=%s - fyt %s",
+	fy_parse_debug(fyp, "parse_node: is_block=%s - fyt %s",
 			is_block ? "true" : "false",
-			is_indentless_sequence ? "true" : "false",
 			fy_token_type_txt[fyt->type]);
 
 	if (fyt->type == FYTT_ALIAS) {
 		fy_parse_state_set(fyp, fy_parse_state_pop(fyp));
+
+		fyep = fy_parse_eventp_alloc(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_eventp_alloc() failed!");
+		fye = &fyep->e;
 
 		fye->type = FYET_ALIAS;
 		fye->alias.anchor = fy_scan_remove(fyp, fyt);
@@ -4795,6 +4052,11 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 	     fyp->state == FYPS_BLOCK_MAPPING_FIRST_KEY)
 		&& fyt->type == FYTT_BLOCK_ENTRY) {
 
+		fyep = fy_parse_eventp_alloc(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_eventp_alloc() failed!");
+		fye = &fyep->e;
+
 		fye->type = FYET_SEQUENCE_START;
 		fye->sequence_start.anchor = anchor;
 		fye->sequence_start.tag = tag;
@@ -4806,6 +4068,11 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 	if (fyt->type == FYTT_SCALAR) {
 		fy_parse_state_set(fyp, fy_parse_state_pop(fyp));
 
+		fyep = fy_parse_eventp_alloc(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_eventp_alloc() failed!");
+		fye = &fyep->e;
+
 		fye->type = FYET_SCALAR;
 		fye->scalar.anchor = anchor;
 		fye->scalar.tag = tag;
@@ -4814,6 +4081,12 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 	}
 
 	if (fyt->type == FYTT_FLOW_SEQUENCE_START) {
+
+		fyep = fy_parse_eventp_alloc(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_eventp_alloc() failed!");
+		fye = &fyep->e;
+
 		fye->type = FYET_SEQUENCE_START;
 		fye->sequence_start.anchor = anchor;
 		fye->sequence_start.tag = tag;
@@ -4823,6 +4096,12 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 	}
 
 	if (fyt->type == FYTT_FLOW_MAPPING_START) {
+
+		fyep = fy_parse_eventp_alloc(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_eventp_alloc() failed!");
+		fye = &fyep->e;
+
 		fye->type = FYET_MAPPING_START;
 		fye->mapping_start.anchor = anchor;
 		fye->mapping_start.tag = tag;
@@ -4832,6 +4111,12 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 	}
 
 	if (is_block && fyt->type == FYTT_BLOCK_SEQUENCE_START) {
+
+		fyep = fy_parse_eventp_alloc(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_eventp_alloc() failed!");
+		fye = &fyep->e;
+
 		fye->type = FYET_SEQUENCE_START;
 		fye->sequence_start.anchor = anchor;
 		fye->sequence_start.tag = tag;
@@ -4841,6 +4126,12 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 	}
 
 	if (is_block && fyt->type == FYTT_BLOCK_MAPPING_START) {
+
+		fyep = fy_parse_eventp_alloc(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_eventp_alloc() failed!");
+		fye = &fyep->e;
+
 		fye->type = FYET_MAPPING_START;
 		fye->mapping_start.anchor = anchor;
 		fye->mapping_start.tag = tag;
@@ -4857,6 +4148,11 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, struct fy_eventp *fye
 
 	/* empty scalar */
 	fy_parse_state_set(fyp, fy_parse_state_pop(fyp));
+
+	fyep = fy_parse_eventp_alloc(fyp);
+	fy_error_check(fyp, fyep, err_out,
+			"fy_eventp_alloc() failed!");
+	fye = &fyep->e;
 
 	fye->type = FYET_SCALAR;
 	fye->scalar.anchor = anchor;
@@ -4911,15 +4207,23 @@ err_unexpected_alias:
 }
 
 static struct fy_eventp *
-fy_parse_empty_scalar(struct fy_parser *fyp, struct fy_eventp *fyep)
+fy_parse_empty_scalar(struct fy_parser *fyp)
 {
-	struct fy_event *fye = &fyep->e;
+	struct fy_eventp *fyep;
+	struct fy_event *fye;
+
+	fyep = fy_parse_eventp_alloc(fyp);
+	fy_error_check(fyp, fyep, err_out,
+			"fy_eventp_alloc() failed!");
+	fye = &fyep->e;
 
 	fye->type = FYET_SCALAR;
 	fye->scalar.anchor = NULL;
 	fye->scalar.tag = NULL;
 	fye->scalar.value = NULL;
 	return fyep;
+err_out:
+	return NULL;
 }
 
 int fy_parse_stream_start(struct fy_parser *fyp)
@@ -4998,19 +4302,14 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 	assert(fyt->handle.fyi);
 
-	fyep = fy_parse_eventp_alloc(fyp);
-	fy_error_check(fyp, fyep, err_out,
-			"fy_eventp_alloc() failed!");
-	fyep->fyp = fyp;
-	fye = &fyep->e;
-
-	fye->type = FYET_NONE;
-
 	fy_parse_debug(fyp, "[%s] <- %s", state_txt[fyp->state],
 			fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
 
 	is_first = false;
 	had_doc_end = false;
+
+	fyep = NULL;
+	fye = NULL;
 
 	orig_state = fyp->state;
 	switch (fyp->state) {
@@ -5022,6 +4321,12 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 		fy_error_check(fyp, fyt->type == FYTT_STREAM_START, err_out,
 				"failed to get valid stream start token");
+
+		fyep = fy_parse_eventp_alloc(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_eventp_alloc() failed!");
+		fye = &fyep->e;
+
 		fye->type = FYET_STREAM_START;
 
 		fye->stream_start.stream_start = fy_scan_remove(fyp, fyt);
@@ -5058,6 +4363,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		}
 
 		if (!fyp->current_document_state) {
+
 			rc = fy_reset_document_state(fyp);
 			fy_error_check(fyp, !rc, err_out,
 					"fy_reset_document_state() failed");
@@ -5100,6 +4406,11 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fy_error_check(fyp, !rc, err_out,
 					"stream end failed");
 
+			fyep = fy_parse_eventp_alloc(fyp);
+			fy_error_check(fyp, fyep, err_out,
+					"fy_eventp_alloc() failed!");
+			fye = &fyep->e;
+
 			fye->type = FYET_STREAM_END;
 			fye->stream_end.stream_end = fy_scan_remove(fyp, fyt);
 
@@ -5108,6 +4419,11 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 			return fyep;
 		}
+
+		fyep = fy_parse_eventp_alloc(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_eventp_alloc() failed!");
+		fye = &fyep->e;
 
 		/* document start */
 		fye->type = FYET_DOCUMENT_START;
@@ -5171,6 +4487,11 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		else
 			memset(&fyds->end_mark, 0, sizeof(fyds->end_mark));
 
+		fyep = fy_parse_eventp_alloc(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_eventp_alloc() failed!");
+		fye = &fyep->e;
+
 		/* document end */
 		fye->type = FYET_DOCUMENT_END;
 		if (fyt->type == FYTT_DOCUMENT_END) {
@@ -5189,12 +4510,20 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 		fye->document_end.implicit = fyds->end_implicit;
 
-		fy_parse_state_set(fyp, FYPS_DOCUMENT_START);
+		if (!fyp->next_single_document) {
+			/* multi document mode */
+			fy_parse_state_set(fyp, FYPS_DOCUMENT_START);
 
-		/* and reset document state */
-		rc = fy_reset_document_state(fyp);
-		fy_error_check(fyp, !rc, err_out,
-				"fy_reset_document_state() failed");
+			/* and reset document state */
+			rc = fy_reset_document_state(fyp);
+			fy_error_check(fyp, !rc, err_out,
+					"fy_reset_document_state() failed");
+		} else {
+			/* single document mode */
+			fyp->next_single_document = false;
+
+			fy_parse_state_set(fyp, FYPS_SINGLE_DOCUMENT_END);
+		}
 
 		return fyep;
 
@@ -5207,14 +4536,17 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		    fyt->type == FYTT_STREAM_END) {
 
 			if (fyt->type == FYTT_DOCUMENT_START ||
-			fyt->type == FYTT_DOCUMENT_END) {
+			    fyt->type == FYTT_DOCUMENT_END) {
 				fyp->document_has_content = false;
 				fyp->document_first_content_token = true;
 			}
 
 			fy_parse_state_set(fyp, fy_parse_state_pop(fyp));
 
-			return fy_parse_empty_scalar(fyp, fyep);
+			fyep = fy_parse_empty_scalar(fyp);
+			fy_error_check(fyp, fyep, err_out,
+					"fy_parse_empty_scalar() failed");
+			return fyep;
 		}
 
 		fyp->document_has_content = true;
@@ -5225,11 +4557,10 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 	case FYPS_BLOCK_NODE_OR_INDENTLESS_SEQUENCE:
 	case FYPS_FLOW_NODE:
 
-		fyep = fy_parse_node(fyp, fyt, fyep,
+		fyep = fy_parse_node(fyp, fyt,
 				fyp->state == FYPS_BLOCK_NODE ||
 				fyp->state == FYPS_BLOCK_NODE_OR_INDENTLESS_SEQUENCE ||
-				fyp->state == FYPS_DOCUMENT_CONTENT,
-				fyp->state == FYPS_BLOCK_NODE_OR_INDENTLESS_SEQUENCE);
+				fyp->state == FYPS_DOCUMENT_CONTENT);
 		fy_error_check(fyp, fyep, err_out,
 				"fy_parse_node() failed");
 		return fyep;
@@ -5265,18 +4596,27 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fy_error_check(fyp, !rc, err_out,
 						"failed to push state");
 
-				fyep = fy_parse_node(fyp, fyt, fyep, true, false);
+				fyep = fy_parse_node(fyp, fyt, true);
 				fy_error_check(fyp, fyep, err_out,
 						"fy_parse_node() failed");
 				return fyep;
 			}
 			fy_parse_state_set(fyp, FYPS_BLOCK_SEQUENCE_ENTRY);
-			return fy_parse_empty_scalar(fyp, fyep);
 
+			fyep = fy_parse_empty_scalar(fyp);
+			fy_error_check(fyp, fyep, err_out,
+					"fy_parse_empty_scalar() failed");
+			return fyep;
 		}
 
 		/* FYTT_BLOCK_END */
 		fy_parse_state_set(fyp, fy_parse_state_pop(fyp));
+
+		fyep = fy_parse_eventp_alloc(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_eventp_alloc() failed!");
+		fye = &fyep->e;
+
 		fye->type = FYET_SEQUENCE_END;
 		fye->sequence_end.sequence_end = orig_state != FYPS_INDENTLESS_SEQUENCE_ENTRY ? fy_scan_remove(fyp, fyt) : NULL;
 		return fyep;
@@ -5310,14 +4650,23 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fy_error_check(fyp, !rc, err_out,
 						"failed to push state");
 
-				fyep = fy_parse_node(fyp, fyt, fyep, true, true);
+				fyep = fy_parse_node(fyp, fyt, true);
 				fy_error_check(fyp, fyep, err_out,
 						"fy_parse_node() failed");
 				return fyep;
 			}
 			fy_parse_state_set(fyp, FYPS_BLOCK_MAPPING_VALUE);
-			return fy_parse_empty_scalar(fyp, fyep);
+
+			fyep = fy_parse_empty_scalar(fyp);
+			fy_error_check(fyp, fyep, err_out,
+					"fy_parse_empty_scalar() failed");
+			return fyep;
 		}
+
+		fyep = fy_parse_eventp_alloc(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_eventp_alloc() failed!");
+		fye = &fyep->e;
 
 		/* FYTT_BLOCK_END */
 		fy_parse_state_set(fyp, fy_parse_state_pop(fyp));
@@ -5344,7 +4693,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fy_error_check(fyp, !rc, err_out,
 						"failed to push state");
 
-				fyep = fy_parse_node(fyp, fyt, fyep, true, true);
+				fyep = fy_parse_node(fyp, fyt, true);
 				fy_error_check(fyp, fyep, err_out,
 						"fy_parse_node() failed");
 				return fyep;
@@ -5352,7 +4701,11 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		}
 
 		fy_parse_state_set(fyp, FYPS_BLOCK_MAPPING_KEY);
-		return fy_parse_empty_scalar(fyp, fyep);
+
+		fyep = fy_parse_empty_scalar(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_parse_empty_scalar() failed");
+		return fyep;
 
 	case FYPS_FLOW_SEQUENCE_FIRST_ENTRY:
 		is_first = true;
@@ -5376,6 +4729,12 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 			if (fyt->type == FYTT_KEY) {
 				fy_parse_state_set(fyp, FYPS_FLOW_SEQUENCE_ENTRY_MAPPING_KEY);
+
+				fyep = fy_parse_eventp_alloc(fyp);
+				fy_error_check(fyp, fyep, err_out,
+						"fy_eventp_alloc() failed!");
+				fye = &fyep->e;
+
 				fye->type = FYET_MAPPING_START;
 				fye->mapping_start.anchor = NULL;
 				fye->mapping_start.tag = NULL;
@@ -5388,7 +4747,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fy_error_check(fyp, !rc, err_out,
 						"failed to push state");
 
-				fyep = fy_parse_node(fyp, fyt, fyep, false, false);
+				fyep = fy_parse_node(fyp, fyt, false);
 				fy_error_check(fyp, fyep, err_out,
 						"fy_parse_node() failed");
 				return fyep;
@@ -5401,6 +4760,12 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 		/* FYTT_FLOW_SEQUENCE_END */
 		fy_parse_state_set(fyp, fy_parse_state_pop(fyp));
+
+		fyep = fy_parse_eventp_alloc(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_eventp_alloc() failed!");
+		fye = &fyep->e;
+
 		fye->type = FYET_SEQUENCE_END;
 		fye->sequence_end.sequence_end = fy_scan_remove(fyp, fyt);
 		return fyep;
@@ -5412,14 +4777,18 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fy_error_check(fyp, !rc, err_out,
 					"failed to push state");
 
-			fyep = fy_parse_node(fyp, fyt, fyep, false, false);
+			fyep = fy_parse_node(fyp, fyt, false);
 			fy_error_check(fyp, fyep, err_out,
 					"fy_parse_node() failed");
 			return fyep;
 		}
 
 		fy_parse_state_set(fyp, FYPS_FLOW_SEQUENCE_ENTRY_MAPPING_VALUE);
-		return fy_parse_empty_scalar(fyp, fyep);
+
+		fyep = fy_parse_empty_scalar(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_parse_empty_scalar() failed");
+		return fyep;
 
 	case FYPS_FLOW_SEQUENCE_ENTRY_MAPPING_VALUE:
 		if (fyt->type == FYTT_VALUE) {
@@ -5433,17 +4802,27 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fy_error_check(fyp, !rc, err_out,
 						"failed to push state");
 
-				fyep = fy_parse_node(fyp, fyt, fyep, false, false);
+				fyep = fy_parse_node(fyp, fyt, false);
 				fy_error_check(fyp, fyep, err_out,
 						"fy_parse_node() failed");
 				return fyep;
 			}
 		}
 		fy_parse_state_set(fyp, FYPS_FLOW_SEQUENCE_ENTRY_MAPPING_END);
-		return fy_parse_empty_scalar(fyp, fyep);
+
+		fyep = fy_parse_empty_scalar(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_parse_empty_scalar() failed");
+		return fyep;
 
 	case FYPS_FLOW_SEQUENCE_ENTRY_MAPPING_END:
 		fy_parse_state_set(fyp, FYPS_FLOW_SEQUENCE_ENTRY);
+
+		fyep = fy_parse_eventp_alloc(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_eventp_alloc() failed!");
+		fye = &fyep->e;
+
 		fye->type = FYET_MAPPING_END;
 		fye->mapping_end.mapping_end = /* fy_scan_remove(fyp, fyt) */ NULL;
 		return fyep;
@@ -5474,20 +4853,25 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fy_debug_dump_token(fyp, fyt, "next: ");
 
 				if (fyt->type != FYTT_VALUE &&
-				fyt->type != FYTT_FLOW_ENTRY &&
-				fyt->type != FYTT_FLOW_MAPPING_END) {
+				    fyt->type != FYTT_FLOW_ENTRY &&
+				    fyt->type != FYTT_FLOW_MAPPING_END) {
 
 					rc = fy_parse_state_push(fyp, FYPS_FLOW_MAPPING_VALUE);
 					fy_error_check(fyp, !rc, err_out,
 							"failed to push state");
 
-					fyep = fy_parse_node(fyp, fyt, fyep, false, false);
+					fyep = fy_parse_node(fyp, fyt, false);
 					fy_error_check(fyp, fyep, err_out,
 							"fy_parse_node() failed");
 					return fyep;
 				}
+
 				fy_parse_state_set(fyp, FYPS_FLOW_MAPPING_VALUE);
-				return fy_parse_empty_scalar(fyp, fyep);
+
+				fyep = fy_parse_empty_scalar(fyp);
+				fy_error_check(fyp, fyep, err_out,
+						"fy_parse_empty_scalar() failed");
+				return fyep;
 			}
 
 			if (fyt->type != FYTT_FLOW_MAPPING_END) {
@@ -5495,7 +4879,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fy_error_check(fyp, !rc, err_out,
 						"failed to push state");
 
-				fyep = fy_parse_node(fyp, fyt, fyep, false, false);
+				fyep = fy_parse_node(fyp, fyt, false);
 				fy_error_check(fyp, fyep, err_out,
 						"fy_parse_node() failed");
 				return fyep;
@@ -5504,6 +4888,11 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 		/* FYTT_FLOW_MAPPING_END */
 		fy_parse_state_set(fyp, fy_parse_state_pop(fyp));
+
+		fyep = fy_parse_eventp_alloc(fyp);
+		fy_error_check(fyp, fyep, err_out, "fy_eventp_alloc() failed!");
+		fye = &fyep->e;
+
 		fye->type = FYET_MAPPING_END;
 		fye->mapping_end.mapping_end = fy_scan_remove(fyp, fyt);
 		return fyep;
@@ -5517,24 +4906,55 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fy_debug_dump_token(fyp, fyt, "next: ");
 
 			if (fyt->type != FYTT_FLOW_ENTRY &&
-			fyt->type != FYTT_FLOW_MAPPING_END) {
+			    fyt->type != FYTT_FLOW_MAPPING_END) {
 
 				rc = fy_parse_state_push(fyp, FYPS_FLOW_MAPPING_KEY);
 				fy_error_check(fyp, !rc, err_out,
 						"failed to push state");
 
-				fyep = fy_parse_node(fyp, fyt, fyep, false, false);
+				fyep = fy_parse_node(fyp, fyt, false);
 				fy_error_check(fyp, fyep, err_out,
 						"fy_parse_node() failed");
 				return fyep;
 			}
 		}
 		fy_parse_state_set(fyp, FYPS_FLOW_MAPPING_KEY);
-		return fy_parse_empty_scalar(fyp, fyep);
+
+		fyep = fy_parse_empty_scalar(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_parse_empty_scalar() failed");
+		return fyep;
 
 	case FYPS_FLOW_MAPPING_EMPTY_VALUE:
 		fy_parse_state_set(fyp, FYPS_FLOW_MAPPING_KEY);
-		return fy_parse_empty_scalar(fyp, fyep);
+
+		fyep = fy_parse_empty_scalar(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_parse_empty_scalar() failed");
+		return fyep;
+
+	case FYPS_SINGLE_DOCUMENT_END:
+
+		FY_ERROR_CHECK(fyp, fyt, &ec, FYEM_PARSE,
+				fyt->type == FYTT_STREAM_END,
+				err_did_not_find_expected_stream_end);
+
+		rc = fy_parse_stream_end(fyp);
+		fy_error_check(fyp, !rc, err_out,
+				"stream end failed");
+
+		fyep = fy_parse_eventp_alloc(fyp);
+		fy_error_check(fyp, fyep, err_out,
+				"fy_eventp_alloc() failed!");
+		fye = &fyep->e;
+
+		fye->type = FYET_STREAM_END;
+		fye->stream_end.stream_end = fy_scan_remove(fyp, fyt);
+
+		fy_parse_state_set(fyp,
+			fy_parse_have_more_inputs(fyp) ? FYPS_NONE : FYPS_END);
+
+		return fyep;
 
 	case FYPS_END:
 		/* should never happen */
@@ -5624,6 +5044,11 @@ err_missing_comma:
 err_missing_doc_end_before_directives:
 	fy_error_report(fyp, &ec, "missing explicit document end marker before directive(s)");
 	goto err_out;
+
+err_did_not_find_expected_stream_end:
+	fy_error_report(fyp, &ec, "Did not find expected stream end");
+	goto err_out;
+
 }
 
 const char *fy_event_type_txt[] = {
@@ -5648,29 +5073,6 @@ struct fy_eventp *fy_parse_private(struct fy_parser *fyp)
 	fy_parse_debug(fyp, "> %s", fyep ? fy_event_type_txt[fyep->e.type] : "NULL");
 
 	return fyep;
-}
-
-void *fy_parse_alloc(struct fy_parser *fyp, size_t size)
-{
-	return fy_talloc(&fyp->tallocs, size);
-}
-
-void fy_parse_free(struct fy_parser *fyp, void *data)
-{
-	fy_tfree(&fyp->tallocs, data);
-}
-
-char *fy_parse_strdup(struct fy_parser *fyp, const char *str)
-{
-	size_t len;
-	char *copy;
-
-	len = strlen(str);
-	copy = fy_parse_alloc(fyp, len + 1);
-	if (!copy)
-		return NULL;
-	memcpy(copy, str, len + 1);
-	return copy;
 }
 
 struct fy_parser *fy_parser_create(const struct fy_parse_cfg *cfg)
@@ -5705,35 +5107,52 @@ void fy_parser_destroy(struct fy_parser *fyp)
 	free(fyp);
 }
 
+static void fy_parse_input_reset(struct fy_parser *fyp)
+{
+	struct fy_input *fyi, *fyin;
+
+	for (fyi = fy_input_list_head(&fyp->queued_inputs); fyi; fyi = fyin) {
+		fyin = fy_input_next(&fyp->queued_inputs, fyi);
+		fy_input_unref(fyi);
+	}
+
+	fy_parse_parse_state_log_list_recycle_all(fyp, &fyp->state_stack);
+
+	fyp->stream_end_produced = false;
+	fyp->stream_start_produced = false;
+	fyp->state = FYPS_NONE;
+
+	fyp->pending_complex_key_column = -1;
+	fyp->last_block_mapping_key_line = -1;
+}
+
 int fy_parser_set_input_file(struct fy_parser *fyp, const char *file)
 {
-	struct fy_input_cfg *fyic;
+	struct fy_input_cfg fyic;
 	int rc;
 
 	if (!fyp || !file)
 		return -1;
 
-	fyic = fy_parse_alloc(fyp, sizeof(*fyic));
-	fy_error_check(fyp, fyic, err_out,
-			"fy_parse_alloc() failed");
-	memset(fyic, 0, sizeof(*fyic));
+	memset(&fyic, 0, sizeof(fyic));
 
 	if (!strcmp(file, "-")) {
-		fyic->type = fyit_stream;
-		fyic->stream.name = "stdin";
-		fyic->stream.fp = stdin;
+		fyic.type = fyit_stream;
+		fyic.stream.name = "stdin";
+		fyic.stream.fp = stdin;
 	} else {
-		fyic->type = fyit_file;
-		fyic->file.filename = fy_parse_strdup(fyp, file);
-		fy_error_check(fyp, fyic->file.filename, err_out,
-			"fy_parse_strdup() failed");
+		fyic.type = fyit_file;
+		fyic.file.filename = file;
 	}
 
-	rc = fy_parse_input_reset(fyp);
-	fy_error_check(fyp, !rc, err_out_rc,
-			"fy_parse_input_reset() failed");
+	/* must not be in the middle of something */
+	fy_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
+			err_out, "parser cannot be reset at state '%s'",
+				state_txt[fyp->state]);
 
-	rc = fy_parse_input_append(fyp, fyic);
+	fy_parse_input_reset(fyp);
+
+	rc = fy_parse_input_append(fyp, &fyic);
 	fy_error_check(fyp, !rc, err_out_rc,
 			"fy_parse_input_append() failed");
 
@@ -5741,7 +5160,7 @@ int fy_parser_set_input_file(struct fy_parser *fyp, const char *file)
 err_out:
 	rc = -1;
 err_out_rc:
-	return -1;
+	return rc;
 }
 
 int fy_parser_set_string(struct fy_parser *fyp, const char *str, size_t len)
@@ -5761,17 +5180,22 @@ int fy_parser_set_string(struct fy_parser *fyp, const char *str, size_t len)
 	fyic.memory.data = str;
 	fyic.memory.size = len;
 
-	rc = fy_parse_input_reset(fyp);
-	fy_error_check(fyp, !rc, err_out_rc,
-			"fy_parse_input_reset() failed");
+	/* must not be in the middle of something */
+	fy_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
+			err_out, "parser cannot be reset at state '%s'",
+				state_txt[fyp->state]);
+
+	fy_parse_input_reset(fyp);
 
 	rc = fy_parse_input_append(fyp, &fyic);
 	fy_error_check(fyp, !rc, err_out_rc,
 			"fy_parse_input_append() failed");
 
 	return 0;
+err_out:
+	rc = -1;
 err_out_rc:
-	return -1;
+	return rc;
 }
 
 int fy_parser_set_malloc_string(struct fy_parser *fyp, char *str, size_t len)
@@ -5791,41 +5215,14 @@ int fy_parser_set_malloc_string(struct fy_parser *fyp, char *str, size_t len)
 	fyic.alloc.data = str;
 	fyic.alloc.size = len;
 
-	rc = fy_parse_input_reset(fyp);
-	fy_error_check(fyp, !rc, err_out_rc,
-			"fy_parse_input_reset() failed");
+	/* must not be in the middle of something */
+	fy_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
+			err_out, "parser cannot be reset at state '%s'",
+				state_txt[fyp->state]);
+
+	fy_parse_input_reset(fyp);
 
 	rc = fy_parse_input_append(fyp, &fyic);
-	fy_error_check(fyp, !rc, err_out_rc,
-			"fy_parse_input_append() failed");
-
-	return 0;
-err_out_rc:
-	return -1;
-}
-
-int fy_parser_set_input_fp(struct fy_parser *fyp, const char *name, FILE *fp)
-{
-	struct fy_input_cfg *fyic;
-	int rc;
-
-	if (!fyp || !fp)
-		return -1;
-
-	fyic = fy_parse_alloc(fyp, sizeof(*fyic));
-	fy_error_check(fyp, fyic, err_out,
-			"fy_parse_alloc() failed");
-	memset(fyic, 0, sizeof(*fyic));
-
-	fyic->type = fyit_stream;
-	fyic->stream.name = name ? : "<stream>";
-	fyic->stream.fp = fp;
-
-	rc = fy_parse_input_reset(fyp);
-	fy_error_check(fyp, !rc, err_out_rc,
-			"fy_parse_input_reset() failed");
-
-	rc = fy_parse_input_append(fyp, fyic);
 	fy_error_check(fyp, !rc, err_out_rc,
 			"fy_parse_input_append() failed");
 
@@ -5833,23 +5230,39 @@ int fy_parser_set_input_fp(struct fy_parser *fyp, const char *name, FILE *fp)
 err_out:
 	rc = -1;
 err_out_rc:
-	return -1;
+	return rc;
 }
 
-void *fy_parser_alloc(struct fy_parser *fyp, size_t size)
+int fy_parser_set_input_fp(struct fy_parser *fyp, const char *name, FILE *fp)
 {
-	if (!fyp)
-		return NULL;
+	struct fy_input_cfg fyic;
+	int rc;
 
-	return fy_parse_alloc(fyp, size);
-}
+	if (!fyp || !fp)
+		return -1;
 
-void fy_parser_free(struct fy_parser *fyp, void *data)
-{
-	if (!fyp || !data)
-		return;
+	memset(&fyic, 0, sizeof(fyic));
 
-	fy_parse_free(fyp, data);
+	fyic.type = fyit_stream;
+	fyic.stream.name = name ? : "<stream>";
+	fyic.stream.fp = fp;
+
+	/* must not be in the middle of something */
+	fy_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
+			err_out, "parser cannot be reset at state '%s'",
+				state_txt[fyp->state]);
+
+	fy_parse_input_reset(fyp);
+
+	rc = fy_parse_input_append(fyp, &fyic);
+	fy_error_check(fyp, !rc, err_out_rc,
+			"fy_parse_input_append() failed");
+
+	return 0;
+err_out:
+	rc = -1;
+err_out_rc:
+	return rc;
 }
 
 struct fy_event *fy_parser_parse(struct fy_parser *fyp)

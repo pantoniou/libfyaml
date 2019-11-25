@@ -14,7 +14,8 @@ libfyaml_@MAJOR@_@MINOR@_la_SOURCES = \
 	lib/fy-atom.c lib/fy-atom.h \
 	lib/fy-ctype.c lib/fy-ctype.h \
 	lib/fy-token.c lib/fy-token.h \
-	lib/fy-talloc.c lib/fy-talloc.h \
+	lib/fy-input.c lib/fy-input.h \
+	lib/fy-docstate.c lib/fy-docstate.h \
 	lib/fy-doc.c lib/fy-doc.h \
 	lib/fy-emit.c lib/fy-emit.h \
 	lib/fy-utils.c lib/fy-utils.h \

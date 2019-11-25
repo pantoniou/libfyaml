@@ -82,6 +82,7 @@ enum fy_comment_placement {
 	fycp_max,
 };
 
+FY_TYPE_FWD_DECL_LIST(token);
 struct fy_token {
 	struct list_head node;
 	enum fy_token_type type;
@@ -108,25 +109,20 @@ struct fy_token {
 		} tag;
 	};
 };
-FY_PARSE_TYPE_DECL(token);
+FY_TYPE_DECL_LIST(token);
 
-struct fy_token *fy_token_alloc(struct fy_document_state *fyds);
+struct fy_token *fy_token_alloc(void);
 void fy_token_free(struct fy_token *fyt);
 struct fy_token *fy_token_ref(struct fy_token *fyt);
 void fy_token_unref(struct fy_token *fyt);
 void fy_token_list_unref_all(struct fy_token_list *fytl);
 
-struct fy_token *fy_parse_token_alloc(struct fy_parser *fyp);
-struct fy_token *fy_parse_token_new(struct fy_parser *fyp, enum fy_token_type type);
-void fy_parse_token_free(struct fy_parser *fyp, struct fy_token *fyt);
-
-void fy_parse_token_free(struct fy_parser *fyp, struct fy_token *fyt);
-
 int fy_tag_token_format_text_length(const struct fy_token *fyt);
 const char *fy_tag_token_format_text(const struct fy_token *fyt, char *buf, size_t maxsz);
 int fy_token_format_utf8_length(struct fy_token *fyt);
 
-struct fy_token *fy_token_create(struct fy_parser *fyp, enum fy_token_type type, ...);
+struct fy_token *fy_token_create(enum fy_token_type type, ...);
+
 struct fy_token *fy_token_vqueue(struct fy_parser *fyp, enum fy_token_type type, va_list ap);
 struct fy_token *fy_token_queue(struct fy_parser *fyp, enum fy_token_type type, ...);
 
@@ -280,5 +276,8 @@ struct fy_token_iter {
 	struct fy_atom_iter atom_iter;
 	int unget_c;
 };
+
+const char *fy_tag_token_get_directive_handle(struct fy_token *fyt, size_t *td_handle_sizep);
+const char *fy_tag_token_get_directive_prefix(struct fy_token *fyt, size_t *td_prefix_sizep);
 
 #endif

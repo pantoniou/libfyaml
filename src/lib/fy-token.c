@@ -28,13 +28,10 @@
 
 #include "fy-token.h"
 
-struct fy_token *fy_token_alloc(struct fy_document_state *fyds)
+struct fy_token *fy_token_alloc(void)
 {
 	struct fy_token *fyt;
 	unsigned int i;
-
-	if (!fyds)
-		return NULL;
 
 	fyt = malloc(sizeof(*fyt));
 	if (!fyt)
@@ -114,49 +111,6 @@ void fy_token_list_unref_all(struct fy_token_list *fytl)
 
 	while ((fyt = fy_token_list_pop(fytl)) != NULL)
 		fy_token_unref(fyt);
-}
-
-void fy_parse_token_free(struct fy_parser *fyp, struct fy_token *fyt)
-{
-	if (!fyt)
-		return;
-
-	fy_token_free(fyt);
-}
-
-struct fy_token *fy_parse_token_alloc(struct fy_parser *fyp)
-{
-	if (!fyp || !fyp->current_document_state)
-		return NULL;
-
-	return fy_token_alloc(fyp->current_document_state);
-}
-
-struct fy_token *fy_document_token_alloc(struct fy_document *fyd)
-{
-	if (!fyd || !fyd->fyds)
-		return NULL;
-
-	return fy_token_alloc(fyd->fyds);
-}
-
-void fy_parse_token_recycle(struct fy_parser *fyp, struct fy_token *fyt)
-{
-	fy_token_unref(fyt);
-}
-
-struct fy_token *fy_parse_token_new(struct fy_parser *fyp, enum fy_token_type type)
-{
-	struct fy_token *fyt;
-
-	fyt = fy_parse_token_alloc(fyp);
-	if (!fyt)
-		return fyt;
-	fyt->type = type;
-
-	/* fy_notice(NULL, "%s: %p #%d", __func__, fyt, fyt->refs); */
-
-	return fyt;
 }
 
 static int fy_tag_token_format_internal(const struct fy_token *fyt, void *out, size_t *outszp)
@@ -344,25 +298,23 @@ const char *fy_tag_directive_token_handle(struct fy_token *fyt, size_t *lenp)
 	return ptr;
 }
 
-struct fy_token *fy_token_vcreate(struct fy_parser *fyp, enum fy_token_type type, va_list ap)
+struct fy_token *fy_token_vcreate(enum fy_token_type type, va_list ap)
 {
 	struct fy_token *fyt = NULL;
 	struct fy_atom *handle;
 	struct fy_token *fyt_td;
 
-	if (!fyp)
-		return NULL;
+	if ((unsigned int)type > FYTT_SCALAR)
+		goto err_out;
 
-	fy_error_check(fyp, (unsigned int)type <= FYTT_SCALAR, err_out,
-			"illegal token type");
-
-	fyt = fy_parse_token_new(fyp, type);
-	fy_error_check(fyp, fyt != NULL, err_out,
-			"fy_parse_token_new() failed");
+	fyt = fy_token_alloc();
+	if (!fyt)
+		goto err_out;
+	fyt->type = type;
 
 	handle = va_arg(ap, struct fy_atom *);
-	fy_error_check(fyp, handle != NULL, err_out,
-			"illegal handle argument");
+	if (!handle)
+		goto err_out;
 	fyt->handle = *handle;
 
 	switch (fyt->type) {
@@ -372,8 +324,8 @@ struct fy_token *fy_token_vcreate(struct fy_parser *fyp, enum fy_token_type type
 		break;
 	case FYTT_SCALAR:
 		fyt->scalar.style = va_arg(ap, enum fy_scalar_style);
-		fy_error_check(fyp, (unsigned int)fyt->scalar.style < FYSS_MAX, err_out,
-					"illegal scalar style argument");
+		if ((unsigned int)fyt->scalar.style >= FYSS_MAX)
+			goto err_out;
 		break;
 	case FYTT_TAG:
 		fyt->tag.skip = va_arg(ap, unsigned int);
@@ -381,13 +333,12 @@ struct fy_token *fy_token_vcreate(struct fy_parser *fyp, enum fy_token_type type
 		fyt->tag.suffix_length = va_arg(ap, unsigned int);
 
 		fyt_td = va_arg(ap, struct fy_token *);
-		fy_error_check(fyp, fyt_td != NULL, err_out,
-				"illegal tag fyt_td argument");
+		if (!fyt_td)
+			goto err_out;
 		fyt->tag.fyt_td = fy_token_ref(fyt_td);
 		break;
 
 	case FYTT_NONE:
-		fy_error(fyp, "Illegal token type (NONE) for queueing");
 		goto err_out;
 
 	default:
@@ -402,19 +353,18 @@ struct fy_token *fy_token_vcreate(struct fy_parser *fyp, enum fy_token_type type
 	return fyt;
 
 err_out:
-	fyp->stream_error = true;
 	fy_token_unref(fyt);
 
 	return NULL;
 }
 
-struct fy_token *fy_token_create(struct fy_parser *fyp, enum fy_token_type type, ...)
+struct fy_token *fy_token_create(enum fy_token_type type, ...)
 {
 	struct fy_token *fyt;
 	va_list ap;
 
 	va_start(ap, type);
-	fyt = fy_token_vcreate(fyp, type, ap);
+	fyt = fy_token_vcreate(type, ap);
 	va_end(ap);
 
 	return fyt;
@@ -426,7 +376,7 @@ fy_token_vqueue_internal(struct fy_parser *fyp, struct fy_token_list *fytl,
 {
 	struct fy_token *fyt;
 
-	fyt = fy_token_vcreate(fyp, type, ap);
+	fyt = fy_token_vcreate(type, ap);
 	if (!fyt)
 		return NULL;
 	fy_token_list_add_tail(fytl, fyt);
@@ -758,11 +708,9 @@ int fy_token_text_analyze(struct fy_token *fyt)
 		/* last character */
 		if (cn < 0) {
 			/* if ends with whitespace or linebreak, can't be plain */
-			if (fy_is_ws(cn) || fy_is_lb(cn)) {
-				fy_notice(NULL, "!PLAIN 2");
+			if (fy_is_ws(cn) || fy_is_lb(cn))
 				flags &= ~(FYTTAF_CAN_BE_PLAIN |
 					   FYTTAF_CAN_BE_PLAIN_FLOW);
-			}
 		}
 	}
 

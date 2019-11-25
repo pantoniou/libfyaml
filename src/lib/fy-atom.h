@@ -18,9 +18,10 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#include <fy-list.h>
-
 #include <libfyaml.h>
+
+#include "fy-list.h"
+#include "fy-input.h"
 
 struct fy_parser;
 struct fy_input;
@@ -163,5 +164,31 @@ int fy_atom_memcmp(struct fy_atom *atom, const void *ptr, size_t len);
 int fy_atom_strcmp(struct fy_atom *atom, const char *str);
 bool fy_atom_is_number(struct fy_atom *atom);
 int fy_atom_cmp(struct fy_atom *atom1, struct fy_atom *atom2);
+
+static inline const char *fy_atom_data(const struct fy_atom *atom)
+{
+	if (!atom)
+		return NULL;
+
+	return fy_input_start(atom->fyi) + atom->start_mark.input_pos;
+}
+
+static inline size_t fy_atom_size(const struct fy_atom *atom)
+{
+	if (!atom)
+		return 0;
+
+	return atom->end_mark.input_pos - atom->start_mark.input_pos;
+}
+
+static inline bool fy_plain_atom_streq(const struct fy_atom *atom, const char *str)
+{
+	size_t size = strlen(str);
+
+	if (!atom || !str || atom->style != FYAS_PLAIN || fy_atom_size(atom) != size)
+		return false;
+
+	return !memcmp(str, fy_atom_data(atom), size);
+}
 
 #endif

@@ -22,13 +22,14 @@
 #include "fy-utf8.h"
 #include "fy-list.h"
 #include "fy-typelist.h"
-#include "fy-talloc.h"
 #include "fy-types.h"
 #include "fy-diag.h"
 #include "fy-atom.h"
+#include "fy-input.h"
 #include "fy-ctype.h"
 #include "fy-token.h"
 #include "fy-event.h"
+#include "fy-docstate.h"
 #include "fy-doc.h"
 #include "fy-emit.h"
 
@@ -71,177 +72,7 @@ struct fy_simple_key {
 };
 FY_PARSE_TYPE_DECL(simple_key);
 
-enum fy_input_type {
-	fyit_file,
-	fyit_stream,
-	fyit_memory,
-	fyit_alloc,
-	fyit_callback,
-};
-
-struct fy_input_cfg {
-	enum fy_input_type type;
-	void *userdata;
-	union {
-		struct {
-			const char *filename;
-		} file;
-		struct {
-			const char *name;
-			FILE *fp;
-			size_t chunk;
-		} stream;
-		struct {
-			const void *data;
-			size_t size;
-		} memory;
-		struct {
-			void *data;
-			size_t size;
-		} alloc;
-		struct {
-		} callback;
-	};
-};
-
 struct fy_document_state;
-
-enum fy_input_state {
-	FYIS_NONE,
-	FYIS_QUEUED,
-	FYIS_PARSE_IN_PROGRESS,
-	FYIS_PARSED,
-};
-
-struct fy_input_list;
-
-struct fy_input {
-	struct list_head node;
-	enum fy_input_state state;
-	struct fy_input_cfg cfg;
-	void *buffer;		/* when the file can't be mmaped */
-	size_t allocated;
-	size_t read;
-	size_t chunk;
-	FILE *fp;
-	int refs;
-	union {
-		struct {
-			int fd;			/* fd for file and stream */
-			void *addr;		/* mmaped for files, allocated for streams */
-			size_t length;
-		} file;
-		struct {
-		} stream;
-	};
-};
-FY_PARSE_TYPE_DECL(input);
-
-static inline const void *fy_input_start(const struct fy_input *fyi)
-{
-	const void *ptr = NULL;
-
-	switch (fyi->cfg.type) {
-	case fyit_file:
-		if (fyi->file.addr) {
-			ptr = fyi->file.addr;
-			break;
-		}
-		/* fall-through */
-
-	case fyit_stream:
-		ptr = fyi->buffer;
-		break;
-
-	case fyit_memory:
-		ptr = fyi->cfg.memory.data;
-		break;
-
-	case fyit_alloc:
-		ptr = fyi->cfg.alloc.data;
-		break;
-
-	default:
-		break;
-	}
-	assert(ptr);
-	return ptr;
-}
-
-static inline size_t fy_input_size(const struct fy_input *fyi)
-{
-	size_t size;
-
-	switch (fyi->cfg.type) {
-	case fyit_file:
-		if (fyi->file.addr) {
-			size = fyi->file.length;
-			break;
-		}
-		/* fall-through */
-
-	case fyit_stream:
-		size = fyi->read;
-		break;
-
-	case fyit_memory:
-		size = fyi->cfg.memory.size;
-		break;
-
-	case fyit_alloc:
-		size = fyi->cfg.alloc.size;
-		break;
-
-	default:
-		size = 0;
-		break;
-	}
-	return size;
-}
-
-struct fy_input *fy_input_alloc(void);
-void fy_input_free(struct fy_input *fyi);
-struct fy_input *fy_input_ref(struct fy_input *fyi);
-void fy_input_unref(struct fy_input *fyi);
-
-static inline enum fy_input_state fy_input_get_state(struct fy_input *fyi)
-{
-	return fyi->state;
-}
-
-struct fy_input *fy_input_from_data(const char *data, size_t size,
-				    struct fy_atom *handle, bool simple);
-struct fy_input *fy_input_from_malloc_data(char *data, size_t size,
-					   struct fy_atom *handle, bool simple);
-
-const void *fy_parse_input_try_pull(struct fy_parser *fyp, struct fy_input *fyi,
-				    size_t pull, size_t *leftp);
-
-static inline const char *fy_atom_data(const struct fy_atom *atom)
-{
-	if (!atom)
-		return NULL;
-
-	return fy_input_start(atom->fyi) + atom->start_mark.input_pos;
-}
-
-static inline size_t fy_atom_size(const struct fy_atom *atom)
-{
-	if (!atom)
-		return 0;
-
-	return atom->end_mark.input_pos - atom->start_mark.input_pos;
-}
-
-static inline bool fy_plain_atom_streq(const struct fy_atom *atom, const char *str)
-{
-	size_t size = strlen(str);
-
-	if (!atom || !str || atom->style != FYAS_PLAIN || fy_atom_size(atom) != size)
-		return false;
-
-	return !memcmp(str, fy_atom_data(atom), size);
-}
 
 enum fy_parser_state {
 	/** none state */
@@ -292,6 +123,8 @@ enum fy_parser_state {
 	FYPS_FLOW_MAPPING_VALUE,
 	/** Expect an empty value of a flow mapping. */
 	FYPS_FLOW_MAPPING_EMPTY_VALUE,
+	/** Expect only stream end */
+	FYPS_SINGLE_DOCUMENT_END,
 	/** Expect nothing. */
 	FYPS_END
 };
@@ -304,8 +137,6 @@ FY_PARSE_TYPE_DECL(parse_state_log);
 
 struct fy_parser {
 	struct fy_parse_cfg cfg;
-
-	struct fy_talloc_list tallocs;
 
 	struct fy_input_list queued_inputs;	/* all the inputs queued */
 	struct fy_input *current_input;
@@ -328,7 +159,6 @@ struct fy_parser {
 	bool document_has_content : 1;
 	bool document_first_content_token : 1;
 	bool bare_document_only : 1;		/* no document start indicators allowed, no directives */
-	bool external_document_state : 1;	/* no not generate a document state, use one provided */
 	int flow_level;
 	int pending_complex_key_column;
 	struct fy_mark pending_complex_key_mark;
@@ -356,6 +186,8 @@ struct fy_parser {
 
 	/* current parse document */
 	struct fy_document_state *current_document_state;
+	struct fy_document_state *default_document_state;
+	bool next_single_document;
 
 	/* flow stack */
 	enum fy_flow_type flow;
@@ -364,12 +196,9 @@ struct fy_parser {
 	/* recycling lists */
 	struct fy_indent_list recycled_indent;
 	struct fy_simple_key_list recycled_simple_key;
-	struct fy_token_list recycled_token;
-	struct fy_input_list recycled_input;
 	struct fy_parse_state_log_list recycled_parse_state_log;
 	struct fy_eventp_list recycled_eventp;
 	struct fy_flow_list recycled_flow;
-	struct fy_document_state_list recycled_document_state;
 
 	FILE *errfp;
 	char *errbuf;
@@ -473,7 +302,7 @@ static inline void fy_advance_octets(struct fy_parser *fyp, size_t advance)
 }
 
 /* compare string at the current point (n max) */
-static inline int fy_strncmp(struct fy_parser *fyp, const char *str, size_t n)
+static inline int fy_parse_strncmp(struct fy_parser *fyp, const char *str, size_t n)
 {
 	const char *p;
 	int ret;
@@ -603,16 +432,12 @@ static inline int fy_advance_by(struct fy_parser *fyp, int count)
 }
 
 /* compare string at the current point */
-static inline bool fy_strcmp(struct fy_parser *fyp, const char *str)
+static inline bool fy_parse_strcmp(struct fy_parser *fyp, const char *str)
 {
-	return fy_strncmp(fyp, str, strlen(str));
+	return fy_parse_strncmp(fyp, str, strlen(str));
 }
 
 struct fy_eventp *fy_parse_private(struct fy_parser *fyp);
-
-void *fy_parse_alloc(struct fy_parser *fyp, size_t size);
-void fy_parse_free(struct fy_parser *fyp, void *data);
-char *fy_parse_strdup(struct fy_parser *fyp, const char *str);
 
 extern const char *fy_event_type_txt[];
 
@@ -684,28 +509,24 @@ void fy_parser_get_error_terminal_extents(struct fy_parser *fyp, int *widthp, in
 enum fy_parse_cfg_flags fy_parser_get_cfg_flags(const struct fy_parser *fyp);
 bool fy_parser_is_colorized(struct fy_parser *fyp);
 
-int fy_append_tag_directive(struct fy_parser *fyp,
-			    struct fy_document_state *fyds,
-			    const char *handle, const char *prefix);
-int fy_fill_default_document_state(struct fy_parser *fyp,
-				   struct fy_document_state *fyds,
-				   int version_major, int version_minor,
-				   const struct fy_tag * const *default_tags);
-
 struct fy_token *fy_document_event_get_token(struct fy_event *fye);
+
+#define FY_DEFAULT_YAML_VERSION_MAJOR	1
+#define FY_DEFAULT_YAML_VERSION_MINOR	1
+
+extern const struct fy_tag * const fy_default_tags[];
 
 bool fy_tag_handle_is_default(const char *handle, size_t handle_size);
 bool fy_tag_is_default(const char *handle, size_t handle_size,
 		       const char *prefix, size_t prefix_size);
 bool fy_token_tag_directive_is_overridable(struct fy_token *fyt_td);
 
-const char *fy_tag_token_get_directive_handle(struct fy_token *fyt, size_t *td_handle_sizep);
-const char *fy_tag_token_get_directive_prefix(struct fy_token *fyt, size_t *td_prefix_sizep);
+int fy_parser_set_default_document_state(struct fy_parser *fyp,
+					 struct fy_document_state *fyds);
+void fy_parser_set_next_single_document(struct fy_parser *fyp);
 
 void *fy_alloc_default(void *userdata, size_t size);
 void fy_free_default(void *userdata, void *ptr);
 void *fy_realloc_default(void *userdata, void *ptr, size_t size);
-
-void *fy_parser_get_userdata(struct fy_parser *fyp);
 
 #endif

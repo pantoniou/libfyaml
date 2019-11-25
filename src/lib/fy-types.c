@@ -32,15 +32,20 @@ FY_PARSE_TYPE_DEFINE_SIMPLE(simple_key);
 FY_PARSE_TYPE_DEFINE_SIMPLE(parse_state_log);
 FY_PARSE_TYPE_DEFINE_SIMPLE(flow);
 
-FY_TALLOC_TYPE_DEFINE(token);
-FY_PARSE_TYPE_DEFINE(token);
-
-FY_TALLOC_TYPE_DEFINE(eventp);
+FY_ALLOC_TYPE_DEFINE(eventp);
 FY_PARSE_TYPE_DEFINE(eventp);
 
 struct fy_eventp *fy_parse_eventp_alloc(struct fy_parser *fyp)
 {
-	return fy_parse_eventp_alloc_simple(fyp);
+	struct fy_eventp *fyep;
+
+	fyep = fy_parse_eventp_alloc_simple(fyp);
+	if (!fyep)
+		return NULL;
+	fyep->fyp = fyp;
+	fyep->e.type = FYET_NONE;
+
+	return fyep;
 }
 
 void fy_parse_eventp_recycle(struct fy_parser *fyp, struct fy_eventp *fyep)
@@ -95,10 +100,3 @@ void fy_parse_eventp_recycle(struct fy_parser *fyp, struct fy_eventp *fyep)
 
 	fy_parse_eventp_recycle_simple(fyp, fyep);
 }
-
-FY_TALLOC_TYPE_DEFINE(input);
-FY_PARSE_TYPE_DEFINE(input);
-
-FY_TALLOC_TYPE_DEFINE(document_state);
-FY_PARSE_TYPE_DEFINE(document_state);
-

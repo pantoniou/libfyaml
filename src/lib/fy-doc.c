@@ -75,92 +75,7 @@ static inline bool is_simple_key(const char *str, size_t len)
 	return s == e;
 }
 
-struct fy_document_state *fy_document_state_alloc(void)
-{
-	struct fy_document_state *fyds;
-
-	fyds = malloc(sizeof(*fyds));
-	if (!fyds)
-		return NULL;
-	memset(fyds, 0, sizeof(*fyds));
-
-	fyds->fyt_vd = NULL;
-	fy_token_list_init(&fyds->fyt_td);
-
-	fyds->refs = 1;
-
-	/* fy_notice(NULL, "%s: %p #%d", __func__, fyds, fyds->refs); */
-
-	return fyds;
-}
-
-void fy_document_state_free(struct fy_document_state *fyds)
-{
-	if (!fyds)
-		return;
-
-	assert(fyds->refs == 1);
-
-	/* fy_notice(NULL, "%s: %p #%d", __func__, fyds, fyds->refs); */
-
-	fy_token_unref(fyds->fyt_vd);
-	fy_token_list_unref_all(&fyds->fyt_td);
-
-	free(fyds);
-}
-
-struct fy_document_state *fy_document_state_ref(struct fy_document_state *fyds)
-{
-	if (!fyds)
-		return NULL;
-
-
-	assert(fyds->refs + 1 > 0);
-
-	fyds->refs++;
-
-	/* fy_notice(NULL, "%s: %p #%d", __func__, fyds, fyds->refs); */
-
-	return fyds;
-}
-
-void fy_document_state_unref(struct fy_document_state *fyds)
-{
-	if (!fyds)
-		return;
-
-	assert(fyds->refs > 0);
-
-	/* fy_notice(NULL, "%s: %p #%d", __func__, fyds, fyds->refs); */
-
-	if (fyds->refs == 1)
-		fy_document_state_free(fyds);
-	else
-		fyds->refs--;
-}
-
-struct fy_document_state *fy_parse_document_state_alloc(struct fy_parser *fyp)
-{
-	struct fy_document_state *fyds;
-
-	if (!fyp)
-		return NULL;
-
-	fyds = fy_document_state_alloc();
-	if (!fyds)
-		return NULL;
-
-	return fyds;
-}
-
-void fy_parse_document_state_recycle(struct fy_parser *fyp, struct fy_document_state *fyds)
-{
-	fy_document_state_unref(fyds);
-}
-
 static void fy_resolve_parent_node(struct fy_document *fyd, struct fy_node *fyn, struct fy_node *fyn_parent);
-
-int fy_document_state_merge(struct fy_document *fyd, struct fy_document *fydc);
 
 void fy_anchor_destroy(struct fy_anchor *fya)
 {
@@ -176,8 +91,8 @@ struct fy_anchor *fy_anchor_create(struct fy_document *fyd,
 	struct fy_anchor *fya = NULL;
 
 	fya = malloc(sizeof(*fya));
-	fy_error_check(fyd->fyp, fya, err_out,
-			"malloc() failed");
+	if (!fya)
+		goto err_out;
 
 	fya->fyn = fyn;
 	fya->anchor = anchor;
@@ -221,7 +136,7 @@ int fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn, const c
 	if (!fyi)
 		goto err_out;
 
-	fyt = fy_token_create(fyd->fyp, FYTT_ANCHOR, &handle);
+	fyt = fy_token_create(FYTT_ANCHOR, &handle);
 	if (!fyt)
 		goto err_out;
 
@@ -286,33 +201,7 @@ void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 
 	fy_document_state_unref(fyd->fyds);
 
-	/* and release all the remaining tracked memory */
-	fy_tfree_all(&fyd->tallocs);
-
-	fy_parse_free(fyp, fyd);
-}
-
-struct fy_token *fy_document_state_lookup_tag_directive(struct fy_document_state *fyds,
-		const char *handle, size_t handle_size)
-{
-	const char *td_handle;
-	size_t td_handle_size;
-	struct fy_token *fyt;
-
-	if (!fyds)
-		return NULL;
-
-	for (fyt = fy_token_list_first(&fyds->fyt_td); fyt; fyt = fy_token_next(&fyds->fyt_td, fyt)) {
-
-		td_handle = fy_tag_directive_token_handle(fyt, &td_handle_size);
-		assert(td_handle);
-
-		if (handle_size == td_handle_size && !memcmp(handle, td_handle, handle_size))
-			return fyt;
-
-	}
-
-	return NULL;
+	free(fyd);
 }
 
 struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_eventp *fyep)
@@ -330,14 +219,13 @@ struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_ev
 	FY_ERROR_CHECK(fyp, fy_document_event_get_token(fye), &ec, FYEM_DOC,
 			fye->type == FYET_DOCUMENT_START, err_stream_start);
 
-	fyd = fy_parse_alloc(fyp, sizeof(*fyd));
+	fyd = malloc(sizeof(*fyd));
 	fy_error_check(fyp, fyd, err_out,
-		"fy_parse_alloc() failed");
+		"malloc() failed");
 
 	memset(fyd, 0, sizeof(*fyd));
 
 	fyd->fyp = fyp;
-	fy_talloc_list_init(&fyd->tallocs);
 
 	fy_anchor_list_init(&fyd->anchors);
 	fyd->root = NULL;
@@ -1367,6 +1255,9 @@ int fy_parse_document_load_end(struct fy_parser *fyp, struct fy_document *fyd, s
 			fye->type == FYET_DOCUMENT_END,
 			err_bad_event);
 
+	/* recycle the document end event */
+	fy_parse_eventp_recycle(fyp, fyep);
+
 	return 0;
 err_out:
 	rc = -1;
@@ -1612,6 +1503,82 @@ int fy_node_copy_to_scalar(struct fy_document *fyd, struct fy_node *fyn_to, stru
 	return 0;
 }
 
+static int fy_document_node_update_tags(struct fy_document *fyd, struct fy_node *fyn)
+{
+	struct fy_parser *fyp;
+	struct fy_node *fyni;
+	struct fy_node_pair *fynp, *fynpi;
+	struct fy_token *fyt_td;
+	const char *handle;
+	size_t handle_size;
+	int rc;
+
+	if (!fyd || !fyn || !fyd->fyp)
+		return 0;
+
+	fyp = fyd->fyp;
+
+	/* replace tag reference with the one that the document contains */
+	if (fyn->tag) {
+		fy_error_check(fyp, fyn->tag->type == FYTT_TAG, err_out,
+				"bad node tag");
+
+		handle = fy_tag_directive_token_handle(fyn->tag->tag.fyt_td, &handle_size);
+		fy_error_check(fyp, handle, err_out,
+				"bad tag directive token");
+
+		fyt_td = fy_document_state_lookup_tag_directive(fyd->fyds, handle, handle_size);
+		fy_error_check(fyp, fyt_td, err_out,
+				"Missing tag directive with handle=%.*s", (int)handle_size, handle);
+
+		/* need to replace this */
+		if (fyt_td != fyn->tag->tag.fyt_td) {
+			fy_token_unref(fyn->tag->tag.fyt_td);
+			fyn->tag->tag.fyt_td = fy_token_ref(fyt_td);
+
+		}
+	}
+
+
+	switch (fyn->type) {
+	case FYNT_SCALAR:
+		break;
+
+	case FYNT_SEQUENCE:
+		for (fyni = fy_node_list_head(&fyn->sequence); fyni;
+				fyni = fy_node_next(&fyn->sequence, fyni)) {
+
+			rc = fy_document_node_update_tags(fyd, fyni);
+			if (rc)
+				goto err_out_rc;
+		}
+		break;
+
+	case FYNT_MAPPING:
+		for (fynp = fy_node_pair_list_head(&fyn->mapping); fynp; fynp = fynpi) {
+
+			fynpi = fy_node_pair_next(&fyn->mapping, fynp);
+
+			/* the parent of the key is always NULL */
+			rc = fy_document_node_update_tags(fyd, fynp->key);
+			if (rc)
+				goto err_out_rc;
+
+			rc = fy_document_node_update_tags(fyd, fynp->value);
+			if (rc)
+				goto err_out_rc;
+		}
+		break;
+	}
+
+	return 0;
+
+err_out:
+	rc = -1;
+err_out_rc:
+	return rc;
+}
+
 int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 {
 	struct fy_document *fyd;
@@ -1830,15 +1797,21 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 
 	/* if the documents differ, merge their states */
 	if (fyn_to->fyd != fyn_from->fyd) {
-		rc = fy_document_state_merge(fyn_to->fyd, fyn_from->fyd);
-		if (rc)
-			return rc;
+		rc = fy_document_state_merge(fyn_to->fyd->fyds, fyn_from->fyd->fyds);
+		fy_error_check(fyp, !rc, err_out_rc,
+				"fy_document_state_merge() failed");
+
+		rc = fy_document_node_update_tags(fyd, fy_document_root(fyd));
+		fy_error_check(fyp, !rc, err_out_rc,
+				"fy_document_node_update_tags() failed");
 	}
 
 	return 0;
 
 err_out:
-	return -1;
+	rc = -1;
+err_out_rc:
+	return rc;
 }
 
 int fy_document_insert_at(struct fy_document *fyd,
@@ -1854,108 +1827,6 @@ int fy_document_insert_at(struct fy_document *fyd,
 	fy_node_free(fyn);
 
 	return rc;
-}
-
-static int fy_document_node_update_tags(struct fy_document *fyd, struct fy_node *fyn)
-{
-	struct fy_parser *fyp;
-	struct fy_node *fyni;
-	struct fy_node_pair *fynp, *fynpi;
-	struct fy_token *fyt_td;
-	const char *handle;
-	size_t handle_size;
-	int rc;
-
-	if (!fyd || !fyn || !fyd->fyp)
-		return 0;
-
-	fyp = fyd->fyp;
-
-	/* replace tag reference with the one that the document contains */
-	if (fyn->tag) {
-		fy_error_check(fyp, fyn->tag->type == FYTT_TAG, err_out,
-				"bad node tag");
-
-		handle = fy_tag_directive_token_handle(fyn->tag->tag.fyt_td, &handle_size);
-		fy_error_check(fyp, handle, err_out,
-				"bad tag directive token");
-
-		fyt_td = fy_document_state_lookup_tag_directive(fyd->fyds, handle, handle_size);
-		fy_error_check(fyp, fyt_td, err_out,
-				"Missing tag directive with handle=%.*s", (int)handle_size, handle);
-
-		/* need to replace this */
-		if (fyt_td != fyn->tag->tag.fyt_td) {
-			fy_token_unref(fyn->tag->tag.fyt_td);
-			fyn->tag->tag.fyt_td = fy_token_ref(fyt_td);
-
-		}
-	}
-
-
-	switch (fyn->type) {
-	case FYNT_SCALAR:
-		break;
-
-	case FYNT_SEQUENCE:
-		for (fyni = fy_node_list_head(&fyn->sequence); fyni;
-				fyni = fy_node_next(&fyn->sequence, fyni)) {
-
-			rc = fy_document_node_update_tags(fyd, fyni);
-			if (rc)
-				goto err_out_rc;
-		}
-		break;
-
-	case FYNT_MAPPING:
-		for (fynp = fy_node_pair_list_head(&fyn->mapping); fynp; fynp = fynpi) {
-
-			fynpi = fy_node_pair_next(&fyn->mapping, fynp);
-
-			/* the parent of the key is always NULL */
-			rc = fy_document_node_update_tags(fyd, fynp->key);
-			if (rc)
-				goto err_out_rc;
-
-			rc = fy_document_node_update_tags(fyd, fynp->value);
-			if (rc)
-				goto err_out_rc;
-		}
-		break;
-	}
-
-	return 0;
-
-err_out:
-	rc = -1;
-err_out_rc:
-	return rc;
-}
-
-void fy_document_dump_tag_directives(struct fy_document *fyd, const char *banner)
-{
-	struct fy_document_state *fyds;
-	struct fy_token *fyt;
-	const char *handle, *prefix;
-	size_t handle_size, prefix_size;
-
-	if (!fyd || !fyd->fyds)
-		return;
-
-	fyds = fyd->fyds;
-
-	for (fyt = fy_token_list_first(&fyds->fyt_td); fyt; fyt = fy_token_next(&fyds->fyt_td, fyt)) {
-
-		handle = fy_tag_directive_token_handle(fyt, &handle_size);
-		assert(handle);
-
-		prefix = fy_tag_directive_token_prefix(fyt, &prefix_size);
-		assert(prefix);
-
-		fy_notice(fyd->fyp, "%s tag directive \"%.*s\" \"%.*s\"", banner,
-				(int)handle_size, handle,
-				(int)prefix_size, prefix);
-	}
 }
 
 struct fy_token *fy_document_tag_directive_iterate(struct fy_document *fyd, void **prevp)
@@ -2004,7 +1875,7 @@ int fy_document_tag_directive_add(struct fy_document *fyd, const char *handle, c
 	if (fyt)
 		return -1;
 
-	return fy_append_tag_directive(fyd->fyp, fyd->fyds, handle, prefix);
+	return fy_document_state_append_tag(fyd->fyds, handle, prefix);
 }
 
 int fy_document_tag_directive_remove(struct fy_document *fyd, const char *handle)
@@ -2023,103 +1894,6 @@ int fy_document_tag_directive_remove(struct fy_document *fyd, const char *handle
 	fy_token_unref(fyt);
 
 	return 0;
-}
-
-int fy_document_state_merge(struct fy_document *fyd, struct fy_document *fydc)
-{
-	struct fy_parser *fyp = fyd->fyp;
-	struct fy_document_state *fyds, *fydsc;
-	const char *td_prefix, *tdc_handle, *tdc_prefix;
-	size_t td_prefix_size, tdc_handle_size, tdc_prefix_size;
-	struct fy_error_ctx ec;
-	struct fy_token *fyt, *fytc_td, *fyt_td;
-	int rc;
-
-	/* both the document and the parser object must exist */
-	if (!fyd || !fydc)
-		return 0;
-
-	fyds = fyd->fyds;
-	assert(fyds);
-
-	fydsc = fydc->fyds;
-	assert(fydsc);
-
-	/* check if there's a duplicate handle (which differs */
-	for (fytc_td = fy_token_list_first(&fydsc->fyt_td); fytc_td; fytc_td = fy_token_next(&fydsc->fyt_td, fytc_td)) {
-
-		tdc_handle = fy_tag_directive_token_handle(fytc_td, &tdc_handle_size);
-		assert(tdc_handle);
-
-		tdc_prefix = fy_tag_directive_token_prefix(fytc_td, &tdc_prefix_size);
-		assert(tdc_prefix);
-
-		fyt_td = fy_document_state_lookup_tag_directive(fyds, tdc_handle, tdc_handle_size);
-		if (fyt_td) {
-			/* exists, must check whether the prefixes match */
-			td_prefix = fy_tag_directive_token_prefix(fyt_td, &td_prefix_size);
-			assert(td_prefix);
-
-			/* match? do nothing */
-			if (tdc_prefix_size == td_prefix_size &&
-			    !memcmp(tdc_prefix, td_prefix, td_prefix_size)) {
-				fy_notice(fyp, "matching tag directive \"%.*s\" \"%.*s\"",
-						(int)tdc_handle_size, tdc_handle,
-						(int)tdc_prefix_size, tdc_prefix);
-				continue;
-			}
-
-			/* the tag directive must be overridable */
-			FY_ERROR_CHECK(fyp, fytc_td, &ec, FYEM_DOC,
-					fy_token_tag_directive_is_overridable(fyt_td),
-					err_dup_diff_tag);
-
-			/* override tag directive */
-			fy_token_list_del(&fyds->fyt_td, fyt_td);
-			fy_token_unref(fyt_td);
-
-			fy_notice(fyp, "overriding tag directive \"%.*s\" \":%.*s\"",
-					(int)tdc_handle_size, tdc_handle,
-					(int)tdc_prefix_size, tdc_prefix);
-		} else {
-			fy_notice(fyp, "appending tag directive \"%.*s\" \"%.*s\"",
-					(int)tdc_handle_size, tdc_handle,
-					(int)tdc_prefix_size, tdc_prefix);
-		}
-
-		fyt = fy_token_create(fyp, FYTT_TAG_DIRECTIVE,
-				&fytc_td->handle,
-				fytc_td->tag_directive.tag_length,
-				fytc_td->tag_directive.uri_length);
-		fy_error_check(fyp, fyt, err_out,
-				"fy_token_create() failed");
-
-		fy_token_list_add_tail(&fyds->fyt_td, fyt);
-	}
-
-	rc = fy_document_node_update_tags(fyd, fy_document_root(fyd));
-	fy_error_check(fyp, !rc, err_out_rc,
-			"fy_document_node_update_tags() failed");
-
-	/* merge other document state */
-	fyd->fyds->version_explicit |= fydc->fyds->version_explicit;
-	fyd->fyds->tags_explicit |= fydc->fyds->tags_explicit;
-
-	if (fyd->fyds->version.major < fydc->fyds->version.major ||
-	    (fyd->fyds->version.major == fydc->fyds->version.major &&
-		fyd->fyds->version.minor < fydc->fyds->version.minor))
-		fyd->fyds->version = fydc->fyds->version;
-
-	return 0;
-
-err_out:
-	rc = -1;
-err_out_rc:
-	return rc;
-
-err_dup_diff_tag:
-	fy_error_report(fyp, &ec, "duplicate differing tag declaration");
-	goto err_out;
 }
 
 static int fy_resolve_alias(struct fy_document *fyd, struct fy_node *fyn)
@@ -2620,21 +2394,19 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 	if (!fyp)
 		return NULL;
 
-	fyd = fy_parse_alloc(fyp, sizeof(*fyd));
+	fyd = malloc(sizeof(*fyd));
 	fy_error_check(fyp, fyd, err_out,
-		"fy_parse_alloc() failed");
+		"malloc() failed");
 	memset(fyd, 0, sizeof(*fyd));
 
 	fyd->fyp = fyp;
-	fy_talloc_list_init(&fyd->tallocs);
 
 	fy_anchor_list_init(&fyd->anchors);
 	fyd->root = NULL;
 
-	fyd->fyds = fy_document_state_ref(fyp->current_document_state);
+	fyd->fyds = fy_document_state_default();
 	fy_error_check(fyp, fyd->fyds, err_out,
-			"fy_document_state_ref() failed");
-	fyp->external_document_state = true;	/* parser will not update state */
+			"fy_document_state_default() failed");
 
 	fyd->owns_parser = true;
 
@@ -2719,10 +2491,9 @@ static int parser_setup_from_fmt_ap(struct fy_parser *fyp, void *user)
 	fy_error_check(fyp, size >= 0, err_out,
 			"vsnprintf() failed");
 
-	/* the buffer will stick around until the parser is destroyed */
 	buf = malloc(size + 1);
 	fy_error_check(fyp, buf, err_out,
-			"fy_parser_alloc() failed");
+			"malloc() failed");
 
 	va_copy(ap, vctx->ap);
 	sizew = vsnprintf(buf, size + 1, vctx->fmt, ap);
@@ -2757,9 +2528,6 @@ static struct fy_document *fy_document_build_internal(const struct fy_parse_cfg 
 	fyp = fy_parser_create(cfg);
 	if (!fyp)
 		return NULL;
-
-	/* no more updating of the document state */
-	fyp->external_document_state = true;
 
 	rc = (*parser_setup)(fyp, user);
 	fy_error_check(fyp, !rc, err_out,
@@ -3910,9 +3678,9 @@ char *fy_node_get_path(struct fy_node *fyn)
 	return path_mem;
 }
 
-struct fy_node *fy_document_load_node(struct fy_document *fyd)
+struct fy_node *fy_document_load_node(struct fy_document *fyd,
+				      struct fy_document_state **fydsp)
 {
-	struct fy_document_state *fyds;
 	struct fy_parser *fyp;
 	struct fy_eventp *fyep = NULL;
 	struct fy_event *fye = NULL;
@@ -3924,10 +3692,11 @@ struct fy_node *fy_document_load_node(struct fy_document *fyd)
 	if (!fyd || !fyd->fyp)
 		return NULL;
 
-	/* get start document state */
-	fyds = fyd->fyds;
-
 	fyp = fyd->fyp;
+
+	/* only single documents */
+	fy_parser_set_next_single_document(fyp);
+	fy_parser_set_default_document_state(fyp, fyd->fyds);
 
 again:
 	was_stream_start = false;
@@ -3966,9 +3735,9 @@ again:
 			fye->type == FYET_DOCUMENT_START,
 			err_bad_event);
 
-	/* if we have a fixed document state, drop the reference */
-	if (fye->document_start.document_state == fyds)
-		fy_document_state_unref(fyds);
+	fy_parse_eventp_recycle(fyp, fyep);
+	fyep = NULL;
+	fye = NULL;
 
 	fy_doc_debug(fyp, "calling load_node() for root");
 	depth = 0;
@@ -3982,6 +3751,9 @@ again:
 
 	/* always resolve parents */
 	fy_resolve_parent_node(fyd, fyn, NULL);
+
+	if (fydsp)
+		*fydsp = fy_document_state_ref(fyp->current_document_state);
 
 	return fyn;
 
@@ -3999,8 +3771,9 @@ fy_node_build_internal(struct fy_document *fyd,
 		int (*parser_setup)(struct fy_parser *fyp, void *user),
 		void *user)
 {
+	struct fy_document_state *fyds = NULL;
+	struct fy_node *fyn = NULL;
 	struct fy_parser *fyp;
-	struct fy_node *fyn;
 	struct fy_eventp *fyep;
 	struct fy_error_ctx ec;
 	int rc;
@@ -4015,7 +3788,7 @@ fy_node_build_internal(struct fy_document *fyd,
 	fy_error_check(fyp, !rc, err_out,
 			"parser_setup() failed");
 
-	fyn = fy_document_load_node(fyd);
+	fyn = fy_document_load_node(fyd, &fyds);
 	fy_error_check(fyp, fyn, err_out,
 			"fy_document_load_node() failed");
 
@@ -4035,9 +3808,17 @@ fy_node_build_internal(struct fy_document *fyd,
 		fy_parse_eventp_recycle(fyp, fyep);
 	}
 
+	rc = fy_document_state_merge(fyd->fyds, fyds);
+	fy_error_check(fyp, !rc, err_out,
+			"fy_document_state_merge() failed");
+
+	fy_document_state_unref(fyds);
+
 	return fyn;
 
 err_out:
+	fy_node_free(fyn);
+	fy_document_state_unref(fyds);
 	return NULL;
 
 err_trailing_event:
@@ -4113,7 +3894,7 @@ struct fy_node *fy_node_create_scalar(struct fy_document *fyd, const char *data,
 
 	style = handle.style == FYAS_PLAIN ? FYSS_PLAIN : FYSS_DOUBLE_QUOTED;
 
-	fyn->scalar = fy_token_create(fyp, FYTT_SCALAR, &handle, style);
+	fyn->scalar = fy_token_create(FYTT_SCALAR, &handle, style);
 	fy_error_check(fyp, fyn->scalar, err_out,
 			"fy_token_create() failed");
 
@@ -4150,7 +3931,7 @@ struct fy_node *fy_node_create_alias(struct fy_document *fyd, const char *alias,
 	fy_error_check(fyp, fyi, err_out,
 			"fy_input_from_data() failed");
 
-	fyn->scalar = fy_token_create(fyp, FYTT_ALIAS, &handle);
+	fyn->scalar = fy_token_create(FYTT_ALIAS, &handle);
 	fy_error_check(fyp, fyn->scalar, err_out,
 			"fy_token_create() failed");
 
@@ -4371,7 +4152,7 @@ int fy_node_set_tag(struct fy_node *fyn, const char *data, size_t len)
 	handle.storage_hint = 0;
 	handle.storage_hint_valid = false;
 
-	fyt = fy_token_create(fyd->fyp, FYTT_TAG, &handle, prefix_length,
+	fyt = fy_token_create(FYTT_TAG, &handle, prefix_length,
 				handle_length, uri_length, fyt_td);
 	if (!fyt)
 		return -1;

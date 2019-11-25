@@ -19,23 +19,21 @@
 #include <libfyaml.h>
 
 #include "fy-list.h"
-#include "fy-talloc.h"
 
 struct fy_parser;
 
 /* define type methods */
-#define FY_TALLOC_TYPE_DEFINE(_type) \
+#define FY_ALLOC_TYPE_DEFINE(_type) \
 \
 struct fy_ ## _type *fy_ ## _type ## _alloc_simple_internal( \
-		struct fy_ ## _type ## _list *_rl, \
-		struct fy_talloc_list *_tl) \
+		struct fy_ ## _type ## _list *_rl) \
 { \
 	struct fy_ ## _type *_n; \
 	\
 	_n = fy_ ## _type ## _list_pop(_rl); \
 	if (_n) \
 		return _n; \
-	_n = fy_talloc(_tl, sizeof(*_n)); \
+	_n = malloc(sizeof(*_n)); \
 	if (_n) \
 		INIT_LIST_HEAD(&_n->node); \
 	return _n; \
@@ -48,27 +46,24 @@ void fy_ ## _type ## _recycle_internal(struct fy_ ## _type ## _list *_rl, \
 		fy_ ## _type ## _list_push(_rl, _n); \
 } \
 \
-void fy_ ## _type ## _vacuum_internal(struct fy_ ## _type ## _list *_rl, \
-		struct fy_talloc_list *_tl) \
+void fy_ ## _type ## _vacuum_internal(struct fy_ ## _type ## _list *_rl) \
 { \
 	struct fy_ ## _type *_n; \
 	\
 	while ((_n = fy_ ## _type ## _list_pop(_rl)) != NULL) \
-		fy_tfree(_tl, _n); \
+		free(_n); \
 } \
 \
 struct __useless_struct_to_allow_semicolon
 
 /* declarations for alloc */
 
-#define FY_TALLOC_TYPE_ALLOC(_type) \
+#define FY_ALLOC_TYPE_ALLOC(_type) \
 struct fy_ ## _type *fy_ ## _type ## _alloc_simple_internal( \
-		struct fy_ ## _type ## _list *_rl, \
-		struct fy_talloc_list *_tl); \
+		struct fy_ ## _type ## _list *_rl); \
 void fy_ ## _type ## _recycle_internal(struct fy_ ## _type ## _list *_rl, \
 		struct fy_ ## _type *_n); \
-void fy_ ## _type ## _vacuum_internal(struct fy_ ## _type ## _list *_rl, \
-		struct fy_talloc_list *_tl); \
+void fy_ ## _type ## _vacuum_internal(struct fy_ ## _type ## _list *_rl); \
 struct __useless_struct_to_allow_semicolon
 
 /* parser type methods */
@@ -97,13 +92,12 @@ struct __useless_struct_to_allow_semicolon
 \
 struct fy_ ## _type *fy_parse_ ## _type ## _alloc_simple(struct fy_parser *fyp) \
 { \
-	return fy_ ## _type ## _alloc_simple_internal(&fyp->recycled_ ## _type, \
-			&fyp->tallocs); \
+	return fy_ ## _type ## _alloc_simple_internal(&fyp->recycled_ ## _type); \
 } \
 \
 void fy_parse_ ## _type ## _vacuum(struct fy_parser *fyp) \
 { \
-	fy_ ## _type ## _vacuum_internal(&fyp->recycled_ ## _type, &fyp->tallocs); \
+	fy_ ## _type ## _vacuum_internal(&fyp->recycled_ ## _type); \
 } \
 \
 void fy_parse_ ## _type ## _list_recycle_all(struct fy_parser *fyp, struct fy_ ## _type ## _list *_l) \
@@ -116,7 +110,10 @@ void fy_parse_ ## _type ## _list_recycle_all(struct fy_parser *fyp, struct fy_ #
 \
 void fy_parse_ ## _type ## _recycle_simple(struct fy_parser *fyp, struct fy_ ## _type *_n) \
 { \
-	fy_ ## _type ## _recycle_internal(&fyp->recycled_ ## _type, _n); \
+	if (!fyp->suppress_recycling) \
+		fy_ ## _type ## _recycle_internal(&fyp->recycled_ ## _type, _n); \
+	else \
+		free(_n); \
 } \
 \
 struct __useless_struct_to_allow_semicolon
@@ -137,7 +134,7 @@ struct __useless_struct_to_allow_semicolon
 
 #define FY_PARSE_TYPE_DEFINE_SIMPLE(_type) \
 \
-FY_TALLOC_TYPE_DEFINE(_type); \
+FY_ALLOC_TYPE_DEFINE(_type); \
 FY_PARSE_TYPE_DEFINE(_type); \
 FY_PARSE_TYPE_DEFINE_ALLOC_SIMPLE(_type); \
 \

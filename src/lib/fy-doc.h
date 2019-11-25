@@ -23,28 +23,13 @@
 #include "fy-utf8.h"
 #include "fy-list.h"
 #include "fy-typelist.h"
-#include "fy-talloc.h"
 #include "fy-types.h"
 #include "fy-diag.h"
+#include "fy-docstate.h"
 
 struct fy_eventp;
 
 FY_TYPE_FWD_DECL_LIST(document);
-
-struct fy_document_state {
-	struct list_head node;
-	int refs;
-	struct fy_version version;
-	bool version_explicit : 1;
-	bool tags_explicit : 1;
-	bool start_implicit : 1;
-	bool end_implicit : 1;
-	struct fy_mark start_mark;
-	struct fy_mark end_mark;
-	struct fy_token *fyt_vd;		/* version directive */
-	struct fy_token_list fyt_td;		/* tag directives */
-};
-FY_PARSE_TYPE_DECL(document_state);
 
 struct fy_node;
 
@@ -99,7 +84,6 @@ FY_TYPE_DECL_LIST(anchor);
 
 struct fy_document {
 	struct list_head node;
-	struct fy_talloc_list tallocs;
 	struct fy_anchor_list anchors;
 	struct fy_document_state *fyds;
 	struct fy_parser *fyp;
@@ -120,16 +104,7 @@ struct fy_document {
 /* only the list declaration/methods */
 FY_TYPE_DECL_LIST(document);
 
-struct fy_document_state *fy_document_state_alloc(void);
-void fy_document_state_free(struct fy_document_state *fyds);
-struct fy_document_state *fy_document_state_ref(struct fy_document_state *fyds);
-void fy_document_state_unref(struct fy_document_state *fyds);
-
-struct fy_token *fy_document_state_lookup_tag_directive(struct fy_document_state *fyds,
-		const char *handle, size_t handle_size);
 struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_eventp *fyep);
-
-void fy_document_dump_tag_directives(struct fy_document *fyd, const char *banner);
 
 struct fy_node_mapping_sort_ctx {
 	fy_node_mapping_sort_fn key_cmp;
