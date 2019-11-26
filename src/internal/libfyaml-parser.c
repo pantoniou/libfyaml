@@ -1941,6 +1941,10 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 				(int)prefix_size, prefix);
 	}
 
+	/* try to build another, but with a different !e! prefix, it must fail */
+	fyn = fy_node_build_from_string(fyd, "%TAG !e! tag:example.com,2019:app/\n---\n- foo\n- !e!foo bar\n", FY_NT);
+	assert(!fyn);
+
 	rc = fy_document_tag_directive_add(fyd, "!f!", "tag:example.com,2019:f/");
 	assert(!rc);
 

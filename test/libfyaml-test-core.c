@@ -860,6 +860,65 @@ START_TEST(doc_join_tags)
 }
 END_TEST
 
+START_TEST(doc_build_with_tags)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	struct fy_token *fyt;
+	char *buf;
+	int rc;
+
+	/* build document */
+	fyd = fy_document_create(NULL);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* create a sequence and set it as root */
+	fyn = fy_node_create_sequence(fyd);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	fy_document_set_root(fyd, fyn);
+	fyn = NULL;
+
+	/* create a node, containing a new tag */
+	fyn = fy_node_build_from_string(fyd, "%TAG !e! tag:example.com,2000:app/\n---\n- foo\n- !e!foo bar\n", FY_NT);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	/* append it to the root of the document */
+	rc = fy_node_sequence_append(fy_document_root(fyd), fyn);
+	ck_assert_int_eq(rc, 0);
+	fyn = NULL;
+
+	/* there must be a new tag */
+	fyt = fy_document_tag_directive_lookup(fyd, "!e!");
+	ck_assert_ptr_ne(fyt, NULL);
+
+	/* try to build another, but with a different !e! prefix, it must fail */
+	fyn = fy_node_build_from_string(fyd, "%TAG !e! tag:example.com,2019:app/\n---\n- foo\n- !e!foo bar\n", FY_NT);
+	ck_assert_ptr_eq(fyn, NULL);
+
+	/* manually add a tag */
+	rc = fy_document_tag_directive_add(fyd, "!f!", "tag:example.com,2019:f/");
+	ck_assert_int_eq(rc, 0);
+
+	/* build a node with a tag that's already in the document */
+	fyn = fy_node_build_from_string(fyd, "!f!whiz frooz\n", FY_NT);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	/* append it to the root of the document */
+	rc = fy_node_sequence_append(fy_document_root(fyd), fyn);
+	ck_assert_int_eq(rc, 0);
+	fyn = NULL;
+
+	/* convert to string */
+	buf = fy_emit_document_to_string(fyd, FYECF_MODE_FLOW_ONELINE);
+	ck_assert_ptr_ne(buf, NULL);
+
+	free(buf);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 TCase *libfyaml_case_core(void)
 {
 	TCase *tc;
@@ -901,6 +960,8 @@ TCase *libfyaml_case_core(void)
 	tcase_add_test(tc, doc_join_seq_to_map);
 
 	tcase_add_test(tc, doc_join_tags);
+
+	tcase_add_test(tc, doc_build_with_tags);
 
 	return tc;
 }
