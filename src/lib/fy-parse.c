@@ -426,6 +426,7 @@ int fy_parse_tag_directive(struct fy_parser *fyp, struct fy_token *fyt)
 	}
 
 	fy_token_list_add_tail(&fyds->fyt_td, fyt);
+	fyt = NULL;
 
 	fy_scan_debug(fyp, "document parsed tag directive with handle=%.*s",
 			(int)handle_size, handle);
@@ -435,6 +436,7 @@ int fy_parse_tag_directive(struct fy_parser *fyp, struct fy_token *fyt)
 
 	return 0;
 err_out:
+	fy_token_unref(fyt);
 	return -1;
 
 err_duplicate_tag_directive:
