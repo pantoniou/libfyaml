@@ -840,7 +840,6 @@ START_TEST(doc_join_seq_to_map)
 }
 END_TEST
 
-#if 0
 START_TEST(doc_join_tags)
 {
 	char *output;
@@ -856,11 +855,10 @@ START_TEST(doc_join_tags)
 		"  something: other\n", "/",
 		"/");
 
-	ck_assert_str_eq(output, "[bar, baz]");
+	ck_assert_str_eq(output, "[!a!foo {foo: bar}, !b!bar {something: other}]");
 	free(output);
 }
 END_TEST
-#endif
 
 TCase *libfyaml_case_core(void)
 {
@@ -902,9 +900,7 @@ TCase *libfyaml_case_core(void)
 	tcase_add_test(tc, doc_join_seq_to_seq);
 	tcase_add_test(tc, doc_join_seq_to_map);
 
-#if 0
 	tcase_add_test(tc, doc_join_tags);
-#endif
 
 	return tc;
 }
