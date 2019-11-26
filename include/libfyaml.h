@@ -482,11 +482,24 @@ struct fy_parser *fy_parser_create(const struct fy_parse_cfg *cfg);
 /**
  * fy_parser_destroy() - Destroy the given parser
  *
- * @fyp: The parser to destroy
- *
  * Destroy a parser created earlier via fy_parser_create().
+ *
+ * @fyp: The parser to destroy
  */
 void fy_parser_destroy(struct fy_parser *fyp);
+
+/**
+ * fy_parser_reset() - Reset a parser completely
+ *
+ * Completely reset a parser, including after an error
+ * that caused a parser error to be emitted.
+ *
+ * @fyp: The parser to reset
+ *
+ * Returns:
+ * 0 if the reset was successful, -1 otherwise
+ */
+int fy_parser_reset(struct fy_parser *fyp);
 
 /**
  * fy_parser_set_input_file() - Set the parser to process the given file

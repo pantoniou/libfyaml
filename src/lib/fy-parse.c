@@ -142,6 +142,8 @@ int fy_parse_get_next_input(struct fy_parser *fyp)
 	fyp->current_input_pos = 0;
 	fyp->current_c = -1;
 	fyp->current_w = 0;
+	fyp->current_left = 0;
+	fyp->current_ptr = NULL;
 	fyp->line = 0;
 	fyp->column = 0;
 
@@ -5263,6 +5265,39 @@ int fy_parser_set_input_fp(struct fy_parser *fyp, const char *name, FILE *fp)
 	return 0;
 err_out:
 	rc = -1;
+err_out_rc:
+	return rc;
+}
+
+int fy_parser_reset(struct fy_parser *fyp)
+{
+	int rc;
+
+	if (!fyp)
+		return -1;
+
+	fy_parse_input_reset(fyp);
+
+	fy_input_unref(fyp->current_input);
+
+	fyp->current_input = NULL;
+	fyp->current_pos = 0;
+	fyp->current_input_pos = 0;
+	fyp->current_ptr = NULL;
+	fyp->current_c = -1;
+	fyp->current_w = 0;
+	fyp->current_left = 0;
+	fyp->line = 0;
+	fyp->column = 0;
+
+	fyp->next_single_document = false;
+	fyp->stream_error = false;
+
+	rc = fy_reset_document_state(fyp);
+	fy_error_check(fyp, !rc, err_out_rc,
+			"fy_parse_input_reset() failed");
+
+	return 0;
 err_out_rc:
 	return rc;
 }
