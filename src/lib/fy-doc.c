@@ -3819,6 +3819,7 @@ fy_node_build_internal(struct fy_document *fyd,
 err_out:
 	fy_node_free(fyn);
 	fy_document_state_unref(fyds);
+	fy_parser_reset(fyp);
 	return NULL;
 
 err_trailing_event:
