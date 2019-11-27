@@ -160,6 +160,8 @@ static inline enum fy_input_state fy_input_get_state(struct fy_input *fyi)
 	return fyi->state;
 }
 
+const char *fy_input_get_filename(struct fy_input *fyi);
+
 struct fy_input *fy_input_from_data(const char *data, size_t size,
 				    struct fy_atom *handle, bool simple);
 struct fy_input *fy_input_from_malloc_data(char *data, size_t size,

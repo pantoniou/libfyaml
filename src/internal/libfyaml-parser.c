@@ -575,6 +575,11 @@ static void dump_token(struct fy_parser *fyp, struct fy_token *fyt)
 				fy_atom_get_esc_text_a(&fyt->handle),
 				style);
 		break;
+
+	case FYTT_INPUT_MARKER:
+		printf("%s value='%s'\n", "INPUT_MARKER",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
 	}
 }
 
@@ -1051,11 +1056,16 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	struct fy_document *fyd;
 	struct fy_node *fyn;
 	char *buf;
-	void *iter;
+	struct fy_diag_report_ctx drc;
 	struct fy_token *fyt;
+#if 0
+	void *iter;
 	const char *handle, *prefix;
 	size_t handle_size, prefix_size;
 	int rc __FY_DEBUG_UNUSED__;
+	struct fy_atom atom;
+#endif
+
 #if 0
 	char *path;
 	struct fy_node *fynt;
@@ -1814,7 +1824,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 			"/e^f",
 			"/g|h",
 			"/i\\j",
-			"/k\"l", 
+			"/k\"l",
 			"/ ",
 			"/m~0n"
 		};
@@ -1909,7 +1919,8 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 
 	fy_document_destroy(fyd);
 	fyd = NULL;
-#endif
+
+	/*****/
 
 	fyd = fy_document_create(NULL);
 	assert(fyd);
@@ -1967,6 +1978,131 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	assert(buf);
 	printf("resulting document:\n");
 	fputs(buf, stdout);
+	free(buf);
+
+	fy_document_destroy(fyd);
+	fyd = NULL;
+
+	/***************/
+
+	fyp_debug(NULL,   FYEM_INTERNAL, "(debug)   test");
+	fyp_info(NULL,    "(info)    test");
+	fyp_notice(NULL,  "(notice)  test");
+	fyp_warning(NULL, "(warning) test");
+	fyp_error(NULL,   "(error)   test");
+
+#endif
+	/****/
+
+	fyd = fy_document_build_from_string(cfg,
+			"{\n"
+			"  { foo: bar }: baz,\n"
+			"  frooz: whee,\n"
+			"  houston: [ we, have, a, problem ]\n"
+			"}", FY_NT);
+	assert(fyd);
+
+	printf("***************************\n");
+	printf("fy_node_is_synthetic(\"/\") = %s\n",
+			fy_node_is_synthetic(fy_document_root(fyd)) ? "true" : "false");
+	printf("***************************\n");
+
+	fyn = fy_node_by_path(fy_document_root(fyd), "/{ foo: bar }", FY_NT, FYNWF_DONT_FOLLOW);
+	assert(fyn);
+	printf("fy_node_is_synthetic(\"/{ foo: bar }\") = %s\n",
+			fy_node_is_synthetic(fyn) ? "true" : "false");
+
+	buf = fy_emit_node_to_string(fyn, FYECF_MODE_FLOW_ONELINE | FYECF_WIDTH_INF);
+	assert(buf);
+	printf("/{ foo: bar }: %s\n", buf);
+	free(buf);
+
+	memset(&drc, 0, sizeof(drc));
+	drc.type = FYET_NOTICE;
+	drc.module = FYEM_DOC;
+	drc.fyt = fy_token_ref(fyn->scalar);
+	fy_document_diag_report(fyd, &drc, "Test %d", 12);
+
+	fyn = fy_node_by_path(fy_document_root(fyd), "/houston", FY_NT, FYNWF_DONT_FOLLOW);
+	assert(fyn);
+	printf("fy_node_is_synthetic(/houston) = %s\n",
+			fy_node_is_synthetic(fyn) ? "true" : "false");
+
+	buf = fy_emit_node_to_string(fyn, FYECF_MODE_FLOW_ONELINE | FYECF_WIDTH_INF);
+	assert(buf);
+	printf("/houston: %s\n", buf);
+	free(buf);
+
+	memset(&drc, 0, sizeof(drc));
+	drc.type = FYET_NOTICE;
+	drc.module = FYEM_DOC;
+	drc.fyt = fy_token_ref(fyn->sequence_start);
+	fy_document_diag_report(fyd, &drc, "Test %d", 13);
+
+	fyt = fy_node_token(fyn);
+	assert(fyt);
+
+	memset(&drc, 0, sizeof(drc));
+	drc.type = FYET_NOTICE;
+	drc.module = FYEM_DOC;
+	drc.fyt = fyt;
+	fy_document_diag_report(fyd, &drc, "Test %d", 14);
+
+	printf("***************************\n");
+	printf("fy_node_is_synthetic(\"/\") = %s\n",
+			fy_node_is_synthetic(fy_document_root(fyd)) ? "true" : "false");
+	printf("***************************\n");
+
+	fy_node_sequence_append(fy_node_by_path(fy_document_root(fyd), "/houston", FY_NT, FYNWF_DONT_FOLLOW),
+				fy_node_create_scalar(fyd, "synthesonic", FY_NT));
+
+	printf("***************************\n");
+	printf("fy_node_is_synthetic(\"/\") = %s\n",
+			fy_node_is_synthetic(fy_document_root(fyd)) ? "true" : "false");
+	printf("***************************\n");
+
+	fyt = fy_node_token(fy_document_root(fyd));
+	assert(fyt);
+
+	memset(&drc, 0, sizeof(drc));
+	drc.type = FYET_NOTICE;
+	drc.module = FYEM_DOC;
+	drc.fyt = fyt;
+	fy_document_diag_report(fyd, &drc, "Test %d", 16);
+
+	fy_node_mapping_append(fy_document_root(fyd),
+			fy_node_create_scalar(fyd, "key", FY_NT),
+			fy_node_create_scalar(fyd, "value", FY_NT));
+
+	printf("***************************\n");
+	printf("fy_node_is_synthetic(\"/\") = %s\n",
+			fy_node_is_synthetic(fy_document_root(fyd)) ? "true" : "false");
+	printf("***************************\n");
+
+	fy_node_sequence_append(fy_node_by_path(fy_document_root(fyd), "/houston", FY_NT, FYNWF_DONT_FOLLOW),
+				fy_node_create_scalar(fyd, "item", FY_NT));
+
+	fyt = fy_node_token(fy_node_by_path(fy_document_root(fyd), "/houston", FY_NT, FYNWF_DONT_FOLLOW));
+	assert(fyt);
+
+	memset(&drc, 0, sizeof(drc));
+	drc.type = FYET_NOTICE;
+	drc.module = FYEM_DOC;
+	drc.fyt = fyt;
+	fy_document_diag_report(fyd, &drc, "Test %d", 17);
+
+	fy_node_report(fy_node_by_path(fy_document_root(fyd), "/houston/0", FY_NT, FYNWF_DONT_FOLLOW),
+			FYET_WARNING, "/houston/0 checking report");
+
+	buf = fy_emit_document_to_string(fyd, 0);
+	assert(buf);
+	printf("/:\n");
+	fputs(buf, stdout);
+	free(buf);
+
+	buf = fy_emit_document_to_string(fyd, FYECF_MODE_FLOW_ONELINE | FYECF_WIDTH_INF);
+	assert(buf);
+	printf("%s\n", buf);
 	free(buf);
 
 	fy_document_destroy(fyd);
@@ -2317,7 +2453,7 @@ int main(int argc, char *argv[])
 		return !rc ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 
-	rc = fy_parse_setup(fyp, &cfg);
+	rc = fy_parse_setup(fyp, &cfg, NULL);
 	if (rc) {
 		fprintf(stderr, "fy_parse_setup() failed\n");
 		goto cleanup;

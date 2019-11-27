@@ -51,6 +51,7 @@ const char *fy_token_type_txt[] = {
 	[FYTT_ALIAS]			= "ALIAS",
 	[FYTT_ANCHOR]			= "ANCHR",
 	[FYTT_TAG]			= "TAG",
+	[FYTT_INPUT_MARKER]		= "INPUT_MARKER",
 };
 
 char *fy_token_dump_format(struct fy_token *fyt, char *buf, size_t bufsz)
@@ -138,7 +139,7 @@ char *fy_simple_key_list_dump_format(struct fy_parser *fyp, struct fy_simple_key
 
 #ifndef NDEBUG
 
-void fy_debug_dump_token_list(struct fy_parser *fyp, struct fy_token_list *fytl,
+void fyp_debug_dump_token_list(struct fy_parser *fyp, struct fy_token_list *fytl,
 		struct fy_token *fyt_highlight, const char *banner)
 {
 	char buf[1024];
@@ -146,22 +147,22 @@ void fy_debug_dump_token_list(struct fy_parser *fyp, struct fy_token_list *fytl,
 	if (FYET_DEBUG < FYPCF_GET_DEBUG_LEVEL(fyp->cfg.flags))
 		return;
 
-	fy_scan_debug(fyp, "%s%s\n", banner,
+	fyp_scan_debug(fyp, "%s%s\n", banner,
 			fy_token_list_dump_format(fytl, fyt_highlight, buf, sizeof(buf)));
 }
 
-void fy_debug_dump_token(struct fy_parser *fyp, struct fy_token *fyt, const char *banner)
+void fyp_debug_dump_token(struct fy_parser *fyp, struct fy_token *fyt, const char *banner)
 {
 	char buf[80];
 
 	if (FYET_DEBUG < FYPCF_GET_DEBUG_LEVEL(fyp->cfg.flags))
 		return;
 
-	fy_scan_debug(fyp, "%s%s\n", banner,
+	fyp_scan_debug(fyp, "%s%s\n", banner,
 			fy_token_dump_format(fyt, buf, sizeof(buf)));
 }
 
-void fy_debug_dump_simple_key_list(struct fy_parser *fyp, struct fy_simple_key_list *fyskl,
+void fyp_debug_dump_simple_key_list(struct fy_parser *fyp, struct fy_simple_key_list *fyskl,
 		struct fy_simple_key *fysk_highlight, const char *banner)
 {
 	char buf[1024];
@@ -169,40 +170,40 @@ void fy_debug_dump_simple_key_list(struct fy_parser *fyp, struct fy_simple_key_l
 	if (FYET_DEBUG < FYPCF_GET_DEBUG_LEVEL(fyp->cfg.flags))
 		return;
 
-	fy_scan_debug(fyp, "%s%s\n", banner,
+	fyp_scan_debug(fyp, "%s%s\n", banner,
 			fy_simple_key_list_dump_format(fyp, fyskl, fysk_highlight, buf, sizeof(buf)));
 }
 
-void fy_debug_dump_simple_key(struct fy_parser *fyp, struct fy_simple_key *fysk, const char *banner)
+void fyp_debug_dump_simple_key(struct fy_parser *fyp, struct fy_simple_key *fysk, const char *banner)
 {
 	char buf[80];
 
 	if (FYET_DEBUG < FYPCF_GET_DEBUG_LEVEL(fyp->cfg.flags))
 		return;
 
-	fy_scan_debug(fyp, "%s%s\n", banner,
+	fyp_scan_debug(fyp, "%s%s\n", banner,
 			fy_simple_key_dump_format(fyp, fysk, buf, sizeof(buf)));
 }
 
-void fy_debug_dump_input(struct fy_parser *fyp, const struct fy_input_cfg *fyic,
+void fyp_debug_dump_input(struct fy_parser *fyp, const struct fy_input_cfg *fyic,
 		const char *banner)
 {
 	switch (fyic->type) {
 	case fyit_file:
-		fy_scan_debug(fyp, "%s: filename=\"%s\"\n", banner,
+		fyp_scan_debug(fyp, "%s: filename=\"%s\"\n", banner,
 				fyic->file.filename);
 		break;
 	case fyit_stream:
-		fy_scan_debug(fyp, "%s: stream=\"%s\" fileno=%d chunk=%zu\n", banner,
+		fyp_scan_debug(fyp, "%s: stream=\"%s\" fileno=%d chunk=%zu\n", banner,
 				fyic->stream.name, fileno(fyic->stream.fp),
 				fyic->stream.chunk);
 		break;
 	case fyit_memory:
-		fy_scan_debug(fyp, "%s: start=%p size=%zu\n", banner,
+		fyp_scan_debug(fyp, "%s: start=%p size=%zu\n", banner,
 				fyic->memory.data, fyic->memory.size);
 		break;
 	case fyit_alloc:
-		fy_scan_debug(fyp, "%s: start=%p size=%zu\n", banner,
+		fyp_scan_debug(fyp, "%s: start=%p size=%zu\n", banner,
 				fyic->alloc.data, fyic->alloc.size);
 		break;
 	default:

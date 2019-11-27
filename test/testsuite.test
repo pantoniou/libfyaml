@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 count=0
 for dir in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do

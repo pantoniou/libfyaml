@@ -24,6 +24,7 @@
 #include "fy-typelist.h"
 #include "fy-types.h"
 #include "fy-diag.h"
+#include "fy-dump.h"
 #include "fy-atom.h"
 #include "fy-input.h"
 #include "fy-ctype.h"
@@ -202,15 +203,15 @@ struct fy_parser {
 	struct fy_eventp_list recycled_eventp;
 	struct fy_flow_list recycled_flow;
 
-	FILE *errfp;
-	char *errbuf;
-	size_t errsz;
+	/* the diagnostic object */
+	struct fy_diag *diag;
 
 	int err_term_width;
 	int err_term_height;
 };
 
-int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg);
+int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg,
+		   struct fy_diag *diag);
 void fy_parse_cleanup(struct fy_parser *fyp);
 
 int fy_parse_input_append(struct fy_parser *fyp, const struct fy_input_cfg *fyic);
@@ -449,71 +450,7 @@ struct fy_eventp *fy_parse_private(struct fy_parser *fyp);
 
 extern const char *fy_event_type_txt[];
 
-#define fy_error_check(_fyp, _cond, _label, _fmt, ...) \
-	do { \
-		struct fy_parser *__fyp = (_fyp); \
-		if (!(_cond)) { \
-			if (!__fyp || !__fyp->stream_error) {\
-				if (__fyp) \
-					__fyp->stream_error = true; \
-				fy_error(__fyp, _fmt, ## __VA_ARGS__); \
-			} else \
-				fy_notice(__fyp, _fmt, ## __VA_ARGS__); \
-			goto _label ; \
-		} \
-	} while(0)
-
-struct fy_error_ctx {
-	const char *file;
-	int line;
-	const char *func;
-	enum fy_error_module module;
-	const char *failed_cond;
-	struct fy_mark start_mark;
-	struct fy_mark end_mark;
-	struct fy_input *fyi;
-};
-
-#define FY_ERROR_CHECK(_fyp, _fyt, _ctx, _module, _cond, _label) \
-	do { \
-		if (!(_cond)) { \
-			struct fy_parser *__fyp = (_fyp); \
-			struct fy_error_ctx *__ctx = (_ctx); \
-			struct fy_token *__fyt = (_fyt); \
-			const struct fy_mark *_start_mark, *_end_mark; \
-			\
-			memset(__ctx, 0, sizeof(*__ctx)); \
-			__ctx->file = __FILE__; \
-			__ctx->line = __LINE__; \
-			__ctx->func = __func__; \
-			__ctx->module = (_module); \
-			__ctx->failed_cond = #_cond ; \
-			if (__fyt) { \
-				_start_mark = fy_token_start_mark(__fyt); \
-				_end_mark = fy_token_end_mark(__fyt); \
-			} else { \
-				_start_mark = NULL; \
-				_end_mark = NULL; \
-			} \
-			if (_start_mark) \
-				__ctx->start_mark = *_start_mark; \
-			else \
-				fy_get_mark(__fyp, &__ctx->start_mark); \
-			if (_end_mark) \
-				__ctx->end_mark = *_end_mark; \
-			else \
-				fy_get_mark(__fyp, &__ctx->end_mark); \
-			__ctx->fyi = __fyt ? fy_token_get_input(__fyt) : (__fyp ? __fyp->current_input : NULL); \
-			goto _label; \
-		} \
-	} while(0)
-
-void fy_error_vreport(struct fy_parser *fyp, struct fy_error_ctx *fyec, const char *fmt, va_list ap);
-void fy_error_report(struct fy_parser *fyp, struct fy_error_ctx *fyec, const char *fmt, ...)
-		__attribute__((format(printf, 3, 4)));
-
 FILE *fy_parser_get_error_fp(struct fy_parser *fyp);
-void fy_parser_get_error_terminal_extents(struct fy_parser *fyp, int *widthp, int *heightp);
 enum fy_parse_cfg_flags fy_parser_get_cfg_flags(const struct fy_parser *fyp);
 bool fy_parser_is_colorized(struct fy_parser *fyp);
 

@@ -25,6 +25,7 @@
 #include "fy-typelist.h"
 #include "fy-types.h"
 #include "fy-diag.h"
+#include "fy-dump.h"
 #include "fy-docstate.h"
 
 struct fy_eventp;
@@ -54,6 +55,7 @@ struct fy_node {
 	enum fy_node_type type : 2;	/* 2 bits are enough for 3 types */
 	bool has_meta : 1;
 	bool attached : 1;		/* when it's attached somewhere */
+	bool synthetic : 1;		/* node has been modified programmaticaly */
 	void *meta;
 	union {
 		struct fy_token *scalar;
@@ -90,14 +92,10 @@ struct fy_document {
 	struct list_head node;
 	struct fy_anchor_list anchors;
 	struct fy_document_state *fyds;
-	struct fy_parser *fyp;
+	struct fy_diag *diag;
+	struct fy_parse_cfg parse_cfg;
 	struct fy_node *root;
-	bool owns_parser : 1;
 	bool parse_error : 1;
-
-	FILE *errfp;
-	char *errbuf;
-	size_t errsz;
 
 	struct fy_document *parent;
 	struct fy_document_list children;
@@ -127,11 +125,6 @@ struct fy_node_pair **fy_node_mapping_sort_array(struct fy_node *fyn_map,
 
 void fy_node_mapping_sort_release_array(struct fy_node *fyn_map, struct fy_node_pair **fynpp);
 
-int fy_parser_move_log_to_document(struct fy_parser *fyp, struct fy_document *fyd);
-bool fy_document_has_error(struct fy_document *fyd);
-const char *fy_document_get_log(struct fy_document *fyd, size_t *sizep);
-void fy_document_clear_log(struct fy_document *fyd);
-
 struct fy_node_walk_ctx {
 	unsigned int max_depth;
 	unsigned int next_slot;
@@ -148,5 +141,18 @@ bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
 
 #define FYNWF_SYSTEM_MARKS	(FY_BIT(FYNWF_VISIT_MARKER) | \
 				 FY_BIT(FYNWF_REF_MARKER))
+
+bool fy_node_uses_single_input_only(struct fy_node *fyn, struct fy_input *fyi);
+struct fy_input *fy_node_get_first_input(struct fy_node *fyn);
+bool fy_node_is_synthetic(struct fy_node *fyn);
+void fy_node_mark_synthetic(struct fy_node *fyn);
+struct fy_input *fy_node_get_input(struct fy_node *fyn);
+
+struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn);
+struct fy_token *fy_node_token(struct fy_node *fyn);
+
+FILE *fy_document_get_error_fp(struct fy_document *fyd);
+enum fy_parse_cfg_flags fy_document_get_cfg_flags(const struct fy_document *fyd);
+bool fy_document_is_colorized(struct fy_document *fyd);
 
 #endif

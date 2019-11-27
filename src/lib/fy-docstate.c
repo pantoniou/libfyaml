@@ -37,7 +37,7 @@ struct fy_document_state *fy_document_state_alloc(void)
 
 	fyds->refs = 1;
 
-	/* fy_notice(NULL, "%s: %p #%d", __func__, fyds, fyds->refs); */
+	/* fyp_notice(NULL, "%s: %p #%d", __func__, fyds, fyds->refs); */
 
 	return fyds;
 }
@@ -49,7 +49,7 @@ void fy_document_state_free(struct fy_document_state *fyds)
 
 	assert(fyds->refs == 1);
 
-	/* fy_notice(NULL, "%s: %p #%d", __func__, fyds, fyds->refs); */
+	/* fyp_notice(NULL, "%s: %p #%d", __func__, fyds, fyds->refs); */
 
 	fy_token_unref(fyds->fyt_vd);
 	fy_token_list_unref_all(&fyds->fyt_td);
@@ -66,7 +66,7 @@ struct fy_document_state *fy_document_state_ref(struct fy_document_state *fyds)
 
 	fyds->refs++;
 
-	/* fy_notice(NULL, "%s: %p #%d", __func__, fyds, fyds->refs); */
+	/* fyp_notice(NULL, "%s: %p #%d", __func__, fyds, fyds->refs); */
 
 	return fyds;
 }
@@ -78,7 +78,7 @@ void fy_document_state_unref(struct fy_document_state *fyds)
 
 	assert(fyds->refs > 0);
 
-	/* fy_notice(NULL, "%s: %p #%d", __func__, fyds, fyds->refs); */
+	/* fyp_notice(NULL, "%s: %p #%d", __func__, fyds, fyds->refs); */
 
 	if (fyds->refs == 1)
 		fy_document_state_free(fyds);

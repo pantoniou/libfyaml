@@ -35,7 +35,7 @@ START_TEST(parser_setup)
 	int rc;
 
 	/* setup */
-	rc = fy_parse_setup(fyp, cfg);
+	rc = fy_parse_setup(fyp, cfg, NULL);
 	ck_assert_int_eq(rc, 0);
 
 	/* cleanup */
@@ -56,7 +56,7 @@ START_TEST(scan_simple)
 	int rc;
 
 	/* setup */
-	rc = fy_parse_setup(fyp, cfg);
+	rc = fy_parse_setup(fyp, cfg, NULL);
 	ck_assert_int_eq(rc, 0);
 
 	/* add the input */
@@ -105,7 +105,7 @@ START_TEST(parse_simple)
 	int rc;
 
 	/* setup */
-	rc = fy_parse_setup(fyp, cfg);
+	rc = fy_parse_setup(fyp, cfg, NULL);
 	ck_assert_int_eq(rc, 0);
 
 	/* add the input */

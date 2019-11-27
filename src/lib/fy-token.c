@@ -61,7 +61,7 @@ void fy_token_free(struct fy_token *fyt)
 	/* release reference */
 	fy_input_unref(fyt->handle.fyi);
 
-	/* fy_notice(NULL, "%s: %p #%d", __func__, fyt, fyt->refs); */
+	/* fyp_notice(NULL, "%s: %p #%d", __func__, fyt, fyt->refs); */
 
 	switch (fyt->type) {
 	case FYTT_TAG:
@@ -85,7 +85,7 @@ struct fy_token *fy_token_ref(struct fy_token *fyt)
 	assert(fyt->refs + 1 > 0);
 	fyt->refs++;
 
-	/* fy_notice(NULL, "%s: %p #%d", __func__, fyt, fyt->refs); */
+	/* fyp_notice(NULL, "%s: %p #%d", __func__, fyt, fyt->refs); */
 
 	return fyt;
 }
@@ -97,7 +97,7 @@ void fy_token_unref(struct fy_token *fyt)
 
 	assert(fyt->refs > 0);
 
-	/* fy_notice(NULL, "%s: %p #%d", __func__, fyt, fyt->refs); */
+	/* fyp_notice(NULL, "%s: %p #%d", __func__, fyt, fyt->refs); */
 
 	if (fyt->refs == 1)
 		fy_token_free(fyt);
@@ -304,7 +304,7 @@ struct fy_token *fy_token_vcreate(enum fy_token_type type, va_list ap)
 	struct fy_atom *handle;
 	struct fy_token *fyt_td;
 
-	if ((unsigned int)type > FYTT_SCALAR)
+	if ((unsigned int)type > FYTT_INPUT_MARKER)
 		goto err_out;
 
 	fyt = fy_token_alloc();
@@ -384,14 +384,14 @@ fy_token_vqueue_internal(struct fy_parser *fyp, struct fy_token_list *fytl,
 	/* special handling for zero indented scalars */
 	if (fyt->type == FYTT_DOCUMENT_START) {
 		fyp->document_first_content_token = true;
-		fy_scan_debug(fyp, "document_first_content_token set to true");
+		fyp_scan_debug(fyp, "document_first_content_token set to true");
 	} else if (fyp->document_first_content_token &&
 			fy_token_type_is_content(fyt->type)) {
 		fyp->document_first_content_token = false;
-		fy_scan_debug(fyp, "document_first_content_token set to false");
+		fyp_scan_debug(fyp, "document_first_content_token set to false");
 	}
 
-	fy_debug_dump_token_list(fyp, fytl, fyt, "queued: ");
+	fyp_debug_dump_token_list(fyp, fytl, fyt, "queued: ");
 	return fyt;
 }
 
@@ -997,6 +997,9 @@ char *fy_token_debug_text(struct fy_token *fyt)
 		break;
 	case FYTT_TAG:
 		typetxt = "TAG";
+		break;
+	case FYTT_INPUT_MARKER:
+		typetxt = "IMRKR";
 		break;
 	default:
 		typetxt = NULL;

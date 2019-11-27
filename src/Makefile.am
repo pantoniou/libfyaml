@@ -10,7 +10,8 @@ libfyaml_@MAJOR@_@MINOR@_la_SOURCES = \
 	lib/fy-types.c lib/fy-types.h \
 	lib/fy-list.h \
 	lib/fy-typelist.h \
-	lib/fy-diag.c lib/fy-diag.h lib/fy-dump.c \
+	lib/fy-diag.c lib/fy-diag.h \
+	lib/fy-dump.c lib/fy-dump.h \
 	lib/fy-atom.c lib/fy-atom.h \
 	lib/fy-ctype.c lib/fy-ctype.h \
 	lib/fy-token.c lib/fy-token.h \

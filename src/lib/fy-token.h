@@ -19,6 +19,8 @@
 
 #include <libfyaml.h>
 
+#include "fy-atom.h"
+
 struct fy_parser;
 struct fy_token;
 struct fy_document;
@@ -48,6 +50,8 @@ enum fy_token_type {
 	FYTT_ANCHOR,
 	FYTT_TAG,
 	FYTT_SCALAR,
+	/* special error reporting */
+	FYTT_INPUT_MARKER,
 };
 
 static inline bool fy_token_type_is_content(enum fy_token_type type)

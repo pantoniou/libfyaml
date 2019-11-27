@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <errno.h>
+#include <unistd.h>
 
 #include <libfyaml.h>
 
@@ -92,16 +93,12 @@ struct fy_anchor *fy_anchor_create(struct fy_document *fyd,
 
 	fya = malloc(sizeof(*fya));
 	if (!fya)
-		goto err_out;
+		return NULL;
 
 	fya->fyn = fyn;
 	fya->anchor = anchor;
 
 	return fya;
-
-err_out:
-	fy_anchor_destroy(fya);
-	return NULL;
 }
 
 struct fy_anchor *fy_document_anchor_iterate(struct fy_document *fyd, void **prevp)
@@ -154,6 +151,7 @@ err_out:
 	fy_anchor_destroy(fya);
 	fy_token_unref(fyt);
 	fy_input_unref(fyi);
+	fyd->diag->on_error = false;
 	return -1;
 }
 
@@ -183,14 +181,8 @@ void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 	struct fy_anchor *fya;
 	struct fy_anchor *fyan;
 
-	if (!fyp || !fyd)
+	if (!fyd)
 		return;
-
-	if (fyd->errfp)
-		fclose(fyd->errfp);
-
-	if (fyd->errbuf)
-		free(fyd->errbuf);
 
 	fyn = fyd->root;
 	fyd->root = NULL;
@@ -204,6 +196,8 @@ void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 
 	fy_document_state_unref(fyd->fyds);
 
+	fy_diag_unref(fyd->diag);
+
 	free(fyd);
 }
 
@@ -212,23 +206,24 @@ struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_ev
 	struct fy_document *fyd = NULL;
 	struct fy_document_state *fyds;
 	struct fy_event *fye = NULL;
-	struct fy_error_ctx ec;
 
 	if (!fyp || !fyep)
 		return NULL;
 
 	fye = &fyep->e;
 
-	FY_ERROR_CHECK(fyp, fy_document_event_get_token(fye), &ec, FYEM_DOC,
-			fye->type == FYET_DOCUMENT_START, err_stream_start);
+	FYP_TOKEN_ERROR_CHECK(fyp, fy_document_event_get_token(fye), FYEM_DOC,
+			fye->type == FYET_DOCUMENT_START, err_out,
+			"invalid start of event stream");
 
 	fyd = malloc(sizeof(*fyd));
-	fy_error_check(fyp, fyd, err_out,
+	fyp_error_check(fyp, fyd, err_out,
 		"malloc() failed");
 
 	memset(fyd, 0, sizeof(*fyd));
 
-	fyd->fyp = fyp;
+	fyd->diag = fy_diag_ref(fyp->diag);
+	fyd->parse_cfg = fyp->cfg;
 
 	fy_anchor_list_init(&fyd->anchors);
 	fyd->root = NULL;
@@ -245,10 +240,6 @@ struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_ev
 	/* note that we keep the reference */
 	fyd->fyds = fyds;
 
-	fyd->errfp = NULL;
-	fyd->errbuf = NULL;
-	fyd->errsz = 0;
-
 	fy_document_list_init(&fyd->children);
 
 	return fyd;
@@ -256,11 +247,8 @@ struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_ev
 err_out:
 	fy_parse_document_destroy(fyp, fyd);
 	fy_parse_eventp_recycle(fyp, fyep);
+	fyd->diag->on_error = false;
 	return NULL;
-
-err_stream_start:
-	fy_error_report(fyp, &ec, "invalid start of event stream");
-	goto err_out;
 }
 
 struct fy_document *fy_node_document(struct fy_node *fyn)
@@ -341,7 +329,7 @@ fy_document_lookup_anchor_by_token(struct fy_document *fyd,
 
 	/* multiple ones, must pick the one that's the last one before
 	 * the requesting token */
-	fy_notice(NULL, "multiple anchors for %.*s", (int)anchor_len, anchor_text);
+	fyp_notice(NULL, "multiple anchors for %.*s", (int)anchor_len, anchor_text);
 
 	/* only try the ones on the same input
 	 * we don't try to cover the case where the label is referenced
@@ -434,20 +422,16 @@ void fy_node_pair_detach_and_free(struct fy_node_pair *fynp)
 
 struct fy_node_pair *fy_node_pair_alloc(struct fy_document *fyd)
 {
-	struct fy_parser *fyp = fyd->fyp;
 	struct fy_node_pair *fynp = NULL;
 
 	fynp = malloc(sizeof(*fynp));
-	fy_error_check(fyp, fynp, err_out,
-			"malloc() failed");
+	if (!fynp)
+		return NULL;
 
 	fynp->key = NULL;
 	fynp->value = NULL;
 	fynp->fyd = fyd;
 	return fynp;
-
-err_out:
-	return NULL;
 }
 
 int fy_node_free(struct fy_node *fyn)
@@ -526,13 +510,14 @@ void fy_node_detach_and_free(struct fy_node *fyn)
 
 struct fy_node *fy_node_alloc(struct fy_document *fyd, enum fy_node_type type)
 {
-	struct fy_parser *fyp = fyd->fyp;
 	struct fy_node *fyn = NULL;
 
 	fyn = malloc(sizeof(*fyn));
-	fy_error_check(fyp, fyn, err_out,
-			"malloc() failed");
+	if (!fyn)
+		return NULL;
+
 	memset(fyn, 0, sizeof(*fyn));
+
 	fyn->type = type;
 	fyn->style = FYNS_ANY;
 	fyn->fyd = fyd;
@@ -558,130 +543,236 @@ struct fy_node *fy_node_alloc(struct fy_document *fyd, enum fy_node_type type)
 		break;
 	}
 	return fyn;
+}
+
+struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn)
+{
+	struct fy_token *fyt_start = NULL, *fyt_end = NULL;
+	struct fy_token *fyt;
+	struct fy_input *fyi;
+	struct fy_atom handle;
+	unsigned int aflags;
+	const char *s, *e;
+	size_t size;
+
+	if (!fyn)
+		return NULL;
+
+	fyi = fy_node_get_input(fyn);
+	if (!fyi)
+		return NULL;
+
+	switch (fyn->type) {
+	case FYNT_SCALAR:
+		return fy_token_ref(fyn->scalar);
+
+	case FYNT_SEQUENCE:
+		fyt_start = fyn->sequence_start;
+		fyt_end = fyn->sequence_end;
+		break;
+
+	case FYNT_MAPPING:
+		fyt_start = fyn->mapping_start;
+		fyt_end = fyn->mapping_end;
+		break;
+
+	}
+
+	if (!fyt_start || !fyt_end)
+		return NULL;
+
+	s = fy_input_start(fyi) + fyt_start->handle.start_mark.input_pos;
+	e = fy_input_start(fyi) + fyt_end->handle.end_mark.input_pos;
+	size = (size_t)(e - s);
+
+	if (size > 0)
+		aflags = fy_analyze_scalar_content(s, size);
+	else
+		aflags = FYACF_EMPTY | FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN;
+
+	handle.start_mark = fyt_start->handle.start_mark;
+	handle.end_mark = fyt_end->handle.end_mark;
+
+	/* if it's plain, all is good */
+	if (aflags & FYACF_FLOW_PLAIN) {
+		handle.storage_hint = size;	/* maximum */
+		handle.storage_hint_valid = false;
+		handle.direct_output = true;
+		handle.style = FYAS_PLAIN;
+	} else {
+		handle.storage_hint = 0;	/* just calculate */
+		handle.storage_hint_valid = false;
+		handle.direct_output = false;
+		handle.style = FYAS_DOUBLE_QUOTED_MANUAL;
+	}
+	handle.empty = !!(aflags & FYACF_EMPTY);
+	handle.has_lb = !!(aflags & FYACF_LB);
+	handle.has_ws = !!(aflags & FYACF_WS);
+	handle.starts_with_ws = !!(aflags & FYACF_STARTS_WITH_WS);
+	handle.starts_with_lb = !!(aflags & FYACF_STARTS_WITH_LB);
+	handle.ends_with_ws = !!(aflags & FYACF_ENDS_WITH_WS);
+	handle.ends_with_lb = !!(aflags & FYACF_ENDS_WITH_LB);
+	handle.trailing_lb = !!(aflags & FYACF_TRAILING_LB);
+	handle.size0 = !!(aflags & FYACF_SIZE0);
+
+	handle.chomp = FYAC_STRIP;
+	handle.increment = 0;
+	handle.fyi = fyi;
+	handle.tabsize = 0;
+
+	fyt = fy_token_create(FYTT_INPUT_MARKER, &handle);
+	if (!fyt)
+		return NULL;
+
+	return fyt;
+}
+
+struct fy_token *fy_node_token(struct fy_node *fyn)
+{
+	struct fy_atom atom;
+	struct fy_input *fyi = NULL;
+	struct fy_token *fyt = NULL;
+	char *buf = NULL;
+
+	if (!fyn)
+		return NULL;
+
+	/* if it's non synthetic we can use the node extends */
+	if (!fy_node_is_synthetic(fyn))
+		return fy_node_non_synthesized_token(fyn);
+
+	/* emit to a string and create the token there */
+	buf = fy_emit_node_to_string(fyn, FYECF_MODE_FLOW_ONELINE | FYECF_WIDTH_INF);
+	if (!buf)
+		goto err_out;
+
+	fyi = fy_input_from_malloc_data(buf, FY_NT, &atom, true);
+	if (!fyi)
+		goto err_out;
+
+	fyt = fy_token_create(FYTT_INPUT_MARKER, &atom);
+	if (!fyt)
+		goto err_out;
+
+	/* take away the input reference */
+	fy_input_unref(fyi);
+
+	return fyt;
 
 err_out:
-	fy_node_detach_and_free(fyn);
+	fy_input_unref(fyi);
+	if (buf)
+		free(buf);
 	return NULL;
 }
 
-const struct fy_mark *fy_node_get_start_mark(struct fy_node *fyn)
+bool fy_node_uses_single_input_only(struct fy_node *fyn, struct fy_input *fyi)
 {
-	const struct fy_mark *fym = NULL;
+	struct fy_node *fyni;
 	struct fy_node_pair *fynp;
 
-	if (!fyn)
-		return NULL;
+	if (!fyn || !fyi)
+		return false;
 
 	switch (fyn->type) {
 	case FYNT_SCALAR:
-		fym = fy_token_start_mark(fyn->scalar);
-		break;
+		return fy_token_get_input(fyn->scalar) == fyi;
 
 	case FYNT_SEQUENCE:
-		fym = fy_token_start_mark(fyn->sequence_start);
-		/* no explicit sequence start, use the start mark of the first item */
-		if (!fym)
-			fym = fy_node_get_start_mark(fy_node_list_head(&fyn->sequence));
+		if (fy_token_get_input(fyn->sequence_start) != fyi)
+			return false;
+
+		for (fyni = fy_node_list_head(&fyn->sequence); fyni;
+		     fyni = fy_node_next(&fyn->sequence, fyni)) {
+
+			if (!fy_node_uses_single_input_only(fyni, fyi))
+				return false;
+		}
+
+		if (fy_token_get_input(fyn->sequence_end) != fyi)
+			return false;
 		break;
 
 	case FYNT_MAPPING:
-		fym = fy_token_start_mark(fyn->mapping_start);
-		/* no explicit mapping start, use the start mark of the first key */
-		if (!fym) {
-			fynp = fy_node_pair_list_head(&fyn->mapping);
-			if (fynp)
-				fym = fy_node_get_start_mark(fynp->key);
-		}
-		break;
+		if (fy_token_get_input(fyn->mapping_start) != fyi)
+			return false;
 
+		for (fynp = fy_node_pair_list_head(&fyn->mapping); fynp;
+		     fynp = fy_node_pair_next(&fyn->mapping, fynp)) {
+
+			if (fynp->key && !fy_node_uses_single_input_only(fynp->key, fyi))
+				return false;
+
+			if (fynp->value && !fy_node_uses_single_input_only(fynp->value, fyi))
+				return false;
+		}
+
+		if (fy_token_get_input(fyn->mapping_end) != fyi)
+			return false;
+
+		break;
 	}
 
-	assert(fym);
-
-	return fym;
+	return true;
 }
 
-const struct fy_mark *fy_node_get_end_mark(struct fy_node *fyn)
+struct fy_input *fy_node_get_first_input(struct fy_node *fyn)
 {
-	const struct fy_mark *fym = NULL;
-	struct fy_node_pair *fynp;
-
 	if (!fyn)
 		return NULL;
 
 	switch (fyn->type) {
 	case FYNT_SCALAR:
-		fym = fy_token_end_mark(fyn->scalar);
-		break;
+		return fy_token_get_input(fyn->scalar);
 
 	case FYNT_SEQUENCE:
-		fym = fy_token_end_mark(fyn->sequence_end);
-		/* no explicit sequence end, use the end mark of the last item */
-		if (!fym)
-			fym = fy_node_get_end_mark(fy_node_list_tail(&fyn->sequence));
-		break;
+		return fy_token_get_input(fyn->sequence_start);
 
 	case FYNT_MAPPING:
-		fym = fy_token_end_mark(fyn->mapping_end);
-		/* no explicit mapping end, use the end mark of the last value */
-		if (!fym) {
-			fynp = fy_node_pair_list_tail(&fyn->mapping);
-			if (fynp)
-				fym = fy_node_get_end_mark(fynp->value);
-		}
-		break;
-
+		return fy_token_get_input(fyn->mapping_start);
 	}
 
-	assert(fym);
+	/* should never happen */
+	return NULL;
+}
 
-	return fym;
+/* a node is synthetic if any of it's tokens reside in
+ * different inputs, or any sequence/mapping has been
+ * created via the manual sequence/mapping creation methods
+ */
+bool fy_node_is_synthetic(struct fy_node *fyn)
+{
+	return fyn && fyn->synthetic;
+}
+
+/* map this node and all of it's parents synthetic */
+void fy_node_mark_synthetic(struct fy_node *fyn)
+{
+	if (!fyn)
+		return;
+	fyn->synthetic = true;
+	while ((fyn = fyn->parent) != NULL)
+		fyn->synthetic = true;
 }
 
 struct fy_input *fy_node_get_input(struct fy_node *fyn)
 {
 	struct fy_input *fyi = NULL;
-	struct fy_node_pair *fynp;
 
-	if (!fyn)
+	fyi = fy_node_get_first_input(fyn);
+	if (!fyi)
 		return NULL;
 
-	switch (fyn->type) {
-	case FYNT_SCALAR:
-		fyi = fy_token_get_input(fyn->scalar);
-		break;
-
-	case FYNT_SEQUENCE:
-		fyi = fy_token_get_input(fyn->sequence_start);
-		/* no explicit sequence start, use the start mark of the first item */
-		if (!fyi)
-			fyi = fy_node_get_input(fy_node_list_head(&fyn->sequence));
-		break;
-
-	case FYNT_MAPPING:
-		fyi = fy_token_get_input(fyn->mapping_start);
-		/* no explicit mapping start, use the start mark of the first key */
-		if (!fyi) {
-			fynp = fy_node_pair_list_head(&fyn->mapping);
-			if (fynp)
-				fyi = fy_node_get_input(fynp->key);
-		}
-		break;
-
-	}
-
-	assert(fyi);
-
-	return fyi;
+	return fy_node_uses_single_input_only(fyn, fyi) ? fyi : NULL;
 }
 
-int fy_parse_document_register_anchor(struct fy_parser *fyp, struct fy_document *fyd,
-				      struct fy_node *fyn, struct fy_token *anchor)
+int fy_document_register_anchor(struct fy_document *fyd,
+				struct fy_node *fyn, struct fy_token *anchor)
 {
 	struct fy_anchor *fya;
 
 	fya = fy_anchor_create(fyd, fyn, anchor);
-	fy_error_check(fyp, fya, err_out,
+	fyd_error_check(fyd, fya, err_out,
 			"fy_anchor_create() failed");
 
 	fy_anchor_list_add_tail(&fyd->anchors, fya);
@@ -689,6 +780,7 @@ int fy_parse_document_register_anchor(struct fy_parser *fyp, struct fy_document 
 	return 0;
 
 err_out:
+	fyd->diag->on_error = false;
 	return -1;
 }
 
@@ -881,7 +973,7 @@ int fy_parse_document_load_alias(struct fy_parser *fyp, struct fy_document *fyd,
 {
 	*fynp = NULL;
 
-	fy_doc_debug(fyp, "in %s", __func__);
+	fyp_doc_debug(fyp, "in %s", __func__);
 
 	/* TODO verify aliases etc */
 	fy_parse_eventp_recycle(fyp, fyep);
@@ -895,16 +987,19 @@ fy_parse_document_load_scalar(struct fy_parser *fyp, struct fy_document *fyd,
 {
 	struct fy_node *fyn = NULL;
 	struct fy_event *fye;
-	struct fy_error_ctx ec;
 	int rc;
 
-	fy_error_check(fyp, fyep || !fyp->stream_error, err_out,
+	if (!fyd)
+		return -1;
+
+	fyp_error_check(fyp, fyep || !fyp->stream_error, err_out,
 			"no event to process");
 
-	FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_DOC,
-			fyep, err_stream_end);
+	FYP_PARSE_ERROR_CHECK(fyp, 0, 0, FYEM_DOC,
+			fyep, err_out,
+			"premature end of event stream");
 
-	fy_doc_debug(fyp, "in %s [%s]", __func__, fy_event_type_txt[fyep->e.type]);
+	fyp_doc_debug(fyp, "in %s [%s]", __func__, fy_event_type_txt[fyep->e.type]);
 
 	*fynp = NULL;
 
@@ -912,7 +1007,7 @@ fy_parse_document_load_scalar(struct fy_parser *fyp, struct fy_document *fyd,
 
 	/* we don't free nodes that often, so no need for recycling */
 	fyn = fy_node_alloc(fyd, FYNT_SCALAR);
-	fy_error_check(fyp, fyn, err_out,
+	fyp_error_check(fyp, fyn, err_out,
 			"fy_node_alloc() failed");
 
 	if (fye->type == FYET_SCALAR) {
@@ -929,17 +1024,18 @@ fy_parse_document_load_scalar(struct fy_parser *fyp, struct fy_document *fyd,
 		fye->scalar.value = NULL;
 
 		if (fye->scalar.anchor) {
-			rc = fy_parse_document_register_anchor(fyp, fyd, fyn, fye->scalar.anchor);
-			fy_error_check(fyp, !rc, err_out_rc,
-					"fy_parse_document_register_anchor() failed");
+			rc = fy_document_register_anchor(fyd, fyn, fye->scalar.anchor);
+			fyp_error_check(fyp, !rc, err_out_rc,
+					"fy_document_register_anchor() failed");
 			fye->scalar.anchor = NULL;
 		}
 
-	} else {
+	} else if (fye->type == FYET_ALIAS) {
 		fyn->style = FYNS_ALIAS;
 		fyn->scalar = fye->alias.anchor;
 		fye->alias.anchor = NULL;
-	}
+	} else
+		assert(0);
 
 	*fynp = fyn;
 	fyn = NULL;
@@ -952,11 +1048,8 @@ err_out:
 	rc = -1;
 err_out_rc:
 	fy_parse_eventp_recycle(fyp, fyep);
-	fy_node_detach_and_free(fyn);
+	fyd->diag->on_error = false;
 	return rc;
-err_stream_end:
-	fy_error_report(fyp, &ec, "premature end of event stream");
-	goto err_out;
 }
 
 static int
@@ -967,16 +1060,16 @@ fy_parse_document_load_sequence(struct fy_parser *fyp, struct fy_document *fyd,
 	struct fy_node *fyn = NULL, *fyn_item = NULL;
 	struct fy_event *fye = NULL;
 	struct fy_token *fyt_ss = NULL;
-	struct fy_error_ctx ec;
 	int rc;
 
-	fy_error_check(fyp, fyep || !fyp->stream_error, err_out,
+	fyp_error_check(fyp, fyep || !fyp->stream_error, err_out,
 			"no event to process");
 
-	FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_DOC,
-			fyep, err_stream_end);
+	FYP_PARSE_ERROR_CHECK(fyp, 0, 0, FYEM_DOC,
+			fyep, err_out,
+			"premature end of event stream");
 
-	fy_doc_debug(fyp, "in %s [%s]", __func__, fy_event_type_txt[fyep->e.type]);
+	fyp_doc_debug(fyp, "in %s [%s]", __func__, fy_event_type_txt[fyep->e.type]);
 
 	*fynp = NULL;
 
@@ -986,7 +1079,7 @@ fy_parse_document_load_sequence(struct fy_parser *fyp, struct fy_document *fyd,
 
 	/* we don't free nodes that often, so no need for recycling */
 	fyn = fy_node_alloc(fyd, FYNT_SEQUENCE);
-	fy_error_check(fyp, fyn, err_out,
+	fyp_error_check(fyp, fyn, err_out,
 			"fy_node_alloc() failed");
 
 	fyn->style = fyt_ss && fyt_ss->type == FYTT_FLOW_SEQUENCE_START ? FYNS_FLOW : FYNS_BLOCK;
@@ -995,9 +1088,9 @@ fy_parse_document_load_sequence(struct fy_parser *fyp, struct fy_document *fyd,
 	fye->sequence_start.tag = NULL;
 
 	if (fye->sequence_start.anchor) {
-		rc = fy_parse_document_register_anchor(fyp, fyd, fyn, fye->sequence_start.anchor);
-		fy_error_check(fyp, !rc, err_out_rc,
-				"fy_parse_document_register_anchor() failed");
+		rc = fy_document_register_anchor(fyd, fyn, fye->sequence_start.anchor);
+		fyp_error_check(fyp, !rc, err_out_rc,
+				"fy_document_register_anchor() failed");
 		fye->sequence_start.anchor = NULL;
 	}
 
@@ -1006,6 +1099,8 @@ fy_parse_document_load_sequence(struct fy_parser *fyp, struct fy_document *fyd,
 		fye->sequence_start.sequence_start = NULL;
 	} else
 		fyn->sequence_start = NULL;
+
+	assert(fyn->sequence_start);
 
 	/* done with this */
 	fy_parse_eventp_recycle(fyp, fyep);
@@ -1018,7 +1113,7 @@ fy_parse_document_load_sequence(struct fy_parser *fyp, struct fy_document *fyd,
 
 		rc = fy_parse_document_load_node(fyp, fyd, fyep, &fyn_item, depthp);
 		fyep = NULL;
-		fy_error_check(fyp, !rc, err_out_rc,
+		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_parse_document_load_node() failed");
 
 		fy_node_list_add_tail(&fyn->sequence, fyn_item);
@@ -1026,11 +1121,16 @@ fy_parse_document_load_sequence(struct fy_parser *fyp, struct fy_document *fyd,
 		fyn_item = NULL;
 	}
 
+	if (!fyep)
+		goto err_out;
+
 	if (fye->sequence_end.sequence_end) {
 		fyn->sequence_end = fye->sequence_end.sequence_end;
 		fye->sequence_end.sequence_end = NULL;
 	} else
 		fyn->sequence_end = NULL;
+
+	assert(fyn->sequence_end);
 
 	*fynp = fyn;
 	fyn = NULL;
@@ -1046,9 +1146,6 @@ err_out_rc:
 	fy_node_detach_and_free(fyn_item);
 	fy_node_detach_and_free(fyn);
 	return rc;
-err_stream_end:
-	fy_error_report(fyp, &ec, "premature end of event stream");
-	goto err_out;
 }
 
 static int
@@ -1060,17 +1157,17 @@ fy_parse_document_load_mapping(struct fy_parser *fyp, struct fy_document *fyd,
 	struct fy_node_pair *fynp_item = NULL;
 	struct fy_event *fye = NULL;
 	struct fy_token *fyt_ms = NULL;
-	struct fy_error_ctx ec;
 	bool duplicate;
 	int rc;
 
-	fy_error_check(fyp, fyep || !fyp->stream_error, err_out,
+	fyp_error_check(fyp, fyep || !fyp->stream_error, err_out,
 			"no event to process");
 
-	FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_DOC,
-			fyep, err_stream_end);
+	FYP_PARSE_ERROR_CHECK(fyp, 0, 0, FYEM_DOC,
+			fyep, err_out,
+			"premature end of event stream");
 
-	fy_doc_debug(fyp, "in %s [%s]", __func__, fy_event_type_txt[fyep->e.type]);
+	fyp_doc_debug(fyp, "in %s [%s]", __func__, fy_event_type_txt[fyep->e.type]);
 
 	*fynp = NULL;
 
@@ -1080,7 +1177,7 @@ fy_parse_document_load_mapping(struct fy_parser *fyp, struct fy_document *fyd,
 
 	/* we don't free nodes that often, so no need for recycling */
 	fyn = fy_node_alloc(fyd, FYNT_MAPPING);
-	fy_error_check(fyp, fyn, err_out,
+	fyp_error_check(fyp, fyn, err_out,
 			"fy_node_alloc() failed");
 
 	fyn->style = fyt_ms && fyt_ms->type == FYTT_FLOW_MAPPING_START ? FYNS_FLOW : FYNS_BLOCK;
@@ -1089,9 +1186,9 @@ fy_parse_document_load_mapping(struct fy_parser *fyp, struct fy_document *fyd,
 	fye->mapping_start.tag = NULL;
 
 	if (fye->mapping_start.anchor) {
-		rc = fy_parse_document_register_anchor(fyp, fyd, fyn, fye->mapping_start.anchor);
-		fy_error_check(fyp, !rc, err_out_rc,
-				"fy_parse_document_register_anchor() failed");
+		rc = fy_document_register_anchor(fyd, fyn, fye->mapping_start.anchor);
+		fyp_error_check(fyp, !rc, err_out_rc,
+				"fy_document_register_anchor() failed");
 		fye->mapping_start.anchor = NULL;
 	}
 
@@ -1099,6 +1196,8 @@ fy_parse_document_load_mapping(struct fy_parser *fyp, struct fy_document *fyd,
 		fyn->mapping_start = fye->mapping_start.mapping_start;
 		fye->mapping_start.mapping_start = NULL;
 	}
+
+	assert(fyn->mapping_start);
 
 	/* done with this */
 	fy_parse_eventp_recycle(fyp, fyep);
@@ -1110,7 +1209,7 @@ fy_parse_document_load_mapping(struct fy_parser *fyp, struct fy_document *fyd,
 			break;
 
 		fynp_item = fy_node_pair_alloc(fyd);
-		fy_error_check(fyp, fynp_item, err_out,
+		fyp_error_check(fyp, fynp_item, err_out,
 				"fy_node_pair_alloc() failed");
 
 		fyn_key = NULL;
@@ -1122,29 +1221,31 @@ fy_parse_document_load_mapping(struct fy_parser *fyp, struct fy_document *fyd,
 
 		assert(fyn_key);
 
-		fy_error_check(fyp, !rc, err_out_rc,
+		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_parse_document_load_node() failed");
 
 		/* make sure we don't add an already existing key */
 		duplicate = fy_node_mapping_key_is_duplicate(fyn, fyn_key);
 
-		FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_DOC,
-				!duplicate, err_duplicate_key);
+		FYP_NODE_ERROR_CHECK(fyp, fyn_key, FYEM_DOC,
+				!duplicate, err_out,
+				"duplicate key");
 
 		fyep = fy_parse_private(fyp);
 
-		fy_error_check(fyp, fyep || !fyp->stream_error, err_out,
+		fyp_error_check(fyp, fyep || !fyp->stream_error, err_out,
 				"fy_parse_private() failed");
 
-		FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_DOC,
-				fyep, err_missing_mapping_value);
+		FYP_PARSE_ERROR_CHECK(fyp, 0, 0, FYEM_DOC,
+				fyep, err_out,
+				"missing mapping value");
 
 		fye = &fyep->e;
 
 		rc = fy_parse_document_load_node(fyp, fyd,
 						 fyep, &fyn_value, depthp);
 		fyep = NULL;
-		fy_error_check(fyp, !rc, err_out_rc,
+		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_parse_document_load_node() failed");
 
 		assert(fyn_value);
@@ -1161,10 +1262,15 @@ fy_parse_document_load_mapping(struct fy_parser *fyp, struct fy_document *fyd,
 		fyn_value = NULL;
 	}
 
+	if (!fyep)
+		goto err_out;
+
 	if (fye->mapping_end.mapping_end) {
 		fyn->mapping_end = fye->mapping_end.mapping_end;
 		fye->mapping_end.mapping_end = NULL;
 	}
+
+	assert(fyn->mapping_end);
 
 	*fynp = fyn;
 	fyn = NULL;
@@ -1182,20 +1288,6 @@ err_out_rc:
 	fy_node_detach_and_free(fyn_value);
 	fy_node_detach_and_free(fyn);
 	return rc;
-
-err_duplicate_key:
-	ec.start_mark = *fy_node_get_start_mark(fyn_key);
-	ec.end_mark = *fy_node_get_end_mark(fyn_key);
-	ec.fyi = fy_node_get_input(fyn_key);
-	fy_error_report(fyp, &ec, "duplicate key");
-	goto err_out;
-
-err_missing_mapping_value:
-	fy_error_report(fyp, &ec, "missing mapping value");
-	goto err_out;
-err_stream_end:
-	fy_error_report(fyp, &ec, "premature end of event stream");
-	goto err_out;
 }
 
 /* TODO vary according to platfom */
@@ -1211,34 +1303,34 @@ fy_parse_document_load_node(struct fy_parser *fyp, struct fy_document *fyd,
 {
 	struct fy_event *fye;
 	enum fy_event_type type;
-	struct fy_error_ctx ec;
 	int ret;
 
 	*fynp = NULL;
 
-	fy_error_check(fyp, fyep || !fyp->stream_error, err_out,
+	fyp_error_check(fyp, fyep || !fyp->stream_error, err_out,
 			"no event to process");
 
-	FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_DOC,
-			fyep, err_stream_end);
+	FYP_PARSE_ERROR_CHECK(fyp, 0, 0, FYEM_DOC,
+			fyep, err_out,
+			"premature end of event stream");
 
-	fy_doc_debug(fyp, "in %s [%s]", __func__, fy_event_type_txt[fyep->e.type]);
+	fyp_doc_debug(fyp, "in %s [%s]", __func__, fy_event_type_txt[fyep->e.type]);
 
 	fye = &fyep->e;
 
 	type = fye->type;
 
-	FY_ERROR_CHECK(fyp, fy_document_event_get_token(fye), &ec, FYEM_DOC,
+	FYP_TOKEN_ERROR_CHECK(fyp, fy_document_event_get_token(fye), FYEM_DOC,
 			type == FYET_ALIAS || type == FYET_SCALAR ||
-			type == FYET_SEQUENCE_START || type == FYET_MAPPING_START,
-			err_bad_event);
+			type == FYET_SEQUENCE_START || type == FYET_MAPPING_START, err_out,
+			"bad event");
 
 	(*depthp)++;
 
-	FY_ERROR_CHECK(fyp, fy_document_event_get_token(fye), &ec, FYEM_DOC,
+	FYP_TOKEN_ERROR_CHECK(fyp, fy_document_event_get_token(fye), FYEM_DOC,
 			((fyp->cfg.flags & FYPCF_DISABLE_DEPTH_LIMIT) ||
-				*depthp <= fy_depth_limit()),
-			err_depth_limit_exceeded);
+				*depthp <= fy_depth_limit()), err_out,
+			"depth limit exceeded");
 
 	switch (type) {
 
@@ -1269,39 +1361,27 @@ fy_parse_document_load_node(struct fy_parser *fyp, struct fy_document *fyd,
 err_out:
 	fy_parse_eventp_recycle(fyp, fyep);
 	return -1;
-
-err_bad_event:
-	fy_error_report(fyp, &ec, "bad event");
-	goto err_out;
-
-err_stream_end:
-	fy_error_report(fyp, &ec, "premature end of event stream");
-	goto err_out;
-
-err_depth_limit_exceeded:
-	fy_error_report(fyp, &ec, "depth limit exceeded");
-	goto err_out;
 }
 
 int fy_parse_document_load_end(struct fy_parser *fyp, struct fy_document *fyd, struct fy_eventp *fyep)
 {
 	struct fy_event *fye;
-	struct fy_error_ctx ec;
 	int rc;
 
-	fy_error_check(fyp, fyep || !fyp->stream_error, err_out,
+	fyp_error_check(fyp, fyep || !fyp->stream_error, err_out,
 			"no event to process");
 
-	FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_DOC,
-			fyep, err_stream_end);
+	FYP_PARSE_ERROR_CHECK(fyp, 0, 0, FYEM_DOC,
+			fyep, err_out,
+			"premature end of event stream");
 
-	fy_doc_debug(fyp, "in %s [%s]", __func__, fy_event_type_txt[fyep->e.type]);
+	fyp_doc_debug(fyp, "in %s [%s]", __func__, fy_event_type_txt[fyep->e.type]);
 
 	fye = &fyep->e;
 
-	FY_ERROR_CHECK(fyp, fy_document_event_get_token(fye), &ec, FYEM_DOC,
-			fye->type == FYET_DOCUMENT_END,
-			err_bad_event);
+	FYP_TOKEN_ERROR_CHECK(fyp, fy_document_event_get_token(fye), FYEM_DOC,
+			fye->type == FYET_DOCUMENT_END, err_out,
+			"bad event");
 
 	/* recycle the document end event */
 	fy_parse_eventp_recycle(fyp, fyep);
@@ -1311,14 +1391,6 @@ err_out:
 	rc = -1;
 	fy_parse_eventp_recycle(fyp, fyep);
 	return rc;
-
-err_bad_event:
-	fy_error_report(fyp, &ec, "bad event");
-	goto err_out;
-
-err_stream_end:
-	fy_error_report(fyp, &ec, "premature end of event stream");
-	goto err_out;
 }
 
 struct fy_document *fy_parse_load_document(struct fy_parser *fyp)
@@ -1326,7 +1398,6 @@ struct fy_document *fy_parse_load_document(struct fy_parser *fyp)
 	struct fy_document *fyd = NULL;
 	struct fy_eventp *fyep = NULL;
 	struct fy_event *fye = NULL;
-	struct fy_error_ctx ec;
 	int rc, depth;
 	bool was_stream_start;
 
@@ -1363,25 +1434,25 @@ again:
 		goto again;
 	}
 
-	FY_ERROR_CHECK(fyp, fy_document_event_get_token(fye), &ec, FYEM_DOC,
-			fye->type == FYET_DOCUMENT_START,
-			err_bad_event);
+	FYP_TOKEN_ERROR_CHECK(fyp, fy_document_event_get_token(fye), FYEM_DOC,
+			fye->type == FYET_DOCUMENT_START, err_out,
+			"bad event");
 
 	fyd = fy_parse_document_create(fyp, fyep);
 	fyep = NULL;
 
-	fy_error_check(fyp, fyd, err_out,
+	fyp_error_check(fyp, fyd, err_out,
 			"fy_parse_document_create() failed");
 
-	fy_doc_debug(fyp, "calling load_node() for root");
+	fyp_doc_debug(fyp, "calling load_node() for root");
 	depth = 0;
 	rc = fy_parse_document_load_node(fyp, fyd, fy_parse_private(fyp),
 					 &fyd->root, &depth);
-	fy_error_check(fyp, !rc, err_out,
+	fyp_error_check(fyp, !rc, err_out,
 			"fy_parse_document_load_node() failed");
 
 	rc = fy_parse_document_load_end(fyp, fyd, fy_parse_private(fyp));
-	fy_error_check(fyp, !rc, err_out,
+	fyp_error_check(fyp, !rc, err_out,
 			"fy_parse_document_load_node() failed");
 
 	/* always resolve parents */
@@ -1389,7 +1460,7 @@ again:
 
 	if (fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT) {
 		rc = fy_document_resolve(fyd);
-		fy_error_check(fyp, !rc, err_out,
+		fyp_error_check(fyp, !rc, err_out,
 				"fy_document_resolve() failed");
 	}
 
@@ -1399,17 +1470,11 @@ err_out:
 	fy_parse_eventp_recycle(fyp, fyep);
 	fy_parse_document_destroy(fyp, fyd);
 	return NULL;
-
-err_bad_event:
-	fy_error_report(fyp, &ec, "bad event");
-	goto err_out;
-
 }
 
 struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *fyn_from,
 				      struct fy_node *fyn_parent)
 {
-	struct fy_parser *fyp;
 	struct fy_document *fyd_from;
 	struct fy_node *fyn, *fyni, *fynit;
 	struct fy_node_pair *fynp, *fynpt;
@@ -1421,12 +1486,10 @@ struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *f
 	if (!fyd || !fyn_from || !fyn_from->fyd)
 		return NULL;
 
-	fyp = fyd->fyp;
-
 	fyd_from = fyn_from->fyd;
 
 	fyn = fy_node_alloc(fyd, fyn_from->type);
-	fy_error_check(fyd->fyp, fyn, err_out,
+	fyd_error_check(fyd, fyn, err_out,
 			"fy_node_alloc() failed");
 
 	fyn->tag = fy_token_ref(fyn_from->tag);
@@ -1443,7 +1506,7 @@ struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *f
 				fyni = fy_node_next(&fyn_from->sequence, fyni)) {
 
 			fynit = fy_node_copy_internal(fyd, fyni, fyn);
-			fy_error_check(fyp, fynit, err_out,
+			fyd_error_check(fyd, fynit, err_out,
 					"fy_node_copy_internal() failed");
 
 			fy_node_list_add_tail(&fyn->sequence, fynit);
@@ -1456,7 +1519,7 @@ struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *f
 				fynp = fy_node_pair_next(&fyn_from->mapping, fynp)) {
 
 			fynpt = fy_node_pair_alloc(fyd);
-			fy_error_check(fyp, fynpt, err_out,
+			fyd_error_check(fyd, fynpt, err_out,
 					"fy_node_pair_alloc() failed");
 
 			fynpt->key = fy_node_copy_internal(fyd, fynp->key, NULL);
@@ -1484,16 +1547,16 @@ struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *f
 		fya = fy_document_lookup_anchor_by_token(fyd, fya_from->anchor);
 		if (!fya) {
 			/* update the new anchor position */
-			rc = fy_parse_document_register_anchor(fyp, fyd, fyn, fya_from->anchor);
-			fy_error_check(fyp, !rc, err_out,
-					"fy_parse_document_register_anchor() failed");
+			rc = fy_document_register_anchor(fyd, fyn, fya_from->anchor);
+			fyd_error_check(fyd, !rc, err_out,
+					"fy_document_register_anchor() failed");
 
 			fy_anchor_list_add(&fyd->anchors, fya);
 		} else {
 			anchor = fy_anchor_get_text(fya, &anchor_len);
-			fy_error_check(fyp, anchor, err_out,
+			fyd_error_check(fyd, anchor, err_out,
 					"fy_anchor_get_text() failed");
-			fy_doc_debug(fyp, "not overwritting anchor %.*s", (int)anchor_len, anchor);
+			fyd_doc_debug(fyd, "not overwritting anchor %.*s", (int)anchor_len, anchor);
 		}
 	}
 
@@ -1507,9 +1570,14 @@ struct fy_node *fy_node_copy(struct fy_document *fyd, struct fy_node *fyn_from)
 {
 	struct fy_node *fyn;
 
-	fyn = fy_node_copy_internal(fyd, fyn_from, NULL);
-	if (!fyn)
+	if (!fyd)
 		return NULL;
+
+	fyn = fy_node_copy_internal(fyd, fyn_from, NULL);
+	if (!fyn) {
+		fyd->diag->on_error = false;
+		return NULL;
+	}
 
 	return fyn;
 }
@@ -1558,7 +1626,6 @@ int fy_node_copy_to_scalar(struct fy_document *fyd, struct fy_node *fyn_to, stru
 
 static int fy_document_node_update_tags(struct fy_document *fyd, struct fy_node *fyn)
 {
-	struct fy_parser *fyp;
 	struct fy_node *fyni;
 	struct fy_node_pair *fynp, *fynpi;
 	struct fy_token *fyt_td;
@@ -1566,22 +1633,20 @@ static int fy_document_node_update_tags(struct fy_document *fyd, struct fy_node 
 	size_t handle_size;
 	int rc;
 
-	if (!fyd || !fyn || !fyd->fyp)
+	if (!fyd || !fyn)
 		return 0;
-
-	fyp = fyd->fyp;
 
 	/* replace tag reference with the one that the document contains */
 	if (fyn->tag) {
-		fy_error_check(fyp, fyn->tag->type == FYTT_TAG, err_out,
+		fyd_error_check(fyd, fyn->tag->type == FYTT_TAG, err_out,
 				"bad node tag");
 
 		handle = fy_tag_directive_token_handle(fyn->tag->tag.fyt_td, &handle_size);
-		fy_error_check(fyp, handle, err_out,
+		fyd_error_check(fyd, handle, err_out,
 				"bad tag directive token");
 
 		fyt_td = fy_document_state_lookup_tag_directive(fyd->fyds, handle, handle_size);
-		fy_error_check(fyp, fyt_td, err_out,
+		fyd_error_check(fyd, fyt_td, err_out,
 				"Missing tag directive with handle=%.*s", (int)handle_size, handle);
 
 		/* need to replace this */
@@ -1635,7 +1700,6 @@ err_out_rc:
 int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 {
 	struct fy_document *fyd;
-	struct fy_parser *fyp;
 	struct fy_node *fyn_parent, *fyn_cpy, *fyni, *fyn_prev;
 	struct fy_node_pair *fynp, *fynpi, *fynpj;
 	int rc;
@@ -1645,16 +1709,14 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 
 	fyd = fyn_to->fyd;
 	assert(fyd);
-	fyp = fyd->fyp;
-	assert(fyp);
 
 	fyn_parent = fyn_to->parent;
 	fynp = NULL;
 	if (fyn_parent) {
-		fy_error_check(fyp, fyn_parent->type != FYNT_SCALAR, err_out,
+		fyd_error_check(fyd, fyn_parent->type != FYNT_SCALAR, err_out,
 				    "Illegal scalar parent node type");
 
-		fy_error_check(fyp, fyn_from, err_out,
+		fyd_error_check(fyd, fyn_from, err_out,
 				"Illegal NULL source node");
 
 		if (fyn_parent->type == FYNT_MAPPING) {
@@ -1675,19 +1737,19 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 		fyn_to->parent = NULL;
 
 		if (!fyn_parent) {
-			fy_doc_debug(fyp, "Deleting root node");
+			fyd_doc_debug(fyd, "Deleting root node");
 			fy_node_detach_and_free(fyn_to);
 			fyd->root = NULL;
 		} else if (fyn_parent->type == FYNT_SEQUENCE) {
-			fy_doc_debug(fyp, "Deleting sequence node");
+			fyd_doc_debug(fyd, "Deleting sequence node");
 			fy_node_list_del(&fyn_parent->sequence, fyn_to);
 			fy_node_detach_and_free(fyn_to);
 		} else {
-			fy_doc_debug(fyp, "Deleting mapping node");
+			fyd_doc_debug(fyd, "Deleting mapping node");
 			/* should never happen, it's checked right above, but play safe */
 			assert(fyn_parent->type == FYNT_MAPPING);
 
-			fy_error_check(fyp, fynp, err_out,
+			fyd_error_check(fyd, fynp, err_out,
 					"Illegal mapping node found");
 
 			fy_node_pair_list_del(&fyn_parent->mapping, fynp);
@@ -1725,15 +1787,15 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 	if (fyn_from->type != fyn_to->type || fyn_from->type == FYNT_SCALAR) {
 
 		fyn_cpy = fy_node_copy(fyd, fyn_from);
-		fy_error_check(fyp, fyn_cpy, err_out,
+		fyd_error_check(fyd, fyn_cpy, err_out,
 				"fy_node_copy() failed");
 
 		if (!fyn_parent) {
-			fy_doc_debug(fyp, "Replacing root node");
+			fyd_doc_debug(fyd, "Replacing root node");
 			fy_node_detach_and_free(fyd->root);
 			fyd->root = fyn_cpy;
 		} else if (fyn_parent->type == FYNT_SEQUENCE) {
-			fy_doc_debug(fyp, "Replacing sequence node");
+			fyd_doc_debug(fyd, "Replacing sequence node");
 
 			/* get previous */
 			fyn_prev = fy_node_prev(&fyn_parent->sequence, fyn_to);
@@ -1748,10 +1810,10 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 			else
 				fy_node_list_insert_after(&fyn_parent->sequence, fyn_prev, fyn_cpy);
 		} else {
-			fy_doc_debug(fyp, "Replacing mapping node value");
+			fyd_doc_debug(fyd, "Replacing mapping node value");
 			/* should never happen, it's checked right above, but play safe */
 			assert(fyn_parent->type == FYNT_MAPPING);
-			fy_error_check(fyp, fynp, err_out,
+			fyd_error_check(fyd, fynp, err_out,
 					"Illegal mapping node found");
 
 			fy_node_detach_and_free(fynp->value);
@@ -1764,13 +1826,13 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 	/* types match, if it's a sequence append */
 	if (fyn_to->type == FYNT_SEQUENCE) {
 
-		fy_doc_debug(fyp, "Appending to sequence node");
+		fyd_doc_debug(fyd, "Appending to sequence node");
 
 		for (fyni = fy_node_list_head(&fyn_from->sequence); fyni;
 				fyni = fy_node_next(&fyn_from->sequence, fyni)) {
 
 			fyn_cpy = fy_node_copy(fyd, fyni);
-			fy_error_check(fyp, fyn_cpy, err_out,
+			fyd_error_check(fyd, fyn_cpy, err_out,
 					"fy_node_copy() failed");
 
 			fy_node_list_add_tail(&fyn_to->sequence, fyn_cpy);
@@ -1792,18 +1854,18 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 			}
 
 			if (!fynpj) {
-				fy_doc_debug(fyp, "Appending to mapping node");
+				fyd_doc_debug(fyd, "Appending to mapping node");
 
 				/* not found? append it */
 				fynpj = fy_node_pair_alloc(fyd);
-				fy_error_check(fyp, fynpj, err_out,
+				fyd_error_check(fyd, fynpj, err_out,
 						"fy_node_pair_alloc() failed");
 
 				fynpj->key = fy_node_copy(fyd, fynpi->key);
-				fy_error_check(fyp, !fynpi->key || fynpj->key, err_out,
+				fyd_error_check(fyd, !fynpi->key || fynpj->key, err_out,
 						"fy_node_copy() failed");
 				fynpj->value = fy_node_copy(fyd, fynpi->value);
-				fy_error_check(fyp, !fynpi->value || fynpj->value, err_out,
+				fyd_error_check(fyd, !fynpi->value || fynpj->value, err_out,
 						"fy_node_copy() failed");
 
 				fy_node_pair_list_add_tail(&fyn_to->mapping, fynpj);
@@ -1814,12 +1876,12 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 
 			} else {
 
-				fy_doc_debug(fyp, "Updating mapping node value");
+				fyd_doc_debug(fyd, "Updating mapping node value");
 
 				/* found? replace value */
 				fy_node_detach_and_free(fynpj->value);
 				fynpj->value = fy_node_copy(fyd, fynpi->value);
-				fy_error_check(fyp, !fynpi->value || fynpj->value, err_out,
+				fyd_error_check(fyd, !fynpi->value || fynpj->value, err_out,
 						"fy_node_copy() failed");
 			}
 		}
@@ -1855,11 +1917,11 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 	/* if the documents differ, merge their states */
 	if (fyn_to->fyd != fyn_from->fyd) {
 		rc = fy_document_state_merge(fyn_to->fyd->fyds, fyn_from->fyd->fyds);
-		fy_error_check(fyp, !rc, err_out_rc,
+		fyd_error_check(fyd, !rc, err_out_rc,
 				"fy_document_state_merge() failed");
 
 		rc = fy_document_node_update_tags(fyd, fy_document_root(fyd));
-		fy_error_check(fyp, !rc, err_out_rc,
+		fyd_error_check(fyd, !rc, err_out_rc,
 				"fy_document_node_update_tags() failed");
 	}
 
@@ -1955,29 +2017,24 @@ int fy_document_tag_directive_remove(struct fy_document *fyd, const char *handle
 
 static int fy_resolve_alias(struct fy_document *fyd, struct fy_node *fyn)
 {
-	struct fy_parser *fyp = fyd->fyp;
-	struct fy_error_ctx ec;
 	struct fy_anchor *fya;
 	int rc;
 
 	fya = fy_document_lookup_anchor_by_token(fyd, fyn->scalar);
 
-	FY_ERROR_CHECK(fyp, fyn->scalar, &ec, FYEM_DOC,
-			fya,
-			err_bad_alias);
+	FYD_NODE_ERROR_CHECK(fyd, fyn, FYEM_DOC,
+			fya, err_out,
+			"invalid alias");
 
 	rc = fy_node_copy_to_scalar(fyd, fyn, fya->fyn);
-	fy_error_check(fyp, !rc, err_out,
+	fyd_error_check(fyd, !rc, err_out,
 			"fy_node_copy_to_scalar() failed");
 
 	return 0;
 
 err_out:
+	fyd->diag->on_error = false;
 	return -1;
-
-err_bad_alias:
-	fy_error_report(fyp, &ec, "invalid alias");
-	goto err_out;
 }
 
 static struct fy_node *
@@ -2090,7 +2147,7 @@ static int fy_resolve_merge_key_populate(struct fy_document *fyd, struct fy_node
 	if (!fyd)
 		return -1;
 
-	fy_error_check(fyd->fyp,
+	fyd_error_check(fyd,
 			fyn && fynp && fynm && fyn->type == FYNT_MAPPING && fynm->type == FYNT_MAPPING,
 			err_out, "bad inputs to %s", __func__);
 
@@ -2102,7 +2159,7 @@ static int fy_resolve_merge_key_populate(struct fy_document *fyd, struct fy_node
 			continue;
 
 		fynpn = fy_node_pair_alloc(fyd);
-		fy_error_check(fyd->fyp, fynpn, err_out,
+		fyd_error_check(fyd, fynpn, err_out,
 				"fy_node_pair_alloc() failed");
 
 		fynpn->key = fy_node_copy(fyd, fynpi->key);
@@ -2120,28 +2177,26 @@ err_out:
 
 static int fy_resolve_merge_key(struct fy_document *fyd, struct fy_node *fyn, struct fy_node_pair *fynp)
 {
-	struct fy_parser *fyp = fyd->fyp;
 	struct fy_node *fynv, *fyni, *fynm;
-	struct fy_error_ctx ec;
 	int rc;
 
 	/* it must be a valid merge key value */
-	FY_ERROR_CHECK(fyp, NULL, &ec, FYEM_DOC,
-			fy_node_pair_is_valid_merge_key(fyd, fynp),
-			err_invalid_merge_key);
+	FYD_NODE_ERROR_CHECK(fyd, fynp->value, FYEM_DOC,
+			fy_node_pair_is_valid_merge_key(fyd, fynp), err_out,
+			"invalid merge key value");
 
 	fynv = fynp->value;
 	fynm = fy_alias_get_merge_mapping(fyd, fynv);
 	if (fynm) {
 		rc = fy_resolve_merge_key_populate(fyd, fyn, fynp, fynm);
-		fy_error_check(fyp, !rc, err_out_rc,
+		fyd_error_check(fyd, !rc, err_out_rc,
 				"fy_resolve_merge_key_populate() failed");
 
 		return 0;
 	}
 
 	/* it must be a sequence then */
-	fy_error_check(fyp, fynv->type == FYNT_SEQUENCE, err_out,
+	fyd_error_check(fyd, fynv->type == FYNT_SEQUENCE, err_out,
 			"invalid node type to use for merge key");
 
 	/* the sequence must only contain valid aliases for mapping */
@@ -2149,11 +2204,11 @@ static int fy_resolve_merge_key(struct fy_document *fyd, struct fy_node *fyn, st
 			fyni = fy_node_next(&fynv->sequence, fyni)) {
 
 		fynm = fy_alias_get_merge_mapping(fyd, fyni);
-		fy_error_check(fyp, fynm, err_out,
+		fyd_error_check(fyd, fynm, err_out,
 				"invalid merge key sequence item (not an alias)");
 
 		rc = fy_resolve_merge_key_populate(fyd, fyn, fynp, fynm);
-		fy_error_check(fyp, !rc, err_out_rc,
+		fyd_error_check(fyd, !rc, err_out_rc,
 				"fy_resolve_merge_key_populate() failed");
 	}
 
@@ -2163,23 +2218,14 @@ err_out:
 	rc = -1;
 err_out_rc:
 	return rc;
-
-err_invalid_merge_key:
-	ec.start_mark = *fy_node_get_start_mark(fynp->value);
-	ec.end_mark = *fy_node_get_end_mark(fynp->value);
-	ec.fyi = fy_node_get_input(fynp->value);
-	fy_error_report(fyp, &ec, "invalid merge key value");
-	goto err_out;
 }
 
 /* the anchors are scalars that have the FYNS_ALIAS style */
 static int fy_resolve_anchor_node(struct fy_document *fyd, struct fy_node *fyn)
 {
-	struct fy_parser *fyp = fyd->fyp;
 	struct fy_node *fyni;
 	struct fy_node_pair *fynp, *fynpi, *fynpit;
 	int rc, ret_rc = 0;
-	struct fy_error_ctx ec;
 	struct fy_token *fyt;
 
 	if (!fyn)
@@ -2246,9 +2292,9 @@ static int fy_resolve_anchor_node(struct fy_document *fyd, struct fy_node *fyn)
 							break;
 						}
 
-						FY_ERROR_CHECK(fyp, fyt, &ec, FYEM_DOC,
-								false,
-								err_duplicate_key);
+						FYD_TOKEN_ERROR_CHECK(fyd, fyt, FYEM_DOC,
+								false, err_out,
+								"duplicate key after resolving");
 
 					}
 
@@ -2269,10 +2315,6 @@ static int fy_resolve_anchor_node(struct fy_document *fyd, struct fy_node *fyn)
 
 err_out:
 	return -1;
-
-err_duplicate_key:
-	fy_error_report(fyp, &ec, "duplicate key after resolving");
-	goto err_out;
 }
 
 static void fy_resolve_parent_node(struct fy_document *fyd, struct fy_node *fyn, struct fy_node *fyn_parent)
@@ -2372,14 +2414,23 @@ int fy_document_resolve(struct fy_document *fyd)
 	fy_node_clear_system_marks(fyd->root);
 
 	if (ret)
-		return -1;
+		goto err_out;
+
 
 	/* now resolve any anchor nodes */
 	rc = fy_resolve_anchor_node(fyd, fyd->root);
+	if (rc)
+		goto err_out_rc;
 
 	/* redo parent resolution */
 	fy_resolve_parent_node(fyd, fyd->root, NULL);
 
+	return 0;
+
+err_out:
+	rc = -1;
+err_out_rc:
+	fyd->diag->on_error = false;
 	return rc;
 }
 
@@ -2398,11 +2449,9 @@ void fy_document_free_nodes(struct fy_document *fyd)
 void fy_document_destroy(struct fy_document *fyd)
 {
 	struct fy_document *fyd_child;
-	struct fy_parser *fyp;
-	bool owns_parser;
 
 	/* both the document and the parser object must exist */
-	if (!fyd || !fyd->fyp)
+	if (!fyd)
 		return;
 
 	/* we have to free the nodes first */
@@ -2414,13 +2463,7 @@ void fy_document_destroy(struct fy_document *fyd)
 		fy_document_destroy(fyd_child);
 	}
 
-	fyp = fyd->fyp;
-	owns_parser = fyd->owns_parser;
-
-	fy_parse_document_destroy(fyp, fyd);
-
-	if (owns_parser)
-		fy_parser_destroy(fyp);
+	fy_parse_document_destroy(NULL, fyd);
 }
 
 int fy_document_set_parent(struct fy_document *fyd, struct fy_document *fyd_child)
@@ -2441,43 +2484,37 @@ static const struct fy_parse_cfg doc_parse_default_cfg = {
 
 struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 {
-	struct fy_parser *fyp = NULL;
 	struct fy_document *fyd = NULL;
 
 	if (!cfg)
 		cfg = &doc_parse_default_cfg;
 
-	fyp = fy_parser_create(cfg);
-	if (!fyp)
-		return NULL;
-
 	fyd = malloc(sizeof(*fyd));
-	fy_error_check(fyp, fyd, err_out,
-		"malloc() failed");
-	memset(fyd, 0, sizeof(*fyd));
+	if (!fyd)
+		goto err_out;
 
-	fyd->fyp = fyp;
+	memset(fyd, 0, sizeof(*fyd));
+	fyd->parse_cfg = *cfg;
+
+	fyd->diag = fy_diag_create();
+	if (!fyd->diag)
+		goto err_out;
+
+	fy_diag_from_document(fyd->diag, fyd);
 
 	fy_anchor_list_init(&fyd->anchors);
 	fyd->root = NULL;
 
 	fyd->fyds = fy_document_state_default();
-	fy_error_check(fyp, fyd->fyds, err_out,
+	fyd_error_check(fyd, fyd->fyds, err_out,
 			"fy_document_state_default() failed");
-
-	fyd->owns_parser = true;
-
-	fyd->errfp = NULL;
-	fyd->errbuf = NULL;
-	fyd->errsz = 0;
 
 	fy_document_list_init(&fyd->children);
 
 	return fyd;
 
 err_out:
-	fy_parse_document_destroy(fyp, fyd);
-	fy_parser_destroy(fyp);
+	fy_parse_document_destroy(NULL, fyd);
 	return NULL;
 }
 
@@ -2545,16 +2582,16 @@ static int parser_setup_from_fmt_ap(struct fy_parser *fyp, void *user)
 	size = vsnprintf(NULL, 0, vctx->fmt, ap_orig);
 	va_end(ap_orig);
 
-	fy_error_check(fyp, size >= 0, err_out,
+	fyp_error_check(fyp, size >= 0, err_out,
 			"vsnprintf() failed");
 
 	buf = malloc(size + 1);
-	fy_error_check(fyp, buf, err_out,
+	fyp_error_check(fyp, buf, err_out,
 			"malloc() failed");
 
 	va_copy(ap, vctx->ap);
 	sizew = vsnprintf(buf, size + 1, vctx->fmt, ap);
-	fy_error_check(fyp, sizew == size, err_out,
+	fyp_error_check(fyp, sizew == size, err_out,
 			"vsnprintf() failed");
 	va_end(ap);
 
@@ -2570,7 +2607,7 @@ static struct fy_document *fy_document_build_internal(const struct fy_parse_cfg 
 		int (*parser_setup)(struct fy_parser *fyp, void *user),
 		void *user)
 {
-	struct fy_parser *fyp = NULL;
+	struct fy_parser fyp_data, *fyp = &fyp_data;
 	struct fy_document *fyd = NULL;
 	struct fy_eventp *fyep;
 	bool got_stream_end;
@@ -2582,12 +2619,12 @@ static struct fy_document *fy_document_build_internal(const struct fy_parse_cfg 
 	if (!cfg)
 		cfg = &doc_parse_default_cfg;
 
-	fyp = fy_parser_create(cfg);
-	if (!fyp)
+	rc = fy_parse_setup(fyp, cfg, NULL);
+	if (rc)
 		return NULL;
 
 	rc = (*parser_setup)(fyp, user);
-	fy_error_check(fyp, !rc, err_out,
+	fyp_error_check(fyp, !rc, err_out,
 			"parser_setup() failed");
 
 	fyd = fy_parse_load_document(fyp);
@@ -2597,31 +2634,23 @@ static struct fy_document *fy_document_build_internal(const struct fy_parse_cfg 
 		fyp->stream_error = false;
 
 	/* if we collect diagnostics, we can continue */
-	fy_error_check(fyp, fyd || (fyp->cfg.flags & FYPCF_COLLECT_DIAG), err_out,
+	fyp_error_check(fyp, fyd || (fyp->cfg.flags & FYPCF_COLLECT_DIAG), err_out,
 			"fy_parse_load_document() failed");
 
 	/* no document, but we're collecting diagnostics */
 	if (!fyd) {
 
-		if (!fyp->stream_error)
-			fy_error(fyp, "fy_parse_load_document() failed");
-		else
-			fy_notice(fyp, "fy_parse_load_document() failed");
+		fyp_error(fyp, "fy_parse_load_document() failed");
 
 		fyp->stream_error = false;
 		fyd = fy_parse_document_create(fyp, NULL);
-		fy_error_check(fyp, fyd, err_out,
+		fyp_error_check(fyp, fyd, err_out,
 				"fy_parse_document_create() failed");
-		fyd->owns_parser = true;
 		fyd->parse_error = true;
 
-		fy_parser_move_log_to_document(fyp, fyd);
-
-		return fyd;
+		/* XXX */
+		goto out;
 	}
-
-	/* move ownership of the parser to the document */
-	fyd->owns_parser = true;
 
 	got_stream_end = false;
 	while (!got_stream_end && (fyep = fy_parse_private(fyp)) != NULL) {
@@ -2632,16 +2661,18 @@ static struct fy_document *fy_document_build_internal(const struct fy_parse_cfg 
 
 	if (got_stream_end) {
 		fyep = fy_parse_private(fyp);
-		fy_error_check(fyp, !fyep, err_out,
+		fyp_error_check(fyp, !fyep, err_out,
 				"more events after stream end");
 		fy_parse_eventp_recycle(fyp, fyep);
 	}
 
+out:
+	fy_parse_cleanup(fyp);
 	return fyd;
 
 err_out:
 	fy_document_destroy(fyd);
-	fy_parser_destroy(fyp);
+	fy_parse_cleanup(fyp);
 	return NULL;
 }
 
@@ -2759,6 +2790,8 @@ int fy_node_pair_set_key(struct fy_node_pair *fynp, struct fy_node *fyn)
 			if (fynpi != fynp && fy_node_compare(fynpi->key, fyn))
 				return -1;
 		}
+
+		fy_node_mark_synthetic(fyn_map);
 	}
 
 	fy_node_detach_and_free(fynp->key);
@@ -2778,6 +2811,9 @@ int fy_node_pair_set_value(struct fy_node_pair *fynp, struct fy_node *fyn)
 	fy_node_detach_and_free(fynp->value);
 	fynp->value = fyn;
 	fyn->attached = true;
+
+	if (fynp->parent)
+		fy_node_mark_synthetic(fynp->parent);
 
 	return 0;
 }
@@ -3053,8 +3089,6 @@ static inline void fy_node_walk_mark_end(struct fy_node_walk_ctx *ctx)
 static inline bool fy_node_walk_mark(struct fy_node_walk_ctx *ctx, struct fy_node *fyn)
 {
 	struct fy_document *fyd = fyn->fyd;
-	struct fy_parser *fyp = fyd->fyp;
-	struct fy_error_ctx ec;
 	struct fy_token *fyt = NULL;
 
 	switch (fyn->type) {
@@ -3070,26 +3104,21 @@ static inline bool fy_node_walk_mark(struct fy_node_walk_ctx *ctx, struct fy_nod
 	}
 
 	/* depth error */
-	FY_ERROR_CHECK(fyp, fyt, &ec, FYEM_DOC,
-		ctx->next_slot < ctx->max_depth,
-		err_too_deep);
+	FYD_TOKEN_ERROR_CHECK(fyd, fyt, FYEM_DOC,
+		ctx->next_slot < ctx->max_depth, err_out,
+		"max recursion depth exceeded (%u)", ctx->max_depth);
 
 	/* mark found, loop */
-	FY_ERROR_CHECK(fyp, fyt, &ec, FYEM_DOC,
-		!(fyn->marks & ctx->mark),
-		err_cycle_detected);
+	FYD_TOKEN_ERROR_CHECK(fyd, fyt, FYEM_DOC,
+		!(fyn->marks & ctx->mark), err_out,
+		"cyclic reference detected");
 
 	fyn->marks |= ctx->mark;
 	ctx->marked[ctx->next_slot++] = fyn;
 
 	return true;
 
-err_too_deep:
-	fy_error_report(fyp, &ec, "max recursion depth exceeded (%u)", ctx->max_depth);
-	return false;
-
-err_cycle_detected:
-	fy_error_report(fyp, &ec, "cyclic reference detected");
+err_out:
 	return false;
 }
 
@@ -3160,7 +3189,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 
 	/* and continue on path lookup with the rest */
 
-	/* fy_notice(NULL, "%s: path='%.*s'", __func__, (int)pathlen, path); */
+	/* fyp_notice(NULL, "%s: path='%.*s'", __func__, (int)pathlen, path); */
 
 	/* skip all prefixed / */
 	switch (ptr_flags) {
@@ -3233,7 +3262,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 		case FYNWF_PTR_JSON:
 		case FYNWF_PTR_RELJSON:
 
-			/* fy_notice(NULL, "%s: json array path='%.*s'", __func__, (int)(e - s), s); */
+			/* fyp_notice(NULL, "%s: json array path='%.*s'", __func__, (int)(e - s), s); */
 
 			/* special array end - always fails */
 			if (*s == '-')
@@ -3257,7 +3286,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 			break;
 		}
 
-		/* fy_notice(NULL, "%s: seq: idx=%d", __func__, idx); */
+		/* fyp_notice(NULL, "%s: seq: idx=%d", __func__, idx); */
 
 		len = e - s;
 
@@ -3273,7 +3302,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 	path = s;
 	pathlen = (size_t)(e - s);
 
-	/* fy_notice(NULL, "%s: left='%.*s'", __func__, (int)pathlen, path); */
+	/* fyp_notice(NULL, "%s: left='%.*s'", __func__, (int)pathlen, path); */
 
 	switch (ptr_flags) {
 	default:
@@ -3321,7 +3350,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 		}
 		len = s - path;
 
-		/* fy_notice(NULL, "%s: mapping lookup='%.*s'", __func__, (int)len, path); */
+		/* fyp_notice(NULL, "%s: mapping lookup='%.*s'", __func__, (int)len, path); */
 
 		fynt = fyn;
 		fyn = fy_node_mapping_lookup_by_string(fyn, path, len);
@@ -3332,7 +3361,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 			if (!fyn)
 				goto out;
 
-			/* fy_notice(NULL, "found merge key"); */
+			/* fyp_notice(NULL, "found merge key"); */
 
 			if (fy_node_is_alias(fyn)) {
 
@@ -3435,7 +3464,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 			len = uri_path_len;
 		}
 
-		/* fy_notice(NULL, "%s: JSON mapping lookup='%.*s'", __func__, (int)(len), path); */
+		/* fyp_notice(NULL, "%s: JSON mapping lookup='%.*s'", __func__, (int)(len), path); */
 
 		fynt = fyn;
 		fyn = fy_node_mapping_lookup_value_by_simple_key(fyn, path, len);
@@ -3469,7 +3498,7 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 		len = strlen(path);
 	e = s + len;
 
-	/* fy_notice(NULL, "%s: path='%.*s'", __func__, (int)len, path); */
+	/* fyp_notice(NULL, "%s: path='%.*s'", __func__, (int)len, path); */
 
 	/* first path component may be an alias */
 	if ((flags & FYNWF_FOLLOW) && fyn && path) {
@@ -3481,7 +3510,7 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 
 		s++;
 
-		/* fy_notice(NULL, "%s: alias check: '%.*s'", __func__, (int)(e - s), s); */
+		/* fyp_notice(NULL, "%s: alias check: '%.*s'", __func__, (int)(e - s), s); */
 		ss = s;
 
 		c = -1;
@@ -3518,7 +3547,7 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 		path = t;
 		len = e - t;
 
-		/* fy_notice(NULL, "%s: looking up anchor='%.*s'", __func__, (int)alen, anchor); */
+		/* fyp_notice(NULL, "%s: looking up anchor='%.*s'", __func__, (int)alen, anchor); */
 
 		/* lookup anchor */
 		fya = fy_document_lookup_anchor(fyn->fyd, anchor, alen);
@@ -3534,7 +3563,7 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 		} else {
 			/* no anchor found? try for *</path/foo> */
 
-			/* fy_notice(NULL, "anchor not found: %.*s", (int)alen, anchor); */
+			/* fyp_notice(NULL, "anchor not found: %.*s", (int)alen, anchor); */
 
 			s = ss;
 			if ((e - s) < 3 || s[0] != '<' || s[1] != '/' || e[-1] != '>')
@@ -3543,7 +3572,7 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 			path = ss + 1;
 			len = (e - 1) - (ss + 1);
 
-			/* fy_notice(NULL, "direct path: %.*s", (int)len, path); */
+			/* fyp_notice(NULL, "direct path: %.*s", (int)len, path); */
 
 		}
 	}
@@ -3774,21 +3803,18 @@ char *fy_node_get_path(struct fy_node *fyn)
 	return path_mem;
 }
 
-struct fy_node *fy_document_load_node(struct fy_document *fyd,
-				      struct fy_document_state **fydsp)
+static struct fy_node *
+fy_document_load_node(struct fy_document *fyd, struct fy_parser *fyp,
+		      struct fy_document_state **fydsp)
 {
-	struct fy_parser *fyp;
 	struct fy_eventp *fyep = NULL;
 	struct fy_event *fye = NULL;
 	struct fy_node *fyn = NULL;
-	struct fy_error_ctx ec;
 	int rc, depth;
 	bool was_stream_start;
 
-	if (!fyd || !fyd->fyp)
+	if (!fyd || !fyp)
 		return NULL;
-
-	fyp = fyd->fyp;
 
 	/* only single documents */
 	fy_parser_set_next_single_document(fyp);
@@ -3827,22 +3853,22 @@ again:
 		goto again;
 	}
 
-	FY_ERROR_CHECK(fyp, fy_document_event_get_token(fye), &ec, FYEM_DOC,
-			fye->type == FYET_DOCUMENT_START,
-			err_bad_event);
+	FYD_TOKEN_ERROR_CHECK(fyd, fy_document_event_get_token(fye), FYEM_DOC,
+			fye->type == FYET_DOCUMENT_START, err_out,
+			"bad event");
 
 	fy_parse_eventp_recycle(fyp, fyep);
 	fyep = NULL;
 	fye = NULL;
 
-	fy_doc_debug(fyp, "calling load_node() for root");
+	fyd_doc_debug(fyd, "calling load_node() for root");
 	depth = 0;
 	rc = fy_parse_document_load_node(fyp, fyd, fy_parse_private(fyp), &fyn, &depth);
-	fy_error_check(fyp, !rc, err_out,
+	fyd_error_check(fyd, !rc, err_out,
 			"fy_parse_document_load_node() failed");
 
 	rc = fy_parse_document_load_end(fyp, fyd, fy_parse_private(fyp));
-	fy_error_check(fyp, !rc, err_out,
+	fyd_error_check(fyd, !rc, err_out,
 			"fy_parse_document_load_node() failed");
 
 	/* always resolve parents */
@@ -3855,11 +3881,8 @@ again:
 
 err_out:
 	fy_parse_eventp_recycle(fyp, fyep);
+	fyd->diag->on_error = false;
 	return NULL;
-
-err_bad_event:
-	fy_error_report(fyp, &ec, "bad event");
-	goto err_out;
 }
 
 static struct fy_node *
@@ -3869,23 +3892,26 @@ fy_node_build_internal(struct fy_document *fyd,
 {
 	struct fy_document_state *fyds = NULL;
 	struct fy_node *fyn = NULL;
-	struct fy_parser *fyp;
+	struct fy_parser fyp_data, *fyp = &fyp_data;
 	struct fy_eventp *fyep;
-	struct fy_error_ctx ec;
 	int rc;
 	bool got_stream_end;
 
-	if (!fyd || !fyd->fyp || !parser_setup)
+	if (!fyd || !parser_setup)
 		return NULL;
 
-	fyp = fyd->fyp;
+	rc = fy_parse_setup(fyp, &fyd->parse_cfg, fyd->diag);
+	if (rc) {
+		fyd->diag->on_error = false;
+		return NULL;
+	}
 
 	rc = (*parser_setup)(fyp, user);
-	fy_error_check(fyp, !rc, err_out,
+	fyd_error_check(fyd, !rc, err_out,
 			"parser_setup() failed");
 
-	fyn = fy_document_load_node(fyd, &fyds);
-	fy_error_check(fyp, fyn, err_out,
+	fyn = fy_document_load_node(fyd, fyp, &fyds);
+	fyd_error_check(fyd, fyn, err_out,
 			"fy_document_load_node() failed");
 
 	got_stream_end = false;
@@ -3898,29 +3924,29 @@ fy_node_build_internal(struct fy_document *fyd,
 	if (got_stream_end) {
 		fyep = fy_parse_private(fyp);
 
-		FY_ERROR_CHECK(fyp, fy_document_event_get_token(&fyep->e), &ec, FYEM_DOC,
-				!fyep,
-				err_trailing_event);
+		FYD_TOKEN_ERROR_CHECK(fyd, fy_document_event_get_token(&fyep->e), FYEM_DOC,
+				!fyep, err_out,
+				"trailing events after the last");
+
 		fy_parse_eventp_recycle(fyp, fyep);
 	}
 
 	rc = fy_document_state_merge(fyd->fyds, fyds);
-	fy_error_check(fyp, !rc, err_out,
+	fyd_error_check(fyd, !rc, err_out,
 			"fy_document_state_merge() failed");
 
 	fy_document_state_unref(fyds);
+
+	fy_parse_cleanup(fyp);
 
 	return fyn;
 
 err_out:
 	fy_node_detach_and_free(fyn);
 	fy_document_state_unref(fyds);
-	fy_parser_reset(fyp);
+	fy_parse_cleanup(fyp);
+	fyd->diag->on_error = false;
 	return NULL;
-
-err_trailing_event:
-	fy_error_report(fyp, &ec, "trailing events after the last");
-	goto err_out;
 }
 
 struct fy_node *fy_node_build_from_string(struct fy_document *fyd, const char *str, size_t len)
@@ -3974,7 +4000,6 @@ int fy_document_set_root(struct fy_document *fyd, struct fy_node *fyn)
 
 struct fy_node *fy_node_create_scalar(struct fy_document *fyd, const char *data, size_t size)
 {
-	struct fy_parser *fyp;
 	struct fy_node *fyn = NULL;
 	struct fy_input *fyi;
 	struct fy_atom handle;
@@ -3986,21 +4011,21 @@ struct fy_node *fy_node_create_scalar(struct fy_document *fyd, const char *data,
 	if (data && size == (size_t)-1)
 		size = strlen(data);
 
-	fyp = fyd->fyp;
-
 	fyn = fy_node_alloc(fyd, FYNT_SCALAR);
-	fy_error_check(fyp, fyn, err_out,
+	fyd_error_check(fyd, fyn, err_out,
 			"fy_node_alloc() failed");
 
 	fyi = fy_input_from_data(data, size, &handle, false);
-	fy_error_check(fyp, fyi, err_out,
+	fyd_error_check(fyd, fyi, err_out,
 			"fy_input_from_data() failed");
 
 	style = handle.style == FYAS_PLAIN ? FYSS_PLAIN : FYSS_DOUBLE_QUOTED;
 
 	fyn->scalar = fy_token_create(FYTT_SCALAR, &handle, style);
-	fy_error_check(fyp, fyn->scalar, err_out,
+	fyd_error_check(fyd, fyn->scalar, err_out,
 			"fy_token_create() failed");
+
+	fyn->style = style == FYSS_PLAIN ? FYNS_PLAIN : FYNS_DOUBLE_QUOTED;
 
 	/* take away the input reference */
 	fy_input_unref(fyi);
@@ -4009,12 +4034,12 @@ struct fy_node *fy_node_create_scalar(struct fy_document *fyd, const char *data,
 
 err_out:
 	fy_node_detach_and_free(fyn);
+	fyd->diag->on_error = false;
 	return NULL;
 }
 
 struct fy_node *fy_node_create_alias(struct fy_document *fyd, const char *alias, size_t len)
 {
-	struct fy_parser *fyp;
 	struct fy_node *fyn = NULL;
 	struct fy_input *fyi;
 	struct fy_atom handle;
@@ -4025,18 +4050,16 @@ struct fy_node *fy_node_create_alias(struct fy_document *fyd, const char *alias,
 	if (len == (size_t)-1)
 		len = strlen(alias);
 
-	fyp = fyd->fyp;
-
 	fyn = fy_node_alloc(fyd, FYNT_SCALAR);
-	fy_error_check(fyp, fyn, err_out,
+	fyd_error_check(fyd, fyn, err_out,
 			"fy_node_alloc() failed");
 
 	fyi = fy_input_from_data(alias, len, &handle, false);
-	fy_error_check(fyp, fyi, err_out,
+	fyd_error_check(fyd, fyi, err_out,
 			"fy_input_from_data() failed");
 
 	fyn->scalar = fy_token_create(FYTT_ALIAS, &handle);
-	fy_error_check(fyp, fyn->scalar, err_out,
+	fyd_error_check(fyd, fyn->scalar, err_out,
 			"fy_token_create() failed");
 
 	fyn->style = FYNS_ALIAS;
@@ -4048,6 +4071,7 @@ struct fy_node *fy_node_create_alias(struct fy_document *fyd, const char *alias,
 
 err_out:
 	fy_node_detach_and_free(fyn);
+	fyd->diag->on_error = false;
 	return NULL;
 }
 
@@ -4215,13 +4239,13 @@ int fy_node_set_tag(struct fy_node *fyn, const char *data, size_t len)
 		/* we scan back to back, and split handle/suffix */
 		handle_length = tag_handle_length(s, e - s);
 		if (handle_length <= 0)
-			return -1;
+			goto err_out;
 		s += handle_length;
 	}
 
 	uri_length = tag_uri_length(s, e - s);
 	if (uri_length < 0)
-		return -1;
+		goto err_out;
 
 	/* a handle? */
 	if (!prefix_length && (handle_length == 0 || data[handle_length - 1] != '!')) {
@@ -4238,18 +4262,18 @@ int fy_node_set_tag(struct fy_node *fyn, const char *data, size_t len)
 
 	/* everything must be consumed */
 	if (total_length != (int)len)
-		return -1;
+		goto err_out;
 
 	handle_start = data + prefix_length;
 
 	fyt_td = fy_document_state_lookup_tag_directive(fyd->fyds,
 			handle_start, handle_length);
 	if (!fyt_td)
-		return -1;
+		goto err_out;
 
 	fyi = fy_input_from_data(data, len, &handle, true);
 	if (!fyi)
-		return -1;
+		goto err_out;
 
 	handle.style = FYAS_URI;
 	handle.direct_output = false;
@@ -4259,7 +4283,7 @@ int fy_node_set_tag(struct fy_node *fyn, const char *data, size_t len)
 	fyt = fy_token_create(FYTT_TAG, &handle, prefix_length,
 				handle_length, uri_length, fyt_td);
 	if (!fyt)
-		return -1;
+		goto err_out;
 
 	fy_token_unref(fyn->tag);
 	fyn->tag = fyt;
@@ -4268,16 +4292,31 @@ int fy_node_set_tag(struct fy_node *fyn, const char *data, size_t len)
 	fy_input_unref(fyi);
 
 	return 0;
+err_out:
+	fyd->diag->on_error = false;
+	return -1;
 }
 
 struct fy_node *fy_node_create_sequence(struct fy_document *fyd)
 {
-	return fy_node_alloc(fyd, FYNT_SEQUENCE);
+	struct fy_node *fyn;
+
+	fyn = fy_node_alloc(fyd, FYNT_SEQUENCE);
+	if (!fyn)
+		return NULL;
+
+	return fyn;
 }
 
 struct fy_node *fy_node_create_mapping(struct fy_document *fyd)
 {
-	return fy_node_alloc(fyd, FYNT_MAPPING);
+	struct fy_node *fyn;
+
+	fyn = fy_node_alloc(fyd, FYNT_MAPPING);
+	if (!fyn)
+		return NULL;
+
+	return fyn;
 }
 
 static int fy_node_sequence_insert_prepare(struct fy_node *fyn_seq, struct fy_node *fyn)
@@ -4301,6 +4340,7 @@ static int fy_node_sequence_insert_prepare(struct fy_node *fyn_seq, struct fy_no
 		return -1;
 
 	fyn->parent = fyn_seq;
+
 	return 0;
 }
 
@@ -4312,6 +4352,7 @@ int fy_node_sequence_append(struct fy_node *fyn_seq, struct fy_node *fyn)
 	if (ret)
 		return ret;
 
+	fy_node_mark_synthetic(fyn_seq);
 	fy_node_list_add_tail(&fyn_seq->sequence, fyn);
 	fyn->attached = true;
 	return 0;
@@ -4325,8 +4366,9 @@ int fy_node_sequence_prepend(struct fy_node *fyn_seq, struct fy_node *fyn)
 	if (ret)
 		return ret;
 
-	fyn->attached = true;
+	fy_node_mark_synthetic(fyn_seq);
 	fy_node_list_add(&fyn_seq->sequence, fyn);
+	fyn->attached = true;
 	return 0;
 }
 
@@ -4356,8 +4398,9 @@ int fy_node_sequence_insert_before(struct fy_node *fyn_seq,
 	if (ret)
 		return ret;
 
-	fyn->attached = true;
+	fy_node_mark_synthetic(fyn_seq);
 	fy_node_list_insert_before(&fyn_seq->sequence, fyn_mark, fyn);
+	fyn->attached = true;
 
 	return 0;
 }
@@ -4374,8 +4417,9 @@ int fy_node_sequence_insert_after(struct fy_node *fyn_seq,
 	if (ret)
 		return ret;
 
-	fyn->attached = true;
+	fy_node_mark_synthetic(fyn_seq);
 	fy_node_list_insert_after(&fyn_seq->sequence, fyn_mark, fyn);
+	fyn->attached = true;
 
 	return 0;
 }
@@ -4388,6 +4432,9 @@ struct fy_node *fy_node_sequence_remove(struct fy_node *fyn_seq, struct fy_node 
 	fy_node_list_del(&fyn_seq->sequence, fyn);
 	fyn->parent = NULL;
 	fyn->attached = false;
+
+	fy_node_mark_synthetic(fyn_seq);
+
 	return fyn;
 }
 
@@ -4450,6 +4497,8 @@ int fy_node_mapping_append(struct fy_node *fyn_map,
 	if (fyn_value)
 		fyn_value->attached = true;
 
+	fy_node_mark_synthetic(fyn_map);
+
 	return 0;
 }
 
@@ -4467,6 +4516,8 @@ int fy_node_mapping_prepend(struct fy_node *fyn_map,
 	if (fyn_value)
 		fyn_value->attached = true;
 	fy_node_pair_list_add(&fyn_map->mapping, fynp);
+
+	fy_node_mark_synthetic(fyn_map);
 
 	return 0;
 }
@@ -4527,6 +4578,8 @@ struct fy_node *fy_node_mapping_remove_by_key(struct fy_node *fyn_map, struct fy
 
 	fy_node_pair_list_del(&fyn_map->mapping, fynp);
 	fy_node_pair_detach_and_free(fynp);
+
+	fy_node_mark_synthetic(fyn_map);
 
 	return fyn_value;
 }
@@ -4782,79 +4835,6 @@ int fy_node_sort(struct fy_node *fyn, fy_node_mapping_sort_fn key_cmp, void *arg
 	}
 
 	return 0;
-}
-
-int fy_parser_move_log_to_document(struct fy_parser *fyp, struct fy_document *fyd)
-{
-	size_t nwrite;
-
-	if (!fyp || !fyd)
-		return -1;
-
-	if (fyp->errfp)
-		fflush(fyp->errfp);
-
-	if (!fyd->errfp) {
-		fyd->errfp = open_memstream(&fyd->errbuf, &fyd->errsz);
-		if (!fyd->errfp)
-			return -1;
-	}
-
-	/* copy to the document */
-	nwrite = fwrite(fyp->errbuf, 1, fyp->errsz, fyd->errfp);
-	if (nwrite != fyp->errsz)
-		return -1;
-
-	fflush(fyd->errfp);
-
-	rewind(fyp->errfp);
-	fflush(fyp->errfp);
-
-	return 0;
-}
-
-bool fy_document_has_error(struct fy_document *fyd)
-{
-	return fyd->parse_error;
-}
-
-const char *fy_document_get_log(struct fy_document *fyd, size_t *sizep)
-{
-	if (!fyd)
-		goto err_no_log;
-
-	if (fyd->errfp)
-		fflush(fyd->errfp);
-
-	if (!fyd->errbuf || !fyd->errsz)
-		goto err_no_log;
-
-	if (sizep)
-		*sizep = fyd->errsz;
-
-	return fyd->errbuf;
-
-err_no_log:
-	if (sizep)
-		*sizep = 0;
-	return NULL;
-}
-
-void fy_document_clear_log(struct fy_document *fyd)
-{
-	if (!fyd)
-		return;
-
-	if (fyd->errfp) {
-		fclose(fyd->errfp);
-		fyd->errfp = NULL;
-	}
-	if (fyd->errbuf) {
-		free(fyd->errbuf);
-		fyd->errbuf = NULL;
-	}
-	fyd->errsz = 0;
-	fyd->parse_error = false;
 }
 
 struct fy_node *fy_node_vbuildf(struct fy_document *fyd, const char *fmt, va_list ap)
@@ -5191,4 +5171,35 @@ bool fy_node_is_marker_set(struct fy_node *fyn, unsigned int marker)
 	if (!fyn || marker > FYNWF_MAX_USER_MARKER)
 		return false;
 	return !!(fyn->marks & FY_BIT(marker));
+}
+
+FILE *fy_document_get_error_fp(struct fy_document *fyd)
+{
+	/* just this for now */
+	return stderr;
+}
+
+enum fy_parse_cfg_flags fy_document_get_cfg_flags(const struct fy_document *fyd)
+{
+	if (!fyd)
+		return fy_parser_get_cfg_flags(NULL);
+
+	return fyd->parse_cfg.flags;
+}
+
+bool fy_document_is_colorized(struct fy_document *fyd)
+{
+	unsigned int color_flags;
+
+	if (!fyd)
+		return false;
+
+	if (fyd->parse_cfg.flags & FYPCF_COLLECT_DIAG)
+		return false;
+
+	color_flags = fyd->parse_cfg.flags & FYPCF_COLOR(FYPCF_COLOR_MASK);
+	if (color_flags == FYPCF_COLOR_AUTO)
+		return isatty(fileno(stderr));
+
+	return color_flags == FYPCF_COLOR_FORCE;
 }

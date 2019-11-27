@@ -25,6 +25,7 @@
 
 struct fy_parser;
 struct fy_input;
+struct fy_node;
 
 enum fy_atom_style {
 	FYAS_PLAIN,
@@ -91,7 +92,15 @@ void fy_fill_atom_end_at(struct fy_parser *fyp, struct fy_atom *handle, struct f
 void fy_fill_atom_end(struct fy_parser *fyp, struct fy_atom *handle);
 struct fy_atom *fy_fill_atom(struct fy_parser *fyp, int advance, struct fy_atom *handle);
 
+struct fy_atom *fy_fill_atom_mark(struct fy_input *fyi, const struct fy_mark *start_mark,
+				  const struct fy_mark *end_mark, struct fy_atom *handle);
+struct fy_atom *fy_fill_atom_at(struct fy_parser *fyp, int advance, int count, struct fy_atom *handle);
+
 #define fy_fill_atom_a(_fyp, _advance)  fy_fill_atom((_fyp), (_advance), alloca(sizeof(struct fy_atom)))
+
+struct fy_atom *fy_fill_node_atom(struct fy_node *fyn, struct fy_atom *handle);
+
+#define fy_fill_node_atom_a(_fyn)  fy_fill_node_atom((_fyn), alloca(sizeof(struct fy_atom)))
 
 struct fy_atom_iter_line_info {
 	const char *start;
@@ -191,5 +200,36 @@ static inline bool fy_plain_atom_streq(const struct fy_atom *atom, const char *s
 
 	return !memcmp(str, fy_atom_data(atom), size);
 }
+
+struct fy_raw_line {
+	int lineno;
+	const char *line_start;
+	size_t line_len;
+	size_t line_len_lb;
+	size_t line_count;
+	const char *content_start;
+	size_t content_len;
+	size_t content_start_count;
+	size_t content_count;
+	int content_start_col;
+	int content_start_col8;	/* this is the tab 8 */
+	int content_end_col;
+	int content_end_col8;
+};
+
+struct fy_atom_raw_line_iter {
+	const struct fy_atom *atom;
+	const char *is, *ie;	/* input start, end */
+	const char *as, *ae;	/* atom start, end */
+	const char *rs;
+	struct fy_raw_line line;
+};
+
+void fy_atom_raw_line_iter_start(const struct fy_atom *atom,
+			     struct fy_atom_raw_line_iter *iter);
+void fy_atom_raw_line_iter_finish(struct fy_atom_raw_line_iter *iter);
+
+const struct fy_raw_line *
+fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter);
 
 #endif

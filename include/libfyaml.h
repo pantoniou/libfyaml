@@ -3209,6 +3209,37 @@ bool fy_node_clear_marker(struct fy_node *fyn, unsigned int marker);
  */
 bool fy_node_is_marker_set(struct fy_node *fyn, unsigned int marker);
 
+/**
+ * fy_node_vreport() - Report about a node vprintf style
+ *
+ * Output a report about the given node via the specific
+ * error type, and using the reporting configuration of the node's
+ * document.
+ *
+ * @fyn: The node
+ * @type: The error type
+ * @fmt: The printf format string
+ * @ap: The argument list
+ */
+void fy_node_vreport(struct fy_node *fyn, enum fy_error_type type,
+		     const char *fmt, va_list ap);
+
+/**
+ * fy_node_report() - Report about a node printf style
+ *
+ * Output a report about the given node via the specific
+ * error type, and using the reporting configuration of the node's
+ * document.
+ *
+ * @fyn: The node
+ * @type: The error type
+ * @fmt: The printf format string
+ * @...: The extra arguments.
+ */
+void fy_node_report(struct fy_node *fyn, enum fy_error_type type,
+		    const char *fmt, ...)
+			__attribute__((format(printf, 3, 4)));
+
 #ifdef __cplusplus
 }
 #endif

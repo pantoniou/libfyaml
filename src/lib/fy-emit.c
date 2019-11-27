@@ -102,27 +102,29 @@ static inline bool fy_emit_output_comments(struct fy_emitter *emit)
 	return !!(emit->cfg->flags & FYECF_OUTPUT_COMMENTS);
 }
 
-static int fy_emit_node_check_json(struct fy_emitter *emit, struct fy_node *fyn, struct fy_parser *fyp)
+static int fy_emit_node_check_json(struct fy_emitter *emit, struct fy_node *fyn)
 {
+	struct fy_document *fyd;
 	struct fy_node *fyni;
 	struct fy_node_pair *fynp, *fynpi;
-	struct fy_error_ctx ec;
 	int ret;
 
 	if (!fyn)
 		return 0;
 
+	fyd = fyn->fyd;
+
 	switch (fyn->type) {
 	case FYNT_SCALAR:
-		FY_ERROR_CHECK(fyp, fyn->scalar, &ec, FYEM_INTERNAL,
-				!fy_node_is_alias(fyn), err_no_json_alias);
-
+		FYD_TOKEN_ERROR_CHECK(fyd, fyn->scalar, FYEM_INTERNAL,
+				!fy_node_is_alias(fyn), err_out,
+				"aliases not allowed in JSON emit mode");
 		break;
 
 	case FYNT_SEQUENCE:
 		for (fyni = fy_node_list_head(&fyn->sequence); fyni;
 				fyni = fy_node_next(&fyn->sequence, fyni)) {
-			ret = fy_emit_node_check_json(emit, fyni, fyp);
+			ret = fy_emit_node_check_json(emit, fyni);
 			if (ret)
 				return ret;
 		}
@@ -133,34 +135,29 @@ static int fy_emit_node_check_json(struct fy_emitter *emit, struct fy_node *fyn,
 
 			fynpi = fy_node_pair_next(&fyn->mapping, fynp);
 
-			ret = fy_emit_node_check_json(emit, fynp->key, fyp);
+			ret = fy_emit_node_check_json(emit, fynp->key);
 			if (ret)
 				return ret;
-			ret = fy_emit_node_check_json(emit, fynp->value, fyp);
+			ret = fy_emit_node_check_json(emit, fynp->value);
 			if (ret)
 				return ret;
 		}
 		break;
 	}
 	return 0;
-err_no_json_alias:
-	fy_error_report(fyp, &ec, "aliases not allowed in JSON emit mode");
+err_out:
 	return -1;
 }
 
 static int fy_emit_node_check(struct fy_emitter *emit, struct fy_node *fyn)
 {
-	struct fy_document *fyd;
-	struct fy_parser *fyp;
 	int ret;
 
 	if (!fyn)
 		return 0;
 
 	if (fy_emit_is_json_mode(emit)) {
-		fyd = fyn->fyd;
-		fyp = fyd ? fyd->fyp : NULL;
-		ret = fy_emit_node_check_json(emit, fyn, fyp);
+		ret = fy_emit_node_check_json(emit, fyn);
 		if (ret)
 			return ret;
 	}
@@ -2249,7 +2246,7 @@ static void fy_emit_goto_state(struct fy_emitter *emit, enum fy_emitter_state st
 	if (emit->state == state)
 		return;
 
-	/* fy_notice(NULL, "emit: %s -> %s",
+	/* fyp_notice(NULL, "emit: %s -> %s",
 			fy_emitter_state_txt[emit->state],
 			fy_emitter_state_txt[state]); */
 
@@ -2413,7 +2410,7 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 		break;
 
 	default:
-		fy_error(fyp, "%s: expected ALIAS|SCALAR|SEQUENCE_START|MAPPING_START", __func__);
+		fyp_error(fyp, "%s: expected ALIAS|SCALAR|SEQUENCE_START|MAPPING_START", __func__);
 		return -1;
 	}
 
@@ -2426,7 +2423,7 @@ static int fy_emit_handle_stream_start(struct fy_emitter *emit, struct fy_eventp
 	struct fy_event *fye = &fyep->e;
 
 	if (fye->type != FYET_STREAM_START) {
-		fy_error(fyp, "%s: expected FYET_STREAM_START", __func__);
+		fyp_error(fyp, "%s: expected FYET_STREAM_START", __func__);
 		return -1;
 	}
 
@@ -2445,7 +2442,7 @@ static int fy_emit_handle_document_start(struct fy_emitter *emit, struct fy_even
 
 	if (fye->type != FYET_DOCUMENT_START &&
 	    fye->type != FYET_STREAM_END) {
-		fy_error(fyp, "%s: expected FYET_DOCUMENT_START|FYET_STREAM_END", __func__);
+		fyp_error(fyp, "%s: expected FYET_DOCUMENT_START|FYET_STREAM_END", __func__);
 		return -1;
 	}
 
@@ -2484,7 +2481,7 @@ static int fy_emit_handle_document_end(struct fy_emitter *emit, struct fy_eventp
 	int ret;
 
 	if (fye->type != FYET_DOCUMENT_END) {
-		fy_error(fyp, "%s: expected FYET_DOCUMENT_END", __func__);
+		fyp_error(fyp, "%s: expected FYET_DOCUMENT_END", __func__);
 		return -1;
 	}
 
@@ -2541,7 +2538,7 @@ static int fy_emit_handle_sequence_item(struct fy_emitter *emit, struct fy_event
 		fyt_item = fye->mapping_start.mapping_start;
 		break;
 	default:
-		fy_error(fyp, "%s: expected SEQUENCE_END|ALIAS|SCALAR|SEQUENCE_START|MAPPING_START", __func__);
+		fyp_error(fyp, "%s: expected SEQUENCE_END|ALIAS|SCALAR|SEQUENCE_START|MAPPING_START", __func__);
 		return -1;
 	}
 
@@ -2632,7 +2629,7 @@ static int fy_emit_handle_mapping_key(struct fy_emitter *emit, struct fy_eventp 
 		simple_key = fy_emit_streaming_mapping_empty(emit);
 		break;
 	default:
-		fy_error(fyp, "%s: expected MAPPING_END|ALIAS|SCALAR|SEQUENCE_START|MAPPING_START", __func__);
+		fyp_error(fyp, "%s: expected MAPPING_END|ALIAS|SCALAR|SEQUENCE_START|MAPPING_START", __func__);
 		return -1;
 	}
 
@@ -2695,7 +2692,7 @@ static int fy_emit_handle_mapping_value(struct fy_emitter *emit, struct fy_event
 		fyt_value = fye->mapping_start.mapping_start;
 		break;
 	default:
-		fy_error(fyp, "%s: expected ALIAS|SCALAR|SEQUENCE_START|MAPPING_START", __func__);
+		fyp_error(fyp, "%s: expected ALIAS|SCALAR|SEQUENCE_START|MAPPING_START", __func__);
 		return -1;
 	}
 
@@ -2745,14 +2742,14 @@ int fy_emit_event(struct fy_emitter *emit, struct fy_event *fye)
 
 	fyep = container_of(fye, struct fy_eventp, e);
 
-	/* fy_notice(NULL, "> %s", fy_event_type_txt[fyep->e.type]); */
+	/* fyp_notice(NULL, "> %s", fy_event_type_txt[fyep->e.type]); */
 
 	fy_eventp_list_add_tail(&emit->queued_events, fyep);
 
 	ret = 0;
 	while ((fyep = fy_emit_next_event(emit)) != NULL) {
 
-		/* fy_notice(NULL, "! %s", fy_event_type_txt[fyep->e.type]); */
+		/* fyp_notice(NULL, "! %s", fy_event_type_txt[fyep->e.type]); */
 
 		switch (emit->state) {
 		case FYES_STREAM_START:

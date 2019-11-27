@@ -23,6 +23,7 @@
 #include <libfyaml.h>
 
 #include "fy-parse.h"
+#include "fy-doc.h"
 
 void fy_fill_atom_start(struct fy_parser *fyp, struct fy_atom *handle)
 {
@@ -74,20 +75,85 @@ struct fy_atom *fy_fill_atom(struct fy_parser *fyp, int advance, struct fy_atom 
 	return handle;
 }
 
-#ifndef NDEBUG
+int fy_advance_mark(struct fy_parser *fyp, int advance, struct fy_mark *m)
+{
+	int i, c;
+	bool is_line_break;
 
-#define fy_atom_out_debug(_atom, _out, _fmt, ...) \
-	do { \
-		if (!(_out)) \
-			fy_atom_debug(NULL, _fmt, ## __VA_ARGS__); \
-	} while(0)
+	i = 0;
+	while (advance-- > 0) {
+		c = fy_parse_peek_at(fyp, i++);
+		if (c == -1)
+			return -1;
+		m->input_pos += fy_utf8_width(c);
 
-#else
+		/* first check for CR/LF */
+		if (c == '\r' && fy_parse_peek_at(fyp, i) == '\n') {
+			m->input_pos++;
+			i++;
+			is_line_break = true;
+		} else if (fy_is_lb(c))
+			is_line_break = true;
+		else
+			is_line_break = false;
 
-#define fy_atom_out_debug(_atom, _out, _fmt, ...) \
-	do { } while(0)
+		if (is_line_break) {
+			m->column = 0;
+			m->line++;
+		} else if (fyp->tabsize && fy_is_tab(c))
+			m->column += (fyp->tabsize - (fyp->column % fyp->tabsize));
+		else
+			m->column++;
+	}
 
-#endif
+	return 0;
+}
+
+struct fy_atom *fy_fill_atom_mark(struct fy_input *fyi,
+		const struct fy_mark *start_mark,
+		const struct fy_mark *end_mark,
+		struct fy_atom *handle)
+{
+	if (!fyi || !start_mark || !end_mark || !handle)
+		return NULL;
+
+	memset(handle, 0, sizeof(*handle));
+
+	handle->start_mark = *start_mark;
+	handle->end_mark = *end_mark;
+	handle->fyi = fyi;
+
+	/* default is plain, modify at return */
+	handle->style = FYAS_PLAIN;
+	handle->chomp = FYAC_CLIP;
+	/* by default we don't do storage hints, it's the job of the caller */
+	handle->storage_hint = 0;
+	handle->storage_hint_valid = false;
+
+	return handle;
+}
+
+struct fy_atom *fy_fill_atom_at(struct fy_parser *fyp, int advance, int count, struct fy_atom *handle)
+{
+	struct fy_mark start_mark, end_mark;
+	int rc;
+
+	if (!fyp || !handle)
+		return NULL;
+
+	/* start mark */
+	fy_get_mark(fyp, &start_mark);
+	rc = fy_advance_mark(fyp, advance, &start_mark);
+	if (rc < 0)
+		return NULL;
+	/* end mark */
+	end_mark = start_mark;
+	rc = fy_advance_mark(fyp, count, &end_mark);
+	if (rc < 0)
+		return NULL;
+
+	return fy_fill_atom_mark(fyp->current_input, &start_mark, &end_mark, handle);
+}
 
 static inline void
 fy_atom_iter_chunk_reset(struct fy_atom_iter *iter)
@@ -1326,4 +1392,169 @@ int fy_atom_cmp(struct fy_atom *atom1, struct fy_atom *atom2)
 		return 0;
 
 	return c2 > c1 ? -1 : 1;
+}
+
+const struct fy_raw_line *
+fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
+{
+	struct fy_raw_line *l;
+	int c, w, col, col8, count;
+	unsigned int ts;
+	const char *s;
+
+	if (!iter || !iter->rs || iter->rs > iter->ae)
+		return NULL;
+
+	l = &iter->line;
+
+	ts = iter->atom->tabsize;
+
+	/* track back to the start of the line */
+	s = iter->rs;
+
+	/* we allow a single zero size iteration */
+	if (l->lineno > 0 && iter->rs >= iter->ae)
+		return NULL;
+
+	while (s > iter->is) {
+		c = fy_utf8_get_right(iter->is, (int)(s - iter->is), &w);
+		if (c <= 0 || fy_is_lb(c))
+			break;
+		s -= w;
+	}
+
+	l->line_start = s;
+	col = col8 = 0;
+	count = 0;
+	c = -1;
+	w = 0;
+
+	/* track until the start of the content */
+	while (s < iter->as) {
+		c = fy_utf8_get(s, (int)(iter->ae - s), &w);
+		/* we should never hit that */
+		if (c <= 0)
+			return NULL;
+		if (fy_is_tab(c)) {
+			col8 += (8 - (col8 % 8));
+			if (ts)
+				col += (ts - (col % ts));
+			else
+				col++;
+		} else if (!fy_is_lb(c)) {
+			col++;
+			col8++;
+		} else
+			return NULL;
+		count++;
+
+		s += w;
+	}
+	/* mark start of content */
+	l->content_start = s;
+	l->content_start_col = col;
+	l->content_start_col8 = col8;
+	l->content_start_count = count;
+
+	/* track until the end of the content (or lb) */
+	while (s < iter->ae) {
+		c = fy_utf8_get(s, (int)(iter->ae - s), &w);
+		/* we should never hit that */
+		if (c <= 0)
+			return NULL;
+		if (fy_is_tab(c)) {
+			col8 += (8 - (col8 % 8));
+			if (ts)
+				col += (ts - (col % ts));
+			else
+				col++;
+		} else if (!fy_is_lb(c)) {
+			col++;
+			col8++;
+		} else
+			break;
+		count++;
+
+		s += w;
+	}
+
+	l->content_len = (size_t)(s - l->content_start);
+	l->content_count = count - l->content_start_count;
+	l->content_end_col = col;
+	l->content_end_col8 = col8;
+
+	/* if the stop was due to end of the atom */
+	if (s >= iter->ae) {
+		while (s < iter->ie) {
+			c = fy_utf8_get(s, (int)(iter->ie - s), &w);
+			/* just end of input */
+			if (c <= 0)
+				break;
+
+			if (fy_is_tab(c)) {
+				col8 += (8 - (col8 % 8));
+				if (ts)
+					col += (ts - (col % ts));
+				else
+					col++;
+			} else if (!fy_is_lb(c)) {
+				col++;
+				col8++;
+			} else
+				break;
+			count++;
+
+			s += w;
+		}
+	}
+
+	l->line_len = (size_t)(s - l->line_start);
+	l->line_count = count;
+
+	if (fy_is_lb(c)) {
+		s += w;
+		/* special case for MSDOS */
+		if (c == '\r' && (s < iter->ie && s[1] == '\n'))
+			s++;
+		/* len_lb includes the lb */
+		l->line_len_lb = (size_t)(s - l->line_start);
+	} else
+		l->line_len_lb = l->line_len;
+
+	/* start at line #1 */
+	l->lineno++;
+
+	iter->rs = s;
+
+	return l;
+}
+
+void fy_atom_raw_line_iter_start(const struct fy_atom *atom,
+				 struct fy_atom_raw_line_iter *iter)
+{
+	struct fy_input *fyi;
+
+	if (!atom || !iter)
+		return;
+
+	memset(iter, 0, sizeof(*iter));
+
+	fyi = atom->fyi;
+	if (!fyi)
+		return;
+
+	iter->atom = atom;
+
+	iter->as = fy_atom_data(atom);
+	iter->ae = iter->as + fy_atom_size(atom);
+
+	iter->is = fy_input_start(fyi);
+	iter->ie = iter->is + fy_input_size(fyi);
+
+	iter->rs = iter->as;
+}
+
+void fy_atom_raw_line_iter_finish(struct fy_atom_raw_line_iter *iter)
+{
+	/* nothing */
 }
