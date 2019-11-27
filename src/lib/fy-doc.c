@@ -179,6 +179,7 @@ struct fy_anchor *fy_node_get_anchor(struct fy_node *fyn)
 
 void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 {
+	struct fy_node *fyn;
 	struct fy_anchor *fya;
 	struct fy_anchor *fyan;
 
@@ -191,7 +192,9 @@ void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 	if (fyd->errbuf)
 		free(fyd->errbuf);
 
-	fy_node_free(fyd->root);
+	fyn = fyd->root;
+	fyd->root = NULL;
+	fy_node_detach_and_free(fyn);
 
 	/* remove all anchors */
 	for (fya = fy_anchor_list_head(&fyd->anchors); fya; fya = fyan) {
@@ -400,14 +403,32 @@ struct fy_node *fy_anchor_node(struct fy_anchor *fya)
 	return fya->fyn;
 }
 
-void fy_node_pair_free(struct fy_node_pair *fynp)
+int fy_node_pair_free(struct fy_node_pair *fynp)
+{
+	int rc, rc_ret = 0;
+
+	if (!fynp)
+		return 0;
+
+	rc = fy_node_free(fynp->key);
+	if (rc)
+		rc_ret = -1;
+	rc = fy_node_free(fynp->value);
+	if (rc)
+		rc_ret = -1;
+
+	free(fynp);
+
+	return rc_ret;
+}
+
+void fy_node_pair_detach_and_free(struct fy_node_pair *fynp)
 {
 	if (!fynp)
 		return;
 
-	fy_node_free(fynp->key);
-	fy_node_free(fynp->value);
-
+	fy_node_detach_and_free(fynp->key);
+	fy_node_detach_and_free(fynp->value);
 	free(fynp);
 }
 
@@ -429,7 +450,7 @@ err_out:
 	return NULL;
 }
 
-void fy_node_free(struct fy_node *fyn)
+int fy_node_free(struct fy_node *fyn)
 {
 	struct fy_document *fyd;
 	struct fy_node *fyni;
@@ -437,10 +458,15 @@ void fy_node_free(struct fy_node *fyn)
 	struct fy_anchor *fya, *fyan;
 
 	if (!fyn)
-		return;
+		return 0;
 
+	/* a document must exist */
 	fyd = fyn->fyd;
-	assert(fyd);
+	if (!fyd)
+		return -1;
+
+	if (fyn->attached)
+		return -1;
 
 	/* remove anchors that are located on this node */
 	for (fya = fy_anchor_list_head(&fyd->anchors); fya; fya = fyan) {
@@ -463,7 +489,7 @@ void fy_node_free(struct fy_node *fyn)
 		break;
 	case FYNT_SEQUENCE:
 		while ((fyni = fy_node_list_pop(&fyn->sequence)) != NULL)
-			fy_node_free(fyni);
+			fy_node_detach_and_free(fyni);
 		fy_token_unref(fyn->sequence_start);
 		fy_token_unref(fyn->sequence_end);
 		fyn->sequence_start = NULL;
@@ -471,7 +497,7 @@ void fy_node_free(struct fy_node *fyn)
 		break;
 	case FYNT_MAPPING:
 		while ((fynp = fy_node_pair_list_pop(&fyn->mapping)) != NULL)
-			fy_node_pair_free(fynp);
+			fy_node_pair_detach_and_free(fynp);
 		fy_token_unref(fyn->mapping_start);
 		fy_token_unref(fyn->mapping_end);
 		fyn->mapping_start = NULL;
@@ -480,6 +506,22 @@ void fy_node_free(struct fy_node *fyn)
 	}
 
 	free(fyn);
+
+	return 0;
+}
+
+void fy_node_detach_and_free(struct fy_node *fyn)
+{
+	int rc __FY_DEBUG_UNUSED__;
+
+	if (!fyn || !fyn->fyd)
+		return;
+
+	fyn->attached = false;
+
+	/* it must always succeed */
+	rc = fy_node_free(fyn);
+	assert(!rc);
 }
 
 struct fy_node *fy_node_alloc(struct fy_document *fyd, enum fy_node_type type)
@@ -498,6 +540,7 @@ struct fy_node *fy_node_alloc(struct fy_document *fyd, enum fy_node_type type)
 
 	fyn->has_meta = false;
 	fyn->meta = NULL;
+	fyn->attached = false;
 
 	switch (fyn->type) {
 	case FYNT_SCALAR:
@@ -517,7 +560,7 @@ struct fy_node *fy_node_alloc(struct fy_document *fyd, enum fy_node_type type)
 	return fyn;
 
 err_out:
-	fy_node_free(fyn);
+	fy_node_detach_and_free(fyn);
 	return NULL;
 }
 
@@ -909,7 +952,7 @@ err_out:
 	rc = -1;
 err_out_rc:
 	fy_parse_eventp_recycle(fyp, fyep);
-	fy_node_free(fyn);
+	fy_node_detach_and_free(fyn);
 	return rc;
 err_stream_end:
 	fy_error_report(fyp, &ec, "premature end of event stream");
@@ -979,6 +1022,7 @@ fy_parse_document_load_sequence(struct fy_parser *fyp, struct fy_document *fyd,
 				"fy_parse_document_load_node() failed");
 
 		fy_node_list_add_tail(&fyn->sequence, fyn_item);
+		fyn_item->attached = true;
 		fyn_item = NULL;
 	}
 
@@ -999,8 +1043,8 @@ err_out:
 	rc = -1;
 err_out_rc:
 	fy_parse_eventp_recycle(fyp, fyep);
-	fy_node_free(fyn_item);
-	fy_node_free(fyn);
+	fy_node_detach_and_free(fyn_item);
+	fy_node_detach_and_free(fyn);
 	return rc;
 err_stream_end:
 	fy_error_report(fyp, &ec, "premature end of event stream");
@@ -1108,6 +1152,10 @@ fy_parse_document_load_mapping(struct fy_parser *fyp, struct fy_document *fyd,
 		fynp_item->key = fyn_key;
 		fynp_item->value = fyn_value;
 		fy_node_pair_list_add_tail(&fyn->mapping, fynp_item);
+		if (fynp_item->key)
+			fynp_item->key->attached = true;
+		if (fynp_item->value)
+			fynp_item->value->attached = true;
 		fynp_item = NULL;
 		fyn_key = NULL;
 		fyn_value = NULL;
@@ -1130,9 +1178,9 @@ err_out:
 err_out_rc:
 	fy_parse_eventp_recycle(fyp, fyep);
 	fy_node_pair_free(fynp_item);
-	fy_node_free(fyn_key);
-	fy_node_free(fyn_value);
-	fy_node_free(fyn);
+	fy_node_detach_and_free(fyn_key);
+	fy_node_detach_and_free(fyn_value);
+	fy_node_detach_and_free(fyn);
 	return rc;
 
 err_duplicate_key:
@@ -1399,6 +1447,7 @@ struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *f
 					"fy_node_copy_internal() failed");
 
 			fy_node_list_add_tail(&fyn->sequence, fynit);
+			fynit->attached = true;
 		}
 
 		break;
@@ -1415,6 +1464,10 @@ struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *f
 			fynp->parent = fyn;
 
 			fy_node_pair_list_add_tail(&fyn->mapping, fynpt);
+			if (fynpt->key)
+				fynpt->key->attached = true;
+			if (fynpt->value)
+				fynpt->value->attached = true;
 		}
 		break;
 	}
@@ -1623,12 +1676,12 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 
 		if (!fyn_parent) {
 			fy_doc_debug(fyp, "Deleting root node");
-			fy_node_free(fyn_to);
+			fy_node_detach_and_free(fyn_to);
 			fyd->root = NULL;
 		} else if (fyn_parent->type == FYNT_SEQUENCE) {
 			fy_doc_debug(fyp, "Deleting sequence node");
 			fy_node_list_del(&fyn_parent->sequence, fyn_to);
-			fy_node_free(fyn_to);
+			fy_node_detach_and_free(fyn_to);
 		} else {
 			fy_doc_debug(fyp, "Deleting mapping node");
 			/* should never happen, it's checked right above, but play safe */
@@ -1639,7 +1692,7 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 
 			fy_node_pair_list_del(&fyn_parent->mapping, fynp);
 			/* this will also delete fyn_to */
-			fy_node_pair_free(fynp);
+			fy_node_pair_detach_and_free(fynp);
 		}
 		return 0;
 	}
@@ -1677,7 +1730,7 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 
 		if (!fyn_parent) {
 			fy_doc_debug(fyp, "Replacing root node");
-			fy_node_free(fyd->root);
+			fy_node_detach_and_free(fyd->root);
 			fyd->root = fyn_cpy;
 		} else if (fyn_parent->type == FYNT_SEQUENCE) {
 			fy_doc_debug(fyp, "Replacing sequence node");
@@ -1687,7 +1740,7 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 
 			/* delete */
 			fy_node_list_del(&fyn_parent->sequence, fyn_to);
-			fy_node_free(fyn_to);
+			fy_node_detach_and_free(fyn_to);
 
 			/* if there's no previous insert to head */
 			if (!fyn_prev)
@@ -1701,8 +1754,7 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 			fy_error_check(fyp, fynp, err_out,
 					"Illegal mapping node found");
 
-			if (fynp->value)
-				fy_node_free(fynp->value);
+			fy_node_detach_and_free(fynp->value);
 			fynp->value = fyn_cpy;
 		}
 
@@ -1722,6 +1774,7 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 					"fy_node_copy() failed");
 
 			fy_node_list_add_tail(&fyn_to->sequence, fyn_cpy);
+			fyn_cpy->attached = true;
 		}
 	} else {
 		/* only mapping is possible here */
@@ -1754,13 +1807,17 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 						"fy_node_copy() failed");
 
 				fy_node_pair_list_add_tail(&fyn_to->mapping, fynpj);
+				if (fynpj->key)
+					fynpj->key->attached = true;
+				if (fynpj->value)
+					fynpj->value->attached = true;
 
 			} else {
 
 				fy_doc_debug(fyp, "Updating mapping node value");
 
 				/* found? replace value */
-				fy_node_free(fynpj->value);
+				fy_node_detach_and_free(fynpj->value);
 				fynpj->value = fy_node_copy(fyd, fynpi->value);
 				fy_error_check(fyp, !fynpi->value || fynpj->value, err_out,
 						"fy_node_copy() failed");
@@ -2155,7 +2212,7 @@ static int fy_resolve_anchor_node(struct fy_document *fyd, struct fy_node *fyn)
 				/* remove this node pair */
 				if (!rc) {
 					fy_node_pair_list_del(&fyn->mapping, fynp);
-					fy_node_pair_free(fynp);
+					fy_node_pair_detach_and_free(fynp);
 				}
 
 			} else {
@@ -2330,11 +2387,11 @@ void fy_document_free_nodes(struct fy_document *fyd)
 {
 	struct fy_document *fyd_child;
 
-	for (fyd_child = fy_document_list_first(&fyd->children); fyd_child; fyd_child = fy_document_next(&fyd->children, fyd_child)) {
+	for (fyd_child = fy_document_list_first(&fyd->children); fyd_child;
+	     fyd_child = fy_document_next(&fyd->children, fyd_child))
 		fy_document_free_nodes(fyd_child);
-	}
 
-	fy_node_free(fyd->root);
+	fy_node_detach_and_free(fyd->root);
 	fyd->root = NULL;
 }
 
@@ -2643,6 +2700,11 @@ enum fy_node_style fy_node_get_style(struct fy_node *fyn)
 	return fyn ? fyn->style : FYNS_PLAIN;
 }
 
+bool fy_node_is_attached(struct fy_node *fyn)
+{
+	return fyn ? fyn->attached : false;
+}
+
 struct fy_node *fy_node_get_parent(struct fy_node *fyn)
 {
 	return fyn ? fyn->parent : NULL;
@@ -2668,22 +2730,56 @@ struct fy_node *fy_node_pair_value(struct fy_node_pair *fynp)
 	return fynp ? fynp->value : NULL;
 }
 
-void fy_node_pair_set_key(struct fy_node_pair *fynp, struct fy_node *fyn)
+int fy_node_pair_set_key(struct fy_node_pair *fynp, struct fy_node *fyn)
 {
+	struct fy_node *fyn_map;
+	struct fy_node_pair *fynpi;
+
 	if (!fynp)
-		return;
-	if (fynp->key)
-		fy_node_free(fynp->key);
+		return -1;
+
+	/* the node must not be attached */
+	if (fyn && fyn->attached)
+		return -1;
+
+	/* sanity check and duplication check */
+	fyn_map = fynp->parent;
+	if (fyn_map) {
+
+		/* (in)sanity check */
+		if (!fy_node_is_mapping(fyn_map))
+			return -1;
+
+		/* check whether the key is a duplicate
+		 * skipping ourselves since our key gets replaced
+		 */
+		for (fynpi = fy_node_pair_list_head(&fyn_map->mapping); fynpi;
+			fynpi = fy_node_pair_next(&fyn_map->mapping, fynpi)) {
+
+			if (fynpi != fynp && fy_node_compare(fynpi->key, fyn))
+				return -1;
+		}
+	}
+
+	fy_node_detach_and_free(fynp->key);
 	fynp->key = fyn;
+	fyn->attached = true;
+
+	return 0;
 }
 
-void fy_node_pair_set_value(struct fy_node_pair *fynp, struct fy_node *fyn)
+int fy_node_pair_set_value(struct fy_node_pair *fynp, struct fy_node *fyn)
 {
 	if (!fynp)
-		return;
-	if (fynp->value)
-		fy_node_free(fynp->value);
+		return -1;
+	/* the node must not be attached */
+	if (fyn && fyn->attached)
+		return -1;
+	fy_node_detach_and_free(fynp->value);
 	fynp->value = fyn;
+	fyn->attached = true;
+
+	return 0;
 }
 
 struct fy_node *fy_document_root(struct fy_document *fyd)
@@ -3817,7 +3913,7 @@ fy_node_build_internal(struct fy_document *fyd,
 	return fyn;
 
 err_out:
-	fy_node_free(fyn);
+	fy_node_detach_and_free(fyn);
 	fy_document_state_unref(fyds);
 	fy_parser_reset(fyp);
 	return NULL;
@@ -3856,17 +3952,24 @@ struct fy_node *fy_node_build_from_fp(struct fy_document *fyd, FILE *fp)
 	return fy_node_build_internal(fyd, parser_setup_from_fp, &ctx);
 }
 
-void fy_document_set_root(struct fy_document *fyd, struct fy_node *fyn)
+int fy_document_set_root(struct fy_document *fyd, struct fy_node *fyn)
 {
 	if (!fyd)
-		return;
+		return -1;
 
-	if (fyd->root) {
-		fy_node_free(fyd->root);
-		fyd->root = NULL;
-	}
+	if (fyn && fyn->attached)
+		return -1;
+
+	fy_node_detach_and_free(fyd->root);
+	fyd->root = NULL;
+
 	fyn->parent = NULL;
 	fyd->root = fyn;
+
+	if (fyn)
+		fyn->attached = true;
+
+	return 0;
 }
 
 struct fy_node *fy_node_create_scalar(struct fy_document *fyd, const char *data, size_t size)
@@ -3905,7 +4008,7 @@ struct fy_node *fy_node_create_scalar(struct fy_document *fyd, const char *data,
 	return fyn;
 
 err_out:
-	fy_node_free(fyn);
+	fy_node_detach_and_free(fyn);
 	return NULL;
 }
 
@@ -3944,7 +4047,7 @@ struct fy_node *fy_node_create_alias(struct fy_document *fyd, const char *alias,
 	return fyn;
 
 err_out:
-	fy_node_free(fyn);
+	fy_node_detach_and_free(fyn);
 	return NULL;
 }
 
@@ -4184,6 +4287,10 @@ static int fy_node_sequence_insert_prepare(struct fy_node *fyn_seq, struct fy_no
 	if (!fyn_seq || !fyn || fyn_seq->type != FYNT_SEQUENCE)
 		return -1;
 
+	/* can't insert a node that's attached already */
+	if (fyn->attached)
+		return -1;
+
 	/* a document must be associated with the sequence */
 	fyd = fyn_seq->fyd;
 	if (!fyd)
@@ -4206,6 +4313,7 @@ int fy_node_sequence_append(struct fy_node *fyn_seq, struct fy_node *fyn)
 		return ret;
 
 	fy_node_list_add_tail(&fyn_seq->sequence, fyn);
+	fyn->attached = true;
 	return 0;
 }
 
@@ -4217,6 +4325,7 @@ int fy_node_sequence_prepend(struct fy_node *fyn_seq, struct fy_node *fyn)
 	if (ret)
 		return ret;
 
+	fyn->attached = true;
 	fy_node_list_add(&fyn_seq->sequence, fyn);
 	return 0;
 }
@@ -4247,6 +4356,7 @@ int fy_node_sequence_insert_before(struct fy_node *fyn_seq,
 	if (ret)
 		return ret;
 
+	fyn->attached = true;
 	fy_node_list_insert_before(&fyn_seq->sequence, fyn_mark, fyn);
 
 	return 0;
@@ -4264,6 +4374,7 @@ int fy_node_sequence_insert_after(struct fy_node *fyn_seq,
 	if (ret)
 		return ret;
 
+	fyn->attached = true;
 	fy_node_list_insert_after(&fyn_seq->sequence, fyn_mark, fyn);
 
 	return 0;
@@ -4276,6 +4387,7 @@ struct fy_node *fy_node_sequence_remove(struct fy_node *fyn_seq, struct fy_node 
 
 	fy_node_list_del(&fyn_seq->sequence, fyn);
 	fyn->parent = NULL;
+	fyn->attached = false;
 	return fyn;
 }
 
@@ -4297,6 +4409,11 @@ fy_node_mapping_pair_insert_prepare(struct fy_node *fyn_map,
 	/* if not NULL, the documents of the nodes must match */
 	if ((fyn_key && fyn_key->fyd != fyd) ||
 	    (fyn_value && fyn_value->fyd != fyd))
+		return NULL;
+
+	/* if not NULL neither the key nor the value must be attached */
+	if ((fyn_key && fyn_key->attached) ||
+	    (fyn_value && fyn_value->attached))
 		return NULL;
 
 	 if (fy_node_mapping_key_is_duplicate(fyn_map, fyn_key))
@@ -4328,6 +4445,10 @@ int fy_node_mapping_append(struct fy_node *fyn_map,
 		return -1;
 
 	fy_node_pair_list_add_tail(&fyn_map->mapping, fynp);
+	if (fyn_key)
+		fyn_key->attached = true;
+	if (fyn_value)
+		fyn_value->attached = true;
 
 	return 0;
 }
@@ -4341,6 +4462,10 @@ int fy_node_mapping_prepend(struct fy_node *fyn_map,
 	if (!fynp)
 		return -1;
 
+	if (fyn_key)
+		fyn_key->attached = true;
+	if (fyn_value)
+		fyn_value->attached = true;
 	fy_node_pair_list_add(&fyn_map->mapping, fynp);
 
 	return 0;
@@ -4366,9 +4491,13 @@ int fy_node_mapping_remove(struct fy_node *fyn_map, struct fy_node_pair *fynp)
 		return -1;
 
 	fy_node_pair_list_del(&fyn_map->mapping, fynp);
+	if (fynp->key)
+		fynp->key->attached = false;
 
-	if (fynp->value)
+	if (fynp->value) {
 		fynp->value->parent = NULL;
+		fynp->value->attached = false;
+	}
 
 	fynp->parent = NULL;
 
@@ -4386,17 +4515,18 @@ struct fy_node *fy_node_mapping_remove_by_key(struct fy_node *fyn_map, struct fy
 		return NULL;
 
 	fyn_value = fynp->value;
-	if (fyn_value)
+	if (fyn_value) {
 		fyn_value->parent = NULL;
+		fyn_value->attached = false;
+	}
 
 	/* do not free the key if it's the same pointer */
 	if (fyn_key != fynp->key)
-		fy_node_free(fyn_key);
+		fy_node_detach_and_free(fyn_key);
 	fynp->value = NULL;
 
 	fy_node_pair_list_del(&fyn_map->mapping, fynp);
-
-	fy_node_pair_free(fynp);
+	fy_node_pair_detach_and_free(fynp);
 
 	return fyn_value;
 }

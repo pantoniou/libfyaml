@@ -919,6 +919,122 @@ START_TEST(doc_build_with_tags)
 }
 END_TEST
 
+START_TEST(doc_attach_check)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn, *fyn_seq, *fyn_map;
+	struct fy_node *fyn_foo, *fyn_foo2, *fyn_bar, *fyn_baz;
+	struct fy_node_pair *fynp;
+	int rc;
+
+	/* build document */
+	fyd = fy_document_create(NULL);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* create a sequence */
+	fyn_seq = fy_node_create_sequence(fyd);
+	ck_assert_ptr_ne(fyn_seq, NULL);
+
+	/* create a mapping */
+	fyn_map = fy_node_create_mapping(fyd);
+	ck_assert_ptr_ne(fyn_map, NULL);
+
+	/* create a simple scalar node foo */
+	fyn_foo = fy_node_build_from_string(fyd, "foo", FY_NT);
+	ck_assert_ptr_ne(fyn_foo, NULL);
+
+	/* create another simple scalar node bar */
+	fyn_bar = fy_node_build_from_string(fyd, "bar", FY_NT);
+	ck_assert_ptr_ne(fyn_bar, NULL);
+
+	/* create another simple scalar node baz */
+	fyn_baz = fy_node_build_from_string(fyd, "baz", FY_NT);
+	ck_assert_ptr_ne(fyn_baz, NULL);
+
+	/* create a scalar node with the same content as foo */
+	fyn_foo2 = fy_node_build_from_string(fyd, "foo", FY_NT);
+	ck_assert_ptr_ne(fyn_foo2, NULL);
+
+	/* set the root as the sequence */
+	rc = fy_document_set_root(fyd, fyn_seq);
+	ck_assert_int_eq(rc, 0);
+
+	/* should fail since fyn_seq is now attached */
+	rc = fy_document_set_root(fyd, fyn_seq);
+	ck_assert_int_ne(rc, 0);
+
+	/* freeing should fail, since it's attached too */
+	rc = fy_node_free(fyn_seq);
+	ck_assert_int_ne(rc, 0);
+
+	/* append it to the sequence */
+	rc = fy_node_sequence_append(fyn_seq, fyn_foo);
+	ck_assert_int_eq(rc, 0);
+
+	/* freeing should fail, since it's attached to the seq */
+	rc = fy_node_free(fyn_foo);
+	ck_assert_int_ne(rc, 0);
+
+	/* trying to append it to the sequence again should fail */
+	rc = fy_node_sequence_append(fyn_seq, fyn_foo);
+	ck_assert_int_ne(rc, 0);
+
+	/* append the mapping to the sequence */
+	rc = fy_node_sequence_append(fyn_seq, fyn_map);
+	ck_assert_int_eq(rc, 0);
+
+	/* this should fail, since foo is attached to the sequence */
+	rc = fy_node_mapping_append(fyn_map, fyn_foo, fyn_bar);
+	ck_assert_int_ne(rc, 0);
+
+	/* this should be OK, since foo2 is not attached */
+	rc = fy_node_mapping_append(fyn_map, fyn_foo2, fyn_bar);
+	ck_assert_int_eq(rc, 0);
+
+	/* remove foo from the sequence */
+	fyn = fy_node_sequence_remove(fyn_seq, fyn_foo);
+	ck_assert_ptr_eq(fyn, fyn_foo);
+
+	/* trying to append the same key should fail */
+	rc = fy_node_mapping_append(fyn_map, fyn_foo, NULL);
+	ck_assert_int_ne(rc, 0);
+
+	/* append the baz: NULL mapping */
+	rc = fy_node_mapping_append(fyn_map, fyn_baz, NULL);
+	ck_assert_int_eq(rc, 0);
+
+	/* get the baz: null node pair */
+	fynp = fy_node_mapping_lookup_pair(fyn_map, fyn_baz);
+	ck_assert_ptr_ne(fynp, NULL);
+	ck_assert_ptr_eq(fy_node_pair_key(fynp), fyn_baz);
+	ck_assert_ptr_eq(fy_node_pair_value(fynp), NULL);
+
+	/* trying to set the same key in the mapping should fail */
+	rc = fy_node_pair_set_key(fynp, fyn_foo);
+	ck_assert_int_ne(rc, 0);
+
+	/* get the foo: bar node pair */
+	fynp = fy_node_mapping_lookup_pair(fyn_map, fyn_foo);
+	ck_assert_ptr_ne(fynp, NULL);
+	ck_assert_ptr_eq(fy_node_pair_key(fynp), fyn_foo2);
+	ck_assert_ptr_eq(fy_node_pair_value(fynp), fyn_bar);
+
+	/* we're setting the same key to the mapping, but that's OK
+	 * since the key is replaced */
+	rc = fy_node_pair_set_key(fynp, fyn_foo);
+	ck_assert_int_eq(rc, 0);
+
+	/* fyn_foo has been freed */
+	fyn_foo = NULL;
+
+	/* convert to string */
+	rc = fy_emit_document_to_fp(fyd, FYECF_MODE_FLOW_ONELINE, stderr);
+	ck_assert_int_eq(rc, 0);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 TCase *libfyaml_case_core(void)
 {
 	TCase *tc;
@@ -962,6 +1078,8 @@ TCase *libfyaml_case_core(void)
 	tcase_add_test(tc, doc_join_tags);
 
 	tcase_add_test(tc, doc_build_with_tags);
+
+	tcase_add_test(tc, doc_attach_check);
 
 	return tc;
 }

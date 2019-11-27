@@ -1865,12 +1865,16 @@ struct fy_node *fy_document_root(struct fy_document *fyd);
  * fy_document_set_root() - Set the root of the document
  *
  * Set the root of a document. If the document was not empty
- * the old root will be freed.
+ * the old root will be freed. If @fyn is NULL then the
+ * document is set to empty.
  *
  * @fyd: The document
  * @fyn: The new root of the document.
+ *
+ * Returns:
+ * 0 on success, -1 on error
  */
-void fy_document_set_root(struct fy_document *fyd, struct fy_node *fyn);
+int fy_document_set_root(struct fy_document *fyd, struct fy_node *fyn);
 
 /**
  * fy_node_get_type() - Get the node type
@@ -1943,11 +1947,37 @@ static inline bool fy_node_is_mapping(struct fy_node *fyn)
 	return fy_node_get_type(fyn) == FYNT_MAPPING;
 }
 
+/**
+ * fy_node_is_alias() - Check whether the node is an alias
+ *
+ * Convenience method for checking whether a node is an alias.
+ *
+ * @fyn: The node
+ *
+ * Returns:
+ * true if the node is an alias, false otherwise
+ */
 static inline bool fy_node_is_alias(struct fy_node *fyn)
 {
 	return fy_node_get_type(fyn) == FYNT_SCALAR &&
 	       fy_node_get_style(fyn) == FYNS_ALIAS;
 }
+
+/**
+ * fy_node_is_attached() - Check whether the node is attached
+ *
+ * Checks whether a node is attached in a document structure.
+ * An attached node may not be freed, before being detached.
+ * Note that there is no method that explicitly detaches
+ * a node, since this is handled internaly by the sequence
+ * and mapping removal methods.
+ *
+ * @fyn: The node
+ *
+ * Returns:
+ * true if the node is attached, false otherwise
+ */
+bool fy_node_is_attached(struct fy_node *fyn);
 
 /**
  * fy_node_get_tag_token() - Gets the tag token of a node (if it exists)
@@ -1999,9 +2029,15 @@ struct fy_node *fy_node_resolve_alias(struct fy_node *fyn);
  * any anchors on the document it contains, and releasing references
  * on the tokens it contains.
  *
+ * This method will return an error if the node is attached, or
+ * if not NULL it is not a member of a document.
+ *
  * @fyn: The node to free
+ *
+ * Returns:
+ * 0 on success, -1 on error.
  */
-void fy_node_free(struct fy_node *fyn);
+int fy_node_free(struct fy_node *fyn);
 
 /**
  * fy_node_build_from_string() - Create a node using the provided YAML source.
@@ -2617,8 +2653,11 @@ struct fy_node *fy_node_pair_value(struct fy_node_pair *fynp);
  *
  * @fynp: The node pair
  * @fyn: The key node
+ *
+ * Returns:
+ * 0 on success, -1 on error
  */
-void fy_node_pair_set_key(struct fy_node_pair *fynp, struct fy_node *fyn);
+int fy_node_pair_set_key(struct fy_node_pair *fynp, struct fy_node *fyn);
 
 /**
  * fy_node_pair_set_value() - Sets the value of a node pair
@@ -2628,8 +2667,11 @@ void fy_node_pair_set_key(struct fy_node_pair *fynp, struct fy_node *fyn);
  *
  * @fynp: The node pair
  * @fyn: The value node
+ *
+ * Returns:
+ * 0 on success, -1 on error
  */
-void fy_node_pair_set_value(struct fy_node_pair *fynp, struct fy_node *fyn);
+int fy_node_pair_set_value(struct fy_node_pair *fynp, struct fy_node *fyn);
 
 /**
  * fy_node_mapping_append() - Append a node item to a mapping

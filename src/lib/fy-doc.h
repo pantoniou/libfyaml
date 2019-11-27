@@ -53,6 +53,7 @@ struct fy_node {
 	unsigned int marks;
 	enum fy_node_type type : 2;	/* 2 bits are enough for 3 types */
 	bool has_meta : 1;
+	bool attached : 1;		/* when it's attached somewhere */
 	void *meta;
 	union {
 		struct fy_token *scalar;
@@ -72,7 +73,10 @@ FY_TYPE_DECL_LIST(node);
 
 struct fy_node *fy_node_alloc(struct fy_document *fyd, enum fy_node_type type);
 struct fy_node_pair *fy_node_pair_alloc(struct fy_document *fyd);
-void fy_node_pair_free(struct fy_node_pair *fynp);
+int fy_node_pair_free(struct fy_node_pair *fynp);
+
+void fy_node_detach_and_free(struct fy_node *fyn);
+void fy_node_pair_detach_and_free(struct fy_node_pair *fynp);
 
 struct fy_anchor {
 	struct list_head node;
