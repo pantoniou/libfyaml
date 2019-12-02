@@ -4335,7 +4335,7 @@ static bool fy_node_sequence_contains_node(struct fy_node *fyn_seq, struct fy_no
 	struct fy_node *fyni;
 
 	if (!fyn_seq || !fyn || fyn_seq->type != FYNT_SEQUENCE)
-		return -1;
+		return false;
 
 	for (fyni = fy_node_list_head(&fyn_seq->sequence); fyni; fyni = fy_node_next(&fyn_seq->sequence, fyni))
 		if (fyni == fyn)
@@ -4476,7 +4476,7 @@ bool fy_node_mapping_contains_pair(struct fy_node *fyn_map, struct fy_node_pair 
 	struct fy_node_pair *fynpi;
 
 	if (!fyn_map || !fynp || fyn_map->type != FYNT_MAPPING)
-		return -1;
+		return false;
 
 	for (fynpi = fy_node_pair_list_head(&fyn_map->mapping); fynpi; fynpi = fy_node_pair_next(&fyn_map->mapping, fynpi))
 		if (fynpi == fynp)
