@@ -27,6 +27,10 @@
 #ifndef LIBFYAML_H
 #define LIBFYAML_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -1631,7 +1635,7 @@ fy_node_style_from_scalar_style(enum fy_scalar_style sstyle)
 {
 	if (sstyle == FYSS_ANY)
 		return FYNS_ANY;
-	return FYNS_PLAIN + (sstyle - FYSS_PLAIN);
+	return (enum fy_node_style)(FYNS_PLAIN + (sstyle - FYSS_PLAIN));
 }
 
 /**
@@ -3205,4 +3209,7 @@ bool fy_node_clear_marker(struct fy_node *fyn, unsigned int marker);
  */
 bool fy_node_is_marker_set(struct fy_node *fyn, unsigned int marker);
 
+#ifdef __cplusplus
+}
+#endif
 #endif
