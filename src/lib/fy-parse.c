@@ -3088,14 +3088,19 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 
 						/* high surrogate */
 						if (j == 1 && code_length == 4 && value >= 0xd800 && value <= 0xdbff &&
-						    fy_parse_peek_at(fyp, total_code_length) == '\\' && 
+						    fy_parse_peek_at(fyp, total_code_length) == '\\' &&
 						    fy_parse_peek_at(fyp, total_code_length + 1) == 'u') {
 							hi_surrogate = value;
 							c = 'u';
 							continue;
 						}
 
-						if (j == 2 && code_length == 4 && value >= 0xdc00 && value <= 0xdfff) {
+						if (j == 2 && code_length == 4 && hi_surrogate) {
+
+							FYP_PARSE_ERROR_CHECK(fyp, total_code_length - 6, 6, FYEM_SCAN,
+								value >= 0xdc00 && value <= 0xdfff, err_out,
+								"Invalid low surrogate value");
+
 							lo_surrogate = value;
 							value = 0x10000 + (hi_surrogate - 0xd800) * 0x400 + (lo_surrogate - 0xdc00);
 						}
