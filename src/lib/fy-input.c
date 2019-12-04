@@ -146,7 +146,7 @@ static void fy_input_from_data_setup(struct fy_input *fyi,
 	fyi->fp = NULL;
 
 	if (size > 0)
-		aflags = fy_analyze_scalar_content(data, size);
+		aflags = fy_analyze_scalar_content(fyi, data, size);
 	else
 		aflags = FYACF_EMPTY | FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN;
 

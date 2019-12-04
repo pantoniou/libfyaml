@@ -586,7 +586,7 @@ struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn)
 	size = (size_t)(e - s);
 
 	if (size > 0)
-		aflags = fy_analyze_scalar_content(s, size);
+		aflags = fy_analyze_scalar_content(fyi, s, size);
 	else
 		aflags = FYACF_EMPTY | FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN;
 

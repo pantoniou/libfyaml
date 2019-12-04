@@ -562,6 +562,7 @@ enum fy_scalar_style fy_token_scalar_style(struct fy_token *fyt)
 
 int fy_token_text_analyze(struct fy_token *fyt)
 {
+	const struct fy_input *fyi;
 	const char *s, *e;
 	const char *value = NULL;
 	enum fy_atom_style style;
@@ -589,6 +590,7 @@ int fy_token_text_analyze(struct fy_token *fyt)
 	flags = FYTTAF_TEXT_TOKEN;
 
 	style = fy_token_atom_style(fyt);
+	fyi = fy_token_get_input(fyt);
 
 	/* can this token be a simple key initial condition */
 	if (!fy_atom_style_is_block(style) && style != FYAS_URI)
@@ -622,14 +624,14 @@ int fy_token_text_analyze(struct fy_token *fyt)
 	/* get first character */
 	cn = fy_utf8_get(s, e - s, &w);
 	s += w;
-	col = fy_is_lb(cn) ? 0 : (col + 1);
+	col = fy_input_is_lb(fyi, cn) ? 0 : (col + 1);
 
 	/* disable folded right off the bat, it's a pain */
 	flags &= ~FYTTAF_CAN_BE_FOLDED;
 
 	/* plain scalars can't start with any indicator (or space/lb) */
 	if ((flags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW)) &&
-		(fy_is_indicator(cn) || fy_is_lb(cn) || fy_is_ws(cn)))
+		(fy_is_indicator(cn) || fy_input_is_lb(fyi, cn) || fy_is_ws(cn)))
 		flags &= ~(FYTTAF_CAN_BE_PLAIN |
 			   FYTTAF_CAN_BE_PLAIN_FLOW);
 
@@ -660,10 +662,10 @@ int fy_token_text_analyze(struct fy_token *fyt)
 			if (fy_is_ws(cn))
 				flags |= FYTTAF_HAS_CONSECUTIVE_WS;
 
-		} else if (fy_is_lb(c)) {
+		} else if (fy_input_is_lb(fyi, c)) {
 
 			flags |= FYTTAF_HAS_LB;
-			if (fy_is_lb(cn))
+			if (fy_input_is_lb(fyi, cn))
 				flags |= FYTTAF_HAS_CONSECUTIVE_LB;
 
 			/* only non linebreaks can be simple keys */
@@ -675,8 +677,8 @@ int fy_token_text_analyze(struct fy_token *fyt)
 
 		/* illegal plain combination */
 		if ((flags & FYTTAF_CAN_BE_PLAIN) &&
-			((c == ':' && fy_is_blankz(cn)) ||
-			 (fy_is_blankz(c) && cn == '#') ||
+			((c == ':' && fy_input_is_blankz(fyi, cn)) ||
+			 (fy_input_is_blankz(fyi, c) && cn == '#') ||
 			 (cp < 0 && c == '#' && cn < 0) ||
 			 !fy_is_print(c))) {
 			flags &= ~(FYTTAF_CAN_BE_PLAIN |
@@ -703,12 +705,12 @@ int fy_token_text_analyze(struct fy_token *fyt)
 		     (style == FYAS_DOUBLE_QUOTED && c == '\\')))
 			flags &= ~FYTTAF_DIRECT_OUTPUT;
 
-		col = fy_is_lb(c) ? 0 : (col + 1);
+		col = fy_input_is_lb(fyi, c) ? 0 : (col + 1);
 
 		/* last character */
 		if (cn < 0) {
 			/* if ends with whitespace or linebreak, can't be plain */
-			if (fy_is_ws(cn) || fy_is_lb(cn))
+			if (fy_is_ws(cn) || fy_input_is_lb(fyi, cn))
 				flags &= ~(FYTTAF_CAN_BE_PLAIN |
 					   FYTTAF_CAN_BE_PLAIN_FLOW);
 		}
@@ -823,7 +825,8 @@ size_t fy_token_get_text_length(struct fy_token *fyt)
 	return fy_token_format_text_length(fyt);
 }
 
-unsigned int fy_analyze_scalar_content(const char *data, size_t size)
+unsigned int fy_analyze_scalar_content(const struct fy_input *fyi,
+				       const char *data, size_t size)
 {
 	const char *s, *e;
 	int c, lastc, nextc, w, ww, col, break_run;
@@ -850,20 +853,20 @@ unsigned int fy_analyze_scalar_content(const char *data, size_t size)
 		if (first) {
 			if (fy_is_ws(c))
 				flags |= FYACF_STARTS_WITH_WS;
-			else if (fy_is_lb(c))
+			else if (fy_input_is_lb(fyi, c))
 				flags |= FYACF_STARTS_WITH_LB;
 			first = false;
 		}
 		nextc = fy_utf8_get(s + w, e - (s + w), &ww);
 
 		/* anything other than white space or linebreak */
-		if (!fy_is_ws(c) && !fy_is_lb(c))
+		if (!fy_is_ws(c) && !fy_input_is_lb(fyi, c))
 			flags &= ~FYACF_EMPTY;
 
 		/* linebreak */
-		if (fy_is_lb(c)) {
+		if (fy_input_is_lb(fyi, c)) {
 			flags |= FYACF_LB;
-			if (fy_is_lb(nextc))
+			if (fy_input_is_lb(fyi, nextc))
 				flags |= FYACF_CONSECUTIVE_LB;
 			break_run++;
 		} else
@@ -887,18 +890,18 @@ unsigned int fy_analyze_scalar_content(const char *data, size_t size)
 		}
 
 		/* comment indicator can't be present after a space or lb */
-		if ((fy_is_blank(c) || fy_is_lb(c)) && nextc == '#')
+		if ((fy_is_blank(c) || fy_input_is_lb(fyi, c)) && nextc == '#')
 			flags &= ~(FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN);
 
 		/* : followed by blank can't be any plain */
-		if (c == ':' && fy_is_blankz(nextc))
+		if (c == ':' && fy_input_is_blankz(fyi, nextc))
 			flags &= ~(FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN);
 
 		/* : followed by flow markers can't be a plain in flow context */
 		if (fy_utf8_strchr(",[]{}", c) || (c == ':' && fy_utf8_strchr(",[]{}", nextc)))
 			flags &= ~FYACF_FLOW_PLAIN;
 
-		if (fy_is_lb(c))
+		if (fy_input_is_lb(fyi, c))
 			col = 0;
 		else
 			col++;
@@ -908,7 +911,7 @@ unsigned int fy_analyze_scalar_content(const char *data, size_t size)
 
 	if (fy_is_ws(lastc))
 		flags |= FYACF_ENDS_WITH_WS;
-	else if (fy_is_lb(lastc))
+	else if (fy_input_is_lb(fyi, lastc))
 		flags |= FYACF_ENDS_WITH_LB;
 
 	if (break_run > 1)

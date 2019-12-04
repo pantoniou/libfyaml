@@ -42,6 +42,7 @@
 #define STRIP_DOC_DEFAULT		false
 #define STREAMING_DEFAULT		false
 #define TAB_DEFAULT			"auto"
+#define JSON_DEFAULT			"auto"
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -67,6 +68,7 @@ static struct option lopts[] = {
 	{"visible",		no_argument,		0,	'V' },
 	{"mode",		required_argument,	0,	'm' },
 	{"tab",			required_argument,	0,	OPT_TAB },
+	{"json",		required_argument,	0,	'j' },
 	{"file",		required_argument,	0,	'f' },
 	{"trim",		required_argument,	0,	't' },
 	{"follow",		no_argument,		0,	'l' },
@@ -126,6 +128,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--tab                    : (Very experimental) tab for indent option\n"
 		    "\t                           Allowed values none, auto, [1-9] (default %s)\n",
 						TAB_DEFAULT);
+	fprintf(fp, "\t--json, -j               : JSON input mode (no | force | auto)"
+						" (default %s)\n",
+						JSON_DEFAULT);
 	fprintf(fp, "\t--quiet, -q              : Quiet operation, do not "
 						"output messages (default %s)\n",
 						QUIET_DEFAULT ? "true" : "false");
@@ -717,7 +722,7 @@ int main(int argc, char *argv[])
 		cfg.flags |= FYPCF_TAB(TAB_DEFAULT[0] - '0');
 
 	while ((opt = getopt_long_only(argc, argv,
-					"I:" "d:" "i:" "w:" "rsc" "C:" "m:" "V" "f:" "t:" "T:F:" "qhvl",
+					"I:" "d:" "i:" "w:" "rsc" "C:" "m:" "V" "f:" "t:" "T:F:" "j:" "qhvl",
 					lopts, &lidx)) != -1) {
 		switch (opt) {
 		case 'I':
@@ -853,6 +858,20 @@ int main(int argc, char *argv[])
 				cfg.flags |= FYPCF_TAB(optarg[0] - '0');
 			else {
 				fprintf(stderr, "bad tab option %s\n", optarg);
+				display_usage(stderr, progname, tool_mode);
+				return EXIT_FAILURE;
+			}
+			break;
+		case 'j':
+			cfg.flags &= ~(FYPCF_JSON_MASK << FYPCF_JSON_SHIFT);
+			if (!strcmp(optarg, "no"))
+				cfg.flags |= FYPCF_JSON_NONE;
+			else if (!strcmp(optarg, "auto"))
+				cfg.flags |= FYPCF_JSON_AUTO;
+			else if (!strcmp(optarg, "force"))
+				cfg.flags |= FYPCF_JSON_FORCE;
+			else {
+				fprintf(stderr, "bad json option %s\n", optarg);
 				display_usage(stderr, progname, tool_mode);
 				return EXIT_FAILURE;
 			}

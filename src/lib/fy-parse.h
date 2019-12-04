@@ -159,13 +159,16 @@ struct fy_parser {
 	bool simple_key_allowed : 1;
 	bool stream_error : 1;
 	bool generated_block_map : 1;
+	bool last_was_comma : 1;
 	bool document_has_content : 1;
 	bool document_first_content_token : 1;
 	bool bare_document_only : 1;		/* no document start indicators allowed, no directives */
+	bool stream_has_content : 1;
 	int flow_level;
 	int pending_complex_key_column;
 	struct fy_mark pending_complex_key_mark;
 	int last_block_mapping_key_line;
+	struct fy_mark last_comma_mark;
 
 	/* copy of stream_end token */
 	struct fy_token *stream_end_token;
@@ -209,6 +212,41 @@ struct fy_parser {
 	int err_term_width;
 	int err_term_height;
 };
+
+static inline bool fyp_json_mode(const struct fy_parser *fyp)
+{
+	return fyp && fyp->current_input && fyp->current_input->json_mode;
+}
+
+static inline bool fyp_is_lb(const struct fy_parser *fyp, int c)
+{
+	return fyp && fy_input_is_lb(fyp->current_input, c);
+}
+
+static inline bool fyp_is_lbz(const struct fy_parser *fyp, int c)
+{
+	return fyp && fy_input_is_lbz(fyp->current_input, c);
+}
+
+static inline bool fyp_is_blankz(const struct fy_parser *fyp, int c)
+{
+	return fyp && fy_input_is_blankz(fyp->current_input, c);
+}
+
+static inline bool fyp_is_flow_ws(const struct fy_parser *fyp, int c)
+{
+	return fyp && fy_input_is_flow_ws(fyp->current_input, c);
+}
+
+static inline bool fyp_is_flow_blank(const struct fy_parser *fyp, int c)
+{
+	return fyp_is_flow_ws(fyp, c);
+}
+
+static inline bool fyp_is_flow_blankz(const struct fy_parser *fyp, int c)
+{
+	return fyp && fy_input_is_flow_blankz(fyp->current_input, c);
+}
 
 int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg,
 		   struct fy_diag *diag);
@@ -329,18 +367,18 @@ static inline int fy_parse_peek_at_offset(struct fy_parser *fyp, size_t offset)
 	/* ensure that the first octet at least is pulled in */
 	p = fy_ensure_lookahead(fyp, offset + 1, &left);
 	if (!p)
-		return -1;
+		return FYUG_EOF;
 
 	/* get width by first octet */
 	w = fy_utf8_width_by_first_octet(p[offset]);
 	if (!w)
-		return -1;
+		return FYUG_INV;
 
 	/* make sure that there's enough to cover the utf8 width */
 	if (offset + w > left) {
 		p = fy_ensure_lookahead(fyp, offset + w, &left);
 		if (!p)
-			return -1;
+			return FYUG_PARTIAL;
 	}
 
 	return fy_utf8_get(p + offset, left - offset, &w);
@@ -375,7 +413,7 @@ static inline bool fy_is_blank_at_offset(struct fy_parser *fyp, size_t offset)
 
 static inline bool fy_is_blankz_at_offset(struct fy_parser *fyp, size_t offset)
 {
-	return fy_is_blankz(fy_parse_peek_at_offset(fyp, offset));
+	return fyp_is_blankz(fyp, fy_parse_peek_at_offset(fyp, offset));
 }
 
 static inline int fy_parse_peek_at(struct fy_parser *fyp, int pos)
@@ -399,7 +437,7 @@ static inline void fy_advance(struct fy_parser *fyp, int c)
 	if (c == '\r' && fy_parse_peek(fyp) == '\n') {
 		fy_advance_octets(fyp, 1);
 		is_line_break = true;
-	} else if (fy_is_lb(c))
+	} else if (fyp_is_lb(fyp, c))
 		is_line_break = true;
 
 	if (is_line_break) {

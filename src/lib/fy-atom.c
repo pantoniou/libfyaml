@@ -92,7 +92,7 @@ int fy_advance_mark(struct fy_parser *fyp, int advance, struct fy_mark *m)
 			m->input_pos++;
 			i++;
 			is_line_break = true;
-		} else if (fy_is_lb(c))
+		} else if (fyp_is_lb(fyp, c))
 			is_line_break = true;
 		else
 			is_line_break = false;
@@ -144,13 +144,14 @@ struct fy_atom *fy_fill_atom_at(struct fy_parser *fyp, int advance, int count, s
 	/* start mark */
 	fy_get_mark(fyp, &start_mark);
 	rc = fy_advance_mark(fyp, advance, &start_mark);
-	if (rc < 0)
-		return NULL;
+	(void)rc;
+	/* ignore the return, if the advance failed, it's the end of input */
+
 	/* end mark */
 	end_mark = start_mark;
 	rc = fy_advance_mark(fyp, count, &end_mark);
-	if (rc < 0)
-		return NULL;
+	(void)rc;
+	/* ignore the return, if the advance failed, it's the end of input */
 
 	return fy_fill_atom_mark(fyp->current_input, &start_mark, &end_mark, handle);
 }
@@ -300,7 +301,7 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 			li->indented = fy_is_ws(c);
 		}
 
-		if (fy_is_lb(c)) {
+		if (fy_input_is_lb(atom->fyi, c)) {
 			col = 0;
 			if (!li->end) {
 				li->end = ss;
@@ -382,7 +383,7 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 	/* if there's only one linebreak left, we don't have trailing breaks */
 	if (c >= 0) {
 		ss += w;
-		if (fy_is_lb(c))
+		if (fy_input_is_lb(atom->fyi, c))
 			col = 0;
 		else if (fy_is_tab(c))
 			col += (ts - (col % ts));
@@ -398,13 +399,13 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 	/* find out if any trailing breaks exist afterwards */
 	for (; (c = fy_utf8_get(ss, (e - ss), &w)) != -1 && fy_is_ws_lb(c); ss += w) {
 
-		if (!li->trailing_breaks && fy_is_lb(c))
+		if (!li->trailing_breaks && fy_input_is_lb(atom->fyi, c))
 			li->trailing_breaks = true;
 
 		if (!li->trailing_breaks_ws && is_block && (unsigned int)col > iter->chomp)
 			li->trailing_breaks_ws = true;
 
-		if (fy_is_lb(c))
+		if (fy_input_is_lb(atom->fyi, c))
 			col = 0;
 		else {
 			/* indented whitespace counts as break */
@@ -649,7 +650,9 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 			if (!t || (e - t) < 2)
 				break;
 
-			ret = fy_utf8_parse_escape(&t, e - t);
+			ret = fy_utf8_parse_escape(&t, e - t,
+					!fy_input_json_mode(atom->fyi) ?
+					fyue_doublequote : fyue_doublequote_json);
 			if (ret < 0)
 				goto out;
 			s = t;
@@ -1266,7 +1269,8 @@ int fy_atom_strcmp(struct fy_atom *atom, const char *str)
 bool fy_atom_is_number(struct fy_atom *atom)
 {
 	struct fy_atom_iter iter;
-	int c, len;
+	int c, len, dec, fract, enot;
+	bool first_zero;
 
 	/* empty? just fine */
 	if (!atom || atom->size0)
@@ -1276,31 +1280,50 @@ bool fy_atom_is_number(struct fy_atom *atom)
 
 	fy_atom_iter_start(atom, &iter);
 
-	/* skip sign if it's there */
+	/* skip minus sign if it's there */
 	c = fy_atom_iter_peekc(&iter);
-	if (c == '+' || c == '-') {
+	if (c == '-') {
 		(void)fy_atom_iter_getc(&iter);
 		len++;
 	}
 
 	/* skip digits */
+	first_zero = false;
+	dec = 0;
 	while ((c = fy_atom_iter_peekc(&iter)) >= 0 && isdigit(c)) {
+		if (dec == 0 && c == '0')
+			first_zero = true;
+		else if (dec == 1 && first_zero)
+			return false;	/* 0[0-9] is bad */
 		(void)fy_atom_iter_getc(&iter);
+		dec++;
 		len++;
 	}
 
+	/* no digits is bad */
+	if (!dec)
+		return false;
+
+	fract = 0;
 	/* dot? */
 	c = fy_atom_iter_peekc(&iter);
 	if (c == '.') {
+
 		(void)fy_atom_iter_getc(&iter);
 		len++;
 		/* skip decimal part */
 		while ((c = fy_atom_iter_peekc(&iter)) >= 0 && isdigit(c)) {
 			(void)fy_atom_iter_getc(&iter);
 			len++;
+			fract++;
 		}
+
+		/* . without fractional */
+		if (!fract)
+			return false;
 	}
 
+	enot = 0;
 	/* scientific notation */
 	c = fy_atom_iter_peekc(&iter);
 	if (c == 'e' || c == 'E') {
@@ -1318,8 +1341,11 @@ bool fy_atom_is_number(struct fy_atom *atom)
 		while ((c = fy_atom_iter_peekc(&iter)) >= 0 && isdigit(c)) {
 			(void)fy_atom_iter_getc(&iter);
 			len++;
+			enot++;
 		}
 
+		if (!enot)
+			return false;
 	}
 
 	c = fy_atom_iter_peekc(&iter);
@@ -1418,7 +1444,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 
 	while (s > iter->is) {
 		c = fy_utf8_get_right(iter->is, (int)(s - iter->is), &w);
-		if (c <= 0 || fy_is_lb(c))
+		if (c <= 0 || fy_input_is_lb(iter->atom->fyi, c))
 			break;
 		s -= w;
 	}
@@ -1441,7 +1467,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 				col += (ts - (col % ts));
 			else
 				col++;
-		} else if (!fy_is_lb(c)) {
+		} else if (!fy_input_is_lb(iter->atom->fyi, c)) {
 			col++;
 			col8++;
 		} else
@@ -1468,7 +1494,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 				col += (ts - (col % ts));
 			else
 				col++;
-		} else if (!fy_is_lb(c)) {
+		} else if (!fy_input_is_lb(iter->atom->fyi, c)) {
 			col++;
 			col8++;
 		} else
@@ -1497,7 +1523,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 					col += (ts - (col % ts));
 				else
 					col++;
-			} else if (!fy_is_lb(c)) {
+			} else if (!fy_input_is_lb(iter->atom->fyi, c)) {
 				col++;
 				col8++;
 			} else
@@ -1511,7 +1537,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 	l->line_len = (size_t)(s - l->line_start);
 	l->line_count = count;
 
-	if (fy_is_lb(c)) {
+	if (fy_input_is_lb(iter->atom->fyi, c)) {
 		s += w;
 		/* special case for MSDOS */
 		if (c == '\r' && (s < iter->ie && s[1] == '\n'))

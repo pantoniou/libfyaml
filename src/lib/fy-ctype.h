@@ -75,10 +75,20 @@ static inline bool fy_is_uri(int c)
 	return fy_is_alnum(c) || fy_utf8_strchr(";/?:@&=+$,.!~*\'()[]%", c);
 }
 
-static inline bool fy_is_lb(int c)
+static inline bool fy_is_json_lb(int c)
+{
+	return c == '\r' || c == '\n';
+}
+
+static inline bool fy_is_yaml12_lb(int c)
 {
 	/* note that YAML1.2 support NEL #x85, LS #x2028 and PS #x2029 */
-	return c == '\r' || c == '\n' || c == 0x85 || c == 0x2028 || c == 0x2029;
+	return c == 0x85 || c == 0x2028 || c == 0x2029;
+}
+
+static inline bool fy_is_lb(int c)
+{
+	return fy_is_json_lb(c) || fy_is_yaml12_lb(c);
 }
 
 static inline bool fy_is_z(int c)
@@ -86,19 +96,14 @@ static inline bool fy_is_z(int c)
 	return c == '\0' || c == -1;
 }
 
-static inline bool fy_is_break(int c)
+static inline bool fy_is_lbz(int c)
 {
-	return fy_is_lb(c);
-}
-
-static inline bool fy_is_breakz(int c)
-{
-	return fy_is_break(c) || fy_is_z(c);
+	return fy_is_lb(c) || fy_is_z(c);
 }
 
 static inline bool fy_is_spacez(int c)
 {
-	return fy_is_space(c) || fy_is_breakz(c);
+	return fy_is_space(c) || fy_is_lbz(c);
 }
 
 static inline bool fy_is_blank(int c)
@@ -108,7 +113,7 @@ static inline bool fy_is_blank(int c)
 
 static inline bool fy_is_blankz(int c)
 {
-	return fy_is_blank(c) || fy_is_breakz(c);
+	return fy_is_blank(c) || fy_is_lbz(c);
 }
 
 static inline bool fy_is_ws_lb(int c)
@@ -186,10 +191,10 @@ FY_CTYPE_AT_BUILDER(tab);
 FY_CTYPE_AT_BUILDER(ws);
 FY_CTYPE_AT_BUILDER(hex);
 FY_CTYPE_AT_BUILDER(uri);
+FY_CTYPE_AT_BUILDER(json_lb);
+FY_CTYPE_AT_BUILDER(yaml12_lb);
 FY_CTYPE_AT_BUILDER(lb);
 FY_CTYPE_AT_BUILDER(z);
-FY_CTYPE_AT_BUILDER(break);
-FY_CTYPE_AT_BUILDER(breakz);
 FY_CTYPE_AT_BUILDER(spacez);
 FY_CTYPE_AT_BUILDER(blank);
 FY_CTYPE_AT_BUILDER(blankz);

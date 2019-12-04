@@ -21,6 +21,7 @@
 #include <libfyaml.h>
 
 #include "fy-typelist.h"
+#include "fy-ctype.h"
 
 struct fy_atom;
 struct fy_parser;
@@ -76,6 +77,7 @@ struct fy_input {
 	size_t chunk;
 	FILE *fp;
 	int refs;
+	bool json_mode : 1;	/* the input is in JSON format */
 	union {
 		struct {
 			int fd;			/* fd for file and stream */
@@ -87,6 +89,48 @@ struct fy_input {
 	};
 };
 FY_TYPE_DECL_LIST(input);
+
+static inline bool fy_input_json_mode(const struct fy_input *fyi)
+{
+	return fyi && fyi->json_mode;
+}
+
+static inline bool fy_input_is_lb(const struct fy_input *fyi, int c)
+{
+	/* '\r', '\n' are always linebreaks */
+	if (fy_is_json_lb(c))
+		return true;
+	if (fyi && fyi->json_mode)
+		return false;
+	return fy_is_yaml12_lb(c);
+}
+
+static inline bool fy_input_is_lbz(const struct fy_input *fyi, int c)
+{
+	return fy_input_is_lb(fyi, c) || fy_is_z(c);
+}
+
+static inline bool fy_input_is_blankz(const struct fy_input *fyi, int c)
+{
+	return fy_is_ws(c) || fy_input_is_lbz(fyi, c);
+}
+
+static inline bool fy_input_is_flow_ws(const struct fy_input *fyi, int c)
+{
+	/* space is always allowed */
+	if (fy_is_space(c))
+		return true;
+	/* no other space for JSON */
+	if (fyi && fyi->json_mode)
+		return false;
+	/* YAML allows tab for WS */
+	return fy_is_tab(c);
+}
+
+static inline bool fy_input_is_flow_blankz(const struct fy_input *fyi, int c)
+{
+	return fy_input_is_flow_ws(fyi, c) || fy_input_is_lbz(fyi, c);
+}
 
 static inline const void *fy_input_start(const struct fy_input *fyi)
 {

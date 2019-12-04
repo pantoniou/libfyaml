@@ -116,6 +116,7 @@ bool fy_parse_have_more_inputs(struct fy_parser *fyp)
 
 int fy_parse_get_next_input(struct fy_parser *fyp)
 {
+	const char *s;
 	struct fy_input *fyi;
 	int rc;
 
@@ -148,7 +149,17 @@ int fy_parse_get_next_input(struct fy_parser *fyp)
 	fyp->column = 0;
 	fyp->nontab_column = 0;
 
-	fyp_scan_debug(fyp, "get next input: new input");
+	if ((fyp->cfg.flags & (FYPCF_JSON_MASK << FYPCF_JSON_SHIFT)) == FYPCF_JSON_AUTO) {
+		s = fy_input_get_filename(fyi);
+		if (s)
+			s = strrchr(s, '.');
+		fyi->json_mode = s && !strcmp(s, ".json");
+	} else if ((fyp->cfg.flags & (FYPCF_JSON_MASK << FYPCF_JSON_SHIFT)) == FYPCF_JSON_FORCE)
+		fyi->json_mode = true;
+	else
+		fyi->json_mode = false;
+
+	fyp_scan_debug(fyp, "get next input: new input - %s mode", fyi->json_mode ? "JSON" : "YAML");
 
 	return 1;
 
@@ -465,6 +476,7 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg,
 	fy_indent_list_init(&fyp->recycled_indent);
 	fyp->indent = -2;
 	fyp->generated_block_map = false;
+	fyp->last_was_comma = false;
 
 	fy_simple_key_list_init(&fyp->simple_keys);
 	fy_simple_key_list_init(&fyp->recycled_simple_key);
@@ -623,7 +635,7 @@ void fy_scan_tab_setting(struct fy_parser *fyp)
 	scan_ahead = 1;	/* skipping over # */
 
 	/* scan for vim modelines */
-	while (!(fy_is_breakz(c = fy_parse_peek_at(fyp, scan_ahead)))) {
+	while (!(fyp_is_lbz(fyp, c = fy_parse_peek_at(fyp, scan_ahead)))) {
 
 		/* scan for start of mode line */
 		if (fy_is_ws(c) && fy_streq_at(fyp, scan_ahead + 1, "vim:")) {
@@ -710,7 +722,7 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 	/* if it's no comment parsing is enabled just consume it */
 	if (!(fyp->cfg.flags & FYPCF_PARSE_COMMENTS)) {
 		fy_advance(fyp, c);
-		while (!(fy_is_breakz(c = fy_parse_peek(fyp))))
+		while (!(fyp_is_lbz(fyp, c = fy_parse_peek(fyp))))
 			fy_advance(fyp, c);
 		return 0;
 	}
@@ -732,7 +744,7 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 		if (c == '#') {
 			/* chomp until line break */
 			fy_advance(fyp, c);
-			while (!(fy_is_breakz(c = fy_parse_peek(fyp)))) {
+			while (!(fyp_is_lbz(fyp, c = fy_parse_peek(fyp)))) {
 				if (fy_is_ws(c))
 					has_ws = true;
 				fy_advance(fyp, c);
@@ -746,7 +758,7 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 		if (fy_is_ws(c))
 			has_ws = true;
 
-		if (!fy_is_lb(c))
+		if (!fyp_is_lb(fyp, c))
 			break;
 
 		column = 0;
@@ -872,7 +884,7 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 		c = fy_parse_peek(fyp);
 
 		/* not linebreak? we're done */
-		if (!fy_is_break(c)) {
+		if (!fyp_is_lb(fyp, c)) {
 			fyp_scan_debug(fyp, "next token starts with c='%s'",
 					fy_utf8_format_a(c, fyue_singlequote));
 			break;
@@ -1347,7 +1359,7 @@ int fy_scan_tag_uri_length(struct fy_parser *fyp, int start)
 		cn = fy_parse_peek_at_internal(fyp, start + length + 1, &offset1);
 
 		/* special handling for detecting URIs ending in ,}] */
-		if (fy_is_blankz(cn) && fy_utf8_strchr(",}]", c))
+		if (fyp_is_blankz(fyp, cn) && fy_utf8_strchr(",}]", c))
 			break;
 
 		length++;
@@ -1589,8 +1601,8 @@ int fy_scan_directive(struct fy_parser *fyp)
 	} else {
 		/* skip until linebreak (or #) */
 		i = 0;
-		while ((c = fy_parse_peek_at(fyp, i)) != -1 && !fy_is_lb(c)) {
-			if (c == '#' && fy_is_blankz(fy_parse_peek_at(fyp, i + 1)))
+		while ((c = fy_parse_peek_at(fyp, i)) != -1 && !fyp_is_lb(fyp, c)) {
+			if (c == '#' && fyp_is_blankz(fyp, fy_parse_peek_at(fyp, i + 1)))
 				break;
 			i++;
 		}
@@ -1599,14 +1611,14 @@ int fy_scan_directive(struct fy_parser *fyp)
 			"Unsupported directive");
 
 		if (c == '#') {
-			while ((c = fy_parse_peek_at(fyp, i)) != -1 && !fy_is_lb(c))
+			while ((c = fy_parse_peek_at(fyp, i)) != -1 && !fyp_is_lb(fyp, c))
 				i++;
 		}
 
 		fy_advance_by(fyp, i);
 
 		/* skip over linebreak too */
-		if (fy_is_lb(c))
+		if (fyp_is_lb(fyp, c))
 			fy_advance(fyp, c);
 
 		/* bump activity counter */
@@ -1682,7 +1694,7 @@ int fy_scan_directive(struct fy_parser *fyp)
 		c = fy_parse_peek(fyp);
 
 		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-				fy_is_ws(c) || fy_is_lb(c), err_out,
+				fy_is_ws(c) || fyp_is_lb(fyp, c), err_out,
 				"garbage after trailing tag directive");
 		fy_advance(fyp, c);
 
@@ -1828,6 +1840,10 @@ int fy_fetch_flow_collection_mark_end(struct fy_parser *fyp, int c)
 		markerstr = "brace";
 	}
 
+	FYP_MARK_ERROR_CHECK(fyp, &fyp->last_comma_mark, &fyp->last_comma_mark, FYEM_SCAN,
+			!fyp_json_mode(fyp) || !fyp->last_was_comma, err_out,
+			"JSON disallows trailing comma before closing %s", markerstr);
+
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
 			!fyp->flow_level || fyp->column > fyp->indent, err_out,
 			"wrongly indented %s end in flow mode", typestr);
@@ -1871,7 +1887,7 @@ int fy_fetch_flow_collection_mark_end(struct fy_parser *fyp, int c)
 	* until a linebreak, ';', or anything else */
 	for (i = 0; ; i++) {
 		c = fy_parse_peek_at(fyp, i);
-		if (c < 0 || c == ':' || fy_is_lb(c) || !fy_is_ws(c))
+		if (c < 0 || c == ':' || fyp_is_lb(fyp, c) || !fy_is_ws(c))
 			break;
 	}
 
@@ -2127,6 +2143,10 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 	fyp_error_check(fyp, c == ':', err_out,
 		"illegal value mark");
 
+	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
+			!fyp_json_mode(fyp) || fyp->flow == FYFT_MAP, err_out,
+			"JSON considers keys when not in mapping context invalid");
+
 	fy_get_mark(fyp, &mark);
 
 	fy_token_list_init(&sk_tl);
@@ -2313,7 +2333,7 @@ int fy_fetch_anchor_or_alias(struct fy_parser *fyp, int c)
 	length = 0;
 
 	while ((c = fy_parse_peek(fyp)) >= 0) {
-		if (fy_is_blankz(c) || fy_utf8_strchr("[]{},", c))
+		if (fyp_is_blankz(fyp, c) || fy_utf8_strchr("[]{},", c))
 			break;
 		fy_advance(fyp, c);
 		length++;
@@ -2346,7 +2366,7 @@ int fy_fetch_anchor_or_alias(struct fy_parser *fyp, int c)
 	if (type == FYTT_ANCHOR && !fyp->flow_level) {
 		for (i = 0; ; i++) {
 			c = fy_parse_peek_at(fyp, i);
-			if (c < 0 || fy_is_lb(c) || !fy_is_ws(c))
+			if (c < 0 || fyp_is_lb(fyp, c) || !fy_is_ws(c))
 				break;
 		}
 
@@ -2446,7 +2466,7 @@ int fy_fetch_tag(struct fy_parser *fyp, int c)
 	c = fy_parse_peek(fyp);
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			fy_is_blankz(c) || fy_utf8_strchr(",}]", c), err_out,
+			fyp_is_blankz(fyp, c) || fy_utf8_strchr(",}]", c), err_out,
 			"invalid tag terminator");
 
 	handlep = fy_atom_data(&handle) + prefix_length;
@@ -2465,7 +2485,7 @@ int fy_fetch_tag(struct fy_parser *fyp, int c)
 	if (!fyp->flow_level) {
 		for (i = 0; ; i++) {
 			c = fy_parse_peek_at(fyp, i);
-			if (c < 0 || fy_is_lb(c) || !fy_is_ws(c))
+			if (c < 0 || fyp_is_lb(fyp, c) || !fy_is_ws(c))
 				break;
 		}
 
@@ -2523,7 +2543,7 @@ int fy_scan_block_scalar_indent(struct fy_parser *fyp, int indent, int *breaks)
 			max_indent = fyp->column;
 
 		/* non-empty line? */
-		if (!fy_is_break(c))
+		if (!fyp_is_lb(fyp, c))
 			break;
 
 		fy_advance(fyp, c);
@@ -2631,7 +2651,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 
 	/* end of the line? */
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			fy_is_breakz(c), err_out,
+			fyp_is_lbz(fyp, c), err_out,
 			"block scalar no linebreak found");
 
 	/* advance */
@@ -2682,7 +2702,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 		if (first) {
 			if (fy_is_ws(c))
 				starts_with_ws = true;
-			else if (fy_is_lb(c))
+			else if (fyp_is_lb(fyp, c))
 				starts_with_lb = true;
 		}
 
@@ -2694,7 +2714,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 
 		indented = fy_is_ws(fy_parse_peek(fyp));
 
-		while (!(fy_is_breakz(c = fy_parse_peek(fyp)))) {
+		while (!(fyp_is_lbz(fyp, c = fy_parse_peek(fyp)))) {
 
 			lastc = c;
 
@@ -2909,6 +2929,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 	uint32_t hi_surrogate, lo_surrogate;
 	bool is_single, is_multiline, is_complex, esc_lb, ws_lb_only, has_ws, has_lb, has_esc;
 	bool first, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb = false;
+	bool unicode_esc;
 	struct fy_simple_key_mark skm;
 	struct fy_mark mark, mark2;
 	struct fy_token *fyt;
@@ -2956,15 +2977,17 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 	last_line = -1;
 	lastc = -1;
 	for (;;) {
-		/* no document indicators please */
-		FYP_PARSE_ERROR_CHECK(fyp, 0, 3, FYEM_SCAN,
-			!(fyp->column == 0 &&
-				(!fy_parse_strncmp(fyp, "---", 3) ||
-				 !fy_parse_strncmp(fyp, "...", 3)) &&
-				fy_is_blankz_at_offset(fyp, 3)), err_out,
-			"invalid document-%s marker in %s scalar",
-				c == '-' ? "start" : "end",
-				is_single ? "single-quoted" : "double-quoted");
+		if (!fyp_json_mode(fyp)) {
+			/* no document indicators please */
+			FYP_PARSE_ERROR_CHECK(fyp, 0, 3, FYEM_SCAN,
+				!(fyp->column == 0 &&
+					(!fy_parse_strncmp(fyp, "---", 3) ||
+					!fy_parse_strncmp(fyp, "...", 3)) &&
+					fy_is_blankz_at_offset(fyp, 3)), err_out,
+				"invalid document-%s marker in %s scalar",
+					c == '-' ? "start" : "end",
+					is_single ? "single-quoted" : "double-quoted");
+		}
 
 		/* no EOF either */
 		c = fy_parse_peek(fyp);
@@ -2978,15 +3001,15 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 		}
 
 		if (first) {
-			if (fy_is_ws(c))
+			if (fyp_is_flow_ws(fyp, c))
 				starts_with_ws = true;
-			else if (fy_is_lb(c))
+			else if (fyp_is_lb(fyp, c))
 				starts_with_lb = true;
 		}
 
-		while (!fy_is_blankz(c = fy_parse_peek(fyp))) {
+		while (!fyp_is_flow_blankz(fyp, c = fy_parse_peek(fyp))) {
 
-			if (ws_lb_only && !fy_is_ws_lb(c) && c != end_c)
+			if (ws_lb_only && !(fyp_is_flow_ws(fyp, c) || fyp_is_lb(fyp, c)) && c != end_c)
 				ws_lb_only = false;
 
 			esc_lb = false;
@@ -3030,7 +3053,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 				break;
 
 			/* escaped line break */
-			if (!is_single && c == '\\' && fy_is_break(fy_parse_peek_at(fyp, 1))) {
+			if (!is_single && c == '\\' && fyp_is_lb(fyp, fy_parse_peek_at(fyp, 1))) {
 
 				fy_advance_by(fyp, 2);
 
@@ -3051,8 +3074,11 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 				/* we are merely checking for validity */
 				c = fy_parse_peek_at(fyp, 1);
 
-				/* hex, unicode marks */
-				if (c == 'x' || c == 'u' || c == 'U') {
+				/* hex, unicode marks - json only supports u */
+				unicode_esc = !fyp_json_mode(fyp) ?
+						(c == 'x' || c == 'u' || c == 'U') :
+						c == 'u';
+				if (unicode_esc) {
 
 					total_code_length = 0;
 					total_digits = 0;
@@ -3067,7 +3093,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 						for (i = 0; i < code_length; i++) {
 							c = fy_parse_peek_at(fyp, total_code_length + i);
 
-							FYP_PARSE_ERROR_CHECK(fyp, total_code_length + i, 1, FYEM_SCAN,
+							FYP_PARSE_ERROR_CHECK(fyp, 0, total_code_length + i + 1, FYEM_SCAN,
 								fy_is_hex(c), err_out,
 								"double-quoted scalar has invalid hex escape");
 
@@ -3121,7 +3147,10 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 					escbuf[1] = c;
 
 					ep = escbuf;
-					value = fy_utf8_parse_escape(&ep, sizeof(escbuf));
+
+					value = fy_utf8_parse_escape(&ep, sizeof(escbuf),
+							!fyp_json_mode(fyp) ?
+							fyue_doublequote : fyue_doublequote_json);
 
 					FYP_PARSE_ERROR_CHECK(fyp, 0, 2, FYEM_SCAN,
 						value >= 0, err_out,
@@ -3144,6 +3173,14 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 				continue;
 			}
 
+			if (!is_single && fyp_json_mode(fyp) &&
+			    (c < 0x20 || c > 0x110000 || c == '"' || c == '\\')) {
+
+				FYP_PARSE_ERROR(fyp, 0, 2, FYEM_SCAN,
+					"Invalid JSON unescaped character");
+				goto err_out;
+			}
+
 			lastc = c;
 
 			/* regular character */
@@ -3160,13 +3197,13 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 		/* consume blanks */
 		breaks_found = 0;
 		blanks_found = 0;
-		while (fy_is_blank(c = fy_parse_peek(fyp)) || fy_is_break(c)) {
+		while (fyp_is_flow_blank(fyp, c = fy_parse_peek(fyp)) || fyp_is_lb(fyp, c)) {
 
 			break_run = 0;
 
 			fy_advance(fyp, c);
 
-			if (fy_is_break(c)) {
+			if (fyp_is_lb(fyp, c)) {
 				has_lb = true;
 				breaks_found++;
 				blanks_found = 0;
@@ -3182,7 +3219,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 
 	if (break_run > 0)
 		ends_with_lb = true;
-	else if (fy_is_ws(lastc))
+	else if (fyp_is_flow_ws(fyp, lastc))
 		ends_with_ws = true;
 	trailing_lb = break_run > 1;
 
@@ -3221,6 +3258,10 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 	handle.storage_hint = length;
 	handle.storage_hint_valid = true;
 
+	FYP_MARK_ERROR_CHECK(fyp, &handle.start_mark, &handle.end_mark, FYEM_SCAN,
+			!fyp_json_mode(fyp) || !is_multiline, err_out,
+			"Multi line double quoted scalars not supported in JSON mode");
+
 	/* and we're done */
 	fyt = fy_token_queue(fyp, FYTT_SCALAR, &handle, is_single ? FYSS_SINGLE_QUOTED : FYSS_DOUBLE_QUOTED);
 	fyp_error_check(fyp, fyt, err_out_rc,
@@ -3231,7 +3272,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 		* until a linebreak, ';', or anything else */
 		for (i = 0; ; i++) {
 			c = fy_parse_peek_at(fyp, i);
-			if (c < 0 || c == ':' || fy_is_lb(c) || !fy_is_ws(c))
+			if (c < 0 || c == ':' || fyp_is_lb(fyp, c) || !fyp_is_flow_ws(fyp, c))
 				break;
 		}
 
@@ -3242,7 +3283,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 					is_single ? "single-quoted" : "double-quoted");
 
 		FYP_PARSE_ERROR_CHECK(fyp, i, 1, FYEM_SCAN,
-				c < 0 || c == ':' || c == '#' || fy_is_lb(c), err_out,
+				c < 0 || c == ':' || c == '#' || fyp_is_lb(fyp, c), err_out,
 				"invalid trailing content after %s scalar",
 					is_single ? "single-quoted" : "double-quoted");
 	}
@@ -3297,7 +3338,7 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 			"invalid tab as indendation in a mapping");
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fy_is_blankz(c), err_out,
+			!fyp_is_blankz(fyp, c), err_out,
 			"plain scalar cannot start with blank or zero");
 
 	/* may not start with any of ,[]{}#&*!|>'\"%@` */
@@ -3353,13 +3394,13 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 
 		run = 0;
 		for (;;) {
-			if (fy_is_blankz(c))
+			if (fyp_is_blankz(fyp, c))
 				break;
 
 			nextc = fy_parse_peek_at(fyp, 1);
 
 			/* ':' followed by space terminates */
-			if (c == ':' && fy_is_blankz(nextc))
+			if (c == ':' && fyp_is_blankz(fyp, nextc))
 				break;
 
 			/* in flow context ':' followed by flow markers */
@@ -3397,7 +3438,7 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 		}
 
 		/* end? */
-		if (!(fy_is_blank(c) || fy_is_break(c)))
+		if (!(fy_is_blank(c) || fyp_is_lb(fyp, c)))
 			break;
 
 		/* consume blanks */
@@ -3416,7 +3457,7 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 			nextc = fy_parse_peek(fyp);
 
 			/* if it's a break */
-			if (fy_is_break(c)) {
+			if (fyp_is_lb(fyp, c)) {
 				/* first break, turn on leading blanks */
 				if (!has_leading_blanks)
 					has_leading_blanks = true;
@@ -3431,7 +3472,7 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 
 			c = nextc;
 
-		} while (fy_is_blank(c) || fy_is_break(c));
+		} while (fy_is_blank(c) || fyp_is_lb(fyp, c));
 
 		/* break out if indentation is less */
 		if (!fyp->flow_level && fyp->column < indent)
@@ -3473,6 +3514,20 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 	handle.storage_hint = length;
 	handle.storage_hint_valid = true;
 
+	/* extra check in json mode */
+	if (fyp_json_mode(fyp)) {
+		FYP_MARK_ERROR_CHECK(fyp, &handle.start_mark, &handle.end_mark, FYEM_SCAN,
+				!is_multiline, err_out,
+				"Multi line plain scalars not supported in JSON mode");
+
+		FYP_MARK_ERROR_CHECK(fyp, &handle.start_mark, &handle.end_mark, FYEM_SCAN,
+				!fy_atom_strcmp(&handle, "false") ||
+				!fy_atom_strcmp(&handle, "true") ||
+				!fy_atom_strcmp(&handle, "null") ||
+				fy_atom_is_number(&handle), err_out,
+				"Invalid JSON plain scalar");
+	}
+
 	/* and we're done */
 	fyt = fy_token_queue(fyp, FYTT_SCALAR, &handle, FYSS_PLAIN);
 	fyp_error_check(fyp, fyt, err_out_rc,
@@ -3483,7 +3538,7 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 		* until a linebreak, ';', or anything else */
 		for (i = 0; ; i++) {
 			c = fy_parse_peek_at(fyp, i);
-			if (c < 0 || c == ':' || fy_is_lb(c) || !fy_is_ws(c))
+			if (c < 0 || c == ':' || fyp_is_lb(fyp, c) || !fy_is_ws(c))
 				break;
 		}
 
@@ -3518,6 +3573,7 @@ err_out_rc:
 
 int fy_fetch_tokens(struct fy_parser *fyp)
 {
+	struct fy_mark m;
 	int c, rc;
 
 	if (!fyp->stream_start_produced) {
@@ -3544,6 +3600,11 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 
 	c = fy_parse_peek(fyp);
 	if (c < 0 || c == '\0') {
+
+		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
+				!fyp_json_mode(fyp) || c != '\0', err_out,
+				"JSON disallows '\\0' in the input stream");
+
 		if (c >= 0)
 			fy_advance(fyp, c);
 		rc = fy_fetch_stream_end(fyp);
@@ -3555,6 +3616,10 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 	if (fyp->column == 0 && c == '%') {
 
 		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
+				!fyp_json_mode(fyp), err_out,
+				"directives not supported in JSON mode");
+
+		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
 				!fyp->bare_document_only, err_out,
 				"invalid directive in bare document mode");
 
@@ -3562,7 +3627,7 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 		rc = fy_fetch_directive(fyp);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_fetch_directive() failed");
-		return 0;
+		goto out;
 	}
 
 	/* probable document start/end indicator */
@@ -3571,7 +3636,12 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 	     !fy_parse_strncmp(fyp, "...", 3)) &&
 	    fy_is_blankz_at_offset(fyp, 3)) {
 
-		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
+		FYP_PARSE_ERROR_CHECK(fyp, 0, 3, FYEM_SCAN,
+				!fyp_json_mode(fyp), err_out,
+				"document %s indicator not supported in JSON mode",
+					c == '-' ? "start" : "end");
+
+		FYP_PARSE_ERROR_CHECK(fyp, 0, 3, FYEM_SCAN,
 				!fyp->bare_document_only, err_out,
 				"invalid document %s indicator in bare document mode",
 					c == '-' ? "start" : "end");
@@ -3587,11 +3657,11 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 			c = fy_parse_peek(fyp);
 
 			FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-					c == -1 || c == '#' || fy_is_lb(c), err_out,
+					c == -1 || c == '#' || fyp_is_lb(fyp, c), err_out,
 					"invalid content after document end marker");
 		}
 
-		return 0;
+		goto out;
 	}
 
 	fyp_scan_debug(fyp, "indent=%d, parent indent=%d\n",
@@ -3603,7 +3673,7 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 		rc = fy_fetch_flow_collection_mark_start(fyp, c);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_fetch_flow_collection_mark_start() failed");
-		return 0;
+		goto out;
 	}
 
 	if (c == ']' || c == '}') {
@@ -3612,35 +3682,49 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 		rc = fy_fetch_flow_collection_mark_end(fyp, c);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_fetch_flow_collection_mark_end() failed");
-		return 0;
+		goto out;
 	}
 
 
 	if (c == ',') {
 
+		fy_get_mark(fyp, &m);
+
 		fyp_scan_debug(fyp, "fy_fetch_flow_collection_entry(%c)", c);
 		rc = fy_fetch_flow_collection_entry(fyp, c);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_fetch_flow_collection_entry() failed");
-		return 0;
+
+		fyp->last_was_comma = true;
+		fyp->last_comma_mark = m;
+
+		goto out;
 	}
 
 	if (c == '-' && fy_is_blankz_at_offset(fyp, 1)) {
+
+		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
+				!fyp_json_mode(fyp), err_out,
+				"block entries not supported in JSON mode");
 
 		fyp_scan_debug(fyp, "fy_fetch_block_entry(%c)", c);
 		rc = fy_fetch_block_entry(fyp, c);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_fetch_block_entry() failed");
-		return 0;
+		goto out;
 	}
 
 	if (c == '?' && (fyp->flow_level || fy_is_blankz_at_offset(fyp, 1))) {
+
+		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
+				!fyp_json_mode(fyp), err_out,
+				"complex keys not supported in JSON mode");
 
 		fyp_scan_debug(fyp, "fy_fetch_key(%c)", c);
 		rc = fy_fetch_key(fyp, c);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_fetch_key() failed");
-		return 0;
+		goto out;
 	}
 
 	if (c == ':' && ((fyp->flow_level && !fyp->simple_key_allowed) || fy_is_blankz_at_offset(fyp, 1))) {
@@ -3649,49 +3733,71 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 		rc = fy_fetch_value(fyp, c);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_fetch_value() failed");
-		return 0;
+		goto out;
 	}
 
 	if (c == '*' || c == '&') {
+
+		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
+				!fyp_json_mode(fyp), err_out,
+				"%s not supported in JSON mode",
+					c == '&' ? "anchor" : "alias");
 
 		fyp_scan_debug(fyp, "fy_fetch_anchor_or_alias(%c)", c);
 		rc = fy_fetch_anchor_or_alias(fyp, c);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_fetch_anchor_or_alias() failed");
-		return 0;
+		goto out;
 	}
 
 	if (c == '!') {
+
+		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
+				!fyp_json_mode(fyp), err_out,
+				"tag not supported in JSON mode");
 
 		fyp_scan_debug(fyp, "fy_fetch_tag(%c)", c);
 		rc = fy_fetch_tag(fyp, c);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_fetch_tag() failed");
-		return 0;
+		goto out;
 	}
 
 	if (!fyp->flow_level && (c == '|' || c == '>')) {
+
+		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
+				!fyp_json_mode(fyp), err_out,
+				"block scalars not supported in JSON mode");
 
 		fyp_scan_debug(fyp, "fy_fetch_block_scalar(%c)", c);
 		rc = fy_fetch_block_scalar(fyp, c == '|', c);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_fetch_block_scalar() failed");
-		return 0;
+		goto out;
 	}
 
 	if (c == '\'' || c == '"') {
+
+		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
+				c == '"' || !fyp_json_mode(fyp), err_out,
+				"single quoted scalars not supported in JSON mode");
 
 		fyp_scan_debug(fyp, "fy_fetch_flow_scalar(%c)", c);
 		rc = fy_fetch_flow_scalar(fyp, c);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_fetch_flow_scalar() failed");
-		return 0;
+		goto out;
 	}
 
 	fyp_scan_debug(fyp, "fy_fetch_plain_scalar(%c)", c);
 	rc = fy_fetch_plain_scalar(fyp, c);
 	fyp_error_check(fyp, !rc, err_out_rc,
 			"fy_fetch_plain_scalar() failed");
+
+out:
+	if (c != ',' && fyp->last_was_comma)
+		fyp->last_was_comma = false;
+
 	return 0;
 
 err_out:
@@ -4096,6 +4202,7 @@ int fy_parse_stream_start(struct fy_parser *fyp)
 {
 	fyp->indent = -2;
 	fyp->generated_block_map = false;
+	fyp->last_was_comma = false;
 	fyp->flow = FYFT_NONE;
 	fyp->pending_complex_key_column = -1;
 
@@ -4200,6 +4307,8 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 		fy_parse_state_set(fyp, FYPS_IMPLICIT_DOCUMENT_START);
 
+		fyp->stream_has_content = false;
+
 		return fyep;
 
 	case FYPS_IMPLICIT_DOCUMENT_START:
@@ -4209,6 +4318,9 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 	case FYPS_DOCUMENT_START:
 
 		had_doc_end = false;
+
+		if (!fyp->stream_has_content && fyt->type != FYTT_STREAM_END)
+			fyp->stream_has_content = true;
 
 		/* remove all extra document end indicators */
 		while (fyt->type == FYTT_DOCUMENT_END) {
@@ -4264,6 +4376,12 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 		/* the end */
 		if (fyt->type == FYTT_STREAM_END) {
+
+			/* empty content is not allowed in JSON mode */
+			FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
+					!fy_input_json_mode(fy_token_get_input(fyt)) ||
+						fyp->stream_has_content, err_out,
+					"JSON does not allow empty root content");
 
 			rc = fy_parse_stream_end(fyp);
 			fyp_error_check(fyp, !rc, err_out,
@@ -4707,6 +4825,11 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			return fyep;
 		}
 
+		/* empty keys are not allowed in JSON mode */
+		FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
+				!fyp_json_mode(fyp), err_out,
+				"JSON does not allow empty keys of a mapping");
+
 		fy_parse_state_set(fyp, FYPS_FLOW_SEQUENCE_ENTRY_MAPPING_VALUE);
 
 		fyep = fy_parse_empty_scalar(fyp);
@@ -4732,6 +4855,12 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				return fyep;
 			}
 		}
+
+		/* empty values are not allowed in JSON mode */
+		FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
+				!fyp_json_mode(fyp), err_out,
+				"JSON does not allow empty values in a mapping");
+
 		fy_parse_state_set(fyp, FYPS_FLOW_SEQUENCE_ENTRY_MAPPING_END);
 
 		fyep = fy_parse_empty_scalar(fyp);
@@ -4797,6 +4926,11 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 					return fyep;
 				}
 
+				/* empty keys are not allowed in JSON mode */
+				FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
+						!fyp_json_mode(fyp), err_out,
+						"JSON does not allow empty keys of a mapping");
+
 				fy_parse_state_set(fyp, FYPS_FLOW_MAPPING_VALUE);
 
 				fyep = fy_parse_empty_scalar(fyp);
@@ -4806,6 +4940,12 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			}
 
 			if (fyt->type != FYTT_FLOW_MAPPING_END) {
+
+				/* empty values are not allowed in JSON mode */
+				FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
+						!fyp_json_mode(fyp), err_out,
+						"JSON does not allow empty values in a mapping");
+
 				rc = fy_parse_state_push(fyp, FYPS_FLOW_MAPPING_EMPTY_VALUE);
 				fyp_error_check(fyp, !rc, err_out,
 						"failed to push state");
@@ -4849,6 +4989,12 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				return fyep;
 			}
 		}
+
+		/* empty values are not allowed in JSON mode */
+		FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
+				!fyp_json_mode(fyp), err_out,
+				"JSON does not allow empty values in a mapping");
+
 		fy_parse_state_set(fyp, FYPS_FLOW_MAPPING_KEY);
 
 		fyep = fy_parse_empty_scalar(fyp);
@@ -5138,6 +5284,12 @@ int fy_parser_reset(struct fy_parser *fyp)
 
 	fyp->next_single_document = false;
 	fyp->stream_error = false;
+	fyp->generated_block_map = false;
+	fyp->last_was_comma = false;
+	fyp->document_has_content = false;
+	fyp->document_first_content_token = false;
+	fyp->bare_document_only = false;
+	fyp->stream_has_content = false;
 
 	assert(fyp->diag);
 	fyp->diag->on_error = false;

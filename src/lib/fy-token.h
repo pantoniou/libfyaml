@@ -247,7 +247,8 @@ enum fy_scalar_style fy_token_scalar_style(struct fy_token *fyt);
 
 int fy_token_text_analyze(struct fy_token *fyt);
 
-unsigned int fy_analyze_scalar_content(const char *data, size_t size);
+unsigned int fy_analyze_scalar_content(const struct fy_input *fyi,
+				       const char *data, size_t size);
 
 const char *fy_tag_directive_token_prefix(struct fy_token *fyt, size_t *lenp);
 const char *fy_tag_directive_token_handle(struct fy_token *fyt, size_t *lenp);

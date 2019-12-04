@@ -432,7 +432,7 @@ void fy_emit_write_comment(struct fy_emitter *emit, int flags, int indent, const
 	breaks = false;
 	while (s < e && (c = fy_utf8_get(s, e - s, &w)) > 0) {
 
-		if (fy_is_break(c)) {
+		if (fy_is_lb(c)) {
 
 			/* output run */
 			fy_emit_write(emit, fyewt_comment, sr, s - sr);
@@ -780,10 +780,11 @@ void fy_emit_token_write_quoted(struct fy_emitter *emit, struct fy_token *fyt, i
 	enum fy_emitter_write_type wtype;
 	const char *str = NULL;
 	size_t len = 0;
-	bool should_indent;
+	bool should_indent, done_esc;
 	struct fy_atom *atom;
 	struct fy_atom_iter iter;
 	enum fy_atom_style target_style;
+	uint32_t hi_surrogate, lo_surrogate;
 
 	wtype = qc == '\'' ?
 		((flags & DDNF_SIMPLE_SCALAR_KEY) ?
@@ -873,77 +874,125 @@ void fy_emit_token_write_quoted(struct fy_emitter *emit, struct fy_token *fyt, i
 				fy_emit_accum_utf8_put(&emit->ea, '\'');
 			} else if (qc == '"' &&
 				   (!fy_is_print(c) || c == FY_UTF8_BOM ||
-				    fy_is_break(c) || c == '"' || c == '\\')) {
+				    fy_is_lb(c) || c == '"' || c == '\\')) {
 
 				fy_emit_accum_utf8_put(&emit->ea, '\\');
+
+				/* common YAML and JSON escapes */
+				done_esc = false;
 				switch (c) {
-				case '\0':
-					fy_emit_accum_utf8_put(&emit->ea, '0');
-					break;
-				case '\a':
-					fy_emit_accum_utf8_put(&emit->ea, 'a');
-					break;
 				case '\b':
 					fy_emit_accum_utf8_put(&emit->ea, 'b');
-					break;
-				case '\t':
-					fy_emit_accum_utf8_put(&emit->ea, 't');
-					break;
-				case '\n':
-					fy_emit_accum_utf8_put(&emit->ea, 'n');
-					break;
-				case '\v':
-					fy_emit_accum_utf8_put(&emit->ea, 'v');
+					done_esc = true;
 					break;
 				case '\f':
 					fy_emit_accum_utf8_put(&emit->ea, 'f');
+					done_esc = true;
+					break;
+				case '\n':
+					fy_emit_accum_utf8_put(&emit->ea, 'n');
+					done_esc = true;
 					break;
 				case '\r':
 					fy_emit_accum_utf8_put(&emit->ea, 'r');
+					done_esc = true;
 					break;
-				case '\e':
-					fy_emit_accum_utf8_put(&emit->ea, 'e');
+				case '\t':
+					fy_emit_accum_utf8_put(&emit->ea, 't');
+					done_esc = true;
 					break;
 				case '"':
 					fy_emit_accum_utf8_put(&emit->ea, '"');
+					done_esc = true;
 					break;
 				case '\\':
 					fy_emit_accum_utf8_put(&emit->ea, '\\');
+					done_esc = true;
 					break;
-				case 0x85:
-					fy_emit_accum_utf8_put(&emit->ea, 'N');
-					break;
-				case 0xa0:
-					fy_emit_accum_utf8_put(&emit->ea, '_');
-					break;
-				case 0x2028:
-					fy_emit_accum_utf8_put(&emit->ea, 'L');
-					break;
-				case 0x2029:
-					fy_emit_accum_utf8_put(&emit->ea, 'P');
-					break;
-				default:
-					if ((unsigned int)c <= 0xff) {
-						fy_emit_accum_utf8_put(&emit->ea, 'x');
-						w = 2;
-					} else if ((unsigned int)c <= 0xffff) {
-						fy_emit_accum_utf8_put(&emit->ea, 'u');
-						w = 4;
-					} else if ((unsigned int)c <= 0xffffffff) {
-						fy_emit_accum_utf8_put(&emit->ea, 'U');
-						w = 8;
+				}
+
+				if (done_esc)
+					goto done;
+
+				if (!fy_emit_is_json_mode(emit)) {
+					switch (c) {
+					case '\0':
+						fy_emit_accum_utf8_put(&emit->ea, '0');
+						break;
+					case '\a':
+						fy_emit_accum_utf8_put(&emit->ea, 'a');
+						break;
+					case '\v':
+						fy_emit_accum_utf8_put(&emit->ea, 'v');
+						break;
+					case '\e':
+						fy_emit_accum_utf8_put(&emit->ea, 'e');
+						break;
+					case 0x85:
+						fy_emit_accum_utf8_put(&emit->ea, 'N');
+						break;
+					case 0xa0:
+						fy_emit_accum_utf8_put(&emit->ea, '_');
+						break;
+					case 0x2028:
+						fy_emit_accum_utf8_put(&emit->ea, 'L');
+						break;
+					case 0x2029:
+						fy_emit_accum_utf8_put(&emit->ea, 'P');
+						break;
+					default:
+						if ((unsigned int)c <= 0xff) {
+							fy_emit_accum_utf8_put(&emit->ea, 'x');
+							w = 2;
+						} else if ((unsigned int)c <= 0xffff) {
+							fy_emit_accum_utf8_put(&emit->ea, 'u');
+							w = 4;
+						} else if ((unsigned int)c <= 0xffffffff) {
+							fy_emit_accum_utf8_put(&emit->ea, 'U');
+							w = 8;
+						}
+
+						for (i = w - 1; i >= 0; i--) {
+							digit = ((unsigned int)c >> (i * 4)) & 15;
+							fy_emit_accum_utf8_put(&emit->ea,
+									digit <= 9 ? ('0' + digit) : ('A' + digit - 10));
+						}
+						break;
 					}
 
-					for (i = w - 1; i >= 0; i--) {
-						digit = ((unsigned int)c >> (i * 4)) & 15;
-						fy_emit_accum_utf8_put(&emit->ea,
-								digit <= 9 ? ('0' + digit) : ('A' + digit - 10));
+				} else {
+					/* JSON escapes all others in \uXXXX and \uXXXX\uXXXX */
+					w = 4;
+					if ((unsigned int)c <= 0xffff) {
+						fy_emit_accum_utf8_put(&emit->ea, 'u');
+						for (i = w - 1; i >= 0; i--) {
+							digit = ((unsigned int)c >> (i * 4)) & 15;
+							fy_emit_accum_utf8_put(&emit->ea,
+									digit <= 9 ? ('0' + digit) : ('A' + digit - 10));
+						}
+					} else {
+						hi_surrogate = 0xd800 | ((((c >> 16) & 0x1f) - 1) << 6) | ((c >> 10) & 0x3f);
+						lo_surrogate = 0xdc00 | (c & 0x3ff);
+
+						fy_emit_accum_utf8_put(&emit->ea, 'u');
+						for (i = w - 1; i >= 0; i--) {
+							digit = ((unsigned int)hi_surrogate >> (i * 4)) & 15;
+							fy_emit_accum_utf8_put(&emit->ea,
+									digit <= 9 ? ('0' + digit) : ('A' + digit - 10));
+						}
+
+						fy_emit_accum_utf8_put(&emit->ea, '\\');
+						fy_emit_accum_utf8_put(&emit->ea, 'u');
+						for (i = w - 1; i >= 0; i--) {
+							digit = ((unsigned int)lo_surrogate >> (i * 4)) & 15;
+							fy_emit_accum_utf8_put(&emit->ea,
+									digit <= 9 ? ('0' + digit) : ('A' + digit - 10));
+						}
 					}
-					break;
 				}
 			} else
 				fy_emit_accum_utf8_put(&emit->ea, c);
-
+done:
 			emit->flags &= ~FYEF_INDENTATION;
 			spaces = false;
 			breaks = false;
@@ -1029,7 +1078,7 @@ void fy_emit_token_write_literal(struct fy_emitter *emit, struct fy_token *fyt, 
 			breaks = false;
 		}
 
-		if (fy_is_break(c)) {
+		if (fy_is_lb(c)) {
 			fy_emit_accum_output(&emit->ea);
 			emit->flags &= ~FYEF_INDENTATION;
 			breaks = true;
@@ -1072,7 +1121,7 @@ void fy_emit_token_write_folded(struct fy_emitter *emit, struct fy_token *fyt, i
 	fy_emit_accum_start(&emit->ea, fyewt_folded_scalar);
 	while ((c = fy_atom_iter_utf8_get(&iter)) > 0) {
 
-		if (fy_is_break(c)) {
+		if (fy_is_lb(c)) {
 
 			/* output run */
 			if (fy_emit_accum_utf8_size(&emit->ea)) {
@@ -1085,7 +1134,7 @@ void fy_emit_token_write_folded(struct fy_emitter *emit, struct fy_token *fyt, i
 
 			/* count the number of consecutive breaks */
 			nrbreaks = 1;
-			while (fy_is_break(c = fy_atom_iter_utf8_peek(&iter))) {
+			while (fy_is_lb(c = fy_atom_iter_utf8_peek(&iter))) {
 				nrbreaks++;
 				(void)fy_atom_iter_utf8_get(&iter);
 			}

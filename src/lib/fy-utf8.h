@@ -45,6 +45,11 @@ fy_utf8_is_valid(int c)
 /* generic utf8 decoder (not inlined) */
 int fy_utf8_get_generic(const void *ptr, int left, int *widthp);
 
+/* -1 for end of input, -2 for invalid character, -3 for partial */
+#define FYUG_EOF	-1
+#define FYUG_INV	-2
+#define FYUG_PARTIAL	-3
+
 static inline int fy_utf8_get(const void *ptr, int left, int *widthp)
 {
 	const uint8_t *p = ptr;
@@ -52,7 +57,7 @@ static inline int fy_utf8_get(const void *ptr, int left, int *widthp)
 	/* single byte (hot path) */
 	if (left <= 0) {
 		*widthp = 0;
-		return -1;
+		return FYUG_EOF;
 	}
 
 	if (!(p[0] & 0x80)) {
@@ -116,6 +121,7 @@ enum fy_utf8_escape {
 	fyue_none,
 	fyue_doublequote,
 	fyue_singlequote,
+	fyue_doublequote_json,
 };
 
 char *fy_utf8_format(int c, char *buf, enum fy_utf8_escape esc);
@@ -182,6 +188,6 @@ static inline int fy_utf8_count(const void *ptr, size_t len)
 	return count;
 }
 
-int fy_utf8_parse_escape(const char **strp, size_t len);
+int fy_utf8_parse_escape(const char **strp, size_t len, enum fy_utf8_escape esc);
 
 #endif
