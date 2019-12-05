@@ -45,17 +45,22 @@ endif
 if HAVE_NETWORK
 if HAVE_GIT
 
-TESTS += testsuite.test
+TESTS += testsuite.test jsontestsuite.test
 
-testsuite.test: test-suite-data
+testsuite.test: test-suite-data json-test-suite-data
 
 test-suite-data:
 	@GIT@ clone --branch=data "@TESTSUITEURL@" -- $@
 
-check-local: test-suite-data
+jsontestsuite.test: json-test-suite-data
+
+json-test-suite-data:
+	@GIT@ clone --branch=master "@JSONTESTSUITEURL@" -- $@
+
+check-local: test-suite-data json-test-suite-data
 
 distclean-local:
-	@rm -rf test-suite-data
+	@rm -rf test-suite-data test-suite-data
 
 endif
 endif

@@ -50,6 +50,7 @@ test-driver
 test/libfyaml-test
 test/*.log
 test/test-suite-data/
+test/json-test-suite-data/
 test/*.trs
 test/*.txt
 .version

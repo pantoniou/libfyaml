@@ -188,6 +188,12 @@ if test "x$TESTSUITEURL" == "x" ; then
 	TESTSUITEURL="https://github.com/yaml/yaml-test-suite"
 fi
 
+AC_ARG_VAR(JSONTESTSUITEURL, [JSON Testsuite git repo URL (default: https://github.com/nst/JSONTestSuite)])
+
+if test "x$JSONTESTSUITEURL" == "x" ; then
+	JSONTESTSUITEURL="https://github.com/nst/JSONTestSuite"
+fi
+
 # check for docker
 AC_PATH_PROG([DOCKER], [docker])
 if test "x$DOCKER"  != "x" ; then
@@ -263,5 +269,6 @@ echo "
     HAVE_DPKG:             $HAVE_DPKG
     DPKG_ARCH:             $DPKG_ARCH
     TESTSUITEURL:          $TESTSUITEURL
+    JSONTESTSUITEURL:      $JSONTESTSUITEURL
 
 "
