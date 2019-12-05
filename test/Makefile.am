@@ -60,7 +60,7 @@ json-test-suite-data:
 check-local: test-suite-data json-test-suite-data
 
 distclean-local:
-	@rm -rf test-suite-data test-suite-data
+	@rm -rf test-suite-data json-test-suite-data
 
 endif
 endif
