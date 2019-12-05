@@ -328,10 +328,14 @@ void fy_diag_vreport(struct fy_diag *diag,
 	struct fy_atom_raw_line_iter iter;
 	const struct fy_raw_line *l;
 	char *tildes;
-	int j, k, tildesz = -1;
+	int j, k, tildesz = 80;
 
 	if (!diag || !fydrc || !fmt || !diag->fp || !fydrc->fyt)
 		return;
+
+	tildes = alloca(tildesz + 1);
+	memset(tildes, '~', tildesz);
+	tildes[tildesz] = '\0';
 
 	start_mark = fy_token_start_mark(fydrc->fyt);
 	name = fy_input_get_filename(fy_token_get_input(fydrc->fyt));
@@ -380,6 +384,7 @@ void fy_diag_vreport(struct fy_diag *diag,
 			tildes = alloca(k + 1);
 			memset(tildes, '~', k);
 			tildes[k] = '\0';
+			tildesz = k;
 		}
 		fprintf(diag->fp, "%*s%s%c%.*s%s\n",
 				j, "", color_start,
