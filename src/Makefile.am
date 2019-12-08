@@ -43,7 +43,7 @@ libfyaml_parser_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/valgrind -I$(top_s
 libfyaml_parser_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml-@MAJOR@.@MINOR@.la
 libfyaml_parser_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 
-libfyaml_parser_LDFLAGS = $(AM_LDFLAGS)
+libfyaml_parser_LDFLAGS = $(AM_LDFLAGS) -all-static
 endif
 
 bin_PROGRAMS += fy-tool

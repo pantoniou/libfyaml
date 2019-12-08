@@ -87,7 +87,8 @@ AC_CHECK_DECLS(environ)
 
 dnl for old autoconf version AX_APPEND_COMPILE_FLAGS does not work
 m4_version_prereq(2.64,
-	 [AX_APPEND_COMPILE_FLAGS([-Wall -Wsign-compare], [CFLAGS], [-pedantic -Werror])],
+	 [AX_APPEND_COMPILE_FLAGS([-Wall -Wsign-compare -fvisibility=hidden],
+				  [CFLAGS], [-pedantic -Werror])],
          [CFLAGS="$CFLAGS -Wall -Wsign-compare"])
 
 dnl -O2 is universal no need for AX_APPEND_COMPILE_FLAGS
