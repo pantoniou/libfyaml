@@ -184,7 +184,7 @@ void fy_emit_write(struct fy_emitter *emit, enum fy_emitter_write_type type, con
 		emit->output_error = true;
 
 	e = str + len;
-	while ((c = fy_utf8_get(str, (e - str), &w)) != -1) {
+	while ((c = fy_utf8_get(str, (e - str), &w)) >= 0) {
 
 		/* special handling for MSDOS */
 		if (c == '\r' && (e - str) > 1 && str[1] == '\n') {

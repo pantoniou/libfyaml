@@ -4116,7 +4116,7 @@ static bool tag_uri_is_valid(const char *data, size_t len)
 	s = data;
 	e = s + len;
 
-	while ((c = fy_utf8_get(s, e - s, &w)) != -1) {
+	while ((c = fy_utf8_get(s, e - s, &w)) >= 0) {
 		if (c != '%') {
 			s += w;
 			continue;

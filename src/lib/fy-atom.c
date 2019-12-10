@@ -289,7 +289,7 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 	/* consecutive whitespace */
 	cws = 0;
 
-	for (col = 0, ss = s; (c = fy_utf8_get(ss, (e - ss), &w)) != -1; ss += w) {
+	for (col = 0, ss = s; (c = fy_utf8_get(ss, (e - ss), &w)) >= 0; ss += w) {
 
 		/* mark start of chomp */
 		if (is_block && !li->chomp_start && (unsigned int)col >= iter->chomp) {
@@ -397,7 +397,7 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 	}
 
 	/* find out if any trailing breaks exist afterwards */
-	for (; (c = fy_utf8_get(ss, (e - ss), &w)) != -1 && fy_is_ws_lb(c); ss += w) {
+	for (; (c = fy_utf8_get(ss, (e - ss), &w)) >= 0 && fy_is_ws_lb(c); ss += w) {
 
 		if (!li->trailing_breaks && fy_input_is_lb(atom->fyi, c))
 			li->trailing_breaks = true;
@@ -700,7 +700,7 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 		break;
 
 	case FYAS_DOUBLE_QUOTED_MANUAL:
-		while ((c = fy_utf8_get(s, (e - s), &w)) != -1) {
+		while ((c = fy_utf8_get(s, (e - s), &w)) >= 0) {
 
 			if (c != '"' && c != '\\' && fy_is_print(c)) {
 				ret = fy_atom_iter_add_chunk(iter, s, w);
