@@ -74,6 +74,8 @@ void fy_input_free(struct fy_input *fyi)
 	default:
 		break;
 	}
+	if (fyi->name)
+		free(fyi->name);
 
 	free(fyi);
 }
@@ -110,22 +112,10 @@ void fy_input_unref(struct fy_input *fyi)
 
 const char *fy_input_get_filename(struct fy_input *fyi)
 {
-	const char *name;
-
 	if (!fyi)
 		return NULL;
 
-	if (fyi->cfg.type == fyit_file) {
-		name = fyi->cfg.file.filename;
-	} else if (fyi->cfg.type == fyit_stream) {
-		if (fyi->cfg.stream.fp == stdin)
-			name = "<stdin>";
-		else
-			name = fyi->cfg.stream.name;
-	} else
-		name = NULL;
-
-	return name;
+	return fyi->name;
 }
 
 static void fy_input_from_data_setup(struct fy_input *fyi,
@@ -631,12 +621,49 @@ err_out:
 int fy_parse_input_append(struct fy_parser *fyp, const struct fy_input_cfg *fyic)
 {
 	struct fy_input *fyi = NULL;
+	int ret;
 
 	fyi = fy_input_alloc();
 	fyp_error_check(fyp, fyp != NULL, err_out,
 			"fy_input_alloc() failed!");
 
 	fyi->cfg = *fyic;
+
+	/* copy filename pointers and switch */
+	switch (fyic->type) {
+	case fyit_file:
+		fyi->name = strdup(fyic->file.filename);
+		break;
+	case fyit_stream:
+		if (fyic->stream.name)
+			fyi->name = strdup(fyic->stream.name);
+		else if (fyic->stream.fp == stdin)
+			fyi->name = strdup("<stdin>");
+		else {
+			ret = asprintf(&fyi->name, "<stream-%d>",
+					fileno(fyic->stream.fp));
+			if (ret == -1)
+				fyi->name = NULL;
+		}
+		break;
+	case fyit_memory:
+		ret = asprintf(&fyi->name, "<memory-@0x%p-0x%p>",
+			fyic->memory.data, fyic->memory.data + fyic->memory.size - 1);
+		if (ret == -1)
+			fyi->name = NULL;
+		break;
+	case fyit_alloc:
+		ret = asprintf(&fyi->name, "<alloc-@0x%p-0x%p>",
+			fyic->memory.data, fyic->memory.data + fyic->memory.size - 1);
+		if (ret == -1)
+			fyi->name = NULL;
+		break;
+	default:
+		assert(0);
+		break;
+	}
+	fyp_error_check(fyp, fyi->name, err_out,
+			"fyi->name alloc() failed!");
 
 	fyi->buffer = NULL;
 	fyi->allocated = 0;

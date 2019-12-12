@@ -71,6 +71,7 @@ struct fy_input {
 	struct list_head node;
 	enum fy_input_state state;
 	struct fy_input_cfg cfg;
+	char *name;
 	void *buffer;		/* when the file can't be mmaped */
 	size_t allocated;
 	size_t read;
