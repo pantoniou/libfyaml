@@ -87,6 +87,10 @@ struct fy_diag_report_ctx {
 	enum fy_error_type type;
 	enum fy_error_module module;
 	struct fy_token *fyt;
+	bool has_override;
+	const char *override_file;
+	int override_line;
+	int override_column;
 };
 
 int fy_vdiag_ctx(struct fy_diag *fyd, const struct fy_diag_ctx *fydc,

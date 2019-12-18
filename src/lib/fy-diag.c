@@ -328,7 +328,7 @@ void fy_diag_vreport(struct fy_diag *diag,
 	struct fy_atom_raw_line_iter iter;
 	const struct fy_raw_line *l;
 	char *tildes;
-	int j, k, tildesz = 80;
+	int j, k, tildesz = 80, line, column;
 
 	if (!diag || !fydrc || !fmt || !diag->fp || !fydrc->fyt)
 		return;
@@ -338,7 +338,16 @@ void fy_diag_vreport(struct fy_diag *diag,
 	tildes[tildesz] = '\0';
 
 	start_mark = fy_token_start_mark(fydrc->fyt);
-	name = fy_input_get_filename(fy_token_get_input(fydrc->fyt));
+
+	if (fydrc->has_override) {
+		name = fydrc->override_file;
+		line = fydrc->override_line;
+		column = fydrc->override_column;
+	} else {
+		name = fy_input_get_filename(fy_token_get_input(fydrc->fyt));
+		line = start_mark->line + 1;
+		column = start_mark->column + 1;
+	}
 
 	/* it will strip trailing newlines */
 	msg = alloca_vsprintf(fmt, ap);
@@ -368,9 +377,16 @@ void fy_diag_vreport(struct fy_diag *diag,
 	} else
 		color_start = color_end = white = "";
 
-	fprintf(diag->fp, "%s%s%s" "%d:%d: " "%s%s: %s" "%s\n",
-		white, name ? : "", name ? ":" : "",
-		start_mark->line + 1, start_mark->column + 1,
+	if (name)
+		fprintf(diag->fp, "%s%s:", white, name);
+
+	if (line > 0 && column > 0)
+		fprintf(diag->fp, "%s%d:%d: ", white, line, column);
+	else if (name)
+		fprintf(diag->fp, " ");
+
+
+	fprintf(diag->fp, "%s%s: %s" "%s\n",
 		color_start, fy_error_type_str(fydrc->type), color_end,
 		msg);
 
@@ -628,5 +644,42 @@ void fy_node_report(struct fy_node *fyn, enum fy_error_type type,
 
 	va_start(ap, fmt);
 	fy_node_vreport(fyn, type, fmt, ap);
+	va_end(ap);
+}
+
+void fy_node_override_vreport(struct fy_node *fyn, enum fy_error_type type,
+			      const char *file, int line, int column,
+			      const char *fmt, va_list ap)
+{
+	struct fy_diag_report_ctx drc;
+	bool save_on_error;
+
+	if (!fyn)
+		return;
+
+	save_on_error = fyn->fyd->diag->on_error;
+	fyn->fyd->diag->on_error = false;
+
+	memset(&drc, 0, sizeof(drc));
+	drc.type = type;
+	drc.module = FYEM_UNKNOWN;
+	drc.fyt = fy_node_token(fyn);
+	drc.has_override = true;
+	drc.override_file = file;
+	drc.override_line = line;
+	drc.override_column = column;
+	fy_document_diag_vreport(fyn->fyd, &drc, fmt, ap);
+
+	fyn->fyd->diag->on_error = save_on_error;
+}
+
+void fy_node_override_report(struct fy_node *fyn, enum fy_error_type type,
+			     const char *file, int line, int column,
+			     const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	fy_node_override_vreport(fyn, type, file, line, column, fmt, ap);
 	va_end(ap);
 }

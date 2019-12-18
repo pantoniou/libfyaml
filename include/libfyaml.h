@@ -3398,6 +3398,55 @@ fy_node_report(struct fy_node *fyn, enum fy_error_type type,
 	       const char *fmt, ...)
 	__attribute__((format(printf, 3, 4)));
 
+/**
+ * fy_node_override_vreport() - Report about a node vprintf style,
+ * 				overriding file, line and column info
+ *
+ * Output a report about the given node via the specific
+ * error type, and using the reporting configuration of the node's
+ * document. This method will use the overrides provided in order
+ * to massage the reporting information.
+ * If @file is NULL, no file location will be reported.
+ * If either @line or @column is negative no location will be reported.
+ *
+ * @fyn: The node
+ * @type: The error type
+ * @file: The file override
+ * @line: The line override
+ * @column: The column override
+ * @fmt: The printf format string
+ * @ap: The argument list
+ */
+FY_EXPORT void
+fy_node_override_vreport(struct fy_node *fyn, enum fy_error_type type,
+			 const char *file, int line, int column,
+			 const char *fmt, va_list ap);
+
+/**
+ * fy_node_override_report() - Report about a node printf style,
+ * 				overriding file, line and column info
+ *
+ * Output a report about the given node via the specific
+ * error type, and using the reporting configuration of the node's
+ * document. This method will use the overrides provided in order
+ * to massage the reporting information.
+ * If @file is NULL, no file location will be reported.
+ * If either @line or @column is negative no location will be reported.
+ *
+ * @fyn: The node
+ * @type: The error type
+ * @file: The file override
+ * @line: The line override
+ * @column: The column override
+ * @fmt: The printf format string
+ * @...: The extra arguments.
+ */
+FY_EXPORT void
+fy_node_override_report(struct fy_node *fyn, enum fy_error_type type,
+			const char *file, int line, int column,
+			const char *fmt, ...)
+	__attribute__((format(printf, 6, 7)));
+
 #ifdef __cplusplus
 }
 #endif
