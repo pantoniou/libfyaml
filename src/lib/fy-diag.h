@@ -57,8 +57,6 @@ struct fy_diag {
 	bool destroyed : 1;
 };
 
-struct fy_diag *fy_diag_ref(struct fy_diag *diag);
-void fy_diag_unref(struct fy_diag *diag);
 void fy_diag_free(struct fy_diag *diag);
 
 struct fy_diag_report_ctx {

@@ -3672,6 +3672,32 @@ fy_diag_destroy(struct fy_diag *diag)
 	FY_EXPORT;
 
 /**
+ * fy_diag_ref() - Increment that reference counter of a diagnostic object
+ *
+ * Increment the reference.
+ *
+ * @diag: The diagnostic object to reference
+ *
+ * Returns:
+ * Always returns the @diag argument
+ */
+struct fy_diag *
+fy_diag_ref(struct fy_diag *diag)
+	FY_EXPORT;
+
+/**
+ * fy_diag_unref() - Take away a ref from a diagnostic object
+ *
+ * Take away a reference, if it gets to 0, the diagnostic object
+ * is freed.
+ *
+ * @diag: The diagnostic object to unref
+ */
+void
+fy_diag_unref(struct fy_diag *diag)
+	FY_EXPORT;
+
+/**
  * fy_diag_got_error() - Test whether an error level diagnostic
  *                       has been produced
  *
