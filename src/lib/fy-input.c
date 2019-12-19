@@ -40,8 +40,6 @@ struct fy_input *fy_input_alloc(void)
 	fyi->state = FYIS_NONE;
 	fyi->refs = 1;
 
-	/* fyp_notice(NULL, "%s: %p #%d", __func__, fyi, fyi->refs); */
-
 	return fyi;
 }
 
@@ -51,8 +49,6 @@ void fy_input_free(struct fy_input *fyi)
 		return;
 
 	assert(fyi->refs == 1);
-
-	/* fyp_notice(NULL, "%s: %p #%d", __func__, fyi, fyi->refs); */
 
 	switch (fyi->state) {
 	case FYIS_NONE:
@@ -90,8 +86,6 @@ struct fy_input *fy_input_ref(struct fy_input *fyi)
 
 	fyi->refs++;
 
-	/* fyp_notice(NULL, "%s: %p #%d", __func__, fyi, fyi->refs); */
-
 	return fyi;
 }
 
@@ -101,8 +95,6 @@ void fy_input_unref(struct fy_input *fyi)
 		return;
 
 	assert(fyi->refs > 0);
-
-	/* fyp_notice(NULL, "%s: %p #%d", __func__, fyi, fyi->refs); */
 
 	if (fyi->refs == 1)
 		fy_input_free(fyi);

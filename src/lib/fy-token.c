@@ -61,8 +61,6 @@ void fy_token_free(struct fy_token *fyt)
 	/* release reference */
 	fy_input_unref(fyt->handle.fyi);
 
-	/* fyp_notice(NULL, "%s: %p #%d", __func__, fyt, fyt->refs); */
-
 	switch (fyt->type) {
 	case FYTT_TAG:
 		fy_token_unref(fyt->tag.fyt_td);
@@ -85,8 +83,6 @@ struct fy_token *fy_token_ref(struct fy_token *fyt)
 	assert(fyt->refs + 1 > 0);
 	fyt->refs++;
 
-	/* fyp_notice(NULL, "%s: %p #%d", __func__, fyt, fyt->refs); */
-
 	return fyt;
 }
 
@@ -96,8 +92,6 @@ void fy_token_unref(struct fy_token *fyt)
 		return;
 
 	assert(fyt->refs > 0);
-
-	/* fyp_notice(NULL, "%s: %p #%d", __func__, fyt, fyt->refs); */
 
 	if (fyt->refs == 1)
 		fy_token_free(fyt);

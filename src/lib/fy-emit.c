@@ -24,6 +24,8 @@
 
 /* fwd decl */
 void fy_emit_write(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int len);
+void fy_emit_printf(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *fmt, ...)
+		__attribute__((format(printf, 3, 4)));
 
 int fy_emit_accum_grow(struct fy_emit_accum *ea)
 {
@@ -246,9 +248,6 @@ void fy_emit_vprintf(struct fy_emitter *emit, enum fy_emitter_write_type type, c
 
 	fy_emit_write(emit, type, str, size);
 }
-
-void fy_emit_printf(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *fmt, ...)
-		__attribute__((format(printf, 3, 4)));
 
 void fy_emit_printf(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *fmt, ...)
 {
@@ -2295,10 +2294,6 @@ static void fy_emit_goto_state(struct fy_emitter *emit, enum fy_emitter_state st
 	if (emit->state == state)
 		return;
 
-	/* fyp_notice(NULL, "emit: %s -> %s",
-			fy_emitter_state_txt[emit->state],
-			fy_emitter_state_txt[state]); */
-
 	emit->state = state;
 }
 
@@ -2791,14 +2786,10 @@ int fy_emit_event(struct fy_emitter *emit, struct fy_event *fye)
 
 	fyep = container_of(fye, struct fy_eventp, e);
 
-	/* fyp_notice(NULL, "> %s", fy_event_type_txt[fyep->e.type]); */
-
 	fy_eventp_list_add_tail(&emit->queued_events, fyep);
 
 	ret = 0;
 	while ((fyep = fy_emit_next_event(emit)) != NULL) {
-
-		/* fyp_notice(NULL, "! %s", fy_event_type_txt[fyep->e.type]); */
 
 		switch (emit->state) {
 		case FYES_STREAM_START:

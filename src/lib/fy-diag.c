@@ -204,6 +204,29 @@ void fy_diag_unref(struct fy_diag *diag)
 		diag->refs--;
 }
 
+int fy_diag_vprintf(struct fy_diag *diag, const char *fmt, va_list ap)
+{
+	if (!diag || !fmt)
+		return -1;
+
+	if (diag->fp)
+		return vfprintf(diag->fp, fmt, ap);
+
+	return -1;
+}
+
+int fy_diag_printf(struct fy_diag *diag, const char *fmt, ...)
+{
+	va_list ap;
+	int rc;
+
+	va_start(ap, fmt);
+	rc = fy_diag_vprintf(diag, fmt, ap);
+	va_end(ap);
+
+	return rc;
+}
+
 int fy_vdiag_ctx(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 		 const char *fmt, va_list ap)
 {
@@ -283,7 +306,7 @@ int fy_vdiag_ctx(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 			color_end = "\x1b[0m";
 	}
 
-	rc = fprintf(diag->fp, "%s" "%*s" "%*s" "%*s" "%*s" "%s" "%s\n",
+	rc = fy_diag_printf(diag, "%s" "%*s" "%*s" "%*s" "%*s" "%s" "%s\n",
 			color_start ? : "",
 			source    ? diag->source_width : 0, source ? : "",
 			position  ? diag->position_width : 0, position ? : "",
@@ -378,22 +401,22 @@ void fy_diag_vreport(struct fy_diag *diag,
 		color_start = color_end = white = "";
 
 	if (name)
-		fprintf(diag->fp, "%s%s:", white, name);
+		fy_diag_printf(diag, "%s%s:", white, name);
 
 	if (line > 0 && column > 0)
-		fprintf(diag->fp, "%s%d:%d: ", white, line, column);
+		fy_diag_printf(diag, "%s%d:%d: ", white, line, column);
 	else if (name)
-		fprintf(diag->fp, " ");
+		fy_diag_printf(diag, " ");
 
 
-	fprintf(diag->fp, "%s%s: %s" "%s\n",
+	fy_diag_printf(diag, "%s%s: %s" "%s\n",
 		color_start, fy_error_type_str(fydrc->type), color_end,
 		msg);
 
 	fy_atom_raw_line_iter_start(fy_token_atom(fydrc->fyt), &iter);
 	while ((l = fy_atom_raw_line_iter_next(&iter)) != NULL) {
-		fprintf(diag->fp, "%.*s\n",
-				(int)l->line_len, l->line_start);
+		fy_diag_printf(diag, "%.*s\n",
+			       (int)l->line_len, l->line_start);
 		j = l->content_start_col8;
 		k = (l->content_end_col8 - l->content_start_col8) - 1;
 		if (k > tildesz) {
@@ -402,10 +425,10 @@ void fy_diag_vreport(struct fy_diag *diag,
 			tildes[k] = '\0';
 			tildesz = k;
 		}
-		fprintf(diag->fp, "%*s%s%c%.*s%s\n",
-				j, "", color_start,
-				l->lineno == 1 ? '^' : '~',
-				k > 0 ? k : 0, tildes, color_end);
+		fy_diag_printf(diag, "%*s%s%c%.*s%s\n",
+			       j, "", color_start,
+			       l->lineno == 1 ? '^' : '~',
+			       k > 0 ? k : 0, tildes, color_end);
 	}
 	fy_atom_raw_line_iter_finish(&iter);
 
@@ -432,14 +455,13 @@ int fy_parser_vdiag(struct fy_parser *fyp, unsigned int flags,
 		    const char *file, int line, const char *func,
 		    const char *fmt, va_list ap)
 {
-	struct fy_diag *diag = NULL;
 	struct fy_diag_ctx fydc;
 	unsigned int pflags;
 	int fydc_level, fyd_level, fydc_module;
 	unsigned int fyd_module_mask;
 	int rc;
 
-	if (!fmt)
+	if (!fyp || !fyp->diag || !fmt)
 		return -1;
 
 	pflags = fy_parser_get_cfg_flags(fyp);
@@ -457,16 +479,6 @@ int fy_parser_vdiag(struct fy_parser *fyp, unsigned int flags,
 	if (!(fyd_module_mask & FY_BIT(fydc_module)))
 		return 0;
 
-	/* for NULL parser, create a diag on the spot */
-	if (!fyp) {
-		diag = fy_diag_create();
-		if (!diag)
-			return -1;
-		fy_diag_from_parser(diag, NULL);
-	} else
-		diag = fyp->diag;
-	assert(diag);
-
 	/* fill in fy_diag_ctx */
 	memset(&fydc, 0, sizeof(fydc));
 
@@ -475,20 +487,13 @@ int fy_parser_vdiag(struct fy_parser *fyp, unsigned int flags,
 	fydc.source_file = file;
 	fydc.source_line = line;
 	fydc.source_func = func;
-	if (fyp && diag->show_position) {
-		fydc.line = fyp->line;
-		fydc.column = fyp->column;
-	} else
-		diag->show_position = false;
+	fydc.line = fyp->line;
+	fydc.column = fyp->column;
 
-	rc = fy_vdiag_ctx(diag, &fydc, fmt, ap);
+	rc = fy_vdiag_ctx(fyp->diag, &fydc, fmt, ap);
 
-	if (fyp && !fyp->stream_error && diag->on_error)
+	if (fyp && !fyp->stream_error && fyp->diag->on_error)
 		fyp->stream_error = true;
-
-	/* release the diag if it was created */
-	if (!fyp)
-		fy_diag_unref(diag);
 
 	return rc;
 }

@@ -72,6 +72,10 @@ struct fy_diag *fy_diag_ref(struct fy_diag *fyd);
 void fy_diag_unref(struct fy_diag *fyd);
 void fy_diag_free(struct fy_diag *fyd);
 
+int fy_diag_vprintf(struct fy_diag *diag, const char *fmt, va_list ap);
+int fy_diag_printf(struct fy_diag *diag, const char *fmt, ...)
+	__attribute__((format(printf, 2, 3)));
+
 struct fy_diag_ctx {
 	int level;
 	int module;

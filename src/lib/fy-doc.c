@@ -329,7 +329,7 @@ fy_document_lookup_anchor_by_token(struct fy_document *fyd,
 
 	/* multiple ones, must pick the one that's the last one before
 	 * the requesting token */
-	fyp_notice(NULL, "multiple anchors for %.*s", (int)anchor_len, anchor_text);
+	fyd_notice(fyd, "multiple anchors for %.*s", (int)anchor_len, anchor_text);
 
 	/* only try the ones on the same input
 	 * we don't try to cover the case where the label is referenced
@@ -3189,8 +3189,6 @@ fy_node_by_path_internal(struct fy_node *fyn,
 
 	/* and continue on path lookup with the rest */
 
-	/* fyp_notice(NULL, "%s: path='%.*s'", __func__, (int)pathlen, path); */
-
 	/* skip all prefixed / */
 	switch (ptr_flags) {
 	default:
@@ -3262,8 +3260,6 @@ fy_node_by_path_internal(struct fy_node *fyn,
 		case FYNWF_PTR_JSON:
 		case FYNWF_PTR_RELJSON:
 
-			/* fyp_notice(NULL, "%s: json array path='%.*s'", __func__, (int)(e - s), s); */
-
 			/* special array end - always fails */
 			if (*s == '-')
 				return NULL;
@@ -3286,8 +3282,6 @@ fy_node_by_path_internal(struct fy_node *fyn,
 			break;
 		}
 
-		/* fyp_notice(NULL, "%s: seq: idx=%d", __func__, idx); */
-
 		len = e - s;
 
 		fyn = fy_node_sequence_get_by_index(fyn, idx);
@@ -3301,8 +3295,6 @@ fy_node_by_path_internal(struct fy_node *fyn,
 
 	path = s;
 	pathlen = (size_t)(e - s);
-
-	/* fyp_notice(NULL, "%s: left='%.*s'", __func__, (int)pathlen, path); */
 
 	switch (ptr_flags) {
 	default:
@@ -3350,8 +3342,6 @@ fy_node_by_path_internal(struct fy_node *fyn,
 		}
 		len = s - path;
 
-		/* fyp_notice(NULL, "%s: mapping lookup='%.*s'", __func__, (int)len, path); */
-
 		fynt = fyn;
 		fyn = fy_node_mapping_lookup_by_string(fyn, path, len);
 
@@ -3360,8 +3350,6 @@ fy_node_by_path_internal(struct fy_node *fyn,
 			fyn = fy_node_mapping_lookup_by_string(fynt, "<<", 2);
 			if (!fyn)
 				goto out;
-
-			/* fyp_notice(NULL, "found merge key"); */
 
 			if (fy_node_is_alias(fyn)) {
 
@@ -3464,8 +3452,6 @@ fy_node_by_path_internal(struct fy_node *fyn,
 			len = uri_path_len;
 		}
 
-		/* fyp_notice(NULL, "%s: JSON mapping lookup='%.*s'", __func__, (int)(len), path); */
-
 		fynt = fyn;
 		fyn = fy_node_mapping_lookup_value_by_simple_key(fyn, path, len);
 		break;
@@ -3498,8 +3484,6 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 		len = strlen(path);
 	e = s + len;
 
-	/* fyp_notice(NULL, "%s: path='%.*s'", __func__, (int)len, path); */
-
 	/* first path component may be an alias */
 	if ((flags & FYNWF_FOLLOW) && fyn && path) {
 		while (s < e && isspace(*s))
@@ -3510,7 +3494,6 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 
 		s++;
 
-		/* fyp_notice(NULL, "%s: alias check: '%.*s'", __func__, (int)(e - s), s); */
 		ss = s;
 
 		c = -1;
@@ -3547,8 +3530,6 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 		path = t;
 		len = e - t;
 
-		/* fyp_notice(NULL, "%s: looking up anchor='%.*s'", __func__, (int)alen, anchor); */
-
 		/* lookup anchor */
 		fya = fy_document_lookup_anchor(fyn->fyd, anchor, alen);
 
@@ -3563,17 +3544,12 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 		} else {
 			/* no anchor found? try for *</path/foo> */
 
-			/* fyp_notice(NULL, "anchor not found: %.*s", (int)alen, anchor); */
-
 			s = ss;
 			if ((e - s) < 3 || s[0] != '<' || s[1] != '/' || e[-1] != '>')
 				return NULL;
 
 			path = ss + 1;
 			len = (e - 1) - (ss + 1);
-
-			/* fyp_notice(NULL, "direct path: %.*s", (int)len, path); */
-
 		}
 	}
 
