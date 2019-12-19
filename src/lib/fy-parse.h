@@ -248,8 +248,7 @@ static inline bool fyp_is_flow_blankz(const struct fy_parser *fyp, int c)
 	return fyp && fy_input_is_flow_blankz(fyp->current_input, c);
 }
 
-int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg,
-		   struct fy_diag *diag);
+int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg);
 void fy_parse_cleanup(struct fy_parser *fyp);
 
 int fy_parse_input_append(struct fy_parser *fyp, const struct fy_input_cfg *fyic);

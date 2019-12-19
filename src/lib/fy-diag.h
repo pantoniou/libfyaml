@@ -51,41 +51,15 @@
 #define FYDF_MODULE_USER(x)	FYDF_MODULE(8 + ((x) & FYDF_MODULE_USER_MASK))
 
 struct fy_diag {
+	struct fy_diag_cfg cfg;
 	int refs;
-	FILE *fp;
-	int level;
-	unsigned int module_mask;
-	bool colorize : 1;
-	bool show_source : 1;
-	bool show_position : 1;
-	bool show_type : 1;
-	bool show_module : 1;
 	bool on_error : 1;
-	int source_width;
-	int position_width;
-	int type_width;
-	int module_width;
+	bool destroyed : 1;
 };
 
-struct fy_diag *fy_diag_create(void);
-struct fy_diag *fy_diag_ref(struct fy_diag *fyd);
-void fy_diag_unref(struct fy_diag *fyd);
-void fy_diag_free(struct fy_diag *fyd);
-
-int fy_diag_vprintf(struct fy_diag *diag, const char *fmt, va_list ap);
-int fy_diag_printf(struct fy_diag *diag, const char *fmt, ...)
-	__attribute__((format(printf, 2, 3)));
-
-struct fy_diag_ctx {
-	int level;
-	int module;
-	const char *source_func;
-	const char *source_file;
-	int source_line;
-	const char *file;
-	int line;
-	int column;
-};
+struct fy_diag *fy_diag_ref(struct fy_diag *diag);
+void fy_diag_unref(struct fy_diag *diag);
+void fy_diag_free(struct fy_diag *diag);
 
 struct fy_diag_report_ctx {
 	enum fy_error_type type;
@@ -96,12 +70,6 @@ struct fy_diag_report_ctx {
 	int override_line;
 	int override_column;
 };
-
-int fy_vdiag_ctx(struct fy_diag *fyd, const struct fy_diag_ctx *fydc,
-		 const char *fmt, va_list ap);
-int fy_diag_ctx(struct fy_diag *fyd, const struct fy_diag_ctx *fydc,
-		const char *fmt, ...)
-			__attribute__((format(printf, 3, 4)));
 
 void fy_diag_vreport(struct fy_diag *diag,
 		     const struct fy_diag_report_ctx *fydrc,
@@ -121,7 +89,7 @@ void fy_diag_report(struct fy_diag *diag,
 
 struct fy_parser;
 
-void fy_diag_from_parser(struct fy_diag *fyd, struct fy_parser *fyp);
+struct fy_diag_cfg *fy_diag_cfg_from_parser(struct fy_diag_cfg *cfg, struct fy_parser *fyp);
 
 int fy_parser_vdiag(struct fy_parser *fyp, unsigned int flags,
 		    const char *file, int line, const char *func,
@@ -270,7 +238,7 @@ void fy_parser_diag_report(struct fy_parser *fyp,
 /* doc */
 struct fy_document;
 
-void fy_diag_from_document(struct fy_diag *diag, struct fy_document *fyd);
+struct fy_diag_cfg *fy_diag_cfg_from_document(struct fy_diag_cfg *cfg, struct fy_document *fyd);
 
 int fy_document_vdiag(struct fy_document *fyd, unsigned int flags,
 		      const char *file, int line, const char *func,

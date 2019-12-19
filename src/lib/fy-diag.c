@@ -113,50 +113,66 @@ static const char *fy_error_type_str(enum fy_error_type type)
 		_buf; \
 	})
 
-static void fy_diag_from_parser_flags(struct fy_diag *diag, enum fy_parse_cfg_flags pflags)
+void fy_diag_cfg_from_parser_flags(struct fy_diag_cfg *cfg, enum fy_parse_cfg_flags pflags)
 {
-	diag->level = (pflags >> FYPCF_DEBUG_LEVEL_SHIFT) & FYPCF_DEBUG_LEVEL_MASK;
-	diag->module_mask = (pflags >> FYPCF_MODULE_SHIFT) & FYPCF_MODULE_MASK;
-	diag->colorize = false;
-	diag->show_source = !!(pflags & FYPCF_DEBUG_DIAG_SOURCE);
-	diag->show_position = !!(pflags & FYPCF_DEBUG_DIAG_POSITION);
-	diag->show_type = !!(pflags & FYPCF_DEBUG_DIAG_TYPE);
-	diag->show_module = !!(pflags & FYPCF_DEBUG_DIAG_MODULE);
+	cfg->level = (pflags >> FYPCF_DEBUG_LEVEL_SHIFT) & FYPCF_DEBUG_LEVEL_MASK;
+	cfg->module_mask = (pflags >> FYPCF_MODULE_SHIFT) & FYPCF_MODULE_MASK;
+	cfg->colorize = false;
+	cfg->show_source = !!(pflags & FYPCF_DEBUG_DIAG_SOURCE);
+	cfg->show_position = !!(pflags & FYPCF_DEBUG_DIAG_POSITION);
+	cfg->show_type = !!(pflags & FYPCF_DEBUG_DIAG_TYPE);
+	cfg->show_module = !!(pflags & FYPCF_DEBUG_DIAG_MODULE);
 }
 
-static void fy_diag_default_widths(struct fy_diag *diag)
+static void
+fy_diag_cfg_default_widths(struct fy_diag_cfg *cfg)
 {
-	diag->source_width = 50;
-	diag->position_width = 10;
-	diag->type_width = 5;
-	diag->module_width = 6;
+	cfg->source_width = 50;
+	cfg->position_width = 10;
+	cfg->type_width = 5;
+	cfg->module_width = 6;
 }
 
-void fy_diag_from_parser(struct fy_diag *diag, struct fy_parser *fyp)
+void fy_diag_cfg_default(struct fy_diag_cfg *cfg)
 {
-	if (!diag)
+	if (!cfg)
 		return;
 
-	diag->fp = fy_parser_get_error_fp(fyp);
-	fy_diag_from_parser_flags(diag, fy_parser_get_cfg_flags(fyp));
-	diag->colorize = fy_parser_is_colorized(fyp);
-	fy_diag_default_widths(diag);
-	diag->on_error = fyp && !!fyp->stream_error;
+	memset(cfg, 0, sizeof(*cfg));
+
+	cfg->fp = stderr;
+	fy_diag_cfg_from_parser_flags(cfg, FYPCF_DEFAULT_PARSE);
+	cfg->colorize = isatty(fileno(stderr)) == 1;
+	fy_diag_cfg_default_widths(cfg);
 }
 
-void fy_diag_from_document(struct fy_diag *diag, struct fy_document *fyd)
+struct fy_diag_cfg *fy_diag_cfg_from_parser(struct fy_diag_cfg *cfg, struct fy_parser *fyp)
 {
-	if (!diag || !fyd)
-		return;
+	if (!cfg)
+		return NULL;
 
-	diag->fp = fy_document_get_error_fp(fyd);
-	fy_diag_from_parser_flags(diag, fy_document_get_cfg_flags(fyd));
-	diag->colorize = fy_document_is_colorized(fyd);
-	fy_diag_default_widths(diag);
-	diag->on_error = false;
+	fy_diag_cfg_default(cfg);
+	cfg->fp = fy_parser_get_error_fp(fyp);
+	fy_diag_cfg_from_parser_flags(cfg, fy_parser_get_cfg_flags(fyp));
+	cfg->colorize = fy_parser_is_colorized(fyp);
+
+	return cfg;
 }
 
-struct fy_diag *fy_diag_create(void)
+struct fy_diag_cfg *fy_diag_cfg_from_document(struct fy_diag_cfg *cfg, struct fy_document *fyd)
+{
+	if (!cfg || !fyd)
+		return NULL;
+
+	fy_diag_cfg_default(cfg);
+	cfg->fp = fy_document_get_error_fp(fyd);
+	fy_diag_cfg_from_parser_flags(cfg, fy_document_get_cfg_flags(fyd));
+	cfg->colorize = fy_document_is_colorized(fyd);
+
+	return cfg;
+}
+
+struct fy_diag *fy_diag_create(const struct fy_diag_cfg *cfg)
 {
 	struct fy_diag *diag;
 
@@ -165,13 +181,48 @@ struct fy_diag *fy_diag_create(void)
 		return NULL;
 	memset(diag, 0, sizeof(*diag));
 
-	/* NULL is allowed */
-	fy_diag_from_parser(diag, NULL);
-
+	diag->cfg = *cfg;
+	diag->on_error = false;
 	diag->refs = 1;
 
 	return diag;
 }
+
+void fy_diag_destroy(struct fy_diag *diag)
+{
+	if (!diag)
+		return;
+
+	diag->destroyed = true;
+
+	return fy_diag_unref(diag);
+}
+
+bool fy_diag_got_error(struct fy_diag *diag)
+{
+	return diag && diag->on_error;
+}
+
+void fy_diag_reset_error(struct fy_diag *diag)
+{
+	if (!diag)
+		return;
+
+	diag->on_error = false;
+}
+
+/**
+ * fy_diag_reset_error() - Reset the error flag of
+ * 			   the diagnostic object
+ *
+ * Clears the error flag which was set by an output
+ * of an error level diagnostic
+ *
+ * @diag: The diagnostic object
+ */
+void
+fy_diag_reset_error(struct fy_diag *diag)
+	FY_EXPORT;
 
 void fy_diag_free(struct fy_diag *diag)
 {
@@ -209,8 +260,12 @@ int fy_diag_vprintf(struct fy_diag *diag, const char *fmt, va_list ap)
 	if (!diag || !fmt)
 		return -1;
 
-	if (diag->fp)
-		return vfprintf(diag->fp, fmt, ap);
+	/* no more output */
+	if (diag->destroyed)
+		return 0;
+
+	if (diag->cfg.fp)
+		return vfprintf(diag->cfg.fp, fmt, ap);
 
 	return -1;
 }
@@ -234,9 +289,10 @@ int fy_vdiag_ctx(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 	char *source = NULL, *position = NULL, *typestr = NULL, *modulestr = NULL;
 	const char *file_stripped = NULL;
 	const char *color_start = NULL, *color_end = NULL;
-	int rc, level;
+	enum fy_error_type level;
+	int rc;
 
-	if (!diag || !fydc || !fmt || !diag->fp)
+	if (!diag || !fydc || !fmt)
 		return -1;
 
 	level = fydc->level;
@@ -245,13 +301,13 @@ int fy_vdiag_ctx(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 	if (level >= FYET_ERROR && diag->on_error)
 		level = FYET_NOTICE;
 
-	if (level < diag->level) {
+	if (level < diag->cfg.level) {
 		rc = 0;
 		goto out;
 	}
 
 	/* check module enable mask */
-	if (!(diag->module_mask & FY_BIT(fydc->module))) {
+	if (!(diag->cfg.module_mask & FY_BIT(fydc->module))) {
 		rc = 0;
 		goto out;
 	}
@@ -259,7 +315,7 @@ int fy_vdiag_ctx(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 	msg = alloca_vsprintf(fmt, ap);
 
 	/* source part */
-	if (diag->show_source) {
+	if (diag->cfg.show_source) {
 		if (fydc->source_file) {
 			file_stripped = strrchr(fydc->source_file, '/');
 			if (!file_stripped)
@@ -273,18 +329,18 @@ int fy_vdiag_ctx(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 	}
 
 	/* position part */
-	if (diag->show_position && fydc->line >= 0 && fydc->column >= 0)
+	if (diag->cfg.show_position && fydc->line >= 0 && fydc->column >= 0)
 		position = alloca_sprintf("<%3d:%2d>%s", fydc->line, fydc->column, ": ");
 
 	/* type part */
-	if (diag->show_type)
+	if (diag->cfg.show_type)
 		typestr = alloca_sprintf("[%s]%s", fy_error_level_str(level), ": ");
 
 	/* module part */
-	if (diag->show_module)
+	if (diag->cfg.show_module)
 		modulestr = alloca_sprintf("<%s>%s", fy_error_module_str(fydc->module), ": ");
 
-	if (diag->colorize) {
+	if (diag->cfg.colorize) {
 		switch (level) {
 		case FYET_DEBUG:
 			color_start = "\x1b[37m";	/* normal white */
@@ -301,6 +357,8 @@ int fy_vdiag_ctx(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 		case FYET_ERROR:
 			color_start = "\x1b[31;1m";	/* bright red */
 			break;
+		default:	/* handles FYET_MAX */
+			break;
 		}
 		if (color_start)
 			color_end = "\x1b[0m";
@@ -308,10 +366,10 @@ int fy_vdiag_ctx(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 
 	rc = fy_diag_printf(diag, "%s" "%*s" "%*s" "%*s" "%*s" "%s" "%s\n",
 			color_start ? : "",
-			source    ? diag->source_width : 0, source ? : "",
-			position  ? diag->position_width : 0, position ? : "",
-			typestr   ? diag->type_width : 0, typestr ? : "",
-			modulestr ? diag->module_width : 0, modulestr ? : "",
+			source    ? diag->cfg.source_width : 0, source ? : "",
+			position  ? diag->cfg.position_width : 0, position ? : "",
+			typestr   ? diag->cfg.type_width : 0, typestr ? : "",
+			modulestr ? diag->cfg.module_width : 0, modulestr ? : "",
 			msg,
 			color_end ? : "");
 
@@ -353,7 +411,7 @@ void fy_diag_vreport(struct fy_diag *diag,
 	char *tildes;
 	int j, k, tildesz = 80, line, column;
 
-	if (!diag || !fydrc || !fmt || !diag->fp || !fydrc->fyt)
+	if (!diag || !fydrc || !fmt || !fydrc->fyt)
 		return;
 
 	tildes = alloca(tildesz + 1);
@@ -375,7 +433,7 @@ void fy_diag_vreport(struct fy_diag *diag,
 	/* it will strip trailing newlines */
 	msg = alloca_vsprintf(fmt, ap);
 
-	if (diag->colorize) {
+	if (diag->cfg.colorize) {
 		switch (fydrc->type) {
 		case FYET_DEBUG:
 			color_start = "\x1b[37m";	/* normal white */

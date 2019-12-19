@@ -48,6 +48,7 @@ struct fy_node_pair;
 struct fy_anchor;
 struct fy_node_mapping_sort_ctx;
 struct fy_token_iter;
+struct fy_diag;
 
 #ifndef FY_BIT
 #define FY_BIT(x) (1U << (x))
@@ -302,11 +303,13 @@ fy_set_default_parser_cfg_flags(enum fy_parse_cfg_flags pflags)
  * @search_path: Search path when accessing files, seperate with ':'
  * @flags: Configuration flags
  * @userdata: Opaque user data pointer
+ * @diag: Optional diagnostic interface to use
  */
 struct fy_parse_cfg {
 	const char *search_path;
 	enum fy_parse_cfg_flags flags;
 	void *userdata;
+	struct fy_diag *diag;
 };
 
 /**
@@ -1283,12 +1286,14 @@ enum fy_emitter_cfg_flags {
  * @flags: Configuration flags
  * @output: Pointer to the method that will perform output.
  * @userdata: Opaque user data pointer
+ * @diag: Diagnostic interface
  */
 struct fy_emitter_cfg {
 	enum fy_emitter_cfg_flags flags;
 	int (*output)(struct fy_emitter *emit, enum fy_emitter_write_type type,
 		      const char *str, int len, void *userdata);
 	void *userdata;
+	struct fy_diag *diag;
 };
 
 /**
@@ -3603,6 +3608,269 @@ fy_node_override_report(struct fy_node *fyn, enum fy_error_type type,
 			const char *fmt, ...)
 	__attribute__((format(printf, 6, 7)))
 	FY_EXPORT;
+
+/**
+ * struct fy_diag_cfg - The diagnostics configuration
+ *
+ * @fp: File descriptor of the error output
+ * @level: The minimum debugging level
+ * @module_mask: A bitmask of the enabled modules
+ * @colorize: true if output should be colorized using ANSI sequences
+ * @show_source: true if source location should be displayed
+ * @show_position: true if position should be displayed
+ * @show_type: true if the type should be displayed
+ * @show_module: true if the module should be displayed
+ * @source_width: Width of the source field
+ * @position_width: Width of the position field
+ * @type_width: Width of the type field
+ * @module_width: Width of the module field
+ *
+ * This structure contains the configuration of the
+ * diagnostic object.
+ */
+struct fy_diag_cfg {
+	FILE *fp;
+	enum fy_error_type level;
+	unsigned int module_mask;
+	bool colorize : 1;
+	bool show_source : 1;
+	bool show_position : 1;
+	bool show_type : 1;
+	bool show_module : 1;
+	int source_width;
+	int position_width;
+	int type_width;
+	int module_width;
+};
+
+/**
+ * fy_diag_create() - Create a diagnostic object
+ *
+ * Creates a diagnostic object using the provided configuration.
+ *
+ * @cfg: The configuration for the diagnostic object
+ *
+ * Returns:
+ * A pointer to the diagnostic object or NULL in case of an error.
+ */
+struct fy_diag *
+fy_diag_create(const struct fy_diag_cfg *cfg)
+	FY_EXPORT;
+
+/**
+ * fy_diag_destroy() - Destroy a diagnostic object
+ *
+ * Destroy a diagnostic object; note that the actual
+ * destruction only occurs when no more references to the
+ * object are present. However no output will be generated
+ * after this call.
+ *
+ * @diag: The diagnostic object to destroy
+ */
+void
+fy_diag_destroy(struct fy_diag *diag)
+	FY_EXPORT;
+
+/**
+ * fy_diag_got_error() - Test whether an error level diagnostic
+ *                       has been produced
+ *
+ * Tests whether an error diagnostic has been produced.
+ *
+ * @diag: The diagnostic object
+ *
+ * Returns:
+ * true if an error has been produced, false otherwise
+ */
+bool
+fy_diag_got_error(struct fy_diag *diag)
+	FY_EXPORT;
+
+/**
+ * fy_diag_reset_error() - Reset the error flag of
+ * 			   the diagnostic object
+ *
+ * Clears the error flag which was set by an output
+ * of an error level diagnostic
+ *
+ * @diag: The diagnostic object
+ */
+void
+fy_diag_reset_error(struct fy_diag *diag)
+	FY_EXPORT;
+
+/**
+ * fy_diag_cfg_default() - Fill in the configuration structure
+ * 			   with defaults
+ *
+ * Fills the configuration structure with defaults. The default
+ * always associates the file descriptor to stderr.
+ *
+ * @cfg: The diagnostic configuration structure
+ */
+void
+fy_diag_cfg_default(struct fy_diag_cfg *cfg)
+	FY_EXPORT;
+
+/**
+ * fy_diag_cfg_from_parser_flags() - Fill partial diagnostic config
+ * 				     structure from parser config flags
+ *
+ * Fills in part of the configuration structure using parser flags.
+ *
+ * @cfg: The diagnostic configuration structure
+ * @pflags: The parser flags
+ */
+void
+fy_diag_cfg_from_parser_flags(struct fy_diag_cfg *cfg,
+			      enum fy_parse_cfg_flags pflags)
+	FY_EXPORT;
+
+/**
+ * fy_diag_vprintf() - vprintf raw interface to diagnostics
+ *
+ * Raw output to the diagnostic object using a standard
+ * vprintf interface. Note that this is the lowest level
+ * interface, and as such is not recommended for use, since
+ * no formatting or coloring will take place.
+ *
+ * @diag: The diagnostic object to use
+ * @fmt: The vprintf format string
+ * @ap: The arguments
+ *
+ * Returns:
+ * The number of characters output, or -1 in case of an error
+ * Note that 0 shall be returned if the diagnostic object has
+ * been destroyed but not yet freed.
+ */
+int
+fy_diag_vprintf(struct fy_diag *diag, const char *fmt, va_list ap)
+	FY_EXPORT;
+
+/**
+ * fy_diag_vprintf() - printf raw interface to diagnostics
+ *
+ * Raw output to the diagnostic object using a standard
+ * printf interface. Note that this is the lowest level
+ * interface, and as such is not recommended for use, since
+ * no formatting or coloring will take place.
+ *
+ * @diag: The diagnostic object to use
+ * @fmt: The printf format string
+ * @...: The arguments
+ *
+ * Returns:
+ * The number of characters output, or -1 in case of an error
+ * Note that 0 shall be returned if the diagnostic object has
+ * been destroyed but not yet freed.
+ */
+int
+fy_diag_printf(struct fy_diag *diag, const char *fmt, ...)
+	FY_EXPORT
+	__attribute__((format(printf, 2, 3)));
+
+/**
+ * struct fy_diag_ctx - The diagnostics context
+ *
+ * @level: The level of the diagnostic
+ * @module: The module of the diagnostic
+ * @source_func: The source function
+ * @source_file: The source file
+ * @source_line: The source line
+ * @file: The file that caused the error
+ * @line: The line where the diagnostic occured
+ * @column: The column where the diagnostic occured
+ *
+ * This structure contains the diagnostic context
+ */
+struct fy_diag_ctx {
+	enum fy_error_type level;
+	enum fy_error_module module;
+	const char *source_func;
+	const char *source_file;
+	int source_line;
+	const char *file;
+	int line;
+	int column;
+};
+
+/**
+ * fy_vdiag_ctx() - context aware diagnostic output like vprintf
+ *
+ * Context aware output to the diagnostic object using a standard
+ * vprintf interface.
+ *
+ * @diag: The diagnostic object to use
+ * @fydc: The diagnostic context
+ * @fmt: The vprintf format string
+ * @ap: The arguments
+ *
+ * Returns:
+ * The number of characters output, or -1 in case of an error
+ * Note that 0 shall be returned if the diagnostic object has
+ * been destroyed but not yet freed.
+ */
+int
+fy_vdiag_ctx(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
+	     const char *fmt, va_list ap)
+	FY_EXPORT;
+
+/**
+ * fy_diag_ctx() - context aware diagnostic output like printf
+ *
+ * Context aware output to the diagnostic object using a standard
+ * printf interface.
+ *
+ * @diag: The diagnostic object to use
+ * @fydc: The diagnostic context
+ * @fmt: The vprintf format string
+ * @ap: The arguments
+ *
+ * Returns:
+ * The number of characters output, or -1 in case of an error
+ * Note that 0 shall be returned if the diagnostic object has
+ * been destroyed but not yet freed.
+ */
+int
+fy_diag_ctx(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
+	    const char *fmt, ...)
+	FY_EXPORT
+	__attribute__((format(printf, 3, 4)));
+
+#define fy_diag_diag(_diag, _level, _fmt, ...) \
+	({ \
+		struct fy_diag_ctx _ctx = { \
+			.level = (_level), \
+			.module = FYEM_UNKNOWN, \
+			.source_func = __func__, \
+			.source_file = __FILE__, \
+			.source_line = __LINE__, \
+			.file = NULL, \
+			.line = 0, \
+			.column = 0, \
+		}; \
+		fy_diag_ctx((_diag), &_ctx, (_fmt) , ## __VA_ARGS__); \
+	})
+
+#ifndef NDEBUG
+
+#define fy_debug(_diag, _fmt, ...) \
+	fy_diag_diag((_diag), FYET_DEBUG, (_fmt) , ## __VA_ARGS__)
+#else
+
+#define fy_debug(_diag, _fmt, ...) \
+	do { } while(0)
+
+#endif
+
+#define fy_info(_diag, _fmt, ...) \
+	fy_diag_diag((_diag), FYET_INFO, (_fmt) , ## __VA_ARGS__)
+#define fy_notice(_diag, _fmt, ...) \
+	fy_diag_diag((_diag), FYET_NOTICE, (_fmt) , ## __VA_ARGS__)
+#define fy_warning(_diag, _fmt, ...) \
+	fy_diag_diag((_diag), FYET_WARNING, (_fmt) , ## __VA_ARGS__)
+#define fy_error(_diag, _fmt, ...) \
+	fy_diag_diag((_diag), FYET_ERROR, (_fmt) , ## __VA_ARGS__)
 
 #ifdef __cplusplus
 }

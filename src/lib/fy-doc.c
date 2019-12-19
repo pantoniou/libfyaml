@@ -2484,7 +2484,9 @@ static const struct fy_parse_cfg doc_parse_default_cfg = {
 
 struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 {
+	struct fy_diag_cfg dcfg;
 	struct fy_document *fyd = NULL;
+	struct fy_diag *diag;
 
 	if (!cfg)
 		cfg = &doc_parse_default_cfg;
@@ -2496,11 +2498,15 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 	memset(fyd, 0, sizeof(*fyd));
 	fyd->parse_cfg = *cfg;
 
-	fyd->diag = fy_diag_create();
-	if (!fyd->diag)
-		goto err_out;
+	diag = cfg->diag;
+	if (!diag) {
+		diag = fy_diag_create(fy_diag_cfg_from_document(&dcfg, fyd));
+		if (!diag)
+			goto err_out;
+	} else
+		fy_diag_ref(diag);
 
-	fy_diag_from_document(fyd->diag, fyd);
+	fyd->diag = diag;
 
 	fy_anchor_list_init(&fyd->anchors);
 	fyd->root = NULL;
@@ -2619,7 +2625,7 @@ static struct fy_document *fy_document_build_internal(const struct fy_parse_cfg 
 	if (!cfg)
 		cfg = &doc_parse_default_cfg;
 
-	rc = fy_parse_setup(fyp, cfg, NULL);
+	rc = fy_parse_setup(fyp, cfg);
 	if (rc)
 		return NULL;
 
@@ -3869,6 +3875,7 @@ fy_node_build_internal(struct fy_document *fyd,
 	struct fy_document_state *fyds = NULL;
 	struct fy_node *fyn = NULL;
 	struct fy_parser fyp_data, *fyp = &fyp_data;
+	struct fy_parse_cfg cfg;
 	struct fy_eventp *fyep;
 	int rc;
 	bool got_stream_end;
@@ -3876,7 +3883,9 @@ fy_node_build_internal(struct fy_document *fyd,
 	if (!fyd || !parser_setup)
 		return NULL;
 
-	rc = fy_parse_setup(fyp, &fyd->parse_cfg, fyd->diag);
+	cfg = fyd->parse_cfg;
+	cfg.diag = fyd->diag;
+	rc = fy_parse_setup(fyp, &cfg);
 	if (rc) {
 		fyd->diag->on_error = false;
 		return NULL;

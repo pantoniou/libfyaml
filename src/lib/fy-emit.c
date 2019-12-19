@@ -1854,11 +1854,26 @@ void fy_emit_reset(struct fy_emitter *emit, bool reset_events)
 	}
 }
 
-void fy_emit_setup(struct fy_emitter *emit, const struct fy_emitter_cfg *cfg)
+int fy_emit_setup(struct fy_emitter *emit, const struct fy_emitter_cfg *cfg)
 {
+	struct fy_diag_cfg dcfg;
+	struct fy_diag *diag;
+
 	memset(emit, 0, sizeof(*emit));
 
 	emit->cfg = cfg;
+
+	diag = cfg->diag;
+
+	if (!diag) {
+		diag = fy_diag_create(fy_diag_cfg_from_parser(&dcfg, NULL));
+		if (!diag)
+			return -1;
+	} else
+		fy_diag_ref(diag);
+
+	emit->diag = diag;
+
 	fy_emit_accum_init(&emit->ea, emit);
 	fy_eventp_list_init(&emit->queued_events);
 
@@ -1869,6 +1884,8 @@ void fy_emit_setup(struct fy_emitter *emit, const struct fy_emitter_cfg *cfg)
 	emit->sc_stack_alloc = sizeof(emit->sc_stack_inplace)/sizeof(emit->sc_stack_inplace[0]);
 
 	fy_emit_reset(emit, false);
+
+	return 0;
 }
 
 void fy_emit_cleanup(struct fy_emitter *emit)
@@ -1888,6 +1905,8 @@ void fy_emit_cleanup(struct fy_emitter *emit)
 
 	if (emit->sc_stack && emit->sc_stack != emit->sc_stack_inplace)
 		free(emit->sc_stack);
+
+	fy_diag_unref(emit->diag);
 }
 
 int fy_emit_node(struct fy_emitter *emit, struct fy_node *fyn)
@@ -1956,6 +1975,7 @@ const struct fy_emitter_cfg *fy_emitter_get_cfg(struct fy_emitter *emit)
 struct fy_emitter *fy_emitter_create(struct fy_emitter_cfg *cfg)
 {
 	struct fy_emitter *emit;
+	int rc;
 
 	if (!cfg)
 		return NULL;
@@ -1964,7 +1984,11 @@ struct fy_emitter *fy_emitter_create(struct fy_emitter_cfg *cfg)
 	if (!emit)
 		return NULL;
 
-	fy_emit_setup(emit, cfg);
+	rc = fy_emit_setup(emit, cfg);
+	if (rc) {
+		free(emit);
+		return NULL;
+	}
 
 	return emit;
 }

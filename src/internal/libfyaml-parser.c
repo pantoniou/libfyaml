@@ -2105,8 +2105,55 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	printf("%s\n", buf);
 	free(buf);
 
+	fy_diag_printf(fyd->diag, "Outputting on document diag\n");
+
+	fy_debug(fyd->diag, "Debug level\n");
+	fy_info(fyd->diag, "Info level\n");
+	fy_notice(fyd->diag, "Notice level\n");
+	fy_warning(fyd->diag, "Warning level\n");
+	fy_error(fyd->diag, "Error level\n");
+
 	fy_document_destroy(fyd);
 	fyd = NULL;
+
+	{
+		struct fy_diag *diag;
+		struct fy_diag_cfg dcfg;
+		struct fy_parse_cfg pcfg;
+		FILE *fp;
+		char *mbuf = NULL;
+		size_t msize;
+
+		fp = open_memstream(&mbuf, &msize);
+		assert(fp);
+
+		fy_diag_cfg_default(&dcfg);
+		dcfg.fp = fp;
+		dcfg.colorize = isatty(fileno(stderr)) == 1;
+
+		diag = fy_diag_create(&dcfg);
+		assert(diag);
+
+		fy_error(diag, "Writting in the diagnostic\n");
+
+		memset(&pcfg, 0, sizeof(pcfg));
+		pcfg.flags = FYPCF_DEFAULT_DOC;
+		pcfg.diag = diag;
+		fyd = fy_document_build_from_string(&pcfg, "{ foo: \"\\xeh\", foo: baz }", FY_NT);
+		/* the document must not be created (duplicate key) */
+		assert(!fyd);
+
+		fy_diag_destroy(diag);
+
+		fclose(fp);
+
+		assert(mbuf);
+
+		printf("checking diagnostic\n");
+		fwrite(mbuf, msize, 1, stdout);
+
+		free(mbuf);
+	}
 
 	return 0;
 }
@@ -2453,7 +2500,7 @@ int main(int argc, char *argv[])
 		return !rc ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 
-	rc = fy_parse_setup(fyp, &cfg, NULL);
+	rc = fy_parse_setup(fyp, &cfg);
 	if (rc) {
 		fprintf(stderr, "fy_parse_setup() failed\n");
 		goto cleanup;

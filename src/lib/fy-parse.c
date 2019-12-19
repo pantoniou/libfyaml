@@ -453,20 +453,21 @@ static const struct fy_parse_cfg default_parse_cfg = {
 	.flags = FYPCF_DEFAULT_PARSE,
 };
 
-int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg,
-		   struct fy_diag *diag)
+int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 {
+	struct fy_diag *diag;
+	struct fy_diag_cfg dcfg;
 	int rc;
 
 	memset(fyp, 0, sizeof(*fyp));
 
+	diag = cfg ? cfg->diag : NULL;
 	fyp->cfg = cfg ? *cfg : default_parse_cfg;
 
 	if (!diag) {
-		diag = fy_diag_create();
+		diag = fy_diag_create(fy_diag_cfg_from_parser(&dcfg, fyp));
 		if (!diag)
 			return -1;
-		fy_diag_from_parser(diag, fyp);
 	} else
 		fy_diag_ref(diag);
 
@@ -5083,7 +5084,7 @@ struct fy_parser *fy_parser_create(const struct fy_parse_cfg *cfg)
 	if (!fyp)
 		return NULL;
 
-	rc = fy_parse_setup(fyp, cfg, NULL);
+	rc = fy_parse_setup(fyp, cfg);
 	if (rc) {
 		free(fyp);
 		return NULL;

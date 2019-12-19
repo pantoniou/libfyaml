@@ -93,6 +93,7 @@ struct fy_emitter {
 	struct fy_document *fyd;
 	struct fy_document_state *fyds;	/* fyd->fyds when fyd != NULL */
 	struct fy_emit_accum ea;
+	struct fy_diag *diag;
 
 	/* streaming event mode */
 	enum fy_emitter_state state;
