@@ -5199,7 +5199,7 @@ bool fy_document_is_colorized(struct fy_document *fyd)
 
 	color_flags = fyd->parse_cfg.flags & FYPCF_COLOR(FYPCF_COLOR_MASK);
 	if (color_flags == FYPCF_COLOR_AUTO)
-		return isatty(fileno(stderr));
+		return isatty(fileno(fy_document_get_error_fp(fyd))) == 1;
 
 	return color_flags == FYPCF_COLOR_FORCE;
 }

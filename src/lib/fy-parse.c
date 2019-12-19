@@ -5429,7 +5429,7 @@ bool fy_parser_is_colorized(struct fy_parser *fyp)
 
 	color_flags = fyp->cfg.flags & FYPCF_COLOR(FYPCF_COLOR_MASK);
 	if (color_flags == FYPCF_COLOR_AUTO)
-		return isatty(fileno(stderr));
+		return isatty(fileno(fy_parser_get_error_fp(fyp))) == 1;
 
 	return color_flags == FYPCF_COLOR_FORCE;
 }
