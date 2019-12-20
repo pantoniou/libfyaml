@@ -420,7 +420,7 @@ void fy_diag_vreport(struct fy_diag *diag,
 	const struct fy_mark *start_mark;
 	struct fy_atom_raw_line_iter iter;
 	const struct fy_raw_line *l;
-	char *tildes;
+	char *tildes = "";
 	int j, k, tildesz = 0, line, column;
 
 	if (!diag || !fydrc || !fmt || !fydrc->fyt)
