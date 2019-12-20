@@ -257,6 +257,9 @@ void fy_diag_unref(struct fy_diag *diag)
 
 int fy_diag_vprintf(struct fy_diag *diag, const char *fmt, va_list ap)
 {
+	char *buf;
+	int rc;
+
 	if (!diag || !fmt)
 		return -1;
 
@@ -266,6 +269,15 @@ int fy_diag_vprintf(struct fy_diag *diag, const char *fmt, va_list ap)
 
 	if (diag->cfg.fp)
 		return vfprintf(diag->cfg.fp, fmt, ap);
+
+	if (diag->cfg.output_fn) {
+		rc = vasprintf(&buf, fmt, ap);
+		if (rc < 0)
+			return rc;
+		diag->cfg.output_fn(diag, diag->cfg.user, buf, (size_t)rc);
+		free(buf);
+		return rc;
+	}
 
 	return -1;
 }
@@ -404,19 +416,15 @@ void fy_diag_vreport(struct fy_diag *diag,
 		     const char *fmt, va_list ap)
 {
 	const char *name, *color_start = NULL, *color_end = NULL, *white = NULL;
-	char *msg;
+	char *msg_str = NULL, *name_str = NULL;
 	const struct fy_mark *start_mark;
 	struct fy_atom_raw_line_iter iter;
 	const struct fy_raw_line *l;
 	char *tildes;
-	int j, k, tildesz = 80, line, column;
+	int j, k, tildesz = 0, line, column;
 
 	if (!diag || !fydrc || !fmt || !fydrc->fyt)
 		return;
-
-	tildes = alloca(tildesz + 1);
-	memset(tildes, '~', tildesz);
-	tildes[tildesz] = '\0';
 
 	start_mark = fy_token_start_mark(fydrc->fyt);
 
@@ -431,7 +439,7 @@ void fy_diag_vreport(struct fy_diag *diag,
 	}
 
 	/* it will strip trailing newlines */
-	msg = alloca_vsprintf(fmt, ap);
+	msg_str = alloca_vsprintf(fmt, ap);
 
 	if (diag->cfg.colorize) {
 		switch (fydrc->type) {
@@ -458,18 +466,15 @@ void fy_diag_vreport(struct fy_diag *diag,
 	} else
 		color_start = color_end = white = "";
 
-	if (name)
-		fy_diag_printf(diag, "%s%s:", white, name);
+	if (name || (line > 0 && column > 0))
+		name_str = (line > 0 && column > 0) ?
+			alloca_sprintf("%s%s:%d:%d: ", white, name, line, column) :
+			alloca_sprintf("%s%s: ", white, name);
 
-	if (line > 0 && column > 0)
-		fy_diag_printf(diag, "%s%d:%d: ", white, line, column);
-	else if (name)
-		fy_diag_printf(diag, " ");
-
-
-	fy_diag_printf(diag, "%s%s: %s" "%s\n",
+	fy_diag_printf(diag, "%s" "%s%s: %s" "%s\n",
+		name_str ? : "",
 		color_start, fy_error_type_str(fydrc->type), color_end,
-		msg);
+		msg_str);
 
 	fy_atom_raw_line_iter_start(fy_token_atom(fydrc->fyt), &iter);
 	while ((l = fy_atom_raw_line_iter_next(&iter)) != NULL) {
@@ -478,10 +483,13 @@ void fy_diag_vreport(struct fy_diag *diag,
 		j = l->content_start_col8;
 		k = (l->content_end_col8 - l->content_start_col8) - 1;
 		if (k > tildesz) {
-			tildes = alloca(k + 1);
-			memset(tildes, '~', k);
-			tildes[k] = '\0';
-			tildesz = k;
+			if (!tildesz)
+				tildesz = 32;
+			while (tildesz < k)
+				tildesz *= 2;
+			tildes = alloca(tildesz + 1);
+			memset(tildes, '~', tildesz);
+			tildes[tildesz] = '\0';
 		}
 		fy_diag_printf(diag, "%*s%s%c%.*s%s\n",
 			       j, "", color_start,

@@ -1048,6 +1048,14 @@ int do_libyaml_dump(yaml_parser_t *parser, yaml_emitter_t *emitter)
 
 #endif
 
+static void test_diag_output(struct fy_diag *diag, void *user, const char *buf, size_t len)
+{
+	FILE *fp = user;
+	static int counter = 0;
+
+	fprintf(fp, "%d: %.*s",  ++counter, (int)len, buf);
+}
+
 int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 {
 #if 0
@@ -2130,6 +2138,47 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 		fy_diag_cfg_default(&dcfg);
 		dcfg.fp = fp;
 		dcfg.colorize = isatty(fileno(stderr)) == 1;
+
+		diag = fy_diag_create(&dcfg);
+		assert(diag);
+
+		fy_error(diag, "Writting in the diagnostic\n");
+
+		memset(&pcfg, 0, sizeof(pcfg));
+		pcfg.flags = FYPCF_DEFAULT_DOC;
+		pcfg.diag = diag;
+		fyd = fy_document_build_from_string(&pcfg, "{ foo: \"\\xeh\", foo: baz }", FY_NT);
+		/* the document must not be created (duplicate key) */
+		assert(!fyd);
+
+		fy_diag_destroy(diag);
+
+		fclose(fp);
+
+		assert(mbuf);
+
+		printf("checking diagnostic\n");
+		fwrite(mbuf, msize, 1, stdout);
+
+		free(mbuf);
+	}
+
+	{
+		struct fy_diag *diag;
+		struct fy_diag_cfg dcfg;
+		struct fy_parse_cfg pcfg;
+		FILE *fp;
+		char *mbuf = NULL;
+		size_t msize;
+
+		fp = open_memstream(&mbuf, &msize);
+		assert(fp);
+
+		fy_diag_cfg_default(&dcfg);
+		dcfg.fp = NULL;
+		dcfg.colorize = isatty(fileno(stderr)) == 1;
+		dcfg.output_fn = test_diag_output;
+		dcfg.user = stderr;
 
 		diag = fy_diag_create(&dcfg);
 		assert(diag);

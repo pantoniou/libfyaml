@@ -3609,10 +3609,15 @@ fy_node_override_report(struct fy_node *fyn, enum fy_error_type type,
 	__attribute__((format(printf, 6, 7)))
 	FY_EXPORT;
 
+typedef void (*fy_diag_output_fn)(struct fy_diag *diag, void *user,
+				  const char *buf, size_t len);
+
 /**
  * struct fy_diag_cfg - The diagnostics configuration
  *
  * @fp: File descriptor of the error output
+ * @output_fn: Callback to use when fp is NULL
+ * @user: User pointer to pass to the output_fn
  * @level: The minimum debugging level
  * @module_mask: A bitmask of the enabled modules
  * @colorize: true if output should be colorized using ANSI sequences
@@ -3630,6 +3635,8 @@ fy_node_override_report(struct fy_node *fyn, enum fy_error_type type,
  */
 struct fy_diag_cfg {
 	FILE *fp;
+	fy_diag_output_fn output_fn;
+	void *user;
 	enum fy_error_type level;
 	unsigned int module_mask;
 	bool colorize : 1;
