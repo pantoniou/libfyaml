@@ -872,8 +872,7 @@ void fy_emit_token_write_quoted(struct fy_emitter *emit, struct fy_token *fyt, i
 				fy_emit_accum_utf8_put(&emit->ea, '\'');
 				fy_emit_accum_utf8_put(&emit->ea, '\'');
 			} else if (qc == '"' &&
-				   (!fy_is_print(c) || c == FY_UTF8_BOM ||
-				    fy_is_lb(c) || c == '"' || c == '\\')) {
+				   (!fy_is_printq(c) || c == '"' || c == '\\')) {
 
 				fy_emit_accum_utf8_put(&emit->ea, '\\');
 

@@ -131,6 +131,12 @@ static inline bool fy_is_print(int c)
 	       (c >= 0xe000 && c <= 0xfffd && c != FY_UTF8_BOM);
 }
 
+static inline bool fy_is_printq(int c)
+{
+	return c != '\t' && c != 0xa0 && !fy_is_lb(c) &&
+	       fy_is_print(c);
+}
+
 static inline bool fy_is_nb_char(int c)
 {
 	return (c >= 0x0020 && c <= 0x007e) ||
@@ -200,6 +206,7 @@ FY_CTYPE_AT_BUILDER(blank);
 FY_CTYPE_AT_BUILDER(blankz);
 FY_CTYPE_AT_BUILDER(ws_lb);
 FY_CTYPE_AT_BUILDER(print);
+FY_CTYPE_AT_BUILDER(printq);
 FY_CTYPE_AT_BUILDER(nb_char);
 FY_CTYPE_AT_BUILDER(ns_char);
 FY_CTYPE_AT_BUILDER(indicator);

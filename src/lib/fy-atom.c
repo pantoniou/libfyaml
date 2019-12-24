@@ -247,7 +247,8 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 	is_block = atom->style == FYAS_LITERAL || atom->style == FYAS_FOLDED;
 
 	/* short circuit non multiline, non ws atoms */
-	if (atom->direct_output && !atom->has_lb && !atom->has_ws) {
+	if ((atom->direct_output && !atom->has_lb && !atom->has_ws) ||
+	    atom->style == FYAS_DOUBLE_QUOTED_MANUAL) {
 		li->start = s;
 		li->end = e;
 		li->nws_start = s;
@@ -260,7 +261,7 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 		li->start_ws = 0;
 		li->end_ws = 0;
 		li->indented = false;
-		li->lb_end = atom->ends_with_lb;
+		li->lb_end = is_block ? atom->ends_with_lb : false;
 		li->final = true;
 		return;
 	}
@@ -541,9 +542,13 @@ fy_atom_iter_line(struct fy_atom_iter *iter)
 	switch (atom->style) {
 	case FYAS_PLAIN:
 	case FYAS_URI:
-	case FYAS_DOUBLE_QUOTED_MANUAL:
 		li->need_nl = !li->last && li->empty;
 		li->need_sep = !li->need_nl && nli && !nli->empty;
+		break;
+
+	case FYAS_DOUBLE_QUOTED_MANUAL:
+		li->need_nl = false;
+		li->need_sep = false;
 		break;
 
 	case FYAS_COMMENT:
@@ -589,9 +594,8 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 	const struct fy_atom *atom = iter->atom;
 	const struct fy_atom_iter_line_info *li;
 	const char *s, *e, *t;
-	int c, value, code_length, rlen, w, ret;
+	int value, code_length, rlen, ret;
 	uint8_t code[4], *tt;
-	char digitbuf[10];
 	int pending_nl;
 
 	/* done? */
@@ -704,82 +708,11 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 		break;
 
 	case FYAS_DOUBLE_QUOTED_MANUAL:
-		while ((c = fy_utf8_get(s, (e - s), &w)) >= 0) {
-
-			if (c != '"' && c != '\\' && fy_is_print(c)) {
-				ret = fy_atom_iter_add_chunk(iter, s, w);
-				if (ret)
-					goto out;
-				s += w;
-				continue;
-			}
-
-			ret = fy_atom_iter_add_chunk(iter, "\\", 1);
-			if (ret)
-				goto out;
-
-			ret = 0;
-			switch (c) {
-			case '\\':
-				ret = fy_atom_iter_add_chunk(iter, "\\", 1);
-				break;
-			case '"':
-				ret = fy_atom_iter_add_chunk(iter, "\"", 1);
-				break;
-			case '\0':
-				ret = fy_atom_iter_add_chunk(iter, "0", 1);
-				break;
-			case '\a':
-				ret = fy_atom_iter_add_chunk(iter, "a", 1);
-				break;
-			case '\b':
-				ret = fy_atom_iter_add_chunk(iter, "b", 1);
-				break;
-			case '\t':
-				ret = fy_atom_iter_add_chunk(iter, "t", 1);
-				break;
-			case '\n':
-				ret = fy_atom_iter_add_chunk(iter, "n", 1);
-				break;
-			case '\v':
-				ret = fy_atom_iter_add_chunk(iter, "v", 1);
-				break;
-			case '\f':
-				ret = fy_atom_iter_add_chunk(iter, "f", 1);
-				break;
-			case '\r':
-				ret = fy_atom_iter_add_chunk(iter, "r", 1);
-				break;
-			case '\e':
-				ret = fy_atom_iter_add_chunk(iter, "e", 1);
-				break;
-			case 0x85:
-				ret = fy_atom_iter_add_chunk(iter, "N", 1);
-				break;
-			case 0xa0:
-				ret = fy_atom_iter_add_chunk(iter, "_", 1);
-				break;
-			case 0x2028:
-				ret = fy_atom_iter_add_chunk(iter, "L", 1);
-				break;
-			case 0x2029:
-				ret = fy_atom_iter_add_chunk(iter, "P", 1);
-				break;
-			default:
-				if (c <= 0xff)
-					snprintf(digitbuf, sizeof(digitbuf), "x%02x", c & 0xff);
-				else if (c <= 0xffff)
-					snprintf(digitbuf, sizeof(digitbuf), "x%04x", c & 0xffff);
-				else
-					snprintf(digitbuf, sizeof(digitbuf), "U%08x", c & 0xffffffff);
-				ret = fy_atom_iter_add_chunk_copy(iter, digitbuf, strlen(digitbuf));
-				break;
-			}
-			if (ret)
-				goto out;
-
-			s += w;
-		}
+		/* manual scalar just goes out */
+		ret = fy_atom_iter_add_chunk(iter, s, e - s);
+		if (ret)
+			goto out;
+		s = e;
 		break;
 
 	default:

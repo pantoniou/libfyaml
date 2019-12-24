@@ -870,8 +870,8 @@ unsigned int fy_analyze_scalar_content(const struct fy_input *fyi,
 		if (fy_is_ws(c))
 			flags |= FYACF_WS;
 
-		/* anything not printable */
-		if (!fy_is_print(c)) {
+		/* anything not printable (or \r, \n) */
+		if (!fy_is_printq(c)) {
 			flags &= ~FYACF_PRINTABLE;
 			flags &= ~(FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN | FYACF_SINGLE_QUOTED);
 		}

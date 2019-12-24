@@ -1035,6 +1035,66 @@ START_TEST(doc_attach_check)
 }
 END_TEST
 
+START_TEST(manual_scalar_esc)
+{
+#undef MANUAL_SCALAR_ESC
+#undef MANUAL_SCALAR_ESC_TXT
+#define MANUAL_SCALAR_ESC "\\\"\0\a\b\t\v\f\r\e\xc2\x85\xc2\xa0\xe2\x80\xa8\xe2\x80\xa9"
+#define MANUAL_SCALAR_ESC_TXT "\"\\\\\\\"\\0\\a\\b\\t\\v\\f\\r\\e\\N\\_\\L\\P\""
+	const char *what = MANUAL_SCALAR_ESC;
+	size_t what_sz = sizeof(MANUAL_SCALAR_ESC) - 1;
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	char *buf;
+	const char *buf2;
+	size_t sz2;
+	int rc;
+
+	/* build document */
+	fyd = fy_document_create(NULL);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* create a manual scalar with all the escapes */
+	fyn = fy_node_create_scalar(fyd, what, what_sz);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	fy_document_set_root(fyd, fyn);
+	fyn = NULL;
+
+	/* emit to a buffer */
+	buf = fy_emit_document_to_string(fyd, FYECF_MODE_FLOW_ONELINE);
+	ck_assert_ptr_ne(buf, NULL);
+
+	/* destroy the old document */
+	fy_document_destroy(fyd);
+	fyd = NULL;
+
+	/* verify that the resulting document is in the escaped form */
+	ck_assert_str_eq(buf, MANUAL_SCALAR_ESC_TXT "\n");
+
+	/* now load the result back and verify that it contains exactly the same */
+	fyd = fy_document_build_from_string(NULL, buf, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* get the scalar content */
+	buf2 = fy_node_get_scalar(fy_document_root(fyd), &sz2);
+	ck_assert_ptr_ne(buf2, NULL);
+
+	/* sizes must match */
+	ck_assert_int_eq(what_sz, sz2);
+
+	/* and the strings too */
+	rc = memcmp(what, buf2, what_sz);
+	ck_assert_int_eq(rc, 0);
+
+	/* free the document */
+	fy_document_destroy(fyd);
+	fyd = NULL;
+
+	free(buf);
+}
+END_TEST
+
 TCase *libfyaml_case_core(void)
 {
 	TCase *tc;
@@ -1080,6 +1140,8 @@ TCase *libfyaml_case_core(void)
 	tcase_add_test(tc, doc_build_with_tags);
 
 	tcase_add_test(tc, doc_attach_check);
+
+	tcase_add_test(tc, manual_scalar_esc);
 
 	return tc;
 }
