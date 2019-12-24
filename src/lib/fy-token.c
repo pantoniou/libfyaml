@@ -903,6 +903,10 @@ unsigned int fy_analyze_scalar_content(const struct fy_input *fyi,
 		s += w;
 	}
 
+	/* this contains arbitrary binany values, mark it as such */
+	if (s < e)
+		return FYACF_DOUBLE_QUOTED;
+
 	if (fy_is_ws(lastc))
 		flags |= FYACF_ENDS_WITH_WS;
 	else if (fy_input_is_lb(fyi, lastc))

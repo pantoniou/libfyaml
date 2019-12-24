@@ -167,6 +167,7 @@ int fy_atom_iter_getc(struct fy_atom_iter *iter);
 int fy_atom_iter_ungetc(struct fy_atom_iter *iter, int c);
 int fy_atom_iter_peekc(struct fy_atom_iter *iter);
 int fy_atom_iter_utf8_get(struct fy_atom_iter *iter);
+int fy_atom_iter_utf8_quoted_get(struct fy_atom_iter *iter, size_t *lenp, uint8_t *buf);
 int fy_atom_iter_utf8_unget(struct fy_atom_iter *iter, int c);
 int fy_atom_iter_utf8_peek(struct fy_atom_iter *iter);
 

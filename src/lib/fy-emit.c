@@ -784,6 +784,8 @@ void fy_emit_token_write_quoted(struct fy_emitter *emit, struct fy_token *fyt, i
 	struct fy_atom_iter iter;
 	enum fy_atom_style target_style;
 	uint32_t hi_surrogate, lo_surrogate;
+	uint8_t non_utf8[4];
+	size_t non_utf8_len, k;
 
 	wtype = qc == '\'' ?
 		((flags & DDNF_SIMPLE_SCALAR_KEY) ?
@@ -823,7 +825,27 @@ void fy_emit_token_write_quoted(struct fy_emitter *emit, struct fy_token *fyt, i
 
 	fy_atom_iter_start(atom, &iter);
 	fy_emit_accum_start(&emit->ea, wtype);
-	while ((c = fy_atom_iter_utf8_get(&iter)) >= 0) {
+	for (;;) {
+		non_utf8_len = sizeof(non_utf8);
+		c = fy_atom_iter_utf8_quoted_get(&iter, &non_utf8_len, non_utf8);
+		if (c < 0)
+			break;
+
+		if (c == 0 && non_utf8_len > 0) {
+			for (k = 0; k < non_utf8_len; k++) {
+				c = (int)non_utf8[k] & 0xff;
+				fy_emit_accum_utf8_put(&emit->ea, '\\');
+				fy_emit_accum_utf8_put(&emit->ea, 'x');
+				digit = ((unsigned int)c >> 4) & 15;
+				fy_emit_accum_utf8_put(&emit->ea,
+						digit <= 9 ? ('0' + digit) : ('A' + digit - 10));
+				digit = (unsigned int)c & 15;
+				fy_emit_accum_utf8_put(&emit->ea,
+						digit <= 9 ? ('0' + digit) : ('A' + digit - 10));
+			}
+			continue;
+		}
+
 		if (fy_is_space(c) || (qc == '\'' && fy_is_ws(c))) {
 			should_indent = allow_breaks && !spaces &&
 					fy_emit_accum_column(&emit->ea) > fy_emit_width(emit);
