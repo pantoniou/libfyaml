@@ -1048,6 +1048,7 @@ int do_libyaml_dump(yaml_parser_t *parser, yaml_emitter_t *emitter)
 
 #endif
 
+#if 0
 static void test_diag_output(struct fy_diag *diag, void *user, const char *buf, size_t len)
 {
 	FILE *fp = user;
@@ -1055,18 +1056,17 @@ static void test_diag_output(struct fy_diag *diag, void *user, const char *buf, 
 
 	fprintf(fp, "%d: %.*s",  ++counter, (int)len, buf);
 }
+#endif
 
 int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 {
 #if 0
 	struct fy_parse_cfg cfg_tmp;
-#endif
 	struct fy_document *fyd;
 	struct fy_node *fyn;
 	char *buf;
 	struct fy_diag_report_ctx drc;
 	struct fy_token *fyt;
-#if 0
 	void *iter;
 	const char *handle, *prefix;
 	size_t handle_size, prefix_size;
@@ -1999,7 +1999,6 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	fyp_warning(NULL, "(warning) test");
 	fyp_error(NULL,   "(error)   test");
 
-#endif
 	/****/
 
 	fyd = fy_document_build_from_string(cfg,
@@ -2202,6 +2201,49 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 		fwrite(mbuf, msize, 1, stdout);
 
 		free(mbuf);
+	}
+#endif
+	/*****/
+
+	{
+//#define MANUAL_SCALAR_STR "val\"quote'\0null\0&the\nrest  "
+//#define MANUAL_SCALAR_STR "0\n1"
+//#define MANUAL_SCALAR_STR "\\\"\0\a\b\t\v\f\r\e\xc2\x85\xc2\xa0\xe2\x80\xa8\xe2\x80\xa9"
+//#define MANUAL_SCALAR_STR "\\\"\0\a\b\t\v\f\r\e\n"
+//#define MANUAL_SCALAR_STR "\xc2\x85"
+//#define MANUAL_SCALAR_STR "\xc2\xa0"
+#define MANUAL_SCALAR_STR "\xff\xff\xff\xff"
+//#define MANUAL_SCALAR_STR "foo\xf9\xff\xffzbar\xff\xffwz"
+
+		const char *what = MANUAL_SCALAR_STR;
+		size_t what_sz = sizeof(MANUAL_SCALAR_STR) - 1;
+		struct fy_document *fyd;
+		struct fy_node *fyn;
+		char *buf, *buf2;
+
+		fyd = fy_document_create(cfg);
+		assert(fyd);
+
+		fyn = fy_node_create_scalar(fyd, what, what_sz);
+		assert(fyn);
+
+		fy_document_set_root(fyd, fyn);
+
+		buf = fy_emit_document_to_string(fyd, 0);
+		assert(buf);
+		fputs(buf, stdout);
+		fy_document_destroy(fyd);
+
+		fyd = fy_document_build_from_string(cfg, buf, FY_NT);
+		assert(fyd);
+
+		buf2 = fy_emit_document_to_string(fyd, 0);
+		assert(buf2);
+		fputs(buf2, stdout);
+		fy_document_destroy(fyd);
+
+		free(buf);
+		free(buf2);
 	}
 
 	return 0;
