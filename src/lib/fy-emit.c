@@ -824,7 +824,7 @@ void fy_emit_token_write_quoted(struct fy_emitter *emit, struct fy_token *fyt, i
 	fy_atom_iter_start(atom, &iter);
 	fy_emit_accum_start(&emit->ea, wtype);
 	while ((c = fy_atom_iter_utf8_get(&iter)) >= 0) {
-		if (fy_is_ws(c)) {
+		if (fy_is_space(c) || (qc == '\'' && fy_is_ws(c))) {
 			should_indent = allow_breaks && !spaces &&
 					fy_emit_accum_column(&emit->ea) > fy_emit_width(emit);
 
