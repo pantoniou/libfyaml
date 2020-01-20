@@ -294,8 +294,8 @@ int fy_diag_printf(struct fy_diag *diag, const char *fmt, ...)
 	return rc;
 }
 
-int fy_vdiag_ctx(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
-		 const char *fmt, va_list ap)
+int fy_vdiag(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
+	     const char *fmt, va_list ap)
 {
 	char *msg = NULL;
 	char *source = NULL, *position = NULL, *typestr = NULL, *modulestr = NULL;
@@ -398,14 +398,14 @@ out:
 	return rc;
 }
 
-int fy_diag_ctx(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
-		const char *fmt, ...)
+int fy_diagf(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
+	     const char *fmt, ...)
 {
 	va_list ap;
 	int rc;
 
 	va_start(ap, fmt);
-	rc = fy_vdiag_ctx(diag, fydc, fmt, ap);
+	rc = fy_vdiag(diag, fydc, fmt, ap);
 	va_end(ap);
 
 	return rc;
@@ -556,7 +556,7 @@ int fy_parser_vdiag(struct fy_parser *fyp, unsigned int flags,
 	fydc.line = fyp->line;
 	fydc.column = fyp->column;
 
-	rc = fy_vdiag_ctx(fyp->diag, &fydc, fmt, ap);
+	rc = fy_vdiag(fyp->diag, &fydc, fmt, ap);
 
 	if (fyp && !fyp->stream_error && fyp->diag->on_error)
 		fyp->stream_error = true;
@@ -647,7 +647,7 @@ int fy_document_vdiag(struct fy_document *fyd, unsigned int flags,
 	fydc.line = -1;
 	fydc.column = -1;
 
-	rc = fy_vdiag_ctx(fyd->diag, &fydc, fmt, ap);
+	rc = fy_vdiag(fyd->diag, &fydc, fmt, ap);
 
 	return rc;
 }

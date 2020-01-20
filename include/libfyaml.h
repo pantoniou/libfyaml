@@ -3781,7 +3781,7 @@ fy_diag_vprintf(struct fy_diag *diag, const char *fmt, va_list ap)
 	FY_EXPORT;
 
 /**
- * fy_diag_vprintf() - printf raw interface to diagnostics
+ * fy_diag_printf() - printf raw interface to diagnostics
  *
  * Raw output to the diagnostic object using a standard
  * printf interface. Note that this is the lowest level
@@ -3828,7 +3828,7 @@ struct fy_diag_ctx {
 };
 
 /**
- * fy_vdiag_ctx() - context aware diagnostic output like vprintf
+ * fy_vdiag() - context aware diagnostic output like vprintf
  *
  * Context aware output to the diagnostic object using a standard
  * vprintf interface.
@@ -3844,12 +3844,12 @@ struct fy_diag_ctx {
  * been destroyed but not yet freed.
  */
 int
-fy_vdiag_ctx(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
-	     const char *fmt, va_list ap)
+fy_vdiag(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
+	 const char *fmt, va_list ap)
 	FY_EXPORT;
 
 /**
- * fy_diag_ctx() - context aware diagnostic output like printf
+ * fy_diagf() - context aware diagnostic output like printf
  *
  * Context aware output to the diagnostic object using a standard
  * printf interface.
@@ -3857,7 +3857,6 @@ fy_vdiag_ctx(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
  * @diag: The diagnostic object to use
  * @fydc: The diagnostic context
  * @fmt: The vprintf format string
- * @ap: The arguments
  *
  * Returns:
  * The number of characters output, or -1 in case of an error
@@ -3865,8 +3864,8 @@ fy_vdiag_ctx(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
  * been destroyed but not yet freed.
  */
 int
-fy_diag_ctx(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
-	    const char *fmt, ...)
+fy_diagf(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
+	 const char *fmt, ...)
 	FY_EXPORT
 	__attribute__((format(printf, 3, 4)));
 
@@ -3882,7 +3881,7 @@ fy_diag_ctx(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 			.line = 0, \
 			.column = 0, \
 		}; \
-		fy_diag_ctx((_diag), &_ctx, (_fmt) , ## __VA_ARGS__); \
+		fy_diagf((_diag), &_ctx, (_fmt) , ## __VA_ARGS__); \
 	})
 
 #ifndef NDEBUG
