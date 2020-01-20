@@ -166,8 +166,14 @@ fy_atom_iter_chunk_reset(struct fy_atom_iter *iter)
 static int
 fy_atom_iter_grow_chunk(struct fy_atom_iter *iter)
 {
-	struct fy_atom_iter_chunk *chunks;
+	struct fy_atom_iter_chunk *chunks, *c;
 	size_t asz;
+	const char *old_s, *old_e, *ss;
+	unsigned int i;
+	size_t offset;
+
+	old_s = (const char *)iter->chunks;
+	old_e = (const char *)(iter->chunks + iter->alloc);
 
 	asz = sizeof(*chunks) * iter->alloc * 2;
 	chunks = realloc(iter->chunks == iter->startup_chunks ? NULL : iter->chunks, asz);
@@ -175,6 +181,23 @@ fy_atom_iter_grow_chunk(struct fy_atom_iter *iter)
 		return -1;
 	if (iter->chunks == iter->startup_chunks)
 		memcpy(chunks, iter->startup_chunks, sizeof(iter->startup_chunks));
+
+	/* for chunks that point to the inplace buffer, reassign pointers */
+	for (ss = old_s, c = chunks, i = 0; i < iter->top; ss += sizeof(*c), c++, i++) {
+		if (c->ic.str < old_s || c->ic.str >= old_e ||
+		    c->ic.len > sizeof(c->inplace_buf))
+			continue;
+
+		/* get offset */
+		offset = (size_t)(c->ic.str - ss);
+
+		/* verify that it points to the inplace_buf area */
+		assert(offset >= offsetof(struct fy_atom_iter_chunk, inplace_buf));
+		offset -= offsetof(struct fy_atom_iter_chunk, inplace_buf);
+
+		c->ic.str = c->inplace_buf + offset;
+	}
+
 	iter->alloc *= 2;
 	iter->chunks = chunks;
 
