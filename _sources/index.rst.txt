@@ -10,6 +10,9 @@ Welcome to libfyaml's documentation!
    :maxdepth: 2
    :caption: Contents:
 
+   intro
+   man/fy-tool
+   libfyaml
 
 
 Indices and tables
@@ -18,9 +21,3 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
-
-Public API
-==========
-
-  .. kernel-doc:: include/libfyaml.h
-     :internal:

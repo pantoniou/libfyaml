@@ -1,0 +1,872 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>fy-tool &mdash; libfyaml 0.1 documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+  <script type="text/javascript" src="../_static/js/modernizr.min.js"></script>
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+        <script type="text/javascript" src="../_static/jquery.js"></script>
+        <script type="text/javascript" src="../_static/underscore.js"></script>
+        <script type="text/javascript" src="../_static/doctools.js"></script>
+        <script type="text/javascript" src="../_static/language_data.js"></script>
+    
+    <script type="text/javascript" src="../_static/js/theme.js"></script>
+
+    
+
+  
+  <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="prev" title="Introduction" href="../intro.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="../index.html" class="icon icon-home"> libfyaml
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../intro.html">Introduction</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">fy-tool</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#synopsis">Synopsis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#description">Description</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#options">Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#examples">Examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#author">Author</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#bugs">Bugs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#see-also">See also</a></li>
+</ul>
+</li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">libfyaml</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../index.html">Docs</a> &raquo;</li>
+        
+      <li>fy-tool</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="../_sources/man/fy-tool.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="fy-tool">
+<h1>fy-tool<a class="headerlink" href="#fy-tool" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="synopsis">
+<h2>Synopsis<a class="headerlink" href="#synopsis" title="Permalink to this headline">¶</a></h2>
+<p><strong>fy-tool</strong> [<em>OPTIONS</em>] [&lt;<em>file</em>&gt; …]</p>
+<p><strong>fy-dump</strong> [<em>OPTIONS</em>] [&lt;<em>file</em>&gt; …]</p>
+<p><strong>fy-testsuite</strong> [<em>OPTIONS</em>] &lt;<em>file</em>&gt;</p>
+<p><strong>fy-filter</strong> [<em>OPTIONS</em>] [-f*FILE*] [&lt;<em>path</em>&gt; …]</p>
+<p><strong>fy-join</strong> [<em>OPTIONS</em>] [-T*PATH*] [-F*PATH*] [-t*PATH*] [&lt;<em>file</em>&gt; …]</p>
+</div>
+<div class="section" id="description">
+<h2>Description<a class="headerlink" href="#description" title="Permalink to this headline">¶</a></h2>
+<p><strong class="program">fy-tool</strong> is a general YAML/JSON manipulation tool using <cite>libfyaml</cite>.
+Its operation is different depending on how it’s called, either via aliases
+named <cite>fy-dump</cite>, <cite>fy-testsuite</cite>, <cite>fy-filter</cite>, <cite>fy-join</cite>, or via the
+<cite>–dump</cite>, <cite>–testsuite</cite>, <cite>–filter</cite>, <cite>–join</cite> options.</p>
+<ul class="simple">
+<li><p>In <cite>dump</cite> mode it will parse YAML/JSON input files and output YAML/JSON
+according to the output format options.</p></li>
+<li><p>In <cite>testsuite</cite> mode it will parse a single YAML input file and output
+yaml testsuite reference output.</p></li>
+<li><p>In <cite>filter</cite> mode it will parse YAML/JSON files and output YAML/JSON
+output filtered according to the given option.</p></li>
+<li><p>In <cite>join</cite> mode it will parse YAML/JSON files and join them into a single
+YAML/JSON document according to the given command line options.</p></li>
+</ul>
+</div>
+<div class="section" id="options">
+<h2>Options<a class="headerlink" href="#options" title="Permalink to this headline">¶</a></h2>
+<p>A number of options are common for all the different modes of operation
+and they are as follows:</p>
+<p class="rubric">Common options</p>
+<dl class="option">
+<dt id="cmdoption-fy-tool-q">
+<code class="sig-name descname">-q</code><code class="sig-prename descclassname"></code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--quiet</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-q" title="Permalink to this definition">¶</a></dt>
+<dd><p>Quiet operation, does not output informational messages at all.</p>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-h">
+<code class="sig-name descname">-h</code><code class="sig-prename descclassname"></code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--help</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-h" title="Permalink to this definition">¶</a></dt>
+<dd><p>Display usage information.</p>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-v">
+<code class="sig-name descname">-v</code><code class="sig-prename descclassname"></code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--version</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-v" title="Permalink to this definition">¶</a></dt>
+<dd><p>Display version information.</p>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-i">
+<code class="sig-name descname">-I</code><code class="sig-prename descclassname"> DIR</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--include</code><code class="sig-prename descclassname">=DIR</code><a class="headerlink" href="#cmdoption-fy-tool-i" title="Permalink to this definition">¶</a></dt>
+<dd><p>Add the <cite>DIR</cite>  directory to the search path which will be used to locate a YAML/JSON file.
+The default path is set to “”</p>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-d">
+<code class="sig-name descname">-d</code><code class="sig-prename descclassname"> LEVEL</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--debug-level</code><code class="sig-prename descclassname">=LEVEL</code><a class="headerlink" href="#cmdoption-fy-tool-d" title="Permalink to this definition">¶</a></dt>
+<dd><p>Set the minimum numeric debug level value of the library to <cite>LEVEL</cite>.
+The numeric value must be in the range of 0 to 4 and their meaning is as follows:</p>
+<ul>
+<li><p><strong>0</strong> (<cite>DEBUG</cite>)</p>
+<p>Internal library debugging messages. No output is produced when the
+library was compiled with <cite>–disable-debug</cite></p>
+</li>
+<li><p><strong>1</strong> (<cite>INFO</cite>)</p>
+<p>Informational messages about the internal operation of the library.</p>
+</li>
+<li><p><strong>2</strong> (<cite>NOTICE</cite>)</p>
+<p>Messsages that could require attention.</p>
+</li>
+<li><p><strong>3</strong> (<cite>WARNING</cite>)</p>
+<p>A warning message, something is wrong, but operation can continue.
+This is the default value.</p>
+</li>
+<li><p><strong>4</strong> (<cite>ERROR</cite>)</p>
+<p>A fatal error occured, it is impossible to continue.</p>
+</li>
+</ul>
+<p>The default level is 3 (<cite>WARNING</cite>), which means that messages
+with level 3 and higher will be displayed.</p>
+</dd></dl>
+
+<p class="rubric">Parser Options</p>
+<dl class="option">
+<dt id="cmdoption-fy-tool-j">
+<code class="sig-name descname">-j</code><code class="sig-prename descclassname"> JSONOPT</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--json</code><code class="sig-prename descclassname">=JSONOPT</code><a class="headerlink" href="#cmdoption-fy-tool-j" title="Permalink to this definition">¶</a></dt>
+<dd><p>Marks the input files as JSON or YAML accordingly to:</p>
+<ul>
+<li><p><strong>no</strong></p>
+<p>The input files are always in YAML mode.</p>
+</li>
+<li><p><strong>yes</strong></p>
+<p>The input files are always set to JSON mode.</p>
+</li>
+<li><p><strong>auto</strong></p>
+<p>The input files are set to JSON mode automatically when the
+file’s extension is <cite>.json</cite>. This is the default.</p>
+</li>
+</ul>
+<p>Note that although libfyaml’s YAML 1.2 support is complete, that simply
+means that a valid JSON file will parse as YAML 1.2. However there
+are instances where one requires strict JSON spec adherence, and
+for invalid JSON to be rejected even when it’s valid YAML 1.2.</p>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-streaming">
+<code class="sig-name descname">--streaming</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-streaming" title="Permalink to this definition">¶</a></dt>
+<dd><p>Only valid when in <strong>dump</strong> mode, enables streaming mode. This means
+that no in-memory graph tree is constructed, so indefinite and arbitrary
+large YAML input streams can be processed.</p>
+<p>Note that in streaming mode:</p>
+<ul class="simple">
+<li><p>Key duplication checks are disabled.</p></li>
+<li><p>No reording of key order is possible when emitting (i.e. <cite>–sort</cite> is not available).</p></li>
+<li><p>Alias resolution is not available (i.e. <cite>–resolve</cite>).</p></li>
+</ul>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-tab">
+<code class="sig-name descname">--tab</code><code class="sig-prename descclassname">=TAB</code><a class="headerlink" href="#cmdoption-fy-tool-tab" title="Permalink to this definition">¶</a></dt>
+<dd><p>Set the tab indent mode. Allowed values are:</p>
+<ul>
+<li><p><strong>auto</strong></p>
+<p>Indent by tabs is disabled until a vim tab marker is encountered.
+For the remainder of the file the tabs have the value parsed (or until another
+option is encountered). An example vim YAML set tab option is:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="c1"># vim: set ts=4:</span>
+<span class="nt">foo</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">bar</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>0</strong></p>
+<p>Indent by tabs is completely disabled.</p>
+</li>
+<li><p><strong>1-9</strong></p>
+<p>Tab is set to the given value.</p>
+</li>
+</ul>
+</dd></dl>
+
+<p class="rubric">Resolver Options</p>
+<dl class="option">
+<dt id="cmdoption-fy-tool-r">
+<code class="sig-name descname">-r</code><code class="sig-prename descclassname"></code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--resolve</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-r" title="Permalink to this definition">¶</a></dt>
+<dd><p>Perform anchor and merge key resolution. By default this option is disabled.</p>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-l">
+<code class="sig-name descname">-l</code><code class="sig-prename descclassname"></code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--follow</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-l" title="Permalink to this definition">¶</a></dt>
+<dd><p>Follow aliases when performing path traversal. By default this option is disabled.</p>
+</dd></dl>
+
+<p class="rubric">Emitter Options</p>
+<dl class="option">
+<dt id="cmdoption-fy-tool-indent">
+<code class="sig-name descname">-i</code><code class="sig-prename descclassname"> INDENT</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--indent</code><code class="sig-prename descclassname">=INDENT</code><a class="headerlink" href="#cmdoption-fy-tool-indent" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sets the emitter indent (in spaces). Default is <strong>2</strong>.</p>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-w">
+<code class="sig-name descname">-w</code><code class="sig-prename descclassname"> WIDTH</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--width</code><code class="sig-prename descclassname">=WIDTH</code><a class="headerlink" href="#cmdoption-fy-tool-w" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sets the preferred output width of the emitter. It is generally impossible
+to strictly adhere to this limit so this is treated as a hint at best.
+It not valid in any oneline output modes (i.e. <cite>flow-oneline</cite> or <cite>json-oneline</cite>).
+Default value is 80.</p>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-m">
+<code class="sig-name descname">-m</code><code class="sig-prename descclassname"> MODE</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--mode</code><code class="sig-prename descclassname">=MODE</code><a class="headerlink" href="#cmdoption-fy-tool-m" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sets the output mode of the YAML emitted. Possible values are:</p>
+<ul>
+<li><p><strong>original</strong></p>
+<p>The original formatting used in the input. This is default mode.</p>
+</li>
+<li><p><strong>block</strong></p>
+<p>The output is forced to be in block mode. All flow constructs will
+be converted to block mode.</p>
+</li>
+<li><p><strong>flow</strong></p>
+<p>The output is forced to be in flow mode. All block constructs will
+be converted to flow mode.</p>
+</li>
+<li><p><strong>flow-oneline</strong></p>
+<p>The output is forced to be in flow mode, but no newlines will be
+emitted; the output is going to be a (potentially very) long line.</p>
+</li>
+<li><p><strong>json</strong></p>
+<p>The output is forced to be in JSON mode. Note that it is impossible
+to output an arbitrary YAML file as JSON, so this may fail.</p>
+</li>
+<li><p><strong>json-oneline</strong></p>
+<p>The output is forced to be in JSON mode and in a single line.</p>
+</li>
+<li><p><strong>dejson</strong></p>
+<p>Output is in block YAML mode but with special care to convert
+JSON quoted strings in as non-idiomatic YAML as possible.
+For example <cite>{ foo: “this is a test” }</cite> will be emitted as
+<cite>foo: this is a test</cite>. YAML can handle scalars without using
+excessive quoting.</p>
+</li>
+</ul>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-c">
+<code class="sig-name descname">-C</code><code class="sig-prename descclassname"> MODE</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--color</code><code class="sig-prename descclassname">=MODE</code><a class="headerlink" href="#cmdoption-fy-tool-c" title="Permalink to this definition">¶</a></dt>
+<dd><p>It is possible to colorize output using ANSI color escape sequences,
+and the mode can be one of:</p>
+<ul>
+<li><p><strong>off</strong></p>
+<p>Never colorize output.</p>
+</li>
+<li><p><strong>on</strong></p>
+<p>Always colorize output.</p>
+</li>
+<li><p><strong>auto</strong></p>
+<p>Automatically colorize output when the output is a terminal.
+This is the default.</p>
+</li>
+</ul>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-visible">
+<code class="sig-name descname">-V</code><code class="sig-prename descclassname"></code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--visible</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-visible" title="Permalink to this definition">¶</a></dt>
+<dd><p>Make all whitespace (spaces, unicode spaces and linebreaks) visible.
+Note that this is performed using UTF8 characters so it will not work
+on non-UTF8 terminals, or a non-UTF8 complete font.</p>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-s">
+<code class="sig-name descname">-s</code><code class="sig-prename descclassname"></code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--sort</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-s" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sort keys on output. This option is disabled by default.</p>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-comment">
+<code class="sig-name descname">-c</code><code class="sig-prename descclassname"></code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--comment</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-comment" title="Permalink to this definition">¶</a></dt>
+<dd><p>Experimental output comments option. Enabled output while preserving comments.
+Disabled by default.</p>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-strip-labels">
+<code class="sig-name descname">--strip-labels</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-strip-labels" title="Permalink to this definition">¶</a></dt>
+<dd><p>Strip labels on output. Disabled by default.</p>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-strip-tags">
+<code class="sig-name descname">--strip-tags</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-strip-tags" title="Permalink to this definition">¶</a></dt>
+<dd><p>Strip tags on output. Disabled by default.</p>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-strip-doc">
+<code class="sig-name descname">--strip-doc</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-strip-doc" title="Permalink to this definition">¶</a></dt>
+<dd><p>Strip document indicators on output. Disabled by default.</p>
+</dd></dl>
+
+<p class="rubric">Tool mode select options</p>
+<dl class="option">
+<dt id="cmdoption-fy-tool-dump">
+<code class="sig-name descname">--dump</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-dump" title="Permalink to this definition">¶</a></dt>
+<dd><p>Select <cite>dump</cite> mode of operation. This is the default.
+This mode is also enabled when the called binary is aliased to
+<em>fy-dump</em>.</p>
+<p>In this mode, all files provided in the command line will be dumped
+in one continuous stream, to the standard output, using document start
+indicators to mark the start of end new file.</p>
+<p>If the file provided is <cite>-</cite> then the input is the standard input.</p>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-testsuite">
+<code class="sig-name descname">--testsuite</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-testsuite" title="Permalink to this definition">¶</a></dt>
+<dd><p>Select <cite>testsuite</cite> mode of operation.
+This mode is also enabled when the called binary is aliased to <em>fy-testsuite</em>.</p>
+<p>In this mode, a single YAML file is read and an event stream is
+generated which is the format used for <em>yaml-testsuite</em> compliance.</p>
+<p>If the file provided is <cite>-</cite> then the input is the standard input.</p>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-filter">
+<code class="sig-name descname">--filter</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-filter" title="Permalink to this definition">¶</a></dt>
+<dd><p>Select <cite>filter</cite> mode of operation.
+This mode is also enabled when the called binary is aliased to <em>fy-filter</em>.</p>
+<p>In this mode, a single YAML file is read from the standard input for each path
+that is provided in the command line a document will be produced to the
+standard output.
+To use file instead of standard input use the <cite>-f/–file</cite> option.</p>
+<p>If the file provided is <cite>-</cite> then the input is the standard input.</p>
+<dl class="option">
+<dt id="cmdoption-fy-tool-f">
+<code class="sig-name descname">-f</code><code class="sig-prename descclassname"> FILE</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--file</code><code class="sig-prename descclassname">=FILE</code><a class="headerlink" href="#cmdoption-fy-tool-f" title="Permalink to this definition">¶</a></dt>
+<dd><p>Use the given file as input instead of standard input.</p>
+<p>If  first character of <cite>FILE</cite> is <strong>&gt;</strong> the the input is the content of the option
+that follows.
+For example –file “&gt;foo: bar” is as –file file.yaml with file.yaml “foo: bar”</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-join">
+<code class="sig-name descname">--join</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-join" title="Permalink to this definition">¶</a></dt>
+<dd><p>Select <cite>join</cite> mode of operation.
+This mode is also enabled when the called binary is aliased to <em>fy-join</em>.</p>
+<p>In this mode, multiple YAML files are joined into a single document, emitted
+to the standard output.</p>
+<p>If the file provided is <cite>-</cite> then the input is the standard input.</p>
+<dl class="option">
+<dt id="cmdoption-fy-tool-t">
+<code class="sig-name descname">-T</code><code class="sig-prename descclassname"> PATH</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--to</code><code class="sig-prename descclassname">=PATH</code><a class="headerlink" href="#cmdoption-fy-tool-t" title="Permalink to this definition">¶</a></dt>
+<dd><p>The target path of the join. By default this is the root <strong>/</strong>.</p>
+<p>If  first character of <cite>FILE</cite> is <strong>&gt;</strong> the the input is the content of the option
+that follows.</p>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-from">
+<code class="sig-name descname">-F</code><code class="sig-prename descclassname"> PATH</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--from</code><code class="sig-prename descclassname">=PATH</code><a class="headerlink" href="#cmdoption-fy-tool-from" title="Permalink to this definition">¶</a></dt>
+<dd><p>The origin path of the join (for each input). By default this is the root <strong>/</strong>.</p>
+<p>If  first character of <cite>FILE</cite> is <strong>&gt;</strong> the the input is the content of the option
+that follows.</p>
+</dd></dl>
+
+<dl class="option">
+<dt id="cmdoption-fy-tool-trim">
+<code class="sig-name descname">-t</code><code class="sig-prename descclassname"> PATH</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--trim</code><code class="sig-prename descclassname">=PATH</code><a class="headerlink" href="#cmdoption-fy-tool-trim" title="Permalink to this definition">¶</a></dt>
+<dd><p>Trim path of the output of the join. By default this is the root <strong>/</strong>.</p>
+<p>If  first character of <cite>FILE</cite> is <strong>&gt;</strong> the the input is the content of the option
+that follows.</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="examples">
+<h2>Examples<a class="headerlink" href="#examples" title="Permalink to this headline">¶</a></h2>
+<p class="rubric">Example input files</p>
+<p>We’re going to be using a couple of YAML files in our examples.</p>
+<div class="literal-block-wrapper docutils container" id="id1">
+<div class="code-block-caption"><span class="caption-text">invoice.yaml</span><a class="headerlink" href="#id1" title="Permalink to this code">¶</a></div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="c1"># invoice.yaml</span>
+<span class="nt">invoice</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">34843</span>
+<span class="nt">date   </span><span class="p">:</span> <span class="kt">!!str</span> <span class="l l-Scalar l-Scalar-Plain">2001-01-23</span>
+<span class="nt">bill-to</span><span class="p">:</span> <span class="nl">&amp;id001</span>
+<span class="nt">given  </span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">Chris</span>
+<span class="nt">family </span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">Dumars</span>
+<span class="nt">address</span><span class="p">:</span>
+        <span class="nt">lines</span><span class="p">:</span> <span class="p p-Indicator">|</span>
+        <span class="l l-Scalar l-Scalar-Plain">458 Walkman Dr.</span>
+        <span class="l l-Scalar l-Scalar-Plain">Suite</span> <span class="c1">#292</span>
+</pre></div>
+</div>
+</div>
+<div class="literal-block-wrapper docutils container" id="id2">
+<div class="code-block-caption"><span class="caption-text">simple-anchors.yaml</span><a class="headerlink" href="#id2" title="Permalink to this code">¶</a></div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="c1"># simple-anchors.yaml</span>
+<span class="nt">foo</span><span class="p">:</span> <span class="nl">&amp;label</span> <span class="p p-Indicator">{</span><span class="nt"> bar</span><span class="p">:</span> <span class="nv">frooz</span> <span class="p p-Indicator">}</span>
+<span class="nt">baz</span><span class="p">:</span> <span class="nv">*label</span>
+</pre></div>
+</div>
+</div>
+<div class="literal-block-wrapper docutils container" id="id3">
+<div class="code-block-caption"><span class="caption-text">mergekeyspec.yaml</span><a class="headerlink" href="#id3" title="Permalink to this code">¶</a></div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nn">---</span>
+<span class="p p-Indicator">-</span> <span class="nl">&amp;CENTER</span> <span class="p p-Indicator">{</span><span class="nt"> x</span><span class="p">:</span> <span class="nv">1</span><span class="p p-Indicator">,</span><span class="nt"> y</span><span class="p">:</span> <span class="nv">2</span> <span class="p p-Indicator">}</span>
+<span class="p p-Indicator">-</span> <span class="nl">&amp;LEFT</span> <span class="p p-Indicator">{</span><span class="nt"> x</span><span class="p">:</span> <span class="nv">0</span><span class="p p-Indicator">,</span><span class="nt"> y</span><span class="p">:</span> <span class="nv">2</span> <span class="p p-Indicator">}</span>
+<span class="p p-Indicator">-</span> <span class="nl">&amp;BIG</span> <span class="p p-Indicator">{</span><span class="nt"> r</span><span class="p">:</span> <span class="nv">10</span> <span class="p p-Indicator">}</span>
+<span class="p p-Indicator">-</span> <span class="nl">&amp;SMALL</span> <span class="p p-Indicator">{</span><span class="nt"> r</span><span class="p">:</span> <span class="nv">1</span> <span class="p p-Indicator">}</span>
+
+<span class="c1"># All the following maps are equal:</span>
+
+<span class="p p-Indicator">-</span> <span class="c1"># Explicit keys</span>
+  <span class="nt">x</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">1</span>
+  <span class="nt">y</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">2</span>
+  <span class="nt">r</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">10</span>
+  <span class="nt">label</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">center/big</span>
+
+<span class="p p-Indicator">-</span> <span class="c1"># Merge one map</span>
+  <span class="nt">&lt;&lt; </span><span class="p">:</span> <span class="nv">*CENTER</span>
+  <span class="nt">r</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">10</span>
+  <span class="nt">label</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">center/big</span>
+
+<span class="p p-Indicator">-</span> <span class="c1"># Merge multiple maps</span>
+  <span class="nt">&lt;&lt; </span><span class="p">:</span> <span class="p p-Indicator">[</span> <span class="nv">*CENTER</span><span class="p p-Indicator">,</span> <span class="nv">*BIG</span> <span class="p p-Indicator">]</span>
+  <span class="nt">label</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">center/big</span>
+
+<span class="p p-Indicator">-</span> <span class="c1"># Override</span>
+  <span class="nt">&lt;&lt; </span><span class="p">:</span> <span class="p p-Indicator">[</span> <span class="nv">*BIG</span><span class="p p-Indicator">,</span> <span class="nv">*LEFT</span><span class="p p-Indicator">,</span> <span class="nv">*SMALL</span> <span class="p p-Indicator">]</span>
+  <span class="nt">x</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">1</span>
+  <span class="nt">label</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">center/big</span>
+</pre></div>
+</div>
+</div>
+<div class="literal-block-wrapper docutils container" id="id4">
+<div class="code-block-caption"><span class="caption-text">bomb.yaml</span><a class="headerlink" href="#id4" title="Permalink to this code">¶</a></div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">a</span><span class="p">:</span> <span class="nl">&amp;a</span> <span class="p p-Indicator">[</span><span class="s">&quot;lol&quot;</span><span class="p p-Indicator">,</span><span class="s">&quot;lol&quot;</span><span class="p p-Indicator">,</span><span class="s">&quot;lol&quot;</span><span class="p p-Indicator">,</span><span class="s">&quot;lol&quot;</span><span class="p p-Indicator">,</span><span class="s">&quot;lol&quot;</span><span class="p p-Indicator">,</span><span class="s">&quot;lol&quot;</span><span class="p p-Indicator">,</span><span class="s">&quot;lol&quot;</span><span class="p p-Indicator">,</span><span class="s">&quot;lol&quot;</span><span class="p p-Indicator">,</span><span class="s">&quot;lol&quot;</span><span class="p p-Indicator">]</span>
+<span class="nt">b</span><span class="p">:</span> <span class="nl">&amp;b</span> <span class="p p-Indicator">[</span><span class="nv">*a</span><span class="p p-Indicator">,</span><span class="nv">*a</span><span class="p p-Indicator">,</span><span class="nv">*a</span><span class="p p-Indicator">,</span><span class="nv">*a</span><span class="p p-Indicator">,</span><span class="nv">*a</span><span class="p p-Indicator">,</span><span class="nv">*a</span><span class="p p-Indicator">,</span><span class="nv">*a</span><span class="p p-Indicator">,</span><span class="nv">*a</span><span class="p p-Indicator">,</span><span class="nv">*a</span><span class="p p-Indicator">]</span>
+<span class="nt">c</span><span class="p">:</span> <span class="nl">&amp;c</span> <span class="p p-Indicator">[</span><span class="nv">*b</span><span class="p p-Indicator">,</span><span class="nv">*b</span><span class="p p-Indicator">,</span><span class="nv">*b</span><span class="p p-Indicator">,</span><span class="nv">*b</span><span class="p p-Indicator">,</span><span class="nv">*b</span><span class="p p-Indicator">,</span><span class="nv">*b</span><span class="p p-Indicator">,</span><span class="nv">*b</span><span class="p p-Indicator">,</span><span class="nv">*b</span><span class="p p-Indicator">,</span><span class="nv">*b</span><span class="p p-Indicator">]</span>
+<span class="nt">d</span><span class="p">:</span> <span class="nl">&amp;d</span> <span class="p p-Indicator">[</span><span class="nv">*c</span><span class="p p-Indicator">,</span><span class="nv">*c</span><span class="p p-Indicator">,</span><span class="nv">*c</span><span class="p p-Indicator">,</span><span class="nv">*c</span><span class="p p-Indicator">,</span><span class="nv">*c</span><span class="p p-Indicator">,</span><span class="nv">*c</span><span class="p p-Indicator">,</span><span class="nv">*c</span><span class="p p-Indicator">,</span><span class="nv">*c</span><span class="p p-Indicator">,</span><span class="nv">*c</span><span class="p p-Indicator">]</span>
+<span class="nt">e</span><span class="p">:</span> <span class="nl">&amp;e</span> <span class="p p-Indicator">[</span><span class="nv">*d</span><span class="p p-Indicator">,</span><span class="nv">*d</span><span class="p p-Indicator">,</span><span class="nv">*d</span><span class="p p-Indicator">,</span><span class="nv">*d</span><span class="p p-Indicator">,</span><span class="nv">*d</span><span class="p p-Indicator">,</span><span class="nv">*d</span><span class="p p-Indicator">,</span><span class="nv">*d</span><span class="p p-Indicator">,</span><span class="nv">*d</span><span class="p p-Indicator">,</span><span class="nv">*d</span><span class="p p-Indicator">]</span>
+<span class="nt">f</span><span class="p">:</span> <span class="nl">&amp;f</span> <span class="p p-Indicator">[</span><span class="nv">*e</span><span class="p p-Indicator">,</span><span class="nv">*e</span><span class="p p-Indicator">,</span><span class="nv">*e</span><span class="p p-Indicator">,</span><span class="nv">*e</span><span class="p p-Indicator">,</span><span class="nv">*e</span><span class="p p-Indicator">,</span><span class="nv">*e</span><span class="p p-Indicator">,</span><span class="nv">*e</span><span class="p p-Indicator">,</span><span class="nv">*e</span><span class="p p-Indicator">,</span><span class="nv">*e</span><span class="p p-Indicator">]</span>
+<span class="nt">g</span><span class="p">:</span> <span class="nl">&amp;g</span> <span class="p p-Indicator">[</span><span class="nv">*f</span><span class="p p-Indicator">,</span><span class="nv">*f</span><span class="p p-Indicator">,</span><span class="nv">*f</span><span class="p p-Indicator">,</span><span class="nv">*f</span><span class="p p-Indicator">,</span><span class="nv">*f</span><span class="p p-Indicator">,</span><span class="nv">*f</span><span class="p p-Indicator">,</span><span class="nv">*f</span><span class="p p-Indicator">,</span><span class="nv">*f</span><span class="p p-Indicator">,</span><span class="nv">*f</span><span class="p p-Indicator">]</span>
+</pre></div>
+</div>
+</div>
+<p class="rubric">fy-dump examples.</p>
+<p>Parse and dump generated YAML document tree in the original YAML form</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$ fy-dump invoice.yaml
+</pre></div>
+</div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">invoice</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">34843</span>
+<span class="nt">date</span><span class="p">:</span> <span class="kt">!!str</span> <span class="l l-Scalar l-Scalar-Plain">2001-01-23</span>
+<span class="nt">bill-to</span><span class="p">:</span> <span class="nl">&amp;id001</span>
+<span class="nt">given</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">Chris</span>
+<span class="nt">family</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">Dumars</span>
+  <span class="l l-Scalar l-Scalar-Plain">address</span><span class="p p-Indicator">:</span>
+  <span class="nt">lines</span><span class="p">:</span> <span class="p p-Indicator">|</span>
+    <span class="no">458 Walkman Dr.</span>
+    <span class="no">Suite #292</span>
+</pre></div>
+</div>
+<p>Parse and dump generated YAML document tree in flow YAML form</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$ fy-dump -mflow invoice.yaml
+</pre></div>
+</div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="p p-Indicator">{</span>
+<span class="nt">  invoice</span><span class="p">:</span> <span class="nv">34843</span><span class="p p-Indicator">,</span>
+<span class="nt">  date</span><span class="p">:</span> <span class="kt">!!str</span> <span class="nv">2001-01-23</span><span class="p p-Indicator">,</span>
+<span class="nt">  bill-to</span><span class="p">:</span> <span class="nl">&amp;id001</span> <span class="p p-Indicator">{</span>
+<span class="nt">    given</span><span class="p">:</span> <span class="nv">Chris</span><span class="p p-Indicator">,</span>
+<span class="nt">    family</span><span class="p">:</span> <span class="nv">Dumars</span><span class="p p-Indicator">,</span>
+<span class="nt">    address</span><span class="p">:</span> <span class="p p-Indicator">{</span>
+<span class="nt">      lines</span><span class="p">:</span> <span class="s">&quot;458</span><span class="nv"> </span><span class="s">Walkman</span><span class="nv"> </span><span class="s">Dr.\nSuite</span><span class="nv"> </span><span class="s">#292\n&quot;</span>
+    <span class="p p-Indicator">}</span>
+  <span class="p p-Indicator">}</span>
+<span class="p p-Indicator">}</span>
+</pre></div>
+</div>
+<p>Parse and dump generated YAML document from the input string</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$ fy-dump -mjson <span class="s2">&quot;&gt;foo: bar&quot;</span>
+</pre></div>
+</div>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+  <span class="nt">&quot;foo&quot;</span><span class="p">:</span> <span class="s2">&quot;bar&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Using the resolve option on the <cite>simple-anchors.yaml</cite></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$ fy-dump -r simple-anchor.yaml
+</pre></div>
+</div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">foo</span><span class="p">:</span> <span class="nl">&amp;label</span> <span class="p p-Indicator">{</span>
+<span class="nt">    bar</span><span class="p">:</span> <span class="nv">frooz</span>
+  <span class="p p-Indicator">}</span>
+<span class="nt">baz</span><span class="p">:</span> <span class="p p-Indicator">{</span>
+<span class="nt">    bar</span><span class="p">:</span> <span class="nv">frooz</span>
+  <span class="p p-Indicator">}</span>
+</pre></div>
+</div>
+<p>Stripping the labels too:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$ fy-dump -r --strip-label simple-anchor.yaml
+</pre></div>
+</div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">foo</span><span class="p">:</span> <span class="p p-Indicator">{</span>
+<span class="nt">    bar</span><span class="p">:</span> <span class="nv">frooz</span>
+  <span class="p p-Indicator">}</span>
+<span class="nt">baz</span><span class="p">:</span> <span class="p p-Indicator">{</span>
+<span class="nt">    bar</span><span class="p">:</span> <span class="nv">frooz</span>
+  <span class="p p-Indicator">}</span>
+</pre></div>
+</div>
+<p>Merge key support:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$ fy-dump -r --strip-label mergekeyspec.yaml
+</pre></div>
+</div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nn">---</span>
+<span class="p p-Indicator">-</span> <span class="p p-Indicator">{</span>
+<span class="nt">    x</span><span class="p">:</span> <span class="nv">1</span><span class="p p-Indicator">,</span>
+<span class="nt">    y</span><span class="p">:</span> <span class="nv">2</span>
+  <span class="p p-Indicator">}</span>
+<span class="p p-Indicator">-</span> <span class="p p-Indicator">{</span>
+<span class="nt">    x</span><span class="p">:</span> <span class="nv">0</span><span class="p p-Indicator">,</span>
+<span class="nt">    y</span><span class="p">:</span> <span class="nv">2</span>
+  <span class="p p-Indicator">}</span>
+<span class="p p-Indicator">-</span> <span class="p p-Indicator">{</span>
+<span class="nt">    r</span><span class="p">:</span> <span class="nv">10</span>
+  <span class="p p-Indicator">}</span>
+<span class="p p-Indicator">-</span> <span class="p p-Indicator">{</span>
+<span class="nt">    r</span><span class="p">:</span> <span class="nv">1</span>
+  <span class="p p-Indicator">}</span>
+<span class="p p-Indicator">-</span> <span class="nt">x</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">1</span>
+  <span class="nt">y</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">2</span>
+  <span class="nt">r</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">10</span>
+  <span class="nt">label</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">center/big</span>
+<span class="p p-Indicator">-</span> <span class="nt">y</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">2</span>
+  <span class="nt">x</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">1</span>
+  <span class="nt">r</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">10</span>
+  <span class="nt">label</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">center/big</span>
+<span class="p p-Indicator">-</span> <span class="nt">r</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">10</span>
+  <span class="nt">y</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">2</span>
+  <span class="nt">x</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">1</span>
+  <span class="nt">label</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">center/big</span>
+<span class="p p-Indicator">-</span> <span class="nt">y</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">2</span>
+  <span class="nt">r</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">10</span>
+  <span class="nt">x</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">1</span>
+  <span class="nt">label</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">center/big</span>
+</pre></div>
+</div>
+<p>Sorting option:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$ fy-dump -s invoice.yaml
+</pre></div>
+</div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">bill-to</span><span class="p">:</span> <span class="nl">&amp;id001</span>
+  <span class="nt">address</span><span class="p">:</span>
+    <span class="nt">lines</span><span class="p">:</span> <span class="p p-Indicator">|</span>
+      <span class="no">458 Walkman Dr.</span>
+      <span class="no">Suite #292</span>
+  <span class="nt">family</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">Dumars</span>
+  <span class="nt">given</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">Chris</span>
+<span class="nt">date</span><span class="p">:</span> <span class="kt">!!str</span> <span class="l l-Scalar l-Scalar-Plain">2001-01-23</span>
+<span class="nt">invoice</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">34843</span>
+</pre></div>
+</div>
+<p class="rubric">fy-testsuite example.</p>
+<p>An example using the testsuite mode generates the following
+event stream from <cite>invoice.yaml</cite></p>
+<p>Parse and dump test-suite event format</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$ fy-testsuite invoice.yaml
+</pre></div>
+</div>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">+</span><span class="n">STR</span>
+<span class="o">+</span><span class="n">DOC</span>
+<span class="o">+</span><span class="n">MAP</span>
+<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="n">invoice</span>
+<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="mi">34843</span>
+<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="n">date</span>
+<span class="o">=</span><span class="n">VAL</span> <span class="o">&lt;</span><span class="n">tag</span><span class="p">:</span><span class="n">yaml</span><span class="o">.</span><span class="n">org</span><span class="p">,</span><span class="mi">2002</span><span class="p">:</span><span class="nb">str</span><span class="o">&gt;</span> <span class="p">:</span><span class="mi">2001</span><span class="o">-</span><span class="mi">01</span><span class="o">-</span><span class="mi">23</span>
+<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="n">bill</span><span class="o">-</span><span class="n">to</span>
+<span class="o">+</span><span class="n">MAP</span> <span class="o">&amp;</span><span class="n">id001</span>
+<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="n">given</span>
+<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="n">Chris</span>
+<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="n">family</span>
+<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="n">Dumars</span>
+<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="n">address</span>
+<span class="o">+</span><span class="n">MAP</span>
+<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="n">lines</span>
+<span class="o">=</span><span class="n">VAL</span> <span class="o">|</span><span class="mi">458</span> <span class="n">Walkman</span> <span class="n">Dr</span><span class="o">.</span>\<span class="n">nSuite</span> <span class="c1">#292\n</span>
+<span class="o">-</span><span class="n">MAP</span>
+<span class="o">-</span><span class="n">MAP</span>
+<span class="o">-</span><span class="n">MAP</span>
+<span class="o">-</span><span class="n">DOC</span>
+<span class="o">-</span><span class="n">STR</span>
+</pre></div>
+</div>
+<p class="rubric">fy-filter examples.</p>
+<p>Filter out from the <cite>/bill-to</cite> path of <cite>invoice.yaml</cite></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$ cat invoice.yaml <span class="p">|</span> fy-filter /bill-to
+</pre></div>
+</div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nl">&amp;id001</span>
+<span class="nt">given</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">Chris</span>
+<span class="nt">family</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">Dumars</span>
+<span class="nt">address</span><span class="p">:</span>
+  <span class="nt">lines</span><span class="p">:</span> <span class="p p-Indicator">|</span>
+    <span class="no">458 Walkman Dr.</span>
+    <span class="no">Suite #292</span>
+</pre></div>
+</div>
+<p>Filter example with arrays (and use the –file option)</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$ fy-filter --file<span class="o">=</span>mergekeyspec.yaml /5
+</pre></div>
+</div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nn">---</span>
+<span class="nt">&lt;&lt;</span><span class="p">:</span> <span class="nv">*CENTER</span>
+<span class="nt">r</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">10</span>
+<span class="nt">label</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">center/big</span>
+</pre></div>
+</div>
+<p>Follow anchors example</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$ fy-filter --file<span class="o">=</span>simple-anchors.yaml /baz/bar
+</pre></div>
+</div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="l l-Scalar l-Scalar-Plain">frooz</span>
+</pre></div>
+</div>
+<p>Handle YAML bombs (if you can spare the memory and cpu time)</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$ fy-filter --file<span class="o">=</span>bomb.yaml -r / <span class="p">|</span> wc -l
+<span class="m">6726047</span>
+</pre></div>
+</div>
+<p>You don’t have to, you can just follow links to retrieve data.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$ fy-filter --file<span class="o">=</span>stuff/bomb.yaml -l --strip-label /g/0/1/2/3/4/5/6
+</pre></div>
+</div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="s">&quot;lol&quot;</span>
+</pre></div>
+</div>
+<p>Following links works with merge keys too:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$ fy-filter --file<span class="o">=</span>mergekeyspec.yaml -l --strip-label /5/x
+</pre></div>
+</div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nn">---</span> <span class="l l-Scalar l-Scalar-Plain">1</span>
+</pre></div>
+</div>
+<p class="rubric">fy-join examples.</p>
+<p>Joining two YAML files that have root mappings.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$ fy-join simple-anchors.yaml invoice.yaml
+</pre></div>
+</div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">foo</span><span class="p">:</span> <span class="nl">&amp;label</span> <span class="p p-Indicator">{</span>
+<span class="nt">    bar</span><span class="p">:</span> <span class="nv">frooz</span>
+  <span class="p p-Indicator">}</span>
+<span class="nt">baz</span><span class="p">:</span> <span class="nv">*label</span>
+<span class="nt">invoice</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">34843</span>
+<span class="nt">date</span><span class="p">:</span> <span class="kt">!!str</span> <span class="l l-Scalar l-Scalar-Plain">2001-01-23</span>
+<span class="nt">bill-to</span><span class="p">:</span> <span class="nl">&amp;id001</span>
+  <span class="nt">given</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">Chris</span>
+  <span class="nt">family</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">Dumars</span>
+  <span class="nt">address</span><span class="p">:</span>
+    <span class="nt">lines</span><span class="p">:</span> <span class="p p-Indicator">|</span>
+      <span class="no">458 Walkman Dr.</span>
+      <span class="no">Suite #292</span>
+</pre></div>
+</div>
+<p>Join two files with sequences at root:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$ fy-join -mblock <span class="s2">&quot;&gt;[ foo, bar ]&quot;</span> <span class="s2">&quot;&gt;[ baz ]&quot;</span>
+</pre></div>
+</div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">foo</span>
+<span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">bar</span>
+<span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">baz</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="author">
+<h2>Author<a class="headerlink" href="#author" title="Permalink to this headline">¶</a></h2>
+<p>Pantelis Antoniou &lt;<a class="reference external" href="mailto:pantelis&#46;antoniou&#37;&#52;&#48;konsulko&#46;com">pantelis<span>&#46;</span>antoniou<span>&#64;</span>konsulko<span>&#46;</span>com</a>&gt;</p>
+</div>
+<div class="section" id="bugs">
+<h2>Bugs<a class="headerlink" href="#bugs" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li><p>The only supported input and output character encoding is UTF8.</p></li>
+<li><p>Sorting does not respect language settings.</p></li>
+<li><p>There is no way for the user to specific a different coloring scheme.</p></li>
+</ul>
+</div>
+<div class="section" id="see-also">
+<h2>See also<a class="headerlink" href="#see-also" title="Permalink to this headline">¶</a></h2>
+<p><em class="manpage">libfyaml(1)</em></p>
+</div>
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+      
+        <a href="../intro.html" class="btn btn-neutral float-left" title="Introduction" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2019, Pantelis Antoniou
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>
