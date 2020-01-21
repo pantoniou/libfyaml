@@ -1,3 +1,13 @@
+libfyaml (0.5) unstable; urgency=medium
+
+  * Full JSON compatibility
+  * Internal refcounting
+  * Zero copy API for iterators
+  * Diagnostic API
+  * Too many to list
+
+ -- Pantelis Antoniou <pantelis.antoniou@konsulko.com>  Thu, 19 Sep 2019 17:04:27 +0300
+
 libfyaml (0.2) unstable; urgency=medium
 
   * debian compatibility #1
