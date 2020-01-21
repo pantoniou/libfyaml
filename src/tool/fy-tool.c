@@ -1102,11 +1102,7 @@ int main(int argc, char *argv[])
 					goto cleanup;
 				}
 
-				rc = fy_document_set_parent(fyd_join, fyd);
-				if (rc) {
-					fprintf(stderr, "fy_document_set_parent() failed\n");
-					goto cleanup;
-				}
+				fy_document_destroy(fyd);
 			}
 
 			if (fy_parser_get_stream_error(fyp))
