@@ -1546,12 +1546,13 @@ struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *f
 	if (fya_from) {
 		fya = fy_document_lookup_anchor_by_token(fyd, fya_from->anchor);
 		if (!fya) {
+			fyd_doc_debug(fyd, "new anchor");
 			/* update the new anchor position */
 			rc = fy_document_register_anchor(fyd, fyn, fya_from->anchor);
 			fyd_error_check(fyd, !rc, err_out,
 					"fy_document_register_anchor() failed");
 
-			fy_anchor_list_add(&fyd->anchors, fya);
+			fy_token_ref(fya_from->anchor);
 		} else {
 			anchor = fy_anchor_get_text(fya, &anchor_len);
 			fyd_error_check(fyd, anchor, err_out,
