@@ -35,4 +35,7 @@ maintainer-clean-local:
 
 EXTRA_DIST = \
 	conf.py \
-	index.rst
+	index.rst \
+	intro.rst \
+	libfyaml.rst \
+	man/fy-tool.rst
