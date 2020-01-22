@@ -30,9 +30,6 @@ AC_SUBST(MINOR, fyaml_minor)
 AC_SUBST(PATCH, fyaml_patch)
 AC_SUBST(EXTRA, fyaml_extra)
 
-m4_define(fyaml_date, `git show -s --format=%ci`)
-AC_SUBST(DATE, fyaml_date)
-
 AC_SUBST(DEBVERSION, "$MAJOR.$MINOR")
 
 dnl AX_* requires 2.64
@@ -165,12 +162,59 @@ AM_CONDITIONAL([HAVE_NETWORK],
 
 # check for sphinx
 AC_PATH_PROG([SPHINX], [sphinx-build])
+
+HAVE_SPHINX=0
 if test "x$SPHINX" != "x" ; then
-	HAVE_SPHINX=1
-else
-	HAVE_SPHINX=0
+	AC_PATH_PROG([PIP3], [pip3])
+
+	# if both pip3 and sphinx-build are available check for versions
+	if test "x$PIP3" != "x" ; then
+		AC_MSG_CHECKING([sphinx version])
+		SPHINX_VERSION=`pip3 2>/dev/null show sphinx | grep -i Version: | cut -d: -f2 | sed -e 's/ //g'`
+		if test "x$SPHINX_VERSION" != "x" ; then
+			AC_MSG_RESULT([$SPHINX_VERSION])
+		else
+			AC_MSG_RESULT([N/A])
+		fi
+
+		AC_MSG_CHECKING([sphinx RTD theme version])
+		SPHINX_RTD_THEME_VERSION=`pip3 2>/dev/null show sphinx_rtd_theme | grep -i Version: | cut -d: -f2 | sed -e 's/ //g'`
+		if test "x$SPHINX_VERSION" != "x" ; then
+			AC_MSG_RESULT([$SPHINX_RTD_THEME_VERSION])
+		else
+			AC_MSG_RESULT([N/A])
+		fi
+
+		AC_MSG_CHECKING([sphinx markdown builder version])
+		SPHINX_MARKDOWN_BUILDER_VERSION=`pip3 2>/dev/null show sphinx-markdown-builder | grep -i Version: | cut -d: -f2 | sed -e 's/ //g'`
+		if test "x$SPHINX_MARKDOWN_BUILDER_VERSION" != "x" ; then
+			AC_MSG_RESULT([$SPHINX_MARKDOWN_BUILDER_VERSION])
+		else
+			AC_MSG_RESULT([N/A])
+		fi
+
+		AC_MSG_CHECKING([sphinx linuxdoc version])
+		SPHINX_LINUXDOC_VERSION=`pip3 2>/dev/null show linuxdoc | grep -i Version: | cut -d: -f2 | sed -e 's/ //g'`
+		if test "x$SPHINX_LINUXDOC_VERSION" != "x" ; then
+			AC_MSG_RESULT([$SPHINX_LINUXDOC_VERSION])
+		else
+			AC_MSG_RESULT([N/A])
+		fi
+
+		if test "x$SPHINX_VERSION" != "x" -a "x$SPHINX_RTD_THEME_VERSION" != "x" -a "x$SPHINX_MARKDOWN_BUILDER_VERSION" != "x" -a "x$SPHINX_LINUXDOC_VERSION" != "x" ; then
+			HAVE_SPHINX=1
+		fi
+	fi
+
+	AC_MSG_CHECKING([whether sphinx installation works])
+	if test "x$HAVE_SPHINX" == "x1" ; then
+		AC_MSG_RESULT([yes])
+	else
+		AC_MSG_RESULT([no])
+	fi
 fi
-AC_DEFINE_UNQUOTED([HAVE_SPHINX], [$HAVE_SPHINX], [Define to 1 if you have sphinx available])
+
+AC_DEFINE_UNQUOTED([HAVE_SPHINX], [$HAVE_SPHINX], [Define to 1 if you have sphinx (and all required packages) available])
 AM_CONDITIONAL([HAVE_SPHINX], [ test x$HAVE_SPHINX = x1 ])
 
 # check for git
@@ -264,7 +308,7 @@ echo "
     HAVE_CHECK:            ${HAVE_CHECK}
     HAVE_COMPATIBLE_CHECK: ${HAVE_COMPATIBLE_CHECK}
     HAVE_NETWORK:          ${HAVE_NETWORK}
-    SPHINX:                $SPHINX
+    HAVE_SPHINX:           ${HAVE_SPHINX}
     GIT:                   $GIT
     DOCKER:                $DOCKER
     HAVE_DPKG:             $HAVE_DPKG
