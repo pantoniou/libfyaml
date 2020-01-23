@@ -2371,9 +2371,9 @@ int fy_fetch_anchor_or_alias(struct fy_parser *fyp, int c)
 				break;
 		}
 
-		/* if it's '-' we have a problem */
+		/* if it's '-' followed by ws we have a problem */
 		FYP_PARSE_ERROR_CHECK(fyp, i, 1, FYEM_SCAN,
-				c != '-', err_out,
+				!(c == '-' && fy_is_ws(fy_parse_peek_at(fyp, i + 1))), err_out,
 				"illegal block sequence on the same line as anchor");
 	}
 
@@ -2490,9 +2490,9 @@ int fy_fetch_tag(struct fy_parser *fyp, int c)
 				break;
 		}
 
-		/* if it's '-' we have a problem */
+		/* if it's '-' followed by ws we have a problem */
 		FYP_PARSE_ERROR_CHECK(fyp, i ,1, FYEM_SCAN,
-				c != '-', err_out,
+				!(c == '-' && fy_is_ws(fy_parse_peek_at(fyp, i + 1))), err_out,
 				"illegal block sequence on the same line as the tag");
 	}
 
