@@ -687,25 +687,82 @@ void fy_document_diag_report(struct fy_document *fyd,
 	va_end(ap);
 }
 
-void fy_node_vreport(struct fy_node *fyn, enum fy_error_type type,
-		     const char *fmt, va_list ap)
+void fy_diag_node_vreport(struct fy_diag *diag, struct fy_node *fyn,
+			  enum fy_error_type type, const char *fmt, va_list ap)
 {
 	struct fy_diag_report_ctx drc;
 	bool save_on_error;
 
-	if (!fyn)
+	if (!fyn || !diag)
 		return;
 
-	save_on_error = fyn->fyd->diag->on_error;
-	fyn->fyd->diag->on_error = false;
+	save_on_error = diag->on_error;
+	diag->on_error = false;
 
 	memset(&drc, 0, sizeof(drc));
 	drc.type = type;
 	drc.module = FYEM_UNKNOWN;
 	drc.fyt = fy_node_token(fyn);
-	fy_document_diag_vreport(fyn->fyd, &drc, fmt, ap);
+	fy_diag_vreport(diag, &drc, fmt, ap);
 
-	fyn->fyd->diag->on_error = save_on_error;
+	diag->on_error = save_on_error;
+}
+
+void fy_diag_node_report(struct fy_diag *diag, struct fy_node *fyn,
+			 enum fy_error_type type, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	fy_diag_node_vreport(diag, fyn, type, fmt, ap);
+	va_end(ap);
+}
+
+void fy_diag_node_override_vreport(struct fy_diag *diag, struct fy_node *fyn,
+				   enum fy_error_type type, const char *file,
+				   int line, int column,
+				   const char *fmt, va_list ap)
+{
+	struct fy_diag_report_ctx drc;
+	bool save_on_error;
+
+	if (!fyn || !diag)
+		return;
+
+	save_on_error = diag->on_error;
+	diag->on_error = false;
+
+	memset(&drc, 0, sizeof(drc));
+	drc.type = type;
+	drc.module = FYEM_UNKNOWN;
+	drc.fyt = fy_node_token(fyn);
+	drc.has_override = true;
+	drc.override_file = file;
+	drc.override_line = line;
+	drc.override_column = column;
+	fy_diag_vreport(diag, &drc, fmt, ap);
+
+	diag->on_error = save_on_error;
+}
+
+void fy_diag_node_override_report(struct fy_diag *diag, struct fy_node *fyn,
+				  enum fy_error_type type, const char *file,
+				  int line, int column, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	fy_diag_node_override_vreport(diag, fyn, type, file, line, column, fmt, ap);
+	va_end(ap);
+}
+
+void fy_node_vreport(struct fy_node *fyn, enum fy_error_type type,
+		     const char *fmt, va_list ap)
+{
+	if (!fyn || !fyn->fyd)
+		return;
+
+	fy_diag_node_vreport(fyn->fyd->diag, fyn, type, fmt, ap);
 }
 
 void fy_node_report(struct fy_node *fyn, enum fy_error_type type,
@@ -722,26 +779,11 @@ void fy_node_override_vreport(struct fy_node *fyn, enum fy_error_type type,
 			      const char *file, int line, int column,
 			      const char *fmt, va_list ap)
 {
-	struct fy_diag_report_ctx drc;
-	bool save_on_error;
-
-	if (!fyn)
+	if (!fyn || !fyn->fyd)
 		return;
 
-	save_on_error = fyn->fyd->diag->on_error;
-	fyn->fyd->diag->on_error = false;
-
-	memset(&drc, 0, sizeof(drc));
-	drc.type = type;
-	drc.module = FYEM_UNKNOWN;
-	drc.fyt = fy_node_token(fyn);
-	drc.has_override = true;
-	drc.override_file = file;
-	drc.override_line = line;
-	drc.override_column = column;
-	fy_document_diag_vreport(fyn->fyd, &drc, fmt, ap);
-
-	fyn->fyd->diag->on_error = save_on_error;
+	fy_diag_node_override_vreport(fyn->fyd->diag, fyn, type,
+				      file, line, column, fmt, ap);
 }
 
 void fy_node_override_report(struct fy_node *fyn, enum fy_error_type type,

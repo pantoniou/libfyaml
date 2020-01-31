@@ -3904,6 +3904,100 @@ fy_diagf(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 #define fy_error(_diag, _fmt, ...) \
 	fy_diag_diag((_diag), FYET_ERROR, (_fmt) , ## __VA_ARGS__)
 
+/**
+ * fy_diag_node_vreport() - Report about a node vprintf style using
+ *                          the given diagnostic object
+ *
+ * Output a report about the given node via the specific
+ * error type, and using the reporting configuration of the node's
+ * document.
+ *
+ * @diag: The diag object
+ * @fyn: The node
+ * @type: The error type
+ * @fmt: The printf format string
+ * @ap: The argument list
+ */
+void
+fy_diag_node_vreport(struct fy_diag *diag, struct fy_node *fyn,
+		     enum fy_error_type type, const char *fmt, va_list ap)
+	FY_EXPORT;
+
+/**
+ * fy_diag_node_report() - Report about a node printf style using
+ *                          the given diagnostic object
+ *
+ * Output a report about the given node via the specific
+ * error type, and using the reporting configuration of the node's
+ * document.
+ *
+ * @diag: The diag object
+ * @fyn: The node
+ * @type: The error type
+ * @fmt: The printf format string
+ * @...: The extra arguments.
+ */
+void
+fy_diag_node_report(struct fy_diag *diag, struct fy_node *fyn,
+		    enum fy_error_type type, const char *fmt, ...)
+	__attribute__((format(printf, 4, 5)))
+	FY_EXPORT;
+
+/**
+ * fy_diag_node_override_vreport() - Report about a node vprintf style,
+ * 				     overriding file, line and column info using
+ * 				     the given diagnostic object
+ *
+ * Output a report about the given node via the specific
+ * error type, and using the reporting configuration of the node's
+ * document. This method will use the overrides provided in order
+ * to massage the reporting information.
+ * If @file is NULL, no file location will be reported.
+ * If either @line or @column is negative no location will be reported.
+ *
+ * @diag: The diag object
+ * @fyn: The node
+ * @type: The error type
+ * @file: The file override
+ * @line: The line override
+ * @column: The column override
+ * @fmt: The printf format string
+ * @ap: The argument list
+ */
+void
+fy_diag_node_override_vreport(struct fy_diag *diag, struct fy_node *fyn,
+			      enum fy_error_type type, const char *file,
+			      int line, int column, const char *fmt, va_list ap)
+	FY_EXPORT;
+
+/**
+ * fy_diag_node_override_report() - Report about a node printf style,
+ * 				    overriding file, line and column info using
+ * 				    the given diagnostic object
+ *
+ * Output a report about the given node via the specific
+ * error type, and using the reporting configuration of the node's
+ * document. This method will use the overrides provided in order
+ * to massage the reporting information.
+ * If @file is NULL, no file location will be reported.
+ * If either @line or @column is negative no location will be reported.
+ *
+ * @diag: The diag object
+ * @fyn: The node
+ * @type: The error type
+ * @file: The file override
+ * @line: The line override
+ * @column: The column override
+ * @fmt: The printf format string
+ * @...: The extra arguments.
+ */
+void
+fy_diag_node_override_report(struct fy_diag *diag, struct fy_node *fyn,
+			     enum fy_error_type type, const char *file,
+			     int line, int column, const char *fmt, ...)
+	__attribute__((format(printf, 7, 8)))
+	FY_EXPORT;
+
 #ifdef __cplusplus
 }
 #endif
