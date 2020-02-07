@@ -43,6 +43,7 @@
 #define STREAMING_DEFAULT		false
 #define TAB_DEFAULT			"auto"
 #define JSON_DEFAULT			"auto"
+#define DISABLE_ACCEL_DEFAULT		false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -55,6 +56,7 @@
 #define OPT_STRIP_DOC			2002
 #define OPT_STREAMING			2003
 #define OPT_TAB				2004
+#define OPT_DISABLE_ACCEL		2005
 
 static struct option lopts[] = {
 	{"include",		required_argument,	0,	'I' },
@@ -80,6 +82,7 @@ static struct option lopts[] = {
 	{"strip-tags",		no_argument,		0,	OPT_STRIP_TAGS },
 	{"strip-doc",		no_argument,		0,	OPT_STRIP_DOC },
 	{"streaming",		no_argument,		0,	OPT_STREAMING },
+	{"disable-accel",	no_argument,		0,	OPT_DISABLE_ACCEL },
 	{"to",			required_argument,	0,	'T' },
 	{"from",		required_argument,	0,	'F' },
 	{"quiet",		no_argument,		0,	'q' },
@@ -125,6 +128,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--strip-doc              : Strip document headers and indicators when emitting"
 						" (default %s)\n",
 						STRIP_DOC_DEFAULT ? "true" : "false");
+	fprintf(fp, "\t--disable-accel          : Disable access accelerators (slower but uses less memory)"
+						" (default %s)\n",
+						DISABLE_ACCEL_DEFAULT ? "true" : "false");
 	fprintf(fp, "\t--tab                    : (Very experimental) tab for indent option\n"
 		    "\t                           Allowed values none, auto, [1-9] (default %s)\n",
 						TAB_DEFAULT);
@@ -658,7 +664,8 @@ int main(int argc, char *argv[])
 			(QUIET_DEFAULT ? FYPCF_QUIET : 0) |
 			FYPCF_DEBUG_LEVEL(DEBUG_LEVEL_DEFAULT) |
 			FYPCF_DEBUG_DIAG_DEFAULT | FYPCF_DEBUG_DEFAULT |
-			(RESOLVE_DEFAULT ? FYPCF_RESOLVE_DOCUMENT : 0),
+			(RESOLVE_DEFAULT ? FYPCF_RESOLVE_DOCUMENT : 0) |
+			(DISABLE_ACCEL_DEFAULT ? FYPCF_DISABLE_ACCELERATORS : 0),
 	};
 	struct fy_emitter_cfg emit_cfg;
 	struct fy_parser *fyp = NULL;
@@ -875,6 +882,9 @@ int main(int argc, char *argv[])
 				display_usage(stderr, progname, tool_mode);
 				return EXIT_FAILURE;
 			}
+			break;
+		case OPT_DISABLE_ACCEL:
+			cfg.flags |= FYPCF_DISABLE_ACCELERATORS;
 			break;
 		case 'h' :
 		default:

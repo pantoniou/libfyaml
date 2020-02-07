@@ -230,6 +230,7 @@ enum fy_error_module {
  * @FYPCF_JSON_AUTO: Automatically enable JSON mode (when extension is .json)
  * @FYPCF_JSON_NONE: Never enable JSON input mode
  * @FYPCF_JSON_FORCE: Force JSON mode always
+ * @FYPCF_DISABLE_ACCELERATORS: Disable use of access accelerators (saves memory)
  */
 enum fy_parse_cfg_flags {
 	FYPCF_QUIET			= FY_BIT(0),
@@ -264,6 +265,7 @@ enum fy_parse_cfg_flags {
 	FYPCF_JSON_AUTO			= FYPCF_JSON(0),
 	FYPCF_JSON_NONE			= FYPCF_JSON(1),
 	FYPCF_JSON_FORCE		= FYPCF_JSON(2),
+	FYPCF_DISABLE_ACCELERATORS	= FY_BIT(31),
 };
 
 /* Enable diagnostic output by all modules */

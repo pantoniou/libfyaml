@@ -286,4 +286,7 @@ struct fy_token_iter {
 const char *fy_tag_token_get_directive_handle(struct fy_token *fyt, size_t *td_handle_sizep);
 const char *fy_tag_token_get_directive_prefix(struct fy_token *fyt, size_t *td_prefix_sizep);
 
+void fy_token_iter_start(struct fy_token *fyt, struct fy_token_iter *iter);
+void fy_token_iter_finish(struct fy_token_iter *iter);
+
 #endif

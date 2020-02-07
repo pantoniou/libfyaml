@@ -1117,6 +1117,8 @@ void fy_token_iter_start(struct fy_token *fyt, struct fy_token_iter *iter)
 	if (!iter)
 		return;
 
+	memset(iter, 0, sizeof(*iter));
+
 	iter->unget_c = -1;
 
 	if (!fyt)
@@ -1149,8 +1151,6 @@ void fy_token_iter_finish(struct fy_token_iter *iter)
 
 	if (!iter->ic.str)
 		fy_atom_iter_finish(&iter->atom_iter);
-
-	memset(iter, 0, sizeof(*iter));
 }
 
 struct fy_token_iter *
@@ -1161,9 +1161,7 @@ fy_token_iter_create(struct fy_token *fyt)
 	iter = malloc(sizeof(*iter));
 	if (!iter)
 		return NULL;
-	memset(iter, 0, sizeof(*iter));
-	if (fyt)
-		fy_token_iter_start(fyt, iter);
+	fy_token_iter_start(fyt, iter);
 	return iter;
 }
 

@@ -29,6 +29,8 @@
 
 #include "fy-valgrind.h"
 
+#include "xxhash.h"
+
 #define QUIET_DEFAULT			false
 #define INCLUDE_DEFAULT			""
 #define MODE_DEFAULT			"parse"
@@ -1047,6 +1049,229 @@ int do_libyaml_dump(yaml_parser_t *parser, yaml_emitter_t *emitter)
 }
 
 #endif
+
+struct fy_kv {
+	struct list_head node;
+	const char *key;
+	const char *value;
+};
+FY_TYPE_FWD_DECL_LIST(kv);
+FY_TYPE_DECL_LIST(kv);
+
+static int hd_accel_kv_hash(struct fy_accel *xl, const void *key, void *userdata, void *hash)
+{
+	unsigned int *hashp = hash;
+
+	*hashp = XXH32(key, strlen(key), 2654435761U);
+
+	// printf("%s key=%s hash=%08x\n", __func__, (const char *)key, *hashp);
+	return 0;
+}
+
+static bool hd_accel_kv_eq(struct fy_accel *xl, const void *hash, const void *key1, const void *key2, void *userdata)
+{
+	return !strcmp(key1, key2);
+}
+
+struct fy_kv_store {
+	struct fy_kv_list l;
+	struct fy_accel xl;
+	unsigned int count;
+};
+
+static const struct fy_hash_desc hd_kv_store = {
+	.size = sizeof(unsigned int),
+	.max_bucket_grow_limit = 8,
+	.hash = hd_accel_kv_hash,
+	.eq = hd_accel_kv_eq,
+};
+
+int fy_kv_store_setup(struct fy_kv_store *kvs,
+		      unsigned int min_buckets)
+{
+	int rc;
+
+	if (!kvs)
+		return -1;
+	memset(kvs, 0, sizeof(*kvs));
+	fy_kv_list_init(&kvs->l);
+
+	rc = fy_accel_setup(&kvs->xl, &hd_kv_store, kvs, min_buckets);
+	return rc;
+}
+
+void fy_kv_store_cleanup(struct fy_kv_store *kvs)
+{
+	struct fy_kv *kv;
+	int rc __FY_DEBUG_UNUSED__;
+
+	if (!kvs)
+		return;
+
+	while ((kv = fy_kv_list_pop(&kvs->l)) != NULL) {
+		// printf("%s: removing %s: %s\n", __func__, kv->key, kv->value);
+		rc = fy_accel_remove(&kvs->xl, kv->key);
+		assert(!rc);
+		free(kv);
+	}
+
+	fy_accel_cleanup(&kvs->xl);
+}
+
+int fy_kv_store_insert(struct fy_kv_store *kvs, const char *key, const char *value)
+{
+	struct fy_kv *kv;
+	size_t klen, vlen, size;
+	char *s;
+	int rc;
+
+	if (!kvs || !key || !value)
+		return -1;
+
+	/* no more that UINT_MAX */
+	if (kvs->count == UINT_MAX)
+		return -1;
+
+	klen = strlen(key);
+	vlen = strlen(value);
+	size = sizeof(*kv) + klen + 1 + vlen + 1;
+
+	kv = malloc(size);
+	if (!kv)
+		return -1;
+	s = (char *)(kv + 1);
+	kv->key = s;
+	memcpy(s, key, klen + 1);
+	s += klen + 1;
+	kv->value = s;
+	memcpy(s, value, vlen + 1);
+
+	rc = fy_accel_insert(&kvs->xl, kv->key, kv);
+	if (rc) {
+		free(kv);
+		return rc;
+	}
+	fy_kv_list_add_tail(&kvs->l, kv);
+	kvs->count++;
+
+	// printf("%s: %s: %s #%d\n", __func__, kv->key, kv->value, kvs->count);
+
+	return 0;
+}
+
+const char *fy_kv_store_lookup(struct fy_kv_store *kvs, const char *key)
+{
+	const struct fy_kv *kv;
+
+	if (!kvs || !key)
+		return NULL;
+
+	kv = fy_accel_lookup(&kvs->xl, key);
+	if (!kv)
+		return NULL;
+
+	return kv->value;
+}
+
+int fy_kv_store_remove(struct fy_kv_store *kvs, const char *key)
+{
+	struct fy_kv *kv;
+	struct fy_accel_entry *xle;
+
+	if (!kvs || !key)
+		return -1;
+
+	xle = fy_accel_entry_lookup(&kvs->xl, key);
+	if (!xle) {
+		printf("%s:%d: %s key=%s\n", __FILE__, __LINE__, __func__, key);
+		return -1;
+	}
+	kv = (void *)xle->value;
+	fy_accel_entry_remove(&kvs->xl, xle);
+
+	fy_kv_list_del(&kvs->l, kv);
+	assert(kvs->count > 0);
+	kvs->count--;
+
+	// printf("%s: %s: %s #%d\n", __func__, kv->key, kv->value, kvs->count);
+
+	free(kv);
+
+	return 0;
+}
+
+const struct fy_kv *fy_kv_store_by_index(struct fy_kv_store *kvs, unsigned int index)
+{
+	unsigned int i;
+	struct fy_kv *kv;
+
+	if (!kvs || index >= kvs->count)
+		return NULL;
+
+	for (i = 0, kv = fy_kv_list_first(&kvs->l); kv && i < index; i++, kv = fy_kv_next(&kvs->l, kv))
+		;
+	return kv;
+}
+
+const char *fy_kv_store_key_by_index(struct fy_kv_store *kvs, unsigned int index)
+{
+	const struct fy_kv *kv;
+
+	kv = fy_kv_store_by_index(kvs, index);
+	return kv ? kv->key : NULL;
+}
+
+static void do_accel_kv(const struct fy_parse_cfg *cfg, int argc, char *argv[])
+{
+	struct fy_kv_store kvs;
+	unsigned int seed, idx;
+	int i, count;
+	int rc __FY_DEBUG_UNUSED__;
+	char keybuf[16], valbuf[16];
+	const char *key;
+
+	seed = 0;	/* we don't care much about seed practices right now */
+	rc = fy_kv_store_setup(&kvs, 8);
+	assert(!rc);
+
+	count = 1000;
+
+	printf("creating #%d KVs\n", count);
+
+	for (i = 0; i < count; i++) {
+		snprintf(keybuf, sizeof(keybuf), "%s-%08x", "key", rand_r(&seed));
+		snprintf(valbuf, sizeof(valbuf), "%s-%08x", "val", rand_r(&seed));
+
+		printf("inserting %s: %s\n", keybuf, valbuf);
+
+		rc = fy_kv_store_insert(&kvs, keybuf, valbuf);
+		assert(rc == 0);
+	}
+
+	while (count > 0) {
+		idx = (unsigned int)rand_r(&seed) % count;
+
+		key = fy_kv_store_key_by_index(&kvs, idx);
+		assert(key);
+
+		printf("removing #%d - %s\n", idx, key);
+
+		rc = fy_kv_store_remove(&kvs, key);
+		assert(!rc);
+
+		count--;
+	}
+
+	printf("\n");
+	fy_kv_store_cleanup(&kvs);
+}
+
+static int do_accel_test(const struct fy_parse_cfg *cfg, int argc, char *argv[])
+{
+	do_accel_kv(cfg, argc, argv);
+
+	return 0;
+}
 
 #if 0
 static void test_diag_output(struct fy_diag *diag, void *user, const char *buf, size_t len)
@@ -2205,6 +2430,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 #endif
 	/*****/
 
+#if 0
 	{
 //#define MANUAL_SCALAR_STR "val\"quote'\0null\0&the\nrest  "
 //#define MANUAL_SCALAR_STR "0\n1"
@@ -2245,6 +2471,9 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 		free(buf);
 		free(buf2);
 	}
+#endif
+
+	do_accel_test(cfg, argc, argv);
 
 	return 0;
 }

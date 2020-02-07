@@ -20,9 +20,13 @@ libfyaml_@MAJOR@_@MINOR@_la_SOURCES = \
 	lib/fy-doc.c lib/fy-doc.h \
 	lib/fy-emit.c lib/fy-emit.h \
 	lib/fy-utils.c lib/fy-utils.h \
-	lib/fy-event.h
+	lib/fy-event.h \
+	xxhash/xxhash.c xxhash/xxhash.h \
+	lib/fy-accel.c lib/fy-accel.h
 
-libfyaml_@MAJOR@_@MINOR@_la_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/lib
+libfyaml_@MAJOR@_@MINOR@_la_CPPFLAGS = $(AM_CPPFLAGS) \
+				       -I$(top_srcdir)/src/lib \
+				       -I$(top_srcdir)/src/xxhash
 libfyaml_@MAJOR@_@MINOR@_la_CFLAGS = $(AM_CFLAGS)
 libfyaml_@MAJOR@_@MINOR@_la_LDFLAGS = $(AM_LDFLAGS) $(AM_LIBLDFLAGS) \
 		      $(VERSIONING_LDFLAGS) \
@@ -39,7 +43,10 @@ libfyaml_parser_SOURCES = \
 	internal/libfyaml-parser.c \
 	valgrind/fy-valgrind.h
 
-libfyaml_parser_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/valgrind -I$(top_srcdir)/src/lib
+libfyaml_parser_CPPFLAGS = $(AM_CPPFLAGS) \
+			   -I$(top_srcdir)/src/valgrind \
+			   -I$(top_srcdir)/src/lib \
+			   -I$(top_srcdir)/src/xxhash
 libfyaml_parser_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml-@MAJOR@.@MINOR@.la
 libfyaml_parser_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 

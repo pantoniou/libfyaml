@@ -27,6 +27,7 @@
 #include "fy-diag.h"
 #include "fy-dump.h"
 #include "fy-docstate.h"
+#include "fy-accel.h"
 
 struct fy_eventp;
 
@@ -57,6 +58,7 @@ struct fy_node {
 	bool attached : 1;		/* when it's attached somewhere */
 	bool synthetic : 1;		/* node has been modified programmaticaly */
 	void *meta;
+	struct fy_accel *xl;		/* mapping access accelerator */
 	union {
 		struct fy_token *scalar;
 		struct fy_node_list sequence;
@@ -84,6 +86,7 @@ struct fy_anchor {
 	struct list_head node;
 	struct fy_node *fyn;
 	struct fy_token *anchor;
+	bool multiple : 1;
 };
 FY_TYPE_FWD_DECL_LIST(anchor);
 FY_TYPE_DECL_LIST(anchor);
@@ -91,6 +94,8 @@ FY_TYPE_DECL_LIST(anchor);
 struct fy_document {
 	struct list_head node;
 	struct fy_anchor_list anchors;
+	struct fy_accel *axl;		/* name -> anchor access accelerator */
+	struct fy_accel *naxl;		/* node -> anchor access accelerator */
 	struct fy_document_state *fyds;
 	struct fy_diag *diag;
 	struct fy_parse_cfg parse_cfg;
@@ -154,5 +159,6 @@ struct fy_token *fy_node_token(struct fy_node *fyn);
 FILE *fy_document_get_error_fp(struct fy_document *fyd);
 enum fy_parse_cfg_flags fy_document_get_cfg_flags(const struct fy_document *fyd);
 bool fy_document_is_colorized(struct fy_document *fyd);
+bool fy_document_is_accelerated(struct fy_document *fyd);
 
 #endif

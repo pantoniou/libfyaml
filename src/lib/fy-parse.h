@@ -33,6 +33,7 @@
 #include "fy-docstate.h"
 #include "fy-doc.h"
 #include "fy-emit.h"
+#include "fy-accel.h"
 
 struct fy_parser;
 struct fy_input;
