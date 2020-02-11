@@ -126,10 +126,8 @@ EXTRA_DIST += \
 	emitter-examples/block2.yaml \
 	emitter-examples/block3.yaml \
 	emitter-examples/block4.yaml \
-	emitter-examples/block5.yaml \
 	emitter-examples/block6.yaml \
 	emitter-examples/block7.yaml \
-	emitter-examples/block8.yaml \
 	emitter-examples/blocked.yaml \
 	emitter-examples/blockind.yaml \
 	emitter-examples/block.yaml \
