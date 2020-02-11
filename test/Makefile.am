@@ -50,12 +50,16 @@ TESTS += testsuite.test jsontestsuite.test
 testsuite.test: test-suite-data json-test-suite-data
 
 test-suite-data:
-	@GIT@ clone --branch=data "@TESTSUITEURL@" -- $@
+	@GIT@ clone "@TESTSUITEURL@" -- $@ && \
+	cd $@ && \
+	@GIT@ checkout --detach @TESTSUITECHECKOUT@
 
 jsontestsuite.test: json-test-suite-data
 
 json-test-suite-data:
-	@GIT@ clone --branch=master "@JSONTESTSUITEURL@" -- $@
+	@GIT@ clone "@JSONTESTSUITEURL@" -- $@ && \
+	cd $@ && \
+	@GIT@ checkout --detach @JSONTESTSUITECHECKOUT@
 
 check-local: test-suite-data json-test-suite-data
 

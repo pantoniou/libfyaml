@@ -233,10 +233,22 @@ if test "x$TESTSUITEURL" == "x" ; then
 	TESTSUITEURL="https://github.com/yaml/yaml-test-suite"
 fi
 
+AC_ARG_VAR(TESTSUITECHECKOUT, [Testsuite checkout (default: data-2020-02-11)])
+
+if test "x$TESTSUITECHECKOUT" == "x" ; then
+	TESTSUITECHECKOUT="data-2020-02-11"
+fi
+
 AC_ARG_VAR(JSONTESTSUITEURL, [JSON Testsuite git repo URL (default: https://github.com/nst/JSONTestSuite)])
 
 if test "x$JSONTESTSUITEURL" == "x" ; then
 	JSONTESTSUITEURL="https://github.com/nst/JSONTestSuite"
+fi
+
+AC_ARG_VAR(JSONTESTSUITECHECKOUT, [JSON Testsuite checkout (default: 9f23c68b521dd700e8c99151d6dc1c5c52a0246e)])
+
+if test "x$JSONTESTSUITECHECKOUT" == "x" ; then
+	JSONTESTSUITECHECKOUT="9f23c68b521dd700e8c99151d6dc1c5c52a0246e"
 fi
 
 # check for docker
@@ -314,6 +326,8 @@ echo "
     HAVE_DPKG:             $HAVE_DPKG
     DPKG_ARCH:             $DPKG_ARCH
     TESTSUITEURL:          $TESTSUITEURL
+    TESTSUITECHECKOUT:     $TESTSUITECHECKOUT
     JSONTESTSUITEURL:      $JSONTESTSUITEURL
+    JSONTESTSUITECHECKOUT: $JSONTESTSUITECHECKOUT
 
 "
