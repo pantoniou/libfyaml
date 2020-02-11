@@ -4467,15 +4467,14 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 	case FYPS_DOCUMENT_END:
 
-		FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
-			!(fyp->document_has_content &&
-				(fyt->type == FYTT_VERSION_DIRECTIVE ||
-				fyt->type == FYTT_TAG_DIRECTIVE)), err_out,
-			"missing explicit document end marker before directive(s)");
-
 		fyds = fyp->current_document_state;
 		fyp_error_check(fyp, fyds, err_out,
 				"no current document state error");
+
+		FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
+			!fyt || (fyt->type != FYTT_VERSION_DIRECTIVE &&
+				 fyt->type != FYTT_TAG_DIRECTIVE), err_out,
+			"missing explicit document end marker before directive(s)");
 
 		fym = fy_token_end_mark(fyt);
 		if (fym)
