@@ -2839,7 +2839,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 		goto err_out;
 	}
 
-	if (empty && c == '#' && fyp->column > fyp->indent && chomp != FYAC_KEEP) {
+	if (empty && c == '#' && fyp->column > fyp->indent) {
 		FYP_MARK_ERROR(fyp, &handle.start_mark, &handle.end_mark, FYEM_SCAN,
 			"empty block scalar with wrongly indented comment line after spaces only");
 		goto err_out;
