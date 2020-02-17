@@ -74,6 +74,7 @@ struct fy_atom {
 	bool ends_with_lb : 1;		/* atom ends with linebreak */
 	bool trailing_lb : 1;		/* atom ends with trailing linebreaks > 1 */ 
 	bool size0 : 1;			/* atom contains absolutely nothing */
+	bool valid_anchor : 1;		/* atom is a valid anchor */
 	unsigned int tabsize : 4;
 };
 

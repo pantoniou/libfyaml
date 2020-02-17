@@ -159,6 +159,7 @@ static void fy_input_from_data_setup(struct fy_input *fyi,
 	handle->ends_with_lb = !!(aflags & FYACF_ENDS_WITH_LB);
 	handle->trailing_lb = !!(aflags & FYACF_TRAILING_LB);
 	handle->size0 = !!(aflags & FYACF_SIZE0);
+	handle->valid_anchor = !!(aflags & FYACF_VALID_ANCHOR);
 
 	handle->chomp = FYAC_STRIP;
 	handle->increment = 0;

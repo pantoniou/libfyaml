@@ -794,6 +794,7 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 		handle->ends_with_lb = false;
 		handle->trailing_lb = false;
 		handle->size0 = lines > 0;
+		handle->valid_anchor = false;
 		handle->tabsize = fyp->tabsize;
 	}
 
@@ -2334,11 +2335,31 @@ int fy_fetch_anchor_or_alias(struct fy_parser *fyp, int c)
 	length = 0;
 
 	while ((c = fy_parse_peek(fyp)) >= 0) {
-		if (fyp_is_blankz(fyp, c) || fy_utf8_strchr("[]{},", c))
+		if (fyp_is_blankz(fyp, c) || fy_is_flow_indicator(c) ||
+		    fy_is_unicode_control(c) || fy_is_unicode_space(c))
 			break;
 		fy_advance(fyp, c);
 		length++;
 	}
+
+	if (!fyp_is_blankz(fyp, c) && !fy_is_flow_indicator(c)) {
+
+		FYP_PARSE_ERROR_CHECK(fyp, length, 1, FYEM_SCAN,
+				fy_is_unicode_control(c), err_out,
+				"illegal unicode control character in %s", typestr);
+
+		FYP_PARSE_ERROR_CHECK(fyp, length, 1, FYEM_SCAN,
+				fy_is_unicode_space(c), err_out,
+				"illegal unicode space character in %s", typestr);
+	}
+
+	FYP_PARSE_ERROR_CHECK(fyp, length, 1, FYEM_SCAN,
+			c != FYUG_INV, err_out,
+			"invalid character in %s", typestr);
+
+	FYP_PARSE_ERROR_CHECK(fyp, length, 1, FYEM_SCAN,
+			c != FYUG_PARTIAL, err_out,
+			"partial character in %s", typestr);
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
 			length > 0, err_out,
@@ -2358,6 +2379,7 @@ int fy_fetch_anchor_or_alias(struct fy_parser *fyp, int c)
 	handle.ends_with_lb = false;
 	handle.trailing_lb = false;
 	handle.size0 = false;
+	handle.valid_anchor = true;
 
 	fyt = fy_token_queue(fyp, type, &handle);
 	fyp_error_check(fyp, fyt, err_out_rc,
@@ -2896,6 +2918,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	handle.ends_with_lb = ends_with_lb;
 	handle.trailing_lb = trailing_lb;
 	handle.size0 = length == 0;
+	handle.valid_anchor = false;
 	handle.tabsize = fyp->tabsize;
 
 #ifdef ATOM_SIZE_CHECK
@@ -3507,6 +3530,7 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 	handle.ends_with_lb = false;
 	handle.trailing_lb = false;
 	handle.size0 = length == 0;
+	handle.valid_anchor = false;
 	handle.tabsize = fyp->tabsize;
 
 #ifdef ATOM_SIZE_CHECK

@@ -829,7 +829,7 @@ unsigned int fy_analyze_scalar_content(const struct fy_input *fyi,
 
 	flags = FYACF_EMPTY | FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN |
 		FYACF_PRINTABLE | FYACF_SINGLE_QUOTED | FYACF_DOUBLE_QUOTED |
-		FYACF_SIZE0;
+		FYACF_SIZE0 | FYACF_VALID_ANCHOR;
 
 	s = data;
 	e = data + size;
@@ -854,45 +854,58 @@ unsigned int fy_analyze_scalar_content(const struct fy_input *fyi,
 		nextc = fy_utf8_get(s + w, e - (s + w), &ww);
 
 		/* anything other than white space or linebreak */
-		if (!fy_is_ws(c) && !fy_input_is_lb(fyi, c))
+		if ((flags & FYACF_EMPTY) &&
+		    !fy_is_ws(c) && !fy_input_is_lb(fyi, c))
 			flags &= ~FYACF_EMPTY;
+
+		if ((flags & FYACF_VALID_ANCHOR) &&
+		    (fy_utf8_strchr(",[]{}&*:", c) || fy_is_ws(c) ||
+		     fy_is_lb(c) || fy_is_unicode_control(c) ||
+		     fy_is_unicode_space(c)))
+			flags &= ~FYACF_VALID_ANCHOR;
 
 		/* linebreak */
 		if (fy_input_is_lb(fyi, c)) {
 			flags |= FYACF_LB;
-			if (fy_input_is_lb(fyi, nextc))
+			if (!(flags & FYACF_CONSECUTIVE_LB) &&
+			    fy_input_is_lb(fyi, nextc))
 				flags |= FYACF_CONSECUTIVE_LB;
 			break_run++;
 		} else
 			break_run = 0;
 
 		/* white space */
-		if (fy_is_ws(c))
+		if (!(flags & FYACF_WS) && fy_is_ws(c)) {
 			flags |= FYACF_WS;
+			flags &= ~FYACF_VALID_ANCHOR;
+		}
 
 		/* anything not printable (or \r, \n) */
-		if (!fy_is_printq(c)) {
+		if ((flags & FYACF_PRINTABLE) &&
+		    !fy_is_printq(c)) {
 			flags &= ~FYACF_PRINTABLE;
-			flags &= ~(FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN | FYACF_SINGLE_QUOTED);
+			flags &= ~(FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN |
+				   FYACF_SINGLE_QUOTED | FYACF_VALID_ANCHOR);
 		}
 
 		/* check for document indicators (at column 0) */
-		if (col == 0 && (e - s) >= 3 &&
-			(!strncmp(s, "---", 3) || !strncmp(s, "...", 3))) {
+		if (!(flags & FYACF_DOC_IND) &&
+		    ((col == 0 && (e - s) >= 3 &&
+		      (!strncmp(s, "---", 3) || !strncmp(s, "...", 3))))) {
 			flags |= FYACF_DOC_IND;
-			flags &= ~(FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN);
+			flags &= ~(FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN | FYACF_VALID_ANCHOR);
 		}
 
 		/* comment indicator can't be present after a space or lb */
-		if ((fy_is_blank(c) || fy_input_is_lb(fyi, c)) && nextc == '#')
-			flags &= ~(FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN);
-
 		/* : followed by blank can't be any plain */
-		if (c == ':' && fy_input_is_blankz(fyi, nextc))
+		if (flags & (FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN) &&
+		    (((fy_is_blank(c) || fy_input_is_lb(fyi, c)) && nextc == '#') ||
+		     (c == ':' && fy_input_is_blankz(fyi, nextc))))
 			flags &= ~(FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN);
 
 		/* : followed by flow markers can't be a plain in flow context */
-		if (fy_utf8_strchr(",[]{}", c) || (c == ':' && fy_utf8_strchr(",[]{}", nextc)))
+		if ((flags & FYACF_FLOW_PLAIN) &&
+		    (fy_utf8_strchr(",[]{}", c) || (c == ':' && fy_utf8_strchr(",[]{}", nextc))))
 			flags &= ~FYACF_FLOW_PLAIN;
 
 		if (fy_input_is_lb(fyi, c))

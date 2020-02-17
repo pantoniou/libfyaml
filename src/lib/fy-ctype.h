@@ -159,6 +159,18 @@ static inline bool fy_is_flow_indicator(int c)
 	return !!fy_utf8_strchr(",[]{}", c);
 }
 
+static inline bool fy_is_unicode_control(int c)
+{
+        return (c >= 0 && c <= 0x1f) || (c >= 0x80 && c <= 0x9f);
+}
+
+static inline bool fy_is_unicode_space(int c)
+{
+        return c == 0x20 || c == 0xa0 ||
+               (c >= 0x2000 && c <= 0x200a) ||
+               c == 0x202f || c == 0x205f || c == 0x3000;
+}
+
 #define FY_CTYPE_AT_BUILDER(_kind) \
 static inline const void * \
 fy_find_ ## _kind (const void *s, size_t len) \
@@ -211,6 +223,8 @@ FY_CTYPE_AT_BUILDER(nb_char);
 FY_CTYPE_AT_BUILDER(ns_char);
 FY_CTYPE_AT_BUILDER(indicator);
 FY_CTYPE_AT_BUILDER(flow_indicator);
+FY_CTYPE_AT_BUILDER(unicode_control);
+FY_CTYPE_AT_BUILDER(unicode_space);
 
 /*
  * Very special linebreak/ws methods

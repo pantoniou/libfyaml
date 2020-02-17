@@ -133,6 +133,10 @@ int fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn, const c
 	if (!fyi)
 		goto err_out;
 
+	/* it must not be something funky */
+	if (!handle.valid_anchor)
+		goto err_out;
+
 	fyt = fy_token_create(FYTT_ANCHOR, &handle);
 	if (!fyt)
 		goto err_out;
@@ -614,6 +618,7 @@ struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn)
 	handle.ends_with_lb = !!(aflags & FYACF_ENDS_WITH_LB);
 	handle.trailing_lb = !!(aflags & FYACF_TRAILING_LB);
 	handle.size0 = !!(aflags & FYACF_SIZE0);
+	handle.valid_anchor = !!(aflags & FYACF_VALID_ANCHOR);
 
 	handle.chomp = FYAC_STRIP;
 	handle.increment = 0;

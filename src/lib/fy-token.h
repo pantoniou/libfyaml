@@ -60,24 +60,25 @@ static inline bool fy_token_type_is_content(enum fy_token_type type)
 }
 
 /* analyze content flags */
-#define FYACF_EMPTY		0x00001	/* is empty (only ws & lb) */
-#define FYACF_LB		0x00002	/* has a linebreak */
-#define FYACF_BLOCK_PLAIN	0x00004	/* can be a plain scalar in block context */
-#define FYACF_FLOW_PLAIN	0x00008	/* can be a plain scalar in flow context */
-#define FYACF_PRINTABLE		0x00010	/* every character is printable */
-#define FYACF_SINGLE_QUOTED	0x00020	/* can be a single quoted scalar */
-#define FYACF_DOUBLE_QUOTED	0x00040	/* can be a double quoted scalar */
-#define FYACF_CONTAINS_ZERO	0x00080	/* contains a zero */
-#define FYACF_DOC_IND		0x00100	/* contains document indicators */
-#define FYACF_CONSECUTIVE_LB 	0x00200	/* has consecutive linebreaks */
-#define FYACF_SIMPLE_KEY	0x00400	/* can be a simple key */
-#define FYACF_WS		0x00800	/* has at least one whitespace */
-#define FYACF_STARTS_WITH_WS	0x01000	/* starts with whitespace */
-#define FYACF_STARTS_WITH_LB	0x02000	/* starts with whitespace */
-#define FYACF_ENDS_WITH_WS	0x04000	/* ends with whitespace */
-#define FYACF_ENDS_WITH_LB	0x08000	/* ends with linebreak */
-#define FYACF_TRAILING_LB	0x10000	/* ends with trailing lb > 1 */
-#define FYACF_SIZE0		0x20000 /* contains absolutely nothing */
+#define FYACF_EMPTY		0x000001	/* is empty (only ws & lb) */
+#define FYACF_LB		0x000002	/* has a linebreak */
+#define FYACF_BLOCK_PLAIN	0x000004	/* can be a plain scalar in block context */
+#define FYACF_FLOW_PLAIN	0x000008	/* can be a plain scalar in flow context */
+#define FYACF_PRINTABLE		0x000010	/* every character is printable */
+#define FYACF_SINGLE_QUOTED	0x000020	/* can be a single quoted scalar */
+#define FYACF_DOUBLE_QUOTED	0x000040	/* can be a double quoted scalar */
+#define FYACF_CONTAINS_ZERO	0x000080	/* contains a zero */
+#define FYACF_DOC_IND		0x000100	/* contains document indicators */
+#define FYACF_CONSECUTIVE_LB 	0x000200	/* has consecutive linebreaks */
+#define FYACF_SIMPLE_KEY	0x000400	/* can be a simple key */
+#define FYACF_WS		0x000800	/* has at least one whitespace */
+#define FYACF_STARTS_WITH_WS	0x001000	/* starts with whitespace */
+#define FYACF_STARTS_WITH_LB	0x002000	/* starts with whitespace */
+#define FYACF_ENDS_WITH_WS	0x004000	/* ends with whitespace */
+#define FYACF_ENDS_WITH_LB	0x008000	/* ends with linebreak */
+#define FYACF_TRAILING_LB	0x010000	/* ends with trailing lb > 1 */
+#define FYACF_SIZE0		0x020000	/* contains absolutely nothing */
+#define FYACF_VALID_ANCHOR	0x040000	/* contains valid anchor (without & prefix) */
 
 enum fy_comment_placement {
 	fycp_top,
