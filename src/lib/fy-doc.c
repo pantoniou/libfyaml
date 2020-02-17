@@ -120,14 +120,27 @@ int fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn, const c
 	struct fy_token *fyt = NULL;
 	struct fy_atom handle;
 
-	if (!fyd)
+	if (!fyd || !fyn || fyn->fyd != fyd)
 		return -1;
 
 	if (text && len == (size_t)-1)
 		len = strlen(text);
 
-	if (!text)
+	fya = fy_document_lookup_anchor_by_node(fyd, fyn);
+
+	if (!text) {
+		/* no anchor, and trying to delete? OK */
+		if (fya)
+			return 0;
+		/* remove the anchor */
+		fy_anchor_list_del(&fyd->anchors, fya);
+		fy_anchor_destroy(fya);
 		return 0;
+	}
+
+	/* trying to add duplicate anchor */
+	if (fya)
+		return -1;
 
 	fyi = fy_input_from_data(text, len, &handle, true);
 	if (!fyi)
@@ -195,6 +208,7 @@ void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 	/* remove all anchors */
 	for (fya = fy_anchor_list_head(&fyd->anchors); fya; fya = fyan) {
 		fyan = fy_anchor_next(&fyd->anchors, fya);
+		fy_anchor_list_del(&fyd->anchors, fya);
 		fy_anchor_destroy(fya);
 	}
 

@@ -1211,6 +1211,48 @@ START_TEST(manual_invalid_anchor)
 }
 END_TEST
 
+START_TEST(manual_anchor_removal)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	int ret;
+
+	fyd = fy_document_create(NULL);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn = fy_node_create_sequence(fyd);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	fy_document_set_root(fyd, fyn);
+
+	fyn = fy_node_create_scalar(fyd, "foo", FY_NT);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	ret = fy_node_sequence_append(fy_document_root(fyd), fyn);
+	ck_assert_int_eq(ret, 0);
+
+	/* create a valid anchor */
+	ret = fy_node_set_anchor(fyn, "foo", FY_NT);
+	ck_assert_int_eq(ret, 0);
+
+	fprintf(stderr, "---\n# with anchor\n");
+	fy_emit_document_to_fp(fyd, FYECF_MODE_FLOW_ONELINE, stderr);
+
+	/* should fail (an anchor already exists) */
+	ret = fy_node_set_anchor(fyn, "bar", FY_NT);
+	ck_assert_int_ne(ret, 0);
+
+	/* should succeed */
+	ret = fy_node_remove_anchor(fyn);
+	ck_assert_int_eq(ret, 0);
+
+	fprintf(stderr, "---\n# without anchor\n");
+	fy_emit_document_to_fp(fyd, FYECF_MODE_FLOW_ONELINE, stderr);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 TCase *libfyaml_case_core(void)
 {
 	TCase *tc;
@@ -1262,6 +1304,7 @@ TCase *libfyaml_case_core(void)
 
 	tcase_add_test(tc, manual_valid_anchor);
 	tcase_add_test(tc, manual_invalid_anchor);
+	tcase_add_test(tc, manual_anchor_removal);
 
 	return tc;
 }
