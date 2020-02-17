@@ -849,6 +849,9 @@ unsigned int fy_analyze_scalar_content(const struct fy_input *fyi,
 				flags |= FYACF_STARTS_WITH_WS;
 			else if (fy_input_is_lb(fyi, c))
 				flags |= FYACF_STARTS_WITH_LB;
+			/* scalars starting with & or * must be quoted */
+			if (c == '&' || c == '*')
+				flags &= ~(FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN);
 			first = false;
 		}
 		nextc = fy_utf8_get(s + w, e - (s + w), &ww);
