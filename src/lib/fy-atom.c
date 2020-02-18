@@ -497,6 +497,8 @@ void fy_atom_iter_finish(struct fy_atom_iter *iter)
 {
 	if (iter->chunks && iter->chunks != iter->startup_chunks)
 		free(iter->chunks);
+
+	iter->chunks = NULL;
 }
 
 static const struct fy_atom_iter_line_info *
@@ -1008,6 +1010,8 @@ fy_atom_iter_create(const struct fy_atom *atom)
 		return NULL;
 	if (atom)
 		fy_atom_iter_start(atom, iter);
+	else
+		memset(iter, 0, sizeof(*iter));
 	return iter;
 }
 
