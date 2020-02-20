@@ -93,7 +93,7 @@ static inline bool fy_is_lb(int c)
 
 static inline bool fy_is_z(int c)
 {
-	return c == '\0' || c == -1;
+	return c <= 0;
 }
 
 static inline bool fy_is_lbz(int c)

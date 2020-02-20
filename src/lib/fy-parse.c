@@ -2854,6 +2854,12 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	/* end... */
 	fy_fill_atom_end(fyp, &handle);
 
+	if (c == FYUG_INV || c == FYUG_PARTIAL) {
+		FYP_MARK_ERROR(fyp, &handle.start_mark, &handle.end_mark, FYEM_SCAN,
+			"block scalar is malformed UTF8");
+		goto err_out;
+	}
+
 	/* detect wrongly indented block scalar */
 	if (!(!empty || fyp->column <= fyp->indent || c == '#' || doc_start_end_detected)) {
 		FYP_MARK_ERROR(fyp, &handle.start_mark, &handle.end_mark, FYEM_SCAN,
@@ -3024,9 +3030,15 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 
 		if (c <= 0) {
 			fy_get_mark(fyp, &mark);
-			FYP_MARK_ERROR(fyp, &handle.start_mark, &mark, FYEM_SCAN,
-					"%s scalar without closing quote",
-						is_single ? "single-quoted" : "double-quoted");
+
+			if (!c || c == FYUG_EOF)
+				FYP_MARK_ERROR(fyp, &handle.start_mark, &mark, FYEM_SCAN,
+						"%s scalar without closing quote",
+							is_single ? "single-quoted" : "double-quoted");
+			else
+				FYP_MARK_ERROR(fyp, &handle.start_mark, &mark, FYEM_SCAN,
+						"%s scalar is malformed UTF8",
+							is_single ? "single-quoted" : "double-quoted");
 			goto err_out;
 		}
 
@@ -3410,6 +3422,7 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 	indent = fyp->indent + 1;
 	last_ptr = NULL;
 	memset(&last_mark, 0, sizeof(last_mark));
+	c = FYUG_EOF;
 	for (;;) {
 		/* break for document indicators */
 		if (fyp->column == 0 &&
@@ -3514,6 +3527,12 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 		fy_fill_atom_end(fyp, &handle);
 	else
 		fy_fill_atom_end_at(fyp, &handle, &last_mark);
+
+	if (c == FYUG_INV || c == FYUG_PARTIAL) {
+		FYP_MARK_ERROR(fyp, &handle.start_mark, &handle.end_mark, FYEM_SCAN,
+			"plain scalar is malformed UTF8");
+		goto err_out;
+	}
 
 	is_multiline = handle.end_mark.line > handle.start_mark.line;
 	is_complex = fyp->pending_complex_key_column >= 0;
