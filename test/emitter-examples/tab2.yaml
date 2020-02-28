@@ -1,0 +1,13 @@
+# hard tabs for vim: set noet ci pi sts=0 ts=8 sw=8 :
+--- |	# spaces indent [ ]x8, [ ]x10, [ ]x8 
+        foo bar
+          baz
+        frooz
+--- |	# hard tabs indent \t, \t[ ]x2, \t
+	foo bar
+	  baz
+	frooz
+--- |	# mixed [ ]x4\t, [ ]x10, \t
+    	foo bar
+          baz
+	frooz
