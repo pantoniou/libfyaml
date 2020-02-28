@@ -673,6 +673,7 @@ static const struct fy_reader_ops fy_parser_reader_ops = {
 
 int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 {
+	struct fy_reader *fyr;
 	struct fy_diag *diag;
 	struct fy_diag_cfg dcfg;
 	const struct fy_version *vers;
@@ -733,6 +734,17 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 
 	fyp->pending_complex_key_column = -1;
 	fyp->last_block_mapping_key_line = -1;
+
+	fyr = fyp->reader;
+	if ((fyp->cfg.flags & (FYPCF_TAB_MASK << FYPCF_TAB_SHIFT)) == FYPCF_TAB_AUTO)
+		fyr->tabsize = 0;	/* disable for now */
+	else if ((fyp->cfg.flags & (FYPCF_TAB_MASK << FYPCF_TAB_SHIFT)) == FYPCF_TAB_NONE)
+		fyr->tabsize = 0;	/* complete disable */
+	else
+		fyr->tabsize = (fyp->cfg.flags >> FYPCF_TAB_SHIFT) & FYPCF_TAB_MASK;
+
+	if (fyr->tabsize)
+		fyp_scan_debug(fyp, "starting tab size set to %d", fyr->tabsize);
 
 	fyp->suppress_recycling = !!(fyp->cfg.flags & FYPCF_DISABLE_RECYCLING) ||
 		                  (getenv("FY_VALGRIND") &&

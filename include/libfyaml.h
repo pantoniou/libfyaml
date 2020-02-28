@@ -277,6 +277,13 @@ enum fy_error_module {
 /* Build a JSON input mode option */
 #define FYPCF_JSON(x)			(((unsigned int)(x) & FYPCF_JSON_MASK) << FYPCF_JSON_SHIFT)
 
+/* Shift amount of the experimental tab indent option */
+#define FYPCF_TAB_SHIFT			19
+/* Mask of the experimental tab indent option */
+#define FYPCF_TAB_MASK			((1U << 4) - 1)
+/* Build a tab option (experimental) */
+#define FYPCF_TAB(x)			(((unsigned int)(x) & FYPCF_TAB_MASK) << FYPCF_TAB_SHIFT)
+
 /* guaranteed minimum depth limit for generated document */
 /* the actual limit is larger depending on the platform */
 #define FYPCF_GUARANTEED_MINIMUM_DEPTH_LIMIT	64
@@ -306,6 +313,8 @@ enum fy_error_module {
  * @FYPCF_JSON_NONE: Never enable JSON input mode
  * @FYPCF_JSON_FORCE: Force JSON mode always
  * @FYPCF_YPATH_ALIASES: Enable YPATH aliases mode
+ * @FYPCF_TAB_AUTO: Automatically use tab setting parsing comments (by default 8)
+ * @FYPCF_TAB_NONE: Disable tab for indent purposes completely
  */
 enum fy_parse_cfg_flags {
 	FYPCF_QUIET			= FY_BIT(0),
@@ -327,6 +336,8 @@ enum fy_parse_cfg_flags {
 	FYPCF_JSON_NONE			= FYPCF_JSON(1),
 	FYPCF_JSON_FORCE		= FYPCF_JSON(2),
 	FYPCF_YPATH_ALIASES		= FY_BIT(18),
+	FYPCF_TAB_AUTO			= FYPCF_TAB(0),
+	FYPCF_TAB_NONE			= FYPCF_TAB(15),
 };
 
 #define FYPCF_DEFAULT_PARSE	(0)

@@ -41,6 +41,7 @@
 #define STRIP_TAGS_DEFAULT		false
 #define STRIP_DOC_DEFAULT		false
 #define STREAMING_DEFAULT		false
+#define TAB_DEFAULT			"auto"
 #define JSON_DEFAULT			"auto"
 #define DISABLE_ACCEL_DEFAULT		false
 #define DISABLE_BUFFERING_DEFAULT	false
@@ -64,6 +65,7 @@
 #define OPT_STRIP_TAGS			2001
 #define OPT_STRIP_DOC			2002
 #define OPT_STREAMING			2003
+#define OPT_TAB				2004
 #define OPT_DISABLE_ACCEL		2005
 #define OPT_DISABLE_BUFFERING		2006
 #define OPT_DISABLE_DEPTH_LIMIT		2007
@@ -95,6 +97,7 @@ static struct option lopts[] = {
 	{"color",		required_argument,	0,	'C' },
 	{"visible",		no_argument,		0,	'V' },
 	{"mode",		required_argument,	0,	'm' },
+	{"tab",			required_argument,	0,	OPT_TAB },
 	{"json",		required_argument,	0,	'j' },
 	{"file",		required_argument,	0,	'f' },
 	{"trim",		required_argument,	0,	't' },
@@ -187,6 +190,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--disable-depth-limit    : Disable depth limit"
 						" (default %s)\n",
 						DISABLE_DEPTH_LIMIT_DEFAULT ? "true" : "false");
+	fprintf(fp, "\t--tab                    : (Very experimental) tab for indent option\n"
+		    "\t                           Allowed values none, auto, [1-9] (default %s)\n",
+						TAB_DEFAULT);
 	fprintf(fp, "\t--json, -j               : JSON input mode (no | force | auto)"
 						" (default %s)\n",
 						JSON_DEFAULT);
@@ -1189,6 +1195,13 @@ int main(int argc, char *argv[])
 		     (STRIP_DOC_DEFAULT ? FYECF_STRIP_DOC : 0);
 	apply_mode_flags(MODE_DEFAULT, &emit_flags);
 
+	if (!strcmp(TAB_DEFAULT, "none"))
+		cfg.flags |= FYPCF_TAB_NONE;
+	else if (!strcmp(TAB_DEFAULT, "auto"))
+		cfg.flags |= FYPCF_TAB_AUTO;
+	else if (strlen(TAB_DEFAULT) == 1 && TAB_DEFAULT[0] > '1' && TAB_DEFAULT[1] <= '9')
+		cfg.flags |= FYPCF_TAB(TAB_DEFAULT[0] - '0');
+
 	while ((opt = getopt_long_only(argc, argv,
 					"I:" "d:" "i:" "w:" "rsc" "C:" "m:" "V" "f:" "t:" "T:F:" "j:" "qhvl",
 					lopts, &lidx)) != -1) {
@@ -1351,6 +1364,20 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_STREAMING:
 			streaming = true;
+			break;
+		case OPT_TAB:
+			cfg.flags &= ~(FYPCF_TAB_MASK << FYPCF_TAB_SHIFT);
+			if (!strcmp(optarg, "none"))
+				cfg.flags |= FYPCF_TAB_NONE;
+			else if (!strcmp(optarg, "auto"))
+				cfg.flags |= FYPCF_TAB_AUTO;
+			else if (strlen(optarg) == 1 && optarg[0] > '1' && optarg[1] <= '9')
+				cfg.flags |= FYPCF_TAB(optarg[0] - '0');
+			else {
+				fprintf(stderr, "bad tab option %s\n", optarg);
+				display_usage(stderr, progname, tool_mode);
+				return EXIT_FAILURE;
+			}
 			break;
 		case 'j':
 			cfg.flags &= ~(FYPCF_JSON_MASK << FYPCF_JSON_SHIFT);

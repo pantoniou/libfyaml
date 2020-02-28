@@ -127,6 +127,29 @@ and they are as follows:
    - No reording of key order is possible when emitting (i.e. `--sort` is not available).
    - Alias resolution is not available (i.e. `--resolve`).
 
+.. option:: --tab=TAB
+
+   Set the tab indent mode. Allowed values are:
+
+   - **auto**
+
+     Indent by tabs is disabled until a vim tab marker is encountered.
+     For the remainder of the file the tabs have the value parsed (or until another
+     option is encountered). An example vim YAML set tab option is:
+
+     .. code-block:: yaml
+
+        # vim: set ts=4:
+        foo: bar
+
+   - **0**
+
+     Indent by tabs is completely disabled.
+
+   - **1-9**
+
+     Tab is set to the given value.
+
 .. rubric:: Resolver Options
 
 .. option:: -r, --resolve
