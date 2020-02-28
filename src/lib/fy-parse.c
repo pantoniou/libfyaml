@@ -500,7 +500,7 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 	fyp->last_block_mapping_key_line = -1;
 
 	if ((fyp->cfg.flags & (FYPCF_TAB_MASK << FYPCF_TAB_SHIFT)) == FYPCF_TAB_AUTO)
-		fyp->tabsize = 0;	/* disabled by default, needs a marker to activate */
+		fyp->tabsize = 0;	/* disable for now */
 	else if ((fyp->cfg.flags & (FYPCF_TAB_MASK << FYPCF_TAB_SHIFT)) == FYPCF_TAB_NONE)
 		fyp->tabsize = 0;	/* complete disable */
 	else
@@ -615,98 +615,6 @@ const void *fy_ensure_lookahead_slow_path(struct fy_parser *fyp, size_t size, si
 	return p;
 }
 
-static bool fy_streq_at(struct fy_parser *fyp, int scan_ahead, const char *str)
-{
-	while (*str && fy_parse_peek_at(fyp, scan_ahead) == *str) {
-		str++;
-		scan_ahead++;
-	}
-	return !*str;
-}
-
-void fy_scan_tab_setting(struct fy_parser *fyp)
-{
-	int scan_ahead, c, len, n;
-	bool sep_ws;
-
-	/* only if tab is set to auto */
-	if ((fyp->cfg.flags & (FYPCF_TAB_MASK << FYPCF_TAB_SHIFT)) != FYPCF_TAB_AUTO)
-		return;
-
-	scan_ahead = 1;	/* skipping over # */
-
-	/* scan for vim modelines */
-	while (!(fyp_is_lbz(fyp, c = fy_parse_peek_at(fyp, scan_ahead)))) {
-
-		/* scan for start of mode line */
-		if (fy_is_ws(c) && fy_streq_at(fyp, scan_ahead + 1, "vim:")) {
-			scan_ahead += 5;
-			goto vim_found;
-		}
-		scan_ahead++;
-	}
-
-	return;
-
-vim_found:
-	while (fy_is_ws(c = fy_parse_peek_at(fyp, scan_ahead)))
-		scan_ahead++;
-
-	if (fy_streq_at(fyp, scan_ahead, "set") &&
-		fy_is_ws(fy_parse_peek_at(fyp, scan_ahead + 3))) {
-		scan_ahead += 4;
-		sep_ws = true;
-	} else
-		sep_ws = false;
-
-	while (fy_is_ws(c = fy_parse_peek_at(fyp, scan_ahead)))
-		scan_ahead++;
-
-	while ((c = fy_parse_peek_at(fyp, scan_ahead)) > 0 && (!sep_ws || c != ':')) {
-
-		if (fy_streq_at(fyp, scan_ahead, "ts=")) {
-			scan_ahead += 3;
-			goto ts_found;
-		}
-		if (fy_streq_at(fyp, scan_ahead, "tabstop=")) {
-			scan_ahead += 8;
-			goto ts_found;
-		}
-
-		/* skip this vim option */
-		if (!sep_ws) {
-			while ((c = fy_parse_peek_at(fyp, scan_ahead)) > 0 && c != ':')
-				scan_ahead++;
-			if (c == ':')
-				scan_ahead++;
-		} else {
-			while ((c = fy_parse_peek_at(fyp, scan_ahead)) > 0 && !fy_is_ws(c))
-				scan_ahead++;
-			if (fy_is_ws(c))
-				scan_ahead++;
-		}
-	}
-
-	return;
-
-ts_found:
-	n = 0;
-	len = 0;
-	while (len < 10 && (c = fy_parse_peek_at(fyp, scan_ahead)) > 0 && (c >= '0' && c <= '9')) {
-		scan_ahead++;
-		n = n * 10 + (c - '0');
-		len++;
-	}
-
-	/* protect against crazy stuff */
-	if (!len || len > 9)
-		return;
-
-	fyp_notice(fyp, "updating tab size to %d", n);
-
-	fyp->tabsize = n;
-}
-
 int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_line)
 {
 	int c, column, start_column, lines, scan_ahead;
@@ -715,10 +623,6 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 	c = fy_parse_peek(fyp);
 	if (c != '#')
 		return -1;
-
-	/* only scan tab size when set to auto */
-	if ((fyp->cfg.flags & (FYPCF_TAB_MASK << FYPCF_TAB_SHIFT)) == FYPCF_TAB_AUTO)
-		fy_scan_tab_setting(fyp);
 
 	/* if it's no comment parsing is enabled just consume it */
 	if (!(fyp->cfg.flags & FYPCF_PARSE_COMMENTS)) {
