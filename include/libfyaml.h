@@ -175,12 +175,6 @@ enum fy_error_module {
 #define FYPCF_DEBUG_DIAG_SHIFT		16
 /* Mask of the debug diagnostric output options */
 #define FYPCF_DEBUG_DIAG_MASK		((1U << 4) - 1)
-/* Shift amount of the experimental tab indent option */
-#define FYPCF_TAB_SHIFT			25
-/* Mask of the experimental tab indent option */
-#define FYPCF_TAB_MASK			((1U << 4) - 1)
-/* Build a tab option (experimental) */
-#define FYPCF_TAB(x)			(((unsigned int)(x) & FYPCF_TAB_MASK) << FYPCF_TAB_SHIFT)
 /* Shift amount of the JSON input mode */
 #define FYPCF_JSON_SHIFT		29
 /* Mask of the JSON input mode */
@@ -225,8 +219,6 @@ enum fy_error_module {
  * @FYPCF_DISABLE_RECYCLING: Disable recycling optimization
  * @FYPCF_PARSE_COMMENTS: Enable parsing of comments (experimental)
  * @FYPCF_DISABLE_DEPTH_LIMIT: Disable depth limit check, use with enlarged stack
- * @FYPCF_TAB_AUTO: Automatically use tab setting parsing comments (by default 8)
- * @FYPCF_TAB_NONE: Disable tab for indent purposes completely
  * @FYPCF_JSON_AUTO: Automatically enable JSON mode (when extension is .json)
  * @FYPCF_JSON_NONE: Never enable JSON input mode
  * @FYPCF_JSON_FORCE: Force JSON mode always
@@ -260,8 +252,6 @@ enum fy_parse_cfg_flags {
 	FYPCF_DISABLE_RECYCLING		= FY_BIT(22),
 	FYPCF_PARSE_COMMENTS		= FY_BIT(23),
 	FYPCF_DISABLE_DEPTH_LIMIT	= FY_BIT(24),
-	FYPCF_TAB_AUTO			= FYPCF_TAB(0),
-	FYPCF_TAB_NONE			= FYPCF_TAB(15),
 	FYPCF_JSON_AUTO			= FYPCF_JSON(0),
 	FYPCF_JSON_NONE			= FYPCF_JSON(1),
 	FYPCF_JSON_FORCE		= FYPCF_JSON(2),

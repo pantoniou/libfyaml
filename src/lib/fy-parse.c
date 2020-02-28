@@ -499,16 +499,7 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 	fyp->pending_complex_key_column = -1;
 	fyp->last_block_mapping_key_line = -1;
 
-	if ((fyp->cfg.flags & (FYPCF_TAB_MASK << FYPCF_TAB_SHIFT)) == FYPCF_TAB_AUTO)
-		fyp->tabsize = 0;	/* disable for now */
-	else if ((fyp->cfg.flags & (FYPCF_TAB_MASK << FYPCF_TAB_SHIFT)) == FYPCF_TAB_NONE)
-		fyp->tabsize = 0;	/* complete disable */
-	else
-		fyp->tabsize = (fyp->cfg.flags >> FYPCF_TAB_SHIFT) & FYPCF_TAB_MASK;
-
-	if (fyp->tabsize)
-		fyp_notice(fyp, "starting tab size set to %d", fyp->tabsize);
-
+	fyp->tabsize = 0;	/* disable for now */
 	fyp->suppress_recycling = !!(fyp->cfg.flags & FYPCF_DISABLE_RECYCLING) ||
 		                  getenv("FY_VALGRIND");
 
