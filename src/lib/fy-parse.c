@@ -3659,7 +3659,7 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 		goto out;
 	}
 
-	if (c == '?' && (fyp->flow_level || fy_is_blankz_at_offset(fyp, 1))) {
+	if (c == '?' && fy_is_blankz_at_offset(fyp, 1)) {
 
 		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
 				!fyp_json_mode(fyp), err_out,
