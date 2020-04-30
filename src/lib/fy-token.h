@@ -245,6 +245,7 @@ enum fy_scalar_style fy_token_scalar_style(struct fy_token *fyt);
 #define FYTTAF_CAN_BE_LITERAL		FY_BIT(13)
 #define FYTTAF_CAN_BE_FOLDED		FY_BIT(14)
 #define FYTTAF_CAN_BE_PLAIN_FLOW	FY_BIT(15)
+#define FYTTAF_QUOTE_AT_0		FY_BIT(16)
 
 int fy_token_text_analyze(struct fy_token *fyt);
 

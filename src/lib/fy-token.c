@@ -610,6 +610,10 @@ int fy_token_text_analyze(struct fy_token *fyt)
 		 FYTTAF_CAN_BE_FOLDED |
 		 FYTTAF_CAN_BE_PLAIN_FLOW;
 
+	/* start with document indicators must be quoted at indent 0 */
+	if (len >= 3 && (!memcmp(value, "---", 3) || !memcmp(value, "...", 3)))
+		flags |= FYTTAF_QUOTE_AT_0;
+
 	s = value;
 	e = value + len;
 

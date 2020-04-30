@@ -1201,7 +1201,7 @@ void fy_emit_token_write_folded(struct fy_emitter *emit, struct fy_token *fyt, i
 
 static enum fy_node_style
 fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
-			   int flags, enum fy_node_style style)
+			   int flags, int indent, enum fy_node_style style)
 {
 	const char *value = NULL;
 	size_t len = 0;
@@ -1287,6 +1287,10 @@ out:
 				FYNS_PLAIN : FYNS_DOUBLE_QUOTED;
 	}
 
+	/* special handling for plains on start of line */
+	if ((aflags & FYTTAF_QUOTE_AT_0) && indent == 0 && style == FYNS_PLAIN)
+		style = FYNS_DOUBLE_QUOTED;
+
 	return style;
 }
 
@@ -1299,7 +1303,7 @@ void fy_emit_token_scalar(struct fy_emitter *emit, struct fy_token *fyt, int fla
 	if (!fy_emit_whitespace(emit))
 		fy_emit_write_ws(emit);
 
-	style = fy_emit_token_scalar_style(emit, fyt, flags, style);
+	style = fy_emit_token_scalar_style(emit, fyt, flags, indent, style);
 
 	switch (style) {
 	case FYNS_ALIAS:
