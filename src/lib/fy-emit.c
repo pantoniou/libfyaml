@@ -167,8 +167,8 @@ static int fy_emit_node_check(struct fy_emitter *emit, struct fy_node *fyn)
 	return 0;
 }
 
-void fy_emit_node_internal(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent);
-void fy_emit_scalar(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent);
+void fy_emit_node_internal(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent, bool is_key);
+void fy_emit_scalar(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent, bool is_key);
 void fy_emit_sequence(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent);
 void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent);
 
@@ -616,7 +616,7 @@ void fy_emit_common_node_preamble(struct fy_emitter *emit,
 	}
 }
 
-void fy_emit_node_internal(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent)
+void fy_emit_node_internal(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent, bool is_key)
 {
 	enum fy_node_type type;
 	struct fy_anchor *fya;
@@ -636,17 +636,27 @@ void fy_emit_node_internal(struct fy_emitter *emit, struct fy_node *fyn, int fla
 		fy_emit_putc(emit, fyewt_linebreak, '\n');
 		emit->flags = FYEF_WHITESPACE | FYEF_INDENTATION;
 	}
+
 	switch (type) {
 	case FYNT_SCALAR:
-		fy_emit_scalar(emit, fyn, flags, indent);
+		fy_emit_scalar(emit, fyn, flags, indent, is_key);
 		break;
 	case FYNT_SEQUENCE:
+		FYD_TOKEN_ERROR_CHECK(fyn->fyd, fyn->sequence_start, FYEM_INTERNAL,
+				!is_key || !fy_emit_is_json_mode(emit), err_out,
+				"JSON does not allow sequences as keys");
 		fy_emit_sequence(emit, fyn, flags, indent);
 		break;
 	case FYNT_MAPPING:
+		FYD_TOKEN_ERROR_CHECK(fyn->fyd, fyn->mapping_start, FYEM_INTERNAL,
+				!is_key || !fy_emit_is_json_mode(emit), err_out,
+				"JSON does not allow mappings as keys");
 		fy_emit_mapping(emit, fyn, flags, indent);
 		break;
 	}
+err_out:
+	/* nothing */
+	return;
 }
 
 void fy_emit_token_write_plain(struct fy_emitter *emit, struct fy_token *fyt, int flags, int indent)
@@ -1329,12 +1339,21 @@ void fy_emit_token_scalar(struct fy_emitter *emit, struct fy_token *fyt, int fla
 	}
 }
 
-void fy_emit_scalar(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent)
+void fy_emit_scalar(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent, bool is_key)
 {
+	enum fy_node_style style;
+
+	/* default style */
+	style = fyn ? fyn->style : FYNS_ANY;
+
+	/* all JSON keys are double quoted */
+	if (fy_emit_is_json_mode(emit) && is_key)
+		style = FYNS_DOUBLE_QUOTED;
+
 	fy_emit_token_scalar(emit,
 			fyn ? fyn->scalar : NULL,
 			flags, indent,
-			fyn ? fyn->style : FYNS_ANY);
+			style);
 }
 
 static void fy_emit_sequence_prolog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc)
@@ -1442,7 +1461,7 @@ void fy_emit_sequence(struct fy_emitter *emit, struct fy_node *fyn, int flags, i
 		fyt_value = fy_node_value_token(fyni);
 
 		fy_emit_sequence_item_prolog(emit, sc, fyt_value);
-		fy_emit_node_internal(emit, fyni, sc->flags, sc->indent);
+		fy_emit_node_internal(emit, fyni, sc->flags, sc->indent, false);
 		fy_emit_sequence_item_epilog(emit, sc, last, fyt_value);
 	}
 
@@ -1616,12 +1635,12 @@ void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, in
 
 		fy_emit_mapping_key_prolog(emit, sc, fyt_key, simple_key);
 		if (fynp->key)
-			fy_emit_node_internal(emit, fynp->key, sc->flags, sc->indent);
+			fy_emit_node_internal(emit, fynp->key, sc->flags, sc->indent, true);
 		fy_emit_mapping_key_epilog(emit, sc, fyt_key);
 
 		fy_emit_mapping_value_prolog(emit, sc, fyt_value);
 		if (fynp->value)
-			fy_emit_node_internal(emit, fynp->value, sc->flags, sc->indent);
+			fy_emit_node_internal(emit, fynp->value, sc->flags, sc->indent, false);
 		fy_emit_mapping_value_epilog(emit, sc, last, fyt_value);
 	}
 
@@ -1943,7 +1962,7 @@ int fy_emit_node(struct fy_emitter *emit, struct fy_node *fyn)
 		return ret;
 
 	if (fyn)
-		fy_emit_node_internal(emit, fyn, DDNF_ROOT, -1);
+		fy_emit_node_internal(emit, fyn, DDNF_ROOT, -1, false);
 	return 0;
 }
 
@@ -1961,7 +1980,7 @@ int fy_emit_root_node(struct fy_emitter *emit, struct fy_node *fyn)
 	/* top comment first */
 	fy_emit_node_comment(emit, fyn, DDNF_ROOT, -1, fycp_top);
 
-	fy_emit_node_internal(emit, fyn, DDNF_ROOT, -1);
+	fy_emit_node_internal(emit, fyn, DDNF_ROOT, -1, false);
 
 	/* right comment next */
 	fy_emit_node_comment(emit, fyn, DDNF_ROOT, -1, fycp_right);
