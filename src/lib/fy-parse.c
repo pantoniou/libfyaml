@@ -4856,6 +4856,16 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 						"failed to peek token");
 				fyp_debug_dump_token(fyp, fyt, "next: ");
 
+				/* JSON key checks */
+				FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
+						!fyp_json_mode(fyp) || fyt->type != FYTT_VALUE,
+						err_out, "JSON does not allow empty keys");
+				FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
+						!fyp_json_mode(fyp) ||
+							(fyt->type == FYTT_SCALAR &&
+							 fyt->scalar.style == FYSS_DOUBLE_QUOTED),
+						err_out, "JSON only allows double quoted scalar keys");
+
 				if (fyt->type != FYTT_VALUE &&
 				    fyt->type != FYTT_FLOW_ENTRY &&
 				    fyt->type != FYTT_FLOW_MAPPING_END) {
@@ -4869,11 +4879,6 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 							"fy_parse_node() failed");
 					return fyep;
 				}
-
-				/* empty keys are not allowed in JSON mode */
-				FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
-						!fyp_json_mode(fyp), err_out,
-						"JSON does not allow empty keys of a mapping");
 
 				fy_parse_state_set(fyp, FYPS_FLOW_MAPPING_VALUE);
 
