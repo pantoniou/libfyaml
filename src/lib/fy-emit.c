@@ -1212,13 +1212,16 @@ void fy_emit_token_write_folded(struct fy_emitter *emit, struct fy_token *fyt, i
 
 static enum fy_node_style
 fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
-			   int flags, int indent, enum fy_node_style style)
+			   int flags, int indent, enum fy_node_style style,
+			   struct fy_token *fyt_tag)
 {
 	const char *value = NULL;
 	size_t len = 0;
 	bool json, flow, is_json_plain;
 	struct fy_atom *atom;
 	int aflags = -1;
+	const char *tag;
+	size_t tag_len;
 
 	atom = fy_token_atom(fyt);
 
@@ -1243,6 +1246,18 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 			!fy_atom_strcmp(atom, "true") ||
 			!fy_atom_strcmp(atom, "null") ||
 			fy_atom_is_number(atom));
+
+	if (is_json_plain) {
+		tag = fy_token_get_text(fyt_tag, &tag_len);
+
+		/* XXX hardcoded string tag resultion */
+		if (tag && tag_len &&
+		     ((tag_len == 1 && *tag == '!') ||
+		      (tag_len == 21 && !memcmp(tag, "tag:yaml.org,2002:str", 21)))) {
+			style = FYNS_DOUBLE_QUOTED;
+			goto out;
+		}
+	}
 
 	if (json && style == FYNS_PLAIN && is_json_plain) {
 		style = FYNS_PLAIN;
@@ -1305,7 +1320,8 @@ out:
 	return style;
 }
 
-void fy_emit_token_scalar(struct fy_emitter *emit, struct fy_token *fyt, int flags, int indent, enum fy_node_style style)
+void fy_emit_token_scalar(struct fy_emitter *emit, struct fy_token *fyt, int flags, int indent,
+			  enum fy_node_style style, struct fy_token *fyt_tag)
 {
 	assert(style != FYNS_FLOW && style != FYNS_BLOCK);
 
@@ -1314,7 +1330,7 @@ void fy_emit_token_scalar(struct fy_emitter *emit, struct fy_token *fyt, int fla
 	if (!fy_emit_whitespace(emit))
 		fy_emit_write_ws(emit);
 
-	style = fy_emit_token_scalar_style(emit, fyt, flags, indent, style);
+	style = fy_emit_token_scalar_style(emit, fyt, flags, indent, style, fyt_tag);
 
 	switch (style) {
 	case FYNS_ALIAS:
@@ -1354,7 +1370,7 @@ void fy_emit_scalar(struct fy_emitter *emit, struct fy_node *fyn, int flags, int
 	fy_emit_token_scalar(emit,
 			fyn ? fyn->scalar : NULL,
 			flags, indent,
-			style);
+			style, fyn->tag);
 }
 
 static void fy_emit_sequence_prolog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc)
@@ -2451,7 +2467,7 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 		style = fye->scalar.value ?
 				fy_node_style_from_scalar_style(fye->scalar.value->scalar.style) :
 				FYNS_PLAIN;
-		fy_emit_token_scalar(emit, fye->scalar.value, emit->s_flags, emit->s_indent, style);
+		fy_emit_token_scalar(emit, fye->scalar.value, emit->s_flags, emit->s_indent, style, fye->scalar.tag);
 		fy_emit_goto_state(emit, fy_emit_pop_state(emit));
 		break;
 
