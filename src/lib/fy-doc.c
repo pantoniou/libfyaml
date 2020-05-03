@@ -808,7 +808,7 @@ struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn)
 	if (aflags & FYACF_FLOW_PLAIN) {
 		handle.storage_hint = size;	/* maximum */
 		handle.storage_hint_valid = false;
-		handle.direct_output = true;
+		handle.direct_output = !!(aflags & FYACF_JSON_ESCAPE);	/* direct only when no json escape */
 		handle.style = FYAS_PLAIN;
 	} else {
 		handle.storage_hint = 0;	/* just calculate */

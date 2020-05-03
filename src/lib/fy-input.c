@@ -142,7 +142,7 @@ static void fy_input_from_data_setup(struct fy_input *fyi,
 	if (simple || (aflags & FYACF_FLOW_PLAIN)) {
 		handle->storage_hint = size;	/* maximum */
 		handle->storage_hint_valid = false;
-		handle->direct_output = true;
+		handle->direct_output = !!(aflags & FYACF_JSON_ESCAPE);
 		handle->style = FYAS_PLAIN;
 	} else {
 		handle->storage_hint = 0;	/* just calculate */

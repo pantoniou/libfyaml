@@ -904,7 +904,8 @@ void fy_emit_token_write_quoted(struct fy_emitter *emit, struct fy_token *fyt, i
 				fy_emit_accum_utf8_put(&emit->ea, '\'');
 				fy_emit_accum_utf8_put(&emit->ea, '\'');
 			} else if (qc == '"' &&
-				   (!fy_is_printq(c) || c == '"' || c == '\\')) {
+				   ((!fy_is_printq(c) || c == '"' || c == '\\') ||
+				    (fy_emit_is_json_mode(emit) && !fy_is_json_unescaped(c)))) {
 
 				fy_emit_accum_utf8_put(&emit->ea, '\\');
 

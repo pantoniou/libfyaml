@@ -171,6 +171,11 @@ static inline bool fy_is_unicode_space(int c)
                c == 0x202f || c == 0x205f || c == 0x3000;
 }
 
+static inline bool fy_is_json_unescaped(int c)
+{
+	return c >= 0x20 && c <= 0x110000 && c != '"' && c != '\\';
+}
+
 #define FY_CTYPE_AT_BUILDER(_kind) \
 static inline const void * \
 fy_find_ ## _kind (const void *s, size_t len) \
@@ -225,6 +230,7 @@ FY_CTYPE_AT_BUILDER(indicator);
 FY_CTYPE_AT_BUILDER(flow_indicator);
 FY_CTYPE_AT_BUILDER(unicode_control);
 FY_CTYPE_AT_BUILDER(unicode_space);
+FY_CTYPE_AT_BUILDER(json_unescaped);
 
 /*
  * Very special linebreak/ws methods

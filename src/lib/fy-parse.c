@@ -2807,9 +2807,9 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	handle.chomp = chomp;
 	handle.increment = increment ? (unsigned int)(current_indent + increment) : chomp_amt;
 
-	handle.direct_output = handle.end_mark.line == handle.start_mark.line &&
-				is_literal &&
-				fy_atom_size(&handle) == length;
+	/* no point in trying to do direct output in a block scalar */
+	/* TODO maybe revisit in the future */
+	handle.direct_output = false;
 	handle.empty = empty;
 	handle.has_lb = has_lb;
 	handle.has_ws = has_ws;
@@ -2860,7 +2860,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 	uint32_t hi_surrogate, lo_surrogate;
 	bool is_single, is_multiline, is_complex, esc_lb, ws_lb_only, has_ws, has_lb, has_esc;
 	bool first, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb = false;
-	bool unicode_esc;
+	bool unicode_esc, is_json_unesc, has_json_esc;
 	struct fy_simple_key_mark skm;
 	struct fy_mark mark, mark2;
 	struct fy_token *fyt;
@@ -2904,6 +2904,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 	has_esc = false;
 	break_run = 0;
 	first = true;
+	has_json_esc = false;
 
 	last_line = -1;
 	lastc = -1;
@@ -3110,9 +3111,12 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 				continue;
 			}
 
-			if (!is_single && fyp_json_mode(fyp) &&
-			    (c < 0x20 || c > 0x110000 || c == '"' || c == '\\')) {
+			/* check whether we have a JSON unescaped character */
+			is_json_unesc = fy_is_json_unescaped(c);
+			if (!is_json_unesc)
+				has_json_esc = true;
 
+			if (!is_single && fyp_json_mode(fyp) && !is_json_unesc) {
 				FYP_PARSE_ERROR(fyp, 0, 2, FYEM_SCAN,
 					"Invalid JSON unescaped character");
 				goto err_out;
@@ -3135,6 +3139,10 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 		breaks_found = 0;
 		blanks_found = 0;
 		while (fyp_is_flow_blank(fyp, c = fy_parse_peek(fyp)) || fyp_is_lb(fyp, c)) {
+
+			is_json_unesc = fy_is_json_unescaped(c);
+			if (!is_json_unesc)
+				has_json_esc = true;
 
 			break_run = 0;
 
@@ -3168,7 +3176,8 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 
 	/* need to process to present */
 	handle.style = is_single ? FYAS_SINGLE_QUOTED : FYAS_DOUBLE_QUOTED;
-	handle.direct_output = !is_multiline && !has_esc && fy_atom_size(&handle) == length;
+	handle.direct_output = !is_multiline && !has_esc && !has_json_esc &&
+				fy_atom_size(&handle) == length;
 	handle.empty = ws_lb_only;
 	handle.has_lb = has_lb;
 	handle.has_ws = has_ws;
@@ -3263,6 +3272,7 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 	const char *last_ptr;
 	struct fy_mark mark, last_mark;
 	bool target_simple_key_allowed, is_multiline, is_complex, has_lb, has_ws;
+	bool is_json_unesc, has_json_esc;
 	struct fy_simple_key_mark skm;
 	struct fy_token *fyt;
 #ifdef ATOM_SIZE_CHECK
@@ -3311,6 +3321,8 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 	had_breaks = false;
 	has_lb = false;
 	has_ws = false;
+	has_json_esc = false;
+
 	length = 0;
 	breaks_found = 0;
 	blanks_found = 0;
@@ -3360,6 +3372,11 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 				blanks_found = 0;
 			}
 
+			/* check whether we have a JSON unescaped character */
+			is_json_unesc = fy_is_json_unescaped(c);
+			if (!is_json_unesc)
+				has_json_esc = true;
+
 			fy_advance(fyp, c);
 			run++;
 
@@ -3378,6 +3395,8 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 		/* end? */
 		if (!(fy_is_blank(c) || fyp_is_lb(fyp, c)))
 			break;
+
+		has_json_esc = true;
 
 		/* consume blanks */
 		breaks_found = 0;
@@ -3434,7 +3453,7 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 
 	handle.style = FYAS_PLAIN;
 	handle.chomp = FYAC_STRIP;
-	handle.direct_output = !is_multiline && fy_atom_size(&handle) == length;
+	handle.direct_output = !is_multiline && !has_json_esc && fy_atom_size(&handle) == length;
 	handle.empty = false;
 	handle.has_lb = has_lb;
 	handle.has_ws = has_ws;

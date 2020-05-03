@@ -79,6 +79,7 @@ static inline bool fy_token_type_is_content(enum fy_token_type type)
 #define FYACF_TRAILING_LB	0x010000	/* ends with trailing lb > 1 */
 #define FYACF_SIZE0		0x020000	/* contains absolutely nothing */
 #define FYACF_VALID_ANCHOR	0x040000	/* contains valid anchor (without & prefix) */
+#define FYACF_JSON_ESCAPE	0x080000	/* contains a character that JSON escapes */
 
 enum fy_comment_placement {
 	fycp_top,

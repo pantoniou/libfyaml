@@ -915,6 +915,9 @@ unsigned int fy_analyze_scalar_content(const struct fy_input *fyi,
 		    (fy_utf8_strchr(",[]{}", c) || (c == ':' && fy_utf8_strchr(",[]{}", nextc))))
 			flags &= ~FYACF_FLOW_PLAIN;
 
+		if (!(flags & FYACF_JSON_ESCAPE) && !fy_is_json_unescaped(c))
+			flags |= FYACF_JSON_ESCAPE;
+
 		if (fy_input_is_lb(fyi, c))
 			col = 0;
 		else
