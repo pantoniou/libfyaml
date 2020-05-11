@@ -1559,6 +1559,28 @@ int fy_scan_directive(struct fy_parser *fyp)
 		fyp_error_check(fyp, fyt, err_out,
 				"fy_token_queue() failed");
 
+		/* skip white space */
+		while (fy_is_ws(c = fy_parse_peek(fyp)))
+			fy_advance(fyp, c);
+
+		/* skip until linebreak (or #) */
+		i = 0;
+		while ((c = fy_parse_peek_at(fyp, i)) != -1 && !fyp_is_lb(fyp, c)) {
+			if (c == '#' && fyp_is_blankz(fyp, fy_parse_peek_at(fyp, i + 1)))
+				break;
+
+			FYP_PARSE_ERROR_CHECK(fyp, i, 1, FYEM_SCAN,
+					fyp_is_lb(fyp, c), err_out,
+					"garbage after version directive");
+			i++;
+		}
+
+		fy_advance_by(fyp, i);
+
+		/* skip over linebreak */
+		if (fyp_is_lb(fyp, c))
+			fy_advance(fyp, c);
+
 	} else {
 
 		tag_length = fy_scan_tag_handle_length(fyp, 0);
