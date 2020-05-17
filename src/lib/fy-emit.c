@@ -1631,12 +1631,18 @@ void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, in
 		fyt_key = fy_node_value_token(fynp->key);
 		fyt_value = fy_node_value_token(fynp->value);
 
+		FYD_NODE_ERROR_CHECK(fynp->fyd, fynp->key, FYEM_INTERNAL,
+				!fy_emit_is_json_mode(emit) ||
+					(fynp->key && fynp->key->type == FYNT_SCALAR),
+					err_out, "Non scalar keys are not allowed in JSON emit mode");
+
 		simple_key = false;
 		if (fynp->key) {
 			switch (fynp->key->type) {
 			case FYNT_SCALAR:
 				aflags = fy_token_text_analyze(fynp->key->scalar);
-				simple_key = !!(aflags & FYTTAF_CAN_BE_SIMPLE_KEY);
+				simple_key = fy_emit_is_json_mode(emit) ||
+					     !!(aflags & FYTTAF_CAN_BE_SIMPLE_KEY);
 				break;
 			case FYNT_SEQUENCE:
 				simple_key = fy_node_list_empty(&fynp->key->sequence);
@@ -1662,6 +1668,9 @@ void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, in
 		fy_node_mapping_sort_release_array(fyn, fynpp);
 
 	fy_emit_mapping_epilog(emit, sc);
+
+err_out:
+	return;
 }
 
 int fy_emit_common_document_start(struct fy_emitter *emit,
