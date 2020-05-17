@@ -675,8 +675,10 @@ void fy_emit_token_write_plain(struct fy_emitter *emit, struct fy_token *fyt, in
 
 	wtype = (flags & DDNF_SIMPLE_SCALAR_KEY) ? fyewt_plain_scalar_key : fyewt_plain_scalar;
 
+	atom = fy_token_atom(fyt);
+
 	/* null and json mode */
-	if (!fyt && fy_emit_is_json_mode(emit)) {
+	if (fy_emit_is_json_mode(emit) && (!fyt || !atom || atom->size0)) {
 		fy_emit_puts(emit, wtype, "null");
 		goto out;
 	}
@@ -688,7 +690,6 @@ void fy_emit_token_write_plain(struct fy_emitter *emit, struct fy_token *fyt, in
 		goto out;
 	}
 
-	atom = fy_token_atom(fyt);
 	if (!atom)
 		goto out;
 
@@ -1232,12 +1233,14 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 	json = fy_emit_is_json_mode(emit);
 
 	/* literal in JSON mode is output as quoted */
-	if (json && (style == FYNS_LITERAL || style == FYNS_FOLDED)) {
-		style = FYNS_DOUBLE_QUOTED;
-		goto out;
-	}
+	if (json && (style == FYNS_LITERAL || style == FYNS_FOLDED))
+		return FYNS_DOUBLE_QUOTED;
 
 	is_json_plain = false;
+
+	/* JSON NULL, but with plain style */
+	if (json && (!atom || atom->size0) && style == FYNS_PLAIN)
+		return FYNS_PLAIN;
 
 	/* is this a plain json atom? */
 	is_json_plain = (json || fy_emit_is_pretty_mode(emit)) &&
@@ -1253,21 +1256,15 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 		/* XXX hardcoded string tag resultion */
 		if (tag && tag_len &&
 		     ((tag_len == 1 && *tag == '!') ||
-		      (tag_len == 21 && !memcmp(tag, "tag:yaml.org,2002:str", 21)))) {
-			style = FYNS_DOUBLE_QUOTED;
-			goto out;
-		}
+		      (tag_len == 21 && !memcmp(tag, "tag:yaml.org,2002:str", 21))))
+			return FYNS_DOUBLE_QUOTED;
 	}
 
-	if (json && style == FYNS_PLAIN && is_json_plain) {
-		style = FYNS_PLAIN;
-		goto out;
-	}
+	if (json && style == FYNS_PLAIN && is_json_plain)
+		return FYNS_PLAIN;
 
-	if (json) {
-		style = FYNS_DOUBLE_QUOTED;
-		goto out;
-	}
+	if (json)
+		return FYNS_DOUBLE_QUOTED;
 
 	flow = fy_emit_is_flow_mode(emit);
 
