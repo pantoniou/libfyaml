@@ -1238,10 +1238,6 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 
 	is_json_plain = false;
 
-	/* JSON NULL, but with plain style */
-	if (json && (!atom || atom->size0) && style == FYNS_PLAIN)
-		return FYNS_PLAIN;
-
 	/* is this a plain json atom? */
 	is_json_plain = (json || fy_emit_is_pretty_mode(emit)) &&
 			(!atom || atom->size0 ||
@@ -1259,6 +1255,10 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 		      (tag_len == 21 && !memcmp(tag, "tag:yaml.org,2002:str", 21))))
 			return FYNS_DOUBLE_QUOTED;
 	}
+
+	/* JSON NULL, but with plain style */
+	if (json && (!atom || atom->size0) && style == FYNS_PLAIN)
+		return FYNS_PLAIN;
 
 	if (json && style == FYNS_PLAIN && is_json_plain)
 		return FYNS_PLAIN;
