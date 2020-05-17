@@ -8,13 +8,15 @@ AM_TESTS_ENVIRONMENT= \
 	TOP_SRCDIR="${top_srcdir}" \
 	TOP_BUILDDIR="${top_builddir}" \
 	SRCDIR="${srcdir}" \
-	BUILDDIR="${builddir}"
+	BUILDDIR="${builddir}" \
+	JQ="@JQ@"
 
 TESTS_ENVIRONMENT= \
 	TOP_SRCDIR="${top_srcdir}" \
 	TOP_BUILDDIR="${top_builddir}" \
 	SRCDIR="${srcdir}" \
-	BUILDDIR="${builddir}"
+	BUILDDIR="${builddir}" \
+	JQ="@JQ@"
 
 # TEST_EXTENSIONS = .test
 
@@ -45,7 +47,16 @@ endif
 if HAVE_NETWORK
 if HAVE_GIT
 
-TESTS += testsuite.test jsontestsuite.test
+# normal YAML testsuite
+TESTS += testsuite.test
+
+# YAML testsuite JSON generation
+if HAVE_JQ
+TESTS += testsuite-json.test
+endif
+
+# normal JSON testsuite
+TESTS += jsontestsuite.test
 
 testsuite.test: test-suite-data json-test-suite-data
 

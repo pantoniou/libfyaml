@@ -280,6 +280,17 @@ else
 fi
 AC_SUBST(DPKG_ARCH, "$DPKG_ARCH")
 
+# check for jq
+AC_PATH_PROG([JQ], [jq])
+if test "x$JQ" != "x" ; then
+	HAVE_JQ=1
+else
+	HAVE_JQ=0
+fi
+AC_DEFINE_UNQUOTED([HAVE_JQ], [$HAVE_JQ], [Define to 1 if you have jq available])
+AM_CONDITIONAL([HAVE_JQ], [ test x$HAVE_JQ = x1 ])
+AC_SUBST(JQ, "$JQ")
+
 # Shave by default on supported autoconf versions
 dnl m4_version_prereq(2.64, SHAVE_INIT([build-aux], [enable]), [true])
 m4_ifdef([SHAVE_INIT], [SHAVE_INIT([build-aux], [enable])])

@@ -1,0 +1,54 @@
+#!/bin/bash
+
+count=0
+for file in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/in.json; do
+
+	dir=`dirname $file`
+
+	# ignore tests which are expected to fail
+	if [ -e "$dir/error" ]; then
+		continue
+	fi
+
+	count=`expr $count + 1`
+done
+
+# output plan
+echo 1..$count
+
+i=0
+for file in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/in.json; do
+
+	dir=`dirname $file`
+
+	# ignore tests which are expected to fail
+	if [ -e "$dir/error" ]; then
+		continue
+	fi
+
+	i=`expr $i + 1`
+	desctxt=`cat 2>/dev/null "$dir/==="`
+	tdir=`basename $dir`
+
+	res="ok"
+
+	t1=`mktemp`
+	t2=`mktemp`
+
+	# output yaml in json format
+	${TOP_BUILDDIR}/src/fy-tool --dump --strip-labels --strip-tags --strip-doc -r -mjson "$dir/in.yaml" | "${JQ}" --sort-keys . >"$t1"
+
+	# do the same with the json input (canonicalize)
+	cat "$dir/in.json" | "${JQ}" --sort-keys . > "$t2"
+
+	diff -u "$t1" "$t2"
+	if [ $? -eq 0 ]; then
+		res="ok"
+	else
+		res="not ok"
+	fi
+
+	rm -f "$t1" "$t2"
+
+	echo "$res $i $tdir - $desctxt (JSON)"
+done
