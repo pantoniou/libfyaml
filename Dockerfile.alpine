@@ -2,7 +2,7 @@ ARG IMAGE=alpine
 FROM ${IMAGE}
 # install build dependencies
 RUN apk update
-RUN apk add musl-dev gcc autoconf automake libtool git make pkgconf
+RUN apk add musl-dev gcc autoconf automake libtool git make pkgconf bash
 # configure argument
 ARG CONFIG_ARGS
 ENV CONFIG_ARGS=${CONFIG_ARGS:-"--enable-debug --prefix=/usr"}
