@@ -650,6 +650,12 @@ static int set_parser_input(struct fy_parser *fyp, const char *what,
 	return rc;
 }
 
+static void no_diag_output_fn(struct fy_diag *diag, void *user,
+				  const char *buf, size_t len)
+{
+	/* nothing */
+}
+
 int main(int argc, char *argv[])
 {
 	struct fy_parse_cfg cfg = {
@@ -685,6 +691,8 @@ int main(int argc, char *argv[])
 	bool join_resolve = RESOLVE_DEFAULT;
 	struct fy_token_iter *iter;
 	bool streaming = STREAMING_DEFAULT;
+	struct fy_diag_cfg dcfg;
+	struct fy_diag *diag = NULL;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -881,9 +889,29 @@ int main(int argc, char *argv[])
 		cfg.flags &= ~FYPCF_RESOLVE_DOCUMENT;
 	}
 
+	/* create common diagnostic object */
+	fy_diag_cfg_default(&dcfg);
+	fy_diag_cfg_from_parser_flags(&dcfg, cfg.flags);
+	if (!(cfg.flags & FYPCF_QUIET)) {
+		dcfg.fp = stderr;
+		dcfg.colorize = isatty(fileno(stderr)) == 1;
+	} else {
+		dcfg.output_fn = no_diag_output_fn;
+		dcfg.fp = NULL;
+	}
+
+	diag = fy_diag_create(&dcfg);
+	if (!diag) {
+		fprintf(stderr, "fy_diag_create() failed\n");
+		goto cleanup;
+	}
+
 	/* set default parser configuration for diagnostics without a parser */
 	fy_set_default_parser_cfg_flags(cfg.flags);
 
+	/* all set, use fy_diag for error reporting, debugging now */
+
+	cfg.diag = diag;
 	fyp = fy_parser_create(&cfg);
 	if (!fyp) {
 		fprintf(stderr, "fy_parser_create() failed\n");
@@ -913,8 +941,10 @@ int main(int argc, char *argv[])
 		emit_cfg.userdata = &du;
 
 		fye = fy_emitter_create(&emit_cfg);
-		if (!fye)
+		if (!fye) {
+			fprintf(stderr, "fy_emitter_create() failed\n");
 			goto cleanup;
+		}
 
 	}
 
@@ -1138,6 +1168,9 @@ cleanup:
 
 	if (fyp)
 		fy_parser_destroy(fyp);
+
+	if (diag)
+		fy_diag_destroy(diag);
 
 	return exitcode;
 }
