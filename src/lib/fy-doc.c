@@ -2153,14 +2153,11 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 					fynpj->value->attached = true;
 
 			} else {
+				fyd_doc_debug(fyd, "Updating mapping node value (deep merge)");
 
-				fyd_doc_debug(fyd, "Updating mapping node value");
-
-				/* found? replace value */
-				fy_node_detach_and_free(fynpj->value);
-				fynpj->value = fy_node_copy(fyd, fynpi->value);
-				fyd_error_check(fyd, !fynpi->value || fynpj->value, err_out,
-						"fy_node_copy() failed");
+				rc = fy_node_insert(fynpj->value, fynpi->value);
+				fyd_error_check(fyd, !rc, err_out_rc,
+						"fy_node_insert() failed");
 			}
 		}
 	}
