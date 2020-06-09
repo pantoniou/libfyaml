@@ -1175,7 +1175,7 @@ enum fy_emitter_write_type {
 
 #define FYECF_TAG_DIR_SHIFT		30
 #define FYECF_TAG_DIR_MASK		0x3
-#define FYECF_TAG_DIR(x)		(((x) & FYECF_TAG_DIR_MASK) << FYECF_TAG_DIR_SHIFT)
+#define FYECF_TAG_DIR(x)		(((unsigned int)(x) & FYECF_TAG_DIR_MASK) << FYECF_TAG_DIR_SHIFT)
 
 /**
  * enum fy_emitter_cfg_flags - Emitter configuration flags
