@@ -407,13 +407,13 @@ enum fy_scalar_style {
  * @sequence_end.sequence_end: The token that ended the sequence, or
  *                             NULL if the sequence was implicitly ended
  *
- * @mapping_start: Sequence start information, it is valid when
+ * @mapping_start: Mapping start information, it is valid when
  *                 &fy_event->type is &enum FYET_MAPPING_START
  * @mapping_start.anchor: anchor token or NULL
  * @mapping_start.tag: tag token or NULL
  * @mapping_start.mapping_start: mapping start value token or NULL if
  *                                 the mapping was started implicitly
- * @mapping_end: Sequence end information, it is valid when
+ * @mapping_end: Mapping end information, it is valid when
  *               &fy_event->type is &enum FYET_MAPPING_END
  * @mapping_end.mapping_end: The token that ended the mapping, or
  *                             NULL if the mapping was implicitly ended
