@@ -610,6 +610,9 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 {
 	int c, column, start_column, lines, scan_ahead;
 	bool has_ws;
+	size_t len, lenf;
+	char *text;
+	const char *textf;
 
 	c = fy_parse_peek(fyp);
 	if (c != '#')
@@ -621,6 +624,16 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 		while (!(fyp_is_lbz(fyp, c = fy_parse_peek(fyp))))
 			fy_advance(fyp, c);
 		return 0;
+	}
+
+	/* are we overwritting? */
+	if (fy_atom_is_set(handle) && (len = fy_atom_format_text_length(handle)) > 0) {
+		text = alloca(len + 1);
+		textf = fy_atom_format_text(handle, text, len + 1);
+		assert(textf != NULL);
+		assert(text + len == textf);
+
+		fyp_warning(fyp, "overwritting comment \"%.*s\"", (int)len, text);
 	}
 
 	if (handle)
@@ -691,36 +704,152 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 		handle->size0 = lines > 0;
 		handle->valid_anchor = false;
 		handle->tabsize = fyp->tabsize;
+
+		len = fy_atom_format_text_length(handle);
+		if (len > 0) {
+			text = alloca(len + 1);
+			textf = fy_atom_format_text(handle, text, len + 1);
+			assert(textf != NULL);
+			assert(text + len == textf);
+
+			lenf = len;
+			if (lenf > 13)
+				lenf = 13;
+
+			fyp_notice(fyp, "%s \"%.*s%s\"", __func__,
+					(int)lenf, text, lenf < len ? "..." : "");
+		} else
+			fy_atom_clear(handle);
 	}
 
 	return 0;
 }
 
-int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
+static void fy_attach_comment_notice(struct fy_parser *fyp, struct fy_token *fyt, struct fy_atom *handle, const char *banner)
 {
-	int c, rc;
+	size_t len, lenf;
+	char *text, *ttext;
+	const char *textf;
+
+	if (!fyp || !fyt || !handle)
+		return;
+
+	if (!fy_atom_is_set(handle))
+		return;
+
+	len = fy_atom_format_text_length(handle);
+
+	text = alloca(len + 1);
+	textf = fy_atom_format_text(handle, text, len + 1);
+	assert(textf != NULL);
+	assert(text + len == textf);
+
+	lenf = len;
+	if (lenf > 13)
+		lenf = 13;
+
+	ttext = fy_token_debug_text(fyt);
+	assert(ttext);
+	fyp_notice(fyp, "%s %s \"%.*s%s\"", banner,
+			ttext,
+			(int)lenf, text, lenf < len ? "..." : "");
+	free(ttext);
+}
+
+int fy_attach_top_comment_if_any(struct fy_parser *fyp, struct fy_token *fyt)
+{
+	struct fy_atom *handle;
 
 	if (!fyp || !fyt)
 		return -1;
 
+	if (!(fyp->cfg.flags & FYPCF_PARSE_COMMENTS))
+		return 0;
+
+	handle = &fyt->comment[fycp_top];
+	fy_atom_clear(handle);
+
 	/* if a last comment exists and is valid */
-	if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
-	    fy_atom_is_set(&fyp->last_comment)) {
-		memcpy(&fyt->comment[fycp_top], &fyp->last_comment, sizeof(fyp->last_comment));
-		memset(&fyp->last_comment, 0, sizeof(fyp->last_comment));
+	if (fy_atom_is_set(&fyp->last_comment)) {
+		fy_atom_copy(handle, &fyp->last_comment);
+		fy_atom_clear(&fyp->last_comment);
 	}
 
-	/* right hand comment */
+	fy_attach_comment_notice(fyp, fyt, handle, __func__);
+
+	return 0;
+}
+
+int fy_attach_right_comment_if_any(struct fy_parser *fyp, struct fy_token *fyt)
+{
+	int c, rc;
+	struct fy_atom *handle;
+
+	if (!fyp || !fyt)
+		return -1;
+
+	if (!(fyp->cfg.flags & FYPCF_PARSE_COMMENTS))
+		return 0;
 
 	/* skip white space */
 	while (fy_is_ws(c = fy_parse_peek(fyp)))
 		fy_advance(fyp, c);
 
 	if (c == '#') {
-		rc = fy_scan_comment(fyp, &fyt->comment[fycp_right], false);
+		handle = &fyt->comment[fycp_right];
+
+		rc = fy_scan_comment(fyp, handle, false);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_scan_comment() failed");
+
+		if (fy_atom_is_set(handle)) {
+			size_t len, lenf;
+			char *text, *ttext;
+			const char *textf;
+
+			len = fy_atom_format_text_length(handle);
+
+			text = alloca(len + 1);
+			textf = fy_atom_format_text(handle, text, len + 1);
+			assert(textf != NULL);
+			assert(text + len == textf);
+
+			lenf = len;
+			if (lenf > 13)
+				lenf = 13;
+
+			ttext = fy_token_debug_text(fyt);
+			assert(ttext);
+			fyp_notice(fyp, "%s %s \"%.*s%s\"", __func__,
+					ttext,
+					(int)lenf, text, lenf < len ? "..." : "");
+			free(ttext);
+		}
 	}
+	return 0;
+
+err_out_rc:
+	return rc;
+}
+
+int fy_attach_top_right_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
+{
+	int rc;
+
+	if (!fyp || !fyt)
+		return -1;
+
+	if (!(fyp->cfg.flags & FYPCF_PARSE_COMMENTS))
+		return 0;
+
+	rc = fy_attach_top_comment_if_any(fyp, fyt);
+	fyp_error_check(fyp, !rc, err_out_rc,
+			"fy_attach_top_comment_if_any() failed");
+
+	rc = fy_attach_right_comment_if_any(fyp, fyt);
+	fyp_error_check(fyp, !rc, err_out_rc,
+			"fy_attach_right_comment_if_any() failed");
+
 	return 0;
 
 err_out_rc:
@@ -732,8 +861,22 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 	int c, c_after_ws, i, rc = 0;
 	bool tabs_allowed;
 	ssize_t offset;
+	size_t len;
+	char *text;
+	const char *textf;
 
-	memset(&fyp->last_comment, 0, sizeof(fyp->last_comment));
+	if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
+	    fy_atom_is_set(&fyp->last_comment) &&
+	    (len = fy_atom_format_text_length(&fyp->last_comment)) > 0) {
+
+		text = alloca(len + 1);
+		textf = fy_atom_format_text(&fyp->last_comment, text, len + 1);
+		assert(textf != NULL);
+		assert(text + len == textf);
+
+		fyp_warning(fyp, "overwritting comment \"%.*s\"", (int)len, text);
+		fy_atom_clear(&fyp->last_comment);
+	}
 
 	while ((c = fy_parse_peek(fyp)) >= 0) {
 
@@ -1695,6 +1838,10 @@ int fy_fetch_flow_collection_mark_start(struct fy_parser *fyp, int c)
 	fyp_error_check(fyp, fyt, err_out_rc,
 			"fy_token_queue() failed");
 
+	rc = fy_attach_top_comment_if_any(fyp, fyt);
+	fyp_error_check(fyp, !rc, err_out_rc,
+			"fy_attach_top_comment_if_any() failed");
+
 	rc = fy_save_simple_key_mark(fyp, &skm, type, NULL);
 	fyp_error_check(fyp, !rc, err_out_rc,
 			"fy_save_simple_key_mark() failed");
@@ -1720,6 +1867,7 @@ int fy_fetch_flow_collection_mark_start(struct fy_parser *fyp, int c)
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
 			c != '#', err_out,
 			"invalid comment after %s start", typestr);
+
 	return 0;
 
 err_out:
@@ -1919,6 +2067,10 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 				FYTT_BLOCK_SEQUENCE_START, fy_fill_atom_a(fyp, 0));
 		fyp_error_check(fyp, fyt, err_out_rc,
 				"fy_token_queue_internal() failed");
+
+		rc = fy_attach_top_comment_if_any(fyp, fyt);
+		fyp_error_check(fyp, !rc, err_out_rc,
+				"fy_attach_top_comment_if_any() failed");
 	}
 
 	if (c == '-' && fyp->flow_level) {
@@ -2002,6 +2154,10 @@ int fy_fetch_key(struct fy_parser *fyp, int c)
 				FYTT_BLOCK_MAPPING_START, fy_fill_atom_a(fyp, 0));
 		fyp_error_check(fyp, fyt, err_out_rc,
 				"fy_token_queue_internal() failed");
+
+		rc = fy_attach_top_comment_if_any(fyp, fyt);
+		fyp_error_check(fyp, !rc, err_out_rc,
+				"fy_attach_top_comment_if_any() failed");
 	}
 
 	rc = fy_remove_simple_key(fyp, FYTT_KEY);
@@ -2854,7 +3010,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	fyp_error_check(fyp, fyt, err_out_rc,
 			"fy_token_queue() failed");
 
-	rc = fy_attach_comments_if_any(fyp, fyt);
+	rc = fy_attach_top_right_comments_if_any(fyp, fyt);
 	fyp_error_check(fyp, !rc, err_out_rc,
 			"fy_attach_right_hand_comment() failed");
 
@@ -3267,7 +3423,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 			"invalid comment without whitespace after %s scalar",
 				is_single ? "single-quoted" : "double-quoted");
 
-	rc = fy_attach_comments_if_any(fyp, fyt);
+	rc = fy_attach_top_right_comments_if_any(fyp, fyt);
 	fyp_error_check(fyp, !rc, err_out_rc,
 			"fy_attach_right_hand_comment() failed");
 
@@ -3539,7 +3695,7 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 	fyp->simple_key_allowed = target_simple_key_allowed;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 
-	rc = fy_attach_comments_if_any(fyp, fyt);
+	rc = fy_attach_top_right_comments_if_any(fyp, fyt);
 	fyp_error_check(fyp, !rc, err_out_rc,
 			"fy_attach_right_hand_comment() failed");
 
@@ -4433,6 +4589,11 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fyp_parse_debug(fyp, "document_start_implicit=false");
 
 			fy_parse_state_set(fyp, FYPS_DOCUMENT_CONTENT);
+
+			if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
+			     fy_atom_is_set(&fyt->comment[fycp_top])) {
+				fyp_notice(fyp, "explicit document comment");
+			}
 		}
 
 		rc = fy_parse_state_push(fyp, FYPS_DOCUMENT_END);

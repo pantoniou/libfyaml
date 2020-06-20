@@ -442,6 +442,7 @@ void fy_emit_write_comment(struct fy_emitter *emit, int flags, int indent, const
 		} else {
 
 			if (breaks) {
+
 				fy_emit_write(emit, fyewt_comment, sr, s - sr);
 				sr = s;
 				fy_emit_write_indent(emit, indent);
@@ -510,6 +511,7 @@ void fy_emit_token_comment(struct fy_emitter *emit, struct fy_token *fyt, int fl
 {
 	struct fy_atom *handle;
 	char *text;
+	const char *textf;
 	int len;
 
 	handle = fy_emit_token_comment_handle(emit, fyt, placement);
@@ -529,8 +531,10 @@ void fy_emit_token_comment(struct fy_emitter *emit, struct fy_token *fyt, int fl
 		emit->flags |= FYEF_WHITESPACE;
 	}
 
-	fy_emit_write_comment(emit, flags, indent,
-			fy_atom_format_text(handle, text, len + 1), len);
+	textf = fy_atom_format_text(handle, text, len + 1);
+	assert(textf != NULL);
+	assert(text + len == textf);
+	fy_emit_write_comment(emit, flags, indent, text, len);
 
 	emit->flags &= ~FYEF_INDENTATION;
 

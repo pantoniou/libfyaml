@@ -83,6 +83,23 @@ static inline bool fy_atom_is_set(const struct fy_atom *atom)
 	return atom && atom->fyi;
 }
 
+static inline void fy_atom_clear(struct fy_atom *atom)
+{
+	if (atom)
+		atom->fyi = NULL;
+}
+
+static inline void fy_atom_copy(struct fy_atom *to, const struct fy_atom *from)
+{
+	if (!to)
+		return;
+	if (!from) {
+		fy_atom_clear(to);
+		return;
+	}
+	memcpy(to, from, sizeof(*to));
+}
+
 int fy_atom_format_text_length(struct fy_atom *atom);
 const char *fy_atom_format_text(struct fy_atom *atom, char *buf, size_t maxsz);
 
