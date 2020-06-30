@@ -455,6 +455,7 @@ fy_document_lookup_anchor_by_token(struct fy_document *fyd,
 	if (!fyd || !anchor)
 		return NULL;
 
+	/* first try direct match (it's faster and the common case) */
 	if (fy_document_is_accelerated(fyd)) {
 		fya = fy_document_accel_lookup_anchor_by_token(fyd, anchor);
 		if (!fya)
@@ -497,7 +498,7 @@ fy_document_lookup_anchor_by_token(struct fy_document *fyd,
 
 	/* multiple ones, must pick the one that's the last one before
 	 * the requesting token */
-	fyd_notice(fyd, "multiple anchors for %.*s", (int)anchor_len, anchor_text);
+	/* fyd_notice(fyd, "multiple anchors for %.*s", (int)anchor_len, anchor_text); */
 
 	/* only try the ones on the same input
 	 * we don't try to cover the case where the label is referenced
@@ -2308,15 +2309,44 @@ int fy_document_tag_directive_remove(struct fy_document *fyd, const char *handle
 static int fy_resolve_alias(struct fy_document *fyd, struct fy_node *fyn)
 {
 	struct fy_anchor *fya;
+	struct fy_node *fyn_copy = NULL;
+	const char *anchor_text, *s, *e, *p;
+	size_t anchor_len;
 	int rc;
 
 	fya = fy_document_lookup_anchor_by_token(fyd, fyn->scalar);
 
+	if (!fya) {
+		anchor_text = fy_token_get_text(fyn->scalar, &anchor_len);
+
+		FYD_NODE_ERROR_CHECK(fyd, fyn, FYEM_DOC,
+				anchor_text, err_out,
+				"out of memory");
+
+		s = anchor_text;
+		e = s + anchor_len;
+
+		if ((p = memchr(s, '/', e - s)) != NULL) {
+			/* fyd_notice(fyn->fyd, "%s: alias contains a path component %.*s",
+					__func__, (int)(e - p - 1), p + 1); */
+
+			fya = fy_document_lookup_anchor(fyn->fyd, s, p - s);
+			if (fya) {
+				/* fyd_notice(fyn->fyd, "%s: alias base %.*s @%s",
+						__func__, (int)(p - s), s, fy_node_get_path(fya->fyn)); */
+
+				fyn_copy = fy_node_by_path_internal(fya->fyn, p + 1, (size_t)(e - p - 1),
+						FYNWF_FOLLOW | FYNWF_MAXDEPTH_DEFAULT | FYNWF_MARKER_DEFAULT);
+			}
+		}
+	} else
+		fyn_copy = fya->fyn;
+
 	FYD_NODE_ERROR_CHECK(fyd, fyn, FYEM_DOC,
-			fya, err_out,
+			fyn_copy, err_out,
 			"invalid alias");
 
-	rc = fy_node_copy_to_scalar(fyd, fyn, fya->fyn);
+	rc = fy_node_copy_to_scalar(fyd, fyn, fyn_copy);
 	fyd_error_check(fyd, !rc, err_out,
 			"fy_node_copy_to_scalar() failed");
 
@@ -2330,13 +2360,16 @@ err_out:
 static struct fy_node *
 fy_node_follow_alias(struct fy_node *fyn, enum fy_node_walk_flags flags)
 {
+	enum fy_node_walk_flags ptr_flags;
 	struct fy_anchor *fya;
-	const char *anchor_text, *s, *e;
+	const char *anchor_text, *s, *e, *p;
 	size_t anchor_len;
 	unsigned int marker;
 
 	if (!fyn || !fy_node_is_alias(fyn))
 		return NULL;
+
+	ptr_flags = flags & FYNWF_PTR(FYNWF_PTR_MASK);
 
 	/* try regular label target */
 	fya = fy_document_lookup_anchor_by_token(fyn->fyd, fyn->scalar);
@@ -2349,6 +2382,27 @@ fy_node_follow_alias(struct fy_node *fyn, enum fy_node_walk_flags flags)
 
 	s = anchor_text;
 	e = s + anchor_len;
+
+	if (ptr_flags == FYNWF_PTR_YAML && (p = memchr(s, '/', e - s)) != NULL) {
+		/* fyd_notice(fyn->fyd, "%s: alias contains a path component %.*s",
+				__func__, (int)(e - p - 1), p + 1); */
+
+		fya = fy_document_lookup_anchor(fyn->fyd, s, p - s);
+		if (fya) {
+			/* fyd_notice(fyn->fyd, "%s: alias base %.*s @%s",
+					__func__, (int)(p - s), s, fy_node_get_path(fya->fyn)); */
+
+			marker = fy_node_walk_marker_from_flags(flags);
+			if (marker >= FYNWF_MAX_USER_MARKER)
+				return NULL;
+
+			/* use the next marker */
+			flags &= ~FYNWF_MARKER(FYNWF_MARKER_MASK);
+			flags |= FYNWF_MARKER(marker + 1);
+
+			return fy_node_by_path_internal(fya->fyn, p + 1, (size_t)(e - p - 1), flags);
+		}
+	}
 
 	/* minimum is </> */
 	if ((e - s) < 3 || s[0] != '<' || s[1] != '/' || e[-1] != '>')
@@ -3467,7 +3521,7 @@ err_out:
 }
 
 static struct fy_node *
-fy_node_follow_aliases(struct fy_node *fyn, enum fy_node_walk_flags flags)
+fy_node_follow_aliases(struct fy_node *fyn, enum fy_node_walk_flags flags, bool single)
 {
 	struct fy_node_walk_ctx *ctx;
 	unsigned int marker;
@@ -3486,6 +3540,9 @@ fy_node_follow_aliases(struct fy_node *fyn, enum fy_node_walk_flags flags)
 	fy_node_walk_mark_start(ctx);
 	while (fyn && fy_node_is_alias(fyn)) {
 
+		/* fyd_notice(fyn->fyd, "%s: following alias @%s \"%s\"",
+				__func__, fy_node_get_path(fyn), fy_token_get_text0(fyn->scalar)); */
+
 		if (!fy_node_walk_mark(ctx, fyn)) {
 			fyn = NULL;
 			break;
@@ -3502,7 +3559,7 @@ struct fy_node *fy_node_resolve_alias(struct fy_node *fyn)
 {
 	return fy_node_follow_aliases(fyn,
 			FYNWF_FOLLOW | FYNWF_MAXDEPTH_DEFAULT |
-			FYNWF_MARKER_DEFAULT);
+			FYNWF_MARKER_DEFAULT, false);
 }
 
 static struct fy_node *
@@ -3520,6 +3577,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 	bool has_json_key_esc;
 	uint8_t code[4];
 	int code_length;
+	bool trailing_slash;
 
 	if (!fyn || !path)
 		return NULL;
@@ -3530,6 +3588,13 @@ fy_node_by_path_internal(struct fy_node *fyn,
 	if (pathlen == (size_t)-1)
 		pathlen = strlen(path);
 	e = s + pathlen;
+
+	/* a trailing slash works just like unix and symbolic links
+	 * if it does not exist no symbolic link lookups are performed
+	 * at the end of the operation.
+	 * if it exists they are followed upon resolution
+	 */
+	trailing_slash = pathlen > 0 && path[pathlen - 1] == '/';
 
 	/* and continue on path lookup with the rest */
 
@@ -3558,7 +3623,9 @@ fy_node_by_path_internal(struct fy_node *fyn,
 		break;
 	}
 
-	fyn = fy_node_follow_aliases(fyn, flags);
+	/* fyd_notice(fyn->fyd, "%s:%d following alias @%s \"%.*s\"",
+			__func__, __LINE__, fy_node_get_path(fyn), (int)(e - s), s); */
+	fyn = fy_node_follow_aliases(fyn, flags, true);
 
 	/* scalar can't match (it has no key) */
 	if (fy_node_is_scalar(fyn)) {
@@ -3629,7 +3696,8 @@ fy_node_by_path_internal(struct fy_node *fyn,
 		len = e - s;
 
 		fyn = fy_node_sequence_get_by_index(fyn, idx);
-		fyn = fy_node_follow_aliases(fyn, flags);
+		if (trailing_slash)
+			fyn = fy_node_follow_aliases(fyn, flags, false);
 		fyn = fy_node_by_path_internal(fyn, s, len, flags);
 		goto out;
 	}
@@ -3699,7 +3767,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 
 				/* single alias '<<: *foo' */
 				fyn = fy_node_mapping_lookup_by_string(
-						fy_node_follow_aliases(fyn, flags), path, len);
+						fy_node_follow_aliases(fyn, flags, false), path, len);
 
 			} else if (fy_node_is_sequence(fyn)) {
 
@@ -3710,7 +3778,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 					if (!fy_node_is_alias(fyni))
 						continue;
 					fyn = fy_node_mapping_lookup_by_string(
-							fy_node_follow_aliases(fyni, flags),
+							fy_node_follow_aliases(fyni, flags, false),
 							path, len);
 					if (fyn)
 						break;
@@ -3803,11 +3871,22 @@ fy_node_by_path_internal(struct fy_node *fyn,
 
 	len = e - s;
 
-	fyn = fy_node_follow_aliases(fyn, flags);
+	if (len > 0 && trailing_slash) {
+		/* fyd_notice(fyn->fyd, "%s:%d following alias @%s \"%.*s\"",
+				__func__, __LINE__, fy_node_get_path(fyn), (int)(e - s), s); */
+		fyn = fy_node_follow_aliases(fyn, flags, true);
+	}
+
 	fyn = fy_node_by_path_internal(fyn, s, len, flags);
 
 out:
-	fyn = fy_node_follow_aliases(fyn, flags);
+	len = e - s;
+
+	if (len > 0 && trailing_slash) {
+		/* fyd_notice(fyn->fyd, "%s:%d following alias @%s \"%.*s\"",
+				__func__, __LINE__, fy_node_get_path(fyn), (int)(e - s), s); */
+		fyn = fy_node_follow_aliases(fyn, flags, true);
+	}
 
 	return fyn;
 }
@@ -3823,10 +3902,15 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 	int idx;
 	char *end_idx;
 
+	if (!fyn || !path)
+		return NULL;
+
 	s = path;
 	if (len == (size_t)-1)
 		len = strlen(path);
 	e = s + len;
+
+	/* fyd_notice(fyn->fyd, "%s: %.*s", __func__, (int)(len), s); */
 
 	/* first path component may be an alias */
 	if ((flags & FYNWF_FOLLOW) && fyn && path) {
@@ -3874,10 +3958,16 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 		path = t;
 		len = e - t;
 
+		/* fyd_notice(fyn->fyd, "%s: looking up anchor=%.*s", __func__, (int)(alen), anchor); */
+
 		/* lookup anchor */
 		fya = fy_document_lookup_anchor(fyn->fyd, anchor, alen);
 
 		if (fya) {
+
+			/* fyd_notice(fyn->fyd, "%s: found anchor=%.*s at %s",
+					__func__, (int)(alen), anchor, fy_node_get_path(fya->fyn)); */
+
 			/* nothing more? we're done */
 			if (*path == '\0')
 				return fya->fyn;
@@ -3895,6 +3985,10 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 			path = ss + 1;
 			len = (e - 1) - (ss + 1);
 		}
+
+		/* fyd_notice(fyn->fyd, "%s: continuing looking for %.*s",
+				__func__, (int)(len), path); */
+
 	}
 
 regular_path_lookup:
