@@ -145,15 +145,15 @@ int fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn, const c
 			return 0;
 		/* remove the anchor */
 		fy_anchor_list_del(&fyd->anchors, fya);
-		if (fyd->axl) {
+
+		if (fy_document_is_accelerated(fyd)) {
 			xle = fy_accel_entry_lookup_key_value(fyd->axl, fya->anchor, fya);
 			fy_accel_entry_remove(fyd->axl, xle);
-		}
 
-		if (fyd->naxl) {
 			xle = fy_accel_entry_lookup_key_value(fyd->naxl, fya->fyn, fya);
 			fy_accel_entry_remove(fyd->naxl, xle);
 		}
+
 		fy_anchor_destroy(fya);
 		return 0;
 	}
@@ -179,7 +179,7 @@ int fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn, const c
 		goto err_out;
 
 	fy_anchor_list_add(&fyd->anchors, fya);
-	if (fyd->axl) {
+	if (fy_document_is_accelerated(fyd)) {
 		xle = fy_accel_entry_lookup(fyd->axl, fya->anchor);
 		if (xle) {
 			fyam = (void *)xle->value;
@@ -196,7 +196,7 @@ int fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn, const c
 				"fy_accel_entry_insert() fyd->axl failed");
 	}
 
-	if (fyd->naxl) {
+	if (fy_document_is_accelerated(fyd)) {
 		rc = fy_accel_insert(fyd->naxl, fyn, fya);
 		fyd_error_check(fyd, !rc, err_out_rc,
 				"fy_accel_insert() fyd->naxl failed");
@@ -254,24 +254,22 @@ void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 	for (fya = fy_anchor_list_head(&fyd->anchors); fya; fya = fyan) {
 		fyan = fy_anchor_next(&fyd->anchors, fya);
 		fy_anchor_list_del(&fyd->anchors, fya);
-		if (fyd->axl) {
+
+		if (fy_document_is_accelerated(fyd)) {
 			xle = fy_accel_entry_lookup_key_value(fyd->axl, fya->anchor, fya);
 			fy_accel_entry_remove(fyd->axl, xle);
-		}
 
-		if (fyd->naxl) {
 			xle = fy_accel_entry_lookup_key_value(fyd->naxl, fya->fyn, fya);
 			fy_accel_entry_remove(fyd->naxl, xle);
 		}
+
 		fy_anchor_destroy(fya);
 	}
 
-	if (fyd->axl) {
+	if (fy_document_is_accelerated(fyd)) {
 		fy_accel_cleanup(fyd->axl);
 		free(fyd->axl);
-	}
 
-	if (fyd->naxl) {
 		fy_accel_cleanup(fyd->naxl);
 		free(fyd->naxl);
 	}
@@ -309,7 +307,7 @@ struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_ev
 	fyd->parse_cfg = fyp->cfg;
 
 	fy_anchor_list_init(&fyd->anchors);
-	if (fy_document_is_accelerated(fyd)) {
+	if (fy_document_can_be_accelerated(fyd)) {
 		fyd->axl = malloc(sizeof(*fyd->axl));
 		fyp_error_check(fyp, fyd->axl, err_out,
 				"malloc() failed");
@@ -359,6 +357,31 @@ struct fy_document *fy_node_document(struct fy_node *fyn)
 	return fyn ? fyn->fyd : NULL;
 }
 
+static inline struct fy_anchor *
+fy_document_accel_lookup_anchor_by_token(struct fy_document *fyd, struct fy_token *fyt)
+{
+	assert(fyd);
+	assert(fyd->axl);
+	return (void *)fy_accel_lookup(fyd->axl, fyt);
+}
+
+static inline struct fy_anchor *
+fy_document_accel_lookup_anchor_by_node(struct fy_document *fyd, struct fy_node *fyn)
+{
+	assert(fyd);
+	assert(fyd->naxl);
+	return (void *)fy_accel_lookup(fyd->naxl, fyn);
+}
+
+static inline struct fy_node_pair *
+fy_node_accel_lookup_by_node(struct fy_node *fyn, struct fy_node *fyn_key)
+{
+	assert(fyn);
+	assert(fyn->xl);
+
+	return (void *)fy_accel_lookup(fyn->xl, (const void *)fyn_key);
+}
+
 struct fy_anchor *
 fy_document_lookup_anchor(struct fy_document *fyd, const char *anchor, size_t len)
 {
@@ -376,7 +399,7 @@ fy_document_lookup_anchor(struct fy_document *fyd, const char *anchor, size_t le
 	if (len == (size_t)-1)
 		len = strlen(anchor);
 
-	if (fyd->axl) {
+	if (fy_document_is_accelerated(fyd)) {
 		fyi = fy_input_from_data(anchor, len, &handle, true);
 		if (!fyi)
 			return NULL;
@@ -388,7 +411,7 @@ fy_document_lookup_anchor(struct fy_document *fyd, const char *anchor, size_t le
 			return NULL;
 		}
 
-		fya = (void *)fy_accel_lookup(fyd->axl, fyt);
+		fya = fy_document_accel_lookup_anchor_by_token(fyd, fyt);
 
 		fy_input_unref(fyi);
 		fy_token_unref(fyt);
@@ -432,8 +455,8 @@ fy_document_lookup_anchor_by_token(struct fy_document *fyd,
 	if (!fyd || !anchor)
 		return NULL;
 
-	if (fyd->axl) {
-		fya = (void *)fy_accel_lookup(fyd->axl, anchor);
+	if (fy_document_is_accelerated(fyd)) {
+		fya = fy_document_accel_lookup_anchor_by_token(fyd, anchor);
 		if (!fya)
 			return NULL;
 
@@ -513,8 +536,8 @@ struct fy_anchor *fy_document_lookup_anchor_by_node(struct fy_document *fyd, str
 	if (!fyd || !fyn)
 		return NULL;
 
-	if (fyd->naxl) {
-		fya = (void *)fy_accel_lookup(fyd->naxl, fyn);
+	if (fy_document_is_accelerated(fyd)) {
+		fya = fy_document_accel_lookup_anchor_by_node(fyd, fyn);
 	} else {
 		fyal = &fyd->anchors;
 		for (fya = fy_anchor_list_head(fyal); fya; fya = fy_anchor_next(fyal, fya)) {
@@ -603,7 +626,7 @@ int fy_node_free(struct fy_node *fyn)
 	if (fyn->attached)
 		return -1;
 
-	if (fyd->naxl) {
+	if (fy_document_is_accelerated(fyd)) {
 		for (xle = fy_accel_entry_iter_start(&xli, fyd->naxl, fyn);
 		     xle; xle = xlen) {
 			xlen = fy_accel_entry_iter_next(&xli);
@@ -611,14 +634,13 @@ int fy_node_free(struct fy_node *fyn)
 			fya = (void *)xle->value;
 
 			fy_anchor_list_del(&fyd->anchors, fya);
-			if (fyd->axl) {
-				xle = fy_accel_entry_lookup_key_value(fyd->axl, fya->anchor, fya);
-				fy_accel_entry_remove(fyd->axl, xle);
-			}
-			if (fyd->naxl) {
-				xle = fy_accel_entry_lookup_key_value(fyd->naxl, fya->fyn, fya);
-				fy_accel_entry_remove(fyd->naxl, xle);
-			}
+
+			xle = fy_accel_entry_lookup_key_value(fyd->axl, fya->anchor, fya);
+			fy_accel_entry_remove(fyd->axl, xle);
+
+			xle = fy_accel_entry_lookup_key_value(fyd->naxl, fya->fyn, fya);
+			fy_accel_entry_remove(fyd->naxl, xle);
+
 			fy_anchor_destroy(fya);
 		}
 		fy_accel_entry_iter_finish(&xli);
@@ -628,14 +650,6 @@ int fy_node_free(struct fy_node *fyn)
 			fyan = fy_anchor_next(&fyd->anchors, fya);
 			if (fya->fyn == fyn) {
 				fy_anchor_list_del(&fyd->anchors, fya);
-				if (fyd->axl) {
-					xle = fy_accel_entry_lookup_key_value(fyd->axl, fya->anchor, fya);
-					fy_accel_entry_remove(fyd->axl, xle);
-				}
-				if (fyd->naxl) {
-					xle = fy_accel_entry_lookup_key_value(fyd->naxl, fya->fyn, fya);
-					fy_accel_entry_remove(fyd->naxl, xle);
-				}
 				fy_anchor_destroy(fya);
 			}
 		}
@@ -992,7 +1006,7 @@ int fy_document_register_anchor(struct fy_document *fyd,
 			"fy_anchor_create() failed");
 
 	fy_anchor_list_add_tail(&fyd->anchors, fya);
-	if (fyd->axl) {
+	if (fy_document_is_accelerated(fyd)) {
 		xle = fy_accel_entry_lookup(fyd->axl, fya->anchor);
 		if (xle) {
 			fyam = (void *)xle->value;
@@ -1010,7 +1024,7 @@ int fy_document_register_anchor(struct fy_document *fyd,
 				"fy_accel_entry_insert() fyd->axl failed");
 	}
 
-	if (fyd->naxl) {
+	if (fy_document_is_accelerated(fyd)) {
 		rc = fy_accel_insert(fyd->naxl, fyn, fya);
 		fyd_error_check(fyd, !rc, err_out_rc,
 				"fy_accel_insert() fyd->naxl failed");
@@ -1181,7 +1195,10 @@ struct fy_node_pair *fy_node_mapping_lookup_pair(struct fy_node *fyn, struct fy_
 
 	fynp = NULL;
 
-	if (!fyn->xl) {
+
+	if (fyn->xl) {
+		fynp = fy_node_accel_lookup_by_node(fyn, fyn_key);
+	} else {
 		for (fynpi = fy_node_pair_list_head(&fyn->mapping); fynpi;
 			fynpi = fy_node_pair_next(&fyn->mapping, fynpi)) {
 			if (fy_node_compare(fynpi->key, fyn_key)) {
@@ -1189,8 +1206,6 @@ struct fy_node_pair *fy_node_mapping_lookup_pair(struct fy_node *fyn, struct fy_
 				break;
 			}
 		}
-	} else {
-		fynp = (void *)fy_accel_lookup(fyn->xl, (const void *)fyn_key);
 	}
 
 	return fynp;
@@ -2116,7 +2131,9 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 		for (fynpi = fy_node_pair_list_head(&fyn_from->mapping); fynpi;
 			fynpi = fy_node_pair_next(&fyn_from->mapping, fynpi)) {
 
-			if (!fyn_to->xl) {
+			if (fyn_to->xl) {
+				fynpj = fy_node_accel_lookup_by_node(fyn_to, fynpi->key);
+			} else {
 				/* find whether the key already exists */
 				for (fynpj = fy_node_pair_list_head(&fyn_to->mapping); fynpj;
 					fynpj = fy_node_pair_next(&fyn_to->mapping, fynpj)) {
@@ -2124,8 +2141,6 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 					if (fy_node_compare(fynpi->key, fynpj->key))
 						break;
 				}
-			} else {
-				fynpj = (void *)fy_accel_lookup(fyn_to->xl, (const void *)fynpi->key);
 			}
 
 			if (!fynpj) {
@@ -3076,7 +3091,15 @@ int fy_node_pair_set_key(struct fy_node_pair *fynp, struct fy_node *fyn)
 		if (!fy_node_is_mapping(fyn_map))
 			return -1;
 
-		if (!fyn_map->xl) {
+		if (fyn_map->xl) {
+			/* either we're already on the parent list (and it's OK) */
+			/* or we're not and we have a duplicate key */
+			fynpi = fy_node_accel_lookup_by_node(fyn_map, fyn);
+			if (fynpi && fynpi != fynp)
+				return -1;
+			/* remove that key */
+			fy_accel_remove(fyn_map->xl, fynp->key);
+		} else {
 			/* check whether the key is a duplicate
 			* skipping ourselves since our key gets replaced
 			*/
@@ -3086,14 +3109,6 @@ int fy_node_pair_set_key(struct fy_node_pair *fynp, struct fy_node *fyn)
 				if (fynpi != fynp && fy_node_compare(fynpi->key, fyn))
 					return -1;
 			}
-		} else {
-			/* either we're already on the parent list (and it's OK) */
-			/* or we're not and we have a duplicate key */
-			fynpi = (void *)fy_accel_lookup(fyn_map->xl, fyn);
-			if (fynpi && fynpi != fynp)
-				return -1;
-			/* remove that key */
-			fy_accel_remove(fyn_map->xl, fynp->key);
 		}
 
 		fy_node_mark_synthetic(fyn_map);
@@ -3313,7 +3328,18 @@ fy_node_mapping_lookup_value_by_simple_key(struct fy_node *fyn,
 	if (len == (size_t)-1)
 		len = strlen(key);
 
-	if (!fyn->xl) {
+	if (fyn->xl) {
+		fyn_scalar = fy_node_create_scalar(fyn->fyd, key, len);
+		if (!fyn_scalar)
+			return NULL;
+
+		fynpi = fy_node_accel_lookup_by_node(fyn, fyn_scalar);
+
+		fy_node_free(fyn_scalar);
+
+		if (fynpi)
+			return fynpi->value;
+	} else {
 		for (fynpi = fy_node_pair_list_head(&fyn->mapping); fynpi;
 			fynpi = fy_node_pair_next(&fyn->mapping, fynpi)) {
 
@@ -3323,17 +3349,6 @@ fy_node_mapping_lookup_value_by_simple_key(struct fy_node *fyn,
 			if (!fy_token_memcmp(fynpi->key->scalar, key, len))
 				return fynpi->value;
 		}
-	} else {
-		fyn_scalar = fy_node_create_scalar(fyn->fyd, key, len);
-		if (!fyn_scalar)
-			return NULL;
-
-		fynpi = (void *)fy_accel_lookup(fyn->xl, (const void *)fyn_scalar);
-
-		fy_node_free(fyn_scalar);
-
-		if (fynpi)
-			return fynpi->value;
 	}
 
 	return NULL;
@@ -3346,17 +3361,17 @@ struct fy_node *fy_node_mapping_lookup_value_by_key(struct fy_node *fyn, struct 
 	if (!fyn || fyn->type != FYNT_MAPPING)
 		return NULL;
 
-	if (!fyn->xl) {
+	if (fyn->xl) {
+		fynpi = fy_node_accel_lookup_by_node(fyn, fyn_key);
+		if (fynpi)
+			return fynpi->value;
+	} else {
 		for (fynpi = fy_node_pair_list_head(&fyn->mapping); fynpi;
 			fynpi = fy_node_pair_next(&fyn->mapping, fynpi)) {
 
 			if (fy_node_compare(fynpi->key, fyn_key))
 				return fynpi->value;
 		}
-	} else {
-		fynpi = (void *)fy_accel_lookup(fyn->xl, (const void *)fyn_key);
-		if (fynpi)
-			return fynpi->value;
 	}
 
 	return NULL;
@@ -4842,14 +4857,14 @@ bool fy_node_mapping_contains_pair(struct fy_node *fyn_map, struct fy_node_pair 
 	if (!fyn_map || !fynp || fyn_map->type != FYNT_MAPPING)
 		return false;
 
-	if (!fyn_map->xl) {
+	if (fyn_map->xl) {
+		fynpi = fy_node_accel_lookup_by_node(fyn_map, fynp->key);
+		if (fynpi == fynp)
+			return true;
+	} else {
 		for (fynpi = fy_node_pair_list_head(&fyn_map->mapping); fynpi; fynpi = fy_node_pair_next(&fyn_map->mapping, fynpi))
 			if (fynpi == fynp)
 				return true;
-	} else {
-		fynpi = (void *)fy_accel_lookup(fyn_map->xl, (const void *)fynp->key);
-		if (fynpi == fynp)
-			return true;
 	}
 
 	return false;
@@ -5529,12 +5544,20 @@ bool fy_document_is_colorized(struct fy_document *fyd)
 	return color_flags == FYPCF_COLOR_FORCE;
 }
 
-bool fy_document_is_accelerated(struct fy_document *fyd)
+bool fy_document_can_be_accelerated(struct fy_document *fyd)
 {
 	if (!fyd)
 		return false;
 
 	return !(fyd->parse_cfg.flags & FYPCF_DISABLE_ACCELERATORS);
+}
+
+bool fy_document_is_accelerated(struct fy_document *fyd)
+{
+	if (!fyd)
+		return false;
+
+	return fyd->axl && fyd->naxl;
 }
 
 static int hd_anchor_hash(struct fy_accel *xl, const void *key, void *userdata, void *hash)
