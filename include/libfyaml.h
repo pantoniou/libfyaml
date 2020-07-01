@@ -2413,6 +2413,29 @@ fy_node_create_scalar(struct fy_document *fyd,
 	FY_EXPORT;
 
 /**
+ * fy_node_create_scalar_copy() - Create a scalar node copying the data.
+ *
+ * Create a scalar node using the provided memory area as input.
+ * The input is expected to be regular utf8 encoded. It may contain
+ * escaped characters in which case the style of the scalar will be
+ * set to double quoted.
+ *
+ * A copy of the data will be made, so it is safe to free the data
+ * after the call.
+ *
+ * @fyd: The document which the resulting node will be associated with
+ * @data: Pointer to the data area
+ * @size: Size of the data area, or (size_t)-1 for '\0' terminated data.
+ *
+ * Returns:
+ * The created node, or NULL on error.
+ */
+struct fy_node *
+fy_node_create_scalar_copy(struct fy_document *fyd,
+			   const char *data, size_t size)
+	FY_EXPORT;
+
+/**
  * fy_node_create_sequence() - Create an empty sequence node.
  *
  * Create an empty sequence node associated with the given document.
@@ -3389,6 +3412,9 @@ fy_node_get_anchor(struct fy_node *fyn)
  *
  * Create an alias on the given document
  *
+ * Note that the data are not copied, merely a reference is taken, so
+ * it must be available while the node is in use.
+ *
  * @fyd: The document
  * @alias: The alias text
  * @len: The length of the alias (or -1 if '\0' terminated)
@@ -3399,6 +3425,27 @@ fy_node_get_anchor(struct fy_node *fyn)
 struct fy_node *
 fy_node_create_alias(struct fy_document *fyd,
 		     const char *alias, size_t len)
+	FY_EXPORT;
+
+/**
+ *
+ * fy_node_create_alias_copy() - Create an alias node copying the data
+ *
+ * Create an alias on the given document
+ *
+ * A copy of the data will be made, so it is safe to free the data
+ * after the call.
+ *
+ * @fyd: The document
+ * @alias: The alias text
+ * @len: The length of the alias (or -1 if '\0' terminated)
+ *
+ * Returns:
+ * The created alias node, or NULL in case of an error
+ */
+struct fy_node *
+fy_node_create_alias_copy(struct fy_document *fyd,
+			  const char *alias, size_t len)
 	FY_EXPORT;
 
 /**

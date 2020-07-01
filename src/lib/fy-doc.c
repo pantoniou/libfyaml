@@ -4425,12 +4425,15 @@ int fy_document_set_root(struct fy_document *fyd, struct fy_node *fyn)
 	return 0;
 }
 
-struct fy_node *fy_node_create_scalar(struct fy_document *fyd, const char *data, size_t size)
+static struct fy_node *
+fy_node_create_scalar_internal(struct fy_document *fyd, const char *data, size_t size,
+			       bool alias, bool simple, bool copy)
 {
 	struct fy_node *fyn = NULL;
 	struct fy_input *fyi;
 	struct fy_atom handle;
 	enum fy_scalar_style style;
+	char *data_copy = NULL;
 
 	if (!fyd)
 		return NULL;
@@ -4442,17 +4445,28 @@ struct fy_node *fy_node_create_scalar(struct fy_document *fyd, const char *data,
 	fyd_error_check(fyd, fyn, err_out,
 			"fy_node_alloc() failed");
 
-	fyi = fy_input_from_data(data, size, &handle, false);
+	if (copy) {
+		data_copy = malloc(size);
+		fyd_error_check(fyd, data_copy, err_out,
+				"malloc() failed");
+		memcpy(data_copy, data, size);
+		fyi = fy_input_from_malloc_data(data_copy, size, &handle, simple);
+	} else
+		fyi = fy_input_from_data(data, size, &handle, simple);
 	fyd_error_check(fyd, fyi, err_out,
 			"fy_input_from_data() failed");
+	data_copy = NULL;
 
-	style = handle.style == FYAS_PLAIN ? FYSS_PLAIN : FYSS_DOUBLE_QUOTED;
+	if (!alias) {
+		style = handle.style == FYAS_PLAIN ? FYSS_PLAIN : FYSS_DOUBLE_QUOTED;
+		fyn->scalar = fy_token_create(FYTT_SCALAR, &handle, style);
+	} else
+		fyn->scalar = fy_token_create(FYTT_ALIAS, &handle);
 
-	fyn->scalar = fy_token_create(FYTT_SCALAR, &handle, style);
 	fyd_error_check(fyd, fyn->scalar, err_out,
 			"fy_token_create() failed");
 
-	fyn->style = style == FYSS_PLAIN ? FYNS_PLAIN : FYNS_DOUBLE_QUOTED;
+	fyn->style = !alias ? (style == FYSS_PLAIN ? FYNS_PLAIN : FYNS_DOUBLE_QUOTED) : FYNS_ALIAS;
 
 	/* take away the input reference */
 	fy_input_unref(fyi);
@@ -4460,46 +4474,31 @@ struct fy_node *fy_node_create_scalar(struct fy_document *fyd, const char *data,
 	return fyn;
 
 err_out:
+	if (data_copy)
+		free(data_copy);
 	fy_node_detach_and_free(fyn);
 	fyd->diag->on_error = false;
 	return NULL;
 }
 
-struct fy_node *fy_node_create_alias(struct fy_document *fyd, const char *alias, size_t len)
+struct fy_node *fy_node_create_scalar(struct fy_document *fyd, const char *data, size_t size)
 {
-	struct fy_node *fyn = NULL;
-	struct fy_input *fyi;
-	struct fy_atom handle;
+	return fy_node_create_scalar_internal(fyd, data, size, false, false, false);
+}
 
-	if (!fyd || !alias)
-		return NULL;
+struct fy_node *fy_node_create_alias(struct fy_document *fyd, const char *data, size_t size)
+{
+	return fy_node_create_scalar_internal(fyd, data, size, true, false, false);
+}
 
-	if (len == (size_t)-1)
-		len = strlen(alias);
+struct fy_node *fy_node_create_scalar_copy(struct fy_document *fyd, const char *data, size_t size)
+{
+	return fy_node_create_scalar_internal(fyd, data, size, false, false, true);
+}
 
-	fyn = fy_node_alloc(fyd, FYNT_SCALAR);
-	fyd_error_check(fyd, fyn, err_out,
-			"fy_node_alloc() failed");
-
-	fyi = fy_input_from_data(alias, len, &handle, false);
-	fyd_error_check(fyd, fyi, err_out,
-			"fy_input_from_data() failed");
-
-	fyn->scalar = fy_token_create(FYTT_ALIAS, &handle);
-	fyd_error_check(fyd, fyn->scalar, err_out,
-			"fy_token_create() failed");
-
-	fyn->style = FYNS_ALIAS;
-
-	/* take away the input reference */
-	fy_input_unref(fyi);
-
-	return fyn;
-
-err_out:
-	fy_node_detach_and_free(fyn);
-	fyd->diag->on_error = false;
-	return NULL;
+struct fy_node *fy_node_create_alias_copy(struct fy_document *fyd, const char *data, size_t size)
+{
+	return fy_node_create_scalar_internal(fyd, data, size, true, false, true);
 }
 
 static int tag_handle_length(const char *data, size_t len)
