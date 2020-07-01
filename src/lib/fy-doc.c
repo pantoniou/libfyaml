@@ -4376,6 +4376,16 @@ struct fy_node *fy_node_build_from_string(struct fy_document *fyd, const char *s
 	return fy_node_build_internal(fyd, parser_setup_from_string, &ctx);
 }
 
+struct fy_node *fy_node_build_from_malloc_string(struct fy_document *fyd, char *str, size_t len)
+{
+	struct fy_document_build_malloc_string_ctx ctx = {
+		.str = str,
+		.len = len,
+	};
+
+	return fy_node_build_internal(fyd, parser_setup_from_malloc_string, &ctx);
+}
+
 struct fy_node *fy_node_build_from_file(struct fy_document *fyd, const char *file)
 {
 	struct fy_document_build_file_ctx ctx = {

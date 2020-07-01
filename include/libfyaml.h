@@ -2217,6 +2217,26 @@ fy_node_build_from_string(struct fy_document *fyd,
 	FY_EXPORT;
 
 /**
+ * fy_node_build_from_malloc_string() - Create a node using the provided YAML source which was malloced.
+ *
+ * Create a node parsing the provided string as a YAML source. The
+ * node created will be associated with the provided document. The string is expected to have been
+ * allocated by malloc(3) and when the document is destroyed it will be automatically freed.
+ *
+ * @fyd: The document
+ * @str: The YAML source to use.
+ * @len: The length of the string (or -1 if '\0' terminated)
+ *
+ * Returns:
+ * The created node, or NULL on error.
+ */
+struct fy_node *
+fy_node_build_from_string(struct fy_document *fyd,
+			  const char *str, size_t len)
+	FY_EXPORT;
+
+
+/**
  * fy_node_build_from_file() - Create a node using the provided YAML file.
  *
  * Create a node parsing the provided file as a YAML source. The
