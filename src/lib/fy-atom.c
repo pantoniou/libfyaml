@@ -523,10 +523,12 @@ fy_atom_iter_line(struct fy_atom_iter *iter)
 
 	/* scan next line (special handling for '\r\n') */
 	ss = li->end;
-	if (*ss == '\r' && (ss + 1) < iter->e && ss[1] == '\n')
-		ss += 2;
-	else
-		ss += fy_utf8_width_by_first_octet((uint8_t)*ss);
+	if (ss < iter->e) {
+		if (*ss == '\r' && (ss + 1) < iter->e && ss[1] == '\n')
+			ss += 2;
+		else
+			ss += fy_utf8_width_by_first_octet((uint8_t)*ss);
+	}
 
 	/* get current and next line */
 	fy_atom_iter_line_analyze(iter, &iter->li[!iter->current], ss, iter->e - ss);
