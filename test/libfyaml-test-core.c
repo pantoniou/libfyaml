@@ -185,7 +185,7 @@ START_TEST(doc_build_mapping)
 	void *iter;
 
 	fyd = fy_document_build_from_string(NULL, "{ foo: 10, bar : 20, baz: [100, 101], [frob, 1]: boo }", FY_NT);
-	assert(fyd);
+	ck_assert_ptr_ne(fyd, NULL);
 
 	/* check for correct count value */
 	count = fy_node_mapping_item_count(fy_document_root(fyd));
@@ -1299,6 +1299,54 @@ START_TEST(manual_anchor_removal)
 }
 END_TEST
 
+START_TEST(manual_block_flow_mix)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn_mapping, *fyn_key, *fyn_value;
+	char *buf;
+	int ret;
+
+	fyd = fy_document_build_from_string(NULL, "--- &root\n{\n}\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn_mapping = fy_document_root(fyd);
+	ck_assert_ptr_ne(fyn_mapping, NULL);
+
+	ck_assert(fy_node_is_mapping(fyn_mapping) == true);
+
+	fyn_key = fy_node_create_scalar(fyd, "key", FY_NT);
+	ck_assert_ptr_ne(fyn_key, NULL);
+
+	fyn_value = fy_node_build_from_string(fyd, "|\n  literal\n", FY_NT);
+	ck_assert_ptr_ne(fyn_value, NULL);
+
+	ret = fy_node_mapping_append(fyn_mapping, fyn_key, fyn_value);
+	ck_assert_int_eq(ret, 0);
+
+	/* emit document to buffer */
+	buf = fy_emit_document_to_string(fyd, FYECF_MODE_FLOW_ONELINE);
+	ck_assert_ptr_ne(buf, NULL);
+
+	/* destroy the first document */
+	fy_document_destroy(fyd);
+	fyd = NULL;
+
+	/* read the emitted document back */
+	fyd = fy_document_build_from_string(NULL, buf, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* compare with expected result */
+	ck_assert_str_eq(fy_node_get_scalar0(fy_node_by_path(fy_document_root(fyd), "/key", FY_NT, FYNWF_DONT_FOLLOW)), "literal\n");
+
+	/* destroy the second document */
+	fy_document_destroy(fyd);
+	fyd = NULL;
+
+	free(buf);
+
+}
+END_TEST
+
 TCase *libfyaml_case_core(void)
 {
 	TCase *tc;
@@ -1352,6 +1400,8 @@ TCase *libfyaml_case_core(void)
 	tcase_add_test(tc, manual_valid_anchor);
 	tcase_add_test(tc, manual_invalid_anchor);
 	tcase_add_test(tc, manual_anchor_removal);
+
+	tcase_add_test(tc, manual_block_flow_mix);
 
 	return tc;
 }
