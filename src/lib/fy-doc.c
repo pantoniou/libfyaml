@@ -2310,8 +2310,9 @@ static int fy_resolve_alias(struct fy_document *fyd, struct fy_node *fyn)
 {
 	struct fy_anchor *fya;
 	struct fy_node *fyn_copy = NULL;
-	const char *anchor_text, *s, *e, *p;
-	size_t anchor_len;
+	struct fy_node *fyn_path_root = NULL;
+	const char *anchor_text, *s, *e, *p, *path = NULL;
+	size_t anchor_len, path_len = 0;
 	int rc;
 
 	fya = fy_document_lookup_anchor_by_token(fyd, fyn->scalar);
@@ -2330,14 +2331,27 @@ static int fy_resolve_alias(struct fy_document *fyd, struct fy_node *fyn)
 			/* fyd_notice(fyn->fyd, "%s: alias contains a path component %.*s",
 					__func__, (int)(e - p - 1), p + 1); */
 
-			fya = fy_document_lookup_anchor(fyn->fyd, s, p - s);
-			if (fya) {
-				/* fyd_notice(fyn->fyd, "%s: alias base %.*s @%s",
-						__func__, (int)(p - s), s, fy_node_get_path(fya->fyn)); */
+			if (p > s) {
+				/* regular *foo/bar */
+				fya = fy_document_lookup_anchor(fyn->fyd, s, p - s);
 
-				fyn_copy = fy_node_by_path_internal(fya->fyn, p + 1, (size_t)(e - p - 1),
-						FYNWF_FOLLOW | FYNWF_MAXDEPTH_DEFAULT | FYNWF_MARKER_DEFAULT);
+				if (fya) {
+					fyn_path_root = fya->fyn;
+
+					path = ++p;
+					path_len = p - s;
+				}
+
+			} else {
+				fyn_path_root = fyd->root;
+
+				path = s;
+				path_len = e - s;
 			}
+
+			if (fyn_path_root)
+				fyn_copy = fy_node_by_path_internal(fyn_path_root, path, path_len,
+					FYNWF_FOLLOW | FYNWF_MAXDEPTH_DEFAULT | FYNWF_MARKER_DEFAULT);
 		}
 	} else
 		fyn_copy = fya->fyn;
@@ -2362,8 +2376,9 @@ fy_node_follow_alias(struct fy_node *fyn, enum fy_node_walk_flags flags)
 {
 	enum fy_node_walk_flags ptr_flags;
 	struct fy_anchor *fya;
-	const char *anchor_text, *s, *e, *p;
-	size_t anchor_len;
+	const char *anchor_text, *s, *e, *p, *path;
+	size_t anchor_len, path_len;
+	struct fy_node *fyn_path_root;
 	unsigned int marker;
 
 	if (!fyn || !fy_node_is_alias(fyn))
@@ -2383,33 +2398,40 @@ fy_node_follow_alias(struct fy_node *fyn, enum fy_node_walk_flags flags)
 	s = anchor_text;
 	e = s + anchor_len;
 
+	fyn_path_root = NULL;
+
 	if (ptr_flags == FYNWF_PTR_YAML && (p = memchr(s, '/', e - s)) != NULL) {
 		/* fyd_notice(fyn->fyd, "%s: alias contains a path component %.*s",
 				__func__, (int)(e - p - 1), p + 1); */
 
-		fya = fy_document_lookup_anchor(fyn->fyd, s, p - s);
-		if (fya) {
+		if (p > s) {
+
+			fya = fy_document_lookup_anchor(fyn->fyd, s, p - s);
+			if (!fya) {
+				/* fyd_notice(fyn->fyd, "%s: unable to resolve alias %.*s @%s",
+						__func__, (int)(p - s), s, fy_node_get_path(fya->fyn)); */
+				return NULL;
+			}
+
 			/* fyd_notice(fyn->fyd, "%s: alias base %.*s @%s",
 					__func__, (int)(p - s), s, fy_node_get_path(fya->fyn)); */
+			path = ++p;
+			path_len = e - p;
 
-			marker = fy_node_walk_marker_from_flags(flags);
-			if (marker >= FYNWF_MAX_USER_MARKER)
-				return NULL;
+			fyn_path_root = fya->fyn;
 
-			/* use the next marker */
-			flags &= ~FYNWF_MARKER(FYNWF_MARKER_MASK);
-			flags |= FYNWF_MARKER(marker + 1);
+		} else {
+			/* fyd_notice(fyn->fyd, "%s: absolute %.*s @%s",
+					__func__, (int)(p - s), s, fy_node_get_path(fya->fyn)); */
+			path = s;
+			path_len = e - s;
 
-			return fy_node_by_path_internal(fya->fyn, p + 1, (size_t)(e - p - 1), flags);
+			fyn_path_root = fyn->fyd->root;
 		}
 	}
 
-	/* minimum is </> */
-	if ((e - s) < 3 || s[0] != '<' || s[1] != '/' || e[-1] != '>')
+	if (!fyn_path_root)
 		return NULL;
-
-	s++;
-	e--;
 
 	marker = fy_node_walk_marker_from_flags(flags);
 	if (marker >= FYNWF_MAX_USER_MARKER)
@@ -2419,7 +2441,7 @@ fy_node_follow_alias(struct fy_node *fyn, enum fy_node_walk_flags flags)
 	flags &= ~FYNWF_MARKER(FYNWF_MARKER_MASK);
 	flags |= FYNWF_MARKER(marker + 1);
 
-	return fy_node_by_path_internal(fyn->fyd->root, s, (size_t)(e - s), flags);
+	return fy_node_by_path_internal(fyn_path_root, path, path_len, flags);
 }
 
 static bool fy_node_pair_is_merge_key(struct fy_node_pair *fynp)
@@ -3896,7 +3918,7 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 				enum fy_node_walk_flags flags)
 {
 	struct fy_anchor *fya;
-	const char *s, *ss, *e, *t, *anchor;
+	const char *s, *e, *t, *anchor;
 	size_t alen;
 	char c;
 	int idx;
@@ -3922,8 +3944,6 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 
 		s++;
 
-		ss = s;
-
 		c = -1;
 		for (t = s; t < e; t++) {
 			c = *t;
@@ -3942,28 +3962,27 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 		anchor = s;
 		alen = t - s;
 
-		/* empty '*' */
-		if (!alen)
-			return NULL;
+		if (alen) {
+			/* we must be terminated by '/' or space followed by '/' */
+			/* strip until spaces and '/' end */
+			while (t < e && (*t == ' ' || *t == '\t'))
+				t++;
 
-		/* we must be terminated by '/' or space followed by '/' */
-		/* strip until spaces and '/' end */
-		while (t < e && (*t == ' ' || *t == '\t'))
-			t++;
+			while (t < e && *t == '/')
+				t++;
 
-		while (t < e && *t == '/')
-			t++;
+			/* update path */
+			path = t;
+			len = e - t;
 
-		/* update path */
-		path = t;
-		len = e - t;
+			/* fyd_notice(fyn->fyd, "%s: looking up anchor=%.*s", __func__, (int)(alen), anchor); */
 
-		/* fyd_notice(fyn->fyd, "%s: looking up anchor=%.*s", __func__, (int)(alen), anchor); */
-
-		/* lookup anchor */
-		fya = fy_document_lookup_anchor(fyn->fyd, anchor, alen);
-
-		if (fya) {
+			/* lookup anchor */
+			fya = fy_document_lookup_anchor(fyn->fyd, anchor, alen);
+			if (!fya) {
+				/* fyd_notice(fyn->fyd, "%s: failed to lookup anchor=%.*s", __func__, (int)(alen), anchor); */
+				return NULL;
+			}
 
 			/* fyd_notice(fyn->fyd, "%s: found anchor=%.*s at %s",
 					__func__, (int)(alen), anchor, fy_node_get_path(fya->fyn)); */
@@ -3976,14 +3995,10 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 
 			fyn = fya->fyn;
 		} else {
-			/* no anchor found? try for *</path/foo> */
+			/* no anchor it must be of the form *\/ */
 
-			s = ss;
-			if ((e - s) < 3 || s[0] != '<' || s[1] != '/' || e[-1] != '>')
-				return NULL;
-
-			path = ss + 1;
-			len = (e - 1) - (ss + 1);
+			path = s;
+			len = e - s;
 		}
 
 		/* fyd_notice(fyn->fyd, "%s: continuing looking for %.*s",
