@@ -122,13 +122,14 @@ struct fy_anchor *fy_document_anchor_iterate(struct fy_document *fyd, void **pre
 	return *prevp = *prevp ? fy_anchor_next(fyal, *prevp) : fy_anchor_list_head(fyal);
 }
 
-int fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn, const char *text, size_t len)
+static int fy_document_set_anchor_internal(struct fy_document *fyd, struct fy_node *fyn, const char *text, size_t len, bool copy)
 {
 	struct fy_anchor *fya = NULL, *fyam = NULL;
 	struct fy_input *fyi = NULL;
 	struct fy_token *fyt = NULL;
 	struct fy_accel_entry *xle;
 	struct fy_atom handle;
+	char *data_copy = NULL;
 	int rc;
 
 	if (!fyd || !fyn || fyn->fyd != fyd)
@@ -162,9 +163,17 @@ int fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn, const c
 	if (fya)
 		return -1;
 
-	fyi = fy_input_from_data(text, len, &handle, true);
-	if (!fyi)
-		goto err_out;
+	if (copy) {
+		data_copy = malloc(len);
+		fyd_error_check(fyd, data_copy, err_out,
+				"malloc() failed");
+		memcpy(data_copy, text, len);
+		fyi = fy_input_from_malloc_data(data_copy, len, &handle, true);
+	} else
+		fyi = fy_input_from_data(text, len, &handle, true);
+	fyd_error_check(fyd, fyi, err_out,
+			"fy_input_from_data() failed");
+	data_copy = NULL;
 
 	/* it must not be something funky */
 	if (!handle.valid_anchor)
@@ -216,11 +225,16 @@ err_out_rc:
 	return rc;
 }
 
+int fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn, const char *text, size_t len)
+{
+	return fy_document_set_anchor_internal(fyd, fyn, text, len, false);
+}
+
 int fy_node_set_anchor(struct fy_node *fyn, const char *text, size_t len)
 {
 	if (!fyn)
 		return -1;
-	return fy_document_set_anchor(fyn->fyd, fyn, text, len);
+	return fy_document_set_anchor_internal(fyn->fyd, fyn, text, len, false);
 }
 
 int fy_node_remove_anchor(struct fy_node *fyn)
