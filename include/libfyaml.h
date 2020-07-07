@@ -2436,6 +2436,45 @@ fy_node_create_scalar_copy(struct fy_document *fyd,
 	FY_EXPORT;
 
 /**
+ * fy_node_create_vscalarf() - vprintf interface for creating scalars
+ *
+ * Create a scalar node using a vprintf interface.
+ * The input is expected to be regular utf8 encoded. It may contain
+ * escaped characters in which case the style of the scalar will be
+ * set to double quoted.
+ *
+ * @fyd: The document which the resulting node will be associated with
+ * @fmt: The printf based format string
+ * @ap: The va_list containing the arguments
+ *
+ * Returns:
+ * The created node, or NULL on error.
+ */
+struct fy_node *
+fy_node_create_vscalarf(struct fy_document *fyd, const char *fmt, va_list ap)
+	FY_EXPORT;
+
+/**
+ * fy_node_create_scalarf() - printf interface for creating scalars
+ *
+ * Create a scalar node using a printf interface.
+ * The input is expected to be regular utf8 encoded. It may contain
+ * escaped characters in which case the style of the scalar will be
+ * set to double quoted.
+ *
+ * @fyd: The document which the resulting node will be associated with
+ * @fmt: The printf based format string
+ * @...: The arguments
+ *
+ * Returns:
+ * The created node, or NULL on error.
+ */
+struct fy_node *
+fy_node_create_scalarf(struct fy_document *fyd, const char *fmt, ...)
+	FY_EXPORT
+	__attribute__((format(printf, 2, 3)));
+
+/**
  * fy_node_create_sequence() - Create an empty sequence node.
  *
  * Create an empty sequence node associated with the given document.

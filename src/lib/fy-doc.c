@@ -4454,10 +4454,19 @@ int fy_document_set_root(struct fy_document *fyd, struct fy_node *fyn)
 	return 0;
 }
 
+#define FYNCSIF_ALIAS		FY_BIT(0)
+#define FYNCSIF_SIMPLE		FY_BIT(1)
+#define FYNCSIF_COPY		FY_BIT(2)
+#define FYNCSIF_MALLOCED	FY_BIT(3)
+
 static struct fy_node *
 fy_node_create_scalar_internal(struct fy_document *fyd, const char *data, size_t size,
-			       bool alias, bool simple, bool copy)
+			       unsigned int flags)
 {
+	const bool alias = !!(flags & FYNCSIF_ALIAS);
+	const bool simple = !!(flags & FYNCSIF_SIMPLE);
+	const bool copy = !!(flags & FYNCSIF_COPY);
+	const bool malloced = !!(flags & FYNCSIF_MALLOCED);
 	struct fy_node *fyn = NULL;
 	struct fy_input *fyi;
 	struct fy_atom handle;
@@ -4480,7 +4489,9 @@ fy_node_create_scalar_internal(struct fy_document *fyd, const char *data, size_t
 				"malloc() failed");
 		memcpy(data_copy, data, size);
 		fyi = fy_input_from_malloc_data(data_copy, size, &handle, simple);
-	} else
+	} else if (malloced)
+		fyi = fy_input_from_malloc_data((void *)data, size, &handle, simple);
+	else
 		fyi = fy_input_from_data(data, size, &handle, simple);
 	fyd_error_check(fyd, fyi, err_out,
 			"fy_input_from_data() failed");
@@ -4512,22 +4523,49 @@ err_out:
 
 struct fy_node *fy_node_create_scalar(struct fy_document *fyd, const char *data, size_t size)
 {
-	return fy_node_create_scalar_internal(fyd, data, size, false, false, false);
+	return fy_node_create_scalar_internal(fyd, data, size, 0);
 }
 
 struct fy_node *fy_node_create_alias(struct fy_document *fyd, const char *data, size_t size)
 {
-	return fy_node_create_scalar_internal(fyd, data, size, true, false, false);
+	return fy_node_create_scalar_internal(fyd, data, size, FYNCSIF_ALIAS);
 }
 
 struct fy_node *fy_node_create_scalar_copy(struct fy_document *fyd, const char *data, size_t size)
 {
-	return fy_node_create_scalar_internal(fyd, data, size, false, false, true);
+	return fy_node_create_scalar_internal(fyd, data, size, FYNCSIF_COPY);
 }
 
 struct fy_node *fy_node_create_alias_copy(struct fy_document *fyd, const char *data, size_t size)
 {
-	return fy_node_create_scalar_internal(fyd, data, size, true, false, true);
+	return fy_node_create_scalar_internal(fyd, data, size, FYNCSIF_ALIAS | FYNCSIF_COPY);
+}
+
+struct fy_node *fy_node_create_vscalarf(struct fy_document *fyd, const char *fmt, va_list ap)
+{
+	int ret;
+	char *buf;
+
+	if (!fyd || !fmt)
+		return NULL;
+
+	ret = vasprintf(&buf, fmt, ap);
+	if (ret == -1)
+		return NULL;
+
+	return fy_node_create_scalar_internal(fyd, buf, ret, FYNCSIF_MALLOCED);
+}
+
+struct fy_node *fy_node_create_scalarf(struct fy_document *fyd, const char *fmt, ...)
+{
+	va_list ap;
+	struct fy_node *fyn;
+
+	va_start(ap, fmt);
+	fyn = fy_node_create_vscalarf(fyd, fmt, ap);
+	va_end(ap);
+
+	return fyn;
 }
 
 static int tag_handle_length(const char *data, size_t len)

@@ -1200,6 +1200,37 @@ START_TEST(manual_scalar_copy)
 }
 END_TEST
 
+START_TEST(manual_scalarf)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	char *buf;
+
+	/* build document */
+	fyd = fy_document_create(NULL);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* create a manual scalar using the printf interface */
+	fyn = fy_node_create_scalarf(fyd, "foo%d", 13);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	fy_document_set_root(fyd, fyn);
+	fyn = NULL;
+
+	/* emit to a buffer */
+	buf = fy_emit_document_to_string(fyd, FYECF_MODE_FLOW_ONELINE);
+	ck_assert_ptr_ne(buf, NULL);
+
+	/* verify that the resulting document is the one we used + '\n' */
+	ck_assert_str_eq(buf, "foo13" "\n");
+
+	/* destroy the old document */
+	fy_document_destroy(fyd);
+	fyd = NULL;
+
+	free(buf);
+}
+END_TEST
 
 START_TEST(manual_valid_anchor)
 {
@@ -1396,6 +1427,7 @@ TCase *libfyaml_case_core(void)
 	tcase_add_test(tc, manual_scalar_esc);
 	tcase_add_test(tc, manual_scalar_quoted);
 	tcase_add_test(tc, manual_scalar_copy);
+	tcase_add_test(tc, manual_scalarf);
 
 	tcase_add_test(tc, manual_valid_anchor);
 	tcase_add_test(tc, manual_invalid_anchor);
