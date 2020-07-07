@@ -59,8 +59,10 @@ struct fy_diag;
 
 #if defined(__GNUC__) && __GNUC__ >= 4
 #define FY_EXPORT __attribute__ ((visibility ("default")))
+#define FY_DEPRECATED __attribute__ ((deprecated))
 #else
 #define FY_EXPORT /* nothing */
+#define FY_DEPRECATED /* nothing */
 #endif
 
 /**
@@ -3383,6 +3385,9 @@ fy_document_anchor_iterate(struct fy_document *fyd, void **prevp)
  * Note that the data are not copied, merely a reference is taken, so
  * it must be available while the node is in use.
  *
+ * Also not that this method is deprecated; use fy_node_set_anchor()
+ * instead.
+ *
  * @fyd: The document
  * @fyn: The node to set the anchor to
  * @text: Pointer to the anchor text
@@ -3394,10 +3399,10 @@ fy_document_anchor_iterate(struct fy_document *fyd, void **prevp)
 int
 fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn,
 		       const char *text, size_t len)
-	FY_EXPORT;
+	FY_EXPORT FY_DEPRECATED;
 
 /**
- * fy_node_set_anchor() - Place an anchor to the node's document
+ * fy_node_set_anchor() - Place an anchor to the node
  *
  * Places an anchor to the node with the give text name.
  *
@@ -3417,6 +3422,57 @@ fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn,
 int
 fy_node_set_anchor(struct fy_node *fyn, const char *text, size_t len)
 	FY_EXPORT;
+
+/**
+ * fy_node_set_anchor_copy() - Place an anchor to the node copying the text
+ *
+ * Places an anchor to the node with the give text name, which
+ * will be copied, so it's safe to dispose the text after the call.
+ *
+ * @fyn: The node to set the anchor to
+ * @text: Pointer to the anchor text
+ * @len: Size of the anchor text, or (size_t)-1 for '\0' terminated.
+ *
+ * Returns:
+ * 0 on success, -1 on error.
+ */
+int
+fy_node_set_anchor_copy(struct fy_node *fyn, const char *text, size_t len)
+	FY_EXPORT;
+
+/**
+ * fy_node_set_vanchorf() - Place an anchor to the node using a vprintf interface.
+ *
+ * Places an anchor to the node with the give text name as created
+ * via vprintf'ing the arguments.
+ *
+ * @fyn: The node to set the anchor to
+ * @fmt: Pointer to the anchor format string
+ * @ap: The argument list.
+ *
+ * Returns:
+ * 0 on success, -1 on error.
+ */
+int
+fy_node_set_vanchorf(struct fy_node *fyn, const char *fmt, va_list ap)
+	FY_EXPORT;
+
+/**
+ * fy_node_set_anchorf() - Place an anchor to the node using a printf interface.
+ *
+ * Places an anchor to the node with the give text name as created
+ * via printf'ing the arguments.
+ *
+ * @fyn: The node to set the anchor to
+ * @fmt: Pointer to the anchor format string
+ * @...: The extra arguments.
+ *
+ * Returns:
+ * 0 on success, -1 on error.
+ */
+int
+fy_node_set_anchorf(struct fy_node *fyn, const char *fmt, ...)
+	FY_EXPORT __attribute__((format(printf, 2, 3)));
 
 /**
  * fy_node_remove_anchor() - Remove an anchor

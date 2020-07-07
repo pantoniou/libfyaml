@@ -122,14 +122,22 @@ struct fy_anchor *fy_document_anchor_iterate(struct fy_document *fyd, void **pre
 	return *prevp = *prevp ? fy_anchor_next(fyal, *prevp) : fy_anchor_list_head(fyal);
 }
 
-static int fy_document_set_anchor_internal(struct fy_document *fyd, struct fy_node *fyn, const char *text, size_t len, bool copy)
+#define FYDSAF_COPY		FY_BIT(0)
+#define FYDSAF_MALLOCED		FY_BIT(1)
+
+static int fy_document_set_anchor_internal(struct fy_document *fyd, struct fy_node *fyn, const char *text, size_t len,
+					   unsigned int flags)
 {
+	const bool copy = !!(flags & FYDSAF_COPY);
+	const bool malloced = !!(flags & FYDSAF_MALLOCED);
 	struct fy_anchor *fya = NULL, *fyam = NULL;
 	struct fy_input *fyi = NULL;
 	struct fy_token *fyt = NULL;
 	struct fy_accel_entry *xle;
 	struct fy_atom handle;
 	char *data_copy = NULL;
+	const char *origtext;
+	size_t origlen;
 	int rc;
 
 	if (!fyd || !fyn || fyn->fyd != fyd)
@@ -160,8 +168,19 @@ static int fy_document_set_anchor_internal(struct fy_document *fyd, struct fy_no
 	}
 
 	/* trying to add duplicate anchor */
-	if (fya)
-		return -1;
+	if (fya) {
+		origtext = fy_token_get_text(fya->anchor, &origlen);
+		fyd_error_check(fyd, origtext, err_out,
+				"fy_token_get_text() failed");
+
+		FYD_NODE_ERROR(fyd, fyn, FYEM_DOC,
+				"cannot set anchor %.*s (anchor %.*s already exists)",
+				(int)len, text, (int)origlen, origtext);
+		if (malloced && text)
+			free((void *)text);
+		fya = NULL;
+		goto err_out;
+	}
 
 	if (copy) {
 		data_copy = malloc(len);
@@ -169,7 +188,14 @@ static int fy_document_set_anchor_internal(struct fy_document *fyd, struct fy_no
 				"malloc() failed");
 		memcpy(data_copy, text, len);
 		fyi = fy_input_from_malloc_data(data_copy, len, &handle, true);
-	} else
+	} else if (malloced)
+		data_copy = (char *)text;
+	else
+		data_copy = NULL;
+
+	if (data_copy)
+		fyi = fy_input_from_malloc_data((void *)text, len, &handle, true);
+	else
 		fyi = fy_input_from_data(text, len, &handle, true);
 	fyd_error_check(fyd, fyi, err_out,
 			"fy_input_from_data() failed");
@@ -218,6 +244,8 @@ static int fy_document_set_anchor_internal(struct fy_document *fyd, struct fy_no
 err_out:
 	rc = -1;
 err_out_rc:
+	if (data_copy)
+		free(data_copy);
 	fy_anchor_destroy(fya);
 	fy_token_unref(fyt);
 	fy_input_unref(fyi);
@@ -227,14 +255,48 @@ err_out_rc:
 
 int fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn, const char *text, size_t len)
 {
-	return fy_document_set_anchor_internal(fyd, fyn, text, len, false);
+	return fy_document_set_anchor_internal(fyd, fyn, text, len, 0);
 }
 
 int fy_node_set_anchor(struct fy_node *fyn, const char *text, size_t len)
 {
 	if (!fyn)
 		return -1;
-	return fy_document_set_anchor_internal(fyn->fyd, fyn, text, len, false);
+	return fy_document_set_anchor_internal(fyn->fyd, fyn, text, len, 0);
+}
+
+int fy_node_set_anchor_copy(struct fy_node *fyn, const char *text, size_t len)
+{
+	if (!fyn)
+		return -1;
+	return fy_document_set_anchor_internal(fyn->fyd, fyn, text, len, FYDSAF_COPY);
+}
+
+int fy_node_set_vanchorf(struct fy_node *fyn, const char *fmt, va_list ap)
+{
+	int ret;
+	char *buf;
+
+	if (!fyn || !fmt)
+		return -1;
+
+	ret = vasprintf(&buf, fmt, ap);
+	if (ret == -1)
+		return -1;
+
+	return fy_document_set_anchor_internal(fyn->fyd, fyn, buf, ret, FYDSAF_MALLOCED);
+}
+
+int fy_node_set_anchorf(struct fy_node *fyn, const char *fmt, ...)
+{
+	va_list ap;
+	int ret;
+
+	va_start(ap, fmt);
+	ret = fy_node_set_vanchorf(fyn, fmt, ap);
+	va_end(ap);
+
+	return ret;
 }
 
 int fy_node_remove_anchor(struct fy_node *fyn)
