@@ -430,6 +430,52 @@ START_TEST(doc_path_parent)
 }
 END_TEST
 
+START_TEST(doc_nearest_anchor)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn, *fyn_root, *fyn_foo, *fyn_notfoo, *fyn_bar, *fyn_baz;
+
+	/* build document */
+	fyd = fy_document_build_from_string(NULL, 
+		"--- &r\n"
+		"  foo: &f\n"
+		"    bar: [ 0, two, baz: what ]\n"
+		"    frob: true\n"
+		"  notfoo: false\n"
+		, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn_root = fy_document_root(fyd);
+	ck_assert_ptr_ne(fyn_root, NULL);
+
+	fyn_foo = fy_node_by_path(fyn_root, "/foo", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_foo, NULL);
+
+	fyn_notfoo = fy_node_by_path(fyn_root, "/notfoo", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_notfoo, NULL);
+
+	fyn_bar = fy_node_by_path(fyn_root, "/foo/bar", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_bar, NULL);
+
+	fyn_baz = fy_node_by_path(fyn_root, "/foo/bar/2/baz", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_baz, NULL);
+
+	/* get nearest anchor of root (is root) */
+	fyn = fy_anchor_node(fy_node_get_nearest_anchor(fyn_root));
+	ck_assert_ptr_eq(fyn, fyn_root);
+
+	/* get nearest anchor of notfoo (is root) */
+	fyn = fy_anchor_node(fy_node_get_nearest_anchor(fyn_notfoo));
+	ck_assert_ptr_eq(fyn, fyn_root);
+
+	/* get nearest anchor of baz (is foo) */
+	fyn = fy_anchor_node(fy_node_get_nearest_anchor(fyn_baz));
+	ck_assert_ptr_eq(fyn, fyn_foo);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 START_TEST(doc_create_empty_seq1)
 {
 	struct fy_document *fyd;
@@ -1487,6 +1533,8 @@ TCase *libfyaml_case_core(void)
 	tcase_add_test(tc, doc_path_access);
 	tcase_add_test(tc, doc_path_node);
 	tcase_add_test(tc, doc_path_parent);
+
+	tcase_add_test(tc, doc_nearest_anchor);
 
 	tcase_add_test(tc, doc_create_empty_seq1);
 	tcase_add_test(tc, doc_create_empty_seq2);

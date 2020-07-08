@@ -312,6 +312,17 @@ struct fy_anchor *fy_node_get_anchor(struct fy_node *fyn)
 	return fy_document_lookup_anchor_by_node(fyn->fyd, fyn);
 }
 
+struct fy_anchor *fy_node_get_nearest_anchor(struct fy_node *fyn)
+{
+	struct fy_anchor *fya;
+	struct fy_node *fynt;
+
+	while ((fya = fy_node_get_anchor(fyn)) == NULL && (fynt = fy_node_get_parent(fyn)))
+		fyn = fynt;
+
+	return fya;
+}
+
 void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 {
 	struct fy_node *fyn;

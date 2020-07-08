@@ -3522,6 +3522,21 @@ fy_node_get_anchor(struct fy_node *fyn)
 	FY_EXPORT;
 
 /**
+ * fy_node_get_nearest_anchor() - Get the nearest anchor of the node
+ *
+ * Retrieve the anchor of the nearest parent of the given node or
+ * the given node if it has one.
+ *
+ * @fyn: The node
+ *
+ * Returns:
+ * The nearest anchor if there's one, or NULL otherwise
+ */
+struct fy_anchor *
+fy_node_get_nearest_anchor(struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
  * fy_node_create_alias() - Create an alias node
  *
  * Create an alias on the given document
