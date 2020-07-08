@@ -2392,6 +2392,25 @@ fy_node_get_parent_address(struct fy_node *fyn)
 	FY_EXPORT;
 
 /**
+ * fy_node_get_path_relative_to() - Get a path address of a node
+ *                                  relative to one of it's parents
+ *
+ * Retrieve the given node's path address relative to an arbitrary
+ * parent in the tree.
+ * The address is dynamically allocated and should be freed when
+ * you're done with it.
+ *
+ * @fyn_parent: The node parent/grandparent...
+ * @fyn: The node
+ *
+ * Returns:
+ * The relative address from the parent to the node
+ */
+char *
+fy_node_get_path_relative_to(struct fy_node *fyn_parent, struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
  * fy_node_create_scalar() - Create a scalar node.
  *
  * Create a scalar node using the provided memory area as input.

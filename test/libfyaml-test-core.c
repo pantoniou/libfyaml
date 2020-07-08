@@ -336,6 +336,100 @@ START_TEST(doc_path_node)
 }
 END_TEST
 
+START_TEST(doc_path_parent)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn_root, *fyn_foo, *fyn_bar, *fyn_baz, *fyn_frob, *fyn_ten;
+	struct fy_node *fyn_deep, *fyn_deeper;
+	char *path;
+
+	/* build document */
+	fyd = fy_document_build_from_string(NULL, "{ "
+		"foo: 10, bar : [ ten, 20 ], baz:{ frob: boo, deep: { deeper: yet } }, "
+		"}", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn_root = fy_document_root(fyd);
+	ck_assert_ptr_ne(fyn_root, NULL);
+
+	fyn_foo = fy_node_by_path(fyn_root, "/foo", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_foo, NULL);
+
+	fyn_bar = fy_node_by_path(fyn_root, "/bar", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_bar, NULL);
+
+	fyn_baz = fy_node_by_path(fyn_root, "/baz", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_baz, NULL);
+
+	fyn_frob = fy_node_by_path(fyn_root, "/baz/frob", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_frob, NULL);
+
+	fyn_ten = fy_node_by_path(fyn_root, "/bar/0", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_ten, NULL);
+
+	fyn_deep = fy_node_by_path(fyn_root, "/baz/deep", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_deep, NULL);
+
+	fyn_deeper = fy_node_by_path(fyn_root, "/baz/deep/deeper", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_deeper, NULL);
+
+	/* check parent paths of foo, frob, ten */
+	path = fy_node_get_parent_address(fyn_foo);
+	ck_assert_ptr_ne(path, NULL);
+	ck_assert_str_eq(path, "foo");
+	free(path);
+
+	path = fy_node_get_parent_address(fyn_frob);
+	ck_assert_ptr_ne(path, NULL);
+	ck_assert_str_eq(path, "frob");
+	free(path);
+
+	path = fy_node_get_parent_address(fyn_ten);
+	ck_assert_ptr_ne(path, NULL);
+	ck_assert_str_eq(path, "0");
+	free(path);
+
+	/* check relative paths to root */
+	path = fy_node_get_path_relative_to(NULL, fyn_foo);
+	ck_assert_ptr_ne(path, NULL);
+	ck_assert_str_eq(path, "foo");
+	free(path);
+
+	path = fy_node_get_path_relative_to(fyn_root, fyn_foo);
+	ck_assert_ptr_ne(path, NULL);
+	ck_assert_str_eq(path, "foo");
+	free(path);
+
+	path = fy_node_get_path_relative_to(fyn_root, fyn_frob);
+	ck_assert_ptr_ne(path, NULL);
+	ck_assert_str_eq(path, "baz/frob");
+	free(path);
+
+	path = fy_node_get_path_relative_to(fyn_root, fyn_ten);
+	ck_assert_ptr_ne(path, NULL);
+	ck_assert_str_eq(path, "bar/0");
+	free(path);
+
+	/* check relative paths to other parents */
+	path = fy_node_get_path_relative_to(fyn_baz, fyn_frob);
+	ck_assert_ptr_ne(path, NULL);
+	ck_assert_str_eq(path, "frob");
+	free(path);
+
+	path = fy_node_get_path_relative_to(fyn_bar, fyn_ten);
+	ck_assert_ptr_ne(path, NULL);
+	ck_assert_str_eq(path, "0");
+	free(path);
+
+	path = fy_node_get_path_relative_to(fyn_baz, fyn_deeper);
+	ck_assert_ptr_ne(path, NULL);
+	ck_assert_str_eq(path, "deep/deeper");
+	free(path);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 START_TEST(doc_create_empty_seq1)
 {
 	struct fy_document *fyd;
@@ -1392,6 +1486,7 @@ TCase *libfyaml_case_core(void)
 
 	tcase_add_test(tc, doc_path_access);
 	tcase_add_test(tc, doc_path_node);
+	tcase_add_test(tc, doc_path_parent);
 
 	tcase_add_test(tc, doc_create_empty_seq1);
 	tcase_add_test(tc, doc_create_empty_seq2);

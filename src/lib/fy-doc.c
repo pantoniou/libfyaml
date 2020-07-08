@@ -4308,6 +4308,68 @@ char *fy_node_get_path(struct fy_node *fyn)
 	return path_mem;
 }
 
+char *fy_node_get_path_relative_to(struct fy_node *fyn_parent, struct fy_node *fyn)
+{
+	char *path, *ppath, *path2;
+	size_t pathlen, ppathlen;
+	struct fy_node *ni, *nj;
+
+	if (!fyn)
+		return NULL;
+
+	/* must be on the same document */
+	if (fyn_parent && (fyn_parent->fyd != fyn->fyd))
+		return NULL;
+
+	if (!fyn_parent)
+		fyn_parent = fyn->fyd->root;
+
+	/* verify that it's a parent */
+	ni = fyn;
+	while ((nj = fy_node_get_parent(ni)) != NULL && nj != fyn_parent)
+		ni = nj;
+
+	/* not a parent, illegal */
+	if (!nj)
+		return NULL;
+
+	/* here we go... */
+	path = "";
+	pathlen = 0;
+
+	ni = fyn;
+	while ((nj = fy_node_get_parent(ni)) != NULL) {
+		ppath = fy_node_get_parent_address(ni);
+		if (!ppath)
+			return NULL;
+
+		ppathlen = strlen(ppath);
+
+		if (pathlen > 0) {
+			path2 = alloca(pathlen + 1 + ppathlen + 1);
+			memcpy(path2, ppath, ppathlen);
+			path2[ppathlen] = '/';
+			memcpy(path2 + ppathlen + 1, path, pathlen);
+			path2[ppathlen + 1 + pathlen] = '\0';
+		} else {
+			path2 = alloca(ppathlen + 1);
+			memcpy(path2, ppath, ppathlen);
+			path2[ppathlen] = '\0';
+		}
+
+		path = path2;
+		pathlen = strlen(path);
+
+		free(ppath);
+		ni = nj;
+
+		if (ni == fyn_parent)
+			break;
+	}
+
+	return strdup(path);
+}
+
 static struct fy_node *
 fy_document_load_node(struct fy_document *fyd, struct fy_parser *fyp,
 		      struct fy_document_state **fydsp)
