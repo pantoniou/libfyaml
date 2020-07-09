@@ -1718,6 +1718,54 @@ START_TEST(manual_block_flow_mix)
 }
 END_TEST
 
+START_TEST(alloca_check)
+{
+	struct fy_document *fyd;
+	char *buf;
+	const char *abuf;
+
+	/* build document */
+	fyd = fy_document_build_from_string(NULL, "{ "
+		"foo: 10, bar : [ ten, 20 ], baz:{ frob: boo, deep: { deeper: yet } }, "
+		"}", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* fy_emit_document_to_string*() */
+	buf = fy_emit_document_to_string(fyd, FYECF_MODE_FLOW_ONELINE);
+	ck_assert_ptr_ne(buf, NULL);
+	abuf = fy_emit_document_to_string_alloca(fyd, FYECF_MODE_FLOW_ONELINE);
+	ck_assert_ptr_ne(abuf, NULL);
+	ck_assert_str_eq(buf, abuf);
+	free(buf);
+
+	/* fy_emit_node_to_string*() */
+	buf = fy_emit_node_to_string(fy_node_by_path(fy_document_root(fyd), "/foo", FY_NT, FYNWF_DONT_FOLLOW), FYECF_MODE_FLOW_ONELINE);
+	ck_assert_ptr_ne(buf, NULL);
+	abuf = fy_emit_node_to_string_alloca(fy_node_by_path(fy_document_root(fyd), "/foo", FY_NT, FYNWF_DONT_FOLLOW), FYECF_MODE_FLOW_ONELINE);
+	ck_assert_ptr_ne(abuf, NULL);
+	ck_assert_str_eq(buf, abuf);
+	free(buf);
+
+	/* path check eq */
+	buf = fy_node_get_path(fy_node_by_path(fy_document_root(fyd), "/foo", FY_NT, FYNWF_DONT_FOLLOW));
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, "/foo");
+	abuf = fy_node_get_path(fy_node_by_path(fy_document_root(fyd), "/foo", FY_NT, FYNWF_DONT_FOLLOW));
+	ck_assert_ptr_ne(abuf, NULL);
+	ck_assert_str_eq(abuf, "/foo");
+	ck_assert_str_eq(buf, abuf);
+	free(buf);
+
+	/* check that a bad path is "" */
+	abuf = fy_node_get_path_alloca(NULL);
+	ck_assert_ptr_ne(abuf, NULL);
+	ck_assert_str_eq(abuf, "");
+
+	fy_document_destroy(fyd);
+
+}
+END_TEST
+
 TCase *libfyaml_case_core(void)
 {
 	TCase *tc;
@@ -1779,6 +1827,8 @@ TCase *libfyaml_case_core(void)
 	tcase_add_test(tc, manual_anchor_removal);
 
 	tcase_add_test(tc, manual_block_flow_mix);
+
+	tcase_add_test(tc, alloca_check);
 
 	return tc;
 }

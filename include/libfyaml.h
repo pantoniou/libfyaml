@@ -36,6 +36,8 @@ extern "C" {
 #include <stddef.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
+#include <alloca.h>
 
 /* opaque types for the user */
 struct fy_token;
@@ -63,6 +65,42 @@ struct fy_diag;
 #else
 #define FY_EXPORT /* nothing */
 #define FY_DEPRECATED /* nothing */
+#endif
+
+/* make a copy of an allocated string and return it on stack
+ * note that this is a convenience, and should not be called
+ * in a loop. The string is always '\0' terminated.
+ * If the _str pointer is NULL, then NULL will be returned
+ */
+#ifndef FY_ALLOCA_COPY_FREE
+#define FY_ALLOCA_COPY_FREE(_str, _len)				\
+        ({							\
+                char *__str = (_str), *__stra = NULL;		\
+                size_t __len = (size_t)(_len);			\
+								\
+		if (__str) {					\
+			if (__len == FY_NT) 			\
+				__len = strlen(__str);		\
+			__stra = alloca(__len + 1);		\
+			memcpy(__stra, __str, __len);		\
+			__stra[__len] = '\0';			\
+			free(__str);				\
+		}						\
+                (const char *)__stra;				\
+        })
+#endif
+
+/* same as above but when _str == NULL return "" */
+#ifndef FY_ALLOCA_COPY_FREE_NO_NULL
+#define FY_ALLOCA_COPY_FREE_NO_NULL(_str, _len)			\
+        ({							\
+                const char *__strb;				\
+								\
+		__strb = FY_ALLOCA_COPY_FREE(_str, _len);	\
+		if (!__strb)					\
+			__strb = "";				\
+		__strb;						\
+        })
 #endif
 
 /**
@@ -1515,6 +1553,9 @@ fy_emit_document_to_string(struct fy_document *fyd,
 			   enum fy_emitter_cfg_flags flags)
 	FY_EXPORT;
 
+#define fy_emit_document_to_string_alloca(_fyd, _flags) \
+	FY_ALLOCA_COPY_FREE(fy_emit_document_to_string((_fyd), (_flags)), FY_NT)
+
 /**
  * fy_emit_node_to_buffer() - Emit a node (recursively) to a buffer
  *
@@ -1550,6 +1591,9 @@ fy_emit_node_to_buffer(struct fy_node *fyn, enum fy_emitter_cfg_flags flags,
 char *
 fy_emit_node_to_string(struct fy_node *fyn, enum fy_emitter_cfg_flags flags)
 	FY_EXPORT;
+
+#define fy_emit_node_to_string_alloca(_fyn, _flags) \
+	FY_ALLOCA_COPY_FREE(fy_emit_node_to_string((_fyn), (_flags)), FY_NT)
 
 /**
  * fy_node_copy() - Copy a node, associating the new node with the given document
@@ -2358,6 +2402,9 @@ char *
 fy_node_get_path(struct fy_node *fyn)
 	FY_EXPORT;
 
+#define fy_node_get_path_alloca(_fyn) \
+	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_path((_fyn)), FY_NT)
+
 /**
  * fy_node_get_parent() - Get the parent node of a node
  *
@@ -2391,6 +2438,9 @@ char *
 fy_node_get_parent_address(struct fy_node *fyn)
 	FY_EXPORT;
 
+#define fy_node_get_parent_address_alloca(_fyn) \
+	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_parent_address((_fyn)), FY_NT)
+
 /**
  * fy_node_get_path_relative_to() - Get a path address of a node
  *                                  relative to one of it's parents
@@ -2409,6 +2459,9 @@ fy_node_get_parent_address(struct fy_node *fyn)
 char *
 fy_node_get_path_relative_to(struct fy_node *fyn_parent, struct fy_node *fyn)
 	FY_EXPORT;
+
+#define fy_node_get_path_relative_to_alloca(_fynp, _fyn) \
+	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_path_relative_to((_fynp), (_fyn)), FY_NT)
 
 /**
  * fy_node_get_reference() - Get a textual reference to a node
@@ -2429,6 +2482,9 @@ fy_node_get_path_relative_to(struct fy_node *fyn_parent, struct fy_node *fyn)
 char *
 fy_node_get_reference(struct fy_node *fyn)
 	FY_EXPORT;
+
+#define fy_node_get_reference_alloca(_fyn) \
+	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_reference((_fyn)), FY_NT)
 
 /**
  * fy_node_create_reference() - Create an alias reference node
@@ -2470,6 +2526,9 @@ fy_node_create_reference(struct fy_node *fyn)
 char *
 fy_node_get_relative_reference(struct fy_node *fyn_base, struct fy_node *fyn)
 	FY_EXPORT;
+
+#define fy_node_get_relative_reference_alloca(_fynb, _fyn) \
+	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_relative_reference((_fynb), (_fyn)), FY_NT)
 
 /**
  * fy_node_create_relative_reference() - Create an alias reference node
