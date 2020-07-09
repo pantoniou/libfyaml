@@ -2411,6 +2411,86 @@ fy_node_get_path_relative_to(struct fy_node *fyn_parent, struct fy_node *fyn)
 	FY_EXPORT;
 
 /**
+ * fy_node_get_reference() - Get a textual reference to a node
+ *
+ * Retrieve the given node's textual reference. If the node
+ * contains an anchor the expression that references the anchor
+ * will be returned, otherwise an absolute path reference relative
+ * to the root of the document will be returned.
+ *
+ * The address is dynamically allocated and should be freed when
+ * you're done with it.
+ *
+ * @fyn: The node
+ *
+ * Returns:
+ * The node's text reference.
+ */
+char *
+fy_node_get_reference(struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
+ * fy_node_create_reference() - Create an alias reference node
+ *
+ * Create an alias node reference. If the node
+ * contains an anchor the expression that references the alias will
+ * use the anchor, otherwise an absolute path reference relative
+ * to the root of the document will be created.
+ *
+ * @fyn: The node
+ *
+ * Returns:
+ * An alias node referencing the argument node
+ */
+struct fy_node *
+fy_node_create_reference(struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
+ * fy_node_get_relative_reference() - Get a textual reference to a node
+ * 				      relative to a base node.
+ *
+ * Retrieve the given node's textual reference as generated using
+ * another parent (or grand parent) as a base.
+ * If the node contains an anchor the expression that references the anchor
+ * will be returned.
+ * If the base node contains an anchor the reference will be relative to it
+ * otherwise an absolute path reference will be returned.
+ *
+ * The address is dynamically allocated and should be freed when
+ * you're done with it.
+ *
+ * @fyn_base: The base node
+ * @fyn: The node
+ *
+ * Returns:
+ * The node's text reference.
+ */
+char *
+fy_node_get_relative_reference(struct fy_node *fyn_base, struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
+ * fy_node_create_relative_reference() - Create an alias reference node
+ *
+ * Create a relative alias node reference using
+ * another parent (or grand parent) as a base.
+ * If the node contains an anchor the alias will reference the anchor.
+ * If the base node contains an anchor the alias will be relative to it
+ * otherwise an absolute path reference will be created.
+ *
+ * @fyn_base: The base node
+ * @fyn: The node
+ *
+ * Returns:
+ * An alias node referencing the argument node relative to the base
+ */
+struct fy_node *
+fy_node_create_relative_reference(struct fy_node *fyn_base, struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
  * fy_node_create_scalar() - Create a scalar node.
  *
  * Create a scalar node using the provided memory area as input.

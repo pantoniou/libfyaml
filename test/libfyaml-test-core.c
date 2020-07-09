@@ -436,7 +436,7 @@ START_TEST(doc_nearest_anchor)
 	struct fy_node *fyn, *fyn_root, *fyn_foo, *fyn_notfoo, *fyn_bar, *fyn_baz;
 
 	/* build document */
-	fyd = fy_document_build_from_string(NULL, 
+	fyd = fy_document_build_from_string(NULL,
 		"--- &r\n"
 		"  foo: &f\n"
 		"    bar: [ 0, two, baz: what ]\n"
@@ -475,6 +475,162 @@ START_TEST(doc_nearest_anchor)
 	fy_document_destroy(fyd);
 }
 END_TEST
+
+START_TEST(doc_references)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn, *fyn_ref, *fyn_root, *fyn_foo, *fyn_notfoo, *fyn_bar, *fyn_baz;
+	char *path;
+
+	/* build document */
+	fyd = fy_document_build_from_string(NULL,
+		"---\n"
+		"  foo: &f\n"
+		"    bar: [ 0, two, baz: what ]\n"
+		"    frob: true\n"
+		"  notfoo: false\n"
+		, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn_root = fy_document_root(fyd);
+	ck_assert_ptr_ne(fyn_root, NULL);
+
+	fyn_foo = fy_node_by_path(fyn_root, "/foo", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_foo, NULL);
+
+	fyn_notfoo = fy_node_by_path(fyn_root, "/notfoo", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_notfoo, NULL);
+
+	fyn_bar = fy_node_by_path(fyn_root, "/foo/bar", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_bar, NULL);
+
+	fyn_baz = fy_node_by_path(fyn_root, "/foo/bar/2/baz", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_baz, NULL);
+
+	/* get reference to root */
+	path = fy_node_get_reference(fyn_root);
+	ck_assert_ptr_ne(path, NULL);
+	ck_assert_str_eq(path, "*/");
+	free(path);
+
+	/* get reference to /foo */
+	path = fy_node_get_reference(fyn_foo);
+	ck_assert_ptr_ne(path, NULL);
+	ck_assert_str_eq(path, "*f");
+	free(path);
+
+	/* get reference to /notfoo */
+	path = fy_node_get_reference(fyn_notfoo);
+	ck_assert_ptr_ne(path, NULL);
+	ck_assert_str_eq(path, "*/notfoo");
+	free(path);
+
+	/* get reference to /foo/bar/2/baz */
+	path = fy_node_get_reference(fyn_baz);
+	ck_assert_ptr_ne(path, NULL);
+	ck_assert_str_eq(path, "*/foo/bar/2/baz");
+	free(path);
+
+	/* create reference to root and verify it points there */
+	fyn_ref = fy_node_create_reference(fyn_root);
+	ck_assert_ptr_ne(fyn_ref, NULL);
+	fyn = fy_node_resolve_alias(fyn_ref);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_ptr_eq(fyn, fyn_root);
+	fy_node_free(fyn_ref);
+
+	/* get reference to /foo */
+	fyn_ref = fy_node_create_reference(fyn_foo);
+	ck_assert_ptr_ne(path, NULL);
+	fyn = fy_node_resolve_alias(fyn_ref);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_ptr_eq(fyn, fyn_foo);
+	fy_node_free(fyn_ref);
+
+	/* get reference to /notfoo */
+	fyn_ref = fy_node_create_reference(fyn_notfoo);
+	ck_assert_ptr_ne(path, NULL);
+	fyn = fy_node_resolve_alias(fyn_ref);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_ptr_eq(fyn, fyn_notfoo);
+	fy_node_free(fyn_ref);
+
+	/* get reference to /bar */
+	fyn_ref = fy_node_create_reference(fyn_bar);
+	ck_assert_ptr_ne(path, NULL);
+	fyn = fy_node_resolve_alias(fyn_ref);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_ptr_eq(fyn, fyn_bar);
+	fy_node_free(fyn_ref);
+
+	/* get reference to /baz */
+	fyn_ref = fy_node_create_reference(fyn_baz);
+	ck_assert_ptr_ne(path, NULL);
+	fyn = fy_node_resolve_alias(fyn_ref);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_ptr_eq(fyn, fyn_baz);
+	fy_node_free(fyn_ref);
+
+	/* get relative reference to /foo starting at / */
+	path = fy_node_get_relative_reference(fyn_root, fyn_foo);
+	ck_assert_ptr_ne(path, NULL);
+	ck_assert_str_eq(path, "*/foo");
+	free(path);
+
+	/* get relative reference to /foo/bar/2/baz starting at / */
+	path = fy_node_get_relative_reference(fyn_root, fyn_baz);
+	ck_assert_ptr_ne(path, NULL);
+	ck_assert_str_eq(path, "*/foo/bar/2/baz");
+	free(path);
+
+	/* get relative reference to /foo/bar/2/baz starting at /foo */
+	path = fy_node_get_relative_reference(fyn_foo, fyn_baz);
+	ck_assert_ptr_ne(path, NULL);
+	ck_assert_str_eq(path, "*f/bar/2/baz");
+	free(path);
+
+	/* get relative reference to /notfoo at /foo (will return absolute) */
+	path = fy_node_get_relative_reference(fyn_foo, fyn_notfoo);
+	ck_assert_ptr_ne(path, NULL);
+	ck_assert_str_eq(path, "*/notfoo");
+	free(path);
+
+	/* create relative reference to /foo starting at / */
+	fyn_ref = fy_node_create_relative_reference(fyn_root, fyn_foo);
+	ck_assert_ptr_ne(fyn_ref, NULL);
+	fyn = fy_node_resolve_alias(fyn_ref);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_ptr_eq(fyn, fyn_foo);
+	fy_node_free(fyn_ref);
+
+	/* create relative reference to /foo/bar/2/baz starting at / */
+	fyn_ref = fy_node_create_relative_reference(fyn_root, fyn_baz);
+	ck_assert_ptr_ne(fyn_ref, NULL);
+	fyn = fy_node_resolve_alias(fyn_ref);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_ptr_eq(fyn, fyn_baz);
+	fy_node_free(fyn_ref);
+
+	/* create relative reference to /foo/bar/2/baz starting at /foo */
+	fyn_ref = fy_node_create_relative_reference(fyn_foo, fyn_baz);
+	ck_assert_ptr_ne(fyn_ref, NULL);
+	fyn = fy_node_resolve_alias(fyn_ref);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_ptr_eq(fyn, fyn_baz);
+	fy_node_free(fyn_ref);
+
+	/* create relative reference to /notfoo starting at /foo (will use absolute) */
+	fyn_ref = fy_node_create_relative_reference(fyn_foo, fyn_notfoo);
+	ck_assert_ptr_ne(fyn_ref, NULL);
+	fyn = fy_node_resolve_alias(fyn_ref);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_ptr_eq(fyn, fyn_notfoo);
+	fy_node_free(fyn_ref);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 
 START_TEST(doc_create_empty_seq1)
 {
@@ -1535,6 +1691,7 @@ TCase *libfyaml_case_core(void)
 	tcase_add_test(tc, doc_path_parent);
 
 	tcase_add_test(tc, doc_nearest_anchor);
+	tcase_add_test(tc, doc_references);
 
 	tcase_add_test(tc, doc_create_empty_seq1);
 	tcase_add_test(tc, doc_create_empty_seq2);

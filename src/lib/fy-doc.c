@@ -4127,6 +4127,125 @@ regular_path_lookup:
 	return fy_node_by_path_internal(fyn, path, len, flags);
 }
 
+static char *
+fy_node_get_reference_internal(struct fy_node *fyn_base, struct fy_node *fyn, bool near)
+{
+	struct fy_anchor *fya;
+	char *path, *path2;
+	const char *text;
+	size_t len;
+
+	if (!fyn)
+		return NULL;
+
+	/* if the node has an anchor use it (ie return *foo) */
+	if (!fyn_base && (fya = fy_node_get_anchor(fyn)) != NULL) {
+		text = fy_anchor_get_text(fya, &len);
+		if (!text)
+			return NULL;
+		path2 = malloc(1 + len + 1);
+		if (!path2)
+			return NULL;
+		path2[0] = '*';
+		memcpy(path2 + 1, text, len);
+		path2[len + 1] = '\0';
+
+	} else {
+
+		fya = fyn_base ? fy_node_get_anchor(fyn_base) : NULL;
+		if (!fya && near)
+			fya = fy_node_get_nearest_anchor(fyn);
+		if (!fya) {
+			/* no anchor, direct reference (ie return *\/foo\/bar */
+			path = fy_node_get_path(fyn);
+			if (!path)
+				return NULL;
+			path2 = malloc(1 + strlen(path) + 1);
+			if (!path2)
+				return NULL;
+			path2[0] = '*';
+			strcpy(path2 + 1, path);
+			free(path);
+		} else {
+			text = fy_anchor_get_text(fya, &len);
+			if (!text)
+				return NULL;
+			path = fy_node_get_path_relative_to(fy_anchor_node(fya), fyn);
+			if (path) {
+				/* we have a relative path */
+				path2 = malloc(1 + len + 1 + strlen(path) + 1);
+				path2[0] = '*';
+				memcpy(path2 + 1, text, len);
+				path2[len + 1] = '/';
+				memcpy(1 + path2 + len + 1, path, strlen(path) + 1);
+				free(path);
+			} else {
+				/* absolute path */
+				path = fy_node_get_path(fyn);
+				if (!path)
+					return NULL;
+				path2 = malloc(1 + strlen(path) + 1);
+				path2[0] = '*';
+				strcpy(path2 + 1, path);
+				free(path);
+			}
+		}
+	}
+
+	return path2;
+}
+
+char *fy_node_get_reference(struct fy_node *fyn)
+{
+	return fy_node_get_reference_internal(NULL, fyn, false);
+}
+
+struct fy_node *fy_node_create_reference(struct fy_node *fyn)
+{
+	struct fy_node *fyn_ref;
+	char *path, *alias;
+
+	path = fy_node_get_reference(fyn);
+	if (!path)
+		return NULL;
+
+	alias = path;
+	if (*alias == '*')
+		alias++;
+
+	fyn_ref = fy_node_create_alias_copy(fy_node_document(fyn), alias, FY_NT);
+
+	free(path);
+
+	return fyn_ref;
+}
+
+char *fy_node_get_relative_reference(struct fy_node *fyn_base, struct fy_node *fyn)
+{
+	return fy_node_get_reference_internal(fyn_base, fyn, false);
+}
+
+struct fy_node *fy_node_create_relative_reference(struct fy_node *fyn_base, struct fy_node *fyn)
+{
+	struct fy_node *fyn_ref;
+	char *path, *alias;
+
+	path = fy_node_get_relative_reference(fyn_base, fyn);
+	if (!path)
+		return NULL;
+
+	alias = path;
+	if (*alias == '*')
+		alias++;
+
+	fyn_ref = fy_node_create_alias_copy(fy_node_document(fyn), alias, FY_NT);
+
+	free(path);
+
+	return fyn_ref;
+}
+
+
 bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
 		       enum fy_node_walk_flags flags,
 		       struct fy_node_walk_ctx *ctx)
