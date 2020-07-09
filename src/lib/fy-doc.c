@@ -4190,24 +4190,31 @@ fy_node_get_reference_internal(struct fy_node *fyn_base, struct fy_node *fyn, bo
 			text = fy_anchor_get_text(fya, &len);
 			if (!text)
 				return NULL;
-			path = fy_node_get_path_relative_to(fy_anchor_node(fya), fyn);
-			if (path) {
-				/* we have a relative path */
-				path2 = malloc(1 + len + 1 + strlen(path) + 1);
+			if (fy_anchor_node(fya) != fyn) {
+				path = fy_node_get_path_relative_to(fy_anchor_node(fya), fyn);
+				if (path) {
+					/* we have a relative path */
+					path2 = malloc(1 + len + 1 + strlen(path) + 1);
+					path2[0] = '*';
+					memcpy(path2 + 1, text, len);
+					path2[len + 1] = '/';
+					memcpy(1 + path2 + len + 1, path, strlen(path) + 1);
+					free(path);
+				} else {
+					/* absolute path */
+					path = fy_node_get_path(fyn);
+					if (!path)
+						return NULL;
+					path2 = malloc(1 + strlen(path) + 1);
+					path2[0] = '*';
+					strcpy(path2 + 1, path);
+					free(path);
+				}
+			} else {
+				path2 = malloc(1 + len + 1);
 				path2[0] = '*';
 				memcpy(path2 + 1, text, len);
-				path2[len + 1] = '/';
-				memcpy(1 + path2 + len + 1, path, strlen(path) + 1);
-				free(path);
-			} else {
-				/* absolute path */
-				path = fy_node_get_path(fyn);
-				if (!path)
-					return NULL;
-				path2 = malloc(1 + strlen(path) + 1);
-				path2[0] = '*';
-				strcpy(path2 + 1, path);
-				free(path);
+				path2[len + 1] = '\0';
 			}
 		}
 	}
