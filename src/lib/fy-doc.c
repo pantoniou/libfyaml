@@ -323,6 +323,26 @@ struct fy_anchor *fy_node_get_nearest_anchor(struct fy_node *fyn)
 	return fya;
 }
 
+struct fy_node *fy_node_get_nearest_child_of(struct fy_node *fyn_base,
+					     struct fy_node *fyn)
+{
+        struct fy_node *fynp;
+
+        if (!fyn)
+                return NULL;
+        if (!fyn_base)
+                fyn_base = fy_document_root(fy_node_document(fyn));
+        if (!fyn_base)
+                return NULL;
+
+        /* move up until we hit a node that's a child of fyn_base */
+        fynp = fyn;
+        while (fyn && (fynp = fy_node_get_parent(fyn)) != NULL && fyn_base != fynp)
+                fyn = fynp;
+
+        return fyn;
+}
+
 void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 {
 	struct fy_node *fyn;
@@ -4244,7 +4264,6 @@ struct fy_node *fy_node_create_relative_reference(struct fy_node *fyn_base, stru
 
 	return fyn_ref;
 }
-
 
 bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
 		       enum fy_node_walk_flags flags,

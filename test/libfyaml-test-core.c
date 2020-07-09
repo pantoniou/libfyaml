@@ -631,6 +631,50 @@ START_TEST(doc_references)
 }
 END_TEST
 
+START_TEST(doc_nearest_child_of)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn, *fyn_root, *fyn_foo, *fyn_bar, *fyn_baz;
+
+	/* build document */
+	fyd = fy_document_build_from_string(NULL,
+		"foo:\n"
+		"  bar:\n"
+		"    barz: [ zero, baz: true ]\n"
+		"  frooz: notfoo\n"
+		, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn_root = fy_document_root(fyd);
+	ck_assert_ptr_ne(fyn_root, NULL);
+
+	fyn_foo = fy_node_by_path(fyn_root, "/foo", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_foo, NULL);
+
+	fyn_bar = fy_node_by_path(fyn_root, "/foo/bar", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_bar, NULL);
+
+	fyn_baz = fy_node_by_path(fyn_root, "/foo/bar/barz/1/baz", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_baz, NULL);
+
+	/* nearest child to the root of /foo is /foo */
+	fyn = fy_node_get_nearest_child_of(fyn_root, fyn_foo);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_ptr_eq(fyn, fyn_foo);
+
+	/* nearest child to the root of /foo/bar/barz/1/baz is /foo */
+	fyn = fy_node_get_nearest_child_of(fyn_root, fyn_baz);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_ptr_eq(fyn, fyn_foo);
+
+	/* nearest child to foo of /foo/bar/barz/1/baz is /foo/bar */
+	fyn = fy_node_get_nearest_child_of(fyn_foo, fyn_baz);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_ptr_eq(fyn, fyn_bar);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
 
 START_TEST(doc_create_empty_seq1)
 {
@@ -1692,6 +1736,7 @@ TCase *libfyaml_case_core(void)
 
 	tcase_add_test(tc, doc_nearest_anchor);
 	tcase_add_test(tc, doc_references);
+	tcase_add_test(tc, doc_nearest_child_of);
 
 	tcase_add_test(tc, doc_create_empty_seq1);
 	tcase_add_test(tc, doc_create_empty_seq2);

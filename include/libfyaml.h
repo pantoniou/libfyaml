@@ -3617,6 +3617,23 @@ fy_node_get_nearest_anchor(struct fy_node *fyn)
 	FY_EXPORT;
 
 /**
+ * fy_node_get_nearest_child_of() - Get the nearest node which is a
+ * 				    child of the base
+ *
+ * Retrieve the nearest node which is a child of fyn_base starting
+ * at fyn and working upwards.
+ *
+ * @fyn_base: The base node
+ * @fyn: The node to start from
+ *
+ * Returns:
+ * The nearest child of the base if there's one, or NULL otherwise
+ */
+struct fy_node *
+fy_node_get_nearest_child_of(struct fy_node *fyn_base, struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
  * fy_node_create_alias() - Create an alias node
  *
  * Create an alias on the given document
