@@ -2226,6 +2226,26 @@ fy_node_resolve_alias(struct fy_node *fyn)
 	FY_EXPORT;
 
 /**
+ * fy_node_dereference() - Dereference a single alias node
+ *
+ * Dereference an alias node. This is different than resolution
+ * in that will only perform a single alias follow call and
+ * it will fail if the input is not an alias.
+ * This call performs cycle detection
+ * and excessive redirections checks so it's safe to call in any
+ * context.
+ *
+ * @fyn: The alias node to be dereferenced
+ *
+ * Returns:
+ * The dereferenced alias node, or NULL if either fyn is not an alias, or
+ * resolution fails due to a graph cycle.
+ */
+struct fy_node *
+fy_node_dereference(struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
  * fy_node_free() - Free a node
  *
  * Recursively frees the given node releasing the memory it uses, removing

@@ -3678,6 +3678,9 @@ fy_node_follow_aliases(struct fy_node *fyn, enum fy_node_walk_flags flags, bool 
 		}
 
 		fyn = fy_node_follow_alias(fyn, flags);
+
+		if (single)
+			break;
 	}
 	fy_node_walk_mark_end(ctx);
 
@@ -3689,6 +3692,16 @@ struct fy_node *fy_node_resolve_alias(struct fy_node *fyn)
 	return fy_node_follow_aliases(fyn,
 			FYNWF_FOLLOW | FYNWF_MAXDEPTH_DEFAULT |
 			FYNWF_MARKER_DEFAULT, false);
+}
+
+struct fy_node *fy_node_dereference(struct fy_node *fyn)
+{
+	if (!fyn || !fy_node_is_alias(fyn))
+		return NULL;
+
+	return fy_node_follow_aliases(fyn,
+			FYNWF_FOLLOW | FYNWF_MAXDEPTH_DEFAULT |
+			FYNWF_MARKER_DEFAULT, true);
 }
 
 static struct fy_node *
