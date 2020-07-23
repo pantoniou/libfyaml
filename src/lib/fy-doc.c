@@ -3498,9 +3498,9 @@ struct fy_node_pair *fy_node_mapping_get_by_index(struct fy_node *fyn, int index
 	return fynpi;
 }
 
-struct fy_node *
-fy_node_mapping_lookup_value_by_simple_key(struct fy_node *fyn,
-					   const char *key, size_t len)
+struct fy_node_pair *
+fy_node_mapping_lookup_pair_by_simple_key(struct fy_node *fyn,
+					  const char *key, size_t len)
 {
 	struct fy_node_pair *fynpi;
 	struct fy_node *fyn_scalar;
@@ -3521,7 +3521,7 @@ fy_node_mapping_lookup_value_by_simple_key(struct fy_node *fyn,
 		fy_node_free(fyn_scalar);
 
 		if (fynpi)
-			return fynpi->value;
+			return fynpi;
 	} else {
 		for (fynpi = fy_node_pair_list_head(&fyn->mapping); fynpi;
 			fynpi = fy_node_pair_next(&fyn->mapping, fynpi)) {
@@ -3530,11 +3530,21 @@ fy_node_mapping_lookup_value_by_simple_key(struct fy_node *fyn,
 				continue;
 
 			if (!fy_token_memcmp(fynpi->key->scalar, key, len))
-				return fynpi->value;
+				return fynpi;
 		}
 	}
 
 	return NULL;
+}
+
+struct fy_node *
+fy_node_mapping_lookup_value_by_simple_key(struct fy_node *fyn,
+					   const char *key, size_t len)
+{
+	struct fy_node_pair *fynp;
+
+	fynp = fy_node_mapping_lookup_pair_by_simple_key(fyn, key, len);
+	return fynp ? fy_node_pair_value(fynp) : NULL;
 }
 
 struct fy_node *fy_node_mapping_lookup_value_by_key(struct fy_node *fyn, struct fy_node *fyn_key)
