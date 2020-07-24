@@ -520,9 +520,7 @@ void fy_emit_token_comment(struct fy_emitter *emit, struct fy_token *fyt, int fl
 	if (len < 0)
 		return;
 
-	text = malloc(len + 1);
-	if (!text)
-		return;
+	text = alloca(len + 1);
 
 	if (placement == fycp_top || placement == fycp_bottom) {
 		fy_emit_write_indent(emit, indent);
@@ -538,8 +536,6 @@ void fy_emit_token_comment(struct fy_emitter *emit, struct fy_token *fyt, int fl
 		fy_emit_write_indent(emit, indent);
 		emit->flags |= FYEF_WHITESPACE;
 	}
-
-	free(text);
 }
 
 void fy_emit_node_comment(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent,
