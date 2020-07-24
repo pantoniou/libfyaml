@@ -274,17 +274,10 @@ int fy_node_set_anchor_copy(struct fy_node *fyn, const char *text, size_t len)
 
 int fy_node_set_vanchorf(struct fy_node *fyn, const char *fmt, va_list ap)
 {
-	int ret;
-	char *buf;
-
 	if (!fyn || !fmt)
 		return -1;
 
-	ret = vasprintf(&buf, fmt, ap);
-	if (ret == -1)
-		return -1;
-
-	return fy_document_set_anchor_internal(fyn->fyd, fyn, buf, ret, FYDSAF_MALLOCED);
+	return fy_document_set_anchor_internal(fyn->fyd, fyn, alloca_vsprintf(fmt, ap), FY_NT, FYDSAF_COPY);
 }
 
 int fy_node_set_anchorf(struct fy_node *fyn, const char *fmt, ...)
@@ -4413,9 +4406,9 @@ char *fy_node_get_parent_address(struct fy_node *fyn)
 	struct fy_node *parent, *fyni;
 	struct fy_node_pair *fynp;
 	char *path = NULL;
-	int idx, ret;
 	const char *str;
 	size_t len;
+	int idx;
 
 	if (!fyn || !fyn->parent)
 		return NULL;
@@ -4429,33 +4422,36 @@ char *fy_node_get_parent_address(struct fy_node *fyn)
 				fyni = fy_node_next(&parent->sequence, fyni))
 			idx++;
 
-		if (fyni) {
-			ret = asprintf(&path, "%d", idx);
-			if (ret == -1)
-				path = NULL;
-		}
+		if (!fyni)
+			return NULL;
 
-	} else if (fy_node_is_mapping(parent)) {
+		path = strdup(alloca_sprintf("%d", idx));
+	}
+
+	if (fy_node_is_mapping(parent)) {
 		idx = 0;
 		for (fynp = fy_node_pair_list_head(&parent->mapping); fynp && fynp->value != fyn;
 				fynp = fy_node_pair_next(&parent->mapping, fynp))
 			idx++;
 
-		if (fynp) {
-			/* if key is a plain scalar try to not use a complex style (even for quoted) */
-			if (fynp->key && fy_node_is_scalar(fynp->key) && !fy_node_is_alias(fynp->key) &&
-					(str = fy_token_get_direct_output(fynp->key->scalar, &len)) != NULL) {
-				path = malloc(len + 1);
-				if (path) {
-					memcpy(path, str, len);
-					path[len] = '\0';
-				}
-			} else
-				path = fy_emit_node_to_string(fynp->key,
-						FYECF_MODE_FLOW_ONELINE | FYECF_WIDTH_INF |
-						FYECF_STRIP_LABELS	| FYECF_STRIP_TAGS);
-		}
+		if (!fynp)
+			return NULL;
 
+		/* if key is a plain scalar try to not use a complex style (even for quoted) */
+		if (fynp->key && fy_node_is_scalar(fynp->key) && !fy_node_is_alias(fynp->key) &&
+				(str = fy_token_get_direct_output(fynp->key->scalar, &len)) != NULL) {
+
+			path = malloc(len + 1);
+			if (!path)
+				return NULL;
+
+			memcpy(path, str, len);
+			path[len] = '\0';
+
+		} else /* something complex, emit it */
+			path = fy_emit_node_to_string(fynp->key,
+				FYECF_MODE_FLOW_ONELINE | FYECF_WIDTH_INF |
+				FYECF_STRIP_LABELS	| FYECF_STRIP_TAGS);
 	}
 
 	return path;
@@ -4475,8 +4471,10 @@ char *fy_node_get_path(struct fy_node *fyn)
 		return NULL;
 
 	/* easy on the root */
-	if (!fyn->parent)
-		return strdup("/");
+	if (!fyn->parent) {
+		path_mem = strdup("/");
+		return path_mem;
+	}
 
 	track = NULL;
 	len = 0;
@@ -4516,7 +4514,7 @@ char *fy_node_get_path(struct fy_node *fyn)
 
 char *fy_node_get_path_relative_to(struct fy_node *fyn_parent, struct fy_node *fyn)
 {
-	char *path, *ppath, *path2;
+	char *path, *ppath, *path2, *path_ret;
 	size_t pathlen, ppathlen;
 	struct fy_node *ni, *nj;
 
@@ -4573,7 +4571,8 @@ char *fy_node_get_path_relative_to(struct fy_node *fyn_parent, struct fy_node *f
 			break;
 	}
 
-	return strdup(path);
+	path_ret = strdup(path);
+	return path_ret;
 }
 
 char *fy_node_get_short_path(struct fy_node *fyn)
@@ -4582,8 +4581,8 @@ char *fy_node_get_short_path(struct fy_node *fyn)
 	struct fy_anchor *fya;
 	const char *text;
 	size_t len;
-	char *str;
-	int ret;
+	const char *str;
+	char *path;
 
 	if (!fyn)
 		return NULL;
@@ -4599,24 +4598,14 @@ char *fy_node_get_short_path(struct fy_node *fyn)
 	if (!text)
 		return NULL;
 
-	if (fyn_anchor == fyn) {
-		/* this node has the anchor */
-		str = malloc(1 + len + 1);
-		if (!str)
-			return NULL;
-		str[0] = '*';
-		memcpy(str + 1, text, len);
-		str[len + 1] = '\0';
-	} else {
-		/* anchor on a parent */
-		ret = asprintf(&str, "*%.*s/%s",
-				(int)len, text,
+	if (fyn_anchor == fyn)
+		str = alloca_sprintf("*%.*s", (int)len, text);
+	else
+		str = alloca_sprintf("*%.*s/%s", (int)len, text,
 				fy_node_get_path_relative_to_alloca(fyn_anchor, fyn));
-		if (ret < 0)
-			return NULL;
-	}
 
-	return str;
+	path = strdup(str);
+	return path;
 }
 
 static struct fy_node *
@@ -4916,17 +4905,10 @@ struct fy_node *fy_node_create_alias_copy(struct fy_document *fyd, const char *d
 
 struct fy_node *fy_node_create_vscalarf(struct fy_document *fyd, const char *fmt, va_list ap)
 {
-	int ret;
-	char *buf;
-
 	if (!fyd || !fmt)
 		return NULL;
 
-	ret = vasprintf(&buf, fmt, ap);
-	if (ret == -1)
-		return NULL;
-
-	return fy_node_create_scalar_internal(fyd, buf, ret, FYNCSIF_MALLOCED);
+	return fy_node_create_scalar_internal(fyd, alloca_vsprintf(fmt, ap), FY_NT, FYNCSIF_COPY);
 }
 
 struct fy_node *fy_node_create_scalarf(struct fy_document *fyd, const char *fmt, ...)
