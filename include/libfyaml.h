@@ -2484,6 +2484,40 @@ fy_node_get_path_relative_to(struct fy_node *fyn_parent, struct fy_node *fyn)
 	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_path_relative_to((_fynp), (_fyn)), FY_NT)
 
 /**
+ * fy_node_get_short_path() - Get a path address of a node in the shortest path
+ * 			      possible.
+ *
+ * Retrieve the given node's short path address relative to the
+ * closest anchor (either on this node, or it's parent).
+ * If no such parent is found then returns the absolute path
+ * from the start of the document.
+ *
+ * For example:
+ * --- &foo
+ * foo: &bar
+ *   bar
+ * baz
+ *
+ * - The short path of /foo is *foo
+ * - The short path of /foo/bar is *bar
+ * - The short path of /baz is *foo/baz
+ *
+ * The address is dynamically allocated and should be freed when
+ * you're done with it.
+ *
+ * @fyn: The node
+ *
+ * Returns:
+ * The shortest path describing the node
+ */
+char *
+fy_node_get_short_path(struct fy_node *fyn)
+	FY_EXPORT;
+
+#define fy_node_get_short_path_alloca(_fyn) \
+	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_short_path((_fyn)), FY_NT)
+
+/**
  * fy_node_get_reference() - Get a textual reference to a node
  *
  * Retrieve the given node's textual reference. If the node

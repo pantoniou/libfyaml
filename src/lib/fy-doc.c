@@ -4549,6 +4549,49 @@ char *fy_node_get_path_relative_to(struct fy_node *fyn_parent, struct fy_node *f
 	return strdup(path);
 }
 
+char *fy_node_get_short_path(struct fy_node *fyn)
+{
+	struct fy_node *fyn_anchor;
+	struct fy_anchor *fya;
+	const char *text;
+	size_t len;
+	char *str;
+	int ret;
+
+	if (!fyn)
+		return NULL;
+
+	/* get the nearest anchor traversing upwards */
+	fya = fy_node_get_nearest_anchor(fyn);
+	if (!fya)
+		return fy_node_get_path(fyn);
+
+	fyn_anchor = fy_anchor_node(fya);
+
+	text = fy_anchor_get_text(fya, &len);
+	if (!text)
+		return NULL;
+
+	if (fyn_anchor == fyn) {
+		/* this node has the anchor */
+		str = malloc(1 + len + 1);
+		if (!str)
+			return NULL;
+		str[0] = '*';
+		memcpy(str + 1, text, len);
+		str[len + 1] = '\0';
+	} else {
+		/* anchor on a parent */
+		ret = asprintf(&str, "*%.*s/%s",
+				(int)len, text,
+				fy_node_get_path_relative_to_alloca(fyn_anchor, fyn));
+		if (ret < 0)
+			return NULL;
+	}
+
+	return str;
+}
+
 static struct fy_node *
 fy_document_load_node(struct fy_document *fyd, struct fy_parser *fyp,
 		      struct fy_document_state **fydsp)
