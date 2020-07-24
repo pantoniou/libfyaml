@@ -1810,7 +1810,7 @@ START_TEST(alloca_check)
 	buf = fy_node_get_path(fy_node_by_path(fy_document_root(fyd), "/foo", FY_NT, FYNWF_DONT_FOLLOW));
 	ck_assert_ptr_ne(buf, NULL);
 	ck_assert_str_eq(buf, "/foo");
-	abuf = fy_node_get_path(fy_node_by_path(fy_document_root(fyd), "/foo", FY_NT, FYNWF_DONT_FOLLOW));
+	abuf = fy_node_get_path_alloca(fy_node_by_path(fy_document_root(fyd), "/foo", FY_NT, FYNWF_DONT_FOLLOW));
 	ck_assert_ptr_ne(abuf, NULL);
 	ck_assert_str_eq(abuf, "/foo");
 	ck_assert_str_eq(buf, abuf);
