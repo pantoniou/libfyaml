@@ -4458,4 +4458,30 @@ fy_diag_node_override_report(struct fy_diag *diag, struct fy_node *fyn,
 }
 #endif
 
+int
+fy_transaction_start(struct fy_document *fyd)
+	FY_EXPORT;
+
+void
+fy_transaction_abort(struct fy_document *fyd)
+	FY_EXPORT;
+
+int
+fy_transaction_commit(struct fy_document *fyd)
+	FY_EXPORT;
+
+/**
+ * fy_document_transaction_abort_on_error() - Set the behaviour of manual document methods
+ *					      in case on an error
+ *
+ * If abort_on_error is set to true, then any operation the would fail
+ * on an operation of this document will cause a transaction abort.
+ *
+ * @fyd: The document
+ * @do_abort: The state of the assert on error flag
+ */
+void
+fy_document_transaction_abort_on_error(struct fy_document *fyd, bool do_abort)
+	FY_EXPORT;
+
 #endif

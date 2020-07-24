@@ -151,14 +151,29 @@ AC_ARG_ENABLE([network],
 	      AS_HELP_STRING([--disable-network],
 			     [Disable tests requiring network access]))
 
-if test "x$enable_network" != "xno" ; then 
+if test "x$enable_network" != "xno" ; then
 	HAVE_NETWORK=1
 else
 	HAVE_NETWORK=0
-fi	
+fi
 AC_SUBST(HAVE_NETWORK)
 AM_CONDITIONAL([HAVE_NETWORK],
 	       [ test x$HAVE_NETWORK = x1 ])
+
+dnl enable internet available when checking
+AC_ARG_ENABLE([transactions],
+	      AS_HELP_STRING([--disable-transactions],
+			     [Disable document transactional support]))
+
+if test "x$enable_transactions" != "xno" ; then
+	HAVE_TRANSACTIONS=1
+else
+	HAVE_TRANSACTIONS=0
+fi
+AC_SUBST(HAVE_TRANSACTIONS)
+AC_DEFINE_UNQUOTED([HAVE_TRANSACTIONS], [$HAVE_TRANSACTIONS], [Define to 1 if transactions should be available])
+AM_CONDITIONAL([HAVE_TRANSACTIONS],
+	       [ test x$HAVE_TRANSACTIONS = x1 ])
 
 # check for sphinx
 AC_PATH_PROG([SPHINX], [sphinx-build])

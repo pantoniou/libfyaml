@@ -16,6 +16,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <setjmp.h>
 
 #include <libfyaml.h>
 
@@ -101,6 +102,9 @@ struct fy_document {
 	struct fy_parse_cfg parse_cfg;
 	struct fy_node *root;
 	bool parse_error : 1;
+	bool abort_on_error : 1;
+	bool transaction_active : 1;
+	struct fy_document *transaction_fyd;
 
 	struct fy_document *parent;
 	struct fy_document_list children;
@@ -161,5 +165,29 @@ enum fy_parse_cfg_flags fy_document_get_cfg_flags(const struct fy_document *fyd)
 bool fy_document_is_colorized(struct fy_document *fyd);
 bool fy_document_is_accelerated(struct fy_document *fyd);
 bool fy_document_can_be_accelerated(struct fy_document *fyd);
+
+#if defined(HAVE_TRANSACTIONS) && HAVE_TRANSACTIONS
+
+#define FYD_TRANSACTION_ABORT(_fyd) \
+	do { \
+		struct fy_document *__fyd = (_fyd); \
+		if (__fyd && __fyd->transaction_active) \
+			fy_transaction_abort(__fyd); \
+	} while(0)
+
+#define FYN_TRANSACTION_ABORT(_fyn) \
+	do { \
+		struct fy_node *__fyn = (_fyn); \
+		FYD_TRANSACTION_ABORT(__fyn ? __fyn->fyd : NULL); \
+	} while(0)
+
+#else
+
+#define FYD_TRANSACTION_ABORT(_fyd) do { /* nothing */ } while(0)
+
+#define FYN_TRANSACTION_ABORT(_fyn) do { /* nothing */ } while(0)
+
+#endif
+
 
 #endif

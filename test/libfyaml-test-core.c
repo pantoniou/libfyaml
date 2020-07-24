@@ -1826,6 +1826,11 @@ START_TEST(alloca_check)
 }
 END_TEST
 
+START_TEST(transactions)
+{
+}
+END_TEST
+
 TCase *libfyaml_case_core(void)
 {
 	TCase *tc;
@@ -1890,6 +1895,8 @@ TCase *libfyaml_case_core(void)
 	tcase_add_test(tc, manual_block_flow_mix);
 
 	tcase_add_test(tc, alloca_check);
+
+	tcase_add_test(tc, transactions);
 
 	return tc;
 }

@@ -30,7 +30,7 @@ static const struct fy_hash_desc hd_anchor;
 static const struct fy_hash_desc hd_nanchor;
 static const struct fy_hash_desc hd_mapping;
 
-int fy_node_hash_uint(struct fy_node *fyn, unsigned int *hashp);
+static int fy_node_hash_uint(struct fy_node *fyn, unsigned int *hashp);
 
 static struct fy_node *
 fy_node_by_path_internal(struct fy_node *fyn,
@@ -100,8 +100,10 @@ struct fy_anchor *fy_anchor_create(struct fy_document *fyd,
 	struct fy_anchor *fya = NULL;
 
 	fya = malloc(sizeof(*fya));
-	if (!fya)
+	if (!fya) {
+		FYD_TRANSACTION_ABORT(fyd);
 		return NULL;
+	}
 
 	fya->fyn = fyn;
 	fya->anchor = anchor;
@@ -255,29 +257,51 @@ err_out_rc:
 
 int fy_document_set_anchor(struct fy_document *fyd, struct fy_node *fyn, const char *text, size_t len)
 {
-	return fy_document_set_anchor_internal(fyd, fyn, text, len, 0);
+	int ret;
+
+	ret = fy_document_set_anchor_internal(fyd, fyn, text, len, 0);
+	if (ret)
+		FYD_TRANSACTION_ABORT(fyd);
+	return ret;
 }
 
 int fy_node_set_anchor(struct fy_node *fyn, const char *text, size_t len)
 {
+	int ret;
+
 	if (!fyn)
 		return -1;
-	return fy_document_set_anchor_internal(fyn->fyd, fyn, text, len, 0);
+	ret = fy_document_set_anchor_internal(fyn->fyd, fyn, text, len, 0);
+	if (ret)
+		FYN_TRANSACTION_ABORT(fyn);
+	return ret;
 }
 
 int fy_node_set_anchor_copy(struct fy_node *fyn, const char *text, size_t len)
 {
+	int ret;
+
 	if (!fyn)
 		return -1;
-	return fy_document_set_anchor_internal(fyn->fyd, fyn, text, len, FYDSAF_COPY);
+	ret = fy_document_set_anchor_internal(fyn->fyd, fyn, text, len, FYDSAF_COPY);
+	if (ret)
+		FYN_TRANSACTION_ABORT(fyn);
+	return ret;
 }
 
 int fy_node_set_vanchorf(struct fy_node *fyn, const char *fmt, va_list ap)
 {
-	if (!fyn || !fmt)
-		return -1;
+	int ret;
 
-	return fy_document_set_anchor_internal(fyn->fyd, fyn, alloca_vsprintf(fmt, ap), FY_NT, FYDSAF_COPY);
+	if (!fyn || !fmt) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return -1;
+	}
+
+	ret = fy_document_set_anchor_internal(fyn->fyd, fyn, alloca_vsprintf(fmt, ap), FY_NT, FYDSAF_COPY);
+	if (ret)
+		FYN_TRANSACTION_ABORT(fyn);
+	return ret;
 }
 
 int fy_node_set_anchorf(struct fy_node *fyn, const char *fmt, ...)
@@ -493,21 +517,26 @@ fy_document_lookup_anchor(struct fy_document *fyd, const char *anchor, size_t le
 	const char *text;
 	size_t text_len;
 
-	if (!fyd || !anchor)
+	if (!fyd || !anchor) {
+		FYD_TRANSACTION_ABORT(fyd);
 		return NULL;
+	}
 
 	if (len == (size_t)-1)
 		len = strlen(anchor);
 
 	if (fy_document_is_accelerated(fyd)) {
 		fyi = fy_input_from_data(anchor, len, &handle, true);
-		if (!fyi)
+		if (!fyi) {
+			FYD_TRANSACTION_ABORT(fyd);
 			return NULL;
+		}
 
 		fyt = fy_token_create(FYTT_ANCHOR, &handle);
 
 		if (!fyt) {
 			fy_input_unref(fyi);
+			FYD_TRANSACTION_ABORT(fyd);
 			return NULL;
 		}
 
@@ -532,8 +561,10 @@ fy_document_lookup_anchor(struct fy_document *fyd, const char *anchor, size_t le
 	fyal = &fyd->anchors;
 	for (fya = fy_anchor_list_tail(fyal); fya; fya = fy_anchor_prev(fyal, fya)) {
 		text = fy_anchor_get_text(fya, &text_len);
-		if (!text)
+		if (!text) {
+			FYD_TRANSACTION_ABORT(fyd);
 			return NULL;
+		}
 
 		if (len == text_len && !memcmp(anchor, text, len))
 			return fya;
@@ -552,8 +583,10 @@ fy_document_lookup_anchor_by_token(struct fy_document *fyd,
 	size_t anchor_len, text_len;
 	int count;
 
-	if (!fyd || !anchor)
+	if (!fyd || !anchor) {
+		FYD_TRANSACTION_ABORT(fyd);
 		return NULL;
+	}
 
 	/* first try direct match (it's faster and the common case) */
 	if (fy_document_is_accelerated(fyd)) {
@@ -569,8 +602,10 @@ fy_document_lookup_anchor_by_token(struct fy_document *fyd,
 	}
 
 	anchor_text = fy_token_get_text(anchor, &anchor_len);
-	if (!anchor_text)
+	if (!anchor_text) {
+		FYD_TRANSACTION_ABORT(fyd);
 		return NULL;
+	}
 
 	fyal = &fyd->anchors;
 
@@ -579,8 +614,10 @@ fy_document_lookup_anchor_by_token(struct fy_document *fyd,
 	fya_found = NULL;
 	for (fya = fy_anchor_list_head(fyal); fya; fya = fy_anchor_next(fyal, fya)) {
 		text = fy_anchor_get_text(fya, &text_len);
-		if (!text)
+		if (!text) {
+			FYD_TRANSACTION_ABORT(fyd);
 			return NULL;
+		}
 
 		if (anchor_len == text_len && !memcmp(anchor_text, text, anchor_len)) {
 			count++;
@@ -652,24 +689,46 @@ struct fy_anchor *fy_document_lookup_anchor_by_node(struct fy_document *fyd, str
 
 const char *fy_anchor_get_text(struct fy_anchor *fya, size_t *lenp)
 {
+	const char *text;
+
 	if (!fya || !lenp)
 		return NULL;
-	return fy_token_get_text(fya->anchor, lenp);
+
+	text = fy_token_get_text(fya->anchor, lenp);
+	if (!text) {
+		FYN_TRANSACTION_ABORT(fya->fyn);
+		return NULL;
+	}
+	return text;
 }
 
 struct fy_node *fy_anchor_node(struct fy_anchor *fya)
 {
+	struct fy_node *fyn;
+
 	if (!fya)
 		return NULL;
-	return fya->fyn;
+	fyn = fya->fyn;
+	if (!fyn) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
+	return fyn;
 }
 
 int fy_node_pair_free(struct fy_node_pair *fynp)
 {
+	struct fy_node *fyn_parent;
 	int rc, rc_ret = 0;
 
 	if (!fynp)
 		return 0;
+
+	fyn_parent = fynp->parent;
+	if (!fyn_parent) {
+		FYN_TRANSACTION_ABORT(fyn_parent);
+		return -1;
+	}
 
 	rc = fy_node_free(fynp->key);
 	if (rc)
@@ -680,7 +739,12 @@ int fy_node_pair_free(struct fy_node_pair *fynp)
 
 	free(fynp);
 
-	return rc_ret;
+	if (rc_ret) {
+		FYN_TRANSACTION_ABORT(fyn_parent);
+		return rc_ret;
+	}
+
+	return 0;
 }
 
 void fy_node_pair_detach_and_free(struct fy_node_pair *fynp)
@@ -698,8 +762,10 @@ struct fy_node_pair *fy_node_pair_alloc(struct fy_document *fyd)
 	struct fy_node_pair *fynp = NULL;
 
 	fynp = malloc(sizeof(*fynp));
-	if (!fynp)
+	if (!fynp) {
+		FYD_TRANSACTION_ABORT(fyd);
 		return NULL;
+	}
 
 	fynp->key = NULL;
 	fynp->value = NULL;
@@ -724,8 +790,10 @@ int fy_node_free(struct fy_node *fyn)
 	if (!fyd)
 		return -1;
 
-	if (fyn->attached)
+	if (fyn->attached) {
+		FYD_TRANSACTION_ABORT(fyd);
 		return -1;
+	}
 
 	if (fy_document_is_accelerated(fyd)) {
 		for (xle = fy_accel_entry_iter_start(&xli, fyd->naxl, fyn);
@@ -817,8 +885,10 @@ struct fy_node *fy_node_alloc(struct fy_document *fyd, enum fy_node_type type)
 	int rc;
 
 	fyn = malloc(sizeof(*fyn));
-	if (!fyn)
+	if (!fyn) {
+		FYD_TRANSACTION_ABORT(fyd);
 		return NULL;
+	}
 
 	memset(fyn, 0, sizeof(*fyn));
 
@@ -868,6 +938,7 @@ err_out:
 		}
 		free(fyn);
 	}
+	FYD_TRANSACTION_ABORT(fyd);
 	return NULL;
 }
 
@@ -885,12 +956,19 @@ struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn)
 		return NULL;
 
 	fyi = fy_node_get_input(fyn);
-	if (!fyi)
+	if (!fyi) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 
 	switch (fyn->type) {
 	case FYNT_SCALAR:
-		return fy_token_ref(fyn->scalar);
+		fyt = fy_token_ref(fyn->scalar);
+		if (!fyt) {
+			FYN_TRANSACTION_ABORT(fyn);
+			return NULL;
+		}
+		return fyt;
 
 	case FYNT_SEQUENCE:
 		fyt_start = fyn->sequence_start;
@@ -904,8 +982,10 @@ struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn)
 
 	}
 
-	if (!fyt_start || !fyt_end)
+	if (!fyt_start || !fyt_end) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 
 	s = fy_input_start(fyi) + fyt_start->handle.start_mark.input_pos;
 	e = fy_input_start(fyi) + fyt_end->handle.end_mark.input_pos;
@@ -948,8 +1028,10 @@ struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn)
 	handle.tabsize = 0;
 
 	fyt = fy_token_create(FYTT_INPUT_MARKER, &handle);
-	if (!fyt)
+	if (!fyt) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 
 	return fyt;
 }
@@ -990,6 +1072,7 @@ err_out:
 	fy_input_unref(fyi);
 	if (buf)
 		free(buf);
+	FYN_TRANSACTION_ABORT(fyn);
 	return NULL;
 }
 
@@ -1058,6 +1141,8 @@ struct fy_input *fy_node_get_first_input(struct fy_node *fyn)
 	case FYNT_MAPPING:
 		return fy_token_get_input(fyn->mapping_start);
 	}
+
+	FYN_TRANSACTION_ABORT(fyn);
 
 	/* should never happen */
 	return NULL;
@@ -1137,6 +1222,7 @@ err_out:
 	rc = -1;
 err_out_rc:
 	fyd->diag->on_error = false;
+	FYD_TRANSACTION_ABORT(fyd);
 	return rc;
 }
 
@@ -1276,8 +1362,10 @@ bool fy_node_compare_string(struct fy_node *fyn, const char *str, size_t len)
 	bool ret;
 
 	fyd = fy_document_build_from_string(NULL, str, len);
-	if (!fyd)
+	if (!fyd) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return false;
+	}
 
 	ret = fy_node_compare(fyn, fy_document_root(fyd));
 
@@ -1291,8 +1379,10 @@ struct fy_node_pair *fy_node_mapping_lookup_pair(struct fy_node *fyn, struct fy_
 	struct fy_node_pair *fynpi, *fynp;
 
 	/* sanity check */
-	if (!fy_node_is_mapping(fyn))
+	if (!fy_node_is_mapping(fyn)) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 
 	fynp = NULL;
 
@@ -1324,6 +1414,8 @@ int fy_node_mapping_get_pair_index(struct fy_node *fyn, const struct fy_node_pai
 			return i;
 	}
 
+	FYN_TRANSACTION_ABORT(fyn);
+
 	return -1;
 }
 
@@ -1336,17 +1428,6 @@ static int
 fy_parse_document_load_node(struct fy_parser *fyp, struct fy_document *fyd,
 			    struct fy_eventp *fyep, struct fy_node **fynp,
 			    int *depthp);
-
-int fy_parse_document_load_alias(struct fy_parser *fyp, struct fy_document *fyd, struct fy_eventp *fyep, struct fy_node **fynp)
-{
-	*fynp = NULL;
-
-	fyp_doc_debug(fyp, "in %s", __func__);
-
-	/* TODO verify aliases etc */
-	fy_parse_eventp_recycle(fyp, fyep);
-	return 0;
-}
 
 static int
 fy_parse_document_load_scalar(struct fy_parser *fyp, struct fy_document *fyd,
@@ -1956,6 +2037,7 @@ struct fy_node *fy_node_copy(struct fy_document *fyd, struct fy_node *fyn_from)
 	fyn = fy_node_copy_internal(fyd, fyn_from, NULL);
 	if (!fyn) {
 		fyd->diag->on_error = false;
+		FYD_TRANSACTION_ABORT(fyd);
 		return NULL;
 	}
 
@@ -2093,7 +2175,8 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 		return -1;
 
 	fyd = fyn_to->fyd;
-	assert(fyd);
+	if (!fyd)
+		return -1;
 
 	fyn_parent = fyn_to->parent;
 	fynp = NULL;
@@ -2321,6 +2404,7 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 err_out:
 	rc = -1;
 err_out_rc:
+	FYN_TRANSACTION_ABORT(fyn_to);
 	return rc;
 }
 
@@ -2332,6 +2416,10 @@ int fy_document_insert_at(struct fy_document *fyd,
 	struct fy_node *fyn2;
 
 	fyn2 = fy_node_by_path(fy_document_root(fyd), path, pathlen, FYNWF_DONT_FOLLOW);
+	if (!fyn2) {
+		FYD_TRANSACTION_ABORT(fyd);
+		return -1;
+	}
 	rc = fy_node_insert(fyn2, fyn);
 
 	fy_node_free(fyn);
@@ -2376,16 +2464,24 @@ struct fy_token *fy_document_tag_directive_lookup(struct fy_document *fyd, const
 int fy_document_tag_directive_add(struct fy_document *fyd, const char *handle, const char *prefix)
 {
 	struct fy_token *fyt;
+	int ret;
 
 	if (!fyd || !fyd->fyds || !handle || !prefix)
 		return -1;
 
 	/* it must not exist */
 	fyt = fy_document_tag_directive_lookup(fyd, handle);
-	if (fyt)
+	if (fyt) {
+		FYD_TRANSACTION_ABORT(fyd);
 		return -1;
+	}
 
-	return fy_document_state_append_tag(fyd->fyds, handle, prefix);
+	ret = fy_document_state_append_tag(fyd->fyds, handle, prefix);
+	if (ret) {
+		FYD_TRANSACTION_ABORT(fyd);
+		return ret;
+	}
+	return 0;
 }
 
 int fy_document_tag_directive_remove(struct fy_document *fyd, const char *handle)
@@ -2397,8 +2493,10 @@ int fy_document_tag_directive_remove(struct fy_document *fyd, const char *handle
 
 	/* it must not exist */
 	fyt = fy_document_tag_directive_lookup(fyd, handle);
-	if (!fyt || fyt->refs != 1)
+	if (!fyt || fyt->refs != 1) {
+		FYD_TRANSACTION_ABORT(fyd);
 		return -1;
+	}
 
 	fy_token_list_del(&fyd->fyds->fyt_td, fyt);
 	fy_token_unref(fyt);
@@ -3219,32 +3317,74 @@ enum fy_node_style fy_node_get_style(struct fy_node *fyn)
 
 bool fy_node_is_attached(struct fy_node *fyn)
 {
-	return fyn ? fyn->attached : false;
+	if (!fyn) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return false;
+	}
+
+	return fyn->attached;
 }
 
 struct fy_node *fy_node_get_parent(struct fy_node *fyn)
 {
-	return fyn ? fyn->parent : NULL;
+	if (!fyn) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
+
+	return fyn->parent;
 }
 
 struct fy_token *fy_node_get_tag_token(struct fy_node *fyn)
 {
-	return fyn ? fyn->tag : NULL;
+	struct fy_token *fyt;
+
+	if (!fyn) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
+
+	fyt = fyn->tag;
+	if (!fyt) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
+	return fyt;
 }
 
 struct fy_token *fy_node_get_scalar_token(struct fy_node *fyn)
 {
-	return fyn && fyn->type == FYNT_SCALAR ? fyn->scalar : NULL;
+	struct fy_token *fyt;
+
+	if (!fyn || fyn->type != FYNT_SCALAR) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
+
+	fyt = fyn->scalar;
+	if (!fyt) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
+
+	return fyt;
 }
 
 struct fy_node *fy_node_pair_key(struct fy_node_pair *fynp)
 {
-	return fynp ? fynp->key : NULL;
+	if (!fynp)
+		return NULL;
+
+	/* note NULL keys are valid for YAML <= 1.2 (could change for later versions) */
+	return fynp->key;
 }
 
 struct fy_node *fy_node_pair_value(struct fy_node_pair *fynp)
 {
-	return fynp ? fynp->value : NULL;
+	if (!fynp)
+		return NULL;
+
+	return fynp->value;
 }
 
 int fy_node_pair_set_key(struct fy_node_pair *fynp, struct fy_node *fyn)
@@ -3256,23 +3396,29 @@ int fy_node_pair_set_key(struct fy_node_pair *fynp, struct fy_node *fyn)
 		return -1;
 
 	/* the node must not be attached */
-	if (fyn && fyn->attached)
+	if (fyn && fyn->attached) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return -1;
+	}
 
 	/* sanity check and duplication check */
 	fyn_map = fynp->parent;
 	if (fyn_map) {
 
 		/* (in)sanity check */
-		if (!fy_node_is_mapping(fyn_map))
+		if (!fy_node_is_mapping(fyn_map)) {
+			FYN_TRANSACTION_ABORT(fyn);
 			return -1;
+		}
 
 		if (fyn_map->xl) {
 			/* either we're already on the parent list (and it's OK) */
 			/* or we're not and we have a duplicate key */
 			fynpi = fy_node_accel_lookup_by_node(fyn_map, fyn);
-			if (fynpi && fynpi != fynp)
+			if (fynpi && fynpi != fynp) {
+				FYN_TRANSACTION_ABORT(fyn);
 				return -1;
+			}
 			/* remove that key */
 			fy_accel_remove(fyn_map->xl, fynp->key);
 		} else {
@@ -3282,8 +3428,10 @@ int fy_node_pair_set_key(struct fy_node_pair *fynp, struct fy_node *fyn)
 			for (fynpi = fy_node_pair_list_head(&fyn_map->mapping); fynpi;
 				fynpi = fy_node_pair_next(&fyn_map->mapping, fynpi)) {
 
-				if (fynpi != fynp && fy_node_compare(fynpi->key, fyn))
+				if (fynpi != fynp && fy_node_compare(fynpi->key, fyn)) {
+					FYN_TRANSACTION_ABORT(fyn);
 					return -1;
+				}
 			}
 		}
 
@@ -3305,9 +3453,12 @@ int fy_node_pair_set_value(struct fy_node_pair *fynp, struct fy_node *fyn)
 {
 	if (!fynp)
 		return -1;
+
 	/* the node must not be attached */
-	if (fyn && fyn->attached)
+	if (fyn && fyn->attached) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return -1;
+	}
 	fy_node_detach_and_free(fynp->value);
 	fynp->value = fyn;
 	fyn->attached = true;
@@ -3320,12 +3471,16 @@ int fy_node_pair_set_value(struct fy_node_pair *fynp, struct fy_node *fyn)
 
 struct fy_node *fy_document_root(struct fy_document *fyd)
 {
+	if (!fyd)
+		return NULL;
+
 	return fyd->root;
 }
 
 const char *fy_node_get_tag(struct fy_node *fyn, size_t *lenp)
 {
 	size_t tmplen;
+	const char *text;
 
 	if (!lenp)
 		lenp = &tmplen;
@@ -3335,62 +3490,103 @@ const char *fy_node_get_tag(struct fy_node *fyn, size_t *lenp)
 		return NULL;
 	}
 
-	return fy_token_get_text(fyn->tag, lenp);
+	text = fy_token_get_text(fyn->tag, lenp);
+	if (!text) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
+	return text;
 }
 
 const char *fy_node_get_scalar(struct fy_node *fyn, size_t *lenp)
 {
 	size_t tmplen;
+	const char *text;
 
 	if (!lenp)
 		lenp = &tmplen;
 
 	if (!fyn || fyn->type != FYNT_SCALAR) {
 		*lenp = 0;
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
 	}
 
-	return fy_token_get_text(fyn->scalar, lenp);
+	text = fy_token_get_text(fyn->scalar, lenp);
+	if (!text) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
+	return text;
 }
 
 const char *fy_node_get_scalar0(struct fy_node *fyn)
 {
-	if (!fyn || fyn->type != FYNT_SCALAR)
-		return NULL;
+	const char *text;
 
-	return fy_token_get_text0(fyn->scalar);
+	if (!fyn || fyn->type != FYNT_SCALAR) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
+
+	text = fy_token_get_text0(fyn->scalar);
+	if (!text) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
+	return text;
 }
 
 size_t fy_node_get_scalar_length(struct fy_node *fyn)
 {
+	size_t len;
 
-	if (!fyn || fyn->type != FYNT_SCALAR)
+	if (!fyn || fyn->type != FYNT_SCALAR) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return 0;
+	}
 
-	return fy_token_get_text_length(fyn->scalar);
+	len = fy_token_get_text_length(fyn->scalar);
+	if ((int)len < 0) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return 0;
+	}
+	return len;
 }
 
 size_t fy_node_get_scalar_utf8_length(struct fy_node *fyn)
 {
+	int len;
 
-	if (!fyn || fyn->type != FYNT_SCALAR)
+	if (!fyn || fyn->type != FYNT_SCALAR) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return 0;
+	}
 
-	return fy_token_format_utf8_length(fyn->scalar);
+	len = fy_token_format_utf8_length(fyn->scalar);
+	if (len < 0) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return 0;
+	}
+	return (size_t)len;
 }
 
 struct fy_node *fy_node_sequence_iterate(struct fy_node *fyn, void **prevp)
 {
-	if (!fyn || fyn->type != FYNT_SEQUENCE || !prevp)
+	if (!fyn || fyn->type != FYNT_SEQUENCE || !prevp) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 
 	return *prevp = *prevp ? fy_node_next(&fyn->sequence, *prevp) : fy_node_list_head(&fyn->sequence);
 }
 
 struct fy_node *fy_node_sequence_reverse_iterate(struct fy_node *fyn, void **prevp)
 {
-	if (!fyn || fyn->type != FYNT_SEQUENCE || !prevp)
+	if (!fyn || fyn->type != FYNT_SEQUENCE || !prevp) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 
 	return *prevp = *prevp ? fy_node_prev(&fyn->sequence, *prevp) : fy_node_list_tail(&fyn->sequence);
 }
@@ -3400,8 +3596,10 @@ int fy_node_sequence_item_count(struct fy_node *fyn)
 	struct fy_node *fyni;
 	int count;
 
-	if (!fyn || fyn->type != FYNT_SEQUENCE)
+	if (!fyn || fyn->type != FYNT_SEQUENCE) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return -1;
+	}
 
 	count = 0;
 	for (fyni = fy_node_list_head(&fyn->sequence); fyni; fyni = fy_node_next(&fyn->sequence, fyni))
@@ -3411,7 +3609,12 @@ int fy_node_sequence_item_count(struct fy_node *fyn)
 
 bool fy_node_sequence_is_empty(struct fy_node *fyn)
 {
-	return !fyn || fyn->type != FYNT_SEQUENCE || fy_node_list_empty(&fyn->sequence);
+	if (!fyn || fyn->type != FYNT_SEQUENCE) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return false;
+	}
+
+	return fy_node_list_empty(&fyn->sequence);
 }
 
 struct fy_node *fy_node_sequence_get_by_index(struct fy_node *fyn, int index)
@@ -3419,8 +3622,10 @@ struct fy_node *fy_node_sequence_get_by_index(struct fy_node *fyn, int index)
 	struct fy_node *fyni;
 	void *iterp = NULL;
 
-	if (!fyn || fyn->type != FYNT_SEQUENCE)
+	if (!fyn || fyn->type != FYNT_SEQUENCE) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 
 	if (index >= 0) {
 		do {
@@ -3437,16 +3642,20 @@ struct fy_node *fy_node_sequence_get_by_index(struct fy_node *fyn, int index)
 
 struct fy_node_pair *fy_node_mapping_iterate(struct fy_node *fyn, void **prevp)
 {
-	if (!fyn || fyn->type != FYNT_MAPPING || !prevp)
+	if (!fyn || fyn->type != FYNT_MAPPING || !prevp) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 
 	return *prevp = *prevp ? fy_node_pair_next(&fyn->mapping, *prevp) : fy_node_pair_list_head(&fyn->mapping);
 }
 
 struct fy_node_pair *fy_node_mapping_reverse_iterate(struct fy_node *fyn, void **prevp)
 {
-	if (!fyn || fyn->type != FYNT_MAPPING || !prevp)
+	if (!fyn || fyn->type != FYNT_MAPPING || !prevp) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 
 	return *prevp = *prevp ? fy_node_pair_prev(&fyn->mapping, *prevp) : fy_node_pair_list_tail(&fyn->mapping);
 }
@@ -3456,8 +3665,10 @@ int fy_node_mapping_item_count(struct fy_node *fyn)
 	struct fy_node_pair *fynpi;
 	int count;
 
-	if (!fyn || fyn->type != FYNT_MAPPING)
+	if (!fyn || fyn->type != FYNT_MAPPING) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return -1;
+	}
 
 	count = 0;
 	for (fynpi = fy_node_pair_list_head(&fyn->mapping); fynpi; fynpi = fy_node_pair_next(&fyn->mapping, fynpi))
@@ -3467,7 +3678,12 @@ int fy_node_mapping_item_count(struct fy_node *fyn)
 
 bool fy_node_mapping_is_empty(struct fy_node *fyn)
 {
-	return !fyn || fyn->type != FYNT_MAPPING || fy_node_pair_list_empty(&fyn->mapping);
+	if (!fyn || fyn->type != FYNT_MAPPING) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return true;
+	}
+
+	return fy_node_pair_list_empty(&fyn->mapping);
 }
 
 struct fy_node_pair *fy_node_mapping_get_by_index(struct fy_node *fyn, int index)
@@ -3475,8 +3691,10 @@ struct fy_node_pair *fy_node_mapping_get_by_index(struct fy_node *fyn, int index
 	struct fy_node_pair *fynpi;
 	void *iterp = NULL;
 
-	if (!fyn || fyn->type != FYNT_MAPPING)
+	if (!fyn || fyn->type != FYNT_MAPPING) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 
 	if (index >= 0) {
 		do {
@@ -3498,16 +3716,20 @@ fy_node_mapping_lookup_pair_by_simple_key(struct fy_node *fyn,
 	struct fy_node_pair *fynpi;
 	struct fy_node *fyn_scalar;
 
-	if (!fyn || fyn->type != FYNT_MAPPING || !key)
+	if (!fyn || fyn->type != FYNT_MAPPING || !key) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 
 	if (len == (size_t)-1)
 		len = strlen(key);
 
 	if (fyn->xl) {
 		fyn_scalar = fy_node_create_scalar(fyn->fyd, key, len);
-		if (!fyn_scalar)
+		if (!fyn_scalar) {
+			FYN_TRANSACTION_ABORT(fyn);
 			return NULL;
+		}
 
 		fynpi = fy_node_accel_lookup_by_node(fyn, fyn_scalar);
 
@@ -3547,8 +3769,10 @@ fy_node_mapping_lookup_scalar_by_simple_key(struct fy_node *fyn, size_t *lenp,
 	struct fy_node *fyn_value;
 
 	fyn_value = fy_node_mapping_lookup_value_by_simple_key(fyn, key, keylen);
-	if (!fyn_value || !fy_node_is_scalar(fyn_value))
+	if (!fyn_value || !fy_node_is_scalar(fyn_value)) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 	return fy_node_get_scalar(fyn_value, lenp);
 }
 
@@ -3559,8 +3783,10 @@ fy_node_mapping_lookup_scalar0_by_simple_key(struct fy_node *fyn,
 	struct fy_node *fyn_value;
 
 	fyn_value = fy_node_mapping_lookup_value_by_simple_key(fyn, key, keylen);
-	if (!fyn_value || !fy_node_is_scalar(fyn_value))
+	if (!fyn_value || !fy_node_is_scalar(fyn_value)) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 	return fy_node_get_scalar0(fyn_value);
 }
 
@@ -3568,8 +3794,10 @@ struct fy_node *fy_node_mapping_lookup_value_by_key(struct fy_node *fyn, struct 
 {
 	struct fy_node_pair *fynpi;
 
-	if (!fyn || fyn->type != FYNT_MAPPING)
+	if (!fyn || fyn->type != FYNT_MAPPING) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 
 	if (fyn->xl) {
 		fynpi = fy_node_accel_lookup_by_node(fyn, fyn_key);
@@ -3602,8 +3830,10 @@ fy_node_mapping_lookup_by_string(struct fy_node *fyn,
 	}
 
 	fyd = fy_document_build_from_string(NULL, key, len);
-	if (!fyd)
+	if (!fyd) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 
 	fyn_value = fy_node_mapping_lookup_value_by_key(fyn, fy_document_root(fyd));
 
@@ -4276,8 +4506,10 @@ struct fy_node *fy_node_create_reference(struct fy_node *fyn)
 	char *path, *alias;
 
 	path = fy_node_get_reference(fyn);
-	if (!path)
+	if (!path) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 
 	alias = path;
 	if (*alias == '*')
@@ -4286,6 +4518,11 @@ struct fy_node *fy_node_create_reference(struct fy_node *fyn)
 	fyn_ref = fy_node_create_alias_copy(fy_node_document(fyn), alias, FY_NT);
 
 	free(path);
+
+	if (!fyn_ref) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
 
 	return fyn_ref;
 }
@@ -4301,8 +4538,10 @@ struct fy_node *fy_node_create_relative_reference(struct fy_node *fyn_base, stru
 	char *path, *alias;
 
 	path = fy_node_get_relative_reference(fyn_base, fyn);
-	if (!path)
+	if (!path) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 
 	alias = path;
 	if (*alias == '*')
@@ -4311,6 +4550,11 @@ struct fy_node *fy_node_create_relative_reference(struct fy_node *fyn_base, stru
 	fyn_ref = fy_node_create_alias_copy(fy_node_document(fyn), alias, FY_NT);
 
 	free(path);
+
+	if (!fyn_ref) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
 
 	return fyn_ref;
 }
@@ -4422,8 +4666,10 @@ char *fy_node_get_parent_address(struct fy_node *fyn)
 				fyni = fy_node_next(&parent->sequence, fyni))
 			idx++;
 
-		if (!fyni)
+		if (!fyni) {
+			FYN_TRANSACTION_ABORT(fyn);
 			return NULL;
+		}
 
 		path = strdup(alloca_sprintf("%d", idx));
 	}
@@ -4434,24 +4680,33 @@ char *fy_node_get_parent_address(struct fy_node *fyn)
 				fynp = fy_node_pair_next(&parent->mapping, fynp))
 			idx++;
 
-		if (!fynp)
+		if (!fynp) {
+			FYN_TRANSACTION_ABORT(fyn);
 			return NULL;
+		}
 
 		/* if key is a plain scalar try to not use a complex style (even for quoted) */
 		if (fynp->key && fy_node_is_scalar(fynp->key) && !fy_node_is_alias(fynp->key) &&
 				(str = fy_token_get_direct_output(fynp->key->scalar, &len)) != NULL) {
 
 			path = malloc(len + 1);
-			if (!path)
+			if (!path) {
+				FYN_TRANSACTION_ABORT(fyn);
 				return NULL;
+			}
 
 			memcpy(path, str, len);
 			path[len] = '\0';
 
-		} else /* something complex, emit it */
+		} else { /* something complex, emit it */
 			path = fy_emit_node_to_string(fynp->key,
 				FYECF_MODE_FLOW_ONELINE | FYECF_WIDTH_INF |
 				FYECF_STRIP_LABELS	| FYECF_STRIP_TAGS);
+			if (!path) {
+				FYN_TRANSACTION_ABORT(fyn);
+				return NULL;
+			}
+		}
 	}
 
 	return path;
@@ -4473,6 +4728,10 @@ char *fy_node_get_path(struct fy_node *fyn)
 	/* easy on the root */
 	if (!fyn->parent) {
 		path_mem = strdup("/");
+		if (!path_mem) {
+			FYN_TRANSACTION_ABORT(fyn);
+			return NULL;
+		}
 		return path_mem;
 	}
 
@@ -4492,6 +4751,14 @@ char *fy_node_get_path(struct fy_node *fyn)
 	len += 2;
 
 	path_mem = malloc(len);
+	if (!path_mem) {
+		while (track) {
+			free(track->path);
+			track = track->prev;
+		}
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
 
 	s = path_mem;
 
@@ -4522,8 +4789,10 @@ char *fy_node_get_path_relative_to(struct fy_node *fyn_parent, struct fy_node *f
 		return NULL;
 
 	/* must be on the same document */
-	if (fyn_parent && (fyn_parent->fyd != fyn->fyd))
+	if (fyn_parent && (fyn_parent->fyd != fyn->fyd)) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 
 	if (!fyn_parent)
 		fyn_parent = fyn->fyd->root;
@@ -4534,8 +4803,10 @@ char *fy_node_get_path_relative_to(struct fy_node *fyn_parent, struct fy_node *f
 		ni = nj;
 
 	/* not a parent, illegal */
-	if (!nj)
+	if (!nj) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 
 	/* here we go... */
 	path = "";
@@ -4544,8 +4815,10 @@ char *fy_node_get_path_relative_to(struct fy_node *fyn_parent, struct fy_node *f
 	ni = fyn;
 	while ((nj = fy_node_get_parent(ni)) != NULL) {
 		ppath = fy_node_get_parent_address(ni);
-		if (!ppath)
+		if (!ppath) {
+			FYN_TRANSACTION_ABORT(fyn);
 			return NULL;
+		}
 
 		ppathlen = strlen(ppath);
 
@@ -4572,6 +4845,11 @@ char *fy_node_get_path_relative_to(struct fy_node *fyn_parent, struct fy_node *f
 	}
 
 	path_ret = strdup(path);
+	if (!path_ret) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
+
 	return path_ret;
 }
 
@@ -4595,8 +4873,10 @@ char *fy_node_get_short_path(struct fy_node *fyn)
 	fyn_anchor = fy_anchor_node(fya);
 
 	text = fy_anchor_get_text(fya, &len);
-	if (!text)
+	if (!text) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return NULL;
+	}
 
 	if (fyn_anchor == fyn)
 		str = alloca_sprintf("*%.*s", (int)len, text);
@@ -4605,6 +4885,10 @@ char *fy_node_get_short_path(struct fy_node *fyn)
 				fy_node_get_path_relative_to_alloca(fyn_anchor, fyn));
 
 	path = strdup(str);
+	if (!path) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
 	return path;
 }
 
@@ -4763,8 +5047,14 @@ struct fy_node *fy_node_build_from_string(struct fy_document *fyd, const char *s
 		.str = str,
 		.len = len,
 	};
+	struct fy_node *fyn;
 
-	return fy_node_build_internal(fyd, parser_setup_from_string, &ctx);
+	fyn = fy_node_build_internal(fyd, parser_setup_from_string, &ctx);
+	if (!fyn) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
+	return fyn;
 }
 
 struct fy_node *fy_node_build_from_malloc_string(struct fy_document *fyd, char *str, size_t len)
@@ -4773,8 +5063,14 @@ struct fy_node *fy_node_build_from_malloc_string(struct fy_document *fyd, char *
 		.str = str,
 		.len = len,
 	};
+	struct fy_node *fyn;
 
-	return fy_node_build_internal(fyd, parser_setup_from_malloc_string, &ctx);
+	fyn = fy_node_build_internal(fyd, parser_setup_from_malloc_string, &ctx);
+	if (!fyn) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
+	return fyn;
 }
 
 struct fy_node *fy_node_build_from_file(struct fy_document *fyd, const char *file)
@@ -4782,8 +5078,14 @@ struct fy_node *fy_node_build_from_file(struct fy_document *fyd, const char *fil
 	struct fy_document_build_file_ctx ctx = {
 		.file = file,
 	};
+	struct fy_node *fyn;
 
-	return fy_node_build_internal(fyd, parser_setup_from_file, &ctx);
+	fyn = fy_node_build_internal(fyd, parser_setup_from_file, &ctx);
+	if (!fyn) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
+	return fyn;
 }
 
 struct fy_node *fy_node_build_from_fp(struct fy_document *fyd, FILE *fp)
@@ -4792,8 +5094,14 @@ struct fy_node *fy_node_build_from_fp(struct fy_document *fyd, FILE *fp)
 		.name = NULL,
 		.fp = fp,
 	};
+	struct fy_node *fyn;
 
-	return fy_node_build_internal(fyd, parser_setup_from_fp, &ctx);
+	fyn = fy_node_build_internal(fyd, parser_setup_from_fp, &ctx);
+	if (!fyn) {
+		FYN_TRANSACTION_ABORT(fyn);
+		return NULL;
+	}
+	return fyn;
 }
 
 int fy_document_set_root(struct fy_document *fyd, struct fy_node *fyn)
@@ -4801,8 +5109,10 @@ int fy_document_set_root(struct fy_document *fyd, struct fy_node *fyn)
 	if (!fyd)
 		return -1;
 
-	if (fyn && fyn->attached)
+	if (fyn && fyn->attached) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return -1;
+	}
 
 	fy_node_detach_and_free(fyd->root);
 	fyd->root = NULL;
@@ -4885,30 +5195,67 @@ err_out:
 
 struct fy_node *fy_node_create_scalar(struct fy_document *fyd, const char *data, size_t size)
 {
-	return fy_node_create_scalar_internal(fyd, data, size, 0);
+	struct fy_node *fyn;
+
+	fyn = fy_node_create_scalar_internal(fyd, data, size, 0);
+	if (!fyn) {
+		FYD_TRANSACTION_ABORT(fyd);
+		return NULL;
+	}
+	return fyn;
 }
 
 struct fy_node *fy_node_create_alias(struct fy_document *fyd, const char *data, size_t size)
 {
-	return fy_node_create_scalar_internal(fyd, data, size, FYNCSIF_ALIAS);
+	struct fy_node *fyn;
+
+	fyn = fy_node_create_scalar_internal(fyd, data, size, FYNCSIF_ALIAS);
+	if (!fyn) {
+		FYD_TRANSACTION_ABORT(fyd);
+		return NULL;
+	}
+	return fyn;
 }
 
 struct fy_node *fy_node_create_scalar_copy(struct fy_document *fyd, const char *data, size_t size)
 {
-	return fy_node_create_scalar_internal(fyd, data, size, FYNCSIF_COPY);
+	struct fy_node *fyn;
+
+	fyn = fy_node_create_scalar_internal(fyd, data, size, FYNCSIF_COPY);
+	if (!fyn) {
+		FYD_TRANSACTION_ABORT(fyd);
+		return NULL;
+	}
+	return fyn;
 }
 
 struct fy_node *fy_node_create_alias_copy(struct fy_document *fyd, const char *data, size_t size)
 {
-	return fy_node_create_scalar_internal(fyd, data, size, FYNCSIF_ALIAS | FYNCSIF_COPY);
+	struct fy_node *fyn;
+
+	fyn = fy_node_create_scalar_internal(fyd, data, size, FYNCSIF_ALIAS | FYNCSIF_COPY);
+	if (!fyn) {
+		FYD_TRANSACTION_ABORT(fyd);
+		return NULL;
+	}
+	return fyn;
 }
 
 struct fy_node *fy_node_create_vscalarf(struct fy_document *fyd, const char *fmt, va_list ap)
 {
-	if (!fyd || !fmt)
-		return NULL;
+	struct fy_node *fyn;
 
-	return fy_node_create_scalar_internal(fyd, alloca_vsprintf(fmt, ap), FY_NT, FYNCSIF_COPY);
+	if (!fyd || !fmt) {
+		FYD_TRANSACTION_ABORT(fyd);
+		return NULL;
+	}
+
+	fyn = fy_node_create_scalar_internal(fyd, alloca_vsprintf(fmt, ap), FY_NT, FYNCSIF_COPY);
+	if (!fyn) {
+		FYD_TRANSACTION_ABORT(fyd);
+		return NULL;
+	}
+	return fyn;
 }
 
 struct fy_node *fy_node_create_scalarf(struct fy_document *fyd, const char *fmt, ...)
@@ -5055,8 +5402,10 @@ int fy_node_set_tag(struct fy_node *fyn, const char *data, size_t len)
 	struct fy_input *fyi = NULL;
 	struct fy_token *fyt = NULL, *fyt_td = NULL;
 
-	if (!fyn || !data || !len || !fyn->fyd)
+	if (!fyn || !data || !len || !fyn->fyd) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return -1;
+	}
 
 	fyd = fyn->fyd;
 
@@ -5070,8 +5419,10 @@ int fy_node_set_tag(struct fy_node *fyn, const char *data, size_t len)
 
 	/* it must start with '!' */
 	c = fy_utf8_get(s, e - s, &w);
-	if (c != '!')
+	if (c != '!') {
+		FYN_TRANSACTION_ABORT(fyn);
 		return -1;
+	}
 	cn = fy_utf8_get(s + w, e - (s + w), &wn);
 	if (cn == '<') {
 		prefix_length = 2;
@@ -5142,6 +5493,7 @@ int fy_node_set_tag(struct fy_node *fyn, const char *data, size_t len)
 	return 0;
 err_out:
 	fyd->diag->on_error = false;
+	FYN_TRANSACTION_ABORT(fyn);
 	return -1;
 }
 
@@ -5150,8 +5502,10 @@ struct fy_node *fy_node_create_sequence(struct fy_document *fyd)
 	struct fy_node *fyn;
 
 	fyn = fy_node_alloc(fyd, FYNT_SEQUENCE);
-	if (!fyn)
+	if (!fyn) {
+		FYD_TRANSACTION_ABORT(fyd);
 		return NULL;
+	}
 
 	return fyn;
 }
@@ -5161,8 +5515,10 @@ struct fy_node *fy_node_create_mapping(struct fy_document *fyd)
 	struct fy_node *fyn;
 
 	fyn = fy_node_alloc(fyd, FYNT_MAPPING);
-	if (!fyn)
+	if (!fyn) {
+		FYD_TRANSACTION_ABORT(fyd);
 		return NULL;
+	}
 
 	return fyn;
 }
@@ -5197,8 +5553,10 @@ int fy_node_sequence_append(struct fy_node *fyn_seq, struct fy_node *fyn)
 	int ret;
 
 	ret = fy_node_sequence_insert_prepare(fyn_seq, fyn);
-	if (ret)
+	if (ret) {
+		FYN_TRANSACTION_ABORT(fyn_seq);
 		return ret;
+	}
 
 	fy_node_mark_synthetic(fyn_seq);
 	fy_node_list_add_tail(&fyn_seq->sequence, fyn);
@@ -5211,8 +5569,10 @@ int fy_node_sequence_prepend(struct fy_node *fyn_seq, struct fy_node *fyn)
 	int ret;
 
 	ret = fy_node_sequence_insert_prepare(fyn_seq, fyn);
-	if (ret)
+	if (ret) {
+		FYN_TRANSACTION_ABORT(fyn_seq);
 		return ret;
+	}
 
 	fy_node_mark_synthetic(fyn_seq);
 	fy_node_list_add(&fyn_seq->sequence, fyn);
@@ -5239,12 +5599,16 @@ int fy_node_sequence_insert_before(struct fy_node *fyn_seq,
 {
 	int ret;
 
-	if (!fy_node_sequence_contains_node(fyn_seq, fyn_mark))
+	if (!fy_node_sequence_contains_node(fyn_seq, fyn_mark)) {
+		FYN_TRANSACTION_ABORT(fyn_seq);
 		return -1;
+	}
 
 	ret = fy_node_sequence_insert_prepare(fyn_seq, fyn);
-	if (ret)
+	if (ret) {
+		FYN_TRANSACTION_ABORT(fyn_seq);
 		return ret;
+	}
 
 	fy_node_mark_synthetic(fyn_seq);
 	fy_node_list_insert_before(&fyn_seq->sequence, fyn_mark, fyn);
@@ -5258,12 +5622,16 @@ int fy_node_sequence_insert_after(struct fy_node *fyn_seq,
 {
 	int ret;
 
-	if (!fy_node_sequence_contains_node(fyn_seq, fyn_mark))
+	if (!fy_node_sequence_contains_node(fyn_seq, fyn_mark)) {
+		FYN_TRANSACTION_ABORT(fyn_seq);
 		return -1;
+	}
 
 	ret = fy_node_sequence_insert_prepare(fyn_seq, fyn);
-	if (ret)
+	if (ret) {
+		FYN_TRANSACTION_ABORT(fyn_seq);
 		return ret;
+	}
 
 	fy_node_mark_synthetic(fyn_seq);
 	fy_node_list_insert_after(&fyn_seq->sequence, fyn_mark, fyn);
@@ -5274,8 +5642,10 @@ int fy_node_sequence_insert_after(struct fy_node *fyn_seq,
 
 struct fy_node *fy_node_sequence_remove(struct fy_node *fyn_seq, struct fy_node *fyn)
 {
-	if (!fy_node_sequence_contains_node(fyn_seq, fyn))
+	if (!fy_node_sequence_contains_node(fyn_seq, fyn)) {
+		FYN_TRANSACTION_ABORT(fyn_seq);
 		return NULL;
+	}
 
 	fy_node_list_del(&fyn_seq->sequence, fyn);
 	fyn->parent = NULL;
@@ -5336,8 +5706,10 @@ int fy_node_mapping_append(struct fy_node *fyn_map,
 	struct fy_node_pair *fynp;
 
 	fynp = fy_node_mapping_pair_insert_prepare(fyn_map, fyn_key, fyn_value);
-	if (!fynp)
+	if (!fynp) {
+		FYN_TRANSACTION_ABORT(fyn_map);
 		return -1;
+	}
 
 	fy_node_pair_list_add_tail(&fyn_map->mapping, fynp);
 	if (fyn_map->xl)
@@ -5359,8 +5731,10 @@ int fy_node_mapping_prepend(struct fy_node *fyn_map,
 	struct fy_node_pair *fynp;
 
 	fynp = fy_node_mapping_pair_insert_prepare(fyn_map, fyn_key, fyn_value);
-	if (!fynp)
+	if (!fynp) {
+		FYN_TRANSACTION_ABORT(fyn_map);
 		return -1;
+	}
 
 	if (fyn_key)
 		fyn_key->attached = true;
@@ -5379,8 +5753,10 @@ bool fy_node_mapping_contains_pair(struct fy_node *fyn_map, struct fy_node_pair 
 {
 	struct fy_node_pair *fynpi;
 
-	if (!fyn_map || !fynp || fyn_map->type != FYNT_MAPPING)
+	if (!fyn_map || !fynp || fyn_map->type != FYNT_MAPPING) {
+		FYN_TRANSACTION_ABORT(fyn_map);
 		return false;
+	}
 
 	if (fyn_map->xl) {
 		fynpi = fy_node_accel_lookup_by_node(fyn_map, fynp->key);
@@ -5397,8 +5773,10 @@ bool fy_node_mapping_contains_pair(struct fy_node *fyn_map, struct fy_node_pair 
 
 int fy_node_mapping_remove(struct fy_node *fyn_map, struct fy_node_pair *fynp)
 {
-	if (!fy_node_mapping_contains_pair(fyn_map, fynp))
+	if (!fy_node_mapping_contains_pair(fyn_map, fynp)) {
+		FYN_TRANSACTION_ABORT(fyn_map);
 		return -1;
+	}
 
 	fy_node_pair_list_del(&fyn_map->mapping, fynp);
 	if (fyn_map->xl)
@@ -5424,8 +5802,10 @@ struct fy_node *fy_node_mapping_remove_by_key(struct fy_node *fyn_map, struct fy
 	struct fy_node *fyn_value;
 
 	fynp = fy_node_mapping_lookup_pair(fyn_map, fyn_key);
-	if (!fynp)
+	if (!fynp) {
+		FYN_TRANSACTION_ABORT(fyn_map);
 		return NULL;
+	}
 
 	fyn_value = fynp->value;
 	if (fyn_value) {
@@ -5712,6 +6092,11 @@ struct fy_node *fy_node_vbuildf(struct fy_document *fyd, const char *fmt, va_lis
 	fyn = fy_node_build_internal(fyd, parser_setup_from_fmt_ap, &vctx);
 	va_end(ap);
 
+	if (!fyn) {
+		FYD_TRANSACTION_ABORT(fyd);
+		return NULL;
+	}
+
 	return fyn;
 }
 
@@ -5754,6 +6139,7 @@ struct fy_document *fy_document_buildf(const struct fy_parse_cfg *cfg, const cha
 
 int fy_node_vscanf(struct fy_node *fyn, const char *fmt, va_list ap)
 {
+	struct fy_document *fyd = NULL;
 	size_t len;
 	char *fmt_cpy, *s, *e, *t, *te, *key, *fmtspec;
 	const char *value;
@@ -5763,7 +6149,14 @@ int fy_node_vscanf(struct fy_node *fyn, const char *fmt, va_list ap)
 	struct fy_node *fynv;
 	va_list apt;
 
-	if (!fyn || !fmt)
+	if (!fyn)
+		goto err_out;
+
+	fyd = fyn->fyd;
+	if (!fyd)
+		goto err_out;
+
+	if (!fmt)
 		goto err_out;
 
 	len = strlen(fmt);
@@ -5860,6 +6253,7 @@ int fy_node_vscanf(struct fy_node *fyn, const char *fmt, va_list ap)
 
 err_out:
 	errno = -EINVAL;
+	FYD_TRANSACTION_ABORT(fyd);
 	return -1;
 }
 
@@ -5989,8 +6383,10 @@ int fy_document_register_meta(struct fy_document *fyd,
 			      fy_node_meta_clear_fn clear_fn,
 			      void *user)
 {
-	if (!fyd || !clear_fn || fyd->meta_clear_fn)
+	if (!fyd || !clear_fn || fyd->meta_clear_fn) {
+		FYD_TRANSACTION_ABORT(fyd);
 		return -1;
+	}
 
 	fyd->meta_clear_fn = clear_fn;
 	fyd->meta_user = user;
@@ -6013,8 +6409,11 @@ bool fy_node_set_marker(struct fy_node *fyn, unsigned int marker)
 {
 	unsigned int prev_marks;
 
-	if (!fyn || marker > FYNWF_MAX_USER_MARKER)
+	if (!fyn || marker > FYNWF_MAX_USER_MARKER) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return false;
+	}
+
 	prev_marks = fyn->marks;
 	fyn->marks |= FY_BIT(marker);
 	return !!(prev_marks & FY_BIT(marker));
@@ -6024,8 +6423,11 @@ bool fy_node_clear_marker(struct fy_node *fyn, unsigned int marker)
 {
 	unsigned int prev_marks;
 
-	if (!fyn || marker > FYNWF_MAX_USER_MARKER)
+	if (!fyn || marker > FYNWF_MAX_USER_MARKER) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return false;
+	}
+
 	prev_marks = fyn->marks;
 	fyn->marks &= ~FY_BIT(marker);
 	return !!(prev_marks & FY_BIT(marker));
@@ -6033,8 +6435,11 @@ bool fy_node_clear_marker(struct fy_node *fyn, unsigned int marker)
 
 bool fy_node_is_marker_set(struct fy_node *fyn, unsigned int marker)
 {
-	if (!fyn || marker > FYNWF_MAX_USER_MARKER)
+	if (!fyn || marker > FYNWF_MAX_USER_MARKER) {
+		FYN_TRANSACTION_ABORT(fyn);
 		return false;
+	}
+
 	return !!(fyn->marks & FY_BIT(marker));
 }
 
@@ -6246,17 +6651,48 @@ static void update_xx32(void *state, const void *ptr, size_t size)
 	XXH32_update(state, ptr, size);
 }
 
-int fy_node_hash_uint(struct fy_node *fyn, unsigned int *hashp)
+static int fy_node_hash_uint(struct fy_node *fyn, unsigned int *hashp)
 {
 	XXH32_state_t state;
 	int rc;
 
 	XXH32_reset(&state, 2654435761U);
 
-	rc = fy_node_hash_internal(fyn, update_xx32, &state); 
+	rc = fy_node_hash_internal(fyn, update_xx32, &state);
 	if (rc)
 		return rc;
 
 	*hashp = XXH32_digest(&state);
 	return 0;
 }
+
+void fy_document_transaction_abort_on_error(struct fy_document *fyd, bool do_abort)
+{
+	if (!fyd)
+		return;
+	fyd->abort_on_error = do_abort;
+}
+
+int fy_transaction_start(struct fy_document *fyd)
+{
+	if (!fyd)
+		return -1;
+
+	/* transaction must not be active */
+	if (fyd->transaction_fyd) {
+		FYD_TRANSACTION_ABORT(fyd);
+		return -1;
+	}
+
+	return 0;
+}
+
+void fy_transaction_abort(struct fy_document *fyd)
+{
+}
+
+int fy_transaction_commit(struct fy_document *fyd)
+{
+	return 0;
+}
+
