@@ -3128,6 +3128,46 @@ fy_node_mapping_lookup_value_by_simple_key(struct fy_node *fyn,
 	FY_EXPORT;
 
 /**
+ * fy_node_mapping_lookup_scalar_by_simple_key() - Lookup a scalar in mapping by simple string
+ *
+ * This method will return the scalar contents that contains the same key
+ * from the YAML node created from the @key argument. The comparison of the
+ * node is using by comparing the strings for identity.
+ *
+ * @fyn: The mapping node
+ * @lenp: Pointer to a variable that will hold the returned length
+ * @key: The string to use as key
+ * @keylen: The length of the key (or -1 if '\0' terminated)
+ *
+ * Returns:
+ * The scalar contents matching the given key, or NULL if not found.
+ */
+const char *
+fy_node_mapping_lookup_scalar_by_simple_key(struct fy_node *fyn, size_t *lenp,
+					    const char *key, size_t keylen)
+	FY_EXPORT;
+
+/**
+ * fy_node_mapping_lookup_scalar0_by_simple_key() - Lookup a scalar in mapping by simple string
+ * 						    returning a '\0' terminated scalar
+ *
+ * This method will return the NUL terminated scalar contents that contains the same key
+ * from the YAML node created from the @key argument. The comparison of the
+ * node is using by comparing the strings for identity.
+ *
+ * @fyn: The mapping node
+ * @key: The string to use as key
+ * @keylen: The length of the key (or -1 if '\0' terminated)
+ *
+ * Returns:
+ * The NUL terminated scalar contents matching the given key, or NULL if not found.
+ */
+const char *
+fy_node_mapping_lookup_scalar0_by_simple_key(struct fy_node *fyn,
+					     const char *key, size_t keylen)
+	FY_EXPORT;
+
+/**
  * fy_node_mapping_lookup_pair() - Lookup a node pair matching the provided key
  *
  * This method will return the node pair that matches the provided @fyn_key

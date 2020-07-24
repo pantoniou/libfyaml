@@ -3547,6 +3547,30 @@ fy_node_mapping_lookup_value_by_simple_key(struct fy_node *fyn,
 	return fynp ? fy_node_pair_value(fynp) : NULL;
 }
 
+const char *
+fy_node_mapping_lookup_scalar_by_simple_key(struct fy_node *fyn, size_t *lenp,
+					    const char *key, size_t keylen)
+{
+	struct fy_node *fyn_value;
+
+	fyn_value = fy_node_mapping_lookup_value_by_simple_key(fyn, key, keylen);
+	if (!fyn_value || !fy_node_is_scalar(fyn_value))
+		return NULL;
+	return fy_node_get_scalar(fyn_value, lenp);
+}
+
+const char *
+fy_node_mapping_lookup_scalar0_by_simple_key(struct fy_node *fyn,
+					     const char *key, size_t keylen)
+{
+	struct fy_node *fyn_value;
+
+	fyn_value = fy_node_mapping_lookup_value_by_simple_key(fyn, key, keylen);
+	if (!fyn_value || !fy_node_is_scalar(fyn_value))
+		return NULL;
+	return fy_node_get_scalar0(fyn_value);
+}
+
 struct fy_node *fy_node_mapping_lookup_value_by_key(struct fy_node *fyn, struct fy_node *fyn_key)
 {
 	struct fy_node_pair *fynpi;
