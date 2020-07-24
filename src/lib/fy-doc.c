@@ -4198,21 +4198,22 @@ static char *
 fy_node_get_reference_internal(struct fy_node *fyn_base, struct fy_node *fyn, bool near)
 {
 	struct fy_anchor *fya;
-	char *path, *path2;
+	const char *path;
+	char *path2, *path3;
 	const char *text;
 	size_t len;
 
 	if (!fyn)
 		return NULL;
 
+	path2 = NULL;
+
 	/* if the node has an anchor use it (ie return *foo) */
 	if (!fyn_base && (fya = fy_node_get_anchor(fyn)) != NULL) {
 		text = fy_anchor_get_text(fya, &len);
 		if (!text)
 			return NULL;
-		path2 = malloc(1 + len + 1);
-		if (!path2)
-			return NULL;
+		path2 = alloca(1 + len + 1);
 		path2[0] = '*';
 		memcpy(path2 + 1, text, len);
 		path2[len + 1] = '\0';
@@ -4224,41 +4225,36 @@ fy_node_get_reference_internal(struct fy_node *fyn_base, struct fy_node *fyn, bo
 			fya = fy_node_get_nearest_anchor(fyn);
 		if (!fya) {
 			/* no anchor, direct reference (ie return *\/foo\/bar */
-			path = fy_node_get_path(fyn);
-			if (!path)
+			path = fy_node_get_path_alloca(fyn);
+			if (!*path)
 				return NULL;
-			path2 = malloc(1 + strlen(path) + 1);
-			if (!path2)
-				return NULL;
+			path2 = alloca(1 + strlen(path) + 1);
 			path2[0] = '*';
 			strcpy(path2 + 1, path);
-			free(path);
 		} else {
 			text = fy_anchor_get_text(fya, &len);
 			if (!text)
 				return NULL;
 			if (fy_anchor_node(fya) != fyn) {
-				path = fy_node_get_path_relative_to(fy_anchor_node(fya), fyn);
-				if (path) {
+				path = fy_node_get_path_relative_to_alloca(fy_anchor_node(fya), fyn);
+				if (*path) {
 					/* we have a relative path */
-					path2 = malloc(1 + len + 1 + strlen(path) + 1);
+					path2 = alloca(1 + len + 1 + strlen(path) + 1);
 					path2[0] = '*';
 					memcpy(path2 + 1, text, len);
 					path2[len + 1] = '/';
 					memcpy(1 + path2 + len + 1, path, strlen(path) + 1);
-					free(path);
 				} else {
 					/* absolute path */
-					path = fy_node_get_path(fyn);
-					if (!path)
+					path = fy_node_get_path_alloca(fyn);
+					if (!*path)
 						return NULL;
-					path2 = malloc(1 + strlen(path) + 1);
+					path2 = alloca(1 + strlen(path) + 1);
 					path2[0] = '*';
 					strcpy(path2 + 1, path);
-					free(path);
 				}
 			} else {
-				path2 = malloc(1 + len + 1);
+				path2 = alloca(1 + len + 1);
 				path2[0] = '*';
 				memcpy(path2 + 1, text, len);
 				path2[len + 1] = '\0';
@@ -4266,7 +4262,14 @@ fy_node_get_reference_internal(struct fy_node *fyn_base, struct fy_node *fyn, bo
 		}
 	}
 
-	return path2;
+	if (!path2)
+		return NULL;
+
+	path3 = strdup(path2);
+	if (!path3)
+		return NULL;
+
+	return path3;
 }
 
 char *fy_node_get_reference(struct fy_node *fyn)
