@@ -72,47 +72,6 @@ static const char *fy_error_type_str(enum fy_error_type type)
 	return txt[type];
 }
 
-#define alloca_vsprintf(_fmt, _ap) \
-	({ \
-		const char *__fmt = (_fmt); \
-		va_list _ap_orig; \
-		int _size; \
-		int _sizew __FY_DEBUG_UNUSED__; \
-		char *_buf = NULL, *_s; \
-		\
-		va_copy(_ap_orig, (_ap)); \
-		_size = vsnprintf(NULL, 0, __fmt, _ap_orig); \
-		va_end(_ap_orig); \
-		if (_size != -1) { \
-			_buf = alloca(_size + 1); \
-			_sizew = vsnprintf(_buf, _size + 1, __fmt, _ap); \
-			assert(_size == _sizew); \
-			_s = _buf + strlen(_buf); \
-			while (_s > _buf && _s[-1] == '\n') \
-				*--_s = '\0'; \
-		} \
-		_buf; \
-	})
-
-#define alloca_sprintf(_fmt, ...) \
-	({ \
-		const char *__fmt = (_fmt); \
-		int _size; \
-		int _sizew __FY_DEBUG_UNUSED__; \
-		char *_buf = NULL, *_s; \
-		\
-		_size = snprintf(NULL, 0, __fmt, ## __VA_ARGS__); \
-		if (_size != -1) { \
-			_buf = alloca(_size + 1); \
-			_sizew = snprintf(_buf, _size + 1, __fmt, __VA_ARGS__); \
-			assert(_size == _sizew); \
-			_s = _buf + strlen(_buf); \
-			while (_s > _buf && _s[-1] == '\n') \
-				*--_s = '\0'; \
-		} \
-		_buf; \
-	})
-
 void fy_diag_cfg_from_parser_flags(struct fy_diag_cfg *cfg, enum fy_parse_cfg_flags pflags)
 {
 	cfg->level = (pflags >> FYPCF_DEBUG_LEVEL_SHIFT) & FYPCF_DEBUG_LEVEL_MASK;
