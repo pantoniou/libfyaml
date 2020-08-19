@@ -66,3 +66,4 @@ debian/changelog
 debian/control
 debian/copyright
 artifacts/
+build
