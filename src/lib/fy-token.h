@@ -77,13 +77,6 @@ static inline bool fy_token_type_is_mapping_marker(enum fy_token_type type)
 #define FYACF_VALID_ANCHOR	0x040000	/* contains valid anchor (without & prefix) */
 #define FYACF_JSON_ESCAPE	0x080000	/* contains a character that JSON escapes */
 
-enum fy_comment_placement {
-	fycp_top,
-	fycp_right,
-	fycp_bottom,
-	fycp_max,
-};
-
 FY_TYPE_FWD_DECL_LIST(token);
 struct fy_token {
 	struct list_head node;

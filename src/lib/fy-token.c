@@ -1038,6 +1038,22 @@ const char *fy_token_get_text0(struct fy_token *fyt)
 	return fyt->text0;
 }
 
+const char *fy_token_get_comment(struct fy_token *fyt, char *buf, size_t maxsz,
+	enum fy_comment_placement which)
+{
+	if (!buf || maxsz == 0)
+		return NULL;
+
+	/* return empty? */
+	struct fy_atom *handle;
+	handle = fy_token_comment_handle(fyt, which, false);
+	if (!handle || !fy_atom_is_set(handle))
+		return NULL;
+
+	fy_atom_format_text(handle, buf, maxsz);
+	return buf;
+}
+
 size_t fy_token_get_text_length(struct fy_token *fyt)
 {
 	return fy_token_format_text_length(fyt);
