@@ -2094,6 +2094,22 @@ fy_node_get_style(struct fy_node *fyn)
 	FY_EXPORT;
 
 /**
+ * fy_node_set_style() - Set the node style
+ *
+ * Set the node rendering style.
+ * If the node is NULL then an error code is returned.
+ *
+ * @fyn: The node
+ * @style: The node rendering style
+ *
+ * Returns:
+ * 0 on success, -1 on error.
+ */
+int
+fy_node_set_style(struct fy_node *fyn, enum fy_node_style style)
+	FY_EXPORT;
+
+/**
  * fy_node_is_scalar() - Check whether the node is a scalar
  *
  * Convenience method for checking whether a node is a scalar.

@@ -3217,6 +3217,15 @@ enum fy_node_style fy_node_get_style(struct fy_node *fyn)
 	return fyn ? fyn->style : FYNS_PLAIN;
 }
 
+int fy_node_set_style(struct fy_node *fyn, enum fy_node_style style)
+{
+  if (fyn) {
+		fyn->style = style;
+		return 0;
+	}
+	return -1;
+}
+
 bool fy_node_is_attached(struct fy_node *fyn)
 {
 	return fyn ? fyn->attached : false;
@@ -6253,7 +6262,7 @@ int fy_node_hash_uint(struct fy_node *fyn, unsigned int *hashp)
 
 	XXH32_reset(&state, 2654435761U);
 
-	rc = fy_node_hash_internal(fyn, update_xx32, &state); 
+	rc = fy_node_hash_internal(fyn, update_xx32, &state);
 	if (rc)
 		return rc;
 
