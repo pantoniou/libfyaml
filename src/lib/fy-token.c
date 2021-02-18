@@ -734,6 +734,20 @@ const char *fy_tag_token_get_directive_prefix(struct fy_token *fyt, size_t *td_p
 	return fy_tag_directive_token_prefix(fyt->tag.fyt_td, td_prefix_sizep);
 }
 
+static bool fy_token_text_needs_rebuild(struct fy_token *fyt)
+{
+	const struct fy_atom *fya;
+
+	if (!fy_token_text_is_direct(fyt))
+		return false;
+
+	fya = fy_token_atom(fyt);
+	if (!fya || !fya->fyi)
+		return false;
+
+	return fya->fyi_generation != fya->fyi->generation;
+}
+
 const char *fy_token_get_direct_output(struct fy_token *fyt, size_t *sizep)
 {
 	const struct fy_atom *fya;
@@ -791,7 +805,7 @@ const char *fy_token_get_text(struct fy_token *fyt, size_t *lenp)
 	}
 
 	/* already found something */
-	if (fyt->text) {
+	if (fyt->text && !fy_token_text_needs_rebuild(fyt)) {
 		*lenp = fyt->text_len;
 		return fyt->text;
 	}

@@ -164,6 +164,7 @@ static void fy_input_from_data_setup(struct fy_input *fyi,
 	handle->chomp = FYAC_STRIP;
 	handle->increment = 0;
 	handle->fyi = fyi;
+	handle->fyi_generation = fyi->generation;
 	handle->tabsize = 0;
 
 	fyi->state = FYIS_PARSED;
@@ -438,6 +439,7 @@ int fy_parse_input_done(struct fy_parser *fyp)
 	case fyit_stream:
 		fyp_error_check(fyp, fyp, err_out,
 				"no parser associated with input");
+
 		/* chop extra buffer */
 		buf = realloc(fyi->buffer, fyp->current_input_pos);
 		fyp_error_check(fyp, buf || !fyp->current_input_pos, err_out,
@@ -445,6 +447,8 @@ int fy_parse_input_done(struct fy_parser *fyp)
 
 		fyi->buffer = buf;
 		fyi->allocated = fyp->current_input_pos;
+		/* increate input generation; required for direct input to work */
+		fyi->generation++;
 		break;
 	default:
 		break;
@@ -543,6 +547,7 @@ const void *fy_parse_input_try_pull(struct fy_parser *fyp, struct fy_input *fyi,
 
 			fyi->buffer = buf;
 			fyi->allocated = size;
+			fyi->generation++;
 
 			space = fyi->allocated - pos;
 			p = fyi->buffer + pos;

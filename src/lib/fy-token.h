@@ -117,6 +117,13 @@ struct fy_token {
 };
 FY_TYPE_DECL_LIST(token);
 
+static inline bool fy_token_text_is_direct(struct fy_token *fyt)
+{
+	if (!fyt || !fyt->text)
+		return false;
+	return fyt->text && fyt->text != fyt->text0;
+}
+
 struct fy_token *fy_token_alloc(void);
 void fy_token_free(struct fy_token *fyt);
 struct fy_token *fy_token_ref(struct fy_token *fyt);

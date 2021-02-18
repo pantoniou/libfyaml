@@ -73,6 +73,7 @@ struct fy_input {
 	struct fy_input_cfg cfg;
 	char *name;
 	void *buffer;		/* when the file can't be mmaped */
+	uint64_t generation;
 	size_t allocated;
 	size_t read;
 	size_t chunk;

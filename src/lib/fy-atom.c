@@ -33,6 +33,7 @@ void fy_fill_atom_start(struct fy_parser *fyp, struct fy_atom *handle)
 	fy_get_mark(fyp, &handle->start_mark);
 	handle->end_mark = handle->start_mark;
 	handle->fyi = fyp->current_input;
+	handle->fyi_generation = fyp->current_input->generation;
 
 	assert(fyp->current_input);
 	/* note that handle->data may be zero for empty input */
@@ -122,6 +123,7 @@ struct fy_atom *fy_fill_atom_mark(struct fy_input *fyi,
 	handle->start_mark = *start_mark;
 	handle->end_mark = *end_mark;
 	handle->fyi = fyi;
+	handle->fyi_generation = fyi->generation;
 
 	/* default is plain, modify at return */
 	handle->style = FYAS_PLAIN;

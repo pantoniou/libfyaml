@@ -59,6 +59,7 @@ struct fy_atom {
 	struct fy_mark end_mark;
 	size_t storage_hint;	/* guaranteed to fit in this amount of bytes */
 	struct fy_input *fyi;	/* input on which atom is on */
+	uint64_t fyi_generation;	/* to detect reallocs */
 	unsigned int increment;
 	/* save a little bit of space with bitfields */
 	enum fy_atom_style style : 6;
