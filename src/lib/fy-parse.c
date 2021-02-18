@@ -49,64 +49,22 @@ void fy_eventp_release(struct fy_eventp *fyep)
 	fy_parse_eventp_recycle(fyep->fyp, fyep);
 }
 
-const void *fy_ptr_slow_path(struct fy_parser *fyp, size_t *leftp)
+int fy_parse_input_append(struct fy_parser *fyp, const struct fy_input_cfg *fyic)
 {
-	struct fy_input *fyi;
-	const void *p;
-	int left;
+	struct fy_input *fyi = NULL;
 
-	if (fyp->current_ptr) {
-		if (leftp)
-			*leftp = fyp->current_left;
-		return fyp->current_ptr;
-	}
+	fyi = fy_input_create(fyic);
+	fyp_error_check(fyp, fyp != NULL, err_out,
+			"fy_parse_input_create() failed!");
 
-	fyi = fyp->current_input;
-	if (!fyi)
-		return NULL;
+	fyi->state = FYIS_QUEUED;
+	fy_input_list_add_tail(&fyp->queued_inputs, fyi);
 
-	/* tokens cannot cross boundaries */
-	switch (fyi->cfg.type) {
-	case fyit_file:
-		if (fyi->file.addr) {
-			left = fyi->file.length - fyp->current_input_pos;
-			p = fyi->file.addr + fyp->current_input_pos;
-			break;
-		}
+	return 0;
 
-		/* fall-through */
-
-	case fyit_stream:
-		left = fyi->read - fyp->current_input_pos;
-		p = fyi->buffer + fyp->current_input_pos;
-		break;
-
-	case fyit_memory:
-		left = fyi->cfg.memory.size - fyp->current_input_pos;
-		p = fyi->cfg.memory.data + fyp->current_input_pos;
-		break;
-
-	case fyit_alloc:
-		left = fyi->cfg.alloc.size - fyp->current_input_pos;
-		p = fyi->cfg.alloc.data + fyp->current_input_pos;
-		break;
-
-
-	default:
-		assert(0);	/* no streams */
-		p = NULL;
-		left = 0;
-		break;
-	}
-
-	if (leftp)
-		*leftp = left;
-
-	fyp->current_ptr = p;
-	fyp->current_left = left;
-	fyp->current_c = fy_utf8_get(fyp->current_ptr, fyp->current_left, &fyp->current_w);
-
-	return p;
+err_out:
+	fy_input_unref(fyi);
+	return -1;
 }
 
 bool fy_parse_have_more_inputs(struct fy_parser *fyp)
@@ -117,10 +75,14 @@ bool fy_parse_have_more_inputs(struct fy_parser *fyp)
 int fy_parse_get_next_input(struct fy_parser *fyp)
 {
 	const char *s;
+	struct fy_reader_input_cfg icfg;
 	struct fy_input *fyi;
 	int rc;
+	bool json_mode;
 
-	if (fyp->current_input) {
+	assert(fyp);
+
+	if (fy_reader_current_input(fyp->reader)) {
 		fyp_scan_debug(fyp, "get next input: already exists");
 		return 1;
 	}
@@ -134,38 +96,97 @@ int fy_parse_get_next_input(struct fy_parser *fyp)
 		return 0;
 	}
 
-	rc = fy_parse_input_open(fyp, fyi);
+	json_mode = false;
+	if ((fyp->cfg.flags & (FYPCF_JSON_MASK << FYPCF_JSON_SHIFT)) == FYPCF_JSON_AUTO) {
+		/* detection only works for filenames (sucks) */
+		if (fyi->cfg.type == fyit_file) {
+			s = fyi->cfg.file.filename;
+			if (s)
+				s = strrchr(s, '.');
+			json_mode = s && !strcmp(s, ".json");
+		}
+	} else if ((fyp->cfg.flags & (FYPCF_JSON_MASK << FYPCF_JSON_SHIFT)) == FYPCF_JSON_FORCE)
+		json_mode = true;
+
+	fy_reader_set_mode(fyp->reader, !json_mode ? fyrm_yaml : fyrm_json);
+
+	memset(&icfg, 0, sizeof(icfg));
+	icfg.disable_mmap_opt = !!(fyp->cfg.flags & FYPCF_DISABLE_MMAP_OPT);
+
+	rc = fy_reader_input_open(fyp->reader, fyi, &icfg);
 	fyp_error_check(fyp, !rc, err_out,
 			"failed to open input");
 
-	/* initialize start of input */
-	fyp->current_input = fyi;
-	fyp->current_input_pos = 0;
-	fyp->current_c = -1;
-	fyp->current_w = 0;
-	fyp->current_left = 0;
-	fyp->current_ptr = NULL;
-	fyp->line = 0;
-	fyp->column = 0;
-	fyp->nontab_column = 0;
+	/* take off the reference; reader now owns */
+	fy_input_unref(fyi);
 
-	if ((fyp->cfg.flags & (FYPCF_JSON_MASK << FYPCF_JSON_SHIFT)) == FYPCF_JSON_AUTO) {
-		s = fy_input_get_filename(fyi);
-		if (s)
-			s = strrchr(s, '.');
-		fyi->json_mode = s && !strcmp(s, ".json");
-	} else if ((fyp->cfg.flags & (FYPCF_JSON_MASK << FYPCF_JSON_SHIFT)) == FYPCF_JSON_FORCE)
-		fyi->json_mode = true;
-	else
-		fyi->json_mode = false;
-
-	fyp_scan_debug(fyp, "get next input: new input - %s mode", fyi->json_mode ? "JSON" : "YAML");
+	fyp_scan_debug(fyp, "get next input: new input - %s mode", json_mode ? "JSON" : "YAML");
 
 	return 1;
 
 err_out:
 	fy_input_unref(fyi);
 	return -1;
+}
+
+struct fy_token *
+fy_token_vqueue_internal(struct fy_parser *fyp, struct fy_token_list *fytl,
+			 enum fy_token_type type, va_list ap)
+{
+	struct fy_token *fyt;
+
+	fyt = fy_token_vcreate(type, ap);
+	if (!fyt)
+		return NULL;
+	fy_token_list_add_tail(fytl, fyt);
+
+	/* special handling for zero indented scalars */
+	if (fyt->type == FYTT_DOCUMENT_START) {
+		fyp->document_first_content_token = true;
+		fyp_scan_debug(fyp, "document_first_content_token set to true");
+	} else if (fyp->document_first_content_token &&
+			fy_token_type_is_content(fyt->type)) {
+		fyp->document_first_content_token = false;
+		fyp_scan_debug(fyp, "document_first_content_token set to false");
+	}
+
+	fyp_debug_dump_token_list(fyp, fytl, fyt, "queued: ");
+	return fyt;
+}
+
+struct fy_token *fy_token_queue_internal(struct fy_parser *fyp, struct fy_token_list *fytl,
+					 enum fy_token_type type, ...)
+{
+	va_list ap;
+	struct fy_token *fyt;
+
+	va_start(ap, type);
+	fyt = fy_token_vqueue_internal(fyp, fytl, type, ap);
+	va_end(ap);
+
+	return fyt;
+}
+
+struct fy_token *fy_token_vqueue(struct fy_parser *fyp, enum fy_token_type type, va_list ap)
+{
+	struct fy_token *fyt;
+
+	fyt = fy_token_vqueue_internal(fyp, &fyp->queued_tokens, type, ap);
+	if (fyt)
+		fyp->token_activity_counter++;
+	return fyt;
+}
+
+struct fy_token *fy_token_queue(struct fy_parser *fyp, enum fy_token_type type, ...)
+{
+	va_list ap;
+	struct fy_token *fyt;
+
+	va_start(ap, type);
+	fyt = fy_token_vqueue(fyp, type, ap);
+	va_end(ap);
+
+	return fyt;
 }
 
 const struct fy_tag * const fy_default_tags[] = {
@@ -453,6 +474,81 @@ static const struct fy_parse_cfg default_parse_cfg = {
 	.flags = FYPCF_DEFAULT_PARSE,
 };
 
+static struct fy_diag *fy_parser_reader_get_diag(struct fy_reader *fyr)
+{
+	struct fy_parser *fyp = container_of(fyr, struct fy_parser, builtin_reader);
+	return fyp->diag;
+}
+
+static int fy_parser_reader_file_open(struct fy_reader *fyr, const char *name)
+{
+	struct fy_parser *fyp = container_of(fyr, struct fy_parser, builtin_reader);
+	char *sp, *s, *e, *t, *newp;
+	size_t len, maxlen;
+	int fd;
+
+	if (!fyp || !name || name[0] == '\0')
+		return -1;
+
+	/* for a full path, or no search path, open directly */
+	if (name[0] == '/' || !fyp->cfg.search_path || !fyp->cfg.search_path[0]) {
+		fd = open(name, O_RDONLY);
+		if (fd == -1)
+			fyp_scan_debug(fyp, "failed to open file %s\n", name);
+		else
+			fyp_scan_debug(fyp, "opened file %s\n", name);
+		return fd;
+	}
+
+	len = strlen(fyp->cfg.search_path);
+	sp = alloca(len + 1);
+	memcpy(sp, fyp->cfg.search_path, len + 1);
+
+	/* allocate the maximum possible so that we don't deal with reallocations */
+	maxlen = len + 1 + strlen(name);
+	newp = malloc(maxlen + 1);
+	if (!newp)
+		return -1;
+
+	s = sp;
+	e = sp + strlen(s);
+	while (s < e) {
+		/* skip completely empty */
+		if (*s == ':') {
+			s++;
+			continue;
+		}
+
+		t = strchr(s, ':');
+		if (t)
+			*t++ = '\0';
+		else
+			t = e;
+
+		len = strlen(s) + 1 + strlen(name) + 1;
+		snprintf(newp, maxlen, "%s/%s", s, name);
+
+		/* try opening */
+		fd = open(newp, O_RDONLY);
+		if (fd != -1) {
+			fyp_scan_debug(fyp, "opened file %s at %s", name, newp);
+			free(newp);
+			return fd;
+		}
+
+		s = t;
+	}
+
+	if (newp)
+		free(newp);
+	return -1;
+}
+
+static const struct fy_reader_ops fy_parser_reader_ops = {
+	.get_diag = fy_parser_reader_get_diag,
+	.file_open = fy_parser_reader_file_open,
+};
+
 int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 {
 	struct fy_diag *diag;
@@ -472,6 +568,9 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 		fy_diag_ref(diag);
 
 	fyp->diag = diag;
+
+	fy_reader_setup(&fyp->builtin_reader, &fy_parser_reader_ops);
+	fyp->reader = &fyp->builtin_reader;
 
 	fy_indent_list_init(&fyp->indent_stack);
 	fy_indent_list_init(&fyp->recycled_indent);
@@ -499,7 +598,6 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 	fyp->pending_complex_key_column = -1;
 	fyp->last_block_mapping_key_line = -1;
 
-	fyp->tabsize = 0;	/* disable for now */
 	fyp->suppress_recycling = !!(fyp->cfg.flags & FYPCF_DISABLE_RECYCLING) ||
 		                  getenv("FY_VALGRIND");
 
@@ -539,8 +637,8 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 		fy_input_unref(fyi);
 	}
 
-	fy_input_unref(fyp->current_input);
-	fyp->current_input = NULL;
+	/* clean the builtin reader */
+	fy_reader_cleanup(&fyp->builtin_reader);
 
 	/* and vacuum (free everything) */
 	fy_parse_indent_vacuum(fyp);
@@ -581,31 +679,6 @@ static const char *state_txt[] __FY_DEBUG_UNUSED__ = {
 	[FYPS_END] = "END"
 };
 
-/* ensure that there are at least size octets available */
-const void *fy_ensure_lookahead_slow_path(struct fy_parser *fyp, size_t size, size_t *leftp)
-{
-	const void *p;
-	size_t left;
-
-	if (!leftp)
-		leftp = &left;
-
-	p = fy_ptr(fyp, leftp);
-	if (!p || *leftp < size) {
-		fyp_scan_debug(fyp, "ensure lookahead size=%zd left=%zd",
-				size, *leftp);
-
-		p = fy_parse_input_try_pull(fyp, fyp->current_input, size, leftp);
-		if (!p || *leftp < size)
-			return NULL;
-
-		fyp->current_ptr = p;
-		fyp->current_left = *leftp;
-		fyp->current_c = fy_utf8_get(fyp->current_ptr, fyp->current_left, &fyp->current_w);
-	}
-	return p;
-}
-
 int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_line)
 {
 	int c, column, start_column, lines, scan_ahead;
@@ -627,8 +700,8 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 		fy_fill_atom_start(fyp, handle);
 
 	lines = 0;
-	start_column = fyp->column;
-	column = fyp->column;
+	start_column = fyp_column(fyp);
+	column = fyp_column(fyp);
 	scan_ahead = 0;
 
 	has_ws = false;
@@ -690,7 +763,6 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 		handle->trailing_lb = false;
 		handle->size0 = lines > 0;
 		handle->valid_anchor = false;
-		handle->tabsize = fyp->tabsize;
 	}
 
 	return 0;
@@ -738,10 +810,10 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 	while ((c = fy_parse_peek(fyp)) >= 0) {
 
 		/* is it BOM? skip over it */
-		if (fyp->column == 0 && c == FY_UTF8_BOM)
+		if (fyp_column(fyp) == 0 && c == FY_UTF8_BOM)
 			fy_advance(fyp, c);
 
-		if (!fyp->tabsize) {
+		if (!fyp_tabsize(fyp)) {
 			/* scan ahead until the next non-ws character */
 			/* if it's a flow start one, then tabs are allowed */
 			tabs_allowed = fyp->flow_level || !fyp->simple_key_allowed;
@@ -851,7 +923,7 @@ static int fy_purge_stale_simple_keys(struct fy_parser *fyp, bool *did_purgep,
 
 		fyp_scan_debug(fyp, "purge-check: flow_level=%d fysk->flow_level=%d fysk->mark.line=%d line=%d",
 				fyp->flow_level, fysk->flow_level,
-				fysk->mark.line, fyp->line);
+				fysk->mark.line, fyp_line(fyp));
 
 		fyp_debug_dump_simple_key(fyp, fysk, "purge-check: ");
 
@@ -859,7 +931,7 @@ static int fy_purge_stale_simple_keys(struct fy_parser *fyp, bool *did_purgep,
 		/* in flow context we purge only those with higher flow level */
 		if (!fyp->flow_level) {
 			line = fysk->mark.line;
-			purge = fyp->line > line;
+			purge = fyp_line(fyp) > line;
 		} else
 			purge = fyp->flow_level < fysk->flow_level;
 
@@ -1122,7 +1194,7 @@ void fy_get_simple_key_mark(struct fy_parser *fyp, struct fy_simple_key_mark *fy
 {
 	fy_get_mark(fyp, &fyskm->mark);
 	fyskm->flow_level = fyp->flow_level;
-	fyskm->required = !fyp->flow_level && fyp->indent == fyp->column;
+	fyskm->required = !fyp->flow_level && fyp->indent == fyp_column(fyp);
 }
 
 int fy_save_simple_key_mark(struct fy_parser *fyp,
@@ -1219,12 +1291,9 @@ int fy_fetch_stream_end(struct fy_parser *fyp)
 	struct fy_token *fyt;
 	int rc;
 
-	/* force new line */
-	if (fyp->column) {
-		fyp->column = 0;
-		fyp->nontab_column = 0;
-		fyp->line++;
-	}
+	/* only reset the stream in regular mode */
+	if (!fyp->parse_flow_only)
+		fy_reader_stream_end(fyp->reader);
 
 	fy_remove_all_simple_keys(fyp);
 
@@ -1686,7 +1755,7 @@ int fy_fetch_flow_collection_mark_start(struct fy_parser *fyp, int c)
 	}
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || fyp->column > fyp->indent, err_out,
+			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
 			"wrongly indented %s start in flow mode", typestr);
 
 	fy_get_simple_key_mark(fyp, &skm);
@@ -1758,7 +1827,7 @@ int fy_fetch_flow_collection_mark_end(struct fy_parser *fyp, int c)
 			"JSON disallows trailing comma before closing %s", markerstr);
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || fyp->column > fyp->indent, err_out,
+			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
 			"wrongly indented %s end in flow mode", typestr);
 
 	rc = fy_remove_simple_key(fyp, type);
@@ -1788,6 +1857,13 @@ int fy_fetch_flow_collection_mark_end(struct fy_parser *fyp, int c)
 	fyt = fy_token_queue(fyp, type, fy_fill_atom_a(fyp, 1));
 	fyp_error_check(fyp, fyt, err_out_rc,
 			"fy_token_queue() failed");
+
+	if (fyp->parse_flow_only && fyp->flow_level == 0) {
+		rc = fy_fetch_stream_end(fyp);
+		fyp_error_check(fyp, !rc, err_out_rc,
+				"fy_fetch_stream_end() failed");
+		return 0;
+	}
 
 	/* the comment indicator must have at least a space */
 	c = fy_parse_peek(fyp);
@@ -1835,7 +1911,7 @@ int fy_fetch_flow_collection_entry(struct fy_parser *fyp, int c)
 	type = FYTT_FLOW_ENTRY;
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || fyp->column > fyp->indent, err_out,
+			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
 			"wrongly indented entry seperator in flow mode");
 
 	rc = fy_remove_simple_key(fyp, type);
@@ -1888,7 +1964,7 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 			"illegal block entry");
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || (fyp->column + 2) > fyp->indent, err_out,
+			!fyp->flow_level || (fyp_column(fyp) + 2) > fyp->indent, err_out,
 			"wrongly indented block sequence in flow mode");
 
 	if (!(fyp->flow_level || fyp->simple_key_allowed)) {
@@ -1908,10 +1984,10 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 	/* we have to save the start mark */
 	fy_get_mark(fyp, &mark);
 
-	if (!fyp->flow_level && fyp->indent < fyp->column) {
+	if (!fyp->flow_level && fyp->indent < fyp_column(fyp)) {
 
 		/* push the new indent level */
-		rc = fy_push_indent(fyp, fyp->column, false);
+		rc = fy_push_indent(fyp, fyp_column(fyp), false);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_push_indent() failed");
 
@@ -1979,7 +2055,7 @@ int fy_fetch_key(struct fy_parser *fyp, int c)
 			"illegal block entry or key mark");
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || fyp->column > fyp->indent, err_out,
+			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
 			"wrongly indented mapping key in flow mode");
 
 	fy_get_simple_key_mark(fyp, &skm);
@@ -1991,10 +2067,10 @@ int fy_fetch_key(struct fy_parser *fyp, int c)
 			fyp->flow_level || fyp->simple_key_allowed, err_out,
 			"invalid mapping key (not allowed in this context)");
 
-	if (!fyp->flow_level && fyp->indent < fyp->column) {
+	if (!fyp->flow_level && fyp->indent < fyp_column(fyp)) {
 
 		/* push the new indent level */
-		rc = fy_push_indent(fyp, fyp->column, true);
+		rc = fy_push_indent(fyp, fyp_column(fyp), true);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_push_indent() failed");
 
@@ -2010,7 +2086,7 @@ int fy_fetch_key(struct fy_parser *fyp, int c)
 
 	target_simple_key_allowed = !fyp->flow_level;
 
-	fyp->pending_complex_key_column = fyp->column;
+	fyp->pending_complex_key_column = fyp_column(fyp);
 	fyp->pending_complex_key_mark = mark;
 	fyp_scan_debug(fyp, "pending_complex_key_column %d",
 			fyp->pending_complex_key_column);
@@ -2065,7 +2141,7 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 	fy_token_list_init(&sk_tl);
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || fyp->column > fyp->indent, err_out,
+			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
 			"wrongly indented mapping value in flow mode");
 
 	rc = fy_purge_stale_simple_keys(fyp, &did_purge, FYTT_VALUE);
@@ -2099,8 +2175,8 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 			fyp->flow_level, mark_insert.column, fyp->indent);
 
 	is_complex = fyp->pending_complex_key_column >= 0;
-	final_complex_key = is_complex && (fyp->flow_level || fyp->column <= fyp->pending_complex_key_mark.column);
-	is_multiline = mark_end_insert.line < fyp->line;
+	final_complex_key = is_complex && (fyp->flow_level || fyp_column(fyp) <= fyp->pending_complex_key_mark.column);
+	is_multiline = mark_end_insert.line < fyp_line(fyp);
 	has_bmap = fyp->generated_block_map;
 	push_bmap_start = (!fyp->flow_level && mark_insert.column > fyp->indent);
 	push_key_only = (!is_complex && (fyp->flow_level || has_bmap)) ||
@@ -2109,7 +2185,7 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 	fyp_scan_debug(fyp, "mark_insert.line=%d/%d mark_end_insert.line=%d/%d fyp->line=%d",
 			mark_insert.line, mark_insert.column,
 			mark_end_insert.line, mark_end_insert.column,
-			fyp->line);
+			fyp_line(fyp));
 
 	fyp_scan_debug(fyp, "simple_key_allowed=%s is_complex=%s final_complex_key=%s is_multiline=%s has_bmap=%s push_bmap_start=%s push_key_only=%s",
 			fyp->simple_key_allowed ? "true" : "false",
@@ -2231,7 +2307,7 @@ int fy_fetch_anchor_or_alias(struct fy_parser *fyp, int c)
 	}
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || fyp->column > fyp->indent, err_out,
+			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
 			"wrongly indented %s in flow mode", typestr);
 
 	/* we have to save the start mark (including the anchor/alias start) */
@@ -2341,7 +2417,7 @@ int fy_fetch_tag(struct fy_parser *fyp, int c)
 			"illegal tag mark (not '!')");
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0 ,1, FYEM_SCAN,
-			!fyp->flow_level || fyp->column > fyp->indent, err_out,
+			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
 			"wrongly indented tag in flow mode");
 
 	fyds = fyp->current_document_state;
@@ -2459,22 +2535,22 @@ int fy_scan_block_scalar_indent(struct fy_parser *fyp, int indent, int *breaks)
 
 		/* skip over indentation */
 
-		if (!fyp->tabsize) {
+		if (!fyp_tabsize(fyp)) {
 			while ((c = fy_parse_peek(fyp)) == ' ' &&
-				(!indent || fyp->column < indent))
+				(!indent || fyp_column(fyp) < indent))
 				fy_advance(fyp, c);
 
 			FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-					c != '\t' || !(!indent && fyp->column < indent), err_out,
+					c != '\t' || !(!indent && fyp_column(fyp) < indent), err_out,
 					"invalid tab character as indent instead of space");
 		} else {
 			while (fy_is_ws((c = fy_parse_peek(fyp))) &&
-				(!indent || fyp->column < indent))
+				(!indent || fyp_column(fyp) < indent))
 				fy_advance(fyp, c);
 		}
 
-		if (fyp->column > max_indent)
-			max_indent = fyp->column;
+		if (fyp_column(fyp) > max_indent)
+			max_indent = fyp_column(fyp);
 
 		/* non-empty line? */
 		if (!fyp_is_lb(fyp, c))
@@ -2521,7 +2597,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 				fy_utf8_format_a(c, fyue_singlequote));
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || fyp->column > fyp->indent, err_out,
+			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
 			"wrongly indented block scalar in flow mode");
 
 	rc = fy_remove_simple_key(fyp, FYTT_SCALAR);
@@ -2629,7 +2705,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	chomp_amt = increment ? (unsigned int)(current_indent + increment) : (unsigned int)-1;
 
 	lastc = -1;
-	while ((c = fy_parse_peek(fyp)) > 0 && fyp->column >= indent) {
+	while ((c = fy_parse_peek(fyp)) > 0 && fyp_column(fyp) >= indent) {
 
 		lastc = c;
 
@@ -2652,7 +2728,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 
 			lastc = c;
 
-			if (fyp->column == 0 &&
+			if (fyp_column(fyp) == 0 &&
 			    (!fy_parse_strncmp(fyp, "...", 3) ||
 			     !fy_parse_strncmp(fyp, "---", 3)) &&
 			    fy_is_blankz_at_offset(fyp, 3)) {
@@ -2665,7 +2741,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 				empty_line = false;
 				trailing_ws = 0;
 				if (chomp_amt == (unsigned int)-1)
-					chomp_amt = fyp->column;
+					chomp_amt = fyp_column(fyp);
 			} else {
 				has_ws = true;
 				if (empty_line)
@@ -2772,13 +2848,13 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	}
 
 	/* detect wrongly indented block scalar */
-	if (!(!empty || fyp->column <= fyp->indent || c == '#' || doc_start_end_detected)) {
+	if (!(!empty || fyp_column(fyp) <= fyp->indent || c == '#' || doc_start_end_detected)) {
 		FYP_MARK_ERROR(fyp, &handle.start_mark, &handle.end_mark, FYEM_SCAN,
 			"block scalar with wrongly indented line after spaces only");
 		goto err_out;
 	}
 
-	if (empty && c == '#' && fyp->column > fyp->indent) {
+	if (empty && c == '#' && fyp_column(fyp) > fyp->indent) {
 		FYP_MARK_ERROR(fyp, &handle.start_mark, &handle.end_mark, FYEM_SCAN,
 			"empty block scalar with wrongly indented comment line after spaces only");
 		goto err_out;
@@ -2836,7 +2912,8 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	handle.trailing_lb = trailing_lb;
 	handle.size0 = length == 0;
 	handle.valid_anchor = false;
-	handle.tabsize = fyp->tabsize;
+	handle.json_mode = fyp_json_mode(fyp);
+	handle.tabsize = fyp_tabsize(fyp);
 
 #ifdef ATOM_SIZE_CHECK
 	tlength = fy_atom_format_text_length(&handle);
@@ -2866,20 +2943,17 @@ err_out_rc:
 	return rc;
 }
 
-int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
+int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent, struct fy_atom *handle)
 {
-	struct fy_atom handle;
 	size_t length;
-	int rc = -1, code_length, i = 0, j, end_c, last_line, lastc;
+	int code_length, i = 0, j, end_c, last_line, lastc;
 	int breaks_found, blanks_found, break_run, total_code_length, total_digits;
 	int value;
 	uint32_t hi_surrogate, lo_surrogate;
-	bool is_single, is_multiline, is_complex, esc_lb, ws_lb_only, has_ws, has_lb, has_esc;
+	bool is_single, is_multiline, esc_lb, ws_lb_only, has_ws, has_lb, has_esc;
 	bool first, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb = false;
 	bool unicode_esc, is_json_unesc, has_json_esc;
-	struct fy_simple_key_mark skm;
 	struct fy_mark mark, mark2;
-	struct fy_token *fyt;
 	char escbuf[2];
 	const char *ep;
 #ifdef ATOM_SIZE_CHECK
@@ -2889,22 +2963,16 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 	is_single = c == '\'';
 	end_c = c;
 
-	fyp_error_check(fyp, c == '\'' || c == '"', err_out,
+	fyr_error_check(fyr, c == '\'' || c == '"', err_out,
 			"bad start of flow scalar ('%s')",
 				fy_utf8_format_a(c, fyue_singlequote));
 
-	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || fyp->column > fyp->indent, err_out,
-			"wrongly indented %s scalar in flow mode",
-				is_single ? "single-quoted" : "double-quoted");
-
-	fy_get_mark(fyp, &mark);
-	fy_get_simple_key_mark(fyp, &skm);
+	fy_reader_get_mark(fyr, &mark);
 
 	/* skip over block scalar start */
-	fy_advance(fyp, c);
+	fy_reader_advance(fyr, c);
 
-	fy_fill_atom_start(fyp, &handle);
+	fy_reader_fill_atom_start(fyr, handle);
 
 	length = 0;
 	breaks_found = 0;
@@ -2925,57 +2993,57 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 	last_line = -1;
 	lastc = -1;
 	for (;;) {
-		if (!fyp_json_mode(fyp)) {
+		if (!fy_reader_json_mode(fyr)) {
 			/* no document indicators please */
-			FYP_PARSE_ERROR_CHECK(fyp, 0, 3, FYEM_SCAN,
-				!(fyp->column == 0 &&
-					(!fy_parse_strncmp(fyp, "---", 3) ||
-					!fy_parse_strncmp(fyp, "...", 3)) &&
-					fy_is_blankz_at_offset(fyp, 3)), err_out,
+			FYR_PARSE_ERROR_CHECK(fyr, 0, 3, FYEM_SCAN,
+				!(fy_reader_column(fyr) == 0 &&
+					(!fy_reader_strncmp(fyr, "---", 3) ||
+					!fy_reader_strncmp(fyr, "...", 3)) &&
+					fy_reader_is_blankz_at_offset(fyr, 3)), err_out,
 				"invalid document-%s marker in %s scalar",
 					c == '-' ? "start" : "end",
 					is_single ? "single-quoted" : "double-quoted");
 		}
 
 		/* no EOF either */
-		c = fy_parse_peek(fyp);
+		c = fy_reader_peek(fyr);
 
 		if (c <= 0) {
-			fy_get_mark(fyp, &mark);
+			fy_reader_get_mark(fyr, &mark);
 
 			if (!c || c == FYUG_EOF)
-				FYP_MARK_ERROR(fyp, &handle.start_mark, &mark, FYEM_SCAN,
+				FYR_MARK_ERROR(fyr, &handle->start_mark, &mark, FYEM_SCAN,
 						"%s scalar without closing quote",
 							is_single ? "single-quoted" : "double-quoted");
 			else
-				FYP_MARK_ERROR(fyp, &handle.start_mark, &mark, FYEM_SCAN,
+				FYR_MARK_ERROR(fyr, &handle->start_mark, &mark, FYEM_SCAN,
 						"%s scalar is malformed UTF8",
 							is_single ? "single-quoted" : "double-quoted");
 			goto err_out;
 		}
 
 		if (first) {
-			if (fyp_is_flow_ws(fyp, c))
+			if (fy_reader_is_flow_ws(fyr, c))
 				starts_with_ws = true;
-			else if (fyp_is_lb(fyp, c))
+			else if (fy_reader_is_lb(fyr, c))
 				starts_with_lb = true;
 		}
 
-		while (!fyp_is_flow_blankz(fyp, c = fy_parse_peek(fyp))) {
+		while (!fy_reader_is_flow_blankz(fyr, c = fy_reader_peek(fyr))) {
 
-			if (ws_lb_only && !(fyp_is_flow_ws(fyp, c) || fyp_is_lb(fyp, c)) && c != end_c)
+			if (ws_lb_only && !(fy_reader_is_flow_ws(fyr, c) || fy_reader_is_lb(fyr, c)) && c != end_c)
 				ws_lb_only = false;
 
 			esc_lb = false;
 			/* track line change (and first non blank) */
-			if (last_line != fyp->line) {
-				last_line = fyp->line;
+			if (last_line != fy_reader_line(fyr)) {
+				last_line = fy_reader_line(fyr);
 
-				if (fyp->column <= fyp->indent) {
+				if (indent >= 0 && fy_reader_column(fyr) <= indent) {
 
-					fy_advance(fyp, c);
-					fy_get_mark(fyp, &mark2);
-					FYP_MARK_ERROR(fyp, &mark, &mark2, FYEM_SCAN,
+					fy_reader_advance(fyr, c);
+					fy_reader_get_mark(fyr, &mark2);
+					FYR_MARK_ERROR(fyr, &mark, &mark2, FYEM_SCAN,
 						"wrongly indented %s scalar",
 							is_single ? "single-quoted" : "double-quoted");
 					goto err_out;
@@ -2994,9 +3062,9 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 			}
 
 			/* escaped single quote? */
-			if (is_single && c == '\'' && fy_parse_peek_at(fyp, 1) == '\'') {
+			if (is_single && c == '\'' && fy_reader_peek_at(fyr, 1) == '\'') {
 				length++;
-				fy_advance_by(fyp, 2);
+				fy_reader_advance_by(fyr, 2);
 				break_run = 0;
 				lastc = '\'';
 				continue;
@@ -3007,12 +3075,12 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 				break;
 
 			/* escaped line break */
-			if (!is_single && c == '\\' && fyp_is_lb(fyp, fy_parse_peek_at(fyp, 1))) {
+			if (!is_single && c == '\\' && fy_reader_is_lb(fyr, fy_reader_peek_at(fyr, 1))) {
 
-				fy_advance_by(fyp, 2);
+				fy_reader_advance_by(fyr, 2);
 
 				esc_lb = true;
-				c = fy_parse_peek(fyp);
+				c = fy_reader_peek(fyr);
 				break_run = 0;
 				lastc = c;
 
@@ -3026,10 +3094,10 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 
 				/* note we don't generate formatted output */
 				/* we are merely checking for validity */
-				c = fy_parse_peek_at(fyp, 1);
+				c = fy_reader_peek_at(fyr, 1);
 
 				/* hex, unicode marks - json only supports u */
-				unicode_esc = !fyp_json_mode(fyp) ?
+				unicode_esc = !fy_reader_json_mode(fyr) ?
 						(c == 'x' || c == 'u' || c == 'U') :
 						c == 'u';
 				if (unicode_esc) {
@@ -3045,9 +3113,9 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 							c == 'u' ? 4 : 8;
 						value = 0;
 						for (i = 0; i < code_length; i++) {
-							c = fy_parse_peek_at(fyp, total_code_length + i);
+							c = fy_reader_peek_at(fyr, total_code_length + i);
 
-							FYP_PARSE_ERROR_CHECK(fyp, 0, total_code_length + i + 1, FYEM_SCAN,
+							FYR_PARSE_ERROR_CHECK(fyr, 0, total_code_length + i + 1, FYEM_SCAN,
 								fy_is_hex(c), err_out,
 								"double-quoted scalar has invalid hex escape");
 
@@ -3068,8 +3136,8 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 
 						/* high surrogate */
 						if (j == 1 && code_length == 4 && value >= 0xd800 && value <= 0xdbff &&
-						    fy_parse_peek_at(fyp, total_code_length) == '\\' &&
-						    fy_parse_peek_at(fyp, total_code_length + 1) == 'u') {
+						    fy_reader_peek_at(fyr, total_code_length) == '\\' &&
+						    fy_reader_peek_at(fyr, total_code_length + 1) == 'u') {
 							hi_surrogate = value;
 							c = 'u';
 							continue;
@@ -3077,7 +3145,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 
 						if (j == 2 && code_length == 4 && hi_surrogate) {
 
-							FYP_PARSE_ERROR_CHECK(fyp, total_code_length - 6, 6, FYEM_SCAN,
+							FYR_PARSE_ERROR_CHECK(fyr, total_code_length - 6, 6, FYEM_SCAN,
 								value >= 0xdc00 && value <= 0xdfff, err_out,
 								"Invalid low surrogate value");
 
@@ -3089,12 +3157,12 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 					}
 
 					/* check for validity */
-					FYP_PARSE_ERROR_CHECK(fyp, 0, total_code_length, FYEM_SCAN,
+					FYR_PARSE_ERROR_CHECK(fyr, 0, total_code_length, FYEM_SCAN,
 						!(value < 0 || (value >= 0xd800 && value <= 0xdfff) ||
 							value > 0x10ffff), err_out,
 						"double-quoted scalar has invalid UTF8 escape");
 
-					fy_advance_by(fyp, total_code_length);
+					fy_reader_advance_by(fyr, total_code_length);
 
 				} else {
 					escbuf[0] = '\\';
@@ -3103,16 +3171,16 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 					ep = escbuf;
 
 					value = fy_utf8_parse_escape(&ep, sizeof(escbuf),
-							!fyp_json_mode(fyp) ?
+							!fy_reader_json_mode(fyr) ?
 							fyue_doublequote : fyue_doublequote_json);
 
-					FYP_PARSE_ERROR_CHECK(fyp, 0, 2, FYEM_SCAN,
+					FYR_PARSE_ERROR_CHECK(fyr, 0, 2, FYEM_SCAN,
 						value >= 0, err_out,
 						"invalid escape '%s' in %s string",
 							fy_utf8_format_a(c, fyue_singlequote),
 							is_single ? "single-quoted" : "double-quoted");
 
-					fy_advance_by(fyp, 2);
+					fy_reader_advance_by(fyr, 2);
 				}
 
 				length += fy_utf8_width(value);
@@ -3132,8 +3200,8 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 			if (!is_json_unesc)
 				has_json_esc = true;
 
-			if (!is_single && fyp_json_mode(fyp) && !is_json_unesc) {
-				FYP_PARSE_ERROR(fyp, 0, 2, FYEM_SCAN,
+			if (!is_single && fy_reader_json_mode(fyr) && !is_json_unesc) {
+				FYR_PARSE_ERROR(fyr, 0, 2, FYEM_SCAN,
 					"Invalid JSON unescaped character");
 				goto err_out;
 			}
@@ -3141,7 +3209,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 			lastc = c;
 
 			/* regular character */
-			fy_advance(fyp, c);
+			fy_reader_advance(fyr, c);
 
 			length += fy_utf8_width(c);
 			break_run = 0;
@@ -3154,7 +3222,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 		/* consume blanks */
 		breaks_found = 0;
 		blanks_found = 0;
-		while (fyp_is_flow_blank(fyp, c = fy_parse_peek(fyp)) || fyp_is_lb(fyp, c)) {
+		while (fy_reader_is_flow_blank(fyr, c = fy_reader_peek(fyr)) || fy_reader_is_lb(fyr, c)) {
 
 			is_json_unesc = fy_is_json_unescaped(c);
 			if (!is_json_unesc)
@@ -3162,9 +3230,9 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 
 			break_run = 0;
 
-			fy_advance(fyp, c);
+			fy_reader_advance(fyr, c);
 
-			if (fyp_is_lb(fyp, c)) {
+			if (fy_reader_is_lb(fyr, c)) {
 				has_lb = true;
 				breaks_found++;
 				blanks_found = 0;
@@ -3180,54 +3248,315 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 
 	if (break_run > 0)
 		ends_with_lb = true;
-	else if (fyp_is_flow_ws(fyp, lastc))
+	else if (fy_reader_is_flow_ws(fyr, lastc))
 		ends_with_ws = true;
 	trailing_lb = break_run > 1;
 
 	/* end... */
-	fy_fill_atom_end(fyp, &handle);
+	fy_reader_fill_atom_end(fyr, handle);
 
-	is_multiline = handle.end_mark.line > handle.start_mark.line;
-	is_complex = fyp->pending_complex_key_column >= 0;
+	is_multiline = handle->end_mark.line > handle->start_mark.line;
 
 	/* need to process to present */
-	handle.style = is_single ? FYAS_SINGLE_QUOTED : FYAS_DOUBLE_QUOTED;
-	handle.direct_output = !is_multiline && !has_esc && !has_json_esc &&
-				fy_atom_size(&handle) == length;
-	handle.empty = ws_lb_only;
-	handle.has_lb = has_lb;
-	handle.has_ws = has_ws;
-	handle.starts_with_ws = starts_with_ws;
-	handle.starts_with_lb = starts_with_lb;
-	handle.ends_with_ws = ends_with_ws;
-	handle.ends_with_lb = ends_with_lb;
-	handle.trailing_lb = trailing_lb;
-	handle.size0 = length == 0;
-	handle.tabsize = fyp->tabsize;
+	handle->style = is_single ? FYAS_SINGLE_QUOTED : FYAS_DOUBLE_QUOTED;
+	handle->direct_output = !is_multiline && !has_esc && !has_json_esc &&
+				fy_atom_size(handle) == length;
+	handle->empty = ws_lb_only;
+	handle->has_lb = has_lb;
+	handle->has_ws = has_ws;
+	handle->starts_with_ws = starts_with_ws;
+	handle->starts_with_lb = starts_with_lb;
+	handle->ends_with_ws = ends_with_ws;
+	handle->ends_with_lb = ends_with_lb;
+	handle->trailing_lb = trailing_lb;
+	handle->size0 = length == 0;
+	handle->tabsize = fy_reader_tabsize(fyr);
 
 	/* skip over block scalar end */
-	fy_advance_by(fyp, 1);
+	fy_reader_advance_by(fyr, 1);
 
 #ifdef ATOM_SIZE_CHECK
-	tlength = fy_atom_format_text_length(&handle);
-	fyp_error_check(fyp,
+	tlength = fy_atom_format_text_length(handle);
+	fyr_error_check(fyr,
 		length == tlength,
 		err_out, "storage hint calculation failed real %zu != hint %zu - \"%s\"",
 		tlength, length,
-		fy_utf8_format_text_a(fy_atom_data(&handle), fy_atom_size(&handle), fyue_doublequote));
+		fy_utf8_format_text_a(fy_atom_data(handle), fy_atom_size(handle), fyue_doublequote));
 #endif
 
-	handle.storage_hint = length;
-	handle.storage_hint_valid = true;
+	handle->storage_hint = length;
+	handle->storage_hint_valid = true;
 
-	FYP_MARK_ERROR_CHECK(fyp, &handle.start_mark, &handle.end_mark, FYEM_SCAN,
-			!fyp_json_mode(fyp) || !is_multiline, err_out,
+	FYR_MARK_ERROR_CHECK(fyr, &handle->start_mark, &handle->end_mark, FYEM_SCAN,
+			!fy_reader_json_mode(fyr) || !is_multiline, err_out,
 			"Multi line double quoted scalars not supported in JSON mode");
+
+	return 0;
+
+err_out:
+	return -1;
+}
+
+int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent, int flow_level, struct fy_atom *handle)
+{
+	size_t length;
+	int rc = -1, run, nextc, breaks_found, blanks_found;
+	bool has_leading_blanks;
+	bool last_ptr;
+	struct fy_mark mark, last_mark;
+	bool is_multiline, has_lb, has_ws;
+	bool is_json_unesc, has_json_esc;
+#ifdef ATOM_SIZE_CHECK
+	size_t tlength;
+#endif
+
+	FYR_PARSE_ERROR_CHECK(fyr, 0, 1, FYEM_SCAN,
+			!fy_reader_is_blankz(fyr, c), err_out,
+			"plain scalar cannot start with blank or zero");
+
+	/* may not start with any of ,[]{}#&*!|>'\"%@` */
+	FYR_PARSE_ERROR_CHECK(fyr, 0, 1, FYEM_SCAN,
+			!fy_utf8_strchr(",[]{}#&*!|>'\"%@`", c), err_out,
+			"plain scalar cannot start with '%c'", c);
+
+	/* may not start with - not followed by blankz */
+	FYR_PARSE_ERROR_CHECK(fyr, 0, 2, FYEM_SCAN,
+			c != '-' || !fy_reader_is_blank_at_offset(fyr, 1), err_out,
+			"plain scalar cannot start with '%c' followed by blank", c);
+
+	/* may not start with -?: not followed by blankz (in block context) */
+	FYR_PARSE_ERROR_CHECK(fyr, 0, 2, FYEM_SCAN,
+			flow_level > 0 || !((c == '?' || c == ':') && fy_reader_is_blank_at_offset(fyr, 1)), err_out,
+			"plain scalar cannot start with '%c' followed by blank (in block context)", c);
+
+	fy_reader_get_mark(fyr, &mark);
+
+	fy_reader_fill_atom_start(fyr, handle);
+
+	has_leading_blanks = false;
+	has_lb = false;
+	has_ws = false;
+	has_json_esc = false;
+
+	length = 0;
+	breaks_found = 0;
+	blanks_found = 0;
+	last_ptr = false;
+	memset(&last_mark, 0, sizeof(last_mark));
+	c = FYUG_EOF;
+	for (;;) {
+		/* break for document indicators */
+		if (fy_reader_column(fyr) == 0 &&
+		    (!fy_reader_strncmp(fyr, "---", 3) ||
+		     !fy_reader_strncmp(fyr, "...", 3)) &&
+		    fy_reader_is_blankz_at_offset(fyr, 3))
+			break;
+
+		c = fy_reader_peek(fyr);
+		if (c == '#')
+			break;
+
+		run = 0;
+		for (;;) {
+			if (fy_reader_is_blankz(fyr, c))
+				break;
+
+			nextc = fy_reader_peek_at(fyr, 1);
+
+			/* ':' followed by space terminates */
+			if (c == ':' && fy_reader_is_blankz(fyr, nextc))
+				break;
+
+			/* in flow context ':' followed by flow markers */
+			if (flow_level > 0 && c == ':' && fy_utf8_strchr(",[]{}", nextc))
+				break;
+
+			/* in flow context any or , [ ] { } */
+			if (flow_level > 0 && (c == ',' || c == '[' || c == ']' || c == '{' || c == '}'))
+				break;
+
+			if (breaks_found) {
+				/* minimum 1 sep, or more for consecutive */
+				length += breaks_found > 1 ? (breaks_found - 1) : 1;
+				breaks_found = 0;
+				blanks_found = 0;
+			} else if (blanks_found) {
+				/* just the blanks mam' */
+				length += blanks_found;
+				blanks_found = 0;
+			}
+
+			/* check whether we have a JSON unescaped character */
+			is_json_unesc = fy_is_json_unescaped(c);
+			if (!is_json_unesc)
+				has_json_esc = true;
+
+			fy_reader_advance(fyr, c);
+			run++;
+
+			length += fy_utf8_width(c);
+
+			c = nextc;
+		}
+
+		/* save end mark if we processed more than one non-blank */
+		if (run > 0) {
+			/* fyp_scan_debug(fyp, "saving mark"); */
+			last_ptr = true;
+			fy_reader_get_mark(fyr, &last_mark);
+		}
+
+		/* end? */
+		if (!(fy_is_blank(c) || fy_reader_is_lb(fyr, c)))
+			break;
+
+		has_json_esc = true;
+
+		/* consume blanks */
+		breaks_found = 0;
+		blanks_found = 0;
+		do {
+			fy_reader_advance(fyr, c);
+
+			if (!fy_reader_tabsize(fyr)) {
+				/* check for tab */
+				FYR_PARSE_ERROR_CHECK(fyr, 0, 1, FYEM_SCAN,
+						c != '\t' || !has_leading_blanks || indent < 0 || fy_reader_column(fyr) >= (indent + 1), err_out,
+						"invalid tab used as indentation");
+			}
+
+			nextc = fy_reader_peek(fyr);
+
+			/* if it's a break */
+			if (fy_reader_is_lb(fyr, c)) {
+				/* first break, turn on leading blanks */
+				if (!has_leading_blanks)
+					has_leading_blanks = true;
+				breaks_found++;
+				blanks_found = 0;
+				has_lb = true;
+			} else {
+				blanks_found++;
+				has_ws = true;
+			}
+
+			c = nextc;
+
+		} while (fy_is_blank(c) || fy_reader_is_lb(fyr, c));
+
+		/* break out if indentation is less */
+		if (flow_level <= 0 && indent >= 0 && fy_reader_column(fyr) < (indent + 1))
+			break;
+	}
+
+	/* end... */
+	if (!last_ptr)
+		fy_reader_fill_atom_end(fyr, handle);
+	else
+		fy_reader_fill_atom_end_at(fyr, handle, &last_mark);
+
+	if (c == FYUG_INV || c == FYUG_PARTIAL) {
+		FYR_MARK_ERROR(fyr, &handle->start_mark, &handle->end_mark, FYEM_SCAN,
+			"plain scalar is malformed UTF8");
+		goto err_out;
+	}
+
+	is_multiline = handle->end_mark.line > handle->start_mark.line;
+
+	handle->style = FYAS_PLAIN;
+	handle->chomp = FYAC_STRIP;
+	handle->direct_output = !is_multiline && !has_json_esc && fy_atom_size(handle) == length;
+	handle->empty = false;
+	handle->has_lb = has_lb;
+	handle->has_ws = has_ws;
+	handle->starts_with_ws = false;
+	handle->starts_with_lb = false;
+	handle->ends_with_ws = false;
+	handle->ends_with_lb = false;
+	handle->trailing_lb = false;
+	handle->size0 = length == 0;
+	handle->valid_anchor = false;
+	handle->json_mode = fy_reader_json_mode(fyr);
+	handle->tabsize = fy_reader_tabsize(fyr);
+
+#ifdef ATOM_SIZE_CHECK
+	tlength = fy_atom_format_text_length(handle);
+	fyr_error_check(fyr,
+		tlength == length,
+		err_out, "storage hint calculation failed real %zu != hint %zu - '%s'",
+		tlength, length,
+		fy_utf8_format_text_a(fy_atom_data(handle), fy_atom_size(handle), fyue_singlequote));
+#endif
+
+	handle->storage_hint = length;
+	handle->storage_hint_valid = true;
+
+	/* extra check in json mode */
+	if (fy_reader_json_mode(fyr)) {
+		FYR_MARK_ERROR_CHECK(fyr, &handle->start_mark, &handle->end_mark, FYEM_SCAN,
+				!is_multiline, err_out,
+				"Multi line plain scalars not supported in JSON mode");
+
+		FYR_MARK_ERROR_CHECK(fyr, &handle->start_mark, &handle->end_mark, FYEM_SCAN,
+				!fy_atom_strcmp(handle, "false") ||
+				!fy_atom_strcmp(handle, "true") ||
+				!fy_atom_strcmp(handle, "null") ||
+				fy_atom_is_number(handle), err_out,
+				"Invalid JSON plain scalar");
+	}
+
+	return 0;
+
+err_out:
+	rc = -1;
+	return rc;
+}
+
+
+int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
+{
+	struct fy_atom handle;
+	bool is_single, is_complex, is_multiline;
+	struct fy_mark mark;
+	struct fy_simple_key_mark skm;
+	struct fy_token *fyt;
+	int i = 0, rc = -1;
+
+	is_single = c == '\'';
+
+	fyp_error_check(fyp, c == '\'' || c == '"', err_out,
+			"bad start of flow scalar ('%s')",
+				fy_utf8_format_a(c, fyue_singlequote));
+
+	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
+			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
+			"wrongly indented %s scalar in flow mode",
+				is_single ? "single-quoted" : "double-quoted");
+
+	fy_get_mark(fyp, &mark);
+	fy_get_simple_key_mark(fyp, &skm);
+
+	/* errors are generated by reader */
+	rc = fy_reader_fetch_flow_scalar_handle(fyp->reader, c, fyp->indent, &handle);
+	if (rc) {
+		fyp->stream_error = true;
+		goto err_out_rc;
+	}
 
 	/* and we're done */
 	fyt = fy_token_queue(fyp, FYTT_SCALAR, &handle, is_single ? FYSS_SINGLE_QUOTED : FYSS_DOUBLE_QUOTED);
 	fyp_error_check(fyp, fyt, err_out_rc,
 			"fy_token_queue() failed");
+
+	if (fyp->parse_flow_only && fyp->flow_level == 0) {
+		rc = fy_fetch_stream_end(fyp);
+		fyp_error_check(fyp, !rc, err_out_rc,
+				"fy_fetch_stream_end() failed");
+		return 0;
+	}
+
+	is_complex = fyp->pending_complex_key_column >= 0;
+	is_multiline = handle.end_mark.line > handle.start_mark.line;
 
 	if (!fyp->flow_level) {
 		/* due to the weirdness with simple keys scan forward
@@ -3282,236 +3611,44 @@ err_out_rc:
 int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 {
 	struct fy_atom handle;
-	size_t length;
-	int rc = -1, indent, run, nextc, i, breaks_found, blanks_found;
-	bool has_leading_blanks, had_breaks;
-	const char *last_ptr;
-	struct fy_mark mark, last_mark;
-	bool target_simple_key_allowed, is_multiline, is_complex, has_lb, has_ws;
-	bool is_json_unesc, has_json_esc;
 	struct fy_simple_key_mark skm;
 	struct fy_token *fyt;
-#ifdef ATOM_SIZE_CHECK
-	size_t tlength;
-#endif
+	bool is_multiline, is_complex;
+	int rc = -1, i;
 
 	/* may not start with blankz */
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
 			!(fyp->state == FYPS_BLOCK_MAPPING_VALUE && fy_is_tab(c)), err_out,
 			"invalid tab as indendation in a mapping");
 
-	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp_is_blankz(fyp, c), err_out,
-			"plain scalar cannot start with blank or zero");
-
-	/* may not start with any of ,[]{}#&*!|>'\"%@` */
-	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fy_utf8_strchr(",[]{}#&*!|>'\"%@`", c), err_out,
-			"plain scalar cannot start with '%c'", c);
-
-	/* may not start with - not followed by blankz */
-	FYP_PARSE_ERROR_CHECK(fyp, 0, 2, FYEM_SCAN,
-			c != '-' || !fy_is_blank_at_offset(fyp, 1), err_out,
-			"plain scalar cannot start with '%c' followed by blank", c);
-
-	/* may not start with -?: not followed by blankz (in block context) */
-	FYP_PARSE_ERROR_CHECK(fyp, 0, 2, FYEM_SCAN,
-			fyp->flow_level ||
-				!((c == '?' || c == ':') &&
-					fy_is_blank_at_offset(fyp, 1)), err_out,
-			"plain scalar cannot start with '%c' followed by blank (in block context)", c);
-
 	/* check indentation */
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || fyp->column > fyp->indent, err_out,
+			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
 			"wrongly indented flow %s",
 				fyp->flow == FYFT_SEQUENCE ? "sequence" : "mapping");
 
-	fy_get_mark(fyp, &mark);
-	target_simple_key_allowed = false;
 	fy_get_simple_key_mark(fyp, &skm);
 
-	fy_fill_atom_start(fyp, &handle);
-
-	has_leading_blanks = false;
-	had_breaks = false;
-	has_lb = false;
-	has_ws = false;
-	has_json_esc = false;
-
-	length = 0;
-	breaks_found = 0;
-	blanks_found = 0;
-	indent = fyp->indent + 1;
-	last_ptr = NULL;
-	memset(&last_mark, 0, sizeof(last_mark));
-	c = FYUG_EOF;
-	for (;;) {
-		/* break for document indicators */
-		if (fyp->column == 0 &&
-		   (!fy_parse_strncmp(fyp, "---", 3) ||
-		    !fy_parse_strncmp(fyp, "...", 3)) &&
-		   fy_is_blankz_at_offset(fyp, 3))
-			break;
-
-		c = fy_parse_peek(fyp);
-		if (c == '#')
-			break;
-
-		run = 0;
-		for (;;) {
-			if (fyp_is_blankz(fyp, c))
-				break;
-
-			nextc = fy_parse_peek_at(fyp, 1);
-
-			/* ':' followed by space terminates */
-			if (c == ':' && fyp_is_blankz(fyp, nextc))
-				break;
-
-			/* in flow context ':' followed by flow markers */
-			if (fyp->flow_level && c == ':' && fy_utf8_strchr(",[]{}", nextc))
-				break;
-
-			/* in flow context any or , [ ] { } */
-			if (fyp->flow_level && (c == ',' || c == '[' || c == ']' || c == '{' || c == '}'))
-				break;
-
-			if (breaks_found) {
-				/* minimum 1 sep, or more for consecutive */
-				length += breaks_found > 1 ? (breaks_found - 1) : 1;
-				breaks_found = 0;
-				blanks_found = 0;
-			} else if (blanks_found) {
-				/* just the blanks mam' */
-				length += blanks_found;
-				blanks_found = 0;
-			}
-
-			/* check whether we have a JSON unescaped character */
-			is_json_unesc = fy_is_json_unescaped(c);
-			if (!is_json_unesc)
-				has_json_esc = true;
-
-			fy_advance(fyp, c);
-			run++;
-
-			length += fy_utf8_width(c);
-
-			c = nextc;
-		}
-
-		/* save end mark if we processed more than one non-blank */
-		if (run > 0) {
-			/* fyp_scan_debug(fyp, "saving mark"); */
-			last_ptr = fyp->current_ptr;
-			fy_get_mark(fyp, &last_mark);
-		}
-
-		/* end? */
-		if (!(fy_is_blank(c) || fyp_is_lb(fyp, c)))
-			break;
-
-		has_json_esc = true;
-
-		/* consume blanks */
-		breaks_found = 0;
-		blanks_found = 0;
-		do {
-			fy_advance(fyp, c);
-
-			if (!fyp->tabsize) {
-				/* check for tab */
-				FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-						c != '\t' || !has_leading_blanks || fyp->column >= indent, err_out,
-						"invalid tab used as indentation");
-			}
-
-			nextc = fy_parse_peek(fyp);
-
-			/* if it's a break */
-			if (fyp_is_lb(fyp, c)) {
-				/* first break, turn on leading blanks */
-				if (!has_leading_blanks)
-					has_leading_blanks = true;
-				had_breaks = true;
-				breaks_found++;
-				blanks_found = 0;
-				has_lb = true;
-			} else {
-				blanks_found++;
-				has_ws = true;
-			}
-
-			c = nextc;
-
-		} while (fy_is_blank(c) || fyp_is_lb(fyp, c));
-
-		/* break out if indentation is less */
-		if (!fyp->flow_level && fyp->column < indent)
-			break;
-	}
-
-	/* end... */
-	if (!last_ptr)
-		fy_fill_atom_end(fyp, &handle);
-	else
-		fy_fill_atom_end_at(fyp, &handle, &last_mark);
-
-	if (c == FYUG_INV || c == FYUG_PARTIAL) {
-		FYP_MARK_ERROR(fyp, &handle.start_mark, &handle.end_mark, FYEM_SCAN,
-			"plain scalar is malformed UTF8");
-		goto err_out;
+	rc = fy_reader_fetch_plain_scalar_handle(fyp->reader, c, fyp->indent, fyp->flow_level, &handle);
+	if (rc) {
+		fyp->stream_error = true;
+		goto err_out_rc;
 	}
 
 	is_multiline = handle.end_mark.line > handle.start_mark.line;
 	is_complex = fyp->pending_complex_key_column >= 0;
 
-	handle.style = FYAS_PLAIN;
-	handle.chomp = FYAC_STRIP;
-	handle.direct_output = !is_multiline && !has_json_esc && fy_atom_size(&handle) == length;
-	handle.empty = false;
-	handle.has_lb = has_lb;
-	handle.has_ws = has_ws;
-	handle.starts_with_ws = false;
-	handle.starts_with_lb = false;
-	handle.ends_with_ws = false;
-	handle.ends_with_lb = false;
-	handle.trailing_lb = false;
-	handle.size0 = length == 0;
-	handle.valid_anchor = false;
-	handle.tabsize = fyp->tabsize;
-
-#ifdef ATOM_SIZE_CHECK
-	tlength = fy_atom_format_text_length(&handle);
-	fyp_error_check(fyp,
-		tlength == length,
-		err_out, "storage hint calculation failed real %zu != hint %zu - '%s'",
-		tlength, length,
-		fy_utf8_format_text_a(fy_atom_data(&handle), fy_atom_size(&handle), fyue_singlequote));
-#endif
-
-	handle.storage_hint = length;
-	handle.storage_hint_valid = true;
-
-	/* extra check in json mode */
-	if (fyp_json_mode(fyp)) {
-		FYP_MARK_ERROR_CHECK(fyp, &handle.start_mark, &handle.end_mark, FYEM_SCAN,
-				!is_multiline, err_out,
-				"Multi line plain scalars not supported in JSON mode");
-
-		FYP_MARK_ERROR_CHECK(fyp, &handle.start_mark, &handle.end_mark, FYEM_SCAN,
-				!fy_atom_strcmp(&handle, "false") ||
-				!fy_atom_strcmp(&handle, "true") ||
-				!fy_atom_strcmp(&handle, "null") ||
-				fy_atom_is_number(&handle), err_out,
-				"Invalid JSON plain scalar");
-	}
-
 	/* and we're done */
 	fyt = fy_token_queue(fyp, FYTT_SCALAR, &handle, FYSS_PLAIN);
 	fyp_error_check(fyp, fyt, err_out_rc,
 			"fy_token_queue() failed");
+
+	if (fyp->parse_flow_only && fyp->flow_level == 0) {
+		rc = fy_fetch_stream_end(fyp);
+		fyp_error_check(fyp, !rc, err_out_rc,
+				"fy_fetch_stream_end() failed");
+		return 0;
+	}
 
 	if (is_multiline && !fyp->flow_level && !is_complex) {
 		/* due to the weirdness with simple keys scan forward
@@ -3530,13 +3667,11 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 		}
 	}
 
-	target_simple_key_allowed = had_breaks;
-
 	rc = fy_save_simple_key_mark(fyp, &skm, FYTT_SCALAR, &handle.end_mark);
 	fyp_error_check(fyp, !rc, err_out_rc,
 			"fy_save_simple_key_mark() failed");
 
-	fyp->simple_key_allowed = target_simple_key_allowed;
+	fyp->simple_key_allowed = handle.has_lb;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 
 	rc = fy_attach_comments_if_any(fyp, fyt);
@@ -3556,6 +3691,10 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 	struct fy_mark m;
 	int c, rc;
 
+	/* do not fetch any more when stream end is reached */
+	if (fyp->stream_end_reached)
+		return 0;
+
 	if (!fyp->stream_start_produced) {
 		rc = fy_parse_get_next_input(fyp);
 		fyp_error_check(fyp, rc >= 0, err_out_rc,
@@ -3574,12 +3713,14 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 	fyp_error_check(fyp, !rc, err_out_rc,
 			"fy_scan_to_next_token() failed");
 
-	rc = fy_parse_unroll_indent(fyp, fyp->column);
+	rc = fy_parse_unroll_indent(fyp, fyp_column(fyp));
 	fyp_error_check(fyp, !rc, err_out_rc,
 			"fy_parse_unroll_indent() failed");
 
 	c = fy_parse_peek(fyp);
 	if (c < 0 || c == '\0') {
+
+		fyp->stream_end_reached = true;
 
 		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
 				!fyp_json_mode(fyp) || c != '\0', err_out,
@@ -3593,7 +3734,7 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 		return 0;
 	}
 
-	if (fyp->column == 0 && c == '%') {
+	if (fyp_column(fyp) == 0 && c == '%') {
 
 		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
 				!fyp_json_mode(fyp), err_out,
@@ -3611,7 +3752,7 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 	}
 
 	/* probable document start/end indicator */
-	if (fyp->column == 0 &&
+	if (fyp_column(fyp) == 0 &&
 	    (!fy_parse_strncmp(fyp, "---", 3) ||
 	     !fy_parse_strncmp(fyp, "...", 3)) &&
 	    fy_is_blankz_at_offset(fyp, 3)) {
@@ -3816,6 +3957,7 @@ struct fy_token *fy_scan_peek(struct fy_parser *fyp)
 
 		fyp->stream_start_produced = false;
 		fyp->stream_end_produced = false;
+		fyp->stream_end_reached = false;
 	}
 
 	/* we loop until we have a token and the simple key list is empty */
@@ -3857,9 +3999,11 @@ struct fy_token *fy_scan_peek(struct fy_parser *fyp)
 		fyp_scan_debug(fyp, "setting stream_end_produced to true");
 		fyp->stream_end_produced = true;
 
-		rc = fy_parse_input_done(fyp);
-		fyp_error_check(fyp, !rc, err_out,
-				"fy_parse_input_done() failed");
+		if (!fyp->parse_flow_only) {
+			rc = fy_reader_input_done(fyp->reader);
+			fyp_error_check(fyp, !rc, err_out,
+					"fy_parse_input_done() failed");
+		}
 		break;
 	default:
 		break;
@@ -4359,7 +4503,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 			/* empty content is not allowed in JSON mode */
 			FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
-					!fy_input_json_mode(fy_token_get_input(fyt)) ||
+					!fyp_json_mode(fyp) ||
 						fyp->stream_has_content, err_out,
 					"JSON does not allow empty root content");
 
@@ -5097,8 +5241,9 @@ static void fy_parse_input_reset(struct fy_parser *fyp)
 
 	fy_parse_parse_state_log_list_recycle_all(fyp, &fyp->state_stack);
 
-	fyp->stream_end_produced = false;
 	fyp->stream_start_produced = false;
+	fyp->stream_end_produced = false;
+	fyp->stream_end_reached = false;
 	fyp->state = FYPS_NONE;
 
 	fyp->pending_complex_key_column = -1;
@@ -5253,18 +5398,7 @@ int fy_parser_reset(struct fy_parser *fyp)
 
 	fy_parse_input_reset(fyp);
 
-	fy_input_unref(fyp->current_input);
-
-	fyp->current_input = NULL;
-	fyp->current_pos = 0;
-	fyp->current_input_pos = 0;
-	fyp->current_ptr = NULL;
-	fyp->current_c = -1;
-	fyp->current_w = 0;
-	fyp->current_left = 0;
-	fyp->line = 0;
-	fyp->column = 0;
-	fyp->nontab_column = 0;
+	fy_reader_reset(fyp->reader);
 
 	fyp->next_single_document = false;
 	fyp->stream_error = false;

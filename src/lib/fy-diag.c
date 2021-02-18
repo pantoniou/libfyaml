@@ -83,6 +83,17 @@ void fy_diag_cfg_from_parser_flags(struct fy_diag_cfg *cfg, enum fy_parse_cfg_fl
 	cfg->show_module = !!(pflags & FYPCF_DEBUG_DIAG_MODULE);
 }
 
+enum fy_parse_cfg_flags fy_diag_parser_flags_from_cfg(const struct fy_diag_cfg *cfg)
+{
+	return ((cfg->level & FYPCF_DEBUG_LEVEL_MASK) << FYPCF_DEBUG_LEVEL_SHIFT) |
+	       ((cfg->module_mask & FYPCF_MODULE_SHIFT) << FYPCF_MODULE_SHIFT) |
+	       (cfg->colorize ? FYPCF_COLOR_FORCE : FYPCF_COLOR_NONE) |
+	       (cfg->show_source ? FYPCF_DEBUG_DIAG_SOURCE : 0) |
+	       (cfg->show_position ? FYPCF_DEBUG_DIAG_POSITION : 0) |
+	       (cfg->show_type ? FYPCF_DEBUG_DIAG_TYPE : 0) |
+	       (cfg->show_module ? FYPCF_DEBUG_DIAG_MODULE : 0);
+}
+
 static void
 fy_diag_cfg_default_widths(struct fy_diag_cfg *cfg)
 {
@@ -512,8 +523,8 @@ int fy_parser_vdiag(struct fy_parser *fyp, unsigned int flags,
 	fydc.source_file = file;
 	fydc.source_line = line;
 	fydc.source_func = func;
-	fydc.line = fyp->line;
-	fydc.column = fyp->column;
+	fydc.line = fyp_line(fyp);
+	fydc.column = fyp_column(fyp);
 
 	rc = fy_vdiag(fyp->diag, &fydc, fmt, ap);
 
@@ -643,6 +654,74 @@ void fy_document_diag_report(struct fy_document *fyd,
 
 	va_start(ap, fmt);
 	fy_document_diag_vreport(fyd, fydrc, fmt, ap);
+	va_end(ap);
+}
+
+/* reader */
+
+int fy_reader_vdiag(struct fy_reader *fyr, unsigned int flags,
+		    const char *file, int line, const char *func,
+		    const char *fmt, va_list ap)
+{
+	struct fy_diag_ctx fydc;
+	int fydc_level, fyd_level;
+
+	if (!fyr || !fyr->diag || !fmt)
+		return -1;
+
+	/* perform the enable tests early to avoid the overhead */
+	fydc_level = (flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT;
+	fyd_level = fyr->diag->cfg.level;
+
+	if (fydc_level < fyd_level)
+		return 0;
+
+	/* fill in fy_diag_ctx */
+	memset(&fydc, 0, sizeof(fydc));
+
+	fydc.level = fydc_level;
+	fydc.module = FYEM_SCAN;	/* reader is always scanner */
+	fydc.source_file = file;
+	fydc.source_line = line;
+	fydc.source_func = func;
+	fydc.line = fyr->line;
+	fydc.column = fyr->column;
+
+	return fy_vdiag(fyr->diag, &fydc, fmt, ap);
+}
+
+int fy_reader_diag(struct fy_reader *fyr, unsigned int flags,
+		   const char *file, int line, const char *func,
+		   const char *fmt, ...)
+{
+	va_list ap;
+	int rc;
+
+	va_start(ap, fmt);
+	rc = fy_reader_vdiag(fyr, flags, file, line, func, fmt, ap);
+	va_end(ap);
+
+	return rc;
+}
+
+void fy_reader_diag_vreport(struct fy_reader *fyr,
+		            const struct fy_diag_report_ctx *fydrc,
+			    const char *fmt, va_list ap)
+{
+	if (!fyr || !fyr->diag || !fydrc || !fmt)
+		return;
+
+	fy_diag_vreport(fyr->diag, fydrc, fmt, ap);
+}
+
+void fy_reader_diag_report(struct fy_reader *fyr,
+			   const struct fy_diag_report_ctx *fydrc,
+			   const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	fy_reader_diag_vreport(fyr, fydrc, fmt, ap);
 	va_end(ap);
 }
 

@@ -23,11 +23,12 @@
 #include "fy-list.h"
 #include "fy-input.h"
 
-struct fy_parser;
+struct fy_reader;
 struct fy_input;
 struct fy_node;
 
 enum fy_atom_style {
+	/* YAML atoms */
 	FYAS_PLAIN,
 	FYAS_SINGLE_QUOTED,
 	FYAS_DOUBLE_QUOTED,
@@ -62,7 +63,7 @@ struct fy_atom {
 	uint64_t fyi_generation;	/* to detect reallocs */
 	unsigned int increment;
 	/* save a little bit of space with bitfields */
-	enum fy_atom_style style : 6;
+	enum fy_atom_style style;
 	enum fy_atom_chomp chomp : 4;
 	bool direct_output : 1;		/* can directly output */
 	bool storage_hint_valid : 1;
@@ -73,9 +74,10 @@ struct fy_atom {
 	bool starts_with_lb : 1;	/* atom starts with linebreak */
 	bool ends_with_ws : 1;		/* atom ends with whitespace */
 	bool ends_with_lb : 1;		/* atom ends with linebreak */
-	bool trailing_lb : 1;		/* atom ends with trailing linebreaks > 1 */ 
+	bool trailing_lb : 1;		/* atom ends with trailing linebreaks > 1 */
 	bool size0 : 1;			/* atom contains absolutely nothing */
 	bool valid_anchor : 1;		/* atom is a valid anchor */
+	bool json_mode : 1;		/* atom was read in json mode */
 	unsigned int tabsize : 4;
 };
 
@@ -89,16 +91,16 @@ const char *fy_atom_format_text(struct fy_atom *atom, char *buf, size_t maxsz);
 
 int fy_atom_format_utf8_length(struct fy_atom *atom);
 
-void fy_fill_atom_start(struct fy_parser *fyp, struct fy_atom *handle);
-void fy_fill_atom_end_at(struct fy_parser *fyp, struct fy_atom *handle, struct fy_mark *end_mark);
-void fy_fill_atom_end(struct fy_parser *fyp, struct fy_atom *handle);
-struct fy_atom *fy_fill_atom(struct fy_parser *fyp, int advance, struct fy_atom *handle);
+void fy_reader_fill_atom_start(struct fy_reader *fyr, struct fy_atom *handle);
+void fy_reader_fill_atom_end_at(struct fy_reader *fyr, struct fy_atom *handle, struct fy_mark *end_mark);
+void fy_reader_fill_atom_end(struct fy_reader *fyr, struct fy_atom *handle);
+struct fy_atom *fy_reader_fill_atom(struct fy_reader *fyr, int advance, struct fy_atom *handle);
 
-struct fy_atom *fy_fill_atom_mark(struct fy_input *fyi, const struct fy_mark *start_mark,
-				  const struct fy_mark *end_mark, struct fy_atom *handle);
-struct fy_atom *fy_fill_atom_at(struct fy_parser *fyp, int advance, int count, struct fy_atom *handle);
+struct fy_atom *fy_reader_fill_atom_mark(struct fy_reader *fyr, const struct fy_mark *start_mark,
+					 const struct fy_mark *end_mark, struct fy_atom *handle);
+struct fy_atom *fy_reader_fill_atom_at(struct fy_reader *fyr, int advance, int count, struct fy_atom *handle);
 
-#define fy_fill_atom_a(_fyp, _advance)  fy_fill_atom((_fyp), (_advance), alloca(sizeof(struct fy_atom)))
+#define fy_reader_fill_atom_a(_fyr, _advance)  fy_reader_fill_atom((_fyr), (_advance), alloca(sizeof(struct fy_atom)))
 
 struct fy_atom *fy_fill_node_atom(struct fy_node *fyn, struct fy_atom *handle);
 

@@ -25,29 +25,26 @@
 #include "fy-parse.h"
 #include "fy-doc.h"
 
-void fy_fill_atom_start(struct fy_parser *fyp, struct fy_atom *handle)
+void fy_reader_fill_atom_start(struct fy_reader *fyr, struct fy_atom *handle)
 {
 	memset(handle, 0, sizeof(*handle));
 
 	/* start mark */
-	fy_get_mark(fyp, &handle->start_mark);
+	fy_reader_get_mark(fyr, &handle->start_mark);
 	handle->end_mark = handle->start_mark;
-	handle->fyi = fyp->current_input;
-	handle->fyi_generation = fyp->current_input->generation;
+	handle->fyi = fy_reader_current_input(fyr);
+	handle->fyi_generation = fy_reader_current_input_generation(fyr);
 
-	assert(fyp->current_input);
 	/* note that handle->data may be zero for empty input */
 }
 
-void fy_fill_atom_end_at(struct fy_parser *fyp, struct fy_atom *handle,
-			 struct fy_mark *end_mark)
+void fy_reader_fill_atom_end_at(struct fy_reader *fyr, struct fy_atom *handle,
+				struct fy_mark *end_mark)
 {
-	assert(!fyp->current_input || handle->fyi == fyp->current_input);
-
 	if (end_mark)
 		handle->end_mark = *end_mark;
 	else
-		fy_get_mark(fyp, &handle->end_mark);
+		fy_reader_get_mark(fyr, &handle->end_mark);
 
 	/* default is plain, modify at return */
 	handle->style = FYAS_PLAIN;
@@ -55,45 +52,48 @@ void fy_fill_atom_end_at(struct fy_parser *fyp, struct fy_atom *handle,
 	/* by default we don't do storage hints, it's the job of the caller */
 	handle->storage_hint = 0;
 	handle->storage_hint_valid = false;
+	handle->tabsize = fy_reader_tabsize(fyr);
+	handle->json_mode = fy_reader_json_mode(fyr);
 }
 
-void fy_fill_atom_end(struct fy_parser *fyp, struct fy_atom *handle)
+void fy_reader_fill_atom_end(struct fy_reader *fyr, struct fy_atom *handle)
 {
-	fy_fill_atom_end_at(fyp, handle, NULL);
+	fy_reader_fill_atom_end_at(fyr, handle, NULL);
 }
 
-struct fy_atom *fy_fill_atom(struct fy_parser *fyp, int advance, struct fy_atom *handle)
+struct fy_atom *fy_reader_fill_atom(struct fy_reader *fyr, int advance, struct fy_atom *handle)
 {
 	/* start mark */
-	fy_fill_atom_start(fyp, handle);
+	fy_reader_fill_atom_start(fyr, handle);
 
 	/* advance the given number of characters */
 	if (advance > 0)
-		fy_advance_by(fyp, advance);
+		fy_reader_advance_by(fyr, advance);
 
-	fy_fill_atom_end(fyp, handle);
+	fy_reader_fill_atom_end(fyr, handle);
 
 	return handle;
 }
 
-int fy_advance_mark(struct fy_parser *fyp, int advance, struct fy_mark *m)
+int fy_reader_advance_mark(struct fy_reader *fyr, int advance, struct fy_mark *m)
 {
-	int i, c;
+	int i, c, tabsize;
 	bool is_line_break;
 
+	tabsize = fy_reader_tabsize(fyr);
 	i = 0;
 	while (advance-- > 0) {
-		c = fy_parse_peek_at(fyp, i++);
+		c = fy_reader_peek_at(fyr, i++);
 		if (c == -1)
 			return -1;
 		m->input_pos += fy_utf8_width(c);
 
 		/* first check for CR/LF */
-		if (c == '\r' && fy_parse_peek_at(fyp, i) == '\n') {
+		if (c == '\r' && fy_reader_peek_at(fyr, i) == '\n') {
 			m->input_pos++;
 			i++;
 			is_line_break = true;
-		} else if (fyp_is_lb(fyp, c))
+		} else if (fy_reader_is_lb(fyr, c))
 			is_line_break = true;
 		else
 			is_line_break = false;
@@ -101,8 +101,8 @@ int fy_advance_mark(struct fy_parser *fyp, int advance, struct fy_mark *m)
 		if (is_line_break) {
 			m->column = 0;
 			m->line++;
-		} else if (fyp->tabsize && fy_is_tab(c))
-			m->column += (fyp->tabsize - (fyp->column % fyp->tabsize));
+		} else if (tabsize > 0 && fy_is_tab(c))
+			m->column += (tabsize - (fy_reader_column(fyr) % tabsize));
 		else
 			m->column++;
 	}
@@ -110,20 +110,20 @@ int fy_advance_mark(struct fy_parser *fyp, int advance, struct fy_mark *m)
 	return 0;
 }
 
-struct fy_atom *fy_fill_atom_mark(struct fy_input *fyi,
-		const struct fy_mark *start_mark,
-		const struct fy_mark *end_mark,
-		struct fy_atom *handle)
+struct fy_atom *fy_reader_fill_atom_mark(struct fy_reader *fyr,
+					 const struct fy_mark *start_mark,
+					 const struct fy_mark *end_mark,
+					 struct fy_atom *handle)
 {
-	if (!fyi || !start_mark || !end_mark || !handle)
+	if (!fyr || !start_mark || !end_mark || !handle)
 		return NULL;
 
 	memset(handle, 0, sizeof(*handle));
 
 	handle->start_mark = *start_mark;
 	handle->end_mark = *end_mark;
-	handle->fyi = fyi;
-	handle->fyi_generation = fyi->generation;
+	handle->fyi = fy_reader_current_input(fyr);
+	handle->fyi_generation = fy_reader_current_input_generation(fyr);
 
 	/* default is plain, modify at return */
 	handle->style = FYAS_PLAIN;
@@ -135,27 +135,27 @@ struct fy_atom *fy_fill_atom_mark(struct fy_input *fyi,
 	return handle;
 }
 
-struct fy_atom *fy_fill_atom_at(struct fy_parser *fyp, int advance, int count, struct fy_atom *handle)
+struct fy_atom *fy_reader_fill_atom_at(struct fy_reader *fyr, int advance, int count, struct fy_atom *handle)
 {
 	struct fy_mark start_mark, end_mark;
 	int rc;
 
-	if (!fyp || !handle)
+	if (!fyr || !handle)
 		return NULL;
 
 	/* start mark */
-	fy_get_mark(fyp, &start_mark);
-	rc = fy_advance_mark(fyp, advance, &start_mark);
+	fy_reader_get_mark(fyr, &start_mark);
+	rc = fy_reader_advance_mark(fyr, advance, &start_mark);
 	(void)rc;
 	/* ignore the return, if the advance failed, it's the end of input */
 
 	/* end mark */
 	end_mark = start_mark;
-	rc = fy_advance_mark(fyp, count, &end_mark);
+	rc = fy_reader_advance_mark(fyr, count, &end_mark);
 	(void)rc;
 	/* ignore the return, if the advance failed, it's the end of input */
 
-	return fy_fill_atom_mark(fyp->current_input, &start_mark, &end_mark, handle);
+	return fy_reader_fill_atom_mark(fyr, &start_mark, &end_mark, handle);
 }
 
 static inline void
@@ -327,7 +327,7 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 			li->indented = fy_is_ws(c);
 		}
 
-		if (fy_input_is_lb(atom->fyi, c)) {
+		if (fy_is_lb_yj(c, atom->json_mode)) {
 			col = 0;
 			if (!li->end) {
 				li->end = ss;
@@ -409,7 +409,7 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 	/* if there's only one linebreak left, we don't have trailing breaks */
 	if (c >= 0) {
 		ss += w;
-		if (fy_input_is_lb(atom->fyi, c))
+		if (fy_is_lb_yj(c, atom->json_mode))
 			col = 0;
 		else if (fy_is_tab(c))
 			col += (ts - (col % ts));
@@ -425,13 +425,13 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 	/* find out if any trailing breaks exist afterwards */
 	for (; (c = fy_utf8_get(ss, (e - ss), &w)) >= 0 && fy_is_ws_lb(c); ss += w) {
 
-		if (!li->trailing_breaks && fy_input_is_lb(atom->fyi, c))
+		if (!li->trailing_breaks && fy_is_lb_yj(c, atom->json_mode))
 			li->trailing_breaks = true;
 
 		if (!li->trailing_breaks_ws && is_block && (unsigned int)col > iter->chomp)
 			li->trailing_breaks_ws = true;
 
-		if (fy_input_is_lb(atom->fyi, c))
+		if (fy_is_lb_yj(c, atom->json_mode))
 			col = 0;
 		else {
 			/* indented whitespace counts as break */
@@ -688,7 +688,7 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 				break;
 
 			ret = fy_utf8_parse_escape(&t, e - t,
-					!fy_input_json_mode(atom->fyi) ?
+					!atom->json_mode ?
 					fyue_doublequote : fyue_doublequote_json);
 			if (ret < 0)
 				goto out;
@@ -1460,7 +1460,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 
 	while (s > iter->is) {
 		c = fy_utf8_get_right(iter->is, (int)(s - iter->is), &w);
-		if (c <= 0 || fy_input_is_lb(iter->atom->fyi, c))
+		if (c <= 0 || fy_is_lb_yj(c, iter->atom->json_mode))
 			break;
 		s -= w;
 	}
@@ -1483,7 +1483,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 				col += (ts - (col % ts));
 			else
 				col++;
-		} else if (!fy_input_is_lb(iter->atom->fyi, c)) {
+		} else if (!fy_is_lb_yj(c, iter->atom->json_mode)) {
 			col++;
 			col8++;
 		} else
@@ -1510,7 +1510,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 				col += (ts - (col % ts));
 			else
 				col++;
-		} else if (!fy_input_is_lb(iter->atom->fyi, c)) {
+		} else if (!fy_is_lb_yj(c, iter->atom->json_mode)) {
 			col++;
 			col8++;
 		} else
@@ -1539,7 +1539,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 					col += (ts - (col % ts));
 				else
 					col++;
-			} else if (!fy_input_is_lb(iter->atom->fyi, c)) {
+			} else if (!fy_is_lb_yj(c, iter->atom->json_mode)) {
 				col++;
 				col8++;
 			} else
@@ -1553,7 +1553,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 	l->line_len = (size_t)(s - l->line_start);
 	l->line_count = count;
 
-	if (fy_input_is_lb(iter->atom->fyi, c)) {
+	if (fy_is_lb_yj(c, iter->atom->json_mode)) {
 		s += w;
 		/* special case for MSDOS */
 		if (c == '\r' && (s < iter->ie && s[1] == '\n'))
