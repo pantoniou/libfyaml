@@ -26,6 +26,7 @@
 #endif
 
 #include "fy-parse.h"
+#include "fy-walk.h"
 
 #include "fy-valgrind.h"
 
@@ -58,6 +59,8 @@ static struct option lopts[] = {
 	{"diag",		required_argument,	0,	'D' },
 	{"module",		required_argument,	0,	'M' },
 	{"disable-mmap",	no_argument,		0,	OPT_DISABLE_MMAP },
+	{"walk-path",		required_argument,	0,	'W' },
+	{"walk-start",		required_argument,	0,	'S' },
 	{"quiet",		no_argument,		0,	'q' },
 	{"help",		no_argument,		0,	'h' },
 	{0,			0,              	0,	 0  },
@@ -69,7 +72,7 @@ static struct option lopts[] = {
 #define LIBYAML_MODES	""
 #endif
 
-#define MODES	"parse|scan|copy|testsuite|dump|build" LIBYAML_MODES
+#define MODES	"parse|scan|copy|testsuite|dump|build|walk" LIBYAML_MODES
 
 static void display_usage(FILE *fp, char *progname)
 {
@@ -106,6 +109,7 @@ static void display_usage(FILE *fp, char *progname)
 						" (source, position, type, module, all, none)\n");
 	fprintf(fp, "\t--module, -M <mod,[mod]> : Set debug message module enable"
 						" (unknown, atom, scan, parse, doc, build, internal, system, all, none)\n");
+	fprintf(fp, "\t--walk-path, -W <path>   : Walk path for work mode\n");
 	fprintf(fp, "\t--quiet, -q              : Quiet operation, do not "
 						"output messages (default %s)\n",
 						QUIET_DEFAULT ? "true" : "false");
@@ -476,7 +480,7 @@ int do_testsuite(struct fy_parser *fyp)
 	return fyp->stream_error ? -1 : 0;
 }
 
-static void dump_token(struct fy_parser *fyp, struct fy_token *fyt)
+static void dump_token(struct fy_token *fyt)
 {
 	const char *style;
 
@@ -582,6 +586,86 @@ static void dump_token(struct fy_parser *fyp, struct fy_token *fyt)
 		printf("%s value='%s'\n", "INPUT_MARKER",
 				fy_atom_get_esc_text_a(&fyt->handle));
 		break;
+
+	case FYTT_PE_SLASH:
+		printf("%s value='%s'\n", "SLASH",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
+
+	case FYTT_PE_ROOT:
+		printf("%s value='%s'\n", "ROOT",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
+
+	case FYTT_PE_THIS:
+		printf("%s value='%s'\n", "THIS",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
+
+	case FYTT_PE_PARENT:
+		printf("%s value='%s'\n", "PARENT",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
+
+	case FYTT_PE_MAP_KEY:
+		printf("%s value='%s'\n", "MAP_KEY",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
+
+	case FYTT_PE_SEQ_INDEX:
+		printf("%s value='%s'\n", "SEQ_INDEX",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
+
+	case FYTT_PE_SEQ_SLICE:
+		printf("%s value='%s'\n", "SEQ_SLICE",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
+
+	case FYTT_PE_SCALAR_FILTER:
+		printf("%s value='%s'\n", "SCALAR_FILTER",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
+
+	case FYTT_PE_COLLECTION_FILTER:
+		printf("%s value='%s'\n", "COLLECTION_FILTER",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
+
+	case FYTT_PE_SEQ_FILTER:
+		printf("%s value='%s'\n", "SEQ_FILTER",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
+
+	case FYTT_PE_MAP_FILTER:
+		printf("%s value='%s'\n", "MAP_FILTER",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
+
+	case FYTT_PE_EVERY_CHILD:
+		printf("%s value='%s'\n", "EVERY_CHILD",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
+
+	case FYTT_PE_EVERY_CHILD_R:
+		printf("%s value='%s'\n", "EVERY_CHILD_R",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
+
+	case FYTT_PE_ALIAS:
+		printf("%s value='%s'\n", "PE-ALIAS",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
+
+	case FYTT_PE_SIBLING:
+		printf("%s value='%s'\n", "PE-SIBLING",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
+
+	case FYTT_PE_COMMA:
+		printf("%s value='%s'\n", "PE-COMMA",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
 	}
 }
 
@@ -590,7 +674,7 @@ int do_scan(struct fy_parser *fyp)
 	struct fy_token *fyt;
 
 	while ((fyt = fy_scan(fyp)) != NULL) {
-		dump_token(fyp, fyt);
+		dump_token(fyt);
 		fy_token_unref(fyt);
 	}
 
@@ -605,8 +689,8 @@ int do_copy(struct fy_parser *fyp)
 
 	count = 0;
 	for (;;) {
-		line = fyp->line;
-		column = fyp->column;
+		line = fyp_line(fyp);
+		column = fyp_column(fyp);
 
 		c = fy_parse_get(fyp);
 		if (c < 0) {
@@ -1266,7 +1350,7 @@ static void do_accel_kv(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	fy_kv_store_cleanup(&kvs);
 }
 
-static int do_accel_test(const struct fy_parse_cfg *cfg, int argc, char *argv[])
+int do_accel_test(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 {
 	do_accel_kv(cfg, argc, argv);
 
@@ -1899,7 +1983,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	cfg_tmp.flags |= FYPCF_COLLECT_DIAG;
 
 	/* this is an error */
-	fyd = fy_document_build_from_string(&cfg_tmp, "{ a: 5 ]");
+	fyd = fy_document_build_from_string(&cfg_tmp, "{ a: 5 ] }");
 	assert(fyd);
 	assert(!fyd->root);
 
@@ -2473,7 +2557,204 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	}
 #endif
 
+#if 0
 	do_accel_test(cfg, argc, argv);
+#endif
+
+	return 0;
+}
+
+struct test_parser {
+	struct fy_reader reader;
+	struct fy_diag *diag;
+	struct fy_input *fyi;
+};
+
+struct fy_diag *test_parser_reader_get_diag(struct fy_reader *fyr)
+{
+	struct test_parser *parser = container_of(fyr, struct test_parser, reader);
+	return parser->diag;
+}
+
+static const struct fy_reader_ops test_parser_reader_ops = {
+	.get_diag = test_parser_reader_get_diag,
+	.file_open = NULL,
+};
+
+int do_reader(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort)
+{
+	const char *data = "this is a test-testing: more data";
+	struct test_parser parser;
+	struct fy_diag_cfg dcfg;
+	struct fy_diag *diag;
+	struct fy_reader *fyr;
+	struct fy_input *fyi;
+	struct fy_document *fyd;
+	char ubuf[5];
+	int c;
+	int r __FY_DEBUG_UNUSED__;
+
+	fy_diag_cfg_default(&dcfg);
+	diag = fy_diag_create(&dcfg);
+	assert(diag);
+
+	fyi = fy_input_from_data(data, FY_NT, NULL, false);
+	assert(fyi);
+
+	memset(&parser, 0, sizeof(parser));
+	fyr = &parser.reader;
+	parser.diag = diag;
+
+	fy_reader_setup(fyr, &test_parser_reader_ops);
+	fyr_notice(fyr, "Reader initialized\n");
+
+	r = fy_reader_input_open(fyr, fyi, NULL);
+	assert(!r);
+	fyr_notice(fyr, "Reader input opened\n");
+
+	while ((c = fy_reader_peek(fyr)) >= 0 && c != '{' && c != '[' && c != '"' && c != '\'' && c != '-') {
+		fy_reader_advance(fyr, c);
+		fy_utf8_put_unchecked(ubuf, c);
+		fyr_notice(fyr,  "%.*s %d\n", (int)fy_utf8_width(c), ubuf, c);
+	}
+
+	if (c > 0) {
+		fy_parser_set_reader(fyp, fyr);
+		fy_parser_set_flow_only_mode(fyp, true);
+
+		fyd = fy_parse_load_document(fyp);
+		if (fyd) {
+			fyr_notice(fyr, "parsed a yaml document\n");
+		}
+
+		(void)fy_emit_document_to_file(fyd, 0, NULL);
+
+		fy_document_destroy(fyd);
+
+		/* remaining */
+		while ((c = fy_reader_peek(fyr)) >= 0) {
+			fy_reader_advance(fyr, c);
+			fy_utf8_put_unchecked(ubuf, c);
+			fyr_notice(fyr,  "%.*s %d\n", (int)fy_utf8_width(c), ubuf, c);
+		}
+	}
+
+	fy_reader_input_done(fyr);
+	fyr_notice(fyr, "Reader input done\n");
+
+	fy_input_close(fyi);
+
+	fy_reader_cleanup(fyr);
+
+	fy_input_unref(fyi);
+	fy_diag_destroy(diag);
+
+	return 0;
+}
+
+int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, int indent, int width, bool resolve, bool sort)
+{
+	struct fy_path_parser fypp_data, *fypp = &fypp_data;
+	struct fy_path_expr *expr;
+	struct fy_walk_result_list results;
+	struct fy_input *fyi;
+	struct fy_document *fyd, *fyd2;
+	struct fy_node *fyn, *fyn2;
+	struct fy_walk_result *fwr;
+	char *path;
+	unsigned int flags;
+	int rc, count;
+
+	flags = 0;
+	if (sort)
+		flags |= FYECF_SORT_KEYS;
+	flags |= FYECF_INDENT(indent) | FYECF_WIDTH(width);
+
+	fy_notice(fyp->diag, "setting up path parser for \"%s\"\n", walkpath);
+
+	fy_path_parser_setup(fypp, fyp->diag);
+
+	fyi = fy_input_from_data(walkpath, FY_NT, NULL, false);
+	assert(fyi);
+
+	rc = fy_path_parser_open(fypp, fyi, NULL);
+	assert(!rc);
+
+	fy_notice(fyp->diag, "path parser input set for \"%s\"\n", walkpath);
+
+	/* while ((fyt = fy_path_scan(fypp)) != NULL) {
+		dump_token(fyt);
+		fy_token_unref(fyt);
+	} */
+	expr = fy_path_parse_expression(fypp);
+	if (!expr) {
+		fy_error(fyp->diag, "failed to parse expression\n");
+	} else
+		fy_path_expr_dump(fypp, expr, 0, "fypp root ");
+
+	count = 0;
+	while ((fyd = fy_parse_load_document(fyp)) != NULL) {
+
+		if (resolve) {
+			rc = fy_document_resolve(fyd);
+			if (rc)
+				return -1;
+		}
+
+		fyn = fy_node_by_path(fy_document_root(fyd), walkstart, FY_NT, FYNWF_DONT_FOLLOW);
+		if (!fyn) {
+			printf("could not find walkstart node %s\n", walkstart);
+			continue;
+		}
+
+		fy_emit_document_to_file(fyd, flags, NULL);
+
+		path = fy_node_get_path(fyn);
+		assert(path);
+		printf("walking starting at %s\n", path);
+		free(path);
+
+		fy_walk_result_list_init(&results);
+		fy_path_expr_execute(fypp->diag, expr, &results, fyn);
+
+		printf("\n");
+		printf("results\n");
+		while ((fwr = fy_walk_result_list_pop(&results)) != NULL) {
+
+			path = fy_node_get_path(fwr->fyn);
+			assert(path);
+
+			printf("# %s\n", path);
+			free(path);
+
+			fyd2 = fy_document_create(&fyp->cfg);
+			assert(fyd2);
+
+			fyn2 = fy_node_copy(fyd2, fwr->fyn);
+			assert(fyn2);
+
+			fy_document_set_root(fyd2, fyn2);
+
+			printf("---\n");
+			fy_emit_document_to_file(fyd2, flags, NULL);
+
+			fy_document_destroy(fyd2);
+
+			fy_walk_result_free(fwr);
+		}
+
+		fy_parse_document_destroy(fyp, fyd);
+
+		count++;
+	}
+
+
+	fy_path_expr_free(expr);
+
+	fy_path_parser_close(fypp);
+
+	fy_input_unref(fyi);
+	fy_path_parser_cleanup(fypp);
 
 	return 0;
 }
@@ -2494,6 +2775,7 @@ static int modify_module_flags(const char *what, unsigned int *flagsp)
 		{ .name = "parse",	.set = FYPCF_DEBUG_PARSE },
 		{ .name = "doc",	.set = FYPCF_DEBUG_DOC },
 		{ .name = "build",	.set = FYPCF_DEBUG_BUILD },
+		{ .name = "walk",	.set = FYPCF_DEBUG_BUILD },
 		{ .name = "internal",	.set = FYPCF_DEBUG_INTERNAL },
 		{ .name = "system",	.set = FYPCF_DEBUG_SYSTEM },
 	};
@@ -2626,10 +2908,12 @@ int main(int argc, char *argv[])
 	bool sort = SORT_DEFAULT;
 	size_t chunk = CHUNK_DEFAULT;
 	const char *color = COLOR_DEFAULT;
+	const char *walkpath = "/";
+	const char *walkstart = "/";
 
 	fy_valgrind_check(&argc, &argv);
 
-	while ((opt = getopt_long_only(argc, argv, "I:m:i:w:d:rsc:C:D:M:qh", lopts, &lidx)) != -1) {
+	while ((opt = getopt_long_only(argc, argv, "I:m:i:w:d:rsc:C:D:M:W:S:qh", lopts, &lidx)) != -1) {
 		switch (opt) {
 		case 'I':
 			tmp = alloca(strlen(cfg.search_path) + 1 + strlen(optarg) + 1);
@@ -2712,6 +2996,12 @@ int main(int argc, char *argv[])
 				display_usage(stderr, argv[0]);
 			}
 			break;
+		case 'W':
+			walkpath = optarg;
+			break;
+		case 'S':
+			walkstart = optarg;
+			break;
 		case OPT_DISABLE_MMAP:
 			cfg.flags |= FYPCF_DISABLE_MMAP_OPT;
 			break;
@@ -2733,7 +3023,9 @@ int main(int argc, char *argv[])
 	    strcmp(mode, "copy") &&
 	    strcmp(mode, "testsuite") &&
 	    strcmp(mode, "dump") &&
-	    strcmp(mode, "build")
+	    strcmp(mode, "build") &&
+	    strcmp(mode, "walk") &&
+	    strcmp(mode, "reader")
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 	    && strcmp(mode, "libyaml-scan")
 	    && strcmp(mode, "libyaml-parse")
@@ -2897,6 +3189,18 @@ int main(int argc, char *argv[])
 		rc = do_dump(fyp, indent, width, resolve, sort);
 		if (rc < 0) {
 			/* fprintf(stderr, "do_dump() error %d\n", rc); */
+			goto cleanup;
+		}
+	} else if (!strcmp(mode, "walk")) {
+		rc = do_walk(fyp, walkpath, walkstart, indent, width, resolve, sort);
+		if (rc < 0) {
+			/* fprintf(stderr, "do_walk() error %d\n", rc); */
+			goto cleanup;
+		}
+	} else if (!strcmp(mode, "reader")) {
+		rc = do_reader(fyp, indent, width, resolve, sort);
+		if (rc < 0) {
+			/* fprintf(stderr, "do_reader() error %d\n", rc); */
 			goto cleanup;
 		}
 	}
