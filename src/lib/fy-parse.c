@@ -3300,7 +3300,7 @@ err_out:
 int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent, int flow_level, struct fy_atom *handle)
 {
 	size_t length;
-	int rc = -1, run, nextc, breaks_found, blanks_found;
+	int rc = -1, run, nextc, lastc, breaks_found, blanks_found;
 	bool has_leading_blanks;
 	bool last_ptr;
 	struct fy_mark mark, last_mark;
@@ -3344,6 +3344,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 	last_ptr = false;
 	memset(&last_mark, 0, sizeof(last_mark));
 	c = FYUG_EOF;
+	lastc = FYUG_EOF;
 	for (;;) {
 		/* break for document indicators */
 		if (fy_reader_column(fyr) == 0 &&
@@ -3364,8 +3365,12 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 			nextc = fy_reader_peek_at(fyr, 1);
 
 			/* ':' followed by space terminates */
-			if (c == ':' && fy_reader_is_blankz(fyr, nextc))
-				break;
+			if (c == ':' && fy_reader_is_blankz(fyr, nextc)) {
+				/* super rare case :: not followed by space  */
+				/* :: not followed by space */
+				if (lastc != ':' || fy_is_ws(nextc))
+					break;
+			}
 
 			/* in flow context ':' followed by flow markers */
 			if (flow_level > 0 && c == ':' && fy_utf8_strchr(",[]{}", nextc))
@@ -3396,6 +3401,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 
 			length += fy_utf8_width(c);
 
+			lastc = c;
 			c = nextc;
 		}
 
@@ -3655,7 +3661,8 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 		* until a linebreak, ';', or anything else */
 		for (i = 0; ; i++) {
 			c = fy_parse_peek_at(fyp, i);
-			if (c < 0 || c == ':' || fyp_is_lb(fyp, c) || !fy_is_ws(c))
+			if (c < 0 || (c == ':' && fy_is_blankz_at_offset(fyp, i + 1)) ||
+					fyp_is_lb(fyp, c) || !fy_is_ws(c))
 				break;
 		}
 
