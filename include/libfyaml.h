@@ -3182,6 +3182,23 @@ struct fy_node_pair *
 fy_node_mapping_lookup_pair(struct fy_node *fyn, struct fy_node *fyn_key)
 	FY_EXPORT;
 
+
+/**
+ * fy_node_mapping_lookup_value_by_key() - Lookup a node pair matching the provided key
+ *
+ * This method will return the node pair that matches the provided @fyn_key
+ * The key may be collection and a content match check is performed recursively
+ * in order to find the right key.
+ *
+ * @fyn: The mapping node
+ * @fyn_key: The node to use as key
+ *
+ * Returns:
+ * The node value matching the given key, or NULL if not found.
+ */
+struct fy_node *
+fy_node_mapping_lookup_value_by_key(struct fy_node *fyn, struct fy_node *fyn_key);
+
 /**
  * fy_node_mapping_get_pair_index() - Return the node pair index in the mapping
  *
