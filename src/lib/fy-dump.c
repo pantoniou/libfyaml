@@ -52,6 +52,23 @@ const char *fy_token_type_txt[] = {
 	[FYTT_ANCHOR]			= "ANCHR",
 	[FYTT_TAG]			= "TAG",
 	[FYTT_INPUT_MARKER]		= "INPUT_MARKER",
+
+	[FYTT_PE_SLASH]			= "PE_SLASH",
+	[FYTT_PE_ROOT]			= "PE_ROOT",
+	[FYTT_PE_THIS]			= "PE_THIS",
+	[FYTT_PE_PARENT]		= "PE_PARENT",
+	[FYTT_PE_MAP_KEY]		= "PE_MAP_KEY",
+	[FYTT_PE_SEQ_INDEX]		= "PE_SEQ_INDEX",
+	[FYTT_PE_SEQ_SLICE]		= "PE_SEQ_SLICE",
+	[FYTT_PE_SCALAR_FILTER]		= "PE_SCALAR_FILTER",
+	[FYTT_PE_COLLECTION_FILTER]	= "PE_COLLECTION_FILTER",
+	[FYTT_PE_SEQ_FILTER]		= "PE_SEQ_FILTER",
+	[FYTT_PE_MAP_FILTER]		= "PE_MAP_FILTER",
+	[FYTT_PE_EVERY_CHILD]		= "PE_EVERY_CHILD",
+	[FYTT_PE_EVERY_CHILD_R]		= "PE_EVERY_CHILD_R",
+	[FYTT_PE_ALIAS]			= "PE_ALIAS",
+	[FYTT_PE_SIBLING]		= "PE_SIBLING",
+	[FYTT_PE_COMMA]			= "PE_COMMA",
 };
 
 char *fy_token_dump_format(struct fy_token *fyt, char *buf, size_t bufsz)

@@ -65,6 +65,12 @@ void fy_token_free(struct fy_token *fyt)
 	case FYTT_TAG:
 		fy_token_unref(fyt->tag.fyt_td);
 		break;
+
+	case FYTT_PE_MAP_KEY:
+		if (fyt->map_key.fyd)
+			fy_document_destroy(fyt->map_key.fyd);
+		break;
+
 	default:
 		break;
 	}
@@ -298,7 +304,7 @@ struct fy_token *fy_token_vcreate(enum fy_token_type type, va_list ap)
 	struct fy_atom *handle;
 	struct fy_token *fyt_td;
 
-	if ((unsigned int)type > FYTT_INPUT_MARKER)
+	if ((unsigned int)type > FYTT_PE_COMMA)
 		goto err_out;
 
 	fyt = fy_token_alloc();
@@ -330,6 +336,19 @@ struct fy_token *fy_token_vcreate(enum fy_token_type type, va_list ap)
 		if (!fyt_td)
 			goto err_out;
 		fyt->tag.fyt_td = fy_token_ref(fyt_td);
+		break;
+
+	case FYTT_PE_MAP_KEY:
+		fyt->map_key.fyd = va_arg(ap, struct fy_document *);
+		break;
+
+	case FYTT_PE_SEQ_INDEX:
+		fyt->seq_index.index = va_arg(ap, int);
+		break;
+
+	case FYTT_PE_SEQ_SLICE:
+		fyt->seq_slice.start_index = va_arg(ap, int);
+		fyt->seq_slice.end_index = va_arg(ap, int);
 		break;
 
 	case FYTT_NONE:
@@ -1039,6 +1058,71 @@ char *fy_token_debug_text(struct fy_token *fyt)
 	case FYTT_INPUT_MARKER:
 		typetxt = "IMRKR";
 		break;
+
+	case FYTT_PE_SLASH:
+		typetxt = "SLASH";
+		break;
+
+	case FYTT_PE_ROOT:
+		typetxt = "ROOT";
+		break;
+
+	case FYTT_PE_THIS:
+		typetxt = "THIS";
+		break;
+
+	case FYTT_PE_PARENT:
+		typetxt = "PARENT";
+		break;
+
+	case FYTT_PE_MAP_KEY:
+		typetxt = "MAP-KEY";
+		break;
+
+	case FYTT_PE_SEQ_INDEX:
+		typetxt = "SEQ-IDX";
+		break;
+
+	case FYTT_PE_SEQ_SLICE:
+		typetxt = "SEQ-SLC";
+		break;
+
+	case FYTT_PE_SCALAR_FILTER:
+		typetxt = "SCLR-FLT";
+		break;
+
+	case FYTT_PE_COLLECTION_FILTER:
+		typetxt = "COLL-FLT";
+		break;
+
+	case FYTT_PE_SEQ_FILTER:
+		typetxt = "SEQ-FLT";
+		break;
+
+	case FYTT_PE_MAP_FILTER:
+		typetxt = "SEQ-FLT";
+		break;
+
+	case FYTT_PE_EVERY_CHILD:
+		typetxt = "EVRY-CHLD";
+		break;
+
+	case FYTT_PE_EVERY_CHILD_R:
+		typetxt = "EVRY-CHLD-R";
+		break;
+
+	case FYTT_PE_ALIAS:
+		typetxt = "PE-ALIAS";
+		break;
+
+	case FYTT_PE_SIBLING:
+		typetxt = "PE-SIBLING";
+		break;
+
+	case FYTT_PE_COMMA:
+		typetxt = "PE-COMMA";
+		break;
+
 	default:
 		typetxt = NULL;
 		break;

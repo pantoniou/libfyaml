@@ -52,6 +52,24 @@ enum fy_token_type {
 	FYTT_SCALAR,
 	/* special error reporting */
 	FYTT_INPUT_MARKER,
+
+	/* path expression tokens */
+	FYTT_PE_SLASH,
+	FYTT_PE_ROOT,
+	FYTT_PE_THIS,
+	FYTT_PE_PARENT,
+	FYTT_PE_MAP_KEY,
+	FYTT_PE_SEQ_INDEX,
+	FYTT_PE_SEQ_SLICE,
+	FYTT_PE_SCALAR_FILTER,
+	FYTT_PE_COLLECTION_FILTER,
+	FYTT_PE_SEQ_FILTER,
+	FYTT_PE_MAP_FILTER,
+	FYTT_PE_EVERY_CHILD,
+	FYTT_PE_EVERY_CHILD_R,
+	FYTT_PE_ALIAS,
+	FYTT_PE_SIBLING,
+	FYTT_PE_COMMA,
 };
 
 static inline bool fy_token_type_is_content(enum fy_token_type type)
@@ -113,6 +131,17 @@ struct fy_token {
 			unsigned int suffix_length;
 			struct fy_token *fyt_td;
 		} tag;
+		/* path expressions */
+		struct {
+			struct fy_document *fyd;	/* when key is complex */
+		} map_key;
+		struct {
+			int index;
+		} seq_index;
+		struct {
+			int start_index;
+			int end_index;
+		} seq_slice;
 	};
 };
 FY_TYPE_DECL_LIST(token);
