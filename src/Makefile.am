@@ -22,7 +22,8 @@ libfyaml_@MAJOR@_@MINOR@_la_SOURCES = \
 	lib/fy-utils.c lib/fy-utils.h \
 	lib/fy-event.h \
 	xxhash/xxhash.c xxhash/xxhash.h \
-	lib/fy-accel.c lib/fy-accel.h
+	lib/fy-accel.c lib/fy-accel.h \
+	lib/fy-walk.c lib/fy-walk.h
 
 libfyaml_@MAJOR@_@MINOR@_la_CPPFLAGS = $(AM_CPPFLAGS) \
 				       -I$(top_srcdir)/src/lib \
