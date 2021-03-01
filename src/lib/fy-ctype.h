@@ -159,6 +159,16 @@ static inline bool fy_is_flow_indicator(int c)
 	return !!fy_utf8_strchr(",[]{}", c);
 }
 
+static inline bool fy_is_path_flow_key_start(int c)
+{
+	return c == '"' || c == '\'' || c == '{' || c == '[';
+}
+
+static inline bool fy_is_path_flow_key_end(int c)
+{
+	return c == '"' || c == '\'' || c == '}' || c == ']';
+}
+
 static inline bool fy_is_unicode_control(int c)
 {
         return (c >= 0 && c <= 0x1f) || (c >= 0x80 && c <= 0x9f);
@@ -174,6 +184,48 @@ static inline bool fy_is_unicode_space(int c)
 static inline bool fy_is_json_unescaped(int c)
 {
 	return c >= 0x20 && c <= 0x110000 && c != '"' && c != '\\';
+}
+
+static inline bool fy_is_lb_yj(int c, bool json_mode)
+{
+	/* '\r', '\n' are always linebreaks */
+	if (fy_is_json_lb(c))
+		return true;
+	if (json_mode)
+		return false;
+	return fy_is_yaml12_lb(c);
+}
+
+static inline bool fy_is_lbz_yj(int c, bool json_mode)
+{
+	return fy_is_lb_yj(c, json_mode) || fy_is_z(c);
+}
+
+static inline bool fy_is_blankz_yj(int c, bool json_mode)
+{
+	return fy_is_ws(c) || fy_is_lbz_yj(c, json_mode);
+}
+
+static inline bool fy_is_flow_ws_yj(int c, bool json_mode)
+{
+	/* space is always allowed */
+	if (fy_is_space(c))
+		return true;
+	/* no other space for JSON */
+	if (json_mode)
+		return false;
+	/* YAML allows tab for WS */
+	return fy_is_tab(c);
+}
+
+static inline bool fy_is_flow_blank_yj(int c, bool json_mode)
+{
+	return fy_is_flow_ws_yj(c, json_mode);
+}
+
+static inline bool fy_is_flow_blankz_yj(int c, bool json_mode)
+{
+	return fy_is_flow_ws_yj(c, json_mode) || fy_is_lbz_yj(c, json_mode);
 }
 
 #define FY_CTYPE_AT_BUILDER(_kind) \
@@ -228,6 +280,8 @@ FY_CTYPE_AT_BUILDER(nb_char);
 FY_CTYPE_AT_BUILDER(ns_char);
 FY_CTYPE_AT_BUILDER(indicator);
 FY_CTYPE_AT_BUILDER(flow_indicator);
+FY_CTYPE_AT_BUILDER(path_flow_key_start);
+FY_CTYPE_AT_BUILDER(path_flow_key_end);
 FY_CTYPE_AT_BUILDER(unicode_control);
 FY_CTYPE_AT_BUILDER(unicode_space);
 FY_CTYPE_AT_BUILDER(json_unescaped);
