@@ -666,6 +666,26 @@ static void dump_token(struct fy_token *fyt)
 		printf("%s value='%s'\n", "PE-COMMA",
 				fy_atom_get_esc_text_a(&fyt->handle));
 		break;
+
+	case FYTT_PE_BARBAR:
+		printf("%s value='%s'\n", "PE-BARBAR",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
+
+	case FYTT_PE_AMPAMP:
+		printf("%s value='%s'\n", "PE-AMPAMP",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
+
+	case FYTT_PE_LPAREN:
+		printf("%s value='%s'\n", "PE-LPAREN",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
+
+	case FYTT_PE_RPAREN:
+		printf("%s value='%s'\n", "PE-RPAREN",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
 	}
 }
 

@@ -304,7 +304,7 @@ struct fy_token *fy_token_vcreate(enum fy_token_type type, va_list ap)
 	struct fy_atom *handle;
 	struct fy_token *fyt_td;
 
-	if ((unsigned int)type > FYTT_PE_COMMA)
+	if ((unsigned int)type >= FYTT_COUNT)
 		goto err_out;
 
 	fyt = fy_token_alloc();
@@ -1066,6 +1066,22 @@ char *fy_token_debug_text(struct fy_token *fyt)
 
 	case FYTT_PE_COMMA:
 		typetxt = "PE-COMMA";
+		break;
+
+	case FYTT_PE_BARBAR:
+		typetxt = "PE-BARBAR";
+		break;
+
+	case FYTT_PE_AMPAMP:
+		typetxt = "PE-AMPAMP";
+		break;
+
+	case FYTT_PE_LPAREN:
+		typetxt = "PE-LPAREN";
+		break;
+
+	case FYTT_PE_RPAREN:
+		typetxt = "PE-RPAREN";
 		break;
 
 	default:
