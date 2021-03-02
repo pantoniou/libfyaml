@@ -5378,6 +5378,8 @@ int fy_parser_set_input_fp(struct fy_parser *fyp, const char *name, FILE *fp)
 	fyic.stream.name = name ? : "<stream>";
 	fyic.stream.fp = fp;
 
+    fyic.stream.ignore_stdio = true;
+
 	/* must not be in the middle of something */
 	fyp_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
 			err_out, "parser cannot be reset at state '%s'",

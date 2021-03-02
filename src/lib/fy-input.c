@@ -631,7 +631,13 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 
 			fyr_debug(fyr, "performing read request of %zu", nreadreq);
 
-			nread = fread(fyi->buffer + fyi->read, 1, nreadreq, fyi->fp);
+            if(fyi->cfg.stream.ignore_stdio) {
+                /* this reads the file unbuffered. It should not be intercepted
+                 * by fread calls! This will end up in a mess.  */
+                nread = read(fileno(fyi->fp), fyi->buffer + fyi->read, nreadreq);
+            }
+            else 
+                nread = fread(fyi->buffer + fyi->read, 1, nreadreq, fyi->fp);
 
 			fyr_debug(fyr, "read returned %zu", nread);
 
