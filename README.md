@@ -1,4 +1,4 @@
-# libfyaml &middot; ![](https://github.com/pantoniou/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)
+# libfyaml &middot; ![](https://github.com/hapejot/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)
 
 A fancy 1.2 YAML and JSON parser/writer.
 
