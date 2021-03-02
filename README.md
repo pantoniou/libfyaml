@@ -2,6 +2,8 @@
 
 A fancy 1.2 YAML and JSON parser/writer.
 
+(local build of hapejot)
+
 Fully feature complete YAML parser and emitter, supporting the latest YAML spec and
 passing the full YAML testsuite.
 
