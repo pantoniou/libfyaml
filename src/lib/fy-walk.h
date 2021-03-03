@@ -58,15 +58,17 @@ enum fy_path_expr_type {
 	fpet_seq_slice,
 	fpet_alias,
 
-	fpet_multi,
-	fpet_chain,
+	fpet_multi,		/* merge results of children */
+	fpet_chain,		/* children move in sequence */
+	fpet_logical_or,	/* first non null result set */
+	fpet_logical_and,	/* the last non null result set */
 };
 
 extern const char *path_expr_type_txt[];
 
 static inline bool fy_path_expr_type_is_valid(enum fy_path_expr_type type)
 {
-	return type >= fpet_root && type <= fpet_chain;
+	return type >= fpet_root && type <= fpet_logical_and;
 }
 
 static inline bool fy_path_expr_type_is_single_result(enum fy_path_expr_type type)
@@ -81,6 +83,14 @@ static inline bool fy_path_expr_type_is_single_result(enum fy_path_expr_type typ
 	       type == fpet_filter_scalar ||
 	       type == fpet_filter_sequence ||
 	       type == fpet_filter_mapping;
+}
+
+static inline bool fy_path_expr_type_is_parent(enum fy_path_expr_type type)
+{
+	return type == fpet_multi ||
+	       type == fpet_chain ||
+	       type == fpet_logical_or ||
+	       type == fpet_logical_and;
 }
 
 FY_TYPE_FWD_DECL_LIST(path_expr);

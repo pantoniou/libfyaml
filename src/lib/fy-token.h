@@ -68,7 +68,13 @@ enum fy_token_type {
 	FYTT_PE_ALIAS,
 	FYTT_PE_SIBLING,
 	FYTT_PE_COMMA,
+	FYTT_PE_BARBAR,
+	FYTT_PE_AMPAMP,
+	FYTT_PE_LPAREN,
+	FYTT_PE_RPAREN,
 };
+
+#define FYTT_COUNT	(FYTT_PE_RPAREN+1)
 
 static inline bool fy_token_type_is_content(enum fy_token_type type)
 {

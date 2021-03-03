@@ -69,6 +69,10 @@ const char *fy_token_type_txt[] = {
 	[FYTT_PE_ALIAS]			= "PE_ALIAS",
 	[FYTT_PE_SIBLING]		= "PE_SIBLING",
 	[FYTT_PE_COMMA]			= "PE_COMMA",
+	[FYTT_PE_BARBAR]		= "PE_BARBAR",
+	[FYTT_PE_AMPAMP]		= "PE_AMPAMP",
+	[FYTT_PE_LPAREN]		= "PE_LPAREN",
+	[FYTT_PE_RPAREN]		= "PE_RPAREN",
 };
 
 char *fy_token_dump_format(struct fy_token *fyt, char *buf, size_t bufsz)
