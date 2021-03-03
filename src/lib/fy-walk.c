@@ -792,6 +792,7 @@ enum fy_path_expr_type fy_map_token_to_path_expr_type(enum fy_token_type type)
 	case FYTT_PE_THIS:
 		return fpet_this;
 	case FYTT_PE_PARENT:
+	case FYTT_PE_SIBLING:	/* sibling maps to a chain of fpet_parent */
 		return fpet_parent;
 	case FYTT_PE_MAP_KEY:
 		return fpet_map_key;
@@ -951,6 +952,15 @@ push_operand(struct fy_path_parser *fypp, struct fy_path_expr *expr)
 }
 
 static struct fy_path_expr *
+peek_operand_at(struct fy_path_parser *fypp, unsigned int pos)
+{
+	if (fypp->operand_top <= pos)
+		return NULL;
+	return fypp->operands[fypp->operand_top - 1 - pos];
+}
+
+
+static struct fy_path_expr *
 peek_operand(struct fy_path_parser *fypp)
 {
 	if (fypp->operand_top == 0)
@@ -1086,13 +1096,76 @@ const struct fy_mark *fy_path_expr_end_mark(struct fy_path_expr *expr)
 	return fy_path_expr_end_mark(exprn);
 }
 
+#if 0
+static struct fy_token *
+expr_to_token_mark(struct fy_path_expr *expr, struct fy_input *fyi)
+{
+	const struct fy_mark *ms, *me;
+	struct fy_atom handle;
+
+	ms = fy_path_expr_start_mark(expr);
+	me = fy_path_expr_end_mark(expr);
+	assert(ms);
+	assert(me);
+
+	memset(&handle, 0, sizeof(handle));
+	handle.start_mark = *ms;
+	handle.end_mark = *me;
+	handle.fyi = fyi;
+	handle.style = FYAS_PLAIN;
+	handle.chomp = FYAC_CLIP;
+
+	return fy_token_create(FYTT_INPUT_MARKER, &handle);
+}
+#endif
+
+static bool
+expr_is_before_token(struct fy_path_expr *expr, struct fy_token *fyt)
+{
+	const struct fy_mark *me, *mt;
+
+	if (!expr || !fyt)
+		return false;
+
+	me = fy_path_expr_end_mark(expr);
+	if (!me)
+		return false;
+
+	mt = fy_token_start_mark(fyt);
+	if (!mt)
+		return false;
+
+	return me->input_pos <= mt->input_pos;
+}
+
+static bool
+expr_is_after_token(struct fy_path_expr *expr, struct fy_token *fyt)
+{
+	const struct fy_mark *me, *mt;
+
+	if (!expr || !fyt)
+		return false;
+
+	me = fy_path_expr_start_mark(expr);
+	if (!me)
+		return false;
+
+	mt = fy_token_end_mark(fyt);
+	if (!mt)
+		return false;
+
+	return me->input_pos >= mt->input_pos;
+}
+
 static int evaluate(struct fy_path_parser *fypp)
 {
 	struct fy_reader *fyr;
 	struct fy_token *fyt_top = NULL, *fyt_peek;
+#if 0
+	struct fy_token *fyt_markl, *fyt_markr;
+#endif
 	struct fy_path_expr *exprl = NULL, *exprr = NULL, *chain = NULL, *expr = NULL;
 	struct fy_path_expr *parent = NULL;
-	const struct fy_mark *m1, *m2;
 	enum fy_path_expr_type etype;
 	int ret;
 
@@ -1108,142 +1181,112 @@ static int evaluate(struct fy_path_parser *fypp)
 
 	case FYTT_PE_SLASH:
 
+		/* dump_operand_stack(fypp); */
+		/* dump_operator_stack(fypp); */
+
+		/* try to figure out if this slash is the root or a chain operator */
+		exprr = peek_operand(fypp);
+		exprl = peek_operand_at(fypp, 1);
 		fyt_peek = peek_operator(fypp);
+
+		/* remove expressions that are before this */
 		if (fyt_peek && fy_token_type_next_slash_is_root(fyt_peek->type)) {
-			// fyr_notice(fyr, "convert SLASH to root (adjacent to ||)\n");
-
-			exprl = fy_path_expr_alloc_recycle(fypp);
-			fyr_error_check(fyr, exprl, err_out,
-					"fy_path_expr_alloc_recycle() failed\n");
-
-			exprl->type = fpet_root;
-			exprl->fyt = fyt_top;
-			fyt_top = NULL;
-
-			exprr = pop_operand(fypp);
-			fyr_error_check(fyr, exprr, err_out,
-					"internal parse error() (root flash no rhs)\n");
-
-			goto chain_root;
-		}
-
-		exprr = pop_operand(fypp);
-		if (!exprr && fyt_top) {
-			/* slash at the beginning is root */
-			// fyr_notice(fyr, "convert SLASH to root (start of expression)\n");
-
-			exprr = fy_path_expr_alloc_recycle(fypp);
-			fyr_error_check(fyr, exprr, err_out,
-					"fy_path_expr_alloc_recycle() failed\n");
-
-			exprr->type = fpet_root;
-			exprr->fyt = fyt_top;
-			fyt_top = NULL;
-
-			ret = push_operand(fypp, exprr);
-			fyr_error_check(fyr, !ret, err_out,
-					"push_operand() failed\n");
-			exprr = NULL;
-			break;
-		}
-		exprl = pop_operand(fypp);
-		if (!exprl && fyt_top) {
-
-			m1 = fy_token_start_mark(fyt_top);
-			m2 = fy_path_expr_start_mark(exprr);
-
-			assert(m1);
-			assert(m2);
-
-			/* /foo -> add root */
-			if (m1->input_pos < m2->input_pos) {
-				/* / is to the left, it's a root */
-				exprl = fy_path_expr_alloc_recycle(fypp);
-				fyr_error_check(fyr, exprl, err_out,
-						"fy_path_expr_alloc_recycle() failed\n");
-
-				// fyr_notice(fyr, "convert SLASH to root (start of expression)\n");
-
-				exprl->type = fpet_root;
-				exprl->fyt = fyt_top;
-				fyt_top = NULL;
-
-			} else {
-
-				// fyr_notice(fyr, "SLASH is a collection marker\n");
-
-				/* / is to the right, it's a collection marker */
-
-				/* switch exprl with exprr */
-				exprl = exprr;
+			if (exprr && expr_is_before_token(exprr, fyt_peek)) {
+				/*  fyr_notice(fyr, "exprr before token, removing from scan\n"); */
 				exprr = NULL;
+			}
+			if (exprl && expr_is_before_token(exprl, fyt_peek)) {
+				/* fyr_notice(fyr, "exprl before token, removing from scan\n"); */
+				exprl = NULL;
 			}
 		}
 
-		if (!exprl) {
+		if (exprr && !exprl && expr_is_before_token(exprr, fyt_top)) {
+			/* fyr_notice(fyr, "exprl == NULL && exprr before token, means it's at the left\n"); */
 			exprl = exprr;
 			exprr = NULL;
 		}
 
-chain_root:
-		/* optimize chains */
-		if (exprl->type != fpet_chain) {
-			/* chaining */
-			chain = fy_path_expr_alloc_recycle(fypp);
-			fyr_error_check(fyr, chain, err_out,
-					"fy_path_expr_alloc_recycle() failed\n");
-
-			chain->type = fpet_chain;
-			chain->fyt = NULL;
-
-			fy_path_expr_list_add_tail(&chain->children, exprl);
-			exprl = NULL;
-		} else {
-			/* reuse lhs chain */
-			chain = exprl;
-			exprl = NULL;
-		}
-
-		if (!exprr) {
-			/* should never happen, but check */
-			assert(fyt_top);
-
-			/* this is a collection marker */
-			exprr = fy_path_expr_alloc_recycle(fypp);
-			fyr_error_check(fyr, exprr, err_out,
-					"fy_path_expr_alloc_recycle() failed\n");
-
-			exprr->type = fpet_filter_collection;
-			exprr->fyt = fyt_top;
-			fyt_top = NULL;
-		}
-
-		if (exprr->type != fpet_chain) {
-			/* not a chain, append */
-			fy_path_expr_list_add_tail(&chain->children, exprr);
-			exprr = NULL;
-		} else {
-			/* move the contents of the chain */
-			while ((expr = fy_path_expr_list_pop(&exprr->children)) != NULL)
-				fy_path_expr_list_add_tail(&chain->children, expr);
-			fy_path_expr_free_recycle(fypp, exprr);
+		if (exprl && !exprr && expr_is_after_token(exprl, fyt_top)) {
+			/* fyr_notice(fyr, "exprr == NULL && exprl after token, means it's at the right\n"); */
+			exprl = exprr;
 			exprr = NULL;
 		}
 
-		// fyr_notice(fyr, "SLASH is a chain\n");
+#if 0
+		fyt_markl = NULL;
+		fyt_markr = NULL;
 
-		ret = push_operand(fypp, chain);
-		fyr_error_check(fyr, !ret, err_out,
-				"push_operand() failed\n");
-		chain = NULL;
+		if (exprr) {
+			fyt_markr = expr_to_token_mark(exprr, fyt_top->handle.fyi);
+			assert(fyt_markr);
+		}
 
-		fy_token_unref(fyt_top);
+		if (exprl) {
+			fyt_markl = expr_to_token_mark(exprl, fyt_top->handle.fyi);
+			assert(fyt_markl);
+		}
+
+		FYR_TOKEN_DIAG(fyr, fyt_top,
+			FYDF_NOTICE, FYEM_PARSE, "location of fyt_top");
+
+		if (fyt_peek) {
+			FYR_TOKEN_DIAG(fyr, fyt_peek,
+				FYDF_NOTICE, FYEM_PARSE, "location of fyt_peek");
+		} else
+			fyr_notice(fyr, "fyt_peek=<NULL>\n");
+
+		if (fyt_markl)
+			FYR_TOKEN_DIAG(fyr, fyt_markl,
+				FYDF_NOTICE, FYEM_PARSE, "location of exprl");
+
+		if (fyt_markr)
+			FYR_TOKEN_DIAG(fyr, fyt_markr,
+				FYDF_NOTICE, FYEM_PARSE, "location of exprr");
+
+		fy_token_unref(fyt_markl);
+		fy_token_unref(fyt_markr);
+#endif
+
+		if (exprl && exprr) {
+			// fyr_notice(fyr, "CHAIN operator\n");
+			etype = fpet_chain;
+			goto do_infix;
+		}
+
+		if (exprl) {
+			// fyr_notice(fyr, "COLLECTION operator\n");
+			etype = fpet_filter_collection;
+			goto do_suffix;
+		}
+
+		if (exprr) {
+			// fyr_notice(fyr, "ROOT operator (with arguments)\n");
+			etype = fpet_root;
+			goto do_prefix;
+		}
+
+		// fyr_notice(fyr, "ROOT value (with no arguments)\n");
+
+		exprr = fy_path_expr_alloc_recycle(fypp);
+		fyr_error_check(fyr, exprr, err_out,
+				"fy_path_expr_alloc_recycle() failed\n");
+
+		exprr->type = fpet_root;
+		exprr->fyt = fyt_top;
 		fyt_top = NULL;
 
+		ret = push_operand(fypp, exprr);
+		fyr_error_check(fyr, !ret, err_out,
+				"push_operand() failed\n");
+		exprr = NULL;
 		break;
 
 	case FYTT_PE_SIBLING:
 
+		/* get mapping expression type */
+		etype = fy_map_token_to_path_expr_type(fyt_top->type);
+do_prefix:
 		exprr = pop_operand(fypp);
 
 		FYR_TOKEN_ERROR_CHECK(fyr, fyt_top, FYEM_PARSE,
@@ -1260,15 +1303,15 @@ chain_root:
 				"fy_path_expr_alloc_recycle() failed\n");
 
 		chain->type = fpet_chain;
-		chain->fyt = fyt_top;
-		fyt_top = NULL;
+		chain->fyt = NULL;
 
 		exprl = fy_path_expr_alloc_recycle(fypp);
 		fyr_error_check(fyr, exprl, err_out,
 				"fy_path_expr_alloc_recycle() failed\n");
 
-		exprl->type = fpet_parent;
-		exprl->fyt = NULL;
+		exprl->type = etype;
+		exprl->fyt = fyt_top;
+		fyt_top = NULL;
 
 		fy_path_expr_list_add_tail(&chain->children, exprl);
 		exprl = NULL;
@@ -1288,6 +1331,7 @@ chain_root:
 
 		/* get mapping expression type */
 		etype = fy_map_token_to_path_expr_type(fyt_top->type);
+do_infix:
 		/* verify we got one */
 		assert(etype != fpet_none);
 		/* and that it's one with children */
@@ -1350,6 +1394,8 @@ chain_root:
 	case FYTT_PE_SEQ_FILTER:
 	case FYTT_PE_MAP_FILTER:
 
+		etype = fy_map_token_to_path_expr_type(fyt_top->type);
+do_suffix:
 		exprl = pop_operand(fypp);
 		FYR_TOKEN_ERROR_CHECK(fyr, fyt_top, FYEM_PARSE,
 				exprl, err_out,
@@ -1375,7 +1421,7 @@ chain_root:
 		fyr_error_check(fyr, exprr, err_out,
 				"fy_path_expr_alloc_recycle() failed\n");
 
-		exprr->type = fy_map_token_to_path_expr_type(fyt_top->type);
+		exprr->type = etype;
 		exprr->fyt = fyt_top;
 		fyt_top = NULL;
 
