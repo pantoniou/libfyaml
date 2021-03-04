@@ -2674,6 +2674,7 @@ int do_reader(struct fy_parser *fyp, int indent, int width, bool resolve, bool s
 
 int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, int indent, int width, bool resolve, bool sort)
 {
+	struct fy_path_parse_cfg pcfg;
 	struct fy_path_parser fypp_data, *fypp = &fypp_data;
 	struct fy_path_expr *expr;
 	struct fy_walk_result_list results;
@@ -2692,7 +2693,9 @@ int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, 
 
 	fy_notice(fyp->diag, "setting up path parser for \"%s\"\n", walkpath);
 
-	fy_path_parser_setup(fypp, fyp->diag);
+	memset(&pcfg, 0, sizeof(pcfg));
+	pcfg.diag = fyp->diag;
+	fy_path_parser_setup(fypp, &pcfg);
 
 	fyi = fy_input_from_data(walkpath, FY_NT, NULL, false);
 	assert(fyi);
@@ -2735,7 +2738,7 @@ int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, 
 		free(path);
 
 		fy_walk_result_list_init(&results);
-		fy_path_expr_execute(fypp->diag, expr, &results, fyn);
+		fy_path_expr_execute(fyp->cfg.diag, expr, &results, fyn);
 
 		printf("\n");
 		printf("results\n");

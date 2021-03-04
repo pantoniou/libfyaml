@@ -49,6 +49,7 @@
 #define OPT_FILTER			1002
 #define OPT_JOIN			1003
 #define OPT_TOOL			1004
+#define OPT_YPATH			1005
 
 #define OPT_STRIP_LABELS		2000
 #define OPT_STRIP_TAGS			2001
@@ -75,6 +76,7 @@ static struct option lopts[] = {
 	{"testsuite",		no_argument,		0,	OPT_TESTSUITE },
 	{"filter",		no_argument,		0,	OPT_FILTER },
 	{"join",		no_argument,		0,	OPT_JOIN },
+	{"ypath",		no_argument,		0,	OPT_YPATH },
 	{"strip-labels",	no_argument,		0,	OPT_STRIP_LABELS },
 	{"strip-tags",		no_argument,		0,	OPT_STRIP_TAGS },
 	{"strip-doc",		no_argument,		0,	OPT_STRIP_DOC },
@@ -168,11 +170,17 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 							TRIM_DEFAULT);
 	}
 
+	if (tool_mode == OPT_TOOL || tool_mode == OPT_YPATH) {
+		fprintf(fp, "\t--from, -F <path>        : Start from <path> (default %s)\n",
+							FROM_DEFAULT);
+	}
+
 	if (tool_mode == OPT_TOOL) {
 		fprintf(fp, "\t--dump                   : Dump mode, [arguments] are file names\n");
 		fprintf(fp, "\t--testsuite              : Testsuite mode, [arguments] are <file>s to output parse events\n");
 		fprintf(fp, "\t--filter                 : Filter mode, <stdin> is input, [arguments] are <path>s, outputs to stdout\n");
 		fprintf(fp, "\t--join                   : Join mode, [arguments] are <path>s, outputs to stdout\n");
+		fprintf(fp, "\t--ypath                  : YPATH mode, [arguments] are <path>s, outputs to stdout\n");
 	}
 
 	fprintf(fp, "\n");
@@ -223,6 +231,11 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\tParse and join two YAML sequences\n");
 		fprintf(fp, "\t$ %s -mblock \">[ foo ]\" \">[ bar ]\"\n", progname);
 		fprintf(fp, "\t- foo\n\t- bar\n");
+		fprintf(fp, "\n");
+		break;
+	case OPT_YPATH:
+		fprintf(fp, "\tParse and YAML with the ypath expression that results to /foo followed by /bar\n");
+		fprintf(fp, "\t$ %s --file input.yaml /foo,bar\n\t...\n", progname);
 		fprintf(fp, "\n");
 		break;
 	}
@@ -693,6 +706,12 @@ int main(int argc, char *argv[])
 	bool streaming = STREAMING_DEFAULT;
 	struct fy_diag_cfg dcfg;
 	struct fy_diag *diag = NULL;
+	struct fy_path_parse_cfg pcfg;
+	struct fy_path_expr *expr = NULL;
+	struct fy_path_exec *fypx = NULL;
+	struct fy_node *fyn_start;
+	bool stdin_input;
+	void *res_iter;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -713,6 +732,8 @@ int main(int argc, char *argv[])
 		tool_mode = OPT_DUMP;
 	else if (!strcmp(progname, "fy-join"))
 		tool_mode = OPT_JOIN;
+	else if (!strcmp(progname, "fy-ypath"))
+		tool_mode = OPT_YPATH;
 	else
 		tool_mode = OPT_TOOL;
 
@@ -836,6 +857,7 @@ int main(int argc, char *argv[])
 		case OPT_DUMP:
 		case OPT_JOIN:
 		case OPT_TOOL:
+		case OPT_YPATH:
 			tool_mode = opt;
 			break;
 		case OPT_STRIP_LABELS:
@@ -1151,10 +1173,114 @@ int main(int argc, char *argv[])
 			goto cleanup;
 
 		break;
+
+	case OPT_YPATH:
+		step = 1;
+		if ((argc - optind) < 1) {
+			fprintf(stderr, "missing path expression\n");
+			goto cleanup;
+		}
+
+		memset(&pcfg, 0, sizeof(pcfg));
+		pcfg.diag = diag;
+
+		i = optind++;
+		expr = fy_path_expr_build_from_string(&pcfg, argv[i], FY_NT);
+		if (!expr) {
+			fprintf(stderr, "failed to parse path expression %s\n", argv[i]);
+			goto cleanup;
+		}
+
+		fypx = fy_path_exec_create(NULL);
+		if (!fypx) {
+			fprintf(stderr, "failed to create a path executor\n");
+			goto cleanup;
+		}
+
+		/* if no more arguments use stdin */
+		if (optind >= argc) {
+			rc = fy_parser_set_input_fp(fyp, "stdin", stdin);
+			if (rc) {
+				fprintf(stderr, "failed to set parser input to %s for ypath\n",
+						"stdin");
+				goto cleanup;
+			}
+			stdin_input = true;
+		} else
+			stdin_input = false;
+
+		count = 0;
+		for (;;) {
+
+			if (!stdin_input) {
+				i = optind++;
+				rc = fy_parser_set_input_file(fyp, argv[i]);
+				if (rc) {
+					fprintf(stderr, "failed to set parser input to %s for ypath\n",
+							argv[i]);
+					goto cleanup;
+				}
+			}
+
+			while ((fyd = fy_parse_load_document(fyp)) != NULL) {
+
+				fyn_start = fy_node_by_path(fy_document_root(fyd), from, FY_NT,
+							follow ? FYNWF_FOLLOW : FYNWF_DONT_FOLLOW);
+
+				/* if from is not found, then it's a null document */
+				if (!fyn_start) {
+					if (!(cfg.flags & FYPCF_QUIET))
+						fprintf(stderr, "filter: could not find starting point'%s'\n",
+								from);
+					continue;
+				}
+
+				fy_path_exec_reset(fypx);
+
+				rc = fy_path_exec_execute(fypx, expr, fyn_start);
+				if (rc) {
+					fprintf(stderr, "failed to fy_path_exec_execute() - %d\n", rc);
+					goto cleanup;
+				}
+
+				res_iter = NULL;
+				while ((fyn_emit = fy_path_exec_results_iterate(fypx, &res_iter)) != NULL) {
+
+					rc = fy_emit_document_start(fye, fyd, fyn_emit);
+					if (rc)
+						goto cleanup;
+
+					rc = fy_emit_root_node(fye, fyn_emit);
+					if (rc)
+						goto cleanup;
+
+					rc = fy_emit_document_end(fye);
+					if (rc)
+						goto cleanup;
+				}
+
+				fy_parse_document_destroy(fyp, fyd);
+			}
+
+			if (optind >= argc)
+				break;
+
+		}
+
+		if (fy_parser_get_stream_error(fyp))
+			goto cleanup;
+		break;
+
 	}
 	exitcode = EXIT_SUCCESS;
 
 cleanup:
+	if (fypx)
+		fy_path_exec_destroy(fypx);
+
+	if (expr)
+		fy_path_expr_free(expr);
+
 	if (fyd_join)
 		fy_document_destroy(fyd_join);
 
