@@ -1999,6 +1999,7 @@ fy_path_parse_expr_from_string(struct fy_path_parser *fypp,
 				(int)len, str);
 		goto err_out;
 	}
+	fy_input_unref(fyi);
 
 	return expr;
 
