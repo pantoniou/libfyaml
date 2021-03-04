@@ -1191,6 +1191,8 @@ int main(int argc, char *argv[])
 			goto cleanup;
 		}
 
+		fy_path_expr_dump(expr, diag, FYET_ERROR, 0, "ypath expression:");
+
 		fypx = fy_path_exec_create(NULL);
 		if (!fypx) {
 			fprintf(stderr, "failed to create a path executor\n");

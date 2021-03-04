@@ -73,6 +73,7 @@ install-exec-hook:
 	(cd "$(DESTDIR)$(bindir)" && $(LN_S) -f fy-tool fy-filter)
 	(cd "$(DESTDIR)$(bindir)" && $(LN_S) -f fy-tool fy-testsuite)
 	(cd "$(DESTDIR)$(bindir)" && $(LN_S) -f fy-tool fy-join)
+	(cd "$(DESTDIR)$(bindir)" && $(LN_S) -f fy-tool fy-ypath)
 
 uninstall-hook:
-	(cd "$(DESTDIR)$(bindir)" && rm -f fy-dump fy-filter fy-testsuite fy-join)
+	(cd "$(DESTDIR)$(bindir)" && rm -f fy-dump fy-filter fy-testsuite fy-join fy-ypath)

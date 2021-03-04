@@ -2713,7 +2713,7 @@ int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, 
 	if (!expr) {
 		fy_error(fyp->diag, "failed to parse expression\n");
 	} else
-		fy_path_expr_dump(fypp, expr, 0, "fypp root ");
+		fy_path_expr_dump(expr, fyp->diag, FYET_NOTICE, 0, "fypp root ");
 
 	count = 0;
 	while ((fyd = fy_parse_load_document(fyp)) != NULL) {

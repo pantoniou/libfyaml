@@ -147,7 +147,7 @@ struct fy_token *fy_path_scan(struct fy_path_parser *fypp);
 
 struct fy_path_expr *fy_path_parse_expression(struct fy_path_parser *fypp);
 
-void fy_path_expr_dump(struct fy_path_parser *fypp, struct fy_path_expr *expr, int level, const char *banner);
+void fy_path_expr_dump(struct fy_path_expr *expr, struct fy_diag *diag, enum fy_error_type errlevel, int level, const char *banner);
 
 int fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr,
 			 struct fy_walk_result_list *results, struct fy_node *fyn);

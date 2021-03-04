@@ -763,25 +763,34 @@ struct fy_token *fy_path_scan(struct fy_path_parser *fypp)
 	return fy_path_scan_remove(fypp, fy_path_scan_peek(fypp, NULL));
 }
 
-void fy_path_expr_dump(struct fy_path_parser *fypp, struct fy_path_expr *expr, int level, const char *banner)
+void fy_path_expr_dump(struct fy_path_expr *expr, struct fy_diag *diag, enum fy_error_type errlevel, int level, const char *banner)
 {
 	struct fy_path_expr *expr2;
 	const char *text;
 	size_t len;
+	bool save_on_error;
+
+	if (errlevel < diag->cfg.level)
+		return;
+
+	save_on_error = diag->on_error;
+	diag->on_error = true;
 
 	if (banner)
-		fy_notice(fypp->cfg.diag, "%-*s%s", level*2, "", banner);
+		fy_diag_diag(diag, errlevel, "%-*s%s", level*2, "", banner);
 
 	text = fy_token_get_text(expr->fyt, &len);
 
-	fy_notice(fypp->cfg.diag, "> %-*s%s%s%.*s",
+	fy_diag_diag(diag, errlevel, "> %-*s%s%s%.*s",
 			level*2, "",
 			path_expr_type_txt[expr->type],
 			len ? " " : "",
 			(int)len, text);
 
 	for (expr2 = fy_path_expr_list_head(&expr->children); expr2; expr2 = fy_path_expr_next(&expr->children, expr2))
-		fy_path_expr_dump(fypp, expr2, level+1, NULL);
+		fy_path_expr_dump(expr2, diag, errlevel, level + 1, NULL);
+
+	diag->on_error = save_on_error;
 }
 
 enum fy_path_expr_type fy_map_token_to_path_expr_type(enum fy_token_type type)

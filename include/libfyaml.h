@@ -4594,6 +4594,22 @@ fy_path_expr_free(struct fy_path_expr *expr)
 	FY_EXPORT;
 
 /**
+ * fy_path_expr_dump() - Dump the contents of a path expression to
+ * 			 the diagnostic object
+ *
+ * Dumps the expression using the provided error level.
+ *
+ * @expr: The expression to dump
+ * @diag: The diagnostic object to use
+ * @errlevel: The error level which the diagnostic will use
+ * @level: The nest level; should be set to 0
+ * @banner: The banner to display on level 0
+ */
+void
+fy_path_expr_dump(struct fy_path_expr *expr, struct fy_diag *diag,
+		  enum fy_error_type errlevel, int level, const char *banner);
+
+/**
  * enum fy_path_exec_cfg_flags - Path executor configuration flags
  *
  * These flags control the operation of the path expression executor
