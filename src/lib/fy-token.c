@@ -1260,6 +1260,10 @@ char *fy_token_debug_text(struct fy_token *fyt)
 		typetxt = "PE-RPAREN";
 		break;
 
+	case FYTT_PE_EQEQ:
+		typetxt = "PE-EQEQ";
+		break;
+
 	default:
 		typetxt = NULL;
 		break;

@@ -5055,6 +5055,7 @@ fy_path_exec_results_iterate(struct fy_path_exec *fypx, void **prevp)
  * @FYTT_PE_AMPAMP: A &&
  * @FYTT_PE_LPAREN: A left parenthesis
  * @FYTT_PE_RPAREN: A right parenthesis
+ * @FYTT_PE_EQEQ: Equality operator
  */
 enum fy_token_type {
 	/* non-content token types */
@@ -5106,10 +5107,11 @@ enum fy_token_type {
 	FYTT_PE_AMPAMP,
 	FYTT_PE_LPAREN,
 	FYTT_PE_RPAREN,
+	FYTT_PE_EQEQ,
 };
 
 /* The number of token types available */
-#define FYTT_COUNT	(FYTT_PE_RPAREN+1)
+#define FYTT_COUNT	(FYTT_PE_EQEQ+1)
 
 /**
  * fy_token_type_is_valid() - Check token type validity
@@ -5174,7 +5176,7 @@ fy_token_type_is_content(enum fy_token_type type)
 static inline bool
 fy_token_type_is_path_expr(enum fy_token_type type)
 {
-	return type >= FYTT_PE_SLASH && type <= FYTT_PE_RPAREN;
+	return type >= FYTT_PE_SLASH && type <= FYTT_PE_EQEQ;
 }
 
 /**

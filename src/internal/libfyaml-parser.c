@@ -695,6 +695,11 @@ static void dump_token(struct fy_token *fyt)
 		printf("%s value='%s'\n", "PE-RPAREN",
 				fy_atom_get_esc_text_a(&fyt->handle));
 		break;
+
+	case FYTT_PE_EQEQ:
+		printf("%s value='%s'\n", "PE-EQEQ",
+				fy_atom_get_esc_text_a(&fyt->handle));
+		break;
 	}
 }
 
