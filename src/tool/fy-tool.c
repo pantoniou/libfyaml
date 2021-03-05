@@ -44,7 +44,9 @@
 #define JSON_DEFAULT			"auto"
 #define DISABLE_ACCEL_DEFAULT		false
 #define DISABLE_BUFFERING_DEFAULT	false
+#define DISABLE_DEPTH_LIMIT_DEFAULT	false
 #define SLOPPY_FLOW_INDENTATION_DEFAULT	false
+#define PREFER_RECURSIVE_DEFAULT	false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -62,7 +64,12 @@
 #define OPT_STREAMING			2003
 #define OPT_DISABLE_ACCEL		2005
 #define OPT_DISABLE_BUFFERING		2006
-#define OPT_SLOPPY_FLOW_INDENTATION	2007
+#define OPT_DISABLE_DEPTH_LIMIT		2007
+#define OPT_SLOPPY_FLOW_INDENTATION	2008
+#define OPT_PREFER_RECURSIVE		2009
+#define OPT_DUMP_PATHEXPR		2010
+#define OPT_NOEXEC			2011
+#define OPT_NULL_OUTPUT			2012
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -102,6 +109,7 @@ static struct option lopts[] = {
 	{"streaming",		no_argument,		0,	OPT_STREAMING },
 	{"disable-accel",	no_argument,		0,	OPT_DISABLE_ACCEL },
 	{"disable-buffering",	no_argument,		0,	OPT_DISABLE_BUFFERING },
+	{"disable-depth-limit",	no_argument,		0,	OPT_DISABLE_DEPTH_LIMIT },
 	{"disable-diag",	required_argument,	0,	OPT_DISABLE_DIAG },
 	{"enable-diag", 	required_argument,	0,	OPT_ENABLE_DIAG },
 	{"show-diag",		required_argument,	0,	OPT_SHOW_DIAG },
@@ -110,6 +118,10 @@ static struct option lopts[] = {
 	{"yaml-1.2",		no_argument,		0,	OPT_YAML_1_2 },
 	{"yaml-1.3",		no_argument,		0,	OPT_YAML_1_3 },
 	{"sloppy-flow-indentation", no_argument,	0,	OPT_SLOPPY_FLOW_INDENTATION },
+	{"prefer-recursive",	no_argument,		0,	OPT_PREFER_RECURSIVE },
+	{"dump-pathexpr",	no_argument,		0,	OPT_DUMP_PATHEXPR },
+	{"noexec",		no_argument,		0,	OPT_NOEXEC },
+	{"null-output",		no_argument,		0,	OPT_NULL_OUTPUT },
 	{"to",			required_argument,	0,	'T' },
 	{"from",		required_argument,	0,	'F' },
 	{"quiet",		no_argument,		0,	'q' },
@@ -166,6 +178,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--disable-buffering      : Disable buffering (i.e. no stdio file reads, unix fd instead)"
 						" (default %s)\n",
 						DISABLE_BUFFERING_DEFAULT ? "true" : "false");
+	fprintf(fp, "\t--disable-depth-limit    : Disable depth limit"
+						" (default %s)\n",
+						DISABLE_DEPTH_LIMIT_DEFAULT ? "true" : "false");
 	fprintf(fp, "\t--json, -j               : JSON input mode (no | force | auto)"
 						" (default %s)\n",
 						JSON_DEFAULT);
@@ -175,6 +190,10 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--sloppy-flow-indentation: Enable sloppy indentation in flow mode)"
 						" (default %s)\n",
 						SLOPPY_FLOW_INDENTATION_DEFAULT ? "true" : "false");
+	fprintf(fp, "\t--prefer-recursive       : Prefer recursive instead of iterative algorighms"
+						" (default %s)\n",
+						PREFER_RECURSIVE_DEFAULT ? "true" : "false");
+	fprintf(fp, "\t--null-output            : Do not generate output (for scanner profiling)\n");
 	fprintf(fp, "\t--quiet, -q              : Quiet operation, do not "
 						"output messages (default %s)\n",
 						QUIET_DEFAULT ? "true" : "false");
@@ -215,6 +234,8 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	if (tool_mode == OPT_TOOL || tool_mode == OPT_YPATH) {
 		fprintf(fp, "\t--from, -F <path>        : Start from <path> (default %s)\n",
 							FROM_DEFAULT);
+		fprintf(fp, "\t--dump-pathexpr          : Dump the path expresion before the results\n");
+		fprintf(fp, "\t--noexec                 : Do not execute the expression\n");
 	}
 
 	if (tool_mode == OPT_TOOL) {
@@ -1058,10 +1079,11 @@ int main(int argc, char *argv[])
 	struct fy_parse_cfg cfg = {
 		.search_path = INCLUDE_DEFAULT,
 		.flags =
-			(QUIET_DEFAULT ? FYPCF_QUIET : 0) |
-			(RESOLVE_DEFAULT ? FYPCF_RESOLVE_DOCUMENT : 0) |
-			(DISABLE_ACCEL_DEFAULT ? FYPCF_DISABLE_ACCELERATORS : 0),
-			(DISABLE_BUFFERING_DEFAULT ? FYPCF_DISABLE_BUFFERING : 0),
+			(QUIET_DEFAULT 			 ? FYPCF_QUIET : 0) |
+			(RESOLVE_DEFAULT		 ? FYPCF_RESOLVE_DOCUMENT : 0) |
+			(DISABLE_ACCEL_DEFAULT		 ? FYPCF_DISABLE_ACCELERATORS : 0) |
+			(DISABLE_BUFFERING_DEFAULT	 ? FYPCF_DISABLE_BUFFERING : 0) |
+			(DISABLE_DEPTH_LIMIT_DEFAULT	 ? FYPCF_DISABLE_DEPTH_LIMIT : 0) |
 			(SLOPPY_FLOW_INDENTATION_DEFAULT ? FYPCF_SLOPPY_FLOW_INDENTATION : 0),
 	};
 	struct fy_emitter_cfg emit_cfg;
@@ -1095,8 +1117,12 @@ int main(int argc, char *argv[])
 	struct fy_diag *diag = NULL;
 	struct fy_path_parse_cfg pcfg;
 	struct fy_path_expr *expr = NULL;
+	struct fy_path_exec_cfg xcfg;
 	struct fy_path_exec *fypx = NULL;
 	struct fy_node *fyn_start;
+	bool dump_pathexpr = false;
+	bool noexec = false;
+	bool null_output = false;
 	bool stdin_input;
 	void *res_iter;
 
@@ -1328,6 +1354,18 @@ int main(int argc, char *argv[])
 		case OPT_DISABLE_BUFFERING:
 			cfg.flags |= FYPCF_DISABLE_BUFFERING;
 			break;
+		case OPT_DISABLE_DEPTH_LIMIT:
+			cfg.flags |= FYPCF_DISABLE_DEPTH_LIMIT;
+			break;
+		case OPT_DUMP_PATHEXPR:
+			dump_pathexpr = true;
+			break;
+		case OPT_NOEXEC:
+			noexec = true;
+			break;
+		case OPT_NULL_OUTPUT:
+			null_output = true;
+			break;
 		case OPT_YAML_1_1:
 			cfg.flags &= ~(FYPCF_DEFAULT_VERSION_MASK << FYPCF_DEFAULT_VERSION_SHIFT);
 			cfg.flags |= FYPCF_DEFAULT_VERSION_1_1;
@@ -1342,6 +1380,9 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_SLOPPY_FLOW_INDENTATION:
 			cfg.flags |= FYPCF_SLOPPY_FLOW_INDENTATION;
+			break;
+		case OPT_PREFER_RECURSIVE:
+			cfg.flags |= FYPCF_PREFER_RECURSIVE;
 			break;
 		case 'h' :
 		default:
@@ -1461,8 +1502,10 @@ int main(int argc, char *argv[])
 
 			if (!streaming) {
 				while ((fyd = fy_parse_load_document(fyp)) != NULL) {
-
-					rc = fy_emit_document(fye, fyd);
+					if (!null_output)
+						rc = fy_emit_document(fye, fyd);
+					else
+						rc = 0;
 					fy_parse_document_destroy(fyp, fyd);
 					if (rc)
 						goto cleanup;
@@ -1471,9 +1514,13 @@ int main(int argc, char *argv[])
 				}
 			} else {
 				while ((fyev = fy_parser_parse(fyp)) != NULL) {
-					rc = fy_emit_event(fye, fyev);
-					if (rc)
-						goto cleanup;
+					if (!null_output) {
+						rc = fy_emit_event(fye, fyev);
+						if (rc)
+							goto cleanup;
+					} else {
+						fy_parser_event_free(fyp, fyev);
+					}
 				}
 				count++;
 			}
@@ -1639,9 +1686,31 @@ int main(int argc, char *argv[])
 			goto cleanup;
 		}
 
-		fy_path_expr_dump(expr, diag, FYET_ERROR, 0, "ypath expression:");
+		if (dump_pathexpr) {
+			struct fy_document *fyd_pe;
 
-		fypx = fy_path_exec_create(NULL);
+			fy_path_expr_dump(expr, diag, FYET_ERROR, 0, "ypath expression:");
+
+			fyd_pe = fy_path_expr_to_document(expr);
+			if (!fyd_pe) {
+				fprintf(stderr, "failed to convert path expression to document\n");
+				goto cleanup;
+			}
+			fy_emit_document(fye, fyd_pe);
+
+			fy_document_destroy(fyd_pe);
+		}
+
+		/* nothing more */
+		if (noexec) {
+			exitcode = EXIT_SUCCESS;
+			goto cleanup;
+		}
+
+		memset(&xcfg, 0, sizeof(xcfg));
+		xcfg.diag = diag;
+
+		fypx = fy_path_exec_create(&xcfg);
 		if (!fypx) {
 			fprintf(stderr, "failed to create a path executor\n");
 			goto cleanup;
