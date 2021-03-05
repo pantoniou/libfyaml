@@ -31,9 +31,24 @@
 #include "fy-doc.h"
 #include "fy-token.h"
 
+enum fy_walk_result_type {
+	fwrt_node_ref,
+	fwrt_bool,
+	fwrt_int,
+	fwrt_uint,
+	fwrt_string,
+};
+
 struct fy_walk_result {
 	struct list_head node;
-	struct fy_node *fyn;
+	enum fy_walk_result_type type;
+	union {
+		struct fy_node *fyn;
+		bool bval;
+		int64_t ival;
+		uint64_t uival;
+		char *string;
+	};
 };
 FY_TYPE_FWD_DECL_LIST(walk_result);
 FY_TYPE_DECL_LIST(walk_result);
@@ -62,13 +77,15 @@ enum fy_path_expr_type {
 	fpet_chain,		/* children move in sequence */
 	fpet_logical_or,	/* first non null result set */
 	fpet_logical_and,	/* the last non null result set */
+
+	fpet_eq,		/* equal expression */
 };
 
 extern const char *path_expr_type_txt[];
 
 static inline bool fy_path_expr_type_is_valid(enum fy_path_expr_type type)
 {
-	return type >= fpet_root && type <= fpet_logical_and;
+	return type >= fpet_root && type <= fpet_eq;
 }
 
 static inline bool fy_path_expr_type_is_single_result(enum fy_path_expr_type type)
@@ -90,18 +107,40 @@ static inline bool fy_path_expr_type_is_parent(enum fy_path_expr_type type)
 	return type == fpet_multi ||
 	       type == fpet_chain ||
 	       type == fpet_logical_or ||
-	       type == fpet_logical_and;
+	       type == fpet_logical_and ||
+	       type == fpet_eq;
+}
+
+static inline bool fy_path_expr_type_is_parent_lhs_rhs(enum fy_path_expr_type type)
+{
+	return type == fpet_eq;
 }
 
 FY_TYPE_FWD_DECL_LIST(path_expr);
 struct fy_path_expr {
 	struct list_head node;
 	struct fy_path_expr *parent;
-	struct fy_path_expr_list children;
 	enum fy_path_expr_type type;
 	struct fy_token *fyt;
+	struct fy_path_expr_list children;
 };
 FY_TYPE_DECL_LIST(path_expr);
+
+static inline struct fy_path_expr *
+fy_path_expr_lhs(struct fy_path_expr *expr)
+{
+	if (!expr || !fy_path_expr_type_is_parent_lhs_rhs(expr->type))
+		return NULL;
+	return fy_path_expr_list_head(&expr->children);
+}
+
+static inline struct fy_path_expr *
+fy_path_expr_rhs(struct fy_path_expr *expr)
+{
+	if (!expr || !fy_path_expr_type_is_parent_lhs_rhs(expr->type))
+		return NULL;
+	return fy_path_expr_list_tail(&expr->children);
+}
 
 const struct fy_mark *fy_path_expr_start_mark(struct fy_path_expr *expr);
 const struct fy_mark *fy_path_expr_end_mark(struct fy_path_expr *expr);

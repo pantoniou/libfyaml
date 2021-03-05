@@ -73,6 +73,7 @@ const char *fy_token_type_txt[] = {
 	[FYTT_PE_AMPAMP]		= "PE_AMPAMP",
 	[FYTT_PE_LPAREN]		= "PE_LPAREN",
 	[FYTT_PE_RPAREN]		= "PE_RPAREN",
+	[FYTT_PE_EQEQ]			= "PE_EQEQ",
 };
 
 char *fy_token_dump_format(struct fy_token *fyt, char *buf, size_t bufsz)
