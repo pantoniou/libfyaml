@@ -1370,7 +1370,10 @@ static void fy_emit_sequence_prolog(struct fy_emitter *emit, struct fy_emit_save
 
 	sc->old_indent = sc->indent;
 	if (!json) {
-		sc->flow = fy_emit_is_flow_mode(emit) || emit->flow_level || sc->flow_token || sc->empty;
+		if (fy_emit_is_block_mode(emit))
+			sc->flow = sc->empty;
+		else
+			sc->flow = fy_emit_is_flow_mode(emit) || emit->flow_level || sc->flow_token || sc->empty;
 
 		if (sc->flow) {
 			if (!emit->flow_level) {
@@ -1477,7 +1480,10 @@ static void fy_emit_mapping_prolog(struct fy_emitter *emit, struct fy_emit_save_
 
 	sc->old_indent = sc->indent;
 	if (!json) {
-		sc->flow = fy_emit_is_flow_mode(emit) || emit->flow_level || sc->flow_token || sc->empty;
+		if (fy_emit_is_block_mode(emit))
+			sc->flow = sc->empty;
+		else
+			sc->flow = fy_emit_is_flow_mode(emit) || emit->flow_level || sc->flow_token || sc->empty;
 
 		if (sc->flow) {
 			if (!emit->flow_level) {

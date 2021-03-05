@@ -107,7 +107,7 @@ const struct fy_mark *fy_path_expr_start_mark(struct fy_path_expr *expr);
 const struct fy_mark *fy_path_expr_end_mark(struct fy_path_expr *expr);
 
 struct fy_path_parser {
-	struct fy_diag *diag;
+	struct fy_path_parse_cfg cfg;
 	struct fy_reader reader;
 	struct fy_token_list queued_tokens;
 	enum fy_token_type last_queued_token_type;
@@ -134,9 +134,10 @@ struct fy_path_parser {
 };
 
 struct fy_path_expr *fy_path_expr_alloc(void);
-void fy_path_expr_free(struct fy_path_expr *expr);
+/* fy_path_expr_free is declared in libfyaml.h */
+// void fy_path_expr_free(struct fy_path_expr *expr);
 
-void fy_path_parser_setup(struct fy_path_parser *fypp, struct fy_diag *diag);
+void fy_path_parser_setup(struct fy_path_parser *fypp, const struct fy_path_parse_cfg *pcfg);
 void fy_path_parser_cleanup(struct fy_path_parser *fypp);
 int fy_path_parser_open(struct fy_path_parser *fypp,
 			struct fy_input *fyi, const struct fy_reader_input_cfg *icfg);
@@ -146,9 +147,18 @@ struct fy_token *fy_path_scan(struct fy_path_parser *fypp);
 
 struct fy_path_expr *fy_path_parse_expression(struct fy_path_parser *fypp);
 
-void fy_path_expr_dump(struct fy_path_parser *fypp, struct fy_path_expr *expr, int level, const char *banner);
+void fy_path_expr_dump(struct fy_path_expr *expr, struct fy_diag *diag, enum fy_error_type errlevel, int level, const char *banner);
 
 int fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr,
 			 struct fy_walk_result_list *results, struct fy_node *fyn);
+
+struct fy_path_exec {
+	struct fy_path_exec_cfg cfg;
+	struct fy_walk_result_list results;
+	struct fy_node *fyn_start;
+};
+
+int fy_path_exec_setup(struct fy_path_exec *fypx, const struct fy_path_exec_cfg *xcfg);
+void fy_path_exec_cleanup(struct fy_path_exec *fypx);
 
 #endif
