@@ -959,6 +959,10 @@ int main(int argc, char *argv[])
 		emit_cfg.flags = emit_flags |
 				FYECF_INDENT(indent) | FYECF_WIDTH(width);
 
+		/* unconditionally turn on document start markers for ypath */
+		if (tool_mode == OPT_YPATH)
+			emit_cfg.flags |= FYECF_DOC_START_MARK_ON;
+
 		emit_cfg.output = do_output;
 		emit_cfg.userdata = &du;
 
