@@ -109,6 +109,9 @@ struct fy_emitter {
 	unsigned int sc_stack_alloc;
 	unsigned int sc_stack_top;
 	struct fy_emit_save_ctx sc_stack_inplace[16];
+
+	/* recycled */
+	struct fy_eventp_list recycled_eventp;
 };
 
 void fy_emit_write(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int len);

@@ -23,64 +23,6 @@
 
 struct fy_document;
 
-enum fy_token_type {
-	/* non-content token types */
-	FYTT_NONE,
-	FYTT_STREAM_START,
-	FYTT_STREAM_END,
-	FYTT_VERSION_DIRECTIVE,
-	FYTT_TAG_DIRECTIVE,
-	FYTT_DOCUMENT_START,
-	FYTT_DOCUMENT_END,
-	/* content token types */
-	FYTT_BLOCK_SEQUENCE_START,
-	FYTT_BLOCK_MAPPING_START,
-	FYTT_BLOCK_END,
-	FYTT_FLOW_SEQUENCE_START,
-	FYTT_FLOW_SEQUENCE_END,
-	FYTT_FLOW_MAPPING_START,
-	FYTT_FLOW_MAPPING_END,
-	FYTT_BLOCK_ENTRY,
-	FYTT_FLOW_ENTRY,
-	FYTT_KEY,
-	FYTT_VALUE,
-	FYTT_ALIAS,
-	FYTT_ANCHOR,
-	FYTT_TAG,
-	FYTT_SCALAR,
-	/* special error reporting */
-	FYTT_INPUT_MARKER,
-
-	/* path expression tokens */
-	FYTT_PE_SLASH,
-	FYTT_PE_ROOT,
-	FYTT_PE_THIS,
-	FYTT_PE_PARENT,
-	FYTT_PE_MAP_KEY,
-	FYTT_PE_SEQ_INDEX,
-	FYTT_PE_SEQ_SLICE,
-	FYTT_PE_SCALAR_FILTER,
-	FYTT_PE_COLLECTION_FILTER,
-	FYTT_PE_SEQ_FILTER,
-	FYTT_PE_MAP_FILTER,
-	FYTT_PE_EVERY_CHILD,
-	FYTT_PE_EVERY_CHILD_R,
-	FYTT_PE_ALIAS,
-	FYTT_PE_SIBLING,
-	FYTT_PE_COMMA,
-	FYTT_PE_BARBAR,
-	FYTT_PE_AMPAMP,
-	FYTT_PE_LPAREN,
-	FYTT_PE_RPAREN,
-};
-
-#define FYTT_COUNT	(FYTT_PE_RPAREN+1)
-
-static inline bool fy_token_type_is_content(enum fy_token_type type)
-{
-	return type >= FYTT_BLOCK_SEQUENCE_START;
-}
-
 /* analyze content flags */
 #define FYACF_EMPTY		0x000001	/* is empty (only ws & lb) */
 #define FYACF_LB		0x000002	/* has a linebreak */
@@ -125,6 +67,9 @@ struct fy_token {
 		struct {
 			unsigned int tag_length;	/* from start */
 			unsigned int uri_length;	/* from end */
+			char *prefix0;
+			char *handle0;
+			struct fy_tag tag;
 		} tag_directive;
 		struct {
 			enum fy_scalar_style style;
@@ -134,7 +79,13 @@ struct fy_token {
 			unsigned int handle_length;
 			unsigned int suffix_length;
 			struct fy_token *fyt_td;
+			char *handle0;	/* zero terminated and allocated, only used by binding */
+			char *suffix0;
+			struct fy_tag tag;	/* prefix is now suffix */
 		} tag;
+		struct {
+			struct fy_version vers;		/* parsed version number */
+		} version_directive;
 		/* path expressions */
 		struct {
 			struct fy_document *fyd;	/* when key is complex */
@@ -200,8 +151,6 @@ const char *fy_token_format_text(struct fy_token *fyt, char *buf, size_t maxsz);
 
 /* non-parser token methods */
 struct fy_atom *fy_token_atom(struct fy_token *fyt);
-const struct fy_mark *fy_token_start_mark(struct fy_token *fyt);
-const struct fy_mark *fy_token_end_mark(struct fy_token *fyt);
 
 static inline size_t fy_token_start_pos(struct fy_token *fyt)
 {
@@ -313,9 +262,6 @@ int fy_token_text_analyze(struct fy_token *fyt);
 
 unsigned int fy_analyze_scalar_content(const char *data, size_t size, bool json_mode);
 
-const char *fy_tag_directive_token_prefix(struct fy_token *fyt, size_t *lenp);
-const char *fy_tag_directive_token_handle(struct fy_token *fyt, size_t *lenp);
-
 /* must be freed */
 char *fy_token_debug_text(struct fy_token *fyt);
 
@@ -345,10 +291,10 @@ struct fy_token_iter {
 	int unget_c;
 };
 
-const char *fy_tag_token_get_directive_handle(struct fy_token *fyt, size_t *td_handle_sizep);
-const char *fy_tag_token_get_directive_prefix(struct fy_token *fyt, size_t *td_prefix_sizep);
-
 void fy_token_iter_start(struct fy_token *fyt, struct fy_token_iter *iter);
 void fy_token_iter_finish(struct fy_token_iter *iter);
+
+const char *fy_tag_token_get_directive_handle(struct fy_token *fyt, size_t *td_handle_sizep);
+const char *fy_tag_token_get_directive_prefix(struct fy_token *fyt, size_t *td_prefix_sizep);
 
 #endif

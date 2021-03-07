@@ -1939,6 +1939,8 @@ int fy_emit_setup(struct fy_emitter *emit, const struct fy_emitter_cfg *cfg)
 	emit->sc_stack = emit->sc_stack_inplace;
 	emit->sc_stack_alloc = sizeof(emit->sc_stack_inplace)/sizeof(emit->sc_stack_inplace[0]);
 
+	fy_eventp_list_init(&emit->recycled_eventp);
+
 	fy_emit_reset(emit, false);
 
 	return 0;
@@ -1947,6 +1949,8 @@ int fy_emit_setup(struct fy_emitter *emit, const struct fy_emitter_cfg *cfg)
 void fy_emit_cleanup(struct fy_emitter *emit)
 {
 	struct fy_eventp *fyep;
+
+	fy_emit_eventp_vacuum(emit);
 
 	if (!emit->fyd && emit->fyds)
 		fy_document_state_unref(emit->fyds);
@@ -2437,7 +2441,6 @@ int fy_emit_pop_sc(struct fy_emitter *emit, struct fy_emit_save_ctx *sc)
 
 static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fyep, int flags)
 {
-	struct fy_parser *fyp = fyep->fyp;
 	struct fy_event *fye = &fyep->e;
 	struct fy_emit_save_ctx *sc = &emit->s_sc;
 	enum fy_node_style style;
@@ -2534,7 +2537,7 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 		break;
 
 	default:
-		fyp_error(fyp, "%s: expected ALIAS|SCALAR|SEQUENCE_START|MAPPING_START", __func__);
+		fy_error(emit->diag, "%s: expected ALIAS|SCALAR|SEQUENCE_START|MAPPING_START", __func__);
 		return -1;
 	}
 
@@ -2543,11 +2546,10 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 
 static int fy_emit_handle_stream_start(struct fy_emitter *emit, struct fy_eventp *fyep)
 {
-	struct fy_parser *fyp = fyep->fyp;
 	struct fy_event *fye = &fyep->e;
 
 	if (fye->type != FYET_STREAM_START) {
-		fyp_error(fyp, "%s: expected FYET_STREAM_START", __func__);
+		fy_error(emit->diag, "%s: expected FYET_STREAM_START", __func__);
 		return -1;
 	}
 
@@ -2560,13 +2562,12 @@ static int fy_emit_handle_stream_start(struct fy_emitter *emit, struct fy_eventp
 
 static int fy_emit_handle_document_start(struct fy_emitter *emit, struct fy_eventp *fyep, bool first)
 {
-	struct fy_parser *fyp = fyep->fyp;
 	struct fy_event *fye = &fyep->e;
 	struct fy_document_state *fyds;
 
 	if (fye->type != FYET_DOCUMENT_START &&
 	    fye->type != FYET_STREAM_END) {
-		fyp_error(fyp, "%s: expected FYET_DOCUMENT_START|FYET_STREAM_END", __func__);
+		fy_error(emit->diag, "%s: expected FYET_DOCUMENT_START|FYET_STREAM_END", __func__);
 		return -1;
 	}
 
@@ -2600,12 +2601,11 @@ static int fy_emit_handle_document_content(struct fy_emitter *emit, struct fy_ev
 static int fy_emit_handle_document_end(struct fy_emitter *emit, struct fy_eventp *fyep)
 {
 	struct fy_document_state *fyds;
-	struct fy_parser *fyp = fyep->fyp;
 	struct fy_event *fye = &fyep->e;
 	int ret;
 
 	if (fye->type != FYET_DOCUMENT_END) {
-		fyp_error(fyp, "%s: expected FYET_DOCUMENT_END", __func__);
+		fy_error(emit->diag, "%s: expected FYET_DOCUMENT_END", __func__);
 		return -1;
 	}
 
@@ -2624,7 +2624,6 @@ static int fy_emit_handle_document_end(struct fy_emitter *emit, struct fy_eventp
 
 static int fy_emit_handle_sequence_item(struct fy_emitter *emit, struct fy_eventp *fyep, bool first)
 {
-	struct fy_parser *fyp = fyep->fyp;
 	struct fy_event *fye = &fyep->e;
 	struct fy_emit_save_ctx *sc = &emit->s_sc;
 	struct fy_token *fyt_item = NULL;
@@ -2662,7 +2661,7 @@ static int fy_emit_handle_sequence_item(struct fy_emitter *emit, struct fy_event
 		fyt_item = fye->mapping_start.mapping_start;
 		break;
 	default:
-		fyp_error(fyp, "%s: expected SEQUENCE_END|ALIAS|SCALAR|SEQUENCE_START|MAPPING_START", __func__);
+		fy_error(emit->diag, "%s: expected SEQUENCE_END|ALIAS|SCALAR|SEQUENCE_START|MAPPING_START", __func__);
 		return -1;
 	}
 
@@ -2705,7 +2704,6 @@ static int fy_emit_handle_sequence_item(struct fy_emitter *emit, struct fy_event
 
 static int fy_emit_handle_mapping_key(struct fy_emitter *emit, struct fy_eventp *fyep, bool first)
 {
-	struct fy_parser *fyp = fyep->fyp;
 	struct fy_event *fye = &fyep->e;
 	struct fy_emit_save_ctx *sc = &emit->s_sc;
 	struct fy_token *fyt_key = NULL;
@@ -2753,7 +2751,7 @@ static int fy_emit_handle_mapping_key(struct fy_emitter *emit, struct fy_eventp 
 		simple_key = fy_emit_streaming_mapping_empty(emit);
 		break;
 	default:
-		fyp_error(fyp, "%s: expected MAPPING_END|ALIAS|SCALAR|SEQUENCE_START|MAPPING_START", __func__);
+		fy_error(emit->diag, "%s: expected MAPPING_END|ALIAS|SCALAR|SEQUENCE_START|MAPPING_START", __func__);
 		return -1;
 	}
 
@@ -2796,7 +2794,6 @@ static int fy_emit_handle_mapping_key(struct fy_emitter *emit, struct fy_eventp 
 
 static int fy_emit_handle_mapping_value(struct fy_emitter *emit, struct fy_eventp *fyep, bool simple)
 {
-	struct fy_parser *fyp = fyep->fyp;
 	struct fy_event *fye = &fyep->e;
 	struct fy_emit_save_ctx *sc = &emit->s_sc;
 	struct fy_token *fyt_value = NULL;
@@ -2816,7 +2813,7 @@ static int fy_emit_handle_mapping_value(struct fy_emitter *emit, struct fy_event
 		fyt_value = fye->mapping_start.mapping_start;
 		break;
 	default:
-		fyp_error(fyp, "%s: expected ALIAS|SCALAR|SEQUENCE_START|MAPPING_START", __func__);
+		fy_error(emit->diag, "%s: expected ALIAS|SCALAR|SEQUENCE_START|MAPPING_START", __func__);
 		return -1;
 	}
 
@@ -2924,4 +2921,10 @@ int fy_emit_event(struct fy_emitter *emit, struct fy_event *fye)
 	}
 
 	return ret;
+}
+
+struct fy_document_state *
+fy_emitter_get_document_state(struct fy_emitter *emit)
+{
+	return emit ? emit->fyds : NULL;
 }

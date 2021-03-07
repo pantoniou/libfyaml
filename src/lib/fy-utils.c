@@ -16,6 +16,8 @@
 #include <string.h>
 #include <errno.h>
 
+#include "fy-utf8.h"
+#include "fy-ctype.h"
 #include "fy-utils.h"
 
 #if defined(__APPLE__) && (_POSIX_C_SOURCE < 200809L)
@@ -205,3 +207,187 @@ err_out:
 }
 
 #endif /* __APPLE__ && _POSIX_C_SOURCE < 200809L */
+
+bool fy_tag_uri_is_valid(const char *data, size_t len)
+{
+	const char *s, *e;
+	int w, j, k, width, c;
+	uint8_t octet, esc_octets[4];
+
+	s = data;
+	e = s + len;
+
+	while ((c = fy_utf8_get(s, e - s, &w)) >= 0) {
+		if (c != '%') {
+			s += w;
+			continue;
+		}
+
+		width = 0;
+		k = 0;
+		do {
+			/* short URI escape */
+			if ((e - s) < 3)
+				return false;
+
+			if (width > 0) {
+				c = fy_utf8_get(s, e - s, &w);
+				if (c != '%')
+					return false;
+			}
+
+			s += w;
+
+			octet = 0;
+
+			for (j = 0; j < 2; j++) {
+				c = fy_utf8_get(s, e - s, &w);
+				if (!fy_is_hex(c))
+					return false;
+				s += w;
+
+				octet <<= 4;
+				if (c >= '0' && c <= '9')
+					octet |= c - '0';
+				else if (c >= 'a' && c <= 'f')
+					octet |= 10 + c - 'a';
+				else
+					octet |= 10 + c - 'A';
+			}
+			if (!width) {
+				width = fy_utf8_width_by_first_octet(octet);
+
+				if (width < 1 || width > 4)
+					return false;
+				k = 0;
+			}
+			esc_octets[k++] = octet;
+
+		} while (--width > 0);
+
+		/* now convert to utf8 */
+		c = fy_utf8_get(esc_octets, k, &w);
+
+		if (c < 0)
+			return false;
+	}
+
+	return true;
+}
+
+int fy_tag_handle_length(const char *data, size_t len)
+{
+	const char *s, *e;
+	int c, w;
+
+	s = data;
+	e = s + len;
+
+	c = fy_utf8_get(s, e - s, &w);
+	if (c != '!')
+		return -1;
+	s += w;
+
+	c = fy_utf8_get(s, e - s, &w);
+	if (fy_is_ws(c))
+		return s - data;
+	/* if first character is !, empty handle */
+	if (c == '!') {
+		s += w;
+		return s - data;
+	}
+	if (!fy_is_first_alpha(c))
+		return -1;
+	s += w;
+	while (fy_is_alnum(c = fy_utf8_get(s, e - s, &w)))
+		s += w;
+	if (c == '!')
+		s += w;
+
+	return s - data;
+}
+
+int fy_tag_uri_length(const char *data, size_t len)
+{
+	const char *s, *e;
+	int c, w, cn, wn, uri_length;
+
+	s = data;
+	e = s + len;
+
+	while (fy_is_uri(c = fy_utf8_get(s, e - s, &w))) {
+		cn = fy_utf8_get(s + w, e - (s + w), &wn);
+		if (fy_is_blankz(cn) && fy_utf8_strchr(",}]", c))
+			break;
+		s += w;
+	}
+	uri_length = s - data;
+
+	if (!fy_tag_uri_is_valid(data, uri_length))
+		return -1;
+
+	return uri_length;
+}
+
+int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info)
+{
+	const char *s, *e;
+	int total_length, handle_length, uri_length, prefix_length, suffix_length;
+	int c, cn, w, wn;
+
+	s = data;
+	e = s + len;
+
+	prefix_length = 0;
+
+	/* it must start with '!' */
+	c = fy_utf8_get(s, e - s, &w);
+	if (c != '!')
+		return -1;
+	cn = fy_utf8_get(s + w, e - (s + w), &wn);
+	if (cn == '<') {
+		prefix_length = 2;
+		suffix_length = 1;
+	} else
+		prefix_length = suffix_length = 0;
+
+	if (prefix_length) {
+		handle_length = 0; /* set the handle to '' */
+		s += prefix_length;
+	} else {
+		/* either !suffix or !handle!suffix */
+		/* we scan back to back, and split handle/suffix */
+		handle_length = fy_tag_handle_length(s, e - s);
+		if (handle_length <= 0)
+			return -1;
+		s += handle_length;
+	}
+
+	uri_length = fy_tag_uri_length(s, e - s);
+	if (uri_length < 0)
+		return -1;
+
+	/* a handle? */
+	if (!prefix_length && (handle_length == 0 || data[handle_length - 1] != '!')) {
+		/* special case, '!', handle set to '' and suffix to '!' */
+		if (handle_length == 1 && uri_length == 0) {
+			handle_length = 0;
+			uri_length = 1;
+		} else {
+			uri_length = handle_length - 1 + uri_length;
+			handle_length = 1;
+		}
+	}
+	total_length = prefix_length + handle_length + uri_length + suffix_length;
+
+	if (total_length != (int)len)
+		return -1;
+
+	info->total_length = total_length;
+	info->handle_length = handle_length;
+	info->uri_length = uri_length;
+	info->prefix_length = prefix_length;
+	info->suffix_length = suffix_length;
+
+	return 0;
+}
