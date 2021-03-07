@@ -192,6 +192,7 @@ struct fy_document_state *fy_document_state_copy(struct fy_document_state *fyds)
 
 		fyt->type = FYTT_VERSION_DIRECTIVE;
 		fyt->handle = fyds->fyt_vd->handle;
+		fyt->version_directive.vers = fyds->fyt_vd->version_directive.vers;
 
 		/* take reference */
 		fy_input_ref(fyt->handle.fyi);
@@ -309,4 +310,74 @@ int fy_document_state_merge(struct fy_document_state *fyds,
 
 err_out:
 	return -1;
+}
+
+const struct fy_version *
+fy_document_state_version(struct fy_document_state *fyds)
+{
+	static const struct fy_version default_version = {
+		.major	= FY_DEFAULT_YAML_VERSION_MAJOR,
+		.minor	= FY_DEFAULT_YAML_VERSION_MINOR,
+	};
+
+	/* return the default if not set */
+	return fyds ? &fyds->version : &default_version;
+}
+
+const struct fy_mark *fy_document_state_start_mark(struct fy_document_state *fyds)
+{
+	return fyds ? &fyds->start_mark : NULL;
+}
+
+const struct fy_mark *fy_document_state_end_mark(struct fy_document_state *fyds)
+{
+	return fyds ? &fyds->end_mark : NULL;
+}
+
+bool fy_document_state_version_explicit(struct fy_document_state *fyds)
+{
+	return fyds ? fyds->version_explicit : false;
+}
+
+bool fy_document_state_tags_explicit(struct fy_document_state *fyds)
+{
+	return fyds ? fyds->tags_explicit : false;
+}
+
+bool fy_document_state_start_implicit(struct fy_document_state *fyds)
+{
+	return fyds ? fyds->start_implicit : true;
+}
+
+bool fy_document_state_end_implicit(struct fy_document_state *fyds)
+{
+	return fyds ? fyds->end_implicit : true;
+}
+
+const struct fy_tag *
+fy_document_state_tag_directive_iterate(struct fy_document_state *fyds, void **iterp)
+{
+	struct fy_token *fyt;
+	const struct fy_tag *tag;
+
+	if (!fyds || !iterp)
+		return NULL;
+
+	fyt = *iterp;
+	fyt = !fyt ? fy_token_list_head(&fyds->fyt_td) : fy_token_next(&fyds->fyt_td, fyt);
+	if (!fyt)
+		return NULL;
+
+	/* sanity check */
+	assert(fyt->type == FYTT_TAG_DIRECTIVE);
+
+	/* always refresh, should be relatively infrequent */
+	fyt->tag_directive.tag.handle = fy_tag_directive_token_handle0(fyt);
+	fyt->tag_directive.tag.prefix = fy_tag_directive_token_prefix0(fyt);
+
+	tag = &fyt->tag_directive.tag;
+
+	*iterp = fyt;
+
+	return tag;
 }

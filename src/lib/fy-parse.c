@@ -44,11 +44,6 @@ const char *fy_library_version(void)
 #endif
 }
 
-void fy_eventp_release(struct fy_eventp *fyep)
-{
-	fy_parse_eventp_recycle(fyep->fyp, fyep);
-}
-
 int fy_parse_input_append(struct fy_parser *fyp, const struct fy_input_cfg *fyic)
 {
 	struct fy_input *fyi = NULL;
@@ -1452,16 +1447,23 @@ err_out:
 	return -1;
 }
 
-int fy_scan_yaml_version_length(struct fy_parser *fyp)
+int fy_scan_yaml_version(struct fy_parser *fyp, struct fy_version *vers)
 {
-	int c, length, start_length;
+	int c, length, start_length, num;
 	ssize_t offset;
 
-	/* now loop while it's alphanumeric */
+	memset(vers, 0, sizeof(*vers));
+
+	/* now loop while it's numeric */
 	length = 0;
 	offset = -1;
-	while (fy_is_num(c = fy_parse_peek_at_internal(fyp, length, &offset)))
+	num = 0;
+	while (fy_is_num(c = fy_parse_peek_at_internal(fyp, length, &offset))) {
 		length++;
+		num = num * 10;
+		num += c - '0';
+	}
+	vers->major = num;
 
 	FYP_PARSE_ERROR_CHECK(fyp, length, 1, FYEM_SCAN,
 			length > 0, err_out,
@@ -1473,8 +1475,15 @@ int fy_scan_yaml_version_length(struct fy_parser *fyp)
 	length++;
 
 	start_length = length;
-	while (fy_is_num(c = fy_parse_peek_at_internal(fyp, length, &offset)))
+	num = 0;
+	while (fy_is_num(c = fy_parse_peek_at_internal(fyp, length, &offset))) {
 		length++;
+		num = num * 10;
+		num += c - '0';
+	}
+	vers->minor = num;
+
+	/* note that the version is not checked for validity here */
 
 	FYP_PARSE_ERROR_CHECK(fyp, length, 1, FYEM_SCAN,
 			length > start_length, err_out,
@@ -1527,31 +1536,10 @@ err_out:
 	return -1;
 }
 
-int fy_scan_yaml_version(struct fy_parser *fyp, struct fy_atom *handle)
-{
-	int c, length;
-
-	memset(handle, 0, sizeof(*handle));
-
-	/* skip white space */
-	while (fy_is_ws(c = fy_parse_peek(fyp)))
-		fy_advance(fyp, c);
-
-	length = fy_scan_yaml_version_length(fyp);
-	fyp_error_check(fyp, length > 0, err_out,
-			"fy_scan_yaml_version_length() failed");
-
-	fy_fill_atom(fyp, length, handle);
-
-	return 0;
-
-err_out:
-	return -1;
-}
-
 int fy_scan_directive(struct fy_parser *fyp)
 {
 	int c, advance, version_length, tag_length, uri_length;
+	struct fy_version vers;
 	enum fy_token_type type = FYTT_NONE;
 	struct fy_atom handle;
 	bool is_uri_valid;
@@ -1618,15 +1606,15 @@ int fy_scan_directive(struct fy_parser *fyp)
 	/* for version directive, parse it */
 	if (type == FYTT_VERSION_DIRECTIVE) {
 
-		version_length = fy_scan_yaml_version_length(fyp);
+		version_length = fy_scan_yaml_version(fyp, &vers);
 		fyp_error_check(fyp, version_length > 0, err_out,
-				"fy_scan_yaml_version_length() failed");
+				"fy_scan_yaml_version() failed");
 
 		fy_advance_by(fyp, version_length);
 
 		fy_fill_atom_end(fyp, &handle);
 
-		fyt = fy_token_queue(fyp, FYTT_VERSION_DIRECTIVE, &handle);
+		fyt = fy_token_queue(fyp, FYTT_VERSION_DIRECTIVE, &handle, &vers);
 		fyp_error_check(fyp, fyt, err_out,
 				"fy_token_queue() failed");
 
@@ -4045,9 +4033,39 @@ struct fy_token *fy_scan(struct fy_parser *fyp)
 
 	fyt = fy_scan_remove(fyp, fy_scan_peek(fyp));
 
+	if (fyt && (fyt->type == FYTT_VERSION_DIRECTIVE || fyt->type == FYTT_TAG_DIRECTIVE)) {
+
+		/*
+		* NOTE: we need to update the document state with the contents of
+		* directives, so that tags etc, work correctly.
+		* This is arguably a big hack, but so is using the scanner in such
+		* a low level.
+		*
+		* This is not very good because we don't keep track of parser state
+		* so tag directives in the middle of the document are AOK.
+		* But we don't really care, if you care about stream validity do
+		* a proper parse.
+		*/
+
+		/* we take a reference because the parse methods take ownership */
+		fy_token_ref(fyt);
+
+		/* we ignore errors, because... they are parse errors, not scan errors */
+
+		if (fyt->type == FYTT_VERSION_DIRECTIVE)
+			(void)fy_parse_version_directive(fyp, fyt);
+		else
+			(void)fy_parse_tag_directive(fyp, fyt);
+	}
+
 	if (fyt)
 		fyp_debug_dump_token(fyp, fyt, "producing: ");
 	return fyt;
+}
+
+void fy_scan_token_free(struct fy_parser *fyp, struct fy_token *fyt)
+{
+	fy_token_unref(fyt);
 }
 
 int fy_parse_state_push(struct fy_parser *fyp, enum fy_parser_state state)
@@ -5442,78 +5460,12 @@ struct fy_event *fy_parser_parse(struct fy_parser *fyp)
 	return &fyep->e;
 }
 
-void fy_parser_event_free(struct fy_parser *fyp, struct fy_event *fye)
-{
-	struct fy_eventp *fyep;
-
-	if (!fyp || !fye)
-		return;
-
-	fyep = container_of(fye, struct fy_eventp, e);
-
-	assert(fyep->fyp == fyp);
-
-	fy_parse_eventp_recycle(fyep->fyp, fyep);
-}
-
 bool fy_parser_get_stream_error(struct fy_parser *fyp)
 {
 	if (!fyp)
 		return true;
 
 	return fyp->stream_error;
-}
-
-bool fy_document_event_is_implicit(const struct fy_event *fye)
-{
-	if (fye->type == FYET_DOCUMENT_START)
-		return fye->document_start.implicit;
-
-	if (fye->type == FYET_DOCUMENT_END)
-		return fye->document_end.implicit;
-
-	return false;
-}
-
-struct fy_token *fy_document_event_get_token(struct fy_event *fye)
-{
-	switch (fye->type) {
-	case FYET_NONE:
-		break;
-
-	case FYET_STREAM_START:
-		return fye->stream_start.stream_start;
-
-	case FYET_STREAM_END:
-		return fye->stream_end.stream_end;
-
-	case FYET_DOCUMENT_START:
-		return fye->document_start.document_start;
-
-	case FYET_DOCUMENT_END:
-		return fye->document_end.document_end;
-
-	case FYET_MAPPING_START:
-		return fye->mapping_start.mapping_start;
-
-	case FYET_MAPPING_END:
-		return fye->mapping_end.mapping_end;
-
-	case FYET_SEQUENCE_START:
-		return fye->sequence_start.sequence_start;
-
-	case FYET_SEQUENCE_END:
-		return fye->sequence_end.sequence_end;
-
-	case FYET_SCALAR:
-		return fye->scalar.value;
-
-	case FYET_ALIAS:
-		return fye->alias.anchor;
-
-	}
-
-	return NULL;
 }
 
 FILE *fy_parser_get_error_fp(struct fy_parser *fyp)
@@ -5558,3 +5510,9 @@ bool fy_parser_is_colorized(struct fy_parser *fyp)
 
 	return color_flags == FYPCF_COLOR_FORCE;
 }
+
+struct fy_document_state *fy_parser_get_document_state(struct fy_parser *fyp)
+{
+	return fyp ? fyp->current_document_state : NULL;
+}
+

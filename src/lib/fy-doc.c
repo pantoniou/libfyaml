@@ -393,7 +393,7 @@ struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_ev
 
 	fye = &fyep->e;
 
-	FYP_TOKEN_ERROR_CHECK(fyp, fy_document_event_get_token(fye), FYEM_DOC,
+	FYP_TOKEN_ERROR_CHECK(fyp, fy_event_get_token(fye), FYEM_DOC,
 			fye->type == FYET_DOCUMENT_START, err_out,
 			"invalid start of event stream");
 
@@ -1696,14 +1696,14 @@ fy_parse_document_load_node(struct fy_parser *fyp, struct fy_document *fyd,
 
 	type = fye->type;
 
-	FYP_TOKEN_ERROR_CHECK(fyp, fy_document_event_get_token(fye), FYEM_DOC,
+	FYP_TOKEN_ERROR_CHECK(fyp, fy_event_get_token(fye), FYEM_DOC,
 			type == FYET_ALIAS || type == FYET_SCALAR ||
 			type == FYET_SEQUENCE_START || type == FYET_MAPPING_START, err_out,
 			"bad event");
 
 	(*depthp)++;
 
-	FYP_TOKEN_ERROR_CHECK(fyp, fy_document_event_get_token(fye), FYEM_DOC,
+	FYP_TOKEN_ERROR_CHECK(fyp, fy_event_get_token(fye), FYEM_DOC,
 			((fyp->cfg.flags & FYPCF_DISABLE_DEPTH_LIMIT) ||
 				*depthp <= fy_depth_limit()), err_out,
 			"depth limit exceeded");
@@ -1755,7 +1755,7 @@ int fy_parse_document_load_end(struct fy_parser *fyp, struct fy_document *fyd, s
 
 	fye = &fyep->e;
 
-	FYP_TOKEN_ERROR_CHECK(fyp, fy_document_event_get_token(fye), FYEM_DOC,
+	FYP_TOKEN_ERROR_CHECK(fyp, fy_event_get_token(fye), FYEM_DOC,
 			fye->type == FYET_DOCUMENT_END, err_out,
 			"bad event");
 
@@ -1810,7 +1810,7 @@ again:
 		goto again;
 	}
 
-	FYP_TOKEN_ERROR_CHECK(fyp, fy_document_event_get_token(fye), FYEM_DOC,
+	FYP_TOKEN_ERROR_CHECK(fyp, fy_event_get_token(fye), FYEM_DOC,
 			fye->type == FYET_DOCUMENT_START, err_out,
 			"bad event");
 
@@ -4660,7 +4660,7 @@ again:
 		goto again;
 	}
 
-	FYD_TOKEN_ERROR_CHECK(fyd, fy_document_event_get_token(fye), FYEM_DOC,
+	FYD_TOKEN_ERROR_CHECK(fyd, fy_event_get_token(fye), FYEM_DOC,
 			fye->type == FYET_DOCUMENT_START, err_out,
 			"bad event");
 
@@ -4734,7 +4734,7 @@ fy_node_build_internal(struct fy_document *fyd,
 	if (got_stream_end) {
 		fyep = fy_parse_private(fyp);
 
-		FYD_TOKEN_ERROR_CHECK(fyd, fy_document_event_get_token(&fyep->e), FYEM_DOC,
+		FYD_TOKEN_ERROR_CHECK(fyd, fy_event_get_token(&fyep->e), FYEM_DOC,
 				!fyep, err_out,
 				"trailing events after the last");
 
@@ -4925,134 +4925,13 @@ struct fy_node *fy_node_create_scalarf(struct fy_document *fyd, const char *fmt,
 	return fyn;
 }
 
-static int tag_handle_length(const char *data, size_t len)
-{
-	const char *s, *e;
-	int c, w;
-
-	s = data;
-	e = s + len;
-
-	c = fy_utf8_get(s, e - s, &w);
-	if (c != '!')
-		return -1;
-	s += w;
-
-	c = fy_utf8_get(s, e - s, &w);
-	if (fy_is_ws(c))
-		return s - data;
-	/* if first character is !, empty handle */
-	if (c == '!') {
-		s += w;
-		return s - data;
-	}
-	if (!fy_is_first_alpha(c))
-		return -1;
-	s += w;
-	while (fy_is_alnum(c = fy_utf8_get(s, e - s, &w)))
-		s += w;
-	if (c == '!')
-		s += w;
-
-	return s - data;
-}
-
-static bool tag_uri_is_valid(const char *data, size_t len)
-{
-	const char *s, *e;
-	int w, j, k, width, c;
-	uint8_t octet, esc_octets[4];
-
-	s = data;
-	e = s + len;
-
-	while ((c = fy_utf8_get(s, e - s, &w)) >= 0) {
-		if (c != '%') {
-			s += w;
-			continue;
-		}
-
-		width = 0;
-		k = 0;
-		do {
-			/* short URI escape */
-			if ((e - s) < 3)
-				return false;
-
-			if (width > 0) {
-				c = fy_utf8_get(s, e - s, &w);
-				if (c != '%')
-					return false;
-			}
-
-			s += w;
-
-			octet = 0;
-
-			for (j = 0; j < 2; j++) {
-				c = fy_utf8_get(s, e - s, &w);
-				if (!fy_is_hex(c))
-					return false;
-				s += w;
-
-				octet <<= 4;
-				if (c >= '0' && c <= '9')
-					octet |= c - '0';
-				else if (c >= 'a' && c <= 'f')
-					octet |= 10 + c - 'a';
-				else
-					octet |= 10 + c - 'A';
-			}
-			if (!width) {
-				width = fy_utf8_width_by_first_octet(octet);
-
-				if (width < 1 || width > 4)
-					return false;
-				k = 0;
-			}
-			esc_octets[k++] = octet;
-
-		} while (--width > 0);
-
-		/* now convert to utf8 */
-		c = fy_utf8_get(esc_octets, k, &w);
-
-		if (c < 0)
-			return false;
-	}
-
-	return true;
-}
-
-static int tag_uri_length(const char *data, size_t len)
-{
-	const char *s, *e;
-	int c, w, cn, wn, uri_length;
-
-	s = data;
-	e = s + len;
-
-	while (fy_is_uri(c = fy_utf8_get(s, e - s, &w))) {
-		cn = fy_utf8_get(s + w, e - (s + w), &wn);
-		if (fy_is_blankz(cn) && fy_utf8_strchr(",}]", c))
-			break;
-		s += w;
-	}
-	uri_length = s - data;
-
-	if (!tag_uri_is_valid(data, uri_length))
-		return -1;
-
-	return uri_length;
-}
-
-
 int fy_node_set_tag(struct fy_node *fyn, const char *data, size_t len)
 {
 	struct fy_document *fyd;
-	int total_length, handle_length, uri_length, prefix_length, suffix_length;
-	const char *s, *e, *handle_start;
-	int c, w, cn, wn;
+	struct fy_tag_scan_info info;
+	int handle_length, uri_length, prefix_length;
+	const char *handle_start;
+	int rc;
 	struct fy_atom handle;
 	struct fy_input *fyi = NULL;
 	struct fy_token *fyt = NULL, *fyt_td = NULL;
@@ -5065,54 +4944,15 @@ int fy_node_set_tag(struct fy_node *fyn, const char *data, size_t len)
 	if (len == (size_t)-1)
 		len = strlen(data);
 
-	s = data;
-	e = s + len;
+	memset(&info, 0, sizeof(info));
 
-	prefix_length = 0;
-
-	/* it must start with '!' */
-	c = fy_utf8_get(s, e - s, &w);
-	if (c != '!')
-		return -1;
-	cn = fy_utf8_get(s + w, e - (s + w), &wn);
-	if (cn == '<') {
-		prefix_length = 2;
-		suffix_length = 1;
-	} else
-		prefix_length = suffix_length = 0;
-
-	if (prefix_length) {
-		handle_length = 0; /* set the handle to '' */
-		s += prefix_length;
-	} else {
-		/* either !suffix or !handle!suffix */
-		/* we scan back to back, and split handle/suffix */
-		handle_length = tag_handle_length(s, e - s);
-		if (handle_length <= 0)
-			goto err_out;
-		s += handle_length;
-	}
-
-	uri_length = tag_uri_length(s, e - s);
-	if (uri_length < 0)
+	rc = fy_tag_scan(data, len, &info);
+	if (rc)
 		goto err_out;
 
-	/* a handle? */
-	if (!prefix_length && (handle_length == 0 || data[handle_length - 1] != '!')) {
-		/* special case, '!', handle set to '' and suffix to '!' */
-		if (handle_length == 1 && uri_length == 0) {
-			handle_length = 0;
-			uri_length = 1;
-		} else {
-			uri_length = handle_length - 1 + uri_length;
-			handle_length = 1;
-		}
-	}
-	total_length = prefix_length + handle_length + uri_length + suffix_length;
-
-	/* everything must be consumed */
-	if (total_length != (int)len)
-		goto err_out;
+	handle_length = info.handle_length;
+	uri_length = info.uri_length;
+	prefix_length = info.prefix_length;
 
 	handle_start = data + prefix_length;
 
@@ -6261,4 +6101,9 @@ int fy_node_hash_uint(struct fy_node *fyn, unsigned int *hashp)
 
 	*hashp = XXH32_digest(&state);
 	return 0;
+}
+
+struct fy_document_state *fy_document_get_document_state(struct fy_document *fyd)
+{
+	return fyd ? fyd->fyds : NULL;
 }

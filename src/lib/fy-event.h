@@ -19,16 +19,27 @@
 #include "fy-list.h"
 #include "fy-typelist.h"
 
-struct fy_parser;
-
 /* private event type */
+FY_TYPE_FWD_DECL_LIST(eventp);
 struct fy_eventp {
 	struct list_head node;
-	struct fy_parser *fyp;
 	struct fy_event e;
 };
-FY_PARSE_TYPE_DECL(eventp);
+FY_TYPE_DECL_LIST(eventp);
+FY_PARSE_TYPE_DECL_ALLOC(eventp);
 
+struct fy_eventp *fy_eventp_alloc(void);
+void fy_eventp_free(struct fy_eventp *fyep);
+
+/* called from internal emitter */
 void fy_eventp_release(struct fy_eventp *fyep);
+
+struct fy_eventp *fy_parse_eventp_alloc(struct fy_parser *fyp);
+void fy_parse_eventp_recycle(struct fy_parser *fyp, struct fy_eventp *fyep);
+void fy_parse_eventp_vacuum(struct fy_parser *fyp);
+
+struct fy_eventp *fy_emit_eventp_alloc(struct fy_emitter *fye);
+void fy_emit_eventp_recycle(struct fy_emitter *emit, struct fy_eventp *fyep);
+void fy_emit_eventp_vacuum(struct fy_emitter *emit);
 
 #endif

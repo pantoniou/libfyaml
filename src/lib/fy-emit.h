@@ -89,7 +89,7 @@ struct fy_emitter {
 	unsigned int flags;
 	bool output_error : 1;
 	/* current document */
-	const struct fy_emitter_cfg *cfg;
+	struct fy_emitter_cfg cfg;	/* yeah, it isn't worth just to save a few bytes */
 	struct fy_document *fyd;
 	struct fy_document_state *fyds;	/* fyd->fyds when fyd != NULL */
 	struct fy_emit_accum ea;
@@ -109,6 +109,9 @@ struct fy_emitter {
 	unsigned int sc_stack_alloc;
 	unsigned int sc_stack_top;
 	struct fy_emit_save_ctx sc_stack_inplace[16];
+
+	/* recycled */
+	struct fy_eventp_list recycled_eventp;
 };
 
 void fy_emit_write(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int len);

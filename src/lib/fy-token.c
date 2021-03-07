@@ -28,6 +28,11 @@
 
 #include "fy-token.h"
 
+enum fy_token_type fy_token_get_type(struct fy_token *fyt)
+{
+	return fyt ? fyt->type : FYTT_NONE;
+}
+
 struct fy_token *fy_token_alloc(void)
 {
 	struct fy_token *fyt;
@@ -64,6 +69,17 @@ void fy_token_free(struct fy_token *fyt)
 	switch (fyt->type) {
 	case FYTT_TAG:
 		fy_token_unref(fyt->tag.fyt_td);
+		if (fyt->tag.handle0)
+			free(fyt->tag.handle0);
+		if (fyt->tag.suffix0)
+			free(fyt->tag.suffix0);
+		break;
+
+	case FYTT_TAG_DIRECTIVE:
+		if (fyt->tag_directive.prefix0)
+			free(fyt->tag_directive.prefix0);
+		if (fyt->tag_directive.handle0)
+			free(fyt->tag_directive.handle0);
 		break;
 
 	case FYTT_PE_MAP_KEY:
@@ -111,6 +127,20 @@ void fy_token_list_unref_all(struct fy_token_list *fytl)
 
 	while ((fyt = fy_token_list_pop(fytl)) != NULL)
 		fy_token_unref(fyt);
+}
+
+static bool fy_token_text_needs_rebuild(struct fy_token *fyt)
+{
+	const struct fy_atom *fya;
+
+	if (!fy_token_text_is_direct(fyt))
+		return false;
+
+	fya = fy_token_atom(fyt);
+	if (!fya || !fya->fyi)
+		return false;
+
+	return fya->fyi_generation != fya->fyi->generation;
 }
 
 static int fy_tag_token_format_internal(const struct fy_token *fyt, void *out, size_t *outszp)
@@ -285,6 +315,39 @@ const char *fy_tag_directive_token_prefix(struct fy_token *fyt, size_t *lenp)
 	return ptr;
 }
 
+const char *fy_tag_directive_token_prefix0(struct fy_token *fyt)
+{
+	char *text0;
+	const char *text;
+	size_t len;
+
+	if (!fyt || fyt->type != FYTT_TAG_DIRECTIVE)
+		return NULL;
+
+	/* use the cache if it's there (and doesn't need a rebuild) */
+	if (fyt->tag_directive.prefix0 && !fy_token_text_needs_rebuild(fyt))
+		return fyt->tag_directive.prefix0;
+
+	if (fyt->tag_directive.prefix0) {
+		free(fyt->tag_directive.prefix0);
+		fyt->tag_directive.prefix0 = NULL;
+	}
+
+	text = fy_tag_directive_token_prefix(fyt, &len);
+	if (!text)
+		return NULL;
+
+	text0 = malloc(len + 1);
+	if (!text0)
+		return NULL;
+	memcpy(text0, text, len);
+	text0[len] = '\0';
+
+	fyt->tag_directive.prefix0 = text0;
+
+	return fyt->tag_directive.prefix0;
+}
+
 const char *fy_tag_directive_token_handle(struct fy_token *fyt, size_t *lenp)
 {
 	const char *ptr;
@@ -296,6 +359,39 @@ const char *fy_tag_directive_token_handle(struct fy_token *fyt, size_t *lenp)
 	ptr = fy_atom_data(&fyt->handle);
 	*lenp = fyt->tag_directive.tag_length;
 	return ptr;
+}
+
+const char *fy_tag_directive_token_handle0(struct fy_token *fyt)
+{
+	char *text0;
+	const char *text;
+	size_t len;
+
+	if (!fyt || fyt->type != FYTT_TAG_DIRECTIVE)
+		return NULL;
+
+	/* use the cache if it's there (and doesn't need a rebuild) */
+	if (fyt->tag_directive.handle0 && !fy_token_text_needs_rebuild(fyt))
+		return fyt->tag_directive.handle0;
+
+	if (fyt->tag_directive.handle0) {
+		free(fyt->tag_directive.handle0);
+		fyt->tag_directive.handle0 = NULL;
+	}
+
+	text = fy_tag_directive_token_handle(fyt, &len);
+	if (!text)
+		return NULL;
+
+	text0 = malloc(len + 1);
+	if (!text0)
+		return NULL;
+	memcpy(text0, text, len);
+	text0[len] = '\0';
+
+	fyt->tag_directive.handle0 = text0;
+
+	return fyt->tag_directive.handle0;
 }
 
 struct fy_token *fy_token_vcreate(enum fy_token_type type, va_list ap)
@@ -313,9 +409,10 @@ struct fy_token *fy_token_vcreate(enum fy_token_type type, va_list ap)
 	fyt->type = type;
 
 	handle = va_arg(ap, struct fy_atom *);
-	if (!handle)
-		goto err_out;
-	fyt->handle = *handle;
+	if (handle)
+		fyt->handle = *handle;
+	else
+		memset(&fyt->handle, 0, sizeof(fyt->handle));
 
 	switch (fyt->type) {
 	case FYTT_TAG_DIRECTIVE:
@@ -338,6 +435,10 @@ struct fy_token *fy_token_vcreate(enum fy_token_type type, va_list ap)
 		fyt->tag.fyt_td = fy_token_ref(fyt_td);
 		break;
 
+	case FYTT_VERSION_DIRECTIVE:
+		fyt->version_directive.vers = *va_arg(ap, struct fy_version *);
+		break;
+
 	case FYTT_PE_MAP_KEY:
 		fyt->map_key.fyd = va_arg(ap, struct fy_document *);
 		break;
@@ -358,10 +459,8 @@ struct fy_token *fy_token_vcreate(enum fy_token_type type, va_list ap)
 		break;
 	}
 
-	assert(fyt->handle.fyi);
-
-	/* take reference */
-	fy_input_ref(fyt->handle.fyi);
+	if (fyt->handle.fyi)
+		fy_input_ref(fyt->handle.fyi);
 
 	return fyt;
 
@@ -699,20 +798,6 @@ const char *fy_tag_token_get_directive_prefix(struct fy_token *fyt, size_t *td_p
 	return fy_tag_directive_token_prefix(fyt->tag.fyt_td, td_prefix_sizep);
 }
 
-static bool fy_token_text_needs_rebuild(struct fy_token *fyt)
-{
-	const struct fy_atom *fya;
-
-	if (!fy_token_text_is_direct(fyt))
-		return false;
-
-	fya = fy_token_atom(fyt);
-	if (!fya || !fya->fyi)
-		return false;
-
-	return fya->fyi_generation != fya->fyi->generation;
-}
-
 const char *fy_token_get_direct_output(struct fy_token *fyt, size_t *sizep)
 {
 	const struct fy_atom *fya;
@@ -725,6 +810,114 @@ const char *fy_token_get_direct_output(struct fy_token *fyt, size_t *sizep)
 	}
 	*sizep = fy_atom_size(fya);
 	return fy_atom_data(fya);
+}
+
+const char *fy_tag_token_handle(struct fy_token *fyt, size_t *lenp)
+{
+	return fy_tag_token_get_directive_handle(fyt, lenp);
+}
+
+const char *fy_tag_token_suffix(struct fy_token *fyt, size_t *lenp)
+{
+	const char *tag, *prefix, *handle, *suffix;
+	size_t tag_len, prefix_len, handle_len, suffix_len;
+
+	if (!fyt || fyt->type != FYTT_TAG) {
+		*lenp = 0;
+		return NULL;
+	}
+
+	tag = fy_token_get_text(fyt, &tag_len);
+	if (!tag)
+		return NULL;
+	prefix = fy_tag_token_get_directive_prefix(fyt, &prefix_len);
+	if (!prefix)
+		return NULL;
+	handle = fy_tag_token_handle(fyt, &handle_len);
+	if (!handle || !handle_len) {
+		suffix = tag;
+		suffix_len = tag_len;
+	} else {
+		assert(prefix_len <= tag_len);
+		assert(tag_len >= prefix_len);
+		suffix = tag + prefix_len;
+		suffix_len = tag_len - prefix_len;
+	}
+	*lenp = suffix_len;
+	return suffix;
+}
+
+const char *fy_tag_token_handle0(struct fy_token *fyt)
+{
+	char *text0;
+	const char *text;
+	size_t len;
+
+	if (!fyt || fyt->type != FYTT_TAG)
+		return NULL;
+
+	/* use the cache if it's there (and doesn't need a rebuild) */
+	if (fyt->tag.handle0 && !fy_token_text_needs_rebuild(fyt))
+		return fyt->tag.handle0;
+
+	if (fyt->tag.handle0) {
+		free(fyt->tag.handle0);
+		fyt->tag.handle0 = NULL;
+	}
+
+	text = fy_tag_token_handle(fyt, &len);
+	if (!text)
+		return NULL;
+
+	text0 = malloc(len + 1);
+	if (!text0)
+		return NULL;
+	memcpy(text0, text, len);
+	text0[len] = '\0';
+
+	fyt->tag.handle0 = text0;
+
+	return fyt->tag.handle0;
+}
+
+const char *fy_tag_token_suffix0(struct fy_token *fyt)
+{
+	char *text0;
+	const char *text;
+	size_t len;
+
+	if (!fyt || fyt->type != FYTT_TAG)
+		return NULL;
+
+	/* use the cache if it's there (and doesn't need a rebuild) */
+	if (fyt->tag.suffix0 && !fy_token_text_needs_rebuild(fyt))
+		return fyt->tag.suffix0;
+
+	if (fyt->tag.suffix0) {
+		free(fyt->tag.suffix0);
+		fyt->tag.suffix0 = NULL;
+	}
+
+	text = fy_tag_token_suffix(fyt, &len);
+	if (!text)
+		return NULL;
+
+	text0 = malloc(len + 1);
+	if (!text0)
+		return NULL;
+	memcpy(text0, text, len);
+	text0[len] = '\0';
+
+	fyt->tag.suffix0 = text0;
+
+	return fyt->tag.suffix0;
+}
+
+const struct fy_version * fy_version_directive_token_version(struct fy_token *fyt)
+{
+	if (!fyt || fyt->type != FYTT_VERSION_DIRECTIVE)
+		return NULL;
+	return &fyt->version_directive.vers;
 }
 
 static void fy_token_prepare_text(struct fy_token *fyt)
@@ -1424,3 +1617,37 @@ int fy_token_iter_utf8_peek(struct fy_token_iter *iter)
 
 	return fy_token_iter_utf8_unget(iter, c);
 }
+
+enum fy_scalar_style
+fy_scalar_token_get_style(struct fy_token *fyt)
+{
+	if (!fyt || fyt->type != FYTT_SCALAR)
+		return FYSS_ANY;
+	return fyt->scalar.style;
+}
+
+const struct fy_tag *fy_tag_token_tag(struct fy_token *fyt)
+{
+	if (!fyt || fyt->type != FYTT_TAG)
+		return NULL;
+
+	/* always refresh, should be relatively infrequent */
+	fyt->tag.tag.handle = fy_tag_token_handle0(fyt);
+	fyt->tag.tag.prefix = fy_tag_token_suffix0(fyt);
+
+	return &fyt->tag.tag;
+}
+
+const struct fy_tag *
+fy_tag_directive_token_tag(struct fy_token *fyt)
+{
+	if (!fyt || fyt->type != FYTT_TAG_DIRECTIVE)
+		return NULL;
+
+	/* always refresh, should be relatively infrequent */
+	fyt->tag_directive.tag.handle = fy_tag_directive_token_handle0(fyt);
+	fyt->tag_directive.tag.prefix = fy_tag_directive_token_prefix0(fyt);
+
+	return &fyt->tag_directive.tag;
+}
+
