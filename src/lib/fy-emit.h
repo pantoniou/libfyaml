@@ -89,7 +89,7 @@ struct fy_emitter {
 	unsigned int flags;
 	bool output_error : 1;
 	/* current document */
-	const struct fy_emitter_cfg *cfg;
+	struct fy_emitter_cfg cfg;	/* yeah, it isn't worth just to save a few bytes */
 	struct fy_document *fyd;
 	struct fy_document_state *fyds;	/* fyd->fyds when fyd != NULL */
 	struct fy_emit_accum ea;
