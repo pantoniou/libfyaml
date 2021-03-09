@@ -73,7 +73,13 @@ const char *fy_token_type_txt[FYTT_COUNT] = {
 	[FYTT_PE_AMPAMP]		= "PE_AMPAMP",
 	[FYTT_PE_LPAREN]		= "PE_LPAREN",
 	[FYTT_PE_RPAREN]		= "PE_RPAREN",
+
 	[FYTT_PE_EQEQ]			= "PE_EQEQ",
+	[FYTT_PE_NOTEQ]			= "PE_NOTEQ",
+	[FYTT_PE_LT]			= "PE_LT",
+	[FYTT_PE_GT]			= "PE_GT",
+	[FYTT_PE_LTE]			= "PE_LTE",
+	[FYTT_PE_GTE]			= "PE_GTE",
 
 	[FYTT_SE_PLUS]			= "SE_PLUS",
 	[FYTT_SE_MINUS]			= "SE_MINUS",
