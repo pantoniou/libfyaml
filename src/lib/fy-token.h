@@ -349,4 +349,16 @@ void fy_token_iter_finish(struct fy_token_iter *iter);
 const char *fy_tag_token_get_directive_handle(struct fy_token *fyt, size_t *td_handle_sizep);
 const char *fy_tag_token_get_directive_prefix(struct fy_token *fyt, size_t *td_prefix_sizep);
 
+static inline bool fy_token_is_number(struct fy_token *fyt)
+{
+	struct fy_atom *atom;
+
+	if (!fyt || fyt->type != FYTT_SCALAR)
+		return false;
+	atom = fy_token_atom(fyt);
+	if (!atom)
+		return false;
+	return fy_atom_is_number(atom);
+}
+
 #endif

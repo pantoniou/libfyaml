@@ -79,8 +79,18 @@ enum fy_path_expr_type {
 	fpet_logical_and,	/* the last non null result set */
 
 	fpet_eq,		/* equal expression */
+	fpet_neq,		/* not equal */
+	fpet_lt,		/* less than */
+	fpet_gt,		/* greater than */
+	fpet_lte,		/* less or equal than */
+	fpet_gte,		/* greater or equal than */
 
 	fpet_scalar,		/* scalar */
+
+	fpet_plus,		/* add */
+	fpet_minus,		/* subtract */
+	fpet_mult,		/* multiply */
+	fpet_div,		/* divide */
 };
 
 #define FPET_COUNT (fpet_scalar + 1)
@@ -117,7 +127,12 @@ static inline bool fy_path_expr_type_is_parent(enum fy_path_expr_type type)
 
 static inline bool fy_path_expr_type_is_parent_lhs_rhs(enum fy_path_expr_type type)
 {
-	return type == fpet_eq;
+	return type == fpet_eq ||
+	       type == fpet_neq ||
+	       type == fpet_lt ||
+	       type == fpet_gt ||
+	       type == fpet_lte ||
+	       type == fpet_gte;
 }
 
 FY_TYPE_FWD_DECL_LIST(path_expr);

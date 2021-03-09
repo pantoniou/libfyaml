@@ -5140,7 +5140,14 @@ enum fy_token_type {
 	FYTT_PE_AMPAMP,
 	FYTT_PE_LPAREN,
 	FYTT_PE_RPAREN,
-	FYTT_PE_EQEQ,
+
+	/* comparison operators */
+	FYTT_PE_EQEQ,		/* == */
+	FYTT_PE_NOTEQ,		/* != */
+	FYTT_PE_LT,		/* <  */
+	FYTT_PE_GT,		/* >  */
+	FYTT_PE_LTE,		/* <= */
+	FYTT_PE_GTE,		/* >= */
 
 	/* scalar expression tokens */
 	FYTT_SE_PLUS,
@@ -5215,7 +5222,7 @@ fy_token_type_is_content(enum fy_token_type type)
 static inline bool
 fy_token_type_is_path_expr(enum fy_token_type type)
 {
-	return type >= FYTT_PE_SLASH && type <= FYTT_PE_EQEQ;
+	return type >= FYTT_PE_SLASH && type <= FYTT_PE_GTE;
 }
 
 /**
