@@ -476,21 +476,16 @@ static void dump_token(struct fy_token *fyt)
 	const char *style;
 	const struct fy_version *vers;
 	const char *handle, *prefix, *suffix;
+	const char *typetxt;
+
+	typetxt = fy_token_type_txt[fyt->type];
+	assert(typetxt);
 
 	switch (fyt->type) {
-	case FYTT_NONE:
-		printf("%s\n", "NONE");
-		break;
-	case FYTT_STREAM_START:
-		printf("%s\n", "STREAM_START");
-		break;
-	case FYTT_STREAM_END:
-		printf("%s\n", "STREAM_END");
-		break;
 	case FYTT_VERSION_DIRECTIVE:
 		vers = fy_version_directive_token_version(fyt);
 		assert(vers);
-		printf("%s value=%d.%d\n", "VERSION_DIRECTIVE",
+		printf("%s value=%d.%d\n", typetxt,
 				vers->major, vers->minor);
 		break;
 	case FYTT_TAG_DIRECTIVE:
@@ -500,55 +495,16 @@ static void dump_token(struct fy_token *fyt)
 		prefix = fy_tag_directive_token_prefix0(fyt);
 		if (!prefix)
 			prefix = "";
-		printf("%s handle='%s' prefix='%s'\n", "TAG_DIRECTIVE",
+		printf("%s handle='%s' prefix='%s'\n", typetxt,
 				txt2esc_a(handle, -1),
 				txt2esc_a(prefix, -1));
 		break;
-	case FYTT_DOCUMENT_START:
-		printf("%s\n", "DOCUMENT_START");
-		break;
-	case FYTT_DOCUMENT_END:
-		printf("%s\n", "DOCUMENT_END");
-		break;
-	case FYTT_BLOCK_SEQUENCE_START:
-		printf("%s\n", "BLOCK_SEQUENCE_START");
-		break;
-	case FYTT_BLOCK_MAPPING_START:
-		printf("%s\n", "BLOCK_MAPPING_START");
-		break;
-	case FYTT_BLOCK_END:
-		printf("%s\n", "BLOCK_END");
-		break;
-	case FYTT_FLOW_SEQUENCE_START:
-		printf("%s\n", "FLOW_SEQUENCE_START");
-		break;
-	case FYTT_FLOW_SEQUENCE_END:
-		printf("%s\n", "FLOW_SEQUENCE_END");
-		break;
-	case FYTT_FLOW_MAPPING_START:
-		printf("%s\n", "FLOW_MAPPING_START");
-		break;
-	case FYTT_FLOW_MAPPING_END:
-		printf("%s\n", "FLOW_MAPPING_END");
-		break;
-	case FYTT_BLOCK_ENTRY:
-		printf("%s\n", "BLOCK_ENTRY");
-		break;
-	case FYTT_FLOW_ENTRY:
-		printf("%s\n", "FLOW_ENTRY");
-		break;
-	case FYTT_KEY:
-		printf("%s\n", "KEY");
-		break;
-	case FYTT_VALUE:
-		printf("%s\n", "VALUE");
-		break;
 	case FYTT_ALIAS:
-		printf("%s value='%s'\n", "ALIAS",
+		printf("%s value='%s'\n", typetxt,
 				fy_atom_get_esc_text_a(&fyt->handle));
 		break;
 	case FYTT_ANCHOR:
-		printf("%s value='%s'\n", "ANCHOR",
+		printf("%s value='%s'\n", typetxt,
 				fy_atom_get_esc_text_a(&fyt->handle));
 		break;
 	case FYTT_TAG:
@@ -558,7 +514,7 @@ static void dump_token(struct fy_token *fyt)
 		suffix = fy_tag_token_suffix0(fyt);
 		if (!suffix)
 			suffix = "";
-		printf("%s handle='%s' suffix='%s'\n", "TAG",
+		printf("%s handle='%s' suffix='%s'\n", typetxt,
 				txt2esc_a(handle, -1),
 				txt2esc_a(suffix, -1));
 		break;
@@ -586,79 +542,29 @@ static void dump_token(struct fy_token *fyt)
 			style = "*illegal*";
 			break;
 		}
-		printf("%s value='%s' style=%s\n", "SCALAR",
+		printf("%s value='%s' style=%s\n", typetxt,
 				fy_atom_get_esc_text_a(&fyt->handle),
 				style);
 		break;
 
 	case FYTT_INPUT_MARKER:
-		printf("%s value='%s'\n", "INPUT_MARKER",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_SLASH:
-		printf("%s value='%s'\n", "SLASH",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_ROOT:
-		printf("%s value='%s'\n", "ROOT",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_THIS:
-		printf("%s value='%s'\n", "THIS",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_PARENT:
-		printf("%s value='%s'\n", "PARENT",
+		printf("%s value='%s'\n", typetxt,
 				fy_atom_get_esc_text_a(&fyt->handle));
 		break;
 
 	case FYTT_PE_MAP_KEY:
-		printf("%s value='%s'\n", "MAP_KEY",
+		printf("%s value='%s'\n", typetxt,
 				fy_atom_get_esc_text_a(&fyt->handle));
 		break;
 
 	case FYTT_PE_SEQ_INDEX:
-		printf("%s value='%s'\n", "SEQ_INDEX",
-				fy_atom_get_esc_text_a(&fyt->handle));
+		printf("%s value=%d\n", typetxt,
+				fyt->seq_index.index);
 		break;
 
 	case FYTT_PE_SEQ_SLICE:
-		printf("%s value='%s'\n", "SEQ_SLICE",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_SCALAR_FILTER:
-		printf("%s value='%s'\n", "SCALAR_FILTER",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_COLLECTION_FILTER:
-		printf("%s value='%s'\n", "COLLECTION_FILTER",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_SEQ_FILTER:
-		printf("%s value='%s'\n", "SEQ_FILTER",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_MAP_FILTER:
-		printf("%s value='%s'\n", "MAP_FILTER",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_EVERY_CHILD:
-		printf("%s value='%s'\n", "EVERY_CHILD",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_EVERY_CHILD_R:
-		printf("%s value='%s'\n", "EVERY_CHILD_R",
-				fy_atom_get_esc_text_a(&fyt->handle));
+		printf("%s value=%d:%d\n", typetxt,
+				fyt->seq_slice.start_index, fyt->seq_slice.end_index);
 		break;
 
 	case FYTT_PE_ALIAS:
@@ -666,39 +572,8 @@ static void dump_token(struct fy_token *fyt)
 				fy_atom_get_esc_text_a(&fyt->handle));
 		break;
 
-	case FYTT_PE_SIBLING:
-		printf("%s value='%s'\n", "PE-SIBLING",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_COMMA:
-		printf("%s value='%s'\n", "PE-COMMA",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_BARBAR:
-		printf("%s value='%s'\n", "PE-BARBAR",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_AMPAMP:
-		printf("%s value='%s'\n", "PE-AMPAMP",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_LPAREN:
-		printf("%s value='%s'\n", "PE-LPAREN",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_RPAREN:
-		printf("%s value='%s'\n", "PE-RPAREN",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_EQEQ:
-		printf("%s value='%s'\n", "PE-EQEQ",
-				fy_atom_get_esc_text_a(&fyt->handle));
+	default:
+		printf("%s\n", typetxt);
 		break;
 	}
 }
