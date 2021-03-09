@@ -79,13 +79,17 @@ enum fy_path_expr_type {
 	fpet_logical_and,	/* the last non null result set */
 
 	fpet_eq,		/* equal expression */
+
+	fpet_scalar,		/* scalar */
 };
 
-extern const char *path_expr_type_txt[];
+#define FPET_COUNT (fpet_scalar + 1)
+
+extern const char *path_expr_type_txt[FPET_COUNT];
 
 static inline bool fy_path_expr_type_is_valid(enum fy_path_expr_type type)
 {
-	return type >= fpet_root && type <= fpet_eq;
+	return type >= fpet_root && type < FPET_COUNT;
 }
 
 static inline bool fy_path_expr_type_is_single_result(enum fy_path_expr_type type)
@@ -145,6 +149,16 @@ fy_path_expr_rhs(struct fy_path_expr *expr)
 const struct fy_mark *fy_path_expr_start_mark(struct fy_path_expr *expr);
 const struct fy_mark *fy_path_expr_end_mark(struct fy_path_expr *expr);
 
+enum fy_path_parser_scan_mode {
+	fyppsm_none,		/* invalid mode */
+	fyppsm_path_expr,	/* scanner in node reference mode */
+	fyppsm_scalar_expr,	/* scanner in rhs expression mode */
+};
+
+#define fyppsm_count (fyppsm_scalar_expr + 1)
+
+extern const char *path_parser_scan_mode_txt[fyppsm_count];
+
 struct fy_path_parser {
 	struct fy_path_parse_cfg cfg;
 	struct fy_reader reader;
@@ -170,6 +184,10 @@ struct fy_path_parser {
 	/* to avoid allocating */
 	struct fy_path_expr_list expr_recycle;
 	bool suppress_recycling;
+
+	enum fy_path_parser_scan_mode scan_mode;
+	int scalar_expr_nest_level;
+
 };
 
 struct fy_path_expr *fy_path_expr_alloc(void);

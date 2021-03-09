@@ -208,7 +208,7 @@ void fy_path_expr_free_recycle(struct fy_path_parser *fypp, struct fy_path_expr 
 	fy_path_expr_list_add_tail(&fypp->expr_recycle, expr);
 }
 
-const char *path_expr_type_txt[] = {
+const char *fy_path_expr_type_txt[FPET_COUNT] = {
 	[fpet_none]			= "none",
 	/* */
 	[fpet_root]			= "root",
@@ -232,6 +232,8 @@ const char *path_expr_type_txt[] = {
 	[fpet_logical_and]		= "logical-and",
 
 	[fpet_eq]			= "equals",
+
+	[fpet_scalar]			= "scalar",
 };
 
 bool fy_token_type_is_component_start(enum fy_token_type type)
@@ -265,6 +267,12 @@ bool fy_token_type_is_filter(enum fy_token_type type)
 	       type == FYTT_PE_MAP_FILTER;
 }
 
+const char *path_parser_scan_mode_txt[fyppsm_count] = {
+	[fyppsm_none]		= "none",
+	[fyppsm_path_expr]	= "path_expr",
+	[fyppsm_scalar_expr]	= "scalar_expr",
+};
+
 static struct fy_diag *fy_path_parser_reader_get_diag(struct fy_reader *fyr)
 {
 	struct fy_path_parser *fypp = container_of(fyr, struct fy_path_parser, reader);
@@ -296,6 +304,9 @@ void fy_path_parser_setup(struct fy_path_parser *fypp, const struct fy_path_pars
 
 	fy_path_expr_list_init(&fypp->expr_recycle);
 	fypp->suppress_recycling = (fypp->cfg.flags & FYPPCF_DISABLE_RECYCLING) || getenv("FY_VALGRIND");
+
+	fypp->scan_mode = fyppsm_path_expr;
+	fypp->scalar_expr_nest_level = 0;
 }
 
 void fy_path_parser_cleanup(struct fy_path_parser *fypp)
@@ -448,10 +459,11 @@ err_out:
 	return -1;
 }
 
-int fy_path_fetch_simple_map_key(struct fy_path_parser *fypp, int c)
+int fy_path_fetch_simple_alnum(struct fy_path_parser *fypp, int c, enum fy_token_type type)
 {
 	struct fy_reader *fyr;
 	struct fy_token *fyt;
+	struct fy_atom *handlep;
 	int i;
 
 	fyr = &fypp->reader;
@@ -463,14 +475,31 @@ int fy_path_fetch_simple_map_key(struct fy_path_parser *fypp, int c)
 		i++;
 
 	/* document is NULL, is a simple key */
-	fyt = fy_path_token_queue(fypp, FYTT_PE_MAP_KEY, fy_reader_fill_atom_a(fyr, i), NULL);
-	fyr_error_check(fyr, fyt, err_out, "fy_path_token_queue() failed\n");
+	handlep = fy_reader_fill_atom_a(fyr, i);
+	if (type == FYTT_SCALAR) {
+		fyt = fy_path_token_queue(fypp, FYTT_SCALAR, handlep, FYSS_PLAIN, NULL);
+		fyr_error_check(fyr, fyt, err_out, "fy_path_token_queue() failed\n");
+		fyt->scalar.number_hint = false;
+	} else {
+		fyt = fy_path_token_queue(fypp, type, handlep, NULL);
+		fyr_error_check(fyr, fyt, err_out, "fy_path_token_queue() failed\n");
+	}
 
 	return 0;
 
 err_out:
 	fypp->stream_error = true;
 	return -1;
+}
+
+int fy_path_fetch_simple_map_key(struct fy_path_parser *fypp, int c)
+{
+	return fy_path_fetch_simple_alnum(fypp, c, FYTT_PE_MAP_KEY);
+}
+
+int fy_path_fetch_plain_scalar(struct fy_path_parser *fypp, int c)
+{
+	return fy_path_fetch_simple_alnum(fypp, c, FYTT_SCALAR);
 }
 
 int fy_path_fetch_flow_map_key(struct fy_path_parser *fypp, int c)
@@ -522,6 +551,77 @@ err_out:
 	return -1;
 }
 
+int fy_path_fetch_flow_scalar(struct fy_path_parser *fypp, int c)
+{
+	struct fy_reader *fyr;
+	struct fy_token *fyt;
+	struct fy_atom handle;
+	bool is_single;
+	int rc = -1;
+
+	fyr = &fypp->reader;
+
+	/* verify that the called context is correct */
+	assert(fy_is_path_flow_scalar_start(c));
+
+	is_single = c == '\'';
+
+	rc = fy_reader_fetch_flow_scalar_handle(fyr, c, 0, &handle);
+	if (rc)
+		goto err_out_rc;
+
+	/* document is NULL, is a simple key */
+	fyt = fy_path_token_queue(fypp, FYTT_SCALAR, &handle, is_single ? FYSS_SINGLE_QUOTED : FYSS_DOUBLE_QUOTED);
+	fyr_error_check(fyr, fyt, err_out, "fy_path_token_queue() failed\n");
+
+	fyt->scalar.number_hint = false;	/* hint it's a string */
+
+	return 0;
+
+err_out:
+	rc = -1;
+err_out_rc:
+	fypp->stream_error = true;
+	return rc;
+}
+
+int fy_path_fetch_number(struct fy_path_parser *fypp, int c)
+{
+	struct fy_reader *fyr;
+	struct fy_token *fyt;
+	int i, digits;
+
+	fyr = &fypp->reader;
+
+	/* verify that the called context is correct */
+	assert(fy_is_num(c) || (c == '-' && fy_is_num(fy_reader_peek_at(fyr, 1))));
+
+	i = 0;
+	if (c == '-')
+		i++;
+
+	digits = 0;
+	while (fy_is_num((c = fy_reader_peek_at(fyr, i)))) {
+		i++;
+		digits++;
+	}
+	FYR_PARSE_ERROR_CHECK(fyr, 0, i, FYEM_SCAN,
+			digits > 0, err_out,
+			"bad number");
+
+	fyt = fy_path_token_queue(fypp, FYTT_SCALAR, fy_reader_fill_atom_a(fyr, i), FYSS_PLAIN);
+	fyr_error_check(fyr, fyt, err_out, "fy_path_token_queue() failed\n");
+
+	fyt->scalar.number_hint = true;	/* hint it's a number */
+
+	return 0;
+
+err_out:
+	fypp->stream_error = true;
+	return -1;
+}
+
+
 int fy_path_fetch_tokens(struct fy_path_parser *fypp)
 {
 	enum fy_token_type type;
@@ -559,113 +659,144 @@ int fy_path_fetch_tokens(struct fy_path_parser *fypp)
 	type = FYTT_NONE;
 	simple_token_count = 0;
 
-	switch (c) {
-	case '/':
-		type = FYTT_PE_SLASH;
-		simple_token_count = 1;
+	switch (fypp->scan_mode) {
+	case fyppsm_none:
+		assert(0);	/* should never happen */
 		break;
 
-	case '^':
-		type = FYTT_PE_ROOT;
-		simple_token_count = 1;
-		break;
+	case fyppsm_path_expr:
 
-	case ':':
-		type = FYTT_PE_SIBLING;
-		simple_token_count = 1;
-		break;
-
-	case '$':
-		type = FYTT_PE_SCALAR_FILTER;
-		simple_token_count = 1;
-		break;
-
-	case '%':
-		type = FYTT_PE_COLLECTION_FILTER;
-		simple_token_count = 1;
-		break;
-
-	case '[':
-		if (fy_reader_peek_at(fyr, 1) == ']') {
-			type = FYTT_PE_SEQ_FILTER;
-			simple_token_count = 2;
-		}
-		break;
-
-	case '{':
-		if (fy_reader_peek_at(fyr, 1) == '}') {
-			type = FYTT_PE_MAP_FILTER;
-			simple_token_count = 2;
-		}
-		break;
-
-	case ',':
-		type = FYTT_PE_COMMA;
-		simple_token_count = 1;
-		break;
-
-	case '.':
-		if (fy_reader_peek_at(fyr, 1) == '.') {
-			type = FYTT_PE_PARENT;
-			simple_token_count = 2;
-		} else {
-			type = FYTT_PE_THIS;
+		switch (c) {
+		case '/':
+			type = FYTT_PE_SLASH;
 			simple_token_count = 1;
-		}
-		break;
+			break;
 
-	case '*':
-		if (fy_reader_peek_at(fyr, 1) == '*') {
-			type = FYTT_PE_EVERY_CHILD_R;
-			simple_token_count = 2;
-		} else if (!fy_is_first_alpha(fy_reader_peek_at(fyr, 1))) {
-			type = FYTT_PE_EVERY_CHILD;
+		case '^':
+			type = FYTT_PE_ROOT;
 			simple_token_count = 1;
-		} else {
-			type = FYTT_PE_ALIAS;
-			simple_token_count = 2;
-			while (fy_is_alnum(fy_reader_peek_at(fyr, simple_token_count)))
-				simple_token_count++;
-		}
-		break;
+			break;
 
-	case '|':
-		if (fy_reader_peek_at(fyr, 1) == '|') {
-			type = FYTT_PE_BARBAR;
-			simple_token_count = 2;
+		case ':':
+			type = FYTT_PE_SIBLING;
+			simple_token_count = 1;
+			break;
+
+		case '$':
+			type = FYTT_PE_SCALAR_FILTER;
+			simple_token_count = 1;
+			break;
+
+		case '%':
+			type = FYTT_PE_COLLECTION_FILTER;
+			simple_token_count = 1;
+			break;
+
+		case '[':
+			if (fy_reader_peek_at(fyr, 1) == ']') {
+				type = FYTT_PE_SEQ_FILTER;
+				simple_token_count = 2;
+			}
+			break;
+
+		case '{':
+			if (fy_reader_peek_at(fyr, 1) == '}') {
+				type = FYTT_PE_MAP_FILTER;
+				simple_token_count = 2;
+			}
+			break;
+
+		case ',':
+			type = FYTT_PE_COMMA;
+			simple_token_count = 1;
+			break;
+
+		case '.':
+			if (fy_reader_peek_at(fyr, 1) == '.') {
+				type = FYTT_PE_PARENT;
+				simple_token_count = 2;
+			} else {
+				type = FYTT_PE_THIS;
+				simple_token_count = 1;
+			}
+			break;
+
+		case '*':
+			if (fy_reader_peek_at(fyr, 1) == '*') {
+				type = FYTT_PE_EVERY_CHILD_R;
+				simple_token_count = 2;
+			} else if (!fy_is_first_alpha(fy_reader_peek_at(fyr, 1))) {
+				type = FYTT_PE_EVERY_CHILD;
+				simple_token_count = 1;
+			} else {
+				type = FYTT_PE_ALIAS;
+				simple_token_count = 2;
+				while (fy_is_alnum(fy_reader_peek_at(fyr, simple_token_count)))
+					simple_token_count++;
+			}
+			break;
+
+		case '|':
+			if (fy_reader_peek_at(fyr, 1) == '|') {
+				type = FYTT_PE_BARBAR;
+				simple_token_count = 2;
+				break;
+			}
+			break;
+
+		case '&':
+			if (fy_reader_peek_at(fyr, 1) == '&') {
+				type = FYTT_PE_AMPAMP;
+				simple_token_count = 2;
+				break;
+			}
+			break;
+
+		case '(':
+			type = FYTT_PE_LPAREN;
+			simple_token_count = 1;
+			break;
+
+		case ')':
+			type = FYTT_PE_RPAREN;
+			simple_token_count = 1;
+			break;
+
+		case '=':
+			if (fy_reader_peek_at(fyr, 1) == '=') {
+				type = FYTT_PE_EQEQ;
+				simple_token_count = 2;
+				break;
+			}
+			break;
+
+		default:
 			break;
 		}
 		break;
 
-	case '&':
-		if (fy_reader_peek_at(fyr, 1) == '&') {
-			type = FYTT_PE_AMPAMP;
-			simple_token_count = 2;
+	case fyppsm_scalar_expr:
+
+		switch (c) {
+		case '/':
+			type = FYTT_PE_SLASH;
+			simple_token_count = 1;
 			break;
-		}
-		break;
 
-	case '(':
-		type = FYTT_PE_LPAREN;
-		simple_token_count = 1;
-		break;
-
-	case ')':
-		type = FYTT_PE_RPAREN;
-		simple_token_count = 1;
-		break;
-
-	case '=':
-		if (fy_reader_peek_at(fyr, 1) == '=') {
-			type = FYTT_PE_EQEQ;
-			simple_token_count = 2;
+		case '(':
+			type = FYTT_PE_LPAREN;
+			simple_token_count = 1;
 			break;
-		}
-		break;
 
-	default:
+		case ')':
+			type = FYTT_PE_RPAREN;
+			simple_token_count = 1;
+			break;
+
+		}
 		break;
 	}
+
 
 	/* simple tokens */
 	if (simple_token_count > 0) {
@@ -675,14 +806,35 @@ int fy_path_fetch_tokens(struct fy_path_parser *fypp)
 		return 0;
 	}
 
-	if (fy_is_first_alpha(c))
-		return fy_path_fetch_simple_map_key(fypp, c);
+	switch (fypp->scan_mode) {
+	case fyppsm_none:
+		assert(0);	/* should never happen */
+		break;
 
-	if (fy_is_path_flow_key_start(c))
-		return fy_path_fetch_flow_map_key(fypp, c);
+	case fyppsm_path_expr:
+		if (fy_is_first_alpha(c))
+			return fy_path_fetch_simple_map_key(fypp, c);
 
-	if (fy_is_num(c) || (c == '-' && fy_is_num(fy_reader_peek_at(fyr, 1))))
-		return fy_path_fetch_seq_index_or_slice(fypp, c);
+		if (fy_is_path_flow_key_start(c))
+			return fy_path_fetch_flow_map_key(fypp, c);
+
+		if (fy_is_num(c) || (c == '-' && fy_is_num(fy_reader_peek_at(fyr, 1))))
+			return fy_path_fetch_seq_index_or_slice(fypp, c);
+		break;
+
+	case fyppsm_scalar_expr:
+
+		if (fy_is_first_alpha(c))
+			return fy_path_fetch_plain_scalar(fypp, c);
+
+		if (fy_is_path_flow_scalar_start(c))
+			return fy_path_fetch_flow_scalar(fypp, c);
+
+		if (fy_is_num(c) || (c == '-' && fy_is_num(fy_reader_peek_at(fyr, 1))))
+			return fy_path_fetch_number(fypp, c);
+
+		break;
+	}
 
 	FYR_PARSE_ERROR(fyr, 0, 1, FYEM_SCAN, "bad path expression starts here");
 
@@ -804,7 +956,7 @@ void fy_path_expr_dump(struct fy_path_expr *expr, struct fy_diag *diag, enum fy_
 
 	fy_diag_diag(diag, errlevel, "> %-*s%s%s%.*s",
 			level*2, "",
-			path_expr_type_txt[expr->type],
+			fy_path_expr_type_txt[expr->type],
 			len ? " " : "",
 			(int)len, text);
 
@@ -854,8 +1006,13 @@ enum fy_path_expr_type fy_map_token_to_path_expr_type(enum fy_token_type type)
 		return fpet_logical_and;
 	case FYTT_PE_EQEQ:
 		return fpet_eq;
+
+	case FYTT_SCALAR:
+		return fpet_scalar;
+
 	default:
 		/* note parentheses do not have an expression */
+		assert(0);
 		break;
 	}
 	return fpet_none;
@@ -871,7 +1028,9 @@ bool fy_token_type_is_operand(enum fy_token_type type)
 	       type == FYTT_PE_SEQ_SLICE ||
 	       type == FYTT_PE_EVERY_CHILD ||
 	       type == FYTT_PE_EVERY_CHILD_R ||
-	       type == FYTT_PE_ALIAS;
+	       type == FYTT_PE_ALIAS ||
+
+	       type == FYTT_SCALAR;
 }
 
 bool fy_token_type_is_operator(enum fy_token_type type)
@@ -927,6 +1086,15 @@ int fy_token_type_operator_prec(enum fy_token_type type)
 		break;
 	}
 	return -1;
+}
+
+enum fy_path_parser_scan_mode fy_token_type_scan_mode(enum fy_token_type type)
+{
+	if (fy_token_type_is_path_expr(type))
+		return fyppsm_path_expr;
+	if (fy_token_type_is_scalar_expr(type))
+		return fyppsm_scalar_expr;
+	return fyppsm_none;
 }
 
 #ifdef DEBUG_EXPR
@@ -1514,6 +1682,7 @@ do_suffix:
 		fy_token_unref(fyt_top);
 		return 0;
 
+#if 0
 	case FYTT_PE_EQEQ:
 
 		exprr = pop_operand(fypp);
@@ -1593,6 +1762,57 @@ do_suffix:
 		}
 
 		return 0;
+#else
+	case FYTT_PE_EQEQ:
+
+		(void)exprk;
+
+		exprr = pop_operand(fypp);
+		FYR_TOKEN_ERROR_CHECK(fyr, fyt_top, FYEM_PARSE,
+				exprr, err_out,
+				"== operator without operands (rhs)");
+
+		FYR_TOKEN_ERROR_CHECK(fyr, fyt_top, FYEM_PARSE,
+				exprr->type == fpet_scalar, err_out,
+				"== rhs only supports scalar");
+
+#ifdef DEBUG_EXPR
+		fy_path_expr_dump(exprr, fypp->cfg.diag, FYET_NOTICE, 0, "== RHS");
+#endif
+
+		exprl = pop_operand(fypp);
+		FYR_TOKEN_ERROR_CHECK(fyr, fyt_top, FYEM_PARSE,
+				exprl, err_out,
+				"== operator without operands (lhs)");
+
+#ifdef DEBUG_EXPR
+		fy_path_expr_dump(exprl, fypp->cfg.diag, FYET_NOTICE, 0, "== LHS");
+#endif
+
+		/* parent */
+		parent = fy_path_expr_alloc_recycle(fypp);
+		fyr_error_check(fyr, parent, err_out,
+				"fy_path_expr_alloc_recycle() failed\n");
+
+		parent->type = fpet_eq;
+		parent->fyt = fyt_top;
+		fyt_top = NULL;
+
+		fy_path_expr_list_add_tail(&parent->children, exprl);
+		exprl = NULL;
+
+		assert(exprr->type == fpet_scalar);
+
+		/* simple expression without parent */
+		fy_path_expr_list_add_tail(&parent->children, exprr);
+		exprr = NULL;
+
+		ret = push_operand(fypp, parent);
+		fyr_error_check(fyr, !ret, err_out,
+				"push_operand() failed\n");
+		parent = NULL;
+		return 0;
+#endif
 
 	default:
 		fyr_error(fyr, "Unknown token %s\n", fy_token_debug_text_a(fyt_top));
@@ -1602,18 +1822,31 @@ do_suffix:
 	return 0;
 
 err_out:
-	fy_token_unref(fyt_top);
-	fy_path_expr_free(exprl);
-	fy_path_expr_free(exprr);
-	fy_path_expr_free(chain);
-	fy_path_expr_free(parent);
 
 #ifdef DEBUG_EXPR
+	if (fyt_top)
+		fy_notice(fypp->cfg.diag, "fyt_top: %.*s (%2d)\n", 20, fy_token_debug_text_a(fyt_top),
+				fy_token_type_operator_prec(fyt_top->type));
+	if (exprl)
+		fy_path_expr_dump(exprl, fypp->cfg.diag, FYET_NOTICE, 0, "exprl:");
+	if (exprr)
+		fy_path_expr_dump(exprr, fypp->cfg.diag, FYET_NOTICE, 0, "exprr:");
+	if (chain)
+		fy_path_expr_dump(chain, fypp->cfg.diag, FYET_NOTICE, 0, "chain:");
+	if (parent)
+		fy_path_expr_dump(parent, fypp->cfg.diag, FYET_NOTICE, 0, "parent:");
+
 	fy_notice(fypp->cfg.diag, "operator stack\n");
 	dump_operator_stack(fypp);
 	fy_notice(fypp->cfg.diag, "operand stack\n");
 	dump_operand_stack(fypp);
 #endif
+
+	fy_token_unref(fyt_top);
+	fy_path_expr_free(exprl);
+	fy_path_expr_free(exprr);
+	fy_path_expr_free(chain);
+	fy_path_expr_free(parent);
 
 	return -1;
 }
@@ -1624,6 +1857,8 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 	struct fy_reader *fyr;
 	struct fy_token *fyt = NULL, *fyt_top = NULL;
 	struct fy_path_expr *expr;
+	enum fy_path_parser_scan_mode old_scan_mode;
+	enum fy_token_type fytt = FYTT_NONE;
 	int ret;
 
 	/* the parser must be in the correct state */
@@ -1650,6 +1885,7 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 #ifdef DEBUG_EXPR
 		FYR_TOKEN_DIAG(fyr, fyt, FYET_NOTICE, FYEM_PARSE, "next token %s", fy_token_debug_text_a(fyt));
 #endif
+		fytt = fyt->type;
 
 		/* if it's an operand convert it to expression and push */
 		if (fy_token_type_is_operand(fyt->type)) {
@@ -1666,8 +1902,98 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 			fyr_error_check(fyr, !ret, err_out, "push_operand() failed\n");
 			expr = NULL;
 
-			continue;
+			/* fall-through */
 		}
+
+
+		old_scan_mode = fypp->scan_mode;
+		switch (fypp->scan_mode) {
+		case fyppsm_none:
+			assert(0);	/* should never happen */
+			break;
+
+		case fyppsm_path_expr:
+			switch (fytt) {
+			case FYTT_PE_EQEQ:
+				fypp->scan_mode = fyppsm_scalar_expr;
+				break;
+			default:
+				break;
+			}
+			break;
+		case fyppsm_scalar_expr:
+			switch (fytt) {
+			case FYTT_PE_LPAREN:
+				fypp->scalar_expr_nest_level++;
+				break;
+			case FYTT_PE_RPAREN:
+				FYR_TOKEN_ERROR_CHECK(fyr, fyt, FYEM_PARSE,
+						fypp->scalar_expr_nest_level > 0, err_out,
+						"unbalanced parenthesis in scalar expr mode");
+				fypp->scalar_expr_nest_level--;
+				if (fypp->scalar_expr_nest_level == 0) {
+#ifdef DEBUG_EXPR
+					fyr_notice(fyr, "going back into path expr mode\n");
+#endif
+					fypp->scan_mode = fyppsm_path_expr;
+				}
+				break;
+			case FYTT_SCALAR:
+				if (fypp->scalar_expr_nest_level == 0) {
+#ifdef DEBUG_EXPR
+					fyr_notice(fyr, "going back into path expr mode\n");
+#endif
+					fypp->scan_mode = fyppsm_path_expr;
+				}
+				break;
+			default:
+				break;
+			}
+			break;
+		}
+
+		if (old_scan_mode != fypp->scan_mode) {
+#ifdef DEBUG_EXPR
+			fyr_notice(fyr, "scan_mode %s -> %s\n",
+					path_parser_scan_mode_txt[old_scan_mode],
+					path_parser_scan_mode_txt[fypp->scan_mode]);
+#endif
+			/* evaluate */
+			for (;;) {
+				/* get the top of the operator stack */
+				fyt_top = peek_operator(fypp);
+				if (!fyt_top)
+					break;
+
+#ifdef DEBUG_EXPR
+				fy_notice(fypp->cfg.diag, "> fyt_top: %.*s (%2d)\n", 20, fy_token_debug_text_a(fyt_top),
+					fy_token_type_operator_prec(fyt_top->type));
+
+				fyr_notice(fyr, "fy_token_type_scan_mode(fyt_top->type)=%s, old_scan_mode=%s\n", 
+						path_parser_scan_mode_txt[fy_token_type_scan_mode(fyt_top->type)],
+						path_parser_scan_mode_txt[old_scan_mode]);
+#endif
+
+				ret = evaluate(fypp);
+				/* evaluate will print diagnostic on error */
+				if (ret)
+					goto err_out;
+
+				break;
+			}
+
+#ifdef DEBUG_EXPR
+			fy_notice(fypp->cfg.diag, "operator stack\n");
+			dump_operator_stack(fypp);
+			fy_notice(fypp->cfg.diag, "operand stack\n");
+			dump_operand_stack(fypp);
+			fyr_notice(fyr, "> done with scan mode change\n");
+#endif
+		}
+
+		/* if was an operand and already consumed */
+		if (!fyt)
+			continue;
 
 		/* it's an operator */
 		for (;;) {
@@ -1844,8 +2170,6 @@ int fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr,
 	struct fy_walk_result_list tresults, nresults;
 	int start, end, count, i;
 	struct fy_walk_result *fwr;
-	const char *text;
-	size_t len;
 	bool match;
 
 	/* error */
@@ -2071,12 +2395,27 @@ int fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr,
 		/* for each result in nresults compare to the map key */
 		while ((fwr = fy_walk_result_list_pop(&nresults)) != NULL) {
 
-			/* XXX only support LHS == node_ref, map key as RHS for now */
-			if (fwr->type != fwrt_node_ref) {
-				fy_walk_result_free(fwr);
+			/* only can handle node refs */
+			fynn = fwr->type == fwrt_node_ref ? fwr->fyn : NULL;
+			fy_walk_result_free(fwr);
+
+			if (!fynn)
 				continue;
+			
+			match = false;
+			switch (exprr->type) {
+			case fpet_scalar:
+				match = fy_node_compare_token(fynn, exprr->fyt);
+				break;
+			default:
+				/* XXX */
+				break;
 			}
 
+			if (match)
+				fy_walk_result_add(results, fynn);
+
+#if 0
 			if (exprr->type == fpet_map_key) {
 				if (!exprr->fyt->map_key.fyd) {
 					/* simple key */
@@ -2093,9 +2432,8 @@ int fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr,
 				fy_walk_result_free(fwr);
 
 				/* if we're done, just add to results */
-				if (match)
-					fy_walk_result_add(results, fynn);
 			}
+#endif
 		}
 
 		return 0;

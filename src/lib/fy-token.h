@@ -21,6 +21,8 @@
 
 #include "fy-atom.h"
 
+extern const char *fy_token_type_txt[FYTT_COUNT];
+
 struct fy_document;
 
 /* analyze content flags */
@@ -74,6 +76,7 @@ struct fy_token {
 		} tag_directive;
 		struct {
 			enum fy_scalar_style style;
+			bool number_hint;	/* hint that's a number */
 		} scalar;
 		struct {
 			unsigned int skip;
