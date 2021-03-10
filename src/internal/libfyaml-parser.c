@@ -2632,7 +2632,7 @@ int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, 
 		assert(fwr);
 		fwr->type = fwrt_node_ref;
 		fwr->fyn = fyn;
-		result = fy_path_expr_execute(fyp->diag, expr, fwr);
+		result = fy_path_expr_execute(fyp->diag, 0, expr, fwr);
 
 		printf("\n");
 		if (!result) {

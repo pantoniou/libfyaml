@@ -41,9 +41,14 @@ const char *fy_walk_result_type_txt[FWRT_COUNT] = {
 	[fwrt_refs]	= "refs",
 };
 
-void fy_walk_result_dump(struct fy_walk_result *fwr, struct fy_diag *diag, enum fy_error_type errlevel, int level, const char *banner)
+void fy_walk_result_dump(struct fy_walk_result *fwr, struct fy_diag *diag, enum fy_error_type errlevel, int level,
+		const char *fmt, ...);
+
+void fy_walk_result_vdump(struct fy_walk_result *fwr, struct fy_diag *diag, enum fy_error_type errlevel, int level,
+		const char *fmt, va_list ap)
 {
 	struct fy_walk_result *fwr2;
+	char *banner;
 	const char *text;
 	size_t len;
 	bool save_on_error;
@@ -58,8 +63,13 @@ void fy_walk_result_dump(struct fy_walk_result *fwr, struct fy_diag *diag, enum 
 	save_on_error = diag->on_error;
 	diag->on_error = true;
 
-	if (banner)
+	if (fmt) {
+		banner = NULL;
+		(void)vasprintf(&banner, fmt, ap);
+		assert(banner);
 		fy_diag_diag(diag, errlevel, "%-*s%s", level*2, "", banner);
+		free(banner);
+	}
 
 	switch (fwr->type) {
 	case fwrt_node_ref:
@@ -81,8 +91,8 @@ void fy_walk_result_dump(struct fy_walk_result *fwr, struct fy_diag *diag, enum 
 		break;
 	}
 
-	fy_diag_diag(diag, errlevel, "> %-*s%s%s%.*s",
-			level*2, "",
+	fy_diag_diag(diag, errlevel, "%-*s%s%s%.*s",
+			(level + 1) * 2, "",
 			fy_walk_result_type_txt[fwr->type],
 			len ? " " : "",
 			(int)len, text);
@@ -95,6 +105,15 @@ void fy_walk_result_dump(struct fy_walk_result *fwr, struct fy_diag *diag, enum 
 	diag->on_error = save_on_error;
 }
 
+void fy_walk_result_dump(struct fy_walk_result *fwr, struct fy_diag *diag, enum fy_error_type errlevel, int level,
+		const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	fy_walk_result_vdump(fwr, diag, errlevel, level, fmt, ap);
+	va_end(ap);
+}
 
 /* NOTE that walk results do not take references and it is invalid to
  * use _any_ call that modifies the document structure
@@ -2536,9 +2555,30 @@ int fy_path_exec_reset(struct fy_path_exec *fypx)
 	return 0;
 }
 
+void fy_walk_result_flatten(struct fy_walk_result *fwr, struct fy_walk_result *fwrf)
+{
+	struct fy_walk_result *fwr2, *fwr2n;
+
+	if (!fwr || !fwrf || fwr->type != fwrt_refs)
+		return;
+
+	for (fwr2 = fy_walk_result_list_head(&fwr->refs); fwr2; fwr2 = fwr2n) {
+
+		fwr2n = fy_walk_result_next(&fwr->refs, fwr2);
+
+		if (fwr2->type != fwrt_refs) {
+			fy_walk_result_list_del(&fwr->refs, fwr2);
+			fy_walk_result_list_add_tail(&fwrf->refs, fwr2);
+			continue;
+		}
+		fy_walk_result_flatten(fwr2, fwrf);
+	}
+}
+
 struct fy_walk_result *fy_walk_result_simplify(struct fy_walk_result *fwr)
 {
-	struct fy_walk_result *fwr2;
+	struct fy_walk_result *fwr2, *fwrf;
+	bool recursive;
 
 	/* no fwr */
 	if (!fwr)
@@ -2563,7 +2603,35 @@ struct fy_walk_result *fy_walk_result_simplify(struct fy_walk_result *fwr)
 		fwr = fwr2;
 	}
 
-	return fwr;
+	/* non recursive return immediately */
+	if (fwr->type != fwrt_refs)
+		return fwr;
+
+	/* flatten if recursive */
+	recursive = false;
+	for (fwr2 = fy_walk_result_list_head(&fwr->refs); fwr2;
+		fwr2 = fy_walk_result_next(&fwr->refs, fwr2)) {
+
+		/* refs, recursive */
+		if (fwr2->type == fwrt_refs) {
+			recursive = true;
+			break;
+		}
+	}
+
+	if (!recursive)
+		return fwr;
+
+	fwrf = fy_walk_result_alloc();
+	assert(fwrf);
+	fwrf->type = fwrt_refs;
+	fy_walk_result_list_init(&fwrf->refs);
+
+	fy_walk_result_flatten(fwr, fwrf);
+
+	fy_walk_result_free(fwr);
+
+	return fwrf;
 }
 
 int fy_walk_result_all_children_recursive_internal(struct fy_node *fyn, struct fy_walk_result *output)
@@ -2962,7 +3030,7 @@ out:
 }
 
 struct fy_walk_result *
-fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr, struct fy_walk_result *input)
+fy_path_expr_execute(struct fy_diag *diag, int level, struct fy_path_expr *expr, struct fy_walk_result *input)
 {
 	struct fy_walk_result *fwr, *fwrn, *fwrt, *fwrtn;
 	struct fy_walk_result *output = NULL, *input1, *output1, *input2, *output2;
@@ -2978,7 +3046,7 @@ fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr, struct fy_
 		goto out;
 
 #ifdef DEBUG_EXPR
-	fy_walk_result_dump(input, diag, FYET_NOTICE, 0, fy_path_expr_type_txt[expr->type]);
+	fy_walk_result_dump(input, diag, FYET_NOTICE, level, "input %s\n", fy_path_expr_type_txt[expr->type]);
 #endif
 
 	/* recursive */
@@ -2991,7 +3059,7 @@ fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr, struct fy_
 
 		while ((fwr = fy_walk_result_list_pop(&input->refs)) != NULL) {
 
-			fwrn = fy_path_expr_execute(diag, expr, fwr);
+			fwrn = fy_path_expr_execute(diag, level + 1, expr, fwr);
 			if (fwrn)
 				fy_walk_result_list_add_tail(&output->refs, fwrn);
 		}
@@ -3027,7 +3095,7 @@ fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr, struct fy_
 		for (exprn = fy_path_expr_list_head(&expr->children); exprn;
 			exprn = fy_path_expr_next(&expr->children, exprn)) {
 
-			output = fy_path_expr_execute(diag, exprn, output);
+			output = fy_path_expr_execute(diag, level + 1, exprn, output);
 			if (!output)
 				break;
 		}
@@ -3049,7 +3117,7 @@ fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr, struct fy_
 			input2 = fy_walk_result_clone(input);
 			assert(input2);
 
-			output2 = fy_path_expr_execute(diag, exprn, input2);
+			output2 = fy_path_expr_execute(diag, level + 1, exprn, input2);
 			if (!output2)
 				continue;
 
@@ -3207,8 +3275,8 @@ fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr, struct fy_
 		input = NULL;
 
 		/* execute LHS and RHS */
-		output1 = fy_path_expr_execute(diag, exprl, input1);
-		output2 = fy_path_expr_execute(diag, exprr, input2);
+		output1 = fy_path_expr_execute(diag, level + 1, exprl, input1);
+		output2 = fy_path_expr_execute(diag, level + 1, exprr, input2);
 
 		output = fy_walk_result_lhs_rhs(diag, expr->type, output1, output2);
 
@@ -3241,7 +3309,7 @@ fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr, struct fy_
 			input1 = fy_walk_result_clone(input);
 			assert(input1);
 
-			output = fy_path_expr_execute(diag, exprn, input1);
+			output = fy_path_expr_execute(diag, level + 1, exprn, input1);
 			if (output)
 				break;
 		}
@@ -3257,7 +3325,7 @@ fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr, struct fy_
 			input1 = fy_walk_result_clone(input);
 			assert(input1);
 
-			output1 = fy_path_expr_execute(diag, exprn, input1);
+			output1 = fy_path_expr_execute(diag, level + 1, exprn, input1);
 			if (output1) {
 				fy_walk_result_free(output);
 				output = output1;
@@ -3315,7 +3383,13 @@ fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr, struct fy_
 
 out:
 	fy_walk_result_free(input);
-	return fy_walk_result_simplify(output);
+	output = fy_walk_result_simplify(output);
+
+#ifdef DEBUG_EXPR
+	if (output)
+		fy_walk_result_dump(output, diag, FYET_NOTICE, level, "output %s\n", fy_path_expr_type_txt[expr->type]);
+#endif
+	return output;
 }
 
 static int fy_path_exec_execute_internal(struct fy_path_exec *fypx,
@@ -3334,7 +3408,7 @@ static int fy_path_exec_execute_internal(struct fy_path_exec *fypx,
 	fwr->type = fwrt_node_ref;
 	fwr->fyn = fyn_start;
 
-	fypx->result = fy_path_expr_execute(fypx->cfg.diag, expr, fwr);
+	fypx->result = fy_path_expr_execute(fypx->cfg.diag, 0, expr, fwr);
 	return fypx->result ? 0 : -1;
 }
 
