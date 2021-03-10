@@ -2265,6 +2265,8 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 				goto err_out;
 		}
 	}
+	if (fypp->stream_error)
+		goto err_out;
 
 	FYR_PARSE_ERROR_CHECK(fyr, 0, 1, FYEM_PARSE,
 			fypp->stream_error || (fyt && fyt->type == FYTT_STREAM_END), err_out,
