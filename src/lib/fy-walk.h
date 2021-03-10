@@ -256,7 +256,7 @@ struct fy_path_expr *fy_path_parse_expression(struct fy_path_parser *fypp);
 void fy_path_expr_dump(struct fy_path_expr *expr, struct fy_diag *diag, enum fy_error_type errlevel, int level, const char *banner);
 
 struct fy_walk_result *
-fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr, struct fy_walk_result *input);
+fy_path_expr_execute(struct fy_diag *diag, int level, struct fy_path_expr *expr, struct fy_walk_result *input);
 
 struct fy_path_exec {
 	struct fy_path_exec_cfg cfg;
