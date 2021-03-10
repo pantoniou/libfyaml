@@ -353,7 +353,7 @@ static inline bool fy_token_is_number(struct fy_token *fyt)
 {
 	struct fy_atom *atom;
 
-	if (!fyt || fyt->type != FYTT_SCALAR)
+	if (!fyt || fyt->type != FYTT_SCALAR || fyt->scalar.style != FYSS_PLAIN)
 		return false;
 	atom = fy_token_atom(fyt);
 	if (!atom)

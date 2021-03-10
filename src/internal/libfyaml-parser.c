@@ -2567,6 +2567,7 @@ int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, 
 	struct fy_path_parser fypp_data, *fypp = &fypp_data;
 	struct fy_path_expr *expr;
 	struct fy_walk_result_list results;
+	struct fy_walk_result *result;
 	struct fy_input *fyi;
 	struct fy_document *fyd, *fyd2;
 	struct fy_node *fyn, *fyn2;
@@ -2623,15 +2624,53 @@ int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, 
 
 		path = fy_node_get_path(fyn);
 		assert(path);
-		printf("walking starting at %s\n", path);
+		printf("# walking starting at %s\n", path);
 		free(path);
 
 		fy_walk_result_list_init(&results);
-		fy_path_expr_execute(fyp->cfg.diag, expr, &results, fyn);
+		fwr = fy_walk_result_alloc();
+		assert(fwr);
+		fwr->type = fwrt_node_ref;
+		fwr->fyn = fyn;
+		result = fy_path_expr_execute2(fyp->diag, expr, fwr);
 
 		printf("\n");
-		printf("results\n");
-		while ((fwr = fy_walk_result_list_pop(&results)) != NULL) {
+		if (!result) {
+			printf("# no results\n");
+			goto next;
+		}
+
+		if (result->type == fwrt_node_ref) {
+			printf("# single reference result\n");
+
+			path = fy_node_get_path(result->fyn);
+			assert(path);
+
+			printf("# %s\n", path);
+			free(path);
+
+			fyd2 = fy_document_create(&fyp->cfg);
+			assert(fyd2);
+
+			fyn2 = fy_node_copy(fyd2, result->fyn);
+			assert(fyn2);
+
+			fy_document_set_root(fyd2, fyn2);
+
+			fy_emit_document_to_file(fyd2, flags, NULL);
+
+			fy_document_destroy(fyd2);
+
+			goto next;
+		}
+
+		printf("# multiple results\n");
+		while ((fwr = fy_walk_result_list_pop(&result->refs)) != NULL) {
+
+			if (fwr->type != fwrt_node_ref) {
+				fy_walk_result_free(fwr);
+				continue;
+			}
 
 			path = fy_node_get_path(fwr->fyn);
 			assert(path);
@@ -2654,6 +2693,8 @@ int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, 
 
 			fy_walk_result_free(fwr);
 		}
+next:
+		fy_walk_result_free(result);
 
 		fy_parse_document_destroy(fyp, fyd);
 
