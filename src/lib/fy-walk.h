@@ -33,26 +33,28 @@
 
 enum fy_walk_result_type {
 	fwrt_node_ref,
-	fwrt_bool,
-	fwrt_int,
-	fwrt_uint,
+	fwrt_number,
 	fwrt_string,
+	fwrt_refs,
 };
 
+#define FWRT_COUNT (fwrt_refs + 1)
+extern const char *fy_walk_result_type_txt[FWRT_COUNT];
+
+FY_TYPE_FWD_DECL_LIST(walk_result);
 struct fy_walk_result {
 	struct list_head node;
 	enum fy_walk_result_type type;
 	union {
 		struct fy_node *fyn;
-		bool bval;
-		int64_t ival;
-		uint64_t uival;
+		double number;
 		char *string;
+		struct fy_walk_result_list refs;
 	};
 };
-FY_TYPE_FWD_DECL_LIST(walk_result);
 FY_TYPE_DECL_LIST(walk_result);
 
+struct fy_walk_result *fy_walk_result_alloc(void);
 void fy_walk_result_free(struct fy_walk_result *fwr);
 void fy_walk_result_list_free(struct fy_walk_result_list *results);
 
@@ -93,7 +95,7 @@ enum fy_path_expr_type {
 	fpet_div,		/* divide */
 };
 
-#define FPET_COUNT (fpet_scalar + 1)
+#define FPET_COUNT (fpet_div + 1)
 
 extern const char *path_expr_type_txt[FPET_COUNT];
 
@@ -132,7 +134,32 @@ static inline bool fy_path_expr_type_is_parent_lhs_rhs(enum fy_path_expr_type ty
 	       type == fpet_lt ||
 	       type == fpet_gt ||
 	       type == fpet_lte ||
+	       type == fpet_gte ||
+
+	       type == fpet_plus ||
+	       type == fpet_minus ||
+	       type == fpet_mult ||
+	       type == fpet_div;
+}
+
+static inline bool
+fy_path_expr_type_is_conditional(enum fy_path_expr_type type)
+{
+	return type == fpet_eq ||
+	       type == fpet_neq ||
+	       type == fpet_lt ||
+	       type == fpet_gt ||
+	       type == fpet_lte ||
 	       type == fpet_gte;
+}
+
+static inline bool
+fy_path_expr_type_is_arithmetic(enum fy_path_expr_type type)
+{
+	return type == fpet_plus ||
+	       type == fpet_minus ||
+	       type == fpet_mult ||
+	       type == fpet_div;
 }
 
 FY_TYPE_FWD_DECL_LIST(path_expr);
@@ -228,9 +255,14 @@ struct fy_path_exec {
 	struct fy_path_exec_cfg cfg;
 	struct fy_walk_result_list results;
 	struct fy_node *fyn_start;
+
+	struct fy_walk_result *result;
 };
 
 int fy_path_exec_setup(struct fy_path_exec *fypx, const struct fy_path_exec_cfg *xcfg);
 void fy_path_exec_cleanup(struct fy_path_exec *fypx);
+
+struct fy_walk_result *
+fy_path_expr_execute2(struct fy_diag *diag, struct fy_path_expr *expr, struct fy_walk_result *input);
 
 #endif

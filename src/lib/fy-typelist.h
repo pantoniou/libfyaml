@@ -57,6 +57,10 @@ static inline bool fy_ ## _type ## _list_empty(struct fy_ ## _type ## _list *_l)
 { \
 	return _l ? list_empty(&_l->_lh) : true; \
 } \
+static inline bool fy_ ## _type ## _list_is_singular(struct fy_ ## _type ## _list *_l) \
+{ \
+	return _l ? list_is_singular(&_l->_lh) : true; \
+} \
 static inline void fy_ ## _type ## _list_del(struct fy_ ## _type ## _list *_l, struct fy_ ## _type *_n) \
 { \
 	if (_l && _n) { \
