@@ -49,6 +49,9 @@ void fy_walk_result_dump(struct fy_walk_result *fwr, struct fy_diag *diag, enum 
 	bool save_on_error;
 	char buf[30];
 
+	if (!diag)
+		return;
+
 	if (errlevel < diag->cfg.level)
 		return;
 
@@ -362,10 +365,11 @@ const char *fy_path_expr_type_txt[FPET_COUNT] = {
 	[fpet_parent]			= "parent",
 	[fpet_every_child]		= "every-child",
 	[fpet_every_child_r]		= "every-child-recursive",
-	[fpet_filter_collection]	= "assert-collection",
-	[fpet_filter_scalar]		= "assert-scalar",
-	[fpet_filter_sequence]		= "assert-sequence",
-	[fpet_filter_mapping]		= "assert-mapping",
+	[fpet_filter_collection]	= "filter-collection",
+	[fpet_filter_scalar]		= "filter-scalar",
+	[fpet_filter_sequence]		= "filter-sequence",
+	[fpet_filter_mapping]		= "filter-mapping",
+	[fpet_filter_unique]		= "filter-unique",
 	[fpet_seq_index]		= "seq-index",
 	[fpet_seq_slice]		= "seq-slice",
 	[fpet_alias]			= "alias",
@@ -425,7 +429,8 @@ bool fy_token_type_is_filter(enum fy_token_type type)
 	return type == FYTT_PE_SCALAR_FILTER ||
 	       type == FYTT_PE_COLLECTION_FILTER ||
 	       type == FYTT_PE_SEQ_FILTER ||
-	       type == FYTT_PE_MAP_FILTER;
+	       type == FYTT_PE_MAP_FILTER ||
+	       type == FYTT_PE_UNIQUE_FILTER;
 }
 
 const char *path_parser_scan_mode_txt[fyppsm_count] = {
@@ -939,6 +944,8 @@ int fy_path_fetch_tokens(struct fy_path_parser *fypp)
 				simple_token_count = 2;
 				break;
 			}
+			type = FYTT_PE_UNIQUE_FILTER;
+			simple_token_count = 1;
 			break;
 
 		case '>':
@@ -1226,6 +1233,8 @@ enum fy_path_expr_type fy_map_token_to_path_expr_type(enum fy_token_type type)
 		return fpet_filter_sequence;
 	case FYTT_PE_MAP_FILTER:
 		return fpet_filter_mapping;
+	case FYTT_PE_UNIQUE_FILTER:
+		return fpet_filter_unique;
 	case FYTT_PE_COMMA:
 		return fpet_multi;
 	case FYTT_PE_SLASH:
@@ -1290,6 +1299,7 @@ bool fy_token_type_is_operator(enum fy_token_type type)
 	       type == FYTT_PE_COLLECTION_FILTER ||
 	       type == FYTT_PE_SEQ_FILTER ||
 	       type == FYTT_PE_MAP_FILTER ||
+	       type == FYTT_PE_UNIQUE_FILTER ||
 	       type == FYTT_PE_SIBLING ||
 	       type == FYTT_PE_COMMA ||
 	       type == FYTT_PE_BARBAR ||
@@ -1335,6 +1345,7 @@ int fy_token_type_operator_prec(enum fy_token_type type)
 	case FYTT_PE_COLLECTION_FILTER:
 	case FYTT_PE_SEQ_FILTER:
 	case FYTT_PE_MAP_FILTER:
+	case FYTT_PE_UNIQUE_FILTER:
 		return 5;
 	case FYTT_PE_SIBLING:
 		return 20;
@@ -1554,6 +1565,7 @@ int fy_token_type_operator_placement(enum fy_token_type type)
 	case FYTT_PE_COLLECTION_FILTER:
 	case FYTT_PE_SEQ_FILTER:
 	case FYTT_PE_MAP_FILTER:
+	case FYTT_PE_UNIQUE_FILTER:
 		return SUFFIX;
 	case FYTT_PE_SIBLING:
 		return PREFIX;
@@ -1902,6 +1914,7 @@ do_infix:
 	case FYTT_PE_COLLECTION_FILTER:
 	case FYTT_PE_SEQ_FILTER:
 	case FYTT_PE_MAP_FILTER:
+	case FYTT_PE_UNIQUE_FILTER:
 
 		etype = fy_map_token_to_path_expr_type(fyt_top->type);
 do_suffix:
@@ -2375,27 +2388,6 @@ fy_path_expr_execute_single_result(struct fy_diag *diag, struct fy_path_expr *ex
 	return NULL;
 }
 
-/* returns true if the expression is chain or multi and contains only single
- * result expressions
- */
-static bool expr_is_leaf_chain_or_multi(struct fy_path_expr *expr)
-{
-	struct fy_path_expr *exprn;
-
-	if (!expr || !fy_path_expr_type_is_parent(expr->type))
-		return false;
-
-	for (exprn = fy_path_expr_list_head(&expr->children); exprn;
-		exprn = fy_path_expr_next(&expr->children, exprn)) {
-
-		if (!fy_path_expr_type_is_single_result(exprn->type))
-			return false;
-	}
-
-	/* all expressions single result */
-	return true;
-}
-
 static double
 token_number(struct fy_token *fyt)
 {
@@ -2404,388 +2396,6 @@ token_number(struct fy_token *fyt)
 	if (!fyt || fyt->type != FYTT_SCALAR || (value = fy_token_get_text0(fyt)) == NULL)
 		return NAN;
 	return strtod(value, NULL);
-}
-
-static bool
-node_compare_lhs_node_ref_scalar(enum fy_path_expr_type type, struct fy_node *fyn, struct fy_path_expr *expr)
-{
-	bool match;
-	double a, b;
-
-	if (!fyn || !expr || expr->type != fpet_scalar)
-		return false;
-
-	/* only doing scalars */
-	if (!fy_node_is_scalar(fyn))
-		return false;
-
-	/* both numbers */
-	if (fy_token_is_number(fy_node_get_scalar_token(fyn)) && fy_token_is_number(expr->fyt)) {
-		a = token_number(fy_node_get_scalar_token(fyn));
-		if (isnan(a))
-			return false;
-		b = token_number(expr->fyt);
-		if (isnan(b))
-			return false;
-
-		switch (type) {
-		default:
-			assert(0);
-			break;
-		case fpet_eq: 
-			return a == b;
-		case fpet_neq:
-			return a != b;
-		case fpet_lt:
-			return a < b;
-		case fpet_gt:
-			return a > b;
-		case fpet_lte:
-			return a <= b;
-		case fpet_gte:
-			return a >= b;
-		}
-		return false;
-	}
-
-	if (type == fpet_eq || type == fpet_neq) {
-		match = fy_node_compare_token(fyn, expr->fyt);
-		if (type == fpet_neq)
-			match = !match;
-		return match;
-	}
-
-	return false;
-}
-
-int fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr,
-			 struct fy_walk_result_list *results, struct fy_node *fyn)
-{
-	struct fy_node *fynn, *fyni;
-	struct fy_node_pair *fynp;
-	struct fy_token *fyt;
-	struct fy_path_expr *exprn, *exprl, *exprr;
-	struct fy_walk_result *fwrn;
-	struct fy_walk_result_list tresults, nresults;
-	int start, end, count, i;
-	struct fy_walk_result *fwr;
-	double a, b;
-	bool match;
-
-	/* error */
-	if (!expr || !results)
-		return -1;
-
-	/* no node, just return */
-	if (!fyn)
-		return 0;
-
-	/* single result case is common enough to optimize */
-	if (fy_path_expr_type_is_single_result(expr->type)) {
-
-		fynn = fy_path_expr_execute_single_result(diag, expr, fyn);
-		if (!fynn)
-			return 0;
-		return fy_walk_result_add(results, fynn);
-	}
-
-	/* handle the remaining multi result cases */
-	switch (expr->type) {
-	case fpet_chain:
-
-		/* check if it's a leaf chain (i.e. chain with single result expressions only) */
-		if (expr_is_leaf_chain_or_multi(expr)) {
-
-			/* optimized single result chain */
-			for (exprn = fy_path_expr_list_head(&expr->children); exprn;
-				exprn = fy_path_expr_next(&expr->children, exprn)) {
-
-				assert(fy_path_expr_type_is_single_result(exprn->type));
-
-				fynn = fy_path_expr_execute_single_result(diag, exprn, fyn);
-				if (!fynn)
-					return 0;
-				fyn = fynn;
-			}
-
-			return fy_walk_result_add(results, fyn);
-		}
-
-		/* start with tresults containing the current node */
-		fy_walk_result_list_init(&tresults);
-		fy_walk_result_add(&tresults, fyn);
-
-		/* iterate over each chain item */
-		for (exprn = fy_path_expr_list_head(&expr->children); exprn;
-			exprn = fy_path_expr_next(&expr->children, exprn)) {
-
-			/* nresults is the temp list collecting the results of each step */
-			fy_walk_result_list_init(&nresults);
-
-			/* for every node in the tresults execute */
-			while ((fwrn = fy_walk_result_list_pop(&tresults)) != NULL) {
-				fynn = fwrn->fyn;
-				fy_walk_result_free(fwrn);
-
-				fy_path_expr_execute(diag, exprn, &nresults, fynn);
-			}
-
-			/* move everything from nresults to tresults */
-			fy_walk_result_list_move(&tresults, &nresults);
-		}
-
-		/* move everything in tresuls to results */
-		fy_walk_result_list_move(results, &tresults);
-
-		return 0;
-
-	case fpet_multi:
-
-		/* iterate over each chain item */
-		for (exprn = fy_path_expr_list_head(&expr->children); exprn;
-			exprn = fy_path_expr_next(&expr->children, exprn)) {
-
-			/* nresults is the temp list collecting the results of each step */
-			fy_walk_result_list_init(&nresults);
-
-			fy_path_expr_execute(diag, exprn, &nresults, fyn);
-
-			/* move everything in nresuls to results */
-			fy_walk_result_list_move(results, &nresults);
-		}
-
-		return 0;
-
-	case fpet_every_child:
-
-		/* every scalar/alias is a single result */
-		if (fy_node_is_scalar(fyn) || fy_node_is_alias(fyn)) {
-
-			fy_walk_result_add(results, fyn);
-
-		} else if (fy_node_is_sequence(fyn)) {
-
-			for (fyni = fy_node_list_head(&fyn->sequence); fyni;
-				fyni = fy_node_next(&fyn->sequence, fyni)) {
-				fy_walk_result_add(results, fyni);
-			}
-
-		} else if (fy_node_is_mapping(fyn)) {
-
-			for (fynp = fy_node_pair_list_head(&fyn->mapping); fynp;
-					fynp = fy_node_pair_next(&fyn->mapping, fynp)) {
-				fy_walk_result_add(results, fynp->value);
-			}
-		} else
-			assert(0);
-
-		return 0;
-
-	case fpet_every_child_r:
-		return fy_walk_result_add_recursive(results, fyn, false);
-
-	case fpet_seq_slice:
-
-		fyt = expr->fyt;
-		assert(fyt);
-		assert(fyt->type == FYTT_PE_SEQ_SLICE);
-
-		/* only on sequence */
-		if (!fy_node_is_sequence(fyn))
-			return 0;
-
-		start = fyt->seq_slice.start_index;
-		end = fyt->seq_slice.end_index;
-		count = fy_node_sequence_item_count(fyn);
-
-		/* don't handle negative slices yet */
-		if (start < 0 || end < 1 || start >= end)
-			return 0;
-
-		if (count < end)
-			end = count;
-
-		for (i = start; i < end; i++) {
-			fynn = fy_node_sequence_get_by_index(fyn, i);
-			fy_walk_result_add(results, fynn);
-		}
-
-		return 0;
-
-	case fpet_logical_or:
-
-		/* iterate over each chain item */
-		for (exprn = fy_path_expr_list_head(&expr->children); exprn;
-			exprn = fy_path_expr_next(&expr->children, exprn)) {
-
-			/* nresults is the temp list collecting the results of each step */
-			fy_walk_result_list_init(&nresults);
-
-			fy_path_expr_execute(diag, exprn, &nresults, fyn);
-
-			/* the first non empty result ends */
-			if (!fy_walk_result_list_empty(&nresults)) {
-				/* move everything in nresuls to results */
-				fy_walk_result_list_move(results, &nresults);
-				break;
-			}
-		}
-
-		return 0;
-
-	case fpet_logical_and:
-
-		/* last non null result */
-		fy_walk_result_list_init(&nresults);
-
-		/* iterate over each chain item */
-		for (exprn = fy_path_expr_list_head(&expr->children); exprn;
-			exprn = fy_path_expr_next(&expr->children, exprn)) {
-
-			/* nresults is the temp list collecting the results of each step */
-			fy_walk_result_list_init(&tresults);
-
-			fy_path_expr_execute(diag, exprn, &tresults, fyn);
-
-			/* the first non empty result ends */
-			if (fy_walk_result_list_empty(&tresults))
-				break;
-
-			/* free the previous results */
-			fy_walk_result_list_free(&nresults);
-
-			/* move everything in tresuls to nresults */
-			fy_walk_result_list_move(&nresults, &tresults);
-		}
-
-		/* and move from nresults to results */
-		fy_walk_result_list_move(results, &nresults);
-		return 0;
-
-	case fpet_eq:
-	case fpet_neq:
-	case fpet_lt:
-	case fpet_gt:
-	case fpet_lte:
-	case fpet_gte:
-
-		exprl = fy_path_expr_lhs(expr);
-		assert(exprl);
-
-		exprr = fy_path_expr_rhs(expr);
-		assert(exprr);
-
-		/* execute LHS */
-		fy_walk_result_list_init(&nresults);
-		fy_path_expr_execute(diag, exprl, &nresults, fyn);
-
-		/* for each result in nresults compare to the map key */
-		while ((fwr = fy_walk_result_list_pop(&nresults)) != NULL) {
-
-			/* only can handle node refs */
-			fynn = fwr->type == fwrt_node_ref ? fwr->fyn : NULL;
-			fy_walk_result_free(fwr);
-
-			match = node_compare_lhs_node_ref_scalar(expr->type, fynn, exprr);
-
-			if (match)
-				fy_walk_result_add(results, fynn);
-		}
-
-		return 0;
-
-	case fpet_plus:
-	case fpet_minus:
-	case fpet_mult:
-	case fpet_div:
-
-		exprl = fy_path_expr_lhs(expr);
-		assert(exprl);
-
-		exprr = fy_path_expr_rhs(expr);
-		assert(exprr);
-
-		if (exprl->type != fpet_scalar) {
-			fy_walk_result_list_init(&nresults);
-			fy_path_expr_execute(diag, exprl, &nresults, fyn);
-
-			/* get expect the first result */
-			a = NAN;
-			while ((fwr = fy_walk_result_list_pop(&nresults)) != NULL) {
-				a = fwr->type == fwrt_number ? fwr->number : NAN;
-				fy_walk_result_free(fwr);
-				if (!isnan(a))
-					break;
-			}
-			fy_walk_result_list_free(&nresults);
-
-		} else {
-			if (!fy_token_is_number(exprl->fyt)) {
-				fy_error(diag, "lhs argument not numeric\n");
-				goto err_out;
-			}
-			a = token_number(exprl->fyt);
-		}
-
-		if (exprr->type != fpet_scalar) {
-			fy_walk_result_list_init(&nresults);
-			fy_path_expr_execute(diag, exprr, &nresults, fyn);
-
-			/* get expect the first result */
-			b = NAN;
-			while ((fwr = fy_walk_result_list_pop(&nresults)) != NULL) {
-				b = fwr->type == fwrt_number ? fwr->number : NAN;
-				fy_walk_result_free(fwr);
-				if (!isnan(b))
-					break;
-			}
-			fy_walk_result_list_free(&nresults);
-
-		} else {
-			if (!fy_token_is_number(exprr->fyt)) {
-				fy_error(diag, "rhs argument not numeric\n");
-				goto err_out;
-			}
-			b = token_number(exprr->fyt);
-		}
-
-		if (isnan(a) || isnan(b)) {
-			fy_error(diag, "NaN as arguments\n");
-			goto err_out;
-		}
-
-		fwr = fy_walk_result_alloc();
-		if (!fwr)
-			return -1;
-		fwr->type = fwrt_number;
-		switch (expr->type) {
-		case fpet_plus:
-			fwr->number = a + b;
-			break;
-		case fpet_minus:
-			fwr->number = a - b;
-			break;
-		case fpet_mult:
-			fwr->number = a * b;
-			break;
-		case fpet_div:
-			fwr->number = b != 0 ? (a / b) : INFINITY;
-			break;
-		default:
-			assert(0);
-			break;
-		}
-		fy_notice(diag, "a=%f b=%f r=%f\n", a, b, fwr->number);
-		fy_walk_result_list_add_tail(results, fwr);
-
-		return 0;
-
-	default:
-		break;
-	}
-
-err_out:
-	return -1;
 }
 
 int fy_path_exec_setup(struct fy_path_exec *fypx, const struct fy_path_exec_cfg *xcfg)
@@ -2804,7 +2414,9 @@ void fy_path_exec_cleanup(struct fy_path_exec *fypx)
 	if (!fypx)
 		return;
 	fy_walk_result_list_free(&fypx->results);
+	fy_walk_result_free(fypx->result);
 	fypx->fyn_start = NULL;
+	fypx->result = NULL;
 }
 
 /* publicly exported methods */
@@ -2922,45 +2534,35 @@ int fy_path_exec_reset(struct fy_path_exec *fypx)
 	return 0;
 }
 
-int fy_path_exec_execute(struct fy_path_exec *fypx, struct fy_path_expr *expr, struct fy_node *fyn_start)
+struct fy_walk_result *fy_walk_result_simplify(struct fy_walk_result *fwr)
 {
-	int rc;
+	struct fy_walk_result *fwr2;
 
-	if (!fypx || !expr || !fyn_start)
-		return -1;
-
-	fy_walk_result_list_free(&fypx->results);
-	fypx->fyn_start = fyn_start;
-
-	rc = fy_path_expr_execute(fypx->cfg.diag, expr, &fypx->results, fypx->fyn_start);
-	if (rc) {
-		fy_walk_result_list_free(&fypx->results);
-		return rc;
-	}
-
-	return 0;
-}
-
-struct fy_node *
-fy_path_exec_results_iterate(struct fy_path_exec *fypx, void **prevp)
-{
-	struct fy_walk_result *fwr;
-
-	if (!fypx || !prevp)
+	/* no fwr */
+	if (!fwr)
 		return NULL;
 
-	if (!*prevp)
-		fwr = fy_walk_result_list_head(&fypx->results);
-	else
-		fwr = fy_walk_result_next(&fypx->results, *prevp);
+	/* non recursive */
+	if (fwr->type != fwrt_refs)
+		return fwr;
 
-	assert(!fwr || fwr->type == fwrt_node_ref);
+	/* refs, if empty, return NULL */
+	if (fy_walk_result_list_empty(&fwr->refs)) {
+		fy_walk_result_free(fwr);
+		return NULL;
+	}
 
-	*prevp = fwr;
-	return fwr ? fwr->fyn : NULL;
+	/* single element, switch it out */
+	if (fy_walk_result_list_is_singular(&fwr->refs)) {
+		fwr2 = fy_walk_result_list_pop(&fwr->refs);
+		assert(fwr2);
+
+		fy_walk_result_free(fwr);
+		fwr = fwr2;
+	}
+
+	return fwr;
 }
-
-/************************************************/
 
 int fy_walk_result_all_children_recursive_internal(struct fy_node *fyn, struct fy_walk_result *output)
 {
@@ -2975,15 +2577,13 @@ int fy_walk_result_all_children_recursive_internal(struct fy_node *fyn, struct f
 	assert(output);
 	assert(output->type == fwrt_refs);
 
-	if (!fy_node_is_scalar(fyn) && !fy_node_is_alias(fyn)) {
-		/* this node */
-		fwr = fy_walk_result_alloc();
-		if (!fwr)
-			return -1;
-		fwr->type = fwrt_node_ref;
-		fwr->fyn = fyn;
-		fy_walk_result_list_add_tail(&output->refs, fwr);
-	}
+	/* this node */
+	fwr = fy_walk_result_alloc();
+	if (!fwr)
+		return -1;
+	fwr->type = fwrt_node_ref;
+	fwr->fyn = fyn;
+	fy_walk_result_list_add_tail(&output->refs, fwr);
 
 	if (fy_node_is_sequence(fyn)) {
 
@@ -3292,7 +2892,7 @@ struct fy_walk_result *
 fy_walk_result_lhs_rhs(struct fy_diag *diag, enum fy_path_expr_type type,
 		      struct fy_walk_result *fwrl, struct fy_walk_result *fwrr)
 {
-	struct fy_walk_result *output = NULL;
+	struct fy_walk_result *output = NULL, *fwr, *fwrrt;
 	bool match;
 
 	/* both NULL */
@@ -3305,9 +2905,7 @@ fy_walk_result_lhs_rhs(struct fy_diag *diag, enum fy_path_expr_type type,
 			output = fwrl;
 			fwrl = NULL;
 		}
-		fy_walk_result_free(fwrl);
-		fy_walk_result_free(fwrr);
-		return output;
+		goto out;
 	}
 
 	/* both are non NULL and simple */
@@ -3317,59 +2915,72 @@ fy_walk_result_lhs_rhs(struct fy_diag *diag, enum fy_path_expr_type type,
 
 			match = fy_walk_result_compare_simple(diag, type, fwrl, fwrr);
 
-			if (!match) {
-				fy_walk_result_free(fwrl);
-				fy_walk_result_free(fwrr);
-				return NULL;
-			}
+			if (!match)
+				goto out;
 
 			output = fwrl;
 			fwrl = NULL;
-			fy_walk_result_free(fwrr);
-
-			return output;
-
+			goto out;
 		}
 
-		if (fy_path_expr_type_is_arithmetic(type)) {
-
+		if (fy_path_expr_type_is_arithmetic(type))
 			return fy_walk_result_arithmetic_simple(diag, type, fwrl, fwrr);
-		}
+
+		fy_error(diag, "%s: Not handled, returning NULL\n", __func__);
+		goto out;
 	}
 
-	/* non-simple cases */
-	assert(0);
+	if (fwrr->type == fwrt_refs) {
 
-	return NULL;
+		fy_error(diag, "%s: Not handling RHS refs, returning NULL\n", __func__);
+		goto out;
+
+	}
+
+	output = fy_walk_result_alloc();
+	assert(output);
+	output->type = fwrt_refs;
+	fy_walk_result_list_init(&output->refs);
+
+	while ((fwr = fy_walk_result_list_pop(&fwrl->refs)) != NULL) {
+
+		fwrrt = fy_walk_result_clone(fwrr);
+		assert(fwrrt);
+
+		fwr = fy_walk_result_lhs_rhs(diag, type, fwr, fwrrt);
+		if (fwr)
+			fy_walk_result_list_add_tail(&output->refs, fwr);
+	}
+
+out:
+	fy_walk_result_free(fwrl);
+	fy_walk_result_free(fwrr);
+
+	return fy_walk_result_simplify(output);
 }
 
 struct fy_walk_result *
-fy_path_expr_execute2(struct fy_diag *diag, struct fy_path_expr *expr, struct fy_walk_result *input)
+fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr, struct fy_walk_result *input)
 {
-	struct fy_walk_result *output = NULL, *fwr, *fwrn, *input1, *output1, *input2, *output2;
+	struct fy_walk_result *fwr, *fwrn, *fwrt, *fwrtn;
+	struct fy_walk_result *output = NULL, *input1, *output1, *input2, *output2;
 	struct fy_path_expr *exprn, *exprl, *exprr;
 	struct fy_node *fyn, *fynn, *fyni;
 	struct fy_node_pair *fynp;
 	struct fy_token *fyt;
 	int rc, start, end, count, i;
-#if 0
-	struct fy_walk_result_list tresults, nresults;
-	double a, b;
-#endif
+	bool match;
 
 	/* error */
-	if (!expr || !input) {
-		if (input)
-			fy_walk_result_free(input);
-		return NULL;
-	}
+	if (!expr || !input)
+		goto out;
 
-#if 0
+#ifdef DEBUG_EXPR
 	fy_walk_result_dump(input, diag, FYET_NOTICE, 0, fy_path_expr_type_txt[expr->type]);
 #endif
 
 	/* recursive */
-	if (input->type == fwrt_refs) {
+	if (input->type == fwrt_refs && !fy_path_expr_type_handles_refs(expr->type)) {
 
 		output = fy_walk_result_alloc();
 		assert(output);
@@ -3378,7 +2989,7 @@ fy_path_expr_execute2(struct fy_diag *diag, struct fy_path_expr *expr, struct fy
 
 		while ((fwr = fy_walk_result_list_pop(&input->refs)) != NULL) {
 
-			fwrn = fy_path_expr_execute2(diag, expr, fwr);
+			fwrn = fy_path_expr_execute(diag, expr, fwr);
 			if (fwrn)
 				fy_walk_result_list_add_tail(&output->refs, fwrn);
 		}
@@ -3392,16 +3003,15 @@ fy_path_expr_execute2(struct fy_diag *diag, struct fy_path_expr *expr, struct fy
 	if (fy_path_expr_type_is_single_result(expr->type) && input->type == fwrt_node_ref) {
 
 		fynn = fy_path_expr_execute_single_result(diag, expr, input->fyn);
-		if (!fynn) {
-			fy_walk_result_free(input);
-			return NULL;
-		}
+		if (!fynn)
+			goto out;
+
 		fy_walk_result_clean(input);
 		output = input;
-		input = NULL;
 		output->type = fwrt_node_ref;
 		output->fyn = fynn;
-		return output;
+		input = NULL;
+		goto out;
 	}
 
 	/* handle the remaining multi result cases */
@@ -3410,14 +3020,14 @@ fy_path_expr_execute2(struct fy_diag *diag, struct fy_path_expr *expr, struct fy
 	case fpet_chain:
 
 		/* iterate over each chain item */
+		output = input;
+		input = NULL;
 		for (exprn = fy_path_expr_list_head(&expr->children); exprn;
 			exprn = fy_path_expr_next(&expr->children, exprn)) {
 
-			output = fy_path_expr_execute2(diag, exprn, input);
-			input = NULL;
+			output = fy_path_expr_execute(diag, exprn, output);
 			if (!output)
-				return NULL;
-			input = output;
+				break;
 		}
 
 		break;
@@ -3437,7 +3047,7 @@ fy_path_expr_execute2(struct fy_diag *diag, struct fy_path_expr *expr, struct fy
 			input2 = fy_walk_result_clone(input);
 			assert(input2);
 
-			output2 = fy_path_expr_execute2(diag, exprn, input2);
+			output2 = fy_path_expr_execute(diag, exprn, input2);
 			if (!output2)
 				continue;
 
@@ -3595,8 +3205,8 @@ fy_path_expr_execute2(struct fy_diag *diag, struct fy_path_expr *expr, struct fy
 		input = NULL;
 
 		/* execute LHS and RHS */
-		output1 = fy_path_expr_execute2(diag, exprl, input1);
-		output2 = fy_path_expr_execute2(diag, exprr, input2);
+		output1 = fy_path_expr_execute(diag, exprl, input1);
+		output2 = fy_path_expr_execute(diag, exprr, input2);
 
 		output = fy_walk_result_lhs_rhs(diag, expr->type, output1, output2);
 
@@ -3629,7 +3239,7 @@ fy_path_expr_execute2(struct fy_diag *diag, struct fy_path_expr *expr, struct fy
 			input1 = fy_walk_result_clone(input);
 			assert(input1);
 
-			output = fy_path_expr_execute2(diag, exprn, input1);
+			output = fy_path_expr_execute(diag, exprn, input1);
 			if (output)
 				break;
 		}
@@ -3645,7 +3255,7 @@ fy_path_expr_execute2(struct fy_diag *diag, struct fy_path_expr *expr, struct fy
 			input1 = fy_walk_result_clone(input);
 			assert(input1);
 
-			output1 = fy_path_expr_execute2(diag, exprn, input1);
+			output1 = fy_path_expr_execute(diag, exprn, input1);
 			if (output1) {
 				fy_walk_result_free(output);
 				output = output1;
@@ -3654,89 +3264,46 @@ fy_path_expr_execute2(struct fy_diag *diag, struct fy_path_expr *expr, struct fy
 		}
 		break;
 
-#if 0
+	case fpet_filter_unique:
 
-		exprl = fy_path_expr_lhs(expr);
-		assert(exprl);
-
-		exprr = fy_path_expr_rhs(expr);
-		assert(exprr);
-
-		if (exprl->type != fpet_scalar) {
-			fy_walk_result_list_init(&nresults);
-			fy_path_expr_execute(diag, exprl, &nresults, fyn);
-
-			/* get expect the first result */
-			a = NAN;
-			while ((fwr = fy_walk_result_list_pop(&nresults)) != NULL) {
-				a = fwr->type == fwrt_number ? fwr->number : NAN;
-				fy_walk_result_free(fwr);
-				if (!isnan(a))
-					break;
-			}
-			fy_walk_result_list_free(&nresults);
-
-		} else {
-			if (!fy_token_is_number(exprl->fyt)) {
-				fy_error(diag, "lhs argument not numeric\n");
-				goto err_out;
-			}
-			a = token_number(exprl->fyt);
-		}
-
-		if (exprr->type != fpet_scalar) {
-			fy_walk_result_list_init(&nresults);
-			fy_path_expr_execute(diag, exprr, &nresults, fyn);
-
-			/* get expect the first result */
-			b = NAN;
-			while ((fwr = fy_walk_result_list_pop(&nresults)) != NULL) {
-				b = fwr->type == fwrt_number ? fwr->number : NAN;
-				fy_walk_result_free(fwr);
-				if (!isnan(b))
-					break;
-			}
-			fy_walk_result_list_free(&nresults);
-
-		} else {
-			if (!fy_token_is_number(exprr->fyt)) {
-				fy_error(diag, "rhs argument not numeric\n");
-				goto err_out;
-			}
-			b = token_number(exprr->fyt);
-		}
-
-		if (isnan(a) || isnan(b)) {
-			fy_error(diag, "NaN as arguments\n");
-			goto err_out;
-		}
-
-		fwr = fy_walk_result_alloc();
-		if (!fwr)
-			return -1;
-		fwr->type = fwrt_number;
-		switch (expr->type) {
-		case fpet_plus:
-			fwr->number = a + b;
-			break;
-		case fpet_minus:
-			fwr->number = a - b;
-			break;
-		case fpet_mult:
-			fwr->number = a * b;
-			break;
-		case fpet_div:
-			fwr->number = b != 0 ? (a / b) : INFINITY;
-			break;
-		default:
-			assert(0);
+		/* for non refs, return input */
+		if (input->type != fwrt_refs) {
+			output = input;
+			input = NULL;
 			break;
 		}
-		fy_notice(diag, "a=%f b=%f r=%f\n", a, b, fwr->number);
-		fy_walk_result_list_add_tail(results, fwr);
 
-		return 0;
-#endif
+		/* remove duplicates filter */
+		for (fwr = fy_walk_result_list_head(&input->refs); fwr;
+				fwr = fy_walk_result_next(&input->refs, fwr)) {
+
+			/* do not check recursively */
+			if (fwr->type == fwrt_refs)
+				continue;
+
+			/* check the entries from this point forward */
+			for (fwrt = fy_walk_result_next(&input->refs, fwr); fwrt; fwrt = fwrtn) {
+
+				fwrtn = fy_walk_result_next(&input->refs, fwrt);
+
+				/* do not check recursively (or the same result) */
+				if (fwrt->type == fwrt_refs)
+					continue;
+
+				assert(fwrt != fwr);
+
+				match = fy_walk_result_compare_simple(diag, fpet_eq, fwr, fwrt);
+
+				if (match) {
+					fy_walk_result_list_del(&input->refs, fwrt);
+					fy_walk_result_free(fwrt);
+				}
+			}
+		}
+		output = input;
+		input = NULL;
+
+		break;
 
 	default:
 		fy_error(diag, "%s\n", fy_path_expr_type_txt[expr->type]);
@@ -3745,36 +3312,12 @@ fy_path_expr_execute2(struct fy_diag *diag, struct fy_path_expr *expr, struct fy
 	}
 
 out:
-	// assert(input != output);
-	if (input && input != output)
-		fy_walk_result_free(input);
-
-	/* no output */
-	if (!output)
-		return NULL;
-
-	/* non recursive */
-	if (output->type != fwrt_refs)
-		return output;
-
-	/* refs, if empty, return NULL */
-	if (fy_walk_result_list_empty(&output->refs)) {
-		fy_walk_result_free(output);
-		return NULL;
-	}
-
-	/* single element, switch it out */
-	if (fy_walk_result_list_is_singular(&output->refs)) {
-		output2 = fy_walk_result_list_pop(&output->refs);
-		assert(output2);
-		fy_walk_result_free(output);
-		output = output2;
-	}
-
-	return output;
+	fy_walk_result_free(input);
+	return fy_walk_result_simplify(output);
 }
 
-int fy_path_exec_execute2(struct fy_path_exec *fypx, struct fy_path_expr *expr, struct fy_node *fyn_start)
+static int fy_path_exec_execute_internal(struct fy_path_exec *fypx,
+		struct fy_path_expr *expr, struct fy_node *fyn_start)
 {
 	struct fy_walk_result *fwr;
 
@@ -3789,6 +3332,52 @@ int fy_path_exec_execute2(struct fy_path_exec *fypx, struct fy_path_expr *expr, 
 	fwr->type = fwrt_node_ref;
 	fwr->fyn = fyn_start;
 
-	fypx->result = fy_path_expr_execute2(fypx->cfg.diag, expr, fwr);
+	fypx->result = fy_path_expr_execute(fypx->cfg.diag, expr, fwr);
 	return fypx->result ? 0 : -1;
+}
+
+int fy_path_exec_execute(struct fy_path_exec *fypx, struct fy_path_expr *expr, struct fy_node *fyn_start)
+{
+	if (!fypx || !expr || !fyn_start)
+		return -1;
+
+	fypx->fyn_start = fyn_start;
+	return fy_path_exec_execute_internal(fypx, expr, fypx->fyn_start);
+}
+
+struct fy_node *
+fy_path_exec_results_iterate(struct fy_path_exec *fypx, void **prevp)
+{
+	struct fy_walk_result *fwr;
+
+	if (!fypx || !prevp)
+		return NULL;
+
+	if (!fypx->result)
+		return NULL;
+
+	if (fypx->result->type != fwrt_refs) {
+		fwr = fypx->result;
+
+		if (fwr->type != fwrt_node_ref)
+			return NULL;
+
+		if (!*prevp) {
+			*prevp = fwr;
+			return fwr->fyn;
+		}
+		*prevp = NULL;
+		return NULL;
+	}
+
+	/* loop over non node refs for now */
+	do {
+		if (!*prevp)
+			fwr = fy_walk_result_list_head(&fypx->result->refs);
+		else
+			fwr = fy_walk_result_next(&fypx->result->refs, *prevp);
+		*prevp = fwr;
+	} while (fwr && fwr->type != fwrt_node_ref);
+
+	return fwr ? fwr->fyn : NULL;
 }

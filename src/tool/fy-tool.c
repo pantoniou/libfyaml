@@ -1095,6 +1095,7 @@ int main(int argc, char *argv[])
 	struct fy_diag *diag = NULL;
 	struct fy_path_parse_cfg pcfg;
 	struct fy_path_expr *expr = NULL;
+	struct fy_path_exec_cfg xcfg;
 	struct fy_path_exec *fypx = NULL;
 	struct fy_node *fyn_start;
 	bool stdin_input;
@@ -1641,7 +1642,10 @@ int main(int argc, char *argv[])
 
 		fy_path_expr_dump(expr, diag, FYET_ERROR, 0, "ypath expression:");
 
-		fypx = fy_path_exec_create(NULL);
+		memset(&xcfg, 0, sizeof(xcfg));
+		xcfg.diag = diag;
+
+		fypx = fy_path_exec_create(&xcfg);
 		if (!fypx) {
 			fprintf(stderr, "failed to create a path executor\n");
 			goto cleanup;

@@ -70,6 +70,7 @@ enum fy_path_expr_type {
 	fpet_filter_scalar,	/* match only scalars (leaves) */
 	fpet_filter_sequence,	/* match only sequences */
 	fpet_filter_mapping,	/* match only mappings */
+	fpet_filter_unique,	/* removes duplicates */
 	fpet_seq_index,
 	fpet_map_key,		/* complex map key (quoted, flow seq or map) */
 	fpet_seq_slice,
@@ -125,6 +126,12 @@ static inline bool fy_path_expr_type_is_parent(enum fy_path_expr_type type)
 	       type == fpet_logical_or ||
 	       type == fpet_logical_and ||
 	       type == fpet_eq;
+}
+
+/* type handles refs by itself */
+static inline bool fy_path_expr_type_handles_refs(enum fy_path_expr_type type)
+{
+	return type == fpet_filter_unique;
 }
 
 static inline bool fy_path_expr_type_is_parent_lhs_rhs(enum fy_path_expr_type type)
@@ -248,8 +255,8 @@ struct fy_path_expr *fy_path_parse_expression(struct fy_path_parser *fypp);
 
 void fy_path_expr_dump(struct fy_path_expr *expr, struct fy_diag *diag, enum fy_error_type errlevel, int level, const char *banner);
 
-int fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr,
-			 struct fy_walk_result_list *results, struct fy_node *fyn);
+struct fy_walk_result *
+fy_path_expr_execute(struct fy_diag *diag, struct fy_path_expr *expr, struct fy_walk_result *input);
 
 struct fy_path_exec {
 	struct fy_path_exec_cfg cfg;
