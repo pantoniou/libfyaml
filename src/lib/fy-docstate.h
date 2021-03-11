@@ -26,9 +26,7 @@
 
 struct fy_document;
 
-FY_TYPE_FWD_DECL_LIST(document_state);
 struct fy_document_state {
-	struct list_head node;
 	int refs;
 	struct fy_version version;
 	bool version_explicit : 1;
@@ -40,7 +38,6 @@ struct fy_document_state {
 	struct fy_token *fyt_vd;		/* version directive */
 	struct fy_token_list fyt_td;		/* tag directives */
 };
-FY_TYPE_DECL_LIST(document_state);
 
 struct fy_document_state *fy_document_state_alloc(void);
 void fy_document_state_free(struct fy_document_state *fyds);
