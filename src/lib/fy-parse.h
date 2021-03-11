@@ -157,6 +157,7 @@ struct fy_parser {
 	bool bare_document_only : 1;		/* no document start indicators allowed, no directives */
 	bool stream_has_content : 1;
 	bool parse_flow_only : 1;	/* document is in flow form, and stop parsing at the end */
+	bool colon_follows_colon : 1;	/* "foo"::bar -> "foo": :bar */
 	int flow_level;
 	int pending_complex_key_column;
 	struct fy_mark pending_complex_key_mark;

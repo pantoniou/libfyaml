@@ -2124,6 +2124,9 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 			!fyp_json_mode(fyp) || fyp->flow == FYFT_MAP, err_out,
 			"JSON considers keys when not in mapping context invalid");
 
+	/* special handling for :: weirdness */
+	fyp->colon_follows_colon = fyp->flow_level > 0 && fy_parse_peek_at(fyp, 1) == ':';
+
 	fy_get_mark(fyp, &mark);
 
 	fy_token_list_init(&sk_tl);
@@ -3684,6 +3687,7 @@ err_out_rc:
 int fy_fetch_tokens(struct fy_parser *fyp)
 {
 	struct fy_mark m;
+	bool was_double_colon;
 	int c, rc;
 
 	/* do not fetch any more when stream end is reached */
@@ -3843,13 +3847,18 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 		goto out;
 	}
 
-	if (c == ':' && ((fyp->flow_level && !fyp->simple_key_allowed) || fy_is_blankz_at_offset(fyp, 1))) {
+	if (c == ':') {
+		was_double_colon = c == ':' && fyp->colon_follows_colon && fyp->flow_level > 0;
+		fyp->colon_follows_colon = false;
 
-		fyp_scan_debug(fyp, "fy_fetch_value(%c)", c);
-		rc = fy_fetch_value(fyp, c);
-		fyp_error_check(fyp, !rc, err_out_rc,
-				"fy_fetch_value() failed");
-		goto out;
+		if (((fyp->flow_level && !fyp->simple_key_allowed) || fy_is_blankz_at_offset(fyp, 1)) &&
+				!was_double_colon) {
+			fyp_scan_debug(fyp, "fy_fetch_value(%c)", c);
+			rc = fy_fetch_value(fyp, c);
+			fyp_error_check(fyp, !rc, err_out_rc,
+					"fy_fetch_value() failed");
+			goto out;
+		}
 	}
 
 	if (c == '*' || c == '&') {
