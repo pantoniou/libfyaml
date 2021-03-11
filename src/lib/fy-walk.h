@@ -206,9 +206,18 @@ enum fy_path_parser_scan_mode {
 	fyppsm_scalar_expr,	/* scanner in rhs expression mode */
 };
 
-#define fyppsm_count (fyppsm_scalar_expr + 1)
+#define FYPPSM_COUNT (fyppsm_scalar_expr + 1)
 
-extern const char *path_parser_scan_mode_txt[fyppsm_count];
+extern const char *path_parser_scan_mode_txt[FYPPSM_COUNT];
+
+struct fy_path_op_extra {
+	enum fy_path_parser_scan_mode scan_mode;
+};
+
+struct fy_path_op {
+	struct fy_token *fyt;
+	struct fy_path_op_extra xtra;
+};
 
 struct fy_path_parser {
 	struct fy_path_parse_cfg cfg;
@@ -223,8 +232,8 @@ struct fy_path_parser {
 	/* operator stack */
 	unsigned int operator_top;
 	unsigned int operator_alloc;
-	struct fy_token **operators;
-	struct fy_token *operators_static[16];
+	struct fy_path_op *operators;
+	struct fy_path_op operators_static[16];
 
 	/* operand stack */
 	unsigned int operand_top;

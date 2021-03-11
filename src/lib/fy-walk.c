@@ -474,7 +474,7 @@ bool fy_token_type_is_filter(enum fy_token_type type)
 	       type == FYTT_PE_UNIQUE_FILTER;
 }
 
-const char *path_parser_scan_mode_txt[fyppsm_count] = {
+const char *path_parser_scan_mode_txt[FYPPSM_COUNT] = {
 	[fyppsm_none]		= "none",
 	[fyppsm_path_expr]	= "path_expr",
 	[fyppsm_scalar_expr]	= "scalar_expr",
@@ -519,15 +519,15 @@ void fy_path_parser_setup(struct fy_path_parser *fypp, const struct fy_path_pars
 void fy_path_parser_cleanup(struct fy_path_parser *fypp)
 {
 	struct fy_path_expr *expr;
-	struct fy_token *fyt;
+	struct fy_path_op *op;
 
 	if (!fypp)
 		return;
 
 	while (fypp->operator_top > 0) {
-		fyt = fypp->operators[--fypp->operator_top];
-		fypp->operators[fypp->operator_top] = NULL;
-		fy_token_unref(fyt);
+		op = &fypp->operators[--fypp->operator_top];
+		fy_token_unref(op->fyt);
+		memset(op, 0, sizeof(*op));
 	}
 
 	if (fypp->operators != fypp->operators_static)
@@ -1127,7 +1127,6 @@ int fy_path_fetch_tokens(struct fy_path_parser *fypp)
 		break;
 	}
 
-
 	/* simple tokens */
 	if (simple_token_count > 0) {
 		fyt = fy_path_token_queue(fypp, type, fy_reader_fill_atom_a(fyr, simple_token_count));
@@ -1599,6 +1598,7 @@ enum fy_path_parser_scan_mode fy_token_type_scan_mode(enum fy_token_type type)
 static void dump_operator_stack(struct fy_path_parser *fypp)
 {
 	struct fy_token *fyt;
+	struct fy_path_op *op;
 	unsigned int i;
 
 	if (!fypp->operator_top)
@@ -1606,9 +1606,10 @@ static void dump_operator_stack(struct fy_path_parser *fypp)
 
 	i = fypp->operator_top;
 	do {
-		fyt = fypp->operators[--i];
-		fy_notice(fypp->cfg.diag, "! [%d] %.*s (%2d)\n", i, 20, fy_token_debug_text_a(fyt),
-				fy_token_type_operator_prec(fyt->type));
+		op = &fypp->operators[--i];
+
+		fy_notice(fypp->cfg.diag, "! [%d] %.*s (%2d)\n", i, 20, fy_token_debug_text_a(op->fyt),
+				fy_token_type_operator_prec(op->fyt->type));
 	} while (i > 0);
 }
 
@@ -1691,17 +1692,22 @@ pop_operand(struct fy_path_parser *fypp)
 }
 
 static struct fy_token *
-peek_operator(struct fy_path_parser *fypp)
+peek_operator(struct fy_path_parser *fypp, struct fy_path_op_extra *xtra)
 {
+	struct fy_path_op *op;
+
 	if (fypp->operator_top == 0)
 		return NULL;
-	return fypp->operators[fypp->operator_top - 1];
+	op = &fypp->operators[fypp->operator_top - 1];
+	if (xtra)
+		*xtra = op->xtra;
+	return op->fyt;
 }
 
 static int
-push_operator(struct fy_path_parser *fypp, struct fy_token *fyt)
+push_operator(struct fy_path_parser *fypp, struct fy_token *fyt, struct fy_path_op_extra *xtra)
 {
-	struct fy_token **fyts;
+	struct fy_path_op *ops, *op;
 	unsigned int alloc;
 	size_t size;
 
@@ -1710,37 +1716,45 @@ push_operator(struct fy_path_parser *fypp, struct fy_token *fyt)
 	/* grow the stack if required */
 	if (fypp->operator_top >= fypp->operator_alloc) {
 		alloc = fypp->operator_alloc;
-		size = alloc * sizeof(*fyts);
+		size = alloc * sizeof(*ops);
 
 		if (fypp->operators == fypp->operators_static) {
-			fyts = malloc(size * 2);
-			if (fyts)
-				memcpy(fyts, fypp->operators_static, size);
+			ops = malloc(size * 2);
+			if (ops)
+				memcpy(ops, fypp->operators_static, size);
 		} else
-			fyts = realloc(fypp->operators, size * 2);
+			ops = realloc(fypp->operators, size * 2);
 
-		if (!fyts)
+		if (!ops)
 			return -1;
 
 		fypp->operator_alloc = alloc * 2;
-		fypp->operators = fyts;
+		fypp->operators = ops;
 	}
 
-	fypp->operators[fypp->operator_top++] = fyt;
+	op = &fypp->operators[fypp->operator_top++];
+	memset(op, 0, sizeof(*op));
+	op->fyt = fyt;
+	if (xtra)
+		op->xtra = *xtra;
 
 	return 0;
 }
 
 static struct fy_token *
-pop_operator(struct fy_path_parser *fypp)
+pop_operator(struct fy_path_parser *fypp, struct fy_path_op_extra *xtra)
 {
+	struct fy_path_op *op;
 	struct fy_token *fyt;
 
 	if (fypp->operator_top == 0)
 		return NULL;
 
-	fyt = fypp->operators[--fypp->operator_top];
-	fypp->operators[fypp->operator_top] = NULL;
+	op = &fypp->operators[--fypp->operator_top];
+	fyt = op->fyt;
+	if (xtra)
+		*xtra = op->xtra;
+	memset(op, 0, sizeof(*op));
 
 	return fyt;
 }
@@ -1890,7 +1904,7 @@ static int evaluate(struct fy_path_parser *fypp)
 
 	fyr = &fypp->reader;
 
-	fyt_top = pop_operator(fypp);
+	fyt_top = pop_operator(fypp, NULL);
 	fyr_error_check(fyr, fyt_top, err_out,
 			"pop_operator() failed to find token operator to evaluate\n");
 
@@ -1912,7 +1926,7 @@ static int evaluate(struct fy_path_parser *fypp)
 		/* try to figure out if this slash is the root or a chain operator */
 		exprr = peek_operand(fypp);
 		exprl = peek_operand_at(fypp, 1);
-		fyt_peek = peek_operator(fypp);
+		fyt_peek = peek_operator(fypp, NULL);
 
 		/* remove expressions that are before this */
 		if (fyt_peek && fy_token_type_next_slash_is_root(fyt_peek->type)) {
@@ -2169,7 +2183,7 @@ do_suffix:
 		goto err_out;
 
 	case FYTT_PE_RPAREN:
-		while ((fyt_peek = peek_operator(fypp)) != NULL) {
+		while ((fyt_peek = peek_operator(fypp, NULL)) != NULL) {
 			if (fyt_peek->type == FYTT_PE_LPAREN)
 				break;
 			ret = evaluate(fypp);
@@ -2187,7 +2201,7 @@ do_suffix:
 
 		fy_token_unref(fyt_top);
 
-		fyt_top = pop_operator(fypp);
+		fyt_top = pop_operator(fypp, NULL);
 		fy_token_unref(fyt_top);
 		return 0;
 
@@ -2404,7 +2418,7 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 #endif
 			if (fyt && fyt->type == FYTT_PE_RPAREN) {
 				fyt = fy_path_scan_remove(fypp, fyt);
-				ret = push_operator(fypp, fyt);
+				ret = push_operator(fypp, fyt, NULL);
 				if (ret)
 					goto err_out;
 
@@ -2417,7 +2431,7 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 			/* evaluate */
 			for (;;) {
 				/* get the top of the operator stack */
-				fyt_top = peek_operator(fypp);
+				fyt_top = peek_operator(fypp, NULL);
 				if (!fyt_top)
 					break;
 
@@ -2454,12 +2468,12 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 		/* it's an operator */
 		for (;;) {
 			/* get the top of the operator stack */
-			fyt_top = peek_operator(fypp);
+			fyt_top = peek_operator(fypp, NULL);
 			/* if operator stack is empty or the priority of the new operator is larger, push operator */
 			if (!fyt_top || fy_token_type_operator_prec(fyt->type) > fy_token_type_operator_prec(fyt_top->type) ||
 					fyt_top->type == FYTT_PE_LPAREN) {
 				fyt = fy_path_scan_remove(fypp, fyt);
-				ret = push_operator(fypp, fyt);
+				ret = push_operator(fypp, fyt, NULL);
 				fyt = NULL;
 				fyr_error_check(fyr, !ret, err_out, "push_operator() failed\n");
 				break;
@@ -2478,7 +2492,7 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 			fypp->stream_error || (fyt && fyt->type == FYTT_STREAM_END), err_out,
 			"stream ended without STREAM_END");
 
-	while ((fyt_top = peek_operator(fypp)) != NULL) {
+	while ((fyt_top = peek_operator(fypp, NULL)) != NULL) {
 		ret = evaluate(fypp);
 		/* evaluate will print diagnostic on error */
 		if (ret)
