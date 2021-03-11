@@ -35,6 +35,7 @@ enum fy_walk_result_type {
 	fwrt_node_ref,
 	fwrt_number,
 	fwrt_string,
+	fwrt_doc,
 	fwrt_refs,
 };
 
@@ -50,6 +51,7 @@ struct fy_walk_result {
 		double number;
 		char *string;
 		struct fy_walk_result_list refs;
+		struct fy_document *fyd;
 	};
 };
 FY_TYPE_DECL_LIST(walk_result);

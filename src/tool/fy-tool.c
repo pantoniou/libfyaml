@@ -63,6 +63,8 @@
 #define OPT_DISABLE_ACCEL		2005
 #define OPT_DISABLE_BUFFERING		2006
 #define OPT_SLOPPY_FLOW_INDENTATION	2007
+#define OPT_DUMP_PATHEXPR		2008
+#define OPT_NOEXEC			2009
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -110,6 +112,8 @@ static struct option lopts[] = {
 	{"yaml-1.2",		no_argument,		0,	OPT_YAML_1_2 },
 	{"yaml-1.3",		no_argument,		0,	OPT_YAML_1_3 },
 	{"sloppy-flow-indentation", no_argument,	0,	OPT_SLOPPY_FLOW_INDENTATION },
+	{"dump-pathexpr",	no_argument,		0,	OPT_DUMP_PATHEXPR },
+	{"noexec",		no_argument,		0,	OPT_NOEXEC },
 	{"to",			required_argument,	0,	'T' },
 	{"from",		required_argument,	0,	'F' },
 	{"quiet",		no_argument,		0,	'q' },
@@ -215,6 +219,8 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	if (tool_mode == OPT_TOOL || tool_mode == OPT_YPATH) {
 		fprintf(fp, "\t--from, -F <path>        : Start from <path> (default %s)\n",
 							FROM_DEFAULT);
+		fprintf(fp, "\t--dump-pathexpr          : Dump the path expresion before the results\n");
+		fprintf(fp, "\t--noexec                 : Do not execute the expression\n");
 	}
 
 	if (tool_mode == OPT_TOOL) {
@@ -1098,6 +1104,8 @@ int main(int argc, char *argv[])
 	struct fy_path_exec_cfg xcfg;
 	struct fy_path_exec *fypx = NULL;
 	struct fy_node *fyn_start;
+	bool dump_pathexpr = false;
+	bool noexec = false;
 	bool stdin_input;
 	void *res_iter;
 
@@ -1328,6 +1336,11 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_DISABLE_BUFFERING:
 			cfg.flags |= FYPCF_DISABLE_BUFFERING;
+		case OPT_DUMP_PATHEXPR:
+			dump_pathexpr = true;
+			break;
+		case OPT_NOEXEC:
+			noexec = true;
 			break;
 		case OPT_YAML_1_1:
 			cfg.flags &= ~(FYPCF_DEFAULT_VERSION_MASK << FYPCF_DEFAULT_VERSION_SHIFT);
@@ -1640,7 +1653,26 @@ int main(int argc, char *argv[])
 			goto cleanup;
 		}
 
-		fy_path_expr_dump(expr, diag, FYET_ERROR, 0, "ypath expression:");
+		if (dump_pathexpr) {
+			struct fy_document *fyd_pe;
+
+			fy_path_expr_dump(expr, diag, FYET_ERROR, 0, "ypath expression:");
+
+			fyd_pe = fy_path_expr_to_document(expr);
+			if (!fyd_pe) {
+				fprintf(stderr, "failed to convert path expression to document\n");
+				goto cleanup;
+			}
+			fy_emit_document(fye, fyd_pe);
+
+			fy_document_destroy(fyd_pe);
+		}
+
+		/* nothing more */
+		if (noexec) {
+			exitcode = EXIT_SUCCESS;
+			goto cleanup;
+		}
 
 		memset(&xcfg, 0, sizeof(xcfg));
 		xcfg.diag = diag;

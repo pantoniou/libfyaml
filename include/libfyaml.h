@@ -1804,6 +1804,22 @@ fy_node_copy(struct fy_document *fyd, struct fy_node *fyn_from)
 	FY_EXPORT;
 
 /**
+ * fy_document_clone() - Clones a document
+ *
+ * Clone a document, by making a deep copy of the source.
+ * Note that no content copying takes place as the contents of the nodes
+ * are reference counted. This means that the operation is relatively inexpensive.
+ *
+ * @fydsrc: The source document to clone
+ *
+ * Returns:
+ * The newly created clone document, or NULL in case of an error
+ */
+struct fy_document *
+fy_document_clone(struct fy_document *fydsrc)
+	FY_EXPORT;
+
+/**
  * fy_node_insert() - Insert a node to the given node
  *
  * Insert a node to another node. If @fyn_from is NULL then this
@@ -4919,6 +4935,21 @@ fy_path_expr_free(struct fy_path_expr *expr)
 void
 fy_path_expr_dump(struct fy_path_expr *expr, struct fy_diag *diag,
 		  enum fy_error_type errlevel, int level, const char *banner);
+
+/**
+ * fy_path_expr_to_document() - Converts the path expression to a YAML document
+ *
+ * Converts the expression to a YAML document which is useful for
+ * understanding what the expression evaluates to.
+ *
+ * @expr: The expression to convert to a document
+ *
+ * Returns:
+ * The document of the expression or NULL on error.
+ */
+struct fy_document *
+fy_path_expr_to_document(struct fy_path_expr *expr)
+	FY_EXPORT;
 
 /**
  * enum fy_path_exec_cfg_flags - Path executor configuration flags
