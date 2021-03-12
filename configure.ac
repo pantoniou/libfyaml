@@ -245,10 +245,10 @@ if test "x$JSONTESTSUITEURL" == "x" ; then
 	JSONTESTSUITEURL="https://github.com/nst/JSONTestSuite"
 fi
 
-AC_ARG_VAR(JSONTESTSUITECHECKOUT, [JSON Testsuite checkout (default: 9f23c68b521dd700e8c99151d6dc1c5c52a0246e)])
+AC_ARG_VAR(JSONTESTSUITECHECKOUT, [JSON Testsuite checkout (default: d64aefb55228d9584d3e5b2433f720ea8fd00c82)])
 
 if test "x$JSONTESTSUITECHECKOUT" == "x" ; then
-	JSONTESTSUITECHECKOUT="9f23c68b521dd700e8c99151d6dc1c5c52a0246e"
+	JSONTESTSUITECHECKOUT="d64aefb55228d9584d3e5b2433f720ea8fd00c82"
 fi
 
 # check for docker
