@@ -233,10 +233,10 @@ if test "x$TESTSUITEURL" == "x" ; then
 	TESTSUITEURL="https://github.com/yaml/yaml-test-suite"
 fi
 
-AC_ARG_VAR(TESTSUITECHECKOUT, [Testsuite checkout (default: b78c5674ca6ba78822d7a9817b25277b94df5885)])
+AC_ARG_VAR(TESTSUITECHECKOUT, [Testsuite checkout (default: 722f9f0feadbc6b692058694b38e243c8be4bb7e)])
 
 if test "x$TESTSUITECHECKOUT" == "x" ; then
-	TESTSUITECHECKOUT="b78c5674ca6ba78822d7a9817b25277b94df5885"
+	TESTSUITECHECKOUT="722f9f0feadbc6b692058694b38e243c8be4bb7e"
 fi
 
 AC_ARG_VAR(JSONTESTSUITEURL, [JSON Testsuite git repo URL (default: https://github.com/nst/JSONTestSuite)])
