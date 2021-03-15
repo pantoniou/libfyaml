@@ -99,9 +99,11 @@ enum fy_path_expr_type {
 
 	fpet_lparen,		/* left paren (they do not appear in final expression) */
 	fpet_rparen,		/* right parent */
+	fpet_method,		/* method (or parentheses) */
+	fpet_expr,		/* non-eval phase expression () */
 };
 
-#define FPET_COUNT (fpet_rparen + 1)
+#define FPET_COUNT (fpet_expr + 1)
 
 extern const char *path_expr_type_txt[FPET_COUNT];
 
@@ -130,7 +132,9 @@ static inline bool fy_path_expr_type_is_parent(enum fy_path_expr_type type)
 	       type == fpet_chain ||
 	       type == fpet_logical_or ||
 	       type == fpet_logical_and ||
-	       type == fpet_eq;
+	       type == fpet_eq ||
+	       type == fpet_method ||
+	       type == fpet_expr;
 }
 
 static inline bool fy_path_expr_type_is_mergeable(enum fy_path_expr_type type)
