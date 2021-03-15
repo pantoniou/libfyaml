@@ -377,6 +377,9 @@ const char *fy_path_expr_type_txt[FPET_COUNT] = {
 
 	[fpet_lparen]			= "left-parentheses",
 	[fpet_rparen]			= "right-parentheses",
+
+	[fpet_method]			= "method",
+	[fpet_expr]			= "expr",
 };
 
 struct fy_path_expr *fy_path_expr_alloc(void)
@@ -1683,17 +1686,7 @@ int fy_token_type_operator_prec(enum fy_token_type type)
 int fy_path_expr_type_prec(enum fy_path_expr_type type)
 {
 	switch (type) {
-	case fpet_none:
-	case fpet_root:
-	case fpet_this:
-	case fpet_parent:
-	case fpet_every_child:
-	case fpet_every_child_r:
-	case fpet_seq_index:
-	case fpet_map_key:
-	case fpet_seq_slice:
-	case fpet_alias:
-	case fpet_scalar:
+	default:
 		return -1;	/* terminals */
 	case fpet_filter_collection:
 	case fpet_filter_scalar:
@@ -1833,8 +1826,32 @@ expr_to_token_mark(struct fy_path_expr *expr, struct fy_input *fyi)
 		return NULL;
 
 	ms = fy_path_expr_start_mark(expr);
-	me = fy_path_expr_end_mark(expr);
 	assert(ms);
+	me = fy_path_expr_end_mark(expr);
+	assert(me);
+
+	memset(&handle, 0, sizeof(handle));
+	handle.start_mark = *ms;
+	handle.end_mark = *me;
+	handle.fyi = fyi;
+	handle.style = FYAS_PLAIN;
+	handle.chomp = FYAC_CLIP;
+
+	return fy_token_create(FYTT_INPUT_MARKER, &handle);
+}
+
+struct fy_token *
+expr_lr_to_token_mark(struct fy_path_expr *exprl, struct fy_path_expr *exprr, struct fy_input *fyi)
+{
+	const struct fy_mark *ms, *me;
+	struct fy_atom handle;
+
+	if (!exprl || !exprr || !fyi)
+		return NULL;
+
+	ms = fy_path_expr_start_mark(exprl);
+	assert(ms);
+	me = fy_path_expr_end_mark(exprr);
 	assert(me);
 
 	memset(&handle, 0, sizeof(handle));
@@ -2641,9 +2658,10 @@ err_out:
 int evaluate_new(struct fy_path_parser *fypp)
 {
 	struct fy_reader *fyr;
-	struct fy_path_expr *expr = NULL, *expr_peek;
+	struct fy_path_expr *expr = NULL, *expr_peek, *exprt;
 	struct fy_path_expr *exprl = NULL, *exprr = NULL, *chain = NULL;
 	struct fy_path_expr *parent = NULL;
+	struct fy_token *fyt;
 	enum fy_path_expr_type type;
 	int ret;
 
@@ -2758,6 +2776,7 @@ int evaluate_new(struct fy_path_parser *fypp)
 
 		break;
 
+	case fpet_filter_collection:
 	case fpet_filter_scalar:
 	case fpet_filter_sequence:
 	case fpet_filter_mapping:
@@ -2790,6 +2809,14 @@ int evaluate_new(struct fy_path_parser *fypp)
 
 	case fpet_lparen:
 
+#if 0
+		exprl = fy_expr_stack_peek(&fypp->operands);
+
+		FYR_TOKEN_ERROR_CHECK(fyr, expr->fyt, FYEM_PARSE,
+				exprl, err_out,
+				"empty expression in parentheses");
+#endif
+
 		/* we don't need the ) operator now */
 		fy_path_expr_free_recycle(fypp, expr);
 		expr = NULL;
@@ -2797,7 +2824,84 @@ int evaluate_new(struct fy_path_parser *fypp)
 		return 0;
 
 	case fpet_rparen:
-		/* should never be here */
+
+		/* rparen is right hand side of the expression now */
+		exprr = expr;
+		expr = NULL;
+
+		/* evaluate until we hit a match to the rparen */
+		while ((exprl = fy_expr_stack_peek(&fypp->operators)) != NULL) {
+
+			if (exprl->type == fpet_lparen)
+				break;
+
+			ret = evaluate_new(fypp);
+			if (ret)
+				goto err_out;
+		}
+
+		FYR_TOKEN_ERROR_CHECK(fyr, exprr->fyt, FYEM_PARSE,
+				exprl, err_out,
+				"missing matching left parentheses");
+
+		exprl = fy_expr_stack_pop(&fypp->operators);
+		assert(exprl);
+
+		exprt = fy_expr_stack_peek(&fypp->operands);
+
+		/* already is an expression, reuse */
+		if (exprt && exprt->type == fpet_expr) {
+
+			fyt = expr_lr_to_token_mark(exprl, exprr, fypp->fyi);
+			fyr_error_check(fyr, fyt, err_out,
+					"expr_lr_to_token_mark() failed\n");
+			fy_token_unref(exprt->fyt);
+			exprt->fyt = fyt;
+
+			/* we don't need the parentheses operators */
+			fy_path_expr_free_recycle(fypp, exprl);
+			exprl = NULL;
+			fy_path_expr_free_recycle(fypp, exprr);
+			exprr = NULL;
+
+			return 0;
+		}
+
+		expr = fy_path_expr_alloc_recycle(fypp);
+		fyr_error_check(fyr, expr, err_out,
+				"fy_path_expr_alloc_recycle() failed\n");
+		expr->type = fpet_expr;
+
+		expr->fyt = expr_lr_to_token_mark(exprl, exprr, fypp->fyi);
+
+		exprt = fy_expr_stack_pop(&fypp->operands);
+
+		FYR_TOKEN_ERROR_CHECK(fyr, exprr->fyt, FYEM_PARSE,
+				exprt, err_out,
+				"empty expression in parentheses");
+
+		/* we don't need the parentheses operators */
+		fy_path_expr_free_recycle(fypp, exprl);
+		exprl = NULL;
+		fy_path_expr_free_recycle(fypp, exprr);
+		exprr = NULL;
+
+		fy_path_expr_list_add_tail(&expr->children, exprt);
+
+		ret = push_operand(fypp, expr);
+		fyr_error_check(fyr, !ret, err_out,
+				"push_operand() failed\n");
+
+#ifdef DEBUG_EXPR
+		FYR_TOKEN_DIAG(fyr, expr->fyt,
+			FYDF_NOTICE, FYEM_PARSE, "pushed operand");
+#endif
+
+		return 0;
+
+		/* shoud never */
+	case fpet_method:
+	case fpet_expr:
 		assert(0);
 		abort();
 
@@ -2952,9 +3056,8 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 	struct fy_reader *fyr;
 	struct fy_token *fyt = NULL;
 	enum fy_token_type fytt;
-	struct fy_path_expr *expr, *expr_top;
+	struct fy_path_expr *expr, *expr_top, *exprt;
 	// enum fy_path_parser_scan_mode old_scan_mode;
-	// bool was_lparen;
 	int ret;
 
 	/* the parser must be in the correct state */
@@ -3118,21 +3221,47 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 		}
 
 #endif
+		/* specials for SLASH */
+
+		if (expr->fyt->type == FYTT_PE_SLASH) {
+
+			/* try to get next token */
+			fyt = fy_path_scan_peek(fypp, NULL);
+			if (!fyt) {
+				(void)fy_path_fetch_tokens(fypp);
+				fyt = fy_path_scan_peek(fypp, NULL);
+			}
+
+			/* last token, it means it's a collection filter (or a root) */
+			if (!fyt || fyt->type == FYTT_STREAM_END || fyt->type == FYTT_PE_RPAREN) {
+			
+				exprt = fy_expr_stack_peek(&fypp->operands);
+
+				/* if no argument exists it's a root */
+				if (!exprt) {
+					expr->type = fpet_root;
+
+					ret = fy_expr_stack_push(&fypp->operands, expr);
+					fyr_error_check(fyr, !ret, err_out, "push_operand() failed\n");
+					expr = NULL;
+					continue;
+				}
+
+				expr->type = fpet_filter_collection;
+			}
+		}
+
 		fy_notice(fypp->cfg.diag, "operator stack (before)\n");
 		fy_expr_stack_dump(fypp->cfg.diag, &fypp->operators);
 		fy_notice(fypp->cfg.diag, "operand stack (before)\n");
 		fy_expr_stack_dump(fypp->cfg.diag, &fypp->operands);
 
-		ret = -1;
-		while ((expr_top = fy_expr_stack_peek(&fypp->operators)) != NULL &&
-#if 0
-			fy_path_expr_type_prec(expr->type) <= fy_path_expr_type_prec(expr_top->type)
-#else
-			fy_path_expr_type_prec(expr->type) >= fy_path_expr_type_prec(expr_top->type)
-#endif
-		      ) {
+		/* for rparen, need to push before */
+		if (expr->type == fpet_rparen) {
 
-			fy_notice(fypp->cfg.diag, "> eval (prec)\n");
+			ret = fy_expr_stack_push(&fypp->operators, expr);
+			fyr_error_check(fyr, !ret, err_out, "push_operator() failed\n");
+			expr = NULL;
 
 			ret = evaluate_new(fypp);
 			/* evaluate will print diagnostic on error */
@@ -3140,30 +3269,50 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 				fy_notice(fypp->cfg.diag, "> evaluate (prec) error\n");
 				goto err_out;
 			}
-		}
 
-		if (expr->type != fpet_rparen) {
+		} else if (expr->type == fpet_lparen) {
 
-			if (expr->type == fpet_lparen)
-				fypp->paren_nest_level++;
-
+			/* push the operator */
 			ret = fy_expr_stack_push(&fypp->operators, expr);
 			fyr_error_check(fyr, !ret, err_out, "push_operator() failed\n");
 			expr = NULL;
 
-			fy_notice(fypp->cfg.diag, "> pushed as operator\n");
 		} else {
 
-			FYR_TOKEN_ERROR_CHECK(fyr, expr->fyt, FYEM_PARSE,
-					fypp->paren_nest_level > 0, err_out,
-					"Mismatched right parenthesis");
-			fypp->paren_nest_level--;
+			ret = -1;
+			while ((expr_top = fy_expr_stack_peek(&fypp->operators)) != NULL &&
+				fy_path_expr_type_prec(expr->type) >= fy_path_expr_type_prec(expr_top->type)) {
 
-			fy_path_expr_free_recycle(fypp, expr);
+				fy_notice(fypp->cfg.diag, "> eval (prec)\n");
+
+				ret = evaluate_new(fypp);
+				/* evaluate will print diagnostic on error */
+				if (ret < 0) {
+					fy_notice(fypp->cfg.diag, "> evaluate (prec) error\n");
+					goto err_out;
+				}
+			}
+
+			/* push the operator */
+			ret = fy_expr_stack_push(&fypp->operators, expr);
+			fyr_error_check(fyr, !ret, err_out, "push_operator() failed\n");
 			expr = NULL;
-
-			fy_notice(fypp->cfg.diag, "> () evaled\n");
 		}
+
+#if 0
+		/* rparen forces an eval immediately */
+
+		if (was_rparen) {
+			fy_notice(fypp->cfg.diag, "> eval (rparen)\n");
+
+			ret = evaluate_new(fypp);
+			/* evaluate will print diagnostic on error */
+			if (ret < 0) {
+				fy_notice(fypp->cfg.diag, "> evaluate (rparen) error\n");
+				goto err_out;
+			}
+		}
+#endif
 
 		fy_notice(fypp->cfg.diag, "operator stack (after)\n");
 		fy_expr_stack_dump(fypp->cfg.diag, &fypp->operators);
@@ -3185,9 +3334,11 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 	fy_token_unref(fy_path_scan_remove(fypp, fyt));
 	fyt = NULL;
 
+#if 0
 	FYR_PARSE_ERROR_CHECK(fyr, 0, 1, FYEM_PARSE,
 			fypp->paren_nest_level == 0, err_out,
 			"Missing right parenthesis");
+#endif
 
 	/* drain */
 	while ((expr_top = fy_expr_stack_peek(&fypp->operators)) != NULL) {
@@ -4306,6 +4457,9 @@ fy_path_expr_execute(struct fy_diag *diag, int level, struct fy_path_expr *expr,
 		input = NULL;
 
 		break;
+
+	case fpet_expr:
+		return fy_path_expr_execute(diag, level + 1, fy_path_expr_list_head(&expr->children), input);
 
 	default:
 		fy_error(diag, "%s\n", fy_path_expr_type_txt[expr->type]);
