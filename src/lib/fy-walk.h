@@ -96,9 +96,12 @@ enum fy_path_expr_type {
 	fpet_minus,		/* subtract */
 	fpet_mult,		/* multiply */
 	fpet_div,		/* divide */
+
+	fpet_lparen,		/* left paren (they do not appear in final expression) */
+	fpet_rparen,		/* right parent */
 };
 
-#define FPET_COUNT (fpet_div + 1)
+#define FPET_COUNT (fpet_rparen + 1)
 
 extern const char *path_expr_type_txt[FPET_COUNT];
 
@@ -128,6 +131,14 @@ static inline bool fy_path_expr_type_is_parent(enum fy_path_expr_type type)
 	       type == fpet_logical_or ||
 	       type == fpet_logical_and ||
 	       type == fpet_eq;
+}
+
+static inline bool fy_path_expr_type_is_mergeable(enum fy_path_expr_type type)
+{
+	return type == fpet_multi ||
+	       type == fpet_chain ||
+	       type == fpet_logical_or ||
+	       type == fpet_logical_and;
 }
 
 /* type handles refs by itself */
@@ -210,14 +221,20 @@ enum fy_path_parser_scan_mode {
 
 extern const char *path_parser_scan_mode_txt[FYPPSM_COUNT];
 
-struct fy_path_op_extra {
-	enum fy_path_parser_scan_mode scan_mode;
+struct fy_expr_stack {
+	unsigned int top;
+	unsigned int alloc;
+	struct fy_path_expr **items;
+	struct fy_path_expr *items_static[32];
 };
 
-struct fy_path_op {
-	struct fy_token *fyt;
-	struct fy_path_op_extra xtra;
-};
+void fy_expr_stack_setup(struct fy_expr_stack *stack);
+void fy_expr_stack_cleanup(struct fy_expr_stack *stack);
+void fy_expr_stack_dump(struct fy_diag *diag, struct fy_expr_stack *stack);
+int fy_expr_stack_push(struct fy_expr_stack *stack, struct fy_path_expr *expr);
+struct fy_path_expr *fy_expr_stack_peek_at(struct fy_expr_stack *stack, unsigned int pos);
+struct fy_path_expr *fy_expr_stack_peek(struct fy_expr_stack *stack);
+struct fy_path_expr *fy_expr_stack_pop(struct fy_expr_stack *stack);
 
 struct fy_path_parser {
 	struct fy_path_parse_cfg cfg;
@@ -229,24 +246,16 @@ struct fy_path_parser {
 	bool stream_error;
 	int token_activity_counter;
 
-	/* operator stack */
-	unsigned int operator_top;
-	unsigned int operator_alloc;
-	struct fy_path_op *operators;
-	struct fy_path_op operators_static[16];
-
-	/* operand stack */
-	unsigned int operand_top;
-	unsigned int operand_alloc;
-	struct fy_path_expr **operands;
-	struct fy_path_expr *operands_static[16];
+	struct fy_input *fyi;
+	struct fy_expr_stack operators;
+	struct fy_expr_stack operands;
 
 	/* to avoid allocating */
 	struct fy_path_expr_list expr_recycle;
 	bool suppress_recycling;
 
 	enum fy_path_parser_scan_mode scan_mode;
-	int scalar_expr_nest_level;
+	int paren_nest_level;
 
 };
 
