@@ -100,10 +100,10 @@ enum fy_path_expr_type {
 	fpet_lparen,		/* left paren (they do not appear in final expression) */
 	fpet_rparen,		/* right parent */
 	fpet_method,		/* method (or parentheses) */
-	fpet_expr,		/* non-eval phase expression () */
+	fpet_scalar_expr,	/* non-eval phase expression () */
 };
 
-#define FPET_COUNT (fpet_expr + 1)
+#define FPET_COUNT (fpet_scalar_expr + 1)
 
 extern const char *path_expr_type_txt[FPET_COUNT];
 
@@ -134,7 +134,7 @@ static inline bool fy_path_expr_type_is_parent(enum fy_path_expr_type type)
 	       type == fpet_logical_and ||
 	       type == fpet_eq ||
 	       type == fpet_method ||
-	       type == fpet_expr;
+	       type == fpet_scalar_expr;
 }
 
 static inline bool fy_path_expr_type_is_mergeable(enum fy_path_expr_type type)
@@ -186,6 +186,23 @@ fy_path_expr_type_is_arithmetic(enum fy_path_expr_type type)
 	       type == fpet_div;
 }
 
+static inline bool
+fy_path_expr_type_is_path_parent(enum fy_path_expr_type type)
+{
+	return type == fpet_chain ||
+	       type == fpet_multi;
+}
+
+enum fy_path_parser_scan_mode {
+	fyppsm_none,		/* invalid mode */
+	fyppsm_path_expr,	/* scanner in node reference mode */
+	fyppsm_scalar_expr,	/* scanner in rhs expression mode */
+};
+
+#define FYPPSM_COUNT (fyppsm_scalar_expr + 1)
+
+extern const char *path_parser_scan_mode_txt[FYPPSM_COUNT];
+
 FY_TYPE_FWD_DECL_LIST(path_expr);
 struct fy_path_expr {
 	struct list_head node;
@@ -193,6 +210,7 @@ struct fy_path_expr {
 	enum fy_path_expr_type type;
 	struct fy_token *fyt;
 	struct fy_path_expr_list children;
+	enum fy_path_parser_scan_mode scan_mode;	/* for parens */
 };
 FY_TYPE_DECL_LIST(path_expr);
 
@@ -214,16 +232,6 @@ fy_path_expr_rhs(struct fy_path_expr *expr)
 
 const struct fy_mark *fy_path_expr_start_mark(struct fy_path_expr *expr);
 const struct fy_mark *fy_path_expr_end_mark(struct fy_path_expr *expr);
-
-enum fy_path_parser_scan_mode {
-	fyppsm_none,		/* invalid mode */
-	fyppsm_path_expr,	/* scanner in node reference mode */
-	fyppsm_scalar_expr,	/* scanner in rhs expression mode */
-};
-
-#define FYPPSM_COUNT (fyppsm_scalar_expr + 1)
-
-extern const char *path_parser_scan_mode_txt[FYPPSM_COUNT];
 
 struct fy_expr_stack {
 	unsigned int top;
@@ -280,7 +288,8 @@ struct fy_path_expr *fy_path_parse_expression(struct fy_path_parser *fypp);
 void fy_path_expr_dump(struct fy_path_expr *expr, struct fy_diag *diag, enum fy_error_type errlevel, int level, const char *banner);
 
 struct fy_walk_result *
-fy_path_expr_execute(struct fy_diag *diag, int level, struct fy_path_expr *expr, struct fy_walk_result *input);
+fy_path_expr_execute(struct fy_diag *diag, int level, struct fy_path_expr *expr,
+		     struct fy_walk_result *input, enum fy_path_expr_type ptype);
 
 struct fy_path_exec {
 	struct fy_path_exec_cfg cfg;
