@@ -16,6 +16,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <assert.h>
 
 #include <libfyaml.h>
 
@@ -60,6 +61,34 @@ struct fy_walk_result *fy_walk_result_alloc(void);
 void fy_walk_result_free(struct fy_walk_result *fwr);
 void fy_walk_result_list_free(struct fy_walk_result_list *results);
 
+static inline struct fy_walk_result *
+fy_walk_result_iter_start(struct fy_walk_result *fwr)
+{
+	struct fy_walk_result *fwri;
+
+	if (!fwr)
+		return NULL;
+	if (fwr->type != fwrt_refs)
+		return fwr;
+	fwri = fy_walk_result_list_head(&fwr->refs);
+	if (!fwri)
+		return NULL;
+	assert(fwri->type != fwrt_refs);
+	return fwri;
+}
+
+static inline struct fy_walk_result *
+fy_walk_result_iter_next(struct fy_walk_result *fwr, struct fy_walk_result *fwri)
+{
+	if (!fwr || !fwri || fwr->type != fwrt_refs)
+		return NULL;
+	fwri = fy_walk_result_next(&fwr->refs, fwri);
+	if (!fwri)
+		return NULL;
+	assert(fwri->type != fwrt_refs);
+	return fwri;
+}
+
 enum fy_path_expr_type {
 	fpet_none,
 	/* ypath */
@@ -100,10 +129,12 @@ enum fy_path_expr_type {
 	fpet_lparen,		/* left paren (they do not appear in final expression) */
 	fpet_rparen,		/* right parent */
 	fpet_method,		/* method (or parentheses) */
-	fpet_scalar_expr,	/* non-eval phase expression () */
+
+	fpet_scalar_expr,	/* non-eval phase scalar expression  */
+	fpet_path_expr,		/* non-eval phase path expression */
 };
 
-#define FPET_COUNT (fpet_scalar_expr + 1)
+#define FPET_COUNT (fpet_path_expr + 1)
 
 extern const char *path_expr_type_txt[FPET_COUNT];
 
@@ -134,7 +165,8 @@ static inline bool fy_path_expr_type_is_parent(enum fy_path_expr_type type)
 	       type == fpet_logical_and ||
 	       type == fpet_eq ||
 	       type == fpet_method ||
-	       type == fpet_scalar_expr;
+	       type == fpet_scalar_expr ||
+	       type == fpet_path_expr;
 }
 
 static inline bool fy_path_expr_type_is_mergeable(enum fy_path_expr_type type)
@@ -193,15 +225,15 @@ fy_path_expr_type_is_path_parent(enum fy_path_expr_type type)
 	       type == fpet_multi;
 }
 
-enum fy_path_parser_scan_mode {
-	fyppsm_none,		/* invalid mode */
-	fyppsm_path_expr,	/* scanner in node reference mode */
-	fyppsm_scalar_expr,	/* scanner in rhs expression mode */
+enum fy_expr_mode {
+	fyem_none,	/* invalid mode */
+	fyem_path,	/* expression is path */
+	fyem_scalar,	/* expression is scalar */
 };
 
-#define FYPPSM_COUNT (fyppsm_scalar_expr + 1)
+#define FYEM_COUNT (fyem_scalar + 1)
 
-extern const char *path_parser_scan_mode_txt[FYPPSM_COUNT];
+extern const char *fy_expr_mode_txt[FYEM_COUNT];
 
 FY_TYPE_FWD_DECL_LIST(path_expr);
 struct fy_path_expr {
@@ -210,7 +242,7 @@ struct fy_path_expr {
 	enum fy_path_expr_type type;
 	struct fy_token *fyt;
 	struct fy_path_expr_list children;
-	enum fy_path_parser_scan_mode scan_mode;	/* for parens */
+	enum fy_expr_mode expr_mode;	/* for parens */
 };
 FY_TYPE_DECL_LIST(path_expr);
 
@@ -266,7 +298,7 @@ struct fy_path_parser {
 	struct fy_path_expr_list expr_recycle;
 	bool suppress_recycling;
 
-	enum fy_path_parser_scan_mode scan_mode;
+	enum fy_expr_mode expr_mode;
 	int paren_nest_level;
 
 };
