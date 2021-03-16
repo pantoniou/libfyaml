@@ -5187,10 +5187,13 @@ enum fy_token_type {
 	FYTT_SE_MINUS,
 	FYTT_SE_MULT,
 	FYTT_SE_DIV,
+
+	FYTT_PE_METHOD,		/* path expr method (chained) */
+	FYTT_SE_METHOD,		/* scalar expr method (non chained) */
 };
 
 /* The number of token types available */
-#define FYTT_COUNT	(FYTT_SE_DIV+1)
+#define FYTT_COUNT	(FYTT_SE_METHOD+1)
 
 /**
  * fy_token_type_is_valid() - Check token type validity

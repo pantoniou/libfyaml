@@ -132,9 +132,12 @@ enum fy_path_expr_type {
 
 	fpet_scalar_expr,	/* non-eval phase scalar expression  */
 	fpet_path_expr,		/* non-eval phase path expression */
+
+	fpet_path_method,	/* path method */
+	fpet_scalar_method,	/* scalar method */
 };
 
-#define FPET_COUNT (fpet_path_expr + 1)
+#define FPET_COUNT (fpet_scalar_method + 1)
 
 extern const char *path_expr_type_txt[FPET_COUNT];
 
@@ -166,7 +169,9 @@ static inline bool fy_path_expr_type_is_parent(enum fy_path_expr_type type)
 	       type == fpet_eq ||
 	       type == fpet_method ||
 	       type == fpet_scalar_expr ||
-	       type == fpet_path_expr;
+	       type == fpet_path_expr ||
+	       type == fpet_scalar_method ||
+	       type == fpet_path_method;
 }
 
 static inline bool fy_path_expr_type_is_mergeable(enum fy_path_expr_type type)
@@ -180,7 +185,9 @@ static inline bool fy_path_expr_type_is_mergeable(enum fy_path_expr_type type)
 /* type handles refs by itself */
 static inline bool fy_path_expr_type_handles_refs(enum fy_path_expr_type type)
 {
-	return type == fpet_filter_unique;
+	return type == fpet_filter_unique ||
+	       type == fpet_scalar_method ||
+	       type == fpet_path_method;
 }
 
 static inline bool fy_path_expr_type_is_parent_lhs_rhs(enum fy_path_expr_type type)
@@ -219,10 +226,11 @@ fy_path_expr_type_is_arithmetic(enum fy_path_expr_type type)
 }
 
 static inline bool
-fy_path_expr_type_is_path_parent(enum fy_path_expr_type type)
+fy_path_expr_type_is_lparen(enum fy_path_expr_type type)
 {
-	return type == fpet_chain ||
-	       type == fpet_multi;
+	return type == fpet_lparen ||
+	       type == fpet_path_method ||
+	       type == fpet_scalar_method;
 }
 
 enum fy_expr_mode {
@@ -235,6 +243,18 @@ enum fy_expr_mode {
 
 extern const char *fy_expr_mode_txt[FYEM_COUNT];
 
+struct fy_path_expr;
+
+struct fy_method {
+	const char *name;
+	enum fy_expr_mode mode;
+	unsigned int nargs;
+	struct fy_walk_result *(*exec)(struct fy_diag *diag, int level,
+			struct fy_path_expr *expr,
+			struct fy_walk_result *input,
+			struct fy_walk_result **args, int nargs);
+};
+
 FY_TYPE_FWD_DECL_LIST(path_expr);
 struct fy_path_expr {
 	struct list_head node;
@@ -243,6 +263,7 @@ struct fy_path_expr {
 	struct fy_token *fyt;
 	struct fy_path_expr_list children;
 	enum fy_expr_mode expr_mode;	/* for parens */
+	const struct fy_method *fym;
 };
 FY_TYPE_DECL_LIST(path_expr);
 
