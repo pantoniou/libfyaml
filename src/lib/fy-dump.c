@@ -86,6 +86,9 @@ const char *fy_token_type_txt[FYTT_COUNT] = {
 	[FYTT_SE_MINUS]			= "SE_MINUS",
 	[FYTT_SE_MULT]			= "SE_MULT",
 	[FYTT_SE_DIV]			= "SE_DIV",
+
+	[FYTT_PE_METHOD]		= "PE_METHOD",
+	[FYTT_SE_METHOD]		= "SE_METHOD",
 };
 
 char *fy_token_dump_format(struct fy_token *fyt, char *buf, size_t bufsz)

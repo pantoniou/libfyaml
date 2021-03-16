@@ -31,8 +31,8 @@
 #define ARRAY_SIZE(x) ((sizeof(x)/sizeof((x)[0])))
 #endif
 
-#undef DEBUG_EXPR
-//#define DEBUG_EXPR
+// #undef DEBUG_EXPR
+#define DEBUG_EXPR
 
 const char *fy_walk_result_type_txt[FWRT_COUNT] = {
 	[fwrt_node_ref]	= "node-ref",
@@ -381,6 +381,9 @@ const char *fy_path_expr_type_txt[FPET_COUNT] = {
 
 	[fpet_scalar_expr]		= "scalar-expression",
 	[fpet_path_expr]		= "path-expression",
+
+	[fpet_path_method]		= "path-method",
+	[fpet_scalar_method]		= "scalar-method",
 };
 
 struct fy_path_expr *fy_path_expr_alloc(void)
@@ -569,6 +572,25 @@ bool fy_token_type_can_be_path_expr(enum fy_token_type type)
 	       type == FYTT_PE_LT ||
 	       type == FYTT_PE_GTE ||
 	       type == FYTT_PE_LTE;
+}
+
+bool fy_token_type_can_be_before_negative_number(enum fy_token_type type)
+{
+	return type == FYTT_NONE ||
+	       type == FYTT_PE_LPAREN ||
+	       type == FYTT_PE_RPAREN ||
+	       type == FYTT_PE_EQEQ ||
+	       type == FYTT_PE_NOTEQ ||
+	       type == FYTT_PE_GT ||
+	       type == FYTT_PE_LT ||
+	       type == FYTT_PE_GTE ||
+	       type == FYTT_PE_LTE ||
+	       type == FYTT_SE_PLUS ||
+	       type == FYTT_SE_MINUS ||
+	       type == FYTT_SE_MULT ||
+	       type == FYTT_SE_DIV ||
+
+	       type == FYTT_SE_METHOD;
 }
 
 const char *fy_expr_mode_txt[FYEM_COUNT] = {
@@ -784,9 +806,44 @@ int fy_path_fetch_simple_map_key(struct fy_path_parser *fypp, int c)
 	return fy_path_fetch_simple_alnum(fypp, c, FYTT_PE_MAP_KEY);
 }
 
-int fy_path_fetch_plain_scalar(struct fy_path_parser *fypp, int c)
+int fy_path_fetch_plain_scalar_or_method(struct fy_path_parser *fypp, int c)
 {
-	return fy_path_fetch_simple_alnum(fypp, c, FYTT_SCALAR);
+	struct fy_reader *fyr;
+	struct fy_token *fyt;
+	struct fy_atom *handlep;
+	int i;
+	enum fy_token_type type;
+
+	fyr = &fypp->reader;
+
+	assert(fy_is_first_alpha(c));
+
+	type = FYTT_SCALAR;
+
+	i = 1;
+	while (fy_is_alnum(fy_reader_peek_at(fyr, i)))
+		i++;
+
+	if (fy_reader_peek_at(fyr, i) == '(') {
+		i++;
+		type = FYTT_SE_METHOD;
+	}
+
+	handlep = fy_reader_fill_atom_a(fyr, i);
+	if (type == FYTT_SCALAR) {
+		fyt = fy_path_token_queue(fypp, FYTT_SCALAR, handlep, FYSS_PLAIN, NULL);
+		fyr_error_check(fyr, fyt, err_out, "fy_path_token_queue() failed\n");
+		fyt->scalar.number_hint = false;
+	} else {
+		fyt = fy_path_token_queue(fypp, type, handlep, NULL);
+		fyr_error_check(fyr, fyt, err_out, "fy_path_token_queue() failed\n");
+	}
+
+	return 0;
+
+err_out:
+	fypp->stream_error = true;
+	return -1;
 }
 
 int fy_path_fetch_dot_method(struct fy_path_parser *fypp, int c)
@@ -1218,11 +1275,12 @@ again:
 
 		case '-':
 			cn = fy_reader_peek_at(fyr, 1);
-			if (!fy_is_num(cn)) {
-				type = FYTT_SE_PLUS;
-				simple_token_count = 1;
+			if (fy_is_num(cn) &&
+			    fy_token_type_can_be_before_negative_number(fypp->last_queued_token_type))
 				break;
-			}
+
+			type = FYTT_SE_MINUS;
+			simple_token_count = 1;
 			break;
 
 		case '*':
@@ -1273,7 +1331,7 @@ do_token:
 	case fyem_scalar:
 
 		if (fy_is_first_alpha(c))
-			return fy_path_fetch_plain_scalar(fypp, c);
+			return fy_path_fetch_plain_scalar_or_method(fypp, c);
 
 		if (fy_is_path_flow_scalar_start(c))
 			return fy_path_fetch_flow_scalar(fypp, c);
@@ -1594,6 +1652,12 @@ enum fy_path_expr_type fy_map_token_to_path_expr_type(enum fy_token_type type)
 	case FYTT_PE_RPAREN:
 		return fpet_rparen;
 
+	case FYTT_SE_METHOD:
+		return fpet_scalar_method;
+
+	case FYTT_PE_METHOD:
+		return fpet_path_method;
+
 	default:
 		/* note parentheses do not have an expression */
 		assert(0);
@@ -1684,6 +1748,8 @@ int fy_path_expr_type_prec(enum fy_path_expr_type type)
 		return 10;
 	case fpet_lparen:
 	case fpet_rparen:
+	case fpet_path_method:
+	case fpet_scalar_method:
 		return 1000;
 	}
 	return -1;
@@ -1941,6 +2007,122 @@ err_out:
 	return -1;
 }
 
+static struct fy_walk_result *
+test_exec(struct fy_diag *diag, int level,
+          struct fy_path_expr *expr,
+	  struct fy_walk_result *input,
+	  struct fy_walk_result **args, int nargs)
+{
+	int i;
+	struct fy_walk_result *output = NULL;
+
+	if (!args || nargs != 1)
+		goto out;
+
+	/* require a single number argument */
+	if (!args[0] || args[0]->type != fwrt_number)
+		goto out;
+
+	/* reuse argument */
+	output = args[0];
+	args[0] = NULL;
+
+	/* add 1 to the number */
+	output->number += 1;
+
+out:
+	fy_walk_result_free(input);
+	if (args) {
+		for (i = 0; i < nargs; i++)
+			fy_walk_result_free(args[i]);
+	}
+	return output;
+}
+
+static const struct fy_method fy_methods[] = {
+	{
+		.name	= "test",
+		.mode	= fyem_scalar,
+		.nargs	= 1,
+		.exec	= test_exec,
+	}
+};
+
+int evaluate_method(struct fy_path_parser *fypp,
+		    struct fy_path_expr *exprl, struct fy_path_expr *exprr)
+{
+	struct fy_reader *fyr;
+	struct fy_path_expr *expr = NULL, *exprt;
+	const char *text;
+	size_t len;
+	char *method;
+	const struct fy_method *fym;
+	unsigned int i;
+	int ret;
+
+	fyr = &fypp->reader;
+
+	FYR_TOKEN_DIAG(fyr, exprl->fyt,
+		FYDF_NOTICE, FYEM_PARSE, "evaluating method");
+
+	text = fy_token_get_text(exprl->fyt, &len);
+	fyr_error_check(fyr, text, err_out,
+			"fy_token_get_text() failed\n");
+	if (len > 1 && text[len-1] == '(')
+		len--;
+	method = alloca(len + 1);
+	memcpy(method, text, len);
+	method[len] = '\0';
+
+	for (i = 0, fym = fy_methods; i < ARRAY_SIZE(fy_methods); i++, fym++) {
+		if (!strcmp(method, fym->name))
+			break;
+	}
+
+	FYR_TOKEN_ERROR_CHECK(fyr, exprl->fyt, FYEM_PARSE,
+			i < ARRAY_SIZE(fy_methods), err_out,
+			"invalid method %s\n", method);
+
+	expr = fy_path_expr_alloc_recycle(fypp);
+	fyr_error_check(fyr, expr, err_out,
+			"fy_path_expr_alloc_recycle() failed\n");
+	expr->type = fypp->expr_mode == fyem_scalar ? fpet_scalar_method : fpet_path_method;
+	expr->expr_mode = fypp->expr_mode;
+
+	expr->fyt = expr_lr_to_token_mark(exprl, exprr, fypp->fyi);
+	fyr_error_check(fyr, expr->fyt, err_out,
+			"expr_lr_to_token_mark() failed\n");
+	expr->fym = fym;
+
+	for (i = 0; i < fym->nargs; i++) {
+		exprt = fy_expr_stack_pop(&fypp->operands);
+		FYR_TOKEN_ERROR_CHECK(fyr, expr->fyt, FYEM_PARSE,
+				exprt, err_out,
+				"out of arguments for method %s", method);
+
+		/* add in reverse order */
+		fy_path_expr_list_add(&expr->children, exprt);
+	}
+
+	fy_path_expr_free_recycle(fypp, exprl);
+	fy_path_expr_free_recycle(fypp, exprr);
+
+	/* and push as an operand */
+	ret = push_operand(fypp, expr);
+	fyr_error_check(fyr, !ret, err_out,
+			"push_operand() failed\n");
+
+	return 0;
+
+err_out:
+	/* we don't need the parentheses operators */
+	fy_path_expr_free_recycle(fypp, expr);
+	fy_path_expr_free_recycle(fypp, exprl);
+	fy_path_expr_free_recycle(fypp, exprr);
+
+	return -1;
+}
+
 int evaluate_new(struct fy_path_parser *fypp)
 {
 	struct fy_reader *fyr;
@@ -2126,7 +2308,7 @@ int evaluate_new(struct fy_path_parser *fypp)
 		/* evaluate until we hit a match to the rparen */
 		while ((exprl = fy_expr_stack_peek(&fypp->operators)) != NULL) {
 
-			if (exprl->type == fpet_lparen)
+			if (fy_path_expr_type_is_lparen(exprl->type))
 				break;
 
 			ret = evaluate_new(fypp);
@@ -2163,6 +2345,10 @@ int evaluate_new(struct fy_path_parser *fypp)
 
 			return 0;
 		}
+
+		/* if it's method, evaluate */
+		if (exprl->type != fpet_lparen)
+			return evaluate_method(fypp, exprl, exprr);
 
 		expr = fy_path_expr_alloc_recycle(fypp);
 		fyr_error_check(fyr, expr, err_out,
@@ -2201,7 +2387,6 @@ int evaluate_new(struct fy_path_parser *fypp)
 		FYR_TOKEN_DIAG(fyr, expr->fyt,
 			FYDF_NOTICE, FYEM_PARSE, "pushed operand");
 #endif
-
 		return 0;
 
 		/* shoud never */
@@ -2364,7 +2549,7 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 			if (ret < 0)
 				goto err_out;
 
-		} else if (expr->type == fpet_lparen) {
+		} else if (fy_path_expr_type_is_lparen(expr->type)) {
 
 			expr->expr_mode = fypp->expr_mode;
 			fypp->expr_mode = fyem_scalar;
@@ -2428,7 +2613,7 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 			ret = -1;
 			while ((expr_top = fy_expr_stack_peek(&fypp->operators)) != NULL &&
 				fy_path_expr_type_prec(expr->type) <= fy_path_expr_type_prec(expr_top->type) &&
-				expr_top->type != fpet_lparen) {
+				!fy_path_expr_type_is_lparen(expr_top->type)) {
 
 				ret = evaluate_new(fypp);
 				/* evaluate will print diagnostic on error */
@@ -2470,9 +2655,7 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 
 	/* drain */
 	while ((expr_top = fy_expr_stack_peek(&fypp->operators)) != NULL &&
-		expr_top->type != fpet_lparen) {
-
-		// was_lparen = expr_top->type == fpet_lparen;
+		!fy_path_expr_type_is_lparen(expr_top->type)) {
 
 		ret = evaluate_new(fypp);
 		/* evaluate will print diagnostic on error */
@@ -3356,6 +3539,8 @@ fy_path_expr_execute(struct fy_diag *diag, int level, struct fy_path_expr *expr,
 	int rc, start, end, count, i;
 	bool match;
 	struct fy_path_expr *exprt;
+	unsigned int nargs;
+	struct fy_walk_result **fwr_args;
 
 	/* error */
 	if (!expr)
@@ -3758,6 +3943,37 @@ fy_path_expr_execute(struct fy_diag *diag, int level, struct fy_path_expr *expr,
 
 		output = fy_path_expr_execute(diag, level + 1, exprl, input, ptype);
 		input = NULL;
+		break;
+
+	case fpet_scalar_method:
+
+		assert(expr->fym);
+
+		/* execute the arguments */
+		nargs = expr->fym->nargs;
+		if (nargs > 0) {
+			fwr_args = alloca(sizeof(*fwr_args) * nargs);
+			memset(fwr_args, 0, sizeof(*fwr_args) * nargs);
+			for (i = 0, exprt = fy_path_expr_list_head(&expr->children); exprt;
+					exprt = fy_path_expr_next(&expr->children, exprt), i++) {
+
+				if (input) {
+					input1 = fy_walk_result_clone(input);
+					assert(input1);
+				} else
+					input1 = NULL;
+
+				fwr_args[i] = fy_path_expr_execute(diag, level + 1, exprt, input1, expr->type);
+			}
+		} else
+			fwr_args = NULL;
+
+		output = expr->fym->exec(diag, level + 1, expr, input, fwr_args, nargs);
+		input = NULL;
+
+		break;
+
+	case fpet_path_method:
 		break;
 
 	default:
