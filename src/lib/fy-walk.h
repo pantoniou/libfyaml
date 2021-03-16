@@ -132,12 +132,10 @@ enum fy_path_expr_type {
 
 	fpet_scalar_expr,	/* non-eval phase scalar expression  */
 	fpet_path_expr,		/* non-eval phase path expression */
-
-	fpet_path_method,	/* path method */
-	fpet_scalar_method,	/* scalar method */
+	fpet_arg_separator,	/* argument separator (comma in scalar mode) */
 };
 
-#define FPET_COUNT (fpet_scalar_method + 1)
+#define FPET_COUNT (fpet_arg_separator + 1)
 
 extern const char *path_expr_type_txt[FPET_COUNT];
 
@@ -169,9 +167,7 @@ static inline bool fy_path_expr_type_is_parent(enum fy_path_expr_type type)
 	       type == fpet_eq ||
 	       type == fpet_method ||
 	       type == fpet_scalar_expr ||
-	       type == fpet_path_expr ||
-	       type == fpet_scalar_method ||
-	       type == fpet_path_method;
+	       type == fpet_path_expr;
 }
 
 static inline bool fy_path_expr_type_is_mergeable(enum fy_path_expr_type type)
@@ -186,8 +182,7 @@ static inline bool fy_path_expr_type_is_mergeable(enum fy_path_expr_type type)
 static inline bool fy_path_expr_type_handles_refs(enum fy_path_expr_type type)
 {
 	return type == fpet_filter_unique ||
-	       type == fpet_scalar_method ||
-	       type == fpet_path_method;
+	       type == fpet_method;
 }
 
 static inline bool fy_path_expr_type_is_parent_lhs_rhs(enum fy_path_expr_type type)
@@ -229,8 +224,7 @@ static inline bool
 fy_path_expr_type_is_lparen(enum fy_path_expr_type type)
 {
 	return type == fpet_lparen ||
-	       type == fpet_path_method ||
-	       type == fpet_scalar_method;
+	       type == fpet_method;
 }
 
 enum fy_expr_mode {
