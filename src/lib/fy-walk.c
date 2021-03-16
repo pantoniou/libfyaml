@@ -2932,9 +2932,15 @@ fy_walk_result_compare_simple(struct fy_diag *diag, enum fy_path_expr_type type,
 		case fwrt_node_ref:
 			switch (type) {
 			case fpet_eq:
-				return fwrl->fyn == fwrr->fyn;
+				/* simple and fast direct node comparison */
+				if (fwrl->fyn == fwrr->fyn)
+					return true;
+				return fy_node_compare(fwrl->fyn, fwrr->fyn);
 			case fpet_neq:
-				return fwrl->fyn != fwrr->fyn;
+				/* simple and fast direct node comparison */
+				if (fwrl->fyn != fwrr->fyn)
+					return true;
+				return !fy_node_compare(fwrl->fyn, fwrr->fyn);
 			default:
 				break;
 			}
