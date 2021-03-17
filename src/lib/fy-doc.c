@@ -3558,6 +3558,33 @@ struct fy_node_pair *fy_node_mapping_reverse_iterate(struct fy_node *fyn, void *
 	return *prevp = *prevp ? fy_node_pair_prev(&fyn->mapping, *prevp) : fy_node_pair_list_tail(&fyn->mapping);
 }
 
+struct fy_node *fy_node_collection_iterate(struct fy_node *fyn, void **prevp)
+{
+	struct fy_node_pair *fynp;
+
+	if (!fyn || !prevp)
+		return NULL;
+
+	switch (fyn->type) {
+	case FYNT_SEQUENCE:
+		return fy_node_sequence_iterate(fyn, prevp);
+
+	case FYNT_MAPPING:
+		fynp = fy_node_mapping_iterate(fyn, prevp);
+		if (!fynp)
+			return NULL;
+		return fynp->value;
+
+	case FYNT_SCALAR:
+		fyn = !*prevp ? fyn : NULL;
+		*prevp = fyn;
+		return fyn;
+	}
+
+	return NULL;
+}
+
+
 int fy_node_mapping_item_count(struct fy_node *fyn)
 {
 	struct fy_node_pair *fynpi;
