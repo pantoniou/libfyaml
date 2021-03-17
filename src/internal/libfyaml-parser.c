@@ -483,6 +483,8 @@ int do_testsuite(struct fy_parser *fyp)
 static void dump_token(struct fy_token *fyt)
 {
 	const char *style;
+	const struct fy_version *vers;
+	const char *handle, *prefix, *suffix;
 
 	switch (fyt->type) {
 	case FYTT_NONE:
@@ -495,12 +497,21 @@ static void dump_token(struct fy_token *fyt)
 		printf("%s\n", "STREAM_END");
 		break;
 	case FYTT_VERSION_DIRECTIVE:
-		printf("%s handle=%s\n", "VERSION_DIRECTIVE",
-				fy_atom_get_esc_text_a(&fyt->handle));
+		vers = fy_version_directive_token_version(fyt);
+		assert(vers);
+		printf("%s value=%d.%d\n", "VERSION_DIRECTIVE",
+				vers->major, vers->minor);
 		break;
 	case FYTT_TAG_DIRECTIVE:
-		printf("%s handle='%s'\n", "TAG_DIRECTIVE",
-				fy_atom_get_esc_text_a(&fyt->handle));
+		handle = fy_tag_directive_token_handle0(fyt);
+		if (!handle)
+			handle = "";
+		prefix = fy_tag_directive_token_prefix0(fyt);
+		if (!prefix)
+			prefix = "";
+		printf("%s handle='%s' prefix='%s'\n", "TAG_DIRECTIVE",
+				txt2esc_a(handle, -1),
+				txt2esc_a(prefix, -1));
 		break;
 	case FYTT_DOCUMENT_START:
 		printf("%s\n", "DOCUMENT_START");
@@ -550,11 +561,18 @@ static void dump_token(struct fy_token *fyt)
 				fy_atom_get_esc_text_a(&fyt->handle));
 		break;
 	case FYTT_TAG:
-		printf("%s tag='%s''\n", "TAG",
-				fy_atom_get_esc_text_a(&fyt->handle));
+		handle = fy_tag_token_handle0(fyt);
+		if (!handle)
+			handle = "";
+		suffix = fy_tag_token_suffix0(fyt);
+		if (!suffix)
+			suffix = "";
+		printf("%s handle='%s' suffix='%s'\n", "TAG",
+				txt2esc_a(handle, -1),
+				txt2esc_a(suffix, -1));
 		break;
 	case FYTT_SCALAR:
-		switch (fyt->scalar.style) {
+		switch (fy_token_scalar_style(fyt)) {
 		case FYSS_ANY:
 			style = "ANY";
 			break;

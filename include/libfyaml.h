@@ -719,14 +719,13 @@ fy_token_scalar_style(struct fy_token *fyt)
  *
  * In case that the token is 'simple' enough (i.e. a plain scalar)
  * or something similar the returned pointer is a direct pointer
- * to the space of the parser input that created the token.
+ * to the space of the input that contains the token.
  *
  * That means that the pointer is *not* guaranteed to be valid
  * after the parser is destroyed.
  *
- * If the token is 'complex' enough, then space shall be allocated
- * out of the parser that the token belongs to, will be filled
- * and returned.
+ * If the token is 'complex' enough, then space shall be allocated,
+ * filled and returned.
  *
  * Note that the concept of 'simple' and 'complex' is vague, and
  * that's on purpose.
@@ -1373,9 +1372,6 @@ fy_emitter_destroy(struct fy_emitter *emit)
  *
  * Queue and output using the emitter. This is the streaming
  * output method which does not require creating a document.
- * Note that the event _must_ be previously created from
- * a call to fy_parser_parse(), and that the parser must be
- * not destroyed while emitting is in progress.
  *
  * @emit: The emitter to use
  * @fye: The event to queue for emission
@@ -4720,6 +4716,900 @@ fy_path_exec_execute(struct fy_path_exec *fypx, struct fy_path_expr *expr,
  */
 struct fy_node *
 fy_path_exec_results_iterate(struct fy_path_exec *fypx, void **prevp)
+	FY_EXPORT;
+
+/*
+ * Helper methods for binding implementers
+ * Note that users of the library do not need to know these details.
+ * However bindings that were developed against libyaml expect these
+ * to be exported, so provide a shim here
+ */
+
+/**
+ * enum fy_token_type - Token types
+ *
+ * The available token types that the tokenizer produces.
+ *
+ * @FYTT_NONE: No token
+ * @FYTT_STREAM_START: Stream start
+ * @FYTT_STREAM_END: Stream end
+ * @FYTT_VERSION_DIRECTIVE: Version directive
+ * @FYTT_TAG_DIRECTIVE: Tag directive
+ * @FYTT_DOCUMENT_START: Document start
+ * @FYTT_DOCUMENT_END: Document end
+ * @FYTT_BLOCK_SEQUENCE_START: Start of a block sequence
+ * @FYTT_BLOCK_MAPPING_START: Start of a block mapping
+ * @FYTT_BLOCK_END: End of a block mapping or a sequence
+ * @FYTT_FLOW_SEQUENCE_START: Start of a flow sequence
+ * @FYTT_FLOW_SEQUENCE_END: End of a flow sequence
+ * @FYTT_FLOW_MAPPING_START: Start of a flow mapping
+ * @FYTT_FLOW_MAPPING_END: End of a flow mapping
+ * @FYTT_BLOCK_ENTRY: A block entry
+ * @FYTT_FLOW_ENTRY: A flow entry
+ * @FYTT_KEY: A key of a mapping
+ * @FYTT_VALUE: A value of a mapping
+ * @FYTT_ALIAS: An alias
+ * @FYTT_ANCHOR: An anchor
+ * @FYTT_TAG: A tag
+ * @FYTT_SCALAR: A scalar
+ * @FYTT_INPUT_MARKER: Internal input marker token
+ * @FYTT_PE_SLASH: A slash
+ * @FYTT_PE_ROOT: A root
+ * @FYTT_PE_THIS: A this
+ * @FYTT_PE_PARENT: A parent
+ * @FYTT_PE_MAP_KEY: A map key
+ * @FYTT_PE_SEQ_INDEX: A sequence index
+ * @FYTT_PE_SEQ_SLICE: A sequence slice
+ * @FYTT_PE_SCALAR_FILTER: A scalar filter
+ * @FYTT_PE_COLLECTION_FILTER: A collection filter
+ * @FYTT_PE_SEQ_FILTER: A sequence filter
+ * @FYTT_PE_MAP_FILTER: A mapping filter
+ * @FYTT_PE_EVERY_CHILD: Every child
+ * @FYTT_PE_EVERY_CHILD_R: Every child recursive
+ * @FYTT_PE_ALIAS: An alias
+ * @FYTT_PE_SIBLING: A sibling marker
+ * @FYTT_PE_COMMA: A comma
+ * @FYTT_PE_BARBAR: A ||
+ * @FYTT_PE_AMPAMP: A &&
+ * @FYTT_PE_LPAREN: A left parenthesis
+ * @FYTT_PE_RPAREN: A right parenthesis
+ */
+enum fy_token_type {
+	/* non-content token types */
+	FYTT_NONE,
+	FYTT_STREAM_START,
+	FYTT_STREAM_END,
+	FYTT_VERSION_DIRECTIVE,
+	FYTT_TAG_DIRECTIVE,
+	FYTT_DOCUMENT_START,
+	FYTT_DOCUMENT_END,
+	/* content token types */
+	FYTT_BLOCK_SEQUENCE_START,
+	FYTT_BLOCK_MAPPING_START,
+	FYTT_BLOCK_END,
+	FYTT_FLOW_SEQUENCE_START,
+	FYTT_FLOW_SEQUENCE_END,
+	FYTT_FLOW_MAPPING_START,
+	FYTT_FLOW_MAPPING_END,
+	FYTT_BLOCK_ENTRY,
+	FYTT_FLOW_ENTRY,
+	FYTT_KEY,
+	FYTT_VALUE,
+	FYTT_ALIAS,
+	FYTT_ANCHOR,
+	FYTT_TAG,
+	FYTT_SCALAR,
+
+	/* special error reporting */
+	FYTT_INPUT_MARKER,
+
+	/* path expression tokens */
+	FYTT_PE_SLASH,
+	FYTT_PE_ROOT,
+	FYTT_PE_THIS,
+	FYTT_PE_PARENT,
+	FYTT_PE_MAP_KEY,
+	FYTT_PE_SEQ_INDEX,
+	FYTT_PE_SEQ_SLICE,
+	FYTT_PE_SCALAR_FILTER,
+	FYTT_PE_COLLECTION_FILTER,
+	FYTT_PE_SEQ_FILTER,
+	FYTT_PE_MAP_FILTER,
+	FYTT_PE_EVERY_CHILD,
+	FYTT_PE_EVERY_CHILD_R,
+	FYTT_PE_ALIAS,
+	FYTT_PE_SIBLING,
+	FYTT_PE_COMMA,
+	FYTT_PE_BARBAR,
+	FYTT_PE_AMPAMP,
+	FYTT_PE_LPAREN,
+	FYTT_PE_RPAREN,
+};
+
+/* The number of token types available */
+#define FYTT_COUNT	(FYTT_PE_RPAREN+1)
+
+/**
+ * fy_token_type_is_valid() - Check token type validity
+ *
+ * Check if argument token type is a valid one.
+ *
+ * @type: The token type
+ *
+ * Returns:
+ * true if the token type is valid, false otherwise
+ */
+static inline bool
+fy_token_type_is_valid(enum fy_token_type type)
+{
+	return type >= FYTT_NONE && type < FYTT_COUNT;
+}
+
+/**
+ * fy_token_type_is_yaml() - Check if token type is valid for YAML
+ *
+ * Check if argument token type is a valid YAML one.
+ *
+ * @type: The token type
+ *
+ * Returns:
+ * true if the token type is a valid YAML one, false otherwise
+ */
+static inline bool
+fy_token_type_is_yaml(enum fy_token_type type)
+{
+	return type >= FYTT_STREAM_START && type <= FYTT_SCALAR;
+}
+
+/**
+ * fy_token_type_is_content() - Check if token type is
+ *                              valid for YAML content
+ *
+ * Check if argument token type is a valid YAML content one.
+ *
+ * @type: The token type
+ *
+ * Returns:
+ * true if the token type is a valid YAML content one, false otherwise
+ */
+static inline bool
+fy_token_type_is_content(enum fy_token_type type)
+{
+	return type >= FYTT_BLOCK_SEQUENCE_START && type <= FYTT_SCALAR;
+}
+
+/**
+ * fy_token_type_is_path_expr() - Check if token type is
+ *                                valid for a YPATH expression
+ *
+ * Check if argument token type is a valid YPATH parse expression token
+ *
+ * @type: The token type
+ *
+ * Returns:
+ * true if the token type is a valid YPATH one, false otherwise
+ */
+static inline bool
+fy_token_type_is_path_expr(enum fy_token_type type)
+{
+	return type >= FYTT_PE_SLASH && type <= FYTT_PE_RPAREN;
+}
+
+/**
+ * fy_token_get_type() - Return the token's type
+ *
+ * Return the token's type; if NULL then FYTT_NONE is returned
+ *
+ * @fyt: The token
+ *
+ * Returns:
+ * The token's type; FYTT_NONE if not a valid token (or NULL)
+ */
+enum fy_token_type
+fy_token_get_type(struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
+ * fy_token_start_mark() - Get token's start marker
+ *
+ * Return the token's start marker if it exists. Note
+ * it is permissable for some token types to have no
+ * start marker because they are without content.
+ *
+ * @fyt: The token to get its start marker
+ *
+ * Returns:
+ * The token's start marker, NULL if not available.
+ */
+const struct fy_mark *
+fy_token_start_mark(struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
+ * fy_token_end_mark() - Get token's end marker
+ *
+ * Return the token's end marker if it exists. Note
+ * it is permissable for some token types to have no
+ * end marker because they are without content.
+ *
+ * @fyt: The token to get its end marker
+ *
+ * Returns:
+ * The token's end marker, NULL if not available.
+ */
+const struct fy_mark *
+fy_token_end_mark(struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
+ * fy_scan() - Low level access to the scanner
+ *
+ * Return the next scanner token. Note this is a very
+ * low level interface, intended for users that want/need
+ * to implement their own YAML parser. The returned
+ * token is expected to be disposed using fy_scan_token_free()
+ *
+ * @fyp: The parser to get the next token from.
+ *
+ * Returns:
+ * The next token, or NULL if no more tokens are available.
+ */
+struct fy_token *
+fy_scan(struct fy_parser *fyp)
+	FY_EXPORT;
+
+/**
+ * fy_scan_token_free() - Free the token returned by fy_scan()
+ *
+ * Free the token returned by fy_scan().
+ *
+ * @fyp: The parser of which the token was returned by fy_scan()
+ * @fyt: The token to free
+ */
+void
+fy_scan_token_free(struct fy_parser *fyp, struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
+ * fy_tag_directive_token_prefix() - Get the prefix contained in the
+ * 				     tag directive token
+ *
+ * Retrieve the tag directive's prefix contents. Will fail if
+ * token is not a tag directive token, or if a memory error
+ * happens.
+ *
+ * @fyt: The tag directive token out of which the prefix pointer
+ *       will be returned.
+ * @lenp: Pointer to a variable that will hold the returned length
+ *
+ * Returns:
+ * A pointer to the text representation of the prefix token, while
+ * @lenp will be assigned the character length of said representation.
+ * NULL in case of an error.
+ */
+const char *
+fy_tag_directive_token_prefix(struct fy_token *fyt, size_t *lenp)
+	FY_EXPORT;
+
+/**
+ * fy_tag_directive_token_handle() - Get the handle contained in the
+ * 				     tag directive token
+ *
+ * Retrieve the tag directive's handle contents. Will fail if
+ * token is not a tag directive token, or if a memory error
+ * happens.
+ *
+ * @fyt: The tag directive token out of which the handle pointer
+ *       will be returned.
+ * @lenp: Pointer to a variable that will hold the returned length
+ *
+ * Returns:
+ * A pointer to the text representation of the handle token, while
+ * @lenp will be assigned the character length of said representation.
+ * NULL in case of an error.
+ */
+const char *
+fy_tag_directive_token_handle(struct fy_token *fyt, size_t *lenp)
+	FY_EXPORT;
+
+/**
+ * fy_tag_directive_token_prefix0() - Get the prefix contained in the
+ * 				      tag directive token as zero terminated
+ * 				      string
+ *
+ * Retrieve the tag directive's prefix contents as a zero terminated string.
+ * It is similar to fy_tag_directive_token_prefix(), with the difference
+ * that the returned string is zero terminated and memory may be allocated
+ * to hold it associated with the token.
+ *
+ * @fyt: The tag directive token out of which the prefix pointer
+ *       will be returned.
+ *
+ * Returns:
+ * A pointer to the zero terminated text representation of the prefix token.
+ * NULL in case of an error.
+ */
+const char *
+fy_tag_directive_token_prefix0(struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
+ * fy_tag_directive_token_handle0() - Get the handle contained in the
+ * 				      tag directive token as zero terminated
+ * 				      string
+ *
+ * Retrieve the tag directive's handle contents as a zero terminated string.
+ * It is similar to fy_tag_directive_token_handle(), with the difference
+ * that the returned string is zero terminated and memory may be allocated
+ * to hold it associated with the token.
+ *
+ * @fyt: The tag directive token out of which the handle pointer
+ *       will be returned.
+ *
+ * Returns:
+ * A pointer to the zero terminated text representation of the handle token.
+ * NULL in case of an error.
+ */
+const char *
+fy_tag_directive_token_handle0(struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
+ * fy_tag_token_handle() - Get the handle contained in the
+ * 			   tag token
+ *
+ * Retrieve the tag handle contents. Will fail if
+ * token is not a tag token, or if a memory error happens.
+ *
+ * @fyt: The tag token out of which the handle pointer
+ *       will be returned.
+ * @lenp: Pointer to a variable that will hold the returned length
+ *
+ * Returns:
+ * A pointer to the text representation of the handle token, while
+ * @lenp will be assigned the character length of said representation.
+ * NULL in case of an error.
+ */
+const char *
+fy_tag_token_handle(struct fy_token *fyt, size_t *lenp)
+	FY_EXPORT;
+
+/**
+ * fy_tag_token_suffix() - Get the suffix contained in the
+ * 			   tag token
+ *
+ * Retrieve the tag suffix contents. Will fail if
+ * token is not a tag token, or if a memory error happens.
+ *
+ * @fyt: The tag token out of which the suffix pointer
+ *       will be returned.
+ * @lenp: Pointer to a variable that will hold the returned length
+ *
+ * Returns:
+ * A pointer to the text representation of the suffix token, while
+ * @lenp will be assigned the character length of said representation.
+ * NULL in case of an error.
+ */
+const char *
+fy_tag_token_suffix(struct fy_token *fyt, size_t *lenp)
+	FY_EXPORT;
+
+/**
+ * fy_tag_token_handle0() - Get the handle contained in the
+ * 			    tag token as zero terminated string
+ *
+ * Retrieve the tag handle contents as a zero terminated string.
+ * It is similar to fy_tag_token_handle(), with the difference
+ * that the returned string is zero terminated and memory may be allocated
+ * to hold it associated with the token.
+ *
+ * @fyt: The tag token out of which the handle pointer will be returned.
+ *
+ * Returns:
+ * A pointer to the zero terminated text representation of the handle token.
+ * NULL in case of an error.
+ */
+const char *
+fy_tag_token_handle0(struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
+ * fy_tag_token_suffix0() - Get the suffix contained in the
+ * 			    tag token as zero terminated string
+ *
+ * Retrieve the tag suffix contents as a zero terminated string.
+ * It is similar to fy_tag_token_suffix(), with the difference
+ * that the returned string is zero terminated and memory may be allocated
+ * to hold it associated with the token.
+ *
+ * @fyt: The tag token out of which the suffix pointer will be returned.
+ *
+ * Returns:
+ * A pointer to the zero terminated text representation of the suffix token.
+ * NULL in case of an error.
+ */
+const char *
+fy_tag_token_suffix0(struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
+ * fy_version_directive_token_version() - Return the version of a version
+ * 					  directive token
+ *
+ * Retrieve the version stored in a version directive token.
+ *
+ * @fyt: The version directive token
+ *
+ * Returns:
+ * A pointer to the version stored in the version directive token, or
+ * NULL in case of an error, or the token not being a version directive token.
+ */
+const struct fy_version *
+fy_version_directive_token_version(struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
+ * fy_scalar_token_style() - Return the style of a scalar token
+ *
+ * Retrieve the style of a scalar token.
+ *
+ * @fyt: The scalar token
+ *
+ * Returns:
+ * The scalar style of the token, or FYSS_ANY for an error
+ */
+enum fy_scalar_style
+fy_scalar_token_get_style(struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
+ * fy_tag_token_tag() - Get tag of a tag token
+ *
+ * Retrieve the tag of a tag token.
+ *
+ * @fyt: The tag token
+ *
+ * Returns:
+ * A pointer to the tag or NULL in case of an error
+ */
+const struct fy_tag *
+fy_tag_token_tag(struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
+ * fy_tag_directive_token_tag() - Get tag of a tag directive token
+ *
+ * Retrieve the tag of a tag directive token.
+ *
+ * @fyt: The tag directive token
+ *
+ * Returns:
+ * A pointer to the tag or NULL in case of an error
+ */
+const struct fy_tag *
+fy_tag_directive_token_tag(struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
+ * fy_event_get_token() - Return the main token of an event
+ *
+ * Retrieve the main token (i.e. not the tag or the anchor) of
+ * an event. It may be NULL in case of an implicit event.
+ *
+ * @fye: The event to get its main token
+ *
+ * Returns:
+ * The main token if it exists, NULL otherwise or in case of an error
+ */
+struct fy_token *
+fy_event_get_token(struct fy_event *fye)
+	FY_EXPORT;
+
+/**
+ * fy_event_get_anchor_token() - Return the anchor token of an event
+ *
+ * Retrieve the anchor token if it exists. Only valid for
+ * mapping/sequence start and scalar events.
+ *
+ * @fye: The event to get its anchor token
+ *
+ * Returns:
+ * The anchor token if it exists, NULL otherwise or in case of an error
+ */
+struct fy_token *
+fy_event_get_anchor_token(struct fy_event *fye)
+	FY_EXPORT;
+
+/**
+ * fy_event_get_tag_token() - Return the tag token of an event
+ *
+ * Retrieve the tag token if it exists. Only valid for
+ * mapping/sequence start and scalar events.
+ *
+ * @fye: The event to get its tag token
+ *
+ * Returns:
+ * The tag token if it exists, NULL otherwise or in case of an error
+ */
+struct fy_token *
+fy_event_get_tag_token(struct fy_event *fye)
+	FY_EXPORT;
+
+/**
+ * fy_event_start_mark() - Get event's start marker
+ *
+ * Return the event's start marker if it exists. The
+ * start marker is the one of the event's main token.
+ *
+ * @fye: The event to get its start marker
+ *
+ * Returns:
+ * The event's start marker, NULL if not available.
+ */
+const struct fy_mark *
+fy_event_start_mark(struct fy_event *fye)
+	FY_EXPORT;
+
+/**
+ * fy_event_end_mark() - Get event's end marker
+ *
+ * Return the event's end marker if it exists. The
+ * end marker is the one of the event's main token.
+ *
+ * @fye: The event to get its end marker
+ *
+ * Returns:
+ * The event's end marker, NULL if not available.
+ */
+const struct fy_mark *
+fy_event_end_mark(struct fy_event *fye)
+	FY_EXPORT;
+
+/**
+ * fy_event_get_node_style() - Get the node style of an event
+ *
+ * Return the node style (FYNS_*) of an event. May return
+ * FYNS_ANY if the event is implicit.
+ * For collection start events the only possible values is
+ * FYNS_ANY, FYNS_FLOW, FYNS_BLOC.
+ * A scalar event may return any.
+ *
+ * @fye: The event to get it's node style
+ *
+ * Returns:
+ * The event's end marker, NULL if not available.
+ */
+enum fy_node_style
+fy_event_get_node_style(struct fy_event *fye)
+	FY_EXPORT;
+
+/**
+ * fy_document_start_event_version() - Return the version of a document
+ * 				       start event
+ *
+ * Retrieve the version stored in a document start event
+ *
+ * @fye: The document start event
+ *
+ * Returns:
+ * A pointer to the version, or NULL in case of an error, or the event
+ * not being a document start event.
+ */
+const struct fy_version *
+fy_document_start_event_version(struct fy_event *fye)
+	FY_EXPORT;
+
+/**
+ * fy_document_state_version() - Return the version of a document state
+ * 				 object
+ *
+ * Retrieve the version stored in a document state object
+ *
+ * @fyds: The document state object
+ *
+ * Returns:
+ * A pointer to the version, or NULL in case of an error
+ */
+const struct fy_version *
+fy_document_state_version(struct fy_document_state *fyds)
+	FY_EXPORT;
+
+/**
+ * fy_document_state_start_mark() - Get document state's start mark
+ *
+ * Return the document state's start mark (if it exists).
+ * Note that purely synthetic documents do not contain one
+ *
+ * @fyds: The document state object
+ *
+ * Returns:
+ * The document's start marker, NULL if not available.
+ */
+const struct fy_mark *
+fy_document_state_start_mark(struct fy_document_state *fyds)
+	FY_EXPORT;
+
+/**
+ * fy_document_state_end_mark() - Get document state's end mark
+ *
+ * Return the document state's end mark (if it exists).
+ * Note that purely synthetic documents do not contain one
+ *
+ * @fyds: The document state object
+ *
+ * Returns:
+ * The document's end marker, NULL if not available.
+ */
+const struct fy_mark *
+fy_document_state_end_mark(struct fy_document_state *fyds)
+	FY_EXPORT;
+
+/**
+ * fy_document_state_version_explicit() - Version explicit?
+ *
+ * Find out if a document state object's version was explicitly
+ * set in the document.
+ * Note that for synthetic documents this method returns false.
+ *
+ * @fyds: The document state object
+ *
+ * Returns:
+ * true if version was set explicitly, false otherwise
+ */
+bool
+fy_document_state_version_explicit(struct fy_document_state *fyds)
+	FY_EXPORT;
+
+/**
+ * fy_document_state_tag_explicit() - Tags explicit?
+ *
+ * Find out if a document state object's tags were explicitly
+ * set in the document.
+ * Note that for synthetic documents this method returns false.
+ *
+ * @fyds: The document state object
+ *
+ * Returns:
+ * true if document had tags set explicitly, false otherwise
+ */
+bool
+fy_document_state_tags_explicit(struct fy_document_state *fyds)
+	FY_EXPORT;
+
+/**
+ * fy_document_state_start_implicit() - Started implicitly?
+ *
+ * Find out if a document state object's document was
+ * started implicitly.
+ * Note that for synthetic documents this method returns false.
+ *
+ * @fyds: The document state object
+ *
+ * Returns:
+ * true if document was started implicitly, false otherwise
+ */
+bool
+fy_document_state_start_implicit(struct fy_document_state *fyds)
+	FY_EXPORT;
+
+/**
+ * fy_document_state_end_implicity() - Started implicitly?
+ *
+ * Find out if a document state object's document was
+ * ended implicitly.
+ * Note that for synthetic documents this method returns false.
+ *
+ * @fyds: The document state object
+ *
+ * Returns:
+ * true if document was ended implicitly, false otherwise
+ */
+bool
+fy_document_state_end_implicit(struct fy_document_state *fyds)
+	FY_EXPORT;
+
+/**
+ * fy_document_state_tag_directive_iterate() - Iterate over the tag
+ * 					       directives of a document state
+ * 					       object
+ *
+ * This method iterates over all the tag directives nodes in the document state
+ * object.
+ * The start of the iteration is signalled by a NULL in \*prevp.
+ *
+ * @fyds: The document state
+ * @prevp: The previous iterator
+ *
+ * Returns:
+ * The next tag or NULL at the end of the iteration sequence.
+ */
+const struct fy_tag *
+fy_document_state_tag_directive_iterate(struct fy_document_state *fyds, void **prevp)
+	FY_EXPORT;
+
+/**
+ * fy_parser_get_document_state() - Get the document state of a parser object
+ *
+ * Retrieve the document state object of a parser. Note that this is only
+ * valid during parsing.
+ *
+ * @fyp: The parser
+ *
+ * Returns:
+ * The active document state object of the parser, NULL otherwise
+ */
+struct fy_document_state *
+fy_parser_get_document_state(struct fy_parser *fyp)
+	FY_EXPORT;
+
+/**
+ * fy_document_get_document_state() - Get the document state of a document
+ *
+ * Retrieve the document state object of a document.
+ *
+ * @fyd: The document
+ *
+ * Returns:
+ * The document state object of the document, NULL otherwise
+ */
+struct fy_document_state *
+fy_document_get_document_state(struct fy_document *fyd)
+	FY_EXPORT;
+
+/**
+ * fy_emitter_get_document_state() - Get the document state of an emitter  object
+ *
+ * Retrieve the document state object of an emitter. Note that this is only
+ * valid during emitting.
+ *
+ * @emit: The emitter
+ *
+ * Returns:
+ * The active document state object of the emitter, NULL otherwise
+ */
+struct fy_document_state *
+fy_emitter_get_document_state(struct fy_emitter *emit)
+	FY_EXPORT;
+
+/**
+ * fy_emit_event_create() - Create an emit event.
+ *
+ * Create an emit event to pass to fy_emit_event()
+ * The extra arguments differ according to the event to be created
+ *
+ * FYET_STREAM_START:
+ * 	- None
+ *
+ * FYET_STREAM_END:
+ * 	- None
+ *
+ * FYET_DOCUMENT_START:
+ * 	- int implicit
+ * 		true if document start should be marked implicit
+ * 		false if document start should not be marked implicit
+ * 	- const struct fy_version *vers
+ * 		Pointer to version to use for the document, or NULL for default
+ * 	- const struct fy_tag * const *tags
+ * 		Pointer to a NULL terminated array of tag pointers (like argv)
+ * 		NULL if no extra tags are to be used
+ *
+ * FYET_DOCUMENT_END:
+ * 	- int implicit
+ * 		true if document end should be marked implicit
+ * 		false if document end should not be marked implicit
+ *
+ * FYET_MAPPING_START:
+ * 	- enum fy_node_style style
+ * 		Style of the mapping (one of FYNS_ANY, FYNS_BLOCK or FYNS_FLOW)
+ *	- const char *anchor
+ *		Anchor to place at the mapping, or NULL for none
+ *	- const char *tag
+ *		Tag to place at the mapping, or NULL for none
+ *
+ * FYET_MAPPING_END:
+ * 	- None
+ *
+ * FYET_SEQUENCE_START:
+ * 	- enum fy_node_style style
+ * 		Style of the sequence (one of FYNS_ANY, FYNS_BLOCK or FYNS_FLOW)
+ *	- const char *anchor
+ *		Anchor to place at the sequence, or NULL for none
+ *	- const char *tag
+ *		Tag to place at the sequence, or NULL for none
+ *
+ * FYET_SEQUENCE_END:
+ * 	- None
+ *
+ * FYET_SCALAR:
+ * 	- enum fy_scalar_style style
+ * 		Style of the scalar, any valid FYSS_* value
+ * 		Note that certain styles may not be used according to the
+ * 		contents of the data
+ *	- const char *value
+ *		Pointer to the scalar contents.
+ *	- size_t len
+ *		Length of the scalar contents, of FY_NT (-1) for strlen(value)
+ *	- const char *anchor
+ *		Anchor to place at the scalar, or NULL for none
+ *	- const char *tag
+ *		Tag to place at the scalar, or NULL for none
+ *
+ * FYET_ALIAS:
+ *	- const char *value
+ *		Pointer to the alias.
+ *
+ * @emit: The emitter
+ * @type: The event type to create
+ *
+ * Returns:
+ * The created event or NULL in case of an error
+ */
+struct fy_event *
+fy_emit_event_create(struct fy_emitter *emit, enum fy_event_type type, ...)
+	FY_EXPORT;
+
+/**
+ * fy_emit_event_vcreate() - Create an emit event using varargs.
+ *
+ * Create an emit event to pass to fy_emit_event()
+ * The varargs analogous to fy_emit_event_create().
+ *
+ * @emit: The emitter
+ * @type: The event type to create
+ * ap: The variable argument list pointer.
+ *
+ * Returns:
+ * The created event or NULL in case of an error
+ */
+struct fy_event *
+fy_emit_event_vcreate(struct fy_emitter *emit, enum fy_event_type type, va_list ap)
+	FY_EXPORT;
+
+/**
+ * fy_emit_event_free() - Free an event created via fy_emit_event_create()
+ *
+ * Free an event previously created via fy_emit_event_create(). Note
+ * that usually you don't have to call this method since if you pass
+ * the event to fy_emit_event() it shall be disposed properly.
+ * Only use is error recovery and cleanup.
+ *
+ * @emit: The emitter
+ * @fye: The event to free
+ */
+void
+fy_emit_event_free(struct fy_emitter *emit, struct fy_event *fye)
+	FY_EXPORT;
+
+/**
+ * fy_parse_event_create() - Create an emit event.
+ *
+ * See fy_emit_event_create()...
+ *
+ * @fyp: The parser
+ * @type: The event type to create
+ *
+ * Returns:
+ * The created event or NULL in case of an error
+ */
+struct fy_event *
+fy_parse_event_create(struct fy_parser *fyp, enum fy_event_type type, ...)
+	FY_EXPORT;
+
+/**
+ * fy_parset_event_vcreate() - Create an emit event using varargs.
+ *
+ * Create an emit event to pass to fy_emit_event()
+ * The varargs analogous to fy_parse_event_create().
+ *
+ * @fyp: The parser
+ * @type: The event type to create
+ * ap: The variable argument list pointer.
+ *
+ * Returns:
+ * The created event or NULL in case of an error
+ */
+struct fy_event *
+fy_parse_event_vcreate(struct fy_parser *fyp, enum fy_event_type type, va_list ap)
 	FY_EXPORT;
 
 #ifdef __cplusplus

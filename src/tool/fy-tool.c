@@ -50,6 +50,8 @@
 #define OPT_JOIN			1003
 #define OPT_TOOL			1004
 #define OPT_YPATH			1005
+#define OPT_SCAN_DUMP			1006
+#define OPT_PARSE_DUMP			1007
 
 #define OPT_STRIP_LABELS		2000
 #define OPT_STRIP_TAGS			2001
@@ -77,6 +79,8 @@ static struct option lopts[] = {
 	{"filter",		no_argument,		0,	OPT_FILTER },
 	{"join",		no_argument,		0,	OPT_JOIN },
 	{"ypath",		no_argument,		0,	OPT_YPATH },
+	{"scan-dump",		no_argument,		0,	OPT_SCAN_DUMP },
+	{"parse-dump",		no_argument,		0,	OPT_PARSE_DUMP },
 	{"strip-labels",	no_argument,		0,	OPT_STRIP_LABELS },
 	{"strip-tags",		no_argument,		0,	OPT_STRIP_TAGS },
 	{"strip-doc",		no_argument,		0,	OPT_STRIP_DOC },
@@ -180,7 +184,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--testsuite              : Testsuite mode, [arguments] are <file>s to output parse events\n");
 		fprintf(fp, "\t--filter                 : Filter mode, <stdin> is input, [arguments] are <path>s, outputs to stdout\n");
 		fprintf(fp, "\t--join                   : Join mode, [arguments] are <path>s, outputs to stdout\n");
-		fprintf(fp, "\t--ypath                  : YPATH mode, [arguments] are <path>s, outputs to stdout\n");
+		fprintf(fp, "\t--ypath                  : YPATH mode, [arguments] are <path>s, file names, outputs to stdout\n");
+		fprintf(fp, "\t--scan-dump              : scan-dump mode, [arguments] are file names\n");
+		fprintf(fp, "\t--parse-dump             : parse-dump mode, [arguments] are file names\n");
 	}
 
 	fprintf(fp, "\n");
@@ -234,8 +240,16 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\n");
 		break;
 	case OPT_YPATH:
-		fprintf(fp, "\tParse and YAML with the ypath expression that results to /foo followed by /bar\n");
+		fprintf(fp, "\tParse and filter YAML with the ypath expression that results to /foo followed by /bar\n");
 		fprintf(fp, "\t$ %s --file input.yaml /foo,bar\n\t...\n", progname);
+		fprintf(fp, "\n");
+		break;
+	case OPT_SCAN_DUMP:
+		fprintf(fp, "\tParse and dump YAML scanner tokens (internal)\n");
+		fprintf(fp, "\n");
+		break;
+	case OPT_PARSE_DUMP:
+		fprintf(fp, "\tParse and dump YAML parser events (internal)\n");
 		fprintf(fp, "\n");
 		break;
 	}
@@ -646,6 +660,363 @@ void dump_testsuite_event(struct fy_parser *fyp, struct fy_event *fye, bool colo
 	fputs("\n", stdout);
 }
 
+void dump_parse_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize)
+{
+	struct fy_token *fyt_tag = NULL, *fyt_anchor = NULL;
+	const char *anchor = NULL;
+	const char *tag = NULL;
+	const char *value = NULL;
+	size_t anchor_len = 0, tag_len = 0, len = 0;
+	enum fy_scalar_style style;
+	const struct fy_version *vers;
+	const struct fy_tag *tagp = NULL;
+	void *iterp;
+	struct fy_document_state *fyds;
+
+	fyt_anchor = fy_event_get_anchor_token(fye);
+	if (fyt_anchor) {
+		anchor = fy_token_get_text(fyt_anchor, &anchor_len);
+		assert(anchor);
+	}
+
+	fyt_tag = fy_event_get_tag_token(fye);
+	if (fyt_tag) {
+		tag = fy_token_get_text(fyt_tag, &tag_len);
+		assert(tag);
+		tagp = fy_tag_token_tag(fyt_tag);
+		assert(tagp);
+	}
+
+	switch (fye->type) {
+	case FYET_NONE:
+		if (colorize)
+			fputs("\x1b[31;1m", stdout);
+		printf("???");
+		break;
+	case FYET_STREAM_START:
+		if (colorize)
+			fputs("\x1b[36m", stdout);
+		printf("STREAM_START");
+		break;
+	case FYET_STREAM_END:
+		if (colorize)
+			fputs("\x1b[36m", stdout);
+		printf("STREAM_END");
+		break;
+	case FYET_DOCUMENT_START:
+		if (colorize)
+			fputs("\x1b[36m", stdout);
+
+		printf("DOCUMENT_START implicit=%s",
+				fye->document_start.implicit ? "true" : "false");
+
+		fyds = fye->document_start.document_state;
+		assert(fyds);
+		vers = fy_document_state_version(fyds);
+		assert(vers);
+		printf("( V=%d.%d VE=%s TE=%s", vers->major, vers->minor,
+				fy_document_state_version_explicit(fyds) ? "true" : "false",
+				fy_document_state_tags_explicit(fyds) ? "true" : "false");
+		iterp = NULL;
+		if ((tagp = fy_document_state_tag_directive_iterate(fyds, &iterp)) != NULL) {
+			printf(" TDs: [");
+			do {
+				printf(" \"%s\",\"%s\"", tagp->handle, tagp->prefix);
+			} while ((tagp = fy_document_state_tag_directive_iterate(fyds, &iterp)) != NULL);
+			printf(" ]");
+		}
+		printf(" )");
+		break;
+
+	case FYET_DOCUMENT_END:
+		if (colorize)
+			fputs("\x1b[36m", stdout);
+		printf("DOCUMENT_END implicit=%s",
+				fye->document_end.implicit ? "true" : "false");
+		break;
+	case FYET_MAPPING_START:
+		if (colorize)
+			fputs("\x1b[36;1m", stdout);
+		printf("MAPPING_START");
+		if (anchor) {
+			if (colorize)
+				fputs("\x1b[32m", stdout);
+			printf(" &%.*s", (int)anchor_len, anchor);
+		}
+		if (tag) {
+			if (colorize)
+				fputs("\x1b[32m", stdout);
+			printf(" <%.*s> (\"%s\",\"%s\")",
+				(int)tag_len, tag,
+				tagp->handle, tagp->prefix);
+		}
+		break;
+	case FYET_MAPPING_END:
+		if (colorize)
+			fputs("\x1b[36;1m", stdout);
+		printf("MAPPING_END");
+		break;
+	case FYET_SEQUENCE_START:
+		if (colorize)
+			fputs("\x1b[33;1m", stdout);
+		printf("SEQUENCE_START");
+		if (anchor) {
+			if (colorize)
+				fputs("\x1b[32m", stdout);
+			printf(" &%.*s", (int)anchor_len, anchor);
+		}
+		if (tag) {
+			if (colorize)
+				fputs("\x1b[32m", stdout);
+			printf(" <%.*s> (\"%s\",\"%s\")",
+				(int)tag_len, tag,
+				tagp->handle, tagp->prefix);
+		}
+		break;
+	case FYET_SEQUENCE_END:
+		if (colorize)
+			fputs("\x1b[33;1m", stdout);
+		printf("SEQUENCE_END");
+		break;
+	case FYET_SCALAR:
+		if (colorize)
+			fputs("\x1b[37;1m", stdout);
+		printf("SCALAR");
+		if (anchor) {
+			if (colorize)
+				fputs("\x1b[32m", stdout);
+			printf(" &%.*s", (int)anchor_len, anchor);
+		}
+		if (tag) {
+			if (colorize)
+				fputs("\x1b[32m", stdout);
+			printf(" <%.*s> (\"%s\",\"%s\")",
+				(int)tag_len, tag,
+				tagp->handle, tagp->prefix);
+		}
+
+		style = fy_token_scalar_style(fye->scalar.value);
+		switch (style) {
+		case FYSS_PLAIN:
+			if (colorize)
+				fputs("\x1b[37;1m", stdout);
+			printf(" ");
+			break;
+		case FYSS_SINGLE_QUOTED:
+			if (colorize)
+				fputs("\x1b[33m", stdout);
+			printf(" '");
+			break;
+		case FYSS_DOUBLE_QUOTED:
+			if (colorize)
+				fputs("\x1b[33m", stdout);
+			printf(" \"");
+			break;
+		case FYSS_LITERAL:
+			if (colorize)
+				fputs("\x1b[33m", stdout);
+			printf(" |");
+			break;
+		case FYSS_FOLDED:
+			if (colorize)
+				fputs("\x1b[33m", stdout);
+			printf(" >");
+			break;
+		default:
+			abort();
+		}
+		value = fy_token_get_text(fye->scalar.value, &len);
+		if (value && len > 0)
+			print_escaped(value, len);
+		break;
+	case FYET_ALIAS:
+		anchor = fy_token_get_text(fye->alias.anchor, &anchor_len);
+		if (colorize)
+			fputs("\x1b[32m", stdout);
+		printf("ALIAS *%.*s", (int)anchor_len, anchor);
+		break;
+	default:
+		/* ignored */
+		break;
+	}
+	if (colorize)
+		fputs("\x1b[0m", stdout);
+	fputs("\n", stdout);
+}
+
+void dump_scan_token(struct fy_parser *fyp, struct fy_token *fyt, bool colorize)
+{
+	const char *anchor = NULL, *value = NULL;
+	size_t anchor_len = 0, len = 0;
+	enum fy_scalar_style style;
+	const struct fy_version *vers;
+	const struct fy_tag *tag;
+
+	switch (fy_token_get_type(fyt)) {
+	case FYTT_NONE:
+		if (colorize)
+			fputs("\x1b[31;1m", stdout);
+		printf("NONE");
+		break;
+	case FYTT_STREAM_START:
+		if (colorize)
+			fputs("\x1b[36m", stdout);
+		printf("STREAM_START");
+		break;
+	case FYTT_STREAM_END:
+		if (colorize)
+			fputs("\x1b[36m", stdout);
+		printf("STREAM_END");
+		break;
+	case FYTT_VERSION_DIRECTIVE:
+		if (colorize)
+			fputs("\x1b[36m", stdout);
+		vers = fy_version_directive_token_version(fyt);
+		assert(vers);
+		printf("VERSION_DIRECTIVE major=%d minor=%d", vers->major, vers->minor);
+		break;
+	case FYTT_TAG_DIRECTIVE:
+		if (colorize)
+			fputs("\x1b[36m", stdout);
+		tag = fy_tag_directive_token_tag(fyt);
+		assert(tag);
+		printf("TAG_DIRECTIVE handle=\"%s\" prefix=\"%s\"", tag->handle, tag->prefix);
+		break;
+	case FYTT_DOCUMENT_START:
+		if (colorize)
+			fputs("\x1b[36m", stdout);
+		printf("DOCUMENT_START");
+		break;
+	case FYTT_DOCUMENT_END:
+		if (colorize)
+			fputs("\x1b[36m", stdout);
+		printf("DOCUMENT_END");
+		break;
+	case FYTT_BLOCK_SEQUENCE_START:
+		if (colorize)
+			fputs("\x1b[36;1m", stdout);
+		printf("BLOCK_SEQUENCE_START");
+		break;
+	case FYTT_BLOCK_MAPPING_START:
+		if (colorize)
+			fputs("\x1b[36;1m", stdout);
+		printf("BLOCK_MAPPING_START");
+		break;
+	case FYTT_BLOCK_END:
+		if (colorize)
+			fputs("\x1b[36;1m", stdout);
+		printf("BLOCK_END");
+		break;
+	case FYTT_FLOW_SEQUENCE_START:
+		if (colorize)
+			fputs("\x1b[33;1m", stdout);
+		printf("FLOW_SEQUENCE_START");
+		break;
+	case FYTT_FLOW_SEQUENCE_END:
+		if (colorize)
+			fputs("\x1b[33;1m", stdout);
+		printf("FLOW_SEQUENCE_END");
+		break;
+	case FYTT_FLOW_MAPPING_START:
+		if (colorize)
+			fputs("\x1b[33;1m", stdout);
+		printf("FLOW_MAPPING_START");
+		break;
+	case FYTT_FLOW_MAPPING_END:
+		if (colorize)
+			fputs("\x1b[33;1m", stdout);
+		printf("FLOW_MAPPING_END");
+		break;
+	case FYTT_BLOCK_ENTRY:
+		if (colorize)
+			fputs("\x1b[36;1m", stdout);
+		printf("BLOCK_ENTRY");
+		break;
+	case FYTT_FLOW_ENTRY:
+		if (colorize)
+			fputs("\x1b[33;1m", stdout);
+		printf("BLOCK_ENTRY");
+		break;
+	case FYTT_KEY:
+		if (colorize)
+			fputs("\x1b[33;1m", stdout);
+		printf("KEY");
+		break;
+	case FYTT_VALUE:
+		if (colorize)
+			fputs("\x1b[33;1m", stdout);
+		printf("KEY");
+		break;
+	case FYTT_ALIAS:
+		anchor = fy_token_get_text(fyt, &anchor_len);
+		assert(anchor);
+		if (colorize)
+			fputs("\x1b[32m", stdout);
+		printf("ALIAS *%.*s", (int)anchor_len, anchor);
+		break;
+	case FYTT_ANCHOR:
+		anchor = fy_token_get_text(fyt, &anchor_len);
+		assert(anchor);
+		if (colorize)
+			fputs("\x1b[32m", stdout);
+		printf("ANCHOR &%.*s", (int)anchor_len, anchor);
+		break;
+	case FYTT_TAG:
+		tag = fy_tag_token_tag(fyt);
+		assert(tag);
+		if (colorize)
+			fputs("\x1b[32m", stdout);
+		/* prefix is a suffix for tag */
+		printf("TAG handle=\"%s\" suffix=\"%s\"", tag->handle, tag->prefix);
+		break;
+	case FYTT_SCALAR:
+		if (colorize)
+			fputs("\x1b[37;1m", stdout);
+
+		printf("SCALAR ");
+		value = fy_token_get_text(fyt, &len);
+		assert(value);
+		style = fy_token_scalar_style(fyt);
+		switch (style) {
+		case FYSS_PLAIN:
+			if (colorize)
+				fputs("\x1b[37;1m", stdout);
+			printf(" ");
+			break;
+		case FYSS_SINGLE_QUOTED:
+			if (colorize)
+				fputs("\x1b[33m", stdout);
+			printf(" '");
+			break;
+		case FYSS_DOUBLE_QUOTED:
+			if (colorize)
+				fputs("\x1b[33m", stdout);
+			printf(" \"");
+			break;
+		case FYSS_LITERAL:
+			if (colorize)
+				fputs("\x1b[33m", stdout);
+			printf(" |");
+			break;
+		case FYSS_FOLDED:
+			if (colorize)
+				fputs("\x1b[33m", stdout);
+			printf(" >");
+			break;
+		default:
+			abort();
+		}
+		printf("%.*s", (int)len, value);
+		break;
+	default:
+		/* not handled; should not be produced by scan */
+		break;
+	}
+	if (colorize)
+		fputs("\x1b[0m", stdout);
+	fputs("\n", stdout);
+}
+
 static int set_parser_input(struct fy_parser *fyp, const char *what,
 		bool default_string)
 {
@@ -701,6 +1072,7 @@ int main(int argc, char *argv[])
 	struct fy_document **fyd_ins = NULL;
 	int tool_mode = OPT_TOOL;
 	struct fy_event *fyev;
+	struct fy_token *fyt;
 	bool join_resolve = RESOLVE_DEFAULT;
 	struct fy_token_iter *iter;
 	bool streaming = STREAMING_DEFAULT;
@@ -734,6 +1106,10 @@ int main(int argc, char *argv[])
 		tool_mode = OPT_JOIN;
 	else if (!strcmp(progname, "fy-ypath"))
 		tool_mode = OPT_YPATH;
+	else if (!strcmp(progname, "fy-scan-dump"))
+		tool_mode = OPT_SCAN_DUMP;
+	else if (!strcmp(progname, "fy-parse-dump"))
+		tool_mode = OPT_PARSE_DUMP;
 	else
 		tool_mode = OPT_TOOL;
 
@@ -858,6 +1234,8 @@ int main(int argc, char *argv[])
 		case OPT_JOIN:
 		case OPT_TOOL:
 		case OPT_YPATH:
+		case OPT_SCAN_DUMP:
+		case OPT_PARSE_DUMP:
 			tool_mode = opt;
 			break;
 		case OPT_STRIP_LABELS:
@@ -1275,6 +1653,40 @@ int main(int argc, char *argv[])
 
 		if (fy_parser_get_stream_error(fyp))
 			goto cleanup;
+		break;
+
+	case OPT_SCAN_DUMP:
+	case OPT_PARSE_DUMP:
+		if (optind >= argc) {
+			fprintf(stderr, "missing yaml file to %s-dump\n",
+					tool_mode == OPT_SCAN_DUMP ? "scan" : "dump");
+			goto cleanup;
+		}
+
+		count = 0;
+		for (i = optind; i < argc; i++) {
+			rc = set_parser_input(fyp, argv[i], false);
+			if (rc) {
+				fprintf(stderr, "failed to set parser input to '%s' for dump\n", argv[i]);
+				goto cleanup;
+			}
+
+			if (tool_mode == OPT_SCAN_DUMP) {
+				while ((fyt = fy_scan(fyp)) != NULL) {
+					dump_scan_token(fyp, fyt, du.colorize);
+					fy_scan_token_free(fyp, fyt);
+				}
+			} else {
+				while ((fyev = fy_parser_parse(fyp)) != NULL) {
+					dump_parse_event(fyp, fyev, du.colorize);
+					fy_parser_event_free(fyp, fyev);
+				}
+			}
+			count++;
+
+			if (fy_parser_get_stream_error(fyp))
+				goto cleanup;
+		}
 		break;
 
 	}

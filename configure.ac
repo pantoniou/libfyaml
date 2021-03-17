@@ -233,10 +233,10 @@ if test "x$TESTSUITEURL" == "x" ; then
 	TESTSUITEURL="https://github.com/yaml/yaml-test-suite"
 fi
 
-AC_ARG_VAR(TESTSUITECHECKOUT, [Testsuite checkout (default: b78c5674ca6ba78822d7a9817b25277b94df5885)])
+AC_ARG_VAR(TESTSUITECHECKOUT, [Testsuite checkout (default: 722f9f0feadbc6b692058694b38e243c8be4bb7e)])
 
 if test "x$TESTSUITECHECKOUT" == "x" ; then
-	TESTSUITECHECKOUT="b78c5674ca6ba78822d7a9817b25277b94df5885"
+	TESTSUITECHECKOUT="722f9f0feadbc6b692058694b38e243c8be4bb7e"
 fi
 
 AC_ARG_VAR(JSONTESTSUITEURL, [JSON Testsuite git repo URL (default: https://github.com/nst/JSONTestSuite)])
@@ -245,10 +245,10 @@ if test "x$JSONTESTSUITEURL" == "x" ; then
 	JSONTESTSUITEURL="https://github.com/nst/JSONTestSuite"
 fi
 
-AC_ARG_VAR(JSONTESTSUITECHECKOUT, [JSON Testsuite checkout (default: 9f23c68b521dd700e8c99151d6dc1c5c52a0246e)])
+AC_ARG_VAR(JSONTESTSUITECHECKOUT, [JSON Testsuite checkout (default: d64aefb55228d9584d3e5b2433f720ea8fd00c82)])
 
 if test "x$JSONTESTSUITECHECKOUT" == "x" ; then
-	JSONTESTSUITECHECKOUT="9f23c68b521dd700e8c99151d6dc1c5c52a0246e"
+	JSONTESTSUITECHECKOUT="d64aefb55228d9584d3e5b2433f720ea8fd00c82"
 fi
 
 # check for docker

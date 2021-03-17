@@ -16,6 +16,8 @@ done
 # output plan
 echo 1..$count
 
+skiplist="C4HZ"
+
 i=0
 for file in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/in.json; do
 
@@ -30,25 +32,35 @@ for file in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/in.json; do
 	desctxt=`cat 2>/dev/null "$dir/==="`
 	tdir=`basename $dir`
 
+	skipdirective=""
+	for skip in $skiplist; do
+		if [ "$tdir" == "$skip" ]; then
+			skipdirective="# skip does not apply to libfyaml"
+			break
+		fi
+	done
+
 	res="ok"
 
-	t1=`mktemp`
-	t2=`mktemp`
+	if [ "x$skipdirective" == "x" ]; then
+		t1=`mktemp`
+		t2=`mktemp`
 
-	# output yaml in json format
-	${TOP_BUILDDIR}/src/fy-tool --dump --strip-labels --strip-tags --strip-doc -r -mjson "$dir/in.yaml" | "${JQ}" --sort-keys . >"$t1"
+		# output yaml in json format
+		${TOP_BUILDDIR}/src/fy-tool --dump --strip-labels --strip-tags --strip-doc -r -mjson "$dir/in.yaml" | "${JQ}" --sort-keys . >"$t1"
 
-	# do the same with the json input (canonicalize)
-	cat "$dir/in.json" | "${JQ}" --sort-keys . > "$t2"
+		# do the same with the json input (canonicalize)
+		cat "$dir/in.json" | "${JQ}" --sort-keys . > "$t2"
 
-	diff -u "$t1" "$t2"
-	if [ $? -eq 0 ]; then
-		res="ok"
-	else
-		res="not ok"
+		diff -u "$t1" "$t2"
+		if [ $? -eq 0 ]; then
+			res="ok"
+		else
+			res="not ok"
+		fi
+
+		rm -f "$t1" "$t2"
 	fi
 
-	rm -f "$t1" "$t2"
-
-	echo "$res $i $tdir - $desctxt (JSON)"
+	echo "$res $i $tdir - $desctxt (JSON)$skipdirective"
 done

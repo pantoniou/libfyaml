@@ -157,6 +157,7 @@ struct fy_parser {
 	bool bare_document_only : 1;		/* no document start indicators allowed, no directives */
 	bool stream_has_content : 1;
 	bool parse_flow_only : 1;	/* document is in flow form, and stop parsing at the end */
+	bool colon_follows_colon : 1;	/* "foo"::bar -> "foo": :bar */
 	int flow_level;
 	int pending_complex_key_column;
 	struct fy_mark pending_complex_key_mark;
@@ -476,8 +477,6 @@ void fy_parse_cleanup(struct fy_parser *fyp);
 
 int fy_parse_input_append(struct fy_parser *fyp, const struct fy_input_cfg *fyic);
 
-struct fy_token *fy_scan(struct fy_parser *fyp);
-
 struct fy_eventp *fy_parse_private(struct fy_parser *fyp);
 
 extern const char *fy_event_type_txt[];
@@ -485,8 +484,6 @@ extern const char *fy_event_type_txt[];
 FILE *fy_parser_get_error_fp(struct fy_parser *fyp);
 enum fy_parse_cfg_flags fy_parser_get_cfg_flags(const struct fy_parser *fyp);
 bool fy_parser_is_colorized(struct fy_parser *fyp);
-
-struct fy_token *fy_document_event_get_token(struct fy_event *fye);
 
 #define FY_DEFAULT_YAML_VERSION_MAJOR	1
 #define FY_DEFAULT_YAML_VERSION_MINOR	1
