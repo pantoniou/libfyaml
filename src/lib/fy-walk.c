@@ -3760,6 +3760,7 @@ fy_scalar_walk_result_to_expr(struct fy_diag *diag, struct fy_walk_result *fwr, 
 	struct fy_input *fyit = NULL;
 	struct fy_path_expr *exprt = NULL;
 	struct fy_atom handle;
+	bool collection_addressing;
 	char *buf;
 	int rc;
 
@@ -3768,8 +3769,7 @@ fy_scalar_walk_result_to_expr(struct fy_diag *diag, struct fy_walk_result *fwr, 
 	if (!fwr)
 		return NULL;
 
-	if (ptype != fpet_chain && ptype != fpet_multi)
-		goto out;
+	collection_addressing = ptype == fpet_chain || ptype == fpet_multi;
 
 	switch (fwr->type) {
 	case fwrt_string:
@@ -3782,9 +3782,16 @@ fy_scalar_walk_result_to_expr(struct fy_diag *diag, struct fy_walk_result *fwr, 
 
 		exprt = fy_path_expr_alloc();
 		assert(exprt);
-		exprt->type = fpet_map_key;
-		exprt->fyt = fy_token_create(FYTT_PE_MAP_KEY, &handle, NULL);
-		assert(exprt->fyt);
+		if (collection_addressing) {
+			exprt->type = fpet_map_key;
+			exprt->fyt = fy_token_create(FYTT_PE_MAP_KEY, &handle, NULL);
+			assert(exprt->fyt);
+		} else {
+			exprt->type = fpet_scalar;
+			exprt->fyt = fy_token_create(FYTT_SCALAR, &handle, FYSS_PLAIN, NULL);
+			assert(exprt->fyt);
+			exprt->fyt->scalar.number_hint = false;
+		}
 		break;
 
 	case fwrt_number:
@@ -3797,10 +3804,16 @@ fy_scalar_walk_result_to_expr(struct fy_diag *diag, struct fy_walk_result *fwr, 
 
 		exprt = fy_path_expr_alloc();
 		assert(exprt);
-		exprt->type = fpet_seq_index;
-		exprt->fyt = fy_token_create(FYTT_PE_SEQ_INDEX, &handle, (int)fwr->number);
-		assert(exprt->fyt);
-
+		if (collection_addressing) {
+			exprt->type = fpet_seq_index;
+			exprt->fyt = fy_token_create(FYTT_PE_SEQ_INDEX, &handle, (int)fwr->number);
+			assert(exprt->fyt);
+		} else {
+			exprt->type = fpet_scalar;
+			exprt->fyt = fy_token_create(FYTT_SCALAR, &handle, FYSS_PLAIN, NULL);
+			assert(exprt->fyt);
+			exprt->fyt->scalar.number_hint = true;
+		}
 
 		break;
 
@@ -3808,7 +3821,6 @@ fy_scalar_walk_result_to_expr(struct fy_diag *diag, struct fy_walk_result *fwr, 
 		break;
 	}
 
-out:
 	fy_walk_result_free(fwr);
 	fy_input_unref(fyit);
 
@@ -4191,19 +4203,28 @@ fy_path_expr_execute(struct fy_diag *diag, int level, struct fy_path_expr *expr,
 	case fpet_scalar_expr:
 
 		exprl = fy_path_expr_list_head(&expr->children);
-		if (!exprl)
+		if (!exprl) {
+			fy_warning(diag, "%s:%d\n", __FILE__, __LINE__);
 			goto out;
+		}
 
 		output = fy_path_expr_execute(diag, level + 1, exprl, NULL, ptype);
-		if (!output)
+		if (!output) {
+			fy_warning(diag, "%s:%d\n", __FILE__, __LINE__);
 			goto out;
+		}
 
 		exprt = fy_scalar_walk_result_to_expr(diag, output, ptype);
 		output = NULL;
-		if (!exprt)
+		if (!exprt) {
+			fy_warning(diag, "%s:%d\n", __FILE__, __LINE__);
 			break;
+		}
 
 		output = fy_path_expr_execute(diag, level + 1, exprt, input, ptype);
+		if (!output) {
+			fy_warning(diag, "%s:%d\n", __FILE__, __LINE__);
+		}
 		input = NULL;
 
 		fy_path_expr_free(exprt);
