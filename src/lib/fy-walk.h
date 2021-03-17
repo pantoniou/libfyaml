@@ -73,7 +73,6 @@ fy_walk_result_iter_start(struct fy_walk_result *fwr)
 	fwri = fy_walk_result_list_head(&fwr->refs);
 	if (!fwri)
 		return NULL;
-	assert(fwri->type != fwrt_refs);
 	return fwri;
 }
 
@@ -85,7 +84,6 @@ fy_walk_result_iter_next(struct fy_walk_result *fwr, struct fy_walk_result *fwri
 	fwri = fy_walk_result_next(&fwr->refs, fwri);
 	if (!fwri)
 		return NULL;
-	assert(fwri->type != fwrt_refs);
 	return fwri;
 }
 
@@ -340,9 +338,7 @@ fy_path_expr_execute(struct fy_diag *diag, int level, struct fy_path_expr *expr,
 
 struct fy_path_exec {
 	struct fy_path_exec_cfg cfg;
-	struct fy_walk_result_list results;
 	struct fy_node *fyn_start;
-
 	struct fy_walk_result *result;
 };
 
