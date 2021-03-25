@@ -217,7 +217,7 @@ fy_eventp_vcreate_internal(struct fy_eventp_list *recycled_list, struct fy_diag 
 	enum fy_node_style style;
 	enum fy_scalar_style sstyle;
 	struct fy_token **fyt_anchorp = NULL, **fyt_tagp = NULL;
-	struct fy_input *fyi;
+	struct fy_input *fyi = NULL;
 	struct fy_atom handle;
 	const char *value;
 	size_t len;
