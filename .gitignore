@@ -45,7 +45,6 @@ stamp-h1
 tags
 TAGS
 tap-driver.sh
-.tarball-version
 test-driver
 test/libfyaml-test
 test/*.log

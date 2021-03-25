@@ -3,6 +3,8 @@ BUILT_SOURCES = .version
 	echo $(VERSION) > $@-t && mv $@-t $@
 dist-hook:
 	echo $(VERSION) > $(distdir)/.tarball-version
+tarball-version:
+	echo $(VERSION) > .tarball-version
 
 # files to keep in the distribution (in case you want to boostrap)
 EXTRA_DIST=bootstrap.sh \
@@ -28,7 +30,7 @@ MAINTAINERCLEANFILES = \
 	build-aux/ltmain.sh build-aux/missing build-aux/tap-driver.sh
 
 DISTCLEANFILES = \
-	.version .tarball-version \
+	.version \
 	debian/changelog debian/control debian/copyright \
 	debian/libfyaml-dev.install debian/libfyaml-utils.install debian/libfyaml-$(DEBVERSION).install
 
