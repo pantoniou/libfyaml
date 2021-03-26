@@ -10,7 +10,7 @@ tarball-version:
 EXTRA_DIST=bootstrap.sh \
 	   build-aux/shave.in build-aux/shave-libtool.in \
 	   build-aux/git-version-gen \
-	   README.md \
+	   README.md LICENSE \
 	   debian \
 	   Dockerfile Dockerfile-build-deb \
 	   Dockerfile.alpine Dockerfile.centos
