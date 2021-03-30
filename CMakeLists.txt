@@ -116,27 +116,27 @@ install(EXPORT ${PROJECT_NAME}-targets
 )
 export(
 	TARGETS ${PROJECT_NAME}
-	FILE "${CMAKE_BINARY_DIR}/cmake/${PROJECT_NAME}-targets.cmake"
+	FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/${PROJECT_NAME}-targets.cmake"
 	NAMESPACE ${PROJECT_NAME}::
 )
 
 
 include(CMakePackageConfigHelpers)
 configure_package_config_file(
-    ${CMAKE_SOURCE_DIR}/cmake/${PROJECT_NAME}-config.cmake.in
-    ${CMAKE_BINARY_DIR}/cmake/${PROJECT_NAME}-config.cmake
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/${PROJECT_NAME}-config.cmake.in
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/${PROJECT_NAME}-config.cmake
     INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}
 )
 
 write_basic_package_version_file(
-    ${CMAKE_BINARY_DIR}/cmake/${PROJECT_NAME}-config-version.cmake
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/${PROJECT_NAME}-config-version.cmake
     VERSION ${YART_VERSION}
     COMPATIBILITY AnyNewerVersion
 )
 
 install(
     FILES
-        ${CMAKE_BINARY_DIR}/cmake/${PROJECT_NAME}-config.cmake
-        ${CMAKE_BINARY_DIR}/cmake/${PROJECT_NAME}-config-version.cmake
+        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/${PROJECT_NAME}-config.cmake
+        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/${PROJECT_NAME}-config-version.cmake
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}
 )
