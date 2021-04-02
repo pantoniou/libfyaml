@@ -452,6 +452,41 @@ err_out:
 	return NULL;
 }
 
+const struct fy_parse_cfg *fy_document_get_cfg(struct fy_document *fyd)
+{
+	if (!fyd)
+		return NULL;
+	return &fyd->parse_cfg;
+}
+
+struct fy_diag *fy_document_get_diag(struct fy_document *fyd)
+{
+	if (!fyd || !fyd->diag)
+		return NULL;
+	return fy_diag_ref(fyd->diag);
+}
+
+int fy_document_set_diag(struct fy_document *fyd, struct fy_diag *diag)
+{
+	struct fy_diag_cfg dcfg;
+
+	if (!fyd)
+		return -1;
+
+	/* default? */
+	if (!diag) {
+		fy_diag_cfg_default(&dcfg);
+		diag = fy_diag_create(&dcfg);
+		if (!diag)
+			return -1;
+	}
+
+	fy_diag_unref(fyd->diag);
+	fyd->diag = fy_diag_ref(diag);
+
+	return 0;
+}
+
 struct fy_document *fy_node_document(struct fy_node *fyn)
 {
 	return fyn ? fyn->fyd : NULL;
@@ -2955,7 +2990,6 @@ static const struct fy_parse_cfg doc_parse_default_cfg = {
 
 struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 {
-	struct fy_diag_cfg dcfg;
 	struct fy_document *fyd = NULL;
 	struct fy_diag *diag;
 	int rc;
@@ -2972,7 +3006,7 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 
 	diag = cfg->diag;
 	if (!diag) {
-		diag = fy_diag_create(fy_diag_cfg_from_document(&dcfg, fyd));
+		diag = fy_diag_create(NULL);
 		if (!diag)
 			goto err_out;
 	} else
@@ -5892,23 +5926,6 @@ enum fy_parse_cfg_flags fy_document_get_cfg_flags(const struct fy_document *fyd)
 		return fy_parser_get_cfg_flags(NULL);
 
 	return fyd->parse_cfg.flags;
-}
-
-bool fy_document_is_colorized(struct fy_document *fyd)
-{
-	unsigned int color_flags;
-
-	if (!fyd)
-		return false;
-
-	if (fyd->parse_cfg.flags & FYPCF_COLLECT_DIAG)
-		return false;
-
-	color_flags = fyd->parse_cfg.flags & FYPCF_COLOR(FYPCF_COLOR_MASK);
-	if (color_flags == FYPCF_COLOR_AUTO)
-		return isatty(fileno(fy_document_get_error_fp(fyd))) == 1;
-
-	return color_flags == FYPCF_COLOR_FORCE;
 }
 
 bool fy_document_can_be_accelerated(struct fy_document *fyd)

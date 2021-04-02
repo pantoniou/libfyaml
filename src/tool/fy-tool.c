@@ -59,6 +59,11 @@
 #define OPT_STREAMING			2003
 #define OPT_DISABLE_ACCEL		2005
 
+#define OPT_DISABLE_DIAG		3000
+#define OPT_ENABLE_DIAG			3001
+#define OPT_SHOW_DIAG			3002
+#define OPT_HIDE_DIAG			3003
+
 static struct option lopts[] = {
 	{"include",		required_argument,	0,	'I' },
 	{"debug-level",		required_argument,	0,	'd' },
@@ -86,6 +91,10 @@ static struct option lopts[] = {
 	{"strip-doc",		no_argument,		0,	OPT_STRIP_DOC },
 	{"streaming",		no_argument,		0,	OPT_STREAMING },
 	{"disable-accel",	no_argument,		0,	OPT_DISABLE_ACCEL },
+	{"disable-diag",	required_argument,	0,	OPT_DISABLE_DIAG },
+	{"enable-diag", 	required_argument,	0,	OPT_ENABLE_DIAG },
+	{"show-diag",		required_argument,	0,	OPT_SHOW_DIAG },
+	{"hide-diag", 		required_argument,	0,	OPT_HIDE_DIAG },
 	{"to",			required_argument,	0,	'T' },
 	{"from",		required_argument,	0,	'F' },
 	{"quiet",		no_argument,		0,	'q' },
@@ -104,6 +113,11 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--debug-level, -d <lvl>  : Set debug level to <lvl>"
 						"(default level %d)\n",
 						DEBUG_LEVEL_DEFAULT);
+	fprintf(fp, "\t--disable-diag <x>      : Disable diag error module <x>\n");
+	fprintf(fp, "\t--enable-diag <x>       : Enable diag error module <x>\n");
+	fprintf(fp, "\t--show-diag-diag <x>    : Show diag option <x>\n");
+	fprintf(fp, "\t--hide-diag <x>         : Hide diag optione <x>\n");
+
 	fprintf(fp, "\t--indent, -i <indent>    : Set dump indent to <indent>"
 						" (default indent %d)\n",
 						INDENT_DEFAULT);
@@ -253,36 +267,6 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\n");
 		break;
 	}
-}
-
-static int modify_debug_level_flags(const char *what, unsigned int *flagsp)
-{
-	static const struct {
-		const char *name;
-		unsigned int set;
-		unsigned int clr;
-	} lf[] = {
-		{ .name = "default",	.set = FYPCF_DEBUG_LEVEL(DEBUG_LEVEL_DEFAULT), .clr = FYPCF_DEBUG_LEVEL(DEBUG_LEVEL_DEFAULT) },
-		{ .name = "debug",	.set = FYPCF_DEBUG_LEVEL_DEBUG, .clr = FYPCF_DEBUG_LEVEL_DEBUG },
-		{ .name = "info",	.set = FYPCF_DEBUG_LEVEL_INFO, .clr = FYPCF_DEBUG_LEVEL_INFO },
-		{ .name = "notice",	.set = FYPCF_DEBUG_LEVEL_NOTICE, .clr = FYPCF_DEBUG_LEVEL_NOTICE },
-		{ .name = "warning",	.set = FYPCF_DEBUG_LEVEL_WARNING, .clr = FYPCF_DEBUG_LEVEL_WARNING },
-		{ .name = "error",	.set = FYPCF_DEBUG_LEVEL_ERROR, .clr = FYPCF_DEBUG_LEVEL_ERROR },
-	};
-	unsigned int i;
-
-	if (!what || !flagsp)
-		return -1;
-
-	for (i = 0; i < sizeof(lf)/sizeof(lf[0]); i++) {
-		if (!strcmp(what, lf[i].name)) {
-			*flagsp |=  lf[i].set;
-			*flagsp &= ~lf[i].clr;
-			return 0;
-		}
-	}
-
-	return -1;
 }
 
 static int apply_mode_flags(const char *what, enum fy_emitter_cfg_flags *flagsp)
@@ -1046,8 +1030,6 @@ int main(int argc, char *argv[])
 		.search_path = INCLUDE_DEFAULT,
 		.flags =
 			(QUIET_DEFAULT ? FYPCF_QUIET : 0) |
-			FYPCF_DEBUG_LEVEL(DEBUG_LEVEL_DEFAULT) |
-			FYPCF_DEBUG_DIAG_DEFAULT | FYPCF_DEBUG_DEFAULT |
 			(RESOLVE_DEFAULT ? FYPCF_RESOLVE_DOCUMENT : 0) |
 			(DISABLE_ACCEL_DEFAULT ? FYPCF_DISABLE_ACCELERATORS : 0),
 	};
@@ -1055,6 +1037,9 @@ int main(int argc, char *argv[])
 	struct fy_parser *fyp = NULL;
 	struct fy_emitter *fye = NULL;
 	int rc, exitcode = EXIT_FAILURE, opt, lidx, count, i, j, step = 1;
+	enum fy_error_module errmod;
+	unsigned int errmod_mask;
+	bool show;
 	int indent = INDENT_DEFAULT;
 	int width = WIDTH_DEFAULT;
 	bool visible = VISIBLE_DEFAULT;
@@ -1113,6 +1098,9 @@ int main(int argc, char *argv[])
 	else
 		tool_mode = OPT_TOOL;
 
+	fy_diag_cfg_default(&dcfg);
+	/* XXX remember to modify this if you change COLOR_DEFAULT */
+
 	emit_flags = (SORT_DEFAULT ? FYECF_SORT_KEYS : 0) |
 		     (COMMENT_DEFAULT ? FYECF_OUTPUT_COMMENTS : 0) |
 		     (STRIP_LABELS_DEFAULT ? FYECF_STRIP_LABELS : 0) |
@@ -1155,25 +1143,51 @@ int main(int argc, char *argv[])
 			}
 			break;
 		case 'd':
-			cfg.flags &= ~FYPCF_DEBUG_LEVEL(FYPCF_DEBUG_LEVEL_MASK);
-
-			if (isdigit(*optarg)) {
-				i = atoi(optarg);
-				if (i <= FYET_ERROR) {
-					cfg.flags |= FYPCF_DEBUG_LEVEL(i);
-					rc = 0;
-				} else
-					rc = -1;
-			} else
-				rc = apply_flags_option(optarg, &cfg.flags, modify_debug_level_flags);
-
-			if (rc) {
-				fprintf(stderr, "bad diag option %s\n", optarg);
+			dcfg.level = fy_string_to_error_type(optarg);
+			if (dcfg.level == FYET_MAX) {
+				fprintf(stderr, "bad debug level option %s\n", optarg);
 				display_usage(stderr, progname, tool_mode);
 				return EXIT_FAILURE;
 			}
-
 			break;
+		case OPT_DISABLE_DIAG:
+		case OPT_ENABLE_DIAG:
+			if (!strcmp(optarg, "all")) {
+				errmod_mask = FY_BIT(FYEM_MAX) - 1;
+			} else {
+				errmod = fy_string_to_error_module(optarg);
+				if (errmod == FYEM_MAX) {
+					fprintf(stderr, "bad error module option %s\n", optarg);
+					display_usage(stderr, progname, tool_mode);
+					return EXIT_FAILURE;
+				}
+				errmod_mask = FY_BIT(errmod);
+			}
+			if (opt == OPT_DISABLE_DIAG)
+				dcfg.module_mask &= ~errmod_mask;
+			else
+				dcfg.module_mask |= errmod_mask;
+			break;
+
+		case OPT_SHOW_DIAG:
+		case OPT_HIDE_DIAG:
+			show = opt == OPT_SHOW_DIAG;
+			if (!strcmp(optarg, "source")) {
+				dcfg.show_source = show;
+			} else if (!strcmp(optarg, "position")) {
+				dcfg.show_position = show;
+			} else if (!strcmp(optarg, "type")) {
+				dcfg.show_type = show;
+			} else if (!strcmp(optarg, "module")) {
+				dcfg.show_module = show;
+			} else {
+				fprintf(stderr, "bad %s option %s\n",
+						show ? "show" : "hide", optarg);
+				display_usage(stderr, progname, tool_mode);
+				return EXIT_FAILURE;
+			}
+			break;
+
 		case 'r':
 			cfg.flags |= FYPCF_RESOLVE_DOCUMENT;
 			break;
@@ -1186,13 +1200,12 @@ int main(int argc, char *argv[])
 			break;
 		case 'C':
 			color = optarg;
-			cfg.flags &= ~FYPCF_COLOR(FYPCF_COLOR_MASK);
 			if (!strcmp(color, "auto"))
-				cfg.flags |= FYPCF_COLOR_AUTO;
+				dcfg.colorize = isatty(fileno(stderr)) == 1;
 			else if (!strcmp(color, "yes") || !strcmp(color, "1") || !strcmp(color, "on"))
-				cfg.flags |= FYPCF_COLOR_FORCE;
+				dcfg.colorize = true;
 			else if (!strcmp(color, "no") || !strcmp(color, "0") || !strcmp(color, "off"))
-				cfg.flags |= FYPCF_COLOR_NONE;
+				dcfg.colorize = false;
 			else {
 				fprintf(stderr, "bad color option %s\n", optarg);
 				display_usage(stderr, progname, tool_mode);
@@ -1215,6 +1228,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'q':
 			cfg.flags |= FYPCF_QUIET;
+			dcfg.output_fn = no_diag_output_fn;
+			dcfg.fp = NULL;
+			dcfg.colorize = false;
 			break;
 		case 'f':
 			file = optarg;
@@ -1290,24 +1306,11 @@ int main(int argc, char *argv[])
 	}
 
 	/* create common diagnostic object */
-	fy_diag_cfg_default(&dcfg);
-	fy_diag_cfg_from_parser_flags(&dcfg, cfg.flags);
-	if (!(cfg.flags & FYPCF_QUIET)) {
-		dcfg.fp = stderr;
-		dcfg.colorize = isatty(fileno(stderr)) == 1;
-	} else {
-		dcfg.output_fn = no_diag_output_fn;
-		dcfg.fp = NULL;
-	}
-
 	diag = fy_diag_create(&dcfg);
 	if (!diag) {
 		fprintf(stderr, "fy_diag_create() failed\n");
 		goto cleanup;
 	}
-
-	/* set default parser configuration for diagnostics without a parser */
-	fy_set_default_parser_cfg_flags(cfg.flags);
 
 	/* all set, use fy_diag for error reporting, debugging now */
 
@@ -1322,13 +1325,7 @@ int main(int argc, char *argv[])
 
 	memset(&du, 0, sizeof(du));
 	du.fp = stdout;
-	du.colorize = false;
-	if ((cfg.flags & FYPCF_COLOR(FYPCF_COLOR_MASK)) == FYPCF_COLOR_AUTO)
-		du.colorize = isatty(fileno(du.fp));
-	else if ((cfg.flags & FYPCF_COLOR(FYPCF_COLOR_MASK)) == FYPCF_COLOR_FORCE)
-		du.colorize = true;
-	else if ((cfg.flags & FYPCF_COLOR(FYPCF_COLOR_MASK)) == FYPCF_COLOR_NONE)
-		du.colorize = false;
+	du.colorize = dcfg.colorize;
 	du.visible = visible;
 
 	if (tool_mode != OPT_TESTSUITE) {

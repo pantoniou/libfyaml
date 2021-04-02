@@ -556,7 +556,8 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 	fyp->cfg = cfg ? *cfg : default_parse_cfg;
 
 	if (!diag) {
-		diag = fy_diag_create(fy_diag_cfg_from_parser(&dcfg, fyp));
+		fy_diag_cfg_default(&dcfg);
+		diag = fy_diag_create(&dcfg);
 		if (!diag)
 			return -1;
 	} else
@@ -5264,6 +5265,41 @@ void fy_parser_destroy(struct fy_parser *fyp)
 	free(fyp);
 }
 
+const struct fy_parse_cfg *fy_parser_get_cfg(struct fy_parser *fyp)
+{
+	if (!fyp)
+		return NULL;
+	return &fyp->cfg;
+}
+
+struct fy_diag *fy_parser_get_diag(struct fy_parser *fyp)
+{
+	if (!fyp || !fyp->diag)
+		return NULL;
+	return fy_diag_ref(fyp->diag);
+}
+
+int fy_parser_set_diag(struct fy_parser *fyp, struct fy_diag *diag)
+{
+	struct fy_diag_cfg dcfg;
+
+	if (!fyp)
+		return -1;
+
+	/* default? */
+	if (!diag) {
+		fy_diag_cfg_default(&dcfg);
+		diag = fy_diag_create(&dcfg);
+		if (!diag)
+			return -1;
+	}
+
+	fy_diag_unref(fyp->diag);
+	fyp->diag = fy_diag_ref(diag);
+
+	return 0;
+}
+
 static void fy_parse_input_reset(struct fy_parser *fyp)
 {
 	struct fy_input *fyi, *fyin;
@@ -5477,47 +5513,12 @@ bool fy_parser_get_stream_error(struct fy_parser *fyp)
 	return fyp->stream_error;
 }
 
-FILE *fy_parser_get_error_fp(struct fy_parser *fyp)
-{
-	if (!fyp || !(fyp->cfg.flags & FYPCF_COLLECT_DIAG))
-		return stderr;
-
-	return NULL;
-}
-
-enum fy_parse_cfg_flags default_parser_cfg_flags =
-	FYPCF_QUIET | FYPCF_DEBUG_LEVEL_WARNING |
-	FYPCF_DEBUG_DIAG_TYPE | FYPCF_COLOR_NONE;
-
-void fy_set_default_parser_cfg_flags(enum fy_parse_cfg_flags pflags)
-{
-	default_parser_cfg_flags = pflags;
-}
-
 enum fy_parse_cfg_flags fy_parser_get_cfg_flags(const struct fy_parser *fyp)
 {
 	if (!fyp)
-		return default_parser_cfg_flags;
+		return 0;
 
 	return fyp->cfg.flags;
-}
-
-bool fy_parser_is_colorized(struct fy_parser *fyp)
-{
-	unsigned int color_flags;
-
-	if (!fyp)
-		return false;
-
-	/* never colorize when collecting */
-	if (fyp->cfg.flags & FYPCF_COLLECT_DIAG)
-		return false;
-
-	color_flags = fyp->cfg.flags & FYPCF_COLOR(FYPCF_COLOR_MASK);
-	if (color_flags == FYPCF_COLOR_AUTO)
-		return isatty(fileno(fy_parser_get_error_fp(fyp))) == 1;
-
-	return color_flags == FYPCF_COLOR_FORCE;
 }
 
 struct fy_document_state *fy_parser_get_document_state(struct fy_parser *fyp)

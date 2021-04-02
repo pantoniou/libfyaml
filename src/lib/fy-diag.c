@@ -19,10 +19,83 @@
 #include <stdarg.h>
 #include <alloca.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #include <libfyaml.h>
 
 #include "fy-parse.h"
+
+static const char *error_type_txt[] = {
+	[FYET_DEBUG]   = "debug",
+	[FYET_INFO]    = "info",
+	[FYET_NOTICE]  = "notice",
+	[FYET_WARNING] = "warning",
+	[FYET_ERROR]   = "error",
+};
+
+const char *fy_error_type_to_string(enum fy_error_type type)
+{
+
+	if ((unsigned int)type >= FYET_MAX)
+		return "";
+	return error_type_txt[type];
+}
+
+enum fy_error_type fy_string_to_error_type(const char *str)
+{
+	unsigned int i;
+	int level;
+
+	if (!str)
+		return FYET_MAX;
+
+	if (isdigit(*str)) {
+		level = atoi(str);
+		if (level >= 0 && level < FYET_MAX)
+			return (enum fy_error_type)level;
+	}
+
+	for (i = 0; i < FYET_MAX; i++) {
+		if (!strcmp(str, error_type_txt[i]))
+			return (enum fy_error_type)i;
+	}
+
+	return FYET_MAX;
+}
+
+static const char *error_module_txt[] = {
+	[FYEM_UNKNOWN]	= "unknown",
+	[FYEM_ATOM]	= "atom",
+	[FYEM_SCAN]	= "scan",
+	[FYEM_PARSE]	= "parse",
+	[FYEM_DOC]	= "doc",
+	[FYEM_BUILD]	= "build",
+	[FYEM_INTERNAL]	= "internal",
+	[FYEM_SYSTEM]	= "system",
+};
+
+const char *fy_error_module_to_string(enum fy_error_module module)
+{
+
+	if ((unsigned int)module >= FYEM_MAX)
+		return "";
+	return error_module_txt[module];
+}
+
+enum fy_error_module fy_string_to_error_module(const char *str)
+{
+	unsigned int i;
+
+	if (!str)
+		return FYEM_MAX;
+
+	for (i = 0; i < FYEM_MAX; i++) {
+		if (!strcmp(str, error_module_txt[i]))
+			return (enum fy_error_module)i;
+	}
+
+	return FYEM_MAX;
+}
 
 static const char *fy_error_level_str(enum fy_error_type level)
 {
@@ -57,89 +130,34 @@ static const char *fy_error_module_str(enum fy_error_module module)
 	return txt[module];
 }
 
-static const char *fy_error_type_str(enum fy_error_type type)
-{
-	static const char *txt[] = {
-		[FYET_DEBUG]   = "debug",
-		[FYET_INFO]    = "info",
-		[FYET_NOTICE]  = "notice",
-		[FYET_WARNING] = "warning",
-		[FYET_ERROR]   = "error",
-	};
-
-	if ((unsigned int)type >= FYET_MAX)
-		return "*unknown*";
-	return txt[type];
-}
-
-void fy_diag_cfg_from_parser_flags(struct fy_diag_cfg *cfg, enum fy_parse_cfg_flags pflags)
-{
-	cfg->level = (pflags >> FYPCF_DEBUG_LEVEL_SHIFT) & FYPCF_DEBUG_LEVEL_MASK;
-	cfg->module_mask = (pflags >> FYPCF_MODULE_SHIFT) & FYPCF_MODULE_MASK;
-	cfg->colorize = false;
-	cfg->show_source = !!(pflags & FYPCF_DEBUG_DIAG_SOURCE);
-	cfg->show_position = !!(pflags & FYPCF_DEBUG_DIAG_POSITION);
-	cfg->show_type = !!(pflags & FYPCF_DEBUG_DIAG_TYPE);
-	cfg->show_module = !!(pflags & FYPCF_DEBUG_DIAG_MODULE);
-}
-
-enum fy_parse_cfg_flags fy_diag_parser_flags_from_cfg(const struct fy_diag_cfg *cfg)
-{
-	return ((cfg->level & FYPCF_DEBUG_LEVEL_MASK) << FYPCF_DEBUG_LEVEL_SHIFT) |
-	       ((cfg->module_mask & FYPCF_MODULE_SHIFT) << FYPCF_MODULE_SHIFT) |
-	       (cfg->colorize ? FYPCF_COLOR_FORCE : FYPCF_COLOR_NONE) |
-	       (cfg->show_source ? FYPCF_DEBUG_DIAG_SOURCE : 0) |
-	       (cfg->show_position ? FYPCF_DEBUG_DIAG_POSITION : 0) |
-	       (cfg->show_type ? FYPCF_DEBUG_DIAG_TYPE : 0) |
-	       (cfg->show_module ? FYPCF_DEBUG_DIAG_MODULE : 0);
-}
-
-static void
-fy_diag_cfg_default_widths(struct fy_diag_cfg *cfg)
-{
-	cfg->source_width = 50;
-	cfg->position_width = 10;
-	cfg->type_width = 5;
-	cfg->module_width = 6;
-}
+static const struct fy_diag_cfg default_diag_cfg_template = {
+	.fp		= NULL,	/* must be overriden */
+	.level		= FYET_INFO,
+	.module_mask	= (1U << FYEM_MAX) - 1,	/* all modules */
+	.show_source	= false,
+	.show_position	= false,
+	.show_type	= true,
+	.show_module	= false,
+	.colorize	= false, /* can be overriden */
+	.source_width	= 50,
+	.position_width	= 10,
+	.type_width	= 5,
+	.module_width	= 6,
+};
 
 void fy_diag_cfg_default(struct fy_diag_cfg *cfg)
 {
 	if (!cfg)
 		return;
 
-	memset(cfg, 0, sizeof(*cfg));
-
+	*cfg = default_diag_cfg_template;
 	cfg->fp = stderr;
-	fy_diag_cfg_from_parser_flags(cfg, FYPCF_DEFAULT_PARSE);
 	cfg->colorize = isatty(fileno(stderr)) == 1;
-	fy_diag_cfg_default_widths(cfg);
 }
 
-struct fy_diag_cfg *fy_diag_cfg_from_parser(struct fy_diag_cfg *cfg, struct fy_parser *fyp)
+void fy_diag_cfg_from_parser_flags(struct fy_diag_cfg *cfg, enum fy_parse_cfg_flags pflags)
 {
-	if (!cfg)
-		return NULL;
-
-	fy_diag_cfg_default(cfg);
-	cfg->fp = fy_parser_get_error_fp(fyp);
-	fy_diag_cfg_from_parser_flags(cfg, fy_parser_get_cfg_flags(fyp));
-	cfg->colorize = fy_parser_is_colorized(fyp);
-
-	return cfg;
-}
-
-struct fy_diag_cfg *fy_diag_cfg_from_document(struct fy_diag_cfg *cfg, struct fy_document *fyd)
-{
-	if (!cfg || !fyd)
-		return NULL;
-
-	fy_diag_cfg_default(cfg);
-	cfg->fp = fy_document_get_error_fp(fyd);
-	fy_diag_cfg_from_parser_flags(cfg, fy_document_get_cfg_flags(fyd));
-	cfg->colorize = fy_document_is_colorized(fyd);
-
-	return cfg;
+	/* nothing */
 }
 
 struct fy_diag *fy_diag_create(const struct fy_diag_cfg *cfg)
@@ -151,7 +169,10 @@ struct fy_diag *fy_diag_create(const struct fy_diag_cfg *cfg)
 		return NULL;
 	memset(diag, 0, sizeof(*diag));
 
-	diag->cfg = *cfg;
+	if (!cfg)
+		fy_diag_cfg_default(&diag->cfg);
+	else
+		diag->cfg = *cfg;
 	diag->on_error = false;
 	diag->refs = 1;
 
@@ -199,6 +220,40 @@ void fy_diag_free(struct fy_diag *diag)
 	if (!diag)
 		return;
 	free(diag);
+}
+
+const struct fy_diag_cfg *fy_diag_get_cfg(struct fy_diag *diag)
+{
+	if (!diag)
+		return NULL;
+	return &diag->cfg;
+}
+
+void fy_diag_set_cfg(struct fy_diag *diag, const struct fy_diag_cfg *cfg)
+{
+	if (!diag)
+		return;
+
+	if (!cfg) {
+		fy_diag_cfg_default(&diag->cfg);
+		return;
+	}
+
+	diag->cfg = *cfg;
+}
+
+void fy_diag_set_level(struct fy_diag *diag, enum fy_error_type level)
+{
+	if (!diag || (unsigned int)level >= FYET_MAX)
+		return;
+	diag->cfg.level = level;
+}
+
+void fy_diag_set_colorize(struct fy_diag *diag, bool colorize)
+{
+	if (!diag)
+		return;
+	diag->cfg.colorize = colorize;
 }
 
 struct fy_diag *fy_diag_ref(struct fy_diag *diag)
@@ -443,7 +498,7 @@ void fy_diag_vreport(struct fy_diag *diag,
 
 	fy_diag_printf(diag, "%s" "%s%s: %s" "%s\n",
 		name_str ? : "",
-		color_start, fy_error_type_str(fydrc->type), color_end,
+		color_start, fy_error_type_to_string(fydrc->type), color_end,
 		msg_str);
 
 	fy_atom_raw_line_iter_start(fy_token_atom(fydrc->fyt), &iter);
@@ -492,34 +547,20 @@ int fy_parser_vdiag(struct fy_parser *fyp, unsigned int flags,
 		    const char *fmt, va_list ap)
 {
 	struct fy_diag_ctx fydc;
-	unsigned int pflags;
-	int fydc_level, fyd_level, fydc_module;
-	unsigned int fyd_module_mask;
 	int rc;
 
 	if (!fyp || !fyp->diag || !fmt)
 		return -1;
 
-	pflags = fy_parser_get_cfg_flags(fyp);
-
 	/* perform the enable tests early to avoid the overhead */
-	fydc_level = (flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT;
-	fyd_level = (pflags >> FYPCF_DEBUG_LEVEL_SHIFT) & FYPCF_DEBUG_LEVEL_MASK;
-
-	if (fydc_level < fyd_level)
-		return 0;
-
-	fydc_module = (flags & FYDF_MODULE_MASK) >> FYDF_MODULE_SHIFT;
-	fyd_module_mask = (pflags >> FYPCF_MODULE_SHIFT) & FYPCF_MODULE_MASK;
-
-	if (!(fyd_module_mask & FY_BIT(fydc_module)))
+	if (((flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT) < fyp->diag->cfg.level)
 		return 0;
 
 	/* fill in fy_diag_ctx */
 	memset(&fydc, 0, sizeof(fydc));
 
-	fydc.level = fydc_level;
-	fydc.module = fydc_module;
+	fydc.level = (flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT;
+	fydc.module = (flags & FYDF_MODULE_MASK) >> FYDF_MODULE_SHIFT;
 	fydc.source_file = file;
 	fydc.source_line = line;
 	fydc.source_func = func;
@@ -583,34 +624,20 @@ int fy_document_vdiag(struct fy_document *fyd, unsigned int flags,
 		      const char *fmt, va_list ap)
 {
 	struct fy_diag_ctx fydc;
-	unsigned int pflags;
-	int fydc_level, fyd_level, fydc_module;
-	unsigned int fyd_module_mask;
 	int rc;
 
 	if (!fyd || !fmt || !fyd->diag)
 		return -1;
 
-	pflags = fy_document_get_cfg_flags(fyd);
-
 	/* perform the enable tests early to avoid the overhead */
-	fydc_level = (flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT;
-	fyd_level = (pflags >> FYPCF_DEBUG_LEVEL_SHIFT) & FYPCF_DEBUG_LEVEL_MASK;
-
-	if (fydc_level < fyd_level)
-		return 0;
-
-	fydc_module = (flags & FYDF_MODULE_MASK) >> FYDF_MODULE_SHIFT;
-	fyd_module_mask = (pflags >> FYPCF_MODULE_SHIFT) & FYPCF_MODULE_MASK;
-
-	if (!(fyd_module_mask & FY_BIT(fydc_module)))
+	if (((flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT) < fyd->diag->cfg.level)
 		return 0;
 
 	/* fill in fy_diag_ctx */
 	memset(&fydc, 0, sizeof(fydc));
 
-	fydc.level = fydc_level;
-	fydc.module = fydc_module;
+	fydc.level = (flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT;
+	fydc.module = (flags & FYDF_MODULE_MASK) >> FYDF_MODULE_SHIFT;
 	fydc.source_file = file;
 	fydc.source_line = line;
 	fydc.source_func = func;

@@ -87,10 +87,7 @@ void fy_diag_report(struct fy_diag *diag,
 
 struct fy_parser;
 
-struct fy_diag_cfg *fy_diag_cfg_from_parser(struct fy_diag_cfg *cfg, struct fy_parser *fyp);
-
 void fy_diag_cfg_from_parser_flags(struct fy_diag_cfg *cfg, enum fy_parse_cfg_flags pflags);
-enum fy_parse_cfg_flags fy_diag_parser_flags_from_cfg(const struct fy_diag_cfg *cfg);
 
 int fy_parser_vdiag(struct fy_parser *fyp, unsigned int flags,
 		    const char *file, int line, const char *func,
@@ -379,8 +376,6 @@ void fy_reader_diag_report(struct fy_reader *fyr,
 
 /* doc */
 struct fy_document;
-
-struct fy_diag_cfg *fy_diag_cfg_from_document(struct fy_diag_cfg *cfg, struct fy_document *fyd);
 
 int fy_document_vdiag(struct fy_document *fyd, unsigned int flags,
 		      const char *file, int line, const char *func,

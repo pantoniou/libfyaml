@@ -474,13 +474,10 @@ int fy_path_fetch_flow_map_key(struct fy_path_parser *fypp, int c)
 
 	fy_reader_fill_atom_start(fyr, &handle);
 
-	if (fypp->cfg.diag) {
-		cfg = &cfg_data;
-		memset(cfg, 0, sizeof(*cfg));
-		cfg->flags = fy_diag_parser_flags_from_cfg(&fypp->cfg.diag->cfg);
-		cfg->diag = fypp->cfg.diag;
-	} else
-		cfg = NULL;
+	cfg = &cfg_data;
+	memset(cfg, 0, sizeof(*cfg));
+	cfg->flags = FYPCF_DEFAULT_PARSE;
+	cfg->diag = fypp->cfg.diag;
 
 	rc = fy_parse_setup(fyp, cfg);
 	fyr_error_check(fyr, !rc, err_out, "fy_parse_setup() failed\n");

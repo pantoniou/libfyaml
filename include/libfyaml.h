@@ -198,28 +198,8 @@ enum fy_error_module {
 	FYEM_MAX,
 };
 
-/* Shift amount to apply for color option */
-#define FYPCF_COLOR_SHIFT		2
-/* Mask of bits of the color option */
-#define FYPCF_COLOR_MASK		3
-/* Build a color option */
-#define FYPCF_COLOR(x)			(((unsigned int)(x) & FYPCF_COLOR_MASK) << FYPCF_COLOR_SHIFT)
-/* Shift amount to apply to the module mask options */
-#define FYPCF_MODULE_SHIFT		4
-/* Mask of bits of the module options */
-#define FYPCF_MODULE_MASK		((1U << 8) - 1)
-/* Shift amount of the debug level option */
-#define FYPCF_DEBUG_LEVEL_SHIFT		12
-/* Mask of bits of the debug level option */
-#define FYPCF_DEBUG_LEVEL_MASK		((1U << 4) - 1)
-/* Build a debug level option */
-#define FYPCF_DEBUG_LEVEL(x)		(((unsigned int)(x) & FYPCF_DEBUG_LEVEL_MASK) << FYPCF_DEBUG_LEVEL_SHIFT)
-/* Shift amount of the debug diagnostric output options */
-#define FYPCF_DEBUG_DIAG_SHIFT		16
-/* Mask of the debug diagnostric output options */
-#define FYPCF_DEBUG_DIAG_MASK		((1U << 4) - 1)
 /* Shift amount of the JSON input mode */
-#define FYPCF_JSON_SHIFT		29
+#define FYPCF_JSON_SHIFT		16
 /* Mask of the JSON input mode */
 #define FYPCF_JSON_MASK			((1U << 2) - 1)
 /* Build a JSON input mode option */
@@ -237,97 +217,76 @@ enum fy_error_module {
  *
  * @FYPCF_QUIET: Quiet, do not output any information messages
  * @FYPCF_COLLECT_DIAG: Collect diagnostic/error messages
- * @FYPCF_COLOR_AUTO: Automatically use color, i.e. the diagnostic output is a tty
- * @FYPCF_COLOR_NONE: Never use color for diagnostic output
- * @FYPCF_COLOR_FORCE: Force use of color for diagnostic output
- * @FYPCF_DEBUG_UNKNOWN: Enable diagnostic output by the unknown module
- * @FYPCF_DEBUG_ATOM: Enable diagnostic output by the atom module
- * @FYPCF_DEBUG_SCAN: Enable diagnostic output by the scan module
- * @FYPCF_DEBUG_PARSE: Enable diagnostic output by the parse module
- * @FYPCF_DEBUG_DOC: Enable diagnostic output by the document module
- * @FYPCF_DEBUG_BUILD: Enable diagnostic output by the build document module
- * @FYPCF_DEBUG_INTERNAL: Enable diagnostic output by the internal module
- * @FYPCF_DEBUG_SYSTEM: Enable diagnostic output by the system module
- * @FYPCF_DEBUG_LEVEL_DEBUG: Set the debug level to %FYET_DEBUG
- * @FYPCF_DEBUG_LEVEL_INFO: Set the debug level to %FYET_INFO
- * @FYPCF_DEBUG_LEVEL_NOTICE: Set the debug level to %FYET_NOTICE
- * @FYPCF_DEBUG_LEVEL_WARNING: Set the debug level to %FYET_WARNING
- * @FYPCF_DEBUG_LEVEL_ERROR: Set the debug level to %FYET_ERROR
- * @FYPCF_DEBUG_DIAG_SOURCE: Include source location in the diagnostic output
- * @FYPCF_DEBUG_DIAG_POSITION: Include source file location in the diagnostic output
- * @FYPCF_DEBUG_DIAG_TYPE: Include the debug type in the diagnostic output
- * @FYPCF_DEBUG_DIAG_MODULE: Include the debug module in the diagnostic output
  * @FYPCF_RESOLVE_DOCUMENT: When producing documents, automatically resolve them
  * @FYPCF_DISABLE_MMAP_OPT: Disable mmap optimization
  * @FYPCF_DISABLE_RECYCLING: Disable recycling optimization
  * @FYPCF_PARSE_COMMENTS: Enable parsing of comments (experimental)
  * @FYPCF_DISABLE_DEPTH_LIMIT: Disable depth limit check, use with enlarged stack
+ * @FYPCF_DISABLE_ACCELERATORS: Disable use of access accelerators (saves memory)
  * @FYPCF_JSON_AUTO: Automatically enable JSON mode (when extension is .json)
  * @FYPCF_JSON_NONE: Never enable JSON input mode
  * @FYPCF_JSON_FORCE: Force JSON mode always
- * @FYPCF_DISABLE_ACCELERATORS: Disable use of access accelerators (saves memory)
  */
 enum fy_parse_cfg_flags {
 	FYPCF_QUIET			= FY_BIT(0),
 	FYPCF_COLLECT_DIAG		= FY_BIT(1),
-	FYPCF_COLOR_AUTO		= FYPCF_COLOR(0),
-	FYPCF_COLOR_NONE		= FYPCF_COLOR(1),
-	FYPCF_COLOR_FORCE		= FYPCF_COLOR(2),
-	FYPCF_DEBUG_UNKNOWN		= FY_BIT(FYPCF_MODULE_SHIFT + FYEM_UNKNOWN),
-	FYPCF_DEBUG_ATOM		= FY_BIT(FYPCF_MODULE_SHIFT + FYEM_ATOM),
-	FYPCF_DEBUG_SCAN		= FY_BIT(FYPCF_MODULE_SHIFT + FYEM_SCAN),
-	FYPCF_DEBUG_PARSE		= FY_BIT(FYPCF_MODULE_SHIFT + FYEM_PARSE),
-	FYPCF_DEBUG_DOC			= FY_BIT(FYPCF_MODULE_SHIFT + FYEM_DOC),
-	FYPCF_DEBUG_BUILD		= FY_BIT(FYPCF_MODULE_SHIFT + FYEM_BUILD),
-	FYPCF_DEBUG_INTERNAL		= FY_BIT(FYPCF_MODULE_SHIFT + FYEM_INTERNAL),
-	FYPCF_DEBUG_SYSTEM		= FY_BIT(FYPCF_MODULE_SHIFT + FYEM_SYSTEM),
-	FYPCF_DEBUG_LEVEL_DEBUG		= FYPCF_DEBUG_LEVEL(FYET_DEBUG),
-	FYPCF_DEBUG_LEVEL_INFO		= FYPCF_DEBUG_LEVEL(FYET_INFO),
-	FYPCF_DEBUG_LEVEL_NOTICE	= FYPCF_DEBUG_LEVEL(FYET_NOTICE),
-	FYPCF_DEBUG_LEVEL_WARNING	= FYPCF_DEBUG_LEVEL(FYET_WARNING),
-	FYPCF_DEBUG_LEVEL_ERROR		= FYPCF_DEBUG_LEVEL(FYET_ERROR),
-	FYPCF_DEBUG_DIAG_SOURCE		= FY_BIT(FYPCF_DEBUG_DIAG_SHIFT + 0),
-	FYPCF_DEBUG_DIAG_POSITION	= FY_BIT(FYPCF_DEBUG_DIAG_SHIFT + 1),
-	FYPCF_DEBUG_DIAG_TYPE		= FY_BIT(FYPCF_DEBUG_DIAG_SHIFT + 2),
-	FYPCF_DEBUG_DIAG_MODULE		= FY_BIT(FYPCF_DEBUG_DIAG_SHIFT + 3),
-	FYPCF_RESOLVE_DOCUMENT		= FY_BIT(20),
-	FYPCF_DISABLE_MMAP_OPT		= FY_BIT(21),
-	FYPCF_DISABLE_RECYCLING		= FY_BIT(22),
-	FYPCF_PARSE_COMMENTS		= FY_BIT(23),
-	FYPCF_DISABLE_DEPTH_LIMIT	= FY_BIT(24),
+	FYPCF_RESOLVE_DOCUMENT		= FY_BIT(2),
+	FYPCF_DISABLE_MMAP_OPT		= FY_BIT(3),
+	FYPCF_DISABLE_RECYCLING		= FY_BIT(4),
+	FYPCF_PARSE_COMMENTS		= FY_BIT(5),
+	FYPCF_DISABLE_DEPTH_LIMIT	= FY_BIT(6),
+	FYPCF_DISABLE_ACCELERATORS	= FY_BIT(7),
 	FYPCF_JSON_AUTO			= FYPCF_JSON(0),
 	FYPCF_JSON_NONE			= FYPCF_JSON(1),
 	FYPCF_JSON_FORCE		= FYPCF_JSON(2),
-	FYPCF_DISABLE_ACCELERATORS	= FY_BIT(31),
 };
 
-/* Enable diagnostic output by all modules */
-#define FYPCF_DEBUG_ALL			(FYPCF_MODULE_MASK << FYPCF_MODULE_SHIFT)
-/* Sane default for enabling diagnostic output */
-#define FYPCF_DEBUG_DEFAULT 		(FYPCF_DEBUG_ALL & ~FYPCF_DEBUG_ATOM)
+#define FYPCF_DEFAULT_PARSE	(0)
 
-/* Include every meta diagnostic output */
-#define FYPCF_DEBUG_DIAG_ALL		(FYPCF_DEBUG_DIAG_MASK << FYPCF_DEBUG_DIAG_SHIFT)
-/* Sane default of the meta diagnostic output */
-#define FYPCF_DEBUG_DIAG_DEFAULT	(FYPCF_DEBUG_DIAG_TYPE)
+#define FYPCF_DEFAULT_DOC	(FYPCF_QUIET | FYPCF_DEFAULT_PARSE)
 
-#define FYPCF_GET_DEBUG_LEVEL(_f) \
-	(((unsigned int)(_f) >> FYPCF_DEBUG_LEVEL_SHIFT) & FYPCF_DEBUG_LEVEL_MASK)
-
-#define FYPCF_DEFAULT_PARSE (FYPCF_DEBUG_LEVEL_INFO | \
-			     FYPCF_DEBUG_DIAG_TYPE | \
-			     FYPCF_COLOR_AUTO | \
-			     FYPCF_DEBUG_ALL)
-
-#define FYPCF_DEFAULT_DOC    (FYPCF_QUIET | \
-			      FYPCF_DEBUG_LEVEL_WARNING | \
-			      FYPCF_DEBUG_DIAG_TYPE | \
-			      FYPCF_COLOR_NONE)
-
-/* for debugging without a parser context */
-void
-fy_set_default_parser_cfg_flags(enum fy_parse_cfg_flags pflags)
-	FY_EXPORT;
+/*
+ * The FYPCF_DEBUG and FYPCF_COLOR flags have been removed, however
+ * to help with backwards compatibility we will define them as 0
+ * so that code can continue to compile.
+ *
+ * You will need to eventualy modify the code if you actually depended
+ * on the old behaviour.
+ */
+#define FYPCF_MODULE_SHIFT		0
+#define FYPCF_MODULE_MASK		0
+#define FYPCF_DEBUG_LEVEL_SHIFT		0
+#define FYPCF_DEBUG_LEVEL_MASK		0
+#define FYPCF_DEBUG_LEVEL(x)		0
+#define FYPCF_DEBUG_DIAG_SHIFT		0
+#define FYPCF_DEBUG_DIAG_MASK		0
+#define FYPCF_DEBUG_DIAG_ALL		0
+#define FYPCF_DEBUG_DIAG_DEFAULT	0
+#define FYPCF_DEBUG_UNKNOWN		0
+#define FYPCF_DEBUG_ATOM		0
+#define FYPCF_DEBUG_SCAN		0
+#define FYPCF_DEBUG_PARSE		0
+#define FYPCF_DEBUG_DOC			0
+#define FYPCF_DEBUG_BUILD		0
+#define FYPCF_DEBUG_INTERNAL		0
+#define FYPCF_DEBUG_SYSTEM		0
+#define FYPCF_DEBUG_LEVEL_DEBUG		0
+#define FYPCF_DEBUG_LEVEL_INFO		0
+#define FYPCF_DEBUG_LEVEL_NOTICE	0
+#define FYPCF_DEBUG_LEVEL_WARNING	0
+#define FYPCF_DEBUG_LEVEL_ERROR		0
+#define FYPCF_DEBUG_DIAG_SOURCE		0
+#define FYPCF_DEBUG_DIAG_POSITION	0
+#define FYPCF_DEBUG_DIAG_TYPE		0
+#define FYPCF_DEBUG_DIAG_MODULE		0
+#define FYPCF_DEBUG_ALL			0
+#define FYPCF_DEBUG_DEFAULT		0
+#define FYPCF_COLOR_SHIFT		0
+#define FYPCF_COLOR_MASK		0
+#define FYPCF_COLOR(x)			0
+#define FYPCF_COLOR_AUTO		0
+#define FYPCF_COLOR_NONE		0
+#define FYPCF_COLOR_FORCE		0
 
 /**
  * struct fy_parse_cfg - parser configuration structure.
@@ -529,6 +488,46 @@ fy_library_version(void)
 	FY_EXPORT;
 
 /**
+ * fy_string_to_error_type() - Return the error type from a string
+ *
+ * @str: The string to convert to an error type
+ *
+ * Returns:
+ * The error type if greater or equal to zero, FYET_MAX otherwise
+ */
+enum fy_error_type fy_string_to_error_type(const char *str);
+
+/**
+ * fy_error_type_to_string() - Convert an error type to string
+ *
+ * @type: The error type to convert
+ *
+ * Returns:
+ * The string value of the error type or the empty string "" on error
+ */
+const char *fy_error_type_to_string(enum fy_error_type type);
+
+/**
+ * fy_string_to_error_module() - Return the error module from a string
+ *
+ * @str: The string to convert to an error module
+ *
+ * Returns:
+ * The error type if greater or equal to zero, FYEM_MAX otherwise
+ */
+enum fy_error_module fy_string_to_error_module(const char *str);
+
+/**
+ * fy_error_module_to_string() - Convert an error module to string
+ *
+ * @type: The error module to convert
+ *
+ * Returns:
+ * The string value of the error module or the empty string "" on error
+ */
+const char *fy_error_module_to_string(enum fy_error_module module);
+
+/**
  * fy_document_event_is_implicit() - Check whether the given document event is an implicit one
  *
  * @fye: A pointer to a &struct fy_event to check.
@@ -566,6 +565,53 @@ fy_parser_create(const struct fy_parse_cfg *cfg)
  */
 void
 fy_parser_destroy(struct fy_parser *fyp)
+	FY_EXPORT;
+
+/**
+ * fy_parser_get_cfg() - Get the configuration of a parser
+ *
+ * @fyp: The parser
+ *
+ * Returns:
+ * The configuration of the parser
+ */
+const struct fy_parse_cfg *
+fy_parser_get_cfg(struct fy_parser *fyp)
+	FY_EXPORT;
+
+/**
+ * fy_parser_get_diag() - Get the diagnostic object of a parser
+ *
+ * Return a pointer to the diagnostic object of a parser object.
+ * Note that the returned diag object has a reference taken so
+ * you should fy_diag_unref() it when you're done with it.
+ *
+ * @fyp: The parser to get the diagnostic object
+ *
+ * Returns:
+ * A pointer to a ref'ed diagnostic object or NULL in case of an
+ * error.
+ */
+struct fy_diag *
+fy_parser_get_diag(struct fy_parser *fyp)
+	FY_EXPORT;
+
+/**
+ * fy_parser_set_diag() - Set the diagnostic object of a parser
+ *
+ * Replace the parser's current diagnostic object with the one
+ * given as an argument. The previous diagnostic object will be
+ * unref'ed (and freed if its reference gets to 0).
+ * Also note that the diag argument shall take a reference too.
+ *
+ * @fyp: The parser to replace the diagnostic object
+ * @diag: The parser's new diagnostic object, NULL for default
+ *
+ * Returns:
+ * 0 if everything OK, -1 otherwise
+ */
+int
+fy_parser_set_diag(struct fy_parser *fyp, struct fy_diag *diag)
 	FY_EXPORT;
 
 /**
@@ -1331,18 +1377,6 @@ struct fy_emitter_cfg {
 };
 
 /**
- * fy_emitter_get_cfg() - Get the configuration of an emitter
- *
- * @emit: The emitter
- *
- * Returns:
- * The configuration of the emitter
- */
-const struct fy_emitter_cfg *
-fy_emitter_get_cfg(struct fy_emitter *emit)
-	FY_EXPORT;
-
-/**
  * fy_emitter_create() - Create an emitter
  *
  * Creates an emitter using the supplied configuration
@@ -1365,6 +1399,53 @@ fy_emitter_create(struct fy_emitter_cfg *cfg)
  */
 void
 fy_emitter_destroy(struct fy_emitter *emit)
+	FY_EXPORT;
+
+/**
+ * fy_emitter_get_cfg() - Get the configuration of an emitter
+ *
+ * @emit: The emitter
+ *
+ * Returns:
+ * The configuration of the emitter
+ */
+const struct fy_emitter_cfg *
+fy_emitter_get_cfg(struct fy_emitter *emit)
+	FY_EXPORT;
+
+/**
+ * fy_emitter_get_diag() - Get the diagnostic object of an emitter
+ *
+ * Return a pointer to the diagnostic object of an emitter object.
+ * Note that the returned diag object has a reference taken so
+ * you should fy_diag_unref() it when you're done with it.
+ *
+ * @emit: The emitter to get the diagnostic object
+ *
+ * Returns:
+ * A pointer to a ref'ed diagnostic object or NULL in case of an
+ * error.
+ */
+struct fy_diag *
+fy_emitter_get_diag(struct fy_emitter *emit)
+	FY_EXPORT;
+
+/**
+ * fy_emitter_set_diag() - Set the diagnostic object of an emitter
+ *
+ * Replace the emitters's current diagnostic object with the one
+ * given as an argument. The previous diagnostic object will be
+ * unref'ed (and freed if its reference gets to 0).
+ * Also note that the diag argument shall take a reference too.
+ *
+ * @emit: The emitter to replace the diagnostic object
+ * @diag: The emitter's new diagnostic object, NULL for default
+ *
+ * Returns:
+ * 0 if everything OK, -1 otherwise
+ */
+int
+fy_emitter_set_diag(struct fy_emitter *emit, struct fy_diag *diag)
 	FY_EXPORT;
 
 /**
@@ -1913,6 +1994,53 @@ fy_document_create(const struct fy_parse_cfg *cfg)
  */
 void
 fy_document_destroy(struct fy_document *fyd)
+	FY_EXPORT;
+
+/**
+ * fy_document_get_cfg() - Get the configuration of a document
+ *
+ * @fyd: The document
+ *
+ * Returns:
+ * The configuration of the document
+ */
+const struct fy_parse_cfg *
+fy_document_get_cfg(struct fy_document *fyd)
+	FY_EXPORT;
+
+/**
+ * fy_document_get_diag() - Get the diagnostic object of a document
+ *
+ * Return a pointer to the diagnostic object of a document object.
+ * Note that the returned diag object has a reference taken so
+ * you should fy_diag_unref() it when you're done with it.
+ *
+ * @fyd: The document to get the diagnostic object
+ *
+ * Returns:
+ * A pointer to a ref'ed diagnostic object or NULL in case of an
+ * error.
+ */
+struct fy_diag *
+fy_document_get_diag(struct fy_document *fyd)
+	FY_EXPORT;
+
+/**
+ * fy_document_set_diag() - Set the diagnostic object of a document
+ *
+ * Replace the documents's current diagnostic object with the one
+ * given as an argument. The previous diagnostic object will be
+ * unref'ed (and freed if its reference gets to 0).
+ * Also note that the diag argument shall take a reference too.
+ *
+ * @fyd: The document to replace the diagnostic object
+ * @diag: The document's new diagnostic object, NULL for default
+ *
+ * Returns:
+ * 0 if everything OK, -1 otherwise
+ */
+int
+fy_document_set_diag(struct fy_document *fyd, struct fy_diag *diag)
 	FY_EXPORT;
 
 /**
@@ -4127,7 +4255,7 @@ struct fy_diag_cfg {
  *
  * Creates a diagnostic object using the provided configuration.
  *
- * @cfg: The configuration for the diagnostic object
+ * @cfg: The configuration for the diagnostic object (NULL is default)
  *
  * Returns:
  * A pointer to the diagnostic object or NULL in case of an error.
@@ -4149,6 +4277,52 @@ fy_diag_create(const struct fy_diag_cfg *cfg)
 void
 fy_diag_destroy(struct fy_diag *diag)
 	FY_EXPORT;
+
+/**
+ * fy_diag_get_cfg() - Get a diagnostic object's configuration
+ *
+ * Return the current configuration of a diagnostic object
+ *
+ * @diag: The diagnostic object
+ *
+ * Returns:
+ * A const pointer to the diagnostic object configuration, or NULL
+ * in case where diag is NULL
+ */
+const struct fy_diag_cfg *
+fy_diag_get_cfg(struct fy_diag *diag)
+	FY_EXPORT;
+
+/**
+ * fy_diag_set_cfg() - Set a diagnostic object's configuration
+ *
+ * Replace the current diagnostic configuration with the given
+ * configuration passed as an argument.
+ *
+ * @diag: The diagnostic object
+ * @cfg: The diagnostic configuration
+ */
+void
+fy_diag_set_cfg(struct fy_diag *diag, const struct fy_diag_cfg *cfg)
+	FY_EXPORT;
+
+/**
+ * fy_diag_set_level() - Set a diagnostic object's debug error level
+ *
+ * @diag: The diagnostic object
+ * @level: The debugging level to set
+ */
+void
+fy_diag_set_level(struct fy_diag *diag, enum fy_error_type level);
+
+/**
+ * fy_diag_set_colorize() - Set a diagnostic object's colorize option
+ *
+ * @diag: The diagnostic object
+ * @color: The colorize option
+ */
+void
+fy_diag_set_colorize(struct fy_diag *diag, bool colorize);
 
 /**
  * fy_diag_ref() - Increment that reference counter of a diagnostic object
@@ -4222,6 +4396,8 @@ fy_diag_cfg_default(struct fy_diag_cfg *cfg)
  * 				     structure from parser config flags
  *
  * Fills in part of the configuration structure using parser flags.
+ * Since the parser flags do not contain debugging flags anymore this
+ * method is deprecated.
  *
  * @cfg: The diagnostic configuration structure
  * @pflags: The parser flags
@@ -4229,7 +4405,7 @@ fy_diag_cfg_default(struct fy_diag_cfg *cfg)
 void
 fy_diag_cfg_from_parser_flags(struct fy_diag_cfg *cfg,
 			      enum fy_parse_cfg_flags pflags)
-	FY_EXPORT;
+	FY_EXPORT FY_DEPRECATED;
 
 /**
  * fy_diag_vprintf() - vprintf raw interface to diagnostics

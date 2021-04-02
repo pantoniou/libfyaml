@@ -2800,103 +2800,6 @@ int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, 
 	return 0;
 }
 
-static int modify_module_flags(const char *what, unsigned int *flagsp)
-{
-	static const struct {
-		const char *name;
-		unsigned int set;
-		unsigned int clr;
-	} mf[] = {
-		{ .name = "all",	.set = FYPCF_DEBUG_ALL, },
-		{ .name = "none",	.clr = FYPCF_DEBUG_ALL, },
-		{ .name = "default",	.set = FYPCF_DEBUG_DEFAULT, .clr = ~FYPCF_DEBUG_DEFAULT },
-		{ .name = "unknown",	.set = FYPCF_DEBUG_UNKNOWN },
-		{ .name = "atom",	.set = FYPCF_DEBUG_ATOM },
-		{ .name = "scan",	.set = FYPCF_DEBUG_SCAN },
-		{ .name = "parse",	.set = FYPCF_DEBUG_PARSE },
-		{ .name = "doc",	.set = FYPCF_DEBUG_DOC },
-		{ .name = "build",	.set = FYPCF_DEBUG_BUILD },
-		{ .name = "walk",	.set = FYPCF_DEBUG_BUILD },
-		{ .name = "internal",	.set = FYPCF_DEBUG_INTERNAL },
-		{ .name = "system",	.set = FYPCF_DEBUG_SYSTEM },
-	};
-	unsigned int i;
-
-	if (!what || !flagsp)
-		return -1;
-
-	for (i = 0; i < sizeof(mf)/sizeof(mf[0]); i++) {
-		if (!strcmp(what, mf[i].name)) {
-			*flagsp |=  mf[i].set;
-			*flagsp &= ~mf[i].clr;
-			return 0;
-		}
-	}
-
-	return -1;
-}
-
-static int modify_debug_diag_flags(const char *what, unsigned int *flagsp)
-{
-	static const struct {
-		const char *name;
-		unsigned int set;
-		unsigned int clr;
-	} df[] = {
-		{ .name = "all",	.set = FYPCF_DEBUG_DIAG_ALL, },
-		{ .name = "none",	.clr = FYPCF_DEBUG_DIAG_ALL, },
-		{ .name = "default",	.set = FYPCF_DEBUG_DIAG_DEFAULT, .clr = ~FYPCF_DEBUG_DIAG_DEFAULT },
-		{ .name = "source",	.set = FYPCF_DEBUG_DIAG_SOURCE },
-		{ .name = "position",	.set = FYPCF_DEBUG_DIAG_POSITION },
-		{ .name = "type",	.set = FYPCF_DEBUG_DIAG_TYPE },
-		{ .name = "module",	.set = FYPCF_DEBUG_DIAG_MODULE },
-	};
-	unsigned int i;
-
-	if (!what || !flagsp)
-		return -1;
-
-	for (i = 0; i < sizeof(df)/sizeof(df[0]); i++) {
-		if (!strcmp(what, df[i].name)) {
-			*flagsp |=  df[i].set;
-			*flagsp &= ~df[i].clr;
-			return 0;
-		}
-	}
-
-	return -1;
-}
-
-static int modify_debug_level_flags(const char *what, unsigned int *flagsp)
-{
-	static const struct {
-		const char *name;
-		unsigned int set;
-		unsigned int clr;
-	} lf[] = {
-		{ .name = "default",	.set = FYPCF_DEBUG_LEVEL(DEBUG_LEVEL_DEFAULT), .clr = ~FYPCF_DEBUG_LEVEL(DEBUG_LEVEL_DEFAULT) },
-		{ .name = "debug",	.set = FYPCF_DEBUG_LEVEL_DEBUG, .clr = ~FYPCF_DEBUG_LEVEL_DEBUG },
-		{ .name = "info",	.set = FYPCF_DEBUG_LEVEL_INFO, .clr = ~FYPCF_DEBUG_LEVEL_INFO },
-		{ .name = "notice",	.set = FYPCF_DEBUG_LEVEL_NOTICE, .clr = ~FYPCF_DEBUG_LEVEL_NOTICE },
-		{ .name = "warning",	.set = FYPCF_DEBUG_LEVEL_WARNING, .clr = ~FYPCF_DEBUG_LEVEL_WARNING },
-		{ .name = "error",	.set = FYPCF_DEBUG_LEVEL_ERROR, .clr = ~FYPCF_DEBUG_LEVEL_ERROR },
-	};
-	unsigned int i;
-
-	if (!what || !flagsp)
-		return -1;
-
-	for (i = 0; i < sizeof(lf)/sizeof(lf[0]); i++) {
-		if (!strcmp(what, lf[i].name)) {
-			*flagsp |=  lf[i].set;
-			*flagsp &= ~lf[i].clr;
-			return 0;
-		}
-	}
-
-	return -1;
-}
-
 int apply_flags_option(const char *arg, unsigned int *flagsp,
 		int (*modify_flags)(const char *what, unsigned int *flagsp))
 {
@@ -2934,11 +2837,10 @@ int main(int argc, char *argv[])
 	struct fy_parser ctx, *fyp = &ctx;
 	struct fy_parse_cfg cfg = {
 		.search_path = INCLUDE_DEFAULT,
-		.flags =
-			(QUIET_DEFAULT ? FYPCF_QUIET : 0) |
-			FYPCF_DEBUG_LEVEL(DEBUG_LEVEL_DEFAULT) |
-			FYPCF_DEBUG_DIAG_DEFAULT | FYPCF_DEBUG_DEFAULT,
+		.flags = (QUIET_DEFAULT ? FYPCF_QUIET : 0),
 	};
+	enum fy_error_type error_level = FYET_MAX;
+	int color_diag = -1;
 	struct fy_input_cfg *fyic, *fyic_array = NULL;
 	int i, j, icount, rc, exitcode = EXIT_FAILURE, opt, lidx;
 	char *tmp, *s;
@@ -2979,23 +2881,11 @@ int main(int argc, char *argv[])
 			width = atoi(optarg);
 			break;
 		case 'd':
-			cfg.flags &= ~FYPCF_DEBUG_LEVEL(FYPCF_DEBUG_LEVEL_MASK);
-
-			if (isdigit(*optarg)) {
-				i = atoi(optarg);
-				if (i <= FYET_ERROR) {
-					cfg.flags |= FYPCF_DEBUG_LEVEL(i);
-					rc = 0;
-				} else
-					rc = -1;
-			} else
-				rc = apply_flags_option(optarg, &cfg.flags, modify_debug_level_flags);
-
-			if (rc) {
+			error_level = fy_string_to_error_type(optarg);
+			if (error_level == FYET_MAX) {
 				fprintf(stderr, "bad diag option %s\n", optarg);
 				display_usage(stderr, argv[0]);
 			}
-
 			break;
 		case 'r':
 			resolve = true;
@@ -3009,33 +2899,22 @@ int main(int argc, char *argv[])
 			break;
 		case 'C':
 			color = optarg;
-			cfg.flags &= ~FYPCF_COLOR(FYPCF_COLOR_MASK);
 			if (!strcmp(color, "auto"))
-				cfg.flags |= FYPCF_COLOR_AUTO;
+				color_diag = -1;
 			else if (!strcmp(color, "yes") || !strcmp(color, "1") || !strcmp(color, "on"))
-				cfg.flags |= FYPCF_COLOR_FORCE;
+				color_diag = 1;
 			else if (!strcmp(color, "no") || !strcmp(color, "0") || !strcmp(color, "off"))
-				cfg.flags |= FYPCF_COLOR_NONE;
+				color_diag = 0;
 			else {
 				fprintf(stderr, "bad color option %s\n", optarg);
 				display_usage(stderr, argv[0]);
 			}
 			break;
 		case 'D':
-			cfg.flags &= ~FYPCF_DEBUG_DIAG_ALL;
-			rc = apply_flags_option(optarg, &cfg.flags, modify_debug_diag_flags);
-			if (rc) {
-				fprintf(stderr, "bad diag option %s\n", optarg);
-				display_usage(stderr, argv[0]);
-			}
+			/* XXX TODO if I'm ever bothered */
 			break;
 		case 'M':
-			cfg.flags &= ~FYPCF_DEBUG_DEFAULT;
-			rc = apply_flags_option(optarg, &cfg.flags, modify_module_flags);
-			if (rc) {
-				fprintf(stderr, "bad module option %s\n", optarg);
-				display_usage(stderr, argv[0]);
-			}
+			/* XXX TODO if I'm ever bothered */
 			break;
 		case 'W':
 			walkpath = optarg;
@@ -3145,9 +3024,6 @@ int main(int argc, char *argv[])
 	}
 #endif
 
-	/* set default parser configuration for diagnostics without a parser */
-	fy_set_default_parser_cfg_flags(cfg.flags);
-
 	if (!strcmp(mode, "build")) {
 		rc = do_build(&cfg, argc - optind, argv + optind);
 		return !rc ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -3158,6 +3034,11 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "fy_parse_setup() failed\n");
 		goto cleanup;
 	}
+
+	if (error_level != FYET_MAX)
+		fy_diag_set_level(fy_parser_get_diag(fyp), error_level);
+	if (color_diag != -1)
+		fy_diag_set_colorize(fy_parser_get_diag(fyp), !!color_diag);
 
 	icount = argc - optind;
 	if (!icount)

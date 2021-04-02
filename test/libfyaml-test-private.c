@@ -25,7 +25,7 @@
 
 static const struct fy_parse_cfg default_parse_cfg = {
 	.search_path = "",
-	.flags = FYPCF_QUIET | FYPCF_DEBUG_DEFAULT | FYPCF_DEBUG_LEVEL_WARNING,
+	.flags = FYPCF_QUIET,
 };
 
 START_TEST(parser_setup)

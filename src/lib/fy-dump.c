@@ -165,7 +165,7 @@ void fyp_debug_dump_token_list(struct fy_parser *fyp, struct fy_token_list *fytl
 {
 	char buf[1024];
 
-	if (FYET_DEBUG < FYPCF_GET_DEBUG_LEVEL(fyp->cfg.flags))
+	if (!fyp || !fyp->diag || FYET_DEBUG < fyp->diag->cfg.level)
 		return;
 
 	fyp_scan_debug(fyp, "%s%s\n", banner,
@@ -176,7 +176,7 @@ void fyp_debug_dump_token(struct fy_parser *fyp, struct fy_token *fyt, const cha
 {
 	char buf[80];
 
-	if (FYET_DEBUG < FYPCF_GET_DEBUG_LEVEL(fyp->cfg.flags))
+	if (!fyp || !fyp->diag || FYET_DEBUG < fyp->diag->cfg.level)
 		return;
 
 	fyp_scan_debug(fyp, "%s%s\n", banner,
@@ -188,7 +188,7 @@ void fyp_debug_dump_simple_key_list(struct fy_parser *fyp, struct fy_simple_key_
 {
 	char buf[1024];
 
-	if (FYET_DEBUG < FYPCF_GET_DEBUG_LEVEL(fyp->cfg.flags))
+	if (!fyp || !fyp->diag || FYET_DEBUG < fyp->diag->cfg.level)
 		return;
 
 	fyp_scan_debug(fyp, "%s%s\n", banner,
@@ -199,7 +199,7 @@ void fyp_debug_dump_simple_key(struct fy_parser *fyp, struct fy_simple_key *fysk
 {
 	char buf[80];
 
-	if (FYET_DEBUG < FYPCF_GET_DEBUG_LEVEL(fyp->cfg.flags))
+	if (!fyp || !fyp->diag || FYET_DEBUG < fyp->diag->cfg.level)
 		return;
 
 	fyp_scan_debug(fyp, "%s%s\n", banner,

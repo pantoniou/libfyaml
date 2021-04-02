@@ -1912,7 +1912,6 @@ void fy_emit_reset(struct fy_emitter *emit, bool reset_events)
 
 int fy_emit_setup(struct fy_emitter *emit, const struct fy_emitter_cfg *cfg)
 {
-	struct fy_diag_cfg dcfg;
 	struct fy_diag *diag;
 
 	if (!cfg)
@@ -1925,7 +1924,7 @@ int fy_emit_setup(struct fy_emitter *emit, const struct fy_emitter_cfg *cfg)
 	diag = cfg->diag;
 
 	if (!diag) {
-		diag = fy_diag_create(fy_diag_cfg_from_parser(&dcfg, NULL));
+		diag = fy_diag_create(NULL);
 		if (!diag)
 			return -1;
 	} else
@@ -2027,14 +2026,6 @@ int fy_emit_document(struct fy_emitter *emit, struct fy_document *fyd)
 	return rc;
 }
 
-const struct fy_emitter_cfg *fy_emitter_get_cfg(struct fy_emitter *emit)
-{
-	if (!emit)
-		return NULL;
-
-	return &emit->cfg;
-}
-
 struct fy_emitter *fy_emitter_create(struct fy_emitter_cfg *cfg)
 {
 	struct fy_emitter *emit;
@@ -2064,6 +2055,42 @@ void fy_emitter_destroy(struct fy_emitter *emit)
 	fy_emit_cleanup(emit);
 
 	free(emit);
+}
+
+const struct fy_emitter_cfg *fy_emitter_get_cfg(struct fy_emitter *emit)
+{
+	if (!emit)
+		return NULL;
+
+	return &emit->cfg;
+}
+
+struct fy_diag *fy_emitter_get_diag(struct fy_emitter *emit)
+{
+	if (!emit || !emit->diag)
+		return NULL;
+	return fy_diag_ref(emit->diag);
+}
+
+int fy_emitter_set_diag(struct fy_emitter *emit, struct fy_diag *diag)
+{
+	struct fy_diag_cfg dcfg;
+
+	if (!emit)
+		return -1;
+
+	/* default? */
+	if (!diag) {
+		fy_diag_cfg_default(&dcfg);
+		diag = fy_diag_create(&dcfg);
+		if (!diag)
+			return -1;
+	}
+
+	fy_diag_unref(emit->diag);
+	emit->diag = fy_diag_ref(diag);
+
+	return 0;
 }
 
 struct fy_emit_buffer_state {

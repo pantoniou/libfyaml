@@ -158,7 +158,6 @@ struct fy_token *fy_node_token(struct fy_node *fyn);
 
 FILE *fy_document_get_error_fp(struct fy_document *fyd);
 enum fy_parse_cfg_flags fy_document_get_cfg_flags(const struct fy_document *fyd);
-bool fy_document_is_colorized(struct fy_document *fyd);
 bool fy_document_is_accelerated(struct fy_document *fyd);
 bool fy_document_can_be_accelerated(struct fy_document *fyd);
 
