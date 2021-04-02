@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
+#include <errno.h>
 
 #include <libfyaml.h>
 
@@ -543,6 +544,7 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 {
 	const void *p;
 	size_t left, pos, size, nread, nreadreq, missing;
+	ssize_t snread;
 	size_t space __FY_DEBUG_UNUSED__;
 	void *buf;
 
@@ -585,7 +587,7 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 			break;
 
 		/* no more */
-		if (feof(fyi->fp) || ferror(fyi->fp)) {
+		if (!fyi->cfg.stream.ignore_stdio && (feof(fyi->fp) || ferror(fyi->fp))) {
 			if (!left) {
 				fyr_debug(fyr, "input exhausted (EOF)");
 				p = NULL;
@@ -629,11 +631,31 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 		do {
 			nreadreq = fyi->allocated - fyi->read;
 
-			fyr_debug(fyr, "performing read request of %zu", nreadreq);
+			if (!fyi->cfg.stream.ignore_stdio) {
 
-			nread = fread(fyi->buffer + fyi->read, 1, nreadreq, fyi->fp);
+				fyr_debug(fyr, "performing fread request of %zu", nreadreq);
 
-			fyr_debug(fyr, "read returned %zu", nread);
+				nread = fread(fyi->buffer + fyi->read, 1, nreadreq, fyi->fp);
+
+				fyr_debug(fyr, "fread returned %zu", nread);
+
+			} else {
+
+				fyr_debug(fyr, "performing read request of %zu", nreadreq);
+
+				do {
+					snread = read(fileno(fyi->fp), fyi->buffer + fyi->read, nreadreq);
+				} while (snread == -1 && errno == EAGAIN);
+
+				if (snread == -1) {
+					fyr_error(fyr, "read() failed");
+					goto err_out;
+				}
+
+				fyr_debug(fyr, "read returned %zd", snread);
+
+				nread = snread;
+			}
 
 			if (!nread)
 				break;

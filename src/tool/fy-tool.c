@@ -43,6 +43,7 @@
 #define STREAMING_DEFAULT		false
 #define JSON_DEFAULT			"auto"
 #define DISABLE_ACCEL_DEFAULT		false
+#define DISABLE_BUFFERING_DEFAULT	false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -58,6 +59,7 @@
 #define OPT_STRIP_DOC			2002
 #define OPT_STREAMING			2003
 #define OPT_DISABLE_ACCEL		2005
+#define OPT_DISABLE_BUFFERING		2006
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -91,6 +93,7 @@ static struct option lopts[] = {
 	{"strip-doc",		no_argument,		0,	OPT_STRIP_DOC },
 	{"streaming",		no_argument,		0,	OPT_STREAMING },
 	{"disable-accel",	no_argument,		0,	OPT_DISABLE_ACCEL },
+	{"disable-buffering",	no_argument,		0,	OPT_DISABLE_BUFFERING },
 	{"disable-diag",	required_argument,	0,	OPT_DISABLE_DIAG },
 	{"enable-diag", 	required_argument,	0,	OPT_ENABLE_DIAG },
 	{"show-diag",		required_argument,	0,	OPT_SHOW_DIAG },
@@ -148,6 +151,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--disable-accel          : Disable access accelerators (slower but uses less memory)"
 						" (default %s)\n",
 						DISABLE_ACCEL_DEFAULT ? "true" : "false");
+	fprintf(fp, "\t--disable-buffering      : Disable buffering (i.e. no stdio file reads, unix fd instead)"
+						" (default %s)\n",
+						DISABLE_BUFFERING_DEFAULT ? "true" : "false");
 	fprintf(fp, "\t--json, -j               : JSON input mode (no | force | auto)"
 						" (default %s)\n",
 						JSON_DEFAULT);
@@ -1032,6 +1038,7 @@ int main(int argc, char *argv[])
 			(QUIET_DEFAULT ? FYPCF_QUIET : 0) |
 			(RESOLVE_DEFAULT ? FYPCF_RESOLVE_DOCUMENT : 0) |
 			(DISABLE_ACCEL_DEFAULT ? FYPCF_DISABLE_ACCELERATORS : 0),
+			(DISABLE_BUFFERING_DEFAULT ? FYPCF_DISABLE_BUFFERING : 0),
 	};
 	struct fy_emitter_cfg emit_cfg;
 	struct fy_parser *fyp = NULL;
@@ -1282,6 +1289,9 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_DISABLE_ACCEL:
 			cfg.flags |= FYPCF_DISABLE_ACCELERATORS;
+			break;
+		case OPT_DISABLE_BUFFERING:
+			cfg.flags |= FYPCF_DISABLE_BUFFERING;
 			break;
 		case 'h' :
 		default:

@@ -223,6 +223,7 @@ enum fy_error_module {
  * @FYPCF_PARSE_COMMENTS: Enable parsing of comments (experimental)
  * @FYPCF_DISABLE_DEPTH_LIMIT: Disable depth limit check, use with enlarged stack
  * @FYPCF_DISABLE_ACCELERATORS: Disable use of access accelerators (saves memory)
+ * @FYPCF_UNBUFFERED: Disable use of buffering where possible
  * @FYPCF_JSON_AUTO: Automatically enable JSON mode (when extension is .json)
  * @FYPCF_JSON_NONE: Never enable JSON input mode
  * @FYPCF_JSON_FORCE: Force JSON mode always
@@ -236,6 +237,7 @@ enum fy_parse_cfg_flags {
 	FYPCF_PARSE_COMMENTS		= FY_BIT(5),
 	FYPCF_DISABLE_DEPTH_LIMIT	= FY_BIT(6),
 	FYPCF_DISABLE_ACCELERATORS	= FY_BIT(7),
+	FYPCF_DISABLE_BUFFERING		= FY_BIT(8),
 	FYPCF_JSON_AUTO			= FYPCF_JSON(0),
 	FYPCF_JSON_NONE			= FYPCF_JSON(1),
 	FYPCF_JSON_FORCE		= FYPCF_JSON(2),

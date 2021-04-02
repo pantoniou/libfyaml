@@ -5334,6 +5334,7 @@ int fy_parser_set_input_file(struct fy_parser *fyp, const char *file)
 		fyic.type = fyit_stream;
 		fyic.stream.name = "stdin";
 		fyic.stream.fp = stdin;
+		fyic.stream.ignore_stdio = !!(fyp->cfg.flags & FYPCF_DISABLE_BUFFERING);
 	} else {
 		fyic.type = fyit_file;
 		fyic.file.filename = file;
@@ -5440,6 +5441,7 @@ int fy_parser_set_input_fp(struct fy_parser *fyp, const char *name, FILE *fp)
 	fyic.type = fyit_stream;
 	fyic.stream.name = name ? : "<stream>";
 	fyic.stream.fp = fp;
+	fyic.stream.ignore_stdio = !!(fyp->cfg.flags & FYPCF_DISABLE_BUFFERING);
 
 	/* must not be in the middle of something */
 	fyp_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
