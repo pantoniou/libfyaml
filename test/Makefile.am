@@ -38,7 +38,8 @@ libfyaml_test_SOURCES = \
 	libfyaml-test.c \
 	libfyaml-test-private.c \
 	libfyaml-test-core.c \
-	libfyaml-test-meta.c
+	libfyaml-test-meta.c \
+	libfyaml-test-emit.c
 
 TESTS += libfyaml.test
 
