@@ -2026,7 +2026,7 @@ int fy_emit_document(struct fy_emitter *emit, struct fy_document *fyd)
 	return rc;
 }
 
-struct fy_emitter *fy_emitter_create(struct fy_emitter_cfg *cfg)
+struct fy_emitter *fy_emitter_create(const struct fy_emitter_cfg *cfg)
 {
 	struct fy_emitter *emit;
 	int rc;

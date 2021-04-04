@@ -1389,7 +1389,7 @@ struct fy_emitter_cfg {
  * The newly created emitter or NULL on error.
  */
 struct fy_emitter *
-fy_emitter_create(struct fy_emitter_cfg *cfg)
+fy_emitter_create(const struct fy_emitter_cfg *cfg)
 	FY_EXPORT;
 
 /**
