@@ -1049,7 +1049,6 @@ int main(int argc, char *argv[])
 	bool show;
 	int indent = INDENT_DEFAULT;
 	int width = WIDTH_DEFAULT;
-	bool visible = VISIBLE_DEFAULT;
 	bool follow = FOLLOW_DEFAULT;
 	const char *to = TO_DEFAULT;
 	const char *from = FROM_DEFAULT;
@@ -1107,6 +1106,11 @@ int main(int argc, char *argv[])
 
 	fy_diag_cfg_default(&dcfg);
 	/* XXX remember to modify this if you change COLOR_DEFAULT */
+
+	memset(&du, 0, sizeof(du));
+	du.fp = stdout;
+	du.colorize = isatty(fileno(stdout)) == 1;
+	du.visible = VISIBLE_DEFAULT;
 
 	emit_flags = (SORT_DEFAULT ? FYECF_SORT_KEYS : 0) |
 		     (COMMENT_DEFAULT ? FYECF_OUTPUT_COMMENTS : 0) |
@@ -1207,13 +1211,17 @@ int main(int argc, char *argv[])
 			break;
 		case 'C':
 			color = optarg;
-			if (!strcmp(color, "auto"))
+			if (!strcmp(color, "auto")) {
 				dcfg.colorize = isatty(fileno(stderr)) == 1;
-			else if (!strcmp(color, "yes") || !strcmp(color, "1") || !strcmp(color, "on"))
+				du.colorize = isatty(fileno(stdout)) == 1;
+			}
+			else if (!strcmp(color, "yes") || !strcmp(color, "1") || !strcmp(color, "on")) {
 				dcfg.colorize = true;
-			else if (!strcmp(color, "no") || !strcmp(color, "0") || !strcmp(color, "off"))
+				du.colorize = true;
+			} else if (!strcmp(color, "no") || !strcmp(color, "0") || !strcmp(color, "off")) {
 				dcfg.colorize = false;
-			else {
+				du.colorize = false;
+			} else {
 				fprintf(stderr, "bad color option %s\n", optarg);
 				display_usage(stderr, progname, tool_mode);
 				return EXIT_FAILURE;
@@ -1228,7 +1236,7 @@ int main(int argc, char *argv[])
 			}
 			break;
 		case 'V':
-			visible = true;
+			du.visible = true;
 			break;
 		case 'l':
 			follow = true;
@@ -1332,11 +1340,6 @@ int main(int argc, char *argv[])
 	}
 
 	exitcode = EXIT_FAILURE;
-
-	memset(&du, 0, sizeof(du));
-	du.fp = stdout;
-	du.colorize = dcfg.colorize;
-	du.visible = visible;
 
 	if (tool_mode != OPT_TESTSUITE) {
 
