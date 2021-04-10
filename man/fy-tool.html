@@ -35,6 +35,7 @@
   <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Public API" href="../libfyaml.html" />
     <link rel="prev" title="Introduction" href="../intro.html" /> 
 </head>
 
@@ -92,6 +93,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#see-also">See also</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="../libfyaml.html">Public API</a></li>
 </ul>
 
             
@@ -173,14 +175,14 @@ Its operation is different depending on how it’s called, either via aliases
 named <cite>fy-dump</cite>, <cite>fy-testsuite</cite>, <cite>fy-filter</cite>, <cite>fy-join</cite>, or via the
 <cite>–dump</cite>, <cite>–testsuite</cite>, <cite>–filter</cite>, <cite>–join</cite> options.</p>
 <ul class="simple">
-<li><p>In <cite>dump</cite> mode it will parse YAML/JSON input files and output YAML/JSON
-according to the output format options.</p></li>
-<li><p>In <cite>testsuite</cite> mode it will parse a single YAML input file and output
-yaml testsuite reference output.</p></li>
-<li><p>In <cite>filter</cite> mode it will parse YAML/JSON files and output YAML/JSON
-output filtered according to the given option.</p></li>
-<li><p>In <cite>join</cite> mode it will parse YAML/JSON files and join them into a single
-YAML/JSON document according to the given command line options.</p></li>
+<li>In <cite>dump</cite> mode it will parse YAML/JSON input files and output YAML/JSON
+according to the output format options.</li>
+<li>In <cite>testsuite</cite> mode it will parse a single YAML input file and output
+yaml testsuite reference output.</li>
+<li>In <cite>filter</cite> mode it will parse YAML/JSON files and output YAML/JSON
+output filtered according to the given option.</li>
+<li>In <cite>join</cite> mode it will parse YAML/JSON files and join them into a single
+YAML/JSON document according to the given command line options.</li>
 </ul>
 </div>
 <div class="section" id="options">
@@ -190,50 +192,50 @@ and they are as follows:</p>
 <p class="rubric">Common options</p>
 <dl class="option">
 <dt id="cmdoption-fy-tool-q">
-<code class="sig-name descname">-q</code><code class="sig-prename descclassname"></code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--quiet</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-q" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-q</code><code class="descclassname"></code><code class="descclassname">, </code><code class="descname">--quiet</code><code class="descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-q" title="Permalink to this definition">¶</a></dt>
 <dd><p>Quiet operation, does not output informational messages at all.</p>
 </dd></dl>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-h">
-<code class="sig-name descname">-h</code><code class="sig-prename descclassname"></code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--help</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-h" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-h</code><code class="descclassname"></code><code class="descclassname">, </code><code class="descname">--help</code><code class="descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-h" title="Permalink to this definition">¶</a></dt>
 <dd><p>Display usage information.</p>
 </dd></dl>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-v">
-<code class="sig-name descname">-v</code><code class="sig-prename descclassname"></code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--version</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-v" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-v</code><code class="descclassname"></code><code class="descclassname">, </code><code class="descname">--version</code><code class="descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-v" title="Permalink to this definition">¶</a></dt>
 <dd><p>Display version information.</p>
 </dd></dl>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-i">
-<code class="sig-name descname">-I</code><code class="sig-prename descclassname"> DIR</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--include</code><code class="sig-prename descclassname">=DIR</code><a class="headerlink" href="#cmdoption-fy-tool-i" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-I</code><code class="descclassname"> DIR</code><code class="descclassname">, </code><code class="descname">--include</code><code class="descclassname">=DIR</code><a class="headerlink" href="#cmdoption-fy-tool-i" title="Permalink to this definition">¶</a></dt>
 <dd><p>Add the <cite>DIR</cite>  directory to the search path which will be used to locate a YAML/JSON file.
 The default path is set to “”</p>
 </dd></dl>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-d">
-<code class="sig-name descname">-d</code><code class="sig-prename descclassname"> LEVEL</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--debug-level</code><code class="sig-prename descclassname">=LEVEL</code><a class="headerlink" href="#cmdoption-fy-tool-d" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-d</code><code class="descclassname"> LEVEL</code><code class="descclassname">, </code><code class="descname">--debug-level</code><code class="descclassname">=LEVEL</code><a class="headerlink" href="#cmdoption-fy-tool-d" title="Permalink to this definition">¶</a></dt>
 <dd><p>Set the minimum numeric debug level value of the library to <cite>LEVEL</cite>.
 The numeric value must be in the range of 0 to 4 and their meaning is as follows:</p>
 <ul>
-<li><p><strong>0</strong> (<cite>DEBUG</cite>)</p>
+<li><p class="first"><strong>0</strong> (<cite>DEBUG</cite>)</p>
 <p>Internal library debugging messages. No output is produced when the
 library was compiled with <cite>–disable-debug</cite></p>
 </li>
-<li><p><strong>1</strong> (<cite>INFO</cite>)</p>
+<li><p class="first"><strong>1</strong> (<cite>INFO</cite>)</p>
 <p>Informational messages about the internal operation of the library.</p>
 </li>
-<li><p><strong>2</strong> (<cite>NOTICE</cite>)</p>
+<li><p class="first"><strong>2</strong> (<cite>NOTICE</cite>)</p>
 <p>Messsages that could require attention.</p>
 </li>
-<li><p><strong>3</strong> (<cite>WARNING</cite>)</p>
+<li><p class="first"><strong>3</strong> (<cite>WARNING</cite>)</p>
 <p>A warning message, something is wrong, but operation can continue.
 This is the default value.</p>
 </li>
-<li><p><strong>4</strong> (<cite>ERROR</cite>)</p>
+<li><p class="first"><strong>4</strong> (<cite>ERROR</cite>)</p>
 <p>A fatal error occured, it is impossible to continue.</p>
 </li>
 </ul>
@@ -244,16 +246,16 @@ with level 3 and higher will be displayed.</p>
 <p class="rubric">Parser Options</p>
 <dl class="option">
 <dt id="cmdoption-fy-tool-j">
-<code class="sig-name descname">-j</code><code class="sig-prename descclassname"> JSONOPT</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--json</code><code class="sig-prename descclassname">=JSONOPT</code><a class="headerlink" href="#cmdoption-fy-tool-j" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-j</code><code class="descclassname"> JSONOPT</code><code class="descclassname">, </code><code class="descname">--json</code><code class="descclassname">=JSONOPT</code><a class="headerlink" href="#cmdoption-fy-tool-j" title="Permalink to this definition">¶</a></dt>
 <dd><p>Marks the input files as JSON or YAML accordingly to:</p>
 <ul>
-<li><p><strong>no</strong></p>
+<li><p class="first"><strong>no</strong></p>
 <p>The input files are always in YAML mode.</p>
 </li>
-<li><p><strong>yes</strong></p>
+<li><p class="first"><strong>yes</strong></p>
 <p>The input files are always set to JSON mode.</p>
 </li>
-<li><p><strong>auto</strong></p>
+<li><p class="first"><strong>auto</strong></p>
 <p>The input files are set to JSON mode automatically when the
 file’s extension is <cite>.json</cite>. This is the default.</p>
 </li>
@@ -266,64 +268,41 @@ for invalid JSON to be rejected even when it’s valid YAML 1.2.</p>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-streaming">
-<code class="sig-name descname">--streaming</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-streaming" title="Permalink to this definition">¶</a></dt>
+<code class="descname">--streaming</code><code class="descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-streaming" title="Permalink to this definition">¶</a></dt>
 <dd><p>Only valid when in <strong>dump</strong> mode, enables streaming mode. This means
 that no in-memory graph tree is constructed, so indefinite and arbitrary
 large YAML input streams can be processed.</p>
 <p>Note that in streaming mode:</p>
 <ul class="simple">
-<li><p>Key duplication checks are disabled.</p></li>
-<li><p>No reording of key order is possible when emitting (i.e. <cite>–sort</cite> is not available).</p></li>
-<li><p>Alias resolution is not available (i.e. <cite>–resolve</cite>).</p></li>
-</ul>
-</dd></dl>
-
-<dl class="option">
-<dt id="cmdoption-fy-tool-tab">
-<code class="sig-name descname">--tab</code><code class="sig-prename descclassname">=TAB</code><a class="headerlink" href="#cmdoption-fy-tool-tab" title="Permalink to this definition">¶</a></dt>
-<dd><p>Set the tab indent mode. Allowed values are:</p>
-<ul>
-<li><p><strong>auto</strong></p>
-<p>Indent by tabs is disabled until a vim tab marker is encountered.
-For the remainder of the file the tabs have the value parsed (or until another
-option is encountered). An example vim YAML set tab option is:</p>
-<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="c1"># vim: set ts=4:</span>
-<span class="nt">foo</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">bar</span>
-</pre></div>
-</div>
-</li>
-<li><p><strong>0</strong></p>
-<p>Indent by tabs is completely disabled.</p>
-</li>
-<li><p><strong>1-9</strong></p>
-<p>Tab is set to the given value.</p>
-</li>
+<li>Key duplication checks are disabled.</li>
+<li>No reording of key order is possible when emitting (i.e. <cite>–sort</cite> is not available).</li>
+<li>Alias resolution is not available (i.e. <cite>–resolve</cite>).</li>
 </ul>
 </dd></dl>
 
 <p class="rubric">Resolver Options</p>
 <dl class="option">
 <dt id="cmdoption-fy-tool-r">
-<code class="sig-name descname">-r</code><code class="sig-prename descclassname"></code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--resolve</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-r" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-r</code><code class="descclassname"></code><code class="descclassname">, </code><code class="descname">--resolve</code><code class="descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-r" title="Permalink to this definition">¶</a></dt>
 <dd><p>Perform anchor and merge key resolution. By default this option is disabled.</p>
 </dd></dl>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-l">
-<code class="sig-name descname">-l</code><code class="sig-prename descclassname"></code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--follow</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-l" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-l</code><code class="descclassname"></code><code class="descclassname">, </code><code class="descname">--follow</code><code class="descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-l" title="Permalink to this definition">¶</a></dt>
 <dd><p>Follow aliases when performing path traversal. By default this option is disabled.</p>
 </dd></dl>
 
 <p class="rubric">Emitter Options</p>
 <dl class="option">
 <dt id="cmdoption-fy-tool-indent">
-<code class="sig-name descname">-i</code><code class="sig-prename descclassname"> INDENT</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--indent</code><code class="sig-prename descclassname">=INDENT</code><a class="headerlink" href="#cmdoption-fy-tool-indent" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-i</code><code class="descclassname"> INDENT</code><code class="descclassname">, </code><code class="descname">--indent</code><code class="descclassname">=INDENT</code><a class="headerlink" href="#cmdoption-fy-tool-indent" title="Permalink to this definition">¶</a></dt>
 <dd><p>Sets the emitter indent (in spaces). Default is <strong>2</strong>.</p>
 </dd></dl>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-w">
-<code class="sig-name descname">-w</code><code class="sig-prename descclassname"> WIDTH</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--width</code><code class="sig-prename descclassname">=WIDTH</code><a class="headerlink" href="#cmdoption-fy-tool-w" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-w</code><code class="descclassname"> WIDTH</code><code class="descclassname">, </code><code class="descname">--width</code><code class="descclassname">=WIDTH</code><a class="headerlink" href="#cmdoption-fy-tool-w" title="Permalink to this definition">¶</a></dt>
 <dd><p>Sets the preferred output width of the emitter. It is generally impossible
 to strictly adhere to this limit so this is treated as a hint at best.
 It not valid in any oneline output modes (i.e. <cite>flow-oneline</cite> or <cite>json-oneline</cite>).
@@ -332,32 +311,32 @@ Default value is 80.</p>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-m">
-<code class="sig-name descname">-m</code><code class="sig-prename descclassname"> MODE</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--mode</code><code class="sig-prename descclassname">=MODE</code><a class="headerlink" href="#cmdoption-fy-tool-m" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-m</code><code class="descclassname"> MODE</code><code class="descclassname">, </code><code class="descname">--mode</code><code class="descclassname">=MODE</code><a class="headerlink" href="#cmdoption-fy-tool-m" title="Permalink to this definition">¶</a></dt>
 <dd><p>Sets the output mode of the YAML emitted. Possible values are:</p>
 <ul>
-<li><p><strong>original</strong></p>
+<li><p class="first"><strong>original</strong></p>
 <p>The original formatting used in the input. This is default mode.</p>
 </li>
-<li><p><strong>block</strong></p>
+<li><p class="first"><strong>block</strong></p>
 <p>The output is forced to be in block mode. All flow constructs will
 be converted to block mode.</p>
 </li>
-<li><p><strong>flow</strong></p>
+<li><p class="first"><strong>flow</strong></p>
 <p>The output is forced to be in flow mode. All block constructs will
 be converted to flow mode.</p>
 </li>
-<li><p><strong>flow-oneline</strong></p>
+<li><p class="first"><strong>flow-oneline</strong></p>
 <p>The output is forced to be in flow mode, but no newlines will be
 emitted; the output is going to be a (potentially very) long line.</p>
 </li>
-<li><p><strong>json</strong></p>
+<li><p class="first"><strong>json</strong></p>
 <p>The output is forced to be in JSON mode. Note that it is impossible
 to output an arbitrary YAML file as JSON, so this may fail.</p>
 </li>
-<li><p><strong>json-oneline</strong></p>
+<li><p class="first"><strong>json-oneline</strong></p>
 <p>The output is forced to be in JSON mode and in a single line.</p>
 </li>
-<li><p><strong>dejson</strong></p>
+<li><p class="first"><strong>dejson</strong></p>
 <p>Output is in block YAML mode but with special care to convert
 JSON quoted strings in as non-idiomatic YAML as possible.
 For example <cite>{ foo: “this is a test” }</cite> will be emitted as
@@ -369,17 +348,17 @@ excessive quoting.</p>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-c">
-<code class="sig-name descname">-C</code><code class="sig-prename descclassname"> MODE</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--color</code><code class="sig-prename descclassname">=MODE</code><a class="headerlink" href="#cmdoption-fy-tool-c" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-C</code><code class="descclassname"> MODE</code><code class="descclassname">, </code><code class="descname">--color</code><code class="descclassname">=MODE</code><a class="headerlink" href="#cmdoption-fy-tool-c" title="Permalink to this definition">¶</a></dt>
 <dd><p>It is possible to colorize output using ANSI color escape sequences,
 and the mode can be one of:</p>
 <ul>
-<li><p><strong>off</strong></p>
+<li><p class="first"><strong>off</strong></p>
 <p>Never colorize output.</p>
 </li>
-<li><p><strong>on</strong></p>
+<li><p class="first"><strong>on</strong></p>
 <p>Always colorize output.</p>
 </li>
-<li><p><strong>auto</strong></p>
+<li><p class="first"><strong>auto</strong></p>
 <p>Automatically colorize output when the output is a terminal.
 This is the default.</p>
 </li>
@@ -388,7 +367,7 @@ This is the default.</p>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-visible">
-<code class="sig-name descname">-V</code><code class="sig-prename descclassname"></code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--visible</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-visible" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-V</code><code class="descclassname"></code><code class="descclassname">, </code><code class="descname">--visible</code><code class="descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-visible" title="Permalink to this definition">¶</a></dt>
 <dd><p>Make all whitespace (spaces, unicode spaces and linebreaks) visible.
 Note that this is performed using UTF8 characters so it will not work
 on non-UTF8 terminals, or a non-UTF8 complete font.</p>
@@ -396,39 +375,39 @@ on non-UTF8 terminals, or a non-UTF8 complete font.</p>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-s">
-<code class="sig-name descname">-s</code><code class="sig-prename descclassname"></code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--sort</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-s" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-s</code><code class="descclassname"></code><code class="descclassname">, </code><code class="descname">--sort</code><code class="descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-s" title="Permalink to this definition">¶</a></dt>
 <dd><p>Sort keys on output. This option is disabled by default.</p>
 </dd></dl>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-comment">
-<code class="sig-name descname">-c</code><code class="sig-prename descclassname"></code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--comment</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-comment" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-c</code><code class="descclassname"></code><code class="descclassname">, </code><code class="descname">--comment</code><code class="descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-comment" title="Permalink to this definition">¶</a></dt>
 <dd><p>Experimental output comments option. Enabled output while preserving comments.
 Disabled by default.</p>
 </dd></dl>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-strip-labels">
-<code class="sig-name descname">--strip-labels</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-strip-labels" title="Permalink to this definition">¶</a></dt>
+<code class="descname">--strip-labels</code><code class="descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-strip-labels" title="Permalink to this definition">¶</a></dt>
 <dd><p>Strip labels on output. Disabled by default.</p>
 </dd></dl>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-strip-tags">
-<code class="sig-name descname">--strip-tags</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-strip-tags" title="Permalink to this definition">¶</a></dt>
+<code class="descname">--strip-tags</code><code class="descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-strip-tags" title="Permalink to this definition">¶</a></dt>
 <dd><p>Strip tags on output. Disabled by default.</p>
 </dd></dl>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-strip-doc">
-<code class="sig-name descname">--strip-doc</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-strip-doc" title="Permalink to this definition">¶</a></dt>
+<code class="descname">--strip-doc</code><code class="descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-strip-doc" title="Permalink to this definition">¶</a></dt>
 <dd><p>Strip document indicators on output. Disabled by default.</p>
 </dd></dl>
 
 <p class="rubric">Tool mode select options</p>
 <dl class="option">
 <dt id="cmdoption-fy-tool-dump">
-<code class="sig-name descname">--dump</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-dump" title="Permalink to this definition">¶</a></dt>
+<code class="descname">--dump</code><code class="descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-dump" title="Permalink to this definition">¶</a></dt>
 <dd><p>Select <cite>dump</cite> mode of operation. This is the default.
 This mode is also enabled when the called binary is aliased to
 <em>fy-dump</em>.</p>
@@ -440,7 +419,7 @@ indicators to mark the start of end new file.</p>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-testsuite">
-<code class="sig-name descname">--testsuite</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-testsuite" title="Permalink to this definition">¶</a></dt>
+<code class="descname">--testsuite</code><code class="descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-testsuite" title="Permalink to this definition">¶</a></dt>
 <dd><p>Select <cite>testsuite</cite> mode of operation.
 This mode is also enabled when the called binary is aliased to <em>fy-testsuite</em>.</p>
 <p>In this mode, a single YAML file is read and an event stream is
@@ -450,7 +429,7 @@ generated which is the format used for <em>yaml-testsuite</em> compliance.</p>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-filter">
-<code class="sig-name descname">--filter</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-filter" title="Permalink to this definition">¶</a></dt>
+<code class="descname">--filter</code><code class="descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-filter" title="Permalink to this definition">¶</a></dt>
 <dd><p>Select <cite>filter</cite> mode of operation.
 This mode is also enabled when the called binary is aliased to <em>fy-filter</em>.</p>
 <p>In this mode, a single YAML file is read from the standard input for each path
@@ -460,7 +439,7 @@ To use file instead of standard input use the <cite>-f/–file</cite> option.</p
 <p>If the file provided is <cite>-</cite> then the input is the standard input.</p>
 <dl class="option">
 <dt id="cmdoption-fy-tool-f">
-<code class="sig-name descname">-f</code><code class="sig-prename descclassname"> FILE</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--file</code><code class="sig-prename descclassname">=FILE</code><a class="headerlink" href="#cmdoption-fy-tool-f" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-f</code><code class="descclassname"> FILE</code><code class="descclassname">, </code><code class="descname">--file</code><code class="descclassname">=FILE</code><a class="headerlink" href="#cmdoption-fy-tool-f" title="Permalink to this definition">¶</a></dt>
 <dd><p>Use the given file as input instead of standard input.</p>
 <p>If  first character of <cite>FILE</cite> is <strong>&gt;</strong> the the input is the content of the option
 that follows.
@@ -471,7 +450,7 @@ For example –file “&gt;foo: bar” is as –file file.yaml with file.yaml �
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-join">
-<code class="sig-name descname">--join</code><code class="sig-prename descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-join" title="Permalink to this definition">¶</a></dt>
+<code class="descname">--join</code><code class="descclassname"></code><a class="headerlink" href="#cmdoption-fy-tool-join" title="Permalink to this definition">¶</a></dt>
 <dd><p>Select <cite>join</cite> mode of operation.
 This mode is also enabled when the called binary is aliased to <em>fy-join</em>.</p>
 <p>In this mode, multiple YAML files are joined into a single document, emitted
@@ -479,7 +458,7 @@ to the standard output.</p>
 <p>If the file provided is <cite>-</cite> then the input is the standard input.</p>
 <dl class="option">
 <dt id="cmdoption-fy-tool-t">
-<code class="sig-name descname">-T</code><code class="sig-prename descclassname"> PATH</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--to</code><code class="sig-prename descclassname">=PATH</code><a class="headerlink" href="#cmdoption-fy-tool-t" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-T</code><code class="descclassname"> PATH</code><code class="descclassname">, </code><code class="descname">--to</code><code class="descclassname">=PATH</code><a class="headerlink" href="#cmdoption-fy-tool-t" title="Permalink to this definition">¶</a></dt>
 <dd><p>The target path of the join. By default this is the root <strong>/</strong>.</p>
 <p>If  first character of <cite>FILE</cite> is <strong>&gt;</strong> the the input is the content of the option
 that follows.</p>
@@ -487,7 +466,7 @@ that follows.</p>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-from">
-<code class="sig-name descname">-F</code><code class="sig-prename descclassname"> PATH</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--from</code><code class="sig-prename descclassname">=PATH</code><a class="headerlink" href="#cmdoption-fy-tool-from" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-F</code><code class="descclassname"> PATH</code><code class="descclassname">, </code><code class="descname">--from</code><code class="descclassname">=PATH</code><a class="headerlink" href="#cmdoption-fy-tool-from" title="Permalink to this definition">¶</a></dt>
 <dd><p>The origin path of the join (for each input). By default this is the root <strong>/</strong>.</p>
 <p>If  first character of <cite>FILE</cite> is <strong>&gt;</strong> the the input is the content of the option
 that follows.</p>
@@ -495,7 +474,7 @@ that follows.</p>
 
 <dl class="option">
 <dt id="cmdoption-fy-tool-trim">
-<code class="sig-name descname">-t</code><code class="sig-prename descclassname"> PATH</code><code class="sig-prename descclassname">, </code><code class="sig-name descname">--trim</code><code class="sig-prename descclassname">=PATH</code><a class="headerlink" href="#cmdoption-fy-tool-trim" title="Permalink to this definition">¶</a></dt>
+<code class="descname">-t</code><code class="descclassname"> PATH</code><code class="descclassname">, </code><code class="descname">--trim</code><code class="descclassname">=PATH</code><a class="headerlink" href="#cmdoption-fy-tool-trim" title="Permalink to this definition">¶</a></dt>
 <dd><p>Trim path of the output of the join. By default this is the root <strong>/</strong>.</p>
 <p>If  first character of <cite>FILE</cite> is <strong>&gt;</strong> the the input is the content of the option
 that follows.</p>
@@ -700,30 +679,6 @@ event stream from <cite>invoice.yaml</cite></p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$ fy-testsuite invoice.yaml
 </pre></div>
 </div>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">+</span><span class="n">STR</span>
-<span class="o">+</span><span class="n">DOC</span>
-<span class="o">+</span><span class="n">MAP</span>
-<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="n">invoice</span>
-<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="mi">34843</span>
-<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="n">date</span>
-<span class="o">=</span><span class="n">VAL</span> <span class="o">&lt;</span><span class="n">tag</span><span class="p">:</span><span class="n">yaml</span><span class="o">.</span><span class="n">org</span><span class="p">,</span><span class="mi">2002</span><span class="p">:</span><span class="nb">str</span><span class="o">&gt;</span> <span class="p">:</span><span class="mi">2001</span><span class="o">-</span><span class="mi">01</span><span class="o">-</span><span class="mi">23</span>
-<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="n">bill</span><span class="o">-</span><span class="n">to</span>
-<span class="o">+</span><span class="n">MAP</span> <span class="o">&amp;</span><span class="n">id001</span>
-<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="n">given</span>
-<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="n">Chris</span>
-<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="n">family</span>
-<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="n">Dumars</span>
-<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="n">address</span>
-<span class="o">+</span><span class="n">MAP</span>
-<span class="o">=</span><span class="n">VAL</span> <span class="p">:</span><span class="n">lines</span>
-<span class="o">=</span><span class="n">VAL</span> <span class="o">|</span><span class="mi">458</span> <span class="n">Walkman</span> <span class="n">Dr</span><span class="o">.</span>\<span class="n">nSuite</span> <span class="c1">#292\n</span>
-<span class="o">-</span><span class="n">MAP</span>
-<span class="o">-</span><span class="n">MAP</span>
-<span class="o">-</span><span class="n">MAP</span>
-<span class="o">-</span><span class="n">DOC</span>
-<span class="o">-</span><span class="n">STR</span>
-</pre></div>
-</div>
 <p class="rubric">fy-filter examples.</p>
 <p>Filter out from the <cite>/bill-to</cite> path of <cite>invoice.yaml</cite></p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$ cat invoice.yaml <span class="p">|</span> fy-filter /bill-to
@@ -811,9 +766,9 @@ event stream from <cite>invoice.yaml</cite></p>
 <div class="section" id="bugs">
 <h2>Bugs<a class="headerlink" href="#bugs" title="Permalink to this headline">¶</a></h2>
 <ul class="simple">
-<li><p>The only supported input and output character encoding is UTF8.</p></li>
-<li><p>Sorting does not respect language settings.</p></li>
-<li><p>There is no way for the user to specific a different coloring scheme.</p></li>
+<li>The only supported input and output character encoding is UTF8.</li>
+<li>Sorting does not respect language settings.</li>
+<li>There is no way for the user to specific a different coloring scheme.</li>
 </ul>
 </div>
 <div class="section" id="see-also">
@@ -829,6 +784,8 @@ event stream from <cite>invoice.yaml</cite></p>
           <footer>
   
     <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="../libfyaml.html" class="btn btn-neutral float-right" title="Public API" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
       
       
         <a href="../intro.html" class="btn btn-neutral float-left" title="Introduction" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
