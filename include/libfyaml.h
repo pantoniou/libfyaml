@@ -223,7 +223,7 @@ enum fy_error_module {
  * @FYPCF_PARSE_COMMENTS: Enable parsing of comments (experimental)
  * @FYPCF_DISABLE_DEPTH_LIMIT: Disable depth limit check, use with enlarged stack
  * @FYPCF_DISABLE_ACCELERATORS: Disable use of access accelerators (saves memory)
- * @FYPCF_UNBUFFERED: Disable use of buffering where possible
+ * @FYPCF_DISABLE_BUFFERING: Disable use of buffering where possible
  * @FYPCF_JSON_AUTO: Automatically enable JSON mode (when extension is .json)
  * @FYPCF_JSON_NONE: Never enable JSON input mode
  * @FYPCF_JSON_FORCE: Force JSON mode always
@@ -522,7 +522,7 @@ enum fy_error_module fy_string_to_error_module(const char *str);
 /**
  * fy_error_module_to_string() - Convert an error module to string
  *
- * @type: The error module to convert
+ * @module: The error module to convert
  *
  * Returns:
  * The string value of the error module or the empty string "" on error
@@ -2426,8 +2426,8 @@ fy_node_build_from_string(struct fy_document *fyd,
  * The created node, or NULL on error.
  */
 struct fy_node *
-fy_node_build_from_string(struct fy_document *fyd,
-			  const char *str, size_t len)
+fy_node_build_from_malloc_string(struct fy_document *fyd,
+				 char *str, size_t len)
 	FY_EXPORT;
 
 
@@ -2613,23 +2613,22 @@ fy_node_get_path_relative_to(struct fy_node *fyn_parent, struct fy_node *fyn)
 	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_path_relative_to((_fynp), (_fyn)), FY_NT)
 
 /**
- * fy_node_get_short_path() - Get a path address of a node in the shortest path
- * 			      possible.
+ * fy_node_get_short_path() - Get a path address of a node in the shortest
+ *                            path possible
  *
  * Retrieve the given node's short path address relative to the
  * closest anchor (either on this node, or it's parent).
  * If no such parent is found then returns the absolute path
  * from the start of the document.
  *
- * For example:
  * --- &foo
  * foo: &bar
- *   bar
+ *     bar
  * baz
  *
- * - The short path of /foo is *foo
- * - The short path of /foo/bar is *bar
- * - The short path of /baz is *foo/baz
+ * - The short path of /foo is \*foo
+ * - The short path of /foo/bar is \*bar
+ * - The short path of /baz is \*foo/baz
  *
  * The address is dynamically allocated and should be freed when
  * you're done with it.
@@ -3971,7 +3970,6 @@ fy_node_create_alias(struct fy_document *fyd,
 	FY_EXPORT;
 
 /**
- *
  * fy_node_create_alias_copy() - Create an alias node copying the data
  *
  * Create an alias on the given document
@@ -4321,7 +4319,7 @@ fy_diag_set_level(struct fy_diag *diag, enum fy_error_type level);
  * fy_diag_set_colorize() - Set a diagnostic object's colorize option
  *
  * @diag: The diagnostic object
- * @color: The colorize option
+ * @colorize: The colorize option
  */
 void
 fy_diag_set_colorize(struct fy_diag *diag, bool colorize);
@@ -4821,7 +4819,7 @@ struct fy_path_exec_cfg {
  * The executor may be destroyed by a corresponding call to
  * fy_path_exec_destroy().
  *
- * @cfg: The configuration for the executor
+ * @xcfg: The configuration for the executor
  *
  * Returns:
  * A pointer to the executor or NULL in case of an error.
@@ -5149,48 +5147,6 @@ fy_scan_token_free(struct fy_parser *fyp, struct fy_token *fyt)
 	FY_EXPORT;
 
 /**
- * fy_tag_directive_token_prefix() - Get the prefix contained in the
- * 				     tag directive token
- *
- * Retrieve the tag directive's prefix contents. Will fail if
- * token is not a tag directive token, or if a memory error
- * happens.
- *
- * @fyt: The tag directive token out of which the prefix pointer
- *       will be returned.
- * @lenp: Pointer to a variable that will hold the returned length
- *
- * Returns:
- * A pointer to the text representation of the prefix token, while
- * @lenp will be assigned the character length of said representation.
- * NULL in case of an error.
- */
-const char *
-fy_tag_directive_token_prefix(struct fy_token *fyt, size_t *lenp)
-	FY_EXPORT;
-
-/**
- * fy_tag_directive_token_handle() - Get the handle contained in the
- * 				     tag directive token
- *
- * Retrieve the tag directive's handle contents. Will fail if
- * token is not a tag directive token, or if a memory error
- * happens.
- *
- * @fyt: The tag directive token out of which the handle pointer
- *       will be returned.
- * @lenp: Pointer to a variable that will hold the returned length
- *
- * Returns:
- * A pointer to the text representation of the handle token, while
- * @lenp will be assigned the character length of said representation.
- * NULL in case of an error.
- */
-const char *
-fy_tag_directive_token_handle(struct fy_token *fyt, size_t *lenp)
-	FY_EXPORT;
-
-/**
  * fy_tag_directive_token_prefix0() - Get the prefix contained in the
  * 				      tag directive token as zero terminated
  * 				      string
@@ -5327,7 +5283,7 @@ fy_version_directive_token_version(struct fy_token *fyt)
 	FY_EXPORT;
 
 /**
- * fy_scalar_token_style() - Return the style of a scalar token
+ * fy_scalar_token_get_style() - Return the style of a scalar token
  *
  * Retrieve the style of a scalar token.
  *
@@ -5539,7 +5495,7 @@ fy_document_state_version_explicit(struct fy_document_state *fyds)
 	FY_EXPORT;
 
 /**
- * fy_document_state_tag_explicit() - Tags explicit?
+ * fy_document_state_tags_explicit() - Tags explicit?
  *
  * Find out if a document state object's tags were explicitly
  * set in the document.
@@ -5571,7 +5527,7 @@ fy_document_state_start_implicit(struct fy_document_state *fyds)
 	FY_EXPORT;
 
 /**
- * fy_document_state_end_implicity() - Started implicitly?
+ * fy_document_state_end_implicit() - Started implicitly?
  *
  * Find out if a document state object's document was
  * ended implicitly.
@@ -5665,9 +5621,9 @@ fy_emitter_get_document_state(struct fy_emitter *emit)
  * 	- int implicit
  * 		true if document start should be marked implicit
  * 		false if document start should not be marked implicit
- * 	- const struct fy_version *vers
+ * 	- const struct fy_version \*vers
  * 		Pointer to version to use for the document, or NULL for default
- * 	- const struct fy_tag * const *tags
+ * 	- const struct fy_tag \* const \*tags
  * 		Pointer to a NULL terminated array of tag pointers (like argv)
  * 		NULL if no extra tags are to be used
  *
@@ -5679,9 +5635,9 @@ fy_emitter_get_document_state(struct fy_emitter *emit)
  * FYET_MAPPING_START:
  * 	- enum fy_node_style style
  * 		Style of the mapping (one of FYNS_ANY, FYNS_BLOCK or FYNS_FLOW)
- *	- const char *anchor
+ *	- const char \*anchor
  *		Anchor to place at the mapping, or NULL for none
- *	- const char *tag
+ *	- const char \*tag
  *		Tag to place at the mapping, or NULL for none
  *
  * FYET_MAPPING_END:
@@ -5690,9 +5646,9 @@ fy_emitter_get_document_state(struct fy_emitter *emit)
  * FYET_SEQUENCE_START:
  * 	- enum fy_node_style style
  * 		Style of the sequence (one of FYNS_ANY, FYNS_BLOCK or FYNS_FLOW)
- *	- const char *anchor
+ *	- const char \*anchor
  *		Anchor to place at the sequence, or NULL for none
- *	- const char *tag
+ *	- const char \*tag
  *		Tag to place at the sequence, or NULL for none
  *
  * FYET_SEQUENCE_END:
@@ -5703,17 +5659,17 @@ fy_emitter_get_document_state(struct fy_emitter *emit)
  * 		Style of the scalar, any valid FYSS_* value
  * 		Note that certain styles may not be used according to the
  * 		contents of the data
- *	- const char *value
+ *	- const char \*value
  *		Pointer to the scalar contents.
  *	- size_t len
  *		Length of the scalar contents, of FY_NT (-1) for strlen(value)
- *	- const char *anchor
+ *	- const char \*anchor
  *		Anchor to place at the scalar, or NULL for none
- *	- const char *tag
+ *	- const char \*tag
  *		Tag to place at the scalar, or NULL for none
  *
  * FYET_ALIAS:
- *	- const char *value
+ *	- const char \*value
  *		Pointer to the alias.
  *
  * @emit: The emitter
@@ -5734,7 +5690,7 @@ fy_emit_event_create(struct fy_emitter *emit, enum fy_event_type type, ...)
  *
  * @emit: The emitter
  * @type: The event type to create
- * ap: The variable argument list pointer.
+ * @ap: The variable argument list pointer.
  *
  * Returns:
  * The created event or NULL in case of an error
@@ -5774,14 +5730,14 @@ fy_parse_event_create(struct fy_parser *fyp, enum fy_event_type type, ...)
 	FY_EXPORT;
 
 /**
- * fy_parset_event_vcreate() - Create an emit event using varargs.
+ * fy_parse_event_vcreate() - Create an emit event using varargs.
  *
  * Create an emit event to pass to fy_emit_event()
  * The varargs analogous to fy_parse_event_create().
  *
  * @fyp: The parser
  * @type: The event type to create
- * ap: The variable argument list pointer.
+ * @ap: The variable argument list pointer.
  *
  * Returns:
  * The created event or NULL in case of an error
