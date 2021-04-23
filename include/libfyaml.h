@@ -704,6 +704,22 @@ fy_parser_set_input_fp(struct fy_parser *fyp, const char *name, FILE *fp)
 	FY_EXPORT;
 
 /**
+ * fy_parser_set_input_callback() - Set the parser to process via a callback
+ *
+ * Point the parser to use @fp for processing.
+ *
+ * @fyp: The parser
+ * @user: The user data pointer
+ * @callback: The callback method to request data with
+ *
+ * Returns:
+ * zero on success, -1 on error
+ */
+int fy_parser_set_input_callback(struct fy_parser *fyp, void *user,
+		ssize_t (*callback)(void *user, void *buf, size_t count))
+	FY_EXPORT;
+
+/**
  * fy_parser_parse() - Parse and return the next event.
  *
  * Each call to fy_parser_parse() returns the next event from

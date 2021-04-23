@@ -45,6 +45,7 @@
 #define MMAP_DISABLE_DEFAULT		false
 
 #define OPT_DISABLE_MMAP		128
+#define OPT_USE_CALLBACK		129
 
 static struct option lopts[] = {
 	{"include",		required_argument,	0,	'I' },
@@ -59,6 +60,7 @@ static struct option lopts[] = {
 	{"diag",		required_argument,	0,	'D' },
 	{"module",		required_argument,	0,	'M' },
 	{"disable-mmap",	no_argument,		0,	OPT_DISABLE_MMAP },
+	{"use-callback",	no_argument,		0,	OPT_USE_CALLBACK },
 	{"walk-path",		required_argument,	0,	'W' },
 	{"walk-start",		required_argument,	0,	'S' },
 	{"quiet",		no_argument,		0,	'q' },
@@ -2832,6 +2834,11 @@ int apply_flags_option(const char *arg, unsigned int *flagsp,
 	return 0;
 }
 
+static ssize_t callback_stdin_input(void *user, void *buf, size_t count)
+{
+	return fread(buf, 1, count, stdin);
+}
+
 int main(int argc, char *argv[])
 {
 	struct fy_parser ctx, *fyp = &ctx;
@@ -2853,6 +2860,7 @@ int main(int argc, char *argv[])
 	const char *color = COLOR_DEFAULT;
 	const char *walkpath = "/";
 	const char *walkstart = "/";
+	bool use_callback = false;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -2924,6 +2932,9 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_DISABLE_MMAP:
 			cfg.flags |= FYPCF_DISABLE_MMAP_OPT;
+			break;
+		case OPT_USE_CALLBACK:
+			use_callback = true;
 			break;
 		case 'q':
 			cfg.flags |= FYPCF_QUIET;
@@ -3051,10 +3062,16 @@ int main(int argc, char *argv[])
 	for (i = optind; i < argc; i++) {
 		fyic = &fyic_array[i - optind];
 		if (!strcmp(argv[i], "-")) {
-			fyic->type = fyit_stream;
-			fyic->stream.name = "stdin";
-			fyic->stream.fp = stdin;
-			fyic->stream.chunk = chunk;
+			if (!use_callback) {
+				fyic->type = fyit_stream;
+				fyic->stream.name = "stdin";
+				fyic->stream.fp = stdin;
+				fyic->stream.chunk = chunk;
+			} else {
+				fyic->type = fyit_callback;
+				fyic->userdata = stdin;
+				fyic->callback.input = callback_stdin_input;
+			}
 		} else {
 			fyic->type = fyit_file;
 			fyic->file.filename = argv[i];
@@ -3071,10 +3088,16 @@ int main(int argc, char *argv[])
 	if (!j) {
 		fyic = &fyic_array[0];
 
-		fyic->type = fyit_stream;
-		fyic->stream.name = "stdin";
-		fyic->stream.fp = stdin;
-		fyic->stream.chunk = chunk;
+		if (!use_callback) {
+			fyic->type = fyit_stream;
+			fyic->stream.name = "stdin";
+			fyic->stream.fp = stdin;
+			fyic->stream.chunk = chunk;
+		} else {
+			fyic->type = fyit_callback;
+			fyic->userdata = stdin;
+			fyic->callback.input = callback_stdin_input;
+		}
 
 		rc = fy_parse_input_append(fyp, fyic);
 		if (rc) {

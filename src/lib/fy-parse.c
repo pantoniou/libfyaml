@@ -5461,6 +5461,39 @@ err_out_rc:
 	return rc;
 }
 
+int fy_parser_set_input_callback(struct fy_parser *fyp, void *user,
+		ssize_t (*callback)(void *user, void *buf, size_t count))
+{
+	struct fy_input_cfg fyic;
+	int rc;
+
+	if (!fyp || !callback)
+		return -1;
+
+	memset(&fyic, 0, sizeof(fyic));
+
+	fyic.type = fyit_callback;
+	fyic.userdata = user;
+	fyic.callback.input = callback;
+
+	/* must not be in the middle of something */
+	fyp_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
+			err_out, "parser cannot be reset at state '%s'",
+				state_txt[fyp->state]);
+
+	fy_parse_input_reset(fyp);
+
+	rc = fy_parse_input_append(fyp, &fyic);
+	fyp_error_check(fyp, !rc, err_out_rc,
+			"fy_parse_input_append() failed");
+
+	return 0;
+err_out:
+	rc = -1;
+err_out_rc:
+	return rc;
+}
+
 int fy_parser_reset(struct fy_parser *fyp)
 {
 	int rc;

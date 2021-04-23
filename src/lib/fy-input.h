@@ -62,6 +62,8 @@ struct fy_input_cfg {
 			size_t size;
 		} alloc;
 		struct {
+			/* negative return is error, 0 is EOF */
+			ssize_t (*input)(void *user, void *buf, size_t count);
 		} callback;
 	};
 };
@@ -86,14 +88,14 @@ struct fy_input {
 	size_t chunk;
 	FILE *fp;
 	int refs;
+	void *addr;		/* mmaped for files, allocated for streams */
+	bool eof : 1;		/* got EOF */
+	bool err : 1;		/* got an error */
 	union {
 		struct {
 			int fd;			/* fd for file and stream */
-			void *addr;		/* mmaped for files, allocated for streams */
 			size_t length;
 		} file;
-		struct {
-		} stream;
 	};
 };
 FY_TYPE_DECL_LIST(input);
@@ -104,13 +106,14 @@ static inline const void *fy_input_start(const struct fy_input *fyi)
 
 	switch (fyi->cfg.type) {
 	case fyit_file:
-		if (fyi->file.addr) {
-			ptr = fyi->file.addr;
+		if (fyi->addr) {
+			ptr = fyi->addr;
 			break;
 		}
 		/* fall-through */
 
 	case fyit_stream:
+	case fyit_callback:
 		ptr = fyi->buffer;
 		break;
 
@@ -135,13 +138,14 @@ static inline size_t fy_input_size(const struct fy_input *fyi)
 
 	switch (fyi->cfg.type) {
 	case fyit_file:
-		if (fyi->file.addr) {
+		if (fyi->addr) {
 			size = fyi->file.length;
 			break;
 		}
 		/* fall-through */
 
 	case fyit_stream:
+	case fyit_callback:
 		size = fyi->read;
 		break;
 
@@ -392,7 +396,7 @@ fy_reader_peek_at_offset(struct fy_reader *fyr, size_t offset)
 	size_t left;
 	int w;
 
-	if (offset == 0 && fyr->current_w)
+	if (offset == 0 && fyr->current_w && fyr->current_c >= 0)
 		return fyr->current_c;
 
 	/* ensure that the first octet at least is pulled in */
