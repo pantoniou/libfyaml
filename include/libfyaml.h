@@ -706,7 +706,7 @@ fy_parser_set_input_fp(struct fy_parser *fyp, const char *name, FILE *fp)
 /**
  * fy_parser_set_input_callback() - Set the parser to process via a callback
  *
- * Point the parser to use @fp for processing.
+ * Point the parser to use a callback for input.
  *
  * @fyp: The parser
  * @user: The user data pointer
