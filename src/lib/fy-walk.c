@@ -1715,7 +1715,7 @@ int fy_path_expr_type_prec(enum fy_path_expr_type type)
 	case fpet_logical_and:
 		return 4;
 	case fpet_multi:
-		return 9;
+		return 11;
 	case fpet_eq:
 	case fpet_neq:
 	case fpet_lt:
