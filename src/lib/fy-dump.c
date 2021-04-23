@@ -101,6 +101,9 @@ char *fy_token_list_dump_format(struct fy_token_list *fytl,
 	e = buf + bufsz - 1;
 	for (fyt = fy_token_list_first(fytl); fyt; fyt = fy_token_next(fytl, fyt)) {
 
+		if (s >= (e - 1))
+			break;
+
 		s += snprintf(s, e - s, "%s%s",
 				fyt != fy_token_list_first(fytl) ? "," : "",
 				fyt_highlight == fyt ? "*" : "");
@@ -145,6 +148,9 @@ char *fy_simple_key_list_dump_format(struct fy_parser *fyp, struct fy_simple_key
 	e = buf + bufsz - 1;
 	for (fysk = fy_simple_key_list_first(fyskl); fysk; fysk = fy_simple_key_next(fyskl, fysk)) {
 
+		if (s >= (e - 1))
+			break;
+
 		s += snprintf(s, e - s, "%s%s",
 				fysk != fy_simple_key_list_first(fyskl) ? "," : "",
 				fysk_highlight == fysk ? "*" : "");
@@ -163,7 +169,7 @@ char *fy_simple_key_list_dump_format(struct fy_parser *fyp, struct fy_simple_key
 void fyp_debug_dump_token_list(struct fy_parser *fyp, struct fy_token_list *fytl,
 		struct fy_token *fyt_highlight, const char *banner)
 {
-	char buf[1024];
+	char buf[4096];
 
 	if (!fyp || !fyp->diag || FYET_DEBUG < fyp->diag->cfg.level)
 		return;
@@ -186,7 +192,7 @@ void fyp_debug_dump_token(struct fy_parser *fyp, struct fy_token *fyt, const cha
 void fyp_debug_dump_simple_key_list(struct fy_parser *fyp, struct fy_simple_key_list *fyskl,
 		struct fy_simple_key *fysk_highlight, const char *banner)
 {
-	char buf[1024];
+	char buf[4096];
 
 	if (!fyp || !fyp->diag || FYET_DEBUG < fyp->diag->cfg.level)
 		return;
