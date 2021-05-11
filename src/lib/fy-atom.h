@@ -112,9 +112,7 @@ struct fy_atom_iter_line_info {
 	const char *nws_start;
 	const char *nws_end;
 	const char *chomp_start;
-	bool trailing_ws : 1;
 	bool empty : 1;
-	bool trailing_breaks : 1;
 	bool trailing_breaks_ws : 1;
 	bool first : 1;		/* first */
 	bool last : 1;		/* last (only ws/lb afterwards */
@@ -123,6 +121,8 @@ struct fy_atom_iter_line_info {
 	bool lb_end : 1;
 	bool need_nl : 1;
 	bool need_sep : 1;
+	size_t trailing_ws;
+	size_t trailing_breaks;
 	size_t start_ws, end_ws;
 	const char *s;
 	const char *e;

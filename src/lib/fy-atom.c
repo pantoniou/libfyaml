@@ -207,7 +207,7 @@ fy_atom_iter_grow_chunk(struct fy_atom_iter *iter)
 }
 
 static int
-fy_atom_iter_add_chunk(struct fy_atom_iter *iter, const char *str, size_t len)
+_fy_atom_iter_add_chunk(struct fy_atom_iter *iter, const char *str, size_t len)
 {
 	struct fy_atom_iter_chunk *c;
 	int ret;
@@ -231,7 +231,7 @@ fy_atom_iter_add_chunk(struct fy_atom_iter *iter, const char *str, size_t len)
 }
 
 static int
-fy_atom_iter_add_chunk_copy(struct fy_atom_iter *iter, const char *str, size_t len)
+_fy_atom_iter_add_chunk_copy(struct fy_atom_iter *iter, const char *str, size_t len)
 {
 	struct fy_atom_iter_chunk *c;
 	int ret;
@@ -257,6 +257,31 @@ fy_atom_iter_add_chunk_copy(struct fy_atom_iter *iter, const char *str, size_t l
 	return 0;
 }
 
+// #define DEBUG_CHUNK
+
+#ifndef DEBUG_CHUNK
+#define fy_atom_iter_add_chunk _fy_atom_iter_add_chunk
+#define fy_atom_iter_add_chunk_copy _fy_atom_iter_add_chunk_copy
+#else
+#define fy_atom_iter_add_chunk(_iter, _str, _len) \
+	({ \
+		const char *__str = (_str); \
+		size_t __len = (_len); \
+		/* fprintf(stderr, "%s:%d chunk \"%s\"\n", __func__, __LINE__, fy_utf8_format_text_a(__str, __len, fyue_doublequote)); */ \
+		fprintf(stderr, "%s:%d chunk \"%.*s\"\n", __func__, __LINE__, (int)__len, __str); \
+		_fy_atom_iter_add_chunk((_iter), __str, __len); \
+	})
+
+#define fy_atom_iter_add_chunk_copy(_iter, _str, _len) \
+	({ \
+		const char *__str = (_str); \
+		size_t __len = (_len); \
+		/* fprintf(stderr, "%s:%d chunk-copy \"%s\"\n", __func__, __LINE__, fy_utf8_format_text_a(__str, __len, fyue_doublequote)); */ \
+		fprintf(stderr, "%s:%d chunk-copy \"%.*s\"\n", __func__, __LINE__, (int)__len, __str); \
+		_fy_atom_iter_add_chunk_copy((_iter), __str, __len); \
+	})
+#endif
+
 static void
 fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_info *li,
 			  const char *line_start, size_t len)
@@ -281,7 +306,7 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 		li->chomp_start = s;
 		li->final = true;
 		li->empty = atom->empty;
-		li->trailing_breaks = false;
+		li->trailing_breaks = 0;
 		li->trailing_breaks_ws = false;
 		li->start_ws = 0;
 		li->end_ws = 0;
@@ -296,9 +321,8 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 	li->nws_start = NULL;
 	li->nws_end = NULL;
 	li->chomp_start = NULL;
-	li->trailing_ws = false;
 	li->empty = true;
-	li->trailing_breaks = false;
+	li->trailing_breaks = 0;
 	li->trailing_breaks_ws = false;
 	li->first = false;
 	li->start_ws = (size_t)-1;
@@ -331,9 +355,9 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 			col = 0;
 			if (!li->end) {
 				li->end = ss;
-				li->trailing_ws = last_was_ws;
 				li->end_ws = cws;
 				li->lb_end = true;
+				cws = 0;
 			}
 
 			/* no chomp point hit, use whatever we have here */
@@ -369,6 +393,7 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 				li->start_ws = cws;
 
 			last_was_ws = false;
+			cws = 0;
 
 			col++;
 		}
@@ -396,44 +421,28 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 	if (li->start_ws == (size_t)-1)
 		li->start_ws = 0;
 
+	if (li->end_ws == (size_t)-1)
+		li->end_ws = 0;
+
 	/* mark next line to the end if no linebreak found */
 	if (!li->end) {
 		li->end = iter->e;
-		li->trailing_ws = last_was_ws;
 		li->last = true;
 		li->end_ws = cws;
 		li->lb_end = false;
 		goto out;
 	}
 
-	/* if there's only one linebreak left, we don't have trailing breaks */
-	if (c >= 0) {
-		ss += w;
-		if (fy_is_lb_yj(c, atom->json_mode))
-			col = 0;
-		else if (fy_is_tab(c))
-			col += (ts - (col % ts));
-		else
-			col++;
-	}
-
-	if (ss >= e) {
-		li->last = true;
-		goto out;
-	}
-
 	/* find out if any trailing breaks exist afterwards */
 	for (; (c = fy_utf8_get(ss, (e - ss), &w)) >= 0 && fy_is_ws_lb(c); ss += w) {
-
-		if (!li->trailing_breaks && fy_is_lb_yj(c, atom->json_mode))
-			li->trailing_breaks = true;
 
 		if (!li->trailing_breaks_ws && is_block && (unsigned int)col > iter->chomp)
 			li->trailing_breaks_ws = true;
 
-		if (fy_is_lb_yj(c, atom->json_mode))
+		if (fy_is_lb_yj(c, atom->json_mode)) {
+			li->trailing_breaks++;
 			col = 0;
-		else {
+		} else {
 			/* indented whitespace counts as break */
 			if (fy_is_tab(c))
 				col += (ts - (col % ts));
@@ -597,9 +606,12 @@ fy_atom_iter_line(struct fy_atom_iter *iter)
 				(!nli && li->last && iter->dangling_end_quote) ||
 				(nli && nli->final && nli->empty);
 
+		/* need no sep for trailing \, but need it for \\ */
 		if (atom->style == FYAS_DOUBLE_QUOTED && li->need_sep &&
-				li->nws_end > li->nws_start && li->nws_end[-1] == '\\')
+				li->nws_end > li->nws_start && li->nws_end[-1] == '\\' &&
+				((li->nws_end - li->nws_start) <= 1 || li->nws_end[-2] != '\\')) {
 			li->need_sep = false;
+		}
 		break;
 	case FYAS_LITERAL:
 		li->need_nl = true;
@@ -626,6 +638,7 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 	int value, code_length, rlen, ret;
 	uint8_t code[4], *tt;
 	int pending_nl;
+	size_t i;
 
 	/* done? */
 	li = fy_atom_iter_line(iter);
@@ -651,6 +664,8 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 		break;
 
 	case FYAS_SINGLE_QUOTED:
+		if (li->last)
+			e = li->nws_end;
 		while (s < e) {
 			/* find next single quote */
 			t = memchr(s, '\'', e - s);
@@ -675,6 +690,8 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 		break;
 
 	case FYAS_DOUBLE_QUOTED:
+		if (li->last)
+			e = li->nws_end;
 		while (s < e) {
 			/* find next escape */
 			t = memchr(s, '\\', e - s);
@@ -749,57 +766,88 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 		goto out;
 	}
 
-	if (li->last && fy_atom_style_is_block(atom->style)) {
+	if (li->last) {
 
-		switch (atom->chomp) {
-		case FYAC_STRIP:
-		case FYAC_CLIP:
-			pending_nl = 0;
-			if (!li->empty)
-				pending_nl++;
-			while ((li = fy_atom_iter_line(iter)) != NULL) {
-				if (!iter->empty && li->chomp_start < li->end) {
-					while (pending_nl > 0) {
-						ret = fy_atom_iter_add_chunk(iter, "\n", 1);
+		if (fy_atom_style_is_block(atom->style)) {
+
+			switch (atom->chomp) {
+			case FYAC_STRIP:
+			case FYAC_CLIP:
+				pending_nl = 0;
+				if (!li->empty)
+					pending_nl++;
+				while ((li = fy_atom_iter_line(iter)) != NULL) {
+					if (!iter->empty && li->chomp_start < li->end) {
+						while (pending_nl > 0) {
+							ret = fy_atom_iter_add_chunk(iter, "\n", 1);
+							if (ret)
+								goto out;
+							pending_nl--;
+						}
+
+						ret = fy_atom_iter_add_chunk(iter, li->chomp_start, li->end - li->chomp_start);
 						if (ret)
 							goto out;
-						pending_nl--;
 					}
-
-					ret = fy_atom_iter_add_chunk(iter, li->chomp_start, li->end - li->chomp_start);
+					if (li->lb_end && !iter->empty)
+						pending_nl++;
+				}
+				if (atom->chomp == FYAC_CLIP && pending_nl) {
+					ret = fy_atom_iter_add_chunk(iter, "\n", 1);
 					if (ret)
 						goto out;
 				}
-				if (li->lb_end && !iter->empty)
-					pending_nl++;
-			}
-			if (atom->chomp == FYAC_CLIP && pending_nl) {
-				ret = fy_atom_iter_add_chunk(iter, "\n", 1);
-				if (ret)
-					goto out;
-			}
-			break;
-		case FYAC_KEEP:
-			if (li->lb_end) {
-				ret = fy_atom_iter_add_chunk(iter, "\n", 1);
-				if (ret)
-					goto out;
-			}
-			while ((li = fy_atom_iter_line(iter)) != NULL) {
-				if (!iter->empty && li->chomp_start < li->end) {
-					ret = fy_atom_iter_add_chunk(iter, li->chomp_start, li->end - li->chomp_start);
-					if (ret)
-						goto out;
-				}
+				break;
+			case FYAC_KEEP:
 				if (li->lb_end) {
 					ret = fy_atom_iter_add_chunk(iter, "\n", 1);
 					if (ret)
 						goto out;
 				}
+				while ((li = fy_atom_iter_line(iter)) != NULL) {
+					if (!iter->empty && li->chomp_start < li->end) {
+						ret = fy_atom_iter_add_chunk(iter, li->chomp_start, li->end - li->chomp_start);
+						if (ret)
+							goto out;
+					}
+					if (li->lb_end) {
+						ret = fy_atom_iter_add_chunk(iter, "\n", 1);
+						if (ret)
+							goto out;
+					}
+				}
+				break;
 			}
-			break;
+
+			iter->done = true;
+
+		} else {
+
+#ifdef DEBUG_CHUNK
+			fprintf(stderr, "%s:%d trailing_breaks=%zu end_ws=%zu empty=%s\n", __func__, __LINE__,
+					li->trailing_breaks, li->end_ws,
+					li->empty ? "true" : "false");
+#endif
+
+			if (li->trailing_breaks == 0 && li->end_ws > 0) {
+				/* end of quote in a non-blank line having white space */
+				ret = fy_atom_iter_add_chunk(iter, li->nws_end, (size_t)(li->e - li->nws_end));
+				if (ret)
+					goto out;
+			} else if (li->trailing_breaks == 1) {
+				ret = fy_atom_iter_add_chunk(iter, " ", 1);
+				if (ret)
+					goto out;
+			} else if (li->trailing_breaks > 1) {
+				for (i = 0; i < li->trailing_breaks - 1; i++) {
+					ret = fy_atom_iter_add_chunk(iter, "\n", 1);
+					if (ret)
+						goto out;
+				}
+			}
+
+			iter->done = true;
 		}
-		iter->done = true;
 
 	} else {
 		if (li->need_sep) {
