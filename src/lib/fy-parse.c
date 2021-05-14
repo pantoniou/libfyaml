@@ -1908,14 +1908,25 @@ err_out_rc:
 int fy_fetch_flow_collection_entry(struct fy_parser *fyp, int c)
 {
 	enum fy_token_type type = FYTT_NONE;
-	int rc;
 	struct fy_token *fyt, *fyt_last;
+	int rc;
 
 	type = FYTT_FLOW_ENTRY;
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
 			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
 			"wrongly indented entry seperator in flow mode");
+
+	/* transform '? a,' to '? a: ,' */
+	if (fyp->pending_complex_key_column >= 0) {
+
+		fyt = fy_token_queue(fyp, FYTT_VALUE, fy_fill_atom_a(fyp, 0));
+		fyp_error_check(fyp, fyt, err_out_rc,
+				"fy_token_queue() failed");
+
+		fyp->pending_complex_key_column = -1;
+
+	}
 
 	rc = fy_remove_simple_key(fyp, type);
 	fyp_error_check(fyp, !rc, err_out_rc,
