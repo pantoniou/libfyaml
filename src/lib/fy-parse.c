@@ -185,9 +185,9 @@ struct fy_token *fy_token_queue(struct fy_parser *fyp, enum fy_token_type type, 
 }
 
 const struct fy_tag * const fy_default_tags[] = {
-	&(struct fy_tag) { .handle = "!", .prefix = "!", },
+	&(struct fy_tag) { .handle = "!",  .prefix = "!", },
 	&(struct fy_tag) { .handle = "!!", .prefix = "tag:yaml.org,2002:", },
-	&(struct fy_tag) { .handle = "", .prefix = "", },
+	&(struct fy_tag) { .handle = "",   .prefix = "", },
 	NULL
 };
 
@@ -209,8 +209,8 @@ bool fy_tag_handle_is_default(const char *handle, size_t handle_size)
 	return false;
 }
 
-bool fy_tag_is_default(const char *handle, size_t handle_size,
-		       const char *prefix, size_t prefix_size)
+bool fy_tag_is_default_internal(const char *handle, size_t handle_size,
+				const char *prefix, size_t prefix_size)
 {
 	int i;
 	const struct fy_tag *fytag;
@@ -231,6 +231,18 @@ bool fy_tag_is_default(const char *handle, size_t handle_size,
 
 	}
 	return false;
+}
+
+bool fy_document_state_tag_is_default(struct fy_document_state *fyds, const struct fy_tag *tag)
+{
+	struct fy_token *fyt_td;
+
+	/* default tag, but it might be overriden */
+	fyt_td = fy_document_state_lookup_tag_directive(fyds, tag->handle, strlen(tag->handle));
+	if (!fyt_td)
+		return false;	/* Huh? */
+
+	return fyt_td->tag_directive.is_default;
 }
 
 bool fy_token_tag_directive_is_overridable(struct fy_token *fyt_td)
@@ -445,9 +457,11 @@ int fy_parse_tag_directive(struct fy_parser *fyp, struct fy_token *fyt)
 			"duplicate tag directive");
 
 	if (fyt_td) {
-		fyp_notice(fyp, "overriding tag");
+		/* fyp_notice(fyp, "overriding tag"); */
 		fy_token_list_del(&fyds->fyt_td, fyt_td);
 		fy_token_unref(fyt_td);
+		/* when we override a default tag the tags are explicit */
+		fyds->tags_explicit = true;
 	}
 
 	fy_token_list_add_tail(&fyds->fyt_td, fyt);
@@ -456,7 +470,7 @@ int fy_parse_tag_directive(struct fy_parser *fyp, struct fy_token *fyt)
 	fyp_scan_debug(fyp, "document parsed tag directive with handle=%.*s",
 			(int)handle_size, handle);
 
-	if (!fy_tag_is_default(handle, handle_size, prefix, prefix_size))
+	if (!fy_tag_is_default_internal(handle, handle_size, prefix, prefix_size))
 		fyds->tags_explicit = true;
 
 	return 0;
@@ -1648,7 +1662,7 @@ int fy_scan_directive(struct fy_parser *fyp)
 		fy_fill_atom_end(fyp, &handle);
 		handle.style = FYAS_URI;
 
-		fyt = fy_token_queue(fyp, FYTT_TAG_DIRECTIVE, &handle, tag_length, uri_length);
+		fyt = fy_token_queue(fyp, FYTT_TAG_DIRECTIVE, &handle, tag_length, uri_length, false);
 		fyp_error_check(fyp, fyt, err_out,
 				"fy_token_queue() failed");
 	}

@@ -1718,7 +1718,7 @@ int fy_emit_common_document_start(struct fy_emitter *emit,
 			td_prefix = fy_tag_directive_token_prefix(fyt_chk, &td_prefix_size);
 			assert(td_handle && td_prefix);
 
-			if (fy_tag_is_default(td_handle, td_handle_size, td_prefix, td_prefix_size))
+			if (fy_tag_is_default_internal(td_handle, td_handle_size, td_prefix, td_prefix_size))
 				continue;
 
 			had_non_default_tag = true;

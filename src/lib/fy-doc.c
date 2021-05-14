@@ -2422,7 +2422,7 @@ int fy_document_tag_directive_add(struct fy_document *fyd, const char *handle, c
 	if (fyt)
 		return -1;
 
-	return fy_document_state_append_tag(fyd->fyds, handle, prefix);
+	return fy_document_state_append_tag(fyd->fyds, handle, prefix, false);
 }
 
 int fy_document_tag_directive_remove(struct fy_document *fyd, const char *handle)

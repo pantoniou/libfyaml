@@ -70,6 +70,7 @@ struct fy_token {
 			char *prefix0;
 			char *handle0;
 			struct fy_tag tag;
+			bool is_default;		/* true when default */
 		} tag_directive;
 		struct {
 			enum fy_scalar_style style;

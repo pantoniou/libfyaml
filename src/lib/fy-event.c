@@ -267,7 +267,7 @@ fy_eventp_vcreate_internal(struct fy_eventp_list *recycled_list, struct fy_diag 
 		if (tagp) {
 			while ((tag = tagp[tag_count]) != NULL) {
 				tag_count++;
-				rc = fy_document_state_append_tag(fyds_new, tag->handle, tag->prefix);
+				rc = fy_document_state_append_tag(fyds_new, tag->handle, tag->prefix, false);
 				if (rc) {
 					fy_error(diag, "fy_document_state_append_tag() failed on handle='%s' prefix='%s'\n",
 							tag->handle, tag->prefix);

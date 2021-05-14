@@ -79,7 +79,8 @@ void fy_document_state_unref(struct fy_document_state *fyds)
 }
 
 int fy_document_state_append_tag(struct fy_document_state *fyds,
-				 const char *handle, const char *prefix)
+				 const char *handle, const char *prefix,
+				 bool is_default)
 {
 	struct fy_token *fyt = NULL;
 	struct fy_input *fyi = NULL;
@@ -103,13 +104,14 @@ int fy_document_state_append_tag(struct fy_document_state *fyds,
 	prefix_size = strlen(prefix);
 
 	fyt = fy_token_create(FYTT_TAG_DIRECTIVE, &atom,
-			     handle_size, prefix_size);
+			     handle_size, prefix_size,
+			     is_default);
 	if (!fyt)
 		goto err_out;
 
 	fy_token_list_add_tail(&fyds->fyt_td, fyt);
 
-	if (!fy_tag_is_default(handle, handle_size, prefix, prefix_size))
+	if (!fy_tag_is_default_internal(handle, handle_size, prefix, prefix_size))
 		fyds->tags_explicit = true;
 
 	/* take away the input reference */
@@ -156,7 +158,7 @@ struct fy_document_state *fy_document_state_default(void)
 
 	for (i = 0; (fytag = default_tags[i]) != NULL; i++) {
 
-		rc = fy_document_state_append_tag(fyds, fytag->handle, fytag->prefix);
+		rc = fy_document_state_append_tag(fyds, fytag->handle, fytag->prefix, true);
 		if (rc)
 			goto err_out;
 	}
@@ -208,6 +210,7 @@ struct fy_document_state *fy_document_state_copy(struct fy_document_state *fyds)
 		fyt_td->type = FYTT_TAG_DIRECTIVE;
 		fyt_td->tag_directive.tag_length = fyt->tag_directive.tag_length;
 		fyt_td->tag_directive.uri_length = fyt->tag_directive.uri_length;
+		fyt_td->tag_directive.is_default = fyt->tag_directive.is_default;
 		fyt_td->handle = fyt->handle;
 
 		/* take reference */
@@ -290,7 +293,8 @@ int fy_document_state_merge(struct fy_document_state *fyds,
 		fyt = fy_token_create(FYTT_TAG_DIRECTIVE,
 				&fytc_td->handle,
 				fytc_td->tag_directive.tag_length,
-				fytc_td->tag_directive.uri_length);
+				fytc_td->tag_directive.uri_length,
+				fytc_td->tag_directive.is_default);
 		if (!fyt)
 			goto err_out;
 

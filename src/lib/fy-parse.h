@@ -489,8 +489,8 @@ enum fy_parse_cfg_flags fy_parser_get_cfg_flags(const struct fy_parser *fyp);
 extern const struct fy_tag * const fy_default_tags[];
 
 bool fy_tag_handle_is_default(const char *handle, size_t handle_size);
-bool fy_tag_is_default(const char *handle, size_t handle_size,
-		       const char *prefix, size_t prefix_size);
+bool fy_tag_is_default_internal(const char *handle, size_t handle_size,
+				const char *prefix, size_t prefix_size);
 bool fy_token_tag_directive_is_overridable(struct fy_token *fyt_td);
 
 int fy_parser_set_default_document_state(struct fy_parser *fyp,

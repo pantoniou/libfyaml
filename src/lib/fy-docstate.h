@@ -48,7 +48,8 @@ struct fy_document_state *fy_document_state_ref(struct fy_document_state *fyds);
 void fy_document_state_unref(struct fy_document_state *fyds);
 
 int fy_document_state_append_tag(struct fy_document_state *fyds,
-				 const char *handle, const char *prefix);
+				 const char *handle, const char *prefix,
+				 bool is_default);
 struct fy_document_state *fy_document_state_default(void);
 struct fy_document_state *fy_document_state_copy(struct fy_document_state *fyds);
 int fy_document_state_merge(struct fy_document_state *fyds,

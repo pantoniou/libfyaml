@@ -5590,6 +5590,21 @@ fy_document_state_tag_directive_iterate(struct fy_document_state *fyds, void **p
 	FY_EXPORT;
 
 /**
+ * fy_document_state_tag_is_default() - Test whether the given tag is a default one
+ *
+ * Test whether a tag is a default (i.e. impliciticly set)
+ *
+ * @fyds: The document state
+ * @tag: The tag to check
+ *
+ * Returns:
+ * true in case that the tag is a default one, false otherwise
+ */
+bool
+fy_document_state_tag_is_default(struct fy_document_state *fyds, const struct fy_tag *tag)
+	FY_EXPORT;
+
+/**
  * fy_parser_get_document_state() - Get the document state of a parser object
  *
  * Retrieve the document state object of a parser. Note that this is only
