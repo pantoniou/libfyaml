@@ -566,6 +566,33 @@ fy_parse_event_create(struct fy_parser *fyp, enum fy_event_type type, ...)
 	return fye;
 }
 
+bool fy_event_is_implicit(struct fy_event *fye)
+{
+	/* NULL event is implicit */
+	if (!fye)
+		return true;
+
+	switch (fye->type) {
+
+	case FYET_DOCUMENT_START:
+		return fye->document_start.implicit;
+
+	case FYET_DOCUMENT_END:
+		return fye->document_end.implicit;
+
+	case FYET_MAPPING_START:
+	case FYET_MAPPING_END:
+	case FYET_SEQUENCE_START:
+	case FYET_SEQUENCE_END:
+		return fy_event_get_node_style(fye) == FYNS_BLOCK;
+
+	default:
+		break;
+	}
+
+	return false;
+}
+
 bool fy_document_event_is_implicit(const struct fy_event *fye)
 {
 	if (fye->type == FYET_DOCUMENT_START)

@@ -530,6 +530,18 @@ enum fy_error_module fy_string_to_error_module(const char *str);
 const char *fy_error_module_to_string(enum fy_error_module module);
 
 /**
+ * fy_event_is_implicit() - Check whether the given event is an implicit one
+ *
+ * @fye: A pointer to a &struct fy_event to check.
+ *
+ * Returns:
+ * true if the event is an implicit one.
+ */
+bool
+fy_event_is_implicit(struct fy_event *fye)
+	FY_EXPORT;
+
+/**
  * fy_document_event_is_implicit() - Check whether the given document event is an implicit one
  *
  * @fye: A pointer to a &struct fy_event to check.
@@ -5421,7 +5433,7 @@ fy_event_end_mark(struct fy_event *fye)
  * Return the node style (FYNS_*) of an event. May return
  * FYNS_ANY if the event is implicit.
  * For collection start events the only possible values is
- * FYNS_ANY, FYNS_FLOW, FYNS_BLOC.
+ * FYNS_ANY, FYNS_FLOW, FYNS_BLOCK.
  * A scalar event may return any.
  *
  * @fye: The event to get it's node style
