@@ -127,23 +127,25 @@ err_out:
 	return -1;
 }
 
-struct fy_document_state *fy_document_state_default(void)
+struct fy_document_state *fy_document_state_default(
+		const struct fy_version *default_version,
+		const struct fy_tag * const *default_tags)
 {
 	struct fy_document_state *fyds = NULL;
 	const struct fy_tag *fytag;
 	int i, rc;
-	int version_major = -1, version_minor = -1;
-	const struct fy_tag * const *default_tags = NULL;
+
+	if (!default_version)
+		default_version = &fy_default_version;
+
+	if (!default_tags)
+		default_tags = fy_default_tags;
 
 	fyds = fy_document_state_alloc();
 	if (!fyds)
 		goto err_out;
 
-	if (!default_tags)
-		default_tags = fy_default_tags;
-
-	fyds->version.major = version_major >= 0 ? version_major : FY_DEFAULT_YAML_VERSION_MAJOR;
-	fyds->version.minor = version_minor >= 0 ? version_minor : FY_DEFAULT_YAML_VERSION_MINOR;
+	fyds->version = *default_version;
 
 	fyds->version_explicit = false;
 	fyds->tags_explicit = false;
@@ -319,13 +321,8 @@ err_out:
 const struct fy_version *
 fy_document_state_version(struct fy_document_state *fyds)
 {
-	static const struct fy_version default_version = {
-		.major	= FY_DEFAULT_YAML_VERSION_MAJOR,
-		.minor	= FY_DEFAULT_YAML_VERSION_MINOR,
-	};
-
 	/* return the default if not set */
-	return fyds ? &fyds->version : &default_version;
+	return fyds ? &fyds->version : &fy_default_version;
 }
 
 const struct fy_mark *fy_document_state_start_mark(struct fy_document_state *fyds)

@@ -249,7 +249,7 @@ fy_eventp_vcreate_internal(struct fy_eventp_list *recycled_list, struct fy_diag 
 		break;
 	case FYET_DOCUMENT_START:
 		fye->document_start.document_start = NULL;
-		fyds_new = fy_document_state_default();	/* start with the default state */
+		fyds_new = fy_document_state_default(fy_document_state_version(fyds), NULL);	/* start with the default state */
 		if (!fyds_new) {
 			fy_error(diag, "fy_document_state_alloc() failed\n");
 			goto err_out;
@@ -818,14 +818,9 @@ fy_event_get_node_style(struct fy_event *fye)
 const struct fy_version *
 fy_document_start_event_version(struct fy_event *fye)
 {
-	static const struct fy_version default_version = {
-		.major	= FY_DEFAULT_YAML_VERSION_MAJOR,
-		.minor	= FY_DEFAULT_YAML_VERSION_MINOR,
-	};
-
 	/* return the default if not set */
 	if (!fye || fye->type != FYET_DOCUMENT_START)
-		return &default_version;
+		return &fy_default_version;
 	return fy_document_state_version(fye->document_start.document_state);
 }
 

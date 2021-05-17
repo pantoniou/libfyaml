@@ -184,6 +184,106 @@ struct fy_token *fy_token_queue(struct fy_parser *fyp, enum fy_token_type type, 
 	return fyt;
 }
 
+const struct fy_version fy_default_version = {
+	.major = 1,
+	.minor = 2
+};
+
+int fy_version_compare(const struct fy_version *va, const struct fy_version *vb)
+{
+	unsigned int vanum, vbnum;
+
+	if (!va)
+		va = &fy_default_version;
+	if (!vb)
+		vb = &fy_default_version;
+
+#define FY_VERSION_UINT(_major, _minor) \
+	((((unsigned int)(_major) & 0xff) << 8) | ((unsigned int)((_minor) & 0xff)))
+
+	vanum = FY_VERSION_UINT(va->major, va->minor);
+	vbnum = FY_VERSION_UINT(vb->major, vb->minor);
+
+#undef FY_VERSION_UINT
+
+	return vanum == vbnum ?  0 :
+	       vanum <  vbnum ? -1 : 1;
+}
+
+const struct fy_version *
+fy_version_default(void)
+{
+	return &fy_default_version;
+}
+
+static const struct fy_version * const fy_map_option_to_version[] = {
+	[FYPCF_DEFAULT_VERSION_AUTO >> FYPCF_DEFAULT_VERSION_SHIFT] = &fy_default_version,
+	[FYPCF_DEFAULT_VERSION_1_1  >> FYPCF_DEFAULT_VERSION_SHIFT] = fy_version_make(1, 1),
+	[FYPCF_DEFAULT_VERSION_1_2  >> FYPCF_DEFAULT_VERSION_SHIFT] = fy_version_make(1, 2),
+	[FYPCF_DEFAULT_VERSION_1_3  >> FYPCF_DEFAULT_VERSION_SHIFT] = fy_version_make(1, 3),
+};
+
+bool fy_version_is_supported(const struct fy_version *vers)
+{
+	unsigned int i;
+	const struct fy_version *vers_chk;
+
+	if (!vers)
+		return true;	/* NULL means default, which is supported */
+
+	for (i = 0; i < sizeof(fy_map_option_to_version)/sizeof(fy_map_option_to_version[0]); i++) {
+
+		vers_chk = fy_map_option_to_version[i];
+		if (!vers_chk)
+			continue;
+
+		if (fy_version_compare(vers, vers_chk) == 0)
+			return true;
+	}
+
+	return false;
+}
+
+static const struct fy_version *
+fy_parse_cfg_to_version(enum fy_parse_cfg_flags flags)
+{
+	unsigned int idx;
+
+	idx = (flags >> FYPCF_DEFAULT_VERSION_SHIFT) & FYPCF_DEFAULT_VERSION_MASK;
+
+	if (idx >= sizeof(fy_map_option_to_version)/sizeof(fy_map_option_to_version[0]))
+		return NULL;
+
+	return fy_map_option_to_version[idx];
+}
+
+const struct fy_version *fy_version_supported_iterate(void **prevp)
+{
+	const struct fy_version * const *versp;
+	const struct fy_version *vers;
+	unsigned int idx;
+
+	if (!prevp)
+		return NULL;
+
+	versp = (const struct fy_version * const *)*prevp;
+	if (!versp) {
+		/* we skip over the first (which is the default) */
+		versp = fy_map_option_to_version;
+	}
+
+	versp++;
+
+	idx = versp - fy_map_option_to_version;
+	if (idx >= sizeof(fy_map_option_to_version)/sizeof(fy_map_option_to_version[0]))
+		return NULL;
+
+	vers = *versp;
+	*prevp = (void **)versp;
+
+	return vers;
+}
+
 const struct fy_tag * const fy_default_tags[] = {
 	&(struct fy_tag) { .handle = "!",  .prefix = "!", },
 	&(struct fy_tag) { .handle = "!!", .prefix = "tag:yaml.org,2002:", },
@@ -279,7 +379,7 @@ int fy_reset_document_state(struct fy_parser *fyp)
 	fyp_scan_debug(fyp, "resetting document state");
 
 	if (!fyp->default_document_state) {
-		fyds_new = fy_document_state_default();
+		fyds_new = fy_document_state_default(&fyp->default_version, NULL);
 		fyp_error_check(fyp, fyds_new, err_out,
 				"fy_document_state_default() failed");
 	} else {
@@ -562,12 +662,21 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 {
 	struct fy_diag *diag;
 	struct fy_diag_cfg dcfg;
+	const struct fy_version *vers;
 	int rc;
+
+	if (!fyp)
+		return -1;
 
 	memset(fyp, 0, sizeof(*fyp));
 
 	diag = cfg ? cfg->diag : NULL;
 	fyp->cfg = cfg ? *cfg : default_parse_cfg;
+
+	/* supported version? */
+	vers = fy_parse_cfg_to_version(fyp->cfg.flags);
+	if (!vers)
+		return -1;
 
 	if (!diag) {
 		fy_diag_cfg_default(&dcfg);
@@ -581,6 +690,8 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 
 	fy_reader_setup(&fyp->builtin_reader, &fy_parser_reader_ops);
 	fyp->reader = &fyp->builtin_reader;
+
+	fyp->default_version = *vers;
 
 	fy_indent_list_init(&fyp->indent_stack);
 	fy_indent_list_init(&fyp->recycled_indent);
@@ -4654,10 +4765,21 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		fyp_error_check(fyp, fyds, err_out,
 				"no current document state error");
 
-		FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
-			!fyt || (fyt->type != FYTT_VERSION_DIRECTIVE &&
-				 fyt->type != FYTT_TAG_DIRECTIVE), err_out,
-			"missing explicit document end marker before directive(s)");
+		if (fyt && (fyt->type == FYTT_VERSION_DIRECTIVE ||
+			    fyt->type == FYTT_TAG_DIRECTIVE)) {
+			int cmpval = fy_document_state_version_compare(fyds, fy_version_make(1, 1));
+
+			fyp_scan_debug(fyp, "version %d.%d %s %d.%d\n",
+				fyds->version.major, fyds->version.minor,
+				cmpval == 0 ? "=" : cmpval > 0 ? ">" : "<",
+				1, 1);
+
+			/* YAML 1.1 allows directives without document end */
+			FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
+				cmpval <= 0, err_out,
+				"missing explicit document end marker before directive(s)");
+
+		}
 
 		fym = fy_token_end_mark(fyt);
 		if (fym)

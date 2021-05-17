@@ -53,6 +53,7 @@
 #define OPT_YPATH			1005
 #define OPT_SCAN_DUMP			1006
 #define OPT_PARSE_DUMP			1007
+#define OPT_YAML_VERSION_DUMP		1008
 
 #define OPT_STRIP_LABELS		2000
 #define OPT_STRIP_TAGS			2001
@@ -65,6 +66,10 @@
 #define OPT_ENABLE_DIAG			3001
 #define OPT_SHOW_DIAG			3002
 #define OPT_HIDE_DIAG			3003
+
+#define OPT_YAML_1_1			4000
+#define OPT_YAML_1_2			4001
+#define OPT_YAML_1_3			4002
 
 static struct option lopts[] = {
 	{"include",		required_argument,	0,	'I' },
@@ -88,6 +93,7 @@ static struct option lopts[] = {
 	{"ypath",		no_argument,		0,	OPT_YPATH },
 	{"scan-dump",		no_argument,		0,	OPT_SCAN_DUMP },
 	{"parse-dump",		no_argument,		0,	OPT_PARSE_DUMP },
+	{"yaml-version-dump",	no_argument,		0,	OPT_YAML_VERSION_DUMP },
 	{"strip-labels",	no_argument,		0,	OPT_STRIP_LABELS },
 	{"strip-tags",		no_argument,		0,	OPT_STRIP_TAGS },
 	{"strip-doc",		no_argument,		0,	OPT_STRIP_DOC },
@@ -98,6 +104,9 @@ static struct option lopts[] = {
 	{"enable-diag", 	required_argument,	0,	OPT_ENABLE_DIAG },
 	{"show-diag",		required_argument,	0,	OPT_SHOW_DIAG },
 	{"hide-diag", 		required_argument,	0,	OPT_HIDE_DIAG },
+	{"yaml-1.1",		no_argument,		0,	OPT_YAML_1_1 },
+	{"yaml-1.2",		no_argument,		0,	OPT_YAML_1_2 },
+	{"yaml-1.3",		no_argument,		0,	OPT_YAML_1_3 },
 	{"to",			required_argument,	0,	'T' },
 	{"from",		required_argument,	0,	'F' },
 	{"quiet",		no_argument,		0,	'q' },
@@ -157,6 +166,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--json, -j               : JSON input mode (no | force | auto)"
 						" (default %s)\n",
 						JSON_DEFAULT);
+	fprintf(fp, "\t--yaml-1.1               : Enable YAML 1.1 version instead of the library's default");
+	fprintf(fp, "\t--yaml-1.2               : Enable YAML 1.2 version instead of the library's default");
+	fprintf(fp, "\t--yaml-1.3               : Enable YAML 1.3 version instead of the library's default");
 	fprintf(fp, "\t--quiet, -q              : Quiet operation, do not "
 						"output messages (default %s)\n",
 						QUIET_DEFAULT ? "true" : "false");
@@ -207,6 +219,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--ypath                  : YPATH mode, [arguments] are <path>s, file names, outputs to stdout\n");
 		fprintf(fp, "\t--scan-dump              : scan-dump mode, [arguments] are file names\n");
 		fprintf(fp, "\t--parse-dump             : parse-dump mode, [arguments] are file names\n");
+		fprintf(fp, "\t--yaml-version           : Information about supported libfyaml's YAML versions\n");
 	}
 
 	fprintf(fp, "\n");
@@ -270,6 +283,10 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		break;
 	case OPT_PARSE_DUMP:
 		fprintf(fp, "\tParse and dump YAML parser events (internal)\n");
+		fprintf(fp, "\n");
+		break;
+	case OPT_YAML_VERSION_DUMP:
+		fprintf(fp, "\tDisplay information about the YAML versions libfyaml supports)\n");
 		fprintf(fp, "\n");
 		break;
 	}
@@ -1101,6 +1118,8 @@ int main(int argc, char *argv[])
 		tool_mode = OPT_SCAN_DUMP;
 	else if (!strcmp(progname, "fy-parse-dump"))
 		tool_mode = OPT_PARSE_DUMP;
+	else if (!strcmp(progname, "fy-yaml-version-dump"))
+		tool_mode = OPT_YAML_VERSION_DUMP;
 	else
 		tool_mode = OPT_TOOL;
 
@@ -1267,6 +1286,7 @@ int main(int argc, char *argv[])
 		case OPT_YPATH:
 		case OPT_SCAN_DUMP:
 		case OPT_PARSE_DUMP:
+		case OPT_YAML_VERSION_DUMP:
 			tool_mode = opt;
 			break;
 		case OPT_STRIP_LABELS:
@@ -1301,6 +1321,18 @@ int main(int argc, char *argv[])
 		case OPT_DISABLE_BUFFERING:
 			cfg.flags |= FYPCF_DISABLE_BUFFERING;
 			break;
+		case OPT_YAML_1_1:
+			cfg.flags &= ~(FYPCF_DEFAULT_VERSION_MASK << FYPCF_DEFAULT_VERSION_SHIFT);
+			cfg.flags |= FYPCF_DEFAULT_VERSION_1_1;
+			break;
+		case OPT_YAML_1_2:
+			cfg.flags &= ~(FYPCF_DEFAULT_VERSION_MASK << FYPCF_DEFAULT_VERSION_SHIFT);
+			cfg.flags |= FYPCF_DEFAULT_VERSION_1_2;
+			break;
+		case OPT_YAML_1_3:
+			cfg.flags &= ~(FYPCF_DEFAULT_VERSION_MASK << FYPCF_DEFAULT_VERSION_SHIFT);
+			cfg.flags |= FYPCF_DEFAULT_VERSION_1_3;
+			break;
 		case 'h' :
 		default:
 			if (opt != 'h')
@@ -1311,6 +1343,20 @@ int main(int argc, char *argv[])
 			printf("%s\n", fy_library_version());
 			return EXIT_SUCCESS;
 		}
+	}
+
+	if (tool_mode == OPT_YAML_VERSION_DUMP) {
+		const struct fy_version *vers;
+		void *iter;
+
+		vers = fy_version_default();
+		printf("Default version    : %d.%d\n", vers->major, vers->minor);
+
+		printf("Supported versions :");
+		iter = NULL;
+		while ((vers = fy_version_supported_iterate(&iter)) != NULL)
+			printf(" %d.%d", vers->major, vers->minor);
+		printf("\n");
 	}
 
 	/* if we're still in tool mode, switch to dump */

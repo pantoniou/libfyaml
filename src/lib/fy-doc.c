@@ -3027,7 +3027,10 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 	}
 	fyd->root = NULL;
 
-	fyd->fyds = fy_document_state_default();
+	/* we don't do document create version setting,
+	 * perhaps we should in the future
+	 */
+	fyd->fyds = fy_document_state_default(NULL, NULL);
 	fyd_error_check(fyd, fyd->fyds, err_out,
 			"fy_document_state_default() failed");
 

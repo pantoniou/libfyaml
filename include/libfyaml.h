@@ -125,6 +125,67 @@ struct fy_version {
 	int minor;
 };
 
+/* Build a fy_version * from the given major and minor */
+#define fy_version_make(_maj, _min) (&(struct fy_version){ (_maj), (_min) })
+
+/**
+ * fy_version_compare() - Compare two yaml versions
+ *
+ * Compare the versions
+ *
+ * @va: The first version, if NULL use default version
+ * @vb: The second version, if NULL use default version
+ *
+ * Returns:
+ * 0 if versions are equal, > 0 if version va is higher than vb
+ * < 0 if version va is lower than vb
+ */
+int
+fy_version_compare(const struct fy_version *va, const struct fy_version *vb)
+	FY_EXPORT;
+
+/**
+ * fy_version_default() - Get the default version of the library
+ *
+ * Return the default version of the library, i.e. the highest
+ * stable version that is supported.
+ *
+ * Returns:
+ * The default YAML version of this library
+ */
+const struct fy_version *
+fy_version_default(void)
+	FY_EXPORT;
+
+/**
+ * fy_version_is_supported() - Check if supported version
+ *
+ * Check if the given YAML version is supported.
+ *
+ * @vers: The version to check, NULL means default version.
+ *
+ * Returns:
+ * true if version supported, false otherwise.
+ */
+bool
+fy_version_is_supported(const struct fy_version *vers)
+	FY_EXPORT;
+
+/**
+ * fy_version_supported_iterate() - Iterate over the supported YAML versions
+ *
+ * This method iterates over the supported YAML versions of this ibrary.
+ * The start of the iteration is signalled by a NULL in \*prevp.
+ *
+ * @prevp: The previous version iterator
+ *
+ * Returns:
+ * The next node in sequence or NULL at the end of the sequence.
+ */
+const struct fy_version *
+fy_version_supported_iterate(void **prevp)
+	FY_EXPORT;
+
 /**
  * struct fy_tag - The YAML tag structure.
  *
@@ -198,6 +259,13 @@ enum fy_error_module {
 	FYEM_MAX,
 };
 
+/* Shift amount of the default version */
+#define FYPCF_DEFAULT_VERSION_SHIFT	9
+/* Mask of the default version */
+#define FYPCF_DEFAULT_VERSION_MASK	((1U << 5) - 1)
+/* Build a default version */
+#define FYPCF_DEFAULT_VERSION(x)	(((unsigned int)(x) & FYPCF_DEFAULT_VERSION_MASK) << FYPCF_DEFAULT_VERSION_SHIFT)
+
 /* Shift amount of the JSON input mode */
 #define FYPCF_JSON_SHIFT		16
 /* Mask of the JSON input mode */
@@ -224,6 +292,10 @@ enum fy_error_module {
  * @FYPCF_DISABLE_DEPTH_LIMIT: Disable depth limit check, use with enlarged stack
  * @FYPCF_DISABLE_ACCELERATORS: Disable use of access accelerators (saves memory)
  * @FYPCF_DISABLE_BUFFERING: Disable use of buffering where possible
+ * @FYPCF_DEFAULT_VERSION_AUTO: Automatically use the most recent version the library supports
+ * @FYPCF_DEFAULT_VERSION_1_1: Default version is YAML 1.1
+ * @FYPCF_DEFAULT_VERSION_1_2: Default version is YAML 1.2
+ * @FYPCF_DEFAULT_VERSION_1_3: Default version is YAML 1.3 (experimental)
  * @FYPCF_JSON_AUTO: Automatically enable JSON mode (when extension is .json)
  * @FYPCF_JSON_NONE: Never enable JSON input mode
  * @FYPCF_JSON_FORCE: Force JSON mode always
@@ -238,6 +310,10 @@ enum fy_parse_cfg_flags {
 	FYPCF_DISABLE_DEPTH_LIMIT	= FY_BIT(6),
 	FYPCF_DISABLE_ACCELERATORS	= FY_BIT(7),
 	FYPCF_DISABLE_BUFFERING		= FY_BIT(8),
+	FYPCF_DEFAULT_VERSION_AUTO	= FYPCF_DEFAULT_VERSION(0),
+	FYPCF_DEFAULT_VERSION_1_1	= FYPCF_DEFAULT_VERSION(1),
+	FYPCF_DEFAULT_VERSION_1_2	= FYPCF_DEFAULT_VERSION(2),
+	FYPCF_DEFAULT_VERSION_1_3	= FYPCF_DEFAULT_VERSION(3),
 	FYPCF_JSON_AUTO			= FYPCF_JSON(0),
 	FYPCF_JSON_NONE			= FYPCF_JSON(1),
 	FYPCF_JSON_FORCE		= FYPCF_JSON(2),

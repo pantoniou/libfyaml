@@ -144,6 +144,7 @@ struct fy_parser {
 	struct fy_reader builtin_reader;	/* the builtin reader */
 	struct fy_reader *reader;		/* the external reader, or ptr to builtin_reader */
 
+	struct fy_version default_version;
 	bool suppress_recycling : 1;
 	bool stream_start_produced : 1;
 	bool stream_end_produced : 1;
@@ -483,10 +484,9 @@ extern const char *fy_event_type_txt[];
 
 enum fy_parse_cfg_flags fy_parser_get_cfg_flags(const struct fy_parser *fyp);
 
-#define FY_DEFAULT_YAML_VERSION_MAJOR	1
-#define FY_DEFAULT_YAML_VERSION_MINOR	1
-
 extern const struct fy_tag * const fy_default_tags[];
+
+extern const struct fy_version fy_default_version;	/* usually highest stable */
 
 bool fy_tag_handle_is_default(const char *handle, size_t handle_size);
 bool fy_tag_is_default_internal(const char *handle, size_t handle_size,
@@ -503,5 +503,10 @@ void *fy_realloc_default(void *userdata, void *ptr, size_t size);
 
 int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent, struct fy_atom *handle);
 int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent, int flow_level, struct fy_atom *handle);
+
+static inline int fy_document_state_version_compare(struct fy_document_state *fyds, const struct fy_version *vb)
+{
+	return fy_version_compare(fy_document_state_version(fyds), vb);
+}
 
 #endif
