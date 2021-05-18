@@ -44,6 +44,7 @@
 #define JSON_DEFAULT			"auto"
 #define DISABLE_ACCEL_DEFAULT		false
 #define DISABLE_BUFFERING_DEFAULT	false
+#define SLOPPY_FLOW_INDENTATION_DEFAULT	false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -61,6 +62,7 @@
 #define OPT_STREAMING			2003
 #define OPT_DISABLE_ACCEL		2005
 #define OPT_DISABLE_BUFFERING		2006
+#define OPT_SLOPPY_FLOW_INDENTATION	2007
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -107,6 +109,7 @@ static struct option lopts[] = {
 	{"yaml-1.1",		no_argument,		0,	OPT_YAML_1_1 },
 	{"yaml-1.2",		no_argument,		0,	OPT_YAML_1_2 },
 	{"yaml-1.3",		no_argument,		0,	OPT_YAML_1_3 },
+	{"sloppy-flow-indentation", no_argument,	0,	OPT_SLOPPY_FLOW_INDENTATION },
 	{"to",			required_argument,	0,	'T' },
 	{"from",		required_argument,	0,	'F' },
 	{"quiet",		no_argument,		0,	'q' },
@@ -169,6 +172,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--yaml-1.1               : Enable YAML 1.1 version instead of the library's default");
 	fprintf(fp, "\t--yaml-1.2               : Enable YAML 1.2 version instead of the library's default");
 	fprintf(fp, "\t--yaml-1.3               : Enable YAML 1.3 version instead of the library's default");
+	fprintf(fp, "\t--sloppy-flow-indentation: Enable sloppy indentation in flow mode)"
+						" (default %s)\n",
+						SLOPPY_FLOW_INDENTATION_DEFAULT ? "true" : "false");
 	fprintf(fp, "\t--quiet, -q              : Quiet operation, do not "
 						"output messages (default %s)\n",
 						QUIET_DEFAULT ? "true" : "false");
@@ -1056,6 +1062,7 @@ int main(int argc, char *argv[])
 			(RESOLVE_DEFAULT ? FYPCF_RESOLVE_DOCUMENT : 0) |
 			(DISABLE_ACCEL_DEFAULT ? FYPCF_DISABLE_ACCELERATORS : 0),
 			(DISABLE_BUFFERING_DEFAULT ? FYPCF_DISABLE_BUFFERING : 0),
+			(SLOPPY_FLOW_INDENTATION_DEFAULT ? FYPCF_SLOPPY_FLOW_INDENTATION : 0),
 	};
 	struct fy_emitter_cfg emit_cfg;
 	struct fy_parser *fyp = NULL;
@@ -1332,6 +1339,9 @@ int main(int argc, char *argv[])
 		case OPT_YAML_1_3:
 			cfg.flags &= ~(FYPCF_DEFAULT_VERSION_MASK << FYPCF_DEFAULT_VERSION_SHIFT);
 			cfg.flags |= FYPCF_DEFAULT_VERSION_1_3;
+			break;
+		case OPT_SLOPPY_FLOW_INDENTATION:
+			cfg.flags |= FYPCF_SLOPPY_FLOW_INDENTATION;
 			break;
 		case 'h' :
 		default:

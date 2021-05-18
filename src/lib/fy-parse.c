@@ -1858,6 +1858,12 @@ err_out_rc:
 	return rc;
 }
 
+static inline bool fy_flow_indent_check(struct fy_parser *fyp)
+{
+	return (!fyp->flow_level || fyp_column(fyp) > fyp->indent) ||
+		((fyp->cfg.flags & FYPCF_SLOPPY_FLOW_INDENTATION) && fyp->flow_level);
+}
+
 int fy_fetch_flow_collection_mark_start(struct fy_parser *fyp, int c)
 {
 	enum fy_token_type type;
@@ -1875,7 +1881,7 @@ int fy_fetch_flow_collection_mark_start(struct fy_parser *fyp, int c)
 	}
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
+			fy_flow_indent_check(fyp), err_out,
 			"wrongly indented %s start in flow mode", typestr);
 
 	fy_get_simple_key_mark(fyp, &skm);
@@ -1947,7 +1953,7 @@ int fy_fetch_flow_collection_mark_end(struct fy_parser *fyp, int c)
 			"JSON disallows trailing comma before closing %s", markerstr);
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
+			fy_flow_indent_check(fyp), err_out,
 			"wrongly indented %s end in flow mode", typestr);
 
 	rc = fy_remove_simple_key(fyp, type);
@@ -2031,7 +2037,7 @@ int fy_fetch_flow_collection_entry(struct fy_parser *fyp, int c)
 	type = FYTT_FLOW_ENTRY;
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
+			fy_flow_indent_check(fyp), err_out,
 			"wrongly indented entry seperator in flow mode");
 
 	/* transform '? a,' to '? a: ,' */
@@ -2095,7 +2101,8 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 			"illegal block entry");
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || (fyp_column(fyp) + 2) > fyp->indent, err_out,
+			(!fyp->flow_level || (fyp_column(fyp) + 2) > fyp->indent) ||
+			((fyp->cfg.flags & FYPCF_SLOPPY_FLOW_INDENTATION) && fyp->flow_level), err_out,
 			"wrongly indented block sequence in flow mode");
 
 	if (!(fyp->flow_level || fyp->simple_key_allowed)) {
@@ -2186,7 +2193,7 @@ int fy_fetch_key(struct fy_parser *fyp, int c)
 			"illegal block entry or key mark");
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
+			fy_flow_indent_check(fyp), err_out,
 			"wrongly indented mapping key in flow mode");
 
 	fy_get_simple_key_mark(fyp, &skm);
@@ -2275,7 +2282,7 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 	fy_token_list_init(&sk_tl);
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
+			fy_flow_indent_check(fyp), err_out,
 			"wrongly indented mapping value in flow mode");
 
 	rc = fy_purge_stale_simple_keys(fyp, &did_purge, FYTT_VALUE);
@@ -2441,7 +2448,7 @@ int fy_fetch_anchor_or_alias(struct fy_parser *fyp, int c)
 	}
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
+			fy_flow_indent_check(fyp), err_out,
 			"wrongly indented %s in flow mode", typestr);
 
 	/* we have to save the start mark (including the anchor/alias start) */
@@ -2551,7 +2558,7 @@ int fy_fetch_tag(struct fy_parser *fyp, int c)
 			"illegal tag mark (not '!')");
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0 ,1, FYEM_SCAN,
-			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
+			fy_flow_indent_check(fyp), err_out,
 			"wrongly indented tag in flow mode");
 
 	fyds = fyp->current_document_state;
@@ -2731,7 +2738,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 				fy_utf8_format_a(c, fyue_singlequote));
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
+			fy_flow_indent_check(fyp), err_out,
 			"wrongly indented block scalar in flow mode");
 
 	rc = fy_remove_simple_key(fyp, FYTT_SCALAR);
@@ -3077,7 +3084,7 @@ err_out_rc:
 	return rc;
 }
 
-int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent, struct fy_atom *handle)
+int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent, struct fy_atom *handle, bool sloppy_indent)
 {
 	size_t length;
 	int code_length, i = 0, j, end_c, last_line, lastc;
@@ -3173,7 +3180,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 			if (last_line != fy_reader_line(fyr)) {
 				last_line = fy_reader_line(fyr);
 
-				if (indent >= 0 && fy_reader_column(fyr) <= indent) {
+				if ((indent >= 0 && fy_reader_column(fyr) <= indent) && !sloppy_indent) {
 
 					fy_reader_advance(fyr, c);
 					fy_reader_get_mark(fyr, &mark2);
@@ -3672,7 +3679,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 				fy_utf8_format_a(c, fyue_singlequote));
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
+			fy_flow_indent_check(fyp), err_out,
 			"wrongly indented %s scalar in flow mode",
 				is_single ? "single-quoted" : "double-quoted");
 
@@ -3680,7 +3687,7 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 	fy_get_simple_key_mark(fyp, &skm);
 
 	/* errors are generated by reader */
-	rc = fy_reader_fetch_flow_scalar_handle(fyp->reader, c, fyp->indent, &handle);
+	rc = fy_reader_fetch_flow_scalar_handle(fyp->reader, c, fyp->indent, &handle, (fyp->cfg.flags & FYPCF_SLOPPY_FLOW_INDENTATION));
 	if (rc) {
 		fyp->stream_error = true;
 		goto err_out_rc;
@@ -3766,7 +3773,7 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 
 	/* check indentation */
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!fyp->flow_level || fyp_column(fyp) > fyp->indent, err_out,
+			fy_flow_indent_check(fyp), err_out,
 			"wrongly indented flow %s",
 				fyp->flow == FYFT_SEQUENCE ? "sequence" : "mapping");
 
