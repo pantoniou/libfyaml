@@ -66,5 +66,9 @@ debian/control
 debian/copyright
 artifacts/
 build
+
 .clang-format
 .ccls-cache
+build-aux/config.guess~
+build-aux/config.sub~
+compile_commands.json
