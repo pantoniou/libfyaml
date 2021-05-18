@@ -462,7 +462,7 @@ ok:
 	return 0;
 }
 
-int fy_parse_version_directive(struct fy_parser *fyp, struct fy_token *fyt)
+int fy_parse_version_directive(struct fy_parser *fyp, struct fy_token *fyt, bool scan_mode)
 {
 	struct fy_document_state *fyds;
 	const char *vs;
@@ -479,9 +479,15 @@ int fy_parse_version_directive(struct fy_parser *fyp, struct fy_token *fyt)
 	fyp_error_check(fyp, fyds, err_out,
 			"no current document state error");
 
-	FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
-			!fyds->fyt_vd, err_out,
-			"duplicate version directive");
+	if (!scan_mode) {
+		FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
+				!fyds->fyt_vd, err_out,
+				"duplicate version directive");
+	} else {
+		/* in scan mode, we just override everything */
+		fy_token_unref(fyds->fyt_vd);
+		fyds->fyt_vd = NULL;
+	}
 
 	/* version directive of the form: MAJ.MIN */
 	vs = fy_token_get_text(fyt, &vs_len);
@@ -528,7 +534,7 @@ err_out_rc:
 	return rc;
 }
 
-int fy_parse_tag_directive(struct fy_parser *fyp, struct fy_token *fyt)
+int fy_parse_tag_directive(struct fy_parser *fyp, struct fy_token *fyt, bool scan_mode)
 {
 	struct fy_document_state *fyds;
 	struct fy_token *fyt_td;
@@ -550,7 +556,7 @@ int fy_parse_tag_directive(struct fy_parser *fyp, struct fy_token *fyt)
 
 	fyt_td = fy_document_state_lookup_tag_directive(fyds, handle, handle_size);
 
-	can_override = fyt_td && fy_token_tag_directive_is_overridable(fyt_td);
+	can_override = fyt_td && (fy_token_tag_directive_is_overridable(fyt_td) || scan_mode);
 
 	FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
 			!fyt_td || can_override, err_out,
@@ -3425,7 +3431,7 @@ err_out:
 	return -1;
 }
 
-int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent, int flow_level, struct fy_atom *handle)
+int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent, int flow_level, struct fy_atom *handle, bool directive0)
 {
 	size_t length;
 	int rc = -1, run, nextc, lastc, breaks_found, blanks_found;
@@ -3476,13 +3482,16 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 	for (;;) {
 		/* break for document indicators */
 		if (fy_reader_column(fyr) == 0 &&
-		    (!fy_reader_strncmp(fyr, "---", 3) ||
-		     !fy_reader_strncmp(fyr, "...", 3)) &&
-		    fy_reader_is_blankz_at_offset(fyr, 3))
+		    ((!fy_reader_strncmp(fyr, "---", 3) || !fy_reader_strncmp(fyr, "...", 3)) &&
+			fy_reader_is_blankz_at_offset(fyr, 3)))
 			break;
 
 		c = fy_reader_peek(fyr);
 		if (c == '#')
+			break;
+
+		/* for YAML 1.1 check % directive break */
+		if (directive0 && fy_reader_column(fyr) == 0 && c == '%')
 			break;
 
 		run = 0;
@@ -3763,7 +3772,8 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 
 	fy_get_simple_key_mark(fyp, &skm);
 
-	rc = fy_reader_fetch_plain_scalar_handle(fyp->reader, c, fyp->indent, fyp->flow_level, &handle);
+	rc = fy_reader_fetch_plain_scalar_handle(fyp->reader, c, fyp->indent, fyp->flow_level, &handle,
+						fy_document_state_version_compare(fyp->current_document_state, fy_version_make(1, 1)) <= 0);
 	if (rc) {
 		fyp->stream_error = true;
 		goto err_out_rc;
@@ -4199,9 +4209,9 @@ struct fy_token *fy_scan(struct fy_parser *fyp)
 		/* we ignore errors, because... they are parse errors, not scan errors */
 
 		if (fyt->type == FYTT_VERSION_DIRECTIVE)
-			(void)fy_parse_version_directive(fyp, fyt);
+			(void)fy_parse_version_directive(fyp, fyt, true);
 		else
-			(void)fy_parse_tag_directive(fyp, fyt);
+			(void)fy_parse_tag_directive(fyp, fyt, true);
 	}
 
 	if (fyt)
@@ -4651,12 +4661,12 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			had_directives = true;
 			if (fyt->type == FYTT_VERSION_DIRECTIVE) {
 
-				rc = fy_parse_version_directive(fyp, fy_scan_remove(fyp, fyt));
+				rc = fy_parse_version_directive(fyp, fy_scan_remove(fyp, fyt), false);
 				fyt = NULL;
 				fyp_error_check(fyp, !rc, err_out,
 						"failed to fy_parse_version_directive()");
 			} else {
-				rc = fy_parse_tag_directive(fyp, fy_scan_remove(fyp, fyt));
+				rc = fy_parse_tag_directive(fyp, fy_scan_remove(fyp, fyt), false);
 				fyt = NULL;
 
 				fyp_error_check(fyp, !rc, err_out,
