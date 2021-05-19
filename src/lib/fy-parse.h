@@ -501,8 +501,8 @@ void *fy_alloc_default(void *userdata, size_t size);
 void fy_free_default(void *userdata, void *ptr);
 void *fy_realloc_default(void *userdata, void *ptr, size_t size);
 
-int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent, struct fy_atom *handle);
-int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent, int flow_level, struct fy_atom *handle);
+int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent, struct fy_atom *handle, bool sloppy_indent);
+int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent, int flow_level, struct fy_atom *handle, bool directive0);
 
 static inline int fy_document_state_version_compare(struct fy_document_state *fyds, const struct fy_version *vb)
 {
