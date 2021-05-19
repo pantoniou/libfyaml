@@ -2895,20 +2895,22 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 			line_length += fy_utf8_width(c);
 		}
 
-		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-				c >= 0, err_out,
-				"unterminated block scalar until end of input");
-
 		if (doc_start_end_detected)
 			break;
 
-		/* eat line break */
-		fy_advance(fyp, c);
+		if (!fy_is_z(c)) {
+			/* eat line break */
+			fy_advance(fyp, c);
 
-		has_lb = true;
-		new_indent = fy_scan_block_scalar_indent(fyp, indent, &breaks);
-		fyp_error_check(fyp, new_indent >= 0, err_out,
-				"fy_scan_block_scalar_indent() failed");
+			has_lb = true;
+			new_indent = fy_scan_block_scalar_indent(fyp, indent, &breaks);
+			fyp_error_check(fyp, new_indent >= 0, err_out,
+					"fy_scan_block_scalar_indent() failed");
+		} else {
+			has_lb = false;
+			new_indent = indent;
+			chomp = FYAC_STRIP;
+		}
 
 		if (is_literal) {
 
