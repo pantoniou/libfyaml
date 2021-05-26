@@ -28,6 +28,17 @@
 
 #include "fy-token.h"
 
+enum fy_scalar_style fy_token_scalar_style(struct fy_token *fyt)
+{
+	if (!fyt || fyt->type != FYTT_SCALAR)
+		return FYSS_PLAIN;
+
+	if (fyt->type == FYTT_SCALAR)
+		return fyt->scalar.style;
+
+	return FYSS_PLAIN;
+}
+
 enum fy_token_type fy_token_get_type(struct fy_token *fyt)
 {
 	return fyt ? fyt->type : FYTT_NONE;
@@ -591,36 +602,6 @@ const struct fy_mark *fy_token_end_mark(struct fy_token *fyt)
 	return NULL;
 }
 
-enum fy_atom_style fy_token_atom_style(struct fy_token *fyt)
-{
-	if (!fyt)
-		return FYAS_PLAIN;
-
-	if (fyt->type == FYTT_TAG)
-		return FYAS_URI;
-
-	return fyt->handle.style;
-}
-
-enum fy_scalar_style fy_token_scalar_style(struct fy_token *fyt)
-{
-	if (!fyt || fyt->type != FYTT_SCALAR)
-		return FYSS_PLAIN;
-
-	if (fyt->type == FYTT_SCALAR)
-		return fyt->scalar.style;
-
-	return FYSS_PLAIN;
-}
-
-bool fy_token_atom_json_mode(struct fy_token *fyt)
-{
-	if (!fyt || fyt->type == FYTT_TAG)
-		return false;
-
-	return fyt->handle.json_mode;
-}
-
 int fy_token_text_analyze(struct fy_token *fyt)
 {
 	const char *s, *e;
@@ -687,14 +668,14 @@ int fy_token_text_analyze(struct fy_token *fyt)
 	/* get first character */
 	cn = fy_utf8_get(s, e - s, &w);
 	s += w;
-	col = fy_is_lb_yj(cn, fy_token_atom_json_mode(fyt)) ? 0 : (col + 1);
+	col = fy_token_is_lb(fyt, cn) ? 0 : (col + 1);
 
 	/* disable folded right off the bat, it's a pain */
 	flags &= ~FYTTAF_CAN_BE_FOLDED;
 
 	/* plain scalars can't start with any indicator (or space/lb) */
 	if ((flags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW)) &&
-		(fy_is_indicator(cn) || fy_is_lb_yj(cn, fy_token_atom_json_mode(fyt)) || fy_is_ws(cn)))
+		(fy_is_indicator(cn) || fy_token_is_lb(fyt, cn) || fy_is_ws(cn)))
 		flags &= ~(FYTTAF_CAN_BE_PLAIN |
 			   FYTTAF_CAN_BE_PLAIN_FLOW);
 
@@ -725,10 +706,10 @@ int fy_token_text_analyze(struct fy_token *fyt)
 			if (fy_is_ws(cn))
 				flags |= FYTTAF_HAS_CONSECUTIVE_WS;
 
-		} else if (fy_is_lb_yj(c, fy_token_atom_json_mode(fyt))) {
+		} else if (fy_token_is_lb(fyt, c)) {
 
 			flags |= FYTTAF_HAS_LB;
-			if (fy_is_lb_yj(cn, fy_token_atom_json_mode(fyt)))
+			if (fy_token_is_lb(fyt, cn))
 				flags |= FYTTAF_HAS_CONSECUTIVE_LB;
 
 			/* only non linebreaks can be simple keys */
@@ -740,8 +721,8 @@ int fy_token_text_analyze(struct fy_token *fyt)
 
 		/* illegal plain combination */
 		if ((flags & FYTTAF_CAN_BE_PLAIN) &&
-			((c == ':' && fy_is_blankz_yj(cn, fy_token_atom_json_mode(fyt))) ||
-			 (fy_is_blankz_yj(c, fy_token_atom_json_mode(fyt)) && cn == '#') ||
+			((c == ':' && fy_is_blankz_m(cn, fy_token_atom_lb_mode(fyt))) ||
+			 (fy_is_blankz_m(c, fy_token_atom_lb_mode(fyt)) && cn == '#') ||
 			 (cp < 0 && c == '#' && cn < 0) ||
 			 !fy_is_print(c))) {
 			flags &= ~(FYTTAF_CAN_BE_PLAIN |
@@ -768,12 +749,12 @@ int fy_token_text_analyze(struct fy_token *fyt)
 		     (style == FYAS_DOUBLE_QUOTED && c == '\\')))
 			flags &= ~FYTTAF_DIRECT_OUTPUT;
 
-		col = fy_is_lb_yj(c, fy_token_atom_json_mode(fyt)) ? 0 : (col + 1);
+		col = fy_token_is_lb(fyt, c) ? 0 : (col + 1);
 
 		/* last character */
 		if (cn < 0) {
 			/* if ends with whitespace or linebreak, can't be plain */
-			if (fy_is_ws(cn) || fy_is_lb_yj(cn, fy_token_atom_json_mode(fyt)))
+			if (fy_is_ws(cn) || fy_token_is_lb(fyt, cn))
 				flags &= ~(FYTTAF_CAN_BE_PLAIN |
 					   FYTTAF_CAN_BE_PLAIN_FLOW);
 		}
@@ -996,7 +977,8 @@ size_t fy_token_get_text_length(struct fy_token *fyt)
 	return fy_token_format_text_length(fyt);
 }
 
-unsigned int fy_analyze_scalar_content(const char *data, size_t size, bool json_mode)
+unsigned int fy_analyze_scalar_content(const char *data, size_t size,
+		bool json_mode, enum fy_lb_mode lb_mode, enum fy_flow_ws_mode fws_mode)
 {
 	const char *s, *e;
 	int c, lastc, nextc, w, ww, col, break_run;
@@ -1023,7 +1005,7 @@ unsigned int fy_analyze_scalar_content(const char *data, size_t size, bool json_
 		if (first) {
 			if (fy_is_ws(c))
 				flags |= FYACF_STARTS_WITH_WS;
-			else if (fy_is_lb_yj(c, json_mode))
+			else if (fy_is_generic_lb_m(c, lb_mode))
 				flags |= FYACF_STARTS_WITH_LB;
 			/* scalars starting with & or * must be quoted */
 			if (c == '&' || c == '*')
@@ -1034,20 +1016,20 @@ unsigned int fy_analyze_scalar_content(const char *data, size_t size, bool json_
 
 		/* anything other than white space or linebreak */
 		if ((flags & FYACF_EMPTY) &&
-		    !fy_is_ws(c) && !fy_is_lb_yj(c, json_mode))
+		    !fy_is_ws(c) && !fy_is_generic_lb_m(c, lb_mode))
 			flags &= ~FYACF_EMPTY;
 
 		if ((flags & FYACF_VALID_ANCHOR) &&
 		    (fy_utf8_strchr(",[]{}&*:", c) || fy_is_ws(c) ||
-		     fy_is_lb(c) || fy_is_unicode_control(c) ||
+		     fy_is_any_lb(c) || fy_is_unicode_control(c) ||
 		     fy_is_unicode_space(c)))
 			flags &= ~FYACF_VALID_ANCHOR;
 
 		/* linebreak */
-		if (fy_is_lb_yj(c, json_mode)) {
+		if (fy_is_generic_lb_m(c, lb_mode)) {
 			flags |= FYACF_LB;
 			if (!(flags & FYACF_CONSECUTIVE_LB) &&
-			    fy_is_lb_yj(nextc, json_mode))
+			    fy_is_generic_lb_m(nextc, lb_mode))
 				flags |= FYACF_CONSECUTIVE_LB;
 			break_run++;
 		} else
@@ -1078,8 +1060,8 @@ unsigned int fy_analyze_scalar_content(const char *data, size_t size, bool json_
 		/* comment indicator can't be present after a space or lb */
 		/* : followed by blank can't be any plain */
 		if (flags & (FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN) &&
-		    (((fy_is_blank(c) || fy_is_lb_yj(c, json_mode)) && nextc == '#') ||
-		     (c == ':' && fy_is_blankz_yj(nextc, json_mode))))
+		    (((fy_is_blank(c) || fy_is_generic_lb_m(c, lb_mode)) && nextc == '#') ||
+		     (c == ':' && fy_is_blankz_m(nextc, lb_mode))))
 			flags &= ~(FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN);
 
 		/* : followed by flow markers can't be a plain in flow context */
@@ -1090,7 +1072,7 @@ unsigned int fy_analyze_scalar_content(const char *data, size_t size, bool json_
 		if (!(flags & FYACF_JSON_ESCAPE) && !fy_is_json_unescaped(c))
 			flags |= FYACF_JSON_ESCAPE;
 
-		if (fy_is_lb_yj(c, json_mode))
+		if (fy_is_generic_lb_m(c, lb_mode))
 			col = 0;
 		else
 			col++;
@@ -1104,7 +1086,7 @@ unsigned int fy_analyze_scalar_content(const char *data, size_t size, bool json_
 
 	if (fy_is_ws(lastc))
 		flags |= FYACF_ENDS_WITH_WS;
-	else if (fy_is_lb_yj(lastc, json_mode))
+	else if (fy_is_generic_lb_m(lastc, lb_mode))
 		flags |= FYACF_ENDS_WITH_LB;
 
 	if (break_run > 1)

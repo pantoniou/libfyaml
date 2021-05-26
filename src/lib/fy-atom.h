@@ -64,6 +64,8 @@ struct fy_atom {
 	unsigned int increment;
 	/* save a little bit of space with bitfields */
 	enum fy_atom_style style;
+	enum fy_lb_mode lb_mode;	/* atom linebreak mode */
+	enum fy_flow_ws_mode fws_mode;	/* atom flow whitespace mode */
 	enum fy_atom_chomp chomp : 4;
 	bool direct_output : 1;		/* can directly output */
 	bool storage_hint_valid : 1;
@@ -84,6 +86,41 @@ struct fy_atom {
 static inline bool fy_atom_is_set(const struct fy_atom *atom)
 {
 	return atom && atom->fyi;
+}
+
+static inline bool fy_atom_json_mode(struct fy_atom *handle)
+{
+	if (!handle)
+		return false;
+
+	return handle->json_mode;
+}
+
+static inline enum fy_lb_mode fy_atom_lb_mode(struct fy_atom *handle)
+{
+	if (!handle)
+		return fylb_cr_nl;
+
+	return handle->lb_mode;
+}
+
+static inline enum fy_flow_ws_mode fy_atom_flow_ws_mode(struct fy_atom *handle)
+{
+	if (!handle)
+		return fyfws_space_tab;
+
+	return handle->fws_mode;
+}
+
+/* all atoms are scalars so... */
+static inline bool fy_atom_is_lb(struct fy_atom *handle, int c)
+{
+	return fy_is_generic_lb_m(c, fy_atom_lb_mode(handle));
+}
+
+static inline bool fy_atom_is_flow_ws(struct fy_atom *handle, int c)
+{
+	return fy_is_flow_ws_m(c, fy_atom_flow_ws_mode(handle));
 }
 
 int fy_atom_format_text_length(struct fy_atom *atom);
@@ -121,11 +158,15 @@ struct fy_atom_iter_line_info {
 	bool lb_end : 1;
 	bool need_nl : 1;
 	bool need_sep : 1;
+	bool ends_with_backslash : 1;	/* last ended in \\ */
 	size_t trailing_ws;
 	size_t trailing_breaks;
 	size_t start_ws, end_ws;
 	const char *s;
 	const char *e;
+	int actual_lb;		/* the line break */
+	const char *s_tb;	/* start of trailing breaks run */
+	const char *e_tb;	/* end of trailing breaks run */
 };
 
 struct fy_atom_iter_chunk {
@@ -146,6 +187,7 @@ struct fy_atom_iter {
 	int tabsize;
 	bool single_line : 1;
 	bool dangling_end_quote : 1;
+	bool last_ends_with_backslash : 1;
 	bool empty : 1;
 	bool current : 1;
 	bool done : 1;	/* last iteration (for block styles) */

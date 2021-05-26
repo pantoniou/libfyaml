@@ -238,9 +238,56 @@ static inline struct fy_input *fy_token_get_input(struct fy_token *fyt)
 	return fyt ? fyt->handle.fyi : NULL;
 }
 
-enum fy_atom_style fy_token_atom_style(struct fy_token *fyt);
-enum fy_scalar_style fy_token_scalar_style(struct fy_token *fyt);
-bool fy_token_atom_json_mode(struct fy_token *fyt);
+static inline enum fy_atom_style fy_token_atom_style(struct fy_token *fyt)
+{
+	if (!fyt)
+		return FYAS_PLAIN;
+
+	if (fyt->type == FYTT_TAG)
+		return FYAS_URI;
+
+	return fyt->handle.style;
+}
+
+static inline bool fy_token_atom_json_mode(struct fy_token *fyt)
+{
+	if (!fyt)
+		return false;
+
+	return fy_atom_json_mode(&fyt->handle);
+}
+
+static inline enum fy_lb_mode fy_token_atom_lb_mode(struct fy_token *fyt)
+{
+	if (!fyt)
+		return fylb_cr_nl;
+
+	return fy_atom_lb_mode(&fyt->handle);
+}
+
+static inline enum fy_flow_ws_mode fy_token_atom_flow_ws_mode(struct fy_token *fyt)
+{
+	if (!fyt)
+		return fyfws_space_tab;
+
+	return fy_atom_flow_ws_mode(&fyt->handle);
+}
+
+static inline bool fy_token_is_lb(struct fy_token *fyt, int c)
+{
+	if (!fyt)
+		return false;
+
+	return fy_atom_is_lb(&fyt->handle, c);
+}
+
+static inline bool fy_token_is_flow_ws(struct fy_token *fyt, int c)
+{
+	if (!fyt)
+		return false;
+
+	return fy_atom_is_flow_ws(&fyt->handle, c);
+}
 
 #define FYTTAF_HAS_LB			FY_BIT(0)
 #define FYTTAF_HAS_WS			FY_BIT(1)
@@ -261,7 +308,8 @@ bool fy_token_atom_json_mode(struct fy_token *fyt);
 
 int fy_token_text_analyze(struct fy_token *fyt);
 
-unsigned int fy_analyze_scalar_content(const char *data, size_t size, bool json_mode);
+unsigned int fy_analyze_scalar_content(const char *data, size_t size,
+		bool json_mode, enum fy_lb_mode lb_mode, enum fy_flow_ws_mode fws_mode);
 
 /* must be freed */
 char *fy_token_debug_text(struct fy_token *fyt);

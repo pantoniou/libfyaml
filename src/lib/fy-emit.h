@@ -18,6 +18,7 @@
 
 #include <libfyaml.h>
 
+#include "fy-utf8.h"
 #include "fy-event.h"
 
 #define FYEF_WHITESPACE			0x0001
@@ -177,7 +178,7 @@ static inline void fy_emit_accum_finish(struct fy_emit_accum *ea)
 int fy_emit_accum_grow(struct fy_emit_accum *ea);
 
 static inline int
-fy_emit_accum_utf8_put(struct fy_emit_accum *ea, int c)
+fy_emit_accum_utf8_put_raw(struct fy_emit_accum *ea, int c)
 {
 	size_t w;
 	char *ss;
@@ -195,12 +196,31 @@ fy_emit_accum_utf8_put(struct fy_emit_accum *ea, int c)
 		return -1;
 	ea->next += w;
 	ea->utf8_count++;
-	if (fy_is_lb(c))
+
+	return 0;
+}
+
+static inline int
+fy_emit_accum_utf8_put(struct fy_emit_accum *ea, int c, struct fy_token *fyt)
+{
+	int ret;
+
+	if (fy_is_lb_m(c, fy_token_atom_lb_mode(fyt))) {
+		ret = fy_emit_accum_utf8_put_raw(ea, '\n');
+		if (ret)
+			return ret;
 		ea->col = 0;
-	else if (fy_is_tab(c))
+	} else if (fy_is_tab(c)) {
+		ret = fy_emit_accum_utf8_put_raw(ea, '\t');
+		if (ret)
+			return ret;
 		ea->col += (ea->ts - (ea->col % ea->ts));
-	else
+	} else {
+		ret = fy_emit_accum_utf8_put_raw(ea, c);
+		if (ret)
+			return ret;
 		ea->col++;
+	}
 
 	return 0;
 }

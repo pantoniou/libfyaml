@@ -947,7 +947,10 @@ struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn)
 	size = (size_t)(e - s);
 
 	if (size > 0)
-		aflags = fy_analyze_scalar_content(s, size, fy_token_atom_json_mode(fyt_start));
+		aflags = fy_analyze_scalar_content(s, size,
+				fy_token_atom_json_mode(fyt_start),
+				fy_token_atom_lb_mode(fyt_start),
+				fy_token_atom_flow_ws_mode(fyt_start));
 	else
 		aflags = FYACF_EMPTY | FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN;
 
@@ -977,7 +980,9 @@ struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn)
 	handle.trailing_lb = !!(aflags & FYACF_TRAILING_LB);
 	handle.size0 = !!(aflags & FYACF_SIZE0);
 	handle.valid_anchor = !!(aflags & FYACF_VALID_ANCHOR);
-	handle.json_mode = false;	/* always false */
+	handle.json_mode = false;		/* always false */
+	handle.lb_mode = fylb_cr_nl;		/* always \r\n */
+	handle.fws_mode = fyfws_space_tab;	/* always space + tab */
 
 	handle.chomp = FYAC_STRIP;
 	handle.increment = 0;

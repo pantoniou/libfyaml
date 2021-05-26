@@ -244,6 +244,18 @@ static inline bool fyp_json_mode(const struct fy_parser *fyp)
 	return fy_reader_json_mode(fyp->reader);
 }
 
+static inline enum fy_lb_mode fyp_lb_mode(const struct fy_parser *fyp)
+{
+	assert(fyp);
+	return fy_reader_lb_mode(fyp->reader);
+}
+
+static inline enum fy_flow_ws_mode fyp_fws_mode(const struct fy_parser *fyp)
+{
+	assert(fyp);
+	return fy_reader_flow_ws_mode(fyp->reader);
+}
+
 static inline bool fyp_is_lb(const struct fy_parser *fyp, int c)
 {
 	assert(fyp);
@@ -260,6 +272,24 @@ static inline bool fyp_is_blankz(const struct fy_parser *fyp, int c)
 {
 	assert(fyp);
 	return fy_reader_is_blankz(fyp->reader, c);
+}
+
+static inline bool fyp_is_generic_lb(const struct fy_parser *fyp, int c)
+{
+	assert(fyp);
+	return fy_reader_is_generic_lb(fyp->reader, c);
+}
+
+static inline bool fyp_is_generic_lbz(const struct fy_parser *fyp, int c)
+{
+	assert(fyp);
+	return fy_reader_is_generic_lbz(fyp->reader, c);
+}
+
+static inline bool fyp_is_generic_blankz(const struct fy_parser *fyp, int c)
+{
+	assert(fyp);
+	return fy_reader_is_generic_blankz(fyp->reader, c);
 }
 
 static inline bool fyp_is_flow_ws(const struct fy_parser *fyp, int c)
@@ -358,6 +388,13 @@ fy_is_blankz_at_offset(struct fy_parser *fyp, size_t offset)
 {
 	assert(fyp);
 	return fy_reader_is_blankz(fyp->reader, fy_reader_peek_at_offset(fyp->reader, offset));
+}
+
+static inline bool
+fy_is_generic_blankz_at_offset(struct fy_parser *fyp, size_t offset)
+{
+	assert(fyp);
+	return fy_reader_is_generic_blankz(fyp->reader, fy_reader_peek_at_offset(fyp->reader, offset));
 }
 
 static inline int

@@ -134,7 +134,8 @@ static void fy_input_from_data_setup(struct fy_input *fyi,
 	memset(handle, 0, sizeof(*handle));
 
 	if (size > 0)
-		aflags = fy_analyze_scalar_content(data, size, false);	/* hardcoded yaml mode */
+		aflags = fy_analyze_scalar_content(data, size,
+				false, fylb_cr_nl, fyfws_space_tab);	/* hardcoded yaml mode */
 	else
 		aflags = FYACF_EMPTY | FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN;
 
@@ -173,6 +174,8 @@ static void fy_input_from_data_setup(struct fy_input *fyi,
 	handle->fyi_generation = fyi->generation;
 	handle->tabsize = 0;
 	handle->json_mode = false;	/* XXX hardcoded */
+	handle->lb_mode = fylb_cr_nl;
+	handle->fws_mode = fyfws_space_tab;
 out:
 	fyi->state = FYIS_PARSED;
 }
@@ -340,6 +343,8 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 	/* unref any previous input */
 	fy_input_unref(fyr->current_input);
 	fyr->current_input = fy_input_ref(fyi);
+
+	fy_reader_apply_mode_to_input(fyr);
 
 	if (!icfg)
 		memset(&fyr->current_input_cfg, 0, sizeof(fyr->current_input_cfg));
@@ -850,6 +855,10 @@ struct fy_input *fy_input_create(const struct fy_input_cfg *fyic)
 		assert(0);
 		break;
 	}
+
+	/* default modes */
+	fyi->lb_mode = fylb_cr_nl;
+	fyi->fws_mode = fyfws_space_tab;
 
 	return fyi;
 
