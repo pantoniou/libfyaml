@@ -119,10 +119,16 @@ static inline void *fy_utf8_put(void *ptr, size_t left, int c)
 #define FY_UTF8_FORMAT_BUFMIN	5
 enum fy_utf8_escape {
 	fyue_none,
-	fyue_doublequote,
 	fyue_singlequote,
+	fyue_doublequote,
 	fyue_doublequote_json,
+	fyue_doublequote_yaml_1_1,
 };
+
+static inline bool fy_utf8_escape_is_any_doublequote(enum fy_utf8_escape esc)
+{
+	return esc >= fyue_doublequote && esc <= fyue_doublequote_yaml_1_1;
+}
 
 char *fy_utf8_format(int c, char *buf, enum fy_utf8_escape esc);
 
@@ -147,6 +153,8 @@ char *fy_utf8_format_text(const char *buf, size_t len,
 		char *_out = alloca(_outsz + 1); \
 		fy_utf8_format_text(__buf, __len, _out, _outsz, __esc); \
 	})
+
+char *fy_utf8_format_text_alloc(const char *buf, size_t len, enum fy_utf8_escape esc);
 
 const void *fy_utf8_memchr_generic(const void *s, int c, size_t n);
 

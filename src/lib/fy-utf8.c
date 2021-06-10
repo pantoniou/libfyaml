@@ -11,6 +11,7 @@
 
 #include <stdbool.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include <libfyaml.h>
 
@@ -70,52 +71,38 @@ int fy_utf8_get_right_generic(const void *ptr, int left, int *widthp)
 	return FYUG_PARTIAL;
 }
 
-char *fy_utf8_format(int c, char *buf, enum fy_utf8_escape esc)
+struct fy_utf8_fmt_esc_map {
+	const int *ch;
+	const int *map;
+};
+
+static const struct fy_utf8_fmt_esc_map esc_all = {
+	.ch  = (const int []){ '\\', '\0', '\b', '\r', '\t', '\f', '\n', '\v', '\a', '\e', 0x85, 0xa0, 0x2028, 0x2029, -1 },
+	.map = (const int []){ '\\',  '0',  'b',  'r',  't',  'f',  'n',  'v',  'a',  'e',  'N',  '_',    'L',    'P',  0 }
+};
+
+static inline int esc_map(const struct fy_utf8_fmt_esc_map *esc_map, int c)
 {
-	char *s;
+	const int *ch;
+	int cc;
 
-	if (!fy_utf8_is_valid(c)) {
-		*buf = '\0';
-		return buf;
+	ch = esc_map->ch;
+	while ((cc = *ch++) >= 0) {
+		if (cc == c)
+			return esc_map->map[(ch - esc_map->ch) - 1];
 	}
+	return -1;
+}
 
-	s = buf;
-	if (esc != fyue_none) {
-		if (c == '\\') {
-			*s++ = '\\';
-			*s++ = '\\';
-		} else if (c == '\0') {
-			*s++ = '\\';
-			*s++ = '0';
-		} else if (c == '\b') {
-			*s++ = '\\';
-			*s++ = 'b';
-		} else if (c == '\r') {
-			*s++ = '\\';
-			*s++ = 'r';
-		} else if (c == '\t') {
-			*s++ = '\\';
-			*s++ = 't';
-		} else if (c == '\n') {
-			*s++ = '\\';
-			*s++ = 'n';
-		} else if (esc == fyue_singlequote && c == '\'') {
-			*s++ = '\\';
-			*s++ = '\'';
-		} else if ((esc == fyue_doublequote || esc == fyue_doublequote_json) &&
-				c == '"') {
-			*s++ = '\\';
-			*s++ = '"';
-		}
-		/* procesed an escape earlier? */
-		if (s > buf) {
-			*s = '\0';
-			return buf;
-		}
-	}
-	s = fy_utf8_put_unchecked(s, c);
-	*s = '\0';
-	return buf;
+static inline int fy_utf8_esc_map(int c, enum fy_utf8_escape esc)
+{
+	if (esc == fyue_none)
+		return -1;
+	if (esc == fyue_singlequote && c == '\'')
+		return '\'';
+	if (fy_utf8_escape_is_any_doublequote(esc) && c == '"')
+		return '"';
+	return esc_map(&esc_all, c);
 }
 
 int fy_utf8_format_text_length(const char *buf, size_t len,
@@ -132,13 +119,9 @@ int fy_utf8_format_text_length(const char *buf, size_t len,
 		if (!w || c < 0)
 			break;
 		s += w;
-		if (esc != fyue_none &&
-			(c == '\\' || c == '\0' || c == '\b' || c == '\r' || c == '\t' || c == '\n' ||
-			 (esc == fyue_singlequote && c == '\'') ||
-			 ((esc == fyue_doublequote || esc == fyue_doublequote_json) && c == '"')) )
-			l += 2;
-		else
-			l += w;
+		if (fy_utf8_esc_map(c, esc))
+			w = 2;
+		l += w;
 	}
 	return l + 1;
 }
@@ -147,9 +130,9 @@ char *fy_utf8_format_text(const char *buf, size_t len,
 			  char *out, size_t maxsz,
 			  enum fy_utf8_escape esc)
 {
-	int c, w;
+	int c, w, cc;
 	const char *s, *e;
-	char *os, *oe, *oss;
+	char *os, *oe;
 
 	s = buf;
 	e = buf + len;
@@ -161,53 +144,13 @@ char *fy_utf8_format_text(const char *buf, size_t len,
 			break;
 		s += w;
 
-		oss = os;
-		if (esc != fyue_none) {
-			if (c == '\\') {
-				if (os + 2 > oe)
-					break;
-				*os++ = '\\';
-				*os++ = '\\';
-			} else if (c == '\0') {
-				if (os + 2 > oe)
-					break;
-				*os++ = '\\';
-				*os++ = '0';
-			} else if (c == '\b') {
-				if (os + 2 > oe)
-					break;
-				*os++ = '\\';
-				*os++ = 'b';
-			} else if (c == '\r') {
-				if (os + 2 > oe)
-					break;
-				*os++ = '\\';
-				*os++ = 'r';
-			} else if (c == '\t') {
-				if (os + 2 > oe)
-					break;
-				*os++ = '\\';
-				*os++ = 't';
-			} else if (c == '\n') {
-				if (os + 2 > oe)
-					break;
-				*os++ = '\\';
-				*os++ = 'n';
-			} else if (esc == fyue_singlequote && c == '\'') {
-				if (os + 2 > oe)
-					break;
-				*os++ = '\\';
-				*os++ = '\'';
-			} else if ((esc == fyue_doublequote || esc == fyue_doublequote_json) &&
-					c == '"') {
-				if (os + 2 > oe)
-					break;
-				*os++ = '\\';
-				*os++ = '"';
-			}
-		}
-		if (os > oss)
+		if ((cc = fy_utf8_esc_map(c, esc)) > 0) {
+			if (os + 2 > oe)
+				break;
+			*os++ = '\\';
+			*os++ = cc;
 			continue;
+		}
 
 		if (os + w > oe)
 			break;
@@ -215,6 +158,42 @@ char *fy_utf8_format_text(const char *buf, size_t len,
 		os = fy_utf8_put_unchecked(os, c);
 	}
 	*os++ = '\0';
+	return out;
+}
+
+char *fy_utf8_format(int c, char *buf, enum fy_utf8_escape esc)
+{
+	int cc;
+	char *s;
+
+	if (!fy_utf8_is_valid(c)) {
+		*buf = '\0';
+		return buf;
+	}
+
+	s = buf;
+	if ((cc = fy_utf8_esc_map(c, esc)) > 0) {
+		*s++ = '\\';
+		*s++ = cc;
+	} else
+		s = fy_utf8_put_unchecked(s, c);
+	*s = '\0';
+	return buf;
+}
+
+char *fy_utf8_format_text_alloc(const char *buf, size_t len, enum fy_utf8_escape esc)
+{
+	int outsz;
+	char *out;
+
+	outsz = fy_utf8_format_text_length(buf, len, esc);
+	if (outsz < 0)
+		return NULL;
+	out = malloc(outsz);
+	if (!out)
+		return NULL;
+	fy_utf8_format_text(buf, len, out, outsz, esc);
+
 	return out;
 }
 
@@ -238,7 +217,7 @@ int fy_utf8_parse_escape(const char **strp, size_t len, enum fy_utf8_escape esc)
 {
 	const char *s, *e;
 	char c;
-	int i, value, code_length;
+	int i, value, code_length, cc, w;
 	unsigned int hi_surrogate, lo_surrogate;
 
 	/* why do you bother us? */
@@ -305,7 +284,7 @@ int fy_utf8_parse_escape(const char **strp, size_t len, enum fy_utf8_escape esc)
 	if (value >= 0)
 		goto out;
 
-	if (esc == fyue_doublequote) {
+	if (esc == fyue_doublequote || esc == fyue_doublequote_yaml_1_1) {
 		switch (c) {
 		case '0':
 			value = '\0';
@@ -338,6 +317,24 @@ int fy_utf8_parse_escape(const char **strp, size_t len, enum fy_utf8_escape esc)
 			value = 0x2029; /* PS */
 			break;
 		default:
+			/* weird unicode escapes */
+			if ((uint8_t)c >= 0x80) {
+				/* in non yaml-1.1 mode we don't allow this craziness */
+				if (esc == fyue_doublequote)
+					goto out;
+
+				cc = fy_utf8_get(s - 1, e - (s - 1), &w);
+				switch (cc) {
+				case 0x2028:
+				case 0x2029:
+				case 0x85:
+				case 0xa0:
+					value = cc;
+					break;
+				default:
+					break;
+				}
+			}
 			break;
 		}
 		if (value >= 0)
@@ -347,7 +344,7 @@ int fy_utf8_parse_escape(const char **strp, size_t len, enum fy_utf8_escape esc)
 	/* finally try the unicode escapes */
 	code_length = 0;
 
-	if (esc == fyue_doublequote) {
+	if (esc == fyue_doublequote || esc == fyue_doublequote_yaml_1_1) {
 		switch (c) {
 		case 'x':
 			code_length = 2;
