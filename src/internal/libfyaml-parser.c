@@ -47,6 +47,12 @@
 #define OPT_DISABLE_MMAP		128
 #define OPT_USE_CALLBACK		129
 
+#define OPT_SLOPPY_FLOW_INDENTATION	2007
+
+#define OPT_YAML_1_1			4000
+#define OPT_YAML_1_2			4001
+#define OPT_YAML_1_3			4002
+
 static struct option lopts[] = {
 	{"include",		required_argument,	0,	'I' },
 	{"mode",		required_argument,	0,	'm' },
@@ -63,13 +69,17 @@ static struct option lopts[] = {
 	{"use-callback",	no_argument,		0,	OPT_USE_CALLBACK },
 	{"walk-path",		required_argument,	0,	'W' },
 	{"walk-start",		required_argument,	0,	'S' },
+	{"yaml-1.1",		no_argument,		0,	OPT_YAML_1_1 },
+	{"yaml-1.2",		no_argument,		0,	OPT_YAML_1_2 },
+	{"yaml-1.3",		no_argument,		0,	OPT_YAML_1_3 },
+	{"sloppy-flow-indentation", no_argument,	0,	OPT_SLOPPY_FLOW_INDENTATION },
 	{"quiet",		no_argument,		0,	'q' },
 	{"help",		no_argument,		0,	'h' },
 	{0,			0,              	0,	 0  },
 };
 
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
-#define LIBYAML_MODES	"|libyaml-scan|libyaml-parse|libyaml-testsuite|libyaml-dump"
+#define LIBYAML_MODES	"|libyaml-scan|libyaml-parse|libyaml-testsuite|libyaml-dump|libyaml-diff"
 #else
 #define LIBYAML_MODES	""
 #endif
@@ -122,30 +132,9 @@ static void display_usage(FILE *fp, char *progname)
 		exit(EXIT_FAILURE);
 }
 
-void print_escaped(const char *str, int length)
+void print_escaped(FILE *fp, const char *str, int length)
 {
-	int i;
-	char c;
-
-	if (length < 0)
-		length = strlen(str);
-	for (i = 0; i < length; i++) {
-		c = *str++;
-		if (c == '\\')
-			printf("\\\\");
-		else if (c == '\0')
-			printf("\\0");
-		else if (c == '\b')
-			printf("\\b");
-		else if (c == '\n')
-			printf("\\n");
-		else if (c == '\r')
-			printf("\\r");
-		else if (c == '\t')
-			printf("\\t");
-		else
-			printf("%c", c);
-	}
+	fprintf(fp, "%s", fy_utf8_format_text_a(str, length, fyue_doublequote));
 }
 
 static int txt2esc_internal(const char *s, int l, char *out, int *outszp, int delim)
@@ -371,7 +360,7 @@ int do_parse(struct fy_parser *fyp)
 	return fyp->stream_error ? -1 : 0;
 }
 
-void dump_testsuite_event(struct fy_parser *fyp, struct fy_event *fye)
+void dump_testsuite_event(FILE *fp, struct fy_parser *fyp, struct fy_event *fye)
 {
 	const char *anchor = NULL, *tag = NULL, *value = NULL;
 	size_t anchor_len = 0, tag_len = 0, value_len = 0;
@@ -379,49 +368,49 @@ void dump_testsuite_event(struct fy_parser *fyp, struct fy_event *fye)
 
 	switch (fye->type) {
 	case FYET_NONE:
-		printf("???\n");
+		fprintf(fp, "???\n");
 		break;
 	case FYET_STREAM_START:
-		printf("+STR\n");
+		fprintf(fp, "+STR\n");
 		break;
 	case FYET_STREAM_END:
-		printf("-STR\n");
+		fprintf(fp, "-STR\n");
 		break;
 	case FYET_DOCUMENT_START:
-		printf("+DOC%s\n", !fy_document_event_is_implicit(fye) ? " ---" : "");
+		fprintf(fp, "+DOC%s\n", !fy_document_event_is_implicit(fye) ? " ---" : "");
 		break;
 	case FYET_DOCUMENT_END:
-		printf("-DOC%s\n", !fy_document_event_is_implicit(fye) ? " ..." : "");
+		fprintf(fp, "-DOC%s\n", !fy_document_event_is_implicit(fye) ? " ..." : "");
 		break;
 	case FYET_MAPPING_START:
 		if (fye->mapping_start.anchor)
 			anchor = fy_token_get_text(fye->mapping_start.anchor, &anchor_len);
 		if (fye->mapping_start.tag)
 			tag = fy_token_get_text(fye->mapping_start.tag, &tag_len);
-		printf("+MAP");
+		fprintf(fp, "+MAP");
 		if (anchor)
-			printf(" &%.*s", (int)anchor_len, anchor);
+			fprintf(fp, " &%.*s", (int)anchor_len, anchor);
 		if (tag)
-			printf(" <%.*s>", (int)tag_len, tag);
-		printf("\n");
+			fprintf(fp, " <%.*s>", (int)tag_len, tag);
+		fprintf(fp, "\n");
 		break;
 	case FYET_MAPPING_END:
-		printf("-MAP\n");
+		fprintf(fp, "-MAP\n");
 		break;
 	case FYET_SEQUENCE_START:
 		if (fye->sequence_start.anchor)
 			anchor = fy_token_get_text(fye->sequence_start.anchor, &anchor_len);
 		if (fye->sequence_start.tag)
 			tag = fy_token_get_text(fye->sequence_start.tag, &tag_len);
-		printf("+SEQ");
+		fprintf(fp, "+SEQ");
 		if (anchor)
-			printf(" &%.*s", (int)anchor_len, anchor);
+			fprintf(fp, " &%.*s", (int)anchor_len, anchor);
 		if (tag)
-			printf(" <%.*s>", (int)tag_len, tag);
-		printf("\n");
+			fprintf(fp, " <%.*s>", (int)tag_len, tag);
+		fprintf(fp, "\n");
 		break;
 	case FYET_SEQUENCE_END:
-		printf("-SEQ\n");
+		fprintf(fp, "-SEQ\n");
 		break;
 	case FYET_SCALAR:
 		if (fye->scalar.anchor)
@@ -432,50 +421,50 @@ void dump_testsuite_event(struct fy_parser *fyp, struct fy_event *fye)
 		if (fye->scalar.value)
 			value = fy_token_get_text(fye->scalar.value, &value_len);
 
-		printf("=VAL");
+		fprintf(fp, "=VAL");
 		if (anchor)
-			printf(" &%.*s", (int)anchor_len, anchor);
+			fprintf(fp, " &%.*s", (int)anchor_len, anchor);
 		if (tag)
-			printf(" <%.*s>", (int)tag_len, tag);
+			fprintf(fp, " <%.*s>", (int)tag_len, tag);
 
 		style = fy_token_scalar_style(fye->scalar.value);
 		switch (style) {
 		case FYAS_PLAIN:
-			printf(" :");
+			fprintf(fp, " :");
 			break;
 		case FYAS_SINGLE_QUOTED:
-			printf(" '");
+			fprintf(fp, " '");
 			break;
 		case FYAS_DOUBLE_QUOTED:
-			printf(" \"");
+			fprintf(fp, " \"");
 			break;
 		case FYAS_LITERAL:
-			printf(" |");
+			fprintf(fp, " |");
 			break;
 		case FYAS_FOLDED:
-			printf(" >");
+			fprintf(fp, " >");
 			break;
 		default:
 			abort();
 		}
-		print_escaped(value, value_len);
-		printf("\n");
+		print_escaped(fp, value, value_len);
+		fprintf(fp, "\n");
 		break;
 	case FYET_ALIAS:
 		anchor = fy_token_get_text(fye->alias.anchor, &anchor_len);
-		printf("=ALI *%.*s\n", (int)anchor_len, anchor);
+		fprintf(fp, "=ALI *%.*s\n", (int)anchor_len, anchor);
 		break;
 	default:
 		assert(0);
 	}
 }
 
-int do_testsuite(struct fy_parser *fyp)
+int do_testsuite(FILE *fp, struct fy_parser *fyp)
 {
 	struct fy_eventp *fyep;
 
 	while ((fyep = fy_parse_private(fyp)) != NULL) {
-		dump_testsuite_event(fyp, &fyep->e);
+		dump_testsuite_event(fp, fyp, &fyep->e);
 		fy_parse_eventp_recycle(fyp, fyep);
 	}
 
@@ -1039,89 +1028,89 @@ int do_libyaml_parse(yaml_parser_t *parser)
 	return 0;
 }
 
-void dump_libyaml_testsuite_event(yaml_event_t *event)
+void dump_libyaml_testsuite_event(FILE *fp, yaml_event_t *event)
 {
 	switch (event->type) {
 	case YAML_NO_EVENT:
-		printf("???\n");
+		fprintf(fp, "???\n");
 		break;
 	case YAML_STREAM_START_EVENT:
-		printf("+STR\n");
+		fprintf(fp, "+STR\n");
 		break;
 	case YAML_STREAM_END_EVENT:
-		printf("-STR\n");
+		fprintf(fp, "-STR\n");
 		break;
 	case YAML_DOCUMENT_START_EVENT:
-		printf("+DOC");
+		fprintf(fp, "+DOC");
 		if (!event->data.document_start.implicit)
-			printf(" ---");
-		printf("\n");
+			fprintf(fp, " ---");
+		fprintf(fp, "\n");
 		break;
 	case YAML_DOCUMENT_END_EVENT:
-		printf("-DOC");
+		fprintf(fp, "-DOC");
 		if (!event->data.document_end.implicit)
-			printf(" ...");
-		printf("\n");
+			fprintf(fp, " ...");
+		fprintf(fp, "\n");
 		break;
 	case YAML_MAPPING_START_EVENT:
-		printf("+MAP");
+		fprintf(fp, "+MAP");
 		if (event->data.mapping_start.anchor)
-			printf(" &%s", event->data.mapping_start.anchor);
+			fprintf(fp, " &%s", event->data.mapping_start.anchor);
 		if (event->data.mapping_start.tag)
-			printf(" <%s>", event->data.mapping_start.tag);
-		printf("\n");
+			fprintf(fp, " <%s>", event->data.mapping_start.tag);
+		fprintf(fp, "\n");
 		break;
 	case YAML_MAPPING_END_EVENT:
-      		printf("-MAP\n");
+      		fprintf(fp, "-MAP\n");
 		break;
 	case YAML_SEQUENCE_START_EVENT:
-		printf("+SEQ");
+		fprintf(fp, "+SEQ");
 		if (event->data.sequence_start.anchor)
-			printf(" &%s", event->data.sequence_start.anchor);
+			fprintf(fp, " &%s", event->data.sequence_start.anchor);
 		if (event->data.sequence_start.tag)
-			printf(" <%s>", event->data.sequence_start.tag);
-		printf("\n");
+			fprintf(fp, " <%s>", event->data.sequence_start.tag);
+		fprintf(fp, "\n");
 		break;
 	case YAML_SEQUENCE_END_EVENT:
-		printf("-SEQ\n");
+		fprintf(fp, "-SEQ\n");
 		break;
 	case YAML_SCALAR_EVENT:
-		printf("=VAL");
+		fprintf(fp, "=VAL");
 		if (event->data.scalar.anchor)
-			printf(" &%s", event->data.scalar.anchor);
+			fprintf(fp, " &%s", event->data.scalar.anchor);
 		if (event->data.scalar.tag)
-			printf(" <%s>", event->data.scalar.tag);
+			fprintf(fp, " <%s>", event->data.scalar.tag);
 		switch (event->data.scalar.style) {
 		case YAML_PLAIN_SCALAR_STYLE:
-			printf(" :");
+			fprintf(fp, " :");
 			break;
 		case YAML_SINGLE_QUOTED_SCALAR_STYLE:
-			printf(" '");
+			fprintf(fp, " '");
 			break;
 		case YAML_DOUBLE_QUOTED_SCALAR_STYLE:
-			printf(" \"");
+			fprintf(fp, " \"");
 			break;
 		case YAML_LITERAL_SCALAR_STYLE:
-			printf(" |");
+			fprintf(fp, " |");
 			break;
 		case YAML_FOLDED_SCALAR_STYLE:
-			printf(" >");
+			fprintf(fp, " >");
 			break;
 		case YAML_ANY_SCALAR_STYLE:
 			abort();
 		}
-		print_escaped((char *)event->data.scalar.value, event->data.scalar.length);
-		printf("\n");
+		print_escaped(fp, (char *)event->data.scalar.value, event->data.scalar.length);
+		fprintf(fp, "\n");
 		break;
 	case YAML_ALIAS_EVENT:
-		printf("=ALI *%s\n", event->data.alias.anchor);
+		fprintf(fp, "=ALI *%s\n", event->data.alias.anchor);
 		break;
 	default:
 		assert(0);
 	}
 }
 
-int do_libyaml_testsuite(yaml_parser_t *parser)
+int do_libyaml_testsuite(FILE *fp, yaml_parser_t *parser)
 {
         yaml_event_t event;
         int done = 0;
@@ -1131,7 +1120,7 @@ int do_libyaml_testsuite(yaml_parser_t *parser)
 		if (!yaml_parser_parse(parser, &event))
 			return -1;
 
-		dump_libyaml_testsuite_event(&event);
+		dump_libyaml_testsuite_event(fp, &event);
 
 		done = (event.type == YAML_STREAM_END_EVENT);
 
@@ -2936,6 +2925,21 @@ int main(int argc, char *argv[])
 		case OPT_USE_CALLBACK:
 			use_callback = true;
 			break;
+		case OPT_YAML_1_1:
+			cfg.flags &= ~(FYPCF_DEFAULT_VERSION_MASK << FYPCF_DEFAULT_VERSION_SHIFT);
+			cfg.flags |= FYPCF_DEFAULT_VERSION_1_1;
+			break;
+		case OPT_YAML_1_2:
+			cfg.flags &= ~(FYPCF_DEFAULT_VERSION_MASK << FYPCF_DEFAULT_VERSION_SHIFT);
+			cfg.flags |= FYPCF_DEFAULT_VERSION_1_2;
+			break;
+		case OPT_YAML_1_3:
+			cfg.flags &= ~(FYPCF_DEFAULT_VERSION_MASK << FYPCF_DEFAULT_VERSION_SHIFT);
+			cfg.flags |= FYPCF_DEFAULT_VERSION_1_3;
+			break;
+		case OPT_SLOPPY_FLOW_INDENTATION:
+			cfg.flags |= FYPCF_SLOPPY_FLOW_INDENTATION;
+			break;
 		case 'q':
 			cfg.flags |= FYPCF_QUIET;
 			break;
@@ -2962,6 +2966,7 @@ int main(int argc, char *argv[])
 	    && strcmp(mode, "libyaml-parse")
 	    && strcmp(mode, "libyaml-testsuite")
 	    && strcmp(mode, "libyaml-dump")
+	    && strcmp(mode, "libyaml-diff")
 #endif
 
 	    ) {
@@ -3011,7 +3016,7 @@ int main(int argc, char *argv[])
 				fprintf(stderr, "  problem='%s' context='%s'\n", parser.problem, parser.context);
 			}
 		} else if (!strcmp(mode, "libyaml-testsuite")) {
-			rc = do_libyaml_testsuite(&parser);
+			rc = do_libyaml_testsuite(stdout, &parser);
 			if (rc < 0) {
 				fprintf(stderr, "do_libyaml_testsuite() error %d\n", rc);
 				fprintf(stderr, "  problem='%s' context='%s'\n", parser.problem, parser.context);
@@ -3032,6 +3037,15 @@ int main(int argc, char *argv[])
 		fclose(fp);
 
 		return !rc ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+#endif
+
+#if defined(HAVE_LIBYAML) && HAVE_LIBYAML
+	/* set yaml 1.1 mode with sloppy indentation to match libyaml */
+	if (!strcmp(mode, "libyaml-diff")) {
+		cfg.flags &= ~(FYPCF_DEFAULT_VERSION_MASK << FYPCF_DEFAULT_VERSION_SHIFT);
+		cfg.flags |= FYPCF_DEFAULT_VERSION_1_1;
+		cfg.flags |= FYPCF_SLOPPY_FLOW_INDENTATION;
 	}
 #endif
 
@@ -3125,7 +3139,7 @@ int main(int argc, char *argv[])
 			goto cleanup;
 		}
 	} else if (!strcmp(mode, "testsuite")) {
-		rc = do_testsuite(fyp);
+		rc = do_testsuite(stdout, fyp);
 		if (rc < 0) {
 			/* fprintf(stderr, "do_testsuite() error %d\n", rc); */
 			goto cleanup;
@@ -3149,6 +3163,51 @@ int main(int argc, char *argv[])
 			goto cleanup;
 		}
 	}
+#if defined(HAVE_LIBYAML) && HAVE_LIBYAML
+	if (!strcmp(mode, "libyaml-diff")) {
+		FILE *fp;
+		// FILE *t1fp, *t2fp;
+
+		yaml_parser_t parser;
+
+		if (optind >= argc) {
+			fprintf(stderr, "Missing file argument\n");
+			goto cleanup;
+		}
+
+		fp = fopen(argv[optind], "rb");
+		if (!fp) {
+			fprintf(stderr, "Failed to open file %s\n", argv[optind]);
+			goto cleanup;
+		}
+
+		rc = yaml_parser_initialize(&parser);
+		assert(rc);
+
+		yaml_parser_set_input_file(&parser, fp);
+
+		fprintf(stdout, "LIBYAML:\n");
+		rc = do_libyaml_testsuite(stdout, &parser);
+		if (rc < 0) {
+			fprintf(stderr, "do_libyaml_testsuite() failed\n");
+			goto cleanup;
+		}
+
+		fprintf(stdout, "LIBFYAML:\n");
+		rc = do_testsuite(stdout, fyp);
+		if (rc < 0) {
+			fprintf(stderr, "do_libyaml_testsuite() failed\n");
+			goto cleanup;
+		}
+
+		yaml_parser_delete(&parser);
+
+		fclose(fp);
+
+		if (rc < 0)
+			goto cleanup;
+	}
+#endif
 
 	exitcode = EXIT_SUCCESS;
 
