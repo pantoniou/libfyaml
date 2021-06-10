@@ -317,7 +317,7 @@ int fy_tag_uri_length(const char *data, size_t len)
 
 	while (fy_is_uri(c = fy_utf8_get(s, e - s, &w))) {
 		cn = fy_utf8_get(s + w, e - (s + w), &wn);
-		if (fy_is_blankz(cn) && fy_utf8_strchr(",}]", c))
+		if ((fy_is_z(cn) || fy_is_blank(cn) || fy_is_any_lb(cn)) && fy_utf8_strchr(",}]", c))
 			break;
 		s += w;
 	}
