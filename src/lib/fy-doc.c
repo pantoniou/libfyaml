@@ -3261,6 +3261,15 @@ enum fy_node_style fy_node_get_style(struct fy_node *fyn)
 	return fyn ? fyn->style : FYNS_PLAIN;
 }
 
+int fy_node_set_style(struct fy_node *fyn, enum fy_node_style style)
+{
+  if (fyn) {
+		fyn->style = style;
+		return 0;
+	}
+	return -1;
+}
+
 bool fy_node_is_attached(struct fy_node *fyn)
 {
 	return fyn ? fyn->attached : false;
