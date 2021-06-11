@@ -38,6 +38,7 @@ extern "C" {
 #include <stdio.h>
 #include <string.h>
 #include <alloca.h>
+#include <unistd.h>
 
 /* opaque types for the user */
 struct fy_token;
