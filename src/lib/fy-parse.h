@@ -69,8 +69,7 @@ struct fy_simple_key {
 	struct fy_token *token;	/* associated token */
 	int flow_level;
 	bool required : 1;
-	bool possible : 1;
-	bool empty : 1;
+	bool implicit_complex : 1;
 };
 FY_PARSE_TYPE_DECL(simple_key);
 

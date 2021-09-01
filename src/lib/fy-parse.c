@@ -1061,13 +1061,19 @@ static int fy_purge_stale_simple_keys(struct fy_parser *fyp, bool *did_purgep,
 
 		fyp_debug_dump_simple_key(fyp, fysk, "purge-check: ");
 
+		line = fysk->mark.line;
+
 		/* in non-flow context we purge keys that are on different line */
 		/* in flow context we purge only those with higher flow level */
 		if (!fyp->flow_level) {
-			line = fysk->mark.line;
 			purge = fyp_line(fyp) > line;
-		} else
+		} else {
 			purge = fyp->flow_level < fysk->flow_level;
+			/* also purge implicit complex keys on a different line */
+			if (!purge && fysk->implicit_complex) {
+				purge = fyp_line(fyp) > line;
+			}
+		}
 
 		if (!purge)
 			break;
@@ -1290,7 +1296,7 @@ int fy_save_simple_key(struct fy_parser *fyp, struct fy_mark *mark, struct fy_ma
 		fy_simple_key_list_push(&fyp->simple_keys, fysk);
 
 	} else {
-		fyp_error_check(fyp, !fysk->possible || !fysk->required, err_out,
+		fyp_error_check(fyp, !fysk->required, err_out,
 				"cannot save simple key, top is required");
 
 		if (fysk == fy_simple_key_list_tail(&fyp->simple_keys))
@@ -1303,10 +1309,14 @@ int fy_save_simple_key(struct fy_parser *fyp, struct fy_mark *mark, struct fy_ma
 	fysk->mark = *mark;
 	fysk->end_mark = *end_mark;
 
-	fysk->possible = true;
 	fysk->required = required;
 	fysk->token = fyt;
 	fysk->flow_level = flow_level;
+
+	/* if this is a an implicit flow collection key */
+	fysk->implicit_complex = fyp->pending_complex_key_column < 0 &&
+				 (fyt->type == FYTT_FLOW_MAPPING_START || fyt->type == FYTT_FLOW_SEQUENCE_START);
+
 
 	fyp_debug_dump_simple_key_list(fyp, &fyp->simple_keys, fysk, "fyp->simple_keys (saved): ");
 
@@ -2315,7 +2325,6 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 		mark_insert = mark;
 		mark_end_insert = mark;
 	} else {
-		assert(fysk->possible);
 		assert(fysk->flow_level == fyp->flow_level);
 		fyt_insert = fysk->token;
 		mark_insert = fysk->mark;

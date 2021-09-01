@@ -131,7 +131,7 @@ char *fy_simple_key_dump_format(struct fy_parser *fyp, struct fy_simple_key *fys
 
 	snprintf(buf, bufsz, "%s/%c%c/%d/<%d-%d,%d-%d>", tbuf,
 			fysk->required ? 'R' : '-',
-			fysk->possible ? 'P' : '-',
+			fysk->implicit_complex ? 'C' : '-',
 			fysk->flow_level,
 			fysk->mark.line, fysk->mark.column,
 			fysk->end_mark.line, fysk->end_mark.column);
