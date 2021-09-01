@@ -77,16 +77,71 @@ const char *fy_token_type_txt[] = {
 
 char *fy_token_dump_format(struct fy_token *fyt, char *buf, size_t bufsz)
 {
-	const char *s = NULL;
+	const char *typetxt, *text;
+	size_t size;
+	enum fy_token_type type;
+	const char *pfx, *sfx;
 
 	if (fyt && (unsigned int)fyt->type < sizeof(fy_token_type_txt)/
-					     sizeof(fy_token_type_txt[0]))
-		s = fy_token_type_txt[fyt->type];
+					     sizeof(fy_token_type_txt[0])) {
+		typetxt = fy_token_type_txt[fyt->type];
+		type = fyt->type;
+	} else {
+		typetxt = "<NULL>";
+		type = FYTT_NONE;
+	}
 
-	if (!s)
-		s = "<NULL>";
+	size = 0;
+	switch (type) {
+	case FYTT_SCALAR:
+	case FYTT_ALIAS:
+	case FYTT_ANCHOR:
+		text = fy_token_get_text(fyt, &size);
+		break;
+	default:
+		text = NULL;
+		break;
+	}
 
-	snprintf(buf, bufsz, "%s", s);
+	if (!text) {
+		snprintf(buf, bufsz, "%s", typetxt);
+		return buf;
+	}
+
+	pfx = typetxt;
+	sfx = "";
+	switch (type) {
+	case FYTT_SCALAR:
+
+		pfx = "\"";
+
+		/* not too large */
+		if (size > 20)
+			size = 20;
+		text = fy_utf8_format_text_a(text, size, fyue_doublequote);
+		size = strlen(text);
+		if (size > 10) {
+			sfx = "...\"";
+			size = 7;
+		} else {
+			sfx = "\"";
+		}
+		break;
+	case FYTT_ALIAS:
+	case FYTT_ANCHOR:
+		sfx = type == FYTT_ALIAS ? "*" : "&";
+		if (size > 10) {
+			sfx = "...";
+			size = 7;
+		} else
+			sfx = "";
+		break;
+
+	default:
+		break;
+	}
+
+	snprintf(buf, bufsz, "%s%.*s%s", pfx, (int)size, text, sfx);
 
 	return buf;
 }
