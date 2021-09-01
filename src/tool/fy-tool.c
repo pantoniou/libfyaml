@@ -169,9 +169,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--json, -j               : JSON input mode (no | force | auto)"
 						" (default %s)\n",
 						JSON_DEFAULT);
-	fprintf(fp, "\t--yaml-1.1               : Enable YAML 1.1 version instead of the library's default");
-	fprintf(fp, "\t--yaml-1.2               : Enable YAML 1.2 version instead of the library's default");
-	fprintf(fp, "\t--yaml-1.3               : Enable YAML 1.3 version instead of the library's default");
+	fprintf(fp, "\t--yaml-1.1               : Enable YAML 1.1 version instead of the library's default\n");
+	fprintf(fp, "\t--yaml-1.2               : Enable YAML 1.2 version instead of the library's default\n");
+	fprintf(fp, "\t--yaml-1.3               : Enable YAML 1.3 version instead of the library's default\n");
 	fprintf(fp, "\t--sloppy-flow-indentation: Enable sloppy indentation in flow mode)"
 						" (default %s)\n",
 						SLOPPY_FLOW_INDENTATION_DEFAULT ? "true" : "false");
