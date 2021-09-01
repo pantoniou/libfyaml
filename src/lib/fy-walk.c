@@ -963,7 +963,7 @@ int fy_path_fetch_flow_scalar(struct fy_path_parser *fypp, int c)
 
 	is_single = c == '\'';
 
-	rc = fy_reader_fetch_flow_scalar_handle(fyr, c, 0, &handle);
+	rc = fy_reader_fetch_flow_scalar_handle(fyr, c, 0, &handle, false);
 	if (rc)
 		goto err_out_rc;
 
