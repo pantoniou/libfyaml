@@ -142,9 +142,7 @@ fy_emit_accum_reset(struct fy_emit_accum *ea)
 
 static inline void fy_emit_accum_start(struct fy_emit_accum *ea, enum fy_emitter_write_type type)
 {
-	assert(ea->emit);
-
-	ea->start_col = ea->emit->column;
+	ea->start_col = ea->emit ? ea->emit->column : 0;
 	ea->type = type;
 	fy_emit_accum_reset(ea);
 }
@@ -159,7 +157,7 @@ static inline void fy_emit_accum_init(struct fy_emit_accum *ea, struct fy_emitte
 	ea->emit = emit;
 	ea->accum = ea->inplace;
 	ea->alloc = sizeof(ea->inplace);
-	ea->start_col = ea->emit->column;
+	ea->start_col = ea->emit ? ea->emit->column : 0;
 	ea->ts = 8;	/* XXX for now */
 	fy_emit_accum_reset(ea);
 }
@@ -225,10 +223,19 @@ fy_emit_accum_utf8_put(struct fy_emit_accum *ea, int c, struct fy_token *fyt)
 	return 0;
 }
 
+static inline const char *fy_emit_accum_get(struct fy_emit_accum *ea, size_t *lenp)
+{
+	*lenp = ea->next;
+	if (!ea->next) {
+		return "";
+	}
+	return ea->accum;
+}
+
 static inline void
 fy_emit_accum_output(struct fy_emit_accum *ea)
 {
-	if (ea->next > 0)
+	if (ea->emit && ea->next > 0)
 		fy_emit_write(ea->emit, ea->type, ea->accum, ea->next);
 	fy_emit_accum_reset(ea);
 }

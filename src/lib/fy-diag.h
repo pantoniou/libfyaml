@@ -374,6 +374,74 @@ void fy_reader_diag_report(struct fy_reader *fyr,
 #define FYR_NODE_WARNING(_fyr, _fyn, _type, _module, _fmt, ...) \
 	FYR_NODE_DIAG(_fyr, _fyn, FYET_WARNING, _module, _fmt, ## __VA_ARGS__)
 
+/* path diagnostics */
+
+struct fy_path;
+
+int fy_path_vdiag(struct fy_path *fypp, unsigned int flags,
+		    const char *file, int line, const char *func,
+		    const char *fmt, va_list ap);
+
+int fy_path_diag(struct fy_path *fypp, unsigned int flags,
+		   const char *file, int line, const char *func,
+		   const char *fmt, ...)
+			__attribute__((format(printf, 6, 7)));
+
+void fy_path_diag_vreport(struct fy_path *fypp,
+			    const struct fy_diag_report_ctx *fydrc,
+			    const char *fmt, va_list ap);
+void fy_path_diag_report(struct fy_path *fypp,
+			   const struct fy_diag_report_ctx *fydrc,
+			   const char *fmt, ...)
+		__attribute__((format(printf, 3, 4)));
+
+#ifndef NDEBUG
+
+#define fypp_debug(_fypp, _fmt, ...) \
+	fy_path_diag((_fypp), FYET_DEBUG, \
+			__FILE__, __LINE__, __func__, \
+			(_fmt) , ## __VA_ARGS__)
+#else
+
+#define fypp_debug(_fypp, _fmt, ...) \
+	do { } while(0)
+
+#endif
+
+#define fypp_info(_fypp, _fmt, ...) \
+	fy_path_diag((_fypp), FYET_INFO, __FILE__, __LINE__, __func__, \
+			(_fmt) , ## __VA_ARGS__)
+#define fypp_notice(_fypp, _fmt, ...) \
+	fy_path_diag((_fypp), FYET_NOTICE, __FILE__, __LINE__, __func__, \
+			(_fmt) , ## __VA_ARGS__)
+#define fypp_warning(_fypp, _fmt, ...) \
+	fy_path_diag((_fypp), FYET_WARNING, __FILE__, __LINE__, __func__, \
+			(_fmt) , ## __VA_ARGS__)
+#define fypp_error(_fypp, _fmt, ...) \
+	fy_path_diag((_fypp), FYET_ERROR, __FILE__, __LINE__, __func__, \
+			(_fmt) , ## __VA_ARGS__)
+
+#define fypp_error_check(_fypp, _cond, _label, _fmt, ...) \
+	do { \
+		if (!(_cond)) { \
+			fypp_error((_fypp), _fmt, ## __VA_ARGS__); \
+			goto _label ; \
+		} \
+	} while(0)
+
+#define _FYPP_TOKEN_DIAG(_fypp, _fyt, _type, _module, _fmt, ...) \
+	do { \
+		struct fy_diag_report_ctx _drc; \
+		memset(&_drc, 0, sizeof(_drc)); \
+		_drc.type = (_type); \
+		_drc.module = (_module); \
+		_drc.fyt = (_fyt); \
+		fy_path_diag_report((_fypp), &_drc, (_fmt) , ## __VA_ARGS__); \
+	} while(0)
+
+#define FYPP_TOKEN_DIAG(_fypp, _fyt, _type, _module, _fmt, ...) \
+	_FYPP_TOKEN_DIAG(_fypp, fy_token_ref(_fyt), _type, _module, _fmt, ## __VA_ARGS__)
+
 /* doc */
 struct fy_document;
 

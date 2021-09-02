@@ -773,6 +773,80 @@ void fy_diag_node_vreport(struct fy_diag *diag, struct fy_node *fyn,
 	diag->on_error = save_on_error;
 }
 
+/* path */
+int fy_path_vdiag(struct fy_path *fypp, unsigned int flags,
+		    const char *file, int line, const char *func,
+		    const char *fmt, va_list ap)
+{
+	struct fy_diag_ctx fydc;
+	int fydc_level, fyd_level;
+
+	if (!fypp || !fypp->cfg.diag || !fmt)
+		return -1;
+
+	/* perform the enable tests early to avoid the overhead */
+	fydc_level = (flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT;
+	fyd_level = fypp->cfg.diag->cfg.level;
+
+	if (fydc_level < fyd_level)
+		return 0;
+
+	/* fill in fy_diag_ctx */
+	memset(&fydc, 0, sizeof(fydc));
+
+	fydc.level = fydc_level;
+	fydc.module = FYEM_SCAN;	/* path is always scanner */
+	fydc.source_file = file;
+	fydc.source_line = line;
+	fydc.source_func = func;
+	if (fypp->cfg.fyp) {
+		fydc.line = fyp_line(fypp->cfg.fyp);
+		fydc.column = fyp_column(fypp->cfg.fyp);
+	} else {
+		fydc.line = 0;
+		fydc.column = 0;
+	}
+
+	return fy_vdiag(fypp->cfg.diag, &fydc, fmt, ap);
+}
+
+int fy_path_diag(struct fy_path *fypp, unsigned int flags,
+		   const char *file, int line, const char *func,
+		   const char *fmt, ...)
+{
+	va_list ap;
+	int rc;
+
+	va_start(ap, fmt);
+	rc = fy_path_vdiag(fypp, flags, file, line, func, fmt, ap);
+	va_end(ap);
+
+	return rc;
+}
+
+void fy_path_diag_vreport(struct fy_path *fypp,
+		            const struct fy_diag_report_ctx *fydrc,
+			    const char *fmt, va_list ap)
+{
+	if (!fypp || !fypp->cfg.diag || !fydrc || !fmt)
+		return;
+
+	fy_diag_vreport(fypp->cfg.diag, fydrc, fmt, ap);
+}
+
+void fy_path_diag_report(struct fy_path *fypp,
+			   const struct fy_diag_report_ctx *fydrc,
+			   const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	fy_path_diag_vreport(fypp, fydrc, fmt, ap);
+	va_end(ap);
+}
+
+/* node reports */
+
 void fy_diag_node_report(struct fy_diag *diag, struct fy_node *fyn,
 			 enum fy_error_type type, const char *fmt, ...)
 {

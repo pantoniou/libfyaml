@@ -90,10 +90,6 @@ enum fy_parser_state {
 	FYPS_DOCUMENT_END,
 	/** Expect a block node. */
 	FYPS_BLOCK_NODE,
-	/** Expect a block node or indentless sequence. */
-	FYPS_BLOCK_NODE_OR_INDENTLESS_SEQUENCE,
-	/** Expect a flow node. */
-	FYPS_FLOW_NODE,
 	/** Expect the first entry of a block sequence. */
 	FYPS_BLOCK_SEQUENCE_FIRST_ENTRY,
 	/** Expect an entry of a block sequence. */
@@ -135,6 +131,71 @@ struct fy_parse_state_log {
 	enum fy_parser_state state;
 };
 FY_PARSE_TYPE_DECL(parse_state_log);
+
+enum fy_path_component_type {
+	FYPCT_NONE,	/* not yet instantiated */
+	FYPCT_MAP,	/* it's a mapping */
+	FYPCT_SEQ,	/* it's a sequence */
+};
+
+struct fy_path_mapping_state {
+	struct fy_token *key;	/* simple scalar key */
+};
+
+struct fy_path_sequence_state {
+	int idx;
+	/* max 64 bit 18446744073709551616 */
+	int bufidx;	/* the index the buffer was generated for */
+	char buf[22];	/* enough for 64 bit sequence numbers */
+	size_t buflen;
+};
+
+struct fy_path_component {
+	struct fy_path *fypp;
+	struct list_head node;
+	struct fy_token *tag;
+	struct fy_token *anchor;
+	char *path_text;
+	enum fy_path_component_type type;
+	union {
+		struct fy_path_mapping_state map;
+		struct fy_path_sequence_state seq;
+	};
+};
+FY_PARSE_TYPE_DECL(path_component);
+
+struct fy_path_cfg {
+	struct fy_diag *diag;	/* optional diag */
+	struct fy_parser *fyp;	/* optional parser we associate with */
+};
+
+struct fy_path {
+	struct fy_path_cfg cfg;
+
+	int count;
+	struct fy_path_component_list components;
+	uint64_t seq;		/* the sequence for list */
+
+	char *text;
+	char *text_alloc;
+	size_t text_alloc_size;
+	uint64_t textseq;	/* the sequence for the text repr */
+};
+
+int fy_path_setup(struct fy_path *fypp, const struct fy_path_cfg *cfg);
+void fy_path_cleanup(struct fy_path *fypp);
+struct fy_path *fy_path_create(const struct fy_path_cfg *cfg);
+void fy_path_destroy(struct fy_path *fypp);
+
+void fy_path_reset(struct fy_path *fypp);
+
+struct fy_path_component *fy_path_component_alloc(struct fy_path *fypp);
+void fy_path_component_cleanup(struct fy_path_component *fypc);
+void fy_path_component_free(struct fy_path_component *fypc);
+void fy_path_component_destroy(struct fy_path_component *fypc);
+
+struct fy_path_component *fy_path_component_create_mapping(struct fy_path *fypp);
+struct fy_path_component *fy_path_component_create_sequence(struct fy_path *fypp);
 
 struct fy_parser {
 	struct fy_parse_cfg cfg;
@@ -184,6 +245,9 @@ struct fy_parser {
 	enum fy_parser_state state;
 	struct fy_parse_state_log_list state_stack;
 
+	/* current path */
+	struct fy_path path;
+
 	/* current parse document */
 	struct fy_document_state *current_document_state;
 	struct fy_document_state *default_document_state;
@@ -199,6 +263,7 @@ struct fy_parser {
 	struct fy_parse_state_log_list recycled_parse_state_log;
 	struct fy_eventp_list recycled_eventp;
 	struct fy_flow_list recycled_flow;
+	struct fy_path_component_list recycled_path_component;
 
 	/* the diagnostic object */
 	struct fy_diag *diag;

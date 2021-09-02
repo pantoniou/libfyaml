@@ -25,6 +25,36 @@ extern const char *fy_token_type_txt[FYTT_COUNT];
 
 struct fy_document;
 
+static inline bool fy_token_type_is_sequence_start(enum fy_token_type type)
+{
+	return type == FYTT_BLOCK_SEQUENCE_START || type == FYTT_FLOW_SEQUENCE_START;
+}
+
+static inline bool fy_token_type_is_sequence_end(enum fy_token_type type)
+{
+	return type == FYTT_BLOCK_SEQUENCE_START || type == FYTT_FLOW_SEQUENCE_START;
+}
+
+static inline bool fy_token_type_is_sequence_marker(enum fy_token_type type)
+{
+	return fy_token_type_is_sequence_start(type) || fy_token_type_is_sequence_end(type);
+}
+
+static inline bool fy_token_type_is_mapping_start(enum fy_token_type type)
+{
+	return type == FYTT_BLOCK_MAPPING_START || type == FYTT_FLOW_MAPPING_START;
+}
+
+static inline bool fy_token_type_is_mapping_end(enum fy_token_type type)
+{
+	return type == FYTT_BLOCK_MAPPING_START || type == FYTT_FLOW_MAPPING_START;
+}
+
+static inline bool fy_token_type_is_mapping_marker(enum fy_token_type type)
+{
+	return fy_token_type_is_mapping_start(type) || fy_token_type_is_mapping_end(type);
+}
+
 /* analyze content flags */
 #define FYACF_EMPTY		0x000001	/* is empty (only ws & lb) */
 #define FYACF_LB		0x000002	/* has a linebreak */
@@ -77,6 +107,10 @@ struct fy_token {
 		struct {
 			enum fy_scalar_style style;
 			bool number_hint;	/* hint that's a number */
+			/* path key (if requested only) */
+			const char *path_key;
+			size_t path_key_len;
+			char *path_key_storage;	/* if this is not null, it's \0 terminated */
 		} scalar;
 		struct {
 			unsigned int skip;
@@ -308,6 +342,7 @@ static inline bool fy_token_is_flow_ws(struct fy_token *fyt, int c)
 #define FYTTAF_CAN_BE_FOLDED		FY_BIT(14)
 #define FYTTAF_CAN_BE_PLAIN_FLOW	FY_BIT(15)
 #define FYTTAF_QUOTE_AT_0		FY_BIT(16)
+#define FYTTAF_CAN_BE_UNQUOTED_PATH_KEY	FY_BIT(17)
 
 int fy_token_text_analyze(struct fy_token *fyt);
 
@@ -360,5 +395,9 @@ static inline bool fy_token_is_number(struct fy_token *fyt)
 		return false;
 	return fy_atom_is_number(atom);
 }
+
+const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp);
+size_t fy_token_get_scalar_path_key_length(struct fy_token *fyt);
+const char *fy_token_get_scalar_path_key0(struct fy_token *fyt);
 
 #endif
