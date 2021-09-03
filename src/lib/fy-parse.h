@@ -34,6 +34,7 @@
 #include "fy-doc.h"
 #include "fy-emit.h"
 #include "fy-accel.h"
+#include "fy-emit-accum.h"
 
 struct fy_parser;
 struct fy_input;
@@ -155,7 +156,6 @@ struct fy_path_component {
 	struct list_head node;
 	struct fy_token *tag;
 	struct fy_token *anchor;
-	char *path_text;
 	enum fy_path_component_type type;
 	union {
 		struct fy_path_mapping_state map;

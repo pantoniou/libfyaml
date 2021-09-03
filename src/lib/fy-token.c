@@ -25,6 +25,7 @@
 
 #include "fy-ctype.h"
 #include "fy-utf8.h"
+#include "fy-emit-accum.h"
 
 #include "fy-token.h"
 
@@ -997,6 +998,7 @@ const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 	struct fy_atom *atom;
 	struct fy_atom_iter iter;
 	struct fy_emit_accum ea;	/* use an emit accumulator */
+	char ea_inplace_buf[256];
 	uint8_t non_utf8[4];
 	size_t non_utf8_len, k;
 	int c, i, w, digit;
@@ -1032,10 +1034,10 @@ const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 		return fyt->scalar.path_key;
 	}
 
-	fy_emit_accum_init(&ea, NULL);
+	fy_emit_accum_init(&ea, ea_inplace_buf, sizeof(ea_inplace_buf), 0, fylb_cr_nl);
 
 	fy_atom_iter_start(atom, &iter);
-	fy_emit_accum_start(&ea, fyewt_double_quoted_scalar_key);
+	fy_emit_accum_start(&ea, 0, fy_token_atom_lb_mode(fyt));
 	for (;;) {
 		non_utf8_len = sizeof(non_utf8);
 		c = fy_atom_iter_utf8_quoted_get(&iter, &non_utf8_len, non_utf8);
@@ -1045,93 +1047,90 @@ const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 		if (c == 0 && non_utf8_len > 0) {
 			for (k = 0; k < non_utf8_len; k++) {
 				c = (int)non_utf8[k] & 0xff;
-				fy_emit_accum_utf8_put(&ea, '\\', fyt);
-				fy_emit_accum_utf8_put(&ea, 'x', fyt);
+				fy_emit_accum_utf8_put(&ea, '\\');
+				fy_emit_accum_utf8_put(&ea, 'x');
 				digit = ((unsigned int)c >> 4) & 15;
 				fy_emit_accum_utf8_put(&ea,
-						digit <= 9 ? ('0' + digit) : ('A' + digit - 10),
-						fyt);
+						digit <= 9 ? ('0' + digit) : ('A' + digit - 10));
 				digit = (unsigned int)c & 15;
 				fy_emit_accum_utf8_put(&ea,
-						digit <= 9 ? ('0' + digit) : ('A' + digit - 10),
-						fyt);
+						digit <= 9 ? ('0' + digit) : ('A' + digit - 10));
 			}
 			continue;
 		}
 
 		if (!fy_is_printq(c) || c == '"' || c == '\\') {
 
-			fy_emit_accum_utf8_put(&ea, '\\', fyt);
+			fy_emit_accum_utf8_put(&ea, '\\');
 
 			switch (c) {
 
 			/* common YAML & JSON escapes */
 			case '\b':
-				fy_emit_accum_utf8_put(&ea, 'b', fyt);
+				fy_emit_accum_utf8_put(&ea, 'b');
 				break;
 			case '\f':
-				fy_emit_accum_utf8_put(&ea, 'f', fyt);
+				fy_emit_accum_utf8_put(&ea, 'f');
 				break;
 			case '\n':
-				fy_emit_accum_utf8_put(&ea, 'n', fyt);
+				fy_emit_accum_utf8_put(&ea, 'n');
 				break;
 			case '\r':
-				fy_emit_accum_utf8_put(&ea, 'r', fyt);
+				fy_emit_accum_utf8_put(&ea, 'r');
 				break;
 			case '\t':
-				fy_emit_accum_utf8_put(&ea, 't', fyt);
+				fy_emit_accum_utf8_put(&ea, 't');
 				break;
 			case '"':
-				fy_emit_accum_utf8_put(&ea, '"', fyt);
+				fy_emit_accum_utf8_put(&ea, '"');
 				break;
 			case '\\':
-				fy_emit_accum_utf8_put(&ea, '\\', fyt);
+				fy_emit_accum_utf8_put(&ea, '\\');
 				break;
 
 			/* YAML only escapes */
 			case '\0':
-				fy_emit_accum_utf8_put(&ea, '0', fyt);
+				fy_emit_accum_utf8_put(&ea, '0');
 				break;
 			case '\a':
-				fy_emit_accum_utf8_put(&ea, 'a', fyt);
+				fy_emit_accum_utf8_put(&ea, 'a');
 				break;
 			case '\v':
-				fy_emit_accum_utf8_put(&ea, 'v', fyt);
+				fy_emit_accum_utf8_put(&ea, 'v');
 				break;
 			case '\e':
-				fy_emit_accum_utf8_put(&ea, 'e', fyt);
+				fy_emit_accum_utf8_put(&ea, 'e');
 				break;
 			case 0x85:
-				fy_emit_accum_utf8_put(&ea, 'N', fyt);
+				fy_emit_accum_utf8_put(&ea, 'N');
 				break;
 			case 0xa0:
-				fy_emit_accum_utf8_put(&ea, '_', fyt);
+				fy_emit_accum_utf8_put(&ea, '_');
 				break;
 			case 0x2028:
-				fy_emit_accum_utf8_put(&ea, 'L', fyt);
+				fy_emit_accum_utf8_put(&ea, 'L');
 				break;
 			case 0x2029:
-				fy_emit_accum_utf8_put(&ea, 'P', fyt);
+				fy_emit_accum_utf8_put(&ea, 'P');
 				break;
 
 			default:
 				/* any kind of binary value */
 				if ((unsigned int)c <= 0xff) {
-					fy_emit_accum_utf8_put(&ea, 'x', fyt);
+					fy_emit_accum_utf8_put(&ea, 'x');
 					w = 2;
 				} else if ((unsigned int)c <= 0xffff) {
-					fy_emit_accum_utf8_put(&ea, 'u', fyt);
+					fy_emit_accum_utf8_put(&ea, 'u');
 					w = 4;
 				} else if ((unsigned int)c <= 0xffffffff) {
-					fy_emit_accum_utf8_put(&ea, 'U', fyt);
+					fy_emit_accum_utf8_put(&ea, 'U');
 					w = 8;
 				}
 
 				for (i = w - 1; i >= 0; i--) {
 					digit = ((unsigned int)c >> (i * 4)) & 15;
 					fy_emit_accum_utf8_put(&ea,
-							digit <= 9 ? ('0' + digit) : ('A' + digit - 10),
-							fyt);
+							digit <= 9 ? ('0' + digit) : ('A' + digit - 10));
 				}
 				break;
 			}
@@ -1140,7 +1139,7 @@ const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 		}
 
 		/* regular character */
-		fy_emit_accum_utf8_put(&ea, c, fyt);
+		fy_emit_accum_utf8_put(&ea, c);
 	}
 
 	/* get the output */

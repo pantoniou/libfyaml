@@ -4523,8 +4523,10 @@ struct fy_path_component *fy_path_component_alloc(struct fy_path *fypp)
 		fypc = malloc(sizeof(*fypc));
 		if (!fypc)
 			return NULL;
-		memset(fypc, 0, sizeof(*fypc));
 	}
+
+	memset(fypc, 0, sizeof(*fypc));
+
 	/* not yet instantiated */
 	fypc->fypp = fypp;
 	fypc->type = FYPCT_NONE;
@@ -4556,10 +4558,6 @@ void fy_path_component_cleanup(struct fy_path_component *fypc)
 		break;
 	}
 
-	if (fypc->path_text) {
-		free(fypc->path_text);	
-		fypc->path_text = NULL;
-	}
 	if (fypc->tag) {
 		fy_token_unref(fypc->tag);
 		fypc->tag = NULL;
@@ -4754,39 +4752,29 @@ const char *fy_path_component_get_text0(struct fy_path_component *fypc)
 
 const char *fy_path_get_text(struct fy_path *fypp)
 {
-	struct fy_path_component *fypc, *fypc_prev, *fypc_last;
+	struct fy_path_component *fypc, *fypc_prev, *fypc_root;
+	const char *text;
+	size_t len;
 
-	/* get the last component */
-	fypc_last = fy_path_component_list_tail(&fypp->components);
-
-	/* none, it's a root */
-	if (!fypc_last)
-		return "/";
-
-	/* the last component has the path text, return it */
-	if (fypc_last->path_text)
-		return fypc_last->path_text;
+	(void)text;
+	(void)len;
 
 	/* OK, we have to iterate and rebuild the paths */
 	fypc_prev = NULL;
+	fypc_root = NULL;
 	for (fypc = fy_path_component_list_head(&fypp->components);
 		fypc;
 		fypc_prev = fypc, fypc = fy_path_component_next(&fypp->components, fypc)) {
 
-		/* this one is built */
-		if (fypc->path_text)
-			continue;
+		text = fy_path_component_get_text(fypc, &len);
 
 		if (!fypc_prev) {
 			/* last one was NULL? we're the root */
-			fypc->path_text = strdup("/");
-		} else if (fypc_prev == fy_path_component_list_head(&fypp->components)) {
+			fypc_root = fypc;
+		} else if (fypc_prev == fypc_root) {
 			/* previous was the root, do not prepend / */
+		} else {
 		}
-
-		/* out of memory! */
-		if (!fypc->path_text)
-			return NULL;
 	}
 
 	return NULL;
@@ -4798,7 +4786,7 @@ int fy_path_mapping_start(struct fy_path *fypp, struct fy_token *fyt, struct fy_
 
 	fypc_last = fy_path_component_list_tail(&fypp->components);
 
-	fypp_notice(fypp, "%s {\n",
+	fypp_debug(fypp, "%s: %s {\n", __func__,
 			!fypc_last ? " ROOT" : "");
 
 	fypc = fy_path_component_create_mapping(fypp);
@@ -4811,6 +4799,7 @@ int fy_path_mapping_start(struct fy_path *fypp, struct fy_token *fyt, struct fy_
 
 	/* append to the tail */
 	fy_path_component_list_add_tail(&fypp->components, fypc);
+	fypp->seq++;
 
 	return 0;
 }
@@ -4819,10 +4808,11 @@ int fy_path_mapping_end(struct fy_path *fypp, struct fy_token *fyt)
 {
 	struct fy_path_component *fypc_last;
 
-	fypp_notice(fypp, "}\n");
+	fypp_debug(fypp, "%s: }\n", __func__);
 
 	/* get the last component */
 	fypc_last = fy_path_component_list_pop_tail(&fypp->components);
+	fypp->seq++;
 
 	/* it must be a map */
 	assert(fypc_last && fypc_last->type == FYPCT_MAP);
@@ -4839,7 +4829,7 @@ int fy_path_sequence_start(struct fy_path *fypp, struct fy_token *fyt, struct fy
 
 	fypc_last = fy_path_component_list_tail(&fypp->components);
 
-	fypp_notice(fypp, "%s [\n",
+	fypp_debug(fypp, "%s: %s [\n", __func__,
 			!fypc_last ? " ROOT" : "");
 
 	fypc = fy_path_component_create_sequence(fypp);
@@ -4849,6 +4839,11 @@ int fy_path_sequence_start(struct fy_path *fypp, struct fy_token *fyt, struct fy
 		fy_path_component_set_tag(fypc, tag);
 	if (anchor)
 		fy_path_component_set_anchor(fypc, anchor);
+
+	/* append to the tail */
+	fy_path_component_list_add_tail(&fypp->components, fypc);
+	fypp->seq++;
+
 	return 0;
 }
 
@@ -4856,10 +4851,11 @@ int fy_path_sequence_end(struct fy_path *fypp, struct fy_token *fyt)
 {
 	struct fy_path_component *fypc_last;
 
-	fypp_notice(fypp, "]\n");
+	fypp_debug(fypp, "%s: ]\n", __func__);
 
 	/* pop the last component */
 	fypc_last = fy_path_component_list_pop_tail(&fypp->components);
+	fypp->seq++;
 
 	/* it must be a sequence */
 	assert(fypc_last && fypc_last->type == FYPCT_SEQ);
@@ -4878,7 +4874,7 @@ int fy_path_scalar(struct fy_path *fypp, struct fy_token *fyt, struct fy_token *
 	fypc_last = fy_path_component_list_tail(&fypp->components);
 
 	fy_token_dump_format(fyt, tbuf, sizeof(tbuf));
-	fypp_notice(fypp, "%s%s\n",
+	fypp_debug(fypp, "%s: %s%s\n", __func__,
 			!fypc_last ? " ROOT" : "",
 			tbuf);
 
@@ -4895,32 +4891,27 @@ struct fy_path *fy_parse_path(struct fy_parser *fyp)
 
 int fy_parse_mapping_start(struct fy_parser *fyp, struct fy_token *fyt, struct fy_token *tag, struct fy_token *anchor)
 {
-	// return fy_path_mapping_start(fy_parse_path(fyp), fyt, tag, anchor);
-	return 0;
+	return fy_path_mapping_start(fy_parse_path(fyp), fyt, tag, anchor);
 }
 
 int fy_parse_mapping_end(struct fy_parser *fyp, struct fy_token *fyt)
 {
-	// return fy_path_mapping_end(fy_parse_path(fyp), fyt);
-	return 0;
+	return fy_path_mapping_end(fy_parse_path(fyp), fyt);
 }
 
 int fy_parse_sequence_start(struct fy_parser *fyp, struct fy_token *fyt, struct fy_token *tag, struct fy_token *anchor)
 {
-	// return fy_path_sequence_start(fy_parse_path(fyp), fyt, tag, anchor);
-	return 0;
+	return fy_path_sequence_start(fy_parse_path(fyp), fyt, tag, anchor);
 }
 
 int fy_parse_sequence_end(struct fy_parser *fyp, struct fy_token *fyt)
 {
-	// return fy_path_sequence_end(fy_parse_path(fyp), fyt);
-	return 0;
+	return fy_path_sequence_end(fy_parse_path(fyp), fyt);
 }
 
 int fy_parse_scalar(struct fy_parser *fyp, struct fy_token *fyt, struct fy_token *tag, struct fy_token *anchor)
 {
-	// return fy_path_scalar(fy_parse_path(fyp), fyt, tag, anchor);
-	return 0;
+	return fy_path_scalar(fy_parse_path(fyp), fyt, tag, anchor);
 }
 
 static struct fy_eventp *
