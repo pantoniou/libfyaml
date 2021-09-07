@@ -48,18 +48,21 @@ fy_emit_accum_init(struct fy_emit_accum *ea,
 }
 
 static inline void
-fy_emit_accum_cleanup(struct fy_emit_accum *ea)
-{
-	if (ea->accum && ea->accum != ea->inplace)
-		free(ea->accum);
-}
-
-static inline void
 fy_emit_accum_reset(struct fy_emit_accum *ea)
 {
 	ea->next = 0;
 	ea->col = 0;
 	ea->row = 0;
+}
+
+static inline void
+fy_emit_accum_cleanup(struct fy_emit_accum *ea)
+{
+	if (ea->accum && ea->accum != ea->inplace)
+		free(ea->accum);
+	ea->accum = ea->inplace;
+	ea->alloc = ea->inplacesz;
+	fy_emit_accum_reset(ea);
 }
 
 static inline void
@@ -247,6 +250,86 @@ fy_emit_accum_get(struct fy_emit_accum *ea, size_t *lenp)
 		return "";
 	}
 	return ea->accum;
+}
+
+static inline int
+fy_emit_accum_make_0_terminated(struct fy_emit_accum *ea)
+{
+	int ret;
+
+	/* the empty case is special cased */
+	if (!ea->next)
+		return 0;
+
+	/* grow if needed for the '\0' */
+	if (ea->next >= ea->alloc) {
+		ret = fy_emit_accum_grow(ea, 1);
+		if (ret != 0)
+			return ret;
+	}
+	assert(ea->next < ea->alloc);
+	*(ea->accum + ea->next) = '\0';
+	return 0;
+}
+
+static inline const char *
+fy_emit_accum_get0(struct fy_emit_accum *ea)
+{
+	int ret;
+
+	ret = fy_emit_accum_make_0_terminated(ea);
+	if (ret)
+		return NULL;
+	return ea->accum;
+}
+
+static inline char *
+fy_emit_accum_steal(struct fy_emit_accum *ea, size_t *lenp)
+{
+	int ret;
+	char *buf;
+
+	/* empty, return a malloc'ed buffer to "" */
+	if (!ea->next) {
+		buf = strdup("");
+		if (!buf) {
+			*lenp = 0;
+			return NULL;
+		}
+		*lenp = ea->next;
+	} else if (ea->inplace && ea->accum == ea->inplace) {
+		buf = malloc(ea->next + 1);
+		if (!buf) {
+			*lenp = 0;
+			return NULL;
+		}
+		memcpy(buf, ea->accum, ea->next);
+		buf[ea->next] = '\0';
+		*lenp = ea->next;
+	} else {
+		ret = fy_emit_accum_make_0_terminated(ea);
+		if (ret) {
+			*lenp = 0;
+			return NULL;
+		}
+		assert(ea->accum && ea->accum != ea->inplace);
+		buf = ea->accum;
+		*lenp = ea->next;
+		/* reset to inplace */
+		ea->accum = ea->inplace;
+		ea->alloc = ea->inplacesz;
+	}
+
+	fy_emit_accum_cleanup(ea);
+	return buf;
+}
+
+static inline char *
+fy_emit_accum_steal0(struct fy_emit_accum *ea)
+{
+	size_t len;
+
+	return fy_emit_accum_steal(ea, &len);
 }
 
 static inline bool

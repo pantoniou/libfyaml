@@ -140,6 +140,7 @@ enum fy_path_component_type {
 };
 
 struct fy_path_mapping_state {
+	bool got_key;
 	struct fy_token *key;	/* simple scalar key */
 };
 
@@ -175,11 +176,10 @@ struct fy_path {
 	int count;
 	struct fy_path_component_list components;
 	uint64_t seq;		/* the sequence for list */
-
-	char *text;
-	char *text_alloc;
-	size_t text_alloc_size;
 	uint64_t textseq;	/* the sequence for the text repr */
+
+	struct fy_emit_accum ea;
+	char ea_inplace_buf[256];	/* the in place accumulator buffer before allocating */
 };
 
 int fy_path_setup(struct fy_path *fypp, const struct fy_path_cfg *cfg);

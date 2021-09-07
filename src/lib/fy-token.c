@@ -998,7 +998,6 @@ const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 	struct fy_atom *atom;
 	struct fy_atom_iter iter;
 	struct fy_emit_accum ea;	/* use an emit accumulator */
-	char ea_inplace_buf[256];
 	uint8_t non_utf8[4];
 	size_t non_utf8_len, k;
 	int c, i, w, digit;
@@ -1021,6 +1020,7 @@ const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 	/* simple one? perfect */
 	if ((aflags & FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) == FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) {
 		fyt->scalar.path_key = fy_token_get_text(fyt, &fyt->scalar.path_key_len);
+		*lenp = fyt->scalar.path_key_len;
 		return fyt->scalar.path_key;
 	}
 
@@ -1031,13 +1031,19 @@ const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 	if (!atom) {
 		fyt->scalar.path_key = "";
 		fyt->scalar.path_key_len = 0;
+		*lenp = 0;
 		return fyt->scalar.path_key;
 	}
 
-	fy_emit_accum_init(&ea, ea_inplace_buf, sizeof(ea_inplace_buf), 0, fylb_cr_nl);
+	/* no inplace buffer; we will need the malloc'ed contents anyway */
+	fy_emit_accum_init(&ea, NULL, 0, 0, fylb_cr_nl);
 
 	fy_atom_iter_start(atom, &iter);
 	fy_emit_accum_start(&ea, 0, fy_token_atom_lb_mode(fyt));
+
+	/* output in quoted form */
+	fy_emit_accum_utf8_put(&ea, '"');
+
 	for (;;) {
 		non_utf8_len = sizeof(non_utf8);
 		c = fy_atom_iter_utf8_quoted_get(&iter, &non_utf8_len, non_utf8);
@@ -1142,12 +1148,19 @@ const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 		fy_emit_accum_utf8_put(&ea, c);
 	}
 
-	/* get the output */
-	fyt->scalar.path_key = fy_emit_accum_get(&ea, &fyt->scalar.path_key_len);
+	fy_atom_iter_finish(&iter);
 
+	/* closing quote */
+	fy_emit_accum_utf8_put(&ea, '"');
+
+	fy_emit_accum_make_0_terminated(&ea);
+
+	/* get the output (note it's now NULL terminated) */
+	fyt->scalar.path_key_storage = fy_emit_accum_steal(&ea, &fyt->scalar.path_key_len);
 	fy_emit_accum_cleanup(&ea);
 
-	fy_atom_iter_finish(&iter);
+	fyt->scalar.path_key = fyt->scalar.path_key_storage;
+	*lenp = fyt->scalar.path_key_len;
 
 	return fyt->scalar.path_key;
 }
