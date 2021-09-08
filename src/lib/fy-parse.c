@@ -4781,13 +4781,12 @@ int fy_path_rebuild(struct fy_path *fypp)
 
 		text = fy_path_component_get_text(fypc, &len);
 
-		if (!fypc_root)
+		if (!fypc_root) {
 			fypc_root = fypc;
-
-		fy_emit_accum_utf8_printf_raw(&fypp->ea, "%s%s%.*s",
-				fypc == fypc_root ? "/" : "",
-				fypc != fypc_root ? "/" : "",
-				(int)len, text);
+			fy_emit_accum_utf8_printf_raw(&fypp->ea, "/%.*s", (int)len, text);
+		} else {
+			fy_emit_accum_utf8_printf_raw(&fypp->ea, "/%.*s", (int)len, text);
+		}
 	}
 
 	if (fy_emit_accum_empty(&fypp->ea))
@@ -4808,183 +4807,6 @@ const char *fy_path_get_text0(struct fy_path *fypp)
 	return fy_emit_accum_get0(&fypp->ea);
 }
 
-int fy_path_prolog(struct fy_path *fypp, struct fy_token *fyt, struct fy_token *tag, struct fy_token *anchor)
-{
-	struct fy_path_component *fypc_last;
-
-	/* get the last component */
-	fypc_last = fy_path_component_list_tail(&fypp->components);
-	if (!fypc_last) {	/* root? */
-		return 0;
-	}
-
-	switch (fypc_last->type) {
-	case FYPCT_MAP:
-		break;
-
-	case FYPCT_SEQ:
-		break;
-
-	case FYPCT_NONE:
-		assert(0);
-		break;
-	}
-
-	return 0;
-}
-
-int fy_path_epilog(struct fy_path *fypp, struct fy_token *fyt, struct fy_token *tag, struct fy_token *anchor)
-{
-	struct fy_path_component *fypc_last;
-
-	/* get the last component */
-	fypc_last = fy_path_component_list_tail(&fypp->components);
-	if (!fypc_last) {	/* root? */
-		return 0;
-	}
-
-	return 0;
-}
-
-int fy_path_mapping_start(struct fy_path *fypp, struct fy_token *fyt, struct fy_token *tag, struct fy_token *anchor)
-{
-	struct fy_path_component *fypc;
-	int ret;
-
-	ret = fy_path_prolog(fypp, fyt, tag, anchor);
-	if (ret)
-		return ret;
-
-	fypc = fy_path_component_create_mapping(fypp);
-	assert(fypc);
-
-	if (tag)
-		fy_path_component_set_tag(fypc, tag);
-	if (anchor)
-		fy_path_component_set_anchor(fypc, anchor);
-
-	/* append to the tail */
-	fy_path_component_list_add_tail(&fypp->components, fypc);
-	fypp->seq++;
-
-	fypp_debug(fypp, "%s: %s {\n", __func__, fy_path_get_text0(fypp));
-
-	return 0;
-}
-
-int fy_path_mapping_end(struct fy_path *fypp, struct fy_token *fyt)
-{
-	struct fy_path_component *fypc_last;
-
-	/* get the last component */
-	fypc_last = fy_path_component_list_pop_tail(&fypp->components);
-	fypp->seq++;
-
-	/* it must be a map */
-	assert(fypc_last && fypc_last->type == FYPCT_MAP);
-
-	/* and destroy it */
-	fy_path_component_destroy(fypc_last);
-
-	fypp_debug(fypp, "%s: %s }\n", __func__, fy_path_get_text0(fypp));
-
-	return 0;
-}
-
-int fy_path_sequence_start(struct fy_path *fypp, struct fy_token *fyt, struct fy_token *tag, struct fy_token *anchor)
-{
-	struct fy_path_component *fypc;
-
-	fypc = fy_path_component_create_sequence(fypp);
-	assert(fypc);
-
-	if (tag)
-		fy_path_component_set_tag(fypc, tag);
-	if (anchor)
-		fy_path_component_set_anchor(fypc, anchor);
-
-	/* append to the tail */
-	fy_path_component_list_add_tail(&fypp->components, fypc);
-	fypp->seq++;
-
-	fypp_debug(fypp, "%s: %s [\n", __func__, fy_path_get_text0(fypp));
-
-	return 0;
-}
-
-int fy_path_sequence_end(struct fy_path *fypp, struct fy_token *fyt)
-{
-	struct fy_path_component *fypc_last;
-
-	/* pop the last component */
-	fypc_last = fy_path_component_list_pop_tail(&fypp->components);
-	fypp->seq++;
-
-	/* it must be a sequence */
-	assert(fypc_last && fypc_last->type == FYPCT_SEQ);
-
-	/* and destroy it */
-	fy_path_component_destroy(fypc_last);
-
-	fypp_debug(fypp, "%s: %s [\n", __func__, fy_path_get_text0(fypp));
-
-	return 0;
-}
-
-int fy_path_scalar(struct fy_path *fypp, struct fy_token *fyt, struct fy_token *tag, struct fy_token *anchor)
-{
-	struct fy_path_component *fypc_last;
-	char tbuf[80];
-
-	fypc_last = fy_path_component_list_tail(&fypp->components);
-
-	/* scalar root? */
-	if (!fypc_last) {
-		fy_token_dump_format(fyt, tbuf, sizeof(tbuf));
-		fypp_debug(fypp, "%s: %s %s\n", __func__, fy_path_get_text0(fypp), tbuf);
-		return 0;
-	}
-
-	switch (fypc_last->type) {
-	case FYPCT_MAP:
-		if (!fypc_last->map.got_key) {
-			fypc_last->map.got_key = true;
-			fypc_last->map.key = fy_token_ref(fyt);
-
-			fy_token_dump_format(fyt, tbuf, sizeof(tbuf));
-			fypp_debug(fypp, "%s: %s KEY %s\n", __func__, fy_path_get_text0(fypp), tbuf);
-			return 0;
-		}
-		break;
-	case FYPCT_SEQ:
-		break;
-
-	case FYPCT_NONE:
-		assert(0);
-		break;
-	}
-
-	fy_token_dump_format(fyt, tbuf, sizeof(tbuf));
-	fypp_debug(fypp, "%s: %s - %s\n", __func__, fy_path_get_text0(fypp), tbuf);
-
-	switch (fypc_last->type) {
-	case FYPCT_MAP:
-		if (fypc_last->map.got_key) {
-			fy_token_unref(fypc_last->map.key);
-			fypc_last->map.got_key = false;
-			fypc_last->map.key = NULL;
-		}
-		break;
-	case FYPCT_SEQ:
-		break;
-	case FYPCT_NONE:
-		assert(0);
-		break;
-	}
-
-	return 0;
-}
-
 struct fy_path *fy_parse_path(struct fy_parser *fyp)
 {
 	if (!fyp)
@@ -4993,29 +4815,198 @@ struct fy_path *fy_parse_path(struct fy_parser *fyp)
 	return &fyp->path;
 }
 
-int fy_parse_mapping_start(struct fy_parser *fyp, struct fy_token *fyt, struct fy_token *tag, struct fy_token *anchor)
+int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 {
-	return fy_path_mapping_start(fy_parse_path(fyp), fyt, tag, anchor);
-}
+	struct fy_path_component *fypc, *fypc_last;
+	struct fy_path *fypp;
+	struct fy_token *fyt, *tag, *anchor;
+	bool is_collection, is_map, is_start, is_end, is_complete;
+	char tbuf[80];
 
-int fy_parse_mapping_end(struct fy_parser *fyp, struct fy_token *fyt)
-{
-	return fy_path_mapping_end(fy_parse_path(fyp), fyt);
-}
+	fypp = fy_parse_path(fyp);
+	if (!fypp)
+		return -1;
 
-int fy_parse_sequence_start(struct fy_parser *fyp, struct fy_token *fyt, struct fy_token *tag, struct fy_token *anchor)
-{
-	return fy_path_sequence_start(fy_parse_path(fyp), fyt, tag, anchor);
-}
+	switch (fyep->e.type) {
+	case FYET_MAPPING_START:
+		fyt = fyep->e.mapping_start.mapping_start;
+		tag = fyep->e.mapping_start.tag;
+		anchor = fyep->e.mapping_start.anchor;
+		is_collection = true;
+		is_start = true;
+		is_end = false;
+		is_map = true;
+		break;
 
-int fy_parse_sequence_end(struct fy_parser *fyp, struct fy_token *fyt)
-{
-	return fy_path_sequence_end(fy_parse_path(fyp), fyt);
-}
+	case FYET_MAPPING_END:
+		fyt = fyep->e.mapping_end.mapping_end;
+		tag = NULL;
+		anchor = NULL;
+		is_collection = true;
+		is_start = false;
+		is_end = false;
+		is_map = true;
+		break;
 
-int fy_parse_scalar(struct fy_parser *fyp, struct fy_token *fyt, struct fy_token *tag, struct fy_token *anchor)
-{
-	return fy_path_scalar(fy_parse_path(fyp), fyt, tag, anchor);
+	case FYET_SEQUENCE_START:
+		fyt = fyep->e.sequence_start.sequence_start;
+		tag = fyep->e.sequence_start.tag;
+		anchor = fyep->e.sequence_start.anchor;
+		is_collection = true;
+		is_start = true;
+		is_end = false;
+		is_map = false;
+		break;
+
+	case FYET_SEQUENCE_END:
+		fyt = fyep->e.sequence_end.sequence_end;
+		tag = NULL;
+		anchor = NULL;
+		is_collection = true;
+		is_start = false;
+		is_end = false;
+		is_map = false;
+		break;
+
+	case FYET_SCALAR:
+		fyt = fyep->e.scalar.value;
+		tag = fyep->e.scalar.tag;
+		anchor = fyep->e.scalar.anchor;
+		is_collection = false;
+		is_start = true;
+		is_end = true;
+		is_map = false;
+		break;
+
+	case FYET_ALIAS:
+		fyt = fyep->e.alias.anchor;
+		tag = NULL;
+		anchor = NULL;
+		is_collection = false;
+		is_start = true;
+		is_end = true;
+		is_map = false;
+		break;
+
+	default:
+		fyt = NULL;
+		tag = NULL;
+		anchor = NULL;
+		is_collection = false;
+		is_start = false;
+		is_end = false;
+		break;
+	}
+
+	/* not handled */
+	if (!fyt)
+		return 0;
+
+	is_complete = true;
+
+	fypp_debug(fypp, "%s: start - %s\n", fy_path_get_text0(fypp), fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
+
+	fypc_last = fy_path_component_list_tail(&fypp->components);
+	if (fypc_last && is_start) {
+		switch (fypc_last->type) {
+		case FYPCT_MAP:
+			/* if there's no key set, set it now (and mark as non-complete) */
+			if (!fypc_last->map.got_key) {
+				if (is_collection) {
+					fypp_warning(fypp, "Non scalar key\n");
+					break;
+				}
+
+				fypc_last->map.got_key = true;
+				fypc_last->map.key = fy_token_ref(fyt);
+
+				fypp_debug(fypp, "%s: %s KEY %s\n", __func__, fy_path_get_text0(fypp), fy_token_get_scalar_path_key0(fyt));
+				is_complete = false;
+				break;
+			}
+			break;
+
+		case FYPCT_SEQ:
+			if (fypc_last->seq.idx < 0) {
+				fypc_last->seq.idx = 0;
+				fypc_last->seq.bufidx = -1;
+			} else
+				fypc_last->seq.idx++;
+			fypp_debug(fypp, "%s: %s SEQ next %d\n", __func__, fy_path_get_text0(fypp), fypc_last->seq.idx);
+			break;
+
+		case FYPCT_NONE:
+			assert(0);
+			break;
+		}
+	}
+
+	/* not complete yet */
+	if (!is_complete) {
+		fypp_debug(fypp, "%s: not-complete\n", fy_path_get_text0(fypp));
+		return 0;
+	}
+
+	/* collection start */
+	if (is_collection && is_start) {
+		fypc = is_map ? fy_path_component_create_mapping(fypp) : fy_path_component_create_sequence(fypp);
+		assert(fypc);
+
+		if (tag)
+			fy_path_component_set_tag(fypc, tag);
+		if (anchor)
+			fy_path_component_set_anchor(fypc, anchor);
+
+		/* append to the tail */
+		fy_path_component_list_add_tail(&fypp->components, fypc);
+		fypp->seq++;
+
+		fypp_debug(fypp, "%s: push\n", fy_path_get_text0(fypp));
+	}
+
+	if (!is_collection) {
+		fypp_debug(fypp, "%s: scalar %s\n", fy_path_get_text0(fypp), fy_token_get_scalar_path_key0(fyt));
+	}
+
+	/* collection end */
+	if (is_collection && !is_start) {
+
+		fypp_debug(fypp, "%s: pop\n", fy_path_get_text0(fypp));
+
+		fypc = fy_path_component_list_pop_tail(&fypp->components);
+		assert(fypc);
+		fypp->seq++;
+
+		/* and destroy it */
+		fy_path_component_destroy(fypc_last);
+	}
+
+	fypc_last = fy_path_component_list_tail(&fypp->components);
+	if (fypc_last && is_end) {
+
+		switch (fypc_last->type) {
+		case FYPCT_MAP:
+			if (fypc_last->map.key) {
+				fypp_debug(fypp, "%s: %s UNREF KEY %s\n", __func__, fy_path_get_text0(fypp), fy_token_get_scalar_path_key0(fypc_last->map.key));
+
+				fy_token_unref(fypc_last->map.key);
+				fypc_last->map.key = NULL;
+			}
+			fypc_last->map.got_key = false;
+			break;
+
+		case FYPCT_SEQ:
+			break;
+
+		case FYPCT_NONE:
+			assert(0);
+			break;
+		}
+	}
+
+	fypp_debug(fypp, "%s: exit\n", fy_path_get_text0(fypp));
+
+	return 0;
 }
 
 static struct fy_eventp *
@@ -5102,7 +5093,6 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 
 		fy_parse_state_set(fyp, FYPS_INDENTLESS_SEQUENCE_ENTRY);
 
-		fy_parse_sequence_start(fyp, fye->sequence_start.sequence_start, fye->sequence_start.tag, fye->sequence_start.anchor);
 		goto return_ok;
 	}
 
@@ -5118,8 +5108,6 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 		fye->scalar.anchor = anchor;
 		fye->scalar.tag = tag;
 		fye->scalar.value = fy_scan_remove(fyp, fyt);
-
-		fy_parse_scalar(fyp, fye->scalar.value, fye->scalar.tag, fye->scalar.anchor);
 
 		goto return_ok;
 	}
@@ -5137,8 +5125,6 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 		fye->sequence_start.sequence_start = fy_scan_remove(fyp, fyt);
 		fy_parse_state_set(fyp, FYPS_FLOW_SEQUENCE_FIRST_ENTRY);
 
-		fy_parse_sequence_start(fyp, fye->sequence_start.sequence_start, fye->sequence_start.tag, fye->sequence_start.anchor);
-
 		goto return_ok;
 	}
 
@@ -5154,8 +5140,6 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 		fye->mapping_start.tag = tag;
 		fye->mapping_start.mapping_start = fy_scan_remove(fyp, fyt);
 		fy_parse_state_set(fyp, FYPS_FLOW_MAPPING_FIRST_KEY);
-
-		fy_parse_mapping_start(fyp, fye->mapping_start.mapping_start, fye->mapping_start.tag, fye->mapping_start.anchor);
 
 		goto return_ok;
 	}
@@ -5173,8 +5157,6 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 		fye->sequence_start.sequence_start = fy_scan_remove(fyp, fyt);
 		fy_parse_state_set(fyp, FYPS_BLOCK_SEQUENCE_FIRST_ENTRY);
 
-		fy_parse_sequence_start(fyp, fye->sequence_start.sequence_start, fye->sequence_start.tag, fye->sequence_start.anchor);
-
 		goto return_ok;
 	}
 
@@ -5190,8 +5172,6 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 		fye->mapping_start.tag = tag;
 		fye->mapping_start.mapping_start = fy_scan_remove(fyp, fyt);
 		fy_parse_state_set(fyp, FYPS_BLOCK_MAPPING_FIRST_KEY);
-
-		fy_parse_mapping_start(fyp, fye->mapping_start.mapping_start, fye->mapping_start.tag, fye->mapping_start.anchor);
 
 		goto return_ok;
 	}
@@ -5715,8 +5695,6 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		} else
 			fye->sequence_end.sequence_end = fy_scan_remove(fyp, fyt);
 
-		fy_parse_sequence_end(fyp, fye->sequence_end.sequence_end);
-
 		return fyep;
 
 	case FYPS_BLOCK_MAPPING_FIRST_KEY:
@@ -5794,8 +5772,6 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		fye->type = FYET_MAPPING_END;
 		fye->mapping_end.mapping_end = fy_scan_remove(fyp, fyt);
 
-		fy_parse_mapping_end(fyp, fye->mapping_end.mapping_end);
-
 		return fyep;
 
 	case FYPS_BLOCK_MAPPING_VALUE:
@@ -5866,8 +5842,6 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fye->mapping_start.tag = NULL;
 				fye->mapping_start.mapping_start = fy_scan_remove(fyp, fyt);
 
-				fy_parse_mapping_start(fyp, fye->mapping_start.mapping_start, fye->mapping_start.tag, fye->mapping_start.anchor);
-
 				return fyep;
 			}
 
@@ -5899,8 +5873,6 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 		fye->type = FYET_SEQUENCE_END;
 		fye->sequence_end.sequence_end = fy_scan_remove(fyp, fyt);
-
-		fy_parse_sequence_end(fyp, fye->sequence_end.sequence_end);
 
 		return fyep;
 
@@ -5975,8 +5947,6 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		fye->mapping_end.mapping_end = fy_token_create(FYTT_BLOCK_END, &atom);
 		fyp_error_check(fyp, fye->mapping_end.mapping_end, err_out,
 			"fy_token_create() failed!");
-
-		fy_parse_mapping_end(fyp, fye->mapping_end.mapping_end);
 
 		return fyep;
 
@@ -6066,8 +6036,6 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 		fye->type = FYET_MAPPING_END;
 		fye->mapping_end.mapping_end = fy_scan_remove(fyp, fyt);
-
-		fy_parse_mapping_end(fyp, fye->mapping_end.mapping_end);
 
 		return fyep;
 
@@ -6169,6 +6137,10 @@ struct fy_eventp *fy_parse_private(struct fy_parser *fyp)
 	struct fy_eventp *fyep = NULL;
 
 	fyep = fy_parse_internal(fyp);
+
+	if (fyep)
+		(void)fy_parse_path_event(fyp, fyep);
+
 	fyp_parse_debug(fyp, "> %s", fyep ? fy_event_type_txt[fyep->e.type] : "NULL");
 
 	return fyep;
