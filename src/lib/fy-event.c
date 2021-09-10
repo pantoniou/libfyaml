@@ -116,12 +116,13 @@ void fy_eventp_release(struct fy_eventp *fyep)
 
 struct fy_eventp *fy_parse_eventp_alloc(struct fy_parser *fyp)
 {
-	struct fy_eventp *fyep;
+	struct fy_eventp *fyep = NULL;
 
 	if (!fyp)
 		return NULL;
 
-	fyep = fy_eventp_list_pop(&fyp->recycled_eventp);
+	if (!fyp->suppress_recycling)
+		fyep = fy_eventp_list_pop(&fyp->recycled_eventp);
 	if (!fyep)
 		fyep = fy_eventp_alloc();
 	if (!fyep)
@@ -141,7 +142,10 @@ void fy_parse_eventp_recycle(struct fy_parser *fyp, struct fy_eventp *fyep)
 	fy_eventp_clean(fyep);
 
 	/* and push to the parser recycle list */
-	fy_eventp_list_push(&fyp->recycled_eventp, fyep);
+	if (!fyp->suppress_recycling)
+		fy_eventp_list_push(&fyp->recycled_eventp, fyep);
+	else
+		fy_eventp_free(fyep);
 }
 
 void fy_parse_eventp_vacuum(struct fy_parser *fyp)
@@ -151,8 +155,11 @@ void fy_parse_eventp_vacuum(struct fy_parser *fyp)
 	if (!fyp)
 		return;
 
-	while ((fyep = fy_eventp_list_pop(&fyp->recycled_eventp)) != NULL)
+	while ((fyep = fy_eventp_list_pop(&fyp->recycled_eventp)) != NULL) {
+		/* catch double recycles */
+		/* assert(fy_eventp_list_head(&fyp->recycled_eventp)!= fyep); */
 		fy_eventp_free(fyep);
+	}
 }
 
 void fy_parser_event_free(struct fy_parser *fyp, struct fy_event *fye)

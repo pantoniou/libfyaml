@@ -84,7 +84,7 @@ static struct option lopts[] = {
 #define LIBYAML_MODES	""
 #endif
 
-#define MODES	"parse|scan|copy|testsuite|dump|build|walk" LIBYAML_MODES
+#define MODES	"parse|scan|copy|testsuite|dump|dump2|build|walk" LIBYAML_MODES
 
 static void display_usage(FILE *fp, char *progname)
 {
@@ -678,6 +678,44 @@ int do_dump(struct fy_parser *fyp, int indent, int width, bool resolve, bool sor
 
 	return count > 0 ? 0 : -1;
 }
+
+int do_dump2(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort)
+{
+	struct fy_document *fyd;
+	struct fy_document_builder *fydb;
+	unsigned int flags;
+	int rc, count;
+
+	flags = 0;
+	if (sort)
+		flags |= FYECF_SORT_KEYS;
+	flags |= FYECF_INDENT(indent) | FYECF_WIDTH(width);
+
+	fydb = fy_document_builder_create(&fyp->cfg);
+	assert(fydb);
+
+	count = 0;
+	while ((fyd = fy_parse_load_document_with_builder(fyp, fydb)) != NULL) {
+
+		if (resolve) {
+			rc = fy_document_resolve(fyd);
+			if (rc)
+				goto out;
+		}
+
+		fy_emit_document_to_file(fyd, flags, NULL);
+
+		fy_parse_document_destroy(fyp, fyd);
+
+		count++;
+	}
+
+	fy_document_builder_destroy(fydb);
+
+out:
+	return count > 0 ? 0 : -1;
+}
+
 
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 
@@ -2879,6 +2917,7 @@ int main(int argc, char *argv[])
 	    strcmp(mode, "copy") &&
 	    strcmp(mode, "testsuite") &&
 	    strcmp(mode, "dump") &&
+	    strcmp(mode, "dump2") &&
 	    strcmp(mode, "build") &&
 	    strcmp(mode, "walk") &&
 	    strcmp(mode, "reader")
@@ -3067,6 +3106,12 @@ int main(int argc, char *argv[])
 		}
 	} else if (!strcmp(mode, "dump")) {
 		rc = do_dump(fyp, indent, width, resolve, sort);
+		if (rc < 0) {
+			/* fprintf(stderr, "do_dump() error %d\n", rc); */
+			goto cleanup;
+		}
+	} else if (!strcmp(mode, "dump2")) {
+		rc = do_dump2(fyp, indent, width, resolve, sort);
 		if (rc < 0) {
 			/* fprintf(stderr, "do_dump() error %d\n", rc); */
 			goto cleanup;

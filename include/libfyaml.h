@@ -1425,6 +1425,7 @@ enum fy_emitter_cfg_flags {
 	FYECF_STRIP_LABELS		= FY_BIT(2),
 	FYECF_STRIP_TAGS		= FY_BIT(3),
 	FYECF_STRIP_DOC			= FY_BIT(4),
+	FYECF_NO_ENDING_NEWLINE		= FY_BIT(5),
 	FYECF_INDENT_DEFAULT		= FYECF_INDENT(0),
 	FYECF_INDENT_1			= FYECF_INDENT(1),
 	FYECF_INDENT_2			= FYECF_INDENT(2),
@@ -5810,6 +5811,21 @@ fy_parser_get_document_state(struct fy_parser *fyp)
  */
 struct fy_document_state *
 fy_document_get_document_state(struct fy_document *fyd)
+	FY_EXPORT;
+
+/**
+ * fy_document_set_document_state() - Set the document state of a document
+ *
+ * Set the document state of a document
+ *
+ * @fyd: The document
+ * @fyds: The document state to use, or NULL for default
+ *
+ * Returns:
+ * 0 if set operation was successful, -1 otherwise
+ */
+int
+fy_document_set_document_state(struct fy_document *fyd, struct fy_document_state *fyds)
 	FY_EXPORT;
 
 /**

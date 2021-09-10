@@ -1161,9 +1161,9 @@ const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 
 	/* get the output (note it's now NULL terminated) */
 	fyt->scalar.path_key_storage = fy_emit_accum_steal(&ea, &fyt->scalar.path_key_len);
+	fyt->scalar.path_key = fyt->scalar.path_key_storage;
 	fy_emit_accum_cleanup(&ea);
 
-	fyt->scalar.path_key = fyt->scalar.path_key_storage;
 	*lenp = fyt->scalar.path_key_len;
 
 	return fyt->scalar.path_key;
@@ -1202,12 +1202,16 @@ const char *fy_token_get_scalar_path_key0(struct fy_token *fyt)
 	if (!text)
 		return NULL;
 
+	if (fyt->scalar.path_key_storage)
+		return fyt->scalar.path_key_storage;
+
 	fyt->scalar.path_key_storage = malloc(len + 1);
 	if (!fyt->scalar.path_key_storage)
 		return NULL;
 
 	memcpy(fyt->scalar.path_key_storage, text, len);
 	fyt->scalar.path_key_storage[len] = '\0';
+
 	return fyt->scalar.path_key_storage;
 }
 

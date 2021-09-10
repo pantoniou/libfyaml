@@ -1785,21 +1785,35 @@ int fy_emit_common_document_end(struct fy_emitter *emit)
 
 	fyds = emit->fyds;
 
-	if (emit->column != 0) {
-		fy_emit_putc(emit, fyewt_linebreak, '\n');
-		emit->flags = FYEF_WHITESPACE | FYEF_INDENTATION;
-	}
-
 	dem = ((dem_flags == FYECF_DOC_END_MARK_AUTO && !fyds->end_implicit) ||
-	        dem_flags == FYECF_DOC_END_MARK_ON) &&
+		dem_flags == FYECF_DOC_END_MARK_ON) &&
 	       !(emit->cfg.flags & FYECF_STRIP_DOC);
-	if (!fy_emit_is_json_mode(emit) && dem) {
-		fy_emit_puts(emit, fyewt_document_indicator, "...");
-		fy_emit_putc(emit, fyewt_linebreak, '\n');
-		emit->flags = FYEF_WHITESPACE | FYEF_INDENTATION;
-		emit->flags |= FYEF_HAD_DOCUMENT_END;
-	} else
-		emit->flags &= ~FYEF_HAD_DOCUMENT_END;
+
+	if (!(emit->cfg.flags & FYECF_NO_ENDING_NEWLINE)) {
+		if (emit->column != 0) {
+			fy_emit_putc(emit, fyewt_linebreak, '\n');
+			emit->flags = FYEF_WHITESPACE | FYEF_INDENTATION;
+		}
+
+		if (!fy_emit_is_json_mode(emit) && dem) {
+			fy_emit_puts(emit, fyewt_document_indicator, "...");
+			fy_emit_putc(emit, fyewt_linebreak, '\n');
+			emit->flags = FYEF_WHITESPACE | FYEF_INDENTATION;
+			emit->flags |= FYEF_HAD_DOCUMENT_END;
+		} else
+			emit->flags &= ~FYEF_HAD_DOCUMENT_END;
+	} else {
+		if (!fy_emit_is_json_mode(emit) && dem) {
+			if (emit->column != 0) {
+				fy_emit_putc(emit, fyewt_linebreak, '\n');
+				emit->flags = FYEF_WHITESPACE | FYEF_INDENTATION;
+			}
+			fy_emit_puts(emit, fyewt_document_indicator, "...");
+			emit->flags &= ~(FYEF_WHITESPACE | FYEF_INDENTATION);
+			emit->flags |= FYEF_HAD_DOCUMENT_END;
+		} else
+			emit->flags &= ~FYEF_HAD_DOCUMENT_END;
+	}
 
 	/* mark that we did output a document earlier */
 	emit->flags |= FYEF_HAD_DOCUMENT_OUTPUT;

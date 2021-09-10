@@ -133,15 +133,24 @@ struct fy_parse_state_log {
 };
 FY_PARSE_TYPE_DECL(parse_state_log);
 
+FY_TYPE_FWD_DECL_LIST(path_component);
+
 enum fy_path_component_type {
 	FYPCT_NONE,	/* not yet instantiated */
 	FYPCT_MAP,	/* it's a mapping */
 	FYPCT_SEQ,	/* it's a sequence */
 };
 
+/* fwd declaration */
+struct fy_document;
+
 struct fy_path_mapping_state {
 	bool got_key;
+	bool is_complex_key;
 	struct fy_token *key;	/* simple scalar key */
+	struct fy_document *fyd;
+	char *complex_text;
+	size_t complex_size;
 };
 
 struct fy_path_sequence_state {
@@ -163,12 +172,14 @@ struct fy_path_component {
 		struct fy_path_sequence_state seq;
 	};
 };
-FY_PARSE_TYPE_DECL(path_component);
+FY_PARSE_TYPE_DECL_AFTER_FWD(path_component);
 
 struct fy_path_cfg {
 	struct fy_diag *diag;	/* optional diag */
 	struct fy_parser *fyp;	/* optional parser we associate with */
 };
+
+struct fy_document_builder;
 
 struct fy_path {
 	struct fy_path_cfg cfg;
@@ -180,6 +191,8 @@ struct fy_path {
 
 	struct fy_emit_accum ea;
 	char ea_inplace_buf[256];	/* the in place accumulator buffer before allocating */
+
+	struct fy_document_builder *fydb;	/* for complex keys */
 };
 
 int fy_path_setup(struct fy_path *fypp, const struct fy_path_cfg *cfg);
@@ -609,5 +622,37 @@ static inline int fy_document_state_version_compare(struct fy_document_state *fy
 {
 	return fy_version_compare(fy_document_state_version(fyds), vb);
 }
+
+int fy_path_setup(struct fy_path *fypp, const struct fy_path_cfg *cfg);
+void fy_path_cleanup(struct fy_path *fypp);
+struct fy_path *fy_path_create(const struct fy_path_cfg *cfg);
+void fy_path_destroy(struct fy_path *fypp);
+
+void fy_path_reset(struct fy_path *fypp);
+
+struct fy_path_component *fy_path_component_alloc(struct fy_path *fypp);
+void fy_path_component_cleanup(struct fy_path_component *fypc);
+void fy_path_component_free(struct fy_path_component *fypc);
+void fy_path_component_destroy(struct fy_path_component *fypc);
+
+struct fy_path_component *fy_path_component_create_mapping(struct fy_path *fypp);
+struct fy_path_component *fy_path_component_create_sequence(struct fy_path *fypp);
+
+void fy_path_component_set_tag(struct fy_path_component *fypc, struct fy_token *tag);
+void fy_path_component_set_anchor(struct fy_path_component *fypc, struct fy_token *anchor);
+
+bool fy_path_component_is_complete(struct fy_path_component *fypc);
+
+const char *fy_path_component_get_text(struct fy_path_component *fypc, size_t *lenp);
+const char *fy_path_component_get_text0(struct fy_path_component *fypc);
+
+int fy_path_rebuild(struct fy_path *fypp);
+
+const char *fy_path_get_text(struct fy_path *fypp, size_t *lenp);
+const char *fy_path_get_text0(struct fy_path *fypp);
+
+struct fy_path *fy_parse_path(struct fy_parser *fyp);
+
+int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep);
 
 #endif
