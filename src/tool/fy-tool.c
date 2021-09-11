@@ -44,6 +44,7 @@
 #define JSON_DEFAULT			"auto"
 #define DISABLE_ACCEL_DEFAULT		false
 #define DISABLE_BUFFERING_DEFAULT	false
+#define DISABLE_DEPTH_LIMIT_DEFAULT	false
 #define SLOPPY_FLOW_INDENTATION_DEFAULT	false
 
 #define OPT_DUMP			1000
@@ -62,9 +63,10 @@
 #define OPT_STREAMING			2003
 #define OPT_DISABLE_ACCEL		2005
 #define OPT_DISABLE_BUFFERING		2006
-#define OPT_SLOPPY_FLOW_INDENTATION	2007
-#define OPT_DUMP_PATHEXPR		2008
-#define OPT_NOEXEC			2009
+#define OPT_DISABLE_DEPTH_LIMIT		2007
+#define OPT_SLOPPY_FLOW_INDENTATION	2008
+#define OPT_DUMP_PATHEXPR		2009
+#define OPT_NOEXEC			2010
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -104,6 +106,7 @@ static struct option lopts[] = {
 	{"streaming",		no_argument,		0,	OPT_STREAMING },
 	{"disable-accel",	no_argument,		0,	OPT_DISABLE_ACCEL },
 	{"disable-buffering",	no_argument,		0,	OPT_DISABLE_BUFFERING },
+	{"disable-depth-limit",	no_argument,		0,	OPT_DISABLE_DEPTH_LIMIT },
 	{"disable-diag",	required_argument,	0,	OPT_DISABLE_DIAG },
 	{"enable-diag", 	required_argument,	0,	OPT_ENABLE_DIAG },
 	{"show-diag",		required_argument,	0,	OPT_SHOW_DIAG },
@@ -170,6 +173,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--disable-buffering      : Disable buffering (i.e. no stdio file reads, unix fd instead)"
 						" (default %s)\n",
 						DISABLE_BUFFERING_DEFAULT ? "true" : "false");
+	fprintf(fp, "\t--disable-depth-limit    : Disable depth limit"
+						" (default %s)\n",
+						DISABLE_DEPTH_LIMIT_DEFAULT ? "true" : "false");
 	fprintf(fp, "\t--json, -j               : JSON input mode (no | force | auto)"
 						" (default %s)\n",
 						JSON_DEFAULT);
@@ -1064,10 +1070,11 @@ int main(int argc, char *argv[])
 	struct fy_parse_cfg cfg = {
 		.search_path = INCLUDE_DEFAULT,
 		.flags =
-			(QUIET_DEFAULT ? FYPCF_QUIET : 0) |
-			(RESOLVE_DEFAULT ? FYPCF_RESOLVE_DOCUMENT : 0) |
-			(DISABLE_ACCEL_DEFAULT ? FYPCF_DISABLE_ACCELERATORS : 0),
-			(DISABLE_BUFFERING_DEFAULT ? FYPCF_DISABLE_BUFFERING : 0),
+			(QUIET_DEFAULT 			 ? FYPCF_QUIET : 0) |
+			(RESOLVE_DEFAULT		 ? FYPCF_RESOLVE_DOCUMENT : 0) |
+			(DISABLE_ACCEL_DEFAULT		 ? FYPCF_DISABLE_ACCELERATORS : 0) |
+			(DISABLE_BUFFERING_DEFAULT	 ? FYPCF_DISABLE_BUFFERING : 0) |
+			(DISABLE_DEPTH_LIMIT_DEFAULT	 ? FYPCF_DISABLE_DEPTH_LIMIT : 0) |
 			(SLOPPY_FLOW_INDENTATION_DEFAULT ? FYPCF_SLOPPY_FLOW_INDENTATION : 0),
 	};
 	struct fy_emitter_cfg emit_cfg;
@@ -1336,6 +1343,10 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_DISABLE_BUFFERING:
 			cfg.flags |= FYPCF_DISABLE_BUFFERING;
+			break;
+		case OPT_DISABLE_DEPTH_LIMIT:
+			cfg.flags |= FYPCF_DISABLE_DEPTH_LIMIT;
+			break;
 		case OPT_DUMP_PATHEXPR:
 			dump_pathexpr = true;
 			break;

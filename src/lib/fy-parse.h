@@ -149,7 +149,6 @@ struct fy_path_mapping_state {
 	bool got_key;
 	bool is_complex_key;
 	struct fy_token *key;			/* simple scalar key */
-	struct fy_document_builder *fydb;	/* for complex keys */
 	struct fy_document *fyd;
 	char *complex_text;
 	size_t complex_size;
@@ -191,6 +190,8 @@ struct fy_path {
 
 	struct fy_emit_accum ea;
 	char ea_inplace_buf[256];	/* the in place accumulator buffer before allocating */
+
+	struct fy_document_builder *fydb;	/* for complex keys */
 };
 
 int fy_path_setup(struct fy_path *fypp, const struct fy_path_cfg *cfg);

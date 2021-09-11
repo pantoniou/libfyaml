@@ -59,6 +59,11 @@ void fy_path_cleanup(struct fy_path *fypp)
 	if (!fypp)
 		return;
 
+	if (fypp->fydb) {
+		fy_document_builder_destroy(fypp->fydb);
+		fypp->fydb = NULL;
+	}
+
 	fy_emit_accum_cleanup(&fypp->ea);
 
 	while ((fypc = fy_path_component_list_pop(&fypp->components)) != NULL) {
@@ -158,11 +163,6 @@ void fy_path_component_cleanup(struct fy_path_component *fypc)
 			fy_token_unref(fypc->map.key);
 			fypc->map.key = NULL;
 		}
-		if (fypc->map.fydb) {
-			fy_document_builder_destroy(fypc->map.fydb);
-			fypc->map.fydb = NULL;
-		}
-
 		if (fypc->map.fyd) {
 			fy_document_destroy(fypc->map.fyd);
 			fypc->map.fyd = NULL;
@@ -469,7 +469,7 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 	struct fy_path *fypp;
 	struct fy_token *fyt, *tag, *anchor;
 	bool is_collection, is_map, is_start, is_end, is_complete;
-	char tbuf[80];
+	char tbuf[80] __attribute__((__unused__));
 	int rc;
 
 	fypp = fy_parse_path(fyp);
@@ -554,20 +554,17 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 
 		// DBG(fypp, "accumulating for complex key\n");
 
-		rc = fy_document_builder_process_event(fypc_last->map.fydb, fyp, fyep);
+		rc = fy_document_builder_process_event(fypp->fydb, fyp, fyep);
 		if (!rc) {
 			// DBG(fypp, "accumulating still\n");
 			return 0;
 		}
 		// DBG(fypp, "accumulation complete\n");
 
-		fypc_last->map.fyd = fy_document_builder_take_document(fypc_last->map.fydb);
+		fypc_last->map.fyd = fy_document_builder_take_document(fypp->fydb);
 		assert(fypc_last->map.fyd);
 		fypc_last->map.got_key = true;
 		fypc_last->map.is_complex_key = true;
-
-		fy_document_builder_destroy(fypc_last->map.fydb);
-		fypc_last->map.fydb = NULL;
 
 		goto complete;
 	}
@@ -579,15 +576,17 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 			if (!fypc_last->map.got_key) {
 				if (is_collection) {
 					// DBG(fypp, "Non scalar key - using document builder\n");
-					fypc_last->map.fydb = fy_document_builder_create(&fyp->cfg);
-					assert(fypc_last->map.fydb);
+					if (!fypp->fydb) {
+						fypp->fydb = fy_document_builder_create(&fyp->cfg);
+						assert(fypp->fydb);
+					}
 
 					/* start with this document state */
-					rc = fy_document_builder_set_in_document(fypc_last->map.fydb, fy_parser_get_document_state(fyp), true);
+					rc = fy_document_builder_set_in_document(fypp->fydb, fy_parser_get_document_state(fyp), true);
 					assert(!rc);
 
 					/* and pass the current event; must return 0 since we know it's a collection start */
-					rc = fy_document_builder_process_event(fypc_last->map.fydb, fyp, fyep);
+					rc = fy_document_builder_process_event(fypp->fydb, fyp, fyep);
 					assert(!rc);
 
 					is_complete = false;
