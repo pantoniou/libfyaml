@@ -6517,7 +6517,7 @@ fy_document_builder_process_event(struct fy_document_builder *fydb,
 	/* the top state must always be NODE for processing the event */
 	assert(c->s == FYDBS_NODE);
 
-	DBG(fyp, "%d: %s <- %s\n", fydb->next - 1, fy_document_builder_state_txt[c->s], fy_event_type_txt[etype]);
+	// DBG(fyp, "%d: %s <- %s (%s)\n", fydb->next - 1, fy_document_builder_state_txt[c->s], fy_event_type_txt[etype], fy_token_debug_text_a(fyt));
 
 	switch (etype) {
 	case FYET_SCALAR:
@@ -6545,7 +6545,7 @@ fy_document_builder_process_event(struct fy_document_builder *fydb,
 		goto complete;
 
 	case FYET_MAPPING_START:
-		DBG(fyp, "%d: %s -> %s\n", fydb->next - 1, fy_document_builder_state_txt[c->s], fy_document_builder_state_txt[FYDBS_MAP_KEY]);
+		// DBG(fyp, "%d: %s -> %s\n", fydb->next - 1, fy_document_builder_state_txt[c->s], fy_document_builder_state_txt[FYDBS_MAP_KEY]);
 		c->s = FYDBS_MAP_KEY;
 
 		fyn = fy_node_alloc(fyd, FYNT_MAPPING);
@@ -6578,7 +6578,7 @@ fy_document_builder_process_event(struct fy_document_builder *fydb,
 		goto complete;
 
 	case FYET_SEQUENCE_START:
-		DBG(fyp, "%d: %s -> %s\n", fydb->next - 1, fy_document_builder_state_txt[c->s], fy_document_builder_state_txt[FYDBS_SEQ]);
+		// DBG(fyp, "%d: %s -> %s\n", fydb->next - 1, fy_document_builder_state_txt[c->s], fy_document_builder_state_txt[FYDBS_SEQ]);
 		c->s = FYDBS_SEQ; 
 		fyn = fy_node_alloc(fyd, FYNT_SEQUENCE);
 		fyp_error_check(fyp, fyn, err_out,
@@ -6632,9 +6632,9 @@ push:
 	}
 	assert(fydb->next < fydb->alloc);
 
-	DBG(fyp, "%d: PUSH %s -> %s\n", fydb->next - 1,
-			fydb->next > 0 ? fy_document_builder_state_txt[fydb->stack[fydb->next - 1].s] : "<NIL>",
-			fy_document_builder_state_txt[FYDBS_NODE]);
+	// DBG(fyp, "%d: PUSH %s -> %s\n", fydb->next - 1,
+	//		fydb->next > 0 ? fy_document_builder_state_txt[fydb->stack[fydb->next - 1].s] : "<NIL>",
+	//		fy_document_builder_state_txt[FYDBS_NODE]);
 
 	c = &fydb->stack[++fydb->next - 1];
 	memset(c, 0, sizeof(*c));
@@ -6648,16 +6648,16 @@ complete:
 	assert(fydb->next > 0);
 	c = &fydb->stack[fydb->next - 1];
 	c->fyn = fyn;
-	DBG(fyp, "%d: COMPLETE %s -> %s\n", fydb->next - 1,
-		fy_document_builder_state_txt[c->s],
-		fydb->next > 1 ? fy_document_builder_state_txt[fydb->stack[fydb->next - 2].s] : "<NIL>");
+	// DBG(fyp, "%d: COMPLETE %s -> %s\n", fydb->next - 1,
+	//	fy_document_builder_state_txt[c->s],
+	//	fydb->next > 1 ? fy_document_builder_state_txt[fydb->stack[fydb->next - 2].s] : "<NIL>");
 	assert(fydb->next > 0);
 	fydb->next--;
 
 	/* root */
 	if (fydb->next == 0) {
 		fyd->root = fyn;
-		DBG(fyp, "root done\n");
+		// DBG(fyp, "root done\n");
 		/* if we're in single mode, don't wait for doc end */
 		if (fydb->single_mode)
 			fydb->doc_done = true;
@@ -6666,7 +6666,7 @@ complete:
 
 	c = &fydb->stack[fydb->next - 1];
 
-	DBG(fyp, "%d: %s - COMPLETE\n", fydb->next - 1, fy_document_builder_state_txt[c->s]);
+	// DBG(fyp, "%d: %s - COMPLETE\n", fydb->next - 1, fy_document_builder_state_txt[c->s]);
 
 	fyn_parent = c->fyn;
 
@@ -6677,7 +6677,7 @@ complete:
 		assert(fynp);
 		fynp->key = fyn;
 		c->fynp = fynp;
-		DBG(fyp, "%d: %s -> %s\n", fydb->next - 1, fy_document_builder_state_txt[c->s], fy_document_builder_state_txt[FYDBS_MAP_VAL]);
+		// DBG(fyp, "%d: %s -> %s\n", fydb->next - 1, fy_document_builder_state_txt[c->s], fy_document_builder_state_txt[FYDBS_MAP_VAL]);
 		c->s = FYDBS_MAP_VAL;
 		goto push;
 
@@ -6703,7 +6703,7 @@ complete:
 			fynp->value->attached = true;
 
 		c->fynp = NULL;
-		DBG(fyp, "%d: %s -> %s\n", fydb->next - 1, fy_document_builder_state_txt[c->s], fy_document_builder_state_txt[FYDBS_MAP_KEY]);
+		// DBG(fyp, "%d: %s -> %s\n", fydb->next - 1, fy_document_builder_state_txt[c->s], fy_document_builder_state_txt[FYDBS_MAP_KEY]);
 		c->s = FYDBS_MAP_KEY;
 		goto push;
 
