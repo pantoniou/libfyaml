@@ -437,6 +437,15 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 		break;
 	}
 
+	fyr->current_input_pos = 0;
+	fyr->line = 0;
+	fyr->column = 0;
+	fyr->nontab_column = 0;
+	fyr->current_c = -1;
+	fyr->current_ptr = NULL;
+	fyr->current_w = 0;
+	fyr->current_left = 0;
+
 	fyi->state = FYIS_PARSE_IN_PROGRESS;
 
 	return 0;
@@ -879,8 +888,10 @@ const void *fy_reader_ensure_lookahead_slow_path(struct fy_reader *fyr, size_t s
 	p = fy_reader_ptr(fyr, leftp);
 	if (!p || *leftp < size) {
 
-		fyr_debug(fyr, "ensure lookahead size=%zd left=%zd",
-				size, *leftp);
+		fyr_debug(fyr, "ensure lookahead size=%zd left=%zd (%s - %zu/%zu)",
+				size, *leftp,
+				fy_input_get_filename(fyr->current_input),
+				fyr->current_pos, fyr->current_input_pos);
 
 		p = fy_reader_input_try_pull(fyr, fyr->current_input, size, leftp);
 		if (!p || *leftp < size)
