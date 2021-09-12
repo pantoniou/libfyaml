@@ -224,7 +224,7 @@ fy_document_builder_process_event(struct fy_document_builder *fydb,
 		struct fy_parser *fyp, struct fy_eventp *fyep);
 
 struct fy_document *
-fy_parse_load_document_with_builder(struct fy_parser *fyp,
-				    struct fy_document_builder *fydb);
+fy_document_builder_load_document(struct fy_document_builder *fydb,
+				  struct fy_parser *fyp);
 
 #endif

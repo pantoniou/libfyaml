@@ -450,9 +450,6 @@ fy_reader_ensure_lookahead(struct fy_reader *fyr, size_t size, size_t *leftp)
 	return fy_reader_ensure_lookahead_slow_path(fyr, size, leftp);
 }
 
-/* advance the given number of ascii characters, not utf8 */
-void fy_reader_advance_octets(struct fy_reader *fyr, size_t advance);
-
 /* compare string at the current point (n max) */
 static inline int
 fy_reader_strncmp(struct fy_reader *fyr, const char *str, size_t n)
@@ -542,6 +539,55 @@ static inline int
 fy_reader_peek(struct fy_reader *fyr)
 {
 	return fy_reader_peek_at_offset(fyr, 0);
+}
+
+static inline void
+fy_reader_advance_octets(struct fy_reader *fyr, size_t advance)
+{
+	struct fy_input *fyi;
+	size_t left __FY_DEBUG_UNUSED__;
+
+	assert(fyr);
+	assert(fyr->current_input);
+
+	assert(fyr->current_left >= advance);
+
+	fyi = fyr->current_input;
+
+	switch (fyi->cfg.type) {
+	case fyit_file:
+		if (fyi->addr) {
+			left = fyi->file.length - fyr->current_input_pos;
+			break;
+		}
+		/* fall-through */
+
+	case fyit_stream:
+	case fyit_callback:
+		left = fyi->read - fyr->current_input_pos;
+		break;
+
+	case fyit_memory:
+		left = fyi->cfg.memory.size - fyr->current_input_pos;
+		break;
+
+	case fyit_alloc:
+		left = fyi->cfg.alloc.size - fyr->current_input_pos;
+		break;
+
+	default:
+		assert(0);	/* no streams */
+		break;
+	}
+
+	assert(left >= advance);
+
+	fyr->current_input_pos += advance;
+	fyr->current_ptr += advance;
+	fyr->current_left -= advance;
+	fyr->current_pos += advance;
+
+	fyr->current_c = fy_utf8_get(fyr->current_ptr, fyr->current_left, &fyr->current_w);
 }
 
 static inline void

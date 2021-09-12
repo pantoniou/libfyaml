@@ -46,6 +46,7 @@
 #define DISABLE_BUFFERING_DEFAULT	false
 #define DISABLE_DEPTH_LIMIT_DEFAULT	false
 #define SLOPPY_FLOW_INDENTATION_DEFAULT	false
+#define PREFER_RECURSIVE_DEFAULT	false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -65,8 +66,9 @@
 #define OPT_DISABLE_BUFFERING		2006
 #define OPT_DISABLE_DEPTH_LIMIT		2007
 #define OPT_SLOPPY_FLOW_INDENTATION	2008
-#define OPT_DUMP_PATHEXPR		2009
-#define OPT_NOEXEC			2010
+#define OPT_PREFER_RECURSIVE		2009
+#define OPT_DUMP_PATHEXPR		2010
+#define OPT_NOEXEC			2011
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -115,6 +117,7 @@ static struct option lopts[] = {
 	{"yaml-1.2",		no_argument,		0,	OPT_YAML_1_2 },
 	{"yaml-1.3",		no_argument,		0,	OPT_YAML_1_3 },
 	{"sloppy-flow-indentation", no_argument,	0,	OPT_SLOPPY_FLOW_INDENTATION },
+	{"prefer-recursive",	no_argument,		0,	OPT_PREFER_RECURSIVE },
 	{"dump-pathexpr",	no_argument,		0,	OPT_DUMP_PATHEXPR },
 	{"noexec",		no_argument,		0,	OPT_NOEXEC },
 	{"to",			required_argument,	0,	'T' },
@@ -1368,6 +1371,9 @@ int main(int argc, char *argv[])
 		case OPT_SLOPPY_FLOW_INDENTATION:
 			cfg.flags |= FYPCF_SLOPPY_FLOW_INDENTATION;
 			break;
+		case OPT_PREFER_RECURSIVE:
+			cfg.flags |= FYPCF_PREFER_RECURSIVE;
+			break;
 		case 'h' :
 		default:
 			if (opt != 'h')
@@ -1486,7 +1492,6 @@ int main(int argc, char *argv[])
 
 			if (!streaming) {
 				while ((fyd = fy_parse_load_document(fyp)) != NULL) {
-
 					rc = fy_emit_document(fye, fyd);
 					fy_parse_document_destroy(fyp, fyd);
 					if (rc)

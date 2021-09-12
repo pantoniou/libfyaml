@@ -455,14 +455,6 @@ const char *fy_path_get_text0(struct fy_path *fypp)
 	return fy_emit_accum_get0(&fypp->ea);
 }
 
-struct fy_path *fy_parse_path(struct fy_parser *fyp)
-{
-	if (!fyp)
-		return NULL;
-	/* XXX no complex */
-	return &fyp->path;
-}
-
 int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 {
 	struct fy_path_component *fypc, *fypc_last;
@@ -472,7 +464,7 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 	char tbuf[80] __attribute__((__unused__));
 	int rc;
 
-	fypp = fy_parse_path(fyp);
+	fypp = &fyp->path;
 	if (!fypp) {
 		// DBG(fypp, "no parse path\n");
 		return -1;

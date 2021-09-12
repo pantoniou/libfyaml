@@ -51,10 +51,11 @@ void fy_walk_result_vdump(struct fy_walk_result *fwr, struct fy_diag *diag, enum
 	struct fy_walk_result *fwr2;
 	char *banner;
 	char *texta = NULL;
-	const char *text;
+	const char *text = "";
 	size_t len;
 	bool save_on_error;
 	char buf[30];
+	int rc __FY_DEBUG_UNUSED__;
 
 	if (!diag)
 		return;
@@ -67,7 +68,8 @@ void fy_walk_result_vdump(struct fy_walk_result *fwr, struct fy_diag *diag, enum
 
 	if (fmt) {
 		banner = NULL;
-		(void)vasprintf(&banner, fmt, ap);
+		rc = vasprintf(&banner, fmt, ap);
+		assert(rc != -1);
 		assert(banner);
 		fy_diag_diag(diag, errlevel, "%-*s%s", level*2, "", banner);
 		free(banner);
@@ -3762,7 +3764,7 @@ fy_scalar_walk_result_to_expr(struct fy_diag *diag, struct fy_walk_result *fwr, 
 	struct fy_atom handle;
 	bool collection_addressing;
 	char *buf;
-	int rc;
+	int rc __FY_DEBUG_UNUSED__;
 
 	exprt = NULL;
 
@@ -3836,12 +3838,13 @@ fy_path_expr_execute(struct fy_diag *diag, int level, struct fy_path_expr *expr,
 	struct fy_path_expr *exprn, *exprl, *exprr;
 	struct fy_node *fyn, *fynn, *fyni;
 	struct fy_token *fyt;
-	int rc, start, end, count, i;
+	int start, end, count, i;
 	bool match;
 	struct fy_path_expr *exprt;
 	unsigned int nargs;
 	struct fy_walk_result **fwr_args;
 	void *prevp;
+	int rc __FY_DEBUG_UNUSED__;
 
 	/* error */
 	if (!expr)

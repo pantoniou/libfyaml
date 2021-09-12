@@ -1843,7 +1843,7 @@ err_out:
 	return rc;
 }
 
-struct fy_document *fy_parse_load_document(struct fy_parser *fyp)
+struct fy_document *fy_parse_load_document_recursive(struct fy_parser *fyp)
 {
 	struct fy_document *fyd = NULL;
 	struct fy_eventp *fyep = NULL;
@@ -1920,6 +1920,46 @@ err_out:
 	fy_parse_eventp_recycle(fyp, fyep);
 	fy_parse_document_destroy(fyp, fyd);
 	return NULL;
+}
+
+struct fy_document *fy_parse_load_document_with_builder(struct fy_parser *fyp)
+{
+	struct fy_document *fyd;
+	int rc;
+
+	if (!fyp)
+		return NULL;
+
+	if (!fyp->fydb) {
+		fyp->fydb = fy_document_builder_create(&fyp->cfg);
+		if (!fyp->fydb)
+			return NULL;
+	}
+
+	fyd = fy_document_builder_load_document(fyp->fydb, fyp);
+	if (!fyd)
+		return NULL;
+
+	if (fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT) {
+		rc = fy_document_resolve(fyd);
+		if (rc) {
+			fy_document_destroy(fyd);
+			fyp->stream_error = true;
+			return NULL;
+		}
+	}
+
+	return fyd;
+}
+
+struct fy_document *fy_parse_load_document(struct fy_parser *fyp)
+{
+	if (!fyp)
+		return NULL;
+
+	return !(fyp->cfg.flags & FYPCF_PREFER_RECURSIVE) ?
+		fy_parse_load_document_with_builder(fyp) :
+		fy_parse_load_document_recursive(fyp);
 }
 
 struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *fyn_from,
@@ -6560,6 +6600,7 @@ fy_document_builder_process_event(struct fy_document_builder *fydb,
 			fyp_error_check(fyp, !rc, err_out,
 					"fy_document_register_anchor() failed");
 		}
+		fyn->mapping_start = fy_token_ref(fye->mapping_start.mapping_start);
 		break;
 
 	case FYET_MAPPING_END:
@@ -6592,6 +6633,7 @@ fy_document_builder_process_event(struct fy_document_builder *fydb,
 			fyp_error_check(fyp, !rc, err_out,
 					"fy_document_register_anchor() failed");
 		}
+		fyn->sequence_start = fy_token_ref(fye->sequence_start.sequence_start);
 		break;
 
 	case FYET_SEQUENCE_END:
@@ -6677,6 +6719,13 @@ complete:
 		assert(fynp);
 		fynp->key = fyn;
 		c->fynp = fynp;
+
+		/* make sure we don't add an already existing key */
+		if (fy_node_mapping_key_is_duplicate(fyn_parent, fyn)) {
+			FYP_NODE_ERROR(fyp, fyn, FYEM_DOC, "duplicate key");
+			goto err_out;
+		}
+
 		// DBG(fyp, "%d: %s -> %s\n", fydb->next - 1, fy_document_builder_state_txt[c->s], fy_document_builder_state_txt[FYDBS_MAP_VAL]);
 		c->s = FYDBS_MAP_VAL;
 		goto push;
@@ -6723,8 +6772,8 @@ complete:
 }
 
 struct fy_document *
-fy_parse_load_document_with_builder(struct fy_parser *fyp,
-				    struct fy_document_builder *fydb)
+fy_document_builder_load_document(struct fy_document_builder *fydb,
+				  struct fy_parser *fyp)
 {
 	struct fy_eventp *fyep = NULL;
 	int rc;
@@ -6736,8 +6785,10 @@ fy_parse_load_document_with_builder(struct fy_parser *fyp,
 		(fyep = fy_parse_private(fyp)) != NULL) {
 		rc = fy_document_builder_process_event(fydb, fyp, fyep);
 		fy_parse_eventp_recycle(fyp, fyep);
-		if (rc < 0)
+		if (rc < 0) {
+			fyp->stream_error = true;
 			return NULL;
+		}
 	}
 
 	/* get ownership of the document */

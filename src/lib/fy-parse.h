@@ -282,6 +282,9 @@ struct fy_parser {
 
 	int err_term_width;
 	int err_term_height;
+
+	/* for when using the built-in document builder */
+	struct fy_document_builder *fydb;
 };
 
 static inline struct fy_input *
@@ -653,5 +656,8 @@ const char *fy_path_get_text0(struct fy_path *fypp);
 struct fy_path *fy_parse_path(struct fy_parser *fyp);
 
 int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep);
+
+struct fy_document *
+fy_parse_load_document_with_builder(struct fy_parser *fyp);
 
 #endif

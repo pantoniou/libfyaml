@@ -695,7 +695,7 @@ int do_dump2(struct fy_parser *fyp, int indent, int width, bool resolve, bool so
 	assert(fydb);
 
 	count = 0;
-	while ((fyd = fy_parse_load_document_with_builder(fyp, fydb)) != NULL) {
+	while ((fyd = fy_document_builder_load_document(fydb, fyp)) != NULL) {
 
 		if (resolve) {
 			rc = fy_document_resolve(fyd);

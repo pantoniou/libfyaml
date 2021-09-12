@@ -765,6 +765,7 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 {
 	struct fy_input *fyi, *fyin;
 
+	fy_document_builder_destroy(fyp->fydb);
 	fy_path_cleanup(&fyp->path);
 
 	fy_parse_indent_list_recycle_all(fyp, &fyp->indent_stack);
@@ -2077,7 +2078,7 @@ int fy_fetch_flow_collection_entry(struct fy_parser *fyp, int c)
 	if (fyp->pending_complex_key_column >= 0) {
 
 		fyt = fy_token_queue(fyp, FYTT_VALUE, fy_fill_atom_a(fyp, 0));
-		fyp_error_check(fyp, fyt, err_out_rc,
+		fyp_error_check(fyp, fyt, err_out,
 				"fy_token_queue() failed");
 
 		fyp->pending_complex_key_column = -1;
@@ -5877,4 +5878,3 @@ struct fy_document_state *fy_parser_get_document_state(struct fy_parser *fyp)
 {
 	return fyp ? fyp->current_document_state : NULL;
 }
-
