@@ -77,32 +77,6 @@ void fy_input_free(struct fy_input *fyi)
 	free(fyi);
 }
 
-struct fy_input *fy_input_ref(struct fy_input *fyi)
-{
-	if (!fyi)
-		return NULL;
-
-
-	assert(fyi->refs + 1 > 0);
-
-	fyi->refs++;
-
-	return fyi;
-}
-
-void fy_input_unref(struct fy_input *fyi)
-{
-	if (!fyi)
-		return;
-
-	assert(fyi->refs > 0);
-
-	if (fyi->refs == 1)
-		fy_input_free(fyi);
-	else
-		fyi->refs--;
-}
-
 const char *fy_input_get_filename(struct fy_input *fyi)
 {
 	if (!fyi)

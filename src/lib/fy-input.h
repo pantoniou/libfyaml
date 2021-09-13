@@ -171,8 +171,6 @@ static inline size_t fy_input_size(const struct fy_input *fyi)
 
 struct fy_input *fy_input_alloc(void);
 void fy_input_free(struct fy_input *fyi);
-struct fy_input *fy_input_ref(struct fy_input *fyi);
-void fy_input_unref(struct fy_input *fyi);
 
 static inline enum fy_input_state fy_input_get_state(struct fy_input *fyi)
 {
@@ -189,6 +187,34 @@ struct fy_input *fy_input_from_malloc_data(char *data, size_t size,
 					   struct fy_atom *handle, bool simple);
 
 void fy_input_close(struct fy_input *fyi);
+
+static inline struct fy_input *
+fy_input_ref(struct fy_input *fyi)
+{
+	if (!fyi)
+		return NULL;
+
+
+	assert(fyi->refs + 1 > 0);
+
+	fyi->refs++;
+
+	return fyi;
+}
+
+static inline void
+fy_input_unref(struct fy_input *fyi)
+{
+	if (!fyi)
+		return;
+
+	assert(fyi->refs > 0);
+
+	if (fyi->refs == 1)
+		fy_input_free(fyi);
+	else
+		fyi->refs--;
+}
 
 struct fy_reader;
 
