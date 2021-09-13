@@ -446,11 +446,8 @@ struct fy_atom *fy_emit_token_comment_handle(struct fy_emitter *emit, struct fy_
 {
 	struct fy_atom *handle;
 
-	if (!fyt)
-		return NULL;
-
-	handle = &fyt->comment[placement];
-	return fy_atom_is_set(handle) ? handle : NULL;
+	handle = fy_token_comment_handle(fyt, placement, false);
+	return handle && fy_atom_is_set(handle) ? handle : NULL;
 }
 
 struct fy_token *fy_node_value_token(struct fy_node *fyn)
@@ -493,6 +490,7 @@ void fy_emit_token_comment(struct fy_emitter *emit, struct fy_token *fyt, int fl
 {
 	struct fy_atom *handle;
 	char *text;
+	const char *t;
 	int len;
 
 	handle = fy_emit_token_comment_handle(emit, fyt, placement);
@@ -503,15 +501,19 @@ void fy_emit_token_comment(struct fy_emitter *emit, struct fy_token *fyt, int fl
 	if (len < 0)
 		return;
 
-	text = alloca(len + 1);
+	// text = alloca(len + 1);
+	text = malloc(len + 1);
+	assert(text);
+	memset(text, 0, len + 1);
 
 	if (placement == fycp_top || placement == fycp_bottom) {
 		fy_emit_write_indent(emit, indent);
 		emit->flags |= FYEF_WHITESPACE;
 	}
 
-	fy_emit_write_comment(emit, flags, indent,
-			fy_atom_format_text(handle, text, len + 1), len, handle);
+	t = fy_atom_format_text(handle, text, len + 1);
+
+	fy_emit_write_comment(emit, flags, indent, t, len, handle);
 
 	emit->flags &= ~FYEF_INDENTATION;
 
@@ -519,6 +521,8 @@ void fy_emit_token_comment(struct fy_emitter *emit, struct fy_token *fyt, int fl
 		fy_emit_write_indent(emit, indent);
 		emit->flags |= FYEF_WHITESPACE;
 	}
+
+	free(text);
 }
 
 void fy_emit_node_comment(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent,

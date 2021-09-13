@@ -836,15 +836,19 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 		return -1;
 
 	/* if it's no comment parsing is enabled just consume it */
-	if (!(fyp->cfg.flags & FYPCF_PARSE_COMMENTS)) {
+	if (!(fyp->cfg.flags & FYPCF_PARSE_COMMENTS) || !handle) {
 		fy_advance(fyp, c);
 		while (!(fyp_is_lbz(fyp, c = fy_parse_peek(fyp))))
 			fy_advance(fyp, c);
 		return 0;
 	}
 
-	if (handle)
-		fy_fill_atom_start(fyp, handle);
+	if (handle->fyi)
+		fy_input_unref(handle->fyi);
+
+	memset(handle, 0, sizeof(*handle));
+
+	fy_fill_atom_start(fyp, handle);
 
 	lines = 0;
 	start_column = fyp_column(fyp);
@@ -894,38 +898,44 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 		}
 	}
 
-	if (handle) {
-		fy_fill_atom_end(fyp, handle);
-		handle->style = FYAS_COMMENT;
-		handle->direct_output = false;
-		handle->storage_hint = 0;
-		handle->storage_hint_valid = false;
-		handle->empty = false;
-		handle->has_lb = true;
-		handle->has_ws = has_ws;
-		handle->starts_with_ws = false; /* no-one cares for those */
-		handle->starts_with_lb = false;
-		handle->ends_with_ws = false;
-		handle->ends_with_lb = false;
-		handle->trailing_lb = false;
-		handle->size0 = lines > 0;
-		handle->valid_anchor = false;
-	}
+	fy_fill_atom_end(fyp, handle);
+	handle->style = FYAS_COMMENT;
+	handle->direct_output = false;
+	handle->storage_hint = 0;
+	handle->storage_hint_valid = false;
+	handle->empty = false;
+	handle->has_lb = true;
+	handle->has_ws = has_ws;
+	handle->starts_with_ws = false; /* no-one cares for those */
+	handle->starts_with_lb = false;
+	handle->ends_with_ws = false;
+	handle->ends_with_lb = false;
+	handle->trailing_lb = false;
+	handle->size0 = lines > 0;
+	handle->valid_anchor = false;
+
+	/* and take the ref */
+	fy_input_ref(handle->fyi);
 
 	return 0;
 }
 
 int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 {
+	struct fy_atom *handle;
 	int c, rc;
 
 	if (!fyp || !fyt)
 		return -1;
 
+	if (!(fyp->cfg.flags & FYPCF_PARSE_COMMENTS))
+		return 0;
+
 	/* if a last comment exists and is valid */
-	if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
-	    fy_atom_is_set(&fyp->last_comment)) {
-		memcpy(&fyt->comment[fycp_top], &fyp->last_comment, sizeof(fyp->last_comment));
+	if (fy_atom_is_set(&fyp->last_comment) &&
+	    (handle = fy_token_comment_handle(fyt, fycp_top, true)) != NULL) {
+		assert (!fy_atom_is_set(handle));
+		*handle = fyp->last_comment;
 		memset(&fyp->last_comment, 0, sizeof(fyp->last_comment));
 	}
 
@@ -936,7 +946,9 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 		fy_advance(fyp, c);
 
 	if (c == '#') {
-		rc = fy_scan_comment(fyp, &fyt->comment[fycp_right], false);
+		handle = fy_token_comment_handle(fyt, fycp_right, true);
+
+		rc = fy_scan_comment(fyp, handle, false);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_scan_comment() failed");
 	}
@@ -951,6 +963,7 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 	int c, c_after_ws, i, rc = 0;
 	bool tabs_allowed;
 	ssize_t offset;
+	struct fy_atom *handle;
 
 	memset(&fyp->last_comment, 0, sizeof(fyp->last_comment));
 
@@ -992,7 +1005,12 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 
 		/* comment? */
 		if (c == '#') {
-			rc = fy_scan_comment(fyp, &fyp->last_comment, false);
+
+			handle = NULL;
+			if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS)
+				handle = &fyp->last_comment;
+
+			rc = fy_scan_comment(fyp, handle, false);
 			fyp_error_check(fyp, !rc, err_out_rc,
 					"fy_scan_comment() failed");
 		}
@@ -2066,6 +2084,7 @@ int fy_fetch_flow_collection_entry(struct fy_parser *fyp, int c)
 {
 	enum fy_token_type type = FYTT_NONE;
 	struct fy_token *fyt, *fyt_last;
+	struct fy_atom *handle;
 	int rc;
 
 	type = FYTT_FLOW_ENTRY;
@@ -2112,7 +2131,11 @@ int fy_fetch_flow_collection_entry(struct fy_parser *fyp, int c)
 		if (fyt_last)
 			fyt = fyt_last;
 
-		rc = fy_scan_comment(fyp, &fyt->comment[fycp_right], true);
+		handle = NULL;
+		if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS)
+			handle = fy_token_comment_handle(fyt, fycp_right, true);
+
+		rc = fy_scan_comment(fyp, handle, true);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_scan_comment() failed");
 	}
@@ -2222,6 +2245,7 @@ int fy_fetch_key(struct fy_parser *fyp, int c)
 	struct fy_simple_key_mark skm;
 	bool target_simple_key_allowed;
 	struct fy_token *fyt;
+	struct fy_atom *handle;
 
 	fyp_error_check(fyp, c == '?', err_out,
 			"illegal block entry or key mark");
@@ -2276,7 +2300,12 @@ int fy_fetch_key(struct fy_parser *fyp, int c)
 
 	/* comment? */
 	if (c == '#') {
-		rc = fy_scan_comment(fyp, &fyt->comment[fycp_right], false);
+
+		handle = NULL;
+		if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS)
+			handle = fy_token_comment_handle(fyt, fycp_right, true);
+
+		rc = fy_scan_comment(fyp, handle, false);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_scan_comment() failed");
 	}
@@ -2299,6 +2328,7 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 	bool target_simple_key_allowed, is_complex, has_bmap;
 	bool push_bmap_start, push_key_only, did_purge, final_complex_key;
 	bool is_multiline __FY_DEBUG_UNUSED__;
+	struct fy_atom *chandle;
 	int rc;
 
 	fyp_error_check(fyp, c == ':', err_out,
@@ -2445,7 +2475,11 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 
 		/* comment? */
 		if (c == '#') {
-			rc = fy_scan_comment(fyp, &fyt_insert->comment[fycp_right], false);
+			chandle = NULL;
+			if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS)
+				chandle = fy_token_comment_handle(fyt_insert, fycp_right, true);
+
+			rc = fy_scan_comment(fyp, chandle, false);
 			fyp_error_check(fyp, !rc, err_out_rc,
 					"fy_scan_comment() failed");
 		}
@@ -2839,9 +2873,8 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 
 	/* comment? */
 	if (c == '#') {
-		struct fy_atom comment;
-
-		rc = fy_scan_comment(fyp, &comment, true);
+		/* XXX just ignore this one */
+		rc = fy_scan_comment(fyp, NULL, true);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_scan_comment() failed");
 	}
@@ -3163,9 +3196,11 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	fyp_error_check(fyp, fyt, err_out_rc,
 			"fy_token_queue() failed");
 
-	rc = fy_attach_comments_if_any(fyp, fyt);
-	fyp_error_check(fyp, !rc, err_out_rc,
-			"fy_attach_right_hand_comment() failed");
+	if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS) {
+		rc = fy_attach_comments_if_any(fyp, fyt);
+		fyp_error_check(fyp, !rc, err_out_rc,
+				"fy_attach_right_hand_comment() failed");
+	}
 
 	return 0;
 
@@ -3886,9 +3921,11 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 			"invalid comment without whitespace after %s scalar",
 				is_single ? "single-quoted" : "double-quoted");
 
-	rc = fy_attach_comments_if_any(fyp, fyt);
-	fyp_error_check(fyp, !rc, err_out_rc,
-			"fy_attach_right_hand_comment() failed");
+	if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS) {
+		rc = fy_attach_comments_if_any(fyp, fyt);
+		fyp_error_check(fyp, !rc, err_out_rc,
+				"fy_attach_right_hand_comment() failed");
+	}
 
 	return 0;
 
@@ -3966,9 +4003,11 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 	fyp->simple_key_allowed = handle.has_lb;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 
-	rc = fy_attach_comments_if_any(fyp, fyt);
-	fyp_error_check(fyp, !rc, err_out_rc,
-			"fy_attach_right_hand_comment() failed");
+	if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS) {
+		rc = fy_attach_comments_if_any(fyp, fyt);
+		fyp_error_check(fyp, !rc, err_out_rc,
+				"fy_attach_right_hand_comment() failed");
+	}
 
 	return 0;
 

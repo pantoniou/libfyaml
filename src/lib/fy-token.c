@@ -48,7 +48,6 @@ enum fy_token_type fy_token_get_type(struct fy_token *fyt)
 struct fy_token *fy_token_alloc(void)
 {
 	struct fy_token *fyt;
-	unsigned int i;
 
 	fyt = malloc(sizeof(*fyt));
 	if (!fyt)
@@ -57,26 +56,27 @@ struct fy_token *fy_token_alloc(void)
 	memset(fyt, 0, sizeof(*fyt));
 
 	fyt->type = FYTT_NONE;
-	fyt->analyze_flags = 0;
-	fyt->text_len = 0;
-	fyt->text = NULL;
-	fyt->text0 = NULL;
-	fyt->handle.fyi = NULL;
-	for (i = 0; i < sizeof(fyt->comment)/sizeof(fyt->comment[0]); i++)
-		fyt->comment[i].fyi = NULL;
-
 	fyt->refs = 1;
 
 	return fyt;
 }
 
-void fy_token_free(struct fy_token *fyt)
+void fy_token_cleanup(struct fy_token *fyt)
 {
+	int i;
+
 	if (!fyt)
 		return;
 
 	/* release reference */
 	fy_input_unref(fyt->handle.fyi);
+
+	/* release comment references */
+	if (fyt->comment) {
+		for (i = 0; i < fycp_max; i++)
+			fy_input_unref(fyt->comment[i].fyi);
+		free(fyt->comment);
+	}
 
 	switch (fyt->type) {
 	case FYTT_TAG:
@@ -95,8 +95,7 @@ void fy_token_free(struct fy_token *fyt)
 		break;
 
 	case FYTT_PE_MAP_KEY:
-		if (fyt->map_key.fyd)
-			fy_document_destroy(fyt->map_key.fyd);
+		fy_document_destroy(fyt->map_key.fyd);
 		break;
 
 	case FYTT_SCALAR:
@@ -110,6 +109,16 @@ void fy_token_free(struct fy_token *fyt)
 
 	if (fyt->text0)
 		free(fyt->text0);
+
+	memset(fyt, 0, sizeof(*fyt));
+}
+
+void fy_token_free(struct fy_token *fyt)
+{
+	if (!fyt)
+		return;
+
+	fy_token_cleanup(fyt);
 
 	free(fyt);
 }
@@ -1718,3 +1727,25 @@ fy_tag_directive_token_tag(struct fy_token *fyt)
 	return &fyt->tag_directive.tag;
 }
 
+struct fy_atom *fy_token_comment_handle(struct fy_token *fyt, enum fy_comment_placement placement, bool alloc)
+{
+	struct fy_atom *handle;
+	size_t size;
+
+	if (!fyt || (unsigned int)placement >= fycp_max)
+		return NULL;
+
+	if (!fyt->comment) {
+		if (!alloc)
+			return NULL;
+
+		size = sizeof(*fyt->comment) * fycp_max;
+		fyt->comment = malloc(size);
+		if (!fyt->comment)
+			return NULL;
+		memset(fyt->comment, 0, size);
+	}
+	handle = &fyt->comment[placement];
+
+	return handle;
+}
