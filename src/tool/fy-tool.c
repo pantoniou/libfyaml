@@ -69,6 +69,7 @@
 #define OPT_PREFER_RECURSIVE		2009
 #define OPT_DUMP_PATHEXPR		2010
 #define OPT_NOEXEC			2011
+#define OPT_NULL_OUTPUT			2012
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -120,6 +121,7 @@ static struct option lopts[] = {
 	{"prefer-recursive",	no_argument,		0,	OPT_PREFER_RECURSIVE },
 	{"dump-pathexpr",	no_argument,		0,	OPT_DUMP_PATHEXPR },
 	{"noexec",		no_argument,		0,	OPT_NOEXEC },
+	{"null-output",		no_argument,		0,	OPT_NULL_OUTPUT },
 	{"to",			required_argument,	0,	'T' },
 	{"from",		required_argument,	0,	'F' },
 	{"quiet",		no_argument,		0,	'q' },
@@ -188,6 +190,10 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--sloppy-flow-indentation: Enable sloppy indentation in flow mode)"
 						" (default %s)\n",
 						SLOPPY_FLOW_INDENTATION_DEFAULT ? "true" : "false");
+	fprintf(fp, "\t--prefer-recursive       : Prefer recursive instead of iterative algorighms"
+						" (default %s)\n",
+						PREFER_RECURSIVE_DEFAULT ? "true" : "false");
+	fprintf(fp, "\t--null-output            : Do not generate output (for scanner profiling)\n");
 	fprintf(fp, "\t--quiet, -q              : Quiet operation, do not "
 						"output messages (default %s)\n",
 						QUIET_DEFAULT ? "true" : "false");
@@ -1116,6 +1122,7 @@ int main(int argc, char *argv[])
 	struct fy_node *fyn_start;
 	bool dump_pathexpr = false;
 	bool noexec = false;
+	bool null_output = false;
 	bool stdin_input;
 	void *res_iter;
 
@@ -1356,6 +1363,9 @@ int main(int argc, char *argv[])
 		case OPT_NOEXEC:
 			noexec = true;
 			break;
+		case OPT_NULL_OUTPUT:
+			null_output = true;
+			break;
 		case OPT_YAML_1_1:
 			cfg.flags &= ~(FYPCF_DEFAULT_VERSION_MASK << FYPCF_DEFAULT_VERSION_SHIFT);
 			cfg.flags |= FYPCF_DEFAULT_VERSION_1_1;
@@ -1492,7 +1502,10 @@ int main(int argc, char *argv[])
 
 			if (!streaming) {
 				while ((fyd = fy_parse_load_document(fyp)) != NULL) {
-					rc = fy_emit_document(fye, fyd);
+					if (!null_output)
+						rc = fy_emit_document(fye, fyd);
+					else
+						rc = 0;
 					fy_parse_document_destroy(fyp, fyd);
 					if (rc)
 						goto cleanup;
@@ -1501,9 +1514,11 @@ int main(int argc, char *argv[])
 				}
 			} else {
 				while ((fyev = fy_parser_parse(fyp)) != NULL) {
-					rc = fy_emit_event(fye, fyev);
-					if (rc)
-						goto cleanup;
+					if (!null_output) {
+						rc = fy_emit_event(fye, fyev);
+						if (rc)
+							goto cleanup;
+					}
 				}
 				count++;
 			}
