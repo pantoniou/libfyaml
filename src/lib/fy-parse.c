@@ -972,12 +972,15 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 	ssize_t offset;
 	struct fy_atom *handle;
 
-	memset(&fyp->last_comment, 0, sizeof(fyp->last_comment));
+	if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) && fy_atom_is_set(&fyp->last_comment)) {
+		fy_input_unref(fyp->last_comment.fyi);
+		fyp->last_comment.fyi = NULL;
+	}
 
 	while ((c = fy_parse_peek(fyp)) >= 0) {
 
 		/* is it BOM? skip over it */
-		if (fyp_column(fyp) == 0 && c == FY_UTF8_BOM)
+		if (c == FY_UTF8_BOM && fyp_column(fyp) == 0)
 			fy_advance(fyp, c);
 
 		if (!fyp_tabsize(fyp)) {
@@ -1028,7 +1031,7 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 		if (!fyp_is_lb(fyp, c)) {
 			fyp_scan_debug(fyp, "next token starts with c='%s'",
 					fy_utf8_format_a(c, fyue_singlequote));
-			break;
+			return 0;
 		}
 
 		/* line break */
