@@ -146,14 +146,71 @@ static inline bool fy_token_text_is_direct(struct fy_token *fyt)
 	return fyt->text && fyt->text != fyt->text0;
 }
 
-struct fy_token *fy_token_alloc(void);
-void fy_token_free(struct fy_token *fyt);
-struct fy_token *fy_token_ref(struct fy_token *fyt);
-void fy_token_unref(struct fy_token *fyt);
-void fy_token_list_unref_all(struct fy_token_list *fytl);
+struct fy_token *fy_token_alloc_rl(struct fy_token_list *fytl);
+void fy_token_clean_rl(struct fy_token_list *fytl, struct fy_token *fyt);
+void fy_token_free_rl(struct fy_token_list *fytl, struct fy_token *fyt);
+void fy_token_list_unref_all_rl(struct fy_token_list *fytl, struct fy_token_list *fytl_tofree);
 
-struct fy_token *fy_token_create(enum fy_token_type type, ...);
+static inline void
+fy_token_unref_rl(struct fy_token_list *fytl, struct fy_token *fyt)
+{
+	if (!fyt)
+		return;
+
+	assert(fyt->refs > 0);
+
+	if (--fyt->refs == 0)
+		fy_token_free_rl(fytl, fyt);
+}
+
+static inline struct fy_token *
+fy_token_alloc(void)
+{
+	return fy_token_alloc_rl(NULL);
+}
+
+static inline void
+fy_token_clean(struct fy_token *fyt)
+{
+	return fy_token_clean_rl(NULL, fyt);
+}
+
+static inline void
+fy_token_free(struct fy_token *fyt)
+{
+	return fy_token_free_rl(NULL, fyt);
+}
+
+static inline struct fy_token *
+fy_token_ref(struct fy_token *fyt)
+{
+	/* take care of overflow */
+	if (!fyt)
+		return NULL;
+	assert(fyt->refs + 1 > 0);
+	fyt->refs++;
+
+	return fyt;
+}
+
+static inline void
+fy_token_unref(struct fy_token *fyt)
+{
+	return fy_token_unref_rl(NULL, fyt);
+}
+
+static inline void
+fy_token_list_unref_all(struct fy_token_list *fytl_tofree)
+{
+	return fy_token_list_unref_all_rl(NULL, fytl_tofree);
+}
+
+/* recycling aware */
+struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_type type, va_list ap);
+struct fy_token *fy_token_create_rl(struct fy_token_list *fytl, enum fy_token_type type, ...);
+
 struct fy_token *fy_token_vcreate(enum fy_token_type type, va_list ap);
+struct fy_token *fy_token_create(enum fy_token_type type, ...);
 
 static inline struct fy_token *
 fy_token_list_vqueue(struct fy_token_list *fytl, enum fy_token_type type, va_list ap)

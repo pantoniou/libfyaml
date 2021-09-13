@@ -102,6 +102,7 @@ struct fy_emitter {
 
 	/* recycled */
 	struct fy_eventp_list recycled_eventp;
+	struct fy_token_list recycled_token;
 };
 
 void fy_emit_write(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int len);

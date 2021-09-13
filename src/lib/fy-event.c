@@ -45,7 +45,7 @@ struct fy_eventp *fy_eventp_alloc(void)
 	return fyep;
 }
 
-void fy_eventp_clean(struct fy_eventp *fyep)
+void fy_eventp_clean_rl(struct fy_token_list *fytl, struct fy_eventp *fyep)
 {
 	struct fy_event *fye;
 
@@ -57,45 +57,64 @@ void fy_eventp_clean(struct fy_eventp *fyep)
 	case FYET_NONE:
 		break;
 	case FYET_STREAM_START:
-		fy_token_unref(fye->stream_start.stream_start);
+		fy_token_unref_rl(fytl, fye->stream_start.stream_start);
 		break;
 	case FYET_STREAM_END:
-		fy_token_unref(fye->stream_end.stream_end);
+		fy_token_unref_rl(fytl, fye->stream_end.stream_end);
 		break;
 	case FYET_DOCUMENT_START:
-		fy_token_unref(fye->document_start.document_start);
+		fy_token_unref_rl(fytl, fye->document_start.document_start);
 		fy_document_state_unref(fye->document_start.document_state);
 		break;
 	case FYET_DOCUMENT_END:
-		fy_token_unref(fye->document_end.document_end);
+		fy_token_unref_rl(fytl, fye->document_end.document_end);
 		break;
 	case FYET_MAPPING_START:
-		fy_token_unref(fye->mapping_start.anchor);
-		fy_token_unref(fye->mapping_start.tag);
-		fy_token_unref(fye->mapping_start.mapping_start);
+		fy_token_unref_rl(fytl, fye->mapping_start.anchor);
+		fy_token_unref_rl(fytl, fye->mapping_start.tag);
+		fy_token_unref_rl(fytl, fye->mapping_start.mapping_start);
 		break;
 	case FYET_MAPPING_END:
-		fy_token_unref(fye->mapping_end.mapping_end);
+		fy_token_unref_rl(fytl, fye->mapping_end.mapping_end);
 		break;
 	case FYET_SEQUENCE_START:
-		fy_token_unref(fye->sequence_start.anchor);
-		fy_token_unref(fye->sequence_start.tag);
-		fy_token_unref(fye->sequence_start.sequence_start);
+		fy_token_unref_rl(fytl, fye->sequence_start.anchor);
+		fy_token_unref_rl(fytl, fye->sequence_start.tag);
+		fy_token_unref_rl(fytl, fye->sequence_start.sequence_start);
 		break;
 	case FYET_SEQUENCE_END:
-		fy_token_unref(fye->sequence_end.sequence_end);
+		fy_token_unref_rl(fytl, fye->sequence_end.sequence_end);
 		break;
 	case FYET_SCALAR:
-		fy_token_unref(fye->scalar.anchor);
-		fy_token_unref(fye->scalar.tag);
-		fy_token_unref(fye->scalar.value);
+		fy_token_unref_rl(fytl, fye->scalar.anchor);
+		fy_token_unref_rl(fytl, fye->scalar.tag);
+		fy_token_unref_rl(fytl, fye->scalar.value);
 		break;
 	case FYET_ALIAS:
-		fy_token_unref(fye->alias.anchor);
+		fy_token_unref_rl(fytl, fye->alias.anchor);
 		break;
 	}
 
 	fye->type = FYET_NONE;
+}
+
+void fy_parse_eventp_clean(struct fy_parser *fyp, struct fy_eventp *fyep)
+{
+	struct fy_token_list *fytl;
+
+	if (!fyp || !fyep)
+		return;
+
+	fytl = !fyp->suppress_recycling ? &fyp->recycled_token : NULL;
+	fy_eventp_clean_rl(fytl, fyep);
+}
+
+void fy_emit_eventp_clean(struct fy_emitter *emit, struct fy_eventp *fyep)
+{
+	if (!emit || !fyep)
+		return;
+
+	fy_eventp_clean_rl(&emit->recycled_token, fyep);
 }
 
 void fy_eventp_free(struct fy_eventp *fyep)
@@ -104,7 +123,7 @@ void fy_eventp_free(struct fy_eventp *fyep)
 		return;
 
 	/* clean, safe to do */
-	fy_eventp_clean(fyep);
+	fy_eventp_clean_rl(NULL, fyep);
 
 	free(fyep);
 }
@@ -139,7 +158,7 @@ void fy_parse_eventp_recycle(struct fy_parser *fyp, struct fy_eventp *fyep)
 		return;
 
 	/* clean, safe to do */
-	fy_eventp_clean(fyep);
+	fy_parse_eventp_clean(fyp, fyep);
 
 	/* and push to the parser recycle list */
 	if (!fyp->suppress_recycling)
@@ -174,6 +193,18 @@ void fy_parser_event_free(struct fy_parser *fyp, struct fy_event *fye)
 	fy_parse_eventp_recycle(fyp, fyep);
 }
 
+void fy_emit_eventp_recycle(struct fy_emitter *emit, struct fy_eventp *fyep)
+{
+	if (!emit || !fyep)
+		return;
+
+	/* clean, safe to do */
+	fy_emit_eventp_clean(emit, fyep);
+
+	/* and push to the parser recycle list */
+	fy_eventp_list_push(&emit->recycled_eventp, fyep);
+}
+
 void fy_emit_event_free(struct fy_emitter *emit, struct fy_event *fye)
 {
 	struct fy_eventp *fyep;
@@ -184,18 +215,6 @@ void fy_emit_event_free(struct fy_emitter *emit, struct fy_event *fye)
 	fyep = container_of(fye, struct fy_eventp, e);
 
 	fy_emit_eventp_recycle(emit, fyep);
-}
-
-void fy_emit_eventp_recycle(struct fy_emitter *emit, struct fy_eventp *fyep)
-{
-	if (!emit || !fyep)
-		return;
-
-	/* clean, safe to do */
-	fy_eventp_clean(fyep);
-
-	/* and push to the parser recycle list */
-	fy_eventp_list_push(&emit->recycled_eventp, fyep);
 }
 
 void fy_emit_eventp_vacuum(struct fy_emitter *emit)

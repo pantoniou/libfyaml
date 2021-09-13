@@ -1518,6 +1518,8 @@ int main(int argc, char *argv[])
 						rc = fy_emit_event(fye, fyev);
 						if (rc)
 							goto cleanup;
+					} else {
+						fy_parser_event_free(fyp, fyev);
 					}
 				}
 				count++;

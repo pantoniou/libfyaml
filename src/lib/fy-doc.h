@@ -107,6 +107,8 @@ struct fy_document {
 
 	fy_node_meta_clear_fn meta_clear_fn;
 	void *meta_user;
+
+	struct fy_token_list recycled_token;
 };
 /* only the list declaration/methods */
 FY_TYPE_DECL_LIST(document);

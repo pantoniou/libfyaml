@@ -276,6 +276,7 @@ struct fy_parser {
 	struct fy_eventp_list recycled_eventp;
 	struct fy_flow_list recycled_flow;
 	struct fy_path_component_list recycled_path_component;
+	struct fy_token_list recycled_token;
 
 	/* the diagnostic object */
 	struct fy_diag *diag;
@@ -659,5 +660,11 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep);
 
 struct fy_document *
 fy_parse_load_document_with_builder(struct fy_parser *fyp);
+
+static inline struct fy_token_list *
+fy_parse_recycled_token(struct fy_parser *fyp)
+{
+	return fyp && !fyp->suppress_recycling ? &fyp->recycled_token : NULL;
+}
 
 #endif
