@@ -240,7 +240,6 @@ struct fy_reader {
 	struct fy_reader_input_cfg current_input_cfg;
 	struct fy_input *current_input;
 
-	size_t current_pos;		/* from start of stream */
 	size_t current_input_pos;	/* from start of input */
 	const void *current_ptr;	/* current pointer into the buffer */
 	int current_c;			/* current utf8 character at current_ptr (-1 if not cached) */
@@ -576,7 +575,6 @@ fy_reader_advance_octets(struct fy_reader *fyr, size_t advance)
 	fyr->current_input_pos += advance;
 	fyr->current_ptr += advance;
 	fyr->current_left -= advance;
-	fyr->current_pos += advance;
 
 	fyr->current_c = fy_utf8_get(fyr->current_ptr, fyr->current_left, &fyr->current_w);
 }

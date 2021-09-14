@@ -887,10 +887,10 @@ const void *fy_reader_ensure_lookahead_slow_path(struct fy_reader *fyr, size_t s
 	p = fy_reader_ptr(fyr, leftp);
 	if (!p || *leftp < size) {
 
-		fyr_debug(fyr, "ensure lookahead size=%zd left=%zd (%s - %zu/%zu)",
+		fyr_debug(fyr, "ensure lookahead size=%zd left=%zd (%s - %zu)",
 				size, *leftp,
 				fy_input_get_filename(fyr->current_input),
-				fyr->current_pos, fyr->current_input_pos);
+				fyr->current_input_pos);
 
 		p = fy_reader_input_try_pull(fyr, fyr->current_input, size, leftp);
 		if (!p || *leftp < size)
