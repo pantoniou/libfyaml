@@ -3507,11 +3507,11 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 			}
 
 			/* check whether we have a JSON unescaped character */
-			is_json_unesc = fy_is_json_unescaped(c);
+			is_json_unesc = fy_is_json_unescaped_range_only(c);
 			if (!is_json_unesc)
 				has_json_esc = true;
 
-			if (!is_single && fy_reader_json_mode(fyr) && !is_json_unesc) {
+			if (!is_single && fy_reader_json_mode(fyr) && has_json_esc) {
 				FYR_PARSE_ERROR(fyr, 0, 2, FYEM_SCAN,
 					"Invalid JSON unescaped character");
 				goto err_out;

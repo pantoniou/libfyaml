@@ -56,9 +56,9 @@ struct fy_token *fy_token_alloc_rl(struct fy_token_list *fytl)
 		fyt = malloc(sizeof(*fyt));
 		if (!fyt)
 			return NULL;
-	}
 
-	memset(fyt, 0, sizeof(*fyt));
+		memset(fyt, 0, sizeof(*fyt));
+	}
 
 	fyt->type = FYTT_NONE;
 	fyt->refs = 1;
@@ -128,7 +128,6 @@ void fy_token_clean_rl(struct fy_token_list *fytl, struct fy_token *fyt)
 	if (fyt->text0)
 		free(fyt->text0);
 
-	memset(fyt, 0, sizeof(*fyt));
 	fyt->type = FYTT_NONE;
 	fyt->analyze_flags = 0;
 	fyt->text_len = 0;
