@@ -46,6 +46,10 @@
 
 #define OPT_DISABLE_MMAP		128
 #define OPT_USE_CALLBACK		129
+#define OPT_DISABLE_ACCEL		130
+#define OPT_DISABLE_BUFFERING		131
+#define OPT_DISABLE_DEPTH_LIMIT		132
+#define OPT_NULL_OUTPUT			133
 
 #define OPT_SLOPPY_FLOW_INDENTATION	2007
 
@@ -66,7 +70,11 @@ static struct option lopts[] = {
 	{"diag",		required_argument,	0,	'D' },
 	{"module",		required_argument,	0,	'M' },
 	{"disable-mmap",	no_argument,		0,	OPT_DISABLE_MMAP },
+	{"disable-accel",	no_argument,		0,	OPT_DISABLE_ACCEL },
+	{"disable-buffering",	no_argument,		0,	OPT_DISABLE_BUFFERING },
+	{"disable-depth-limit",	no_argument,		0,	OPT_DISABLE_DEPTH_LIMIT },
 	{"use-callback",	no_argument,		0,	OPT_USE_CALLBACK },
+	{"null-output",		no_argument,		0,	OPT_NULL_OUTPUT },
 	{"walk-path",		required_argument,	0,	'W' },
 	{"walk-start",		required_argument,	0,	'S' },
 	{"yaml-1.1",		no_argument,		0,	OPT_YAML_1_1 },
@@ -459,12 +467,13 @@ void dump_testsuite_event(FILE *fp, struct fy_parser *fyp, struct fy_event *fye)
 	}
 }
 
-int do_testsuite(FILE *fp, struct fy_parser *fyp)
+int do_testsuite(FILE *fp, struct fy_parser *fyp, bool null_output)
 {
 	struct fy_eventp *fyep;
 
 	while ((fyep = fy_parse_private(fyp)) != NULL) {
-		dump_testsuite_event(fp, fyp, &fyep->e);
+		if (!null_output)
+			dump_testsuite_event(fp, fyp, &fyep->e);
 		fy_parse_eventp_recycle(fyp, fyep);
 	}
 
@@ -649,7 +658,7 @@ int do_copy(struct fy_parser *fyp)
 	return 0;
 }
 
-int do_dump(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort)
+int do_dump(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort, bool null_output)
 {
 	struct fy_document *fyd;
 	unsigned int flags;
@@ -669,7 +678,8 @@ int do_dump(struct fy_parser *fyp, int indent, int width, bool resolve, bool sor
 				return -1;
 		}
 
-		fy_emit_document_to_file(fyd, flags, NULL);
+		if (!null_output)
+			fy_emit_document_to_file(fyd, flags, NULL);
 
 		fy_parse_document_destroy(fyp, fyd);
 
@@ -679,7 +689,7 @@ int do_dump(struct fy_parser *fyp, int indent, int width, bool resolve, bool sor
 	return count > 0 ? 0 : -1;
 }
 
-int do_dump2(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort)
+int do_dump2(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort, bool null_output)
 {
 	struct fy_document *fyd;
 	struct fy_document_builder *fydb;
@@ -1028,7 +1038,7 @@ void dump_libyaml_testsuite_event(FILE *fp, yaml_event_t *event)
 	}
 }
 
-int do_libyaml_testsuite(FILE *fp, yaml_parser_t *parser)
+int do_libyaml_testsuite(FILE *fp, yaml_parser_t *parser, bool null_output)
 {
         yaml_event_t event;
         int done = 0;
@@ -1038,7 +1048,8 @@ int do_libyaml_testsuite(FILE *fp, yaml_parser_t *parser)
 		if (!yaml_parser_parse(parser, &event))
 			return -1;
 
-		dump_libyaml_testsuite_event(fp, &event);
+		if (!null_output)
+			dump_libyaml_testsuite_event(fp, &event);
 
 		done = (event.type == YAML_STREAM_END_EVENT);
 
@@ -1048,7 +1059,7 @@ int do_libyaml_testsuite(FILE *fp, yaml_parser_t *parser)
 	return 0;
 }
 
-int do_libyaml_dump(yaml_parser_t *parser, yaml_emitter_t *emitter)
+int do_libyaml_dump(yaml_parser_t *parser, yaml_emitter_t *emitter, bool null_output)
 {
         yaml_document_t document;
         int done = 0;
@@ -1068,7 +1079,8 @@ int do_libyaml_dump(yaml_parser_t *parser, yaml_emitter_t *emitter)
 			if (counter > 0)
 				printf("# document seperator\n");
 
-			yaml_emitter_dump(emitter, &document);
+			if (!null_output)
+				yaml_emitter_dump(emitter, &document);
 			counter++;
 
 			yaml_emitter_flush(emitter);
@@ -2809,6 +2821,7 @@ int main(int argc, char *argv[])
 	const char *walkpath = "/";
 	const char *walkstart = "/";
 	bool use_callback = false;
+	bool null_output = false;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -2881,8 +2894,20 @@ int main(int argc, char *argv[])
 		case OPT_DISABLE_MMAP:
 			cfg.flags |= FYPCF_DISABLE_MMAP_OPT;
 			break;
+		case OPT_DISABLE_ACCEL:
+			cfg.flags |= FYPCF_DISABLE_ACCELERATORS;
+			break;
+		case OPT_DISABLE_BUFFERING:
+			cfg.flags |= FYPCF_DISABLE_BUFFERING;
+			break;
+		case OPT_DISABLE_DEPTH_LIMIT:
+			cfg.flags |= FYPCF_DISABLE_DEPTH_LIMIT;
+			break;
 		case OPT_USE_CALLBACK:
 			use_callback = true;
+			break;
+		case OPT_NULL_OUTPUT:
+			null_output = true;
 			break;
 		case OPT_YAML_1_1:
 			cfg.flags &= ~(FYPCF_DEFAULT_VERSION_MASK << FYPCF_DEFAULT_VERSION_SHIFT);
@@ -2976,13 +3001,13 @@ int main(int argc, char *argv[])
 				fprintf(stderr, "  problem='%s' context='%s'\n", parser.problem, parser.context);
 			}
 		} else if (!strcmp(mode, "libyaml-testsuite")) {
-			rc = do_libyaml_testsuite(stdout, &parser);
+			rc = do_libyaml_testsuite(stdout, &parser, null_output);
 			if (rc < 0) {
 				fprintf(stderr, "do_libyaml_testsuite() error %d\n", rc);
 				fprintf(stderr, "  problem='%s' context='%s'\n", parser.problem, parser.context);
 			}
 		} else if (!strcmp(mode, "libyaml-dump")) {
-			rc = do_libyaml_dump(&parser, &emitter);
+			rc = do_libyaml_dump(&parser, &emitter, null_output);
 			if (rc < 0) {
 				fprintf(stderr, "do_libyaml_dump() error %d\n", rc);
 				if (parser.problem)
@@ -3099,19 +3124,19 @@ int main(int argc, char *argv[])
 			goto cleanup;
 		}
 	} else if (!strcmp(mode, "testsuite")) {
-		rc = do_testsuite(stdout, fyp);
+		rc = do_testsuite(stdout, fyp, null_output);
 		if (rc < 0) {
 			/* fprintf(stderr, "do_testsuite() error %d\n", rc); */
 			goto cleanup;
 		}
 	} else if (!strcmp(mode, "dump")) {
-		rc = do_dump(fyp, indent, width, resolve, sort);
+		rc = do_dump(fyp, indent, width, resolve, sort, null_output);
 		if (rc < 0) {
 			/* fprintf(stderr, "do_dump() error %d\n", rc); */
 			goto cleanup;
 		}
 	} else if (!strcmp(mode, "dump2")) {
-		rc = do_dump2(fyp, indent, width, resolve, sort);
+		rc = do_dump2(fyp, indent, width, resolve, sort, null_output);
 		if (rc < 0) {
 			/* fprintf(stderr, "do_dump() error %d\n", rc); */
 			goto cleanup;
@@ -3153,14 +3178,14 @@ int main(int argc, char *argv[])
 		yaml_parser_set_input_file(&parser, fp);
 
 		fprintf(stdout, "LIBYAML:\n");
-		rc = do_libyaml_testsuite(stdout, &parser);
+		rc = do_libyaml_testsuite(stdout, &parser, false);
 		if (rc < 0) {
 			fprintf(stderr, "do_libyaml_testsuite() failed\n");
 			goto cleanup;
 		}
 
 		fprintf(stdout, "LIBFYAML:\n");
-		rc = do_testsuite(stdout, fyp);
+		rc = do_testsuite(stdout, fyp, false);
 		if (rc < 0) {
 			fprintf(stderr, "do_libyaml_testsuite() failed\n");
 			goto cleanup;
