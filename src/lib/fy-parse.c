@@ -971,46 +971,67 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 	bool tabs_allowed;
 	ssize_t offset;
 	struct fy_atom *handle;
+	struct fy_reader *fyr;
+
+	/* json does not have comments or tab handling... */
+	if (fyp_json_mode(fyp)) {
+		/* skip white space including tabs */
+		while ((c = fy_parse_peek(fyp)) >= 0 && (c == ' ' || c == '\t' || c == '\r' || c == '\n'))
+			fy_advance(fyp, c);
+
+		fyp_scan_debug(fyp, "next token starts with c='%s'",
+				fy_utf8_format_a(c, fyue_singlequote));
+		return 0;
+	}
 
 	if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) && fy_atom_is_set(&fyp->last_comment)) {
 		fy_input_unref(fyp->last_comment.fyi);
 		fyp->last_comment.fyi = NULL;
 	}
 
-	while ((c = fy_parse_peek(fyp)) >= 0) {
+	fyr = fyp->reader;
 
-		/* is it BOM? skip over it */
-		if (c == FY_UTF8_BOM && fyp_column(fyp) == 0)
-			fy_advance(fyp, c);
+	/* skip BOM at the start of the stream */
+	if (fyr->current_input_pos == 0 && (c = fy_parse_peek(fyp)) == FY_UTF8_BOM) {
 
-		if (!fyp_tabsize(fyp)) {
-			/* scan ahead until the next non-ws character */
-			/* if it's a flow start one, then tabs are allowed */
-			tabs_allowed = fyp->flow_level || !fyp->simple_key_allowed;
-			if (!tabs_allowed && fy_is_ws(c = fy_parse_peek(fyp))) {
+		fy_advance(fyp, c);
+		/* reset column */
+		fyr->column = 0;
+		fyr->nontab_column = 0;
+	}
+
+	for (;;) {
+
+		tabs_allowed = fyp_tabsize(fyp) || fyp->flow_level || !fyp->simple_key_allowed;
+
+		/* skip white space, tabs are allowed in flow context */
+		/* tabs also allowed in block context but not at start of line or after -?: */
+
+		if (!tabs_allowed) {
+
+			/* skip space only */
+			while (fy_is_space(c = fy_parse_peek(fyp)))
+				fy_advance_space(fyp);
+
+			/* if it's a tab, we need to see if after ws follows a flow start marker */
+			if (fy_is_tab(c)) {
+
+				/* skip all space and tabs */
 				i = 0;
 				offset = -1;
 				while (fy_is_ws(c_after_ws = fy_parse_peek_at_internal(fyp, i, &offset)))
 					i++;
+
 				/* flow start marker after spaces? allow tabs */
-				if (c_after_ws == '{' || c_after_ws == '[')
-					tabs_allowed = true;
-			}
-
-			/* skip white space, tabs are allowed in flow context */
-			/* tabs also allowed in block context but not at start of line or after -?: */
-			while ((c = fy_parse_peek(fyp)) == ' ' || (c == '\t' && tabs_allowed))
-				fy_advance(fyp, c);
-
-			if (c == '\t') {
-				fyp_scan_debug(fyp, "tab as token start (flow_level=%d simple_key_allowed=%s)",
-						fyp->flow_level,
-						fyp->simple_key_allowed ? "true" : "false");
+				if (c_after_ws == '{' || c_after_ws == '[') {
+					fy_advance_by(fyp, i);
+					c = fy_parse_peek(fyp);
+				}
 			}
 		} else {
 			/* skip white space including tabs */
 			while (fy_is_ws(c = fy_parse_peek(fyp)))
-				fy_advance(fyp, c);
+				fy_advance_ws(fyp, c);
 		}
 
 		/* comment? */

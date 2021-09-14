@@ -488,7 +488,7 @@ static inline int
 fy_parse_peek(struct fy_parser *fyp)
 {
 	assert(fyp);
-	return fy_parse_peek_at_offset(fyp, 0);
+	return fy_reader_peek(fyp->reader);
 }
 
 static inline void
@@ -496,6 +496,20 @@ fy_advance(struct fy_parser *fyp, int c)
 {
 	assert(fyp);
 	fy_reader_advance(fyp->reader, c);
+}
+
+static inline void
+fy_advance_ws(struct fy_parser *fyp, int c)
+{
+	assert(fyp);
+	fy_reader_advance_ws(fyp->reader, c);
+}
+
+static inline void
+fy_advance_space(struct fy_parser *fyp)
+{
+	assert(fyp);
+	fy_reader_advance_space(fyp->reader);
 }
 
 static inline int

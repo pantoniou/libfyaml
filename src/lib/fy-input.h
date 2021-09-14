@@ -497,7 +497,7 @@ fy_reader_peek_at_offset(struct fy_reader *fyr, size_t offset)
 	size_t left;
 	int w;
 
-	if (offset == 0 && fyr->current_w && fyr->current_c >= 0)
+	if (offset == 0 && fyr->current_c >= 0)
 		return fyr->current_c;
 
 	/* ensure that the first octet at least is pulled in */
@@ -564,49 +564,16 @@ fy_reader_peek_at(struct fy_reader *fyr, int pos)
 static inline int
 fy_reader_peek(struct fy_reader *fyr)
 {
+	if (fyr->current_c >= 0)
+		return fyr->current_c;
+
 	return fy_reader_peek_at_offset(fyr, 0);
 }
 
 static inline void
 fy_reader_advance_octets(struct fy_reader *fyr, size_t advance)
 {
-	struct fy_input *fyi;
-	size_t left __FY_DEBUG_UNUSED__;
-
-	assert(fyr);
-	assert(fyr->current_input);
-
 	assert(fyr->current_left >= advance);
-
-	fyi = fyr->current_input;
-
-	switch (fyi->cfg.type) {
-	case fyit_file:
-		if (fyi->addr) {
-			left = fyi->file.length - fyr->current_input_pos;
-			break;
-		}
-		/* fall-through */
-
-	case fyit_stream:
-	case fyit_callback:
-		left = fyi->read - fyr->current_input_pos;
-		break;
-
-	case fyit_memory:
-		left = fyi->cfg.memory.size - fyr->current_input_pos;
-		break;
-
-	case fyit_alloc:
-		left = fyi->cfg.alloc.size - fyr->current_input_pos;
-		break;
-
-	default:
-		assert(0);	/* no streams */
-		break;
-	}
-
-	assert(left >= advance);
 
 	fyr->current_input_pos += advance;
 	fyr->current_ptr += advance;
@@ -642,6 +609,29 @@ fy_reader_advance(struct fy_reader *fyr, int c)
 		fyr->column++;
 		fyr->nontab_column++;
 	}
+}
+
+static inline void
+fy_reader_advance_ws(struct fy_reader *fyr, int c)
+{
+	/* skip this character */
+	fy_reader_advance_octets(fyr, fy_utf8_width(c));
+
+	if (fyr->tabsize && fy_is_tab(c)) {
+		fyr->column += (fyr->tabsize - (fyr->column % fyr->tabsize));
+		fyr->nontab_column++;
+	} else {
+		fyr->column++;
+		fyr->nontab_column++;
+	}
+}
+
+static inline void
+fy_reader_advance_space(struct fy_reader *fyr)
+{
+	fy_reader_advance_octets(fyr, 1);
+	fyr->column++;
+	fyr->nontab_column++;
 }
 
 static inline int
