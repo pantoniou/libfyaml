@@ -42,6 +42,12 @@ fy_utf8_is_valid(int c)
 	return c >= 0 && !((c >= 0xd800 && c <= 0xdfff) || c >= 0x110000);
 }
 
+static inline bool
+fy_utf8_is_printable_ascii(int c)
+{
+	return c >= 0x20 && c <= 0x7e;
+}
+
 /* generic utf8 decoder (not inlined) */
 int fy_utf8_get_generic(const void *ptr, int left, int *widthp);
 

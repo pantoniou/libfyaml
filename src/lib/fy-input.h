@@ -583,32 +583,23 @@ fy_reader_advance_octets(struct fy_reader *fyr, size_t advance)
 	fyr->current_c = fy_utf8_get(fyr->current_ptr, fyr->current_left, &fyr->current_w);
 }
 
+void fy_reader_advance_slow_path(struct fy_reader *fyr, int c);
+
+static inline void
+fy_reader_advance_printable_ascii(struct fy_reader *fyr, int c)
+{
+	fy_reader_advance_octets(fyr, 1);
+	fyr->column++;
+	fyr->nontab_column++;
+}
+
 static inline void
 fy_reader_advance(struct fy_reader *fyr, int c)
 {
-	bool is_line_break = false;
-
-	/* skip this character */
-	fy_reader_advance_octets(fyr, fy_utf8_width(c));
-
-	/* first check for CR/LF */
-	if (c == '\r' && fy_reader_peek(fyr) == '\n') {
-		fy_reader_advance_octets(fyr, 1);
-		is_line_break = true;
-	} else if (fy_reader_is_lb(fyr, c))
-		is_line_break = true;
-
-	if (is_line_break) {
-		fyr->column = 0;
-		fyr->nontab_column = 0;
-		fyr->line++;
-	} else if (fyr->tabsize && fy_is_tab(c)) {
-		fyr->column += (fyr->tabsize - (fyr->column % fyr->tabsize));
-		fyr->nontab_column++;
-	} else {
-		fyr->column++;
-		fyr->nontab_column++;
-	}
+	if (fy_utf8_is_printable_ascii(c))
+		fy_reader_advance_printable_ascii(fyr, c);
+	else
+		fy_reader_advance_slow_path(fyr, c);
 }
 
 static inline void

@@ -754,6 +754,36 @@ err_out:
 	return NULL;
 }
 
+void
+fy_reader_advance_slow_path(struct fy_reader *fyr, int c)
+{
+	bool is_line_break = false;
+	size_t w;
+
+	/* skip this character (optimize case of being the current) */
+	w = c == fyr->current_c ? (size_t)fyr->current_w : fy_utf8_width(c);
+	fy_reader_advance_octets(fyr, w);
+
+	/* first check for CR/LF */
+	if (c == '\r' && fy_reader_peek(fyr) == '\n') {
+		fy_reader_advance_octets(fyr, 1);
+		is_line_break = true;
+	} else if (fy_reader_is_lb(fyr, c))
+		is_line_break = true;
+
+	if (is_line_break) {
+		fyr->column = 0;
+		fyr->nontab_column = 0;
+		fyr->line++;
+	} else if (fyr->tabsize && fy_is_tab(c)) {
+		fyr->column += (fyr->tabsize - (fyr->column % fyr->tabsize));
+		fyr->nontab_column++;
+	} else {
+		fyr->column++;
+		fyr->nontab_column++;
+	}
+}
+
 struct fy_input *fy_input_create(const struct fy_input_cfg *fyic)
 {
 	struct fy_input *fyi = NULL;
