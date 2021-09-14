@@ -249,7 +249,6 @@ struct fy_reader {
 
 	int line;			/* always on input */
 	int column;
-	int nontab_column;		/* column without accounting for tabs */
 
 	int tabsize;			/* very experimental tab size for indent purposes */
 
@@ -356,7 +355,6 @@ static inline void fy_reader_stream_end(struct fy_reader *fyr)
 	/* force new line */
 	if (fyr->column) {
 		fyr->column = 0;
-		fyr->nontab_column = 0;
 		fyr->line++;
 	}
 }
@@ -590,7 +588,6 @@ fy_reader_advance_printable_ascii(struct fy_reader *fyr, int c)
 {
 	fy_reader_advance_octets(fyr, 1);
 	fyr->column++;
-	fyr->nontab_column++;
 }
 
 static inline void
@@ -608,13 +605,10 @@ fy_reader_advance_ws(struct fy_reader *fyr, int c)
 	/* skip this character */
 	fy_reader_advance_octets(fyr, fy_utf8_width(c));
 
-	if (fyr->tabsize && fy_is_tab(c)) {
+	if (fyr->tabsize && fy_is_tab(c))
 		fyr->column += (fyr->tabsize - (fyr->column % fyr->tabsize));
-		fyr->nontab_column++;
-	} else {
+	else
 		fyr->column++;
-		fyr->nontab_column++;
-	}
 }
 
 static inline void
@@ -622,7 +616,6 @@ fy_reader_advance_space(struct fy_reader *fyr)
 {
 	fy_reader_advance_octets(fyr, 1);
 	fyr->column++;
-	fyr->nontab_column++;
 }
 
 static inline int

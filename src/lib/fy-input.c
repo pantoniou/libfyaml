@@ -414,7 +414,6 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 	fyr->current_input_pos = 0;
 	fyr->line = 0;
 	fyr->column = 0;
-	fyr->nontab_column = 0;
 	fyr->current_c = -1;
 	fyr->current_ptr = NULL;
 	fyr->current_w = 0;
@@ -773,15 +772,11 @@ fy_reader_advance_slow_path(struct fy_reader *fyr, int c)
 
 	if (is_line_break) {
 		fyr->column = 0;
-		fyr->nontab_column = 0;
 		fyr->line++;
-	} else if (fyr->tabsize && fy_is_tab(c)) {
+	} else if (fyr->tabsize && fy_is_tab(c))
 		fyr->column += (fyr->tabsize - (fyr->column % fyr->tabsize));
-		fyr->nontab_column++;
-	} else {
+	else
 		fyr->column++;
-		fyr->nontab_column++;
-	}
 }
 
 struct fy_input *fy_input_create(const struct fy_input_cfg *fyic)

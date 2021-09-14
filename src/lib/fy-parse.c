@@ -997,7 +997,6 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 		fy_advance(fyp, c);
 		/* reset column */
 		fyr->column = 0;
-		fyr->nontab_column = 0;
 	}
 
 	for (;;) {
