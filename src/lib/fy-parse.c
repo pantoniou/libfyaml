@@ -973,22 +973,6 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 	struct fy_atom *handle;
 	struct fy_reader *fyr;
 
-	/* json does not have comments or tab handling... */
-	if (fyp_json_mode(fyp)) {
-		/* skip white space including tabs */
-		while ((c = fy_parse_peek(fyp)) >= 0 && (c == ' ' || c == '\t' || c == '\r' || c == '\n'))
-			fy_advance(fyp, c);
-
-		fyp_scan_debug(fyp, "next token starts with c='%s'",
-				fy_utf8_format_a(c, fyue_singlequote));
-		return 0;
-	}
-
-	if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) && fy_atom_is_set(&fyp->last_comment)) {
-		fy_input_unref(fyp->last_comment.fyi);
-		fyp->last_comment.fyi = NULL;
-	}
-
 	fyr = fyp->reader;
 
 	/* skip BOM at the start of the stream */
@@ -999,6 +983,17 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 		fyr->column = 0;
 	}
 
+	/* json does not have comments or tab handling... */
+	if (fyp_json_mode(fyp)) {
+		fy_reader_skip_ws_cr_nl(fyr);
+		goto done;
+	}
+
+	if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) && fy_atom_is_set(&fyp->last_comment)) {
+		fy_input_unref(fyp->last_comment.fyi);
+		fyp->last_comment.fyi = NULL;
+	}
+
 	for (;;) {
 
 		tabs_allowed = fyp_tabsize(fyp) || fyp->flow_level || !fyp->simple_key_allowed;
@@ -1007,10 +1002,9 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 		/* tabs also allowed in block context but not at start of line or after -?: */
 
 		if (!tabs_allowed) {
-
 			/* skip space only */
-			while (fy_is_space(c = fy_parse_peek(fyp)))
-				fy_advance_space(fyp);
+			fy_reader_skip_space(fyr);
+			c = fy_parse_peek(fyp);
 
 			/* if it's a tab, we need to see if after ws follows a flow start marker */
 			if (fy_is_tab(c)) {
@@ -1028,9 +1022,8 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 				}
 			}
 		} else {
-			/* skip white space including tabs */
-			while (fy_is_ws(c = fy_parse_peek(fyp)))
-				fy_advance_ws(fyp, c);
+			fy_reader_skip_ws(fyr);
+			c = fy_parse_peek(fyp);
 		}
 
 		/* comment? */
@@ -1048,11 +1041,8 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 		c = fy_parse_peek(fyp);
 
 		/* not linebreak? we're done */
-		if (!fyp_is_lb(fyp, c)) {
-			fyp_scan_debug(fyp, "next token starts with c='%s'",
-					fy_utf8_format_a(c, fyue_singlequote));
-			return 0;
-		}
+		if (!fyp_is_lb(fyp, c))
+			goto done;
 
 		/* line break */
 		fy_advance(fyp, c);
@@ -1064,10 +1054,15 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 		}
 	}
 
-	fyp_scan_debug(fyp, "no-next-token");
+	fyp_scan_debug(fyp, "%s: no-next-token", __func__);
 
 err_out_rc:
 	return rc;
+
+done:
+	fyp_scan_debug(fyp, "%s: next token starts with c='%s'", __func__,
+			fy_utf8_format_a(c, fyue_singlequote));
+	return 0;
 }
 
 static void fy_purge_required_simple_key_report(struct fy_parser *fyp,
@@ -3965,6 +3960,238 @@ err_out_rc:
 	return rc;
 }
 
+void fy_reader_skip_ws_cr_nl(struct fy_reader *fyr)
+{
+	const char *p, *s, *e;
+	char cc;
+	size_t len;
+	int line, column;
+
+	assert(fyr);
+
+	column = fyr->column;
+	line = fyr->line;
+	while ((p = fy_reader_ensure_lookahead(fyr, 1, &len)) != NULL) {
+
+		s = p;
+		e = s + len;
+
+		while (s < e) {
+			cc = *s;
+			if (cc == ' ') {
+				column++;
+			} else if (cc == '\n') {
+				column = 0;
+				line++;
+			} else if (cc == '\t') {
+				column += (fyr->tabsize - (column % fyr->tabsize));
+			} else if (cc == '\r') {
+				column = 0;
+				line++;
+
+				if (s + 1 > e) {
+					/* we have a dangling cr at the end of a block */
+
+					/* advance up to the point here */
+					fy_reader_advance_octets(fyr, s - p);
+
+					/* try again (should return enough or NULL) */
+					p = fy_reader_ensure_lookahead(fyr, 1, &len);
+
+					/* if we couldn't pull enough we're done */
+					if (!p || len < 1)
+						goto done;
+
+					s = p;
+					e = s + len;
+
+					if (*s == '\n')
+						s++;
+				}
+				/* \n followed, gulp it down */
+				if (*s == '\n')
+					s++;
+			} else {
+				if (s > p)
+					fy_reader_advance_octets(fyr, s - p);
+				goto done;
+			}
+
+			s++;
+		}
+
+		fy_reader_advance_octets(fyr, s - p);
+	}
+
+done:
+	fyr->line = line;
+	fyr->column = column;
+}
+
+void fy_reader_skip_ws(struct fy_reader *fyr)
+{
+	const char *p, *s, *e;
+	size_t len, consumed;
+
+	assert(fyr);
+
+	while ((p = fy_reader_ensure_lookahead(fyr, 1, &len)) != NULL) {
+
+		s = p;
+		e = s + len;
+
+		while (s < e && fy_is_ws(*s))
+			s++;
+
+		consumed = s - p;
+		if (consumed) {
+			fy_reader_advance_octets(fyr, consumed);
+			fyr->column += consumed;
+		}
+
+		/* we're done if stopped earlier */
+		if (s < e)
+			break;
+	}
+}
+
+void fy_reader_skip_space(struct fy_reader *fyr)
+{
+	const char *p, *s, *e;
+	size_t len, consumed;
+
+	assert(fyr);
+
+	while ((p = fy_reader_ensure_lookahead(fyr, 1, &len)) != NULL) {
+
+		s = p;
+		e = s + len;
+
+		while (s < e && fy_is_space(*s))
+			s++;
+
+		consumed = s - p;
+		if (consumed) {
+			fy_reader_advance_octets(fyr, consumed);
+			fyr->column += consumed;
+		}
+
+		if (s < e)
+			break;
+	}
+}
+
+void fy_reader_skip_ws_lb(struct fy_reader *fyr)
+{
+	const char *p, *s, *e;
+	size_t len, consumed;
+	int line, column, c, w;
+	bool dangling_cr;
+	enum fy_lb_mode lb_mode;
+
+	assert(fyr);
+
+	/* punt to json mode */
+	lb_mode = fy_reader_lb_mode(fyr);
+
+	if (fy_reader_json_mode(fyr) || lb_mode == fylb_cr_nl) {
+		fy_reader_skip_ws_cr_nl(fyr);
+		return;
+	}
+
+	column = fyr->column;
+	line = fyr->line;
+	dangling_cr = false;
+	while ((p = fy_reader_ensure_lookahead(fyr, 1, &len)) != NULL) {
+
+		s = p;
+		e = s + len;
+
+		if (dangling_cr) {
+		       	if (*s == '\n')
+				s++;
+			dangling_cr = false;
+		}
+
+		while (s < e) {
+			c = (int)*s;
+
+			/* single byte utf8? */
+			if (c < 0x80) {
+				if (c == ' ') {
+					column++;
+				} else if (c == '\n') {
+					column = 0;
+					line++;
+				} else if (c == '\t') {
+					column += (fyr->tabsize - (column % fyr->tabsize));
+				} else if (c == '\r') {
+					column = 0;
+					line++;
+					/* check for '\n' following */
+					if (s < e) {
+						if (*s == '\n')
+							s++;
+					} else {
+						/* we have a dangling cr at the end of a block */
+						dangling_cr = true;
+					}
+				} else {
+					consumed = s - p;
+					if (consumed)
+						fy_reader_advance_octets(fyr, consumed);
+					goto done;
+				}
+				s++;
+			} else {
+				c = fy_utf8_get(s, (int)(e - s), &w);
+
+				if (c == FYUG_PARTIAL) {
+					/* get the width (from the first octet */
+					w = fy_utf8_width_by_first_octet((uint8_t)*s);
+					/* copy the partial utf8 in the buffer */
+
+					/* advance up to the point here */
+					consumed = s - p;
+					if (consumed)
+						fy_reader_advance_octets(fyr, consumed);
+
+					/* try again (should return enough or NULL) */
+					p = fy_reader_ensure_lookahead(fyr, w, &len);
+					if (!p)
+						break;
+
+					/* if we couldn't pull enough we're done */
+					if (len < (size_t)w)
+						goto done;
+
+					continue;
+				}
+
+				if (lb_mode == fylb_cr_nl_N_L_P && fy_is_unicode_lb(c)) {
+					column = 0;
+					line++;
+				} else {
+					consumed = s - p;
+					if (consumed)
+						fy_reader_advance_octets(fyr, consumed);
+					goto done;
+				}
+
+				s += w;
+			}
+		}
+
+		consumed = s - p;
+		if (consumed)
+			fy_reader_advance_octets(fyr, consumed);
+	}
+
+done:
+	fyr->line = line;
+	fyr->column = column;
+}
+
 int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 {
 	struct fy_atom handle;
@@ -5611,7 +5838,7 @@ struct fy_eventp *fy_parse_private(struct fy_parser *fyp)
 
 	fyep = fy_parse_internal(fyp);
 
-#if 0
+#if 1
 	if (fyep)
 		(void)fy_parse_path_event(fyp, fyep);
 #endif

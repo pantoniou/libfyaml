@@ -567,6 +567,22 @@ fy_reader_peek(struct fy_reader *fyr)
 	return fy_reader_peek_at_offset(fyr, 0);
 }
 
+static inline const void *
+fy_reader_peek_block(struct fy_reader *fyr, size_t *lenp)
+{
+	const void *p;
+
+	/* try to pull at least one utf8 character usually */
+	p = fy_reader_ensure_lookahead(fyr, 4, lenp);
+
+	/* not a utf8 character available? try a single byte */
+	if (!p)
+		p = fy_reader_ensure_lookahead(fyr, 1, lenp);
+	if (!*lenp)
+		p = NULL;
+	return p;
+}
+
 static inline void
 fy_reader_advance_octets(struct fy_reader *fyr, size_t advance)
 {

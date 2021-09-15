@@ -635,6 +635,11 @@ void *fy_realloc_default(void *userdata, void *ptr, size_t size);
 int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent, struct fy_atom *handle, bool sloppy_indent);
 int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent, int flow_level, struct fy_atom *handle, bool directive0);
 
+void fy_reader_skip_ws_cr_nl(struct fy_reader *fyr);
+
+void fy_reader_skip_ws(struct fy_reader *fyr);
+void fy_reader_skip_space(struct fy_reader *fyr);
+
 static inline int fy_document_state_version_compare(struct fy_document_state *fyds, const struct fy_version *vb)
 {
 	return fy_version_compare(fy_document_state_version(fyds), vb);
