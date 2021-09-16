@@ -142,8 +142,6 @@ struct fy_path_component *fy_path_component_alloc(struct fy_path *fypp)
 	/* not yet instantiated */
 	fypc->fypp = fypp;
 	fypc->type = FYPCT_NONE;
-	fypc->tag = NULL;
-	fypc->anchor = NULL;
 
 	return fypc;
 }
@@ -161,13 +159,9 @@ void fy_path_component_cleanup(struct fy_path_component *fypc)
 	case FYPCT_MAP:
 		if (fypc->map.text_storage)
 			free(fypc->map.text_storage);
-		fy_token_unref(fypc->map.key);
-		fy_document_destroy(fypc->map.fyd);
 		fypc->map.got_key = false;
 		fypc->map.is_complex_key = false;
 		fypc->map.accumulating_complex_key = false;
-		fypc->map.key = NULL;
-		fypc->map.fyd = NULL;
 		fypc->map.text = NULL;
 		fypc->map.size = 0;
 		fypc->map.text_storage = NULL;
@@ -178,16 +172,6 @@ void fy_path_component_cleanup(struct fy_path_component *fypc)
 		fypc->seq.bufidx = -1;
 		fypc->seq.buf[0] = '\0';
 		break;
-	}
-
-	if (fypc->tag) {
-		fy_token_unref(fypc->tag);
-		fypc->tag = NULL;
-	}
-
-	if (fypc->anchor) {
-		fy_token_unref(fypc->anchor);
-		fypc->anchor = NULL;
 	}
 }
 
@@ -237,8 +221,6 @@ struct fy_path_component *fy_path_component_create_mapping(struct fy_path *fypp)
 	fypc->map.got_key = false;
 	fypc->map.is_complex_key = false;
 	fypc->map.accumulating_complex_key = false;
-	fypc->map.key = NULL;
-	fypc->map.fyd = NULL;
 
 	fypc->map.text = NULL;
 	fypc->map.size = 0;
@@ -262,22 +244,6 @@ struct fy_path_component *fy_path_component_create_sequence(struct fy_path *fypp
 	fypc->seq.idx = -1;
 
 	return fypc;
-}
-
-void fy_path_component_set_tag(struct fy_path_component *fypc, struct fy_token *tag)
-{
-	if (!fypc)
-		return;
-	fy_token_unref(fypc->tag);
-	fypc->tag = fy_token_ref(tag);
-}
-
-void fy_path_component_set_anchor(struct fy_path_component *fypc, struct fy_token *anchor)
-{
-	if (!fypc)
-		return;
-	fy_token_unref(fypc->anchor);
-	fypc->anchor = fy_token_ref(anchor);
 }
 
 bool fy_path_component_is_complete(struct fy_path_component *fypc)
@@ -449,7 +415,8 @@ int fy_path_rebuild(struct fy_path *fypp)
 		if (!fypc_root)
 			fypc_root = fypc;
 
-		fy_emit_accum_utf8_printf_raw(&fypp->ea, "/%.*s", (int)len, text);
+		fy_emit_accum_utf8_put_raw(&fypp->ea, '/');
+		fy_emit_accum_utf8_write_raw(&fypp->ea, text, len);
 	}
 
 	if (fy_emit_accum_empty(&fypp->ea))
@@ -460,13 +427,19 @@ int fy_path_rebuild(struct fy_path *fypp)
 
 const char *fy_path_get_text(struct fy_path *fypp, size_t *lenp)
 {
-	fy_path_rebuild(fypp);
+	// fy_path_rebuild(fypp);
+	if (fy_emit_accum_empty(&fypp->ea)) {
+		*lenp = 1;
+		return "/";
+	}
 	return fy_emit_accum_get(&fypp->ea, lenp);
 }
 
 const char *fy_path_get_text0(struct fy_path *fypp)
 {
-	fy_path_rebuild(fypp);
+	// fy_path_rebuild(fypp);
+	if (fy_emit_accum_empty(&fypp->ea))
+		return "/";
 	return fy_emit_accum_get0(&fypp->ea);
 }
 
@@ -478,6 +451,8 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 	struct fy_document *fyd;
 	bool is_collection, is_map, is_start, is_complete;
 	char tbuf[80] __attribute__((__unused__));
+	const char *text;
+	size_t len;
 	int rc;
 
 	assert(fyp);
@@ -545,11 +520,15 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 		return 0;
 	}
 
+	/* unused for now */
+	(void)tag;
+	(void)anchor;
+
 	is_complete = true;
 
 	fypc_last = fy_path_component_list_tail(&fypp->components);
 
-	DBG(fypp, "%s: start - %s\n", fy_path_get_text0(fypp), fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
+	// DBG(fypp, "%s: start - %s\n", fy_path_get_text0(fypp), fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
 
 	if (fypc_last && fypc_last->type == FYPCT_MAP && fypc_last->map.accumulating_complex_key) {
 
@@ -577,6 +556,13 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 
 		/* and destroy the document immediately */
 		fy_document_destroy(fyd);
+
+		// append to the string path
+		fy_emit_accum_rewind_state(&fypp->ea, &fypc_last->start);
+		text = fy_path_component_get_text(fypc_last, &len);
+		assert(text);
+		fy_emit_accum_utf8_put_raw(&fypp->ea, '/');
+		fy_emit_accum_utf8_write_raw(&fypp->ea, text, len);
 
 		return 0;
 	}
@@ -618,6 +604,13 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 
 				// DBG(fypp, "%s: %s KEY %s\n", __func__, fy_path_get_text0(fypp), fy_token_get_scalar_path_key0(fyt) ? : "<null>");
 				is_complete = false;
+
+				// append to the string path
+				fy_emit_accum_rewind_state(&fypp->ea, &fypc_last->start);
+				text = fy_path_component_get_text(fypc_last, &len);
+				assert(text);
+				fy_emit_accum_utf8_put_raw(&fypp->ea, '/');
+				fy_emit_accum_utf8_write_raw(&fypp->ea, text, len);
 			}
 			break;
 
@@ -632,6 +625,11 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 			assert(!rc);
 
 			// DBG(fypp, "%s: %s SEQ next %d\n", __func__, fy_path_get_text0(fypp), fypc_last->seq.idx);
+			fy_emit_accum_rewind_state(&fypp->ea, &fypc_last->start);
+			text = fy_path_component_get_text(fypc_last, &len);
+			assert(text);
+			fy_emit_accum_utf8_put_raw(&fypp->ea, '/');
+			fy_emit_accum_utf8_write_raw(&fypp->ea, text, len);
 			break;
 
 		case FYPCT_NONE:
@@ -651,14 +649,12 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 		fypc = is_map ? fy_path_component_create_mapping(fypp) : fy_path_component_create_sequence(fypp);
 		assert(fypc);
 
-		if (tag)
-			fy_path_component_set_tag(fypc, tag);
-		if (anchor)
-			fy_path_component_set_anchor(fypc, anchor);
-
 		/* append to the tail */
 		fy_path_component_list_add_tail(&fypp->components, fypc);
 		fypp->seq++;
+
+		/* save state of path */
+		fy_emit_accum_get_state(&fypp->ea, &fypc->start);
 
 		if (fypc_last && fypc_last->type == FYPCT_MAP && fypc_last->map.got_key) {
 			// DBG(fypp, "%s: clear got_key %p\n", fy_path_get_text0(fypp), fypc_last);
@@ -684,6 +680,8 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 		assert(fypc);
 		fypp->seq++;
 
+		fy_emit_accum_rewind_state(&fypp->ea, &fypc->start);
+
 		/* and destroy it */
 		fy_path_component_destroy(fypc);
 
@@ -691,7 +689,7 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 
 		fy_path_component_cleanup(fypc_last);
 
-		DBG(fypp, "%s: pop\n", fy_path_get_text0(fypp));
+		// DBG(fypp, "%s: pop\n", fy_path_get_text0(fypp));
 
 	}
 

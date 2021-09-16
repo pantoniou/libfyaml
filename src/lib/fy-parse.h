@@ -151,8 +151,6 @@ struct fy_path_mapping_state {
 	bool got_key : 1;
 	bool is_complex_key : 1;
 	bool accumulating_complex_key : 1;
-	struct fy_token *key;
-	struct fy_document *fyd;
 	char buf[FY_PATH_MAPPING_SHORT_KEY];	/* keep short keys without allocation */
 	const char *text;
 	size_t size;
@@ -171,8 +169,7 @@ struct fy_path_sequence_state {
 struct fy_path_component {
 	struct fy_path *fypp;
 	struct list_head node;
-	struct fy_token *tag;
-	struct fy_token *anchor;
+	struct fy_emit_accum_state start;
 	enum fy_path_component_type type;
 	union {
 		struct fy_path_mapping_state map;
