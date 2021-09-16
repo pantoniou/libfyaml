@@ -131,19 +131,19 @@ struct fy_path_component *fy_path_component_alloc(struct fy_path *fypp)
 		return NULL;
 
 	fyp = fypp->cfg.fyp;
-	if (fyp)
+	if (fyp) {
 		fypc = fy_parse_path_component_alloc(fyp);
-	else {
+	} else {
 		fypc = malloc(sizeof(*fypc));
 		if (!fypc)
 			return NULL;
 	}
 
-	memset(fypc, 0, sizeof(*fypc));
-
 	/* not yet instantiated */
 	fypc->fypp = fypp;
 	fypc->type = FYPCT_NONE;
+	fypc->tag = NULL;
+	fypc->anchor = NULL;
 
 	return fypc;
 }
@@ -159,19 +159,18 @@ void fy_path_component_cleanup(struct fy_path_component *fypc)
 		break;
 
 	case FYPCT_MAP:
-		if (fypc->map.key) {
-			fy_token_unref(fypc->map.key);
-			fypc->map.key = NULL;
-		}
-		if (fypc->map.fyd) {
-			fy_document_destroy(fypc->map.fyd);
-			fypc->map.fyd = NULL;
-		}
-		if (fypc->map.complex_text) {
-			free(fypc->map.complex_text);
-			fypc->map.complex_text = NULL; 
-		}
-		fypc->map.complex_size = 0;
+		if (fypc->map.text_storage)
+			free(fypc->map.text_storage);
+		fy_token_unref(fypc->map.key);
+		fy_document_destroy(fypc->map.fyd);
+		fypc->map.got_key = false;
+		fypc->map.is_complex_key = false;
+		fypc->map.accumulating_complex_key = false;
+		fypc->map.key = NULL;
+		fypc->map.fyd = NULL;
+		fypc->map.text = NULL;
+		fypc->map.size = 0;
+		fypc->map.text_storage = NULL;
 		break;
 
 	case FYPCT_SEQ:
@@ -235,7 +234,15 @@ struct fy_path_component *fy_path_component_create_mapping(struct fy_path *fypp)
 		return NULL;
 
 	fypc->type = FYPCT_MAP;
+	fypc->map.got_key = false;
+	fypc->map.is_complex_key = false;
+	fypc->map.accumulating_complex_key = false;
 	fypc->map.key = NULL;
+	fypc->map.fyd = NULL;
+
+	fypc->map.text = NULL;
+	fypc->map.size = 0;
+	fypc->map.text_storage = NULL;
 
 	return fypc;
 }
@@ -282,7 +289,7 @@ bool fy_path_component_is_complete(struct fy_path_component *fypc)
 	case FYPCT_NONE:
 		break;
 	case FYPCT_MAP:
-		return fypc->map.got_key;
+		return fypc->map.text != NULL;
 	case FYPCT_SEQ:
 		return fypc->seq.idx >= 0;
 	}
@@ -292,24 +299,75 @@ bool fy_path_component_is_complete(struct fy_path_component *fypc)
 
 const char *fy_path_component_get_text(struct fy_path_component *fypc, size_t *lenp)
 {
+	const char *txt;
+	char *dst;
+	char prefix;
+
 	if (!fypc) {
 		*lenp = 0;
 		return NULL;
 	}
 
-	/* check for simple conditions */
 	switch (fypc->type) {
-	case FYPCT_NONE:
-		*lenp = 0;
-		return NULL;
-
 	case FYPCT_MAP:
-		/* not with a key */
+		if (fypc->map.text) {
+			*lenp = fypc->map.size;
+			return fypc->map.text;
+		}
+
 		if (!fypc->map.key && !fypc->map.fyd) {
+			/* not with a key */
 			*lenp = 1;
 			return "/";
 		}
-		break;
+
+		if (!fypc->map.is_complex_key) {
+			assert(fypc->map.key);
+			prefix = 0;
+			txt = NULL;
+			switch (fypc->map.key->type) {
+			case FYTT_SCALAR:
+				txt = fy_token_get_scalar_path_key(fypc->map.key, &fypc->map.size);
+				assert(txt);
+				break;
+			case FYTT_ALIAS:
+				txt = fy_token_get_text(fypc->map.key, &fypc->map.size);
+				assert(txt);
+				fypc->map.size++;
+				prefix = '*';
+				break;
+			default:
+				assert(0);
+				break;
+			}
+			if (fypc->map.size + 1 > sizeof(fypc->map.buf)) {
+				/* keep a malloc copy if too large */
+				fypc->map.text_storage = malloc(fypc->map.size + 1);
+				assert(fypc->map.text_storage);
+				dst = fypc->map.text_storage;
+			} else {
+				dst = fypc->map.buf;
+			}
+			if (!prefix) {
+				memcpy(dst, txt, fypc->map.size);
+			} else {
+				dst[0] = prefix;
+				memcpy(dst + 1, txt, fypc->map.size - 1);
+			}
+			dst[fypc->map.size] = '\0';
+			fypc->map.text = dst;
+		} else {
+			/* a complex key is always allocated (since it's very rare) */
+			fypc->map.text_storage =
+				fy_emit_document_to_string(fypc->map.fyd,
+					FYECF_WIDTH_INF | FYECF_INDENT_DEFAULT |
+					FYECF_MODE_FLOW_ONELINE | FYECF_NO_ENDING_NEWLINE);
+			assert(fypc->map.text_storage);
+			fypc->map.size = strlen(fypc->map.text_storage);
+			fypc->map.text = fypc->map.text_storage;
+		}
+		*lenp = fypc->map.size;
+		return fypc->map.text;
 
 	case FYPCT_SEQ:
 		/* first element not encountered yet */
@@ -317,28 +375,7 @@ const char *fy_path_component_get_text(struct fy_path_component *fypc, size_t *l
 			*lenp = 1;
 			return "/";
 		}
-		break;
-	}
 
-
-	switch (fypc->type) {
-	case FYPCT_MAP:
-		if (fypc->map.key)
-			return fy_token_get_scalar_path_key(fypc->map.key, lenp);
-
-		assert(fypc->map.fyd);
-
-		if (!fypc->map.complex_text) {
-			fypc->map.complex_text = fy_emit_document_to_string(fypc->map.fyd, FYECF_WIDTH_INF | FYECF_INDENT_DEFAULT | FYECF_MODE_FLOW_ONELINE | FYECF_NO_ENDING_NEWLINE);
-			assert(fypc->map.complex_text);
-			fypc->map.complex_size = strlen(fypc->map.complex_text);
-		}
-
-		*lenp = fypc->map.complex_size;
-		return fypc->map.complex_text;
-
-	case FYPCT_SEQ:
-		assert(fypc->seq.idx >= 0);
 		if (fypc->seq.idx != fypc->seq.bufidx) {
 			snprintf(fypc->seq.buf, sizeof(fypc->seq.buf) - 1, "%d", fypc->seq.idx);
 			fypc->seq.bufidx = fypc->seq.idx;
@@ -348,6 +385,7 @@ const char *fy_path_component_get_text(struct fy_path_component *fypc, size_t *l
 		return fypc->seq.buf;
 
 	default:
+		assert(0);
 		/* cannot happen */
 		break;
 
@@ -358,59 +396,17 @@ const char *fy_path_component_get_text(struct fy_path_component *fypc, size_t *l
 
 const char *fy_path_component_get_text0(struct fy_path_component *fypc)
 {
-	if (!fypc)
+	size_t len;
+	const char *txt;
+
+	txt = fy_path_component_get_text(fypc, &len);
+	if (!txt)
 		return NULL;
 
-	/* check for simple conditions */
-	switch (fypc->type) {
-	case FYPCT_NONE:
-		return NULL;
+	/* it is guaranteed that it's NULL terminated */
+	assert(strlen(txt) == len);
 
-	case FYPCT_MAP:
-		/* not with a key */
-		if (!fypc->map.key && !fypc->map.fyd)
-			return "/";
-		break;
-
-	case FYPCT_SEQ:
-		/* first element not encountered yet */
-		if (fypc->seq.idx < 0)
-			return "/";
-		break;
-	}
-
-
-	switch (fypc->type) {
-	case FYPCT_MAP:
-		if (fypc->map.key)
-			return fy_token_get_scalar_path_key0(fypc->map.key);
-
-		assert(fypc->map.fyd);
-
-		if (!fypc->map.complex_text) {
-			fypc->map.complex_text = fy_emit_document_to_string(fypc->map.fyd, FYECF_WIDTH_INF | FYECF_INDENT_DEFAULT | FYECF_MODE_FLOW_ONELINE | FYECF_NO_ENDING_NEWLINE);
-			assert(fypc->map.complex_text);
-			fypc->map.complex_size = strlen(fypc->map.complex_text);
-		}
-
-		return fypc->map.complex_text;
-
-	case FYPCT_SEQ:
-		assert(fypc->seq.idx >= 0);
-		if (fypc->seq.idx != fypc->seq.bufidx) {
-			snprintf(fypc->seq.buf, sizeof(fypc->seq.buf) - 1, "%d", fypc->seq.idx);
-			fypc->seq.bufidx = fypc->seq.idx;
-			fypc->seq.buflen = strlen(fypc->seq.buf);
-		}
-		return fypc->seq.buf;
-
-	default:
-		/* cannot happen */
-		break;
-
-	}
-
-	return NULL;
+	return txt;
 }
 
 int fy_path_rebuild(struct fy_path *fypp)
@@ -429,12 +425,10 @@ int fy_path_rebuild(struct fy_path *fypp)
 
 		text = fy_path_component_get_text(fypc, &len);
 
-		if (!fypc_root) {
+		if (!fypc_root)
 			fypc_root = fypc;
-			fy_emit_accum_utf8_printf_raw(&fypp->ea, "/%.*s", (int)len, text);
-		} else {
-			fy_emit_accum_utf8_printf_raw(&fypp->ea, "/%.*s", (int)len, text);
-		}
+
+		fy_emit_accum_utf8_printf_raw(&fypp->ea, "/%.*s", (int)len, text);
 	}
 
 	if (fy_emit_accum_empty(&fypp->ea))
@@ -462,13 +456,13 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 	struct fy_token *fyt, *tag, *anchor;
 	bool is_collection, is_map, is_start, is_end, is_complete;
 	char tbuf[80] __attribute__((__unused__));
+	const char *txt;
 	int rc;
 
+	assert(fyp);
+	assert(fyep);
+
 	fypp = &fyp->path;
-	if (!fypp) {
-		// DBG(fypp, "no parse path\n");
-		return -1;
-	}
 
 	switch (fyep->e.type) {
 	case FYET_MAPPING_START:
@@ -538,11 +532,15 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 
 	is_complete = true;
 
-	// DBG(fypp, "%s: start - %s\n", fy_path_get_text0(fypp), fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
-
 	fypc_last = fy_path_component_list_tail(&fypp->components);
 
-	if (fypc_last && fypc_last->type == FYPCT_MAP && fypc_last->map.is_complex_key && !fypc_last->map.got_key) {
+	if (fypc_last && fypc_last->type == FYPCT_MAP) {
+		// DBG(fypp, "%s: start - %s %s %p\n", fy_path_get_text0(fypp), fy_token_dump_format(fyt, tbuf, sizeof(tbuf)), fypc_last->map.got_key ? "got_key" : "", fypc_last);
+	} else {
+		// DBG(fypp, "%s: start - %s\n", fy_path_get_text0(fypp), fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
+	}
+
+	if (fypc_last && fypc_last->type == FYPCT_MAP && fypc_last->map.accumulating_complex_key) {
 
 		// DBG(fypp, "accumulating for complex key\n");
 
@@ -553,10 +551,25 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 		}
 		// DBG(fypp, "accumulation complete\n");
 
+		/* get the document */
 		fypc_last->map.fyd = fy_document_builder_take_document(fypp->fydb);
 		assert(fypc_last->map.fyd);
+
 		fypc_last->map.got_key = true;
 		fypc_last->map.is_complex_key = true;
+		fypc_last->map.accumulating_complex_key = false;
+
+		/* get the text */
+		txt = fy_path_component_get_text0(fypc_last);
+		assert(txt);
+		if (!txt)
+			return -1;
+
+		// DBG(fypp, "%s: %s complex KEY %s\n", __func__, fy_path_get_text0(fypp), txt);
+
+		/* and destroy the document immediately */
+		fy_document_destroy(fypc_last->map.fyd);
+		fypc_last->map.fyd = NULL;
 
 		goto complete;
 	}
@@ -583,12 +596,22 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 
 					is_complete = false;
 					fypc_last->map.is_complex_key = true;
+					fypc_last->map.accumulating_complex_key = true;
 					break;
 				}
 
+				// DBG(fypp, "scalar key: %s\n", fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
 				fypc_last->map.got_key = true;
 				fypc_last->map.is_complex_key = false;
 				fypc_last->map.key = fy_token_ref(fyt);
+
+				/* get the text */
+				txt = fy_path_component_get_text0(fypc_last);
+				assert(txt);
+
+				/* and drop the ref immediately */
+				fy_token_unref(fypc_last->map.key);
+				fypc_last->map.key = NULL;
 
 				// DBG(fypp, "%s: %s KEY %s\n", __func__, fy_path_get_text0(fypp), fy_token_get_scalar_path_key0(fyt) ? : "<null>");
 				is_complete = false;
@@ -631,17 +654,27 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 		fy_path_component_list_add_tail(&fypp->components, fypc);
 		fypp->seq++;
 
-		// DBG(fypp, "%s: push\n", fy_path_get_text0(fypp));
+		if (fypc_last && fypc_last->type == FYPCT_MAP && fypc_last->map.got_key) {
+			// DBG(fypp, "%s: clear got_key %p\n", fy_path_get_text0(fypp), fypc_last);
+			fypc_last->map.got_key = false;
+		}
+
+		// DBG(fypp, "%s: push %p\n", fy_path_get_text0(fypp), fypc);
 	}
 
 	if (!is_collection) {
 		// DBG(fypp, "%s: scalar %s\n", fy_path_get_text0(fypp), fy_token_get_scalar_path_key0(fyt) ? : "<null>");
+		if (fypc_last && fypc_last->type == FYPCT_MAP && fypc_last->map.got_key) {
+			// DBG(fypp, "%s: clear got_key %p\n", fy_path_get_text0(fypp), fypc_last);
+			fypc_last->map.got_key = false;
+		}
+
 	}
 
 	/* collection end */
 	if (is_collection && !is_start) {
 
-		// DBG(fypp, "%s: pop\n", fy_path_get_text0(fypp));
+		// DBG(fypp, "%s: pop %p\n", fy_path_get_text0(fypp), fypc_last);
 
 		fypc = fy_path_component_list_pop_tail(&fypp->components);
 		assert(fypc);
@@ -655,30 +688,14 @@ complete:
 	fypc_last = fy_path_component_list_tail(&fypp->components);
 	if (fypc_last && is_end) {
 
+		// DBG(fypp, "%s: cleanup %p\n", fy_path_get_text0(fypp), fypc_last);
+
 		switch (fypc_last->type) {
 		case FYPCT_MAP:
-			if (!fypc_last->map.is_complex_key) {
-				if (fypc_last->map.key) {
-					// DBG(fypp, "%s: %s UNREF KEY %s\n", __func__, fy_path_get_text0(fypp), fy_token_get_scalar_path_key0(fypc_last->map.key) ? : "<null>");
-
-					fy_token_unref(fypc_last->map.key);
-					fypc_last->map.key = NULL;
-				}
-			} else {
-				// DBG(fypp, "%s: %s DESTROY COMPLEX KEY\n", __func__, fy_path_get_text0(fypp));
-				if (fypc_last->map.fyd) {
-					fy_document_destroy(fypc_last->map.fyd);
-					fypc_last->map.fyd = NULL;
-				}
-				if (fypc_last->map.complex_text) {
-					free(fypc_last->map.complex_text);
-					fypc_last->map.complex_text = NULL;
-				}
-				fypc_last->map.complex_size = 0;
-			}
-
-			fypc_last->map.got_key = false;
-			fypc_last->map.is_complex_key = false;
+			fy_token_unref(fypc_last->map.key);
+			fy_document_destroy(fypc_last->map.fyd);
+			fypc_last->map.key = NULL;
+			fypc_last->map.fyd = NULL;
 			break;
 
 		case FYPCT_SEQ:

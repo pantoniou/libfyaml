@@ -1061,7 +1061,7 @@ err_out_rc:
 
 done:
 	fyp_scan_debug(fyp, "%s: next token starts with c='%s'", __func__,
-			fy_utf8_format_a(c, fyue_singlequote));
+			fy_utf8_format_a(fy_parse_peek(fyp), fyue_singlequote));
 	return 0;
 }
 
@@ -5838,7 +5838,7 @@ struct fy_eventp *fy_parse_private(struct fy_parser *fyp)
 
 	fyep = fy_parse_internal(fyp);
 
-#if 1
+#if 0
 	if (fyep)
 		(void)fy_parse_path_event(fyp, fyep);
 #endif

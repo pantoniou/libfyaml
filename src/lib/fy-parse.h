@@ -145,13 +145,19 @@ enum fy_path_component_type {
 struct fy_document;
 struct fy_document_builder;
 
+#define FY_PATH_MAPPING_SHORT_KEY	32
+
 struct fy_path_mapping_state {
-	bool got_key;
-	bool is_complex_key;
-	struct fy_token *key;			/* simple scalar key */
+	bool got_key : 1;
+	bool is_complex_key : 1;
+	bool accumulating_complex_key : 1;
+	struct fy_token *key;
 	struct fy_document *fyd;
-	char *complex_text;
-	size_t complex_size;
+	char buf[FY_PATH_MAPPING_SHORT_KEY];	/* keep short keys without allocation */
+	const char *text;
+	size_t size;
+	char *text_storage;
+
 };
 
 struct fy_path_sequence_state {
