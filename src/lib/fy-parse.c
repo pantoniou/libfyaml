@@ -5838,7 +5838,7 @@ struct fy_eventp *fy_parse_private(struct fy_parser *fyp)
 
 	fyep = fy_parse_internal(fyp);
 
-#if 0
+#if 1
 	if (fyep)
 		(void)fy_parse_path_event(fyp, fyep);
 #endif
