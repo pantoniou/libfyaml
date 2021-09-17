@@ -759,14 +759,22 @@ scalar(struct fy_composer *fyc, struct fy_path *path, struct fy_token *tag, stru
 {
 	char tbuf[80];
 
-	fprintf(stderr, "%s: %s %s\n", __func__, fy_path_get_text0(path), fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
+	fprintf(stderr, "%s: %s %s - %c%c%c %d\n", __func__, fy_path_get_text0(path), fy_token_dump_format(fyt, tbuf, sizeof(tbuf)),
+			fy_path_is_root(path) ? 'R' : '-',
+			fy_path_in_mapping(path) ? 'M' : '-',
+			fy_path_in_sequence(path) ? 'S' : '-',
+			fy_path_depth(path));
 	return 0;
 }
 
 static int
 mapping_start(struct fy_composer *fyc, struct fy_path *path, struct fy_token *tag, struct fy_token *fyt)
 {
-	fprintf(stderr, "%s: %s {\n", __func__, fy_path_get_text0(path));
+	fprintf(stderr, "%s: %s { - %c%c%c %d\n", __func__, fy_path_get_text0(path),
+			fy_path_is_root(path) ? 'R' : '-',
+			fy_path_in_mapping(path) ? 'M' : '-',
+			fy_path_in_sequence(path) ? 'S' : '-',
+			fy_path_depth(path));
 	return 0;
 }
 
@@ -780,7 +788,11 @@ mapping_end(struct fy_composer *fyc, struct fy_path *path, struct fy_token *fyt)
 static int
 sequence_start(struct fy_composer *fyc, struct fy_path *path, struct fy_token *tag, struct fy_token *fyt)
 {
-	fprintf(stderr, "%s: %s [\n", __func__, fy_path_get_text0(path));
+	fprintf(stderr, "%s: %s [ - %c%c%c %d\n", __func__, fy_path_get_text0(path),
+			fy_path_is_root(path) ? 'R' : '-',
+			fy_path_in_mapping(path) ? 'M' : '-',
+			fy_path_in_sequence(path) ? 'S' : '-',
+			fy_path_depth(path));
 	return 0;
 }
 

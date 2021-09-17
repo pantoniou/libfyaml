@@ -417,6 +417,78 @@ const char *fy_path_get_text0(struct fy_path *fypp)
 	return fy_emit_accum_get0(&fypp->ea);
 }
 
+struct fy_path_component *
+fy_path_get_last_complete(struct fy_path *fypp)
+{
+	struct fy_path_component *fypc_last;
+
+	fypc_last = fy_path_component_list_tail(&fypp->components);
+
+	/* if the last one is not complete, get the previous */
+	if (fypc_last && !fy_path_component_is_complete(fypc_last))
+		fypc_last = fy_path_component_prev(&fypp->components, fypc_last);
+
+	if (!fypc_last)
+		return NULL;
+
+	/* must be complete */
+	assert(fy_path_component_is_complete(fypc_last));
+
+	return fypc_last;
+}
+
+bool fy_path_is_root(struct fy_path *fypp)
+{
+	if (!fypp)
+		return true;
+
+	return fy_path_get_last_complete(fypp) == NULL;
+}
+
+bool fy_path_in_sequence(struct fy_path *fypp)
+{
+	struct fy_path_component *fypc_last;
+
+	if (!fypp)
+		return false;
+
+	fypc_last = fy_path_get_last_complete(fypp);
+	if (!fypc_last)
+		return false;
+
+	return fypc_last->type == FYPCT_SEQ; 
+}
+
+bool fy_path_in_mapping(struct fy_path *fypp)
+{
+	struct fy_path_component *fypc_last;
+
+	if (!fypp)
+		return false;
+
+	fypc_last = fy_path_get_last_complete(fypp);
+	if (!fypc_last)
+		return false;
+
+	return fypc_last->type == FYPCT_MAP; 
+}
+
+int fy_path_depth(struct fy_path *fypp)
+{
+	struct fy_path_component *fypc;
+	int depth;
+
+	depth = 0;
+	for (fypc = fy_path_component_list_head(&fypp->components);
+		fypc && fy_path_component_is_complete(fypc);
+		fypc = fy_path_component_next(&fypp->components, fypc)) {
+
+		depth++;
+	}
+
+	return depth;
+}
+
 struct fy_composer *
 fy_composer_create(struct fy_composer_cfg *cfg)
 {

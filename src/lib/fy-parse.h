@@ -649,6 +649,12 @@ int fy_path_rebuild(struct fy_path *fypp);
 const char *fy_path_get_text(struct fy_path *fypp, size_t *lenp);
 const char *fy_path_get_text0(struct fy_path *fypp);
 
+bool fy_path_is_root(struct fy_path *fypp);
+bool fy_path_in_sequence(struct fy_path *fypp);
+bool fy_path_in_mapping(struct fy_path *fypp);
+
+int fy_path_depth(struct fy_path *fypp);
+
 struct fy_document *
 fy_parse_load_document_with_builder(struct fy_parser *fyp);
 
