@@ -828,6 +828,9 @@ static const struct fy_composer_ops composer_ops = {
 	.sequence_end = sequence_end,
 };
 
+static const struct fy_composer_ops composer_null_output_ops = {
+};
+
 int do_compose(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort, bool null_output)
 {
 	struct fy_event *fye;
@@ -841,7 +844,7 @@ int do_compose(struct fy_parser *fyp, int indent, int width, bool resolve, bool 
 	flags |= FYECF_INDENT(indent) | FYECF_WIDTH(width);
 
 	memset(&cfg, 0, sizeof(cfg));
-	cfg.ops = &composer_ops;
+	cfg.ops = !null_output ? &composer_ops : &composer_null_output_ops;
 	cfg.user = NULL;
 	cfg.diag = fy_parser_get_diag(fyp);
 	fyc = fy_composer_create(&cfg);

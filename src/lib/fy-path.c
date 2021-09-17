@@ -528,6 +528,7 @@ void fy_composer_destroy(struct fy_composer *fyc)
 	if (!fyc)
 		return;
 
+	fy_diag_unref(fyc->cfg.diag);
 	fy_path_cleanup(&fyc->fypp);
 	free(fyc);
 }
