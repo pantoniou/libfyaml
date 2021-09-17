@@ -726,21 +726,86 @@ out:
 	return count > 0 ? 0 : -1;
 }
 
+static int
+stream_start(struct fy_composer *fyc)
+{
+	fprintf(stderr, "%s:\n", __func__);
+	return 0;
+}
+
+static int
+stream_end(struct fy_composer *fyc)
+{
+	fprintf(stderr, "%s:\n", __func__);
+	return 0;
+}
+
+static int
+document_start(struct fy_composer *fyc, struct fy_document_state *fyds)
+{
+	fprintf(stderr, "%s:\n", __func__);
+	return 0;
+}
+
+static int
+document_end(struct fy_composer *fyc)
+{
+	fprintf(stderr, "%s:\n", __func__);
+	return 0;
+}
+
+static int
+scalar(struct fy_composer *fyc, struct fy_path *path, struct fy_token *tag, struct fy_token *fyt)
+{
+	char tbuf[80];
+
+	fprintf(stderr, "%s: %s %s\n", __func__, fy_path_get_text0(path), fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
+	return 0;
+}
+
+static int
+mapping_start(struct fy_composer *fyc, struct fy_path *path, struct fy_token *tag, struct fy_token *fyt)
+{
+	fprintf(stderr, "%s: %s {\n", __func__, fy_path_get_text0(path));
+	return 0;
+}
+
+static int
+mapping_end(struct fy_composer *fyc, struct fy_path *path, struct fy_token *fyt)
+{
+	fprintf(stderr, "%s: %s }\n", __func__, fy_path_get_text0(path));
+	return 0;
+}
+
+static int
+sequence_start(struct fy_composer *fyc, struct fy_path *path, struct fy_token *tag, struct fy_token *fyt)
+{
+	fprintf(stderr, "%s: %s [\n", __func__, fy_path_get_text0(path));
+	return 0;
+}
+
+static int
+sequence_end(struct fy_composer *fyc, struct fy_path *path, struct fy_token *fyt)
+{
+	fprintf(stderr, "%s: %s ]\n", __func__, fy_path_get_text0(path));
+	return 0;
+}
+
 static const struct fy_composer_ops composer_ops = {
-	.stream_start = NULL,
-	.stream_end = NULL,
-	.document_start = NULL,
-	.document_end = NULL,
-	.scalar = NULL,
-	.mapping_start = NULL,
-	.mapping_end = NULL,
-	.sequence_start = NULL,
-	.sequence_end = NULL,
+	.stream_start = stream_start,
+	.stream_end = stream_end,
+	.document_start = document_start,
+	.document_end = document_end,
+	.scalar = scalar,
+	.mapping_start = mapping_start,
+	.mapping_end = mapping_end,
+	.sequence_start = sequence_start,
+	.sequence_end = sequence_end,
 };
 
 int do_compose(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort, bool null_output)
 {
-	struct fy_eventp *fyep;
+	struct fy_event *fye;
 	struct fy_composer_cfg cfg;
 	struct fy_composer *fyc;
 	unsigned int flags;
@@ -757,9 +822,9 @@ int do_compose(struct fy_parser *fyp, int indent, int width, bool resolve, bool 
 	fyc = fy_composer_create(&cfg);
 	assert(fyc);
 
-	while ((fyep = fy_parse_private(fyp)) != NULL) {
-		fy_composer_process_event_private(fyc, fyp, fyep);
-		fy_parse_eventp_recycle(fyp, fyep);
+	while ((fye = fy_parser_parse(fyp)) != NULL) {
+		fy_composer_process_event(fyc, fyp, fye);
+		fy_parser_event_free(fyp, fye);
 	}
 
 	fy_composer_destroy(fyc);

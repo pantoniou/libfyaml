@@ -686,6 +686,7 @@ struct fy_composer {
 struct fy_composer *
 fy_composer_create(struct fy_composer_cfg *cfg);
 void fy_composer_destroy(struct fy_composer *fyc);
+int fy_composer_process_event(struct fy_composer *fyc, struct fy_parser *fyp, struct fy_event *fye);
 
 int fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp, struct fy_eventp *fyep);
 
