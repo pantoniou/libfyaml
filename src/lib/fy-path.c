@@ -24,28 +24,15 @@
 #include "fy-utils.h"
 
 #undef DBG
-// #define DBG fypp_notice
-#define DBG fypp_debug
+#define DBG fyp_notice
+// #define DBG fyp_debug
 
-int fy_path_setup(struct fy_path *fypp, const struct fy_path_cfg *cfg)
+int fy_path_setup(struct fy_path *fypp)
 {
-	struct fy_diag *diag;
-
 	memset(fypp, 0, sizeof(*fypp));
-	if (cfg) {
-		if (cfg->diag)
-			diag = cfg->diag;
-		else if (cfg->fyp)
-			diag = cfg->fyp->diag;
-		else
-			diag = NULL;
 
-		fypp->cfg.diag = fy_diag_ref(diag);
-		fypp->cfg.fyp = cfg->fyp;
-	}
-
+	fy_path_component_list_init(&fypp->recycled_component);
 	fy_path_component_list_init(&fypp->components);
-	fypp->count = 0;
 
 	fy_emit_accum_init(&fypp->ea, &fypp->ea_inplace_buf, sizeof(fypp->ea_inplace_buf), 0, fylb_cr_nl);
 
@@ -66,19 +53,14 @@ void fy_path_cleanup(struct fy_path *fypp)
 
 	fy_emit_accum_cleanup(&fypp->ea);
 
-	while ((fypc = fy_path_component_list_pop(&fypp->components)) != NULL) {
+	while ((fypc = fy_path_component_list_pop(&fypp->components)) != NULL)
 		fy_path_component_free(fypc);
-		fypp->count--;
-	}
 
-	fypp->seq = 0;
-	fypp->textseq = 0;
-
-	if (fypp->cfg.diag)
-		fy_diag_unref(fypp->cfg.diag);
+	while ((fypc = fy_path_component_list_pop(&fypp->recycled_component)) != NULL)
+		fy_path_component_free(fypc);
 }
 
-struct fy_path *fy_path_create(const struct fy_path_cfg *cfg)
+struct fy_path *fy_path_create(void)
 {
 	struct fy_path *fypp;
 	int rc;
@@ -87,7 +69,7 @@ struct fy_path *fy_path_create(const struct fy_path_cfg *cfg)
 	if (!fypp)
 		return NULL;
 
-	rc = fy_path_setup(fypp, cfg);
+	rc = fy_path_setup(fypp);
 	if (rc)
 		return NULL;
 
@@ -111,36 +93,29 @@ void fy_path_reset(struct fy_path *fypp)
 	if (!fypp)
 		return;
 
-	while ((fypc = fy_path_component_list_pop(&fypp->components)) != NULL) {
+	while ((fypc = fy_path_component_list_pop(&fypp->components)) != NULL)
 		fy_path_component_free(fypc);
-		fypp->count--;
-	}
 
 	/* reset the text cache, but don't free the buffer */
 	fy_emit_accum_reset(&fypp->ea);
-	fypp->seq = 0;
-	fypp->textseq = 0;
 }
 
 struct fy_path_component *fy_path_component_alloc(struct fy_path *fypp)
 {
-	struct fy_parser *fyp;
 	struct fy_path_component *fypc;
 
 	if (!fypp)
 		return NULL;
 
-	fyp = fypp->cfg.fyp;
-	if (fyp) {
-		fypc = fy_parse_path_component_alloc(fyp);
-	} else {
+	fypc = fy_path_component_list_pop(&fypp->recycled_component);
+	if (!fypc) {
 		fypc = malloc(sizeof(*fypc));
 		if (!fypc)
 			return NULL;
+		memset(fypc, 0, sizeof(*fypc));
 	}
 
 	/* not yet instantiated */
-	fypc->fypp = fypp;
 	fypc->type = FYPCT_NONE;
 
 	return fypc;
@@ -169,31 +144,19 @@ void fy_path_component_cleanup(struct fy_path_component *fypc)
 
 	case FYPCT_SEQ:
 		fypc->seq.idx = -1;
-		fypc->seq.bufidx = -1;
 		fypc->seq.buf[0] = '\0';
+		fypc->seq.buflen = 0;
 		break;
 	}
 }
 
 void fy_path_component_free(struct fy_path_component *fypc)
 {
-	struct fy_path *fypp;
-	struct fy_parser *fyp;
-
 	if (!fypc)
 		return;
 
 	fy_path_component_cleanup(fypc);
-
-	fypp = fypc->fypp;
-	if (!fypp)
-		return;
-
-	fyp = fypp->cfg.fyp;
-	if (fyp)
-		fy_parse_path_component_recycle(fyp, fypc);
-	else
-		free(fypc);
+	free(fypc);
 }
 
 void fy_path_component_destroy(struct fy_path_component *fypc)
@@ -202,8 +165,20 @@ void fy_path_component_destroy(struct fy_path_component *fypc)
 		return;
 
 	fy_path_component_cleanup(fypc);
+	fy_path_component_free(fypc);
+}
 
-	return fy_path_component_free(fypc);
+void fy_path_component_recycle(struct fy_path *fypp, struct fy_path_component *fypc)
+{
+	if (!fypc)
+		return;
+
+	fy_path_component_cleanup(fypc);
+
+	if (!fypp)
+		fy_path_component_free(fypc);
+	else
+		fy_path_component_list_push(&fypp->components, fypc);
 }
 
 struct fy_path_component *fy_path_component_create_mapping(struct fy_path *fypp)
@@ -437,16 +412,50 @@ const char *fy_path_get_text(struct fy_path *fypp, size_t *lenp)
 
 const char *fy_path_get_text0(struct fy_path *fypp)
 {
-	// fy_path_rebuild(fypp);
 	if (fy_emit_accum_empty(&fypp->ea))
 		return "/";
 	return fy_emit_accum_get0(&fypp->ea);
 }
 
-int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
+struct fy_composer *
+fy_composer_create(struct fy_composer_cfg *cfg)
 {
-	struct fy_path_component *fypc, *fypc_last;
+	struct fy_composer *fyc;
+	int rc;
+
+	if (!cfg || !cfg->ops)
+		return NULL;
+
+	fyc = malloc(sizeof(*fyc));
+	if (!fyc)
+		return NULL;
+	memset(fyc, 0, sizeof(*fyc));
+	fyc->cfg = *cfg;
+	rc = fy_path_setup(&fyc->fypp);
+	if (rc)
+		goto err_no_path;
+
+	return fyc;
+
+err_no_path:
+	free(fyc);
+	return NULL;
+
+}
+
+void fy_composer_destroy(struct fy_composer *fyc)
+{
+	if (!fyc)
+		return;
+
+	fy_path_cleanup(&fyc->fypp);
+	free(fyc);
+}
+
+int fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp, struct fy_eventp *fyep)
+{
 	struct fy_path *fypp;
+	struct fy_path_component *fypc, *fypc_last;
 	struct fy_token *fyt, *tag, *anchor;
 	struct fy_document *fyd;
 	bool is_collection, is_map, is_start, is_complete;
@@ -455,10 +464,11 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 	size_t len;
 	int rc;
 
+	assert(fyc);
 	assert(fyp);
 	assert(fyep);
 
-	fypp = &fyp->path;
+	fypp = &fyc->fypp;
 
 	switch (fyep->e.type) {
 	case FYET_MAPPING_START:
@@ -516,7 +526,7 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 		break;
 
 	default:
-		// DBG(fypp, "ignoring\n");
+		// DBG(fyp, "ignoring\n");
 		return 0;
 	}
 
@@ -528,18 +538,18 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 
 	fypc_last = fy_path_component_list_tail(&fypp->components);
 
-	// DBG(fypp, "%s: start - %s\n", fy_path_get_text0(fypp), fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
+	DBG(fyp, "%s: start - %s\n", fy_path_get_text0(fypp), fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
 
 	if (fypc_last && fypc_last->type == FYPCT_MAP && fypc_last->map.accumulating_complex_key) {
 
-		// DBG(fypp, "accumulating for complex key\n");
+		// DBG(fyp, "accumulating for complex key\n");
 
 		rc = fy_document_builder_process_event(fypp->fydb, fyp, fyep);
 		if (!rc) {
-			// DBG(fypp, "accumulating still\n");
+			// DBG(fyp, "accumulating still\n");
 			return 0;
 		}
-		// DBG(fypp, "accumulation complete\n");
+		// DBG(fyp, "accumulation complete\n");
 
 		/* get the document */
 		fyd = fy_document_builder_take_document(fypp->fydb);
@@ -552,7 +562,7 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 		rc = fy_path_component_build_text(fypc_last, fyd);
 		assert(!rc);
 
-		// DBG(fypp, "%s: %s complex KEY %s\n", __func__, fy_path_get_text0(fypp), txt);
+		// DBG(fyp, "%s: %s complex KEY %s\n", __func__, fy_path_get_text0(fypp), txt);
 
 		/* and destroy the document immediately */
 		fy_document_destroy(fyd);
@@ -571,13 +581,13 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 		switch (fypc_last->type) {
 		case FYPCT_MAP:
 			/* if there's no key set, set it now (and mark as non-complete) */
-			// DBG(fypp, "map.got_key=%s\n", fypc_last->map.got_key ? "true" : "false");
+			// DBG(fyp, "map.got_key=%s\n", fypc_last->map.got_key ? "true" : "false");
 			if (fypc_last->map.got_key) {
 				/* XXX maybe count here? */
 				break;
 			}
 			if (is_collection) {
-				// DBG(fypp, "Non scalar key - using document builder\n");
+				// DBG(fyp, "Non scalar key - using document builder\n");
 				if (!fypp->fydb) {
 					fypp->fydb = fy_document_builder_create(&fyp->cfg);
 					assert(fypp->fydb);
@@ -595,14 +605,14 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 				fypc_last->map.is_complex_key = true;
 				fypc_last->map.accumulating_complex_key = true;
 			} else {
-				// DBG(fypp, "scalar key: %s\n", fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
+				// DBG(fyp, "scalar key: %s\n", fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
 				fypc_last->map.got_key = true;
 				fypc_last->map.is_complex_key = false;
 
 				rc = fy_path_component_build_text(fypc_last, fyt);
 				assert(!rc);
 
-				// DBG(fypp, "%s: %s KEY %s\n", __func__, fy_path_get_text0(fypp), fy_token_get_scalar_path_key0(fyt) ? : "<null>");
+				// DBG(fyp, "%s: %s KEY %s\n", __func__, fy_path_get_text0(fypp), fy_token_get_scalar_path_key0(fyt) ? : "<null>");
 				is_complete = false;
 
 				// append to the string path
@@ -615,16 +625,15 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 			break;
 
 		case FYPCT_SEQ:
-			if (fypc_last->seq.idx < 0) {
+			if (fypc_last->seq.idx < 0)
 				fypc_last->seq.idx = 0;
-				fypc_last->seq.bufidx = -1;
-			} else
+			else
 				fypc_last->seq.idx++;
 
 			rc = fy_path_component_build_text(fypc_last, &fypc_last->seq.idx);
 			assert(!rc);
 
-			// DBG(fypp, "%s: %s SEQ next %d\n", __func__, fy_path_get_text0(fypp), fypc_last->seq.idx);
+			// DBG(fyp, "%s: %s SEQ next %d\n", __func__, fy_path_get_text0(fypp), fypc_last->seq.idx);
 			fy_emit_accum_rewind_state(&fypp->ea, &fypc_last->start);
 			text = fy_path_component_get_text(fypc_last, &len);
 			assert(text);
@@ -640,7 +649,7 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 
 	/* not complete yet */
 	if (!is_complete) {
-		// DBG(fypp, "%s: not-complete\n", fy_path_get_text0(fypp));
+		// DBG(fyp, "%s: not-complete\n", fy_path_get_text0(fypp));
 		return 0;
 	}
 
@@ -651,23 +660,22 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 
 		/* append to the tail */
 		fy_path_component_list_add_tail(&fypp->components, fypc);
-		fypp->seq++;
 
 		/* save state of path */
 		fy_emit_accum_get_state(&fypp->ea, &fypc->start);
 
 		if (fypc_last && fypc_last->type == FYPCT_MAP && fypc_last->map.got_key) {
-			// DBG(fypp, "%s: clear got_key %p\n", fy_path_get_text0(fypp), fypc_last);
+			// DBG(fyp, "%s: clear got_key %p\n", fy_path_get_text0(fypp), fypc_last);
 			fypc_last->map.got_key = false;
 		}
 
-		// DBG(fypp, "%s: push %p\n", fy_path_get_text0(fypp), fypc);
+		// DBG(fyp, "%s: push %p\n", fy_path_get_text0(fypp), fypc);
 	}
 
 	if (!is_collection) {
-		// DBG(fypp, "%s: scalar %s\n", fy_path_get_text0(fypp), fy_token_get_scalar_path_key0(fyt) ? : "<null>");
+		// DBG(fyp, "%s: scalar %s\n", fy_path_get_text0(fypp), fy_token_get_scalar_path_key0(fyt) ? : "<null>");
 		if (fypc_last && fypc_last->type == FYPCT_MAP && fypc_last->map.got_key) {
-			// DBG(fypp, "%s: clear got_key %p\n", fy_path_get_text0(fypp), fypc_last);
+			// DBG(fyp, "%s: clear got_key %p\n", fy_path_get_text0(fypp), fypc_last);
 			fypc_last->map.got_key = false;
 		}
 
@@ -678,23 +686,21 @@ int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep)
 
 		fypc = fy_path_component_list_pop_tail(&fypp->components);
 		assert(fypc);
-		fypp->seq++;
 
 		fy_emit_accum_rewind_state(&fypp->ea, &fypc->start);
 
-		/* and destroy it */
-		fy_path_component_destroy(fypc);
+		/* and recycle it it */
+		fy_path_component_recycle(fypp, fypc);
 
 		fypc_last = fy_path_component_list_tail(&fypp->components);
-
+		assert(fypc_last);
 		fy_path_component_cleanup(fypc_last);
 
-		// DBG(fypp, "%s: pop\n", fy_path_get_text0(fypp));
+		// DBG(fyp, "%s: pop\n", fy_path_get_text0(fypp));
 
 	}
 
-	// DBG(fypp, "%s: exit\n", fy_path_get_text0(fypp));
+	// DBG(fyp, "%s: exit\n", fy_path_get_text0(fypp));
 
 	return 0;
 }
-

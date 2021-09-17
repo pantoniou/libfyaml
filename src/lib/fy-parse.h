@@ -133,85 +133,6 @@ struct fy_parse_state_log {
 };
 FY_PARSE_TYPE_DECL(parse_state_log);
 
-FY_TYPE_FWD_DECL_LIST(path_component);
-
-enum fy_path_component_type {
-	FYPCT_NONE,	/* not yet instantiated */
-	FYPCT_MAP,	/* it's a mapping */
-	FYPCT_SEQ,	/* it's a sequence */
-};
-
-/* fwd declaration */
-struct fy_document;
-struct fy_document_builder;
-
-#define FY_PATH_MAPPING_SHORT_KEY	32
-
-struct fy_path_mapping_state {
-	bool got_key : 1;
-	bool is_complex_key : 1;
-	bool accumulating_complex_key : 1;
-	char buf[FY_PATH_MAPPING_SHORT_KEY];	/* keep short keys without allocation */
-	const char *text;
-	size_t size;
-	char *text_storage;
-
-};
-
-struct fy_path_sequence_state {
-	int idx;
-	/* max 64 bit 18446744073709551616 */
-	int bufidx;	/* the index the buffer was generated for */
-	char buf[22];	/* enough for 64 bit sequence numbers */
-	size_t buflen;
-};
-
-struct fy_path_component {
-	struct fy_path *fypp;
-	struct list_head node;
-	struct fy_emit_accum_state start;
-	enum fy_path_component_type type;
-	union {
-		struct fy_path_mapping_state map;
-		struct fy_path_sequence_state seq;
-	};
-};
-FY_PARSE_TYPE_DECL_AFTER_FWD(path_component);
-
-struct fy_path_cfg {
-	struct fy_diag *diag;	/* optional diag */
-	struct fy_parser *fyp;	/* optional parser we associate with */
-};
-
-struct fy_path {
-	struct fy_path_cfg cfg;
-
-	int count;
-	struct fy_path_component_list components;
-	uint64_t seq;		/* the sequence for list */
-	uint64_t textseq;	/* the sequence for the text repr */
-
-	struct fy_emit_accum ea;
-	char ea_inplace_buf[256];	/* the in place accumulator buffer before allocating */
-
-	struct fy_document_builder *fydb;	/* for complex keys */
-};
-
-int fy_path_setup(struct fy_path *fypp, const struct fy_path_cfg *cfg);
-void fy_path_cleanup(struct fy_path *fypp);
-struct fy_path *fy_path_create(const struct fy_path_cfg *cfg);
-void fy_path_destroy(struct fy_path *fypp);
-
-void fy_path_reset(struct fy_path *fypp);
-
-struct fy_path_component *fy_path_component_alloc(struct fy_path *fypp);
-void fy_path_component_cleanup(struct fy_path_component *fypc);
-void fy_path_component_free(struct fy_path_component *fypc);
-void fy_path_component_destroy(struct fy_path_component *fypc);
-
-struct fy_path_component *fy_path_component_create_mapping(struct fy_path *fypp);
-struct fy_path_component *fy_path_component_create_sequence(struct fy_path *fypp);
-
 struct fy_parser {
 	struct fy_parse_cfg cfg;
 
@@ -260,9 +181,6 @@ struct fy_parser {
 	enum fy_parser_state state;
 	struct fy_parse_state_log_list state_stack;
 
-	/* current path */
-	struct fy_path path;
-
 	/* current parse document */
 	struct fy_document_state *current_document_state;
 	struct fy_document_state *default_document_state;
@@ -278,7 +196,6 @@ struct fy_parser {
 	struct fy_parse_state_log_list recycled_parse_state_log;
 	struct fy_eventp_list recycled_eventp;
 	struct fy_flow_list recycled_flow;
-	struct fy_path_component_list recycled_path_component;
 	struct fy_token_list recycled_token;
 
 	/* the diagnostic object */
@@ -648,9 +565,61 @@ static inline int fy_document_state_version_compare(struct fy_document_state *fy
 	return fy_version_compare(fy_document_state_version(fyds), vb);
 }
 
-int fy_path_setup(struct fy_path *fypp, const struct fy_path_cfg *cfg);
+/*******************************/
+
+FY_TYPE_FWD_DECL_LIST(path_component);
+
+enum fy_path_component_type {
+	FYPCT_NONE,	/* not yet instantiated */
+	FYPCT_MAP,	/* it's a mapping */
+	FYPCT_SEQ,	/* it's a sequence */
+};
+
+/* fwd declaration */
+struct fy_document;
+struct fy_document_builder;
+
+#define FY_PATH_MAPPING_SHORT_KEY	32
+
+struct fy_path_mapping_state {
+	bool got_key : 1;
+	bool is_complex_key : 1;
+	bool accumulating_complex_key : 1;
+	char buf[FY_PATH_MAPPING_SHORT_KEY];	/* keep short keys without allocation */
+	const char *text;
+	size_t size;
+	char *text_storage;
+
+};
+
+struct fy_path_sequence_state {
+	int idx;
+	char buf[22];	/* enough for 64 bit sequence numbers */
+	size_t buflen;
+};
+
+struct fy_path_component {
+	struct list_head node;
+	struct fy_emit_accum_state start;
+	enum fy_path_component_type type;
+	union {
+		struct fy_path_mapping_state map;
+		struct fy_path_sequence_state seq;
+	};
+};
+FY_TYPE_DECL_LIST(path_component);
+
+struct fy_path {
+	struct fy_path_component_list recycled_component;
+	struct fy_path_component_list components;
+	struct fy_emit_accum ea;
+	char ea_inplace_buf[256];	/* the in place accumulator buffer before allocating */
+	struct fy_document_builder *fydb;	/* for complex keys */
+};
+
+int fy_path_setup(struct fy_path *fypp);
 void fy_path_cleanup(struct fy_path *fypp);
-struct fy_path *fy_path_create(const struct fy_path_cfg *cfg);
+struct fy_path *fy_path_create(void);
 void fy_path_destroy(struct fy_path *fypp);
 
 void fy_path_reset(struct fy_path *fypp);
@@ -659,6 +628,10 @@ struct fy_path_component *fy_path_component_alloc(struct fy_path *fypp);
 void fy_path_component_cleanup(struct fy_path_component *fypc);
 void fy_path_component_free(struct fy_path_component *fypc);
 void fy_path_component_destroy(struct fy_path_component *fypc);
+
+struct fy_path_component *fy_path_component_create_mapping(struct fy_path *fypp);
+struct fy_path_component *fy_path_component_create_sequence(struct fy_path *fypp);
+
 
 struct fy_path_component *fy_path_component_create_mapping(struct fy_path *fypp);
 struct fy_path_component *fy_path_component_create_sequence(struct fy_path *fypp);
@@ -676,10 +649,6 @@ int fy_path_rebuild(struct fy_path *fypp);
 const char *fy_path_get_text(struct fy_path *fypp, size_t *lenp);
 const char *fy_path_get_text0(struct fy_path *fypp);
 
-struct fy_path *fy_parse_path(struct fy_parser *fyp);
-
-int fy_parse_path_event(struct fy_parser *fyp, struct fy_eventp *fyep);
-
 struct fy_document *
 fy_parse_load_document_with_builder(struct fy_parser *fyp);
 
@@ -688,5 +657,36 @@ fy_parse_recycled_token(struct fy_parser *fyp)
 {
 	return fyp && !fyp->suppress_recycling ? &fyp->recycled_token : NULL;
 }
+
+struct fy_composer;
+
+struct fy_composer_ops {
+	int (*stream_start)(struct fy_composer *fyc);
+	int (*stream_end)(struct fy_composer *fyc);
+	int (*document_start)(struct fy_composer *fyc, struct fy_document_state *fyds);
+	int (*document_end)(struct fy_composer *fyc);
+	int (*scalar)(struct fy_composer *fyc, struct fy_path *path, struct fy_token *tag, struct fy_token *fyt);
+	int (*mapping_start)(struct fy_composer *fyc, struct fy_path *path, struct fy_token *tag, struct fy_token *fyt);
+	int (*mapping_end)(struct fy_composer *fyc, struct fy_path *path, struct fy_token *fyt);
+	int (*sequence_start)(struct fy_composer *fyc, struct fy_path *path, struct fy_token *tag, struct fy_token *fyt);
+	int (*sequence_end)(struct fy_composer *fyc, struct fy_path *path, struct fy_token *fyt);
+};
+
+struct fy_composer_cfg {
+	const struct fy_composer_ops *ops;
+	void *user;
+	struct fy_diag *diag;
+};
+
+struct fy_composer {
+	struct fy_composer_cfg cfg;
+	struct fy_path fypp;
+};
+
+struct fy_composer *
+fy_composer_create(struct fy_composer_cfg *cfg);
+void fy_composer_destroy(struct fy_composer *fyc);
+
+int fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp, struct fy_eventp *fyep);
 
 #endif

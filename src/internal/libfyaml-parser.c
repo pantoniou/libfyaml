@@ -92,7 +92,7 @@ static struct option lopts[] = {
 #define LIBYAML_MODES	""
 #endif
 
-#define MODES	"parse|scan|copy|testsuite|dump|dump2|build|walk" LIBYAML_MODES
+#define MODES	"parse|scan|copy|testsuite|dump|dump2|build|walk|reader|compose" LIBYAML_MODES
 
 static void display_usage(FILE *fp, char *progname)
 {
@@ -724,6 +724,47 @@ int do_dump2(struct fy_parser *fyp, int indent, int width, bool resolve, bool so
 
 out:
 	return count > 0 ? 0 : -1;
+}
+
+static const struct fy_composer_ops composer_ops = {
+	.stream_start = NULL,
+	.stream_end = NULL,
+	.document_start = NULL,
+	.document_end = NULL,
+	.scalar = NULL,
+	.mapping_start = NULL,
+	.mapping_end = NULL,
+	.sequence_start = NULL,
+	.sequence_end = NULL,
+};
+
+int do_compose(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort, bool null_output)
+{
+	struct fy_eventp *fyep;
+	struct fy_composer_cfg cfg;
+	struct fy_composer *fyc;
+	unsigned int flags;
+
+	flags = 0;
+	if (sort)
+		flags |= FYECF_SORT_KEYS;
+	flags |= FYECF_INDENT(indent) | FYECF_WIDTH(width);
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.ops = &composer_ops;
+	cfg.user = NULL;
+	cfg.diag = fy_parser_get_diag(fyp);
+	fyc = fy_composer_create(&cfg);
+	assert(fyc);
+
+	while ((fyep = fy_parse_private(fyp)) != NULL) {
+		fy_composer_process_event_private(fyc, fyp, fyep);
+		fy_parse_eventp_recycle(fyp, fyep);
+	}
+
+	fy_composer_destroy(fyc);
+
+	return 0;
 }
 
 
@@ -2945,7 +2986,8 @@ int main(int argc, char *argv[])
 	    strcmp(mode, "dump2") &&
 	    strcmp(mode, "build") &&
 	    strcmp(mode, "walk") &&
-	    strcmp(mode, "reader")
+	    strcmp(mode, "reader") &&
+	    strcmp(mode, "compose")
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 	    && strcmp(mode, "libyaml-scan")
 	    && strcmp(mode, "libyaml-parse")
@@ -3151,6 +3193,12 @@ int main(int argc, char *argv[])
 		rc = do_reader(fyp, indent, width, resolve, sort);
 		if (rc < 0) {
 			/* fprintf(stderr, "do_reader() error %d\n", rc); */
+			goto cleanup;
+		}
+	} else if (!strcmp(mode, "compose")) {
+		rc = do_compose(fyp, indent, width, resolve, sort, null_output);
+		if (rc < 0) {
+			/* fprintf(stderr, "do_compose() error %d\n", rc); */
 			goto cleanup;
 		}
 	}

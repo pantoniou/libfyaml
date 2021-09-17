@@ -374,6 +374,7 @@ void fy_reader_diag_report(struct fy_reader *fyr,
 #define FYR_NODE_WARNING(_fyr, _fyn, _type, _module, _fmt, ...) \
 	FYR_NODE_DIAG(_fyr, _fyn, FYET_WARNING, _module, _fmt, ## __VA_ARGS__)
 
+#if 0
 /* path diagnostics */
 
 struct fy_path;
@@ -441,6 +442,7 @@ void fy_path_diag_report(struct fy_path *fypp,
 
 #define FYPP_TOKEN_DIAG(_fypp, _fyt, _type, _module, _fmt, ...) \
 	_FYPP_TOKEN_DIAG(_fypp, fy_token_ref(_fyt), _type, _module, _fmt, ## __VA_ARGS__)
+#endif
 
 /* doc */
 struct fy_document;

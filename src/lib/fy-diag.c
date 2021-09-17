@@ -773,6 +773,7 @@ void fy_diag_node_vreport(struct fy_diag *diag, struct fy_node *fyn,
 	diag->on_error = save_on_error;
 }
 
+#if 0
 /* path */
 int fy_path_vdiag(struct fy_path *fypp, unsigned int flags,
 		    const char *file, int line, const char *func,
@@ -844,6 +845,7 @@ void fy_path_diag_report(struct fy_path *fypp,
 	fy_path_diag_vreport(fypp, fydrc, fmt, ap);
 	va_end(ap);
 }
+#endif
 
 /* node reports */
 

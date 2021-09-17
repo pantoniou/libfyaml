@@ -404,9 +404,6 @@ int fy_reset_document_state(struct fy_parser *fyp)
 	fyp->flow = FYFT_NONE;
 	fy_parse_flow_list_recycle_all(fyp, &fyp->flow_stack);
 
-	/* reset the path */
-	fy_path_reset(&fyp->path);
-
 	return 0;
 
 err_out:
@@ -678,7 +675,6 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 {
 	struct fy_diag *diag;
 	struct fy_diag_cfg dcfg;
-	struct fy_path_cfg pcfg;
 	const struct fy_version *vers;
 	int rc;
 
@@ -746,14 +742,6 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 
 	fyp->current_document_state = NULL;
 
-	fy_path_component_list_init(&fyp->recycled_path_component);
-
-	memset(&pcfg, 0, sizeof(pcfg));
-	pcfg.fyp = fyp;
-	rc = fy_path_setup(&fyp->path, &pcfg);
-	fyp_error_check(fyp, !rc, err_out_rc,
-			"fy_path_setup() failed");
-
 	rc = fy_reset_document_state(fyp);
 	fyp_error_check(fyp, !rc, err_out_rc,
 			"fy_reset_document_state() failed");
@@ -769,7 +757,6 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 	struct fy_token *fyt;
 
 	fy_document_builder_destroy(fyp->fydb);
-	fy_path_cleanup(&fyp->path);
 
 	fy_parse_indent_list_recycle_all(fyp, &fyp->indent_stack);
 	fy_parse_simple_key_list_recycle_all(fyp, &fyp->simple_keys);
@@ -792,7 +779,6 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 	fy_reader_cleanup(&fyp->builtin_reader);
 
 	/* and vacuum (free everything) */
-	fy_parse_path_component_vacuum(fyp);
 	fy_parse_indent_vacuum(fyp);
 	fy_parse_simple_key_vacuum(fyp);
 	fy_parse_parse_state_log_vacuum(fyp);
@@ -5837,14 +5823,7 @@ struct fy_eventp *fy_parse_private(struct fy_parser *fyp)
 	struct fy_eventp *fyep = NULL;
 
 	fyep = fy_parse_internal(fyp);
-
-#if 0
-	if (fyep)
-		(void)fy_parse_path_event(fyp, fyep);
-#endif
-
 	fyp_parse_debug(fyp, "> %s", fyep ? fy_event_type_txt[fyep->e.type] : "NULL");
-
 	return fyep;
 }
 
@@ -6174,4 +6153,3 @@ struct fy_document_state *fy_parser_get_document_state(struct fy_parser *fyp)
 {
 	return fyp ? fyp->current_document_state : NULL;
 }
-
