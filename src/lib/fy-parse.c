@@ -3970,7 +3970,10 @@ void fy_reader_skip_ws_cr_nl(struct fy_reader *fyr)
 				column = 0;
 				line++;
 			} else if (cc == '\t') {
-				column += (fyr->tabsize - (column % fyr->tabsize));
+			       	if (fyr->tabsize)
+					column += (fyr->tabsize - (column % fyr->tabsize));
+				else
+					column++;
 			} else if (cc == '\r') {
 				column = 0;
 				line++;
@@ -4110,7 +4113,10 @@ void fy_reader_skip_ws_lb(struct fy_reader *fyr)
 					column = 0;
 					line++;
 				} else if (c == '\t') {
-					column += (fyr->tabsize - (column % fyr->tabsize));
+					if (fyr->tabsize)
+						column += (fyr->tabsize - (column % fyr->tabsize));
+					else
+						column++;
 				} else if (c == '\r') {
 					column = 0;
 					line++;

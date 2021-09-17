@@ -121,7 +121,7 @@ struct fy_path_component *fy_path_component_alloc(struct fy_path *fypp)
 	return fypc;
 }
 
-void fy_path_component_cleanup(struct fy_path_component *fypc)
+void fy_path_component_clear_state(struct fy_path_component *fypc)
 {
 	if (!fypc)
 		return;
@@ -143,11 +143,19 @@ void fy_path_component_cleanup(struct fy_path_component *fypc)
 		break;
 
 	case FYPCT_SEQ:
-		fypc->seq.idx = -1;
 		fypc->seq.buf[0] = '\0';
 		fypc->seq.buflen = 0;
 		break;
 	}
+}
+
+void fy_path_component_cleanup(struct fy_path_component *fypc)
+{
+	if (!fypc)
+		return;
+
+	fy_path_component_clear_state(fypc);
+	fypc->type = FYPCT_NONE;
 }
 
 void fy_path_component_free(struct fy_path_component *fypc)
@@ -178,7 +186,7 @@ void fy_path_component_recycle(struct fy_path *fypp, struct fy_path_component *f
 	if (!fypp)
 		fy_path_component_free(fypc);
 	else
-		fy_path_component_list_push(&fypp->components, fypc);
+		fy_path_component_list_push(&fypp->recycled_component, fypc);
 }
 
 struct fy_path_component *fy_path_component_create_mapping(struct fy_path *fypp)
@@ -813,7 +821,7 @@ int fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser 
 
 		fypc_last = fy_path_component_list_tail(&fypp->components);
 		assert(fypc_last);
-		fy_path_component_cleanup(fypc_last);
+		fy_path_component_clear_state(fypc_last);
 
 		// DBG(fyp, "%s: pop\n", fy_path_get_text0(fypp));
 		//
