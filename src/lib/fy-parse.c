@@ -3353,6 +3353,38 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 				blanks_found = 0;
 			}
 
+			if (c >= 0 && c <= 0x7f && (fy_utf8_low_ascii_flags[c] & F_SIMPLE_SCALAR)) {
+				size_t len, consumed;
+				const char *p, *s, *e;
+				int8_t cc;
+				int run;
+
+				run = 0;
+				while ((p = fy_reader_ensure_lookahead(fyr, 1, &len)) != NULL) {
+
+					s = p;
+					e = s + len;
+
+					while (s < e && (cc = (int8_t)*s) >= 0 && (fy_utf8_low_ascii_flags[cc] & F_SIMPLE_SCALAR))
+						s++;
+
+					consumed = s - p;
+					if (consumed) {
+						fy_reader_advance_octets(fyr, consumed);
+						fyr->column += consumed;
+						lastc = (int)cc;
+					}
+					run += consumed;
+
+					/* we're done if stopped earlier */
+					if (s < e)
+						break;
+				}
+				length += run;
+				break_run = 0;
+				continue;
+			}
+
 			/* escaped single quote? */
 			if (is_single && c == '\'' && fy_reader_peek_at(fyr, 1) == '\'') {
 				length++;
@@ -3517,8 +3549,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 		blanks_found = 0;
 		while (fy_reader_is_flow_blank(fyr, c = fy_reader_peek(fyr)) || fy_reader_is_lb(fyr, c)) {
 
-			is_json_unesc = fy_is_json_unescaped(c);
-			if (!is_json_unesc)
+			if (!has_json_esc && !fy_is_json_unescaped(c))
 				has_json_esc = true;
 
 			break_run = 0;
@@ -3611,7 +3642,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 	bool last_ptr;
 	struct fy_mark mark, last_mark;
 	bool is_multiline, has_lb, has_ws;
-	bool is_json_unesc, has_json_esc;
+	bool has_json_esc;
 #ifdef ATOM_SIZE_CHECK
 	size_t tlength;
 #endif
@@ -3654,6 +3685,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 	memset(&last_mark, 0, sizeof(last_mark));
 	c = FYUG_EOF;
 	lastc = FYUG_EOF;
+
 	for (;;) {
 		/* break for document indicators */
 		if (fy_reader_column(fyr) == 0 &&
@@ -3669,24 +3701,69 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 		if (directive0 && fy_reader_column(fyr) == 0 && c == '%')
 			break;
 
+		/* quickly deal with runs */
 		run = 0;
-		for (;;) {
-			if (fy_reader_is_blankz(fyr, c))
-				break;
+		if (c >= 0 && c <= 0x7f && (fy_utf8_low_ascii_flags[c] & F_SIMPLE_SCALAR)) {
+			size_t len, consumed;
+			const char *p, *s, *e;
+			int8_t cc;
 
-			nextc = fy_reader_peek_at(fyr, 1);
+			while ((p = fy_reader_ensure_lookahead(fyr, 1, &len)) != NULL) {
 
-			/* ':' followed by space terminates */
-			if (c == ':' && fy_reader_is_blankz(fyr, nextc)) {
-				/* super rare case :: not followed by space  */
-				/* :: not followed by space */
-				if (lastc != ':' || fy_is_ws(nextc))
+				s = p;
+				e = s + len;
+
+				while (s < e && (cc = (int8_t)*s) >= 0 && (fy_utf8_low_ascii_flags[cc] & F_SIMPLE_SCALAR))
+					s++;
+
+				consumed = s - p;
+				if (consumed) {
+					fy_reader_advance_octets(fyr, consumed);
+					fyr->column += consumed;
+				}
+				run += consumed;
+
+				/* we're done if stopped earlier */
+				if (s < e)
 					break;
 			}
 
-			/* in flow context ':' followed by flow markers */
-			if (flow_level > 0 && c == ':' && fy_utf8_strchr(",[]{}", nextc))
-				break;
+		}
+		if (run > 0) {
+			length += run;
+			if (breaks_found) {
+				/* minimum 1 sep, or more for consecutive */
+				length += breaks_found > 1 ? (breaks_found_length - first_break_length) : 1;
+				length += presentation_breaks_length;
+				breaks_found = 0;
+				blanks_found = 0;
+				presentation_breaks_length = 0;
+			} else if (blanks_found) {
+				/* just the blanks mam' */
+				length += blanks_found;
+				blanks_found = 0;
+			}
+		}
+
+		while (!fy_reader_is_blankz(fyr, c = fy_reader_peek(fyr))) {
+
+
+			if (c == ':') {
+
+				nextc = fy_reader_peek_at(fyr, 1);
+
+				/* ':' followed by space terminates */
+				if (fy_reader_is_blankz(fyr, nextc)) {
+					/* super rare case :: not followed by space  */
+					/* :: not followed by space */
+					if (lastc != ':' || fy_is_ws(nextc))
+						break;
+				}
+
+				/* in flow context ':' followed by flow markers */
+				if (flow_level > 0 && fy_utf8_strchr(",[]{}", nextc))
+					break;
+			}
 
 			/* in flow context any or , [ ] { } */
 			if (flow_level > 0 && (c == ',' || c == '[' || c == ']' || c == '{' || c == '}'))
@@ -3706,8 +3783,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 			}
 
 			/* check whether we have a JSON unescaped character */
-			is_json_unesc = fy_is_json_unescaped(c);
-			if (!is_json_unesc)
+			if (!has_json_esc && !fy_is_json_unescaped(c))
 				has_json_esc = true;
 
 			fy_reader_advance(fyr, c);
@@ -3716,7 +3792,6 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 			length += fy_utf8_width(c);
 
 			lastc = c;
-			c = nextc;
 		}
 
 		/* save end mark if we processed more than one non-blank */
