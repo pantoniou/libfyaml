@@ -1215,9 +1215,12 @@ int do_libyaml_dump(yaml_parser_t *parser, yaml_emitter_t *emitter, bool null_ou
 
 			if (!null_output)
 				yaml_emitter_dump(emitter, &document);
+			else
+				yaml_document_delete(&document);
 			counter++;
 
-			yaml_emitter_flush(emitter);
+			if (!null_output)
+				yaml_emitter_flush(emitter);
 		} else
 			yaml_document_delete(&document);
         }

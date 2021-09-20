@@ -50,8 +50,17 @@ struct fy_token *fy_token_alloc_rl(struct fy_token_list *fytl)
 	struct fy_token *fyt;
 
 	fyt = NULL;
-	if (fytl)
+	if (fytl) {
 		fyt = fy_token_list_pop(fytl);
+		if (fyt) {
+			fyt->analyze_flags = 0;
+			fyt->text_len = 0;
+			fyt->text = NULL;
+			fyt->text0 = NULL;
+			fyt->handle.fyi = NULL;
+			fyt->comment = NULL;
+		}
+	}
 	if (!fyt) {
 		fyt = malloc(sizeof(*fyt));
 		if (!fyt)
@@ -62,12 +71,6 @@ struct fy_token *fy_token_alloc_rl(struct fy_token_list *fytl)
 
 	fyt->type = FYTT_NONE;
 	fyt->refs = 1;
-	fyt->analyze_flags = 0;
-	fyt->text_len = 0;
-	fyt->text = NULL;
-	fyt->text0 = NULL;
-	fyt->handle.fyi = NULL;
-	fyt->comment = NULL;
 
 	return fyt;
 }
