@@ -1126,26 +1126,28 @@ const char *fy_atom_format_text(struct fy_atom *atom, char *buf, size_t maxsz)
 {
 	struct fy_atom_iter iter;
 	const struct fy_iter_chunk *ic;
-	char *oe;
+	char *s, *e;
 	int ret;
 
 	if (!atom || !buf)
 		return NULL;
 
-	oe = buf + maxsz;
+	s = buf;
+	e = s + maxsz;
 	fy_atom_iter_start(atom, &iter);
 	ic = NULL;
 	while ((ic = fy_atom_iter_chunk_next(&iter, ic, &ret)) != NULL) {
 		/* must fit */
-		if ((size_t)(oe - buf) < ic->len)
+		if ((size_t)(e - s) < ic->len)
 			return NULL;
-		memcpy(buf, ic->str, ic->len);
-		buf += ic->len;
+		memcpy(s, ic->str, ic->len);
+		s += ic->len;
 	}
 	fy_atom_iter_finish(&iter);
 
-	if (ret != 0)
+	if (ret != 0 || s >= e)
 		return NULL;
+	*s = '\0';
 
 	return buf;
 }
