@@ -18,7 +18,7 @@ libfyaml_@MAJOR@_@MINOR@_la_SOURCES = \
 	lib/fy-input.c lib/fy-input.h \
 	lib/fy-docstate.c lib/fy-docstate.h \
 	lib/fy-doc.c lib/fy-doc.h \
-	lib/fy-emit.c lib/fy-emit.h \
+	lib/fy-emit.c lib/fy-emit.h lib/fy-emit-accum.h \
 	lib/fy-utils.c lib/fy-utils.h \
 	lib/fy-event.h lib/fy-event.c \
 	xxhash/xxhash.c xxhash/xxhash.h \
