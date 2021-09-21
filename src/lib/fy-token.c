@@ -1634,3 +1634,25 @@ fy_tag_directive_token_tag(struct fy_token *fyt)
 	return &fyt->tag_directive.tag;
 }
 
+struct fy_atom *fy_token_comment_handle(struct fy_token *fyt, enum fy_comment_placement placement, bool alloc)
+{
+	struct fy_atom *handle;
+	size_t size;
+
+	if (!fyt || (unsigned int)placement >= fycp_max)
+		return NULL;
+
+	if (!fyt->comment) {
+		if (!alloc)
+			return NULL;
+
+		size = sizeof(*fyt->comment) * fycp_max;
+		fyt->comment = malloc(size);
+		if (!fyt->comment)
+			return NULL;
+		memset(fyt->comment, 0, size);
+	}
+	handle = &fyt->comment[placement];
+
+	return handle;
+}

@@ -446,11 +446,8 @@ struct fy_atom *fy_emit_token_comment_handle(struct fy_emitter *emit, struct fy_
 {
 	struct fy_atom *handle;
 
-	if (!fyt)
-		return NULL;
-
-	handle = &fyt->comment[placement];
-	return fy_atom_is_set(handle) ? handle : NULL;
+	handle = fy_token_comment_handle(fyt, placement, false);
+	return handle && fy_atom_is_set(handle) ? handle : NULL;
 }
 
 struct fy_token *fy_node_value_token(struct fy_node *fyn)

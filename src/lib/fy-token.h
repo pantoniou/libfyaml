@@ -92,7 +92,7 @@ struct fy_token {
 	const char *text;
 	char *text0;		/* this is allocated */
 	struct fy_atom handle;
-	struct fy_atom comment[fycp_max];
+	struct fy_atom *comment;	/* only when enabled */
 	union  {
 		struct {
 			unsigned int tag_length;	/* from start */
@@ -387,5 +387,8 @@ static inline bool fy_token_is_number(struct fy_token *fyt)
 		return false;
 	return fy_atom_is_number(atom);
 }
+
+struct fy_atom *fy_token_comment_handle(struct fy_token *fyt, enum fy_comment_placement placement, bool alloc);
+
 
 #endif
