@@ -46,6 +46,10 @@
 
 #define OPT_DISABLE_MMAP		128
 #define OPT_USE_CALLBACK		129
+#define OPT_DISABLE_ACCEL		130
+#define OPT_DISABLE_BUFFERING		131
+#define OPT_DISABLE_DEPTH_LIMIT		132
+#define OPT_NULL_OUTPUT			133
 
 #define OPT_SLOPPY_FLOW_INDENTATION	2007
 
@@ -66,7 +70,11 @@ static struct option lopts[] = {
 	{"diag",		required_argument,	0,	'D' },
 	{"module",		required_argument,	0,	'M' },
 	{"disable-mmap",	no_argument,		0,	OPT_DISABLE_MMAP },
+	{"disable-accel",	no_argument,		0,	OPT_DISABLE_ACCEL },
+	{"disable-buffering",	no_argument,		0,	OPT_DISABLE_BUFFERING },
+	{"disable-depth-limit",	no_argument,		0,	OPT_DISABLE_DEPTH_LIMIT },
 	{"use-callback",	no_argument,		0,	OPT_USE_CALLBACK },
+	{"null-output",		no_argument,		0,	OPT_NULL_OUTPUT },
 	{"walk-path",		required_argument,	0,	'W' },
 	{"walk-start",		required_argument,	0,	'S' },
 	{"yaml-1.1",		no_argument,		0,	OPT_YAML_1_1 },
@@ -84,7 +92,7 @@ static struct option lopts[] = {
 #define LIBYAML_MODES	""
 #endif
 
-#define MODES	"parse|scan|copy|testsuite|dump|build|walk" LIBYAML_MODES
+#define MODES	"parse|scan|copy|testsuite|dump|dump2|build|walk|reader|compose" LIBYAML_MODES
 
 static void display_usage(FILE *fp, char *progname)
 {
@@ -459,12 +467,13 @@ void dump_testsuite_event(FILE *fp, struct fy_parser *fyp, struct fy_event *fye)
 	}
 }
 
-int do_testsuite(FILE *fp, struct fy_parser *fyp)
+int do_testsuite(FILE *fp, struct fy_parser *fyp, bool null_output)
 {
 	struct fy_eventp *fyep;
 
 	while ((fyep = fy_parse_private(fyp)) != NULL) {
-		dump_testsuite_event(fp, fyp, &fyep->e);
+		if (!null_output)
+			dump_testsuite_event(fp, fyp, &fyep->e);
 		fy_parse_eventp_recycle(fyp, fyep);
 	}
 
@@ -476,21 +485,16 @@ static void dump_token(struct fy_token *fyt)
 	const char *style;
 	const struct fy_version *vers;
 	const char *handle, *prefix, *suffix;
+	const char *typetxt;
+
+	typetxt = fy_token_type_txt[fyt->type];
+	assert(typetxt);
 
 	switch (fyt->type) {
-	case FYTT_NONE:
-		printf("%s\n", "NONE");
-		break;
-	case FYTT_STREAM_START:
-		printf("%s\n", "STREAM_START");
-		break;
-	case FYTT_STREAM_END:
-		printf("%s\n", "STREAM_END");
-		break;
 	case FYTT_VERSION_DIRECTIVE:
 		vers = fy_version_directive_token_version(fyt);
 		assert(vers);
-		printf("%s value=%d.%d\n", "VERSION_DIRECTIVE",
+		printf("%s value=%d.%d\n", typetxt,
 				vers->major, vers->minor);
 		break;
 	case FYTT_TAG_DIRECTIVE:
@@ -500,55 +504,16 @@ static void dump_token(struct fy_token *fyt)
 		prefix = fy_tag_directive_token_prefix0(fyt);
 		if (!prefix)
 			prefix = "";
-		printf("%s handle='%s' prefix='%s'\n", "TAG_DIRECTIVE",
+		printf("%s handle='%s' prefix='%s'\n", typetxt,
 				txt2esc_a(handle, -1),
 				txt2esc_a(prefix, -1));
 		break;
-	case FYTT_DOCUMENT_START:
-		printf("%s\n", "DOCUMENT_START");
-		break;
-	case FYTT_DOCUMENT_END:
-		printf("%s\n", "DOCUMENT_END");
-		break;
-	case FYTT_BLOCK_SEQUENCE_START:
-		printf("%s\n", "BLOCK_SEQUENCE_START");
-		break;
-	case FYTT_BLOCK_MAPPING_START:
-		printf("%s\n", "BLOCK_MAPPING_START");
-		break;
-	case FYTT_BLOCK_END:
-		printf("%s\n", "BLOCK_END");
-		break;
-	case FYTT_FLOW_SEQUENCE_START:
-		printf("%s\n", "FLOW_SEQUENCE_START");
-		break;
-	case FYTT_FLOW_SEQUENCE_END:
-		printf("%s\n", "FLOW_SEQUENCE_END");
-		break;
-	case FYTT_FLOW_MAPPING_START:
-		printf("%s\n", "FLOW_MAPPING_START");
-		break;
-	case FYTT_FLOW_MAPPING_END:
-		printf("%s\n", "FLOW_MAPPING_END");
-		break;
-	case FYTT_BLOCK_ENTRY:
-		printf("%s\n", "BLOCK_ENTRY");
-		break;
-	case FYTT_FLOW_ENTRY:
-		printf("%s\n", "FLOW_ENTRY");
-		break;
-	case FYTT_KEY:
-		printf("%s\n", "KEY");
-		break;
-	case FYTT_VALUE:
-		printf("%s\n", "VALUE");
-		break;
 	case FYTT_ALIAS:
-		printf("%s value='%s'\n", "ALIAS",
+		printf("%s value='%s'\n", typetxt,
 				fy_atom_get_esc_text_a(&fyt->handle));
 		break;
 	case FYTT_ANCHOR:
-		printf("%s value='%s'\n", "ANCHOR",
+		printf("%s value='%s'\n", typetxt,
 				fy_atom_get_esc_text_a(&fyt->handle));
 		break;
 	case FYTT_TAG:
@@ -558,7 +523,7 @@ static void dump_token(struct fy_token *fyt)
 		suffix = fy_tag_token_suffix0(fyt);
 		if (!suffix)
 			suffix = "";
-		printf("%s handle='%s' suffix='%s'\n", "TAG",
+		printf("%s handle='%s' suffix='%s'\n", typetxt,
 				txt2esc_a(handle, -1),
 				txt2esc_a(suffix, -1));
 		break;
@@ -586,79 +551,29 @@ static void dump_token(struct fy_token *fyt)
 			style = "*illegal*";
 			break;
 		}
-		printf("%s value='%s' style=%s\n", "SCALAR",
+		printf("%s value='%s' style=%s\n", typetxt,
 				fy_atom_get_esc_text_a(&fyt->handle),
 				style);
 		break;
 
 	case FYTT_INPUT_MARKER:
-		printf("%s value='%s'\n", "INPUT_MARKER",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_SLASH:
-		printf("%s value='%s'\n", "SLASH",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_ROOT:
-		printf("%s value='%s'\n", "ROOT",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_THIS:
-		printf("%s value='%s'\n", "THIS",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_PARENT:
-		printf("%s value='%s'\n", "PARENT",
+		printf("%s value='%s'\n", typetxt,
 				fy_atom_get_esc_text_a(&fyt->handle));
 		break;
 
 	case FYTT_PE_MAP_KEY:
-		printf("%s value='%s'\n", "MAP_KEY",
+		printf("%s value='%s'\n", typetxt,
 				fy_atom_get_esc_text_a(&fyt->handle));
 		break;
 
 	case FYTT_PE_SEQ_INDEX:
-		printf("%s value='%s'\n", "SEQ_INDEX",
-				fy_atom_get_esc_text_a(&fyt->handle));
+		printf("%s value=%d\n", typetxt,
+				fyt->seq_index.index);
 		break;
 
 	case FYTT_PE_SEQ_SLICE:
-		printf("%s value='%s'\n", "SEQ_SLICE",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_SCALAR_FILTER:
-		printf("%s value='%s'\n", "SCALAR_FILTER",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_COLLECTION_FILTER:
-		printf("%s value='%s'\n", "COLLECTION_FILTER",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_SEQ_FILTER:
-		printf("%s value='%s'\n", "SEQ_FILTER",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_MAP_FILTER:
-		printf("%s value='%s'\n", "MAP_FILTER",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_EVERY_CHILD:
-		printf("%s value='%s'\n", "EVERY_CHILD",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_EVERY_CHILD_R:
-		printf("%s value='%s'\n", "EVERY_CHILD_R",
-				fy_atom_get_esc_text_a(&fyt->handle));
+		printf("%s value=%d:%d\n", typetxt,
+				fyt->seq_slice.start_index, fyt->seq_slice.end_index);
 		break;
 
 	case FYTT_PE_ALIAS:
@@ -666,34 +581,8 @@ static void dump_token(struct fy_token *fyt)
 				fy_atom_get_esc_text_a(&fyt->handle));
 		break;
 
-	case FYTT_PE_SIBLING:
-		printf("%s value='%s'\n", "PE-SIBLING",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_COMMA:
-		printf("%s value='%s'\n", "PE-COMMA",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_BARBAR:
-		printf("%s value='%s'\n", "PE-BARBAR",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_AMPAMP:
-		printf("%s value='%s'\n", "PE-AMPAMP",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_LPAREN:
-		printf("%s value='%s'\n", "PE-LPAREN",
-				fy_atom_get_esc_text_a(&fyt->handle));
-		break;
-
-	case FYTT_PE_RPAREN:
-		printf("%s value='%s'\n", "PE-RPAREN",
-				fy_atom_get_esc_text_a(&fyt->handle));
+	default:
+		printf("%s\n", typetxt);
 		break;
 	}
 }
@@ -769,7 +658,7 @@ int do_copy(struct fy_parser *fyp)
 	return 0;
 }
 
-int do_dump(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort)
+int do_dump(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort, bool null_output)
 {
 	struct fy_document *fyd;
 	unsigned int flags;
@@ -789,7 +678,8 @@ int do_dump(struct fy_parser *fyp, int indent, int width, bool resolve, bool sor
 				return -1;
 		}
 
-		fy_emit_document_to_file(fyd, flags, NULL);
+		if (!null_output)
+			fy_emit_document_to_file(fyd, flags, NULL);
 
 		fy_parse_document_destroy(fyp, fyd);
 
@@ -798,6 +688,178 @@ int do_dump(struct fy_parser *fyp, int indent, int width, bool resolve, bool sor
 
 	return count > 0 ? 0 : -1;
 }
+
+int do_dump2(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort, bool null_output)
+{
+	struct fy_document *fyd;
+	struct fy_document_builder *fydb;
+	unsigned int flags;
+	int rc, count;
+
+	flags = 0;
+	if (sort)
+		flags |= FYECF_SORT_KEYS;
+	flags |= FYECF_INDENT(indent) | FYECF_WIDTH(width);
+
+	fydb = fy_document_builder_create(&fyp->cfg);
+	assert(fydb);
+
+	count = 0;
+	while ((fyd = fy_document_builder_load_document(fydb, fyp)) != NULL) {
+
+		if (resolve) {
+			rc = fy_document_resolve(fyd);
+			if (rc)
+				goto out;
+		}
+
+		fy_emit_document_to_file(fyd, flags, NULL);
+
+		fy_parse_document_destroy(fyp, fyd);
+
+		count++;
+	}
+
+	fy_document_builder_destroy(fydb);
+
+out:
+	return count > 0 ? 0 : -1;
+}
+
+static int
+stream_start(struct fy_composer *fyc)
+{
+	fprintf(stderr, "%s:\n", "+STR");
+	return 0;
+}
+
+static int
+stream_end(struct fy_composer *fyc)
+{
+	fprintf(stderr, "%s:\n", "-STR");
+	return 0;
+}
+
+static int
+document_start(struct fy_composer *fyc, struct fy_document_state *fyds)
+{
+	fprintf(stderr, "%s:\n", "+DOC");
+	return 0;
+}
+
+static int
+document_end(struct fy_composer *fyc)
+{
+	fprintf(stderr, "%s:\n", "-DOC");
+	return 0;
+}
+
+static int
+scalar(struct fy_composer *fyc, struct fy_path *path, struct fy_token *tag, struct fy_token *fyt)
+{
+	char tbuf[80];
+
+	fprintf(stderr, "%s: ! - %c%c%c %3d - %s - %s\n", "SCLR",
+			fy_path_is_root(path) ? 'R' : '-',
+			fy_path_in_mapping(path) ? 'M' : '-',
+			fy_path_in_sequence(path) ? 'S' : '-',
+			fy_path_depth(path),
+			fy_path_get_text0(path), fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
+	return 0;
+}
+
+static int
+mapping_start(struct fy_composer *fyc, struct fy_path *path, struct fy_token *tag, struct fy_token *fyt)
+{
+	fprintf(stderr, "%s: { - %c%c%c %3d - %s\n", "+MAP",
+			fy_path_is_root(path) ? 'R' : '-',
+			fy_path_in_mapping(path) ? 'M' : '-',
+			fy_path_in_sequence(path) ? 'S' : '-',
+			fy_path_depth(path),
+			fy_path_get_text0(path));
+	return 0;
+}
+
+static int
+mapping_end(struct fy_composer *fyc, struct fy_path *path, struct fy_token *fyt)
+{
+	fprintf(stderr, "%s: } - %c%c%c %3d - %s\n", "-MAP",
+			fy_path_is_root(path) ? 'R' : '-',
+			fy_path_in_mapping(path) ? 'M' : '-',
+			fy_path_in_sequence(path) ? 'S' : '-',
+			fy_path_depth(path),
+			fy_path_get_text0(path));
+	return 0;
+}
+
+static int
+sequence_start(struct fy_composer *fyc, struct fy_path *path, struct fy_token *tag, struct fy_token *fyt)
+{
+	fprintf(stderr, "%s: [ - %c%c%c %3d - %s\n", "+SEQ",
+			fy_path_is_root(path) ? 'R' : '-',
+			fy_path_in_mapping(path) ? 'M' : '-',
+			fy_path_in_sequence(path) ? 'S' : '-',
+			fy_path_depth(path),
+			 fy_path_get_text0(path));
+	return 0;
+}
+
+static int
+sequence_end(struct fy_composer *fyc, struct fy_path *path, struct fy_token *fyt)
+{
+	fprintf(stderr, "%s: ] - %c%c%c %3d - %s\n", "-SEQ",
+			fy_path_is_root(path) ? 'R' : '-',
+			fy_path_in_mapping(path) ? 'M' : '-',
+			fy_path_in_sequence(path) ? 'S' : '-',
+			fy_path_depth(path),
+			fy_path_get_text0(path));
+	return 0;
+}
+
+static const struct fy_composer_ops composer_ops = {
+	.stream_start = stream_start,
+	.stream_end = stream_end,
+	.document_start = document_start,
+	.document_end = document_end,
+	.scalar = scalar,
+	.mapping_start = mapping_start,
+	.mapping_end = mapping_end,
+	.sequence_start = sequence_start,
+	.sequence_end = sequence_end,
+};
+
+static const struct fy_composer_ops composer_null_output_ops = {
+};
+
+int do_compose(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort, bool null_output)
+{
+	struct fy_event *fye;
+	struct fy_composer_cfg cfg;
+	struct fy_composer *fyc;
+	unsigned int flags;
+
+	flags = 0;
+	if (sort)
+		flags |= FYECF_SORT_KEYS;
+	flags |= FYECF_INDENT(indent) | FYECF_WIDTH(width);
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.ops = !null_output ? &composer_ops : &composer_null_output_ops;
+	cfg.user = NULL;
+	cfg.diag = fy_parser_get_diag(fyp);
+	fyc = fy_composer_create(&cfg);
+	assert(fyc);
+
+	while ((fye = fy_parser_parse(fyp)) != NULL) {
+		fy_composer_process_event(fyc, fyp, fye);
+		fy_parser_event_free(fyp, fye);
+	}
+
+	fy_composer_destroy(fyc);
+
+	return 0;
+}
+
 
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 
@@ -1110,7 +1172,7 @@ void dump_libyaml_testsuite_event(FILE *fp, yaml_event_t *event)
 	}
 }
 
-int do_libyaml_testsuite(FILE *fp, yaml_parser_t *parser)
+int do_libyaml_testsuite(FILE *fp, yaml_parser_t *parser, bool null_output)
 {
         yaml_event_t event;
         int done = 0;
@@ -1120,7 +1182,8 @@ int do_libyaml_testsuite(FILE *fp, yaml_parser_t *parser)
 		if (!yaml_parser_parse(parser, &event))
 			return -1;
 
-		dump_libyaml_testsuite_event(fp, &event);
+		if (!null_output)
+			dump_libyaml_testsuite_event(fp, &event);
 
 		done = (event.type == YAML_STREAM_END_EVENT);
 
@@ -1130,7 +1193,7 @@ int do_libyaml_testsuite(FILE *fp, yaml_parser_t *parser)
 	return 0;
 }
 
-int do_libyaml_dump(yaml_parser_t *parser, yaml_emitter_t *emitter)
+int do_libyaml_dump(yaml_parser_t *parser, yaml_emitter_t *emitter, bool null_output)
 {
         yaml_document_t document;
         int done = 0;
@@ -1150,10 +1213,14 @@ int do_libyaml_dump(yaml_parser_t *parser, yaml_emitter_t *emitter)
 			if (counter > 0)
 				printf("# document seperator\n");
 
-			yaml_emitter_dump(emitter, &document);
+			if (!null_output)
+				yaml_emitter_dump(emitter, &document);
+			else
+				yaml_document_delete(&document);
 			counter++;
 
-			yaml_emitter_flush(emitter);
+			if (!null_output)
+				yaml_emitter_flush(emitter);
 		} else
 			yaml_document_delete(&document);
         }
@@ -2687,6 +2754,7 @@ int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, 
 	struct fy_path_parser fypp_data, *fypp = &fypp_data;
 	struct fy_path_expr *expr;
 	struct fy_walk_result_list results;
+	struct fy_walk_result *result;
 	struct fy_input *fyi;
 	struct fy_document *fyd, *fyd2;
 	struct fy_node *fyn, *fyn2;
@@ -2743,15 +2811,53 @@ int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, 
 
 		path = fy_node_get_path(fyn);
 		assert(path);
-		printf("walking starting at %s\n", path);
+		printf("# walking starting at %s\n", path);
 		free(path);
 
 		fy_walk_result_list_init(&results);
-		fy_path_expr_execute(fyp->cfg.diag, expr, &results, fyn);
+		fwr = fy_walk_result_alloc();
+		assert(fwr);
+		fwr->type = fwrt_node_ref;
+		fwr->fyn = fyn;
+		result = fy_path_expr_execute(fyp->diag, 0, expr, fwr, fpet_none);
 
 		printf("\n");
-		printf("results\n");
-		while ((fwr = fy_walk_result_list_pop(&results)) != NULL) {
+		if (!result) {
+			printf("# no results\n");
+			goto next;
+		}
+
+		if (result->type == fwrt_node_ref) {
+			printf("# single reference result\n");
+
+			path = fy_node_get_path(result->fyn);
+			assert(path);
+
+			printf("# %s\n", path);
+			free(path);
+
+			fyd2 = fy_document_create(&fyp->cfg);
+			assert(fyd2);
+
+			fyn2 = fy_node_copy(fyd2, result->fyn);
+			assert(fyn2);
+
+			fy_document_set_root(fyd2, fyn2);
+
+			fy_emit_document_to_file(fyd2, flags, NULL);
+
+			fy_document_destroy(fyd2);
+
+			goto next;
+		}
+
+		printf("# multiple results\n");
+		while ((fwr = fy_walk_result_list_pop(&result->refs)) != NULL) {
+
+			if (fwr->type != fwrt_node_ref) {
+				fy_walk_result_free(fwr);
+				continue;
+			}
 
 			path = fy_node_get_path(fwr->fyn);
 			assert(path);
@@ -2774,6 +2880,8 @@ int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, 
 
 			fy_walk_result_free(fwr);
 		}
+next:
+		fy_walk_result_free(result);
 
 		fy_parse_document_destroy(fyp, fyd);
 
@@ -2850,6 +2958,7 @@ int main(int argc, char *argv[])
 	const char *walkpath = "/";
 	const char *walkstart = "/";
 	bool use_callback = false;
+	bool null_output = false;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -2922,8 +3031,20 @@ int main(int argc, char *argv[])
 		case OPT_DISABLE_MMAP:
 			cfg.flags |= FYPCF_DISABLE_MMAP_OPT;
 			break;
+		case OPT_DISABLE_ACCEL:
+			cfg.flags |= FYPCF_DISABLE_ACCELERATORS;
+			break;
+		case OPT_DISABLE_BUFFERING:
+			cfg.flags |= FYPCF_DISABLE_BUFFERING;
+			break;
+		case OPT_DISABLE_DEPTH_LIMIT:
+			cfg.flags |= FYPCF_DISABLE_DEPTH_LIMIT;
+			break;
 		case OPT_USE_CALLBACK:
 			use_callback = true;
+			break;
+		case OPT_NULL_OUTPUT:
+			null_output = true;
 			break;
 		case OPT_YAML_1_1:
 			cfg.flags &= ~(FYPCF_DEFAULT_VERSION_MASK << FYPCF_DEFAULT_VERSION_SHIFT);
@@ -2958,9 +3079,11 @@ int main(int argc, char *argv[])
 	    strcmp(mode, "copy") &&
 	    strcmp(mode, "testsuite") &&
 	    strcmp(mode, "dump") &&
+	    strcmp(mode, "dump2") &&
 	    strcmp(mode, "build") &&
 	    strcmp(mode, "walk") &&
-	    strcmp(mode, "reader")
+	    strcmp(mode, "reader") &&
+	    strcmp(mode, "compose")
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 	    && strcmp(mode, "libyaml-scan")
 	    && strcmp(mode, "libyaml-parse")
@@ -3016,13 +3139,13 @@ int main(int argc, char *argv[])
 				fprintf(stderr, "  problem='%s' context='%s'\n", parser.problem, parser.context);
 			}
 		} else if (!strcmp(mode, "libyaml-testsuite")) {
-			rc = do_libyaml_testsuite(stdout, &parser);
+			rc = do_libyaml_testsuite(stdout, &parser, null_output);
 			if (rc < 0) {
 				fprintf(stderr, "do_libyaml_testsuite() error %d\n", rc);
 				fprintf(stderr, "  problem='%s' context='%s'\n", parser.problem, parser.context);
 			}
 		} else if (!strcmp(mode, "libyaml-dump")) {
-			rc = do_libyaml_dump(&parser, &emitter);
+			rc = do_libyaml_dump(&parser, &emitter, null_output);
 			if (rc < 0) {
 				fprintf(stderr, "do_libyaml_dump() error %d\n", rc);
 				if (parser.problem)
@@ -3139,13 +3262,19 @@ int main(int argc, char *argv[])
 			goto cleanup;
 		}
 	} else if (!strcmp(mode, "testsuite")) {
-		rc = do_testsuite(stdout, fyp);
+		rc = do_testsuite(stdout, fyp, null_output);
 		if (rc < 0) {
 			/* fprintf(stderr, "do_testsuite() error %d\n", rc); */
 			goto cleanup;
 		}
 	} else if (!strcmp(mode, "dump")) {
-		rc = do_dump(fyp, indent, width, resolve, sort);
+		rc = do_dump(fyp, indent, width, resolve, sort, null_output);
+		if (rc < 0) {
+			/* fprintf(stderr, "do_dump() error %d\n", rc); */
+			goto cleanup;
+		}
+	} else if (!strcmp(mode, "dump2")) {
+		rc = do_dump2(fyp, indent, width, resolve, sort, null_output);
 		if (rc < 0) {
 			/* fprintf(stderr, "do_dump() error %d\n", rc); */
 			goto cleanup;
@@ -3160,6 +3289,12 @@ int main(int argc, char *argv[])
 		rc = do_reader(fyp, indent, width, resolve, sort);
 		if (rc < 0) {
 			/* fprintf(stderr, "do_reader() error %d\n", rc); */
+			goto cleanup;
+		}
+	} else if (!strcmp(mode, "compose")) {
+		rc = do_compose(fyp, indent, width, resolve, sort, null_output);
+		if (rc < 0) {
+			/* fprintf(stderr, "do_compose() error %d\n", rc); */
 			goto cleanup;
 		}
 	}
@@ -3187,14 +3322,14 @@ int main(int argc, char *argv[])
 		yaml_parser_set_input_file(&parser, fp);
 
 		fprintf(stdout, "LIBYAML:\n");
-		rc = do_libyaml_testsuite(stdout, &parser);
+		rc = do_libyaml_testsuite(stdout, &parser, false);
 		if (rc < 0) {
 			fprintf(stderr, "do_libyaml_testsuite() failed\n");
 			goto cleanup;
 		}
 
 		fprintf(stdout, "LIBFYAML:\n");
-		rc = do_testsuite(stdout, fyp);
+		rc = do_testsuite(stdout, fyp, false);
 		if (rc < 0) {
 			fprintf(stderr, "do_libyaml_testsuite() failed\n");
 			goto cleanup;
