@@ -191,6 +191,11 @@ static inline bool fy_is_json_unescaped(int c)
 	return c >= 0x20 && c <= 0x110000 && c != '"' && c != '\\';
 }
 
+static inline bool fy_is_json_unescaped_range_only(int c)
+{
+	return c >= 0x20 && c <= 0x110000;
+}
+
 static inline bool fy_is_lb_m(int c, enum fy_lb_mode lb_mode)
 {
 	if (lb_mode == fylb_cr_nl_N_L_P && fy_is_unicode_lb(c))
