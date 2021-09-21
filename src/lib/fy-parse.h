@@ -199,6 +199,7 @@ struct fy_parser {
 	struct fy_parse_state_log_list recycled_parse_state_log;
 	struct fy_eventp_list recycled_eventp;
 	struct fy_flow_list recycled_flow;
+	struct fy_token_list recycled_token;
 
 	/* the diagnostic object */
 	struct fy_diag *diag;
@@ -407,7 +408,7 @@ static inline int
 fy_parse_peek(struct fy_parser *fyp)
 {
 	assert(fyp);
-	return fy_parse_peek_at_offset(fyp, 0);
+	return fy_reader_peek(fyp->reader);
 }
 
 static inline void
@@ -543,6 +544,12 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 static inline int fy_document_state_version_compare(struct fy_document_state *fyds, const struct fy_version *vb)
 {
 	return fy_version_compare(fy_document_state_version(fyds), vb);
+}
+
+static inline struct fy_token_list *
+fy_parse_recycled_token(struct fy_parser *fyp)
+{
+	return fyp && !fyp->suppress_recycling ? &fyp->recycled_token : NULL;
 }
 
 #endif

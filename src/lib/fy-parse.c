@@ -137,7 +137,7 @@ fy_token_vqueue_internal(struct fy_parser *fyp, struct fy_token_list *fytl,
 {
 	struct fy_token *fyt;
 
-	fyt = fy_token_vcreate(type, ap);
+	fyt = fy_token_vcreate_rl(fy_parse_recycled_token(fyp), type, ap);
 	if (!fyt)
 		return NULL;
 	fy_token_list_add_tail(fytl, fyt);
@@ -492,7 +492,7 @@ int fy_parse_version_directive(struct fy_parser *fyp, struct fy_token *fyt, bool
 				"duplicate version directive");
 	} else {
 		/* in scan mode, we just override everything */
-		fy_token_unref(fyds->fyt_vd);
+		fy_token_unref_rl(fy_parse_recycled_token(fyp), fyds->fyt_vd);
 		fyds->fyt_vd = NULL;
 	}
 
@@ -537,7 +537,7 @@ int fy_parse_version_directive(struct fy_parser *fyp, struct fy_token *fyt, bool
 err_out:
 	rc = -1;
 err_out_rc:
-	fy_token_unref(fyt);
+	fy_token_unref_rl(fy_parse_recycled_token(fyp), fyt);
 	return rc;
 }
 
@@ -572,7 +572,7 @@ int fy_parse_tag_directive(struct fy_parser *fyp, struct fy_token *fyt, bool sca
 	if (fyt_td) {
 		/* fyp_notice(fyp, "overriding tag"); */
 		fy_token_list_del(&fyds->fyt_td, fyt_td);
-		fy_token_unref(fyt_td);
+		fy_token_unref_rl(fy_parse_recycled_token(fyp), fyt_td);
 		/* when we override a default tag the tags are explicit */
 		fyds->tags_explicit = true;
 	}
@@ -588,7 +588,7 @@ int fy_parse_tag_directive(struct fy_parser *fyp, struct fy_token *fyt, bool sca
 
 	return 0;
 err_out:
-	fy_token_unref(fyt);
+	fy_token_unref_rl(fy_parse_recycled_token(fyp), fyt);
 	return -1;
 }
 
@@ -724,6 +724,7 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 	fy_parse_state_log_list_init(&fyp->recycled_parse_state_log);
 
 	fy_eventp_list_init(&fyp->recycled_eventp);
+	fy_token_list_init(&fyp->recycled_token);
 
 	fy_flow_list_init(&fyp->flow_stack);
 	fyp->flow = FYFT_NONE;
@@ -744,7 +745,6 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 	rc = fy_reset_document_state(fyp);
 	fyp_error_check(fyp, !rc, err_out_rc,
 			"fy_reset_document_state() failed");
-
 	return 0;
 
 err_out_rc:
@@ -754,6 +754,7 @@ err_out_rc:
 void fy_parse_cleanup(struct fy_parser *fyp)
 {
 	struct fy_input *fyi, *fyin;
+	struct fy_token *fyt;
 
 	fy_parse_indent_list_recycle_all(fyp, &fyp->indent_stack);
 	fy_parse_simple_key_list_recycle_all(fyp, &fyp->simple_keys);
@@ -762,7 +763,7 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 	fy_parse_parse_state_log_list_recycle_all(fyp, &fyp->state_stack);
 	fy_parse_flow_list_recycle_all(fyp, &fyp->flow_stack);
 
-	fy_token_unref(fyp->stream_end_token);
+	fy_token_unref_rl(fy_parse_recycled_token(fyp), fyp->stream_end_token);
 
 	fy_document_state_unref(fyp->current_document_state);
 	fy_document_state_unref(fyp->default_document_state);
@@ -781,6 +782,10 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 	fy_parse_parse_state_log_vacuum(fyp);
 	fy_parse_eventp_vacuum(fyp);
 	fy_parse_flow_vacuum(fyp);
+
+	/* and the recycled tokens */
+	while ((fyt = fy_token_list_pop(&fyp->recycled_token)) != NULL)
+		fy_token_free(fyt);
 
 	fy_diag_unref(fyp->diag);
 }
@@ -4347,7 +4352,7 @@ struct fy_token *fy_scan_remove(struct fy_parser *fyp, struct fy_token *fyt)
 
 struct fy_token *fy_scan_remove_peek(struct fy_parser *fyp, struct fy_token *fyt)
 {
-	fy_token_unref(fy_scan_remove(fyp, fyt));
+	fy_token_unref_rl(fy_parse_recycled_token(fyp), fy_scan_remove(fyp, fyt));
 
 	return fy_scan_peek(fyp);
 }
@@ -4390,7 +4395,7 @@ struct fy_token *fy_scan(struct fy_parser *fyp)
 
 void fy_scan_token_free(struct fy_parser *fyp, struct fy_token *fyt)
 {
-	fy_token_unref(fyt);
+	fy_token_unref_rl(fy_parse_recycled_token(fyp), fyt);
 }
 
 int fy_parse_state_push(struct fy_parser *fyp, enum fy_parser_state state)
@@ -4514,9 +4519,9 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 
 		atom = fyt->handle;
 		atom.end_mark = atom.start_mark;	/* no extent */
-		fye->sequence_start.sequence_start = fy_token_create(FYTT_BLOCK_SEQUENCE_START, &atom);
+		fye->sequence_start.sequence_start = fy_token_create_rl(fy_parse_recycled_token(fyp), FYTT_BLOCK_SEQUENCE_START, &atom);
 		fyp_error_check(fyp, fye->sequence_start.sequence_start, err_out,
-				"fy_token_create() failed!");
+				"fy_token_create_rl() failed!");
 
 		fy_parse_state_set(fyp, FYPS_INDENTLESS_SEQUENCE_ENTRY);
 		goto return_ok;
@@ -4645,8 +4650,8 @@ return_ok:
 	return fyep;
 
 err_out:
-	fy_token_unref(anchor);
-	fy_token_unref(tag);
+	fy_token_unref_rl(fy_parse_recycled_token(fyp), anchor);
+	fy_token_unref_rl(fy_parse_recycled_token(fyp), tag);
 	fy_parse_eventp_recycle(fyp, fyep);
 
 	return NULL;
@@ -4685,7 +4690,7 @@ int fy_parse_stream_start(struct fy_parser *fyp)
 	fy_parse_parse_state_log_list_recycle_all(fyp, &fyp->state_stack);
 	fy_parse_flow_list_recycle_all(fyp, &fyp->flow_stack);
 
-	fy_token_unref(fyp->stream_end_token);
+	fy_token_unref_rl(fy_parse_recycled_token(fyp), fyp->stream_end_token);
 	fyp->stream_end_token = NULL;
 
 	return 0;
@@ -4693,7 +4698,7 @@ int fy_parse_stream_start(struct fy_parser *fyp)
 
 int fy_parse_stream_end(struct fy_parser *fyp)
 {
-	fy_token_unref(fyp->stream_end_token);
+	fy_token_unref_rl(fy_parse_recycled_token(fyp), fyp->stream_end_token);
 	fyp->stream_end_token = NULL;
 
 	return 0;
@@ -5113,11 +5118,12 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		if (orig_state == FYPS_INDENTLESS_SEQUENCE_ENTRY) {
 			atom = fyt->handle;
 			atom.end_mark = atom.start_mark;
-			fye->sequence_end.sequence_end = fy_token_create(FYTT_BLOCK_END, &atom);
+			fye->sequence_end.sequence_end = fy_token_create_rl(fy_parse_recycled_token(fyp), FYTT_BLOCK_END, &atom);
 			fyp_error_check(fyp, fye->sequence_end.sequence_end, err_out,
-				"fy_token_create() failed!");
+				"fy_token_create_rl() failed!");
 		} else
 			fye->sequence_end.sequence_end = fy_scan_remove(fyp, fyt);
+
 		return fyep;
 
 	case FYPS_BLOCK_MAPPING_FIRST_KEY:
@@ -5364,9 +5370,10 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 		atom = fyt->handle;
 		atom.end_mark = atom.start_mark;
-		fye->mapping_end.mapping_end = fy_token_create(FYTT_BLOCK_END, &atom);
+		fye->mapping_end.mapping_end = fy_token_create_rl(fy_parse_recycled_token(fyp), FYTT_BLOCK_END, &atom);
 		fyp_error_check(fyp, fye->mapping_end.mapping_end, err_out,
-			"fy_token_create() failed!");
+			"fy_token_create_rl() failed!");
+
 		return fyep;
 
 	case FYPS_FLOW_MAPPING_FIRST_KEY:
@@ -5529,8 +5536,8 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 	}
 
 err_out:
-	fy_token_unref(version_directive);
-	fy_token_list_unref_all(&tag_directives);
+	fy_token_unref_rl(fy_parse_recycled_token(fyp), version_directive);
+	fy_token_list_unref_all_rl(fy_parse_recycled_token(fyp), &tag_directives);
 	fy_parse_eventp_recycle(fyp, fyep);
 	fyp->stream_error = true;
 	return NULL;

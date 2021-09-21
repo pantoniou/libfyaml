@@ -1938,6 +1938,7 @@ int fy_emit_setup(struct fy_emitter *emit, const struct fy_emitter_cfg *cfg)
 	emit->sc_stack_alloc = sizeof(emit->sc_stack_inplace)/sizeof(emit->sc_stack_inplace[0]);
 
 	fy_eventp_list_init(&emit->recycled_eventp);
+	fy_token_list_init(&emit->recycled_token);
 
 	fy_emit_reset(emit, false);
 
@@ -1947,6 +1948,10 @@ int fy_emit_setup(struct fy_emitter *emit, const struct fy_emitter_cfg *cfg)
 void fy_emit_cleanup(struct fy_emitter *emit)
 {
 	struct fy_eventp *fyep;
+	struct fy_token *fyt;
+
+	while ((fyt = fy_token_list_pop(&emit->recycled_token)) != NULL)
+		fy_token_free(fyt);
 
 	fy_emit_eventp_vacuum(emit);
 
@@ -2655,7 +2660,7 @@ static int fy_emit_handle_sequence_item(struct fy_emitter *emit, struct fy_event
 	struct fy_token *fyt_item = NULL;
 	int ret;
 
-	fy_token_unref(sc->fyt_last_value);
+	fy_token_unref_rl(&emit->recycled_token, sc->fyt_last_value);
 	sc->fyt_last_value = NULL;
 
 	switch (fye->type) {
@@ -2736,9 +2741,9 @@ static int fy_emit_handle_mapping_key(struct fy_emitter *emit, struct fy_eventp 
 	int ret, aflags;
 	bool simple_key;
 
-	fy_token_unref(sc->fyt_last_key);
+	fy_token_unref_rl(&emit->recycled_token, sc->fyt_last_key);
 	sc->fyt_last_key = NULL;
-	fy_token_unref(sc->fyt_last_value);
+	fy_token_unref_rl(&emit->recycled_token, sc->fyt_last_value);
 	sc->fyt_last_value = NULL;
 
 	simple_key = false;
@@ -2875,7 +2880,7 @@ static int fy_emit_handle_mapping_value(struct fy_emitter *emit, struct fy_event
 	return ret;
 }
 
-int fy_emit_event(struct fy_emitter *emit, struct fy_event *fye)
+int fy_emit_event_from_parser(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_event *fye)
 {
 	struct fy_eventp *fyep;
 	int ret;
@@ -2940,13 +2945,21 @@ int fy_emit_event(struct fy_emitter *emit, struct fy_event *fye)
 		}
 
 		/* always release the event */
-		fy_eventp_release(fyep);
+		if (!fyp)
+			fy_eventp_release(fyep);
+		else
+			fy_parse_eventp_recycle(fyp, fyep);
 
 		if (ret)
 			break;
 	}
 
 	return ret;
+}
+
+int fy_emit_event(struct fy_emitter *emit, struct fy_event *fye)
+{
+	return fy_emit_event_from_parser(emit, NULL, fye);
 }
 
 struct fy_document_state *
