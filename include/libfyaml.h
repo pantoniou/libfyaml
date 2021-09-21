@@ -5761,6 +5761,21 @@ fy_document_get_document_state(struct fy_document *fyd)
 	FY_EXPORT;
 
 /**
+ * fy_document_set_document_state() - Set the document state of a document
+ *
+ * Set the document state of a document
+ *
+ * @fyd: The document
+ * @fyds: The document state to use, or NULL for default
+ *
+ * Returns:
+ * 0 if set operation was successful, -1 otherwise
+ */
+int
+fy_document_set_document_state(struct fy_document *fyd, struct fy_document_state *fyds)
+	FY_EXPORT;
+
+/**
  * fy_emitter_get_document_state() - Get the document state of an emitter  object
  *
  * Retrieve the document state object of an emitter. Note that this is only

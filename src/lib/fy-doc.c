@@ -6231,3 +6231,25 @@ struct fy_document_state *fy_document_get_document_state(struct fy_document *fyd
 {
 	return fyd ? fyd->fyds : NULL;
 }
+
+int fy_document_set_document_state(struct fy_document *fyd, struct fy_document_state *fyds)
+{
+	/* document must exist and not have any contents */
+	if (!fyd || fyd->root)
+		return -1;
+
+	if (!fyds)
+		fyds = fy_document_state_default(NULL, NULL);
+	else
+		fyds = fy_document_state_ref(fyds);
+
+	if (!fyds)
+		return -1;
+
+	/* drop the previous document state */
+	fy_document_state_unref(fyd->fyds);
+	/* and use the new document state from now on */
+	fyd->fyds = fyds;
+
+	return 0;
+}
