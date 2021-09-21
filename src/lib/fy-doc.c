@@ -3092,6 +3092,15 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 		rc = fy_accel_setup(fyd->axl, &hd_anchor, fyd, 8);
 		fyd_error_check(fyd, !rc, err_out,
 				"fy_accel_setup() failed");
+
+		fyd->naxl = malloc(sizeof(*fyd->naxl));
+		fyd_error_check(fyd, fyd->axl, err_out,
+				"malloc() failed");
+
+		/* start with a very small bucket list */
+		rc = fy_accel_setup(fyd->naxl, &hd_nanchor, fyd, 8);
+		fyd_error_check(fyd, !rc, err_out,
+				"fy_accel_setup() failed");
 	}
 	fyd->root = NULL;
 
