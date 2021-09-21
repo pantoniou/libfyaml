@@ -88,6 +88,12 @@ static inline bool fy_atom_is_set(const struct fy_atom *atom)
 	return atom && atom->fyi;
 }
 
+static inline void fy_atom_reset(struct fy_atom *atom)
+{
+	if (atom)
+		atom->fyi = NULL;
+}
+
 static inline bool fy_atom_json_mode(struct fy_atom *handle)
 {
 	if (!handle)
