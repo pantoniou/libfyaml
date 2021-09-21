@@ -956,48 +956,70 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 	int c, c_after_ws, i, rc = 0;
 	bool tabs_allowed;
 	ssize_t offset;
+	struct fy_atom *handle;
+	struct fy_reader *fyr;
 
-	memset(&fyp->last_comment, 0, sizeof(fyp->last_comment));
+	fyr = fyp->reader;
 
-	while ((c = fy_parse_peek(fyp)) >= 0) {
+	/* skip BOM at the start of the stream */
+	if (fyr->current_input_pos == 0 && (c = fy_parse_peek(fyp)) == FY_UTF8_BOM) {
 
-		/* is it BOM? skip over it */
-		if (fyp_column(fyp) == 0 && c == FY_UTF8_BOM)
-			fy_advance(fyp, c);
+		fy_advance(fyp, c);
+		/* reset column */
+		fyr->column = 0;
+	}
 
-		if (!fyp_tabsize(fyp)) {
-			/* scan ahead until the next non-ws character */
-			/* if it's a flow start one, then tabs are allowed */
-			tabs_allowed = fyp->flow_level || !fyp->simple_key_allowed;
-			if (!tabs_allowed && fy_is_ws(c = fy_parse_peek(fyp))) {
+	/* json does not have comments or tab handling... */
+	if (fyp_json_mode(fyp)) {
+		fy_reader_skip_ws_cr_nl(fyr);
+		goto done;
+	}
+
+	if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) && fy_atom_is_set(&fyp->last_comment)) {
+		fy_input_unref(fyp->last_comment.fyi);
+		fyp->last_comment.fyi = NULL;
+	}
+
+	for (;;) {
+
+		tabs_allowed = fyp_tabsize(fyp) || fyp->flow_level || !fyp->simple_key_allowed;
+
+		/* skip white space, tabs are allowed in flow context */
+		/* tabs also allowed in block context but not at start of line or after -?: */
+
+		if (!tabs_allowed) {
+			/* skip space only */
+			fy_reader_skip_space(fyr);
+			c = fy_parse_peek(fyp);
+
+			/* if it's a tab, we need to see if after ws follows a flow start marker */
+			if (fy_is_tab(c)) {
+
+				/* skip all space and tabs */
 				i = 0;
 				offset = -1;
 				while (fy_is_ws(c_after_ws = fy_parse_peek_at_internal(fyp, i, &offset)))
 					i++;
+
 				/* flow start marker after spaces? allow tabs */
-				if (c_after_ws == '{' || c_after_ws == '[')
-					tabs_allowed = true;
-			}
-
-			/* skip white space, tabs are allowed in flow context */
-			/* tabs also allowed in block context but not at start of line or after -?: */
-			while ((c = fy_parse_peek(fyp)) == ' ' || (c == '\t' && tabs_allowed))
-				fy_advance(fyp, c);
-
-			if (c == '\t') {
-				fyp_scan_debug(fyp, "tab as token start (flow_level=%d simple_key_allowed=%s)",
-						fyp->flow_level,
-						fyp->simple_key_allowed ? "true" : "false");
+				if (c_after_ws == '{' || c_after_ws == '[') {
+					fy_advance_by(fyp, i);
+					c = fy_parse_peek(fyp);
+				}
 			}
 		} else {
-			/* skip white space including tabs */
-			while (fy_is_ws(c = fy_parse_peek(fyp)))
-				fy_advance(fyp, c);
+			fy_reader_skip_ws(fyr);
+			c = fy_parse_peek(fyp);
 		}
 
 		/* comment? */
 		if (c == '#') {
-			rc = fy_scan_comment(fyp, &fyp->last_comment, false);
+
+			handle = NULL;
+			if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS)
+				handle = &fyp->last_comment;
+
+			rc = fy_scan_comment(fyp, handle, false);
 			fyp_error_check(fyp, !rc, err_out_rc,
 					"fy_scan_comment() failed");
 		}
@@ -1005,11 +1027,8 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 		c = fy_parse_peek(fyp);
 
 		/* not linebreak? we're done */
-		if (!fyp_is_lb(fyp, c)) {
-			fyp_scan_debug(fyp, "next token starts with c='%s'",
-					fy_utf8_format_a(c, fyue_singlequote));
-			break;
-		}
+		if (!fyp_is_lb(fyp, c))
+			goto done;
 
 		/* line break */
 		fy_advance(fyp, c);
@@ -1021,10 +1040,15 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 		}
 	}
 
-	fyp_scan_debug(fyp, "no-next-token");
+	fyp_scan_debug(fyp, "%s: no-next-token", __func__);
 
 err_out_rc:
 	return rc;
+
+done:
+	fyp_scan_debug(fyp, "%s: next token starts with c='%s'", __func__,
+			fy_utf8_format_a(fy_parse_peek(fyp), fyue_singlequote));
+	return 0;
 }
 
 static void fy_purge_required_simple_key_report(struct fy_parser *fyp,
@@ -2084,7 +2108,7 @@ int fy_fetch_flow_collection_entry(struct fy_parser *fyp, int c)
 	if (fyp->pending_complex_key_column >= 0) {
 
 		fyt = fy_token_queue(fyp, FYTT_VALUE, fy_fill_atom_a(fyp, 0));
-		fyp_error_check(fyp, fyt, err_out_rc,
+		fyp_error_check(fyp, fyt, err_out,
 				"fy_token_queue() failed");
 
 		fyp->pending_complex_key_column = -1;
@@ -3329,6 +3353,38 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 				blanks_found = 0;
 			}
 
+			if (c >= 0 && c <= 0x7f && (fy_utf8_low_ascii_flags[c] & F_SIMPLE_SCALAR)) {
+				size_t len, consumed;
+				const char *p, *s, *e;
+				int8_t cc;
+				int run;
+
+				run = 0;
+				while ((p = fy_reader_ensure_lookahead(fyr, 1, &len)) != NULL) {
+
+					s = p;
+					e = s + len;
+
+					while (s < e && (cc = (int8_t)*s) >= 0 && (fy_utf8_low_ascii_flags[cc] & F_SIMPLE_SCALAR))
+						s++;
+
+					consumed = s - p;
+					if (consumed) {
+						fy_reader_advance_octets(fyr, consumed);
+						fyr->column += consumed;
+						lastc = (int)cc;
+					}
+					run += consumed;
+
+					/* we're done if stopped earlier */
+					if (s < e)
+						break;
+				}
+				length += run;
+				break_run = 0;
+				continue;
+			}
+
 			/* escaped single quote? */
 			if (is_single && c == '\'' && fy_reader_peek_at(fyr, 1) == '\'') {
 				length++;
@@ -3464,11 +3520,11 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 			}
 
 			/* check whether we have a JSON unescaped character */
-			is_json_unesc = fy_is_json_unescaped(c);
+			is_json_unesc = fy_is_json_unescaped_range_only(c);
 			if (!is_json_unesc)
 				has_json_esc = true;
 
-			if (!is_single && fy_reader_json_mode(fyr) && !is_json_unesc) {
+			if (!is_single && fy_reader_json_mode(fyr) && has_json_esc) {
 				FYR_PARSE_ERROR(fyr, 0, 2, FYEM_SCAN,
 					"Invalid JSON unescaped character");
 				goto err_out;
@@ -3493,8 +3549,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 		blanks_found = 0;
 		while (fy_reader_is_flow_blank(fyr, c = fy_reader_peek(fyr)) || fy_reader_is_lb(fyr, c)) {
 
-			is_json_unesc = fy_is_json_unescaped(c);
-			if (!is_json_unesc)
+			if (!has_json_esc && !fy_is_json_unescaped(c))
 				has_json_esc = true;
 
 			break_run = 0;
@@ -3587,7 +3642,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 	bool last_ptr;
 	struct fy_mark mark, last_mark;
 	bool is_multiline, has_lb, has_ws;
-	bool is_json_unesc, has_json_esc;
+	bool has_json_esc;
 #ifdef ATOM_SIZE_CHECK
 	size_t tlength;
 #endif
@@ -3630,6 +3685,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 	memset(&last_mark, 0, sizeof(last_mark));
 	c = FYUG_EOF;
 	lastc = FYUG_EOF;
+
 	for (;;) {
 		/* break for document indicators */
 		if (fy_reader_column(fyr) == 0 &&
@@ -3645,24 +3701,69 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 		if (directive0 && fy_reader_column(fyr) == 0 && c == '%')
 			break;
 
+		/* quickly deal with runs */
 		run = 0;
-		for (;;) {
-			if (fy_reader_is_blankz(fyr, c))
-				break;
+		if (c >= 0 && c <= 0x7f && (fy_utf8_low_ascii_flags[c] & F_SIMPLE_SCALAR)) {
+			size_t len, consumed;
+			const char *p, *s, *e;
+			int8_t cc;
 
-			nextc = fy_reader_peek_at(fyr, 1);
+			while ((p = fy_reader_ensure_lookahead(fyr, 1, &len)) != NULL) {
 
-			/* ':' followed by space terminates */
-			if (c == ':' && fy_reader_is_blankz(fyr, nextc)) {
-				/* super rare case :: not followed by space  */
-				/* :: not followed by space */
-				if (lastc != ':' || fy_is_ws(nextc))
+				s = p;
+				e = s + len;
+
+				while (s < e && (cc = (int8_t)*s) >= 0 && (fy_utf8_low_ascii_flags[cc] & F_SIMPLE_SCALAR))
+					s++;
+
+				consumed = s - p;
+				if (consumed) {
+					fy_reader_advance_octets(fyr, consumed);
+					fyr->column += consumed;
+				}
+				run += consumed;
+
+				/* we're done if stopped earlier */
+				if (s < e)
 					break;
 			}
 
-			/* in flow context ':' followed by flow markers */
-			if (flow_level > 0 && c == ':' && fy_utf8_strchr(",[]{}", nextc))
-				break;
+		}
+		if (run > 0) {
+			length += run;
+			if (breaks_found) {
+				/* minimum 1 sep, or more for consecutive */
+				length += breaks_found > 1 ? (breaks_found_length - first_break_length) : 1;
+				length += presentation_breaks_length;
+				breaks_found = 0;
+				blanks_found = 0;
+				presentation_breaks_length = 0;
+			} else if (blanks_found) {
+				/* just the blanks mam' */
+				length += blanks_found;
+				blanks_found = 0;
+			}
+		}
+
+		while (!fy_reader_is_blankz(fyr, c = fy_reader_peek(fyr))) {
+
+
+			if (c == ':') {
+
+				nextc = fy_reader_peek_at(fyr, 1);
+
+				/* ':' followed by space terminates */
+				if (fy_reader_is_blankz(fyr, nextc)) {
+					/* super rare case :: not followed by space  */
+					/* :: not followed by space */
+					if (lastc != ':' || fy_is_ws(nextc))
+						break;
+				}
+
+				/* in flow context ':' followed by flow markers */
+				if (flow_level > 0 && fy_utf8_strchr(",[]{}", nextc))
+					break;
+			}
 
 			/* in flow context any or , [ ] { } */
 			if (flow_level > 0 && (c == ',' || c == '[' || c == ']' || c == '{' || c == '}'))
@@ -3682,8 +3783,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 			}
 
 			/* check whether we have a JSON unescaped character */
-			is_json_unesc = fy_is_json_unescaped(c);
-			if (!is_json_unesc)
+			if (!has_json_esc && !fy_is_json_unescaped(c))
 				has_json_esc = true;
 
 			fy_reader_advance(fyr, c);
@@ -3692,7 +3792,6 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 			length += fy_utf8_width(c);
 
 			lastc = c;
-			c = nextc;
 		}
 
 		/* save end mark if we processed more than one non-blank */
@@ -3920,6 +4019,244 @@ err_out:
 	rc = -1;
 err_out_rc:
 	return rc;
+}
+
+void fy_reader_skip_ws_cr_nl(struct fy_reader *fyr)
+{
+	const char *p, *s, *e;
+	char cc;
+	size_t len;
+	int line, column;
+
+	assert(fyr);
+
+	column = fyr->column;
+	line = fyr->line;
+	while ((p = fy_reader_ensure_lookahead(fyr, 1, &len)) != NULL) {
+
+		s = p;
+		e = s + len;
+
+		while (s < e) {
+			cc = *s;
+			if (cc == ' ') {
+				column++;
+			} else if (cc == '\n') {
+				column = 0;
+				line++;
+			} else if (cc == '\t') {
+				if (fyr->tabsize)
+					column += (fyr->tabsize - (column % fyr->tabsize));
+				else
+					column++;
+			} else if (cc == '\r') {
+				column = 0;
+				line++;
+
+				if (s + 1 > e) {
+					/* we have a dangling cr at the end of a block */
+
+					/* advance up to the point here */
+					fy_reader_advance_octets(fyr, s - p);
+
+					/* try again (should return enough or NULL) */
+					p = fy_reader_ensure_lookahead(fyr, 1, &len);
+
+					/* if we couldn't pull enough we're done */
+					if (!p || len < 1)
+						goto done;
+
+					s = p;
+					e = s + len;
+
+					if (*s == '\n')
+						s++;
+				}
+				/* \n followed, gulp it down */
+				if (*s == '\n')
+					s++;
+			} else {
+				if (s > p)
+					fy_reader_advance_octets(fyr, s - p);
+				goto done;
+			}
+
+			s++;
+		}
+
+		fy_reader_advance_octets(fyr, s - p);
+	}
+
+done:
+	fyr->line = line;
+	fyr->column = column;
+}
+
+void fy_reader_skip_ws(struct fy_reader *fyr)
+{
+	const char *p, *s, *e;
+	size_t len, consumed;
+
+	assert(fyr);
+
+	while ((p = fy_reader_ensure_lookahead(fyr, 1, &len)) != NULL) {
+
+		s = p;
+		e = s + len;
+
+		while (s < e && fy_is_ws(*s))
+			s++;
+
+		consumed = s - p;
+		if (consumed) {
+			fy_reader_advance_octets(fyr, consumed);
+			fyr->column += consumed;
+		}
+
+		/* we're done if stopped earlier */
+		if (s < e)
+			break;
+	}
+}
+
+void fy_reader_skip_space(struct fy_reader *fyr)
+{
+	const char *p, *s, *e;
+	size_t len, consumed;
+
+	assert(fyr);
+
+	while ((p = fy_reader_ensure_lookahead(fyr, 1, &len)) != NULL) {
+
+		s = p;
+		e = s + len;
+
+		while (s < e && fy_is_space(*s))
+			s++;
+
+		consumed = s - p;
+		if (consumed) {
+			fy_reader_advance_octets(fyr, consumed);
+			fyr->column += consumed;
+		}
+
+		if (s < e)
+			break;
+	}
+}
+
+void fy_reader_skip_ws_lb(struct fy_reader *fyr)
+{
+	const char *p, *s, *e;
+	size_t len, consumed;
+	int line, column, c, w;
+	bool dangling_cr;
+	enum fy_lb_mode lb_mode;
+
+	assert(fyr);
+
+	/* punt to json mode */
+	lb_mode = fy_reader_lb_mode(fyr);
+
+	if (fy_reader_json_mode(fyr) || lb_mode == fylb_cr_nl) {
+		fy_reader_skip_ws_cr_nl(fyr);
+		return;
+	}
+
+	column = fyr->column;
+	line = fyr->line;
+	dangling_cr = false;
+	while ((p = fy_reader_ensure_lookahead(fyr, 1, &len)) != NULL) {
+
+		s = p;
+		e = s + len;
+
+		if (dangling_cr) {
+			if (*s == '\n')
+				s++;
+			dangling_cr = false;
+		}
+
+		while (s < e) {
+			c = (int)*s;
+
+			/* single byte utf8? */
+			if (c < 0x80) {
+				if (c == ' ') {
+					column++;
+				} else if (c == '\n') {
+					column = 0;
+					line++;
+				} else if (c == '\t') {
+					if (fyr->tabsize)
+						column += (fyr->tabsize - (column % fyr->tabsize));
+					else
+						column++;
+				} else if (c == '\r') {
+					column = 0;
+					line++;
+					/* check for '\n' following */
+					if (s < e) {
+						if (*s == '\n')
+							s++;
+					} else {
+						/* we have a dangling cr at the end of a block */
+						dangling_cr = true;
+					}
+				} else {
+					consumed = s - p;
+					if (consumed)
+						fy_reader_advance_octets(fyr, consumed);
+					goto done;
+				}
+				s++;
+			} else {
+				c = fy_utf8_get(s, (int)(e - s), &w);
+
+				if (c == FYUG_PARTIAL) {
+					/* get the width (from the first octet */
+					w = fy_utf8_width_by_first_octet((uint8_t)*s);
+					/* copy the partial utf8 in the buffer */
+
+					/* advance up to the point here */
+					consumed = s - p;
+					if (consumed)
+						fy_reader_advance_octets(fyr, consumed);
+
+					/* try again (should return enough or NULL) */
+					p = fy_reader_ensure_lookahead(fyr, w, &len);
+					if (!p)
+						break;
+
+					/* if we couldn't pull enough we're done */
+					if (len < (size_t)w)
+						goto done;
+
+					continue;
+				}
+
+				if (lb_mode == fylb_cr_nl_N_L_P && fy_is_unicode_lb(c)) {
+					column = 0;
+					line++;
+				} else {
+					consumed = s - p;
+					if (consumed)
+						fy_reader_advance_octets(fyr, consumed);
+					goto done;
+				}
+
+				s += w;
+			}
+		}
+
+		consumed = s - p;
+		if (consumed)
+			fy_reader_advance_octets(fyr, consumed);
+	}
+
+done:
+	fyr->line = line;
+	fyr->column = column;
 }
 
 int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
@@ -5457,6 +5794,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 		fye->type = FYET_MAPPING_END;
 		fye->mapping_end.mapping_end = fy_scan_remove(fyp, fyt);
+
 		return fyep;
 
 	case FYPS_FLOW_MAPPING_VALUE:
@@ -5888,4 +6226,3 @@ struct fy_document_state *fy_parser_get_document_state(struct fy_parser *fyp)
 {
 	return fyp ? fyp->current_document_state : NULL;
 }
-

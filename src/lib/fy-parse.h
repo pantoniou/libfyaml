@@ -417,6 +417,20 @@ fy_advance(struct fy_parser *fyp, int c)
 	fy_reader_advance(fyp->reader, c);
 }
 
+static inline void
+fy_advance_ws(struct fy_parser *fyp, int c)
+{
+	assert(fyp);
+	fy_reader_advance_ws(fyp->reader, c);
+}
+
+static inline void
+fy_advance_space(struct fy_parser *fyp)
+{
+	assert(fyp);
+	fy_reader_advance_space(fyp->reader);
+}
+
 static inline int
 fy_parse_get(struct fy_parser *fyp)
 {
@@ -539,6 +553,11 @@ void *fy_realloc_default(void *userdata, void *ptr, size_t size);
 
 int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent, struct fy_atom *handle, bool sloppy_indent);
 int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent, int flow_level, struct fy_atom *handle, bool directive0);
+
+void fy_reader_skip_ws_cr_nl(struct fy_reader *fyr);
+
+void fy_reader_skip_ws(struct fy_reader *fyr);
+void fy_reader_skip_space(struct fy_reader *fyr);
 
 static inline int fy_document_state_version_compare(struct fy_document_state *fyds, const struct fy_version *vb)
 {
