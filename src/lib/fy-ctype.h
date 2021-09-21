@@ -159,6 +159,11 @@ static inline bool fy_is_flow_indicator(int c)
 	return !!fy_utf8_strchr(",[]{}", c);
 }
 
+static inline bool fy_is_path_flow_scalar_start(int c)
+{
+	return c == '\'' || c == '"';
+}
+
 static inline bool fy_is_path_flow_key_start(int c)
 {
 	return c == '"' || c == '\'' || c == '{' || c == '[';
