@@ -857,29 +857,19 @@ struct fy_node *fy_node_alloc(struct fy_document *fyd, enum fy_node_type type)
 
 	memset(fyn, 0, sizeof(*fyn));
 
-	fyn->type = type;
 	fyn->style = FYNS_ANY;
 	fyn->fyd = fyd;
-	fyn->marks = 0;
-
-	fyn->has_meta = false;
-	fyn->meta = NULL;
-	fyn->attached = false;
-	fyn->xl = NULL;
+	fyn->type = type;
 
 	switch (fyn->type) {
 	case FYNT_SCALAR:
-		fyn->scalar = NULL;
 		break;
+
 	case FYNT_SEQUENCE:
 		fy_node_list_init(&fyn->sequence);
-		fyn->sequence_start = NULL;
-		fyn->sequence_end = NULL;
 		break;
 	case FYNT_MAPPING:
 		fy_node_pair_list_init(&fyn->mapping);
-		fyn->mapping_start = NULL;
-		fyn->mapping_end = NULL;
 
 		if (fy_document_is_accelerated(fyd)) {
 			fyn->xl = malloc(sizeof(*fyn->xl));
