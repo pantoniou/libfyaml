@@ -733,7 +733,8 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 	fyp->last_block_mapping_key_line = -1;
 
 	fyp->suppress_recycling = !!(fyp->cfg.flags & FYPCF_DISABLE_RECYCLING) ||
-		                  getenv("FY_VALGRIND");
+		                  (getenv("FY_VALGRIND") &&
+				   !getenv("FY_VALGRIND_RECYCLING"));
 
 	if (fyp->suppress_recycling)
 		fyp_notice(fyp, "Suppressing recycling");
