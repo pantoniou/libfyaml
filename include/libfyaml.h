@@ -1804,6 +1804,22 @@ fy_node_copy(struct fy_document *fyd, struct fy_node *fyn_from)
 	FY_EXPORT;
 
 /**
+ * fy_document_clone() - Clones a document
+ *
+ * Clone a document, by making a deep copy of the source.
+ * Note that no content copying takes place as the contents of the nodes
+ * are reference counted. This means that the operation is relatively inexpensive.
+ *
+ * @fydsrc: The source document to clone
+ *
+ * Returns:
+ * The newly created clone document, or NULL in case of an error
+ */
+struct fy_document *
+fy_document_clone(struct fy_document *fydsrc)
+	FY_EXPORT;
+
+/**
  * fy_node_insert() - Insert a node to the given node
  *
  * Insert a node to another node. If @fyn_from is NULL then this

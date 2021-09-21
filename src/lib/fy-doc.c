@@ -2004,6 +2004,35 @@ struct fy_node *fy_node_copy(struct fy_document *fyd, struct fy_node *fyn_from)
 	return fyn;
 }
 
+struct fy_document *fy_document_clone(struct fy_document *fydsrc)
+{
+	struct fy_document *fyd = NULL;
+
+	if (!fydsrc)
+		return NULL;
+
+	fyd = fy_document_create(&fydsrc->parse_cfg);
+	if (!fyd)
+		return NULL;
+
+	/* drop the default document state */
+	fy_document_state_unref(fyd->fyds);
+	/* and use the source document state (and ref it) */
+	fyd->fyds = fy_document_state_ref(fydsrc->fyds);
+	assert(fyd->fyds);
+
+	if (fydsrc->root) {
+		fyd->root = fy_node_copy(fyd, fydsrc->root);
+		if (!fyd->root)
+			goto err_out;
+	}
+
+	return fyd;
+err_out:
+	fy_document_destroy(fyd);
+	return NULL;
+}
+
 int fy_node_copy_to_scalar(struct fy_document *fyd, struct fy_node *fyn_to, struct fy_node *fyn_from)
 {
 	struct fy_node *fyn, *fyni;
