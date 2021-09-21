@@ -198,16 +198,16 @@ static inline bool fy_is_json_unescaped_range_only(int c)
 
 static inline bool fy_is_lb_m(int c, enum fy_lb_mode lb_mode)
 {
-	if (lb_mode == fylb_cr_nl_N_L_P && fy_is_unicode_lb(c))
+	if (fy_is_lb_r_n(c))
 		return true;
-	return fy_is_lb_r_n(c);
+	return lb_mode == fylb_cr_nl_N_L_P && fy_is_unicode_lb(c);
 }
 
 static inline bool fy_is_generic_lb_m(int c, enum fy_lb_mode lb_mode)
 {
-	if (lb_mode == fylb_cr_nl_N_L_P && fy_is_lb_NEL(c))
+	if (fy_is_lb_r_n(c))
 		return true;
-	return fy_is_lb_r_n(c);
+	return lb_mode == fylb_cr_nl_N_L_P && fy_is_lb_NEL(c);
 }
 
 static inline bool fy_is_lbz_m(int c, enum fy_lb_mode lb_mode)
