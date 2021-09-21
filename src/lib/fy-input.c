@@ -77,32 +77,6 @@ void fy_input_free(struct fy_input *fyi)
 	free(fyi);
 }
 
-struct fy_input *fy_input_ref(struct fy_input *fyi)
-{
-	if (!fyi)
-		return NULL;
-
-
-	assert(fyi->refs + 1 > 0);
-
-	fyi->refs++;
-
-	return fyi;
-}
-
-void fy_input_unref(struct fy_input *fyi)
-{
-	if (!fyi)
-		return;
-
-	assert(fyi->refs > 0);
-
-	if (fyi->refs == 1)
-		fy_input_free(fyi);
-	else
-		fyi->refs--;
-}
-
 const char *fy_input_get_filename(struct fy_input *fyi)
 {
 	if (!fyi)
@@ -440,7 +414,6 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 	fyr->current_input_pos = 0;
 	fyr->line = 0;
 	fyr->column = 0;
-	fyr->nontab_column = 0;
 	fyr->current_c = -1;
 	fyr->current_ptr = NULL;
 	fyr->current_w = 0;
@@ -780,6 +753,32 @@ err_out:
 	return NULL;
 }
 
+void
+fy_reader_advance_slow_path(struct fy_reader *fyr, int c)
+{
+	bool is_line_break = false;
+	size_t w;
+
+	/* skip this character (optimize case of being the current) */
+	w = c == fyr->current_c ? (size_t)fyr->current_w : fy_utf8_width(c);
+	fy_reader_advance_octets(fyr, w);
+
+	/* first check for CR/LF */
+	if (c == '\r' && fy_reader_peek(fyr) == '\n') {
+		fy_reader_advance_octets(fyr, 1);
+		is_line_break = true;
+	} else if (fy_reader_is_lb(fyr, c))
+		is_line_break = true;
+
+	if (is_line_break) {
+		fyr->column = 0;
+		fyr->line++;
+	} else if (fyr->tabsize && fy_is_tab(c))
+		fyr->column += (fyr->tabsize - (fyr->column % fyr->tabsize));
+	else
+		fyr->column++;
+}
+
 struct fy_input *fy_input_create(const struct fy_input_cfg *fyic)
 {
 	struct fy_input *fyi = NULL;
@@ -888,10 +887,10 @@ const void *fy_reader_ensure_lookahead_slow_path(struct fy_reader *fyr, size_t s
 	p = fy_reader_ptr(fyr, leftp);
 	if (!p || *leftp < size) {
 
-		fyr_debug(fyr, "ensure lookahead size=%zd left=%zd (%s - %zu/%zu)",
+		fyr_debug(fyr, "ensure lookahead size=%zd left=%zd (%s - %zu)",
 				size, *leftp,
 				fy_input_get_filename(fyr->current_input),
-				fyr->current_pos, fyr->current_input_pos);
+				fyr->current_input_pos);
 
 		p = fy_reader_input_try_pull(fyr, fyr->current_input, size, leftp);
 		if (!p || *leftp < size)
@@ -904,50 +903,3 @@ const void *fy_reader_ensure_lookahead_slow_path(struct fy_reader *fyr, size_t s
 	return p;
 }
 
-void fy_reader_advance_octets(struct fy_reader *fyr, size_t advance)
-{
-	struct fy_input *fyi;
-	size_t left __FY_DEBUG_UNUSED__;
-
-	assert(fyr);
-	assert(fyr->current_input);
-
-	assert(fyr->current_left >= advance);
-
-	fyi = fyr->current_input;
-
-	switch (fyi->cfg.type) {
-	case fyit_file:
-		if (fyi->addr) {
-			left = fyi->file.length - fyr->current_input_pos;
-			break;
-		}
-		/* fall-through */
-
-	case fyit_stream:
-	case fyit_callback:
-		left = fyi->read - fyr->current_input_pos;
-		break;
-
-	case fyit_memory:
-		left = fyi->cfg.memory.size - fyr->current_input_pos;
-		break;
-
-	case fyit_alloc:
-		left = fyi->cfg.alloc.size - fyr->current_input_pos;
-		break;
-
-	default:
-		assert(0);	/* no streams */
-		break;
-	}
-
-	assert(left >= advance);
-
-	fyr->current_input_pos += advance;
-	fyr->current_ptr += advance;
-	fyr->current_left -= advance;
-	fyr->current_pos += advance;
-
-	fyr->current_c = fy_utf8_get(fyr->current_ptr, fyr->current_left, &fyr->current_w);
-}

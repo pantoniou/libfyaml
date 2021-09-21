@@ -171,8 +171,6 @@ static inline size_t fy_input_size(const struct fy_input *fyi)
 
 struct fy_input *fy_input_alloc(void);
 void fy_input_free(struct fy_input *fyi);
-struct fy_input *fy_input_ref(struct fy_input *fyi);
-void fy_input_unref(struct fy_input *fyi);
 
 static inline enum fy_input_state fy_input_get_state(struct fy_input *fyi)
 {
@@ -189,6 +187,34 @@ struct fy_input *fy_input_from_malloc_data(char *data, size_t size,
 					   struct fy_atom *handle, bool simple);
 
 void fy_input_close(struct fy_input *fyi);
+
+static inline struct fy_input *
+fy_input_ref(struct fy_input *fyi)
+{
+	if (!fyi)
+		return NULL;
+
+
+	assert(fyi->refs + 1 > 0);
+
+	fyi->refs++;
+
+	return fyi;
+}
+
+static inline void
+fy_input_unref(struct fy_input *fyi)
+{
+	if (!fyi)
+		return;
+
+	assert(fyi->refs > 0);
+
+	if (fyi->refs == 1)
+		fy_input_free(fyi);
+	else
+		fyi->refs--;
+}
 
 struct fy_reader;
 
@@ -214,7 +240,6 @@ struct fy_reader {
 	struct fy_reader_input_cfg current_input_cfg;
 	struct fy_input *current_input;
 
-	size_t current_pos;		/* from start of stream */
 	size_t current_input_pos;	/* from start of input */
 	const void *current_ptr;	/* current pointer into the buffer */
 	int current_c;			/* current utf8 character at current_ptr (-1 if not cached) */
@@ -223,7 +248,6 @@ struct fy_reader {
 
 	int line;			/* always on input */
 	int column;
-	int nontab_column;		/* column without accounting for tabs */
 
 	int tabsize;			/* very experimental tab size for indent purposes */
 
@@ -330,7 +354,6 @@ static inline void fy_reader_stream_end(struct fy_reader *fyr)
 	/* force new line */
 	if (fyr->column) {
 		fyr->column = 0;
-		fyr->nontab_column = 0;
 		fyr->line++;
 	}
 }
@@ -450,9 +473,6 @@ fy_reader_ensure_lookahead(struct fy_reader *fyr, size_t size, size_t *leftp)
 	return fy_reader_ensure_lookahead_slow_path(fyr, size, leftp);
 }
 
-/* advance the given number of ascii characters, not utf8 */
-void fy_reader_advance_octets(struct fy_reader *fyr, size_t advance);
-
 /* compare string at the current point (n max) */
 static inline int
 fy_reader_strncmp(struct fy_reader *fyr, const char *str, size_t n)
@@ -474,7 +494,7 @@ fy_reader_peek_at_offset(struct fy_reader *fyr, size_t offset)
 	size_t left;
 	int w;
 
-	if (offset == 0 && fyr->current_w && fyr->current_c >= 0)
+	if (offset == 0 && fyr->current_c >= 0)
 		return fyr->current_c;
 
 	/* ensure that the first octet at least is pulled in */
@@ -541,35 +561,75 @@ fy_reader_peek_at(struct fy_reader *fyr, int pos)
 static inline int
 fy_reader_peek(struct fy_reader *fyr)
 {
+	if (fyr->current_c >= 0)
+		return fyr->current_c;
+
 	return fy_reader_peek_at_offset(fyr, 0);
+}
+
+static inline const void *
+fy_reader_peek_block(struct fy_reader *fyr, size_t *lenp)
+{
+	const void *p;
+
+	/* try to pull at least one utf8 character usually */
+	p = fy_reader_ensure_lookahead(fyr, 4, lenp);
+
+	/* not a utf8 character available? try a single byte */
+	if (!p)
+		p = fy_reader_ensure_lookahead(fyr, 1, lenp);
+	if (!*lenp)
+		p = NULL;
+	return p;
+}
+
+static inline void
+fy_reader_advance_octets(struct fy_reader *fyr, size_t advance)
+{
+	assert(fyr->current_left >= advance);
+
+	fyr->current_input_pos += advance;
+	fyr->current_ptr += advance;
+	fyr->current_left -= advance;
+
+	fyr->current_c = fy_utf8_get(fyr->current_ptr, fyr->current_left, &fyr->current_w);
+}
+
+void fy_reader_advance_slow_path(struct fy_reader *fyr, int c);
+
+static inline void
+fy_reader_advance_printable_ascii(struct fy_reader *fyr, int c)
+{
+	fy_reader_advance_octets(fyr, 1);
+	fyr->column++;
 }
 
 static inline void
 fy_reader_advance(struct fy_reader *fyr, int c)
 {
-	bool is_line_break = false;
+	if (fy_utf8_is_printable_ascii(c))
+		fy_reader_advance_printable_ascii(fyr, c);
+	else
+		fy_reader_advance_slow_path(fyr, c);
+}
 
+static inline void
+fy_reader_advance_ws(struct fy_reader *fyr, int c)
+{
 	/* skip this character */
 	fy_reader_advance_octets(fyr, fy_utf8_width(c));
 
-	/* first check for CR/LF */
-	if (c == '\r' && fy_reader_peek(fyr) == '\n') {
-		fy_reader_advance_octets(fyr, 1);
-		is_line_break = true;
-	} else if (fy_reader_is_lb(fyr, c))
-		is_line_break = true;
-
-	if (is_line_break) {
-		fyr->column = 0;
-		fyr->nontab_column = 0;
-		fyr->line++;
-	} else if (fyr->tabsize && fy_is_tab(c)) {
+	if (fyr->tabsize && fy_is_tab(c))
 		fyr->column += (fyr->tabsize - (fyr->column % fyr->tabsize));
-		fyr->nontab_column++;
-	} else {
+	else
 		fyr->column++;
-		fyr->nontab_column++;
-	}
+}
+
+static inline void
+fy_reader_advance_space(struct fy_reader *fyr)
+{
+	fy_reader_advance_octets(fyr, 1);
+	fyr->column++;
 }
 
 static inline int
