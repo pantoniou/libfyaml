@@ -202,6 +202,9 @@ struct fy_parser {
 
 	int err_term_width;
 	int err_term_height;
+
+	/* for when using the built-in document builder */
+	struct fy_document_builder *fydb;
 };
 
 static inline struct fy_input *

@@ -297,6 +297,7 @@ enum fy_error_module {
  * @FYPCF_DEFAULT_VERSION_1_2: Default version is YAML 1.2
  * @FYPCF_DEFAULT_VERSION_1_3: Default version is YAML 1.3 (experimental)
  * @FYPCF_SLOPPY_FLOW_INDENTATION: Allow sloppy indentation in flow mode
+ * @FYPCF_PREFER_RECURSIVE: Prefer recursive algorighms instead of iterative whenever possible
  * @FYPCF_JSON_AUTO: Automatically enable JSON mode (when extension is .json)
  * @FYPCF_JSON_NONE: Never enable JSON input mode
  * @FYPCF_JSON_FORCE: Force JSON mode always
@@ -316,6 +317,7 @@ enum fy_parse_cfg_flags {
 	FYPCF_DEFAULT_VERSION_1_2	= FYPCF_DEFAULT_VERSION(2),
 	FYPCF_DEFAULT_VERSION_1_3	= FYPCF_DEFAULT_VERSION(3),
 	FYPCF_SLOPPY_FLOW_INDENTATION	= FY_BIT(14),
+	FYPCF_PREFER_RECURSIVE		= FY_BIT(15),
 	FYPCF_JSON_AUTO			= FYPCF_JSON(0),
 	FYPCF_JSON_NONE			= FYPCF_JSON(1),
 	FYPCF_JSON_FORCE		= FYPCF_JSON(2),

@@ -756,6 +756,8 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 	struct fy_input *fyi, *fyin;
 	struct fy_token *fyt;
 
+	fy_document_builder_destroy(fyp->fydb);
+
 	fy_parse_indent_list_recycle_all(fyp, &fyp->indent_stack);
 	fy_parse_simple_key_list_recycle_all(fyp, &fyp->simple_keys);
 	fy_token_list_unref_all(&fyp->queued_tokens);
