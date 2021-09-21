@@ -204,4 +204,16 @@ static inline int fy_utf8_count(const void *ptr, size_t len)
 
 int fy_utf8_parse_escape(const char **strp, size_t len, enum fy_utf8_escape esc);
 
+#define F_NONE			0
+#define F_NON_PRINT		FY_BIT(0)	/* non printable */
+#define F_SIMPLE_SCALAR		FY_BIT(1)	/* part of simple scalar */
+#define F_QUOTE_ESC		FY_BIT(2)	/* escape form, i.e \n */
+#define F_LB			FY_BIT(3)	/* is a linebreak */
+#define F_WS			FY_BIT(4)	/* is a whitespace */
+#define F_PUNCT			FY_BIT(5)	/* is a punctuation mark */
+#define F_LETTER		FY_BIT(6)	/* is a letter a..z A..Z */
+#define F_DIGIT			FY_BIT(7)	/* is a digit 0..9 */
+
+extern uint8_t fy_utf8_low_ascii_flags[0x80];
+
 #endif
