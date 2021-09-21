@@ -798,8 +798,6 @@ static const char *state_txt[] __FY_DEBUG_UNUSED__ = {
 	[FYPS_DOCUMENT_CONTENT] = "DOCUMENT_CONTENT",
 	[FYPS_DOCUMENT_END] = "DOCUMENT_END",
 	[FYPS_BLOCK_NODE] = "BLOCK_NODE",
-	[FYPS_BLOCK_NODE_OR_INDENTLESS_SEQUENCE] = "BLOCK_NODE_OR_INDENTLESS_SEQUENCE",
-	[FYPS_FLOW_NODE] = "FLOW_NODE",
 	[FYPS_BLOCK_SEQUENCE_FIRST_ENTRY] = "BLOCK_SEQUENCE_FIRST_ENTRY",
 	[FYPS_BLOCK_SEQUENCE_ENTRY] = "BLOCK_SEQUENCE_ENTRY",
 	[FYPS_INDENTLESS_SEQUENCE_ENTRY] = "INDENTLESS_SEQUENCE_ENTRY",
@@ -1036,10 +1034,9 @@ static void fy_purge_required_simple_key_report(struct fy_parser *fyp,
 	is_tag = fyt && fyt->type == FYTT_TAG;
 
 	if (is_anchor || is_tag) {
-		if ((fyp->state == FYPS_BLOCK_NODE_OR_INDENTLESS_SEQUENCE ||
-			fyp->state == FYPS_BLOCK_MAPPING_VALUE ||
-			fyp->state == FYPS_BLOCK_MAPPING_FIRST_KEY) &&
-					next_type == FYTT_BLOCK_ENTRY) {
+		if ((fyp->state == FYPS_BLOCK_MAPPING_VALUE ||
+		     fyp->state == FYPS_BLOCK_MAPPING_FIRST_KEY) &&
+			next_type == FYTT_BLOCK_ENTRY) {
 
 			FYP_TOKEN_ERROR(fyp, fyt, FYEM_SCAN,
 					"invalid %s indent for sequence",
@@ -4503,8 +4500,7 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 				"undefined tag prefix '%.*s'", (int)handle_size, handle);
 	}
 
-	if ((fyp->state == FYPS_BLOCK_NODE_OR_INDENTLESS_SEQUENCE ||
-	     fyp->state == FYPS_BLOCK_MAPPING_VALUE ||
+	if ((fyp->state == FYPS_BLOCK_MAPPING_VALUE ||
 	     fyp->state == FYPS_BLOCK_MAPPING_FIRST_KEY)
 		&& fyt->type == FYTT_BLOCK_ENTRY) {
 
@@ -5038,12 +5034,9 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		/* fallthrough */
 
 	case FYPS_BLOCK_NODE:
-	case FYPS_BLOCK_NODE_OR_INDENTLESS_SEQUENCE:
-	case FYPS_FLOW_NODE:
 
 		fyep = fy_parse_node(fyp, fyt,
 				fyp->state == FYPS_BLOCK_NODE ||
-				fyp->state == FYPS_BLOCK_NODE_OR_INDENTLESS_SEQUENCE ||
 				fyp->state == FYPS_DOCUMENT_CONTENT);
 		fyp_error_check(fyp, fyep, err_out,
 				"fy_parse_node() failed");

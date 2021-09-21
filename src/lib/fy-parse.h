@@ -90,10 +90,6 @@ enum fy_parser_state {
 	FYPS_DOCUMENT_END,
 	/** Expect a block node. */
 	FYPS_BLOCK_NODE,
-	/** Expect a block node or indentless sequence. */
-	FYPS_BLOCK_NODE_OR_INDENTLESS_SEQUENCE,
-	/** Expect a flow node. */
-	FYPS_FLOW_NODE,
 	/** Expect the first entry of a block sequence. */
 	FYPS_BLOCK_SEQUENCE_FIRST_ENTRY,
 	/** Expect an entry of a block sequence. */
