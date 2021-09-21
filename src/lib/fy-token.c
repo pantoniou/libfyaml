@@ -44,38 +44,52 @@ enum fy_token_type fy_token_get_type(struct fy_token *fyt)
 	return fyt ? fyt->type : FYTT_NONE;
 }
 
-struct fy_token *fy_token_alloc(void)
+struct fy_token *fy_token_alloc_rl(struct fy_token_list *fytl)
 {
 	struct fy_token *fyt;
-	unsigned int i;
 
-	fyt = malloc(sizeof(*fyt));
-	if (!fyt)
-		return fyt;
+	fyt = NULL;
+	if (fytl) {
+		fyt = fy_token_list_pop(fytl);
+		if (fyt) {
+			fyt->analyze_flags = 0;
+			fyt->text_len = 0;
+			fyt->text = NULL;
+			fyt->text0 = NULL;
+			fyt->handle.fyi = NULL;
+			fyt->comment = NULL;
+		}
+	}
+	if (!fyt) {
+		fyt = malloc(sizeof(*fyt));
+		if (!fyt)
+			return NULL;
 
-	memset(fyt, 0, sizeof(*fyt));
+		memset(fyt, 0, sizeof(*fyt));
+	}
 
 	fyt->type = FYTT_NONE;
-	fyt->analyze_flags = 0;
-	fyt->text_len = 0;
-	fyt->text = NULL;
-	fyt->text0 = NULL;
-	fyt->handle.fyi = NULL;
-	for (i = 0; i < sizeof(fyt->comment)/sizeof(fyt->comment[0]); i++)
-		fyt->comment[i].fyi = NULL;
-
 	fyt->refs = 1;
 
 	return fyt;
 }
 
-void fy_token_free(struct fy_token *fyt)
+void fy_token_clean_rl(struct fy_token_list *fytl, struct fy_token *fyt)
 {
+	int i;
+
 	if (!fyt)
 		return;
 
 	/* release reference */
 	fy_input_unref(fyt->handle.fyi);
+
+	/* release comment references */
+	if (fyt->comment) {
+		for (i = 0; i < fycp_max; i++)
+			fy_input_unref(fyt->comment[i].fyi);
+		free(fyt->comment);
+	}
 
 	switch (fyt->type) {
 	case FYTT_TAG:
@@ -84,6 +98,9 @@ void fy_token_free(struct fy_token *fyt)
 			free(fyt->tag.handle0);
 		if (fyt->tag.suffix0)
 			free(fyt->tag.suffix0);
+		fyt->tag.fyt_td = NULL;
+		fyt->tag.handle0 = NULL;
+		fyt->tag.suffix0 = NULL;
 		break;
 
 	case FYTT_TAG_DIRECTIVE:
@@ -91,11 +108,19 @@ void fy_token_free(struct fy_token *fyt)
 			free(fyt->tag_directive.prefix0);
 		if (fyt->tag_directive.handle0)
 			free(fyt->tag_directive.handle0);
+		fyt->tag_directive.prefix0 = NULL;
+		fyt->tag_directive.handle0 = NULL;
 		break;
 
 	case FYTT_PE_MAP_KEY:
-		if (fyt->map_key.fyd)
-			fy_document_destroy(fyt->map_key.fyd);
+		fy_document_destroy(fyt->map_key.fyd);
+		fyt->map_key.fyd = NULL;
+		break;
+
+	case FYTT_SCALAR:
+		if (fyt->scalar.path_key_storage)
+			free(fyt->scalar.path_key_storage);
+		fyt->scalar.path_key_storage = NULL;
 		break;
 
 	default:
@@ -105,39 +130,34 @@ void fy_token_free(struct fy_token *fyt)
 	if (fyt->text0)
 		free(fyt->text0);
 
-	free(fyt);
+	fyt->type = FYTT_NONE;
+	fyt->analyze_flags = 0;
+	fyt->text_len = 0;
+	fyt->text = NULL;
+	fyt->text0 = NULL;
+	fyt->handle.fyi = NULL;
+	fyt->comment = NULL;
 }
 
-struct fy_token *fy_token_ref(struct fy_token *fyt)
-{
-	/* take care of overflow */
-	if (!fyt)
-		return NULL;
-	assert(fyt->refs + 1 > 0);
-	fyt->refs++;
-
-	return fyt;
-}
-
-void fy_token_unref(struct fy_token *fyt)
+void fy_token_free_rl(struct fy_token_list *fytl, struct fy_token *fyt)
 {
 	if (!fyt)
 		return;
 
-	assert(fyt->refs > 0);
+	fy_token_clean_rl(fytl, fyt);
 
-	if (fyt->refs == 1)
-		fy_token_free(fyt);
+	if (fytl)
+		fy_token_list_push(fytl, fyt);
 	else
-		fyt->refs--;
+		free(fyt);
 }
 
-void fy_token_list_unref_all(struct fy_token_list *fytl)
+void fy_token_list_unref_all_rl(struct fy_token_list *fytl, struct fy_token_list *fytl_tofree)
 {
 	struct fy_token *fyt;
 
-	while ((fyt = fy_token_list_pop(fytl)) != NULL)
-		fy_token_unref(fyt);
+	while ((fyt = fy_token_list_pop(fytl_tofree)) != NULL)
+		fy_token_unref_rl(fytl, fyt);
 }
 
 static bool fy_token_text_needs_rebuild(struct fy_token *fyt)
@@ -405,7 +425,7 @@ const char *fy_tag_directive_token_handle0(struct fy_token *fyt)
 	return fyt->tag_directive.handle0;
 }
 
-struct fy_token *fy_token_vcreate(enum fy_token_type type, va_list ap)
+struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_type type, va_list ap)
 {
 	struct fy_token *fyt = NULL;
 	struct fy_atom *handle;
@@ -414,7 +434,7 @@ struct fy_token *fy_token_vcreate(enum fy_token_type type, va_list ap)
 	if ((unsigned int)type >= FYTT_COUNT)
 		goto err_out;
 
-	fyt = fy_token_alloc();
+	fyt = fy_token_alloc_rl(fytl);
 	if (!fyt)
 		goto err_out;
 	fyt->type = type;
@@ -435,6 +455,9 @@ struct fy_token *fy_token_vcreate(enum fy_token_type type, va_list ap)
 		fyt->scalar.style = va_arg(ap, enum fy_scalar_style);
 		if ((unsigned int)fyt->scalar.style >= FYSS_MAX)
 			goto err_out;
+		fyt->scalar.path_key = NULL;
+		fyt->scalar.path_key_len = 0;
+		fyt->scalar.path_key_storage = NULL;
 		break;
 	case FYTT_TAG:
 		fyt->tag.skip = va_arg(ap, unsigned int);
@@ -482,13 +505,45 @@ err_out:
 	return NULL;
 }
 
+struct fy_token *fy_token_create_rl(struct fy_token_list *fytl, enum fy_token_type type, ...)
+{
+	struct fy_token *fyt;
+	va_list ap;
+
+	va_start(ap, type);
+	fyt = fy_token_vcreate_rl(fytl, type, ap);
+	va_end(ap);
+
+	return fyt;
+}
+
+struct fy_token *fy_token_vcreate(enum fy_token_type type, va_list ap)
+{
+	return fy_token_vcreate_rl(NULL, type, ap);
+}
+
 struct fy_token *fy_token_create(enum fy_token_type type, ...)
 {
 	struct fy_token *fyt;
 	va_list ap;
 
 	va_start(ap, type);
-	fyt = fy_token_vcreate(type, ap);
+	fyt = fy_token_vcreate_rl(NULL, type, ap);
+	va_end(ap);
+
+	return fyt;
+}
+
+struct fy_token *fy_parse_token_create(struct fy_parser *fyp, enum fy_token_type type, ...)
+{
+	struct fy_token *fyt;
+	va_list ap;
+
+	if (!fyp)
+		return NULL;
+
+	va_start(ap, type);
+	fyt = fy_token_vcreate_rl(&fyp->recycled_token, type, ap);
 	va_end(ap);
 
 	return fyt;
