@@ -34,6 +34,9 @@
 #include "fy-doc.h"
 #include "fy-emit.h"
 #include "fy-accel.h"
+#include "fy-emit-accum.h"
+#include "fy-path.h"
+#include "fy-composer.h"
 
 struct fy_parser;
 struct fy_input;
