@@ -4960,6 +4960,21 @@ fy_path_expr_dump(struct fy_path_expr *expr, struct fy_diag *diag,
 		  enum fy_error_type errlevel, int level, const char *banner);
 
 /**
+ * fy_path_expr_to_document() - Converts the path expression to a YAML document
+ *
+ * Converts the expression to a YAML document which is useful for
+ * understanding what the expression evaluates to.
+ *
+ * @expr: The expression to convert to a document
+ *
+ * Returns:
+ * The document of the expression or NULL on error.
+ */
+struct fy_document *
+fy_path_expr_to_document(struct fy_path_expr *expr)
+	FY_EXPORT;
+
+/**
  * enum fy_path_exec_cfg_flags - Path executor configuration flags
  *
  * These flags control the operation of the path expression executor
