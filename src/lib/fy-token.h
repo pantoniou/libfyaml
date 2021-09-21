@@ -23,6 +23,36 @@
 
 struct fy_document;
 
+static inline bool fy_token_type_is_sequence_start(enum fy_token_type type)
+{
+	return type == FYTT_BLOCK_SEQUENCE_START || type == FYTT_FLOW_SEQUENCE_START;
+}
+
+static inline bool fy_token_type_is_sequence_end(enum fy_token_type type)
+{
+	return type == FYTT_BLOCK_SEQUENCE_START || type == FYTT_FLOW_SEQUENCE_START;
+}
+
+static inline bool fy_token_type_is_sequence_marker(enum fy_token_type type)
+{
+	return fy_token_type_is_sequence_start(type) || fy_token_type_is_sequence_end(type);
+}
+
+static inline bool fy_token_type_is_mapping_start(enum fy_token_type type)
+{
+	return type == FYTT_BLOCK_MAPPING_START || type == FYTT_FLOW_MAPPING_START;
+}
+
+static inline bool fy_token_type_is_mapping_end(enum fy_token_type type)
+{
+	return type == FYTT_BLOCK_MAPPING_START || type == FYTT_FLOW_MAPPING_START;
+}
+
+static inline bool fy_token_type_is_mapping_marker(enum fy_token_type type)
+{
+	return fy_token_type_is_mapping_start(type) || fy_token_type_is_mapping_end(type);
+}
+
 /* analyze content flags */
 #define FYACF_EMPTY		0x000001	/* is empty (only ws & lb) */
 #define FYACF_LB		0x000002	/* has a linebreak */
