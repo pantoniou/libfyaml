@@ -1328,6 +1328,40 @@ bool fy_node_compare_string(struct fy_node *fyn, const char *str, size_t len)
 	return ret;
 }
 
+bool fy_node_compare_token(struct fy_node *fyn, struct fy_token *fyt)
+{
+	/* check if there's NULL */
+	if (!fyn || !fyt)
+		return false;
+
+	/* only valid for scalars */
+	if (!fy_node_is_scalar(fyn) || fyt->type != FYTT_SCALAR)
+		return false;
+
+	return fy_token_cmp(fyn->scalar, fyt) == 0;
+}
+
+bool fy_node_compare_text(struct fy_node *fyn, const char *text, size_t len)
+{
+	const char *textn;
+	size_t lenn;
+
+	if (!fyn || !text)
+		return false;
+
+	textn = fy_node_get_scalar(fyn, &lenn);
+	if (!textn)
+		return false;
+
+	if (len == FY_NT)
+		len = strlen(text);
+
+	if (len != lenn)
+		return false;
+
+	return memcmp(text, textn, len) == 0;
+}
+
 struct fy_node_pair *fy_node_mapping_lookup_pair(struct fy_node *fyn, struct fy_node *fyn_key)
 {
 	struct fy_node_pair *fynpi, *fynp;

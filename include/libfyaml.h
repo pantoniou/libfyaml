@@ -2093,6 +2093,39 @@ fy_node_compare_string(struct fy_node *fyn, const char *str, size_t len)
 	FY_EXPORT;
 
 /**
+ * fy_node_compare_token() - Compare a node for equality against a token
+ *
+ * Compare a node for equality with a token.
+ * Both the node and the tokens must be a scalars.
+ *
+ * @fyn: The node to use in the comparison
+ * @fyt: The scalar token
+ *
+ * Returns:
+ * true if the node and the token are equal.
+ */
+bool
+fy_node_compare_token(struct fy_node *fyn, struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
+ * fy_node_compare_text() - Compare a node for equality with a raw C text
+ *
+ * Compare a node for equality with a raw C string.
+ * The node must be a scalar.
+ *
+ * @fyn: The node to use in the comparison
+ * @text: The raw C text to compare against
+ * @len: The length of the text (or -1 if '\0' terminated)
+ *
+ * Returns:
+ * true if the node and the text are equal.
+ */
+bool
+fy_node_compare_text(struct fy_node *fyn, const char *text, size_t len)
+	FY_EXPORT;
+
+/**
  * fy_document_create() - Create an empty document
  *
  * Create an empty document using the provided parser configuration.
