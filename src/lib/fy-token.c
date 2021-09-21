@@ -25,6 +25,7 @@
 
 #include "fy-ctype.h"
 #include "fy-utf8.h"
+#include "fy-emit-accum.h"
 
 #include "fy-token.h"
 
@@ -698,7 +699,7 @@ int fy_token_text_analyze(struct fy_token *fyt)
 	/* get value */
 	value = fy_token_get_text(fyt, &len);
 	if (!value || len == 0) {
-		flags |= FYTTAF_EMPTY | FYTTAF_CAN_BE_DOUBLE_QUOTED;
+		flags |= FYTTAF_EMPTY | FYTTAF_CAN_BE_DOUBLE_QUOTED | FYTTAF_CAN_BE_UNQUOTED_PATH_KEY;
 		fyt->analyze_flags = flags;
 		return flags;
 	}
@@ -709,7 +710,8 @@ int fy_token_text_analyze(struct fy_token *fyt)
 		 FYTTAF_CAN_BE_LITERAL |
 		 FYTTAF_CAN_BE_LITERAL |
 		 FYTTAF_CAN_BE_FOLDED |
-		 FYTTAF_CAN_BE_PLAIN_FLOW;
+		 FYTTAF_CAN_BE_PLAIN_FLOW |
+		 FYTTAF_CAN_BE_UNQUOTED_PATH_KEY;
 
 	/* start with document indicators must be quoted at indent 0 */
 	if (len >= 3 && (!memcmp(value, "---", 3) || !memcmp(value, "...", 3)))
@@ -739,6 +741,11 @@ int fy_token_text_analyze(struct fy_token *fyt)
 		fy_is_flow_indicator(cn))
 		flags &= ~FYTTAF_CAN_BE_PLAIN_FLOW;
 
+	/* plain unquoted path keys can only start with [a-zA-Z_] */
+	if ((flags & FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) &&
+		!fy_is_first_alpha(cn))
+		flags &= ~FYTTAF_CAN_BE_UNQUOTED_PATH_KEY;
+
 	cp = -1;
 	for (c = cn; c >= 0; s += w, cp = c, c = cn) {
 
@@ -752,7 +759,8 @@ int fy_token_text_analyze(struct fy_token *fyt)
 				   FYTTAF_CAN_BE_SINGLE_QUOTED |
 				   FYTTAF_CAN_BE_LITERAL |
 				   FYTTAF_CAN_BE_FOLDED |
-				   FYTTAF_CAN_BE_PLAIN_FLOW);
+				   FYTTAF_CAN_BE_PLAIN_FLOW |
+				   FYTTAF_CAN_BE_UNQUOTED_PATH_KEY);
 			flags |= FYTTAF_CAN_BE_DOUBLE_QUOTED;
 
 		} else if (fy_is_ws(c)) {
@@ -773,6 +781,9 @@ int fy_token_text_analyze(struct fy_token *fyt)
 			/* anything with linebreaks, can't be direct */
 			flags &= ~FYTTAF_DIRECT_OUTPUT;
 		}
+
+		if ((flags & FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) && !fy_is_alnum(c))
+			flags &= ~FYTTAF_CAN_BE_UNQUOTED_PATH_KEY;
 
 		/* illegal plain combination */
 		if ((flags & FYTTAF_CAN_BE_PLAIN) &&
@@ -1030,6 +1041,224 @@ const char *fy_token_get_text0(struct fy_token *fyt)
 size_t fy_token_get_text_length(struct fy_token *fyt)
 {
 	return fy_token_format_text_length(fyt);
+}
+
+const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
+{
+	struct fy_atom *atom;
+	struct fy_atom_iter iter;
+	struct fy_emit_accum ea;	/* use an emit accumulator */
+	uint8_t non_utf8[4];
+	size_t non_utf8_len, k;
+	int c, i, w, digit;
+	int aflags;
+
+	if (!fyt || fyt->type != FYTT_SCALAR) {
+		*lenp = 0;
+		return NULL;
+	}
+
+	/* was it cached? return */
+	if (fyt->scalar.path_key) {
+		*lenp = fyt->scalar.path_key_len;
+		return fyt->scalar.path_key;
+	}
+
+	/* analyze the token */
+	aflags = fy_token_text_analyze(fyt);
+
+	/* simple one? perfect */
+	if ((aflags & FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) == FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) {
+		fyt->scalar.path_key = fy_token_get_text(fyt, &fyt->scalar.path_key_len);
+		*lenp = fyt->scalar.path_key_len;
+		return fyt->scalar.path_key;
+	}
+
+	/* not possible, need to quote (and escape) */
+
+	/* no atom? i.e. empty */
+	atom = fy_token_atom(fyt);
+	if (!atom) {
+		fyt->scalar.path_key = "";
+		fyt->scalar.path_key_len = 0;
+		*lenp = 0;
+		return fyt->scalar.path_key;
+	}
+
+	/* no inplace buffer; we will need the malloc'ed contents anyway */
+	fy_emit_accum_init(&ea, NULL, 0, 0, fylb_cr_nl);
+
+	fy_atom_iter_start(atom, &iter);
+	fy_emit_accum_start(&ea, 0, fy_token_atom_lb_mode(fyt));
+
+	/* output in quoted form */
+	fy_emit_accum_utf8_put(&ea, '"');
+
+	for (;;) {
+		non_utf8_len = sizeof(non_utf8);
+		c = fy_atom_iter_utf8_quoted_get(&iter, &non_utf8_len, non_utf8);
+		if (c < 0)
+			break;
+
+		if (c == 0 && non_utf8_len > 0) {
+			for (k = 0; k < non_utf8_len; k++) {
+				c = (int)non_utf8[k] & 0xff;
+				fy_emit_accum_utf8_put(&ea, '\\');
+				fy_emit_accum_utf8_put(&ea, 'x');
+				digit = ((unsigned int)c >> 4) & 15;
+				fy_emit_accum_utf8_put(&ea,
+						digit <= 9 ? ('0' + digit) : ('A' + digit - 10));
+				digit = (unsigned int)c & 15;
+				fy_emit_accum_utf8_put(&ea,
+						digit <= 9 ? ('0' + digit) : ('A' + digit - 10));
+			}
+			continue;
+		}
+
+		if (!fy_is_printq(c) || c == '"' || c == '\\') {
+
+			fy_emit_accum_utf8_put(&ea, '\\');
+
+			switch (c) {
+
+			/* common YAML & JSON escapes */
+			case '\b':
+				fy_emit_accum_utf8_put(&ea, 'b');
+				break;
+			case '\f':
+				fy_emit_accum_utf8_put(&ea, 'f');
+				break;
+			case '\n':
+				fy_emit_accum_utf8_put(&ea, 'n');
+				break;
+			case '\r':
+				fy_emit_accum_utf8_put(&ea, 'r');
+				break;
+			case '\t':
+				fy_emit_accum_utf8_put(&ea, 't');
+				break;
+			case '"':
+				fy_emit_accum_utf8_put(&ea, '"');
+				break;
+			case '\\':
+				fy_emit_accum_utf8_put(&ea, '\\');
+				break;
+
+			/* YAML only escapes */
+			case '\0':
+				fy_emit_accum_utf8_put(&ea, '0');
+				break;
+			case '\a':
+				fy_emit_accum_utf8_put(&ea, 'a');
+				break;
+			case '\v':
+				fy_emit_accum_utf8_put(&ea, 'v');
+				break;
+			case '\e':
+				fy_emit_accum_utf8_put(&ea, 'e');
+				break;
+			case 0x85:
+				fy_emit_accum_utf8_put(&ea, 'N');
+				break;
+			case 0xa0:
+				fy_emit_accum_utf8_put(&ea, '_');
+				break;
+			case 0x2028:
+				fy_emit_accum_utf8_put(&ea, 'L');
+				break;
+			case 0x2029:
+				fy_emit_accum_utf8_put(&ea, 'P');
+				break;
+
+			default:
+				/* any kind of binary value */
+				if ((unsigned int)c <= 0xff) {
+					fy_emit_accum_utf8_put(&ea, 'x');
+					w = 2;
+				} else if ((unsigned int)c <= 0xffff) {
+					fy_emit_accum_utf8_put(&ea, 'u');
+					w = 4;
+				} else if ((unsigned int)c <= 0xffffffff) {
+					fy_emit_accum_utf8_put(&ea, 'U');
+					w = 8;
+				}
+
+				for (i = w - 1; i >= 0; i--) {
+					digit = ((unsigned int)c >> (i * 4)) & 15;
+					fy_emit_accum_utf8_put(&ea,
+							digit <= 9 ? ('0' + digit) : ('A' + digit - 10));
+				}
+				break;
+			}
+
+			continue;
+		}
+
+		/* regular character */
+		fy_emit_accum_utf8_put(&ea, c);
+	}
+
+	fy_atom_iter_finish(&iter);
+
+	/* closing quote */
+	fy_emit_accum_utf8_put(&ea, '"');
+
+	fy_emit_accum_make_0_terminated(&ea);
+
+	/* get the output (note it's now NULL terminated) */
+	fyt->scalar.path_key_storage = fy_emit_accum_steal(&ea, &fyt->scalar.path_key_len);
+	fyt->scalar.path_key = fyt->scalar.path_key_storage;
+	fy_emit_accum_cleanup(&ea);
+
+	*lenp = fyt->scalar.path_key_len;
+
+	return fyt->scalar.path_key;
+}
+
+size_t fy_token_get_scalar_path_key_length(struct fy_token *fyt)
+{
+	const char *text;
+	size_t len;
+
+	text = fy_token_get_scalar_path_key(fyt, &len);
+	if (!text)
+		return 0;
+	return len;
+}
+
+const char *fy_token_get_scalar_path_key0(struct fy_token *fyt)
+{
+	const char *text;
+	size_t len;
+
+	if (!fyt || fyt->type != FYTT_SCALAR) {
+		return NULL;
+	}
+
+	/* storage is \0 terminated */
+	if (fyt->scalar.path_key_storage)
+		return fyt->scalar.path_key_storage;
+
+	text = fyt->scalar.path_key;
+	len = fyt->scalar.path_key_len;
+	if (!text)
+		text = fy_token_get_scalar_path_key(fyt, &len);
+
+	/* something is catastrophically wrong */
+	if (!text)
+		return NULL;
+
+	if (fyt->scalar.path_key_storage)
+		return fyt->scalar.path_key_storage;
+
+	fyt->scalar.path_key_storage = malloc(len + 1);
+	if (!fyt->scalar.path_key_storage)
+		return NULL;
+
+	memcpy(fyt->scalar.path_key_storage, text, len);
+	fyt->scalar.path_key_storage[len] = '\0';
+
+	return fyt->scalar.path_key_storage;
 }
 
 unsigned int fy_analyze_scalar_content(const char *data, size_t size,

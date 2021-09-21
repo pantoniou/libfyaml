@@ -106,6 +106,10 @@ struct fy_token {
 		} tag_directive;
 		struct {
 			enum fy_scalar_style style;
+			/* path key (if requested only) */
+			const char *path_key;
+			size_t path_key_len;
+			char *path_key_storage;	/* if this is not null, it's \0 terminated */
 		} scalar;
 		struct {
 			unsigned int skip;
@@ -394,6 +398,7 @@ static inline bool fy_token_is_flow_ws(struct fy_token *fyt, int c)
 #define FYTTAF_CAN_BE_FOLDED		FY_BIT(14)
 #define FYTTAF_CAN_BE_PLAIN_FLOW	FY_BIT(15)
 #define FYTTAF_QUOTE_AT_0		FY_BIT(16)
+#define FYTTAF_CAN_BE_UNQUOTED_PATH_KEY	FY_BIT(17)
 
 int fy_token_text_analyze(struct fy_token *fyt);
 
