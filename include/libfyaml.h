@@ -5097,6 +5097,7 @@ fy_path_exec_results_iterate(struct fy_path_exec *fypx, void **prevp)
  * @FYTT_PE_COLLECTION_FILTER: A collection filter
  * @FYTT_PE_SEQ_FILTER: A sequence filter
  * @FYTT_PE_MAP_FILTER: A mapping filter
+ * @FYTT_PE_UNIQUE_FILTER: Filters out duplicates
  * @FYTT_PE_EVERY_CHILD: Every child
  * @FYTT_PE_EVERY_CHILD_R: Every child recursive
  * @FYTT_PE_ALIAS: An alias
@@ -5106,6 +5107,18 @@ fy_path_exec_results_iterate(struct fy_path_exec *fypx, void **prevp)
  * @FYTT_PE_AMPAMP: A &&
  * @FYTT_PE_LPAREN: A left parenthesis
  * @FYTT_PE_RPAREN: A right parenthesis
+ * @FYTT_PE_EQEQ: Equality operator
+ * @FYTT_PE_NOTEQ: Non-equality operator
+ * @FYTT_PE_LT: Less than operator
+ * @FYTT_PE_GT: Greater than operator
+ * @FYTT_PE_LTE: Less or equal than operator
+ * @FYTT_PE_GTE: Greater or equal than operator
+ * @FYTT_PE_PLUS: Plus operator
+ * @FYTT_PE_MINUS: Minus operator
+ * @FYTT_PE_MULT: Multiply operator
+ * @FYTT_PE_DIV: Divide operator
+ * @FYTT_PE_METHOD: Path expression method (chained)
+ * @FYTT_SE_METHOD: Scalar expression method (non chained)
  */
 enum fy_token_type {
 	/* non-content token types */
@@ -5148,6 +5161,7 @@ enum fy_token_type {
 	FYTT_PE_COLLECTION_FILTER,
 	FYTT_PE_SEQ_FILTER,
 	FYTT_PE_MAP_FILTER,
+	FYTT_PE_UNIQUE_FILTER,
 	FYTT_PE_EVERY_CHILD,
 	FYTT_PE_EVERY_CHILD_R,
 	FYTT_PE_ALIAS,
@@ -5157,10 +5171,27 @@ enum fy_token_type {
 	FYTT_PE_AMPAMP,
 	FYTT_PE_LPAREN,
 	FYTT_PE_RPAREN,
+
+	/* comparison operators */
+	FYTT_PE_EQEQ,		/* == */
+	FYTT_PE_NOTEQ,		/* != */
+	FYTT_PE_LT,		/* <  */
+	FYTT_PE_GT,		/* >  */
+	FYTT_PE_LTE,		/* <= */
+	FYTT_PE_GTE,		/* >= */
+
+	/* scalar expression tokens */
+	FYTT_SE_PLUS,
+	FYTT_SE_MINUS,
+	FYTT_SE_MULT,
+	FYTT_SE_DIV,
+
+	FYTT_PE_METHOD,		/* path expr method (chained) */
+	FYTT_SE_METHOD,		/* scalar expr method (non chained) */
 };
 
 /* The number of token types available */
-#define FYTT_COUNT	(FYTT_PE_RPAREN+1)
+#define FYTT_COUNT	(FYTT_SE_METHOD+1)
 
 /**
  * fy_token_type_is_valid() - Check token type validity
@@ -5225,7 +5256,24 @@ fy_token_type_is_content(enum fy_token_type type)
 static inline bool
 fy_token_type_is_path_expr(enum fy_token_type type)
 {
-	return type >= FYTT_PE_SLASH && type <= FYTT_PE_RPAREN;
+	return type >= FYTT_PE_SLASH && type <= FYTT_PE_GTE;
+}
+
+/**
+ * fy_token_type_is_scalar_expr() - Check if token type is
+ *                                  valid for a YPATH scalar expression
+ *
+ * Check if argument token type is a valid YPATH parse scalar expression token
+ *
+ * @type: The token type
+ *
+ * Returns:
+ * true if the token type is a valid YPATH scalar one, false otherwise
+ */
+static inline bool
+fy_token_type_is_scalar_expr(enum fy_token_type type)
+{
+	return type >= FYTT_SE_PLUS && type <= FYTT_SE_DIV;
 }
 
 /**

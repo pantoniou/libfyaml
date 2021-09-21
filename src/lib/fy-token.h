@@ -21,6 +21,8 @@
 
 #include "fy-atom.h"
 
+extern const char *fy_token_type_txt[FYTT_COUNT];
+
 struct fy_document;
 
 static inline bool fy_token_type_is_sequence_start(enum fy_token_type type)
