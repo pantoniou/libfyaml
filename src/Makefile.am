@@ -24,7 +24,8 @@ libfyaml_@MAJOR@_@MINOR@_la_SOURCES = \
 	xxhash/xxhash.c xxhash/xxhash.h \
 	lib/fy-accel.c lib/fy-accel.h \
 	lib/fy-walk.c lib/fy-walk.h \
-	lib/fy-path.c lib/fy-path.h
+	lib/fy-path.c lib/fy-path.h \
+	lib/fy-composer.c lib/fy-composer.h
 
 libfyaml_@MAJOR@_@MINOR@_la_CPPFLAGS = $(AM_CPPFLAGS) \
 				       -I$(top_srcdir)/src/lib \
