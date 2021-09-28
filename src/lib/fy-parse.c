@@ -1594,8 +1594,10 @@ err_out:
 
 int fy_scan_tag_handle_length(struct fy_parser *fyp, int start)
 {
-	int c, length;
+	int c, length, i, width;
 	ssize_t offset;
+	uint8_t octet;
+	bool first, was_esc;
 
 	length = 0;
 
@@ -1609,6 +1611,7 @@ int fy_scan_tag_handle_length(struct fy_parser *fyp, int start)
 
 	/* get first character of the tag */
 	c = fy_parse_peek_at_internal(fyp, start + length, &offset);
+
 	if (fy_is_ws(c))
 		return length;
 
@@ -1618,14 +1621,47 @@ int fy_scan_tag_handle_length(struct fy_parser *fyp, int start)
 		return length;
 	}
 
-	FYP_PARSE_ERROR_CHECK(fyp, start + length, 1, FYEM_SCAN,
-			fy_is_first_alpha(c), err_out,
-			"invalid tag handle content");
-	length++;
+	first = true;
+	was_esc = false;
 
 	/* now loop while it's alphanumeric */
-	while (fy_is_alnum(c = fy_parse_peek_at_internal(fyp, start + length, &offset)))
-		length++;
+	for (;;) {
+		if (c == '%') {
+
+			octet = 0;
+
+			for (i = 0; i < 2; i++) {
+				c = fy_parse_peek_at_internal(fyp, start + length + 1 + i, &offset);
+				FYP_PARSE_ERROR_CHECK(fyp, start + length + 1 + i, 1, FYEM_SCAN,
+						fy_is_hex(c), err_out,
+						"non hex URI escape");
+				octet <<= 4;
+				if (c >= '0' && c <= '9')
+					octet |= c - '0';
+				else if (c >= 'a' && c <= 'f')
+					octet |= 10 + c - 'a';
+				else
+					octet |= 10 + c - 'A';
+			}
+
+			width = fy_utf8_width_by_first_octet(octet);
+			FYP_PARSE_ERROR_CHECK(fyp, start + length, 3, FYEM_SCAN,
+					width == 1, err_out,
+					"Illegal non 1 byte utf8 tag handle character");
+			c = octet;
+			was_esc = true;
+
+		} else
+			was_esc = false;
+
+		if ((first && fy_is_first_alnum(c)) || (!first && fy_is_alnum(c)))
+			length += was_esc ? 3 : 1;
+		else
+			break;
+
+		first = false;
+		c = fy_parse_peek_at_internal(fyp, start + length, &offset);
+	}
 
 	/* if last character is !, copy it */
 	if (c == '!')
@@ -1822,7 +1858,8 @@ int fy_scan_directive(struct fy_parser *fyp)
 		fy_advance_by(fyp, tag_length);
 
 		c = fy_parse_peek(fyp);
-		fyp_error_check(fyp, fy_is_ws(c), err_out,
+		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
+				fy_is_ws(c), err_out,
 				"missing whitespace after TAG");
 
 		/* skip white space */
