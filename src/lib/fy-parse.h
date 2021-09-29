@@ -59,6 +59,7 @@ FY_PARSE_TYPE_DECL(flow);
 struct fy_indent {
 	struct list_head node;
 	int indent;
+	int indent_line;
 	bool generated_block_map : 1;
 };
 FY_PARSE_TYPE_DECL(indent);
@@ -177,6 +178,7 @@ struct fy_parser {
 	struct fy_indent_list indent_stack;
 	int indent;
 	int parent_indent;
+	int indent_line;
 	/* simple key stack */
 	struct fy_simple_key_list simple_keys;
 	/* state stack */
