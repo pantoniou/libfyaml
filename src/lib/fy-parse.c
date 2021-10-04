@@ -983,12 +983,12 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 
 	for (;;) {
 
-		tabs_allowed = fyp_tabsize(fyp) || fyp->flow_level || !fyp->simple_key_allowed;
+		tabs_allowed = fyp->flow_level || !fyp->simple_key_allowed;
 
 		/* skip white space, tabs are allowed in flow context */
 		/* tabs also allowed in block context but not at start of line or after -?: */
 
-		if (!tabs_allowed) {
+		if (!fyp_tabsize(fyp) && !tabs_allowed) {
 			/* skip space only */
 			fy_reader_skip_space(fyr);
 			c = fy_parse_peek(fyp);
@@ -4182,6 +4182,7 @@ void fy_reader_skip_ws(struct fy_reader *fyr)
 {
 	const char *p, *s, *e;
 	size_t len, consumed;
+	int column;
 
 	assert(fyr);
 
@@ -4190,13 +4191,26 @@ void fy_reader_skip_ws(struct fy_reader *fyr)
 		s = p;
 		e = s + len;
 
-		while (s < e && fy_is_ws(*s))
-			s++;
+		column = fyr->column;
+		if (!fyr->tabsize) {
+			while (s < e && fy_is_ws(*s)) {
+				column++;
+				s++;
+			}
+		} else {
+			while (s < e && fy_is_ws(*s)) {
+				if (fy_is_tab(*s))
+					column += fyr->tabsize - (column % fyr->tabsize);
+				else
+					column++;
+				s++;
+			}
+		}
 
 		consumed = s - p;
 		if (consumed) {
 			fy_reader_advance_octets(fyr, consumed);
-			fyr->column += consumed;
+			fyr->column = column;
 		}
 
 		/* we're done if stopped earlier */
