@@ -92,7 +92,7 @@ static struct option lopts[] = {
 #define LIBYAML_MODES	""
 #endif
 
-#define MODES	"parse|scan|copy|testsuite|dump|dump2|build|walk|reader|compose" LIBYAML_MODES
+#define MODES	"parse|scan|copy|testsuite|dump|dump2|build|walk|reader|compose|iterate" LIBYAML_MODES
 
 static void display_usage(FILE *fp, char *progname)
 {
@@ -860,6 +860,86 @@ int do_compose(struct fy_parser *fyp, int indent, int width, bool resolve, bool 
 	return 0;
 }
 
+struct fy_node *
+fy_node_get_root(struct fy_node *fyn)
+{
+	if (!fyn)
+		return NULL;
+	while (fyn->parent)
+		fyn = fyn->parent;
+	return fyn;
+}
+
+bool
+fy_node_belongs_to_key(struct fy_document *fyd, struct fy_node *fyn)
+{
+	return fyd->root != fy_node_get_root(fyn);
+}
+
+int do_iterate(struct fy_parser *fyp)
+{
+	enum fy_node_iterator_flags flags;
+	struct fy_document *fyd;
+	int count;
+	struct fy_node *fyn;
+	struct fy_node_iterator ni;
+	enum fy_node_iterator_result res;
+	char *path;
+	size_t len;
+	const char *text;
+	char textbuf[16];
+	bool belongs_to_key;
+
+	memset(&ni, 0, sizeof(ni));
+
+	flags = FYNIF_DEPTH_FIRST;
+	fy_node_iterator_setup(&ni, flags | FYNIF_FOLLOW_KEYS | FYNIF_FOLLOW_LINKS);
+
+	count = 0;
+	while ((fyd = fy_parse_load_document(fyp)) != NULL) {
+
+		fprintf(stderr, "> Start\n");
+		fy_node_iterator_start(&ni, fy_document_root(fyd));
+		fyn = NULL;
+		while ((fyn = fy_node_iterator_next(&ni, fyn)) != NULL) {
+
+			belongs_to_key = fy_node_belongs_to_key(fyd, fyn);
+			path = fy_node_get_path(fyn);
+			if (fy_node_is_scalar(fyn)) {
+				text = fy_node_get_scalar(fyn, &len);
+				assert(text);
+				fy_utf8_format_text(text, len, textbuf, sizeof(textbuf), fyue_doublequote);
+				if (!fy_node_is_alias(fyn))
+					fprintf(stderr, "%40s \"%s\"%s\n", path, textbuf, belongs_to_key ? " KEY" : "");
+				else
+					fprintf(stderr, "%40s *%s%s\n", path, textbuf, belongs_to_key ? " KEY" : "");
+			} else if (fy_node_is_sequence(fyn)) {
+				fprintf(stderr, "%40s [%s\n", path, belongs_to_key ? " KEY" : "");
+			} else if (fy_node_is_mapping(fyn)) {
+				fprintf(stderr, "%40s {%s\n", path, belongs_to_key ? " KEY" : "");
+			}
+
+			free(path);
+		}
+
+		res = fy_node_iterator_end(&ni);
+
+		fprintf(stderr, "> End\n");
+
+		fy_parse_document_destroy(fyp, fyd);
+
+		if (res != FYNIR_OK) {
+			fprintf(stderr, "> Iterator error %d\n", (int)res);
+			break;
+		}
+
+		count++;
+	}
+
+	fy_node_iterator_cleanup(&ni);
+
+	return count > 0 ? 0 : -1;
+}
 
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 
@@ -3083,7 +3163,8 @@ int main(int argc, char *argv[])
 	    strcmp(mode, "build") &&
 	    strcmp(mode, "walk") &&
 	    strcmp(mode, "reader") &&
-	    strcmp(mode, "compose")
+	    strcmp(mode, "compose") &&
+	    strcmp(mode, "iterate")
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 	    && strcmp(mode, "libyaml-scan")
 	    && strcmp(mode, "libyaml-parse")
@@ -3293,6 +3374,12 @@ int main(int argc, char *argv[])
 		}
 	} else if (!strcmp(mode, "compose")) {
 		rc = do_compose(fyp, indent, width, resolve, sort, null_output);
+		if (rc < 0) {
+			/* fprintf(stderr, "do_compose() error %d\n", rc); */
+			goto cleanup;
+		}
+	} else if (!strcmp(mode, "iterate")) {
+		rc = do_iterate(fyp);
 		if (rc < 0) {
 			/* fprintf(stderr, "do_compose() error %d\n", rc); */
 			goto cleanup;

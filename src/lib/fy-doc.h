@@ -227,4 +227,74 @@ struct fy_document *
 fy_document_builder_load_document(struct fy_document_builder *fydb,
 				  struct fy_parser *fyp);
 
+enum fy_node_iterator_flags {
+	FYNIF_DEPTH_FIRST	= FY_BIT(0),	/* depth first iterator (only one supported for now) */
+	FYNIF_FOLLOW_KEYS	= FY_BIT(1),	/* follow any keys encountered */
+	FYNIF_FOLLOW_LINKS	= FY_BIT(2),	/* follow any links/references encountered */
+	FYNIF_ERASE_LINKS	= FY_BIT(3),	/* do not output any links encountered */
+};
+
+enum fy_node_iterator_result {
+	FYNIR_OK,		/* OK */
+	FYNIR_ARGS,		/* invalid arguments */
+	FYNIR_NOMEM,		/* out of memory */
+	FYNIR_LOOP,		/* loop detected */
+	FYNIR_BAD_ALIAS,	/* unresolvable alias */
+};
+
+struct fy_node_iterator_state {
+	struct fy_node *fyn;
+	union {
+		struct fy_node_pair *fynp;	/* for map only */
+		unsigned int idx;		/* for sequence */
+	};
+};
+
+struct fy_node_iterator {
+	enum fy_node_iterator_flags flags;
+	enum fy_node_iterator_result result;
+	unsigned int count;
+	unsigned int alloc;
+	struct fy_node_iterator_state *stack;
+	struct fy_node_iterator_state in_place[FYPCF_GUARANTEED_MINIMUM_DEPTH_LIMIT];
+};
+
+void fy_node_iterator_setup(struct fy_node_iterator *fyi, enum fy_node_iterator_flags flags);
+void fy_node_iterator_cleanup(struct fy_node_iterator *fyi);
+struct fy_node_iterator *fy_node_iterator_create(enum fy_node_iterator_flags flags);
+void fy_node_iterator_destroy(struct fy_node_iterator *fyi);
+void fy_node_iterator_start(struct fy_node_iterator *fyi, struct fy_node *fyn);
+enum fy_node_iterator_result fy_node_iterator_end(struct fy_node_iterator *fyi);
+struct fy_node *fy_node_iterator_next(struct fy_node_iterator *fyi, struct fy_node *fyn);
+
+#define fy_node_get_path_a(_fyn) \
+	({ \
+		char *__path_a, *__path; \
+		__path = fy_node_get_path((_fyn)); \
+		if (__path) { \
+			__path_a = alloca(strlen(__path) + 1); \
+			strcpy(__path_a, __path); \
+		} else { \
+			__path_a = alloca(1); \
+			__path_a[0] = '\0'; \
+		} \
+		__path_a; \
+	})
+
+/* indirect node */
+FY_TYPE_FWD_DECL_LIST(ptr_node);
+struct fy_ptr_node {
+	struct list_head node;
+	struct fy_node *fyn;
+};
+FY_TYPE_DECL_LIST(ptr_node);
+
+struct fy_ptr_node *fy_ptr_node_create(struct fy_node *fyn);
+void fy_ptr_node_destroy(struct fy_ptr_node *fypn);
+void fy_ptr_node_list_free_all(struct fy_ptr_node_list *fypnl);
+bool fy_ptr_node_list_contains(struct fy_ptr_node_list *fypnl, struct fy_node *fyn);
+int fy_node_linearize_recursive(struct fy_ptr_node_list *fypnl, struct fy_node *fyn);
+int fy_node_linearize(struct fy_ptr_node_list *fypnl, struct fy_node *fyn);
+void fy_node_iterator_check(struct fy_node *fyn);
+
 #endif
