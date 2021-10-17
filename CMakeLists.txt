@@ -14,39 +14,47 @@ include(GNUInstallDirs)
 set(LIBHDRS
   src/valgrind/fy-valgrind.h
   src/xxhash/xxhash.h
-  src/lib/fy-atom.h
-  src/lib/fy-token.h
   src/lib/fy-accel.h
-  src/lib/fy-utils.h
-  src/lib/fy-dump.h
+  src/lib/fy-atom.h
+  src/lib/fy-composer.h
+  src/lib/fy-ctype.h
+  src/lib/fy-diag.h
   src/lib/fy-doc.h
-  src/lib/fy-input.h
-  src/lib/fy-types.h
-  src/lib/fy-typelist.h
   src/lib/fy-docstate.h
-  src/lib/fy-parse.h
+  src/lib/fy-dump.h
+  src/lib/fy-emit-accum.h
   src/lib/fy-emit.h
   src/lib/fy-event.h
+  src/lib/fy-input.h
   src/lib/fy-list.h
+  src/lib/fy-parse.h
+  src/lib/fy-path.h
+  src/lib/fy-token.h
+  src/lib/fy-typelist.h
+  src/lib/fy-types.h
   src/lib/fy-utf8.h
-  src/lib/fy-diag.h
-  src/lib/fy-ctype.h
+  src/lib/fy-utils.h
+  src/lib/fy-walk.h
 )
 set(LIBSRCS
-  src/lib/fy-input.c
-  src/lib/fy-utils.c
-  src/lib/fy-utf8.c
-  src/lib/fy-ctype.c
-  src/lib/fy-emit.c
-  src/lib/fy-token.c
-  src/lib/fy-docstate.c
-  src/lib/fy-diag.c
-  src/lib/fy-dump.c
-  src/lib/fy-parse.c
-  src/lib/fy-doc.c
-  src/lib/fy-types.c
-  src/lib/fy-atom.c
   src/lib/fy-accel.c
+  src/lib/fy-atom.c
+  src/lib/fy-composer.c
+  src/lib/fy-ctype.c
+  src/lib/fy-diag.c
+  src/lib/fy-doc.c
+  src/lib/fy-docstate.c
+  src/lib/fy-dump.c
+  src/lib/fy-emit.c
+  src/lib/fy-event.c
+  src/lib/fy-input.c
+  src/lib/fy-parse.c
+  src/lib/fy-path.c
+  src/lib/fy-token.c
+  src/lib/fy-types.c
+  src/lib/fy-utf8.c
+  src/lib/fy-utils.c
+  src/lib/fy-walk.c
   src/xxhash/xxhash.c
 )
 set(LIBHDRSPUB
@@ -116,7 +124,7 @@ install(EXPORT ${PROJECT_NAME}-targets
 )
 export(
 	TARGETS ${PROJECT_NAME}
-	FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/${PROJECT_NAME}-targets.cmake"
+	FILE "${CMAKE_CURRENT_BINARY_DIR}/cmake/${PROJECT_NAME}-targets.cmake"
 	NAMESPACE ${PROJECT_NAME}::
 )
 
@@ -124,19 +132,19 @@ export(
 include(CMakePackageConfigHelpers)
 configure_package_config_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake/${PROJECT_NAME}-config.cmake.in
-    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/${PROJECT_NAME}-config.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/cmake/${PROJECT_NAME}-config.cmake
     INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}
 )
 
 write_basic_package_version_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/${PROJECT_NAME}-config-version.cmake
-    VERSION ${YART_VERSION}
+    ${CMAKE_CURRENT_BINARY_DIR}/cmake/${PROJECT_NAME}-config-version.cmake
+    VERSION ${PROJECT_VERSION}
     COMPATIBILITY AnyNewerVersion
 )
 
 install(
     FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/${PROJECT_NAME}-config.cmake
-        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/${PROJECT_NAME}-config-version.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/cmake/${PROJECT_NAME}-config.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/cmake/${PROJECT_NAME}-config-version.cmake
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}
 )
