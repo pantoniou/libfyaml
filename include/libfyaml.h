@@ -39,6 +39,10 @@ extern "C" {
 #include <string.h>
 #include <alloca.h>
 
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
+#include <unistd.h>
+#endif
+
 /* opaque types for the user */
 struct fy_token;
 struct fy_document_state;
