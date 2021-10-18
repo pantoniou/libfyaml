@@ -92,7 +92,7 @@ static struct option lopts[] = {
 #define LIBYAML_MODES	""
 #endif
 
-#define MODES	"parse|scan|copy|testsuite|dump|dump2|build|walk|reader|compose|iterate" LIBYAML_MODES
+#define MODES	"parse|scan|copy|testsuite|dump|dump2|build|walk|reader|compose|iterate|comment" LIBYAML_MODES
 
 static void display_usage(FILE *fp, char *progname)
 {
@@ -930,6 +930,73 @@ int do_iterate(struct fy_parser *fyp)
 
 		if (res != FYNIR_OK) {
 			fprintf(stderr, "> Iterator error %d\n", (int)res);
+			break;
+		}
+
+		count++;
+	}
+
+	fy_node_iterator_cleanup(&ni);
+
+	return count > 0 ? 0 : -1;
+}
+
+int do_comment(struct fy_parser *fyp)
+{
+	enum fy_node_iterator_flags flags;
+	struct fy_document *fyd;
+	int count;
+	struct fy_node *fyn;
+	struct fy_node_iterator ni;
+	enum fy_node_iterator_result res;
+	char *path;
+	struct fy_token *fyt;
+	struct fy_atom *handle;
+	enum fy_comment_placement placement;
+	static const char *placement_txt[] =  { "top", "right", "bottom" };
+	char buf[1024];
+
+	memset(&ni, 0, sizeof(ni));
+
+	flags = FYNIF_DEPTH_FIRST;
+	fy_node_iterator_setup(&ni, flags | FYNIF_FOLLOW_KEYS | FYNIF_FOLLOW_LINKS);
+
+	count = 0;
+	while ((fyd = fy_parse_load_document(fyp)) != NULL) {
+
+		fy_node_iterator_start(&ni, fy_document_root(fyd));
+		fyn = NULL;
+		while ((fyn = fy_node_iterator_next(&ni, fyn)) != NULL) {
+
+			if (!fy_node_is_scalar(fyn))
+				continue;
+
+			fyt = fy_node_get_scalar_token(fyn);
+			if (!fyt || !fy_token_has_any_comment(fyt))
+				continue;
+
+			path = fy_node_get_path(fyn);
+
+			fprintf(stderr, "scalar at %s\n", path);
+			for (placement = fycp_top; placement < fycp_max; placement++) {
+				handle = fy_token_comment_handle(fyt, placement, false);
+				if (!handle || !fy_atom_is_set(handle))
+					continue;
+
+				if (!fy_token_get_comment(fyt, buf, sizeof(buf), placement))
+					continue;
+
+				fprintf(stderr, "%s: %s\n", placement_txt[placement], buf);
+			}
+
+			free(path);
+		}
+
+		res = fy_node_iterator_end(&ni);
+
+		fy_parse_document_destroy(fyp, fyd);
+
+		if (res != FYNIR_OK) {
 			break;
 		}
 
@@ -3164,7 +3231,8 @@ int main(int argc, char *argv[])
 	    strcmp(mode, "walk") &&
 	    strcmp(mode, "reader") &&
 	    strcmp(mode, "compose") &&
-	    strcmp(mode, "iterate")
+	    strcmp(mode, "iterate") &&
+	    strcmp(mode, "comment")
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 	    && strcmp(mode, "libyaml-scan")
 	    && strcmp(mode, "libyaml-parse")
@@ -3257,6 +3325,10 @@ int main(int argc, char *argv[])
 		rc = do_build(&cfg, argc - optind, argv + optind);
 		return !rc ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
+
+	/* turn on comment parsing for comment mode */
+	if (!strcmp(mode, "comment"))
+		cfg.flags |= FYPCF_PARSE_COMMENTS;
 
 	rc = fy_parse_setup(fyp, &cfg);
 	if (rc) {
@@ -3381,7 +3453,13 @@ int main(int argc, char *argv[])
 	} else if (!strcmp(mode, "iterate")) {
 		rc = do_iterate(fyp);
 		if (rc < 0) {
-			/* fprintf(stderr, "do_compose() error %d\n", rc); */
+			/* fprintf(stderr, "do_iterate() error %d\n", rc); */
+			goto cleanup;
+		}
+	} else if (!strcmp(mode, "comment")) {
+		rc = do_comment(fyp);
+		if (rc < 0) {
+			/* fprintf(stderr, "do_comment() error %d\n", rc); */
 			goto cleanup;
 		}
 	}

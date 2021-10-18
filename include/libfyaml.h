@@ -953,6 +953,34 @@ fy_token_get_utf8_length(struct fy_token *fyt)
 	FY_EXPORT;
 
 /**
+ * enum fy_comment_placement - Comment placement relative to token
+ *
+ * @fycp_top: Comment on top of token
+ * @fycp_right: Comment to the right of the token
+ * @fycp_bottom: Comment to the bottom of the token
+ */
+enum fy_comment_placement {
+	fycp_top,
+	fycp_right,
+	fycp_bottom
+};
+#define fycp_max (fycp_bottom + 1)
+
+/**
+ * fy_token_get_comment() - Get zero terminated comment of a token
+ *
+ * @fyt: The token out of which the comment text will be returned.
+ *
+ * Returns:
+ * A pointer to a zero terminated text representation of the token comment.
+ * NULL in case of an error or if the token has no comment.
+ */
+const char *
+fy_token_get_comment(struct fy_token *fyt, char *buf, size_t maxsz,
+		     enum fy_comment_placement which)
+	FY_EXPORT;
+
+/**
  * struct fy_iter_chunk - An iteration chunk
  *
  * @str: Pointer to the start of the chunk

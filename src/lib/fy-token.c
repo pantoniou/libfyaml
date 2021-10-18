@@ -1043,6 +1043,94 @@ size_t fy_token_get_text_length(struct fy_token *fyt)
 	return fy_token_format_text_length(fyt);
 }
 
+enum comment_out_state {
+	cos_normal,
+	cos_lastnl,
+	cos_lastnlhash,
+	cos_lastnlhashspc,
+};
+
+const char *fy_token_get_comment(struct fy_token *fyt, char *buf, size_t maxsz,
+	enum fy_comment_placement which)
+{
+	struct fy_atom *handle;
+	struct fy_atom_iter iter;
+	const struct fy_iter_chunk *ic;
+	char *s, *e;
+	const char *ss, *ee;
+	int c, w, ret;
+	enum comment_out_state state;
+	bool output;
+
+	if (!buf || maxsz == 0 || (unsigned int)which >= fycp_max)
+		return NULL;
+
+	/* return empty? */
+	handle = fy_token_comment_handle(fyt, which, false);
+	if (!handle || !fy_atom_is_set(handle))
+		return NULL;
+
+	/* start expecting # */
+	state = cos_lastnl;
+
+	s = buf;
+	e = s + maxsz;
+	fy_atom_iter_start(handle, &iter);
+	ic = NULL;
+	while ((ic = fy_atom_iter_chunk_next(&iter, ic, &ret)) != NULL) {
+		ss = ic->str;
+		ee = ss + ic->len;
+
+		while ((c = fy_utf8_get(ss, ee - ss, &w)) > 0) {
+
+			output = true;
+			switch (state) {
+			case cos_normal:
+				if (fy_is_lb_m(c, handle->lb_mode))
+					state = cos_lastnl;
+				break;
+
+			case cos_lastnl:
+				if (c == '#') {
+					state = cos_lastnlhash;
+					output = false;
+					break;
+				}
+				state = cos_normal;
+				break;
+
+			case cos_lastnlhash:
+				if (c == ' ') {
+					state = cos_lastnlhashspc;
+					output = false;
+					break;
+				}
+				state = cos_normal;
+				break;
+
+			case cos_lastnlhashspc:
+				state = cos_normal;
+				break;
+			}
+
+			if (output) {
+				s = fy_utf8_put(s, (size_t)(e - s), c);
+				if (!s)
+					return NULL;
+			}
+
+			ss += w;
+		}
+	}
+	fy_atom_iter_finish(&iter);
+
+	if (ret != 0 || s >= e)
+		return NULL;
+	*s = '\0';
+
+	return buf;
+}
+
 const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 {
 	struct fy_atom *atom;
@@ -1785,4 +1873,20 @@ struct fy_atom *fy_token_comment_handle(struct fy_token *fyt, enum fy_comment_pl
 	handle = &fyt->comment[placement];
 
 	return handle;
+}
+
+bool fy_token_has_any_comment(struct fy_token *fyt)
+{
+	struct fy_atom *handle;
+	enum fy_comment_placement placement;
+
+	if (!fyt || !fyt->comment)
+		return false;
+
+	for (placement = fycp_top; placement <= fycp_bottom; placement++) {
+		handle = &fyt->comment[placement];
+		if (fy_atom_is_set(handle))
+			return true;
+	}
+	return false;
 }
