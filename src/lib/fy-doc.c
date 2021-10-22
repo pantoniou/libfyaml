@@ -346,6 +346,8 @@ void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 	if (!fyd)
 		return;
 
+	fy_document_cleanup_path_expr_data(fyd);
+
 	fyn = fyd->root;
 	fyd->root = NULL;
 	fy_node_detach_and_free(fyn);
@@ -826,6 +828,8 @@ int fy_node_free(struct fy_node *fyn)
 		fy_accel_cleanup(fyn->xl);
 		free(fyn->xl);
 	}
+
+	fy_node_cleanup_path_expr_data(fyn);
 
 	free(fyn);
 
@@ -2547,54 +2551,10 @@ int fy_document_tag_directive_remove(struct fy_document *fyd, const char *handle
 
 static int fy_resolve_alias(struct fy_document *fyd, struct fy_node *fyn)
 {
-	struct fy_anchor *fya;
 	struct fy_node *fyn_copy = NULL;
-	struct fy_node *fyn_path_root = NULL;
-	const char *anchor_text, *s, *e, *p, *path = NULL;
-	size_t anchor_len, path_len = 0;
 	int rc;
 
-	fya = fy_document_lookup_anchor_by_token(fyd, fyn->scalar);
-
-	if (!fya) {
-		anchor_text = fy_token_get_text(fyn->scalar, &anchor_len);
-
-		FYD_NODE_ERROR_CHECK(fyd, fyn, FYEM_DOC,
-				anchor_text, err_out,
-				"out of memory");
-
-		s = anchor_text;
-		e = s + anchor_len;
-
-		if ((p = memchr(s, '/', e - s)) != NULL) {
-			/* fyd_notice(fyn->fyd, "%s: alias contains a path component %.*s",
-					__func__, (int)(e - p - 1), p + 1); */
-
-			if (p > s) {
-				/* regular *foo/bar */
-				fya = fy_document_lookup_anchor(fyn->fyd, s, p - s);
-
-				if (fya) {
-					fyn_path_root = fya->fyn;
-
-					path = ++p;
-					path_len = p - s;
-				}
-
-			} else {
-				fyn_path_root = fyd->root;
-
-				path = s;
-				path_len = e - s;
-			}
-
-			if (fyn_path_root)
-				fyn_copy = fy_node_by_path_internal(fyn_path_root, path, path_len,
-					FYNWF_FOLLOW | FYNWF_MAXDEPTH_DEFAULT | FYNWF_MARKER_DEFAULT);
-		}
-	} else
-		fyn_copy = fya->fyn;
-
+	fyn_copy = fy_node_resolve_alias(fyn);
 	FYD_NODE_ERROR_CHECK(fyd, fyn, FYEM_DOC,
 			fyn_copy, err_out,
 			"invalid alias");
@@ -2624,6 +2584,8 @@ fy_node_follow_alias(struct fy_node *fyn, enum fy_node_walk_flags flags)
 		return NULL;
 
 	ptr_flags = flags & FYNWF_PTR(FYNWF_PTR_MASK);
+	if (ptr_flags == FYNWF_PTR_YPATH)
+		return fy_node_alias_resolve_by_ypath(fyn);
 
 	/* try regular label target */
 	fya = fy_document_lookup_anchor_by_token(fyn->fyd, fyn->scalar);
@@ -3879,56 +3841,78 @@ err_out:
 static struct fy_node *
 fy_node_follow_aliases(struct fy_node *fyn, enum fy_node_walk_flags flags, bool single)
 {
-	struct fy_node_walk_ctx *ctx;
-	unsigned int marker;
+	enum fy_node_walk_flags ptr_flags;
+	struct fy_ptr_node_list nl;
+	struct fy_ptr_node *fypn;
 
-	if (!fyn || !fy_node_is_alias(fyn) || !(flags & FYNWF_FOLLOW) ||
-	    (flags & FYNWF_PTR(FYNWF_PTR_MASK)) != FYNWF_PTR_YAML)
+	if (!fyn || !fy_node_is_alias(fyn) || !(flags & FYNWF_FOLLOW))
 		return fyn;
 
-	marker = fy_node_walk_marker_from_flags(flags);
-	if (marker >= FYNWF_MAX_USER_MARKER)	/* maximum marker */
+	ptr_flags = flags & FYNWF_PTR(FYNWF_PTR_MASK);
+	if (ptr_flags != FYNWF_PTR_YAML && ptr_flags != FYNWF_PTR_YPATH)
 		return fyn;
 
-	ctx = fy_node_walk_ctx_create_a(fy_node_walk_max_depth_from_flags(flags),
-					FY_BIT(marker));
+	fy_ptr_node_list_init(&nl);
 
-	fy_node_walk_mark_start(ctx);
 	while (fyn && fy_node_is_alias(fyn)) {
 
-		/* fyd_notice(fyn->fyd, "%s: following alias @%s \"%s\"",
-				__func__, fy_node_get_path(fyn), fy_token_get_text0(fyn->scalar)); */
+		// fprintf(stderr, "%s: %s\n", __func__, fy_node_get_path_alloca(fyn));
 
-		if (!fy_node_walk_mark(ctx, fyn)) {
+		/* check for loops */
+		if (fy_ptr_node_list_contains(&nl, fyn)) {
 			fyn = NULL;
 			break;
 		}
+
+		/* out of memory? */
+		fypn = fy_ptr_node_create(fyn);
+		if (!fypn) {
+			fyn = NULL;
+			break;
+		}
+		fy_ptr_node_list_add_tail(&nl, fypn);
 
 		fyn = fy_node_follow_alias(fyn, flags);
 
 		if (single)
 			break;
 	}
-	fy_node_walk_mark_end(ctx);
+
+	/* release */
+	while ((fypn = fy_ptr_node_list_pop(&nl)) != NULL)
+		fy_ptr_node_destroy(fypn);
 
 	return fyn;
 }
 
 struct fy_node *fy_node_resolve_alias(struct fy_node *fyn)
 {
-	return fy_node_follow_aliases(fyn,
-			FYNWF_FOLLOW | FYNWF_MAXDEPTH_DEFAULT |
-			FYNWF_MARKER_DEFAULT, false);
+	enum fy_node_walk_flags flags;
+
+	if (!fyn)
+		return NULL;
+
+	flags = FYNWF_FOLLOW | FYNWF_MAXDEPTH_DEFAULT | FYNWF_MARKER_DEFAULT;
+	if (fyn->fyd->parse_cfg.flags & FYPCF_YPATH_ALIASES)
+		flags |= FYNWF_PTR_YPATH;
+	else
+		flags |= FYNWF_PTR_YAML;
+	return fy_node_follow_aliases(fyn, flags, false);
 }
 
 struct fy_node *fy_node_dereference(struct fy_node *fyn)
 {
+	enum fy_node_walk_flags flags;
+
 	if (!fyn || !fy_node_is_alias(fyn))
 		return NULL;
 
-	return fy_node_follow_aliases(fyn,
-			FYNWF_FOLLOW | FYNWF_MAXDEPTH_DEFAULT |
-			FYNWF_MARKER_DEFAULT, true);
+	flags = FYNWF_FOLLOW | FYNWF_MAXDEPTH_DEFAULT | FYNWF_MARKER_DEFAULT;
+	if (fyn->fyd->parse_cfg.flags & FYPCF_YPATH_ALIASES)
+		flags |= FYNWF_PTR_YPATH;
+	else
+		flags |= FYNWF_PTR_YAML;
+	return fy_node_follow_aliases(fyn, flags, true);
 }
 
 static struct fy_node *
@@ -3952,6 +3936,8 @@ fy_node_by_path_internal(struct fy_node *fyn,
 		return NULL;
 
 	ptr_flags = flags & FYNWF_PTR(FYNWF_PTR_MASK);
+	if (ptr_flags == FYNWF_PTR_YPATH)
+		return fy_node_by_ypath(fyn, path, pathlen);
 
 	s = path;
 	if (pathlen == (size_t)-1)
@@ -4274,9 +4260,14 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 	if (!fyn || !path)
 		return NULL;
 
+	/* if it's a YPATH, just punt to that method */
+	if ((flags & FYNWF_PTR(FYNWF_PTR_MASK)) == FYNWF_PTR_YPATH)
+		return fy_node_by_ypath(fyn, path, len);
+
 	s = path;
 	if (len == (size_t)-1)
 		len = strlen(path);
+
 	e = s + len;
 
 	/* fyd_notice(fyn->fyd, "%s: %.*s", __func__, (int)(len), s); */
@@ -5105,7 +5096,7 @@ fy_node_create_scalar_internal(struct fy_document *fyd, const char *data, size_t
 		style = handle.style == FYAS_PLAIN ? FYSS_PLAIN : FYSS_DOUBLE_QUOTED;
 		fyn->scalar = fy_token_create(FYTT_SCALAR, &handle, style);
 	} else
-		fyn->scalar = fy_token_create(FYTT_ALIAS, &handle);
+		fyn->scalar = fy_token_create(FYTT_ALIAS, &handle, NULL);
 
 	fyd_error_check(fyd, fyn->scalar, err_out,
 			"fy_token_create() failed");

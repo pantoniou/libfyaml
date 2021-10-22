@@ -29,10 +29,12 @@
 #include "fy-dump.h"
 #include "fy-docstate.h"
 #include "fy-accel.h"
-#include "fy-doc.h"
 #include "fy-token.h"
 
+struct fy_document;
+
 enum fy_walk_result_type {
+	fwrt_none,
 	fwrt_node_ref,
 	fwrt_number,
 	fwrt_string,
@@ -43,9 +45,12 @@ enum fy_walk_result_type {
 #define FWRT_COUNT (fwrt_refs + 1)
 extern const char *fy_walk_result_type_txt[FWRT_COUNT];
 
+struct fy_path_exec;
+
 FY_TYPE_FWD_DECL_LIST(walk_result);
 struct fy_walk_result {
 	struct list_head node;
+	struct fy_path_exec *fypx;
 	enum fy_walk_result_type type;
 	union {
 		struct fy_node *fyn;
@@ -57,9 +62,14 @@ struct fy_walk_result {
 };
 FY_TYPE_DECL_LIST(walk_result);
 
-struct fy_walk_result *fy_walk_result_alloc(void);
+struct fy_walk_result *fy_walk_result_alloc_rl(struct fy_walk_result_list *fwrl);
+void fy_walk_result_free_rl(struct fy_walk_result_list *fwrl, struct fy_walk_result *fwr);
+void fy_walk_result_list_free_rl(struct fy_walk_result_list *fwrl, struct fy_walk_result_list *results);
+
 void fy_walk_result_free(struct fy_walk_result *fwr);
-void fy_walk_result_list_free(struct fy_walk_result_list *results);
+
+struct fy_walk_result *fy_walk_result_vcreate_rl(struct fy_walk_result_list *fwrl, enum fy_walk_result_type type, va_list ap);
+struct fy_walk_result *fy_walk_result_create_rl(struct fy_walk_result_list *fwrl, enum fy_walk_result_type type, ...);
 
 static inline struct fy_walk_result *
 fy_walk_result_iter_start(struct fy_walk_result *fwr)
@@ -86,6 +96,9 @@ fy_walk_result_iter_next(struct fy_walk_result *fwr, struct fy_walk_result *fwri
 		return NULL;
 	return fwri;
 }
+
+struct fy_node *
+fy_walk_result_node_iterate(struct fy_walk_result *fwr, void **prevp);
 
 enum fy_path_expr_type {
 	fpet_none,
@@ -221,8 +234,8 @@ fy_path_expr_type_is_arithmetic(enum fy_path_expr_type type)
 static inline bool
 fy_path_expr_type_is_lparen(enum fy_path_expr_type type)
 {
-	return type == fpet_lparen ||
-	       type == fpet_method;
+	return type == fpet_lparen /* ||
+	       type == fpet_method */ ;
 }
 
 enum fy_expr_mode {
@@ -239,12 +252,14 @@ struct fy_path_expr;
 
 struct fy_method {
 	const char *name;
+	size_t len;
 	enum fy_expr_mode mode;
 	unsigned int nargs;
-	struct fy_walk_result *(*exec)(struct fy_diag *diag, int level,
-			struct fy_path_expr *expr,
-			struct fy_walk_result *input,
-			struct fy_walk_result **args, int nargs);
+	struct fy_walk_result *(*exec)(const struct fy_method *fym,
+		struct fy_path_exec *fypx, int level,
+		struct fy_path_expr *expr,
+		struct fy_walk_result *input,
+		struct fy_walk_result **args, int nargs);
 };
 
 FY_TYPE_FWD_DECL_LIST(path_expr);
@@ -332,20 +347,82 @@ struct fy_path_expr *fy_path_parse_expression(struct fy_path_parser *fypp);
 
 void fy_path_expr_dump(struct fy_path_expr *expr, struct fy_diag *diag, enum fy_error_type errlevel, int level, const char *banner);
 
-struct fy_walk_result *
-fy_path_expr_execute(struct fy_diag *diag, int level, struct fy_path_expr *expr,
-		     struct fy_walk_result *input, enum fy_path_expr_type ptype);
-
 struct fy_path_exec {
 	struct fy_path_exec_cfg cfg;
 	struct fy_node *fyn_start;
 	struct fy_walk_result *result;
+	struct fy_walk_result_list fwr_recycle;
+	int refs;
+	bool supress_recycling;
 };
 
-int fy_path_exec_setup(struct fy_path_exec *fypx, const struct fy_path_exec_cfg *xcfg);
+struct fy_path_exec *fy_path_exec_create(const struct fy_path_exec_cfg *xcfg);
+struct fy_path_exec *fy_path_exec_create_on_document(struct fy_document *fyd);
+void fy_path_exec_destroy(struct fy_path_exec *fypx);
 void fy_path_exec_cleanup(struct fy_path_exec *fypx);
 
+static inline struct fy_path_exec *
+fy_path_exec_ref(struct fy_path_exec *fypx)
+{
+	/* take care of overflow */
+	if (!fypx)
+		return NULL;
+	assert(fypx->refs + 1 > 0);
+	fypx->refs++;
+
+	return fypx;
+}
+
+static inline void
+fy_path_exec_unref(struct fy_path_exec *fypx)
+{
+	if (!fypx)
+		return;
+
+	assert(fypx->refs > 0);
+
+	if (--fypx->refs == 0)
+		fy_path_exec_destroy(fypx);
+}
+
 struct fy_walk_result *
-fy_path_expr_execute2(struct fy_diag *diag, struct fy_path_expr *expr, struct fy_walk_result *input);
+fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *expr,
+		     struct fy_walk_result *input, enum fy_path_expr_type ptype);
+
+static inline struct fy_walk_result_list *
+fy_path_exec_walk_result_rl(struct fy_path_exec *fypx)
+{
+	return fypx && !fypx->supress_recycling ? &fypx->fwr_recycle : NULL;
+}
+
+struct fy_walk_result *
+fy_path_exec_walk_result_create(struct fy_path_exec *fypx, enum fy_walk_result_type type, ...);
+
+void
+fy_path_exec_walk_result_free(struct fy_path_exec *fypx, struct fy_walk_result *fwr);
+
+struct fy_path_expr_document_data {
+	struct fy_path_parser *fypp;
+};
+
+struct fy_path_expr_node_data {
+	struct fy_input *fyi;
+	struct fy_path_expr *expr;
+	struct fy_node *fyn_target;
+	int traversals;
+};
+
+int fy_document_setup_path_expr_data(struct fy_document *fyd);
+void fy_document_cleanup_path_expr_data(struct fy_document *fyd);
+int fy_node_setup_path_expr_data(struct fy_node *fyn);
+void fy_node_cleanup_path_expr_data(struct fy_node *fyn);
+
+struct fy_walk_result *
+fy_node_alias_resolve_by_ypath_result(struct fy_node *fyn);
+struct fy_node *fy_node_alias_resolve_by_ypath(struct fy_node *fyn);
+
+struct fy_walk_result *
+fy_node_by_ypath_result(struct fy_node *fyn, const char *path, size_t len);
+struct fy_node *fy_node_by_ypath(struct fy_node *fyn, const char *path, size_t len);
 
 #endif

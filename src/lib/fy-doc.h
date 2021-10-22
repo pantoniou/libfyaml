@@ -28,6 +28,7 @@
 #include "fy-dump.h"
 #include "fy-docstate.h"
 #include "fy-accel.h"
+#include "fy-walk.h"
 
 struct fy_eventp;
 
@@ -60,6 +61,7 @@ struct fy_node {
 	bool key_root : 1;		/* node is the root of key fy_node_get_parent() will return NULL */
 	void *meta;
 	struct fy_accel *xl;		/* mapping access accelerator */
+	struct fy_path_expr_node_data *pxnd;
 	union {
 		struct fy_token *scalar;
 		struct fy_node_list sequence;
@@ -108,6 +110,8 @@ struct fy_document {
 
 	fy_node_meta_clear_fn meta_clear_fn;
 	void *meta_user;
+
+	struct fy_path_expr_document_data *pxdd;
 };
 /* only the list declaration/methods */
 FY_TYPE_DECL_LIST(document);

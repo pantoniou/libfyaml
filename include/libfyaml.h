@@ -305,6 +305,7 @@ enum fy_error_module {
  * @FYPCF_JSON_AUTO: Automatically enable JSON mode (when extension is .json)
  * @FYPCF_JSON_NONE: Never enable JSON input mode
  * @FYPCF_JSON_FORCE: Force JSON mode always
+ * @FYPCF_YPATH_ALIASES: Enable YPATH aliases mode
  */
 enum fy_parse_cfg_flags {
 	FYPCF_QUIET			= FY_BIT(0),
@@ -325,6 +326,7 @@ enum fy_parse_cfg_flags {
 	FYPCF_JSON_AUTO			= FYPCF_JSON(0),
 	FYPCF_JSON_NONE			= FYPCF_JSON(1),
 	FYPCF_JSON_FORCE		= FYPCF_JSON(2),
+	FYPCF_YPATH_ALIASES		= FY_BIT(18),
 };
 
 #define FYPCF_DEFAULT_PARSE	(0)
@@ -2063,6 +2065,7 @@ enum fy_node_style {
  * @FYNWF_PTR_YAML: YAML pointer path walks
  * @FYNWF_PTR_JSON: JSON pointer path walks
  * @FYNWF_PTR_RELJSON: Relative JSON pointer path walks
+ * @FYNWF_PTR_YPATH: YPATH pointer path walks
  * @FYNWF_URI_ENCODED: The path is URI encoded
  * @FYNWF_MAXDEPTH_DEFAULT: Max follow depth is automatically determined
  * @FYNWF_MARKER_DEFAULT: Default marker to use when scanning
@@ -2074,6 +2077,7 @@ enum fy_node_walk_flags {
 	FYNWF_PTR_YAML = FYNWF_PTR(0),
 	FYNWF_PTR_JSON = FYNWF_PTR(1),
 	FYNWF_PTR_RELJSON = FYNWF_PTR(2),
+	FYNWF_PTR_YPATH = FYNWF_PTR(3),
 	FYNWF_URI_ENCODED = FY_BIT(18),
 	FYNWF_MAXDEPTH_DEFAULT = FYNWF_MAXDEPTH(0),
 	FYNWF_MARKER_DEFAULT = FYNWF_MARKER(0),

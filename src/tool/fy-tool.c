@@ -47,6 +47,7 @@
 #define DISABLE_DEPTH_LIMIT_DEFAULT	false
 #define SLOPPY_FLOW_INDENTATION_DEFAULT	false
 #define PREFER_RECURSIVE_DEFAULT	false
+#define YPATH_ALIASES_DEFAULT		false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -70,6 +71,7 @@
 #define OPT_DUMP_PATHEXPR		2010
 #define OPT_NOEXEC			2011
 #define OPT_NULL_OUTPUT			2012
+#define OPT_YPATH_ALIASES		2013
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -119,6 +121,7 @@ static struct option lopts[] = {
 	{"yaml-1.3",		no_argument,		0,	OPT_YAML_1_3 },
 	{"sloppy-flow-indentation", no_argument,	0,	OPT_SLOPPY_FLOW_INDENTATION },
 	{"prefer-recursive",	no_argument,		0,	OPT_PREFER_RECURSIVE },
+	{"ypath-aliases",	no_argument,		0,	OPT_YPATH_ALIASES },
 	{"dump-pathexpr",	no_argument,		0,	OPT_DUMP_PATHEXPR },
 	{"noexec",		no_argument,		0,	OPT_NOEXEC },
 	{"null-output",		no_argument,		0,	OPT_NULL_OUTPUT },
@@ -193,6 +196,8 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--prefer-recursive       : Prefer recursive instead of iterative algorighms"
 						" (default %s)\n",
 						PREFER_RECURSIVE_DEFAULT ? "true" : "false");
+	fprintf(fp, "\t--ypath-aliases          : Use YPATH aliases (default %s)\n",
+						YPATH_ALIASES_DEFAULT ? "true" : "false");
 	fprintf(fp, "\t--null-output            : Do not generate output (for scanner profiling)\n");
 	fprintf(fp, "\t--quiet, -q              : Quiet operation, do not "
 						"output messages (default %s)\n",
@@ -1084,7 +1089,9 @@ int main(int argc, char *argv[])
 			(DISABLE_ACCEL_DEFAULT		 ? FYPCF_DISABLE_ACCELERATORS : 0) |
 			(DISABLE_BUFFERING_DEFAULT	 ? FYPCF_DISABLE_BUFFERING : 0) |
 			(DISABLE_DEPTH_LIMIT_DEFAULT	 ? FYPCF_DISABLE_DEPTH_LIMIT : 0) |
-			(SLOPPY_FLOW_INDENTATION_DEFAULT ? FYPCF_SLOPPY_FLOW_INDENTATION : 0),
+			(SLOPPY_FLOW_INDENTATION_DEFAULT ? FYPCF_SLOPPY_FLOW_INDENTATION : 0) |
+			(PREFER_RECURSIVE_DEFAULT	 ? FYPCF_PREFER_RECURSIVE : 0) |
+			(YPATH_ALIASES_DEFAULT           ? FYPCF_YPATH_ALIASES : 0),
 	};
 	struct fy_emitter_cfg emit_cfg;
 	struct fy_parser *fyp = NULL;
@@ -1383,6 +1390,9 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_PREFER_RECURSIVE:
 			cfg.flags |= FYPCF_PREFER_RECURSIVE;
+			break;
+		case OPT_YPATH_ALIASES:
+			cfg.flags |= FYPCF_YPATH_ALIASES;
 			break;
 		case 'h' :
 		default:
