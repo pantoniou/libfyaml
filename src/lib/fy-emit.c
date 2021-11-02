@@ -1916,6 +1916,8 @@ int fy_emit_setup(struct fy_emitter *emit, const struct fy_emitter_cfg *cfg)
 	memset(emit, 0, sizeof(*emit));
 
 	emit->cfg = *cfg;
+	if (!emit->cfg.output)
+		emit->cfg.output = fy_emitter_default_output;
 
 	diag = cfg->diag;
 
@@ -2966,4 +2968,126 @@ struct fy_document_state *
 fy_emitter_get_document_state(struct fy_emitter *emit)
 {
 	return emit ? emit->fyds : NULL;
+}
+
+int fy_emitter_default_output(struct fy_emitter *fye, enum fy_emitter_write_type type, const char *str, int len, void *userdata)
+{
+	struct fy_emitter_default_output_data d_local, *d;
+	FILE *fp;
+	int ret, w;
+	const char *color = NULL;
+	const char *s, *e;
+
+	d = userdata;
+	if (!d) {
+		/* kinda inneficient but should not matter */
+		d = &d_local;
+		d->fp = stdout;
+		d->colorize = isatty(STDOUT_FILENO);
+		d->visible = false;
+	}
+	fp = d->fp;
+
+	s = str;
+	e = str + len;
+	if (d->colorize) {
+		switch (type) {
+		case fyewt_document_indicator:
+			color = "\x1b[36m";
+			break;
+		case fyewt_tag_directive:
+		case fyewt_version_directive:
+			color = "\x1b[33m";
+			break;
+		case fyewt_indent:
+			if (d->visible) {
+				fputs("\x1b[32m", fp);
+				while (s < e && (w = fy_utf8_width_by_first_octet(((uint8_t)*s))) > 0) {
+					/* open box - U+2423 */
+					fputs("\xe2\x90\xa3", fp);
+					s += w;
+				}
+				fputs("\x1b[0m", fp);
+				return len;
+			}
+			break;
+		case fyewt_indicator:
+			if (len == 1 && (str[0] == '\'' || str[0] == '"'))
+				color = "\x1b[33m";
+			else if (len == 1 && str[0] == '&')
+				color = "\x1b[32;1m";
+			else
+				color = "\x1b[35m";
+			break;
+		case fyewt_whitespace:
+			if (d->visible) {
+				fputs("\x1b[32m", fp);
+				while (s < e && (w = fy_utf8_width_by_first_octet(((uint8_t)*s))) > 0) {
+					/* symbol for space - U+2420 */
+					/* symbol for interpunct - U+00B7 */
+					fputs("\xc2\xb7", fp);
+					s += w;
+				}
+				fputs("\x1b[0m", fp);
+				return len;
+			}
+			break;
+		case fyewt_plain_scalar:
+			color = "\x1b[37;1m";
+			break;
+		case fyewt_single_quoted_scalar:
+		case fyewt_double_quoted_scalar:
+			color = "\x1b[33m";
+			break;
+		case fyewt_literal_scalar:
+		case fyewt_folded_scalar:
+			color = "\x1b[33m";
+			break;
+		case fyewt_anchor:
+		case fyewt_tag:
+		case fyewt_alias:
+			color = "\x1b[32;1m";
+			break;
+		case fyewt_linebreak:
+			if (d->visible) {
+				fputs("\x1b[32m", fp);
+				while (s < e && (w = fy_utf8_width_by_first_octet(((uint8_t)*s))) > 0) {
+					/* symbol for space - ^M */
+					/* fprintf(fp, "^M\n"); */
+					/* down arrow - U+2193 */
+					fputs("\xe2\x86\x93\n", fp);
+					s += w;
+				}
+				fputs("\x1b[0m", fp);
+				return len;
+			}
+			color = NULL;
+			break;
+		case fyewt_terminating_zero:
+			color = NULL;
+			break;
+		case fyewt_plain_scalar_key:
+		case fyewt_single_quoted_scalar_key:
+		case fyewt_double_quoted_scalar_key:
+			color = "\x1b[36;1m";
+			break;
+		case fyewt_comment:
+			color = "\x1b[34;1m";
+			break;
+		}
+	}
+
+	/* don't output the terminating zero */
+	if (type == fyewt_terminating_zero)
+		return len;
+
+	if (color)
+		fputs(color, fp);
+
+	ret = fwrite(str, 1, len, fp);
+
+	if (color)
+		fputs("\x1b[0m", fp);
+
+	return ret;
 }

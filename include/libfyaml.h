@@ -1593,6 +1593,41 @@ fy_emitter_set_diag(struct fy_emitter *emit, struct fy_diag *diag)
 	FY_EXPORT;
 
 /**
+ * struct fy_emitter_default_output_data - emitter default output configuration
+ *
+ * This is the argument to the default output method of the emitter.
+ *
+ * @fp: File where the output is directed to
+ * @colorize: Use ANSI color sequences to colorize the output
+ * @visible: Make whitespace visible (requires a UTF8 capable terminal)
+ */
+struct fy_emitter_default_output_data {
+	FILE *fp;
+	bool colorize;
+	bool visible;
+};
+
+/**
+ * fy_emitter_default_output() - The default colorizing output method
+ *
+ * This is the default colorizing output method.
+ * Will be used when the output field of the emitter configuration is NULL.
+ *
+ * @fye: The emitter
+ * @type: Type of the emitted output
+ * @str: Pointer to the string to output
+ * @len: Length of the string
+ * @userdata: Must point to a fy_emitter_default_output_data structure
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int
+fy_emitter_default_output(struct fy_emitter *fye, enum fy_emitter_write_type type,
+			  const char *str, int len, void *userdata)
+	FY_EXPORT;
+
+/**
  * fy_emit_event() - Queue (and possibly emit) an event
  *
  * Queue and output using the emitter. This is the streaming
