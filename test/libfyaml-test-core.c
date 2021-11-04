@@ -294,8 +294,8 @@ START_TEST(doc_path_access)
 	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/foo", FY_NT, FYNWF_DONT_FOLLOW), "10", FY_NT) == true);
 	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "bar", FY_NT, FYNWF_DONT_FOLLOW), "20", FY_NT) == true);
 	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "baz/frob", FY_NT, FYNWF_DONT_FOLLOW), "boo", FY_NT) == true);
-	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/frooz/[0]", FY_NT, FYNWF_DONT_FOLLOW), "seq1", FY_NT) == true);
-	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/frooz/[1]/key", FY_NT, FYNWF_DONT_FOLLOW), "value", FY_NT) == true);
+	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/frooz/0", FY_NT, FYNWF_DONT_FOLLOW), "seq1", FY_NT) == true);
+	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/frooz/1/key", FY_NT, FYNWF_DONT_FOLLOW), "value", FY_NT) == true);
 	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "\"zero\\0zero\"", FY_NT, FYNWF_DONT_FOLLOW), "0", FY_NT) == true);
 	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/{ key2: value2 }/key3", FY_NT, FYNWF_DONT_FOLLOW), "value3", FY_NT) == true);
 
@@ -324,7 +324,7 @@ START_TEST(doc_path_node)
 	ck_assert_str_eq(path, "/frooz");
 	free(path);
 
-	path = fy_node_get_path(fy_node_by_path(fy_document_root(fyd), "/frooz/[0]", FY_NT, FYNWF_DONT_FOLLOW));
+	path = fy_node_get_path(fy_node_by_path(fy_document_root(fyd), "/frooz/0", FY_NT, FYNWF_DONT_FOLLOW));
 	ck_assert_str_eq(path, "/frooz/0");
 	free(path);
 
@@ -867,9 +867,9 @@ START_TEST(doc_create_test_seq1)
 
 	fy_document_set_root(fyd, fyn);
 
-	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/[0]", FY_NT, FYNWF_DONT_FOLLOW), "foo", FY_NT) == true);
-	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/[1]", FY_NT, FYNWF_DONT_FOLLOW), "bar", FY_NT) == true);
-	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/[2]/baz", FY_NT, FYNWF_DONT_FOLLOW), "frooz", FY_NT) == true);
+	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/0", FY_NT, FYNWF_DONT_FOLLOW), "foo", FY_NT) == true);
+	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/1", FY_NT, FYNWF_DONT_FOLLOW), "bar", FY_NT) == true);
+	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/2/baz", FY_NT, FYNWF_DONT_FOLLOW), "frooz", FY_NT) == true);
 
 	fy_document_destroy(fyd);
 }
@@ -902,9 +902,9 @@ START_TEST(doc_create_test_map1)
 
 	fy_document_set_root(fyd, fyn);
 
-	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/seq/[0]", FY_NT, FYNWF_DONT_FOLLOW), "zero", FY_NT) == true);
-	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/seq/[1]", FY_NT, FYNWF_DONT_FOLLOW), "one", FY_NT) == true);
-	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/''/", FY_NT, FYNWF_DONT_FOLLOW), "value-of-null-key", FY_NT) == true);
+	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/seq/0", FY_NT, FYNWF_DONT_FOLLOW), "zero", FY_NT) == true);
+	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/seq/1", FY_NT, FYNWF_DONT_FOLLOW), "one", FY_NT) == true);
+	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/''", FY_NT, FYNWF_DONT_FOLLOW), "value-of-null-key", FY_NT) == true);
 
 	fyn1 = fy_node_by_path(fy_document_root(fyd), "/key-of-null-value", FY_NT, FYNWF_DONT_FOLLOW);
 	ck_assert_ptr_eq(fyn1, NULL);
@@ -936,9 +936,9 @@ START_TEST(doc_insert_remove_seq)
 	fy_document_set_root(fyd, fy_node_build_from_string(fyd, "[ one, two, four ]", FY_NT));
 
 	/* check that the order is correct */
-	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/[0]", FY_NT, FYNWF_DONT_FOLLOW), "one", FY_NT) == true);
-	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/[1]", FY_NT, FYNWF_DONT_FOLLOW), "two", FY_NT) == true);
-	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/[2]", FY_NT, FYNWF_DONT_FOLLOW), "four", FY_NT) == true);
+	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/0", FY_NT, FYNWF_DONT_FOLLOW), "one", FY_NT) == true);
+	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/1", FY_NT, FYNWF_DONT_FOLLOW), "two", FY_NT) == true);
+	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/2", FY_NT, FYNWF_DONT_FOLLOW), "four", FY_NT) == true);
 
 	ret = fy_node_sequence_append(fy_document_root(fyd), fy_node_build_from_string(fyd, "five", FY_NT));
 	ck_assert_int_eq(ret, 0);
@@ -947,26 +947,26 @@ START_TEST(doc_insert_remove_seq)
 	ck_assert_int_eq(ret, 0);
 
 	ret = fy_node_sequence_insert_after(fy_document_root(fyd),
-			fy_node_by_path(fy_document_root(fyd), "/[2]", FY_NT, FYNWF_DONT_FOLLOW),
+			fy_node_by_path(fy_document_root(fyd), "/2", FY_NT, FYNWF_DONT_FOLLOW),
 			fy_node_build_from_string(fyd, "three", FY_NT));
 	ck_assert_int_eq(ret, 0);
 
 	ret = fy_node_sequence_insert_before(fy_document_root(fyd),
-			fy_node_by_path(fy_document_root(fyd), "/[3]", FY_NT, FYNWF_DONT_FOLLOW),
+			fy_node_by_path(fy_document_root(fyd), "/3", FY_NT, FYNWF_DONT_FOLLOW),
 			fy_node_build_from_string(fyd, "two-and-a-half", FY_NT));
 	ck_assert_int_eq(ret, 0);
 
 	fyn = fy_node_sequence_remove(fy_document_root(fyd),
-			fy_node_by_path(fy_document_root(fyd), "/[3]", FY_NT, FYNWF_DONT_FOLLOW));
+			fy_node_by_path(fy_document_root(fyd), "/3", FY_NT, FYNWF_DONT_FOLLOW));
 	ck_assert_ptr_ne(fyn, NULL);
 
 	fy_node_free(fyn);
 
-	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/[0]", FY_NT, FYNWF_DONT_FOLLOW), "zero", FY_NT) == true);
-	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/[1]", FY_NT, FYNWF_DONT_FOLLOW), "one", FY_NT) == true);
-	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/[2]", FY_NT, FYNWF_DONT_FOLLOW), "two", FY_NT) == true);
-	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/[3]", FY_NT, FYNWF_DONT_FOLLOW), "three", FY_NT) == true);
-	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/[4]", FY_NT, FYNWF_DONT_FOLLOW), "four", FY_NT) == true);
+	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/0", FY_NT, FYNWF_DONT_FOLLOW), "zero", FY_NT) == true);
+	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/1", FY_NT, FYNWF_DONT_FOLLOW), "one", FY_NT) == true);
+	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/2", FY_NT, FYNWF_DONT_FOLLOW), "two", FY_NT) == true);
+	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/3", FY_NT, FYNWF_DONT_FOLLOW), "three", FY_NT) == true);
+	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/4", FY_NT, FYNWF_DONT_FOLLOW), "four", FY_NT) == true);
 
 	fy_document_destroy(fyd);
 }
