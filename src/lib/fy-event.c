@@ -428,6 +428,8 @@ fy_eventp_vcreate_internal(struct fy_eventp_list *recycled_list, struct fy_diag 
 			fye->alias.anchor = fyt;
 			fyt = NULL;
 		}
+		fy_input_unref(fyi);
+		fyi = NULL;
 		break;
 	}
 
@@ -463,6 +465,8 @@ fy_eventp_vcreate_internal(struct fy_eventp_list *recycled_list, struct fy_diag 
 		}
 		*fyt_anchorp = fyt;
 		fyt = NULL;
+		fy_input_unref(fyi);
+		fyi = NULL;
 	}
 
 	if (fyt_tagp && (value = va_arg(ap, const char *)) != NULL) {
@@ -507,6 +511,8 @@ fy_eventp_vcreate_internal(struct fy_eventp_list *recycled_list, struct fy_diag 
 		}
 		*fyt_tagp = fyt;
 		fyt = NULL;
+		fy_input_unref(fyi);
+		fyi = NULL;
 	}
 
 	return fyep;
