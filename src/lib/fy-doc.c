@@ -3695,7 +3695,10 @@ fy_node_mapping_lookup_pair_by_simple_key(struct fy_node *fyn,
 			if (!fy_node_is_scalar(fynpi->key) || fy_node_is_alias(fynpi->key))
 				continue;
 
-			if (!fy_token_memcmp(fynpi->key->scalar, key, len))
+			if (!fynpi->key && len == 0)
+				return fynpi;
+
+			if (fynpi->key && !fy_token_memcmp(fynpi->key->scalar, key, len))
 				return fynpi;
 		}
 	}
