@@ -3091,3 +3091,37 @@ int fy_emitter_default_output(struct fy_emitter *fye, enum fy_emitter_write_type
 
 	return ret;
 }
+
+int fy_document_default_emit_to_fp(struct fy_document *fyd, FILE *fp)
+{
+	struct fy_emitter fye_local, *fye = &fye_local;
+	struct fy_emitter_cfg ecfg_local, *ecfg = &ecfg_local;
+	struct fy_emitter_default_output_data d_local, *d = &d_local;
+	int rc;
+
+	memset(d, 0, sizeof(*d));
+	d->fp = fp;
+	d->colorize = isatty(fileno(fp));
+	d->visible = false;
+
+	memset(ecfg, 0, sizeof(*ecfg));
+	ecfg->diag = fyd->diag;
+	ecfg->userdata = d;
+
+	rc = fy_emit_setup(fye, ecfg);
+	if (rc)
+		goto err_setup;
+
+	rc = fy_emit_document(fye, fyd);
+	if (rc)
+		goto err_emit;
+
+	fy_emit_cleanup(fye);
+
+	return 0;
+
+err_emit:
+	fy_emit_cleanup(fye);
+err_setup:
+	return -1;
+}

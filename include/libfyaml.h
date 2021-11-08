@@ -1628,6 +1628,22 @@ fy_emitter_default_output(struct fy_emitter *fye, enum fy_emitter_write_type typ
 	FY_EXPORT;
 
 /**
+ * fy_document_default_emit_to_fp() - Emit a document to a file, using defaults
+ *
+ * Simple one shot emitter to a file, using the default emitter output.
+ * The output will be colorized if the the file points to a tty.
+ *
+ * @fyd: The document to emit
+ * @fp: The file where the output is sent
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int
+fy_document_default_emit_to_fp(struct fy_document *fyd, FILE *fp)
+	FY_EXPORT;
+
+/**
  * fy_emit_event() - Queue (and possibly emit) an event
  *
  * Queue and output using the emitter. This is the streaming
