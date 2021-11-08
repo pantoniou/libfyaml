@@ -2422,6 +2422,38 @@ fy_document_buildf(const struct fy_parse_cfg *cfg, const char *fmt, ...)
 	FY_EXPORT;
 
 /**
+ * fy_flow_document_build_from_string() - Create a document using the provided YAML source.
+ *
+ * Create a document parsing the provided string as a YAML source.
+ *
+ * The document is a flow document, i.e. does not contain any block content
+ * and is usually laid out in a single line.
+ *
+ * Example of flow documents:
+ *
+ * plain-scalar
+ * "double-quoted-scalar"
+ * 'single-quoted-scalar'
+ * { foo: bar }
+ * [ 0, 1, 2 ]
+ *
+ * A flow document is important because parsing stops at the end
+ * of it, and so can be placed in other non-yaml content.
+ *
+ * @cfg: The parse configuration to use or NULL for the default.
+ * @str: The YAML source to use.
+ * @len: The length of the string (or -1 if '\0' terminated)
+ * @consumed: A pointer to the consumed amount
+ *
+ * Returns:
+ * The created document, or NULL on error.
+ */
+struct fy_document *
+fy_flow_document_build_from_string(const struct fy_parse_cfg *cfg,
+				   const char *str, size_t len, size_t *consumed)
+	FY_EXPORT;
+
+/**
  * fy_document_root() - Return the root node of the document
  *
  * Returns the root of the document. If the document is empty
