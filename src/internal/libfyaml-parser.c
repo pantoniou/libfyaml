@@ -52,6 +52,7 @@
 #define OPT_NULL_OUTPUT			133
 
 #define OPT_SLOPPY_FLOW_INDENTATION	2007
+#define OPT_YPATH_ALIASES		2008
 
 #define OPT_YAML_1_1			4000
 #define OPT_YAML_1_2			4001
@@ -81,6 +82,7 @@ static struct option lopts[] = {
 	{"yaml-1.2",		no_argument,		0,	OPT_YAML_1_2 },
 	{"yaml-1.3",		no_argument,		0,	OPT_YAML_1_3 },
 	{"sloppy-flow-indentation", no_argument,	0,	OPT_SLOPPY_FLOW_INDENTATION },
+	{"ypath-aliases",	no_argument,		0,	OPT_YPATH_ALIASES },
 	{"quiet",		no_argument,		0,	'q' },
 	{"help",		no_argument,		0,	'h' },
 	{0,			0,              	0,	 0  },
@@ -92,7 +94,7 @@ static struct option lopts[] = {
 #define LIBYAML_MODES	""
 #endif
 
-#define MODES	"parse|scan|copy|testsuite|dump|dump2|build|walk|reader|compose|iterate|comment" LIBYAML_MODES
+#define MODES	"parse|scan|copy|testsuite|dump|dump2|build|walk|reader|compose|iterate|comment|pathspec" LIBYAML_MODES
 
 static void display_usage(FILE *fp, char *progname)
 {
@@ -2807,6 +2809,633 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	return 0;
 }
 
+struct pathspec_arg {
+	const char *arg;
+	size_t argsz;
+	struct fy_document *fyd;
+	bool is_numeric;
+	int number;
+	void *user;
+};
+
+struct pathspec {
+	const char *func;
+	size_t funcsz;
+	unsigned int argc;
+	struct pathspec_arg arg[10];
+	void *user;
+};
+
+struct path {
+	bool absolute;		/* starts at root */
+	bool trailing_slash;
+	unsigned int count;
+	unsigned int alloc;
+	struct pathspec *ps;
+	struct pathspec ps_local[10];
+};
+
+int setup_path(struct path *path)
+{
+	if (!path)
+		return -1;
+
+	memset(path, 0, sizeof(*path));
+	path->count = 0;
+	path->alloc = sizeof(path->ps_local)/sizeof(path->ps_local[0]);
+	path->absolute = false;
+	path->trailing_slash = false;
+	path->ps = path->ps_local;
+
+	return 0;
+}
+
+void cleanup_path(struct path *path)
+{
+	struct pathspec *ps;
+	unsigned int i;
+
+	if (!path)
+		return;
+
+	while (path->count > 0) {
+		ps = &path->ps[--path->count];
+		for (i = 0; i < ps->argc; i++) {
+			if (ps->arg[i].fyd)
+				fy_document_destroy(ps->arg[i].fyd);
+		}
+	}
+	if (path->ps != path->ps_local)
+		free(path->ps);
+	path->ps = path->ps_local;
+	path->count = 0;
+	path->alloc = sizeof(path->ps_local)/sizeof(path->ps_local[0]);
+	path->absolute = false;
+	path->trailing_slash = false;
+	path->ps = path->ps_local;
+}
+
+size_t parse_pathspec(const char *str, size_t len, struct pathspec *ps)
+{
+	const char *s, *e, *ss, *ee;
+	unsigned int maxargs;
+	bool is_func;
+	size_t adv;
+	struct fy_document *fyd;
+	struct pathspec_arg *psa;
+
+	s = str;
+	e = s + len;
+
+	ps->func = NULL;
+	ps->funcsz = 0;
+	ps->argc = 0;
+
+	maxargs = sizeof(ps->arg)/sizeof(ps->arg[0]);
+
+	if (s >= e)
+		return 0;
+
+	is_func = false;
+
+	/* either . .. or .func( */
+	if (*s == '.') {
+		/* . */
+		if (s + 1 >= e || s[1] == '/') {
+			ps->func = s;
+			ps->funcsz = 1;
+			s++;
+			goto out;
+		}
+		/* .. */
+		if (s[1] == '.') {
+			if (s + 2 >= e || s[2] == '/') {
+				ps->func = s;
+				ps->funcsz = 2;
+				s += 2;
+				goto out;
+			}
+
+			/* error; stop */
+			goto err_out;
+		}
+		/* skip over . */
+		ss = ++s;
+		while (s < e && *s != '(')
+			s++;
+
+		/* error; no ( found */
+		if (s >= e)
+			goto err_out;
+
+		ps->func = ss;
+		ps->funcsz = (size_t)(s - ss);
+
+		is_func = true;
+	}
+
+	if (is_func && *s == '(')
+		s++;
+
+	for (;;) {
+		ss = s;
+
+		fyd = NULL;
+		if (fy_is_path_flow_key_start(*s)) {
+			fyd = fy_flow_document_build_from_string(NULL, s, e - s, &adv);
+			if (!fyd)
+				goto err_out;
+
+			s = ss + adv;
+		} else {
+			if (!is_func) {
+				while (s < e && *s != '/')
+					s++;
+			} else {
+				while (s < e && *s != ',' && *s != ')')
+					s++;
+			}
+		}
+		if (ps->argc >= maxargs)
+			goto err_out;
+
+		psa = &ps->arg[ps->argc++];
+
+		psa->arg = ss;
+		psa->argsz = s - ss;
+		psa->fyd = fyd;
+
+		ee = s;
+
+		/* check for numeric */
+		if (ss < ee && (fy_is_num(*ss) || *ss == '-')) {
+			bool is_neg;
+			int idx, len, digit;
+
+			if (*ss == '-') {
+				ss++;
+				is_neg = true;
+			} else
+				is_neg = false;
+
+			idx = 0;
+			len = 0;
+			while (ss < ee && fy_is_num(*ss)) {
+				digit = *ss - '0';
+				/* no 0 prefixed numbers allowed */
+				if (len > 0 && idx == 0)
+					goto not_numeric;
+
+				/* number overflow */
+				if (idx * 10 < idx)
+					goto not_numeric;
+
+				idx = idx * 10;
+				idx += digit;
+				len++;
+				ss++;
+			}
+
+			if (is_neg)
+				idx = -idx;
+			psa->is_numeric = true;
+			psa->number = idx;
+
+		} else {
+not_numeric:
+			psa->is_numeric = false;
+			psa->number = 0;
+		}
+
+		if (!is_func || s >= e || *s == ')')
+			break;
+
+		if (s < e && *s == ',')
+			s++;
+	}
+
+	if (is_func && s < e && *s == ')')
+		s++;
+out:
+	return s - str;
+
+err_out:
+	return (size_t)-1;
+}
+
+int parse_path(const char *str, size_t len, struct path *path)
+{
+	const char *s, *e;
+	unsigned int i;
+	struct pathspec *ps, *psnew;
+	size_t adv;
+
+	path->count = 0;
+	path->absolute = false;
+	path->trailing_slash = false;
+
+	if (len == (size_t)-1)
+		len = strlen(str);
+
+	s = str;
+	e = s + len;
+
+	if (s >= e)
+		return -1;
+
+	/* starts at root */
+	if (*s == '/') {
+		s++;
+		path->absolute = true;
+	}
+
+	/* check for trailing slash and remove it */
+	if (e[-1] == '/') {
+		e--;
+		path->trailing_slash = true;
+	};
+
+	while (s < e) {
+		if (path->count >= path->alloc) {
+			psnew = realloc(path->ps == path->ps_local ? NULL : path->ps,
+					path->alloc * 2 * sizeof(*psnew));
+			if (!psnew)
+				goto err_out;
+			if (path->ps == path->ps_local)
+				memcpy(psnew, path->ps, path->count * sizeof(*psnew));
+			path->ps = psnew;
+			path->alloc *= 2;
+		}
+		ps = &path->ps[path->count++];
+		adv = parse_pathspec(s, (size_t)(e - s), ps);
+		if (adv == (size_t)-1)
+			goto err_out;
+
+		if (adv == 0)
+			break;
+
+		s += adv;
+		if (s < e && *s == '/')
+			s++;
+	}
+
+	/* error */
+	if (s < e)
+		goto err_out;
+
+	return 0;
+
+err_out:
+	while (path->count > 0) {
+		ps = &path->ps[--path->count];
+		for (i = 0; i < ps->argc; i++) {
+			if (ps->arg[i].fyd)
+				fy_document_destroy(ps->arg[i].fyd);
+		}
+	}
+	return -1;
+}
+
+int do_pathspec(int argc, char *argv[])
+{
+	int i;
+	const char *s, *e;
+	size_t adv;
+	struct pathspec ps;
+
+	assert(argc > 0);
+
+	s = argv[0];
+	e = s + strlen(s);
+
+	if (s >= e)
+		return -1;
+
+	/* starts at root */
+	if (*s == '/') {
+		fprintf(stderr, "starts with /\n");
+		s++;
+	}
+
+	while (s < e) {
+		fprintf(stderr, "parsing: %.*s\n", (int)(e - s), s);
+		adv = parse_pathspec(s, (size_t)(e - s), &ps);
+		if (adv == 0) {
+			fprintf(stderr, "parse_pathspec() returns 0\n");
+			break;
+		}
+		fprintf(stderr, "full-ps: %.*s\n", (int)adv, s);
+		fprintf(stderr, "func: %.*s\n", (int)ps.funcsz, ps.func);
+		for (i = 0; i < (int)ps.argc; i++) {
+			fprintf(stderr, "arg[%d]: %.*s\n", i, (int)ps.arg[i].argsz, ps.arg[i].arg);
+			if (ps.arg[i].fyd)
+				fy_document_destroy(ps.arg[i].fyd);
+		}
+		fprintf(stderr, "\n");
+
+		s += adv;
+
+		if (s < e && *s == '/')
+			s++;
+	}
+
+	return 0;
+}
+
+struct fy_node *
+node_find(struct fy_document *fyd, struct fy_node *fyn_start, struct path *path)
+{
+	struct fy_node *fyn;
+	struct fy_anchor *fya;
+	struct pathspec *ps;
+	struct pathspec_arg *psa;
+	unsigned int i;
+
+	if (!fyd || !fyn_start || !path)
+		return NULL;
+
+	if (path->absolute)
+		fyn_start = fyd->root;
+
+	fyn = fyn_start;
+	for (i = 0; fyn && i < path->count; i++) {
+
+		ps = &path->ps[i];
+		if (ps->funcsz > 0) {
+			if (ps->funcsz == 1 && !memcmp(ps->func, ".", 1)) {
+				/* current; nop */
+			} else if (ps->funcsz == 2 && !memcmp(ps->func, "..", 2)) {
+				/* parent */
+				fyn = fy_node_get_document_parent(fyn);
+			} else if (ps->funcsz == 3 && !memcmp(ps->func, "key", 3)) {
+				if (ps->argc != 1) {
+					fprintf(stderr, "illegal number of arguments at key\n");
+					return NULL;
+				}
+
+				if (!fy_node_is_mapping(fyn)) {
+					fprintf(stderr, "key function only works on mappings\n");
+					return NULL;
+				}
+
+				psa = &ps->arg[0];
+
+				if (psa->fyd) {
+					fyn = fy_node_mapping_lookup_key_by_key(fyn, fy_document_root(psa->fyd));
+					if (!fyn) {
+						fprintf(stderr, "failed to find complex key\n");
+						return NULL;
+					}
+				} else {
+					fyn = fy_node_mapping_lookup_key_by_string(fyn, psa->arg, psa->argsz);
+					if (!fyn) {
+						fprintf(stderr, "failed to find simple key\n");
+						return NULL;
+					}
+				}
+
+			} else {
+				fprintf(stderr, "unkown function %.*s\n", (int)ps->funcsz, ps->func);
+				return NULL;
+			}
+		} else {
+			if (ps->argc != 1) {
+				fprintf(stderr, "illegal number of arguments at key\n");
+				return NULL;
+			}
+			psa = &ps->arg[0];
+
+			/* check for alias */
+			if (psa->arg[0] == '*') {
+				/* alias must be the first component and not absolute */
+				if (path->absolute) {
+					fprintf(stderr, "bad alias when absolute\n");
+					return NULL;
+				}
+				if (i > 0) {
+					fprintf(stderr, "bad alias not at start\n");
+					return NULL;
+				}
+				fya = fy_document_lookup_anchor(fyd, &psa->arg[1], psa->argsz-1);
+				if (!fya) {
+					fprintf(stderr, "bad alias unable to find anchor\n");
+					return NULL;
+				}
+				/* continue */
+				fyn = fya->fyn;
+				continue;
+			}
+
+			switch (fyn->type) {
+			case FYNT_SCALAR:
+				if (!fy_node_is_alias(fyn)) {
+					fprintf(stderr, "at scalar; this is the end\n");
+					return NULL;
+				}
+				fya = fy_document_lookup_anchor_by_token(fyd, fyn->scalar);
+				if (!fya) {
+					fprintf(stderr, "unable to lookup alias\n");
+					return NULL;
+				}
+				fyn = fya->fyn;
+				break;
+
+			case FYNT_SEQUENCE:
+				if (!psa->is_numeric) {
+					fprintf(stderr, "sequence requires numeric argument\n");
+					return NULL;
+				}
+
+				fyn = fy_node_sequence_get_by_index(fyn, psa->number);
+				if (!fyn) {
+					fprintf(stderr, "failed to find sequence idx\n");
+					return NULL;
+				}
+
+				break;
+
+			case FYNT_MAPPING:
+				if (psa->fyd) {
+					fyn = fy_node_mapping_lookup_value_by_key(fyn, fy_document_root(psa->fyd));
+					if (!fyn) {
+						fprintf(stderr, "failed to find complex key\n");
+						return NULL;
+					}
+				} else {
+					fyn = fy_node_mapping_lookup_by_string(fyn, psa->arg, psa->argsz);
+					if (!fyn) {
+						fprintf(stderr, "failed to find simple key\n");
+						return NULL;
+					}
+				}
+				break;
+			}
+		}
+
+		if (fy_node_is_alias(fyn)) {
+			struct fy_node *referred[FYPCF_GUARANTEED_MINIMUM_DEPTH_LIMIT];
+			unsigned int derefs, k;
+
+			for (derefs = 0; derefs < FYPCF_GUARANTEED_MINIMUM_DEPTH_LIMIT; derefs++) {
+				if (!fy_node_is_alias(fyn))
+					break;
+				fya = fy_document_lookup_anchor_by_token(fyd, fyn->scalar);
+				if (!fya) {
+					fprintf(stderr, "unable to deref alias\n");
+					return NULL;
+				}
+				for (k = 0; k < derefs; k++) {
+					if (fya->fyn == referred[k]) {
+						fprintf(stderr, "alias loop detected\n");
+						return NULL;
+					}
+				}
+				fyn = fya->fyn;
+				referred[derefs] = fyn;
+			}
+		}
+	}
+
+	return fyn;
+}
+
+struct fy_node *
+node_find_exec(struct fy_document *fyd, struct fy_node *fyn_start, const char *path)
+{
+	struct fy_input *fyi;
+	struct fy_path_parser fypp_local, *fypp = &fypp_local;
+	struct fy_path_parse_cfg pcfg_local, *pcfg = &pcfg_local;
+	struct fy_path_exec *fypx = NULL;
+	struct fy_path_exec_cfg xcfg_local, *xcfg = &xcfg_local;
+	struct fy_emitter fye_local, *fye = &fye_local;
+	struct fy_emitter_cfg ecfg_local, *ecfg = &ecfg_local;
+	struct fy_path_expr *expr;
+	struct fy_document *fyd_pe;
+	struct fy_node *fyn;
+	void *iterp;
+	int rc;
+
+	fyi = fy_input_from_data(path, strlen(path), NULL, false);
+	assert(fyi);
+
+	memset(pcfg, 0, sizeof(*pcfg));
+	pcfg->diag = fyd->diag;
+	fy_path_parser_setup(fypp, pcfg);
+
+	memset(xcfg, 0, sizeof(*xcfg));
+	xcfg->diag = fyd->diag;
+	fypx = fy_path_exec_create(xcfg);
+	assert(fypx);
+
+	rc = fy_path_parser_open(fypp, fyi, NULL);
+	assert(!rc);
+
+	fyn = NULL;
+	expr = fy_path_parse_expression(fypp);
+	if (!expr) {
+		fprintf(stderr, "Failed to parse expression \"%s\"\n", path);
+		goto do_close;
+	}
+	fprintf(stderr, "OK; parsed expression \"%s\"\n", path);
+
+	fy_path_expr_dump(expr, fyd->diag, FYET_WARNING, 0, "expression dump");
+
+	fyd_pe = fy_path_expr_to_document(expr);
+	if (!fyd_pe) {
+		fprintf(stderr, "Failed to create YAML path expression tree for \"%s\"\n", path);
+		goto do_free;
+	}
+
+	memset(ecfg, 0, sizeof(*ecfg));
+	ecfg->diag = fyd->diag;
+	fy_emit_setup(fye, ecfg);
+
+	fy_emit_document(fye, fyd_pe);
+
+	fy_emit_cleanup(fye);
+
+	fy_document_destroy(fyd_pe);
+
+	rc = fy_path_exec_execute(fypx, expr, fyn_start);
+	if (rc) {
+		fprintf(stderr, "Failed to execute expression \"%s\"\n", path);
+		goto do_free;
+	}
+
+	iterp = NULL;
+	fyn = fy_path_exec_results_iterate(fypx, &iterp);
+
+do_free:
+	fy_path_expr_free(expr);
+
+do_close:
+	fy_path_parser_close(fypp);
+
+	fy_path_exec_unref(fypx);
+
+	fy_path_parser_cleanup(fypp);
+	fy_input_unref(fyi);
+
+	return fyn;
+}
+
+int do_bypath(struct fy_parser *fyp, const char *pathstr, const char *start)
+{
+	struct path path;
+	struct pathspec *ps;
+	struct pathspec_arg *arg;
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	int count;
+	unsigned int i, j;
+	int rc __FY_DEBUG_UNUSED__;
+
+	setup_path(&path);
+
+	rc = parse_path(pathstr, (size_t)-1, &path);
+	assert(!rc);
+
+	fprintf(stderr, "%s: pathstr=%s absolute=%s trailing_slash=%s\n", __func__,
+			pathstr,
+			path.absolute ? "true" : "false",
+			path.trailing_slash ? "true" : "false");
+	for (i = 0; i < path.count; i++) {
+		ps = &path.ps[i];
+		fprintf(stderr, "    func=%.*s argc=%u", (int)ps->funcsz, ps->func, ps->argc);
+		for (j = 0; j < ps->argc; j++) {
+			arg = &ps->arg[j];
+			fprintf(stderr, " %.*s", (int)arg->argsz, arg->arg);
+		}
+		fprintf(stderr, "\n");
+	}
+
+	count = 0;
+	while ((fyd = fy_parse_load_document(fyp)) != NULL) {
+
+		fyn = node_find_exec(fyd, fy_document_root(fyd), pathstr);
+		if (!fyn) {
+			fprintf(stderr, "exec: did not find node for %s\n", pathstr);
+		} else {
+			fprintf(stderr, "exec: path %s - return %s\n", pathstr, fy_node_get_path_a(fyn));
+		}
+
+		fyn = node_find(fyd, fy_document_root(fyd), &path);
+		if (!fyn) {
+			fprintf(stderr, "norm: did not find node for %s\n", pathstr);
+		} else {
+			fprintf(stderr, "norm: path %s - return %s\n", pathstr, fy_node_get_path_a(fyn));
+		}
+
+		fy_parse_document_destroy(fyp, fyd);
+
+		count++;
+	}
+
+	cleanup_path(&path);
+
+	return count > 0 ? 0 : -1;
+}
+
 struct test_parser {
 	struct fy_reader reader;
 	struct fy_diag *diag;
@@ -2906,6 +3535,8 @@ int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, 
 	struct fy_document *fyd, *fyd2;
 	struct fy_node *fyn, *fyn2;
 	struct fy_walk_result *fwr;
+	struct fy_path_exec *fypx = NULL;
+	struct fy_path_exec_cfg xcfg_local, *xcfg = &xcfg_local;
 	char *path;
 	unsigned int flags;
 	int rc, count;
@@ -2939,6 +3570,11 @@ int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, 
 	} else
 		fy_path_expr_dump(expr, fyp->diag, FYET_NOTICE, 0, "fypp root ");
 
+	memset(xcfg, 0, sizeof(*xcfg));
+	xcfg->diag = fyp->diag;
+	fypx = fy_path_exec_create(xcfg);
+	assert(fypx);
+
 	count = 0;
 	while ((fyd = fy_parse_load_document(fyp)) != NULL) {
 
@@ -2962,11 +3598,11 @@ int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, 
 		free(path);
 
 		fy_walk_result_list_init(&results);
-		fwr = fy_walk_result_alloc();
+		fwr = fy_walk_result_alloc_rl(NULL);
 		assert(fwr);
 		fwr->type = fwrt_node_ref;
 		fwr->fyn = fyn;
-		result = fy_path_expr_execute(fyp->diag, 0, expr, fwr, fpet_none);
+		result = fy_path_expr_execute(fypx, 0, expr, fwr, fpet_none);
 
 		printf("\n");
 		if (!result) {
@@ -3002,7 +3638,7 @@ int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, 
 		while ((fwr = fy_walk_result_list_pop(&result->refs)) != NULL) {
 
 			if (fwr->type != fwrt_node_ref) {
-				fy_walk_result_free(fwr);
+				fy_walk_result_free_rl(NULL, fwr);
 				continue;
 			}
 
@@ -3025,16 +3661,17 @@ int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, 
 
 			fy_document_destroy(fyd2);
 
-			fy_walk_result_free(fwr);
+			fy_walk_result_free_rl(NULL, fwr);
 		}
 next:
-		fy_walk_result_free(result);
+		fy_walk_result_free_rl(NULL, result);
 
 		fy_parse_document_destroy(fyp, fyd);
 
 		count++;
 	}
 
+	fy_path_exec_unref(fypx);
 
 	fy_path_expr_free(expr);
 
@@ -3208,6 +3845,9 @@ int main(int argc, char *argv[])
 		case OPT_SLOPPY_FLOW_INDENTATION:
 			cfg.flags |= FYPCF_SLOPPY_FLOW_INDENTATION;
 			break;
+		case OPT_YPATH_ALIASES:
+			cfg.flags |= FYPCF_YPATH_ALIASES;
+			break;
 		case 'q':
 			cfg.flags |= FYPCF_QUIET;
 			break;
@@ -3232,7 +3872,9 @@ int main(int argc, char *argv[])
 	    strcmp(mode, "reader") &&
 	    strcmp(mode, "compose") &&
 	    strcmp(mode, "iterate") &&
-	    strcmp(mode, "comment")
+	    strcmp(mode, "comment") &&
+	    strcmp(mode, "pathspec") &&
+	    strcmp(mode, "bypath")
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 	    && strcmp(mode, "libyaml-scan")
 	    && strcmp(mode, "libyaml-parse")
@@ -3323,6 +3965,11 @@ int main(int argc, char *argv[])
 
 	if (!strcmp(mode, "build")) {
 		rc = do_build(&cfg, argc - optind, argv + optind);
+		return !rc ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+
+	if (!strcmp(mode, "pathspec")) {
+		rc = do_pathspec(argc - optind, argv + optind);
 		return !rc ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 
@@ -3460,6 +4107,12 @@ int main(int argc, char *argv[])
 		rc = do_comment(fyp);
 		if (rc < 0) {
 			/* fprintf(stderr, "do_comment() error %d\n", rc); */
+			goto cleanup;
+		}
+	} else if (!strcmp(mode, "bypath")) {
+		rc = do_bypath(fyp, walkpath, walkstart);
+		if (rc < 0) {
+			/* fprintf(stderr, "do_bypath() error %d\n", rc); */
 			goto cleanup;
 		}
 	}
