@@ -131,6 +131,9 @@ struct fy_token {
 		struct {
 			struct fy_path_expr *expr;
 		} alias;
+		struct {
+			int flow_level;
+		} key;
 	};
 };
 FY_TYPE_DECL_LIST(token);

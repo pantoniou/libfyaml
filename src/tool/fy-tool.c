@@ -48,6 +48,7 @@
 #define SLOPPY_FLOW_INDENTATION_DEFAULT	false
 #define PREFER_RECURSIVE_DEFAULT	false
 #define YPATH_ALIASES_DEFAULT		false
+#define DISABLE_FLOW_MARKERS_DEFAULT	false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -72,6 +73,7 @@
 #define OPT_NOEXEC			2011
 #define OPT_NULL_OUTPUT			2012
 #define OPT_YPATH_ALIASES		2013
+#define OPT_DISABLE_FLOW_MARKERS	2014
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -122,6 +124,7 @@ static struct option lopts[] = {
 	{"sloppy-flow-indentation", no_argument,	0,	OPT_SLOPPY_FLOW_INDENTATION },
 	{"prefer-recursive",	no_argument,		0,	OPT_PREFER_RECURSIVE },
 	{"ypath-aliases",	no_argument,		0,	OPT_YPATH_ALIASES },
+	{"disable-flow-markers",no_argument,		0,	OPT_DISABLE_FLOW_MARKERS },
 	{"dump-pathexpr",	no_argument,		0,	OPT_DUMP_PATHEXPR },
 	{"noexec",		no_argument,		0,	OPT_NOEXEC },
 	{"null-output",		no_argument,		0,	OPT_NULL_OUTPUT },
@@ -215,6 +218,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline, dejson"
 							" (default %s)\n",
 							MODE_DEFAULT);
+		fprintf(fp, "\t--disable-flow-markers   : Disable testsuite's flow-markers"
+							" (default %s)\n",
+							DISABLE_FLOW_MARKERS_DEFAULT ? "true" : "false");
 		if (tool_mode == OPT_TOOL || tool_mode == OPT_DUMP)
 			fprintf(fp, "\t--streaming              : Use streaming output mode"
 								" (default %s)\n",
@@ -544,7 +550,7 @@ void print_escaped(const char *str, int length)
 }
 
 void dump_testsuite_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize,
-			  struct fy_token_iter *iter)
+			  struct fy_token_iter *iter, bool disable_flow_markers)
 {
 	const char *anchor = NULL;
 	const char *tag = NULL;
@@ -587,6 +593,8 @@ void dump_testsuite_event(struct fy_parser *fyp, struct fy_event *fye, bool colo
 		if (colorize)
 			fputs("\x1b[36;1m", stdout);
 		printf("+MAP");
+		if (!disable_flow_markers && fy_event_get_node_style(fye) == FYNS_FLOW)
+			printf(" {}");
 		if (anchor) {
 			if (colorize)
 				fputs("\x1b[32m", stdout);
@@ -611,6 +619,8 @@ void dump_testsuite_event(struct fy_parser *fyp, struct fy_event *fye, bool colo
 		if (colorize)
 			fputs("\x1b[33;1m", stdout);
 		printf("+SEQ");
+		if (!disable_flow_markers && fy_event_get_node_style(fye) == FYNS_FLOW)
+			printf(" []");
 		if (anchor) {
 			if (colorize)
 				fputs("\x1b[32m", stdout);
@@ -1132,6 +1142,7 @@ int main(int argc, char *argv[])
 	bool null_output = false;
 	bool stdin_input;
 	void *res_iter;
+	bool disable_flow_markers = false;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -1394,6 +1405,9 @@ int main(int argc, char *argv[])
 		case OPT_YPATH_ALIASES:
 			cfg.flags |= FYPCF_YPATH_ALIASES;
 			break;
+		case OPT_DISABLE_FLOW_MARKERS:
+			disable_flow_markers = true;
+			break;
 		case 'h' :
 		default:
 			if (opt != 'h')
@@ -1487,7 +1501,7 @@ int main(int argc, char *argv[])
 			goto cleanup;
 		}
 		while ((fyev = fy_parser_parse(fyp)) != NULL) {
-			dump_testsuite_event(fyp, fyev, du.colorize, iter);
+			dump_testsuite_event(fyp, fyev, du.colorize, iter, disable_flow_markers);
 			fy_parser_event_free(fyp, fyev);
 		}
 		fy_token_iter_destroy(iter);

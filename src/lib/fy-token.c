@@ -487,6 +487,10 @@ struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_t
 		fyt->alias.expr = va_arg(ap, struct fy_path_expr *);
 		break;
 
+	case FYTT_KEY:
+		fyt->key.flow_level = va_arg(ap, int);
+		break;
+
 	case FYTT_PE_MAP_KEY:
 		fyt->map_key.fyd = va_arg(ap, struct fy_document *);
 		break;

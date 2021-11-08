@@ -2357,7 +2357,7 @@ int fy_fetch_key(struct fy_parser *fyp, int c)
 	fyp_scan_debug(fyp, "pending_complex_key_column %d",
 			fyp->pending_complex_key_column);
 
-	fyt = fy_token_queue(fyp, FYTT_KEY, fy_fill_atom_a(fyp, 1));
+	fyt = fy_token_queue(fyp, FYTT_KEY, fy_fill_atom_a(fyp, 1), fyp->flow_level);
 	fyp_error_check(fyp, fyt, err_out_rc,
 			"fy_token_queue() failed");
 
@@ -2499,7 +2499,7 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 
 	if (push_bmap_start || push_key_only) {
 
-		fyt = fy_token_queue_internal(fyp, &sk_tl, FYTT_KEY, fy_fill_atom_a(fyp, 0));
+		fyt = fy_token_queue_internal(fyp, &sk_tl, FYTT_KEY, fy_fill_atom_a(fyp, 0), fyp->flow_level);
 		fyp_error_check(fyp, fyt, err_out_rc,
 				"fy_token_queue_internal() failed");
 
@@ -5715,6 +5715,12 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fyp_error_check(fyp, fyep, err_out,
 						"fy_eventp_alloc() failed!");
 				fye = &fyep->e;
+
+				/* convert KEY token to either block or flow mapping start */
+				if (!fyt->key.flow_level)
+					fyt->type = FYTT_BLOCK_MAPPING_START;
+				else
+					fyt->type = FYTT_FLOW_MAPPING_START;
 
 				fye->type = FYET_MAPPING_START;
 				fye->mapping_start.anchor = NULL;
