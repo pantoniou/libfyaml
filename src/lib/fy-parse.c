@@ -739,7 +739,7 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 				   !getenv("FY_VALGRIND_RECYCLING"));
 
 	if (fyp->suppress_recycling)
-		fyp_notice(fyp, "Suppressing recycling");
+		fyp_parse_debug(fyp, "Suppressing recycling");
 
 	fyp->current_document_state = NULL;
 
