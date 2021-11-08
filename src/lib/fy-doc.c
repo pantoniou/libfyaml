@@ -7242,7 +7242,7 @@ void fy_node_iterator_check(struct fy_node *fyn)
 {
 	struct fy_ptr_node_list l1, l2;
 	struct fy_ptr_node *fypn1, *fypn2;
-	int ret;
+	int ret __FY_DEBUG_UNUSED__;
 
 	fy_ptr_node_list_init(&l1);
 	fy_ptr_node_list_init(&l2);
