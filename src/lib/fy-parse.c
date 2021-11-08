@@ -917,6 +917,7 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 {
 	struct fy_atom *handle;
+	struct fy_mark fym;
 	int c, rc;
 
 	if (!fyp || !fyt)
@@ -930,7 +931,8 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 	    (handle = fy_token_comment_handle(fyt, fycp_top, true)) != NULL) {
 		assert (!fy_atom_is_set(handle));
 		*handle = fyp->last_comment;
-		memset(&fyp->last_comment, 0, sizeof(fyp->last_comment));
+		/* erase last comment */
+		fy_atom_reset(&fyp->last_comment);
 	}
 
 	/* right hand comment */
@@ -940,7 +942,13 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 		fy_advance(fyp, c);
 
 	if (c == '#') {
-		handle = fy_token_comment_handle(fyt, fycp_right, true);
+		fy_get_mark(fyp, &fym);
+
+		/* it's a right comment only if it's on the same line */
+		if (fym.line == fyt->handle.end_mark.line)
+			handle = fy_token_comment_handle(fyt, fycp_right, true);
+		else
+			handle = &fyp->last_comment;	/* otherwise, last comment */
 
 		rc = fy_scan_comment(fyp, handle, false);
 		fyp_error_check(fyp, !rc, err_out_rc,
@@ -974,11 +982,6 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 	if (fyp_json_mode(fyp)) {
 		fy_reader_skip_ws_cr_nl(fyr);
 		goto done;
-	}
-
-	if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) && fy_atom_is_set(&fyp->last_comment)) {
-		fy_input_unref(fyp->last_comment.fyi);
-		fyp->last_comment.fyi = NULL;
 	}
 
 	for (;;) {
