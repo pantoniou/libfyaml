@@ -3750,50 +3750,66 @@ fy_node_mapping_lookup_scalar0_by_simple_key(struct fy_node *fyn,
 
 struct fy_node *fy_node_mapping_lookup_value_by_key(struct fy_node *fyn, struct fy_node *fyn_key)
 {
-	struct fy_node_pair *fynpi;
+	struct fy_node_pair *fynp;
 
-	if (!fyn || fyn->type != FYNT_MAPPING)
+	fynp = fy_node_mapping_lookup_pair(fyn, fyn_key);
+	return fynp ? fynp->value : NULL;
+}
+
+struct fy_node *fy_node_mapping_lookup_key_by_key(struct fy_node *fyn, struct fy_node *fyn_key)
+{
+	struct fy_node_pair *fynp;
+
+	fynp = fy_node_mapping_lookup_pair(fyn, fyn_key);
+	return fynp ? fynp->key : NULL;
+}
+
+struct fy_node_pair *
+fy_node_mapping_lookup_pair_by_string(struct fy_node *fyn, const char *key, size_t len)
+{
+	struct fy_document *fyd;
+	struct fy_node_pair *fynp;
+
+	/* try quick and dirty simple scan */
+	if (is_simple_key(key, len))
+		return fy_node_mapping_lookup_pair_by_simple_key(fyn, key, len);
+
+	fyd = fy_document_build_from_string(NULL, key, len);
+	if (!fyd)
 		return NULL;
 
-	if (fyn->xl) {
-		fynpi = fy_node_accel_lookup_by_node(fyn, fyn_key);
-		if (fynpi)
-			return fynpi->value;
-	} else {
-		for (fynpi = fy_node_pair_list_head(&fyn->mapping); fynpi;
-			fynpi = fy_node_pair_next(&fyn->mapping, fynpi)) {
+	fynp = fy_node_mapping_lookup_pair(fyn, fy_document_root(fyd));
 
-			if (fy_node_compare(fynpi->key, fyn_key))
-				return fynpi->value;
-		}
-	}
+	fy_document_destroy(fyd);
 
-	return NULL;
+	return fynp;
 }
 
 struct fy_node *
 fy_node_mapping_lookup_by_string(struct fy_node *fyn,
 				 const char *key, size_t len)
 {
-	struct fy_document *fyd;
-	struct fy_node *fyn_value;
+	struct fy_node_pair *fynp;
 
-	/* try quick and dirty simple scan */
-	if (is_simple_key(key, len)) {
-		fyn_value = fy_node_mapping_lookup_value_by_simple_key(fyn, key, len);
-		if (fyn_value)
-			return fyn_value;
-	}
+	fynp = fy_node_mapping_lookup_pair_by_string(fyn, key, len);
+	return fynp ? fynp->value : NULL;
+}
 
-	fyd = fy_document_build_from_string(NULL, key, len);
-	if (!fyd)
-		return NULL;
+struct fy_node *
+fy_node_mapping_lookup_value_by_string(struct fy_node *fyn,
+				       const char *key, size_t len)
+{
+	return fy_node_mapping_lookup_by_string(fyn, key, len);
+}
 
-	fyn_value = fy_node_mapping_lookup_value_by_key(fyn, fy_document_root(fyd));
+struct fy_node *
+fy_node_mapping_lookup_key_by_string(struct fy_node *fyn,
+				     const char *key, size_t len)
+{
+	struct fy_node_pair *fynp;
 
-	fy_document_destroy(fyd);
-
-	return fyn_value;
+	fynp = fy_node_mapping_lookup_pair_by_string(fyn, key, len);
+	return fynp ? fynp->key : NULL;
 }
 
 #define fy_node_walk_ctx_create_a(_max_depth, _mark) \

@@ -3509,6 +3509,25 @@ fy_node_mapping_get_by_index(struct fy_node *fyn, int index)
 	FY_EXPORT;
 
 /**
+ * fy_node_mapping_lookup_pair_by_string() - Lookup a node pair in mapping by string
+ *
+ * This method will return the node pair that contains the same key
+ * from the YAML node created from the @key argument. The comparison of the
+ * node is using fy_node_compare()
+ *
+ * @fyn: The mapping node
+ * @key: The YAML source to use as key
+ * @len: The length of the key (or -1 if '\0' terminated)
+ *
+ * Returns:
+ * The value matching the given key, or NULL if not found.
+ */
+struct fy_node_pair *
+fy_node_mapping_lookup_pair_by_string(struct fy_node *fyn,
+				      const char *key, size_t len)
+	FY_EXPORT;
+
+/**
  * fy_node_mapping_lookup_by_string() - Lookup a node value in mapping by string
  *
  * This method will return the value of node pair that contains the same key
@@ -3526,6 +3545,47 @@ struct fy_node *
 fy_node_mapping_lookup_by_string(struct fy_node *fyn,
 				 const char *key, size_t len)
 	FY_EXPORT;
+
+/**
+ * fy_node_mapping_lookup_value_by_string() - Lookup a node value in mapping by string
+ *
+ * This method will return the value of node pair that contains the same key
+ * from the YAML node created from the @key argument. The comparison of the
+ * node is using fy_node_compare()
+ *
+ * It is synonymous with fy_node_mapping_lookup_by_string().
+ *
+ * @fyn: The mapping node
+ * @key: The YAML source to use as key
+ * @len: The length of the key (or -1 if '\0' terminated)
+ *
+ * Returns:
+ * The value matching the given key, or NULL if not found.
+ */
+struct fy_node *
+fy_node_mapping_lookup_value_by_string(struct fy_node *fyn,
+				       const char *key, size_t len)
+	FY_EXPORT;
+
+/**
+ * fy_node_mapping_lookup_key_by_string() - Lookup a node key in mapping by string
+ *
+ * This method will return the key of node pair that contains the same key
+ * from the YAML node created from the @key argument. The comparison of the
+ * node is using fy_node_compare()
+ *
+ * @fyn: The mapping node
+ * @key: The YAML source to use as key
+ * @len: The length of the key (or -1 if '\0' terminated)
+ *
+ * Returns:
+ * The key matching the given key, or NULL if not found.
+ */
+struct fy_node *
+fy_node_mapping_lookup_key_by_string(struct fy_node *fyn,
+				     const char *key, size_t len)
+	FY_EXPORT;
+
 
 /**
  * fy_node_mapping_lookup_pair_by_simple_key() - Lookup a node pair in mapping by simple string
@@ -3635,6 +3695,22 @@ fy_node_mapping_lookup_pair(struct fy_node *fyn, struct fy_node *fyn_key)
  */
 struct fy_node *
 fy_node_mapping_lookup_value_by_key(struct fy_node *fyn, struct fy_node *fyn_key);
+
+/**
+ * fy_node_mapping_lookup_key_by_key() - Lookup a node pair's key matching the provided key
+ *
+ * This method will return the node pair that matches the provided @fyn_key
+ * The key may be collection and a content match check is performed recursively
+ * in order to find the right key.
+ *
+ * @fyn: The mapping node
+ * @fyn_key: The node to use as key
+ *
+ * Returns:
+ * The node key matching the given key, or NULL if not found.
+ */
+struct fy_node *
+fy_node_mapping_lookup_key_by_key(struct fy_node *fyn, struct fy_node *fyn_key);
 
 /**
  * fy_node_mapping_get_pair_index() - Return the node pair index in the mapping
