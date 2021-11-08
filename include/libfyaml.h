@@ -3573,7 +3573,7 @@ fy_node_mapping_lookup_pair(struct fy_node *fyn, struct fy_node *fyn_key)
 
 
 /**
- * fy_node_mapping_lookup_value_by_key() - Lookup a node pair matching the provided key
+ * fy_node_mapping_lookup_value_by_key() - Lookup a node pair's value matching the provided key
  *
  * This method will return the node pair that matches the provided @fyn_key
  * The key may be collection and a content match check is performed recursively
