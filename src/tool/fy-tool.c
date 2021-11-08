@@ -549,6 +549,34 @@ void print_escaped(const char *str, int length)
 	}
 }
 
+void dump_token_comments(struct fy_token *fyt, bool colorize, const char *banner)
+{
+	static const char *placement_txt[] = {
+		[fycp_top]    = "top",
+		[fycp_right]  = "right",
+		[fycp_bottom] = "bottom",
+	};
+	enum fy_comment_placement placement;
+	char buf[4096];
+	const char *str;
+
+	if (!fyt)
+		return;
+
+	for (placement = fycp_top; placement < fycp_max; placement++) {
+		str = fy_token_get_comment(fyt, buf, sizeof(buf), placement);
+		if (!str)
+			continue;
+		fputs("\n", stdout);
+		if (colorize)
+			fputs("\x1b[31m", stdout);
+		printf("\t%s %6s: ", banner, placement_txt[placement]);
+		print_escaped(str, strlen(str));
+		if (colorize)
+			fputs("\x1b[0m", stdout);
+	}
+}
+
 void dump_testsuite_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize,
 			  struct fy_token_iter *iter, bool disable_flow_markers)
 {
@@ -746,11 +774,13 @@ void dump_parse_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize
 		if (colorize)
 			fputs("\x1b[36m", stdout);
 		printf("STREAM_START");
+		dump_token_comments(fye->stream_start.stream_start, colorize, "");
 		break;
 	case FYET_STREAM_END:
 		if (colorize)
 			fputs("\x1b[36m", stdout);
 		printf("STREAM_END");
+		dump_token_comments(fye->stream_end.stream_end, colorize, "");
 		break;
 	case FYET_DOCUMENT_START:
 		if (colorize)
@@ -775,6 +805,7 @@ void dump_parse_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize
 			printf(" ]");
 		}
 		printf(" )");
+		dump_token_comments(fye->document_start.document_start, colorize, "");
 		break;
 
 	case FYET_DOCUMENT_END:
@@ -782,6 +813,7 @@ void dump_parse_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize
 			fputs("\x1b[36m", stdout);
 		printf("DOCUMENT_END implicit=%s",
 				fye->document_end.implicit ? "true" : "false");
+		dump_token_comments(fye->document_end.document_end, colorize, "");
 		break;
 	case FYET_MAPPING_START:
 		if (colorize)
@@ -799,11 +831,13 @@ void dump_parse_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize
 				(int)tag_len, tag,
 				tagp->handle, tagp->prefix);
 		}
+		dump_token_comments(fye->mapping_start.mapping_start, colorize, "");
 		break;
 	case FYET_MAPPING_END:
 		if (colorize)
 			fputs("\x1b[36;1m", stdout);
 		printf("MAPPING_END");
+		dump_token_comments(fye->mapping_end.mapping_end, colorize, "");
 		break;
 	case FYET_SEQUENCE_START:
 		if (colorize)
@@ -821,11 +855,13 @@ void dump_parse_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize
 				(int)tag_len, tag,
 				tagp->handle, tagp->prefix);
 		}
+		dump_token_comments(fye->sequence_start.sequence_start, colorize, "");
 		break;
 	case FYET_SEQUENCE_END:
 		if (colorize)
 			fputs("\x1b[33;1m", stdout);
 		printf("SEQUENCE_END");
+		dump_token_comments(fye->sequence_end.sequence_end, colorize, "");
 		break;
 	case FYET_SCALAR:
 		if (colorize)
@@ -877,12 +913,14 @@ void dump_parse_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize
 		value = fy_token_get_text(fye->scalar.value, &len);
 		if (value && len > 0)
 			print_escaped(value, len);
+		dump_token_comments(fye->scalar.value, colorize, "");
 		break;
 	case FYET_ALIAS:
 		anchor = fy_token_get_text(fye->alias.anchor, &anchor_len);
 		if (colorize)
 			fputs("\x1b[32m", stdout);
 		printf("ALIAS *%.*s", (int)anchor_len, anchor);
+		dump_token_comments(fye->alias.anchor, colorize, "");
 		break;
 	default:
 		/* ignored */
