@@ -1110,7 +1110,7 @@ void fy_node_mark_synthetic(struct fy_node *fyn)
 	if (!fyn)
 		return;
 	fyn->synthetic = true;
-	while ((fyn = fyn->parent) != NULL)
+	while ((fyn = fy_node_get_document_parent(fyn)) != NULL)
 		fyn->synthetic = true;
 }
 
@@ -2002,7 +2002,7 @@ struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *f
 			fyd_error_check(fyd, fynpt, err_out,
 					"fy_node_pair_alloc() failed");
 
-			fynpt->key = fy_node_copy_internal(fyd, fynp->key, NULL);
+			fynpt->key = fy_node_copy_internal(fyd, fynp->key, fyn);
 			fynpt->value = fy_node_copy_internal(fyd, fynp->value, fyn);
 			fynp->parent = fyn;
 
@@ -2012,8 +2012,10 @@ struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *f
 				fyd_error_check(fyd, !rc, err_out,
 						"fy_accel_insert() failed");
 			}
-			if (fynpt->key)
+			if (fynpt->key) {
 				fynpt->key->attached = true;
+				fynpt->key->key_root = true;
+			}
 			if (fynpt->value)
 				fynpt->value->attached = true;
 		}
@@ -2230,7 +2232,7 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 	fyd = fyn_to->fyd;
 	assert(fyd);
 
-	fyn_parent = fyn_to->parent;
+	fyn_parent = fy_node_get_document_parent(fyn_to);
 	fynp = NULL;
 	if (fyn_parent) {
 		fyd_error_check(fyd, fyn_parent->type != FYNT_SCALAR, err_out,
@@ -2431,8 +2433,10 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 
 			fynpi = fy_node_pair_next(&fyn_to->mapping, fynp);
 
-			if (fynp->key)
-				fynp->key->parent = NULL;
+			if (fynp->key) {
+				fynp->key->parent = fyn_to;
+				fynp->key->key_root = true;
+			}
 			if (fynp->value)
 				fynp->value->parent = fyn_to;
 			fynp->parent = fyn_to;
@@ -2948,8 +2952,7 @@ static void fy_resolve_parent_node(struct fy_document *fyd, struct fy_node *fyn,
 
 			fynpi = fy_node_pair_next(&fyn->mapping, fynp);
 
-			/* the parent of the key is always NULL */
-			fy_resolve_parent_node(fyd, fynp->key, NULL);
+			fy_resolve_parent_node(fyd, fynp->key, fyn);
 			fy_resolve_parent_node(fyd, fynp->value, fyn);
 			fynp->parent = fyn;
 		}
@@ -3369,6 +3372,11 @@ bool fy_node_is_attached(struct fy_node *fyn)
 }
 
 struct fy_node *fy_node_get_parent(struct fy_node *fyn)
+{
+	return fyn && !fyn->key_root ? fyn->parent : NULL;
+}
+
+struct fy_node *fy_node_get_document_parent(struct fy_node *fyn)
 {
 	return fyn ? fyn->parent : NULL;
 }
@@ -4581,53 +4589,93 @@ char *fy_node_get_parent_address(struct fy_node *fyn)
 {
 	struct fy_node *parent, *fyni;
 	struct fy_node_pair *fynp;
+	struct fy_node *fyna;
 	char *path = NULL;
 	const char *str;
 	size_t len;
 	int idx;
+	bool is_key_root;
+	int ret;
+	const char *fmt;
+	char *new_path, *old_path;
 
-	if (!fyn || !fyn->parent)
+	if (!fyn)
 		return NULL;
 
-	parent = fyn->parent;
+	parent = fy_node_get_document_parent(fyn);
+	if (!parent)
+		return NULL;
 
 	if (fy_node_is_sequence(parent)) {
+
 		/* for a sequence, find the index */
 		idx = 0;
-		for (fyni = fy_node_list_head(&parent->sequence); fyni && fyni != fyn;
-				fyni = fy_node_next(&parent->sequence, fyni))
+		for (fyni = fy_node_list_head(&parent->sequence); fyni;
+				fyni = fy_node_next(&parent->sequence, fyni)) {
+			if (fyni == fyn)
+				break;
 			idx++;
+		}
 
 		if (!fyni)
 			return NULL;
 
-		path = strdup(alloca_sprintf("%d", idx));
+		ret = asprintf(&path, "%d", idx);
+		if (ret == -1)
+			return NULL;
 	}
 
 	if (fy_node_is_mapping(parent)) {
+
+		is_key_root = fyn->key_root;
+
 		idx = 0;
-		for (fynp = fy_node_pair_list_head(&parent->mapping); fynp && fynp->value != fyn;
-				fynp = fy_node_pair_next(&parent->mapping, fynp))
+		fyna = NULL;
+		for (fynp = fy_node_pair_list_head(&parent->mapping); fynp;
+				fynp = fy_node_pair_next(&parent->mapping, fynp)) {
+
+			if ((!is_key_root && fynp->value == fyn) || (is_key_root && fynp->key == fyn))
+				break;
 			idx++;
+		}
 
 		if (!fynp)
 			return NULL;
 
-		/* if key is a plain scalar try to not use a complex style (even for quoted) */
-		if (fynp->key && fy_node_is_scalar(fynp->key) && !fy_node_is_alias(fynp->key) &&
-				(str = fy_token_get_direct_output(fynp->key->scalar, &len)) != NULL) {
+		fyna = fynp->key;
+		if (!fyna)
+			return NULL;
 
-			path = malloc(len + 1);
+		/* if key is a plain scalar try to not use a complex style (even for quoted) */
+		if (fyna && fy_node_is_scalar(fyna) && !fy_node_is_alias(fyna) &&
+				(str = fy_token_get_scalar_path_key(fyna->scalar, &len)) != NULL) {
+
+			fmt = !is_key_root ? "%.*s" : ".key(%.*s)";
+			ret = asprintf(&path, fmt, (int)len, str);
+			if (ret == -1)
+				return NULL;
+
+		} else {
+
+			/* something complex, emit it */
+			path = fy_emit_node_to_string(fyna,
+				FYECF_MODE_FLOW_ONELINE | FYECF_WIDTH_INF |
+				FYECF_STRIP_LABELS	| FYECF_STRIP_TAGS |
+				FYECF_NO_ENDING_NEWLINE);
 			if (!path)
 				return NULL;
 
-			memcpy(path, str, len);
-			path[len] = '\0';
-
-		} else /* something complex, emit it */
-			path = fy_emit_node_to_string(fynp->key,
-				FYECF_MODE_FLOW_ONELINE | FYECF_WIDTH_INF |
-				FYECF_STRIP_LABELS	| FYECF_STRIP_TAGS);
+			if (is_key_root) {
+				old_path = path;
+				ret = asprintf(&new_path, ".key(%s)", path);
+				if (ret == -1) {
+					free(path);
+					return NULL;
+				}
+				free(old_path);
+				path = new_path;
+			}
+		}
 	}
 
 	return path;
@@ -4642,12 +4690,14 @@ char *fy_node_get_path(struct fy_node *fyn)
 	struct path_track *track, *newtrack;
 	char *path, *s, *path_mem;
 	size_t len;
+	struct fy_node *parent;
 
 	if (!fyn)
 		return NULL;
 
 	/* easy on the root */
-	if (!fyn->parent) {
+	parent = fy_node_get_document_parent(fyn);
+	if (!parent) {
 		path_mem = strdup("/");
 		return path_mem;
 	}
@@ -4663,7 +4713,7 @@ char *fy_node_get_path(struct fy_node *fyn)
 
 		len += strlen(path) + 1;
 
-		fyn = fyn->parent;
+		fyn = fy_node_get_document_parent(fyn);
 	}
 	len += 2;
 
@@ -5334,8 +5384,10 @@ fy_node_mapping_pair_insert_prepare(struct fy_node *fyn_map,
 	if (!fynp)
 		return NULL;
 
-	if (fyn_key)
-		fyn_key->parent = NULL;
+	if (fyn_key) {
+		fyn_key->parent = fyn_map;
+		fyn_key->key_root = true;
+	}
 	if (fyn_value)
 		fyn_value->parent = fyn_map;
 
@@ -5420,8 +5472,10 @@ int fy_node_mapping_remove(struct fy_node *fyn_map, struct fy_node_pair *fynp)
 	if (fyn_map->xl)
 		fy_accel_remove(fyn_map->xl, fynp->key);
 
-	if (fynp->key)
+	if (fynp->key) {
+		fynp->key->parent = NULL;
 		fynp->key->attached = false;
+	}
 
 	if (fynp->value) {
 		fynp->value->parent = NULL;
@@ -6808,8 +6862,11 @@ complete:
 		fynp->value = fyn;
 
 		/* set the parent of the node pair and value */
-		/* the key's parent is always NULL */
 		fynp->parent = fyn_parent;
+		if (fynp->key) {
+			fynp->key->parent = fyn_parent;
+			fynp->key->key_root = true;
+		}
 		if (fynp->value)
 			fynp->value->parent = fyn_parent;
 

@@ -2865,6 +2865,22 @@ fy_node_get_parent(struct fy_node *fyn)
 	FY_EXPORT;
 
 /**
+ * fy_node_get_document_parent() - Get the document parent node of a node
+ *
+ * Get the document parent node of a node. The document parent differs
+ * than the regular parent in that a key's root node of a mapping is not
+ * NULL, rather it points to the actual node parent.
+ *
+ * @fyn: The node
+ *
+ * Returns:
+ * The node's document parent, or NULL if fyn is the root
+ */
+struct fy_node *
+fy_node_get_document_parent(struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
  * fy_node_get_parent_address() - Get the path address of this node's parent
  *
  * Retrieve the given node's parent path address

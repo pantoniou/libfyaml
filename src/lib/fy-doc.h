@@ -57,6 +57,7 @@ struct fy_node {
 	bool has_meta : 1;
 	bool attached : 1;		/* when it's attached somewhere */
 	bool synthetic : 1;		/* node has been modified programmaticaly */
+	bool key_root : 1;		/* node is the root of key fy_node_get_parent() will return NULL */
 	void *meta;
 	struct fy_accel *xl;		/* mapping access accelerator */
 	union {
