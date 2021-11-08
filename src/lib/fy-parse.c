@@ -2646,7 +2646,10 @@ int fy_fetch_anchor_or_alias(struct fy_parser *fyp, int c)
 	handle.size0 = false;
 	handle.valid_anchor = true;
 
-	fyt = fy_token_queue(fyp, type, &handle);
+	if (type == FYTT_ALIAS)
+		fyt = fy_token_queue(fyp, type, &handle, NULL);
+	else
+		fyt = fy_token_queue(fyp, type, &handle);
 	fyp_error_check(fyp, fyt, err_out_rc,
 			"fy_token_queue() failed");
 

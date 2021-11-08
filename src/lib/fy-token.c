@@ -27,6 +27,8 @@
 #include "fy-utf8.h"
 #include "fy-emit-accum.h"
 
+#include "fy-walk.h"
+
 #include "fy-token.h"
 
 enum fy_scalar_style fy_token_scalar_style(struct fy_token *fyt)
@@ -122,6 +124,12 @@ void fy_token_clean_rl(struct fy_token_list *fytl, struct fy_token *fyt)
 		if (fyt->scalar.path_key_storage)
 			free(fyt->scalar.path_key_storage);
 		fyt->scalar.path_key_storage = NULL;
+		break;
+
+	case FYTT_ALIAS:
+		if (fyt->alias.expr)
+			fy_path_expr_free(fyt->alias.expr);
+		fyt->alias.expr = NULL;
 		break;
 
 	default:
@@ -473,6 +481,10 @@ struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_t
 
 	case FYTT_VERSION_DIRECTIVE:
 		fyt->version_directive.vers = *va_arg(ap, struct fy_version *);
+		break;
+
+	case FYTT_ALIAS:
+		fyt->alias.expr = va_arg(ap, struct fy_path_expr *);
 		break;
 
 	case FYTT_PE_MAP_KEY:

@@ -24,6 +24,7 @@
 extern const char *fy_token_type_txt[FYTT_COUNT];
 
 struct fy_document;
+struct fy_path_expr;
 
 static inline bool fy_token_type_is_sequence_start(enum fy_token_type type)
 {
@@ -127,6 +128,9 @@ struct fy_token {
 			int start_index;
 			int end_index;
 		} seq_slice;
+		struct {
+			struct fy_path_expr *expr;
+		} alias;
 	};
 };
 FY_TYPE_DECL_LIST(token);

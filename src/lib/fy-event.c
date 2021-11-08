@@ -418,7 +418,7 @@ fy_eventp_vcreate_internal(struct fy_eventp_list *recycled_list, struct fy_diag 
 			fyt_anchorp = &fye->scalar.anchor;
 			fyt_tagp = &fye->scalar.tag;
 		} else {
-			fyt = fy_token_create(FYTT_ALIAS, &handle);
+			fyt = fy_token_create(FYTT_ALIAS, &handle, NULL);
 			if (!fyt) {
 				fy_error(diag, "fy_token_create() failed for %s\n",
 						"ALIAS");
