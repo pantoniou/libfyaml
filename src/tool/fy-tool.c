@@ -301,7 +301,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		break;
 	case OPT_YPATH:
 		fprintf(fp, "\tParse and filter YAML with the ypath expression that results to /foo followed by /bar\n");
-		fprintf(fp, "\t$ %s --file input.yaml /foo,bar\n\t...\n", progname);
+		fprintf(fp, "\t$ %s --ypath /foo,bar input.yaml\n\t...\n", progname);
 		fprintf(fp, "\n");
 		break;
 	case OPT_SCAN_DUMP:
