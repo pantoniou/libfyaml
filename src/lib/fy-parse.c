@@ -5262,6 +5262,9 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fyp->document_has_content = false;
 			fyp->document_first_content_token = true;
 
+			/* explicit end indicator, no more directives checking */
+			fyp->had_directives = false;
+
 			fyt = fy_scan_remove_peek(fyp, fyt);
 			fyp_error_check(fyp, fyt, err_out,
 					"failed to peek token");
@@ -5287,6 +5290,8 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fyt->type == FYTT_TAG_DIRECTIVE) {
 
 			had_directives = true;
+			fyp->had_directives = true;
+
 			if (fyt->type == FYTT_VERSION_DIRECTIVE) {
 
 				rc = fy_parse_version_directive(fyp, fy_scan_remove(fyp, fyt), false);
@@ -5315,6 +5320,11 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 					!fyp_json_mode(fyp) ||
 						fyp->stream_has_content, err_out,
 					"JSON does not allow empty root content");
+
+			FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
+					!fyp->had_directives || fyp->document_has_content ||
+					!fyds->start_implicit, err_out,
+					"stream with directives without content");
 
 			rc = fy_parse_stream_end(fyp);
 			fyp_error_check(fyp, !rc, err_out,
@@ -5441,6 +5451,9 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fyp->document_has_content = false;
 			fyp->document_first_content_token = true;
 
+			/* reset directives */
+			fyp->had_directives = false;
+
 		} else {
 			fye->document_end.document_end = NULL;
 			fyds->end_implicit = true;
@@ -5451,6 +5464,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		if (!fyp->next_single_document) {
 			/* multi document mode */
 			fy_parse_state_set(fyp, FYPS_DOCUMENT_START);
+			fyp->had_directives = false;
 
 			/* and reset document state */
 			rc = fy_reset_document_state(fyp);
@@ -5477,6 +5491,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			    fyt->type == FYTT_DOCUMENT_END) {
 				fyp->document_has_content = false;
 				fyp->document_first_content_token = true;
+				fyp->had_directives = false;
 			}
 
 			fy_parse_state_set(fyp, fy_parse_state_pop(fyp));
@@ -6304,6 +6319,7 @@ int fy_parser_reset(struct fy_parser *fyp)
 	fyp->document_first_content_token = false;
 	fyp->bare_document_only = false;
 	fyp->stream_has_content = false;
+	fyp->had_directives = false;
 
 	assert(fyp->diag);
 	fyp->diag->on_error = false;
