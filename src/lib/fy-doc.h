@@ -274,6 +274,7 @@ struct fy_node *fy_node_iterator_next(struct fy_node_iterator *fyi, struct fy_no
 		if (__path) { \
 			__path_a = alloca(strlen(__path) + 1); \
 			strcpy(__path_a, __path); \
+			free(__path); \
 		} else { \
 			__path_a = alloca(1); \
 			__path_a[0] = '\0'; \
