@@ -49,6 +49,7 @@
 #define PREFER_RECURSIVE_DEFAULT	false
 #define YPATH_ALIASES_DEFAULT		false
 #define DISABLE_FLOW_MARKERS_DEFAULT	false
+#define DUMP_PATH_DEFAULT		false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -59,6 +60,7 @@
 #define OPT_SCAN_DUMP			1006
 #define OPT_PARSE_DUMP			1007
 #define OPT_YAML_VERSION_DUMP		1008
+#define OPT_COMPOSE			1009
 
 #define OPT_STRIP_LABELS		2000
 #define OPT_STRIP_TAGS			2001
@@ -74,6 +76,7 @@
 #define OPT_NULL_OUTPUT			2012
 #define OPT_YPATH_ALIASES		2013
 #define OPT_DISABLE_FLOW_MARKERS	2014
+#define OPT_DUMP_PATH			2015
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -106,6 +109,8 @@ static struct option lopts[] = {
 	{"ypath",		no_argument,		0,	OPT_YPATH },
 	{"scan-dump",		no_argument,		0,	OPT_SCAN_DUMP },
 	{"parse-dump",		no_argument,		0,	OPT_PARSE_DUMP },
+	{"compose",		no_argument,		0,	OPT_COMPOSE },
+	{"dump-path",		no_argument,		0,	OPT_DUMP_PATH },
 	{"yaml-version-dump",	no_argument,		0,	OPT_YAML_VERSION_DUMP },
 	{"strip-labels",	no_argument,		0,	OPT_STRIP_LABELS },
 	{"strip-tags",		no_argument,		0,	OPT_STRIP_TAGS },
@@ -249,6 +254,10 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--noexec                 : Do not execute the expression\n");
 	}
 
+	if (tool_mode == OPT_TOOL || tool_mode == OPT_COMPOSE) {
+		fprintf(fp, "\t--dump-path              : Dump the path while composing\n");
+	}
+
 	if (tool_mode == OPT_TOOL) {
 		fprintf(fp, "\t--dump                   : Dump mode, [arguments] are file names\n");
 		fprintf(fp, "\t--testsuite              : Testsuite mode, [arguments] are <file>s to output parse events\n");
@@ -257,6 +266,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--ypath                  : YPATH mode, [arguments] are <path>s, file names, outputs to stdout\n");
 		fprintf(fp, "\t--scan-dump              : scan-dump mode, [arguments] are file names\n");
 		fprintf(fp, "\t--parse-dump             : parse-dump mode, [arguments] are file names\n");
+		fprintf(fp, "\t--compose                : composer driver dump mode, [arguments] are file names\n");
 		fprintf(fp, "\t--yaml-version           : Information about supported libfyaml's YAML versions\n");
 	}
 
@@ -322,6 +332,17 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	case OPT_PARSE_DUMP:
 		fprintf(fp, "\tParse and dump YAML parser events (internal)\n");
 		fprintf(fp, "\n");
+		break;
+	case OPT_COMPOSE:
+		fprintf(fp, "\tParse and dump generated YAML document tree using the composer api\n");
+		fprintf(fp, "\t$ %s input.yaml\n\t...\n", progname);
+		fprintf(fp, "\n");
+		fprintf(fp, "\tParse and dump generated YAML document tree in block YAML form (and make whitespace visible)\n");
+		fprintf(fp, "\t$ %s --compose -V -mblock input.yaml\n\t...\n", progname);
+		fprintf(fp, "\n");
+		fprintf(fp, "\tParse and dump generated YAML document from the input string\n");
+		fprintf(fp, "\t$ %s --compose -mjson \">foo: bar\"\n", progname);
+		fprintf(fp, "\t{\n\t  \"foo\": \"bar\"\n\t}\n");
 		break;
 	case OPT_YAML_VERSION_DUMP:
 		fprintf(fp, "\tDisplay information about the YAML versions libfyaml supports)\n");
@@ -1127,6 +1148,199 @@ static void no_diag_output_fn(struct fy_diag *diag, void *user,
 	/* nothing */
 }
 
+struct composer_data {
+	struct fy_parser *fyp;
+	struct fy_document *fyd;
+	struct fy_emitter *emit;
+	bool null_output;
+	bool document_ready;
+	bool verbose;
+	bool single_document;
+};
+
+static enum fy_composer_return
+compose_process_event(struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path, void *userdata)
+{
+	struct composer_data *cd = userdata;
+	struct fy_document *fyd;
+	struct fy_path_component *parent, *last;
+	struct fy_node *fyn, *fyn_parent;
+	struct fy_node_pair *fynp;
+	int rc;
+
+	if (cd->verbose) {
+		fprintf(stderr, "%s: %c%c%c%c%c %3d - %-32s\n",
+				fy_event_type_get_text(fye->type),
+				fy_path_in_root(path) ? 'R' : '-',
+				fy_path_in_sequence(path) ? 'S' : '-',
+				fy_path_in_mapping(path) ? 'M' : '-',
+				fy_path_in_mapping_key(path) ? 'K' :
+					fy_path_in_mapping_value(path) ? 'V' : '-',
+				fy_path_is_collection_root(path) ? '/' : '-',
+				fy_path_depth(path),
+				fy_path_get_text_alloca(path));
+	}
+
+	switch (fye->type) {
+		/* nothing to do for those */
+	case FYET_NONE:
+	case FYET_STREAM_START:
+	case FYET_STREAM_END:
+		break;
+
+	case FYET_DOCUMENT_START:
+		if (cd->fyd) {
+			fy_document_destroy(cd->fyd);
+			cd->fyd = NULL;
+		}
+		cd->document_ready = false;
+
+		cd->fyd = fy_document_create_from_event(fyp, fye);
+		assert(cd->fyd);
+
+		break;
+
+	case FYET_DOCUMENT_END:
+		rc = fy_document_update_from_event(cd->fyd, fyp, fye);
+		assert(!rc);
+
+		cd->document_ready = true;
+
+		if (!cd->null_output && cd->fyd)
+			fy_emit_document(cd->emit, cd->fyd);
+
+		fy_document_destroy(cd->fyd);
+		cd->fyd = NULL;
+
+		/* on single document mode we stop here */
+		if (cd->single_document)
+			return FYCR_OK_STOP;
+		break;
+
+
+	case FYET_SCALAR:
+	case FYET_ALIAS:
+	case FYET_MAPPING_START:
+	case FYET_SEQUENCE_START:
+
+		fyd = cd->fyd;
+		assert(fyd);
+
+		fyn = fy_node_create_from_event(fyd, fyp, fye);
+		assert(fyn);
+
+		switch (fye->type) {
+		default:
+			/* XXX should now happen */
+			break;
+
+		case FYET_SCALAR:
+		case FYET_ALIAS:
+			last = NULL;
+			break;
+
+		case FYET_MAPPING_START:
+			last = fy_path_last_component(path);
+			assert(last);
+
+			fy_path_component_set_mapping_user_data(last, fyn);
+			fy_path_component_set_mapping_key_user_data(last, NULL);
+
+			break;
+
+		case FYET_SEQUENCE_START:
+
+			last = fy_path_last_component(path);
+			assert(last);
+
+			fy_path_component_set_sequence_user_data(last, fyn);
+			break;
+		}
+
+		/* parent */
+		parent = fy_path_last_not_collection_root_component(path);
+
+		if (fy_path_in_root(path)) {
+
+			rc = fy_document_set_root(cd->fyd, fyn);
+			assert(!rc);
+
+		} else if (fy_path_in_sequence(path)) {
+
+			assert(parent);
+			fyn_parent = fy_path_component_get_sequence_user_data(parent);
+			assert(fyn_parent);
+			assert(fy_node_is_sequence(fyn_parent));
+
+			rc = fy_node_sequence_add_item(fyn_parent, fyn);
+			assert(!rc);
+
+		} else {
+			/* only thing left */
+			assert(fy_path_in_mapping(path));
+
+			assert(parent);
+			fyn_parent = fy_path_component_get_mapping_user_data(parent);
+			assert(fyn_parent);
+			assert(fy_node_is_mapping(fyn_parent));
+
+			if (fy_path_in_mapping_key(path)) {
+
+				fynp = fy_node_pair_create_with_key(fyd, fyn_parent, fyn);
+				assert(fynp);
+
+				fy_path_component_set_mapping_key_user_data(parent, fynp);
+
+			} else {
+
+				assert(fy_path_in_mapping_value(path));
+
+				fynp = fy_path_component_get_mapping_key_user_data(parent);
+				assert(fynp);
+
+				rc = fy_node_pair_update_with_value(fynp, fyn);
+				if (rc)	/* this may happen normally */
+					goto err_out;
+
+				fy_path_component_set_mapping_key_user_data(parent, NULL);
+			}
+		}
+
+		break;
+
+	case FYET_MAPPING_END:
+		last = fy_path_last_component(path);
+		assert(last);
+
+		fyn = fy_path_component_get_mapping_user_data(last);
+		assert(fyn);
+		assert(fy_node_is_mapping(fyn));
+
+		rc = fy_node_update_from_event(fyn, fyp, fye);
+		assert(!rc);
+
+		break;
+
+	case FYET_SEQUENCE_END:
+		last = fy_path_last_component(path);
+		assert(last);
+
+		fyn = fy_path_component_get_sequence_user_data(last);
+		assert(fyn);
+		assert(fy_node_is_sequence(fyn));
+
+		rc = fy_node_update_from_event(fyn, fyp, fye);
+		assert(!rc);
+
+		break;
+	}
+
+	return FYCR_OK_CONTINUE;
+
+err_out:
+	return FYCR_ERROR;
+}
+
 int main(int argc, char *argv[])
 {
 	struct fy_parse_cfg cfg = {
@@ -1181,6 +1395,8 @@ int main(int argc, char *argv[])
 	bool stdin_input;
 	void *res_iter;
 	bool disable_flow_markers = false;
+	struct composer_data cd;
+	bool dump_path = DUMP_PATH_DEFAULT;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -1207,6 +1423,8 @@ int main(int argc, char *argv[])
 		tool_mode = OPT_SCAN_DUMP;
 	else if (!strcmp(progname, "fy-parse-dump"))
 		tool_mode = OPT_PARSE_DUMP;
+	else if (!strcmp(progname, "fy-compose"))
+		tool_mode = OPT_COMPOSE;
 	else if (!strcmp(progname, "fy-yaml-version-dump"))
 		tool_mode = OPT_YAML_VERSION_DUMP;
 	else
@@ -1375,6 +1593,7 @@ int main(int argc, char *argv[])
 		case OPT_YPATH:
 		case OPT_SCAN_DUMP:
 		case OPT_PARSE_DUMP:
+		case OPT_COMPOSE:
 		case OPT_YAML_VERSION_DUMP:
 			tool_mode = opt;
 			break;
@@ -1389,6 +1608,9 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_STREAMING:
 			streaming = true;
+			break;
+		case OPT_DUMP_PATH:
+			dump_path = true;
 			break;
 		case 'j':
 			cfg.flags &= ~(FYPCF_JSON_MASK << FYPCF_JSON_SHIFT);
@@ -1885,6 +2107,42 @@ int main(int argc, char *argv[])
 				goto cleanup;
 		}
 		break;
+
+	case OPT_COMPOSE:
+		if (optind >= argc) {
+			fprintf(stderr, "missing yaml file to dump\n");
+			goto cleanup;
+		}
+
+		memset(&cd, 0, sizeof(cd));
+		cd.fyp = fyp;
+		cd.emit = fye;
+		cd.null_output = null_output;
+		cd.single_document = false;
+		cd.verbose = dump_path;
+
+		count = 0;
+		for (i = optind; i < argc; i++) {
+			rc = set_parser_input(fyp, argv[i], false);
+			if (rc) {
+				fprintf(stderr, "failed to set parser input to '%s' for dump\n", argv[i]);
+				goto cleanup;
+			}
+
+			count++;
+		}
+
+		/* ignore errors for now */
+		rc = fy_parse_compose(fyp, compose_process_event, &cd);
+
+		/* NULL OK */
+		fy_document_destroy(cd.fyd);
+
+		if (rc || fy_parser_get_stream_error(fyp))
+			goto cleanup;
+
+		break;
+
 
 	}
 	exitcode = EXIT_SUCCESS;
