@@ -1507,6 +1507,10 @@ static void fy_emit_mapping_key_prolog(struct fy_emitter *emit, struct fy_emit_s
 		sc->flags |= DDNF_SIMPLE;
 		if (fyt_key && fyt_key->type == FYTT_SCALAR)
 			sc->flags |= DDNF_SIMPLE_SCALAR_KEY;
+	} else {
+		/* do not emit the ? in flow modes at all */
+		if (fy_emit_is_flow_mode(emit))
+			sc->flags |= DDNF_SIMPLE;
 	}
 
 	if (!fy_emit_is_oneline(emit))
