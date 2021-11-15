@@ -238,6 +238,9 @@ struct fy_document *
 fy_document_builder_load_document(struct fy_document_builder *fydb,
 				  struct fy_parser *fyp);
 
+struct fy_document *
+fy_parse_load_document_with_builder(struct fy_parser *fyp);
+
 enum fy_node_iterator_flags {
 	FYNIF_DEPTH_FIRST	= FY_BIT(0),	/* depth first iterator (only one supported for now) */
 	FYNIF_FOLLOW_KEYS	= FY_BIT(1),	/* follow any keys encountered */
