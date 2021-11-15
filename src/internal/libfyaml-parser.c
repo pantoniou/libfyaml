@@ -728,136 +728,220 @@ out:
 	return count > 0 ? 0 : -1;
 }
 
-static int
-stream_start(struct fy_composer *fyc)
-{
-	fprintf(stderr, "%s:\n", "+STR");
-	return 0;
-}
+struct composer_data {
+	struct fy_parser *fyp;
+	struct fy_document *fyd;
+	bool null_output;
+	bool document_ready;
+	bool single_document;
+};
 
-static int
-stream_end(struct fy_composer *fyc)
+static enum fy_composer_return
+process_event(struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path, void *userdata)
 {
-	fprintf(stderr, "%s:\n", "-STR");
-	return 0;
-}
-
-static int
-document_start(struct fy_composer *fyc, struct fy_document_state *fyds)
-{
-	fprintf(stderr, "%s:\n", "+DOC");
-	return 0;
-}
-
-static int
-document_end(struct fy_composer *fyc)
-{
-	fprintf(stderr, "%s:\n", "-DOC");
-	return 0;
-}
-
-static int
-scalar(struct fy_composer *fyc, struct fy_path *path, struct fy_token *tag, struct fy_token *fyt)
-{
+	struct composer_data *cd = userdata;
+	struct fy_document *fyd;
+	struct fy_path_component *parent, *last;
+	struct fy_node *fyn, *fyn_parent;
+	struct fy_node_pair *fynp;
 	char tbuf[80];
+	int rc;
 
-	fprintf(stderr, "%s: ! - %c%c%c %3d - %s - %s\n", "SCLR",
-			fy_path_is_root(path) ? 'R' : '-',
-			fy_path_in_mapping(path) ? 'M' : '-',
+	if (cd->null_output)
+		return FYCR_OK_CONTINUE;
+
+	fyp_info(fyp, "%s: %c%c%c%c%c %3d - %-32s: %s\n", fy_event_type_txt[fye->type],
+			fy_path_in_root(path) ? 'R' : '-',
 			fy_path_in_sequence(path) ? 'S' : '-',
-			fy_path_depth(path),
-			fy_path_get_text0(path), fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
-	return 0;
-}
-
-static int
-mapping_start(struct fy_composer *fyc, struct fy_path *path, struct fy_token *tag, struct fy_token *fyt)
-{
-	fprintf(stderr, "%s: { - %c%c%c %3d - %s\n", "+MAP",
-			fy_path_is_root(path) ? 'R' : '-',
 			fy_path_in_mapping(path) ? 'M' : '-',
-			fy_path_in_sequence(path) ? 'S' : '-',
+			fy_path_in_mapping_key(path) ? 'K' :
+				fy_path_in_mapping_value(path) ? 'V' : '-',
+			fy_path_is_collection_root(path) ? '/' : '-',
 			fy_path_depth(path),
-			fy_path_get_text0(path));
-	return 0;
+			fy_path_get_text_alloca(path),
+			fy_token_dump_format(fy_event_get_token(fye), tbuf, sizeof(tbuf)));
+
+	switch (fye->type) {
+		/* nothing to do for those */
+	case FYET_NONE:
+	case FYET_STREAM_START:
+	case FYET_STREAM_END:
+		break;
+
+	case FYET_DOCUMENT_START:
+		if (cd->fyd) {
+			fy_document_destroy(cd->fyd);
+			cd->fyd = NULL;
+		}
+		cd->document_ready = false;
+
+		cd->fyd = fy_document_create_from_event(fyp, fye);
+		fyp_error_check(fyp, cd->fyd, err_out,
+			"fy_document_create_from_event() failed");
+
+		break;
+
+	case FYET_DOCUMENT_END:
+		rc = fy_document_update_from_event(cd->fyd, fyp, fye);
+		fyp_error_check(fyp, !rc, err_out,
+			"fy_document_update_from_event() failed");
+
+		cd->document_ready = true;
+		/* on single document mode we stop here */
+		if (cd->single_document)
+			return FYCR_OK_STOP;
+		break;
+
+
+	case FYET_SCALAR:
+	case FYET_ALIAS:
+	case FYET_MAPPING_START:
+	case FYET_SEQUENCE_START:
+
+		fyd = cd->fyd;
+		assert(fyd);
+
+		fyn = fy_node_create_from_event(fyd, fyp, fye);
+		fyp_error_check(fyp, fyn, err_out,
+			"fy_node_create_from_event() failed");
+
+		switch (fye->type) {
+		default:
+			/* XXX should now happen */
+			break;
+
+		case FYET_SCALAR:
+		case FYET_ALIAS:
+			last = NULL;
+			break;
+
+		case FYET_MAPPING_START:
+			last = fy_path_last_component(path);
+			assert(last);
+
+			fy_path_component_set_mapping_user_data(last, fyn);
+			fy_path_component_set_mapping_key_user_data(last, NULL);
+
+			break;
+
+		case FYET_SEQUENCE_START:
+
+			last = fy_path_last_component(path);
+			assert(last);
+
+			fy_path_component_set_sequence_user_data(last, fyn);
+			break;
+		}
+
+		/* parent */
+		parent = fy_path_last_not_collection_root_component(path);
+
+		if (fy_path_in_root(path)) {
+
+			rc = fy_document_set_root(cd->fyd, fyn);
+			fyp_error_check(fyp, !rc, err_out,
+				"fy_document_set_root() failed");
+
+		} else if (fy_path_in_sequence(path)) {
+
+			assert(parent);
+			fyn_parent = fy_path_component_get_sequence_user_data(parent);
+			assert(fyn_parent);
+			assert(fy_node_is_sequence(fyn_parent));
+
+			rc = fy_node_sequence_add_item(fyn_parent, fyn);
+			fyp_error_check(fyp, !rc, err_out,
+					"fy_node_sequence_add_item() failed");
+
+		} else {
+			/* only thing left */
+			assert(fy_path_in_mapping(path));
+
+			assert(parent);
+			fyn_parent = fy_path_component_get_mapping_user_data(parent);
+			assert(fyn_parent);
+			assert(fy_node_is_mapping(fyn_parent));
+
+			if (fy_path_in_mapping_key(path)) {
+
+				fynp = fy_node_pair_create_with_key(fyd, fyn_parent, fyn);
+				fyp_error_check(fyp, fynp, err_out,
+						"fy_node_pair_create_with_key() failed");
+
+				fy_path_component_set_mapping_key_user_data(parent, fynp);
+
+			} else {
+
+				assert(fy_path_in_mapping_value(path));
+
+				fynp = fy_path_component_get_mapping_key_user_data(parent);
+				assert(fynp);
+
+				rc = fy_node_pair_update_with_value(fynp, fyn);
+				fyp_error_check(fyp, !rc, err_out,
+						"fy_node_pair_update_with_value() failed");
+
+				fy_path_component_set_mapping_key_user_data(parent, NULL);
+			}
+		}
+
+		break;
+
+	case FYET_MAPPING_END:
+		last = fy_path_last_component(path);
+		assert(last);
+
+		fyn = fy_path_component_get_mapping_user_data(last);
+		assert(fyn);
+		assert(fy_node_is_mapping(fyn));
+
+		rc = fy_node_update_from_event(fyn, fyp, fye);
+		fyp_error_check(fyp, !rc, err_out,
+			"fy_node_update_from_event() failed");
+
+		break;
+
+	case FYET_SEQUENCE_END:
+		last = fy_path_last_component(path);
+		assert(last);
+
+		fyn = fy_path_component_get_sequence_user_data(last);
+		assert(fyn);
+		assert(fy_node_is_sequence(fyn));
+
+		rc = fy_node_update_from_event(fyn, fyp, fye);
+		fyp_error_check(fyp, !rc, err_out,
+			"fy_node_update_from_event() failed");
+
+		break;
+	}
+
+	return FYCR_OK_CONTINUE;
+
+err_out:
+	return FYCR_ERROR;
 }
-
-static int
-mapping_end(struct fy_composer *fyc, struct fy_path *path, struct fy_token *fyt)
-{
-	fprintf(stderr, "%s: } - %c%c%c %3d - %s\n", "-MAP",
-			fy_path_is_root(path) ? 'R' : '-',
-			fy_path_in_mapping(path) ? 'M' : '-',
-			fy_path_in_sequence(path) ? 'S' : '-',
-			fy_path_depth(path),
-			fy_path_get_text0(path));
-	return 0;
-}
-
-static int
-sequence_start(struct fy_composer *fyc, struct fy_path *path, struct fy_token *tag, struct fy_token *fyt)
-{
-	fprintf(stderr, "%s: [ - %c%c%c %3d - %s\n", "+SEQ",
-			fy_path_is_root(path) ? 'R' : '-',
-			fy_path_in_mapping(path) ? 'M' : '-',
-			fy_path_in_sequence(path) ? 'S' : '-',
-			fy_path_depth(path),
-			 fy_path_get_text0(path));
-	return 0;
-}
-
-static int
-sequence_end(struct fy_composer *fyc, struct fy_path *path, struct fy_token *fyt)
-{
-	fprintf(stderr, "%s: ] - %c%c%c %3d - %s\n", "-SEQ",
-			fy_path_is_root(path) ? 'R' : '-',
-			fy_path_in_mapping(path) ? 'M' : '-',
-			fy_path_in_sequence(path) ? 'S' : '-',
-			fy_path_depth(path),
-			fy_path_get_text0(path));
-	return 0;
-}
-
-static const struct fy_composer_ops composer_ops = {
-	.stream_start = stream_start,
-	.stream_end = stream_end,
-	.document_start = document_start,
-	.document_end = document_end,
-	.scalar = scalar,
-	.mapping_start = mapping_start,
-	.mapping_end = mapping_end,
-	.sequence_start = sequence_start,
-	.sequence_end = sequence_end,
-};
-
-static const struct fy_composer_ops composer_null_output_ops = {
-};
 
 int do_compose(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort, bool null_output)
 {
-	struct fy_event *fye;
-	struct fy_composer_cfg cfg;
-	struct fy_composer *fyc;
+	struct composer_data cd;
 	unsigned int flags;
+	int rc;
 
 	flags = 0;
 	if (sort)
 		flags |= FYECF_SORT_KEYS;
 	flags |= FYECF_INDENT(indent) | FYECF_WIDTH(width);
 
-	memset(&cfg, 0, sizeof(cfg));
-	cfg.ops = !null_output ? &composer_ops : &composer_null_output_ops;
-	cfg.user = NULL;
-	cfg.diag = fy_parser_get_diag(fyp);
-	fyc = fy_composer_create(&cfg);
-	assert(fyc);
+	memset(&cd, 0, sizeof(cd));
+	cd.null_output = null_output;
+	cd.single_document = true;
 
-	while ((fye = fy_parser_parse(fyp)) != NULL) {
-		fy_composer_process_event(fyc, fyp, fye);
-		fy_parser_event_free(fyp, fye);
-	}
+	rc = fy_parse_compose(fyp, process_event, &cd);
+	if (rc == 0 && cd.fyd)
+		fy_document_default_emit_to_fp(cd.fyd, stdout);
 
-	fy_composer_destroy(fyc);
+	fy_document_destroy(cd.fyd);
 
 	return 0;
 }
