@@ -3328,6 +3328,17 @@ enum fy_node_style fy_node_get_style(struct fy_node *fyn)
 	return fyn ? fyn->style : FYNS_PLAIN;
 }
 
+bool fy_node_is_null(struct fy_node *fyn)
+{
+	if (!fyn)
+		return true;
+
+	if (fyn->type != FYNT_SCALAR)
+		return false;
+
+	return fyn->scalar == NULL;
+}
+
 bool fy_node_is_attached(struct fy_node *fyn)
 {
 	return fyn ? fyn->attached : false;
@@ -3683,6 +3694,34 @@ fy_node_mapping_lookup_value_by_simple_key(struct fy_node *fyn,
 	struct fy_node_pair *fynp;
 
 	fynp = fy_node_mapping_lookup_pair_by_simple_key(fyn, key, len);
+	return fynp ? fy_node_pair_value(fynp) : NULL;
+}
+
+struct fy_node_pair *
+fy_node_mapping_lookup_pair_by_null_key(struct fy_node *fyn)
+{
+	struct fy_node_pair *fynpi;
+
+	if (!fyn || fyn->type != FYNT_MAPPING)
+		return NULL;
+
+	/* no acceleration for NULLs */
+	for (fynpi = fy_node_pair_list_head(&fyn->mapping); fynpi;
+		fynpi = fy_node_pair_next(&fyn->mapping, fynpi)) {
+
+		if (fy_node_is_null(fynpi->key))
+			return fynpi;
+	}
+
+	return NULL;
+}
+
+struct fy_node *
+fy_node_mapping_lookup_value_by_null_key(struct fy_node *fyn)
+{
+	struct fy_node_pair *fynp;
+
+	fynp = fy_node_mapping_lookup_pair_by_null_key(fyn);
 	return fynp ? fy_node_pair_value(fynp) : NULL;
 }
 

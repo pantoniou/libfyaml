@@ -2597,6 +2597,21 @@ fy_node_is_alias(struct fy_node *fyn)
 }
 
 /**
+ * fy_node_is_null() - Check whether the node is a NULL
+ *
+ * Convenience method for checking whether a node is a NULL scalar..
+ * Note that a NULL node argument returns true...
+ *
+ * @fyn: The node
+ *
+ * Returns:
+ * true if the node is a NULL scalar, false otherwise
+ */
+bool
+fy_node_is_null(struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
  * fy_node_is_attached() - Check whether the node is attached
  *
  * Checks whether a node is attached in a document structure.
@@ -3638,6 +3653,38 @@ fy_node_mapping_lookup_pair_by_simple_key(struct fy_node *fyn,
 struct fy_node *
 fy_node_mapping_lookup_value_by_simple_key(struct fy_node *fyn,
 					   const char *key, size_t len)
+	FY_EXPORT;
+
+/**
+ * fy_node_mapping_lookup_pair_by_null_key() - Lookup a node pair in mapping that has a NULL key
+ *
+ * This method will return the node pair that has a NULL key.
+ * Note this method is not using the mapping accelerator
+ * and arguably NULL keys should not exist. Alas...
+ *
+ * @fyn: The mapping node
+ *
+ * Returns:
+ * The node pair with a NULL key, NULL otherwise
+ */
+struct fy_node_pair *
+fy_node_mapping_lookup_pair_by_null_key(struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
+ * fy_node_mapping_lookup_value_by_null_key() - Lookup a node value with a NULL key.
+ *
+ * Return the value of a node pair that has a NULL key.
+ *
+ * @fyn: The mapping node
+ *
+ * Returns:
+ * The value matching the null key, NULL otherwise.
+ * Note that the value may be NULL too, but for that pathological case
+ * use the node pair method instead.
+ */
+struct fy_node *
+fy_node_mapping_lookup_value_by_null_key(struct fy_node *fyn)
 	FY_EXPORT;
 
 /**
