@@ -741,6 +741,7 @@ struct fy_node_pair *fy_node_pair_alloc(struct fy_document *fyd)
 	fynp->key = NULL;
 	fynp->value = NULL;
 	fynp->fyd = fyd;
+	fynp->parent = NULL;
 	return fynp;
 }
 
@@ -6935,6 +6936,7 @@ complete:
 		/* append sequence */
 		fyn->parent = fyn_parent;
 		fy_node_list_add_tail(&c->fyn->sequence, fyn);
+		fyn->attached = true;
 		goto push;
 
 	case FYDBS_NODE:
