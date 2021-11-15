@@ -6033,6 +6033,13 @@ const char *fy_event_type_txt[] = {
 	[FYET_ALIAS]		= "=ALI",
 };
 
+const char *fy_event_type_get_text(enum fy_event_type type)
+{
+	if ((unsigned int)type >= ARRAY_SIZE(fy_event_type_txt))
+		return "*BAD";
+	return fy_event_type_txt[type];
+}
+
 struct fy_eventp *fy_parse_private(struct fy_parser *fyp)
 {
 	struct fy_eventp *fyep = NULL;
