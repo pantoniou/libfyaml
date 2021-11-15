@@ -58,6 +58,9 @@ struct fy_diag;
 struct fy_path_parser;
 struct fy_path_expr;
 struct fy_path_exec;
+struct fy_path_component;
+struct fy_path;
+
 
 #ifndef FY_BIT
 #define FY_BIT(x) (1U << (x))
@@ -6409,6 +6412,373 @@ fy_parse_event_create(struct fy_parser *fyp, enum fy_event_type type, ...)
  */
 struct fy_event *
 fy_parse_event_vcreate(struct fy_parser *fyp, enum fy_event_type type, va_list ap)
+	FY_EXPORT;
+
+/**
+ * enum fy_composer_return - The returns of the composer callback
+ *
+ * @FYCR_OK_CONTINUE: continue processing, event processed
+ * @FYCR_OK_STOP: stop processing, event processed
+ * @FYCR_OK_START_SKIP: start skip object(s), event processed
+ * @FYCR_OK_STOP_SKIP: stop skipping of objects, event processed
+ * @FYCR_ERROR: error, stop processing
+ */
+enum fy_composer_return {
+	FYCR_OK_CONTINUE = 0,
+	FYCR_OK_STOP = 1,
+	FYCR_OK_START_SKIP = 2,
+	FYCR_OK_STOP_SKIP = 3,
+	FYCR_ERROR = -1,
+};
+
+/**
+ * fy_composer_return_is_ok() - Check if the return code is OK
+ *
+ * Convenience method for checking if it's OK to continue
+ *
+ * @ret: the composer return to check
+ *
+ * Returns:
+ * true if non error or skip condition
+ */
+static inline bool
+fy_composer_return_is_ok(enum fy_composer_return ret)
+{
+	return ret == FYCR_OK_CONTINUE || ret == FYCR_OK_STOP;
+}
+
+/**
+ * typedef fy_parse_composer_cb - composer callback method
+ *
+ * This method is called by the fy_parse_compose() method
+ * when an event must be processed.
+ *
+ * @fyp: The parser
+ * @fye: The event
+ * @path: The path that the parser is processing
+ * @userdata: The user data of the fy_parse_compose() method
+ *
+ * Returns:
+ * fy_composer_return code telling the parser what to do
+ */
+typedef enum fy_composer_return
+(*fy_parse_composer_cb)(struct fy_parser *fyp, struct fy_event *fye,
+			struct fy_path *path, void *userdata);
+
+/**
+ * fy_parse_compose() - Parse using a compose callback
+ *
+ * Alternative parsing method using a composer callback.
+ *
+ * The parser will construct a path argument that is used
+ * by the callback to make intelligent decisions about
+ * creating a document and/or DOM.
+ *
+ * @fyp: The parser
+ * @cb: The callback that will be called
+ * @userdata: user pointer to pass to the callback
+ *
+ * Returns:
+ * 0 if no error occured
+ * -1 on error
+ */
+int
+fy_parse_compose(struct fy_parser *fyp, fy_parse_composer_cb cb,
+		 void *userdata)
+	FY_EXPORT;
+
+/**
+ * fy_path_component_is_mapping() - Check if the component is a mapping
+ *
+ * @fypc: The path component to check
+ *
+ * Returns:
+ * true if the path component is a mapping, false otherwise
+ */
+bool
+fy_path_component_is_mapping(struct fy_path_component *fypc)
+	FY_EXPORT;
+
+/**
+ * fy_path_component_is_sequence() - Check if the component is a sequence
+ *
+ * @fypc: The path component to check
+ *
+ * Returns:
+ * true if the path component is a sequence, false otherwise
+ */
+bool
+fy_path_component_is_sequence(struct fy_path_component *fypc)
+	FY_EXPORT;
+
+/**
+ * fy_path_component_sequence_get_index() - Get the index of sequence path component
+ *
+ * @fypc: The sequence path component to return it's index value
+ *
+ * Returns:
+ * >= 0 the sequence index
+ * -1 if the component is either not in the proper mode, or not a sequence
+ */
+int
+fy_path_component_sequence_get_index(struct fy_path_component *fypc)
+	FY_EXPORT;
+
+/**
+ * fy_path_component_mapping_get_scalar_key() - Get the scalar key of a mapping
+ *
+ * @fypc: The mapping path component to return it's scalar key
+ *
+ * Returns:
+ * a non NULL scalar or alias token if the mapping contains a scalar key
+ * NULL in case of an error, or if the component has a complex key
+ */
+struct fy_token *
+fy_path_component_mapping_get_scalar_key(struct fy_path_component *fypc)
+	FY_EXPORT;
+
+/**
+ * fy_path_component_mapping_get_complex_key() - Get the complex key of a mapping
+ *
+ * @fypc: The mapping path component to return it's complex key
+ *
+ * Returns:
+ * a non NULL document if the mapping contains a complex key
+ * NULL in case of an error, or if the component has a simple key
+ */
+struct fy_document *
+fy_path_component_mapping_get_complex_key(struct fy_path_component *fypc)
+	FY_EXPORT;
+
+/**
+ * fy_path_depth() - Get the depth of a path
+ *
+ * @fypp: The path to query
+ *
+ * Returns:
+ * The depth of the path, or -1 on error
+ */
+int
+fy_path_depth(struct fy_path *fypp)
+	FY_EXPORT;
+
+/**
+ * fy_path_parent() - Get the parent of a path
+ *
+ * Paths may contain parents when traversing complex keys.
+ * This method returns the immediate parent.
+ *
+ * @fypp: The path to return it's parent
+ *
+ * Returns:
+ * The path parent or NULL on error, if it doesn't exist
+ */
+struct fy_path *
+fy_path_parent(struct fy_path *fypp)
+	FY_EXPORT;
+
+/**
+ * fy_path_get_text() - Get the textual representation of a path
+ *
+ * Given a path, return a malloc'ed string which contains
+ * the textual representation of it.
+ *
+ * Note that during processing, complex key paths are simply
+ * indicative and not to be used for addressing.
+ *
+ * @fypp: The path to get it's textual representation
+ *
+ * Returns:
+ * The textual representation of the path, NULL on error.
+ * The string must be free'ed using free.
+ */
+char *
+fy_path_get_text(struct fy_path *fypp)
+	FY_EXPORT;
+
+#define fy_path_get_text_alloca(_fypp) \
+	FY_ALLOCA_COPY_FREE(fy_path_get_text((_fypp)), FY_NT)
+
+/**
+ * fy_path_in_root() - Check if the path is in the root of the document
+ *
+ * @fypp: The path
+ *
+ * Returns:
+ * true if the path is located within the root of the document
+ */
+bool
+fy_path_in_root(struct fy_path *fypp)
+	FY_EXPORT;
+
+/**
+ * fy_path_in_mapping() - Check if the path is in a mapping
+ *
+ * @fypp: The path
+ *
+ * Returns:
+ * true if the path is located within a mapping
+ */
+bool
+fy_path_in_mapping(struct fy_path *fypp)
+	FY_EXPORT;
+
+/**
+ * fy_path_in_sequence() - Check if the path is in a sequence
+ *
+ * @fypp: The path
+ *
+ * Returns:
+ * true if the path is located within a sequence
+ */
+bool
+fy_path_in_sequence(struct fy_path *fypp)
+	FY_EXPORT;
+
+/**
+ * fy_path_in_mapping_key() - Check if the path is in a mapping key state
+ *
+ * @fypp: The path
+ *
+ * Returns:
+ * true if the path is located within a mapping key state
+ */
+bool
+fy_path_in_mapping_key(struct fy_path *fypp)
+	FY_EXPORT;
+
+/**
+ * fy_path_in_mapping_key() - Check if the path is in a mapping value state
+ *
+ * @fypp: The path
+ *
+ * Returns:
+ * true if the path is located within a mapping value state
+ */
+bool
+fy_path_in_mapping_value(struct fy_path *fypp)
+	FY_EXPORT;
+
+/**
+ * fy_path_in_collection_root() - Check if the path is in a collection root
+ *
+ * A collection root state is when the path points to a sequence or mapping
+ * but the state does not allow setting keys, values or adding items.
+ *
+ * This occurs on MAPPING/SEQUENCE START/END events.
+ *
+ * @fypp: The path
+ *
+ * Returns:
+ * true if the path is located within a collectin root state
+ */
+bool
+fy_path_is_collection_root(struct fy_path *fypp)
+	FY_EXPORT;
+
+/**
+ * fy_path_component_get_mapping_user_data() - Return the userdata associated with the mapping
+ *
+ * @fypc: The path component
+ *
+ * Returns:
+ * The user data associated with the mapping, or NULL if not a mapping or the user data are NULL
+ */
+void *
+fy_path_component_get_mapping_user_data(struct fy_path_component *fypc)
+	FY_EXPORT;
+
+/**
+ * fy_path_component_get_mapping_key_user_data() - Return the userdata associated with the mapping key
+ *
+ * @fypc: The path component
+ *
+ * Returns:
+ * The user data associated with the mapping key, or NULL if not a mapping or the user data are NULL
+ */
+void *
+fy_path_component_get_mapping_key_user_data(struct fy_path_component *fypc)
+	FY_EXPORT;
+
+/**
+ * fy_path_component_get_sequence_data() - Return the userdata associated with the sequence
+ *
+ * @fypc: The path component
+ *
+ * Returns:
+ * The user data associated with the sequence, or NULL if not a sequence or the user data are NULL
+ */
+void *
+fy_path_component_get_sequence_user_data(struct fy_path_component *fypc)
+	FY_EXPORT;
+
+/**
+ * fy_path_component_set_mapping_user_data() - Set the user data associated with a mapping
+ *
+ * Note, no error condition if not a mapping
+ *
+ * @fypc: The path component
+ * @data: The data to set as mapping data
+ */
+void
+fy_path_component_set_mapping_user_data(struct fy_path_component *fypc, void *data)
+	FY_EXPORT;
+
+/**
+ * fy_path_component_set_mapping_key_user_data() - Set the user data associated with a mapping key
+ *
+ * Note, no error condition if not in a mapping key state
+ *
+ * @fypc: The path component
+ * @data: The data to set as mapping key data
+ */
+void
+fy_path_component_set_mapping_key_user_data(struct fy_path_component *fypc, void *data)
+	FY_EXPORT;
+
+/**
+ * fy_path_component_set_sequence_user_data() - Set the user data associated with a sequence
+ *
+ * Note, no error condition if not a sequence
+ *
+ * @fypc: The path component
+ * @data: The data to set as sequence data
+ */
+void
+fy_path_component_set_sequence_user_data(struct fy_path_component *fypc, void *data)
+	FY_EXPORT;
+
+/**
+ * fy_path_last_component() - Get the very last component of a path
+ *
+ * Returns the last component of a path.
+ *
+ * @fypp: The path
+ *
+ * Returns:
+ * The last path component (which may be a collection root component), or NULL
+ * if it does not exist
+ */
+struct fy_path_component *
+fy_path_last_component(struct fy_path *fypp)
+	FY_EXPORT;
+
+/**
+ * fy_path_last_not_collection_root_component() - Get the last non collection root component of a path
+ *
+ * Returns the last non collection root component of a path. This may not be the
+ * last component that is returned by fy_path_last_component().
+ *
+ * The difference is present on MAPPING/SEQUENCE START/END events where the
+ * last component is present but not usuable as a object parent.
+ *
+ * @fypp: The path
+ *
+ * Returns:
+ * The last non collection root component, or NULL if it does not exist
+ */
+struct fy_path_component *
+fy_path_last_not_collection_root_component(struct fy_path *fypp)
 	FY_EXPORT;
 
 #ifdef __cplusplus

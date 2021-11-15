@@ -757,6 +757,7 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 	struct fy_input *fyi, *fyin;
 	struct fy_token *fyt;
 
+	fy_composer_destroy(fyp->fyc);
 	fy_document_builder_destroy(fyp->fydb);
 
 	fy_parse_indent_list_recycle_all(fyp, &fyp->indent_stack);
@@ -6346,6 +6347,7 @@ err_out_rc:
 struct fy_event *fy_parser_parse(struct fy_parser *fyp)
 {
 	struct fy_eventp *fyep;
+	enum fy_composer_return ret;
 
 	if (!fyp)
 		return NULL;
@@ -6353,6 +6355,17 @@ struct fy_event *fy_parser_parse(struct fy_parser *fyp)
 	fyep = fy_parse_private(fyp);
 	if (!fyep)
 		return NULL;
+
+	if (fyp->fyc) {
+		ret = fy_composer_process_event(fyp->fyc, fyp, &fyep->e);
+		if (ret == FYCR_ERROR) {
+			fyp->stream_error = true;
+			fy_parse_eventp_recycle(fyp, fyep);
+			return NULL;
+		}
+		/* note that the stop should be handled by
+		 * an out of band mechanism */
+	}
 
 	return &fyep->e;
 }
@@ -6376,4 +6389,112 @@ enum fy_parse_cfg_flags fy_parser_get_cfg_flags(const struct fy_parser *fyp)
 struct fy_document_state *fy_parser_get_document_state(struct fy_parser *fyp)
 {
 	return fyp ? fyp->current_document_state : NULL;
+}
+
+static enum fy_composer_return
+parse_process_event(struct fy_composer *fyc, struct fy_path *path, struct fy_parser *fyp, struct fy_event *fye)
+{
+	if (!fyp->fyc_cb)
+		return 0;
+
+	return fyp->fyc_cb(fyp, fye, path, fy_composer_get_cfg_userdata(fyc));
+}
+
+static const struct fy_composer_ops parser_composer_ops = {
+	.process_event = parse_process_event,
+};
+
+int fy_parse_set_composer(struct fy_parser *fyp, fy_parse_composer_cb cb, void *userdata)
+{
+	struct fy_composer_cfg ccfg;
+
+	if (!fyp)
+		return -1;
+
+	/* must not be in the middle of something */
+	fyp_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
+			err_out, "cannot change composer state at state '%s'",
+				state_txt[fyp->state]);
+
+	/* clear */
+	if (!cb) {
+		if (fyp->fyc) {
+			fy_composer_destroy(fyp->fyc);
+			fyp->fyc = NULL;
+		}
+		fyp->fyc_cb = NULL;
+		return 0;
+	}
+
+	/* already exists */
+	if (fyp->fyc) {
+		fyp->fyc_cb = cb;
+		return 0;
+	}
+
+	/* prepare the composer configuration */
+	memset(&ccfg, 0, sizeof(ccfg));
+	ccfg.ops = &parser_composer_ops;
+	ccfg.userdata = userdata;
+	ccfg.diag = fy_parser_get_diag(fyp);
+	fyp->fyc = fy_composer_create(&ccfg);
+	fyp_error_check(fyp, fyp->fyc, err_out,
+			"fy_composer_create() failed");
+
+	fyp->fyc_cb = cb;
+
+	return 0;
+err_out:
+	return -1;
+}
+
+int fy_parse_compose(struct fy_parser *fyp, fy_parse_composer_cb cb, void *userdata)
+{
+	struct fy_eventp *fyep;
+	enum fy_composer_return ret;
+	int rc;
+
+	if (!fyp || !cb)
+		return -1;
+
+	/* set the composer callback */
+	rc = fy_parse_set_composer(fyp, cb, userdata);
+	fyp_error_check(fyp, !rc, err_out,
+			"fy_parse_set_composer() failed\n");
+
+	/* insane but check anyway */
+	assert(fyp->fyc);
+
+	/* pump events */
+	rc = 0;
+	while ((fyep = fy_parse_private(fyp)) != NULL) {
+
+		/* call the composer */
+		ret = fy_composer_process_event(fyp->fyc, fyp, &fyep->e);
+		fy_parse_eventp_recycle(fyp, fyep);
+
+		/* on error stop */
+		if (ret == FYCR_ERROR) {
+			fyp->stream_error = true;
+			rc = -1;
+			break;
+		}
+
+		/* on normal requested stop, stop */
+		if (ret == FYCR_OK_STOP)
+			break;
+	}
+
+	/* reset the parser; the composer clear must always succeed */
+	fy_parser_reset(fyp);
+
+	/* clear composer */
+	rc = fy_parse_set_composer(fyp, NULL, NULL);
+	fyp_error_check(fyp, !rc, err_out,
+			"fy_parse_set_composer() failed\n");
+
+	return rc;
+
+err_out:
+	return -1;
 }

@@ -36,43 +36,61 @@ struct fy_document_builder;
 #define FY_PATH_MAPPING_SHORT_KEY	32
 
 struct fy_path_mapping_state {
-	bool got_key : 1;
-	bool is_complex_key : 1;
+	bool await_key : 1;
 	bool accumulating_complex_key : 1;
-	char buf[FY_PATH_MAPPING_SHORT_KEY];	/* keep short keys without allocation */
-	const char *text;
-	size_t size;
-	char *text_storage;
-
+	bool has_key : 1;	/* has a key */
+	bool is_complex_key : 1;
+	bool complex_key_complete : 1;
+	union {
+		struct fy_token *scalar_key;
+		struct fy_document *complex_key;
+	};
+	void *key_user_data;
 };
 
 struct fy_path_sequence_state {
 	int idx;
-	char buf[22];	/* enough for 64 bit sequence numbers */
-	size_t buflen;
 };
 
 struct fy_path_component {
 	struct list_head node;
-	struct fy_emit_accum_state start;
 	enum fy_path_component_type type;
 	union {
 		struct fy_path_mapping_state map;
 		struct fy_path_sequence_state seq;
 	};
+	void *user_data;
 };
 FY_TYPE_DECL_LIST(path_component);
 
+static inline bool
+fy_path_component_is_collection_root(struct fy_path_component *fypc)
+{
+	if (!fypc)
+		return false;
+
+	switch (fypc->type) {
+	case FYPCT_NONE:
+		break;
+	case FYPCT_SEQ:
+		return fypc->seq.idx < 0;
+	case FYPCT_MAP:
+		return fypc->map.await_key && !fypc->map.has_key && !fypc->map.complex_key_complete;
+	}
+
+	return false;
+}
+
+FY_TYPE_FWD_DECL_LIST(path);
 struct fy_path {
+	struct list_head node;
 	struct fy_path_component_list recycled_component;
 	struct fy_path_component_list components;
-	struct fy_emit_accum ea;
-	char ea_inplace_buf[256];	/* the in place accumulator buffer before allocating */
 	struct fy_document_builder *fydb;	/* for complex keys */
+	struct fy_path *parent;			/* when we have a parent */
 };
+FY_TYPE_DECL_LIST(path);
 
-int fy_path_setup(struct fy_path *fypp);
-void fy_path_cleanup(struct fy_path *fypp);
 struct fy_path *fy_path_create(void);
 void fy_path_destroy(struct fy_path *fypp);
 
@@ -87,32 +105,5 @@ void fy_path_component_clear_state(struct fy_path_component *fypc);
 
 struct fy_path_component *fy_path_component_create_mapping(struct fy_path *fypp);
 struct fy_path_component *fy_path_component_create_sequence(struct fy_path *fypp);
-
-
-struct fy_path_component *fy_path_component_create_mapping(struct fy_path *fypp);
-struct fy_path_component *fy_path_component_create_sequence(struct fy_path *fypp);
-
-void fy_path_component_set_tag(struct fy_path_component *fypc, struct fy_token *tag);
-void fy_path_component_set_anchor(struct fy_path_component *fypc, struct fy_token *anchor);
-
-bool fy_path_component_is_complete(struct fy_path_component *fypc);
-
-int fy_path_component_build_text(struct fy_path_component *fypc, void *arg);
-const char *fy_path_component_get_text(struct fy_path_component *fypc, size_t *lenp);
-const char *fy_path_component_get_text0(struct fy_path_component *fypc);
-
-int fy_path_rebuild(struct fy_path *fypp);
-
-const char *fy_path_get_text(struct fy_path *fypp, size_t *lenp);
-const char *fy_path_get_text0(struct fy_path *fypp);
-
-bool fy_path_is_root(struct fy_path *fypp);
-bool fy_path_in_sequence(struct fy_path *fypp);
-bool fy_path_in_mapping(struct fy_path *fypp);
-
-int fy_path_depth(struct fy_path *fypp);
-
-struct fy_document *
-fy_parse_load_document_with_builder(struct fy_parser *fyp);
 
 #endif

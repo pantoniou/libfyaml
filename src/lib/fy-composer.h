@@ -31,33 +31,29 @@ struct fy_event;
 struct fy_eventp;
 
 struct fy_composer_ops {
-	int (*stream_start)(struct fy_composer *fyc);
-	int (*stream_end)(struct fy_composer *fyc);
-	int (*document_start)(struct fy_composer *fyc, struct fy_document_state *fyds);
-	int (*document_end)(struct fy_composer *fyc);
-	int (*scalar)(struct fy_composer *fyc, struct fy_path *path, struct fy_token *tag, struct fy_token *fyt);
-	int (*mapping_start)(struct fy_composer *fyc, struct fy_path *path, struct fy_token *tag, struct fy_token *fyt);
-	int (*mapping_end)(struct fy_composer *fyc, struct fy_path *path, struct fy_token *fyt);
-	int (*sequence_start)(struct fy_composer *fyc, struct fy_path *path, struct fy_token *tag, struct fy_token *fyt);
-	int (*sequence_end)(struct fy_composer *fyc, struct fy_path *path, struct fy_token *fyt);
+	/* single process event callback */
+	enum fy_composer_return (*process_event)(struct fy_composer *fyc, struct fy_path *path, struct fy_parser *fyp, struct fy_event *fye);
 };
 
 struct fy_composer_cfg {
 	const struct fy_composer_ops *ops;
-	void *user;
+	void *userdata;
 	struct fy_diag *diag;
 };
 
 struct fy_composer {
 	struct fy_composer_cfg cfg;
-	struct fy_path fypp;
+	struct fy_path_list paths;
 };
 
 struct fy_composer *fy_composer_create(struct fy_composer_cfg *cfg);
 void fy_composer_destroy(struct fy_composer *fyc);
 int fy_composer_process_event(struct fy_composer *fyc, struct fy_parser *fyp, struct fy_event *fye);
 
-int fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp, struct fy_eventp *fyep);
+struct fy_composer_cfg *fy_composer_get_cfg(struct fy_composer *fyc);
+void *fy_composer_get_cfg_userdata(struct fy_composer *fyc);
+struct fy_diag *fy_composer_get_diag(struct fy_composer *fyc);
 
+int fy_composer_parse(struct fy_composer *fyc, struct fy_parser *fyp);
 
 #endif

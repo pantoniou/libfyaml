@@ -31,9 +31,11 @@ struct fy_composer *
 fy_composer_create(struct fy_composer_cfg *cfg)
 {
 	struct fy_composer *fyc;
-	int rc;
+	struct fy_path *fypp;
 
-	if (!cfg || !cfg->ops)
+	/* verify configuration and mandatory ops */
+	if (!cfg || !cfg->ops ||
+	    !cfg->ops->process_event)
 		return NULL;
 
 	fyc = malloc(sizeof(*fyc));
@@ -41,9 +43,12 @@ fy_composer_create(struct fy_composer_cfg *cfg)
 		return NULL;
 	memset(fyc, 0, sizeof(*fyc));
 	fyc->cfg = *cfg;
-	rc = fy_path_setup(&fyc->fypp);
-	if (rc)
+
+	fy_path_list_init(&fyc->paths);
+	fypp = fy_path_create();
+	if (!fypp)
 		goto err_no_path;
+	fy_path_list_add_tail(&fyc->paths, fypp);
 
 	return fyc;
 
@@ -55,325 +60,355 @@ err_no_path:
 
 void fy_composer_destroy(struct fy_composer *fyc)
 {
+	struct fy_path *fypp;
+
 	if (!fyc)
 		return;
 
 	fy_diag_unref(fyc->cfg.diag);
-	fy_path_cleanup(&fyc->fypp);
+	while ((fypp = fy_path_list_pop(&fyc->paths)) != NULL)
+		fy_path_destroy(fypp);
 	free(fyc);
 }
 
-int fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp, struct fy_eventp *fyep)
+static enum fy_composer_return
+fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp,
+				  struct fy_event *fye, struct fy_path *fypp)
 {
 	const struct fy_composer_ops *ops;
-	struct fy_path *fypp;
+	struct fy_eventp *fyep;
 	struct fy_path_component *fypc, *fypc_last;
-	struct fy_token *fyt, *tag, *anchor;
+	struct fy_path *fyppt;
 	struct fy_document *fyd;
-	bool is_collection, is_map, is_start, is_complete;
+	bool is_collection, is_map, is_start, is_end;
 	char tbuf[80] __attribute__((__unused__));
-	const char *text;
-	size_t len;
-	int rc;
+	int rc = 0;
+	enum fy_composer_return ret;
+	bool stop_req = false;
 
 	assert(fyc);
 	assert(fyp);
-	assert(fyep);
+	assert(fye);
+	assert(fypp);
+
+	fyep = container_of(fye, struct fy_eventp, e);
 
 	ops = fyc->cfg.ops;
 	assert(ops);
 
-	fypp = &fyc->fypp;
-
 	rc = 0;
 
-	switch (fyep->e.type) {
+	switch (fye->type) {
 	case FYET_MAPPING_START:
-		fyt = fyep->e.mapping_start.mapping_start;
-		tag = fyep->e.mapping_start.tag;
-		anchor = fyep->e.mapping_start.anchor;
 		is_collection = true;
 		is_start = true;
+		is_end = false;
 		is_map = true;
 		break;
 
 	case FYET_MAPPING_END:
-		fyt = fyep->e.mapping_end.mapping_end;
-		tag = NULL;
-		anchor = NULL;
 		is_collection = true;
 		is_start = false;
+		is_end = true;
 		is_map = true;
 		break;
 
 	case FYET_SEQUENCE_START:
-		fyt = fyep->e.sequence_start.sequence_start;
-		tag = fyep->e.sequence_start.tag;
-		anchor = fyep->e.sequence_start.anchor;
 		is_collection = true;
 		is_start = true;
+		is_end = false;
 		is_map = false;
 		break;
 
 	case FYET_SEQUENCE_END:
-		fyt = fyep->e.sequence_end.sequence_end;
-		tag = NULL;
-		anchor = NULL;
 		is_collection = true;
 		is_start = false;
+		is_end = true;
 		is_map = false;
 		break;
 
 	case FYET_SCALAR:
-		fyt = fyep->e.scalar.value;
-		tag = fyep->e.scalar.tag;
-		anchor = fyep->e.scalar.anchor;
 		is_collection = false;
 		is_start = true;
+		is_end = true;
 		is_map = false;
 		break;
 
 	case FYET_ALIAS:
-		fyt = fyep->e.alias.anchor;
-		tag = NULL;
-		anchor = NULL;
 		is_collection = false;
 		is_start = true;
+		is_end = true;
 		is_map = false;
 		break;
 
 	case FYET_STREAM_START:
-		if (ops->stream_start)
-			return ops->stream_start(fyc);
-		return 0;
-
 	case FYET_STREAM_END:
-		if (ops->stream_end)
-			return ops->stream_end(fyc);
-		return 0;
-
 	case FYET_DOCUMENT_START:
-		if (ops->document_start)
-			return ops->document_start(fyc, fyep->e.document_start.document_state);
-		return 0;
-
 	case FYET_DOCUMENT_END:
-		if (ops->document_end)
-			return ops->document_end(fyc);
-		return 0;
+		// fprintf(stderr, "%s:%d process_event\n", __FILE__, __LINE__);
+		return ops->process_event(fyc, fypp, fyp, fye);
 
 	default:
 		// DBG(fyp, "ignoring\n");
-		return 0;
+		return FYCR_OK_CONTINUE;
 	}
-
-	/* unused for now */
-	(void)anchor;
-
-	is_complete = true;
 
 	fypc_last = fy_path_component_list_tail(&fypp->components);
 
 	// DBG(fyp, "%s: start - %s\n", fy_path_get_text0(fypp), fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
 
-	if (fypc_last && fypc_last->type == FYPCT_MAP && fypc_last->map.accumulating_complex_key) {
+	if (fy_path_component_is_mapping(fypc_last) && fypc_last->map.accumulating_complex_key) {
 
 		// DBG(fyp, "accumulating for complex key\n");
+		// fprintf(stderr, "accumulating for complex key %s\n",
+		//		fy_token_dump_format(fy_event_get_token(fye), tbuf, sizeof(tbuf)));
+
+		/* get the next one */
+		fyppt = fy_path_next(&fyc->paths, fypp);
+		assert(fyppt);
+		assert(fyppt != fypp);
+		assert(fyppt->parent == fypp);
+
+		/* and pass along */
+		ret = fy_composer_process_event_private(fyc, fyp, fye, fyppt);
+		if (!fy_composer_return_is_ok(ret)) {
+			/* XXX TODO handle skip */
+			return ret;
+		}
+		if (!stop_req)
+			stop_req = ret == FYCR_OK_STOP;
 
 		rc = fy_document_builder_process_event(fypp->fydb, fyp, fyep);
 		if (rc == 0) {
 			// DBG(fyp, "accumulating still\n");
-			return 0;
+			// fprintf(stderr, "accumulating still %s\n",
+			//		fy_token_dump_format(fy_event_get_token(fye), tbuf, sizeof(tbuf)));
+			return FYCR_OK_CONTINUE;
 		}
-		if (rc < 0) {
-			// DBG(fyp, "document build error\n");
-			return -1;
-		}
+		fyc_error_check(fyc, rc > 0, err_out,
+				"fy_document_builder_process_event() failed\n");
+
+		// fprintf(stderr, "accumulating complete %s\n",
+		//		fy_token_dump_format(fy_event_get_token(fye), tbuf, sizeof(tbuf)));
 
 		// DBG(fyp, "accumulation complete\n");
 
 		/* get the document */
 		fyd = fy_document_builder_take_document(fypp->fydb);
-		assert(fyd);
+		fyc_error_check(fyc, fyd, err_out,
+				"fy_document_builder_take_document() failed\n");
 
-		fypc_last->map.got_key = true;
 		fypc_last->map.is_complex_key = true;
 		fypc_last->map.accumulating_complex_key = false;
+		fypc_last->map.complex_key = fyd;
+		fypc_last->map.has_key = true;
+		fypc_last->map.await_key = false;
+		fypc_last->map.complex_key_complete = true;
 
-		rc = fy_path_component_build_text(fypc_last, fyd);
-		if (rc)
-			abort();
+		fyppt = fy_path_list_pop_tail(&fyc->paths);
+		assert(fyppt);
+
+		fy_path_destroy(fyppt);
 
 		// DBG(fyp, "%s: %s complex KEY\n", __func__, fy_path_get_text0(fypp));
 
-		/* and destroy the document immediately */
-		fy_document_destroy(fyd);
+		fyc_error_check(fyc, rc >= 0, err_out,
+				"fy_path_component_build_text() failed\n");
 
-		if (rc < 0) {
-			// DBG(fyp, "%s: %s fy_path_component_build_text() failure\n", __func__, fy_path_get_text0(fypp));
-			return -1;
+		return !stop_req ? FYCR_OK_CONTINUE : FYCR_OK_STOP;
+	}
+
+	/* start of something on a mapping */
+	if (is_start && fy_path_component_is_mapping(fypc_last) && fypc_last->map.await_key && is_collection) {
+
+		/* non scalar key case */
+		// DBG(fyp, "Non scalar key - using document builder\n");
+		if (!fypp->fydb) {
+			fypp->fydb = fy_document_builder_create(&fyp->cfg);
+			fyc_error_check(fyc, fypp->fydb, err_out,
+					"fy_document_builder_create() failed\n");
 		}
 
-		// append to the string path
-		fy_emit_accum_rewind_state(&fypp->ea, &fypc_last->start);
-		text = fy_path_component_get_text(fypc_last, &len);
-		assert(text);
-		fy_emit_accum_utf8_put_raw(&fypp->ea, '/');
-		fy_emit_accum_utf8_write_raw(&fypp->ea, text, len);
+		/* start with this document state */
+		rc = fy_document_builder_set_in_document(fypp->fydb, fy_parser_get_document_state(fyp), true);
+		fyc_error_check(fyc, !rc, err_out,
+				"fy_document_builder_set_in_document() failed\n");
 
-		return 0;
-	}
+		// fprintf(stderr, "initial complex key %s\n",
+		//		fy_token_dump_format(fy_event_get_token(fye), tbuf, sizeof(tbuf)));
 
-	if (fypc_last && is_start) {
-		switch (fypc_last->type) {
-		case FYPCT_MAP:
-			/* if there's no key set, set it now (and mark as non-complete) */
-			// DBG(fyp, "map.got_key=%s\n", fypc_last->map.got_key ? "true" : "false");
-			if (fypc_last->map.got_key) {
-				/* XXX maybe count here? */
-				break;
-			}
-			if (is_collection) {
-				// DBG(fyp, "Non scalar key - using document builder\n");
-				if (!fypp->fydb) {
-					fypp->fydb = fy_document_builder_create(&fyp->cfg);
-					assert(fypp->fydb);
-				}
+		/* and pass the current event; must return 0 since we know it's a collection start */
+		rc = fy_document_builder_process_event(fypp->fydb, fyp, fyep);
+		fyc_error_check(fyc, !rc, err_out,
+				"fy_document_builder_process_event() failed\n");
 
-				/* start with this document state */
-				rc = fy_document_builder_set_in_document(fypp->fydb, fy_parser_get_document_state(fyp), true);
-				assert(!rc);
+		fypc_last->map.is_complex_key = true;
+		fypc_last->map.accumulating_complex_key = true;
+		fypc_last->map.complex_key = NULL;
+		fypc_last->map.complex_key_complete = false;
 
-				/* and pass the current event; must return 0 since we know it's a collection start */
-				rc = fy_document_builder_process_event(fypp->fydb, fyp, fyep);
-				assert(!rc);
+		/* create new path */
+		fyppt = fy_path_create();
+		fyc_error_check(fyc, fyppt, err_out,
+				"fy_path_create() failed\n");
 
-				is_complete = false;
-				fypc_last->map.is_complex_key = true;
-				fypc_last->map.accumulating_complex_key = true;
-			} else {
-				// DBG(fyp, "scalar key: %s\n", fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
-				fypc_last->map.got_key = true;
-				fypc_last->map.is_complex_key = false;
+		/* append it to the end */
+		fyppt->parent = fypp;
+		fy_path_list_add_tail(&fyc->paths, fyppt);
 
-				rc = fy_path_component_build_text(fypc_last, fyt);
-				assert(!rc);
-
-				// DBG(fyp, "%s: %s KEY %s\n", __func__, fy_path_get_text0(fypp), fy_token_get_scalar_path_key0(fyt) ? : "<null>");
-				is_complete = false;
-
-				// append to the string path
-				fy_emit_accum_rewind_state(&fypp->ea, &fypc_last->start);
-				text = fy_path_component_get_text(fypc_last, &len);
-				assert(text);
-				fy_emit_accum_utf8_put_raw(&fypp->ea, '/');
-				fy_emit_accum_utf8_write_raw(&fypp->ea, text, len);
-			}
-			break;
-
-		case FYPCT_SEQ:
-			if (fypc_last->seq.idx < 0)
-				fypc_last->seq.idx = 0;
-			else
-				fypc_last->seq.idx++;
-
-			rc = fy_path_component_build_text(fypc_last, &fypc_last->seq.idx);
-			assert(!rc);
-
-			// DBG(fyp, "%s: %s SEQ next %d\n", __func__, fy_path_get_text0(fypp), fypc_last->seq.idx);
-			fy_emit_accum_rewind_state(&fypp->ea, &fypc_last->start);
-			text = fy_path_component_get_text(fypc_last, &len);
-			assert(text);
-			fy_emit_accum_utf8_put_raw(&fypp->ea, '/');
-			fy_emit_accum_utf8_write_raw(&fypp->ea, text, len);
-			break;
-
-		case FYPCT_NONE:
-			assert(0);
-			break;
+		/* and pass along */
+		ret = fy_composer_process_event_private(fyc, fyp, fye, fyppt);
+		if (!fy_composer_return_is_ok(ret)) {
+			/* XXX TODO handle skip */
+			return ret;
 		}
+		if (!stop_req)
+			stop_req = ret == FYCR_OK_STOP;
+
+		return !stop_req ? FYCR_OK_CONTINUE : FYCR_OK_STOP;
 	}
 
-	/* not complete yet */
-	if (!is_complete) {
-		// DBG(fyp, "%s: not-complete\n", fy_path_get_text0(fypp));
-		return 0;
+	if (is_start && fy_path_component_is_sequence(fypc_last)) {	/* start in a sequence */
+
+		if (fypc_last->seq.idx < 0)
+			fypc_last->seq.idx = 0;
+		else
+			fypc_last->seq.idx++;
 	}
 
-	/* collection start */
 	if (is_collection && is_start) {
-		fypc = is_map ? fy_path_component_create_mapping(fypp) : fy_path_component_create_sequence(fypp);
-		assert(fypc);
+
+		/* collection start */
+		if (is_map) {
+			fypc = fy_path_component_create_mapping(fypp);
+			fyc_error_check(fyc, fypc, err_out,
+					"fy_path_component_create_mapping() failed\n");
+		} else {
+			fypc = fy_path_component_create_sequence(fypp);
+			fyc_error_check(fyc, fypc, err_out,
+					"fy_path_component_create_sequence() failed\n");
+		}
 
 		/* append to the tail */
 		fy_path_component_list_add_tail(&fypp->components, fypc);
 
-		/* save state of path */
-		fy_emit_accum_get_state(&fypp->ea, &fypc->start);
+	} else if (is_collection && is_end) {
 
-		if (fypc_last && fypc_last->type == FYPCT_MAP && fypc_last->map.got_key) {
-			// DBG(fyp, "%s: clear got_key %p\n", fy_path_get_text0(fypp), fypc_last);
-			fypc_last->map.got_key = false;
-		}
-
-		// DBG(fyp, "%s: push %p\n", fy_path_get_text0(fypp), fypc);
-
-		if (is_map) {
-			if (ops->mapping_start)
-				return ops->mapping_start(fyc, fypp, tag, fyt);
-		} else {
-			if (ops->sequence_start)
-				return ops->sequence_start(fyc, fypp, tag, fyt);
-		}
-	}
-
-	if (!is_collection) {
-		// DBG(fyp, "%s: scalar %s\n", fy_path_get_text0(fypp), fy_token_get_scalar_path_key0(fyt) ? : "<null>");
-
-		if (ops->scalar)
-			rc = ops->scalar(fyc, fypp, tag, fyt);
-
-		if (fypc_last && fypc_last->type == FYPCT_MAP && fypc_last->map.got_key) {
-			// DBG(fyp, "%s: clear got_key %p\n", fy_path_get_text0(fypp), fypc_last);
-			fypc_last->map.got_key = false;
-		}
-
-	}
-
-	/* collection end */
-	if (is_collection && !is_start) {
-
-		fypc = fy_path_component_list_pop_tail(&fypp->components);
-		assert(fypc);
-
-		/* rewind */
-		fy_emit_accum_rewind_state(&fypp->ea, &fypc->start);
-		fy_path_component_recycle(fypp, fypc);
-
-		fypc_last = fy_path_component_list_tail(&fypp->components);
+		/* collection end */
 		assert(fypc_last);
 		fy_path_component_clear_state(fypc_last);
 
-		// DBG(fyp, "%s: pop\n", fy_path_get_text0(fypp));
-		//
-		if (is_map) {
-			if (ops->mapping_end)
-				return ops->mapping_end(fyc, fypp, fyt);
+	} else if (!is_collection && fy_path_component_is_mapping(fypc_last) && fypc_last->map.await_key) {
+
+		// DBG(fyp, "scalar key: %s\n", fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
+		fypc_last->map.is_complex_key = false;
+		fypc_last->map.scalar_key = fy_token_ref(fy_event_get_token(fye));
+		fypc_last->map.has_key = true;
+
+	}
+
+	/* process the event */
+	ret = ops->process_event(fyc, fypp, fyp, fye);
+	if (!fy_composer_return_is_ok(ret)) {
+		/* XXX TODO handle skip */
+		return ret;
+	}
+	if (!stop_req)
+		stop_req = ret == FYCR_OK_STOP;
+
+	if (is_collection && is_end) {
+		/* for the end of a collection, pop the last component */
+		fypc = fy_path_component_list_pop_tail(&fypp->components);
+		assert(fypc);
+
+		assert(fypc == fypc_last);
+
+		fy_path_component_recycle(fypp, fypc);
+
+		/* and get the new last */
+		fypc_last = fy_path_component_list_tail(&fypp->components);
+	}
+
+	/* at the end of something */
+	if (is_end && fy_path_component_is_mapping(fypc_last)) {
+
+		if (!fypc_last->map.await_key) {
+
+			fy_path_component_clear_state(fypc_last);
+
+			// DBG(fyp, "%s: set await_key %p\n", fy_path_get_text0(fypp), fypc_last);
+			fypc_last->map.await_key = true;
+
 		} else {
-			if (ops->sequence_end)
-				return ops->sequence_end(fyc, fypp, fyt);
+			fypc_last->map.await_key = false;
 		}
 	}
 
 	// DBG(fyp, "%s: exit\n", fy_path_get_text0(fypp));
+	return !stop_req ? FYCR_OK_CONTINUE : FYCR_OK_STOP;
 
-	return 0;
+err_out:
+	return FYCR_ERROR;
 }
 
-int fy_composer_process_event(struct fy_composer *fyc, struct fy_parser *fyp, struct fy_event *fye)
+enum fy_composer_return
+fy_composer_process_event(struct fy_composer *fyc, struct fy_parser *fyp, struct fy_event *fye)
 {
-	if (!fye)
+	struct fy_path *fypp;
+	int rc;
+
+	if (!fyc || !fyp || !fye)
 		return -1;
 
-	return fy_composer_process_event_private(fyc, fyp, container_of(fye, struct fy_eventp, e));
+	/* start at the head */
+	fypp = fy_path_list_head(&fyc->paths);
+
+	/* no top? something's very out of order */
+	if (!fypp)
+		return -1;
+
+	rc = fy_composer_process_event_private(fyc, fyp, fye, fypp);
+
+	return rc;
+}
+
+struct fy_composer_cfg *fy_composer_get_cfg(struct fy_composer *fyc)
+{
+	if (!fyc)
+		return NULL;
+	return &fyc->cfg;
+}
+
+void *fy_composer_get_cfg_userdata(struct fy_composer *fyc)
+{
+	if (!fyc)
+		return NULL;
+	return fyc->cfg.userdata;
+}
+
+struct fy_diag *fy_composer_get_diag(struct fy_composer *fyc)
+{
+	if (!fyc)
+		return NULL;
+	return fyc->cfg.diag;
+}
+
+enum fy_composer_return
+fy_composer_parse(struct fy_composer *fyc, struct fy_parser *fyp)
+{
+	struct fy_event *fye;
+	enum fy_composer_return ret;
+
+	if (!fyp || !fyc)
+		return FYCR_ERROR;
+
+	ret = FYCR_OK_CONTINUE;
+	while ((fye = fy_parser_parse(fyp)) != NULL) {
+		ret = fy_composer_process_event(fyc, fyp, fye);
+		fy_parser_event_free(fyp, fye);
+		if (ret != FYCR_OK_CONTINUE)
+			break;
+	}
+
+	return ret;
 }

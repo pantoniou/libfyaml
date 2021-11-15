@@ -211,6 +211,10 @@ struct fy_parser {
 
 	/* for when using the built-in document builder */
 	struct fy_document_builder *fydb;
+
+	/* when using the composer interface */
+	struct fy_composer *fyc;
+	fy_parse_composer_cb fyc_cb;
 };
 
 static inline struct fy_input *
@@ -575,5 +579,7 @@ fy_parse_recycled_token(struct fy_parser *fyp)
 {
 	return fyp && !fyp->suppress_recycling ? &fyp->recycled_token : NULL;
 }
+
+int fy_parse_set_composer(struct fy_parser *fyp, fy_parse_composer_cb cb, void *userdata);
 
 #endif
