@@ -374,7 +374,7 @@ static inline void
 fy_emit_accum_rewind_state(struct fy_emit_accum *ea, const struct fy_emit_accum_state *s)
 {
 	/* we can only go back */
-	assert(s->next >= ea->next);
+	assert(s->next <= ea->next);
 	ea->col = s->col;
 	ea->row = s->row;
 	ea->next = s->next;
