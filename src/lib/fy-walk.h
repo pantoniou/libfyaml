@@ -351,7 +351,7 @@ struct fy_path_exec {
 	struct fy_path_exec_cfg cfg;
 	struct fy_node *fyn_start;
 	struct fy_walk_result *result;
-	struct fy_walk_result_list fwr_recycle;
+	struct fy_walk_result_list *fwr_recycle;
 	int refs;
 	bool supress_recycling;
 };
@@ -392,7 +392,16 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 static inline struct fy_walk_result_list *
 fy_path_exec_walk_result_rl(struct fy_path_exec *fypx)
 {
-	return fypx && !fypx->supress_recycling ? &fypx->fwr_recycle : NULL;
+	return fypx && !fypx->supress_recycling ? fypx->fwr_recycle : NULL;
+}
+
+static inline void
+fy_path_exec_set_result_recycle_list(struct fy_path_exec *fypx,
+				     struct fy_walk_result_list *fwrl)
+{
+	if (!fypx)
+		return;
+	fypx->fwr_recycle = fwrl;
 }
 
 struct fy_walk_result *
@@ -403,6 +412,7 @@ fy_path_exec_walk_result_free(struct fy_path_exec *fypx, struct fy_walk_result *
 
 struct fy_path_expr_document_data {
 	struct fy_path_parser *fypp;
+	struct fy_walk_result_list fwr_recycle;
 };
 
 struct fy_path_expr_node_data {

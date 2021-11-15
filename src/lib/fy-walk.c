@@ -3505,17 +3505,12 @@ token_number(struct fy_token *fyt)
 
 void fy_path_exec_cleanup(struct fy_path_exec *fypx)
 {
-	struct fy_walk_result *fwr;
-
 	if (!fypx)
 		return;
 
 	fy_walk_result_free(fypx->result);
 	fypx->result = NULL;
 	fypx->fyn_start = NULL;
-
-	while ((fwr = fy_walk_result_list_pop(&fypx->fwr_recycle)) != NULL)
-		free(fwr);
 }
 
 /* publicly exported methods */
@@ -3621,7 +3616,7 @@ struct fy_path_exec *fy_path_exec_create(const struct fy_path_exec_cfg *xcfg)
 	memset(fypx, 0, sizeof(*fypx));
 	if (xcfg)
 		fypx->cfg = *xcfg;
-	fy_walk_result_list_init(&fypx->fwr_recycle);
+	fypx->fwr_recycle = NULL;	/* initially no recycling list */
 	fypx->refs = 1;
 
 	fypx->supress_recycling = !!(fypx->cfg.flags & FYPXCF_DISABLE_RECYCLING) ||
@@ -3633,13 +3628,18 @@ struct fy_path_exec *fy_path_exec_create(const struct fy_path_exec_cfg *xcfg)
 struct fy_path_exec *fy_path_exec_create_on_document(struct fy_document *fyd)
 {
 	struct fy_path_exec_cfg xcfg_local, *xcfg = &xcfg_local;
+	struct fy_path_exec *fypx;
 
 	memset(xcfg, 0, sizeof(*xcfg));
 	xcfg->diag = fyd ? fyd->diag : NULL;
 
 	xcfg->flags = (fyd->parse_cfg.flags & FYPCF_DISABLE_RECYCLING) ?
 			FYPXCF_DISABLE_RECYCLING : 0;
-	return fy_path_exec_create(xcfg);
+
+	fypx = fy_path_exec_create(xcfg);
+	if (!fypx)
+		return NULL;
+	return fypx;
 }
 
 void fy_path_exec_destroy(struct fy_path_exec *fypx)
@@ -4831,6 +4831,8 @@ int fy_document_setup_path_expr_data(struct fy_document *fyd)
 
 	memset(pxdd, 0, sizeof(*pxdd));
 
+	fy_walk_result_list_init(&pxdd->fwr_recycle);
+
 	memset(pcfg, 0, sizeof(*pcfg));
 	pcfg->diag = fyd->diag;
 	pxdd->fypp = fy_path_parser_create(pcfg);
@@ -4850,6 +4852,7 @@ err_no_mem:
 void fy_document_cleanup_path_expr_data(struct fy_document *fyd)
 {
 	struct fy_path_expr_document_data *pxdd;
+	struct fy_walk_result *fwr;
 
 	if (!fyd || !fyd->pxdd)
 		return;
@@ -4857,6 +4860,10 @@ void fy_document_cleanup_path_expr_data(struct fy_document *fyd)
 	pxdd = fyd->pxdd;
 
 	fy_path_parser_destroy(pxdd->fypp);
+
+	while ((fwr = fy_walk_result_list_pop(&pxdd->fwr_recycle)) != NULL)
+		free(fwr);
+
 	free(fyd->pxdd);
 	fyd->pxdd = NULL;
 }
@@ -4966,6 +4973,7 @@ struct fy_walk_result *
 fy_node_alias_resolve_by_ypath_result(struct fy_node *fyn)
 {
 	struct fy_document *fyd;
+	struct fy_path_expr_document_data *pxdd = NULL;
 	struct fy_path_expr_node_data *pxnd = NULL;
 	struct fy_walk_result *fwr;
 	struct fy_anchor *fya;
@@ -4996,6 +5004,10 @@ fy_node_alias_resolve_by_ypath_result(struct fy_node *fyn)
 			"fy_node_setup_path_expr_data() failed");
 
 	pxnd = fyn->pxnd;
+	assert(pxnd);
+
+	pxdd = fyd->pxdd;
+	assert(pxdd);
 
 	if (pxnd->traversals++ > 0) {
 		FYD_NODE_ERROR(fyd, fyn, FYEM_DOC,
@@ -5008,6 +5020,8 @@ fy_node_alias_resolve_by_ypath_result(struct fy_node *fyn)
 	fypx = fy_path_exec_create_on_document(fyd);
 	fyd_error_check(fyd, !rc, err_out,
 			"fy_path_exec_create_on_document() failed");
+
+	fy_path_exec_set_result_recycle_list(fypx, &pxdd->fwr_recycle);
 
 #if 0
 	{
