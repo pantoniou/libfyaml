@@ -27,10 +27,6 @@
 
 #include "fy-utils.h"
 
-#ifndef ARRAY_SIZE
-#define ARRAY_SIZE(x) ((sizeof(x)/sizeof((x)[0])))
-#endif
-
 #undef DEBUG_EXPR
 // #define DEBUG_EXPR
 

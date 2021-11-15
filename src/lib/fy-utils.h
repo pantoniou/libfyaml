@@ -34,4 +34,8 @@ struct fy_tag_scan_info {
 
 int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info);
 
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(x) ((sizeof(x)/sizeof((x)[0])))
+#endif
+
 #endif
