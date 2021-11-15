@@ -157,6 +157,9 @@ struct fy_input *fy_node_get_first_input(struct fy_node *fyn);
 bool fy_node_is_synthetic(struct fy_node *fyn);
 void fy_node_mark_synthetic(struct fy_node *fyn);
 struct fy_input *fy_node_get_input(struct fy_node *fyn);
+int fy_document_register_anchor(struct fy_document *fyd,
+				struct fy_node *fyn, struct fy_token *anchor);
+bool fy_node_mapping_key_is_duplicate(struct fy_node *fyn, struct fy_node *fyn_key);
 
 struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn);
 struct fy_token *fy_node_token(struct fy_node *fyn);

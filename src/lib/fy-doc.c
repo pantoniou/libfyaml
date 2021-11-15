@@ -1398,7 +1398,7 @@ int fy_node_mapping_get_pair_index(struct fy_node *fyn, const struct fy_node_pai
 	return -1;
 }
 
-static bool fy_node_mapping_key_is_duplicate(struct fy_node *fyn, struct fy_node *fyn_key)
+bool fy_node_mapping_key_is_duplicate(struct fy_node *fyn, struct fy_node *fyn_key)
 {
 	return fy_node_mapping_lookup_pair(fyn, fyn_key) != NULL;
 }
