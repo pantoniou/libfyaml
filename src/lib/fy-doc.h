@@ -221,6 +221,9 @@ fy_document_builder_is_document_complete(struct fy_document_builder *fydb);
 struct fy_document *
 fy_document_builder_take_document(struct fy_document_builder *fydb);
 
+struct fy_document *
+fy_document_builder_peek_document(struct fy_document_builder *fydb);
+
 void
 fy_document_builder_set_in_stream(struct fy_document_builder *fydb);
 

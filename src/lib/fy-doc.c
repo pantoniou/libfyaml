@@ -6590,6 +6590,29 @@ fy_document_builder_take_document(struct fy_document_builder *fydb)
 	return fyd;
 }
 
+struct fy_document *
+fy_document_builder_peek_document(struct fy_document_builder *fydb)
+{
+	struct fy_document *fyd;
+	struct fy_document_builder_ctx *c;
+
+	if (!fydb)
+		return NULL;
+
+	/* just peek; may be incomplete */
+	fyd = fydb->fyd;
+
+	assert(fydb->next > 0);
+	c = &fydb->stack[0];
+
+	/* wire the root */
+	if (!fyd->root)
+		fyd->root = c->fyn;
+
+	return fyd;
+}
+
+
 void
 fy_document_builder_set_in_stream(struct fy_document_builder *fydb)
 {
