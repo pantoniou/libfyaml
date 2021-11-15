@@ -7484,3 +7484,239 @@ int fy_node_check_ref_loop(struct fy_node *fyn)
 
 	return res == FYNIR_OK ? 0 : -1;
 }
+
+struct fy_document *
+fy_document_create_from_event(struct fy_parser *fyp, struct fy_event *fye)
+{
+	struct fy_document *fyd;
+	int rc;
+
+	if (!fyp || !fye || fye->type != FYET_DOCUMENT_START)
+		return NULL;
+
+	/* TODO update document end */
+	fyd = fy_document_create(&fyp->cfg);
+	fyp_error_check(fyp, fyd, err_out,
+		"fy_document_create() failed");
+
+	rc = fy_document_set_document_state(fyd, fye->document_start.document_state);
+	fyp_error_check(fyp, !rc, err_out,
+		"fy_document_set_document_state() failed");
+
+	return fyd;
+
+err_out:
+	fy_document_destroy(fyd);
+	return NULL;
+}
+
+int
+fy_document_update_from_event(struct fy_document *fyd, struct fy_parser *fyp, struct fy_event *fye)
+{
+	if (!fyd || !fyp || !fye || fye->type != FYET_DOCUMENT_END)
+		return -1;
+
+	/* nothing besides checks */
+	return 0;
+}
+
+struct fy_node *
+fy_node_create_from_event(struct fy_document *fyd, struct fy_parser *fyp, struct fy_event *fye)
+{
+	struct fy_node *fyn = NULL;
+	struct fy_token *value = NULL, *anchor = NULL;
+	int rc;
+
+	if (!fyd || !fye)
+		return NULL;
+
+	switch (fye->type) {
+	default:
+		break;
+
+	case FYET_SCALAR:
+		fyn = fy_node_alloc(fyd, FYNT_SCALAR);
+		fyp_error_check(fyp, fyn, err_out,
+			"fy_node_alloc() scalar failed");
+
+		value = fye->scalar.value;
+
+		if (value)	/* NULL scalar */
+			fyn->style = fy_node_style_from_scalar_style(value->scalar.style);
+		else
+			fyn->style = FYNS_PLAIN;
+
+		/* NULLs are OK */
+		fyn->tag = fy_token_ref(fye->scalar.tag);
+		fyn->scalar = fy_token_ref(value);
+		anchor = fye->scalar.anchor;
+		break;
+
+	case FYET_ALIAS:
+		fyn = fy_node_alloc(fyd, FYNT_SCALAR);
+		fyp_error_check(fyp, fyn, err_out,
+			"fy_node_alloc() alias failed");
+
+		value = fye->alias.anchor;
+		fyn->style = FYNS_ALIAS;
+		fyn->scalar = fy_token_ref(value);
+		anchor = NULL;
+		break;
+
+	case FYET_MAPPING_START:
+		fyn = fy_node_create_mapping(fyd);
+		fyp_error_check(fyp, fyn, err_out,
+			"fy_node_create_mapping() failed");
+
+		value = fye->mapping_start.mapping_start;
+		fyn->style = value->type == FYTT_FLOW_MAPPING_START ? FYNS_FLOW : FYNS_BLOCK;
+
+		fyn->tag = fy_token_ref(fye->mapping_start.tag);
+		fyn->mapping_start = fy_token_ref(value);
+		fyn->mapping_end = NULL;
+		anchor = fye->mapping_start.anchor;
+		break;
+
+	case FYET_SEQUENCE_START:
+		fyn = fy_node_create_sequence(fyd);
+		fyp_error_check(fyp, fyn, err_out,
+			"fy_node_create_sequence() failed");
+
+		value = fye->sequence_start.sequence_start;
+
+		fyn->style = value->type == FYTT_FLOW_SEQUENCE_START ? FYNS_FLOW : FYNS_BLOCK;
+
+		fyn->tag = fy_token_ref(fye->sequence_start.tag);
+		fyn->sequence_start = fy_token_ref(value);
+		fyn->sequence_end = NULL;
+		anchor = fye->sequence_start.anchor;
+
+		break;
+
+	}
+
+	if (fyn && anchor) {
+		rc = fy_document_register_anchor(fyd, fyn, fy_token_ref(anchor));
+		fyp_error_check(fyp, !rc, err_out,
+			"fy_document_register_anchor() failed");
+	}
+
+	return fyn;
+
+err_out:
+	/* NULL OK */
+	fy_node_free(fyn);
+	return NULL;
+}
+
+int
+fy_node_update_from_event(struct fy_node *fyn, struct fy_parser *fyp, struct fy_event *fye)
+{
+	if (!fyn || !fyp || !fye)
+		return -1;
+
+	switch (fye->type) {
+
+	case FYET_MAPPING_END:
+		if (!fy_node_is_mapping(fyn))
+			return -1;
+		fy_token_unref(fyn->mapping_end);
+		fyn->mapping_end = fy_token_ref(fye->mapping_end.mapping_end);
+
+		break;
+
+	case FYET_SEQUENCE_END:
+		if (!fy_node_is_sequence(fyn))
+			return -1;
+		fy_token_unref(fyn->sequence_end);
+		fyn->sequence_end = fy_token_ref(fye->sequence_end.sequence_end);
+
+		break;
+
+	default:
+		return -1;
+	}
+
+	return 0;
+}
+
+struct fy_node_pair *
+fy_node_pair_create_with_key(struct fy_document *fyd, struct fy_node *fyn_parent, struct fy_node *fyn)
+{
+	struct fy_node_pair *fynp;
+	bool is_duplicate;
+
+	if (!fyd || !fyn_parent || !fy_node_is_mapping(fyn_parent))
+		return NULL;
+
+	/* make sure we don't add an already existing key */
+	is_duplicate = fy_node_mapping_key_is_duplicate(fyn_parent, fyn);
+	if (is_duplicate) {
+		FYD_NODE_ERROR(fyd, fyn, FYEM_DOC,
+				"duplicate mapping key");
+		return NULL;
+	}
+
+	fynp = fy_node_pair_alloc(fyd);
+	fyd_error_check(fyd, fynp, err_out,
+			"fy_node_pair_alloc() failed");
+
+	fynp->parent = fyn_parent;
+
+	fynp->key = fyn;
+	if (fynp->key)
+		fynp->key->attached = true;
+
+	return fynp;
+
+err_out:
+	fy_node_pair_free(fynp);
+	return NULL;
+
+}
+
+int
+fy_node_pair_update_with_value(struct fy_node_pair *fynp, struct fy_node *fyn)
+{
+	struct fy_node *fyn_parent;
+	int rc;
+
+	/* node pair must exist and value must be NULL */
+	if (!fynp || fynp->value || !fynp->parent || !fy_node_is_mapping(fynp->parent) || !fyn->fyd)
+		return -1;
+
+	fynp->value = fyn;
+	if (fynp->value)
+		fynp->value->attached = true;
+
+	fyn_parent = fynp->parent;
+
+	fy_node_pair_list_add_tail(&fyn_parent->mapping, fynp);
+	if (fyn_parent->xl) {
+		rc = fy_accel_insert(fyn_parent->xl, fynp->key, fynp);
+		fyd_error_check(fyn->fyd, !rc, err_out,
+			"fy_accel_insert() failed");
+	}
+
+	return 0;
+
+err_out:
+	fy_node_pair_list_del(&fyn_parent->mapping, fynp);
+	if (fyn)
+		fyn->attached = false;
+	fynp->value = NULL;
+	return -1;
+}
+
+int
+fy_node_sequence_add_item(struct fy_node *fyn_parent, struct fy_node *fyn)
+{
+	/* node pair must exist and value must be NULL */
+	if (!fyn_parent || !fyn || !fy_node_is_sequence(fyn_parent) || !fyn->fyd)
+		return -1;
+
+	fyn->parent = fyn_parent;
+	fy_node_list_add_tail(&fyn_parent->sequence, fyn);
+	fyn->attached = true;
+	return 0;
+}

@@ -6132,6 +6132,130 @@ fy_document_set_document_state(struct fy_document *fyd, struct fy_document_state
 	FY_EXPORT;
 
 /**
+ * fy_document_create_from_event() - Create an empty document using the event
+ *
+ * Create an empty document using the FYET_DOCUMENT_START event generated
+ * by the parser.
+ *
+ * @fyp: The parser
+ * @fye: The event
+ *
+ * Returns:
+ * The created empty document, or NULL on error.
+ */
+struct fy_document *
+fy_document_create_from_event(struct fy_parser *fyp, struct fy_event *fye)
+	FY_EXPORT;
+
+/**
+ * fy_document_update_from_event() - Update the document with the event
+ *
+ * Update the document using the FYET_DOCUMENT_END event generated
+ * by the parser.
+ *
+ * @fyd: The document
+ * @fyp: The parser
+ * @fye: The event
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int
+fy_document_update_from_event(struct fy_document *fyd, struct fy_parser *fyp, struct fy_event *fye)
+	FY_EXPORT;
+
+/**
+ * fy_node_create_from_event() - Create a node using the event
+ *
+ * Create a new node using the supplied event.
+ * Allowed events are FYET_SCALAR, FYET_ALIAS, FYET_MAPPING_START & FYET_SEQUENCE_START
+ *
+ * @fyd: The document
+ * @fyp: The parser
+ * @fye: The event
+ *
+ * Returns:
+ * The newly created node, or NULL on error
+ */
+struct fy_node *
+fy_node_create_from_event(struct fy_document *fyd, struct fy_parser *fyp, struct fy_event *fye)
+	FY_EXPORT;
+
+/**
+ * fy_node_update_from_event() - Update a node using the event
+ *
+ * Update information of node created using fy_node_create_from_event()
+ * Allowed events are FYET_MAPPING_END & FYET_SEQUENCE_END
+ *
+ * @fyn: The node
+ * @fyp: The parser
+ * @fye: The event
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int
+fy_node_update_from_event(struct fy_node *fyn, struct fy_parser *fyp, struct fy_event *fye)
+	FY_EXPORT;
+
+/**
+ * fy_node_pair_create_with_key() - Create a new node pair and set it's key
+ *
+ * Create a new node pair using the supplied fyn_parent mapping and fyn node as
+ * a key. Note that the nodes _must_ have been created by fy_node_create_from_event
+ * and they are not interchangeable with other node pair methods.
+ *
+ * The node pair will be added to the fyn_parent mapping with a subsequent call
+ * to fy_node_pair_update_with_value().
+ *
+ * @fyd: The document
+ * @fyn_parent: The mapping
+ * @fyn: The node pair key
+ *
+ * Returns:
+ * The newly created node pair, or NULL on error
+ */
+struct fy_node_pair *
+fy_node_pair_create_with_key(struct fy_document *fyd, struct fy_node *fyn_parent, struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
+ * fy_node_pair_update_with_value() - Update a node pair with a value and add it to the parent mapping
+ *
+ * Update the node pair with the given value and add it to the parent mapping.
+ * Note that the fyn node _must_ have been created by fy_node_create_from_event
+ * and the node pair created by fy_node_pair_create_with_key().
+ * Do not intermix other node pair manipulation methods.
+ *
+ * @fynp: The node pair
+ * @fyn: The node pair value
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int
+fy_node_pair_update_with_value(struct fy_node_pair *fynp, struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
+ * fy_node_sequence_add_item() - Add an item node to a sequence node
+ *
+ * Add an item to the end of the sequence node fyn_parent.
+ * Note that the fyn_parent and fyn nodes _must_ have been created by
+ * fy_node_create_from_event.
+ * Do not intermix other sequence node manipulation methods.
+ *
+ * @fyn_parent: The parent sequence node
+ * @fyn: The node pair item
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int
+fy_node_sequence_add_item(struct fy_node *fyn_parent, struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
  * fy_emitter_get_document_state() - Get the document state of an emitter  object
  *
  * Retrieve the document state object of an emitter. Note that this is only
