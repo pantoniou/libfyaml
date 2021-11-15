@@ -2425,7 +2425,7 @@ static int fy_emit_push_state(struct fy_emitter *emit, enum fy_emitter_state sta
 	if (emit->state_stack_top >= emit->state_stack_alloc) {
 		states = realloc(emit->state_stack == emit->state_stack_inplace ? NULL : emit->state_stack,
 				sizeof(emit->state_stack[0]) * emit->state_stack_alloc * 2);
-		if (!state)
+		if (!states)
 			return -1;
 
 		if (emit->state_stack == emit->state_stack_inplace)
