@@ -260,26 +260,6 @@ else
 fi
 AM_CONDITIONAL([HAVE_DOCKER], [ test x$HAVE_DOCKER = x1 ])
 
-# note that debian does not support cross compilation
-# so do not use it to build cross packages
-
-# check for dpkg
-AC_PATH_PROG([DPKG], [dpkg])
-if test "x$DPKG" != "x" ; then
-	HAVE_DPKG=1
-else
-	HAVE_DPKG=0
-fi
-AC_DEFINE_UNQUOTED([HAVE_DPKG], [$HAVE_DPKG], [Define to 1 if you have dpkg available])
-AM_CONDITIONAL([HAVE_DPKG], [ test x$HAVE_DPKG = x1 ])
-
-if test "x$HAVE_DPKG" = "x1" ; then
-	DPKG_ARCH=`$DPKG --print-architecture`
-else
-	DPKG_ARCH="unknown"
-fi
-AC_SUBST(DPKG_ARCH, "$DPKG_ARCH")
-
 # check for jq
 AC_PATH_PROG([JQ], [jq])
 if test "x$JQ" != "x" ; then
@@ -303,12 +283,6 @@ AC_CONFIG_FILES([
 	test/Makefile
 	doc/Makefile
 	libfyaml.pc
-	debian/changelog
-	debian/control
-	debian/copyright
-	debian/$PACKAGE_NAME-$DEBVERSION.install:debian/$PACKAGE_NAME.install.in
-	debian/$PACKAGE_NAME-dev.install
-	debian/$PACKAGE_NAME-utils.install
 ])
 
 AC_REQUIRE_AUX_FILE([tap-driver.sh])
@@ -334,8 +308,6 @@ echo "
     HAVE_SPHINX:           ${HAVE_SPHINX}
     GIT:                   $GIT
     DOCKER:                $DOCKER
-    HAVE_DPKG:             $HAVE_DPKG
-    DPKG_ARCH:             $DPKG_ARCH
     TESTSUITEURL:          $TESTSUITEURL
     TESTSUITECHECKOUT:     $TESTSUITECHECKOUT
     JSONTESTSUITEURL:      $JSONTESTSUITEURL
