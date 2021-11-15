@@ -2092,6 +2092,7 @@ enum fy_method_idx {
 	fymi_key,
 	fymi_value,
 	fymi_index,
+	fymi_null,
 };
 
 static struct fy_walk_result *
@@ -2200,7 +2201,14 @@ static const struct fy_method fy_methods[] = {
 		.mode	= fyem_path,
 		.nargs	= 1,
 		.exec	= common_builtin_ref_exec,
-	}
+	},
+	[fymi_null] = {
+		.name	= "null",
+		.len    = 4,
+		.mode	= fyem_path,
+		.nargs	= 0,
+		.exec	= common_builtin_ref_exec,
+	},
 };
 
 static inline int fy_method_to_builtin_idx(const struct fy_method *fym)
@@ -2244,6 +2252,7 @@ common_builtin_ref_exec(const struct fy_method *fym,
 	case fymi_root:
 	case fymi_parent:
 	case fymi_this:
+	case fymi_null:
 		if (nargs != 0)
 			goto out;
 		break;
@@ -2267,6 +2276,7 @@ common_builtin_ref_exec(const struct fy_method *fym,
 		case fymi_value:
 		case fymi_index:
 		case fymi_this:
+		case fymi_null:
 			/* dereference alias */
 			if (fy_node_is_alias(fynt)) {
 				// fprintf(stderr, "%s: %s calling fy_node_alias_resolve_by_ypath()\n", __func__, fy_node_get_path_alloca(fyn));
@@ -2303,6 +2313,12 @@ common_builtin_ref_exec(const struct fy_method *fym,
 
 		case fymi_parent:
 			fyn = fy_node_get_parent(fynt);
+			break;
+
+		case fymi_null:
+			if (!fy_node_is_mapping(fynt))
+				break;
+			fyn = fy_node_mapping_lookup_value_by_null_key(fynt);
 			break;
 
 		case fymi_this:
