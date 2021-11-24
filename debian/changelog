@@ -1,0 +1,8 @@
+libfyaml (0.7.3-1) unstable; urgency=medium
+
+  * First Debian package (Closes: #998859).
+  * Based on original upstream d/* files by Pantelis Antoniou, updating
+    d/* files to current standards.
+
+ -- Jose Luis Blanco Claraco <joseluisblancoc@gmail.com>  Tue, 16 Nov 2021 01:04:27 +0100
+
