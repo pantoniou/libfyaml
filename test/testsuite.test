@@ -1,0 +1,54 @@
+#!/bin/bash
+
+count=0
+for dir in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
+	count=`expr $count + 1`
+done
+
+# output plan
+echo 1..$count
+
+i=0
+for dir in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
+
+	i=`expr $i + 1`
+	desctxt=`cat 2>/dev/null "$dir/==="`
+	tdir=`basename $dir`
+
+	t=`mktemp`
+
+	res="not ok"
+
+	pass_yaml=0
+	${TOP_BUILDDIR}/src/fy-tool --testsuite "$dir/in.yaml" >"$t"
+	if [ $? -eq 0 ]; then
+		pass_yaml=1
+	fi
+
+	if [ -e "$dir/error" ]; then
+		# test is expected to fail
+		if [ $pass_yaml == "0" ]; then
+			res="ok"
+		else
+			res="not ok"
+		fi
+	else
+		# test is expected to pass
+		if [ $pass_yaml == "1" ]; then
+			diff_yaml=0
+			# diff -u "$dir/test.event" "$t" | sed -e 's/^/# /'
+			diff -u "$dir/test.event" "$t"
+			if [ $? -eq 0 ]; then
+				res="ok"
+			else
+				res="not ok"
+			fi
+		else
+			res="not ok"
+		fi
+	fi
+
+	rm -f "$t"
+
+	echo "$res $i $tdir - $desctxt"
+done
