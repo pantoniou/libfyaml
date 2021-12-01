@@ -6782,7 +6782,7 @@ fy_path_is_collection_root(struct fy_path *fypp)
  * The user data associated with the root of the path, or NULL if no path
  */
 void *
-fy_path_get_root_mapping_user_data(struct fy_path *fypp)
+fy_path_get_root_user_data(struct fy_path *fypp)
 	FY_EXPORT;
 
 /**

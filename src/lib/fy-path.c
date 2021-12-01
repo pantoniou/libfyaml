@@ -512,7 +512,7 @@ bool fy_path_is_collection_root(struct fy_path *fypp)
 	return fy_path_component_is_collection_root(fypc_last);
 }
 
-void *fy_path_get_root_mapping_user_data(struct fy_path *fypp)
+void *fy_path_get_root_user_data(struct fy_path *fypp)
 {
 	if (!fypp)
 		return NULL;
