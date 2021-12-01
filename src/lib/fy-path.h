@@ -88,6 +88,7 @@ struct fy_path {
 	struct fy_path_component_list components;
 	struct fy_document_builder *fydb;	/* for complex keys */
 	struct fy_path *parent;			/* when we have a parent */
+	void *user_data;
 };
 FY_TYPE_DECL_LIST(path);
 

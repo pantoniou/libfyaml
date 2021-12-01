@@ -6774,6 +6774,30 @@ fy_path_is_collection_root(struct fy_path *fypp)
 	FY_EXPORT;
 
 /**
+ * fy_path_get_root_user_data() - Return the userdata associated with the path root
+ *
+ * @fypp: The path
+ *
+ * Returns:
+ * The user data associated with the root of the path, or NULL if no path
+ */
+void *
+fy_path_get_root_mapping_user_data(struct fy_path *fypp)
+	FY_EXPORT;
+
+/**
+ * fy_path_set_root_user_data() - Set the user data associated with the root
+ *
+ * Note, no error condition if not a path
+ *
+ * @fypp: The path
+ * @data: The data to set as root data
+ */
+void
+fy_path_set_root_user_data(struct fy_path *fypp, void *data)
+	FY_EXPORT;
+
+/**
  * fy_path_component_get_mapping_user_data() - Return the userdata associated with the mapping
  *
  * @fypc: The path component
