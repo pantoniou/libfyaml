@@ -599,14 +599,23 @@ void *fy_path_get_root_user_data(struct fy_path *fypp)
 	if (!fypp)
 		return NULL;
 
-	return fypp->user_data;
+	if (!fypp->parent)
+		return fypp->user_data;
+
+	return fy_path_get_root_user_data(fypp->parent);
 }
 
 void fy_path_set_root_user_data(struct fy_path *fypp, void *data)
 {
 	if (!fypp)
 		return;
-	fypp->user_data = data;
+
+	if (!fypp->parent) {
+		fypp->user_data = data;
+		return;
+	}
+
+	fy_path_set_root_user_data(fypp->parent, data);
 }
 
 void *fy_path_component_get_mapping_user_data(struct fy_path_component *fypc)
