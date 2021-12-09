@@ -262,6 +262,54 @@ bool fy_path_component_is_sequence(struct fy_path_component *fypc)
 	return fypc && fypc->type == FYPCT_SEQ;
 }
 
+static int fy_path_component_get_text_internal(struct fy_emit_accum *ea, struct fy_path_component *fypc)
+{
+	char *doctxt;
+	const char *text;
+	size_t len;
+
+	switch (fypc->type) {
+	case FYPCT_NONE:
+		abort();
+
+	case FYPCT_MAP:
+
+		/* we don't handle transitionals */
+		if (!fypc->map.has_key || fypc->map.await_key)
+			return -1;
+
+		if (!fypc->map.is_complex_key && fypc->map.scalar.key) {
+			text = fy_token_get_text(fypc->map.scalar.key, &len);
+			if (!text)
+				return -1;
+
+			if (fypc->map.scalar.key->type == FYTT_ALIAS)
+				fy_emit_accum_utf8_put_raw(ea, '*');
+			fy_emit_accum_utf8_write_raw(ea, text, len);
+
+		} else if (fypc->map.complex_key) {
+			/* complex key */
+			doctxt = fy_emit_document_to_string(fypc->map.complex_key,
+				FYECF_WIDTH_INF | FYECF_INDENT_DEFAULT |
+				FYECF_MODE_FLOW_ONELINE | FYECF_NO_ENDING_NEWLINE);
+			fy_emit_accum_utf8_write_raw(ea, doctxt, strlen(doctxt));
+			free(doctxt);
+		}
+		break;
+
+	case FYPCT_SEQ:
+
+		/* not started filling yet */
+		if (fypc->seq.idx < 0)
+			return -1;
+
+		fy_emit_accum_utf8_printf_raw(ea, "%d", fypc->seq.idx);
+		break;
+	}
+
+	return 0;
+}
+
 static int fy_path_get_text_internal(struct fy_emit_accum *ea, struct fy_path *fypp)
 {
 	struct fy_path_component *fypc;
@@ -383,6 +431,32 @@ err_out:
 	fy_emit_accum_cleanup(&ea);
 
 	return path;
+}
+
+char *fy_path_component_get_text(struct fy_path_component *fypc)
+{
+	struct fy_emit_accum ea;	/* use an emit accumulator */
+	char *text = NULL;
+	size_t len;
+	int rc;
+
+	/* no inplace buffer; we will need the malloc'ed contents anyway */
+	fy_emit_accum_init(&ea, NULL, 0, 0, fylb_cr_nl);
+
+	fy_emit_accum_start(&ea, 0, fylb_cr_nl);
+
+	rc = fy_path_component_get_text_internal(&ea, fypc);
+	if (rc)
+		goto err_out;
+
+	fy_emit_accum_make_0_terminated(&ea);
+
+	text = fy_emit_accum_steal(&ea, &len);
+
+err_out:
+	fy_emit_accum_cleanup(&ea);
+
+	return text;
 }
 
 int fy_path_depth(struct fy_path *fypp)

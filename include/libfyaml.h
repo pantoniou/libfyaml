@@ -6677,6 +6677,29 @@ fy_path_component_mapping_get_complex_key(struct fy_path_component *fypc)
 	FY_EXPORT;
 
 /**
+ * fy_path_component_get_text() - Get the textual representation of a path component
+ *
+ * Given a path component, return a malloc'ed string which contains
+ * the textual representation of it.
+ *
+ * Note that this method will only return fully completed components and not
+ * ones that are in the building process.
+ *
+ * @fypc: The path component to get it's textual representation
+ *
+ * Returns:
+ * The textual representation of the path component, NULL on error, or
+ * if the component has not been completely built during the composition
+ * of a complex key.
+ * The string must be free'ed using free.
+ */
+char *
+fy_path_component_get_text(struct fy_path_component *fypc)
+	FY_EXPORT;
+
+#define fy_path_component_get_text_alloca(_fypc) \
+	FY_ALLOCA_COPY_FREE(fy_path_component_get_text((_fypc)), FY_NT)
+/**
  * fy_path_depth() - Get the depth of a path
  *
  * @fypp: The path to query
