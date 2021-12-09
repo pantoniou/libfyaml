@@ -756,7 +756,7 @@ process_event(struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
 			fy_path_in_mapping(path) ? 'M' : '-',
 			fy_path_in_mapping_key(path) ? 'K' :
 				fy_path_in_mapping_value(path) ? 'V' : '-',
-			fy_path_is_collection_root(path) ? '/' : '-',
+			fy_path_in_collection_root(path) ? '/' : '-',
 			fy_path_depth(path),
 			fy_path_get_text_alloca(path),
 			fy_token_dump_format(fy_event_get_token(fye), tbuf, sizeof(tbuf)));

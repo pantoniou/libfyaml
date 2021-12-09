@@ -580,7 +580,7 @@ bool fy_path_in_mapping_value(struct fy_path *fypp)
 	return fypc_last->type == FYPCT_MAP && !fypc_last->map.await_key;
 }
 
-bool fy_path_is_collection_root(struct fy_path *fypp)
+bool fy_path_in_collection_root(struct fy_path *fypp)
 {
 	struct fy_path_component *fypc_last;
 

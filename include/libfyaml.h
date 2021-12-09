@@ -1,7 +1,7 @@
 /*
  * libfyaml.h - Main header file of the public interface
  *
- * Copyright (c) 2019 Pantelis Antoniou <pantelis.antoniou@konsulko.com>
+ * Copyright (c) 2019-2021 Pantelis Antoniou <pantelis.antoniou@konsulko.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -1084,6 +1084,9 @@ enum fy_comment_placement {
  * fy_token_get_comment() - Get zero terminated comment of a token
  *
  * @fyt: The token out of which the comment text will be returned.
+ * @buf: The buffer to be filled with the contents of the token
+ * @maxsz: The maximum size of the comment buffer
+ * @which: The comment placement
  *
  * Returns:
  * A pointer to a zero terminated text representation of the token comment.
@@ -3061,10 +3064,10 @@ fy_node_get_path_relative_to(struct fy_node *fyn_parent, struct fy_node *fyn)
  * If no such parent is found then returns the absolute path
  * from the start of the document.
  *
- * --- &foo
- * foo: &bar
- *     bar
- * baz
+ *   --- &foo
+ *   foo: &bar
+ *       bar
+ *   baz
  *
  * - The short path of /foo is \*foo
  * - The short path of /foo/bar is \*bar
@@ -5519,10 +5522,10 @@ fy_path_exec_results_iterate(struct fy_path_exec *fypx, void **prevp)
  * @FYTT_PE_GT: Greater than operator
  * @FYTT_PE_LTE: Less or equal than operator
  * @FYTT_PE_GTE: Greater or equal than operator
- * @FYTT_PE_PLUS: Plus operator
- * @FYTT_PE_MINUS: Minus operator
- * @FYTT_PE_MULT: Multiply operator
- * @FYTT_PE_DIV: Divide operator
+ * @FYTT_SE_PLUS: Plus operator
+ * @FYTT_SE_MINUS: Minus operator
+ * @FYTT_SE_MULT: Multiply operator
+ * @FYTT_SE_DIV: Divide operator
  * @FYTT_PE_METHOD: Path expression method (chained)
  * @FYTT_SE_METHOD: Scalar expression method (non chained)
  */
@@ -6797,7 +6800,7 @@ fy_path_in_mapping_key(struct fy_path *fypp)
 	FY_EXPORT;
 
 /**
- * fy_path_in_mapping_key() - Check if the path is in a mapping value state
+ * fy_path_in_mapping_value() - Check if the path is in a mapping value state
  *
  * @fypp: The path
  *
@@ -6822,7 +6825,7 @@ fy_path_in_mapping_value(struct fy_path *fypp)
  * true if the path is located within a collectin root state
  */
 bool
-fy_path_is_collection_root(struct fy_path *fypp)
+fy_path_in_collection_root(struct fy_path *fypp)
 	FY_EXPORT;
 
 /**
@@ -6874,7 +6877,7 @@ fy_path_component_get_mapping_key_user_data(struct fy_path_component *fypc)
 	FY_EXPORT;
 
 /**
- * fy_path_component_get_sequence_data() - Return the userdata associated with the sequence
+ * fy_path_component_get_sequence_user_data() - Return the userdata associated with the sequence
  *
  * @fypc: The path component
  *
