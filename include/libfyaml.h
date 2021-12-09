@@ -6154,6 +6154,22 @@ fy_document_state_end_implicit(struct fy_document_state *fyds)
 	FY_EXPORT;
 
 /**
+ * fy_document_state_json_mode() - Input was JSON?
+ *
+ * Find out if a document state object's document was
+ * created by a JSON input.
+ * Note that for synthetic documents this method returns false.
+ *
+ * @fyds: The document state object
+ *
+ * Returns:
+ * true if document was created in JSON mode, false otherwise
+ */
+bool
+fy_document_state_json_mode(struct fy_document_state *fyds)
+	FY_EXPORT;
+
+/**
  * fy_document_state_tag_directive_iterate() - Iterate over the tag
  * 					       directives of a document state
  * 					       object

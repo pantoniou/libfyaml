@@ -122,6 +122,10 @@ int fy_parse_get_next_input(struct fy_parser *fyp)
 	/* take off the reference; reader now owns */
 	fy_input_unref(fyi);
 
+	// inherit the JSON mode
+	if (fyp->current_document_state)
+		fyp->current_document_state->json_mode = fyp_json_mode(fyp);
+
 	fyp_scan_debug(fyp, "get next input: new input - %s mode", json_mode ? "JSON" : "YAML");
 
 	return 1;
@@ -394,6 +398,8 @@ int fy_reset_document_state(struct fy_parser *fyp)
 		fyp_error_check(fyp, fyds_new, err_out,
 				"fy_document_state_copy() failed");
 	}
+	// inherit the JSON mode
+	fyds_new->json_mode = fyp_json_mode(fyp);
 
 	if (fyp->current_document_state)
 		fy_document_state_unref(fyp->current_document_state);
@@ -5406,6 +5412,8 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		fyp_error_check(fyp, !rc, err_out,
 				"failed to fy_parse_state_push()");
 
+		// update document state with json mode
+		fyds->json_mode = fyp_json_mode(fyp);
 		fye->document_start.document_state = fy_document_state_ref(fyds);
 		fye->document_start.implicit = fyds->start_implicit;
 

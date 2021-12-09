@@ -3107,6 +3107,10 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 	fyd_error_check(fyd, fyd->fyds, err_out,
 			"fy_document_state_default() failed");
 
+	/* turn on JSON mode if it's forced */
+	fyd->fyds->json_mode = (cfg->flags &
+			(FYPCF_JSON_MASK << FYPCF_JSON_SHIFT)) == FYPCF_JSON_FORCE;
+
 	fy_document_list_init(&fyd->children);
 
 	return fyd;
