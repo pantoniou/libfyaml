@@ -3,8 +3,8 @@ AM_CPPFLAGS = \
         -I$(top_srcdir)/include
 AM_CFLAGS =
 
-lib_LTLIBRARIES = libfyaml-@MAJOR@.@MINOR@.la
-libfyaml_@MAJOR@_@MINOR@_la_SOURCES = \
+lib_LTLIBRARIES = libfyaml.la
+libfyaml_la_SOURCES = \
         lib/fy-parse.c lib/fy-parse.h \
 	lib/fy-utf8.c lib/fy-utf8.h \
 	lib/fy-types.c lib/fy-types.h \
@@ -27,13 +27,13 @@ libfyaml_@MAJOR@_@MINOR@_la_SOURCES = \
 	lib/fy-path.c lib/fy-path.h \
 	lib/fy-composer.c lib/fy-composer.h
 
-libfyaml_@MAJOR@_@MINOR@_la_CPPFLAGS = $(AM_CPPFLAGS) \
+libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) \
 				       -I$(top_srcdir)/src/lib \
 				       -I$(top_srcdir)/src/xxhash
-libfyaml_@MAJOR@_@MINOR@_la_CFLAGS = $(AM_CFLAGS)
-libfyaml_@MAJOR@_@MINOR@_la_LDFLAGS = $(AM_LDFLAGS) $(AM_LIBLDFLAGS) \
+libfyaml_la_CFLAGS = $(AM_CFLAGS)
+libfyaml_la_LDFLAGS = $(AM_LDFLAGS) $(AM_LIBLDFLAGS) \
 		      $(VERSIONING_LDFLAGS) \
-		      -version-info 0:0:0
+		      -release @MAJOR@.@MINOR@.@PATCH@
 
 bin_PROGRAMS =
 noinst_PROGRAMS =
@@ -50,7 +50,7 @@ libfyaml_parser_CPPFLAGS = $(AM_CPPFLAGS) \
 			   -I$(top_srcdir)/src/valgrind \
 			   -I$(top_srcdir)/src/lib \
 			   -I$(top_srcdir)/src/xxhash
-libfyaml_parser_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml-@MAJOR@.@MINOR@.la
+libfyaml_parser_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
 libfyaml_parser_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 
 libfyaml_parser_LDFLAGS = $(AM_LDFLAGS)
@@ -63,7 +63,7 @@ fy_tool_SOURCES = \
 	valgrind/fy-valgrind.h
 
 fy_tool_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/valgrind
-fy_tool_LDADD = $(AM_LDADD) libfyaml-@MAJOR@.@MINOR@.la
+fy_tool_LDADD = $(AM_LDADD) libfyaml.la
 fy_tool_CFLAGS = $(AM_CFLAGS)
 fy_tool_LDFLAGS = $(AM_LDFLAGS)
 

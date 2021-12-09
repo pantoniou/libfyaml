@@ -30,7 +30,7 @@ if HAVE_COMPATIBLE_CHECK
 check_PROGRAMS = libfyaml-test
 libfyaml_test_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/valgrind/ \
 			 -I$(top_srcdir)/src/lib/
-libfyaml_test_LDADD = $(AM_LDADD) $(CHECK_LIBS) $(top_builddir)/src/libfyaml-@MAJOR@.@MINOR@.la
+libfyaml_test_LDADD = $(AM_LDADD) $(CHECK_LIBS) $(top_builddir)/src/libfyaml.la
 libfyaml_test_CFLAGS = $(AM_CFLAGS) $(CHECK_CFLAGS) 
 libfyaml_test_LDFLAGS = $(AM_LDFLAGS) $(CHECK_LDFLAGS)
 
