@@ -131,8 +131,10 @@ void fy_path_component_clear_state(struct fy_path_component *fypc)
 					fy_document_destroy(fypc->map.complex_key);
 				fypc->map.complex_key = NULL;
 			} else {
-				fy_token_unref(fypc->map.scalar_key);
-				fypc->map.scalar_key = NULL;
+				fy_token_unref(fypc->map.scalar.tag);
+				fy_token_unref(fypc->map.scalar.key);
+				fypc->map.scalar.tag = NULL;
+				fypc->map.scalar.key = NULL;
 			}
 		}
 		fypc->map.has_key = false;
@@ -240,7 +242,13 @@ int fy_path_component_sequence_get_index(struct fy_path_component *fypc)
 struct fy_token *fy_path_component_mapping_get_scalar_key(struct fy_path_component *fypc)
 {
 	return fypc && fypc->type == FYPCT_MAP &&
-	       fypc->map.has_key && !fypc->map.is_complex_key ? fypc->map.scalar_key : NULL;
+	       fypc->map.has_key && !fypc->map.is_complex_key ? fypc->map.scalar.key : NULL;
+}
+
+struct fy_token *fy_path_component_mapping_get_scalar_key_tag(struct fy_path_component *fypc)
+{
+	return fypc && fypc->type == FYPCT_MAP &&
+	       fypc->map.has_key && !fypc->map.is_complex_key ? fypc->map.scalar.tag : NULL;
 }
 
 struct fy_document *fy_path_component_mapping_get_complex_key(struct fy_path_component *fypc)
@@ -296,12 +304,12 @@ static int fy_path_get_text_internal(struct fy_emit_accum *ea, struct fy_path *f
 
 			if (!fypc->map.is_complex_key) {
 
-				if (fypc->map.scalar_key) {
-					text = fy_token_get_text(fypc->map.scalar_key, &len);
+				if (fypc->map.scalar.key) {
+					text = fy_token_get_text(fypc->map.scalar.key, &len);
 					assert(text);
 					if (!text)
 						return -1;
-					if (fypc->map.scalar_key->type == FYTT_ALIAS)
+					if (fypc->map.scalar.key->type == FYTT_ALIAS)
 						fy_emit_accum_utf8_put_raw(ea, '*');
 					fy_emit_accum_utf8_write_raw(ea, text, len);
 				} else {

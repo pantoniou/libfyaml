@@ -42,7 +42,10 @@ struct fy_path_mapping_state {
 	bool is_complex_key : 1;
 	bool complex_key_complete : 1;
 	union {
-		struct fy_token *scalar_key;
+		struct {
+			struct fy_token *tag;
+			struct fy_token *key;
+		} scalar;
 		struct fy_document *complex_key;
 	};
 	void *key_user_data;

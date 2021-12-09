@@ -6651,6 +6651,19 @@ fy_path_component_mapping_get_scalar_key(struct fy_path_component *fypc)
 	FY_EXPORT;
 
 /**
+ * fy_path_component_mapping_get_scalar_key_tag() - Get the scalar key's tag of a mapping
+ *
+ * @fypc: The mapping path component to return it's scalar key's tag
+ *
+ * Returns:
+ * a non NULL tag token if the mapping contains a scalar key with a tag or
+ * NULL in case of an error, or if the component has a complex key
+ */
+struct fy_token *
+fy_path_component_mapping_get_scalar_key_tag(struct fy_path_component *fypc)
+	FY_EXPORT;
+
+/**
  * fy_path_component_mapping_get_complex_key() - Get the complex key of a mapping
  *
  * @fypc: The mapping path component to return it's complex key

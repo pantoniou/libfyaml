@@ -302,7 +302,8 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp
 
 		// DBG(fyp, "scalar key: %s\n", fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
 		fypc_last->map.is_complex_key = false;
-		fypc_last->map.scalar_key = fy_token_ref(fy_event_get_token(fye));
+		fypc_last->map.scalar.tag = fy_token_ref(fy_event_get_tag_token(fye));
+		fypc_last->map.scalar.key = fy_token_ref(fy_event_get_token(fye));
 		fypc_last->map.has_key = true;
 
 	}
