@@ -137,6 +137,7 @@ void fy_path_component_clear_state(struct fy_path_component *fypc)
 				fypc->map.scalar.key = NULL;
 			}
 		}
+		fypc->map.root = true;
 		fypc->map.has_key = false;
 		fypc->map.await_key = true;
 		fypc->map.is_complex_key = false;
@@ -203,6 +204,7 @@ struct fy_path_component *fy_path_component_create_mapping(struct fy_path *fypp)
 
 	fypc->type = FYPCT_MAP;
 
+	fypc->map.root = true;
 	fypc->map.await_key = true;
 	fypc->map.is_complex_key = false;
 	fypc->map.accumulating_complex_key = false;
@@ -275,7 +277,7 @@ static int fy_path_component_get_text_internal(struct fy_emit_accum *ea, struct 
 	case FYPCT_MAP:
 
 		/* we don't handle transitionals */
-		if (!fypc->map.has_key || fypc->map.await_key)
+		if (!fypc->map.has_key || fypc->map.await_key || fypc->map.root)
 			return -1;
 
 		if (!fypc->map.is_complex_key && fypc->map.scalar.key) {
@@ -339,7 +341,7 @@ static int fy_path_get_text_internal(struct fy_emit_accum *ea, struct fy_path *f
 
 		case FYPCT_MAP:
 
-			if (!fypc->map.has_key)
+			if (!fypc->map.has_key || fypc->map.root)
 				break;
 
 			/* key reference ? wrap in .key(X)*/

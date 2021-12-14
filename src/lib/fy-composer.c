@@ -204,6 +204,7 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp
 		fypc_last->map.has_key = true;
 		fypc_last->map.await_key = false;
 		fypc_last->map.complex_key_complete = true;
+		fypc_last->map.root = false;
 
 		fyppt = fy_path_list_pop_tail(&fyc->paths);
 		assert(fyppt);
@@ -305,6 +306,7 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp
 		fypc_last->map.scalar.tag = fy_token_ref(fy_event_get_tag_token(fye));
 		fypc_last->map.scalar.key = fy_token_ref(fy_event_get_token(fye));
 		fypc_last->map.has_key = true;
+		fypc_last->map.root = false;
 
 	}
 
