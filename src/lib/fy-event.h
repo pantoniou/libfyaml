@@ -36,10 +36,16 @@ void fy_eventp_release(struct fy_eventp *fyep);
 
 struct fy_eventp *fy_parse_eventp_alloc(struct fy_parser *fyp);
 void fy_parse_eventp_recycle(struct fy_parser *fyp, struct fy_eventp *fyep);
-void fy_parse_eventp_vacuum(struct fy_parser *fyp);
 
 struct fy_eventp *fy_emit_eventp_alloc(struct fy_emitter *fye);
 void fy_emit_eventp_recycle(struct fy_emitter *emit, struct fy_eventp *fyep);
-void fy_emit_eventp_vacuum(struct fy_emitter *emit);
+
+struct fy_document_iterator;
+
+struct fy_eventp *fy_document_iterator_eventp_alloc(struct fy_document_iterator *fydi);
+void fy_document_iterator_eventp_recycle(struct fy_document_iterator *fydi, struct fy_eventp *fyep);
+struct fy_event *fy_document_iterator_event_create(struct fy_document_iterator *document_iterator, enum fy_event_type type, ...);
+struct fy_event *fy_document_iterator_event_vcreate(struct fy_document_iterator *document_iterator, enum fy_event_type type, va_list ap);
+void fy_document_iterator_event_free(struct fy_document_iterator *document_iterator, struct fy_event *fye);
 
 #endif

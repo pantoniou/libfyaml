@@ -60,6 +60,7 @@ struct fy_path_expr;
 struct fy_path_exec;
 struct fy_path_component;
 struct fy_path;
+struct fy_document_iterator;
 
 
 #ifndef FY_BIT
@@ -6955,6 +6956,173 @@ fy_path_last_component(struct fy_path *fypp)
  */
 struct fy_path_component *
 fy_path_last_not_collection_root_component(struct fy_path *fypp)
+	FY_EXPORT;
+
+/**
+ * fy_document_iterator_create() - Create a document iterator
+ *
+ * Creates a document iterator, that can trawl through a document
+ * without using recursion.
+ *
+ * Returns:
+ * The newly created document iterator or NULL on error
+ */
+struct fy_document_iterator *
+fy_document_iterator_create(void)
+	FY_EXPORT;
+
+/**
+ * fy_document_iterator_destroy() - Destroy the given document iterator
+ *
+ * Destroy a document iterator created earlier via fy_document_iterator_create().
+ *
+ * @fydi: The document iterator to destroy
+ */
+void
+fy_document_iterator_destroy(struct fy_document_iterator *fydi)
+	FY_EXPORT;
+
+/**
+ * fy_document_iterator_event_free() - Free an event that was created by a document iterator
+ *
+ * Free (possibly recycling) an event that was created by a document iterator.
+ *
+ * @fydi: The document iterator that created the event
+ * @fye: The event
+ */
+void
+fy_document_iterator_event_free(struct fy_document_iterator *fydi, struct fy_event *fye)
+	FY_EXPORT;
+
+/**
+ * fy_document_iterator_stream_start() - Create a stream start event using the iterator
+ *
+ * Creates a stream start event on the document iterator and advances the internal state
+ * of it accordingly.
+ *
+ * @fydi: The document iterator to create the event
+ *
+ * Returns:
+ * The newly created stream start event, or NULL on error.
+ */
+struct fy_event *
+fy_document_iterator_stream_start(struct fy_document_iterator *fydi)
+	FY_EXPORT;
+
+/**
+ * fy_document_iterator_stream_end() - Create a stream end event using the iterator
+ *
+ * Creates a stream end event on the document iterator and advances the internal state
+ * of it accordingly.
+ *
+ * @fydi: The document iterator to create the event
+ *
+ * Returns:
+ * The newly created stream end event, or NULL on error.
+ */
+struct fy_event *
+fy_document_iterator_stream_end(struct fy_document_iterator *fydi)
+	FY_EXPORT;
+
+/**
+ * fy_document_iterator_document_start() - Create a document start event using the iterator
+ *
+ * Creates a document start event on the document iterator and advances the internal state
+ * of it accordingly. The document must not be released until an error, cleanup or a call
+ * to fy_document_iterator_document_end().
+ *
+ * @fydi: The document iterator to create the event
+ * @fyd: The document containing the document state that is used in the event
+ *
+ * Returns:
+ * The newly created document start event, or NULL on error.
+ */
+struct fy_event *
+fy_document_iterator_document_start(struct fy_document_iterator *fydi, struct fy_document *fyd)
+	FY_EXPORT;
+
+/**
+ * fy_document_iterator_document_end() - Create a document end event using the iterator
+ *
+ * Creates a document end event on the document iterator and advances the internal state
+ * of it accordingly. The document that was used earlier in the call of
+ * fy_document_iterator_document_start() can now be released.
+ *
+ * @fydi: The document iterator to create the event
+ *
+ * Returns:
+ * The newly created document end event, or NULL on error.
+ */
+struct fy_event *
+fy_document_iterator_document_end(struct fy_document_iterator *fydi)
+	FY_EXPORT;
+
+/**
+ * fy_document_iterator_body_next() - Create document body events until the end
+ *
+ * Creates the next document body, depth first until the end of the document.
+ * The events are created depth first and are in same exact sequence that the
+ * original events that created the document.
+ *
+ * That means that the finite event stream that generated the document is losslesly
+ * preserved in such a way that the document tree representation is functionally
+ * equivalent.
+ *
+ * Repeated calls to this function will generate a stream of SCALAR, ALIAS, SEQUENCE
+ * START, SEQUENCE END, MAPPING START and MAPPING END events, returning NULL at the
+ * end of the body event stream.
+ * 
+ * @fydi: The document iterator to create the event
+ *
+ * Returns:
+ * The newly created document body event or NULL at an error, or an end of the
+ * event stream. Use fy_document_iterator_get_error() to check if an error occured.
+ */
+struct fy_event *
+fy_document_iterator_body_next(struct fy_document_iterator *fydi)
+	FY_EXPORT;
+
+/**
+ * fy_document_iterator_node_start() - Start a document node iteration run using a starting point
+ *
+ * Starts an iteration run starting at the given node.
+ *
+ * @fydi: The document iterator to run with
+ * @fyn: The iterator root for the iteration
+ */
+void
+fy_document_iterator_node_start(struct fy_document_iterator *fydi, struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
+ * fy_document_iterator_node_next() - Return the next node in the iteration sequence
+ *
+ * Returns a pointer to the next node iterating using as a start the node given
+ * at fy_document_iterator_node_start(). The first node returned will be that,
+ * followed by all the remaing nodes in the subtree.
+ *
+ * @fydi: The document iterator to use for the iteration
+ *
+ * Returns:
+ * The next node in the iteration sequence or NULL at the end, or if an error occured.
+ */
+struct fy_node *
+fy_document_iterator_node_next(struct fy_document_iterator *fydi)
+	FY_EXPORT;
+
+/**
+ * fy_document_iterator_get_error() - Get the error state of the document iterator
+ *
+ * Returns the error state of the iterator. If it's in error state, return true
+ * and reset the iterator to the state just after creation.
+ *
+ * @fydi: The document iterator to use for checking it's error state.
+ *
+ * Returns:
+ * true if it was in an error state, false otherwise.
+ */
+bool
+fy_document_iterator_get_error(struct fy_document_iterator *fydi)
 	FY_EXPORT;
 
 #ifdef __cplusplus

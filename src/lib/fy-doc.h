@@ -29,6 +29,7 @@
 #include "fy-docstate.h"
 #include "fy-accel.h"
 #include "fy-walk.h"
+#include "fy-path.h"
 
 struct fy_eventp;
 
@@ -241,6 +242,8 @@ fy_document_builder_load_document(struct fy_document_builder *fydb,
 struct fy_document *
 fy_parse_load_document_with_builder(struct fy_parser *fyp);
 
+#if 0
+
 enum fy_node_iterator_flags {
 	FYNIF_DEPTH_FIRST	= FY_BIT(0),	/* depth first iterator (only one supported for now) */
 	FYNIF_FOLLOW_KEYS	= FY_BIT(1),	/* follow any keys encountered */
@@ -262,6 +265,7 @@ struct fy_node_iterator_state {
 		struct fy_node_pair *fynp;	/* for map only */
 		unsigned int idx;		/* for sequence */
 	};
+	bool start, end;
 };
 
 struct fy_node_iterator {
@@ -281,20 +285,7 @@ void fy_node_iterator_start(struct fy_node_iterator *fyi, struct fy_node *fyn);
 enum fy_node_iterator_result fy_node_iterator_end(struct fy_node_iterator *fyi);
 struct fy_node *fy_node_iterator_next(struct fy_node_iterator *fyi, struct fy_node *fyn);
 
-#define fy_node_get_path_a(_fyn) \
-	({ \
-		char *__path_a, *__path; \
-		__path = fy_node_get_path((_fyn)); \
-		if (__path) { \
-			__path_a = alloca(strlen(__path) + 1); \
-			strcpy(__path_a, __path); \
-			free(__path); \
-		} else { \
-			__path_a = alloca(1); \
-			__path_a[0] = '\0'; \
-		} \
-		__path_a; \
-	})
+#endif
 
 /* indirect node */
 FY_TYPE_FWD_DECL_LIST(ptr_node);
@@ -311,5 +302,56 @@ bool fy_ptr_node_list_contains(struct fy_ptr_node_list *fypnl, struct fy_node *f
 int fy_node_linearize_recursive(struct fy_ptr_node_list *fypnl, struct fy_node *fyn);
 int fy_node_linearize(struct fy_ptr_node_list *fypnl, struct fy_node *fyn);
 void fy_node_iterator_check(struct fy_node *fyn);
+
+
+enum fy_document_iterator_state {
+	FYDIS_WAITING_STREAM_START,
+	FYDIS_WAITING_DOCUMENT_START,
+	FYDIS_WAITING_BODY_START_OR_DOCUMENT_END,
+	FYDIS_BODY,
+	FYDIS_WAITING_DOCUMENT_END,
+	FYDIS_WAITING_STREAM_END_OR_DOCUMENT_START,
+	FYDIS_ERROR,
+};
+
+struct fy_document_iterator_body_state {
+	struct fy_node *fyn;	/* the collection node */
+	bool processed_key : 1;	/* for mapping only */
+	union {
+		struct fy_node *fyni;		/* for sequence */
+		struct fy_node_pair *fynp;	/* for mapping */
+	};
+};
+
+struct fy_document_iterator {
+	enum fy_document_iterator_state state;
+	struct fy_document *fyd;
+	struct fy_node *iterate_root;
+	bool suppress_recycling_force : 1;
+	bool suppress_recycling : 1;
+	struct fy_eventp_list recycled_eventp;
+	struct fy_token_list recycled_token;
+
+	unsigned int stack_top;
+	unsigned int stack_alloc;
+	struct fy_document_iterator_body_state *stack;
+	struct fy_document_iterator_body_state in_place[FYPCF_GUARANTEED_MINIMUM_DEPTH_LIMIT];
+};
+
+void fy_document_iterator_setup(struct fy_document_iterator *fydi);
+void fy_document_iterator_cleanup(struct fy_document_iterator *fydi);
+struct fy_document_iterator *fy_document_iterator_create(void);
+void fy_document_iterator_destroy(struct fy_document_iterator *fydi);
+void fy_document_iterator_start(struct fy_document_iterator *fydi, struct fy_document *fyd);
+void fy_document_iterator_end(struct fy_document_iterator *fydi);
+
+struct fy_document_iterator_body_result {
+	struct fy_node *fyn;
+	bool end;
+};
+
+bool
+fy_document_iterator_body_next_internal(struct fy_document_iterator *fydi,
+					struct fy_document_iterator_body_result *res);
 
 #endif

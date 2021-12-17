@@ -23,6 +23,7 @@
 
 #include "fy-parse.h"
 #include "fy-emit.h"
+#include "fy-doc.h"
 
 #include "fy-ctype.h"
 #include "fy-utf8.h"
@@ -167,20 +168,6 @@ void fy_parse_eventp_recycle(struct fy_parser *fyp, struct fy_eventp *fyep)
 		fy_eventp_free(fyep);
 }
 
-void fy_parse_eventp_vacuum(struct fy_parser *fyp)
-{
-	struct fy_eventp *fyep;
-
-	if (!fyp)
-		return;
-
-	while ((fyep = fy_eventp_list_pop(&fyp->recycled_eventp)) != NULL) {
-		/* catch double recycles */
-		/* assert(fy_eventp_list_head(&fyp->recycled_eventp)!= fyep); */
-		fy_eventp_free(fyep);
-	}
-}
-
 void fy_parser_event_free(struct fy_parser *fyp, struct fy_event *fye)
 {
 	struct fy_eventp *fyep;
@@ -215,17 +202,6 @@ void fy_emit_event_free(struct fy_emitter *emit, struct fy_event *fye)
 	fyep = container_of(fye, struct fy_eventp, e);
 
 	fy_emit_eventp_recycle(emit, fyep);
-}
-
-void fy_emit_eventp_vacuum(struct fy_emitter *emit)
-{
-	struct fy_eventp *fyep;
-
-	if (!emit)
-		return;
-
-	while ((fyep = fy_eventp_list_pop(&emit->recycled_eventp)) != NULL)
-		fy_eventp_free(fyep);
 }
 
 struct fy_eventp *
@@ -856,3 +832,90 @@ fy_document_start_event_version(struct fy_event *fye)
 	return fy_document_state_version(fye->document_start.document_state);
 }
 
+struct fy_eventp *
+fy_document_iterator_eventp_alloc(struct fy_document_iterator *fydi)
+{
+	struct fy_eventp *fyep = NULL;
+
+	if (!fydi)
+		return NULL;
+
+	if (!fydi->suppress_recycling)
+		fyep = fy_eventp_list_pop(&fydi->recycled_eventp);
+	if (!fyep)
+		fyep = fy_eventp_alloc();
+	if (!fyep)
+		return NULL;
+
+	fyep->e.type = FYET_NONE;
+
+	return fyep;
+}
+
+void fy_document_iterator_eventp_clean(struct fy_document_iterator *fydi, struct fy_eventp *fyep)
+{
+	struct fy_token_list *fytl;
+
+	if (!fydi || !fyep)
+		return;
+
+	fytl = !fydi->suppress_recycling ? &fydi->recycled_token : NULL;
+	fy_eventp_clean_rl(fytl, fyep);
+}
+
+void fy_document_iterator_eventp_recycle(struct fy_document_iterator *fydi, struct fy_eventp *fyep)
+{
+	if (!fydi || !fyep)
+		return;
+
+	/* clean, safe to do */
+	fy_document_iterator_eventp_clean(fydi, fyep);
+
+	if (!fydi->suppress_recycling)
+		fy_eventp_list_push(&fydi->recycled_eventp, fyep);
+	else
+		fy_eventp_free(fyep);
+}
+
+struct fy_event *
+fy_document_iterator_event_vcreate(struct fy_document_iterator *fydi, enum fy_event_type type, va_list ap)
+{
+	struct fy_eventp_list *fyepl;
+	struct fy_eventp *fyep;
+
+	if (!fydi)
+		return NULL;
+
+	fyepl = !fydi->suppress_recycling ? &fydi->recycled_eventp : NULL;
+
+	fyep = fy_eventp_vcreate_internal(fyepl, fydi->fyd ? fydi->fyd->diag : NULL, fydi->fyd ? fydi->fyd->fyds : NULL, type, ap);
+	if (!fyep)
+		return NULL;
+
+	return &fyep->e;
+}
+
+struct fy_event *
+fy_document_iterator_event_create(struct fy_document_iterator *fydi, enum fy_event_type type, ...)
+{
+	struct fy_event *fye;
+	va_list ap;
+
+	va_start(ap, type);
+	fye = fy_document_iterator_event_vcreate(fydi, type, ap);
+	va_end(ap);
+
+	return fye;
+}
+
+void fy_document_iterator_event_free(struct fy_document_iterator *fydi, struct fy_event *fye)
+{
+	struct fy_eventp *fyep;
+
+	if (!fydi || !fye)
+		return;
+
+	fyep = container_of(fye, struct fy_eventp, e);
+
+	fy_document_iterator_eventp_recycle(fydi, fyep);
+}
