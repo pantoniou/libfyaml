@@ -23,7 +23,7 @@ m4_ifdef([AM_EXTRA_RECURSIVE_TARGETS],
 m4_define(fyaml_major, `echo $VERSION | cut -d. -f1 | cut -d- -f1`)
 m4_define(fyaml_minor, `echo $VERSION | cut -d. -f2 | cut -d- -f1`)
 m4_define(fyaml_patch, `echo $VERSION | cut -d. -f3- | cut -d- -f1`)
-m4_define(fyaml_extra, `echo $VERSION | sed -d- -f2- -s`)
+m4_define(fyaml_extra, `echo $VERSION | cut -d- -f2- -s`)
 
 AC_SUBST(MAJOR, fyaml_major)
 AC_SUBST(MINOR, fyaml_minor)
