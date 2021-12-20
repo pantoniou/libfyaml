@@ -50,6 +50,7 @@
 #define YPATH_ALIASES_DEFAULT		false
 #define DISABLE_FLOW_MARKERS_DEFAULT	false
 #define DUMP_PATH_DEFAULT		false
+#define DOCUMENT_EVENT_STREAM_DEFAULT	false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -77,6 +78,7 @@
 #define OPT_YPATH_ALIASES		2013
 #define OPT_DISABLE_FLOW_MARKERS	2014
 #define OPT_DUMP_PATH			2015
+#define OPT_DOCUMENT_EVENT_STREAM	2016
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -131,6 +133,7 @@ static struct option lopts[] = {
 	{"ypath-aliases",	no_argument,		0,	OPT_YPATH_ALIASES },
 	{"disable-flow-markers",no_argument,		0,	OPT_DISABLE_FLOW_MARKERS },
 	{"dump-pathexpr",	no_argument,		0,	OPT_DUMP_PATHEXPR },
+	{"document-event-stream",no_argument,		0,	OPT_DOCUMENT_EVENT_STREAM },
 	{"noexec",		no_argument,		0,	OPT_NOEXEC },
 	{"null-output",		no_argument,		0,	OPT_NULL_OUTPUT },
 	{"to",			required_argument,	0,	'T' },
@@ -226,6 +229,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--disable-flow-markers   : Disable testsuite's flow-markers"
 							" (default %s)\n",
 							DISABLE_FLOW_MARKERS_DEFAULT ? "true" : "false");
+		fprintf(fp, "\t--document-event-stream  : Generate a document and then produce the event stream"
+							" (default %s)\n",
+							DOCUMENT_EVENT_STREAM_DEFAULT ? "true" : "false");
 		if (tool_mode == OPT_TOOL || tool_mode == OPT_DUMP)
 			fprintf(fp, "\t--streaming              : Use streaming output mode"
 								" (default %s)\n",
@@ -1395,6 +1401,7 @@ int main(int argc, char *argv[])
 	bool stdin_input;
 	void *res_iter;
 	bool disable_flow_markers = false;
+	bool document_event_stream = false;
 	struct composer_data cd;
 	bool dump_path = DUMP_PATH_DEFAULT;
 
@@ -1668,6 +1675,9 @@ int main(int argc, char *argv[])
 		case OPT_DISABLE_FLOW_MARKERS:
 			disable_flow_markers = true;
 			break;
+		case OPT_DOCUMENT_EVENT_STREAM:
+			document_event_stream = true;
+			break;
 		case 'h' :
 		default:
 			if (opt != 'h')
@@ -1760,12 +1770,72 @@ int main(int argc, char *argv[])
 			fprintf(stderr, "failed to create token iterator\n");
 			goto cleanup;
 		}
-		while ((fyev = fy_parser_parse(fyp)) != NULL) {
+
+		if (!document_event_stream) {
+			/* regular test suite */
+			while ((fyev = fy_parser_parse(fyp)) != NULL) {
+				dump_testsuite_event(fyp, fyev, du.colorize, iter, disable_flow_markers);
+				fy_parser_event_free(fyp, fyev);
+			}
+		} else {
+			struct fy_document_iterator *fydi;
+
+			fydi = fy_document_iterator_create();
+			assert(fydi);
+
+			fyev = fy_document_iterator_stream_start(fydi);
+			if (!fyev) {
+				fprintf(stderr, "failed to create document iterator's stream start event\n");
+				goto cleanup;
+			}
 			dump_testsuite_event(fyp, fyev, du.colorize, iter, disable_flow_markers);
-			fy_parser_event_free(fyp, fyev);
+			fy_document_iterator_event_free(fydi, fyev);
+
+			/* convert to document and then process the generator event stream it */
+			while ((fyd = fy_parse_load_document(fyp)) != NULL) {
+
+				fyev = fy_document_iterator_document_start(fydi, fyd);
+				if (!fyev) {
+					fprintf(stderr, "failed to create document iterator's document start event\n");
+					goto cleanup;
+				}
+				dump_testsuite_event(fyp, fyev, du.colorize, iter, disable_flow_markers);
+				fy_document_iterator_event_free(fydi, fyev);
+
+				while ((fyev = fy_document_iterator_body_next(fydi)) != NULL) {
+					dump_testsuite_event(fyp, fyev, du.colorize, iter, disable_flow_markers);
+					fy_document_iterator_event_free(fydi, fyev);
+				}
+
+				fyev = fy_document_iterator_document_end(fydi);
+				if (!fyev) {
+					fprintf(stderr, "failed to create document iterator's stream document end\n");
+					goto cleanup;
+				}
+				dump_testsuite_event(fyp, fyev, du.colorize, iter, disable_flow_markers);
+				fy_document_iterator_event_free(fydi, fyev);
+
+				fy_parse_document_destroy(fyp, fyd);
+				if (rc)
+					break;
+
+			}
+
+			fyev = fy_document_iterator_stream_end(fydi);
+			if (!fyev) {
+				fprintf(stderr, "failed to create document iterator's stream end event\n");
+				goto cleanup;
+			}
+			dump_testsuite_event(fyp, fyev, du.colorize, iter, disable_flow_markers);
+			fy_document_iterator_event_free(fydi, fyev);
+
+			fy_document_iterator_destroy(fydi);
+			fydi = NULL;
 		}
+
 		fy_token_iter_destroy(iter);
 		iter = NULL;
+
 		if (fy_parser_get_stream_error(fyp))
 			goto cleanup;
 		break;
