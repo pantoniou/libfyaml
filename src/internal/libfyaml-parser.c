@@ -964,30 +964,27 @@ fy_node_belongs_to_key(struct fy_document *fyd, struct fy_node *fyn)
 
 int do_iterate(struct fy_parser *fyp)
 {
-	enum fy_node_iterator_flags flags;
 	struct fy_document *fyd;
+	struct fy_document_iterator *fydi;
 	int count;
 	struct fy_node *fyn;
-	struct fy_node_iterator ni;
-	enum fy_node_iterator_result res;
 	char *path;
 	size_t len;
 	const char *text;
 	char textbuf[16];
 	bool belongs_to_key;
 
-	memset(&ni, 0, sizeof(ni));
-
-	flags = FYNIF_DEPTH_FIRST;
-	fy_node_iterator_setup(&ni, flags | FYNIF_FOLLOW_KEYS | FYNIF_FOLLOW_LINKS);
+	fydi = fy_document_iterator_create();
+	assert(fydi);
 
 	count = 0;
 	while ((fyd = fy_parse_load_document(fyp)) != NULL) {
 
 		fprintf(stderr, "> Start\n");
-		fy_node_iterator_start(&ni, fy_document_root(fyd));
+		fy_document_iterator_node_start(fydi, fy_document_root(fyd));
+
 		fyn = NULL;
-		while ((fyn = fy_node_iterator_next(&ni, fyn)) != NULL) {
+		while ((fyn = fy_document_iterator_node_next(fydi)) != NULL) {
 
 			belongs_to_key = fy_node_belongs_to_key(fyd, fyn);
 			path = fy_node_get_path(fyn);
@@ -1008,33 +1005,24 @@ int do_iterate(struct fy_parser *fyp)
 			free(path);
 		}
 
-		res = fy_node_iterator_end(&ni);
-
 		fprintf(stderr, "> End\n");
 
 		fy_parse_document_destroy(fyp, fyd);
 
-		if (res != FYNIR_OK) {
-			fprintf(stderr, "> Iterator error %d\n", (int)res);
-			break;
-		}
-
 		count++;
 	}
 
-	fy_node_iterator_cleanup(&ni);
+	fy_document_iterator_destroy(fydi);
 
 	return count > 0 ? 0 : -1;
 }
 
 int do_comment(struct fy_parser *fyp)
 {
-	enum fy_node_iterator_flags flags;
 	struct fy_document *fyd;
 	int count;
 	struct fy_node *fyn;
-	struct fy_node_iterator ni;
-	enum fy_node_iterator_result res;
+	struct fy_document_iterator *fydi;
 	char *path;
 	struct fy_token *fyt;
 	struct fy_atom *handle;
@@ -1042,17 +1030,15 @@ int do_comment(struct fy_parser *fyp)
 	static const char *placement_txt[] =  { "top", "right", "bottom" };
 	char buf[1024];
 
-	memset(&ni, 0, sizeof(ni));
-
-	flags = FYNIF_DEPTH_FIRST;
-	fy_node_iterator_setup(&ni, flags | FYNIF_FOLLOW_KEYS | FYNIF_FOLLOW_LINKS);
+	fydi = fy_document_iterator_create();
+	assert(fydi);
 
 	count = 0;
 	while ((fyd = fy_parse_load_document(fyp)) != NULL) {
 
-		fy_node_iterator_start(&ni, fy_document_root(fyd));
+		fy_document_iterator_node_start(fydi, fy_document_root(fyd));
 		fyn = NULL;
-		while ((fyn = fy_node_iterator_next(&ni, fyn)) != NULL) {
+		while ((fyn = fy_document_iterator_node_next(fydi)) != NULL) {
 
 			if (!fy_node_is_scalar(fyn))
 				continue;
@@ -1078,18 +1064,12 @@ int do_comment(struct fy_parser *fyp)
 			free(path);
 		}
 
-		res = fy_node_iterator_end(&ni);
-
 		fy_parse_document_destroy(fyp, fyd);
-
-		if (res != FYNIR_OK) {
-			break;
-		}
 
 		count++;
 	}
 
-	fy_node_iterator_cleanup(&ni);
+	fy_document_iterator_destroy(fydi);
 
 	return count > 0 ? 0 : -1;
 }
@@ -3500,14 +3480,14 @@ int do_bypath(struct fy_parser *fyp, const char *pathstr, const char *start)
 		if (!fyn) {
 			fprintf(stderr, "exec: did not find node for %s\n", pathstr);
 		} else {
-			fprintf(stderr, "exec: path %s - return %s\n", pathstr, fy_node_get_path_a(fyn));
+			fprintf(stderr, "exec: path %s - return %s\n", pathstr, fy_node_get_path_alloca(fyn));
 		}
 
 		fyn = node_find(fyd, fy_document_root(fyd), &path);
 		if (!fyn) {
 			fprintf(stderr, "norm: did not find node for %s\n", pathstr);
 		} else {
-			fprintf(stderr, "norm: path %s - return %s\n", pathstr, fy_node_get_path_a(fyn));
+			fprintf(stderr, "norm: path %s - return %s\n", pathstr, fy_node_get_path_alloca(fyn));
 		}
 
 		fy_parse_document_destroy(fyp, fyd);
