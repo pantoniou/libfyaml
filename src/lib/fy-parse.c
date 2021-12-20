@@ -761,6 +761,7 @@ err_out_rc:
 void fy_parse_cleanup(struct fy_parser *fyp)
 {
 	struct fy_input *fyi, *fyin;
+	struct fy_eventp *fyep;
 	struct fy_token *fyt;
 
 	fy_composer_destroy(fyp->fyc);
@@ -790,8 +791,14 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 	fy_parse_indent_vacuum(fyp);
 	fy_parse_simple_key_vacuum(fyp);
 	fy_parse_parse_state_log_vacuum(fyp);
-	fy_parse_eventp_vacuum(fyp);
 	fy_parse_flow_vacuum(fyp);
+
+	/* free the recycled events */
+	while ((fyep = fy_eventp_list_pop(&fyp->recycled_eventp)) != NULL) {
+		/* catch double recycles */
+		/* assert(fy_eventp_list_head(&fyp->recycled_eventp)!= fyep); */
+		fy_eventp_free(fyep);
+	}
 
 	/* and the recycled tokens */
 	while ((fyt = fy_token_list_pop(&fyp->recycled_token)) != NULL)

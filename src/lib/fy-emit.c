@@ -1959,7 +1959,8 @@ void fy_emit_cleanup(struct fy_emitter *emit)
 	while ((fyt = fy_token_list_pop(&emit->recycled_token)) != NULL)
 		fy_token_free(fyt);
 
-	fy_emit_eventp_vacuum(emit);
+	while ((fyep = fy_eventp_list_pop(&emit->recycled_eventp)) != NULL)
+		fy_eventp_free(fyep);
 
 	if (!emit->fyd && emit->fyds)
 		fy_document_state_unref(emit->fyds);
