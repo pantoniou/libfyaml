@@ -1,0 +1,59 @@
+#!/bin/bash
+
+count=0
+for dir in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
+	# skip tests that are expected to fail
+	if [ -e "$dir/error" ]; then
+		continue
+	fi
+	count=`expr $count + 1`
+done
+
+# output plan
+echo 1..$count
+
+skiplist="2JQS"
+
+i=0
+for dir in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
+
+	# skip tests that are expected to fail
+	if [ -e "$dir/error" ]; then
+		continue
+	fi
+
+	i=`expr $i + 1`
+	desctxt=`cat 2>/dev/null "$dir/==="`
+	tdir=`basename $dir`
+
+	t=`mktemp`
+
+	skipdirective=""
+	for skip in $skiplist; do
+		if [ "$tdir" == "$skip" ]; then
+			skipdirective=" # skip: duplicate keys in testcase; cannot load as document"
+			break
+		fi
+	done
+
+	res="ok"
+	if [ "x$skipdirective" == "x" ]; then
+		res="not ok"
+		# run the test using document-event-stream
+		${TOP_BUILDDIR}/src/fy-tool --testsuite --document-event-stream "$dir/in.yaml" >"$t"
+		if [ $? -eq 0 ]; then
+			diff -u "$dir/test.event" "$t"
+			if [ $? -eq 0 ]; then
+				res="ok"
+			else
+				res="not ok"
+			fi
+		else
+			res="not ok"
+		fi
+
+		rm -f "$t"
+	fi
+
+	echo "$res $i $tdir - $desctxt$skipdirective"
+done

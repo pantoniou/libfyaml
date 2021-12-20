@@ -59,6 +59,9 @@ endif
 # normal JSON testsuite
 TESTS += jsontestsuite.test
 
+# normal YAML testsuite using document event stream
+TESTS += testsuite-evstream.test
+
 testsuite.test: test-suite-data json-test-suite-data
 
 test-suite-data:
