@@ -6465,9 +6465,8 @@ err_out:
 
 int fy_parse_compose(struct fy_parser *fyp, fy_parse_composer_cb cb, void *userdata)
 {
-	struct fy_eventp *fyep;
 	enum fy_composer_return ret;
-	int rc;
+	int rc, rc_out;
 
 	if (!fyp || !cb)
 		return -1;
@@ -6477,28 +6476,14 @@ int fy_parse_compose(struct fy_parser *fyp, fy_parse_composer_cb cb, void *userd
 	fyp_error_check(fyp, !rc, err_out,
 			"fy_parse_set_composer() failed\n");
 
-	/* insane but check anyway */
-	assert(fyp->fyc);
-
-	/* pump events */
-	rc = 0;
-	while ((fyep = fy_parse_private(fyp)) != NULL) {
-
-		/* call the composer */
-		ret = fy_composer_process_event(fyp->fyc, fyp, &fyep->e);
-		fy_parse_eventp_recycle(fyp, fyep);
-
-		/* on error stop */
-		if (ret == FYCR_ERROR) {
-			fyp->stream_error = true;
-			rc = -1;
-			break;
-		}
-
-		/* on normal requested stop, stop */
-		if (ret == FYCR_OK_STOP)
-			break;
-	}
+	/* use the composer to parse */
+	ret = fy_composer_parse(fyp->fyc, fyp);
+	/* on error set the stream error */
+	if (ret == FYCR_ERROR) {
+		fyp->stream_error = true;
+		rc_out = -1;
+	} else
+		rc_out = 0;
 
 	/* reset the parser; the composer clear must always succeed */
 	fy_parser_reset(fyp);
@@ -6508,7 +6493,7 @@ int fy_parse_compose(struct fy_parser *fyp, fy_parse_composer_cb cb, void *userd
 	fyp_error_check(fyp, !rc, err_out,
 			"fy_parse_set_composer() failed\n");
 
-	return rc;
+	return rc_out;
 
 err_out:
 	return -1;

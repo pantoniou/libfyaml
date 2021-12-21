@@ -399,19 +399,97 @@ struct fy_diag *fy_composer_get_diag(struct fy_composer *fyc)
 enum fy_composer_return
 fy_composer_parse(struct fy_composer *fyc, struct fy_parser *fyp)
 {
+	struct fy_document_iterator *fydi;
 	struct fy_event *fye;
+	struct fy_eventp *fyep;
+	struct fy_document *fyd = NULL;
 	enum fy_composer_return ret;
 
 	if (!fyp || !fyc)
 		return FYCR_ERROR;
 
-	ret = FYCR_OK_CONTINUE;
-	while ((fye = fy_parser_parse(fyp)) != NULL) {
-		ret = fy_composer_process_event(fyc, fyp, fye);
-		fy_parser_event_free(fyp, fye);
-		if (ret != FYCR_OK_CONTINUE)
-			break;
+	/* simple, without resolution */
+	if (!(fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT)) {
+
+		ret = FYCR_OK_STOP;
+		while ((fyep = fy_parse_private(fyp)) != NULL) {
+			ret = fy_composer_process_event(fyc, fyp, &fyep->e);
+			fy_parse_eventp_recycle(fyp, fyep);
+			if (ret != FYCR_OK_CONTINUE)
+				break;
+		}
+		return ret;
 	}
 
+	fydi = fy_document_iterator_create();
+	if (!fydi)
+		goto err_out;
+
+	/* stream start event generation and processing */
+	fye = fy_document_iterator_stream_start(fydi);
+	if (!fye)
+		goto err_out;
+	ret = fy_composer_process_event(fyc, fyp, fye);
+	fy_document_iterator_event_free(fydi, fye);
+	fye = NULL;
+	if (ret != FYCR_OK_CONTINUE)
+		goto out;
+
+	/* convert to document and then process the generator event stream it */
+	while ((fyd = fy_parse_load_document(fyp)) != NULL) {
+
+		/* document start event generation and processing */
+		fye = fy_document_iterator_document_start(fydi, fyd);
+		if (!fye)
+			goto err_out;
+		ret = fy_composer_process_event(fyc, fyp, fye);
+		fy_document_iterator_event_free(fydi, fye);
+		fye = NULL;
+		if (ret != FYCR_OK_CONTINUE)
+			goto out;
+
+		/* and now process the body */
+		ret = FYCR_OK_CONTINUE;
+		while ((fye = fy_document_iterator_body_next(fydi)) != NULL) {
+			ret = fy_composer_process_event(fyc, fyp, fye);
+			fy_document_iterator_event_free(fydi, fye);
+			fye = NULL;
+			if (ret != FYCR_OK_CONTINUE)
+				goto out;
+		}
+
+		/* document end event generation and processing */
+		fye = fy_document_iterator_document_end(fydi);
+		if (!fye)
+			goto err_out;
+		ret = fy_composer_process_event(fyc, fyp, fye);
+		fy_document_iterator_event_free(fydi, fye);
+		fye = NULL;
+		if (ret != FYCR_OK_CONTINUE)
+			goto out;
+
+		/* and destroy the document */
+		fy_parse_document_destroy(fyp, fyd);
+		fyd = NULL;
+	}
+
+	/* stream end event generation and processing */
+	fye = fy_document_iterator_stream_end(fydi);
+	if (!fye)
+		goto err_out;
+	ret = fy_composer_process_event(fyc, fyp, fye);
+	fy_document_iterator_event_free(fydi, fye);
+	fye = NULL;
+	if (ret != FYCR_OK_CONTINUE)
+		goto out;
+
+out:
+	/* NULLs are OK */
+	fy_parse_document_destroy(fyp, fyd);
+	fy_document_iterator_destroy(fydi);
 	return ret;
+
+err_out:
+	ret = FYCR_ERROR;
+	goto out;
 }
