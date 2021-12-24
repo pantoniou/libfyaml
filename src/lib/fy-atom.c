@@ -459,13 +459,33 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 				last_was_ws = true;
 			}
 
-		} else if (fy_is_ws(c)) {
+		} else if (fy_is_space(c)) {
 
-			advws = fy_is_space(c) ? 1 : (ts - (col % ts));
+			col++;
+			cws++;
+
+			if (!last_was_ws) {
+				li->nws_end = ss;
+				last_was_ws = true;
+			}
+
+		} else if (fy_is_tab(c)) {
+
+			bool can_be_nws_end;
+
+			advws = ts - (col % ts);
 			col += advws;
 			cws += advws;
 
-			if (!last_was_ws) {
+			can_be_nws_end = true;
+			if (atom->style == FYAS_DOUBLE_QUOTED && ss > li->start && ss[-1] == '\\') {
+				can_be_nws_end = false;
+#ifdef DEBUG_CHUNK
+				fprintf(stderr, "%s:%d backslashed tab\n", __FILE__, __LINE__);
+#endif
+			}
+
+			if (can_be_nws_end && !last_was_ws) {
 				li->nws_end = ss;
 				last_was_ws = true;
 			}
