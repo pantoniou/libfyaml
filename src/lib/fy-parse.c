@@ -3772,6 +3772,11 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 			flow_level > 0 || !((c == '?' || c == ':') && fy_reader_is_blank_at_offset(fyr, 1)), err_out,
 			"plain scalar cannot start with '%c' followed by blank (in block context)", c);
 
+	/* may not start with - followed by ",[]{}" in flow context */
+	FYR_PARSE_ERROR_CHECK(fyr, 0, 2, FYEM_SCAN,
+			flow_level == 0 || !(c == '-' && fy_utf8_strchr(",[]{}", fy_reader_peek_at(fyr, 1))), err_out,
+			"plain scalar cannot start with '%c' followed by ,[]{} (in flow context)", c);
+
 	fy_reader_get_mark(fyr, &mark);
 
 	fy_reader_fill_atom_start(fyr, handle);
