@@ -1,12 +1,18 @@
 #!/bin/bash
 
 count=0
-for dir in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
-	# skip tests that are expected to fail
-	if [ -e "$dir/error" ]; then
-		continue
-	fi
-	count=`expr $count + 1`
+for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
+	for tst in ${basetst} ${basetst}[0-9][0-9]/; do
+		# there must be a test there
+		if [ ! -e "$tst/===" ]; then
+			continue
+		fi
+		# skip tests that are expected to fail
+		if [ -e "$tst/error" ]; then
+			continue
+		fi
+		count=`expr $count + 1`
+	done
 done
 
 # output plan
@@ -15,45 +21,60 @@ echo 1..$count
 skiplist="2JQS"
 
 i=0
-for dir in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
+for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 
-	# skip tests that are expected to fail
-	if [ -e "$dir/error" ]; then
-		continue
-	fi
+	for tst in ${basetst} ${basetst}[0-9][0-9]/; do
 
-	i=`expr $i + 1`
-	desctxt=`cat 2>/dev/null "$dir/==="`
-	tdir=`basename $dir`
-
-	t=`mktemp`
-
-	skipdirective=""
-	for skip in $skiplist; do
-		if [ "$tdir" == "$skip" ]; then
-			skipdirective=" # skip: duplicate keys in testcase; cannot load as document"
-			break
+		# there must be a test there
+		if [ ! -e "$tst/===" ]; then
+			continue
 		fi
-	done
 
-	res="ok"
-	if [ "x$skipdirective" == "x" ]; then
-		res="not ok"
-		# run the test using document-event-stream
-		${TOP_BUILDDIR}/src/fy-tool --testsuite --document-event-stream "$dir/in.yaml" >"$t"
-		if [ $? -eq 0 ]; then
-			diff -u "$dir/test.event" "$t"
+		# skip tests that are expected to fail
+		if [ -e "$tst/error" ]; then
+			continue
+		fi
+
+		i=`expr $i + 1`
+
+		# strip trailing /
+		t=${tst%/}
+		# remove test-suite-data/
+		test_subtest_id=`echo $t | cut -d/ -f2-`
+		test_id=`echo $test_subtest_id | cut -d/ -f1`
+		subtest_id=`echo $test_subtest_id | cut -s -d/ -f2`
+
+		desctxt=`cat 2>/dev/null "$tst/==="`
+
+		t=`mktemp`
+
+		skipdirective=""
+		for skip in $skiplist; do
+			if [ "$test_subtest_id" == "$skip" ]; then
+				skipdirective=" # skip: duplicate keys in testcase; cannot load as document"
+				break
+			fi
+		done
+
+		res="ok"
+		if [ "x$skipdirective" == "x" ]; then
+			res="not ok"
+			# run the test using document-event-stream
+			${TOP_BUILDDIR}/src/fy-tool --testsuite --document-event-stream "$tst/in.yaml" >"$t"
 			if [ $? -eq 0 ]; then
-				res="ok"
+				diff -u "$tst/test.event" "$t"
+				if [ $? -eq 0 ]; then
+					res="ok"
+				else
+					res="not ok"
+				fi
 			else
 				res="not ok"
 			fi
-		else
-			res="not ok"
+
+			rm -f "$t"
 		fi
 
-		rm -f "$t"
-	fi
-
-	echo "$res $i $tdir - $desctxt$skipdirective"
+		echo "$res $i $test_subtest_id - $desctxt$skipdirective"
+	done
 done

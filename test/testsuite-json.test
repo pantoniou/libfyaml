@@ -1,16 +1,22 @@
 #!/bin/bash
 
 count=0
-for file in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/in.json; do
-
-	dir=`dirname $file`
-
-	# ignore tests which are expected to fail
-	if [ -e "$dir/error" ]; then
-		continue
-	fi
-
-	count=`expr $count + 1`
+for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
+	for tst in ${basetst} ${basetst}[0-9][0-9]/; do
+		# there must be a test there
+		if [ ! -e "$tst/===" ]; then
+			continue
+		fi
+		# ignore tests which are expected to fail
+		if [ -e "$tst/error" ]; then
+			continue
+		fi
+		# a json file must be there
+		if [ ! -e "$tst/in.json" ]; then
+			continue
+		fi
+		count=`expr $count + 1`
+	done
 done
 
 # output plan
@@ -19,48 +25,60 @@ echo 1..$count
 skiplist="C4HZ"
 
 i=0
-for file in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/in.json; do
+for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 
-	dir=`dirname $file`
+	for tst in ${basetst} ${basetst}[0-9][0-9]/; do
 
-	# ignore tests which are expected to fail
-	if [ -e "$dir/error" ]; then
-		continue
-	fi
-
-	i=`expr $i + 1`
-	desctxt=`cat 2>/dev/null "$dir/==="`
-	tdir=`basename $dir`
-
-	skipdirective=""
-	for skip in $skiplist; do
-		if [ "$tdir" == "$skip" ]; then
-			skipdirective="# skip does not apply to libfyaml"
-			break
+		# ignore tests which are expected to fail
+		if [ -e "$tst/error" ]; then
+			continue
 		fi
+		# a json file must be there
+		if [ ! -e "$tst/in.json" ]; then
+			continue
+		fi
+
+		i=`expr $i + 1`
+
+		# strip trailing /
+		t=${tst%/}
+		# remove test-suite-data/
+		test_subtest_id=`echo $t | cut -d/ -f2-`
+		test_id=`echo $test_subtest_id | cut -d/ -f1`
+		subtest_id=`echo $test_subtest_id | cut -s -d/ -f2`
+
+		desctxt=`cat 2>/dev/null "$tst/==="`
+
+		skipdirective=""
+		for skip in $skiplist; do
+			if [ "$test_subtest_id" == "$skip" ]; then
+				skipdirective="# skip does not apply to libfyaml"
+				break
+			fi
+		done
+
+		res="ok"
+
+		if [ "x$skipdirective" == "x" ]; then
+			t1=`mktemp`
+			t2=`mktemp`
+
+			# output yaml in json format
+			${TOP_BUILDDIR}/src/fy-tool --dump --strip-labels --strip-tags --strip-doc -r -mjson "$tst/in.yaml" | "${JQ}" --sort-keys . >"$t1"
+
+			# do the same with the json input (canonicalize)
+			cat "$tst/in.json" | "${JQ}" --sort-keys . > "$t2"
+
+			diff -u "$t1" "$t2"
+			if [ $? -eq 0 ]; then
+				res="ok"
+			else
+				res="not ok"
+			fi
+
+			rm -f "$t1" "$t2"
+		fi
+
+		echo "$res $i $test_subtest_id - $desctxt (JSON)$skipdirective"
 	done
-
-	res="ok"
-
-	if [ "x$skipdirective" == "x" ]; then
-		t1=`mktemp`
-		t2=`mktemp`
-
-		# output yaml in json format
-		${TOP_BUILDDIR}/src/fy-tool --dump --strip-labels --strip-tags --strip-doc -r -mjson "$dir/in.yaml" | "${JQ}" --sort-keys . >"$t1"
-
-		# do the same with the json input (canonicalize)
-		cat "$dir/in.json" | "${JQ}" --sort-keys . > "$t2"
-
-		diff -u "$t1" "$t2"
-		if [ $? -eq 0 ]; then
-			res="ok"
-		else
-			res="not ok"
-		fi
-
-		rm -f "$t1" "$t2"
-	fi
-
-	echo "$res $i $tdir - $desctxt (JSON)$skipdirective"
 done
