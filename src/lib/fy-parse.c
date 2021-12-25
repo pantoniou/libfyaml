@@ -1052,7 +1052,7 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 		fy_advance(fyp, c);
 
 		/* may start simple key (in block ctx) */
-		if (!fyp->flow_level) {
+		if (!fyp->flow_level && !fyp->simple_key_allowed) {
 			fyp->simple_key_allowed = true;
 			fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 		}
