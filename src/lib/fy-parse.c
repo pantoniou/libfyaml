@@ -1992,10 +1992,15 @@ err_out_rc:
 	return rc;
 }
 
+static inline bool fy_flow_indent_check_internal(struct fy_parser *fyp, int column, int indent)
+{
+	return (!fyp->flow_level || column > indent) ||
+		((fyp->cfg.flags & FYPCF_SLOPPY_FLOW_INDENTATION) && fyp->flow_level);
+}
+
 static inline bool fy_flow_indent_check(struct fy_parser *fyp)
 {
-	return (!fyp->flow_level || fyp_column(fyp) > fyp->indent) ||
-		((fyp->cfg.flags & FYPCF_SLOPPY_FLOW_INDENTATION) && fyp->flow_level);
+	return fy_flow_indent_check_internal(fyp, fyp_column(fyp), fyp->indent);
 }
 
 static inline bool fy_block_indent_check(struct fy_parser *fyp)
@@ -2426,7 +2431,37 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 			"JSON considers keys when not in mapping context invalid");
 
 	/* special handling for :: weirdness */
-	fyp->colon_follows_colon = fyp->flow_level > 0 && fy_parse_peek_at(fyp, 1) == ':';
+	if (fyp->flow_level > 0) {
+		int adv, nextc, nextcol, tabsize, indent;
+
+		/* this requires some explanation...
+		 * we need to detect x::x, x: :x, and x:\n:x as the same
+		 */
+		adv = 1;
+		indent = fyp->indent;
+		nextcol = fyp_column(fyp) + 1;
+		tabsize = fyp_tabsize(fyp);
+
+		while ((nextc = fy_parse_peek_at(fyp, adv)) > 0) {
+
+			if (fyp_is_lb(fyp, nextc))
+				nextcol = 0;
+			else if (fy_is_tab(nextc))
+				nextcol += tabsize - (nextcol % tabsize);
+			else if (fy_is_space(nextc))
+				nextcol++;
+			else {
+				if (!fy_flow_indent_check_internal(fyp, nextcol, indent))
+					nextc = -1;
+				break;
+			}
+
+			adv++;
+		}
+
+		fyp->colon_follows_colon = nextc == ':';
+	} else
+		fyp->colon_follows_colon = false;
 
 	fy_get_mark(fyp, &mark);
 
