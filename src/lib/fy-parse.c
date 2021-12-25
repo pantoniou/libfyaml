@@ -2325,7 +2325,7 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 			"fy_token_queue() failed");
 
 	/* special case for allowing whitespace (including tabs) after - */
-	if (fy_is_ws(c = fy_parse_peek(fyp)))
+	while (fy_is_ws(c = fy_parse_peek(fyp)))
 		fy_advance(fyp, c);
 
 	return 0;
