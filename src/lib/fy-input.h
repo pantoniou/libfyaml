@@ -308,16 +308,15 @@ fy_reader_set_mode(struct fy_reader *fyr, enum fy_reader_mode mode)
 static inline struct fy_input *
 fy_reader_current_input(const struct fy_reader *fyr)
 {
-	if (!fyr)
-		return NULL;
+	assert(fyr);
 	return fyr->current_input;
 }
 
 static inline uint64_t
 fy_reader_current_input_generation(const struct fy_reader *fyr)
 {
-	if (!fyr || !fyr->current_input)
-		return 0;
+	assert(fyr);
+	assert(fyr->current_input);
 	return fyr->current_input->generation;
 }
 
@@ -332,24 +331,21 @@ fy_reader_column(const struct fy_reader *fyr)
 static inline int
 fy_reader_tabsize(const struct fy_reader *fyr)
 {
-	if (!fyr)
-		return -1;
+	assert(fyr);
 	return fyr->tabsize;
 }
 
 static inline int
 fy_reader_line(const struct fy_reader *fyr)
 {
-	if (!fyr)
-		return -1;
+	assert(fyr);
 	return fyr->line;
 }
 
 /* force new line at the end of stream */
 static inline void fy_reader_stream_end(struct fy_reader *fyr)
 {
-	if (!fyr)
-		return;
+	assert(fyr);
 
 	/* force new line */
 	if (fyr->column) {
@@ -381,13 +377,13 @@ fy_reader_ptr(struct fy_reader *fyr, size_t *leftp)
 
 static inline bool fy_reader_json_mode(const struct fy_reader *fyr)
 {
-	return fyr && fyr->mode == fyrm_json;
+	assert(fyr);
+	return fyr->mode == fyrm_json;
 }
 
 static inline enum fy_lb_mode fy_reader_lb_mode(const struct fy_reader *fyr)
 {
-	if (!fyr)
-		return fylb_cr_nl;
+	assert(fyr);
 
 	switch (fyr->mode) {
 	case fyrm_yaml:
@@ -402,8 +398,7 @@ static inline enum fy_lb_mode fy_reader_lb_mode(const struct fy_reader *fyr)
 
 static inline enum fy_flow_ws_mode fy_reader_flow_ws_mode(const struct fy_reader *fyr)
 {
-	if (!fyr)
-		return fyfws_space_tab;
+	assert(fyr);
 
 	switch (fyr->mode) {
 	case fyrm_yaml:
@@ -480,6 +475,7 @@ fy_reader_strncmp(struct fy_reader *fyr, const char *str, size_t n)
 	const char *p;
 	int ret;
 
+	assert(fyr);
 	p = fy_reader_ensure_lookahead(fyr, n, NULL);
 	if (!p)
 		return -1;
@@ -494,6 +490,7 @@ fy_reader_peek_at_offset(struct fy_reader *fyr, size_t offset)
 	size_t left;
 	int w;
 
+	assert(fyr);
 	if (offset == 0 && fyr->current_c >= 0)
 		return fyr->current_c;
 
@@ -523,6 +520,7 @@ fy_reader_peek_at_internal(struct fy_reader *fyr, int pos, ssize_t *offsetp)
 	int i, c;
 	size_t offset;
 
+	assert(fyr);
 	if (!offsetp || *offsetp < 0) {
 		for (i = 0, offset = 0; i < pos; i++, offset += fy_utf8_width(c)) {
 			c = fy_reader_peek_at_offset(fyr, offset);
@@ -586,6 +584,7 @@ fy_reader_peek_block(struct fy_reader *fyr, size_t *lenp)
 static inline void
 fy_reader_advance_octets(struct fy_reader *fyr, size_t advance)
 {
+	assert(fyr);
 	assert(fyr->current_left >= advance);
 
 	fyr->current_input_pos += advance;
@@ -600,6 +599,7 @@ void fy_reader_advance_slow_path(struct fy_reader *fyr, int c);
 static inline void
 fy_reader_advance_printable_ascii(struct fy_reader *fyr, int c)
 {
+	assert(fyr);
 	fy_reader_advance_octets(fyr, 1);
 	fyr->column++;
 }
