@@ -20,6 +20,7 @@
 
 #include <libfyaml.h>
 
+#include "fy-utils.h"
 #include "fy-typelist.h"
 #include "fy-ctype.h"
 
@@ -411,53 +412,62 @@ static inline enum fy_flow_ws_mode fy_reader_flow_ws_mode(const struct fy_reader
 	return fyfws_space_tab;
 }
 
-static inline bool fy_reader_is_lb(const struct fy_reader *fyr, int c)
+static FY_ALWAYS_INLINE inline bool
+fy_reader_is_lb(const struct fy_reader *fyr, int c)
 {
 	return fy_is_lb_m(c, fy_reader_lb_mode(fyr));
 }
 
-static inline bool fy_reader_is_lbz(const struct fy_reader *fyr, int c)
+static FY_ALWAYS_INLINE inline bool
+fy_reader_is_lbz(const struct fy_reader *fyr, int c)
 {
 	return fy_is_lbz_m(c, fy_reader_lb_mode(fyr));
 }
 
-static inline bool fy_reader_is_blankz(const struct fy_reader *fyr, int c)
+static FY_ALWAYS_INLINE inline bool
+fy_reader_is_blankz(const struct fy_reader *fyr, int c)
 {
 	return fy_is_blankz_m(c, fy_reader_lb_mode(fyr));
 }
 
-static inline bool fy_reader_is_generic_lb(const struct fy_reader *fyr, int c)
+static FY_ALWAYS_INLINE inline bool
+fy_reader_is_generic_lb(const struct fy_reader *fyr, int c)
 {
 	return fy_is_generic_lb_m(c, fy_reader_lb_mode(fyr));
 }
 
-static inline bool fy_reader_is_generic_lbz(const struct fy_reader *fyr, int c)
+static FY_ALWAYS_INLINE inline bool
+fy_reader_is_generic_lbz(const struct fy_reader *fyr, int c)
 {
 	return fy_is_generic_lbz_m(c, fy_reader_lb_mode(fyr));
 }
 
-static inline bool fy_reader_is_generic_blankz(const struct fy_reader *fyr, int c)
+static FY_ALWAYS_INLINE inline bool
+fy_reader_is_generic_blankz(const struct fy_reader *fyr, int c)
 {
 	return fy_is_generic_blankz_m(c, fy_reader_lb_mode(fyr));
 }
 
-static inline bool fy_reader_is_flow_ws(const struct fy_reader *fyr, int c)
+static FY_ALWAYS_INLINE inline bool
+fy_reader_is_flow_ws(const struct fy_reader *fyr, int c)
 {
 	return fy_is_flow_ws_m(c, fy_reader_flow_ws_mode(fyr));
 }
 
-static inline bool fy_reader_is_flow_blank(const struct fy_reader *fyr, int c)
+static FY_ALWAYS_INLINE inline bool
+fy_reader_is_flow_blank(const struct fy_reader *fyr, int c)
 {
 	return fy_reader_is_flow_ws(fyr, c);	/* same */
 }
 
-static inline bool fy_reader_is_flow_blankz(const struct fy_reader *fyr, int c)
+static FY_ALWAYS_INLINE inline bool
+fy_reader_is_flow_blankz(const struct fy_reader *fyr, int c)
 {
 	return fy_is_flow_ws_m(c, fy_reader_flow_ws_mode(fyr)) ||
 	       fy_is_generic_lbz_m(c, fy_reader_lb_mode(fyr));
 }
 
-static inline const void *
+static FY_ALWAYS_INLINE inline const void *
 fy_reader_ensure_lookahead(struct fy_reader *fyr, size_t size, size_t *leftp)
 {
 	if (fyr->current_ptr && fyr->current_left >= size) {
@@ -483,7 +493,7 @@ fy_reader_strncmp(struct fy_reader *fyr, const char *str, size_t n)
 	return ret ? 1 : 0;
 }
 
-static inline int
+static FY_ALWAYS_INLINE inline int
 fy_reader_peek_at_offset(struct fy_reader *fyr, size_t offset)
 {
 	const uint8_t *p;
@@ -514,7 +524,7 @@ fy_reader_peek_at_offset(struct fy_reader *fyr, size_t offset)
 	return fy_utf8_get(p + offset, left - offset, &w);
 }
 
-static inline int
+static FY_ALWAYS_INLINE inline int
 fy_reader_peek_at_internal(struct fy_reader *fyr, int pos, ssize_t *offsetp)
 {
 	int i, c;
@@ -538,25 +548,25 @@ fy_reader_peek_at_internal(struct fy_reader *fyr, int pos, ssize_t *offsetp)
 	return c;
 }
 
-static inline bool
+static FY_ALWAYS_INLINE inline bool
 fy_reader_is_blank_at_offset(struct fy_reader *fyr, size_t offset)
 {
 	return fy_is_blank(fy_reader_peek_at_offset(fyr, offset));
 }
 
-static inline bool
+static FY_ALWAYS_INLINE inline bool
 fy_reader_is_blankz_at_offset(struct fy_reader *fyr, size_t offset)
 {
 	return fy_reader_is_blankz(fyr, fy_reader_peek_at_offset(fyr, offset));
 }
 
-static inline int
+static FY_ALWAYS_INLINE inline int
 fy_reader_peek_at(struct fy_reader *fyr, int pos)
 {
 	return fy_reader_peek_at_internal(fyr, pos, NULL);
 }
 
-static inline int
+static FY_ALWAYS_INLINE inline int
 fy_reader_peek(struct fy_reader *fyr)
 {
 	if (fyr->current_c >= 0)
@@ -565,7 +575,7 @@ fy_reader_peek(struct fy_reader *fyr)
 	return fy_reader_peek_at_offset(fyr, 0);
 }
 
-static inline const void *
+static FY_ALWAYS_INLINE inline const void *
 fy_reader_peek_block(struct fy_reader *fyr, size_t *lenp)
 {
 	const void *p;
@@ -581,7 +591,7 @@ fy_reader_peek_block(struct fy_reader *fyr, size_t *lenp)
 	return p;
 }
 
-static inline void
+static FY_ALWAYS_INLINE inline void
 fy_reader_advance_octets(struct fy_reader *fyr, size_t advance)
 {
 	assert(fyr);
@@ -596,7 +606,7 @@ fy_reader_advance_octets(struct fy_reader *fyr, size_t advance)
 
 void fy_reader_advance_slow_path(struct fy_reader *fyr, int c);
 
-static inline void
+static FY_ALWAYS_INLINE inline void
 fy_reader_advance_printable_ascii(struct fy_reader *fyr, int c)
 {
 	assert(fyr);
@@ -604,7 +614,7 @@ fy_reader_advance_printable_ascii(struct fy_reader *fyr, int c)
 	fyr->column++;
 }
 
-static inline void
+static FY_ALWAYS_INLINE inline void
 fy_reader_advance(struct fy_reader *fyr, int c)
 {
 	if (fy_utf8_is_printable_ascii(c))
@@ -613,7 +623,7 @@ fy_reader_advance(struct fy_reader *fyr, int c)
 		fy_reader_advance_slow_path(fyr, c);
 }
 
-static inline void
+static FY_ALWAYS_INLINE inline void
 fy_reader_advance_ws(struct fy_reader *fyr, int c)
 {
 	/* skip this character */
@@ -625,14 +635,14 @@ fy_reader_advance_ws(struct fy_reader *fyr, int c)
 		fyr->column++;
 }
 
-static inline void
+static FY_ALWAYS_INLINE inline void
 fy_reader_advance_space(struct fy_reader *fyr)
 {
 	fy_reader_advance_octets(fyr, 1);
 	fyr->column++;
 }
 
-static inline int
+static FY_ALWAYS_INLINE inline int
 fy_reader_get(struct fy_reader *fyr)
 {
 	int value;
@@ -646,7 +656,7 @@ fy_reader_get(struct fy_reader *fyr)
 	return value;
 }
 
-static inline int
+static FY_ALWAYS_INLINE inline int
 fy_reader_advance_by(struct fy_reader *fyr, int count)
 {
 	int i, c;
