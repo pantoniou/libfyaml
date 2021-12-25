@@ -156,7 +156,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 						DEBUG_LEVEL_DEFAULT);
 	fprintf(fp, "\t--disable-diag <x>      : Disable diag error module <x>\n");
 	fprintf(fp, "\t--enable-diag <x>       : Enable diag error module <x>\n");
-	fprintf(fp, "\t--show-diag-diag <x>    : Show diag option <x>\n");
+	fprintf(fp, "\t--show-diag <x>         : Show diag option <x>\n");
 	fprintf(fp, "\t--hide-diag <x>         : Hide diag optione <x>\n");
 
 	fprintf(fp, "\t--indent, -i <indent>    : Set dump indent to <indent>"
