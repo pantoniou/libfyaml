@@ -1516,9 +1516,11 @@ int fy_fetch_stream_end(struct fy_parser *fyp)
 
 	fy_remove_all_simple_keys(fyp);
 
-	rc = fy_parse_unroll_indent(fyp, -1);
-	fyp_error_check(fyp, !rc, err_out_rc,
-			"fy_parse_unroll_indent() failed");
+	if (fyp_block_mode(fyp)) {
+		rc = fy_parse_unroll_indent(fyp, -1);
+		fyp_error_check(fyp, !rc, err_out_rc,
+				"fy_parse_unroll_indent() failed");
+	}
 
 	fyt = fy_token_queue(fyp, FYTT_STREAM_END, fy_fill_atom_a(fyp, 0));
 	fyp_error_check(fyp, fyt, err_out_rc,
@@ -1950,9 +1952,11 @@ int fy_fetch_directive(struct fy_parser *fyp)
 
 	fy_remove_all_simple_keys(fyp);
 
-	rc = fy_parse_unroll_indent(fyp, -1);
-	fyp_error_check(fyp, !rc, err_out_rc,
-			"fy_parse_unroll_indent() failed");
+	if (fyp_block_mode(fyp)) {
+		rc = fy_parse_unroll_indent(fyp, -1);
+		fyp_error_check(fyp, !rc, err_out_rc,
+				"fy_parse_unroll_indent() failed");
+	}
 
 	rc = fy_scan_directive(fyp);
 	fyp_error_check(fyp, !rc, err_out_rc,
@@ -1971,9 +1975,11 @@ int fy_fetch_document_indicator(struct fy_parser *fyp, enum fy_token_type type)
 
 	fy_remove_all_simple_keys(fyp);
 
-	rc = fy_parse_unroll_indent(fyp, -1);
-	fyp_error_check(fyp, !rc, err_out_rc,
-			"fy_parse_unroll_indent() failed");
+	if (fyp_block_mode(fyp)) {
+		rc = fy_parse_unroll_indent(fyp, -1);
+		fyp_error_check(fyp, !rc, err_out_rc,
+				"fy_parse_unroll_indent() failed");
+	}
 
 	fyp->simple_key_allowed = false;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
@@ -2271,7 +2277,7 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 	/* we have to save the start mark */
 	fy_get_mark(fyp, &mark);
 
-	if (!fyp->flow_level && fyp->indent < fyp_column(fyp)) {
+	if (fyp_block_mode(fyp) && fyp->indent < fyp_column(fyp)) {
 
 		/* push the new indent level */
 		rc = fy_push_indent(fyp, fyp_column(fyp), false, fyp_line(fyp));
@@ -2355,7 +2361,7 @@ int fy_fetch_key(struct fy_parser *fyp, int c)
 			fyp->flow_level || fyp->simple_key_allowed, err_out,
 			"invalid mapping key (not allowed in this context)");
 
-	if (!fyp->flow_level && fyp->indent < fyp_column(fyp)) {
+	if (fyp_block_mode(fyp) && fyp->indent < fyp_column(fyp)) {
 
 		/* push the new indent level */
 		rc = fy_push_indent(fyp, fyp_column(fyp), true, fyp_line(fyp));
@@ -4529,9 +4535,11 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 	fyp_error_check(fyp, !rc, err_out_rc,
 			"fy_scan_to_next_token() failed");
 
-	rc = fy_parse_unroll_indent(fyp, fyp_column(fyp));
-	fyp_error_check(fyp, !rc, err_out_rc,
-			"fy_parse_unroll_indent() failed");
+	if (fyp_block_mode(fyp)) {
+		rc = fy_parse_unroll_indent(fyp, fyp_column(fyp));
+		fyp_error_check(fyp, !rc, err_out_rc,
+				"fy_parse_unroll_indent() failed");
+	}
 
 	c = fy_parse_peek(fyp);
 	if (c < 0 || c == '\0') {

@@ -265,6 +265,11 @@ static inline enum fy_flow_ws_mode fyp_fws_mode(const struct fy_parser *fyp)
 	return fy_reader_flow_ws_mode(fyp->reader);
 }
 
+static inline bool fyp_block_mode(struct fy_parser *fyp)
+{
+	return !fyp_json_mode(fyp) && !fyp->flow_level;
+}
+
 static inline bool fyp_is_lb(const struct fy_parser *fyp, int c)
 {
 	assert(fyp);
