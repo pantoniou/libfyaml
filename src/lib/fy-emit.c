@@ -29,8 +29,12 @@ void fy_emit_printf(struct fy_emitter *emit, enum fy_emitter_write_type type, co
 
 static inline bool fy_emit_is_json_mode(const struct fy_emitter *emit)
 {
-	enum fy_emitter_cfg_flags flags = emit->cfg.flags & FYECF_MODE(FYECF_MODE_MASK);
+	enum fy_emitter_cfg_flags flags;
 
+	if (emit->force_json)
+		return true;
+
+	flags = emit->cfg.flags & FYECF_MODE(FYECF_MODE_MASK);
 	return flags == FYECF_MODE_JSON || flags == FYECF_MODE_JSON_TP || flags == FYECF_MODE_JSON_ONELINE;
 }
 
@@ -2021,6 +2025,10 @@ int fy_emit_document(struct fy_emitter *emit, struct fy_document *fyd)
 {
 	int rc;
 
+	/* if the original document was JSON and the mode is ORIGINAL turn on JSON mode */
+	emit->force_json = (emit->cfg.flags & FYECF_MODE(FYECF_MODE_MASK)) == FYECF_MODE_ORIGINAL &&
+			   fyd && fyd->fyds && fyd->fyds->json_mode;
+
 	rc = fy_emit_document_start(emit, fyd, NULL);
 	if (rc)
 		return rc;
@@ -2617,6 +2625,10 @@ static int fy_emit_handle_document_start(struct fy_emitter *emit, struct fy_even
 	/* transfer ownership to the emitter */
 	fyds = fye->document_start.document_state;
 	fye->document_start.document_state = NULL;
+
+	/* if the original document was JSON and the mode is ORIGINAL turn on JSON mode */
+	emit->force_json = (emit->cfg.flags & FYECF_MODE(FYECF_MODE_MASK)) == FYECF_MODE_ORIGINAL &&
+			   fyds->json_mode;
 
 	fy_emit_common_document_start(emit, fyds, false);
 
