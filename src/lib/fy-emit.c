@@ -145,7 +145,7 @@ static int fy_emit_node_check(struct fy_emitter *emit, struct fy_node *fyn)
 	if (!fyn)
 		return 0;
 
-	if (fy_emit_is_json_mode(emit)) {
+	if (fy_emit_is_json_mode(emit) && !emit->source_json) {
 		ret = fy_emit_node_check_json(emit, fyn);
 		if (ret)
 			return ret;
@@ -1983,6 +1983,13 @@ void fy_emit_cleanup(struct fy_emitter *emit)
 	fy_diag_unref(emit->diag);
 }
 
+int fy_emit_node_no_check(struct fy_emitter *emit, struct fy_node *fyn)
+{
+	if (fyn)
+		fy_emit_node_internal(emit, fyn, DDNF_ROOT, -1, false);
+	return 0;
+}
+
 int fy_emit_node(struct fy_emitter *emit, struct fy_node *fyn)
 {
 	int ret;
@@ -1991,21 +1998,13 @@ int fy_emit_node(struct fy_emitter *emit, struct fy_node *fyn)
 	if (ret)
 		return ret;
 
-	if (fyn)
-		fy_emit_node_internal(emit, fyn, DDNF_ROOT, -1, false);
-	return 0;
+	return fy_emit_node_no_check(emit, fyn);
 }
 
-int fy_emit_root_node(struct fy_emitter *emit, struct fy_node *fyn)
+int fy_emit_root_node_no_check(struct fy_emitter *emit, struct fy_node *fyn)
 {
-	int ret;
-
 	if (!emit || !fyn)
 		return -1;
-
-	ret = fy_emit_node_check(emit, fyn);
-	if (ret)
-		return ret;
 
 	/* top comment first */
 	fy_emit_node_comment(emit, fyn, DDNF_ROOT, -1, fycp_top);
@@ -2021,25 +2020,66 @@ int fy_emit_root_node(struct fy_emitter *emit, struct fy_node *fyn)
 	return 0;
 }
 
-int fy_emit_document(struct fy_emitter *emit, struct fy_document *fyd)
+int fy_emit_root_node(struct fy_emitter *emit, struct fy_node *fyn)
 {
-	int rc;
+	int ret;
+
+	if (!emit || !fyn)
+		return -1;
+
+	ret = fy_emit_node_check(emit, fyn);
+	if (ret)
+		return ret;
+
+	return fy_emit_root_node_no_check(emit, fyn);
+}
+
+void fy_emit_prepare_document_state(struct fy_emitter *emit, struct fy_document_state *fyds)
+{
+	if (!emit || !fyds)
+		return;
 
 	/* if the original document was JSON and the mode is ORIGINAL turn on JSON mode */
+	emit->source_json = fyds && fyds->json_mode;
 	emit->force_json = (emit->cfg.flags & FYECF_MODE(FYECF_MODE_MASK)) == FYECF_MODE_ORIGINAL &&
-			   fyd && fyd->fyds && fyd->fyds->json_mode;
+			   emit->source_json;
+}
+
+int fy_emit_document_no_check(struct fy_emitter *emit, struct fy_document *fyd)
+{
+	int rc;
 
 	rc = fy_emit_document_start(emit, fyd, NULL);
 	if (rc)
 		return rc;
 
-	rc = fy_emit_root_node(emit, fyd->root);
+	rc = fy_emit_root_node_no_check(emit, fyd->root);
 	if (rc)
 		return rc;
 
 	rc = fy_emit_document_end(emit);
 
 	return rc;
+}
+
+int fy_emit_document(struct fy_emitter *emit, struct fy_document *fyd)
+{
+	int ret;
+
+	if (!emit)
+		return -1;
+
+	if (fyd) {
+		fy_emit_prepare_document_state(emit, fyd->fyds);
+
+		if (fyd->root) {
+			ret = fy_emit_node_check(emit, fyd->root);
+			if (ret)
+				return ret;
+		}
+	}
+
+	return fy_emit_document_no_check(emit, fyd);
 }
 
 struct fy_emitter *fy_emitter_create(const struct fy_emitter_cfg *cfg)
@@ -2174,7 +2214,20 @@ static int fy_emit_str_internal(struct fy_document *fyd,
 	state.grow = grow;
 
 	fy_emit_setup(emit, &emit_cfg);
-	rc = fyd ? fy_emit_document(emit, fyd) : fy_emit_node(emit, fyn);
+
+	if (fyd) {
+		fy_emit_prepare_document_state(emit, fyd->fyds);
+		rc = 0;
+		if (fyd->root)
+			rc = fy_emit_node_check(emit, fyd->root);
+		if (!rc)
+			rc = fy_emit_document_no_check(emit, fyd);
+	} else {
+		rc = fy_emit_node_check(emit, fyn);
+		if (!rc)
+			rc = fy_emit_node_no_check(emit, fyn);
+	}
+
 	fy_emit_cleanup(emit);
 
 	if (rc)
@@ -2253,7 +2306,15 @@ int fy_emit_document_to_fp(struct fy_document *fyd, enum fy_emitter_cfg_flags fl
 	emit_cfg.userdata = fp;
 	emit_cfg.flags = flags;
 	fy_emit_setup(emit, &emit_cfg);
-	rc = fy_emit_document(emit, fyd);
+
+	fy_emit_prepare_document_state(emit, fyd->fyds);
+
+	rc = 0;
+	if (fyd->root)
+		rc = fy_emit_node_check(emit, fyd->root);
+
+	rc = fy_emit_document_no_check(emit, fyd);
+
 	fy_emit_cleanup(emit);
 
 	return rc ? rc : 0;
@@ -2626,9 +2687,8 @@ static int fy_emit_handle_document_start(struct fy_emitter *emit, struct fy_even
 	fyds = fye->document_start.document_state;
 	fye->document_start.document_state = NULL;
 
-	/* if the original document was JSON and the mode is ORIGINAL turn on JSON mode */
-	emit->force_json = (emit->cfg.flags & FYECF_MODE(FYECF_MODE_MASK)) == FYECF_MODE_ORIGINAL &&
-			   fyds->json_mode;
+	/* prepare (i.e. adapt to the document state) */
+	fy_emit_prepare_document_state(emit, fyds);
 
 	fy_emit_common_document_start(emit, fyds, false);
 
@@ -3111,7 +3171,7 @@ int fy_emitter_default_output(struct fy_emitter *fye, enum fy_emitter_write_type
 
 int fy_document_default_emit_to_fp(struct fy_document *fyd, FILE *fp)
 {
-	struct fy_emitter fye_local, *fye = &fye_local;
+	struct fy_emitter emit_local, *emit = &emit_local;
 	struct fy_emitter_cfg ecfg_local, *ecfg = &ecfg_local;
 	struct fy_emitter_default_output_data d_local, *d = &d_local;
 	int rc;
@@ -3125,20 +3185,26 @@ int fy_document_default_emit_to_fp(struct fy_document *fyd, FILE *fp)
 	ecfg->diag = fyd->diag;
 	ecfg->userdata = d;
 
-	rc = fy_emit_setup(fye, ecfg);
+	rc = fy_emit_setup(emit, ecfg);
 	if (rc)
 		goto err_setup;
 
-	rc = fy_emit_document(fye, fyd);
+	fy_emit_prepare_document_state(emit, fyd->fyds);
+
+	rc = 0;
+	if (fyd->root)
+		rc = fy_emit_node_check(emit, fyd->root);
+
+	rc = fy_emit_document_no_check(emit, fyd);
 	if (rc)
 		goto err_emit;
 
-	fy_emit_cleanup(fye);
+	fy_emit_cleanup(emit);
 
 	return 0;
 
 err_emit:
-	fy_emit_cleanup(fye);
+	fy_emit_cleanup(emit);
 err_setup:
 	return -1;
 }

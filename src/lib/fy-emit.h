@@ -77,6 +77,7 @@ struct fy_emitter {
 	int flow_level;
 	unsigned int flags;
 	bool output_error : 1;
+	bool source_json : 1;		/* the source was json */
 	bool force_json : 1;		/* force JSON mode unconditionally */
 	/* current document */
 	struct fy_emitter_cfg cfg;	/* yeah, it isn't worth just to save a few bytes */
