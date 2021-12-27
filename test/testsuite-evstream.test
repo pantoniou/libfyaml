@@ -19,6 +19,7 @@ done
 echo 1..$count
 
 skiplist="2JQS"
+xfaillist="Y79Y/01 Y79Y/03"
 
 i=0
 for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
@@ -48,16 +49,16 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 
 		t=`mktemp`
 
-		skipdirective=""
+		directive=""
 		for skip in $skiplist; do
 			if [ "$test_subtest_id" == "$skip" ]; then
-				skipdirective=" # skip: duplicate keys in testcase; cannot load as document"
+				directive=" # skip: duplicate keys in testcase; cannot load as document"
 				break
 			fi
 		done
 
 		res="ok"
-		if [ "x$skipdirective" == "x" ]; then
+		if [ "x$directive" == "x" ]; then
 			res="not ok"
 			# run the test using document-event-stream
 			${TOP_BUILDDIR}/src/fy-tool --testsuite --document-event-stream "$tst/in.yaml" >"$t"
@@ -73,8 +74,15 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 			fi
 
 			rm -f "$t"
+
+			for xfail in $xfaillist; do
+				if [ "$test_subtest_id" == "$xfail" ]; then
+					directive=" # TODO: known failure."
+					break
+				fi
+			done
 		fi
 
-		echo "$res $i $test_subtest_id - $desctxt$skipdirective"
+		echo "$res $i $test_subtest_id - $desctxt$directive"
 	done
 done

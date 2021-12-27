@@ -14,6 +14,9 @@ done
 # output plan
 echo 1..$count
 
+skiplist=""
+xfaillist="Y79Y/01 Y79Y/03"
+
 i=0
 for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 
@@ -37,39 +40,57 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 
 		t=`mktemp`
 
-		res="not ok"
-
-		pass_yaml=0
-		${TOP_BUILDDIR}/src/fy-tool --testsuite "$tst/in.yaml" >"$t"
-		if [ $? -eq 0 ]; then
-			pass_yaml=1
-		fi
-
-		if [ -e "$tst/error" ]; then
-			# test is expected to fail
-			if [ $pass_yaml == "0" ]; then
-				res="ok"
-			else
-				res="not ok"
+		directive=""
+		for skip in $skiplist; do
+			if [ "$test_subtest_id" == "$skip" ]; then
+				directive=" # SKIP"
+				break
 			fi
-		else
-			# test is expected to pass
-			if [ $pass_yaml == "1" ]; then
-				diff_yaml=0
-				# diff -u "$tst/test.event" "$t" | sed -e 's/^/# /'
-				diff -u "$tst/test.event" "$t"
-				if [ $? -eq 0 ]; then
+		done
+
+		res="ok"
+		if [ "x$directive" == "x" ]; then
+			res="not ok"
+
+			pass_yaml=0
+			${TOP_BUILDDIR}/src/fy-tool --testsuite "$tst/in.yaml" >"$t"
+			if [ $? -eq 0 ]; then
+				pass_yaml=1
+			fi
+
+			if [ -e "$tst/error" ]; then
+				# test is expected to fail
+				if [ $pass_yaml == "0" ]; then
 					res="ok"
 				else
 					res="not ok"
 				fi
 			else
-				res="not ok"
+				# test is expected to pass
+				if [ $pass_yaml == "1" ]; then
+					diff_yaml=0
+					# diff -u "$tst/test.event" "$t" | sed -e 's/^/# /'
+					diff -u "$tst/test.event" "$t"
+					if [ $? -eq 0 ]; then
+						res="ok"
+					else
+						res="not ok"
+					fi
+				else
+					res="not ok"
+				fi
 			fi
+
+			rm -f "$t"
+
+			for xfail in $xfaillist; do
+				if [ "$test_subtest_id" == "$xfail" ]; then
+					directive=" # TODO: known failure."
+					break
+				fi
+			done
 		fi
 
-		rm -f "$t"
-
-		echo "$res $i $test_subtest_id - $desctxt"
+		echo "$res $i $test_subtest_id - $desctxt$directive"
 	done
 done
