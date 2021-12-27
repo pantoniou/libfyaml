@@ -150,6 +150,33 @@ void fy_token_clean_rl(struct fy_token_list *fytl, struct fy_token *fyt);
 void fy_token_free_rl(struct fy_token_list *fytl, struct fy_token *fyt);
 void fy_token_list_unref_all_rl(struct fy_token_list *fytl, struct fy_token_list *fytl_tofree);
 
+static inline struct fy_token *
+fy_token_alloc_rl(struct fy_token_list *fytl)
+{
+	struct fy_token *fyt;
+
+	fyt = NULL;
+	if (fytl)
+		fyt = fy_token_list_pop(fytl);
+	if (!fyt) {
+		fyt = malloc(sizeof(*fyt));
+		if (!fyt)
+			return NULL;
+	}
+
+	fyt->type = FYTT_NONE;
+	fyt->refs = 1;
+
+	fyt->analyze_flags = 0;
+	fyt->text_len = 0;
+	fyt->text = NULL;
+	fyt->text0 = NULL;
+	fyt->handle.fyi = NULL;
+	fyt->comment = NULL;
+
+	return fyt;
+}
+
 static inline void
 fy_token_unref_rl(struct fy_token_list *fytl, struct fy_token *fyt)
 {

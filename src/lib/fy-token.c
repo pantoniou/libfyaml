@@ -459,6 +459,8 @@ struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_t
 		fyt->tag_directive.tag_length = va_arg(ap, unsigned int);
 		fyt->tag_directive.uri_length = va_arg(ap, unsigned int);
 		fyt->tag_directive.is_default = va_arg(ap, int) ? true : false;
+		fyt->tag_directive.prefix0 = NULL;
+		fyt->tag_directive.handle0 = NULL;
 		break;
 	case FYTT_SCALAR:
 		fyt->scalar.style = va_arg(ap, enum fy_scalar_style);
@@ -477,6 +479,8 @@ struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_t
 		if (!fyt_td)
 			goto err_out;
 		fyt->tag.fyt_td = fy_token_ref(fyt_td);
+		fyt->tag.handle0 = NULL;
+		fyt->tag.suffix0 = NULL;
 		break;
 
 	case FYTT_VERSION_DIRECTIVE:

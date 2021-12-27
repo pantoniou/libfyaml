@@ -216,6 +216,8 @@ struct fy_document_state *fy_document_state_copy(struct fy_document_state *fyds)
 		fyt_td->tag_directive.uri_length = fyt->tag_directive.uri_length;
 		fyt_td->tag_directive.is_default = fyt->tag_directive.is_default;
 		fyt_td->handle = fyt->handle;
+		fyt_td->tag_directive.prefix0 = NULL;
+		fyt_td->tag_directive.handle0 = NULL;
 
 		/* take reference */
 		fy_input_ref(fyt_td->handle.fyi);
