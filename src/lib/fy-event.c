@@ -39,8 +39,6 @@ struct fy_eventp *fy_eventp_alloc(void)
 	if (!fyep)
 		return NULL;
 
-	memset(fyep, 0, sizeof(*fyep));
-
 	fyep->e.type = FYET_NONE;
 
 	return fyep;
