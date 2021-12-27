@@ -306,6 +306,38 @@ void fy_reader_cleanup(struct fy_reader *fyr)
 	fy_reader_reset(fyr);
 }
 
+void fy_reader_apply_mode(struct fy_reader *fyr)
+{
+	struct fy_input *fyi;
+
+	assert(fyr);
+
+	/* set input mode from the current reader settings */
+	switch (fyr->mode) {
+	case fyrm_yaml:
+		fyr->json_mode = false;
+		fyr->lb_mode = fylb_cr_nl;
+		fyr->fws_mode = fyfws_space_tab;
+		break;
+	case fyrm_json:
+		fyr->json_mode = true;
+		fyr->lb_mode = fylb_cr_nl;
+		fyr->fws_mode = fyfws_space;
+		break;
+	case fyrm_yaml_1_1:
+		fyr->json_mode = false;
+		fyr->lb_mode = fylb_cr_nl_N_L_P;
+		fyr->fws_mode = fyfws_space_tab;
+		break;
+	}
+	fyi = fyr->current_input;
+	if (fyi) {
+		fyi->json_mode = fyr->json_mode;
+		fyi->lb_mode = fyr->lb_mode;
+		fyi->fws_mode = fyr->fws_mode;
+	}
+}
+
 int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const struct fy_reader_input_cfg *icfg)
 {
 	struct stat sb;
@@ -318,7 +350,7 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 	fy_input_unref(fyr->current_input);
 	fyr->current_input = fy_input_ref(fyi);
 
-	fy_reader_apply_mode_to_input(fyr);
+	fy_reader_apply_mode(fyr);
 
 	if (!icfg)
 		memset(&fyr->current_input_cfg, 0, sizeof(fyr->current_input_cfg));
@@ -531,7 +563,7 @@ const void *fy_reader_ptr_slow_path(struct fy_reader *fyr, size_t *leftp)
 
 	fyr->current_ptr = p;
 	fyr->current_left = left;
-	fyr->current_c = fy_utf8_get(fyr->current_ptr, fyr->current_left, &fyr->current_w);
+	fyr->current_c = fy_utf8_get(p, left, &fyr->current_w);
 
 	return p;
 }

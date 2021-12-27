@@ -25,44 +25,6 @@
 #include "fy-parse.h"
 #include "fy-doc.h"
 
-void fy_reader_fill_atom_start(struct fy_reader *fyr, struct fy_atom *handle)
-{
-	memset(handle, 0, sizeof(*handle));
-
-	/* start mark */
-	fy_reader_get_mark(fyr, &handle->start_mark);
-	handle->end_mark = handle->start_mark;
-	handle->fyi = fy_reader_current_input(fyr);
-	handle->fyi_generation = fy_reader_current_input_generation(fyr);
-
-	/* note that handle->data may be zero for empty input */
-}
-
-void fy_reader_fill_atom_end_at(struct fy_reader *fyr, struct fy_atom *handle,
-				struct fy_mark *end_mark)
-{
-	if (end_mark)
-		handle->end_mark = *end_mark;
-	else
-		fy_reader_get_mark(fyr, &handle->end_mark);
-
-	/* default is plain, modify at return */
-	handle->style = FYAS_PLAIN;
-	handle->chomp = FYAC_CLIP;
-	/* by default we don't do storage hints, it's the job of the caller */
-	handle->storage_hint = 0;
-	handle->storage_hint_valid = false;
-	handle->tabsize = fy_reader_tabsize(fyr);
-	handle->json_mode = fy_reader_json_mode(fyr);
-	handle->lb_mode = fy_reader_lb_mode(fyr);
-	handle->fws_mode = fy_reader_flow_ws_mode(fyr);
-}
-
-void fy_reader_fill_atom_end(struct fy_reader *fyr, struct fy_atom *handle)
-{
-	fy_reader_fill_atom_end_at(fyr, handle, NULL);
-}
-
 struct fy_atom *fy_reader_fill_atom(struct fy_reader *fyr, int advance, struct fy_atom *handle)
 {
 	/* start mark */

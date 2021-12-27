@@ -99,13 +99,10 @@ void fy_eventp_clean_rl(struct fy_token_list *fytl, struct fy_eventp *fyep)
 
 void fy_parse_eventp_clean(struct fy_parser *fyp, struct fy_eventp *fyep)
 {
-	struct fy_token_list *fytl;
-
 	if (!fyp || !fyep)
 		return;
 
-	fytl = !fyp->suppress_recycling ? &fyp->recycled_token : NULL;
-	fy_eventp_clean_rl(fytl, fyep);
+	fy_eventp_clean_rl(fyp->recycled_token_list, fyep);
 }
 
 void fy_emit_eventp_clean(struct fy_emitter *emit, struct fy_eventp *fyep)
@@ -113,7 +110,7 @@ void fy_emit_eventp_clean(struct fy_emitter *emit, struct fy_eventp *fyep)
 	if (!emit || !fyep)
 		return;
 
-	fy_eventp_clean_rl(&emit->recycled_token, fyep);
+	fy_eventp_clean_rl(emit->recycled_token_list, fyep);
 }
 
 void fy_eventp_free(struct fy_eventp *fyep)
@@ -139,8 +136,8 @@ struct fy_eventp *fy_parse_eventp_alloc(struct fy_parser *fyp)
 	if (!fyp)
 		return NULL;
 
-	if (!fyp->suppress_recycling)
-		fyep = fy_eventp_list_pop(&fyp->recycled_eventp);
+	if (fyp->recycled_eventp_list)
+		fyep = fy_eventp_list_pop(fyp->recycled_eventp_list);
 	if (!fyep)
 		fyep = fy_eventp_alloc();
 	if (!fyep)
@@ -160,8 +157,8 @@ void fy_parse_eventp_recycle(struct fy_parser *fyp, struct fy_eventp *fyep)
 	fy_parse_eventp_clean(fyp, fyep);
 
 	/* and push to the parser recycle list */
-	if (!fyp->suppress_recycling)
-		fy_eventp_list_push(&fyp->recycled_eventp, fyep);
+	if (fyp->recycled_eventp_list)
+		fy_eventp_list_push(fyp->recycled_eventp_list, fyep);
 	else
 		fy_eventp_free(fyep);
 }
@@ -186,8 +183,10 @@ void fy_emit_eventp_recycle(struct fy_emitter *emit, struct fy_eventp *fyep)
 	/* clean, safe to do */
 	fy_emit_eventp_clean(emit, fyep);
 
-	/* and push to the parser recycle list */
-	fy_eventp_list_push(&emit->recycled_eventp, fyep);
+	if (emit->recycled_eventp_list)
+		fy_eventp_list_push(emit->recycled_eventp_list, fyep);
+	else
+		fy_eventp_free(fyep);
 }
 
 void fy_emit_event_free(struct fy_emitter *emit, struct fy_event *fye)
@@ -524,7 +523,7 @@ fy_emit_event_vcreate(struct fy_emitter *emit, enum fy_event_type type, va_list 
 	if (!emit)
 		return NULL;
 
-	fyep = fy_eventp_vcreate_internal(&emit->recycled_eventp, emit->diag, emit->fyds, type, ap);
+	fyep = fy_eventp_vcreate_internal(emit->recycled_eventp_list, emit->diag, emit->fyds, type, ap);
 	if (!fyep)
 		return NULL;
 
@@ -552,7 +551,7 @@ fy_parse_event_vcreate(struct fy_parser *fyp, enum fy_event_type type, va_list a
 	if (!fyp)
 		return NULL;
 
-	fyep = fy_eventp_vcreate_internal(&fyp->recycled_eventp, fyp->diag, fyp->current_document_state, type, ap);
+	fyep = fy_eventp_vcreate_internal(fyp->recycled_eventp_list, fyp->diag, fyp->current_document_state, type, ap);
 	if (!fyep)
 		return NULL;
 
@@ -838,8 +837,8 @@ fy_document_iterator_eventp_alloc(struct fy_document_iterator *fydi)
 	if (!fydi)
 		return NULL;
 
-	if (!fydi->suppress_recycling)
-		fyep = fy_eventp_list_pop(&fydi->recycled_eventp);
+	if (fydi->recycled_eventp_list)
+		fyep = fy_eventp_list_pop(fydi->recycled_eventp_list);
 	if (!fyep)
 		fyep = fy_eventp_alloc();
 	if (!fyep)
@@ -852,13 +851,10 @@ fy_document_iterator_eventp_alloc(struct fy_document_iterator *fydi)
 
 void fy_document_iterator_eventp_clean(struct fy_document_iterator *fydi, struct fy_eventp *fyep)
 {
-	struct fy_token_list *fytl;
-
 	if (!fydi || !fyep)
 		return;
 
-	fytl = !fydi->suppress_recycling ? &fydi->recycled_token : NULL;
-	fy_eventp_clean_rl(fytl, fyep);
+	fy_eventp_clean_rl(fydi->recycled_token_list, fyep);
 }
 
 void fy_document_iterator_eventp_recycle(struct fy_document_iterator *fydi, struct fy_eventp *fyep)
@@ -869,8 +865,8 @@ void fy_document_iterator_eventp_recycle(struct fy_document_iterator *fydi, stru
 	/* clean, safe to do */
 	fy_document_iterator_eventp_clean(fydi, fyep);
 
-	if (!fydi->suppress_recycling)
-		fy_eventp_list_push(&fydi->recycled_eventp, fyep);
+	if (fydi->recycled_eventp_list)
+		fy_eventp_list_push(fydi->recycled_eventp_list, fyep);
 	else
 		fy_eventp_free(fyep);
 }
@@ -878,15 +874,15 @@ void fy_document_iterator_eventp_recycle(struct fy_document_iterator *fydi, stru
 struct fy_event *
 fy_document_iterator_event_vcreate(struct fy_document_iterator *fydi, enum fy_event_type type, va_list ap)
 {
-	struct fy_eventp_list *fyepl;
 	struct fy_eventp *fyep;
 
 	if (!fydi)
 		return NULL;
 
-	fyepl = !fydi->suppress_recycling ? &fydi->recycled_eventp : NULL;
-
-	fyep = fy_eventp_vcreate_internal(fyepl, fydi->fyd ? fydi->fyd->diag : NULL, fydi->fyd ? fydi->fyd->fyds : NULL, type, ap);
+	fyep = fy_eventp_vcreate_internal(fydi->recycled_eventp_list,
+			fydi->fyd ? fydi->fyd->diag : NULL,
+			fydi->fyd ? fydi->fyd->fyds : NULL,
+			type, ap);
 	if (!fyep)
 		return NULL;
 

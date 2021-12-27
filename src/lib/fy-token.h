@@ -19,6 +19,7 @@
 
 #include <libfyaml.h>
 
+#include "fy-utils.h"
 #include "fy-atom.h"
 
 extern const char *fy_token_type_txt[FYTT_COUNT];
@@ -145,12 +146,10 @@ static inline bool fy_token_text_is_direct(struct fy_token *fyt)
 	return fyt->text && fyt->text != fyt->text0;
 }
 
-struct fy_token *fy_token_alloc_rl(struct fy_token_list *fytl);
 void fy_token_clean_rl(struct fy_token_list *fytl, struct fy_token *fyt);
-void fy_token_free_rl(struct fy_token_list *fytl, struct fy_token *fyt);
 void fy_token_list_unref_all_rl(struct fy_token_list *fytl, struct fy_token_list *fytl_tofree);
 
-static inline struct fy_token *
+static inline FY_ALWAYS_INLINE struct fy_token *
 fy_token_alloc_rl(struct fy_token_list *fytl)
 {
 	struct fy_token *fyt;
@@ -177,7 +176,21 @@ fy_token_alloc_rl(struct fy_token_list *fytl)
 	return fyt;
 }
 
-static inline void
+static inline FY_ALWAYS_INLINE void
+fy_token_free_rl(struct fy_token_list *fytl, struct fy_token *fyt)
+{
+	if (!fyt)
+		return;
+
+	fy_token_clean_rl(fytl, fyt);
+
+	if (fytl)
+		fy_token_list_push(fytl, fyt);
+	else
+		free(fyt);
+}
+
+static inline FY_ALWAYS_INLINE void
 fy_token_unref_rl(struct fy_token_list *fytl, struct fy_token *fyt)
 {
 	if (!fyt)
@@ -189,25 +202,25 @@ fy_token_unref_rl(struct fy_token_list *fytl, struct fy_token *fyt)
 		fy_token_free_rl(fytl, fyt);
 }
 
-static inline struct fy_token *
+static inline FY_ALWAYS_INLINE struct fy_token *
 fy_token_alloc(void)
 {
 	return fy_token_alloc_rl(NULL);
 }
 
-static inline void
+static inline FY_ALWAYS_INLINE void
 fy_token_clean(struct fy_token *fyt)
 {
 	return fy_token_clean_rl(NULL, fyt);
 }
 
-static inline void
+static inline FY_ALWAYS_INLINE void
 fy_token_free(struct fy_token *fyt)
 {
 	return fy_token_free_rl(NULL, fyt);
 }
 
-static inline struct fy_token *
+static inline FY_ALWAYS_INLINE struct fy_token *
 fy_token_ref(struct fy_token *fyt)
 {
 	/* take care of overflow */
@@ -219,7 +232,7 @@ fy_token_ref(struct fy_token *fyt)
 	return fyt;
 }
 
-static inline void
+static inline FY_ALWAYS_INLINE void
 fy_token_unref(struct fy_token *fyt)
 {
 	return fy_token_unref_rl(NULL, fyt);
@@ -487,5 +500,23 @@ size_t fy_token_get_scalar_path_key_length(struct fy_token *fyt);
 const char *fy_token_get_scalar_path_key0(struct fy_token *fyt);
 
 struct fy_atom *fy_token_comment_handle(struct fy_token *fyt, enum fy_comment_placement placement, bool alloc);
+
+static inline FY_ALWAYS_INLINE enum fy_scalar_style
+fy_token_scalar_style_inline(struct fy_token *fyt)
+{
+	if (!fyt || fyt->type != FYTT_SCALAR)
+		return FYSS_PLAIN;
+
+	if (fyt->type == FYTT_SCALAR)
+		return fyt->scalar.style;
+
+	return FYSS_PLAIN;
+}
+
+static inline FY_ALWAYS_INLINE enum fy_token_type
+fy_token_get_type_inline(struct fy_token *fyt)
+{
+	return fyt ? fyt->type : FYTT_NONE;
+}
 
 #endif

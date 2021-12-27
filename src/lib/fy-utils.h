@@ -38,7 +38,8 @@ int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info);
 #define ARRAY_SIZE(x) ((sizeof(x)/sizeof((x)[0])))
 #endif
 
-#if defined(__GNUC__) && __GNUC__ >= 4
+// #if 0 && !defined(NDEBUG) && (defined(__GNUC__) && __GNUC__ >= 4)
+#if !defined(NDEBUG) && (defined(__GNUC__) && __GNUC__ >= 4)
 #define FY_ALWAYS_INLINE __attribute__((always_inline))
 #else
 #define FY_ALWAYS_INLINE /* nothing */

@@ -199,9 +199,13 @@ struct fy_parser {
 	struct fy_indent_list recycled_indent;
 	struct fy_simple_key_list recycled_simple_key;
 	struct fy_parse_state_log_list recycled_parse_state_log;
-	struct fy_eventp_list recycled_eventp;
 	struct fy_flow_list recycled_flow;
+
+	struct fy_eventp_list recycled_eventp;
 	struct fy_token_list recycled_token;
+
+	struct fy_eventp_list *recycled_eventp_list;
+	struct fy_token_list *recycled_token_list;
 
 	/* the diagnostic object */
 	struct fy_diag *diag;
@@ -376,14 +380,14 @@ fy_parse_strncmp(struct fy_parser *fyp, const char *str, size_t n)
 	return fy_reader_strncmp(fyp->reader, str, n);
 }
 
-static inline int
+static FY_ALWAYS_INLINE inline int
 fy_parse_peek_at_offset(struct fy_parser *fyp, size_t offset)
 {
 	assert(fyp);
 	return fy_reader_peek_at_offset(fyp->reader, offset);
 }
 
-static inline int
+static FY_ALWAYS_INLINE inline int
 fy_parse_peek_at_internal(struct fy_parser *fyp, int pos, ssize_t *offsetp)
 {
 	assert(fyp);
@@ -411,49 +415,49 @@ fy_is_generic_blankz_at_offset(struct fy_parser *fyp, size_t offset)
 	return fy_reader_is_generic_blankz(fyp->reader, fy_reader_peek_at_offset(fyp->reader, offset));
 }
 
-static inline int
+static FY_ALWAYS_INLINE inline int
 fy_parse_peek_at(struct fy_parser *fyp, int pos)
 {
 	assert(fyp);
 	return fy_reader_peek_at_internal(fyp->reader, pos, NULL);
 }
 
-static inline int
+static FY_ALWAYS_INLINE inline int
 fy_parse_peek(struct fy_parser *fyp)
 {
 	assert(fyp);
 	return fy_reader_peek(fyp->reader);
 }
 
-static inline void
+static FY_ALWAYS_INLINE inline void
 fy_advance(struct fy_parser *fyp, int c)
 {
 	assert(fyp);
 	fy_reader_advance(fyp->reader, c);
 }
 
-static inline void
+static FY_ALWAYS_INLINE inline void
 fy_advance_ws(struct fy_parser *fyp, int c)
 {
 	assert(fyp);
 	fy_reader_advance_ws(fyp->reader, c);
 }
 
-static inline void
+static FY_ALWAYS_INLINE inline void
 fy_advance_space(struct fy_parser *fyp)
 {
 	assert(fyp);
 	fy_reader_advance_space(fyp->reader);
 }
 
-static inline int
+static FY_ALWAYS_INLINE inline int
 fy_parse_get(struct fy_parser *fyp)
 {
 	assert(fyp);
 	return fy_reader_get(fyp->reader);
 }
 
-static inline int
+static FY_ALWAYS_INLINE inline int
 fy_advance_by(struct fy_parser *fyp, int count)
 {
 	assert(fyp);
@@ -577,12 +581,6 @@ void fy_reader_skip_space(struct fy_reader *fyr);
 static inline int fy_document_state_version_compare(struct fy_document_state *fyds, const struct fy_version *vb)
 {
 	return fy_version_compare(fy_document_state_version(fyds), vb);
-}
-
-static inline struct fy_token_list *
-fy_parse_recycled_token(struct fy_parser *fyp)
-{
-	return fyp && !fyp->suppress_recycling ? &fyp->recycled_token : NULL;
 }
 
 int fy_parse_set_composer(struct fy_parser *fyp, fy_parse_composer_cb cb, void *userdata);

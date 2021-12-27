@@ -94,6 +94,7 @@ struct fy_input {
 	bool err : 1;		/* got an error */
 
 	/* propagated */
+	bool json_mode;
 	enum fy_lb_mode lb_mode;
 	enum fy_flow_ws_mode fws_mode;
 
@@ -253,6 +254,11 @@ struct fy_reader {
 	int tabsize;			/* very experimental tab size for indent purposes */
 
 	struct fy_diag *diag;
+
+	/* decoded mode variables; update when changing modes */
+	bool json_mode;
+	enum fy_lb_mode lb_mode;
+	enum fy_flow_ws_mode fws_mode;
 };
 
 void fy_reader_reset(struct fy_reader *fyr);
@@ -265,55 +271,31 @@ int fy_reader_input_done(struct fy_reader *fyr);
 const void *fy_reader_ptr_slow_path(struct fy_reader *fyr, size_t *leftp);
 const void *fy_reader_ensure_lookahead_slow_path(struct fy_reader *fyr, size_t size, size_t *leftp);
 
-static inline void
-fy_reader_apply_mode_to_input(struct fy_reader *fyr)
-{
-	if (!fyr || !fyr->current_input)
-		return;
+void fy_reader_apply_mode(struct fy_reader *fyr);
 
-	/* set input mode from the current reader settings */
-	switch (fyr->mode) {
-	case fyrm_yaml:
-		fyr->current_input->lb_mode = fylb_cr_nl;
-		fyr->current_input->fws_mode = fyfws_space_tab;
-		break;
-	case fyrm_json:
-		fyr->current_input->lb_mode = fylb_cr_nl;
-		fyr->current_input->fws_mode = fyfws_space;
-		break;
-	case fyrm_yaml_1_1:
-		fyr->current_input->lb_mode = fylb_cr_nl_N_L_P;
-		fyr->current_input->fws_mode = fyfws_space_tab;
-		break;
-	}
-}
-
-static inline enum fy_reader_mode
+static FY_ALWAYS_INLINE inline enum fy_reader_mode
 fy_reader_get_mode(const struct fy_reader *fyr)
 {
-	if (!fyr)
-		return fyrm_yaml;
+	assert(fyr);
 	return fyr->mode;
 }
 
-static inline void
+static FY_ALWAYS_INLINE inline void
 fy_reader_set_mode(struct fy_reader *fyr, enum fy_reader_mode mode)
 {
-	if (!fyr)
-		return;
-
+	assert(fyr);
 	fyr->mode = mode;
-	fy_reader_apply_mode_to_input(fyr);
+	fy_reader_apply_mode(fyr);
 }
 
-static inline struct fy_input *
+static FY_ALWAYS_INLINE inline struct fy_input *
 fy_reader_current_input(const struct fy_reader *fyr)
 {
 	assert(fyr);
 	return fyr->current_input;
 }
 
-static inline uint64_t
+static FY_ALWAYS_INLINE inline uint64_t
 fy_reader_current_input_generation(const struct fy_reader *fyr)
 {
 	assert(fyr);
@@ -321,22 +303,21 @@ fy_reader_current_input_generation(const struct fy_reader *fyr)
 	return fyr->current_input->generation;
 }
 
-static inline int
+static FY_ALWAYS_INLINE inline int
 fy_reader_column(const struct fy_reader *fyr)
 {
-	if (!fyr)
-		return -1;
+	assert(fyr);
 	return fyr->column;
 }
 
-static inline int
+static FY_ALWAYS_INLINE inline int
 fy_reader_tabsize(const struct fy_reader *fyr)
 {
 	assert(fyr);
 	return fyr->tabsize;
 }
 
-static inline int
+static FY_ALWAYS_INLINE inline int
 fy_reader_line(const struct fy_reader *fyr)
 {
 	assert(fyr);
@@ -355,7 +336,7 @@ static inline void fy_reader_stream_end(struct fy_reader *fyr)
 	}
 }
 
-static inline void
+static FY_ALWAYS_INLINE inline void
 fy_reader_get_mark(struct fy_reader *fyr, struct fy_mark *fym)
 {
 	assert(fyr);
@@ -364,7 +345,7 @@ fy_reader_get_mark(struct fy_reader *fyr, struct fy_mark *fym)
 	fym->column = fyr->column;
 }
 
-static inline const void *
+static FY_ALWAYS_INLINE inline const void *
 fy_reader_ptr(struct fy_reader *fyr, size_t *leftp)
 {
 	if (fyr->current_ptr) {
@@ -376,40 +357,25 @@ fy_reader_ptr(struct fy_reader *fyr, size_t *leftp)
 	return fy_reader_ptr_slow_path(fyr, leftp);
 }
 
-static inline bool fy_reader_json_mode(const struct fy_reader *fyr)
+static FY_ALWAYS_INLINE inline bool
+fy_reader_json_mode(const struct fy_reader *fyr)
 {
 	assert(fyr);
-	return fyr->mode == fyrm_json;
+	return fyr->json_mode;
 }
 
-static inline enum fy_lb_mode fy_reader_lb_mode(const struct fy_reader *fyr)
+static FY_ALWAYS_INLINE inline enum fy_lb_mode
+fy_reader_lb_mode(const struct fy_reader *fyr)
 {
 	assert(fyr);
-
-	switch (fyr->mode) {
-	case fyrm_yaml:
-	case fyrm_json:
-		return fylb_cr_nl;
-	case fyrm_yaml_1_1:
-		return fylb_cr_nl_N_L_P;
-	}
-
-	return fylb_cr_nl;
+	return fyr->lb_mode;
 }
 
-static inline enum fy_flow_ws_mode fy_reader_flow_ws_mode(const struct fy_reader *fyr)
+static FY_ALWAYS_INLINE inline enum fy_flow_ws_mode
+fy_reader_flow_ws_mode(const struct fy_reader *fyr)
 {
 	assert(fyr);
-
-	switch (fyr->mode) {
-	case fyrm_yaml:
-	case fyrm_yaml_1_1:
-		return fyfws_space_tab;
-	case fyrm_json:
-		return fyfws_space;
-	}
-
-	return fyfws_space_tab;
+	return fyr->fws_mode;
 }
 
 static FY_ALWAYS_INLINE inline bool

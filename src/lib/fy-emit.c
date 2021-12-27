@@ -1950,6 +1950,18 @@ int fy_emit_setup(struct fy_emitter *emit, const struct fy_emitter_cfg *cfg)
 	fy_eventp_list_init(&emit->recycled_eventp);
 	fy_token_list_init(&emit->recycled_token);
 
+	/* suppress recycling if we must */
+	emit->suppress_recycling_force = getenv("FY_VALGRIND") && !getenv("FY_VALGRIND_RECYCLING");
+	emit->suppress_recycling = emit->suppress_recycling_force;
+
+	if (!emit->suppress_recycling) {
+		emit->recycled_eventp_list = &emit->recycled_eventp;
+		emit->recycled_token_list = &emit->recycled_token;
+	} else {
+		emit->recycled_eventp_list = NULL;
+		emit->recycled_token_list = NULL;
+	}
+
 	fy_emit_reset(emit, false);
 
 	return 0;
@@ -2739,7 +2751,7 @@ static int fy_emit_handle_sequence_item(struct fy_emitter *emit, struct fy_event
 	struct fy_token *fyt_item = NULL;
 	int ret;
 
-	fy_token_unref_rl(&emit->recycled_token, sc->fyt_last_value);
+	fy_token_unref_rl(emit->recycled_token_list, sc->fyt_last_value);
 	sc->fyt_last_value = NULL;
 
 	switch (fye->type) {
@@ -2820,9 +2832,9 @@ static int fy_emit_handle_mapping_key(struct fy_emitter *emit, struct fy_eventp 
 	int ret, aflags;
 	bool simple_key;
 
-	fy_token_unref_rl(&emit->recycled_token, sc->fyt_last_key);
+	fy_token_unref_rl(emit->recycled_token_list, sc->fyt_last_key);
 	sc->fyt_last_key = NULL;
-	fy_token_unref_rl(&emit->recycled_token, sc->fyt_last_value);
+	fy_token_unref_rl(emit->recycled_token_list, sc->fyt_last_value);
 	sc->fyt_last_value = NULL;
 
 	simple_key = false;

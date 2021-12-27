@@ -329,8 +329,12 @@ struct fy_document_iterator {
 	struct fy_node *iterate_root;
 	bool suppress_recycling_force : 1;
 	bool suppress_recycling : 1;
+
 	struct fy_eventp_list recycled_eventp;
 	struct fy_token_list recycled_token;
+
+	struct fy_eventp_list *recycled_eventp_list;	/* NULL when suppressing */
+	struct fy_token_list *recycled_token_list;	/* NULL when suppressing */
 
 	unsigned int stack_top;
 	unsigned int stack_alloc;

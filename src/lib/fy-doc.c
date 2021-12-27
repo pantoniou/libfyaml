@@ -7290,6 +7290,14 @@ void fy_document_iterator_setup(struct fy_document_iterator *fydi)
 	fy_eventp_list_init(&fydi->recycled_eventp);
 	fy_token_list_init(&fydi->recycled_token);
 
+	if (!fydi->suppress_recycling) {
+		fydi->recycled_eventp_list = &fydi->recycled_eventp;
+		fydi->recycled_token_list = &fydi->recycled_token;
+	} else {
+		fydi->recycled_eventp_list = NULL;
+		fydi->recycled_token_list = NULL;
+	}
+
 	/* start with the stack pointing to the in place data */
 	fydi->stack_top = (unsigned int)-1;
 	fydi->stack_alloc = sizeof(fydi->in_place) / sizeof(fydi->in_place[0]);
@@ -7479,6 +7487,14 @@ fy_document_iterator_document_start(struct fy_document_iterator *fydi, struct fy
 	/* suppress recycling if we must */
 	fydi->suppress_recycling = (fyd->parse_cfg.flags & FYPCF_DISABLE_RECYCLING) ||
 				   fydi->suppress_recycling_force;
+
+	if (!fydi->suppress_recycling) {
+		fydi->recycled_eventp_list = &fydi->recycled_eventp;
+		fydi->recycled_token_list = &fydi->recycled_token;
+	} else {
+		fydi->recycled_eventp_list = NULL;
+		fydi->recycled_token_list = NULL;
+	}
 
 	fye->type = FYET_DOCUMENT_START;
 	fye->document_start.document_start = NULL;
