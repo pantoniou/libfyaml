@@ -3900,7 +3900,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 				if (fy_reader_is_blankz(fyr, nextc)) {
 					/* super rare case :: not followed by space  */
 					/* :: not followed by space */
-					if (lastc != ':' || fy_is_ws(nextc))
+					if (lastc != ':' || fy_reader_is_blankz(fyr, nextc))
 						break;
 				}
 
