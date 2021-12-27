@@ -2243,6 +2243,8 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 	struct fy_mark mark;
 	struct fy_simple_key *fysk;
 	struct fy_token *fyt;
+	int adv, tab_adv;
+	bool indentation, found_tab;
 
 	fyp_error_check(fyp, c == '-', err_out,
 			"illegal block entry");
@@ -2317,8 +2319,29 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 			"fy_token_queue() failed");
 
 	/* special case for allowing whitespace (including tabs) after - */
-	if (fy_is_ws(c = fy_parse_peek(fyp)))
-		fy_advance(fyp, c);
+	found_tab = false;
+
+	/* scan forward, keeping track if we found a tab */
+	adv = 0;
+	tab_adv = -1;
+	while (fy_is_ws(c = fy_parse_peek_at(fyp, adv))) {
+		if (!found_tab && fy_is_tab(c)) {
+			found_tab = true;
+			tab_adv = adv;
+		}
+		adv++;
+	}
+
+	if (found_tab) {
+		indentation = fy_utf8_strchr("?:|>", c) ||
+				(c == '-' && fyp_is_blankz(fyp, fy_parse_peek_at(fyp, adv + 1)));
+
+		/* any kind of block indentation is not allowed */
+		FYP_PARSE_ERROR_CHECK(fyp, tab_adv, 1, FYEM_SCAN,
+				!indentation, err_out,
+				"cannot use tab for indentation of block entry");
+		fy_advance_by(fyp, tab_adv + 1);
+	}
 
 	/* now chomp spaces only afterwards */
 	while (fy_is_space(c = fy_parse_peek(fyp)))
