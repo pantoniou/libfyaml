@@ -1027,7 +1027,7 @@ err_out_rc:
 int fy_scan_to_next_token(struct fy_parser *fyp)
 {
 	int c, c_after_ws, i, rc = 0;
-	bool tabs_allowed;
+	bool tabs_allowed, sloppy_flow, no_indent;
 	ssize_t offset;
 	struct fy_atom *handle;
 	struct fy_reader *fyr;
@@ -1048,20 +1048,54 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 		goto done;
 	}
 
-	for (;;) {
+	tabs_allowed = fyp->flow_level > 0 || !fyp->simple_key_allowed || fyp_tabsize(fyp) > 0;
+	sloppy_flow = fyp->flow_level > 0 && (fyp->cfg.flags & FYPCF_SLOPPY_FLOW_INDENTATION);
 
-		tabs_allowed = fyp->flow_level || !fyp->simple_key_allowed;
+	for (;;) {
 
 		/* skip white space, tabs are allowed in flow context */
 		/* tabs also allowed in block context but not at start of line or after -?: */
 
-		if (!fyp_tabsize(fyp) && !tabs_allowed) {
+		/* if we're not in sloppy flow indent mode, a tab may not be used as indentation */
+		if (!sloppy_flow) {
+			// fyp_notice(fyp, "not sloppy flow check c='%c' col=%d indent=%d\n", fy_parse_peek(fyp), fyp_column(fyp), fyp->indent);
+			c = -1;
+			while (fyp_column(fyp) <= fyp->indent && fy_is_ws(c = fy_parse_peek(fyp))) {
+				if (fy_is_tab(c))
+					break;
+				fy_advance(fyp, c);
+			}
+
+			/* it's an error, only if it is used for intentation */
+			/* comments and empty lines are OK */
+			if (fy_is_tab(c)) {
+
+				/* skip all space and tabs */
+				i = 0;
+				offset = -1;
+				while (fy_is_ws(c_after_ws = fy_parse_peek_at_internal(fyp, i, &offset)))
+					i++;
+
+				no_indent = c_after_ws == '#' || fyp_is_lb(fyp, c_after_ws);
+
+				FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
+						no_indent, err_out,
+						"tab character may not be used as indentation");
+
+				/* advance by that amount */
+				fy_advance_by(fyp, i);
+			}
+		}
+
+		if (!tabs_allowed) {
 			/* skip space only */
 			fy_reader_skip_space(fyr);
 			c = fy_parse_peek(fyp);
 
-			/* if it's a tab, we need to see if after ws follows a flow start marker */
+			/* it's a tab, here we go */
 			if (fy_is_tab(c)) {
+
+				/* we need to see if after ws follows a flow start marker */
 
 				/* skip all space and tabs */
 				i = 0;
@@ -1090,6 +1124,8 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 			rc = fy_scan_comment(fyp, handle, false);
 			fyp_error_check(fyp, !rc, err_out_rc,
 					"fy_scan_comment() failed");
+
+			tabs_allowed = (fyp->flow_level || !fyp->simple_key_allowed) || fyp_tabsize(fyp);
 		}
 
 		c = fy_parse_peek(fyp);
@@ -1104,12 +1140,16 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 		/* may start simple key (in block ctx) */
 		if (!fyp->flow_level && !fyp->simple_key_allowed) {
 			fyp->simple_key_allowed = true;
+			tabs_allowed = (fyp->flow_level || !fyp->simple_key_allowed) || fyp_tabsize(fyp);
 			fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 		}
 	}
 
 	fyp_scan_debug(fyp, "%s: no-next-token", __func__);
+	return 0;
 
+err_out:
+	rc = -1;
 err_out_rc:
 	return rc;
 
