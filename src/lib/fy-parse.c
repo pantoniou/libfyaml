@@ -3003,13 +3003,19 @@ int fy_scan_block_scalar_indent(struct fy_parser *fyp, int indent, int *breaks, 
 		/* skip over indentation */
 
 		if (!fyp_tabsize(fyp)) {
-			while ((c = fy_parse_peek(fyp)) == ' ' &&
-				(!indent || fyp_column(fyp) < indent))
+			/* we must respect the enclosed indent */
+			while (fyp_column(fyp) <= fyp->indent && fy_is_ws(c = fy_parse_peek(fyp))) {
+				FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
+						!fy_is_tab(c), err_out,
+						"invalid tab character as indent instead of space");
 				fy_advance(fyp, c);
+			}
 
-			FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-					c != '\t' || !(!indent && fyp_column(fyp) < indent), err_out,
-					"invalid tab character as indent instead of space");
+			/* skip over spaces only */
+			while ((c = fy_parse_peek(fyp)) == ' ' &&
+					(!indent || fyp_column(fyp) < indent)) {
+				fy_advance(fyp, c);
+			}
 		} else {
 			while (fy_is_ws((c = fy_parse_peek(fyp))) &&
 				(!indent || fyp_column(fyp) < indent))
