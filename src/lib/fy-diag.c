@@ -190,6 +190,14 @@ static void fy_diag_update_term_info(struct fy_diag *diag)
 	}
 }
 
+void fy_diag_errorp_free(struct fy_diag_errorp *errp)
+{
+	if (errp->space)
+		free(errp->space);
+	fy_token_unref(errp->e.fyt);
+	free(errp);
+}
+
 struct fy_diag *fy_diag_create(const struct fy_diag_cfg *cfg)
 {
 	struct fy_diag *diag;
@@ -208,15 +216,23 @@ struct fy_diag *fy_diag_create(const struct fy_diag_cfg *cfg)
 
 	fy_diag_update_term_info(diag);
 
+	fy_diag_errorp_list_init(&diag->errors);
+
 	return diag;
 }
 
 void fy_diag_destroy(struct fy_diag *diag)
 {
+	struct fy_diag_errorp *errp;
+
 	if (!diag)
 		return;
 
 	diag->destroyed = true;
+
+	/* free everything */
+	while ((errp = fy_diag_errorp_list_pop(&diag->errors)) != NULL)
+		fy_diag_errorp_free(errp);
 
 	return fy_diag_unref(diag);
 }
@@ -228,24 +244,52 @@ bool fy_diag_got_error(struct fy_diag *diag)
 
 void fy_diag_reset_error(struct fy_diag *diag)
 {
+	struct fy_diag_errorp *errp;
+
 	if (!diag)
 		return;
 
 	diag->on_error = false;
+
+	while ((errp = fy_diag_errorp_list_pop(&diag->errors)) != NULL)
+		fy_diag_errorp_free(errp);
 }
 
-/**
- * fy_diag_reset_error() - Reset the error flag of
- * 			   the diagnostic object
- *
- * Clears the error flag which was set by an output
- * of an error level diagnostic
- *
- * @diag: The diagnostic object
- */
-void
-fy_diag_reset_error(struct fy_diag *diag)
-	FY_EXPORT;
+void fy_diag_set_collect_errors(struct fy_diag *diag, bool collect_errors)
+{
+	struct fy_diag_errorp *errp;
+
+	if (!diag || diag->destroyed)
+		return;
+
+	diag->collect_errors = collect_errors;
+
+	/* clear collected errors on disable */
+	if (!diag->collect_errors) {
+		while ((errp = fy_diag_errorp_list_pop(&diag->errors)) != NULL)
+			fy_diag_errorp_free(errp);
+	}
+}
+
+struct fy_diag_error *fy_diag_errors_iterate(struct fy_diag *diag, void **prevp)
+{
+	struct fy_diag_errorp *errp;
+
+	if (!diag || !prevp)
+		return NULL;
+
+	if (!*prevp)
+		errp = fy_diag_errorp_list_head(&diag->errors);
+	else {
+		errp = *prevp;
+		errp = fy_diag_errorp_next(&diag->errors, errp);
+	}
+
+	if (!errp)
+		return NULL;
+	*prevp = errp;
+	return &errp->e;
+}
 
 void fy_diag_free(struct fy_diag *diag)
 {
@@ -744,6 +788,10 @@ void fy_diag_vreport(struct fy_diag *diag,
 	char *msg_str = NULL, *name_str = NULL;
 	const struct fy_mark *start_mark;
 	int line, column;
+	struct fy_diag_errorp *errp;
+	struct fy_diag_error *err;
+	size_t spacesz, msgsz, filesz;
+	char *s;
 
 	if (!diag || !fydrc || !fmt || !fydrc->fyt)
 		return;
@@ -771,15 +819,46 @@ void fy_diag_vreport(struct fy_diag *diag,
 			alloca_sprintf("%s%s:%d:%d: ", white, name, line, column) :
 			alloca_sprintf("%s%s: ", white, name);
 
-	fy_diag_printf(diag, "%s" "%s%s: %s" "%s\n",
-		name_str ? : "",
-		color_start, fy_error_type_to_string(fydrc->type), color_end,
-		msg_str);
+	if (!diag->collect_errors) {
+		fy_diag_printf(diag, "%s" "%s%s: %s" "%s\n",
+			name_str ? : "",
+			color_start, fy_error_type_to_string(fydrc->type), color_end,
+			msg_str);
 
-	fy_diag_error_token_display(diag, fydrc->type, fydrc->fyt);
+		fy_diag_error_token_display(diag, fydrc->type, fydrc->fyt);
 
-	fy_token_unref(fydrc->fyt);
+		fy_token_unref(fydrc->fyt);
 
+	} else if ((errp = malloc(sizeof(*errp))) != NULL) {
+
+		msgsz = strlen(msg_str) + 1;
+		filesz = strlen(name) + 1;
+		spacesz = msgsz + filesz;
+
+		errp->space = malloc(spacesz);
+		if (!errp->space) {
+			free(errp);
+			goto out;
+		}
+		s = errp->space;
+
+		err = &errp->e;
+		memset(err, 0, sizeof(*err));
+		err->type = fydrc->type;
+		err->module = fydrc->module;
+		err->fyt = fydrc->fyt;
+		err->msg = s;
+		memcpy(s, msg_str, msgsz);
+		s += msgsz;
+		err->file = s;
+		memcpy(s, name, filesz);
+		s += filesz;
+		err->line = line;
+		err->column = column;
+
+		fy_diag_errorp_list_add_tail(&diag->errors, errp);
+	}
+out:
 	if (!diag->on_error && fydrc->type == FYET_ERROR)
 		diag->on_error = true;
 }

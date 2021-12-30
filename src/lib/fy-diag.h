@@ -55,16 +55,6 @@ struct fy_diag_term_info {
 	int columns;
 };
 
-struct fy_diag {
-	struct fy_diag_cfg cfg;
-	int refs;
-	bool on_error : 1;
-	bool destroyed : 1;
-	struct fy_diag_term_info term_info;
-};
-
-void fy_diag_free(struct fy_diag *diag);
-
 struct fy_diag_report_ctx {
 	enum fy_error_type type;
 	enum fy_error_module module;
@@ -74,6 +64,26 @@ struct fy_diag_report_ctx {
 	int override_line;
 	int override_column;
 };
+
+FY_TYPE_FWD_DECL_LIST(diag_errorp);
+struct fy_diag_errorp {
+	struct list_head node;
+	char *space;
+	struct fy_diag_error e;
+};
+FY_TYPE_DECL_LIST(diag_errorp);
+
+struct fy_diag {
+	struct fy_diag_cfg cfg;
+	int refs;
+	bool on_error : 1;
+	bool destroyed : 1;
+	bool collect_errors : 1;
+	struct fy_diag_term_info term_info;
+	struct fy_diag_errorp_list errors;
+};
+
+void fy_diag_free(struct fy_diag *diag);
 
 void fy_diag_vreport(struct fy_diag *diag,
 		     const struct fy_diag_report_ctx *fydrc,

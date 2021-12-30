@@ -4803,6 +4803,30 @@ struct fy_diag_cfg {
 };
 
 /**
+ * struct fy_diag_error - A collected diagnostic error
+ *
+ * @type: Error type
+ * @module: The module
+ * @fyt: The token (may be NULL)
+ * @msg: The message to be output alongside
+ * @file: The file which contained the input
+ * @line: The line at the error
+ * @column: The column at the error
+ *
+ * This structure contains information about an error
+ * being collected by the diagnostic object.
+ */
+struct fy_diag_error {
+	enum fy_error_type type;
+	enum fy_error_module module;
+	struct fy_token *fyt;
+	const char *msg;
+	const char *file;
+	int line;
+	int column;
+};
+
+/**
  * fy_diag_create() - Create a diagnostic object
  *
  * Creates a diagnostic object using the provided configuration.
@@ -4928,6 +4952,20 @@ fy_diag_got_error(struct fy_diag *diag)
  */
 void
 fy_diag_reset_error(struct fy_diag *diag)
+	FY_EXPORT;
+
+/**
+ * fy_diag_set_collect_errors() - Collect errors instead of outputting
+ *
+ * Set the collect errors mode. When true instead of outputting to
+ * the diagnostic interface, errors are collected for later
+ * retrieval.
+ *
+ * @diag: The diagnostic object
+ * @collect_errors: The collect errors mode
+ */
+void
+fy_diag_set_collect_errors(struct fy_diag *diag, bool collect_errors)
 	FY_EXPORT;
 
 /**
@@ -5196,6 +5234,22 @@ fy_diag_node_override_report(struct fy_diag *diag, struct fy_node *fyn,
 			     enum fy_error_type type, const char *file,
 			     int line, int column, const char *fmt, ...)
 	__attribute__((format(printf, 7, 8)))
+	FY_EXPORT;
+
+/**
+ * fy_diag_errors_iterate() - Iterate over the errors of a diagnostic object
+ *
+ * This method iterates over all the errors collected on the diagnostic object.
+ * The start of the iteration is signalled by a NULL in \*prevp.
+ *
+ * @diag: The diagnostic object
+ * @prevp: The previous result iterator
+ *
+ * Returns:
+ * The next errors or NULL when there are not any more.
+ */
+struct fy_diag_error *
+fy_diag_errors_iterate(struct fy_diag *diag, void **prevp)
 	FY_EXPORT;
 
 /**
