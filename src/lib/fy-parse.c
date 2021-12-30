@@ -2560,7 +2560,7 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 			"JSON considers keys when not in mapping context invalid");
 
 	/* special handling for :: weirdness */
-	if (fyp->flow_level > 0) {
+	if (!fyp_json_mode(fyp) && fyp->flow_level > 0) {
 		int adv, nextc, nextcol, tabsize, indent;
 
 		/* this requires some explanation...
@@ -2575,9 +2575,12 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 
 			if (fyp_is_lb(fyp, nextc))
 				nextcol = 0;
-			else if (fy_is_tab(nextc))
-				nextcol += tabsize - (nextcol % tabsize);
-			else if (fy_is_space(nextc))
+			else if (fy_is_tab(nextc)) {
+				if (tabsize)
+					nextcol += tabsize - (nextcol % tabsize);
+				else
+					nextcol++;
+			} else if (fy_is_space(nextc))
 				nextcol++;
 			else {
 				if (!fy_flow_indent_check_internal(fyp, nextcol, indent))
