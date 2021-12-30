@@ -388,9 +388,9 @@ int fy_vdiag(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 
 	level = fydc->level;
 
-	/* turn errors into notices while not reset */
+	/* turn errors into debugs while not reset */
 	if (level >= FYET_ERROR && diag->on_error)
-		level = FYET_NOTICE;
+		level = FYET_DEBUG;
 
 	if (level < diag->cfg.level) {
 		rc = 0;
