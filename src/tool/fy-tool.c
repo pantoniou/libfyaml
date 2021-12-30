@@ -51,6 +51,7 @@
 #define DISABLE_FLOW_MARKERS_DEFAULT	false
 #define DUMP_PATH_DEFAULT		false
 #define DOCUMENT_EVENT_STREAM_DEFAULT	false
+#define COLLECT_ERRORS_DEFAULT		false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -79,6 +80,7 @@
 #define OPT_DISABLE_FLOW_MARKERS	2014
 #define OPT_DUMP_PATH			2015
 #define OPT_DOCUMENT_EVENT_STREAM	2016
+#define OPT_COLLECT_ERRORS		2017
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -136,6 +138,7 @@ static struct option lopts[] = {
 	{"document-event-stream",no_argument,		0,	OPT_DOCUMENT_EVENT_STREAM },
 	{"noexec",		no_argument,		0,	OPT_NOEXEC },
 	{"null-output",		no_argument,		0,	OPT_NULL_OUTPUT },
+	{"collect-errors",	no_argument,		0,	OPT_COLLECT_ERRORS },
 	{"to",			required_argument,	0,	'T' },
 	{"from",		required_argument,	0,	'F' },
 	{"quiet",		no_argument,		0,	'q' },
@@ -232,6 +235,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--document-event-stream  : Generate a document and then produce the event stream"
 							" (default %s)\n",
 							DOCUMENT_EVENT_STREAM_DEFAULT ? "true" : "false");
+		fprintf(fp, "\t--collect-errors         : Collect errors instead of outputting directly"
+							" (default %s)\n",
+							COLLECT_ERRORS_DEFAULT ? "true" : "false");
 		if (tool_mode == OPT_TOOL || tool_mode == OPT_DUMP)
 			fprintf(fp, "\t--streaming              : Use streaming output mode"
 								" (default %s)\n",
@@ -1401,7 +1407,8 @@ int main(int argc, char *argv[])
 	bool stdin_input;
 	void *res_iter;
 	bool disable_flow_markers = false;
-	bool document_event_stream = false;
+	bool document_event_stream = DOCUMENT_EVENT_STREAM_DEFAULT;
+	bool collect_errors = COLLECT_ERRORS_DEFAULT;
 	struct composer_data cd;
 	bool dump_path = DUMP_PATH_DEFAULT;
 
@@ -1678,6 +1685,9 @@ int main(int argc, char *argv[])
 		case OPT_DOCUMENT_EVENT_STREAM:
 			document_event_stream = true;
 			break;
+		case OPT_COLLECT_ERRORS:
+			collect_errors = true;
+			break;
 		case 'h' :
 		default:
 			if (opt != 'h')
@@ -1720,6 +1730,10 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "fy_diag_create() failed\n");
 		goto cleanup;
 	}
+
+	/* collect errors, instead of outputting directly */
+	if (collect_errors)
+		fy_diag_set_collect_errors(diag, true);
 
 	/* all set, use fy_diag for error reporting, debugging now */
 
@@ -2238,8 +2252,19 @@ cleanup:
 	if (fyp)
 		fy_parser_destroy(fyp);
 
-	if (diag)
+	if (diag) {
+		if (collect_errors) {
+			struct fy_diag_error *err;
+			void *iter;
+
+			iter = NULL;
+			while ((err = fy_diag_errors_iterate(diag, &iter)) != NULL) {
+				fprintf(stderr, "%s:%d:%d %s\n", err->file, err->line, err->column, err->msg);
+			}
+
+		}
 		fy_diag_destroy(diag);
+	}
 
 	return exitcode;
 }
