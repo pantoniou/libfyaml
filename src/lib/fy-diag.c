@@ -130,6 +130,12 @@ static const char *fy_error_module_str(enum fy_error_module module)
 	return txt[module];
 }
 
+/* really concervative options */
+static const struct fy_diag_term_info default_diag_term_info_template = {
+	.rows		= 25,
+	.columns	= 80
+};
+
 static const struct fy_diag_cfg default_diag_cfg_template = {
 	.fp		= NULL,	/* must be overriden */
 	.level		= FYET_INFO,
@@ -160,6 +166,30 @@ void fy_diag_cfg_from_parser_flags(struct fy_diag_cfg *cfg, enum fy_parse_cfg_fl
 	/* nothing */
 }
 
+static void fy_diag_update_term_info(struct fy_diag *diag)
+{
+	int fd, rows, columns, ret;
+
+	/* start by setting things to the default */
+	diag->term_info = default_diag_term_info_template;
+
+	fd = diag->cfg.fp && isatty(fileno(diag->cfg.fp)) ?
+		fileno(diag->cfg.fp) : -1;
+
+	if (fd == -1)
+		return;
+
+	rows = columns = 0;
+	ret = fy_term_query_size(fd, &rows, &columns);
+	if (ret != 0)
+		return;
+
+	if (rows > 0 && columns > 0) {
+		diag->term_info.rows = rows;
+		diag->term_info.columns = columns;
+	}
+}
+
 struct fy_diag *fy_diag_create(const struct fy_diag_cfg *cfg)
 {
 	struct fy_diag *diag;
@@ -175,6 +205,8 @@ struct fy_diag *fy_diag_create(const struct fy_diag_cfg *cfg)
 		diag->cfg = *cfg;
 	diag->on_error = false;
 	diag->refs = 1;
+
+	fy_diag_update_term_info(diag);
 
 	return diag;
 }
@@ -234,12 +266,12 @@ void fy_diag_set_cfg(struct fy_diag *diag, const struct fy_diag_cfg *cfg)
 	if (!diag)
 		return;
 
-	if (!cfg) {
+	if (!cfg)
 		fy_diag_cfg_default(&diag->cfg);
-		return;
-	}
+	else
+		diag->cfg = *cfg;
 
-	diag->cfg = *cfg;
+	fy_diag_update_term_info(diag);
 }
 
 void fy_diag_set_level(struct fy_diag *diag, enum fy_error_type level)
@@ -278,6 +310,28 @@ void fy_diag_unref(struct fy_diag *diag)
 		fy_diag_free(diag);
 	else
 		diag->refs--;
+}
+
+ssize_t fy_diag_write(struct fy_diag *diag, const void *buf, size_t count)
+{
+	size_t ret;
+
+	if (!diag || !buf)
+		return -1;
+
+	/* no more output */
+	if (diag->destroyed)
+		return 0;
+
+	ret = 0;
+	if (diag->cfg.fp) {
+		ret = fwrite(buf, 1, count, diag->cfg.fp);
+	} else if (diag->cfg.output_fn) {
+		diag->cfg.output_fn(diag, diag->cfg.user, buf, count);
+		ret = count;
+	}
+
+	return ret == count ? (ssize_t)count : -1;
 }
 
 int fy_diag_vprintf(struct fy_diag *diag, const char *fmt, va_list ap)
@@ -436,6 +490,252 @@ int fy_diagf(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 	return rc;
 }
 
+static void fy_diag_get_error_colors(struct fy_diag *diag, enum fy_error_type type,
+				     const char **start, const char **end, const char **white)
+{
+	if (!diag->cfg.colorize) {
+		*start = *end = *white = "";
+		return;
+	}
+
+	switch (type) {
+	case FYET_DEBUG:
+		*start = "\x1b[37m";	/* normal white */
+		break;
+	case FYET_INFO:
+		*start = "\x1b[37;1m";	/* bright white */
+		break;
+	case FYET_NOTICE:
+		*start = "\x1b[34;1m";	/* bright blue */
+		break;
+	case FYET_WARNING:
+		*start = "\x1b[33;1m";	/* bright yellow */
+		break;
+	case FYET_ERROR:
+		*start = "\x1b[31;1m";	/* bright red */
+		break;
+	default:
+		break;
+	}
+	*end = "\x1b[0m";
+	*white = "\x1b[37;1m";
+}
+
+void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, struct fy_atom *atom)
+{
+	const struct fy_raw_line *l, *ln;
+	struct fy_raw_line l_tmp;
+	struct fy_atom_raw_line_iter iter;
+	int content_start_col, content_end_col, content_width;
+	int pass, cols, min_col, max_col, total_lines, max_line_count, max_line_col8, max_width;
+	int start_col, end_col;
+	const char *color_start, *color_end, *white;
+	bool first_line, last_line;
+	const char *display;
+	int display_len, line_shift;
+	char qc, first_mark;
+	char *rowbuf, *rbs, *rbe;
+	const char *s, *e;
+	int col8, c, w;
+	int tab8_len, tilde_start, tilde_width, tilde_width_m1;
+	size_t rowbufsz;
+
+	(void)end_col;
+
+	if (!diag || !atom)
+		return;
+
+	fy_diag_get_error_colors(diag, type, &color_start, &color_end, &white);
+
+	cols = diag->term_info.columns;
+
+	// cols = 80;
+
+	/* worse case utf8 + 2 color sequences + zero terminated */
+	rowbufsz = cols * 4 + 2 * 16 + 1;
+	rowbuf = alloca(rowbufsz);
+	rbe = rowbuf + rowbufsz;
+
+	/* two passes, first one collects extents */
+
+	start_col = -1;
+	end_col = -1;
+	min_col = -1;
+	max_col = -1;
+	max_line_count = -1;
+	max_line_col8 = -1;
+	total_lines = 0;
+	line_shift = -1;
+	for (pass = 0; pass < 2; pass++) {
+
+		/* on the start of the second pass */
+		if (pass > 0) {
+
+			/* if the maximum column number is less than the terminal
+			 * width everything fits, and we're fine */ 
+			if (max_line_col8 < cols) {
+				line_shift = 0;
+			} else {
+				max_width = max_col - min_col;
+
+				/* try to center */
+				line_shift = min_col + (max_width - cols) / 2;
+
+				/* the start of the content must always be included */
+				if (start_col < line_shift)
+					line_shift = start_col;
+			}
+		}
+
+		fy_atom_raw_line_iter_start(atom, &iter);
+		l = fy_atom_raw_line_iter_next(&iter);
+		for (; l != NULL; l = ln) {
+
+			/* save it */
+			l_tmp = *l;
+			l = &l_tmp;
+
+			/* get the next too */
+			ln = fy_atom_raw_line_iter_next(&iter);
+
+			first_line = l->lineno <= 1;
+			last_line = ln == NULL;
+
+			content_start_col = l->content_start_col8;
+			content_end_col = l->content_end_col8;
+
+			/* adjust for single and double quoted to include the quote marks (usually works) */
+			if (fy_atom_style_is_quoted(atom->style)) {
+				qc = atom->style == FYAS_SINGLE_QUOTED ? '\'' : '"';
+				if (first_line && l->content_start > l->line_start &&
+						l->content_start[-1] == qc)
+					content_start_col--;
+				if (last_line && (l->content_start + l->content_len) < (l->line_start + l->line_len) &&
+						l->content_start[l->content_len] == qc)
+					content_end_col++;
+			}
+
+			content_width = content_end_col - content_start_col;
+
+			if (pass == 0) {
+
+				total_lines++;
+
+				if (min_col < 0 || content_start_col < min_col)
+					min_col = content_start_col;
+				if (max_col < 0 || content_end_col > max_col)
+					max_col = content_end_col;
+				if (max_line_count < 0 || (int)l->line_count > max_line_count)
+					max_line_count = (int)l->line_count;
+				if (first_line)
+					start_col = content_start_col;
+				if (last_line)
+					end_col = content_end_col;
+
+				/* optimize by using the content end as a starting point */
+				s = l->content_start + l->content_len;
+				e = l->line_start + l->line_count;
+				col8 = l->content_end_col8;
+				while ((c = fy_utf8_get(s, (e - s), &w)) >= 0) {
+					s += w;
+					if (fy_is_tab(c))
+						col8 += 8 - (col8 % 8);
+					else
+						col8++;
+				}
+				/* update the max column number of the lines */
+				if (max_line_col8 < 0 || col8 > max_line_col8)
+					max_line_col8 = col8;
+
+				continue;
+			}
+
+			/* output pass */
+
+			/* the defaults if everything fits */
+			first_mark = first_line ? '^' : '~';
+
+			tab8_len = 0;
+
+			/* find the starting point */
+			s = l->line_start;
+			e = s + l->line_len;
+			col8 = 0;
+			while (col8 < line_shift && (c = fy_utf8_get(s, (e - s), &w)) >= 0) {
+				if (fy_is_tab(c))
+					col8 += 8 - (col8 % 8);
+				else
+					col8++;
+				s += w;
+			}
+			if (col8 > line_shift)
+				tab8_len = col8 - line_shift;	/* the remaining of the tab */
+			else
+				tab8_len = 0;
+
+			/* start filling the row buffer */
+			assert(rowbuf);
+			rbs = rowbuf;
+			rbe = rowbuf + rowbufsz;
+
+			/* remaining tabs */
+			while (tab8_len > 0) {
+				*rbs++ = ' ';
+				tab8_len--;
+			}
+
+			/* go forward until end of line or cols */
+			while (col8 < (line_shift + cols) && (c = fy_utf8_get(s, (e - s), &w)) >= 0 && rbs < rbe) {
+				if (fy_is_tab(c)) {
+					s++;
+					tab8_len = 8 - (col8 % 8);
+					col8 += tab8_len;
+					while (tab8_len > 0 && rbs < rbe) {
+						*rbs++ = ' ';
+						tab8_len--;
+					}
+				} else {
+					while (w > 0 && rbs < rbe) {
+						*rbs++ = *s++;
+						w--;
+					}
+					col8++;
+				}
+			}
+			display = rowbuf;
+			display_len = rbs - rowbuf;
+
+			tilde_start = content_start_col - line_shift;
+			tilde_width = content_width;
+			if (tilde_start + tilde_width > cols)
+				tilde_width = cols - tilde_start;
+			tilde_width_m1 = tilde_width > 0 ? (tilde_width - 1) : 0;
+
+			/* output the line */
+			fy_diag_write(diag, display, display_len);
+
+			/* set the tildes */
+			assert((int)rowbufsz > tilde_width_m1 + 1);
+			memset(rowbuf, '~', tilde_width_m1);
+			rowbuf[tilde_width_m1] = '\0';
+
+			fy_diag_printf(diag, "\n%*s%s%c%.*s%s\n",
+				       tilde_start, "",
+				       color_start, first_mark, tilde_width_m1, rowbuf, color_end);
+
+		}
+		fy_atom_raw_line_iter_finish(&iter);
+	}
+}
+
+void fy_diag_error_token_display(struct fy_diag *diag, enum fy_error_type type, struct fy_token *fyt)
+{
+	if (!diag || !fyt)
+		return;
+
+	fy_diag_error_atom_display(diag, type, fy_token_atom(fyt));
+}
+
 void fy_diag_vreport(struct fy_diag *diag,
 		     const struct fy_diag_report_ctx *fydrc,
 		     const char *fmt, va_list ap)
@@ -443,10 +743,7 @@ void fy_diag_vreport(struct fy_diag *diag,
 	const char *name, *color_start = NULL, *color_end = NULL, *white = NULL;
 	char *msg_str = NULL, *name_str = NULL;
 	const struct fy_mark *start_mark;
-	struct fy_atom_raw_line_iter iter;
-	const struct fy_raw_line *l;
-	char *tildes = "";
-	int j, k, tildesz = 0, line, column;
+	int line, column;
 
 	if (!diag || !fydrc || !fmt || !fydrc->fyt)
 		return;
@@ -466,30 +763,8 @@ void fy_diag_vreport(struct fy_diag *diag,
 	/* it will strip trailing newlines */
 	msg_str = alloca_vsprintf(fmt, ap);
 
-	if (diag->cfg.colorize) {
-		switch (fydrc->type) {
-		case FYET_DEBUG:
-			color_start = "\x1b[37m";	/* normal white */
-			break;
-		case FYET_INFO:
-			color_start = "\x1b[37;1m";	/* bright white */
-			break;
-		case FYET_NOTICE:
-			color_start = "\x1b[34;1m";	/* bright blue */
-			break;
-		case FYET_WARNING:
-			color_start = "\x1b[33;1m";	/* bright yellow */
-			break;
-		case FYET_ERROR:
-			color_start = "\x1b[31;1m";	/* bright red */
-			break;
-		default:
-			break;
-		}
-		color_end = "\x1b[0m";
-		white = "\x1b[37;1m";
-	} else
-		color_start = color_end = white = "";
+	/* get the colors */
+	fy_diag_get_error_colors(diag, fydrc->type, &color_start, &color_end, &white);
 
 	if (name || (line > 0 && column > 0))
 		name_str = (line > 0 && column > 0) ?
@@ -501,27 +776,7 @@ void fy_diag_vreport(struct fy_diag *diag,
 		color_start, fy_error_type_to_string(fydrc->type), color_end,
 		msg_str);
 
-	fy_atom_raw_line_iter_start(fy_token_atom(fydrc->fyt), &iter);
-	while ((l = fy_atom_raw_line_iter_next(&iter)) != NULL) {
-		fy_diag_printf(diag, "%.*s\n",
-			       (int)l->line_len, l->line_start);
-		j = l->content_start_col8;
-		k = (l->content_end_col8 - l->content_start_col8) - 1;
-		if (k > tildesz) {
-			if (!tildesz)
-				tildesz = 32;
-			while (tildesz < k)
-				tildesz *= 2;
-			tildes = alloca(tildesz + 1);
-			memset(tildes, '~', tildesz);
-			tildes[tildesz] = '\0';
-		}
-		fy_diag_printf(diag, "%*s%s%c%.*s%s\n",
-			       j, "", color_start,
-			       l->lineno == 1 ? '^' : '~',
-			       k > 0 ? k : 0, tildes, color_end);
-	}
-	fy_atom_raw_line_iter_finish(&iter);
+	fy_diag_error_token_display(diag, fydrc->type, fydrc->fyt);
 
 	fy_token_unref(fydrc->fyt);
 

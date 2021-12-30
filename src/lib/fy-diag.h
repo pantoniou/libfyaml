@@ -50,11 +50,17 @@
 #define FYDF_MODULE_USER_MASK	7
 #define FYDF_MODULE_USER(x)	FYDF_MODULE(8 + ((x) & FYDF_MODULE_USER_MASK))
 
+struct fy_diag_term_info {
+	int rows;
+	int columns;
+};
+
 struct fy_diag {
 	struct fy_diag_cfg cfg;
 	int refs;
 	bool on_error : 1;
 	bool destroyed : 1;
+	struct fy_diag_term_info term_info;
 };
 
 void fy_diag_free(struct fy_diag *diag);
@@ -97,6 +103,11 @@ int fy_parser_diag(struct fy_parser *fyp, unsigned int flags,
 		   const char *file, int line, const char *func,
 		   const char *fmt, ...)
 			__attribute__((format(printf, 6, 7)));
+
+void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type,
+				 struct fy_atom *atom);
+void fy_diag_error_token_display(struct fy_diag *diag, enum fy_error_type type,
+				 struct fy_token *fyt);
 
 void fy_parser_diag_vreport(struct fy_parser *fyp,
 			    const struct fy_diag_report_ctx *fydrc,

@@ -15,6 +15,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <termio.h>
+#include <termios.h>
+#include <unistd.h>
+#include <sys/select.h>
+#include <sys/time.h>
+#include <sys/types.h>
 
 #include "fy-utf8.h"
 #include "fy-ctype.h"
@@ -390,4 +396,240 @@ int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info)
 	info->suffix_length = suffix_length;
 
 	return 0;
+}
+
+/* simple terminal methods; mainly for getting size of terminal */
+int fy_term_set_raw(int fd, struct termios *oldt)
+{
+	struct termios newt, t;
+	int ret;
+
+	/* must be a terminal */
+	if (!isatty(fd))
+		return -1;
+
+	ret = tcgetattr(fd, &t);
+	if (ret != 0)
+		return ret;
+
+	newt = t;
+
+	cfmakeraw(&newt);
+    
+	ret = tcsetattr(fd, TCSANOW, &newt);
+	if (ret != 0)
+		return ret;
+
+	if (oldt)
+		*oldt = t;
+
+	return 0;
+}
+
+int fy_term_restore(int fd, const struct termios *oldt)
+{
+	/* must be a terminal */
+	if (!isatty(fd))
+		return -1;
+
+	return tcsetattr(fd, TCSANOW, oldt);
+}
+
+ssize_t fy_term_write(int fd, const void *data, size_t count)
+{
+	ssize_t wrn, r;
+
+	if (!isatty(fd))
+		return -1;
+	r = 0;
+	wrn = 0;
+	while (count > 0) {
+		do {
+			r = write(fd, data, count);
+		} while (r == -1 && errno == EAGAIN);
+		if (r < 0)
+			break;
+		wrn += r;
+		data += r;
+		count -= r;
+	}
+
+	/* return the amount written, or the last error code */
+	return wrn > 0 ? wrn : r;
+}
+
+int fy_term_safe_write(int fd, const void *data, size_t count)
+{
+	if (!isatty(fd))
+		return -1;
+
+	return fy_term_write(fd, data, count) == (ssize_t)count ? 0 : -1;
+}
+
+ssize_t fy_term_read(int fd, void *data, size_t count, int timeout_us)
+{
+	ssize_t rdn, r;
+	struct timeval tv, tvto, *tvp;
+	fd_set rdfds;
+
+	if (!isatty(fd))
+		return -1;
+
+	FD_ZERO(&rdfds);
+
+	memset(&tvto, 0, sizeof(tvto));
+	memset(&tv, 0, sizeof(tv));
+
+	if (timeout_us >= 0) {
+		tvto.tv_sec = timeout_us / 1000000;
+		tvto.tv_usec = timeout_us % 1000000;
+		tvp = &tv;
+	} else {
+		tvp = NULL;
+	}
+
+	r = 0;
+	rdn = 0;
+	while (count > 0) {
+		do {
+			FD_SET(fd, &rdfds);
+			if (tvp)
+				*tvp = tvto;
+			r = select(fd + 1, &rdfds, NULL, NULL, tvp);
+		} while (r == -1 && errno == EAGAIN);
+
+		/* select ends, or something weird */
+		if (r <= 0 || !FD_ISSET(fd, &rdfds))
+			break;
+
+		/* now read */
+		do {
+			r = read(fd, data, count);
+		} while (r == -1 && errno == EAGAIN);
+		if (r < 0)
+			break;
+
+		rdn += r;
+		data += r;
+		count -= r;
+	}
+
+	/* return the amount written, or the last error code */
+	return rdn > 0 ? rdn : r;
+}
+
+ssize_t fy_term_read_escape(int fd, void *buf, size_t count)
+{
+	char *p;
+	int r, rdn;
+	char c;
+
+	/* at least 3 characters */
+	if (count < 3)
+		return -1;
+
+	p = buf;
+	rdn = 0;
+
+	/* ESC */
+	r = fy_term_read(fd, &c, 1, 100 * 1000);
+	if (r != 1 || c != '\x1b')
+		return -1;
+	*p++ = c;
+	count--;
+	rdn++;
+
+	/* [ */
+	r = fy_term_read(fd, &c, 1, 100 * 1000);
+	if (r != 1 || c != '[')
+		return rdn;
+	*p++ = c;
+	count--;
+	rdn++;
+
+	/* read until error, out of buffer, or < 0x40 || > 0x7e */
+	r = -1;
+	while (count > 0) {
+		r = fy_term_read(fd, &c, 1, 100 * 1000);
+		if (r != 1)
+			r = -1;
+		if (r != 1)
+			break;
+		*p++ = c;
+		count--;
+		rdn++;
+
+		/* end of escape */
+		if (c >= 0x40 && c <= 0x7e)
+			break;
+	}
+
+	return rdn;
+}
+
+int fy_term_query_size_raw(int fd, int *rows, int *cols)
+{
+	char buf[32];
+	char *s, *e;
+	ssize_t r;
+
+	/* must be a terminal */
+	if (!isatty(fd))
+		return -1;
+
+	*rows = *cols = 0;
+
+	/* query text area */
+	r = fy_term_safe_write(fd, "\x1b[18t", 5);
+	if (r != 0)
+		return r;
+
+	/* read a character */
+	r = fy_term_read_escape(fd, buf, sizeof(buf));
+
+	/* return must be ESC[8;<height>;<width>;t */
+
+	if (r < 8 || r >= (int)sizeof(buf) - 2)	/* minimum ESC[8;1;1t */
+		return -1;
+
+	s = buf;
+	e = s + r;
+
+	/* correct response? starts with ESC[8; */
+	if (s[0] != '\x1b' || s[1] != '[' || s[2] != '8' || s[3] != ';')
+		return -1;
+	s += 4;
+
+	/* must end with t */
+	if (e[-1] != 't')
+		return -1;
+	*--e = '\0';	/* remove trailing t, and zero terminate */
+
+	/* scan two ints separated by ; */
+	r = sscanf(s, "%d;%d", rows, cols);
+	if (r != 2)
+		return -1;
+
+	return 0;
+}
+
+int fy_term_query_size(int fd, int *rows, int *cols)
+{
+	struct termios old_term;
+	int ret, r;
+
+	if (!isatty(fd))
+		return -1;
+
+	r = fy_term_set_raw(fd, &old_term);
+	if (r != 0)
+		return -1;
+
+	ret = fy_term_query_size_raw(fd, rows, cols);
+
+	r = fy_term_restore(fd, &old_term);
+	if (r != 0)
+		return -1;
+
+	return ret;
 }
