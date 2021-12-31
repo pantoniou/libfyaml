@@ -84,6 +84,7 @@ struct fy_atom {
 			bool size0 : 1;			/* atom contains absolutely nothing */
 			bool valid_anchor : 1;		/* atom is a valid anchor */
 			bool json_mode : 1;		/* atom was read in json mode */
+			bool ends_with_eof : 1;		/* atom ends at EOF of input */
 		};
 	};
 };

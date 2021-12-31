@@ -3068,7 +3068,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	int breaks, breaks_length, presentation_breaks_length, first_break_length;
 	bool doc_start_end_detected, empty, empty_line, prev_empty_line, indented, prev_indented, first;
 	bool has_ws, has_lb, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb;
-	bool pending_nl;
+	bool pending_nl, ends_with_eof;
 	struct fy_token *fyt;
 	size_t length, line_length, trailing_ws, trailing_breaks_length;
 	size_t leading_ws;
@@ -3385,6 +3385,9 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 		goto err_out;
 	}
 
+	/* are we ended with EOF? */
+	ends_with_eof = c == FYUG_EOF;
+
 	/* detect wrongly indented block scalar */
 	if (c != FYUG_EOF && !(!empty || fyp_column(fyp) <= fyp->indent || c == '#' || doc_start_end_detected)) {
 		FYP_MARK_ERROR(fyp, &handle.start_mark, &handle.end_mark, FYEM_SCAN,
@@ -3459,6 +3462,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	handle.lb_mode = fyp_lb_mode(fyp);
 	handle.fws_mode = fyp_fws_mode(fyp);
 	handle.tabsize = fyp_tabsize(fyp);
+	handle.ends_with_eof = ends_with_eof;
 
 #ifdef ATOM_SIZE_CHECK
 	tlength = fy_atom_format_text_length(&handle);
@@ -3884,7 +3888,12 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 	handle->ends_with_lb = ends_with_lb;
 	handle->trailing_lb = trailing_lb;
 	handle->size0 = length == 0;
+	handle->valid_anchor = false;
+	handle->json_mode = fy_reader_json_mode(fyr);
+	handle->lb_mode = fy_reader_lb_mode(fyr);
+	handle->fws_mode = fy_reader_flow_ws_mode(fyr);
 	handle->tabsize = fy_reader_tabsize(fyr);
+	handle->ends_with_eof = false;	/* flow scalars never end with EOF and be valid */
 
 	/* skip over block scalar end */
 	fy_reader_advance_by(fyr, 1);
@@ -3920,7 +3929,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 	bool has_leading_blanks;
 	bool last_ptr;
 	struct fy_mark mark, last_mark;
-	bool is_multiline, has_lb, has_ws;
+	bool is_multiline, has_lb, has_ws, ends_with_eof;
 	bool has_json_esc;
 #ifdef ATOM_SIZE_CHECK
 	size_t tlength;
@@ -4152,6 +4161,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 			"plain scalar is malformed UTF8");
 		goto err_out;
 	}
+	ends_with_eof = c == FYUG_EOF;
 
 	is_multiline = handle->end_mark.line > handle->start_mark.line;
 
@@ -4172,6 +4182,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 	handle->lb_mode = fy_reader_lb_mode(fyr);
 	handle->fws_mode = fy_reader_flow_ws_mode(fyr);
 	handle->tabsize = fy_reader_tabsize(fyr);
+	handle->ends_with_eof = ends_with_eof;
 
 #ifdef ATOM_SIZE_CHECK
 	tlength = fy_atom_format_text_length(handle);
