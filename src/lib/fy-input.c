@@ -839,13 +839,13 @@ struct fy_input *fy_input_create(const struct fy_input_cfg *fyic)
 		}
 		break;
 	case fyit_memory:
-		ret = asprintf(&fyi->name, "<memory-@0x%p-0x%p>",
+		ret = asprintf(&fyi->name, "<memory-@%p-%p>",
 			fyic->memory.data, fyic->memory.data + fyic->memory.size - 1);
 		if (ret == -1)
 			fyi->name = NULL;
 		break;
 	case fyit_alloc:
-		ret = asprintf(&fyi->name, "<alloc-@0x%p-0x%p>",
+		ret = asprintf(&fyi->name, "<alloc-@%p-%p>",
 			fyic->memory.data, fyic->memory.data + fyic->memory.size - 1);
 		if (ret == -1)
 			fyi->name = NULL;
