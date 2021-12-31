@@ -559,6 +559,7 @@ static void fy_diag_get_error_colors(struct fy_diag *diag, enum fy_error_type ty
 		*start = "\x1b[31;1m";	/* bright red */
 		break;
 	default:
+		*start = "\x1b[0m";	/* catch-all reset */
 		break;
 	}
 	*end = "\x1b[0m";
