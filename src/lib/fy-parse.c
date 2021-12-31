@@ -3418,7 +3418,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 				ends_with_ws = true;
 		}
 		break;
-	case FYAC_KEEP: {
+	case FYAC_KEEP:
 		length += (pending_nl ? actual_lb_length : 0) + breaks + presentation_breaks_length;
 
 		trailing_lb = trailing_breaks_length > 0;
@@ -3429,7 +3429,6 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 			ends_with_ws = true;
 			ends_with_lb = false;
 		}
-			}
 		break;
 	case FYAC_STRIP:
 		ends_with_lb = false;
