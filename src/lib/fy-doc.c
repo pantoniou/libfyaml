@@ -1663,12 +1663,16 @@ fy_parse_document_load_mapping(struct fy_parser *fyp, struct fy_document *fyd,
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_parse_document_load_node() failed");
 
-		/* make sure we don't add an already existing key */
-		duplicate = fy_node_mapping_key_is_duplicate(fyn, fyn_key);
+		/* if we don't allow duplicate keys */
+		if (!(fyd->parse_cfg.flags & FYPCF_ALLOW_DUPLICATE_KEYS)) {
 
-		FYP_NODE_ERROR_CHECK(fyp, fyn_key, FYEM_DOC,
-				!duplicate, err_out,
-				"duplicate key");
+			/* make sure we don't add an already existing key */
+			duplicate = fy_node_mapping_key_is_duplicate(fyn, fyn_key);
+
+			FYP_NODE_ERROR_CHECK(fyp, fyn_key, FYEM_DOC,
+					!duplicate, err_out,
+					"duplicate key");
+		}
 
 		fyep = fy_parse_private(fyp);
 
@@ -2722,9 +2726,13 @@ static int fy_resolve_merge_key_populate(struct fy_document *fyd, struct fy_node
 	for (fynpi = fy_node_pair_list_head(&fynm->mapping); fynpi;
 		fynpi = fy_node_pair_next(&fynm->mapping, fynpi)) {
 
-		/* make sure we don't override an already existing key */
-		if (fy_node_mapping_key_is_duplicate(fyn, fynpi->key))
-			continue;
+		/* if we don't allow duplicate keys */
+		if (!(fyd->parse_cfg.flags & FYPCF_ALLOW_DUPLICATE_KEYS)) {
+
+			/* make sure we don't override an already existing key */
+			if (fy_node_mapping_key_is_duplicate(fyn, fynpi->key))
+				continue;
+		}
 
 		fynpn = fy_node_pair_alloc(fyd);
 		fyd_error_check(fyd, fynpn, err_out,
@@ -5428,8 +5436,12 @@ fy_node_mapping_pair_insert_prepare(struct fy_node *fyn_map,
 	    (fyn_value && fyn_value->attached))
 		return NULL;
 
-	 if (fy_node_mapping_key_is_duplicate(fyn_map, fyn_key))
-		return NULL;
+	/* if we don't allow duplicate keys */
+	if (!(fyd->parse_cfg.flags & FYPCF_ALLOW_DUPLICATE_KEYS)) {
+
+		 if (fy_node_mapping_key_is_duplicate(fyn_map, fyn_key))
+			return NULL;
+	}
 
 	fynp = fy_node_pair_alloc(fyd);
 	if (!fynp)
@@ -6920,10 +6932,14 @@ complete:
 		fynp->key = fyn;
 		c->fynp = fynp;
 
-		/* make sure we don't add an already existing key */
-		if (fy_node_mapping_key_is_duplicate(fyn_parent, fyn)) {
-			FYP_NODE_ERROR(fyp, fyn, FYEM_DOC, "duplicate key");
-			goto err_out;
+		/* if we don't allow duplicate keys */
+		if (!(fyd->parse_cfg.flags & FYPCF_ALLOW_DUPLICATE_KEYS)) {
+
+			/* make sure we don't add an already existing key */
+			if (fy_node_mapping_key_is_duplicate(fyn_parent, fyn)) {
+				FYP_NODE_ERROR(fyp, fyn, FYEM_DOC, "duplicate key");
+				goto err_out;
+			}
 		}
 
 		// DBG(fyp, "%d: %s -> %s\n", fydb->next - 1, fy_document_builder_state_txt[c->s], fy_document_builder_state_txt[FYDBS_MAP_VAL]);
@@ -7204,12 +7220,16 @@ fy_node_pair_create_with_key(struct fy_document *fyd, struct fy_node *fyn_parent
 	if (!fyd || !fyn_parent || !fy_node_is_mapping(fyn_parent))
 		return NULL;
 
-	/* make sure we don't add an already existing key */
-	is_duplicate = fy_node_mapping_key_is_duplicate(fyn_parent, fyn);
-	if (is_duplicate) {
-		FYD_NODE_ERROR(fyd, fyn, FYEM_DOC,
-				"duplicate mapping key");
-		return NULL;
+	/* if we don't allow duplicate keys */
+	if (!(fyd->parse_cfg.flags & FYPCF_ALLOW_DUPLICATE_KEYS)) {
+
+		/* make sure we don't add an already existing key */
+		is_duplicate = fy_node_mapping_key_is_duplicate(fyn_parent, fyn);
+		if (is_duplicate) {
+			FYD_NODE_ERROR(fyd, fyn, FYEM_DOC,
+					"duplicate mapping key");
+			return NULL;
+		}
 	}
 
 	fynp = fy_node_pair_alloc(fyd);

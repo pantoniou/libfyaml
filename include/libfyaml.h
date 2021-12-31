@@ -310,6 +310,7 @@ enum fy_error_module {
  * @FYPCF_JSON_NONE: Never enable JSON input mode
  * @FYPCF_JSON_FORCE: Force JSON mode always
  * @FYPCF_YPATH_ALIASES: Enable YPATH aliases mode
+ * @FYPCF_ALLOW_DUPLICATE_KEYS: Allow duplicate keys on mappings
  */
 enum fy_parse_cfg_flags {
 	FYPCF_QUIET			= FY_BIT(0),
@@ -331,6 +332,7 @@ enum fy_parse_cfg_flags {
 	FYPCF_JSON_NONE			= FYPCF_JSON(1),
 	FYPCF_JSON_FORCE		= FYPCF_JSON(2),
 	FYPCF_YPATH_ALIASES		= FY_BIT(18),
+	FYPCF_ALLOW_DUPLICATE_KEYS	= FY_BIT(19),
 };
 
 #define FYPCF_DEFAULT_PARSE	(0)
