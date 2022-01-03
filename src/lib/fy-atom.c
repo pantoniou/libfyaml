@@ -392,6 +392,11 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 			 * then we're indented
 			 */
 			li->indented = fy_is_ws(c);
+
+#if defined(DEBUG_CHUNK)
+			fprintf(stderr, "%s:%d chomp_start=%d\n", __FILE__, __LINE__, (int)(li->chomp_start - li->start));
+#endif
+
 		}
 
 		if (fy_is_lb_m(c, atom->lb_mode)) {
@@ -416,8 +421,13 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 			}
 
 			/* no chomp point hit, use whatever we have here */
-			if (is_block && !li->chomp_start)
+			if (is_block && !li->chomp_start) {
 				li->chomp_start = ss;
+#if defined(DEBUG_CHUNK)
+				fprintf(stderr, "%s:%d chomp_start=%d\n", __FILE__, __LINE__, (int)(li->chomp_start - li->start));
+#endif
+
+			}
 
 			if (!last_was_ws) {
 				cws = 0;
@@ -441,6 +451,18 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 
 			advws = ts - (col % ts);
 			col += advws;
+
+#if defined(DEBUG_CHUNK)
+			fprintf(stderr, "%s:%d tab col=%d chomp=%d\n", __FILE__, __LINE__, col, (int)(li->chomp_start - li->start));
+#endif
+
+			if (fy_atom_style_is_block(atom->style) && col >= (int)(li->chomp_start - li->start)) {
+#if defined(DEBUG_CHUNK)
+				fprintf(stderr, "%s:%d tab col=%d chomp=%d\n", __FILE__, __LINE__, col, (int)(li->chomp_start - li->start));
+#endif
+				goto do_nws;
+			}
+
 			cws += advws;
 
 			can_be_nws_end = true;
@@ -457,6 +479,9 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 			}
 
 		} else {
+
+			col++;
+do_nws:
 			/* mark start of non whitespace */
 			if (!li->nws_start)
 				li->nws_start = ss;
@@ -469,8 +494,6 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 
 			last_was_ws = false;
 			cws = 0;
-
-			col++;
 		}
 
 		/* if we got both break */
@@ -494,6 +517,10 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 #ifdef DEBUG_CHUNK
 			fprintf(stderr, "%s:%d is_block && !li->chomp_start && (unsigned int)col >= iter->chomp\n", __FILE__, __LINE__);
 #endif
+#if defined(DEBUG_CHUNK)
+			fprintf(stderr, "%s:%d chomp_start=%d\n", __FILE__, __LINE__, (int)(li->chomp_start - li->start));
+#endif
+
 		}
 
 		if (!li->end) {
@@ -512,6 +539,9 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 			li->chomp_start = ss;
 #ifdef DEBUG_CHUNK
 			fprintf(stderr, "%s:%d li->final && atom->ends_with_eof && !li->chomp_start\n", __FILE__, __LINE__);
+#endif
+#if defined(DEBUG_CHUNK)
+			fprintf(stderr, "%s:%d chomp_start=%d\n", __FILE__, __LINE__, (int)(li->chomp_start - li->start));
 #endif
 		}
 
@@ -535,8 +565,12 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 		li->nws_end = ss;
 
 	/* if we haven't hit the chomp, point use whatever we're now */
-	if (is_block && !li->chomp_start)
+	if (is_block && !li->chomp_start) {
 		li->chomp_start = ss;
+#if defined(DEBUG_CHUNK)
+		fprintf(stderr, "%s:%d chomp_start=%d\n", __FILE__, __LINE__, (int)(li->chomp_start - li->start));
+#endif
+	}
 
 	if (li->start_ws == (size_t)-1)
 		li->start_ws = 0;
