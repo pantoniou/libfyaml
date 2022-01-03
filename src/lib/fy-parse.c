@@ -2987,7 +2987,7 @@ err_out_rc:
 }
 
 int fy_scan_block_scalar_indent(struct fy_parser *fyp, int indent, int *breaks, int *breaks_length,
-				int *presentation_breaks_length, int *first_break_length)
+				int *presentation_breaks_length, int *first_break_length, int *lastc)
 {
 	int c, max_indent = 0, min_indent, break_length;
 
@@ -3028,9 +3028,11 @@ int fy_scan_block_scalar_indent(struct fy_parser *fyp, int indent, int *breaks, 
 		if (fyp_column(fyp) > max_indent)
 			max_indent = fyp_column(fyp);
 
-		/* non-empty line? */
-		if (!fyp_is_lb(fyp, c))
+		/* non-empty line or EOF */
+		if (!fyp_is_lb(fyp, c)) {
+			*lastc = c;
 			break;
+		}
 
 		fy_advance(fyp, c);
 
@@ -3068,7 +3070,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	int breaks, breaks_length, presentation_breaks_length, first_break_length;
 	bool doc_start_end_detected, empty, empty_line, prev_empty_line, indented, prev_indented, first;
 	bool has_ws, has_lb, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb;
-	bool pending_nl, ends_with_eof;
+	bool pending_nl, ends_with_eof, starts_with_eof;
 	struct fy_token *fyt;
 	size_t length, line_length, trailing_ws, trailing_breaks_length;
 	size_t leading_ws;
@@ -3173,6 +3175,8 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 
 	fy_fill_atom_start(fyp, &handle);
 
+	starts_with_eof = c < 0;
+
 	current_indent = fyp->indent >= 0 ? fyp->indent : 0;
 	indent = increment ? current_indent + increment : 0;
 
@@ -3188,13 +3192,12 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	ends_with_lb = false;
 	trailing_lb = false;
 
-	new_indent = fy_scan_block_scalar_indent(fyp, indent, &breaks, &breaks_length, &presentation_breaks_length, &first_break_length);
+	new_indent = fy_scan_block_scalar_indent(fyp, indent, &breaks, &breaks_length, &presentation_breaks_length, &first_break_length, &lastc);
 	fyp_error_check(fyp, new_indent >= 0, err_out,
 			"fy_scan_block_scalar_indent() failed");
 
 	length = breaks_length;
 	length += presentation_breaks_length;
-
 	indent = new_indent;
 
 	doc_start_end_detected = false;
@@ -3211,7 +3214,6 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	chomp_amt = increment ? (unsigned int)(current_indent + increment) : (unsigned int)-1;
 
 	actual_lb_length = 1;
-	lastc = -1;
 	while ((c = fy_parse_peek(fyp)) > 0 && fyp_column(fyp) >= indent) {
 
 		lastc = c;
@@ -3270,7 +3272,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 			fy_advance(fyp, c);
 
 			has_lb = true;
-			new_indent = fy_scan_block_scalar_indent(fyp, indent, &breaks, &breaks_length, &presentation_breaks_length, &first_break_length);
+			new_indent = fy_scan_block_scalar_indent(fyp, indent, &breaks, &breaks_length, &presentation_breaks_length, &first_break_length, &lastc);
 			fyp_error_check(fyp, new_indent >= 0, err_out,
 					"fy_scan_block_scalar_indent() failed");
 			if (fy_is_lb_LS_PS(c))
@@ -3278,7 +3280,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 		} else {
 			has_lb = false;
 			new_indent = indent;
-			chomp = FYAC_STRIP;
+			// was chomp = FYAC_STRIP, very very wrong
 
 			breaks = 0;
 			breaks_length = 0;
@@ -3286,6 +3288,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 			first_break_length = 0;
 
 			actual_lb_length = 0;
+
 		}
 
 		if (is_literal) {
@@ -3358,7 +3361,6 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 
 
 		length += prefix_length + line_length + suffix_length;
-
 		indent = new_indent;
 
 		prev_empty_line = empty_line;
@@ -3386,7 +3388,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	}
 
 	/* are we ended with EOF? */
-	ends_with_eof = c == FYUG_EOF;
+	ends_with_eof = starts_with_eof || (c == FYUG_EOF && !fyp_is_lb(fyp, lastc) && !breaks);
 
 	/* detect wrongly indented block scalar */
 	if (c != FYUG_EOF && !(!empty || fyp_column(fyp) <= fyp->indent || c == '#' || doc_start_end_detected)) {
@@ -3406,7 +3408,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 
 	switch (chomp) {
 	case FYAC_CLIP:
-		if (pending_nl) {
+		if (pending_nl || (!starts_with_eof && ends_with_eof)) {
 			if (actual_lb_length <= 2)
 				length += 1;
 			else
@@ -3422,10 +3424,13 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 		}
 		break;
 	case FYAC_KEEP:
-		length += (pending_nl ? actual_lb_length : 0) + breaks + presentation_breaks_length;
+		if (pending_nl || (!starts_with_eof && ends_with_eof))
+			length += actual_lb_length;
+
+		length += breaks + presentation_breaks_length;
 
 		trailing_lb = trailing_breaks_length > 0;
-		if (pending_nl || trailing_breaks_length) {
+		if (pending_nl || (!starts_with_eof && ends_with_eof) || trailing_breaks_length) {
 			ends_with_lb = true;
 			ends_with_ws = false;
 		} else if (fy_is_ws(lastc)) {
@@ -4161,7 +4166,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 			"plain scalar is malformed UTF8");
 		goto err_out;
 	}
-	ends_with_eof = c == FYUG_EOF;
+	ends_with_eof = c == FYUG_EOF && !fy_reader_is_lb(fyr, lastc);
 
 	is_multiline = handle->end_mark.line > handle->start_mark.line;
 
