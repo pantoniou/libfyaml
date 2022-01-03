@@ -15,7 +15,7 @@ done
 echo 1..$count
 
 skiplist=""
-xfaillist="Y79Y/01"
+xfaillist=""
 
 i=0
 for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
