@@ -1140,7 +1140,7 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 		/* may start simple key (in block ctx) */
 		if (!fyp->flow_level && !fyp->simple_key_allowed) {
 			fyp->simple_key_allowed = true;
-			tabs_allowed = (fyp->flow_level || !fyp->simple_key_allowed) || fyp_tabsize(fyp);
+			tabs_allowed = fyp->flow_level || !fyp->simple_key_allowed || fyp_tabsize(fyp);
 			fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 		}
 	}
@@ -4578,13 +4578,27 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 	struct fy_atom handle;
 	struct fy_simple_key_mark skm;
 	struct fy_token *fyt;
-	bool is_multiline, is_complex;
+	bool is_multiline, is_complex, is_tab_start = false;
+	struct fy_mark tab_mark;
 	int rc = -1, i;
 
-	/* may not start with blankz */
-	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-			!(fyp->state == FYPS_BLOCK_MAPPING_VALUE && fy_is_tab(c)), err_out,
-			"invalid tab as indendation in a mapping");
+	/* Extremely bad case, a tab... so, either an indentation or separation space in block mode */
+	if (!fyp->flow && fy_is_tab(c)) {
+
+		fy_get_mark(fyp, &tab_mark);
+		is_tab_start = true;
+
+		/* skip all whitespace now */
+		fy_reader_skip_ws(fyp->reader);
+		c = fy_parse_peek(fyp);
+
+		/* if it's a linebreak or a comment start, just try again */
+		if (fyp_is_lb(fyp, c) || c == '#') {
+			/* will need to scan more */
+			fyp->token_activity_counter++;
+			return 0;
+		}
+	}
 
 	/* check indentation */
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
@@ -4616,9 +4630,9 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 		return 0;
 	}
 
-	if (is_multiline && !fyp->flow_level && !is_complex) {
+	if (!fyp->flow_level && !is_complex && (is_multiline || is_tab_start)) {
 		/* due to the weirdness with simple keys scan forward
-		* until a linebreak, ';', or anything else */
+		* until a linebreak, ':', or anything else */
 		for (i = 0; ; i++) {
 			c = fy_parse_peek_at(fyp, i);
 			if (c < 0 || (c == ':' && fy_is_blankz_at_offset(fyp, i + 1)) ||
@@ -4628,8 +4642,14 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 
 		/* if we're a key, that's invalid */
 		if (c == ':') {
-			FYP_MARK_ERROR(fyp, &handle.start_mark, &handle.end_mark, FYEM_SCAN,
-					"invalid multiline plain key");
+
+			if (is_multiline)
+				FYP_MARK_ERROR(fyp, &handle.start_mark, &handle.end_mark, FYEM_SCAN,
+						"invalid multiline plain key");
+			else
+				FYP_MARK_ERROR(fyp, &tab_mark, &tab_mark, FYEM_SCAN,
+						"invalid tab as indendation in a mapping");
+
 			goto err_out;
 		}
 	}
