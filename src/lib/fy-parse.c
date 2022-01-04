@@ -3842,6 +3842,13 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 
 			break_run = 0;
 
+			/* check for tab used as indentation */
+			if (!fy_reader_tabsize(fyr) && fy_is_tab(c)) {
+				FYR_PARSE_ERROR_CHECK(fyr, 0, 1, FYEM_SCAN,
+						fy_reader_column(fyr) > indent, err_out,
+						"invalid tab used as indentation");
+			}
+
 			fy_reader_advance(fyr, c);
 
 			if (fy_reader_is_lb(fyr, c)) {
