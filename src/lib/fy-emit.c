@@ -1353,6 +1353,7 @@ static void fy_emit_sequence_prolog(struct fy_emitter *emit, struct fy_emit_save
 {
 	bool json = fy_emit_is_json_mode(emit);
 	bool oneline = fy_emit_is_oneline(emit);
+	bool was_flow = sc->flow;
 
 	sc->old_indent = sc->indent;
 	if (!json) {
@@ -1377,8 +1378,10 @@ static void fy_emit_sequence_prolog(struct fy_emitter *emit, struct fy_emit_save
 		fy_emit_write_indicator(emit, di_left_bracket, sc->flags, sc->indent, fyewt_indicator);
 	}
 
-	if (!oneline)
-		sc->indent = fy_emit_increase_indent(emit, sc->flags, sc->indent);
+	if (!oneline) {
+		if (was_flow || (sc->flags & (DDNF_ROOT | DDNF_SEQ)))
+			sc->indent = fy_emit_increase_indent(emit, sc->flags, sc->indent);
+	}
 
 	sc->flags &= ~DDNF_ROOT;
 }
@@ -2602,7 +2605,7 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 
 		/* create new context */
 		memset(sc, 0, sizeof(*sc));
-		sc->flags = DDNF_SEQ | (emit->s_flags & DDNF_ROOT);
+		sc->flags = emit->s_flags & (DDNF_ROOT | DDNF_SEQ | DDNF_MAP);
 		sc->indent = emit->s_indent;
 		sc->empty = fy_emit_streaming_sequence_empty(emit);
 		sc->flow_token = fye->sequence_start.sequence_start &&
@@ -2615,6 +2618,8 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 		sc->s_indent = s_indent;
 
 		fy_emit_sequence_prolog(emit, sc);
+		sc->flags &= ~DDNF_MAP;
+		sc->flags |= DDNF_SEQ;
 
 		emit->s_flags = sc->flags;
 		emit->s_indent = sc->indent;
@@ -2635,7 +2640,7 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 
 		/* create new context */
 		memset(sc, 0, sizeof(*sc));
-		sc->flags = DDNF_MAP | (emit->s_flags & DDNF_ROOT);
+		sc->flags = emit->s_flags & (DDNF_ROOT | DDNF_SEQ | DDNF_MAP);
 		sc->indent = emit->s_indent;
 		sc->empty = fy_emit_streaming_mapping_empty(emit);
 		sc->flow_token = fye->mapping_start.mapping_start &&
@@ -2648,6 +2653,8 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 		sc->s_indent = s_indent;
 
 		fy_emit_mapping_prolog(emit, sc);
+		sc->flags &= ~DDNF_SEQ;
+		sc->flags |= DDNF_MAP;
 
 		emit->s_flags = sc->flags;
 		emit->s_indent = sc->indent;
