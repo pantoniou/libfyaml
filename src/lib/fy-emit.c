@@ -1316,14 +1316,14 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 	if (!flow && fy_emit_is_pretty_mode(emit) &&
 		(style == FYNS_ANY || style == FYNS_DOUBLE_QUOTED || style == FYNS_SINGLE_QUOTED)) {
 
-		/* can be a plain, but contains linebreaks, do a literal */
+		/* any original style can be a plain, but contains linebreaks, do a literal */
 		if ((aflags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_HAS_LB)) == (FYTTAF_CAN_BE_PLAIN | FYTTAF_HAS_LB)) {
 			style = FYNS_LITERAL;
 			goto out;
 		}
 
-		/* can be just a plain, just make it so */
-		if ((aflags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_HAS_LB)) == FYTTAF_CAN_BE_PLAIN) {
+		/* any style, can be just a plain, just make it so */
+		if (style == FYNS_ANY && (aflags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_HAS_LB)) == FYTTAF_CAN_BE_PLAIN) {
 			style = FYNS_PLAIN;
 			goto out;
 		}
