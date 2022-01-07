@@ -235,7 +235,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--comment, -c            : Output comments (experimental)"
 							" (default %s)\n",
 							COMMENT_DEFAULT ? "true" : "false");
-		fprintf(fp, "\t--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline, dejson"
+		fprintf(fp, "\t--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline, dejson, pretty|yamlfmt"
 							" (default %s)\n",
 							MODE_DEFAULT);
 		fprintf(fp, "\t--disable-flow-markers   : Disable testsuite's flow-markers"
@@ -383,6 +383,8 @@ static int apply_mode_flags(const char *what, enum fy_emitter_cfg_flags *flagsp)
 		{ .name = "json-tp",		.value = FYECF_MODE_JSON_TP },
 		{ .name = "json-oneline",	.value = FYECF_MODE_JSON_ONELINE },
 		{ .name = "dejson",		.value = FYECF_MODE_DEJSON },
+		{ .name = "pretty",		.value = FYECF_MODE_PRETTY },
+		{ .name = "yamlfmt",		.value = FYECF_MODE_PRETTY },	/* alias for pretty */
 	};
 	unsigned int i;
 

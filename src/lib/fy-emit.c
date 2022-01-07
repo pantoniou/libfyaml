@@ -49,7 +49,7 @@ static inline bool fy_emit_is_block_mode(const struct fy_emitter *emit)
 {
 	enum fy_emitter_cfg_flags flags = emit->cfg.flags & FYECF_MODE(FYECF_MODE_MASK);
 
-	return flags == FYECF_MODE_BLOCK || flags == FYECF_MODE_DEJSON;
+	return flags == FYECF_MODE_BLOCK || flags == FYECF_MODE_DEJSON || flags == FYECF_MODE_PRETTY;
 }
 
 static inline bool fy_emit_is_oneline(const struct fy_emitter *emit)
@@ -59,11 +59,18 @@ static inline bool fy_emit_is_oneline(const struct fy_emitter *emit)
 	return flags == FYECF_MODE_FLOW_ONELINE || flags == FYECF_MODE_JSON_ONELINE;
 }
 
-static inline bool fy_emit_is_pretty_mode(const struct fy_emitter *emit)
+static inline bool fy_emit_is_dejson_mode(const struct fy_emitter *emit)
 {
 	enum fy_emitter_cfg_flags flags = emit->cfg.flags & FYECF_MODE(FYECF_MODE_MASK);
 
 	return flags == FYECF_MODE_DEJSON;
+}
+
+static inline bool fy_emit_is_pretty_mode(const struct fy_emitter *emit)
+{
+	enum fy_emitter_cfg_flags flags = emit->cfg.flags & FYECF_MODE(FYECF_MODE_MASK);
+
+	return flags == FYECF_MODE_PRETTY;
 }
 
 static inline int fy_emit_indent(struct fy_emitter *emit)
@@ -454,6 +461,34 @@ struct fy_atom *fy_emit_token_comment_handle(struct fy_emitter *emit, struct fy_
 	return handle && fy_atom_is_set(handle) ? handle : NULL;
 }
 
+void fy_emit_document_start_indicator(struct fy_emitter *emit)
+{
+	/* do not emit twice */
+	if (emit->flags & FYEF_HAD_DOCUMENT_START)
+		return;
+
+	/* do not try to emit if it's json mode */
+	if (fy_emit_is_json_mode(emit))
+		goto no_doc_emit;
+
+	/* output linebreak anyway */
+	if (emit->column)
+		fy_emit_putc(emit, fyewt_linebreak, '\n');
+
+	/* stripping doc indicators, do not emit */
+	if (emit->cfg.flags & FYECF_STRIP_DOC)
+		goto no_doc_emit;
+
+	/* ok, emit document start indicator */
+	fy_emit_puts(emit, fyewt_document_indicator, "---");
+	emit->flags &= ~FYEF_WHITESPACE;
+	emit->flags |= FYEF_HAD_DOCUMENT_START;
+	return;
+
+no_doc_emit:
+	emit->flags &= ~FYEF_HAD_DOCUMENT_START;
+}
+
 struct fy_token *fy_node_value_token(struct fy_node *fyn)
 {
 	struct fy_token *fyt;
@@ -621,6 +656,9 @@ void fy_emit_node_internal(struct fy_emitter *emit, struct fy_node *fyn, int fla
 
 	switch (type) {
 	case FYNT_SCALAR:
+		/* if we're pretty and at column 0 (meaning it's a single scalar document) output --- */
+		if (fy_emit_is_pretty_mode(emit) && !emit->column && !fy_emit_is_flow_mode(emit) && !(emit->s_flags & DDNF_FLOW))
+			fy_emit_document_start_indicator(emit);
 		fy_emit_scalar(emit, fyn, flags, indent, is_key);
 		break;
 	case FYNT_SEQUENCE:
@@ -1223,7 +1261,7 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 	is_json_plain = false;
 
 	/* is this a plain json atom? */
-	is_json_plain = (json || fy_emit_is_pretty_mode(emit)) &&
+	is_json_plain = (json || fy_emit_is_dejson_mode(emit)) &&
 			(!atom || atom->size0 ||
 			!fy_atom_strcmp(atom, "false") ||
 			!fy_atom_strcmp(atom, "true") ||
@@ -1273,11 +1311,22 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 		style = !(aflags & FYTTAF_EMPTY) ? FYNS_PLAIN : FYNS_DOUBLE_QUOTED;
 	}
 
+	/* try to pretify */
 	if (!flow && fy_emit_is_pretty_mode(emit) &&
 		(style == FYNS_ANY || style == FYNS_DOUBLE_QUOTED || style == FYNS_SINGLE_QUOTED)) {
 
-		if ((aflags & FYTTAF_CAN_BE_PLAIN) && (style != FYNS_DOUBLE_QUOTED || !is_json_plain))
+		/* can be a plain, but contains linebreaks, do a literal */
+		if ((aflags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_HAS_LB)) == (FYTTAF_CAN_BE_PLAIN | FYTTAF_HAS_LB)) {
+			style = FYNS_LITERAL;
+			goto out;
+		}
+
+		/* can be just a plain, just make it so */
+		if ((aflags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_HAS_LB)) == FYTTAF_CAN_BE_PLAIN) {
 			style = FYNS_PLAIN;
+			goto out;
+		}
+
 	}
 
 out:
@@ -1743,16 +1792,9 @@ int fy_emit_common_document_start(struct fy_emitter *emit,
 	           !(emit->flags & FYEF_HAD_DOCUMENT_END))
 		dsm = true;
 
-	if (!fy_emit_is_json_mode(emit) && dsm) {
-		if (emit->column)
-			fy_emit_putc(emit, fyewt_linebreak, '\n');
-		if (!(emit->cfg.flags & FYECF_STRIP_DOC)) {
-			fy_emit_puts(emit, fyewt_document_indicator, "---");
-			emit->flags &= ~FYEF_WHITESPACE;
-			emit->flags |= FYEF_HAD_DOCUMENT_START;
-		}
-	} else
-		emit->flags &= ~FYEF_HAD_DOCUMENT_START;
+	/* output document start indicator if we should */
+	if (dsm)
+		fy_emit_document_start_indicator(emit);
 
 	/* clear that in any case */
 	emit->flags &= ~FYEF_HAD_DOCUMENT_END;
@@ -2583,6 +2625,9 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 		break;
 
 	case FYET_SCALAR:
+		/* if we're pretty and at column 0 (meaning it's a single scalar document) output --- */
+		if (fy_emit_is_pretty_mode(emit) && !emit->column && !fy_emit_is_flow_mode(emit) && !(emit->s_flags & DDNF_FLOW))
+			fy_emit_document_start_indicator(emit);
 		fy_emit_common_node_preamble(emit, fye->scalar.anchor, fye->scalar.tag, emit->s_flags, emit->s_indent);
 		style = fye->scalar.value ?
 				fy_node_style_from_scalar_style(fye->scalar.value->scalar.style) :
