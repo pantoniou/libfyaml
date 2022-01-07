@@ -1259,10 +1259,8 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 	if (json && (style == FYNS_LITERAL || style == FYNS_FOLDED))
 		return FYNS_DOUBLE_QUOTED;
 
-	is_json_plain = false;
-
 	/* is this a plain json atom? */
-	is_json_plain = (json || fy_emit_is_dejson_mode(emit)) &&
+	is_json_plain = (json || emit->source_json || fy_emit_is_dejson_mode(emit)) &&
 			(!atom || atom->size0 ||
 			!fy_atom_strcmp(atom, "false") ||
 			!fy_atom_strcmp(atom, "true") ||
@@ -1328,6 +1326,13 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 			goto out;
 		}
 
+	}
+
+	if (!flow && emit->source_json && fy_emit_is_dejson_mode(emit)) {
+		if (is_json_plain || (aflags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_HAS_LB)) == FYTTAF_CAN_BE_PLAIN) {
+			style = FYNS_PLAIN;
+			goto out;
+		}
 	}
 
 out:
