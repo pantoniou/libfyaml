@@ -657,8 +657,8 @@ void fy_emit_node_internal(struct fy_emitter *emit, struct fy_node *fyn, int fla
 	switch (type) {
 	case FYNT_SCALAR:
 		/* if we're pretty and root at column 0 (meaning it's a single scalar document) output --- */
-		if (emit->fyd->root == fyn && fy_emit_is_pretty_mode(emit) && !emit->column &&
-				!fy_emit_is_flow_mode(emit) && !(emit->s_flags & DDNF_FLOW))
+		if ((flags & DDNF_ROOT) && fy_emit_is_pretty_mode(emit) && !emit->column &&
+				!fy_emit_is_flow_mode(emit) && !(flags & DDNF_FLOW))
 			fy_emit_document_start_indicator(emit);
 		fy_emit_scalar(emit, fyn, flags, indent, is_key);
 		break;
@@ -1505,7 +1505,7 @@ void fy_emit_sequence(struct fy_emitter *emit, struct fy_node *fyn, int flags, i
 		fyt_value = fy_node_value_token(fyni);
 
 		fy_emit_sequence_item_prolog(emit, sc, fyt_value);
-		fy_emit_node_internal(emit, fyni, sc->flags, sc->indent, false);
+		fy_emit_node_internal(emit, fyni, (sc->flags & ~DDNF_ROOT), sc->indent, false);
 		fy_emit_sequence_item_epilog(emit, sc, last, fyt_value);
 	}
 
@@ -1687,12 +1687,12 @@ void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, in
 
 		fy_emit_mapping_key_prolog(emit, sc, fyt_key, simple_key);
 		if (fynp->key)
-			fy_emit_node_internal(emit, fynp->key, sc->flags, sc->indent, true);
+			fy_emit_node_internal(emit, fynp->key, (sc->flags & ~DDNF_ROOT), sc->indent, true);
 		fy_emit_mapping_key_epilog(emit, sc, fyt_key);
 
 		fy_emit_mapping_value_prolog(emit, sc, fyt_value);
 		if (fynp->value)
-			fy_emit_node_internal(emit, fynp->value, sc->flags, sc->indent, false);
+			fy_emit_node_internal(emit, fynp->value, (sc->flags & ~DDNF_ROOT), sc->indent, false);
 		fy_emit_mapping_value_epilog(emit, sc, last, fyt_value);
 	}
 
@@ -2627,9 +2627,9 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 
 	case FYET_SCALAR:
 		/* if we're pretty and at column 0 (meaning it's a single scalar document) output --- */
-		/* XXX disable for now, because we do that on keys */
-//		if (fy_emit_is_pretty_mode(emit) && !emit->column && !fy_emit_is_flow_mode(emit) && !(emit->s_flags & DDNF_FLOW))
-//			fy_emit_document_start_indicator(emit);
+		if ((emit->s_flags & DDNF_ROOT) && fy_emit_is_pretty_mode(emit) && !emit->column &&
+				!fy_emit_is_flow_mode(emit) && !(emit->s_flags & DDNF_FLOW))
+			fy_emit_document_start_indicator(emit);
 		fy_emit_common_node_preamble(emit, fye->scalar.anchor, fye->scalar.tag, emit->s_flags, emit->s_indent);
 		style = fye->scalar.value ?
 				fy_node_style_from_scalar_style(fye->scalar.value->scalar.style) :
