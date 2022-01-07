@@ -79,6 +79,7 @@ struct fy_diag {
 	bool on_error : 1;
 	bool destroyed : 1;
 	bool collect_errors : 1;
+	bool terminal_probed : 1;
 	struct fy_diag_term_info term_info;
 	struct fy_diag_errorp_list errors;
 };

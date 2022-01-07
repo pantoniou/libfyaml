@@ -166,6 +166,11 @@ void fy_diag_cfg_from_parser_flags(struct fy_diag_cfg *cfg, enum fy_parse_cfg_fl
 	/* nothing */
 }
 
+static bool fy_diag_isatty(struct fy_diag *diag)
+{
+	return diag && diag->cfg.fp && isatty(fileno(diag->cfg.fp));
+}
+
 static void fy_diag_update_term_info(struct fy_diag *diag)
 {
 	int fd, rows, columns, ret;
@@ -177,17 +182,19 @@ static void fy_diag_update_term_info(struct fy_diag *diag)
 		fileno(diag->cfg.fp) : -1;
 
 	if (fd == -1)
-		return;
+		goto out;
 
 	rows = columns = 0;
 	ret = fy_term_query_size(fd, &rows, &columns);
 	if (ret != 0)
-		return;
+		goto out;
 
 	if (rows > 0 && columns > 0) {
 		diag->term_info.rows = rows;
 		diag->term_info.columns = columns;
 	}
+out:
+	diag->terminal_probed = true;
 }
 
 void fy_diag_errorp_free(struct fy_diag_errorp *errp)
@@ -214,7 +221,9 @@ struct fy_diag *fy_diag_create(const struct fy_diag_cfg *cfg)
 	diag->on_error = false;
 	diag->refs = 1;
 
-	fy_diag_update_term_info(diag);
+	diag->terminal_probed = false;
+	if (!fy_diag_isatty(diag))
+		fy_diag_update_term_info(diag);
 
 	fy_diag_errorp_list_init(&diag->errors);
 
@@ -579,7 +588,7 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 	const char *display;
 	int display_len, line_shift;
 	char qc, first_mark;
-	char *rowbuf, *rbs, *rbe;
+	char *rowbuf = NULL, *rbs = NULL, *rbe = NULL;
 	const char *s, *e;
 	int col8, c, w;
 	int tab8_len, tilde_start, tilde_width, tilde_width_m1;
@@ -591,15 +600,6 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 		return;
 
 	fy_diag_get_error_colors(diag, type, &color_start, &color_end, &white);
-
-	cols = diag->term_info.columns;
-
-	// cols = 80;
-
-	/* worse case utf8 + 2 color sequences + zero terminated */
-	rowbufsz = cols * 4 + 2 * 16 + 1;
-	rowbuf = alloca(rowbufsz);
-	rbe = rowbuf + rowbufsz;
 
 	/* two passes, first one collects extents */
 
@@ -615,6 +615,32 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 
 		/* on the start of the second pass */
 		if (pass > 0) {
+
+			cols = 0;
+
+			/* if it's probed, use what's there */
+			if (diag->terminal_probed && diag->term_info.columns > 0)
+				cols = diag->term_info.columns;
+
+			/* heuristic, avoid probing terminal size if maximum column is less than 80
+			 * columns. This is faster and avoid problems with terminals...
+			 */
+			if (!cols && max_line_col8 < 80)
+				cols = 80;
+
+			/* no choice but to probe */
+			if (!cols) {
+				/* only need the terminal width when outputting an error */
+				if (!diag->terminal_probed && fy_diag_isatty(diag))
+					fy_diag_update_term_info(diag);
+
+				cols = diag->term_info.columns;
+			}
+
+			/* worse case utf8 + 2 color sequences + zero terminated */
+			rowbufsz = cols * 4 + 2 * 16 + 1;
+			rowbuf = alloca(rowbufsz);
+			rbe = rowbuf + rowbufsz;
 
 			/* if the maximum column number is less than the terminal
 			 * width everything fits, and we're fine */ 
