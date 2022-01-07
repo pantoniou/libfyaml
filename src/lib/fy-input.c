@@ -29,6 +29,13 @@
 
 #include "fy-input.h"
 
+/* amount of multiplication of page size for CHOP size
+ * for a 4K page this is 64K blocks
+ */
+#ifndef FYI_CHOP_MULT
+#define FYI_CHOP_MULT	16
+#endif
+
 struct fy_input *fy_input_alloc(void)
 {
 	struct fy_input *fyi;
@@ -100,6 +107,7 @@ static void fy_input_from_data_setup(struct fy_input *fyi,
 	fyi->allocated = 0;
 	fyi->read = 0;
 	fyi->chunk = 0;
+	fyi->chop = 0;
 	fyi->fp = NULL;
 
 	if (!handle)
@@ -362,6 +370,7 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 	fyi->allocated = 0;
 	fyi->read = 0;
 	fyi->chunk = 0;
+	fyi->chop = 0;
 	fyi->fp = NULL;
 
 	switch (fyi->cfg.type) {
@@ -405,6 +414,7 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 
 		/* switch to stream mode */
 		fyi->chunk = sysconf(_SC_PAGESIZE);
+		fyi->chop = fyi->chunk * FYI_CHOP_MULT;
 		fyi->buffer = malloc(fyi->chunk);
 		fyr_error_check(fyr, fyi->buffer, err_out,
 				"fy_alloc() failed");
@@ -415,6 +425,7 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 		fyi->chunk = fyi->cfg.stream.chunk;
 		if (!fyi->chunk)
 			fyi->chunk = sysconf(_SC_PAGESIZE);
+		fyi->chop = fyi->chunk * FYI_CHOP_MULT;
 		fyi->buffer = malloc(fyi->chunk);
 		fyr_error_check(fyr, fyi->buffer, err_out,
 				"fy_alloc() failed");
@@ -432,6 +443,7 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 
 	case fyit_callback:
 		fyi->chunk = sysconf(_SC_PAGESIZE);
+		fyi->chop = fyi->chunk * FYI_CHOP_MULT;
 		fyi->buffer = malloc(fyi->chunk);
 		fyr_error_check(fyr, fyi->buffer, err_out,
 				"fy_alloc() failed");
@@ -443,6 +455,7 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 		break;
 	}
 
+	fyr->this_input_start = 0;
 	fyr->current_input_pos = 0;
 	fyr->line = 0;
 	fyr->column = 0;
@@ -507,6 +520,69 @@ err_out:
 	return -1;
 }
 
+int fy_reader_input_scan_token_mark_slow_path(struct fy_reader *fyr)
+{
+	struct fy_input *fyi, *fyi_new = NULL;
+
+	assert(fyr);
+
+	if (!fy_reader_input_chop_active(fyr))
+		return 0;
+
+	fyi = fyr->current_input;
+	assert(fyi);
+
+	fyi_new = fy_input_alloc();
+	fyr_error_check(fyr, fyi_new, err_out,
+			"fy_input_alloc() failed\n");
+
+	/* copy the config over */
+	fyi_new->cfg = fyi->cfg;
+	fyi_new->name = strdup(fyi->name);
+	fyr_error_check(fyr, fyi_new->name, err_out,
+			"strdup() failed\n");
+
+	fyi_new->chunk = fyi->chunk;
+	fyi_new->chop = fyi->chop;
+	fyi_new->buffer = malloc(fyi->chunk);
+	fyr_error_check(fyr, fyi_new->buffer, err_out,
+			"fy_alloc() failed");
+	fyi_new->allocated = fyi->chunk;
+	fyi_new->fp = fyi->fp;
+
+	fyi->fp = NULL;	/* the file pointer now assigned to the new */
+
+	fyi_new->lb_mode = fyi->lb_mode;
+	fyi_new->fws_mode = fyi->fws_mode;
+
+	fyi_new->state = FYIS_PARSE_IN_PROGRESS;
+
+	/* adjust and copy the left over reads */
+	assert(fyi->read >= fyr->current_input_pos);
+	fyi_new->read = fyi->read - fyr->current_input_pos;
+	if (fyi_new->read > 0)
+		memcpy(fyi_new->buffer, fyi->buffer + fyr->current_input_pos, fyi_new->read);
+
+	fyr->this_input_start += fyr->current_input_pos;
+
+	/* update the reader to point to the new input */
+	fyr->current_input = fyi_new;
+	fyr->current_input_pos = 0;
+	fyr->current_ptr = fyi_new->buffer;
+
+	/* free the old input - while references to it exist it will hang around */
+	fyi->state = FYIS_PARSED;
+	fy_input_unref(fyi);
+	fyi = NULL;
+
+	fyr_debug(fyr, "chop at this_input_start=%zu chop=%zu\n", fyr->this_input_start, fyi->chop);
+
+	return 0;
+err_out:
+	fy_input_unref(fyi_new);
+	return -1;
+}
+
 const void *fy_reader_ptr_slow_path(struct fy_reader *fyr, size_t *leftp)
 {
 	struct fy_input *fyi;
@@ -527,7 +603,7 @@ const void *fy_reader_ptr_slow_path(struct fy_reader *fyr, size_t *leftp)
 	switch (fyi->cfg.type) {
 	case fyit_file:
 		if (fyi->addr) {
-			left = fyi->file.length - fyr->current_input_pos;
+			left = fyi->file.length - (fyr->this_input_start + fyr->current_input_pos);
 			p = fyi->addr + fyr->current_input_pos;
 			break;
 		}
@@ -536,7 +612,7 @@ const void *fy_reader_ptr_slow_path(struct fy_reader *fyr, size_t *leftp)
 
 	case fyit_stream:
 	case fyit_callback:
-		left = fyi->read - fyr->current_input_pos;
+		left = fyi->read - (fyr->this_input_start + fyr->current_input_pos);
 		p = fyi->buffer + fyr->current_input_pos;
 		break;
 
@@ -591,9 +667,9 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 	case fyit_file:
 
 		if (fyi->addr) {
-			assert(fyi->file.length >= pos);
+			assert(fyi->file.length >= (fyr->this_input_start + pos));
 
-			left = fyi->file.length - pos;
+			left = fyi->file.length - (fyr->this_input_start + pos);
 			if (!left) {
 				fyr_debug(fyr, "file input exhausted");
 				break;
@@ -866,6 +942,7 @@ struct fy_input *fy_input_create(const struct fy_input_cfg *fyic)
 	fyi->allocated = 0;
 	fyi->read = 0;
 	fyi->chunk = 0;
+	fyi->chop = 0;
 	fyi->fp = NULL;
 
 	switch (fyi->cfg.type) {

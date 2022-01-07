@@ -87,6 +87,7 @@ struct fy_input {
 	size_t allocated;
 	size_t read;
 	size_t chunk;
+	size_t chop;
 	FILE *fp;
 	int refs;
 	void *addr;		/* mmaped for files, allocated for streams */
@@ -242,6 +243,7 @@ struct fy_reader {
 	struct fy_reader_input_cfg current_input_cfg;
 	struct fy_input *current_input;
 
+	size_t this_input_start;	/* this input start */
 	size_t current_input_pos;	/* from start of input */
 	const void *current_ptr;	/* current pointer into the buffer */
 	int current_c;			/* current utf8 character at current_ptr (-1 if not cached) */
@@ -267,6 +269,47 @@ void fy_reader_cleanup(struct fy_reader *fyr);
 
 int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const struct fy_reader_input_cfg *icfg);
 int fy_reader_input_done(struct fy_reader *fyr);
+int fy_reader_input_scan_token_mark_slow_path(struct fy_reader *fyr);
+
+static inline bool
+fy_reader_input_chop_active(struct fy_reader *fyr)
+{
+	struct fy_input *fyi;
+
+	assert(fyr);
+
+	fyi = fyr->current_input;
+	assert(fyi);
+
+	if (!fyi->chop)
+		return false;
+
+	switch (fyi->cfg.type) {
+	case fyit_file:
+		return !fyi->addr && fyi->fp;	/* non-mmap mode */
+
+	case fyit_stream:
+	case fyit_callback:
+		return true;
+
+	default:
+		/* all the others do not support chop */
+		break;
+	}
+
+	return false;
+}
+
+static inline int
+fy_reader_input_scan_token_mark(struct fy_reader *fyr)
+{
+	/* don't chop until ready */
+	if (!fy_reader_input_chop_active(fyr) ||
+	    fyr->current_input->chop > fyr->current_input_pos)
+		return 0;
+
+	return fy_reader_input_scan_token_mark_slow_path(fyr);
+}
 
 const void *fy_reader_ptr_slow_path(struct fy_reader *fyr, size_t *leftp);
 const void *fy_reader_ensure_lookahead_slow_path(struct fy_reader *fyr, size_t size, size_t *leftp);

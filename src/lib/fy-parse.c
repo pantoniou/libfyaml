@@ -1034,6 +1034,10 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 
 	fyr = fyp->reader;
 
+	rc = fy_reader_input_scan_token_mark(fyr);
+	fyp_error_check(fyp, !rc, err_out_rc,
+			"fy_reader_input_scan_token_mark() failed");
+
 	/* skip BOM at the start of the stream */
 	if (fyr->current_input_pos == 0 && (c = fy_parse_peek(fyp)) == FY_UTF8_BOM) {
 
@@ -1154,6 +1158,10 @@ err_out_rc:
 	return rc;
 
 done:
+	rc = fy_reader_input_scan_token_mark(fyr);
+	fyp_error_check(fyp, !rc, err_out_rc,
+			"fy_reader_input_scan_token_mark() failed");
+
 	fyp_scan_debug(fyp, "%s: next token starts with c='%s'", __func__,
 			fy_utf8_format_a(fy_parse_peek(fyp), fyue_singlequote));
 	return 0;
