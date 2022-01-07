@@ -656,8 +656,9 @@ void fy_emit_node_internal(struct fy_emitter *emit, struct fy_node *fyn, int fla
 
 	switch (type) {
 	case FYNT_SCALAR:
-		/* if we're pretty and at column 0 (meaning it's a single scalar document) output --- */
-		if (fy_emit_is_pretty_mode(emit) && !emit->column && !fy_emit_is_flow_mode(emit) && !(emit->s_flags & DDNF_FLOW))
+		/* if we're pretty and root at column 0 (meaning it's a single scalar document) output --- */
+		if (emit->fyd->root == fyn && fy_emit_is_pretty_mode(emit) && !emit->column &&
+				!fy_emit_is_flow_mode(emit) && !(emit->s_flags & DDNF_FLOW))
 			fy_emit_document_start_indicator(emit);
 		fy_emit_scalar(emit, fyn, flags, indent, is_key);
 		break;
@@ -2626,8 +2627,9 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 
 	case FYET_SCALAR:
 		/* if we're pretty and at column 0 (meaning it's a single scalar document) output --- */
-		if (fy_emit_is_pretty_mode(emit) && !emit->column && !fy_emit_is_flow_mode(emit) && !(emit->s_flags & DDNF_FLOW))
-			fy_emit_document_start_indicator(emit);
+		/* XXX disable for now, because we do that on keys */
+//		if (fy_emit_is_pretty_mode(emit) && !emit->column && !fy_emit_is_flow_mode(emit) && !(emit->s_flags & DDNF_FLOW))
+//			fy_emit_document_start_indicator(emit);
 		fy_emit_common_node_preamble(emit, fye->scalar.anchor, fye->scalar.tag, emit->s_flags, emit->s_indent);
 		style = fye->scalar.value ?
 				fy_node_style_from_scalar_style(fye->scalar.value->scalar.style) :
