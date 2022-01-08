@@ -82,7 +82,7 @@ AC_CHECK_DECLS(environ)
 
 dnl for old autoconf version AX_APPEND_COMPILE_FLAGS does not work
 m4_version_prereq(2.64,
-	 [AX_APPEND_COMPILE_FLAGS([-Wall -Wsign-compare],
+	 [AX_APPEND_COMPILE_FLAGS([-Wall -Wsign-compare -Wno-stringop-overflow],
 				  [CFLAGS], [-pedantic -Werror])],
          [CFLAGS="$CFLAGS -Wall -Wsign-compare"])
 
