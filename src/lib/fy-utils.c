@@ -15,7 +15,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <termio.h>
 #include <termios.h>
 #include <unistd.h>
 #include <sys/select.h>
