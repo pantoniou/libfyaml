@@ -46,6 +46,12 @@ int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info);
 #define FY_ALWAYS_INLINE /* nothing */
 #endif
 
+#if defined(__GNUC__) && __GNUC__ >= 4
+#define FY_UNUSED __attribute__((unused))
+#else
+#define FY_UNUSED /* nothing */
+#endif
+
 int fy_term_set_raw(int fd, struct termios *oldt);
 int fy_term_restore(int fd, const struct termios *oldt);
 ssize_t fy_term_write(int fd, const void *data, size_t count);

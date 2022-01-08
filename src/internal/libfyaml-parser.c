@@ -1623,6 +1623,19 @@ static void do_accel_kv(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	char keybuf[16], valbuf[16];
 	const char *key;
 
+	/* supress warnings about unused functions */
+	(void)fy_kv_list_push;
+	(void)fy_kv_list_push_tail;
+	(void)fy_kv_list_is_singular;
+	(void)fy_kv_list_insert_after;
+	(void)fy_kv_list_insert_before;
+	(void)fy_kv_list_last;
+	(void)fy_kv_list_pop_tail;
+	(void)fy_kv_prev;
+	(void)fy_kv_lists_splice;
+	(void)fy_kv_list_splice_after;
+	(void)fy_kv_list_splice_before;
+
 	seed = 0;	/* we don't care much about seed practices right now */
 	rc = fy_kv_store_setup(&kvs, 8);
 	assert(!rc);

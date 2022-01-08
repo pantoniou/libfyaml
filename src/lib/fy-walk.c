@@ -1820,7 +1820,7 @@ int fy_path_expr_type_prec(enum fy_path_expr_type type)
 	return -1;
 }
 
-static inline void
+static inline FY_UNUSED void
 dump_operand_stack(struct fy_path_parser *fypp)
 {
 	return fy_expr_stack_dump(fypp->cfg.diag, &fypp->operands);
@@ -1832,19 +1832,19 @@ push_operand(struct fy_path_parser *fypp, struct fy_path_expr *expr)
 	return fy_expr_stack_push(&fypp->operands, expr);
 }
 
-static inline struct fy_path_expr *
+static inline FY_UNUSED struct fy_path_expr *
 peek_operand_at(struct fy_path_parser *fypp, unsigned int pos)
 {
 	return fy_expr_stack_peek_at(&fypp->operands, pos);
 }
 
-static inline struct fy_path_expr *
+static inline FY_UNUSED struct fy_path_expr *
 peek_operand(struct fy_path_parser *fypp)
 {
 	return fy_expr_stack_peek(&fypp->operands);
 }
 
-static inline struct fy_path_expr *
+static inline FY_UNUSED struct fy_path_expr *
 pop_operand(struct fy_path_parser *fypp)
 {
 	return fy_expr_stack_pop(&fypp->operands);
