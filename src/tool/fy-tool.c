@@ -1420,6 +1420,7 @@ int main(int argc, char *argv[])
 	bool allow_duplicate_keys = ALLOW_DUPLICATE_KEYS_DEFAULT;
 	struct composer_data cd;
 	bool dump_path = DUMP_PATH_DEFAULT;
+	const char *input_arg;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -1870,16 +1871,22 @@ int main(int argc, char *argv[])
 		break;
 
 	case OPT_DUMP:
-		if (optind >= argc) {
-			fprintf(stderr, "missing yaml file to dump\n");
-			goto cleanup;
-		}
-
 		count = 0;
-		for (i = optind; i < argc; i++) {
-			rc = set_parser_input(fyp, argv[i], false);
+		for (i = optind; ; i++) {
+
+			if (optind < argc) {
+				if (i >= argc)
+					break;
+				input_arg = argv[i];
+			} else {
+				if (i >= argc + 1)
+					break;
+				input_arg = "-";
+			}
+
+			rc = set_parser_input(fyp, input_arg, false);
 			if (rc) {
-				fprintf(stderr, "failed to set parser input to '%s' for dump\n", argv[i]);
+				fprintf(stderr, "failed to set parser input to '%s' for dump\n", input_arg);
 				goto cleanup;
 			}
 
@@ -1980,10 +1987,21 @@ int main(int argc, char *argv[])
 		}
 
 		fyd_join = NULL;
-		for (i = optind; i < argc; i++) {
-			rc = set_parser_input(fyp, argv[i], false);
+		for (i = optind; ; i++) {
+
+			if (optind < argc) {
+				if (i >= argc)
+					break;
+				input_arg = argv[i];
+			} else {
+				if (i >= argc + 1)
+					break;
+				input_arg = "-";
+			}
+
+			rc = set_parser_input(fyp, input_arg, false);
 			if (rc) {
-				fprintf(stderr, "failed to set parser input to '%s' for join\n", argv[i]);
+				fprintf(stderr, "failed to set parser input to '%s' for join\n", input_arg);
 				goto cleanup;
 			}
 
