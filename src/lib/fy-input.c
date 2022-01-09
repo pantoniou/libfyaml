@@ -452,8 +452,19 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 		break;
 	}
 
-	/* if we're not in mmap mode */
-	if (fyi->addr == MAP_FAILED) {
+	switch (fyi->cfg.type) {
+
+		/* those two need no memory */
+	case fyit_memory:
+	case fyit_alloc:
+		break;
+
+		/* all the rest need it */
+	default:
+		/* if we're not in mmap mode */
+		if (fyi->addr != MAP_FAILED)
+			break;
+
 		fyi->chunk = fyi->cfg.chunk;
 		if (!fyi->chunk)
 			fyi->chunk = sysconf(_SC_PAGESIZE);
@@ -462,6 +473,7 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 		fyr_error_check(fyr, fyi->buffer, err_out,
 				"fy_alloc() failed");
 		fyi->allocated = fyi->chunk;
+		break;
 	}
 
 	fyr->this_input_start = 0;
