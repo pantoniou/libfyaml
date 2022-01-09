@@ -933,6 +933,21 @@ int fy_parser_set_input_callback(struct fy_parser *fyp, void *user,
 	FY_EXPORT;
 
 /**
+ * fy_parser_set_input_db() - Set the parser to process the given file descriptor
+ *
+ * Point the parser to use @fd for processing.
+ *
+ * @fyp: The parser
+ * @fd: The file descriptor to use
+ *
+ * Returns:
+ * zero on success, -1 on error
+ */
+int
+fy_parser_set_input_fd(struct fy_parser *fyp, int fd)
+	FY_EXPORT;
+
+/**
  * fy_parser_parse() - Parse and return the next event.
  *
  * Each call to fy_parser_parse() returns the next event from

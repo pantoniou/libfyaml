@@ -39,11 +39,16 @@ enum fy_input_type {
 	fyit_memory,
 	fyit_alloc,
 	fyit_callback,
+	fyit_fd,
 };
 
 struct fy_input_cfg {
 	enum fy_input_type type;
 	void *userdata;
+	size_t chunk;
+	bool ignore_stdio : 1;
+	bool no_fclose_fp : 1;
+	bool no_close_fd : 1;
 	union {
 		struct {
 			const char *filename;
@@ -51,8 +56,6 @@ struct fy_input_cfg {
 		struct {
 			const char *name;
 			FILE *fp;
-			size_t chunk;
-			bool ignore_stdio;
 		} stream;
 		struct {
 			const void *data;
@@ -66,6 +69,9 @@ struct fy_input_cfg {
 			/* negative return is error, 0 is EOF */
 			ssize_t (*input)(void *user, void *buf, size_t count);
 		} callback;
+		struct {
+			int fd;
+		} fd;
 	};
 };
 
@@ -81,6 +87,7 @@ struct fy_input {
 	struct list_head node;
 	enum fy_input_state state;
 	struct fy_input_cfg cfg;
+	int refs;		/* number of referers */
 	char *name;
 	void *buffer;		/* when the file can't be mmaped */
 	uint64_t generation;
@@ -88,8 +95,9 @@ struct fy_input {
 	size_t read;
 	size_t chunk;
 	size_t chop;
-	FILE *fp;
-	int refs;
+	FILE *fp;		/* FILE* for the input if it exists */
+	int fd;			/* fd for file and stream */
+	size_t length;		/* length of file */
 	void *addr;		/* mmaped for files, allocated for streams */
 	bool eof : 1;		/* got EOF */
 	bool err : 1;		/* got an error */
@@ -98,13 +106,6 @@ struct fy_input {
 	bool json_mode;
 	enum fy_lb_mode lb_mode;
 	enum fy_flow_ws_mode fws_mode;
-
-	union {
-		struct {
-			int fd;			/* fd for file and stream */
-			size_t length;
-		} file;
-	};
 };
 FY_TYPE_DECL_LIST(input);
 
@@ -147,7 +148,7 @@ static inline size_t fy_input_size(const struct fy_input *fyi)
 	switch (fyi->cfg.type) {
 	case fyit_file:
 		if (fyi->addr) {
-			size = fyi->file.length;
+			size = fyi->length;
 			break;
 		}
 		/* fall-through */

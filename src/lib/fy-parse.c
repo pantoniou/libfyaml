@@ -6418,11 +6418,11 @@ int fy_parser_set_input_file(struct fy_parser *fyp, const char *file)
 		fyic.type = fyit_stream;
 		fyic.stream.name = "stdin";
 		fyic.stream.fp = stdin;
-		fyic.stream.ignore_stdio = !!(fyp->cfg.flags & FYPCF_DISABLE_BUFFERING);
 	} else {
 		fyic.type = fyit_file;
 		fyic.file.filename = file;
 	}
+	fyic.ignore_stdio = !!(fyp->cfg.flags & FYPCF_DISABLE_BUFFERING);
 
 	/* must not be in the middle of something */
 	fyp_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
@@ -6525,7 +6525,7 @@ int fy_parser_set_input_fp(struct fy_parser *fyp, const char *name, FILE *fp)
 	fyic.type = fyit_stream;
 	fyic.stream.name = name ? : "<stream>";
 	fyic.stream.fp = fp;
-	fyic.stream.ignore_stdio = !!(fyp->cfg.flags & FYPCF_DISABLE_BUFFERING);
+	fyic.ignore_stdio = !!(fyp->cfg.flags & FYPCF_DISABLE_BUFFERING);
 
 	/* must not be in the middle of something */
 	fyp_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
@@ -6559,6 +6559,39 @@ int fy_parser_set_input_callback(struct fy_parser *fyp, void *user,
 	fyic.type = fyit_callback;
 	fyic.userdata = user;
 	fyic.callback.input = callback;
+	fyic.ignore_stdio = !!(fyp->cfg.flags & FYPCF_DISABLE_BUFFERING);
+
+	/* must not be in the middle of something */
+	fyp_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
+			err_out, "parser cannot be reset at state '%s'",
+				state_txt[fyp->state]);
+
+	fy_parse_input_reset(fyp);
+
+	rc = fy_parse_input_append(fyp, &fyic);
+	fyp_error_check(fyp, !rc, err_out_rc,
+			"fy_parse_input_append() failed");
+
+	return 0;
+err_out:
+	rc = -1;
+err_out_rc:
+	return rc;
+}
+
+int fy_parser_set_input_fd(struct fy_parser *fyp, int fd)
+{
+	struct fy_input_cfg fyic;
+	int rc;
+
+	if (!fyp || fd < 0)
+		return -1;
+
+	memset(&fyic, 0, sizeof(fyic));
+
+	fyic.type = fyit_fd;
+	fyic.fd.fd = fd;
+	fyic.ignore_stdio = !!(fyp->cfg.flags & FYPCF_DISABLE_BUFFERING);
 
 	/* must not be in the middle of something */
 	fyp_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,

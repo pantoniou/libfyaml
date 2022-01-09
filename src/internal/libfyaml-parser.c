@@ -4080,7 +4080,7 @@ int main(int argc, char *argv[])
 				fyic->type = fyit_stream;
 				fyic->stream.name = "stdin";
 				fyic->stream.fp = stdin;
-				fyic->stream.chunk = chunk;
+				fyic->chunk = chunk;
 			} else {
 				fyic->type = fyit_callback;
 				fyic->userdata = stdin;
@@ -4106,7 +4106,7 @@ int main(int argc, char *argv[])
 			fyic->type = fyit_stream;
 			fyic->stream.name = "stdin";
 			fyic->stream.fp = stdin;
-			fyic->stream.chunk = chunk;
+			fyic->chunk = chunk;
 		} else {
 			fyic->type = fyit_callback;
 			fyic->userdata = stdin;

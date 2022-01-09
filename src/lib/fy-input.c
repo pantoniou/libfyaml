@@ -212,21 +212,28 @@ void fy_input_close(struct fy_input *fyi)
 		return;
 
 	switch (fyi->cfg.type) {
+
 	case fyit_file:
-		if (fyi->file.fd != -1) {
-			close(fyi->file.fd);
-			fyi->file.fd = -1;
-		}
+	case fyit_fd:
+
 		if (fyi->addr && fyi->addr != MAP_FAILED) {
-			munmap(fyi->addr, fyi->file.length);
-			fyi->addr = NULL;
+			munmap(fyi->addr, fyi->length);
+			fyi->addr = MAP_FAILED;
 		}
+
+		if (fyi->fd != -1) {
+			if (!fyi->cfg.no_close_fd)
+				close(fyi->fd);
+			fyi->fd = -1;
+		}
+
 		if (fyi->buffer) {
 			free(fyi->buffer);
 			fyi->buffer = NULL;
 		}
 		if (fyi->fp) {
-			fclose(fyi->fp);
+			if (!fyi->cfg.no_fclose_fp)
+				fclose(fyi->fp);
 			fyi->fp = NULL;
 		}
 		break;
@@ -374,63 +381,59 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 	fyi->fp = NULL;
 
 	switch (fyi->cfg.type) {
-	case fyit_file:
-		memset(&fyi->file, 0, sizeof(fyi->file));
-		fyi->file.fd = fy_reader_file_open(fyr, fyi->cfg.file.filename);
-		fyr_error_check(fyr, fyi->file.fd != -1, err_out,
-				"failed to open %s",  fyi->cfg.file.filename);
 
-		rc = fstat(fyi->file.fd, &sb);
+	case fyit_file:
+	case fyit_fd:
+
+		switch (fyi->cfg.type) {
+		case fyit_file:
+			fyi->fd = fy_reader_file_open(fyr, fyi->cfg.file.filename);
+			fyr_error_check(fyr, fyi->fd != -1, err_out,
+					"failed to open %s",  fyi->cfg.file.filename);
+			break;
+
+		case fyit_fd:
+			fyi->fd = fyi->cfg.fd.fd;
+			fyr_error_check(fyr, fyi->fd >= 0, err_out,
+					"bad file.fd %d",  fyi->cfg.fd.fd);
+			break;
+		default:
+			assert(0);	// will never happen
+		}
+
+		rc = fstat(fyi->fd, &sb);
 		fyr_error_check(fyr, rc != -1, err_out,
 				"failed to fstat %s", fyi->cfg.file.filename);
 
-		fyi->file.length = sb.st_size;
+		fyi->length = sb.st_size;
 
 		/* only map if not zero (and is not disabled) */
 		if (sb.st_size > 0 && !fyr->current_input_cfg.disable_mmap_opt) {
-			fyi->addr = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE,
-					fyi->file.fd, 0);
+			fyi->addr = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fyi->fd, 0);
 
 			/* convert from MAP_FAILED to NULL */
-			if (fyi->addr == MAP_FAILED) {
+			if (fyi->addr == MAP_FAILED)
 				fyr_debug(fyr, "mmap failed for file %s",
 						fyi->cfg.file.filename);
-				fyi->addr = NULL;
-			}
 		}
 		/* if we've managed to mmap, we' good */
-		if (fyi->addr)
+		if (fyi->addr != MAP_FAILED)
 			break;
 
-		fyr_debug(fyr, "direct mmap mode unavailable for file %s, switching to stream mode",
-				fyi->cfg.file.filename);
+		/* if we're not ignoring stdio, open a FILE* using the fd */
+		if (!fyi->cfg.ignore_stdio) {
+			fyi->fp = fdopen(fyi->fd, "r");
+			fyr_error_check(fyr, rc != -1, err_out, "failed to fdopen %s", fyi->name);
+		} else
+			fyi->fp = NULL;
 
-		fyi->fp = fdopen(fyi->file.fd, "r");
-		fyr_error_check(fyr, rc != -1, err_out,
-				"failed to fdopen %s", fyi->cfg.file.filename);
-
-		/* fd ownership assigned to file */
-		fyi->file.fd = -1;
-
-		/* switch to stream mode */
-		fyi->chunk = sysconf(_SC_PAGESIZE);
-		fyi->chop = fyi->chunk * FYI_CHOP_MULT;
-		fyi->buffer = malloc(fyi->chunk);
-		fyr_error_check(fyr, fyi->buffer, err_out,
-				"fy_alloc() failed");
-		fyi->allocated = fyi->chunk;
 		break;
 
 	case fyit_stream:
-		fyi->chunk = fyi->cfg.stream.chunk;
-		if (!fyi->chunk)
-			fyi->chunk = sysconf(_SC_PAGESIZE);
-		fyi->chop = fyi->chunk * FYI_CHOP_MULT;
-		fyi->buffer = malloc(fyi->chunk);
-		fyr_error_check(fyr, fyi->buffer, err_out,
-				"fy_alloc() failed");
-		fyi->allocated = fyi->chunk;
-		fyi->fp = fyi->cfg.stream.fp;
+		if (!fyi->cfg.ignore_stdio)
+			fyi->fp = fyi->cfg.stream.fp;
+		else
+			fyi->fd = fileno(fyi->cfg.stream.fp);
 		break;
 
 	case fyit_memory:
@@ -442,17 +445,23 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 		break;
 
 	case fyit_callback:
-		fyi->chunk = sysconf(_SC_PAGESIZE);
-		fyi->chop = fyi->chunk * FYI_CHOP_MULT;
-		fyi->buffer = malloc(fyi->chunk);
-		fyr_error_check(fyr, fyi->buffer, err_out,
-				"fy_alloc() failed");
-		fyi->allocated = fyi->chunk;
 		break;
 
 	default:
 		assert(0);
 		break;
+	}
+
+	/* if we're not in mmap mode */
+	if (fyi->addr == MAP_FAILED) {
+		fyi->chunk = fyi->cfg.chunk;
+		if (!fyi->chunk)
+			fyi->chunk = sysconf(_SC_PAGESIZE);
+		fyi->chop = fyi->chunk * FYI_CHOP_MULT;
+		fyi->buffer = malloc(fyi->chunk);
+		fyr_error_check(fyr, fyi->buffer, err_out,
+				"fy_alloc() failed");
+		fyi->allocated = fyi->chunk;
 	}
 
 	fyr->this_input_start = 0;
@@ -487,7 +496,8 @@ int fy_reader_input_done(struct fy_reader *fyr)
 
 	switch (fyi->cfg.type) {
 	case fyit_file:
-		if (fyi->addr)
+	case fyit_fd:
+		if (fyi->addr != MAP_FAILED)
 			break;
 
 		/* fall-through */
@@ -602,8 +612,9 @@ const void *fy_reader_ptr_slow_path(struct fy_reader *fyr, size_t *leftp)
 	/* tokens cannot cross boundaries */
 	switch (fyi->cfg.type) {
 	case fyit_file:
-		if (fyi->addr) {
-			left = fyi->file.length - (fyr->this_input_start + fyr->current_input_pos);
+	case fyit_fd:
+		if (fyi->addr != MAP_FAILED) {
+			left = fyi->length - (fyr->this_input_start + fyr->current_input_pos);
 			p = fyi->addr + fyr->current_input_pos;
 			break;
 		}
@@ -665,11 +676,12 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 
 	switch (fyi->cfg.type) {
 	case fyit_file:
+	case fyit_fd:
 
-		if (fyi->addr) {
-			assert(fyi->file.length >= (fyr->this_input_start + pos));
+		if (fyi->addr != MAP_FAILED) {
+			assert(fyi->length >= (fyr->this_input_start + pos));
 
-			left = fyi->file.length - (fyr->this_input_start + pos);
+			left = fyi->length - (fyr->this_input_start + pos);
 			if (!left) {
 				fyr_debug(fyr, "file input exhausted");
 				break;
@@ -757,56 +769,58 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 					break;
 				}
 
-			} else {
-				if (!fyi->cfg.stream.ignore_stdio) {
+			} else if (fyi->fp) {
 
-					fyr_debug(fyr, "performing fread request of %zu", nreadreq);
+				fyr_debug(fyr, "performing fread request of %zu", nreadreq);
 
-					nread = fread(fyi->buffer + fyi->read, 1, nreadreq, fyi->fp);
+				nread = fread(fyi->buffer + fyi->read, 1, nreadreq, fyi->fp);
 
-					fyr_debug(fyr, "fread returned %zu", nread);
+				fyr_debug(fyr, "fread returned %zu", nread);
 
-					if (nread <= 0) {
-						fyi->err = ferror(fyi->fp);
-						if (fyi->err) {
-							fyi->eof = true;
-							fyr_debug(fyr, "fread got ERROR");
-							goto err_out;
-						}
-
-						fyi->eof = feof(fyi->fp);
-						if (fyi->eof)
-							fyr_debug(fyr, "fread got EOF");
-						nread = 0;
-						break;
-					}
-
-				} else {
-
-					fyr_debug(fyr, "performing read request of %zu", nreadreq);
-
-					do {
-						snread = read(fileno(fyi->fp), fyi->buffer + fyi->read, nreadreq);
-					} while (snread == -1 && errno == EAGAIN);
-
-					fyr_debug(fyr, "read returned %zd", snread);
-
-					if (snread == -1) {
-						fyi->err = true;
+				if (nread <= 0) {
+					fyi->err = ferror(fyi->fp);
+					if (fyi->err) {
 						fyi->eof = true;
-						fyr_error(fyr, "read() failed");
+						fyr_debug(fyr, "fread got ERROR");
 						goto err_out;
 					}
 
-					if (!snread) {
-						fyi->eof = true;
-						fyr_error(fyr, "read() failed");
-						nread = 0;
-						break;
-					}
-
-					nread = snread;
+					fyi->eof = feof(fyi->fp);
+					if (fyi->eof)
+						fyr_debug(fyr, "fread got EOF");
+					nread = 0;
+					break;
 				}
+
+			} else if (fyi->fd >= 0) {
+
+				fyr_debug(fyr, "performing read request of %zu", nreadreq);
+
+				do {
+					snread = read(fyi->fd, fyi->buffer + fyi->read, nreadreq);
+				} while (snread == -1 && errno == EAGAIN);
+
+				fyr_debug(fyr, "read returned %zd", snread);
+
+				if (snread == -1) {
+					fyi->err = true;
+					fyi->eof = true;
+					fyr_error(fyr, "read() failed: %s", strerror(errno));
+					goto err_out;
+				}
+
+				if (!snread) {
+					fyi->eof = true;
+					nread = 0;
+					break;
+				}
+
+				nread = snread;
+			} else {
+				fyr_error(fyr, "No FILE* nor fd available?");
+				fyi->eof = true;
+				nread = 0;
+				goto err_out;
 			}
 
 			assert(nread > 0);
@@ -899,9 +913,17 @@ struct fy_input *fy_input_create(const struct fy_input_cfg *fyic)
 
 	/* copy filename pointers and switch */
 	switch (fyic->type) {
+
 	case fyit_file:
 		fyi->name = strdup(fyic->file.filename);
 		break;
+
+	case fyit_fd:
+		ret = asprintf(&fyi->name, "<fd-%d>", fyic->fd.fd);
+		if (ret == -1)
+			fyi->name = NULL;
+		break;
+
 	case fyit_stream:
 		if (fyic->stream.name)
 			fyi->name = strdup(fyic->stream.name);
@@ -944,34 +966,9 @@ struct fy_input *fy_input_create(const struct fy_input_cfg *fyic)
 	fyi->chunk = 0;
 	fyi->chop = 0;
 	fyi->fp = NULL;
-
-	switch (fyi->cfg.type) {
-	case fyit_file:
-		memset(&fyi->file, 0, sizeof(fyi->file));
-		fyi->file.fd = -1;
-		fyi->addr = MAP_FAILED;
-		break;
-
-		/* nothing for those two */
-	case fyit_stream:
-		break;
-
-	case fyit_memory:
-		/* nothing to do for memory */
-		break;
-
-	case fyit_alloc:
-		/* nothing to do for memory */
-		break;
-
-	case fyit_callback:
-		/* nothing to do for callback */
-		break;
-
-	default:
-		assert(0);
-		break;
-	}
+	fyi->fd = -1;
+	fyi->addr = MAP_FAILED;
+	fyi->length = -1;
 
 	/* default modes */
 	fyi->lb_mode = fylb_cr_nl;
