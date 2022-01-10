@@ -16,6 +16,7 @@
 #include <limits.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <errno.h>
 
 #include <libfyaml.h>
 
@@ -2439,10 +2440,16 @@ char *fy_emit_document_to_string(struct fy_document *fyd, enum fy_emitter_cfg_fl
 	return buf;
 }
 
-static int do_file_output(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int len, void *userdata)
+static int do_file_output(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int leni, void *userdata)
 {
 	FILE *fp = userdata;
+	size_t len;
 
+	/* no funky stuff */
+	if (len < 0)
+		return -1;
+
+	len = (size_t)leni;
 	return fwrite(str, 1, len, fp);
 }
 
@@ -2490,6 +2497,74 @@ int fy_emit_document_to_file(struct fy_document *fyd,
 
 	if (fp != stdout)
 		fclose(fp);
+
+	return rc ? rc : 0;
+}
+
+static int do_fd_output(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int leni, void *userdata)
+{
+	size_t len;
+	int fd;
+	ssize_t wrn;
+	int total;
+
+	/* no funky stuff */
+	if (len < 0)
+		return -1;
+
+	len = (size_t)leni;
+
+	/* get the file descriptor */
+	fd = (int)(uintptr_t)userdata;
+	if (fd < 0)
+		return -1;
+
+	/* loop output to fd */
+	total = 0;
+	while (len > 0) {
+
+		do {
+			wrn = write(fd, str, len);
+		} while (wrn == -1 && errno == EAGAIN);
+
+		if (wrn == -1)
+			return -1;
+
+		if (wrn == 0)
+			return total;
+
+		len -= wrn;
+		str += wrn;
+		total += wrn;
+	}
+
+	return total;
+}
+
+int fy_emit_document_to_fd(struct fy_document *fyd, enum fy_emitter_cfg_flags flags, int fd)
+{
+	struct fy_emitter emit_state, *emit = &emit_state;
+	struct fy_emitter_cfg emit_cfg;
+	int rc;
+
+	if (fd < 0)
+		return -1;
+
+	memset(&emit_cfg, 0, sizeof(emit_cfg));
+	emit_cfg.output = do_fd_output;
+	emit_cfg.userdata = (void *)(uintptr_t)fd;
+	emit_cfg.flags = flags;
+	fy_emit_setup(emit, &emit_cfg);
+
+	fy_emit_prepare_document_state(emit, fyd->fyds);
+
+	rc = 0;
+	if (fyd->root)
+		rc = fy_emit_node_check(emit, fyd->root);
+
+	rc = fy_emit_document_no_check(emit, fyd);
+
+	fy_emit_cleanup(emit);
 
 	return rc ? rc : 0;
 }

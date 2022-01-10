@@ -1947,6 +1947,23 @@ fy_emit_document_to_file(struct fy_document *fyd,
 	FY_EXPORT;
 
 /**
+ * fy_emit_document_to_fd() - Emit a document to a file descriptor
+ *
+ * Emits a document from the root to the given file descriptor
+ *
+ * @fyd: The document to emit
+ * @flags: The emitter flags to use
+ * @fd: The file descriptor to output to
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int
+fy_emit_document_to_fd(struct fy_document *fyd,
+		       enum fy_emitter_cfg_flags flags, int fd)
+	FY_EXPORT;
+
+/**
  * fy_emit_document_to_buffer() - Emit a document to a buffer
  *
  * Emits an document from the root to the given buffer.
