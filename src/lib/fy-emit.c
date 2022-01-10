@@ -2214,21 +2214,26 @@ int fy_emitter_set_diag(struct fy_emitter *emit, struct fy_diag *diag)
 
 struct fy_emit_buffer_state {
 	char **bufp;
-	int *sizep;
+	size_t *sizep;
 	char *buf;
-	int size;
-	int pos;
-	int need;
+	size_t size;
+	size_t pos;
+	size_t need;
 	bool allocate_buffer;
 };
 
-static int do_buffer_output(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int len, void *userdata)
+static int do_buffer_output(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int leni, void *userdata)
 {
 	struct fy_emit_buffer_state *state = emit->cfg.userdata;
-	int left;
-	int pagesize = 0;
-	int size;
+	size_t left, pagesize, size, len;
 	char *bufnew;
+
+	/* no funky business */
+	if (len < 0)
+		return -1;
+
+	/* convert to unsigned and use that */
+	len = (size_t)leni;
 
 	state->need += len;
 	left = state->size - state->pos;
@@ -2259,7 +2264,7 @@ static int do_buffer_output(struct fy_emitter *emit, enum fy_emitter_write_type 
 }
 
 static struct fy_emitter *
-fy_emitter_create_str_internal(enum fy_emitter_cfg_flags flags, char **bufp, int *sizep, bool allocate_buffer)
+fy_emitter_create_str_internal(enum fy_emitter_cfg_flags flags, char **bufp, size_t *sizep, bool allocate_buffer)
 {
 	struct fy_emitter *emit;
 	struct fy_emitter_cfg emit_cfg;
@@ -2306,7 +2311,7 @@ err_out:
 }
 
 static int
-fy_emitter_finalize_str_internal(struct fy_emitter *emit, char **bufp, int *sizep)
+fy_emitter_finalize_str_internal(struct fy_emitter *emit, char **bufp, size_t *sizep)
 {
 	struct fy_emit_buffer_state *state;
 	char *buf;
@@ -2373,7 +2378,7 @@ fy_emitter_destroy_str_internal(struct fy_emitter *emit)
 
 static int fy_emit_str_internal(struct fy_document *fyd,
 				enum fy_emitter_cfg_flags flags,
-				struct fy_node *fyn, char **bufp, int *sizep,
+				struct fy_node *fyn, char **bufp, size_t *sizep,
 				bool allocate_buffer)
 {
 	struct fy_emitter *emit = NULL;
@@ -2410,7 +2415,7 @@ out_err:
 	return rc;
 }
 
-int fy_emit_document_to_buffer(struct fy_document *fyd, enum fy_emitter_cfg_flags flags, char *buf, int size)
+int fy_emit_document_to_buffer(struct fy_document *fyd, enum fy_emitter_cfg_flags flags, char *buf, size_t size)
 {
 	int rc;
 
@@ -2422,9 +2427,12 @@ int fy_emit_document_to_buffer(struct fy_document *fyd, enum fy_emitter_cfg_flag
 
 char *fy_emit_document_to_string(struct fy_document *fyd, enum fy_emitter_cfg_flags flags)
 {
-	char *buf = NULL;
-	int rc, size = 0;
+	char *buf;
+	size_t size;
+	int rc;
 
+	buf = NULL;
+	size = 0;
 	rc = fy_emit_str_internal(fyd, flags, NULL, &buf, &size, true);
 	if (rc != 0)
 		return NULL;
@@ -2486,7 +2494,7 @@ int fy_emit_document_to_file(struct fy_document *fyd,
 	return rc ? rc : 0;
 }
 
-int fy_emit_node_to_buffer(struct fy_node *fyn, enum fy_emitter_cfg_flags flags, char *buf, int size)
+int fy_emit_node_to_buffer(struct fy_node *fyn, enum fy_emitter_cfg_flags flags, char *buf, size_t size)
 {
 	int rc;
 
@@ -2498,9 +2506,12 @@ int fy_emit_node_to_buffer(struct fy_node *fyn, enum fy_emitter_cfg_flags flags,
 
 char *fy_emit_node_to_string(struct fy_node *fyn, enum fy_emitter_cfg_flags flags)
 {
-	char *buf = NULL;
-	int rc, size = 0;
+	char *buf;
+	size_t size;
+	int rc;
 
+	buf = NULL;
+	size = 0;
 	rc = fy_emit_str_internal(NULL, flags, fyn, &buf, &size, true);
 	if (rc != 0)
 		return NULL;

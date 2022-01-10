@@ -1964,7 +1964,7 @@ fy_emit_document_to_file(struct fy_document *fyd,
 int
 fy_emit_document_to_buffer(struct fy_document *fyd,
 			   enum fy_emitter_cfg_flags flags,
-			   char *buf, int size)
+			   char *buf, size_t size)
 	FY_EXPORT;
 
 /**
@@ -2004,7 +2004,7 @@ fy_emit_document_to_string(struct fy_document *fyd,
  */
 int
 fy_emit_node_to_buffer(struct fy_node *fyn, enum fy_emitter_cfg_flags flags,
-		       char *buf, int size)
+		       char *buf, size_t size)
 	FY_EXPORT;
 
 /**
