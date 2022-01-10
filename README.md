@@ -222,7 +222,7 @@ YAML, or an invoice file given on the command line:
 
 ```c
 	if (argc == 1)
-		fyd = fy_document_build_from_string(NULL, yaml);
+		fyd = fy_document_build_from_string(NULL, yaml, FY_NT);
 	else
 		fyd = fy_document_build_from_file(NULL, argv[1]);
 	if (!fyd) {
@@ -255,13 +255,13 @@ address.
 ```c
 	rc =
 		/* set increased invoice number (modify existing node) */
-		fy_document_insert_at(fyd, "/invoice",
+		fy_document_insert_at(fyd, "/invoice", FY_NT,
 			fy_node_buildf(fyd, "%u", invoice_nr + 1)) ||
 		/* add spouse (create new mapping pair) */
-		fy_document_insert_at(fyd, "/bill-to",
+		fy_document_insert_at(fyd, "/bill-to", FY_NT,
 			fy_node_buildf(fyd, "spouse: %s", "Doris")) ||
 		/* add a second address */
-		fy_document_insert_at(fyd, "/bill-to",
+		fy_document_insert_at(fyd, "/bill-to", FY_NT,
 			fy_node_buildf(fyd, "delivery-address:\n"
 				            "  lines: |\n"
 					    "    1226 Windward Ave.\n"));
