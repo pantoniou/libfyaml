@@ -1730,6 +1730,21 @@ fy_emitter_set_diag(struct fy_emitter *emit, struct fy_diag *diag)
 	FY_EXPORT;
 
 /**
+ * fy_emitter_set_finalizer() - Set emitter finalizer
+ *
+ * Set a method callback to be called when the emitter
+ * is disposed of. If finalizer is NULL, then the method
+ * is removed.
+ *
+ * @emit: The emitter to replace the diagnostic object
+ * @finalizer: The finalizer callback
+ */
+void
+fy_emitter_set_finalizer(struct fy_emitter *emit,
+		void (*finalizer)(struct fy_emitter *emit))
+	FY_EXPORT;
+
+/**
  * struct fy_emitter_default_output_data - emitter default output configuration
  *
  * This is the argument to the default output method of the emitter.

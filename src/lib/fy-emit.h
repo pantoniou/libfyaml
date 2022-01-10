@@ -111,6 +111,9 @@ struct fy_emitter {
 
 	struct fy_eventp_list *recycled_eventp_list;	/* NULL when suppressing */
 	struct fy_token_list *recycled_token_list;	/* NULL when suppressing */
+
+	/* for special needs */
+	void (*finalizer)(struct fy_emitter *emit);
 };
 
 int fy_emit_setup(struct fy_emitter *emit, const struct fy_emitter_cfg *cfg);

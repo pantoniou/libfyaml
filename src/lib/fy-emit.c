@@ -2024,6 +2024,10 @@ void fy_emit_cleanup(struct fy_emitter *emit)
 	struct fy_eventp *fyep;
 	struct fy_token *fyt;
 
+	/* call the finalizer if it exists */
+	if (emit->finalizer)
+		emit->finalizer(emit);
+
 	while ((fyt = fy_token_list_pop(&emit->recycled_token)) != NULL)
 		fy_token_free(fyt);
 
@@ -2213,6 +2217,14 @@ int fy_emitter_set_diag(struct fy_emitter *emit, struct fy_diag *diag)
 	return 0;
 }
 
+void fy_emitter_set_finalizer(struct fy_emitter *emit,
+		void (*finalizer)(struct fy_emitter *emit))
+{
+	if (!emit)
+		return;
+	emit->finalizer = finalizer;
+}
+
 struct fy_emit_buffer_state {
 	char **bufp;
 	size_t *sizep;
@@ -2264,6 +2276,22 @@ static int do_buffer_output(struct fy_emitter *emit, enum fy_emitter_write_type 
 	return len;
 }
 
+static void
+fy_emitter_str_finalizer(struct fy_emitter *emit)
+{
+	struct fy_emit_buffer_state *state;
+
+	if (!emit || !(state = emit->cfg.userdata))
+		return;
+
+	/* if the buffer is allowed to allocate_buffer... */
+	if (state->allocate_buffer && state->buf)
+		free(state->buf);
+	free(state);
+
+	emit->cfg.userdata = NULL;
+}
+
 static struct fy_emitter *
 fy_emitter_create_str_internal(enum fy_emitter_cfg_flags flags, char **bufp, size_t *sizep, bool allocate_buffer)
 {
@@ -2303,6 +2331,9 @@ fy_emitter_create_str_internal(enum fy_emitter_cfg_flags flags, char **bufp, siz
 	if (!emit)
 		goto err_out;
 
+	/* set finalizer to cleanup */
+	fy_emitter_set_finalizer(emit, fy_emitter_str_finalizer);
+
 	return emit;
 
 err_out:
@@ -2312,7 +2343,7 @@ err_out:
 }
 
 static int
-fy_emitter_finalize_str_internal(struct fy_emitter *emit, char **bufp, size_t *sizep)
+fy_emitter_collect_str_internal(struct fy_emitter *emit, char **bufp, size_t *sizep)
 {
 	struct fy_emit_buffer_state *state;
 	char *buf;
@@ -2360,23 +2391,6 @@ err_out:
 	return -1;
 }
 
-static void
-fy_emitter_destroy_str_internal(struct fy_emitter *emit)
-{
-	struct fy_emit_buffer_state *state;
-
-	if (emit) {
-		state = emit->cfg.userdata;
-		if (state) {
-			/* if the buffer is allowed to allocate_buffer... */
-			if (state->allocate_buffer && state->buf)
-				free(state->buf);
-			free(state);
-		}
-		fy_emitter_destroy(emit);
-	}
-}
-
 static int fy_emit_str_internal(struct fy_document *fyd,
 				enum fy_emitter_cfg_flags flags,
 				struct fy_node *fyn, char **bufp, size_t *sizep,
@@ -2405,14 +2419,14 @@ static int fy_emit_str_internal(struct fy_document *fyd,
 	if (rc)
 		goto out_err;
 
-	rc = fy_emitter_finalize_str_internal(emit, NULL, NULL);
+	rc = fy_emitter_collect_str_internal(emit, NULL, NULL);
 	if (rc)
 		goto out_err;
 
 	/* OK, all done */
 
 out_err:
-	fy_emitter_destroy_str_internal(emit);
+	fy_emitter_destroy(emit);
 	return rc;
 }
 
