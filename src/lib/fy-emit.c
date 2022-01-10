@@ -2213,11 +2213,13 @@ int fy_emitter_set_diag(struct fy_emitter *emit, struct fy_diag *diag)
 }
 
 struct fy_emit_buffer_state {
+	char **bufp;
+	int *sizep;
 	char *buf;
 	int size;
 	int pos;
 	int need;
-	bool grow;
+	bool allocate_buffer;
 };
 
 static int do_buffer_output(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int len, void *userdata)
@@ -2231,7 +2233,7 @@ static int do_buffer_output(struct fy_emitter *emit, enum fy_emitter_write_type 
 	state->need += len;
 	left = state->size - state->pos;
 	if (left < len) {
-		if (!state->grow)
+		if (!state->allocate_buffer)
 			return 0;
 
 		pagesize = sysconf(_SC_PAGESIZE);
@@ -2256,27 +2258,130 @@ static int do_buffer_output(struct fy_emitter *emit, enum fy_emitter_write_type 
 	return len;
 }
 
+static struct fy_emitter *
+fy_emitter_create_str_internal(enum fy_emitter_cfg_flags flags, char **bufp, int *sizep, bool allocate_buffer)
+{
+	struct fy_emitter *emit;
+	struct fy_emitter_cfg emit_cfg;
+	struct fy_emit_buffer_state *state;
+
+	state = malloc(sizeof(*state));
+	if (!state)
+		return NULL;
+
+	/* if any of these NULL, it's a allocation case */
+	if ((!bufp || !sizep) && !allocate_buffer)
+		return NULL;
+
+	if (bufp && sizep) {
+		state->bufp = bufp;
+		state->buf = *bufp;
+		state->sizep = sizep;
+		state->size = *sizep;
+	} else {
+		state->bufp = NULL;
+		state->buf = NULL;
+		state->sizep = NULL;
+		state->size = 0;
+	}
+	state->pos = 0;
+	state->need = 0;
+	state->allocate_buffer = allocate_buffer;
+
+	memset(&emit_cfg, 0, sizeof(emit_cfg));
+	emit_cfg.output = do_buffer_output;
+	emit_cfg.userdata = state;
+	emit_cfg.flags = flags;
+
+	emit = fy_emitter_create(&emit_cfg);
+	if (!emit)
+		goto err_out;
+
+	return emit;
+
+err_out:
+	if (state)
+		free(state);
+	return NULL;
+}
+
+static int
+fy_emitter_finalize_str_internal(struct fy_emitter *emit, char **bufp, int *sizep)
+{
+	struct fy_emit_buffer_state *state;
+	char *buf;
+	int rc;
+
+	state = emit->cfg.userdata;
+	assert(state);
+
+	/* if NULL, then use the values stored on the state */
+	if (!bufp)
+		bufp = state->bufp;
+	if (!sizep)
+		sizep = state->sizep;
+
+	/* terminating zero */
+	rc = do_buffer_output(emit, fyewt_terminating_zero, "\0", 1, state);
+	if (rc != 1)
+		goto err_out;
+
+	state->size = state->need;
+
+	if (state->allocate_buffer) {
+		/* resize */
+		buf = realloc(state->buf, state->size);
+		/* very likely since we shrink the buffer, but make sure we don't error out */
+		if (buf)
+			state->buf = buf;
+	}
+
+	/* retreive the buffer and size */
+	*sizep = state->size;
+	*bufp = state->buf;
+
+	/* reset the buffer, ownership now to the caller */
+	state->buf = NULL;
+	state->size = 0;
+	state->bufp = NULL;
+	state->sizep = NULL;
+
+	return 0;
+
+err_out:
+	*bufp = NULL;
+	*sizep = 0;
+	return -1;
+}
+
+static void
+fy_emitter_destroy_str_internal(struct fy_emitter *emit)
+{
+	struct fy_emit_buffer_state *state;
+
+	if (emit) {
+		state = emit->cfg.userdata;
+		if (state) {
+			/* if the buffer is allowed to allocate_buffer... */
+			if (state->allocate_buffer && state->buf)
+				free(state->buf);
+			free(state);
+		}
+		fy_emitter_destroy(emit);
+	}
+}
+
 static int fy_emit_str_internal(struct fy_document *fyd,
 				enum fy_emitter_cfg_flags flags,
 				struct fy_node *fyn, char **bufp, int *sizep,
-				bool grow)
+				bool allocate_buffer)
 {
-	struct fy_emitter emit_state, *emit = &emit_state;
-	struct fy_emitter_cfg emit_cfg;
-	struct fy_emit_buffer_state state;
+	struct fy_emitter *emit = NULL;
 	int rc = -1;
 
-	memset(&emit_cfg, 0, sizeof(emit_cfg));
-	memset(&state, 0, sizeof(state));
-
-	emit_cfg.output = do_buffer_output;
-	emit_cfg.userdata = &state;
-	emit_cfg.flags = flags;
-	state.buf = *bufp;
-	state.size = *sizep;
-	state.grow = grow;
-
-	fy_emit_setup(emit, &emit_cfg);
+	emit = fy_emitter_create_str_internal(flags, bufp, sizep, allocate_buffer);
+	if (!emit)
+		goto out_err;
 
 	if (fyd) {
 		fy_emit_prepare_document_state(emit, fyd->fyds);
@@ -2291,38 +2396,17 @@ static int fy_emit_str_internal(struct fy_document *fyd,
 			rc = fy_emit_node_no_check(emit, fyn);
 	}
 
-	fy_emit_cleanup(emit);
-
 	if (rc)
 		goto out_err;
 
-	/* terminating zero */
-	rc = do_buffer_output(emit, fyewt_terminating_zero, "\0", 1, emit->cfg.userdata);
-
-	if (rc != 1) {
-		rc = -1;
+	rc = fy_emitter_finalize_str_internal(emit, NULL, NULL);
+	if (rc)
 		goto out_err;
-	}
 
-	*sizep = state.need;
-
-	if (!grow)
-		return 0;
-
-	*bufp = realloc(state.buf, *sizep);
-	if (!*bufp) {
-		rc = -1;
-		goto out_err;
-	}
-
-	return 0;
+	/* OK, all done */
 
 out_err:
-	if (grow && state.buf)
-		free(state.buf);
-	*bufp = NULL;
-	*sizep = 0;
-
+	fy_emitter_destroy_str_internal(emit);
 	return rc;
 }
 
