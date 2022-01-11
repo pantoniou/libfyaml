@@ -2380,6 +2380,7 @@ fy_emitter_collect_str_internal(struct fy_emitter *emit, char **bufp, size_t *si
 	/* reset the buffer, ownership now to the caller */
 	state->buf = NULL;
 	state->size = 0;
+	state->pos = 0;
 	state->bufp = NULL;
 	state->sizep = NULL;
 
@@ -2451,6 +2452,55 @@ char *fy_emit_document_to_string(struct fy_document *fyd, enum fy_emitter_cfg_fl
 	rc = fy_emit_str_internal(fyd, flags, NULL, &buf, &size, true);
 	if (rc != 0)
 		return NULL;
+	return buf;
+}
+
+struct fy_emitter *
+fy_emit_to_buffer(enum fy_emitter_cfg_flags flags, char *buf, size_t size)
+{
+	if (!buf)
+		return NULL;
+
+	return fy_emitter_create_str_internal(flags, &buf, &size, false);
+}
+
+char *
+fy_emit_to_buffer_collect(struct fy_emitter *emit, size_t *sizep)
+{
+	int rc;
+	char *buf;
+
+	if (!emit || !sizep)
+		return NULL;
+
+	rc = fy_emitter_collect_str_internal(emit, &buf, sizep);
+	if (rc) {
+		*sizep = 0;
+		return NULL;
+	}
+	return buf;
+}
+
+struct fy_emitter *
+fy_emit_to_string(enum fy_emitter_cfg_flags flags)
+{
+	return fy_emitter_create_str_internal(flags, NULL, NULL, true);
+}
+
+char *
+fy_emit_to_string_collect(struct fy_emitter *emit, size_t *sizep)
+{
+	int rc;
+	char *buf;
+
+	if (!emit || !sizep)
+		return NULL;
+
+	rc = fy_emitter_collect_str_internal(emit, &buf, sizep);
+	if (rc) {
+		*sizep = 0;
+		return NULL;
+	}
 	return buf;
 }
 

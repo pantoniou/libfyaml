@@ -2059,6 +2059,80 @@ fy_emit_node_to_string(struct fy_node *fyn, enum fy_emitter_cfg_flags flags)
 	FY_ALLOCA_COPY_FREE(fy_emit_node_to_string((_fyn), (_flags)), FY_NT)
 
 /**
+ * fy_emit_to_buffer() - Create an emitter for buffer output.
+ *
+ * Creates a special purpose emitter for buffer output.
+ * Calls to fy_emit_event() populate the buffer.
+ * The contents are retreived by a call to fy_emit_to_buffer_collect()
+ *
+ * @flags: The emitter flags to use
+ * @buf: Pointer to the buffer area to fill
+ * @size: Size of the buffer
+ *
+ * Returns:
+ * The newly created emitter or NULL on error.
+ */
+struct fy_emitter *
+fy_emit_to_buffer(enum fy_emitter_cfg_flags flags, char *buf, size_t size)
+	FY_EXPORT;
+
+/**
+ * fy_emit_to_buffer_collect() - Collect the buffer emitter output
+ *
+ * Collects the output of the emitter which was created by
+ * fy_emit_to_buffer() and populated using fy_emit_event() calls.
+ * The NULL terminated returned buffer is the same as the one used in the
+ * fy_emit_to_buffer() call and the sizep argument will be filled with
+ * the size of the buffer.
+ *
+ * @emit: The emitter
+ * @sizep: Pointer to the size to be filled
+ *
+ * Returns:
+ * The buffer or NULL in case of an error.
+ */
+char *
+fy_emit_to_buffer_collect(struct fy_emitter *emit, size_t *sizep)
+	FY_EXPORT;
+
+/**
+ * fy_emit_to_string() - Create an emitter to create a dynamically
+ *                       allocated string.
+ *
+ * Creates a special purpose emitter for output to a dynamically
+ * allocated string.
+ * Calls to fy_emit_event() populate the buffer.
+ * The contents are retreived by a call to fy_emit_to_string_collect()
+ *
+ * @flags: The emitter flags to use
+ *
+ * Returns:
+ * The newly created emitter or NULL on error.
+ */
+struct fy_emitter *
+fy_emit_to_string(enum fy_emitter_cfg_flags flags)
+	FY_EXPORT;
+
+/**
+ * fy_emit_to_string_collect() - Collect the string emitter output
+ *
+ * Collects the output of the emitter which was created by
+ * fy_emit_to_string() and populated using fy_emit_event() calls.
+ * The NULL terminated returned buffer is dynamically allocated
+ * and must be freed via a call to free().
+ * The sizep argument will be filled with the size of the buffer.
+ *
+ * @emit: The emitter
+ * @sizep: Pointer to the size to be filled
+ *
+ * Returns:
+ * The dynamically allocated string or NULL in case of an error.
+ */
+char *
+fy_emit_to_string_collect(struct fy_emitter *emit, size_t *sizep)
+	FY_EXPORT;
+
+/**
  * fy_node_copy() - Copy a node, associating the new node with the given document
  *
  * Make a deep copy of a node, associating the copy with the given document.
@@ -7176,7 +7250,7 @@ fy_document_iterator_document_end(struct fy_document_iterator *fydi)
  * Repeated calls to this function will generate a stream of SCALAR, ALIAS, SEQUENCE
  * START, SEQUENCE END, MAPPING START and MAPPING END events, returning NULL at the
  * end of the body event stream.
- * 
+ *
  * @fydi: The document iterator to create the event
  *
  * Returns:
