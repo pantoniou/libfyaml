@@ -3006,17 +3006,6 @@ static int fy_emit_handle_document_start(struct fy_emitter *emit, struct fy_even
 	return 0;
 }
 
-static int fy_emit_handle_document_content(struct fy_emitter *emit, struct fy_eventp *fyep)
-{
-	int ret;
-
-	ret = fy_emit_push_state(emit, FYES_DOCUMENT_END);
-	if (ret)
-		return ret;
-
-	return fy_emit_streaming_node(emit, fyep, DDNF_ROOT);
-}
-
 static int fy_emit_handle_document_end(struct fy_emitter *emit, struct fy_eventp *fyep)
 {
 	struct fy_document_state *fyds;
@@ -3039,6 +3028,22 @@ static int fy_emit_handle_document_end(struct fy_emitter *emit, struct fy_eventp
 	fy_emit_reset(emit, false);
 	fy_emit_goto_state(emit, FYES_DOCUMENT_START);
 	return 0;
+}
+
+static int fy_emit_handle_document_content(struct fy_emitter *emit, struct fy_eventp *fyep)
+{
+	struct fy_event *fye = &fyep->e;
+	int ret;
+
+	/* empty document? */
+	if (fye->type == FYET_DOCUMENT_END)
+		return fy_emit_handle_document_end(emit, fyep);
+
+	ret = fy_emit_push_state(emit, FYES_DOCUMENT_END);
+	if (ret)
+		return ret;
+
+	return fy_emit_streaming_node(emit, fyep, DDNF_ROOT);
 }
 
 static int fy_emit_handle_sequence_item(struct fy_emitter *emit, struct fy_eventp *fyep, bool first)
