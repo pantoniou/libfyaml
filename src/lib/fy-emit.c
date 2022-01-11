@@ -1832,19 +1832,23 @@ int fy_emit_document_start(struct fy_emitter *emit, struct fy_document *fyd,
 	return 0;
 }
 
-int fy_emit_common_document_end(struct fy_emitter *emit)
+int fy_emit_common_document_end(struct fy_emitter *emit, bool override_state, bool implicit_override)
 {
 	const struct fy_document_state *fyds;
 	enum fy_emitter_cfg_flags flags = emit->cfg.flags;
 	enum fy_emitter_cfg_flags dem_flags = flags & FYECF_DOC_END_MARK(FYECF_DOC_END_MARK_MASK);
-	bool dem;
+	bool implicit, dem;
 
 	if (!emit || !emit->fyds)
 		return -1;
 
 	fyds = emit->fyds;
 
-	dem = ((dem_flags == FYECF_DOC_END_MARK_AUTO && !fyds->end_implicit) ||
+	implicit = fyds->end_implicit;
+	if (override_state)
+		implicit = implicit_override;
+
+	dem = ((dem_flags == FYECF_DOC_END_MARK_AUTO && !implicit) ||
 		dem_flags == FYECF_DOC_END_MARK_ON) &&
 	       !(emit->cfg.flags & FYECF_STRIP_DOC);
 
@@ -1887,7 +1891,7 @@ int fy_emit_document_end(struct fy_emitter *emit)
 {
 	int ret;
 
-	ret = fy_emit_common_document_end(emit);
+	ret = fy_emit_common_document_end(emit, false, false);
 	if (ret)
 		return ret;
 
@@ -3026,7 +3030,7 @@ static int fy_emit_handle_document_end(struct fy_emitter *emit, struct fy_eventp
 
 	fyds = emit->fyds;
 
-	ret = fy_emit_common_document_end(emit);
+	ret = fy_emit_common_document_end(emit, true, fye->document_end.implicit);
 	if (ret)
 		return ret;
 
