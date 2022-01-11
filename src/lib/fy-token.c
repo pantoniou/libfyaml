@@ -422,7 +422,7 @@ struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_t
 		break;
 	case FYTT_SCALAR:
 		fyt->scalar.style = va_arg(ap, enum fy_scalar_style);
-		if ((unsigned int)fyt->scalar.style >= FYSS_MAX)
+		if (fyt->scalar.style != FYSS_ANY && (unsigned int)fyt->scalar.style >= FYSS_MAX)
 			goto err_out;
 		fyt->scalar.path_key = NULL;
 		fyt->scalar.path_key_len = 0;
