@@ -23,10 +23,6 @@
 
 #include "fy-utils.h"
 
-#undef DBG
-// #define DBG fyp_notice
-#define DBG fyp_scan_debug
-
 struct fy_composer *
 fy_composer_create(struct fy_composer_cfg *cfg)
 {
@@ -55,7 +51,6 @@ fy_composer_create(struct fy_composer_cfg *cfg)
 err_no_path:
 	free(fyc);
 	return NULL;
-
 }
 
 void fy_composer_destroy(struct fy_composer *fyc)
@@ -80,6 +75,7 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp
 	struct fy_path_component *fypc, *fypc_last;
 	struct fy_path *fyppt;
 	struct fy_document *fyd;
+	struct fy_document_state *fyds;
 	bool is_collection, is_map, is_start, is_end;
 	char tbuf[80] __attribute__((__unused__));
 	int rc = 0;
@@ -145,23 +141,15 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp
 	case FYET_STREAM_END:
 	case FYET_DOCUMENT_START:
 	case FYET_DOCUMENT_END:
-		// fprintf(stderr, "%s:%d process_event\n", __FILE__, __LINE__);
 		return ops->process_event(fyc, fypp, fyp, fye);
 
 	default:
-		// DBG(fyp, "ignoring\n");
 		return FYCR_OK_CONTINUE;
 	}
 
 	fypc_last = fy_path_component_list_tail(&fypp->components);
 
-	// DBG(fyp, "%s: start - %s\n", fy_path_get_text0(fypp), fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
-
 	if (fy_path_component_is_mapping(fypc_last) && fypc_last->map.accumulating_complex_key) {
-
-		// DBG(fyp, "accumulating for complex key\n");
-		// fprintf(stderr, "accumulating for complex key %s\n",
-		//		fy_token_dump_format(fy_event_get_token(fye), tbuf, sizeof(tbuf)));
 
 		/* get the next one */
 		fyppt = fy_path_next(&fyc->paths, fypp);
@@ -179,19 +167,10 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp
 			stop_req = ret == FYCR_OK_STOP;
 
 		rc = fy_document_builder_process_event(fypp->fydb, fyp, fyep);
-		if (rc == 0) {
-			// DBG(fyp, "accumulating still\n");
-			// fprintf(stderr, "accumulating still %s\n",
-			//		fy_token_dump_format(fy_event_get_token(fye), tbuf, sizeof(tbuf)));
+		if (rc == 0)
 			return FYCR_OK_CONTINUE;
-		}
 		fyc_error_check(fyc, rc > 0, err_out,
 				"fy_document_builder_process_event() failed\n");
-
-		// fprintf(stderr, "accumulating complete %s\n",
-		//		fy_token_dump_format(fy_event_get_token(fye), tbuf, sizeof(tbuf)));
-
-		// DBG(fyp, "accumulation complete\n");
 
 		/* get the document */
 		fyd = fy_document_builder_take_document(fypp->fydb);
@@ -211,8 +190,6 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp
 
 		fy_path_destroy(fyppt);
 
-		// DBG(fyp, "%s: %s complex KEY\n", __func__, fy_path_get_text0(fypp));
-
 		fyc_error_check(fyc, rc >= 0, err_out,
 				"fy_path_component_build_text() failed\n");
 
@@ -223,7 +200,6 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp
 	if (is_start && fy_path_component_is_mapping(fypc_last) && fypc_last->map.await_key && is_collection) {
 
 		/* non scalar key case */
-		// DBG(fyp, "Non scalar key - using document builder\n");
 		if (!fypp->fydb) {
 			fypp->fydb = fy_document_builder_create(&fyp->cfg);
 			fyc_error_check(fyc, fypp->fydb, err_out,
@@ -231,12 +207,10 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp
 		}
 
 		/* start with this document state */
-		rc = fy_document_builder_set_in_document(fypp->fydb, fy_parser_get_document_state(fyp), true);
+		fyds = fy_parser_get_document_state(fyp);
+		rc = fy_document_builder_set_in_document(fypp->fydb, fyds, true);
 		fyc_error_check(fyc, !rc, err_out,
 				"fy_document_builder_set_in_document() failed\n");
-
-		// fprintf(stderr, "initial complex key %s\n",
-		//		fy_token_dump_format(fy_event_get_token(fye), tbuf, sizeof(tbuf)));
 
 		/* and pass the current event; must return 0 since we know it's a collection start */
 		rc = fy_document_builder_process_event(fypp->fydb, fyp, fyep);
@@ -301,7 +275,6 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp
 
 	} else if (!is_collection && fy_path_component_is_mapping(fypc_last) && fypc_last->map.await_key) {
 
-		// DBG(fyp, "scalar key: %s\n", fy_token_dump_format(fyt, tbuf, sizeof(tbuf)));
 		fypc_last->map.is_complex_key = false;
 		fypc_last->map.scalar.tag = fy_token_ref(fy_event_get_tag_token(fye));
 		fypc_last->map.scalar.key = fy_token_ref(fy_event_get_token(fye));
@@ -334,20 +307,13 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp
 
 	/* at the end of something */
 	if (is_end && fy_path_component_is_mapping(fypc_last)) {
-
 		if (!fypc_last->map.await_key) {
-
 			fy_path_component_clear_state(fypc_last);
-
-			// DBG(fyp, "%s: set await_key %p\n", fy_path_get_text0(fypp), fypc_last);
 			fypc_last->map.await_key = true;
-
-		} else {
+		} else
 			fypc_last->map.await_key = false;
-		}
 	}
 
-	// DBG(fyp, "%s: exit\n", fy_path_get_text0(fypp));
 	return !stop_req ? FYCR_OK_CONTINUE : FYCR_OK_STOP;
 
 err_out:
