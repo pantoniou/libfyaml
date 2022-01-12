@@ -32,6 +32,7 @@
 #include "fy-event.h"
 #include "fy-docstate.h"
 #include "fy-doc.h"
+#include "fy-docbuilder.h"
 #include "fy-emit.h"
 #include "fy-accel.h"
 #include "fy-emit-accum.h"

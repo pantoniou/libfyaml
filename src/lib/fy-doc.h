@@ -33,6 +33,12 @@
 
 struct fy_eventp;
 
+/* TODO vary according to platfom */
+static inline int fy_depth_limit(void)
+{
+	return FYPCF_GUARANTEED_MINIMUM_DEPTH_LIMIT;
+}
+
 FY_TYPE_FWD_DECL_LIST(document);
 
 struct fy_node;
@@ -172,120 +178,6 @@ bool fy_document_can_be_accelerated(struct fy_document *fyd);
 
 /* TODO move to main include */
 struct fy_node *fy_node_collection_iterate(struct fy_node *fyn, void **prevp);
-
-enum fy_document_builder_state {
-	FYDBS_NODE,
-	FYDBS_MAP_KEY,
-	FYDBS_MAP_VAL,
-	FYDBS_SEQ,
-};
-
-struct fy_document_builder_ctx {
-	enum fy_document_builder_state s;
-	struct fy_node *fyn;
-	struct fy_node_pair *fynp;	/* for mapping */
-};
-
-struct fy_document_builder {
-	struct fy_parse_cfg cfg;
-	bool single_mode;
-	struct fy_document *fyd;
-	bool in_stream;
-	bool doc_done;
-	unsigned int next;
-	unsigned int alloc;
-	unsigned int max_depth;
-	struct fy_document_builder_ctx *stack;
-};
-
-struct fy_document_builder *
-fy_document_builder_create(const struct fy_parse_cfg *cfg);
-
-void
-fy_document_builder_reset(struct fy_document_builder *fydb);
-
-void
-fy_document_builder_destroy(struct fy_document_builder *fydb);
-
-struct fy_document *
-fy_document_builder_get_document(struct fy_document_builder *fydb);
-
-bool
-fy_document_builder_is_in_stream(struct fy_document_builder *fydb);
-
-bool
-fy_document_builder_is_in_document(struct fy_document_builder *fydb);
-
-bool
-fy_document_builder_is_document_complete(struct fy_document_builder *fydb);
-
-struct fy_document *
-fy_document_builder_take_document(struct fy_document_builder *fydb);
-
-struct fy_document *
-fy_document_builder_peek_document(struct fy_document_builder *fydb);
-
-void
-fy_document_builder_set_in_stream(struct fy_document_builder *fydb);
-
-int
-fy_document_builder_set_in_document(struct fy_document_builder *fydb, struct fy_document_state *fyds, bool single);
-
-int
-fy_document_builder_process_event(struct fy_document_builder *fydb,
-		struct fy_parser *fyp, struct fy_eventp *fyep);
-
-struct fy_document *
-fy_document_builder_load_document(struct fy_document_builder *fydb,
-				  struct fy_parser *fyp);
-
-struct fy_document *
-fy_parse_load_document_with_builder(struct fy_parser *fyp);
-
-#if 0
-
-enum fy_node_iterator_flags {
-	FYNIF_DEPTH_FIRST	= FY_BIT(0),	/* depth first iterator (only one supported for now) */
-	FYNIF_FOLLOW_KEYS	= FY_BIT(1),	/* follow any keys encountered */
-	FYNIF_FOLLOW_LINKS	= FY_BIT(2),	/* follow any links/references encountered */
-	FYNIF_ERASE_LINKS	= FY_BIT(3),	/* do not output any links encountered */
-};
-
-enum fy_node_iterator_result {
-	FYNIR_OK,		/* OK */
-	FYNIR_ARGS,		/* invalid arguments */
-	FYNIR_NOMEM,		/* out of memory */
-	FYNIR_LOOP,		/* loop detected */
-	FYNIR_BAD_ALIAS,	/* unresolvable alias */
-};
-
-struct fy_node_iterator_state {
-	struct fy_node *fyn;
-	union {
-		struct fy_node_pair *fynp;	/* for map only */
-		unsigned int idx;		/* for sequence */
-	};
-	bool start, end;
-};
-
-struct fy_node_iterator {
-	enum fy_node_iterator_flags flags;
-	enum fy_node_iterator_result result;
-	unsigned int count;
-	unsigned int alloc;
-	struct fy_node_iterator_state *stack;
-	struct fy_node_iterator_state in_place[FYPCF_GUARANTEED_MINIMUM_DEPTH_LIMIT];
-};
-
-void fy_node_iterator_setup(struct fy_node_iterator *fyi, enum fy_node_iterator_flags flags);
-void fy_node_iterator_cleanup(struct fy_node_iterator *fyi);
-struct fy_node_iterator *fy_node_iterator_create(enum fy_node_iterator_flags flags);
-void fy_node_iterator_destroy(struct fy_node_iterator *fyi);
-void fy_node_iterator_start(struct fy_node_iterator *fyi, struct fy_node *fyn);
-enum fy_node_iterator_result fy_node_iterator_end(struct fy_node_iterator *fyi);
-struct fy_node *fy_node_iterator_next(struct fy_node_iterator *fyi, struct fy_node *fyn);
-
-#endif
 
 /* indirect node */
 FY_TYPE_FWD_DECL_LIST(ptr_node);
