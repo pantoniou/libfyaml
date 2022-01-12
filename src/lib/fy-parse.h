@@ -219,6 +219,7 @@ struct fy_parser {
 	/* when using the composer interface */
 	struct fy_composer *fyc;
 	fy_parse_composer_cb fyc_cb;
+	void *fyc_userdata;
 };
 
 static inline struct fy_input *

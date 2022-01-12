@@ -6697,7 +6697,7 @@ parse_process_event(struct fy_composer *fyc, struct fy_path *path, struct fy_par
 	if (!fyp->fyc_cb)
 		return 0;
 
-	return fyp->fyc_cb(fyp, fye, path, fy_composer_get_cfg_userdata(fyc));
+	return fyp->fyc_cb(fyp, fye, path, fyp->fyc_userdata);
 }
 
 static const struct fy_composer_ops parser_composer_ops = {
@@ -6723,25 +6723,28 @@ int fy_parse_set_composer(struct fy_parser *fyp, fy_parse_composer_cb cb, void *
 			fyp->fyc = NULL;
 		}
 		fyp->fyc_cb = NULL;
+		fyp->fyc_userdata = NULL;
 		return 0;
 	}
 
 	/* already exists */
 	if (fyp->fyc) {
 		fyp->fyc_cb = cb;
+		fyp->fyc_userdata = userdata;
 		return 0;
 	}
 
 	/* prepare the composer configuration */
 	memset(&ccfg, 0, sizeof(ccfg));
 	ccfg.ops = &parser_composer_ops;
-	ccfg.userdata = userdata;
+	ccfg.userdata = NULL;
 	ccfg.diag = fy_parser_get_diag(fyp);
 	fyp->fyc = fy_composer_create(&ccfg);
 	fyp_error_check(fyp, fyp->fyc, err_out,
 			"fy_composer_create() failed");
 
 	fyp->fyc_cb = cb;
+	fyp->fyc_userdata = userdata;
 
 	return 0;
 err_out:
