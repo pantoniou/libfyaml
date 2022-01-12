@@ -6692,11 +6692,12 @@ struct fy_document_state *fy_parser_get_document_state(struct fy_parser *fyp)
 }
 
 static enum fy_composer_return
-parse_process_event(struct fy_composer *fyc, struct fy_path *path, struct fy_parser *fyp, struct fy_event *fye)
+parse_process_event(struct fy_composer *fyc, struct fy_path *path, struct fy_event *fye)
 {
-	if (!fyp->fyc_cb)
-		return 0;
+	struct fy_parser *fyp = fy_composer_get_cfg_userdata(fyc);
 
+	assert(fyp);
+	assert(fyp->fyc_cb);
 	return fyp->fyc_cb(fyp, fye, path, fyp->fyc_userdata);
 }
 
@@ -6737,7 +6738,7 @@ int fy_parse_set_composer(struct fy_parser *fyp, fy_parse_composer_cb cb, void *
 	/* prepare the composer configuration */
 	memset(&ccfg, 0, sizeof(ccfg));
 	ccfg.ops = &parser_composer_ops;
-	ccfg.userdata = NULL;
+	ccfg.userdata = fyp;
 	ccfg.diag = fy_parser_get_diag(fyp);
 	fyp->fyc = fy_composer_create(&ccfg);
 	fyp_error_check(fyp, fyp->fyc, err_out,

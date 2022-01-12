@@ -141,7 +141,7 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp
 	case FYET_STREAM_END:
 	case FYET_DOCUMENT_START:
 	case FYET_DOCUMENT_END:
-		return ops->process_event(fyc, fypp, fyp, fye);
+		return ops->process_event(fyc, fypp, fye);
 
 	default:
 		return FYCR_OK_CONTINUE;
@@ -284,7 +284,7 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp
 	}
 
 	/* process the event */
-	ret = ops->process_event(fyc, fypp, fyp, fye);
+	ret = ops->process_event(fyc, fypp, fye);
 	if (!fy_composer_return_is_ok(ret)) {
 		/* XXX TODO handle skip */
 		return ret;

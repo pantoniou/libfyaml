@@ -32,7 +32,7 @@ struct fy_eventp;
 
 struct fy_composer_ops {
 	/* single process event callback */
-	enum fy_composer_return (*process_event)(struct fy_composer *fyc, struct fy_path *path, struct fy_parser *fyp, struct fy_event *fye);
+	enum fy_composer_return (*process_event)(struct fy_composer *fyc, struct fy_path *path, struct fy_event *fye);
 };
 
 struct fy_composer_cfg {
