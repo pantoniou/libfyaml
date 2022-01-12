@@ -67,23 +67,19 @@ void fy_composer_destroy(struct fy_composer *fyc)
 }
 
 static enum fy_composer_return
-fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp,
-				  struct fy_event *fye, struct fy_path *fypp)
+fy_composer_process_event_private(struct fy_composer *fyc, struct fy_event *fye, struct fy_path *fypp)
 {
 	const struct fy_composer_ops *ops;
 	struct fy_eventp *fyep;
 	struct fy_path_component *fypc, *fypc_last;
 	struct fy_path *fyppt;
 	struct fy_document *fyd;
-	struct fy_document_state *fyds;
 	bool is_collection, is_map, is_start, is_end;
-	char tbuf[80] __attribute__((__unused__));
 	int rc = 0;
 	enum fy_composer_return ret;
 	bool stop_req = false;
 
 	assert(fyc);
-	assert(fyp);
 	assert(fye);
 	assert(fypp);
 
@@ -158,7 +154,7 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp
 		assert(fyppt->parent == fypp);
 
 		/* and pass along */
-		ret = fy_composer_process_event_private(fyc, fyp, fye, fyppt);
+		ret = fy_composer_process_event_private(fyc, fye, fyppt);
 		if (!fy_composer_return_is_ok(ret)) {
 			/* XXX TODO handle skip */
 			return ret;
@@ -166,7 +162,7 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp
 		if (!stop_req)
 			stop_req = ret == FYCR_OK_STOP;
 
-		rc = fy_document_builder_process_event(fypp->fydb, fyp, fyep);
+		rc = fy_document_builder_process_event(fypp->fydb, fyep);
 		if (rc == 0)
 			return FYCR_OK_CONTINUE;
 		fyc_error_check(fyc, rc > 0, err_out,
@@ -199,21 +195,18 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp
 	/* start of something on a mapping */
 	if (is_start && fy_path_component_is_mapping(fypc_last) && fypc_last->map.await_key && is_collection) {
 
-		/* non scalar key case */
-		if (!fypp->fydb) {
-			fypp->fydb = fy_document_builder_create(&fyp->cfg);
-			fyc_error_check(fyc, fypp->fydb, err_out,
-					"fy_document_builder_create() failed\n");
-		}
+		/* the configuration must support a document builder for complex keys */
+		FYC_TOKEN_ERROR_CHECK(fyc, fy_event_get_token(fye), FYEM_DOC,
+				ops->create_document_builder, err_out,
+				"composer configuration does not support complex keys");
 
-		/* start with this document state */
-		fyds = fy_parser_get_document_state(fyp);
-		rc = fy_document_builder_set_in_document(fypp->fydb, fyds, true);
-		fyc_error_check(fyc, !rc, err_out,
-				"fy_document_builder_set_in_document() failed\n");
+		/* call out for creating the document builder */
+		fypp->fydb = ops->create_document_builder(fyc);
+		fyc_error_check(fyc, fypp->fydb, err_out,
+				"ops->create_document_builder() failed\n");
 
 		/* and pass the current event; must return 0 since we know it's a collection start */
-		rc = fy_document_builder_process_event(fypp->fydb, fyp, fyep);
+		rc = fy_document_builder_process_event(fypp->fydb, fyep);
 		fyc_error_check(fyc, !rc, err_out,
 				"fy_document_builder_process_event() failed\n");
 
@@ -232,7 +225,7 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_parser *fyp
 		fy_path_list_add_tail(&fyc->paths, fyppt);
 
 		/* and pass along */
-		ret = fy_composer_process_event_private(fyc, fyp, fye, fyppt);
+		ret = fy_composer_process_event_private(fyc, fye, fyppt);
 		if (!fy_composer_return_is_ok(ret)) {
 			/* XXX TODO handle skip */
 			return ret;
@@ -321,12 +314,12 @@ err_out:
 }
 
 enum fy_composer_return
-fy_composer_process_event(struct fy_composer *fyc, struct fy_parser *fyp, struct fy_event *fye)
+fy_composer_process_event(struct fy_composer *fyc, struct fy_event *fye)
 {
 	struct fy_path *fypp;
 	int rc;
 
-	if (!fyc || !fyp || !fye)
+	if (!fyc || !fye)
 		return -1;
 
 	/* start at the head */
@@ -336,7 +329,7 @@ fy_composer_process_event(struct fy_composer *fyc, struct fy_parser *fyp, struct
 	if (!fypp)
 		return -1;
 
-	rc = fy_composer_process_event_private(fyc, fyp, fye, fypp);
+	rc = fy_composer_process_event_private(fyc, fye, fypp);
 
 	return rc;
 }
@@ -360,102 +353,4 @@ struct fy_diag *fy_composer_get_diag(struct fy_composer *fyc)
 	if (!fyc)
 		return NULL;
 	return fyc->cfg.diag;
-}
-
-enum fy_composer_return
-fy_composer_parse(struct fy_composer *fyc, struct fy_parser *fyp)
-{
-	struct fy_document_iterator *fydi;
-	struct fy_event *fye;
-	struct fy_eventp *fyep;
-	struct fy_document *fyd = NULL;
-	enum fy_composer_return ret;
-
-	if (!fyp || !fyc)
-		return FYCR_ERROR;
-
-	/* simple, without resolution */
-	if (!(fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT)) {
-
-		ret = FYCR_OK_STOP;
-		while ((fyep = fy_parse_private(fyp)) != NULL) {
-			ret = fy_composer_process_event(fyc, fyp, &fyep->e);
-			fy_parse_eventp_recycle(fyp, fyep);
-			if (ret != FYCR_OK_CONTINUE)
-				break;
-		}
-		return ret;
-	}
-
-	fydi = fy_document_iterator_create();
-	if (!fydi)
-		goto err_out;
-
-	/* stream start event generation and processing */
-	fye = fy_document_iterator_stream_start(fydi);
-	if (!fye)
-		goto err_out;
-	ret = fy_composer_process_event(fyc, fyp, fye);
-	fy_document_iterator_event_free(fydi, fye);
-	fye = NULL;
-	if (ret != FYCR_OK_CONTINUE)
-		goto out;
-
-	/* convert to document and then process the generator event stream it */
-	while ((fyd = fy_parse_load_document(fyp)) != NULL) {
-
-		/* document start event generation and processing */
-		fye = fy_document_iterator_document_start(fydi, fyd);
-		if (!fye)
-			goto err_out;
-		ret = fy_composer_process_event(fyc, fyp, fye);
-		fy_document_iterator_event_free(fydi, fye);
-		fye = NULL;
-		if (ret != FYCR_OK_CONTINUE)
-			goto out;
-
-		/* and now process the body */
-		ret = FYCR_OK_CONTINUE;
-		while ((fye = fy_document_iterator_body_next(fydi)) != NULL) {
-			ret = fy_composer_process_event(fyc, fyp, fye);
-			fy_document_iterator_event_free(fydi, fye);
-			fye = NULL;
-			if (ret != FYCR_OK_CONTINUE)
-				goto out;
-		}
-
-		/* document end event generation and processing */
-		fye = fy_document_iterator_document_end(fydi);
-		if (!fye)
-			goto err_out;
-		ret = fy_composer_process_event(fyc, fyp, fye);
-		fy_document_iterator_event_free(fydi, fye);
-		fye = NULL;
-		if (ret != FYCR_OK_CONTINUE)
-			goto out;
-
-		/* and destroy the document */
-		fy_parse_document_destroy(fyp, fyd);
-		fyd = NULL;
-	}
-
-	/* stream end event generation and processing */
-	fye = fy_document_iterator_stream_end(fydi);
-	if (!fye)
-		goto err_out;
-	ret = fy_composer_process_event(fyc, fyp, fye);
-	fy_document_iterator_event_free(fydi, fye);
-	fye = NULL;
-	if (ret != FYCR_OK_CONTINUE)
-		goto out;
-
-out:
-	/* NULLs are OK */
-	fy_parse_document_destroy(fyp, fyd);
-	fy_document_iterator_destroy(fydi);
-	return ret;
-
-err_out:
-	ret = FYCR_ERROR;
-	goto out;
 }

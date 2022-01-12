@@ -695,6 +695,7 @@ int do_dump2(struct fy_parser *fyp, int indent, int width, bool resolve, bool so
 {
 	struct fy_document *fyd;
 	struct fy_document_builder *fydb;
+	struct fy_document_builder_cfg cfg;
 	unsigned int flags;
 	int rc, count;
 
@@ -703,7 +704,11 @@ int do_dump2(struct fy_parser *fyp, int indent, int width, bool resolve, bool so
 		flags |= FYECF_SORT_KEYS;
 	flags |= FYECF_INDENT(indent) | FYECF_WIDTH(width);
 
-	fydb = fy_document_builder_create(&fyp->cfg);
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.parse_cfg = fyp->cfg;
+	cfg.diag = fy_diag_ref(fyp->diag);
+
+	fydb = fy_document_builder_create(&cfg);
 	assert(fydb);
 
 	count = 0;

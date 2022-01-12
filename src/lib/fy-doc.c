@@ -1917,6 +1917,7 @@ err_out:
 
 struct fy_document *fy_parse_load_document_with_builder(struct fy_parser *fyp)
 {
+	struct fy_document_builder_cfg cfg;
 	struct fy_document *fyd;
 	int rc;
 
@@ -1924,7 +1925,12 @@ struct fy_document *fy_parse_load_document_with_builder(struct fy_parser *fyp)
 		return NULL;
 
 	if (!fyp->fydb) {
-		fyp->fydb = fy_document_builder_create(&fyp->cfg);
+		memset(&cfg, 0, sizeof(cfg));
+		cfg.parse_cfg = fyp->cfg;
+		cfg.userdata = fyp;
+		cfg.diag = fy_diag_ref(fyp->diag);
+
+		fyp->fydb = fy_document_builder_create(&cfg);
 		if (!fyp->fydb)
 			return NULL;
 	}

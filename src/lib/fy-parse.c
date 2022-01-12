@@ -6657,7 +6657,7 @@ struct fy_event *fy_parser_parse(struct fy_parser *fyp)
 		return NULL;
 
 	if (fyp->fyc) {
-		ret = fy_composer_process_event(fyp->fyc, fyp, &fyep->e);
+		ret = fy_composer_process_event(fyp->fyc, &fyep->e);
 		if (ret == FYCR_ERROR) {
 			fyp->stream_error = true;
 			fy_parse_eventp_recycle(fyp, fyep);
@@ -6701,8 +6701,39 @@ parse_process_event(struct fy_composer *fyc, struct fy_path *path, struct fy_eve
 	return fyp->fyc_cb(fyp, fye, path, fyp->fyc_userdata);
 }
 
+struct fy_document_builder *
+parse_create_document_builder(struct fy_composer *fyc)
+{
+	struct fy_parser *fyp = fy_composer_get_cfg_userdata(fyc);
+	struct fy_document_builder *fydb = NULL;
+	struct fy_document_builder_cfg cfg;
+	struct fy_document_state *fyds;
+	int rc;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.parse_cfg = fyp->cfg;
+	cfg.diag = fy_diag_ref(fyp->diag);
+
+	fydb = fy_document_builder_create(&cfg);
+	fyp_error_check(fyp, fydb, err_out,
+			"fy_document_builder_create() failed\n");
+
+	/* start with this document state */
+	fyds = fy_parser_get_document_state(fyp);
+	rc = fy_document_builder_set_in_document(fydb, fyds, true);
+	fyp_error_check(fyp, !rc, err_out,
+			"fy_document_builder_set_in_document() failed\n");
+
+	return fydb;
+
+err_out:
+	fy_document_builder_destroy(fydb);
+	return NULL;
+}
+
 static const struct fy_composer_ops parser_composer_ops = {
 	.process_event = parse_process_event,
+	.create_document_builder = parse_create_document_builder,
 };
 
 int fy_parse_set_composer(struct fy_parser *fyp, fy_parse_composer_cb cb, void *userdata)
@@ -6752,6 +6783,106 @@ err_out:
 	return -1;
 }
 
+static enum fy_composer_return fy_parse_compose_internal(struct fy_parser *fyp)
+{
+	struct fy_composer *fyc;
+	struct fy_document_iterator *fydi;
+	struct fy_event *fye;
+	struct fy_eventp *fyep;
+	struct fy_document *fyd = NULL;
+	enum fy_composer_return ret;
+
+	assert(fyp);
+
+	fyc = fyp->fyc;
+	assert(fyc);
+
+	/* simple, without resolution */
+	if (!(fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT)) {
+
+		ret = FYCR_OK_STOP;
+		while ((fyep = fy_parse_private(fyp)) != NULL) {
+			ret = fy_composer_process_event(fyc, &fyep->e);
+			fy_parse_eventp_recycle(fyp, fyep);
+			if (ret != FYCR_OK_CONTINUE)
+				break;
+		}
+		return ret;
+	}
+
+	fydi = fy_document_iterator_create();
+	fyp_error_check(fyp, fydi, err_out,
+			"fy_document_iterator_create() failed");
+
+	/* stream start event generation and processing */
+	fye = fy_document_iterator_stream_start(fydi);
+	fyp_error_check(fyp, fye, err_out,
+			"fy_document_iterator_stream_start() failed");
+	ret = fy_composer_process_event(fyc, fye);
+	fy_document_iterator_event_free(fydi, fye);
+	fye = NULL;
+	if (ret != FYCR_OK_CONTINUE)
+		goto out;
+
+	/* convert to document and then process the generator event stream it */
+	while ((fyd = fy_parse_load_document(fyp)) != NULL) {
+
+		/* document start event generation and processing */
+		fye = fy_document_iterator_document_start(fydi, fyd);
+		fyp_error_check(fyp, fye, err_out,
+				"fy_document_iterator_document_start() failed");
+		ret = fy_composer_process_event(fyc, fye);
+		fy_document_iterator_event_free(fydi, fye);
+		fye = NULL;
+		if (ret != FYCR_OK_CONTINUE)
+			goto out;
+
+		/* and now process the body */
+		ret = FYCR_OK_CONTINUE;
+		while ((fye = fy_document_iterator_body_next(fydi)) != NULL) {
+			ret = fy_composer_process_event(fyc, fye);
+			fy_document_iterator_event_free(fydi, fye);
+			fye = NULL;
+			if (ret != FYCR_OK_CONTINUE)
+				goto out;
+		}
+
+		/* document end event generation and processing */
+		fye = fy_document_iterator_document_end(fydi);
+		fyp_error_check(fyp, fye, err_out,
+				"fy_document_iterator_document_end() failed");
+		ret = fy_composer_process_event(fyc, fye);
+		fy_document_iterator_event_free(fydi, fye);
+		fye = NULL;
+		if (ret != FYCR_OK_CONTINUE)
+			goto out;
+
+		/* and destroy the document */
+		fy_parse_document_destroy(fyp, fyd);
+		fyd = NULL;
+	}
+
+	/* stream end event generation and processing */
+	fye = fy_document_iterator_stream_end(fydi);
+	fyp_error_check(fyp, fye, err_out,
+			"fy_document_iterator_stream_end() failed");
+	ret = fy_composer_process_event(fyc, fye);
+	fy_document_iterator_event_free(fydi, fye);
+	fye = NULL;
+	if (ret != FYCR_OK_CONTINUE)
+		goto out;
+
+out:
+	/* NULLs are OK */
+	fy_parse_document_destroy(fyp, fyd);
+	fy_document_iterator_destroy(fydi);
+	return ret;
+
+err_out:
+	ret = FYCR_ERROR;
+	goto out;
+}
+
 int fy_parse_compose(struct fy_parser *fyp, fy_parse_composer_cb cb, void *userdata)
 {
 	enum fy_composer_return ret;
@@ -6766,7 +6897,7 @@ int fy_parse_compose(struct fy_parser *fyp, fy_parse_composer_cb cb, void *userd
 			"fy_parse_set_composer() failed\n");
 
 	/* use the composer to parse */
-	ret = fy_composer_parse(fyp->fyc, fyp);
+	ret = fy_parse_compose_internal(fyp);
 	/* on error set the stream error */
 	if (ret == FYCR_ERROR) {
 		fyp->stream_error = true;

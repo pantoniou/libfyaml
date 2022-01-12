@@ -58,17 +58,19 @@ fy_document_builder_reset(struct fy_document_builder *fydb)
 	fydb->doc_done = false;
 }
 
-static const struct fy_parse_cfg docbuilder_parse_default_cfg = {
-	.flags = FYPCF_DEFAULT_DOC,
+static const struct fy_document_builder_cfg docbuilder_default_cfg = {
+	.parse_cfg = {
+		.flags = FYPCF_DEFAULT_DOC,
+	}
 };
 
 struct fy_document_builder *
-fy_document_builder_create(const struct fy_parse_cfg *cfg)
+fy_document_builder_create(const struct fy_document_builder_cfg *cfg)
 {
 	struct fy_document_builder *fydb = NULL;
 
 	if (!cfg)
-		cfg = &docbuilder_parse_default_cfg;
+		cfg = &docbuilder_default_cfg;
 
 	fydb = malloc(sizeof(*fydb));
 	if (!fydb)
@@ -80,7 +82,7 @@ fy_document_builder_create(const struct fy_parse_cfg *cfg)
 	fydb->in_stream = false;
 	fydb->doc_done = false;
 	fydb->alloc = fy_depth_limit();	/* always start with this */
-	fydb->max_depth = (cfg->flags & FYPCF_DISABLE_DEPTH_LIMIT) ? 0 : fy_depth_limit();
+	fydb->max_depth = (cfg->parse_cfg.flags & FYPCF_DISABLE_DEPTH_LIMIT) ? 0 : fy_depth_limit();
 
 	fydb->stack = malloc(fydb->alloc * sizeof(*fydb->stack));
 	if (!fydb->stack)
@@ -106,6 +108,7 @@ fy_document_builder_destroy(struct fy_document_builder *fydb)
 
 	fy_document_builder_reset(fydb);
 
+	fy_diag_unref(fydb->cfg.diag);
 	if (fydb->stack)
 		free(fydb->stack);
 	free(fydb);
@@ -196,7 +199,7 @@ fy_document_builder_set_in_document(struct fy_document_builder *fydb, struct fy_
 
 	fydb->in_stream = true;
 
-	fydb->fyd = fy_document_create(&fydb->cfg);
+	fydb->fyd = fy_document_create(&fydb->cfg.parse_cfg);
 	if (!fydb->fyd)
 		return -1;
 
@@ -219,13 +222,8 @@ fy_document_builder_set_in_document(struct fy_document_builder *fydb, struct fy_
 	return 0;
 }
 
-#undef DBG
-// #define DBG fyp_info
-#define DBG fyp_doc_debug
-
 int
-fy_document_builder_process_event(struct fy_document_builder *fydb,
-		struct fy_parser *fyp, struct fy_eventp *fyep)
+fy_document_builder_process_event(struct fy_document_builder *fydb, struct fy_eventp *fyep)
 {
 	struct fy_event *fye;
 	enum fy_event_type etype;
@@ -245,21 +243,21 @@ fy_document_builder_process_event(struct fy_document_builder *fydb,
 	if (!fydb->next) {
 		switch (etype) {
 		case FYET_STREAM_START:
-			FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_DOC,
+			FYDB_TOKEN_ERROR_CHECK(fydb, fyt, FYEM_DOC,
 					!fydb->in_stream, err_out,
 					"STREAM_START while in stream error");
 			fydb->in_stream = true;
 			break;
 
 		case FYET_STREAM_END:
-			FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_DOC,
+			FYDB_TOKEN_ERROR_CHECK(fydb, fyt, FYEM_DOC,
 					fydb->in_stream, err_out,
 					"STREAM_END while not in stream error");
 			fydb->in_stream = false;
 			return 1;
 
 		case FYET_DOCUMENT_START:
-			FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_DOC,
+			FYDB_TOKEN_ERROR_CHECK(fydb, fyt, FYEM_DOC,
 					fydb->in_stream, err_out,
 					"DOCUMENT_START while not in stream error");
 
@@ -267,23 +265,23 @@ fy_document_builder_process_event(struct fy_document_builder *fydb,
 			if (!fydb->fyd)
 				fy_document_destroy(fydb->fyd);
 
-			fydb->fyd = fy_document_create(&fydb->cfg);
-			fyp_error_check(fyp, fydb->fyd, err_out,
+			fydb->fyd = fy_document_create(&fydb->cfg.parse_cfg);
+			fydb_error_check(fydb, fydb->fyd, err_out,
 					"fy_document_create() failed");
 
 			rc = fy_document_set_document_state(fydb->fyd, fyep->e.document_start.document_state);
-			fyp_error_check(fyp, !rc, err_out,
+			fydb_error_check(fydb, !rc, err_out,
 					"fy_document_set_document_state() failed");
 
 			fydb->doc_done = false;
 			goto push;
 
 		case FYET_DOCUMENT_END:
-			FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_DOC,
+			FYDB_TOKEN_ERROR_CHECK(fydb, fyt, FYEM_DOC,
 					fydb->in_stream, err_out,
 					"DOCUMENT_END while not in stream error");
 
-			FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_DOC,
+			FYDB_TOKEN_ERROR_CHECK(fydb, fyt, FYEM_DOC,
 					fydb->fyd, err_out,
 					"DOCUMENT_END without a document");
 
@@ -292,7 +290,7 @@ fy_document_builder_process_event(struct fy_document_builder *fydb,
 
 		default:
 			/* unexpected event */
-			FYP_TOKEN_ERROR(fyp, fyt, FYEM_DOC,
+			FYDB_TOKEN_ERROR(fydb, fyt, FYEM_DOC,
 					"Unexpected event %s in non-build mode\n",
 						fy_event_type_txt[etype]);
 			goto err_out;
@@ -311,13 +309,11 @@ fy_document_builder_process_event(struct fy_document_builder *fydb,
 	/* the top state must always be NODE for processing the event */
 	assert(c->s == FYDBS_NODE);
 
-	// DBG(fyp, "%d: %s <- %s (%s)\n", fydb->next - 1, fy_document_builder_state_txt[c->s], fy_event_type_txt[etype], fy_token_debug_text_a(fyt));
-
 	switch (etype) {
 	case FYET_SCALAR:
 	case FYET_ALIAS:
 		fyn = fy_node_alloc(fyd, FYNT_SCALAR);
-		fyp_error_check(fyp, fyn, err_out,
+		fydb_error_check(fydb, fyn, err_out,
 				"fy_node_alloc() SCALAR failed");
 
 		if (etype == FYET_SCALAR) {
@@ -328,7 +324,7 @@ fy_document_builder_process_event(struct fy_document_builder *fydb,
 			fyn->tag = fy_token_ref(fye->scalar.tag);
 			if (fye->scalar.anchor) {
 				rc = fy_document_register_anchor(fyd, fyn, fy_token_ref(fye->scalar.anchor));
-				fyp_error_check(fyp, !rc, err_out,
+				fydb_error_check(fydb, !rc, err_out,
 						"fy_document_register_anchor() failed");
 			}
 			fyn->scalar = fy_token_ref(fye->scalar.value);
@@ -339,11 +335,10 @@ fy_document_builder_process_event(struct fy_document_builder *fydb,
 		goto complete;
 
 	case FYET_MAPPING_START:
-		// DBG(fyp, "%d: %s -> %s\n", fydb->next - 1, fy_document_builder_state_txt[c->s], fy_document_builder_state_txt[FYDBS_MAP_KEY]);
 		c->s = FYDBS_MAP_KEY;
 
 		fyn = fy_node_alloc(fyd, FYNT_MAPPING);
-		fyp_error_check(fyp, fyn, err_out,
+		fydb_error_check(fydb, fyn, err_out,
 				"fy_node_alloc() MAPPING failed");
 
 		c->fyn = fyn;
@@ -351,7 +346,7 @@ fy_document_builder_process_event(struct fy_document_builder *fydb,
 		fyn->tag = fy_token_ref(fye->mapping_start.tag);
 		if (fye->mapping_start.anchor) {
 			rc = fy_document_register_anchor(fyd, fyn, fy_token_ref(fye->mapping_start.anchor));
-			fyp_error_check(fyp, !rc, err_out,
+			fydb_error_check(fydb, !rc, err_out,
 					"fy_document_register_anchor() failed");
 		}
 		fyn->mapping_start = fy_token_ref(fye->mapping_start.mapping_start);
@@ -359,12 +354,12 @@ fy_document_builder_process_event(struct fy_document_builder *fydb,
 
 	case FYET_MAPPING_END:
 
-		FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_DOC, fydb->next > 1, err_out,
+		FYDB_TOKEN_ERROR_CHECK(fydb, fyt, FYEM_DOC, fydb->next > 1, err_out,
 				"Unexpected MAPPING_END (unexpected end of mapping)");
 
 		cp = &fydb->stack[fydb->next - 2];
 
-		FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_DOC, cp->s == FYDBS_MAP_KEY, err_out,
+		FYDB_TOKEN_ERROR_CHECK(fydb, fyt, FYEM_DOC, cp->s == FYDBS_MAP_KEY, err_out,
 				"Unexpected MAPPING_END (not in mapping)");
 
 		fyn = cp->fyn;
@@ -373,10 +368,9 @@ fy_document_builder_process_event(struct fy_document_builder *fydb,
 		goto complete;
 
 	case FYET_SEQUENCE_START:
-		// DBG(fyp, "%d: %s -> %s\n", fydb->next - 1, fy_document_builder_state_txt[c->s], fy_document_builder_state_txt[FYDBS_SEQ]);
 		c->s = FYDBS_SEQ;
 		fyn = fy_node_alloc(fyd, FYNT_SEQUENCE);
-		fyp_error_check(fyp, fyn, err_out,
+		fydb_error_check(fydb, fyn, err_out,
 				"fy_node_alloc() SEQUENCE failed");
 
 		c->fyn = fyn;
@@ -384,7 +378,7 @@ fy_document_builder_process_event(struct fy_document_builder *fydb,
 		fyn->tag = fy_token_ref(fye->sequence_start.tag);
 		if (fye->sequence_start.anchor) {
 			rc = fy_document_register_anchor(fyd, fyn, fy_token_ref(fye->sequence_start.anchor));
-			fyp_error_check(fyp, !rc, err_out,
+			fydb_error_check(fydb, !rc, err_out,
 					"fy_document_register_anchor() failed");
 		}
 		fyn->sequence_start = fy_token_ref(fye->sequence_start.sequence_start);
@@ -392,12 +386,12 @@ fy_document_builder_process_event(struct fy_document_builder *fydb,
 
 	case FYET_SEQUENCE_END:
 
-		FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_DOC, fydb->next > 1, err_out,
+		FYDB_TOKEN_ERROR_CHECK(fydb, fyt, FYEM_DOC, fydb->next > 1, err_out,
 				"Unexpected SEQUENCE_END (unexpected end of sequence)");
 
 		cp = &fydb->stack[fydb->next - 2];
 
-		FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_DOC, cp->s == FYDBS_SEQ, err_out,
+		FYDB_TOKEN_ERROR_CHECK(fydb, fyt, FYEM_DOC, cp->s == FYDBS_SEQ, err_out,
 				"Unexpected MAPPING_SEQUENCE (not in sequence)");
 
 		fyn = cp->fyn;
@@ -407,30 +401,26 @@ fy_document_builder_process_event(struct fy_document_builder *fydb,
 
 	default:
 		/* unexpected event */
-		FYP_TOKEN_ERROR(fyp, fyt, FYEM_DOC,
+		FYDB_TOKEN_ERROR(fydb, fyt, FYEM_DOC,
 				"Unexpected event %s in build mode\n",
 					fy_event_type_txt[etype]);
 		goto err_out;
 	}
 
 push:
-	FYP_PARSE_ERROR_CHECK(fyp, 0, 0, FYEM_DOC,
+	FYDB_TOKEN_ERROR_CHECK(fydb, fyt, FYEM_DOC,
 			!fydb->max_depth || fydb->next < fydb->max_depth, err_out,
 			"Max depth (%d) exceeded\n", fydb->next);
 
 	/* grow the stack? */
 	if (fydb->next >= fydb->alloc) {
 		newc = realloc(fydb->stack, fydb->alloc * 2 * sizeof(*fydb->stack));
-		fyp_error_check(fyp, newc, err_out,
+		fydb_error_check(fydb, newc, err_out,
 				"Unable to grow the context stack");
 		fydb->alloc *= 2;
 		fydb->stack = newc;
 	}
 	assert(fydb->next < fydb->alloc);
-
-	// DBG(fyp, "%d: PUSH %s -> %s\n", fydb->next - 1,
-	//		fydb->next > 0 ? fy_document_builder_state_txt[fydb->stack[fydb->next - 1].s] : "<NIL>",
-	//		fy_document_builder_state_txt[FYDBS_NODE]);
 
 	c = &fydb->stack[++fydb->next - 1];
 	memset(c, 0, sizeof(*c));
@@ -444,16 +434,12 @@ complete:
 	assert(fydb->next > 0);
 	c = &fydb->stack[fydb->next - 1];
 	c->fyn = fyn;
-	// DBG(fyp, "%d: COMPLETE %s -> %s\n", fydb->next - 1,
-	//	fy_document_builder_state_txt[c->s],
-	//	fydb->next > 1 ? fy_document_builder_state_txt[fydb->stack[fydb->next - 2].s] : "<NIL>");
 	assert(fydb->next > 0);
 	fydb->next--;
 
 	/* root */
 	if (fydb->next == 0) {
 		fyd->root = fyn;
-		// DBG(fyp, "root done\n");
 		/* if we're in single mode, don't wait for doc end */
 		if (fydb->single_mode)
 			fydb->doc_done = true;
@@ -461,8 +447,6 @@ complete:
 	}
 
 	c = &fydb->stack[fydb->next - 1];
-
-	// DBG(fyp, "%d: %s - COMPLETE\n", fydb->next - 1, fy_document_builder_state_txt[c->s]);
 
 	fyn_parent = c->fyn;
 
@@ -479,12 +463,11 @@ complete:
 
 			/* make sure we don't add an already existing key */
 			if (fy_node_mapping_key_is_duplicate(fyn_parent, fyn)) {
-				FYP_NODE_ERROR(fyp, fyn, FYEM_DOC, "duplicate key");
+				FYDB_NODE_ERROR(fydb, fyn, FYEM_DOC, "duplicate key");
 				goto err_out;
 			}
 		}
 
-		// DBG(fyp, "%d: %s -> %s\n", fydb->next - 1, fy_document_builder_state_txt[c->s], fy_document_builder_state_txt[FYDBS_MAP_VAL]);
 		c->s = FYDBS_MAP_VAL;
 		goto push;
 
@@ -513,7 +496,6 @@ complete:
 			fynp->value->attached = true;
 
 		c->fynp = NULL;
-		// DBG(fyp, "%d: %s -> %s\n", fydb->next - 1, fy_document_builder_state_txt[c->s], fy_document_builder_state_txt[FYDBS_MAP_KEY]);
 		c->s = FYDBS_MAP_KEY;
 		goto push;
 
@@ -545,7 +527,7 @@ fy_document_builder_load_document(struct fy_document_builder *fydb,
 
 	while (!fy_document_builder_is_document_complete(fydb) &&
 		(fyep = fy_parse_private(fyp)) != NULL) {
-		rc = fy_document_builder_process_event(fydb, fyp, fyep);
+		rc = fy_document_builder_process_event(fydb, fyep);
 		fy_parse_eventp_recycle(fyp, fyep);
 		if (rc < 0) {
 			fyp->stream_error = true;
