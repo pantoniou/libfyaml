@@ -3826,6 +3826,40 @@ fy_node_mapping_lookup_key_by_string(struct fy_node *fyn,
 	return fynp ? fynp->key : NULL;
 }
 
+bool fy_node_is_empty(struct fy_node *fyn)
+{
+	struct fy_node *fyni;
+	struct fy_node_pair *fynp;
+	struct fy_atom *atom;
+
+	/* skip if no value node or token */
+	if (!fyn)
+		return true;
+
+	switch (fyn->type) {
+	case FYNT_SCALAR:
+		atom = fy_token_atom(fyn->scalar);
+		if (atom && !atom->size0 && !atom->empty)
+			return false;
+		break;
+	case FYNT_SEQUENCE:
+		for (fyni = fy_node_list_head(&fyn->sequence); fyni;
+				fyni = fy_node_next(&fyn->sequence, fyni)) {
+			if (!fy_node_is_empty(fyni))
+				return false;
+		}
+		break;
+	case FYNT_MAPPING:
+		for (fynp = fy_node_pair_list_head(&fyn->mapping); fynp;
+				fynp = fy_node_pair_next(&fyn->mapping, fynp)) {
+			if (!fy_node_is_empty(fynp->value))
+				return false;
+		}
+		break;
+	}
+	return true;
+}
+
 #define fy_node_walk_ctx_create_a(_max_depth, _mark) \
 	({ \
 		unsigned int __max_depth = (_max_depth); \

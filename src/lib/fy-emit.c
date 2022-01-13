@@ -1671,6 +1671,10 @@ void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, in
 					(fynp->key && fynp->key->type == FYNT_SCALAR),
 					err_out, "Non scalar keys are not allowed in JSON emit mode");
 
+		/* strip key/value pair from the output if it's empty */
+		if ((emit->cfg.flags & FYECF_STRIP_EMPTY_KV) && fy_node_is_empty(fynp->value))
+			continue;
+
 		simple_key = false;
 		if (fynp->key) {
 			switch (fynp->key->type) {

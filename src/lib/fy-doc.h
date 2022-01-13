@@ -149,6 +149,8 @@ struct fy_node_walk_ctx {
 	struct fy_node *marked[0];
 };
 
+bool fy_node_is_empty(struct fy_node *fyn);
+
 bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
 		       enum fy_node_walk_flags flags,
 		       struct fy_node_walk_ctx *ctx);

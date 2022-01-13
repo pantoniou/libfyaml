@@ -53,6 +53,7 @@
 #define DOCUMENT_EVENT_STREAM_DEFAULT	false
 #define COLLECT_ERRORS_DEFAULT		false
 #define ALLOW_DUPLICATE_KEYS_DEFAULT	false
+#define STRIP_EMPTY_KV_DEFAULT		false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -83,6 +84,7 @@
 #define OPT_DOCUMENT_EVENT_STREAM	2016
 #define OPT_COLLECT_ERRORS		2017
 #define OPT_ALLOW_DUPLICATE_KEYS	2018
+#define OPT_STRIP_EMPTY_KV		2019
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -142,6 +144,7 @@ static struct option lopts[] = {
 	{"null-output",		no_argument,		0,	OPT_NULL_OUTPUT },
 	{"collect-errors",	no_argument,		0,	OPT_COLLECT_ERRORS },
 	{"allow-duplicate-keys",no_argument,		0,	OPT_ALLOW_DUPLICATE_KEYS },
+	{"strip-empty-kv",	no_argument,		0,	OPT_STRIP_EMPTY_KV },
 	{"to",			required_argument,	0,	'T' },
 	{"from",		required_argument,	0,	'F' },
 	{"quiet",		no_argument,		0,	'q' },
@@ -222,6 +225,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--allow-duplicate-keys   : Allow duplicate keys"
 						" (default %s)\n",
 						ALLOW_DUPLICATE_KEYS_DEFAULT ? "true" : "false");
+	fprintf(fp, "\t--strip-empty-kv         : Strip keys with empty values when emitting (not available in streaming mode)"
+						" (default %s)\n",
+						STRIP_EMPTY_KV_DEFAULT ? "true" : "false");
 	fprintf(fp, "\t--quiet, -q              : Quiet operation, do not "
 						"output messages (default %s)\n",
 						QUIET_DEFAULT ? "true" : "false");
@@ -1700,6 +1706,9 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_ALLOW_DUPLICATE_KEYS:
 			allow_duplicate_keys = true;
+			break;
+		case OPT_STRIP_EMPTY_KV:
+			emit_flags |= FYECF_STRIP_EMPTY_KV;
 			break;
 		case 'h' :
 		default:

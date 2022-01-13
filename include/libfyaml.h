@@ -1553,6 +1553,7 @@ enum fy_emitter_write_type {
  * @FYECF_STRIP_TAGS: Strip tags when emitting
  * @FYECF_STRIP_DOC: Strip document tags and markers when emitting
  * @FYECF_NO_ENDING_NEWLINE: Do not output ending new line (useful for single line mode)
+ * @FYECF_STRIP_EMPTY_KV: Remove all keys with empty values from the output (not available in streaming mode)
  * @FYECF_INDENT_DEFAULT: Default emit output indent
  * @FYECF_INDENT_1: Output indent is 1
  * @FYECF_INDENT_2: Output indent is 2
@@ -1597,6 +1598,7 @@ enum fy_emitter_cfg_flags {
 	FYECF_STRIP_TAGS		= FY_BIT(3),
 	FYECF_STRIP_DOC			= FY_BIT(4),
 	FYECF_NO_ENDING_NEWLINE		= FY_BIT(5),
+	FYECF_STRIP_EMPTY_KV		= FY_BIT(6),
 	FYECF_INDENT_DEFAULT		= FYECF_INDENT(0),
 	FYECF_INDENT_1			= FYECF_INDENT(1),
 	FYECF_INDENT_2			= FYECF_INDENT(2),
