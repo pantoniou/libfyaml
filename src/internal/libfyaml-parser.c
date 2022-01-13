@@ -930,13 +930,7 @@ err_out:
 int do_compose(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort, bool null_output)
 {
 	struct composer_data cd;
-	unsigned int flags;
 	int rc;
-
-	flags = 0;
-	if (sort)
-		flags |= FYECF_SORT_KEYS;
-	flags |= FYECF_INDENT(indent) | FYECF_WIDTH(width);
 
 	memset(&cd, 0, sizeof(cd));
 	cd.null_output = null_output;

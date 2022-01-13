@@ -3521,7 +3521,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 {
 	size_t length;
 	int code_length, i = 0, j, end_c, last_line, lastc;
-	int breaks_found, blanks_found, break_run, total_code_length, total_digits;
+	int breaks_found, blanks_found, break_run, total_code_length;
 	int breaks_found_length, first_break_length, value;
 	uint32_t hi_surrogate, lo_surrogate;
 	bool is_single, is_multiline, esc_lb, ws_lb_only, has_ws, has_lb, has_esc;
@@ -3725,7 +3725,6 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 				if (unicode_esc) {
 
 					total_code_length = 0;
-					total_digits = 0;
 					j = 0;
 					hi_surrogate = lo_surrogate = 0;
 					for (;;) {
@@ -3751,7 +3750,6 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 						}
 
 						total_code_length += code_length;
-						total_digits += code_length;
 						j++;
 
 						/* 0x10000 + (HI - 0xd800) * 0x400 + (LO - 0xdc00) */

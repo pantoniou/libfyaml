@@ -2270,12 +2270,12 @@ static int do_buffer_output(struct fy_emitter *emit, enum fy_emitter_write_type 
 	size_t left, pagesize, size, len;
 	char *bufnew;
 
+	/* convert to unsigned and use that */
+	len = (size_t)leni;
+
 	/* no funky business */
 	if (len < 0)
 		return -1;
-
-	/* convert to unsigned and use that */
-	len = (size_t)leni;
 
 	state->need += len;
 	left = state->size - state->pos;
@@ -2538,11 +2538,12 @@ static int do_file_output(struct fy_emitter *emit, enum fy_emitter_write_type ty
 	FILE *fp = userdata;
 	size_t len;
 
+	len = (size_t)leni;
+
 	/* no funky stuff */
 	if (len < 0)
 		return -1;
 
-	len = (size_t)leni;
 	return fwrite(str, 1, len, fp);
 }
 
@@ -2601,11 +2602,11 @@ static int do_fd_output(struct fy_emitter *emit, enum fy_emitter_write_type type
 	ssize_t wrn;
 	int total;
 
+	len = (size_t)leni;
+
 	/* no funky stuff */
 	if (len < 0)
 		return -1;
-
-	len = (size_t)leni;
 
 	/* get the file descriptor */
 	fd = (int)(uintptr_t)userdata;
