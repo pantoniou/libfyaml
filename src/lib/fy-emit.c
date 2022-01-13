@@ -1279,10 +1279,7 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 	}
 
 	/* JSON NULL, but with plain style */
-	if (json && (!atom || atom->size0) && style == FYNS_PLAIN)
-		return FYNS_PLAIN;
-
-	if (json && style == FYNS_PLAIN && is_json_plain)
+	if (json && (style == FYNS_PLAIN || style == FYNS_ANY) && (!atom || (is_json_plain && !atom->size0)))
 		return FYNS_PLAIN;
 
 	if (json)
