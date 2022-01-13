@@ -119,7 +119,7 @@ static void fy_input_from_data_setup(struct fy_input *fyi,
 		aflags = fy_analyze_scalar_content(data, size,
 				false, fylb_cr_nl, fyfws_space_tab);	/* hardcoded yaml mode */
 	else
-		aflags = FYACF_EMPTY | FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN;
+		aflags = FYACF_EMPTY | FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN | FYACF_SIZE0;
 
 	handle->start_mark.input_pos = 0;
 	handle->start_mark.line = 0;
