@@ -1631,8 +1631,8 @@ void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, in
 {
 	struct fy_node_pair *fynp, *fynpn, **fynpp = NULL;
 	struct fy_token *fyt_key, *fyt_value;
-	bool last, simple_key;
-	int aflags, i;
+	bool last, simple_key, used_malloc = false;
+	int aflags, i, count;
 	struct fy_emit_save_ctx sct, *sc = &sct;
 
 	memset(sc, 0, sizeof(*sc));
@@ -1646,11 +1646,39 @@ void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, in
 
 	fy_emit_mapping_prolog(emit, sc);
 
-	if (!(emit->cfg.flags & FYECF_SORT_KEYS)) {
+	if (!(emit->cfg.flags & (FYECF_SORT_KEYS | FYECF_STRIP_EMPTY_KV))) {
 		fynp = fy_node_pair_list_head(&fyn->mapping);
 		fynpp = NULL;
 	} else {
-		fynpp = fy_node_mapping_sort_array(fyn, NULL, NULL, NULL);
+		count = fy_node_mapping_item_count(fyn);
+
+		/* heuristic, avoid allocation for small maps */
+		if (count > 64) {
+			fynpp = malloc((count + 1) * sizeof(*fynpp));
+			fyd_error_check(fyn->fyd, fynpp, err_out,
+					"malloc() failed");
+			used_malloc = true;
+		} else
+			fynpp = alloca((count + 1) * sizeof(*fynpp));
+
+		/* fill (removing empty KVs) */
+		i = 0;
+		for (fynp = fy_node_pair_list_head(&fyn->mapping); fynp;
+				fynp = fy_node_pair_next(&fyn->mapping, fynp)) {
+
+			/* strip key/value pair from the output if it's empty */
+			if ((emit->cfg.flags & FYECF_STRIP_EMPTY_KV) && fy_node_is_empty(fynp->value))
+				continue;
+
+			fynpp[i++] = fynp;
+		}
+		count = i;
+		fynpp[count] = NULL;
+
+		/* sort the keys */
+		if (emit->cfg.flags & FYECF_SORT_KEYS)
+			fy_node_mapping_perform_sort(fyn, NULL, NULL, fynpp, count);
+
 		i = 0;
 		fynp = fynpp[i];
 	}
@@ -1670,10 +1698,6 @@ void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, in
 				!fy_emit_is_json_mode(emit) ||
 					(fynp->key && fynp->key->type == FYNT_SCALAR),
 					err_out, "Non scalar keys are not allowed in JSON emit mode");
-
-		/* strip key/value pair from the output if it's empty */
-		if ((emit->cfg.flags & FYECF_STRIP_EMPTY_KV) && fy_node_is_empty(fynp->value))
-			continue;
 
 		simple_key = false;
 		if (fynp->key) {
@@ -1703,8 +1727,8 @@ void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, in
 		fy_emit_mapping_value_epilog(emit, sc, last, fyt_value);
 	}
 
-	if (fynpp)
-		fy_node_mapping_sort_release_array(fyn, fynpp);
+	if (fynpp && used_malloc)
+		free(fynpp);
 
 	fy_emit_mapping_epilog(emit, sc);
 

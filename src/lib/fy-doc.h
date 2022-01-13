@@ -136,11 +136,14 @@ void fy_node_mapping_perform_sort(struct fy_node *fyn_map,
 		fy_node_mapping_sort_fn key_cmp, void *arg,
 		struct fy_node_pair **fynpp, int count);
 
+void fy_node_mapping_fill_array(struct fy_node *fyn_map,
+		struct fy_node_pair **fynpp, int count);
+
 struct fy_node_pair **fy_node_mapping_sort_array(struct fy_node *fyn_map,
 		fy_node_mapping_sort_fn key_cmp,
 		void *arg, int *countp);
 
-void fy_node_mapping_sort_release_array(struct fy_node *fyn_map, struct fy_node_pair **fynpp);
+void fy_node_mapping_release_array(struct fy_node *fyn_map, struct fy_node_pair **fynpp);
 
 struct fy_node_walk_ctx {
 	unsigned int max_depth;
