@@ -13,7 +13,7 @@ $(MANPAGES1): doc-man
 else
 
 # otherwise, install the canned ones
-MANPAGES1 = canned-man/fy-tool.1
+MANPAGES1 = $(srcdir)/canned-man/fy-tool.1
 
 endif
 
