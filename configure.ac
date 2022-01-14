@@ -30,6 +30,43 @@ AC_SUBST(MINOR, fyaml_minor)
 AC_SUBST(PATCH, fyaml_patch)
 AC_SUBST(EXTRA, fyaml_extra)
 
+# libtool version is of the following format <current>:<revision>:<age>
+# and it is the library ABI version
+#
+# - Increase current when an interface has been added removed or changed
+# - Increase revision every time a release is made
+# - Increase age when changes are backwards compatible
+#
+# examples of semantic versioning progression mapping to libtool abi versions
+#
+# v0.7.4 -> v0.7.5 - patch number changes, backwards compatible (1)
+#                    increase revision, increase age (age must be <= current), current unchanged
+#
+# v0.7.5 -> v0.8.0 - minor number changes, backwards compatible (same as (1)) (2)
+#                    increase revision, increase age (age must be <= current), current unchanged
+#
+# v0.8.0 -> v0.9.0 - minor number changes, but breaks backwards compatibility - should not happen (3)
+#                    with semantic versioning for major version number >= 1, allowed for major == 0
+#                    increase revision, increase current, age reset to 0
+#
+# v0.9.0 -> v1.0.0 - major number changes, first public release (4)
+#                    increase current, set revision and age to 0
+#
+# v1.0.0 -> v1.0.1 - patch number changes, _must_ be backwards compatible (same as (1)) (5)
+#                    increase revision, increase age (age must be <= current), current unchanged
+#
+# v1.0.1 -> v1.1.0 - minor number changes, backwards compatible (same as (5)) (6)
+#                    increase revision, increase age (age must be <= current), current unchanged
+#
+# v1.1.0 -> v1.2.0 - minor number changes, breaking backwards compatibility (7)
+#                    XXX illegal in semantic versioning and should not happen
+#
+# v1.1.0 -> v2.0.0 - major number changes, breaking backwards compatibility (same as (4)) (8)
+#                    increase current, set revision and age to 0
+
+m4_define(fyaml_libtool_version, m4_normalize(m4_include([.libtool-version])))
+AC_SUBST(LIBTOOL_VERSION, fyaml_libtool_version)
+
 dnl AX_* requires 2.64
 m4_version_prereq(2.64, [AX_CHECK_ENABLE_DEBUG()], [true])
 
@@ -294,6 +331,7 @@ echo "
     MAJOR.MINOR:           ${MAJOR}.${MINOR}
     PATCH:                 ${PATCH}
     EXTRA:                 ${EXTRA}
+    LIBTOOL_VERSION:       ${LIBTOOL_VERSION}
     prefix:                ${prefix}
     C compiler:            ${CC}
     CFLAGS:                ${CFLAGS}
