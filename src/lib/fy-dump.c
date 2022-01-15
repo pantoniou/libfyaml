@@ -292,7 +292,7 @@ void fyp_debug_dump_input(struct fy_parser *fyp, const struct fy_input_cfg *fyic
 				fyic->file.filename);
 		break;
 	case fyit_stream:
-		fyp_scan_debug(fyp, "%s: stream=\"%s\" fileno=%d chunk=%zu\n", banner,
+		fyp_scan_debug(fyp, "%s: stream=\"%s\" fileno=%d\n", banner,
 				fyic->stream.name, fileno(fyic->stream.fp));
 		break;
 	case fyit_memory:
