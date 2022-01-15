@@ -21,6 +21,7 @@ set(LIBHDRS
   src/lib/fy-ctype.h
   src/lib/fy-diag.h
   src/lib/fy-doc.h
+  src/lib/fy-docbuilder.c
   src/lib/fy-docstate.h
   src/lib/fy-dump.h
   src/lib/fy-emit-accum.h
