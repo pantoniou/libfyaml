@@ -592,12 +592,12 @@ int fy_reader_input_scan_token_mark_slow_path(struct fy_reader *fyr)
 	fyr->current_input_pos = 0;
 	fyr->current_ptr = fyi_new->buffer;
 
+	fyr_debug(fyr, "chop at this_input_start=%zu chop=%zu\n", fyr->this_input_start, fyi->chop);
+
 	/* free the old input - while references to it exist it will hang around */
 	fyi->state = FYIS_PARSED;
 	fy_input_unref(fyi);
 	fyi = NULL;
-
-	fyr_debug(fyr, "chop at this_input_start=%zu chop=%zu\n", fyr->this_input_start, fyi->chop);
 
 	return 0;
 err_out:
