@@ -2,7 +2,7 @@
 
 count=0
 for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
-	for tst in ${basetst} ${basetst}[0-9][0-9]/; do
+	for tst in ${basetst} ${basetst}[0-9][0-9]/ ${basetst}[0-9][0-9][0-9]/; do
 		# there must be a test there
 		if [ ! -e "$tst/===" ]; then
 			continue
@@ -20,7 +20,7 @@ xfaillist=""
 i=0
 for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 
-	for tst in ${basetst} ${basetst}[0-9][0-9]/; do
+	for tst in ${basetst} ${basetst}[0-9][0-9]/ ${basetst}[0-9][0-9][0-9]/; do
 
 		# there must be a test there
 		if [ ! -e "$tst/===" ]; then
