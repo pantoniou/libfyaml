@@ -2483,6 +2483,8 @@ int fy_fetch_key(struct fy_parser *fyp, int c)
 	bool target_simple_key_allowed;
 	struct fy_token *fyt;
 	struct fy_atom *handle;
+	int adv, tab_adv;
+	bool indentation, found_tab;
 
 	fyp_error_check(fyp, c == '?', err_out,
 			"illegal block entry or key mark");
@@ -2532,8 +2534,31 @@ int fy_fetch_key(struct fy_parser *fyp, int c)
 	fyp->simple_key_allowed = target_simple_key_allowed;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 
-	/* eat whitespace */
-	while (fy_is_blank(c = fy_parse_peek(fyp)))
+	/* scan forward, keeping track if we found a tab */
+	adv = 0;
+	tab_adv = -1;
+	found_tab = false;
+	while (fy_is_ws(c = fy_parse_peek_at(fyp, adv))) {
+		if (!found_tab && fy_is_tab(c)) {
+			found_tab = true;
+			tab_adv = adv;
+		}
+		adv++;
+	}
+
+	if (found_tab) {
+		indentation = fy_utf8_strchr("?:|>", c) ||
+				(c == '-' && fyp_is_blankz(fyp, fy_parse_peek_at(fyp, adv + 1)));
+
+		/* any kind of block indentation is not allowed */
+		FYP_PARSE_ERROR_CHECK(fyp, tab_adv, 1, FYEM_SCAN,
+				!indentation, err_out,
+				"cannot use tab for indentation of complex key marker");
+		fy_advance_by(fyp, tab_adv + 1);
+	}
+
+	/* now chomp spaces only afterwards */
+	while (fy_is_space(c = fy_parse_peek(fyp)))
 		fy_advance(fyp, c);
 
 	/* comment? */
@@ -2567,6 +2592,8 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 	bool is_multiline __FY_DEBUG_UNUSED__;
 	struct fy_atom *chandle;
 	int rc;
+	int adv, tab_adv;
+	bool indentation, found_tab;
 
 	fyp_error_check(fyp, c == ':', err_out,
 		"illegal value mark");
@@ -2737,6 +2764,35 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 	if (fysk)
 		fy_parse_simple_key_recycle(fyp, fysk);
 
+	if (is_complex) {
+		/* scan forward, keeping track if we found a tab */
+		adv = 0;
+		tab_adv = -1;
+		found_tab = false;
+		while (fy_is_ws(c = fy_parse_peek_at(fyp, adv))) {
+			if (!found_tab && fy_is_tab(c)) {
+				found_tab = true;
+				tab_adv = adv;
+			}
+			adv++;
+		}
+
+		if (found_tab) {
+			indentation = fy_utf8_strchr("?:|>", c) ||
+					(c == '-' && fyp_is_blankz(fyp, fy_parse_peek_at(fyp, adv + 1)));
+
+			/* any kind of block indentation is not allowed */
+			FYP_PARSE_ERROR_CHECK(fyp, tab_adv, 1, FYEM_SCAN,
+					!indentation, err_out,
+					"cannot use tab for indentation of complex value marker");
+			fy_advance_by(fyp, tab_adv + 1);
+		}
+
+		/* now chomp spaces only afterwards */
+		while (fy_is_space(c = fy_parse_peek(fyp)))
+			fy_advance(fyp, c);
+	}
+
 	if (final_complex_key) {
 		fyp->pending_complex_key_column = -1;
 		fyp_scan_debug(fyp, "pending_complex_key_column -> %d",
@@ -2758,6 +2814,7 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 			fyp_error_check(fyp, !rc, err_out_rc,
 					"fy_scan_comment() failed");
 		}
+
 	}
 
 	return 0;
