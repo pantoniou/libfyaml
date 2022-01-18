@@ -39,7 +39,7 @@ char *fy_simple_key_dump_format(struct fy_parser *fyp, struct fy_simple_key *fys
 char *fy_simple_key_list_dump_format(struct fy_parser *fyp, struct fy_simple_key_list *fyskl,
 		struct fy_simple_key *fysk_highlight, char *buf, size_t bufsz);
 
-#ifndef NDEBUG
+#ifdef FY_DEVMODE
 
 void fyp_debug_dump_token_list(struct fy_parser *fyp, struct fy_token_list *fytl,
 			       struct fy_token *fyt_highlight, const char *banner);

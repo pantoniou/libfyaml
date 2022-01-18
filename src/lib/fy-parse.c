@@ -1218,11 +1218,13 @@ static int fy_purge_stale_simple_keys(struct fy_parser *fyp, bool *did_purgep,
 	*did_purgep = false;
 	while ((fysk = fy_simple_key_list_head(&fyp->simple_keys)) != NULL) {
 
+#ifdef FY_DEVMODE
 		fyp_scan_debug(fyp, "purge-check: flow_level=%d fysk->flow_level=%d fysk->mark.line=%d line=%d",
 				fyp->flow_level, fysk->flow_level,
 				fysk->mark.line, fyp_line(fyp));
 
 		fyp_debug_dump_simple_key(fyp, fysk, "purge-check: ");
+#endif
 
 		line = fysk->mark.line;
 
@@ -1246,7 +1248,9 @@ static int fy_purge_stale_simple_keys(struct fy_parser *fyp, bool *did_purgep,
 			goto err_out;
 		}
 
+#ifdef FY_DEVMODE
 		fyp_debug_dump_simple_key(fyp, fysk, "purging: ");
+#endif
 
 		fy_simple_key_list_del(&fyp->simple_keys, fysk);
 		fy_parse_simple_key_recycle(fyp, fysk);
@@ -1391,7 +1395,9 @@ int fy_remove_simple_key(struct fy_parser *fyp, enum fy_token_type next_type)
 	while ((fysk = fy_simple_key_list_first(&fyp->simple_keys)) != NULL &&
 		fysk->flow_level >= fyp->flow_level) {
 
+#ifdef FY_DEVMODE
 		fyp_debug_dump_simple_key(fyp, fysk, "removing: ");
+#endif
 
 		/* remove it from the list */
 		fy_simple_key_list_del(&fyp->simple_keys, fysk);
@@ -1499,7 +1505,9 @@ int fy_save_simple_key(struct fy_parser *fyp, struct fy_mark *mark, struct fy_ma
 				 (fyt->type == FYTT_FLOW_MAPPING_START || fyt->type == FYTT_FLOW_SEQUENCE_START);
 
 
+#ifdef FY_DEVMODE
 	fyp_debug_dump_simple_key_list(fyp, &fyp->simple_keys, fysk, "fyp->simple_keys (saved): ");
+#endif
 
 	return 0;
 
@@ -2698,9 +2706,11 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 		fyt->key.flow_level = fyp->flow_level;
 	}
 
+#ifdef FY_DEVMODE
 	fyp_debug_dump_token(fyp, fyt_insert, "insert-token: ");
 	fyp_debug_dump_token_list(fyp, &fyp->queued_tokens, fyt_insert, "fyp->queued_tokens (before): ");
 	fyp_debug_dump_token_list(fyp, &sk_tl, NULL, "sk_tl: ");
+#endif
 
 	if (fyt_insert) {
 
@@ -2711,7 +2721,9 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 	} else
 		fy_token_lists_splice(&fyp->queued_tokens, &sk_tl);
 
+#ifdef FY_DEVMODE
 	fyp_debug_dump_token_list(fyp, &fyp->queued_tokens, fyt_insert, "fyp->queued_tokens (after): ");
+#endif
 
 	target_simple_key_allowed = fysk ? false : !fyp->flow_level;
 
@@ -5093,8 +5105,10 @@ struct fy_token *fy_scan(struct fy_parser *fyp)
 			(void)fy_parse_tag_directive(fyp, fyt, true);
 	}
 
+#ifdef FY_DEVMODE
 	if (fyt)
 		fyp_debug_dump_token(fyp, fyt, "producing: ");
+#endif
 	return fyt;
 }
 
@@ -5524,7 +5538,10 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fyt = fy_scan_remove_peek(fyp, fyt);
 			fyp_error_check(fyp, fyt, err_out,
 					"failed to peek token");
+
+#ifdef FY_DEVMODE
 			fyp_debug_dump_token(fyp, fyt, "next: ");
+#endif
 
 			had_doc_end = true;
 		}
@@ -5565,7 +5582,9 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fyt = fy_scan_peek(fyp);
 			fyp_error_check(fyp, fyt, err_out,
 					"failed to peek token");
+#ifdef FY_DEVMODE
 			fyp_debug_dump_token(fyp, fyt, "next: ");
+#endif
 		}
 
 		/* the end */
@@ -5805,7 +5824,9 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fyt = fy_scan_remove_peek(fyp, fyt);
 			fyp_error_check(fyp, fyt, err_out,
 					"failed to peek token");
+#ifdef FY_DEVMODE
 			fyp_debug_dump_token(fyp, fyt, "next: ");
+#endif
 
 			/* check whether it's a sequence entry or not */
 			is_seq = fyt->type != FYTT_BLOCK_ENTRY && fyt->type != FYTT_BLOCK_END;
@@ -5897,7 +5918,9 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fyt = fy_scan_remove_peek(fyp, fyt);
 			fyp_error_check(fyp, fyt, err_out,
 					"failed to peek token");
+#ifdef FY_DEVMODE
 			fyp_debug_dump_token(fyp, fyt, "next: ");
+#endif
 
 			/* check whether it's a block entry or not */
 			is_block = fyt->type != FYTT_KEY && fyt->type != FYTT_VALUE &&
@@ -5940,7 +5963,9 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fyt = fy_scan_remove_peek(fyp, fyt);
 			fyp_error_check(fyp, fyt, err_out,
 					"failed to peek token");
+#ifdef FY_DEVMODE
 			fyp_debug_dump_token(fyp, fyt, "next: ");
+#endif
 
 			/* check whether it's a block entry or not */
 			is_value = fyt->type != FYTT_KEY && fyt->type != FYTT_VALUE &&
@@ -5984,7 +6009,9 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fyt = fy_scan_remove_peek(fyp, fyt);
 				fyp_error_check(fyp, fyt, err_out,
 						"failed to peek token");
+#ifdef FY_DEVMODE
 				fyp_debug_dump_token(fyp, fyt, "next: ");
+#endif
 			}
 
 			if (fyt->type == FYTT_KEY) {
@@ -6068,7 +6095,9 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fyt = fy_scan_remove_peek(fyp, fyt);
 			fyp_error_check(fyp, fyt, err_out,
 					"failed to peek token");
+#ifdef FY_DEVMODE
 			fyp_debug_dump_token(fyp, fyt, "next: ");
+#endif
 
 			if (fyt->type != FYTT_FLOW_ENTRY && fyt->type != FYTT_FLOW_SEQUENCE_END) {
 				rc = fy_parse_state_push(fyp, FYPS_FLOW_SEQUENCE_ENTRY_MAPPING_END);
@@ -6134,7 +6163,9 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fyt = fy_scan_remove_peek(fyp, fyt);
 				fyp_error_check(fyp, fyt, err_out,
 						"failed to peek token");
+#ifdef FY_DEVMODE
 				fyp_debug_dump_token(fyp, fyt, "next: ");
+#endif
 			}
 
 			if (fyt->type == FYTT_KEY) {
@@ -6142,7 +6173,9 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fyt = fy_scan_remove_peek(fyp, fyt);
 				fyp_error_check(fyp, fyt, err_out,
 						"failed to peek token");
+#ifdef FY_DEVMODE
 				fyp_debug_dump_token(fyp, fyt, "next: ");
+#endif
 
 				/* JSON key checks */
 				FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
@@ -6212,7 +6245,9 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fyt = fy_scan_remove_peek(fyp, fyt);
 			fyp_error_check(fyp, fyt, err_out,
 					"failed to peek token");
+#ifdef FY_DEVMODE
 			fyp_debug_dump_token(fyp, fyt, "next: ");
+#endif
 
 			if (fyt->type != FYTT_FLOW_ENTRY &&
 			    fyt->type != FYTT_FLOW_MAPPING_END) {

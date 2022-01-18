@@ -22,6 +22,12 @@
 #include "fy-list.h"
 #include "fy-token.h"
 
+#if !defined(NDEBUG) && defined(HAVE_DEVMODE) && HAVE_DEVMODE
+#define FY_DEVMODE
+#else
+#undef FY_DEVMODE
+#endif
+
 /* error flags (above 0x100 is library specific) */
 #define FYEF_SOURCE	0x0001
 #define FYEF_POSITION	0x0002
@@ -94,7 +100,7 @@ void fy_diag_report(struct fy_diag *diag,
 		    const char *fmt, ...)
 			__attribute__((format(printf, 3, 4)));
 
-#ifndef NDEBUG
+#ifdef FY_DEVMODE
 #define __FY_DEBUG_UNUSED__	/* nothing */
 #else
 #define __FY_DEBUG_UNUSED__	__attribute__((__unused__))
@@ -128,7 +134,7 @@ void fy_parser_diag_report(struct fy_parser *fyp,
 			   const char *fmt, ...)
 		__attribute__((format(printf, 3, 4)));
 
-#ifndef NDEBUG
+#ifdef FY_DEVMODE
 
 #define fyp_debug(_fyp, _module, _fmt, ...) \
 	fy_parser_diag((_fyp), FYET_DEBUG | FYDF_MODULE(_module), \
@@ -276,7 +282,7 @@ void fy_reader_diag_report(struct fy_reader *fyr,
 			   const char *fmt, ...)
 		__attribute__((format(printf, 3, 4)));
 
-#ifndef NDEBUG
+#ifdef FY_DEVMODE
 
 #define fyr_debug(_fyr, _fmt, ...) \
 	fy_reader_diag((_fyr), FYET_DEBUG, \
@@ -416,7 +422,7 @@ void fy_document_diag_report(struct fy_document *fyd,
 			     const char *fmt, ...)
 			__attribute__((format(printf, 3, 4)));
 
-#ifndef NDEBUG
+#ifdef FY_DEVMODE
 
 #define fyd_debug(_fyd, _module, _fmt, ...) \
 	fy_document_diag((_fyd), FYET_DEBUG | FYDF_MODULE(_module), \
@@ -518,7 +524,7 @@ void fy_composer_diag_report(struct fy_composer *fyc,
 			     const char *fmt, ...)
 			__attribute__((format(printf, 3, 4)));
 
-#ifndef NDEBUG
+#ifdef FY_DEVMODE
 
 #define fyc_debug(_fyc, _module, _fmt, ...) \
 	fy_composer_diag((_fyc), FYET_DEBUG | FYDF_MODULE(_module), \
@@ -603,7 +609,7 @@ void fy_document_builder_diag_report(struct fy_document_builder *fydb,
 				     const char *fmt, ...)
 				__attribute__((format(printf, 3, 4)));
 
-#ifndef NDEBUG
+#ifdef FY_DEVMODE
 
 #define fydb_debug(_fydb, _module, _fmt, ...) \
 	fy_document_builder_diag((_fydb), FYET_DEBUG | FYDF_MODULE(_module), \

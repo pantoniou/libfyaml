@@ -24,12 +24,6 @@
 #include "fy-typelist.h"
 #include "fy-ctype.h"
 
-#ifndef NDEBUG
-#define __FY_DEBUG_UNUSED__	/* nothing */
-#else
-#define __FY_DEBUG_UNUSED__	__attribute__((__unused__))
-#endif
-
 struct fy_atom;
 struct fy_parser;
 

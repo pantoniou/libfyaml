@@ -186,14 +186,29 @@ AC_ARG_ENABLE([network],
 	      AS_HELP_STRING([--disable-network],
 			     [Disable tests requiring network access]))
 
-if test "x$enable_network" != "xno" ; then 
+if test "x$enable_network" != "xno" ; then
 	HAVE_NETWORK=1
 else
 	HAVE_NETWORK=0
-fi	
+fi
 AC_SUBST(HAVE_NETWORK)
 AM_CONDITIONAL([HAVE_NETWORK],
 	       [ test x$HAVE_NETWORK = x1 ])
+
+dnl enable internet available when checking
+AC_ARG_ENABLE([devmode],
+	      AS_HELP_STRING([--enable-devmode],
+			     [Enable development mode only debugging]))
+
+if test "x$enable_devmode" != "xno" ; then
+	HAVE_DEVMODE=1
+else
+	HAVE_DEVMODE=0
+fi
+AC_SUBST(HAVE_DEVMODE)
+AM_CONDITIONAL([HAVE_DEVMODE],
+	       [ test x$HAVE_DEVMODE = x1 ])
+AC_DEFINE_UNQUOTED([HAVE_DEVMODE], [$HAVE_DEVMODE], [Define to 1 if developer mode is enabled])
 
 # check for sphinx
 AC_PATH_PROG([SPHINX], [sphinx-build])
@@ -341,6 +356,7 @@ echo "
     HAVE_CHECK:            ${HAVE_CHECK}
     HAVE_COMPATIBLE_CHECK: ${HAVE_COMPATIBLE_CHECK}
     HAVE_NETWORK:          ${HAVE_NETWORK}
+    HAVE_DEVMODE:          ${HAVE_DEVMODE}
     HAVE_SPHINX:           ${HAVE_SPHINX}
     GIT:                   $GIT
     DOCKER:                $DOCKER
