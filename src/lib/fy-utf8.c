@@ -17,6 +17,13 @@
 
 #include "fy-utf8.h"
 
+const int8_t fy_utf8_width_table[32] = {
+	1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	2, 2, 2, 2, 3, 3, 4, 0,
+};
+
 int fy_utf8_get_generic(const void *ptr, int left, int *widthp)
 {
 	const uint8_t *p = ptr;

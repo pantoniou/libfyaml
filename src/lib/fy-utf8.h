@@ -18,13 +18,23 @@
 
 #include <libfyaml.h>
 
+#include "fy-utils.h"
+
+extern const int8_t fy_utf8_width_table[32];
+
 static inline int
-fy_utf8_width_by_first_octet(uint8_t c)
+fy_utf8_width_by_first_octet_no_table(uint8_t c)
 {
 	return (c & 0x80) == 0x00 ? 1 :
 	       (c & 0xe0) == 0xc0 ? 2 :
 	       (c & 0xf0) == 0xe0 ? 3 :
 	       (c & 0xf8) == 0xf0 ? 4 : 0;
+}
+
+static inline FY_ALWAYS_INLINE int
+fy_utf8_width_by_first_octet(uint8_t c)
+{
+	return fy_utf8_width_table[c >> 3];
 }
 
 /* assumes valid utf8 character */
