@@ -150,6 +150,7 @@ struct fy_parser {
 	bool stream_end_produced : 1;
 	bool stream_end_reached : 1;
 	bool simple_key_allowed : 1;
+	bool tab_used_for_ws : 1;
 	bool stream_error : 1;
 	bool generated_block_map : 1;
 	bool last_was_comma : 1;
@@ -165,6 +166,7 @@ struct fy_parser {
 	struct fy_mark pending_complex_key_mark;
 	int last_block_mapping_key_line;
 	struct fy_mark last_comma_mark;
+	struct fy_mark last_tab_used_for_ws_mark;
 
 	/* copy of stream_end token */
 	struct fy_token *stream_end_token;

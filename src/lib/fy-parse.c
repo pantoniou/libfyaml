@@ -1144,6 +1144,7 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 		/* may start simple key (in block ctx) */
 		if (!fyp->flow_level && !fyp->simple_key_allowed) {
 			fyp->simple_key_allowed = true;
+			fyp->tab_used_for_ws = false;
 			tabs_allowed = fyp->flow_level || !fyp->simple_key_allowed || fyp_tabsize(fyp);
 			fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 		}
@@ -1369,6 +1370,7 @@ void fy_remove_all_simple_keys(struct fy_parser *fyp)
 		fy_parse_simple_key_recycle(fyp, fysk);
 
 	fyp->simple_key_allowed = true;
+	fyp->tab_used_for_ws = false;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 }
 
@@ -1601,21 +1603,32 @@ err_out:
 	return -1;
 }
 
-static int fy_ws_indentation_check(struct fy_parser *fyp)
+/* special case for allowing whitespace (including tabs) after -?: */
+static int fy_ws_indentation_check(struct fy_parser *fyp, bool *found_tabp, struct fy_mark *tab_mark)
 {
 	int c, adv, tab_adv;
 	bool indentation, found_tab;
 
-	/* special case for allowing whitespace (including tabs) after - */
 	found_tab = false;
+
+	/* not meaning in flow mode */
+	if (fyp->flow_level)
+		goto out;
 
 	/* scan forward, keeping track if we found a tab */
 	adv = 0;
 	tab_adv = -1;
+	if (tab_mark)
+		fy_get_mark(fyp, tab_mark);
 	while (fy_is_ws(c = fy_parse_peek_at(fyp, adv))) {
 		if (!found_tab && fy_is_tab(c)) {
 			found_tab = true;
 			tab_adv = adv;
+			/* XXX somewhat hacky, space is 1 char only so adjust */
+			if (tab_mark) {
+				tab_mark->input_pos += adv;
+				tab_mark->column += adv;
+			}
 		}
 		adv++;
 	}
@@ -1635,6 +1648,10 @@ static int fy_ws_indentation_check(struct fy_parser *fyp)
 	while (fy_is_space(c = fy_parse_peek(fyp)))
 		fy_advance(fyp, c);
 
+out:
+	if (found_tabp)
+		*found_tabp = found_tab;
+
 	return 0;
 
 err_out:
@@ -1647,6 +1664,7 @@ int fy_fetch_stream_start(struct fy_parser *fyp)
 
 	/* simple key is allowed */
 	fyp->simple_key_allowed = true;
+	fyp->tab_used_for_ws = false;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 
 	fyt = fy_token_queue_simple(fyp, &fyp->queued_tokens, FYTT_STREAM_START, 0);
@@ -2129,6 +2147,7 @@ int fy_fetch_document_indicator(struct fy_parser *fyp, enum fy_token_type type)
 	}
 
 	fyp->simple_key_allowed = false;
+	fyp->tab_used_for_ws = false;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 
 	fyt = fy_token_queue_simple(fyp, &fyp->queued_tokens, type, 3);
@@ -2206,6 +2225,7 @@ int fy_fetch_flow_collection_mark_start(struct fy_parser *fyp, int c)
 	fyp->flow = c == '[' ? FYFT_SEQUENCE : FYFT_MAP;
 
 	fyp->simple_key_allowed = true;
+	fyp->tab_used_for_ws = false;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 
 	/* the comment indicator must have at least a space */
@@ -2276,6 +2296,7 @@ int fy_fetch_flow_collection_mark_end(struct fy_parser *fyp, int c)
 			"fy_parse_flow_pop() failed");
 
 	fyp->simple_key_allowed = false;
+	fyp->tab_used_for_ws = false;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n",
 				fyp->simple_key_allowed ? "true" : "false");
 
@@ -2358,6 +2379,7 @@ int fy_fetch_flow_collection_entry(struct fy_parser *fyp, int c)
 			"fy_remove_simple_key() failed");
 
 	fyp->simple_key_allowed = true;
+	fyp->tab_used_for_ws = false;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 
 	fyt_last = fy_token_list_tail(&fyp->queued_tokens);
@@ -2469,13 +2491,14 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 			"fy_remove_simple_key() failed");
 
 	fyp->simple_key_allowed = true;
+	fyp->tab_used_for_ws = false;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 
 	fyt = fy_token_queue_simple(fyp, &fyp->queued_tokens, FYTT_BLOCK_ENTRY, 1);
 	fyp_error_check(fyp, fyt, err_out,
 			"fy_token_queue_simple() failed");
 
-	rc = fy_ws_indentation_check(fyp);
+	rc = fy_ws_indentation_check(fyp, NULL, NULL);
 	fyp_error_check(fyp, !rc, err_out_rc,
 			"fy_ws_indentation_check() failed");
 
@@ -2495,6 +2518,8 @@ int fy_fetch_key(struct fy_parser *fyp, int c)
 	bool target_simple_key_allowed;
 	struct fy_token *fyt;
 	struct fy_atom *handle;
+	bool found_tab;
+	struct fy_mark tab_mark;
 
 	fyp_error_check(fyp, c == '?', err_out,
 			"illegal block entry or key mark");
@@ -2544,9 +2569,16 @@ int fy_fetch_key(struct fy_parser *fyp, int c)
 	fyp->simple_key_allowed = target_simple_key_allowed;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 
-	rc = fy_ws_indentation_check(fyp);
+	rc = fy_ws_indentation_check(fyp, &found_tab, &tab_mark);
 	fyp_error_check(fyp, !rc, err_out_rc,
 			"fy_ws_indentation_check() failed");
+
+	/* record whether a tab was used for indentation */
+	if (fyp->simple_key_allowed && found_tab) {
+		fyp->tab_used_for_ws = true;
+		fyp->last_tab_used_for_ws_mark = tab_mark;
+	} else
+		fyp->tab_used_for_ws = false;	// XXX
 
 	/* comment? */
 	if (c == '#') {
@@ -2578,6 +2610,8 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 	bool push_bmap_start, push_key_only, did_purge, final_complex_key;
 	bool is_multiline __FY_DEBUG_UNUSED__;
 	struct fy_atom *chandle;
+	bool found_tab;
+	struct fy_mark tab_mark;
 	int rc;
 
 	fyp_error_check(fyp, c == ':', err_out,
@@ -2689,6 +2723,12 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 		goto err_out;
 	}
 
+	/* special handling for ?: */
+	if (fyp->tab_used_for_ws) {
+		FYP_PARSE_ERROR(fyp, 0, 1, FYEM_SCAN, "Indentation used tabs for ':' indicator");
+		goto err_out;
+	}
+
 	if (push_bmap_start) {
 
 		assert(!fyp->flow_level);
@@ -2743,17 +2783,26 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 	fyp_error_check(fyp, fyt, err_out,
 			"fy_token_queue_simple() failed");
 
-	fyp->simple_key_allowed = target_simple_key_allowed;
-	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
-
 	if (fysk)
 		fy_parse_simple_key_recycle(fyp, fysk);
 
+
+	fyp->simple_key_allowed = target_simple_key_allowed;
+	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
+
 	if (is_complex) {
-		rc = fy_ws_indentation_check(fyp);
+		rc = fy_ws_indentation_check(fyp, &found_tab, &tab_mark);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_ws_indentation_check() failed");
-	}
+
+		/* record whether a tab was used for indentation */
+		if (fyp->simple_key_allowed && found_tab) {
+			fyp->tab_used_for_ws = true;
+			fyp->last_tab_used_for_ws_mark = tab_mark;
+		} else
+			fyp->tab_used_for_ws = false;	// XXX
+	} else
+		fyp->tab_used_for_ws = false;
 
 	if (final_complex_key) {
 		fyp->pending_complex_key_column = -1;
@@ -2897,6 +2946,7 @@ int fy_fetch_anchor_or_alias(struct fy_parser *fyp, int c)
 			"fy_save_simple_key_mark() failed");
 
 	fyp->simple_key_allowed = false;
+	fyp->tab_used_for_ws = false;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 
 	return 0;
@@ -3015,6 +3065,7 @@ int fy_fetch_tag(struct fy_parser *fyp, int c)
 			"fy_save_simple_key_mark() failed");
 
 	fyp->simple_key_allowed = false;
+	fyp->tab_used_for_ws = false;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 
 	return 0;
@@ -3141,6 +3192,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 			"fy_remove_simple_key() failed");
 
 	fyp->simple_key_allowed = true;
+	fyp->tab_used_for_ws = false;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 
 	/* skip over block scalar start */
