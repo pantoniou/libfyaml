@@ -698,7 +698,8 @@ fy_library_version(void)
  * Returns:
  * The error type if greater or equal to zero, FYET_MAX otherwise
  */
-enum fy_error_type fy_string_to_error_type(const char *str);
+enum fy_error_type fy_string_to_error_type(const char *str)
+	FY_EXPORT;
 
 /**
  * fy_error_type_to_string() - Convert an error type to string
@@ -708,7 +709,8 @@ enum fy_error_type fy_string_to_error_type(const char *str);
  * Returns:
  * The string value of the error type or the empty string "" on error
  */
-const char *fy_error_type_to_string(enum fy_error_type type);
+const char *fy_error_type_to_string(enum fy_error_type type)
+	FY_EXPORT;
 
 /**
  * fy_string_to_error_module() - Return the error module from a string
@@ -718,7 +720,8 @@ const char *fy_error_type_to_string(enum fy_error_type type);
  * Returns:
  * The error type if greater or equal to zero, FYEM_MAX otherwise
  */
-enum fy_error_module fy_string_to_error_module(const char *str);
+enum fy_error_module fy_string_to_error_module(const char *str)
+	FY_EXPORT;
 
 /**
  * fy_error_module_to_string() - Convert an error module to string
@@ -728,7 +731,8 @@ enum fy_error_module fy_string_to_error_module(const char *str);
  * Returns:
  * The string value of the error module or the empty string "" on error
  */
-const char *fy_error_module_to_string(enum fy_error_module module);
+const char *fy_error_module_to_string(enum fy_error_module module)
+	FY_EXPORT;
 
 /**
  * fy_event_is_implicit() - Check whether the given event is an implicit one
@@ -3631,7 +3635,8 @@ fy_node_sequence_append(struct fy_node *fyn_seq, struct fy_node *fyn)
  * Returns:
  * 0 on success, -1 on error
  */
-int fy_node_sequence_prepend(struct fy_node *fyn_seq, struct fy_node *fyn);
+int fy_node_sequence_prepend(struct fy_node *fyn_seq, struct fy_node *fyn)
+	FY_EXPORT;
 
 /**
  * fy_node_sequence_insert_before() - Insert a node item before another
@@ -5484,7 +5489,8 @@ fy_path_parse_expr_from_string(struct fy_path_parser *fypp,
  */
 struct fy_path_expr *
 fy_path_expr_build_from_string(const struct fy_path_parse_cfg *pcfg,
-			       const char *str, size_t len);
+			       const char *str, size_t len)
+	FY_EXPORT;
 
 /**
  * fy_path_expr_free() - Free a path expression
@@ -5512,7 +5518,8 @@ fy_path_expr_free(struct fy_path_expr *expr)
  */
 void
 fy_path_expr_dump(struct fy_path_expr *expr, struct fy_diag *diag,
-		  enum fy_error_type errlevel, int level, const char *banner);
+		  enum fy_error_type errlevel, int level, const char *banner)
+	FY_EXPORT;
 
 /**
  * fy_path_expr_to_document() - Converts the path expression to a YAML document
