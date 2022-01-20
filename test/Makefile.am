@@ -36,10 +36,16 @@ libfyaml_test_LDFLAGS = $(AM_LDFLAGS) $(CHECK_LDFLAGS)
 
 libfyaml_test_SOURCES = \
 	libfyaml-test.c \
-	libfyaml-test-private.c \
 	libfyaml-test-core.c \
 	libfyaml-test-meta.c \
 	libfyaml-test-emit.c
+
+# the private tests require static compilation
+# if we're compiling shared only, disable the private parts
+if HAVE_STATIC
+libfyaml_test_SOURCES += libfyaml-test-private.c
+libfyaml_test_LDFLAGS += -static
+endif
 
 TESTS += libfyaml.test
 

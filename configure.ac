@@ -119,7 +119,7 @@ AC_CHECK_DECLS(environ)
 
 dnl for old autoconf version AX_APPEND_COMPILE_FLAGS does not work
 m4_version_prereq(2.64,
-	 [AX_APPEND_COMPILE_FLAGS([-Wall -Wsign-compare -Wno-stringop-overflow],
+	 [AX_APPEND_COMPILE_FLAGS([-Wall -Wsign-compare -Wno-stringop-overflow -fvisibility=hidden],
 				  [CFLAGS], [-pedantic -Werror])],
          [CFLAGS="$CFLAGS -Wall -Wsign-compare"])
 
@@ -127,6 +127,17 @@ dnl -O2 is universal no need for AX_APPEND_COMPILE_FLAGS
 if test "x$ax_enable_debug" != "xyes" ; then
 	CFLAGS="$CFLAGS -O2"
 fi
+
+# need that as conditional because some internal tools compile as static
+# to have access to internal libfyaml APIs
+if test "x$enable_static" = "xyes" ; then
+HAVE_STATIC=1
+else
+HAVE_STATIC=0
+fi
+AC_SUBST(HAVE_STATIC)
+AC_DEFINE_UNQUOTED([HAVE_STATIC], [$HAVE_STATIC], [Define to 1 if static linking is available])
+AM_CONDITIONAL([HAVE_STATIC], [ test x$HAVE_STATIC = x1 ])
 
 # include -lm in the link
 AC_SEARCH_LIBS([llrintf], [m], [], [AC_MSG_ERROR([unable to find the llrintf() function])])
