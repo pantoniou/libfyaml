@@ -13,7 +13,7 @@
 #endif
 
 #include <stdint.h>
-#include <alloca.h>
+#include <stdlib.h>
 #include <assert.h>
 
 #include <libfyaml.h>

@@ -17,7 +17,6 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <stdarg.h>
-#include <alloca.h>
 #include <ctype.h>
 
 #include <libfyaml.h>
