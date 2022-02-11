@@ -40,7 +40,7 @@ int fy_utf8_get_generic(const void *ptr, int left, int *widthp)
 		return FYUG_PARTIAL;
 
 	/* initial value */
-	value = *p++ & (0x7f >> width);
+	value = *p++ & (0xff >> width);
 	for (i = 1; i < width; i++) {
 		if ((*p & 0xc0) != 0x80)
 			return FYUG_INV;
