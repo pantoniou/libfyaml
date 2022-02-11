@@ -570,30 +570,95 @@ static int do_output(struct fy_emitter *fye, enum fy_emitter_write_type type, co
 	return ret;
 }
 
-void print_escaped(const char *str, int length)
+void print_escaped(const char *str, size_t length)
 {
-	int i;
-	char c;
+	const uint8_t *p;
+	int i, c, w;
 
-	if (length < 0)
-		length = strlen(str);
-	for (i = 0; i < length; i++) {
-		c = *str++;
-		if (c == '\\')
+	for (p = (const uint8_t *)str; length > 0; p += w, length -= (size_t)w) {
+
+		/* get width from the first octet */
+		w = (p[0] & 0x80) == 0x00 ? 1 :
+		    (p[0] & 0xe0) == 0xc0 ? 2 :
+		    (p[0] & 0xf0) == 0xe0 ? 3 :
+		    (p[0] & 0xf8) == 0xf0 ? 4 : 0;
+
+		/* error, clip it */
+		if ((size_t)w > length)
+			goto err_out;
+
+		/* initial value */
+		c = p[0] & (0xff >> w);
+		for (i = 1; i < w; i++) {
+			if ((p[i] & 0xc0) != 0x80)
+				goto err_out;
+			c = (c << 6) | (p[i] & 0x3f);
+		}
+
+		/* check for validity */
+		if ((w == 4 && c < 0x10000) ||
+		    (w == 3 && c <   0x800) ||
+		    (w == 2 && c <    0x80) ||
+		    (c >= 0xd800 && c <= 0xdfff) || c >= 0x110000)
+			goto err_out;
+
+		switch (c) {
+		case '\\':
 			printf("\\\\");
-		else if (c == '\0')
+			break;
+		case '\0':
 			printf("\\0");
-		else if (c == '\b')
+			break;
+		case '\b':
 			printf("\\b");
-		else if (c == '\n')
+			break;
+		case '\f':
+			printf("\\f");
+			break;
+		case '\n':
 			printf("\\n");
-		else if (c == '\r')
+			break;
+		case '\r':
 			printf("\\r");
-		else if (c == '\t')
+			break;
+		case '\t':
 			printf("\\t");
-		else
-			printf("%c", c);
+			break;
+		case '\a':
+			printf("\\a");
+			break;
+		case '\v':
+			printf("\\v");
+			break;
+		case '\e':
+			printf("\\e");
+			break;
+		case 0x85:
+			printf("\\N");
+			break;
+		case 0xa0:
+			printf("\\_");
+			break;
+		case 0x2028:
+			printf("\\L");
+			break;
+		case 0x2029:
+			printf("\\P");
+			break;
+		default:
+			if ((c >= 0x01 && c <= 0x1f) || c == 0x7f ||	/* C0 */
+			    (c >= 0x80 && c <= 0x9f))			/* C1 */
+				printf("\\x%02x", c);
+			else
+				printf("%.*s", w, p);
+			break;
+		}
 	}
+
+	return;
+err_out:
+	fprintf(stderr, "escape input error\n");
+	abort();
 }
 
 void dump_token_comments(struct fy_token *fyt, bool colorize, const char *banner)
@@ -629,10 +694,9 @@ void dump_testsuite_event(struct fy_parser *fyp, struct fy_event *fye, bool colo
 {
 	const char *anchor = NULL;
 	const char *tag = NULL;
-	size_t anchor_len = 0, tag_len = 0;
+	const char *text = NULL;
+	size_t anchor_len = 0, tag_len = 0, text_len = 0;
 	enum fy_scalar_style style;
-	const struct fy_iter_chunk *ic;
-	int ret;
 
 	switch (fye->type) {
 	case FYET_NONE:
@@ -763,12 +827,9 @@ void dump_testsuite_event(struct fy_parser *fyp, struct fy_event *fye, bool colo
 			abort();
 		}
 
-		fy_token_iter_start(fye->scalar.value, iter);
-		ic = NULL;
-		while ((ic = fy_token_iter_chunk_next(iter, ic, &ret)) != NULL)
-			print_escaped(ic->str, ic->len);
-		fy_token_iter_finish(iter);
-
+		text = fy_token_get_text(fye->scalar.value, &text_len);
+		if (text && text_len > 0)
+			print_escaped(text, text_len);
 		break;
 	case FYET_ALIAS:
 		anchor = fy_token_get_text(fye->alias.anchor, &anchor_len);
