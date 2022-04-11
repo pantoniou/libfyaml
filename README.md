@@ -9,7 +9,7 @@ It is designed to be very efficient, avoiding copies of data, and
 has no artificial limits like the 1024 character limit for implicit keys.
 
 libfyaml is using https://github.com/yaml/yaml-test-suite as a core part
-of it's testsuite.
+of its testsuite.
 
 ## Features
 * Fully supports YAML version 1.2.
