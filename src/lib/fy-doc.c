@@ -4070,9 +4070,10 @@ fy_node_by_path_internal(struct fy_node *fyn,
 			__func__, __LINE__, fy_node_get_path(fyn), (int)(e - s), s); */
 	fyn = fy_node_follow_aliases(fyn, flags, true);
 
-	/* scalar can't match (it has no key) */
+	/* scalar can be only last element in the path (it has no key) */
 	if (fy_node_is_scalar(fyn)) {
-		fyn = NULL;
+		if (*s)
+			fyn = NULL;	/* not end of the path - fail */
 		goto out;
 	}
 
