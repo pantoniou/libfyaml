@@ -61,21 +61,65 @@ int fy_utf8_get_generic(const void *ptr, int left, int *widthp)
 
 int fy_utf8_get_right_generic(const void *ptr, int left, int *widthp)
 {
-	const uint8_t *p, *s, *e;
+	const uint8_t *s, *e;
+	uint8_t v;
+
+	s = ptr;
+	e =  s + left;
 
 	if (left < 1)
 		return FYUG_EOF;
 
-	s = ptr;
-	e =  s + left;
-	p = e - 1;
-	while (p >= s && (e - p) <= 4) {
-		if ((*p & 0xc0) != 0x80)
-			return fy_utf8_get(p, e - p, widthp);
-		p--;
+	/* single byte sequence */
+	v = e[-1];
+	if ((v & 0x80) == 0) {
+		if (widthp)
+			*widthp = 1;
+		return (int)v & 0x7f;
 	}
 
-	return FYUG_PARTIAL;
+	/* the last byte must be & 0xc0 == 0x80 */
+	if ((v & 0xc0) != 0x80)
+		return FYUG_INV;
+
+	/* at least two byte sequence */
+	if (left < 2)
+		return FYUG_EOF;
+
+	v = e[-2];
+	/* the first byte of the sequence (must be a two byte sequence) */
+	if ((v & 0xc0) != 0x80) {
+		/* two byte start is 110x_xxxx */
+		if ((v & 0xe0) != 0xc0)
+			return FYUG_INV;
+		return fy_utf8_get(e - 2, 2, widthp);
+	}
+
+	/* at least three byte sequence */
+	if (left < 3)
+		return FYUG_EOF;
+
+	v = e[-3];
+	/* the first byte of the sequence (must be a three byte sequence) */
+	if ((v & 0xc0) != 0x80) {
+		/* three byte start is 1110_xxxx */
+		if ((v & 0xf0) != 0xe0)
+			return FYUG_INV;
+		return fy_utf8_get(e - 3, 3, widthp);
+	}
+
+	/* at least four byte sequence */
+	if (left < 4)
+		return FYUG_EOF;
+
+	v = e[-4];
+
+	/* the first byte of the sequence (must be a four byte sequence) */
+	/* four byte start is 1111_0xxx */
+	if ((v & 0xf8) != 0xf0) {
+		return FYUG_INV;
+	}
+	return fy_utf8_get(e - 4, 4, widthp);
 }
 
 struct fy_utf8_fmt_esc_map {
