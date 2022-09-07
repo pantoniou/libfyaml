@@ -3759,6 +3759,140 @@ next:
 	return 0;
 }
 
+int do_crash(const struct fy_parse_cfg *cfg, int argc, char *argv[])
+{
+	struct fy_document *fyd = NULL;
+	struct fy_node *fyn = NULL;
+	//                                                 illegal>
+	char key[12] = {0x26, 0x2b, 0x74, 0x68, 0x65, 0x62, 0x65, 0x86, 0x6e, 0x67, 0x77, 0x00};
+	int rc = -1;
+
+	fyd = fy_document_build_from_string(cfg, "base: &base\n    name: this-is-a-name\n", FY_NT);
+	if (!fyd) {
+		fprintf(stderr, "failed to build document");
+		goto failed;
+	}
+
+	fyn = fy_node_buildf(fyd, "abc");
+	if (!fyn) {
+		fprintf(stderr, "failed to build a node");
+		goto failed;
+	}
+
+	rc = fy_document_insert_at(fyd, key, FY_NT, fyn);
+	fyn = NULL;
+	if (rc) {
+		fprintf(stderr, "failed to insert document\n");
+		goto failed;
+	}
+	rc = fy_emit_document_to_fp(fyd, FYECF_DEFAULT | FYECF_SORT_KEYS, stdout);
+	if (rc) {
+		fprintf(stderr, "failed to emit document to stdout\n");
+		goto failed;
+	}
+
+	rc = 0;
+failed:
+	fy_node_free(fyn);
+	fy_document_destroy(fyd);
+	return rc;
+}
+
+int do_bad_utf8(const struct fy_parse_cfg *cfg, int argc, char *argv[])
+{
+	// char key[12] = {0x26, 0x2b, 0x74, 0x68, 0x65, 0x62, 0x65, 0x86, 0x6e, 0x67, 0x77, 0x00};
+	// char key[11] = {0x26, 0x2b, 0x74, 0x68, 0x65, 0x62, 0x65, 0x6e, 0x67, 0x77, 0x00};
+	// char key[] = {
+	//	0x22, 0xCE, 0xA4, 0xCE, 0xB9, 0xCE, 0xBC, 0xCE,
+	//	0xAE, 0x20, 0xCE, 0xB5, 0xCE, 0xBB, 0xCE, 0xBB,
+	//	0xCE, 0xB7, 0xCE, 0xBD, 0xCE, 0xB9, 0xCE, 0xBA,
+	//	0xCE, 0xAE, 0x22, 0x0A, 0x00
+	//};
+	char key[] = {
+		0x67, 0xe7, 0x67, 0x54, 0x67, 0x67, 0x67, 0x67, 0xe8,
+		0x67, 0x4e, 0x64, 0x6a, 0x67, 0x67, 0xaa, 0x6b, 0x73, 0x00
+	};
+	int *fwd;
+	int *bwd;
+	const char *s;
+	const char *e;
+	int len, i, c, w, pos;
+
+	len = strlen(key);
+
+	fwd = alloca(sizeof(*fwd) * len);
+	bwd = alloca(sizeof(*bwd) * len);
+
+	memset(fwd, 0, sizeof(*fwd) * len);
+	memset(bwd, 0, sizeof(*bwd) * len);
+
+	s = key;
+	e = s + strlen(key);
+
+	printf("forward utf8 check\n");
+	pos = 0;
+	while (s < e) {
+		c = fy_utf8_get(s, e - s, &w);
+		if (c < 0) {
+			switch (c) {
+			case FYUG_EOF:
+				printf("EOF before end at pos %d\n", pos);
+				break;
+			case FYUG_INV:
+				printf("INV before end at pos %d\n", pos);
+				break;
+			case FYUG_PARTIAL:
+				printf("PARTIAL before end at pos %d\n", pos);
+				break;
+			default:
+				printf("UKNNOWN %d before end at pos %d\n", c, pos);
+				break;
+			}
+			break;
+		}
+		fwd[pos] = c;
+		s += w;
+		pos++;
+	}
+	printf("forward utf8 check complete (end pos %d)\n", pos);
+
+	for (i = 0; i < pos; i++)
+		printf("0x%02x%s", fwd[i], i < (pos - 1) ? " " : "\n");
+
+	printf("backward utf8 check\n");
+	pos = 0;
+	s = key;
+	while (s < e) {
+		c = fy_utf8_get_right(s, e - s, &w);
+		if (c < 0) {
+			switch (c) {
+			case FYUG_EOF:
+				printf("EOF before end at pos %d\n", pos);
+				break;
+			case FYUG_INV:
+				printf("INV before end at pos %d\n", pos);
+				break;
+			case FYUG_PARTIAL:
+				printf("PARTIAL before end at pos %d\n", pos);
+				break;
+			default:
+				printf("UKNNOWN %d before end at pos %d\n", c, pos);
+				break;
+			}
+			break;
+		}
+		bwd[pos] = c;
+		e -= w;
+		pos++;
+	}
+	printf("backward utf8 check complete (end pos %d)\n", pos);
+
+	for (i = pos - 1; i >= 0; i--)
+		printf("0x%02x%s", bwd[i], i > 0 ? " " : "\n");
+
+	return 0;
+}
+
 int apply_flags_option(const char *arg, unsigned int *flagsp,
 		int (*modify_flags)(const char *what, unsigned int *flagsp))
 {
@@ -3950,7 +4084,9 @@ int main(int argc, char *argv[])
 	    strcmp(mode, "iterate") &&
 	    strcmp(mode, "comment") &&
 	    strcmp(mode, "pathspec") &&
-	    strcmp(mode, "bypath")
+	    strcmp(mode, "bypath") &&
+	    strcmp(mode, "crash") &&
+	    strcmp(mode, "badutf8")
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 	    && strcmp(mode, "libyaml-scan")
 	    && strcmp(mode, "libyaml-parse")
@@ -4041,6 +4177,15 @@ int main(int argc, char *argv[])
 
 	if (!strcmp(mode, "build")) {
 		rc = do_build(&cfg, argc - optind, argv + optind);
+		return !rc ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+
+	if (!strcmp(mode, "crash")) {
+		rc = do_crash(&cfg, argc - optind, argv + optind);
+		return !rc ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+	if (!strcmp(mode, "badutf8")) {
+		rc = do_bad_utf8(&cfg, argc - optind, argv + optind);
 		return !rc ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 
