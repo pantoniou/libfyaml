@@ -4339,25 +4339,40 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 				const char *path, size_t len,
 				enum fy_node_walk_flags flags)
 {
+	struct fy_document *fyd;
 	struct fy_anchor *fya;
 	const char *s, *e, *t, *anchor;
 	size_t alen;
 	char c;
-	int idx;
+	int idx, w;
 	char *end_idx;
 
 	if (!fyn || !path)
 		return NULL;
 
-	/* if it's a YPATH, just punt to that method */
-	if ((flags & FYNWF_PTR(FYNWF_PTR_MASK)) == FYNWF_PTR_YPATH)
-		return fy_node_by_ypath(fyn, path, len);
-
-	s = path;
 	if (len == (size_t)-1)
 		len = strlen(path);
 
+	/* verify that the path string is well formed UTF8 */
+	s = path;
 	e = s + len;
+
+	fyd = fyn->fyd;
+	while (s < e) {
+		c = fy_utf8_get(s, e - s, &w);
+		if (c < 0) {
+			fyd_error(fyd, "fy_node_by_path() malformed path string\n");
+			return NULL;
+		}
+		s += w;
+	}
+
+	/* rewind */
+	s = path;
+
+	/* if it's a YPATH, just punt to that method */
+	if ((flags & FYNWF_PTR(FYNWF_PTR_MASK)) == FYNWF_PTR_YPATH)
+		return fy_node_by_ypath(fyn, path, len);
 
 	/* fyd_notice(fyn->fyd, "%s: %.*s", __func__, (int)(len), s); */
 
