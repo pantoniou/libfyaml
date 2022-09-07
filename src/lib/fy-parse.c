@@ -2882,20 +2882,20 @@ int fy_fetch_anchor_or_alias(struct fy_parser *fyp, int c)
 
 	if (!fyp_is_blankz(fyp, c) && !fy_is_flow_indicator(c)) {
 
-		FYP_PARSE_ERROR_CHECK(fyp, length, 1, FYEM_SCAN,
+		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
 				fy_is_unicode_control(c), err_out,
 				"illegal unicode control character in %s", typestr);
 
-		FYP_PARSE_ERROR_CHECK(fyp, length, 1, FYEM_SCAN,
+		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
 				fy_is_unicode_space(c), err_out,
 				"illegal unicode space character in %s", typestr);
 	}
 
-	FYP_PARSE_ERROR_CHECK(fyp, length, 1, FYEM_SCAN,
+	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
 			c != FYUG_INV, err_out,
 			"invalid character in %s", typestr);
 
-	FYP_PARSE_ERROR_CHECK(fyp, length, 1, FYEM_SCAN,
+	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
 			c != FYUG_PARTIAL, err_out,
 			"partial character in %s", typestr);
 
