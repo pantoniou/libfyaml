@@ -779,6 +779,8 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 			tilde_width = content_width;
 			if (tilde_start + tilde_width > cols)
 				tilde_width = cols - tilde_start;
+			if ((size_t)tilde_width >= rowbufsz)
+				tilde_width = rowbufsz - 1;	/* guard */
 			tilde_width_m1 = tilde_width > 0 ? (tilde_width - 1) : 0;
 
 			/* output the line */
