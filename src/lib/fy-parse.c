@@ -2783,8 +2783,10 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 	fyp_error_check(fyp, fyt, err_out,
 			"fy_token_queue_simple() failed");
 
-	if (fysk)
+	if (fysk) {
 		fy_parse_simple_key_recycle(fyp, fysk);
+		fysk = NULL;
+	}
 
 
 	fyp->simple_key_allowed = target_simple_key_allowed;
