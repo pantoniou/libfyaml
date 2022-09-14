@@ -1580,7 +1580,7 @@ bool fy_atom_is_number(struct fy_atom *atom)
 		if (dec == 0 && c == '0')
 			first_zero = true;
 		else if (dec == 1 && first_zero)
-			return false;	/* 0[0-9] is bad */
+			goto err_out;	/* 0[0-9] is bad */
 		(void)fy_atom_iter_getc(&iter);
 		dec++;
 		len++;
@@ -1588,7 +1588,7 @@ bool fy_atom_is_number(struct fy_atom *atom)
 
 	/* no digits is bad */
 	if (!dec)
-		return false;
+		goto err_out;
 
 	fract = 0;
 	/* dot? */
@@ -1606,7 +1606,7 @@ bool fy_atom_is_number(struct fy_atom *atom)
 
 		/* . without fractional */
 		if (!fract)
-			return false;
+			goto err_out;
 	}
 
 	enot = 0;
@@ -1631,7 +1631,7 @@ bool fy_atom_is_number(struct fy_atom *atom)
 		}
 
 		if (!enot)
-			return false;
+			goto err_out;
 	}
 
 	c = fy_atom_iter_peekc(&iter);
@@ -1640,6 +1640,11 @@ bool fy_atom_is_number(struct fy_atom *atom)
 
 	/* everything must be consumed (and something must) */
 	return c < 0 && len > 0;
+
+err_out:
+	fy_atom_iter_finish(&iter);
+
+	return false;
 }
 
 int fy_atom_cmp(struct fy_atom *atom1, struct fy_atom *atom2)
