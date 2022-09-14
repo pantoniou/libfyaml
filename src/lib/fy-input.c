@@ -216,9 +216,9 @@ void fy_input_close(struct fy_input *fyi)
 	case fyit_file:
 	case fyit_fd:
 
-		if (fyi->addr && fyi->addr != MAP_FAILED) {
+		if (fyi->addr) {
 			munmap(fyi->addr, fyi->length);
-			fyi->addr = MAP_FAILED;
+			fyi->addr = NULL;
 		}
 
 		if (fyi->fd != -1) {
@@ -412,12 +412,14 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 			fyi->addr = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fyi->fd, 0);
 
 			/* convert from MAP_FAILED to NULL */
-			if (fyi->addr == MAP_FAILED)
+			if (fyi->addr == MAP_FAILED) {
 				fyr_debug(fyr, "mmap failed for file %s",
 						fyi->cfg.file.filename);
+				fyi->addr = NULL;
+			}
 		}
 		/* if we've managed to mmap, we' good */
-		if (fyi->addr != MAP_FAILED)
+		if (fyi->addr)
 			break;
 
 		/* if we're not ignoring stdio, open a FILE* using the fd */
@@ -462,7 +464,7 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 		/* all the rest need it */
 	default:
 		/* if we're not in mmap mode */
-		if (fyi->addr != MAP_FAILED)
+		if (fyi->addr && !fyr->current_input_cfg.disable_mmap_opt)
 			break;
 
 		fyi->chunk = fyi->cfg.chunk;
@@ -509,7 +511,7 @@ int fy_reader_input_done(struct fy_reader *fyr)
 	switch (fyi->cfg.type) {
 	case fyit_file:
 	case fyit_fd:
-		if (fyi->addr != MAP_FAILED)
+		if (fyi->addr)
 			break;
 
 		/* fall-through */
@@ -625,7 +627,7 @@ const void *fy_reader_ptr_slow_path(struct fy_reader *fyr, size_t *leftp)
 	switch (fyi->cfg.type) {
 	case fyit_file:
 	case fyit_fd:
-		if (fyi->addr != MAP_FAILED) {
+		if (fyi->addr) {
 			left = fyi->length - (fyr->this_input_start + fyr->current_input_pos);
 			p = fyi->addr + fyr->current_input_pos;
 			break;
@@ -690,7 +692,7 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 	case fyit_file:
 	case fyit_fd:
 
-		if (fyi->addr != MAP_FAILED) {
+		if (fyi->addr) {
 			assert(fyi->length >= (fyr->this_input_start + pos));
 
 			left = fyi->length - (fyr->this_input_start + pos);
@@ -979,7 +981,7 @@ struct fy_input *fy_input_create(const struct fy_input_cfg *fyic)
 	fyi->chop = 0;
 	fyi->fp = NULL;
 	fyi->fd = -1;
-	fyi->addr = MAP_FAILED;
+	fyi->addr = NULL;
 	fyi->length = -1;
 
 	/* default modes */
