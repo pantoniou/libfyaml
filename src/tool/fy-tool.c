@@ -85,6 +85,7 @@
 #define OPT_COLLECT_ERRORS		2017
 #define OPT_ALLOW_DUPLICATE_KEYS	2018
 #define OPT_STRIP_EMPTY_KV		2019
+#define OPT_DISABLE_MMAP		2020
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -127,6 +128,7 @@ static struct option lopts[] = {
 	{"disable-accel",	no_argument,		0,	OPT_DISABLE_ACCEL },
 	{"disable-buffering",	no_argument,		0,	OPT_DISABLE_BUFFERING },
 	{"disable-depth-limit",	no_argument,		0,	OPT_DISABLE_DEPTH_LIMIT },
+	{"disable-mmap",	no_argument,		0,	OPT_DISABLE_MMAP },
 	{"disable-diag",	required_argument,	0,	OPT_DISABLE_DIAG },
 	{"enable-diag", 	required_argument,	0,	OPT_ENABLE_DIAG },
 	{"show-diag",		required_argument,	0,	OPT_SHOW_DIAG },
@@ -1725,6 +1727,9 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_DISABLE_DEPTH_LIMIT:
 			cfg.flags |= FYPCF_DISABLE_DEPTH_LIMIT;
+			break;
+		case OPT_DISABLE_MMAP:
+			cfg.flags |= FYPCF_DISABLE_MMAP_OPT;
 			break;
 		case OPT_DUMP_PATHEXPR:
 			dump_pathexpr = true;
