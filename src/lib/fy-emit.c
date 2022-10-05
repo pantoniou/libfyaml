@@ -2787,8 +2787,12 @@ fy_emit_peek_next_event(struct fy_emitter *emit)
 
 bool fy_emit_streaming_sequence_empty(struct fy_emitter *emit)
 {
+	enum fy_emitter_cfg_flags flags = emit->cfg.flags & FYECF_MODE(FYECF_MODE_MASK);
 	struct fy_eventp *fyepn;
 	struct fy_event *fyen;
+
+	if (flags == FYECF_MODE_BLOCK || flags == FYECF_MODE_DEJSON)
+		return false;
 
 	fyepn = fy_emit_peek_next_event(emit);
 	fyen = fyepn ? &fyepn->e : NULL;
