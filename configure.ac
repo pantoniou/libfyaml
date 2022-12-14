@@ -173,7 +173,7 @@ AC_DEFINE_UNQUOTED([HAVE_CHECK], [$HAVE_CHECK], [Define to 1 if you have check a
 AM_CONDITIONAL([HAVE_CHECK], [ test x$HAVE_CHECK = x1 ])
 
 HAVE_COMPATIBLE_CHECK=0
-if test "x$HAVE_CHECK" == "x1" ; then
+if test "x$HAVE_CHECK" = "x1" ; then
 	save_LIBS="$LIBS"
 	save_CFLAGS="$CFLAGS"
 	LIBS="$LIBS $CHECK_LIBS"
@@ -268,7 +268,7 @@ if test "x$SPHINX" != "x" ; then
 	fi
 
 	AC_MSG_CHECKING([whether sphinx installation works])
-	if test "x$HAVE_SPHINX" == "x1" ; then
+	if test "x$HAVE_SPHINX" = "x1" ; then
 		AC_MSG_RESULT([yes])
 	else
 		AC_MSG_RESULT([no])
@@ -290,25 +290,25 @@ AM_CONDITIONAL([HAVE_GIT], [ test x$HAVE_GIT = x1 ])
 
 AC_ARG_VAR(TESTSUITEURL, [Testsuite git repo URL (default: https://github.com/yaml/yaml-test-suite)])
 
-if test "x$TESTSUITEURL" == "x" ; then
+if test "x$TESTSUITEURL" = "x" ; then
 	TESTSUITEURL="https://github.com/yaml/yaml-test-suite"
 fi
 
 AC_ARG_VAR(TESTSUITECHECKOUT, [Testsuite checkout (default: 6e6c296ae9c9d2d5c4134b4b64d01b29ac19ff6f)])
 
-if test "x$TESTSUITECHECKOUT" == "x" ; then
+if test "x$TESTSUITECHECKOUT" = "x" ; then
 	TESTSUITECHECKOUT="6e6c296ae9c9d2d5c4134b4b64d01b29ac19ff6f"
 fi
 
 AC_ARG_VAR(JSONTESTSUITEURL, [JSON Testsuite git repo URL (default: https://github.com/nst/JSONTestSuite)])
 
-if test "x$JSONTESTSUITEURL" == "x" ; then
+if test "x$JSONTESTSUITEURL" = "x" ; then
 	JSONTESTSUITEURL="https://github.com/nst/JSONTestSuite"
 fi
 
 AC_ARG_VAR(JSONTESTSUITECHECKOUT, [JSON Testsuite checkout (default: d64aefb55228d9584d3e5b2433f720ea8fd00c82)])
 
-if test "x$JSONTESTSUITECHECKOUT" == "x" ; then
+if test "x$JSONTESTSUITECHECKOUT" = "x" ; then
 	JSONTESTSUITECHECKOUT="d64aefb55228d9584d3e5b2433f720ea8fd00c82"
 fi
 
