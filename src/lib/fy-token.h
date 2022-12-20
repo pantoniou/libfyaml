@@ -81,7 +81,7 @@ static inline bool fy_token_type_is_mapping_marker(enum fy_token_type type)
 
 FY_TYPE_FWD_DECL_LIST(token);
 struct fy_token {
-	struct list_head node;
+	struct fy_list_head node;
 	enum fy_token_type type;
 	int refs;		/* when on document, we switch to reference counting */
 	int analyze_flags;	/* cache of the analysis flags */

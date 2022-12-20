@@ -646,13 +646,13 @@ static const struct fy_parse_cfg default_parse_cfg = {
 
 static struct fy_diag *fy_parser_reader_get_diag(struct fy_reader *fyr)
 {
-	struct fy_parser *fyp = container_of(fyr, struct fy_parser, builtin_reader);
+	struct fy_parser *fyp = fy_container_of(fyr, struct fy_parser, builtin_reader);
 	return fyp->diag;
 }
 
 static int fy_parser_reader_file_open(struct fy_reader *fyr, const char *name)
 {
-	struct fy_parser *fyp = container_of(fyr, struct fy_parser, builtin_reader);
+	struct fy_parser *fyp = fy_container_of(fyr, struct fy_parser, builtin_reader);
 	char *sp, *s, *e, *t, *newp;
 	size_t len, maxlen;
 	int fd;

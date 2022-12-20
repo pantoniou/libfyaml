@@ -44,7 +44,7 @@ FY_TYPE_FWD_DECL_LIST(document);
 struct fy_node;
 
 struct fy_node_pair {
-	struct list_head node;
+	struct fy_list_head node;
 	struct fy_node *key;
 	struct fy_node *value;
 	struct fy_document *fyd;
@@ -55,7 +55,7 @@ FY_TYPE_DECL_LIST(node_pair);
 
 FY_TYPE_FWD_DECL_LIST(node);
 struct fy_node {
-	struct list_head node;
+	struct fy_list_head node;
 	struct fy_token *tag;
 	enum fy_node_style style;
 	struct fy_node *parent;
@@ -93,7 +93,7 @@ void fy_node_detach_and_free(struct fy_node *fyn);
 void fy_node_pair_detach_and_free(struct fy_node_pair *fynp);
 
 struct fy_anchor {
-	struct list_head node;
+	struct fy_list_head node;
 	struct fy_node *fyn;
 	struct fy_token *anchor;
 	bool multiple : 1;
@@ -102,7 +102,7 @@ FY_TYPE_FWD_DECL_LIST(anchor);
 FY_TYPE_DECL_LIST(anchor);
 
 struct fy_document {
-	struct list_head node;
+	struct fy_list_head node;
 	struct fy_anchor_list anchors;
 	struct fy_accel *axl;		/* name -> anchor access accelerator */
 	struct fy_accel *naxl;		/* node -> anchor access accelerator */
@@ -187,7 +187,7 @@ struct fy_node *fy_node_collection_iterate(struct fy_node *fyn, void **prevp);
 /* indirect node */
 FY_TYPE_FWD_DECL_LIST(ptr_node);
 struct fy_ptr_node {
-	struct list_head node;
+	struct fy_list_head node;
 	struct fy_node *fyn;
 };
 FY_TYPE_DECL_LIST(ptr_node);

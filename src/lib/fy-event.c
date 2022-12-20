@@ -169,7 +169,7 @@ void fy_parser_event_free(struct fy_parser *fyp, struct fy_event *fye)
 	if (!fyp || !fye)
 		return;
 
-	fyep = container_of(fye, struct fy_eventp, e);
+	fyep = fy_container_of(fye, struct fy_eventp, e);
 
 	fy_parse_eventp_recycle(fyp, fyep);
 }
@@ -195,7 +195,7 @@ void fy_emit_event_free(struct fy_emitter *emit, struct fy_event *fye)
 	if (!emit || !fye)
 		return;
 
-	fyep = container_of(fye, struct fy_eventp, e);
+	fyep = fy_container_of(fye, struct fy_eventp, e);
 
 	fy_emit_eventp_recycle(emit, fyep);
 }
@@ -908,7 +908,7 @@ void fy_document_iterator_event_free(struct fy_document_iterator *fydi, struct f
 	if (!fydi || !fye)
 		return;
 
-	fyep = container_of(fye, struct fy_eventp, e);
+	fyep = fy_container_of(fye, struct fy_eventp, e);
 
 	fy_document_iterator_eventp_recycle(fydi, fyep);
 }

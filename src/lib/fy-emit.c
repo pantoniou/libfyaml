@@ -3311,7 +3311,7 @@ int fy_emit_event_from_parser(struct fy_emitter *emit, struct fy_parser *fyp, st
 	if (emit->state == FYES_NONE)
 		emit->state = FYES_STREAM_START;
 
-	fyep = container_of(fye, struct fy_eventp, e);
+	fyep = fy_container_of(fye, struct fy_eventp, e);
 
 	fy_eventp_list_add_tail(&emit->queued_events, fyep);
 

@@ -35,7 +35,7 @@ struct fy_ ## _type *fy_ ## _type ## _alloc_simple_internal( \
 		return _n; \
 	_n = malloc(sizeof(*_n)); \
 	if (_n) \
-		INIT_LIST_HEAD(&_n->node); \
+        fy_list_init_head(&_n->node); \
 	return _n; \
 } \
 \

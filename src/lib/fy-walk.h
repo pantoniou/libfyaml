@@ -49,7 +49,7 @@ struct fy_path_exec;
 
 FY_TYPE_FWD_DECL_LIST(walk_result);
 struct fy_walk_result {
-	struct list_head node;
+	struct fy_list_head node;
 	struct fy_path_exec *fypx;
 	enum fy_walk_result_type type;
 	union {
@@ -264,7 +264,7 @@ struct fy_method {
 
 FY_TYPE_FWD_DECL_LIST(path_expr);
 struct fy_path_expr {
-	struct list_head node;
+	struct fy_list_head node;
 	struct fy_path_expr *parent;
 	enum fy_path_expr_type type;
 	struct fy_token *fyt;

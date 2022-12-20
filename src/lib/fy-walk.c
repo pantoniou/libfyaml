@@ -717,7 +717,7 @@ const char *fy_expr_mode_txt[FYEM_COUNT] = {
 
 static struct fy_diag *fy_path_parser_reader_get_diag(struct fy_reader *fyr)
 {
-	struct fy_path_parser *fypp = container_of(fyr, struct fy_path_parser, reader);
+	struct fy_path_parser *fypp = fy_container_of(fyr, struct fy_path_parser, reader);
 	return fypp->cfg.diag;
 }
 

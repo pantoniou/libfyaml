@@ -57,7 +57,7 @@ struct fy_path_sequence_state {
 };
 
 struct fy_path_component {
-	struct list_head node;
+	struct fy_list_head node;
 	enum fy_path_component_type type;
 	union {
 		struct fy_path_mapping_state map;
@@ -87,7 +87,7 @@ fy_path_component_is_collection_root(struct fy_path_component *fypc)
 
 FY_TYPE_FWD_DECL_LIST(path);
 struct fy_path {
-	struct list_head node;
+	struct fy_list_head node;
 	struct fy_path_component_list recycled_component;
 	struct fy_path_component_list components;
 	struct fy_document_builder *fydb;	/* for complex keys */

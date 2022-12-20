@@ -78,7 +78,7 @@ enum fy_input_state {
 
 FY_TYPE_FWD_DECL_LIST(input);
 struct fy_input {
-	struct list_head node;
+	struct fy_list_head node;
 	enum fy_input_state state;
 	struct fy_input_cfg cfg;
 	int refs;		/* number of referers */

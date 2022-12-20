@@ -22,7 +22,7 @@
 /* private event type */
 FY_TYPE_FWD_DECL_LIST(eventp);
 struct fy_eventp {
-	struct list_head node;
+	struct fy_list_head node;
 	struct fy_event e;
 };
 FY_TYPE_DECL_LIST(eventp);

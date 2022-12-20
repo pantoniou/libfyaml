@@ -49,7 +49,7 @@ enum fy_flow_type {
 };
 
 struct fy_flow {
-	struct list_head node;
+	struct fy_list_head node;
 	enum fy_flow_type flow;
 	int pending_complex_key_column;
 	struct fy_mark pending_complex_key_mark;
@@ -58,7 +58,7 @@ struct fy_flow {
 FY_PARSE_TYPE_DECL(flow);
 
 struct fy_indent {
-	struct list_head node;
+	struct fy_list_head node;
 	int indent;
 	int indent_line;
 	bool generated_block_map : 1;
@@ -68,7 +68,7 @@ FY_PARSE_TYPE_DECL(indent);
 struct fy_token;
 
 struct fy_simple_key {
-	struct list_head node;
+	struct fy_list_head node;
 	struct fy_mark mark;
 	struct fy_mark end_mark;
 	struct fy_token *token;	/* associated token */
@@ -132,7 +132,7 @@ enum fy_parser_state {
 };
 
 struct fy_parse_state_log {
-	struct list_head node;
+	struct fy_list_head node;
 	enum fy_parser_state state;
 };
 FY_PARSE_TYPE_DECL(parse_state_log);

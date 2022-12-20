@@ -5951,7 +5951,7 @@ struct flow_reader_container {
 
 static struct fy_diag *flow_reader_get_diag(struct fy_reader *fyr)
 {
-	struct flow_reader_container *frc = container_of(fyr, struct flow_reader_container, reader);
+	struct flow_reader_container *frc = fy_container_of(fyr, struct flow_reader_container, reader);
 	return frc->cfg ? frc->cfg->diag : NULL;
 }
 
