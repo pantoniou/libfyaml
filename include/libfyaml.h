@@ -3444,6 +3444,20 @@ fy_node_set_tag(struct fy_node *fyn, const char *data, size_t len)
 	FY_EXPORT;
 
 /**
+ * fy_node_remove_tag() - Remove the tag of node
+ *
+ * Remove the tag of a node.
+ *
+ * @fyn: The node to remove it's tag.
+ *
+ * Returns:
+ * 0 on success, -1 on error.
+ */
+int
+fy_node_remove_tag(struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
  * fy_node_get_tag() - Get the tag of the node
  *
  * This method will return a pointer to the text of a tag

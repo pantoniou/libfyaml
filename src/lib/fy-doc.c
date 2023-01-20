@@ -5322,6 +5322,17 @@ err_out:
 	return -1;
 }
 
+int fy_node_remove_tag(struct fy_node *fyn)
+{
+	if (!fyn || !fyn->tag)
+		return -1;
+
+	fy_token_unref(fyn->tag);
+	fyn->tag = NULL;
+
+	return 0;
+}
+
 struct fy_node *fy_node_create_sequence(struct fy_document *fyd)
 {
 	struct fy_node *fyn;
