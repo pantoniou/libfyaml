@@ -548,7 +548,7 @@ int fy_parse_version_directive(struct fy_parser *fyp, struct fy_token *fyt, bool
 	vs = fy_token_get_text(fyt, &vs_len);
 	fyp_error_check(fyp, vs, err_out,
 			"fy_token_get_text() failed");
-	vs0 = alloca(vs_len + 1);
+	vs0 = FY_ALLOCA(vs_len + 1);
 	memcpy(vs0, vs, vs_len);
 	vs0[vs_len] = '\0';
 
@@ -671,7 +671,7 @@ static int fy_parser_reader_file_open(struct fy_reader *fyr, const char *name)
 	}
 
 	len = strlen(fyp->cfg.search_path);
-	sp = alloca(len + 1);
+	sp = FY_ALLOCA(len + 1);
 	memcpy(sp, fyp->cfg.search_path, len + 1);
 
 	/* allocate the maximum possible so that we don't deal with reallocations */
@@ -1031,6 +1031,7 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 	ssize_t offset;
 	struct fy_atom *handle;
 	struct fy_reader *fyr;
+	char *str;
 
 	fyr = fyp->reader;
 
@@ -1163,8 +1164,8 @@ done:
 	fyp_error_check(fyp, !rc, err_out_rc,
 			"fy_reader_input_scan_token_mark() failed");
 
-	fyp_scan_debug(fyp, "%s: next token starts with c='%s'", __func__,
-			fy_utf8_format_a(fy_parse_peek(fyp), fyue_singlequote));
+    fy_utf8_format_a(fy_parse_peek(fyp), fyue_singlequote, &str);
+	fyp_scan_debug(fyp, "%s: next token starts with c='%s'", __func__, str);
 	return 0;
 }
 
@@ -3171,13 +3172,15 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	int actual_lb_length, pending_lb_length;
 	struct fy_mark indicator_mark;
 	bool generated_indent;
+	char *str;
 #ifdef ATOM_SIZE_CHECK
 	size_t tlength;
 #endif
 
+    fy_utf8_format_a(c, fyue_singlequote, &str);
 	fyp_error_check(fyp, c == '|' || c == '>', err_out,
 			"bad start of block scalar ('%s')",
-				fy_utf8_format_a(c, fyue_singlequote));
+				str);
 
 	fy_get_mark(fyp, &indicator_mark);
 
@@ -3565,9 +3568,10 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 #ifdef ATOM_SIZE_CHECK
 	tlength = fy_atom_format_text_length(&handle);
 	if (tlength != length) {
+        fy_utf8_format_text_a(fy_atom_data(&handle), fy_atom_size(&handle), fyue_doublequote, &str);
 		fyp_warning(fyp, "%s: storage hint calculation failed real %zu != hint %zu - \"%s\"", __func__,
 			tlength, length,
-			fy_utf8_format_text_a(fy_atom_data(&handle), fy_atom_size(&handle), fyue_doublequote));
+			str);
 		length = tlength;
 	}
 #endif
@@ -3618,6 +3622,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 	size_t escbuf_len;
 	enum fy_utf8_escape esc_mode;
 	const char *ep;
+	char *str;
 #ifdef ATOM_SIZE_CHECK
 	size_t tlength;
 #endif
@@ -3627,9 +3632,10 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 	is_single = c == '\'';
 	end_c = c;
 
+    fy_utf8_format_a(c, fyue_singlequote, &str);
 	fyr_error_check(fyr, c == '\'' || c == '"', err_out,
 			"bad start of flow scalar ('%s')",
-				fy_utf8_format_a(c, fyue_singlequote));
+				str);
 
 	fy_reader_get_mark(fyr, &mark);
 
@@ -3876,11 +3882,12 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 
 					ep = escbuf;
 
+					fy_utf8_format_a(c, fyue_singlequote, &str);
 					value = fy_utf8_parse_escape(&ep, escbuf_len, esc_mode);
 					FYR_PARSE_ERROR_CHECK(fyr, 0, 2, FYEM_SCAN,
 						value >= 0, err_out,
 						"invalid escape '%s' in %s string",
-							fy_utf8_format_a(c, fyue_singlequote),
+						   str,
 							is_single ? "single-quoted" : "double-quoted");
 
 					fy_reader_advance_by(fyr, 2);
@@ -4003,10 +4010,11 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 
 #ifdef ATOM_SIZE_CHECK
 	tlength = fy_atom_format_text_length(handle);
+	fy_utf8_format_text_a(fy_atom_data(handle), fy_atom_size(handle), fyue_doublequote, &str);
 	if (tlength != length) {
 		fyr_warning(fyr, "%s: storage hint calculation failed real %zu != hint %zu - \"%s\"", __func__,
 			tlength, length,
-			fy_utf8_format_text_a(fy_atom_data(handle), fy_atom_size(handle), fyue_doublequote));
+			str);
 		length = tlength;
 	}
 #endif
@@ -4034,6 +4042,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 	struct fy_mark mark, last_mark;
 	bool is_multiline, has_lb, has_ws, ends_with_eof;
 	bool has_json_esc;
+	char *str;
 #ifdef ATOM_SIZE_CHECK
 	size_t tlength;
 #endif
@@ -4290,9 +4299,10 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 #ifdef ATOM_SIZE_CHECK
 	tlength = fy_atom_format_text_length(handle);
 	if (tlength != length) {
+		fy_utf8_format_text_a(fy_atom_data(handle), fy_atom_size(handle), fyue_doublequote, &str);
 		fyr_warning(fyr, "%s: storage hint calculation failed real %zu != hint %zu - \"%s\"", __func__,
 			tlength, length,
-			fy_utf8_format_text_a(fy_atom_data(handle), fy_atom_size(handle), fyue_doublequote));
+			str);
 		length = tlength;
 	}
 #endif
@@ -4330,12 +4340,14 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 	struct fy_simple_key_mark skm;
 	struct fy_token *fyt;
 	int i = 0, rc = -1;
+	char *str;
 
 	is_single = c == '\'';
 
+	fy_utf8_format_a(c, fyue_singlequote, &str);
 	fyp_error_check(fyp, c == '\'' || c == '"', err_out,
 			"bad start of flow scalar ('%s')",
-				fy_utf8_format_a(c, fyue_singlequote));
+			str);
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
 			fy_flow_indent_check(fyp), err_out,

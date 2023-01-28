@@ -11,13 +11,15 @@
 
 #include <stdio.h>
 #include <string.h>
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <unistd.h>
+#endif
 #include <assert.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <stdarg.h>
-#include <unistd.h>
 #include <ctype.h>
 
 #include <libfyaml.h>
@@ -31,6 +33,25 @@ static const char *error_type_txt[] = {
 	[FYET_WARNING] = "warning",
 	[FYET_ERROR]   = "error",
 };
+
+int fy_diag_diag(struct fy_diag *diag, enum fy_error_type level, const char* fmt, ...)
+{
+    va_list args;
+       struct fy_diag_ctx ctx = {
+               .level = level,
+               .module = FYEM_UNKNOWN,
+               .source_func = __func__,
+               .source_file = __FILE__,
+               .source_line = __LINE__,
+               .file = NULL,
+               .line = 0,
+               .column = 0,
+       };
+
+    va_start(args, fmt);
+    fy_diagf(diag, &ctx, fmt, args);
+    va_end(args);
+}
 
 const char *fy_error_type_to_string(enum fy_error_type type)
 {
@@ -184,6 +205,7 @@ static void fy_diag_update_term_info(struct fy_diag *diag)
 		goto out;
 
 	rows = columns = 0;
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 	ret = fy_term_query_size(fd, &rows, &columns);
 	if (ret != 0)
 		goto out;
@@ -192,6 +214,7 @@ static void fy_diag_update_term_info(struct fy_diag *diag)
 		diag->term_info.rows = rows;
 		diag->term_info.columns = columns;
 	}
+#endif
 out:
 	diag->terminal_probed = true;
 }
@@ -455,7 +478,7 @@ int fy_vdiag(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 		goto out;
 	}
 
-	msg = alloca_vsprintf(fmt, ap);
+	alloca_vsprintf(&msg, fmt, ap);
 
 	/* source part */
 	if (diag->cfg.show_source) {
@@ -467,21 +490,21 @@ int fy_vdiag(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 				file_stripped++;
 		} else
 			file_stripped = "";
-		source = alloca_sprintf("%s:%d @%s()%s",
+		alloca_sprintf(&source, "%s:%d @%s()%s",
 				file_stripped, fydc->source_line, fydc->source_func, " ");
 	}
 
 	/* position part */
 	if (diag->cfg.show_position && fydc->line >= 0 && fydc->column >= 0)
-		position = alloca_sprintf("<%3d:%2d>%s", fydc->line, fydc->column, ": ");
+		alloca_sprintf(&position, "<%3d:%2d>%s", fydc->line, fydc->column, ": ");
 
 	/* type part */
 	if (diag->cfg.show_type)
-		typestr = alloca_sprintf("[%s]%s", fy_error_level_str(level), ": ");
+		alloca_sprintf(&typestr, "[%s]%s", fy_error_level_str(level), ": ");
 
 	/* module part */
 	if (diag->cfg.show_module)
-		modulestr = alloca_sprintf("<%s>%s", fy_error_module_str(fydc->module), ": ");
+		alloca_sprintf(&modulestr, "<%s>%s", fy_error_module_str(fydc->module), ": ");
 
 	if (diag->cfg.colorize) {
 		switch (level) {
@@ -508,13 +531,13 @@ int fy_vdiag(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 	}
 
 	rc = fy_diag_printf(diag, "%s" "%*s" "%*s" "%*s" "%*s" "%s" "%s\n",
-			color_start ? : "",
-			source    ? diag->cfg.source_width : 0, source ? : "",
-			position  ? diag->cfg.position_width : 0, position ? : "",
-			typestr   ? diag->cfg.type_width : 0, typestr ? : "",
-			modulestr ? diag->cfg.module_width : 0, modulestr ? : "",
+			color_start ? color_start : "",
+			source    ? diag->cfg.source_width : 0, source ? source : "",
+			position  ? diag->cfg.position_width : 0, position ? position : "",
+			typestr   ? diag->cfg.type_width : 0, typestr ? typestr : "",
+			modulestr ? diag->cfg.module_width : 0, modulestr ? modulestr : "",
 			msg,
-			color_end ? : "");
+			color_end ? color_end : "");
 
 	if (rc > 0)
 		rc++;
@@ -638,7 +661,7 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 
 			/* worse case utf8 + 2 color sequences + zero terminated */
 			rowbufsz = cols * 4 + 2 * 16 + 1;
-			rowbuf = alloca(rowbufsz);
+			rowbuf = FY_ALLOCA(rowbufsz);
 			rbe = rowbuf + rowbufsz;
 
 			/* if the maximum column number is less than the terminal
@@ -837,15 +860,16 @@ void fy_diag_vreport(struct fy_diag *diag,
 	}
 
 	/* it will strip trailing newlines */
-	msg_str = alloca_vsprintf(fmt, ap);
+	alloca_vsprintf(&msg_str, fmt, ap);
 
 	/* get the colors */
 	fy_diag_get_error_colors(diag, fydrc->type, &color_start, &color_end, &white);
 
 	if (name || (line > 0 && column > 0))
-		name_str = (line > 0 && column > 0) ?
-			alloca_sprintf("%s%s:%d:%d: ", white, name, line, column) :
-			alloca_sprintf("%s%s: ", white, name);
+		if (line > 0 && column > 0)
+			alloca_sprintf(&name_str, "%s%s:%d:%d: ", white, name, line, column);
+		else
+			alloca_sprintf(&name_str, "%s%s: ", white, name);
 
 	if (!diag->collect_errors) {
 		fy_diag_printf(diag, "%s" "%s%s: %s" "%s\n",

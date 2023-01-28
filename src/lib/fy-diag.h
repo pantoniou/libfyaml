@@ -192,14 +192,14 @@ void fy_parser_diag_report(struct fy_parser *fyp,
 	_FYP_TOKEN_DIAG(_fyp, \
 		fy_token_create(FYTT_INPUT_MARKER, \
 			fy_fill_atom_at((_fyp), (_adv), (_cnt), \
-			alloca(sizeof(struct fy_atom)))), \
+			FY_ALLOCA(sizeof(struct fy_atom)))), \
 		_type, _module, _fmt, ## __VA_ARGS__)
 
 #define FYP_MARK_DIAG(_fyp, _sm, _em, _type, _module, _fmt, ...) \
 	_FYP_TOKEN_DIAG(_fyp, \
 		fy_token_create(FYTT_INPUT_MARKER, \
 			fy_fill_atom_mark(((_fyp)), (_sm), (_em), \
-				alloca(sizeof(struct fy_atom)))), \
+				FY_ALLOCA(sizeof(struct fy_atom)))), \
 		_type, _module, _fmt, ## __VA_ARGS__)
 
 #define FYP_NODE_DIAG(_fyp, _fyn, _type, _module, _fmt, ...) \
@@ -333,14 +333,14 @@ void fy_reader_diag_report(struct fy_reader *fyr,
 	_FYR_TOKEN_DIAG(_fyr, \
 		fy_token_create(FYTT_INPUT_MARKER, \
 			fy_reader_fill_atom_at((_fyr), (_adv), (_cnt), \
-			alloca(sizeof(struct fy_atom)))), \
+			FY_ALLOCA(sizeof(struct fy_atom)))), \
 		_type, _module, _fmt, ## __VA_ARGS__)
 
 #define FYR_MARK_DIAG(_fyr, _sm, _em, _type, _module, _fmt, ...) \
 	_FYR_TOKEN_DIAG(_fyr, \
 		fy_token_create(FYTT_INPUT_MARKER, \
 			fy_reader_fill_atom_mark(((_fyr)), (_sm), (_em), \
-				alloca(sizeof(struct fy_atom)))), \
+				FY_ALLOCA(sizeof(struct fy_atom)))), \
 		_type, _module, _fmt, ## __VA_ARGS__)
 
 #define FYR_NODE_DIAG(_fyr, _fyn, _type, _module, _fmt, ...) \
@@ -686,8 +686,8 @@ void fy_document_builder_diag_report(struct fy_document_builder *fydb,
 	FYDB_TOKEN_DIAG(_fydb, _fyt, FYET_WARNING, _module, _fmt, ## __VA_ARGS__)
 
 /* alloca formatted print methods */
-#define alloca_vsprintf(_fmt, _ap) \
-	({ \
+#define alloca_vsprintf(_res, _fmt, _ap) \
+	do { \
 		const char *__fmt = (_fmt); \
 		va_list _ap_orig; \
 		int _size; \
@@ -698,18 +698,18 @@ void fy_document_builder_diag_report(struct fy_document_builder *fydb,
 		_size = vsnprintf(NULL, 0, __fmt, _ap_orig); \
 		va_end(_ap_orig); \
 		if (_size != -1) { \
-			_buf = alloca(_size + 1); \
+			_buf = FY_ALLOCA(_size + 1); \
 			_sizew = vsnprintf(_buf, _size + 1, __fmt, _ap); \
 			assert(_size == _sizew); \
 			_s = _buf + strlen(_buf); \
 			while (_s > _buf && _s[-1] == '\n') \
 				*--_s = '\0'; \
 		} \
-		_buf; \
-	})
+		*(_res) = _buf; \
+	} while(false)
 
-#define alloca_sprintf(_fmt, ...) \
-	({ \
+#define alloca_sprintf(_res, _fmt, ...) \
+	do { \
 		const char *__fmt = (_fmt); \
 		int _size; \
 		int _sizew __FY_DEBUG_UNUSED__; \
@@ -717,14 +717,14 @@ void fy_document_builder_diag_report(struct fy_document_builder *fydb,
 		\
 		_size = snprintf(NULL, 0, __fmt, ## __VA_ARGS__); \
 		if (_size != -1) { \
-			_buf = alloca(_size + 1); \
+			_buf = FY_ALLOCA(_size + 1); \
 			_sizew = snprintf(_buf, _size + 1, __fmt, __VA_ARGS__); \
 			assert(_size == _sizew); \
 			_s = _buf + strlen(_buf); \
 			while (_s > _buf && _s[-1] == '\n') \
 				*--_s = '\0'; \
 		} \
-		_buf; \
-	})
+		*(_res) = _buf; \
+	} while(false)
 
 #endif

@@ -134,7 +134,7 @@ char *fy_token_dump_format(struct fy_token *fyt, char *buf, size_t bufsz)
 		/* not too large */
 		if (size > 20)
 			size = 20;
-		text = fy_utf8_format_text_a(text, size, fyue_doublequote);
+		fy_utf8_format_text_a(text, size, fyue_doublequote, &text);
 		size = strlen(text);
 		if (size > 10) {
 			sfx = "...\"";

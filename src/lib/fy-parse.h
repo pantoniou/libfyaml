@@ -534,7 +534,7 @@ fy_parser_set_flow_only_mode(struct fy_parser *fyp, bool flow_only_mode)
 }
 
 #define fy_fill_atom_a(_fyp, _advance) \
-	fy_fill_atom((_fyp), (_advance), alloca(sizeof(struct fy_atom)))
+	fy_fill_atom((_fyp), (_advance), FY_ALLOCA(sizeof(struct fy_atom)))
 
 struct fy_token *fy_token_vqueue(struct fy_parser *fyp, enum fy_token_type type, va_list ap);
 struct fy_token *fy_token_queue(struct fy_parser *fyp, enum fy_token_type type, ...);

@@ -144,7 +144,9 @@ static void display_usage(FILE *fp, char *progname)
 
 void print_escaped(FILE *fp, const char *str, int length)
 {
-	fprintf(fp, "%s", fy_utf8_format_text_a(str, length, fyue_doublequote));
+    char* str2;
+    fy_utf8_format_text_a(str, length, fyue_doublequote, &str2);
+	fprintf(fp, "%s", str2);
 }
 
 static int txt2esc_internal(const char *s, int l, char *out, int *outszp, int delim)
@@ -248,8 +250,8 @@ static char *txt2esc_format(const char *s, int l, char *buf, int maxsz, int deli
 	return buf;
 }
 
-#define fy_atom_get_text_a(_atom) \
-	({ \
+#define fy_atom_get_text_a(_atom, _res) \
+	do { \
 		struct fy_atom *_a = (_atom); \
 		int _len; \
 		char *_buf; \
@@ -258,7 +260,7 @@ static char *txt2esc_format(const char *s, int l, char *buf, int maxsz, int deli
 		if (!_a->direct_output) { \
 			_len = fy_atom_format_text_length(_a); \
 			if (_len > 0) { \
-				_buf = alloca(_len + 1); \
+				_buf = FY_ALLOCA(_len + 1); \
 				memset(_buf, 0, _len + 1); \
 				fy_atom_format_text(_a, _buf, _len + 1); \
 				_buf[_len] = '\0'; \
@@ -266,25 +268,25 @@ static char *txt2esc_format(const char *s, int l, char *buf, int maxsz, int deli
 			} \
 		} else { \
 			_len = fy_atom_size(_a); \
-			_buf = alloca(_len + 1); \
+			_buf = FY_ALLOCA(_len + 1); \
 			memset(_buf, 0, _len + 1); \
 			memcpy(_buf, fy_atom_data(_a), _len); \
 			_buf[_len] = '\0'; \
 			_txt = _buf; \
 		} \
-		_txt; \
-	})
+		*(_res) = _txt; \
+	} while(false)
 
-#define txt2esc_a(_s, _l) \
-	({ \
+#define txt2esc_a(_s, _l, _res) \
+	do { \
 	 	const char *__s = (const void *)(_s); \
 	 	int __l = (_l); \
 		int _ll = txt2esc_length(__s, __l, '\''); \
-	 	txt2esc_format(__s, __l, alloca(_ll + 1), _ll + 1, '\''); \
-	})
+	 	(*res) = txt2esc_format(__s, __l, FY_ALLOCA(_ll + 1), _ll + 1, '\''); \
+	} while(false)
 
-#define fy_atom_get_esc_text_a(_atom) txt2esc_a(fy_atom_get_text_a(_atom), -1)
-#define fy_token_get_esc_text_a(_atom) txt2esc_a(fy_token_get_text0(_atom), -1)
+#define fy_atom_get_esc_text_a(_atom, _res) txt2esc_a(fy_atom_get_text_a(_atom), -1, (_res))
+#define fy_token_get_esc_text_a(_atom, _res) txt2esc_a(fy_token_get_text0(_atom), -1, (_res))
 
 void dump_event(struct fy_parser *fyp, struct fy_event *fye)
 {
@@ -314,16 +316,16 @@ void dump_event(struct fy_parser *fyp, struct fy_event *fye)
 		printf("%-14s%s|\n", "DOCUMENT_END", mm);
 		break;
 	case FYET_ALIAS:
-		anchor = fy_token_get_esc_text_a(fye->alias.anchor);
+		fy_token_get_esc_text_a(fye->alias.anchor, &anchor);
 		printf("%-14s%s| '%s'\n", "ALIAS", mm, anchor);
 		break;
 	case FYET_SCALAR:
 		if (fye->scalar.anchor)
-			anchor = fy_token_get_esc_text_a(fye->scalar.anchor);
+			fy_token_get_esc_text_a(fye->scalar.anchor, &anchor);
 		if (fye->scalar.tag)
-			tag = fy_token_get_esc_text_a(fye->scalar.tag);
+			fy_token_get_esc_text_a(fye->scalar.tag, &tag);
 		if (fye->scalar.value)
-			value = fy_token_get_esc_text_a(fye->scalar.value);
+			fy_token_get_esc_text_a(fye->scalar.value, &value);
 		printf("%-14s%s|%s%s%s%s%s%s '%s'\n", "SCALAR", mm,
 			anchor ? " anchor='" : "", anchor ? : "", anchor ? "'" : "",
 			   tag ?    " tag='" : "",    tag ? : "",    tag ? "'" : "",
@@ -331,9 +333,9 @@ void dump_event(struct fy_parser *fyp, struct fy_event *fye)
 		break;
 	case FYET_SEQUENCE_START:
 		if (fye->sequence_start.anchor)
-			anchor = fy_token_get_esc_text_a(fye->sequence_start.anchor);
+			fy_token_get_esc_text_a(fye->sequence_start.anchor, &anchor);
 		if (fye->sequence_start.tag)
-			tag = fy_token_get_esc_text_a(fye->sequence_start.tag);
+			fy_token_get_esc_text_a(fye->sequence_start.tag, &tag);
 		printf("%-14s%s|%s%s%s%s%s%s\n", "SEQUENCE_START", mm,
 			anchor ? " anchor='" : "", anchor ? : "", anchor ? "'" : "",
 			   tag ?    " tag='" : "",    tag ? : "",    tag ? "'" : "");
@@ -343,9 +345,9 @@ void dump_event(struct fy_parser *fyp, struct fy_event *fye)
 		break;
 	case FYET_MAPPING_START:
 		if (fye->mapping_start.anchor)
-			anchor = fy_token_get_esc_text_a(fye->mapping_start.anchor);
+			fy_token_get_esc_text_a(fye->mapping_start.anchor, &anchor);
 		if (fye->mapping_start.tag)
-			tag = fy_token_get_esc_text_a(fye->mapping_start.tag);
+			fy_token_get_esc_text_a(fye->mapping_start.tag, &tag);
 		printf("%-14s%s|%s%s%s%s%s%s\n", "MAPPING_START", mm,
 			anchor ? " anchor='" : "", anchor ? : "", anchor ? "'" : "",
 			   tag ?    " tag='" : "",    tag ? : "",    tag ? "'" : "");
@@ -488,6 +490,7 @@ static void dump_token(struct fy_token *fyt)
 	const struct fy_version *vers;
 	const char *handle, *prefix, *suffix;
 	const char *typetxt;
+	char *tmp1, tmp2;
 
 	typetxt = fy_token_type_txt[fyt->type];
 	assert(typetxt);
@@ -506,9 +509,11 @@ static void dump_token(struct fy_token *fyt)
 		prefix = fy_tag_directive_token_prefix0(fyt);
 		if (!prefix)
 			prefix = "";
+        txt2esc_a(handle, -1, &tmp1);
+        txt2esc_a(prefix, -1, &tmp2);
 		printf("%s handle='%s' prefix='%s'\n", typetxt,
-				txt2esc_a(handle, -1),
-				txt2esc_a(prefix, -1));
+				tmp1,
+				tmp2);
 		break;
 	case FYTT_ALIAS:
 		printf("%s value='%s'\n", typetxt,
@@ -525,9 +530,11 @@ static void dump_token(struct fy_token *fyt)
 		suffix = fy_tag_token_suffix0(fyt);
 		if (!suffix)
 			suffix = "";
+        txt2esc_a(handle, -1, &tmp1);
+        txt2esc_a(prefix, -1, &tmp2);
 		printf("%s handle='%s' suffix='%s'\n", typetxt,
-				txt2esc_a(handle, -1),
-				txt2esc_a(suffix, -1));
+				tmp1,
+				tmp2);
 		break;
 	case FYTT_SCALAR:
 		switch (fy_token_scalar_style(fyt)) {
@@ -553,19 +560,20 @@ static void dump_token(struct fy_token *fyt)
 			style = "*illegal*";
 			break;
 		}
+        fy_atom_get_esc_text_a(&fyt->handle, &tmp1);
 		printf("%s value='%s' style=%s\n", typetxt,
-				fy_atom_get_esc_text_a(&fyt->handle),
+				tmp1,
 				style);
 		break;
 
 	case FYTT_INPUT_MARKER:
-		printf("%s value='%s'\n", typetxt,
-				fy_atom_get_esc_text_a(&fyt->handle));
+        fy_atom_get_esc_text_a(&fyt->handle, &tmp1);
+		printf("%s value='%s'\n", typetxt, tmp1);
 		break;
 
 	case FYTT_PE_MAP_KEY:
-		printf("%s value='%s'\n", typetxt,
-				fy_atom_get_esc_text_a(&fyt->handle));
+        fy_atom_get_esc_text_a(&fyt->handle, &tmp1);
+		printf("%s value='%s'\n", typetxt, tmp1);
 		break;
 
 	case FYTT_PE_SEQ_INDEX:
@@ -579,8 +587,8 @@ static void dump_token(struct fy_token *fyt)
 		break;
 
 	case FYTT_PE_ALIAS:
-		printf("%s value='%s'\n", "PE-ALIAS",
-				fy_atom_get_esc_text_a(&fyt->handle));
+        fy_atom_get_esc_text_a(&fyt->handle, &tmp1);
+		printf("%s value='%s'\n", "PE-ALIAS", tmp1);
 		break;
 
 	default:
@@ -751,10 +759,12 @@ process_event(struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
 	struct fy_node_pair *fynp;
 	char tbuf[80];
 	int rc;
+	char *path_text;
 
 	if (cd->null_output)
 		return FYCR_OK_CONTINUE;
 
+	fy_path_get_text_alloca(path, &path_text);
 	fyp_info(fyp, "%s: %c%c%c%c%c %3d - %-32s: %s\n", fy_event_type_txt[fye->type],
 			fy_path_in_root(path) ? 'R' : '-',
 			fy_path_in_sequence(path) ? 'S' : '-',
@@ -763,7 +773,7 @@ process_event(struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
 				fy_path_in_mapping_value(path) ? 'V' : '-',
 			fy_path_in_collection_root(path) ? '/' : '-',
 			fy_path_depth(path),
-			fy_path_get_text_alloca(path),
+		    path_text,
 			fy_token_dump_format(fy_event_get_token(fye), tbuf, sizeof(tbuf)));
 
 	switch (fye->type) {
@@ -1078,6 +1088,7 @@ int do_comment(struct fy_parser *fyp)
 void dump_libyaml_token(yaml_token_t *token)
 {
 	const char *style;
+	char *tmp1, *tmp2;
 
 	switch (token->type) {
 	case YAML_NO_TOKEN:
@@ -1095,9 +1106,9 @@ void dump_libyaml_token(yaml_token_t *token)
 				token->data.version_directive.minor);
 		break;
 	case YAML_TAG_DIRECTIVE_TOKEN:
-		printf("TAG_DIRECTIVE handle='%s' prefix='%s'\n",
-				txt2esc_a(token->data.tag_directive.handle, -1),
-				txt2esc_a(token->data.tag_directive.prefix, -1));
+		txt2esc_a(token->data.tag_directive.handle, -1, &tmp1);
+		txt2esc_a(token->data.tag_directive.prefix, -1, &tmp2);
+		printf("TAG_DIRECTIVE handle='%s' prefix='%s'\n", tmp1, tmp2);
 		break;
 	case YAML_DOCUMENT_START_TOKEN:
 		printf("DOCUMENT_START\n");
@@ -1139,17 +1150,19 @@ void dump_libyaml_token(yaml_token_t *token)
 		printf("VALUE\n");
 		break;
 	case YAML_ALIAS_TOKEN:
+        txt2esc_a(token->data.alias.value, -1, &tmp1);
 		printf("ALIAS value='%s'\n",
-				txt2esc_a(token->data.alias.value, -1));
+				tmp1);
 		break;
 	case YAML_ANCHOR_TOKEN:
+        txt2esc_a(token->data.anchor.value, -1, &tmp1);
 		printf("ANCHOR value='%s'\n",
-				txt2esc_a(token->data.anchor.value, -1));
+				tmp1);
 		break;
 	case YAML_TAG_TOKEN:
-		printf("TAG handle='%s' suffix='%s'\n",
-				txt2esc_a(token->data.tag.handle, -1),
-				txt2esc_a(token->data.tag.suffix, -1));
+	    txt2esc_a(token->data.tag.handle, -1, &tmp1);
+	    txt2esc_a(token->data.tag.suffix, -1, &tmp2);
+		printf("TAG handle='%s' suffix='%s'\n", tmp1, tmp2);
 		break;
 	case YAML_SCALAR_TOKEN:
 		switch (token->data.scalar.style) {
@@ -1175,9 +1188,9 @@ void dump_libyaml_token(yaml_token_t *token)
 			style = "*ERROR*";
 			break;
 		}
+		txt2esc_a(token->data.scalar.value, token->data.scalar.length, &tmp1);
 		printf("SCALAR value='%s' style=%s\n",
-				txt2esc_a(token->data.scalar.value, token->data.scalar.length),
-				style);
+				style, tmp1);
 		break;
 	}
 }
@@ -1202,23 +1215,24 @@ int do_libyaml_scan(yaml_parser_t *parser)
 	return 0;
 }
 
-#define mark_a(_m) \
-	({ \
+#define mark_a(_m, _res) \
+	do { \
 		yaml_mark_t *__m = (_m); \
-	 	char *_s = alloca(30); \
+	 	char *_s = FY_ALLOCA(30); \
 	 	snprintf(_s, 30, "%zu/%zu/%zu", __m->index, __m->line, __m->column); \
-	 	_s; \
-	 })
+	 	*(_res) = _s; \
+	 } while(false)
 
 void dump_libyaml_event(yaml_event_t *event)
 {
 	char mbuf[40];
 	char *mm;
 	char *anchor = NULL, *tag = NULL, *value = NULL;
+	char *tmp1, *tmp2;
 
-	snprintf(mbuf, sizeof(mbuf), " %10s-%-10s ",
-			mark_a(&event->start_mark),
-			mark_a(&event->end_mark));
+	mark_a(&event->start_mark, &tmp1);
+	mark_a(&event->end_mark, &tmp2);
+	snprintf(mbuf, sizeof(mbuf), " %10s-%-10s ", tmp1, tmp2);
 	mm = mbuf;
 	mm = " ";
 
@@ -1239,15 +1253,15 @@ void dump_libyaml_event(yaml_event_t *event)
 		printf("%-14s%s|\n", "DOCUMENT_END", mm);
 		break;
 	case YAML_ALIAS_EVENT:
-		anchor = txt2esc_a((char *)event->data.alias.anchor, -1);
+		txt2esc_a((char *)event->data.alias.anchor, -1, &anchor);
 		printf("%-14s%s| '%s'\n", "ALIAS", mm, anchor);
 		break;
 	case YAML_SCALAR_EVENT:
 		if (event->data.scalar.anchor)
-			anchor = txt2esc_a((char *)event->data.scalar.anchor, -1);
+			txt2esc_a((char *)event->data.scalar.anchor, -1, &anchor);
 		if (event->data.scalar.tag)
-			tag = txt2esc_a((char *)event->data.scalar.tag, -1);
-		value = txt2esc_a((char *)event->data.scalar.value, -1);
+			txt2esc_a((char *)event->data.scalar.tag, -1, &tag);
+		txt2esc_a((char *)event->data.scalar.value, -1, &value);
 		printf("%-14s%s|%s%s%s%s%s%s '%s'\n", "SCALAR", mm,
 			anchor ? " anchor='" : "", anchor ? : "", anchor ? "'" : "",
 			   tag ?    " tag='" : "",    tag ? : "",    tag ? "'" : "",
@@ -1255,9 +1269,9 @@ void dump_libyaml_event(yaml_event_t *event)
 		break;
 	case YAML_SEQUENCE_START_EVENT:
 		if (event->data.sequence_start.anchor)
-			anchor = txt2esc_a((char *)event->data.sequence_start.anchor, -1);
+			txt2esc_a((char *)event->data.sequence_start.anchor, -1, &anchor);
 		if (event->data.sequence_start.tag)
-			tag = txt2esc_a((char *)event->data.sequence_start.tag, -1);
+			txt2esc_a((char *)event->data.sequence_start.tag, -1, &tag);
 		printf("%-14s%s|%s%s%s%s%s%s\n", "SEQUENCE_START", mm,
 			anchor ? " anchor='" : "", anchor ? : "", anchor ? "'" : "",
 			   tag ?    " tag='" : "",    tag ? : "",    tag ? "'" : "");
@@ -1267,9 +1281,9 @@ void dump_libyaml_event(yaml_event_t *event)
 		break;
 	case YAML_MAPPING_START_EVENT:
 		if (event->data.mapping_start.anchor)
-			anchor = txt2esc_a((char *)event->data.mapping_start.anchor, -1);
+			txt2esc_a((char *)event->data.mapping_start.anchor, -1, &anchor);
 		if (event->data.mapping_start.tag)
-			tag = txt2esc_a((char *)event->data.mapping_start.tag, -1);
+			txt2esc_a((char *)event->data.mapping_start.tag, -1, &tag);
 		printf("%-14s%s|%s%s%s%s%s%s\n", "MAPPING_START", mm,
 			anchor ? " anchor='" : "", anchor ? : "", anchor ? "'" : "",
 			   tag ?    " tag='" : "",    tag ? : "",    tag ? "'" : "");
@@ -3820,8 +3834,8 @@ int do_bad_utf8(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 
 	len = strlen(key);
 
-	fwd = alloca(sizeof(*fwd) * len);
-	bwd = alloca(sizeof(*bwd) * len);
+	fwd = FY_ALLOCA(sizeof(*fwd) * len);
+	bwd = FY_ALLOCA(sizeof(*bwd) * len);
 
 	memset(fwd, 0, sizeof(*fwd) * len);
 	memset(bwd, 0, sizeof(*bwd) * len);
@@ -3911,7 +3925,7 @@ int apply_flags_option(const char *arg, unsigned int *flagsp,
 			sn = e;
 
 		len = sn - s;
-		targ = alloca(len + 1);
+		targ = FY_ALLOCA(len + 1);
 		memcpy(targ, s, len);
 		targ[len] = '\0';
 
@@ -3959,7 +3973,7 @@ int main(int argc, char *argv[])
 	while ((opt = getopt_long_only(argc, argv, "I:m:i:w:d:rsc:C:D:M:W:S:qh", lopts, &lidx)) != -1) {
 		switch (opt) {
 		case 'I':
-			tmp = alloca(strlen(cfg.search_path) + 1 + strlen(optarg) + 1);
+			tmp = FY_ALLOCA(strlen(cfg.search_path) + 1 + strlen(optarg) + 1);
 			s = tmp;
 			strcpy(s, cfg.search_path);
 			if (cfg.search_path && cfg.search_path[0]) {
@@ -4213,7 +4227,7 @@ int main(int argc, char *argv[])
 	if (!icount)
 		icount++;
 
-	fyic_array = alloca(sizeof(*fyic_array) * icount);
+	fyic_array = FY_ALLOCA(sizeof(*fyic_array) * icount);
 	memset(fyic_array, 0, sizeof(*fyic_array) * icount);
 
 	j = 0;

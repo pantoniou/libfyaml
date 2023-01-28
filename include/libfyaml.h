@@ -41,6 +41,11 @@ extern "C" {
 
 #if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 #include <unistd.h>
+#define FY_ALLOCA(x) alloca(x)
+#elif defined(_MSC_VER)
+#include <BaseTsd.h>
+typedef SSIZE_T ssize_t;
+#define FY_ALLOCA(x) _alloca(x)
 #endif
 
 /* opaque types for the user */
@@ -71,9 +76,11 @@ struct fy_document_iterator;
 #define FY_NT	((size_t)-1)
 
 #if defined(__GNUC__) && __GNUC__ >= 4
+#define FY_ATTRIBUTE(attr) __attribute ((attr))
 #define FY_EXPORT __attribute__ ((visibility ("default")))
 #define FY_DEPRECATED __attribute__ ((deprecated))
 #else
+#define FY_ATTRIBUTE(attr) /* nothing */
 #define FY_EXPORT /* nothing */
 #define FY_DEPRECATED /* nothing */
 #endif
@@ -84,34 +91,32 @@ struct fy_document_iterator;
  * If the _str pointer is NULL, then NULL will be returned
  */
 #ifndef FY_ALLOCA_COPY_FREE
-#define FY_ALLOCA_COPY_FREE(_str, _len)				\
-        ({							\
-                char *__str = (_str), *__stra = NULL;		\
-                size_t __len = (size_t)(_len);			\
+#define FY_ALLOCA_COPY_FREE(_str, _len, _res)			\
+	do {							\
+		char *__res, *__str = (char*)(_str);		\
+	        size_t __len = (size_t)(_len);			\
+		__res = NULL;					\
 								\
 		if (__str) {					\
-			if (__len == FY_NT) 			\
+			if (__len == FY_NT)			\
 				__len = strlen(__str);		\
-			__stra = alloca(__len + 1);		\
-			memcpy(__stra, __str, __len);		\
-			__stra[__len] = '\0';			\
+			__res = FY_ALLOCA(__len + 1);		\
+			memcpy(__res, __str, __len);		\
+			(__res[__len]) = '\0';			\
 			free(__str);				\
 		}						\
-                (const char *)__stra;				\
-        })
+	        *(_res) = __res;				\
+	} while(false)
 #endif
 
 /* same as above but when _str == NULL return "" */
 #ifndef FY_ALLOCA_COPY_FREE_NO_NULL
-#define FY_ALLOCA_COPY_FREE_NO_NULL(_str, _len)			\
-        ({							\
-                const char *__strb;				\
-								\
-		__strb = FY_ALLOCA_COPY_FREE(_str, _len);	\
-		if (!__strb)					\
-			__strb = "";				\
-		__strb;						\
-        })
+#define FY_ALLOCA_COPY_FREE_NO_NULL(_str, _len, _res)		\
+	do {							\
+		FY_ALLOCA_COPY_FREE(_str, _len, _res);  	\
+		if (!*(_res))					\
+			*(_res) = "";				\
+	} while(false)
 #endif
 
 /**
@@ -2022,8 +2027,8 @@ fy_emit_document_to_string(struct fy_document *fyd,
 			   enum fy_emitter_cfg_flags flags)
 	FY_EXPORT;
 
-#define fy_emit_document_to_string_alloca(_fyd, _flags) \
-	FY_ALLOCA_COPY_FREE(fy_emit_document_to_string((_fyd), (_flags)), FY_NT)
+#define fy_emit_document_to_string_alloca(_fyd, _flags, _res) \
+	FY_ALLOCA_COPY_FREE(fy_emit_document_to_string((_fyd), (_flags)), FY_NT, (_res))
 
 /**
  * fy_emit_node_to_buffer() - Emit a node (recursively) to a buffer
@@ -2061,8 +2066,8 @@ char *
 fy_emit_node_to_string(struct fy_node *fyn, enum fy_emitter_cfg_flags flags)
 	FY_EXPORT;
 
-#define fy_emit_node_to_string_alloca(_fyn, _flags) \
-	FY_ALLOCA_COPY_FREE(fy_emit_node_to_string((_fyn), (_flags)), FY_NT)
+#define fy_emit_node_to_string_alloca(_fyn, _flags, _res) \
+	FY_ALLOCA_COPY_FREE(fy_emit_node_to_string((_fyn), (_flags)), FY_NT, (_res))
 
 /**
  * fy_emit_to_buffer() - Create an emitter for buffer output.
@@ -2669,7 +2674,7 @@ fy_document_vbuildf(const struct fy_parse_cfg *cfg,
  */
 struct fy_document *
 fy_document_buildf(const struct fy_parse_cfg *cfg, const char *fmt, ...)
-	__attribute__((format(printf, 2, 3)))
+	FY_ATTRIBUTE(format(printf, 2, 3))
 	FY_EXPORT;
 
 /**
@@ -3054,7 +3059,7 @@ fy_node_vbuildf(struct fy_document *fyd, const char *fmt, va_list ap)
  */
 struct fy_node *
 fy_node_buildf(struct fy_document *fyd, const char *fmt, ...)
-	__attribute__((format(printf, 2, 3)))
+	FY_ATTRIBUTE(format(printf, 2, 3))
 	FY_EXPORT;
 
 /**
@@ -3110,8 +3115,8 @@ char *
 fy_node_get_path(struct fy_node *fyn)
 	FY_EXPORT;
 
-#define fy_node_get_path_alloca(_fyn) \
-	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_path((_fyn)), FY_NT)
+#define fy_node_get_path_alloca(_fyn, _res) \
+	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_path((_fyn)), FY_NT, (_res))
 
 /**
  * fy_node_get_parent() - Get the parent node of a node
@@ -3162,8 +3167,8 @@ char *
 fy_node_get_parent_address(struct fy_node *fyn)
 	FY_EXPORT;
 
-#define fy_node_get_parent_address_alloca(_fyn) \
-	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_parent_address((_fyn)), FY_NT)
+#define fy_node_get_parent_address_alloca(_fyn, _res) \
+	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_parent_address((_fyn)), FY_NT, (_res))
 
 /**
  * fy_node_get_path_relative_to() - Get a path address of a node
@@ -3184,8 +3189,8 @@ char *
 fy_node_get_path_relative_to(struct fy_node *fyn_parent, struct fy_node *fyn)
 	FY_EXPORT;
 
-#define fy_node_get_path_relative_to_alloca(_fynp, _fyn) \
-	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_path_relative_to((_fynp), (_fyn)), FY_NT)
+#define fy_node_get_path_relative_to_alloca(_fynp, _fyn, _res) \
+	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_path_relative_to((_fynp), (_fyn)), FY_NT, (_res))
 
 /**
  * fy_node_get_short_path() - Get a path address of a node in the shortest
@@ -3217,8 +3222,8 @@ char *
 fy_node_get_short_path(struct fy_node *fyn)
 	FY_EXPORT;
 
-#define fy_node_get_short_path_alloca(_fyn) \
-	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_short_path((_fyn)), FY_NT)
+#define fy_node_get_short_path_alloca(_fyn, _res) \
+	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_short_path((_fyn)), FY_NT, (_res))
 
 /**
  * fy_node_get_reference() - Get a textual reference to a node
@@ -3240,8 +3245,8 @@ char *
 fy_node_get_reference(struct fy_node *fyn)
 	FY_EXPORT;
 
-#define fy_node_get_reference_alloca(_fyn) \
-	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_reference((_fyn)), FY_NT)
+#define fy_node_get_reference_alloca(_fyn, _res) \
+	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_reference((_fyn)), FY_NT, (_res))
 
 /**
  * fy_node_create_reference() - Create an alias reference node
@@ -3284,8 +3289,8 @@ char *
 fy_node_get_relative_reference(struct fy_node *fyn_base, struct fy_node *fyn)
 	FY_EXPORT;
 
-#define fy_node_get_relative_reference_alloca(_fynb, _fyn) \
-	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_relative_reference((_fynb), (_fyn)), FY_NT)
+#define fy_node_get_relative_reference_alloca(_fynb, _fyn, _res) \
+	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_relative_reference((_fynb), (_fyn)), FY_NT, (_res))
 
 /**
  * fy_node_create_relative_reference() - Create an alias reference node
@@ -3389,7 +3394,7 @@ fy_node_create_vscalarf(struct fy_document *fyd, const char *fmt, va_list ap)
 struct fy_node *
 fy_node_create_scalarf(struct fy_document *fyd, const char *fmt, ...)
 	FY_EXPORT
-	__attribute__((format(printf, 2, 3)));
+	FY_ATTRIBUTE(format(printf, 2, 3));
 
 /**
  * fy_node_create_sequence() - Create an empty sequence node.
@@ -4224,7 +4229,7 @@ int fy_node_vscanf(struct fy_node *fyn, const char *fmt, va_list ap);
  */
 int
 fy_node_scanf(struct fy_node *fyn, const char *fmt, ...)
-	__attribute__((format(scanf, 2, 3)))
+	FY_ATTRIBUTE(format(scanf, 2, 3))
 	FY_EXPORT;
 
 /**
@@ -4275,7 +4280,7 @@ fy_document_vscanf(struct fy_document *fyd, const char *fmt, va_list ap)
  */
 int
 fy_document_scanf(struct fy_document *fyd, const char *fmt, ...)
-	__attribute__((format(scanf, 2, 3)))
+	FY_ATTRIBUTE(format(scanf, 2, 3))
 	FY_EXPORT;
 
 /**
@@ -4571,7 +4576,7 @@ fy_node_set_vanchorf(struct fy_node *fyn, const char *fmt, va_list ap)
  */
 int
 fy_node_set_anchorf(struct fy_node *fyn, const char *fmt, ...)
-	FY_EXPORT __attribute__((format(printf, 2, 3)));
+	FY_EXPORT FY_ATTRIBUTE(format(printf, 2, 3));
 
 /**
  * fy_node_remove_anchor() - Remove an anchor
@@ -4839,7 +4844,7 @@ fy_node_vreport(struct fy_node *fyn, enum fy_error_type type,
 void
 fy_node_report(struct fy_node *fyn, enum fy_error_type type,
 	       const char *fmt, ...)
-	__attribute__((format(printf, 3, 4)))
+	FY_ATTRIBUTE(format(printf, 3, 4))
 	FY_EXPORT;
 
 /**
@@ -4890,7 +4895,7 @@ void
 fy_node_override_report(struct fy_node *fyn, enum fy_error_type type,
 			const char *file, int line, int column,
 			const char *fmt, ...)
-	__attribute__((format(printf, 6, 7)))
+	FY_ATTRIBUTE(format(printf, 6, 7))
 	FY_EXPORT;
 
 typedef void (*fy_diag_output_fn)(struct fy_diag *diag, void *user,
@@ -5170,7 +5175,7 @@ fy_diag_vprintf(struct fy_diag *diag, const char *fmt, va_list ap)
 int
 fy_diag_printf(struct fy_diag *diag, const char *fmt, ...)
 	FY_EXPORT
-	__attribute__((format(printf, 2, 3)));
+	FY_ATTRIBUTE(format(printf, 2, 3));
 
 /**
  * struct fy_diag_ctx - The diagnostics context
@@ -5237,22 +5242,9 @@ int
 fy_diagf(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 	 const char *fmt, ...)
 	FY_EXPORT
-	__attribute__((format(printf, 3, 4)));
+	FY_ATTRIBUTE(format(printf, 3, 4));
 
-#define fy_diag_diag(_diag, _level, _fmt, ...) \
-	({ \
-		struct fy_diag_ctx _ctx = { \
-			.level = (_level), \
-			.module = FYEM_UNKNOWN, \
-			.source_func = __func__, \
-			.source_file = __FILE__, \
-			.source_line = __LINE__, \
-			.file = NULL, \
-			.line = 0, \
-			.column = 0, \
-		}; \
-		fy_diagf((_diag), &_ctx, (_fmt) , ## __VA_ARGS__); \
-	})
+int fy_diag_diag(struct fy_diag *diag, enum fy_error_type level, const char* fmt, ...);
 
 #ifndef NDEBUG
 
@@ -5310,7 +5302,7 @@ fy_diag_node_vreport(struct fy_diag *diag, struct fy_node *fyn,
 void
 fy_diag_node_report(struct fy_diag *diag, struct fy_node *fyn,
 		    enum fy_error_type type, const char *fmt, ...)
-	__attribute__((format(printf, 4, 5)))
+	FY_ATTRIBUTE(format(printf, 4, 5))
 	FY_EXPORT;
 
 /**
@@ -5365,7 +5357,7 @@ void
 fy_diag_node_override_report(struct fy_diag *diag, struct fy_node *fyn,
 			     enum fy_error_type type, const char *file,
 			     int line, int column, const char *fmt, ...)
-	__attribute__((format(printf, 7, 8)))
+	FY_ATTRIBUTE(format(printf, 7, 8))
 	FY_EXPORT;
 
 /**
@@ -6889,8 +6881,8 @@ char *
 fy_path_component_get_text(struct fy_path_component *fypc)
 	FY_EXPORT;
 
-#define fy_path_component_get_text_alloca(_fypc) \
-	FY_ALLOCA_COPY_FREE(fy_path_component_get_text((_fypc)), FY_NT)
+#define fy_path_component_get_text_alloca(_fypc, _res) \
+	FY_ALLOCA_COPY_FREE(fy_path_component_get_text((_fypc)), FY_NT, (_res))
 /**
  * fy_path_depth() - Get the depth of a path
  *
@@ -6937,8 +6929,8 @@ char *
 fy_path_get_text(struct fy_path *fypp)
 	FY_EXPORT;
 
-#define fy_path_get_text_alloca(_fypp) \
-	FY_ALLOCA_COPY_FREE(fy_path_get_text((_fypp)), FY_NT)
+#define fy_path_get_text_alloca(_fypp, _res) \
+	FY_ALLOCA_COPY_FREE(fy_path_get_text((_fypp)), FY_NT, (_res))
 
 /**
  * fy_path_in_root() - Check if the path is in the root of the document

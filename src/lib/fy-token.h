@@ -448,20 +448,20 @@ unsigned int fy_analyze_scalar_content(const char *data, size_t size,
 /* must be freed */
 char *fy_token_debug_text(struct fy_token *fyt);
 
-#define fy_token_debug_text_a(_fyt) \
-	({ \
+#define fy_token_debug_text_a(_fyt, _res) \
+	do { \
 		struct fy_token *__fyt = (_fyt); \
 		char *_buf, *_rbuf = ""; \
 		size_t _len; \
 		_buf = fy_token_debug_text(__fyt); \
 		if (_buf) { \
 			_len = strlen(_buf); \
-			_rbuf = alloca(_len + 1); \
+			_rbuf = FY_ALLOCA(_len + 1); \
 			memcpy(_rbuf, _buf, _len + 1); \
 			free(_buf); \
 		} \
-		_rbuf; \
-	})
+		*(_res) = _rbuf; \
+	} while(false)
 
 int fy_token_memcmp(struct fy_token *fyt, const void *ptr, size_t len);
 int fy_token_strcmp(struct fy_token *fyt, const char *str);

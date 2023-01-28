@@ -236,7 +236,7 @@ void fy_emit_vprintf(struct fy_emitter *emit, enum fy_emitter_write_type type, c
 	if (size < 0)
 		return;
 
-	str = alloca(size + 1);
+	str = FY_ALLOCA(size + 1);
 	size = vsnprintf(str, size + 1, fmt, ap2);
 	if (size < 0)
 		return;
@@ -272,7 +272,7 @@ void fy_emit_write_indent(struct fy_emitter *emit, int indent)
 
 	if (emit->column < indent) {
 		len = indent - emit->column;
-		ws = alloca(len + 1);
+		ws = FY_ALLOCA(len + 1);
 		memset(ws, ' ', len);
 		ws[len] = '\0';
 		fy_emit_write(emit, fyewt_indent, ws, len);
@@ -541,7 +541,7 @@ void fy_emit_token_comment(struct fy_emitter *emit, struct fy_token *fyt, int fl
 	if (len < 0)
 		return;
 
-	text = alloca(len + 1);
+	text = FY_ALLOCA(len + 1);
 
 	if (placement == fycp_top || placement == fycp_bottom) {
 		fy_emit_write_indent(emit, indent);
@@ -1659,7 +1659,7 @@ void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, in
 					"malloc() failed");
 			used_malloc = true;
 		} else
-			fynpp = alloca((count + 1) * sizeof(*fynpp));
+			fynpp = FY_ALLOCA((count + 1) * sizeof(*fynpp));
 
 		/* fill (removing empty KVs) */
 		i = 0;

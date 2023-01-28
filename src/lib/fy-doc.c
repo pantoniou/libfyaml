@@ -15,7 +15,9 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <errno.h>
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 #include <unistd.h>
+#endif
 
 #include <libfyaml.h>
 
@@ -274,10 +276,13 @@ int fy_node_set_anchor_copy(struct fy_node *fyn, const char *text, size_t len)
 
 int fy_node_set_vanchorf(struct fy_node *fyn, const char *fmt, va_list ap)
 {
+    char *str;
+
 	if (!fyn || !fmt)
 		return -1;
 
-	return fy_document_set_anchor_internal(fyn->fyd, fyn, alloca_vsprintf(fmt, ap), FY_NT, FYDSAF_COPY);
+    alloca_vsprintf(&str, fmt, ap);
+	return fy_document_set_anchor_internal(fyn->fyd, fyn, str, FY_NT, FYDSAF_COPY);
 }
 
 int fy_node_set_anchorf(struct fy_node *fyn, const char *fmt, ...)
@@ -1264,11 +1269,11 @@ bool fy_node_compare_user(struct fy_node *fyn1, struct fy_node *fyn2,
 			break;
 		}
 
-		fynpp1 = alloca(sizeof(*fynpp1) * (count1 + 1));
+		fynpp1 = FY_ALLOCA(sizeof(*fynpp1) * (count1 + 1));
 		fy_node_mapping_fill_array(fyn1, fynpp1, count1);
 		fy_node_mapping_perform_sort(fyn1, sort_fn, sort_fn_arg, fynpp1, count1);
 
-		fynpp2 = alloca(sizeof(*fynpp2) * (count2 + 1));
+		fynpp2 = FY_ALLOCA(sizeof(*fynpp2) * (count2 + 1));
 		fy_node_mapping_fill_array(fyn2, fynpp2, count2);
 		fy_node_mapping_perform_sort(fyn2, sort_fn, sort_fn_arg, fynpp2, count2);
 
@@ -3862,17 +3867,17 @@ bool fy_node_is_empty(struct fy_node *fyn)
 	return true;
 }
 
-#define fy_node_walk_ctx_create_a(_max_depth, _mark) \
-	({ \
+#define fy_node_walk_ctx_create_a(_max_depth, _mark, _res) \
+	do { \
 		unsigned int __max_depth = (_max_depth); \
 		struct fy_node_walk_ctx *_ctx; \
 		\
-		_ctx = alloca(sizeof(*_ctx) + sizeof(struct fy_node *) * __max_depth); \
+		_ctx = FY_ALLOCA(sizeof(*_ctx) + sizeof(struct fy_node *) * __max_depth); \
 		_ctx->max_depth = _max_depth; \
 		_ctx->next_slot = 0; \
 		_ctx->mark = (_mark); \
-		_ctx; \
-	})
+		*(_res) = _ctx; \
+	} while(false)
 
 static inline void fy_node_walk_mark_start(struct fy_node_walk_ctx *ctx)
 {
@@ -3944,7 +3949,7 @@ fy_node_follow_aliases(struct fy_node *fyn, enum fy_node_walk_flags flags, bool 
 
 	while (fyn && fy_node_is_alias(fyn)) {
 
-		// fprintf(stderr, "%s: %s\n", __func__, fy_node_get_path_alloca(fyn));
+		// fprintf(stderr, "%s: %s\n", __func__, fy_node_get_path_FY_ALLOCA(fyn));
 
 		/* check for loops */
 		if (fy_ptr_node_list_contains(&nl, fyn)) {
@@ -4250,7 +4255,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 		if (has_json_key_esc) {
 			/* note that the escapes reduce the length, so allocating the
 			 * same size is guaranteed safe */
-			json_key = alloca(len + 1);
+			json_key = FY_ALLOCA(len + 1);
 
 			ss = path;
 			ee = s;
@@ -4275,7 +4280,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 		/* URI encoded escaped */
 		if ((flags & FYNWF_URI_ENCODED) && memchr(path, '%', len)) {
 			/* escapes shrink, so safe to allocate as much */
-			uri_path = alloca(len + 1);
+			uri_path = FY_ALLOCA(len + 1);
 
 			ss = path;
 			ee = path + len;
@@ -4501,7 +4506,7 @@ fy_node_get_reference_internal(struct fy_node *fyn_base, struct fy_node *fyn, bo
 		text = fy_anchor_get_text(fya, &len);
 		if (!text)
 			return NULL;
-		path2 = alloca(1 + len + 1);
+		path2 = FY_ALLOCA(1 + len + 1);
 		path2[0] = '*';
 		memcpy(path2 + 1, text, len);
 		path2[len + 1] = '\0';
@@ -4513,10 +4518,10 @@ fy_node_get_reference_internal(struct fy_node *fyn_base, struct fy_node *fyn, bo
 			fya = fy_node_get_nearest_anchor(fyn);
 		if (!fya) {
 			/* no anchor, direct reference (ie return *\/foo\/bar */
-			path = fy_node_get_path_alloca(fyn);
+			fy_node_get_path_alloca(fyn, &path);
 			if (!*path)
 				return NULL;
-			path2 = alloca(1 + strlen(path) + 1);
+			path2 = FY_ALLOCA(1 + strlen(path) + 1);
 			path2[0] = '*';
 			strcpy(path2 + 1, path);
 		} else {
@@ -4524,25 +4529,25 @@ fy_node_get_reference_internal(struct fy_node *fyn_base, struct fy_node *fyn, bo
 			if (!text)
 				return NULL;
 			if (fy_anchor_node(fya) != fyn) {
-				path = fy_node_get_path_relative_to_alloca(fy_anchor_node(fya), fyn);
+				fy_node_get_path_relative_to_alloca(fy_anchor_node(fya), fyn, &path);
 				if (*path) {
 					/* we have a relative path */
-					path2 = alloca(1 + len + 1 + strlen(path) + 1);
+					path2 = FY_ALLOCA(1 + len + 1 + strlen(path) + 1);
 					path2[0] = '*';
 					memcpy(path2 + 1, text, len);
 					path2[len + 1] = '/';
 					memcpy(1 + path2 + len + 1, path, strlen(path) + 1);
 				} else {
 					/* absolute path */
-					path = fy_node_get_path_alloca(fyn);
+					fy_node_get_path_alloca(fyn, &path);
 					if (!*path)
 						return NULL;
-					path2 = alloca(1 + strlen(path) + 1);
+					path2 = FY_ALLOCA(1 + strlen(path) + 1);
 					path2[0] = '*';
 					strcpy(path2 + 1, path);
 				}
 			} else {
-				path2 = alloca(1 + len + 1);
+				path2 = FY_ALLOCA(1 + len + 1);
 				path2[0] = '*';
 				memcpy(path2 + 1, text, len);
 				path2[len + 1] = '\0';
@@ -4640,9 +4645,9 @@ bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
 			break;
 
 		ctxn = ctx;
-		if (!ctxn)
-			ctxn = fy_node_walk_ctx_create_a(
-				fy_node_walk_max_depth_from_flags(flags), FYNWF_REF_MARKER);
+		if (!ctxn) 
+			fy_node_walk_ctx_create_a(
+				fy_node_walk_max_depth_from_flags(flags), FYNWF_REF_MARKER, &ctxn);
 
 
 		if (!ctx) {
@@ -4816,7 +4821,7 @@ char *fy_node_get_path(struct fy_node *fyn)
 	track = NULL;
 	len = 0;
 	while ((path = fy_node_get_parent_address(fyn))) {
-		newtrack = alloca(sizeof(*newtrack));
+		newtrack = FY_ALLOCA(sizeof(*newtrack));
 		newtrack->prev = track;
 		newtrack->path = path;
 
@@ -4887,13 +4892,13 @@ char *fy_node_get_path_relative_to(struct fy_node *fyn_parent, struct fy_node *f
 		ppathlen = strlen(ppath);
 
 		if (pathlen > 0) {
-			path2 = alloca(pathlen + 1 + ppathlen + 1);
+			path2 = FY_ALLOCA(pathlen + 1 + ppathlen + 1);
 			memcpy(path2, ppath, ppathlen);
 			path2[ppathlen] = '/';
 			memcpy(path2 + ppathlen + 1, path, pathlen);
 			path2[ppathlen + 1 + pathlen] = '\0';
 		} else {
-			path2 = alloca(ppathlen + 1);
+			path2 = FY_ALLOCA(ppathlen + 1);
 			memcpy(path2, ppath, ppathlen);
 			path2[ppathlen] = '\0';
 		}
@@ -4935,11 +4940,12 @@ char *fy_node_get_short_path(struct fy_node *fyn)
 	if (!text)
 		return NULL;
 
-	if (fyn_anchor == fyn)
-		str = alloca_sprintf("*%.*s", (int)len, text);
-	else
-		str = alloca_sprintf("*%.*s/%s", (int)len, text,
-				fy_node_get_path_relative_to_alloca(fyn_anchor, fyn));
+	if (fyn_anchor == fyn) {
+		alloca_sprintf(&str, "*%.*s", (int)len, text);
+    } else {
+        fy_node_get_path_relative_to_alloca(fyn_anchor, fyn, &path);
+		alloca_sprintf(&str, "*%.*s/%s", (int)len, text, path);
+	}
 
 	path = strdup(str);
 	return path;
@@ -5242,10 +5248,13 @@ struct fy_node *fy_node_create_alias_copy(struct fy_document *fyd, const char *d
 
 struct fy_node *fy_node_create_vscalarf(struct fy_document *fyd, const char *fmt, va_list ap)
 {
+    char *str;
+
 	if (!fyd || !fmt)
 		return NULL;
 
-	return fy_node_create_scalar_internal(fyd, alloca_vsprintf(fmt, ap), FY_NT, FYNCSIF_COPY);
+    alloca_vsprintf(&str, fmt, ap);
+	return fy_node_create_scalar_internal(fyd, str, FY_NT, FYNCSIF_COPY);
 }
 
 struct fy_node *fy_node_create_scalarf(struct fy_document *fyd, const char *fmt, ...)
@@ -5774,7 +5783,7 @@ void fy_node_mapping_perform_sort(struct fy_node *fyn_map,
 		def_arg.cmp_fn = NULL;
 		def_arg.arg = NULL;
 	}
-	ctx.key_cmp = key_cmp ? : fy_node_mapping_sort_cmp_default;
+	ctx.key_cmp = key_cmp ? key_cmp : fy_node_mapping_sort_cmp_default;
 	ctx.arg = key_cmp ? arg : &def_arg;
 	ctx.fynpp = fynpp;
 	ctx.count = count;
@@ -6043,7 +6052,7 @@ int fy_node_vscanf(struct fy_node *fyn, const char *fmt, va_list ap)
 		goto err_out;
 
 	len = strlen(fmt);
-	fmt_cpy = alloca(len + 1);
+	fmt_cpy = FY_ALLOCA(len + 1);
 	memcpy(fmt_cpy, fmt, len + 1);
 	s = fmt_cpy;
 	e = s + len;
@@ -6110,7 +6119,7 @@ int fy_node_vscanf(struct fy_node *fyn, const char *fmt, va_list ap)
 
 		/* allocate buffer it's smaller than the one we have already */
 		if (!value0 || value0_len < value_len) {
-			value0 = alloca(value_len + 1);
+			value0 = FY_ALLOCA(value_len + 1);
 			value0_len = value_len;
 		}
 
@@ -6461,7 +6470,7 @@ fy_node_hash_internal(struct fy_node *fyn, fy_hash_update_fn update_fn, void *st
 	case FYNT_MAPPING:
 		count = fy_node_mapping_item_count(fyn);
 
-		fynpp = alloca(sizeof(*fynpp) * (count + 1));
+		fynpp = FY_ALLOCA(sizeof(*fynpp) * (count + 1));
 
 		fy_node_mapping_fill_array(fyn, fynpp, count);
 		fy_node_mapping_perform_sort(fyn, NULL, NULL, fynpp, count);

@@ -3092,6 +3092,9 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 	struct fy_path_expr *expr, *expr_top, *exprt;
 	enum fy_expr_mode old_scan_mode, prev_scan_mode;
 	int ret, rc;
+#ifdef DEBUG_EXPR
+    char *dbg;
+#endif
 
 	/* the parser must be in the correct state */
 	if (!fypp || fy_expr_stack_size(&fypp->operators) > 0 || fy_expr_stack_size(&fypp->operands) > 0)
@@ -3117,7 +3120,8 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 			break;
 
 #ifdef DEBUG_EXPR
-		FYR_TOKEN_DIAG(fyr, fyt, FYET_NOTICE, FYEM_PARSE, "next token %s", fy_token_debug_text_a(fyt));
+        fy_token_debug_text_a(fyt, &dbg);
+		FYR_TOKEN_DIAG(fyr, fyt, FYET_NOTICE, FYEM_PARSE, "next token %s", dbg);
 #endif
 		fytt = fyt->type;
 
@@ -4663,7 +4667,7 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 		/* execute the arguments */
 		nargs = expr->fym->nargs;
 		if (nargs > 0) {
-			fwr_args = alloca(sizeof(*fwr_args) * nargs);
+			fwr_args = FY_ALLOCA(sizeof(*fwr_args) * nargs);
 			memset(fwr_args, 0, sizeof(*fwr_args) * nargs);
 			for (i = 0, exprt = fy_path_expr_list_head(&expr->children); exprt;
 					exprt = fy_path_expr_next(&expr->children, exprt), i++) {
@@ -4995,6 +4999,7 @@ fy_node_alias_resolve_by_ypath_result(struct fy_node *fyn)
 	struct fy_anchor *fya;
 	struct fy_path_exec *fypx = NULL;
 	int rc;
+	char* path;
 
 	if (!fyn || !fy_node_is_alias(fyn))
 		return NULL;
@@ -5026,9 +5031,10 @@ fy_node_alias_resolve_by_ypath_result(struct fy_node *fyn)
 	assert(pxdd);
 
 	if (pxnd->traversals++ > 0) {
+        fy_node_get_path_alloca(fyn, &path);
 		FYD_NODE_ERROR(fyd, fyn, FYEM_DOC,
 				"recursive reference detected at %s\n",
-				fy_node_get_path_alloca(fyn));
+				path);
 		pxnd->traversals--;
 		return NULL;
 	}

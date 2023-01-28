@@ -185,11 +185,11 @@ struct fy_atom *fy_reader_fill_atom_mark(struct fy_reader *fyr, const struct fy_
 					 const struct fy_mark *end_mark, struct fy_atom *handle);
 struct fy_atom *fy_reader_fill_atom_at(struct fy_reader *fyr, int advance, int count, struct fy_atom *handle);
 
-#define fy_reader_fill_atom_a(_fyr, _advance)  fy_reader_fill_atom((_fyr), (_advance), alloca(sizeof(struct fy_atom)))
+#define fy_reader_fill_atom_a(_fyr, _advance)  fy_reader_fill_atom((_fyr), (_advance), FY_ALLOCA(sizeof(struct fy_atom)))
 
 struct fy_atom *fy_fill_node_atom(struct fy_node *fyn, struct fy_atom *handle);
 
-#define fy_fill_node_atom_a(_fyn)  fy_fill_node_atom((_fyn), alloca(sizeof(struct fy_atom)))
+#define fy_fill_node_atom_a(_fyn)  fy_fill_node_atom((_fyn), FY_ALLOCA(sizeof(struct fy_atom)))
 
 struct fy_atom_iter_line_info {
 	const char *start;
@@ -275,7 +275,7 @@ static inline const char *fy_atom_data(const struct fy_atom *atom)
 	if (!atom)
 		return NULL;
 
-	return fy_input_start(atom->fyi) + atom->start_mark.input_pos;
+	return (char *)fy_input_start(atom->fyi) + atom->start_mark.input_pos;
 }
 
 static inline size_t fy_atom_size(const struct fy_atom *atom)

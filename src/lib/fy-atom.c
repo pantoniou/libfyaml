@@ -372,7 +372,7 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 
 	last_was_ws = false;
 
-	ts = atom->tabsize ? : 8;	/* pick it up from the atom (if there is) */
+	ts = atom->tabsize ? atom->tabsize : 8;	/* pick it up from the atom (if there is) */
 
 	/* consecutive whitespace */
 	cws = 0;
@@ -642,7 +642,7 @@ void fy_atom_iter_start(const struct fy_atom *atom, struct fy_atom_iter *iter)
 	iter->chomp = atom->increment;
 
 	/* default tab size is 8 */
-	iter->tabsize = atom->tabsize ? : 8;
+	iter->tabsize = atom->tabsize ? atom->tabsize: 8;
 
 	memset(iter->li, 0, sizeof(iter->li));
 	li = &iter->li[1];
@@ -965,7 +965,7 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 			case FYAC_CLIP:
 
 				pending_lb_size = 16;
-				pending_lb = alloca(sizeof(*pending_lb) * pending_lb_size);
+				pending_lb = FY_ALLOCA(sizeof(*pending_lb) * pending_lb_size);
 
 				pending_nl = 0;
 				if (!li->empty) {
@@ -987,7 +987,7 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 					}
 					if (li->lb_end && !iter->empty) {
 						if (pending_nl >= pending_lb_size) {
-							pending_lb_new = alloca(sizeof(*pending_lb) * pending_lb_size * 2);
+							pending_lb_new = FY_ALLOCA(sizeof(*pending_lb) * pending_lb_size * 2);
 							memcpy(pending_lb_new, pending_lb, sizeof(*pending_lb) * pending_lb_size);
 							pending_lb_size *= 2;
 							pending_lb = pending_lb_new;
