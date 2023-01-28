@@ -14,7 +14,11 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <limits.h>
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 #include <unistd.h>
+#elif defined (_MSC_VER)
+#define STDOUT_FILENO _fileno(stdin)
+#endif
 #include <ctype.h>
 #include <errno.h>
 
@@ -1844,7 +1848,7 @@ int fy_emit_document_start(struct fy_emitter *emit, struct fy_document *fyd,
 	if (!emit || !fyd || !fyd->fyds)
 		return -1;
 
-	root = fyn_root ? : fy_document_root(fyd);
+	root = fyn_root ? fyn_root : fy_document_root(fyd);
 
 	root_tag_or_anchor = root && (root->tag || fy_document_lookup_anchor_by_node(fyd, root));
 
@@ -2283,7 +2287,7 @@ static int do_buffer_output(struct fy_emitter *emit, enum fy_emitter_write_type 
 		if (!state->allocate_buffer)
 			return 0;
 
-		pagesize = sysconf(_SC_PAGESIZE);
+		pagesize = fy_get_pagesize();
 		size = state->need + pagesize - 1;
 		size = size - size % pagesize;
 

@@ -15,11 +15,15 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <fcntl.h>
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 #include <unistd.h>
 #include <sys/mman.h>
+#endif
 #include <sys/types.h>
 #include <sys/stat.h>
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 #include <sys/ioctl.h>
+#endif
 #include <errno.h>
 
 #include <libfyaml.h>
@@ -216,10 +220,12 @@ void fy_input_close(struct fy_input *fyi)
 	case fyit_file:
 	case fyit_fd:
 
+#if !defined(_MSC_VER)
 		if (fyi->addr) {
 			munmap(fyi->addr, fyi->length);
 			fyi->addr = NULL;
 		}
+#endif
 
 		if (fyi->fd != -1) {
 			if (!fyi->cfg.no_close_fd)
@@ -408,6 +414,7 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 		fyi->length = sb.st_size;
 
 		/* only map if not zero (and is not disabled) */
+#if !defined(_MSC_VER)
 		if (sb.st_size > 0 && !fyr->current_input_cfg.disable_mmap_opt) {
 			fyi->addr = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fyi->fd, 0);
 
@@ -418,6 +425,7 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 				fyi->addr = NULL;
 			}
 		}
+#endif
 		/* if we've managed to mmap, we' good */
 		if (fyi->addr)
 			break;
@@ -464,12 +472,14 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 		/* all the rest need it */
 	default:
 		/* if we're not in mmap mode */
+#if !defined(_MSC_VER)
 		if (fyi->addr && !fyr->current_input_cfg.disable_mmap_opt)
 			break;
+#endif
 
 		fyi->chunk = fyi->cfg.chunk;
 		if (!fyi->chunk)
-			fyi->chunk = sysconf(_SC_PAGESIZE);
+			fyi->chunk = fy_get_pagesize();
 		fyi->chop = fyi->chunk * FYI_CHOP_MULT;
 		fyi->buffer = malloc(fyi->chunk);
 		fyr_error_check(fyr, fyi->buffer, err_out,
@@ -585,7 +595,7 @@ int fy_reader_input_scan_token_mark_slow_path(struct fy_reader *fyr)
 	assert(fyi->read >= fyr->current_input_pos);
 	fyi_new->read = fyi->read - fyr->current_input_pos;
 	if (fyi_new->read > 0)
-		memcpy(fyi_new->buffer, fyi->buffer + fyr->current_input_pos, fyi_new->read);
+		memcpy(fyi_new->buffer, (char *)fyi->buffer + fyr->current_input_pos, fyi_new->read);
 
 	fyr->this_input_start += fyr->current_input_pos;
 
@@ -629,7 +639,7 @@ const void *fy_reader_ptr_slow_path(struct fy_reader *fyr, size_t *leftp)
 	case fyit_fd:
 		if (fyi->addr) {
 			left = fyi->length - (fyr->this_input_start + fyr->current_input_pos);
-			p = fyi->addr + fyr->current_input_pos;
+			p = (char *)fyi->addr + fyr->current_input_pos;
 			break;
 		}
 
@@ -638,17 +648,17 @@ const void *fy_reader_ptr_slow_path(struct fy_reader *fyr, size_t *leftp)
 	case fyit_stream:
 	case fyit_callback:
 		left = fyi->read - (fyr->this_input_start + fyr->current_input_pos);
-		p = fyi->buffer + fyr->current_input_pos;
+		p = (char *)fyi->buffer + fyr->current_input_pos;
 		break;
 
 	case fyit_memory:
 		left = fyi->cfg.memory.size - fyr->current_input_pos;
-		p = fyi->cfg.memory.data + fyr->current_input_pos;
+		p = (char *)fyi->cfg.memory.data + fyr->current_input_pos;
 		break;
 
 	case fyit_alloc:
 		left = fyi->cfg.alloc.size - fyr->current_input_pos;
-		p = fyi->cfg.alloc.data + fyr->current_input_pos;
+		p = (char *)fyi->cfg.alloc.data + fyr->current_input_pos;
 		break;
 
 
@@ -700,7 +710,7 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 				fyr_debug(fyr, "file input exhausted");
 				break;
 			}
-			p = fyi->addr + pos;
+			p = (char *)fyi->addr + pos;
 			break;
 		}
 
@@ -712,7 +722,7 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 		assert(fyi->read >= pos);
 
 		left = fyi->read - pos;
-		p = fyi->buffer + pos;
+		p = (char *)fyi->buffer + pos;
 
 		/* enough to satisfy directly */
 		if (left >= pull)
@@ -756,7 +766,7 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 			fyi->generation++;
 
 			space = fyi->allocated - pos;
-			p = fyi->buffer + pos;
+			p = (char *)fyi->buffer + pos;
 		}
 
 		/* always try to read up to the allocated space */
@@ -768,7 +778,7 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 
 				fyr_debug(fyr, "performing callback request of %zu", nreadreq);
 
-				nread = fyi->cfg.callback.input(fyi->cfg.userdata, fyi->buffer + fyi->read, nreadreq);
+				nread = fyi->cfg.callback.input(fyi->cfg.userdata, (char *)fyi->buffer + fyi->read, nreadreq);
 
 				fyr_debug(fyr, "callback returned %zu", nread);
 
@@ -787,7 +797,7 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 
 				fyr_debug(fyr, "performing fread request of %zu", nreadreq);
 
-				nread = fread(fyi->buffer + fyi->read, 1, nreadreq, fyi->fp);
+				nread = fread((char *)fyi->buffer + fyi->read, 1, nreadreq, fyi->fp);
 
 				fyr_debug(fyr, "fread returned %zu", nread);
 
@@ -811,7 +821,7 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 				fyr_debug(fyr, "performing read request of %zu", nreadreq);
 
 				do {
-					snread = read(fyi->fd, fyi->buffer + fyi->read, nreadreq);
+					snread = read(fyi->fd, (char *)fyi->buffer + fyi->read, nreadreq);
 				} while (snread == -1 && errno == EAGAIN);
 
 				fyr_debug(fyr, "read returned %zd", snread);
@@ -859,7 +869,7 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 			fyr_debug(fyr, "memory input exhausted");
 			break;
 		}
-		p = fyi->cfg.memory.data + pos;
+		p = (char *)fyi->cfg.memory.data + pos;
 		break;
 
 	case fyit_alloc:
@@ -870,7 +880,7 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 			fyr_debug(fyr, "alloc input exhausted");
 			break;
 		}
-		p = fyi->cfg.alloc.data + pos;
+		p = (char *)fyi->cfg.alloc.data + pos;
 		break;
 
 
@@ -952,13 +962,13 @@ struct fy_input *fy_input_create(const struct fy_input_cfg *fyic)
 		break;
 	case fyit_memory:
 		ret = asprintf(&fyi->name, "<memory-@%p-%p>",
-			fyic->memory.data, fyic->memory.data + fyic->memory.size - 1);
+			fyic->memory.data, (char *)fyic->memory.data + fyic->memory.size - 1);
 		if (ret == -1)
 			fyi->name = NULL;
 		break;
 	case fyit_alloc:
 		ret = asprintf(&fyi->name, "<alloc-@%p-%p>",
-			fyic->memory.data, fyic->memory.data + fyic->memory.size - 1);
+			fyic->memory.data, (char *)fyic->memory.data + fyic->memory.size - 1);
 		if (ret == -1)
 			fyi->name = NULL;
 		break;

@@ -873,7 +873,7 @@ void fy_diag_vreport(struct fy_diag *diag,
 
 	if (!diag->collect_errors) {
 		fy_diag_printf(diag, "%s" "%s%s: %s" "%s\n",
-			name_str ? : "",
+			name_str ? name_str : "",
 			color_start, fy_error_type_to_string(fydrc->type), color_end,
 			msg_str);
 

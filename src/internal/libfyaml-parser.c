@@ -327,9 +327,9 @@ void dump_event(struct fy_parser *fyp, struct fy_event *fye)
 		if (fye->scalar.value)
 			fy_token_get_esc_text_a(fye->scalar.value, &value);
 		printf("%-14s%s|%s%s%s%s%s%s '%s'\n", "SCALAR", mm,
-			anchor ? " anchor='" : "", anchor ? : "", anchor ? "'" : "",
-			   tag ?    " tag='" : "",    tag ? : "",    tag ? "'" : "",
-			value ? : "");
+			anchor ? " anchor='" : "", anchor ? anchor : "", anchor ? "'" : "",
+			   tag ?    " tag='" : "",    tag ? tag : "",    tag ? "'" : "",
+			value ? value : "");
 		break;
 	case FYET_SEQUENCE_START:
 		if (fye->sequence_start.anchor)
@@ -337,8 +337,8 @@ void dump_event(struct fy_parser *fyp, struct fy_event *fye)
 		if (fye->sequence_start.tag)
 			fy_token_get_esc_text_a(fye->sequence_start.tag, &tag);
 		printf("%-14s%s|%s%s%s%s%s%s\n", "SEQUENCE_START", mm,
-			anchor ? " anchor='" : "", anchor ? : "", anchor ? "'" : "",
-			   tag ?    " tag='" : "",    tag ? : "",    tag ? "'" : "");
+			anchor ? " anchor='" : "", anchor ? anchor : "", anchor ? "'" : "",
+			   tag ?    " tag='" : "",    tag ? tag : "",    tag ? "'" : "");
 		break;
 	case FYET_SEQUENCE_END:
 		printf("%-14s%s|\n", "SEQUENCE_END", mm);
@@ -349,8 +349,8 @@ void dump_event(struct fy_parser *fyp, struct fy_event *fye)
 		if (fye->mapping_start.tag)
 			fy_token_get_esc_text_a(fye->mapping_start.tag, &tag);
 		printf("%-14s%s|%s%s%s%s%s%s\n", "MAPPING_START", mm,
-			anchor ? " anchor='" : "", anchor ? : "", anchor ? "'" : "",
-			   tag ?    " tag='" : "",    tag ? : "",    tag ? "'" : "");
+			anchor ? " anchor='" : "", anchor ? anchor : "", anchor ? "'" : "",
+			   tag ?    " tag='" : "",    tag ? tag : "",    tag ? "'" : "");
 		break;
 	case FYET_MAPPING_END:
 		printf("%-14s%s|\n", "MAPPING_END", mm);
@@ -1263,8 +1263,8 @@ void dump_libyaml_event(yaml_event_t *event)
 			txt2esc_a((char *)event->data.scalar.tag, -1, &tag);
 		txt2esc_a((char *)event->data.scalar.value, -1, &value);
 		printf("%-14s%s|%s%s%s%s%s%s '%s'\n", "SCALAR", mm,
-			anchor ? " anchor='" : "", anchor ? : "", anchor ? "'" : "",
-			   tag ?    " tag='" : "",    tag ? : "",    tag ? "'" : "",
+			anchor ? " anchor='" : "", anchor ? anchor : "", anchor ? "'" : "",
+			   tag ?    " tag='" : "",    tag ? tag : "",    tag ? "'" : "",
 			value);
 		break;
 	case YAML_SEQUENCE_START_EVENT:
@@ -1273,8 +1273,8 @@ void dump_libyaml_event(yaml_event_t *event)
 		if (event->data.sequence_start.tag)
 			txt2esc_a((char *)event->data.sequence_start.tag, -1, &tag);
 		printf("%-14s%s|%s%s%s%s%s%s\n", "SEQUENCE_START", mm,
-			anchor ? " anchor='" : "", anchor ? : "", anchor ? "'" : "",
-			   tag ?    " tag='" : "",    tag ? : "",    tag ? "'" : "");
+			anchor ? " anchor='" : "", anchor ? anchor : "", anchor ? "'" : "",
+			   tag ?    " tag='" : "",    tag ? tag : "",    tag ? "'" : "");
 		break;
 	case YAML_SEQUENCE_END_EVENT:
 		printf("%-14s%s|\n", "SEQUENCE_END", mm);
@@ -1285,8 +1285,8 @@ void dump_libyaml_event(yaml_event_t *event)
 		if (event->data.mapping_start.tag)
 			txt2esc_a((char *)event->data.mapping_start.tag, -1, &tag);
 		printf("%-14s%s|%s%s%s%s%s%s\n", "MAPPING_START", mm,
-			anchor ? " anchor='" : "", anchor ? : "", anchor ? "'" : "",
-			   tag ?    " tag='" : "",    tag ? : "",    tag ? "'" : "");
+			anchor ? " anchor='" : "", anchor ? anchor : "", anchor ? "'" : "",
+			   tag ?    " tag='" : "",    tag ? tag : "",    tag ? "'" : "");
 		break;
 	case YAML_MAPPING_END_EVENT:
 		printf("%-14s%s|\n", "MAPPING_END", mm);

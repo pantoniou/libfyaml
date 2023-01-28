@@ -5666,7 +5666,7 @@ const void *a, const void *b, void *arg
 }
 
 /* not! thread safe! */
-#if !defined(HAVE_QSORT_R) || !HAVE_QSORT_R || defined(__EMSCRIPTEN__)
+#if !defined(HAVE_QSORT_R) || !HAVE_QSORT_R || defined(__EMSCRIPTEN__) || defined(_MSC_VER)
 static struct fy_node_mapping_sort_ctx *fy_node_mapping_sort_ctx_no_qsort_r;
 
 static int fy_node_mapping_sort_cmp_no_qsort_r(const void *a, const void *b)
@@ -5787,7 +5787,7 @@ void fy_node_mapping_perform_sort(struct fy_node *fyn_map,
 	ctx.arg = key_cmp ? arg : &def_arg;
 	ctx.fynpp = fynpp;
 	ctx.count = count;
-#if defined(HAVE_QSORT_R) && HAVE_QSORT_R && !defined(__EMSCRIPTEN__)
+#if defined(HAVE_QSORT_R) && HAVE_QSORT_R && !defined(__EMSCRIPTEN__) && !defined(_MSC_VER)
 #ifdef __APPLE__
 	qsort_r(fynpp, count, sizeof(*fynpp), &ctx, fy_node_mapping_sort_cmp);
 #else

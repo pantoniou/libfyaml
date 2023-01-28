@@ -602,7 +602,7 @@ fy_reader_advance_octets(struct fy_reader *fyr, size_t advance)
 	assert(fyr->current_left >= advance);
 
 	fyr->current_input_pos += advance;
-	fyr->current_ptr += advance;
+	fyr->current_ptr = (char *)fyr->current_ptr + advance;
 	fyr->current_left -= advance;
 
 	fyr->current_c = fy_utf8_get(fyr->current_ptr, fyr->current_left, &fyr->current_w);
