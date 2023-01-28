@@ -98,12 +98,12 @@ void fy_diag_vreport(struct fy_diag *diag,
 void fy_diag_report(struct fy_diag *diag,
 		    const struct fy_diag_report_ctx *fydrc,
 		    const char *fmt, ...)
-			__attribute__((format(printf, 3, 4)));
+			FY_ATTRIBUTE(format(printf, 3, 4));
 
 #ifdef FY_DEVMODE
 #define __FY_DEBUG_UNUSED__	/* nothing */
 #else
-#define __FY_DEBUG_UNUSED__	__attribute__((__unused__))
+#define __FY_DEBUG_UNUSED__	FY_ATTRIBUTE(__unused__)
 #endif
 
 /* parser diagnostics */
@@ -119,7 +119,7 @@ int fy_parser_vdiag(struct fy_parser *fyp, unsigned int flags,
 int fy_parser_diag(struct fy_parser *fyp, unsigned int flags,
 		   const char *file, int line, const char *func,
 		   const char *fmt, ...)
-			__attribute__((format(printf, 6, 7)));
+			FY_ATTRIBUTE(format(printf, 6, 7));
 
 void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type,
 				 struct fy_atom *atom);
@@ -132,7 +132,7 @@ void fy_parser_diag_vreport(struct fy_parser *fyp,
 void fy_parser_diag_report(struct fy_parser *fyp,
 			   const struct fy_diag_report_ctx *fydrc,
 			   const char *fmt, ...)
-		__attribute__((format(printf, 3, 4)));
+		FY_ATTRIBUTE(format(printf, 3, 4));
 
 #ifdef FY_DEVMODE
 
@@ -272,7 +272,7 @@ int fy_reader_vdiag(struct fy_reader *fyr, unsigned int flags,
 int fy_reader_diag(struct fy_reader *fyr, unsigned int flags,
 		   const char *file, int line, const char *func,
 		   const char *fmt, ...)
-			__attribute__((format(printf, 6, 7)));
+			FY_ATTRIBUTE(format(printf, 6, 7));
 
 void fy_reader_diag_vreport(struct fy_reader *fyr,
 			    const struct fy_diag_report_ctx *fydrc,
@@ -280,7 +280,7 @@ void fy_reader_diag_vreport(struct fy_reader *fyr,
 void fy_reader_diag_report(struct fy_reader *fyr,
 			   const struct fy_diag_report_ctx *fydrc,
 			   const char *fmt, ...)
-		__attribute__((format(printf, 3, 4)));
+		FY_ATTRIBUTE(format(printf, 3, 4));
 
 #ifdef FY_DEVMODE
 
@@ -412,7 +412,7 @@ int fy_document_vdiag(struct fy_document *fyd, unsigned int flags,
 int fy_document_diag(struct fy_document *fyd, unsigned int flags,
 		     const char *file, int line, const char *func,
 		     const char *fmt, ...)
-			__attribute__((format(printf, 6, 7)));
+			FY_ATTRIBUTE(format(printf, 6, 7));
 
 void fy_document_diag_vreport(struct fy_document *fyd,
 			      const struct fy_diag_report_ctx *fydrc,
@@ -420,7 +420,7 @@ void fy_document_diag_vreport(struct fy_document *fyd,
 void fy_document_diag_report(struct fy_document *fyd,
 			     const struct fy_diag_report_ctx *fydrc,
 			     const char *fmt, ...)
-			__attribute__((format(printf, 3, 4)));
+			FY_ATTRIBUTE(format(printf, 3, 4));
 
 #ifdef FY_DEVMODE
 
@@ -514,7 +514,7 @@ int fy_composer_vdiag(struct fy_composer *fyc, unsigned int flags,
 int fy_composer_diag(struct fy_composer *fyc, unsigned int flags,
 		     const char *file, int line, const char *func,
 		     const char *fmt, ...)
-			__attribute__((format(printf, 6, 7)));
+			FY_ATTRIBUTE(format(printf, 6, 7));
 
 void fy_composer_diag_vreport(struct fy_composer *fyc,
 			      const struct fy_diag_report_ctx *fydrc,
@@ -522,7 +522,7 @@ void fy_composer_diag_vreport(struct fy_composer *fyc,
 void fy_composer_diag_report(struct fy_composer *fyc,
 			     const struct fy_diag_report_ctx *fydrc,
 			     const char *fmt, ...)
-			__attribute__((format(printf, 3, 4)));
+			FY_ATTRIBUTE(format(printf, 3, 4));
 
 #ifdef FY_DEVMODE
 
@@ -599,7 +599,7 @@ int fy_document_builder_vdiag(struct fy_document_builder *fydb, unsigned int fla
 int fy_document_builder_diag(struct fy_document_builder *fydb, unsigned int flags,
 			     const char *file, int line, const char *func,
 			     const char *fmt, ...)
-			__attribute__((format(printf, 6, 7)));
+			FY_ATTRIBUTE(format(printf, 6, 7));
 
 void fy_document_builder_diag_vreport(struct fy_document_builder *fydb,
 				      const struct fy_diag_report_ctx *fydrc,
@@ -607,7 +607,7 @@ void fy_document_builder_diag_vreport(struct fy_document_builder *fydb,
 void fy_document_builder_diag_report(struct fy_document_builder *fydb,
 				     const struct fy_diag_report_ctx *fydrc,
 				     const char *fmt, ...)
-				__attribute__((format(printf, 3, 4)));
+				FY_ATTRIBUTE(format(printf, 3, 4));
 
 #ifdef FY_DEVMODE
 
