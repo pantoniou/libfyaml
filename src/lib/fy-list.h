@@ -10,11 +10,9 @@
 
 #include <stddef.h>
 
-#define fy_container_of(pointer, type, member) ({ \
-		const typeof(((type *)NULL)->member) *__## member ## _ptr = (pointer); \
-		(type *) ((char *)__ ## member ## _ptr - offsetof(type, member)); \
-	} \
-)
+#define fy_container_of(ptr, type, member) \
+    ( (void)sizeof(0 ? (ptr) : &((type *)0)->member), \
+      (type *)((char*)(ptr) - offsetof(type, member)) )
 
 struct fy_list_head {
 	struct fy_list_head *prev;
