@@ -11,12 +11,18 @@
 
 #include <stdio.h>
 #include <string.h>
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 #include <sys/mman.h>
+#endif
 #include <sys/types.h>
 #include <sys/stat.h>
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 #include <sys/ioctl.h>
+#endif
 #include <fcntl.h>
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 #include <unistd.h>
+#endif
 #include <assert.h>
 #include <stdlib.h>
 #include <errno.h>

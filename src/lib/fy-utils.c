@@ -15,15 +15,100 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 #include <termios.h>
 #include <unistd.h>
 #include <sys/select.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#elif defined(_MSC_VER)
+#include <windows.h>
+#endif
 
 #include "fy-utf8.h"
 #include "fy-ctype.h"
 #include "fy-utils.h"
+
+int fy_get_pagesize() {
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
+       return sysconf(_SC_PAGESIZE);
+#elif defined (_MSC_VER)
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+       return si.dwPageSize;
+#endif
+}
+
+#if defined(_MSC_VER)
+#ifndef VA_COPY
+# ifdef HAVE_VA_COPY
+#  define VA_COPY(dest, src) va_copy(dest, src)
+# else
+#  ifdef HAVE___VA_COPY
+#   define VA_COPY(dest, src) __va_copy(dest, src)
+#  else
+#   define VA_COPY(dest, src) (dest) = (src)
+#  endif
+# endif
+#endif
+
+#define INIT_SZ 128
+
+int
+vasprintf(char **str, const char *fmt, va_list ap)
+{
+    int ret;
+    va_list ap2;
+    char *string, *newstr;
+    size_t len;
+
+    if ((string = malloc(INIT_SZ)) == NULL)
+        goto fail;
+
+    VA_COPY(ap2, ap);
+    ret = vsnprintf(string, INIT_SZ, fmt, ap2);
+    va_end(ap2);
+    if (ret >= 0 && ret < INIT_SZ) { /* succeeded with initial alloc */
+        *str = string;
+    } else if (ret == INT_MAX || ret < 0) { /* Bad length */
+        free(string);
+        goto fail;
+    } else {    /* bigger than initial, realloc allowing for nul */
+        len = (size_t)ret + 1;
+        if ((newstr = realloc(string, len)) == NULL) {
+            free(string);
+            goto fail;
+        }
+        VA_COPY(ap2, ap);
+        ret = vsnprintf(newstr, len, fmt, ap2);
+        va_end(ap2);
+        if (ret < 0 || (size_t)ret >= len) { /* failed with realloc'ed string */
+            free(newstr);
+            goto fail;
+        }
+        *str = newstr;
+    }
+    return (ret);
+
+fail:
+    *str = NULL;
+    errno = ENOMEM;
+    return (-1);
+}
+
+int asprintf(char **str, const char *fmt, ...)
+{
+    va_list ap;
+    int ret;
+
+    *str = NULL;
+    va_start(ap, fmt);
+    ret = vasprintf(str, fmt, ap);
+    va_end(ap);
+
+    return ret;
+}
+#endif
 
 #if defined(__APPLE__) && (_POSIX_C_SOURCE < 200809L)
 
@@ -397,6 +482,7 @@ int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info)
 	return 0;
 }
 
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 /* simple terminal methods; mainly for getting size of terminal */
 int fy_term_set_raw(int fd, struct termios *oldt)
 {
@@ -632,3 +718,4 @@ int fy_term_query_size(int fd, int *rows, int *cols)
 
 	return ret;
 }
+#endif

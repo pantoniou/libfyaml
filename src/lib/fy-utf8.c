@@ -253,11 +253,11 @@ const void *fy_utf8_memchr_generic(const void *s, int c, size_t n)
 	int cc, w;
 	const void *e;
 
-	e = s + n;
-	while (s < e && (cc = fy_utf8_get(s, e - s, &w)) >= 0) {
+	e = (char*)s + n;
+	while (s < e && (cc = fy_utf8_get(s, (char*)e - (char*)s, &w)) >= 0) {
 		if (c == cc)
 			return s;
-		s += w;
+		s = (char*)s + w;
 	}
 
 	return NULL;

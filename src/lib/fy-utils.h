@@ -15,11 +15,20 @@
 
 #include <stdio.h>
 #include <stdbool.h>
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 #include <unistd.h>
 #include <termios.h>
+#endif
 
 #if defined(__APPLE__) && (_POSIX_C_SOURCE < 200809L)
 FILE *open_memstream(char **ptr, size_t *sizeloc);
+#endif
+
+int fy_get_pagesize();
+
+#if defined(_MSC_VER)
+int vasprintf(char **strp, const char *fmt, va_list ap);
+int asprintf(char **strp, const char *fmt, ...);
 #endif
 
 int fy_tag_handle_length(const char *data, size_t len);
