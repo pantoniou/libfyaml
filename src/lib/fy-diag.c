@@ -36,6 +36,8 @@ static const char *error_type_txt[] = {
 
 int fy_diag_diag(struct fy_diag *diag, enum fy_error_type level, const char* fmt, ...)
 {
+    int ret;
+
     va_list args;
        struct fy_diag_ctx ctx = {
                .level = level,
@@ -49,8 +51,10 @@ int fy_diag_diag(struct fy_diag *diag, enum fy_error_type level, const char* fmt
        };
 
     va_start(args, fmt);
-    fy_diagf(diag, &ctx, fmt, args);
+    ret = fy_diagf(diag, &ctx, fmt, args);
     va_end(args);
+
+    return ret;
 }
 
 const char *fy_error_type_to_string(enum fy_error_type type)
@@ -865,11 +869,12 @@ void fy_diag_vreport(struct fy_diag *diag,
 	/* get the colors */
 	fy_diag_get_error_colors(diag, fydrc->type, &color_start, &color_end, &white);
 
-	if (name || (line > 0 && column > 0))
+	if (name || (line > 0 && column > 0)) {
 		if (line > 0 && column > 0)
 			alloca_sprintf(&name_str, "%s%s:%d:%d: ", white, name, line, column);
 		else
 			alloca_sprintf(&name_str, "%s%s: ", white, name);
+	}
 
 	if (!diag->collect_errors) {
 		fy_diag_printf(diag, "%s" "%s%s: %s" "%s\n",
