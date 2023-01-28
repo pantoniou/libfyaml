@@ -223,7 +223,7 @@ _fy_atom_iter_add_chunk_copy(struct fy_atom_iter *iter, const char *str, size_t 
 /* keep it around without a warning even though it's unused */
 static int
 _fy_atom_iter_add_utf8(struct fy_atom_iter *iter, int c)
-	__attribute__((__unused__));
+	FY_ATTRIBUTE(__unused__);
 
 static int
 _fy_atom_iter_add_utf8(struct fy_atom_iter *iter, int c)

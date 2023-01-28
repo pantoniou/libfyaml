@@ -30,7 +30,7 @@
 /* fwd decl */
 void fy_emit_write(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int len);
 void fy_emit_printf(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *fmt, ...)
-		__attribute__((format(printf, 3, 4)));
+		FY_ATTRIBUTE(format(printf, 3, 4));
 
 static inline bool fy_emit_is_json_mode(const struct fy_emitter *emit)
 {
