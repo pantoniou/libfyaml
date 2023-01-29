@@ -2882,6 +2882,71 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	do_accel_test(cfg, argc, argv);
 #endif
 
+	struct fy_emitter_cfg ecfg;
+	struct fy_emitter* emit;
+
+	memset(&ecfg, 0, sizeof(ecfg));
+	// ecfg.flags = FYECF_MODE_BLOCK;
+	ecfg.flags = FYECF_MODE_MANUAL;
+
+	emit = fy_emitter_create(&ecfg);
+
+	// key:
+	// - a: 1
+
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_STREAM_START));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_DOCUMENT_START, false, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_START, FYNS_BLOCK, NULL, NULL));
+	fy_emit_event(emit,
+		fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "key", FY_NT, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SEQUENCE_START, FYNS_BLOCK, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_START, FYNS_BLOCK, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "a", FY_NT, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "1", FY_NT, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_END));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SEQUENCE_END));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_END));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_DOCUMENT_END, true, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_STREAM_END));
+
+	fy_emitter_destroy(emit);
+
+	emit = fy_emitter_create(&ecfg);
+
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_STREAM_START));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_DOCUMENT_START, false, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_START, FYNS_FLOW, NULL, NULL));
+	fy_emit_event(emit,
+		fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "key", FY_NT, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SEQUENCE_START, FYNS_FLOW, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_START, FYNS_FLOW, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "a", FY_NT, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "1", FY_NT, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_END));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SEQUENCE_END));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_END));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_DOCUMENT_END, true, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_STREAM_END));
+
+	fy_emitter_destroy(emit);
+
+	emit = fy_emitter_create(&ecfg);
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_STREAM_START));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_DOCUMENT_START, false, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_START, FYNS_BLOCK, NULL, NULL));
+	fy_emit_event(emit,
+		fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "key", FY_NT, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SEQUENCE_START, FYNS_BLOCK, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_START, FYNS_BLOCK, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "a", FY_NT, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "1", FY_NT, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_END));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SEQUENCE_END));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_END));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_DOCUMENT_END, true, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_STREAM_END));
+	fy_emitter_destroy(emit);
+
 	return 0;
 }
 

@@ -74,6 +74,13 @@ static inline bool fy_emit_is_pretty_mode(const struct fy_emitter *emit)
 	return flags == FYECF_MODE_PRETTY;
 }
 
+static inline bool fy_emit_is_manual(const struct fy_emitter *emit)
+{
+	enum fy_emitter_cfg_flags flags = emit->cfg.flags & FYECF_MODE(FYECF_MODE_MASK);
+
+	return flags == FYECF_MODE_MANUAL;
+}
+
 static inline int fy_emit_indent(struct fy_emitter *emit)
 {
 	int indent;
@@ -1410,7 +1417,9 @@ static void fy_emit_sequence_prolog(struct fy_emitter *emit, struct fy_emit_save
 
 	sc->old_indent = sc->indent;
 	if (!json) {
-		if (fy_emit_is_block_mode(emit))
+		if (fy_emit_is_manual(emit))
+			sc->flow = (sc->xstyle == FYNS_BLOCK && was_flow) || sc->xstyle == FYNS_FLOW;
+		else if (fy_emit_is_block_mode(emit))
 			sc->flow = sc->empty;
 		else
 			sc->flow = fy_emit_is_flow_mode(emit) || emit->flow_level || sc->flow_token || sc->empty;
@@ -1497,6 +1506,7 @@ void fy_emit_sequence(struct fy_emitter *emit, struct fy_node *fyn, int flags, i
 	sc->empty = fy_node_list_empty(&fyn->sequence);
 	sc->flow_token = fyn->style == FYNS_FLOW;
 	sc->flow = !!(flags & DDNF_FLOW);
+	sc->xstyle = fyn->style;
 	sc->old_indent = sc->indent;
 
 	fy_emit_sequence_prolog(emit, sc);
@@ -1519,10 +1529,13 @@ static void fy_emit_mapping_prolog(struct fy_emitter *emit, struct fy_emit_save_
 {
 	bool json = fy_emit_is_json_mode(emit);
 	bool oneline = fy_emit_is_oneline(emit);
+	bool was_flow = sc->flow;
 
 	sc->old_indent = sc->indent;
 	if (!json) {
-		if (fy_emit_is_block_mode(emit))
+		if (fy_emit_is_manual(emit))
+			sc->flow = (sc->xstyle == FYNS_BLOCK && was_flow) || sc->xstyle == FYNS_FLOW;
+		else if (fy_emit_is_block_mode(emit))
 			sc->flow = sc->empty;
 		else
 			sc->flow = fy_emit_is_flow_mode(emit) || emit->flow_level || sc->flow_token || sc->empty;
@@ -1642,6 +1655,7 @@ void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, in
 	sc->empty = fy_node_pair_list_empty(&fyn->mapping);
 	sc->flow_token = fyn->style == FYNS_FLOW;
 	sc->flow = !!(flags & DDNF_FLOW);
+	sc->xstyle = fyn->style;
 	sc->old_indent = sc->indent;
 
 	fy_emit_mapping_prolog(emit, sc);
@@ -2881,7 +2895,7 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 {
 	struct fy_event *fye = &fyep->e;
 	struct fy_emit_save_ctx *sc = &emit->s_sc;
-	enum fy_node_style style;
+	enum fy_node_style style, xstyle;
 	int ret, s_flags, s_indent;
 
 	if (fye->type != FYET_ALIAS && fye->type != FYET_SCALAR &&
@@ -2921,6 +2935,9 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 		s_flags = emit->s_flags;
 		s_indent = emit->s_indent;
 
+		xstyle = fye->sequence_start.sequence_start->type == FYTT_BLOCK_SEQUENCE_START ?
+			FYNS_BLOCK : FYNS_FLOW;
+
 		fy_emit_common_node_preamble(emit, fye->sequence_start.anchor, fye->sequence_start.tag, emit->s_flags, emit->s_indent);
 
 		/* create new context */
@@ -2928,9 +2945,9 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 		sc->flags = emit->s_flags & (DDNF_ROOT | DDNF_SEQ | DDNF_MAP);
 		sc->indent = emit->s_indent;
 		sc->empty = fy_emit_streaming_sequence_empty(emit);
-		sc->flow_token = fye->sequence_start.sequence_start &&
-				 fye->sequence_start.sequence_start->type == FYTT_FLOW_SEQUENCE_START;
+		sc->flow_token = xstyle == FYNS_FLOW;
 		sc->flow = !!(s_flags & DDNF_FLOW);
+		sc->xstyle = xstyle;
 		sc->old_indent = sc->indent;
 		sc->s_flags = s_flags;
 		sc->s_indent = s_indent;
@@ -2956,6 +2973,9 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 		s_flags = emit->s_flags;
 		s_indent = emit->s_indent;
 
+		xstyle = fye->mapping_start.mapping_start->type == FYTT_BLOCK_MAPPING_START ?
+			FYNS_BLOCK : FYNS_FLOW;
+
 		fy_emit_common_node_preamble(emit, fye->mapping_start.anchor, fye->mapping_start.tag, emit->s_flags, emit->s_indent);
 
 		/* create new context */
@@ -2963,9 +2983,9 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 		sc->flags = emit->s_flags & (DDNF_ROOT | DDNF_SEQ | DDNF_MAP);
 		sc->indent = emit->s_indent;
 		sc->empty = fy_emit_streaming_mapping_empty(emit);
-		sc->flow_token = fye->mapping_start.mapping_start &&
-				 fye->mapping_start.mapping_start->type == FYTT_FLOW_MAPPING_START;
+		sc->flow_token = xstyle == FYNS_FLOW;
 		sc->flow = !!(s_flags & DDNF_FLOW);
+		sc->xstyle = xstyle;
 		sc->old_indent = sc->indent;
 		sc->s_flags = s_flags;
 		sc->s_indent = s_indent;
