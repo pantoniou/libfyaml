@@ -54,6 +54,7 @@
 #define COLLECT_ERRORS_DEFAULT		false
 #define ALLOW_DUPLICATE_KEYS_DEFAULT	false
 #define STRIP_EMPTY_KV_DEFAULT		false
+#define TSV_FORMAT_DEFAULT		false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -86,6 +87,7 @@
 #define OPT_ALLOW_DUPLICATE_KEYS	2018
 #define OPT_STRIP_EMPTY_KV		2019
 #define OPT_DISABLE_MMAP		2020
+#define OPT_TSV_FORMAT			2021
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -147,6 +149,7 @@ static struct option lopts[] = {
 	{"collect-errors",	no_argument,		0,	OPT_COLLECT_ERRORS },
 	{"allow-duplicate-keys",no_argument,		0,	OPT_ALLOW_DUPLICATE_KEYS },
 	{"strip-empty-kv",	no_argument,		0,	OPT_STRIP_EMPTY_KV },
+	{"tsv-format",		no_argument,		0,	OPT_TSV_FORMAT },
 	{"to",			required_argument,	0,	'T' },
 	{"from",		required_argument,	0,	'F' },
 	{"quiet",		no_argument,		0,	'q' },
@@ -252,6 +255,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--document-event-stream  : Generate a document and then produce the event stream"
 							" (default %s)\n",
 							DOCUMENT_EVENT_STREAM_DEFAULT ? "true" : "false");
+		fprintf(fp, "\t--tsv-format             : Display testsuite in TSV format"
+							" (default %s)\n",
+							TSV_FORMAT_DEFAULT ? "true" : "false");
 		if (tool_mode == OPT_TOOL || tool_mode == OPT_DUMP)
 			fprintf(fp, "\t--streaming              : Use streaming output mode"
 								" (default %s)\n",
@@ -460,6 +466,25 @@ utf8_width_by_first_octet(uint8_t c)
 	       (c & 0xf8) == 0xf0 ? 4 : 0;
 }
 
+/* ANSI colors and escapes */
+#define A_RESET			"\x1b[0m"
+#define A_BLACK			"\x1b[30m"
+#define A_RED			"\x1b[31m"
+#define A_GREEN			"\x1b[32m"
+#define A_YELLOW		"\x1b[33m"
+#define A_BLUE			"\x1b[34m"
+#define A_MAGENTA		"\x1b[35m"
+#define A_CYAN			"\x1b[36m"
+#define A_LIGHT_GRAY		"\x1b[37m"	/* dark white is gray */
+#define A_GRAY			"\x1b[1;30m"
+#define A_BRIGHT_RED		"\x1b[1;31m"
+#define A_BRIGHT_GREEN		"\x1b[1;32m"
+#define A_BRIGHT_YELLOW		"\x1b[1;33m"
+#define A_BRIGHT_BLUE		"\x1b[1;34m"
+#define A_BRIGHT_MAGENTA	"\x1b[1;35m"
+#define A_BRIGHT_CYAN		"\x1b[1;36m"
+#define A_WHITE			"\x1b[1;37m"
+
 static int do_output(struct fy_emitter *fye, enum fy_emitter_write_type type, const char *str, int len, void *userdata)
 {
 	struct dump_userdata *du = userdata;
@@ -473,64 +498,64 @@ static int do_output(struct fy_emitter *fye, enum fy_emitter_write_type type, co
 	if (du->colorize) {
 		switch (type) {
 		case fyewt_document_indicator:
-			color = "\x1b[36m";
+			color = A_CYAN;
 			break;
 		case fyewt_tag_directive:
 		case fyewt_version_directive:
-			color = "\x1b[33m";
+			color = A_YELLOW;
 			break;
 		case fyewt_indent:
 			if (du->visible) {
-				fputs("\x1b[32m", fp);
+				fputs(A_GREEN, fp);
 				while (s < e && (w = utf8_width_by_first_octet(((uint8_t)*s))) > 0) {
 					/* open box - U+2423 */
 					fputs("\xe2\x90\xa3", fp);
 					s += w;
 				}
-				fputs("\x1b[0m", fp);
+				fputs(A_RESET, fp);
 				return len;
 			}
 			break;
 		case fyewt_indicator:
 			if (len == 1 && (str[0] == '\'' || str[0] == '"'))
-				color = "\x1b[33m";
+				color = A_YELLOW;
 			else if (len == 1 && str[0] == '&')
-				color = "\x1b[32;1m";
+				color = A_BRIGHT_GREEN;
 			else
-				color = "\x1b[35m";
+				color = A_MAGENTA;
 			break;
 		case fyewt_whitespace:
 			if (du->visible) {
-				fputs("\x1b[32m", fp);
+				fputs(A_GREEN, fp);
 				while (s < e && (w = utf8_width_by_first_octet(((uint8_t)*s))) > 0) {
 					/* symbol for space - U+2420 */
 					/* symbol for interpunct - U+00B7 */
 					fputs("\xc2\xb7", fp);
 					s += w;
 				}
-				fputs("\x1b[0m", fp);
+				fputs(A_RESET, fp);
 				return len;
 			}
 			break;
 		case fyewt_plain_scalar:
-			color = "\x1b[37;1m";
+			color = A_WHITE;
 			break;
 		case fyewt_single_quoted_scalar:
 		case fyewt_double_quoted_scalar:
-			color = "\x1b[33m";
+			color = A_YELLOW;
 			break;
 		case fyewt_literal_scalar:
 		case fyewt_folded_scalar:
-			color = "\x1b[33m";
+			color = A_YELLOW;
 			break;
 		case fyewt_anchor:
 		case fyewt_tag:
 		case fyewt_alias:
-			color = "\x1b[32;1m";
+			color = A_BRIGHT_GREEN;
 			break;
 		case fyewt_linebreak:
 			if (du->visible) {
-				fputs("\x1b[32m", fp);
+				fputs(A_GREEN, fp);
 				while (s < e && (w = utf8_width_by_first_octet(((uint8_t)*s))) > 0) {
 					/* symbol for space - ^M */
 					/* fprintf(fp, "^M\n"); */
@@ -538,7 +563,7 @@ static int do_output(struct fy_emitter *fye, enum fy_emitter_write_type type, co
 					fputs("\xe2\x86\x93\n", fp);
 					s += w;
 				}
-				fputs("\x1b[0m", fp);
+				fputs(A_RESET, fp);
 				return len;
 			}
 			color = NULL;
@@ -549,10 +574,10 @@ static int do_output(struct fy_emitter *fye, enum fy_emitter_write_type type, co
 		case fyewt_plain_scalar_key:
 		case fyewt_single_quoted_scalar_key:
 		case fyewt_double_quoted_scalar_key:
-			color = "\x1b[36;1m";
+			color = A_BRIGHT_CYAN;
 			break;
 		case fyewt_comment:
-			color = "\x1b[34;1m";
+			color = A_BRIGHT_BLUE;
 			break;
 		}
 	}
@@ -567,7 +592,7 @@ static int do_output(struct fy_emitter *fye, enum fy_emitter_write_type type, co
 	ret = fwrite(str, 1, len, fp);
 
 	if (color)
-		fputs("\x1b[0m", fp);
+		fputs(A_RESET, fp);
 
 	return ret;
 }
@@ -683,167 +708,250 @@ void dump_token_comments(struct fy_token *fyt, bool colorize, const char *banner
 			continue;
 		fputs("\n", stdout);
 		if (colorize)
-			fputs("\x1b[31m", stdout);
+			fputs(A_RED, stdout);
 		printf("\t%s %6s: ", banner, placement_txt[placement]);
 		print_escaped(str, strlen(str));
 		if (colorize)
-			fputs("\x1b[0m", stdout);
+			fputs(A_RESET, stdout);
 	}
 }
 
-void dump_testsuite_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize,
-			  struct fy_token_iter *iter, bool disable_flow_markers)
+void dump_testsuite_event(struct fy_parser *fyp,
+			  struct fy_event *fye, bool colorize,
+			  struct fy_token_iter *iter,
+			  bool disable_flow_markers, bool tsv_format)
 {
 	const char *anchor = NULL;
 	const char *tag = NULL;
 	const char *text = NULL;
-	size_t anchor_len = 0, tag_len = 0, text_len = 0;
+	const char *alias = NULL;
+	size_t anchor_len = 0, tag_len = 0, text_len = 0, alias_len = 0;
 	enum fy_scalar_style style;
+	const struct fy_mark *sm, *em = NULL;
+	char separator;
+	size_t spos, epos;
+	int sline, eline, scolumn, ecolumn;
 
+	if (!tsv_format) {
+		separator = ' ';
+		spos = epos = (size_t)-1;
+		sline = eline = -1;
+		scolumn = ecolumn = -1;
+	} else {
+		sm = fy_event_start_mark(fye);
+		if (sm) {
+			spos = sm->input_pos;
+			sline = sm->line;
+			scolumn = sm->column;
+		} else {
+			spos = (size_t)-1;
+			sline = -1;
+			scolumn = -1;
+		}
+
+
+		em = fy_event_end_mark(fye);
+		if (em) {
+			epos = em->input_pos;
+			eline = em->line;
+			ecolumn = em->column;
+		} else {
+			epos = (size_t)-1;
+			eline = -1;
+			ecolumn = -1;
+		}
+		separator = '\t';
+		/* no colors for TSV */
+		colorize = false;
+		/* no flow markers for TSV */
+		disable_flow_markers = true;
+	}
+
+	/* event type */
 	switch (fye->type) {
 	case FYET_NONE:
 		if (colorize)
-			fputs("\x1b[31;1m", stdout);
+			fputs(A_BRIGHT_RED, stdout);
 		printf("???");
 		break;
 	case FYET_STREAM_START:
 		if (colorize)
-			fputs("\x1b[36m", stdout);
-		printf("+STR");
+			fputs(A_CYAN, stdout);
+		printf("+%s", !tsv_format ? "STR" : "str");
 		break;
 	case FYET_STREAM_END:
 		if (colorize)
-			fputs("\x1b[36m", stdout);
-		printf("-STR");
+			fputs(A_CYAN, stdout);
+		printf("-%s", !tsv_format ? "STR" : "str");
 		break;
 	case FYET_DOCUMENT_START:
 		if (colorize)
-			fputs("\x1b[36m", stdout);
-		printf("+DOC%s", !fy_document_event_is_implicit(fye) ? " ---" : "");
+			fputs(A_CYAN, stdout);
+		printf("+%s", !tsv_format ? "DOC" : "doc");
 		break;
 	case FYET_DOCUMENT_END:
 		if (colorize)
-			fputs("\x1b[36m", stdout);
-		printf("-DOC%s", !fy_document_event_is_implicit(fye) ? " ..." : "");
+			fputs(A_CYAN, stdout);
+		printf("-%s", !tsv_format ? "DOC" : "doc");
 		break;
 	case FYET_MAPPING_START:
+		if (colorize)
+			fputs(A_BRIGHT_CYAN, stdout);
+		printf("+%s", !tsv_format ? "MAP" : "map");
 		if (fye->mapping_start.anchor)
 			anchor = fy_token_get_text(fye->mapping_start.anchor, &anchor_len);
 		if (fye->mapping_start.tag)
 			tag = fy_token_get_text(fye->mapping_start.tag, &tag_len);
-		if (colorize)
-			fputs("\x1b[36;1m", stdout);
-		printf("+MAP");
 		if (!disable_flow_markers && fy_event_get_node_style(fye) == FYNS_FLOW)
-			printf(" {}");
-		if (anchor) {
-			if (colorize)
-				fputs("\x1b[32m", stdout);
-			printf(" &%.*s", (int)anchor_len, anchor);
-		}
-		if (tag) {
-			if (colorize)
-				fputs("\x1b[32m", stdout);
-			printf(" <%.*s>", (int)tag_len, tag);
-		}
+			printf("%c{}", separator);
 		break;
 	case FYET_MAPPING_END:
 		if (colorize)
-			fputs("\x1b[36;1m", stdout);
-		printf("-MAP");
+			fputs(A_BRIGHT_CYAN, stdout);
+		printf("-%s", !tsv_format ? "MAP" : "map");
 		break;
 	case FYET_SEQUENCE_START:
+		if (colorize)
+			fputs(A_BRIGHT_YELLOW, stdout);
+		printf("+%s", !tsv_format ? "SEQ" : "seq");
 		if (fye->sequence_start.anchor)
 			anchor = fy_token_get_text(fye->sequence_start.anchor, &anchor_len);
 		if (fye->sequence_start.tag)
 			tag = fy_token_get_text(fye->sequence_start.tag, &tag_len);
-		if (colorize)
-			fputs("\x1b[33;1m", stdout);
-		printf("+SEQ");
 		if (!disable_flow_markers && fy_event_get_node_style(fye) == FYNS_FLOW)
-			printf(" []");
-		if (anchor) {
-			if (colorize)
-				fputs("\x1b[32m", stdout);
-			printf(" &%.*s", (int)anchor_len, anchor);
-		}
-		if (tag) {
-			if (colorize)
-				fputs("\x1b[32m", stdout);
-			printf(" <%.*s>", (int)tag_len, tag);
-		}
+			printf("%c[]", separator);
 		break;
 	case FYET_SEQUENCE_END:
 		if (colorize)
-			fputs("\x1b[33;1m", stdout);
-		printf("-SEQ");
+			fputs(A_BRIGHT_YELLOW, stdout);
+		printf("-%s", !tsv_format ? "SEQ" : "seq");
 		break;
 	case FYET_SCALAR:
+		if (colorize)
+			fputs(A_WHITE, stdout);
+		printf("=%s", !tsv_format ? "VAL" : "val");
 		if (fye->scalar.anchor)
 			anchor = fy_token_get_text(fye->scalar.anchor, &anchor_len);
 		if (fye->scalar.tag)
 			tag = fy_token_get_text(fye->scalar.tag, &tag_len);
-
+		break;
+	case FYET_ALIAS:
 		if (colorize)
-			fputs("\x1b[37;1m", stdout);
-		printf("=VAL");
+			fputs(A_GREEN, stdout);
+		printf("=%s", !tsv_format ? "ALI" : "ali");
+		break;
+	default:
+		assert(0);
+	}
+
+	/* (position) anchor and tag */
+	if (!tsv_format) {
 		if (anchor) {
 			if (colorize)
-				fputs("\x1b[32m", stdout);
-			printf(" &%.*s", (int)anchor_len, anchor);
+				fputs(A_GREEN, stdout);
+			printf("%c&%.*s", separator, (int)anchor_len, anchor);
 		}
 		if (tag) {
 			if (colorize)
-				fputs("\x1b[32m", stdout);
-			printf(" <%.*s>", (int)tag_len, tag);
+				fputs(A_GREEN, stdout);
+			printf("%c<%.*s>", separator, (int)tag_len, tag);
 		}
+	} else {
+		if (!anchor) {
+			anchor = "-";
+			anchor_len = 1;
+		}
+		if (!tag) {
+			tag = "-";
+			tag_len = 1;
+		}
+		printf("%c%zd%c%d%c%d", separator, (ssize_t)spos,
+			separator, sline, separator, scolumn);
+		printf("%c%zd%c%d%c%d", separator, (ssize_t)epos,
+			separator, eline, separator, ecolumn);
+		printf("%c%.*s", separator, (int)anchor_len, anchor);
+		printf("%c%.*s", separator, (int)tag_len, tag);
+	}
 
+	/* style hint */
+	switch (fye->type) {
+	default:
+		break;
+	case FYET_DOCUMENT_START:
+		if (!fy_document_event_is_implicit(fye))
+			printf("%c---", separator);
+		break;
+	case FYET_DOCUMENT_END:
+		if (!fy_document_event_is_implicit(fye))
+			printf("%c...", separator);
+		break;
+	case FYET_MAPPING_START:
+		if (!tsv_format)
+			break;
+		printf("%c%s", separator, fy_event_get_node_style(fye) == FYNS_FLOW ? "{}" : "");
+		break;
+	case FYET_SEQUENCE_START:
+		if (!tsv_format)
+			break;
+		printf("%c%s", separator, fy_event_get_node_style(fye) == FYNS_FLOW ? "[]" : "");
+		break;
+	case FYET_SCALAR:
 		style = fy_token_scalar_style(fye->scalar.value);
 		switch (style) {
 		case FYSS_PLAIN:
 			if (colorize)
-				fputs("\x1b[37;1m", stdout);
-			printf(" :");
+				fputs(A_WHITE, stdout);
+			printf("%c:", separator);
 			break;
 		case FYSS_SINGLE_QUOTED:
 			if (colorize)
-				fputs("\x1b[33m", stdout);
-			printf(" '");
+				fputs(A_YELLOW, stdout);
+			printf("%c'", separator);
 			break;
 		case FYSS_DOUBLE_QUOTED:
 			if (colorize)
-				fputs("\x1b[33m", stdout);
-			printf(" \"");
+				fputs(A_YELLOW, stdout);
+			printf("%c\"", separator);
 			break;
 		case FYSS_LITERAL:
 			if (colorize)
-				fputs("\x1b[33m", stdout);
-			printf(" |");
+				fputs(A_YELLOW, stdout);
+			printf("%c|", separator);
 			break;
 		case FYSS_FOLDED:
 			if (colorize)
-				fputs("\x1b[33m", stdout);
-			printf(" >");
+				fputs(A_YELLOW, stdout);
+			printf("%c>", separator);
 			break;
 		default:
 			abort();
 		}
+		break;
+	case FYET_ALIAS:
+		if (tsv_format)
+			printf("%c*", separator);
+		break;
+	}
 
+	/* content */
+	switch (fye->type) {
+	default:
+		break;
+	case FYET_SCALAR:
+		if (tsv_format)
+			printf("%c", separator);
 		text = fy_token_get_text(fye->scalar.value, &text_len);
 		if (text && text_len > 0)
 			print_escaped(text, text_len);
 		break;
 	case FYET_ALIAS:
-		anchor = fy_token_get_text(fye->alias.anchor, &anchor_len);
-		if (colorize)
-			fputs("\x1b[32m", stdout);
-		printf("=ALI *%.*s", (int)anchor_len, anchor);
+		alias = fy_token_get_text(fye->alias.anchor, &alias_len);
+		printf("%c%s%.*s", separator, !tsv_format ? "*" : "", (int)alias_len, alias);
 		break;
-	default:
-		assert(0);
 	}
+
 	if (colorize)
-		fputs("\x1b[0m", stdout);
+		fputs(A_RESET, stdout);
 	fputs("\n", stdout);
 }
 
@@ -877,24 +985,24 @@ void dump_parse_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize
 	switch (fye->type) {
 	case FYET_NONE:
 		if (colorize)
-			fputs("\x1b[31;1m", stdout);
+			fputs(A_BRIGHT_RED, stdout);
 		printf("???");
 		break;
 	case FYET_STREAM_START:
 		if (colorize)
-			fputs("\x1b[36m", stdout);
+			fputs(A_CYAN, stdout);
 		printf("STREAM_START");
 		dump_token_comments(fye->stream_start.stream_start, colorize, "");
 		break;
 	case FYET_STREAM_END:
 		if (colorize)
-			fputs("\x1b[36m", stdout);
+			fputs(A_CYAN, stdout);
 		printf("STREAM_END");
 		dump_token_comments(fye->stream_end.stream_end, colorize, "");
 		break;
 	case FYET_DOCUMENT_START:
 		if (colorize)
-			fputs("\x1b[36m", stdout);
+			fputs(A_CYAN, stdout);
 
 		printf("DOCUMENT_START implicit=%s",
 				fye->document_start.implicit ? "true" : "false");
@@ -920,23 +1028,23 @@ void dump_parse_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize
 
 	case FYET_DOCUMENT_END:
 		if (colorize)
-			fputs("\x1b[36m", stdout);
+			fputs(A_CYAN, stdout);
 		printf("DOCUMENT_END implicit=%s",
 				fye->document_end.implicit ? "true" : "false");
 		dump_token_comments(fye->document_end.document_end, colorize, "");
 		break;
 	case FYET_MAPPING_START:
 		if (colorize)
-			fputs("\x1b[36;1m", stdout);
+			fputs(A_BRIGHT_CYAN, stdout);
 		printf("MAPPING_START");
 		if (anchor) {
 			if (colorize)
-				fputs("\x1b[32m", stdout);
+				fputs(A_GREEN, stdout);
 			printf(" &%.*s", (int)anchor_len, anchor);
 		}
 		if (tag) {
 			if (colorize)
-				fputs("\x1b[32m", stdout);
+				fputs(A_GREEN, stdout);
 			printf(" <%.*s> (\"%s\",\"%s\")",
 				(int)tag_len, tag,
 				tagp->handle, tagp->prefix);
@@ -945,22 +1053,22 @@ void dump_parse_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize
 		break;
 	case FYET_MAPPING_END:
 		if (colorize)
-			fputs("\x1b[36;1m", stdout);
+			fputs(A_BRIGHT_CYAN, stdout);
 		printf("MAPPING_END");
 		dump_token_comments(fye->mapping_end.mapping_end, colorize, "");
 		break;
 	case FYET_SEQUENCE_START:
 		if (colorize)
-			fputs("\x1b[33;1m", stdout);
+			fputs(A_BRIGHT_YELLOW, stdout);
 		printf("SEQUENCE_START");
 		if (anchor) {
 			if (colorize)
-				fputs("\x1b[32m", stdout);
+				fputs(A_GREEN, stdout);
 			printf(" &%.*s", (int)anchor_len, anchor);
 		}
 		if (tag) {
 			if (colorize)
-				fputs("\x1b[32m", stdout);
+				fputs(A_GREEN, stdout);
 			printf(" <%.*s> (\"%s\",\"%s\")",
 				(int)tag_len, tag,
 				tagp->handle, tagp->prefix);
@@ -969,22 +1077,22 @@ void dump_parse_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize
 		break;
 	case FYET_SEQUENCE_END:
 		if (colorize)
-			fputs("\x1b[33;1m", stdout);
+			fputs(A_BRIGHT_YELLOW, stdout);
 		printf("SEQUENCE_END");
 		dump_token_comments(fye->sequence_end.sequence_end, colorize, "");
 		break;
 	case FYET_SCALAR:
 		if (colorize)
-			fputs("\x1b[37;1m", stdout);
+			fputs(A_WHITE, stdout);
 		printf("SCALAR");
 		if (anchor) {
 			if (colorize)
-				fputs("\x1b[32m", stdout);
+				fputs(A_GREEN, stdout);
 			printf(" &%.*s", (int)anchor_len, anchor);
 		}
 		if (tag) {
 			if (colorize)
-				fputs("\x1b[32m", stdout);
+				fputs(A_GREEN, stdout);
 			printf(" <%.*s> (\"%s\",\"%s\")",
 				(int)tag_len, tag,
 				tagp->handle, tagp->prefix);
@@ -994,27 +1102,27 @@ void dump_parse_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize
 		switch (style) {
 		case FYSS_PLAIN:
 			if (colorize)
-				fputs("\x1b[37;1m", stdout);
+				fputs(A_WHITE, stdout);
 			printf(" ");
 			break;
 		case FYSS_SINGLE_QUOTED:
 			if (colorize)
-				fputs("\x1b[33m", stdout);
+				fputs(A_YELLOW, stdout);
 			printf(" '");
 			break;
 		case FYSS_DOUBLE_QUOTED:
 			if (colorize)
-				fputs("\x1b[33m", stdout);
+				fputs(A_YELLOW, stdout);
 			printf(" \"");
 			break;
 		case FYSS_LITERAL:
 			if (colorize)
-				fputs("\x1b[33m", stdout);
+				fputs(A_YELLOW, stdout);
 			printf(" |");
 			break;
 		case FYSS_FOLDED:
 			if (colorize)
-				fputs("\x1b[33m", stdout);
+				fputs(A_YELLOW, stdout);
 			printf(" >");
 			break;
 		default:
@@ -1028,7 +1136,7 @@ void dump_parse_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize
 	case FYET_ALIAS:
 		anchor = fy_token_get_text(fye->alias.anchor, &anchor_len);
 		if (colorize)
-			fputs("\x1b[32m", stdout);
+			fputs(A_GREEN, stdout);
 		printf("ALIAS *%.*s", (int)anchor_len, anchor);
 		dump_token_comments(fye->alias.anchor, colorize, "");
 		break;
@@ -1037,7 +1145,7 @@ void dump_parse_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize
 		break;
 	}
 	if (colorize)
-		fputs("\x1b[0m", stdout);
+		fputs(A_RESET, stdout);
 	fputs("\n", stdout);
 }
 
@@ -1052,123 +1160,123 @@ void dump_scan_token(struct fy_parser *fyp, struct fy_token *fyt, bool colorize)
 	switch (fy_token_get_type(fyt)) {
 	case FYTT_NONE:
 		if (colorize)
-			fputs("\x1b[31;1m", stdout);
+			fputs(A_BRIGHT_RED, stdout);
 		printf("NONE");
 		break;
 	case FYTT_STREAM_START:
 		if (colorize)
-			fputs("\x1b[36m", stdout);
+			fputs(A_CYAN, stdout);
 		printf("STREAM_START");
 		break;
 	case FYTT_STREAM_END:
 		if (colorize)
-			fputs("\x1b[36m", stdout);
+			fputs(A_CYAN, stdout);
 		printf("STREAM_END");
 		break;
 	case FYTT_VERSION_DIRECTIVE:
 		if (colorize)
-			fputs("\x1b[36m", stdout);
+			fputs(A_CYAN, stdout);
 		vers = fy_version_directive_token_version(fyt);
 		assert(vers);
 		printf("VERSION_DIRECTIVE major=%d minor=%d", vers->major, vers->minor);
 		break;
 	case FYTT_TAG_DIRECTIVE:
 		if (colorize)
-			fputs("\x1b[36m", stdout);
+			fputs(A_CYAN, stdout);
 		tag = fy_tag_directive_token_tag(fyt);
 		assert(tag);
 		printf("TAG_DIRECTIVE handle=\"%s\" prefix=\"%s\"", tag->handle, tag->prefix);
 		break;
 	case FYTT_DOCUMENT_START:
 		if (colorize)
-			fputs("\x1b[36m", stdout);
+			fputs(A_CYAN, stdout);
 		printf("DOCUMENT_START");
 		break;
 	case FYTT_DOCUMENT_END:
 		if (colorize)
-			fputs("\x1b[36m", stdout);
+			fputs(A_CYAN, stdout);
 		printf("DOCUMENT_END");
 		break;
 	case FYTT_BLOCK_SEQUENCE_START:
 		if (colorize)
-			fputs("\x1b[36;1m", stdout);
+			fputs(A_BRIGHT_CYAN, stdout);
 		printf("BLOCK_SEQUENCE_START");
 		break;
 	case FYTT_BLOCK_MAPPING_START:
 		if (colorize)
-			fputs("\x1b[36;1m", stdout);
+			fputs(A_BRIGHT_CYAN, stdout);
 		printf("BLOCK_MAPPING_START");
 		break;
 	case FYTT_BLOCK_END:
 		if (colorize)
-			fputs("\x1b[36;1m", stdout);
+			fputs(A_BRIGHT_CYAN, stdout);
 		printf("BLOCK_END");
 		break;
 	case FYTT_FLOW_SEQUENCE_START:
 		if (colorize)
-			fputs("\x1b[33;1m", stdout);
+			fputs(A_BRIGHT_YELLOW, stdout);
 		printf("FLOW_SEQUENCE_START");
 		break;
 	case FYTT_FLOW_SEQUENCE_END:
 		if (colorize)
-			fputs("\x1b[33;1m", stdout);
+			fputs(A_BRIGHT_YELLOW, stdout);
 		printf("FLOW_SEQUENCE_END");
 		break;
 	case FYTT_FLOW_MAPPING_START:
 		if (colorize)
-			fputs("\x1b[33;1m", stdout);
+			fputs(A_BRIGHT_YELLOW, stdout);
 		printf("FLOW_MAPPING_START");
 		break;
 	case FYTT_FLOW_MAPPING_END:
 		if (colorize)
-			fputs("\x1b[33;1m", stdout);
+			fputs(A_BRIGHT_YELLOW, stdout);
 		printf("FLOW_MAPPING_END");
 		break;
 	case FYTT_BLOCK_ENTRY:
 		if (colorize)
-			fputs("\x1b[36;1m", stdout);
+			fputs(A_BRIGHT_CYAN, stdout);
 		printf("BLOCK_ENTRY");
 		break;
 	case FYTT_FLOW_ENTRY:
 		if (colorize)
-			fputs("\x1b[33;1m", stdout);
+			fputs(A_BRIGHT_YELLOW, stdout);
 		printf("BLOCK_ENTRY");
 		break;
 	case FYTT_KEY:
 		if (colorize)
-			fputs("\x1b[33;1m", stdout);
+			fputs(A_BRIGHT_YELLOW, stdout);
 		printf("KEY");
 		break;
 	case FYTT_VALUE:
 		if (colorize)
-			fputs("\x1b[33;1m", stdout);
+			fputs(A_BRIGHT_YELLOW, stdout);
 		printf("KEY");
 		break;
 	case FYTT_ALIAS:
 		anchor = fy_token_get_text(fyt, &anchor_len);
 		assert(anchor);
 		if (colorize)
-			fputs("\x1b[32m", stdout);
+			fputs(A_GREEN, stdout);
 		printf("ALIAS *%.*s", (int)anchor_len, anchor);
 		break;
 	case FYTT_ANCHOR:
 		anchor = fy_token_get_text(fyt, &anchor_len);
 		assert(anchor);
 		if (colorize)
-			fputs("\x1b[32m", stdout);
+			fputs(A_GREEN, stdout);
 		printf("ANCHOR &%.*s", (int)anchor_len, anchor);
 		break;
 	case FYTT_TAG:
 		tag = fy_tag_token_tag(fyt);
 		assert(tag);
 		if (colorize)
-			fputs("\x1b[32m", stdout);
+			fputs(A_GREEN, stdout);
 		/* prefix is a suffix for tag */
 		printf("TAG handle=\"%s\" suffix=\"%s\"", tag->handle, tag->prefix);
 		break;
 	case FYTT_SCALAR:
 		if (colorize)
-			fputs("\x1b[37;1m", stdout);
+			fputs(A_WHITE, stdout);
 
 		printf("SCALAR ");
 		value = fy_token_get_text(fyt, &len);
@@ -1177,27 +1285,27 @@ void dump_scan_token(struct fy_parser *fyp, struct fy_token *fyt, bool colorize)
 		switch (style) {
 		case FYSS_PLAIN:
 			if (colorize)
-				fputs("\x1b[37;1m", stdout);
+				fputs(A_WHITE, stdout);
 			printf(" ");
 			break;
 		case FYSS_SINGLE_QUOTED:
 			if (colorize)
-				fputs("\x1b[33m", stdout);
+				fputs(A_YELLOW, stdout);
 			printf(" '");
 			break;
 		case FYSS_DOUBLE_QUOTED:
 			if (colorize)
-				fputs("\x1b[33m", stdout);
+				fputs(A_YELLOW, stdout);
 			printf(" \"");
 			break;
 		case FYSS_LITERAL:
 			if (colorize)
-				fputs("\x1b[33m", stdout);
+				fputs(A_YELLOW, stdout);
 			printf(" |");
 			break;
 		case FYSS_FOLDED:
 			if (colorize)
-				fputs("\x1b[33m", stdout);
+				fputs(A_YELLOW, stdout);
 			printf(" >");
 			break;
 		default:
@@ -1210,7 +1318,7 @@ void dump_scan_token(struct fy_parser *fyp, struct fy_token *fyt, bool colorize)
 		break;
 	}
 	if (colorize)
-		fputs("\x1b[0m", stdout);
+		fputs(A_RESET, stdout);
 	fputs("\n", stdout);
 }
 
@@ -1483,10 +1591,11 @@ int main(int argc, char *argv[])
 	bool null_output = false;
 	bool stdin_input;
 	void *res_iter;
-	bool disable_flow_markers = false;
+	bool disable_flow_markers = DISABLE_FLOW_MARKERS_DEFAULT;
 	bool document_event_stream = DOCUMENT_EVENT_STREAM_DEFAULT;
 	bool collect_errors = COLLECT_ERRORS_DEFAULT;
 	bool allow_duplicate_keys = ALLOW_DUPLICATE_KEYS_DEFAULT;
+	bool tsv_format = TSV_FORMAT_DEFAULT;
 	struct composer_data cd;
 	bool dump_path = DUMP_PATH_DEFAULT;
 	const char *input_arg;
@@ -1776,6 +1885,9 @@ int main(int argc, char *argv[])
 		case OPT_STRIP_EMPTY_KV:
 			emit_flags |= FYECF_STRIP_EMPTY_KV;
 			break;
+		case OPT_TSV_FORMAT:
+			tsv_format = true;
+			break;
 		case 'h' :
 		default:
 			if (opt != 'h')
@@ -1879,7 +1991,8 @@ int main(int argc, char *argv[])
 		if (!document_event_stream) {
 			/* regular test suite */
 			while ((fyev = fy_parser_parse(fyp)) != NULL) {
-				dump_testsuite_event(fyp, fyev, du.colorize, iter, disable_flow_markers);
+				dump_testsuite_event(fyp, fyev, du.colorize, iter,
+						     disable_flow_markers, tsv_format);
 				fy_parser_event_free(fyp, fyev);
 			}
 		} else {
@@ -1893,7 +2006,8 @@ int main(int argc, char *argv[])
 				fprintf(stderr, "failed to create document iterator's stream start event\n");
 				goto cleanup;
 			}
-			dump_testsuite_event(fyp, fyev, du.colorize, iter, disable_flow_markers);
+			dump_testsuite_event(fyp, fyev, du.colorize, iter,
+					     disable_flow_markers, tsv_format);
 			fy_document_iterator_event_free(fydi, fyev);
 
 			/* convert to document and then process the generator event stream it */
@@ -1904,11 +2018,13 @@ int main(int argc, char *argv[])
 					fprintf(stderr, "failed to create document iterator's document start event\n");
 					goto cleanup;
 				}
-				dump_testsuite_event(fyp, fyev, du.colorize, iter, disable_flow_markers);
+				dump_testsuite_event(fyp, fyev, du.colorize, iter,
+						     disable_flow_markers, tsv_format);
 				fy_document_iterator_event_free(fydi, fyev);
 
 				while ((fyev = fy_document_iterator_body_next(fydi)) != NULL) {
-					dump_testsuite_event(fyp, fyev, du.colorize, iter, disable_flow_markers);
+					dump_testsuite_event(fyp, fyev, du.colorize, iter,
+							     disable_flow_markers, tsv_format);
 					fy_document_iterator_event_free(fydi, fyev);
 				}
 
@@ -1917,7 +2033,8 @@ int main(int argc, char *argv[])
 					fprintf(stderr, "failed to create document iterator's stream document end\n");
 					goto cleanup;
 				}
-				dump_testsuite_event(fyp, fyev, du.colorize, iter, disable_flow_markers);
+				dump_testsuite_event(fyp, fyev, du.colorize, iter,
+						     disable_flow_markers, tsv_format);
 				fy_document_iterator_event_free(fydi, fyev);
 
 				fy_parse_document_destroy(fyp, fyd);
@@ -1931,7 +2048,8 @@ int main(int argc, char *argv[])
 				fprintf(stderr, "failed to create document iterator's stream end event\n");
 				goto cleanup;
 			}
-			dump_testsuite_event(fyp, fyev, du.colorize, iter, disable_flow_markers);
+			dump_testsuite_event(fyp, fyev, du.colorize, iter,
+					     disable_flow_markers, tsv_format);
 			fy_document_iterator_event_free(fydi, fyev);
 
 			fy_document_iterator_destroy(fydi);
