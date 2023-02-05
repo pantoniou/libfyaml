@@ -1349,9 +1349,15 @@ out:
 				FYNS_PLAIN : FYNS_DOUBLE_QUOTED;
 	}
 
-	/* special handling for plains on start of line */
-	if ((aflags & FYTTAF_QUOTE_AT_0) && indent == 0 && style == FYNS_PLAIN)
-		style = FYNS_DOUBLE_QUOTED;
+	if (style == FYNS_PLAIN) {
+		/* plains in flow mode not being able to be plains
+		 * - plain in block mode that can't be plain in flow mode
+		 * - special handling for plains on start of line
+		 */
+		if ((flow && !(aflags & FYTTAF_CAN_BE_PLAIN_FLOW) && atom && atom->size0) ||
+		    ((aflags & FYTTAF_QUOTE_AT_0) && indent == 0))
+			style = FYNS_DOUBLE_QUOTED;
+	}
 
 	return style;
 }

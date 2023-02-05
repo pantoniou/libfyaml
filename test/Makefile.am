@@ -216,6 +216,7 @@ EXTRA_DIST += \
 	emitter-examples/numbers-flow.yaml \
 	emitter-examples/numbers.yaml \
 	emitter-examples/plainlines.yaml \
+	emitter-examples/plain-scalars-with-commas.yaml \
 	emitter-examples/plainscalar.yaml \
 	emitter-examples/quotedbackslash.yaml \
 	emitter-examples/quoted.yaml \

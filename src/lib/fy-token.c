@@ -1408,7 +1408,7 @@ unsigned int fy_analyze_scalar_content(const char *data, size_t size,
 
 		/* comment indicator can't be present after a space or lb */
 		/* : followed by blank can't be any plain */
-		if (flags & (FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN) &&
+		if ((flags & (FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN)) &&
 		    (((fy_is_blank(c) || fy_is_generic_lb_m(c, lb_mode)) && nextc == '#') ||
 		     (c == ':' && fy_is_blankz_m(nextc, lb_mode))))
 			flags &= ~(FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN);
