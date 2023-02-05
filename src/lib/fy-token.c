@@ -640,7 +640,7 @@ int fy_token_text_analyze(struct fy_token *fyt)
 	const char *s, *e;
 	const char *value = NULL;
 	enum fy_atom_style style;
-	int c, w, cn, cp, col;
+	int c, w, cn, cnn, cp, col;
 	size_t len;
 	int flags;
 
@@ -708,15 +708,21 @@ int fy_token_text_analyze(struct fy_token *fyt)
 	flags &= ~FYTTAF_CAN_BE_FOLDED;
 
 	/* plain scalars can't start with any indicator (or space/lb) */
-	if ((flags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW)) &&
-		(fy_is_indicator(cn) || fy_token_is_lb(fyt, cn) || fy_is_ws(cn)))
-		flags &= ~(FYTTAF_CAN_BE_PLAIN |
-			   FYTTAF_CAN_BE_PLAIN_FLOW);
+	if ((flags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW))) {
+		if (fy_is_start_indicator(cn) || fy_token_is_lb(fyt, cn) || fy_is_ws(cn))
+			flags &= ~(FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW);
+	}
 
 	/* plain scalars in flow mode can't start with a flow indicator */
 	if ((flags & FYTTAF_CAN_BE_PLAIN_FLOW) &&
 		fy_is_flow_indicator(cn))
 		flags &= ~FYTTAF_CAN_BE_PLAIN_FLOW;
+
+	if ((flags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW))) {
+		cnn = fy_utf8_get(s, e - s, &w);
+		if (fy_is_ws(cnn) && fy_is_indicator_before_space(cn))
+			flags &= ~(FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW);
+	}
 
 	/* plain unquoted path keys can only start with [a-zA-Z_] */
 	if ((flags & FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) &&
