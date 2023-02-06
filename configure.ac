@@ -139,6 +139,43 @@ AC_SUBST(HAVE_STATIC)
 AC_DEFINE_UNQUOTED([HAVE_STATIC], [$HAVE_STATIC], [Define to 1 if static linking is available])
 AM_CONDITIONAL([HAVE_STATIC], [ test x$HAVE_STATIC = x1 ])
 
+dnl for old autoconf version AX_APPEND_COMPILE_FLAGS does not work
+m4_version_prereq(2.64,
+	 [AX_APPEND_COMPILE_FLAGS([-Wall -Wsign-compare -Wno-stringop-overflow -fvisibility=hidden],
+				  [CFLAGS], [-pedantic -Werror])],
+         [CFLAGS="$CFLAGS -Wall -Wsign-compare"])
+
+dnl ASAN enable switch
+AC_ARG_ENABLE([asan],
+	      AS_HELP_STRING([--enable-asan],
+			     [Enable ASAN support]))
+
+HAVE_ASAN=0
+ASAN_CFLAGS=""
+ASAN_LIBS=""
+if test "x$enable_asan" == "xyes" ; then
+	AC_MSG_CHECKING([location of ASAN library])
+	ASANLIB1=`${CC} -print-file-name=libasan.so`
+	ASANLIB=`readlink -f "${ASANLIB1}"`
+	if test -f "$ASANLIB" ; then
+		HAVE_ASAN=1
+		ASAN_CFLAGS="-fsanitize=address -fno-omit-frame-pointer"
+		ASAN_LIBS="-fsanitize=address"
+		AC_MSG_RESULT([$ASANLIB])
+		m4_version_prereq(2.64,
+			AX_APPEND_COMPILE_FLAGS([-fsanitize=address -fno-omit-frame-pointer], [CFLAGS]),
+			[CFLAGS="$CFLAGS -fsanitize=address -fno-omit-frame-pointer"])
+	else
+		AC_MSG_RESULT([Not found; disabling ASAN])
+	fi
+fi
+AC_SUBST(HAVE_ASAN)
+AC_SUBST(ASAN_CFLAGS)
+AC_SUBST(ASAN_LIBS)
+AM_CONDITIONAL([HAVE_ASAN],
+	       [ test x$HAVE_ASAN = x1 ])
+AC_DEFINE_UNQUOTED([HAVE_ASAN], [$HAVE_ASAN], [Define to 1 if ASAN is enabled])
+
 # include -lm in the link
 AC_SEARCH_LIBS([llrintf], [m], [], [AC_MSG_ERROR([unable to find the llrintf() function])])
 
@@ -364,6 +401,7 @@ echo "
     Linker:                ${LD}
     LDFLAGS:               ${LDFLAGS}
     LIBS:                  ${LIBS}
+    HAVE_ASAN:             ${HAVE_ASAN}
     HAVE_CHECK:            ${HAVE_CHECK}
     HAVE_COMPATIBLE_CHECK: ${HAVE_COMPATIBLE_CHECK}
     HAVE_NETWORK:          ${HAVE_NETWORK}
