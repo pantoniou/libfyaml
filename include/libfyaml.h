@@ -1006,6 +1006,22 @@ fy_token_scalar_style(struct fy_token *fyt)
 	FY_EXPORT;
 
 /**
+ * fy_token_scalar_is_null() - Test whether the scalar is null (content)
+ *
+ * @fyt: The scalar token to check for NULLity.
+ *  
+ * Note that this is different than null of the YAML type system.
+ * It is null as in null content. It is also different than an
+ * empty scalar.
+ *
+ * Returns:
+ * true if is a null scalar, false otherwise
+ */
+bool
+fy_token_scalar_is_null(struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
  * fy_token_get_text() - Get text (and length of it) of a token
  *
  * This method will return a pointer to the text of a token

@@ -426,6 +426,7 @@ struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_t
 		fyt->scalar.path_key = NULL;
 		fyt->scalar.path_key_len = 0;
 		fyt->scalar.path_key_storage = NULL;
+		fyt->scalar.is_null = false;	/* by default the scalar is not NULL */
 		break;
 	case FYTT_TAG:
 		fyt->tag.skip = va_arg(ap, unsigned int);
@@ -1872,4 +1873,10 @@ bool fy_token_has_any_comment(struct fy_token *fyt)
 			return true;
 	}
 	return false;
+}
+
+bool
+fy_token_scalar_is_null(struct fy_token *fyt)
+{
+	return !fyt || fyt->type != FYTT_SCALAR || fyt->scalar.is_null;
 }

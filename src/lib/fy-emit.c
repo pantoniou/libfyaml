@@ -707,7 +707,7 @@ void fy_emit_token_write_plain(struct fy_emitter *emit, struct fy_token *fyt, in
 	atom = fy_token_atom(fyt);
 
 	/* null and json mode */
-	if (fy_emit_is_json_mode(emit) && (!fyt || !atom || atom->size0)) {
+	if (fy_emit_is_json_mode(emit) && (/* (!fyt || !atom || atom->size0) || */ fyt->scalar.is_null)) {
 		fy_emit_puts(emit, wtype, "null");
 		goto out;
 	}
@@ -1247,7 +1247,7 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 {
 	const char *value = NULL;
 	size_t len = 0;
-	bool json, flow, is_json_plain;
+	bool json, flow, is_null_scalar, is_json_plain;
 	struct fy_atom *atom;
 	int aflags = -1;
 	const char *tag;
@@ -1263,34 +1263,38 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 
 	json = fy_emit_is_json_mode(emit);
 
-	/* literal in JSON mode is output as quoted */
-	if (json && (style == FYNS_LITERAL || style == FYNS_FOLDED))
-		return FYNS_DOUBLE_QUOTED;
+	is_null_scalar = !atom || fyt->scalar.is_null;
 
 	/* is this a plain json atom? */
 	is_json_plain = (json || emit->source_json || fy_emit_is_dejson_mode(emit)) &&
-			(!atom || atom->size0 ||
+			(is_null_scalar ||
 			!fy_atom_strcmp(atom, "false") ||
 			!fy_atom_strcmp(atom, "true") ||
 			!fy_atom_strcmp(atom, "null") ||
 			fy_atom_is_number(atom));
 
-	if (is_json_plain) {
-		tag = fy_token_get_text(fyt_tag, &tag_len);
-
-		/* XXX hardcoded string tag resultion */
-		if (tag && tag_len &&
-		     ((tag_len == 1 && *tag == '!') ||
-		      (tag_len == 21 && !memcmp(tag, "tag:yaml.org,2002:str", 21))))
+	if (json) {
+		/* literal in JSON mode is output as quoted */
+		if (style == FYNS_LITERAL || style == FYNS_FOLDED)
 			return FYNS_DOUBLE_QUOTED;
-	}
 
-	/* JSON NULL, but with plain style */
-	if (json && (style == FYNS_PLAIN || style == FYNS_ANY) && (!atom || (is_json_plain && !atom->size0)))
-		return FYNS_PLAIN;
+		if (is_json_plain) {
+			tag = fy_token_get_text(fyt_tag, &tag_len);
 
-	if (json)
+			/* XXX hardcoded string tag resultion */
+			if (tag && tag_len &&
+			     ((tag_len == 1 && *tag == '!') ||
+			      (tag_len == 21 && !memcmp(tag, "tag:yaml.org,2002:str", 21))))
+				return FYNS_DOUBLE_QUOTED;
+		}
+
+		/* JSON NULL, but with plain style */
+		if ((style == FYNS_PLAIN || style == FYNS_ANY) &&
+		    (is_null_scalar || (is_json_plain && !atom->size0)))
+			return FYNS_PLAIN;
+
 		return FYNS_DOUBLE_QUOTED;
+	}
 
 	aflags = fy_token_text_analyze(fyt);
 
@@ -1354,7 +1358,7 @@ out:
 		 * - plain in block mode that can't be plain in flow mode
 		 * - special handling for plains on start of line
 		 */
-		if ((flow && !(aflags & FYTTAF_CAN_BE_PLAIN_FLOW) && atom) ||
+		if ((flow && !(aflags & FYTTAF_CAN_BE_PLAIN_FLOW) && !is_null_scalar) ||
 		    ((aflags & FYTTAF_QUOTE_AT_0) && indent == 0))
 			style = FYNS_DOUBLE_QUOTED;
 	}

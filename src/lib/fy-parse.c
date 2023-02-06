@@ -814,6 +814,9 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 	struct fy_eventp *fyep;
 	struct fy_token *fyt;
 
+	fy_input_unref(fyp->last_event_handle.fyi);
+	fy_atom_reset(&fyp->last_event_handle);
+
 	fy_composer_destroy(fyp->fyc);
 	fy_document_builder_destroy(fyp->fydb);
 
@@ -5243,6 +5246,7 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 	size_t handle_size;
 	struct fy_token *fyt_td;
 	struct fy_token *fytn;
+	struct fy_atom *ev_handle = NULL;
 
 	fyds = fyp->current_document_state;
 	assert(fyds);
@@ -5262,6 +5266,7 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 		fye->type = FYET_ALIAS;
 		fye->alias.anchor = fy_scan_remove(fyp, fyt);
 
+		ev_handle = &fye->alias.anchor->handle;
 		goto return_ok;
 	}
 
@@ -5320,6 +5325,8 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 		fye->sequence_start.sequence_start = fytn;
 
 		fy_parse_state_set(fyp, FYPS_INDENTLESS_SEQUENCE_ENTRY);
+
+		ev_handle = &fye->sequence_start.sequence_start->handle;
 		goto return_ok;
 	}
 
@@ -5335,6 +5342,8 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 		fye->scalar.anchor = anchor;
 		fye->scalar.tag = tag;
 		fye->scalar.value = fy_scan_remove(fyp, fyt);
+
+		ev_handle = &fye->scalar.value->handle;
 		goto return_ok;
 	}
 
@@ -5350,6 +5359,8 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 		fye->sequence_start.tag = tag;
 		fye->sequence_start.sequence_start = fy_scan_remove(fyp, fyt);
 		fy_parse_state_set(fyp, FYPS_FLOW_SEQUENCE_FIRST_ENTRY);
+
+		ev_handle = &fye->sequence_start.sequence_start->handle;
 		goto return_ok;
 	}
 
@@ -5365,6 +5376,8 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 		fye->mapping_start.tag = tag;
 		fye->mapping_start.mapping_start = fy_scan_remove(fyp, fyt);
 		fy_parse_state_set(fyp, FYPS_FLOW_MAPPING_FIRST_KEY);
+
+		ev_handle = &fye->mapping_start.mapping_start->handle;
 		goto return_ok;
 	}
 
@@ -5380,6 +5393,8 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 		fye->sequence_start.tag = tag;
 		fye->sequence_start.sequence_start = fy_scan_remove(fyp, fyt);
 		fy_parse_state_set(fyp, FYPS_BLOCK_SEQUENCE_FIRST_ENTRY);
+
+		ev_handle = &fye->sequence_start.sequence_start->handle;
 		goto return_ok;
 	}
 
@@ -5395,6 +5410,8 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 		fye->mapping_start.tag = tag;
 		fye->mapping_start.mapping_start = fy_scan_remove(fyp, fyt);
 		fy_parse_state_set(fyp, FYPS_BLOCK_MAPPING_FIRST_KEY);
+
+		ev_handle = &fye->mapping_start.mapping_start->handle;
 		goto return_ok;
 	}
 
@@ -5437,9 +5454,24 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 	fye->type = FYET_SCALAR;
 	fye->scalar.anchor = anchor;
 	fye->scalar.tag = tag;
-	fye->scalar.value = NULL;
+
+	/* copy atom from the token and set to zero size at start */
+	fye->scalar.value = fy_token_create_rl(
+		fyp->recycled_token_list,  FYTT_SCALAR, &fyp->last_event_handle, FYSS_PLAIN);
+	fyp_error_check(fyp, fye->scalar.value, err_out,
+			"failed to allocate SCALAR token()");
+	/* mark it as a special value */
+	fye->scalar.value->scalar.is_null = true;
 
 return_ok:
+	if (ev_handle) {
+		fy_input_unref(fyp->last_event_handle.fyi);
+		fyp->last_event_handle = *ev_handle;
+		fyp->last_event_handle.start_mark = fyp->last_event_handle.end_mark;
+		fy_atom_reset_storage_hints(&fyp->last_event_handle);
+		fy_input_ref(fyp->last_event_handle.fyi);
+	}
+
 	fyp_parse_debug(fyp, "parse_node: > %s",
 			fy_event_type_txt[fye->type]);
 
@@ -5467,8 +5499,16 @@ fy_parse_empty_scalar(struct fy_parser *fyp)
 	fye->type = FYET_SCALAR;
 	fye->scalar.anchor = NULL;
 	fye->scalar.tag = NULL;
-	fye->scalar.value = NULL;
+
+	/* for empty scalar the last event handle does not change, only  */
+	fye->scalar.value = fy_token_create_rl(
+		fyp->recycled_token_list,  FYTT_SCALAR, &fyp->last_event_handle, FYSS_PLAIN);
+	fyp_error_check(fyp, fye->scalar.value, err_out,
+			"failed to allocate SCALAR token()");
+	/* mark it as a special value */
+	fye->scalar.value->scalar.is_null = true;
 	return fyep;
+
 err_out:
 	return NULL;
 }
@@ -5512,6 +5552,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 	struct fy_token *version_directive;
 	struct fy_token_list tag_directives;
 	const struct fy_mark *fym;
+	struct fy_atom handle, *ev_handle;
 	struct fy_token *fytn;
 	char tbuf[16] __FY_DEBUG_UNUSED__;
 	int rc;
@@ -5556,6 +5597,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 	fyep = NULL;
 	fye = NULL;
+	ev_handle = NULL;
 
 	orig_state = fyp->state;
 	switch (fyp->state) {
@@ -5585,7 +5627,8 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 		fyp->stream_has_content = false;
 
-		return fyep;
+		ev_handle = &fye->stream_start.stream_start->handle;
+		break;
 
 	case FYPS_IMPLICIT_DOCUMENT_START:
 
@@ -5689,7 +5732,8 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fy_parse_state_set(fyp,
 				fy_parse_have_more_inputs(fyp) ? FYPS_NONE : FYPS_END);
 
-			return fyep;
+			ev_handle = &fye->stream_end.stream_end->handle;
+			break;
 		}
 
 		fyep = fy_parse_eventp_alloc(fyp);
@@ -5727,7 +5771,16 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			memset(&fyds->start_mark, 0, sizeof(fyds->start_mark));
 
 		if (fyt->type != FYTT_DOCUMENT_START) {
-			fye->document_start.document_start = NULL;
+
+			/* copy atom from the token and set to zero size at start */
+			handle = fyt->handle;
+			handle.end_mark = handle.start_mark;
+			fy_atom_reset_storage_hints(&handle);
+
+			fye->document_start.document_start = fy_token_create_rl(
+					fyp->recycled_token_list, FYTT_DOCUMENT_START, &handle);
+			fyp_error_check(fyp, fye->document_start.document_start, err_out,
+					"failed to allocate DOCUMENT_START token()");
 
 			fyds->start_implicit = true;
 			fyp_parse_debug(fyp, "document_start_implicit=true");
@@ -5755,7 +5808,8 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		fye->document_start.document_state = fy_document_state_ref(fyds);
 		fye->document_start.implicit = fyds->start_implicit;
 
-		return fyep;
+		ev_handle = &fye->document_start.document_start->handle;
+		break;
 
 	case FYPS_DOCUMENT_END:
 
@@ -5793,8 +5847,14 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		/* document end */
 		fye->type = FYET_DOCUMENT_END;
 		if (fyt->type == FYTT_DOCUMENT_END) {
-			/* TODO pull the document end token and deliver */
-			fye->document_end.document_end = NULL;
+
+			handle = fyt->handle;
+			fy_atom_reset_storage_hints(&handle);
+
+			fye->document_end.document_end = fy_token_create_rl(
+					fyp->recycled_token_list, FYTT_DOCUMENT_END, &handle);
+			fyp_error_check(fyp, fye->document_end.document_end, err_out,
+					"failed to allocate DOCUMENT_END token()");
 			fyds->end_implicit = false;
 
 			/* reset document has content flag */
@@ -5805,7 +5865,15 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fyp->had_directives = false;
 
 		} else {
-			fye->document_end.document_end = NULL;
+
+			handle = fyt->handle;
+			handle.end_mark = handle.start_mark;
+			fy_atom_reset_storage_hints(&handle);
+
+			fye->document_end.document_end = fy_token_create_rl(
+					fyp->recycled_token_list, FYTT_DOCUMENT_END, &handle);
+			fyp_error_check(fyp, fye->document_end.document_end, err_out,
+					"failed to allocate DOCUMENT_END token()");
 			fyds->end_implicit = true;
 		}
 
@@ -5827,7 +5895,8 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fy_parse_state_set(fyp, FYPS_SINGLE_DOCUMENT_END);
 		}
 
-		return fyep;
+		ev_handle = &fye->document_end.document_end->handle;
+		break;
 
 	case FYPS_DOCUMENT_CONTENT:
 
@@ -5849,7 +5918,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fyep = fy_parse_empty_scalar(fyp);
 			fyp_error_check(fyp, fyep, err_out,
 					"fy_parse_empty_scalar() failed");
-			return fyep;
+			break;
 		}
 
 		fyp->document_has_content = true;
@@ -5863,7 +5932,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fyp->state == FYPS_DOCUMENT_CONTENT);
 		fyp_error_check(fyp, fyep, err_out,
 				"fy_parse_node() failed");
-		return fyep;
+		break;
 
 	case FYPS_BLOCK_SEQUENCE_FIRST_ENTRY:
 		is_first = true;
@@ -5914,14 +5983,14 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fyep = fy_parse_node(fyp, fyt, true);
 				fyp_error_check(fyp, fyep, err_out,
 						"fy_parse_node() failed");
-				return fyep;
+				break;
 			}
 			fy_parse_state_set(fyp, FYPS_BLOCK_SEQUENCE_ENTRY);
 
 			fyep = fy_parse_empty_scalar(fyp);
 			fyp_error_check(fyp, fyep, err_out,
 					"fy_parse_empty_scalar() failed");
-			return fyep;
+			break;
 		}
 
 		/* FYTT_BLOCK_END */
@@ -5948,7 +6017,8 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		} else
 			fye->sequence_end.sequence_end = fy_scan_remove(fyp, fyt);
 
-		return fyep;
+		ev_handle = &fye->sequence_end.sequence_end->handle;
+		break;
 
 	case FYPS_BLOCK_MAPPING_FIRST_KEY:
 		is_first = true;
@@ -6007,14 +6077,14 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fyep = fy_parse_node(fyp, fyt, true);
 				fyp_error_check(fyp, fyep, err_out,
 						"fy_parse_node() failed");
-				return fyep;
+				break;
 			}
 			fy_parse_state_set(fyp, FYPS_BLOCK_MAPPING_VALUE);
 
 			fyep = fy_parse_empty_scalar(fyp);
 			fyp_error_check(fyp, fyep, err_out,
 					"fy_parse_empty_scalar() failed");
-			return fyep;
+			break;
 		}
 
 		fyep = fy_parse_eventp_alloc(fyp);
@@ -6026,7 +6096,9 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		fy_parse_state_set(fyp, fy_parse_state_pop(fyp));
 		fye->type = FYET_MAPPING_END;
 		fye->mapping_end.mapping_end = fy_scan_remove(fyp, fyt);
-		return fyep;
+
+		ev_handle = &fye->mapping_end.mapping_end->handle;
+		break;
 
 	case FYPS_BLOCK_MAPPING_VALUE:
 
@@ -6052,7 +6124,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fyep = fy_parse_node(fyp, fyt, true);
 				fyp_error_check(fyp, fyep, err_out,
 						"fy_parse_node() failed");
-				return fyep;
+				break;
 			}
 		}
 
@@ -6061,7 +6133,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		fyep = fy_parse_empty_scalar(fyp);
 		fyp_error_check(fyp, fyep, err_out,
 				"fy_parse_empty_scalar() failed");
-		return fyep;
+		break;
 
 	case FYPS_FLOW_SEQUENCE_FIRST_ENTRY:
 		is_first = true;
@@ -6105,7 +6177,9 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fye->mapping_start.anchor = NULL;
 				fye->mapping_start.tag = NULL;
 				fye->mapping_start.mapping_start = fy_scan_remove(fyp, fyt);
-				return fyep;
+
+				ev_handle = &fye->mapping_start.mapping_start->handle;
+				break;
 			}
 
 			if (fyt->type != FYTT_FLOW_SEQUENCE_END) {
@@ -6116,7 +6190,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fyep = fy_parse_node(fyp, fyt, false);
 				fyp_error_check(fyp, fyep, err_out,
 						"fy_parse_node() failed");
-				return fyep;
+				break;
 			}
 		}
 
@@ -6136,7 +6210,9 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 		fye->type = FYET_SEQUENCE_END;
 		fye->sequence_end.sequence_end = fy_scan_remove(fyp, fyt);
-		return fyep;
+
+		ev_handle = &fye->sequence_end.sequence_end->handle;
+		break;
 
 	case FYPS_FLOW_SEQUENCE_ENTRY_MAPPING_KEY:
 		if (fyt->type != FYTT_VALUE && fyt->type != FYTT_FLOW_ENTRY &&
@@ -6148,7 +6224,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fyep = fy_parse_node(fyp, fyt, false);
 			fyp_error_check(fyp, fyep, err_out,
 					"fy_parse_node() failed");
-			return fyep;
+			break;
 		}
 
 		/* empty keys are not allowed in JSON mode */
@@ -6161,7 +6237,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		fyep = fy_parse_empty_scalar(fyp);
 		fyp_error_check(fyp, fyep, err_out,
 				"fy_parse_empty_scalar() failed");
-		return fyep;
+		break;
 
 	case FYPS_FLOW_SEQUENCE_ENTRY_MAPPING_VALUE:
 		if (fyt->type == FYTT_VALUE) {
@@ -6180,7 +6256,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fyep = fy_parse_node(fyp, fyt, false);
 				fyp_error_check(fyp, fyep, err_out,
 						"fy_parse_node() failed");
-				return fyep;
+				break;
 			}
 		}
 
@@ -6194,7 +6270,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		fyep = fy_parse_empty_scalar(fyp);
 		fyp_error_check(fyp, fyep, err_out,
 				"fy_parse_empty_scalar() failed");
-		return fyep;
+		break;
 
 	case FYPS_FLOW_SEQUENCE_ENTRY_MAPPING_END:
 		fy_parse_state_set(fyp, FYPS_FLOW_SEQUENCE_ENTRY);
@@ -6217,7 +6293,8 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 		fye->mapping_end.mapping_end = fytn;
 
-		return fyep;
+		ev_handle = &fye->mapping_end.mapping_end->handle;
+		break;
 
 	case FYPS_FLOW_MAPPING_FIRST_KEY:
 		is_first = true;
@@ -6271,7 +6348,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 					fyep = fy_parse_node(fyp, fyt, false);
 					fyp_error_check(fyp, fyep, err_out,
 							"fy_parse_node() failed");
-					return fyep;
+					break;
 				}
 
 				fy_parse_state_set(fyp, FYPS_FLOW_MAPPING_VALUE);
@@ -6279,7 +6356,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fyep = fy_parse_empty_scalar(fyp);
 				fyp_error_check(fyp, fyep, err_out,
 						"fy_parse_empty_scalar() failed");
-				return fyep;
+				break;
 			}
 
 			if (fyt->type != FYTT_FLOW_MAPPING_END) {
@@ -6296,7 +6373,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fyep = fy_parse_node(fyp, fyt, false);
 				fyp_error_check(fyp, fyep, err_out,
 						"fy_parse_node() failed");
-				return fyep;
+				break;
 			}
 		}
 
@@ -6310,7 +6387,8 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		fye->type = FYET_MAPPING_END;
 		fye->mapping_end.mapping_end = fy_scan_remove(fyp, fyt);
 
-		return fyep;
+		ev_handle = &fye->mapping_end.mapping_end->handle;
+		break;
 
 	case FYPS_FLOW_MAPPING_VALUE:
 		if (fyt->type == FYTT_VALUE) {
@@ -6332,7 +6410,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 				fyep = fy_parse_node(fyp, fyt, false);
 				fyp_error_check(fyp, fyep, err_out,
 						"fy_parse_node() failed");
-				return fyep;
+				break;
 			}
 		}
 
@@ -6346,7 +6424,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		fyep = fy_parse_empty_scalar(fyp);
 		fyp_error_check(fyp, fyep, err_out,
 				"fy_parse_empty_scalar() failed");
-		return fyep;
+		break;
 
 	case FYPS_FLOW_MAPPING_EMPTY_VALUE:
 		fy_parse_state_set(fyp, FYPS_FLOW_MAPPING_KEY);
@@ -6354,7 +6432,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		fyep = fy_parse_empty_scalar(fyp);
 		fyp_error_check(fyp, fyep, err_out,
 				"fy_parse_empty_scalar() failed");
-		return fyep;
+		break;
 
 	case FYPS_SINGLE_DOCUMENT_END:
 
@@ -6377,13 +6455,26 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		fy_parse_state_set(fyp,
 			fy_parse_have_more_inputs(fyp) ? FYPS_NONE : FYPS_END);
 
-		return fyep;
+		ev_handle = &fye->stream_end.stream_end->handle;
+		break;
 
 	case FYPS_END:
 		/* should never happen */
 		assert(0);
 		break;
 	}
+
+	assert(fyep);
+
+	if (ev_handle) {
+		fy_input_unref(fyp->last_event_handle.fyi);
+		fyp->last_event_handle = *ev_handle;
+		fyp->last_event_handle.start_mark = fyp->last_event_handle.end_mark;
+		fy_atom_reset_storage_hints(&handle);
+		fy_input_ref(fyp->last_event_handle.fyi);
+	}
+
+	return fyep;
 
 err_out:
 	fy_token_unref_rl(fyp->recycled_token_list, version_directive);
@@ -6508,6 +6599,9 @@ static void fy_parse_input_reset(struct fy_parser *fyp)
 
 	fyp->pending_complex_key_column = -1;
 	fyp->last_block_mapping_key_line = -1;
+
+	fy_input_unref(fyp->last_event_handle.fyi);
+	fy_atom_reset(&fyp->last_event_handle);
 }
 
 int fy_parser_set_input_file(struct fy_parser *fyp, const char *file)
