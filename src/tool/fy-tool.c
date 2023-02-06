@@ -741,8 +741,8 @@ void dump_testsuite_event(struct fy_parser *fyp,
 		sm = fy_event_start_mark(fye);
 		if (sm) {
 			spos = sm->input_pos;
-			sline = sm->line;
-			scolumn = sm->column;
+			sline = sm->line + 1;
+			scolumn = sm->column + 1;
 		} else {
 			spos = (size_t)-1;
 			sline = -1;
@@ -753,8 +753,8 @@ void dump_testsuite_event(struct fy_parser *fyp,
 		em = fy_event_end_mark(fye);
 		if (em) {
 			epos = em->input_pos;
-			eline = em->line;
-			ecolumn = em->column;
+			eline = em->line + 1;
+			ecolumn = em->column + 1;
 		} else {
 			epos = (size_t)-1;
 			eline = -1;
