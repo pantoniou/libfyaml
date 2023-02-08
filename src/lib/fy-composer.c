@@ -83,7 +83,7 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_event *fye,
 	assert(fye);
 	assert(fypp);
 
-	fyep = container_of(fye, struct fy_eventp, e);
+	fyep = fy_container_of(fye, struct fy_eventp, e);
 
 	ops = fyc->cfg.ops;
 	assert(ops);

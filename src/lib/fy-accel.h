@@ -20,7 +20,7 @@
 #include "fy-typelist.h"
 
 struct fy_accel_entry {
-	struct list_head node;
+	struct fy_list_head node;
 	const void *key;
 	const void *value;
 	uint8_t hash[0];

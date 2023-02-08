@@ -73,7 +73,7 @@ struct fy_diag_report_ctx {
 
 FY_TYPE_FWD_DECL_LIST(diag_errorp);
 struct fy_diag_errorp {
-	struct list_head node;
+	struct fy_list_head node;
 	char *space;
 	struct fy_diag_error e;
 };

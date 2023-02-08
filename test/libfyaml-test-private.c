@@ -152,6 +152,268 @@ START_TEST(parse_simple)
 }
 END_TEST
 
+struct fy_test_struct_foo {
+	int foo;
+};
+
+struct fy_test_struct_bar {
+	int frooz;
+};
+
+struct fy_test_struct_baz {
+	int one;
+	struct fy_test_struct_bar two;
+	struct fy_test_struct_foo three;
+};
+
+START_TEST(container_of)
+{
+	struct fy_test_struct_baz ftsbaz;
+	struct fy_test_struct_bar *ftsbar;
+	struct fy_test_struct_baz *ftsbazp;
+	ftsbar = &ftsbaz.two;
+	ftsbazp = fy_container_of(ftsbar, struct fy_test_struct_baz, two);
+	ck_assert_ptr_eq(&ftsbaz, ftsbazp);
+}
+END_TEST
+
+START_TEST(list)
+{
+	struct fy_list_head head, other_head, one, two, three, four, five, six;
+	bool ret;
+
+	/* add head */
+	fy_list_init_head(&head);
+	ret = fy_list_is_empty(&head);
+	ck_assert(ret == true);
+	ret = fy_list_is_singular(&head);
+	ck_assert(ret == false);
+	ck_assert_ptr_eq(head.prev, &head);
+	ck_assert_ptr_eq(head.next, &head);
+
+	fy_list_add_head(&one, &head);
+	ret = fy_list_is_singular(&head);
+	ck_assert(ret == true);
+	ret = fy_list_is_empty(&head);
+	ck_assert(ret == false);
+	ck_assert_ptr_eq(head.next, &one);
+	ck_assert_ptr_eq(head.next->next, &head);
+	ck_assert_ptr_eq(head.prev, &one);
+	ck_assert_ptr_eq(head.prev->prev, &head);
+
+	fy_list_add_head(&two, &head);
+	ret = fy_list_is_singular(&head);
+	ck_assert(ret == false);
+	ret = fy_list_is_empty(&head);
+	ck_assert(ret == false);
+	ck_assert_ptr_eq(head.next, &two);
+	ck_assert_ptr_eq(head.next->next, &one);
+	ck_assert_ptr_eq(head.next->next->next, &head);
+	ck_assert_ptr_eq(head.prev, &one);
+	ck_assert_ptr_eq(head.prev->prev, &two);
+	ck_assert_ptr_eq(head.prev->prev->prev, &head);
+
+	fy_list_add_head(&three, &head);
+	ret = fy_list_is_singular(&head);
+	ck_assert(ret == false);
+	ret = fy_list_is_empty(&head);
+	ck_assert(ret == false);
+	ck_assert_ptr_eq(head.next, &three);
+	ck_assert_ptr_eq(head.next->next, &two);
+	ck_assert_ptr_eq(head.next->next->next, &one);
+	ck_assert_ptr_eq(head.next->next->next->next, &head);
+	ck_assert_ptr_eq(head.prev, &one);
+	ck_assert_ptr_eq(head.prev->prev, &two);
+	ck_assert_ptr_eq(head.prev->prev->prev, &three);
+	ck_assert_ptr_eq(head.prev->prev->prev->prev, &head);
+
+	/* add tail */
+	fy_list_init_head(&head);
+	ret = fy_list_is_empty(&head);
+	ck_assert(ret == true);
+	ret = fy_list_is_singular(&head);
+	ck_assert(ret == false);
+	ck_assert_ptr_eq(head.prev, &head);
+	ck_assert_ptr_eq(head.next, &head);
+
+	fy_list_add_tail(&one, &head);
+	ret = fy_list_is_singular(&head);
+	ck_assert(ret == true);
+	ret = fy_list_is_empty(&head);
+	ck_assert(ret == false);
+	ck_assert_ptr_eq(head.next, &one);
+	ck_assert_ptr_eq(head.next->next, &head);
+	ck_assert_ptr_eq(head.prev, &one);
+	ck_assert_ptr_eq(head.prev->prev, &head);
+
+	fy_list_add_tail(&two, &head);
+	ret = fy_list_is_singular(&head);
+	ck_assert(ret == false);
+	ret = fy_list_is_empty(&head);
+	ck_assert(ret == false);
+	ck_assert_ptr_eq(head.next, &one);
+	ck_assert_ptr_eq(head.next->next, &two);
+	ck_assert_ptr_eq(head.next->next->next, &head);
+	ck_assert_ptr_eq(head.prev, &two);
+	ck_assert_ptr_eq(head.prev->prev, &one);
+	ck_assert_ptr_eq(head.prev->prev->prev, &head);
+
+	fy_list_add_tail(&three, &head);
+	ret = fy_list_is_singular(&head);
+	ck_assert(ret == false);
+	ret = fy_list_is_empty(&head);
+	ck_assert(ret == false);
+	ck_assert_ptr_eq(head.next, &one);
+	ck_assert_ptr_eq(head.next->next, &two);
+	ck_assert_ptr_eq(head.next->next->next, &three);
+	ck_assert_ptr_eq(head.next->next->next->next, &head);
+	ck_assert_ptr_eq(head.prev, &three);
+	ck_assert_ptr_eq(head.prev->prev, &two);
+	ck_assert_ptr_eq(head.prev->prev->prev, &one);
+	ck_assert_ptr_eq(head.prev->prev->prev->prev, &head);
+
+	/* delete */
+	fy_list_init_head(&head);
+	fy_list_add_head(&one, &head);
+	fy_list_del(&one);
+	ret = fy_list_is_empty(&head);
+	ck_assert(ret == true);
+	ret = fy_list_is_singular(&head);
+	ck_assert(ret == false);
+	ck_assert_ptr_eq(head.next, &head);
+	ck_assert_ptr_eq(head.prev, &head);
+
+	fy_list_init_head(&head);
+	fy_list_add_head(&one, &head);
+	fy_list_add_head(&two, &head);
+	fy_list_del(&one);
+	ret = fy_list_is_singular(&head);
+	ck_assert(ret == true);
+	ret = fy_list_is_empty(&head);
+	ck_assert(ret == false);
+	ck_assert_ptr_eq(head.next, &two);
+	ck_assert_ptr_eq(head.next->next, &head);
+	ck_assert_ptr_eq(head.prev, &two);
+	ck_assert_ptr_eq(head.prev->prev, &head);
+
+	fy_list_init_head(&head);
+	fy_list_add_head(&one, &head);
+	fy_list_add_head(&two, &head);
+	fy_list_del(&two);
+	ret = fy_list_is_singular(&head);
+	ck_assert(ret == true);
+	ret = fy_list_is_empty(&head);
+	ck_assert(ret == false);
+	ck_assert_ptr_eq(head.next, &one);
+	ck_assert_ptr_eq(head.next->next, &head);
+	ck_assert_ptr_eq(head.prev, &one);
+	ck_assert_ptr_eq(head.prev->prev, &head);
+
+	fy_list_init_head(&head);
+	fy_list_add_head(&one, &head);
+	fy_list_add_head(&two, &head);
+	fy_list_add_head(&three, &head);
+	fy_list_del(&two);
+	ret = fy_list_is_singular(&head);
+	ck_assert(ret == false);
+	ret = fy_list_is_empty(&head);
+	ck_assert(ret == false);
+	ck_assert_ptr_eq(head.next, &three);
+	ck_assert_ptr_eq(head.next->next, &one);
+	ck_assert_ptr_eq(head.next->next->next, &head);
+	ck_assert_ptr_eq(head.prev, &one);
+	ck_assert_ptr_eq(head.prev->prev, &three);
+	ck_assert_ptr_eq(head.prev->prev->prev, &head);
+
+	/* splice */
+	fy_list_init_head(&head);
+	fy_list_init_head(&other_head);
+	fy_list_splice(&other_head, &one);
+	ret = fy_list_is_singular(&head);
+	ck_assert(ret == false);
+	ret = fy_list_is_empty(&head);
+	ck_assert(ret == true);
+	ck_assert_ptr_eq(head.next, &head);
+	ck_assert_ptr_eq(head.prev, &head);
+
+	fy_list_init_head(&head);
+	fy_list_add_head(&one, &head);
+	fy_list_init_head(&other_head);
+	fy_list_splice(&other_head, &one);
+	ret = fy_list_is_singular(&head);
+	ck_assert(ret == true);
+	ret = fy_list_is_empty(&head);
+	ck_assert(ret == false);
+	ck_assert_ptr_eq(head.next, &one);
+	ck_assert_ptr_eq(head.next->next, &head);
+	ck_assert_ptr_eq(head.prev, &one);
+	ck_assert_ptr_eq(head.prev->prev, &head);
+
+	fy_list_init_head(&head);
+	fy_list_init_head(&other_head);
+	fy_list_add_head(&four, &head);
+	fy_list_splice(&other_head, &one);
+	ret = fy_list_is_singular(&head);
+	ck_assert(ret == true);
+	ret = fy_list_is_empty(&head);
+	ck_assert(ret == false);
+	ck_assert_ptr_eq(head.next, &four);
+	ck_assert_ptr_eq(head.next->next, &head);
+	ck_assert_ptr_eq(head.prev, &four);
+	ck_assert_ptr_eq(head.prev->prev, &head);
+
+	fy_list_init_head(&head);
+	fy_list_add_head(&one, &head);
+	fy_list_add_head(&two, &head);
+	fy_list_init_head(&other_head);
+	fy_list_add_head(&four, &other_head);
+	fy_list_add_head(&five, &other_head);
+	fy_list_splice(&other_head, &two);
+	ret = fy_list_is_singular(&head);
+	ck_assert(ret == false);
+	ret = fy_list_is_empty(&head);
+	ck_assert(ret == false);
+	ck_assert_ptr_eq(head.next, &two);
+	ck_assert_ptr_eq(head.next->next, &five);
+	ck_assert_ptr_eq(head.next->next->next, &four);
+	ck_assert_ptr_eq(head.next->next->next->next, &one);
+	ck_assert_ptr_eq(head.next->next->next->next->next, &head);
+	ck_assert_ptr_eq(head.prev, &one);
+	ck_assert_ptr_eq(head.prev->prev, &four);
+	ck_assert_ptr_eq(head.prev->prev->prev, &five);
+	ck_assert_ptr_eq(head.prev->prev->prev->prev, &two);
+	ck_assert_ptr_eq(head.prev->prev->prev->prev->prev, &head);
+
+	fy_list_init_head(&head);
+	fy_list_add_head(&one, &head);
+	fy_list_add_head(&two, &head);
+	fy_list_add_head(&three, &head);
+	fy_list_init_head(&other_head);
+	fy_list_add_head(&four, &other_head);
+	fy_list_add_head(&five, &other_head);
+	fy_list_add_head(&six, &other_head);
+	fy_list_splice(&other_head, &two);
+	ret = fy_list_is_singular(&head);
+	ck_assert(ret == false);
+	ret = fy_list_is_empty(&head);
+	ck_assert(ret == false);
+	ck_assert_ptr_eq(head.next, &three);
+	ck_assert_ptr_eq(head.next->next, &two);
+	ck_assert_ptr_eq(head.next->next->next, &six);
+	ck_assert_ptr_eq(head.next->next->next->next, &five);
+	ck_assert_ptr_eq(head.next->next->next->next->next, &four);
+	ck_assert_ptr_eq(head.next->next->next->next->next->next, &one);
+	ck_assert_ptr_eq(head.next->next->next->next->next->next->next, &head);
+	ck_assert_ptr_eq(head.prev, &one);
+	ck_assert_ptr_eq(head.prev->prev, &four);
+	ck_assert_ptr_eq(head.prev->prev->prev, &five);
+	ck_assert_ptr_eq(head.prev->prev->prev->prev, &six);
+	ck_assert_ptr_eq(head.prev->prev->prev->prev->prev, &two);
+	ck_assert_ptr_eq(head.prev->prev->prev->prev->prev->prev, &three);
+	ck_assert_ptr_eq(head.prev->prev->prev->prev->prev->prev->prev, &head);
+}
+END_TEST
+
 TCase *libfyaml_case_private(void)
 {
 	TCase *tc;
@@ -161,6 +423,9 @@ TCase *libfyaml_case_private(void)
 	tcase_add_test(tc, parser_setup);
 	tcase_add_test(tc, scan_simple);
 	tcase_add_test(tc, parse_simple);
+
+	tcase_add_test(tc, container_of);
+	tcase_add_test(tc, list);
 
 	return tc;
 }
