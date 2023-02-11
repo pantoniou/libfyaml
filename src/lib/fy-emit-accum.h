@@ -212,7 +212,7 @@ fy_emit_accum_utf8_write(struct fy_emit_accum *ea, const void *data, size_t len)
 
 static inline int
 fy_emit_accum_utf8_printf_raw(struct fy_emit_accum *ea, const char *fmt, ...)
-		__attribute__((format(printf, 2, 3)));
+		FY_ATTRIBUTE(format(printf, 2, 3));
 
 static inline int
 fy_emit_accum_utf8_printf_raw(struct fy_emit_accum *ea, const char *fmt, ...)

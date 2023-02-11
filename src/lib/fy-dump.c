@@ -11,11 +11,13 @@
 
 #include <stdio.h>
 #include <string.h>
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#endif
 #include <assert.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -134,7 +136,7 @@ char *fy_token_dump_format(struct fy_token *fyt, char *buf, size_t bufsz)
 		/* not too large */
 		if (size > 20)
 			size = 20;
-		text = fy_utf8_format_text_a(text, size, fyue_doublequote);
+		fy_utf8_format_text_a(text, size, fyue_doublequote, &text);
 		size = strlen(text);
 		if (size > 10) {
 			sfx = "...\"";

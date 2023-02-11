@@ -461,27 +461,27 @@ START_TEST(doc_short_path)
 	fyn_baz = fy_node_by_path(fyn_root, "/foo/bar/2/baz", FY_NT, FYNWF_DONT_FOLLOW);
 	ck_assert_ptr_ne(fyn_baz, NULL);
 
-	str = fy_node_get_short_path_alloca(fyn_root);
+	fy_node_get_short_path_alloca(fyn_root, &str);
 	ck_assert_ptr_ne(str, NULL);
 	ck_assert_str_eq(str, "*r");
 	ck_assert_ptr_eq(fy_node_by_path(fy_document_root(fyd), str, FY_NT, FYNWF_FOLLOW), fyn_root);
 
-	str = fy_node_get_short_path_alloca(fyn_foo);
+	fy_node_get_short_path_alloca(fyn_foo, &str);
 	ck_assert_ptr_ne(str, NULL);
 	ck_assert_str_eq(str, "*f");
 	ck_assert_ptr_eq(fy_node_by_path(fy_document_root(fyd), str, FY_NT, FYNWF_FOLLOW), fyn_foo);
 
-	str = fy_node_get_short_path_alloca(fyn_notfoo);
+	fy_node_get_short_path_alloca(fyn_notfoo, &str);
 	ck_assert_ptr_ne(str, NULL);
 	ck_assert_str_eq(str, "*r/notfoo");
 	ck_assert_ptr_eq(fy_node_by_path(fy_document_root(fyd), str, FY_NT, FYNWF_FOLLOW), fyn_notfoo);
 
-	str = fy_node_get_short_path_alloca(fyn_bar);
+	fy_node_get_short_path_alloca(fyn_bar, &str);
 	ck_assert_ptr_ne(str, NULL);
 	ck_assert_str_eq(str, "*f/bar");
 	ck_assert_ptr_eq(fy_node_by_path(fy_document_root(fyd), str, FY_NT, FYNWF_FOLLOW), fyn_bar);
 
-	str = fy_node_get_short_path_alloca(fyn_baz);
+	fy_node_get_short_path_alloca(fyn_baz, &str);
 	ck_assert_ptr_ne(str, NULL);
 	ck_assert_str_eq(str, "*f/bar/2/baz");
 	ck_assert_ptr_eq(fy_node_by_path(fy_document_root(fyd), str, FY_NT, FYNWF_FOLLOW), fyn_baz);
@@ -1843,7 +1843,7 @@ START_TEST(alloca_check)
 	/* fy_emit_document_to_string*() */
 	buf = fy_emit_document_to_string(fyd, FYECF_MODE_FLOW_ONELINE);
 	ck_assert_ptr_ne(buf, NULL);
-	abuf = fy_emit_document_to_string_alloca(fyd, FYECF_MODE_FLOW_ONELINE);
+	fy_emit_document_to_string_alloca(fyd, FYECF_MODE_FLOW_ONELINE, &abuf);
 	ck_assert_ptr_ne(abuf, NULL);
 	ck_assert_str_eq(buf, abuf);
 	free(buf);
@@ -1851,7 +1851,7 @@ START_TEST(alloca_check)
 	/* fy_emit_node_to_string*() */
 	buf = fy_emit_node_to_string(fy_node_by_path(fy_document_root(fyd), "/foo", FY_NT, FYNWF_DONT_FOLLOW), FYECF_MODE_FLOW_ONELINE);
 	ck_assert_ptr_ne(buf, NULL);
-	abuf = fy_emit_node_to_string_alloca(fy_node_by_path(fy_document_root(fyd), "/foo", FY_NT, FYNWF_DONT_FOLLOW), FYECF_MODE_FLOW_ONELINE);
+	fy_emit_node_to_string_alloca(fy_node_by_path(fy_document_root(fyd), "/foo", FY_NT, FYNWF_DONT_FOLLOW), FYECF_MODE_FLOW_ONELINE, &abuf);
 	ck_assert_ptr_ne(abuf, NULL);
 	ck_assert_str_eq(buf, abuf);
 	free(buf);
@@ -1860,14 +1860,14 @@ START_TEST(alloca_check)
 	buf = fy_node_get_path(fy_node_by_path(fy_document_root(fyd), "/foo", FY_NT, FYNWF_DONT_FOLLOW));
 	ck_assert_ptr_ne(buf, NULL);
 	ck_assert_str_eq(buf, "/foo");
-	abuf = fy_node_get_path_alloca(fy_node_by_path(fy_document_root(fyd), "/foo", FY_NT, FYNWF_DONT_FOLLOW));
+	fy_node_get_path_alloca(fy_node_by_path(fy_document_root(fyd), "/foo", FY_NT, FYNWF_DONT_FOLLOW), &abuf);
 	ck_assert_ptr_ne(abuf, NULL);
 	ck_assert_str_eq(abuf, "/foo");
 	ck_assert_str_eq(buf, abuf);
 	free(buf);
 
 	/* check that a bad path is "" */
-	abuf = fy_node_get_path_alloca(NULL);
+	fy_node_get_path_alloca(NULL, &abuf);
 	ck_assert_ptr_ne(abuf, NULL);
 	ck_assert_str_eq(abuf, "");
 

@@ -61,7 +61,11 @@ struct fy_node {
 	struct fy_node *parent;
 	struct fy_document *fyd;
 	unsigned int marks;
+#if !defined(_MSC_VER)
 	enum fy_node_type type : 2;	/* 2 bits are enough for 3 types */
+#else
+	enum fy_node_type type;	/* it converted incorrectly and can't be used as supposed to be */
+#endif
 	bool has_meta : 1;
 	bool attached : 1;		/* when it's attached somewhere */
 	bool synthetic : 1;		/* node has been modified programmaticaly */

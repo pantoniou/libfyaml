@@ -21,6 +21,8 @@
 #include <limits.h>
 #include <stdio.h>
 
+#include <libfyaml.h>
+
 enum fy_valgrind_tool {
 	fyvt_none,
 	fyvt_valgrind,
@@ -106,7 +108,7 @@ do_valgrind_no_opt:
 
 	case fyvt_valgrind:
 		va_argc = 1 + 4 + argc - 1;
-		va_argv = alloca(sizeof(*va_argv) * (va_argc + 1));
+		va_argv = FY_ALLOCA(sizeof(*va_argv) * (va_argc + 1));
 		va_argv[0] = valgrind;
 		va_argv[1] = "--leak-check=full";
 		va_argv[2] = "--track-origins=yes";
@@ -117,7 +119,7 @@ do_valgrind_no_opt:
 
 	case fyvt_callgrind:
 		va_argc = 1 + 5 + argc - 1;
-		va_argv = alloca(sizeof(*va_argv) * (va_argc + 1));
+		va_argv = FY_ALLOCA(sizeof(*va_argv) * (va_argc + 1));
 		va_argv[0] = valgrind;
 		va_argv[1] = "--tool=callgrind";
 		va_argv[2] = "--dump-instr=yes";
@@ -129,7 +131,7 @@ do_valgrind_no_opt:
 
 	case fyvt_massif:
 		va_argc = 1 + 2 + argc - 1;
-		va_argv = alloca(sizeof(*va_argv) * (va_argc + 1));
+		va_argv = FY_ALLOCA(sizeof(*va_argv) * (va_argc + 1));
 		va_argv[0] = valgrind;
 		va_argv[1] = "--tool=massif";
 		va_argv[2] = argv0;

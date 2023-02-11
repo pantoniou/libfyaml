@@ -14,7 +14,11 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <limits.h>
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 #include <unistd.h>
+#elif defined (_MSC_VER)
+#define STDOUT_FILENO _fileno(stdin)
+#endif
 #include <ctype.h>
 #include <errno.h>
 
@@ -26,7 +30,7 @@
 /* fwd decl */
 void fy_emit_write(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int len);
 void fy_emit_printf(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *fmt, ...)
-		__attribute__((format(printf, 3, 4)));
+		FY_ATTRIBUTE(format(printf, 3, 4));
 
 static inline bool fy_emit_is_json_mode(const struct fy_emitter *emit)
 {
@@ -243,7 +247,7 @@ void fy_emit_vprintf(struct fy_emitter *emit, enum fy_emitter_write_type type, c
 	if (size < 0)
 		return;
 
-	str = alloca(size + 1);
+	str = FY_ALLOCA(size + 1);
 	size = vsnprintf(str, size + 1, fmt, ap2);
 	if (size < 0)
 		return;
@@ -279,7 +283,7 @@ void fy_emit_write_indent(struct fy_emitter *emit, int indent)
 
 	if (emit->column < indent) {
 		len = indent - emit->column;
-		ws = alloca(len + 1);
+		ws = FY_ALLOCA(len + 1);
 		memset(ws, ' ', len);
 		ws[len] = '\0';
 		fy_emit_write(emit, fyewt_indent, ws, len);
@@ -548,7 +552,7 @@ void fy_emit_token_comment(struct fy_emitter *emit, struct fy_token *fyt, int fl
 	if (len < 0)
 		return;
 
-	text = alloca(len + 1);
+	text = FY_ALLOCA(len + 1);
 
 	if (placement == fycp_top || placement == fycp_bottom) {
 		fy_emit_write_indent(emit, indent);
@@ -1683,7 +1687,7 @@ void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, in
 					"malloc() failed");
 			used_malloc = true;
 		} else
-			fynpp = alloca((count + 1) * sizeof(*fynpp));
+			fynpp = FY_ALLOCA((count + 1) * sizeof(*fynpp));
 
 		/* fill (removing empty KVs) */
 		i = 0;
@@ -1868,7 +1872,7 @@ int fy_emit_document_start(struct fy_emitter *emit, struct fy_document *fyd,
 	if (!emit || !fyd || !fyd->fyds)
 		return -1;
 
-	root = fyn_root ? : fy_document_root(fyd);
+	root = fyn_root ? fyn_root : fy_document_root(fyd);
 
 	root_tag_or_anchor = root && (root->tag || fy_document_lookup_anchor_by_node(fyd, root));
 
@@ -2307,7 +2311,7 @@ static int do_buffer_output(struct fy_emitter *emit, enum fy_emitter_write_type 
 		if (!state->allocate_buffer)
 			return 0;
 
-		pagesize = sysconf(_SC_PAGESIZE);
+		pagesize = fy_get_pagesize();
 		size = state->need + pagesize - 1;
 		size = size - size % pagesize;
 

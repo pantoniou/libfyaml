@@ -437,7 +437,7 @@ int apply_flags_option(const char *arg, unsigned int *flagsp,
 			sn = e;
 
 		len = sn - s;
-		targ = alloca(len + 1);
+		targ = FY_ALLOCA(len + 1);
 		memcpy(targ, s, len);
 		targ[len] = '\0';
 
@@ -1364,8 +1364,10 @@ compose_process_event(struct fy_parser *fyp, struct fy_event *fye, struct fy_pat
 	struct fy_node *fyn, *fyn_parent;
 	struct fy_node_pair *fynp;
 	int rc;
+	char* path_text;
 
 	if (cd->verbose) {
+        fy_path_get_text_alloca(path, &path_text);
 		fprintf(stderr, "%s: %c%c%c%c%c %3d - %-32s\n",
 				fy_event_type_get_text(fye->type),
 				fy_path_in_root(path) ? 'R' : '-',
@@ -1375,7 +1377,7 @@ compose_process_event(struct fy_parser *fyp, struct fy_event *fye, struct fy_pat
 					fy_path_in_mapping_value(path) ? 'V' : '-',
 				fy_path_in_collection_root(path) ? '/' : '-',
 				fy_path_depth(path),
-				fy_path_get_text_alloca(path));
+				path_text);
 	}
 
 	switch (fye->type) {
@@ -1652,7 +1654,7 @@ int main(int argc, char *argv[])
 					lopts, &lidx)) != -1) {
 		switch (opt) {
 		case 'I':
-			tmp = alloca(strlen(cfg.search_path) + 1 + strlen(optarg) + 1);
+			tmp = FY_ALLOCA(strlen(cfg.search_path) + 1 + strlen(optarg) + 1);
 			s = tmp;
 			strcpy(s, cfg.search_path);
 			if (cfg.search_path && cfg.search_path[0]) {

@@ -87,7 +87,7 @@ int fy_utf8_get_right_generic(const void *ptr, int left, int *widthp);
 
 static inline int fy_utf8_get_right(const void *ptr, int left, int *widthp)
 {
-	const uint8_t *p = ptr + left;
+	const uint8_t *p = (const uint8_t*)ptr + left;
 
 	/* single byte (hot path) */
 	if (left > 0 && !(p[-1] & 0x80)) {
@@ -148,11 +148,11 @@ static inline bool fy_utf8_escape_is_any_doublequote(enum fy_utf8_escape esc)
 
 char *fy_utf8_format(int c, char *buf, enum fy_utf8_escape esc);
 
-#define fy_utf8_format_a(_c, _esc) \
-	({ \
-	 	char *_buf = alloca(FY_UTF8_FORMAT_BUFMIN); \
-	 	fy_utf8_format((_c), _buf, _esc); \
-	})
+#define fy_utf8_format_a(_c, _esc, _res) \
+	do { \
+	 	char *_buf = FY_ALLOCA(FY_UTF8_FORMAT_BUFMIN); \
+	 	*(_res) = fy_utf8_format((_c), _buf, _esc); \
+	} while(false)
 
 int fy_utf8_format_text_length(const char *buf, size_t len,
 			       enum fy_utf8_escape esc);
@@ -160,15 +160,15 @@ char *fy_utf8_format_text(const char *buf, size_t len,
 			  char *out, size_t maxsz,
 			  enum fy_utf8_escape esc);
 
-#define fy_utf8_format_text_a(_buf, _len, _esc) \
-	({ \
+#define fy_utf8_format_text_a(_buf, _len, _esc, _res) \
+	do { \
 		const char *__buf = (_buf); \
 		size_t __len = (_len); \
 		enum fy_utf8_escape __esc = (_esc); \
 		size_t _outsz = fy_utf8_format_text_length(__buf, __len, __esc); \
-		char *_out = alloca(_outsz + 1); \
-		fy_utf8_format_text(__buf, __len, _out, _outsz, __esc); \
-	})
+		char *_out = FY_ALLOCA(_outsz + 1); \
+		*(_res) = fy_utf8_format_text(__buf, __len, _out, _outsz, __esc); \
+	} while(false)
 
 char *fy_utf8_format_text_alloc(const char *buf, size_t len, enum fy_utf8_escape esc);
 
@@ -194,7 +194,7 @@ static inline const void *fy_utf8_strchr(const void *s, int c)
 
 static inline int fy_utf8_count(const void *ptr, size_t len)
 {
-	const uint8_t *s = ptr, *e = ptr + len;
+	const uint8_t *s = ptr, *e = (const uint8_t *)ptr + len;
 	int w, count;
 
 	count = 0;
