@@ -1,0 +1,21 @@
+---
+input: Hello
+---
+input:
+  command: hello
+  path: true
+---
+input:
+  command: hello
+  bad: hello
+  path: true
+---
+input:
+  command: hello
+  badmap: { foo: bar, baz: { this: true, other: false }  }
+  path: true
+---
+input:
+  command: hello
+  badseq: [ bar, { this: true, other: false }, [ 1, 2 ]  ]
+  path: true

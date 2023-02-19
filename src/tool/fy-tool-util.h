@@ -243,6 +243,24 @@ unsigned_integer_max_from_size(size_t size)
 	return unsigned_integer_max_from_bit_width(size * 8);
 }
 
+static inline intmax_t
+signed_integer_min(enum fy_type_kind type_kind)
+{
+	return signed_integer_min_from_size(fy_type_kind_size(type_kind));
+}
+
+static inline intmax_t
+signed_integer_max(enum fy_type_kind type_kind)
+{
+	return signed_integer_max_from_size(fy_type_kind_size(type_kind));
+}
+
+static inline uintmax_t
+unsigned_integer_max(enum fy_type_kind type_kind)
+{
+	return unsigned_integer_max_from_size(fy_type_kind_size(type_kind));
+}
+
 static inline bool str_null_eq(const char *s1, const char *s2)
 {
 	if (s1 == s2)
@@ -251,5 +269,33 @@ static inline bool str_null_eq(const char *s1, const char *s2)
 		return false;
 	return !strcmp(s1, s2);
 }
+
+int parse_integer_scalar(enum fy_type_kind type_kind, const char *text0, enum fy_parser_mode mode, union integer_scalar *nump);
+void store_integer_scalar(enum fy_type_kind type_kind, void *data, union integer_scalar num);
+union integer_scalar load_integer_scalar(enum fy_type_kind type_kind, const void *data);
+
+int parse_float_scalar(enum fy_type_kind type_kind, const char *text0, enum fy_parser_mode mode, union float_scalar *numf);
+void store_float_scalar(enum fy_type_kind type_kind, void *data, union float_scalar numf);
+union float_scalar load_float_scalar(enum fy_type_kind type_kind, const void *data);
+
+int parse_boolean_scalar(const char *text0, enum fy_parser_mode mode, bool *vp);
+void store_boolean_scalar(enum fy_type_kind type_kind, void *data, bool v);
+bool load_boolean_scalar(enum fy_type_kind type_kind, const void *data);
+
+int parse_null_scalar(const char *text0, enum fy_parser_mode mode);
+
+void type_info_dump(const struct fy_type_info *ti, int level);
+
+struct reflection_walker;
+
+union integer_scalar load_integer_scalar_rw(struct reflection_walker *rw);
+int store_integer_scalar_check_rw(struct reflection_walker *rw,
+			      union integer_scalar numi,
+			      union integer_scalar *minip, union integer_scalar *maxip);
+void store_integer_scalar_no_check_rw(struct reflection_walker *rw, union integer_scalar num);
+int store_integer_scalar_rw(struct reflection_walker *rw, union integer_scalar num);
+
+void store_boolean_scalar_rw(struct reflection_walker *rw, bool v);
+bool load_boolean_scalar_rw(struct reflection_walker *rw);
 
 #endif
