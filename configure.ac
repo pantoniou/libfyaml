@@ -369,6 +369,105 @@ AC_DEFINE_UNQUOTED([HAVE_JQ], [$HAVE_JQ], [Define to 1 if you have jq available]
 AM_CONDITIONAL([HAVE_JQ], [ test x$HAVE_JQ = x1 ])
 AC_SUBST(JQ, "$JQ")
 
+# check for libclang
+AC_ARG_WITH([libclang],
+         dnl enable internet available when checking
+AC_ARG_ENABLE([network],
+	      AS_HELP_STRING([--disable-network],
+			     [Disable tests requiring network access]))
+
+   [AS_HELP_STRING([--with-libclang=[<version>]],
+              [Enable support for libclang @<:@default=auto@:>@])],
+            [with_libclang="$withval"],
+            [with_libclang=auto])
+
+HAVE_LIBCLANG=0
+LIBCLANG_CFLAGS=""
+LIBCLANG_CPPFLAGS=""
+LIBCLANG_LDFLAGS=""
+LIBCLANG_LIBS=""
+dnl TODO think about cross compilation
+if test "x$with_libclang" != "xno"; then
+	if test "x$with_libclang" == "xauto"; then
+		# try to auto detect (llvm 15 down to 8)
+		check="llvm-config llvm-config-15 llvm-config-14 llvm-config-13 llvm-config-12 llvm-config-11 llvm-config-10"
+	else
+		if test "x$with_libclang" == "xlatest"; then
+			check="llvm-config"
+		else
+			check="llvm-config-$with_libclang"
+		fi
+	fi
+	orig_CFLAGS="$CFLAGS"
+	orig_CPPFLAGS="$CPPFLAGS"
+	orig_LDFLAGS="$LDFLAGS"
+	orig_LIBS="$LIBS"
+	for cfg in $check ; do
+		# no caching
+		AC_PATH_PROG([LLVM_CONFIG], [$cfg])
+		if test "x$LLVM_CONFIG" != "x" ; then
+			LIBCLANG_CFLAGS=`$LLVM_CONFIG --cflags`
+			LIBCLANG_CPPFLAGS=`$LLVM_CONFIG --cppflags`
+			LIBCLANG_LDFLAGS=`$LLVM_CONFIG --ldflags`
+			LIBCLANG_LIBS="-lclang"
+			CPPFLAGS="$CPPFLAGS $LIBCLANG_CPPFLAGS"
+			CFLAGS="$CFLAGS $LIBCLANG_CFLAGS"
+			LDFLAGS="$LDFLAGS $LIBCLANG_LDFLAGS"
+			LIBS="$LIBS $LIBCLANG_LIBS"
+			AC_CHECK_LIB([clang], [clang_createIndex],
+				     [HAVE_LIBCLANG_LIB=1], [HAVE_LIBCLANG_LIB=0])
+			AC_CHECK_HEADER([clang-c/Index.h],
+				     [HAVE_LIBCLANG_HDR=1], [HAVE_LIBCLANG_HDR=0])
+			# if we found it, break out
+			if test "x$HAVE_LIBCLANG_LIB" = "x1" -a "x$HAVE_LIBCLANG_HDR" = "x1" ; then
+				HAVE_LIBCLANG=1
+				break
+			fi
+			$as_unset ac_cv_lib_clang_clang_createIndex $as_unset ac_cv_header_clang_c_Index_h \
+				LIBCLANG_CFLAGS LIBCLANG_CPPFLAGS LIBCLANG_LIBS HAVE_LIBCLANG_LIB HAVE_LIBCLANG_HDR
+		fi
+		CFLAGS=$orig_CFLAGS
+		LDFLAGS=$orig_LDFLAGS
+		LIBS=$orig_LIBS
+		if test "x$HAVE_LIBCLANG" = "x1"; then
+			break
+		fi
+		$as_unset ac_cv_path_LLVM_CONFIG LLVM_CONFIG
+	done
+	CFLAGS=$orig_CFLAGS
+	CPPFLAGS=$orig_CPPFLAGS
+	LDFLAGS=$orig_LDFLAGS
+	LIBS=$orig_LIBS
+fi
+
+dnl it is safe to update CFLAGS, CPPFLAGS and LDFLAGS from clang
+dnl we will only link against libclang when we have to
+
+AC_SUBST(HAVE_LIBCLANG)
+AC_SUBST(LIBCLANG_CFLAGS)
+AC_SUBST(LIBCLANG_CPPFLAGS)
+AC_SUBST(LIBCLANG_LDFLAGS)
+AC_SUBST(LIBCLANG_LIBS)
+AC_DEFINE_UNQUOTED([HAVE_LIBCLANG], [$HAVE_LIBCLANG], [Define to 1 if libclang is available])
+AM_CONDITIONAL([HAVE_LIBCLANG], [ test x$HAVE_LIBCLANG = x1 ])
+
+dnl AS_IF([test "x$with_libclang" != xno],
+dnl   [AC_CHECK_LIB([libclang], [main],
+dnl     [AC_SUBST([LIBREADLINE], ["-lreadline -lncurses"])
+dnl      AC_DEFINE([HAVE_LIBREADLINE], [1],
+dnl       	 [Define if you have libreadline])
+dnl     ],
+dnl     [if test "x$with_readline" != xcheck; then
+dnl        AC_MSG_FAILURE(
+dnl          [--with-readline was given, but test for readline failed])
+dnl      fi
+dnl     ], -lncurses)])
+
+dnl trim cflags, cppflags, ldflags
+CFLAGS=`echo $CFLAGS | sed -e 's/^[ ]*//'`
+CPPFLAGS=`echo $CPPFLAGS | sed -e 's/^[ ]*//'`
+LDFLAGS=`echo $LDFLAGS | sed -e 's/^[ ]*//'`
+
 # Shave by default on supported autoconf versions
 dnl m4_version_prereq(2.64, SHAVE_INIT([build-aux], [enable]), [true])
 m4_ifdef([SHAVE_INIT], [SHAVE_INIT([build-aux], [enable])])
@@ -397,8 +496,8 @@ echo "
     LIBTOOL_VERSION:       ${LIBTOOL_VERSION}
     prefix:                ${prefix}
     C compiler:            ${CC}
-    CFLAGS:                ${CFLAGS}
     Linker:                ${LD}
+    CFLAGS:                ${CFLAGS}
     LDFLAGS:               ${LDFLAGS}
     LIBS:                  ${LIBS}
     HAVE_ASAN:             ${HAVE_ASAN}
@@ -407,8 +506,10 @@ echo "
     HAVE_NETWORK:          ${HAVE_NETWORK}
     HAVE_DEVMODE:          ${HAVE_DEVMODE}
     HAVE_SPHINX:           ${HAVE_SPHINX}
-    GIT:                   $GIT
-    DOCKER:                $DOCKER
+    GIT:                   ${GIT}
+    DOCKER:                ${DOCKER}
+    HAVE_LIBCLANG:         ${HAVE_LIBCLANG}
+    LIBCLANG_LIBS:         ${LIBCLANG_LIBS}
     TESTSUITEURL:          $TESTSUITEURL
     TESTSUITECHECKOUT:     $TESTSUITECHECKOUT
     JSONTESTSUITEURL:      $JSONTESTSUITEURL
