@@ -17,9 +17,16 @@
 #include <getopt.h>
 #include <unistd.h>
 #include <limits.h>
+#include <inttypes.h>
+#include <stdarg.h>
 #include <ctype.h>
 #include <time.h>
-#include <inttypes.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <libfyaml.h>
 
@@ -30,6 +37,16 @@
 #include "fy-parse.h"
 #include "fy-walk.h"
 #include "fy-blob.h"
+#include "fy-generic.h"
+#include "fy-generic-decoder.h"
+#include "fy-generic-encoder.h"
+#include "fy-id.h"
+#include "fy-allocator.h"
+#include "fy-allocator-linear.h"
+#include "fy-allocator-malloc.h"
+#include "fy-allocator-mremap.h"
+#include "fy-allocator-dedup.h"
+#include "fy-allocator-auto.h"
 
 #include "fy-valgrind.h"
 
@@ -61,6 +78,9 @@
 #define OPT_YAML_1_2			4001
 #define OPT_YAML_1_3			4002
 
+#define OPT_ALLOCATOR			4003
+#define OPT_CACHE			4004
+
 static struct option lopts[] = {
 	{"include",		required_argument,	0,	'I' },
 	{"mode",		required_argument,	0,	'm' },
@@ -86,6 +106,8 @@ static struct option lopts[] = {
 	{"yaml-1.3",		no_argument,		0,	OPT_YAML_1_3 },
 	{"sloppy-flow-indentation", no_argument,	0,	OPT_SLOPPY_FLOW_INDENTATION },
 	{"ypath-aliases",	no_argument,		0,	OPT_YPATH_ALIASES },
+	{"allocator",		required_argument,	0,	OPT_ALLOCATOR },
+	{"cache",		required_argument,	0,	OPT_CACHE },
 	{"quiet",		no_argument,		0,	'q' },
 	{"help",		no_argument,		0,	'h' },
 	{0,			0,              	0,	 0  },
@@ -97,7 +119,7 @@ static struct option lopts[] = {
 #define LIBYAML_MODES	""
 #endif
 
-#define MODES	"parse|scan|copy|testsuite|dump|dump2|build|walk|reader|compose|iterate|comment|pathspec|shell-split|parse-timing" LIBYAML_MODES
+#define MODES	"parse|scan|copy|testsuite|dump|dump2|build|walk|reader|compose|iterate|comment|pathspec|shell-split|parse-timing|generics|remap|parse-generic|idbit" LIBYAML_MODES
 
 static void display_usage(FILE *fp, char *progname)
 {
@@ -280,10 +302,10 @@ static char *txt2esc_format(const char *s, int l, char *buf, int maxsz, int deli
 
 #define txt2esc_a(_s, _l) \
 	({ \
-	 	const char *__s = (const void *)(_s); \
-	 	int __l = (_l); \
+		const char *__s = (const void *)(_s); \
+		int __l = (_l); \
 		int _ll = txt2esc_length(__s, __l, '\''); \
-	 	txt2esc_format(__s, __l, alloca(_ll + 1), _ll + 1, '\''); \
+		txt2esc_format(__s, __l, alloca(_ll + 1), _ll + 1, '\''); \
 	})
 
 #define fy_atom_get_esc_text_a(_atom) txt2esc_a(fy_atom_get_text_a(_atom), -1)
@@ -1208,9 +1230,9 @@ int do_libyaml_scan(yaml_parser_t *parser)
 #define mark_a(_m) \
 	({ \
 		yaml_mark_t *__m = (_m); \
-	 	char *_s = alloca(30); \
-	 	snprintf(_s, 30, "%zu/%zu/%zu", __m->index, __m->line, __m->column); \
-	 	_s; \
+		char *_s = alloca(30); \
+		snprintf(_s, 30, "%zu/%zu/%zu", __m->index, __m->line, __m->column); \
+		_s; \
 	 })
 
 void dump_libyaml_event(yaml_event_t *event)
@@ -3992,7 +4014,7 @@ int do_shell_split(int in_argc, char *in_argv[])
 	return 0;
 }
 
-int do_parse_timing(int argc, char *argv[], bool disable_mmap)
+int do_parse_timing(int argc, char *argv[])
 {
 	void *blob;
 	size_t blob_size;
@@ -4109,6 +4131,1150 @@ int do_parse_timing(int argc, char *argv[], bool disable_mmap)
 	return 0;
 }
 
+void fy_generic_print_primitive(FILE *fp, fy_generic v)
+{
+	const char *sv;
+	fy_generic iv;
+	fy_generic key, value;
+	const fy_generic *items;
+	size_t i, count, slen;
+
+	if (v == fy_invalid)
+		fprintf(fp, "invalid");
+
+	switch (fy_generic_get_type(v)) {
+	case FYGT_NULL:
+		fprintf(fp, "%s", "null");
+		return;
+
+	case FYGT_BOOL:
+		fprintf(fp, "%s", fy_generic_get_bool(v) ? "true" : "false");
+		return;
+
+	case FYGT_INT:
+		fprintf(fp, "%lld", fy_generic_get_int(v));
+		return;
+
+	case FYGT_FLOAT:
+		fprintf(fp, "%f", fy_generic_get_float(v));
+		return;
+
+	case FYGT_STRING:
+		sv = fy_generic_get_string_size(&v, &slen);
+		fprintf(fp, "'%.*s'", (int)slen, sv);
+		return;
+
+	case FYGT_SEQUENCE:
+		items = fy_generic_sequence_get_items(v, &count);
+		fprintf(fp, "[");
+		for (i = 0; i < count; i++) {
+			iv = items[i];
+			fy_generic_print_primitive(fp, iv);
+			if (i + 1 < count)
+				printf(", ");
+		}
+		fprintf(fp, "]");
+		break;
+
+	case FYGT_MAPPING:
+		items = fy_generic_mapping_get_pairs(v, &count);
+		fprintf(fp, "[");
+		for (i = 0; i < count; i++) {
+			key = items[i * 2];
+			value = items[i * 2 + 1];
+			fy_generic_print_primitive(fp, key);
+			fprintf(fp, ": ");
+			fy_generic_print_primitive(fp, value);
+			if (i + 1 < count)
+				printf(", ");
+		}
+		fprintf(fp, "]");
+		break;
+
+	case FYGT_ALIAS:
+		sv = fy_generic_get_alias_size(&v, &slen);
+		fprintf(fp, "*'%.*s'", (int)slen, sv);
+		break;
+
+	default:
+		assert(0);
+		abort();
+	}
+}
+
+fy_generic do_x(void)
+{
+	fy_generic vstr;
+
+	asm volatile("nop; nop" : : : "memory");
+	vstr = fy_string("test");
+	asm volatile("nop; nop" : : "r"(vstr) : "memory");
+
+	return vstr;
+}
+
+fy_generic do_x2(void)
+{
+	fy_generic vf;
+
+	asm volatile("nop; nop" : : : "memory");
+	vf = fy_float(128.0);
+	asm volatile("nop; nop" : : "r"(vf) : "memory");
+
+	return vf;
+}
+
+fy_generic do_x3(void)
+{
+	fy_generic vf;
+
+	asm volatile("nop; nop" : : : "memory");
+	vf = fy_float_alloca(128.1);
+	asm volatile("nop; nop" : : "r"(vf) : "memory");
+
+	return vf;
+}
+
+const char *do_x4(void)
+{
+	fy_generic vstr;
+	const char *str;
+
+#if 1
+	vstr = fy_string("test");
+	str = FY_GENERIC_GET_STRING_LVAL(vstr);
+#else
+	str = fy_generic_get_string_const(fy_string_const("test"));
+#endif
+
+	return strdup(str);
+}
+
+const char *do_x5(fy_generic vstr)
+{
+	const char *str;
+
+	asm volatile("nop; nop" : : : "memory");
+	str = FY_GENERIC_GET_STRING_LVAL(vstr);
+	asm volatile("nop; nop" : : : "memory");
+
+	return strdup(str);
+}
+
+char *testing_export = "This is export";
+
+int do_generics(int argc, char *argv[], const char *allocator)
+{
+	static const bool btable[] = {
+		false, true,
+	};
+	bool bv;
+	static const long long itable[] = {
+		0, 1, -1, LLONG_MAX, LLONG_MIN,
+		FYGT_INT_INPLACE_MAX, FYGT_INT_INPLACE_MIN,
+		FYGT_INT_INPLACE_MAX+1, FYGT_INT_INPLACE_MIN-1,
+	};
+	long long iv;
+	static const char *stable[] = {
+		"",	/* empty string */
+		"0",
+		"01",
+		"012",
+		"0123",
+		"01234",
+		"012345",
+		"0123456",
+		"01234567",
+		"This is a string",
+		"invoice",
+	};
+	const char *sv;
+	size_t slen;
+	static const double ftable[] = {
+		0.0, 1.0, -1.0, 0.1, -0.1,
+		128.0, -128.0,
+		256.1, -256.1,
+		INFINITY, -INFINITY,
+		NAN, -NAN,
+		100000.00001,	/* does not fit in 32 bit float */
+	};
+	double fv;
+	static const size_t sztable[] = {
+		0,
+		((size_t)1 <<  7) - 1, ((size_t)1 <<  7), ((size_t)1 <<  7) + 1,
+		((size_t)1 << 14) - 1, ((size_t)1 << 14), ((size_t)1 << 14) + 1,
+		((size_t)1 << 21) - 1, ((size_t)1 << 21), ((size_t)1 << 21) + 1,
+		((size_t)1 << 28) - 1, ((size_t)1 << 28), ((size_t)1 << 28) + 1,
+		((size_t)1 << 29) - 1, ((size_t)1 << 29), ((size_t)1 << 29) + 1,
+		((size_t)1 << 35) - 1, ((size_t)1 << 35), ((size_t)1 << 35) + 1,
+		((size_t)1 << 42) - 1, ((size_t)1 << 42), ((size_t)1 << 42) + 1,
+		((size_t)1 << 49) - 1, ((size_t)1 << 49), ((size_t)1 << 49) + 1,
+		((size_t)1 << 56) - 1, ((size_t)1 << 56), ((size_t)1 << 56) + 1,
+		((size_t)1 << 57) - 1, ((size_t)1 << 57), ((size_t)1 << 57) + 1,
+		(size_t)UINT32_MAX,
+		(size_t)UINT64_MAX,
+	};
+	uint8_t size_buf[FYGT_SIZE_ENCODING_MAX_64];
+	uint8_t *szp __FY_DEBUG_UNUSED__;
+	size_t sz, szd;
+	uint32_t sz32d;
+	unsigned int i, j, k;
+	struct fy_generic_builder *gb;
+	fy_generic gbl, gi, gs, gf;
+	const fy_generic *gvp;
+	fy_generic seq, map, map2;
+	struct fy_dedup_allocator_cfg dcfg;
+	struct fy_linear_allocator_cfg lcfg;
+	struct fy_allocator *a, *pa = NULL;
+	const void *gsetupdata = NULL;
+	char buf[4096];
+	bool registered_allocator = false;
+	int rc __FY_DEBUG_UNUSED__;
+
+	if (!allocator)
+		allocator = "linear";
+
+	/* setup the linear data always */
+	memset(&lcfg, 0, sizeof(lcfg));
+	lcfg.buf = buf;
+	lcfg.size = sizeof(buf);
+
+	printf("using %s allocator\n", allocator);
+
+	if (!strcmp(allocator, "linear")) {
+		gsetupdata = &lcfg;
+	} else if (!strcmp(allocator, "malloc")) {
+		gsetupdata = NULL;
+	} else if (!strcmp(allocator, "mremap")) {
+		gsetupdata = NULL;
+	} else if (!strcmp(allocator, "dedup")) {
+
+		/* create the parent allocator */
+		pa = fy_allocator_create("linear", &lcfg);
+		assert(pa);
+
+		memset(&dcfg, 0, sizeof(dcfg));
+		dcfg.parent_allocator = pa;
+		dcfg.bloom_filter_bits = 0;	/* use default */
+		dcfg.bucket_count_bits = 0;
+
+		gsetupdata = &dcfg;
+
+	} else {
+		fprintf(stderr, "unsupported allocator %s\n", allocator);
+		return -1;
+
+#if 0
+		/* fake a linear one */
+		rc = fy_allocator_register(allocator, &fy_linear_allocator_ops);
+		assert(!rc);
+		gsetupdata = &lcfg;
+		registered_allocator = true;
+#endif
+	}
+
+	printf("testing generic methods\n");
+	printf("null = %016lx\n", fy_null);
+	for (i = 0; i < ARRAY_SIZE(btable); i++) {
+		bv = btable[i];
+		gbl = fy_bool(bv);
+		printf("boolean/%s = %016lx %s\n", bv ? "true" : "false", gbl,
+				fy_generic_get_bool(gbl) ? "true" : "false");
+	}
+
+	for (i = 0; i < ARRAY_SIZE(itable); i++) {
+		iv = itable[i];
+		gi = fy_int(iv);
+		printf("int/%lld = %016lx %lld\n", iv, gi,
+				fy_generic_get_int(gi));
+	}
+
+	for (i = 0; i < ARRAY_SIZE(stable); i++) {
+		sv = stable[i];
+		gs = fy_string(sv);
+		printf("string/%s = %016lx", sv, gs);
+
+		sv = fy_generic_get_string_size(&gs, &slen);
+		assert(sv);
+		printf(" %.*s\n", (int)slen, sv);
+	}
+
+	for (i = 0; i < ARRAY_SIZE(ftable); i++) {
+		fv = ftable[i];
+		gf = fy_float(fv);
+		printf("float/%f = %016lx %f\n", fv, gf,
+				fy_generic_get_float(gf));
+	}
+
+	seq = fy_sequence_alloca(3, ((fy_generic[]){
+			fy_bool(true),
+			fy_int(100),
+			fy_string("info")}));
+	assert(seq != fy_invalid);
+
+	printf("seq:\n");
+	fy_generic_print_primitive(stdout, seq);
+	printf("\n");
+
+	map = fy_mapping_alloca(3, ((fy_generic[]){
+			fy_string("foo"), fy_string("bar"),
+			fy_string("frooz-larger"), fy_string("what"),
+			fy_string("seq"), seq}));
+
+	assert(map != fy_invalid);
+
+	printf("map:\n");
+	fy_generic_print_primitive(stdout, map);
+	printf("\n");
+
+	gvp = fy_generic_mapping_lookup(map, fy_string("foo"));
+	assert(gvp);
+
+	printf("found: ");
+	fy_generic_print_primitive(stdout, *gvp);
+	printf("\n");
+
+	map = fy_mapping_alloca(2, ((fy_generic[]){
+			fy_string("foo"), fy_string("bar"),
+			fy_sequence_alloca(2, ((fy_generic[]){
+					fy_int(10),
+					fy_int(100)})),
+				fy_float(3.14)}));
+
+	fy_generic_print_primitive(stdout, map);
+	printf("\n");
+
+	gvp = fy_generic_mapping_lookup(map,
+			fy_sequence_alloca(2, ((fy_generic[]){
+					fy_int(10),
+					fy_int(100)})));
+	assert(gvp);
+	printf("found: ");
+	fy_generic_print_primitive(stdout, *gvp);
+	printf("\n");
+
+	{
+		const fy_generic t0 = fy_string_const("Hello");
+		fy_generic t1 = fy_string_const("Hello-there friends");
+		fy_generic t2 = fy_string("Yet another test");
+		fy_generic t3 = fy_string(testing_export);
+
+		printf("string_size_const t0: ");
+		fy_generic_print_primitive(stdout, t0);
+		printf("\n");
+
+		printf("string_size_const t1: ");
+		fy_generic_print_primitive(stdout, t1);
+		printf("\n");
+
+		printf("string t2: ");
+		fy_generic_print_primitive(stdout, t2);
+		printf("\n");
+
+		printf("string t3: ");
+		fy_generic_print_primitive(stdout, t3);
+		printf("\n");
+	}
+
+	{
+		fy_generic seq = fy_sequence_alloca(3, ((fy_generic[]){
+				fy_bool(true),
+				fy_int(100),
+				fy_string("info-info")}));
+
+		printf("seq-x:\n");
+		fy_generic_print_primitive(stdout, seq);
+		printf("\n");
+	}
+
+	{
+		struct {
+			size_t count;
+			fy_generic items[3];
+		} _seq FY_GENERIC_CONTAINER_ALIGNMENT = {
+			3,
+			{ fy_true, fy_int_const(100), fy_string_const("info-info") },
+		};
+		fy_generic seq = (fy_generic)&_seq | FY_SEQ_V;
+
+		printf("seq-x2:\n");
+		fy_generic_print_primitive(stdout, seq);
+		printf("\n");
+	}
+
+#define ASTR(_x) \
+	({ \
+		static const char __s[sizeof(_x) + 1] __attribute__((aligned(256))) = (_x); \
+		__s; \
+	})
+
+	{
+		const char *ss;
+
+		asm volatile("nop; nop" : : : "memory");
+		ss = ASTR("123");
+		asm volatile("nop; nop" : : : "memory");
+
+		printf("%p %s\n", ss, ss);
+	}
+
+	{
+		fy_generic vstr;
+
+		asm volatile("nop; nop" : : : "memory");
+		vstr = fy_string("test");
+		asm volatile("nop; nop" : : "r"(vstr) : "memory");
+
+		printf("vstr=0x%08lx\n", (unsigned long)vstr);
+	}
+
+
+	a = fy_allocator_create(allocator, gsetupdata);
+	assert(a);
+
+	gb = fy_generic_builder_create(a, FY_ALLOC_TAG_NONE);
+	assert(gb);
+
+	printf("created gb=%p\n", gb);
+
+	printf("null = %016lx\n", fy_null);
+	for (i = 0; i < ARRAY_SIZE(btable); i++) {
+		bv = btable[i];
+		gbl = fy_generic_bool_create(gb, bv);
+		printf("boolean/%s = %016lx %s\n", bv ? "true" : "false", gbl,
+				fy_generic_get_bool(gbl) ? "true" : "false");
+	}
+
+	for (i = 0; i < ARRAY_SIZE(itable); i++) {
+		iv = itable[i];
+		gi = fy_generic_int_create(gb, iv);
+		printf("int/%lld = %016lx %lld\n", iv, gi,
+				fy_generic_get_int(gi));
+	}
+
+	for (i = 0; i < ARRAY_SIZE(stable); i++) {
+		sv = stable[i];
+		gs = fy_generic_string_create(gb, sv);
+		printf("string/%s = %016lx", sv, gs);
+
+		sv = fy_generic_get_string_size(&gs, &slen);
+		assert(sv);
+		printf(" %.*s\n", (int)slen, sv);
+
+		sv = fy_generic_get_string(&gs);
+		assert(sv);
+		printf("\t%s\n", sv);
+	}
+
+	for (i = 0; i < ARRAY_SIZE(sztable); i++) {
+		sz = sztable[i];
+		printf("size_t/%zx =", sz);
+		j = fy_encode_size_bytes(sz);
+		assert(j <= sizeof(size_buf));
+		printf(" (%d)", j);
+
+		memset(size_buf, 0, sizeof(size_buf));
+		szp = fy_encode_size(size_buf, sizeof(size_buf), sz);
+		assert(szp);
+		assert((unsigned int)(szp - size_buf) == j);
+		for (k = 0; k < j; k++)
+			printf(" %02x", size_buf[k] & 0xff);
+
+		szd = 0;
+		fy_decode_size(size_buf, sizeof(size_buf), &szd);
+		printf(" decoded=%zx", szd);
+
+		szd = 0;
+		fy_decode_size_nocheck(size_buf, &szd);
+		printf(" decoded_nocheck=%zx", szd);
+
+		printf("\n");
+
+		/* decoding must match */
+		assert(szd == sz);
+	}
+
+	for (i = 0; i < ARRAY_SIZE(sztable); i++) {
+		sz = sztable[i];
+		if (sz > UINT32_MAX)
+			continue;
+		printf("uint32_t/%zx =", sz);
+		j = fy_encode_size32_bytes((uint32_t)sz);
+		assert(j <= sizeof(size_buf));
+		printf(" (%d)", j);
+
+		memset(size_buf, 0, sizeof(size_buf));
+		szp = fy_encode_size32(size_buf, sizeof(size_buf), (uint32_t)sz);
+		assert(szp);
+		assert((unsigned int)(szp - size_buf) == j);
+		for (k = 0; k < j; k++)
+			printf(" %02x", size_buf[k] & 0xff);
+
+		sz32d = 0;
+		fy_decode_size32(size_buf, sizeof(size_buf), &sz32d);
+		printf(" decoded=%zx", (size_t)sz32d);
+
+		printf("\n");
+
+		/* decoding must match */
+		assert(sz32d == (uint32_t)sz);
+
+	}
+
+	for (i = 0; i < ARRAY_SIZE(ftable); i++) {
+		fv = ftable[i];
+		gf = fy_generic_float_create(gb, fv);
+		printf("float/%f = %016lx %f\n", fv, gf,
+				fy_generic_get_float(gf));
+	}
+
+	seq = fy_generic_sequence_create(gb, 3, (fy_generic[3]){
+			fy_generic_bool_create(gb, true),
+			fy_generic_int_create(gb, 100),
+			fy_generic_string_create(gb, "info")
+		});
+	assert(seq != fy_invalid);
+
+	fy_generic_print_primitive(stdout, seq);
+	printf("\n");
+
+	map = fy_generic_mapping_create(gb, 3, (fy_generic[]){
+			fy_generic_string_create(gb, "foo"), fy_generic_string_create(gb, "bar"),
+			fy_generic_string_create(gb, "frooz-larger"), fy_generic_string_create(gb, "what"),
+			fy_generic_string_create(gb, "seq"), seq
+		});
+
+	assert(map != fy_invalid);
+
+	fy_generic_print_primitive(stdout, map);
+	printf("\n");
+
+	gvp = fy_generic_mapping_lookup(map, fy_generic_string_create(gb, "foo"));
+	assert(gvp);
+	printf("found: ");
+	fy_generic_print_primitive(stdout, *gvp);
+	printf("\n");
+
+	map = fy_generic_mapping_create(gb, 2, (fy_generic[]){
+			fy_generic_string_create(gb, "foo"), fy_generic_string_create(gb, "bar"),
+			fy_generic_sequence_create(gb, 2, (fy_generic[]){
+					fy_generic_int_create(gb, 10),
+					fy_generic_int_create(gb, 100)}),
+				fy_generic_float_create(gb, 3.14)});
+
+	fy_generic_print_primitive(stdout, map);
+	printf("\n");
+
+	gvp = fy_generic_mapping_lookup(map, fy_generic_sequence_create(gb, 2, (fy_generic[]){
+					fy_generic_int_create(gb, 10),
+					fy_generic_int_create(gb, 100)}));
+	assert(gvp);
+	printf("found: ");
+	fy_generic_print_primitive(stdout, *gvp);
+	printf("\n");
+
+
+#define ASTR(_x) \
+	({ \
+		static const char __s[sizeof(_x) + 1] __attribute__((aligned(256))) = (_x); \
+		__s; \
+	})
+
+	{
+		const char *ss;
+
+		asm volatile("nop; nop" : : : "memory");
+		ss = ASTR("123");
+		asm volatile("nop; nop" : : : "memory");
+
+		printf("%p %s\n", ss, ss);
+	}
+
+	fy_allocator_dump(a);
+
+	fy_generic_builder_destroy(gb);
+
+	fy_allocator_destroy(a);
+
+	a = fy_allocator_create(allocator, gsetupdata);
+	assert(a);
+
+	gb = fy_generic_builder_create(a, FY_ALLOC_TAG_NONE);
+	assert(gb);
+
+	map = fy_generic_mapping_create(gb, 3, (fy_generic[]){
+			fy_generic_string_create(gb, "foo"), fy_generic_string_create(gb, "bar"),
+			fy_generic_string_create(gb, "frooz-larger\nshould \x01 be quoted"), fy_generic_string_create(gb, "what"),
+			fy_generic_string_create(gb, "seq"), fy_generic_sequence_create(gb, 3, (fy_generic[]){
+									fy_generic_bool_create(gb, true),
+									fy_generic_int_create(gb, 100),
+									fy_generic_string_create(gb, "info")
+								})
+
+		});
+
+	assert(map != fy_invalid);
+
+	fy_generic_builder_destroy(gb);
+
+	fy_allocator_destroy(a);
+
+	printf("testing dedup cases\n");
+	printf("\n");
+
+	a = fy_allocator_create(allocator, gsetupdata);
+	assert(a);
+
+	gb = fy_generic_builder_create(a, FY_ALLOC_TAG_NONE);
+	assert(gb);
+
+	iv = LLONG_MAX;
+	gi = fy_generic_int_create(gb, iv);
+	gi = fy_generic_int_create(gb, iv);
+	fy_allocator_dump(a);
+
+	gi = fy_generic_string_create(gb, "foo bar is big");
+	gi = fy_generic_string_create(gb, "foo bar is big");
+	fy_allocator_dump(a);
+
+	map = fy_generic_mapping_create(gb, 3, (fy_generic[]){
+			fy_generic_string_create(gb, "foo"), fy_generic_float_create(gb, 0.11111),
+			fy_generic_string_create(gb, "frooz-larger\nshould \x01 be quoted"), fy_generic_string_create(gb, "what"),
+			fy_generic_string_create(gb, "seq"), fy_generic_sequence_create(gb, 3, (fy_generic[]){
+									fy_generic_bool_create(gb, true),
+									fy_generic_int_create(gb, 100),
+									fy_generic_string_create(gb, "info-fffffffffffffffffffffffffff")
+								})
+
+		});
+
+	map2 = fy_generic_mapping_create(gb, 3, (fy_generic[]){
+			fy_generic_string_create(gb, "foo"), fy_generic_float_create(gb, 0.11111),
+			fy_generic_string_create(gb, "frooz-larger\nshould \x01 be quoted"), fy_generic_string_create(gb, "what"),
+			fy_generic_string_create(gb, "seq"), fy_generic_sequence_create(gb, 3, (fy_generic[]){
+									fy_generic_bool_create(gb, true),
+									fy_generic_int_create(gb, 100),
+									fy_generic_string_create(gb, "info-fffffffffffffffffffffffffff")
+								})
+
+		});
+
+	fy_allocator_dump(a);
+
+	printf("map = %p map2 = %p\n", (void *)map, (void *)map2);
+
+	fy_generic_builder_destroy(gb);
+
+	fy_allocator_destroy(a);
+
+	if (registered_allocator) {
+		rc = fy_allocator_unregister(allocator);
+		assert(!rc);
+	}
+
+	if (pa)
+		fy_allocator_destroy(pa);
+
+	return 0;
+}
+
+int do_remap(int argc, char *argv[])
+{
+	size_t pagesz = sysconf(_SC_PAGESIZE);
+	size_t sz, limit, newsz;
+	void *mem, *mem2;
+	void **ptrs;
+	int i, maxcount;
+
+	limit = (size_t)2 << 30;
+
+	printf("1. Trying successive mmaps untils failure or limit %zu MB=%zu GB=%zu\n", limit, limit >> 20, limit >> 30);
+	sz = pagesz;
+	for (i = 0; sz <= limit; i++, sz <<= 1) {
+		mem = mmap(NULL, sz, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+		if (mem == MAP_FAILED) {
+			sz >>= 1;
+			printf("> map failed at cycle #%d (success at size=%zu MB=%zu GB=%zu)\n", i, sz, sz >> 20, sz >> 30);
+			break;
+		}
+		printf("> success at cycle #%d (size=%zu MB=%zu GB=%zu)\n", i, sz, sz >> 20, sz >> 30);
+		memset(mem, 0, sz);
+		munmap(mem, sz);
+	}
+
+	printf("2. Trying to find number of mmap limit\n");
+	maxcount = (pagesz / sizeof(void *)) * 16;	/* pages worth of pointers */
+
+	ptrs = malloc(sizeof(*ptrs) * limit);
+	assert(ptrs);
+	for (i = 0; i < maxcount; i++) {
+		sz = i * pagesz;
+		mem = mmap(NULL, pagesz, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+		if (mem == MAP_FAILED) {
+			printf("> mmap #%d failed (total size=%zu MB=%zu GB=%zu)\n",
+					i, sz, sz >> 20, sz >> 30);
+			break;
+		}
+		if ((i % 128) == 0) {
+			printf("> mmap #%d success (total size=%zu MB=%zu GB=%zu)\n",
+					i, sz, sz >> 20, sz >> 30);
+		}
+	}
+
+	if (i >= maxcount) {
+		printf("> mmap #%d completed (total size=%zu MB=%zu GB=%zu)\n",
+				i, sz, sz >> 20, sz >> 30);
+	}
+
+	for (; i >= 0; i--) {
+		munmap(ptrs[i], pagesz);
+	}
+	free(ptrs);
+
+	printf("3. Trying to find out limitations of mremap\n");
+	sz = (size_t)1 << 20;
+	printf("> allocating size %zu MB=%zu GB=%zu mapping and trying to grow it\n", sz, sz >> 20, sz >> 30);
+	mem = mmap(NULL, sz, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+	assert(mem != MAP_FAILED);
+	if (mem == MAP_FAILED) {
+		printf("Unable to mmap size %zu MB=%zu GB=%zu\n", sz, sz >> 20, sz >> 30);
+		goto next4;
+	}
+	memset(mem, 0, sz);
+
+	printf("> growing the mapping to 1G\n");
+	for (i = 0, newsz = sz << 1; newsz < (size_t)1 << 30; i++, newsz <<= 1) {
+		printf("> trying to mremap #%d size %zu MB=%zu GB=%zu\n", i, newsz, newsz >> 20, newsz >> 30);
+#if HAVE_MREMAP
+		mem2 = mremap(mem, sz, newsz, 0);
+#else
+		mem2 = mmap(mem + sz, newsz - sz, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+		if (mem2 != mem + sz) {
+			munmap(mem2, newsz - sz);
+			mem2 = MAP_FAILED;
+		} else
+			mem2 = mem;
+#endif
+		if (mem2 == MAP_FAILED) {
+			printf("Unable to mremap size %zu MB=%zu GB=%zu\n", newsz, newsz >> 20, newsz >> 30);
+			goto unmap3;
+		}
+		sz = newsz;
+		if (mem2 != mem) {
+			mem = mem2;
+			printf("mapping moved!\n");
+			goto unmap3;
+		}
+		mem = mem2;
+		printf("> mremap successful #%d size %zu MB=%zu GB=%zu\n", i, sz, sz >> 20, sz >> 30);
+		memset(mem, 0, sz);
+	}
+
+unmap3:
+	munmap(mem, sz);
+
+next4:
+	printf("3. Trying to find out limitations of mremap take #2\n");
+	printf("> allocating a large (1G) size mapping and trying to shring and regrow it\n");
+	sz = (size_t)1 << 30;
+	mem = mmap(NULL, sz, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+	assert(mem != MAP_FAILED);
+	if (mem == MAP_FAILED) {
+		printf("Unable to mmap size %zu MB=%zu GB=%zu\n", sz, sz >> 20, sz >> 30);
+		goto next5;
+	}
+	memset(mem, 0, sz);
+
+	printf("> shrinking the mapping to 1M\n");
+	newsz = (size_t)1 << 20;
+#if HAVE_MREMAP
+	mem2 = mremap(mem, sz, newsz, 0);
+#else
+	/* unmap everything above newsz */
+	munmap(mem + newsz, sz - newsz);
+	mem2 = mem;
+#endif
+	if (mem2 == MAP_FAILED) {
+		printf("Unable to mremap size %zu MB=%zu GB=%zu\n", newsz, newsz >> 20, newsz >> 30);
+		goto unmap4;
+	}
+	sz = newsz;
+	if (mem2 != mem) {
+		mem = mem2;
+		printf("mapping moved!\n");
+		goto unmap4;
+	}
+	mem = mem2;
+	printf("> mremap successful (zeroing)\n");
+	memset(mem, 0, sz);
+
+	printf("> growing the mapping to 1G again\n");
+	newsz = (size_t)1 << 30;
+#if HAVE_MREMAP
+	mem2 = mremap(mem, sz, newsz, 0);
+#else
+	mem2 = MAP_FAILED;
+
+	mem2 = mmap(mem + sz, newsz - sz, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+	if (mem2 != mem + sz) {
+		munmap(mem2, newsz - sz);
+		mem2 = MAP_FAILED;
+	} else
+		mem2 = mem;
+#endif
+	if (mem2 == MAP_FAILED) {
+		printf("Unable to mremap size %zu MB=%zu GB=%zu\n", newsz, newsz >> 20, newsz >> 30);
+		goto unmap4;
+	}
+	sz = newsz;
+	if (mem2 != mem) {
+		mem = mem2;
+		printf("mapping moved!\n");
+		goto unmap4;
+	}
+	mem = mem2;
+	printf("> mremap successful (zeroing)\n");
+	memset(mem, 0, sz);
+
+unmap4:
+	memset(mem, 0, sz);
+
+next5:
+
+	return 0;
+}
+
+int do_parse_generic(struct fy_parser *fyp, const char *allocator, bool null_output, const char *cache)
+{
+	struct fy_generic_decoder *fygd = NULL;
+	struct fy_generic_encoder *fyge = NULL;
+	struct fy_emitter emit_state, *emit = &emit_state;
+	struct fy_emitter_cfg emit_cfg;
+	uint8_t size_buf[FYGT_SIZE_ENCODING_MAX_64];
+	struct fy_mremap_allocator_cfg mrcfg;
+	struct fy_dedup_allocator_cfg dcfg;
+	struct fy_linear_allocator_cfg lcfg;
+	struct fy_auto_allocator_cfg acfg;
+	struct fy_allocator *a, *pa = NULL;
+	const void *gsetupdata = NULL;
+	bool registered_allocator = false;
+	struct fy_generic_builder *gb;
+	fy_generic vdir = fy_invalid;
+	int rc __FY_DEBUG_UNUSED__;
+	size_t alloc_size;
+	ssize_t estimated_size;
+#if 0
+	const void *single_area;
+	size_t single_area_size, single_area_start, single_area_alloc;
+	void *single_area_copy = NULL;
+	size_t pagesz = sysconf(_SC_PAGESIZE);
+#endif
+	void *cache_mem = NULL;
+	size_t cache_sz;
+
+	(void)size_buf;
+	(void)cache_mem;
+
+	estimated_size = fy_parse_estimate_queued_input_size(fyp);
+
+	if (estimated_size < 0) {
+		fprintf(stderr, "Bad input\n");
+		return -1;
+	}
+
+	printf("estimated_size=%zd\n", estimated_size);
+
+	if (estimated_size != 0 && estimated_size != SSIZE_MAX)
+		alloc_size = (size_t)(estimated_size * 5.0);
+	else
+		alloc_size = (1 << 30) / 4;
+
+	if (!allocator)
+		allocator = "linear";
+
+	/* setup the linear data always */
+	memset(&lcfg, 0, sizeof(lcfg));
+	lcfg.buf = NULL;
+	lcfg.size = alloc_size;
+
+	printf("using %s allocator\n", allocator);
+
+	if (!strcmp(allocator, "linear")) {
+		gsetupdata = &lcfg;
+	} else if (!strcmp(allocator, "malloc")) {
+		gsetupdata = NULL;
+	} else if (!strcmp(allocator, "mremap")) {
+		gsetupdata = NULL;
+	} else if (!strcmp(allocator, "dedup") || !strcmp(allocator, "dedup-linear")) {
+
+		/* create the parent allocator */
+		pa = fy_allocator_create("linear", &lcfg);
+		assert(pa);
+
+		memset(&dcfg, 0, sizeof(dcfg));
+		dcfg.parent_allocator = pa;
+		dcfg.bloom_filter_bits = 0;	/* use default */
+		dcfg.bucket_count_bits = 0;
+
+		gsetupdata = &dcfg;
+
+		allocator = "dedup";
+
+	} else if (!strcmp(allocator, "dedup-malloc")) {
+
+		/* create the parent allocator */
+		pa = fy_allocator_create("malloc", NULL);
+		assert(pa);
+
+		memset(&dcfg, 0, sizeof(dcfg));
+		dcfg.parent_allocator = pa;
+		dcfg.bloom_filter_bits = 0;	/* use default */
+		dcfg.bucket_count_bits = 0;
+		dcfg.estimated_content_size = estimated_size;
+
+		gsetupdata = &dcfg;
+
+		allocator = "dedup";
+	} else if (!strcmp(allocator, "dedup-mremap")) {
+
+		memset(&mrcfg, 0, sizeof(mrcfg));
+		mrcfg.big_alloc_threshold = SIZE_MAX;
+		mrcfg.empty_threshold = 64;
+		mrcfg.grow_ratio = 1.5;
+		mrcfg.balloon_ratio = 8.0;
+		mrcfg.arena_type = FYMRAT_MMAP;
+
+		if (estimated_size && estimated_size != SSIZE_MAX)
+			mrcfg.minimum_arena_size = estimated_size;
+		else
+			mrcfg.minimum_arena_size = 16 << 20;
+
+		/* create the parent allocator */
+		pa = fy_allocator_create("mremap", &mrcfg);
+		assert(pa);
+
+		memset(&dcfg, 0, sizeof(dcfg));
+		dcfg.parent_allocator = pa;
+		dcfg.bloom_filter_bits = 0;	/* use default */
+		dcfg.bucket_count_bits = 0;
+		dcfg.estimated_content_size = estimated_size;
+
+		gsetupdata = &dcfg;
+
+		allocator = "dedup";
+
+	} else if (!strcmp(allocator, "auto")) {
+
+		memset(&acfg, 0, sizeof(acfg));
+		acfg.scenario = FYAST_PER_TAG_FREE;
+		acfg.estimated_max_size = (size_t)estimated_size;
+
+		gsetupdata = &acfg;
+
+		allocator = "auto";
+
+	} else {
+		fprintf(stderr, "unsupported allocator %s\n", allocator);
+		return -1;
+	}
+
+	a = fy_allocator_create(allocator, gsetupdata);
+	assert(a);
+
+	gb = fy_generic_builder_create(a, FY_ALLOC_TAG_NONE);
+	assert(gb);
+
+	fygd = fy_generic_decoder_create(fyp, gb, false);
+	assert(fygd);
+
+	vdir = fy_invalid;
+
+	if (cache) {
+		struct stat sb;
+		uint64_t hdr[2];
+		ssize_t rdn;
+		int fd;
+
+		fd = open(cache, O_RDONLY);
+		if (fd >= 0) {
+			rc = fstat(fd, &sb);
+			assert(!rc);
+			/* only for regular files */
+			if ((sb.st_mode & S_IFMT) == S_IFREG) {
+				cache_sz = sb.st_size;
+
+				do {
+					rdn = read(fd, hdr, sizeof(hdr));
+				} while (rdn == -1 && errno == EAGAIN);
+				assert(rdn != -1);
+				assert(rdn > 0);
+				assert(rdn == sizeof(hdr));
+
+#ifdef MAP_FIXED_NOREPLACE
+				fprintf(stderr, "attempting to map fixed at %p\n", (void *)hdr[0]);
+				cache_mem = mmap((void *)(uintptr_t)hdr[0], cache_sz, PROT_READ, MAP_PRIVATE | MAP_FIXED_NOREPLACE, fd, 0);
+				assert(cache_mem != MAP_FAILED);
+				fprintf(stderr, "success\n");
+#else
+				fprintf(stderr, "attempting to map at %p\n", (void *)hdr[0]);
+				cache_mem = mmap((void *)(uintptr_t)hdr[0], cache_sz, PROT_READ, MAP_PRIVATE, fd, 0);
+				assert(cache_mem == (void *)(uintptr_t)hdr[0]);
+				fprintf(stderr, "success\n");
+#endif
+
+				vdir = (fy_generic)hdr[1];
+			}
+			close(fd);
+		}
+	}
+
+	if (vdir == fy_invalid) {
+		vdir = fy_generic_decoder_parse_all_documents(fygd);
+		assert(vdir != fy_invalid);
+
+		fy_generic_builder_trim(gb);
+
+#if 0
+		single_area_size = 0;
+		single_area = fy_generic_builder_get_single_area(gb, &single_area_size, &single_area_start, &single_area_alloc);
+		if (!single_area) {
+			fprintf(stderr, "Builder has no single area\n");
+			single_area_copy = NULL;
+		} else {
+			fprintf(stderr, "Builder has single area: %p sz=0x%zx start=0x%zx alloc=0x%zx\n",
+					single_area, single_area_size, single_area_start, single_area_alloc);
+
+#if 0
+			ptrdiff_t d;
+			struct timespec before, after;
+			int64_t ns;
+
+			BEFORE();
+			single_area_copy = malloc(single_area_size);
+			assert(single_area_copy);
+			memcpy(single_area_copy, single_area, single_area_size);
+			ns = AFTER();
+
+			fprintf(stderr, "single area copy: %p sz=0x%zx\n", single_area_copy, single_area_size);
+			printf("copy in %3.2fms\n", (double)((ns / 1000)/1000.0));
+
+			d = single_area_copy - single_area;
+			printf("relocation delta %lx\n", (long)d);
+
+			BEFORE();
+			printf("vdir before relocation %p\n", (void *)vdir);
+			vdir = fy_generic_relocate(single_area_copy, single_area_copy + single_area_size, vdir, d);
+			printf("vdir after relocation %p\n", (void *)vdir);
+			ns = AFTER();
+			printf("relocation in %3.2fms\n", (double)((ns / 1000)/1000.0));
+
+			if (!null_output) {
+				rc = fy_generic_encoder_emit_all_documents(fyge, vdir);
+				assert(!rc);
+			}
+#endif
+
+			if (cache && ((uintptr_t)single_area & (uintptr_t)(pagesz - 1)) == 0 && single_area_start >= 2 * sizeof(uint64_t)) {
+				int fd;
+				void *hdr;
+				const void *p;
+				ssize_t wrn;
+				size_t left, hdrsz;
+
+				fprintf(stderr, "Builder can create cache %s\n", cache);
+
+				fd = open(cache, O_CREAT|O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IRGRP | S_IROTH);
+				if (fd >= 0) {
+					p = single_area;
+					left = single_area_size;
+
+					hdrsz = single_area_start;
+					hdr = alloca(hdrsz);
+					memset(hdr, 0, hdrsz);
+					((uint64_t *)hdr)[0] = (uintptr_t)single_area;		/* store the mapping address */
+					((uint64_t *)hdr)[1] = (uintptr_t)vdir;			/* store the directory */
+
+					do {
+						wrn = write(fd, hdr, hdrsz);
+					} while (wrn == -1 && errno == EAGAIN);
+					assert(wrn != -1);
+					assert(wrn > 0);
+					assert((size_t)wrn == hdrsz);
+					p += (size_t)wrn;
+					left -= (size_t)wrn;
+
+					while (left > 0) {
+						do {
+							wrn = write(fd, p, left);
+						} while (wrn == -1 && errno == EAGAIN);
+						assert(wrn != -1);
+						assert(wrn > 0);
+						p += (size_t)wrn;
+						left -= (size_t)wrn;
+					}
+
+					close(fd);
+				}
+
+			}
+
+		}
+#endif
+	}
+
+	fy_generic_decoder_destroy(fygd);
+	fygd = NULL;
+
+	fprintf(stderr, "before trim\n");
+	fy_allocator_dump(a);
+
+	fy_generic_builder_trim(gb);
+
+	fprintf(stderr, "after trim\n");
+	fy_allocator_dump(a);
+
+	memset(&emit_cfg, 0, sizeof(emit_cfg));
+	emit_cfg.flags = 0;
+	rc = fy_emit_setup(emit, &emit_cfg);
+	assert(!rc);
+
+	fyge = fy_generic_encoder_create(emit, false);
+	assert(fyge);
+
+	if (!null_output) {
+		rc = fy_generic_encoder_emit_all_documents(fyge, vdir);
+		assert(!rc);
+	}
+
+	fy_generic_encoder_sync(fyge);
+	fy_generic_encoder_destroy(fyge);
+
+	fy_emit_cleanup(emit);
+
+	fy_generic_builder_destroy(gb);
+	gb = NULL;
+
+	fy_allocator_destroy(a);
+	a = NULL;
+
+	if (registered_allocator) {
+		rc = fy_allocator_unregister(allocator);
+		assert(!rc);
+	}
+
+	if (pa) {
+		fy_allocator_destroy(pa);
+		pa = NULL;
+	}
+
+#if 0
+	if (single_area_copy)
+		free(single_area_copy);
+#endif
+
+	return 0;
+}
+
 int apply_flags_option(const char *arg, unsigned int *flagsp,
 		int (*modify_flags)(const char *what, unsigned int *flagsp))
 {
@@ -4169,6 +5335,8 @@ int main(int argc, char *argv[])
 	const char *walkstart = "/";
 	bool use_callback = false;
 	bool null_output = false;
+	const char *allocator = "linear";
+	const char *cache = NULL;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -4274,6 +5442,12 @@ int main(int argc, char *argv[])
 		case OPT_YPATH_ALIASES:
 			cfg.flags |= FYPCF_YPATH_ALIASES;
 			break;
+		case OPT_ALLOCATOR:
+			allocator = optarg;
+			break;
+		case OPT_CACHE:
+			cache = optarg;
+			break;
 		case 'q':
 			cfg.flags |= FYPCF_QUIET;
 			break;
@@ -4304,7 +5478,11 @@ int main(int argc, char *argv[])
 	    strcmp(mode, "crash") &&
 	    strcmp(mode, "badutf8") &&
 	    strcmp(mode, "shell-split") &&
-	    strcmp(mode, "parse-timing")
+	    strcmp(mode, "parse-timing") &&
+	    strcmp(mode, "generics") &&
+	    strcmp(mode, "remap") &&
+	    strcmp(mode, "parse-generic") &&
+	    strcmp(mode, "idbit")
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 	    && strcmp(mode, "libyaml-scan")
 	    && strcmp(mode, "libyaml-parse")
@@ -4561,9 +5739,27 @@ int main(int argc, char *argv[])
 			goto cleanup;
 		}
 	} else if (!strcmp(mode, "parse-timing")) {
-		rc = do_parse_timing(argc, argv, !!(cfg.flags & FYPCF_DISABLE_MMAP_OPT));
+		rc = do_parse_timing(argc, argv);
 		if (rc < 0) {
 			/* fprintf(stderr, "do_parse_timing() error %d\n", rc); */
+			goto cleanup;
+		}
+	} else if (!strcmp(mode, "generics")) {
+		rc = do_generics(argc, argv, allocator);
+		if (rc < 0) {
+			/* fprintf(stderr, "do_generics() error %d\n", rc); */
+			goto cleanup;
+		}
+	} else if (!strcmp(mode, "parse-generic")) {
+		rc = do_parse_generic(fyp, allocator, null_output, cache);
+		if (rc < 0) {
+			/* fprintf(stderr, "do_generics() error %d\n", rc); */
+			goto cleanup;
+		}
+	} else if (!strcmp(mode, "remap")) {
+		rc = do_remap(argc, argv);
+		if (rc < 0) {
+			/* fprintf(stderr, "do_generics() error %d\n", rc); */
 			goto cleanup;
 		}
 	}

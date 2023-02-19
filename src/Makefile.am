@@ -15,7 +15,8 @@ INTERNAL_INCLUDES = \
 	-I$(top_srcdir)/src/xxhash \
 	-I$(top_srcdir)/src/util \
 	-I$(top_srcdir)/src/thread \
-	-I$(top_srcdir)/src/allocator
+	-I$(top_srcdir)/src/allocator \
+	-I$(top_srcdir)/src/generic
 
 lib_LTLIBRARIES += libfyaml.la
 libfyaml_la_SOURCES = \
@@ -66,6 +67,23 @@ libfyaml_la_SOURCES += \
 	allocator/fy-allocator-mremap.c allocator/fy-allocator-mremap.h \
 	allocator/fy-allocator-dedup.c allocator/fy-allocator-dedup.h \
 	allocator/fy-allocator-auto.c allocator/fy-allocator-auto.h
+
+# generic
+libfyaml_la_SOURCES += \
+	generic/fy-generic.c generic/fy-generic.h \
+	generic/fy-generic-decoder.c generic/fy-generic-decoder.h \
+	generic/fy-generic-encoder.c generic/fy-generic-encoder.h
+
+# reflection
+libfyaml_la_SOURCES += \
+	reflection/fy-reflection.c reflection/fy-reflection-private.h \
+	reflection/fy-packed-backend.c reflection/fy-packed-backend.h \
+	reflection/fy-registry.c
+
+if HAVE_LIBCLANG
+libfyaml_la_SOURCES += \
+	reflection/fy-clang-backend.c reflection/fy-clang-backend.h
+endif
 
 libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)
 libfyaml_la_CFLAGS = $(AM_CFLAGS)
@@ -137,6 +155,12 @@ endif
 libfyaml_la_LIBADD += libb3neon.la
 endif
 
+if HAVE_LIBCLANG
+libfyaml_la_CPPFLAGS += $(LIBCLANG_CPPFLAGS)
+libfyaml_la_CFLAGS += $(LIBCLANG_CFLAGS)
+libfyaml_la_LDFLAGS += $(LIBCLANG_LDFLAGS) $(LIBCLANG_LIBS)
+endif
+
 # libfyaml-parser needs both LIBYAML and static
 if HAVE_LIBYAML
 if HAVE_STATIC
@@ -201,6 +225,22 @@ fy_allocators_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
 fy_allocators_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 
 fy_allocators_LDFLAGS = $(AM_LDFLAGS) -static
+endif
+
+# fy-generics
+if HAVE_STATIC
+
+noinst_PROGRAMS += fy-generics
+
+fy_generics_SOURCES = \
+	internal/fy-generics.c \
+	valgrind/fy-valgrind.h
+
+fy_generics_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)
+fy_generics_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
+fy_generics_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
+
+fy_generics_LDFLAGS = $(AM_LDFLAGS) -static
 endif
 
 bin_PROGRAMS += fy-tool
