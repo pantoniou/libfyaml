@@ -119,6 +119,7 @@ AC_C_CONST
 AC_C_BIGENDIAN
 AC_TYPE_PID_T
 AC_TYPE_SIZE_T
+AC_CHECK_SIZEOF([void *])
 AC_CHECK_TYPES(ssize_t, , [AC_DEFINE([ssize_t], [signed long],
     [Define ssize_t if it is not done by the standard libs.])])
 AC_TYPE_OFF_T
@@ -655,6 +656,21 @@ AC_SUBST(HAVE_HEAP_TRAMPOLINES)
 AC_DEFINE_UNQUOTED([HAVE_HEAP_TRAMPOLINES], [$HAVE_HEAP_TRAMPOLINES], [Define to 1 if GCC heap trampolines are enabled])
 AM_CONDITIONAL([HAVE_HEAP_TRAMPOLINES], [ test x$HAVE_HEAP_TRAMPOLINES = x1 ])
 
+dnl automake is only on standard unix systems generic, reflection enabled
+if test "x$ac_cv_sizeof_void_p" = "x8" -a "x$ac_cv_c_bigendian" != "xyes"; then
+	HAVE_GENERIC=1
+else
+	HAVE_GENERIC=0
+	AC_MSG_NOTICE([Generic subsystem disabled (requires 64-bit little-endian targets)])
+fi
+HAVE_REFLECTION=1
+AC_SUBST(HAVE_GENERIC)
+AC_SUBST(HAVE_REFLECTION)
+AM_CONDITIONAL([HAVE_GENERIC], [ test x$HAVE_GENERIC = x1 ])
+AM_CONDITIONAL([HAVE_REFLECTION], [ test x$HAVE_REFLECTION = x1 ])
+AC_DEFINE_UNQUOTED([HAVE_GENERIC], [$HAVE_GENERIC], [Define to 1 if generics are enabled])
+AC_DEFINE_UNQUOTED([HAVE_REFLECTION], [$HAVE_REFLECTION], [Define to 1 if reflection is enabled])
+
 dnl trim cflags, cppflags, ldflags
 CFLAGS=`echo $CFLAGS | sed -e 's/^[ ]*//'`
 CPPFLAGS=`echo $CPPFLAGS | sed -e 's/^[ ]*//'`
@@ -702,6 +718,8 @@ echo "
     HAVE_NETWORK:          ${HAVE_NETWORK}
     HAVE_DEVMODE:          ${HAVE_DEVMODE}
     HAVE_SPHINX:           ${HAVE_SPHINX}
+    HAVE_GENERIC:          ${HAVE_GENERIC}
+    HAVE_REFLECTION:       ${HAVE_REFLECTION}
     GIT:                   ${GIT}
     DOCKER:                ${DOCKER}
     HAVE_LIBCLANG:         ${HAVE_LIBCLANG}

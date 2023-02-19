@@ -45,9 +45,25 @@ EXTRA_DIST = \
 	examples/config.yaml \
 	examples/document-manipulation.c \
 	examples/event-streaming.c \
+	examples/generic-adoption-bridge.c \
+	examples/generic-lambda-capture.c \
+	examples/generic-literals.c \
+	examples/generic-parallel-transform.c \
+	examples/generic-roundtrip.c \
+	examples/generic-transform.c \
+	examples/intro-config.yaml \
+	examples/intro-core-update.c \
+	examples/intro-generic-update.c \
+	examples/intro-reflection-update.c \
 	examples/invoice.yaml \
 	examples/path-queries.c \
 	examples/quick-start.c \
+	examples/reflection-config.h \
+	examples/reflection-config.yaml \
+	examples/reflection-export-packed.c \
+	examples/reflection-intro-config.h \
+	examples/reflection-libclang.c \
+	examples/reflection-packed.c \
 	libfyaml.pc.in \
 	m4/ax_check_compile_flag.m4 \
 	m4/ax_check_define.m4 \
@@ -106,7 +122,12 @@ EXTRA_DIST += \
 	scripts/run-massif.sh \
 	scripts/run-test.sh \
 	scripts/run-valgrind.sh \
-	scripts/show-desc.sh
+	scripts/show-desc.sh \
+	scripts/strip-testsuite-formatting.sh
+
+EXTRA_DIST += \
+	doc/generics-guide.rst \
+	doc/reflection-guide.rst
 
 if HAVE_DOCKER
 docker: Dockerfile

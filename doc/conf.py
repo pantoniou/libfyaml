@@ -95,11 +95,13 @@ master_doc = 'index'
 
 # Tell kernel-doc to strip libfyaml-specific compiler-hint macros from
 # function prototypes before passing them to Sphinx C domain.
-kernel_doc_known_attrs = "FY_ALWAYS_INLINE"
+kernel_doc_known_attrs = "FY_ALWAYS_INLINE FY_GENERIC_CONTAINER_ALIGNMENT"
 
 man_pages = [
     ('man/fy-tool', 'fy-tool', 'fy-tool documentation ', '', 1),
     ('libfyaml', 'libfyaml', 'libfyaml API overview', '', 3),
     ('libfyaml-core', 'libfyaml-core', 'libfyaml core API', '', 3),
     ('libfyaml-misc', 'libfyaml-misc', 'libfyaml miscellaneous API', '', 3),
+    ('libfyaml-generics', 'libfyaml-generics', 'libfyaml generic API', '', 3),
+    ('libfyaml-reflection', 'libfyaml-reflection', 'libfyaml reflection API', '', 3),
 ]

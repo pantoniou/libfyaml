@@ -1,0 +1,61 @@
+[build-system]
+requires = [
+    "setuptools>=69.0",
+    "wheel",
+    "cmake>=3.22",
+    "ninja; platform_system != 'Windows'",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "libfyaml"
+version = "1.0.0a1"
+description = "Python bindings for libfyaml's generic YAML/JSON value model"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [
+    {name = "Pantelis Antoniou", email = "pantelis.antoniou@konsulko.com"}
+]
+maintainers = [
+    {name = "libfyaml contributors"}
+]
+keywords = ["yaml", "json", "parser", "fast", "performance", "memory-efficient"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: BSD",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: C",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Markup",
+]
+
+[project.urls]
+Homepage = "https://github.com/pantoniou/libfyaml"
+Documentation = "https://github.com/pantoniou/libfyaml/tree/master/python-libfyaml"
+Repository = "https://github.com/pantoniou/libfyaml"
+"Bug Reports" = "https://github.com/pantoniou/libfyaml/issues"
+Changelog = "https://github.com/pantoniou/libfyaml/blob/master/CHANGELOG.md"
+
+[tool.setuptools]
+packages = ["libfyaml"]
+
+[tool.setuptools.package-data]
+libfyaml = ["*.pyi", "*.so", "*.pyd"]
+
+[tool.cibuildwheel]
+build = ["cp38-*", "cp39-*", "cp310-*", "cp311-*", "cp312-*", "cp313-*"]
+skip = ["*-musllinux_*", "*-win32", "*_i686", "*t-*"]
+build-verbosity = 1
+test-requires = ["pytest"]
+test-command = "pytest --import-mode=importlib {project}/python-libfyaml/tests"

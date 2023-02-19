@@ -49,6 +49,13 @@ void libfyaml_case_allocator(struct fy_check_suite *cs);
 void libfyaml_case_parser(struct fy_check_suite *cs);
 void libfyaml_case_thread(struct fy_check_suite *cs);
 void libfyaml_case_fuzzing(struct fy_check_suite *cs);
+#ifdef HAVE_GENERIC
+void libfyaml_case_generic(struct fy_check_suite *cs);
+void libfyaml_case_generic_scalars(struct fy_check_suite *cs);
+#endif
+#ifdef HAVE_REFLECTION
+void libfyaml_case_reflection(struct fy_check_suite *cs);
+#endif
 
 struct fy_check_suite *libfyaml_suite(int argc, char **argv)
 {
@@ -67,6 +74,13 @@ struct fy_check_suite *libfyaml_suite(int argc, char **argv)
 	libfyaml_case_parser(cs);
 	libfyaml_case_thread(cs);
 	libfyaml_case_fuzzing(cs);
+#ifdef HAVE_GENERIC
+	libfyaml_case_generic(cs);
+	libfyaml_case_generic_scalars(cs);
+#endif
+#ifdef HAVE_REFLECTION
+	libfyaml_case_reflection(cs);
+#endif
 
 	return cs;
 }

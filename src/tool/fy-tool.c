@@ -27,6 +27,12 @@
 #include <stdbool.h>
 
 #include <libfyaml.h>
+#ifdef HAVE_GENERIC
+#include <libfyaml/libfyaml-generic.h>
+#endif
+#ifdef HAVE_REFLECTION
+#include <libfyaml/libfyaml-reflection.h>
+#endif
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -81,6 +87,7 @@
 #define STRIP_EMPTY_KV_DEFAULT		false
 #define TSV_FORMAT_DEFAULT		false
 #define NO_ENDING_NEWLINE_DEFAULT	false
+#define DEDUP_DEFAULT			false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -93,7 +100,9 @@
 #define OPT_YAML_VERSION_DUMP		1008
 #define OPT_COMPOSE			1009
 #define OPT_B3SUM			1010
+#ifdef HAVE_REFLECTION
 #define OPT_REFLECT			1011
+#endif
 
 #define OPT_STRIP_LABELS		2000
 #define OPT_STRIP_TAGS			2001
@@ -123,6 +132,23 @@
 #define OPT_NO_ENDING_NEWLINE		2025
 #define OPT_PRESERVE_FLOW_LAYOUT	2026
 #define OPT_INDENTED_SEQ_IN_MAP		2027
+#ifdef HAVE_REFLECTION
+#define OPT_CFLAGS			2028
+#define OPT_GENERATE_C			2029
+#define OPT_IMPORT_BLOB			2030
+#define OPT_GENERATE_BLOB		2031
+#define OPT_NO_PRUNE_SYSTEM		2032
+#define OPT_TYPE_INCLUDE		2033
+#define OPT_TYPE_EXCLUDE		2034
+#define OPT_IMPORT_C_FILE		2035
+#define OPT_ENTRY_TYPE			2036
+#define OPT_ENTRY_META			2037
+#define OPT_PACKED_ROUNDTRIP		2038
+#define OPT_DRY_RUN			2039
+#define OPT_DUMP_REFLECTION		2040
+#define OPT_DEBUG_REFLECTION		2041
+#define OPT_STRICT_ANNOTATIONS		2042
+#endif
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -146,6 +172,20 @@
 #define OPT_FILE_BUFFER			5010
 #define OPT_MMAP_MIN_CHUNK		5011
 #define OPT_MMAP_MAX_CHUNK		5012
+
+#ifdef HAVE_GENERIC
+/* generic options */
+#define OPT_GENERIC			6000
+#define OPT_BUILDER_POLICY		6001
+#define OPT_DEDUP			6002
+#define OPT_NO_DEDUP			6003
+#define OPT_GENERIC_TESTSUITE		6004
+#define OPT_DUMP_PRIMITIVES		6005
+#define OPT_GENERIC_PARSE_DUMP		6006
+#define OPT_CREATE_MARKERS		6007
+#define OPT_PYYAML_COMPAT		6008
+#define OPT_KEEP_STYLE			6009
+#endif
 
 static struct option lopts[] = {
 	{"include",		required_argument,	0,	'I' },
@@ -224,6 +264,36 @@ static struct option lopts[] = {
 	{"mmap-min-chunk",	required_argument,	0,	OPT_MMAP_MIN_CHUNK },
 	{"mmap-max-chunk",	required_argument,	0,	OPT_MMAP_MAX_CHUNK },
 
+#ifdef HAVE_REFLECTION
+	{"reflect",		no_argument,		0,	OPT_REFLECT },
+	{"generate-c",		no_argument,	        0,      OPT_GENERATE_C },
+	{"entry-type",		required_argument,	0,	OPT_ENTRY_TYPE },
+	{"entry-meta",		required_argument,	0,	OPT_ENTRY_META },
+	{"packed-roundtrip",	no_argument,		0,	OPT_PACKED_ROUNDTRIP },
+	{"cflags",              required_argument,      0,      OPT_CFLAGS },
+	{"generate-blob",       required_argument,      0,      OPT_GENERATE_BLOB },
+	{"import-blob",         required_argument,      0,      OPT_IMPORT_BLOB },
+	{"import-c-file",	required_argument,	0,	OPT_IMPORT_C_FILE },
+	{"no-prune-system",	no_argument,		0,	OPT_NO_PRUNE_SYSTEM },
+	{"type-include",        required_argument,      0,      OPT_TYPE_INCLUDE },
+	{"type-exclude",        required_argument,      0,      OPT_TYPE_EXCLUDE },
+	{"dry-run",		no_argument,	        0,      OPT_DRY_RUN },
+	{"dump-reflection",	no_argument,	        0,      OPT_DUMP_REFLECTION },
+	{"debug-reflection",	no_argument,	        0,      OPT_DEBUG_REFLECTION },
+	{"strict-annotations",	no_argument,	        0,      OPT_STRICT_ANNOTATIONS },
+#endif
+#ifdef HAVE_GENERIC
+	{"generic",		no_argument,		0,	OPT_GENERIC },
+	{"builder-policy",	required_argument,	0,	OPT_BUILDER_POLICY },
+	{"dedup",		no_argument,		0,	OPT_DEDUP },
+	{"no-dedup",		no_argument,		0,	OPT_NO_DEDUP },
+	{"generic-testsuite",	no_argument,		0,	OPT_GENERIC_TESTSUITE },
+	{"dump-primitives",	no_argument,		0,	OPT_DUMP_PRIMITIVES },
+	{"generic-parse-dump",	no_argument,		0,	OPT_GENERIC_PARSE_DUMP },
+	{"create-markers",	no_argument,		0,	OPT_CREATE_MARKERS },
+	{"pyyaml-compat",	no_argument,		0,	OPT_PYYAML_COMPAT },
+	{"keep-style",		no_argument,		0,	OPT_KEEP_STYLE },
+#endif
 	{"help",		no_argument,		0,	'h' },
 	{"version",		no_argument,		0,	'v' },
 	{0,			0,			0,	 0  },
@@ -465,6 +535,42 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		USAGE_ITEM("--mmap-max-chunk <n>", "Maximum mmap chunk size");
 	}
 
+#ifdef HAVE_REFLECTION
+	if (tool_mode == OPT_TOOL || tool_mode == OPT_REFLECT) {
+		USAGE_SECTION("Reflection options");
+		USAGE_ITEM("--reflect", "Enable reflection mode");
+		USAGE_ITEM("--generate-c", "Generate C definitions from reflection input");
+		USAGE_ITEM("--generate-blob <blob>", "Generate packed blob from C source files");
+		USAGE_ITEM("--import-blob <blob>", "Import a packed blob as a reflection source");
+		USAGE_ITEM("--import-c-file <file>", "Import a C file as a reflection source");
+		USAGE_ITEM("--cflags <cflags>", "The C flags to use for the import");
+		USAGE_ITEM("--entry-type <type>", "The C type that is the entry point");
+		USAGE_ITEM("--packed-roundtrip", "Roundtrip reflection to packed type for debugging");
+		USAGE_ITEM("--no-prune-system", "Do not prune system types");
+		USAGE_ITEM("--type-include <regex>", "Include only types matching regex");
+		USAGE_ITEM("--type-exclude <regex>", "Exclude types matching regex");
+		USAGE_ITEM("--dump-reflection", "Dump reflection structures");
+		USAGE_ITEM("--debug-reflection", "Debug messages during reflection processing");
+	}
+#endif
+
+#ifdef HAVE_GENERIC
+	if (tool_mode == OPT_TOOL || tool_mode == OPT_GENERIC ||
+	    tool_mode == OPT_GENERIC_TESTSUITE || tool_mode == OPT_GENERIC_PARSE_DUMP) {
+		USAGE_SECTION("Generic options");
+		USAGE_ITEM("--generic", "Generics dump");
+		USAGE_ITEM("--generic-testsuite", "Generics testsuite");
+		USAGE_ITEM("--builder-policy", "Builder policy");
+		USAGE_ITEM("--generic-parse-dump", "Generics parse-dump");
+		USAGE_ITEM_DEFAULT("--dedup", "Dedup mode on", DEDUP_DEFAULT ? "true" : "false");
+		USAGE_ITEM("--no-dedup", "Dedup mode off");
+		USAGE_ITEM("--dump-primitives", "Dump primitives");
+		USAGE_ITEM("--create-markers", "Create markers");
+		USAGE_ITEM("--pyyaml-compat", "PYYAML compatibility mode");
+		USAGE_ITEM("--keep-style", "Do not strip style");
+	}
+#endif
+
 	if (tool_mode == OPT_TOOL) {
 		USAGE_SECTION("Modes");
 		USAGE_ITEM("--dump", "Dump mode (default)");
@@ -476,6 +582,12 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		USAGE_ITEM("--parse-dump", "Parse-dump mode (internal)");
 		USAGE_ITEM("--compose", "Composer driver dump mode");
 		USAGE_ITEM("--yaml-version-dump", "Information about YAML versions");
+#ifdef HAVE_REFLECTION
+		USAGE_ITEM("--reflect", "Reflection mode");
+#endif
+#ifdef HAVE_GENERIC
+		USAGE_ITEM("--generic", "Generic mode");
+#endif
 	}
 
 	fprintf(fp, "\n");
@@ -564,6 +676,36 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		USAGE_EXAMPLE_TEXT("  BLAKE3 hash b3sum utility");
 		break;
 
+#ifdef HAVE_REFLECTION
+	case OPT_REFLECT:
+		USAGE_EXAMPLES();
+		USAGE_EXAMPLE_TEXT("  Reflection parsing a C header and dumping type info");
+		USAGE_EXAMPLE_CMD("%s [--cflags=<>] header.h", progname);
+		fprintf(fp, "\n");
+		USAGE_EXAMPLE_TEXT("  Reflection parsing a C header and dumping type info");
+		USAGE_EXAMPLE_CMD("%s blob.bin", progname);
+		fprintf(fp, "\n");
+		USAGE_EXAMPLE_TEXT("  Reflection convert C header files definition to a blob");
+		USAGE_EXAMPLE_CMD("%s --reflect [--cflags=<>] --generate-blob=blob.bin header1.h header2.h", progname);
+		break;
+#endif
+
+#ifdef HAVE_GENERIC
+	case OPT_GENERIC:
+		USAGE_EXAMPLES();
+		USAGE_EXAMPLE_TEXT("  Generic dump");
+		break;
+
+	case OPT_GENERIC_TESTSUITE:
+		USAGE_EXAMPLES();
+		USAGE_EXAMPLE_TEXT("  Generic testsuite");
+		break;
+
+	case OPT_GENERIC_PARSE_DUMP:
+		USAGE_EXAMPLES();
+		USAGE_EXAMPLE_TEXT("  Generic parse dump");
+		break;
+#endif
 	}
 
 #undef USAGE_SECTION
@@ -1158,6 +1300,327 @@ do_b3sum(int argc, char *argv[], int optind, const struct b3sum_config *cfg)
 	return num_inputs == num_ok ? 0 : -1;
 }
 
+#ifdef HAVE_REFLECTION
+
+/*
+ * Reflection meta-type implementation moved to library files:
+ *   src/reflection/fy-type-meta.c  - meta/annotation system
+ *   src/reflection/fy-meta-type.c  - type data management
+ *   src/reflection/fy-type-context.c - type system context
+ *   src/reflection/fy-meta-serdes.c - serialization/deserialization
+ */
+
+static size_t estimate_max_file_size(int argc, char **argv)
+{
+	struct stat sb;
+	size_t size;
+	int i, rc;
+
+	if (argc <= 0)
+		return 0;	/* can't estimate without file (probably stdin) */
+
+	size = 0;
+	for (i = 0; i < argc; i++) {
+		rc = stat(argv[i], &sb);
+		if (rc)
+			continue;
+
+		/* only do it for regular files */
+		if ((sb.st_mode & S_IFMT) != S_IFREG)
+			continue;
+
+		if ((size_t)sb.st_size > size)
+			size = sb.st_size;
+	}
+
+	return size;
+}
+
+
+#endif /* HAVE_REFLECTION */
+
+#ifdef HAVE_GENERIC
+
+struct generic_config {
+	bool dedup : 1;
+	bool null_output : 1;
+	bool dump_primitives : 1;
+	bool create_markers : 1;
+	bool testsuite : 1;
+	bool parse_dump : 1;
+	bool pyyaml_compat : 1;
+	size_t estimated_max_size;
+	enum fy_parse_cfg_flags parse_cfg_flags;
+	enum fy_emitter_cfg_flags emit_cfg_flags;
+	enum fy_emitter_xcfg_flags emit_xcfg_flags;
+	struct fy_diag *diag;
+	bool collect_diag;
+	bool keep_comments;
+	bool keep_style;
+};
+
+struct generic_config default_generic_cfg = {
+	.dedup = true,
+	.null_output = false,
+	.estimated_max_size = 0,	/* adapt to input */
+};
+
+static int
+do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
+{
+	/* Create auto allocator with appropriate scenario based on dedup parameter */
+	struct fy_allocator *allocator = NULL;
+	struct fy_generic_builder *gb = NULL;
+	struct fy_generic_iterator_cfg cfg;
+	struct fy_generic_iterator *fygi = NULL;
+	struct fy_event *fye = NULL;
+	struct fy_auto_allocator_cfg auto_cfg;
+	struct fy_generic_builder_cfg gb_cfg;
+	size_t max_size;
+	const char *filename;
+	enum fy_op_parse_flags parse_flags;
+	enum fy_op_emit_flags emit_flags;
+	fy_generic v;
+	enum dump_testsuite_event_flags dump_flags = 0;
+	bool had_error;
+	int i, rc;
+
+	if (gcfg->testsuite || gcfg->parse_dump)
+		dump_flags = isatty(fileno(stdout)) ? DTEF_COLORIZE : 0;
+
+	max_size = gcfg->estimated_max_size;
+	if (!max_size) {
+		max_size = estimate_max_file_size(argc - optind, argv + optind);
+		if (!max_size)
+			max_size = 1U << 20;	/* 1MB */
+	}
+
+	if (max_size < (1U << 20))
+		max_size = (1U << 20);
+
+	memset(&auto_cfg, 0, sizeof(auto_cfg));
+	auto_cfg.scenario = gcfg->dedup ? FYAST_PER_TAG_FREE_DEDUP : FYAST_PER_TAG_FREE;
+	auto_cfg.estimated_max_size = (size_t)(max_size * 1.2);
+
+	allocator = fy_allocator_create("auto", &auto_cfg);
+	if (!allocator)
+		goto err_out;
+
+	memset(&gb_cfg, 0, sizeof(gb_cfg));
+	gb_cfg.allocator = allocator;
+	gb_cfg.estimated_max_size = max_size;
+	gb_cfg.flags = FYGBCF_SCOPE_LEADER | (gcfg->dedup ? FYGBCF_DEDUP_ENABLED : 0);
+	if (!gcfg->pyyaml_compat)
+		gb_cfg.flags |= FYGBCF_SCHEMA_AUTO;
+	else
+		gb_cfg.flags |= FYGBCF_SCHEMA_YAML1_1_PYYAML;
+	gb_cfg.diag = gcfg->diag;
+	gb = fy_generic_builder_create(&gb_cfg);
+	if (!gb)
+		goto err_out;
+
+	had_error = false;
+
+	i = optind;
+	do {
+		filename = i < argc ? argv[i] : "-";
+
+		fy_generic_builder_reset(gb);
+
+		parse_flags = FYOPPF_MULTI_DOCUMENT;
+		emit_flags = FYOPEF_MODE_YAML_1_2 | FYOPEF_MULTI_DOCUMENT;
+
+		if (gcfg->testsuite)
+			parse_flags |= FYOPPF_DONT_RESOLVE;
+
+		switch (gcfg->parse_cfg_flags & (FYPCF_JSON_MASK << FYPCF_JSON_SHIFT)) {
+		default:
+		case FYPCF_JSON_AUTO:
+		case FYPCF_JSON_NONE:
+			switch (gcfg->parse_cfg_flags & (FYPCF_DEFAULT_VERSION_MASK << FYPCF_DEFAULT_VERSION_SHIFT)) {
+			default:
+			case FYPCF_DEFAULT_VERSION_AUTO:
+				parse_flags |= FYOPPF_MODE_AUTO;
+				break;
+			case FYPCF_DEFAULT_VERSION_1_1:
+				parse_flags |= FYOPPF_MODE_YAML_1_1;
+				break;
+			case FYPCF_DEFAULT_VERSION_1_2:
+				parse_flags |= FYOPPF_MODE_YAML_1_2;
+				break;
+			case FYPCF_DEFAULT_VERSION_1_3:
+				parse_flags |= FYOPPF_MODE_YAML_1_3;
+				break;
+			}
+			break;
+		case FYPCF_JSON_FORCE:
+			parse_flags |= FYOPPF_MODE_JSON;
+			break;
+		}
+
+		if (gcfg->collect_diag)
+			parse_flags |= FYOPPF_COLLECT_DIAG;
+
+		if (gcfg->keep_comments) {
+			parse_flags |= FYOPPF_KEEP_COMMENTS;
+			emit_flags |= FYOPEF_OUTPUT_COMMENTS;
+		}
+
+		if (gcfg->keep_style)
+			parse_flags |= FYOPPF_KEEP_STYLE;
+
+		if (gcfg->create_markers)
+			parse_flags |= FYOPPF_CREATE_MARKERS;
+
+		if (!strcmp(filename, "-"))
+			v = fy_parse(gb, fy_invalid,
+				     parse_flags | FYOPPF_INPUT_TYPE_STDIN, NULL);
+		else
+			v = fy_parse_file(gb,
+					  parse_flags, filename);
+
+		if (fy_generic_is_invalid(v)) {
+			had_error = true;
+			break;
+		}
+
+		/* we don't support arbitrary indents */
+		switch (gcfg->emit_cfg_flags & (FYECF_INDENT_MASK << FYECF_INDENT_SHIFT)) {
+		case FYECF_INDENT_DEFAULT:
+			emit_flags |= FYOPEF_INDENT_DEFAULT;
+			break;
+		case FYECF_INDENT_1:
+			emit_flags |= FYOPEF_INDENT_1;
+			break;
+		case FYECF_INDENT_2:
+			emit_flags |= FYOPEF_INDENT_2;
+			break;
+		case FYECF_INDENT_3:
+			emit_flags |= FYOPEF_INDENT_3;
+			break;
+		case FYECF_INDENT_4:
+		case FYECF_INDENT_5:
+			emit_flags |= FYOPEF_INDENT_4;
+			break;
+		case FYECF_INDENT_6:
+		case FYECF_INDENT_7:
+			emit_flags |= FYOPEF_INDENT_6;
+			break;
+		default:
+		case FYECF_INDENT_8:
+			emit_flags |= FYOPEF_INDENT_8;
+			break;
+		}
+
+		/* we don't support arbitrary widths */
+		switch (gcfg->emit_cfg_flags & (FYECF_WIDTH_MASK << FYECF_WIDTH_SHIFT)) {
+		default:
+			emit_flags |= FYOPEF_WIDTH_DEFAULT;
+			break;
+		case FYECF_WIDTH_80:
+			emit_flags |= FYOPEF_WIDTH_80;
+			break;
+		case FYECF_WIDTH_132:
+			emit_flags |= FYOPEF_WIDTH_132;
+			break;
+		case FYECF_WIDTH_INF:
+			emit_flags |= FYOPEF_WIDTH_INF;
+			break;
+		}
+
+		/* XXX must parse input */
+		emit_flags |= FYOPEF_MODE_AUTO;
+
+		/* we don't support arbitrary modes/styles */
+		switch (gcfg->emit_cfg_flags & (FYECF_MODE_MASK << FYECF_MODE_SHIFT)) {
+		case FYECF_MODE_ORIGINAL:
+		default:
+			emit_flags |= FYOPEF_STYLE_DEFAULT;
+			break;
+		case FYECF_MODE_BLOCK:
+			emit_flags |= FYOPEF_STYLE_BLOCK;
+			break;
+		case FYECF_MODE_FLOW:
+			emit_flags |= FYOPEF_STYLE_FLOW;
+			break;
+		case FYECF_MODE_PRETTY:
+			emit_flags |= FYOPEF_STYLE_PRETTY;
+			break;
+		case FYECF_MODE_FLOW_COMPACT:
+			emit_flags |= FYOPEF_STYLE_COMPACT;
+			break;
+		case FYECF_MODE_FLOW_ONELINE:
+			emit_flags |= FYOPEF_STYLE_ONELINE;
+			break;
+		}
+
+		switch (gcfg->emit_xcfg_flags & (FYEXCF_COLOR_MASK << FYEXCF_COLOR_SHIFT)) {
+		case FYEXCF_COLOR_AUTO:
+			emit_flags |= FYOPEF_COLOR_AUTO;
+			break;
+		case FYEXCF_COLOR_NONE:
+			emit_flags |= FYOPEF_COLOR_NONE;
+			break;
+		case FYEXCF_COLOR_FORCE:
+			emit_flags |= FYOPEF_COLOR_FORCE;
+			break;
+		}
+
+		if (gcfg->emit_cfg_flags & FYECF_NO_ENDING_NEWLINE)
+			emit_flags |= FYOPEF_NO_ENDING_NEWLINE;
+
+		if (!gcfg->null_output) {
+
+			if (!gcfg->testsuite && !gcfg->parse_dump) {
+
+				if (!gcfg->dump_primitives)
+					fy_emit(gb, v, emit_flags | FYOPEF_OUTPUT_TYPE_STDOUT, NULL);
+				else
+					fy_generic_dump_primitive(stdout, 0, v);
+			} else {
+				/* Create iterator */
+				memset(&cfg, 0, sizeof(cfg));
+				cfg.flags = FYGICF_WANT_STREAM_DOCUMENT_BODY_EVENTS |
+					    FYGICF_HAS_FULL_DIRECTORY;
+				cfg.vdir = v;
+				fygi = fy_generic_iterator_create_cfg(&cfg);
+				if (!fygi)
+					goto err_out;
+
+				while ((fye = fy_generic_iterator_generate_next(fygi)) != NULL) {
+					if (gcfg->testsuite)
+						dump_testsuite_event(fye, dump_flags);
+					else if (gcfg->parse_dump)
+						dump_parse_event(fye, !!(dump_flags & DTEF_COLORIZE));
+					fy_generic_iterator_event_free(fygi, fye);
+				}
+
+				fy_generic_iterator_destroy(fygi);
+			}
+
+		}
+
+	} while (++i < argc);
+
+	if (had_error) {
+		fy_generic vdiag = fy_generic_get_diag(v);
+		fy_generic_emit_default(vdiag);
+	}
+
+	rc = !had_error ? 0 : -1;
+out:
+	fy_generic_builder_destroy(gb);
+	fy_allocator_destroy(allocator);
+
+	return rc;
+
+err_out:
+	rc = -1;
+	goto out;
+}
+
+#endif /* HAVE_GENERIC */
+
 int main(int argc, char *argv[])
 {
 	struct fy_parse_cfg cfg = {
@@ -1215,6 +1678,7 @@ int main(int argc, char *argv[])
 	bool dump_pathexpr = false;
 	bool noexec = false;
 	bool null_output = false;
+	bool dry_run = false;
 	bool stdin_input;
 	void *res_iter;
 	bool disable_flow_markers = DISABLE_FLOW_MARKERS_DEFAULT;
@@ -1231,6 +1695,32 @@ int main(int argc, char *argv[])
 	/* b3sum */
 	int opti;
 	struct b3sum_config b3cfg = default_b3sum_cfg;
+#ifdef HAVE_GENERIC
+	/* generic */
+	struct generic_config gcfg = default_generic_cfg;
+	bool dedup = DEDUP_DEFAULT;
+	bool dump_primitives = false;
+	bool create_markers = false;
+	bool pyyaml_compat = false;
+	bool keep_style = false;
+#endif
+#ifdef HAVE_REFLECTION
+	/* reflection */
+	struct fy_reflection *rfl = NULL;
+	const char *cflags = "";
+	const char *import_blob = NULL;
+	const char *generate_blob = NULL;
+	bool generate_c = false, no_prune_system = false, packed_roundtrip = false;
+	const char *type_include = NULL, *type_exclude = NULL;
+	const char *import_c_file = NULL;
+	const char *entry_type = NULL;
+	const char *entry_meta = NULL;
+	struct fy_type_context_cfg ctx_cfg = { 0 };
+	struct fy_type_context *ctx = NULL;
+	void *rd_data = NULL;
+	bool emitted_ss;
+#endif
+
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -1309,6 +1799,16 @@ int main(int argc, char *argv[])
 		tool_mode = OPT_YAML_VERSION_DUMP;
 	else if (!strcmp(progname, "fy-b3sum"))
 		tool_mode = OPT_B3SUM;
+#ifdef HAVE_REFLECTION
+	else if (!strcmp(progname, "fy-reflect"))
+		tool_mode = OPT_REFLECT;
+#endif
+#ifdef HAVE_GENERIC
+	else if (!strcmp(progname, "fy-generic"))
+		tool_mode = OPT_GENERIC;
+	else if (!strcmp(progname, "fy-generic-testsuite"))
+		tool_mode = OPT_GENERIC_TESTSUITE;
+#endif
 	else
 		tool_mode = OPT_TOOL;
 
@@ -1481,6 +1981,14 @@ int main(int argc, char *argv[])
 		case OPT_COMPOSE:
 		case OPT_YAML_VERSION_DUMP:
 		case OPT_B3SUM:
+#ifdef HAVE_REFLECTION
+		case OPT_REFLECT:
+#endif
+#ifdef HAVE_GENERIC
+		case OPT_GENERIC:
+		case OPT_GENERIC_TESTSUITE:
+		case OPT_GENERIC_PARSE_DUMP:
+#endif
 			tool_mode = opt;
 			break;
 		case OPT_STRIP_LABELS:
@@ -1594,6 +2102,53 @@ int main(int argc, char *argv[])
 		case OPT_TSV_FORMAT:
 			tsv_format = true;
 			break;
+#ifdef HAVE_REFLECTION
+		case OPT_GENERATE_BLOB:
+			generate_blob = optarg;
+			break;
+		case OPT_IMPORT_BLOB:
+			import_blob = optarg;
+			break;
+		case OPT_GENERATE_C:
+			generate_c = true;
+			break;
+		case OPT_NO_PRUNE_SYSTEM:
+			no_prune_system = true;
+			break;
+		case OPT_CFLAGS:
+			cflags = optarg;
+			break;
+		case OPT_TYPE_INCLUDE:
+			type_include = optarg;
+			break;
+		case OPT_TYPE_EXCLUDE:
+			type_exclude = optarg;
+			break;
+		case OPT_IMPORT_C_FILE:
+			import_c_file = optarg;
+			break;
+		case OPT_ENTRY_TYPE:
+			entry_type = optarg;
+			break;
+		case OPT_ENTRY_META:
+			entry_meta = optarg;
+			break;
+		case OPT_PACKED_ROUNDTRIP:
+			packed_roundtrip = true;
+			break;
+		case OPT_DRY_RUN:
+			dry_run = true;
+			break;
+		case OPT_DUMP_REFLECTION:
+			ctx_cfg.flags |= FYTCCF_DUMP_REFLECTION | FYTCCF_DUMP_TYPE_SYSTEM;
+			break;
+		case OPT_DEBUG_REFLECTION:
+			ctx_cfg.flags |= FYTCCF_DEBUG;
+			break;
+		case OPT_STRICT_ANNOTATIONS:
+			ctx_cfg.flags |= FYTCCF_STRICT_ANNOTATIONS;
+			break;
+#endif
 
 		case OPT_DERIVE_KEY:
 			b3cfg.derive_key = true;
@@ -1661,6 +2216,31 @@ int main(int argc, char *argv[])
 			b3cfg.mmap_max_chunk = (size_t)opti;
 			break;
 
+#ifdef HAVE_GENERIC
+		case OPT_DEDUP:
+			dedup = true;
+			break;
+
+		case OPT_NO_DEDUP:
+			dedup = false;
+			break;
+
+		case OPT_DUMP_PRIMITIVES:
+			dump_primitives = true;
+			break;
+
+		case OPT_CREATE_MARKERS:
+			create_markers = true;
+			break;
+
+		case OPT_PYYAML_COMPAT:
+			pyyaml_compat = true;
+			break;
+
+		case OPT_KEEP_STYLE:
+			keep_style = true;
+			break;
+#endif /* HAVE_GENERIC */
 
 		case 'h' :
 		default:
@@ -2259,12 +2839,12 @@ int main(int argc, char *argv[])
 
 			if (tool_mode == OPT_SCAN_DUMP) {
 				while ((fyt = fy_scan(fyp)) != NULL) {
-					dump_scan_token(fyp, fyt, dcfg.colorize);
+					dump_scan_token(fyt, dcfg.colorize);
 					fy_scan_token_free(fyp, fyt);
 				}
 			} else {
 				while ((fyev = fy_parser_parse(fyp)) != NULL) {
-					dump_parse_event(fyp, fyev, dcfg.colorize);
+					dump_parse_event(fyev, dcfg.colorize);
 					fy_parser_event_free(fyp, fyev);
 				}
 			}
@@ -2306,11 +2886,198 @@ int main(int argc, char *argv[])
 
 		break;
 
+#ifdef HAVE_REFLECTION
+	case OPT_REFLECT:
+		rfl = NULL;
+		if (import_blob) {
+			rfl = fy_reflection_from_packed_blob_file(import_blob, diag);
+			if (!rfl) {
+				fprintf(stderr, "unable to get reflection from blob file %s\n", import_blob);
+				goto cleanup;
+			}
+
+		} else if (import_c_file) {
+			file = import_c_file;
+			rfl = fy_reflection_from_c_file_with_cflags(file, cflags, true, true, diag);
+			if (!rfl) {
+				fprintf(stderr, "unable to perform reflection from file %s\n", file);
+				goto cleanup;
+			}
+		} else {
+			rfl = fy_reflection_from_null(diag);
+			if (!rfl) {
+				fprintf(stderr, "unable to get null reflection\n");
+				goto cleanup;
+			}
+		}
+
+		if (!rfl) {
+			fprintf(stderr, "No reflection; provide either --import-blob or --import-c-file option\n");
+			goto cleanup;
+		}
+
+		/* prune all non referenced */
+		if (!no_prune_system)
+			fy_reflection_prune_system(rfl);
+
+		if (type_include || type_exclude) {
+			rc = fy_reflection_type_filter(rfl, type_include, type_exclude);
+			if (rc)
+				goto cleanup;
+		}
+
+		if (packed_roundtrip) {
+			void *blob;
+			size_t blob_size;
+			struct fy_reflection *rfl_packed;
+			bool eq;
+
+			blob = fy_reflection_to_packed_blob(rfl, &blob_size, true, false);
+			assert(blob);
+
+			rfl_packed = fy_reflection_from_packed_blob(blob, blob_size, diag);
+			assert(rfl_packed);
+
+			eq = fy_reflection_equal(rfl, rfl_packed);
+
+			if (!eq) {
+				fprintf(stderr, ">>>> REFLECTION A\n");
+				fy_reflection_dump(rfl, false, false);
+				fprintf(stderr, ">>>> REFLECTION B\n");
+				fy_reflection_dump(rfl_packed, false, false);
+			}
+
+			fy_reflection_destroy(rfl_packed);
+			free(blob);
+
+			if (eq)
+				fprintf(stderr, "reflections are identical\n");
+			else {
+				fprintf(stderr, "reflections are NOT identical\n");
+				goto cleanup;
+			}
+
+		}
+
+		if (generate_c) {
+			rc = fy_reflection_generate_c(rfl, FYCGF_INDENT_TAB | FYCGF_COMMENT_YAML, stdout);
+			if (rc < 0) {
+				fprintf(stderr, "unable to generate c to stdout\n");
+				goto cleanup;
+			}
+		}
+
+		if (!dry_run) {
+			if (!entry_type) {
+				fprintf(stderr, "No entry point type; supply an --entry-type\n");
+				goto cleanup;
+			}
+
+			if (optind >= argc) {
+				fprintf(stderr, "missing yaml file to dump\n");
+				goto cleanup;
+			}
+
+			for (i = optind; i < argc; i++) {
+				rc = set_parser_input(fyp, argv[i], false);
+				if (rc) {
+					fprintf(stderr, "failed to set parser input to '%s' for dump\n", argv[i]);
+					goto cleanup;
+				}
+			}
+
+			ctx_cfg.rfl = rfl;
+			ctx_cfg.entry_type = entry_type;
+			ctx_cfg.entry_meta = entry_meta;
+			ctx_cfg.diag = diag;
+			ctx = fy_type_context_create(&ctx_cfg);
+			if (!ctx) {
+				fprintf(stderr, "fy_type_context_create() failed!\n");
+				goto cleanup;
+			}
+
+			emitted_ss = false;
+
+			while ((rc = fy_type_context_parse(ctx, fyp, &rd_data)) == 0) {
+
+				rc = fy_type_context_emit(ctx, emit, rd_data,
+						FYTCEF_DS | FYTCEF_DE | (!emitted_ss ? FYTCEF_SS : 0));
+
+				fy_type_context_free_data(ctx, rd_data);
+				rd_data = NULL;
+
+				if (rc) {
+					fprintf(stderr, "fy_type_context_emit() failed\n");
+					goto cleanup;
+				}
+				emitted_ss = true;
+			}
+
+			if (emitted_ss) {
+				rc = fy_type_context_emit(ctx, emit, NULL, FYTCEF_SE);
+				if (rc) {
+					fprintf(stderr, "fy_type_context_emit() failed for stream end\n");
+					goto cleanup;
+				}
+			}
+
+			if (rc < 0) {
+				fprintf(stderr, "fy_type_context_parse() failed\n");
+				goto cleanup;
+			}
+		}
+
+		if (generate_blob) {
+			rc = fy_reflection_to_packed_blob_file(rfl, generate_blob);
+			if (rc) {
+				fprintf(stderr, "unable to generate blob to file %s\n", generate_blob);
+				goto cleanup;
+			}
+		}
+
+		/* cleanup will take care of rfl cleanup */
+		break;
+#endif /* HAVE_REFLECTION */
+
+#ifdef HAVE_GENERIC
+	case OPT_GENERIC:
+	case OPT_GENERIC_TESTSUITE:
+	case OPT_GENERIC_PARSE_DUMP:
+		gcfg.dedup = dedup;
+		gcfg.null_output = null_output;
+		gcfg.dump_primitives = dump_primitives;
+		gcfg.create_markers = create_markers;
+		gcfg.pyyaml_compat = pyyaml_compat;
+		gcfg.emit_cfg_flags = emit_flags | FYECF_INDENT(indent);
+		gcfg.emit_xcfg_flags = emit_xflags;
+		gcfg.parse_cfg_flags = cfg.flags;
+		gcfg.testsuite = tool_mode == OPT_GENERIC_TESTSUITE;
+		gcfg.parse_dump = tool_mode == OPT_GENERIC_PARSE_DUMP;
+		gcfg.diag = diag;
+		gcfg.collect_diag = collect_errors;
+		gcfg.keep_comments = !!(cfg.flags & FYPCF_PARSE_COMMENTS);
+		gcfg.keep_style = keep_style;
+		rc = do_generic(argc, argv, optind, &gcfg);
+		if (rc == 1) {
+			/* display usage */
+			goto err_out_usage;
+		}
+		exitcode = !rc ? EXIT_SUCCESS : EXIT_FAILURE;
+		goto cleanup;
+#endif /* HAVE_GENERIC */
 
 	}
 	exitcode = EXIT_SUCCESS;
 
 cleanup:
+#ifdef HAVE_REFLECTION
+	if (ctx)
+		fy_type_context_destroy(ctx);
+
+	if (rfl)
+		fy_reflection_destroy(rfl);
+#endif
+
 	if (fypx)
 		fy_path_exec_destroy(fypx);
 

@@ -24,7 +24,7 @@ Description
 -----------
 
 :program:`fy-tool` is the libfyaml command-line front-end for parsing,
-rewriting, querying, joining, testing and hashing YAML and
+rewriting, querying, joining, testing, reflecting on, and hashing YAML and
 JSON data.
 
 The executable changes behaviour either by the invoked program name
@@ -344,6 +344,102 @@ Options
 .. option:: --mmap-max-chunk N
 
    Set the maximum chunk size used for memory-mapped hashing input.
+
+.. rubric:: Reflection options
+
+.. option:: --reflect
+
+   Enable reflection mode.
+
+.. option:: --generate-c
+
+   Generate C definitions from reflection input.
+
+.. option:: --generate-blob BLOB
+
+   Generate a packed reflection blob and write it to ``BLOB``.
+
+.. option:: --import-blob BLOB
+
+   Import reflection metadata from ``BLOB``.
+
+.. option:: --import-c-file FILE
+
+   Import reflection metadata from ``FILE``.
+
+.. option:: --cflags FLAGS
+
+   Pass compiler flags to reflection imports of C source files.
+
+.. option:: --entry-type TYPE
+
+   Select the reflection entry-point type.
+
+.. option:: --packed-roundtrip
+
+   Round-trip reflection data through the packed representation.
+
+.. option:: --no-prune-system
+
+   Keep system types in the reflection database.
+
+.. option:: --type-include REGEX
+
+   Include only reflected types matching ``REGEX``.
+
+.. option:: --type-exclude REGEX
+
+   Exclude reflected types matching ``REGEX``.
+
+.. option:: --dump-reflection
+
+   Dump reflection structures for debugging.
+
+.. option:: --debug-reflection
+
+   Enable verbose reflection debug output.
+
+.. rubric:: Generic options
+
+.. option:: --generic
+
+   Enable generic data-structure dumping mode.
+
+.. option:: --generic-testsuite
+
+   Enable generic testsuite mode.
+
+.. option:: --builder-policy
+
+   Select the generic builder policy.
+
+.. option:: --generic-parse-dump
+
+   Parse and dump using the generic layer.
+
+.. option:: --dedup
+
+   Enable generic deduplication.
+
+.. option:: --no-dedup
+
+   Disable generic deduplication.
+
+.. option:: --dump-primitives
+
+   Dump generic primitive values explicitly.
+
+.. option:: --create-markers
+
+   Create source markers in generated generic data.
+
+.. option:: --pyyaml-compat
+
+   Enable PyYAML compatibility mode.
+
+.. option:: --keep-style
+
+   Preserve style information in generic data.
 
 .. rubric:: Modes
 

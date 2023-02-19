@@ -1,10 +1,11 @@
-# libfyaml Examples
+# libfyaml examples
 
-This directory contains practical examples demonstrating various features of libfyaml.
+This directory now covers both the long-standing core APIs and the 1.0-alpha1
+feature set built around generics and reflection.
 
-## Building the Examples
+## Building
 
-### Using CMake (Recommended)
+### Using CMake
 
 ```bash
 cd examples
@@ -13,269 +14,192 @@ cmake ..
 cmake --build .
 ```
 
-The compiled examples will be in the `build/` directory.
-
-### Using Make
+### Using pkg-config manually
 
 ```bash
-cd examples
-make
+gcc -std=gnu2x -o generic-literals generic-literals.c \
+    $(pkg-config --cflags --libs libfyaml)
 ```
 
-The compiled examples will be in the current directory.
+When examples are built against the exported CMake package, reflection examples
+are enabled according to the features present in the installed libfyaml build.
 
-### Manual Compilation
+## Core examples
 
-```bash
-gcc -o quick-start quick-start.c $(pkg-config --cflags --libs libfyaml)
-gcc -o basic-parsing basic-parsing.c $(pkg-config --cflags --libs libfyaml)
-# ... and so on for other examples
-```
+### `intro-core-update.c`
 
-## Examples Overview
+Small core-library example used by the documentation introduction:
 
-### 1. quick-start.c
+* parse `intro-config.yaml`
+* update `/port` from `80` to `8080`
+* emit the updated document
 
-Example showing:
-- Parsing YAML from a file
-- Extracting values using `fy_document_scanf()` (path-based queries)
-- Modifying the document with `fy_document_insert_at()`
-- Emitting the updated YAML
+### `quick-start.c`
 
-**Usage**:
-```bash
-./quick-start [config.yaml]
-```
+Document API walkthrough for parsing, querying, updating, and emitting YAML.
 
-**Required YAML structure** (for config.yaml):
-```yaml
-server:
-  host: localhost
-  port: 8080
-```
+### `basic-parsing.c`
 
----
+Basic YAML parsing with multiple output modes.
 
-### 2. basic-parsing.c
+### `path-queries.c`
 
-Basic YAML parsing and different output formats:
-- Parse YAML from file
-- Emit as compact flow format
-- Emit as standard block YAML
-- Emit as JSON
+Path-based lookups with the document API.
 
-**Usage**:
-```bash
-./basic-parsing [file.yaml]
-```
+### `document-manipulation.c`
 
-Works with any valid YAML file.
+Document updates and sorted emission.
 
----
+### `event-streaming.c`
 
-### 3. path-queries.c
+Low-level event API example for memory-efficient streaming.
 
-Query YAML documents using path expressions:
-- Extract multiple values with `fy_document_scanf()`
-- Query individual nodes with `fy_node_by_path()`
-- Compare node values with strings
-- Handle missing paths gracefully
+### `build-from-scratch.c`
 
-**Usage**:
-```bash
-./path-queries
-```
+Construct a document tree programmatically.
 
-This example uses inline YAML, so no external file is needed.
+## Generic runtime examples
 
----
+### `intro-generic-update.c`
 
-### 4. document-manipulation.c
+Small generic example used by the documentation introduction:
 
-Example of document manipulation:
-- Read existing values from YAML
-- Update values (replace invoice number)
-- Add new fields (spouse, delivery address)
-- Emit with sorted keys
+* parse `intro-config.yaml`
+* update `"port"` from `80` to `8080`
+* emit the updated value tree
 
-**Usage**:
-```bash
-./document-manipulation [invoice.yaml]
-```
+### `generic-literals.c`
 
-**Expected YAML structure** (for invoice.yaml):
-```yaml
-invoice: 34843
-date: 2001-01-23
-bill-to:
-  given: Chris
-  family: Dumars
-  address:
-    lines: |
-      458 Walkman Dr.
-      Suite #292
-```
+Shows the "Python-like data model in C" story directly:
 
-If no file is provided, the example uses built-in default data.
+* `fy_mapping()` and `fy_sequence()` literals
+* stack-local versus builder-backed values
+* typed access with `fy_get()` and `fy_len()`
 
----
+### `generic-transform.c`
 
-### 5. event-streaming.c
+A value-oriented workflow using the generic API:
 
-Demonstrates the low-level event-based API:
-- Create parser and set input
-- Process events one by one
-- Handle different event types (scalars, mappings, sequences)
-- Memory-efficient parsing for large files
+* parse YAML into generics
+* select a nested sequence
+* filter, map, and reduce values
+* install derived values back into the root mapping
 
-**Usage**:
-```bash
-./event-streaming [file.yaml]
-```
+### `generic-lambda-capture.c`
 
-This is the most memory-efficient way to parse YAML, suitable for very large files.
+Focused lambda example for the generic API:
 
----
+* use `fy_filter_lambda()`, `fy_map_lambda()`, and `fy_reduce_lambda()`
+* reference local variables such as thresholds, prefixes, and bonuses directly
+  inside the lambda expressions
+* emit the captured values alongside the transformed result
 
-### 6. build-from-scratch.c
+### `generic-parallel-transform.c`
 
-Create YAML documents from scratch:
-- Create empty document
-- Build complex structures using `fy_node_buildf()` with printf-style formatting
-- Add fields programmatically
-- Emit as both JSON and YAML
+The same value-oriented workflow, but with an explicit thread pool:
 
-**Usage**:
-```bash
-./build-from-scratch
-```
+* create a `fy_thread_pool`
+* use `fy_filter_lambda()`, `fy_map_lambda()`, `fy_reduce_lambda()`
+* use `fy_pfilter_lambda()`, `fy_pmap_lambda()`, and `fy_preduce_lambda()`
+* compare serial and parallel phase timings over the same immutable value tree
+* defaults to 32768 items and accepts `item-count` and `thread-count`
+  command-line arguments
 
-No input file needed - generates a complete configuration document.
+On GCC, the lambda forms use nested functions. The build checks for heap
+trampoline support and enables it automatically when available, which avoids
+the executable-stack warning on newer GCC releases. On Clang, the lambda forms
+use Blocks when Blocks support is enabled.
 
----
+### `generic-roundtrip.c`
 
-## Sample YAML Files
+Shows that schemas affect scalar typing:
 
-Sample YAML files are provided for testing:
+* parse the same document under YAML 1.2 and YAML 1.1 PyYAML-compatible rules
+* inspect the resulting generic types
+* emit normalized output
 
-- **config.yaml** - Simple server configuration
-- **invoice.yaml** - Invoice document for manipulation example
+### `generic-adoption-bridge.c`
 
-Create these files in the examples directory, or the programs will use sensible defaults.
+Bridges the Python binding and the C generic runtime:
 
-### Sample config.yaml
+* build the same value tree from literals and from parsed YAML
+* compare the results
+* show the same dict/list/scalar shape on the C side
 
-```yaml
-server:
-  host: localhost
-  port: 8080
-  ssl: true
-  max_connections: 100
+## Reflection examples
 
-database:
-  host: db.example.com
-  port: 5432
-  name: production_db
+These use the sample schemas in `reflection-config.h` and
+`reflection-intro-config.h`, and the corresponding YAML inputs in
+`reflection-config.yaml` and `intro-config.yaml`.
 
-logging:
-  level: info
-  file: /var/log/app.log
-```
+### `intro-reflection-update.c`
 
-### Sample invoice.yaml
+Small reflection example used by the documentation introduction:
 
-```yaml
-invoice: 34843
-date: 2001-01-23
-bill-to:
-  given: Chris
-  family: Dumars
-  address:
-    lines: |
-      458 Walkman Dr.
-      Suite #292
-    city: Royal Oak
-    state: MI
-    postal: 48046
-ship-to:
-  given: Chris
-  family: Dumars
-product:
-  - sku: BL394D
-    quantity: 4
-    description: Basketball
-    price: 450.00
-  - sku: BL4438H
-    quantity: 1
-    description: Super Hoop
-    price: 2392.00
-tax: 251.42
-total: 4443.52
-comments: >
-  Late afternoon is best.
-  Backup contact is Nancy
-  Billsmer @ 338-4338.
-```
+* reflect `struct server_config` from `reflection-intro-config.h`
+* parse `intro-config.yaml` into typed C data
+* update `cfg->port` from `80` to `8080`
+* emit the updated typed result
 
-## API Reference
+This example is only built when libfyaml was built with libclang support.
 
-For complete API documentation, visit: https://pantoniou.github.io/libfyaml/
+### `reflection-packed.c`
 
-## Common Patterns
+Runtime typed parse/emit using a packed reflection blob.
 
-### Error Handling
+Typical flow:
 
-All examples demonstrate proper error handling:
-```c
-struct fy_document *fyd = fy_document_build_from_file(NULL, "file.yaml");
-if (!fyd) {
-    fprintf(stderr, "Failed to parse YAML\n");
-    return EXIT_FAILURE;
-}
+1. generate a blob with `reflection-export-packed`
+2. load the blob with `reflection-packed`
+3. parse YAML into `struct service_config`
 
-// ... use document ...
+### `reflection-libclang.c`
 
-fy_document_destroy(fyd);  // Always clean up
-```
+Direct libclang-backed authoring path:
 
-### Path-Based Queries
+* load reflection from `reflection-config.h`
+* create a `fy_type_context`
+* parse YAML directly into native C data
+* emit the typed data back to YAML
 
-Extract multiple values efficiently:
-```c
-int count = fy_document_scanf(fyd,
-    "/path1 %s "
-    "/path2 %d",
-    string_var, &int_var);
+This example is only built when libfyaml was built with libclang support.
 
-if (count != 2) {
-    // Handle error
-}
-```
+### `reflection-export-packed.c`
 
-### Document Modification
+Exports packed reflection metadata from `reflection-config.h` so it can be
+loaded later without runtime libclang dependency.
 
-Add or update fields:
-```c
-fy_document_insert_at(fyd, "/parent/path", FY_NT,
-    fy_node_buildf(fyd, "key: value"));
-```
+This example is only built when libfyaml was built with libclang support.
 
-### Output Formatting
+## Reflection sample data
 
-Choose output mode based on needs:
-```c
-// Compact JSON
-fy_emit_document_to_fp(fyd, FYECF_MODE_JSON, stdout);
+### `reflection-config.h`
 
-// Pretty YAML with sorted keys
-fy_emit_document_to_fp(fyd, FYECF_MODE_BLOCK | FYECF_SORT_KEYS, stdout);
+Annotated schema used by the reflection examples.
 
-// One-line flow format
-fy_emit_document_to_fp(fyd, FYECF_MODE_FLOW_ONELINE, stdout);
-```
+### `reflection-config.yaml`
 
-## License
+Sample YAML that maps into `struct service_config`.
 
-All examples are released under the MIT License, same as libfyaml.
+### `reflection-intro-config.h`
 
-Copyright (c) 2019-2025 Pantelis Antoniou <pantelis.antoniou@konsulko.com>
+Simple typed schema used by `intro-reflection-update.c`.
+
+### `intro-config.yaml`
+
+Small `host` / `port` input used by the introduction examples.
+
+## Suggested reading order
+
+1. `intro-core-update.c`
+2. `intro-generic-update.c`
+3. `generic-literals.c`
+4. `generic-transform.c`
+5. `generic-lambda-capture.c`
+6. `generic-parallel-transform.c`
+7. `generic-roundtrip.c`
+8. `generic-adoption-bridge.c`
+9. `intro-reflection-update.c`
+10. `reflection-libclang.c`
+11. `reflection-export-packed.c`
+12. `reflection-packed.c`

@@ -27,18 +27,30 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "LIBFYAML" "3" "Mar 15, 2026" "" "libfyaml"
+.TH "LIBFYAML" "3" "Mar 16, 2026" "1.0.0" "libfyaml"
 .SH NAME
 libfyaml \- libfyaml API overview
 .sp
 This section groups the public libfyaml API into smaller subsystem pages that
 work better both in HTML and as section\-3 manual pages.
 .SH SUBSYSTEM PAGES
+.SS Guides
+.INDENT 0.0
+.IP \(bu 2
+\fI\%Generics Guide\fP
+.IP \(bu 2
+\fI\%Reflection Guide\fP
+.UNINDENT
+.SS Reference
 .INDENT 0.0
 .IP \(bu 2
 \fI\%Core API\fP
 .IP \(bu 2
 \fI\%Miscellaneous API\fP
+.IP \(bu 2
+\fI\%Generic API\fP
+.IP \(bu 2
+\fI\%Reflection API\fP
 .UNINDENT
 .SH SEE ALSO
 .sp
@@ -50,6 +62,10 @@ traversal, document building, and composition.
 .IP \(bu 2
 \fBlibfyaml\-misc(3)\fP for utilities, allocators, threading, hashing,
 alignment, endianness, variable\-length size encoding, and atomics.
+.IP \(bu 2
+\fBlibfyaml\-generics(3)\fP for the generic runtime type system.
+.IP \(bu 2
+\fBlibfyaml\-reflection(3)\fP for reflection and meta\-type support.
 .UNINDENT
 .SH COPYRIGHT
 2019-2026, Pantelis Antoniou

@@ -1,0 +1,114 @@
+name: Python Wheels
+
+# The core libfyaml library supports Linux, macOS, the BSDs, and Windows.
+# This workflow covers the Python wheel matrix that is currently expected to be
+# reliable in CI: Linux and macOS. BSDs use source builds for now, and Windows
+# is not yet part of the Python wheel release path.
+
+on:
+  push:
+    branches:
+      - master
+      - stable
+    tags:
+      - "v*"
+    paths:
+      - ".github/workflows/python-wheels.yaml"
+      - "CMakeLists.txt"
+      - "cmake/**"
+      - "include/**"
+      - "src/**"
+      - "python-libfyaml/**"
+      - ".libtool-version"
+      - ".tarball-version"
+      - "build-aux/git-version-gen"
+  pull_request:
+    paths:
+      - ".github/workflows/python-wheels.yaml"
+      - "CMakeLists.txt"
+      - "cmake/**"
+      - "include/**"
+      - "src/**"
+      - "python-libfyaml/**"
+      - ".libtool-version"
+      - ".tarball-version"
+      - "build-aux/git-version-gen"
+  workflow_dispatch:
+
+jobs:
+  build_wheels:
+    name: Build Wheels (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - ubuntu-24.04
+          - macos-14
+          - macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v3.3.0
+        with:
+          package-dir: python-libfyaml
+          output-dir: wheelhouse
+        env:
+          CIBW_ARCHS_LINUX: x86_64
+          CIBW_ENVIRONMENT_LINUX: LIBFYAML_REPO_ROOT=/project
+          CIBW_ENVIRONMENT_MACOS: LIBFYAML_REPO_ROOT=${{ github.workspace }}
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
+
+  build_sdist:
+    name: Build Source Distribution
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build frontend
+        run: python -m pip install --upgrade build
+
+      - name: Build sdist
+        run: python -m build --sdist python-libfyaml
+
+      - name: Upload sdist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: python-libfyaml/dist/*.tar.gz
+
+  publish:
+    name: Publish To PyPI
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - build_wheels
+      - build_sdist
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+
+    environment:
+      name: pypi
+
+    steps:
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish distributions
+        uses: pypa/gh-action-pypi-publish@release/v1

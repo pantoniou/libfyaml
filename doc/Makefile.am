@@ -6,7 +6,9 @@ MANPAGES1 = $(BUILDDIR)/man/fy-tool.1
 MANPAGES3 = \
 	$(BUILDDIR)/man/libfyaml.3 \
 	$(BUILDDIR)/man/libfyaml-core.3 \
-	$(BUILDDIR)/man/libfyaml-misc.3
+	$(BUILDDIR)/man/libfyaml-misc.3 \
+	$(BUILDDIR)/man/libfyaml-generics.3 \
+	$(BUILDDIR)/man/libfyaml-reflection.3
 
 doc-%: 
 	srctree=@top_srcdir@ @SPHINX@ -M `echo $@ | sed -s 's/^doc-//g'` "@srcdir@" "$(BUILDDIR)"
@@ -21,7 +23,9 @@ MANPAGES1 = $(srcdir)/canned-man/fy-tool.1
 MANPAGES3 = \
 	$(srcdir)/canned-man/libfyaml.3 \
 	$(srcdir)/canned-man/libfyaml-core.3 \
-	$(srcdir)/canned-man/libfyaml-misc.3
+	$(srcdir)/canned-man/libfyaml-misc.3 \
+	$(srcdir)/canned-man/libfyaml-generics.3 \
+	$(srcdir)/canned-man/libfyaml-reflection.3
 
 endif
 
@@ -61,12 +65,18 @@ EXTRA_DIST = \
 	canned-man/libfyaml.3 \
 	canned-man/libfyaml-core.3 \
 	canned-man/libfyaml-misc.3 \
+	canned-man/libfyaml-generics.3 \
+	canned-man/libfyaml-reflection.3 \
 	canned-man/fy-tool.1 \
 	conf.py \
+	generics-guide.rst \
 	index.rst \
 	intro.rst \
 	libfyaml-core.rst \
+	libfyaml-generics.rst \
 	libfyaml-misc.rst \
+	libfyaml-reflection.rst \
 	libfyaml.rst \
+	reflection-guide.rst \
 	man/fy-tool.rst \
 	windows-support.txt

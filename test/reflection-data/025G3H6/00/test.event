@@ -1,0 +1,28 @@
++STR
++DOC
++MAP
+=VAL "values
++SEQ
+=VAL "101
+=VAL "102
+=VAL "103
+=VAL "104
+=VAL "105
+-SEQ
+=VAL "more_values
++SEQ
+=VAL "201
+=VAL "202
+-SEQ
+=VAL "bar
++MAP
+=VAL "values
++SEQ
+=VAL "301
+=VAL "302
+=VAL "303
+-SEQ
+-MAP
+-MAP
+-DOC
+-STR

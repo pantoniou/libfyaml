@@ -5,6 +5,109 @@ All notable changes to libfyaml will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-alpha1] - 2026-03-16
+
+This is the first alpha milestone toward a stable 1.0 release. The core YAML
+parsing and emission engine is unchanged and production-ready. The alpha tag
+applies to the two new subsystems introduced here: the generic runtime and the
+reflection layer.
+
+### New: Generic runtime (`fy_generic`)
+
+A compact, efficient runtime type system for representing arbitrary YAML and
+JSON values in C, bringing Python/Rust-like dynamically-typed data literals to
+C programs.
+
+**Core type**: `fy_generic` — a single machine word (64-bit or 32-bit) that
+encodes one of nine value types via pointer tagging:
+
+- Scalar: `null`, `bool`, `int`, `float`, `string`
+- Collection: `sequence`, `mapping`
+- YAML-specific: `indirect` (anchor/tag/style wrapper), `alias`
+
+Small values are stored inline with zero heap allocation: 61-bit signed
+integers, 7-byte strings, and 32-bit floats all fit in a single word.
+
+**Three API tiers** for different storage lifetimes:
+- *Stack-local* (`fy_mapping()`, `fy_sequence()`, `fy_value()`): values live for the enclosing function scope; C11 `_Generic` dispatch selects the right conversion from native C types automatically
+- *Low-level* (`fy_sequence_alloca()`, `fy_mapping_alloca()`): caller controls all allocation
+- *Builder* (`fy_gb_sequence()`, `fy_gb_mapping()`): allocator-backed values that survive beyond the current function
+
+**Functional operations**: map, filter, reduce in serial and parallel forms (`fy_pfilter_lambda()`, `fy_pmap_lambda()`, `fy_preduce_lambda()`) via a built-in thread pool.
+
+**Document bridge**: `fy_document_to_generic()` / `fy_generic_to_document()` convert between YAML document trees and generic values.
+
+**Thread safety**: generics are immutable; concurrent reads are safe without locking.
+
+### New: Reflection subsystem (`fy_reflection`)
+
+Schema-driven typed YAML ↔ C struct serdes driven by C type metadata.
+
+**Key types**: `fy_reflection` (type registry), `fy_type_info` (per-type descriptor), `fy_field_info` (per-field descriptor including offset, bitfield width, and YAML annotations).
+
+**YAML metadata annotations** in C source comments guide the mapping:
+
+```c
+struct users {
+    struct user *list;  // yaml: { counter: count }
+    int count;
+};
+```
+
+**Two backends**:
+- *Clang backend* (`--with-libclang`): parses C headers at runtime; no pre-processing step
+- *Packed backend*: a self-contained binary blob pre-generated at build time via `fy_reflection_export_packed()`; zero runtime libclang dependency for deployment
+
+Full C type system coverage: structs, unions, enums, typedefs, pointers, arrays, bitfields, anonymous types, qualifiers.
+
+### New: Python binding (`python-libfyaml/`)
+
+A Python package built directly on top of the generic runtime:
+
+- `FyGeneric` Python objects are lazy wrappers over C `fy_generic` values
+- Demonstrates the same dict/list/scalar data model as the C generics API
+- Shows how Python prototypes can migrate to C without changing the data model
+- Full test suite (`python-libfyaml/tests/`) and benchmark suite (`docs/benchmark-parse.py`)
+- API reference at `python-libfyaml/docs/API.md`
+
+### New: Documentation
+
+- `doc/generics-guide.rst` — value model, schemas, lifetimes, functional operations
+- `doc/reflection-guide.rst` — typed serdes, libclang authoring, packed blob workflow
+- `doc/libfyaml-generics.rst` — generics API reference
+- `doc/libfyaml-reflection.rst` — reflection API reference
+- Reorganized documentation index and introduction
+
+### New: Examples
+
+New examples in `examples/` covering the full alpha feature set:
+
+- `intro-generic-update.c` / `intro-reflection-update.c` — documentation introduction examples
+- `generic-literals.c` — Python-like data literals in C
+- `generic-transform.c` — parse, filter, map, reduce over generic values
+- `generic-lambda-capture.c` — lambdas with local variable capture
+- `generic-parallel-transform.c` — parallel filter/map/reduce with a thread pool
+- `generic-roundtrip.c` — schema-sensitive scalar typing (YAML 1.1 vs 1.2)
+- `generic-adoption-bridge.c` — C/Python data model parity demo
+- `reflection-libclang.c` / `reflection-packed.c` / `reflection-export-packed.c` — full reflection workflow
+
+See `examples/README.md` for the complete list and suggested reading order.
+
+### Fixed (since v0.9.6)
+
+- `fix`: Folded scalars no longer emit a spurious trailing blank line in original mode
+- `parse`: Fix undefined behaviour in `streaming_alias_collection_state()`
+- `utf8`: Guard against NULL pointer in `fy_utf8_split_posix()`
+- Fix C11 atomics detection and buggy macros for C++ compatibility
+- Fix 32-bit build: remove stray parameter from `fy_skip_size32()`
+
+### Statistics
+
+- 1198 files changed, 86 259 insertions since v0.9.6
+- Generic runtime: ~10 000-line public API header
+- Reflection subsystem: ~2 000-line public API header
+- Python binding: complete package with tests and benchmarks
+
 ## [0.9.6] - 2026-03-15
 
 ### Major: Public Header Split
@@ -440,6 +543,7 @@ Jose Luis Blanco-Claraco, Andrey Somov, Orange_233, Martin Diehl
 
 Initial public release with comprehensive YAML 1.2 support.
 
+[1.0.0-alpha1]: https://github.com/pantoniou/libfyaml/compare/v0.9.6...v1.0.0-alpha1
 [0.9.6]: https://github.com/pantoniou/libfyaml/compare/v0.9.5...v0.9.6
 [0.9.5]: https://github.com/pantoniou/libfyaml/compare/v0.9.4...v0.9.5
 [0.9.4]: https://github.com/pantoniou/libfyaml/compare/v0.9.3...v0.9.4
