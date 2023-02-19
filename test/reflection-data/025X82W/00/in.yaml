@@ -1,0 +1,10 @@
+v: 10000
+foo: this is foo
+iv:
+  - 10
+  - 12
+argv:
+  - fy-tool
+  - --dump
+  - x.yaml
+argv2: [ one, two, three ]

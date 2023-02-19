@@ -1,0 +1,1 @@
+Dynamic array: int* (int array, terminated by -1) { terminator: -1 } - seq contains terminator

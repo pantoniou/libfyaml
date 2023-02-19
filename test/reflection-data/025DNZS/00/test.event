@@ -1,0 +1,10 @@
++STR
++DOC
++MAP
+=VAL "text
+=VAL "this is text
+=VAL "more_text
+=VAL "this is more text
+-MAP
+-DOC
+-STR
