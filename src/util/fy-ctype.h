@@ -17,8 +17,6 @@
 #include <string.h>
 #include <assert.h>
 
-#include <libfyaml.h>
-
 #include "fy-utf8.h"
 
 enum fy_lb_mode {

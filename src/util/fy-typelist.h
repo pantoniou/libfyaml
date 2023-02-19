@@ -16,8 +16,6 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#include <libfyaml.h>
-
 #include "fy-list.h"
 
 /* declare type methods */

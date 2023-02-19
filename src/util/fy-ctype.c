@@ -10,7 +10,8 @@
 #include "config.h"
 #endif
 
-#include <libfyaml.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 #include "fy-ctype.h"
 

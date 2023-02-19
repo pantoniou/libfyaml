@@ -15,8 +15,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <assert.h>
-
-#include <libfyaml.h>
+#include <alloca.h>
 
 #include "fy-utils.h"
 

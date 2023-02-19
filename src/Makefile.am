@@ -6,31 +6,32 @@ AM_CFLAGS =
 lib_LTLIBRARIES = libfyaml.la
 libfyaml_la_SOURCES = \
         lib/fy-parse.c lib/fy-parse.h \
-	lib/fy-utf8.c lib/fy-utf8.h \
 	lib/fy-types.c lib/fy-types.h \
-	lib/fy-list.h \
-	lib/fy-typelist.h \
 	lib/fy-diag.c lib/fy-diag.h \
 	lib/fy-dump.c lib/fy-dump.h \
 	lib/fy-atom.c lib/fy-atom.h \
-	lib/fy-ctype.c lib/fy-ctype.h \
 	lib/fy-token.c lib/fy-token.h \
 	lib/fy-input.c lib/fy-input.h \
 	lib/fy-docstate.c lib/fy-docstate.h \
 	lib/fy-doc.c lib/fy-doc.h \
 	lib/fy-docbuilder.c lib/fy-docbuilder.h \
 	lib/fy-emit.c lib/fy-emit.h lib/fy-emit-accum.h \
-	lib/fy-utils.c lib/fy-utils.h \
 	lib/fy-event.h lib/fy-event.c \
-	xxhash/xxhash.c xxhash/xxhash.h \
 	lib/fy-accel.c lib/fy-accel.h \
 	lib/fy-walk.c lib/fy-walk.h \
 	lib/fy-path.c lib/fy-path.h \
-	lib/fy-composer.c lib/fy-composer.h
+	lib/fy-composer.c lib/fy-composer.h \
+	xxhash/xxhash.c xxhash/xxhash.h \
+	util/fy-list.h \
+	util/fy-typelist.h \
+	util/fy-ctype.c util/fy-ctype.h \
+	util/fy-utf8.c util/fy-utf8.h \
+	util/fy-utils.c util/fy-utils.h
 
 libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) \
-				       -I$(top_srcdir)/src/lib \
-				       -I$(top_srcdir)/src/xxhash
+		       -I$(top_srcdir)/src/lib \
+		       -I$(top_srcdir)/src/xxhash \
+		       -I$(top_srcdir)/src/util
 libfyaml_la_CFLAGS = $(AM_CFLAGS)
 libfyaml_la_LDFLAGS = $(AM_LDFLAGS) $(AM_LIBLDFLAGS) \
 		      -version $(LIBTOOL_VERSION)
@@ -51,7 +52,8 @@ libfyaml_parser_SOURCES = \
 libfyaml_parser_CPPFLAGS = $(AM_CPPFLAGS) \
 			   -I$(top_srcdir)/src/valgrind \
 			   -I$(top_srcdir)/src/lib \
-			   -I$(top_srcdir)/src/xxhash
+			   -I$(top_srcdir)/src/xxhash \
+			   -I$(top_srcdir)/src/util
 libfyaml_parser_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
 libfyaml_parser_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 

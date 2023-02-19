@@ -13,9 +13,12 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include <libfyaml.h>
-
 #include "fy-utf8.h"
+
+/* to avoid dragging in libfyaml.h */
+#ifndef FY_BIT
+#define FY_BIT(x) (1U << (x))
+#endif
 
 const int8_t fy_utf8_width_table[32] = {
 	1, 1, 1, 1, 1, 1, 1, 1,
