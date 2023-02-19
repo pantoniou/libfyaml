@@ -221,6 +221,74 @@ case "$test_suite" in
         fi
         ;;
 
+    testsuite-generic)
+        tst="test-suite-data/${test_id}"
+        desctxt=$(cat 2>/dev/null "$tst/===")
+
+        t_output=$(mktemp)
+        t_expected=$(mktemp)
+        t_output_stripped=$(mktemp)
+
+        res="not ok"
+
+        pass_yaml=0
+        ${TOP_BUILDDIR}/src/fy-tool --generic-testsuite "$tst/in.yaml" >"$t_output" 2>/dev/null
+        if [ $? -eq 0 ]; then
+            pass_yaml=1
+        fi
+
+        if [ -e "$tst/error" ]; then
+            # test is expected to fail
+            if [ $pass_yaml == "0" ]; then
+                res="ok"
+            else
+                res="not ok"
+            fi
+        else
+            # test is expected to pass
+            if [ $pass_yaml == "1" ]; then
+                # Strip formatting from expected output
+                ${TOP_SRCDIR}/scripts/strip-testsuite-formatting.sh "$tst/test.event" > "$t_expected"
+
+                # Strip formatting from actual generic output too
+                ${TOP_SRCDIR}/scripts/strip-testsuite-formatting.sh "$t_output" > "$t_output_stripped"
+
+                # Compare both stripped outputs
+                diff -u "$t_expected" "$t_output_stripped"
+                if [ $? -eq 0 ]; then
+                    res="ok"
+                else
+                    res="not ok"
+                fi
+            else
+                res="not ok"
+            fi
+        fi
+
+        rm -f "$t_output" "$t_expected" "$t_output_stripped"
+
+        # Check for xfails (expected failures)
+        # C4HZ: Hex value conversion (0xFFEEBB -> 16772795) - requires yaml1.2-failsafe schema
+        xfaillist="C4HZ"
+
+        directive=""
+        for xfail in $xfaillist; do
+            if [ "$test_id" == "$xfail" ]; then
+                directive=" # TODO: known failure."
+                break
+            fi
+        done
+
+        echo "$res 1 $test_id - $desctxt$directive"
+
+        # xfails should not cause test failure
+        if [ "$res" == "ok" ] || [ -n "$directive" ]; then
+            exit 0
+        else
+            exit 1
+        fi
+        ;;
+
     testsuite-evstream)
         tst="test-suite-data/${test_id}"
         desctxt=$(cat 2>/dev/null "$tst/===")
@@ -299,6 +367,72 @@ case "$test_suite" in
         esac
 
         echo "$res 1 - $tf"
+
+        if [ "$res" == "ok" ]; then
+            exit 0
+        else
+            exit 1
+        fi
+        ;;
+
+    testreflection)
+        tst="${SRCDIR}/reflection-data/${test_id}"
+        desctxt=$(cat 2>/dev/null "$tst/===")
+        def="$tst/definition.h"
+        meta="$tst/meta"
+        entry=$(cat 2>/dev/null "$tst/entry")
+        in_file="$tst/in.yaml"
+
+        t=$(mktemp)
+        t2=$(mktemp)
+
+        res="not ok"
+
+        meta_args=()
+        def_args=()
+        if [ -f "$def" ]; then
+            def_args=("--import-c-file" "$def")
+        fi
+        if [ -f "$meta" ]; then
+            metaval=$(cat "$meta" | head -n 1)
+            meta_args=("--entry-meta" "${metaval}")
+        fi
+
+        pass_yaml=0
+        ${TOP_BUILDDIR}/src/fy-tool --reflect "${def_args[@]}" "${meta_args[@]}" --entry-type "${entry}" "${in_file}" >"$t"
+        if [ $? -eq 0 ]; then
+            # generate test.event out of the file
+            ${TOP_BUILDDIR}/src/fy-tool --testsuite --disable-flow-markers --disable-doc-markers --disable-scalar-styles "$t" >"$t2"
+            if [ $? -eq 0 ]; then
+                pass_yaml=1
+            fi
+        fi
+
+        if [ -e "$tst/error" ]; then
+            # test is expected to fail
+            if [ $pass_yaml == "0" ]; then
+                res="ok"
+            else
+                res="not ok"
+            fi
+        else
+            # test is expected to pass
+            if [ $pass_yaml == "1" ]; then
+                diff -u "$tst/test.event" "$t2"
+                if [ $? -eq 0 ]; then
+                    res="ok"
+                else
+                    res="not ok"
+                fi
+            else
+                res="not ok"
+            fi
+        fi
+
+        rm -f "$t"
+	rm -f "$t2"
+
+        echo "$res 1 $test_id - $desctxt"
 
         if [ "$res" == "ok" ]; then
             exit 0

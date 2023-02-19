@@ -1,0 +1,20 @@
++STR
++DOC
++MAP
+=VAL "value0
+=VAL "0
+=VAL "value
+=VAL "101
+=VAL "pointers
++SEQ
+=VAL "10
+-SEQ
+=VAL "more_pointers
++SEQ
+=VAL "200
+-SEQ
+=VAL "value_x
+=VAL "101
+-MAP
+-DOC
+-STR

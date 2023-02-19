@@ -1,0 +1,32 @@
++STR
++DOC
+=VAL "0
+-DOC
++DOC
+=VAL "0
+-DOC
++DOC
+=VAL "1
+-DOC
++DOC
+=VAL "-1
+-DOC
++DOC
+=VAL "32767
+-DOC
++DOC
+=VAL "-32767
+-DOC
++DOC
+=VAL "1
+-DOC
++DOC
+=VAL "-1
+-DOC
++DOC
+=VAL "32767
+-DOC
++DOC
+=VAL "-32767
+-DOC
+-STR

@@ -17,9 +17,16 @@
 #include <getopt.h>
 #include <unistd.h>
 #include <limits.h>
+#include <inttypes.h>
+#include <stdarg.h>
 #include <ctype.h>
 #include <time.h>
-#include <inttypes.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <libfyaml.h>
 
@@ -30,10 +37,123 @@
 #include "fy-parse.h"
 #include "fy-walk.h"
 #include "fy-blob.h"
+#include "fy-generic.h"
+#include "fy-generic-decoder.h"
+#include "fy-generic-encoder.h"
+#include "fy-id.h"
+#include "fy-allocator.h"
+#include "fy-allocator-linear.h"
+#include "fy-allocator-malloc.h"
+#include "fy-allocator-mremap.h"
+#include "fy-allocator-dedup.h"
+#include "fy-allocator-auto.h"
 
 #include "fy-valgrind.h"
 
 #include "xxhash.h"
+
+#if 1
+static inline fy_generic checkout_items7(int x)
+{
+	struct fy_generic_builder *gb = NULL;
+
+	(void)gb;
+	fy_generic v1 = fy_to_generic(gb, x);
+	fy_generic v2 = fy_to_generic(x);
+
+	return fy_gb_internalize(gb, fy_sequence(v1, v2));
+}
+
+int checkout_items8(void)
+{
+	const fy_generic v = checkout_items7(10);
+	return fy_cast(v, (int)0);
+}
+
+static inline fy_generic checkout_items9(struct fy_generic_builder *gb, int x)
+{
+	const fy_generic v = fy_to_generic(gb, x);
+	return v;
+}
+
+int checkout_items10(struct fy_generic_builder *gb)
+{
+	const fy_generic v = checkout_items9(gb, 10);
+	return fy_cast(v, (int)0);
+}
+
+size_t checkout_items11(void)
+{
+	const union {
+		fy_generic_sequence s FY_GENERIC_CONTAINER_ALIGNMENT;
+		struct {
+			size_t count FY_GENERIC_CONTAINER_ALIGNMENT;
+			fy_generic items[3];
+
+		} x;
+	} u FY_GENERIC_CONTAINER_ALIGNMENT = {
+		.x = {
+			.count = 3,
+			.items = {
+				fy_to_generic(10),
+				fy_to_generic("Hello this is big"),
+				fy_to_generic(true),
+			},
+		},
+	};
+
+	return sizeof(u);
+}
+
+fy_generic_value checkout_items14(void)
+{
+	return fy_string_const("012");
+}
+
+fy_generic_value checkout_items15(void)
+{
+	return fy_string_const("0123456789");
+}
+
+const void *checkout_items16(void)
+{
+	const union {
+		fy_generic_sequence s FY_GENERIC_CONTAINER_ALIGNMENT;
+		struct {
+			size_t count FY_GENERIC_CONTAINER_ALIGNMENT;
+			fy_generic items[3];
+
+		} x;
+	} u FY_GENERIC_CONTAINER_ALIGNMENT = {
+		.x = {
+			.count = 3,
+			.items = {
+				fy_to_generic(10),
+				fy_to_generic("Hello this is big"),
+				fy_to_generic(true),
+			},
+		},
+	};
+
+	void *mem = malloc(sizeof(u));
+	memcpy(mem, &u, sizeof(u));
+	return mem;
+}
+
+const fy_generic checkout_items17(struct fy_generic_builder *gb)
+{
+	fy_generic seq = fy_sequence(10, "Hello this is big", true);
+	return fy_gb_internalize(gb, seq);
+}
+
+const fy_generic checkout_items18(struct fy_generic_builder *gb)
+{
+	fy_generic seq = fy_sequence(10, "Hello this is big", true);
+	return fy_gb_internalize(gb, seq);
+}
+
+#endif
+
 
 #define QUIET_DEFAULT			false
 #define INCLUDE_DEFAULT			""
@@ -61,6 +181,10 @@
 #define OPT_YAML_1_2			4001
 #define OPT_YAML_1_3			4002
 
+#define OPT_ALLOCATOR			4003
+#define OPT_CACHE			4004
+#define OPT_SCHEMA			4005
+
 static struct option lopts[] = {
 	{"include",		required_argument,	0,	'I' },
 	{"mode",		required_argument,	0,	'm' },
@@ -86,6 +210,9 @@ static struct option lopts[] = {
 	{"yaml-1.3",		no_argument,		0,	OPT_YAML_1_3 },
 	{"sloppy-flow-indentation", no_argument,	0,	OPT_SLOPPY_FLOW_INDENTATION },
 	{"ypath-aliases",	no_argument,		0,	OPT_YPATH_ALIASES },
+	{"allocator",		required_argument,	0,	OPT_ALLOCATOR },
+	{"cache",		required_argument,	0,	OPT_CACHE },
+	{"schema",		required_argument,	0,	OPT_SCHEMA },
 	{"quiet",		no_argument,		0,	'q' },
 	{"help",		no_argument,		0,	'h' },
 	{0,			0,              	0,	 0  },
@@ -97,7 +224,7 @@ static struct option lopts[] = {
 #define LIBYAML_MODES	""
 #endif
 
-#define MODES	"parse|scan|copy|testsuite|dump|dump2|build|walk|reader|compose|iterate|comment|pathspec|shell-split|parse-timing" LIBYAML_MODES
+#define MODES	"parse|scan|copy|testsuite|dump|dump2|build|walk|reader|compose|iterate|comment|pathspec|shell-split|parse-timing|generics|remap|parse-generic|idbit" LIBYAML_MODES
 
 static void display_usage(FILE *fp, char *progname)
 {
@@ -280,10 +407,10 @@ static char *txt2esc_format(const char *s, int l, char *buf, int maxsz, int deli
 
 #define txt2esc_a(_s, _l) \
 	({ \
-	 	const char *__s = (const void *)(_s); \
-	 	int __l = (_l); \
+		const char *__s = (const void *)(_s); \
+		int __l = (_l); \
 		int _ll = txt2esc_length(__s, __l, '\''); \
-	 	txt2esc_format(__s, __l, alloca(_ll + 1), _ll + 1, '\''); \
+		txt2esc_format(__s, __l, alloca(_ll + 1), _ll + 1, '\''); \
 	})
 
 #define fy_atom_get_esc_text_a(_atom) txt2esc_a(fy_atom_get_text_a(_atom), -1)
@@ -1209,9 +1336,9 @@ int do_libyaml_scan(yaml_parser_t *parser)
 #define mark_a(_m) \
 	({ \
 		yaml_mark_t *__m = (_m); \
-	 	char *_s = alloca(30); \
-	 	snprintf(_s, 30, "%zu/%zu/%zu", __m->index, __m->line, __m->column); \
-	 	_s; \
+		char *_s = alloca(30); \
+		snprintf(_s, 30, "%zu/%zu/%zu", __m->index, __m->line, __m->column); \
+		_s; \
 	 })
 
 void dump_libyaml_event(yaml_event_t *event)
@@ -1663,7 +1790,7 @@ static void do_accel_kv(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 		key = fy_kv_store_key_by_index(&kvs, idx);
 		assert(key);
 
-		printf("removing #%d - %s\n", idx, key);
+		printf("removing #%d - %s\n", idx, key ? key : "<NULL>");
 
 		rc = fy_kv_store_remove(&kvs, key);
 		assert(!rc);
@@ -1786,337 +1913,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	fy_document_destroy(fydt);
 	fydt = NULL;
 
-	/*****/
-
-	fydt = fy_document_build_from_string(cfg, "{ foo: 10, bar : 20, baz: [100, 101], [frob, 1]: boo }", FY_NT);
-	assert(fydt);
-
-	buf = fy_emit_node_to_string(fy_document_root(fydt), 0);
-	assert(buf);
-	printf("resulting node: \"%s\"\n", buf);
-	free(buf);
-
-	count = fy_node_mapping_item_count(fy_document_root(fydt));
-	printf("count=%d\n", count);
-	assert(count == 4);
-
-	/* try iterator first */
-	printf("forward iterator:");
-	iter = NULL;
-	while ((fynp = fy_node_mapping_iterate(fy_document_root(fydt), &iter)) != NULL) {
-		buf = fy_emit_node_to_string(fynp->key, 0);
-		assert(buf);
-		printf(" key=\"%s\"", buf);
-		free(buf);
-		buf = fy_emit_node_to_string(fynp->value, 0);
-		assert(buf);
-		printf(",value=\"%s\"", buf);
-		free(buf);
-	}
-	printf("\n");
-
-	printf("reverse iterator:");
-	iter = NULL;
-	while ((fynp = fy_node_mapping_reverse_iterate(fy_document_root(fydt), &iter)) != NULL) {
-		buf = fy_emit_node_to_string(fynp->key, 0);
-		assert(buf);
-		printf(" key=\"%s\"", buf);
-		free(buf);
-		buf = fy_emit_node_to_string(fynp->value, 0);
-		assert(buf);
-		printf(",value=\"%s\"", buf);
-		free(buf);
-	}
-	printf("\n");
-
-	printf("index based:");
-	for (i = 0; i < count; i++) {
-		fynp = fy_node_mapping_get_by_index(fy_document_root(fydt), i);
-		assert(fynp);
-		buf = fy_emit_node_to_string(fynp->key, 0);
-		assert(buf);
-		printf(" key=\"%s\"", buf);
-		free(buf);
-		buf = fy_emit_node_to_string(fynp->value, 0);
-		assert(buf);
-		printf(",value=\"%s\"", buf);
-		free(buf);
-	}
-	printf("\n");
-
-	printf("key lookup based:");
-
-	fyn = fy_node_mapping_lookup_by_string(fy_document_root(fydt), "foo", FY_NT);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s->\"%s\"\n", "foo", buf);
-	free(buf);
-
-	fyn = fy_node_mapping_lookup_by_string(fy_document_root(fydt), "bar", FY_NT);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s->\"%s\"\n", "bar", buf);
-	free(buf);
-
-	fyn = fy_node_mapping_lookup_by_string(fy_document_root(fydt), "baz", FY_NT);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s->\"%s\"\n", "baz", buf);
-	free(buf);
-
-	fyn = fy_node_mapping_lookup_by_string(fy_document_root(fydt), "[ frob, 1 ]", FY_NT);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s->\"%s\"\n", "[ frob, 1 ]", buf);
-	free(buf);
-
-	printf("\n");
-
-	fy_document_destroy(fydt);
-	fydt = NULL;
-
-	/*****/
-
-	fydt = fy_document_build_from_string(cfg, "{ "
-		"foo: 10, bar : 20, baz:{ frob: boo }, "
-		"frooz: [ seq1, { key: value} ], \"zero\\0zero\" : 0, "
-		"{ key2: value2 }: { key3: value3 } "
-		"}", FY_NT);
-
-	assert(fydt);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "/", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "/", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "foo", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "foo", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "bar", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "bar", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "baz", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "baz", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "baz/frob", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "baz/frob", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "frooz", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "frooz", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "/frooz/[0]", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "/frooz/[0]", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "/frooz/[1]", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "/frooz/[1]", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "/frooz/[1]/key", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "/frooz/[1]/key", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "\"foo\"", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "\"foo\"", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "\"zero\\0zero\"", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "zero\\0zero", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "/{ key2: value2 }", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "/{ key2: value2 }", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "/{ key2: value2 }/key3", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "/{ key2: value2 }/key3", buf);
-	free(buf);
-
 	printf("\npaths....\n");
-
-	path = fy_node_get_path(fy_node_by_path(fy_document_root(fydt), "/", FY_NT, FYNWF_DONT_FOLLOW));
-	printf("%s path is %s\n", "/", path);
-	if (path)
-		free(path);
-
-	path = fy_node_get_path(fy_node_by_path(fy_document_root(fydt), "/frooz", FY_NT, FYNWF_DONT_FOLLOW));
-	printf("%s path is %s\n", "/frooz", path);
-	if (path)
-		free(path);
-
-	path = fy_node_get_path(fy_node_by_path(fy_document_root(fydt), "/frooz/[0]", FY_NT, FYNWF_DONT_FOLLOW));
-	printf("%s path is %s\n", "/frooz/[0]", path);
-	if (path)
-		free(path);
-
-	path = fy_node_get_path(fy_node_by_path(fy_document_root(fydt), "/{ key2: value2 }/key3", FY_NT, FYNWF_DONT_FOLLOW));
-	printf("%s path is %s\n", "/{ key2: value2 }/key3", path);
-	if (path)
-		free(path);
-
-	fy_document_destroy(fydt);
-	fydt = NULL;
-
-	/*****/
-
-	fyd = fy_document_create(cfg);
-	assert(fyd);
-
-	fyn = fy_node_build_from_string(fyd, "{ }", FY_NT);
-	assert(fyn);
-
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "/", buf);
-	free(buf);
-
-	fy_document_set_root(fyd, fyn);
-
-	buf = fy_emit_document_to_string(fyd, 0);
-	assert(buf);
-	printf("resulting document:\n");
-	fputs(buf, stdout);
-	free(buf);
-
-	fy_document_destroy(fyd);
-
-	/******/
-
-	fyd = fy_document_create(cfg);
-	assert(fyd);
-
-	fyn = fy_node_create_scalar(fyd, "foo", 3);
-	assert(fyn);
-	fy_document_set_root(fyd, fyn);
-
-	buf = fy_emit_document_to_string(fyd, 0);
-	assert(buf);
-	printf("resulting document:\n");
-	fputs(buf, stdout);
-	free(buf);
-
-	fy_document_destroy(fyd);
-
-	/******/
-
-	fyd = fy_document_create(cfg);
-	assert(fyd);
-
-	fyn = fy_node_create_scalar(fyd, "foo\nfoo", 7);
-	assert(fyn);
-	fy_document_set_root(fyd, fyn);
-
-	buf = fy_emit_document_to_string(fyd, 0);
-	assert(buf);
-	printf("resulting document:\n");
-	fputs(buf, stdout);
-	free(buf);
-
-	fy_document_destroy(fyd);
-
-	/******/
-
-	fyd = fy_document_create(cfg);
-	assert(fyd);
-
-	fyn = fy_node_create_sequence(fyd);
-	assert(fyn);
-	fy_document_set_root(fyd, fyn);
-
-	buf = fy_emit_document_to_string(fyd, 0);
-	assert(buf);
-	printf("resulting document:\n");
-	fputs(buf, stdout);
-	free(buf);
-
-	fy_document_destroy(fyd);
-
-	/******/
-
-	fyd = fy_document_create(cfg);
-	assert(fyd);
-
-	fyn = fy_node_create_mapping(fyd);
-	assert(fyn);
-	fy_document_set_root(fyd, fyn);
-
-	buf = fy_emit_document_to_string(fyd, 0);
-	assert(buf);
-	printf("resulting document:\n");
-	fputs(buf, stdout);
-	free(buf);
-
-	fy_document_destroy(fyd);
-
-	/******/
-
-	fyd = fy_document_create(cfg);
-	assert(fyd);
-
-	fyn = fy_node_create_sequence(fyd);
-	assert(fyn);
-
-	fy_node_sequence_append(fyn, fy_node_create_scalar(fyd, "foo", FY_NT));
-	fy_node_sequence_append(fyn, fy_node_create_scalar(fyd, "bar", FY_NT));
-	fy_node_sequence_append(fyn, fy_node_build_from_string(fyd, "{ baz: frooz }", FY_NT));
-
-	fy_document_set_root(fyd, fyn);
-
-	buf = fy_emit_document_to_string(fyd, 0);
-	assert(buf);
-	printf("resulting document:\n");
-	fputs(buf, stdout);
-	free(buf);
-
-	fy_document_destroy(fyd);
 
 	/******/
 
@@ -3270,7 +3067,7 @@ int do_pathspec(int argc, char *argv[])
 			break;
 		}
 		fprintf(stderr, "full-ps: %.*s\n", (int)adv, s);
-		fprintf(stderr, "func: %.*s\n", (int)ps.funcsz, ps.func);
+		fprintf(stderr, "func: %.*s\n", (int)ps.funcsz, ps.func ? ps.func : "<NULL>");
 		for (i = 0; i < (int)ps.argc; i++) {
 			fprintf(stderr, "arg[%d]: %.*s\n", i, (int)ps.arg[i].argsz, ps.arg[i].arg);
 			if (ps.arg[i].fyd)
@@ -3993,7 +3790,7 @@ int do_shell_split(int in_argc, char *in_argv[])
 	return 0;
 }
 
-int do_parse_timing(int argc, char *argv[], bool disable_mmap)
+int do_parse_timing(int argc, char *argv[])
 {
 	void *blob;
 	size_t blob_size;
@@ -4110,6 +3907,1406 @@ int do_parse_timing(int argc, char *argv[], bool disable_mmap)
 	return 0;
 }
 
+char *testing_export = "This is export";
+
+int do_generics(int argc, char *argv[], const char *allocator)
+{
+	struct fy_generic_builder *gb;
+	struct fy_generic_builder_cfg gcfg;
+	fy_generic gv;
+	fy_generic seq, map, map2;
+	struct fy_dedup_allocator_cfg dcfg;
+	struct fy_linear_allocator_cfg lcfg;
+	struct fy_allocator *a, *pa = NULL;
+	const void *gsetupdata = NULL;
+	char buf[4096];
+	bool registered_allocator = false;
+	int rc __FY_DEBUG_UNUSED__;
+
+	if (!allocator)
+		allocator = "linear";
+
+	/* setup the linear data always */
+	memset(&lcfg, 0, sizeof(lcfg));
+	lcfg.buf = buf;
+	lcfg.size = sizeof(buf);
+
+	printf("using %s allocator\n", allocator);
+
+	if (!strcmp(allocator, "linear")) {
+		gsetupdata = &lcfg;
+	} else if (!strcmp(allocator, "malloc")) {
+		gsetupdata = NULL;
+	} else if (!strcmp(allocator, "mremap")) {
+		gsetupdata = NULL;
+	} else if (!strcmp(allocator, "dedup")) {
+
+		/* create the parent allocator */
+		pa = fy_allocator_create("linear", &lcfg);
+		assert(pa);
+
+		memset(&dcfg, 0, sizeof(dcfg));
+		dcfg.parent_allocator = pa;
+		dcfg.bloom_filter_bits = 0;	/* use default */
+		dcfg.bucket_count_bits = 0;
+
+		gsetupdata = &dcfg;
+
+	} else {
+		fprintf(stderr, "unsupported allocator %s\n", allocator);
+		return -1;
+
+#if 0
+		/* fake a linear one */
+		rc = fy_allocator_register(allocator, &fy_linear_allocator_ops);
+		assert(!rc);
+		gsetupdata = &lcfg;
+		registered_allocator = true;
+#endif
+	}
+
+	seq = fy_sequence(fy_bool(true),
+			 fy_int(100),
+			 fy_string("info"));
+	assert(fy_generic_is_sequence(seq));
+
+	printf("seq:\n");
+	fy_generic_emit_default(seq);
+	printf("\n");
+
+	map = fy_mapping(fy_string("foo"), fy_string("bar"),
+			 fy_string("frooz-larger"), fy_string("what"),
+			 fy_string("seq"), seq);
+	assert(fy_generic_is_mapping(map));
+
+	printf("map:\n");
+	fy_generic_emit_default(map);
+	printf("\n");
+
+	gv = fy_generic_mapping_get_value(map, fy_string("foo"));
+	assert(fy_generic_is_valid(gv));
+
+	printf("found: ");
+	fy_generic_emit_default(gv);
+	printf("\n");
+
+	map = fy_mapping(fy_string("foo"), fy_string("bar"),
+			 fy_sequence(fy_int(10), fy_int(100)), fy_float(3.14));
+
+	fy_generic_emit_default(map);
+	printf("\n");
+
+	gv = fy_generic_mapping_get_value(map, fy_sequence(fy_int(10), fy_int(100)));
+	assert(fy_generic_is_valid(gv));
+	printf("found: ");
+	fy_generic_emit_default(gv);
+	printf("\n");
+
+	{
+		const fy_generic t0 = fy_string("Hello");
+		fy_generic t1 = fy_string("Hello-there friends");
+		fy_generic t2 = fy_string("Yet another test");
+		fy_generic t3 = fy_string(testing_export);
+
+		printf("string_size_const t0: ");
+		fy_generic_emit_default(t0);
+		printf("\n");
+
+		printf("string_size_const t1: ");
+		fy_generic_emit_default(t1);
+		printf("\n");
+
+		printf("string t2: ");
+		fy_generic_emit_default(t2);
+		printf("\n");
+
+		printf("string t3: ");
+		fy_generic_emit_default(t3);
+		printf("\n");
+	}
+
+	{
+		fy_generic seq = fy_sequence(
+				fy_bool(true),
+				fy_int(100),
+				fy_string("info-info"));
+
+		printf("seq-x:\n");
+		fy_generic_emit_default(seq);
+		printf("\n");
+	}
+
+	{
+		struct {
+			size_t count;
+			fy_generic items[3];
+		} _seq FY_GENERIC_CONTAINER_ALIGNMENT = {
+			3,
+			{ fy_true, { .v = fy_int_const(100) }, fy_string("info-info") },
+		};
+		fy_generic seq = (fy_generic){ .v = (fy_generic_value)&_seq | FY_SEQ_V };
+
+		printf("seq-x2:\n");
+		fy_generic_emit_default(seq);
+		printf("\n");
+	}
+
+#define ASTR(_x) \
+	({ \
+		static const char __s[sizeof(_x) + 1] __attribute__((aligned(256))) = (_x); \
+		__s; \
+	})
+
+	{
+		const char *ss;
+
+		__asm__ volatile("nop; nop" : : : "memory");
+		ss = ASTR("123");
+		__asm__ volatile("nop; nop" : : : "memory");
+
+		printf("%p %s\n", ss, ss);
+	}
+
+	{
+		fy_generic vstr;
+
+		__asm__ volatile("nop; nop" : : : "memory");
+		vstr = fy_string("test");
+		__asm__ volatile("nop; nop" : : "r"(vstr) : "memory");
+
+		printf("vstr=0x%08lx\n", (unsigned long)vstr.v);
+	}
+
+
+	a = fy_allocator_create(allocator, gsetupdata);
+	assert(a);
+
+	memset(&gcfg, 0, sizeof(gcfg));
+	gcfg.allocator = a;
+
+	gb = fy_generic_builder_create(&gcfg);
+	assert(gb);
+
+	printf("created gb=%p\n", gb);
+
+	printf(">>>>>>>>>>>>>>>>>>>>> seq using fy_gb_sequence\n");
+	seq = fy_gb_sequence(gb, 100, "Hello there", false, 10.0);
+	fy_generic_emit_default(seq);
+	printf("\n");
+
+	printf(">>>>>>>>>>>>>>>>>>>>> map using fy_gb_sequence\n");
+	map = fy_gb_mapping(gb,
+		"Hello", true,
+		"There", false,
+		"Extra", fy_gb_sequence(gb, 1, 2, 100));
+	fy_generic_emit_default(map);
+	printf("\n");
+
+#if 0
+	printf(">>>>>>>>>>>>>>>>>>>>> seq using fy_sequence - with first argument gb\n");
+	seq = fy_sequence(gb, 100, "Hello there", false, 10.0);
+	fy_generic_emit_default(seq);
+	printf("\n");
+#endif
+
+	printf(">>>>>>>>>>>>>>>>>>>>> seq using fy_sequence - without first argument gb\n");
+	seq = fy_sequence(100, "Hello there", false, 10.0);
+	fy_generic_emit_default(seq);
+	printf("\n");
+
+	map = fy_gb_mapping_create(gb, 3, (fy_generic[]){
+			fy_gb_to_generic(gb, "foo"), fy_gb_to_generic(gb, "bar"),
+			fy_gb_to_generic(gb, "frooz-larger"), fy_gb_to_generic(gb, "what"),
+			fy_gb_to_generic(gb, "seq"), seq
+		});
+
+	assert(fy_generic_is_valid(map));
+
+	fy_generic_emit_default(map);
+	printf("\n");
+
+	gv = fy_generic_mapping_get_value(map, fy_gb_to_generic(gb, "foo"));
+	assert(fy_generic_is_valid(gv));
+	printf("found: ");
+	fy_generic_emit_default(gv);
+	printf("\n");
+
+	map = fy_gb_mapping_create(gb, 2, (fy_generic[]){
+			fy_gb_to_generic(gb, "foo"), fy_gb_to_generic(gb, "bar"),
+			fy_gb_sequence_create(gb, 2, (fy_generic[]){
+					fy_gb_to_generic(gb, 10),
+					fy_gb_to_generic(gb, 100)}),
+				fy_gb_to_generic(gb, 3.14)});
+
+	fy_generic_emit_default(map);
+	printf("\n");
+
+	gv = fy_generic_mapping_get_value(map, fy_gb_sequence_create(gb, 2, (fy_generic[]){
+					fy_gb_to_generic(gb, 10),
+					fy_gb_to_generic(gb, 100)}));
+	assert(fy_generic_is_valid(gv));
+	printf("found: ");
+	fy_generic_emit_default(gv);
+	printf("\n");
+
+	{
+		fy_generic_sized_string szstr;
+		fy_generic v;
+
+		(void)szstr;
+		printf("----------------------------------------\n");
+		v = fy_gb_to_generic(gb, "Hello");
+		fy_generic_emit_default(v);
+		printf("----------------------------------------\n");
+		v = fy_gb_to_generic(gb, ((fy_generic_sized_string){ .data = "Hello There ", .size = 9 }) );
+		fy_generic_emit_default(v);
+		printf("----------------------------------------\n");
+	}
+
+
+#define ASTR(_x) \
+	({ \
+		static const char __s[sizeof(_x) + 1] __attribute__((aligned(256))) = (_x); \
+		__s; \
+	})
+
+	{
+		const char *ss;
+
+		__asm__ volatile("nop; nop" : : : "memory");
+		ss = ASTR("123");
+		__asm__ volatile("nop; nop" : : : "memory");
+
+		printf("%p %s\n", ss, ss);
+	}
+
+	fy_allocator_dump(a);
+
+	fy_generic_builder_destroy(gb);
+
+	fy_allocator_destroy(a);
+
+	a = fy_allocator_create(allocator, gsetupdata);
+	assert(a);
+
+	memset(&gcfg, 0, sizeof(gcfg));
+	gcfg.allocator = a;
+
+	gb = fy_generic_builder_create(&gcfg);
+	assert(gb);
+
+	map = fy_gb_mapping_create(gb, 3, (fy_generic[]){
+			fy_gb_to_generic(gb, "foo"), fy_gb_to_generic(gb, "bar"),
+			fy_gb_to_generic(gb, "frooz-larger\nshould \x01 be quoted"), fy_gb_to_generic(gb, "what"),
+			fy_gb_to_generic(gb, "seq"), fy_gb_sequence_create(gb, 3, (fy_generic[]){
+									fy_gb_to_generic(gb, true),
+									fy_gb_to_generic(gb, 100),
+									fy_gb_to_generic(gb, "info")
+								})
+
+		});
+
+	assert(fy_generic_is_valid(map));
+
+	fy_generic_builder_destroy(gb);
+
+	fy_allocator_destroy(a);
+
+	printf("testing dedup cases\n");
+	printf("\n");
+
+	a = fy_allocator_create(allocator, gsetupdata);
+	assert(a);
+
+	memset(&gcfg, 0, sizeof(gcfg));
+	gcfg.allocator = a;
+
+	gb = fy_generic_builder_create(&gcfg);
+	assert(gb);
+
+	map = fy_gb_mapping_create(gb, 3, (fy_generic[]){
+			fy_gb_to_generic(gb, "foo"), fy_gb_to_generic(gb, 0.11111),
+			fy_gb_to_generic(gb, "frooz-larger\nshould \x01 be quoted"), fy_gb_to_generic(gb, "what"),
+			fy_gb_to_generic(gb, "seq"), fy_gb_sequence_create(gb, 3, (fy_generic[]){
+									fy_gb_to_generic(gb, true),
+									fy_gb_to_generic(gb, 100),
+									fy_gb_to_generic(gb, "info-fffffffffffffffffffffffffff")
+								})
+
+		});
+
+	map2 = fy_gb_mapping_create(gb, 3, (fy_generic[]){
+			fy_gb_to_generic(gb, "foo"), fy_gb_to_generic(gb, 0.11111),
+			fy_gb_to_generic(gb, "frooz-larger\nshould \x01 be quoted"), fy_gb_to_generic(gb, "what"),
+			fy_gb_to_generic(gb, "seq"), fy_gb_sequence_create(gb, 3, (fy_generic[]){
+									fy_gb_to_generic(gb, true),
+									fy_gb_to_generic(gb, 100),
+									fy_gb_to_generic(gb, "info-fffffffffffffffffffffffffff")
+								})
+
+		});
+
+	fy_allocator_dump(a);
+
+	printf("map = %p map2 = %p\n", (void *)map.v, (void *)map2.v);
+
+	fy_generic_builder_destroy(gb);
+
+	fy_allocator_destroy(a);
+
+	printf("testing sequence modification cases\n");
+
+	a = fy_allocator_create(allocator, gsetupdata);
+	assert(a);
+
+	memset(&gcfg, 0, sizeof(gcfg));
+	gcfg.allocator = a;
+
+	gb = fy_generic_builder_create(&gcfg);
+	assert(gb);
+
+	seq = fy_gb_sequence_create(gb, 2, (fy_generic[]){ fy_true, fy_null });
+
+	printf("original\n");
+	fy_generic_emit_default(seq);
+	printf("\n");
+
+#if 0
+	seq = fy_gb_sequence_append(gb, seq, 2, (fy_generic[]){ fy_int(16), fy_int(128), });
+
+	printf("appended [16, 128] \n");
+	fy_generic_emit_default(seq);
+	printf("\n");
+
+	seq = fy_gb_sequence_insert(gb, seq, 1, 2, (fy_generic[]){ fy_true, fy_false, });
+
+	printf("inserted [true, false] at 1\n");
+	fy_generic_emit_default(seq);
+	printf("\n");
+#endif
+
+	fy_allocator_dump(a);
+
+	fy_generic_builder_destroy(gb);
+
+	fy_allocator_destroy(a);
+
+	printf("testing mapping modification cases\n");
+
+	a = fy_allocator_create(allocator, gsetupdata);
+	assert(a);
+
+	memset(&gcfg, 0, sizeof(gcfg));
+	gcfg.allocator = a;
+
+	gb = fy_generic_builder_create(&gcfg);
+	assert(gb);
+
+	map = fy_gb_mapping_create(gb, 2, (fy_generic[]){
+			fy_gb_to_generic(gb, "foo"), fy_gb_to_generic(gb, "bar"),
+			fy_gb_to_generic(gb, "seq"), fy_gb_sequence_create(gb, 3, (fy_generic[]){
+									fy_gb_to_generic(gb, true),
+									fy_gb_to_generic(gb, 100),
+									fy_gb_to_generic(gb, "info")
+								})
+
+		});
+
+	assert(fy_generic_is_valid(map));
+
+	printf("original map\n");
+	fy_generic_emit_default(map);
+	printf("\n");
+
+#if 0
+	map = fy_gb_mapping_set_value(gb, map, fy_string("seq"),
+#if 0
+						fy_sequence_alloca(3, ((fy_generic[]){ fy_bool(false), fy_int(-100), fy_string("not-info")}))
+#else
+						fy_gb_sequence_create(gb, 3, (fy_generic[]){
+									fy_gb_to_generic(gb, false),
+									fy_gb_to_generic(gb, -100),
+									fy_gb_to_generic(gb, "not-info")})
+#endif
+					   );
+	assert(fy_generic_is_valid(map));
+#endif
+
+	printf("new map\n");
+	fy_generic_emit_default(map);
+	printf("\n");
+
+	fy_generic_builder_destroy(gb);
+
+	fy_allocator_destroy(a);
+
+	seq = fy_sequence(
+		fy_bool(true),
+		fy_int(100),
+		fy_string("info-long"));
+	assert(fy_generic_is_valid(seq));
+
+	printf("seq-const:\n");
+	fy_generic_emit_default(seq);
+	printf("\n");
+
+	fy_generic str;
+
+	str = fy_string("zzz");
+
+	printf("str:\n");
+	fy_generic_emit_default(str);
+	printf("\n");
+
+	fy_generic ind;
+
+	printf("str=0x%08lx\n", str.v);
+
+	ind = fy_indirect(str, fy_string("bbb"), fy_string("ccc"));
+	assert(fy_generic_is_valid(ind));
+
+	{
+		const fy_generic_value *pp = fy_generic_resolve_ptr(ind);
+		printf("ind=0x%08lx [0:3]=0x%08lx 0x%08lx 0x%08lx 0x%08lx\n",
+				ind.v, pp[0], pp[1], pp[2], pp[3]);
+	}
+
+	printf("ind:\n");
+	fy_generic_emit_default(ind);
+	printf("\n");
+
+	printf("str-by-get-string: %p %s\n", &str, fy_genericp_get_string(&str));
+	printf("ind-by-get-string: %p %s\n", &ind, fy_genericp_get_string(&ind));
+
+	if (registered_allocator) {
+		rc = fy_allocator_unregister(allocator);
+		assert(!rc);
+	}
+
+	if (pa)
+		fy_allocator_destroy(pa);
+
+	fy_generic_emit_default(map);
+
+	fy_generic_emit_default(
+		fy_mapping(
+			fy_string("foo"), fy_string("bar"),
+			fy_string("seq"), fy_sequence(
+						fy_true,
+						fy_int(100),
+						fy_string("info"))));
+
+	fy_generic_emit_default(fy_stringf("Hello there #%d", 10));
+
+	fy_generic seq3 = fy_sequence( fy_bool(false), fy_int(-101), fy_string("xxx macros"));
+	assert(fy_generic_is_valid(seq3));
+
+	fy_generic_emit_default(seq3);
+
+
+	printf("emit NULL\n");
+	fy_generic_emit_default(fy_to_generic(NULL));
+
+	printf("emit true\n");
+	fy_generic_emit_default(fy_to_generic(true));
+
+	printf("emit false\n");
+	fy_generic_emit_default(fy_to_generic(false));
+
+	printf("emit int 1000\n");
+	fy_generic_emit_default(fy_to_generic(1000));
+
+	{
+	fy_generic v;
+	printf("emit int -1000\n");
+	v = fy_to_generic(-1000);
+	fy_generic_emit_default(v);
+
+	printf("emit char * 'Hello'\n");
+	v = fy_to_generic("Hello");
+	fy_generic_emit_default(v);
+
+	printf("emit float 100.5\n");
+	v = fy_to_generic((float)100.5);
+	fy_generic_emit_default(v);
+
+	printf("emit char * 'Hello this is a long string'\n");
+	v = fy_to_generic("Hello this is a long string");
+	fy_generic_emit_default(v);
+
+#if 0
+	printf("##### emit empty sequence\n");
+	v = fy_sequence();
+	printf("v=%08lx\n", v.v);
+	fy_generic_emit_default(v);
+#endif
+
+	printf("##### emit empty mapping\n");
+	v = fy_map_empty;
+	printf("v=%08lx\n", v.v);
+	fy_generic_emit_default(v);
+
+	printf("emit a mapping'\n");
+	v = fy_to_generic("Hello this is a long string");
+	fy_generic_emit_default(
+		fy_mapping(
+			fy_to_generic("foo"), fy_to_generic("bar"),
+			fy_to_generic("seq"), fy_sequence(
+						fy_to_generic(true),
+						fy_to_generic(100),
+						fy_to_generic("info"))));
+
+
+	printf("# emit tests with type magic (null)\n");
+	fy_generic_emit_default(fy_to_generic(NULL));
+
+	printf("# emit tests with type magic (sequence [100])\n");
+	v = fy_sequence(100);
+	fy_generic_emit_default(v);
+
+	printf("# emit tests with type magic (mapping)\n");
+	fy_generic_emit_default(fy_mapping(
+				"foo", "bar",
+				"seq", fy_sequence(true, 100, "info")));
+
+	}
+
+	{
+		fy_generic v;
+		const char *str;
+
+		v = fy_string("Hello this is a test");
+
+		str = fy_genericp_get_string(&v);
+		printf("fy_genericp_get_string(&v) = %s\n", str);
+
+		str = fy_generic_get_string_alloca(v);
+		printf("fy_generic_get_string_alloca(v) = %s\n", str);
+
+		v = fy_string("test");
+
+		str = fy_genericp_get_string(&v);
+		printf("fy_genericp_get_string(&v) = %s\n", str);
+
+		str = fy_generic_get_string_alloca(v);
+		printf("fy_generic_get_string_alloca(v) = %s\n", str);
+	}
+
+	{
+		fy_generic v;
+		bool b;
+		int i;
+		float f;
+		const char *s;
+
+		(void)b;
+		(void)i;
+		(void)f;
+		(void)s;
+
+		v = fy_int(100);
+		i = fy_generic_cast_default(v, 101);
+		printf("i = fy_generic_cast_default(v, 101) = %d\n", i);
+
+		v = fy_invalid;
+		i = fy_generic_cast_default(v, 101);
+		printf("i = fy_generic_cast_default(v, 101) = %d\n", i);
+
+		v = fy_string("This is a long string");
+		s = fy_generic_cast_default(v, "default-string");
+		printf("(\"This is a long string\") i = fy_generic_cast_default(v, \"default-string\") = %s\n", s);
+
+		v = fy_string("This");
+		s = fy_generic_cast_default(v, "default-string");
+		printf("(\"This\") i = fy_generic_cast_default(v, \"default-string\") = %s\n", s);
+
+		fy_generic seq = fy_sequence(true, 100, 10.1f, "short", "this is long");
+		printf("source seq:\n");
+		fy_generic_emit_default(seq);
+
+		b = fy_generic_sequence_get_default(seq, 0, (_Bool)false);
+		printf("[0] b = fy_generic_get_sequence_get_default(seq, 0, false) = %s\n", b ? "true" : "false");
+
+		i = fy_generic_sequence_get_default(seq, 0, -1);
+		printf("[0] i = fy_generic_get_sequence_get_default(seq, 0, -1) = %d\n", i);
+
+		i = fy_generic_sequence_get_default(seq, 1, -1);
+		printf("[0] i = fy_generic_get_sequence_get_default(seq, 1, -1) = %d\n", i);
+
+		f = fy_generic_sequence_get_default(seq, 2, 0.0f);
+		printf("[0] i = fy_generic_get_sequence_get_default(seq, 2, 0.0f) = %f\n", f);
+
+		s = fy_generic_sequence_get_default(seq, 3, "");
+		printf("[0] i = fy_generic_get_sequence_get_default(seq, 3, \"\") = %s\n", s);
+
+		s = fy_generic_sequence_get_default(seq, 4, "");
+		printf("[0] i = fy_generic_get_sequence_get_default(seq, 4, \"\") = %s\n", s);
+
+		i = fy_generic_get_type_default(int);
+		printf("fy_generic_get_type_default(int) = %d\n", i);
+		s = fy_generic_get_type_default(const char *);
+		printf("fy_generic_get_type_default(const char *) = \"%s\"\n", s ? s : "<NULL>");
+
+		fy_generic vv;
+
+		vv = fy_to_generic(10);
+		i = fy_generic_cast_typed(vv, int);
+		printf("fy_to_generic(10) i = %d\n", i);
+
+		vv = fy_to_generic(-10);
+		i = fy_generic_cast_typed(vv, int);
+		printf("fy_to_generic(-10) i = %d\n", i);
+		fy_generic_emit_default(fy_to_generic(i));
+
+		vv = fy_to_generic(-1000);
+		i = fy_generic_cast_typed(vv, int);
+		printf("fy_to_generic(-1000) i = %d\n", i);
+		fy_generic_emit_default(fy_to_generic(i));
+
+		vv = fy_to_generic("Hello");
+		i = fy_generic_cast_typed(vv, int);
+		printf("fy_to_generic(\"Hello\") i = %d\n", i);
+
+		fy_generic map = fy_mapping("Hello", 100, "Long key", true, "str", "indeed", "long-string", "this is what it is", "string", "wha?");
+		printf("source map:\n");
+		fy_generic_emit_default(map);
+
+		i = fy_generic_mapping_get_default(map, "Hello", -1);
+		printf("i = fy_generic_mapping_get_default(map, \"Hello\", -1) = %d\n", i);
+
+		s = fy_generic_mapping_get_default(map, "does not exist", (char *)NULL);
+		printf("s = fy_generic_mapping_get_default(map, \"does not exist\", -1) = %s\n", s);
+
+		s = fy_generic_mapping_get_default(map, "str", (char *)NULL);
+		printf("s = fy_generic_mapping_get_default(map, \"str\", NULL) = %s\n", s);
+
+		s = fy_get_default(map, "str", (char *)NULL);
+		printf("s = fy_get_default(map, \"string\", (char *)NULL) = %s\n", s);
+
+		s = fy_get_default(map, "long-string", (char *)NULL);
+		printf("s = fy_get_default(map, \"long-string\", (char *)NULL) = %s\n", s);
+
+		s = fy_get_default(map, "string", (char *)NULL);
+		printf("s = fy_get_default(map, \"string\", (char *)NULL) = %s\n", s);
+
+		seq = fy_sequence(true, 100, 10.1f, "short", "this is long");
+		printf("source seq:\n");
+		fy_generic_emit_default(seq);
+
+		size_t idx = fy_generic_cast_default_coerse(3, LLONG_MAX);
+		printf("idx=%zu\n", idx);
+		s = fy_get_default(seq, 3, (char *)NULL);
+		printf("[0] i = fy_get_default(seq, 3, NULL) = %s\n", s);
+
+	}
+
+	{
+		int i;
+
+		fy_generic seq = fy_sequence(10, true, "Hello there", fy_sequence(-1, -2));
+		fy_generic_emit_default(seq);
+
+		fy_generic_sequence_handle seqh = fy_generic_sequence_to_handle(seq);
+		fy_generic_emit_default(fy_to_generic(seqh));
+
+		fy_generic v;
+		v = fy_get_default(seq, 3, fy_null);
+		printf("v.v=%p\n", (void *)v.v);
+		fy_generic_emit_default(v);
+
+		seqh = fy_get_default(seq, 3, fy_seq_handle_null);
+		printf("[3] seqh=%p\n", seqh);
+		fy_generic_emit_default(fy_to_generic(seqh));
+		if (seqh) {
+			printf("it's a sequence\n");
+			v = fy_get_default(seqh, 0, fy_invalid);
+			printf("[3][0] v=%p\n", (void *)v.v);
+			fy_generic_emit_default(v);
+		}
+
+		seqh = fy_get_default(seq, 4, fy_seq_handle_null);
+		printf("[4] seqh=%p\n", seqh);
+		fy_generic_emit_default(fy_to_generic(seqh));
+		if (seqh) {
+			printf("it's a sequence\n");
+			v = fy_get_default(seqh, 0, fy_invalid);
+			printf("[3][0] v=%p\n", (void *)v.v);
+			fy_generic_emit_default(v);
+		}
+
+		seqh = fy_get_default(seq, 2, fy_seq_handle_null);
+		printf("[2] seqh=%p\n", seqh);
+		fy_generic_emit_default(fy_to_generic(seqh));
+
+		i = -1;
+		v = fy_to_generic((signed long)i);
+		printf("i=%d v=0x%08lx - is_int()=%d in_place()=%d\n", i, v.v, fy_generic_is_int(v), fy_generic_is_in_place(v));
+		fy_generic_emit_default(v);
+
+		v = fy_to_generic(-10);
+		printf("i=%d v=0x%08lx - is_int()=%d in_place()=%d\n", -10, v.v, fy_generic_is_int(v), fy_generic_is_in_place(v));
+		fy_generic_emit_default(fy_to_generic(v));
+
+	}
+
+	{
+		fy_generic_sized_string szstr = {
+			.data = "He\0lo",
+			.size = 5,
+		};
+		fy_generic seq, map, v;
+		fy_generic_sequence_handle seqh;
+		fy_generic_mapping_handle maph;
+
+		(void)szstr;
+		(void)seqh;
+		(void)map;
+		(void)maph;
+
+		v = fy_to_generic(&szstr);
+		fy_generic_emit_default(v);
+
+		v = fy_to_generic(szstr);
+		fy_generic_emit_default(v);
+
+		seq = fy_sequence(10, true, szstr, fy_sequence(-1, -2), fy_mapping("Hello", 100, "There", 200));
+		fy_generic_emit_default(seq);
+
+		seq = fy_sequence(10, true, ((fy_generic_sized_string){ .data = "More\0zero\0yes", .size = 13 }), fy_sequence(-1, -2));
+		fy_generic_emit_default(seq);
+
+		seqh = fy_get_default(seq, 3, fy_seq_handle_null);
+		if (seqh != fy_seq_handle_null) {
+			printf(">>>>>>>>>>>>>>>>> got seqh=%p len=%zu fy_len(seqh)=%zu\n", seqh, seqh->count, fy_len(seqh));
+			size_t i;
+
+			for (i = 0; i < fy_len(seqh); i++) {
+				printf("############### %zu: \n", i);
+			}
+		} else
+			printf("no seqh\n");
+
+		szstr = fy_get_default(seq, 2, fy_szstr_empty);
+		fy_generic_emit_default(fy_to_generic(szstr));
+
+		szstr = fy_get_default(seq, 3, fy_szstr_empty);
+		fy_generic_emit_default(fy_to_generic(szstr));
+
+		printf("fy_len(seq)=%zu\n", fy_len(seq));
+
+		int x = fy_generic_cast_default(seq, (int)-1);
+		printf("x = fy_generic_cast_default(seq, (int)-1) = %d\n", x);
+
+		seqh = fy_generic_cast_default(seq, (fy_generic_sequence_handle)NULL);
+		printf("seqh=%p\n", seqh);
+		fy_generic_emit_default(fy_to_generic(seqh));
+
+		printf("trying to get szstr\n");
+		v = fy_get_default(seq, 2, fy_invalid);
+		if (fy_generic_is_valid(v)) {
+			printf("got it\n");
+			fy_generic_emit_default(v);
+
+			szstr = fy_generic_cast_default(v, fy_szstr_empty);
+			printf("Got size=%zu\n", szstr.size);
+			fy_generic_emit_default(fy_to_generic(szstr));
+
+			v = fy_to_generic("Hell");
+			szstr = fy_generic_cast_default(v, fy_szstr_empty);
+			printf("Got size=%zu\n", szstr.size);
+			fy_generic_emit_default(fy_to_generic(szstr));
+
+		}
+	}
+
+	{
+		const fy_generic seq = fy_sequence(10, 100, 200, 1000);
+		fy_generic_sequence_handle seqh = fy_generic_cast_default(seq, (fy_generic_sequence_handle)NULL);
+
+		size_t i;
+		int sum;
+
+		__asm__ volatile("nop; nop" : : : "memory");
+		sum = 0;
+		for (i = 0; i < fy_len(seqh); i++)
+			sum += fy_get_default(seqh, i, 0);
+		__asm__ volatile("nop; nop" : : : "memory");
+
+		printf("sum=%d\n", sum);
+
+	}
+
+	{
+		const fy_generic seq = fy_sequence(10, 100, 200, 1000);
+		fy_generic_sequence_handle seqh = fy_generic_cast_default(seq, (fy_generic_sequence_handle)NULL);
+
+		assert(seqh);
+
+		size_t i;
+		int sum;
+
+		__asm__ volatile("nop; nop" : : : "memory");
+		sum = 0;
+		for (i = 0; i < fy_len(seqh); i++)
+			sum += fy_generic_sequencep_get_default(seqh, i, 0);
+		__asm__ volatile("nop; nop" : : : "memory");
+
+		printf("sum=%d\n", sum);
+	}
+
+	{
+		char buffer[4096];
+		struct fy_generic_builder *gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO, NULL, buffer, sizeof(buffer));
+		assert(gb);
+		fy_generic seq = fy_gb_sequence(gb, 100, "Hello there", false, 10.0);
+		fy_generic_emit_default(seq);
+	}
+
+	return 0;
+}
+
+int do_remap(int argc, char *argv[])
+{
+	size_t pagesz = sysconf(_SC_PAGESIZE);
+	size_t sz, limit, newsz;
+	void *mem, *mem2;
+	void **ptrs;
+	int i, maxcount;
+
+	limit = (size_t)2 << 30;
+
+	printf("1. Trying successive mmaps untils failure or limit %zu MB=%zu GB=%zu\n", limit, limit >> 20, limit >> 30);
+	sz = pagesz;
+	for (i = 0; sz <= limit; i++, sz <<= 1) {
+		mem = mmap(NULL, sz, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+		if (mem == MAP_FAILED) {
+			sz >>= 1;
+			printf("> map failed at cycle #%d (success at size=%zu MB=%zu GB=%zu)\n", i, sz, sz >> 20, sz >> 30);
+			break;
+		}
+		printf("> success at cycle #%d (size=%zu MB=%zu GB=%zu)\n", i, sz, sz >> 20, sz >> 30);
+		memset(mem, 0, sz);
+		munmap(mem, sz);
+	}
+
+	printf("2. Trying to find number of mmap limit\n");
+	maxcount = (pagesz / sizeof(void *)) * 16;	/* pages worth of pointers */
+
+	ptrs = malloc(sizeof(*ptrs) * limit);
+	assert(ptrs);
+	for (i = 0; i < maxcount; i++) {
+		sz = i * pagesz;
+		mem = mmap(NULL, pagesz, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+		if (mem == MAP_FAILED) {
+			printf("> mmap #%d failed (total size=%zu MB=%zu GB=%zu)\n",
+					i, sz, sz >> 20, sz >> 30);
+			break;
+		}
+		if ((i % 128) == 0) {
+			printf("> mmap #%d success (total size=%zu MB=%zu GB=%zu)\n",
+					i, sz, sz >> 20, sz >> 30);
+		}
+	}
+
+	if (i >= maxcount) {
+		printf("> mmap #%d completed (total size=%zu MB=%zu GB=%zu)\n",
+				i, sz, sz >> 20, sz >> 30);
+	}
+
+	for (; i >= 0; i--) {
+		munmap(ptrs[i], pagesz);
+	}
+	free(ptrs);
+
+	printf("3. Trying to find out limitations of mremap\n");
+	sz = (size_t)1 << 20;
+	printf("> allocating size %zu MB=%zu GB=%zu mapping and trying to grow it\n", sz, sz >> 20, sz >> 30);
+	mem = mmap(NULL, sz, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+	assert(mem != MAP_FAILED);
+	if (mem == MAP_FAILED) {
+		printf("Unable to mmap size %zu MB=%zu GB=%zu\n", sz, sz >> 20, sz >> 30);
+		goto next4;
+	}
+	memset(mem, 0, sz);
+
+	printf("> growing the mapping to 1G\n");
+	for (i = 0, newsz = sz << 1; newsz < (size_t)1 << 30; i++, newsz <<= 1) {
+		printf("> trying to mremap #%d size %zu MB=%zu GB=%zu\n", i, newsz, newsz >> 20, newsz >> 30);
+#if HAVE_MREMAP
+		mem2 = mremap(mem, sz, newsz, 0);
+#else
+		mem2 = mmap(mem + sz, newsz - sz, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+		if (mem2 != mem + sz) {
+			munmap(mem2, newsz - sz);
+			mem2 = MAP_FAILED;
+		} else
+			mem2 = mem;
+#endif
+		if (mem2 == MAP_FAILED) {
+			printf("Unable to mremap size %zu MB=%zu GB=%zu\n", newsz, newsz >> 20, newsz >> 30);
+			goto unmap3;
+		}
+		sz = newsz;
+		if (mem2 != mem) {
+			mem = mem2;
+			printf("mapping moved!\n");
+			goto unmap3;
+		}
+		mem = mem2;
+		printf("> mremap successful #%d size %zu MB=%zu GB=%zu\n", i, sz, sz >> 20, sz >> 30);
+		memset(mem, 0, sz);
+	}
+
+unmap3:
+	munmap(mem, sz);
+
+next4:
+	printf("3. Trying to find out limitations of mremap take #2\n");
+	printf("> allocating a large (1G) size mapping and trying to shring and regrow it\n");
+	sz = (size_t)1 << 30;
+	mem = mmap(NULL, sz, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+	assert(mem != MAP_FAILED);
+	if (mem == MAP_FAILED) {
+		printf("Unable to mmap size %zu MB=%zu GB=%zu\n", sz, sz >> 20, sz >> 30);
+		goto next5;
+	}
+	memset(mem, 0, sz);
+
+	printf("> shrinking the mapping to 1M\n");
+	newsz = (size_t)1 << 20;
+#if HAVE_MREMAP
+	mem2 = mremap(mem, sz, newsz, 0);
+#else
+	/* unmap everything above newsz */
+	munmap(mem + newsz, sz - newsz);
+	mem2 = mem;
+#endif
+	if (mem2 == MAP_FAILED) {
+		printf("Unable to mremap size %zu MB=%zu GB=%zu\n", newsz, newsz >> 20, newsz >> 30);
+		goto unmap4;
+	}
+	sz = newsz;
+	if (mem2 != mem) {
+		mem = mem2;
+		printf("mapping moved!\n");
+		goto unmap4;
+	}
+	mem = mem2;
+	printf("> mremap successful (zeroing)\n");
+	memset(mem, 0, sz);
+
+	printf("> growing the mapping to 1G again\n");
+	newsz = (size_t)1 << 30;
+#if HAVE_MREMAP
+	mem2 = mremap(mem, sz, newsz, 0);
+#else
+	mem2 = MAP_FAILED;
+
+	mem2 = mmap(mem + sz, newsz - sz, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+	if (mem2 != mem + sz) {
+		munmap(mem2, newsz - sz);
+		mem2 = MAP_FAILED;
+	} else
+		mem2 = mem;
+#endif
+	if (mem2 == MAP_FAILED) {
+		printf("Unable to mremap size %zu MB=%zu GB=%zu\n", newsz, newsz >> 20, newsz >> 30);
+		goto unmap4;
+	}
+	sz = newsz;
+	if (mem2 != mem) {
+		mem = mem2;
+		printf("mapping moved!\n");
+		goto unmap4;
+	}
+	mem = mem2;
+	printf("> mremap successful (zeroing)\n");
+	memset(mem, 0, sz);
+
+unmap4:
+	memset(mem, 0, sz);
+
+next5:
+
+	return 0;
+}
+
+int do_test_stuff(int argc, char *argv[])
+{
+	struct fy_allocator *a;
+	char buf[65536];
+	int tag;
+	const void *p1, *p2;
+
+	a = fy_dedup_allocator_create_in_place(buf, sizeof(buf));
+	assert(a);
+
+	tag = fy_allocator_get_tag(a);
+	assert(tag != -1);
+
+	p1 = fy_allocator_store(a, tag, "Hello", 6, 1);
+	assert(p1);
+
+	assert(!strcmp(p1, "Hello"));
+
+	p2 = fy_allocator_store(a, tag, "Hello", 6, 1);
+	assert(p2);
+
+	assert(!strcmp(p2, "Hello"));
+
+	/* dedup must return the same pointer */
+	assert(p1 == p2);
+	printf("%p/%p\n", p1, p2);
+
+	return 0;
+}
+
+int do_parse_generic(struct fy_parser *fyp, const char *allocator,
+		     bool null_output, const char *cache,
+		     enum fy_generic_schema schema)
+{
+	struct fy_generic_decoder *fygd = NULL;
+	struct fy_generic_encoder *fyge = NULL;
+	struct fy_emitter emit_state, *emit = &emit_state;
+	struct fy_emitter_cfg emit_cfg;
+	uint8_t size_buf[FYGT_SIZE_ENCODING_MAX_64];
+	struct fy_mremap_allocator_cfg mrcfg;
+	struct fy_dedup_allocator_cfg dcfg;
+	struct fy_linear_allocator_cfg lcfg;
+	struct fy_auto_allocator_cfg acfg;
+	struct fy_allocator *a, *pa = NULL;
+	const void *gsetupdata = NULL;
+	bool registered_allocator = false;
+	struct fy_generic_builder *gb;
+	struct fy_generic_builder_cfg gcfg;
+	fy_generic vdir = fy_invalid;
+	int rc __FY_DEBUG_UNUSED__;
+	size_t alloc_size;
+	ssize_t estimated_size;
+#if 0
+	const void *single_area;
+	size_t single_area_size, single_area_start, single_area_alloc;
+	void *single_area_copy = NULL;
+	size_t pagesz = sysconf(_SC_PAGESIZE);
+#endif
+	void *cache_mem = NULL;
+	size_t cache_sz;
+
+	(void)size_buf;
+	(void)cache_mem;
+
+	estimated_size = fy_parse_estimate_queued_input_size(fyp);
+
+	if (estimated_size < 0) {
+		fprintf(stderr, "Bad input\n");
+		return -1;
+	}
+
+	printf("estimated_size=%zd\n", estimated_size);
+
+	if (estimated_size != 0 && estimated_size != SSIZE_MAX)
+		alloc_size = (size_t)(estimated_size * 5.0);
+	else
+		alloc_size = (1 << 30) / 4;
+
+	if (alloc_size < 4096)
+		alloc_size = 4096;
+
+	if (!allocator)
+		allocator = "linear";
+
+	/* setup the linear data always */
+	memset(&lcfg, 0, sizeof(lcfg));
+	lcfg.buf = NULL;
+	lcfg.size = alloc_size;
+
+	printf("using %s allocator\n", allocator);
+
+	if (!strcmp(allocator, "linear")) {
+		gsetupdata = &lcfg;
+	} else if (!strcmp(allocator, "malloc")) {
+		gsetupdata = NULL;
+	} else if (!strcmp(allocator, "mremap")) {
+		gsetupdata = NULL;
+	} else if (!strcmp(allocator, "dedup") || !strcmp(allocator, "dedup-linear")) {
+
+		/* create the parent allocator */
+		pa = fy_allocator_create("linear", &lcfg);
+		assert(pa);
+
+		memset(&dcfg, 0, sizeof(dcfg));
+		dcfg.parent_allocator = pa;
+		dcfg.bloom_filter_bits = 0;	/* use default */
+		dcfg.bucket_count_bits = 0;
+		dcfg.estimated_content_size = estimated_size;
+		dcfg.minimum_bucket_occupancy = 0.5;
+
+		gsetupdata = &dcfg;
+
+		allocator = "dedup";
+
+	} else if (!strcmp(allocator, "dedup-malloc")) {
+
+		/* create the parent allocator */
+		pa = fy_allocator_create("malloc", NULL);
+		assert(pa);
+
+		memset(&dcfg, 0, sizeof(dcfg));
+		dcfg.parent_allocator = pa;
+		dcfg.bloom_filter_bits = 0;	/* use default */
+		dcfg.bucket_count_bits = 0;
+		dcfg.estimated_content_size = estimated_size;
+		dcfg.minimum_bucket_occupancy = 0.5;
+
+		gsetupdata = &dcfg;
+
+		allocator = "dedup";
+	} else if (!strcmp(allocator, "dedup-mremap")) {
+
+		memset(&mrcfg, 0, sizeof(mrcfg));
+		mrcfg.big_alloc_threshold = SIZE_MAX;
+		mrcfg.empty_threshold = 64;
+		mrcfg.grow_ratio = 1.5;
+		mrcfg.balloon_ratio = 8.0;
+		mrcfg.arena_type = FYMRAT_MMAP;
+
+		if (estimated_size && estimated_size != SSIZE_MAX)
+			mrcfg.minimum_arena_size = estimated_size;
+		else
+			mrcfg.minimum_arena_size = 16 << 20;
+
+		/* create the parent allocator */
+		pa = fy_allocator_create("mremap", &mrcfg);
+		assert(pa);
+
+		memset(&dcfg, 0, sizeof(dcfg));
+		dcfg.parent_allocator = pa;
+		dcfg.bloom_filter_bits = 0;	/* use default */
+		dcfg.bucket_count_bits = 0;
+		dcfg.estimated_content_size = estimated_size;
+		dcfg.minimum_bucket_occupancy = 0.5;
+
+		gsetupdata = &dcfg;
+
+		allocator = "dedup";
+
+	} else if (!strcmp(allocator, "auto")) {
+
+		memset(&acfg, 0, sizeof(acfg));
+		acfg.scenario = FYAST_PER_TAG_FREE;
+		acfg.estimated_max_size = (size_t)estimated_size;
+
+		gsetupdata = &acfg;
+
+		allocator = "auto";
+
+	} else {
+		fprintf(stderr, "unsupported allocator %s\n", allocator);
+		return -1;
+	}
+
+	a = fy_allocator_create(allocator, gsetupdata);
+	assert(a);
+
+	memset(&gcfg, 0, sizeof(gcfg));
+	gcfg.allocator = a;
+	gcfg.flags = (((unsigned int)schema << FYGBCF_SCHEMA_SHIFT) & FYGBCF_SCHEMA_MASK);
+
+	gb = fy_generic_builder_create(&gcfg);
+	assert(gb);
+
+	fygd = fy_generic_decoder_create(fyp, gb);
+	assert(fygd);
+
+	vdir = fy_invalid;
+
+	if (cache) {
+		struct stat sb;
+		uint64_t hdr[2];
+		ssize_t rdn;
+		int fd;
+
+		fd = open(cache, O_RDONLY);
+		if (fd >= 0) {
+			rc = fstat(fd, &sb);
+			assert(!rc);
+			/* only for regular files */
+			if ((sb.st_mode & S_IFMT) == S_IFREG) {
+				cache_sz = sb.st_size;
+
+				do {
+					rdn = read(fd, hdr, sizeof(hdr));
+				} while (rdn == -1 && errno == EAGAIN);
+				assert(rdn != -1);
+				assert(rdn > 0);
+				assert(rdn == sizeof(hdr));
+
+#ifdef MAP_FIXED_NOREPLACE
+				fprintf(stderr, "attempting to map fixed at %p\n", (void *)hdr[0]);
+				cache_mem = mmap((void *)(uintptr_t)hdr[0], cache_sz, PROT_READ, MAP_PRIVATE | MAP_FIXED_NOREPLACE, fd, 0);
+				assert(cache_mem != MAP_FAILED);
+				fprintf(stderr, "success\n");
+#else
+				fprintf(stderr, "attempting to map at %p\n", (void *)hdr[0]);
+				cache_mem = mmap((void *)(uintptr_t)hdr[0], cache_sz, PROT_READ, MAP_PRIVATE, fd, 0);
+				assert(cache_mem == (void *)(uintptr_t)hdr[0]);
+				fprintf(stderr, "success\n");
+#endif
+
+				vdir.v = (fy_generic_value)hdr[1];
+			}
+			close(fd);
+		}
+	}
+
+	if (fy_generic_is_invalid(vdir)) {
+		vdir = fy_generic_decoder_parse(fygd, FYGDPF_MULTI_DOCUMENT);
+		assert(fy_generic_is_valid(vdir));
+
+		fy_gb_trim(gb);
+
+#if 0
+		single_area_size = 0;
+		single_area = fy_gb_get_single_area(gb, &single_area_size, &single_area_start, &single_area_alloc);
+		if (!single_area) {
+			fprintf(stderr, "Builder has no single area\n");
+			single_area_copy = NULL;
+		} else {
+			fprintf(stderr, "Builder has single area: %p sz=0x%zx start=0x%zx alloc=0x%zx\n",
+					single_area, single_area_size, single_area_start, single_area_alloc);
+
+#if 0
+			ptrdiff_t d;
+			struct timespec before, after;
+			int64_t ns;
+
+			BEFORE();
+			single_area_copy = malloc(single_area_size);
+			assert(single_area_copy);
+			memcpy(single_area_copy, single_area, single_area_size);
+			ns = AFTER();
+
+			fprintf(stderr, "single area copy: %p sz=0x%zx\n", single_area_copy, single_area_size);
+			printf("copy in %3.2fms\n", (double)((ns / 1000)/1000.0));
+
+			d = single_area_copy - single_area;
+			printf("relocation delta %lx\n", (long)d);
+
+			BEFORE();
+			printf("vdir before relocation %p\n", (void *)vdir);
+			vdir = fy_generic_relocate(single_area_copy, single_area_copy + single_area_size, vdir, d);
+			printf("vdir after relocation %p\n", (void *)vdir);
+			ns = AFTER();
+			printf("relocation in %3.2fms\n", (double)((ns / 1000)/1000.0));
+
+			if (!null_output) {
+				rc = fy_generic_encoder_emit_all_documents(fyge, vdir);
+				assert(!rc);
+			}
+#endif
+
+			if (cache && ((uintptr_t)single_area & (uintptr_t)(pagesz - 1)) == 0 && single_area_start >= 2 * sizeof(uint64_t)) {
+				int fd;
+				void *hdr;
+				const void *p;
+				ssize_t wrn;
+				size_t left, hdrsz;
+
+				fprintf(stderr, "Builder can create cache %s\n", cache);
+
+				fd = open(cache, O_CREAT|O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IRGRP | S_IROTH);
+				if (fd >= 0) {
+					p = single_area;
+					left = single_area_size;
+
+					hdrsz = single_area_start;
+					hdr = alloca(hdrsz);
+					memset(hdr, 0, hdrsz);
+					((uint64_t *)hdr)[0] = (uintptr_t)single_area;		/* store the mapping address */
+					((uint64_t *)hdr)[1] = (uintptr_t)vdir;			/* store the directory */
+
+					do {
+						wrn = write(fd, hdr, hdrsz);
+					} while (wrn == -1 && errno == EAGAIN);
+					assert(wrn != -1);
+					assert(wrn > 0);
+					assert((size_t)wrn == hdrsz);
+					p += (size_t)wrn;
+					left -= (size_t)wrn;
+
+					while (left > 0) {
+						do {
+							wrn = write(fd, p, left);
+						} while (wrn == -1 && errno == EAGAIN);
+						assert(wrn != -1);
+						assert(wrn > 0);
+						p += (size_t)wrn;
+						left -= (size_t)wrn;
+					}
+
+					close(fd);
+				}
+
+			}
+
+		}
+#endif
+	}
+
+	fy_generic_decoder_destroy(fygd);
+	fygd = NULL;
+
+	fprintf(stderr, "before trim\n");
+	fy_allocator_dump(a);
+
+	fy_gb_trim(gb);
+
+	fprintf(stderr, "after trim\n");
+	fy_allocator_dump(a);
+
+	memset(&emit_cfg, 0, sizeof(emit_cfg));
+	emit_cfg.flags = 0;
+	rc = fy_emit_setup(emit, &emit_cfg);
+	assert(!rc);
+
+	fyge = fy_generic_encoder_create(emit);
+	assert(fyge);
+
+	if (!null_output) {
+		assert(fy_generic_is_valid(vdir));
+		rc = fy_generic_encoder_emit(fyge, FYGEEF_MULTI_DOCUMENT, vdir);
+		assert(!rc);
+	}
+
+	fy_generic_encoder_sync(fyge);
+	fy_generic_encoder_destroy(fyge);
+
+	fy_emit_cleanup(emit);
+
+	fy_generic_builder_destroy(gb);
+	gb = NULL;
+
+	fy_allocator_destroy(a);
+	a = NULL;
+
+	if (registered_allocator) {
+		rc = fy_allocator_unregister(allocator);
+		assert(!rc);
+	}
+
+	if (pa) {
+		fy_allocator_destroy(pa);
+		pa = NULL;
+	}
+
+#if 0
+	if (single_area_copy)
+		free(single_area_copy);
+#endif
+
+	return 0;
+}
+
 int apply_flags_option(const char *arg, unsigned int *flagsp,
 		int (*modify_flags)(const char *what, unsigned int *flagsp))
 {
@@ -4170,6 +5367,9 @@ int main(int argc, char *argv[])
 	const char *walkstart = "/";
 	bool use_callback = false;
 	bool null_output = false;
+	const char *allocator = "linear";
+	const char *cache = NULL;
+	enum fy_generic_schema schema = FYGS_AUTO;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -4275,6 +5475,30 @@ int main(int argc, char *argv[])
 		case OPT_YPATH_ALIASES:
 			cfg.flags |= FYPCF_YPATH_ALIASES;
 			break;
+		case OPT_ALLOCATOR:
+			allocator = optarg;
+			break;
+		case OPT_CACHE:
+			cache = optarg;
+			break;
+		case OPT_SCHEMA:
+			if (!strcmp(optarg, "auto"))
+				schema = FYGS_AUTO;
+			else if (!strcmp(optarg, "yaml1.2-failsafe"))
+				schema = FYGS_YAML1_2_FAILSAFE;
+			else if (!strcmp(optarg, "yaml1.2-core"))
+				schema = FYGS_YAML1_2_JSON;
+			else if (!strcmp(optarg, "yaml1.2-json"))
+				schema = FYGS_YAML1_2_JSON;
+			else if (!strcmp(optarg, "yaml1.1"))
+				schema = FYGS_YAML1_1;
+			else if (!strcmp(optarg, "json"))
+				schema = FYGS_JSON;
+			else {
+				fprintf(stderr, "schema option %s\n", optarg);
+				display_usage(stderr, argv[0]);
+			}
+			break;
 		case 'q':
 			cfg.flags |= FYPCF_QUIET;
 			break;
@@ -4305,7 +5529,12 @@ int main(int argc, char *argv[])
 	    strcmp(mode, "crash") &&
 	    strcmp(mode, "badutf8") &&
 	    strcmp(mode, "shell-split") &&
-	    strcmp(mode, "parse-timing")
+	    strcmp(mode, "parse-timing") &&
+	    strcmp(mode, "generics") &&
+	    strcmp(mode, "remap") &&
+	    strcmp(mode, "parse-generic") &&
+	    strcmp(mode, "idbit") &&
+	    strcmp(mode, "test-stuff")
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 	    && strcmp(mode, "libyaml-scan")
 	    && strcmp(mode, "libyaml-parse")
@@ -4562,9 +5791,33 @@ int main(int argc, char *argv[])
 			goto cleanup;
 		}
 	} else if (!strcmp(mode, "parse-timing")) {
-		rc = do_parse_timing(argc, argv, !!(cfg.flags & FYPCF_DISABLE_MMAP_OPT));
+		rc = do_parse_timing(argc, argv);
 		if (rc < 0) {
 			/* fprintf(stderr, "do_parse_timing() error %d\n", rc); */
+			goto cleanup;
+		}
+	} else if (!strcmp(mode, "generics")) {
+		rc = do_generics(argc, argv, allocator);
+		if (rc < 0) {
+			/* fprintf(stderr, "do_generics() error %d\n", rc); */
+			goto cleanup;
+		}
+	} else if (!strcmp(mode, "parse-generic")) {
+		rc = do_parse_generic(fyp, allocator, null_output, cache, schema);
+		if (rc < 0) {
+			/* fprintf(stderr, "do_generics() error %d\n", rc); */
+			goto cleanup;
+		}
+	} else if (!strcmp(mode, "remap")) {
+		rc = do_remap(argc, argv);
+		if (rc < 0) {
+			/* fprintf(stderr, "do_generics() error %d\n", rc); */
+			goto cleanup;
+		}
+	} else if (!strcmp(mode, "test-stuff")) {
+		rc = do_test_stuff(argc, argv);
+		if (rc < 0) {
+			/* fprintf(stderr, "do_generics() error %d\n", rc); */
 			goto cleanup;
 		}
 	}
@@ -4621,3 +5874,131 @@ cleanup:
 
 	return exitcode;
 }
+
+#if 1
+
+static inline long long generic_add_one(fy_generic v)
+{
+	return fy_generic_cast_typed(v, int) + 1;
+}
+
+long long generic_return_two(void)
+{
+	return generic_add_one(fy_to_generic(1));
+}
+
+size_t generic_return_constant_string_length(void)
+{
+	const fy_generic v = fy_to_generic("HELLO");
+	const char *s = fy_genericp_get_string(&v);
+	size_t i;
+
+	for (i = 0; s[i]; i++)
+		;
+	return i;
+}
+
+size_t checkout_seq_count(fy_generic v)
+{
+	return fy_len(v);
+}
+
+size_t checkout_seq_handle_count(fy_generic_sequence_handle seqh)
+{
+	return fy_len(seqh);
+}
+
+fy_generic_sequence_handle checkout_seq_handle(fy_generic v)
+{
+	return fy_cast(v, fy_seq_handle_null);
+}
+
+fy_generic checkout_seq_handle_idx(fy_generic_sequence_handle seqh, size_t idx)
+{
+	return fy_get_at(seqh, idx, fy_invalid);
+}
+
+fy_generic_mapping_handle checkout_map_handle(fy_generic v)
+{
+	return fy_cast(v, fy_map_handle_null);
+}
+
+int checkout_int(fy_generic v)
+{
+	return fy_cast(v, (int)-1);
+}
+
+char *checkout_dup_str(fy_generic v)
+{
+	const char *str;
+
+	str = fy_generic_cast_default(v, "");
+	return strdup(str);
+}
+
+int checkout_sum(fy_generic seq)
+{
+	size_t i;
+	int sum;
+
+	sum = 0;
+	for (i = 0; i < fy_len(seq); i++)
+		sum += fy_get_default(seq, i, 0);
+	return sum;
+}
+
+int checkout_sumh(fy_generic_sequence_handle seqh)
+{
+	size_t i;
+	int sum;
+
+	sum = 0;
+	for (i = 0; i < fy_len(seqh); i++)
+		sum += fy_get_default(seqh, i, 0);
+	return sum;
+}
+
+int checkout_items(fy_generic seq)
+{
+	(void)seq;
+
+	fy_generic v = fy_sequence(1, 2, 3);
+
+	return (int)fy_len(v);
+}
+
+fy_generic_sequence_handle checkout_items2(fy_generic_sequence_handle seqh)
+{
+	fy_generic seq;
+	fy_generic_sequence_handle seqh2;
+
+	seq = fy_to_generic(seqh);
+	seqh2 = fy_generic_cast_default(seq, fy_seq_handle_null);
+	return seqh2;
+}
+
+fy_generic checkout_items3(fy_generic v)
+{
+	fy_generic vv = fy_to_generic(v);
+	return vv;
+}
+
+fy_generic_sequence_handle checkout_items4(fy_generic v)
+{
+	return fy_cast(v, fy_seq_handle_null);
+}
+
+fy_generic checkout_items5(fy_generic_sequence_handle seqh)
+{
+	return fy_to_generic(seqh);
+}
+
+const char *checkout_items6(fy_generic v)
+{
+	const char *str;
+
+	str = fy_genericp_cast_default(&v, "");
+	return strdup(str);
+}
+
+#endif

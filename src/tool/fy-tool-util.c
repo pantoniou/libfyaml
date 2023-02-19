@@ -30,6 +30,7 @@
 #include <libfyaml.h>
 
 #include "fy-tool-util.h"
+#include "fy-tool-reflect.h"
 
 uintmax_t load_le(const void *ptr, size_t width, bool is_signed)
 {
@@ -249,3 +250,598 @@ STRTOX_DECLARE(uintmax_t, uintmax_1_1, STRTOXF_IS_UNSIGNED | STRTOXF_YAML_1_1);
 
 STRTOX_DECLARE(intmax_t, intmax_json, STRTOXF_IS_SIGNED | STRTOXF_JSON);
 STRTOX_DECLARE(uintmax_t, uintmax_json, STRTOXF_IS_UNSIGNED | STRTOXF_JSON);
+
+int parse_integer_scalar(enum fy_type_kind type_kind, const char *str,
+			 enum fy_parser_mode mode, union integer_scalar *nump)
+{
+	static const strtox_intmax_func func_intmax[fypm_json + 1] = {
+		[fypm_yaml_1_1] = str_to_intmax_1_1,
+		[fypm_yaml_1_2] = str_to_intmax,
+		[fypm_yaml_1_3] = str_to_intmax,
+		[fypm_json] = str_to_intmax_json,
+	};
+	static const strtox_uintmax_func func_uintmax[fypm_json + 1] = {
+		[fypm_yaml_1_1] = str_to_uintmax_1_1,
+		[fypm_yaml_1_2] = str_to_uintmax,
+		[fypm_yaml_1_3] = str_to_uintmax,
+		[fypm_json] = str_to_uintmax_json,
+	};
+	int rc;
+
+	if (fy_type_kind_is_signed(type_kind)) {
+		assert((size_t)mode <= ARRAY_SIZE(func_intmax));
+		assert(func_intmax[mode]);
+		rc = func_intmax[mode](str, &nump->sval);
+		if (rc)
+			return rc;
+		if ((nump->sval > 0 && nump->sval > signed_integer_max(type_kind)) ||
+		    (nump->sval < 0 && nump->sval < signed_integer_min(type_kind)))
+			return -ERANGE;
+	} else {
+		assert((size_t)mode <= ARRAY_SIZE(func_uintmax));
+		assert(func_uintmax[mode]);
+		rc = func_uintmax[mode](str, &nump->uval);
+		if (rc)
+			return rc;
+		if (nump->uval > unsigned_integer_max(type_kind))
+			return -ERANGE;
+	}
+
+	return 0;
+}
+
+static void
+store_signed_integer(enum fy_type_kind type_kind, void *data, intmax_t sval)
+{
+	switch (type_kind) {
+	case FYTK_CHAR:
+		*(char *)data = (char)sval;
+		break;
+	case FYTK_SCHAR:
+		*(signed char *)data = (signed char)sval;
+		break;
+	case FYTK_SHORT:
+		*(short *)data = (short)sval;
+		break;
+	case FYTK_INT:
+		*(int *)data = (int)sval;
+		break;
+	case FYTK_LONG:
+		*(long *)data = (long)sval;
+		break;
+	case FYTK_LONGLONG:
+		*(long long *)data = (long long)sval;
+		break;
+	default:
+		abort();
+		break;
+	}
+}
+
+static void
+store_unsigned_integer(enum fy_type_kind type_kind, void *data, uintmax_t uval)
+{
+	switch (type_kind) {
+	case FYTK_CHAR:
+		*(char *)data = (char)uval;	/* NOTE: on some platforms this is unsigned */
+		break;
+	case FYTK_UCHAR:
+		*(unsigned char *)data = (unsigned char)uval;
+		break;
+	case FYTK_USHORT:
+		*(unsigned short *)data = (unsigned short)uval;
+		break;
+	case FYTK_UINT:
+		*(unsigned int *)data = (unsigned int)uval;
+		break;
+	case FYTK_ULONG:
+		*(unsigned long *)data = (unsigned long)uval;
+		break;
+	case FYTK_ULONGLONG:
+		*(unsigned long long *)data = (unsigned long long)uval;
+		break;
+	default:
+		abort();
+		break;
+	}
+}
+
+void
+store_integer_scalar(enum fy_type_kind type_kind, void *data, union integer_scalar num)
+{
+	assert(fy_type_kind_is_integer(type_kind));
+
+	/* don't handle anything wide */
+	assert(fy_type_kind_size(type_kind) <= sizeof(uintmax_t));
+
+	return fy_type_kind_is_signed(type_kind) ?
+		store_signed_integer(type_kind, data, num.sval) :
+		store_unsigned_integer(type_kind, data, num.uval);
+}
+
+static intmax_t
+load_signed_integer(enum fy_type_kind type_kind, const void *data)
+{
+	switch (type_kind) {
+	case FYTK_CHAR:
+		return *(char *)data;
+	case FYTK_SCHAR:
+		return *(signed char *)data;
+	case FYTK_SHORT:
+		return *(short *)data;
+	case FYTK_INT:
+		return *(int *)data;
+	case FYTK_LONG:
+		return *(long *)data;
+	case FYTK_LONGLONG:
+		return *(long long *)data;
+	default:
+		abort();
+	}
+	return 0;
+}
+
+static uintmax_t
+load_unsigned_integer(enum fy_type_kind type_kind, const void *data)
+{
+	switch (type_kind) {
+	case FYTK_CHAR:
+		return *(char *)data;
+	case FYTK_UCHAR:
+		return *(unsigned char *)data;
+	case FYTK_USHORT:
+		return *(unsigned short *)data;
+	case FYTK_UINT:
+		return *(unsigned int *)data;
+	case FYTK_ULONG:
+		return *(unsigned long *)data;
+	case FYTK_ULONGLONG:
+		return *(unsigned long long *)data;
+	default:
+		abort();
+	}
+	return 0;
+}
+
+union integer_scalar
+load_integer_scalar(enum fy_type_kind type_kind, const void *data)
+{
+	union integer_scalar num;
+
+	assert(fy_type_kind_is_integer(type_kind));
+
+	/* don't handle anything wide */
+	assert(fy_type_kind_size(type_kind) <= sizeof(uintmax_t));
+
+	if (fy_type_kind_is_signed(type_kind))
+		num.sval = load_signed_integer(type_kind, data);
+	else
+		num.uval = load_unsigned_integer(type_kind, data);
+	return num;
+}
+
+int
+parse_float_scalar(enum fy_type_kind type_kind, const char *text0,
+		   enum fy_parser_mode mode, union float_scalar *numf)
+{
+	enum {
+		pft_normal,
+		pft_plus_inf,
+		pft_minus_inf,
+		pft_nan,
+	} parse_float_type;
+	static const char *plus_inf_values[] = {
+		".inf", ".Inf", ".INF",
+		"+.inf", "+.Inf", "+.INF", NULL
+	};
+	static const char *minus_inf_values[] = {
+		"-.inf", "-.Inf", "-.INF", NULL
+	};
+	static const char *nan_values[] = {
+		".nan", ".NaN", ".NAN", NULL
+	};
+	char *endptr;
+	int errno_value;
+
+	assert(fy_type_kind_is_float(type_kind));
+
+	if (parse_match_value(text0, plus_inf_values) >= 0)
+		parse_float_type = pft_plus_inf;
+	else if (parse_match_value(text0, minus_inf_values) >= 0)
+		parse_float_type = pft_minus_inf;
+	else if (parse_match_value(text0, nan_values) >= 0)
+		parse_float_type = pft_nan;
+	else
+		parse_float_type = pft_normal;
+
+	errno = 0;
+	switch (type_kind) {
+
+	case FYTK_FLOAT:
+		switch (parse_float_type) {
+		case pft_plus_inf:
+			numf->f = INFINITY;
+			break;
+		case pft_minus_inf:
+			numf->f = -INFINITY;
+			break;
+		case pft_nan:
+			numf->f = NAN;
+			break;
+		default:
+			numf->f = strtof(text0, &endptr);
+			break;
+		}
+		break;
+
+	case FYTK_DOUBLE:
+		switch (parse_float_type) {
+		case pft_plus_inf:
+			numf->d = INFINITY;
+			break;
+		case pft_minus_inf:
+			numf->d = -INFINITY;
+			break;
+		case pft_nan:
+			numf->d = NAN;
+			break;
+		default:
+			numf->d = strtod(text0, &endptr);
+			break;
+		}
+		break;
+
+	case FYTK_LONGDOUBLE:
+		switch (parse_float_type) {
+		case pft_plus_inf:
+			numf->ld = INFINITY;
+			break;
+		case pft_minus_inf:
+			numf->ld = -INFINITY;
+			break;
+		case pft_nan:
+			numf->ld = NAN;
+			break;
+		default:
+			numf->ld = strtold(text0, &endptr);
+			break;
+		}
+		break;
+
+	default:
+		abort();
+	}
+	errno_value = errno;
+	errno = 0;
+
+	if (errno_value == ERANGE)
+		return -ERANGE;
+
+	if (parse_float_type == pft_normal && *endptr != '\0')
+		return -EINVAL;
+
+	return 0;
+}
+
+void store_float_scalar(enum fy_type_kind type_kind, void *data, union float_scalar numf)
+{
+	assert(fy_type_kind_is_float(type_kind));
+
+	switch (type_kind) {
+	case FYTK_FLOAT:
+		*(float *)data = numf.f;
+		break;
+	case FYTK_DOUBLE:
+		*(double *)data = numf.d;
+		break;
+	case FYTK_LONGDOUBLE:
+		*(long double *)data = numf.ld;
+		break;
+	default:
+		break;
+	}
+}
+
+union float_scalar
+load_float_scalar(enum fy_type_kind type_kind, const void *data)
+{
+	union float_scalar numf;
+
+	assert(fy_type_kind_is_float(type_kind));
+
+	switch (type_kind) {
+	case FYTK_FLOAT:
+		numf.f = *(const float *)data;
+		break;
+	case FYTK_DOUBLE:
+		numf.d = *(const double *)data;
+		break;
+	case FYTK_LONGDOUBLE:
+		numf.ld = *(const long double *)data;
+		break;
+	default:
+		numf.ld = 0;
+		break;
+	}
+	return numf;
+}
+
+int
+parse_boolean_scalar(const char *text0, enum fy_parser_mode mode, bool *vp)
+{
+	static const char *true_values[] = {
+		"true", "True", "TRUE", NULL
+	};
+	static const char *true_values_1_1[] = {
+		"y", "Y",
+		"yes", "Yes", "YES",
+		"true", "True", "TRUE",
+		"on", "On", "ON", NULL
+	};
+	static const char *true_values_json[] = {
+		"true", NULL
+	};
+	static const char *false_values[] = {
+		"false", "False", "FALSE", NULL
+	};
+	static const char *false_values_1_1[] = {
+		"n", "N",
+		"no", "No", "NO",
+		"false", "False", "FALSE",
+		"off", "Off", "OFF", NULL
+	};
+	static const char *false_values_json[] = {
+		"false", NULL
+	};
+	static const char **mode_true_values[fypm_json + 1] = {
+		[fypm_yaml_1_1] = true_values_1_1,
+		[fypm_yaml_1_2] = true_values,
+		[fypm_yaml_1_3] = true_values,
+		[fypm_json] = true_values_json,
+	};
+	static const char **mode_false_values[fypm_json + 1] = {
+		[fypm_yaml_1_1] = false_values_1_1,
+		[fypm_yaml_1_2] = false_values,
+		[fypm_yaml_1_3] = false_values,
+		[fypm_json] = false_values_json,
+	};
+	int match;
+
+	assert((size_t)mode <= ARRAY_SIZE(mode_true_values));
+	match = parse_match_value(text0, mode_true_values[mode]);
+	if (match >= 0) {
+		*vp = true;
+		return 0;
+	}
+
+	assert((size_t)mode <= ARRAY_SIZE(mode_false_values));
+	match = parse_match_value(text0, mode_false_values[mode]);
+	if (match >= 0) {
+		*vp = false;
+		return 0;
+	}
+
+	return -EINVAL;
+}
+
+void
+store_boolean_scalar(enum fy_type_kind type_kind, void *data, bool v)
+{
+	assert(type_kind == FYTK_BOOL);
+	*(bool *)data = v;
+}
+
+bool
+load_boolean_scalar(enum fy_type_kind type_kind, const void *data)
+{
+	assert(type_kind == FYTK_BOOL);
+	return *(const _Bool *)data;
+}
+
+int
+parse_null_scalar(const char *text0, enum fy_parser_mode mode)
+{
+	static const char *null_values[] = {
+		"~", "null", "Null", "NULL", NULL
+	};
+	static const char *null_values_json[] = {
+		"null", NULL
+	};
+	static const char **mode_null_values[fypm_json + 1] = {
+		[fypm_yaml_1_1] = null_values,
+		[fypm_yaml_1_2] = null_values,
+		[fypm_yaml_1_3] = null_values,
+		[fypm_json] = null_values_json,
+	};
+	int match;
+
+	assert((size_t)mode <= ARRAY_SIZE(mode_null_values));
+	match = parse_match_value(text0, mode_null_values[mode]);
+	if (match >= 0)
+		return 0;
+
+	return -EINVAL;
+}
+
+static void comment_dump(int level, const char *comment)
+{
+	size_t len;
+	const char *s, *e, *le;
+
+	if (!comment)
+		return;
+
+	len = strlen(comment);
+	s = comment;
+	e = s + len;
+	while (s < e) {
+		le = strchr(s, '\n');
+		len = le ? (size_t)(le - s) : strlen(s);
+		printf("%*s// %.*s\n", (int)(level * 4), "", (int)len, s);
+		s += len + 1;
+	}
+}
+
+void type_info_dump(const struct fy_type_info *ti, int level)
+{
+	const struct fy_field_info *fi;
+	size_t i;
+
+	comment_dump(level, fy_type_info_get_yaml_comment(ti));
+	printf("'%s'", ti->name);
+	printf("%s%s%s%s%s%s%s%s%s%s%s%s",
+			(ti->flags & FYTIF_CONST) ? " CONST" : "",
+			(ti->flags & FYTIF_VOLATILE) ? " VOLATILE" : "",
+			(ti->flags & FYTIF_RESTRICT) ? " RESTRICT" : "",
+			(ti->flags & FYTIF_UNRESOLVED) ? " UNRESOLVED" : "",
+			(ti->flags & FYTIF_MAIN_FILE) ? " MAIN_FILE" : "",
+			(ti->flags & FYTIF_SYSTEM_HEADER) ? " SYSTEM_HEADER" : "",
+			(ti->flags & FYTIF_ANONYMOUS) ? " ANONYMOUS" : "",
+			(ti->flags & FYTIF_ANONYMOUS_RECORD_DECL) ? " ANONYMOUS_RECORD_DECL" : "",
+			(ti->flags & FYTIF_ANONYMOUS_DEP) ? " ANONYMOUS_DEP" : "",
+			(ti->flags & FYTIF_INCOMPLETE) ? " INCOMPLETE" : "",
+			(ti->flags & FYTIF_ELABORATED) ? " ELABORATED" : "",
+			(ti->flags & FYTIF_ANONYMOUS_GLOBAL) ? " ANONYMOUS_GLOBAL" : "");
+	printf(" size=%zu align=%zu", ti->size, ti->align);
+	if (ti->dependent_type)
+		printf(" -> %s", ti->dependent_type->name);
+	printf("\n");
+
+	if (fy_type_kind_has_fields(ti->kind)) {
+		for (i = 0, fi = ti->fields; i < ti->count; i++, fi++) {
+			comment_dump(level + 1, fy_field_info_get_yaml_comment(fi));
+			printf("%*s%s %s", (level + 1) * 4, "", fi->type_info->name, fi->name);
+			printf("%s%s",
+					(fi->flags & FYFIF_BITFIELD) ? " BITFIELD" : "",
+					(fi->flags & FYFIF_ENUM_UNSIGNED) ? " ENUM_UNSIGNED" : "");
+			if (ti->kind == FYTK_ENUM) {
+				if (fi->flags & FYFIF_ENUM_UNSIGNED)
+					printf(" value=%ju", fi->uval);
+				else
+					printf(" value=%jd", fi->sval);
+			} else if (!(fi->flags & FYFIF_BITFIELD))
+				printf(" offset=%zu", fi->offset);
+			else
+				printf(" bit_offset=%zu bit_width=%zu", fi->bit_offset, fi->bit_width);
+			printf("\n");
+		}
+	}
+}
+
+/* reflection walker util */
+union integer_scalar
+load_integer_scalar_rw(struct reflection_walker *rw)
+{
+	union integer_scalar numi;
+
+	assert(rw);
+	assert(rw->rtd);
+
+	if (!(rw->flags & RWF_BITFIELD_DATA))
+		numi = load_integer_scalar(rtd_kind(rw->rtd), rw->data);
+	else
+		numi.uval = load_bitfield_le(rw->data, rw->data_size.bit_offset,
+				rw->data_size.bit_width, rtd_is_signed(rw->rtd));
+	return numi;
+}
+
+int
+store_integer_scalar_check_rw(struct reflection_walker *rw,
+			      union integer_scalar numi,
+			      union integer_scalar *minip, union integer_scalar *maxip)
+{
+	size_t bit_width;
+	union integer_scalar mini, maxi;
+	int rc;
+
+	if (!(rw->flags & RWF_BITFIELD_DATA))
+		bit_width = rtd_size(rw->rtd) << 3;
+	else
+		bit_width = rw->data_size.bit_width;
+
+	rc = 0;
+	if (rtd_is_signed(rw->rtd)) {
+
+		mini.sval = signed_integer_min_from_bit_width(bit_width);
+		maxi.sval = signed_integer_max_from_bit_width(bit_width);
+
+		if (numi.sval < mini.sval || numi.sval > maxi.sval)
+			rc = -ERANGE;
+
+		if (minip)
+			*minip = mini;
+		if (maxip)
+			*maxip = maxi;
+
+	} else if (rtd_is_unsigned(rw->rtd)) {
+
+		maxi.uval = unsigned_integer_max_from_bit_width(bit_width);
+
+		if (numi.uval > maxi.uval)
+			rc = -ERANGE;
+
+		if (minip)
+			minip->uval = 0;
+		if (maxip)
+			*maxip = maxi;
+	} else
+		return -EINVAL;
+
+	return rc;
+}
+
+void
+store_integer_scalar_no_check_rw(struct reflection_walker *rw, union integer_scalar num)
+{
+	assert(rw);
+	assert(rw->rtd);
+
+	if (!(rw->flags & RWF_BITFIELD_DATA))
+		store_integer_scalar(rtd_kind(rw->rtd), rw->data, num);
+	else
+		store_bitfield_le(rw->data, rw->data_size.bit_offset,
+				rw->data_size.bit_width, num.uval);
+}
+
+int
+store_integer_scalar_rw(struct reflection_walker *rw, union integer_scalar num)
+{
+	int rc;
+
+	rc = store_integer_scalar_check_rw(rw, num, NULL, NULL);
+	if (rc)
+		return rc;
+
+	store_integer_scalar_no_check_rw(rw, num);
+
+	return 0;
+}
+
+void
+store_boolean_scalar_rw(struct reflection_walker *rw, bool v)
+{
+	assert(rw);
+	assert(rw->rtd);
+
+	if (!(rw->flags & RWF_BITFIELD_DATA))
+		store_boolean_scalar(rtd_kind(rw->rtd), rw->data, v);
+	else
+		store_bitfield_le(rw->data, rw->data_size.bit_offset,
+				rw->data_size.bit_width, (uintmax_t)v);
+}
+
+bool
+load_boolean_scalar_rw(struct reflection_walker *rw)
+{
+	bool v;
+
+	assert(rw);
+	assert(rw->rtd);
+
+	if (!(rw->flags & RWF_BITFIELD_DATA))
+		v = load_boolean_scalar(rtd_kind(rw->rtd), rw->data);
+	else
+		v = !!load_bitfield_le(rw->data, rw->data_size.bit_offset,
+				rw->data_size.bit_width, rtd_is_signed(rw->rtd));
+	return v;
+}

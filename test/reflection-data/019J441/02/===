@@ -1,0 +1,1 @@
+Base type: char 128, 255, 0xff (two's complement unsigned char: matches values over 127)

@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+
+skiplist=""
+# Negative tests that intentionally test error conditions (missing fields, out-of-range values, etc.)
+# xfaillist="025DOBF/00 025H1I3/00 025K41A/00 025O1SY/00 025O31T/00 025PB08/00 025UC9J/00 025UXE6/00 025VL2J/00 025W2FL/00 025WGM5/00 025WLD2/00 025X82W/00 025XCSC/00 025XF1G/00"
+xfaillist="025PB08/00 025UXE6/00 025VL2J/00"
+
+function echoerr() {
+        echo $1 1>&2
+}
+
+function max2bits() {
+        local m=$1
+
+        # find set bit
+        local i=64
+        while [[ $i -ge 0 && $(((m + 1) & (1 << i))) -eq 0 ]]; do
+                ((i--))
+        done
+        if [[ $i -lt 0 ]]; then
+                i=64
+        fi
+        echo $i
+        return
+}
+
+function env_skip() {
+        local env=$1
+	local skip=n
+        local var
+        local testvar
+
+        # environment file must exist
+        if [[ -e "$env" ]]; then
+
+                # echoerr "$env"
+
+                # unset all variables with the prefix test_env_
+                unset ${!test_env_*}
+
+                # source the environment file prefixing all vars with test_env_
+                source <(sed 's/[^=]\+=/test_env_&/' $env) 2>/dev/null
+
+                # for each variable defined in the env file
+                for testvar in ${!test_env_*}; do
+                        var=`echo $testvar | sed -e 's/^test_env_//'`
+                        # echoerr "$testvar=${!testvar}: $var=${!var}"
+                        if [[ "x${!var}" != "x" && "x${!testvar}" != "x${!var}" ]]; then
+				echoerr "$env: SKIP $testvar=${!testvar}: $var=${!var}"
+                                skip=y
+                                break
+                        fi
+                done
+
+                # unset all variables with the prefix test_env_ again
+                unset ${!test_env_*}
+
+        fi
+
+	# echoerr "$env: skip=$skip"
+
+        echo $skip
+}
+
+# get info about the environment
+uintmax=`getconf UINT_MAX`
+intbits=`max2bits $uintmax`
+ushortmax=`getconf USHRT_MAX`
+shortbits=`max2bits $ushortmax`
+ulongmax=`getconf ULONG_MAX`
+longbits=`max2bits $ulongmax`
+ucharmax=`getconf UCHAR_MAX`
+charbits=`max2bits $ucharmax`
+charmin=`getconf CHAR_MIN`
+if [[ $charmin -lt 0 ]]; then
+	charsigned=y
+else
+	charsigned=n
+fi
+# long long is guaranteed to be 64 bits
+# in fact for all supported platforms this is the case
+ulonglongmax=18446744073709551615
+longlongbits=64
+
+count=0
+for basetst in reflection-data/[0-9][0-9][0-9][A-Z][A-Z0-9][A-Z0-9][A-Z0-9]/; do
+	for tst in ${basetst} ${basetst}[0-9][0-9]/ ${basetst}[0-9][0-9][0-9]/; do
+		# there must be a test there
+		if [ ! -e "$tst/===" ]; then
+			continue
+		fi
+		t=${tst%/}
+		# skip tests with wrong 32/64 setting
+		skip=`env_skip "$t/env"`
+		if [ $skip = y ]; then
+			test_subtest_id=`echo $t | cut -d/ -f2-`
+			skiplist="$skiplist $test_subtest_id"
+		fi
+		count=`expr $count + 1`
+	done
+done
+
+# output plan
+echo 1..$count
+
+i=0
+for basetst in reflection-data/[0-9][0-9][0-9][A-Z][A-Z0-9][A-Z0-9][A-Z0-9]/; do
+
+	for tst in ${basetst} ${basetst}[0-9][0-9]/ ${basetst}[0-9][0-9][0-9]/; do
+
+		# there must be a test there
+		if [ ! -e "$tst/===" ]; then
+			continue
+		fi
+
+		i=`expr $i + 1`
+
+		# strip trailing /
+		t=${tst%/}
+		# remove test-suite-data/
+		test_subtest_id=`echo $t | cut -d/ -f2-`
+		test_id=`echo $test_subtest_id | cut -d/ -f1`
+		subtest_id=`echo $test_subtest_id | cut -s -d/ -f2`
+
+		desctxt=`cat 2>/dev/null "$tst/==="`
+		def="$tst/definition.h"
+		meta="$tst/meta"
+		entry=`cat 2>/dev/null "$tst/entry"`
+		in_file="$tst/in.yaml"
+
+		t=`mktemp`
+		t2=`mktemp`
+
+		directive=""
+		for skip in $skiplist; do
+			if [ "$test_subtest_id" == "$skip" ]; then
+				directive=" # SKIP"
+				break
+			fi
+		done
+
+		res="ok"
+		if [ "x$directive" == "x" ]; then
+			res="not ok"
+
+			meta_args=()
+			def_args=()
+			if [ -f "$def" ]; then
+				def_args=("--import-c-file" "$def")
+			fi
+			if [ -f "$meta" ]; then
+				metaval=`cat $meta | head -n 1`
+				meta_args=("--entry-meta" "${metaval}")
+			fi
+
+			pass_yaml=0
+			${TOP_BUILDDIR}/src/fy-tool --reflect "${def_args[@]}" "${meta_args[@]}" --entry-type "${entry}" "${in_file}" >"$t"
+			if [ $? -eq 0 ]; then
+				# generate test.event out of the file
+				${TOP_BUILDDIR}/src/fy-tool --testsuite --disable-flow-markers --disable-doc-markers --disable-scalar-styles "$t" >"$t2"
+				if [ $? -eq 0 ]; then
+					pass_yaml=1
+				fi
+			fi
+
+			if [ -e "$tst/error" ]; then
+				# test is expected to fail
+				if [ $pass_yaml == "0" ]; then
+					res="ok"
+				else
+					res="not ok"
+				fi
+			else
+				# test is expected to pass
+				if [ $pass_yaml == "1" ]; then
+					diff_yaml=0
+					diff -u "$tst/test.event" "$t2"
+					if [ $? -eq 0 ]; then
+						res="ok"
+					else
+						res="not ok"
+					fi
+				else
+					res="not ok"
+				fi
+			fi
+
+			for xfail in $xfaillist; do
+				if [ "$test_subtest_id" == "$xfail" ]; then
+					directive=" # TODO: known failure."
+					break
+				fi
+			done
+		fi
+
+		rm -f "$t" "$t2"
+
+		echo "$res $i $test_subtest_id - $desctxt$directive"
+	done
+done

@@ -1,0 +1,38 @@
++STR
++DOC
++MAP
+=VAL "values
++SEQ
+=VAL "101
+=VAL "102
+=VAL "103
+=VAL "104
+=VAL "105
+-SEQ
+=VAL "xvalues
++SEQ
+=VAL "201
+=VAL "202
+=VAL "10
+-SEQ
+-MAP
+-DOC
++DOC
++MAP
+=VAL "values
++SEQ
+=VAL "101
+=VAL "102
+=VAL "103
+=VAL "104
+=VAL "105
+-SEQ
+=VAL "xvalues
++SEQ
+=VAL "10
+=VAL "10
+=VAL "10
+-SEQ
+-MAP
+-DOC
+-STR

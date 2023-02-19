@@ -28,6 +28,8 @@
 #include "fy-parse.h"
 #include "fy-ctype.h"
 
+#include "fy-generic.h"
+
 #include "fy-input.h"
 
 /* amount of multiplication of page size for CHOP size
@@ -261,6 +263,10 @@ void fy_input_close(struct fy_input *fyi)
 		/* nothing */
 		break;
 
+	case fyit_geniter:
+		/* nothing */
+		break;
+
 	default:
 		break;
 	}
@@ -306,6 +312,7 @@ ssize_t fy_input_estimate_queued_size(const struct fy_input *fyi)
 
 	case fyit_callback:
 	case fyit_dociter:
+	case fyit_geniter:
 	default:
 		return SSIZE_MAX;	/* cannot determine */
 	}
@@ -423,6 +430,7 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 {
 	struct stat sb;
 	struct fy_document_iterator *fydi;
+	struct fy_generic_iterator *fygi;
 	int rc;
 
 	if (!fyi)
@@ -522,6 +530,13 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 				"missing document iterator");
 		break;
 
+	case fyit_geniter:
+		fygi = fyi->cfg.geniter.fygi;
+		fyr_error_check(fyr, fygi, err_out,
+				"missing generic iterator");
+		break;
+
+
 	default:
 		FY_IMPOSSIBLE_ABORT();
 	}
@@ -532,6 +547,7 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 	case fyit_memory:
 	case fyit_alloc:
 	case fyit_dociter:
+	case fyit_geniter:
 		break;
 
 		/* all the rest need it */
@@ -1003,6 +1019,9 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 	case fyit_dociter:
 		FY_IMPOSSIBLE_ABORT();
 
+	case fyit_geniter:
+		FY_IMPOSSIBLE_ABORT();
+
 	default:
 		FY_IMPOSSIBLE_ABORT();
 	}
@@ -1102,6 +1121,12 @@ struct fy_input *fy_input_create(const struct fy_input_cfg *fyic)
 			fyi->name = NULL;
 		break;
 
+	case fyit_geniter:
+		ret = asprintf(&fyi->name, "<geniter-@%p>", fyi->cfg.geniter.fygi);
+		if (ret == -1)
+			fyi->name = NULL;
+		break;
+
 	default:
 		FY_IMPOSSIBLE_ABORT();
 	}
@@ -1184,18 +1209,12 @@ const void *fy_reader_ensure_lookahead_slow_path(struct fy_reader *fyr, size_t s
 	return p;
 }
 
-struct fy_event *fy_reader_generate_next_event(struct fy_reader *fyr)
+static struct fy_event *fy_input_generate_next_event_dociter(struct fy_input *fyi)
 {
-	struct fy_input *fyi;
 	struct fy_document_iterator *fydi;
 	struct fy_event *fye;
 
-	fyi = fy_reader_current_input(fyr);
-	if (!fyi || fyi->cfg.type != fyit_dociter)
-		return NULL;
-
 	fydi = fyi->cfg.dociter.fydi;
-
 	do {
 		fye = fy_document_iterator_generate_next(fydi);
 		if (!fye)
@@ -1214,6 +1233,50 @@ struct fy_event *fy_reader_generate_next_event(struct fy_reader *fyr)
 	return fye;
 }
 
+static struct fy_event *fy_input_generate_next_event_geniter(struct fy_input *fyi)
+{
+	struct fy_generic_iterator *fygi;
+	struct fy_event *fye;
+
+	fygi = fyi->cfg.geniter.fygi;
+
+	do {
+		fye = fy_generic_iterator_generate_next(fygi);
+		if (!fye)
+			return NULL;
+
+		/* remove if we don't want the event */
+		if (((fye->type == FYET_STREAM_START || fye->type == FYET_STREAM_END) &&
+				!(fyi->cfg.geniter.flags & FYPEGF_GENERATE_STREAM_EVENTS)) ||
+		    ((fye->type == FYET_DOCUMENT_START || fye->type == FYET_DOCUMENT_END) &&
+				!(fyi->cfg.geniter.flags & FYPEGF_GENERATE_DOCUMENT_EVENTS))) {
+			fy_generic_iterator_event_free(fygi, fye);
+			fye = NULL;
+		}
+	} while (!fye);
+
+	return fye;
+}
+
+struct fy_event *fy_reader_generate_next_event(struct fy_reader *fyr)
+{
+	struct fy_input *fyi;
+
+	fyi = fy_reader_current_input(fyr);
+	if (!fyi)
+		return NULL;
+
+	switch (fyi->cfg.type) {
+	case fyit_dociter:
+		return fy_input_generate_next_event_dociter(fyi);
+	case fyit_geniter:
+		return fy_input_generate_next_event_geniter(fyi);
+	default:
+		break;
+	}
+	return NULL;
+}
+
 void fy_reader_event_free(struct fy_reader *fyr, struct fy_event *fye)
 {
 	struct fy_input *fyi;
@@ -1222,7 +1285,14 @@ void fy_reader_event_free(struct fy_reader *fyr, struct fy_event *fye)
 	assert(fyi);
 	assert(fy_reader_generates_events(fyr));
 
-	assert (fyi->cfg.type == fyit_dociter);
-
-	fy_document_iterator_event_free(fyi->cfg.dociter.fydi, fye);
+	switch (fyi->cfg.type) {
+	case fyit_dociter:
+		fy_document_iterator_event_free(fyi->cfg.dociter.fydi, fye);
+		break;
+	case fyit_geniter:
+		fy_generic_iterator_event_free(fyi->cfg.geniter.fygi, fye);
+		break;
+	default:
+		FY_IMPOSSIBLE_ABORT();
+	}
 }

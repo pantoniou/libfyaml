@@ -1,0 +1,11 @@
+---
+val: 10
+text: ten
+onetwo: { }
+...
+---
+text: what
+onetwo:
+  # one: 111
+  two: 222
+bitfield: 2

@@ -12,11 +12,12 @@
 #include "config.h"
 #endif
 
+#include "fy-align.h"
 #include "fy-atomics.h"
 #include "fy-allocator.h"
 
 struct fy_linear_allocator {
-	FY_ATOMIC(size_t) next FY_CACHE_ALIGNED;	// hot hot hot
+	FY_ATOMIC(size_t) next FY_CACHELINE_ALIGN;	// hot hot hot
 	struct fy_allocator a;
 	struct fy_linear_allocator_cfg cfg;
 	void *alloc;

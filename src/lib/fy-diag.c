@@ -79,6 +79,7 @@ static const char *error_module_txt[] = {
 	[FYEM_TYPESET]			= "typeset",
 	[FYEM_DECODE]			= "decode",
 	[FYEM_ENCODE]			= "encode",
+	[FYEM_REFLECTION]		= "reflection",
 };
 
 const char *fy_error_module_to_string(enum fy_error_module module)
@@ -134,6 +135,7 @@ static const char *fy_error_module_str(enum fy_error_module module)
 		[FYEM_TYPESET]			= "TYPES",
 		[FYEM_DECODE]			= "DEC  ",
 		[FYEM_ENCODE]			= "ENC  ",
+		[FYEM_REFLECTION]		= "RFLCT",
 	};
 
 	if ((unsigned int)module >= FYEM_MAX)

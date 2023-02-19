@@ -28,6 +28,8 @@
 #include "fy-utf8.h"
 #include "fy-utils.h"
 
+#include "fy-generic.h"
+
 #include "fy-event.h"
 
 struct fy_eventp *fy_eventp_alloc(void)
@@ -1335,4 +1337,89 @@ fy_event_get_comments(struct fy_event *fye)
 		return NULL;
 
 	return fy_token_get_comments(fyt);
+}
+
+struct fy_eventp *
+fy_generic_iterator_eventp_alloc(struct fy_generic_iterator *fygi)
+{
+	struct fy_eventp *fyep = NULL;
+
+	if (!fygi)
+		return NULL;
+
+	if (fygi->recycled_eventp_list)
+		fyep = fy_eventp_list_pop(fygi->recycled_eventp_list);
+	if (!fyep)
+		fyep = fy_eventp_alloc();
+	if (!fyep)
+		return NULL;
+
+	fyep->e.type = FYET_NONE;
+
+	return fyep;
+}
+
+void fy_generic_iterator_eventp_clean(struct fy_generic_iterator *fygi, struct fy_eventp *fyep)
+{
+	if (!fygi || !fyep)
+		return;
+
+	fy_eventp_clean_rl(fygi->recycled_token_list, fyep);
+}
+
+void fy_generic_iterator_eventp_recycle(struct fy_generic_iterator *fygi, struct fy_eventp *fyep)
+{
+	if (!fygi || !fyep)
+		return;
+
+	/* clean, safe to do */
+	fy_generic_iterator_eventp_clean(fygi, fyep);
+
+	if (fygi->recycled_eventp_list)
+		fy_eventp_list_push(fygi->recycled_eventp_list, fyep);
+	else
+		fy_eventp_free(fyep);
+}
+
+struct fy_event *
+fy_generic_iterator_event_vcreate(struct fy_generic_iterator *fygi, enum fy_event_type type, va_list ap)
+{
+	struct fy_eventp *fyep;
+
+	if (!fygi)
+		return NULL;
+
+	fyep = fy_eventp_vcreate_internal(fygi->recycled_eventp_list,
+			NULL,
+			NULL,	/* fyds */
+			type, ap);
+	if (!fyep)
+		return NULL;
+
+	return &fyep->e;
+}
+
+struct fy_event *
+fy_generic_iterator_event_create(struct fy_generic_iterator *fygi, enum fy_event_type type, ...)
+{
+	struct fy_event *fye;
+	va_list ap;
+
+	va_start(ap, type);
+	fye = fy_generic_iterator_event_vcreate(fygi, type, ap);
+	va_end(ap);
+
+	return fye;
+}
+
+void fy_generic_iterator_event_free(struct fy_generic_iterator *fygi, struct fy_event *fye)
+{
+	struct fy_eventp *fyep;
+
+	if (!fygi || !fye)
+		return;
+
+	fyep = container_of(fye, struct fy_eventp, e);
+
+	fy_generic_iterator_eventp_recycle(fygi, fyep);
 }

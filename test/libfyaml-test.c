@@ -47,6 +47,8 @@ extern TCase *libfyaml_case_emit(void);
 extern TCase *libfyaml_case_allocator(void);
 extern TCase *libfyaml_case_parser(void);
 extern TCase *libfyaml_case_thread(void);
+extern TCase *libfyaml_case_generic(void);
+extern TCase *libfyaml_case_generic_scalars(void);
 
 Suite *libfyaml_suite(void)
 {
@@ -64,6 +66,8 @@ Suite *libfyaml_suite(void)
 	suite_add_tcase(s, libfyaml_case_allocator());
 	suite_add_tcase(s, libfyaml_case_parser());
 	suite_add_tcase(s, libfyaml_case_thread());
+	suite_add_tcase(s, libfyaml_case_generic());
+	suite_add_tcase(s, libfyaml_case_generic_scalars());
 
 	return s;
 }
