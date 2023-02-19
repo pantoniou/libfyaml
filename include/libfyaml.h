@@ -8341,6 +8341,987 @@ const uint8_t *
 fy_blake3_hash_file(struct fy_blake3_hasher *fyh, const char *filename)
 	FY_EXPORT;
 
+/**
+ * Reflection and schema support
+ *
+ * A very limited public interface is provided mainly for use with
+ * libfyaml, but it should be enough to cover most cases.
+ *
+ * Treat the interface provided until version 1.0 as experimental
+ */
+
+struct fy_type_info;
+struct fy_field_info;
+struct fy_enum_info;
+
+/* NOTE: order is very important, we rely on ranges for quick computation */
+
+/**
+ * enum fy_type_kind - The types of the reflection plumbing
+ *
+ * @FYTK_INVALID: Invalid type
+ * @FYTK_VOID: The void type
+ * @FYTK_BOOL: The boolean type
+ * @FYTK_CHAR: The native char type
+ * @FYTK_SCHAR: The signed char type
+ * @FYTK_UCHAR: The unsigned char type
+ * @FYTK_SHORT: The signed short type
+ * @FYTK_USHORT: The unsigned short type
+ * @FYTK_INT: The int type
+ * @FYTK_UINT: The unsigned int type
+ * @FYTK_LONG: The long type
+ * @FYTK_ULONG: The unsigned long type
+ * @FYTK_LONGLONG: The long long type
+ * @FYTK_ULONGLONG: The unsigned long long type
+ * @FYTK_INT128: A signed int 128 bit type (may not be available on all arches)
+ * @FYTK_UINT128: An unsigned int 128 bit  type (may not be available on all arches)
+ * @FYTK_FLOAT: The float type
+ * @FYTK_DOUBLE: The double type
+ * @FYTK_LONGDOUBLE: The long double type
+ * @FYTK_FLOAT16: A 16 bit float type (may not be available on all arches)
+ * @FYTK_FLOAT128: A 128 bit float type (may not be available on all arches)
+ *
+ * @FYTK_S8: The explicitly sized signed 8 bit type
+ * @FYTK_U8: The explicitly sized unsigned 8 bit type
+ * @FYTK_S16: The explicitly sized signed 16 bit type
+ * @FYTK_U16: The explicitly sized unsigned 16 bit type
+ * @FYTK_S32: The explicitly sized signed 32 bit type
+ * @FYTK_U32: The explicitly sized unsigned 32 bit type
+ * @FYTK_S64: The explicitly sized signed 64 bit type
+ * @FYTK_U64: The explicitly sized unsigned 64 bit type
+ * @FYTK_S128: The explicitly sized signed 128 bit type (may not be available on all arches)
+ * @FYTK_U128: The explicitly sized unsigned 128 bit type (may not be available on all arches)
+ *
+ * @FYTK_RECORD: A generic record type (not used for C)
+ * @FYTK_STRUCT: A struct type
+ * @FYTK_UNION: A union type
+ *
+ * @FYTK_ENUM: An enumeration type
+ * @FYTK_TYPEDEF: A typedef type
+ * @FYTK_PTR: A pointer type
+ * @FYTK_CONSTARRAY: A constant array type
+ * @FYTK_INCOMPLETEARRAY: An incomplete array type
+ *
+ * @FYTK_FUNCTION: A function type
+ *
+ */
+enum fy_type_kind {
+	FYTK_INVALID,
+
+	/* built-in C types (without an explicit size) */
+	FYTK_VOID,
+	FYTK_BOOL,
+	FYTK_CHAR,
+	FYTK_SCHAR,
+	FYTK_UCHAR,
+	FYTK_SHORT,
+	FYTK_USHORT,
+	FYTK_INT,
+	FYTK_UINT,
+	FYTK_LONG,
+	FYTK_ULONG,
+	FYTK_LONGLONG,
+	FYTK_ULONGLONG,
+	FYTK_INT128,
+	FYTK_UINT128,
+	FYTK_FLOAT,
+	FYTK_DOUBLE,
+	FYTK_LONGDOUBLE,
+	FYTK_FLOAT16,
+	FYTK_FLOAT128,
+
+	/* explicitly sized types */
+	FYTK_S8,
+	FYTK_U8,
+	FYTK_S16,
+	FYTK_U16,
+	FYTK_S32,
+	FYTK_U32,
+	FYTK_S64,
+	FYTK_U64,
+	FYTK_S128,
+	FYTK_U128,
+
+	/* compound */
+	FYTK_RECORD,	/* generic struct, union, class */
+	FYTK_STRUCT,
+	FYTK_UNION,
+
+	FYTK_ENUM,
+	FYTK_TYPEDEF,
+	FYTK_PTR,
+	FYTK_CONSTARRAY,
+	FYTK_INCOMPLETEARRAY,
+
+	FYTK_FUNCTION,
+};
+
+// define FY_HAS_FP16 if __fp16 is available
+#if defined(__is_identifier)
+#if ! __is_identifier(__fp16)
+#define FY_HAS_FP16
+#endif
+#endif
+
+// define FY_HAS_FLOAT128 if __fp128 is available
+#if defined(__SIZEOF_FLOAT128__)
+#if __SIZEOF_FLOAT128__ == 16
+#define FY_HAS_FLOAT128
+#endif
+#endif
+
+// define FY_HAS_INT128 if __int128 is available
+#if defined(__SIZEOF_INT128__)
+#if __SIZEOF_INT128__ == 16
+#define FY_HAS_INT128
+#endif
+#endif
+
+#ifdef UINTPTR_MAX
+#if UINTPTR_MAX == 0xffffffff
+#define FY_HAS_32BIT_PTR
+#elif UINTPTR_MAX == 0xffffffffffffffff
+#define FY_HAS_64BIT_PTR
+#endif
+#endif
+
+/* The count of types */
+#define FYTK_COUNT (FYTK_FUNCTION + 1)
+
+/**
+ * fy_type_kind_is_valid() - Check type kind for validity
+ *
+ * Check whether the type kind is valid.
+ *
+ * @type_kind: The type_kind to check
+ *
+ * Returns:
+ * true if valid, false otherwise
+ */
+static inline bool fy_type_kind_is_valid(enum fy_type_kind type_kind)
+{
+	return type_kind >= FYTK_VOID && type_kind <= FYTK_FUNCTION;
+}
+
+/**
+ * fy_type_kind_is_primitive() - Check if it's a primitive type kind
+ *
+ * Check whether the type kind is for a primitive C type
+ *
+ * @type_kind: The type_kind to check
+ *
+ * Returns:
+ * true if primitive, false otherwise
+ */
+static inline bool fy_type_kind_is_primitive(enum fy_type_kind type_kind)
+{
+	return type_kind >= FYTK_VOID && type_kind <= FYTK_U128;
+}
+
+/**
+ * fy_type_kind_is_like_ptr() - Check if it's pointer like type
+ *
+ * Check whether the type kind matches a pointer like use,
+ * which is pointer, constant array or incomplete array.
+ *
+ * @type_kind: The type_kind to check
+ *
+ * Returns:
+ * true if pointer like, false otherwise
+ */
+static inline bool fy_type_kind_is_like_ptr(enum fy_type_kind type_kind)
+{
+	return type_kind >= FYTK_PTR && type_kind <= FYTK_INCOMPLETEARRAY;
+}
+
+/**
+ * fy_type_kind_is_record() - Check if it's a record like type
+ *
+ * Check whether the type kind contains other types in a record
+ * like structure, like a struct or union.
+ *
+ * @type_kind: The type_kind to check
+ *
+ * Returns:
+ * true if record, false otherwise
+ */
+static inline bool fy_type_kind_is_record(enum fy_type_kind type_kind)
+{
+	return type_kind >= FYTK_RECORD && type_kind <= FYTK_UNION;
+}
+
+/**
+ * fy_type_kind_is_numeric() - Check if it's a numeric type
+ *
+ * Check whether the type kind points to a number, either
+ * integer or float
+ *
+ * @type_kind: The type_kind to check
+ *
+ * Returns:
+ * true if numeric, false otherwise
+ */
+static inline bool fy_type_kind_is_numeric(enum fy_type_kind type_kind)
+{
+	return type_kind >= FYTK_BOOL && type_kind <= FYTK_FLOAT128;
+}
+
+/**
+ * fy_type_kind_is_enum_constant_decl() - Check if it's a type that can be an enum
+ *
+ * Check whether the type kind points to something that is a valid enum constant
+ * declaration.
+ * For normal cases it's >= int but for weird packed cases can be something smaller.
+ *
+ * @type_kind: The type_kind to check
+ *
+ * Returns:
+ * true if it is a type than can be an enum constant declaration, false otherwise
+ */
+static inline bool fy_type_kind_is_enum_constant_decl(enum fy_type_kind type_kind)
+{
+	return type_kind >= FYTK_CHAR && type_kind <= FYTK_ULONGLONG;
+}
+
+/**
+ * fy_type_kind_has_fields() - Check if the type has fields
+ *
+ * Check whether the type kind has fields, either if it's a record
+ * or an enumeration type.
+ *
+ * @type_kind: The type_kind to check
+ *
+ * Returns:
+ * true if it has fields, false otherwise
+ */
+static inline bool fy_type_kind_has_fields(enum fy_type_kind type_kind)
+{
+	return type_kind >= FYTK_STRUCT && type_kind <= FYTK_ENUM;
+}
+
+/**
+ * fy_type_kind_has_prefix() - Check if the type requires a prefix
+ *
+ * Check whether the type kind requires a prefix when displayed,
+ * ie. like struct union or enum types.
+ *
+ * @type_kind: The type_kind to check
+ *
+ * Returns:
+ * true if it has prefix, false otherwise
+ */
+static inline bool fy_type_kind_has_prefix(enum fy_type_kind type_kind)
+{
+	return type_kind >= FYTK_STRUCT && type_kind <= FYTK_ENUM;
+}
+
+/**
+ * fy_type_kind_is_dependent() - Check if the type is dependent on another
+ *
+ * Check whether the type kind is dependent on another, i.e.
+ * a typedef. An enum is also dependent because the underlying type
+ * matches the range of the enum values.
+ *
+ * @type_kind: The type_kind to check
+ *
+ * Returns:
+ * true if it is dependent, false otherwise
+ */
+static inline bool fy_type_kind_is_dependent(enum fy_type_kind type_kind)
+{
+	return type_kind >= FYTK_ENUM && type_kind <= FYTK_INCOMPLETEARRAY;
+}
+
+/**
+ * fy_type_kind_signess() - Find out the type's sign
+ *
+ * Check how the type deals with signs.
+ *
+ * @type_kind: The type_kind to check
+ *
+ * Returns:
+ * -1 signed, 1 unsigned, 0 not relevant for this type
+ */
+int fy_type_kind_signess(enum fy_type_kind type_kind)
+	FY_EXPORT;
+
+/**
+ * struct fy_type_kind_info - Information about types
+ *
+ * @kind: The type's kind id
+ * @name: The name of the type (i.e. int, struct)
+ * @enum_name: The name of the type_kind enum (for code generation)
+ * @size: The size of the type
+ * @align: The alignment of the type
+ *
+ * This structure contains information about each type kind
+ * we defined.
+ */
+struct fy_type_kind_info {
+	enum fy_type_kind kind;
+	const char *name;
+	const char *enum_name;
+	size_t size;
+	size_t align;
+};
+
+/**
+ * fy_type_kind_info_get() - Get the type info of a type from it's id
+ *
+ * Retrieve the type info structure from a type kind id.
+ *
+ * @type_kind: The type_kind
+ *
+ * Returns:
+ * The info structure that corresponds to the id, or NULL if invalid argument
+ */
+const struct fy_type_kind_info *
+fy_type_kind_info_get(enum fy_type_kind type_kind)
+	FY_EXPORT;
+
+/**
+ * enum fy_field_info_flags - Flags for a field entry
+ *
+ * @FYFIF_ANONYMOUS: Set if the declaration was anonymous
+ * @FYFIF_BITFIELD: Set if the field is a bitfield and not a regular field
+ * @FYFIF_ENUM_UNSIGNED: Set if the enum value is unsigned
+ */
+enum fy_field_info_flags {
+	FYFIF_ANONYMOUS		= FY_BIT(0),
+	FYFIF_BITFIELD		= FY_BIT(1),
+	FYFIF_ENUM_UNSIGNED	= FY_BIT(1),	/* same bit */
+};
+
+/**
+ * struct fy_field_info - Information of a field of a record/enum type
+ *
+ * @flags: Flags that pertain to this entry
+ * @name: The name of the field
+ * @type_info: Type of this field
+ * @offset: Byte offset if regular field of struct/union
+ * @bit_offset: The bit offset of this bit field
+ * @bit_width: The bit width of this bit field
+ * @uval: The unsigned enum value of this field
+ * @sval: The signed enum value of this field
+ */
+struct fy_field_info {
+	enum fy_field_info_flags flags;
+	const struct fy_type_info *parent;
+	const char *name;
+	const struct fy_type_info *type_info;
+	union {
+		size_t offset;			/* regular field */
+		struct {
+			size_t bit_offset;	/* bitfield */
+			size_t bit_width;
+		};
+		unsigned long long uval;	/* enum value */
+		signed long long sval;
+	};
+};
+
+/**
+ * enum fy_type_info_flags - Flags for a a type info entry
+ *
+ * @FYTIF_CONST: Const qualifier for this type enabled
+ * @FYTIF_VOLATILE: Volatile qualifier for this type enabled
+ * @FYTIF_RESTRICT: Restrict qualified for this type enabled
+ * @FYTIF_UNRESOLVED_PTR: This type is unresolved
+ * @FYTIF_MAIN_FILE: The type was declared in the main file of an import
+ * @FYTIF_SYSTEM_HEADER: The type was declared in a system header
+ * @FYTIF_ANONYMOUS: The type is anonymous, ie. declared in place.
+ */
+enum fy_type_info_flags {
+	FYTIF_CONST		= FY_BIT(0),
+	FYTIF_VOLATILE		= FY_BIT(1),
+	FYTIF_RESTRICT		= FY_BIT(2),
+	FYTIF_UNRESOLVED_PTR	= FY_BIT(4),	/* when pointer is declared but not resolved */
+	FYTIF_MAIN_FILE		= FY_BIT(5),	/* type declaration in main file */
+	FYTIF_SYSTEM_HEADER	= FY_BIT(6),	/* type declaration in a system header */
+	FYTIF_ANONYMOUS		= FY_BIT(7),	/* type is anonymous */
+};
+
+/**
+ * struct fy_type_info - Information of a type
+ *
+ * @kind: The kind of this type
+ * @flags: Flags that pertain to this type
+ * @name: The name of the type
+ * @fullname: The full name of the type (including the prefix)
+ * @size: The size of the type
+ * @align: The alignment of the type
+ * @dependent_type: The type this one is dependent on (i.e typedef)
+ * @count: The number of fields, or the element count for const array
+ * @fields: The fields of the type
+ */
+struct fy_type_info {
+	enum fy_type_kind kind;
+	enum fy_type_info_flags flags;
+	const char *name;		/* the name */
+	const char *fullname;		/* struct foo, enum bar, int, typedef */
+	const char *normalized_name;	/* same as full name, but normalized */
+	size_t size;
+	size_t align;
+	const struct fy_type_info *dependent_type;	/* for ptr, typedef, enum and arrays */
+	size_t count;					/* for constant arrays, union, struct, enums */
+	const struct fy_field_info *fields;
+};
+
+/* fwd declaration */
+struct fy_reflection;
+
+/**
+ * fy_reflection_destroy() - Destroy a reflection
+ *
+ * Destroy a reflection that was previously created
+ *
+ * @rfl: The reflection
+ *
+ */
+void
+fy_reflection_destroy(struct fy_reflection *rfl)
+	FY_EXPORT;
+
+/**
+ * fy_reflection_clear_all_marker() - Clear all markers
+ *
+ * Clear all markers put on types of the reflection
+ *
+ * @rfl: The reflection
+ *
+ */
+void
+fy_reflection_clear_all_markers(struct fy_reflection *rfl)
+	FY_EXPORT;
+
+/**
+ * fy_reflection_prune_unmarker() - Remove all unmarked types
+ *
+ * Remove all unmarked type of the reflection.
+ *
+ * @rfl: The reflection
+ */
+void
+fy_reflection_prune_unmarked(struct fy_reflection *rfl)
+	FY_EXPORT;
+
+/**
+ * fy_reflection_is_resolved() - Test whether the reflection is resolved.
+ *
+ * Check whether a reflection is fully resolved, i.e. no types are referring
+ * to undefined types.
+ *
+ * @rfl: The reflection
+ *
+ * Returns:
+ * true if the reflection is resolved, false if there are unresolved references
+ */
+bool
+fy_reflection_is_resolved(struct fy_reflection *rfl)
+	FY_EXPORT;
+
+/**
+ * fy_reflection_from_imports() - Create a reflection from imports
+ *
+ * Create a reflection by the imports of the given backend.
+ *
+ * @backend_name: The name of the backend
+ * @backend_cfg: The configuration of the backend
+ * @num_imports: The number of imports
+ * @import_cfgs: The array of import configs.
+ *
+ * Returns:
+ * The reflection pointer, or NULL if an error occured.
+ */
+struct fy_reflection *
+fy_reflection_from_imports(const char *backend_name, const void *backend_cfg,
+			   int num_imports, const void *import_cfgs[])
+	FY_EXPORT;
+
+/**
+ * fy_reflection_from_import() - Create a reflection from an import
+ *
+ * Create a reflection by a single import of the given backend.
+ *
+ * @backend_name: The name of the backend
+ * @backend_cfg: The configuration of the backend
+ * @import_cfg: The import configuration
+ *
+ * Returns:
+ * The reflection pointer, or NULL if an error occured.
+ */
+struct fy_reflection *
+fy_reflection_from_import(const char *backend_name, const void *backend_cfg, const void *import_cfg)
+	FY_EXPORT;
+
+/**
+ * fy_reflection_from_c_files() - Create a reflection from C files
+ *
+ * Create a reflection from C source files
+ *
+ * @filec: Number of files
+ * @filev: An array of files
+ * @argc: Number of arguments to pass to libclang
+ * @argv: Arguments to pass to libclang
+ * @display_diagnostics: Display diagnostics (useful in case of errors)
+ * @include_comments: Include comments in the type database
+ *
+ * Returns:
+ * The reflection pointer, or NULL if an error occured.
+ */
+struct fy_reflection *
+fy_reflection_from_c_files(int filec, const char * const filev[], int argc, const char * const argv[],
+			   bool display_diagnostics, bool include_comments)
+	FY_EXPORT;
+
+/**
+ * fy_reflection_from_c_file() - Create a reflection from a single C file
+ *
+ * Create a reflection from a single C source file
+ *
+ * @file: The C file
+ * @argc: Number of arguments to pass to libclang
+ * @argv: Arguments to pass to libclang
+ * @display_diagnostics: Display diagnostics (useful in case of errors)
+ * @include_comments: Include comments in the type database
+ *
+ * Returns:
+ * The reflection pointer, or NULL if an error occured.
+ */
+struct fy_reflection *
+fy_reflection_from_c_file(const char *file, int argc, const char * const argv[],
+			  bool display_diagnostics, bool include_comments)
+	FY_EXPORT;
+
+/**
+ * fy_reflection_from_c_file_with_cflags() - Create a reflection from a single C file with CFLAGS
+ *
+ * Create a reflection from a single C source file, using a simpler CFLAGS api
+ *
+ * @file: The C file
+ * @cflags: The C flags
+ * @display_diagnostics: Display diagnostics (useful in case of errors)
+ * @include_comments: Include comments in the type database
+ *
+ * Returns:
+ * The reflection pointer, or NULL if an error occured.
+ */
+struct fy_reflection *
+fy_reflection_from_c_file_with_cflags(const char *file, const char *cflags,
+				      bool display_diagnostics, bool include_comments)
+	FY_EXPORT;
+
+/**
+ * fy_reflection_from_packed_blob() - Create a reflection from a packed blob
+ *
+ * Create a reflection from a packed blob.
+ *
+ * @blob: A pointer to the binary blob
+ * @blob_size: The size of the blob
+ *
+ * Returns:
+ * The reflection pointer, or NULL if an error occured.
+ */
+struct fy_reflection *
+fy_reflection_from_packed_blob(const void *blob, size_t blob_size)
+	FY_EXPORT;
+
+/**
+ * fy_reflection_to_packed_blob() - Create blob from a reflection
+ *
+ * Create a packed blob from the given reflection
+ *
+ * @rfl: The reflection
+ * @blob_sizep: Pointer to a variable to store the generated blobs size
+ * @include_comments: Include comments in the blob
+ * @include_location: Include the location information in the blob
+ *
+ * Returns:
+ * A pointer to the blob, or NULL in case of an error
+ */
+void *
+fy_reflection_to_packed_blob(struct fy_reflection *rfl, size_t *blob_sizep,
+			     bool include_comments, bool include_location)
+	FY_EXPORT;
+
+/**
+ * fy_reflection_from_packed_blob_file() - Create a reflection from a packed blob file
+ *
+ * Create a reflection from the given packed blob file
+ *
+ * @blob_file: The name of the blob file
+ *
+ * Returns:
+ * The reflection pointer, or NULL if an error occured.
+ */
+struct fy_reflection *
+fy_reflection_from_packed_blob_file(const char *blob_file)
+	FY_EXPORT;
+
+/**
+ * fy_reflection_to_packed_blob_file() - Create a packed blob file from reflection
+ *
+ * Create a packed blob file from the given reflection
+ *
+ * @rfl: The reflection
+ * @blob_file: The name of the blob file
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int
+fy_reflection_to_packed_blob_file(struct fy_reflection *rfl, const char *blob_file)
+	FY_EXPORT;
+
+/**
+ * fy_type_info_iterate() - Iterate over the types of the reflection
+ *
+ * This method iterates over all the types of a reflection.
+ * The start of the iteration is signalled by a NULL in \*prevp.
+ *
+ * @rfl: The reflection
+ * @prevp: The previous type sequence iterator
+ *
+ * Returns:
+ * The next type in sequence or NULL at the end of the type sequence.
+ */
+const struct fy_type_info *
+fy_type_info_iterate(struct fy_reflection *rfl, void **prevp)
+	FY_EXPORT;
+
+/**
+ * fy_type_info_reverse_iterate() - Iterate over the types of the reflection in reverse
+ *
+ * This method iterates over all the types of a reflection in reverse.
+ * The start of the iteration is signalled by a NULL in \*prevp.
+ *
+ * @rfl: The reflection
+ * @prevp: The previous type sequence iterator
+ *
+ * Returns:
+ * The next type in sequence or NULL at the end of the type sequence.
+ */
+const struct fy_type_info *
+fy_type_info_reverse_iterate(struct fy_reflection *rfl, void **prevp)
+	FY_EXPORT;
+
+
+/**
+ * fy_type_info_to_reflection() - Get the reflection a type belongs to
+ *
+ * Return the reflection this type belongs to
+ *
+ * @ti: The type info
+ *
+ * Returns:
+ * The reflection this type belongs to, or NULL if bad ti argument
+ */
+struct fy_reflection *
+fy_type_info_to_reflection(const struct fy_type_info *ti)
+	FY_EXPORT;
+
+/**
+ * fy_type_info_generate_name() - Generate a name for a type
+ *
+ * Generate a name from the type by traversing the type definitions
+ * down to their dependent primitive types.
+ *
+ * @ti: The type info
+ * @field: The field if using the call to generate a field definition
+ *         or NULL if not.
+ * @normalized: True to return the normalized name, that is without any
+ *              superfluous whitespace for pretty printing.
+ *
+ * Returns:
+ * A malloc()'ed pointer to the name, or NULL in case of an error.
+ * This pointer must be free()'d when the caller is done with it.
+ */
+char *
+fy_type_info_generate_name(const struct fy_type_info *ti, const char *field, bool normalized)
+	FY_EXPORT;
+
+/**
+ * fy_type_name_normalize() - Normalize a C type name
+ *
+ * Normalize a type name by removing superfluous whitespace, converting
+ * it to a format that is suitable for type name comparison.
+ * Note that no attempt is made to verify that the type name is a valid
+ * C one, so caller beware.
+ *
+ * @type_name: The type name to normalize
+ *
+ * Returns:
+ * A malloc()'ed pointer to the normalized name, or NULL in case of an error.
+ * This pointer must be free()'d when the caller is done with it.
+ */
+char *
+fy_type_name_normalize(const char *type_name)
+	FY_EXPORT;
+
+/**
+ * fy_type_info_clear_marker() - Clear the marker on a type
+ *
+ * Clear the marker on a type. Note this call will not clear the
+ * markers of the dependent types.
+ */
+void
+fy_type_info_clear_marker(const struct fy_type_info *ti)
+	FY_EXPORT;
+
+/**
+ * fy_type_info_mark() - Mark a type and it's dependencies
+ *
+ * Mark the type and recursively mark all types this one depends on.
+ */
+void
+fy_type_info_mark(const struct fy_type_info *ti)
+	FY_EXPORT;
+
+/**
+ * fy_type_info_is_marked() - Check whether a type is marked
+ *
+ * Check the mark of a type
+ *
+ * Returns:
+ * true if the type is marked, false otherwise
+ */
+bool
+fy_type_info_is_marked(const struct fy_type_info *ti)
+	FY_EXPORT;
+
+/**
+ * fy_type_info_eponymous_offset() - Offset of an anonymous type from the
+ *                                   closest eponymous parent type.
+ *
+ * For anonymous types, get the offset from the start of the enclosing
+ * eponymous type. For example:
+ *
+ * struct baz {
+ *   int foo;
+ *   struct {	// <- anonymous
+ *     int bar; // <- offset from baz
+ *   } bar;
+ * };
+ *
+ * @ti: The anonymous type
+ *
+ * Returns:
+ * The offset from the closest eponymous parent type or 0 if not anonymous
+ */
+size_t
+fy_type_info_eponymous_offset(const struct fy_type_info *ti)
+	FY_EXPORT;
+
+/**
+ * fy_type_info_get_comment() - Get the comment for a type
+ *
+ * Retrieve the 'cooked' comment for a type. The cooking consists of
+ * (trying) to remove comment formatting. For example:
+ *
+ *   // this is a comment
+ *   //   which requires cooking
+ *
+ * Would be cooked as
+ *
+ *   this is a comment
+ *     which requires cooking
+ *
+ * And /\* this is a comment *\/ -> 'this is a comment'
+ *
+ * @ti: The type info
+ *
+ * Returns:
+ * The cooked comment, or NULL
+ */
+const char *
+fy_type_info_get_comment(const struct fy_type_info *ti)
+	FY_EXPORT;
+
+/**
+ * fy_field_info_get_comment() - Get the comment for a field
+ *
+ * Retrieve the 'cooked' comment for a field. The cooking consists of
+ * (trying) to remove comment formatting. For example:
+ *
+ *   // this is a comment
+ *   //   which requires cooking
+ *
+ * Would be cooked as
+ *
+ *   this is a comment
+ *     which requires cooking
+ *
+ * And /\* this is a comment *\/ -> 'this is a comment'
+ *
+ * @fi: The field info
+ *
+ * Returns:
+ * The cooked comment, or NULL
+ */
+const char *
+fy_field_info_get_comment(const struct fy_field_info *fi)
+	FY_EXPORT;
+
+/**
+ * fy_type_info_get_yaml_annotation() - Get the yaml annotation of this type
+ *
+ * Retrieve a document containing the yaml keyword annotations of this type
+ *
+ * @ti: The type info
+ *
+ * Returns:
+ * The yaml annotation document or NULL
+ */
+struct fy_document *
+fy_type_info_get_yaml_annotation(const struct fy_type_info *ti)
+	FY_EXPORT;
+
+const char *
+fy_type_info_get_yaml_name(const struct fy_type_info *ti)
+	FY_EXPORT;
+
+const char *
+fy_field_info_get_yaml_name(const struct fy_field_info *fi)
+	FY_EXPORT;
+
+/**
+ * fy_field_info_get_yaml_annotation() - Get the yaml annotation document for this field
+ *
+ * Retrieve a document containing the yaml keyword annotations of this field
+ *
+ * @fi: The field info
+ *
+ * Returns:
+ * The yaml annotation document, or NULL
+ */
+struct fy_document *
+fy_field_info_get_yaml_annotation(const struct fy_field_info *fi)
+	FY_EXPORT;
+
+/**
+ * fy_reflection_dump() - Dump internal type database
+ *
+ * @rfl: The reflection
+ * @marked_only: Dump marked structures only
+ * @no_location: Do not display location information
+ */
+void fy_reflection_dump(struct fy_reflection *rfl, bool marked_only, bool no_location)
+	FY_EXPORT;
+
+/**
+ * fy_field_info_index() - Get the index of a field of a type
+ *
+ * Retrieve the 0-based index of a field info. The first
+ * structure member is 0, the second 1 etc.
+ *
+ * @fi: The pointer to the field info
+ *
+ * Returns:
+ * The index of the field if >= 0, -1 on error
+ */
+int
+fy_field_info_index(const struct fy_field_info *fi)
+	FY_EXPORT;
+
+/**
+ * fy_type_info_lookup_field() - Lookup a field of a type by name
+ *
+ * Lookup the field with the given name on the given type.
+ *
+ * @ti: The pointer to the type info
+ * @name: The name of the field
+ *
+ * Returns:
+ * A pointer to the field info if field was found, NULL otherwise
+ */
+const struct fy_field_info *
+fy_type_info_lookup_field(const struct fy_type_info *ti, const char *name)
+	FY_EXPORT;
+
+/**
+ * fy_type_info_lookup_field_by_enum_value() - Lookup an enum field of a type by value
+ *
+ * Lookup the field with the enum value on the given type.
+ *
+ * @ti: The pointer to the type info
+ * @val: The value of the enumeration
+ *
+ * Returns:
+ * A pointer to the field info if field was found, NULL otherwise
+ */
+const struct fy_field_info *
+fy_type_info_lookup_field_by_enum_value(const struct fy_type_info *ti, long long val)
+	FY_EXPORT;
+
+/**
+ * fy_type_info_lookup_field_by_unsigned_enum_value() - Lookup an enum field of a type by unsigned 0value
+ *
+ * Lookup the field with the enum value on the given type.
+ *
+ * @ti: The pointer to the type info
+ * @val: The value of the enumeration
+ *
+ * Returns:
+ * A pointer to the field info if field was found, NULL otherwise
+ */
+const struct fy_field_info *
+fy_type_info_lookup_field_by_unsigned_enum_value(const struct fy_type_info *ti, unsigned long long val)
+	FY_EXPORT;
+
+/**
+ * fy_type_info_set_userdata() - Set the userdata associated with a type
+ *
+ * Set the user data associated with the given type.
+ *
+ * @ti: The pointer to the type info
+ * @userdata: A void pointer that can be used to retreive the data
+ */
+void
+fy_type_info_set_userdata(const struct fy_type_info *ti, void *userdata)
+	FY_EXPORT;
+
+/**
+ * fy_type_info_get_userdata() - Get the userdata associated with a type
+ *
+ * Retrieve the user data associated with the given type via a
+ * previous call to fy_type_info_set_userdata().
+ *
+ * @ti: The pointer to the type info
+ *
+ * Returns:
+ * The userdata associated with the type, or NULL on error
+ */
+void *
+fy_type_info_get_userdata(const struct fy_type_info *ti)
+	FY_EXPORT;
+
+/**
+ * fy_field_info_set_userdata() - Set the userdata associated with a field
+ *
+ * Set the user data associated with the given field.
+ *
+ * @fi: The pointer to the field info
+ * @userdata: A void pointer that can be used to retreive the data
+ */
+void
+fy_field_info_set_userdata(const struct fy_field_info *fi, void *userdata)
+	FY_EXPORT;
+
+/**
+ * fy_field_info_get_userdata() - Get the userdata associated with a field
+ *
+ * Retrieve the user data associated with the given field via a
+ * previous call to fy_field_info_set_userdata().
+ *
+ * @fi: The pointer to the field info
+ *
+ * Returns:
+ * The userdata associated with the field, or NULL on error
+ */
+void *
+fy_field_info_get_userdata(const struct fy_field_info *fi)
+	FY_EXPORT;
+
 #ifdef __cplusplus
 }
 #endif
