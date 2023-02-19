@@ -68,24 +68,27 @@ TESTS += jsontestsuite.test
 # normal YAML testsuite using document event stream
 TESTS += testsuite-evstream.test
 
-testsuite.test: test-suite-data json-test-suite-data
+testsuite.test: test-suite-data.checkout.timestamp
+if HAVE_JQ
+testsuite-json.test: test-suite-data.checkout.timestamp
+endif
+testsuite-evstream.test: test-suite-data.checkout.timestamp
 
-test-suite-data:
-	@GIT@ clone "@TESTSUITEURL@" -- $@ && \
-	cd $@ && \
-	@GIT@ checkout --detach @TESTSUITECHECKOUT@
+test-suite-data.checkout.timestamp:
+	@GIT@ clone -q "@TESTSUITEURL@" -- test-suite-data && \
+	@GIT@ -C test-suite-data checkout -q --detach @TESTSUITECHECKOUT@ && \
+	touch test-suite-data.checkout.timestamp
 
-jsontestsuite.test: json-test-suite-data
+jsontestsuite.test: json-test-suite-data.checkout.timestamp
 
-json-test-suite-data:
-	@GIT@ clone "@JSONTESTSUITEURL@" -- $@ && \
-	cd $@ && \
-	@GIT@ checkout --detach @JSONTESTSUITECHECKOUT@
-
-check-local: test-suite-data json-test-suite-data
+json-test-suite-data.checkout.timestamp:
+	@GIT@ clone -q "@JSONTESTSUITEURL@" -- json-test-suite-data && \
+	@GIT@ -C json-test-suite-data checkout -q --detach @JSONTESTSUITECHECKOUT@ && \
+	touch json-test-suite-data.checkout.timestamp
 
 distclean-local:
-	@rm -rf test-suite-data json-test-suite-data
+	@rm -rf test-suite-data test-suite-data.checkout.timestamp
+	@rm -rf json-test-suite-data json-test-suite-data.checkout.timestamp
 
 endif
 endif
