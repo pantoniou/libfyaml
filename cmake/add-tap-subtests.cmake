@@ -426,3 +426,246 @@ function(add_testreflection_tests)
         endforeach()
     endforeach()
 endfunction()
+
+
+# Helper macro to register a single packed-reflection test
+macro(_register_reflection_packed_test test_dir test_id)
+    # Only tests with a definition.h are eligible for packed roundtrip
+    if(EXISTS "${test_dir}/===" AND EXISTS "${test_dir}/definition.h")
+        file(READ "${test_dir}/===" _test_desc)
+        string(STRIP "${_test_desc}" _test_desc)
+
+        if(_test_desc)
+            set(_test_name_full "testreflection-packed/${test_id} - ${_test_desc} (packed)")
+        else()
+            set(_test_name_full "testreflection-packed/${test_id} (packed)")
+        endif()
+
+        _should_skip_reflection_test("${test_dir}" _test_should_skip)
+
+        set(_test_labels "testreflection-packed")
+
+        if(_test_should_skip)
+            add_tap_test("${_test_name_full}" testreflection-packed "${test_id}"
+                LABELS "${_test_labels}" DISABLED)
+        else()
+            add_tap_test("${_test_name_full}" testreflection-packed "${test_id}"
+                LABELS "${_test_labels}")
+        endif()
+    endif()
+endmacro()
+
+# Function to add packed-reflection roundtrip tests
+function(add_testreflection_packed_tests)
+    set(test_dir "${CMAKE_CURRENT_SOURCE_DIR}/test/reflection-data")
+
+    include(CheckTypeSize)
+    check_type_size("unsigned int" SIZEOF_UINT)
+    check_type_size("unsigned short" SIZEOF_USHORT)
+    check_type_size("unsigned long" SIZEOF_ULONG)
+    check_type_size("unsigned char" SIZEOF_UCHAR)
+
+    math(EXPR _refl_intbits "${SIZEOF_UINT} * 8")
+    math(EXPR _refl_shortbits "${SIZEOF_USHORT} * 8")
+    math(EXPR _refl_longbits "${SIZEOF_ULONG} * 8")
+    math(EXPR _refl_charbits "${SIZEOF_UCHAR} * 8")
+    set(_refl_longlongbits 64)
+
+    include(CheckCSourceRuns)
+    check_c_source_runs("
+        #include <limits.h>
+        int main() { return (CHAR_MIN < 0) ? 0 : 1; }
+    " CHAR_IS_SIGNED_PACKED)
+    if(CHAR_IS_SIGNED_PACKED)
+        set(_refl_charsigned "y")
+    else()
+        set(_refl_charsigned "n")
+    endif()
+
+    file(GLOB all_base_dirs "${test_dir}/*")
+
+    foreach(base_test ${all_base_dirs})
+        if(NOT IS_DIRECTORY "${base_test}")
+            continue()
+        endif()
+        get_filename_component(base_id "${base_test}" NAME)
+        if(NOT base_id MATCHES "^[0-9][0-9][0-9][A-Z][A-Z0-9][A-Z0-9][A-Z0-9]$")
+            continue()
+        endif()
+
+        _register_reflection_packed_test("${base_test}" "${base_id}")
+
+        file(GLOB all_subtests "${base_test}/*")
+        foreach(subtest ${all_subtests})
+            if(NOT IS_DIRECTORY "${subtest}")
+                continue()
+            endif()
+            get_filename_component(subtest_id "${subtest}" NAME)
+            if(NOT subtest_id MATCHES "^[0-9][0-9][0-9]?$")
+                continue()
+            endif()
+            set(full_test_id "${base_id}/${subtest_id}")
+            _register_reflection_packed_test("${subtest}" "${full_test_id}")
+        endforeach()
+    endforeach()
+endfunction()
+
+# Function to add Python pytest tests, one CTest entry per test function/method.
+# Uses Python's ast module at CMake configure time to enumerate test IDs — no
+# import of libfyaml needed, immune to semicolons/special chars in source.
+#
+# CTest name:  python/<suite>/<file_stem>::[ClassName::]test_name
+# test_id:     <rel_file>::[ClassName::]test_name  (pytest node-ID format)
+# Suite name:  "python"  (handled by run-single-tap-test.sh)
+# Working dir: <srcdir>/python-libfyaml
+#
+# Required env injected via EXTRA_ENV:
+#   PYTHON3_EXECUTABLE, PYTHONPATH, LD_LIBRARY_PATH
+# Optional (when HAVE_ASAN):
+#   LD_PRELOAD, ASAN_OPTIONS
+function(add_python_tests)
+    set(_py_src_dir "${CMAKE_CURRENT_SOURCE_DIR}/python-libfyaml")
+
+    # Discover test files
+    file(GLOB _py_test_files
+        "${_py_src_dir}/tests/core/test_*.py")
+
+    # Build PYTHONPATH: always include the build-tree package
+    set(_pythonpath "${CMAKE_CURRENT_BINARY_DIR}/python-libfyaml")
+
+    # If pytest is not directly importable by Python3_EXECUTABLE (e.g. when
+    # the system Python is "externally managed" and pytest was installed via
+    # Homebrew into its own libexec virtualenv), locate the pytest executable,
+    # read its shebang interpreter, and ask that interpreter for its
+    # site-packages so we can prepend them to PYTHONPATH.
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}" -c "import pytest"
+        RESULT_VARIABLE _pytest_check
+        ERROR_QUIET
+        OUTPUT_QUIET
+    )
+    if(NOT _pytest_check EQUAL 0)
+        find_program(_pytest_prog pytest)
+        if(_pytest_prog)
+            # Extract the shebang line (first line, strip leading #!)
+            file(READ "${_pytest_prog}" _pytest_script_head LIMIT 256)
+            string(REGEX MATCH "^#!([^\n]+)" _shebang_match "${_pytest_script_head}")
+            set(_pytest_python "${CMAKE_MATCH_1}")
+            string(STRIP "${_pytest_python}" _pytest_python)
+            if(_pytest_python AND EXISTS "${_pytest_python}")
+                execute_process(
+                    COMMAND "${_pytest_python}" -c
+                        "import pytest, os; print(os.path.dirname(os.path.dirname(os.path.abspath(pytest.__file__))))"
+                    OUTPUT_VARIABLE _pytest_site
+                    OUTPUT_STRIP_TRAILING_WHITESPACE
+                    RESULT_VARIABLE _r
+                    ERROR_QUIET
+                )
+                if(_r EQUAL 0 AND _pytest_site AND EXISTS "${_pytest_site}")
+                    message(STATUS "pytest site-packages (${_pytest_site}) added to PYTHONPATH")
+                    set(_pythonpath "${_pytest_site}:${_pythonpath}")
+                endif()
+            endif()
+        endif()
+        unset(_pytest_prog CACHE)
+    endif()
+
+    if(NOT (_pytest_check EQUAL 0) AND NOT _pytest_prog)
+        message(STATUS "pytest not found; skipping Python binding tests")
+        return()
+    endif()
+
+    # Base environment
+    set(_py_env
+        "PYTHON3_EXECUTABLE=${Python3_EXECUTABLE}"
+        "PYTHONPATH=${_pythonpath}"
+        "LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}"
+        "LIBFYAML_PYTHON_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/python-libfyaml"
+    )
+
+    # ASan: inject the runtime so Python can dlopen the instrumented extension.
+    # Only reachable on Linux (macOS+ASAN skips Python tests at the call site).
+    if(HAVE_ASAN)
+        set(_ld_preloads "")
+        execute_process(
+            COMMAND ${CMAKE_C_COMPILER} -print-file-name=libasan.so
+            OUTPUT_VARIABLE _libasan_path
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        if(_libasan_path AND EXISTS "${_libasan_path}")
+            list(APPEND _ld_preloads "${_libasan_path}")
+        endif()
+
+        execute_process(
+            COMMAND ${CMAKE_C_COMPILER} -print-file-name=libubsan.so
+            OUTPUT_VARIABLE _libubsan_path
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        if(_libubsan_path AND EXISTS "${_libubsan_path}")
+            list(APPEND _ld_preloads "${_libubsan_path}")
+        endif()
+
+        list(JOIN _ld_preloads ":" LD_PRELOAD_VALUE)
+
+        message(STATUS "ASAN LD_PRELOAD_VALUE ${LD_PRELOAD_VALUE}")
+
+        list(APPEND _py_env
+            "LD_PRELOAD=${LD_PRELOAD_VALUE}"
+            "ASAN_OPTIONS=detect_leaks=0:halt_on_error=1:detect_stack_use_after_return=1"
+        )
+    endif()
+
+    # AST script: walks the parse tree to find test functions and methods.
+    # Outputs one pytest node-ID per line; never imports the test module itself.
+    set(_ast_script [=[
+import ast, sys
+tree = ast.parse(open(sys.argv[1]).read())
+for node in ast.iter_child_nodes(tree):
+    if isinstance(node, ast.FunctionDef) and node.name.startswith('test_'):
+        print(node.name)
+    elif isinstance(node, ast.ClassDef) and node.name.startswith('Test'):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.FunctionDef) and child.name.startswith('test_'):
+                print(node.name + '::' + child.name)
+]=])
+
+    foreach(_py_file ${_py_test_files})
+        # Relative path from python-libfyaml/ (e.g. tests/core/test_basic.py)
+        file(RELATIVE_PATH _rel_path "${_py_src_dir}" "${_py_file}")
+
+        # Suite label: "core"
+        if(_rel_path MATCHES "tests/core/")
+            set(_suite "core")
+        endif()
+
+        get_filename_component(_file_stem "${_py_file}" NAME_WE)
+
+        # Enumerate test IDs via AST at configure time (no libfyaml build needed)
+        execute_process(
+            COMMAND "${Python3_EXECUTABLE}" -c "${_ast_script}" "${_py_file}"
+            OUTPUT_VARIABLE _raw_ids
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            RESULT_VARIABLE _ast_result
+        )
+        if(NOT _ast_result EQUAL 0)
+            message(WARNING "add_python_tests: AST scan failed for ${_rel_path}")
+            continue()
+        endif()
+
+        # Split newline-separated IDs into a CMake list (safe: node IDs have no semicolons)
+        string(REPLACE "\n" ";" _id_list "${_raw_ids}")
+
+        foreach(_node_id IN LISTS _id_list)
+            if(_node_id)
+                add_tap_test(
+                    "python/${_suite}/${_file_stem}::${_node_id}"
+                    "python"
+                    "${_rel_path}::${_node_id}"
+                    LABELS "python"
+                    EXTRA_ENV "${_py_env}"
+                    WORKING_DIR "${_py_src_dir}"
+                )
+            endif()
+        endforeach()
+    endforeach()
+endfunction()

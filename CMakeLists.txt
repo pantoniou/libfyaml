@@ -111,7 +111,9 @@ option(ENABLE_ASAN "Enable ASAN support" OFF)
 option(ENABLE_NETWORK "Enable tests requiring network access" ON)
 option(ENABLE_DEVMODE "Enable development mode only debugging" OFF)
 option(BUILD_TESTING "Build tests" ON)
-option(ENABLE_LIBCLANG "Enable libclang support for reflection" OFF)
+option(ENABLE_GENERIC "Enable generic subsystem (requires statement expressions)" ON)
+option(ENABLE_REFLECTION "Enable reflection subsystem (requires statement expressions)" ON)
+option(ENABLE_LIBCLANG "Enable libclang support for reflection" ON)
 
 # Path to LLVM installation (optional, overrides automatic detection)
 set(LLVM_ROOT "" CACHE PATH "Path to LLVM installation directory (e.g., /usr/lib/llvm-15)")
@@ -344,9 +346,14 @@ set(LIBCLANG_LIBS "")
 set(LIBCLANG_FOUND FALSE)
 set(LIBCLANG_DETECTION_METHOD "")
 
+if(NOT ENABLE_REFLECTION)
+    message(STATUS "libclang support disabled (ENABLE_REFLECTION=OFF)")
+    set(ENABLE_LIBCLANG OFF CACHE BOOL "Disable libclang" FORCE)
+endif()
+
 if(NOT HAVE_CMAKE_GEXPR)
     message(STATUS "libclang support disabled (CMake version is too old (<=3.27)")
-    set(ENABLE_LIBCLANG OFF CACHE BOOL "Disable my feature" FORCE)
+    set(ENABLE_LIBCLANG OFF CACHE BOOL "Disable libclang" FORCE)
 endif()
 
 if(NOT ENABLE_LIBCLANG)
@@ -779,6 +786,29 @@ int main(void) {
     return x - 2;
 }
 " HAVE_STATEMENT_EXPRESSIONS)
+if(HAVE_STATEMENT_EXPRESSIONS)
+    list(APPEND COMMON_C_DEFINITIONS HAVE_STATEMENT_EXPRESSIONS)
+
+    if(ENABLE_GENERIC)
+        set(HAVE_GENERIC 1)
+        list(APPEND COMMON_C_DEFINITIONS HAVE_GENERIC)
+    else()
+        set(HAVE_GENERIC 0)
+    endif()
+
+    if(ENABLE_REFLECTION)
+        set(HAVE_REFLECTION 1)
+        list(APPEND COMMON_C_DEFINITIONS HAVE_REFLECTION)
+    else()
+        set(HAVE_REFLECTION 0)
+    endif()
+else()
+    set(HAVE_GENERIC 0)
+    set(HAVE_REFLECTION 0)
+    if(ENABLE_GENERIC OR ENABLE_REFLECTION)
+        message(STATUS "Statement expressions not supported; generic and reflection disabled")
+    endif()
+endif()
 
 # the options for the libs
 set(LIB_OPTS "")
@@ -885,6 +915,34 @@ set(LIBSRCS
     src/lib/fy-parse-diag.c
 )
 
+if(HAVE_GENERIC)
+    list(APPEND LIBSRCS
+        src/generic/fy-generic.c
+        src/generic/fy-generic-decoder.c
+        src/generic/fy-generic-encoder.c
+        src/generic/fy-generic-op.c
+        src/generic/fy-generic-iter.c
+    )
+endif()
+
+if(HAVE_REFLECTION)
+    list(APPEND LIBSRCS
+        src/reflection/fy-reflection.c
+        src/reflection/fy-packed-backend.c
+        src/reflection/fy-null-backend.c
+        src/reflection/fy-registry.c
+        src/reflection/fy-type-meta.c
+        src/reflection/fy-meta-type-system.c
+        src/reflection/fy-type-context.c
+        src/reflection/fy-meta-serdes.c
+        src/reflection/fy-reflection-util.c
+    )
+    # Conditionally add clang backend if libclang is available
+    if(HAVE_LIBCLANG)
+        list(APPEND LIBSRCS src/reflection/fy-clang-backend.c)
+    endif()
+endif()
+
 set(LIBHDRSPUB
     include/libfyaml/libfyaml-util.h
     include/libfyaml/libfyaml-core.h
@@ -900,6 +958,13 @@ set(LIBHDRSPUB
     include/libfyaml/libfyaml-vlsize.h
     include/libfyaml/libfyaml-atomics.h
 )
+
+if(HAVE_REFLECTION)
+    list(APPEND LIBHDRSPUB include/libfyaml/libfyaml-reflection.h)
+endif()
+if(HAVE_GENERIC)
+    list(APPEND LIBHDRSPUB include/libfyaml/libfyaml-generic.h)
+endif()
 
 # BLAKE3 portable library
 add_library(b3portable OBJECT
@@ -1176,6 +1241,8 @@ target_include_directories(fyaml
         ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
         ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
         ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
 )
 
 if(NOT WIN32)
@@ -1229,7 +1296,7 @@ if(NOT MSVC AND NOT WIN32)
     if(HAVE_ASAN)
         target_compile_options(fyaml PRIVATE ${ASAN_C_FLAGS} -fno-omit-frame-pointer)
         # Use INTERFACE to propagate link flags to executables linking against this library
-		target_link_options(fyaml PRIVATE ${ASAN_C_FLAGS} INTERFACE ${ASAN_C_FLAGS})
+        target_link_options(fyaml PRIVATE ${ASAN_C_FLAGS} INTERFACE ${ASAN_C_FLAGS})
     endif()
 endif()
 
@@ -1256,13 +1323,21 @@ endif()
 # Build fy-tool
 set(FY_TOOL_SOURCES
     src/tool/fy-tool.c
-    src/tool/fy-tool-util.c
     src/tool/fy-tool-dump.c
     ${GETOPT_SOURCES}
 )
 
 set(FY_TOOL_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/xxhash
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+    ${CMAKE_CURRENT_BINARY_DIR}
     ${GETOPT_INCLUDES}
 )
 
@@ -1293,6 +1368,8 @@ set(INTERNAL_TOOL_INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xxhash
     ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
     ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
     ${CMAKE_CURRENT_BINARY_DIR}
     ${LIBYAML_INCLUDE_DIRS}
     ${GETOPT_INCLUDES}
@@ -1466,6 +1543,9 @@ if(CAN_TEST)
             test/libfyaml-test-private-id.c
             test/libfyaml-test-parser.c
             test/libfyaml-test-thread.c
+            $<$<BOOL:${HAVE_GENERIC}>:test/libfyaml-test-generic.c>
+            $<$<BOOL:${HAVE_GENERIC}>:test/libfyaml-test-generic-scalars.c>
+			$<$<BOOL:${HAVE_REFLECTION}>:test/libfyaml-test-reflection.c>
             ${GETOPT_SOURCES}
         )
 
@@ -1479,6 +1559,8 @@ if(CAN_TEST)
             ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
             ${CMAKE_CURRENT_SOURCE_DIR}/src/util
             ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
             ${CMAKE_CURRENT_BINARY_DIR}
             ${CHECK_INCLUDE_DIRS}
             ${GETOPT_INCLUDES}
@@ -1527,7 +1609,7 @@ if(CAN_TEST)
             RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
         )
 
-	add_libfyaml_tests()
+        add_libfyaml_tests()
     endif()
 
     # Error tests - register individual subtests
@@ -1553,12 +1635,21 @@ if(CAN_TEST)
         add_testsuite_tests(testsuite testsuite.test)
         add_testsuite_tests(testsuite-evstream testsuite-evstream.test)
         add_testsuite_tests(testsuite-resolution testsuite-resolution.test)
+        if(HAVE_GENERIC)
+            add_testsuite_tests(testsuite-generic testsuite-generic.test)
+        endif()
         if(HAVE_JQ)
             add_testsuite_tests(testsuite-json testsuite-json.test)
         endif()
 
         # JSON test suite - register individual subtests
         add_jsontestsuite_tests()
+    endif()
+
+    # Reflection tests - only if libclang is available and reflection is enabled
+    if(HAVE_REFLECTION AND HAVE_LIBCLANG)
+        add_testreflection_tests()
+        add_testreflection_packed_tests()
     endif()
 
     # Build all test dependencies as part of default 'all' target
@@ -1583,6 +1674,9 @@ if(CAN_TEST)
         testemitter-restreaming.test
     )
 
+    if(HAVE_GENERIC)
+        list(APPEND TEST_SUITES testsuite-generic.test)
+    endif()
     if(HAVE_JQ)
         list(APPEND TEST_SUITES testsuite-json.test)
     endif()
@@ -1651,6 +1745,8 @@ if(SPHINX_EXECUTABLE)
                 \"${SPHINX_BUILD_DIR}/man/libfyaml.3\"
                 \"${SPHINX_BUILD_DIR}/man/libfyaml-core.3\"
                 \"${SPHINX_BUILD_DIR}/man/libfyaml-misc.3\"
+                \"${SPHINX_BUILD_DIR}/man/libfyaml-generics.3\"
+                \"${SPHINX_BUILD_DIR}/man/libfyaml-reflection.3\"
         )
     ")
     if(NOT WIN32)
@@ -1755,6 +1851,71 @@ install(
 # tags and cscope support
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/tags.cmake)
 
+# Python core bindings (not supported on Windows)
+if(NOT WIN32)
+find_package(Python3 COMPONENTS Interpreter Development)
+if(Python3_FOUND)
+    set(_ENABLE_PYTHON_BINDINGS_DEFAULT ON)
+else()
+    set(_ENABLE_PYTHON_BINDINGS_DEFAULT OFF)
+endif()
+option(ENABLE_PYTHON_BINDINGS "Build Python core bindings (_libfyaml extension)" ${_ENABLE_PYTHON_BINDINGS_DEFAULT})
+
+if(ENABLE_PYTHON_BINDINGS AND NOT HAVE_GENERIC)
+    message(STATUS "Python bindings disabled (requires statement expressions / generic support)")
+    set(HAVE_PYTHON_BINDINGS 0)
+elseif(ENABLE_PYTHON_BINDINGS)
+    if(NOT Python3_FOUND)
+        message(FATAL_ERROR "Python3 development headers not found (required for ENABLE_PYTHON_BINDINGS)")
+    endif()
+
+    Python3_add_library(_libfyaml MODULE
+        "${CMAKE_CURRENT_SOURCE_DIR}/python-libfyaml/libfyaml/_libfyaml.c"
+    )
+    target_include_directories(_libfyaml PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+    target_link_libraries(_libfyaml PRIVATE fyaml)
+    target_compile_options(_libfyaml PRIVATE ${COMMON_C_FLAGS})
+    if(HAVE_ASAN)
+        target_compile_options(_libfyaml PRIVATE ${ASAN_C_FLAGS})
+        target_link_options(_libfyaml PRIVATE ${ASAN_C_FLAGS})
+    endif()
+    # Place the .so in the build tree, not the source tree
+    set(_PY_PKG_SRC "${CMAKE_CURRENT_SOURCE_DIR}/python-libfyaml/libfyaml")
+    set(_PY_PKG_DST "${CMAKE_CURRENT_BINARY_DIR}/python-libfyaml/libfyaml")
+    set_target_properties(_libfyaml PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY "${_PY_PKG_DST}"
+        PREFIX ""
+        SUFFIX ".${Python3_SOABI}${CMAKE_SHARED_MODULE_SUFFIX}"
+    )
+    # Link/copy source files into the build staging dir so the complete
+    # package is importable directly from the build tree.
+    # COPY_ON_ERROR makes this work on Windows where symlinks may be
+    # unavailable (requires Developer Mode or admin rights).
+    file(MAKE_DIRECTORY "${_PY_PKG_DST}")
+    file(GLOB _py_srcs "${_PY_PKG_SRC}/*.py" "${_PY_PKG_SRC}/*.pyi")
+    foreach(_src ${_py_srcs})
+        get_filename_component(_name "${_src}" NAME)
+        file(CREATE_LINK "${_src}" "${_PY_PKG_DST}/${_name}" SYMBOLIC COPY_ON_ERROR)
+    endforeach()
+    set(HAVE_PYTHON_BINDINGS 1)
+else()
+    set(HAVE_PYTHON_BINDINGS 0)
+endif()
+else()
+    set(HAVE_PYTHON_BINDINGS 0)
+endif() # NOT WIN32
+
+# Python binding tests (pytest) - one CTest entry per test function/method
+# ASan + dlopen of an ASan-instrumented extension crashes on macOS and Windows,
+# so skip Python tests in those configurations.
+if(HAVE_PYTHON_BINDINGS AND BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING
+        AND NOT (HAVE_ASAN AND (APPLE OR WIN32)))
+    add_python_tests()
+endif()
+
 # Print configuration summary
 message(STATUS "")
 message(STATUS "---{ ${PROJECT_NAME} ${PROJECT_VERSION} }---")
@@ -1776,6 +1937,9 @@ message(STATUS "HAVE_COMPATIBLE_CHECK: ${HAVE_COMPATIBLE_CHECK}")
 message(STATUS "HAVE_LIBYAML:          ${HAVE_LIBYAML}")
 message(STATUS "HAVE_CMAKE_GEXPR:      ${HAVE_CMAKE_GEXPR}")
 message(STATUS "HAVE_LIBCLANG:         ${HAVE_LIBCLANG}")
+message(STATUS "HAVE_GENERIC:          ${HAVE_GENERIC}")
+message(STATUS "HAVE_REFLECTION:       ${HAVE_REFLECTION}")
+message(STATUS "HAVE_PYTHON_BINDINGS:  ${HAVE_PYTHON_BINDINGS}")
 message(STATUS "HAVE_CLANG_BLOCKS:     ${HAVE_CLANG_BLOCKS}")
 message(STATUS "HAVE_NETWORK:          ${HAVE_NETWORK}")
 message(STATUS "HAVE_DEVMODE:          ${HAVE_DEVMODE}")

@@ -1,0 +1,14 @@
++STR
++DOC
++MAP
+=VAL "a
+=VAL "10
+=VAL "c
++SEQ
+=VAL "hello
+=VAL "there
+=VAL "world
+-SEQ
+-MAP
+-DOC
+-STR

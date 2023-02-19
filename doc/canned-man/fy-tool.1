@@ -50,7 +50,7 @@ fy-tool \- fy-tool documentation
 .SH DESCRIPTION
 .sp
 \fBfy\-tool\fP is the libfyaml command\-line front\-end for parsing,
-rewriting, querying, joining, testing and hashing YAML and
+rewriting, querying, joining, testing, reflecting on, and hashing YAML and
 JSON data.
 .sp
 The executable changes behaviour either by the invoked program name
@@ -434,6 +434,125 @@ Set the minimum chunk size used for memory\-mapped hashing input.
 .TP
 .B \-\-mmap\-max\-chunk N
 Set the maximum chunk size used for memory\-mapped hashing input.
+.UNINDENT
+.sp
+Reflection options
+.INDENT 0.0
+.TP
+.B \-\-reflect
+Enable reflection mode.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-generate\-c
+Generate C definitions from reflection input.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-generate\-blob BLOB
+Generate a packed reflection blob and write it to \fBBLOB\fP\&.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-import\-blob BLOB
+Import reflection metadata from \fBBLOB\fP\&.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-import\-c\-file FILE
+Import reflection metadata from \fBFILE\fP\&.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-cflags FLAGS
+Pass compiler flags to reflection imports of C source files.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-entry\-type TYPE
+Select the reflection entry\-point type.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-packed\-roundtrip
+Round\-trip reflection data through the packed representation.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-no\-prune\-system
+Keep system types in the reflection database.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-type\-include REGEX
+Include only reflected types matching \fBREGEX\fP\&.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-type\-exclude REGEX
+Exclude reflected types matching \fBREGEX\fP\&.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-dump\-reflection
+Dump reflection structures for debugging.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-debug\-reflection
+Enable verbose reflection debug output.
+.UNINDENT
+.sp
+Generic options
+.INDENT 0.0
+.TP
+.B \-\-generic
+Enable generic data\-structure dumping mode.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-generic\-testsuite
+Enable generic testsuite mode.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-builder\-policy
+Select the generic builder policy.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-generic\-parse\-dump
+Parse and dump using the generic layer.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-dedup
+Enable generic deduplication.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-no\-dedup
+Disable generic deduplication.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-dump\-primitives
+Dump generic primitive values explicitly.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-create\-markers
+Create source markers in generated generic data.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-pyyaml\-compat
+Enable PyYAML compatibility mode.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-keep\-style
+Preserve style information in generic data.
 .UNINDENT
 .sp
 Modes

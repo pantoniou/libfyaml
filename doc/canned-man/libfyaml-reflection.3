@@ -1,0 +1,2584 @@
+.\" Man page generated from reStructuredText.
+.
+.
+.nr rst2man-indent-level 0
+.
+.de1 rstReportMargin
+\\$1 \\n[an-margin]
+level \\n[rst2man-indent-level]
+level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
+-
+\\n[rst2man-indent0]
+\\n[rst2man-indent1]
+\\n[rst2man-indent2]
+..
+.de1 INDENT
+.\" .rstReportMargin pre:
+. RS \\$1
+. nr rst2man-indent\\n[rst2man-indent-level] \\n[an-margin]
+. nr rst2man-indent-level +1
+.\" .rstReportMargin post:
+..
+.de UNINDENT
+. RE
+.\" indent \\n[an-margin]
+.\" old: \\n[rst2man-indent\\n[rst2man-indent-level]]
+.nr rst2man-indent-level -1
+.\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
+.in \\n[rst2man-indent\\n[rst2man-indent-level]]u
+..
+.TH "LIBFYAML-REFLECTION" "3" "Mar 15, 2026" "" "libfyaml"
+.SH NAME
+libfyaml-reflection \- libfyaml reflection API
+.SH REFLECTION
+.sp
+The reflection subsystem extracts type metadata from C header files (via a
+libclang backend at development time) or from pre\-serialised binary blobs
+(packed backend at deployment time), and uses that metadata to automatically
+map between YAML documents and C data structures at runtime.
+.sp
+\fBKey types\fP:
+.INDENT 0.0
+.IP \(bu 2
+\fBstruct fy_reflection\fP  — a type registry loaded from a C header or a
+packed blob; owns all type information for a compilation unit
+.IP \(bu 2
+\fBstruct fy_type_info\fP   — descriptor for a single C type (struct, union,
+enum, typedef, pointer, array, …); covers the full C type system including
+bitfields, anonymous types, and qualifiers
+.IP \(bu 2
+\fBstruct fy_field_info\fP  — descriptor for a single struct/union field,
+including offset, size, bit\-width, and YAML metadata annotations extracted
+from source comments
+.IP \(bu 2
+\fBstruct fy_enum_info\fP   — descriptor for a single enumeration constant
+.UNINDENT
+.sp
+\fBMetadata annotations\fP: YAML\-formatted comments in C source code guide
+the YAML ↔ C mapping:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+struct users {
+    struct user *list;    // yaml: { counter: count }
+    int count;
+};
+.EE
+.UNINDENT
+.UNINDENT
+.sp
+\fBBackends\fP:
+.INDENT 0.0
+.IP \(bu 2
+\fIClang backend\fP (requires \fB\-\-with\-libclang\fP / libclang installed):
+parses C headers at runtime; no pre\-processing step needed
+.IP \(bu 2
+\fIPacked backend\fP: a self\-contained binary blob pre\-generated at build
+time via \fBfy_reflection_export_packed()\fP; zero runtime dependency on
+libclang, suitable for deployment
+.IP \(bu 2
+\fINull backend\fP: stub with no type data, used for testing
+.UNINDENT
+.sp
+This interface is experimental and subject to change before version 1.0.
+.SS enum fy_type_kind
+.INDENT 0.0
+.TP
+.B enum fy_type_kind 
+The types of the reflection plumbing
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+enum fy_type_kind {
+    FYTK_INVALID,
+    FYTK_VOID,
+    FYTK_BOOL,
+    FYTK_CHAR,
+    FYTK_SCHAR,
+    FYTK_UCHAR,
+    FYTK_SHORT,
+    FYTK_USHORT,
+    FYTK_INT,
+    FYTK_UINT,
+    FYTK_LONG,
+    FYTK_ULONG,
+    FYTK_LONGLONG,
+    FYTK_ULONGLONG,
+    FYTK_INT128,
+    FYTK_UINT128,
+    FYTK_FLOAT,
+    FYTK_DOUBLE,
+    FYTK_LONGDOUBLE,
+    FYTK_FLOAT16,
+    FYTK_FLOAT128,
+    FYTK_RECORD,
+    FYTK_STRUCT,
+    FYTK_UNION,
+    FYTK_ENUM,
+    FYTK_TYPEDEF,
+    FYTK_PTR,
+    FYTK_CONSTARRAY,
+    FYTK_INCOMPLETEARRAY,
+    FYTK_NULL,
+    FYTK_FUNCTION
+};
+.EE
+.UNINDENT
+.UNINDENT
+.SS Constants
+.INDENT 0.0
+.TP
+.B FYTK_INVALID
+Invalid type
+.TP
+.B FYTK_VOID
+The void type
+.TP
+.B FYTK_BOOL
+The boolean type
+.TP
+.B FYTK_CHAR
+The native char type
+.TP
+.B FYTK_SCHAR
+The signed char type
+.TP
+.B FYTK_UCHAR
+The unsigned char type
+.TP
+.B FYTK_SHORT
+The signed short type
+.TP
+.B FYTK_USHORT
+The unsigned short type
+.TP
+.B FYTK_INT
+The int type
+.TP
+.B FYTK_UINT
+The unsigned int type
+.TP
+.B FYTK_LONG
+The long type
+.TP
+.B FYTK_ULONG
+The unsigned long type
+.TP
+.B FYTK_LONGLONG
+The long long type
+.TP
+.B FYTK_ULONGLONG
+The unsigned long long type
+.TP
+.B FYTK_INT128
+A signed int 128 bit type (may not be available on all arches)
+.TP
+.B FYTK_UINT128
+An unsigned int 128 bit  type (may not be available on all arches)
+.TP
+.B FYTK_FLOAT
+The float type
+.TP
+.B FYTK_DOUBLE
+The double type
+.TP
+.B FYTK_LONGDOUBLE
+The long double type
+.TP
+.B FYTK_FLOAT16
+A 16 bit float type (may not be available on all arches)
+.TP
+.B FYTK_FLOAT128
+A 128 bit float type (may not be available on all arches)
+.TP
+.B FYTK_RECORD
+A generic record type (not used for C)
+.TP
+.B FYTK_STRUCT
+A struct type
+.TP
+.B FYTK_UNION
+A union type
+.TP
+.B FYTK_ENUM
+An enumeration type
+.TP
+.B FYTK_TYPEDEF
+A typedef type
+.TP
+.B FYTK_PTR
+A pointer type
+.TP
+.B FYTK_CONSTARRAY
+A constant array type
+.TP
+.B FYTK_INCOMPLETEARRAY
+An incomplete array type
+.TP
+.B FYTK_NULL
+The null type
+.TP
+.B FYTK_FUNCTION
+A function type
+.UNINDENT
+.SS fy_type_kind_is_valid
+.INDENT 0.0
+.TP
+.B bool fy_type_kind_is_valid(enum \fI\%fy_type_kind\fP type_kind) 
+Check type kind for validity
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check whether the type kind is valid.
+.SS Return
+.sp
+true if valid, false otherwise
+.SS fy_type_kind_is_primitive
+.INDENT 0.0
+.TP
+.B bool fy_type_kind_is_primitive(enum \fI\%fy_type_kind\fP type_kind) 
+Check if it’s a primitive type kind
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check whether the type kind is for a primitive C type
+.SS Return
+.sp
+true if primitive, false otherwise
+.SS fy_type_kind_is_primary
+.INDENT 0.0
+.TP
+.B bool fy_type_kind_is_primary(enum \fI\%fy_type_kind\fP type_kind) 
+Check if it’s a primary type kind
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check whether the type kind is for a primary C type
+A primary type is is a subset of primitive (without VOID and NULL)
+.SS Return
+.sp
+true if primitive, false otherwise
+.SS fy_type_kind_is_like_ptr
+.INDENT 0.0
+.TP
+.B bool fy_type_kind_is_like_ptr(enum \fI\%fy_type_kind\fP type_kind) 
+Check if it’s pointer like type
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check whether the type kind matches a pointer like use,
+which is pointer, constant array or incomplete array.
+.SS Return
+.sp
+true if pointer like, false otherwise
+.SS fy_type_kind_is_record
+.INDENT 0.0
+.TP
+.B bool fy_type_kind_is_record(enum \fI\%fy_type_kind\fP type_kind) 
+Check if it’s a record like type
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check whether the type kind contains other types in a record
+like structure, like a struct or union.
+.SS Return
+.sp
+true if record, false otherwise
+.SS fy_type_kind_is_numeric
+.INDENT 0.0
+.TP
+.B bool fy_type_kind_is_numeric(enum \fI\%fy_type_kind\fP type_kind) 
+Check if it’s a numeric type
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check whether the type kind points to a number, either
+boolean, integer or float
+.SS Return
+.sp
+true if numeric, false otherwise
+.SS fy_type_kind_is_integer
+.INDENT 0.0
+.TP
+.B bool fy_type_kind_is_integer(enum \fI\%fy_type_kind\fP type_kind) 
+Check if it’s a numeric integer type
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check whether the type kind points to an integer
+.SS Return
+.sp
+true if integer, false otherwise
+.SS fy_type_kind_is_float
+.INDENT 0.0
+.TP
+.B bool fy_type_kind_is_float(enum \fI\%fy_type_kind\fP type_kind) 
+Check if it’s a numeric float type
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check whether the type kind points to a float
+.SS Return
+.sp
+true if float, false otherwise
+.SS fy_type_kind_is_signed
+.INDENT 0.0
+.TP
+.B bool fy_type_kind_is_signed(enum \fI\%fy_type_kind\fP type_kind) 
+Check if an integer kind is signed
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check whether the type kind is a signed integer.
+.SS Return
+.sp
+true if a signed integer, false otherwise
+.SS fy_type_kind_is_unsigned
+.INDENT 0.0
+.TP
+.B bool fy_type_kind_is_unsigned(enum \fI\%fy_type_kind\fP type_kind) 
+Check if an integer kind is unsigned
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check whether the type kind is an unsigned integer
+.SS Return
+.sp
+true if an unsigned integer, false otherwise
+.SS fy_type_kind_is_enum_constant_decl
+.INDENT 0.0
+.TP
+.B bool fy_type_kind_is_enum_constant_decl(enum \fI\%fy_type_kind\fP type_kind) 
+Check if it’s a type that can be an enum
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check whether the type kind points to something that is a valid enum constant
+declaration.
+For normal cases it’s >= int but for weird packed cases can be something smaller.
+.SS Return
+.sp
+true if it is a type than can be an enum constant declaration, false otherwise
+.SS fy_type_kind_has_fields
+.INDENT 0.0
+.TP
+.B bool fy_type_kind_has_fields(enum \fI\%fy_type_kind\fP type_kind) 
+Check if the type has fields
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check whether the type kind has fields, either if it’s a record
+or an enumeration type.
+.SS Return
+.sp
+true if it has fields, false otherwise
+.SS fy_type_kind_has_direct_fields
+.INDENT 0.0
+.TP
+.B bool fy_type_kind_has_direct_fields(enum \fI\%fy_type_kind\fP type_kind) 
+Check if the type has directly addressable fields
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check whether the type kind is a struct or union — types whose fields
+can be addressed by offset without going through a dependent type.
+This is a strict subset of \fI\%fy_type_kind_has_fields()\fP, excluding enums.
+.SS Return
+.sp
+true if it has direct fields (struct or union), false otherwise
+.SS fy_type_kind_has_prefix
+.INDENT 0.0
+.TP
+.B bool fy_type_kind_has_prefix(enum \fI\%fy_type_kind\fP type_kind) 
+Check if the type requires a prefix
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check whether the type kind requires a prefix when displayed,
+ie. like struct union or enum types.
+.SS Return
+.sp
+true if it has prefix, false otherwise
+.SS fy_type_info_prefixless_name
+.INDENT 0.0
+.TP
+.B const char *fy_type_info_prefixless_name(const struct fy_type_info *ti) 
+Get the name of a type without its keyword prefix
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Return the type’s name with any leading keyword prefix removed.
+For example, \fB\(dqstruct foo\(dq\fP becomes \fB\(dqfoo\(dq\fP and \fB\(dqenum bar\(dq\fP
+becomes \fB\(dqbar\(dq\fP\&.  For types that carry no prefix (e.g. \fB\(dqint\(dq\fP) the
+returned pointer is the same as \fBti\->name\fP\&.
+.SS Return
+.sp
+A pointer into ti\->name past the prefix, or NULL on error.
+The lifetime of the returned pointer matches that of \fBti\fP\&.
+.SS fy_type_kind_is_dependent
+.INDENT 0.0
+.TP
+.B bool fy_type_kind_is_dependent(enum \fI\%fy_type_kind\fP type_kind) 
+Check if the type is dependent on another
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check whether the type kind is dependent on another, i.e.
+a typedef. An enum is also dependent because the underlying type
+matches the range of the enum values.
+.SS Return
+.sp
+true if it is dependent, false otherwise
+.SS fy_type_kind_is_direct_dependent
+.INDENT 0.0
+.TP
+.B bool fy_type_kind_is_direct_dependent(enum \fI\%fy_type_kind\fP type_kind) 
+Check if the type is directly dependent on another
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check whether the type kind has a single, directly referenced dependent type
+(i.e. the \fBdependent_type\fP field of \fBstruct fy_type_info\fP is meaningful).
+This covers typedefs, pointers, and arrays, but not enums — enums have a
+dependent type that represents their underlying integer range, but their
+constants are named independently rather than being a direct alias.
+.SS Return
+.sp
+true if directly dependent (typedef, ptr, constarray, incompletearray), false otherwise
+.SS fy_type_kind_is_named
+.INDENT 0.0
+.TP
+.B bool fy_type_kind_is_named(enum \fI\%fy_type_kind\fP type_kind) 
+Check if the type is named
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check whether the type kind is named, i.e. has a name that uniquely
+identifies it.
+.SS Return
+.sp
+true if it is named, false otherwise
+.SS fy_type_kind_has_element_count
+.INDENT 0.0
+.TP
+.B bool fy_type_kind_has_element_count(enum \fI\%fy_type_kind\fP type_kind) 
+Check if the type carries a fixed element count
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check whether the type kind is a constant\-size array, i.e. one whose
+element count is known at compile time and stored in \fBfy_type_info::count\fP\&.
+Incomplete arrays (\fB[]\fP) have an unknown size at declaration and return false.
+.SS Return
+.sp
+true if the type is a FYTK_CONSTARRAY, false otherwise
+.SS fy_type_kind_signess
+.INDENT 0.0
+.TP
+.B int fy_type_kind_signess(enum \fI\%fy_type_kind\fP type_kind) 
+Find out the type’s sign
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check how the type deals with signs.
+.SS Return
+.sp
+\-1 signed, 1 unsigned, 0 not relevant for this type
+.SS struct fy_type_kind_info
+.INDENT 0.0
+.TP
+.B struct fy_type_kind_info 
+Information about types
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+struct fy_type_kind_info {
+    enum fy_type_kind kind;
+    const char *name;
+    const char *enum_name;
+    size_t size;
+    size_t align;
+}
+.EE
+.UNINDENT
+.UNINDENT
+.SS Members
+.INDENT 0.0
+.TP
+.B kind
+The type’s kind id
+.TP
+.B name
+The name of the type (i.e. int, struct)
+.TP
+.B enum_name
+The name of the type_kind enum (for code generation)
+.TP
+.B size
+The size of the type
+.TP
+.B align
+The alignment of the type
+.UNINDENT
+.SS Description
+.sp
+This structure contains information about each type kind
+we defined.
+.SS fy_type_kind_info_get
+.INDENT 0.0
+.TP
+.B const struct \fI\%fy_type_kind_info\fP *fy_type_kind_info_get(enum \fI\%fy_type_kind\fP type_kind) 
+Get the type info of a type from it’s id
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Retrieve the type info structure from a type kind id.
+.SS Return
+.sp
+The info structure that corresponds to the id, or NULL if invalid argument
+.SS fy_type_kind_size
+.INDENT 0.0
+.TP
+.B size_t fy_type_kind_size(enum \fI\%fy_type_kind\fP type_kind) 
+Find out the type kind’s size
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Return the size of the type kind
+.SS Return
+.sp
+The size of the type kind or 0 on error
+.SS fy_type_kind_align
+.INDENT 0.0
+.TP
+.B size_t fy_type_kind_align(enum \fI\%fy_type_kind\fP type_kind) 
+Find out the type kind’s align
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Return the align of the type kind
+.SS Return
+.sp
+The align of the type kind or 0 on error
+.SS fy_type_kind_name
+.INDENT 0.0
+.TP
+.B const char *fy_type_kind_name(enum \fI\%fy_type_kind\fP type_kind) 
+Find out the type kind’s name
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtype_kind\fP (enum \fI\%fy_type_kind\fP) – The type_kind to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Return the name of the type kind
+.SS Return
+.sp
+The name of the type kind or NULL on error
+.SS enum fy_field_info_flags
+.INDENT 0.0
+.TP
+.B enum fy_field_info_flags 
+Flags for a field entry
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+enum fy_field_info_flags {
+    FYFIF_BITFIELD,
+    FYFIF_ENUM_UNSIGNED
+};
+.EE
+.UNINDENT
+.UNINDENT
+.SS Constants
+.INDENT 0.0
+.TP
+.B FYFIF_BITFIELD
+Set if the field is a bitfield and not a regular field
+.TP
+.B FYFIF_ENUM_UNSIGNED
+Set if the enum value is unsigned
+.UNINDENT
+.SS enum fy_type_info_flags
+.INDENT 0.0
+.TP
+.B enum fy_type_info_flags 
+Flags for a a type info entry
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+enum fy_type_info_flags {
+    FYTIF_CONST,
+    FYTIF_VOLATILE,
+    FYTIF_RESTRICT,
+    FYTIF_ELABORATED,
+    FYTIF_ANONYMOUS,
+    FYTIF_ANONYMOUS_RECORD_DECL,
+    FYTIF_ANONYMOUS_GLOBAL,
+    FYTIF_ANONYMOUS_DEP,
+    FYTIF_INCOMPLETE,
+    FYTIF_UNRESOLVED,
+    FYTIF_MAIN_FILE,
+    FYTIF_SYSTEM_HEADER
+};
+.EE
+.UNINDENT
+.UNINDENT
+.SS Constants
+.INDENT 0.0
+.TP
+.B FYTIF_CONST
+Const qualifier for this type enabled
+.TP
+.B FYTIF_VOLATILE
+Volatile qualifier for this type enabled
+.TP
+.B FYTIF_RESTRICT
+Restrict qualified for this type enabled
+.TP
+.B FYTIF_ELABORATED
+Type is a named type with a qualifier
+.TP
+.B FYTIF_ANONYMOUS
+The type is anonymous, ie. declared in place.
+.TP
+.B FYTIF_ANONYMOUS_RECORD_DECL
+The type is anonymous, and is a record
+.TP
+.B FYTIF_ANONYMOUS_GLOBAL
+The type is a global anonymous type
+.TP
+.B FYTIF_ANONYMOUS_DEP
+The dependent type is anonymous
+.TP
+.B FYTIF_INCOMPLETE
+Incomplete type
+.TP
+.B FYTIF_UNRESOLVED
+This type is unresolved (cannot be serialized as is)
+.TP
+.B FYTIF_MAIN_FILE
+The type was declared in the main file of an import
+.TP
+.B FYTIF_SYSTEM_HEADER
+The type was declared in a system header
+.UNINDENT
+.SS fy_type_info_get_kind
+.INDENT 0.0
+.TP
+.B enum \fI\%fy_type_kind\fP fy_type_info_get_kind(const struct fy_type_info *ti) 
+Get the type kind
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The kind of this type (e.g. FYTK_STRUCT, FYTK_INT, …)
+.SS fy_type_info_get_flags
+.INDENT 0.0
+.TP
+.B enum \fI\%fy_type_info_flags\fP fy_type_info_get_flags(const struct fy_type_info *ti) 
+Get the type info flags
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+Bitfield of \fBenum fy_type_info_flags\fP for this type
+.SS fy_type_info_get_name
+.INDENT 0.0
+.TP
+.B const char *fy_type_info_get_name(const struct fy_type_info *ti) 
+Get the fully qualified name of the type
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Returns the name including any keyword prefix, e.g. \fB\(dqstruct foo\(dq\fP,
+\fB\(dqenum bar\(dq\fP, \fB\(dqint\(dq\fP, \fB\(dqunsigned long\(dq\fP\&.
+.SS Return
+.sp
+The name string, or NULL on error
+.SS fy_type_info_get_size
+.INDENT 0.0
+.TP
+.B size_t fy_type_info_get_size(const struct fy_type_info *ti) 
+Get the byte size of the type
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+sizeof the type in bytes, or 0 for incomplete/void types
+.SS fy_type_info_get_align
+.INDENT 0.0
+.TP
+.B size_t fy_type_info_get_align(const struct fy_type_info *ti) 
+Get the alignment requirement of the type
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+alignof the type in bytes
+.SS fy_type_info_get_dependent_type
+.INDENT 0.0
+.TP
+.B const struct fy_type_info *fy_type_info_get_dependent_type(const struct fy_type_info *ti) 
+Get the type this one depends on
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+For pointers, typedefs, enums (underlying integer type), and arrays
+(element type) returns the referenced type.  NULL for all others.
+.SS Return
+.sp
+The dependent type, or NULL if not applicable
+.SS fy_type_info_get_count
+.INDENT 0.0
+.TP
+.B size_t fy_type_info_get_count(const struct fy_type_info *ti) 
+Get the field count or array element count
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+For struct/union/enum types this is the number of fields/constants.
+For FYTK_CONSTARRAY this is the fixed element count.
+Zero for all other types.
+.SS Return
+.sp
+The count
+.SS fy_type_info_get_field_at
+.INDENT 0.0
+.TP
+.B const struct fy_field_info *fy_type_info_get_field_at(const struct fy_type_info *ti, size_t idx) 
+Get a field of a type by index
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.IP \(bu 2
+\fBidx\fP (size_t) – Field index (0\-based)
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Return the Nth field (0\-based) of a struct, union, or enum type.
+.SS Return
+.sp
+Pointer to the field info, or NULL if idx is out of range
+.SS fy_field_info_get_flags
+.INDENT 0.0
+.TP
+.B enum \fI\%fy_field_info_flags\fP fy_field_info_get_flags(const struct fy_field_info *fi) 
+Get the field flags
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfi\fP (const struct fy_field_info*) – The field info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+Bitfield of \fBenum fy_field_info_flags\fP for this field
+.SS fy_field_info_get_parent
+.INDENT 0.0
+.TP
+.B const struct fy_type_info *fy_field_info_get_parent(const struct fy_field_info *fi) 
+Get the type that contains this field
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfi\fP (const struct fy_field_info*) – The field info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The enclosing struct/union/enum type info, or NULL on error
+.SS fy_field_info_get_name
+.INDENT 0.0
+.TP
+.B const char *fy_field_info_get_name(const struct fy_field_info *fi) 
+Get the name of the field
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfi\fP (const struct fy_field_info*) – The field info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The field name string, or NULL on error
+.SS fy_field_info_get_type_info
+.INDENT 0.0
+.TP
+.B const struct fy_type_info *fy_field_info_get_type_info(const struct fy_field_info *fi) 
+Get the type of this field’s value
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfi\fP (const struct fy_field_info*) – The field info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The type info for the field’s declared type, or NULL on error
+.SS fy_field_info_get_offset
+.INDENT 0.0
+.TP
+.B size_t fy_field_info_get_offset(const struct fy_field_info *fi) 
+Get the byte offset of a regular struct/union field
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfi\fP (const struct fy_field_info*) – The field info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Valid only when \fB!(fy_field_info_get_flags(fi) & FYFIF_BITFIELD)\fP\&.
+.SS Return
+.sp
+Byte offset from the start of the enclosing struct/union
+.SS fy_field_info_get_bit_offset
+.INDENT 0.0
+.TP
+.B size_t fy_field_info_get_bit_offset(const struct fy_field_info *fi) 
+Get the bit offset of a bitfield
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfi\fP (const struct fy_field_info*) – The field info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Valid only when \fBfy_field_info_get_flags(fi) & FYFIF_BITFIELD\fP\&.
+.SS Return
+.sp
+Bit offset from the start of the enclosing struct/union
+.SS fy_field_info_get_bit_width
+.INDENT 0.0
+.TP
+.B size_t fy_field_info_get_bit_width(const struct fy_field_info *fi) 
+Get the width of a bitfield in bits
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfi\fP (const struct fy_field_info*) – The field info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Valid only when \fBfy_field_info_get_flags(fi) & FYFIF_BITFIELD\fP\&.
+.SS Return
+.sp
+Width of the bitfield in bits
+.SS fy_field_info_get_enum_value
+.INDENT 0.0
+.TP
+.B intmax_t fy_field_info_get_enum_value(const struct fy_field_info *fi) 
+Get the signed value of an enum constant
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfi\fP (const struct fy_field_info*) – The field info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Valid only for fields of an enum type info.
+.SS Return
+.sp
+The signed enum constant value
+.SS fy_field_info_get_unsigned_enum_value
+.INDENT 0.0
+.TP
+.B uintmax_t fy_field_info_get_unsigned_enum_value(const struct fy_field_info *fi) 
+Get the unsigned value of an enum constant
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfi\fP (const struct fy_field_info*) – The field info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Valid only for fields of an enum type info where
+\fBfy_field_info_get_flags(fi) & FYFIF_ENUM_UNSIGNED\fP\&.
+.SS Return
+.sp
+The unsigned enum constant value
+.SS fy_reflection_destroy
+.INDENT 0.0
+.TP
+.B void fy_reflection_destroy(struct fy_reflection *rfl) 
+Destroy a reflection
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBrfl\fP (struct fy_reflection*) – The reflection
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Destroy a reflection that was previously created
+.SS fy_reflection_clear_all_markers
+.INDENT 0.0
+.TP
+.B void fy_reflection_clear_all_markers(struct fy_reflection *rfl) 
+Clear all markers
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBrfl\fP (struct fy_reflection*) – The reflection
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Clear all markers put on types of the reflection
+.SS fy_reflection_prune_unmarked
+.INDENT 0.0
+.TP
+.B void fy_reflection_prune_unmarked(struct fy_reflection *rfl) 
+Remove all unmarked types
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBrfl\fP (struct fy_reflection*) – The reflection
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Remove all unmarked type of the reflection.
+.SS fy_reflection_from_imports
+.INDENT 0.0
+.TP
+.B struct fy_reflection *fy_reflection_from_imports(const char *backend_name, const void *backend_cfg, int num_imports, const void *import_cfgs, struct fy_diag *diag) 
+Create a reflection from imports
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBbackend_name\fP (const char*) – The name of the backend
+.IP \(bu 2
+\fBbackend_cfg\fP (const void*) – The configuration of the backend
+.IP \(bu 2
+\fBnum_imports\fP (int) – The number of imports
+.IP \(bu 2
+\fBimport_cfgs\fP (const void*) – The array of import configs.
+.IP \(bu 2
+\fBdiag\fP (struct fy_diag*) – The diagnostic object
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Create a reflection by the imports of the given backend.
+.SS Return
+.sp
+The reflection pointer, or NULL if an error occured.
+.SS fy_reflection_from_import
+.INDENT 0.0
+.TP
+.B struct fy_reflection *fy_reflection_from_import(const char *backend_name, const void *backend_cfg, const void *import_cfg, struct fy_diag *diag) 
+Create a reflection from an import
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBbackend_name\fP (const char*) – The name of the backend
+.IP \(bu 2
+\fBbackend_cfg\fP (const void*) – The configuration of the backend
+.IP \(bu 2
+\fBimport_cfg\fP (const void*) – The import configuration
+.IP \(bu 2
+\fBdiag\fP (struct fy_diag*) – The diagnostic object
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Create a reflection by a single import of the given backend.
+.SS Return
+.sp
+The reflection pointer, or NULL if an error occured.
+.SS fy_reflection_from_c_files
+.INDENT 0.0
+.TP
+.B struct fy_reflection *fy_reflection_from_c_files(int filec, const char *const filev, int argc, const char *const argv, bool display_diagnostics, bool include_comments, struct fy_diag *diag) 
+Create a reflection from C files
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfilec\fP (int) – Number of files
+.IP \(bu 2
+\fBfilev\fP (const char *const) – An array of files
+.IP \(bu 2
+\fBargc\fP (int) – Number of arguments to pass to libclang
+.IP \(bu 2
+\fBargv\fP (const char *const) – Arguments to pass to libclang
+.IP \(bu 2
+\fBdisplay_diagnostics\fP (bool) – Display diagnostics (useful in case of errors)
+.IP \(bu 2
+\fBinclude_comments\fP (bool) – Include comments in the type database
+.IP \(bu 2
+\fBdiag\fP (struct fy_diag*) – The diagnostic object to use (or NULL for default)
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Create a reflection from C source files
+.SS Return
+.sp
+The reflection pointer, or NULL if an error occured.
+.SS fy_reflection_from_c_file
+.INDENT 0.0
+.TP
+.B struct fy_reflection *fy_reflection_from_c_file(const char *file, int argc, const char *const argv, bool display_diagnostics, bool include_comments, struct fy_diag *diag) 
+Create a reflection from a single C file
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfile\fP (const char*) – The C file
+.IP \(bu 2
+\fBargc\fP (int) – Number of arguments to pass to libclang
+.IP \(bu 2
+\fBargv\fP (const char *const) – Arguments to pass to libclang
+.IP \(bu 2
+\fBdisplay_diagnostics\fP (bool) – Display diagnostics (useful in case of errors)
+.IP \(bu 2
+\fBinclude_comments\fP (bool) – Include comments in the type database
+.IP \(bu 2
+\fBdiag\fP (struct fy_diag*) – The diagnostic object to use (or NULL for default)
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Create a reflection from a single C source file
+.SS Return
+.sp
+The reflection pointer, or NULL if an error occured.
+.SS fy_reflection_from_c_file_with_cflags
+.INDENT 0.0
+.TP
+.B struct fy_reflection *fy_reflection_from_c_file_with_cflags(const char *file, const char *cflags, bool display_diagnostics, bool include_comments, struct fy_diag *diag) 
+Create a reflection from a single C file with CFLAGS
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfile\fP (const char*) – The C file
+.IP \(bu 2
+\fBcflags\fP (const char*) – The C flags
+.IP \(bu 2
+\fBdisplay_diagnostics\fP (bool) – Display diagnostics (useful in case of errors)
+.IP \(bu 2
+\fBinclude_comments\fP (bool) – Include comments in the type database
+.IP \(bu 2
+\fBdiag\fP (struct fy_diag*) – The diagnostic object to use (or NULL for default)
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Create a reflection from a single C source file, using a simpler CFLAGS api
+.SS Return
+.sp
+The reflection pointer, or NULL if an error occured.
+.SS fy_reflection_from_packed_blob
+.INDENT 0.0
+.TP
+.B struct fy_reflection *fy_reflection_from_packed_blob(const void *blob, size_t blob_size, struct fy_diag *diag) 
+Create a reflection from a packed blob
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBblob\fP (const void*) – A pointer to the binary blob
+.IP \(bu 2
+\fBblob_size\fP (size_t) – The size of the blob
+.IP \(bu 2
+\fBdiag\fP (struct fy_diag*) – The diagnostic object to use (or NULL for default)
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Create a reflection from a packed blob.
+.SS Return
+.sp
+The reflection pointer, or NULL if an error occured.
+.SS fy_reflection_to_packed_blob
+.INDENT 0.0
+.TP
+.B void *fy_reflection_to_packed_blob(struct fy_reflection *rfl, size_t *blob_sizep, bool include_comments, bool include_location) 
+Create blob from a reflection
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBrfl\fP (struct fy_reflection*) – The reflection
+.IP \(bu 2
+\fBblob_sizep\fP (size_t*) – Pointer to a variable to store the generated blobs size
+.IP \(bu 2
+\fBinclude_comments\fP (bool) – Include comments in the blob
+.IP \(bu 2
+\fBinclude_location\fP (bool) – Include the location information in the blob
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Create a packed blob from the given reflection
+.SS Return
+.sp
+A pointer to the blob, or NULL in case of an error
+.SS fy_reflection_from_packed_blob_file
+.INDENT 0.0
+.TP
+.B struct fy_reflection *fy_reflection_from_packed_blob_file(const char *blob_file, struct fy_diag *diag) 
+Create a reflection from a packed blob file
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBblob_file\fP (const char*) – The name of the blob file
+.IP \(bu 2
+\fBdiag\fP (struct fy_diag*) – The diagnostic object to use (or NULL for default)
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Create a reflection from the given packed blob file
+.SS Return
+.sp
+The reflection pointer, or NULL if an error occured.
+.SS fy_reflection_to_packed_blob_file
+.INDENT 0.0
+.TP
+.B int fy_reflection_to_packed_blob_file(struct fy_reflection *rfl, const char *blob_file) 
+Create a packed blob file from reflection
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBrfl\fP (struct fy_reflection*) – The reflection
+.IP \(bu 2
+\fBblob_file\fP (const char*) – The name of the blob file
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Create a packed blob file from the given reflection
+.SS Return
+.sp
+0 on success, \-1 on error
+.SS fy_reflection_from_null
+.INDENT 0.0
+.TP
+.B struct fy_reflection *fy_reflection_from_null(struct fy_diag *diag) 
+Create a reflection for C basic types only
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBdiag\fP (struct fy_diag*) – The diagnostic object to use (or NULL for default)
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Create a reflection using only C basic types
+.SS Return
+.sp
+The reflection pointer, or NULL if an error occured.
+.SS fy_reflection_set_userdata
+.INDENT 0.0
+.TP
+.B void fy_reflection_set_userdata(struct fy_reflection *rfl, void *userdata) 
+Set the userdata of a reflection
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBrfl\fP (struct fy_reflection*) – The reflection
+.IP \(bu 2
+\fBuserdata\fP (void*) – A void pointer that can be used to retreive the data
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Set the user data associated with the reflection
+.SS fy_reflection_get_userdata
+.INDENT 0.0
+.TP
+.B void *fy_reflection_get_userdata(struct fy_reflection *rfl) 
+Get the userdata associated with a reflection
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBrfl\fP (struct fy_reflection*) – The reflection
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Retrieve the user data associated with the given type via a
+previous call to \fI\%fy_reflection_set_userdata()\fP\&.
+.SS Return
+.sp
+The userdata associated with the reflection, or NULL on error
+.SS fy_type_info_iterate
+.INDENT 0.0
+.TP
+.B const struct fy_type_info *fy_type_info_iterate(struct fy_reflection *rfl, void **prevp) 
+Iterate over the types of the reflection
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBrfl\fP (struct fy_reflection*) – The reflection
+.IP \(bu 2
+\fBprevp\fP (void**) – The previous type sequence iterator
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+This method iterates over all the types of a reflection.
+The start of the iteration is signalled by a NULL in *prevp.
+.SS Return
+.sp
+The next type in sequence or NULL at the end of the type sequence.
+.SS fy_type_info_with_qualifiers
+.INDENT 0.0
+.TP
+.B const struct fy_type_info *fy_type_info_with_qualifiers(const struct fy_type_info *ti, enum \fI\%fy_type_info_flags\fP qual_flags) 
+Get type info with specified qualifiers
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.IP \(bu 2
+\fBqual_flags\fP (enum \fI\%fy_type_info_flags\fP) – The qualifier flags to apply
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Return a type info with the specified qualifier flags applied.
+This allows you to get const, volatile, or other qualified versions
+of a type.
+.SS Return
+.sp
+The type info with qualifiers applied, or NULL on error
+.SS fy_type_info_unqualified
+.INDENT 0.0
+.TP
+.B const struct fy_type_info *fy_type_info_unqualified(const struct fy_type_info *ti) 
+Get unqualified type info
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Return the unqualified version of a type (removing const, volatile, etc.)
+.SS Return
+.sp
+The unqualified type info, or NULL on error
+.SS fy_type_info_to_reflection
+.INDENT 0.0
+.TP
+.B struct fy_reflection *fy_type_info_to_reflection(const struct fy_type_info *ti) 
+Get the reflection a type belongs to
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Return the reflection this type belongs to
+.SS Return
+.sp
+The reflection this type belongs to, or NULL if bad ti argument
+.SS fy_type_info_generate_name
+.INDENT 0.0
+.TP
+.B char *fy_type_info_generate_name(const struct fy_type_info *ti, const char *field) 
+Generate a name for a type
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.IP \(bu 2
+\fBfield\fP (const char*) – The field if using the call to generate a field definition
+or NULL if not.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Generate a name from the type by traversing the type definitions
+down to their dependent primitive types.
+.SS Return
+.sp
+A \fBmalloc()\fP‘ed pointer to the name, or NULL in case of an error.
+This pointer must be \fBfree()\fP‘d when the caller is done with it.
+.SS fy_field_info_generate_name
+.INDENT 0.0
+.TP
+.B char *fy_field_info_generate_name(const struct fy_field_info *fi) 
+Generate a name for a field
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfi\fP (const struct fy_field_info*) – The field info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Generate a name for a field by combining the field’s name with its type.
+Similar to \fI\%fy_type_info_generate_name()\fP but specifically for fields.
+.SS Return
+.sp
+A \fBmalloc()\fP‘ed pointer to the name, or NULL in case of an error.
+This pointer must be \fBfree()\fP‘d when the caller is done with it.
+.SS fy_type_info_lookup
+.INDENT 0.0
+.TP
+.B const struct fy_type_info *fy_type_info_lookup(struct fy_reflection *rfl, const char *name) 
+Lookup for a type by a definition
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBrfl\fP (struct fy_reflection*) – The reflection
+.IP \(bu 2
+\fBname\fP (const char*) – The name of type (i.e. “struct foo”)
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Lookup for a type using the name provided. Any primitive types
+or derived types will be created as appropriately.
+.SS Return
+.sp
+A pointer to the type or NULL if it cannot be found.
+.SS fy_type_info_clear_marker
+.INDENT 0.0
+.TP
+.B void fy_type_info_clear_marker(const struct fy_type_info *ti) 
+Clear the marker on a type
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Clear the marker on a type. Note this call will not clear the
+markers of the dependent types.
+.SS fy_type_info_mark
+.INDENT 0.0
+.TP
+.B void fy_type_info_mark(const struct fy_type_info *ti) 
+Mark a type and it’s dependencies
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Mark the type and recursively mark all types this one depends on.
+.SS fy_type_info_is_marked
+.INDENT 0.0
+.TP
+.B bool fy_type_info_is_marked(const struct fy_type_info *ti) 
+Check whether a type is marked
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check the mark of a type
+.SS Return
+.sp
+true if the type is marked, false otherwise
+.SS fy_type_info_eponymous_offset
+.INDENT 0.0
+.TP
+.B size_t fy_type_info_eponymous_offset(const struct fy_type_info *ti) 
+Offset of an anonymous type from the closest eponymous parent type.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The anonymous type
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+For anonymous types, get the offset from the start of the enclosing
+eponymous type. For example:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+struct baz {
+  int foo;
+  struct { // <\- anonymous
+    int bar; // <\- offset from baz
+  } bar;
+};
+.EE
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The offset from the closest eponymous parent type or 0 if not anonymous
+.SS fy_type_info_get_comment
+.INDENT 0.0
+.TP
+.B const char *fy_type_info_get_comment(const struct fy_type_info *ti) 
+Get the comment for a type
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Retrieve the ‘cooked’ comment for a type. The cooking consists of
+(trying) to remove comment formatting. For example:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+// this is a comment
+//   which requires cooking
+.EE
+.UNINDENT
+.UNINDENT
+.sp
+Would be cooked as:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+this is a comment
+  which requires cooking
+.EE
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The cooked comment, or NULL
+.SS fy_field_info_get_comment
+.INDENT 0.0
+.TP
+.B const char *fy_field_info_get_comment(const struct fy_field_info *fi) 
+Get the comment for a field
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfi\fP (const struct fy_field_info*) – The field info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Retrieve the ‘cooked’ comment for a field. The cooking consists of
+(trying) to remove comment formatting. For example:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+// this is a comment
+//   which requires cooking
+.EE
+.UNINDENT
+.UNINDENT
+.sp
+Would be cooked as:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+this is a comment
+  which requires cooking
+.EE
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The cooked comment, or NULL
+.SS fy_type_info_get_yaml_annotation
+.INDENT 0.0
+.TP
+.B struct fy_document *fy_type_info_get_yaml_annotation(const struct fy_type_info *ti) 
+Get the yaml annotation of this type
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Retrieve a document containing the yaml keyword annotations of this type
+.SS Return
+.sp
+The yaml annotation document or NULL
+.SS fy_type_info_get_yaml_comment
+.INDENT 0.0
+.TP
+.B const char *fy_type_info_get_yaml_comment(const struct fy_type_info *ti) 
+Get the yaml annotation of this type as string
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Retrieve a document containing the yaml keyword annotations of this type as a string
+.SS Return
+.sp
+The yaml comment or NULL
+.SS fy_type_info_get_id
+.INDENT 0.0
+.TP
+.B int fy_type_info_get_id(const struct fy_type_info *ti) 
+Get the unique ID of a type
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The type info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Retrieve the unique identifier for this type within its reflection context.
+Each type in a reflection has a distinct ID.
+.SS Return
+.sp
+The type ID if >= 0, \-1 on error
+.SS fy_field_info_get_yaml_annotation
+.INDENT 0.0
+.TP
+.B struct fy_document *fy_field_info_get_yaml_annotation(const struct fy_field_info *fi) 
+Get the yaml annotation document for this field
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfi\fP (const struct fy_field_info*) – The field info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Retrieve a document containing the yaml keyword annotations of this field
+.SS Return
+.sp
+The yaml annotation document, or NULL
+.SS fy_field_info_get_yaml_comment
+.INDENT 0.0
+.TP
+.B const char *fy_field_info_get_yaml_comment(const struct fy_field_info *fi) 
+Get the YAML comment for this field
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfi\fP (const struct fy_field_info*) – The field info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Retrieve the YAML comment associated with this field from its annotations.
+.SS Return
+.sp
+The YAML comment string, or NULL if no comment exists
+.SS fy_reflection_dump
+.INDENT 0.0
+.TP
+.B void fy_reflection_dump(struct fy_reflection *rfl, bool marked_only, bool no_location) 
+Dump the internal type database to stderr
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBrfl\fP (struct fy_reflection*) – The reflection to dump
+.IP \(bu 2
+\fBmarked_only\fP (bool) – If true, dump only types that have been marked
+(see \fI\%fy_type_info_mark()\fP); if false, dump all types
+.IP \(bu 2
+\fBno_location\fP (bool) – If true, omit source file/line location information
+from the output
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Print a human\-readable description of every type (or only the marked types)
+in the reflection’s registry to stderr.  Primarily a debugging aid.
+.SS enum fy_c_generation_flags
+.INDENT 0.0
+.TP
+.B enum fy_c_generation_flags 
+Flags controlling C code generation output format
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+enum fy_c_generation_flags {
+    FYCGF_INDENT_TAB,
+    FYCGF_INDENT_SPACES_2,
+    FYCGF_INDENT_SPACES_4,
+    FYCGF_INDENT_SPACES_8,
+    FYCGF_COMMENT_NONE,
+    FYCGF_COMMENT_RAW,
+    FYCGF_COMMENT_YAML
+};
+.EE
+.UNINDENT
+.UNINDENT
+.SS Constants
+.INDENT 0.0
+.TP
+.B FYCGF_INDENT_TAB
+Use a hard tab character for each indentation level
+.TP
+.B FYCGF_INDENT_SPACES_2
+Use two spaces per indentation level
+.TP
+.B FYCGF_INDENT_SPACES_4
+Use four spaces per indentation level
+.TP
+.B FYCGF_INDENT_SPACES_8
+Use eight spaces per indentation level
+.TP
+.B FYCGF_COMMENT_NONE
+Omit all comments from the generated output
+.TP
+.B FYCGF_COMMENT_RAW
+Emit the original raw source comment verbatim
+.TP
+.B FYCGF_COMMENT_YAML
+Emit only the \fByaml:\fP annotation portion of the
+comment, formatted as a single\-line \fB//\fP comment
+.UNINDENT
+.SS Description
+.sp
+Pass a bitwise OR of one indentation choice and one comment choice to
+\fI\%fy_reflection_generate_c()\fP or \fI\%fy_reflection_generate_c_string()\fP\&.
+The default combination is \fBFYCGF_INDENT_TAB\fP | \fBFYCGF_COMMENT_NONE\fP\&.
+.SS fy_reflection_generate_c
+.INDENT 0.0
+.TP
+.B int fy_reflection_generate_c(struct fy_reflection *rfl, enum \fI\%fy_c_generation_flags\fP flags, FILE *fp) 
+Generate C code from reflection type information
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBrfl\fP (struct fy_reflection*) – The reflection
+.IP \(bu 2
+\fBflags\fP (enum \fI\%fy_c_generation_flags\fP) – Generation flags controlling output format (indentation, comments)
+.IP \(bu 2
+\fBfp\fP (FILE*) – The file pointer to write to
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Generate C code (struct definitions, typedefs, etc.) from the reflection’s
+type database and write it to a file pointer. This can be used to recreate
+C header files from reflection metadata. The output format is controlled by
+the flags parameter which specifies indentation style and comment format.
+.SS Return
+.sp
+0 on success, \-1 on error
+.SS fy_reflection_generate_c_string
+.INDENT 0.0
+.TP
+.B char *fy_reflection_generate_c_string(struct fy_reflection *rfl, enum \fI\%fy_c_generation_flags\fP flags) 
+Generate C code from reflection as a string
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBrfl\fP (struct fy_reflection*) – The reflection
+.IP \(bu 2
+\fBflags\fP (enum \fI\%fy_c_generation_flags\fP) – Generation flags controlling output format (indentation, comments)
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Generate C code (struct definitions, typedefs, etc.) from the reflection’s
+type database and return it as an allocated string. This is similar to
+\fI\%fy_reflection_generate_c()\fP but returns the result as a string instead of
+writing to a file. The output format is controlled by the flags parameter.
+.SS Return
+.sp
+A \fBmalloc()\fP‘ed pointer to the generated C code, or NULL on error.
+This pointer must be \fBfree()\fP‘d when the caller is done with it.
+.SS fy_field_info_index
+.INDENT 0.0
+.TP
+.B int fy_field_info_index(const struct fy_field_info *fi) 
+Get the index of a field of a type
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfi\fP (const struct fy_field_info*) – The pointer to the field info
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Retrieve the 0\-based index of a field info. The first
+structure member is 0, the second 1 etc.
+.SS Return
+.sp
+The index of the field if >= 0, \-1 on error
+.SS fy_type_info_lookup_field
+.INDENT 0.0
+.TP
+.B const struct fy_field_info *fy_type_info_lookup_field(const struct fy_type_info *ti, const char *name) 
+Lookup a field of a type by name
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The pointer to the type info
+.IP \(bu 2
+\fBname\fP (const char*) – The name of the field
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Lookup the field with the given name on the given type.
+.SS Return
+.sp
+A pointer to the field info if field was found, NULL otherwise
+.SS fy_type_info_lookup_field_by_enum_value
+.INDENT 0.0
+.TP
+.B const struct fy_field_info *fy_type_info_lookup_field_by_enum_value(const struct fy_type_info *ti, intmax_t val) 
+Lookup an enum field of a type by value
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The pointer to the type info
+.IP \(bu 2
+\fBval\fP (intmax_t) – The value of the enumeration
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Lookup the field with the enum value on the given type.
+.SS Return
+.sp
+A pointer to the field info if field was found, NULL otherwise
+.SS fy_type_info_lookup_field_by_unsigned_enum_value
+.INDENT 0.0
+.TP
+.B const struct fy_field_info *fy_type_info_lookup_field_by_unsigned_enum_value(const struct fy_type_info *ti, uintmax_t val) 
+Lookup an enum field of a type by unsigned 0value
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBti\fP (const struct fy_type_info*) – The pointer to the type info
+.IP \(bu 2
+\fBval\fP (uintmax_t) – The value of the enumeration
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Lookup the field with the enum value on the given type.
+.SS Return
+.sp
+A pointer to the field info if field was found, NULL otherwise
+.SS enum fy_type_context_cfg_flags
+.INDENT 0.0
+.TP
+.B enum fy_type_context_cfg_flags 
+Optional creation flags for \fI\%fy_type_context_create()\fP
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+enum fy_type_context_cfg_flags {
+    FYTCCF_DUMP_REFLECTION,
+    FYTCCF_DUMP_TYPE_SYSTEM,
+    FYTCCF_DEBUG
+};
+.EE
+.UNINDENT
+.UNINDENT
+.SS Constants
+.INDENT 0.0
+.TP
+.B FYTCCF_DUMP_REFLECTION
+Dump raw reflection structures during context creation
+.TP
+.B FYTCCF_DUMP_TYPE_SYSTEM
+Dump the meta\-type tree after it is built
+.TP
+.B FYTCCF_DEBUG
+Enable verbose debug logging during type tree construction
+.UNINDENT
+.SS struct fy_type_context_cfg
+.INDENT 0.0
+.TP
+.B struct fy_type_context_cfg 
+Configuration for \fI\%fy_type_context_create()\fP
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+struct fy_type_context_cfg {
+    struct fy_reflection *rfl;
+    const char *entry_type;
+    const char *entry_meta;
+    struct fy_diag *diag;
+    unsigned int flags;
+}
+.EE
+.UNINDENT
+.UNINDENT
+.SS Members
+.INDENT 0.0
+.TP
+.B rfl
+Reflection object (must be non\-NULL)
+.TP
+.B entry_type
+Name of the entry C type, e.g. “struct server_config”
+.TP
+.B entry_meta
+Optional YAML annotation string overriding the type’s own
+annotation; pass NULL to use the annotation from the C source
+.TP
+.B diag
+Optional diagnostic object; NULL = use a default stderr diagnoser
+.TP
+.B flags
+Bitwise OR of \fBenum fy_type_context_cfg_flags\fP (0 = defaults)
+.UNINDENT
+.SS enum fy_type_context_emit_flags
+.INDENT 0.0
+.TP
+.B enum fy_type_context_emit_flags 
+Flags controlling stream/document delimiters
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+enum fy_type_context_emit_flags {
+    FYTCEF_SS,
+    FYTCEF_DS,
+    FYTCEF_DE,
+    FYTCEF_SE
+};
+.EE
+.UNINDENT
+.UNINDENT
+.SS Constants
+.INDENT 0.0
+.TP
+.B FYTCEF_SS
+Emit a STREAM\-START event before the document
+.TP
+.B FYTCEF_DS
+Emit a DOCUMENT\-START event
+.TP
+.B FYTCEF_DE
+Emit a DOCUMENT\-END event
+.TP
+.B FYTCEF_SE
+Emit a STREAM\-END event after the document
+.UNINDENT
+.SS fy_type_context_create
+.INDENT 0.0
+.TP
+.B struct fy_type_context *fy_type_context_create(const struct \fI\%fy_type_context_cfg\fP *cfg) 
+Create a type context from a reflection object
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBcfg\fP (const struct \fI\%fy_type_context_cfg\fP*) – Configuration (must be non\-NULL; cfg\->rfl and cfg\->entry_type required)
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Builds the meta\-type tree for the given entry type, resolving all annotations
+and specialisations.  Returns NULL on error.
+.SS Return
+.sp
+A new context object, or NULL on failure.
+.SS fy_type_context_destroy
+.INDENT 0.0
+.TP
+.B void fy_type_context_destroy(struct fy_type_context *ctx) 
+Destroy a type context
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBctx\fP (struct fy_type_context*) – Context to destroy (may be NULL)
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Frees all meta types and fields owned by this context.
+.SS fy_type_context_parse
+.INDENT 0.0
+.TP
+.B int fy_type_context_parse(struct fy_type_context *ctx, struct fy_parser *fyp, void **datap) 
+Parse a YAML stream into a C data structure
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBctx\fP (struct fy_type_context*) – Type context
+.IP \(bu 2
+\fBfyp\fP (struct fy_parser*) – Parser positioned at the start of input
+.IP \(bu 2
+\fBdatap\fP (void**) – Output pointer; set to the parsed C struct on success
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Reads one document from \fBfyp\fP and populates a newly allocated C struct
+whose type is the context’s entry type.  The caller is responsible for
+freeing the returned data with \fI\%fy_type_context_free_data()\fP\&.
+.sp
+The parser must be positioned just before or at a STREAM\-START / DOCUMENT\-START
+event.
+.SS Return
+.sp
+0 on success, negative on error.
+.SS fy_type_context_emit
+.INDENT 0.0
+.TP
+.B int fy_type_context_emit(struct fy_type_context *ctx, struct fy_emitter *emit, const void *data, unsigned int flags) 
+Emit a C data structure as YAML
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBctx\fP (struct fy_type_context*) – Type context
+.IP \(bu 2
+\fBemit\fP (struct fy_emitter*) – Emitter
+.IP \(bu 2
+\fBdata\fP (const void*) – Pointer to the C struct to serialise
+.IP \(bu 2
+\fBflags\fP (unsigned int) – Combination of FYTCEF_SS / FYTCEF_DS / FYTCEF_DE / FYTCEF_SE
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Serialises \fBdata\fP (which must be a pointer to a C struct of the entry type)
+using the emitter \fBemit\fP\&.  Stream/document boundary events are controlled by
+\fBflags\fP (bitwise OR of \fBenum fy_type_context_emit_flags\fP).
+.SS Return
+.sp
+0 on success, negative on error.
+.SS fy_type_context_free_data
+.INDENT 0.0
+.TP
+.B void fy_type_context_free_data(struct fy_type_context *ctx, void *data) 
+Free C data allocated by \fI\%fy_type_context_parse()\fP
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBctx\fP (struct fy_type_context*) – Type context that produced \fBdata\fP
+.IP \(bu 2
+\fBdata\fP (void*) – Data pointer returned by \fI\%fy_type_context_parse()\fP
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Runs destructors for pointer fields and releases the top\-level allocation.
+.SS fy_type_context_get_root
+.INDENT 0.0
+.TP
+.B const struct fy_meta_type *fy_type_context_get_root(const struct fy_type_context *ctx) 
+Return the root meta type of a context
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBctx\fP (const struct fy_type_context*) – Type context
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+The root meta type corresponds to the entry type given at creation time.
+.SS Return
+.sp
+Pointer to the root meta type, or NULL.
+.SS fy_meta_type_get_type_info
+.INDENT 0.0
+.TP
+.B const struct fy_type_info *fy_meta_type_get_type_info(const struct fy_meta_type *mt) 
+Get the C type info for a meta type
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBmt\fP (const struct fy_meta_type*) – Meta type
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+Pointer to the underlying fy_type_info, or NULL.
+.SS fy_meta_type_get_field_count
+.INDENT 0.0
+.TP
+.B int fy_meta_type_get_field_count(const struct fy_meta_type *mt) 
+Get the number of fields in a meta type
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBmt\fP (const struct fy_meta_type*) – Meta type
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+Field count (0 for non\-struct/union types).
+.SS fy_meta_type_get_field
+.INDENT 0.0
+.TP
+.B const struct fy_meta_field *fy_meta_type_get_field(const struct fy_meta_type *mt, int idx) 
+Get a field of a meta type by index
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBmt\fP (const struct fy_meta_type*) – Meta type
+.IP \(bu 2
+\fBidx\fP (int) – Field index (0\-based)
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+Pointer to the meta field, or NULL if idx is out of range.
+.SS fy_meta_field_get_field_info
+.INDENT 0.0
+.TP
+.B const struct fy_field_info *fy_meta_field_get_field_info(const struct fy_meta_field *mf) 
+Get the C field info for a meta field
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBmf\fP (const struct fy_meta_field*) – Meta field
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+Pointer to the underlying fy_field_info, or NULL.
+.SS fy_meta_field_get_meta_type
+.INDENT 0.0
+.TP
+.B const struct fy_meta_type *fy_meta_field_get_meta_type(const struct fy_meta_field *mf) 
+Get the meta type of a field’s value type
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBmf\fP (const struct fy_meta_field*) – Meta field
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+Pointer to the meta type for this field’s value, or NULL.
+.SS fy_reflection_prune_system
+.INDENT 0.0
+.TP
+.B void fy_reflection_prune_system(struct fy_reflection *rfl) 
+Remove built\-in/system types from a reflection object
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBrfl\fP (struct fy_reflection*) – Reflection object to prune (must be non\-NULL)
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Marks all non\-system structs, unions, enums and typedefs, then prunes all
+unmarked types.  Call this after creating a reflection object to strip out
+compiler\-provided system headers before building a type context.
+.SS fy_reflection_type_filter
+.INDENT 0.0
+.TP
+.B int fy_reflection_type_filter(struct fy_reflection *rfl, const char *type_include, const char *type_exclude) 
+Retain only types whose names match a pattern
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBrfl\fP (struct fy_reflection*) – Reflection object to filter (must be non\-NULL)
+.IP \(bu 2
+\fBtype_include\fP (const char*) – Regex for type names to keep; NULL = keep all
+.IP \(bu 2
+\fBtype_exclude\fP (const char*) – Regex for type names to drop; NULL = drop none
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Marks types whose name matches \fBtype_include\fP (if non\-NULL) and does not
+match \fBtype_exclude\fP (if non\-NULL), then prunes all unmarked types.
+Both patterns are POSIX extended regular expressions.
+.SS Return
+.sp
+0 on success, \-1 on regex compilation error.
+.SS fy_reflection_equal
+.INDENT 0.0
+.TP
+.B bool fy_reflection_equal(struct fy_reflection *rfl_a, struct fy_reflection *rfl_b) 
+Test whether two reflection objects are equivalent
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBrfl_a\fP (struct fy_reflection*) – First reflection object
+.IP \(bu 2
+\fBrfl_b\fP (struct fy_reflection*) – Second reflection object
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Iterates both reflection objects in order and compares each type_info
+structurally.  Useful for verifying packed round\-trips.
+.SS Return
+.sp
+true if the objects are equivalent, false otherwise.
+.SH COPYRIGHT
+2019-2026, Pantelis Antoniou
+.\" Generated by docutils manpage writer.
+.

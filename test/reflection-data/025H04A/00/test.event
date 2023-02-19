@@ -1,0 +1,11 @@
++STR
++DOC
++MAP
+=VAL "enums
++SEQ
+=VAL "e_one
+=VAL "e_two
+-SEQ
+-MAP
+-DOC
+-STR
