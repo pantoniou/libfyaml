@@ -1,0 +1,27 @@
++STR
++DOC
++MAP
+=VAL "messages
++SEQ
++MAP
+=VAL "role
+=VAL "user
+=VAL "content
++SEQ
++MAP
+=VAL "type
+=VAL "text
+=VAL "text
+=VAL "find who Trump is married to looking at the page
+=VAL "cache_control
++MAP
+=VAL "type
+=VAL "ephemeral
+-MAP
+-MAP
+-SEQ
+-MAP
+-SEQ
+-MAP
+-DOC
+-STR

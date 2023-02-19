@@ -1,0 +1,30 @@
++STR
++DOC
++MAP
+=VAL "a0
+=VAL "200
+=VAL "a
+=VAL "10
+=VAL "b
+=VAL "100
+=VAL "bb
+=VAL "101
+=VAL "c
+=VAL "20
+-MAP
+-DOC
++DOC
++MAP
+=VAL "a0
+=VAL "200
+=VAL "a
+=VAL "10
+=VAL "b
+=VAL "100
+=VAL "bb
+=VAL "101
+=VAL "c
+=VAL "-10
+-MAP
+-DOC
+-STR

@@ -1,0 +1,78 @@
++STR
++DOC
++MAP
+=VAL "bars
++SEQ
++MAP
+=VAL "text
+=VAL "one
+=VAL "value
+=VAL "1
+-MAP
++MAP
+=VAL "text
+=VAL "ten
+=VAL "value
+=VAL "10
+-MAP
+-SEQ
+=VAL "bars_t
++SEQ
++MAP
+=VAL "text
+=VAL "hundred
+=VAL "value
+=VAL "100
+-MAP
+-SEQ
+=VAL "pures
++SEQ
++MAP
+=VAL "a
+=VAL "100
+=VAL "b
+=VAL "100.09999999999999
+-MAP
++MAP
+=VAL "a
+=VAL "200
+=VAL "b
+=VAL "200.19999999999999
+-MAP
+-SEQ
+=VAL "impures
++SEQ
++MAP
+=VAL "text
+=VAL "something
+=VAL "a
+=VAL "1
+-MAP
++MAP
+=VAL "text
+=VAL "else
+=VAL "a
+=VAL "2
+-MAP
+-SEQ
+=VAL "filthies
++SEQ
++MAP
+=VAL "data
++SEQ
+=VAL "this
+=VAL "is
+=VAL "getting
+=VAL "long
+-SEQ
+-MAP
++MAP
+=VAL "data
++SEQ
+=VAL "indeed
+-SEQ
+-MAP
+-SEQ
+-MAP
+-DOC
+-STR

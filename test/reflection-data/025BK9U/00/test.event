@@ -1,0 +1,22 @@
++STR
++DOC
++MAP
+=VAL "foo_value
+=VAL "10
+=VAL "bar
++MAP
+=VAL "bar_value
+=VAL "100
+=VAL "foo
++MAP
+=VAL "foo_value
+=VAL "11
+=VAL "bar
+=VAL "null
+-MAP
+=VAL "baz
+=VAL "null
+-MAP
+-MAP
+-DOC
+-STR

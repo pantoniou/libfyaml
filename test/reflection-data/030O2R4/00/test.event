@@ -1,0 +1,52 @@
++STR
++DOC
++MAP
+=VAL "input
+=VAL "Hello
+-MAP
+-DOC
++DOC
++MAP
+=VAL "input
++MAP
+=VAL "command
+=VAL "hello
+=VAL "path
+=VAL "true
+-MAP
+-MAP
+-DOC
++DOC
++MAP
+=VAL "input
++MAP
+=VAL "command
+=VAL "hello
+=VAL "path
+=VAL "true
+-MAP
+-MAP
+-DOC
++DOC
++MAP
+=VAL "input
++MAP
+=VAL "command
+=VAL "hello
+=VAL "path
+=VAL "true
+-MAP
+-MAP
+-DOC
++DOC
++MAP
+=VAL "input
++MAP
+=VAL "command
+=VAL "hello
+=VAL "path
+=VAL "true
+-MAP
+-MAP
+-DOC
+-STR

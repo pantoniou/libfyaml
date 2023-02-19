@@ -1,0 +1,14 @@
+values: [ 101, 102, 103, 104, 105 ]
+more_values:
+  - 201
+  - 202
+strings:
+  - Hello
+  - world
+bar:
+  a: 8
+  b: 9
+pointers: [ 10, 11 ]
+slist:
+  strings: [ this, is, a, test ]
+sflist: [ yeah, flat, is, hip ]

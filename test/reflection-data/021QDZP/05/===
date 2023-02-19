@@ -1,0 +1,1 @@
+Constant array: char[6] 'HELLO' OK as "HELLO\0" (null terminator added)

@@ -1,0 +1,40 @@
++STR
++DOC
++MAP
+=VAL "arr2d
++SEQ
++SEQ
+=VAL "10
+=VAL "11
+-SEQ
++SEQ
+=VAL "12
+=VAL "13
+-SEQ
+-SEQ
+=VAL "arr3d
++SEQ
++SEQ
++SEQ
+=VAL "100
+=VAL "101
+-SEQ
++SEQ
+=VAL "200
+=VAL "201
+-SEQ
+-SEQ
++SEQ
++SEQ
+=VAL "300
+=VAL "301
+-SEQ
++SEQ
+=VAL "400
+=VAL "401
+-SEQ
+-SEQ
+-SEQ
+-MAP
+-DOC
+-STR

@@ -1,0 +1,8 @@
+argv:
+  - fy-tool
+  - --dump
+  - x.yaml
+argv_i:
+  - arg0
+  - opt
+  - file

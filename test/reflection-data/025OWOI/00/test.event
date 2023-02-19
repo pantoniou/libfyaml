@@ -1,0 +1,15 @@
++STR
++DOC
++MAP
+=VAL "messages
++SEQ
++MAP
+=VAL "role
+=VAL "user
+=VAL "content
+=VAL "Hello, world
+-MAP
+-SEQ
+-MAP
+-DOC
+-STR

@@ -1,0 +1,19 @@
++STR
++DOC
++MAP
+=VAL "input
+=VAL "hello
+-MAP
+-DOC
++DOC
++MAP
+=VAL "input
++MAP
+=VAL "command
+=VAL "ls
+=VAL "path
+=VAL "/root
+-MAP
+-MAP
+-DOC
+-STR

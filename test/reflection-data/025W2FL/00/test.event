@@ -1,0 +1,18 @@
++STR
++DOC
++MAP
+=VAL "ap
++SEQ
+=VAL "1
+=VAL "2
+-SEQ
+=VAL "bp
++SEQ
+=VAL "4
+=VAL "5
+-SEQ
+=VAL "cp
+=VAL "10
+-MAP
+-DOC
+-STR

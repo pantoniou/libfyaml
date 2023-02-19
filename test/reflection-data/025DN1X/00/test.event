@@ -1,0 +1,29 @@
++STR
++DOC
++MAP
+=VAL "arr3d
++SEQ
++SEQ
++SEQ
+=VAL "10
+=VAL "11
+-SEQ
++SEQ
+=VAL "12
+=VAL "13
+-SEQ
+-SEQ
++SEQ
++SEQ
+=VAL "14
+=VAL "15
+-SEQ
++SEQ
+=VAL "16
+=VAL "18
+-SEQ
+-SEQ
+-SEQ
+-MAP
+-DOC
+-STR
