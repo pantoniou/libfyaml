@@ -60,6 +60,7 @@ struct fy_dedup_tag_data {
 struct fy_dedup_tag {
 	FY_ATOMIC(struct fy_dedup_tag_data *)tag_datas;
 	int content_tag;
+	int entries_tag;
 	fy_atomic_flag growing;
 	FY_ATOMIC(uint64_t) unique_stores;
 	FY_ATOMIC(uint64_t) dup_stores;

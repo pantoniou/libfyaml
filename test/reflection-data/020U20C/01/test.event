@@ -1,0 +1,11 @@
++STR
++DOC
+=VAL "True
+-DOC
++DOC
+=VAL "NULL
+-DOC
++DOC
+=VAL "NaN
+-DOC
+-STR

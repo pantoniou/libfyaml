@@ -1,0 +1,30 @@
++STR
++DOC
++MAP
+=VAL "text
+=VAL "default-text
+-MAP
+-DOC
++DOC
++MAP
+=VAL "text
+=VAL "hello
+=VAL "value
+=VAL "101
+-MAP
+-DOC
++DOC
++MAP
+=VAL "text
+=VAL "default-text
+=VAL "value
+=VAL "200
+-MAP
+-DOC
++DOC
++MAP
+=VAL "text
+=VAL "default-text
+-MAP
+-DOC
+-STR
