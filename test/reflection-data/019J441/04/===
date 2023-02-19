@@ -1,0 +1,1 @@
+Base type: char 'ab' (error because it's more than 1 char)

@@ -1,0 +1,1 @@
+Base type: int[0] (matches as null when yaml: { match-null: true })

@@ -1,0 +1,16 @@
++STR
++DOC
++MAP
+=VAL "anything_goes
++SEQ
++SEQ
+=VAL "1
+=VAL "11
+=VAL "111
+-SEQ
+=VAL "two
+=VAL "three
+-SEQ
+-MAP
+-DOC
+-STR

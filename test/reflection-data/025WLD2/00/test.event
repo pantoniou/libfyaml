@@ -1,0 +1,36 @@
++STR
++DOC
++MAP
+=VAL "val
+=VAL "10
+=VAL "text
+=VAL "ten
+=VAL "onetwo
++MAP
+=VAL "one
+=VAL "11
+=VAL "two
+=VAL "22
+-MAP
+=VAL "bitfield
+=VAL "3
+-MAP
+-DOC
++DOC
++MAP
+=VAL "val
+=VAL "101
+=VAL "text
+=VAL "what
+=VAL "onetwo
++MAP
+=VAL "one
+=VAL "11
+=VAL "two
+=VAL "222
+-MAP
+=VAL "bitfield
+=VAL "2
+-MAP
+-DOC
+-STR
