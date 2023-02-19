@@ -15,6 +15,8 @@ Welcome to libfyaml's documentation!
    libfyaml
    libfyaml-core
    libfyaml-misc
+   libfyaml-generics
+   libfyaml-reflection
 
 
 Indices and tables

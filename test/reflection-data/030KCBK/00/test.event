@@ -1,0 +1,20 @@
++STR
++DOC
++MAP
+=VAL "u
++MAP
+=VAL "one
+=VAL "10
+-MAP
+-MAP
+-DOC
++DOC
++MAP
+=VAL "u
++MAP
+=VAL "two
+=VAL "Hello
+-MAP
+-MAP
+-DOC
+-STR

@@ -1,0 +1,17 @@
+# Include essential files for source distribution
+include README.md
+include LICENSE
+include QUICKSTART.md
+include pyproject.toml
+include setup.py
+
+# Include C source files
+recursive-include libfyaml *.c *.h
+
+# Exclude build artifacts
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *.so
+global-exclude *.pyd
+global-exclude __pycache__
+

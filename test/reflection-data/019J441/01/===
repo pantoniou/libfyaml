@@ -1,0 +1,1 @@
+Base type: char -1, -128, -0x80 (two's complement signed char: matches negative values)

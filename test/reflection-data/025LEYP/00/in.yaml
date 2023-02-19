@@ -1,0 +1,10 @@
+---
+{ }
+---
+text: hello 
+value: 101
+---
+value: 200
+---
+text: default-text
+value: 10

@@ -1,0 +1,10 @@
++STR
++DOC
++MAP
+=VAL "a
+=VAL "e_one
+=VAL "b
+=VAL "e_three
+-MAP
+-DOC
+-STR

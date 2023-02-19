@@ -1,0 +1,3 @@
+struct map {
+	int key;
+};

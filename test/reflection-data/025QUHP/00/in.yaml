@@ -1,0 +1,6 @@
+foos:           # /foos
+  one: 10       # /foos/one
+  two: 200      # /foos/two
+  three: 300    # /foos/three
+  four: 400     # /foos/four
+  five: 500     # /foos/five
