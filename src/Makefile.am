@@ -38,7 +38,25 @@ libfyaml_la_SOURCES = \
 	util/fy-id.h \
 	util/fy-align.h \
 	util/fy-bit64.h \
-	thread/fy-thread.h thread/fy-thread.c
+	thread/fy-thread.h thread/fy-thread.c \
+	util/fy-vlsize.h \
+	util/fy-allocator.c util/fy-allocator.h \
+		util/fy-allocator-linear.c util/fy-allocator-linear.h \
+		util/fy-allocator-malloc.c util/fy-allocator-malloc.h \
+		util/fy-allocator-mremap.c util/fy-allocator-mremap.h \
+		util/fy-allocator-dedup.c util/fy-allocator-dedup.h \
+		util/fy-allocator-auto.c util/fy-allocator-auto.h \
+	util/fy-generic.c util/fy-generic.h \
+	util/fy-generic-decoder.c util/fy-generic-decoder.h \
+	util/fy-generic-encoder.c util/fy-generic-encoder.h \
+	reflection/fy-reflection.c reflection/fy-reflection-private.h \
+	reflection/fy-packed-backend.c reflection/fy-packed-backend.h \
+	reflection/fy-registry.c
+
+if HAVE_LIBCLANG
+libfyaml_la_SOURCES += \
+	reflection/fy-clang-backend.c reflection/fy-clang-backend.h
+endif
 
 libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) \
 		       -I$(top_srcdir)/src/lib \
@@ -112,6 +130,12 @@ libb3neon_la_CPPFLAGS += -mfpu=neon
 libb3neon_la_CFLAGS += -mfpu=neon
 endif
 libfyaml_la_LIBADD += libb3neon.la
+endif
+
+if HAVE_LIBCLANG
+libfyaml_la_CPPFLAGS += $(LIBCLANG_CPPFLAGS)
+libfyaml_la_CFLAGS += $(LIBCLANG_CFLAGS)
+libfyaml_la_LDFLAGS += $(LIBCLANG_LDFLAGS) $(LIBCLANG_LIBS)
 endif
 
 # libfyaml-parser needs both LIBYAML and static

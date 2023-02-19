@@ -17,6 +17,12 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <termios.h>
+#include <stdint.h>
+
+/* to avoid dragging in libfyaml.h */
+#ifndef FY_BIT
+#define FY_BIT(x) (1U << (x))
+#endif
 
 #if defined(__linux__)
 #include <sys/sysmacros.h>
@@ -44,7 +50,7 @@ int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info);
 #define ARRAY_SIZE(x) ((sizeof(x)/sizeof((x)[0])))
 #endif
 
-#if !defined(NDEBUG) && (defined(__GNUC__) && __GNUC__ >= 4)
+#if defined(NDEBUG) && (defined(__GNUC__) && __GNUC__ >= 4)
 #define FY_ALWAYS_INLINE __attribute__((always_inline))
 #else
 #define FY_ALWAYS_INLINE /* nothing */
@@ -55,6 +61,36 @@ int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info);
 #else
 #define FY_UNUSED /* nothing */
 #endif
+
+#if defined(NDEBUG) && defined(__GNUC__) && __GNUC__ >= 4
+#define FY_DEBUG_UNUSED __attribute__((unused))
+#else
+#define FY_DEBUG_UNUSED /* nothing */
+#endif
+
+#if defined(__GNUC__) && __GNUC__ >= 4
+#define FY_CONSTRUCTOR __attribute__((constructor))
+#define FY_DESTRUCTOR __attribute__((destructor))
+#define FY_HAS_CONSTRUCTOR
+#define FY_HAS_DESTRUCTOR
+#else
+#define FY_CONSTRUCTOR /* nothing */
+#define FY_DESTRUCTOR /* nothing */
+#endif
+
+#if defined(FY_DESTRUCTOR) && defined(NDEBUG)
+#define FY_DESTRUCTOR_SHOW_LEFTOVERS
+#endif
+
+static inline void *fy_ptr_align(void *p, size_t align)
+{
+	return (void *)(((uintptr_t)p + (align - 1)) & ~(align - 1));
+}
+
+static inline size_t fy_size_t_align(size_t size, size_t align)
+{
+	return (size + (align - 1)) & ~(align - 1);
+}
 
 int fy_term_set_raw(int fd, struct termios *oldt);
 int fy_term_restore(int fd, const struct termios *oldt);
