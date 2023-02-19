@@ -9,17 +9,18 @@ function(add_tap_test test_name suite_name test_id)
 
     add_test(
         NAME "${test_name}"
-	COMMAND "${BASH_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh"
-            "$<TARGET_FILE:fy-tool>"
+        COMMAND "${BASH_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh"
             "${suite_name}" "${test_id}"
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
     )
 
     # Build environment
     set(base_env
+        "FY_TOOL=$<TARGET_FILE:fy-tool>"
+        "LIBFYAML_TEST=$<TARGET_FILE:libfyaml-test>"
         "TEST_DIR=${CMAKE_CURRENT_SOURCE_DIR}/test"
-	"YAML_TEST_SUITE=${yaml_test_suite_SOURCE_DIR}"
-	"JSON_TEST_SUITE=${json_test_suite_SOURCE_DIR}"
+        "YAML_TEST_SUITE=${yaml_test_suite_SOURCE_DIR}"
+        "JSON_TEST_SUITE=${json_test_suite_SOURCE_DIR}"
     )
     if(TAP_EXTRA_ENV)
         list(APPEND base_env ${TAP_EXTRA_ENV})
@@ -84,6 +85,34 @@ macro(_register_testsuite_test test_name test_dir test_id skip_list xfail_list e
         endif()
     endif()
 endmacro()
+
+# Function to run a single test from libfyaml-test
+function(add_libfyaml_tests)
+    file(GLOB C_FILES "${CMAKE_CURRENT_SOURCE_DIR}/test/libfyaml-test-*.c")
+
+    # Check for fy_check_testcase_add_test(tc, test_name)
+    set(CREATE_PATTERN "fy_check_suite_add_test_case[ \t]*[(][^,]*,[ \t]*\"([^\"]+)\"")
+    set(ADD_PATTERN "fy_check_testcase_add_test[ \t]*[(][^,]*,[ \t]*([^)]+)")
+    foreach(FILE_PATH IN LISTS C_FILES)
+        # Read the file line by line
+        file(STRINGS "${FILE_PATH}" LINES)
+        set(SUITE "")
+        foreach(LINE IN LISTS LINES)
+            if(LINE MATCHES "${CREATE_PATTERN}")
+                string(REGEX REPLACE ".*${CREATE_PATTERN}.*" "\\1" SUITE "${LINE}")
+            endif()
+
+            if(LINE MATCHES "${ADD_PATTERN}")
+                string(REGEX REPLACE ".*${ADD_PATTERN}.*" "\\1" TEST_NAME "${LINE}")
+                add_tap_test("libfyaml/${SUITE}/${TEST_NAME}" libfyaml "${TEST_NAME}"
+                    LABELS "libfyaml"
+                )
+            endif()
+        endforeach()
+    endforeach()
+
+endfunction()
+
 
 # Function to run a single test from testerrors.test
 function(add_testerrors_tests)

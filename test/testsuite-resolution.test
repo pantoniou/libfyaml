@@ -85,13 +85,13 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 				res="not ok"
 			fi
 
-			rm -f "$t1" "$t2"
-
 			xfail_reason="${xfails[$test_subtest_id]}"
 			if [ "x$xfail_reason" != "x" ]; then
 				directive=" # TODO: ${xfail_reason}"
 			fi
 		fi
+
+		rm -f "$t1" "$t2"
 
 		echo "$res $i $test_subtest_id - $desctxt$directive"
 	done

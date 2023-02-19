@@ -1,0 +1,21 @@
+before: 100
+doc: 150
+after: 200
+---
+before: 10
+doc: [ 5, 10, 15 ]
+after: 20
+---
+before: 10
+doc:
+- [ 1, 11, 111 ]
+- two
+- three
+after: 20
+---
+before: 1000
+doc:
+  test: this-is
+  more:
+    key: key
+after: 2000

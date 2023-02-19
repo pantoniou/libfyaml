@@ -300,4 +300,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter);
 const char *
 fy_atom_lines_containing(struct fy_atom *atom, size_t *lenp);
 
+void fy_atom_adjust_style_marks(struct fy_atom *atom,
+				struct fy_mark *start_mark, struct fy_mark *end_mark);
+
 #endif

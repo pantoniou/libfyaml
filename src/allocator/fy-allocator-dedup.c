@@ -20,6 +20,7 @@
 #include <stdio.h>
 
 /* for container_of */
+#include "fy-align.h"
 #include "fy-list.h"
 #include "fy-utils.h"
 #include "fy-win32.h"
@@ -209,6 +210,9 @@ static void fy_dedup_tag_cleanup(struct fy_dedup_allocator *da, struct fy_dedup_
 	if (dt->content_tag != FY_ALLOC_TAG_NONE)
 		fy_allocator_release_tag(da->parent_allocator, dt->content_tag);
 
+	if (dt->content_tag != dt->entries_tag && dt->entries_tag != FY_ALLOC_TAG_NONE)
+		fy_allocator_release_tag(da->parent_allocator, dt->entries_tag);
+
 }
 
 struct fy_dedup_tag_data *
@@ -260,8 +264,13 @@ static int fy_dedup_tag_setup(struct fy_dedup_allocator *da, struct fy_dedup_tag
 		dt->content_tag = fy_allocator_get_tag(da->parent_allocator);
 		if (dt->content_tag == FY_ALLOC_TAG_ERROR)
 			goto err_out;
-	} else
+		dt->entries_tag = fy_allocator_get_tag(da->parent_allocator);
+		if (dt->entries_tag == FY_ALLOC_TAG_ERROR)
+			goto err_out;
+	} else {
 		dt->content_tag = FY_ALLOC_TAG_DEFAULT;
+		dt->entries_tag = FY_ALLOC_TAG_DEFAULT;
+	}
 
 	fy_atomic_store(&dt->tag_datas, NULL);
 
@@ -419,8 +428,10 @@ static void fy_dedup_tag_trim(struct fy_dedup_allocator *da, struct fy_dedup_tag
 		return;
 
 	/* just pass them trim down to the parent */
-	if (da->parent_caps & FYACF_CAN_FREE_TAG)
+	if (da->parent_caps & FYACF_CAN_FREE_TAG) {
 		fy_allocator_trim_tag(da->parent_allocator, dt->content_tag);
+		fy_allocator_trim_tag(da->parent_allocator, dt->entries_tag);
+	}
 }
 
 static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt)
@@ -432,8 +443,10 @@ static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_ta
 		return;
 
 	/* just pass them reset down to the parent */
-	if (da->parent_caps & FYACF_CAN_FREE_TAG)
+	if (da->parent_caps & FYACF_CAN_FREE_TAG) {
 		fy_allocator_reset_tag(da->parent_allocator, dt->content_tag);
+		fy_allocator_reset_tag(da->parent_allocator, dt->entries_tag);
+	}
 
 	/* pop the head which we will keep */
 
@@ -648,6 +661,7 @@ void fy_dedup_dump(struct fy_allocator *a)
 		if (!dt)
 			continue;
 		fprintf(stderr, "  %d: tags: content=%d\n", i, dt->content_tag);
+		fprintf(stderr, "  %d: tags: entries=%d\n", i, dt->entries_tag);
 	}
 
 	fprintf(stderr, "dedup: dumping parent allocator\n");
@@ -708,6 +722,11 @@ static int fy_dedup_update_stats(struct fy_allocator *a, int tag, struct fy_allo
 	r = fy_allocator_update_stats(da->parent_allocator, dt->content_tag, stats);
 	if (r)
 		return -1;
+	if (dt->content_tag != dt->entries_tag) {
+		r = fy_allocator_update_stats(da->parent_allocator, dt->entries_tag, stats);
+		if (r)
+			return -1;
+	}
 
 	stats->unique_stores += fy_atomic_get_and_clear_counter(&dt->unique_stores);
 	stats->dup_stores += fy_atomic_get_and_clear_counter(&dt->dup_stores);
@@ -867,16 +886,31 @@ again:
 	/* we might be retrying; don't allocate and copy again */
 	if (!mem) {
 		/* place the dedup entry at the aligned offset after the data */
-		de_offset = fy_size_t_align(total_size, _Alignof(struct fy_dedup_entry));
-		max_align = align > _Alignof(struct fy_dedup_entry) ? align : _Alignof(struct fy_dedup_entry);
-		mem = fy_allocator_alloc_nocheck(da->parent_allocator, dt->content_tag, de_offset + sizeof(*de), max_align);
-		if (!mem)
-			return NULL;
+
+		if (dt->content_tag == dt->entries_tag) {
+			/* we don't have seperate content and entries */
+			de_offset = fy_size_t_align(total_size, _Alignof(struct fy_dedup_entry));
+			max_align = align > _Alignof(struct fy_dedup_entry) ? align : _Alignof(struct fy_dedup_entry);
+			mem = fy_allocator_alloc_nocheck(da->parent_allocator, dt->content_tag, de_offset + sizeof(*de), max_align);
+			if (!mem)
+				return NULL;
+
+			de = (void *)((char *)mem + de_offset);
+		} else {
+			/* separate content and entries */
+			mem = fy_allocator_alloc_nocheck(da->parent_allocator, dt->content_tag,
+							 total_size, align);
+			if (!mem)
+				return NULL;
+
+			de = fy_allocator_alloc_nocheck(da->parent_allocator, dt->entries_tag,
+							sizeof(struct fy_dedup_entry), _Alignof(struct fy_dedup_entry));
+			if (!de)
+				return NULL;
+		}
 
 		/* verify it's aligned correctly */
 		assert(((uintptr_t)mem & (align - 1)) == 0);
-
-		de = (void *)((char *)mem + de_offset);
 
 		de->hash = hash;
 		de->size = total_size;
@@ -1019,6 +1053,8 @@ static int fy_dedup_set_tag_count(struct fy_allocator *a, unsigned int count)
 			continue;
 		if (dt->content_tag >= (int)tag_count)
 			return -1;
+		if (dt->entries_tag >= (int)tag_count)
+			return -1;
 	}
 
 	if (count > da->tag_count) {
@@ -1066,6 +1102,7 @@ static int fy_dedup_set_tag_count(struct fy_allocator *a, unsigned int count)
 			} while (fy_atomic_compare_exchange_strong(&dt->tag_datas, &dtd, NULL));
 			fy_atomic_store(&dt_new->tag_datas, dtd);
 			dt_new->content_tag = dt->content_tag;
+			dt_new->entries_tag = dt->entries_tag;
 			fy_atomic_flag_clear(&dt_new->growing);
 			fy_atomic_store(&dt_new->unique_stores, fy_atomic_load(&dt->unique_stores));
 			fy_atomic_store(&dt_new->dup_stores, fy_atomic_load(&dt->dup_stores));
@@ -1142,7 +1179,7 @@ fy_dedup_get_info(struct fy_allocator *a, int tag)
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
 	struct fy_allocator_info *info;
-	struct fy_allocator_tag_info *tag_info;
+	struct fy_allocator_tag_info *tag_info, *content_tag_info;
 	unsigned int i;
 
 	/* full dump not supported yet */
@@ -1155,16 +1192,28 @@ fy_dedup_get_info(struct fy_allocator *a, int tag)
 	if (!dt)
 		return NULL;
 
+	/* we only return the content tag info */
 	info = fy_allocator_get_info(da->parent_allocator, dt->content_tag);
 	if (!info)
 		return NULL;
 
 	/* we will have to change the tag from content to this one */
+	content_tag_info = NULL;
 	for (i = 0; i < info->num_tag_infos; i++) {
 		tag_info = &info->tag_infos[i];
-		if (tag_info->tag == dt->content_tag)
-			tag_info->tag = tag;
+		if (tag_info->tag == dt->content_tag) {
+			content_tag_info = tag_info;
+			break;
+		}
 	}
+	if (!content_tag_info)
+		return NULL;
+
+	/* copy to the first */
+	content_tag_info->tag = tag;
+	if (content_tag_info != &info->tag_infos[0])
+		info->tag_infos[0] = *content_tag_info;
+	info->num_tag_infos = 1;
 
 	return info;
 }

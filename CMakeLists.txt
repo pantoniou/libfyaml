@@ -102,7 +102,7 @@ option(ENABLE_ASAN "Enable ASAN support" OFF)
 option(ENABLE_NETWORK "Enable tests requiring network access" ON)
 option(ENABLE_DEVMODE "Enable development mode only debugging" OFF)
 option(BUILD_TESTING "Build tests" ON)
-option(ENABLE_LIBCLANG "Enable libclang support for reflection" OFF)
+option(ENABLE_LIBCLANG "Enable libclang support for reflection" ON)
 
 # Path to LLVM installation (optional, overrides automatic detection)
 set(LLVM_ROOT "" CACHE PATH "Path to LLVM installation directory (e.g., /usr/lib/llvm-15)")
@@ -753,10 +753,30 @@ set(LIBSRCS
     src/lib/fy-docbuilder-diag.c
     src/lib/fy-input-diag.c
     src/lib/fy-parse-diag.c
+    src/generic/fy-generic.c
+    src/generic/fy-generic-decoder.c
+    src/generic/fy-generic-encoder.c
+    src/generic/fy-generic-op.c
+    src/generic/fy-generic-iter.c
+    src/reflection/fy-reflection.c
+    src/reflection/fy-packed-backend.c
+    src/reflection/fy-null-backend.c
+    src/reflection/fy-registry.c
 )
+
+# Conditionally add clang backend if libclang is available
+if(HAVE_LIBCLANG)
+    list(APPEND LIBSRCS src/reflection/fy-clang-backend.c)
+endif()
 
 set(LIBHDRSPUB
     include/libfyaml.h
+    include/libfyaml/fy-internal.h
+    include/libfyaml/fy-internal-align.h
+    include/libfyaml/fy-internal-endian.h
+    include/libfyaml/fy-internal-vlsize.h
+    include/libfyaml/fy-internal-atomics.h
+    include/libfyaml/fy-internal-generic.h
 )
 
 # BLAKE3 portable library
@@ -938,7 +958,7 @@ endforeach()
 
 set_target_properties(fyaml_static PROPERTIES
     OUTPUT_NAME fyaml_static
-    POSITION_INDEPENDENT_CODE OFF
+    POSITION_INDEPENDENT_CODE ON
     FOLDER "Libraries"
 )
 
@@ -954,6 +974,8 @@ target_include_directories(fyaml_static
         ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
         ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
         ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
         ${CMAKE_CURRENT_BINARY_DIR}
 )
 
@@ -1019,6 +1041,8 @@ target_include_directories(fyaml
         ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
         ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
         ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
 )
 
 if(NOT WIN32)
@@ -1117,6 +1141,8 @@ set(INTERNAL_TOOL_INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xxhash
     ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
     ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
     ${CMAKE_CURRENT_BINARY_DIR}
     ${LIBYAML_INCLUDE_DIRS}
     ${GETOPT_INCLUDES}
@@ -1287,6 +1313,8 @@ if(CAN_TEST)
             test/libfyaml-test-private-id.c
             test/libfyaml-test-parser.c
             test/libfyaml-test-thread.c
+            test/libfyaml-test-generic.c
+            test/libfyaml-test-generic-scalars.c
             ${GETOPT_SOURCES}
         )
 
@@ -1295,10 +1323,13 @@ if(CAN_TEST)
 
         target_include_directories(libfyaml-test PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/check
             ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
             ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
             ${CMAKE_CURRENT_SOURCE_DIR}/src/util
             ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
             ${CMAKE_CURRENT_BINARY_DIR}
             ${CHECK_INCLUDE_DIRS}
             ${GETOPT_INCLUDES}
@@ -1347,11 +1378,7 @@ if(CAN_TEST)
             RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
         )
 
-        # Add the libfyaml-test binary as the libfyaml test
-        add_test(NAME libfyaml
-            COMMAND $<TARGET_FILE:libfyaml-test>
-            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-        )
+	add_libfyaml_tests()
     endif()
 
     # Error tests - register individual subtests
@@ -1377,12 +1404,18 @@ if(CAN_TEST)
         add_testsuite_tests(testsuite testsuite.test)
         add_testsuite_tests(testsuite-evstream testsuite-evstream.test)
         add_testsuite_tests(testsuite-resolution testsuite-resolution.test)
+        add_testsuite_tests(testsuite-generic testsuite-generic.test)
         if(HAVE_JQ)
             add_testsuite_tests(testsuite-json testsuite-json.test)
         endif()
 
         # JSON test suite - register individual subtests
         add_jsontestsuite_tests()
+    endif()
+
+    # Reflection tests - only if libclang is available
+    if(HAVE_LIBCLANG)
+        add_testreflection_tests()
     endif()
 
     # Build all test dependencies as part of default 'all' target
@@ -1401,6 +1434,7 @@ if(CAN_TEST)
         jsontestsuite.test
         testsuite-evstream.test
         testsuite-resolution.test
+        testsuite-generic.test
         testerrors.test
         testemitter.test
         testemitter-streaming.test

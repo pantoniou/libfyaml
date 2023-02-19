@@ -20,6 +20,8 @@
 
 #include <libfyaml.h>
 
+#include "fy-check.h"
+
 struct test_emitter_data {
 	struct fy_emitter *emit;
 	struct fy_emitter_cfg cfg;
@@ -110,13 +112,11 @@ START_TEST(emit_simple)
 }
 END_TEST
 
-TCase *libfyaml_case_emit(void)
+void libfyaml_case_emit(struct fy_check_suite *cs)
 {
-	TCase *tc;
+	struct fy_check_testcase *ctc;
 
-	tc = tcase_create("emit");
+	ctc = fy_check_suite_add_test_case(cs, "emit");
 
-	tcase_add_test(tc, emit_simple);
-
-	return tc;
+	fy_check_testcase_add_test(ctc, emit_simple);
 }
