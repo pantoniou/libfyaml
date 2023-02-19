@@ -1,0 +1,21 @@
++STR
++DOC
++MAP
+=VAL "app
+=VAL "100
+=VAL "barp
++MAP
+=VAL "b
+=VAL "12
+-MAP
+=VAL "c
+=VAL "12
+=VAL "cc
+=VAL "13
+=VAL "ccc
+=VAL "14
+=VAL "cccc
+=VAL "15
+-MAP
+-DOC
+-STR

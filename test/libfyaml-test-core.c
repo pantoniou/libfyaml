@@ -20,6 +20,8 @@
 
 #include <libfyaml.h>
 
+#include "fy-check.h"
+
 START_TEST(doc_build_simple)
 {
 	struct fy_document *fyd;
@@ -2364,83 +2366,81 @@ START_TEST(style_set_collection)
 }
 END_TEST
 
-TCase *libfyaml_case_core(void)
+void libfyaml_case_core(struct fy_check_suite *cs)
 {
-	TCase *tc;
+	struct fy_check_testcase *ctc;
 
-	tc = tcase_create("core");
+	ctc = fy_check_suite_add_test_case(cs, "core");
 
-	tcase_add_test(tc, doc_build_simple);
-	tcase_add_test(tc, doc_build_parse_check);
-	tcase_add_test(tc, doc_build_scalar);
-	tcase_add_test(tc, doc_build_sequence);
-	tcase_add_test(tc, doc_build_mapping);
+	fy_check_testcase_add_test(ctc, doc_build_simple);
+	fy_check_testcase_add_test(ctc, doc_build_parse_check);
+	fy_check_testcase_add_test(ctc, doc_build_scalar);
+	fy_check_testcase_add_test(ctc, doc_build_sequence);
+	fy_check_testcase_add_test(ctc, doc_build_mapping);
 
-	tcase_add_test(tc, doc_path_access);
-	tcase_add_test(tc, doc_path_node);
-	tcase_add_test(tc, doc_path_parent);
-	tcase_add_test(tc, doc_short_path);
-	tcase_add_test(tc, doc_scalar_path);
-	tcase_add_test(tc, doc_scalar_path_array);
+	fy_check_testcase_add_test(ctc, doc_path_access);
+	fy_check_testcase_add_test(ctc, doc_path_node);
+	fy_check_testcase_add_test(ctc, doc_path_parent);
+	fy_check_testcase_add_test(ctc, doc_short_path);
+	fy_check_testcase_add_test(ctc, doc_scalar_path);
+	fy_check_testcase_add_test(ctc, doc_scalar_path_array);
 
-	tcase_add_test(tc, doc_nearest_anchor);
-	tcase_add_test(tc, doc_references);
-	tcase_add_test(tc, doc_nearest_child_of);
+	fy_check_testcase_add_test(ctc, doc_nearest_anchor);
+	fy_check_testcase_add_test(ctc, doc_references);
+	fy_check_testcase_add_test(ctc, doc_nearest_child_of);
 
-	tcase_add_test(tc, doc_create_empty_seq1);
-	tcase_add_test(tc, doc_create_empty_seq2);
-	tcase_add_test(tc, doc_create_empty_map1);
-	tcase_add_test(tc, doc_create_empty_map2);
+	fy_check_testcase_add_test(ctc, doc_create_empty_seq1);
+	fy_check_testcase_add_test(ctc, doc_create_empty_seq2);
+	fy_check_testcase_add_test(ctc, doc_create_empty_map1);
+	fy_check_testcase_add_test(ctc, doc_create_empty_map2);
 
-	tcase_add_test(tc, doc_create_test_seq1);
-	tcase_add_test(tc, doc_create_test_map1);
+	fy_check_testcase_add_test(ctc, doc_create_test_seq1);
+	fy_check_testcase_add_test(ctc, doc_create_test_map1);
 
-	tcase_add_test(tc, doc_insert_remove_seq);
-	tcase_add_test(tc, doc_insert_remove_map);
+	fy_check_testcase_add_test(ctc, doc_insert_remove_seq);
+	fy_check_testcase_add_test(ctc, doc_insert_remove_map);
 
-	tcase_add_test(tc, doc_sort);
-	tcase_add_test(tc, doc_mapping_sort);
-	tcase_add_test(tc, doc_insert_at);
+	fy_check_testcase_add_test(ctc, doc_sort);
+	fy_check_testcase_add_test(ctc, doc_mapping_sort);
+	fy_check_testcase_add_test(ctc, doc_insert_at);
 
-	tcase_add_test(tc, doc_join_scalar_to_scalar);
-	tcase_add_test(tc, doc_join_scalar_to_map);
-	tcase_add_test(tc, doc_join_scalar_to_seq);
+	fy_check_testcase_add_test(ctc, doc_join_scalar_to_scalar);
+	fy_check_testcase_add_test(ctc, doc_join_scalar_to_map);
+	fy_check_testcase_add_test(ctc, doc_join_scalar_to_seq);
 
-	tcase_add_test(tc, doc_join_map_to_scalar);
-	tcase_add_test(tc, doc_join_map_to_seq);
-	tcase_add_test(tc, doc_join_map_to_map);
+	fy_check_testcase_add_test(ctc, doc_join_map_to_scalar);
+	fy_check_testcase_add_test(ctc, doc_join_map_to_seq);
+	fy_check_testcase_add_test(ctc, doc_join_map_to_map);
 
-	tcase_add_test(tc, doc_join_seq_to_scalar);
-	tcase_add_test(tc, doc_join_seq_to_seq);
-	tcase_add_test(tc, doc_join_seq_to_map);
+	fy_check_testcase_add_test(ctc, doc_join_seq_to_scalar);
+	fy_check_testcase_add_test(ctc, doc_join_seq_to_seq);
+	fy_check_testcase_add_test(ctc, doc_join_seq_to_map);
 
-	tcase_add_test(tc, doc_join_tags);
+	fy_check_testcase_add_test(ctc, doc_join_tags);
 
-	tcase_add_test(tc, doc_build_with_tags);
+	fy_check_testcase_add_test(ctc, doc_build_with_tags);
 
-	tcase_add_test(tc, doc_attach_check);
+	fy_check_testcase_add_test(ctc, doc_attach_check);
 
-	tcase_add_test(tc, manual_scalar_esc);
-	tcase_add_test(tc, manual_scalar_quoted);
-	tcase_add_test(tc, manual_scalar_copy);
-	tcase_add_test(tc, manual_scalarf);
+	fy_check_testcase_add_test(ctc, manual_scalar_esc);
+	fy_check_testcase_add_test(ctc, manual_scalar_quoted);
+	fy_check_testcase_add_test(ctc, manual_scalar_copy);
+	fy_check_testcase_add_test(ctc, manual_scalarf);
 
-	tcase_add_test(tc, manual_valid_anchor);
-	tcase_add_test(tc, manual_invalid_anchor);
-	tcase_add_test(tc, manual_anchor_removal);
+	fy_check_testcase_add_test(ctc, manual_valid_anchor);
+	fy_check_testcase_add_test(ctc, manual_invalid_anchor);
+	fy_check_testcase_add_test(ctc, manual_anchor_removal);
 
-	tcase_add_test(tc, manual_block_flow_mix);
+	fy_check_testcase_add_test(ctc, manual_block_flow_mix);
 
-	tcase_add_test(tc, alloca_check);
+	fy_check_testcase_add_test(ctc, alloca_check);
 
-	tcase_add_test(tc, scanf_check);
+	fy_check_testcase_add_test(ctc, scanf_check);
 
-        tcase_add_test(tc, token_test);
+        fy_check_testcase_add_test(ctc, token_test);
 
-	tcase_add_test(tc, style_set_plain_scalar);
-	tcase_add_test(tc, style_set_double_quoted_scalar_colon);
-	tcase_add_test(tc, style_set_double_quoted_scalar_0);
-	tcase_add_test(tc, style_set_collection);
-
-	return tc;
+	fy_check_testcase_add_test(ctc, style_set_plain_scalar);
+	fy_check_testcase_add_test(ctc, style_set_double_quoted_scalar_colon);
+	fy_check_testcase_add_test(ctc, style_set_double_quoted_scalar_0);
+	fy_check_testcase_add_test(ctc, style_set_collection);
 }

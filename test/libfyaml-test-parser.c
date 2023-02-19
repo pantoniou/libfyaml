@@ -21,6 +21,8 @@
 #include "fy-parse.h"
 #include "fy-utf8.h"
 
+#include "fy-check.h"
+
 /* Test: Mapping iterator (forward and reverse) */
 START_TEST(parser_mapping_iterator)
 {
@@ -2238,93 +2240,91 @@ START_TEST(parser_comments_3)
 }
 END_TEST
 
-TCase *libfyaml_case_parser(void)
+void libfyaml_case_parser(struct fy_check_suite *cs)
 {
-	TCase *tc;
+	struct fy_check_testcase *ctc;
 
-	tc = tcase_create("parser");
+	ctc = fy_check_suite_add_test_case(cs, "parser");
 
 	/* Mapping tests */
-	tcase_add_test(tc, parser_mapping_iterator);
-	tcase_add_test(tc, parser_mapping_key_lookup);
-	tcase_add_test(tc, parser_mapping_prepend);
-	tcase_add_test(tc, parser_mapping_remove);
+	fy_check_testcase_add_test(ctc, parser_mapping_iterator);
+	fy_check_testcase_add_test(ctc, parser_mapping_key_lookup);
+	fy_check_testcase_add_test(ctc, parser_mapping_prepend);
+	fy_check_testcase_add_test(ctc, parser_mapping_remove);
 
 	/* Path query tests */
-	tcase_add_test(tc, parser_path_queries);
-	tcase_add_test(tc, parser_node_path_generation);
+	fy_check_testcase_add_test(ctc, parser_path_queries);
+	fy_check_testcase_add_test(ctc, parser_node_path_generation);
 
 	/* Node creation tests */
-	tcase_add_test(tc, parser_node_creation_scalar);
-	tcase_add_test(tc, parser_node_creation_multiline_scalar);
-	tcase_add_test(tc, parser_node_creation_empty_sequence);
-	tcase_add_test(tc, parser_node_creation_empty_mapping);
-	tcase_add_test(tc, parser_node_creation_populated_sequence);
-	tcase_add_test(tc, parser_node_creation_populated_mapping);
-	tcase_add_test(tc, parser_build_node_from_string);
+	fy_check_testcase_add_test(ctc, parser_node_creation_scalar);
+	fy_check_testcase_add_test(ctc, parser_node_creation_multiline_scalar);
+	fy_check_testcase_add_test(ctc, parser_node_creation_empty_sequence);
+	fy_check_testcase_add_test(ctc, parser_node_creation_empty_mapping);
+	fy_check_testcase_add_test(ctc, parser_node_creation_populated_sequence);
+	fy_check_testcase_add_test(ctc, parser_node_creation_populated_mapping);
+	fy_check_testcase_add_test(ctc, parser_build_node_from_string);
 
 	/* Sequence tests */
-	tcase_add_test(tc, parser_sequence_negative_index);
-	tcase_add_test(tc, parser_sequence_append_prepend);
-	tcase_add_test(tc, parser_sequence_remove);
+	fy_check_testcase_add_test(ctc, parser_sequence_negative_index);
+	fy_check_testcase_add_test(ctc, parser_sequence_append_prepend);
+	fy_check_testcase_add_test(ctc, parser_sequence_remove);
 
 	/* Complex structure tests */
-	tcase_add_test(tc, parser_complex_nested_structure);
+	fy_check_testcase_add_test(ctc, parser_complex_nested_structure);
 
 	/* Anchor/alias tests */
-	tcase_add_test(tc, parser_anchor_alias_resolution);
+	fy_check_testcase_add_test(ctc, parser_anchor_alias_resolution);
 
 	/* Document operations */
-	tcase_add_test(tc, parser_document_insert_at);
-	tcase_add_test(tc, parser_document_emit_flags);
-	tcase_add_test(tc, parser_multi_document_stream);
-	tcase_add_test(tc, parser_empty_document);
-	tcase_add_test(tc, parser_document_with_comments);
+	fy_check_testcase_add_test(ctc, parser_document_insert_at);
+	fy_check_testcase_add_test(ctc, parser_document_emit_flags);
+	fy_check_testcase_add_test(ctc, parser_multi_document_stream);
+	fy_check_testcase_add_test(ctc, parser_empty_document);
+	fy_check_testcase_add_test(ctc, parser_document_with_comments);
 
 	/* Iterator tests */
-	tcase_add_test(tc, parser_document_iterator);
-	tcase_add_test(tc, parser_document_iterator_key_detection);
-	tcase_add_test(tc, parser_iterator_alias_detection);
+	fy_check_testcase_add_test(ctc, parser_document_iterator);
+	fy_check_testcase_add_test(ctc, parser_document_iterator_key_detection);
+	fy_check_testcase_add_test(ctc, parser_iterator_alias_detection);
 
 	/* Comment tests */
-	tcase_add_test(tc, parser_comment_retrieval);
+	fy_check_testcase_add_test(ctc, parser_comment_retrieval);
 
 	/* Event and parsing tests */
-	tcase_add_test(tc, parser_event_generation);
-	tcase_add_test(tc, parser_scalar_styles);
-	tcase_add_test(tc, parser_tag_handling);
-	tcase_add_test(tc, parser_yaml_version);
-	tcase_add_test(tc, parser_flow_block_styles);
-	tcase_add_test(tc, parser_document_builder);
+	fy_check_testcase_add_test(ctc, parser_event_generation);
+	fy_check_testcase_add_test(ctc, parser_scalar_styles);
+	fy_check_testcase_add_test(ctc, parser_tag_handling);
+	fy_check_testcase_add_test(ctc, parser_yaml_version);
+	fy_check_testcase_add_test(ctc, parser_flow_block_styles);
+	fy_check_testcase_add_test(ctc, parser_document_builder);
 
 	/* Utility function tests */
-	tcase_add_test(tc, parser_shell_split);
-	tcase_add_test(tc, parser_utf8_validation);
+	fy_check_testcase_add_test(ctc, parser_shell_split);
+	fy_check_testcase_add_test(ctc, parser_utf8_validation);
 
 	/* Token scanning tests */
-	tcase_add_test(tc, parser_token_scan_scalars);
-	tcase_add_test(tc, parser_token_scan_mapping);
-	tcase_add_test(tc, parser_token_scan_sequence);
-	tcase_add_test(tc, parser_token_scan_scalar_styles);
+	fy_check_testcase_add_test(ctc, parser_token_scan_scalars);
+	fy_check_testcase_add_test(ctc, parser_token_scan_mapping);
+	fy_check_testcase_add_test(ctc, parser_token_scan_sequence);
+	fy_check_testcase_add_test(ctc, parser_token_scan_scalar_styles);
 
 	/* Manual emitter tests */
-	tcase_add_test(tc, parser_manual_emitter);
+	fy_check_testcase_add_test(ctc, parser_manual_emitter);
 
 	/* Parser and document builder tests */
-	tcase_add_test(tc, parser_parse_load_document);
-	tcase_add_test(tc, parser_document_resolve);
-	tcase_add_test(tc, parser_document_clone);
-	tcase_add_test(tc, parser_node_copy);
-	tcase_add_test(tc, parser_document_builder_load);
+	fy_check_testcase_add_test(ctc, parser_parse_load_document);
+	fy_check_testcase_add_test(ctc, parser_document_resolve);
+	fy_check_testcase_add_test(ctc, parser_document_clone);
+	fy_check_testcase_add_test(ctc, parser_node_copy);
+	fy_check_testcase_add_test(ctc, parser_document_builder_load);
 
 	/* Compose callback tests */
-	tcase_add_test(tc, parser_compose_callback);
+	fy_check_testcase_add_test(ctc, parser_compose_callback);
 
 	/* Comment extraction tests */
-	tcase_add_test(tc, parser_comments_0);
-	tcase_add_test(tc, parser_comments_1);
-	tcase_add_test(tc, parser_comments_2);
-	tcase_add_test(tc, parser_comments_3);
-
-	return tc;
+	fy_check_testcase_add_test(ctc, parser_comments_0);
+	fy_check_testcase_add_test(ctc, parser_comments_1);
+	fy_check_testcase_add_test(ctc, parser_comments_2);
+	fy_check_testcase_add_test(ctc, parser_comments_3);
 }

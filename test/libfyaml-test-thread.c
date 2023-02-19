@@ -22,6 +22,8 @@
 
 #include "fy-atomics.h"
 
+#include "fy-check.h"
+
 /* Test: Basic thread pool creation and destruction */
 START_TEST(thread_pool_create_destroy)
 {
@@ -242,24 +244,22 @@ START_TEST(thread_steal_mode)
 }
 END_TEST
 
-TCase *libfyaml_case_thread(void)
+void libfyaml_case_thread(struct fy_check_suite *cs)
 {
-	TCase *tc;
+	struct fy_check_testcase *ctc;
 
-	tc = tcase_create("thread");
+	ctc = fy_check_suite_add_test_case(cs, "thread");
 
 	/* Basic thread pool tests */
-	tcase_add_test(tc, thread_pool_create_destroy);
+	fy_check_testcase_add_test(ctc, thread_pool_create_destroy);
 
 	/* Thread work submission tests */
-	tcase_add_test(tc, thread_reserve_submit_wait);
+	fy_check_testcase_add_test(ctc, thread_reserve_submit_wait);
 
 	/* Join API tests */
-	tcase_add_test(tc, thread_arg_join);
-	tcase_add_test(tc, thread_arg_array_join);
+	fy_check_testcase_add_test(ctc, thread_arg_join);
+	fy_check_testcase_add_test(ctc, thread_arg_array_join);
 
 	/* Work stealing tests */
-	tcase_add_test(tc, thread_steal_mode);
-
-	return tc;
+	fy_check_testcase_add_test(ctc, thread_steal_mode);
 }
