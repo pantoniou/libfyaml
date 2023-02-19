@@ -81,8 +81,6 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 				fi
 			fi
 
-			rm -f "$t"
-
 			for xfail in $xfaillist; do
 				if [ "$test_subtest_id" = "$xfail" ]; then
 					directive=" # TODO: known failure."
@@ -90,6 +88,8 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 				fi
 			done
 		fi
+
+		rm -f "$t"
 
 		echo "$res $i $test_subtest_id - $desctxt$directive"
 	done

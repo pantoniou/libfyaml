@@ -345,6 +345,7 @@ int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info)
 	const char *s, *e;
 	int total_length, handle_length, uri_length, prefix_length, suffix_length;
 	int c, cn, w, wn;
+	bool bare;
 
 	s = data;
 	e = s + len;
@@ -353,25 +354,32 @@ int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info)
 
 	/* it must start with '!' */
 	c = fy_utf8_get(s, e - s, &w);
-	if (c != '!')
-		return -1;
-	cn = fy_utf8_get(s + w, e - (s + w), &wn);
-	if (cn == '<') {
-		prefix_length = 2;
-		suffix_length = 1;
-	} else
-		prefix_length = suffix_length = 0;
+	if (c == '!') {
+		bare = false;
+		cn = fy_utf8_get(s + w, e - (s + w), &wn);
+		if (cn == '<') {
+			prefix_length = 2;
+			suffix_length = 1;
+		} else
+			prefix_length = suffix_length = 0;
 
-	if (prefix_length) {
-		handle_length = 0; /* set the handle to '' */
-		s += prefix_length;
+		if (prefix_length) {
+			handle_length = 0; /* set the handle to '' */
+			s += prefix_length;
+		} else {
+			/* either !suffix or !handle!suffix */
+			/* we scan back to back, and split handle/suffix */
+			handle_length = fy_tag_handle_length(s, e - s);
+			if (handle_length < 0)
+				return -1;
+			s += handle_length;
+		}
 	} else {
-		/* either !suffix or !handle!suffix */
-		/* we scan back to back, and split handle/suffix */
-		handle_length = fy_tag_handle_length(s, e - s);
-		if (handle_length < 0)
-			return -1;
-		s += handle_length;
+		bare = true;
+		/* it's just a uri */
+		prefix_length = 0;
+		handle_length = 0;
+		suffix_length = 0;
 	}
 
 	uri_length = fy_tag_uri_length(s, e - s);
@@ -379,7 +387,7 @@ int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info)
 		return -1;
 
 	/* a handle? */
-	if (!prefix_length && (handle_length == 0 || data[handle_length - 1] != '!')) {
+	if (!bare && !prefix_length && (handle_length == 0 || data[handle_length - 1] != '!')) {
 		/* special case, '!', handle set to '' and suffix to '!' */
 		if (handle_length == 1 && uri_length == 0) {
 			handle_length = 0;

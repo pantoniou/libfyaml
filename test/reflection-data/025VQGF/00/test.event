@@ -1,0 +1,42 @@
++STR
++DOC
++MAP
+=VAL "values
++SEQ
+=VAL "101
+=VAL "102
+=VAL "103
+=VAL "104
+=VAL "105
+-SEQ
+=VAL "valuesp
++SEQ
+=VAL "201
+=VAL "202
+-SEQ
+=VAL "xvalues
++SEQ
+=VAL "1
+=VAL "10
+=VAL "10
+-SEQ
+=VAL "str
+=VAL "Hello6789
+=VAL "strs
++SEQ
+=VAL "This
+=VAL "is
+=VAL "a
+=VAL "test
+=VAL "
+=VAL "
+=VAL "
+=VAL "
+=VAL "
+=VAL "
+-SEQ
+=VAL "strs2
+=VAL "foo
+-MAP
+-DOC
+-STR

@@ -1930,3 +1930,86 @@ const char *fy_atom_lines_containing(struct fy_atom *atom, size_t *lenp)
 	*lenp = end - start;
 	return start;
 }
+
+void fy_atom_adjust_style_marks(struct fy_atom *atom,
+				struct fy_mark *start_mark, struct fy_mark *end_mark)
+{
+	const char *input_start, *s, *e, *ee;
+	size_t input_size;
+	int c, qc, w, ts;
+
+	if (!atom || !atom->fyi || !start_mark || !end_mark)
+		return;
+
+	*start_mark = atom->start_mark;
+	*end_mark = atom->end_mark;
+
+	input_start = fy_input_start_size(atom->fyi, &input_size);
+
+	if (fy_atom_style_is_quoted(atom->style)) {
+		qc = atom->style == FYAS_SINGLE_QUOTED ? '\'' : '"';
+
+		/* scan backwards once */
+		s = input_start;
+		e = input_start + start_mark->input_pos;
+		c = fy_utf8_get_right(s, (size_t)(e - s), &w);
+		if (c == qc) {
+			start_mark->input_pos -= w;
+			if (start_mark->column > 1)
+				start_mark->column--;
+		}
+
+		/* scan forward once */
+		s = input_start + end_mark->input_pos;
+		e = input_start + input_size;
+		c = fy_utf8_get(s, (size_t)(e - s), &w);
+		if (c == qc) {
+			end_mark->input_pos += w;
+			end_mark->column++;
+		}
+
+	} else if (fy_atom_style_is_block(atom->style)) {
+		qc = atom->style == FYAS_LITERAL ? '|' : '<';
+
+		/* for literals we scan back until we hit the line break */
+		s = input_start;
+		e = input_start + start_mark->input_pos;
+		c = -1;
+		while (s > e && (c = fy_utf8_get_right(s, (size_t)(e - s), &w)) > 0) {
+			e -= w;
+			if (fy_atom_is_lb(atom, c))
+				break;
+		}
+		/* a linebreak must be found */
+		if (!fy_atom_is_lb(atom, c))
+			return;
+
+		/* keep the end of the run as a final marker */
+		ee = e;
+
+		/* go to the start of input or another linebreak */
+		while (s > e && (c = fy_utf8_get_right(s, (size_t)(e - s), &w)) > 0) {
+			if (fy_atom_is_lb(atom, c))
+				break;
+			e -= w;
+		}
+
+		/* now scan forward to find the marker */
+		/* start at the new line */
+		s = e;
+		e = ee;
+		start_mark->column = 0;
+		start_mark->line--;
+		assert(start_mark->line > 0);
+
+		ts = atom->tabsize ? atom->tabsize : 8;
+		while (s < e && (c = fy_utf8_get(s, (size_t)(e - s), &w)) != qc) {
+			s += w;
+			if (ts > 0 && fy_is_tab(c))
+				start_mark->column += ts - (start_mark->column % ts);
+			else
+				start_mark->column++;
+		}
+		start_mark->input_pos = (size_t)(s - input_start);
+	}
+}

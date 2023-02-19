@@ -1,0 +1,16 @@
++STR
++DOC
++MAP
+=VAL "bar1
++MAP
+=VAL "a
+=VAL "5
+-MAP
+=VAL "bar2
++MAP
+=VAL "a
+=VAL "10
+-MAP
+-MAP
+-DOC
+-STR

@@ -25,6 +25,8 @@
 
 #include <libfyaml.h>
 
+#include "fy-generic.h"
+
 #include "fy-parse.h"
 
 #include "fy-utils.h"
@@ -7352,6 +7354,40 @@ int fy_parser_set_document_iterator(struct fy_parser *fyp, enum fy_parser_event_
 	fyic.dociter.flags = flags;
 	fyic.dociter.fydi = fydi;
 	fyic.dociter.owns_iterator = false;
+
+	/* must not be in the middle of something */
+	fyp_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
+			err_out, "parser cannot be reset at state '%s'",
+				state_txt[fyp->state]);
+
+	fy_parse_input_reset(fyp);
+
+	rc = fy_parse_input_append(fyp, &fyic);
+	fyp_error_check(fyp, !rc, err_out_rc,
+			"fy_parse_input_append() failed");
+
+	return 0;
+err_out:
+	rc = -1;
+err_out_rc:
+	return rc;
+}
+
+int fy_parser_set_generic_iterator(struct fy_parser *fyp, enum fy_parser_event_generator_flags flags,
+				   struct fy_generic_iterator *fygi)
+{
+	struct fy_input_cfg fyic;
+	int rc;
+
+	if (!fyp || !fygi)
+		return -1;
+
+	memset(&fyic, 0, sizeof(fyic));
+
+	fyic.type = fyit_geniter;
+	fyic.geniter.flags = flags;
+	fyic.geniter.fygi = fygi;
+	fyic.geniter.owns_iterator = false;
 
 	/* must not be in the middle of something */
 	fyp_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
