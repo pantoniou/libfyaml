@@ -17,6 +17,11 @@
 #include <getopt.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <regex.h>
+#include <stdalign.h>
 
 #include <libfyaml.h>
 
@@ -66,6 +71,7 @@
 #define OPT_PARSE_DUMP			1007
 #define OPT_YAML_VERSION_DUMP		1008
 #define OPT_COMPOSE			1009
+#define OPT_REFLECT			1010
 
 #define OPT_STRIP_LABELS		2000
 #define OPT_STRIP_TAGS			2001
@@ -88,6 +94,15 @@
 #define OPT_STRIP_EMPTY_KV		2019
 #define OPT_DISABLE_MMAP		2020
 #define OPT_TSV_FORMAT			2021
+#define OPT_CFLAGS			2022
+#define OPT_TYPE_DUMP			2023
+#define OPT_IMPORT_BLOB			2024
+#define OPT_GENERATE_BLOB		2025
+#define OPT_PRUNE_SYSTEM		2026
+#define OPT_TYPE_INCLUDE		2027
+#define OPT_TYPE_EXCLUDE		2028
+#define OPT_IMPORT_C_FILE		2029
+#define OPT_ENTRY_TYPE			2030
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -152,6 +167,16 @@ static struct option lopts[] = {
 	{"tsv-format",		no_argument,		0,	OPT_TSV_FORMAT },
 	{"to",			required_argument,	0,	'T' },
 	{"from",		required_argument,	0,	'F' },
+	{"reflect",		no_argument,		0,	OPT_REFLECT },
+	{"type-dump",           no_argument,	        0,      OPT_TYPE_DUMP },
+	{"entry-type",		required_argument,	0,	OPT_ENTRY_TYPE },
+	{"cflags",              required_argument,      0,      OPT_CFLAGS },
+	{"generate-blob",       required_argument,      0,      OPT_GENERATE_BLOB },
+	{"import-blob",         required_argument,      0,      OPT_IMPORT_BLOB },
+	{"import-c-file",	required_argument,	0,	OPT_IMPORT_C_FILE },
+	{"prune-system",	no_argument,		0,	OPT_PRUNE_SYSTEM },
+	{"type-include",        required_argument,      0,      OPT_TYPE_INCLUDE },
+	{"type-exclude",        required_argument,      0,      OPT_TYPE_EXCLUDE },
 	{"quiet",		no_argument,		0,	'q' },
 	{"help",		no_argument,		0,	'h' },
 	{"version",		no_argument,		0,	'v' },
@@ -290,6 +315,15 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--dump-path              : Dump the path while composing\n");
 	}
 
+	if (tool_mode == OPT_REFLECT) {
+		fprintf(fp, "\t--type-dump              : Dump types from the reflection\n");
+		fprintf(fp, "\t--generate-blob <blob>   : Generate packed blob from C source files\n");
+		fprintf(fp, "\t--import-blob <blob>     : Import a packed blob as a reflection source\n");
+		fprintf(fp, "\t--import-c-file <file>   : Import a C file as a reflection source\n");
+		fprintf(fp, "\t--cflags <cflags>        : The C flags to use for the import\n");
+		fprintf(fp, "\t--entry-type <type>      : The C type that is the entry point (i.e. the document)\n");
+	}
+
 	if (tool_mode == OPT_TOOL) {
 		fprintf(fp, "\t--dump                   : Dump mode, [arguments] are file names\n");
 		fprintf(fp, "\t--testsuite              : Testsuite mode, [arguments] are <file>s to output parse events\n");
@@ -371,6 +405,20 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\n");
 		fprintf(fp, "\tParse and dump generated YAML document tree in block YAML form (and make whitespace visible)\n");
 		fprintf(fp, "\t$ %s --compose -V -mblock input.yaml\n\t...\n", progname);
+		fprintf(fp, "\n");
+		fprintf(fp, "\tParse and dump generated YAML document from the input string\n");
+		fprintf(fp, "\t$ %s --compose -mjson \">foo: bar\"\n", progname);
+		fprintf(fp, "\t{\n\t  \"foo\": \"bar\"\n\t}\n");
+		break;
+	case OPT_REFLECT:
+		fprintf(fp, "\tReflection parsing a C header and dumping type info\n");
+		fprintf(fp, "\t$ %s [--cflags=<>] header.h\n\t...\n", progname);
+		fprintf(fp, "\n");
+		fprintf(fp, "\tReflection parsing a C header and dumping type info\n");
+		fprintf(fp, "\t$ %s blob.bin\n\t...\n", progname);
+		fprintf(fp, "\n");
+		fprintf(fp, "\tReflection convert C header files definition to a blob\n");
+		fprintf(fp, "\t$ %s --reflect [--cflags=<>] --generate-blob=blob.bin header1.h header2.h\n\t...\n", progname);
 		fprintf(fp, "\n");
 		fprintf(fp, "\tParse and dump generated YAML document from the input string\n");
 		fprintf(fp, "\t$ %s --compose -mjson \">foo: bar\"\n", progname);
@@ -1538,6 +1586,1574 @@ err_out:
 	return FYCR_ERROR;
 }
 
+static void comment_dump(int level, const char *comment)
+{
+	size_t len;
+	const char *s, *e, *le;
+
+	if (!comment)
+		return;
+
+	len = strlen(comment);
+	s = comment;
+	e = s + len;
+	while (s < e) {
+		le = strchr(s, '\n');
+		len = le ? (size_t)(le - s) : strlen(s);
+		printf("%*s// %.*s\n", (int)(level * 4), "", (int)len, s);
+		s += len + 1;
+	}
+}
+
+static void type_info_dump(const struct fy_type_info *ti, int level)
+{
+	const struct fy_field_info *fi;
+	size_t i;
+
+	comment_dump(level, fy_type_info_get_comment(ti));
+	printf("%s size=%zu align=%zu", ti->fullname, ti->size, ti->align);
+	if (ti->dependent_type)
+		printf(" -> %s", ti->dependent_type->fullname);
+	printf("\n");
+
+	if (fy_type_kind_has_fields(ti->kind)) {
+		for (i = 0, fi = ti->fields; i < ti->count; i++, fi++) {
+			comment_dump(level + 1, fy_field_info_get_comment(fi));
+			printf("%*s%s %s", (level + 1) * 4, "", fi->type_info->fullname, fi->name);
+			if (!(fi->flags & FYFIF_BITFIELD))
+				printf(" offset=%zu", fi->offset);
+			else
+				printf(" bit_offset=%zu bit_width=%zu", fi->bit_offset, fi->bit_width);
+			printf("\n");
+		}
+	}
+}
+
+void reflection_type_info_dump(struct fy_reflection *rfl)
+{
+	const struct fy_type_info *ti;
+	void *prev = NULL;
+
+	while ((ti = fy_type_info_iterate(rfl, &prev)) != NULL) {
+		type_info_dump(ti, 0);
+	}
+}
+
+static void type_info_c_with_fields_dump(const struct fy_type_info *ti, int level, const char *field_name, bool no_first_pad)
+{
+	const struct fy_type_kind_info *tki;
+	const struct fy_field_info *fi;
+	char *name;
+	size_t i, e_offset;;
+
+	if (!ti || !fy_type_kind_has_fields(ti->kind))
+		return;
+
+	tki = fy_type_kind_info_get(ti->kind);
+	assert(tki);
+
+	if (!no_first_pad) {
+		comment_dump(level, fy_type_info_get_comment(ti));
+		printf("%*s", level * 4, "");
+	}
+	printf("%s", tki->name);
+	if (!(ti->flags & FYTIF_ANONYMOUS))
+		printf(" %s", ti->name);
+	printf(" {");
+	printf("\t/* ");
+	if (ti->flags & FYTIF_ANONYMOUS) {
+		e_offset = fy_type_info_eponymous_offset(ti);
+		printf("offset=%zu, ", e_offset);
+	} else {
+		e_offset = 0;
+	}
+	printf("size=%zu, align=%zu */", ti->size, ti->align);
+	printf("\n");
+	for (i = 0, fi = ti->fields; i < ti->count; i++, fi++) {
+		comment_dump(level+1, fy_field_info_get_comment(fi));
+		if (!(fi->type_info->flags & FYTIF_ANONYMOUS)) {
+
+			printf("%*s", (level + 1) * 4, "");
+			if (ti->kind == FYTK_ENUM) {
+				printf("%s", fi->name);
+				if (fi->flags & FYFIF_ENUM_UNSIGNED)
+					printf(" = %llu", fi->uval);
+				else
+					printf(" = %lld", fi->sval);
+				printf(",\n");
+			} else {
+				name = fy_type_info_generate_name(fi->type_info, fi->name, false);
+				assert(name);
+				if (!(fi->flags & FYFIF_BITFIELD)) {
+					printf("%s;", name);
+					printf("\t/* offset=%zu, size=%zu */", e_offset + fi->offset, fi->type_info->size);
+				} else {
+					printf("%s ", name);
+					printf(": %zu;", fi->bit_width);
+					printf("\t/* bit_offset=%zu, byte_offset=%zu, byte_bit_offset=%zu */",
+							(e_offset * 8 + fi->bit_offset),
+							(e_offset * 8 + fi->bit_offset) / 8,
+							fi->bit_offset % 8);
+				}
+				free(name);
+				printf("\n");
+			}
+		} else {
+			type_info_c_with_fields_dump(fi->type_info, level + 1, fi->name, false);
+		}
+	}
+
+	printf("%*s", level * 4, "");
+	if (!field_name || !field_name[0])
+		printf("}");
+	else
+		printf("} %s", field_name);
+
+	printf(";");
+
+	if (ti->flags & FYTIF_ANONYMOUS) {
+		printf("\t/* anonymous */");
+	}
+	printf("\n");
+}
+
+static void type_info_c_typedef_dump(const struct fy_type_info *ti, int level)
+{
+	char *name;
+
+	if (!ti || ti->kind != FYTK_TYPEDEF)
+		return;
+
+	comment_dump(level, fy_type_info_get_comment(ti));
+	printf("%*stypedef ", level * 4, "");
+
+	assert(ti->dependent_type);
+	if (!(ti->dependent_type->flags & FYTIF_ANONYMOUS)) {
+		name = fy_type_info_generate_name(ti->dependent_type, ti->name, false);
+		assert(name);
+		printf("%s;", name);
+		free(name);
+		printf("\t/* size=%zu, align=%zu */", ti->size, ti->align);
+		printf("\n");
+	} else {
+		type_info_c_with_fields_dump(ti->dependent_type, level, ti->name, true);
+	}
+}
+
+void reflection_type_info_c_dump(struct fy_reflection *rfl)
+{
+	const struct fy_type_info *ti;
+	void *prev = NULL;
+
+	prev = NULL;
+	while ((ti = fy_type_info_iterate(rfl, &prev)) != NULL) {
+		if (ti->flags & FYTIF_ANONYMOUS)
+			continue;
+		if (ti->kind == FYTK_TYPEDEF) {
+			type_info_c_typedef_dump(ti, 0);
+		} else if (fy_type_kind_has_fields(ti->kind)) {
+			type_info_c_with_fields_dump(ti, 0, NULL, false);
+		}
+	}
+}
+
+void reflection_prune_system(struct fy_reflection *rfl)
+{
+	const struct fy_type_info *ti;
+	void *prev = NULL;
+
+	fy_reflection_clear_all_markers(rfl);
+
+	/* mark all non system and keep them */
+	prev = NULL;
+	while ((ti = fy_type_info_iterate(rfl, &prev)) != NULL) {
+		if (ti->flags & FYTIF_SYSTEM_HEADER)
+			continue;
+		/* mark all non system structs, unions, enums and typedefs */
+		if (fy_type_kind_has_fields(ti->kind) || ti->kind == FYTK_TYPEDEF)
+			fy_type_info_mark(ti);
+	}
+	fy_reflection_prune_unmarked(rfl);
+}
+
+int reflection_type_filter(struct fy_reflection *rfl,
+		const char *type_include, const char *type_exclude)
+{
+	const struct fy_type_info *ti;
+	void *prev = NULL;
+	regex_t type_include_reg, type_exclude_reg;
+	bool type_include_reg_compiled = false, type_exclude_reg_compiled = false;
+	bool include_match, exclude_match;
+	int ret;
+
+	if (!type_include && !type_exclude)
+		return 0;
+
+	if (type_include) {
+		ret = regcomp(&type_include_reg, type_include, REG_EXTENDED | REG_NOSUB);
+		if (ret) {
+			fprintf(stderr, "Bad type-include regexp '%s'\n", type_include);
+			goto err_out;
+		}
+		type_include_reg_compiled = true;
+	}
+
+	if (type_exclude) {
+		ret = regcomp(&type_exclude_reg, type_exclude, REG_EXTENDED | REG_NOSUB);
+		if (ret) {
+			fprintf(stderr, "Bad type-exclude regexp '%s'\n", type_exclude);
+			goto err_out;
+		}
+		type_exclude_reg_compiled = true;
+	}
+
+	fy_reflection_clear_all_markers(rfl);
+	prev = NULL;
+	while ((ti = fy_type_info_iterate(rfl, &prev)) != NULL) {
+		if (type_include) {
+			ret = regexec(&type_include_reg, ti->fullname, 0, NULL, 0);
+			include_match = ret == 0;
+		} else
+			include_match = true;
+
+		if (type_exclude) {
+			ret = regexec(&type_include_reg, ti->fullname, 0, NULL, 0);
+			exclude_match = ret == 0;
+		} else
+			exclude_match = false;
+
+		if (include_match && !exclude_match)
+			fy_type_info_mark(ti);
+	}
+	fy_reflection_prune_unmarked(rfl);
+
+	ret = 0;
+err_out:
+	if (type_exclude_reg_compiled)
+		regfree(&type_exclude_reg);
+
+	if (type_include_reg_compiled)
+		regfree(&type_include_reg);
+
+	return ret;
+}
+
+const struct fy_type_info *
+reflection_lookup_type_by_name(struct fy_reflection *rfl, const char *name)
+{
+	const struct fy_type_info *ti;
+	void *prev = NULL;
+	char *nname;
+
+	nname = fy_type_name_normalize(name);
+	if (!nname)
+		return NULL;
+
+	prev = NULL;
+	while ((ti = fy_type_info_iterate(rfl, &prev)) != NULL) {
+		if (!strcmp(ti->normalized_name, nname))
+			break;
+	}
+	free(nname);
+	return ti;
+}
+
+const struct fy_type_info *
+reflection_type_resolve_type(const struct fy_type_info *ti)
+{
+	if (!ti)
+		return NULL;
+	while (ti && ti->kind == FYTK_TYPEDEF)
+		ti = ti->dependent_type;
+	return ti;
+}
+
+struct reflection_type_data;
+struct reflection_field_data;
+struct reflection_decoder;
+struct reflection_object;
+struct reflection_encoder;
+
+struct reflection_object_ops {
+	int (*setup)(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path);
+	void (*cleanup)(struct reflection_object *ro);
+	int (*finish)(struct reflection_object *ro);
+	struct reflection_object *(*create_child)(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path);
+	int (*scalar_child)(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path);
+};
+
+struct reflection_object {
+	struct reflection_decoder *rd;
+	struct reflection_object *parent;
+	struct reflection_type_data *rtd;
+	const struct reflection_object_ops *ops;
+	void *instance_data;
+	void *data;
+	size_t data_size;
+};
+
+struct reflection_field_data {
+	struct reflection_type_data *rtd;
+	const struct fy_field_info *fi;
+	size_t index;
+};
+
+struct reflection_type_ops {
+	const struct reflection_object_ops *(*object_ops)(struct reflection_type_data *rtd);
+	int (*emit)(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size);
+};
+
+struct reflection_type_data {
+	const struct fy_type_info *ti;
+	const struct reflection_type_ops *ops;
+	void *data;
+	size_t fields_count;
+	struct reflection_field_data fields[];
+};
+
+struct reflection_decoder {
+	bool null_output;
+	bool document_ready;
+	bool verbose;
+	bool single_document;
+
+	/* bindable */
+	struct reflection_type_data *entry;
+	void *data;
+	size_t data_size;
+	bool data_allocated;
+};
+
+struct reflection_type_data *
+reflection_type_data_get_dependent(struct reflection_type_data *rtd)
+{
+	if (!rtd || !rtd->ti || !rtd->ti->dependent_type)
+		return NULL;
+
+	return fy_type_info_get_userdata(rtd->ti->dependent_type);
+}
+
+struct reflection_field_data *
+reflection_type_data_lookup_field(struct reflection_type_data *rtd, const char *field)
+{
+	int idx;
+
+	if (!rtd || !field)
+		return NULL;
+
+	idx = fy_field_info_index(fy_type_info_lookup_field(rtd->ti, field));
+	if (idx < 0)
+		return NULL;
+
+	assert((unsigned int)idx < rtd->fields_count);
+	return &rtd->fields[idx];
+}
+
+struct reflection_field_data *
+reflection_type_data_lookup_field_by_enum_value(struct reflection_type_data *rtd, long long val)
+{
+	int idx;
+
+	if (!rtd)
+		return NULL;
+
+	idx = fy_field_info_index(fy_type_info_lookup_field_by_enum_value(rtd->ti, val));
+	if (idx < 0)
+		return NULL;
+
+	assert((unsigned int)idx < rtd->fields_count);
+	return &rtd->fields[idx];
+}
+
+struct reflection_field_data *
+reflection_type_data_lookup_field_by_unsigned_enum_value(struct reflection_type_data *rtd, unsigned long long val)
+{
+	int idx;
+
+	if (!rtd)
+		return NULL;
+
+	idx = fy_field_info_index(fy_type_info_lookup_field_by_unsigned_enum_value(rtd->ti, val));
+	if (idx < 0)
+		return NULL;
+
+	assert((unsigned int)idx < rtd->fields_count);
+	return &rtd->fields[idx];
+}
+
+struct reflection_object *
+reflection_object_create_from_type(struct reflection_object *ro_parent, struct reflection_type_data *rtd,
+				   struct fy_event *fye, struct fy_path *path,
+				   void *data, size_t data_size);
+
+static int int_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
+{
+	int *valp;
+	const char *text0;
+	int rc;
+
+	fprintf(stderr, "%s\n", __func__);
+	if (fye->type != FYET_SCALAR)
+		return -1;
+
+	assert(ro->rtd->ti->kind == FYTK_INT);
+
+	assert(ro->data);
+	assert(ro->data_size == sizeof(int));
+	assert(((uintptr_t)ro->data & (alignof(int) - 1)) == 0);
+	valp = ro->data;
+
+	text0 = fy_token_get_text0(fy_event_get_token(fye));
+	assert(text0);
+
+	rc = sscanf(text0, "%d", valp);
+	if (rc != 1)
+		return -1;
+
+	fprintf(stderr, "%s: %d\n", __func__, *valp);
+
+	return 0;
+}
+
+const struct reflection_object_ops *int_object_ops(struct reflection_type_data *rtd)
+{
+	static const struct reflection_object_ops ops = {
+		.setup = int_setup,
+	};
+
+	return &ops;
+}
+
+int int_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size)
+{
+	char buf[32];	/* maximum buffer space needed for 64 bit integer is 21, use 32 */
+	int len;
+
+	assert(data_size == sizeof(int));
+	assert(((uintptr_t)data & (alignof(int) - 1)) == 0);
+
+	len = snprintf(buf, sizeof(buf), "%d", *(const int *)data);
+	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, buf, (size_t)len, NULL, NULL));
+}
+
+static int const_array_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
+{
+	fprintf(stderr, "%s\n", __func__);
+	if (fye->type != FYET_SEQUENCE_START) {
+		assert(0);
+		return -1;
+	}
+
+	assert(ro->data);
+	ro->instance_data = (void *)(uintptr_t)-1;	/* last index of const array */
+
+	return 0;
+}
+
+static int const_array_finish(struct reflection_object *ro)
+{
+	int last_idx;
+
+	last_idx = (int)(uintptr_t)ro->instance_data;
+	if (last_idx != (int)(ro->rtd->ti->count - 1))	/* verify all filled */
+		return -1;
+
+	return 0;
+}
+
+static void const_array_cleanup(struct reflection_object *ro)
+{
+	ro->instance_data = NULL;
+}
+
+struct reflection_object *const_array_create_child(struct reflection_object *ro_parent, struct fy_event *fye, struct fy_path *path)
+{
+	struct reflection_object *ro;
+	struct reflection_type_data *rtd_dep;
+	size_t item_size;
+	int idx;
+	void *data;
+
+	fprintf(stderr, "%s\n", __func__);
+
+	assert(fy_path_in_sequence(path));
+	idx = fy_path_component_sequence_get_index(fy_path_last_not_collection_root_component(path));
+	fprintf(stderr, "%s: idx=%d\n", __func__, idx);
+
+	if ((unsigned int)idx >= ro_parent->rtd->ti->count) {
+		assert(0);
+		return NULL;
+	}
+
+	rtd_dep = reflection_type_data_get_dependent(ro_parent->rtd);
+	assert(rtd_dep);
+
+	item_size = rtd_dep->ti->size;
+	data = ro_parent->data + item_size * idx;
+
+	ro = reflection_object_create_from_type(ro_parent, rtd_dep,
+		fye, path, data, item_size);
+	if (!ro)
+		return NULL;
+
+	ro_parent->instance_data = (void *)(uintptr_t)idx;	/* last index of const array */
+
+	return ro;
+}
+
+const struct reflection_object_ops *const_array_object_ops(struct reflection_type_data *rtd)
+{
+	static const struct reflection_object_ops ops = {
+		.setup = const_array_setup,
+		.cleanup = const_array_cleanup,
+		.finish = const_array_finish,
+		.create_child = const_array_create_child,
+	};
+
+	return &ops;
+}
+
+int const_array_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size)
+{
+	struct reflection_type_data *rtd_dep;
+	size_t idx;
+	int rc;
+
+	rtd_dep = reflection_type_data_get_dependent(rtd);
+	assert(rtd_dep);
+
+	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_SEQUENCE_START, FYNS_ANY, NULL, NULL));
+	if (rc)
+		goto err_out;
+
+	for (idx = 0; idx < rtd->ti->count; idx++, data += rtd_dep->ti->size) {
+		assert(rtd_dep->ops->emit);
+		rc = rtd_dep->ops->emit(rtd_dep, fye, data, rtd_dep->ti->size);
+		if (rc)
+			goto err_out;
+	}
+
+	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_SEQUENCE_END));
+	if (rc)
+		goto err_out;
+
+	return 0;
+err_out:
+	return -1;
+}
+
+struct struct_type_data {
+	uint8_t *required_map;
+	uint8_t *optional_map;
+	uint8_t maps[];
+};
+
+struct struct_instance_data {
+	size_t present_map_size;
+	uint8_t present_map[];
+};
+
+static int struct_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
+{
+	struct struct_instance_data *id;
+	size_t present_map_size, size;
+
+	fprintf(stderr, "%s\n", __func__);
+	if (fye->type != FYET_MAPPING_START) {
+		assert(0);
+		return -1;
+	}
+
+	assert(ro->data);
+
+	present_map_size = (ro->rtd->ti->count + (8 - 1)) / 8;
+	size = sizeof(*id) + present_map_size;
+	id = malloc(size);
+	assert(id);
+	memset(id, 0, size);
+	id->present_map_size = present_map_size;
+
+	ro->instance_data = id;
+
+	return 0;
+}
+
+static void struct_cleanup(struct reflection_object *ro)
+{
+	struct struct_instance_data *id;
+
+	fprintf(stderr, "%s\n", __func__);
+	id = ro->instance_data;
+	if (id)
+		free(id);
+	ro->instance_data = NULL;
+}
+
+static int struct_finish(struct reflection_object *ro)
+{
+	assert(ro->instance_data);
+
+	return 0;
+}
+
+struct reflection_object *struct_create_child(struct reflection_object *ro_parent, struct fy_event *fye, struct fy_path *path)
+{
+	struct reflection_type_data *rtd;
+	struct reflection_field_data *rfd;
+	const struct fy_field_info *fi;
+	const struct fy_type_info *ti;
+	struct fy_token *fyt_key;
+	const char *field;
+
+	fprintf(stderr, "%s\n", __func__);
+
+	assert(fy_path_in_mapping(path));
+	assert(!fy_path_in_mapping_key(path));
+
+	fyt_key = fy_path_component_mapping_get_scalar_key(fy_path_last_not_collection_root_component(path));
+	assert(fyt_key);
+
+	field = fy_token_get_text0(fyt_key);
+	assert(field);
+
+	fprintf(stderr, "field=%s\n", field);
+
+	rtd = ro_parent->rtd;
+	rfd = reflection_type_data_lookup_field(rtd, field);
+	if (!rfd) {
+		return NULL;
+	}
+	fi = rfd->fi;
+	ti = fi->type_info;
+	/* no bitfields */
+	assert((fi->flags & FYFIF_BITFIELD) == 0);
+	return reflection_object_create_from_type(ro_parent, fy_type_info_get_userdata(ti),
+			fye, path, ro_parent->data + rfd->fi->offset, ti->size);
+}
+
+const struct reflection_object_ops *struct_object_ops(struct reflection_type_data *rtd)
+{
+	static const struct reflection_object_ops ops = {
+		.setup = struct_setup,
+		.cleanup = struct_cleanup,
+		.finish = struct_finish,
+		.create_child = struct_create_child,
+	};
+
+	return &ops;
+}
+
+int struct_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size)
+{
+	struct reflection_field_data *rfd;
+	struct reflection_type_data *rtd_field;
+	const char *field_name;
+	size_t i;
+	int rc;
+
+	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_MAPPING_START, FYNS_ANY, NULL, NULL));
+	if (rc)
+		goto err_out;
+
+	for (i = 0, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, rfd++) {
+
+		field_name = fy_field_info_get_yaml_name(rfd->fi);
+		if (!field_name)
+			field_name = rfd->fi->name;
+
+		rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, field_name, FY_NT, NULL, NULL));
+		if (rc)
+			goto err_out;
+
+		rtd_field = fy_type_info_get_userdata(rfd->fi->type_info);
+		assert(rtd_field);
+
+		assert(rtd_field->ops->emit);
+		rc = rtd_field->ops->emit(rtd_field, fye, data + rfd->fi->offset, rtd_field->ti->size);
+		if (rc)
+			goto err_out;
+	}
+
+	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_MAPPING_END));
+	if (rc)
+		goto err_out;
+
+	return 0;
+
+err_out:
+	return -1;
+}
+
+static int enum_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
+{
+	struct reflection_type_data *rtd_dep;
+	struct reflection_field_data *rfd;
+	size_t size, align;
+	const char *text0;
+	int signess;
+	union { unsigned long long u; signed long long s; } val;
+
+
+	fprintf(stderr, "%s\n", __func__);
+	if (fye->type != FYET_SCALAR)
+		return -1;
+
+	assert(ro->rtd->ti->kind == FYTK_ENUM);
+	rtd_dep = reflection_type_data_get_dependent(ro->rtd);
+	assert(rtd_dep);
+
+	assert(ro->data);
+
+	/* verify alignment */
+	size = rtd_dep->ti->size;
+	align = rtd_dep->ti->align;
+	assert(ro->data_size == size);
+	assert(((uintptr_t)ro->data & (align - 1)) == 0);
+	(void)size;
+	(void)align;
+
+	text0 = fy_token_get_text0(fy_event_get_token(fye));
+	assert(text0);
+
+	rfd = reflection_type_data_lookup_field(ro->rtd, text0);
+	assert(rfd);
+
+	/* weird dance, since base signess might differ (but doesn't matter) */
+	signess = fy_type_kind_signess(rfd->fi->type_info->kind);
+	assert(signess != 0);
+	if (signess > 0) {
+		val.u = rfd->fi->uval;
+		// fprintf(stderr, "%llu\n", val.u);
+	} else {
+		val.s = rfd->fi->sval;
+		// fprintf(stderr, "%lld\n", val.s);
+	}
+
+	switch (rtd_dep->ti->kind) {
+	case FYTK_CHAR:
+		if (CHAR_MIN < 0) {
+			assert(val.s >= CHAR_MIN && val.s <= CHAR_MAX);
+			*(char *)ro->data = (char)val.s;
+		} else {
+			assert(val.u <= CHAR_MAX);
+			*(char *)ro->data = (char)val.u;
+		}
+		break;
+	case FYTK_SCHAR:
+		assert(val.s >= SCHAR_MIN && val.s <= SCHAR_MAX);
+		*(signed char *)ro->data = (signed char)val.s;
+		break;
+	case FYTK_UCHAR:
+		assert(val.u <= UCHAR_MAX);
+		*(unsigned char *)ro->data = (unsigned char)val.u;
+		break;
+	case FYTK_SHORT:
+		assert(val.s >= SHRT_MIN && val.s <= SHRT_MAX);
+		*(short *)ro->data = (short)val.s;
+		break;
+	case FYTK_USHORT:
+		assert(val.u <= USHRT_MAX);
+		*(unsigned short *)ro->data = (unsigned short)val.u;
+		break;
+	case FYTK_INT:
+		assert(val.s >= INT_MIN && val.s <= INT_MAX);
+		*(int *)ro->data = (int)val.s;
+		break;
+	case FYTK_UINT:
+		assert(val.u <= UINT_MAX);
+		*(unsigned int *)ro->data = (unsigned int)val.u;
+		break;
+	case FYTK_LONG:
+		assert(val.s >= LONG_MIN && val.s <= LONG_MAX);
+		*(long *)ro->data = (long)val.s;
+		break;
+	case FYTK_ULONG:
+		assert(val.u <= ULONG_MAX);
+		*(unsigned long *)ro->data = (unsigned long)val.u;
+		break;
+	case FYTK_LONGLONG:
+		*(long long *)ro->data = val.s;
+		break;
+	case FYTK_ULONGLONG:
+		*(unsigned long long *)ro->data = val.u;
+		break;
+
+	default:
+		assert(0);	/* err, no more */
+		abort();
+	}
+
+	return 0;
+}
+
+const struct reflection_object_ops *enum_object_ops(struct reflection_type_data *rtd)
+{
+	static const struct reflection_object_ops ops = {
+		.setup = enum_setup,
+	};
+
+	return &ops;
+}
+
+int enum_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size)
+{
+	struct reflection_type_data *rtd_dep;
+	struct reflection_field_data *rfd;
+	size_t size, align;
+	int signess;
+	union { unsigned long long u; signed long long s; } val;
+	const char *text;
+	size_t len;
+
+	assert(rtd->ti->kind == FYTK_ENUM);
+	rtd_dep = reflection_type_data_get_dependent(rtd);
+	assert(rtd_dep);
+
+	/* verify alignment */
+	size = rtd_dep->ti->size;
+	align = rtd_dep->ti->align;
+	assert(data_size == size);
+	assert(((uintptr_t)data & (align - 1)) == 0);
+	(void)size;
+	(void)align;
+
+	signess = fy_type_kind_signess(rtd_dep->ti->kind);
+	assert(signess != 0);
+
+	switch (rtd_dep->ti->kind) {
+	case FYTK_CHAR:
+		if (CHAR_MIN < 0)
+			val.s = *(char *)data;
+		else
+			val.u = *(char *)data;
+		break;
+	case FYTK_SCHAR:
+		val.s = *(signed char *)data;
+		break;
+	case FYTK_UCHAR:
+		val.u = *(unsigned char *)data;
+		break;
+	case FYTK_SHORT:
+		val.s = *(short *)data;
+		break;
+	case FYTK_USHORT:
+		val.u = *(unsigned short *)data;
+		break;
+	case FYTK_INT:
+		val.s = *(int *)data;
+		break;
+	case FYTK_UINT:
+		val.u = *(unsigned int *)data;
+		break;
+	case FYTK_LONG:
+		val.s = *(long *)data;
+		break;
+	case FYTK_ULONG:
+		val.u = *(unsigned long *)data;
+		break;
+	case FYTK_LONGLONG:
+		val.s = *(long long *)data;
+		break;
+	case FYTK_ULONGLONG:
+		val.u = *(unsigned long long *)data;
+		break;
+
+	default:
+		assert(0);	/* err, no more */
+		abort();
+	}
+
+	if (signess > 0)
+		rfd = reflection_type_data_lookup_field_by_unsigned_enum_value(rtd, val.u);
+	else
+		rfd = reflection_type_data_lookup_field_by_enum_value(rtd, val.s);
+
+	assert(rfd);
+	text = rfd->fi->name;
+	len = strlen(text);
+
+	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_ANY, text, len, NULL, NULL));
+}
+
+const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
+	[FYTK_INVALID] = {
+	},
+	[FYTK_VOID] = {
+	},
+	[FYTK_BOOL] = {
+	},
+	[FYTK_CHAR] = {
+	},
+	[FYTK_SCHAR] = {
+	},
+	[FYTK_UCHAR] = {
+	},
+	[FYTK_SHORT] = {
+	},
+	[FYTK_USHORT] = {
+	},
+	[FYTK_INT] = {
+		.object_ops = int_object_ops,
+		.emit = int_emit,
+	},
+	[FYTK_UINT] = {
+	},
+	[FYTK_LONG] = {
+	},
+	[FYTK_ULONG] = {
+	},
+	[FYTK_LONGLONG] = {
+	},
+	[FYTK_ULONGLONG] = {
+	},
+#ifdef FY_HAS_INT128
+	[FYTK_INT128] = {
+	},
+	[FYTK_UINT128] = {
+	},
+#else
+	[FYTK_INT128] = {
+	},
+	[FYTK_UINT128] = {
+	},
+#endif
+	[FYTK_FLOAT] = {
+	},
+	[FYTK_DOUBLE] = {
+	},
+	[FYTK_LONGDOUBLE] = {
+	},
+#ifdef FY_HAS_FP16
+	[FYTK_FLOAT16] = {
+	},
+#else
+	[FYTK_FLOAT16] = {
+	},
+#endif
+#ifdef FY_HAS_FLOAT128
+	[FYTK_FLOAT128] = {
+	},
+#else
+	[FYTK_FLOAT128] = {
+	},
+#endif
+	/* the explicitly sized types are not generated */
+	/* they must be explicitly created */
+	[FYTK_S8] = {
+	},
+	[FYTK_U8] = {
+	},
+	[FYTK_S16] = {
+	},
+	[FYTK_U16] = {
+	},
+	[FYTK_S32] = {
+	},
+	[FYTK_U32] = {
+	},
+	[FYTK_S64] = {
+	},
+	[FYTK_U64] = {
+	},
+#if defined(__SIZEOF_INT128__) && __SIZEOF_INT128__ == 16
+	[FYTK_S128] = {
+	},
+	[FYTK_U128] = {
+	},
+#else
+	[FYTK_S128] = {
+	},
+	[FYTK_U128] = {
+	},
+#endif
+
+	/* these are templates */
+	[FYTK_RECORD] = {
+	},
+	[FYTK_STRUCT] = {
+		.object_ops = struct_object_ops,
+		.emit = struct_emit,
+	},
+	[FYTK_UNION] = {
+	},
+	[FYTK_ENUM] = {
+		.object_ops = enum_object_ops,
+		.emit = enum_emit,
+	},
+	[FYTK_TYPEDEF] = {
+	},
+	[FYTK_PTR] = {
+	},
+	[FYTK_CONSTARRAY] = {
+		.object_ops = const_array_object_ops,
+		.emit = const_array_emit,
+	},
+	[FYTK_INCOMPLETEARRAY] = {
+	},
+	[FYTK_FUNCTION] = {
+	},
+};
+
+struct reflection_object *
+reflection_object_create_internal(struct reflection_object *parent, struct reflection_type_data *rtd,
+				  struct fy_event *fye, struct fy_path *path,
+				  const struct reflection_object_ops *ops, void *data, size_t data_size);
+
+struct root_instance_data {
+	struct reflection_decoder *rd;
+};
+
+static int root_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
+{
+	struct root_instance_data *id;
+
+	fprintf(stderr, "%s\n", __func__);
+
+	assert(ro);
+
+	id = malloc(sizeof(*id));
+	if (!id) {
+		assert(0);
+		return -1;
+	}
+	memset(id, 0, sizeof(*id));
+	id->rd = ro->rd;
+	ro->instance_data = id;
+
+	return 0;
+}
+
+static void root_cleanup(struct reflection_object *ro)
+{
+	struct root_instance_data *id;
+
+	id = ro->instance_data;
+
+	if (ro->instance_data) {
+		id = ro->instance_data;
+		ro->instance_data = NULL;
+		free(id);
+	}
+}
+
+struct reflection_object *root_create_child(struct reflection_object *ro_parent, struct fy_event *fye, struct fy_path *path)
+{
+	struct reflection_type_data *rtd;
+
+	fprintf(stderr, "%s\n", __func__);
+
+	/* pointer */
+	switch (ro_parent->rtd->ti->kind) {
+	case FYTK_PTR:
+		rtd = reflection_type_data_get_dependent(ro_parent->rtd);
+		break;
+	case FYTK_INT:
+		rtd = ro_parent->rtd;
+		break;
+	case FYTK_CONSTARRAY:
+		rtd = ro_parent->rtd;
+		break;
+	case FYTK_STRUCT:
+	case FYTK_UNION:
+		rtd = ro_parent->rtd;
+		break;
+
+	case FYTK_ENUM:
+		rtd = ro_parent->rtd;
+		break;
+
+	default:
+		assert(0);
+		abort();
+		break;
+	}
+
+	return reflection_object_create_from_type(ro_parent, rtd,
+		fye, path, ro_parent->data, ro_parent->data_size);
+}
+
+static const struct reflection_object_ops root_ops = {
+	.setup = root_setup,
+	.cleanup = root_cleanup,
+	.create_child = root_create_child,
+};
+
+void
+reflection_object_destroy(struct reflection_object *ro)
+{
+	if (!ro)
+		return;
+	if (ro->ops && ro->ops->cleanup)
+		ro->ops->cleanup(ro);
+	free(ro);
+}
+
+int
+reflection_object_finish(struct reflection_object *ro)
+{
+	if (!ro)
+		return 0;
+	if (!ro->ops->finish)
+		return 0;
+
+	return ro->ops->finish(ro);
+}
+
+int
+reflection_object_finish_and_destroy(struct reflection_object *ro)
+{
+	int rc;
+
+	if (!ro)
+		return 0;
+
+	rc = reflection_object_finish(ro);
+	reflection_object_destroy(ro);
+	return rc;
+}
+
+struct reflection_object *
+reflection_object_create_internal(struct reflection_object *parent, struct reflection_type_data *rtd,
+				  struct fy_event *fye, struct fy_path *path,
+				  const struct reflection_object_ops *ops,
+				  void *data, size_t data_size)
+{
+	struct reflection_object *ro = NULL;
+	int ret;
+
+	if (!fye || !path || !ops) {
+		assert(0);
+		return NULL;
+	}
+
+	ro = malloc(sizeof(*ro));
+	if (!ro) {
+		assert(0);
+		goto err_out;
+	}
+	memset(ro, 0, sizeof(*ro));
+	ro->rtd = rtd;
+	ro->parent = parent;
+	ro->ops = ops;
+	ro->data = data;
+	ro->data_size = data_size;
+	assert(ro->ops->setup);
+	ret = ro->ops->setup(ro, fye, path);
+	if (ret) {
+		assert(0);
+		goto err_out;
+	}
+
+	return ro;
+err_out:
+	reflection_object_destroy(ro);
+	return NULL;
+}
+
+struct reflection_object *
+reflection_object_create_from_type(struct reflection_object *ro_parent, struct reflection_type_data *rtd,
+				   struct fy_event *fye, struct fy_path *path,
+				   void *data, size_t data_size)
+{
+	struct reflection_object *ro;
+	const struct reflection_object_ops *ops;
+
+	if (!ro_parent || !fye || !path) {
+		assert(0);
+		return NULL;
+	}
+
+	assert(rtd->ops->object_ops);
+	ops = rtd->ops->object_ops(rtd);
+	assert(ops);
+
+	ro = reflection_object_create_internal(ro_parent, rtd, fye, path, ops, data, data_size);
+	assert(ro);
+
+	return ro;
+}
+
+struct reflection_object *
+reflection_object_create_child(struct reflection_object *parent, struct fy_event *fye, struct fy_path *path)
+{
+	if (!parent || !fye || !path)
+		return NULL;
+
+	return parent->ops->create_child(parent, fye, path);
+}
+
+int
+reflection_object_scalar_child(struct reflection_object *parent, struct fy_event *fye, struct fy_path *path)
+{
+	struct reflection_object *ro;
+
+	if (!parent || !fye || !path)
+		return -1;
+
+	/* shortcut exists */
+	if (parent->ops->scalar_child)
+		return parent->ops->scalar_child(parent, fye, path);
+
+	/* create and destroy cycle */
+	assert(parent->ops->create_child);
+	ro = parent->ops->create_child(parent, fye, path);
+	if (!ro)
+		return -1;
+
+	return reflection_object_finish_and_destroy(ro);
+}
+
+void reflection_type_data_cleanup(struct reflection_type_data *rtd)
+{
+	struct reflection_field_data *rfd;
+	size_t i;
+
+	if (!rtd)
+		return;
+
+	fy_type_info_set_userdata(rtd->ti, NULL);
+	for (i = 0, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, rfd++)
+		fy_field_info_set_userdata(rfd->fi, NULL);
+
+	free(rtd);
+}
+
+int reflection_type_data_setup(const struct fy_type_info *ti)
+{
+	struct reflection_type_data *rtd = NULL;
+	struct reflection_field_data *rfd;
+	const struct fy_field_info *fi;
+	size_t i;
+	size_t size;
+
+	size = sizeof(*rtd);
+	if (fy_type_kind_has_fields(ti->kind))
+		size += ti->count * sizeof(rtd->fields[0]);
+
+	rtd = malloc(size);
+	if (!rtd)
+		goto err_out;
+
+	memset(rtd, 0, size);
+	rtd->ti = ti;
+	rtd->ops = &reflection_ops_table[ti->kind];
+	if (fy_type_kind_has_fields(ti->kind)) {
+		rtd->fields_count = ti->count;
+		for (i = 0, fi = ti->fields, rfd = &rtd->fields[0]; i < ti->count; i++, fi++, rfd++) {
+			rfd->rtd = rtd;
+			rfd->fi = fi;
+			rfd->index = 0;
+			fy_field_info_set_userdata(fi, rfd);
+		}
+	}
+
+	fy_type_info_set_userdata(ti, rtd);
+
+	return 0;
+err_out:
+	reflection_type_data_cleanup(rtd);
+	return -1;
+}
+
+void reflection_cleanup_type_system(struct fy_reflection *rfl)
+{
+	const struct fy_type_info *ti;
+	void *prev = NULL;
+
+	prev = NULL;
+	while ((ti = fy_type_info_reverse_iterate(rfl, &prev)) != NULL)
+		reflection_type_data_cleanup(fy_type_info_get_userdata(ti));
+}
+
+int reflection_setup_type_system(struct fy_reflection *rfl)
+{
+	const struct fy_type_info *ti;
+	void *prev = NULL;
+	int ret;
+
+	prev = NULL;
+	while ((ti = fy_type_info_iterate(rfl, &prev)) != NULL) {
+		ret = reflection_type_data_setup(ti);
+		if (ret)
+			goto err_out;
+	}
+
+	return 0;
+err_out:
+	reflection_cleanup_type_system(rfl);
+	return -1;
+}
+
+void
+reflection_decoder_destroy(struct reflection_decoder *rd)
+{
+	if (!rd)
+		return;
+
+	if (rd->data && rd->data_allocated)
+		free(rd->data);
+
+	free(rd);
+}
+
+struct reflection_decoder *
+reflection_decoder_create(bool verbose)
+{
+	struct reflection_decoder *rd = NULL;
+
+	rd = malloc(sizeof(*rd));
+	if (!rd)
+		goto err_out;
+
+	memset(rd, 0, sizeof(*rd));
+	rd->verbose = verbose;
+
+	return rd;
+
+err_out:
+	reflection_decoder_destroy(rd);
+	return NULL;
+}
+
+static enum fy_composer_return
+reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path, void *userdata)
+{
+	struct reflection_decoder *rd = userdata;
+	struct reflection_object *ro, *rop;
+	enum fy_composer_return ret;
+	int rc;
+
+	assert(rd);
+	if (rd->verbose) {
+		fprintf(stderr, "%s: %c%c%c%c%c %3d - %-32s\n",
+				fy_event_type_get_text(fye->type),
+				fy_path_in_root(path) ? 'R' : '-',
+				fy_path_in_sequence(path) ? 'S' : '-',
+				fy_path_in_mapping(path) ? 'M' : '-',
+				fy_path_in_mapping_key(path) ? 'K' :
+					fy_path_in_mapping_value(path) ? 'V' : '-',
+				fy_path_in_collection_root(path) ? '/' : '-',
+				fy_path_depth(path),
+				fy_path_get_text_alloca(path));
+	}
+
+	/* if we're in mapping key wait until we get the whole of the key */
+	if (fy_path_in_mapping_key(path))
+		return FYCR_OK_CONTINUE;
+
+	switch (fye->type) {
+		/* nothing to do for those */
+	case FYET_NONE:
+		ret = FYCR_ERROR;
+		break;
+
+	case FYET_STREAM_START:
+	case FYET_STREAM_END:
+		ret = FYCR_OK_CONTINUE;
+		break;
+
+	case FYET_SCALAR:
+		rop = fy_path_get_parent_user_data(path);
+		assert(rop);
+
+		rc = reflection_object_scalar_child(rop, fye, path);
+		assert(!rc);
+		ret = FYCR_OK_CONTINUE;
+		break;
+
+	/* alias not supported yet */
+	case FYET_ALIAS:
+		ret = FYCR_ERROR;
+		break;
+
+	case FYET_DOCUMENT_START:
+		ro = reflection_object_create_internal(NULL, rd->entry, fye, path, &root_ops, rd->data, rd->data_size);
+		assert(ro);
+
+		fy_path_set_root_user_data(path, ro);
+		ret = FYCR_OK_CONTINUE;
+		break;
+
+	case FYET_SEQUENCE_START:
+	case FYET_MAPPING_START:
+		rop = fy_path_get_parent_user_data(path);
+		assert(rop);
+
+		ro = reflection_object_create_child(rop, fye, path);
+		assert(ro);
+
+		fy_path_set_last_user_data(path, ro);
+		ret = FYCR_OK_CONTINUE;
+		break;
+
+	case FYET_DOCUMENT_END:
+		ro = fy_path_get_root_user_data(path);
+		assert(ro);
+		fy_path_set_root_user_data(path, NULL);
+
+		rc = reflection_object_finish_and_destroy(ro);
+		if (rc) {
+			ret = FYCR_ERROR;
+			break;
+		}
+
+		rd->document_ready = true;
+		/* on single document mode we stop here */
+		if (rd->single_document)
+			ret = FYCR_OK_STOP;
+		else
+			ret = FYCR_OK_CONTINUE;
+		break;
+
+	case FYET_SEQUENCE_END:
+	case FYET_MAPPING_END:
+		ro = fy_path_get_last_user_data(path);
+		assert(ro);
+		fy_path_set_last_user_data(path, NULL);
+
+		rc = reflection_object_finish_and_destroy(ro);
+		if (rc) {
+			ret = FYCR_ERROR;
+			break;
+		}
+
+		ret = FYCR_OK_CONTINUE;
+		break;
+
+	default:
+		assert(0);
+		abort();
+	}
+
+	assert(ret == FYCR_OK_CONTINUE || ret == FYCR_OK_STOP);
+	return ret;
+}
+
+int
+reflection_decoder_parse(struct reflection_decoder *rd, struct fy_parser *fyp, const struct fy_type_info *ti, void *data, size_t data_size)
+{
+	;
+	struct reflection_type_data *rtd, *rtd_dep;
+	size_t dep_size, type_size;
+	int rc;
+
+	if (!rd || !fyp || !ti)
+		return -1;
+
+	rtd = fy_type_info_get_userdata(ti);
+
+	/* verify it's a pointer (always) */
+	if (rtd->ti->kind == FYTK_PTR) {
+		/* get the dependent type (if rtd = "int *" rtd_dep = "int") */
+		rtd_dep = reflection_type_data_get_dependent(rtd);
+		if (!rtd_dep)
+			return -1;
+
+		dep_size = rtd_dep->ti->size;
+		if (rtd->ti->kind == FYTK_CONSTARRAY)
+			dep_size *= rtd_dep->ti->count;
+
+		type_size = dep_size;
+	} else {
+		type_size = rtd->ti->size;
+	}
+
+	if (data) {
+		/* verify size and alignment */
+		if (type_size < data_size)
+			return -1;
+		rd->data = data;
+		rd->data_size = data_size;
+		rd->data_allocated = false;
+	} else {
+		rd->data_size = type_size;
+		rd->data = malloc(rd->data_size);
+		if (!rd->data)
+			return -1;
+		rd->data_allocated = true;
+	}
+
+	/* we're good to go */
+	memset(rd->data, 0, rd->data_size);
+	rd->entry = rtd;
+
+	/* ignore errors for now */
+	rc = fy_parse_compose(fyp, reflection_compose_process_event, rd);
+	if (rc)
+		return rc;
+
+	if (fy_parser_get_stream_error(fyp))
+		return -1;
+
+	return 0;
+}
+
+struct reflection_encoder {
+	bool emitted_stream_start;
+	bool emitted_stream_end;
+	bool verbose;
+	/* bindable */
+	struct fy_emitter *fye;
+	struct reflection_type_data *entry;
+	const void *data;
+	size_t data_size;
+};
+
+void
+reflection_encoder_destroy(struct reflection_encoder *re)
+{
+	if (!re)
+		return;
+
+	free(re);
+}
+
+struct reflection_encoder *
+reflection_encoder_create(bool verbose)
+{
+	struct reflection_encoder *re = NULL;
+
+	re = malloc(sizeof(*re));
+	if (!re)
+		return NULL;
+
+	memset(re, 0, sizeof(*re));
+	re->verbose = verbose;
+
+	return re;
+}
+
+int
+reflection_encoder_emit(struct reflection_encoder *re, struct fy_emitter *fye, struct reflection_type_data *rtd, const void *data, size_t data_size)
+{
+	int rc;
+
+	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_STREAM_START));
+	if (rc)
+		goto err_out;
+
+	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_DOCUMENT_START, 0, NULL, NULL));
+	if (rc)
+		goto err_out;
+
+	assert(rtd->ops->emit);
+	rc = rtd->ops->emit(rtd, fye, data, data_size);
+	if (rc)
+		goto err_out;
+
+	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_DOCUMENT_END, 0));
+	if (rc)
+		goto err_out;
+
+	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_STREAM_END));
+	if (rc)
+		goto err_out;
+
+	return 0;
+err_out:
+	return -1;
+}
+
 int main(int argc, char *argv[])
 {
 	struct fy_parse_cfg cfg = {
@@ -1599,6 +3215,17 @@ int main(int argc, char *argv[])
 	struct composer_data cd;
 	bool dump_path = DUMP_PATH_DEFAULT;
 	const char *input_arg;
+	struct fy_reflection *rfl = NULL;
+	const char *cflags = "";
+	const char *import_blob = NULL;
+	const char *generate_blob = NULL;
+	bool type_dump = false, prune_system = false;
+	const char *type_include = NULL, *type_exclude = NULL;
+	const char *import_c_file = NULL;
+	const char *entry_type = NULL;
+	struct reflection_decoder *rd = NULL;
+	struct reflection_encoder *re = NULL;
+	const struct fy_type_info *ti = NULL;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -1629,6 +3256,8 @@ int main(int argc, char *argv[])
 		tool_mode = OPT_COMPOSE;
 	else if (!strcmp(progname, "fy-yaml-version-dump"))
 		tool_mode = OPT_YAML_VERSION_DUMP;
+	else if (!strcmp(progname, "fy-reflect"))
+		tool_mode = OPT_REFLECT;
 	else
 		tool_mode = OPT_TOOL;
 
@@ -1797,6 +3426,7 @@ int main(int argc, char *argv[])
 		case OPT_PARSE_DUMP:
 		case OPT_COMPOSE:
 		case OPT_YAML_VERSION_DUMP:
+		case OPT_REFLECT:
 			tool_mode = opt;
 			break;
 		case OPT_STRIP_LABELS:
@@ -1887,6 +3517,33 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_TSV_FORMAT:
 			tsv_format = true;
+			break;
+		case OPT_GENERATE_BLOB:
+			generate_blob = optarg;
+			break;
+		case OPT_IMPORT_BLOB:
+			import_blob = optarg;
+			break;
+		case OPT_TYPE_DUMP:
+			type_dump = true;
+			break;
+		case OPT_PRUNE_SYSTEM:
+			prune_system = true;
+			break;
+		case OPT_CFLAGS:
+			cflags = optarg;
+			break;
+		case OPT_TYPE_INCLUDE:
+			type_include = optarg;
+			break;
+		case OPT_TYPE_EXCLUDE:
+			type_exclude = optarg;
+			break;
+		case OPT_IMPORT_C_FILE:
+			import_c_file = optarg;
+			break;
+		case OPT_ENTRY_TYPE:
+			entry_type = optarg;
 			break;
 		case 'h' :
 		default:
@@ -2442,11 +4099,123 @@ int main(int argc, char *argv[])
 
 		break;
 
+	case OPT_REFLECT:
+		rfl = NULL;
 
+		if (import_blob) {
+			rfl = fy_reflection_from_packed_blob_file(import_blob);
+			if (!rfl) {
+				fprintf(stderr, "unable to get reflection from blob file %s\n", import_blob);
+				goto cleanup;
+			}
+
+		} else if (import_c_file) {
+			file = import_c_file;
+			rfl = fy_reflection_from_c_file_with_cflags(file, cflags, true, true);
+			if (!rfl) {
+				fprintf(stderr, "unable to perform reflection from file %s\n", file);
+				goto cleanup;
+			}
+		} else
+			rfl = NULL;
+
+		if (!rfl) {
+			fprintf(stderr, "No reflection; provide either --import-blob or --import-c-file option\n");
+			goto cleanup;
+		}
+
+		if (prune_system)
+			reflection_prune_system(rfl);
+
+		if (type_include || type_exclude) {
+			rc = reflection_type_filter(rfl, type_include, type_exclude);
+			if (rc)
+				goto cleanup;
+		}
+
+		if (type_dump)
+			reflection_type_info_c_dump(rfl);
+		else {
+			rc = reflection_setup_type_system(rfl);
+			if (rc) {
+				fprintf(stderr, "reflection_setup_type_system() failed!\n");
+				goto cleanup;
+			}
+
+			if (!entry_type) {
+				fprintf(stderr, "No entry point type; supply an --entry-type\n");
+				goto cleanup;
+			}
+
+			if (optind >= argc) {
+				fprintf(stderr, "missing yaml file to dump\n");
+				goto cleanup;
+			}
+
+			rd = reflection_decoder_create(dump_path);
+			if (!rd) {
+				fprintf(stderr, "failed to create the decoder\n");
+				goto cleanup;
+			}
+
+			re = reflection_encoder_create(dump_path);
+			if (!re) {
+				fprintf(stderr, "failed to create the encoder\n");
+				goto cleanup;
+			}
+
+			for (i = optind; i < argc; i++) {
+				rc = set_parser_input(fyp, argv[i], false);
+				if (rc) {
+					fprintf(stderr, "failed to set parser input to '%s' for dump\n", argv[i]);
+					goto cleanup;
+				}
+			}
+
+			ti = reflection_lookup_type_by_name(rfl, entry_type);
+			if (!ti) {
+				fprintf(stderr, "Unable to lookup type info for entry_type '%s'\n", entry_type);
+				goto cleanup;
+			}
+
+			rc = reflection_decoder_parse(rd, fyp, ti, NULL, 0);
+			if (rc) {
+				fprintf(stderr, "unable to parse with the decoder\n");
+				goto cleanup;
+			}
+
+			rc = reflection_encoder_emit(re, fye, rd->entry, rd->data, rd->data_size);
+			if (rc) {
+				fprintf(stderr, "unable to emit with the encoder\n");
+				goto cleanup;
+			}
+		}
+
+		if (generate_blob) {
+			rc = fy_reflection_to_packed_blob_file(rfl, generate_blob);
+			if (rc) {
+				fprintf(stderr, "unable to generate blob to file %s\n", generate_blob);
+				goto cleanup;
+			}
+		}
+
+		/* cleanup will take care of rfl cleanup */
+		break;
 	}
 	exitcode = EXIT_SUCCESS;
 
 cleanup:
+	if (re)
+		reflection_encoder_destroy(re);
+
+	if (rd)
+		reflection_decoder_destroy(rd);
+
+	if (rfl) {
+		reflection_cleanup_type_system(rfl);
+		fy_reflection_destroy(rfl);
+	}
+
 	if (fypx)
 		fy_path_exec_destroy(fypx);
 
