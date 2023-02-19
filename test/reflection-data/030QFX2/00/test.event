@@ -1,0 +1,38 @@
++STR
++DOC
++MAP
+=VAL "common
+=VAL "Hello
+-MAP
+-DOC
++DOC
++MAP
+=VAL "common
++MAP
+=VAL "value
+=VAL "10
+=VAL "description
+=VAL "Ten
+-MAP
+-MAP
+-DOC
++DOC
++MAP
+=VAL "common
++SEQ
++MAP
+=VAL "value
+=VAL "100
+=VAL "description
+=VAL "Hundred
+-MAP
++MAP
+=VAL "value
+=VAL "101
+=VAL "description
+=VAL "Hundred One
+-MAP
+-SEQ
+-MAP
+-DOC
+-STR

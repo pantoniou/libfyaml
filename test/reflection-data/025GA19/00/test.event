@@ -1,0 +1,12 @@
++STR
++DOC
++MAP
+=VAL "argv
++SEQ
+=VAL "fy-tool
+=VAL "--dump
+=VAL "x.yaml
+-SEQ
+-MAP
+-DOC
+-STR

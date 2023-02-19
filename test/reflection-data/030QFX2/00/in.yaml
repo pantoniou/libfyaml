@@ -1,0 +1,13 @@
+---
+common: Hello
+---
+common:
+  value: 10
+  description: Ten
+---
+common:
+- value: 100
+  description: Hundred
+- value: 101
+  description: Hundred One
+

@@ -1,0 +1,20 @@
++STR
++DOC
++MAP
+=VAL "value
+=VAL "100
+=VAL "next_foo
++MAP
+=VAL "value
+=VAL "101
+=VAL "next_foo
++MAP
+=VAL "value
+=VAL "102
+=VAL "next_foo
+=VAL "null
+-MAP
+-MAP
+-MAP
+-DOC
+-STR

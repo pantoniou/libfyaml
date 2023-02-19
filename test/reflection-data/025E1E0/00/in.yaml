@@ -1,0 +1,4 @@
+havethis: 100
+skip-scalar: "yes"
+skip-seq: [ 1, 2, 3 4 ]
+skip-map: { foo: bar, baz: [ 100, 101], frooz: { a: b, c: { d: e} }}

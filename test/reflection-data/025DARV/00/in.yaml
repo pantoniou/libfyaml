@@ -1,0 +1,6 @@
+value: 100
+next_foo:
+  value: 101
+  next_foo:
+    value: 102
+    next_foo: NULL

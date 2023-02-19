@@ -15,11 +15,12 @@ INTERNAL_INCLUDES = \
 	-I$(top_srcdir)/src/xxhash \
 	-I$(top_srcdir)/src/util \
 	-I$(top_srcdir)/src/thread \
-	-I$(top_srcdir)/src/allocator
+	-I$(top_srcdir)/src/allocator \
+	-I$(top_srcdir)/src/generic
 
 lib_LTLIBRARIES += libfyaml.la
 libfyaml_la_SOURCES = \
-        lib/fy-parse.c lib/fy-parse.h \
+	lib/fy-parse.c lib/fy-parse.h \
 	lib/fy-types.c lib/fy-types.h \
 	lib/fy-diag.c lib/fy-diag.h \
 	lib/fy-dump.c lib/fy-dump.h \
@@ -69,6 +70,26 @@ libfyaml_la_SOURCES += \
 	allocator/fy-allocator-mremap.c allocator/fy-allocator-mremap.h \
 	allocator/fy-allocator-dedup.c allocator/fy-allocator-dedup.h \
 	allocator/fy-allocator-auto.c allocator/fy-allocator-auto.h
+
+# generic
+libfyaml_la_SOURCES += \
+	generic/fy-generic.c generic/fy-generic.h \
+	generic/fy-generic-decoder.c generic/fy-generic-decoder.h \
+	generic/fy-generic-encoder.c generic/fy-generic-encoder.h \
+	generic/fy-generic-op.c \
+	generic/fy-generic-iter.c
+
+# reflection
+libfyaml_la_SOURCES += \
+	reflection/fy-reflection.c reflection/fy-reflection-private.h \
+	reflection/fy-packed-backend.c reflection/fy-packed-backend.h \
+	reflection/fy-null-backend.c reflection/fy-null-backend.h \
+	reflection/fy-registry.c
+
+if HAVE_LIBCLANG
+libfyaml_la_SOURCES += \
+	reflection/fy-clang-backend.c reflection/fy-clang-backend.h
+endif
 
 libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)
 libfyaml_la_CFLAGS = $(AM_CFLAGS)
@@ -215,6 +236,21 @@ fy_allocators_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 fy_allocators_LDFLAGS = $(AM_LDFLAGS) -static
 endif
 
+# fy-generics
+if !CROSS_COMPILING
+noinst_PROGRAMS += fy-generics
+
+fy_generics_SOURCES = \
+	internal/fy-generics.c \
+	valgrind/fy-valgrind.h
+
+fy_generics_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)
+fy_generics_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
+fy_generics_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
+
+fy_generics_LDFLAGS = $(AM_LDFLAGS) -static
+endif
+
 endif # HAVE_STATIC
 
 bin_PROGRAMS += fy-tool
@@ -224,6 +260,7 @@ fy_tool_SOURCES = \
 	tool/fy-tool-util.c \
 	tool/fy-tool-dump.c \
 	tool/fy-tool-util.h \
+	tool/fy-tool-reflect.h \
 	valgrind/fy-valgrind.h
 
 fy_tool_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/valgrind
@@ -232,7 +269,13 @@ fy_tool_CFLAGS = $(AM_CFLAGS)
 fy_tool_LDFLAGS = $(AM_LDFLAGS)
 
 include_HEADERS = \
-        $(top_srcdir)/include/libfyaml.h
+        $(top_srcdir)/include/libfyaml.h \
+        $(top_srcdir)/include/libfyaml/fy-internal.h \
+        $(top_srcdir)/include/libfyaml/fy-internal-align.h \
+        $(top_srcdir)/include/libfyaml/fy-internal-endian.h \
+        $(top_srcdir)/include/libfyaml/fy-internal-vlsize.h \
+        $(top_srcdir)/include/libfyaml/fy-internal-atomics.h \
+        $(top_srcdir)/include/libfyaml/fy-internal-generic.h
 
 install-exec-hook:
 	(cd "$(DESTDIR)$(bindir)" && $(LN_S) -f fy-tool fy-dump)
