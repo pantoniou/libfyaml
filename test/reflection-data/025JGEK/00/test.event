@@ -1,0 +1,14 @@
++STR
++DOC
++MAP
+=VAL "a
+=VAL "100
+=VAL "b
+=VAL "263
+=VAL "c
+=VAL "true
+=VAL "d
+=VAL "string
+-MAP
+-DOC
+-STR

@@ -1,0 +1,17 @@
++STR
++DOC
++MAP
+=VAL "foos
++MAP
+=VAL "8
+=VAL "10
+=VAL "9
+=VAL "200
+=VAL "10
+=VAL "300
+=VAL "-32
+=VAL "-1
+-MAP
+-MAP
+-DOC
+-STR

@@ -1,0 +1,4 @@
+argv:
+  - fy-tool
+  - --dump
+  - x.yaml

@@ -1,0 +1,1 @@
+Base type: struct null { } (matches as null when yaml: { match-null: true })

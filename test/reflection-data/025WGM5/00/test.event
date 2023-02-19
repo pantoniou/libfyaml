@@ -1,0 +1,23 @@
++STR
++DOC
++MAP
+=VAL "foo
+=VAL "10
+=VAL "bar
+=VAL "100
+=VAL "a
+=VAL "e_one
+=VAL "b
+=VAL "e_three
+=VAL "c
+=VAL "e_two
+=VAL "d
+=VAL "e_invalid
+=VAL "f
++SEQ
+=VAL "e_two
+=VAL "e_three
+-SEQ
+-MAP
+-DOC
+-STR

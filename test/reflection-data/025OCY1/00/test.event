@@ -1,0 +1,34 @@
++STR
++DOC
++MAP
+=VAL "text
+=VAL "text-one
+=VAL "value
+=VAL "1
+-MAP
+-DOC
++DOC
++MAP
+=VAL "text
+=VAL "test-two
+=VAL "value
+=VAL "2
+-MAP
+-DOC
++DOC
++MAP
+=VAL "text
+=VAL "test-three
+=VAL "value
+=VAL "3
+-MAP
+-DOC
++DOC
++MAP
+=VAL "text
+=VAL "test-final
+=VAL "value
+=VAL "99
+-MAP
+-DOC
+-STR

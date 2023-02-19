@@ -1,0 +1,13 @@
+string: Hello there
+string2: something different
+string3: not that different
+string4: type different
+ptrlong: 200
+baz_in_place:
+  heh: Hehehe
+# baz_out_of_place: NULL
+baz_out_of_place:
+  heh: Out-of-place-Hehehe
+null_req: yes
+const_int: [ 1, 2, 3 ]
+table: [ 10, 11, 12 ]

@@ -1,0 +1,8 @@
++STR
++DOC
++SEQ
+=VAL "Hello
+=VAL "world
+-SEQ
+-DOC
+-STR

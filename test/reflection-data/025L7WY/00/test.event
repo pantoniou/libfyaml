@@ -1,0 +1,62 @@
++STR
++DOC
++MAP
+=VAL "before
+=VAL "100
+=VAL "doc
+=VAL "150
+=VAL "after
+=VAL "200
+-MAP
+-DOC
++DOC
++MAP
+=VAL "before
+=VAL "10
+=VAL "doc
++SEQ
+=VAL "5
+=VAL "10
+=VAL "15
+-SEQ
+=VAL "after
+=VAL "20
+-MAP
+-DOC
++DOC
++MAP
+=VAL "before
+=VAL "10
+=VAL "doc
++SEQ
++SEQ
+=VAL "1
+=VAL "11
+=VAL "111
+-SEQ
+=VAL "two
+=VAL "three
+-SEQ
+=VAL "after
+=VAL "20
+-MAP
+-DOC
++DOC
++MAP
+=VAL "before
+=VAL "1000
+=VAL "doc
++MAP
+=VAL "test
+=VAL "this-is
+=VAL "more
++MAP
+=VAL "key
+=VAL "key
+-MAP
+-MAP
+=VAL "after
+=VAL "2000
+-MAP
+-DOC
+-STR

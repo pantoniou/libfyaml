@@ -1,0 +1,1 @@
+Base type: char * "Hello\0world" (error because string contains \0)
