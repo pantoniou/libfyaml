@@ -1,0 +1,5 @@
+foos:
+  { one: 10, two: hello}: 10
+  { one: 20, two: there}: 200
+# boos:
+#  { one: 30, two: world!}: 300

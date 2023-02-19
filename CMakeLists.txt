@@ -648,7 +648,20 @@ set(LIBSRCS
     src/lib/fy-docbuilder-diag.c
     src/lib/fy-input-diag.c
     src/lib/fy-parse-diag.c
+    src/generic/fy-generic.c
+    src/generic/fy-generic-decoder.c
+    src/generic/fy-generic-encoder.c
+    src/generic/fy-generic-op.c
+    src/reflection/fy-reflection.c
+    src/reflection/fy-packed-backend.c
+    src/reflection/fy-null-backend.c
+    src/reflection/fy-registry.c
 )
+
+# Conditionally add clang backend if libclang is available
+if(HAVE_LIBCLANG)
+    list(APPEND LIBSRCS src/reflection/fy-clang-backend.c)
+endif()
 
 set(LIBHDRSPUB
     include/libfyaml.h
@@ -829,6 +842,8 @@ target_include_directories(fyaml_static
         ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
         ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
         ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
         ${CMAKE_CURRENT_BINARY_DIR}
 )
 
@@ -987,6 +1002,8 @@ if(HAVE_LIBYAML)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/xxhash
         ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
         ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
         ${CMAKE_CURRENT_BINARY_DIR}
         ${LIBYAML_INCLUDE_DIRS}
     )
@@ -1029,6 +1046,8 @@ target_include_directories(fy-thread PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/util
     ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
     ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
     ${CMAKE_CURRENT_BINARY_DIR}
 )
 if(NOT MSVC)
@@ -1066,6 +1085,8 @@ target_include_directories(fy-b3sum PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
     ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
     ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
     ${CMAKE_CURRENT_BINARY_DIR}
 )
 if(NOT MSVC)
@@ -1103,6 +1124,8 @@ target_include_directories(fy-allocators PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xxhash
     ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
     ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
     ${CMAKE_CURRENT_BINARY_DIR}
 )
 if(NOT MSVC)
@@ -1185,6 +1208,7 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
             test/libfyaml-test-private-id.c
             test/libfyaml-test-parser.c
             test/libfyaml-test-thread.c
+            test/libfyaml-test-generic.c
         )
 
         target_compile_options(libfyaml-test PRIVATE ${COMMON_C_FLAGS})
@@ -1196,6 +1220,8 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
             ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
             ${CMAKE_CURRENT_SOURCE_DIR}/src/util
             ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
             ${CMAKE_CURRENT_BINARY_DIR}
             ${CHECK_INCLUDE_DIRS}
         )
@@ -1312,6 +1338,11 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
         # 3. Otherwise: use monolithic test (re-run cmake after downloading data)
         # To generate cmake/jsontestsuite-tests.cmake, see cmake/README-testsuite-generation.md
         add_jsontestsuite_tests()
+    endif()
+
+    # Reflection tests - only if libclang is available
+    if(HAVE_LIBCLANG)
+        add_testreflection_tests()
     endif()
 
     set(TEST_DRIVER ${CMAKE_SOURCE_DIR}/build-aux/tap-driver.sh)

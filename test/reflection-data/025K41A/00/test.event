@@ -1,0 +1,26 @@
++STR
++DOC
++MAP
+=VAL "v
+=VAL "10000
+=VAL "foo
+=VAL "this just a foo
+=VAL "iv
++SEQ
+=VAL "10
+=VAL "12
+-SEQ
+=VAL "argv
++SEQ
+=VAL "fy-tool
+=VAL "--dump
+=VAL "x.yaml
+-SEQ
+=VAL "argv2
++SEQ
+=VAL "yet more
+=VAL "arguments
+-SEQ
+-MAP
+-DOC
+-STR
