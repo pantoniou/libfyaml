@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+#
+# testsuite-generic.test
+#
+# Test suite for generic-based YAML parsing
+#
+# This test runs the same test suite as testsuite.test but uses the
+# generic test suite mode which strips formatting information.
+#
+# Since generics don't preserve styling (scalar styles, flow markers)
+# we need to normalize both the expected output and the actual output
+# before comparison.
+#
+
+count=0
+for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
+	for tst in ${basetst} ${basetst}[0-9][0-9]/ ${basetst}[0-9][0-9][0-9]/; do
+		# there must be a test there
+		if [ ! -e "$tst/===" ]; then
+			continue
+		fi
+		count=`expr $count + 1`
+	done
+done
+
+# output plan
+echo 1..$count
+
+skiplist=""
+# C4HZ: Hex value conversion (0xFFEEBB -> 16772795) - requires yaml1.2-failsafe schema
+xfaillist="C4HZ"
+
+# Additional tests to skip for generic mode
+# Generics don't preserve:
+# - Scalar styles (all scalars are normalized)
+# - Flow markers (block vs flow is not preserved)
+generic_skiplist=""
+
+i=0
+for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
+
+	for tst in ${basetst} ${basetst}[0-9][0-9]/ ${basetst}[0-9][0-9][0-9]/; do
+
+		# there must be a test there
+		if [ ! -e "$tst/===" ]; then
+			continue
+		fi
+
+		i=`expr $i + 1`
+
+		# strip trailing /
+		t=${tst%/}
+		# remove test-suite-data/
+		test_subtest_id=`echo $t | cut -d/ -f2-`
+		test_id=`echo $test_subtest_id | cut -d/ -f1`
+		subtest_id=`echo $test_subtest_id | cut -s -d/ -f2`
+
+		desctxt=`cat 2>/dev/null "$tst/==="`
+
+		t_output=`mktemp`
+		t_expected=`mktemp`
+
+		directive=""
+		for skip in $skiplist $generic_skiplist; do
+			if [ "$test_subtest_id" == "$skip" ]; then
+				directive=" # SKIP"
+				break
+			fi
+		done
+
+		res="ok"
+		if [ "x$directive" == "x" ]; then
+			res="not ok"
+
+			pass_yaml=0
+			# Use generic test suite mode
+			${TOP_BUILDDIR}/src/fy-tool --generic-testsuite "$tst/in.yaml" >"$t_output" 2>/dev/null
+			if [ $? -eq 0 ]; then
+				pass_yaml=1
+			fi
+
+			if [ -e "$tst/error" ]; then
+				# test is expected to fail
+				if [ $pass_yaml == "0" ]; then
+					res="ok"
+				else
+					res="not ok"
+				fi
+			else
+				# test is expected to pass
+				if [ $pass_yaml == "1" ]; then
+					# Strip formatting from expected output
+					${TOP_SRCDIR}/scripts/strip-testsuite-formatting.sh "$tst/test.event" > "$t_expected"
+
+					# Strip formatting from actual generic output too
+					t_output_stripped=`mktemp`
+					${TOP_SRCDIR}/scripts/strip-testsuite-formatting.sh "$t_output" > "$t_output_stripped"
+
+					# Compare both stripped outputs
+					diff_yaml=0
+					diff -u "$t_expected" "$t_output_stripped"
+					if [ $? -eq 0 ]; then
+						res="ok"
+					else
+						res="not ok"
+					fi
+
+					rm -f "$t_output_stripped"
+				else
+					res="not ok"
+				fi
+			fi
+
+			for xfail in $xfaillist; do
+				if [ "$test_subtest_id" == "$xfail" ]; then
+					directive=" # TODO: known failure."
+					break
+				fi
+			done
+		fi
+
+		rm -f "$t_output" "$t_expected"
+
+		echo "$res $i $test_subtest_id - $desctxt$directive"
+	done
+done

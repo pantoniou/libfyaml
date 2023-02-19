@@ -276,7 +276,7 @@ void dump_testsuite_event(struct fy_event *fye, enum dump_testsuite_event_flags 
 		printf("=%s", !tsv_format ? "ALI" : "ali");
 		break;
 	default:
-		abort();
+		FY_IMPOSSIBLE_ABORT();
 		break;
 	}
 
@@ -337,6 +337,11 @@ void dump_testsuite_event(struct fy_event *fye, enum dump_testsuite_event_flags 
 		else
 			style = FYSS_DOUBLE_QUOTED;	/* double quoted can handle anything */
 		switch (style) {
+		case FYSS_ANY:
+			if (colorize)
+				fputs(A_WHITE, stdout);
+			printf("%c!", separator);
+			break;
 		case FYSS_PLAIN:
 			if (colorize)
 				fputs(A_WHITE, stdout);
@@ -363,7 +368,7 @@ void dump_testsuite_event(struct fy_event *fye, enum dump_testsuite_event_flags 
 			printf("%c>", separator);
 			break;
 		default:
-			abort();
+			FY_IMPOSSIBLE_ABORT();
 		}
 		break;
 	case FYET_ALIAS:
@@ -394,7 +399,7 @@ void dump_testsuite_event(struct fy_event *fye, enum dump_testsuite_event_flags 
 	fputs("\n", stdout);
 }
 
-void dump_parse_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize)
+void dump_parse_event(struct fy_event *fye, bool colorize)
 {
 	struct fy_token *fyt_tag = NULL, *fyt_anchor = NULL;
 	const char *anchor = NULL;
@@ -539,6 +544,7 @@ void dump_parse_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize
 
 		style = fy_token_scalar_style(fye->scalar.value);
 		switch (style) {
+		case FYSS_ANY:
 		case FYSS_PLAIN:
 			if (colorize)
 				fputs(A_WHITE, stdout);
@@ -588,7 +594,7 @@ void dump_parse_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize
 	fputs("\n", stdout);
 }
 
-void dump_scan_token(struct fy_parser *fyp, struct fy_token *fyt, bool colorize)
+void dump_scan_token(struct fy_token *fyt, bool colorize)
 {
 	const char *anchor = NULL, *value = NULL;
 	size_t anchor_len = 0, len = 0;

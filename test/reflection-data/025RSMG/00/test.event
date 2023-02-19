@@ -1,0 +1,19 @@
++STR
++DOC
++MAP
+=VAL "pointers
++SEQ
+=VAL "10
+=VAL "11
+-SEQ
+=VAL "not_pointer
+=VAL "100
+=VAL "pointers2
++SEQ
+=VAL "100
+=VAL "111
+=VAL "222
+-SEQ
+-MAP
+-DOC
+-STR

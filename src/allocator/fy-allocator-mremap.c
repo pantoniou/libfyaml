@@ -27,6 +27,7 @@
 #endif
 
 /* for container_of */
+#include "fy-align.h"
 #include "fy-list.h"
 #include "fy-utils.h"
 #include "fy-win32.h"
@@ -414,15 +415,17 @@ static void fy_mremap_tag_setup(struct fy_mremap_allocator *mra, struct fy_mrema
 
 static void *fy_mremap_tag_alloc(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt, size_t size, size_t align)
 {
-	struct fy_mremap_arena *mran, *old_arenas;
+	struct fy_mremap_arena *mran, *old_arenas, *start_arenas;
 	size_t next_sz, next_arena_sz, old_next_arena_sz, old_next, new_next, data_pos;
 	uint64_t flags;
 	void *ptr;
 	int rc;
 
 again:
+	start_arenas = fy_atomic_load(&mrt->arenas);
+
 	/* hot path, try to find an arena that fits first */
-	for (mran = fy_atomic_load(&mrt->arenas); mran; mran = mran->next_arena) {
+	for (mran = start_arenas; mran; mran = mran->next_arena) {
 
 		flags = fy_atomic_load(&mran->flags);
 		if (flags & FYMRAF_FULL)
@@ -461,6 +464,20 @@ again:
 #ifdef DEBUG_ARENA
 			fprintf(stderr, "failed to grow %p\n", mran);
 #endif
+			/* increase by the ratio until we're over */
+			old_next_arena_sz = fy_atomic_load(&mrt->next_arena_sz);
+			next_arena_sz = old_next_arena_sz;
+			while (next_arena_sz < mran->size)
+				next_arena_sz *= 2;
+			/* we don't care about it 'catching' */
+			/* if another thread changes the value we're fine too */
+			(void)fy_atomic_compare_exchange_strong(&mrt->next_arena_sz,
+						&old_next_arena_sz, next_arena_sz);
+
+#ifdef DEBUG_ARENA
+			fprintf(stderr, "mrt=%p next_arena_size=%zu (%zu)\n", mrt, fy_atomic_load(&mrt->next_arena_sz), next_arena_sz);
+#endif
+
 			/* release the lock, and mark it as can't grow */
 			fy_atomic_fetch_or(&mran->flags, FYMRAF_CANT_GROW);
 			fy_atomic_fetch_and(&mran->flags, ~FYMRAF_GROWING);
@@ -517,6 +534,21 @@ create_arena:
 #ifdef DEBUG_ARENA
 	fprintf(stderr, "allocated new %p mran->size=%zu size=%zu\n", mran, mran->size, size);
 #endif
+
+	/* last chance if we're racing with another thread
+	 * if the other thread won updating the arena head just
+	 * drop what we did and try again; chances are there will
+	 * be space available.
+	 */
+	if (fy_atomic_load(&mrt->arenas) != start_arenas) {
+		fy_mremap_arena_destroy(mra, mrt, mran);
+		mran = NULL;
+		goto again;
+	}
+
+	/* NOTE: There's an infidecimal change to add one more arena than needed
+	 * but it's fine, the core can handle it
+	 */
 
 	/* atomically add it */
 	do {

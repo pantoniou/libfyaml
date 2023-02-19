@@ -1,0 +1,5 @@
+a: e_one
+b: e_three
+c: e_two
+d: e_invalid
+f: [ e_two, e_three ]

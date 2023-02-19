@@ -106,7 +106,8 @@ EXTRA_DIST += \
 	scripts/run-massif.sh \
 	scripts/run-test.sh \
 	scripts/run-valgrind.sh \
-	scripts/show-desc.sh
+	scripts/show-desc.sh \
+	scripts/strip-testsuite-formatting.sh
 
 if HAVE_DOCKER
 docker: Dockerfile

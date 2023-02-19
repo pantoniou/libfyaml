@@ -1,0 +1,10 @@
+value: 10
+---
+valuex:
+  foo: bar
+---
+valuex:
+- foo
+---
+valuex: 10
+

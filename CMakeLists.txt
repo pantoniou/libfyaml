@@ -105,7 +105,7 @@ option(ENABLE_ASAN "Enable ASAN support" OFF)
 option(ENABLE_NETWORK "Enable tests requiring network access" ON)
 option(ENABLE_DEVMODE "Enable development mode only debugging" OFF)
 option(BUILD_TESTING "Build tests" ON)
-option(ENABLE_LIBCLANG "Enable libclang support for reflection" OFF)
+option(ENABLE_LIBCLANG "Enable libclang support for reflection" ON)
 
 # Path to LLVM installation (optional, overrides automatic detection)
 set(LLVM_ROOT "" CACHE PATH "Path to LLVM installation directory (e.g., /usr/lib/llvm-15)")
@@ -756,10 +756,38 @@ set(LIBSRCS
     src/lib/fy-docbuilder-diag.c
     src/lib/fy-input-diag.c
     src/lib/fy-parse-diag.c
+    src/generic/fy-generic.c
+    src/generic/fy-generic-decoder.c
+    src/generic/fy-generic-encoder.c
+    src/generic/fy-generic-op.c
+    src/generic/fy-generic-iter.c
+    src/reflection/fy-reflection.c
+    src/reflection/fy-packed-backend.c
+    src/reflection/fy-null-backend.c
+    src/reflection/fy-registry.c
 )
 
+# Conditionally add clang backend if libclang is available
+if(HAVE_LIBCLANG)
+    list(APPEND LIBSRCS src/reflection/fy-clang-backend.c)
+endif()
+
 set(LIBHDRSPUB
-    include/libfyaml.h
+    include/libfyaml/libfyaml-util.h
+    include/libfyaml/libfyaml-core.h
+    include/libfyaml/libfyaml-path-exec.h
+    include/libfyaml/libfyaml-dociter.h
+    include/libfyaml/libfyaml-docbuild.h
+    include/libfyaml/libfyaml-composer.h
+    include/libfyaml/libfyaml-allocator.h
+    include/libfyaml/libfyaml-thread.h
+    include/libfyaml/libfyaml-blake3.h
+    include/libfyaml/libfyaml-align.h
+    include/libfyaml/libfyaml-endian.h
+    include/libfyaml/libfyaml-vlsize.h
+    include/libfyaml/libfyaml-atomics.h
+    include/libfyaml/libfyaml-reflection.h
+    include/libfyaml/libfyaml-generic.h
 )
 
 # BLAKE3 portable library
@@ -907,18 +935,25 @@ endforeach()
 # This is needed because libfyaml uses GCC-style suffix attributes for FY_EXPORT
 # which are incompatible with MSVC's __declspec prefix requirement
 if(WIN32 AND BUILD_SHARED_LIBS)
-    # Generate the .def file from the public header during build
+    # Generate the .def file from all public headers during build
     set(GENERATED_DEF_FILE "${CMAKE_CURRENT_BINARY_DIR}/fyaml.def")
+    # Build a list of absolute paths for all public headers
+    set(ABS_LIBHDRSPUB)
+    foreach(HDR ${LIBHDRSPUB})
+        list(APPEND ABS_LIBHDRSPUB "${CMAKE_CURRENT_SOURCE_DIR}/${HDR}")
+    endforeach()
+    # Escape semicolons so the list survives being passed via -D to cmake -P
+    string(REPLACE ";" "\\;" ESCAPED_HDRS "${ABS_LIBHDRSPUB}")
     add_custom_command(
         OUTPUT ${GENERATED_DEF_FILE}
         COMMAND ${CMAKE_COMMAND}
-            -DINPUT_HEADER=${CMAKE_CURRENT_SOURCE_DIR}/include/libfyaml.h
+            "-DINPUT_HEADERS=${ESCAPED_HDRS}"
             -DOUTPUT_DEF=${GENERATED_DEF_FILE}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/generate-def.cmake
         DEPENDS
-            ${CMAKE_CURRENT_SOURCE_DIR}/include/libfyaml.h
+            ${ABS_LIBHDRSPUB}
             ${CMAKE_CURRENT_SOURCE_DIR}/cmake/generate-def.cmake
-        COMMENT "Generating fyaml.def from libfyaml.h"
+        COMMENT "Generating fyaml.def from public headers"
     )
     target_sources(fyaml PRIVATE "${GENERATED_DEF_FILE}")
 endif()
@@ -957,6 +992,8 @@ target_include_directories(fyaml_static
         ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
         ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
         ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
         ${CMAKE_CURRENT_BINARY_DIR}
 )
 
@@ -1008,7 +1045,7 @@ set_target_properties(fyaml PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${VERSION_MAJOR}
     FOLDER "Libraries"
-    PUBLIC_HEADER "${LIBHDRSPUB}"
+    PUBLIC_HEADER "include/libfyaml.h"
 )
 
 target_include_directories(fyaml
@@ -1022,6 +1059,8 @@ target_include_directories(fyaml
         ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
         ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
         ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
 )
 
 if(NOT WIN32)
@@ -1120,6 +1159,8 @@ set(INTERNAL_TOOL_INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xxhash
     ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
     ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
     ${CMAKE_CURRENT_BINARY_DIR}
     ${LIBYAML_INCLUDE_DIRS}
     ${GETOPT_INCLUDES}
@@ -1293,6 +1334,8 @@ if(CAN_TEST)
             test/libfyaml-test-private-id.c
             test/libfyaml-test-parser.c
             test/libfyaml-test-thread.c
+            test/libfyaml-test-generic.c
+            test/libfyaml-test-generic-scalars.c
             ${GETOPT_SOURCES}
         )
 
@@ -1306,6 +1349,8 @@ if(CAN_TEST)
             ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
             ${CMAKE_CURRENT_SOURCE_DIR}/src/util
             ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
             ${CMAKE_CURRENT_BINARY_DIR}
             ${CHECK_INCLUDE_DIRS}
             ${GETOPT_INCLUDES}
@@ -1380,12 +1425,18 @@ if(CAN_TEST)
         add_testsuite_tests(testsuite testsuite.test)
         add_testsuite_tests(testsuite-evstream testsuite-evstream.test)
         add_testsuite_tests(testsuite-resolution testsuite-resolution.test)
+        add_testsuite_tests(testsuite-generic testsuite-generic.test)
         if(HAVE_JQ)
             add_testsuite_tests(testsuite-json testsuite-json.test)
         endif()
 
         # JSON test suite - register individual subtests
         add_jsontestsuite_tests()
+    endif()
+
+    # Reflection tests - only if libclang is available
+    if(HAVE_LIBCLANG)
+        add_testreflection_tests()
     endif()
 
     # Build all test dependencies as part of default 'all' target
@@ -1404,6 +1455,7 @@ if(CAN_TEST)
         jsontestsuite.test
         testsuite-evstream.test
         testsuite-resolution.test
+        testsuite-generic.test
         testerrors.test
         testemitter.test
         testemitter-streaming.test
@@ -1470,6 +1522,11 @@ install(TARGETS fyaml fy-tool
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
+# Install sub-headers into <prefix>/include/libfyaml/
+install(FILES ${LIBHDRSPUB}
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libfyaml
+)
+
 # Create symlinks for fy-tool (not on Windows - symlinks require special privileges)
 if(NOT WIN32)
     install(CODE "
@@ -1530,6 +1587,61 @@ install(
 # tags and cscope support
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/tags.cmake)
 
+# Python core bindings
+find_package(Python3 COMPONENTS Interpreter Development)
+if(Python3_FOUND)
+    set(_ENABLE_PYTHON_BINDINGS_DEFAULT ON)
+else()
+    set(_ENABLE_PYTHON_BINDINGS_DEFAULT OFF)
+endif()
+option(ENABLE_PYTHON_BINDINGS "Build Python core bindings (_libfyaml extension)" ${_ENABLE_PYTHON_BINDINGS_DEFAULT})
+
+if(ENABLE_PYTHON_BINDINGS)
+    if(NOT Python3_FOUND)
+        message(FATAL_ERROR "Python3 development headers not found (required for ENABLE_PYTHON_BINDINGS)")
+    endif()
+
+    Python3_add_library(_libfyaml MODULE
+        "${CMAKE_CURRENT_SOURCE_DIR}/python-libfyaml/libfyaml/_libfyaml.c"
+    )
+    target_include_directories(_libfyaml PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+    target_link_libraries(_libfyaml PRIVATE fyaml)
+    target_compile_options(_libfyaml PRIVATE ${COMMON_C_FLAGS})
+    if(HAVE_ASAN)
+        target_compile_options(_libfyaml PRIVATE ${ASAN_C_FLAGS})
+        target_link_options(_libfyaml PRIVATE ${ASAN_C_FLAGS})
+    endif()
+    # Place the .so in the build tree, not the source tree
+    set(_PY_PKG_SRC "${CMAKE_CURRENT_SOURCE_DIR}/python-libfyaml/libfyaml")
+    set(_PY_PKG_DST "${CMAKE_CURRENT_BINARY_DIR}/python-libfyaml/libfyaml")
+    set_target_properties(_libfyaml PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY "${_PY_PKG_DST}"
+        PREFIX ""
+        SUFFIX ".${Python3_SOABI}${CMAKE_SHARED_MODULE_SUFFIX}"
+    )
+    # Link/copy source files into the build staging dir so the complete
+    # package is importable directly from the build tree.
+    # COPY_ON_ERROR makes this work on Windows where symlinks may be
+    # unavailable (requires Developer Mode or admin rights).
+    file(MAKE_DIRECTORY "${_PY_PKG_DST}")
+    file(GLOB _py_srcs "${_PY_PKG_SRC}/*.py" "${_PY_PKG_SRC}/*.pyi")
+    foreach(_src ${_py_srcs})
+        get_filename_component(_name "${_src}" NAME)
+        file(CREATE_LINK "${_src}" "${_PY_PKG_DST}/${_name}" SYMBOLIC COPY_ON_ERROR)
+    endforeach()
+    set(HAVE_PYTHON_BINDINGS 1)
+else()
+    set(HAVE_PYTHON_BINDINGS 0)
+endif()
+
+# Python binding tests (pytest) - one CTest entry per test function/method
+if(HAVE_PYTHON_BINDINGS AND BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
+    add_python_tests()
+endif()
+
 # Print configuration summary
 message(STATUS "")
 message(STATUS "---{ ${PROJECT_NAME} ${PROJECT_VERSION} }---")
@@ -1551,6 +1663,7 @@ message(STATUS "HAVE_COMPATIBLE_CHECK: ${HAVE_COMPATIBLE_CHECK}")
 message(STATUS "HAVE_LIBYAML:          ${HAVE_LIBYAML}")
 message(STATUS "HAVE_CMAKE_GEXPR:      ${HAVE_CMAKE_GEXPR}")
 message(STATUS "HAVE_LIBCLANG:         ${HAVE_LIBCLANG}")
+message(STATUS "HAVE_PYTHON_BINDINGS:  ${HAVE_PYTHON_BINDINGS}")
 message(STATUS "HAVE_CLANG_BLOCKS:     ${HAVE_CLANG_BLOCKS}")
 message(STATUS "HAVE_NETWORK:          ${HAVE_NETWORK}")
 message(STATUS "HAVE_DEVMODE:          ${HAVE_DEVMODE}")

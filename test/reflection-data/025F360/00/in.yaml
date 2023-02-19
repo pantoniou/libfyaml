@@ -1,0 +1,25 @@
+bars:
+- text: one
+  value: 1
+- text: ten
+  value: 10
+
+bars_t:
+- text: hundred
+  value: 100
+
+pures:
+- a: 100
+  b: 100.1
+- a: 200
+  b: 200.2
+ 
+impures: 
+- text: something
+  a: 1
+- text: else
+  a: 2
+
+filthies:
+- data: [ this, is, getting, long ]
+- data: [ indeed ]

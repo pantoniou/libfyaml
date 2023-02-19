@@ -1,0 +1,36 @@
+server:
+  host: localhost
+  port: 8080
+  max_connections: 100
+  allowed_ips:
+    - 127.0.0.1
+    - 192.168.1.0/24
+
+database:
+  type: postgresql
+  host: db.example.com
+  port: 5432
+  name: myapp
+  credentials:
+    username: dbuser
+    password: secret123
+
+features:
+  enable_caching: true
+  enable_logging: true
+  debug_mode: false
+  timeout: 30.5
+
+items:
+  - id: 1
+    name: "First Item"
+    price: 10.99
+    tags: [featured, new, sale]
+  - id: 2
+    name: "Second Item"
+    price: 25.50
+    tags: [popular]
+  - id: 3
+    name: "Third Item"
+    price: 5.00
+    tags: []

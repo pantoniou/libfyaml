@@ -1,10 +1,12 @@
 # generate-def.cmake
-# Generates fyaml.def from libfyaml.h by extracting FY_EXPORT functions
+# Generates fyaml.def from the libfyaml public headers by extracting FY_EXPORT functions
 #
-# Usage: cmake -DINPUT_HEADER=path/to/libfyaml.h -DOUTPUT_DEF=path/to/fyaml.def -P generate-def.cmake
+# Usage: cmake -DINPUT_HEADERS="path/h1.h\;path/h2.h" -DOUTPUT_DEF=path/fyaml.def -P generate-def.cmake
+#
+# INPUT_HEADERS is a CMake list (semicolon-separated) of absolute header paths.
 
-if(NOT INPUT_HEADER)
-    message(FATAL_ERROR "INPUT_HEADER not specified")
+if(NOT INPUT_HEADERS)
+    message(FATAL_ERROR "INPUT_HEADERS not specified")
 endif()
 
 if(NOT OUTPUT_DEF)
@@ -16,8 +18,12 @@ endif()
 # These are determined by linker errors - if the symbol is unresolved, add it here
 set(EXCLUDE_FUNCTIONS)
 
-# Read the header file
-file(READ "${INPUT_HEADER}" HEADER_CONTENT)
+# Read and concatenate all header files
+set(HEADER_CONTENT "")
+foreach(HEADER ${INPUT_HEADERS})
+    file(READ "${HEADER}" THIS_CONTENT)
+    string(APPEND HEADER_CONTENT "${THIS_CONTENT}\n")
+endforeach()
 
 # Find all function names that have FY_EXPORT
 # Pattern: function_name(...) followed by FY_EXPORT on same or next line
@@ -44,10 +50,10 @@ endforeach()
 
 # Generate the .def file content
 set(DEF_CONTENT "; fyaml.def - Auto-generated module definition file for fyaml.dll
-; Generated from libfyaml.h - DO NOT EDIT MANUALLY
+; Generated from libfyaml public headers - DO NOT EDIT MANUALLY
 ;
 ; This file exports the public API symbols marked with FY_EXPORT.
-; Regenerate with: cmake -DINPUT_HEADER=include/libfyaml.h -DOUTPUT_DEF=src/lib/fyaml.def -P cmake/generate-def.cmake
+; Regenerate by rebuilding with CMake (add_custom_command in CMakeLists.txt).
 
 LIBRARY fyaml
 EXPORTS
@@ -62,4 +68,5 @@ file(WRITE "${OUTPUT_DEF}" "${DEF_CONTENT}")
 
 # Report
 list(LENGTH FUNCTION_NAMES NUM_FUNCS)
-message(STATUS "Generated ${OUTPUT_DEF} with ${NUM_FUNCS} exported functions")
+list(LENGTH INPUT_HEADERS NUM_HEADERS)
+message(STATUS "Generated ${OUTPUT_DEF} with ${NUM_FUNCS} exported functions from ${NUM_HEADERS} headers")

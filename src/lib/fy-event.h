@@ -62,4 +62,15 @@ struct fy_event *fy_document_iterator_event_create(struct fy_document_iterator *
 struct fy_event *fy_document_iterator_event_vcreate(struct fy_document_iterator *document_iterator, enum fy_event_type type, va_list ap);
 void fy_document_iterator_event_free(struct fy_document_iterator *document_iterator, struct fy_event *fye);
 
+struct fy_generic_iterator;
+
+struct fy_eventp *fy_generic_iterator_eventp_alloc(struct fy_generic_iterator *fygi);
+void fy_generic_iterator_eventp_recycle(struct fy_generic_iterator *fygi, struct fy_eventp *fyep);
+struct fy_event *fy_generic_iterator_event_create(struct fy_generic_iterator *fygi, enum fy_event_type type, ...);
+struct fy_event *fy_generic_iterator_event_vcreate(struct fy_generic_iterator *fygi, enum fy_event_type type, va_list ap);
+void fy_generic_iterator_event_free(struct fy_generic_iterator *fygi, struct fy_event *fye);
+
+struct fy_token_list;
+struct document_state;
+
 #endif

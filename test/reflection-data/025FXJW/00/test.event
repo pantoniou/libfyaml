@@ -1,0 +1,11 @@
++STR
++DOC
++MAP
+=VAL "pointers
++SEQ
+=VAL "10
+=VAL "11
+-SEQ
+-MAP
+-DOC
+-STR

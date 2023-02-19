@@ -12,7 +12,7 @@
 #include "blake3.h"
 #include "blake3_impl.h"
 
-#include <libfyaml.h>
+#include <libfyaml/libfyaml-blake3.h>
 
 struct fy_blake3_hasher {
 	uint8_t output[FY_BLAKE3_OUT_LEN] FY_CACHELINE_ALIGN;
