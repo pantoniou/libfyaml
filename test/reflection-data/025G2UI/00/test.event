@@ -1,0 +1,32 @@
++STR
++DOC
++MAP
+=VAL "arr2d
++SEQ
++SEQ
+=VAL "10
+=VAL "11
+-SEQ
++SEQ
+=VAL "12
+=VAL "13
+-SEQ
+-SEQ
+-MAP
+-DOC
++DOC
++MAP
+=VAL "arr2d
++SEQ
++SEQ
+=VAL "10
+=VAL "11
+-SEQ
++SEQ
+=VAL "12
+=VAL "13
+-SEQ
+-SEQ
+-MAP
+-DOC
+-STR

@@ -1,1 +1,3 @@
 *.timestamp
+out.event
+out.yaml

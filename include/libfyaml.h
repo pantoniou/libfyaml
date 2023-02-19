@@ -63,6 +63,10 @@ extern "C" {
  *   (``libfyaml/libfyaml-atomics.h``)
  * - Variable-length size encoding
  *   (``libfyaml/libfyaml-vlsize.h``)
+ * - Generic runtime type system
+ *   (``libfyaml/libfyaml-generic.h``)
+ * - C struct reflection and schema support
+ *   (``libfyaml/libfyaml-reflection.h``)
  *
  * For faster compilation you may include only the subsystem headers you need.
  * All public symbols are prefixed with ``fy_`` (functions/types) or ``FY_``
@@ -82,6 +86,8 @@ extern "C" {
 #include <libfyaml/libfyaml-endian.h>
 #include <libfyaml/libfyaml-atomics.h>
 #include <libfyaml/libfyaml-vlsize.h>
+#include <libfyaml/libfyaml-generic.h>
+#include <libfyaml/libfyaml-reflection.h>
 
 #ifdef __cplusplus
 }

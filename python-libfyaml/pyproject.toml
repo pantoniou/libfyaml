@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "libfyaml"
+version = "0.9.0"
+description = "Fast YAML/JSON parser with NumPy-like interface using libfyaml's generic type system"
+readme = "README.md"
+requires-python = ">=3.7"
+license = {text = "MIT"}
+authors = [
+    {name = "Pantelis Antoniou", email = "pantelis.antoniou@konsulko.com"}
+]
+maintainers = [
+    {name = "libfyaml contributors"}
+]
+keywords = ["yaml", "json", "parser", "fast", "performance", "memory-efficient"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: C",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Markup",
+]
+
+[project.urls]
+Homepage = "https://github.com/pantoniou/libfyaml"
+Documentation = "https://github.com/pantoniou/libfyaml/tree/master/python-libfyaml"
+Repository = "https://github.com/pantoniou/libfyaml"
+"Bug Reports" = "https://github.com/pantoniou/libfyaml/issues"
+Changelog = "https://github.com/pantoniou/libfyaml/blob/master/python-libfyaml/CHANGELOG.md"
+
+[tool.setuptools]
+packages = ["libfyaml"]
+
+[tool.setuptools.package-data]
+libfyaml = ["*.so", "*.pyd"]

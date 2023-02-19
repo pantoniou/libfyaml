@@ -5,13 +5,19 @@
 # This enables proper support for multi-config generators (Visual Studio, Xcode)
 # by passing the actual tool path at runtime rather than relying on hardcoded paths.
 function(add_tap_test test_name suite_name test_id)
-    cmake_parse_arguments(TAP "DISABLED;WILL_FAIL" "" "LABELS;EXTRA_ENV" ${ARGN})
+    cmake_parse_arguments(TAP "DISABLED;WILL_FAIL" "WORKING_DIR" "LABELS;EXTRA_ENV" ${ARGN})
+
+    if(TAP_WORKING_DIR)
+        set(_tap_working_dir "${TAP_WORKING_DIR}")
+    else()
+        set(_tap_working_dir "${CMAKE_CURRENT_BINARY_DIR}/test")
+    endif()
 
     add_test(
         NAME "${test_name}"
         COMMAND "${BASH_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh"
             "${suite_name}" "${test_id}"
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
+        WORKING_DIRECTORY "${_tap_working_dir}"
     )
 
     # Build environment
@@ -416,6 +422,144 @@ function(add_testreflection_tests)
 
             set(full_test_id "${base_id}/${subtest_id}")
             _register_reflection_test("${subtest}" "${full_test_id}" "${xfail_list}")
+        endforeach()
+    endforeach()
+endfunction()
+
+# Function to add Python pytest tests, one CTest entry per test function/method.
+# Uses Python's ast module at CMake configure time to enumerate test IDs — no
+# import of libfyaml needed, immune to semicolons/special chars in source.
+#
+# CTest name:  python/<suite>/<file_stem>::[ClassName::]test_name
+# test_id:     <rel_file>::[ClassName::]test_name  (pytest node-ID format)
+# Suite name:  "python"  (handled by run-single-tap-test.sh)
+# Working dir: <srcdir>/python-libfyaml
+#
+# Required env injected via EXTRA_ENV:
+#   PYTHON3_EXECUTABLE, PYTHONPATH, LD_LIBRARY_PATH
+# Optional (when HAVE_ASAN):
+#   LD_PRELOAD, ASAN_OPTIONS
+function(add_python_tests)
+    set(_py_src_dir "${CMAKE_CURRENT_SOURCE_DIR}/python-libfyaml")
+
+    # Discover test files
+    file(GLOB _py_test_files
+        "${_py_src_dir}/tests/core/test_*.py")
+
+    # Build PYTHONPATH: always include the build-tree package
+    set(_pythonpath "${CMAKE_CURRENT_BINARY_DIR}/python-libfyaml")
+
+    # If pytest is not directly importable by Python3_EXECUTABLE (e.g. when
+    # the system Python is "externally managed" and pytest was installed via
+    # Homebrew into its own libexec virtualenv), locate the pytest executable,
+    # read its shebang interpreter, and ask that interpreter for its
+    # site-packages so we can prepend them to PYTHONPATH.
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}" -c "import pytest"
+        RESULT_VARIABLE _pytest_check
+        ERROR_QUIET
+        OUTPUT_QUIET
+    )
+    if(NOT _pytest_check EQUAL 0)
+        find_program(_pytest_prog pytest)
+        if(_pytest_prog)
+            # Extract the shebang line (first line, strip leading #!)
+            file(READ "${_pytest_prog}" _pytest_script_head LIMIT 256)
+            string(REGEX MATCH "^#!([^\n]+)" _shebang_match "${_pytest_script_head}")
+            set(_pytest_python "${CMAKE_MATCH_1}")
+            string(STRIP "${_pytest_python}" _pytest_python)
+            if(_pytest_python AND EXISTS "${_pytest_python}")
+                execute_process(
+                    COMMAND "${_pytest_python}" -c
+                        "import pytest, os; print(os.path.dirname(os.path.dirname(os.path.abspath(pytest.__file__))))"
+                    OUTPUT_VARIABLE _pytest_site
+                    OUTPUT_STRIP_TRAILING_WHITESPACE
+                    RESULT_VARIABLE _r
+                    ERROR_QUIET
+                )
+                if(_r EQUAL 0 AND _pytest_site AND EXISTS "${_pytest_site}")
+                    message(STATUS "pytest site-packages (${_pytest_site}) added to PYTHONPATH")
+                    set(_pythonpath "${_pytest_site}:${_pythonpath}")
+                endif()
+            endif()
+        endif()
+        unset(_pytest_prog CACHE)
+    endif()
+
+    # Base environment
+    set(_py_env
+        "PYTHON3_EXECUTABLE=${Python3_EXECUTABLE}"
+        "PYTHONPATH=${_pythonpath}"
+        "LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}"
+        "LIBFYAML_PYTHON_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/python-libfyaml"
+    )
+
+    # ASan: find libasan and extend environment
+    if(HAVE_ASAN)
+        execute_process(
+            COMMAND ${CMAKE_C_COMPILER} -print-file-name=libasan.so
+            OUTPUT_VARIABLE _libasan_path
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        if(_libasan_path AND EXISTS "${_libasan_path}")
+            list(APPEND _py_env
+                "LD_PRELOAD=${_libasan_path}"
+                "ASAN_OPTIONS=detect_leaks=0:halt_on_error=1:detect_stack_use_after_return=1"
+            )
+        endif()
+    endif()
+
+    # AST script: walks the parse tree to find test functions and methods.
+    # Outputs one pytest node-ID per line; never imports the test module itself.
+    set(_ast_script [=[
+import ast, sys
+tree = ast.parse(open(sys.argv[1]).read())
+for node in ast.iter_child_nodes(tree):
+    if isinstance(node, ast.FunctionDef) and node.name.startswith('test_'):
+        print(node.name)
+    elif isinstance(node, ast.ClassDef) and node.name.startswith('Test'):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.FunctionDef) and child.name.startswith('test_'):
+                print(node.name + '::' + child.name)
+]=])
+
+    foreach(_py_file ${_py_test_files})
+        # Relative path from python-libfyaml/ (e.g. tests/core/test_basic.py)
+        file(RELATIVE_PATH _rel_path "${_py_src_dir}" "${_py_file}")
+
+        # Suite label: "core"
+        if(_rel_path MATCHES "tests/core/")
+            set(_suite "core")
+        endif()
+
+        get_filename_component(_file_stem "${_py_file}" NAME_WE)
+
+        # Enumerate test IDs via AST at configure time (no libfyaml build needed)
+        execute_process(
+            COMMAND "${Python3_EXECUTABLE}" -c "${_ast_script}" "${_py_file}"
+            OUTPUT_VARIABLE _raw_ids
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            RESULT_VARIABLE _ast_result
+        )
+        if(NOT _ast_result EQUAL 0)
+            message(WARNING "add_python_tests: AST scan failed for ${_rel_path}")
+            continue()
+        endif()
+
+        # Split newline-separated IDs into a CMake list (safe: node IDs have no semicolons)
+        string(REPLACE "\n" ";" _id_list "${_raw_ids}")
+
+        foreach(_node_id IN LISTS _id_list)
+            if(_node_id)
+                add_tap_test(
+                    "python/${_suite}/${_file_stem}::${_node_id}"
+                    "python"
+                    "${_rel_path}::${_node_id}"
+                    LABELS "python"
+                    EXTRA_ENV "${_py_env}"
+                    WORKING_DIR "${_py_src_dir}"
+                )
+            endif()
         endforeach()
     endforeach()
 endfunction()

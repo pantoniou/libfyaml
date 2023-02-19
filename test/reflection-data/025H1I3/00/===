@@ -1,0 +1,1 @@
+Struct containing a function pointer should not be serializable

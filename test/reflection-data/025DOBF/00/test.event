@@ -1,0 +1,40 @@
++STR
++DOC
++MAP
+=VAL "string
+=VAL "Hello there
+=VAL "string2
+=VAL "something different
+=VAL "string3
+=VAL "not that different
+=VAL "string4
+=VAL "type different
+=VAL "ptrlong
+=VAL "200
+=VAL "baz_in_place
++MAP
+=VAL "heh
+=VAL "Hehehe
+-MAP
+=VAL "baz_out_of_place
++MAP
+=VAL "heh
+=VAL "Out-of-place-Hehehe
+-MAP
+=VAL "table
++SEQ
+=VAL "10
+=VAL "11
+=VAL "12
+-SEQ
+=VAL "null_req
+=VAL "yes
+=VAL "const_int
++SEQ
+=VAL "1
+=VAL "2
+=VAL "3
+-SEQ
+-MAP
+-DOC
+-STR

@@ -1,0 +1,53 @@
++STR
++DOC
++MAP
+=VAL "values
++SEQ
+=VAL "101
+=VAL "102
+=VAL "103
+=VAL "104
+=VAL "105
+-SEQ
+=VAL "more_values
++SEQ
+=VAL "201
+=VAL "202
+-SEQ
+=VAL "strings
++SEQ
+=VAL "Hello
+=VAL "world
+-SEQ
+=VAL "bar
++MAP
+=VAL "a
+=VAL "8
+=VAL "b
+=VAL "9
+-MAP
+=VAL "pointers
++SEQ
+=VAL "10
+=VAL "11
+-SEQ
+=VAL "slist
++MAP
+=VAL "strings
++SEQ
+=VAL "this
+=VAL "is
+=VAL "a
+=VAL "test
+-SEQ
+-MAP
+=VAL "sflist
++SEQ
+=VAL "yeah
+=VAL "flat
+=VAL "is
+=VAL "hip
+-SEQ
+-MAP
+-DOC
+-STR

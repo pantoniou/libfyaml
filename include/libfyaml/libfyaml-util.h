@@ -282,7 +282,6 @@ static __inline const char *fy_alloca_copy_free_impl(char *str, size_t len)
  *
  * Returns: ``const char *`` to the stack copy, or ``""`` if @_str was NULL.
  */
-#ifndef FY_ALLOCA_COPY_FREE_NO_NULL
 #define FY_ALLOCA_COPY_FREE_NO_NULL(_str, _len)			\
         ({							\
                 const char *__strb;				\
@@ -292,7 +291,6 @@ static __inline const char *fy_alloca_copy_free_impl(char *str, size_t len)
 			__strb = "";				\
 		__strb;						\
         })
-#endif
 #endif
 
 /**
