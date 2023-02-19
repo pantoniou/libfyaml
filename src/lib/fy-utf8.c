@@ -24,7 +24,7 @@ const int8_t fy_utf8_width_table[32] = {
 	2, 2, 2, 2, 3, 3, 4, 0,
 };
 
-int fy_utf8_get_generic(const void *ptr, int left, int *widthp)
+int fy_utf8_get_generic(const void *ptr, size_t left, int *widthp)
 {
 	const uint8_t *p = ptr;
 	int i, width, value;
@@ -36,7 +36,7 @@ int fy_utf8_get_generic(const void *ptr, int left, int *widthp)
 	width = fy_utf8_width_by_first_octet(p[0]);
 	if (!width)
 		return FYUG_INV;
-	if (width > left)
+	if ((size_t)width > left)
 		return FYUG_PARTIAL;
 
 	/* initial value */
@@ -59,7 +59,7 @@ int fy_utf8_get_generic(const void *ptr, int left, int *widthp)
 	return value;
 }
 
-int fy_utf8_get_right_generic(const void *ptr, int left, int *widthp)
+int fy_utf8_get_right_generic(const void *ptr, size_t left, int *widthp)
 {
 	const uint8_t *s, *e;
 	uint8_t v;
@@ -156,10 +156,11 @@ static inline int fy_utf8_esc_map(int c, enum fy_utf8_escape esc)
 	return esc_map(&esc_all, c);
 }
 
-int fy_utf8_format_text_length(const char *buf, size_t len,
-			       enum fy_utf8_escape esc)
+size_t fy_utf8_format_text_length(const char *buf, size_t len,
+			          enum fy_utf8_escape esc)
 {
-	int c, w, l;
+	int c, w;
+	ssize_t l;
 	const char *s, *e;
 
 	s = buf;
@@ -234,11 +235,11 @@ char *fy_utf8_format(int c, char *buf, enum fy_utf8_escape esc)
 
 char *fy_utf8_format_text_alloc(const char *buf, size_t len, enum fy_utf8_escape esc)
 {
-	int outsz;
+	size_t outsz;
 	char *out;
 
 	outsz = fy_utf8_format_text_length(buf, len, esc);
-	if (outsz < 0)
+	if ((ssize_t)outsz < 0)
 		return NULL;
 	out = malloc(outsz);
 	if (!out)

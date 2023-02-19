@@ -59,14 +59,14 @@ fy_utf8_is_printable_ascii(int c)
 }
 
 /* generic utf8 decoder (not inlined) */
-int fy_utf8_get_generic(const void *ptr, int left, int *widthp);
+int fy_utf8_get_generic(const void *ptr, size_t left, int *widthp);
 
 /* -1 for end of input, -2 for invalid character, -3 for partial */
 #define FYUG_EOF	-1
 #define FYUG_INV	-2
 #define FYUG_PARTIAL	-3
 
-static inline int fy_utf8_get(const void *ptr, int left, int *widthp)
+static inline int fy_utf8_get(const void *ptr, size_t left, int *widthp)
 {
 	const uint8_t *p = ptr;
 
@@ -83,7 +83,7 @@ static inline int fy_utf8_get(const void *ptr, int left, int *widthp)
 	return fy_utf8_get_generic(ptr, left, widthp);
 }
 
-int fy_utf8_get_right_generic(const void *ptr, int left, int *widthp);
+int fy_utf8_get_right_generic(const void *ptr, size_t left, int *widthp);
 
 static inline int fy_utf8_get_right(const void *ptr, int left, int *widthp)
 {
@@ -154,8 +154,8 @@ char *fy_utf8_format(int c, char *buf, enum fy_utf8_escape esc);
 	 	fy_utf8_format((_c), _buf, _esc); \
 	})
 
-int fy_utf8_format_text_length(const char *buf, size_t len,
-			       enum fy_utf8_escape esc);
+size_t fy_utf8_format_text_length(const char *buf, size_t len,
+			          enum fy_utf8_escape esc);
 char *fy_utf8_format_text(const char *buf, size_t len,
 			  char *out, size_t maxsz,
 			  enum fy_utf8_escape esc);

@@ -301,7 +301,7 @@ FY_CTYPE_AT_BUILDER(json_unescaped);
  */
 
 /* skip for a _single_ linebreak */
-static inline const void *fy_skip_lb(const void *ptr, int left)
+static inline const void *fy_skip_lb(const void *ptr, size_t left)
 {
 	int c, width;
 
@@ -311,7 +311,7 @@ static inline const void *fy_skip_lb(const void *ptr, int left)
 		return NULL;
 
 	/* MS-DOS: check if next character is '\n' */
-	if (c == '\r' && left > width && *(char *)ptr == '\n')
+	if (c == '\r' && left > (size_t)width && *(char *)ptr == '\n')
 		width++;
 
 	return ptr + width;
@@ -321,7 +321,7 @@ static inline const void *fy_skip_lb(const void *ptr, int left)
  * ws character after the last non-ws character, or the end
  * of the chunk
  */
-static inline const void *fy_last_non_ws(const void *ptr, int left)
+static inline const void *fy_last_non_ws(const void *ptr, size_t left)
 {
 	const char *s, *e;
 	int c;

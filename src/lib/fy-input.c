@@ -611,7 +611,7 @@ const void *fy_reader_ptr_slow_path(struct fy_reader *fyr, size_t *leftp)
 {
 	struct fy_input *fyi;
 	const void *p;
-	int left;
+	size_t left;
 
 	if (fyr->current_ptr) {
 		if (leftp)
