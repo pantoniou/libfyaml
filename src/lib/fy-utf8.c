@@ -992,3 +992,68 @@ void *fy_utf8_split_posix(const char *str, int *argcp, const char * const *argvp
 
 	return mem;
 }
+
+int fy_utf8_get_generic_s(const void *ptr, const void *ptr_end, int *widthp)
+{
+	const uint8_t *p = ptr;
+	int i, width, value;
+
+	if (ptr >= ptr_end)
+		return FYUG_EOF;
+
+	/* this is the slow path */
+	width = fy_utf8_width_by_first_octet(p[0]);
+	if (!width)
+		return FYUG_INV;
+	if (ptr + width > ptr_end)
+		return FYUG_PARTIAL;
+
+	/* initial value */
+	value = *p++ & (0xff >> width);
+	for (i = 1; i < width; i++) {
+		if ((*p & 0xc0) != 0x80)
+			return FYUG_INV;
+		value = (value << 6) | (*p++ & 0x3f);
+	}
+
+	/* check for validity */
+	if ((width == 4 && value < 0x10000) ||
+	    (width == 3 && value <   0x800) ||
+	    (width == 2 && value <    0x80) ||
+	    (value >= 0xd800 && value <= 0xdfff) || value >= 0x110000)
+		return FYUG_INV;
+
+	*widthp = width;
+
+	return value;
+}
+
+int fy_utf8_get_generic_s_nocheck(const void *ptr, int *widthp)
+{
+	const uint8_t *p = ptr;
+	int i, width, value;
+
+	/* this is the slow path */
+	width = fy_utf8_width_by_first_octet(p[0]);
+	if (!width)
+		return FYUG_INV;
+
+	/* initial value */
+	value = *p++ & (0xff >> width);
+	for (i = 1; i < width; i++) {
+		if ((*p & 0xc0) != 0x80)
+			return FYUG_INV;
+		value = (value << 6) | (*p++ & 0x3f);
+	}
+
+	/* check for validity */
+	if ((width == 4 && value < 0x10000) ||
+	    (width == 3 && value <   0x800) ||
+	    (width == 2 && value <    0x80) ||
+	    (value >= 0xd800 && value <= 0xdfff) || value >= 0x110000)
+		return FYUG_INV;
+
+	*widthp = width;
+
+	return value;
+}

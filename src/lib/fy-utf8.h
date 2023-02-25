@@ -20,6 +20,9 @@
 
 #include "fy-utils.h"
 
+#define FY_UTF8_MIN_WIDTH 1
+#define FY_UTF8_MAX_WIDTH 4
+
 extern const int8_t fy_utf8_width_table[32];
 
 static inline int
@@ -227,5 +230,61 @@ int fy_utf8_parse_escape(const char **strp, size_t len, enum fy_utf8_escape esc)
 extern uint8_t fy_utf8_low_ascii_flags[0x80];
 
 void *fy_utf8_split_posix(const char *str, int *argcp, const char * const *argvp[]);
+
+int fy_utf8_get_generic_s(const void *ptr, const void *ptr_end, int *widthp);
+int fy_utf8_get_generic_s_nocheck(const void *ptr, int *widthp);
+
+static inline int fy_utf8_get_s(const void *ptr, const void *ptr_end, int *widthp)
+{
+	const uint8_t *p = ptr;
+
+	/* single byte (hot path) */
+	if (ptr >= ptr_end) {
+		*widthp = 0;
+		return FYUG_EOF;
+	}
+
+	if (!(p[0] & 0x80)) {
+		*widthp = 1;
+		return p[0];
+	}
+	return fy_utf8_get_generic_s(ptr, ptr_end, widthp);
+}
+
+static inline int fy_utf8_get_s_nocheck(const void *ptr, int *widthp)
+{
+	const uint8_t *p = ptr;
+
+	if (!(p[0] & 0x80)) {
+		*widthp = 1;
+		return p[0];
+	}
+	return fy_utf8_get_generic_s_nocheck(ptr, widthp);
+}
+
+/* for most 64 bit arches this will fit in a single register */
+struct fy_utf8_result {
+	int c;
+	int w;
+};
+
+/* probably the most performant version */
+static inline struct fy_utf8_result fy_utf8_get_s_res(const void *ptr, const void *ptr_end)
+{
+	const uint8_t *p = ptr;
+	int c, width;
+
+	/* single byte (hot path) */
+	if (ptr >= ptr_end)
+		return (struct fy_utf8_result){ FYUG_EOF, 0 };
+
+	if (!(p[0] & 0x80))
+		return (struct fy_utf8_result){ p[0], 1 };
+
+	c = fy_utf8_get_generic_s(ptr, ptr_end, &width);
+	if (c < 0)
+		return (struct fy_utf8_result){ c, 0 };
+	return (struct fy_utf8_result){ c, width };
+}
 
 #endif
