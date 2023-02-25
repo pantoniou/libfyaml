@@ -4626,7 +4626,7 @@ void fy_reader_skip_ws_lb(struct fy_reader *fyr)
 				}
 				s++;
 			} else {
-				c = fy_utf8_get(s, (int)(e - s), &w);
+				c = fy_utf8_get(s, (size_t)(e - s), &w);
 
 				if (c == FYUG_PARTIAL) {
 					/* get the width (from the first octet */
