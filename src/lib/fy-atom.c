@@ -1734,7 +1734,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 		return NULL;
 
 	while (s > iter->is) {
-		c = fy_utf8_get_right(iter->is, (int)(s - iter->is), &w);
+		c = fy_utf8_get_right(iter->is, (size_t)(s - iter->is), &w);
 		if (c <= 0 || fy_is_lb_m(c, iter->atom->lb_mode))
 			break;
 		s -= w;
@@ -1748,7 +1748,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 
 	/* track until the start of the content */
 	while (s < iter->as) {
-		c = fy_utf8_get(s, (int)(iter->ae - s), &w);
+		c = fy_utf8_get(s, (size_t)(iter->ae - s), &w);
 		/* we should never hit that */
 		if (c <= 0)
 			return NULL;
@@ -1775,7 +1775,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 
 	/* track until the end of the content (or lb) */
 	while (s < iter->ae) {
-		c = fy_utf8_get(s, (int)(iter->ae - s), &w);
+		c = fy_utf8_get(s, (size_t)(iter->ae - s), &w);
 		/* we should never hit that */
 		if (c <= 0)
 			return NULL;
@@ -1803,7 +1803,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 	/* if the stop was due to end of the atom */
 	if (s >= iter->ae) {
 		while (s < iter->ie) {
-			c = fy_utf8_get(s, (int)(iter->ie - s), &w);
+			c = fy_utf8_get(s, (size_t)(iter->ie - s), &w);
 			/* just end of input */
 			if (c <= 0)
 				break;
