@@ -590,3 +590,405 @@ uint8_t fy_utf8_low_ascii_flags[0x80] = {
 	['~']  = F_PUNCT,
 	[0x7F] = F_NON_PRINT,				// DEL
 };
+
+void *fy_utf8_split_posix(const char *str, int *argcp, const char * const *argvp[])
+{
+	enum split_state {
+		SS_WS,			/* at whitespace */
+		SS_WS_BS,		/* backslash at whitespace */
+		SS_UQ,			/* at unquoted */
+		SS_UQ_BS,		/* backslash at unquoted */
+		SS_SQ,			/* at single quote */
+		SS_SQ_BS,		/* backslash at single quote */
+		SS_DQ,			/* at double quote */
+		SS_DQ_BS,		/* backslash at double quote */
+		SS_DQ_BS_OCT1,		/* in \nnn octal escape digit 1 */
+		SS_DQ_BS_OCT2,		/* in \nnn octal escape digit 2 */
+		SS_DQ_BS_HEX0,		/* in \xNN hex escape digit 0 */
+		SS_DQ_BS_HEX1,		/* in \xNN hex escape digit 1 */
+		SS_DQ_BS_HEX2,		/* in \xNN hex escape digit 2 */
+		SS_DQ_BS_C,		/* in \cN control character escape */
+		SS_WS_BS_ERR_EOL,	/* EOL while waiting for char after \ */
+		SS_UQ_BS_ERR_EOL,	/* EOL while waiting for char after \ */
+		SS_SQ_BS_ERR_EOL,	/* EOL while waiting for char after \ */
+		SS_DQ_BS_ERR_EOL,	/* EOL while waiting for char after \ */
+		SS_DQ_BS_ERR_BAD,	/* bad escape */
+		SS_SQ_NC_ERR,		/* no closing single quote */
+		SS_DQ_NC_ERR,		/* no closing double quote */
+		SS_DQ_BS_ERR_OCT_BAD,	/* bad octal escape */
+		SS_DQ_BS_ERR_HEX_BAD,	/* bad hex escape */
+		SS_DQ_BS_ERR_C_BAD,	/* bad control char */
+		SS_DONE			/* final state */
+	};
+	const char *s, *e;
+	enum split_state ss;
+	int c, w, val, tmp, outc, i;
+	size_t arg_alloc = strlen(str) + 1, tmplen;
+	char *arg = NULL, *args, *arge, *tmparg;
+	int argv_alloc = 64, argv_count = 0;
+	char **argv = NULL, **tmpargv;
+	void *mem;
+
+	if (!str || !argcp || !argvp)
+		return NULL;
+
+	/* the temporary is guaranteed to fit one split */
+	arg = alloca(arg_alloc);
+	args = arg;
+	arge = arg + arg_alloc - 1;
+
+	argv = alloca(sizeof(*argv) * argv_alloc);
+
+	e = str + strlen(str);
+
+#undef OUTC
+#define OUTC(_c) \
+	do { \
+		assert(args < arge); \
+		args = fy_utf8_put(args, arge - args, (_c)); \
+		assert(args); \
+	} while(0)
+
+#undef NEW_ARGV
+#define NEW_ARGV() \
+	do { \
+		if (args > arg) { \
+			if (argv_count + 1 >= argv_alloc) { \
+				argv_alloc *= 2; \
+				tmpargv = alloca((sizeof(*tmpargv) * argv_alloc)); \
+				memcpy(tmpargv, argv, argv_count * sizeof(*tmpargv)); \
+			} \
+			tmplen = args - arg; \
+			tmparg = alloca(tmplen + 1); \
+			memcpy(tmparg, arg, tmplen); \
+			tmparg[tmplen] = '\0'; \
+			argv[argv_count] = tmparg; \
+			argv[++argv_count] = NULL; \
+		} \
+		args = arg; \
+	} while(0)
+
+#define GOTO(_ss) \
+	do { \
+		ss = (_ss); \
+	} while(0)
+
+
+	ss = SS_WS;
+	s = str;
+	val = 0;
+	while (!(ss >= SS_WS_BS_ERR_EOL && ss <= SS_DONE)) {
+		c = fy_utf8_get(s, e - s, &w);
+		switch (ss) {
+		case SS_WS:
+			if (c < 0) {
+				NEW_ARGV();
+				GOTO(SS_DONE);
+				break;
+			}
+			switch (c) {
+			case ' ':
+			case '\t':
+				break;	/* no change */
+			case '\\':
+				GOTO(SS_WS_BS);
+				break;
+			case '"':
+				GOTO(SS_DQ);	/* start double quoted */
+				NEW_ARGV();
+				break;
+			case '\'':
+				GOTO(SS_SQ);	/* start single quoted */
+				NEW_ARGV();
+				break;
+			default:
+				GOTO(SS_UQ);	/* start unquoted */
+				NEW_ARGV();
+				OUTC(c);
+				break;
+			}
+			break;
+
+		case SS_WS_BS:
+			if (c < 0) {
+				GOTO(SS_WS_BS_ERR_EOL);
+				break;
+			}
+			if (c == '\n') {	/* backslash newline, continuation */
+				GOTO(SS_WS);
+				break;
+			}
+			GOTO(SS_UQ);
+			NEW_ARGV();
+			OUTC(c);
+			break;
+
+		case SS_UQ:
+			if (c <= 0) {
+				NEW_ARGV();
+				GOTO(SS_DONE);
+				break;
+			}
+
+			switch (c) {
+			case ' ':
+			case '\t':
+				GOTO(SS_WS);
+				NEW_ARGV();
+				break;	/* no change */
+			case '\\':
+				GOTO(SS_UQ_BS);
+				break;
+			case '"':
+				GOTO(SS_DQ);	/* double quoted */
+				break;
+			case '\'':
+				GOTO(SS_SQ);	/* single quoted */
+				break;
+			default:
+				OUTC(c);
+				break;
+			}
+			break;
+
+		case SS_UQ_BS:
+			if (c < 0) {
+				GOTO(SS_UQ_BS_ERR_EOL);
+				break;
+			}
+			if (c == '\n') {	/* backslash new line only */
+				GOTO(SS_UQ);
+				break;
+			}
+			GOTO(SS_UQ);
+			OUTC(c);
+			break;
+
+		case SS_SQ:
+			if (c < 0) {
+				GOTO(SS_SQ_NC_ERR);	/* no closing ' */
+				break;
+			}
+			switch (c) {
+			case '\'':		/* end of quote, back to unquoted */
+				GOTO(SS_UQ);
+				break;
+			case '\\':
+				OUTC(c);
+				GOTO(SS_SQ_BS);	/* backslash */
+				break;
+			default:
+				OUTC(c);
+				break;
+			}
+			break;
+
+		case SS_SQ_BS:
+			if (c < 0) {
+				GOTO(SS_SQ_BS_ERR_EOL);
+				break;
+			}
+			if (c == '\n') {	/* backslash new line only */
+				GOTO(SS_SQ);	/* back to single quoted */
+				break;
+			}
+			GOTO(SS_UQ);		/* always back to */
+			OUTC(c);
+			break;
+
+		case SS_DQ:
+			if (c < 0) {
+				GOTO(SS_DQ_NC_ERR);	/* no closing ' */
+				break;
+			}
+			switch (c) {
+			case '"':		/* end of quote, back to unquoted */
+				GOTO(SS_UQ);
+				break;
+			case '\\':
+				GOTO(SS_DQ_BS);	/* backslash */
+				break;
+			default:
+				OUTC(c);
+				break;
+			}
+			break;
+
+		case SS_DQ_BS:
+			if (c < 0) {
+				GOTO(SS_DQ_BS_ERR_EOL);
+				break;
+			}
+			outc = -1;
+			switch (c) {
+			case 'a':
+				outc = '\a';
+				break;
+			case 'b':
+				outc = '\b';
+				break;
+			case 'e':
+				outc = '\x1b';	/* escape */
+				break;
+			case 'n':
+				outc = '\n';
+				break;
+			case 'r':
+				outc = '\r';
+				break;
+			case 't':
+				outc = '\t';
+				break;
+			case 'v':
+				outc = '\v';
+				break;
+			case '\\':
+				outc = '\\';
+				break;
+			case '\'':
+				outc = '\'';
+				break;
+			case '0':
+			case '1':
+			case '2':
+			case '3':
+			case '4':
+			case '5':
+			case '6':
+			case '7':
+				val = c - '0';
+				GOTO(SS_DQ_BS_OCT1);
+				break;
+			case 'x':
+				val = 0;
+				GOTO(SS_DQ_BS_HEX0);
+				break;
+			case 'c':
+				val = 0;
+				GOTO(SS_DQ_BS_C);
+				break;
+			default:
+				GOTO(SS_DQ_BS_ERR_BAD);	/* unknown escape */
+				break;
+			}
+			if (outc > 0) {
+				OUTC(outc);
+				GOTO(SS_DQ);
+			}
+			break;
+
+		case SS_DQ_BS_OCT1:
+		case SS_DQ_BS_OCT2:
+			if (c < 0) {
+				OUTC(val);
+				NEW_ARGV();
+				GOTO(SS_DONE);
+				break;
+			}
+			if (!(c >= '0' && c <= '7')) {
+				OUTC(val);
+				GOTO(SS_DQ);
+				w = 0;	/* redo, same */
+				break;
+			}
+			val *= 8;
+			val += c - '0';
+			if (ss == SS_DQ_BS_OCT2) {
+				OUTC(val);
+				GOTO(SS_DQ);
+			} else
+				GOTO(SS_DQ_BS_OCT2);
+			break;
+
+		case SS_DQ_BS_HEX0:
+		case SS_DQ_BS_HEX1:
+		case SS_DQ_BS_HEX2:
+			tmp = -1;
+			if (c >= '0' && c <= '9')
+				tmp = c - '0';
+			else if (c >= 'a' && c <= 'f')
+				tmp = 10 + c - 'a';
+			else if (c >= 'A' && c <= 'F')
+				tmp = 10 + c - 'A';
+
+			switch (ss) {
+			case SS_DQ_BS_HEX0:
+				if (tmp < 0) {
+					fprintf(stderr, "tmp=%d c=%c\n", tmp, c);
+					GOTO(SS_DQ_BS_ERR_HEX_BAD);
+					break;
+				}
+				val = tmp;
+				GOTO(SS_DQ_BS_HEX1);
+				break;
+
+			case SS_DQ_BS_HEX1:
+			case SS_DQ_BS_HEX2:
+				if (tmp < 0) {
+					GOTO(SS_DQ);
+					OUTC(val);
+					w = 0;	/* redo */
+					break;
+				}
+				val *= 16;
+				val += tmp;
+				if (ss == SS_DQ_BS_HEX1)
+					GOTO(SS_DQ_BS_HEX2);
+				else {
+					OUTC(val);
+					GOTO(SS_DQ);
+				}
+				break;
+
+			default:
+				abort();
+			}
+			break;
+
+		case SS_DQ_BS_C:
+			outc = -1;
+			if (c >= 'a' && c <= 'z')
+				outc = c - 'a' + 1;
+			else if (c >= 'A' && c <= 'Z')
+				outc = c - 'Z' + 1;
+			if (outc > 0x20) {
+				outc = -1;
+				GOTO(SS_DQ_BS_ERR_C_BAD);
+			} else
+				GOTO(SS_DQ);
+			if (outc > 0)
+				OUTC(outc);
+			break;
+		default:
+			abort();
+			break;
+		}
+		s += w;
+	}
+
+	/* someething went wrong */
+	if (ss != SS_DONE)
+		return NULL;
+
+	tmplen = (argv_count + 1) * sizeof(*argv);
+	for (i = 0; i < argv_count; i++)
+		tmplen += strlen(argv[i]) + 1;
+
+	mem = malloc(tmplen);
+	if (!mem)
+		return NULL;
+
+	tmpargv = mem;
+	tmparg = mem + (argv_count + 1) * sizeof(*tmpargv);
+	for (i = 0; i < argv_count; i++) {
+		tmpargv[i] = tmparg;
+		strcpy(tmparg, argv[i]);
+		tmparg += strlen(argv[i]) + 1;
+	}
+	tmpargv[i] = NULL;
+
+	*argcp = i;
+	*argvp = mem;
+
+	return mem;
+}

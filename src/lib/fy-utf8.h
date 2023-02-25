@@ -226,4 +226,6 @@ int fy_utf8_parse_escape(const char **strp, size_t len, enum fy_utf8_escape esc)
 
 extern uint8_t fy_utf8_low_ascii_flags[0x80];
 
+void *fy_utf8_split_posix(const char *str, int *argcp, const char * const *argvp[]);
+
 #endif
