@@ -18,6 +18,8 @@
 #include <unistd.h>
 #include <limits.h>
 #include <ctype.h>
+#include <time.h>
+#include <inttypes.h>
 
 #include <libfyaml.h>
 
@@ -27,6 +29,7 @@
 
 #include "fy-parse.h"
 #include "fy-walk.h"
+#include "fy-blob.h"
 
 #include "fy-valgrind.h"
 
@@ -94,7 +97,7 @@ static struct option lopts[] = {
 #define LIBYAML_MODES	""
 #endif
 
-#define MODES	"parse|scan|copy|testsuite|dump|dump2|build|walk|reader|compose|iterate|comment|pathspec" LIBYAML_MODES
+#define MODES	"parse|scan|copy|testsuite|dump|dump2|build|walk|reader|compose|iterate|comment|pathspec|shell-split|parse-timing" LIBYAML_MODES
 
 static void display_usage(FILE *fp, char *progname)
 {
@@ -3958,6 +3961,157 @@ int do_bad_utf8(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	return 0;
 }
 
+int do_shell_split(int in_argc, char *in_argv[])
+{
+	char buf[256], line[256 + 1];
+	char *s, *e;
+	const char * const *argv;
+	int i, argc;
+	void *mem;
+
+	printf("shell split; Ctrl-D to exit\n");
+	buf[sizeof(buf)-1] = '\0';
+	while (fgets(buf, sizeof(buf) - 1, stdin)) {
+		buf[sizeof(buf)-1] = '\0';
+		strcpy(line, buf);
+		s = line;
+		e = s + strlen(line);
+		while (e > s && e[-1] == '\n')
+			*--e = '\0';
+
+		printf("input: '%s'\n", line);
+
+		mem = fy_utf8_split_posix(line, &argc, &argv);
+		if (!mem) {
+			fprintf(stderr, "Bad input '%s'\n", line);
+		} else {
+			for (i = 0; i < argc; i++) {
+				fprintf(stderr, "%d: %s\n", i, argv[i]);
+			}
+			assert(argv[argc] == NULL);
+			free(mem);
+		}
+	}
+	return 0;
+}
+
+int do_parse_timing(int argc, char *argv[], bool disable_mmap)
+{
+	void *blob;
+	size_t blob_size;
+	int i, c, w;
+	struct timespec before, after;
+	int64_t ns;
+	const uint8_t *s, *e, *ss;
+	size_t count;
+	struct fy_utf8_result res;
+
+#undef BEFORE
+#define BEFORE() \
+	do { \
+		clock_gettime(CLOCK_MONOTONIC, &before); \
+	} while(0)
+
+#undef AFTER
+#define AFTER() \
+	({ \
+		clock_gettime(CLOCK_MONOTONIC, &after); \
+		(int64_t)(after.tv_sec - before.tv_sec) * (int64_t)1000000000UL + (int64_t)(after.tv_nsec - before.tv_nsec); \
+	})
+
+	for (i = optind; i < argc; i++) {
+
+		printf("file=%s\n", argv[i]);
+
+		BEFORE();
+		blob = fy_blob_read(argv[i], &blob_size);
+		assert(blob);
+		ns = AFTER();
+
+		printf("read %zu bytes in %"PRId64"ns\n", blob_size, ns);
+
+		BEFORE();
+		s = blob;
+		e = s + blob_size;
+		count = 0;
+		while (s < e) {
+			if (*s++ == 'e')
+				count++;
+		}
+		ns = AFTER();
+		printf("%zu 'e' chars method 1 in %"PRId64"ns\n", count, ns);
+
+		BEFORE();
+		s = blob;
+		e = s + blob_size;
+		count = 0;
+		while ((ss = memchr(s, 'e', e - s)) != NULL) {
+			count++;
+			s = ss + 1;
+		}
+		ns = AFTER();
+		printf("%zu 'e' chars method 2 in %"PRId64"ns\n", count, ns);
+
+		BEFORE();
+		s = blob;
+		e = s + blob_size;
+		count = 0;
+		while ((c = fy_utf8_get(s, e - s, &w)) >= 0) {
+			if (c == 'e')
+				count++;
+			s += w;
+		}
+		ns = AFTER();
+		printf("%zu 'e' utf8 characters using method 1 in %"PRId64"ns\n", count, ns);
+
+		BEFORE();
+		s = blob;
+		e = s + blob_size;
+		count = 0;
+		while ((c = fy_utf8_get_s(s, e, &w)) >= 0) {
+			if (c == 'e')
+				count++;
+			s += w;
+		}
+		ns = AFTER();
+		printf("%zu 'e' utf8 characters using method 2 in %"PRId64"ns\n", count, ns);
+
+		BEFORE();
+		s = blob;
+		e = s + blob_size - FY_UTF8_MAX_WIDTH;
+		count = 0;
+		while (s < e && (c = fy_utf8_get_s_nocheck(s, &w)) >= 0) {
+			if (c == 'e')
+				count++;
+			s += w;
+		}
+		while ((c = fy_utf8_get_s(s, e, &w)) >= 0) {
+			if (c == 'e')
+				count++;
+			s += w;
+		}
+		ns = AFTER();
+		printf("%zu 'e' utf8 characters using method 3 in %"PRId64"ns\n", count, ns);
+
+		BEFORE();
+		s = blob;
+		e = s + blob_size;
+		count = 0;
+		while ((res = fy_utf8_get_s_res(s, e)).c >= 0) {
+			if (res.c == 'e')
+				count++;
+			s += res.w;
+		}
+		ns = AFTER();
+		printf("%zu 'e' utf8 characters using method 4 in %"PRId64"ns\n", count, ns);
+
+		free(blob);
+
+	}
+
+	return 0;
+}
+
 int apply_flags_option(const char *arg, unsigned int *flagsp,
 		int (*modify_flags)(const char *what, unsigned int *flagsp))
 {
@@ -4151,7 +4305,9 @@ int main(int argc, char *argv[])
 	    strcmp(mode, "pathspec") &&
 	    strcmp(mode, "bypath") &&
 	    strcmp(mode, "crash") &&
-	    strcmp(mode, "badutf8")
+	    strcmp(mode, "badutf8") &&
+	    strcmp(mode, "shell-split") &&
+	    strcmp(mode, "parse-timing")
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 	    && strcmp(mode, "libyaml-scan")
 	    && strcmp(mode, "libyaml-parse")
@@ -4399,6 +4555,18 @@ int main(int argc, char *argv[])
 		rc = do_bypath(fyp, walkpath, walkstart);
 		if (rc < 0) {
 			/* fprintf(stderr, "do_bypath() error %d\n", rc); */
+			goto cleanup;
+		}
+	} else if (!strcmp(mode, "shell-split")) {
+		rc = do_shell_split(argc, argv);
+		if (rc < 0) {
+			/* fprintf(stderr, "do_shell_split() error %d\n", rc); */
+			goto cleanup;
+		}
+	} else if (!strcmp(mode, "parse-timing")) {
+		rc = do_parse_timing(argc, argv, !!(cfg.flags & FYPCF_DISABLE_MMAP_OPT));
+		if (rc < 0) {
+			/* fprintf(stderr, "do_parse_timing() error %d\n", rc); */
 			goto cleanup;
 		}
 	}
