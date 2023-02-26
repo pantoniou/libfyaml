@@ -1702,8 +1702,11 @@ int fy_token_iter_getc(struct fy_token_iter *iter)
 		return -1;
 
 	/* first try the pushed ungetc */
-	if (iter->unget_c != -1) {
+	if (iter->unget_c >= 0) {
 		c = iter->unget_c;
+		/* unmatched getc/ungetc */
+		if (fy_utf8_width(c) != 1)
+			return -1;
 		iter->unget_c = -1;
 		return c;
 	}
@@ -1722,14 +1725,18 @@ int fy_token_iter_getc(struct fy_token_iter *iter)
 
 int fy_token_iter_ungetc(struct fy_token_iter *iter, int c)
 {
-	if (iter->unget_c != -1)
+	if (!iter || c >= 0x80)
 		return -1;
-	if (c == -1) {
+
+	if (iter->unget_c >= 0)
+		return -1;
+
+	if (c < 0) {
 		iter->unget_c = -1;
 		return 0;
 	}
-	iter->unget_c = c & 0xff;
-	return c & 0xff;
+	iter->unget_c = c;
+	return c;
 }
 
 int fy_token_iter_peekc(struct fy_token_iter *iter)
@@ -1747,8 +1754,11 @@ int fy_token_iter_utf8_get(struct fy_token_iter *iter)
 {
 	int c, w, w1;
 
+	if (!iter)
+		return -1;
+
 	/* first try the pushed ungetc */
-	if (iter->unget_c != -1) {
+	if (iter->unget_c >= 0) {
 		c = iter->unget_c;
 		iter->unget_c = -1;
 		return c;
@@ -1780,13 +1790,18 @@ int fy_token_iter_utf8_get(struct fy_token_iter *iter)
 
 int fy_token_iter_utf8_unget(struct fy_token_iter *iter, int c)
 {
-	if (iter->unget_c != -1)
+	if (!iter)
 		return -1;
 
-	if (c == -1) {
+	if (iter->unget_c >= 0)
+		return -1;
+
+	if (c < 0) {
 		iter->unget_c = -1;
 		return 0;
 	}
+	if (!fy_utf8_is_valid(c))
+		return -1;
 
 	iter->unget_c = c;
 	return c;
