@@ -46,6 +46,16 @@ static inline bool fy_is_num(int c)
 	return c >= '0' && c <= '9';
 }
 
+static inline bool fy_is_digit(int c)
+{
+	return c >= '0' && c <= '9';
+}
+
+static inline bool fy_is_xdigit(int c)
+{
+	return fy_is_digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+
 static inline bool fy_is_first_alnum(int c)
 {
 	return fy_is_first_alpha(c);
@@ -269,6 +279,8 @@ struct useless_struct_for_semicolon
 FY_CTYPE_AT_BUILDER(first_alpha);
 FY_CTYPE_AT_BUILDER(alpha);
 FY_CTYPE_AT_BUILDER(num);
+FY_CTYPE_AT_BUILDER(digit);
+FY_CTYPE_AT_BUILDER(xdigit);
 FY_CTYPE_AT_BUILDER(first_alnum);
 FY_CTYPE_AT_BUILDER(alnum);
 FY_CTYPE_AT_BUILDER(space);
