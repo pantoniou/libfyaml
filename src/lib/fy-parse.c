@@ -2211,9 +2211,12 @@ int fy_fetch_flow_collection_mark_start(struct fy_parser *fyp, int c)
 	fyp_error_check(fyp, fyt, err_out,
 			"fy_token_queue_simple() failed");
 
-	rc = fy_save_simple_key_mark(fyp, &skm, type, NULL);
-	fyp_error_check(fyp, !rc, err_out_rc,
-			"fy_save_simple_key_mark() failed");
+	/* json does not have complex keys */
+	if (!fyp_json_mode(fyp)) {
+		rc = fy_save_simple_key_mark(fyp, &skm, type, NULL);
+		fyp_error_check(fyp, !rc, err_out_rc,
+				"fy_save_simple_key_mark() failed");
+	}
 
 	/* increase flow level */
 	fyp->flow_level++;
