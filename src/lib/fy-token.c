@@ -721,7 +721,7 @@ int fy_token_text_analyze(struct fy_token *fyt)
 
 	if ((flags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW))) {
 		cnn = fy_utf8_get(s, e - s, &w);
-		if (fy_is_ws(cnn) && fy_is_indicator_before_space(cn))
+		if (fy_is_blankz_m(cnn, fy_token_atom_lb_mode(fyt)) && fy_is_indicator_before_space(cn))
 			flags &= ~(FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW);
 	}
 
