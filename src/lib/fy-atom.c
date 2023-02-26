@@ -1575,21 +1575,21 @@ bool fy_atom_is_number(struct fy_atom *atom)
 	fy_atom_iter_start(atom, &iter);
 
 	/* skip minus sign if it's there */
-	c = fy_atom_iter_peekc(&iter);
+	c = fy_atom_iter_utf8_peek(&iter);
 	if (c == '-') {
-		(void)fy_atom_iter_getc(&iter);
+		(void)fy_atom_iter_utf8_get(&iter);
 		len++;
 	}
 
 	/* skip digits */
 	first_zero = false;
 	dec = 0;
-	while ((c = fy_atom_iter_peekc(&iter)) >= 0 && isdigit(c)) {
+	while ((c = fy_atom_iter_utf8_peek(&iter)) >= 0 && fy_is_digit(c)) {
 		if (dec == 0 && c == '0')
 			first_zero = true;
 		else if (dec == 1 && first_zero)
 			goto err_out;	/* 0[0-9] is bad */
-		(void)fy_atom_iter_getc(&iter);
+		(void)fy_atom_iter_utf8_get(&iter);
 		dec++;
 		len++;
 	}
@@ -1600,14 +1600,14 @@ bool fy_atom_is_number(struct fy_atom *atom)
 
 	fract = 0;
 	/* dot? */
-	c = fy_atom_iter_peekc(&iter);
+	c = fy_atom_iter_utf8_peek(&iter);
 	if (c == '.') {
 
-		(void)fy_atom_iter_getc(&iter);
+		(void)fy_atom_iter_utf8_get(&iter);
 		len++;
 		/* skip decimal part */
-		while ((c = fy_atom_iter_peekc(&iter)) >= 0 && isdigit(c)) {
-			(void)fy_atom_iter_getc(&iter);
+		while ((c = fy_atom_iter_utf8_peek(&iter)) >= 0 && fy_is_digit(c)) {
+			(void)fy_atom_iter_utf8_get(&iter);
 			len++;
 			fract++;
 		}
@@ -1619,21 +1619,21 @@ bool fy_atom_is_number(struct fy_atom *atom)
 
 	enot = 0;
 	/* scientific notation */
-	c = fy_atom_iter_peekc(&iter);
+	c = fy_atom_iter_utf8_peek(&iter);
 	if (c == 'e' || c == 'E') {
-		(void)fy_atom_iter_getc(&iter);
+		(void)fy_atom_iter_utf8_get(&iter);
 		len++;
 
 		/* skip sign if it's there */
-		c = fy_atom_iter_peekc(&iter);
+		c = fy_atom_iter_utf8_peek(&iter);
 		if (c == '+' || c == '-') {
-			(void)fy_atom_iter_getc(&iter);
+			(void)fy_atom_iter_utf8_get(&iter);
 			len++;
 		}
 
 		/* skip exponent part */
-		while ((c = fy_atom_iter_peekc(&iter)) >= 0 && isdigit(c)) {
-			(void)fy_atom_iter_getc(&iter);
+		while ((c = fy_atom_iter_utf8_peek(&iter)) >= 0 && fy_is_digit(c)) {
+			(void)fy_atom_iter_utf8_get(&iter);
 			len++;
 			enot++;
 		}
@@ -1642,7 +1642,7 @@ bool fy_atom_is_number(struct fy_atom *atom)
 			goto err_out;
 	}
 
-	c = fy_atom_iter_peekc(&iter);
+	c = fy_atom_iter_utf8_peek(&iter);
 
 	fy_atom_iter_finish(&iter);
 
