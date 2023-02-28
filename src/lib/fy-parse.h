@@ -137,6 +137,18 @@ struct fy_parse_state_log {
 };
 FY_PARSE_TYPE_DECL(parse_state_log);
 
+struct fy_streaming_alias {
+	struct list_head node;
+	struct fy_token *anchor;
+	bool collecting;
+	long mapping_nest;
+	long sequence_nest;
+	bool streaming;
+	struct fy_eventp *next_streaming;
+	struct fy_eventp_list events;
+};
+FY_PARSE_TYPE_DECL(streaming_alias);
+
 struct fy_parser {
 	struct fy_parse_cfg cfg;
 
@@ -203,6 +215,7 @@ struct fy_parser {
 	struct fy_simple_key_list recycled_simple_key;
 	struct fy_parse_state_log_list recycled_parse_state_log;
 	struct fy_flow_list recycled_flow;
+	struct fy_streaming_alias_list recycled_streaming_alias;
 
 	struct fy_eventp_list recycled_eventp;
 	struct fy_token_list recycled_token;
@@ -226,6 +239,9 @@ struct fy_parser {
 
 	/* last generated event atom */
 	struct fy_atom last_event_handle;
+
+	struct fy_streaming_alias_list streaming_aliases;
+	struct fy_streaming_alias *currently_streaming_alias;
 };
 
 static inline struct fy_input *
@@ -591,5 +607,13 @@ static inline int fy_document_state_version_compare(struct fy_document_state *fy
 }
 
 int fy_parse_set_composer(struct fy_parser *fyp, fy_parse_composer_cb cb, void *userdata);
+
+struct fy_streaming_alias *
+fy_parse_streaming_alias_create(struct fy_parser *fyp, struct fy_token *fyt_anchor);
+void fy_parse_streaming_alias_clean(struct fy_parser *fyp, struct fy_streaming_alias *fysa);
+void fy_parse_streaming_aliases_reset(struct fy_parser *fyp);
+
+struct fy_eventp *fy_parser_parse_resolve_prolog(struct fy_parser *fyp);
+struct fy_eventp *fy_parser_parse_resolve_epilog(struct fy_parser *fyp, struct fy_eventp *fyep);
 
 #endif

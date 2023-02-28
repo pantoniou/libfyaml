@@ -452,6 +452,9 @@ int fy_reset_document_state(struct fy_parser *fyp)
 	fyp->flow = FYFT_NONE;
 	fy_parse_flow_list_recycle_all(fyp, &fyp->flow_stack);
 
+	/* and reset all aliases (TODO look for cross document aliases) */
+	fy_parse_streaming_aliases_reset(fyp);
+
 	return 0;
 
 err_out:
@@ -782,6 +785,10 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 	fyp->pending_complex_key_column = -1;
 	fyp->last_block_mapping_key_line = -1;
 
+	fy_streaming_alias_list_init(&fyp->streaming_aliases);
+	fyp->currently_streaming_alias = NULL;
+	fy_streaming_alias_list_init(&fyp->recycled_streaming_alias);
+
 	fyp->suppress_recycling = !!(fyp->cfg.flags & FYPCF_DISABLE_RECYCLING) ||
 		                  (getenv("FY_VALGRIND") &&
 				   !getenv("FY_VALGRIND_RECYCLING"));
@@ -814,6 +821,8 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 	struct fy_eventp *fyep;
 	struct fy_token *fyt;
 
+	fy_parse_streaming_aliases_reset(fyp);
+
 	fy_input_unref(fyp->last_event_handle.fyi);
 	fy_atom_reset(&fyp->last_event_handle);
 
@@ -826,6 +835,8 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 
 	fy_parse_parse_state_log_list_recycle_all(fyp, &fyp->state_stack);
 	fy_parse_flow_list_recycle_all(fyp, &fyp->flow_stack);
+	fy_parse_streaming_alias_list_recycle_all(fyp, &fyp->streaming_aliases);
+	fyp->currently_streaming_alias = NULL;
 
 	fy_token_unref_rl(fyp->recycled_token_list, fyp->stream_end_token);
 
@@ -845,6 +856,7 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 	fy_parse_simple_key_vacuum(fyp);
 	fy_parse_parse_state_log_vacuum(fyp);
 	fy_parse_flow_vacuum(fyp);
+	fy_parse_streaming_alias_vacuum(fyp);
 
 	/* free the recycled events */
 	while ((fyep = fy_eventp_list_pop(&fyp->recycled_eventp)) != NULL) {
@@ -6849,11 +6861,17 @@ err_out_rc:
 
 struct fy_event *fy_parser_parse(struct fy_parser *fyp)
 {
-	struct fy_eventp *fyep;
+	struct fy_eventp *fyep, *fyep2;
 	enum fy_composer_return ret;
 
 	if (!fyp)
 		return NULL;
+
+	if (fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT) {
+		fyep = fy_parser_parse_resolve_prolog(fyp);
+		if (fyep)
+			return &fyep->e;
+	}
 
 	fyep = fy_parse_private(fyp);
 	if (!fyep)
@@ -6868,6 +6886,13 @@ struct fy_event *fy_parser_parse(struct fy_parser *fyp)
 		}
 		/* note that the stop should be handled by
 		 * an out of band mechanism */
+	}
+
+	if (fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT) {
+		fyep2 = fy_parser_parse_resolve_epilog(fyp, fyep);
+		if (!fyep2)
+			return NULL;
+		fyep = fyep2;
 	}
 
 	return &fyep->e;
@@ -7120,4 +7145,330 @@ int fy_parse_compose(struct fy_parser *fyp, fy_parse_composer_cb cb, void *userd
 
 err_out:
 	return -1;
+}
+
+struct fy_streaming_alias *
+fy_parser_streaming_alias_lookup(struct fy_parser *fyp, struct fy_token *fyt_anchor)
+{
+	struct fy_streaming_alias *fysa;
+
+	/* XXX todo hashing */
+	for (fysa = fy_streaming_alias_list_head(&fyp->streaming_aliases); fysa != NULL; fysa = fy_streaming_alias_next(&fyp->streaming_aliases, fysa)) {
+		if (fy_token_cmp(fyt_anchor, fysa->anchor) == 0)
+			return fysa;
+	}
+	return NULL;
+}
+
+struct fy_streaming_alias *
+fy_parse_streaming_alias_create(struct fy_parser *fyp, struct fy_token *fyt_anchor)
+{
+	struct fy_streaming_alias *fysa;
+
+	fysa = fy_parse_streaming_alias_alloc(fyp);
+	fyp_error_check(fyp, fysa != NULL, err_out,
+			"fy_parse_streaming_alias_alloc() failed!");
+	fysa->anchor = fyt_anchor;
+	fysa->collecting = false;
+	fysa->mapping_nest = 0;
+	fysa->sequence_nest = 0;
+	fysa->streaming = false;
+	fysa->next_streaming = NULL;
+	fy_eventp_list_init(&fysa->events);
+
+	return fysa;
+
+err_out:
+	return NULL;
+}
+
+void
+fy_parse_streaming_alias_clean(struct fy_parser *fyp, struct fy_streaming_alias *fysa)
+{
+	struct fy_eventp *fyep;
+
+	if (!fyp || !fysa)
+		return;
+
+	fy_token_unref(fysa->anchor);
+	fysa->anchor = NULL;
+	fysa->collecting = false;
+	fysa->mapping_nest = 0;
+	fysa->sequence_nest = 0;
+	fysa->streaming = false;
+	fysa->next_streaming = NULL;
+	while ((fyep = fy_eventp_list_pop(&fysa->events)) != NULL)
+		fy_parse_eventp_recycle(fyp, fyep);
+}
+
+void fy_parse_streaming_aliases_reset(struct fy_parser *fyp)
+{
+	struct fy_streaming_alias *fysa;
+	if (!fyp)
+		return;
+
+	while ((fysa = fy_streaming_alias_list_pop(&fyp->streaming_aliases)) != NULL) {
+		fy_parse_streaming_alias_clean(fyp, fysa);
+		fy_parse_streaming_alias_recycle(fyp, fysa);
+	}
+	fyp->currently_streaming_alias = NULL;
+}
+
+struct fy_eventp *fy_parser_event_resolve_hook_collect(struct fy_parser *fyp, struct fy_eventp *fyep)
+{
+	struct fy_eventp *fyep_clone = NULL;
+	struct fy_streaming_alias *fysa;
+	long map_add, seq_add;
+
+	if (!fyp || !fyep)
+		return NULL;
+
+	assert(fyep->e.type != FYET_ALIAS);
+
+	map_add = seq_add = 0;
+	switch (fyep->e.type) {
+	case FYET_MAPPING_START:
+		map_add = 1;
+		break;
+	case FYET_MAPPING_END:
+		map_add = -1;
+		break;
+	case FYET_SEQUENCE_START:
+		seq_add = 1;
+		break;
+	case FYET_SEQUENCE_END:
+		seq_add = -1;
+		break;
+	default:
+		break;
+	}
+
+	/* for all streaming aliases that are collecting... */
+	for (fysa = fy_streaming_alias_list_head(&fyp->streaming_aliases); fysa != NULL; fysa = fy_streaming_alias_next(&fyp->streaming_aliases, fysa)) {
+		if (!fysa->collecting)
+			continue;
+
+		/* clone event, stripping the anchors */
+		fyep_clone = fy_parse_eventp_clone(fyp, fyep, true);
+		fyp_error_check(fyp, fyep_clone != NULL, err_out,
+				"fy_parse_eventp_clone() failed!");
+
+		/* add to the list */
+		fy_eventp_list_add_tail(&fysa->events, fyep_clone);
+		fyep_clone = NULL;
+
+		if (map_add || seq_add) {
+			fysa->mapping_nest += map_add;
+			fysa->sequence_nest += seq_add;
+
+			if (fysa->mapping_nest == 0 && fysa->sequence_nest == 0)
+				fysa->collecting = false;
+		}
+	}
+
+	return fyep;
+
+err_out:
+	fy_parse_eventp_recycle(fyp, fyep_clone);
+	fyp->stream_error = true;
+	return NULL;
+}
+
+struct fy_eventp *fy_parser_event_resolve_hook_alias(struct fy_parser *fyp, struct fy_eventp *fyep)
+{
+	struct fy_token *fyt_anchor = NULL;
+	struct fy_streaming_alias *fysa;
+	const char *anchor;
+	size_t anchor_len;
+
+	if (!fyp || !fyep)
+		return NULL;
+
+	/* if it's not an alias, continue normal processing */
+	if (fyep->e.type != FYET_ALIAS)
+		return fyep;
+
+	/* it's an alias, get the token and dispose the event */
+	fyt_anchor = fyep->e.alias.anchor;
+	fyep->e.alias.anchor = NULL;
+	fy_parse_eventp_recycle(fyp, fyep);
+	fyep = NULL;
+
+	anchor = fy_token_get_text(fyt_anchor, &anchor_len);
+	assert(anchor);
+
+	/* start generation of alias events */
+	fysa = fy_parser_streaming_alias_lookup(fyp, fyt_anchor);
+
+	/* we don't support forward aliases for now like we do in document mode ... */
+	FYP_TOKEN_ERROR_CHECK(fyp, fyt_anchor, FYEM_PARSE,
+			fysa, err_out,
+			"alias not found; note streaming mode does not support forward alias references");
+
+	/* if this is a reference to a collecting alias, then it's recursive */
+	FYP_TOKEN_ERROR_CHECK(fyp, fyt_anchor, FYEM_PARSE,
+			!fysa->collecting, err_out,
+			"Recursive alias reference detected");
+
+	fy_token_unref(fyt_anchor);
+	fyt_anchor = NULL;
+
+	assert(fyp->currently_streaming_alias == NULL);
+	fyp->currently_streaming_alias = fysa;
+	fysa->next_streaming = fy_eventp_list_head(&fysa->events);
+	assert(fysa->next_streaming);
+
+	fyep = fy_parse_eventp_clone(fyp, fysa->next_streaming, true);
+	fyp_error_check(fyp, fyep != NULL, err_out,
+			"fy_parse_eventp_clone() failed!");
+
+	/* advance for next */
+	fysa->next_streaming = fy_eventp_next(&fysa->events, fysa->next_streaming);
+
+	/* no more? stop streaming */
+	if (!fysa->next_streaming)
+		fyp->currently_streaming_alias = NULL;
+
+	// fprintf(stderr, "first alias %s\n", fy_event_type_txt[fyep->e.type]);
+
+	return fyep;
+
+err_out:
+	fy_token_unref(fyt_anchor);
+	fyp->stream_error = true;
+	return NULL;
+}
+
+struct fy_eventp *fy_parser_event_resolve_hook_anchor_start(struct fy_parser *fyp, struct fy_eventp *fyep)
+{
+	struct fy_token *fyt_anchor = NULL;
+	struct fy_streaming_alias *fysa = NULL;
+	struct fy_eventp *fyep_clone = NULL;
+
+	if (!fyep)
+		return NULL;
+
+	/* is there an anchor?, is so get it and clear it */
+	fyt_anchor = fy_event_get_and_clear_anchor_token(&fyep->e);
+	if (!fyt_anchor)
+		return fyep;
+
+	/* more recent anchor always override */
+	fysa = fy_parser_streaming_alias_lookup(fyp, fyt_anchor);
+	if (fysa) {
+		fy_streaming_alias_list_del(&fyp->streaming_aliases, fysa);
+		fy_parse_streaming_alias_clean(fyp, fysa);
+		fy_parse_streaming_alias_recycle(fyp, fysa);
+		fysa = NULL;
+	}
+
+	fysa = fy_parse_streaming_alias_create(fyp, fyt_anchor);
+	fyp_error_check(fyp, fysa != NULL, err_out,
+		"fy_parser_streaming_alias_create() failed!");
+	fyt_anchor = NULL;
+
+	/* clone first event, stripping the anchors */
+	fyep_clone = fy_parse_eventp_clone(fyp, fyep, true);
+	fyp_error_check(fyp, fyep_clone != NULL, err_out,
+			"fy_parse_eventp_clone() failed!");
+
+	/* add to the list */
+	fy_eventp_list_add_tail(&fysa->events, fyep_clone);
+	fyep_clone = NULL;
+
+	switch (fyep->e.type) {
+	case FYET_SCALAR:
+		fysa->collecting = false;
+		break;
+	case FYET_SEQUENCE_START:
+		fysa->collecting = true;
+		fysa->sequence_nest = 1;
+		break;
+	case FYET_MAPPING_START:
+		fysa->collecting = true;
+		fysa->mapping_nest = 1;
+		break;
+	default:
+		fyp_error(fyp, "Impossible streaming alias type start");
+		goto err_out;
+	}
+
+	fy_streaming_alias_list_add_tail(&fyp->streaming_aliases, fysa);
+
+	return fyep;
+
+err_out:
+	fy_token_unref(fyt_anchor);
+	fy_parse_eventp_recycle(fyp, fyep_clone);
+	fy_parse_streaming_alias_clean(fyp, fysa);
+	fy_parse_streaming_alias_recycle(fyp, fysa);
+	fy_parse_eventp_recycle(fyp, fyep);
+	return NULL;
+}
+
+struct fy_eventp *fy_parser_event_resolve_hook(struct fy_parser *fyp, struct fy_eventp *fyep)
+{
+	/* first do alias processing */
+	fyep = fy_parser_event_resolve_hook_alias(fyp, fyep);
+	fyp_error_check(fyp, fyep != NULL, err_out,
+			"fy_parser_event_resolve_hook_alias() failed!");
+
+	/* collect afterwards */
+	fyep = fy_parser_event_resolve_hook_collect(fyp, fyep);
+	fyp_error_check(fyp, fyep != NULL, err_out,
+			"fy_parser_event_resolve_hook_collect() failed!");
+
+	/* finally check for anchor to start */
+	fyep = fy_parser_event_resolve_hook_anchor_start(fyp, fyep);
+	fyp_error_check(fyp, fyep != NULL, err_out,
+			"fy_parser_event_resolve_hook_anchor_start() failed!");
+
+	return fyep;
+
+err_out:
+	return NULL;
+}
+
+struct fy_eventp *fy_parser_parse_resolve_prolog(struct fy_parser *fyp)
+{
+	struct fy_streaming_alias *fysa;
+	struct fy_eventp *fyep;
+
+	if (!(fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT))
+		return NULL;
+
+	fysa = fyp->currently_streaming_alias;
+	if (!fysa)
+		return NULL;
+
+	assert(fysa->next_streaming != NULL);
+
+	fyep = fy_parse_eventp_clone(fyp, fysa->next_streaming, true);
+	fyp_error_check(fyp, fyep != NULL, err_out,
+			"fy_parse_eventp_clone() failed!");
+
+	/* advance for next */
+	fysa->next_streaming = fy_eventp_next(&fysa->events, fysa->next_streaming);
+
+	/* no more? stop streaming */
+	if (!fysa->next_streaming)
+		fyp->currently_streaming_alias = NULL;
+
+	return fyep;
+
+err_out:
+	fyp->stream_error = true;
+	return NULL;
+}
+
+struct fy_eventp *fy_parser_parse_resolve_epilog(struct fy_parser *fyp, struct fy_eventp *fyep)
+{
+	if (!(fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT))
+		return fyep;
+
+	fyep = fy_parser_event_resolve_hook(fyp, fyep);
+	if (!fyep)
+		fyp->stream_error = true;
+
+	return fyep;
 }
