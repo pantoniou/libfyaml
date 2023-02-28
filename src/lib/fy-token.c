@@ -1524,6 +1524,7 @@ int fy_token_cmp(struct fy_token *fyt1, struct fy_token *fyt2)
 	const char *t1, *t2;
 	size_t l1, l2, l;
 	int ret;
+	bool aoa;	/* anchor or alias */
 
 	/* handles both NULL */
 	if (fyt1 == fyt2)
@@ -1537,8 +1538,12 @@ int fy_token_cmp(struct fy_token *fyt1, struct fy_token *fyt2)
 	if (fyt1 && !fyt2)
 		return 1;
 
+	/* special case for comparing anchors and aliases */
+	aoa = (fyt1->type == FYTT_ANCHOR || fyt1->type == FYTT_ALIAS) &&
+	      (fyt2->type == FYTT_ANCHOR || fyt2->type == FYTT_ALIAS);
+
 	/* tokens with different types can't be equal */
-	if (fyt1->type != fyt2->type)
+	if (!aoa && fyt1->type != fyt2->type)
 		return fyt2->type > fyt1->type ? -1 : 1;
 
 	/* special case, these can't use the atom comparisons */
