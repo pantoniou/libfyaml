@@ -339,9 +339,6 @@ struct fy_node *fy_node_get_nearest_child_of(struct fy_node *fyn_base,
 void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 {
 	struct fy_node *fyn;
-	struct fy_anchor *fya;
-	struct fy_anchor *fyan;
-	struct fy_accel_entry *xle;
 
 	if (!fyd)
 		return;
@@ -352,29 +349,7 @@ void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 	fyd->root = NULL;
 	fy_node_detach_and_free(fyn);
 
-	/* remove all anchors */
-	for (fya = fy_anchor_list_head(&fyd->anchors); fya; fya = fyan) {
-		fyan = fy_anchor_next(&fyd->anchors, fya);
-		fy_anchor_list_del(&fyd->anchors, fya);
-
-		if (fy_document_is_accelerated(fyd)) {
-			xle = fy_accel_entry_lookup_key_value(fyd->axl, fya->anchor, fya);
-			fy_accel_entry_remove(fyd->axl, xle);
-
-			xle = fy_accel_entry_lookup_key_value(fyd->naxl, fya->fyn, fya);
-			fy_accel_entry_remove(fyd->naxl, xle);
-		}
-
-		fy_anchor_destroy(fya);
-	}
-
-	if (fy_document_is_accelerated(fyd)) {
-		fy_accel_cleanup(fyd->axl);
-		free(fyd->axl);
-
-		fy_accel_cleanup(fyd->naxl);
-		free(fyd->naxl);
-	}
+	fy_document_purge_anchors(fyd);
 
 	fy_document_state_unref(fyd->fyds);
 
@@ -2933,6 +2908,37 @@ static void fy_resolve_parent_node(struct fy_document *fyd, struct fy_node *fyn,
 	}
 }
 
+void fy_document_purge_anchors(struct fy_document *fyd)
+{
+	struct fy_anchor *fya;
+	struct fy_anchor *fyan;
+	struct fy_accel_entry *xle;
+
+	/* remove all anchors */
+	for (fya = fy_anchor_list_head(&fyd->anchors); fya; fya = fyan) {
+		fyan = fy_anchor_next(&fyd->anchors, fya);
+		fy_anchor_list_del(&fyd->anchors, fya);
+
+		if (fy_document_is_accelerated(fyd)) {
+			xle = fy_accel_entry_lookup_key_value(fyd->axl, fya->anchor, fya);
+			fy_accel_entry_remove(fyd->axl, xle);
+
+			xle = fy_accel_entry_lookup_key_value(fyd->naxl, fya->fyn, fya);
+			fy_accel_entry_remove(fyd->naxl, xle);
+		}
+
+		fy_anchor_destroy(fya);
+	}
+
+	if (fy_document_is_accelerated(fyd)) {
+		fy_accel_cleanup(fyd->axl);
+		free(fyd->axl);
+
+		fy_accel_cleanup(fyd->naxl);
+		free(fyd->naxl);
+	}
+}
+
 typedef void (*fy_node_applyf)(struct fy_node *fyn);
 
 void fy_node_apply(struct fy_node *fyn, fy_node_applyf func)
@@ -3004,6 +3010,9 @@ int fy_document_resolve(struct fy_document *fyd)
 
 	/* redo parent resolution */
 	fy_resolve_parent_node(fyd, fyd->root, NULL);
+
+	/* remove all anchors after resolution */
+	fy_document_purge_anchors(fyd);
 
 	return 0;
 

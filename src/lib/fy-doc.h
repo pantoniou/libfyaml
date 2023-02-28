@@ -124,6 +124,7 @@ struct fy_document {
 FY_TYPE_DECL_LIST(document);
 
 struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_eventp *fyep);
+void fy_document_purge_anchors(struct fy_document *fyd);
 
 struct fy_node_mapping_sort_ctx {
 	fy_node_mapping_sort_fn key_cmp;
