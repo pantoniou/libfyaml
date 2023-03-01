@@ -7159,6 +7159,25 @@ fy_parser_streaming_alias_lookup(struct fy_parser *fyp, struct fy_token *fyt_anc
 }
 
 struct fy_streaming_alias *
+fy_parser_streaming_alias_lookup_pivot(struct fy_parser *fyp, struct fy_streaming_alias *fysa_pivot, struct fy_token *fyt_anchor)
+{
+	struct fy_streaming_alias *fysa;
+
+	assert(fysa_pivot);
+	/* at first do forwards starting at the pivot */
+	for (fysa = fy_streaming_alias_next(&fyp->streaming_aliases, fysa_pivot); fysa != NULL; fysa = fy_streaming_alias_next(&fyp->streaming_aliases, fysa)) {
+		if (fy_token_cmp(fyt_anchor, fysa->anchor) == 0)
+			return fysa;
+	}
+	/* not found? do backwards (more recent) */
+	for (fysa = fy_streaming_alias_prev(&fyp->streaming_aliases, fysa_pivot); fysa != NULL; fysa = fy_streaming_alias_prev(&fyp->streaming_aliases, fysa)) {
+		if (fy_token_cmp(fyt_anchor, fysa->anchor) == 0)
+			return fysa;
+	}
+	return NULL;
+}
+
+struct fy_streaming_alias *
 fy_parse_streaming_alias_create(struct fy_parser *fyp, struct fy_token *fyt_anchor)
 {
 	struct fy_streaming_alias *fysa;
@@ -7210,7 +7229,7 @@ void fy_parse_streaming_aliases_reset(struct fy_parser *fyp)
 	memset(&fyp->sas, 0, sizeof(fyp->sas));
 }
 
-int
+struct fy_streaming_alias_state *
 fy_parse_streaming_alias_state_push(struct fy_parser *fyp, struct fy_streaming_alias *fysa)
 {
 	struct fy_streaming_alias_state *new_stack;
@@ -7240,23 +7259,25 @@ fy_parse_streaming_alias_state_push(struct fy_parser *fyp, struct fy_streaming_a
 	fysas->fysa = fysa;
 	fysas->next = fy_eventp_list_head(&fysa->events);
 
-	return 0;
+	return fysas;
 err_out:
-	return -1;
+	return NULL;
 }
 
-int
+struct fy_streaming_alias_state *
 fy_parse_streaming_alias_state_pop(struct fy_parser *fyp)
 {
 	struct fy_streaming_alias_state *fysas;
 
 	if (fyp->sas.top <= 0)
-		return -1;
+		return NULL;
 
 	fysas = &fyp->sas.stack[--fyp->sas.top];
 	fysas->fysa = NULL;
 	fysas->next = NULL;
-	return 0;
+	if (fyp->sas.top <= 0)
+		return NULL;
+	return &fyp->sas.stack[fyp->sas.top - 1];
 }
 
 struct fy_streaming_alias_state *
@@ -7267,6 +7288,23 @@ fy_parse_streaming_alias_state_top(struct fy_parser *fyp)
 	return &fyp->sas.stack[fyp->sas.top - 1];
 }
 
+void
+fy_parse_streaming_alias_state_next_event(struct fy_parser *fyp)
+{
+	struct fy_streaming_alias_state *fysas;
+
+	fysas = fy_parse_streaming_alias_state_top(fyp);
+	if (!fysas)
+		return;
+
+	fysas->next = fy_eventp_next(&fysas->fysa->events, fysas->next);
+	while (!fysas->next) {
+		fysas = fy_parse_streaming_alias_state_pop(fyp);
+		if (!fysas)
+			break;
+	}
+}
+
 struct fy_eventp *fy_parser_event_resolve_hook_collect(struct fy_parser *fyp, struct fy_eventp *fyep)
 {
 	struct fy_eventp *fyep_clone = NULL;
@@ -7275,8 +7313,6 @@ struct fy_eventp *fy_parser_event_resolve_hook_collect(struct fy_parser *fyp, st
 
 	if (!fyp || !fyep)
 		return NULL;
-
-	assert(fyep->e.type != FYET_ALIAS);
 
 	map_add = seq_add = 0;
 	switch (fyep->e.type) {
@@ -7310,13 +7346,12 @@ struct fy_eventp *fy_parser_event_resolve_hook_collect(struct fy_parser *fyp, st
 		fy_eventp_list_add_tail(&fysa->events, fyep_clone);
 		fyep_clone = NULL;
 
-		if (map_add || seq_add) {
-			fysa->mapping_nest += map_add;
-			fysa->sequence_nest += seq_add;
+		/* the scalar will be collected every time */
+		fysa->mapping_nest += map_add;
+		fysa->sequence_nest += seq_add;
 
-			if (fysa->mapping_nest == 0 && fysa->sequence_nest == 0)
-				fysa->collecting = false;
-		}
+		if (fysa->mapping_nest == 0 && fysa->sequence_nest == 0)
+			fysa->collecting = false;
 	}
 
 	return fyep;
@@ -7332,7 +7367,6 @@ struct fy_eventp *fy_parser_event_resolve_hook_alias(struct fy_parser *fyp, stru
 	struct fy_token *fyt_anchor = NULL;
 	struct fy_streaming_alias *fysa;
 	struct fy_streaming_alias_state *fysas;
-	int ret;
 
 	if (!fyp || !fyep)
 		return NULL;
@@ -7363,27 +7397,17 @@ struct fy_eventp *fy_parser_event_resolve_hook_alias(struct fy_parser *fyp, stru
 	fy_token_unref(fyt_anchor);
 	fyt_anchor = NULL;
 
-	assert(fyp->currently_streaming_alias == NULL);
-
-	ret = fy_parse_streaming_alias_state_push(fyp, fysa);
-	fyp_error_check(fyp, ret, err_out,
+	fysas = fy_parse_streaming_alias_state_push(fyp, fysa);
+	fyp_error_check(fyp, fysas, err_out,
 			"fy_parse_streaming_alias_push() failed!");
-
-	fysas = fy_parse_streaming_alias_state_top(fyp);
-	assert(fysas);
 	assert(fysas->next);
 
 	fyep = fy_parse_eventp_clone(fyp, fysas->next, true);
 	fyp_error_check(fyp, fyep != NULL, err_out,
 			"fy_parse_eventp_clone() failed!");
 
-	fysas->next = fy_eventp_next(&fysas->fysa->events, fysas->next);
-	while (fysas && !fysas->next) {
-		fy_parse_streaming_alias_state_pop(fyp);
-		fysas = fy_parse_streaming_alias_state_top(fyp);
-	}
-
-	// fprintf(stderr, "first alias %s\n", fy_event_type_txt[fyep->e.type]);
+	/* advance event */
+	fy_parse_streaming_alias_state_next_event(fyp);
 
 	return fyep;
 
@@ -7397,7 +7421,6 @@ struct fy_eventp *fy_parser_event_resolve_hook_anchor_start(struct fy_parser *fy
 {
 	struct fy_token *fyt_anchor = NULL;
 	struct fy_streaming_alias *fysa = NULL;
-	struct fy_eventp *fyep_clone = NULL;
 
 	if (!fyep)
 		return NULL;
@@ -7412,31 +7435,13 @@ struct fy_eventp *fy_parser_event_resolve_hook_anchor_start(struct fy_parser *fy
 		"fy_parser_streaming_alias_create() failed!");
 	fyt_anchor = NULL;
 
-	/* clone first event, stripping the anchors */
-	fyep_clone = fy_parse_eventp_clone(fyp, fyep, true);
-	fyp_error_check(fyp, fyep_clone != NULL, err_out,
-			"fy_parse_eventp_clone() failed!");
-
-	/* add to the list */
-	fy_eventp_list_add_tail(&fysa->events, fyep_clone);
-	fyep_clone = NULL;
-
-	switch (fyep->e.type) {
-	case FYET_SCALAR:
-		fysa->collecting = false;
-		break;
-	case FYET_SEQUENCE_START:
-		fysa->collecting = true;
-		fysa->sequence_nest = 1;
-		break;
-	case FYET_MAPPING_START:
-		fysa->collecting = true;
-		fysa->mapping_nest = 1;
-		break;
-	default:
-		fyp_error(fyp, "Impossible streaming alias type start");
-		goto err_out;
-	}
+	/* we just mark that we're collecting
+	 * the collection hook will pick up the first event
+	 * including the scalar one
+	 */
+	fysa->collecting = true;
+	fysa->sequence_nest = 0;
+	fysa->mapping_nest = 0;
 
 	/* always add to the head of the list (overrides what follows with the same name) */
 	fy_streaming_alias_list_add(&fyp->streaming_aliases, fysa);
@@ -7445,29 +7450,29 @@ struct fy_eventp *fy_parser_event_resolve_hook_anchor_start(struct fy_parser *fy
 
 err_out:
 	fy_token_unref(fyt_anchor);
-	fy_parse_eventp_recycle(fyp, fyep_clone);
 	fy_parse_streaming_alias_clean(fyp, fysa);
 	fy_parse_streaming_alias_recycle(fyp, fysa);
 	fy_parse_eventp_recycle(fyp, fyep);
 	return NULL;
 }
 
+/* NOTE: order is _very_ important, do not re-arrange if you're not sure */
 struct fy_eventp *fy_parser_event_resolve_hook(struct fy_parser *fyp, struct fy_eventp *fyep)
 {
-	/* first do alias processing */
-	fyep = fy_parser_event_resolve_hook_alias(fyp, fyep);
+	/* anchor marking */
+	fyep = fy_parser_event_resolve_hook_anchor_start(fyp, fyep);
 	fyp_error_check(fyp, fyep != NULL, err_out,
-			"fy_parser_event_resolve_hook_alias() failed!");
+			"fy_parser_event_resolve_hook_anchor_start() failed!");
 
 	/* collect afterwards */
 	fyep = fy_parser_event_resolve_hook_collect(fyp, fyep);
 	fyp_error_check(fyp, fyep != NULL, err_out,
 			"fy_parser_event_resolve_hook_collect() failed!");
 
-	/* finally check for anchor to start */
-	fyep = fy_parser_event_resolve_hook_anchor_start(fyp, fyep);
+	/* finally do first entry into alias processing */
+	fyep = fy_parser_event_resolve_hook_alias(fyp, fyep);
 	fyp_error_check(fyp, fyep != NULL, err_out,
-			"fy_parser_event_resolve_hook_anchor_start() failed!");
+			"fy_parser_event_resolve_hook_alias() failed!");
 
 	return fyep;
 
@@ -7477,8 +7482,9 @@ err_out:
 
 struct fy_eventp *fy_parser_parse_resolve_prolog(struct fy_parser *fyp)
 {
+	struct fy_streaming_alias *fysa;
 	struct fy_streaming_alias_state *fysas;
-	struct fy_eventp *fyep;
+	struct fy_eventp *fyep, *fyep_src;
 
 	if (!(fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT))
 		return NULL;
@@ -7486,17 +7492,37 @@ struct fy_eventp *fy_parser_parse_resolve_prolog(struct fy_parser *fyp)
 	fysas = fy_parse_streaming_alias_state_top(fyp);
 	if (!fysas)
 		return NULL;
-	assert(fysas->next != NULL);
 
-	fyep = fy_parse_eventp_clone(fyp, fysas->next, true);
+	for (;;) {
+		fysa = fysas->fysa;
+		assert(fysa);
+
+		assert(fysas->next != NULL);
+
+		/* keep track of it */
+		fyep_src = fysas->next;
+
+		/* advance event */
+		fy_parse_streaming_alias_state_next_event(fyp);
+
+		/* not an alias, continue normally */
+		if (fyep_src->e.type != FYET_ALIAS)
+			break;
+
+		/* get the anchor that was defined closest to this one */
+		fysa = fy_parser_streaming_alias_lookup_pivot(fyp, fysa, fyep_src->e.alias.anchor);
+		fyp_error_check(fyp, fysa, err_out,
+				"fy_parser_streaming_alias_lookup_pivot() failed!");
+
+		/* and push */
+		fysas = fy_parse_streaming_alias_state_push(fyp, fysa);
+		fyp_error_check(fyp, fysas, err_out,
+				"fy_parse_streaming_alias_state_push() failed!");
+	}
+
+	fyep = fy_parse_eventp_clone(fyp, fyep_src, true);
 	fyp_error_check(fyp, fyep != NULL, err_out,
 			"fy_parse_eventp_clone() failed!");
-
-	fysas->next = fy_eventp_next(&fysas->fysa->events, fysas->next);
-	while (fysas && !fysas->next) {
-		fy_parse_streaming_alias_state_pop(fyp);
-		fysas = fy_parse_streaming_alias_state_top(fyp);
-	}
 
 	return fyep;
 
