@@ -7278,8 +7278,6 @@ struct fy_eventp *fy_parser_event_resolve_hook_alias(struct fy_parser *fyp, stru
 {
 	struct fy_token *fyt_anchor = NULL;
 	struct fy_streaming_alias *fysa;
-	const char *anchor;
-	size_t anchor_len;
 
 	if (!fyp || !fyep)
 		return NULL;
@@ -7293,9 +7291,6 @@ struct fy_eventp *fy_parser_event_resolve_hook_alias(struct fy_parser *fyp, stru
 	fyep->e.alias.anchor = NULL;
 	fy_parse_eventp_recycle(fyp, fyep);
 	fyep = NULL;
-
-	anchor = fy_token_get_text(fyt_anchor, &anchor_len);
-	assert(anchor);
 
 	/* start generation of alias events */
 	fysa = fy_parser_streaming_alias_lookup(fyp, fyt_anchor);
