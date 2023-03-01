@@ -6875,6 +6875,13 @@ struct fy_event *fy_parser_parse(struct fy_parser *fyp)
 	if (!fyep)
 		return NULL;
 
+	if (fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT) {
+		fyep2 = fy_parser_parse_resolve_epilog(fyp, fyep);
+		if (!fyep2)
+			return NULL;
+		fyep = fyep2;
+	}
+
 	if (fyp->fyc) {
 		ret = fy_composer_process_event(fyp->fyc, &fyep->e);
 		if (ret == FYCR_ERROR) {
@@ -6884,13 +6891,6 @@ struct fy_event *fy_parser_parse(struct fy_parser *fyp)
 		}
 		/* note that the stop should be handled by
 		 * an out of band mechanism */
-	}
-
-	if (fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT) {
-		fyep2 = fy_parser_parse_resolve_epilog(fyp, fyep);
-		if (!fyep2)
-			return NULL;
-		fyep = fyep2;
 	}
 
 	return &fyep->e;
