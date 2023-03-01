@@ -786,7 +786,6 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 	fyp->last_block_mapping_key_line = -1;
 
 	fy_streaming_alias_list_init(&fyp->streaming_aliases);
-	fyp->currently_streaming_alias = NULL;
 	fy_streaming_alias_list_init(&fyp->recycled_streaming_alias);
 
 	fyp->suppress_recycling = !!(fyp->cfg.flags & FYPCF_DISABLE_RECYCLING) ||
@@ -836,7 +835,6 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 	fy_parse_parse_state_log_list_recycle_all(fyp, &fyp->state_stack);
 	fy_parse_flow_list_recycle_all(fyp, &fyp->flow_stack);
 	fy_parse_streaming_alias_list_recycle_all(fyp, &fyp->streaming_aliases);
-	fyp->currently_streaming_alias = NULL;
 
 	fy_token_unref_rl(fyp->recycled_token_list, fyp->stream_end_token);
 
@@ -7172,8 +7170,6 @@ fy_parse_streaming_alias_create(struct fy_parser *fyp, struct fy_token *fyt_anch
 	fysa->collecting = false;
 	fysa->mapping_nest = 0;
 	fysa->sequence_nest = 0;
-	fysa->streaming = false;
-	fysa->next_streaming = NULL;
 	fy_eventp_list_init(&fysa->events);
 
 	return fysa;
@@ -7195,8 +7191,6 @@ fy_parse_streaming_alias_clean(struct fy_parser *fyp, struct fy_streaming_alias 
 	fysa->collecting = false;
 	fysa->mapping_nest = 0;
 	fysa->sequence_nest = 0;
-	fysa->streaming = false;
-	fysa->next_streaming = NULL;
 	while ((fyep = fy_eventp_list_pop(&fysa->events)) != NULL)
 		fy_parse_eventp_recycle(fyp, fyep);
 }
@@ -7211,7 +7205,66 @@ void fy_parse_streaming_aliases_reset(struct fy_parser *fyp)
 		fy_parse_streaming_alias_clean(fyp, fysa);
 		fy_parse_streaming_alias_recycle(fyp, fysa);
 	}
-	fyp->currently_streaming_alias = NULL;
+	if (fyp->sas.stack != NULL && fyp->sas.stack != fyp->sas.local)
+		free(fyp->sas.stack);
+	memset(&fyp->sas, 0, sizeof(fyp->sas));
+}
+
+int
+fy_parse_streaming_alias_state_push(struct fy_parser *fyp, struct fy_streaming_alias *fysa)
+{
+	struct fy_streaming_alias_state *new_stack;
+	struct fy_streaming_alias_state *fysas;
+
+	/* if first one, just point to the local area */
+	if (fyp->sas.stack == NULL) {
+		fyp->sas.stack = fyp->sas.local;
+		fyp->sas.top = 0;
+		fyp->sas.alloc = ARRAY_SIZE(fyp->sas.local);
+	}
+	/* grow the stack if required */
+	if (fyp->sas.top >= fyp->sas.alloc) {
+		assert(fyp->sas.alloc > 0);
+		assert(fyp->sas.stack);
+		new_stack = malloc(sizeof(*new_stack) * fyp->sas.alloc * 2);
+		fyp_error_check(fyp, new_stack != NULL, err_out,
+				"realloc() failed!");
+		memcpy(new_stack, fyp->sas.stack, sizeof(*new_stack) * fyp->sas.alloc);
+		if (fyp->sas.stack != fyp->sas.local)
+			free(fyp->sas.stack);
+		fyp->sas.stack = new_stack;
+	}
+	/* finally push it */
+	fysas = &fyp->sas.stack[fyp->sas.top++];
+
+	fysas->fysa = fysa;
+	fysas->next = fy_eventp_list_head(&fysa->events);
+
+	return 0;
+err_out:
+	return -1;
+}
+
+int
+fy_parse_streaming_alias_state_pop(struct fy_parser *fyp)
+{
+	struct fy_streaming_alias_state *fysas;
+
+	if (fyp->sas.top <= 0)
+		return -1;
+
+	fysas = &fyp->sas.stack[--fyp->sas.top];
+	fysas->fysa = NULL;
+	fysas->next = NULL;
+	return 0;
+}
+
+struct fy_streaming_alias_state *
+fy_parse_streaming_alias_state_top(struct fy_parser *fyp)
+{
+	if (fyp->sas.top <= 0)
+		return NULL;
+	return &fyp->sas.stack[fyp->sas.top - 1];
 }
 
 struct fy_eventp *fy_parser_event_resolve_hook_collect(struct fy_parser *fyp, struct fy_eventp *fyep)
@@ -7278,6 +7331,8 @@ struct fy_eventp *fy_parser_event_resolve_hook_alias(struct fy_parser *fyp, stru
 {
 	struct fy_token *fyt_anchor = NULL;
 	struct fy_streaming_alias *fysa;
+	struct fy_streaming_alias_state *fysas;
+	int ret;
 
 	if (!fyp || !fyep)
 		return NULL;
@@ -7309,20 +7364,24 @@ struct fy_eventp *fy_parser_event_resolve_hook_alias(struct fy_parser *fyp, stru
 	fyt_anchor = NULL;
 
 	assert(fyp->currently_streaming_alias == NULL);
-	fyp->currently_streaming_alias = fysa;
-	fysa->next_streaming = fy_eventp_list_head(&fysa->events);
-	assert(fysa->next_streaming);
 
-	fyep = fy_parse_eventp_clone(fyp, fysa->next_streaming, true);
+	ret = fy_parse_streaming_alias_state_push(fyp, fysa);
+	fyp_error_check(fyp, ret, err_out,
+			"fy_parse_streaming_alias_push() failed!");
+
+	fysas = fy_parse_streaming_alias_state_top(fyp);
+	assert(fysas);
+	assert(fysas->next);
+
+	fyep = fy_parse_eventp_clone(fyp, fysas->next, true);
 	fyp_error_check(fyp, fyep != NULL, err_out,
 			"fy_parse_eventp_clone() failed!");
 
-	/* advance for next */
-	fysa->next_streaming = fy_eventp_next(&fysa->events, fysa->next_streaming);
-
-	/* no more? stop streaming */
-	if (!fysa->next_streaming)
-		fyp->currently_streaming_alias = NULL;
+	fysas->next = fy_eventp_next(&fysas->fysa->events, fysas->next);
+	while (fysas && !fysas->next) {
+		fy_parse_streaming_alias_state_pop(fyp);
+		fysas = fy_parse_streaming_alias_state_top(fyp);
+	}
 
 	// fprintf(stderr, "first alias %s\n", fy_event_type_txt[fyep->e.type]);
 
@@ -7347,15 +7406,6 @@ struct fy_eventp *fy_parser_event_resolve_hook_anchor_start(struct fy_parser *fy
 	fyt_anchor = fy_event_get_and_clear_anchor_token(&fyep->e);
 	if (!fyt_anchor)
 		return fyep;
-
-	/* more recent anchor always override */
-	fysa = fy_parser_streaming_alias_lookup(fyp, fyt_anchor);
-	if (fysa) {
-		fy_streaming_alias_list_del(&fyp->streaming_aliases, fysa);
-		fy_parse_streaming_alias_clean(fyp, fysa);
-		fy_parse_streaming_alias_recycle(fyp, fysa);
-		fysa = NULL;
-	}
 
 	fysa = fy_parse_streaming_alias_create(fyp, fyt_anchor);
 	fyp_error_check(fyp, fysa != NULL, err_out,
@@ -7388,7 +7438,8 @@ struct fy_eventp *fy_parser_event_resolve_hook_anchor_start(struct fy_parser *fy
 		goto err_out;
 	}
 
-	fy_streaming_alias_list_add_tail(&fyp->streaming_aliases, fysa);
+	/* always add to the head of the list (overrides what follows with the same name) */
+	fy_streaming_alias_list_add(&fyp->streaming_aliases, fysa);
 
 	return fyep;
 
@@ -7426,28 +7477,26 @@ err_out:
 
 struct fy_eventp *fy_parser_parse_resolve_prolog(struct fy_parser *fyp)
 {
-	struct fy_streaming_alias *fysa;
+	struct fy_streaming_alias_state *fysas;
 	struct fy_eventp *fyep;
 
 	if (!(fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT))
 		return NULL;
 
-	fysa = fyp->currently_streaming_alias;
-	if (!fysa)
+	fysas = fy_parse_streaming_alias_state_top(fyp);
+	if (!fysas)
 		return NULL;
+	assert(fysas->next != NULL);
 
-	assert(fysa->next_streaming != NULL);
-
-	fyep = fy_parse_eventp_clone(fyp, fysa->next_streaming, true);
+	fyep = fy_parse_eventp_clone(fyp, fysas->next, true);
 	fyp_error_check(fyp, fyep != NULL, err_out,
 			"fy_parse_eventp_clone() failed!");
 
-	/* advance for next */
-	fysa->next_streaming = fy_eventp_next(&fysa->events, fysa->next_streaming);
-
-	/* no more? stop streaming */
-	if (!fysa->next_streaming)
-		fyp->currently_streaming_alias = NULL;
+	fysas->next = fy_eventp_next(&fysas->fysa->events, fysas->next);
+	while (fysas && !fysas->next) {
+		fy_parse_streaming_alias_state_pop(fyp);
+		fysas = fy_parse_streaming_alias_state_top(fyp);
+	}
 
 	return fyep;
 

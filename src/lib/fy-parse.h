@@ -143,11 +143,14 @@ struct fy_streaming_alias {
 	bool collecting;
 	long mapping_nest;
 	long sequence_nest;
-	bool streaming;
-	struct fy_eventp *next_streaming;
 	struct fy_eventp_list events;
 };
 FY_PARSE_TYPE_DECL(streaming_alias);
+
+struct fy_streaming_alias_state {
+	struct fy_streaming_alias *fysa;
+	struct fy_eventp *next;
+};
 
 struct fy_parser {
 	struct fy_parse_cfg cfg;
@@ -241,7 +244,12 @@ struct fy_parser {
 	struct fy_atom last_event_handle;
 
 	struct fy_streaming_alias_list streaming_aliases;
-	struct fy_streaming_alias *currently_streaming_alias;
+	struct {
+		int alloc;
+		int top;
+		struct fy_streaming_alias_state *stack;
+		struct fy_streaming_alias_state local[8];
+	} sas;
 };
 
 static inline struct fy_input *
