@@ -1245,8 +1245,6 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 			   int flags, int indent, enum fy_node_style style,
 			   struct fy_token *fyt_tag)
 {
-	const char *value = NULL;
-	size_t len = 0;
 	bool json, flow, is_null_scalar, is_json_plain;
 	struct fy_atom *atom;
 	int aflags = -1;
@@ -1300,17 +1298,13 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 
 	if (flow && (style == FYNS_ANY || style == FYNS_LITERAL || style == FYNS_FOLDED)) {
 
-		if (fyt && !value)
-			value = fy_token_get_text(fyt, &len);
-
 		/* if there's a linebreak, use double quoted style */
-		if (fy_find_any_lb(value, len)) {
+		if (aflags & FYTTAF_HAS_ANY_LB) {
 			style = FYNS_DOUBLE_QUOTED;
 			goto out;
 		}
 
-		/* check if there's a non printable */
-		if (!fy_find_non_print(value, len)) {
+		if (!(aflags & FYTTAF_HAS_NON_PRINT)) {
 			style = FYNS_SINGLE_QUOTED;
 			goto out;
 		}
@@ -1345,13 +1339,8 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 	}
 
 out:
-	if (style == FYNS_ANY) {
-		if (fyt)
-			value = fy_token_get_text(fyt, &len);
-
-		style = (aflags & FYTTAF_CAN_BE_PLAIN) ?
-				FYNS_PLAIN : FYNS_DOUBLE_QUOTED;
-	}
+	if (style == FYNS_ANY)
+		style = (aflags & FYTTAF_CAN_BE_PLAIN) ?  FYNS_PLAIN : FYNS_DOUBLE_QUOTED;
 
 	if (style == FYNS_PLAIN) {
 		/* plains in flow mode not being able to be plains
