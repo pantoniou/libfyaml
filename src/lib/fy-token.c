@@ -638,11 +638,10 @@ const struct fy_mark *fy_token_end_mark(struct fy_token *fyt)
 
 int fy_token_text_analyze(struct fy_token *fyt)
 {
-	const char *s, *e;
-	const char *value = NULL;
+	struct fy_atom_iter iter;
 	enum fy_atom_style style;
-	int c, w, cn, cnn, cp, col;
-	size_t len;
+	int c, cn, cnn, cp, col;
+	uint8_t col0si, col0ei;	/* mask for --- ... at indent 0 */
 	int flags;
 
 	if (!fyt)
@@ -674,12 +673,16 @@ int fy_token_text_analyze(struct fy_token *fyt)
 	if (!fy_atom_style_is_block(style))
 		flags |= FYTTAF_DIRECT_OUTPUT;
 
-	/* get value */
-	value = fy_token_get_text(fyt, &len);
-	if (!value || len == 0) {
+	fy_atom_iter_start(&fyt->handle, &iter);
+
+	col = 0;
+
+	/* get first character */
+	cn = fy_atom_iter_utf8_get(&iter);
+	if (cn < 0) {
+		/* empty? */
 		flags |= FYTTAF_EMPTY | FYTTAF_CAN_BE_DOUBLE_QUOTED | FYTTAF_CAN_BE_UNQUOTED_PATH_KEY;
-		fyt->analyze_flags = flags;
-		return flags;
+		goto out;
 	}
 
 	flags |= FYTTAF_CAN_BE_PLAIN |
@@ -691,19 +694,7 @@ int fy_token_text_analyze(struct fy_token *fyt)
 		 FYTTAF_CAN_BE_PLAIN_FLOW |
 		 FYTTAF_CAN_BE_UNQUOTED_PATH_KEY;
 
-	/* start with document indicators must be quoted at indent 0 */
-	if (len >= 3 && (!memcmp(value, "---", 3) || !memcmp(value, "...", 3)))
-		flags |= FYTTAF_QUOTE_AT_0;
-
-	s = value;
-	e = value + len;
-
-	col = 0;
-
-	/* get first character */
-	cn = fy_utf8_get(s, e - s, &w);
-	s += w;
-	col = fy_token_is_lb(fyt, cn) ? 0 : (col + 1);
+	col0si = col0ei = 0;
 
 	/* disable folded right off the bat, it's a pain */
 	flags &= ~FYTTAF_CAN_BE_FOLDED;
@@ -720,7 +711,7 @@ int fy_token_text_analyze(struct fy_token *fyt)
 		flags &= ~FYTTAF_CAN_BE_PLAIN_FLOW;
 
 	if ((flags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW))) {
-		cnn = fy_utf8_get(s, e - s, &w);
+		cnn = fy_atom_iter_utf8_peek(&iter);
 		if (fy_is_blankz_m(cnn, fy_token_atom_lb_mode(fyt)) && fy_is_indicator_before_space(cn))
 			flags &= ~(FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW);
 	}
@@ -731,10 +722,22 @@ int fy_token_text_analyze(struct fy_token *fyt)
 		flags &= ~FYTTAF_CAN_BE_UNQUOTED_PATH_KEY;
 
 	cp = -1;
-	for (c = cn; c >= 0; s += w, cp = c, c = cn) {
+	for (c = cn; c >= 0; cp = c, c = cn) {
+
+		if (col <= 2) {
+			if (cn == '-') {
+				col0si |= (uint8_t)1 << col;
+				if (col0si == 7)
+					flags |= FYTTAF_HAS_START_IND | FYTTAF_QUOTE_AT_0;
+			} else if (cn == '.') {
+				col0ei |= (uint8_t)1 << col;
+				if (col0ei == 7)
+					flags |= FYTTAF_HAS_END_IND | FYTTAF_QUOTE_AT_0;
+			}
+		}
 
 		/* can be -1 on end */
-		cn = fy_utf8_get(s, e - s, &w);
+		cn = fy_atom_iter_utf8_get(&iter);
 
 		/* zero can't be output, only in double quoted mode */
 		if (c == 0) {
@@ -785,12 +788,11 @@ int fy_token_text_analyze(struct fy_token *fyt)
 			flags &= ~FYTTAF_CAN_BE_PLAIN_FLOW;
 
 		/* non printable characters, turn off these styles */
-		if ((flags & (FYTTAF_CAN_BE_SINGLE_QUOTED |
-			      FYTTAF_CAN_BE_LITERAL |
-			      FYTTAF_CAN_BE_FOLDED)) && !fy_is_print(c))
-			flags &= ~(FYTTAF_CAN_BE_SINGLE_QUOTED |
-				   FYTTAF_CAN_BE_LITERAL |
+		if (!fy_is_print(c)) {
+			flags &= ~(FYTTAF_CAN_BE_SINGLE_QUOTED | FYTTAF_CAN_BE_LITERAL |
 				   FYTTAF_CAN_BE_FOLDED);
+			flags |= FYTTAF_HAS_NON_PRINT;
+		}
 
 		/* if there's an escape, it can't be direct */
 		if ((flags & FYTTAF_DIRECT_OUTPUT) &&
@@ -799,17 +801,25 @@ int fy_token_text_analyze(struct fy_token *fyt)
 		     (style == FYAS_DOUBLE_QUOTED && c == '\\')))
 			flags &= ~FYTTAF_DIRECT_OUTPUT;
 
-		col = fy_token_is_lb(fyt, c) ? 0 : (col + 1);
+		if (fy_token_is_lb(fyt, c)) {
+			col = 0;
+			col0si = col0ei = 0;
+		} else
+			col++;
+
+		if (fy_is_any_lb(c))
+			flags |= FYTTAF_HAS_ANY_LB;
 
 		/* last character */
 		if (cn < 0) {
 			/* if ends with whitespace or linebreak, can't be plain */
-			if (fy_is_ws(cn) || fy_token_is_lb(fyt, cn))
+			if (fy_is_ws(c) || fy_token_is_lb(fyt, c))
 				flags &= ~(FYTTAF_CAN_BE_PLAIN |
 					   FYTTAF_CAN_BE_PLAIN_FLOW);
 		}
 	}
-
+out:
+	fy_atom_iter_finish(&iter);
 	fyt->analyze_flags = flags;
 	return flags;
 }
