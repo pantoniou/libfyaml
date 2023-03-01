@@ -69,11 +69,15 @@ TESTS += jsontestsuite.test
 # normal YAML testsuite using document event stream
 TESTS += testsuite-evstream.test
 
+# resolution equivalence
+TESTS += testsuite-resolution.test
+
 testsuite.test: test-suite-data.checkout.timestamp
 if HAVE_JQ
 testsuite-json.test: test-suite-data.checkout.timestamp
 endif
 testsuite-evstream.test: test-suite-data.checkout.timestamp
+testsuite-resolution.test: test-suite-data.checkout.timestamp
 
 test-suite-data.checkout.timestamp:
 	@GIT@ clone -q "@TESTSUITEURL@" -- test-suite-data && \
