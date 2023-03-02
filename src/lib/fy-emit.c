@@ -2061,6 +2061,14 @@ int fy_emit_setup(struct fy_emitter *emit, const struct fy_emitter_cfg *cfg)
 	return 0;
 }
 
+void fy_emit_save_ctx_cleanup(struct fy_emitter *emit, struct fy_emit_save_ctx *sc)
+{
+	sc = &emit->s_sc;
+	fy_token_unref_rl(emit->recycled_token_list, sc->fyt_last_key);
+	fy_token_unref_rl(emit->recycled_token_list, sc->fyt_last_value);
+	memset(sc, 0, sizeof(*sc));
+}
+
 void fy_emit_cleanup(struct fy_emitter *emit)
 {
 	struct fy_eventp *fyep;
@@ -2069,6 +2077,10 @@ void fy_emit_cleanup(struct fy_emitter *emit)
 	/* call the finalizer if it exists */
 	if (emit->finalizer)
 		emit->finalizer(emit);
+
+	fy_emit_save_ctx_cleanup(emit, &emit->s_sc);
+	while (emit->sc_stack_top > 0)
+		fy_emit_save_ctx_cleanup(emit, &emit->sc_stack[--emit->sc_stack_top]);
 
 	while ((fyt = fy_token_list_pop(&emit->recycled_token)) != NULL)
 		fy_token_free(fyt);
