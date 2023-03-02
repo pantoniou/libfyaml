@@ -787,6 +787,7 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 
 	fy_streaming_alias_list_init(&fyp->streaming_aliases);
 	fy_streaming_alias_list_init(&fyp->recycled_streaming_alias);
+	fy_eventp_list_init(&fyp->mks.args);
 
 	fyp->suppress_recycling = !!(fyp->cfg.flags & FYPCF_DISABLE_RECYCLING) ||
 		                  (getenv("FY_VALGRIND") &&
@@ -6865,7 +6866,7 @@ struct fy_event *fy_parser_parse(struct fy_parser *fyp)
 	if (!fyp)
 		return NULL;
 
-	if (fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT) {
+	if ((fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT) && fy_reader_get_mode(fyp->reader) != fyrm_json) {
 		fyep = fy_parser_parse_resolve_prolog(fyp);
 		if (fyep)
 			return &fyep->e;
@@ -6875,7 +6876,7 @@ struct fy_event *fy_parser_parse(struct fy_parser *fyp)
 	if (!fyep)
 		return NULL;
 
-	if (fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT) {
+	if ((fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT) && fy_reader_get_mode(fyp->reader) != fyrm_json) {
 		fyep2 = fy_parser_parse_resolve_epilog(fyp, fyep);
 		if (!fyep2)
 			return NULL;
@@ -7217,6 +7218,8 @@ fy_parse_streaming_alias_clean(struct fy_parser *fyp, struct fy_streaming_alias 
 void fy_parse_streaming_aliases_reset(struct fy_parser *fyp)
 {
 	struct fy_streaming_alias *fysa;
+	struct fy_eventp *fyep;
+
 	if (!fyp)
 		return;
 
@@ -7227,10 +7230,18 @@ void fy_parse_streaming_aliases_reset(struct fy_parser *fyp)
 	if (fyp->sas.stack != NULL && fyp->sas.stack != fyp->sas.local)
 		free(fyp->sas.stack);
 	memset(&fyp->sas, 0, sizeof(fyp->sas));
+	if (fyp->cts.stack != NULL && fyp->cts.stack != fyp->cts.local)
+		free(fyp->cts.stack);
+	memset(&fyp->cts, 0, sizeof(fyp->cts));
+
+	while ((fyep = fy_eventp_list_pop(&fyp->mks.args)) != NULL)
+		fy_parse_eventp_recycle(fyp, fyep);
+	memset(&fyp->mks, 0, sizeof(fyp->mks));
+	fy_eventp_list_init(&fyp->mks.args);
 }
 
 struct fy_streaming_alias_state *
-fy_parse_streaming_alias_state_push(struct fy_parser *fyp, struct fy_streaming_alias *fysa)
+fy_parse_streaming_alias_state_push(struct fy_parser *fyp, struct fy_streaming_alias *fysa, bool is_merge_key)
 {
 	struct fy_streaming_alias_state *new_stack;
 	struct fy_streaming_alias_state *fysas;
@@ -7249,6 +7260,7 @@ fy_parse_streaming_alias_state_push(struct fy_parser *fyp, struct fy_streaming_a
 		fyp_error_check(fyp, new_stack != NULL, err_out,
 				"realloc() failed!");
 		memcpy(new_stack, fyp->sas.stack, sizeof(*new_stack) * fyp->sas.alloc);
+		fyp->sas.alloc *= 2;
 		if (fyp->sas.stack != fyp->sas.local)
 			free(fyp->sas.stack);
 		fyp->sas.stack = new_stack;
@@ -7258,6 +7270,15 @@ fy_parse_streaming_alias_state_push(struct fy_parser *fyp, struct fy_streaming_a
 
 	fysas->fysa = fysa;
 	fysas->next = fy_eventp_list_head(&fysa->events);
+	fysas->is_merge_key = is_merge_key;
+
+	/* for merge key, advance over the first mapping start event
+	 * note that we depend on the caller to have made the check
+	 */
+	if (fysas->is_merge_key) {
+		fysas->next = fy_eventp_next(&fysa->events, fysas->next);
+		assert(fysas->next);
+	}
 
 	return fysas;
 err_out:
@@ -7298,11 +7319,134 @@ fy_parse_streaming_alias_state_next_event(struct fy_parser *fyp)
 		return;
 
 	fysas->next = fy_eventp_next(&fysas->fysa->events, fysas->next);
-	while (!fysas->next) {
+	while (!fysas->next || (fysas->is_merge_key && fysas->next == fy_eventp_list_tail(&fysas->fysa->events))) {
 		fysas = fy_parse_streaming_alias_state_pop(fyp);
 		if (!fysas)
 			break;
 	}
+}
+
+static inline int
+fy_parse_streaming_alias_collection_state_set_top(struct fy_parser *fyp, int cts)
+{
+	int pos, off, old_cts;
+
+	if (fyp->cts.top < 2)
+		return -1;
+
+	cts &= 3;	/* keep 2 bits */
+
+	/* get position and offset */
+	pos = (fyp->cts.top - 2) / (sizeof(*fyp->cts.stack) * 8);
+	off = (fyp->cts.top - 2) % (sizeof(*fyp->cts.stack) * 8);
+
+	old_cts = (int)((fyp->cts.stack[pos] >> off) & 3);
+
+	/* clear the bits first */
+	fyp->cts.stack[pos] &= ~(3 << off);
+	/* set the state */
+	fyp->cts.stack[pos] |= (cts & 3) << off;
+
+	return old_cts;
+}
+
+static inline int
+fy_parse_streaming_alias_collection_state_top(struct fy_parser *fyp)
+{
+	int pos, off;
+
+	if (fyp->cts.top < 2)
+		return -1;
+
+	/* get position and offset */
+	pos = (fyp->cts.top - 2) / (sizeof(*fyp->cts.stack) * 8);
+	off = (fyp->cts.top - 2) % (sizeof(*fyp->cts.stack) * 8);
+
+	return (int)((fyp->cts.stack[pos] >> off) & 3);
+}
+
+static inline bool
+fy_parse_streaming_alias_collection_state_in_map(struct fy_parser *fyp)
+{
+	int cts = fy_parse_streaming_alias_collection_state_top(fyp);
+	return cts >= 0 && (cts & FYCTS_MAP);
+}
+
+static inline bool
+fy_parse_streaming_alias_collection_state_in_seq(struct fy_parser *fyp)
+{
+	int cts = fy_parse_streaming_alias_collection_state_top(fyp);
+	return cts == FYCTS_SEQ;
+}
+
+static inline bool
+fy_parse_streaming_alias_collection_state_in_map_key(struct fy_parser *fyp)
+{
+	int cts = fy_parse_streaming_alias_collection_state_top(fyp);
+	return cts == FYCTS_MAP_KEY;
+}
+
+static inline bool
+fy_parse_streaming_alias_collection_state_in_map_val(struct fy_parser *fyp)
+{
+	int cts = fy_parse_streaming_alias_collection_state_top(fyp);
+	return cts == FYCTS_MAP_VAL;
+}
+
+static inline void
+fy_parse_streaming_alias_collection_state_toggle_map(struct fy_parser *fyp)
+{
+	int cts = fy_parse_streaming_alias_collection_state_top(fyp);
+	if (cts >= 0 && (cts & FYCTS_MAP))
+		fy_parse_streaming_alias_collection_state_set_top(fyp, cts ^ FYCTS_MAP_TOGGLE);
+}
+
+int
+fy_parse_streaming_alias_collection_state_push(struct fy_parser *fyp, int cts)
+{
+	uint32_t *new_stack;
+	int size;
+
+	assert(cts >= 0);
+
+	/* if first one, just point to the local area */
+	if (fyp->cts.stack == NULL) {
+		fyp->cts.stack = fyp->cts.local;
+		fyp->cts.top = 0;
+		fyp->cts.alloc = sizeof(fyp->cts.local) * 8;	/* in bits */
+	}
+	/* grow the stack if required */
+	if (fyp->cts.top + 2 >= fyp->cts.alloc) {
+		assert(fyp->cts.alloc > 0);
+		assert(fyp->cts.stack);
+		size = fyp->cts.alloc / 8;	/* convert to bytes */
+		new_stack = malloc(size * 2);
+		fyp_error_check(fyp, new_stack != NULL, err_out,
+				"realloc() failed!");
+		memcpy(new_stack, fyp->cts.stack, size);
+		memset((uint8_t *)new_stack + size, 0, size);
+		fyp->cts.alloc *= 2;
+		if (fyp->cts.stack != fyp->cts.local)
+			free(fyp->cts.stack);
+		fyp->cts.stack = new_stack;
+	}
+
+	fyp->cts.top += 2;
+	fy_parse_streaming_alias_collection_state_set_top(fyp, cts);
+	return cts;
+err_out:
+	return -1;
+}
+
+int
+fy_parse_streaming_alias_collection_state_pop(struct fy_parser *fyp)
+{
+	int ret;
+
+	ret = fy_parse_streaming_alias_collection_state_top(fyp);
+	if (ret >= 0)
+		fyp->cts.top -= 2;
+	return ret;
 }
 
 struct fy_eventp *fy_parser_event_resolve_hook_collect(struct fy_parser *fyp, struct fy_eventp *fyep)
@@ -7397,7 +7541,7 @@ struct fy_eventp *fy_parser_event_resolve_hook_alias(struct fy_parser *fyp, stru
 	fy_token_unref(fyt_anchor);
 	fyt_anchor = NULL;
 
-	fysas = fy_parse_streaming_alias_state_push(fyp, fysa);
+	fysas = fy_parse_streaming_alias_state_push(fyp, fysa, false);
 	fyp_error_check(fyp, fysas, err_out,
 			"fy_parse_streaming_alias_push() failed!");
 	assert(fysas->next);
@@ -7456,9 +7600,142 @@ err_out:
 	return NULL;
 }
 
+static struct fy_eventp *resolve_merge_key_alias(struct fy_parser *fyp, struct fy_eventp *fyep)
+{
+	struct fy_streaming_alias *fysa;
+	struct fy_streaming_alias_state *fysas;
+	struct fy_eventp *head, *tail;
+
+	assert(fyp);
+	assert(fyep);
+	assert(fyep->e.type == FYET_ALIAS);
+
+	/* start generation of alias events */
+	fysa = fy_parser_streaming_alias_lookup(fyp, fyep->e.alias.anchor);
+
+	/* we don't support forward aliases for now like we do in document mode ... */
+	FYP_TOKEN_ERROR_CHECK(fyp, fyep->e.alias.anchor, FYEM_PARSE,
+			fysa, err_out,
+			"merge key alias not found; note streaming mode does not support forward alias references");
+
+	/* if this is a reference to a collecting alias, then it's recursive */
+	FYP_TOKEN_ERROR_CHECK(fyp, fyep->e.alias.anchor, FYEM_PARSE,
+			!fysa->collecting, err_out,
+			"merge key recursive alias reference detected");
+
+	/* it must be a mapping reference */
+	head = fy_eventp_list_head(&fysa->events);
+	FYP_TOKEN_ERROR_CHECK(fyp, fyep->e.alias.anchor, FYEM_PARSE,
+			head && head->e.type == FYET_MAPPING_START, err_out,
+			"merge key uses non-mapping alias reference (start)");
+
+	tail = fy_eventp_list_tail(&fysa->events);
+	FYP_TOKEN_ERROR_CHECK(fyp, fyep->e.alias.anchor, FYEM_PARSE,
+			tail && tail->e.type == FYET_MAPPING_END, err_out,
+			"merge key uses non-mapping alias reference (end)");
+
+	/* OK, push the new state */
+	fysas = fy_parse_streaming_alias_state_push(fyp, fysa, true);
+	fyp_error_check(fyp, fysas, err_out,
+			"fy_parse_streaming_alias_push() failed!");
+	assert(fysas->next);
+
+	/* dispose of the event */
+	fy_parse_eventp_recycle(fyp, fyep);
+	fyep = NULL;
+
+	fyep = fy_parse_eventp_clone(fyp, fysas->next, true);
+	fyp_error_check(fyp, fyep != NULL, err_out,
+			"fy_parse_eventp_clone() failed!");
+
+	/* advance event */
+	fy_parse_streaming_alias_state_next_event(fyp);
+
+	return fyep;
+
+err_out:
+	fy_parse_eventp_recycle(fyp, fyep);
+	fyp->stream_error = true;
+	return NULL;
+}
+
+struct fy_eventp *fy_parser_event_resolve_hook_merge_key_start(struct fy_parser *fyp, struct fy_eventp *fyep)
+{
+	struct fy_eventp *fyep_next = NULL;
+
+	FYP_TOKEN_ERROR_CHECK(fyp, fyep->e.scalar.value, FYEM_PARSE,
+			!fyp->mks.active, err_out,
+			"No recursive merge key processing is supported");
+
+	/* we're going to directly call into the parser to pick up events */
+	fyep_next = fy_parse_private(fyp);
+
+	FYP_TOKEN_ERROR_CHECK(fyp, fyep->e.scalar.value, FYEM_PARSE,
+			fyep_next, err_out,
+			"No input for merge key processing");
+
+	/* simple case, a single alias, just pretend that what it was */
+	if (fyep_next->e.type == FYET_ALIAS) {
+		fy_parse_eventp_recycle(fyp, fyep);
+		return resolve_merge_key_alias(fyp, fyep_next);
+	}
+
+	FYP_TOKEN_ERROR_CHECK(fyp, fy_event_get_token(&fyep_next->e), FYEM_PARSE,
+			fyep_next->e.type != FYET_SEQUENCE_START, err_out,
+			"merge key args must be either a single alias or a sequence of aliases");
+
+	FYP_TOKEN_ERROR(fyp, fyep_next->e.scalar.value, FYEM_PARSE,
+			"Unable to handle this kind of merge key");
+	return fyep;
+
+err_out:
+	fy_parse_eventp_recycle(fyp, fyep_next);
+	fy_parse_eventp_recycle(fyp, fyep);
+	return NULL;
+}
+
+struct fy_eventp *fy_parser_event_resolve_hook_merge_key(struct fy_parser *fyp, struct fy_eventp *fyep)
+{
+	/* will toggle the map key bit if it is in a mapping */
+	fy_parse_streaming_alias_collection_state_toggle_map(fyp);
+	switch (fyep->e.type) {
+	case FYET_SCALAR:
+		/* if a merge key is detected do the dance */
+		if (fy_parse_streaming_alias_collection_state_in_map_key(fyp) &&
+		    fy_token_scalar_style(fyep->e.scalar.value) == FYSS_PLAIN &&
+		    fy_plain_atom_streq(fy_token_atom(fyep->e.scalar.value), "<<"))
+			return fy_parser_event_resolve_hook_merge_key_start(fyp, fyep);
+		break;
+	case FYET_ALIAS:
+		/* nothing for alias */
+		break;
+	case FYET_MAPPING_START:
+		fy_parse_streaming_alias_collection_state_push(fyp, FYCTS_MAP_VAL);	/* it will toggle to key at the first one */
+		break;
+	case FYET_SEQUENCE_START:
+		fy_parse_streaming_alias_collection_state_push(fyp, FYCTS_SEQ);
+		break;
+	case FYET_MAPPING_END:
+	case FYET_SEQUENCE_END:
+		fy_parse_streaming_alias_collection_state_pop(fyp);
+		break;
+	default:
+		break;
+	}
+
+	return fyep;
+}
+
 /* NOTE: order is _very_ important, do not re-arrange if you're not sure */
 struct fy_eventp *fy_parser_event_resolve_hook(struct fy_parser *fyp, struct fy_eventp *fyep)
 {
+	/* merge key processing for version 1.1 only! */
+	if (fy_reader_get_mode(fyp->reader) == fyrm_yaml_1_1) {
+		fyep = fy_parser_event_resolve_hook_merge_key(fyp, fyep);
+		fyp_error_check(fyp, fyep != NULL, err_out,
+				"fy_parser_event_resolve_hook_collection_tracking() failed!");
+	}
+
 	/* anchor marking */
 	fyep = fy_parser_event_resolve_hook_anchor_start(fyp, fyep);
 	fyp_error_check(fyp, fyep != NULL, err_out,
@@ -7515,7 +7792,7 @@ struct fy_eventp *fy_parser_parse_resolve_prolog(struct fy_parser *fyp)
 				"fy_parser_streaming_alias_lookup_pivot() failed!");
 
 		/* and push */
-		fysas = fy_parse_streaming_alias_state_push(fyp, fysa);
+		fysas = fy_parse_streaming_alias_state_push(fyp, fysa, false);
 		fyp_error_check(fyp, fysas, err_out,
 				"fy_parse_streaming_alias_state_push() failed!");
 	}

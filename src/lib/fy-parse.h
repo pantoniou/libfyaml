@@ -150,7 +150,20 @@ FY_PARSE_TYPE_DECL(streaming_alias);
 struct fy_streaming_alias_state {
 	struct fy_streaming_alias *fysa;
 	struct fy_eventp *next;
+	bool is_merge_key;
 };
+
+/* 2 bits per collection tracking state
+ * pos: * 2
+ * bit 0 - 0 map, 1 seq
+ * bit 1 - 0 key, 1 val (if map)
+ */
+#define FYCTS_SCALAR  0
+#define FYCTS_SEQ     1
+#define FYCTS_MAP     2
+#define FYCTS_MAP_KEY 2
+#define FYCTS_MAP_VAL 3
+#define FYCTS_MAP_TOGGLE 1
 
 struct fy_parser {
 	struct fy_parse_cfg cfg;
@@ -244,12 +257,26 @@ struct fy_parser {
 	struct fy_atom last_event_handle;
 
 	struct fy_streaming_alias_list streaming_aliases;
+	/* streaming alias state */
 	struct {
 		int alloc;
 		int top;
 		struct fy_streaming_alias_state *stack;
 		struct fy_streaming_alias_state local[8];
 	} sas;
+	/* collection tracking state */
+	struct {
+		int alloc;
+		int top;
+		uint32_t *stack;
+		uint32_t local[8];	/* 8 * 32 = 256 / 2 = 128 levels before needing dynamic allocation */
+	} cts;
+	/* merge key state */
+	struct {
+		bool active;
+		struct fy_eventp_list args;
+		struct fy_document *fyd;
+	} mks;
 };
 
 static inline struct fy_input *
