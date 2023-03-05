@@ -16,6 +16,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <unistd.h>
+#include <limits.h>
 
 #include <libfyaml.h>
 
@@ -2939,9 +2940,9 @@ void fy_document_purge_anchors(struct fy_document *fyd)
 	}
 }
 
-typedef void (*fy_node_applyf)(struct fy_node *fyn);
+typedef void (*fy_node_applyf)(struct fy_node *fyn, void *user);
 
-void fy_node_apply(struct fy_node *fyn, fy_node_applyf func)
+void fy_node_apply(struct fy_node *fyn, fy_node_applyf func, void *user)
 {
 	struct fy_node *fyni;
 	struct fy_node_pair *fynp;
@@ -2949,7 +2950,7 @@ void fy_node_apply(struct fy_node *fyn, fy_node_applyf func)
 	if (!fyn || !func)
 		return;
 
-	(*func)(fyn);
+	(*func)(fyn, user);
 
 	switch (fyn->type) {
 	case FYNT_SCALAR:
@@ -2958,21 +2959,21 @@ void fy_node_apply(struct fy_node *fyn, fy_node_applyf func)
 	case FYNT_SEQUENCE:
 		for (fyni = fy_node_list_head(&fyn->sequence); fyni;
 				fyni = fy_node_next(&fyn->sequence, fyni))
-			fy_node_apply(fyni, func);
+			fy_node_apply(fyni, func, user);
 		break;
 
 	case FYNT_MAPPING:
 		for (fynp = fy_node_pair_list_head(&fyn->mapping); fynp;
 				fynp = fy_node_pair_next(&fyn->mapping, fynp)) {
 
-			fy_node_apply(fynp->key, func);
-			fy_node_apply(fynp->value, func);
+			fy_node_apply(fynp->key, func, user);
+			fy_node_apply(fynp->value, func, user);
 		}
 		break;
 	}
 }
 
-static void clear_system_marks(struct fy_node *fyn)
+static void clear_system_marks(struct fy_node *fyn, void *user)
 {
 	fyn->marks &= ~FYNWF_SYSTEM_MARKS;
 }
@@ -2980,36 +2981,63 @@ static void clear_system_marks(struct fy_node *fyn)
 /* clear all the system markers */
 void fy_node_clear_system_marks(struct fy_node *fyn)
 {
-	fy_node_apply(fyn, clear_system_marks);
+	fy_node_apply(fyn, clear_system_marks, NULL);
+}
+
+static void count_aliases(struct fy_node *fyn, void *user)
+{
+	int *countp = user;
+
+	if (fyn->style == FYNS_ALIAS)
+		(*countp)++;
+}
+
+int fy_node_count_aliases(struct fy_node *fyn)
+{
+	int count;
+
+	count = 0;
+
+	fy_node_apply(fyn, count_aliases, &count);
+
+	return count;
 }
 
 int fy_document_resolve(struct fy_document *fyd)
 {
-	int rc;
+	int rc, num_aliases, num_aliases_prev;
 	bool ret;
 
 	if (!fyd)
 		return 0;
 
-	fy_node_clear_system_marks(fyd->root);
+	num_aliases_prev = INT_MAX;
+	do {
+		fy_node_clear_system_marks(fyd->root);
 
-	/* for resolution to work, no reference loops should exist */
-	ret = fy_check_ref_loop(fyd, fyd->root,
-			FYNWF_MAXDEPTH_DEFAULT | FYNWF_FOLLOW, NULL);
+		/* for resolution to work, no reference loops should exist */
+		ret = fy_check_ref_loop(fyd, fyd->root,
+				FYNWF_MAXDEPTH_DEFAULT | FYNWF_FOLLOW, NULL);
 
-	fy_node_clear_system_marks(fyd->root);
+		fy_node_clear_system_marks(fyd->root);
 
-	if (ret)
-		goto err_out;
+		if (ret)
+			goto err_out;
 
+		/* now resolve any anchor nodes */
+		rc = fy_resolve_anchor_node(fyd, fyd->root);
+		if (rc)
+			goto err_out_rc;
 
-	/* now resolve any anchor nodes */
-	rc = fy_resolve_anchor_node(fyd, fyd->root);
-	if (rc)
-		goto err_out_rc;
+		/* redo parent resolution */
+		fy_resolve_parent_node(fyd, fyd->root, NULL);
 
-	/* redo parent resolution */
-	fy_resolve_parent_node(fyd, fyd->root, NULL);
+		/* count the remaining aliases */
+		num_aliases = fy_node_count_aliases(fyd->root);
+		if (num_aliases == num_aliases_prev)
+			goto err_out;
+
+	} while (num_aliases > 0);
 
 	/* remove all anchors after resolution */
 	fy_document_purge_anchors(fyd);
