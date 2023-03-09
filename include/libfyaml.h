@@ -7146,6 +7146,54 @@ fy_path_component_set_sequence_user_data(struct fy_path_component *fypc, void *d
 	FY_EXPORT;
 
 /**
+ * fy_path_get_parent_user_data() - Return the userdata of the parent collection
+ *
+ * @fypp: The path
+ *
+ * Returns:
+ * The user data associated with the parent collection of the path, or NULL if no path
+ */
+void *
+fy_path_get_parent_user_data(struct fy_path *path)
+	FY_EXPORT;
+
+/**
+ * fy_path_set_parent_user_data() - Set the user data associated with the parent collection
+ *
+ * Note, no error condition if not a path
+ *
+ * @fypp: The path
+ * @data: The data to set as parent collection data
+ */
+void
+fy_path_set_parent_user_data(struct fy_path *path, void *data)
+	FY_EXPORT;
+
+/**
+ * fy_path_get_last_user_data() - Return the userdata of the last collection
+ *
+ * @fypp: The path
+ *
+ * Returns:
+ * The user data associated with the last collection of the path, or NULL if no path
+ */
+void *
+fy_path_get_last_user_data(struct fy_path *path)
+	FY_EXPORT;
+
+/**
+ * fy_path_set_last_user_data() - Set the user data associated with the last collection
+ *
+ * Note, no error condition if not a path
+ *
+ * @fypp: The path
+ * @data: The data to set as last collection data
+ */
+void
+fy_path_set_last_user_data(struct fy_path *path, void *data)
+	FY_EXPORT;
+
+/**
  * fy_path_last_component() - Get the very last component of a path
  *
  * Returns the last component of a path.

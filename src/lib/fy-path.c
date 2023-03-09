@@ -658,3 +658,60 @@ void fy_path_component_set_sequence_user_data(struct fy_path_component *fypc, vo
 
 	fypc->user_data = data;
 }
+
+void *fy_path_get_parent_user_data(struct fy_path *fypp)
+{
+	struct fy_path_component *parent;
+
+	if (fy_path_in_root(fypp))
+		return fy_path_get_root_user_data(fypp);
+
+	parent = fy_path_last_not_collection_root_component(fypp);
+	if (fy_path_in_sequence(fypp))
+		return fy_path_component_get_sequence_user_data(parent);
+	else
+		return fy_path_component_get_mapping_user_data(parent);
+}
+
+void fy_path_set_parent_user_data(struct fy_path *fypp, void *data)
+{
+	struct fy_path_component *parent;
+
+	if (fy_path_in_root(fypp)) {
+		fy_path_set_root_user_data(fypp, data);
+	} else {
+		parent = fy_path_last_not_collection_root_component(fypp);
+		if (fy_path_in_sequence(fypp))
+			fy_path_component_set_sequence_user_data(parent, data);
+		else
+			fy_path_component_set_mapping_user_data(parent, data);
+	}
+}
+
+void *fy_path_get_last_user_data(struct fy_path *fypp)
+{
+	struct fy_path_component *last;
+
+	last = fy_path_last_component(fypp);
+	if (!last)
+		return NULL;
+
+	if (last->type == FYPCT_SEQ)
+		return fy_path_component_get_sequence_user_data(last);
+	else
+		return fy_path_component_get_mapping_user_data(last);
+}
+
+void fy_path_set_last_user_data(struct fy_path *fypp, void *data)
+{
+	struct fy_path_component *last;
+
+	last = fy_path_last_component(fypp);
+	if (!last)
+		return;
+
+	if (last->type == FYPCT_SEQ)
+		fy_path_component_set_sequence_user_data(last, data);
+	else
+		fy_path_component_set_mapping_user_data(last, data);
+}
