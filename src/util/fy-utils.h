@@ -65,4 +65,18 @@ int fy_term_query_size_raw(int fd, int *rows, int *cols);
 /* the non raw methods will set the terminal to raw and then restore */
 int fy_term_query_size(int fd, int *rows, int *cols);
 
+struct fy_comment_iter {
+	const char *start;
+	size_t size;
+	const char *end;
+	const char *next;
+	int line;
+};
+
+int fy_comment_iter_begin(const char *comment, size_t size, struct fy_comment_iter *iter);
+const char *fy_comment_iter_next_line(struct fy_comment_iter *iter, size_t *lenp);
+void fy_comment_iter_end(struct fy_comment_iter *iter);
+
+char *fy_get_cooked_comment(const char *raw_comment, size_t size);
+
 #endif
