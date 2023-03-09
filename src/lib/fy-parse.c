@@ -761,6 +761,7 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 	fy_indent_list_init(&fyp->recycled_indent);
 	fyp->indent = -2;
 	fyp->indent_line = -1;
+	fyp->starting_indent = -1;
 	fyp->generated_block_map = false;
 	fyp->last_was_comma = false;
 
@@ -1301,6 +1302,8 @@ int fy_push_indent(struct fy_parser *fyp, int indent, bool generated_block_map, 
 	fyp->parent_indent = fyp->indent;
 	fyp->indent = indent;
 	fyp->indent_line = indent_line;
+	if (fyp->parse_block_only && fyp->starting_indent < 0)
+		fyp->starting_indent = indent;
 	fyp->generated_block_map = generated_block_map;
 
 	fyp_scan_debug(fyp, "push_indent %d -> %d - generated_block_map=%s\n",
@@ -1696,7 +1699,7 @@ int fy_fetch_stream_end(struct fy_parser *fyp)
 	int rc;
 
 	/* only reset the stream in regular mode */
-	if (!fyp->parse_flow_only)
+	if (!fyp->parse_flow_only && !fyp->parse_block_only)
 		fy_reader_stream_end(fyp->reader);
 
 	fy_remove_all_simple_keys(fyp);
@@ -4819,6 +4822,13 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 			"fy_scan_to_next_token() failed");
 
 	if (fyp_block_mode(fyp)) {
+		if (fyp->parse_block_only && fyp->starting_indent >= 0 &&
+		    fyp_column(fyp) < fyp->starting_indent) {
+			rc = fy_fetch_stream_end(fyp);
+			fyp_error_check(fyp, !rc, err_out_rc,
+					"fy_fetch_stream_end() failed");
+			return 0;
+		}
 		rc = fy_parse_unroll_indent(fyp, fyp_column(fyp));
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_parse_unroll_indent() failed");
@@ -5126,7 +5136,7 @@ struct fy_token *fy_scan_peek(struct fy_parser *fyp)
 		fyp_scan_debug(fyp, "setting stream_end_produced to true");
 		fyp->stream_end_produced = true;
 
-		if (!fyp->parse_flow_only) {
+		if (!fyp->parse_flow_only && !fyp->parse_block_only) {
 			rc = fy_reader_input_done(fyp->reader);
 			fyp_error_check(fyp, !rc, err_out,
 					"fy_parse_input_done() failed");
@@ -5531,6 +5541,7 @@ int fy_parse_stream_start(struct fy_parser *fyp)
 {
 	fyp->indent = -2;
 	fyp->indent_line = -1;
+	fyp->starting_indent = -1;
 	fyp->generated_block_map = false;
 	fyp->last_was_comma = false;
 	fyp->flow = FYFT_NONE;

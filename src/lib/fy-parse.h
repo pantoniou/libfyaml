@@ -187,6 +187,7 @@ struct fy_parser {
 	bool bare_document_only : 1;		/* no document start indicators allowed, no directives */
 	bool stream_has_content : 1;
 	bool parse_flow_only : 1;	/* document is in flow form, and stop parsing at the end */
+	bool parse_block_only : 1;	/* document is in embedded block form, and stop parsing at the end */
 	bool colon_follows_colon : 1;	/* "foo"::bar -> "foo": :bar */
 	bool had_directives : 1;	/* document had directives */
 	int flow_level;
@@ -211,6 +212,7 @@ struct fy_parser {
 	int indent;
 	int parent_indent;
 	int indent_line;
+	int starting_indent;
 	/* simple key stack */
 	struct fy_simple_key_list simple_keys;
 	/* state stack */
@@ -585,6 +587,12 @@ static inline void
 fy_parser_set_flow_only_mode(struct fy_parser *fyp, bool flow_only_mode)
 {
 	fyp->parse_flow_only = flow_only_mode;
+}
+
+static inline void
+fy_parser_set_block_only_mode(struct fy_parser *fyp, bool block_only_mode)
+{
+	fyp->parse_block_only = block_only_mode;
 }
 
 #define fy_fill_atom_a(_fyp, _advance) \

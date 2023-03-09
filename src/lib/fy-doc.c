@@ -6076,6 +6076,75 @@ err_no_parse:
 	return NULL;
 }
 
+struct fy_document *
+fy_block_document_build_from_string(const struct fy_parse_cfg *cfg,
+				   const char *str, size_t len, size_t *consumed)
+{
+	struct flow_reader_container frc;
+	struct fy_reader *fyr = NULL;
+	struct fy_parser fyp_data, *fyp = &fyp_data;
+	struct fy_parse_cfg cfg_data;
+	struct fy_input *fyi;
+	struct fy_document *fyd;
+	struct fy_mark mark;
+	int rc;
+
+	if (!str)
+		return NULL;
+
+	if (consumed)
+		*consumed = 0;
+
+	if (!cfg) {
+		memset(&cfg_data, 0, sizeof(cfg_data));
+		cfg_data.flags = FYPCF_DEFAULT_PARSE;
+		cfg = &cfg_data;
+	}
+
+	memset(&frc, 0, sizeof(frc));
+	fyr = &frc.reader;
+	frc.cfg = cfg;
+
+	fy_reader_setup(fyr, &reader_ops);
+
+	rc = fy_parse_setup(fyp, cfg);
+	if (rc)
+		goto err_no_parse;
+
+	fyi = fy_input_from_data(str, len, NULL, false);
+	if (!fyi)
+		goto err_no_input;
+
+	rc = fy_reader_input_open(fyr, fyi, NULL);
+	if (rc)
+		goto err_no_input_open;
+
+	fy_parser_set_reader(fyp, fyr);
+	fy_parser_set_block_only_mode(fyp, true);
+
+	fyd = fy_parse_load_document(fyp);
+
+	fy_parse_cleanup(fyp);
+
+	if (fyd && consumed) {
+		fy_reader_get_mark(fyr, &mark);
+		*consumed = mark.input_pos;
+	}
+
+	fy_reader_cleanup(fyr);
+	fy_input_unref(fyi);
+
+	return fyd;
+
+err_no_input_open:
+	fy_input_unref(fyi);
+err_no_input:
+	fy_parse_cleanup(fyp);
+err_no_parse:
+	fy_reader_cleanup(fyr);
+	return NULL;
+}
+
 int fy_node_vscanf(struct fy_node *fyn, const char *fmt, va_list ap)
 {
 	size_t len;

@@ -2723,6 +2723,36 @@ fy_flow_document_build_from_string(const struct fy_parse_cfg *cfg,
 	FY_EXPORT;
 
 /**
+ * fy_block_document_build_from_string() - Create a document using the provided YAML source.
+ *
+ * Create a document parsing the provided string as a YAML source.
+ *
+ * The document is a block document, and it terminates when indentation
+ * appears to do so.
+ *
+ * Example of block documents:
+ *
+ * this-is-yaml
+ *   foo: bar    <- starts here
+ *   baz:
+ *   - 1
+ *   - 2
+ * this-is-yaml-no-more
+ *
+ * @cfg: The parse configuration to use or NULL for the default.
+ * @str: The YAML source to use.
+ * @len: The length of the string (or -1 if '\0' terminated)
+ * @consumed: A pointer to the consumed amount
+ *
+ * Returns:
+ * The created document, or NULL on error.
+ */
+struct fy_document *
+fy_block_document_build_from_string(const struct fy_parse_cfg *cfg,
+				   const char *str, size_t len, size_t *consumed)
+	FY_EXPORT;
+
+/**
  * fy_document_root() - Return the root node of the document
  *
  * Returns the root of the document. If the document is empty
