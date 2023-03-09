@@ -2946,8 +2946,11 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 		s_flags = emit->s_flags;
 		s_indent = emit->s_indent;
 
-		xstyle = fye->sequence_start.sequence_start->type == FYTT_BLOCK_SEQUENCE_START ?
-			FYNS_BLOCK : FYNS_FLOW;
+		if (fye->sequence_start.sequence_start)
+			xstyle = fye->sequence_start.sequence_start->type == FYTT_BLOCK_SEQUENCE_START ?
+				FYNS_BLOCK : FYNS_FLOW;
+		else
+			xstyle = FYNS_ANY;
 
 		fy_emit_common_node_preamble(emit, fye->sequence_start.anchor, fye->sequence_start.tag, emit->s_flags, emit->s_indent);
 
@@ -2984,8 +2987,11 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 		s_flags = emit->s_flags;
 		s_indent = emit->s_indent;
 
-		xstyle = fye->mapping_start.mapping_start->type == FYTT_BLOCK_MAPPING_START ?
-			FYNS_BLOCK : FYNS_FLOW;
+		if (fye->mapping_start.mapping_start)
+			xstyle = fye->mapping_start.mapping_start->type == FYTT_BLOCK_MAPPING_START ?
+				FYNS_BLOCK : FYNS_FLOW;
+		else
+			xstyle = FYNS_ANY;
 
 		fy_emit_common_node_preamble(emit, fye->mapping_start.anchor, fye->mapping_start.tag, emit->s_flags, emit->s_indent);
 
