@@ -79,4 +79,19 @@ void fy_comment_iter_end(struct fy_comment_iter *iter);
 
 char *fy_get_cooked_comment(const char *raw_comment, size_t size);
 
+struct fy_keyword_iter {
+	const char *keyword;
+	size_t keyword_len;
+	const char *start;
+	size_t size;
+	const char *end;
+	const char *next;
+	int pc;
+};
+
+int fy_keyword_iter_begin(const char *text, size_t size, const char *keyword, struct fy_keyword_iter *iter);
+const char *fy_keyword_iter_next(struct fy_keyword_iter *iter);
+void fy_keyword_iter_advance(struct fy_keyword_iter *iter, size_t advance);
+void fy_keyword_iter_end(struct fy_keyword_iter *iter);
+
 #endif

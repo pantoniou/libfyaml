@@ -763,3 +763,115 @@ char *fy_get_cooked_comment(const char *raw_comment, size_t size)
 	/* must be freed */
 	return buf;
 }
+
+int fy_keyword_iter_begin(const char *text, size_t size, const char *keyword, struct fy_keyword_iter *iter)
+{
+	if (!text || !size || !keyword || !iter)
+		return -1;
+
+	memset(iter, 0, sizeof(*iter));
+	iter->keyword = keyword;
+	iter->keyword_len = strlen(keyword);
+	iter->start = text;
+	iter->size = size == (size_t)-1 ? strlen(text) : size;
+	iter->end = iter->start + iter->size;
+	iter->pc = '\n';
+
+	if (!iter->size)
+		return -1;
+
+	iter->next = iter->start;
+
+	return 0;
+}
+
+const char *fy_keyword_iter_next(struct fy_keyword_iter *iter)
+{
+	const char *keyword;
+	size_t keyword_len;
+	const char *s, *e;
+	int c, w, pc, mode;
+
+	if (!iter || !iter->start)
+		return NULL;
+
+	/* no more */
+	if (iter->next >= iter->end)
+		return NULL;
+
+	s = iter->next;
+	e = iter->end;
+
+	keyword = iter->keyword;
+	keyword_len = iter->keyword_len;
+
+	mode = 0;
+	pc = iter->pc;
+	while ((c = fy_utf8_get_s(s, e, &w)) >= 0) {
+
+		/* simple state machine to handle quoting */
+		switch (mode) {
+		case 0: /* unquoted */
+			if (c == keyword[0] && (fy_is_any_lb(pc) || fy_is_ws(pc)) &&
+			   (size_t)(e - s) > (keyword_len + 1) && !memcmp(s, keyword, keyword_len) &&
+			   (fy_is_ws(s[keyword_len]) || fy_is_any_lb(s[keyword_len]))) {
+
+				iter->next = s;
+				iter->pc = pc;
+				return s;
+			}
+
+			if (c == '\'')
+				mode = 1;
+			else if (c == '"')
+				mode = 3;
+			break;
+		case 1:	/* single quote */
+			if (c == '\\')
+				mode = 2;	/* escaped single quote? */
+			else if (c == '\'')
+				mode = 0;	/* back to unquoted */
+			break;
+		case 2:	/* single quote backslash */
+			mode = 1;	/* back to single quote mode always */
+			break;
+		case 3: /* double quote */
+			if (c == '\\')
+				mode = 4;	/* escaped quote? */
+			else if (c == '"')
+				mode = 0;	/* back to unquoted */
+			break;
+		case 4:
+			mode = 3;	/* back to double quote mode always */
+			break;
+		}
+		s += w;
+		pc = c;
+	}
+
+	return NULL;
+}
+
+void fy_keyword_iter_advance(struct fy_keyword_iter *iter, size_t advance)
+{
+	int w;
+	const char *prev;
+
+	if (!iter || !iter->next)
+		return;
+
+	prev = iter->next;
+
+	iter->next += advance;
+	if (iter->next >= iter->end)
+		iter->next = iter->end;
+
+	iter->pc = fy_utf8_get_right(prev, (size_t)(iter->next - prev), &w);
+	if (iter->pc < 0)
+		iter->pc = '\n';
+}
+
+void fy_keyword_iter_end(struct fy_keyword_iter *iter)
+{
+	/* nothing */
+}
