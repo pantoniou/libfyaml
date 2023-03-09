@@ -87,7 +87,7 @@ static inline int fy_utf8_get(const void *ptr, size_t left, int *widthp)
 
 int fy_utf8_get_right_generic(const void *ptr, size_t left, int *widthp);
 
-static inline int fy_utf8_get_right(const void *ptr, int left, int *widthp)
+static inline int fy_utf8_get_right(const void *ptr, size_t left, int *widthp)
 {
 	const uint8_t *p = ptr + left;
 
