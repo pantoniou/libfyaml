@@ -15,15 +15,11 @@
 #include <string.h>
 #include <stdint.h>
 #include <assert.h>
-#include <endian.h>
 #include <byteswap.h>
 #include <stdbool.h>
 #include <time.h>
 
-/* make the macros work for 8 bit too */
-#ifndef bswap_8
-#define bswap_8(x) (x)
-#endif
+#include "fy-endian.h"
 
 /* special unaligned types for pointer accesses */
 

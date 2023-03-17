@@ -27,6 +27,7 @@ libfyaml_la_SOURCES = \
 	util/fy-ctype.c util/fy-ctype.h \
 	util/fy-utf8.c util/fy-utf8.h \
 	util/fy-utils.c util/fy-utils.h \
+	util/fy-endian.h \
 	util/fy-blob.c util/fy-blob.h
 
 libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) \
