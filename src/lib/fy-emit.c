@@ -43,7 +43,7 @@ static inline bool fy_emit_is_flow_mode(const struct fy_emitter *emit)
 {
 	enum fy_emitter_cfg_flags flags = emit->cfg.flags & FYECF_MODE(FYECF_MODE_MASK);
 
-	return flags == FYECF_MODE_FLOW || flags == FYECF_MODE_FLOW_ONELINE;
+	return flags == FYECF_MODE_FLOW || flags == FYECF_MODE_FLOW_ONELINE || fy_emit_is_json_mode(emit);
 }
 
 static inline bool fy_emit_is_block_mode(const struct fy_emitter *emit)
