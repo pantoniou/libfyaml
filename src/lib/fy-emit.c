@@ -2712,63 +2712,45 @@ char *fy_emit_node_to_string(struct fy_node *fyn, enum fy_emitter_cfg_flags flag
 	return buf;
 }
 
+/* we can consume events only if the lookaheads
+ * are satisfied. The lookaheads depends on the
+ * styling mode. Some styling modes do not require
+ * a lookahead at all but we do it anyway.
+ */
 static bool fy_emit_ready(struct fy_emitter *emit)
 {
 	struct fy_eventp *fyep;
-	int need, count, level;
+	int need, count;
 
-	/* no events in the list, not ready */
-	fyep = fy_eventp_list_head(&emit->queued_events);
-	if (!fyep)
-		return false;
-
-	/* some events need more than one */
-	switch (fyep->e.type) {
-	case FYET_DOCUMENT_START:
-		need = 1;
-		break;
-	case FYET_SEQUENCE_START:
-		need = 2;
-		break;
-	case FYET_MAPPING_START:
-		need = 3;
-		break;
-	default:
-		need = 0;
-		break;
-	}
-
-	/* if we don't need any more, that's enough */
-	if (!need)
-		return true;
-
-	level = 0;
 	count = 0;
-	for (; fyep; fyep = fy_eventp_next(&emit->queued_events, fyep)) {
+	need = -1;
+	for (fyep = fy_eventp_list_head(&emit->queued_events); fyep;
+			fyep = fy_eventp_next(&emit->queued_events, fyep)) {
+
 		count++;
-
-		if (count > need)
-			return true;
-
 		switch (fyep->e.type) {
-		case FYET_STREAM_START:
 		case FYET_DOCUMENT_START:
+			need++;
+			break;
+
 		case FYET_SEQUENCE_START:
+			if (need < 0)
+				need = 2;
+			break;
+
 		case FYET_MAPPING_START:
-			level++;
+			if (need < 0)
+				need = 2;
 			break;
-		case FYET_STREAM_END:
-		case FYET_DOCUMENT_END:
-		case FYET_SEQUENCE_END:
-		case FYET_MAPPING_END:
-			level--;
-			break;
+
 		default:
+			need = 0;
 			break;
 		}
 
-		if (!level)
+		if (count >= need)
 			return true;
+
 	}
 
 	return false;
@@ -2804,36 +2786,35 @@ fy_emit_next_event(struct fy_emitter *emit)
 struct fy_eventp *
 fy_emit_peek_next_event(struct fy_emitter *emit)
 {
-	if (!fy_emit_ready(emit))
-		return NULL;
-
 	return fy_eventp_list_head(&emit->queued_events);
 }
 
 bool fy_emit_streaming_sequence_empty(struct fy_emitter *emit)
 {
-	enum fy_emitter_cfg_flags flags = emit->cfg.flags & FYECF_MODE(FYECF_MODE_MASK);
 	struct fy_eventp *fyepn;
-	struct fy_event *fyen;
-
-	if (flags == FYECF_MODE_BLOCK || flags == FYECF_MODE_DEJSON)
-		return false;
 
 	fyepn = fy_emit_peek_next_event(emit);
-	fyen = fyepn ? &fyepn->e : NULL;
 
-	return !fyen || fyen->type == FYET_SEQUENCE_END;
+	/* should never happen, check on debugging mode */
+	assert(fyepn);
+	if (!fyepn)
+		return false;
+
+	return fyepn->e.type == FYET_SEQUENCE_END;
 }
 
 bool fy_emit_streaming_mapping_empty(struct fy_emitter *emit)
 {
 	struct fy_eventp *fyepn;
-	struct fy_event *fyen;
 
 	fyepn = fy_emit_peek_next_event(emit);
-	fyen = fyepn ? &fyepn->e : NULL;
 
-	return !fyen || fyen->type == FYET_MAPPING_END;
+	/* should never happen, check on debugging mode */
+	assert(fyepn);
+	if (!fyepn)
+		return false;
+
+	return fyepn->e.type == FYET_MAPPING_END;
 }
 
 static void fy_emit_goto_state(struct fy_emitter *emit, enum fy_emitter_state state)
@@ -2965,8 +2946,6 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 		sc->old_indent = sc->indent;
 		sc->s_flags = s_flags;
 		sc->s_indent = s_indent;
-		sc->s_flags = s_flags;
-		sc->s_indent = s_indent;
 
 		fy_emit_sequence_prolog(emit, sc);
 		sc->flags &= ~DDNF_MAP;
@@ -3004,8 +2983,6 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 		sc->flow = !!(s_flags & DDNF_FLOW);
 		sc->xstyle = xstyle;
 		sc->old_indent = sc->indent;
-		sc->s_flags = s_flags;
-		sc->s_indent = s_indent;
 		sc->s_flags = s_flags;
 		sc->s_indent = s_indent;
 
@@ -3129,14 +3106,17 @@ static int fy_emit_handle_sequence_item(struct fy_emitter *emit, struct fy_event
 
 		/* emit epilog */
 		fy_emit_sequence_epilog(emit, sc);
-		/* pop state */
-		ret = fy_emit_pop_sc(emit, sc);
-		/* pop state */
-		fy_emit_goto_state(emit, fy_emit_pop_state(emit));
 
 		/* restore indent and flags */
 		emit->s_indent = sc->s_indent;
 		emit->s_flags = sc->s_flags;
+
+		/* pop state */
+		ret = fy_emit_pop_sc(emit, sc);
+		assert(!ret);
+
+		/* pop state */
+		fy_emit_goto_state(emit, fy_emit_pop_state(emit));
 		return ret;
 
 	case FYET_ALIAS:
@@ -3214,14 +3194,17 @@ static int fy_emit_handle_mapping_key(struct fy_emitter *emit, struct fy_eventp 
 
 		/* emit epilog */
 		fy_emit_mapping_epilog(emit, sc);
-		/* pop state */
-		ret = fy_emit_pop_sc(emit, sc);
-		/* pop state */
-		fy_emit_goto_state(emit, fy_emit_pop_state(emit));
 
 		/* restore indent and flags */
 		emit->s_indent = sc->s_indent;
 		emit->s_flags = sc->s_flags;
+
+		/* pop state */
+		ret = fy_emit_pop_sc(emit, sc);
+		assert(!ret);
+
+		/* pop state */
+		fy_emit_goto_state(emit, fy_emit_pop_state(emit));
 		return ret;
 
 	case FYET_ALIAS:
