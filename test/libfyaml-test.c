@@ -39,6 +39,7 @@ static void display_usage(FILE *fp, char *progname)
 
 #if defined(HAVE_STATIC) && HAVE_STATIC
 extern TCase *libfyaml_case_private(void);
+extern TCase *libfyaml_case_private_id(void);
 #endif
 extern TCase *libfyaml_case_core(void);
 extern TCase *libfyaml_case_meta(void);
@@ -52,6 +53,7 @@ Suite *libfyaml_suite(void)
 
 #if defined(HAVE_STATIC) && HAVE_STATIC
 	suite_add_tcase(s, libfyaml_case_private());
+	suite_add_tcase(s, libfyaml_case_private_id());
 #endif
 	suite_add_tcase(s, libfyaml_case_core());
 	suite_add_tcase(s, libfyaml_case_meta());

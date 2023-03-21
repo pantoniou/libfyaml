@@ -44,7 +44,9 @@ libfyaml_test_SOURCES = \
 # the private tests require static compilation
 # if we're compiling shared only, disable the private parts
 if HAVE_STATIC
-libfyaml_test_SOURCES += libfyaml-test-private.c
+libfyaml_test_SOURCES += \
+	libfyaml-test-private.c \
+	libfyaml-test-private-id.c
 libfyaml_test_LDFLAGS += -static
 endif
 
