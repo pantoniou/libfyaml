@@ -103,11 +103,14 @@ void fy_diag_report(struct fy_diag *diag,
 #ifdef FY_DEVMODE
 #define __FY_DEBUG_UNUSED__	/* nothing */
 #else
+#if defined(__GNUC__) && __GNUC__ >= 4
 #define __FY_DEBUG_UNUSED__	__attribute__((__unused__))
+#else
+#define __FY_DEBUG_UNUSED__	/* nothing */
+#endif
 #endif
 
 /* parser diagnostics */
-
 struct fy_parser;
 
 void fy_diag_cfg_from_parser_flags(struct fy_diag_cfg *cfg, enum fy_parse_cfg_flags pflags);

@@ -642,7 +642,7 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 			rbe = rowbuf + rowbufsz;
 
 			/* if the maximum column number is less than the terminal
-			 * width everything fits, and we're fine */ 
+			 * width everything fits, and we're fine */
 			if (max_line_col8 < cols) {
 				line_shift = 0;
 			} else {

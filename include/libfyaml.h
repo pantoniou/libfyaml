@@ -1113,7 +1113,7 @@ fy_token_scalar_style(struct fy_token *fyt)
  * fy_token_scalar_is_null() - Test whether the scalar is null (content)
  *
  * @fyt: The scalar token to check for NULLity.
- *  
+ *
  * Note that this is different than null of the YAML type system.
  * It is null as in null content. It is also different than an
  * empty scalar.
@@ -7064,6 +7064,7 @@ fy_emitter_get_document_state(struct fy_emitter *emit)
  *
  * @emit: The emitter
  * @type: The event type to create
+ * @...: The optional extra arguments
  *
  * Returns:
  * The created event or NULL in case of an error
