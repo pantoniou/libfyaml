@@ -542,6 +542,77 @@ fy_emit_event_create(struct fy_emitter *emit, enum fy_event_type type, ...)
 	return fye;
 }
 
+int
+fy_emit_vevent(struct fy_emitter *emit, enum fy_event_type type, va_list ap)
+{
+	struct fy_event *fye;
+
+	if (!emit)
+		return -1;
+
+	fye = fy_emit_event_vcreate(emit, type, ap);
+	if (!fye)
+		return -1;
+
+	return fy_emit_event(emit, fye);
+}
+
+int
+fy_emit_eventf(struct fy_emitter *emit, enum fy_event_type type, ...)
+{
+	int rc;
+	va_list ap;
+
+	va_start(ap, type);
+	rc = fy_emit_vevent(emit, type, ap);
+	va_end(ap);
+
+	return rc;
+}
+
+int
+fy_emit_scalar_write(struct fy_emitter *fye, enum fy_scalar_style style,
+		     const char *anchor, const char *tag,
+		     const char *text, size_t len)
+{
+	return fy_emit_eventf(fye, FYET_SCALAR, style, text, len, anchor, tag);
+}
+
+int
+fy_emit_scalar_vprintf(struct fy_emitter *fye, enum fy_scalar_style style,
+		       const char *anchor, const char *tag,
+		       const char *fmt, va_list ap)
+{
+	char *buf;
+	size_t len;
+	int rc;
+
+	rc = vasprintf(&buf, fmt, ap);
+	if (rc < 0)
+		return -1;
+	len = (size_t)rc;
+
+	rc = fy_emit_scalar_write(fye, style, anchor, tag, buf, len);
+	free(buf);
+
+	return rc;
+}
+
+int
+fy_emit_scalar_printf(struct fy_emitter *fye, enum fy_scalar_style style,
+		      const char *anchor, const char *tag,
+		      const char *fmt, ...)
+{
+	va_list ap;
+	int rc;
+
+	va_start(ap, fmt);
+	rc = fy_emit_scalar_vprintf(fye, style, anchor, tag, fmt, ap);
+	va_end(ap);
+
+	return rc;
+}
+
 struct fy_event *
 fy_parse_event_vcreate(struct fy_parser *fyp, enum fy_event_type type, va_list ap)
 {
