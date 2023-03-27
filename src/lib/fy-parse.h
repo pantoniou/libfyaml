@@ -42,6 +42,9 @@
 struct fy_parser;
 struct fy_input;
 
+/* for the event */
+FY_PARSE_TYPE_DECL_ALLOC(eventp);
+
 enum fy_flow_type {
 	FYFT_NONE,
 	FYFT_MAP,

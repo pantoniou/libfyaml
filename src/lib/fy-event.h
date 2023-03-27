@@ -26,7 +26,6 @@ struct fy_eventp {
 	struct fy_event e;
 };
 FY_TYPE_DECL_LIST(eventp);
-FY_PARSE_TYPE_DECL_ALLOC(eventp);
 
 struct fy_eventp *fy_eventp_alloc(void);
 void fy_eventp_free(struct fy_eventp *fyep);
