@@ -6977,14 +6977,18 @@ static const struct fy_composer_ops parser_composer_ops = {
 int fy_parse_set_composer(struct fy_parser *fyp, fy_parse_composer_cb cb, void *userdata)
 {
 	struct fy_composer_cfg ccfg;
+	bool can_change_composer;
 
 	if (!fyp)
 		return -1;
 
+	can_change_composer = fyp->state == FYPS_NONE ||
+			      fyp->state == FYPS_END ||
+			      fyp->state == FYPS_DOCUMENT_START;
+
 	/* must not be in the middle of something */
-	fyp_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
-			err_out, "cannot change composer state at state '%s'",
-				state_txt[fyp->state]);
+	fyp_error_check(fyp, can_change_composer, err_out,
+			"cannot change composer state at state '%s'", state_txt[fyp->state]);
 
 	/* clear */
 	if (!cb) {
@@ -7144,7 +7148,8 @@ int fy_parse_compose(struct fy_parser *fyp, fy_parse_composer_cb cb, void *userd
 		rc_out = 0;
 
 	/* reset the parser; the composer clear must always succeed */
-	fy_parser_reset(fyp);
+	if (ret == FYCR_ERROR)
+		fy_parser_reset(fyp);
 
 	/* clear composer */
 	rc = fy_parse_set_composer(fyp, NULL, NULL);

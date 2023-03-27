@@ -313,6 +313,37 @@ err_out:
 	return FYCR_ERROR;
 }
 
+static void
+fy_composer_halt(struct fy_composer *fyc, struct fy_path *fypp, enum fy_composer_return rc)
+{
+	const struct fy_composer_ops *ops;
+	struct fy_eventp ev_none;
+	struct fy_path_component *fypc;
+
+	/* for normal stop, we don't teardown */
+	if (rc == FYCR_OK_STOP)
+		return;
+
+	ops = fyc->cfg.ops;
+	assert(ops);
+
+	memset(&ev_none, 0, sizeof(ev_none));
+	ev_none.e.type = FYET_NONE;
+
+	/* pump FYET_NONEs to clean the stack */
+
+	while ((fypc = fy_path_component_list_tail(&fypp->components)) != NULL) {
+
+		ops->process_event(fyc, fypp, &ev_none.e);
+
+		fy_path_component_list_del(&fypp->components, fypc);
+		fy_path_component_free(fypc);
+	}
+
+	/* and the final one to clean the root */
+	ops->process_event(fyc, fypp, &ev_none.e);
+}
+
 enum fy_composer_return
 fy_composer_process_event(struct fy_composer *fyc, struct fy_event *fye)
 {
@@ -330,6 +361,9 @@ fy_composer_process_event(struct fy_composer *fyc, struct fy_event *fye)
 		return -1;
 
 	rc = fy_composer_process_event_private(fyc, fye, fypp);
+
+	if (rc == FYCR_ERROR || rc == FYCR_OK_STOP)
+		fy_composer_halt(fyc, fypp, rc);
 
 	return rc;
 }
