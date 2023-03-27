@@ -392,3 +392,56 @@ fy_document_state_tag_directive_iterate(struct fy_document_state *fyds, void **i
 
 	return tag;
 }
+
+struct fy_tag **
+fy_document_state_tag_directives(struct fy_document_state *fyds)
+{
+	struct fy_tag *tags, **tagsp;
+	const struct fy_tag *fytag;
+	size_t size, len;
+	void *iter;
+	char *s;
+	int i;
+
+	if (!fyds)
+		return NULL;
+
+	/* first find the extents of the area we're going to need */
+	i = 0;
+	size = 0;
+	iter = NULL;
+	while ((fytag = fy_document_state_tag_directive_iterate(fyds, &iter)) != NULL) {
+		size += strlen(fytag->handle) + 1 + strlen(fytag->prefix) + 1;
+		i++;
+	}
+	size += sizeof(struct fy_tag) * i;
+	size += sizeof(struct fy_tag *) * (i + 1);
+
+	tagsp = malloc(size);
+	if (!tagsp)
+		return NULL;
+	memset(tagsp, 0, size);
+	tags = (void *)(tagsp + i + 1);
+	s = (void *)(tags + i);
+
+	i = 0;
+	iter = NULL;
+	while ((fytag = fy_document_state_tag_directive_iterate(fyds, &iter)) != NULL) {
+		tags[i].handle = s;
+		len = strlen(fytag->handle);
+		memcpy(s, fytag->handle, len + 1);
+		s += len + 1;
+
+		tags[i].prefix = s;
+		len = strlen(fytag->prefix);
+		memcpy(s, fytag->prefix, len + 1);
+		s += len + 1;
+
+		tagsp[i] = &tags[i];
+
+		i++;
+	}
+	tagsp[i] = NULL;	/* NULL terminated */
+
+	return tagsp;
+}

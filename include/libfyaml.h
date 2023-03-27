@@ -6443,6 +6443,23 @@ fy_document_state_tag_directive_iterate(struct fy_document_state *fyds, void **p
 	FY_EXPORT;
 
 /**
+ * fy_document_state_tag_directives() - Get all the tag directives in a
+ *                                      malloc'ed array
+ *
+ * Return all the tag directives in a dynamically allocated area.
+ * Must be free()'d when not in use.
+ *
+ * @fyds: The document state
+ *
+ * Returns:
+ * An array of fy_tag pointer structures, terminated with a NULL pointer
+ * NULL on error
+ */
+struct fy_tag **
+fy_document_state_tag_directives(struct fy_document_state *fyds)
+	FY_EXPORT;
+
+/**
  * fy_document_state_tag_is_default() - Test whether the given tag is a default one
  *
  * Test whether a tag is a default (i.e. impliciticly set)
