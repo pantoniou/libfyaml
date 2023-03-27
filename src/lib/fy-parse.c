@@ -7377,31 +7377,10 @@ fy_parse_streaming_alias_collection_state_top(struct fy_parser *fyp)
 }
 
 static inline bool
-fy_parse_streaming_alias_collection_state_in_map(struct fy_parser *fyp)
-{
-	int cts = fy_parse_streaming_alias_collection_state_top(fyp);
-	return cts >= 0 && (cts & FYCTS_MAP);
-}
-
-static inline bool
-fy_parse_streaming_alias_collection_state_in_seq(struct fy_parser *fyp)
-{
-	int cts = fy_parse_streaming_alias_collection_state_top(fyp);
-	return cts == FYCTS_SEQ;
-}
-
-static inline bool
 fy_parse_streaming_alias_collection_state_in_map_key(struct fy_parser *fyp)
 {
 	int cts = fy_parse_streaming_alias_collection_state_top(fyp);
 	return cts == FYCTS_MAP_KEY;
-}
-
-static inline bool
-fy_parse_streaming_alias_collection_state_in_map_val(struct fy_parser *fyp)
-{
-	int cts = fy_parse_streaming_alias_collection_state_top(fyp);
-	return cts == FYCTS_MAP_VAL;
 }
 
 static inline void
