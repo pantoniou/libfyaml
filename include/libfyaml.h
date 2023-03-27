@@ -6097,6 +6097,26 @@ fy_tag_token_suffix(struct fy_token *fyt, size_t *lenp)
 	FY_EXPORT;
 
 /**
+ * fy_tag_token_short() - Get the short tag of the tag token
+ *
+ * Retrieve the short tag contents. The short tag is the same
+ * one that will need to be emitted.
+ * Will fail if token is not a tag token, or if a memory error happens.
+ *
+ * @fyt: The tag token out of which the short pointer
+ *       will be returned.
+ * @lenp: Pointer to a variable that will hold the returned length
+ *
+ * Returns:
+ * A pointer to the text representation of the short tag, while
+ * @lenp will be assigned the character length of said representation.
+ * NULL in case of an error.
+ */
+const char *
+fy_tag_token_short(struct fy_token *fyt, size_t *lenp)
+	FY_EXPORT;
+
+/**
  * fy_tag_token_handle0() - Get the handle contained in the
  * 			    tag token as zero terminated string
  *
@@ -6113,6 +6133,24 @@ fy_tag_token_suffix(struct fy_token *fyt, size_t *lenp)
  */
 const char *
 fy_tag_token_handle0(struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
+ * fy_tag_token_short0() - Get the short tag of the tag token as zero
+ *                         terminated string.
+ *
+ * Retrieve the short tag contents. The short tag is the same
+ * one that will need to be emitted.
+ * Will fail if token is not a tag token, or if a memory error happens.
+ *
+ * @fyt: The tag token out of which the short pointer will be returned.
+ *
+ * Returns:
+ * A pointer to the null terminated text representation of the short tag.
+ * NULL in case of an error.
+ */
+const char *
+fy_tag_token_short0(struct fy_token *fyt)
 	FY_EXPORT;
 
 /**

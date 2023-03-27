@@ -71,6 +71,10 @@ void fy_token_clean_rl(struct fy_token_list *fytl, struct fy_token *fyt)
 			free(fyt->tag.suffix0);
 			fyt->tag.suffix0 = NULL;
 		}
+		if (fyt->tag.short0) {
+			free(fyt->tag.short0);
+			fyt->tag.short0 = NULL;
+		}
 		break;
 
 	case FYTT_TAG_DIRECTIVE:
@@ -439,6 +443,7 @@ struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_t
 		fyt->tag.fyt_td = fy_token_ref(fyt_td);
 		fyt->tag.handle0 = NULL;
 		fyt->tag.suffix0 = NULL;
+		fyt->tag.short0 = NULL;
 		break;
 
 	case FYTT_VERSION_DIRECTIVE:
@@ -953,6 +958,58 @@ const char *fy_tag_token_suffix0(struct fy_token *fyt)
 	fyt->tag.suffix0 = text0;
 
 	return fyt->tag.suffix0;
+}
+
+const char *fy_tag_token_short(struct fy_token *fyt, size_t *lenp)
+{
+	const char *handle, *suffix;
+	size_t handle_len, suffix_len;
+	char *text0;
+
+	if (!fyt || fyt->type != FYTT_TAG)
+		return NULL;
+
+	/* use the cache if it's there (and doesn't need a rebuild) */
+	if (fyt->tag.short0 && !fy_token_text_needs_rebuild(fyt))
+		return fyt->tag.short0;
+
+	if (fyt->tag.short0) {
+		free(fyt->tag.short0);
+		fyt->tag.short0 = NULL;
+	}
+
+	handle = fy_tag_token_handle(fyt, &handle_len);
+	if (!handle)
+		return NULL;
+
+	suffix = fy_tag_token_suffix(fyt, &suffix_len);
+	if (!suffix)
+		return NULL;
+
+	text0 = malloc(handle_len + suffix_len + 1);
+	if (!text0)
+		return NULL;
+	memcpy(text0, handle, handle_len);
+	memcpy(text0 + handle_len, suffix, suffix_len);
+	text0[handle_len + suffix_len] = '\0';
+
+	fyt->tag.short0 = text0;
+	fyt->tag.short_length = handle_len + suffix_len;
+
+	*lenp = fyt->tag.short_length;
+
+	return fyt->tag.short0;
+}
+
+const char *fy_tag_token_short0(struct fy_token *fyt)
+{
+	const char *text;
+	size_t len;
+
+	text = fy_tag_token_short(fyt, &len);
+	if (!text)
+		return NULL;
+	return text;
 }
 
 const struct fy_version * fy_version_directive_token_version(struct fy_token *fyt)

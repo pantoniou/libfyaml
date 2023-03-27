@@ -114,6 +114,8 @@ struct fy_token {
 			struct fy_token *fyt_td;
 			char *handle0;	/* zero terminated and allocated, only used by binding */
 			char *suffix0;
+			unsigned int short_length;
+			char *short0;	/* zero terminated and allocated for when the short tag is requested */
 			struct fy_tag tag;	/* prefix is now suffix */
 		} tag;
 		struct {
