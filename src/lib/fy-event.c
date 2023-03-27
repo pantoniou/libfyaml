@@ -465,7 +465,7 @@ fy_eventp_vcreate_internal(struct fy_eventp_list *recycled_list, struct fy_diag 
 			goto err_out;
 		}
 
-		fyi = fy_input_from_data(data, len, &handle, true);
+		fyi = fy_input_from_malloc_data(data, len, &handle, true);
 		if (!fyi)
 			goto err_out;
 		data = NULL;
