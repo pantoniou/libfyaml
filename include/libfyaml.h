@@ -995,6 +995,108 @@ fy_parser_get_stream_error(struct fy_parser *fyp)
 	FY_EXPORT;
 
 /**
+ * fy_parser_vlog() - Log using the parsers diagnostics printf style (va_arg)
+ *
+ * Output a log on the parser diagnostic output
+ *
+ * @fyp: The parser
+ * @type: The error type
+ * @fmt: The printf format string
+ * @ap: The argument list
+ */
+void
+fy_parser_vlog(struct fy_parser *fyp, enum fy_error_type type, const char *fmt, va_list ap)
+	FY_EXPORT;
+
+/**
+ * fy_parser_log() - Log using the parsers diagnostics printf style
+ *
+ * Output a report on the parser's diagnostics
+ *
+ * @fyp: The parser
+ * @type: The error type
+ * @fmt: The printf format string
+ * @...: The extra arguments
+ */
+void
+fy_parser_log(struct fy_parser *fyp, enum fy_error_type type, const char *fmt, ...)
+	FY_FORMAT(printf, 3, 4)
+	FY_EXPORT;
+
+#ifndef NDEBUG
+
+#define fy_parser_debug(_fyp, _fmt, ...) \
+	fy_parser_log((_fyp), FYET_DEBUG, (_fmt) , ## __VA_ARGS__)
+#else
+
+#define fy_parser_debug(_fyp, _fmt, ...) \
+	do { } while(0)
+
+#endif
+
+#define fy_parser_info(_fyp, _fmt, ...) \
+	fy_parser_log((_fyp), FYET_INFO, (_fmt) , ## __VA_ARGS__)
+#define fy_parser_notice(_fyp, _fmt, ...) \
+	fy_parser_log((_fyp), FYET_NOTICE, (_fmt) , ## __VA_ARGS__)
+#define fy_parser_warning(_fyp, _fmt, ...) \
+	fy_parser_log((_fyp), FYET_WARNING, (_fmt) , ## __VA_ARGS__)
+#define fy_parser_error(_fyp, _fmt, ...) \
+	fy_parser_log((_fyp), FYET_ERROR, (_fmt) , ## __VA_ARGS__)
+
+/**
+ * fy_parser_vreport() - Report using the parsers diagnostics printf style and mark token (va_arg)
+ *
+ * Output a report on the parser and indicate the token's position
+ *
+ * @fyp: The parser
+ * @type: The error type
+ * @fyt: The token
+ * @fmt: The printf format string
+ * @ap: The argument list
+ */
+void
+fy_parser_vreport(struct fy_parser *fyp, enum fy_error_type type, struct fy_token *fyt,
+		  const char *fmt, va_list ap)
+	FY_EXPORT;
+
+/**
+ * fy_parser_report() - Report using the parsers diagnostics printf style and mark token
+ *
+ * Output a report on the parser and indicate the token's position
+ *
+ * @fyp: The parser
+ * @type: The error type
+ * @fyt: The token
+ * @fmt: The printf format string
+ * @..: The extra arguments
+ */
+void
+fy_parser_report(struct fy_parser *fyp, enum fy_error_type type, struct fy_token *fyt,
+		 const char *fmt, ...)
+	FY_FORMAT(printf, 4, 5)
+	FY_EXPORT;
+
+#ifndef NDEBUG
+
+#define fy_parser_report_debug(_fyp, _fyt, _fmt, ...) \
+	fy_parser_report((_fyp), FYET_DEBUG, (_fyt), (_fmt) , ## __VA_ARGS__)
+#else
+
+#define fy_parser_report_debug(_fyp, _fyt, _fmt, ...) \
+	do { } while(0)
+
+#endif
+
+#define fy_parser_report_info(_fyp, _fyt, _fmt, ...) \
+	fy_parser_report((_fyp), FYET_INFO, (_fyt), (_fmt) , ## __VA_ARGS__)
+#define fy_parser_report_notice(_fyp, _fyt, _fmt, ...) \
+	fy_parser_report((_fyp), FYET_NOTICE, (_fyt), (_fmt) , ## __VA_ARGS__)
+#define fy_parser_report_warning(_fyp, _fyt, _fmt, ...) \
+	fy_parser_report((_fyp), FYET_WARNING, (_fyt), (_fmt) , ## __VA_ARGS__)
+#define fy_parser_report_error(_fyp, _fyt, _fmt, ...) \
+	fy_parser_report((_fyp), FYET_ERROR, (_fyt), (_fmt) , ## __VA_ARGS__)
+
+/**
  * fy_token_scalar_style() - Get the style of a scalar token
  *
  * @fyt: The scalar token to get it's style. Note that a NULL
@@ -5439,6 +5541,100 @@ fy_diagf(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 	fy_diag_diag((_diag), FYET_WARNING, (_fmt) , ## __VA_ARGS__)
 #define fy_error(_diag, _fmt, ...) \
 	fy_diag_diag((_diag), FYET_ERROR, (_fmt) , ## __VA_ARGS__)
+
+/**
+ * fy_diag_token_vreport() - Report about a token vprintf style using
+ *                          the given diagnostic object
+ *
+ * Output a report about the given token via the specific
+ * error type, and using the reporting configuration of the token's
+ * document.
+ *
+ * @diag: The diag object
+ * @fyt: The token
+ * @type: The error type
+ * @fmt: The printf format string
+ * @ap: The argument list
+ */
+void
+fy_diag_token_vreport(struct fy_diag *diag, struct fy_token *fyt,
+		     enum fy_error_type type, const char *fmt, va_list ap)
+	FY_EXPORT;
+
+/**
+ * fy_diag_token_report() - Report about a token printf style using
+ *                          the given diagnostic object
+ *
+ * Output a report about the given token via the specific
+ * error type, and using the reporting configuration of the token's
+ * document.
+ *
+ * @diag: The diag object
+ * @fyt: The token
+ * @type: The error type
+ * @fmt: The printf format string
+ * @...: The extra arguments.
+ */
+void
+fy_diag_token_report(struct fy_diag *diag, struct fy_token *fye,
+		    enum fy_error_type type, const char *fmt, ...)
+	FY_FORMAT(printf, 4, 5)
+	FY_EXPORT;
+
+/**
+ * fy_diag_token_override_vreport() - Report about a token vprintf style,
+ * 				     overriding file, line and column info using
+ * 				     the given diagnostic object
+ *
+ * Output a report about the given token via the specific
+ * error type, and using the reporting configuration of the token's
+ * document. This method will use the overrides provided in order
+ * to massage the reporting information.
+ * If @file is NULL, no file location will be reported.
+ * If either @line or @column is negative no location will be reported.
+ *
+ * @diag: The diag object
+ * @fyt: The token
+ * @type: The error type
+ * @file: The file override
+ * @line: The line override
+ * @column: The column override
+ * @fmt: The printf format string
+ * @ap: The argument list
+ */
+void
+fy_diag_token_override_vreport(struct fy_diag *diag, struct fy_token *fyt,
+			      enum fy_error_type type, const char *file,
+			      int line, int column, const char *fmt, va_list ap)
+	FY_EXPORT;
+
+/**
+ * fy_diag_token_override_report() - Report about a token printf style,
+ * 				    overriding file, line and column info using
+ * 				    the given diagnostic object
+ *
+ * Output a report about the given token via the specific
+ * error type, and using the reporting configuration of the token's
+ * document. This method will use the overrides provided in order
+ * to massage the reporting information.
+ * If @file is NULL, no file location will be reported.
+ * If either @line or @column is negative no location will be reported.
+ *
+ * @diag: The diag object
+ * @fyt: The token
+ * @type: The error type
+ * @file: The file override
+ * @line: The line override
+ * @column: The column override
+ * @fmt: The printf format string
+ * @...: The extra arguments.
+ */
+void
+fy_diag_token_override_report(struct fy_diag *diag, struct fy_token *fyt,
+			     enum fy_error_type type, const char *file,
+			     int line, int column, const char *fmt, ...)
+	FY_FORMAT(printf, 7, 8)
+	FY_EXPORT;
 
 /**
  * fy_diag_node_vreport() - Report about a node vprintf style using
