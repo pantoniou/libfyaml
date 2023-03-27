@@ -23,6 +23,20 @@
 #include "fy-parse.h"
 #include "fy-emit.h"
 
+static inline struct fy_token_list *token_recycle_list(struct fy_emitter *emit, struct fy_parser *fyp)
+{
+	if (fyp && fyp->recycled_token_list)
+		return fyp->recycled_token_list;
+	if (emit && emit->recycled_token_list)
+		return emit->recycled_token_list;
+	return NULL;
+}
+
+static inline void fy_emit_token_unref(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_token *fyt)
+{
+	fy_token_unref_rl(token_recycle_list(emit, fyp), fyt);
+}
+
 /* fwd decl */
 void fy_emit_write(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int len);
 void fy_emit_printf(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *fmt, ...)
@@ -2883,7 +2897,7 @@ int fy_emit_pop_sc(struct fy_emitter *emit, struct fy_emit_save_ctx *sc)
 	return 0;
 }
 
-static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fyep, int flags)
+static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_eventp *fyep, int flags)
 {
 	struct fy_event *fye = &fyep->e;
 	struct fy_emit_save_ctx *sc = &emit->s_sc;
@@ -3004,7 +3018,7 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_eventp *fye
 	return 0;
 }
 
-static int fy_emit_handle_stream_start(struct fy_emitter *emit, struct fy_eventp *fyep)
+static int fy_emit_handle_stream_start(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_eventp *fyep)
 {
 	struct fy_event *fye = &fyep->e;
 
@@ -3020,7 +3034,7 @@ static int fy_emit_handle_stream_start(struct fy_emitter *emit, struct fy_eventp
 	return 0;
 }
 
-static int fy_emit_handle_document_start(struct fy_emitter *emit, struct fy_eventp *fyep, bool first)
+static int fy_emit_handle_document_start(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_eventp *fyep, bool first)
 {
 	struct fy_event *fye = &fyep->e;
 	struct fy_document_state *fyds;
@@ -3050,7 +3064,7 @@ static int fy_emit_handle_document_start(struct fy_emitter *emit, struct fy_even
 	return 0;
 }
 
-static int fy_emit_handle_document_end(struct fy_emitter *emit, struct fy_eventp *fyep)
+static int fy_emit_handle_document_end(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_eventp *fyep)
 {
 	struct fy_document_state *fyds;
 	struct fy_event *fye = &fyep->e;
@@ -3074,30 +3088,30 @@ static int fy_emit_handle_document_end(struct fy_emitter *emit, struct fy_eventp
 	return 0;
 }
 
-static int fy_emit_handle_document_content(struct fy_emitter *emit, struct fy_eventp *fyep)
+static int fy_emit_handle_document_content(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_eventp *fyep)
 {
 	struct fy_event *fye = &fyep->e;
 	int ret;
 
 	/* empty document? */
 	if (fye->type == FYET_DOCUMENT_END)
-		return fy_emit_handle_document_end(emit, fyep);
+		return fy_emit_handle_document_end(emit, fyp, fyep);
 
 	ret = fy_emit_push_state(emit, FYES_DOCUMENT_END);
 	if (ret)
 		return ret;
 
-	return fy_emit_streaming_node(emit, fyep, DDNF_ROOT);
+	return fy_emit_streaming_node(emit, fyp, fyep, DDNF_ROOT);
 }
 
-static int fy_emit_handle_sequence_item(struct fy_emitter *emit, struct fy_eventp *fyep, bool first)
+static int fy_emit_handle_sequence_item(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_eventp *fyep, bool first)
 {
 	struct fy_event *fye = &fyep->e;
 	struct fy_emit_save_ctx *sc = &emit->s_sc;
 	struct fy_token *fyt_item = NULL;
 	int ret;
 
-	fy_token_unref_rl(emit->recycled_token_list, sc->fyt_last_value);
+	fy_emit_token_unref(emit, fyp, sc->fyt_last_value);
 	sc->fyt_last_value = NULL;
 
 	switch (fye->type) {
@@ -3151,7 +3165,7 @@ static int fy_emit_handle_sequence_item(struct fy_emitter *emit, struct fy_event
 
 	fy_emit_sequence_item_prolog(emit, sc, fyt_item);
 
-	ret = fy_emit_streaming_node(emit, fyep, sc->flags);
+	ret = fy_emit_streaming_node(emit, fyp, fyep, sc->flags);
 
 	switch (fye->type) {
 	case FYET_ALIAS:
@@ -3173,7 +3187,7 @@ static int fy_emit_handle_sequence_item(struct fy_emitter *emit, struct fy_event
 	return ret;
 }
 
-static int fy_emit_handle_mapping_key(struct fy_emitter *emit, struct fy_eventp *fyep, bool first)
+static int fy_emit_handle_mapping_key(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_eventp *fyep, bool first)
 {
 	struct fy_event *fye = &fyep->e;
 	struct fy_emit_save_ctx *sc = &emit->s_sc;
@@ -3181,9 +3195,9 @@ static int fy_emit_handle_mapping_key(struct fy_emitter *emit, struct fy_eventp 
 	int ret, aflags;
 	bool simple_key;
 
-	fy_token_unref_rl(emit->recycled_token_list, sc->fyt_last_key);
+	fy_emit_token_unref(emit, fyp, sc->fyt_last_key);
+	fy_emit_token_unref(emit, fyp, sc->fyt_last_value);
 	sc->fyt_last_key = NULL;
-	fy_token_unref_rl(emit->recycled_token_list, sc->fyt_last_value);
 	sc->fyt_last_value = NULL;
 
 	simple_key = false;
@@ -3244,7 +3258,7 @@ static int fy_emit_handle_mapping_key(struct fy_emitter *emit, struct fy_eventp 
 
 	fy_emit_mapping_key_prolog(emit, sc, fyt_key, simple_key);
 
-	ret = fy_emit_streaming_node(emit, fyep, sc->flags);
+	ret = fy_emit_streaming_node(emit, fyp, fyep, sc->flags);
 
 	switch (fye->type) {
 	case FYET_ALIAS:
@@ -3266,7 +3280,7 @@ static int fy_emit_handle_mapping_key(struct fy_emitter *emit, struct fy_eventp 
 	return ret;
 }
 
-static int fy_emit_handle_mapping_value(struct fy_emitter *emit, struct fy_eventp *fyep, bool simple)
+static int fy_emit_handle_mapping_value(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_eventp *fyep, bool simple)
 {
 	struct fy_event *fye = &fyep->e;
 	struct fy_emit_save_ctx *sc = &emit->s_sc;
@@ -3301,7 +3315,7 @@ static int fy_emit_handle_mapping_value(struct fy_emitter *emit, struct fy_event
 
 	fy_emit_mapping_value_prolog(emit, sc, fyt_value);
 
-	ret = fy_emit_streaming_node(emit, fyep, sc->flags);
+	ret = fy_emit_streaming_node(emit, fyp, fyep, sc->flags);
 
 	switch (fye->type) {
 	case FYET_ALIAS:
@@ -3344,38 +3358,38 @@ int fy_emit_event_from_parser(struct fy_emitter *emit, struct fy_parser *fyp, st
 
 		switch (emit->state) {
 		case FYES_STREAM_START:
-			ret = fy_emit_handle_stream_start(emit, fyep);
+			ret = fy_emit_handle_stream_start(emit, fyp, fyep);
 			break;
 
 		case FYES_FIRST_DOCUMENT_START:
 		case FYES_DOCUMENT_START:
-			ret = fy_emit_handle_document_start(emit, fyep,
+			ret = fy_emit_handle_document_start(emit, fyp, fyep,
 					emit->state == FYES_FIRST_DOCUMENT_START);
 			break;
 
 		case FYES_DOCUMENT_CONTENT:
-			ret = fy_emit_handle_document_content(emit, fyep);
+			ret = fy_emit_handle_document_content(emit, fyp, fyep);
 			break;
 
 		case FYES_DOCUMENT_END:
-			ret = fy_emit_handle_document_end(emit, fyep);
+			ret = fy_emit_handle_document_end(emit, fyp, fyep);
 			break;
 
 		case FYES_SEQUENCE_FIRST_ITEM:
 		case FYES_SEQUENCE_ITEM:
-			ret = fy_emit_handle_sequence_item(emit, fyep,
+			ret = fy_emit_handle_sequence_item(emit, fyp, fyep,
 					emit->state == FYES_SEQUENCE_FIRST_ITEM);
 			break;
 
 		case FYES_MAPPING_FIRST_KEY:
 		case FYES_MAPPING_KEY:
-			ret = fy_emit_handle_mapping_key(emit, fyep,
+			ret = fy_emit_handle_mapping_key(emit, fyp, fyep,
 					emit->state == FYES_MAPPING_FIRST_KEY);
 			break;
 
 		case FYES_MAPPING_SIMPLE_VALUE:
 		case FYES_MAPPING_VALUE:
-			ret = fy_emit_handle_mapping_value(emit, fyep,
+			ret = fy_emit_handle_mapping_value(emit, fyp, fyep,
 					emit->state == FYES_MAPPING_SIMPLE_VALUE);
 			break;
 

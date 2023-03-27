@@ -2098,7 +2098,7 @@ int main(int argc, char *argv[])
 			} else {
 				while ((fyev = fy_parser_parse(fyp)) != NULL) {
 					if (!null_output) {
-						rc = fy_emit_event(fye, fyev);
+						rc = fy_emit_event_from_parser(fye, fyp, fyev);
 						if (rc)
 							goto cleanup;
 					} else {
