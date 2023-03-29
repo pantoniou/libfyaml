@@ -132,7 +132,7 @@ static inline void br_setup_common(struct blob_region *br, size_t size, enum blo
 		break;
 
 	case BET_LITTLE_ENDIAN:
-# if __BYTE_ORDER == __LITTLE_ENDIAN
+#if __BYTE_ORDER == __LITTLE_ENDIAN
 		br->bswap = false;
 #else
 		br->bswap = true;
@@ -140,7 +140,7 @@ static inline void br_setup_common(struct blob_region *br, size_t size, enum blo
 		break;
 
 	case BET_BIG_ENDIAN:
-# if __BYTE_ORDER == __LITTLE_ENDIAN
+#if __BYTE_ORDER == __LITTLE_ENDIAN
 		br->bswap = true;
 #else
 		br->bswap = false;
