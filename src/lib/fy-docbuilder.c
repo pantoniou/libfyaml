@@ -538,3 +538,27 @@ fy_document_builder_load_document(struct fy_document_builder *fydb,
 	/* get ownership of the document */
 	return fy_document_builder_take_document(fydb);
 }
+
+struct fy_document *
+fy_document_builder_event_document(struct fy_document_builder *fydb, struct fy_eventp_list *evpl)
+{
+	struct fy_eventp *fyep = NULL;
+	int rc;
+
+	if (!fydb || !evpl)
+		return NULL;
+
+	for (fyep = fy_eventp_list_head(evpl); fyep; fyep = fy_eventp_next(evpl, fyep)) {
+
+		if (fy_document_builder_is_document_complete(fydb))
+			break;
+
+		rc = fy_document_builder_process_event(fydb, fyep);
+		if (rc < 0)
+			return NULL;
+
+	}
+
+	/* get ownership of the document */
+	return fy_document_builder_take_document(fydb);
+}
