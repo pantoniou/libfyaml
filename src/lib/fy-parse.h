@@ -153,7 +153,6 @@ FY_PARSE_TYPE_DECL(streaming_alias);
 struct fy_streaming_alias_state {
 	struct fy_streaming_alias *fysa;
 	struct fy_eventp *next;
-	bool is_merge_key;
 };
 
 /* 2 bits per collection tracking state

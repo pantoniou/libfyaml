@@ -7183,12 +7183,12 @@ fy_parser_streaming_alias_lookup_pivot(struct fy_parser *fyp, struct fy_streamin
 	assert(fysa_pivot);
 	/* at first do forwards starting at the pivot */
 	for (fysa = fy_streaming_alias_next(&fyp->streaming_aliases, fysa_pivot); fysa != NULL; fysa = fy_streaming_alias_next(&fyp->streaming_aliases, fysa)) {
-		if (fy_token_cmp(fyt_anchor, fysa->anchor) == 0)
+		if (fysa->anchor && fy_token_cmp(fyt_anchor, fysa->anchor) == 0)
 			return fysa;
 	}
 	/* not found? do backwards (more recent) */
 	for (fysa = fy_streaming_alias_prev(&fyp->streaming_aliases, fysa_pivot); fysa != NULL; fysa = fy_streaming_alias_prev(&fyp->streaming_aliases, fysa)) {
-		if (fy_token_cmp(fyt_anchor, fysa->anchor) == 0)
+		if (fysa->anchor && fy_token_cmp(fyt_anchor, fysa->anchor) == 0)
 			return fysa;
 	}
 	return NULL;
@@ -7257,7 +7257,7 @@ void fy_parse_streaming_aliases_reset(struct fy_parser *fyp)
 }
 
 struct fy_streaming_alias_state *
-fy_parse_streaming_alias_state_push(struct fy_parser *fyp, struct fy_streaming_alias *fysa, bool is_merge_key)
+fy_parse_streaming_alias_state_push(struct fy_parser *fyp, struct fy_streaming_alias *fysa)
 {
 	struct fy_streaming_alias_state *new_stack;
 	struct fy_streaming_alias_state *fysas;
@@ -7286,15 +7286,6 @@ fy_parse_streaming_alias_state_push(struct fy_parser *fyp, struct fy_streaming_a
 
 	fysas->fysa = fysa;
 	fysas->next = fy_eventp_list_head(&fysa->events);
-	fysas->is_merge_key = is_merge_key;
-
-	/* for merge key, advance over the first mapping start event
-	 * note that we depend on the caller to have made the check
-	 */
-	if (fysas->is_merge_key) {
-		fysas->next = fy_eventp_next(&fysa->events, fysas->next);
-		assert(fysas->next);
-	}
 
 	return fysas;
 err_out:
@@ -7335,7 +7326,7 @@ fy_parse_streaming_alias_state_next_event(struct fy_parser *fyp)
 		return;
 
 	fysas->next = fy_eventp_next(&fysas->fysa->events, fysas->next);
-	while (!fysas->next || (fysas->is_merge_key && fysas->next == fy_eventp_list_tail(&fysas->fysa->events))) {
+	while (!fysas->next) {
 		fysas = fy_parse_streaming_alias_state_pop(fyp);
 		if (!fysas)
 			break;
@@ -7444,14 +7435,15 @@ fy_parse_streaming_alias_collection_state_pop(struct fy_parser *fyp)
 	return ret;
 }
 
-struct fy_eventp *fy_parser_event_resolve_hook_collect(struct fy_parser *fyp, struct fy_eventp *fyep)
+static int
+fy_parser_event_resolve_hook_collect(struct fy_parser *fyp, struct fy_eventp *fyep)
 {
 	struct fy_eventp *fyep_clone = NULL;
 	struct fy_streaming_alias *fysa;
 	long map_add, seq_add;
 
 	if (!fyp || !fyep)
-		return NULL;
+		return -1;
 
 	map_add = seq_add = 0;
 	switch (fyep->e.type) {
@@ -7493,12 +7485,12 @@ struct fy_eventp *fy_parser_event_resolve_hook_collect(struct fy_parser *fyp, st
 			fysa->collecting = false;
 	}
 
-	return fyep;
+	return 0;
 
 err_out:
 	fy_parse_eventp_recycle(fyp, fyep_clone);
 	fyp->stream_error = true;
-	return NULL;
+	return -1;
 }
 
 struct fy_eventp *fy_parser_event_resolve_hook_alias(struct fy_parser *fyp, struct fy_eventp *fyep)
@@ -7536,7 +7528,7 @@ struct fy_eventp *fy_parser_event_resolve_hook_alias(struct fy_parser *fyp, stru
 	fy_token_unref(fyt_anchor);
 	fyt_anchor = NULL;
 
-	fysas = fy_parse_streaming_alias_state_push(fyp, fysa, false);
+	fysas = fy_parse_streaming_alias_state_push(fyp, fysa);
 	fyp_error_check(fyp, fysas, err_out,
 			"fy_parse_streaming_alias_push() failed!");
 	assert(fysas->next);
@@ -7595,42 +7587,231 @@ err_out:
 	return NULL;
 }
 
-static struct fy_eventp *resolve_merge_key_alias(struct fy_parser *fyp, struct fy_eventp *fyep)
+static struct fy_document *
+fy_parser_get_merge_key_argument(struct fy_parser *fyp, struct fy_document_builder *fydb, struct fy_node *fyn)
 {
 	struct fy_streaming_alias *fysa;
-	struct fy_streaming_alias_state *fysas;
-	struct fy_eventp *head, *tail;
+	struct fy_document *fyd_new = NULL;
+	struct fy_document_state *fyds = NULL;
+	int rc;
 
-	assert(fyp);
-	assert(fyep);
-	assert(fyep->e.type == FYET_ALIAS);
+	if (!fy_node_is_alias(fyn))
+		return NULL;
 
-	/* start generation of alias events */
-	fysa = fy_parser_streaming_alias_lookup(fyp, fyep->e.alias.anchor);
-
-	/* we don't support forward aliases for now like we do in document mode ... */
-	FYP_TOKEN_ERROR_CHECK(fyp, fyep->e.alias.anchor, FYEM_PARSE,
+	/* get the alias */
+	fysa = fy_parser_streaming_alias_lookup(fyp, fyn->scalar);
+	FYP_TOKEN_ERROR_CHECK(fyp, fyn->scalar, FYEM_PARSE,
 			fysa, err_out,
-			"merge key alias not found; note streaming mode does not support forward alias references");
+			"Unable to find merge key argument alias");
 
 	/* if this is a reference to a collecting alias, then it's recursive */
-	FYP_TOKEN_ERROR_CHECK(fyp, fyep->e.alias.anchor, FYEM_PARSE,
+	FYP_TOKEN_ERROR_CHECK(fyp, fyn->scalar, FYEM_PARSE,
 			!fysa->collecting, err_out,
 			"merge key recursive alias reference detected");
 
-	/* it must be a mapping reference */
-	head = fy_eventp_list_head(&fysa->events);
-	FYP_TOKEN_ERROR_CHECK(fyp, fyep->e.alias.anchor, FYEM_PARSE,
-			head && head->e.type == FYET_MAPPING_START, err_out,
-			"merge key uses non-mapping alias reference (start)");
+	fyds = fy_parser_get_document_state(fyp);
+	fyp_error_check(fyp, fyds, err_out,
+			"fy_parser_get_document_state() failed");
 
-	tail = fy_eventp_list_tail(&fysa->events);
-	FYP_TOKEN_ERROR_CHECK(fyp, fyep->e.alias.anchor, FYEM_PARSE,
-			tail && tail->e.type == FYET_MAPPING_END, err_out,
-			"merge key uses non-mapping alias reference (end)");
+	rc = fy_document_builder_set_in_document(fydb, fyds, true);
+	fyp_error_check(fyp, !rc, err_out,
+			"fy_document_builder_set_target_document() failed\n");
+
+	/* build a document from the events of the alias (must be the same) */
+	fyd_new = fy_document_builder_event_document(fydb, &fysa->events);
+	fyp_error_check(fyp, fyd_new, err_out,
+			"fy_document_builder_event_document() failed\n");
+
+	FYP_TOKEN_ERROR_CHECK(fyp, fyn->scalar, FYEM_PARSE,
+			fy_node_is_mapping(fyd_new->root), err_out,
+			"alias argument does not refer to mapping");
+
+	return fyd_new;
+
+err_out:
+	fy_document_destroy(fyd_new);
+	return NULL;
+}
+
+static struct fy_document *
+fy_parser_get_merge_key_document(struct fy_parser *fyp, struct fy_eventp *fyep)
+{
+	struct fy_event *fye;
+	struct fy_document_builder_cfg cfg;
+	struct fy_document_builder *fydb = NULL;
+	struct fy_document *fyd = NULL, *fyd_arg = NULL;
+	struct fy_document_state *fyds;
+	struct fy_node *fyn = NULL, *fyn_src = NULL;
+	struct fy_node *new_root = NULL;
+	struct fy_node_pair *fynp, *fynp_exists;
+	void *iters, *iterm;
+	int rc;
+
+	fye = &fyep->e;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.parse_cfg = fyp->cfg;
+	cfg.diag = fy_diag_ref(fyp->diag);
+
+	fydb = fy_document_builder_create(&cfg);
+	fyp_error_check(fyp, fydb, err_out,
+			"fy_document_builder_create() failed\n");
+
+	fyds = fy_parser_get_document_state(fyp);
+	/* start with this document state */
+	fyds = fy_parser_get_document_state(fyp);
+	rc = fy_document_builder_set_in_document(fydb, fyds, true);
+	fyp_error_check(fyp, !rc, err_out,
+			"fy_document_builder_set_in_document() failed\n");
+
+	fyd = fy_document_builder_load_document(fydb, fyp);
+	fyp_error_check(fyp, fyd, err_out,
+			"fy_document_builder_load_document() failed\n");
+
+	FYP_TOKEN_ERROR_CHECK(fyp, fy_event_get_token(fye), FYEM_PARSE,
+			fyd->root, err_out,
+			"merge key arguments must exist");
+
+	/* single alias, replace */
+	if (fy_node_is_alias(fyd->root)) {
+		fyd_arg = fy_parser_get_merge_key_argument(fyp, fydb, fyd->root);
+		fyp_error_check(fyp, fyd_arg, err_out,
+				"fy_parser_get_merge_key_argument() failed\n");
+		fy_node_free(fyd->root);
+		fyd->root = fy_node_copy(fyd, fyd_arg->root);
+
+		fy_document_destroy(fyd_arg);
+		fyd_arg = NULL;
+
+	} else if (fy_node_is_mapping(fyd->root)) {
+
+		/* nothing, already a mapping */
+
+	} else if (fy_node_is_sequence(fyd->root)) {
+
+		new_root = fy_node_create_mapping(fyd);
+		fyp_error_check(fyp, new_root, err_out,
+				"fy_node_create_mapping() failed\n");
+
+		iters = NULL;
+		while ((fyn_src = fy_node_sequence_iterate(fyd->root, &iters)) != NULL) {
+
+			if (fy_node_is_alias(fyn_src)) {
+				fyd_arg = fy_parser_get_merge_key_argument(fyp, fydb, fyn_src);
+				fyp_error_check(fyp, fyd_arg, err_out,
+						"fy_parser_get_merge_key_argument() failed\n");
+
+				fyn = fy_node_copy(fyd, fyd_arg->root);
+				fyp_error_check(fyp, fyn, err_out,
+						"fy_node_copy() failed\n");
+				fy_document_destroy(fyd_arg);
+				fyd_arg = NULL;
+
+			} else {
+				FYP_NODE_ERROR_CHECK(fyp, fyn_src, FYEM_PARSE,
+						fy_node_is_mapping(fyn_src), err_out,
+						"merge key argument is not a mapping or an alias to such");
+				fyn = fy_node_copy(fyd, fyn_src);
+				fyp_error_check(fyp, fyn, err_out,
+						"fy_node_copy() failed\n");
+			}
+
+			iterm = NULL;
+			while ((fynp = fy_node_mapping_iterate(fyn, &iterm)) != NULL) {
+				fynp_exists = fy_node_mapping_lookup_pair(new_root, fynp->key);
+
+				/* do not override existing keys */
+				if (fynp_exists)
+					continue;
+
+				/* add it to the mapping */
+				rc = fy_node_mapping_append(new_root, fy_node_copy(fyd, fynp->key), fy_node_copy(fyd, fynp->value));
+				fyp_error_check(fyp, !rc, err_out,
+						"fy_node_mapping_append() failed\n");
+			}
+
+			/* and we're done with it */
+			fy_node_free(fyn);
+			fyn = NULL;
+		}
+		fy_node_free(fyd->root);
+		fyd->root = new_root;
+
+	} else {
+		FYP_TOKEN_ERROR(fyp, fy_event_get_token(fye), FYEM_PARSE,
+				"merge key argument is neither an alias or a mapping");
+		goto err_out;
+	}
+
+	fy_document_builder_destroy(fydb);
+	fydb = NULL;
+
+	return fyd;
+
+err_out:
+	fy_node_free(new_root);
+	fy_document_destroy(fyd_arg);
+	fy_document_destroy(fyd);
+	fy_document_builder_destroy(fydb);
+	return NULL;
+}
+
+struct fy_eventp *fy_parser_event_resolve_hook_merge_key_start(struct fy_parser *fyp, struct fy_eventp *fyep)
+{
+	struct fy_document *fyd = NULL;
+	struct fy_document_iterator *fydi = NULL;
+	struct fy_eventp *fyep_next = NULL;
+	struct fy_event *fye;
+	struct fy_streaming_alias *fysa;
+	struct fy_streaming_alias_state *fysas;
+
+	FYP_TOKEN_ERROR_CHECK(fyp, fyep->e.scalar.value, FYEM_PARSE,
+			!fyp->mks.active, err_out,
+			"No recursive merge key processing is supported");
+
+	fyd = fy_parser_get_merge_key_document(fyp, fyep);
+	FYP_TOKEN_ERROR_CHECK(fyp, fyep->e.scalar.value, FYEM_PARSE,
+			fyd, err_out,
+			"No merge key argument document");
+
+	fysa = fy_parse_streaming_alias_create(fyp, NULL);
+	fyp_error_check(fyp, fysa, err_out,
+			"fy_parse_streaming_alias_create() failed");
+
+	fydi = fy_document_iterator_create();
+	fyp_error_check(fyp, fydi, err_out,
+			"fy_document_iterator_create() failed");
+
+	fy_document_iterator_node_start(fydi, fyd->root);
+
+	/* now append all to the (fake) streaming anchor */
+	while ((fye = fy_document_iterator_body_next(fydi)) != NULL) {
+		fyep_next = container_of(fye, struct fy_eventp, e);
+		fy_eventp_list_add_tail(&fysa->events, fyep_next);
+	}
+
+	fy_document_iterator_destroy(fydi);
+	fy_document_destroy(fyd);
+	fyd = NULL;
+
+	/* and add it to the start of the list */
+	fy_streaming_alias_list_add(&fyp->streaming_aliases, fysa);
+
+	/* OK, trim mapping start and end */
+	fyep_next = fy_eventp_list_head(&fysa->events);
+	fyp_error_check(fyp, fyep_next->e.type == FYET_MAPPING_START, err_out,
+			"not a mapping merge key start");
+	fy_eventp_list_del(&fysa->events, fyep_next);
+	fy_eventp_free(fyep_next);
+
+	fyep_next = fy_eventp_list_tail(&fysa->events);
+	fyp_error_check(fyp, fyep_next->e.type == FYET_MAPPING_END, err_out,
+			"not a mapping merge key end");
+	fy_eventp_list_del(&fysa->events, fyep_next);
+	fy_eventp_free(fyep_next);
 
 	/* OK, push the new state */
-	fysas = fy_parse_streaming_alias_state_push(fyp, fysa, true);
+	fysas = fy_parse_streaming_alias_state_push(fyp, fysa);
 	fyp_error_check(fyp, fysas, err_out,
 			"fy_parse_streaming_alias_push() failed!");
 	assert(fysas->next);
@@ -7649,41 +7830,8 @@ static struct fy_eventp *resolve_merge_key_alias(struct fy_parser *fyp, struct f
 	return fyep;
 
 err_out:
-	fy_parse_eventp_recycle(fyp, fyep);
-	fyp->stream_error = true;
-	return NULL;
-}
-
-struct fy_eventp *fy_parser_event_resolve_hook_merge_key_start(struct fy_parser *fyp, struct fy_eventp *fyep)
-{
-	struct fy_eventp *fyep_next = NULL;
-
-	FYP_TOKEN_ERROR_CHECK(fyp, fyep->e.scalar.value, FYEM_PARSE,
-			!fyp->mks.active, err_out,
-			"No recursive merge key processing is supported");
-
-	/* we're going to directly call into the parser to pick up events */
-	fyep_next = fy_parse_private(fyp);
-
-	FYP_TOKEN_ERROR_CHECK(fyp, fyep->e.scalar.value, FYEM_PARSE,
-			fyep_next, err_out,
-			"No input for merge key processing");
-
-	/* simple case, a single alias, just pretend that what it was */
-	if (fyep_next->e.type == FYET_ALIAS) {
-		fy_parse_eventp_recycle(fyp, fyep);
-		return resolve_merge_key_alias(fyp, fyep_next);
-	}
-
-	FYP_TOKEN_ERROR_CHECK(fyp, fy_event_get_token(&fyep_next->e), FYEM_PARSE,
-			fyep_next->e.type != FYET_SEQUENCE_START, err_out,
-			"merge key args must be either a single alias or a sequence of aliases");
-
-	FYP_TOKEN_ERROR(fyp, fyep_next->e.scalar.value, FYEM_PARSE,
-			"Unable to handle this kind of merge key");
-	return fyep;
-
-err_out:
+	fy_document_iterator_destroy(fydi);
+	fy_document_destroy(fyd);
 	fy_parse_eventp_recycle(fyp, fyep_next);
 	fy_parse_eventp_recycle(fyp, fyep);
 	return NULL;
@@ -7724,6 +7872,8 @@ struct fy_eventp *fy_parser_event_resolve_hook_merge_key(struct fy_parser *fyp, 
 /* NOTE: order is _very_ important, do not re-arrange if you're not sure */
 struct fy_eventp *fy_parser_event_resolve_hook(struct fy_parser *fyp, struct fy_eventp *fyep)
 {
+	int rc;
+
 	/* merge key processing for version 1.1 only! */
 	if (fy_reader_get_mode(fyp->reader) == fyrm_yaml_1_1) {
 		fyep = fy_parser_event_resolve_hook_merge_key(fyp, fyep);
@@ -7737,8 +7887,8 @@ struct fy_eventp *fy_parser_event_resolve_hook(struct fy_parser *fyp, struct fy_
 			"fy_parser_event_resolve_hook_anchor_start() failed!");
 
 	/* collect afterwards */
-	fyep = fy_parser_event_resolve_hook_collect(fyp, fyep);
-	fyp_error_check(fyp, fyep != NULL, err_out,
+	rc = fy_parser_event_resolve_hook_collect(fyp, fyep);
+	fyp_error_check(fyp, !rc, err_out,
 			"fy_parser_event_resolve_hook_collect() failed!");
 
 	/* finally do first entry into alias processing */
@@ -7757,6 +7907,8 @@ struct fy_eventp *fy_parser_parse_resolve_prolog(struct fy_parser *fyp)
 	struct fy_streaming_alias *fysa;
 	struct fy_streaming_alias_state *fysas;
 	struct fy_eventp *fyep, *fyep_src;
+	bool was_merge_key;
+	int rc;
 
 	if (!(fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT))
 		return NULL;
@@ -7765,6 +7917,7 @@ struct fy_eventp *fy_parser_parse_resolve_prolog(struct fy_parser *fyp)
 	if (!fysas)
 		return NULL;
 
+	was_merge_key = false;
 	for (;;) {
 		fysa = fysas->fysa;
 		assert(fysa);
@@ -7773,6 +7926,9 @@ struct fy_eventp *fy_parser_parse_resolve_prolog(struct fy_parser *fyp)
 
 		/* keep track of it */
 		fyep_src = fysas->next;
+
+		/* merge key entries don't have an anchor */
+		was_merge_key = fysa->anchor == NULL;
 
 		/* advance event */
 		fy_parse_streaming_alias_state_next_event(fyp);
@@ -7787,7 +7943,7 @@ struct fy_eventp *fy_parser_parse_resolve_prolog(struct fy_parser *fyp)
 				"fy_parser_streaming_alias_lookup_pivot() failed!");
 
 		/* and push */
-		fysas = fy_parse_streaming_alias_state_push(fyp, fysa, false);
+		fysas = fy_parse_streaming_alias_state_push(fyp, fysa);
 		fyp_error_check(fyp, fysas, err_out,
 				"fy_parse_streaming_alias_state_push() failed!");
 	}
@@ -7795,6 +7951,12 @@ struct fy_eventp *fy_parser_parse_resolve_prolog(struct fy_parser *fyp)
 	fyep = fy_parse_eventp_clone(fyp, fyep_src, true);
 	fyp_error_check(fyp, fyep != NULL, err_out,
 			"fy_parse_eventp_clone() failed!");
+
+	if (was_merge_key) {
+		rc = fy_parser_event_resolve_hook_collect(fyp, fyep_src);
+		fyp_error_check(fyp, !rc, err_out,
+			"fy_parser_event_resolve_hook_collect() failed!");
+	}
 
 	return fyep;
 
