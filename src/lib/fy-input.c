@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
+#include <limits.h>
 #include <errno.h>
 
 #include <libfyaml.h>
@@ -257,6 +258,61 @@ void fy_input_close(struct fy_input *fyi)
 	default:
 		break;
 	}
+}
+
+ssize_t fy_input_estimate_queued_size(const struct fy_input *fyi)
+{
+	struct stat sb;
+	int fd, rc;
+
+	if (!fyi || fyi->state != FYIS_QUEUED)
+		return 0;
+
+	memset(&sb, 0, sizeof(sb));
+
+	switch (fyi->cfg.type) {
+	case fyit_file:
+		rc = stat(fyi->cfg.file.filename, &sb);
+		if (rc)
+			return -1;
+		break;
+
+	case fyit_stream:
+		fd = fileno(fyi->cfg.stream.fp);
+		if (fd < 0)
+			return -1;
+		rc = fstat(fd, &sb);
+		if (rc)
+			return -1;
+		break;
+
+	case fyit_memory:
+		return (ssize_t)fyi->cfg.memory.size;
+
+	case fyit_alloc:
+		return (ssize_t)fyi->cfg.alloc.size;
+
+	case fyit_fd:
+		rc = fstat(fyi->cfg.fd.fd, &sb);
+		if (rc)
+			return -1;
+		break;
+
+	case fyit_callback:
+	default:
+		return SSIZE_MAX;	/* cannot determine */
+	}
+
+	/* only do it for regular files */
+	if ((sb.st_mode & S_IFMT) != S_IFREG)
+		return SSIZE_MAX;
+
+	/* check for very impossible roll-over */
+	if ((size_t)sb.st_size > (size_t)SSIZE_MAX)
+		return SSIZE_MAX;
+
+	/* ok, we did find it */
+	return (ssize_t)sb.st_size;
 }
 
 struct fy_diag *fy_reader_get_diag(struct fy_reader *fyr)

@@ -214,6 +214,8 @@ fy_input_unref(struct fy_input *fyi)
 		fyi->refs--;
 }
 
+ssize_t fy_input_estimate_queued_size(const struct fy_input *fyi);
+
 struct fy_reader;
 
 enum fy_reader_mode {
