@@ -614,6 +614,7 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg);
 void fy_parse_cleanup(struct fy_parser *fyp);
 
 int fy_parse_input_append(struct fy_parser *fyp, const struct fy_input_cfg *fyic);
+ssize_t fy_parse_estimate_queued_input_size(struct fy_parser *fyp);
 
 struct fy_eventp *fy_parse_private(struct fy_parser *fyp);
 

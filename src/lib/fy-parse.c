@@ -135,6 +135,37 @@ err_out:
 	return -1;
 }
 
+ssize_t fy_parse_estimate_queued_input_size(struct fy_parser *fyp)
+{
+	struct fy_input *fyi;
+	ssize_t size, total;
+
+	if (!fyp)
+		return 0;
+
+	total = 0;
+	for (fyi = fy_input_list_head(&fyp->queued_inputs); fyi; fyi = fy_input_next(&fyp->queued_inputs, fyi)) {
+		if (fyi->state != FYIS_QUEUED)
+			continue;
+
+		size = fy_input_estimate_queued_size(fyi);
+		if (size < 0)
+			return -1;
+
+		/* something that's indetermined */
+		if (size == SSIZE_MAX)
+			return SSIZE_MAX;
+
+		total += size;
+
+		/* roll-over check */
+		if (total < 0)
+			return SSIZE_MAX;
+	}
+
+	return total;
+}
+
 static inline void
 fy_token_queue_epilogue(struct fy_parser *fyp, struct fy_token *fyt)
 {
