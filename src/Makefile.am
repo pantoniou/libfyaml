@@ -36,7 +36,7 @@ libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) \
 		       -I$(top_srcdir)/src/xxhash \
 		       -I$(top_srcdir)/src/util
 libfyaml_la_CFLAGS = $(AM_CFLAGS)
-libfyaml_la_LDFLAGS = $(AM_LDFLAGS) $(AM_LIBLDFLAGS) \
+libfyaml_la_LDFLAGS = -no-undefined $(AM_LDFLAGS) $(AM_LIBLDFLAGS) \
 		      -version $(LIBTOOL_VERSION)
 
 bin_PROGRAMS =
