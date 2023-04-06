@@ -3612,6 +3612,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	handle.fws_mode = fyp_fws_mode(fyp);
 	handle.tabsize = fyp_tabsize(fyp);
 	handle.ends_with_eof = ends_with_eof;
+	handle.is_merge_key = false;
 
 #ifdef ATOM_SIZE_CHECK
 	tlength = fy_atom_format_text_length(&handle);
@@ -4048,6 +4049,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 	handle->fws_mode = fy_reader_flow_ws_mode(fyr);
 	handle->tabsize = fy_reader_tabsize(fyr);
 	handle->ends_with_eof = false;	/* flow scalars never end with EOF and be valid */
+	handle->is_merge_key = false;
 
 	/* skip over block scalar end */
 	fy_reader_advance_by(fyr, 1);
@@ -4083,7 +4085,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 	bool has_leading_blanks;
 	bool last_ptr;
 	struct fy_mark mark, last_mark;
-	bool is_multiline, has_lb, has_ws, ends_with_eof;
+	bool is_multiline, has_lb, has_ws, ends_with_eof, is_merge_key;
 	bool has_json_esc;
 #ifdef ATOM_SIZE_CHECK
 	size_t tlength;
@@ -4112,6 +4114,9 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 	FYR_PARSE_ERROR_CHECK(fyr, 0, 2, FYEM_SCAN,
 			flow_level == 0 || !(c == '-' && fy_utf8_strchr(",[]{}", fy_reader_peek_at(fyr, 1))), err_out,
 			"plain scalar cannot start with '%c' followed by ,[]{} (in flow context)", c);
+
+	/* we can prime is_merge_key here */
+	is_merge_key = c == '<' && fy_reader_peek_at(fyr, 1) == '<';
 
 	fy_reader_get_mark(fyr, &mark);
 
@@ -4337,6 +4342,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 	handle->fws_mode = fy_reader_flow_ws_mode(fyr);
 	handle->tabsize = fy_reader_tabsize(fyr);
 	handle->ends_with_eof = ends_with_eof;
+	handle->is_merge_key = is_merge_key && length == 2;
 
 #ifdef ATOM_SIZE_CHECK
 	tlength = fy_atom_format_text_length(handle);
