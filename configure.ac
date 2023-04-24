@@ -117,6 +117,9 @@ AC_TYPE_SIGNAL
 AC_TYPE_UID_T
 AC_CHECK_DECLS(environ)
 
+AC_CHECK_HEADERS([byteswap.h])
+AC_CHECK_FUNCS([__builtin_bswap16 __builtin_bswap32 __builtin_bswap64])
+
 dnl for old autoconf version AX_APPEND_COMPILE_FLAGS does not work
 m4_version_prereq(2.64,
 	 [AX_APPEND_COMPILE_FLAGS([-Wall -Wsign-compare -Wno-stringop-overflow -fvisibility=hidden],
