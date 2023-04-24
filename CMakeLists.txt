@@ -71,6 +71,13 @@ add_library(${PROJECT_NAME}
     ${LIBHDRSPUB}
 )
 
+include(CheckIncludeFile)
+check_include_file("byteswap.h" HAVE_BYTESWAP_H)
+include(CheckFunctionExists)
+check_function_exists(__builtin_bswap16 HAVE___BUILTIN_BSWAP16)
+check_function_exists(__builtin_bswap32 HAVE___BUILTIN_BSWAP32)
+check_function_exists(__builtin_bswap64 HAVE___BUILTIN_BSWAP64)
+
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 
 set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER "Libraries")
