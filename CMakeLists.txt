@@ -13,38 +13,38 @@ cmake_minimum_required(VERSION 3.0)
 include(GNUInstallDirs)
 
 set(LIBHDRS
-  src/valgrind/fy-valgrind.h
-  src/xxhash/xxhash.h
   src/lib/fy-accel.h
   src/lib/fy-atom.h
   src/lib/fy-composer.h
-  src/lib/fy-ctype.h
   src/lib/fy-diag.h
   src/lib/fy-doc.h
-  src/lib/fy-docbuilder.c
+  src/lib/fy-docbuilder.h
   src/lib/fy-docstate.h
   src/lib/fy-dump.h
-  src/lib/fy-emit-accum.h
-  src/lib/fy-emit.h
-  src/lib/fy-event.h
+  src/lib/fy-emit.h src/lib/fy-emit-accum.h
   src/lib/fy-input.h
-  src/lib/fy-list.h
   src/lib/fy-parse.h
   src/lib/fy-path.h
   src/lib/fy-token.h
-  src/lib/fy-typelist.h
   src/lib/fy-types.h
-  src/lib/fy-utf8.h
-  src/lib/fy-utils.h
   src/lib/fy-walk.h
+  src/util/fy-blob.h
+  src/util/fy-ctype.h
+  src/util/fy-endian.h
+  src/util/fy-id.h
+  src/util/fy-list.h
+  src/util/fy-typelist.h
+  src/util/fy-utf8.h
+  src/util/fy-utils.h
+  src/xxhash/xxhash.h
 )
 set(LIBSRCS
   src/lib/fy-accel.c
   src/lib/fy-atom.c
   src/lib/fy-composer.c
-  src/lib/fy-ctype.c
   src/lib/fy-diag.c
   src/lib/fy-doc.c
+  src/lib/fy-docbuilder.c
   src/lib/fy-docstate.c
   src/lib/fy-dump.c
   src/lib/fy-emit.c
@@ -54,9 +54,11 @@ set(LIBSRCS
   src/lib/fy-path.c
   src/lib/fy-token.c
   src/lib/fy-types.c
-  src/lib/fy-utf8.c
-  src/lib/fy-utils.c
   src/lib/fy-walk.c
+  src/util/fy-blob.c
+  src/util/fy-ctype.c
+  src/util/fy-utf8.c
+  src/util/fy-utils.c
   src/xxhash/xxhash.c
 )
 set(LIBHDRSPUB
@@ -79,7 +81,7 @@ target_include_directories(${PROJECT_NAME}
         $<INSTALL_INTERFACE:include>
     PRIVATE
         ${${PROJECT_NAME}_SOURCE_DIR}/src/lib
-        ${${PROJECT_NAME}_SOURCE_DIR}/src/lib/internal
+        ${${PROJECT_NAME}_SOURCE_DIR}/src/util
         ${${PROJECT_NAME}_SOURCE_DIR}/src/xxhash
 )
 
