@@ -3380,6 +3380,35 @@ enum fy_node_style fy_node_get_style(struct fy_node *fyn)
 	return fyn ? fyn->style : FYNS_PLAIN;
 }
 
+struct fy_token * fy_node_get_start_token(struct fy_node *fyn) {
+        if (!fyn) {
+                return NULL;
+        }
+        switch (fyn->type) {
+        case FYNT_MAPPING:
+                return fyn->mapping_start;
+        case FYNT_SEQUENCE:
+                return fyn->sequence_start;
+        case FYNT_SCALAR:
+                return fyn->scalar;
+        }
+}
+
+
+struct fy_token * fy_node_get_end_token(struct fy_node *fyn) {
+        if (!fyn) {
+                return NULL;
+        }
+        switch (fyn->type) {
+        case FYNT_MAPPING:
+                return fyn->mapping_end;
+        case FYNT_SEQUENCE:
+                return fyn->sequence_end;
+        case FYNT_SCALAR:
+                return fyn->scalar;
+        }
+}
+
 bool fy_node_is_null(struct fy_node *fyn)
 {
 	if (!fyn)
