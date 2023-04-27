@@ -3020,6 +3020,36 @@ fy_node_get_style(struct fy_node *fyn)
 	FY_EXPORT;
 
 /**
+ * fy_node_get_start_token() - Get the node start token
+ *
+ * Retrieve the node start token.
+ *
+ * For scalars, this is the same as the end token.
+ *
+ * @fyn: The node
+ *
+ * Returns:
+ * The node start token
+ */
+struct fy_token * fy_node_get_start_token(struct fy_node *fyn)
+        FY_EXPORT;
+
+/**
+ * fy_node_get_end_token() - Get the node end token
+ *
+ * Retrieve the node end token.
+ *
+ * For scalars, this is the same as the start token.
+ *
+ * @fyn: The node
+ *
+ * Returns:
+ * The node end token
+ */
+ struct fy_token * fy_node_get_end_token(struct fy_node *fyn)
+        FY_EXPORT;
+
+/**
  * fy_node_is_scalar() - Check whether the node is a scalar
  *
  * Convenience method for checking whether a node is a scalar.
