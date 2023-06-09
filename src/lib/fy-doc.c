@@ -1158,14 +1158,6 @@ struct fy_node_cmp_arg {
 	void *arg;
 };
 
-static int fy_node_scalar_cmp_default(struct fy_node *fyn_a,
-				      struct fy_node *fyn_b,
-				      void *arg);
-
-static int fy_node_mapping_sort_cmp_default(const struct fy_node_pair *fynp_a,
-					    const struct fy_node_pair *fynp_b,
-					    void *arg);
-
 bool fy_node_compare_user(struct fy_node *fyn1, struct fy_node *fyn2,
 			 fy_node_mapping_sort_fn sort_fn, void *sort_fn_arg,
 			 fy_node_scalar_compare_fn cmp_fn, void *cmp_fn_arg)
@@ -5760,7 +5752,7 @@ static int fy_node_mapping_sort_cmp_no_qsort_r(const void *a, const void *b)
 
 #endif
 
-static int fy_node_scalar_cmp_default(struct fy_node *fyn_a,
+int fy_node_scalar_cmp_default(struct fy_node *fyn_a,
 				      struct fy_node *fyn_b,
 				      void *arg)
 {
@@ -5775,7 +5767,7 @@ static int fy_node_scalar_cmp_default(struct fy_node *fyn_a,
 }
 
 /* the default sort method */
-static int fy_node_mapping_sort_cmp_default(const struct fy_node_pair *fynp_a,
+int fy_node_mapping_sort_cmp_default(const struct fy_node_pair *fynp_a,
 					    const struct fy_node_pair *fynp_b,
 					    void *arg)
 {
