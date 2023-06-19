@@ -1217,7 +1217,7 @@ bool fy_node_compare_user(struct fy_node *fyn1, struct fy_node *fyn2,
 		fyni2 = fy_node_list_head(&fyn2->sequence);
 		while (fyni1 && fyni2) {
 
-			ret = fy_node_compare(fyni1, fyni2);
+			ret = fy_node_compare_user(fyni1, fyni2, sort_fn, sort_fn_arg, cmp_fn, cmp_fn_arg);
 			if (!ret)
 				break;
 
@@ -1251,11 +1251,11 @@ bool fy_node_compare_user(struct fy_node *fyn1, struct fy_node *fyn2,
 			fynp1 = fynpp1[i];
 			fynp2 = fynpp2[i];
 
-			ret = fy_node_compare(fynp1->key, fynp2->key);
+			ret = fy_node_compare_user(fynp1->key, fynp2->key, sort_fn, sort_fn_arg, cmp_fn, cmp_fn_arg);
 			if (!ret)
 				break;
 
-			ret = fy_node_compare(fynp1->value, fynp2->value);
+			ret = fy_node_compare_user(fynp1->value, fynp2->value, sort_fn, sort_fn_arg, cmp_fn, cmp_fn_arg);
 			if (!ret)
 				break;
 		}
