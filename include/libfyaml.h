@@ -2627,6 +2627,21 @@ fy_node_compare(struct fy_node *fyn1, struct fy_node *fyn2)
 	FY_EXPORT;
 
 /**
+ * fy_token_cmp() - Compares two tokens for equality
+ *
+ * Compare two tokens for equality.
+ * This function is useful in custom fy_node_scalar_compare_fn functions.
+ *
+ * @fyt1: The first token to use in the comparison
+ * @fyt2: The second token to use in the comparsin
+ * Returns:
+ * <0 if @fyn_a is less than @fyn_b
+ * 0 if @fyn_a is equal to fyn_b
+ * >0 if @fyn_a is greater than @fyn_b
+ */
+int fy_token_cmp(struct fy_token *fyt1, struct fy_token *fyt2);
+
+/**
  * fy_node_compare_user() - Compare two nodes for equality using
  * 			    user supplied sort and scalar compare methods
  *
