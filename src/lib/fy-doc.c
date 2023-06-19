@@ -188,14 +188,13 @@ static int fy_document_set_anchor_internal(struct fy_document *fyd, struct fy_no
 		fyd_error_check(fyd, data_copy, err_out,
 				"malloc() failed");
 		memcpy(data_copy, text, len);
-		fyi = fy_input_from_malloc_data(data_copy, len, &handle, true);
 	} else if (malloced)
 		data_copy = (char *)text;
 	else
 		data_copy = NULL;
 
 	if (data_copy)
-		fyi = fy_input_from_malloc_data((void *)text, len, &handle, true);
+		fyi = fy_input_from_malloc_data(data_copy, len, &handle, true);
 	else
 		fyi = fy_input_from_data(text, len, &handle, true);
 	fyd_error_check(fyd, fyi, err_out,
