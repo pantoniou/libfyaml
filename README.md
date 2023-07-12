@@ -40,6 +40,7 @@ of it's testsuite.
 - [API documentation](#api-documentation)
 - [fy-tool reference](#fy-tool-reference)
 - [Missing Features](#missing-features)
+- [Licensing](#licensing)
 
 ## Prerequisites
 
@@ -461,6 +462,15 @@ Options:
 
 1. Windows - libfyaml is not supporting windows yet.
 2. Unicode - libfyaml only supports UTF8 and has no support for wide character input.
+
+## Licensing
+
+The core part of libfyaml is distributed under the
+[MIT License](https://github.com/pantoniou/libfyaml/blob/master/LICENSE). 
+It includes code available under GPL-2.0 license in the file
+[fy-list.h](https://github.com/pantoniou/libfyaml/blob/master/src/util/fy-list.h) and the
+bundled library [xxhash](https://github.com/pantoniou/libfyaml/blob/master/src/xxhash/) is
+available under the BSD-2-clause license.
 
 ## Development and contributing
 Feel free to send pull requests and raise issues.
