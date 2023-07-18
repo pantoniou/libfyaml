@@ -7,3 +7,6 @@ bill-to: &id001
         lines: |
             458 Walkman Dr.
             Suite #292
+    items:
+      - [Asprin, 3, 2.99]
+      - [Antacid, 4, 5.95]
