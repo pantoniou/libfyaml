@@ -1603,7 +1603,6 @@ int main(int argc, char *argv[])
 	fy_valgrind_check(&argc, &argv);
 
 	/* select the appropriate tool mode */
-	progname = argv[0];
 	progname = strrchr(argv[0], '/');
 	if (!progname)
 		progname = argv[0];
