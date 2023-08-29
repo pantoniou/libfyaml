@@ -1,11 +1,11 @@
-AC_PREREQ(2.61)
+AC_PREREQ(2.71)
 
 AC_INIT([libfyaml],
         m4_esyscmd([build-aux/git-version-gen .tarball-version]),
 	[pantelis.antoniou@konsulko.com])
 
 AC_CONFIG_SRCDIR([src/lib/fy-parse.c])
-AC_CONFIG_HEADER([config.h])
+AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE([foreign 1.8.5 -Wall subdir-objects ])
@@ -72,7 +72,6 @@ m4_version_prereq(2.64, [AX_CHECK_ENABLE_DEBUG()], [true])
 
 AC_PROG_MKDIR_P
 AC_PROG_CC
-AC_PROG_CC_C99
 AM_PROG_CC_C_O
 
 AC_PROG_GCC_TRADITIONAL
@@ -97,15 +96,11 @@ AC_SUBST(ACLOCAL_AMFLAGS, "-I m4")
 PKG_PROG_PKG_CONFIG
 
 AC_LTDL_ENABLE_INSTALL
-AC_LIBLTDL_INSTALLABLE
-AC_LIBTOOL_DLOPEN
-AC_LIBTOOL_WIN32_DLL
-AC_PROG_LIBTOOL
+LT_INIT([dlopen win32-dll])
 AC_SUBST(LTDLINCL)
 AC_SUBST(LIBLTDL)
 AC_CONFIG_SUBDIRS(libltdl)
 
-AC_HEADER_STDC
 AC_C_CONST
 AC_C_BIGENDIAN
 AC_TYPE_PID_T
@@ -113,7 +108,6 @@ AC_TYPE_SIZE_T
 AC_CHECK_TYPES(ssize_t, , [AC_DEFINE([ssize_t], [signed long],
     [Define ssize_t if it is not done by the standard libs.])])
 AC_TYPE_OFF_T
-AC_TYPE_SIGNAL
 AC_TYPE_UID_T
 AC_CHECK_DECLS(environ)
 
