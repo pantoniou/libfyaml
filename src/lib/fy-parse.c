@@ -3406,6 +3406,9 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 
 			line_length += fy_utf8_width(c);
 		}
+		/* keep the variables without warning */
+		(void)trailing_ws;
+		(void)leading_ws;
 
 		if (doc_start_end_detected)
 			break;

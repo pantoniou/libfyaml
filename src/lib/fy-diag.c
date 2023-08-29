@@ -580,7 +580,7 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 	struct fy_raw_line l_tmp;
 	struct fy_atom_raw_line_iter iter;
 	int content_start_col, content_end_col, content_width;
-	int pass, cols, min_col, max_col, total_lines, max_line_count, max_line_col8, max_width;
+	int pass, cols, min_col, max_col, max_line_count, max_line_col8, max_width;
 	int start_col, end_col;
 	const char *color_start, *color_end, *white;
 	bool first_line, last_line;
@@ -608,7 +608,6 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 	max_col = -1;
 	max_line_count = -1;
 	max_line_col8 = -1;
-	total_lines = 0;
 	line_shift = -1;
 	for (pass = 0; pass < 2; pass++) {
 
@@ -688,8 +687,6 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 			content_width = content_end_col - content_start_col;
 
 			if (pass == 0) {
-
-				total_lines++;
 
 				if (min_col < 0 || content_start_col < min_col)
 					min_col = content_start_col;

@@ -1555,7 +1555,7 @@ int main(int argc, char *argv[])
 	struct fy_emitter_cfg emit_cfg;
 	struct fy_parser *fyp = NULL;
 	struct fy_emitter *fye = NULL;
-	int rc, exitcode = EXIT_FAILURE, opt, lidx, count, i, j, step = 1;
+	int rc, exitcode = EXIT_FAILURE, opt, lidx, i, j, step = 1;
 	enum fy_error_module errmod;
 	unsigned int errmod_mask;
 	bool show;
@@ -2064,7 +2064,6 @@ int main(int argc, char *argv[])
 		break;
 
 	case OPT_DUMP:
-		count = 0;
 		for (i = optind; ; i++) {
 
 			if (optind < argc) {
@@ -2093,7 +2092,6 @@ int main(int argc, char *argv[])
 					if (rc)
 						goto cleanup;
 
-					count++;
 				}
 			} else {
 				while ((fyev = fy_parser_parse(fyp)) != NULL) {
@@ -2105,7 +2103,6 @@ int main(int argc, char *argv[])
 						fy_parser_event_free(fyp, fyev);
 					}
 				}
-				count++;
 			}
 
 			if (fy_parser_get_stream_error(fyp))
@@ -2131,7 +2128,6 @@ int main(int argc, char *argv[])
 			goto cleanup;
 		}
 
-		count = 0;
 		while ((fyd = fy_parse_load_document(fyp)) != NULL) {
 
 			for (i = optind, j = 0; i < argc; i += step, j++) {
@@ -2163,7 +2159,6 @@ int main(int argc, char *argv[])
 				if (rc)
 					goto cleanup;
 
-				count++;
 			}
 
 			fy_parse_document_destroy(fyp, fyd);
@@ -2322,7 +2317,6 @@ int main(int argc, char *argv[])
 		} else
 			stdin_input = false;
 
-		count = 0;
 		for (;;) {
 
 			if (!stdin_input) {
@@ -2392,7 +2386,6 @@ int main(int argc, char *argv[])
 			goto cleanup;
 		}
 
-		count = 0;
 		for (i = optind; i < argc; i++) {
 			rc = set_parser_input(fyp, argv[i], false);
 			if (rc) {
@@ -2411,7 +2404,6 @@ int main(int argc, char *argv[])
 					fy_parser_event_free(fyp, fyev);
 				}
 			}
-			count++;
 
 			if (fy_parser_get_stream_error(fyp))
 				goto cleanup;
@@ -2431,15 +2423,12 @@ int main(int argc, char *argv[])
 		cd.single_document = false;
 		cd.verbose = dump_path;
 
-		count = 0;
 		for (i = optind; i < argc; i++) {
 			rc = set_parser_input(fyp, argv[i], false);
 			if (rc) {
 				fprintf(stderr, "failed to set parser input to '%s' for dump\n", argv[i]);
 				goto cleanup;
 			}
-
-			count++;
 		}
 
 		/* ignore errors for now */

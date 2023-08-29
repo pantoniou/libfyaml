@@ -3683,7 +3683,7 @@ int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, 
 	struct fy_path_exec_cfg xcfg_local, *xcfg = &xcfg_local;
 	char *path;
 	unsigned int flags;
-	int rc, count;
+	int rc;
 
 	flags = 0;
 	if (sort)
@@ -3719,7 +3719,6 @@ int do_walk(struct fy_parser *fyp, const char *walkpath, const char *walkstart, 
 	fypx = fy_path_exec_create(xcfg);
 	assert(fypx);
 
-	count = 0;
 	while ((fyd = fy_parse_load_document(fyp)) != NULL) {
 
 		if (resolve) {
@@ -3811,8 +3810,6 @@ next:
 		fy_walk_result_free_rl(NULL, result);
 
 		fy_parse_document_destroy(fyp, fyd);
-
-		count++;
 	}
 
 	fy_path_exec_unref(fypx);
