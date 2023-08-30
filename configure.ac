@@ -1,4 +1,4 @@
-AC_PREREQ(2.71)
+AC_PREREQ(2.69)
 
 AC_INIT([libfyaml],
         m4_esyscmd([build-aux/git-version-gen .tarball-version]),
