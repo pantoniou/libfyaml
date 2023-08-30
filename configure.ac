@@ -136,12 +136,6 @@ AC_SUBST(HAVE_STATIC)
 AC_DEFINE_UNQUOTED([HAVE_STATIC], [$HAVE_STATIC], [Define to 1 if static linking is available])
 AM_CONDITIONAL([HAVE_STATIC], [ test x$HAVE_STATIC = x1 ])
 
-dnl for old autoconf version AX_APPEND_COMPILE_FLAGS does not work
-m4_version_prereq(2.64,
-	 [AX_APPEND_COMPILE_FLAGS([-Wall -Wsign-compare -Wno-stringop-overflow -fvisibility=hidden],
-				  [CFLAGS], [-pedantic -Werror])],
-         [CFLAGS="$CFLAGS -Wall -Wsign-compare"])
-
 dnl ASAN enable switch
 AC_ARG_ENABLE([asan],
 	      AS_HELP_STRING([--enable-asan],
