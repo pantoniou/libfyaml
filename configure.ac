@@ -4,11 +4,21 @@ AC_INIT([libfyaml],
         m4_esyscmd([build-aux/git-version-gen .tarball-version]),
 	[pantelis.antoniou@konsulko.com])
 
+AC_CONFIG_AUX_DIR([build-aux])
+
+AC_PATH_PROG([M4], [m4 gm4], [no])
+if test "x$M4" = xno ; then
+   AC_MSG_ERROR([m4 missing])
+fi
+
+AC_SUBST(ACLOCAL_AMFLAGS, "-I m4")
+
+AC_CANONICAL_TARGET
+
 AC_CONFIG_SRCDIR([src/lib/fy-parse.c])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
-AC_CONFIG_AUX_DIR([build-aux])
-AM_INIT_AUTOMAKE([foreign 1.8.5 -Wall subdir-objects ])
+AM_INIT_AUTOMAKE([foreign 1.8.5 subdir-objects -Wno-portability])
 
 m4_pattern_allow([^(AM_EXTRA_RECURSIVE_TARGETS|AM_PROG_AR)$])dnl
 
@@ -73,6 +83,7 @@ m4_version_prereq(2.64, [AX_CHECK_ENABLE_DEBUG()], [true])
 AC_PROG_MKDIR_P
 AC_PROG_CC
 AM_PROG_CC_C_O
+AM_PROG_AS
 
 AC_PROG_GCC_TRADITIONAL
 AC_USE_SYSTEM_EXTENSIONS
@@ -83,14 +94,15 @@ AC_PROG_CXX
 AC_PROG_AWK
 AC_PROG_LN_S
 
-AX_PTHREAD
+AX_PTHREAD([], [AC_MSG_ERROR("Missing required pthread support")])
 
-AC_PATH_PROG([M4], [m4 gm4], [no])
-if test "x$M4" = xno ; then
-   AC_MSG_ERROR([m4 missing])
+# in some cases PTHREAD_LIBS is empty - force -lpthread */
+if test "x$PTHREAD_LIBS" = "x"; then
+	PTHREAD_LIBS="-lpthread"
 fi
 
-AC_SUBST(ACLOCAL_AMFLAGS, "-I m4")
+CFLAGS="$CFLAGS $PTHREAD_CFLAGS"
+LIBS="$LIBS $PTHREAD_LIBS"
 
 # pkg-config
 PKG_PROG_PKG_CONFIG
@@ -166,9 +178,6 @@ AC_SUBST(ASAN_LIBS)
 AM_CONDITIONAL([HAVE_ASAN],
 	       [ test x$HAVE_ASAN = x1 ])
 AC_DEFINE_UNQUOTED([HAVE_ASAN], [$HAVE_ASAN], [Define to 1 if ASAN is enabled])
-
-# include -lm in the link
-AC_SEARCH_LIBS([llrintf], [m], [], [AC_MSG_ERROR([unable to find the llrintf() function])])
 
 # check if there's a qsort_r available (musl does not have it)
 AC_CHECK_FUNC([qsort_r],
