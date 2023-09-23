@@ -154,6 +154,52 @@ AS_IF([test "x$ax_cv_check_cflags__Werror__wstringop_overread" = x"yes"],
       [HAVE_WSTRINGOP_OVERREAD=1], [HAVE_WSTRINGOP_OVERREAD=0])
 AC_DEFINE_UNQUOTED([HAVE_WSTRINGOP_OVERREAD], [$HAVE_WSTRINGOP_OVERREAD], [Define to 1 if -Wstringop-overread is supported])
 
+dnl Per target optimizations
+AC_ARG_ENABLE([portable-target],
+	      AS_HELP_STRING([--enable-portable-target],
+			     [Enable portable mode (disable per-target optimizations)]))
+HAVE_PORTABLE_TARGET=0
+if test "x$enable_portable_target" == "xyes"; then
+	HAVE_PORTABLE_TARGET=1
+fi
+AC_SUBST(HAVE_PORTABLE_TARGET)
+AC_DEFINE_UNQUOTED([HAVE_PORTABLE_TARGET], [$HAVE_PORTABLE_TARGET], [Define to 1 if PORTABLE_TARGET is enabled])
+AM_CONDITIONAL([HAVE_PORTABLE_TARGET], [ test x$HAVE_PORTABLE_TARGET == x1 ])
+
+AM_CONDITIONAL([TARGET_CPU_X86], [ test x$target_cpu = xx86 ])
+AM_CONDITIONAL([TARGET_CPU_X86_64], [ test x$target_cpu = xx86_64 ])
+AM_CONDITIONAL([TARGET_CPU_ANY_X86], [ test x$target_cpu = xx86 -o x$target_cpu = xx86_64 ])
+AM_CONDITIONAL([TARGET_CPU_ARM], [ test x$target_cpu = xarm ])
+AM_CONDITIONAL([TARGET_CPU_ARM64], [ test x$target_cpu = xaarch64 ])
+AM_CONDITIONAL([TARGET_CPU_ANY_ARM], [ test x$target_cpu = xarm -o x$target_cpu = xaarch64 ])
+
+AM_COND_IF([TARGET_CPU_ANY_X86], [m4_version_prereq(2.64, [
+		AX_CHECK_COMPILE_FLAG([-msse2], , , [-Werror])
+		AX_CHECK_COMPILE_FLAG([-msse4.1], , , [-Werror])
+		AX_CHECK_COMPILE_FLAG([-mavx2], , , [-Werror])
+		AX_CHECK_COMPILE_FLAG([-mavx512f -mavx512vl], , , [-Werror])
+	], [true])
+])
+
+AM_COND_IF([TARGET_CPU_ARM], [m4_version_prereq(2.64, [
+		AX_CHECK_COMPILE_FLAG([-mfpu=neon], , , [-Werror])
+	], [true])
+])
+
+AM_CONDITIONAL([TARGET_HAS_SSE2],   [ test "x$ax_cv_check_cflags__Werror__msse2" = x"yes" -a "x$enable_portable_target" != "xyes" ])
+AM_CONDITIONAL([TARGET_HAS_SSE41],  [ test "x$ax_cv_check_cflags__Werror__msse4_1" = x"yes" -a "x$enable_portable_target" != "xyes" ])
+AM_CONDITIONAL([TARGET_HAS_AVX2],   [ test "x$ax_cv_check_cflags__Werror__mavx2" = x"yes" -a "x$enable_portable_target" != "xyes" ])
+AM_CONDITIONAL([TARGET_HAS_AVX512], [ test "x$ax_cv_check_cflags__Werror__mavx512f__mavx512vl" = x"yes" -a "x$enable_portable_target" != "xyes" ])
+
+AM_CONDITIONAL([TARGET_HAS_NEON],   [ test \( x$target_cpu = xaarch64 -o "x$ax_cv_check_cflags__Werror__mcpu_neon" = x"yes" \) -a "x$enable_portable_target" != "xyes" ])
+
+AM_COND_IF([TARGET_HAS_SSE2],   AC_DEFINE([TARGET_HAS_SSE2],   [1], [SSE2 target support]))
+AM_COND_IF([TARGET_HAS_SSE41],  AC_DEFINE([TARGET_HAS_SSE41],  [1], [SSE41 target support]))
+AM_COND_IF([TARGET_HAS_AVX2],   AC_DEFINE([TARGET_HAS_AVX2],   [1], [AVX2 target support]))
+AM_COND_IF([TARGET_HAS_AVX512], AC_DEFINE([TARGET_HAS_AVX512], [1], [AVX512 target support]))
+
+AM_COND_IF([TARGET_HAS_NEON],   AC_DEFINE([TARGET_HAS_NEON],   [1], [NEON target support]))
+
 dnl ASAN enable switch
 AC_ARG_ENABLE([asan],
 	      AS_HELP_STRING([--enable-asan],
