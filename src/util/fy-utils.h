@@ -18,6 +18,10 @@
 #include <unistd.h>
 #include <termios.h>
 
+#if defined(__linux__)
+#include <sys/sysmacros.h>
+#endif
+
 #if defined(__APPLE__) && (_POSIX_C_SOURCE < 200809L)
 FILE *open_memstream(char **ptr, size_t *sizeloc);
 #endif
@@ -93,5 +97,13 @@ int fy_keyword_iter_begin(const char *text, size_t size, const char *keyword, st
 const char *fy_keyword_iter_next(struct fy_keyword_iter *iter);
 void fy_keyword_iter_advance(struct fy_keyword_iter *iter, size_t advance);
 void fy_keyword_iter_end(struct fy_keyword_iter *iter);
+
+#if !defined(S_ISREG) && defined(S_IFMT) && defined(S_IFREG)
+#define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
+#endif
+
+#if !defined(S_ISDIR) && defined(S_IFMT) && defined(S_IFDIR)
+#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
+#endif
 
 #endif
