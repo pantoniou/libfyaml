@@ -35,7 +35,8 @@ libfyaml_la_SOURCES = \
 	util/fy-utils.c util/fy-utils.h \
 	util/fy-endian.h \
 	util/fy-blob.c util/fy-blob.h \
-	util/fy-id.h
+	util/fy-id.h \
+	util/fy-align.h
 
 libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) \
 		       -I$(top_srcdir)/src/lib \
