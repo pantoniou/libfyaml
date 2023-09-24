@@ -1990,6 +1990,9 @@ START_TEST(token_test) {
         ck_assert_ptr_ne(fy_token_end_mark(fyn_scalar_token), NULL);
         ck_assert_int_eq(fy_token_end_mark(fyn_scalar_token)->line, 0);
         ck_assert_int_eq(fy_token_end_mark(fyn_scalar_token)->column, 6);
+
+       /* cleanup */
+       fy_document_destroy(fyd);
 }
 END_TEST
 
