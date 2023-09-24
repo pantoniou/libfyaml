@@ -1,9 +1,15 @@
+bin_PROGRAMS =
+noinst_PROGRAMS =
+noinst_LIBRARIES =
+lib_LTLIBRARIES =
+noinst_LTLIBRARIES =
+
 AM_CPPFLAGS = \
         -I$(top_srcdir)/src \
         -I$(top_srcdir)/include
 AM_CFLAGS =
 
-lib_LTLIBRARIES = libfyaml.la
+lib_LTLIBRARIES += libfyaml.la
 libfyaml_la_SOURCES = \
         lib/fy-parse.c lib/fy-parse.h \
 	lib/fy-types.c lib/fy-types.h \
@@ -38,9 +44,8 @@ libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) \
 libfyaml_la_CFLAGS = $(AM_CFLAGS)
 libfyaml_la_LDFLAGS = -no-undefined $(AM_LDFLAGS) $(AM_LIBLDFLAGS) \
 		      -version $(LIBTOOL_VERSION)
+libfyaml_la_LIBADD =
 
-bin_PROGRAMS =
-noinst_PROGRAMS =
 
 # libfyaml-parser needs both LIBYAML and static
 if HAVE_LIBYAML
