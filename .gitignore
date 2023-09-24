@@ -41,6 +41,7 @@ output/
 sphinx/
 src/fy-tool
 src/libfyaml-parser
+src/fy-thread
 stamp-h1
 tags
 TAGS

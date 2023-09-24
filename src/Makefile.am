@@ -37,12 +37,14 @@ libfyaml_la_SOURCES = \
 	util/fy-blob.c util/fy-blob.h \
 	util/fy-id.h \
 	util/fy-align.h \
-	util/fy-bit64.h
+	util/fy-bit64.h \
+	thread/fy-thread.h thread/fy-thread.c
 
 libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) \
 		       -I$(top_srcdir)/src/lib \
 		       -I$(top_srcdir)/src/xxhash \
-		       -I$(top_srcdir)/src/util
+		       -I$(top_srcdir)/src/util \
+		       -I$(top_srcdir)/src/thread
 libfyaml_la_CFLAGS = $(AM_CFLAGS)
 libfyaml_la_LDFLAGS = -no-undefined $(AM_LDFLAGS) $(AM_LIBLDFLAGS) \
 		      -version $(LIBTOOL_VERSION)
@@ -63,12 +65,34 @@ libfyaml_parser_CPPFLAGS = $(AM_CPPFLAGS) \
 			   -I$(top_srcdir)/src/valgrind \
 			   -I$(top_srcdir)/src/lib \
 			   -I$(top_srcdir)/src/xxhash \
-			   -I$(top_srcdir)/src/util
+			   -I$(top_srcdir)/src/util \
+			   -I$(top_srcdir)/src/thread
 libfyaml_parser_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
 libfyaml_parser_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 
 libfyaml_parser_LDFLAGS = $(AM_LDFLAGS) -static
 endif
+endif
+
+# fy-thread
+if HAVE_STATIC
+
+noinst_PROGRAMS += fy-thread
+
+fy_thread_SOURCES = \
+	internal/fy-thread.c \
+	valgrind/fy-valgrind.h
+
+fy_thread_CPPFLAGS = $(AM_CPPFLAGS) \
+			   -I$(top_srcdir)/src/valgrind \
+			   -I$(top_srcdir)/src/lib \
+			   -I$(top_srcdir)/src/xxhash \
+			   -I$(top_srcdir)/src/util \
+			   -I$(top_srcdir)/src/thread
+fy_thread_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
+fy_thread_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
+
+fy_thread_LDFLAGS = $(AM_LDFLAGS) -static
 endif
 
 bin_PROGRAMS += fy-tool
