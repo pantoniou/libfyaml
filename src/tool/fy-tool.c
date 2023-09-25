@@ -17,6 +17,7 @@
 #include <getopt.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include <libfyaml.h>
 
@@ -66,6 +67,7 @@
 #define OPT_PARSE_DUMP			1007
 #define OPT_YAML_VERSION_DUMP		1008
 #define OPT_COMPOSE			1009
+#define OPT_B3SUM			1010
 
 #define OPT_STRIP_LABELS		2000
 #define OPT_STRIP_TAGS			2001
@@ -98,6 +100,20 @@
 #define OPT_YAML_1_2			4001
 #define OPT_YAML_1_3			4002
 
+/* b3sum options */
+#define OPT_CHECK			5000
+#define OPT_DERIVE_KEY			5001
+#define OPT_NO_NAMES			5002
+#define OPT_RAW				5003
+#define OPT_KEYED			5005
+#define OPT_LENGTH			5006
+#define OPT_LIST_BACKENDS		5007
+#define OPT_BACKEND			5008
+#define OPT_NUM_THREADS			5009
+#define OPT_FILE_BUFFER			5010
+#define OPT_MMAP_MIN_CHUNK		5011
+#define OPT_MMAP_MAX_CHUNK		5012
+
 static struct option lopts[] = {
 	{"include",		required_argument,	0,	'I' },
 	{"debug-level",		required_argument,	0,	'd' },
@@ -123,6 +139,7 @@ static struct option lopts[] = {
 	{"compose",		no_argument,		0,	OPT_COMPOSE },
 	{"dump-path",		no_argument,		0,	OPT_DUMP_PATH },
 	{"yaml-version-dump",	no_argument,		0,	OPT_YAML_VERSION_DUMP },
+	{"b3sum",		no_argument,		0,	OPT_B3SUM },
 	{"strip-labels",	no_argument,		0,	OPT_STRIP_LABELS },
 	{"strip-tags",		no_argument,		0,	OPT_STRIP_TAGS },
 	{"strip-doc",		no_argument,		0,	OPT_STRIP_DOC },
@@ -153,6 +170,20 @@ static struct option lopts[] = {
 	{"to",			required_argument,	0,	'T' },
 	{"from",		required_argument,	0,	'F' },
 	{"quiet",		no_argument,		0,	'q' },
+
+	{"check",		no_argument,		0,	OPT_CHECK },
+	{"derive-key",		required_argument,	0,	OPT_DERIVE_KEY },
+	{"no-names",		no_argument,		0,	OPT_NO_NAMES },
+	{"raw",			no_argument,		0,	OPT_RAW },
+	{"length",		required_argument,	0,	OPT_LENGTH },
+	{"keyed",		no_argument,		0,	OPT_KEYED },
+	{"list-backends",	no_argument,		0,	OPT_LIST_BACKENDS },
+	{"backend",		required_argument,	0,	OPT_BACKEND },
+	{"num-threads",		required_argument,	0,	OPT_NUM_THREADS },
+	{"file-buffer",		required_argument,	0,	OPT_FILE_BUFFER },
+	{"mmap-min-chunk",	required_argument,	0,	OPT_MMAP_MIN_CHUNK },
+	{"mmap-max-chunk",	required_argument,	0,	OPT_MMAP_MAX_CHUNK },
+
 	{"help",		no_argument,		0,	'h' },
 	{"version",		no_argument,		0,	'v' },
 	{0,			0,              	0,	 0  },
@@ -377,7 +408,24 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t{\n\t  \"foo\": \"bar\"\n\t}\n");
 		break;
 	case OPT_YAML_VERSION_DUMP:
-		fprintf(fp, "\tDisplay information about the YAML versions libfyaml supports)\n");
+		fprintf(fp, "\tDisplay information about the YAML versions libfyaml supports\n");
+		fprintf(fp, "\n");
+		break;
+
+	case OPT_B3SUM:
+		fprintf(fp, "\tBLAKE3 hash b3sum utility\n");
+		fprintf(fp, "\t--derive-key <context>    : Key derivation mode, with the given context string\n");
+		fprintf(fp, "\t--no-names                : Omit filenames\n");
+		fprintf(fp, "\t--raw                     : Output result in raw bytes (single input allowed)\n");
+		fprintf(fp, "\t--length <n>              : Output only this amount of bytes per output (max %u)\n", FY_BLAKE3_OUT_LEN);
+		fprintf(fp, "\t--check                   : Read files with BLAKE3 checksums and check files\n");
+		fprintf(fp, "\t--keyed                   : Keyed mode with secret key read from <stdin> (32 raw bytes)\n");
+		fprintf(fp, "\t--backend <backend>       : Select a BLAKE3 backend instead of the default\n");
+		fprintf(fp, "\t--list-backends           : Print out a list of available backends\n");
+		fprintf(fp, "\t--num-threads <n>         : Number of threads, -1 disable, 0 let system decide, >= 1 explicit\n");
+		fprintf(fp, "\t--file-buffer <n>         : Size of file I/O buffer (non-mmap case), 0 let system decide\n");
+		fprintf(fp, "\t--mmap-min-chunk <n>      : Size of minimum mmap chunk, 0 let system decide\n");
+		fprintf(fp, "\t--mmap-max-chunk <n>      : Size of maximum mmap chunk, 0 let system decide\n");
 		fprintf(fp, "\n");
 		break;
 	}
@@ -1538,6 +1586,299 @@ err_out:
 	return FYCR_ERROR;
 }
 
+struct b3sum_config {
+	bool no_names : 1,
+	     raw : 1,
+	     keyed : 1,
+	     check : 1,
+	     derive_key : 1,
+	     quiet : 1,
+	     list_backends : 1,
+	     no_mmap : 1;
+	size_t file_buffer;
+	size_t mmap_min_chunk;
+	size_t mmap_max_chunk;
+	unsigned int length;
+	const char *context;
+	size_t context_len;
+	const char *backend;
+	unsigned int num_threads;
+};
+
+struct b3sum_config default_b3sum_cfg = {
+	.length = FY_BLAKE3_OUT_LEN,
+};
+
+static int do_b3sum_hash_file(struct fy_blake3_hasher *hasher, const char *filename, bool no_names, bool raw, unsigned int length)
+{
+	static const char *hexb = "0123456789abcdef";
+	const uint8_t *output;
+	size_t filename_sz, line_sz, outsz;
+	ssize_t wrn;
+	uint8_t v;
+	const void *outp;
+	char *line, *s;
+	unsigned int i;
+
+	filename_sz = strlen(filename);
+
+	output = fy_blake3_hash_file(hasher, filename);
+	if (!output) {
+		fprintf(stderr, "Failed to hash file: \"%s\", error: %s\n", filename, strerror(errno));
+		return -1;
+	}
+
+	if (!raw) {
+		/* output line (optimized) */
+		line_sz = (length * 2);		/* the hex output */
+		if (!no_names)
+			line_sz += 2 + filename_sz;	/* 2 spaces + filename */
+		line_sz++;	/* '\n' */
+		line = alloca(line_sz + 1);
+		s = line;
+		for (i = 0; i < length; i++) {
+			v = output[i];
+			*s++ = hexb[v >> 4];
+			*s++ = hexb[v & 15];
+		}
+		if (!no_names) {
+			*s++ = ' ';
+			*s++ = ' ';
+			memcpy(s, filename, filename_sz);
+			s += filename_sz;
+		}
+		*s++ = '\n';
+		*s = '\0';
+		outp = line;
+		outsz = (size_t)(s - line);
+	} else {
+		outp = output;
+		outsz = length;
+	}
+
+	wrn = fwrite(outp, 1, outsz, stdout);
+	if ((size_t)wrn != outsz) {
+		fprintf(stderr, "Unable to write to stdout! error: %s\n", strerror(errno));
+		return -1;
+	}
+
+	return 0;
+}
+
+static int do_b3sum_check_file(struct fy_blake3_hasher *hasher, const char *check_filename, bool quiet)
+{
+	char *hash, *filename;
+	FILE *fp = NULL;
+	char linebuf[8192];	/* maximum size for a line is 8K, should be enough (PATH_MAX is 4K at linux) */
+	uint8_t read_hash[FY_BLAKE3_OUT_LEN], v;
+	const uint8_t *computed_hash;
+	char *s;
+	char c;
+	unsigned int i, j, length;
+	size_t linesz;
+	int line, exit_code;
+
+	if (check_filename && strcmp(check_filename, "-")) {
+		fp = fopen(check_filename, "ra");
+		if (!fp) {
+			fprintf(stderr, "Failed to open check file: \"%s\", error: %s\n", check_filename, strerror(errno));
+			goto err_out;
+		}
+	} else {
+		fp = stdin;
+	}
+
+	/* default error code if all is fine */
+	exit_code = 0;
+
+	line = 0;
+	while (fgets(linebuf, sizeof(linebuf), fp)) {
+		/* '\0' terminate always */
+		linebuf[(sizeof(linebuf)/sizeof(linebuf[0]))-1] = '\0';
+
+		linesz = strlen(linebuf);
+		while (linesz > 0 && linebuf[linesz-1] == '\n')
+			linesz--;
+
+		if (!linesz) {
+			fprintf(stderr, "Empty line found at file \"%s\" line #%d\n", check_filename, line);
+			goto err_out;
+		}
+		linebuf[linesz] = '\0';
+
+		length = 0;
+		s = linebuf;
+		while (isxdigit(*s))
+			s++;
+
+		length = s - linebuf;
+
+		if (length == 0 || length > (FY_BLAKE3_OUT_LEN * 2) || (length % 1) || !isspace(*s)) {
+			fprintf(stderr, "Bad line found at file \"%s\" line #%d\n", check_filename, line);
+			fprintf(stderr, "%s\n", linebuf);
+			goto err_out;
+		}
+
+		*s++ = '\0';
+
+		while (isspace(*s))
+			s++;
+
+		length >>= 1;	/* to bytes */
+		hash = linebuf;
+		filename = s;
+
+		for (i = 0, s = hash; i < length; i++) {
+			v = 0;
+			for (j = 0; j < 2; j++) {
+				v <<= 4;
+				c = *s++;
+				if (c >= '0' && c <= '9')
+					v |= c - '0';
+				else if (c >= 'a' && c <= 'f')
+					v |= c - 'a' + 10;
+				else if (c >= 'A' && c <= 'F')
+					v |= c - 'A' + 10;
+				else
+					v = 0;
+			}
+			read_hash[i] = v;
+		}
+
+		computed_hash = fy_blake3_hash_file(hasher, filename);
+		if (!computed_hash) {
+			fprintf(stderr, "Failed to hash file: \"%s\", error: %s\n", filename, strerror(errno));
+			goto err_out;
+		}
+
+		/* constant time comparison */
+		v = 0;
+		for (i = 0; i < length; i++)
+			v |= (read_hash[i] ^ computed_hash[i]);
+
+		if (v) {
+			printf("%s: FAILED\n", filename);
+			exit_code = -1;
+		} else if (!quiet)
+			printf("%s: OK\n", filename);
+	}
+
+out:
+	if (fp && fp != stdin)
+		fclose(fp);
+
+	return exit_code;
+
+err_out:
+	exit_code = -1;
+	goto out;
+}
+
+static int
+do_b3sum(int argc, char *argv[], int optind, const struct b3sum_config *cfg)
+{
+	struct fy_blake3_hasher_cfg hcfg;
+	struct fy_blake3_hasher *hasher;
+	uint8_t key[FY_BLAKE3_OUT_LEN];
+	const char *filename;
+	int rc, num_inputs, num_ok, i;
+	size_t rdn;
+	const char *backend, *prev;
+
+	if (cfg->list_backends) {
+		prev = NULL;
+		while ((backend = fy_blake3_backend_iterate(&prev)) != NULL)
+			printf("%s\n", backend);
+		return 0;
+	}
+
+	if (cfg->quiet && !cfg->check) {
+		fprintf(stderr, "Error: --quiet may only be used together with --check\n\n");
+		return 1;
+	}
+
+	if (cfg->keyed && cfg->derive_key) {
+		fprintf(stderr, "Error: --keyed and --derive-key may not be used together\n\n");
+		return 1;
+	}
+
+	if (cfg->check && cfg->length != FY_BLAKE3_OUT_LEN) {
+		fprintf(stderr, "Error: --check and --length may not be used together\n\n");
+		return 1;
+	}
+
+	if (cfg->keyed) {
+		rdn = fread(key, 1, FY_BLAKE3_KEY_LEN, stdin);
+		if (rdn != FY_BLAKE3_KEY_LEN) {
+			if (rdn >= 0 && rdn < FY_BLAKE3_KEY_LEN)
+				fprintf(stderr, "Error: could not read secret key from <stdin>: short key\n\n");
+			else
+				fprintf(stderr, "Error: could not read secret key from <stdin>: error %s\n\n", strerror(errno));
+			return 1;
+		}
+		rc = fgetc(stdin);
+		if (rc != EOF) {
+			fprintf(stderr, "Error: garbage trailing secret key from <stdin>\n\n");
+			return -1;
+		}
+	}
+
+	num_inputs = argc - optind;
+	if (num_inputs <= 0)
+		num_inputs = 1;	/* stdin mode */
+
+	if (cfg->raw && num_inputs > 1) {
+		fprintf(stderr, "Error: Raw output mode is only supported with a single input\n\n");
+		return 1;
+	}
+
+	/* we can't handle '-' in keyed mode */
+	if (cfg->keyed) {
+		for (i = optind; i < argc; i++) {
+			if (!strcmp(argv[i], "-")) {
+				fprintf(stderr, "Cannot use <stdin> in keyed mode\n");
+				return 1;
+			}
+		}
+	}
+
+	memset(&hcfg, 0, sizeof(hcfg));
+	hcfg.key = cfg->keyed ? key : NULL;
+	hcfg.context = cfg->derive_key ? cfg->context : NULL;
+	hcfg.context_len = cfg->derive_key ? cfg->context_len : 0;
+	hcfg.backend = cfg->backend;
+	hcfg.no_mmap = cfg->no_mmap;
+	hcfg.file_buffer = cfg->file_buffer;
+	hcfg.mmap_min_chunk = cfg->mmap_min_chunk;
+	hcfg.mmap_max_chunk = cfg->mmap_max_chunk;
+	hcfg.num_threads = cfg->num_threads;
+	hasher = fy_blake3_hasher_create(&hcfg);
+	if (!hasher) {
+		fprintf(stderr, "unable to create blake3 hasher\n");
+		return -1;
+	}
+
+	/* we will get in the loop even when no arguments (we'll do stdin instead) */
+	num_ok = 0;
+	i = optind;
+	do {
+		/* if no arguments, use stdin */
+		filename = i < argc ? argv[i] : "-";
+
+		if (!cfg->check)
+			rc = do_b3sum_hash_file(hasher, filename, cfg->no_names, cfg->raw, cfg->length);
+		else
+			rc = do_b3sum_check_file(hasher, filename, cfg->quiet);
+		if (!rc)
+			num_ok++;
+
+	} while (++i < argc);
+
+	fy_blake3_hasher_destroy(hasher);
+
+	return num_inputs == num_ok ? 0 : -1;
+}
+
 int main(int argc, char *argv[])
 {
 	struct fy_parse_cfg cfg = {
@@ -1599,6 +1940,9 @@ int main(int argc, char *argv[])
 	struct composer_data cd;
 	bool dump_path = DUMP_PATH_DEFAULT;
 	const char *input_arg;
+	/* b3sum */
+	int opti;
+	struct b3sum_config b3cfg = default_b3sum_cfg;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -1629,6 +1973,8 @@ int main(int argc, char *argv[])
 		tool_mode = OPT_COMPOSE;
 	else if (!strcmp(progname, "fy-yaml-version-dump"))
 		tool_mode = OPT_YAML_VERSION_DUMP;
+	else if (!strcmp(progname, "fy-b3sum"))
+		tool_mode = OPT_B3SUM;
 	else
 		tool_mode = OPT_TOOL;
 
@@ -1668,8 +2014,7 @@ int main(int argc, char *argv[])
 			indent = atoi(optarg);
 			if (indent < 0 || indent > FYECF_INDENT_MASK) {
 				fprintf(stderr, "bad indent option %s\n", optarg);
-				display_usage(stderr, progname, tool_mode);
-				return EXIT_FAILURE;
+				goto err_out_usage;
 			}
 
 			break;
@@ -1677,16 +2022,14 @@ int main(int argc, char *argv[])
 			width = atoi(optarg);
 			if (width < 0 || width > FYECF_WIDTH_MASK) {
 				fprintf(stderr, "bad width option %s\n", optarg);
-				display_usage(stderr, progname, tool_mode);
-				return EXIT_FAILURE;
+				goto err_out_usage;
 			}
 			break;
 		case 'd':
 			dcfg.level = fy_string_to_error_type(optarg);
 			if (dcfg.level == FYET_MAX) {
 				fprintf(stderr, "bad debug level option %s\n", optarg);
-				display_usage(stderr, progname, tool_mode);
-				return EXIT_FAILURE;
+				goto err_out_usage;
 			}
 			break;
 		case OPT_DISABLE_DIAG:
@@ -1697,8 +2040,7 @@ int main(int argc, char *argv[])
 				errmod = fy_string_to_error_module(optarg);
 				if (errmod == FYEM_MAX) {
 					fprintf(stderr, "bad error module option %s\n", optarg);
-					display_usage(stderr, progname, tool_mode);
-					return EXIT_FAILURE;
+					goto err_out_usage;
 				}
 				errmod_mask = FY_BIT(errmod);
 			}
@@ -1722,8 +2064,7 @@ int main(int argc, char *argv[])
 			} else {
 				fprintf(stderr, "bad %s option %s\n",
 						show ? "show" : "hide", optarg);
-				display_usage(stderr, progname, tool_mode);
-				return EXIT_FAILURE;
+				goto err_out_usage;
 			}
 			break;
 
@@ -1751,16 +2092,14 @@ int main(int argc, char *argv[])
 				du.colorize = false;
 			} else {
 				fprintf(stderr, "bad color option %s\n", optarg);
-				display_usage(stderr, progname, tool_mode);
-				return EXIT_FAILURE;
+				goto err_out_usage;
 			}
 			break;
 		case 'm':
 			rc = apply_mode_flags(optarg, &emit_flags);
 			if (rc) {
 				fprintf(stderr, "bad mode option %s\n", optarg);
-				display_usage(stderr, progname, tool_mode);
-				return EXIT_FAILURE;
+				goto err_out_usage;
 			}
 			break;
 		case 'V':
@@ -1774,6 +2113,7 @@ int main(int argc, char *argv[])
 			dcfg.output_fn = no_diag_output_fn;
 			dcfg.fp = NULL;
 			dcfg.colorize = false;
+			b3cfg.quiet = true;
 			break;
 		case 'f':
 			file = optarg;
@@ -1797,6 +2137,7 @@ int main(int argc, char *argv[])
 		case OPT_PARSE_DUMP:
 		case OPT_COMPOSE:
 		case OPT_YAML_VERSION_DUMP:
+		case OPT_B3SUM:
 			tool_mode = opt;
 			break;
 		case OPT_STRIP_LABELS:
@@ -1824,8 +2165,7 @@ int main(int argc, char *argv[])
 				cfg.flags |= FYPCF_JSON_FORCE;
 			else {
 				fprintf(stderr, "bad json option %s\n", optarg);
-				display_usage(stderr, progname, tool_mode);
-				return EXIT_FAILURE;
+				goto err_out_usage;
 			}
 			break;
 		case OPT_DISABLE_ACCEL:
@@ -1839,6 +2179,7 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_DISABLE_MMAP:
 			cfg.flags |= FYPCF_DISABLE_MMAP_OPT;
+			b3cfg.no_mmap = true;
 			break;
 		case OPT_DUMP_PATHEXPR:
 			dump_pathexpr = true;
@@ -1888,6 +2229,74 @@ int main(int argc, char *argv[])
 		case OPT_TSV_FORMAT:
 			tsv_format = true;
 			break;
+
+		case OPT_DERIVE_KEY:
+			b3cfg.derive_key = true;
+			b3cfg.context = optarg;
+			b3cfg.context_len = strlen(optarg);
+			break;
+		case OPT_NO_NAMES:
+			b3cfg.no_names = true;
+			break;
+		case OPT_RAW:
+			b3cfg.raw = true;
+			break;
+		case OPT_CHECK:
+			b3cfg.check = true;
+			break;
+		case OPT_KEYED:
+			b3cfg.keyed = true;
+			break;
+
+		case OPT_LENGTH:
+			opti = atoi(optarg);
+			if (opti <= 0 || opti > FY_BLAKE3_OUT_LEN) {
+				fprintf(stderr, "Error: bad length=%d (must be > 0 and <= %u)\n\n", opti, FY_BLAKE3_OUT_LEN);
+				goto err_out_usage;
+			}
+			b3cfg.length = (unsigned int)opti;
+			break;
+
+		case OPT_LIST_BACKENDS:
+			b3cfg.list_backends = true;
+			break;
+
+		case OPT_BACKEND:
+			b3cfg.backend = optarg;
+			break;
+
+		case OPT_NUM_THREADS:
+			b3cfg.num_threads = atoi(optarg);
+			break;
+
+		case OPT_FILE_BUFFER:
+			opti = atoi(optarg);
+			if (opti < 0) {
+				fprintf(stderr, "Error: bad file-buffer=%d (must be >= 0)\n\n", opti);
+				goto err_out_usage;
+			}
+			b3cfg.file_buffer = (size_t)opti;
+			break;
+
+		case OPT_MMAP_MIN_CHUNK:
+			opti = atoi(optarg);
+			if (opti < 0) {
+				fprintf(stderr, "Error: bad mmap-min-chunk=%d (must be >= 0)\n\n", opti);
+				goto err_out_usage;
+			}
+			b3cfg.mmap_min_chunk = (size_t)opti;
+			break;
+
+		case OPT_MMAP_MAX_CHUNK:
+			opti = atoi(optarg);
+			if (opti < 0) {
+				fprintf(stderr, "Error: bad mmap-max-chunk=%d (must be >= 0)\n\n", opti);
+				goto err_out_usage;
+			}
+			b3cfg.mmap_max_chunk = (size_t)opti;
+			break;
+
+
 		case 'h' :
 		default:
 			if (opt != 'h')
@@ -1898,6 +2307,17 @@ int main(int argc, char *argv[])
 			printf("%s\n", fy_library_version());
 			return EXIT_SUCCESS;
 		}
+	}
+
+	if (tool_mode == OPT_B3SUM) {
+
+		rc = do_b3sum(argc, argv, optind, &b3cfg);
+		if (rc == 1) {
+			/* display usage */
+			goto err_out_usage;
+		}
+		exitcode = !rc ? EXIT_SUCCESS : EXIT_FAILURE;
+		goto cleanup;
 	}
 
 	if (tool_mode == OPT_YAML_VERSION_DUMP) {
@@ -2482,4 +2902,9 @@ cleanup:
 	}
 
 	return exitcode;
+
+err_out_usage:
+	exitcode = EXIT_FAILURE;
+	display_usage(stderr, progname, tool_mode);
+	goto cleanup;
 }
