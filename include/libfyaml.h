@@ -7915,6 +7915,33 @@ void
 fy_thread_pool_destroy(struct fy_thread_pool *tp)
 	FY_EXPORT;
 
+/**
+ * fy_thread_pool_get_num_threads() - Get the number of threads
+ *
+ * Returns the actual number of created threads.
+ *
+ * @tp: The thread pool
+ *
+ * Returns:
+ * > 0 for the number of actual threads created,
+ * -1 on error
+ */
+int
+fy_thread_pool_get_num_threads(struct fy_thread_pool *tp)
+	FY_EXPORT;
+
+/**
+ * fy_thread_pool_get_cfg() - Get the configuration of a thread pool
+ *
+ * @tp: The thread pool
+ *
+ * Returns:
+ * The configuration of the thread pool
+ */
+const struct fy_thread_pool_cfg *
+fy_thread_pool_get_cfg(struct fy_thread_pool *tp)
+	FY_EXPORT;
+
 /*
  * fy_thread_reserve() - Reserve a thread from the pool.
  *

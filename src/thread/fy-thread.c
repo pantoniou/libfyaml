@@ -532,6 +532,21 @@ void fy_thread_pool_destroy(struct fy_thread_pool *tp)
 	free(tp);
 }
 
+int fy_thread_pool_get_num_threads(struct fy_thread_pool *tp)
+{
+	if (!tp)
+		return -1;
+
+	return (int)tp->num_threads;
+}
+
+const struct fy_thread_pool_cfg *fy_thread_pool_get_cfg(struct fy_thread_pool *tp)
+{
+	if (!tp)
+		return NULL;
+	return &tp->cfg;
+}
+
 void fy_thread_work_join(struct fy_thread_pool *tp, struct fy_thread_work *works, size_t work_count, fy_work_check_fn check_fn)
 {
 	if (!(tp->cfg.flags & FYTPCF_STEAL_MODE))
