@@ -75,10 +75,12 @@ static inline void allocator_registry_unlock(void)
 
 static inline void allocator_registry_init(void)
 {
-	if (!allocator_registry_initialized) {
-		fy_registered_allocator_entry_list_init(&allocator_registry_list);
-		allocator_registry_initialized = true;
-	}
+	if (allocator_registry_initialized)
+		return;
+
+	fy_registered_allocator_entry_list_init(&allocator_registry_list);
+
+	allocator_registry_initialized = true;
 }
 
 static struct fy_registered_allocator_entry *
@@ -147,7 +149,7 @@ int fy_allocator_register(const char *name, const struct fy_allocator_ops *ops)
 		!ops->release_tag ||
 		!ops->trim_tag ||
 		!ops->reset_tag ||
-		!ops->get_areas ||
+		!ops->get_info ||
 		!ops->get_single_area)
 		return  -1;
 
@@ -309,3 +311,115 @@ static FY_DESTRUCTOR void fy_allocator_registry_destructor(void)
 	fy_allocator_registry_cleanup_internal(show_leftovers);
 }
 #endif
+
+static const char **create_allocator_array_names(void)
+{
+	unsigned int i, j, count;
+	struct fy_registered_allocator_entry *ae;
+	const char **names = NULL;
+
+	allocator_registry_lock();
+
+	/* two passes */
+	for (j = 0; j < 2; j++) {
+
+		count = 0;
+
+		/* try the builtins first */
+		for (i = 0; i < ARRAY_SIZE(builtin_allocators); i++) {
+			if (j)
+				names[count] = builtin_allocators[i].name;
+			count++;
+
+		}
+		for (ae = fy_registered_allocator_entry_list_head(&allocator_registry_list); ae;
+				ae = fy_registered_allocator_entry_next(&allocator_registry_list, ae)) {
+			if (j)
+				names[count] = ae->name;
+			count++;
+		}
+
+		if (!j) {
+			names = malloc(sizeof(*names) * (count + 1));
+			if (!names)
+				return NULL;
+			memset(names, 0, sizeof(*names) * (count + 1));
+		} else
+			names[count++] = NULL;
+
+	}
+
+	allocator_registry_unlock();
+
+	return names;
+}
+
+const char *fy_allocator_iterate(const char **prevp)
+{
+	unsigned int i;
+	const char **names;
+
+	if (!prevp)
+		return NULL;
+
+	/* yeah, it's not fast, but should be negligible */
+	names = create_allocator_array_names();
+	if (!names)
+		return NULL;
+
+	i = 0;
+	if (*prevp) {
+		while (names[i] && strcmp(*prevp, names[i]))
+			i++;
+		if (names[i])
+			i++;
+	}
+
+	*prevp = names[i];
+
+	free(names);
+
+	return *prevp;
+}
+
+bool fy_allocator_is_available(const char *allocator)
+{
+	const char *name, *prev;
+
+	prev = NULL;
+	while ((name = fy_allocator_iterate(&prev)) != NULL) {
+		if (!strcmp(allocator, name))
+			return true;
+	}
+	return false;
+}
+
+char *fy_allocator_get_names(void)
+{
+	const char *name, *prev;
+	size_t size, len;
+	char *names, *s;
+
+	size = 0;
+	prev = NULL;
+	while ((name = fy_allocator_iterate(&prev)) != NULL)
+		size += strlen(name) + 1;
+
+	names = malloc(size + 1);
+	if (!names)
+		return NULL;
+
+	s = names;
+	prev = NULL;
+	while ((name = fy_allocator_iterate(&prev)) != NULL) {
+		len = strlen(name);
+		assert((size_t)(s + len + 1 - names) <= size);
+		memcpy(s, name, len);
+		s += len;
+		*s++ = ' ';
+	}
+	if (s > names && s[-1] == ' ')
+		s[-1] = '\0';
+	return names;
+}
+

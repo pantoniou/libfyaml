@@ -396,9 +396,10 @@ static void fy_malloc_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
 		free(me);
 }
 
-static ssize_t fy_malloc_get_areas(struct fy_allocator *a, fy_alloc_tag tag, struct fy_iovecw *iov, size_t maxiov)
+static struct fy_allocator_info *
+fy_malloc_get_info(struct fy_allocator *a, fy_alloc_tag tag)
 {
-	return -1;
+	return NULL;
 }
 
 static const void *fy_malloc_get_single_area(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep, size_t *startp, size_t *allocp)
@@ -423,6 +424,6 @@ const struct fy_allocator_ops fy_malloc_allocator_ops = {
 	.release_tag = fy_malloc_release_tag,
 	.trim_tag = fy_malloc_trim_tag,
 	.reset_tag = fy_malloc_reset_tag,
-	.get_areas = fy_malloc_get_areas,
+	.get_info = fy_malloc_get_info,
 	.get_single_area = fy_malloc_get_single_area,
 };
