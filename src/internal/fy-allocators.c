@@ -84,6 +84,7 @@ static int allocator_test(const char *allocator, const char *parent_allocator, s
 	bool is_linear, is_dedup;
 	unsigned int *uintp[16];
 	uint8_t *p;
+	const uint8_t *p1, *p2;
 	size_t psz = 4096;
 	unsigned int i;
 
@@ -132,7 +133,7 @@ static int allocator_test(const char *allocator, const char *parent_allocator, s
 
 	fprintf(stderr, "Allocating %u integers\n", (unsigned int)ARRAY_SIZE(uintp));
 	for (i = 0; i < ARRAY_SIZE(uintp); i++) {
-		uintp[i] = fy_allocator_alloc(a, tag0, sizeof(*uintp[0]), alignof(*uintp[0]));
+		uintp[i] = fy_allocator_alloc(a, tag0, sizeof(unsigned int), alignof(unsigned int));
 		assert(uintp[i] != NULL);
 		fprintf(stderr, "\t%u: %p\n", i, uintp[i]);
 	}
@@ -169,6 +170,25 @@ static int allocator_test(const char *allocator, const char *parent_allocator, s
 
 	fprintf(stderr, "Dumping allocator areas after alloc\n");
 	dump_allocator_info(a, tag0);
+
+	fprintf(stderr, "Storing a copy of p (p1)\n");
+	p1 = fy_allocator_store(a, tag0, p, psz, 1);
+
+	fprintf(stderr, "Storing a copy of p (p1)\n");
+	p2 = fy_allocator_store(a, tag0, p, psz, 1);
+
+	fprintf(stderr, "Dumping allocator areas after double store p1=%p p2=%p\n", p1, p2);
+	dump_allocator_info(a, tag0);
+
+	if (p1) {
+		for (i = 0; i < psz; i++)
+			assert(p1[i] == (i % 251));
+	}
+
+	if (p2) {
+		for (i = 0; i < psz; i++)
+			assert(p2[i] == (i % 251));
+	}
 
 	fprintf(stderr, "Releasing tag0\n"); 
 	fy_allocator_release_tag(a, tag0);
