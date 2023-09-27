@@ -305,18 +305,6 @@ fy_auto_get_info(struct fy_allocator *a, fy_alloc_tag tag)
 	return fy_allocator_get_info(aa->parent_allocator, tag);
 }
 
-static const void *fy_auto_get_single_area(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep, size_t *startp, size_t *allocp)
-{
-	struct fy_auto_allocator *aa;
-
-	if (!a)
-		return NULL;
-
-	aa = container_of(a, struct fy_auto_allocator, a);
-
-	return fy_allocator_get_single_area(aa->parent_allocator, tag, sizep, startp, allocp);
-}
-
 const struct fy_allocator_ops fy_auto_allocator_ops = {
 	.setup = fy_auto_setup,
 	.cleanup = fy_auto_cleanup,
@@ -334,5 +322,4 @@ const struct fy_allocator_ops fy_auto_allocator_ops = {
 	.trim_tag = fy_auto_trim_tag,
 	.reset_tag = fy_auto_reset_tag,
 	.get_info = fy_auto_get_info,
-	.get_single_area = fy_auto_get_single_area,
 };

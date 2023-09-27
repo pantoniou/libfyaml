@@ -420,12 +420,6 @@ fy_generic_builder_get_allocator_info(struct fy_generic_builder *gb)
 	return fy_allocator_get_info(gb->allocator, gb->alloc_tag);
 }
 
-static inline const void *fy_generic_builder_get_single_area(struct fy_generic_builder *gb, size_t *sizep, size_t *startp, size_t *allocp)
-{
-	assert(gb);
-	return fy_allocator_get_single_area(gb->allocator, gb->alloc_tag, sizep, startp, allocp);
-}
-
 static inline void fy_generic_builder_release(struct fy_generic_builder *gb, const void *ptr, size_t size)
 {
 	assert(gb);

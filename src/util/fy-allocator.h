@@ -52,7 +52,6 @@ struct fy_allocator_ops {
 	void (*trim_tag)(struct fy_allocator *a, fy_alloc_tag tag);
 	void (*reset_tag)(struct fy_allocator *a, fy_alloc_tag tag);
 	struct fy_allocator_info *(*get_info)(struct fy_allocator *a, fy_alloc_tag tag);
-	const void *(*get_single_area)(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep, size_t *startp, size_t *allocp);
 };
 
 struct fy_allocator_stats {
@@ -191,13 +190,6 @@ fy_allocator_get_info(struct fy_allocator *a, fy_alloc_tag tag)
 	if (!a)
 		return NULL;
 	return a->ops->get_info(a, tag);
-}
-
-static inline const void *fy_allocator_get_single_area(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep, size_t *startp, size_t *allocp)
-{
-	if (!a)
-		return NULL;
-	return a->ops->get_single_area(a, tag, sizep, startp, allocp);
 }
 
 FY_TYPE_FWD_DECL_LIST(registered_allocator_entry);

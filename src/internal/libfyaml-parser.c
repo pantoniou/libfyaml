@@ -4872,10 +4872,12 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator, bool null_out
 	int rc __FY_DEBUG_UNUSED__;
 	size_t alloc_size;
 	ssize_t estimated_size;
+#if 0
 	const void *single_area;
 	size_t single_area_size, single_area_start, single_area_alloc;
 	void *single_area_copy = NULL;
 	size_t pagesz = sysconf(_SC_PAGESIZE);
+#endif
 	void *cache_mem = NULL;
 	size_t cache_sz;
 
@@ -5042,6 +5044,7 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator, bool null_out
 
 		fy_generic_builder_trim(gb);
 
+#if 0
 		single_area_size = 0;
 		single_area = fy_generic_builder_get_single_area(gb, &single_area_size, &single_area_start, &single_area_alloc);
 		if (!single_area) {
@@ -5126,6 +5129,7 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator, bool null_out
 			}
 
 		}
+#endif
 	}
 
 	fy_generic_decoder_destroy(fygd);
@@ -5173,8 +5177,10 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator, bool null_out
 		pa = NULL;
 	}
 
+#if 0
 	if (single_area_copy)
 		free(single_area_copy);
+#endif
 
 	return 0;
 }

@@ -1025,24 +1025,6 @@ fy_dedup_get_info(struct fy_allocator *a, fy_alloc_tag tag)
 	return info;
 }
 
-static const void *fy_dedup_get_single_area(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep, size_t *startp, size_t *allocp)
-{
-	struct fy_dedup_allocator *da;
-	struct fy_dedup_tag *dt;
-
-	if (!a)
-		return NULL;
-
-	da = container_of(a, struct fy_dedup_allocator, a);
-
-	dt = fy_dedup_tag_from_tag(da, tag);
-	if (!dt)
-		return NULL;
-
-	/* pass it down */
-	return fy_allocator_get_single_area(da->parent_allocator, dt->content_tag, sizep, startp, allocp);
-}
-
 const struct fy_allocator_ops fy_dedup_allocator_ops = {
 	.setup = fy_dedup_setup,
 	.cleanup = fy_dedup_cleanup,
@@ -1060,5 +1042,4 @@ const struct fy_allocator_ops fy_dedup_allocator_ops = {
 	.trim_tag = fy_dedup_trim_tag,
 	.reset_tag = fy_dedup_reset_tag,
 	.get_info = fy_dedup_get_info,
-	.get_single_area = fy_dedup_get_single_area,
 };

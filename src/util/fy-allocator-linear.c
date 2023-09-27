@@ -355,11 +355,6 @@ static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, fy_a
 	return info;
 }
 
-static const void *fy_linear_get_single_area(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep, size_t *startp, size_t *allocp)
-{
-	return NULL;
-}
-
 const struct fy_allocator_ops fy_linear_allocator_ops = {
 	.setup = fy_linear_setup,
 	.cleanup = fy_linear_cleanup,
@@ -377,5 +372,4 @@ const struct fy_allocator_ops fy_linear_allocator_ops = {
 	.trim_tag = fy_linear_trim_tag,
 	.reset_tag = fy_linear_reset_tag,
 	.get_info = fy_linear_get_info,
-	.get_single_area = fy_linear_get_single_area,
 };

@@ -149,8 +149,7 @@ int fy_allocator_register(const char *name, const struct fy_allocator_ops *ops)
 		!ops->release_tag ||
 		!ops->trim_tag ||
 		!ops->reset_tag ||
-		!ops->get_info ||
-		!ops->get_single_area)
+		!ops->get_info)
 		return  -1;
 
 	allocator_registry_lock();
