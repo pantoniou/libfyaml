@@ -43,6 +43,7 @@ src/fy-tool
 src/libfyaml-parser
 src/fy-thread
 src/fy-b3sum
+src/fy-allocators
 src/*.a
 stamp-h1
 tags

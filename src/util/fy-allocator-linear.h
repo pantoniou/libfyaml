@@ -21,7 +21,8 @@ struct fy_linear_setup_data {
 
 struct fy_linear_allocator {
 	struct fy_allocator a;
-	struct fy_allocator_stats stats;
+	uint64_t stats_allocations;	/* no need to keep anything else */
+	uint64_t stats_allocated;
 	void *alloc;
 	void *start;
 	void *next;

@@ -33,6 +33,7 @@ struct fy_iovecw {
 };
 
 struct fy_allocator_stats;
+struct fy_allocator_info;
 
 struct fy_allocator_ops {
 	int (*setup)(struct fy_allocator *a, const void *setupdata);
@@ -50,7 +51,7 @@ struct fy_allocator_ops {
 	void (*release_tag)(struct fy_allocator *a, fy_alloc_tag tag);
 	void (*trim_tag)(struct fy_allocator *a, fy_alloc_tag tag);
 	void (*reset_tag)(struct fy_allocator *a, fy_alloc_tag tag);
-	ssize_t (*get_areas)(struct fy_allocator *a, fy_alloc_tag tag, struct fy_iovecw *iov, size_t maxiov);
+	struct fy_allocator_info *(*get_info)(struct fy_allocator *a, fy_alloc_tag tag);
 	const void *(*get_single_area)(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep, size_t *startp, size_t *allocp);
 };
 
@@ -72,6 +73,25 @@ struct fy_allocator_stats {
 		};
 		uint64_t counters[12];
 	};
+};
+
+struct fy_allocator_arena_info {
+	size_t free, used, total;
+	void *data;
+	size_t size;
+};
+
+struct fy_allocator_tag_info {
+	fy_alloc_tag tag;
+	size_t free, used, total;
+	unsigned int num_arena_infos;
+	struct fy_allocator_arena_info *arena_infos;
+};
+
+struct fy_allocator_info {
+	size_t free, used, total;
+	unsigned int num_tag_infos;
+	struct fy_allocator_tag_info *tag_infos;
 };
 
 struct fy_allocator {
@@ -165,11 +185,12 @@ static inline void fy_allocator_reset_tag(struct fy_allocator *a, fy_alloc_tag t
 	a->ops->reset_tag(a, tag);
 }
 
-static inline ssize_t fy_allocator_get_areas(struct fy_allocator *a, fy_alloc_tag tag, struct fy_iovecw *iov, size_t maxiov)
+static inline struct fy_allocator_info *
+fy_allocator_get_info(struct fy_allocator *a, fy_alloc_tag tag)
 {
 	if (!a)
-		return -1;
-	return a->ops->get_areas(a, tag, iov, maxiov);
+		return NULL;
+	return a->ops->get_info(a, tag);
 }
 
 static inline const void *fy_allocator_get_single_area(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep, size_t *startp, size_t *allocp)
@@ -189,5 +210,9 @@ FY_TYPE_DECL_LIST(registered_allocator_entry);
 
 int fy_allocator_register(const char *name, const struct fy_allocator_ops *ops);
 int fy_allocator_unregister(const char *name);
+
+const char *fy_allocator_iterate(const char **prevp);
+bool fy_allocator_is_available(const char *allocator);
+char *fy_allocator_get_names(void);
 
 #endif

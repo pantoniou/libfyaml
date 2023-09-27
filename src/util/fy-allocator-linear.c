@@ -175,8 +175,8 @@ static void *fy_linear_alloc(struct fy_allocator *a, fy_alloc_tag tag, size_t si
 	if (s >= la->end || (size_t)(la->end - s) < size)
 		goto err_out;
 
-	la->stats.allocations++;
-	la->stats.allocated += size;
+	la->stats_allocations++;
+	la->stats_allocated += size;
 
 	memset(s, 0, size);
 
@@ -196,18 +196,17 @@ static void fy_linear_free(struct fy_allocator *a, fy_alloc_tag tag, void *data)
 static int fy_linear_update_stats(struct fy_allocator *a, fy_alloc_tag tag, struct fy_allocator_stats *stats)
 {
 	struct fy_linear_allocator *la;
-	unsigned int i;
 
 	if (!a || !stats)
 		return -1;
 
 	la = container_of(a, struct fy_linear_allocator, a);
 
-	/* and update with this ones */
-	for (i = 0; i < ARRAY_SIZE(la->stats.counters); i++) {
-		stats->counters[i] += la->stats.counters[i];
-		la->stats.counters[i] = 0;
-	}
+	stats->allocations = la->stats_allocations;
+	stats->allocated = la->stats_allocated;
+
+	la->stats_allocations = 0;
+	la->stats_allocated = 0;
 
 	return 0;
 }
@@ -299,9 +298,61 @@ static void fy_linear_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
 	/* nothing */
 }
 
-static ssize_t fy_linear_get_areas(struct fy_allocator *a, fy_alloc_tag tag, struct fy_iovecw *iov, size_t maxiov)
+static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, fy_alloc_tag tag)
 {
-	return -1;
+	struct fy_linear_allocator *la;
+	struct fy_allocator_info *info;
+	struct fy_allocator_tag_info *tag_info;
+	struct fy_allocator_arena_info *arena_info;
+	size_t size;
+
+	if (!a)
+		return NULL;
+
+	/* only single tag (or all tags with 0) */
+	if (tag != 0 && tag != FY_ALLOC_TAG_NONE)
+		return NULL;
+
+	la = container_of(a, struct fy_linear_allocator, a);
+
+	/* one of each */
+	size = sizeof(*info) +
+	       sizeof(*tag_info) +
+	       sizeof(*arena_info);
+
+	info = malloc(size);
+	if (!info)
+		return NULL;
+	memset(info, 0, sizeof(*info));
+
+	tag_info = (void *)(info + 1);
+	assert(((uintptr_t)tag_info % alignof(struct fy_allocator_tag_info)) == 0);
+	arena_info = (void *)(tag_info + 1);
+	assert(((uintptr_t)arena_info % alignof(struct fy_allocator_arena_info)) == 0);
+
+	/* fill-in the single arena */
+	arena_info->free = (size_t)(la->end - la->next);
+	arena_info->used = (size_t)(la->next - la->start);
+	arena_info->total = (size_t)(la->end - (void *)la);
+	arena_info->data = la->start;
+	arena_info->size = arena_info->used;
+
+	/* there's a single tag for linear */
+	tag_info->tag = 0;
+	tag_info->free = arena_info->free;
+	tag_info->used = arena_info->used;
+	tag_info->total = arena_info->total;
+	tag_info->num_arena_infos = 1;
+	tag_info->arena_infos = arena_info;
+
+	/* fill in the single tag */
+	info->free = tag_info->free;
+	info->used = tag_info->used;
+	info->total = tag_info->total;
+	info->num_tag_infos = 1;
+	info->tag_infos = tag_info;
+
+	return info;
 }
 
 static const void *fy_linear_get_single_area(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep, size_t *startp, size_t *allocp)
@@ -325,6 +376,6 @@ const struct fy_allocator_ops fy_linear_allocator_ops = {
 	.release_tag = fy_linear_release_tag,
 	.trim_tag = fy_linear_trim_tag,
 	.reset_tag = fy_linear_reset_tag,
-	.get_areas = fy_linear_get_areas,
+	.get_info = fy_linear_get_info,
 	.get_single_area = fy_linear_get_single_area,
 };

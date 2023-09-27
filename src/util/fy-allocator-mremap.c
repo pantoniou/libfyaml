@@ -27,13 +27,21 @@
 
 #define DEBUG_ARENA
 
+// #define DISABLE_MREMAP
+
+#if HAVE_MREMAP && !defined(DISABLE_MREMAP)
+#define USE_MREMAP 1
+#else
+#define USE_MREMAP 0
+#endif
+
 static struct fy_mremap_arena *
 fy_mremap_arena_create(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt, size_t size)
 {
 	struct fy_mremap_arena *mran = NULL;
 	void *mem;
 	size_t size_page_align, balloon_size;
-#if !HAVE_MREMAP
+#if !USE_MREMAP
 	int rc FY_DEBUG_UNUSED;
 #endif
 
@@ -55,7 +63,7 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mr
 			/* first allocation failed, that's ok, try again */
 			mran = mmap(NULL, size_page_align, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 		} else {
-#if HAVE_MREMAP
+#if USE_MREMAP
 			mran = mremap(mem, balloon_size, size_page_align, 0);
 			assert(mran == MAP_FAILED || mran == mem);
 #else
@@ -119,7 +127,7 @@ static int fy_mremap_arena_grow(struct fy_mremap_allocator *mra, struct fy_mrema
 		if (fy_size_t_align(mran->next, align) + size > 2 * mran->size)
 			break;
 
-#if HAVE_MREMAP
+#if USE_MREMAP
 		/* double the arena */
 		mem = mremap(mran, mran->size, mran->size * 2, 0);
 		if (mem == MAP_FAILED)
@@ -152,7 +160,7 @@ static int fy_mremap_arena_grow(struct fy_mremap_allocator *mra, struct fy_mrema
 static int fy_mremap_arena_trim(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt, struct fy_mremap_arena *mran)
 {
 	size_t new_size;
-#if HAVE_MREMAP
+#if USE_MREMAP
 	void *mem FY_DEBUG_UNUSED;
 #else
 	int rc FY_DEBUG_UNUSED;
@@ -176,7 +184,7 @@ static int fy_mremap_arena_trim(struct fy_mremap_allocator *mra, struct fy_mrema
 		fprintf(stderr, "trim: %zu -> %zu\n", mran->size, new_size);
 #endif
 
-#if HAVE_MREMAP
+#if USE_MREMAP
 		/* failure to shrink a mapping is unthinkable */
 		mem = mremap(mran, mran->size, new_size, 0);
 		assert(mem != MAP_FAILED);
@@ -768,9 +776,135 @@ static void fy_mremap_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
 	fy_mremap_tag_reset(mra, mrt);
 }
 
-static ssize_t fy_mremap_get_areas(struct fy_allocator *a, fy_alloc_tag tag, struct fy_iovecw *iov, size_t maxiov)
+static struct fy_allocator_info *
+fy_mremap_get_info(struct fy_allocator *a, fy_alloc_tag tag)
 {
-	return -1;
+	struct fy_mremap_allocator *mra;
+	struct fy_mremap_tag *mrt;
+	struct fy_mremap_arena *mran;
+	struct fy_allocator_info *info;
+	struct fy_allocator_tag_info *tag_info;
+	struct fy_allocator_arena_info *arena_info;
+	struct fy_mremap_arena_list *mranl, *arena_lists[2];
+	size_t size, free, used, total;
+	size_t tag_free, tag_used, tag_total;
+	size_t arena_free, arena_used, arena_total;
+	unsigned int num_tags, num_arenas, i, j;
+	int id;
+
+	if (!a)
+		return NULL;
+
+	mra = container_of(a, struct fy_mremap_allocator, a);
+
+	/* allocate for the worst case always */
+	num_tags = 0;
+	num_arenas = 0;
+
+	free = 0;
+	used = 0;
+	total = 0;
+
+	/* two passes */
+	for (i = 0; i < 2; i++) {
+
+		if (!i) {
+			tag_info = NULL;
+			arena_info = NULL;
+
+		} else {
+			size = sizeof(*info) +
+                               sizeof(*tag_info) * num_tags +
+			       sizeof(*arena_info) * num_arenas;
+
+			info = malloc(size);
+			if (!info)
+				return NULL;
+			memset(info, 0, sizeof(*info));
+
+			tag_info = (void *)(info + 1);
+			assert(((uintptr_t)tag_info % alignof(struct fy_allocator_tag_info)) == 0);
+			arena_info = (void *)(tag_info + num_tags);
+			assert(((uintptr_t)arena_info % alignof(struct fy_allocator_arena_info)) == 0);
+
+			info->free = free;
+			info->used = used;
+			info->total = total;
+
+			info->num_tag_infos = 0;
+			info->tag_infos = tag_info;
+		}
+
+		free = 0;
+		used = 0;
+		total = sizeof(*mra);
+
+		for (id = 0; id < (int)ARRAY_SIZE(mra->tags); id++) {
+
+			if (!fy_id_is_used(mra->ids, ARRAY_SIZE(mra->ids), id))
+				continue;
+
+			mrt = &mra->tags[id];
+
+			tag_free = 0;
+			tag_used = 0;
+			tag_total = 0;
+
+			if (i) {
+				tag_info->num_arena_infos = 0;
+				tag_info->arena_infos = arena_info;
+			}
+
+			arena_lists[0] = &mrt->arenas;
+			arena_lists[1] = &mrt->full_arenas;
+			for (j = 0; j < ARRAY_SIZE(arena_lists); j++) {
+				mranl = arena_lists[j];
+				for (mran = fy_mremap_arena_list_head(mranl); mran; mran = fy_mremap_arena_next(mranl, mran)) {
+					arena_free = (size_t)(mran->size - mran->next);
+					arena_used = (size_t)(mran->next - FY_MREMAP_ARENA_OVERHEAD);
+					arena_total = mran->size;
+
+					tag_free += arena_free;
+					tag_used += arena_used;
+					tag_total += arena_total;
+
+					if (!i) {
+						num_arenas++;
+					} else {
+						arena_info->free = arena_free;
+						arena_info->used = arena_used;
+						arena_info->total = arena_total;
+						arena_info->data = (void *)mran + FY_MREMAP_ARENA_OVERHEAD;
+						arena_info->size = arena_info->used;
+						arena_info++;
+						tag_info->num_arena_infos++;
+					}
+				}
+			}
+
+			if (!i) {
+				num_tags++;
+			} else {
+
+				/* only store the tag if there's a match */
+				if (tag == FY_ALLOC_TAG_NONE || tag == id) {
+					tag_info->tag = id;
+					tag_info->free = tag_free;
+					tag_info->used = tag_used;
+					tag_info->total = tag_total;
+					tag_info++;
+					info->num_tag_infos++;
+				}
+			}
+
+			free += tag_free;
+			used += tag_used;
+			total += tag_total;
+		}
+	}
+
+	return info;
+
 }
 
 static const void *fy_mremap_get_single_area(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep, size_t *startp, size_t *allocp)
@@ -818,7 +952,7 @@ const struct fy_allocator_ops fy_mremap_allocator_ops = {
 	.release_tag = fy_mremap_release_tag,
 	.trim_tag = fy_mremap_trim_tag,
 	.reset_tag = fy_mremap_reset_tag,
-	.get_areas = fy_mremap_get_areas,
+	.get_info = fy_mremap_get_info,
 	.get_single_area = fy_mremap_get_single_area,
 };
 

@@ -413,10 +413,11 @@ static inline const void *fy_generic_builder_storev(struct fy_generic_builder *g
 	return fy_allocator_storev(gb->allocator, gb->alloc_tag, iov, iovcnt, align);
 }
 
-static inline ssize_t fy_generic_builder_get_areas(struct fy_generic_builder *gb, struct fy_iovecw *iov, size_t maxiov)
+static inline struct fy_allocator_info *
+fy_generic_builder_get_allocator_info(struct fy_generic_builder *gb)
 {
 	assert(gb);
-	return fy_allocator_get_areas(gb->allocator, gb->alloc_tag, iov, maxiov);
+	return fy_allocator_get_info(gb->allocator, gb->alloc_tag);
 }
 
 static inline const void *fy_generic_builder_get_single_area(struct fy_generic_builder *gb, size_t *sizep, size_t *startp, size_t *allocp)

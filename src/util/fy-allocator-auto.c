@@ -292,16 +292,17 @@ static void fy_auto_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
 	fy_allocator_reset_tag(aa->parent_allocator, tag);
 }
 
-static ssize_t fy_auto_get_areas(struct fy_allocator *a, fy_alloc_tag tag, struct fy_iovecw *iov, size_t maxiov)
+static struct fy_allocator_info *
+fy_auto_get_info(struct fy_allocator *a, fy_alloc_tag tag)
 {
 	struct fy_auto_allocator *aa;
 
 	if (!a)
-		return -1;
+		return NULL;
 
 	aa = container_of(a, struct fy_auto_allocator, a);
 
-	return fy_allocator_get_areas(aa->parent_allocator, tag, iov, maxiov);
+	return fy_allocator_get_info(aa->parent_allocator, tag);
 }
 
 static const void *fy_auto_get_single_area(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep, size_t *startp, size_t *allocp)
@@ -332,6 +333,6 @@ const struct fy_allocator_ops fy_auto_allocator_ops = {
 	.release_tag = fy_auto_release_tag,
 	.trim_tag = fy_auto_trim_tag,
 	.reset_tag = fy_auto_reset_tag,
-	.get_areas = fy_auto_get_areas,
+	.get_info = fy_auto_get_info,
 	.get_single_area = fy_auto_get_single_area,
 };
