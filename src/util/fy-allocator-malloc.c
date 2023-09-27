@@ -147,11 +147,13 @@ void fy_malloc_dump(struct fy_allocator *a)
 static void *fy_malloc_tag_alloc(struct fy_malloc_allocator *ma, struct fy_malloc_tag *mt, size_t size, size_t align)
 {
 	struct fy_malloc_entry *me;
+	size_t reqsize;
 	void *p;
 	int ret;
 
 	assert(align <= 16);
 
+	reqsize = size;
 	size = size + sizeof(*me);
 	ret = posix_memalign(&p, 16, size);
 	if (ret)
@@ -162,7 +164,8 @@ static void *fy_malloc_tag_alloc(struct fy_malloc_allocator *ma, struct fy_mallo
 	assert(((uintptr_t)(&me->mem[0]) & 15) == 0);
 
 	me->size = size;
-	fy_malloc_entry_list_add(&mt->entries, me);
+	me->reqsize = reqsize;
+	fy_malloc_entry_list_add_tail(&mt->entries, me);
 
 	return &me->mem[0];
 
@@ -399,13 +402,125 @@ static void fy_malloc_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
 static struct fy_allocator_info *
 fy_malloc_get_info(struct fy_allocator *a, fy_alloc_tag tag)
 {
-	return NULL;
-}
+	struct fy_malloc_allocator *ma;
+	struct fy_malloc_tag *mt;
+	struct fy_malloc_entry *me;
+	struct fy_allocator_info *info;
+	struct fy_allocator_tag_info *tag_info;
+	struct fy_allocator_arena_info *arena_info;
+	size_t size, free, used, total;
+	size_t tag_free, tag_used, tag_total;
+	size_t arena_free, arena_used, arena_total;
+	unsigned int num_tags, num_arenas, i;
+	int id;
 
-static const void *fy_malloc_get_single_area(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep, size_t *startp, size_t *allocp)
-{
-	/* can never get a single area */
-	return NULL;
+	if (!a)
+		return NULL;
+
+	ma = container_of(a, struct fy_malloc_allocator, a);
+
+	/* allocate for the worst case always */
+	num_tags = 0;
+	num_arenas = 0;
+
+	free = 0;
+	used = 0;
+	total = 0;
+
+	/* two passes */
+	for (i = 0; i < 2; i++) {
+
+		if (!i) {
+			tag_info = NULL;
+			arena_info = NULL;
+
+		} else {
+			size = sizeof(*info) +
+                               sizeof(*tag_info) * num_tags +
+			       sizeof(*arena_info) * num_arenas;
+
+			info = malloc(size);
+			if (!info)
+				return NULL;
+			memset(info, 0, sizeof(*info));
+
+			tag_info = (void *)(info + 1);
+			assert(((uintptr_t)tag_info % alignof(struct fy_allocator_tag_info)) == 0);
+			arena_info = (void *)(tag_info + num_tags);
+			assert(((uintptr_t)arena_info % alignof(struct fy_allocator_arena_info)) == 0);
+
+			info->free = free;
+			info->used = used;
+			info->total = total;
+
+			info->num_tag_infos = 0;
+			info->tag_infos = tag_info;
+		}
+
+		free = 0;
+		used = 0;
+		total = sizeof(*ma);
+
+		for (id = 0; id < (int)ARRAY_SIZE(ma->tags); id++) {
+
+			if (!fy_id_is_used(ma->ids, ARRAY_SIZE(ma->ids), id))
+				continue;
+
+			mt = &ma->tags[id];
+
+			tag_free = 0;
+			tag_used = 0;
+			tag_total = 0;
+
+			if (i) {
+				tag_info->num_arena_infos = 0;
+				tag_info->arena_infos = arena_info;
+			}
+
+			for (me = fy_malloc_entry_list_head(&mt->entries); me; me = fy_malloc_entry_next(&mt->entries, me)) {
+				arena_free = 0;
+				arena_used = me->reqsize;
+				arena_total = sizeof(*me) + me->size;
+
+				tag_free += arena_free;
+				tag_used += arena_used;
+				tag_total += arena_total;
+
+				if (!i) {
+					num_arenas++;
+				} else {
+					arena_info->free = arena_free;
+					arena_info->used = arena_used;
+					arena_info->total = arena_total;
+					arena_info->data = me->mem;
+					arena_info->size = me->reqsize;
+					arena_info++;
+					tag_info->num_arena_infos++;
+				}
+			}
+
+			if (!i) {
+				num_tags++;
+			} else {
+
+				/* only store the tag if there's a match */
+				if (tag == FY_ALLOC_TAG_NONE || tag == id) {
+					tag_info->tag = id;
+					tag_info->free = tag_free;
+					tag_info->used = tag_used;
+					tag_info->total = tag_total;
+					tag_info++;
+					info->num_tag_infos++;
+				}
+			}
+
+			free += tag_free;
+			used += tag_used;
+			total += tag_total;
+		}
+	}
+
+	return info;
 }
 
 const struct fy_allocator_ops fy_malloc_allocator_ops = {
@@ -425,5 +540,4 @@ const struct fy_allocator_ops fy_malloc_allocator_ops = {
 	.trim_tag = fy_malloc_trim_tag,
 	.reset_tag = fy_malloc_reset_tag,
 	.get_info = fy_malloc_get_info,
-	.get_single_area = fy_malloc_get_single_area,
 };

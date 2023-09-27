@@ -917,36 +917,6 @@ fy_mremap_get_info(struct fy_allocator *a, fy_alloc_tag tag)
 	}
 
 	return info;
-
-}
-
-static const void *fy_mremap_get_single_area(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep, size_t *startp, size_t *allocp)
-{
-	struct fy_mremap_allocator *mra;
-	struct fy_mremap_tag *mrt;
-	struct fy_mremap_arena *mran;
-
-	if (!a)
-		return NULL;
-
-	mra = container_of(a, struct fy_mremap_allocator, a);
-
-	mrt = fy_mremap_tag_from_tag(mra, tag);
-	if (!mrt)
-		return NULL;
-
-	/* if there are any full arenas, or more than one active, it's not single area */
-	if (!fy_mremap_arena_list_empty(&mrt->full_arenas) ||
-		!fy_mremap_arena_list_is_singular(&mrt->arenas))
-		return NULL;
-
-	mran = fy_mremap_arena_list_head(&mrt->arenas);
-	assert(mran);
-
-	*sizep = mran->next;
-	*startp = offsetof(struct fy_mremap_arena, mem);
-	*allocp = mran->size;
-	return mran;
 }
 
 const struct fy_allocator_ops fy_mremap_allocator_ops = {
@@ -966,6 +936,5 @@ const struct fy_allocator_ops fy_mremap_allocator_ops = {
 	.trim_tag = fy_mremap_trim_tag,
 	.reset_tag = fy_mremap_reset_tag,
 	.get_info = fy_mremap_get_info,
-	.get_single_area = fy_mremap_get_single_area,
 };
 

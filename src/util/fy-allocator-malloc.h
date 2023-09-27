@@ -23,6 +23,7 @@ FY_TYPE_FWD_DECL_LIST(malloc_entry);
 struct fy_malloc_entry {
 	struct list_head node;
 	size_t size;
+	size_t reqsize;
 	uint64_t mem[] __attribute__((aligned(16)));
 };
 FY_TYPE_DECL_LIST(malloc_entry);
