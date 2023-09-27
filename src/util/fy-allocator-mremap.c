@@ -65,11 +65,17 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mr
 		} else {
 #if USE_MREMAP
 			mran = mremap(mem, balloon_size, size_page_align, 0);
-			assert(mran == MAP_FAILED || mran == mem);
+			/* either it fails, or it moves we handle it */
 #else
 			/* we don't shrink, we just unmap over the limit  */
 			rc = munmap(mem + size_page_align, balloon_size - size_page_align);
-			assert(!rc);
+			if (rc) {
+#ifdef DEBUG_ARENA
+				fprintf(stderr, "%s: failed to unmap for shink\n", __func__);
+#endif
+				size_page_align = balloon_size;	/* keep the balloon size? */
+			}
+			mran = mem;
 #endif
 		}
 		if (mran == MAP_FAILED)
@@ -185,14 +191,15 @@ static int fy_mremap_arena_trim(struct fy_mremap_allocator *mra, struct fy_mrema
 #endif
 
 #if USE_MREMAP
-		/* failure to shrink a mapping is unthinkable */
+		/* failure to shrink a mapping is unthinkable, but check anyway */
 		mem = mremap(mran, mran->size, new_size, 0);
-		assert(mem != MAP_FAILED);
-		assert(mem == mran);
+		if (mem == MAP_FAILED || mem != mran)
+			return -1;
 #else
 		/* we don't shrink, we just unmap over the limit  */
-		rc = munmap((void *)mra + new_size, mran->size - new_size);
-		assert(!rc);
+		rc = munmap((void *)mran + new_size, mran->size - new_size);
+		if (rc)
+			return -1;
 #endif
 		mran->size = new_size;
 		return 0;
@@ -340,7 +347,9 @@ static void *fy_mremap_tag_alloc(struct fy_mremap_allocator *mra, struct fy_mrem
 		if (!mran)
 			goto err_out;
 
-		// fprintf(stderr, "allocated new big mran->size=%zu size=%zu\n", mran->size, size);
+#ifdef DEBUG_ARENA
+		fprintf(stderr, "allocated new big mran->size=%zu size=%zu\n", mran->size, size);
+#endif
 
 		fy_mremap_arena_list_add_tail(&mrt->arenas, mran);
 		goto do_alloc;
@@ -369,7 +378,9 @@ static void *fy_mremap_tag_alloc(struct fy_mremap_allocator *mra, struct fy_mrem
 			if (rc)
 				continue;
 
-			// fprintf(stderr, "grow successful mran->size=%zu size=%zu\n", mran->size, size);
+#ifdef DEBUG_ARENA
+			fprintf(stderr, "grow successful mran->size=%zu size=%zu\n", mran->size, size);
+#endif
 
 			left = mran->size - fy_size_t_align(mran->next, align);
 			assert(left >= size);
@@ -397,7 +408,9 @@ static void *fy_mremap_tag_alloc(struct fy_mremap_allocator *mra, struct fy_mrem
 
 	mrt->next_arena_sz = (size_t)(mrt->next_arena_sz * mra->grow_ratio);
 
-	// fprintf(stderr, "allocated new %p mran->size=%zu size=%zu\n", mran, mran->size, size);
+#ifdef DEBUG_ARENA
+	fprintf(stderr, "allocated new %p mran->size=%zu size=%zu\n", mran, mran->size, size);
+#endif
 
 	fy_mremap_arena_list_add(&mrt->arenas, mran);
 

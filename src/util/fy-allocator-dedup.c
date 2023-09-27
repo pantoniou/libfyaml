@@ -385,7 +385,7 @@ static int fy_dedup_tag_update_stats(struct fy_dedup_allocator *da, struct fy_de
 	fy_allocator_update_stats(da->entries_allocator, dt->entries_tag, stats);
 	fy_allocator_update_stats(da->parent_allocator, dt->content_tag, stats);
 
-	/* and update with this ones */
+	/* and update with these ones */
 	for (i = 0; i < ARRAY_SIZE(dt->stats.counters); i++) {
 		stats->counters[i] += dt->stats.counters[i];
 		dt->stats.counters[i] = 0;
@@ -992,7 +992,37 @@ static void fy_dedup_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
 static struct fy_allocator_info *
 fy_dedup_get_info(struct fy_allocator *a, fy_alloc_tag tag)
 {
-	return NULL;
+	struct fy_dedup_allocator *da;
+	struct fy_dedup_tag *dt;
+	struct fy_allocator_info *info;
+	struct fy_allocator_tag_info *tag_info;
+	unsigned int i;
+
+	if (!a)
+		return NULL;
+
+	/* full dump not supported yet */
+	if (tag == FY_ALLOC_TAG_NONE)
+		return NULL;
+
+	da = container_of(a, struct fy_dedup_allocator, a);
+
+	dt = fy_dedup_tag_from_tag(da, tag);
+	if (!dt)
+		return NULL;
+
+	info = fy_allocator_get_info(da->parent_allocator, dt->content_tag);
+	if (!info)
+		return NULL;
+
+	/* we will have to change the tag from content to this one */
+	for (i = 0; i < info->num_tag_infos; i++) {
+		tag_info = &info->tag_infos[i];
+		if (tag_info->tag == dt->content_tag)
+			tag_info->tag = tag;
+	}
+
+	return info;
 }
 
 static const void *fy_dedup_get_single_area(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep, size_t *startp, size_t *allocp)
