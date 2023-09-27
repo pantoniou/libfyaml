@@ -73,15 +73,18 @@ static void dump_allocator_info(struct fy_allocator *a, fy_alloc_tag tag)
 	free(info);
 }
 
-static int allocator_test(const char *allocator, size_t size)
+static int allocator_test(const char *allocator, const char *parent_allocator, size_t size)
 {
 	struct fy_linear_setup_data lsetupdata;
-	const void *gsetupdata = NULL;
-	struct fy_allocator *a;
+	struct fy_dedup_setup_data dsetupdata;
+	const void *gsetupdata = NULL, *psetupdata = NULL;
+	struct fy_allocator *a = NULL, *pa = NULL;
 	fy_alloc_tag tag0;
 	char *names;
-	bool is_linear;
+	bool is_linear, is_dedup;
 	unsigned int *uintp[16];
+	uint8_t *p;
+	size_t psz = 4096;
 	unsigned int i;
 
 	names = fy_allocator_get_names();
@@ -90,11 +93,28 @@ static int allocator_test(const char *allocator, size_t size)
 	free(names);
 
 	is_linear = !strcmp(allocator, "linear");
+	is_dedup = !strcmp(allocator, "dedup");
 
 	if (is_linear) {
-		memset(&lsetupdata, 0, sizeof(lsetupdata));
-		lsetupdata.size = size ? size : 4096;
 		gsetupdata = &lsetupdata;
+	} else if (is_dedup) {
+
+		fprintf(stderr, "Using parent-allocator: %s\n", parent_allocator);
+
+		if (!strcmp(parent_allocator, "linear")) {
+			memset(&lsetupdata, 0, sizeof(lsetupdata));
+			lsetupdata.size = size ? size : 4096;
+
+			psetupdata = &lsetupdata;
+		} else
+			psetupdata = NULL;
+
+		pa = fy_allocator_create(parent_allocator, psetupdata);
+		assert(pa);
+
+		memset(&dsetupdata, 0, sizeof(dsetupdata));
+		dsetupdata.parent_allocator = pa;
+		gsetupdata = &dsetupdata;
 	} else
 		gsetupdata = NULL;
 
@@ -121,11 +141,33 @@ static int allocator_test(const char *allocator, size_t size)
 	for (i = 0; i < ARRAY_SIZE(uintp); i++)
 		*uintp[i] = i;
 
-	/* assert */
+	fprintf(stderr, "Dumping allocator areas before trim\n");
+	dump_allocator_info(a, tag0);
+
+	fy_allocator_trim_tag(a, tag0);
+
+	fprintf(stderr, "Dumping allocator areas after trim\n");
+	dump_allocator_info(a, tag0);
+
+	fprintf(stderr, "Allocating %zu bytes\n", psz);
+	p = fy_allocator_alloc(a, tag0, psz, 1);
+	if (!p) {
+		fprintf(stderr, "failed to allocate %zu bytes\n", psz);
+	} else {
+		for (i = 0; i < psz; i++)
+			p[i] = i % 251;
+	}
+
+	/* verify */
+	if (p) {
+		for (i = 0; i < psz; i++)
+			assert(p[i] == (i % 251));
+	}
+
 	for (i = 0; i < ARRAY_SIZE(uintp); i++)
 		assert(*uintp[i] == i);
 
-	fprintf(stderr, "Dumping allocator areas before release\n");
+	fprintf(stderr, "Dumping allocator areas after alloc\n");
 	dump_allocator_info(a, tag0);
 
 	fprintf(stderr, "Releasing tag0\n"); 
@@ -134,16 +176,19 @@ static int allocator_test(const char *allocator, size_t size)
 	fprintf(stderr, "Dumping allocator areas after release\n");
 	dump_allocator_info(a, FY_ALLOC_TAG_NONE);
 
-	fy_allocator_destroy(a);
+	if (a)
+		fy_allocator_destroy(a);
 
-	if (is_linear)
-		free(lsetupdata.buf);
+	if (pa)
+		fy_allocator_destroy(pa);
+
 
 	return 0;
 }
 
 static struct option lopts[] = {
 	{"allocator",		required_argument,	0,	'a' },
+	{"parent",		required_argument,	0,	'p' },
 	{"size",		required_argument,	0,	's' },
 	{"help",		no_argument,		0,	'h' },
 	{0,			0,              	0,	 0  },
@@ -163,9 +208,10 @@ static void display_usage(FILE *fp, const char *progname)
 
 	fprintf(fp, "Usage:\n\t%s [options]\n", progname);
 	fprintf(fp, "\noptions:\n");
-	fprintf(fp, "\t--allocator <n>, -a <n>   : Use allocator, one of: %s\n", names); 
-	fprintf(fp, "\t--size <n>, -s <n>        : Size for allocators that require one\n");
-	fprintf(fp, "\t--help, -h                : Display help message\n");
+	fprintf(fp, "\t--allocator <n>, -a <n>       : Use allocator, one of: %s\n", names); 
+	fprintf(fp, "\t--parent <n>, -p <n>          : Use parent allocator, one of: %s\n", names); 
+	fprintf(fp, "\t--size <n>, -s <n>            : Size for allocators that require one\n");
+	fprintf(fp, "\t--help, -h                    : Display help message\n");
 	fprintf(fp, "\n");
 
 	free(names);
@@ -176,16 +222,21 @@ int main(int argc, char *argv[])
 	int opt, lidx, rc;
 	int exitcode = EXIT_FAILURE;
 	const char *allocator = "linear";
+	const char *parent_allocator = "linear";
 	size_t size = 0;
 
-	while ((opt = getopt_long_only(argc, argv, "a:s:h", lopts, &lidx)) != -1) {
+	while ((opt = getopt_long_only(argc, argv, "a:p:s:h", lopts, &lidx)) != -1) {
 		switch (opt) {
 		case 'a':
+		case 'p':
 			if (!fy_allocator_is_available(optarg)) {
 				fprintf(stderr, "Error: illegal allocator name \"%s\"\n", optarg);
 				goto err_out_usage;
 			}
-			allocator = optarg;
+			if (opt == 'a')
+				allocator = optarg;
+			else
+				parent_allocator = optarg;
 			break;
 		case 's':
 			size = (size_t)atoi(optarg);
@@ -198,7 +249,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	rc = allocator_test(allocator, size);
+	rc = allocator_test(allocator, parent_allocator, size);
 	if (rc) {
 		fprintf(stderr, "Error: allocator_test() failed\n");
 		goto err_out;
