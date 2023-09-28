@@ -84,7 +84,11 @@ struct fy_emitter {
 	bool suppress_recycling : 1;
 
 	/* current document */
-	struct fy_emitter_cfg cfg;	/* yeah, it isn't worth just to save a few bytes */
+	struct fy_emitter_xcfg xcfg;
+	FILE *output_fp;
+	int output_fd;
+	bool output_colorize;
+
 	struct fy_document *fyd;
 	struct fy_document_state *fyds;	/* fyd->fyds when fyd != NULL */
 	struct fy_emit_accum ea;

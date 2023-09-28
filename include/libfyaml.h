@@ -1636,7 +1636,32 @@ enum fy_emitter_write_type {
 	fyewt_single_quoted_scalar_key,
 	fyewt_double_quoted_scalar_key,
 	fyewt_comment,
+	// extended indicators
+	fyewt_indicator_question_mark,
+	fyewt_indicator_colon,
+	fyewt_indicator_dash,
+	fyewt_indicator_left_bracket,
+	fyewt_indicator_right_bracket,
+	fyewt_indicator_left_brace,
+	fyewt_indicator_right_brace,
+	fyewt_indicator_comma,
+	fyewt_indicator_bar,
+	fyewt_indicator_greater,
+	fyewt_indicator_single_quote_start,
+	fyewt_indicator_single_quote_end,
+	fyewt_indicator_double_quote_start,
+	fyewt_indicator_double_quote_end,
+	fyewt_indicator_ambersand,
+	fyewt_indicator_star,
+	fyewt_indicator_chomp,			// - or +
+	fyewt_indicator_explicit_indent,	// 0-9
 };
+
+#define FYEWT_EXTENDED_INDICATORS_FIRST fyewt_indicator_question_mark
+#define FYEWT_EXTENDED_INDICATORS_LAST 	fyewt_indicator_explicit_indent
+
+#define FYEWT_EXTENDED_START 	fyewt_indicator_question_mark
+#define FYEWT_COUNT 		(fyewt_indicator_explicit_indent + 1)
 
 #define FYECF_INDENT_SHIFT	8
 #define FYECF_INDENT_MASK	0xf
@@ -1678,6 +1703,7 @@ enum fy_emitter_write_type {
  * @FYECF_STRIP_DOC: Strip document tags and markers when emitting
  * @FYECF_NO_ENDING_NEWLINE: Do not output ending new line (useful for single line mode)
  * @FYECF_STRIP_EMPTY_KV: Remove all keys with empty values from the output (not available in streaming mode)
+ * @FYECF_EXTENDED_CFG: Extend configuration, this config structure is embedded in a fy_emitter_xcfg.
  * @FYECF_INDENT_DEFAULT: Default emit output indent
  * @FYECF_INDENT_1: Output indent is 1
  * @FYECF_INDENT_2: Output indent is 2
@@ -1724,6 +1750,7 @@ enum fy_emitter_cfg_flags {
 	FYECF_STRIP_DOC			= FY_BIT(4),
 	FYECF_NO_ENDING_NEWLINE		= FY_BIT(5),
 	FYECF_STRIP_EMPTY_KV		= FY_BIT(6),
+	FYECF_EXTENDED_CFG		= FY_BIT(7),
 	FYECF_INDENT_DEFAULT		= FYECF_INDENT(0),
 	FYECF_INDENT_1			= FYECF_INDENT(1),
 	FYECF_INDENT_2			= FYECF_INDENT(2),
@@ -1783,6 +1810,72 @@ struct fy_emitter_cfg {
 		      const char *str, int len, void *userdata);
 	void *userdata;
 	struct fy_diag *diag;
+};
+
+/* Shift amount of the color settings */
+#define FYEXCF_COLOR_SHIFT	0
+/* Mask of the color */
+#define FYEXCF_COLOR_MASK	((1U << 2) - 1)
+/* Build a color version */
+#define FYEXCF_COLOR(x)	(((unsigned int)(x) & FYEXCF_COLOR_MASK) << FYEXCF_COLOR_SHIFT)
+
+/* Shift amount of the output settings */
+#define FYEXCF_OUTPUT_SHIFT	2
+/* Mask of the output */
+#define FYEXCF_OUTPUT_MASK	((1U << 3) - 1)
+/* Build an output */
+#define FYEXCF_OUTPUT(x)	(((unsigned int)(x) & FYEXCF_OUTPUT_MASK) << FYEXCF_OUTPUT_SHIFT)
+
+/**
+ * enum fy_emitter_xcfg_flags - Emitter extended configuration flags
+ *
+ * These flags control the operation of the emitter.
+ * If no extended configuration mode is enabled all the flags are assumed 0.
+ *
+ * @FYEXCF_COLOR_AUTO: Automatically colorize if on a terminal
+ * @FYEXCF_COLOR_NONE: Do not colorize output
+ * @FYEXCF_COLOR_FORCE: Force color generation
+ * @FYEXCF_VISIBLE_WS: Make white space visible
+ * @FYEXCF_EXTENDED_INDICATORS: Extend the indicators generated
+ * @FYEXCF_OUTPUT_STDOUT: Output to stdout (default)
+ * @FYEXCF_OUTPUT_STDERR: Output to stderr, instead of stdout
+ * @FYEXCF_OUTPUT_FILE: Output to the fp FILE pointer
+ * @FYEXCF_OUTPUT_FD: Output to the fd file descriptor
+ * @FYEXCF_NULL_OUTPUT: No output
+ */
+enum fy_emitter_xcfg_flags {
+	FYEXCF_COLOR_AUTO		= FYEXCF_COLOR(0),
+	FYEXCF_COLOR_NONE		= FYEXCF_COLOR(1),
+	FYEXCF_COLOR_FORCE		= FYEXCF_COLOR(2),
+	FYEXCF_OUTPUT_STDOUT		= FYEXCF_OUTPUT(0),
+	FYEXCF_OUTPUT_STDERR		= FYEXCF_OUTPUT(1),
+	FYEXCF_OUTPUT_FILE		= FYEXCF_OUTPUT(2),
+	FYEXCF_OUTPUT_FD		= FYEXCF_OUTPUT(2),
+	FYEXCF_NULL_OUTPUT		= FYEXCF_OUTPUT(3),
+	FYEXCF_VISIBLE_WS		= FY_BIT(5),
+	FYEXCF_EXTENDED_INDICATORS	= FY_BIT(6),
+};
+
+/**
+ * struct fy_emitter_xcfg - emitter extended configuration structure.
+ *
+ * Argument to the fy_emitter create when FYECF_EXTENDED_CFG bit is
+ * set.
+ *
+ * @cfg: The standard emitter configuration
+ * @xflags: Extra configuration flags
+ * @colors: ANSI color overrides for the default output method
+ * @output_fp: The output FILE *, FYEXCF_FILE_OUTPUT must be set
+ * @output_fd: The output file descriptor, FYEXCF_FD_OUTPUT must be set
+ */
+struct fy_emitter_xcfg {
+	struct fy_emitter_cfg cfg;
+	enum fy_emitter_xcfg_flags xflags;
+	const char *colors[FYEWT_COUNT];
+	union {
+		FILE *output_fp;
+		int output_fd;
+	};
 };
 
 /**
