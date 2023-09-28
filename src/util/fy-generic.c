@@ -60,6 +60,9 @@ void fy_generic_builder_destroy(struct fy_generic_builder *gb)
 	if (!gb)
 		return;
 
+	if (gb->linear)
+		free(gb->linear);
+
 	/* if we own the allocator, just destroy it, everything is gone */
 	if (gb->allocator && gb->owns_allocator)
 		fy_allocator_destroy(gb->allocator);
@@ -73,6 +76,9 @@ void fy_generic_builder_reset(struct fy_generic_builder *gb)
 {
 	if (!gb)
 		return;
+
+	if (gb->linear)
+		free(gb->linear);
 
 	if (gb->shared_tag == FY_ALLOC_TAG_NONE)
 		fy_allocator_reset_tag(gb->allocator, gb->alloc_tag);

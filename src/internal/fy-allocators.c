@@ -34,6 +34,8 @@
 
 #include "fy-utils.h"
 
+#include "fy-generic.h"
+
 #include "fy-allocator.h"
 #include "fy-allocator-linear.h"
 #include "fy-allocator-malloc.h"
@@ -87,6 +89,8 @@ static int allocator_test(const char *allocator, const char *parent_allocator, s
 	const uint8_t *p1, *p2;
 	size_t psz = 4096;
 	unsigned int i;
+	const void *linear_data;
+	size_t linear_size;
 
 	names = fy_allocator_get_names();
 	assert(names);
@@ -97,6 +101,8 @@ static int allocator_test(const char *allocator, const char *parent_allocator, s
 	is_dedup = !strcmp(allocator, "dedup");
 
 	if (is_linear) {
+		memset(&lsetupdata, 0, sizeof(lsetupdata));
+		lsetupdata.size = size ? size : 4096;
 		gsetupdata = &lsetupdata;
 	} else if (is_dedup) {
 
@@ -174,7 +180,7 @@ static int allocator_test(const char *allocator, const char *parent_allocator, s
 	fprintf(stderr, "Storing a copy of p (p1)\n");
 	p1 = fy_allocator_store(a, tag0, p, psz, 1);
 
-	fprintf(stderr, "Storing a copy of p (p1)\n");
+	fprintf(stderr, "Storing a copy of p (p2)\n");
 	p2 = fy_allocator_store(a, tag0, p, psz, 1);
 
 	fprintf(stderr, "Dumping allocator areas after double store p1=%p p2=%p\n", p1, p2);
@@ -189,6 +195,14 @@ static int allocator_test(const char *allocator, const char *parent_allocator, s
 		for (i = 0; i < psz; i++)
 			assert(p2[i] == (i % 251));
 	}
+
+	fprintf(stderr, "Allocator %p tag %u linear_size %zd\n",
+			a, tag0, fy_allocator_get_tag_linear_size(a, tag0));
+
+	linear_size = 0;
+	linear_data = fy_allocator_get_tag_single_linear(a, tag0, &linear_size);
+	fprintf(stderr, "Allocator %p tag %u linear_data %p linear_size 0x%zx\n",
+			a, tag0, linear_data, linear_size);
 
 	fprintf(stderr, "Releasing tag0\n"); 
 	fy_allocator_release_tag(a, tag0);

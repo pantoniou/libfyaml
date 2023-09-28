@@ -377,6 +377,7 @@ struct fy_generic_builder {
 	bool owns_allocator;
 	fy_alloc_tag shared_tag;
 	fy_alloc_tag alloc_tag;
+	void *linear;	/* when making it linear */
 };
 
 struct fy_generic_builder *fy_generic_builder_create(struct fy_allocator *a, fy_alloc_tag shared_tag);
