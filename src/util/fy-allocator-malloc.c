@@ -431,6 +431,7 @@ fy_malloc_get_info(struct fy_allocator *a, fy_alloc_tag tag)
 	for (i = 0; i < 2; i++) {
 
 		if (!i) {
+			info = NULL;
 			tag_info = NULL;
 			arena_info = NULL;
 

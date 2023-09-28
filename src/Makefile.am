@@ -204,7 +204,7 @@ fy_b3sum_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 fy_b3sum_LDFLAGS = $(AM_LDFLAGS) -static
 endif
 
-# fy-thread
+# fy-allocators
 if HAVE_STATIC
 
 noinst_PROGRAMS += fy-allocators
@@ -223,6 +223,27 @@ fy_allocators_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
 fy_allocators_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 
 fy_allocators_LDFLAGS = $(AM_LDFLAGS) -static
+endif
+
+# fy-generics
+if HAVE_STATIC
+
+noinst_PROGRAMS += fy-generics
+
+fy_generics_SOURCES = \
+	internal/fy-generics.c \
+	valgrind/fy-valgrind.h
+
+fy_generics_CPPFLAGS = $(AM_CPPFLAGS) \
+			   -I$(top_srcdir)/src/valgrind \
+			   -I$(top_srcdir)/src/lib \
+			   -I$(top_srcdir)/src/xxhash \
+			   -I$(top_srcdir)/src/util \
+			   -I$(top_srcdir)/src/thread
+fy_generics_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
+fy_generics_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
+
+fy_generics_LDFLAGS = $(AM_LDFLAGS) -static
 endif
 
 bin_PROGRAMS += fy-tool

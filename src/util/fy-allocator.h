@@ -207,4 +207,7 @@ const char *fy_allocator_iterate(const char **prevp);
 bool fy_allocator_is_available(const char *allocator);
 char *fy_allocator_get_names(void);
 
+ssize_t fy_allocator_get_tag_linear_size(struct fy_allocator *a, fy_alloc_tag tag);
+const void *fy_allocator_get_tag_single_linear(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep);
+
 #endif

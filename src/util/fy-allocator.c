@@ -422,3 +422,66 @@ char *fy_allocator_get_names(void)
 	return names;
 }
 
+ssize_t fy_allocator_get_tag_linear_size(struct fy_allocator *a, fy_alloc_tag tag)
+{
+	struct fy_allocator_info *info;
+	struct fy_allocator_tag_info *tag_info;
+	struct fy_allocator_arena_info *arena_info;
+	unsigned int i, j;
+	size_t size;
+
+	if (!a || tag == FY_ALLOC_TAG_NONE)
+		return -1;
+
+	info = fy_allocator_get_info(a, tag);
+	if (!info)
+		return -1;
+
+	size = 0;
+	for (i = 0; i < info->num_tag_infos; i++) {
+		tag_info = &info->tag_infos[i];
+
+		for (j = 0; j < tag_info->num_arena_infos; j++) {
+			arena_info = &tag_info->arena_infos[j];
+
+			size = fy_size_t_align(size, 16);	/* align at 16 always */
+			size += arena_info->size;
+		}
+	}
+
+	free(info);
+
+	/* too large? really? */
+	if ((ssize_t)size < 0)
+		return -1;
+
+	return (ssize_t)size;
+}
+
+const void *fy_allocator_get_tag_single_linear(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep)
+{
+	struct fy_allocator_info *info;
+	struct fy_allocator_arena_info *arena_info;
+	const void *data;
+
+	if (!a || tag == FY_ALLOC_TAG_NONE || !sizep)
+		return NULL;
+
+	*sizep = 0;
+	data = NULL;
+
+	info = fy_allocator_get_info(a, tag);
+	if (!info)
+		return NULL;
+
+	/* this is great, everything is linear */
+	if (info->num_tag_infos == 1 && info->tag_infos[0].num_arena_infos == 1) {
+		arena_info = &info->tag_infos[0].arena_infos[0];
+		data = arena_info->data;
+		*sizep = arena_info->size;
+	}
+
+	free(info);
+
+	return data;
+}
