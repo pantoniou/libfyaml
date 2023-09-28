@@ -499,152 +499,6 @@ int apply_flags_option(const char *arg, unsigned int *flagsp,
 	return 0;
 }
 
-struct dump_userdata {
-	FILE *fp;
-	bool colorize;
-	bool visible;
-};
-
-static inline int
-utf8_width_by_first_octet(uint8_t c)
-{
-	return (c & 0x80) == 0x00 ? 1 :
-	       (c & 0xe0) == 0xc0 ? 2 :
-	       (c & 0xf0) == 0xe0 ? 3 :
-	       (c & 0xf8) == 0xf0 ? 4 : 0;
-}
-
-/* ANSI colors and escapes */
-#define A_RESET			"\x1b[0m"
-#define A_BLACK			"\x1b[30m"
-#define A_RED			"\x1b[31m"
-#define A_GREEN			"\x1b[32m"
-#define A_YELLOW		"\x1b[33m"
-#define A_BLUE			"\x1b[34m"
-#define A_MAGENTA		"\x1b[35m"
-#define A_CYAN			"\x1b[36m"
-#define A_LIGHT_GRAY		"\x1b[37m"	/* dark white is gray */
-#define A_GRAY			"\x1b[1;30m"
-#define A_BRIGHT_RED		"\x1b[1;31m"
-#define A_BRIGHT_GREEN		"\x1b[1;32m"
-#define A_BRIGHT_YELLOW		"\x1b[1;33m"
-#define A_BRIGHT_BLUE		"\x1b[1;34m"
-#define A_BRIGHT_MAGENTA	"\x1b[1;35m"
-#define A_BRIGHT_CYAN		"\x1b[1;36m"
-#define A_WHITE			"\x1b[1;37m"
-
-static int do_output(struct fy_emitter *fye, enum fy_emitter_write_type type, const char *str, int len, void *userdata)
-{
-	struct dump_userdata *du = userdata;
-	FILE *fp = du->fp;
-	int ret, w;
-	const char *color = NULL;
-	const char *s, *e;
-
-	s = str;
-	e = str + len;
-	if (du->colorize) {
-		switch (type) {
-		case fyewt_document_indicator:
-			color = A_CYAN;
-			break;
-		case fyewt_tag_directive:
-		case fyewt_version_directive:
-			color = A_YELLOW;
-			break;
-		case fyewt_indent:
-			if (du->visible) {
-				fputs(A_GREEN, fp);
-				while (s < e && (w = utf8_width_by_first_octet(((uint8_t)*s))) > 0) {
-					/* open box - U+2423 */
-					fputs("\xe2\x90\xa3", fp);
-					s += w;
-				}
-				fputs(A_RESET, fp);
-				return len;
-			}
-			break;
-		case fyewt_indicator:
-			if (len == 1 && (str[0] == '\'' || str[0] == '"'))
-				color = A_YELLOW;
-			else if (len == 1 && str[0] == '&')
-				color = A_BRIGHT_GREEN;
-			else
-				color = A_MAGENTA;
-			break;
-		case fyewt_whitespace:
-			if (du->visible) {
-				fputs(A_GREEN, fp);
-				while (s < e && (w = utf8_width_by_first_octet(((uint8_t)*s))) > 0) {
-					/* symbol for space - U+2420 */
-					/* symbol for interpunct - U+00B7 */
-					fputs("\xc2\xb7", fp);
-					s += w;
-				}
-				fputs(A_RESET, fp);
-				return len;
-			}
-			break;
-		case fyewt_plain_scalar:
-			color = A_WHITE;
-			break;
-		case fyewt_single_quoted_scalar:
-		case fyewt_double_quoted_scalar:
-			color = A_YELLOW;
-			break;
-		case fyewt_literal_scalar:
-		case fyewt_folded_scalar:
-			color = A_YELLOW;
-			break;
-		case fyewt_anchor:
-		case fyewt_tag:
-		case fyewt_alias:
-			color = A_BRIGHT_GREEN;
-			break;
-		case fyewt_linebreak:
-			if (du->visible) {
-				fputs(A_GREEN, fp);
-				while (s < e && (w = utf8_width_by_first_octet(((uint8_t)*s))) > 0) {
-					/* symbol for space - ^M */
-					/* fprintf(fp, "^M\n"); */
-					/* down arrow - U+2193 */
-					fputs("\xe2\x86\x93\n", fp);
-					s += w;
-				}
-				fputs(A_RESET, fp);
-				return len;
-			}
-			color = NULL;
-			break;
-		case fyewt_terminating_zero:
-			color = NULL;
-			break;
-		case fyewt_plain_scalar_key:
-		case fyewt_single_quoted_scalar_key:
-		case fyewt_double_quoted_scalar_key:
-			color = A_BRIGHT_CYAN;
-			break;
-		case fyewt_comment:
-			color = A_BRIGHT_BLUE;
-			break;
-		}
-	}
-
-	/* don't output the terminating zero */
-	if (type == fyewt_terminating_zero)
-		return len;
-
-	if (color)
-		fputs(color, fp);
-
-	ret = fwrite(str, 1, len, fp);
-
-	if (color)
-		fputs(A_RESET, fp);
-
-	return ret;
-}
-
 void print_escaped(const char *str, size_t length)
 {
 	const uint8_t *p;
@@ -735,6 +589,25 @@ err_out:
 	fprintf(stderr, "escape input error\n");
 	abort();
 }
+
+/* ANSI colors and escapes */
+#define A_RESET			"\x1b[0m"
+#define A_BLACK			"\x1b[30m"
+#define A_RED			"\x1b[31m"
+#define A_GREEN			"\x1b[32m"
+#define A_YELLOW		"\x1b[33m"
+#define A_BLUE			"\x1b[34m"
+#define A_MAGENTA		"\x1b[35m"
+#define A_CYAN			"\x1b[36m"
+#define A_LIGHT_GRAY		"\x1b[37m"	/* dark white is gray */
+#define A_GRAY			"\x1b[1;30m"
+#define A_BRIGHT_RED		"\x1b[1;31m"
+#define A_BRIGHT_GREEN		"\x1b[1;32m"
+#define A_BRIGHT_YELLOW		"\x1b[1;33m"
+#define A_BRIGHT_BLUE		"\x1b[1;34m"
+#define A_BRIGHT_MAGENTA	"\x1b[1;35m"
+#define A_BRIGHT_CYAN		"\x1b[1;36m"
+#define A_WHITE			"\x1b[1;37m"
 
 void dump_token_comments(struct fy_token *fyt, bool colorize, const char *banner)
 {
@@ -1893,7 +1766,7 @@ int main(int argc, char *argv[])
 			(PREFER_RECURSIVE_DEFAULT	 ? FYPCF_PREFER_RECURSIVE : 0) |
 			(YPATH_ALIASES_DEFAULT           ? FYPCF_YPATH_ALIASES : 0),
 	};
-	struct fy_emitter_cfg emit_cfg;
+	struct fy_emitter_xcfg emit_xcfg;
 	struct fy_parser *fyp = NULL;
 	struct fy_emitter *fye = NULL;
 	int rc, exitcode = EXIT_FAILURE, opt, lidx, i, j, step = 1;
@@ -1909,8 +1782,8 @@ int main(int argc, char *argv[])
 	const char *file = NULL, *trim = TRIM_DEFAULT;
 	char *tmp, *s, *progname;
 	struct fy_document *fyd, *fyd_join = NULL;
-	struct dump_userdata du;
 	enum fy_emitter_cfg_flags emit_flags = 0;
+	enum fy_emitter_xcfg_flags emit_xflags = 0;
 	struct fy_node *fyn, *fyn_emit, *fyn_to, *fyn_from;
 	int count_ins = 0;
 	struct fy_document **fyd_ins = NULL;
@@ -1981,17 +1854,18 @@ int main(int argc, char *argv[])
 	fy_diag_cfg_default(&dcfg);
 	/* XXX remember to modify this if you change COLOR_DEFAULT */
 
-	memset(&du, 0, sizeof(du));
-	du.fp = stdout;
-	du.colorize = isatty(fileno(stdout)) == 1;
-	du.visible = VISIBLE_DEFAULT;
-
 	emit_flags = (SORT_DEFAULT ? FYECF_SORT_KEYS : 0) |
 		     (COMMENT_DEFAULT ? FYECF_OUTPUT_COMMENTS : 0) |
 		     (STRIP_LABELS_DEFAULT ? FYECF_STRIP_LABELS : 0) |
 		     (STRIP_TAGS_DEFAULT ? FYECF_STRIP_TAGS : 0) |
 		     (STRIP_DOC_DEFAULT ? FYECF_STRIP_DOC : 0);
 	apply_mode_flags(MODE_DEFAULT, &emit_flags);
+
+	emit_xflags = (VISIBLE_DEFAULT ? FYEXCF_VISIBLE_WS : 0) |
+		      (!strcmp(COLOR_DEFAULT, "auto") ? FYEXCF_COLOR_AUTO :
+                       !strcmp(COLOR_DEFAULT, "on") ? FYEXCF_COLOR_FORCE :
+		       FYEXCF_COLOR_NONE) |
+		      FYEXCF_OUTPUT_STDOUT;
 
 	while ((opt = getopt_long_only(argc, argv,
 					"I:" "d:" "i:" "w:" "rsc" "C:" "m:" "V" "f:" "t:" "T:F:" "j:" "qhvl",
@@ -2082,14 +1956,17 @@ int main(int argc, char *argv[])
 			color = optarg;
 			if (!strcmp(color, "auto")) {
 				dcfg.colorize = isatty(fileno(stderr)) == 1;
-				du.colorize = isatty(fileno(stdout)) == 1;
+				emit_xflags &= ~(FYEXCF_COLOR_MASK << FYEXCF_COLOR_SHIFT);
+				emit_xflags |= FYEXCF_COLOR_AUTO;
 			}
 			else if (!strcmp(color, "yes") || !strcmp(color, "1") || !strcmp(color, "on")) {
 				dcfg.colorize = true;
-				du.colorize = true;
+				emit_xflags &= ~(FYEXCF_COLOR_MASK << FYEXCF_COLOR_SHIFT);
+				emit_xflags |= FYEXCF_COLOR_FORCE;
 			} else if (!strcmp(color, "no") || !strcmp(color, "0") || !strcmp(color, "off")) {
 				dcfg.colorize = false;
-				du.colorize = false;
+				emit_xflags &= ~(FYEXCF_COLOR_MASK << FYEXCF_COLOR_SHIFT);
+				emit_xflags |= FYEXCF_COLOR_NONE;
 			} else {
 				fprintf(stderr, "bad color option %s\n", optarg);
 				goto err_out_usage;
@@ -2103,7 +1980,7 @@ int main(int argc, char *argv[])
 			}
 			break;
 		case 'V':
-			du.visible = true;
+			emit_xflags |= FYEXCF_VISIBLE_WS;
 			break;
 		case 'l':
 			follow = true;
@@ -2371,18 +2248,18 @@ int main(int argc, char *argv[])
 
 	if (tool_mode != OPT_TESTSUITE) {
 
-		memset(&emit_cfg, 0, sizeof(emit_cfg));
-		emit_cfg.flags = emit_flags |
-				FYECF_INDENT(indent) | FYECF_WIDTH(width);
+		memset(&emit_xcfg, 0, sizeof(emit_xcfg));
+		emit_xcfg.cfg.flags = emit_flags |
+				FYECF_INDENT(indent) | FYECF_WIDTH(width) |
+				FYECF_EXTENDED_CFG;	// use extended config
 
 		/* unconditionally turn on document start markers for ypath */
 		if (tool_mode == OPT_YPATH)
-			emit_cfg.flags |= FYECF_DOC_START_MARK_ON;
+			emit_xcfg.cfg.flags |= FYECF_DOC_START_MARK_ON;
 
-		emit_cfg.output = do_output;
-		emit_cfg.userdata = &du;
+		emit_xcfg.xflags = emit_xflags;
 
-		fye = fy_emitter_create(&emit_cfg);
+		fye = fy_emitter_create(&emit_xcfg.cfg);
 		if (!fye) {
 			fprintf(stderr, "fy_emitter_create() failed\n");
 			goto cleanup;
@@ -2411,7 +2288,7 @@ int main(int argc, char *argv[])
 		if (!document_event_stream) {
 			/* regular test suite */
 			while ((fyev = fy_parser_parse(fyp)) != NULL) {
-				dump_testsuite_event(fyp, fyev, du.colorize, iter,
+				dump_testsuite_event(fyp, fyev, dcfg.colorize, iter,
 						     disable_flow_markers, tsv_format);
 				fy_parser_event_free(fyp, fyev);
 			}
@@ -2426,7 +2303,7 @@ int main(int argc, char *argv[])
 				fprintf(stderr, "failed to create document iterator's stream start event\n");
 				goto cleanup;
 			}
-			dump_testsuite_event(fyp, fyev, du.colorize, iter,
+			dump_testsuite_event(fyp, fyev, dcfg.colorize, iter,
 					     disable_flow_markers, tsv_format);
 			fy_document_iterator_event_free(fydi, fyev);
 
@@ -2438,12 +2315,12 @@ int main(int argc, char *argv[])
 					fprintf(stderr, "failed to create document iterator's document start event\n");
 					goto cleanup;
 				}
-				dump_testsuite_event(fyp, fyev, du.colorize, iter,
+				dump_testsuite_event(fyp, fyev, dcfg.colorize, iter,
 						     disable_flow_markers, tsv_format);
 				fy_document_iterator_event_free(fydi, fyev);
 
 				while ((fyev = fy_document_iterator_body_next(fydi)) != NULL) {
-					dump_testsuite_event(fyp, fyev, du.colorize, iter,
+					dump_testsuite_event(fyp, fyev, dcfg.colorize, iter,
 							     disable_flow_markers, tsv_format);
 					fy_document_iterator_event_free(fydi, fyev);
 				}
@@ -2453,7 +2330,7 @@ int main(int argc, char *argv[])
 					fprintf(stderr, "failed to create document iterator's stream document end\n");
 					goto cleanup;
 				}
-				dump_testsuite_event(fyp, fyev, du.colorize, iter,
+				dump_testsuite_event(fyp, fyev, dcfg.colorize, iter,
 						     disable_flow_markers, tsv_format);
 				fy_document_iterator_event_free(fydi, fyev);
 
@@ -2468,7 +2345,7 @@ int main(int argc, char *argv[])
 				fprintf(stderr, "failed to create document iterator's stream end event\n");
 				goto cleanup;
 			}
-			dump_testsuite_event(fyp, fyev, du.colorize, iter,
+			dump_testsuite_event(fyp, fyev, dcfg.colorize, iter,
 					     disable_flow_markers, tsv_format);
 			fy_document_iterator_event_free(fydi, fyev);
 
@@ -2815,12 +2692,12 @@ int main(int argc, char *argv[])
 
 			if (tool_mode == OPT_SCAN_DUMP) {
 				while ((fyt = fy_scan(fyp)) != NULL) {
-					dump_scan_token(fyp, fyt, du.colorize);
+					dump_scan_token(fyp, fyt, dcfg.colorize);
 					fy_scan_token_free(fyp, fyt);
 				}
 			} else {
 				while ((fyev = fy_parser_parse(fyp)) != NULL) {
-					dump_parse_event(fyp, fyev, du.colorize);
+					dump_parse_event(fyp, fyev, dcfg.colorize);
 					fy_parser_event_free(fyp, fyev);
 				}
 			}
