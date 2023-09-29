@@ -35,6 +35,8 @@
 #include "fy-utils.h"
 
 #include "fy-generic.h"
+#include "fy-generic-decoder.h"
+#include "fy-generic-encoder.h"
 
 #include "fy-allocator.h"
 #include "fy-allocator-linear.h"
@@ -262,6 +264,7 @@ static void dump_allocator_info(struct fy_allocator *a, fy_alloc_tag tag)
 #endif
 
 struct generic_options {
+	const char *mode;
 	const char *allocator;
 	const char *parent_allocator;
 	size_t size;
@@ -270,14 +273,269 @@ struct generic_options {
 };
 
 const struct generic_options default_generic_options = {
+	.mode			= "parse-generic",
 	.allocator		= "mremap",
-	.parent_allocator	= "mremap",
+	.parent_allocator	= NULL,
 	.size			= 8192,
 	.resolve		= false,
 	.null_output		= false,
 };
 
+static size_t estimate_max_file_size(int argc, char **argv)
+{
+	struct stat sb;
+	size_t size;
+	int i, rc;
+
+	if (argc <= 0)
+		return 0;	/* can't estimate without file (probably stdin) */
+
+	size = 0;
+	for (i = 0; i < argc; i++) {
+		rc = stat(argv[i], &sb);
+		if (rc)
+			continue;
+
+		/* only do it for regular files */
+		if ((sb.st_mode & S_IFMT) != S_IFREG)
+			continue;
+
+		if ((size_t)sb.st_size > size)
+			size = sb.st_size;
+	}
+
+	return size;
+}
+
+struct fy_allocator *create_allocator(const struct generic_options *opt, const char *name, const char *parent_name, size_t alloc_size, struct fy_allocator **parent_allocator)
+{
+	struct fy_allocator *allocator;
+
+	if (parent_allocator)
+		*parent_allocator = NULL;
+
+	if (!strcmp(name, "linear")) {
+		struct fy_linear_setup_data linear_sd;
+
+		memset(&linear_sd, 0, sizeof(linear_sd));
+		linear_sd.size = alloc_size;
+		return fy_allocator_create("linear", &linear_sd);
+	}
+
+	if (!strcmp(name, "malloc"))
+		return fy_allocator_create("malloc", NULL);
+
+	if (!strcmp(name, "auto")) {
+		struct fy_auto_setup_data auto_sd;
+
+		memset(&auto_sd, 0, sizeof(auto_sd));
+		auto_sd.scenario = FYAST_BALANCED;
+		auto_sd.estimated_max_size = alloc_size ? alloc_size : (16 << 20);
+		return fy_allocator_create("auto", &auto_sd);
+	}
+
+	if (!strcmp(name, "mremap")) {
+		struct fy_mremap_setup_data mremap_sd;
+
+		memset(&mremap_sd, 0, sizeof(mremap_sd));
+		mremap_sd.big_alloc_threshold = SIZE_MAX;
+		mremap_sd.empty_threshold = 64;
+		mremap_sd.grow_ratio = 1.5;
+		mremap_sd.balloon_ratio = 8.0;
+		mremap_sd.arena_type = FYMRAT_MMAP;
+		mremap_sd.minimum_arena_size = alloc_size ? alloc_size : (16 << 20);
+		return fy_allocator_create("mremap", &mremap_sd);
+	}
+
+	if (!strcmp(name, "dedup")) {
+		struct fy_dedup_setup_data dedup_sd;
+
+		if (!parent_allocator)
+			return NULL;
+
+		memset(&dedup_sd, 0, sizeof(dedup_sd));
+		dedup_sd.bloom_filter_bits = 0;	/* use default */
+		dedup_sd.bucket_count_bits = 0;
+		dedup_sd.estimated_content_size = alloc_size ? alloc_size : (16 << 20);
+		dedup_sd.parent_allocator = create_allocator(opt, parent_name, NULL, alloc_size, NULL);
+		if (dedup_sd.parent_allocator) {
+			dedup_sd.estimated_content_size = alloc_size ? alloc_size : (16 << 20);
+			allocator = fy_allocator_create("dedup", &dedup_sd);
+			if (allocator) {
+				*parent_allocator = dedup_sd.parent_allocator;
+				return allocator;
+			}
+			fy_allocator_destroy(dedup_sd.parent_allocator);
+		}
+		return NULL;
+	}
+
+	return NULL;
+}
+
+#if 0
+static void dump_allocator_info(struct fy_allocator *a, fy_alloc_tag tag)
+{
+	struct fy_allocator_info *info;
+	struct fy_allocator_tag_info *tag_info;
+	struct fy_allocator_arena_info *arena_info;
+	unsigned int i, j;
+
+	info = fy_allocator_get_info(a, tag);
+	if (!info) {
+		fprintf(stderr, "fy_allocator_get_info() failed\n");
+		return;
+	}
+
+	fprintf(stderr, "Allocator %p: free=%zu used=%zu total=%zu\n", a,
+			info->free, info->used, info->total);
+	for (i = 0; i < info->num_tag_infos; i++) {
+		tag_info = &info->tag_infos[i];
+
+		fprintf(stderr, "\ttag #%d: free=%zu used=%zu total=%zu\n", i,
+				tag_info->free, tag_info->used, tag_info->total);
+		for (j = 0; j < tag_info->num_arena_infos; j++) {
+			arena_info = &tag_info->arena_infos[j];
+
+			fprintf(stderr, "\t\tarena #%d: free=%zu used=%zu total=%zu data=%p-0x%zx\n", j,
+					arena_info->free, arena_info->used, arena_info->total,
+					arena_info->data, arena_info->size);
+		}
+	}
+
+	free(info);
+}
+#endif
+
 static int do_parse_generic(const struct generic_options *opt, int argc, char **argv)
+{
+	struct fy_allocator *allocator = NULL, *parent_allocator = NULL;
+	struct fy_generic_builder *gb = NULL;
+	struct fy_generic_decoder *fygd = NULL;
+	struct fy_generic_encoder *fyge = NULL;
+	fy_generic vdir;
+	struct fy_parse_cfg parse_cfg;
+	struct fy_parser *fyp = NULL;
+	struct fy_emitter_cfg emit_cfg;
+	struct fy_emitter *fye = NULL;
+	const char *filename;
+	int i, rc, num_ok, num_inputs, ret = -1;
+	size_t max_filesize, alloc_size;
+
+	max_filesize = estimate_max_file_size(argc, argv);
+
+	if (max_filesize == 0)
+		max_filesize = 1 << 20;	/* go with 1M */
+
+	/* align to a page */
+	alloc_size = fy_size_t_align(max_filesize, 4096);
+
+	/* balloon by 4 (heuristic) */
+	alloc_size *= 4;
+
+	allocator = create_allocator(opt, opt->allocator, opt->parent_allocator, alloc_size, &parent_allocator);
+	if (!allocator) {
+		fprintf(stderr, "create_allocator() failed\n");
+		goto err_out;
+	}
+
+	gb = fy_generic_builder_create(allocator, FY_ALLOC_TAG_NONE);
+	if (!gb) {
+		fprintf(stderr, "fy_generic_builder_create() failed\n");
+		goto err_out;
+	}
+	assert(gb);
+
+	memset(&parse_cfg, 0, sizeof(parse_cfg));
+	parse_cfg.flags = FYPCF_DEFAULT_PARSE |
+			  (opt->resolve ? FYPCF_RESOLVE_DOCUMENT : 0);
+
+	fyp = fy_parser_create(&parse_cfg);
+	if (!fyp) {
+		fprintf(stderr, "fy_parser_create() failed\n");
+		goto err_out;
+	}
+
+	if (!opt->null_output) {
+		memset(&emit_cfg, 0, sizeof(emit_cfg));
+		fye = fy_emitter_create(&emit_cfg);
+		if (!fye) {
+			fprintf(stderr, "fy_emitter_create() failed\n");
+			goto err_out;
+		}
+
+		fyge = fy_generic_encoder_create(fye, false);
+		if (!fyge) {
+			fprintf(stderr, "fy_generic_encoder_create() failed\n");
+			goto err_out;
+		}
+	}
+
+	fygd = fy_generic_decoder_create(fyp, gb, false);
+	if (!fygd) {
+		fprintf(stderr, "fy_generic_decoder_create() failed\n");
+		goto err_out;
+	}
+
+	i = 0;
+	num_ok = 0;
+	num_inputs = argc;
+	if (num_inputs <= 0)
+		num_inputs = 1;
+	do {
+		filename = i < argc ? argv[i] : "-";
+
+		if (!strcmp(filename, "-"))
+			rc = fy_parser_set_input_fp(fyp, "stdin", stdin);
+		else
+			rc = fy_parser_set_input_file(fyp, filename);
+		if (rc) {
+			fprintf(stderr, "Unable to set next input: \"%s\"\n", filename);
+			goto err_out;
+		}
+
+		fy_generic_builder_reset(gb);
+
+		vdir = fy_generic_decoder_parse_all_documents(fygd);
+		if (vdir == fy_invalid) {
+			fprintf(stderr, "Error while processing: \"%s\"\n", filename);
+			fy_parser_reset(fyp);
+		} else {
+			if (!opt->null_output) {
+				rc = fy_generic_encoder_emit_all_documents(fyge, vdir);
+				if (rc) {
+					fprintf(stderr, "fy_generic_encoder_emit_all_documents() failed\n");
+					goto err_out;
+				}
+			}
+			num_ok++;
+		}
+
+	} while (++i < argc);
+
+	ret = num_ok == num_inputs ? 0 : -1;
+
+	if (!opt->null_output)
+		fy_generic_encoder_sync(fyge);
+
+out:
+	/* all handle NULL as NOP */
+	fy_generic_encoder_destroy(fyge);
+	fy_generic_decoder_destroy(fygd);
+	fy_generic_builder_destroy(gb);
+	fy_emitter_destroy(fye);
+	fy_parser_destroy(fyp);
+	fy_allocator_destroy(allocator);
+	fy_allocator_destroy(parent_allocator);
+
+	return ret;
+
+err_out:
+	ret = -1;
+	goto out;
+}
+
+static int do_parse_standard(const struct generic_options *opt, int argc, char **argv)
 {
 	struct fy_parse_cfg parse_cfg;
 	struct fy_parser *fyp = NULL;
@@ -324,18 +582,15 @@ static int do_parse_generic(const struct generic_options *opt, int argc, char **
 			goto err_out;
 		}
 
-		if (opt->null_output) {
-			while ((fyev = fy_parser_parse(fyp)) != NULL)
-				fy_parser_event_free(fyp, fyev);
-		} else {
-
-			while ((fyev = fy_parser_parse(fyp)) != NULL) {
+		while ((fyev = fy_parser_parse(fyp)) != NULL) {
+			if (!opt->null_output) {
 				rc = fy_emit_event_from_parser(fye, fyp, fyev);
 				if (rc) {
 					fprintf(stderr, "fy_emit_event_from_parser() failed\n");
 					goto err_out;
 				}
-			}
+			} else
+				fy_parser_event_free(fyp, fyev);
 		}
 
 		if (fy_parser_get_stream_error(fyp)) {
@@ -360,23 +615,94 @@ err_out:
 	goto out;
 }
 
+struct mode_info {
+	const char *name;
+	int (*exec)(const struct generic_options *opt, int argc, char **argv);
+};
+
+static const struct mode_info mode_table[] = {
+	{
+		.name = "parse-generic",
+		.exec = do_parse_generic,
+	}, {
+		.name = "parse-standard",
+		.exec = do_parse_standard,
+	}
+};
+
+static bool is_mode_valid(const char *mode)
+{
+	unsigned int i;
+
+	if (!mode)
+		return false;
+
+	for (i = 0; i < ARRAY_SIZE(mode_table); i++) {
+		if (!strcmp(mode, mode_table[i].name))
+			return true;
+	}
+
+	return false;
+}
+
+static char *get_modes(void)
+{
+	size_t size, len;
+	char *modes, *s;
+	unsigned int i;
+
+	size = 0;
+	for (i = 0; i < ARRAY_SIZE(mode_table); i++)
+		size += strlen(mode_table[i].name) + 1;
+
+	modes = malloc(size);
+	if (!modes)
+		return NULL;
+	
+	s = modes;
+	for (i = 0; i < ARRAY_SIZE(mode_table); i++) {
+		len = strlen(mode_table[i].name);
+		memcpy(s, mode_table[i].name, len);
+		s += len;
+		*s++ = ' ';
+	}
+	if (s > modes && s[-1] == ' ')
+		s[-1] = '\0';
+	return modes;
+}
+
+static int mode_exec(const struct generic_options *opt, int argc, char **argv)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(mode_table); i++) {
+		if (!strcmp(opt->mode, mode_table[i].name))
+			return mode_table[i].exec(opt, argc, argv);
+	}
+	return -1;
+}
+
 static struct option lopts[] = {
 	{"allocator",		required_argument,	0,	'a' },
 	{"parent-allocator",	required_argument,	0,	'p' },
 	{"size",		required_argument,	0,	's' },
 	{"resolve",		no_argument,		0,	'r' },
 	{"null-output",		no_argument,		0,	'n' },
+	{"mode",		required_argument,	0,	'm' },
 	{"help",		no_argument,		0,	'h' },
 	{0,			0,              	0,	 0  },
 };
 
 static void display_usage(FILE *fp, const char *progname)
 {
-	char *names;
+	char *names = NULL, *modes = NULL;
 	const char *s;
 
 	names = fy_allocator_get_names();
 	assert(names);
+
+	modes = get_modes();
+	assert(modes);
 
 	s = strrchr(progname, '/');
 	if (s != NULL)
@@ -389,10 +715,12 @@ static void display_usage(FILE *fp, const char *progname)
 	fprintf(fp, "\t--size <n>, -s <n>            : Size for allocators that require one\n");
 	fprintf(fp, "\t--resolve, -r                 : Perform anchor and merge key resolution\n");
 	fprintf(fp, "\t--null-output, -n             : No emitting, just parsing\n");
+	fprintf(fp, "\t--mode <m>, -m <m>            : Mode, one of: %s\n", modes);
 	fprintf(fp, "\t--help, -h                    : Display help message\n");
 	fprintf(fp, "\n");
 
 	free(names);
+	free(modes);
 }
 
 int main(int argc, char *argv[])
@@ -403,7 +731,7 @@ int main(int argc, char *argv[])
 
 	gopt = default_generic_options;
 
-	while ((opt = getopt_long_only(argc, argv, "a:p:s:rnh", lopts, &lidx)) != -1) {
+	while ((opt = getopt_long_only(argc, argv, "a:p:s:rnm:h", lopts, &lidx)) != -1) {
 		switch (opt) {
 		case 'a':
 		case 'p':
@@ -425,6 +753,13 @@ int main(int argc, char *argv[])
 		case 'n':
 			gopt.null_output = true;
 			break;
+		case 'm':
+			if (!is_mode_valid(optarg)) {
+				fprintf(stderr, "Error: illegal mode \"%s\"\n", optarg);
+				goto err_out_usage;
+			}
+			gopt.mode = optarg;
+			break;
 		case 'h' :
 			display_usage(stdout, argv[0]);
 			goto ok_out;
@@ -433,7 +768,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	rc = do_parse_generic(&gopt, argc - optind, argv + optind);
+	rc = mode_exec(&gopt, argc - optind, argv + optind);
 	if (rc)
 		goto err_out;
 

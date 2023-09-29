@@ -4868,7 +4868,7 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator, bool null_out
 	const void *gsetupdata = NULL;
 	bool registered_allocator = false;
 	struct fy_generic_builder *gb;
-	fy_generic vdir;
+	fy_generic vdir = fy_invalid;
 	int rc __FY_DEBUG_UNUSED__;
 	size_t alloc_size;
 	ssize_t estimated_size;
@@ -4890,7 +4890,6 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator, bool null_out
 		fprintf(stderr, "Bad input\n");
 		return -1;
 	}
-
 
 	printf("estimated_size=%zd\n", estimated_size);
 
