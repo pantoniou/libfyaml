@@ -6654,6 +6654,7 @@ static void fy_parse_input_reset(struct fy_parser *fyp)
 		fyin = fy_input_next(&fyp->queued_inputs, fyi);
 		fy_input_unref(fyi);
 	}
+	fy_input_list_init(&fyp->queued_inputs);
 
 	fy_parse_parse_state_log_list_recycle_all(fyp, &fyp->state_stack);
 
