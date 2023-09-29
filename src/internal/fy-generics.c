@@ -284,25 +284,25 @@ struct dump_userdata {
 
 static int do_parse_generic(const struct generic_options *opt, int argc, char **argv)
 {
-#if 0
 	struct fy_parse_cfg parse_cfg;
 	struct fy_parser *fyp = NULL;
 	struct fy_emitter_cfg emit_cfg;
 	struct fy_emitter *fye = NULL;
+	struct fy_event *fyev;
 	const char *filename;
 	int i, rc;
 
 	memset(&parse_cfg, 0, sizeof(parse_cfg));
-	parse_cfg.flags = FYPCF_DEFAULT_PARSE;
+	parse_cfg.flags = FYPCF_DEFAULT_PARSE |
+			  (opt->resolve ? FYPCF_RESOLVE_DOCUMENT : 0);
 
 	fyp = fy_parser_create(&parse_cfg);
 	assert(fyp);
 
 	if (!opt->null_output) {
 		memset(&emit_cfg, 0, sizeof(emit_cfg));
-		emit_cfg.flags = 0;
-
-		fye = fy_emitter_c
+		fye = fy_emitter_create(&emit_cfg);
+		assert(fye);
 	}
 
 	i = 0;
@@ -330,11 +330,9 @@ static int do_parse_generic(const struct generic_options *opt, int argc, char **
 
 	} while (++i < argc);
 
-	if (!opt->null_output)
-		fy_emitter_destroy(fye);
-
+	/* can handle NULL */
+	fy_emitter_destroy(fye);
 	fy_parser_destroy(fyp);
-#endif
 
 	return 0;
 }
@@ -411,9 +409,6 @@ int main(int argc, char *argv[])
 			goto err_out_usage;
 		}
 	}
-
-	argc -= optind;
-	argv += optind;
 
 	rc = do_parse_generic(&gopt, argc - optind, argv + optind);
 	if (rc) {
