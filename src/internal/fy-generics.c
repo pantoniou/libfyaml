@@ -277,11 +277,6 @@ const struct generic_options default_generic_options = {
 	.null_output		= false,
 };
 
-struct dump_userdata {
-	FILE *fp;
-	bool colorize;
-};
-
 static int do_parse_generic(const struct generic_options *opt, int argc, char **argv)
 {
 	struct fy_parse_cfg parse_cfg;
@@ -290,51 +285,79 @@ static int do_parse_generic(const struct generic_options *opt, int argc, char **
 	struct fy_emitter *fye = NULL;
 	struct fy_event *fyev;
 	const char *filename;
-	int i, rc;
+	int i, rc, num_ok, num_inputs, ret = -1;
 
 	memset(&parse_cfg, 0, sizeof(parse_cfg));
 	parse_cfg.flags = FYPCF_DEFAULT_PARSE |
 			  (opt->resolve ? FYPCF_RESOLVE_DOCUMENT : 0);
 
 	fyp = fy_parser_create(&parse_cfg);
+	if (!fyp) {
+		fprintf(stderr, "fy_parser_create() failed\n");
+		goto err_out;
+	}
 	assert(fyp);
 
 	if (!opt->null_output) {
 		memset(&emit_cfg, 0, sizeof(emit_cfg));
 		fye = fy_emitter_create(&emit_cfg);
-		assert(fye);
+		if (!fye) {
+			fprintf(stderr, "fy_emitter_create() failed\n");
+			goto err_out;
+		}
 	}
 
 	i = 0;
+	num_ok = 0;
+	num_inputs = argc;
+	if (num_inputs <= 0)
+		num_inputs = 1;
 	do {
 		filename = i < argc ? argv[i] : "-";
 
-		if (!strcmp(filename, "-")) {
+		if (!strcmp(filename, "-"))
 			rc = fy_parser_set_input_fp(fyp, "stdin", stdin);
-			assert(!rc);
-		} else {
+		else
 			rc = fy_parser_set_input_file(fyp, filename);
-			assert(!rc);
+		if (rc) {
+			fprintf(stderr, "Unable to set next input: \"%s\"\n", filename);
+			goto err_out;
 		}
 
-		while ((fyev = fy_parser_parse(fyp)) != NULL) {
-			if (!opt->null_output) {
-				rc = fy_emit_event_from_parser(fye, fyp, fyev);
-				assert(!rc);
-			} else {
+		if (opt->null_output) {
+			while ((fyev = fy_parser_parse(fyp)) != NULL)
 				fy_parser_event_free(fyp, fyev);
+		} else {
+
+			while ((fyev = fy_parser_parse(fyp)) != NULL) {
+				rc = fy_emit_event_from_parser(fye, fyp, fyev);
+				if (rc) {
+					fprintf(stderr, "fy_emit_event_from_parser() failed\n");
+					goto err_out;
+				}
 			}
 		}
 
-		assert(!fy_parser_get_stream_error(fyp));
+		if (fy_parser_get_stream_error(fyp)) {
+			fprintf(stderr, "Error while processing: \"%s\"\n", filename);
+			fy_parser_reset(fyp);
+		} else
+			num_ok++;
 
 	} while (++i < argc);
 
+	ret = num_ok == num_inputs ? 0 : -1;
+
+out:
 	/* can handle NULL */
 	fy_emitter_destroy(fye);
 	fy_parser_destroy(fyp);
 
-	return 0;
+	return ret;
+
+err_out:
+	ret = -1;
+	goto out;
 }
 
 static struct option lopts[] = {
@@ -411,10 +434,8 @@ int main(int argc, char *argv[])
 	}
 
 	rc = do_parse_generic(&gopt, argc - optind, argv + optind);
-	if (rc) {
-		fprintf(stderr, "Error: do_parse_generic() failed\n");
+	if (rc)
 		goto err_out;
-	}
 
 ok_out:
 	exitcode = EXIT_SUCCESS;
