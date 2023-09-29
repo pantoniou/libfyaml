@@ -6879,8 +6879,6 @@ err_out_rc:
 
 int fy_parser_reset(struct fy_parser *fyp)
 {
-	int rc;
-
 	if (!fyp)
 		return -1;
 
@@ -6901,13 +6899,29 @@ int fy_parser_reset(struct fy_parser *fyp)
 	assert(fyp->diag);
 	fyp->diag->on_error = false;
 
-	rc = fy_reset_document_state(fyp);
-	fyp_error_check(fyp, !rc, err_out_rc,
-			"fy_parse_input_reset() failed");
+	fy_document_state_unref(fyp->current_document_state);
+	fyp->current_document_state = NULL;
+
+	fy_document_state_unref(fyp->default_document_state);
+	fyp->default_document_state = NULL;
+
+	fy_parse_streaming_aliases_reset(fyp);
+
+	fy_input_unref(fyp->last_event_handle.fyi);
+	fy_atom_reset(&fyp->last_event_handle);
+
+	fy_parse_indent_list_recycle_all(fyp, &fyp->indent_stack);
+	fy_parse_simple_key_list_recycle_all(fyp, &fyp->simple_keys);
+	fy_token_list_unref_all(&fyp->queued_tokens);
+
+	fy_parse_parse_state_log_list_recycle_all(fyp, &fyp->state_stack);
+	fy_parse_flow_list_recycle_all(fyp, &fyp->flow_stack);
+	fy_parse_streaming_alias_list_recycle_all(fyp, &fyp->streaming_aliases);
+
+	fy_token_unref_rl(fyp->recycled_token_list, fyp->stream_end_token);
+	fyp->stream_end_token = NULL;
 
 	return 0;
-err_out_rc:
-	return rc;
 }
 
 struct fy_event *fy_parser_parse(struct fy_parser *fyp)

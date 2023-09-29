@@ -28,6 +28,8 @@ static FILE *fy_emitter_get_output_fp(struct fy_emitter *fye);
 static int fy_emitter_get_output_fd(struct fy_emitter *fye);
 static int fy_emitter_null_output(struct fy_emitter *fye, enum fy_emitter_write_type type, const char *str, int len, void *userdata);
 
+void fy_emit_save_ctx_cleanup(struct fy_emitter *emit, struct fy_emit_save_ctx *sc);
+
 static inline struct fy_token_list *token_recycle_list(struct fy_emitter *emit, struct fy_parser *fyp)
 {
 	if (fyp && fyp->recycled_token_list)
@@ -1793,7 +1795,7 @@ int fy_emit_common_document_start(struct fy_emitter *emit,
 	if (!emit || !fyds || emit->fyds)
 		return -1;
 
-	emit->fyds = fyds;
+	emit->fyds = fy_document_state_ref(fyds);
 
 	vd = ((vd_flags == FYECF_VERSION_DIR_AUTO && fyds->version_explicit) ||
 	       vd_flags == FYECF_VERSION_DIR_ON) &&
@@ -1947,6 +1949,7 @@ int fy_emit_common_document_end(struct fy_emitter *emit, bool override_state, bo
 	emit->flags |= FYEF_HAD_DOCUMENT_OUTPUT;
 
 	/* stop our association with the document */
+	fy_document_state_unref(emit->fyds);
 	emit->fyds = NULL;
 
 	return 0;
@@ -1986,6 +1989,7 @@ int fy_emit_common_explicit_document_end(struct fy_emitter *emit)
 	emit->flags |= FYEF_HAD_DOCUMENT_OUTPUT;
 
 	/* stop our association with the document */
+	fy_document_state_unref(emit->fyds);
 	emit->fyds = NULL;
 
 	return 0;
@@ -2025,8 +2029,11 @@ void fy_emit_reset(struct fy_emitter *emit, bool reset_events)
 	/* streaming mode flags */
 	emit->s_flags = DDNF_ROOT;
 
+	fy_emit_save_ctx_cleanup(emit, &emit->s_sc);
+	while (emit->sc_stack_top > 0)
+		fy_emit_save_ctx_cleanup(emit, &emit->sc_stack[--emit->sc_stack_top]);
+
 	emit->state_stack_top = 0;
-	emit->sc_stack_top = 0;
 
 	/* and release any queued events */
 	if (reset_events) {
@@ -2124,7 +2131,9 @@ void fy_emit_save_ctx_cleanup(struct fy_emitter *emit, struct fy_emit_save_ctx *
 {
 	sc = &emit->s_sc;
 	fy_token_unref_rl(emit->recycled_token_list, sc->fyt_last_key);
+	sc->fyt_last_key = NULL;
 	fy_token_unref_rl(emit->recycled_token_list, sc->fyt_last_value);
+	sc->fyt_last_value = NULL;
 	memset(sc, 0, sizeof(*sc));
 }
 
@@ -2147,8 +2156,8 @@ void fy_emit_cleanup(struct fy_emitter *emit)
 	while ((fyep = fy_eventp_list_pop(&emit->recycled_eventp)) != NULL)
 		fy_eventp_free(fyep);
 
-	if (!emit->fyd && emit->fyds)
-		fy_document_state_unref(emit->fyds);
+	fy_document_state_unref(emit->fyds);
+	emit->fyds = NULL;
 
 	fy_emit_accum_cleanup(&emit->ea);
 
@@ -3072,6 +3081,9 @@ static int fy_emit_handle_stream_start(struct fy_emitter *emit, struct fy_parser
 		return -1;
 	}
 
+	fy_document_state_unref(emit->fyds);
+	emit->fyds = NULL;
+
 	fy_emit_reset(emit, false);
 
 	fy_emit_goto_state(emit, FYES_FIRST_DOCUMENT_START);
@@ -3097,7 +3109,7 @@ static int fy_emit_handle_document_start(struct fy_emitter *emit, struct fy_pars
 
 	/* transfer ownership to the emitter */
 	fyds = fye->document_start.document_state;
-	fye->document_start.document_state = NULL;
+	// fye->document_start.document_state = NULL;
 
 	/* prepare (i.e. adapt to the document state) */
 	fy_emit_prepare_document_state(emit, fyds);
@@ -3111,7 +3123,6 @@ static int fy_emit_handle_document_start(struct fy_emitter *emit, struct fy_pars
 
 static int fy_emit_handle_document_end(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_eventp *fyep)
 {
-	struct fy_document_state *fyds;
 	struct fy_event *fye = &fyep->e;
 	int ret;
 
@@ -3120,13 +3131,9 @@ static int fy_emit_handle_document_end(struct fy_emitter *emit, struct fy_parser
 		return -1;
 	}
 
-	fyds = emit->fyds;
-
 	ret = fy_emit_common_document_end(emit, true, fye->document_end.implicit);
 	if (ret)
 		return ret;
-
-	fy_document_state_unref(fyds);
 
 	fy_emit_reset(emit, false);
 	fy_emit_goto_state(emit, FYES_DOCUMENT_START);
@@ -3241,8 +3248,8 @@ static int fy_emit_handle_mapping_key(struct fy_emitter *emit, struct fy_parser 
 	bool simple_key;
 
 	fy_emit_token_unref(emit, fyp, sc->fyt_last_key);
-	fy_emit_token_unref(emit, fyp, sc->fyt_last_value);
 	sc->fyt_last_key = NULL;
+	fy_emit_token_unref(emit, fyp, sc->fyt_last_value);
 	sc->fyt_last_value = NULL;
 
 	simple_key = false;
@@ -3393,6 +3400,15 @@ int fy_emit_event_from_parser(struct fy_emitter *emit, struct fy_parser *fyp, st
 	/* we're using the raw emitter interface, now mark first state */
 	if (emit->state == FYES_NONE)
 		emit->state = FYES_STREAM_START;
+
+	/* handle reset (parser error recovery) */
+	if (fye->type == FYET_STREAM_START && emit->state != FYES_STREAM_START) {
+		if (emit->column != 0)
+			fy_emit_putc(emit, fyewt_linebreak, '\n');
+		fy_emit_puts(emit, fyewt_document_indicator, "...");
+		fy_emit_putc(emit, fyewt_linebreak, '\n');
+		emit->state = FYES_STREAM_START;
+	}
 
 	fyep = container_of(fye, struct fy_eventp, e);
 
