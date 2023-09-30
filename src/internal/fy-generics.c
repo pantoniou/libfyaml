@@ -276,7 +276,7 @@ const struct generic_options default_generic_options = {
 	.mode			= "parse-generic",
 	.allocator		= "mremap",
 	.parent_allocator	= NULL,
-	.size			= 8192,
+	.size			= 0,
 	.resolve		= false,
 	.null_output		= false,
 };
@@ -422,16 +422,20 @@ static int do_parse_generic(const struct generic_options *opt, int argc, char **
 	int i, rc, num_ok, num_inputs, ret = -1;
 	size_t max_filesize, alloc_size;
 
-	max_filesize = estimate_max_file_size(argc, argv);
+	if (!opt->size) {
+		max_filesize = estimate_max_file_size(argc, argv);
 
-	if (max_filesize == 0)
-		max_filesize = 1 << 20;	/* go with 1M */
+		if (max_filesize == 0)
+			max_filesize = 1 << 20;	/* go with 1M */
 
-	/* align to a page */
-	alloc_size = fy_size_t_align(max_filesize, 4096);
+		/* align to a page */
+		alloc_size = fy_size_t_align(max_filesize, 4096);
 
-	/* balloon by 4 (heuristic) */
-	alloc_size *= 4;
+		/* balloon by 4 (heuristic) */
+		alloc_size *= 4;
+
+	} else
+		alloc_size = opt->size;
 
 	allocator = create_allocator(opt, opt->allocator, opt->parent_allocator, alloc_size, &parent_allocator);
 	if (!allocator) {
@@ -682,6 +686,53 @@ static int mode_exec(const struct generic_options *opt, int argc, char **argv)
 	return -1;
 }
 
+int parse_size_arg(const char *str, size_t *sizep)
+{
+	size_t size, prev_size;
+	char c, unit;
+
+	if (!str)
+		return -1;
+
+	size = 0;
+	while (isdigit(c = *str++)) {
+		prev_size = size;
+		size *= 10;
+		size += c - '0';
+		/* detect overflow */
+		if (size < prev_size)
+			return -1;
+	}
+	if (c) {
+		unit = toupper(c);
+		if (*str)	/* must end */
+			return -1;
+
+		prev_size = size;
+		switch (unit) {
+		case 'K':
+			size *= (size_t)1 << 10;
+			break;
+		case 'M':
+			size *= (size_t)1 << 20;
+			break;
+		case 'G':
+			size *= (size_t)1 << 30;
+			break;
+		case 'T':
+			size *= (size_t)1 << 40;
+			break;
+		default:
+			return -1;
+		}
+		if (size < prev_size)
+			return -1;
+	}
+
+	*sizep = size;
+	return 0;
+}
+
 static struct option lopts[] = {
 	{"allocator",		required_argument,	0,	'a' },
 	{"parent-allocator",	required_argument,	0,	'p' },
@@ -745,7 +796,11 @@ int main(int argc, char *argv[])
 				gopt.parent_allocator = optarg;
 			break;
 		case 's':
-			gopt.size = (size_t)atoi(optarg);
+			rc = parse_size_arg(optarg, &gopt.size);
+			if (rc) {
+				fprintf(stderr, "Error: illegal size \"%s\"\n", optarg);
+				goto err_out_usage;
+			}
 			break;
 		case 'r':
 			gopt.resolve = true;
