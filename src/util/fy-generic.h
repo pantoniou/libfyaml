@@ -942,6 +942,21 @@ fy_generic fy_generic_indirect_create(struct fy_generic_builder *gb, const struc
 
 fy_generic fy_generic_alias_create(struct fy_generic_builder *gb, fy_generic anchor);
 
+enum fy_generic_schema {
+	FYGS_YAML1_2_FAILSAFE,
+	FYGS_YAML1_2_CORE,
+	FYGS_YAML1_2_JSON,
+	FYGS_YAML1_1,
+	FYGS_JSON,
+};
+
+static inline bool fy_generic_schema_is_json(enum fy_generic_schema schema)
+{
+	return schema == FYGS_YAML1_2_JSON || schema == FYGS_JSON;
+}
+
+fy_generic fy_generic_create_scalar_from_text(struct fy_generic_builder *gb, enum fy_generic_schema schema, const char *text, size_t len, enum fy_generic_type force_type);
+
 int fy_generic_compare_out_of_place(fy_generic a, fy_generic b);
 
 static inline int fy_generic_compare(fy_generic a, fy_generic b)
@@ -1000,13 +1015,5 @@ static inline fy_generic fy_generic_builder_copy(struct fy_generic_builder *gb, 
 }
 
 fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d);
-
-enum fy_generic_schema {
-	FYGS_AUTO,
-	FYGS_FALLBACK,
-	FYGS_YAML1_1,
-	FYGS_YAML1_2,
-	FYGS_JSON,
-};
 
 #endif

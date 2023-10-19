@@ -85,8 +85,18 @@ int fy_encode_generic_int(struct fy_generic_encoder *fyge, const char *anchor, c
 
 int fy_encode_generic_float(struct fy_generic_encoder *fyge, const char *anchor, const char *tag, fy_generic v)
 {
-	return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, "%g",
-			fy_generic_get_float(v));
+	double f = fy_generic_get_float(v);
+
+	if (isfinite(f))
+		return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, "%g", f);
+
+	if (isnan(f))
+		return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, ".nan");
+
+	if (isinf(f) > 0)
+		return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, ".inf");
+
+	return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, "-.inf");
 }
 
 int fy_encode_generic_string(struct fy_generic_encoder *fyge, const char *anchor, const char *tag, fy_generic v)

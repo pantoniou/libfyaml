@@ -41,6 +41,11 @@ struct fy_generic_decoder {
 	struct fy_generic_anchor_list complete_anchors;
 	struct fy_generic_anchor_list collecting_anchors;
 	struct fy_generic_decoder_obj *gdo_root;
+	fy_generic vnull_tag;
+	fy_generic vbool_tag;
+	fy_generic vint_tag;
+	fy_generic vfloat_tag;
+	fy_generic vstr_tag;
 };
 
 enum fy_generic_decoder_object_type {

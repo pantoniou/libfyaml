@@ -12,6 +12,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdalign.h>
+#include <ctype.h>
+#include <errno.h>
 
 #include <stdio.h>
 
@@ -339,6 +341,223 @@ fy_generic fy_generic_alias_create(struct fy_generic_builder *gb, fy_generic anc
 	};
 
 	return fy_generic_indirect_create(gb, &gi);
+}
+
+fy_generic fy_generic_create_scalar_from_text(struct fy_generic_builder *gb, enum fy_generic_schema schema, const char *text, size_t len, enum fy_generic_type force_type)
+{
+	fy_generic v;
+	const char *s, *e;
+	const char *dec, *fract, *exp;
+	char sign, exp_sign;
+	size_t dec_count, fract_count, exp_count;
+	int base;
+	long long lv;
+	double dv;
+	char *t;
+	bool is_json;
+
+	v = fy_invalid;
+
+	/* force a string? okie-dokie */
+	if (force_type == FYGT_STRING)
+		goto do_string;
+
+	/* more than 4K it is definitely a string */
+	if (len > 4096)
+		goto do_string;
+
+	/* first stab at direct matches */
+	switch (schema) {
+	case FYGS_YAML1_2_FAILSAFE:
+		goto do_string;
+
+	case FYGS_YAML1_2_JSON:
+	case FYGS_JSON:
+		if (len == 4) {
+			if (!memcmp(text, "null", 4)) {
+				v = fy_null;
+				break;
+			}
+			if (!memcmp(text, "true", 4)) {
+				v = fy_true;
+				break;
+			}
+		} else if (len == 5) {
+			if (!memcmp(text, "false", 5)) {
+				v = fy_false;
+				break;
+			}
+		}
+		break;
+
+	case FYGS_YAML1_2_CORE:
+
+		if (len == 0 || (len == 1 && *text == '~')) {
+			v = fy_null;
+			break;
+		}
+
+		if (len == 4) {
+		    if (!memcmp(text, "null", 4) || !memcmp(text, "Null", 4) || !memcmp(text, "NULL", 4)) {
+			    v = fy_null;
+			    break;
+		    }
+		    if (!memcmp(text, "true", 4) || !memcmp(text, "True", 4) || !memcmp(text, "TRUE", 4)) {
+			    v = fy_true;
+			    break;
+		    }
+		    if (!memcmp(text, ".inf", 4) || !memcmp(text, ".Inf", 4) || !memcmp(text, ".INF", 4)) {
+				v = fy_generic_float_create(gb, INFINITY);
+				break;
+		    }
+		    if (!memcmp(text, ".nan", 4) || !memcmp(text, ".Nan", 4) || !memcmp(text, ".NAN", 4)) {
+				v = fy_generic_float_create(gb, NAN);
+				break;
+		    }
+		}
+		if (len == 5) {
+		    if (!memcmp(text, "false", 5) || !memcmp(text, "False", 5) || !memcmp(text, "FALSE", 5)) {
+			    v = fy_false;
+			    break;
+		    }
+		    if (!memcmp(text, "+.inf", 5) || !memcmp(text, "+.Inf", 5) || !memcmp(text, "+.INF", 5)) {
+				v = fy_generic_float_create(gb, INFINITY);
+				break;
+		    }
+		    if (!memcmp(text, "-.inf", 5) || !memcmp(text, "-.Inf", 5) || !memcmp(text, "-.INF", 5)) {
+				v = fy_generic_float_create(gb, -INFINITY);
+				break;
+		    }
+		}
+
+		break;
+
+	case FYGS_YAML1_1:
+		/* not yet */
+		goto do_string;
+
+	default:
+		break;
+	}
+
+	if (v != fy_invalid)
+		goto do_check_cast;
+
+	s = text;
+	e = s + len;
+
+	dec = fract = exp = NULL;
+	dec_count = fract_count = exp_count = 0;
+	sign = exp_sign = ' ';
+	lv = 0;
+	base = 10;
+
+	is_json = fy_generic_schema_is_json(schema);
+
+	/* skip over sign */
+	if (s < e && (*s == '-' || (!is_json && *s == '+')))
+		sign = *s++;
+
+	(void)sign;
+
+	dec = s;
+	if (s < e && *s == '0') {
+		s++;
+		if (!is_json) {
+			if (*s == 'x') {
+				base = 16;
+				s++;
+			} else if (*s == 'o') {
+				base = 8;
+				s++;
+			}
+		} else {
+			/* json does not allow a 0000... form */
+			if (*s == '0')
+				goto do_string;
+		}
+	}
+
+	/* consume digits */
+	if (base == 16) {
+		while (s < e && isxdigit(*s))
+			s++;
+	} else if (base == 10) {
+		while (s < e && isdigit(*s))
+			s++;
+	} else if (base == 8) {
+		while (s < e && (*s >= 0 && *s <= 7))
+			s++;
+	}
+	dec_count = s - dec;
+
+	/* extract the fractional part */
+	if (s < e && *s == '.') {
+		if (base != 10)
+			goto do_string;
+		fract = ++s;
+		while (s < e && isdigit(*s))
+			s++;
+		fract_count = s - fract;
+	}
+
+	/* extract the exponent part */ 
+	if (s < e && (*s == 'e' || *s == 'E')) {
+		if (base != 10)
+			goto do_string;
+		s++;
+		if (s < e && (*s == '+' || *s == '-'))
+			exp_sign = *s++;
+		exp = s;
+		while (s < e && isdigit(*s))
+			s++;
+		exp_count = s - exp;
+	}
+
+	/* not fully consumed? then just a string */
+	if (s < e)
+		goto do_string;
+
+	// fprintf(stderr, "\n base=%d sign=%c dec=%.*s fract=%.*s exp_sign=%c exp=%.*s\n",
+	//		base, sign, (int)dec_count, dec, (int)fract_count, fract, exp_sign, (int)exp_count, exp);
+
+	/* all schemas require decimal digits */
+	if (!dec || !dec_count)
+		goto do_string;
+
+	t = alloca(len + 1);
+	memcpy(t, text, len);
+	t[len] = '\0';
+
+	/* it is an integer */
+	if (!fract_count && !exp_count) {
+		errno = 0;
+		lv = strtoll(t, NULL, base);
+		if (errno == ERANGE)
+			goto do_string;
+
+		v = fy_generic_int_create(gb, lv);
+		goto do_check_cast;
+	} else {
+		errno = 0;
+		dv = strtod(t, NULL);
+		if (errno == ERANGE)
+			goto do_string;
+
+		v = fy_generic_float_create(gb, dv);
+		goto do_check_cast;
+	}
+
+do_string:
+	/* everything tried, just a string */
+	v = fy_generic_string_size_create(gb, text, len);
+
+do_check_cast:
+	if (force_type != FYGT_INVALID && fy_generic_get_type(v) != force_type) {
+		fprintf(stderr, "cast failed\n");
+		return fy_invalid;
+	}
+	return v;
 }
 
 int fy_generic_sequence_compare(fy_generic seqa, fy_generic seqb)
