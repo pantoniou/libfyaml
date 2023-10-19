@@ -346,12 +346,12 @@ fy_generic_decoder_object_add_item(struct fy_generic_decoder_obj *gdo, fy_generi
 static fy_generic
 fy_generic_decoder_create_scalar(struct fy_generic_decoder *gd, struct fy_event *fye, fy_generic va, fy_generic vt)
 {
+	enum fy_generic_type force_type = FYGT_INVALID;
 	struct fy_token *fyt;
 	enum fy_scalar_style style;
 	bool needs_indirect;
 	const char *text;
 	size_t len;
-	bool is_string;
 	fy_generic v, vi;
 
 	assert(fye);
@@ -363,15 +363,37 @@ fy_generic_decoder_create_scalar(struct fy_generic_decoder *gd, struct fy_event 
 	text = fy_token_get_text(fyt, &len);
 	assert(text);
 
-	style = fy_token_scalar_style(fyt);
-	if (style != FYSS_PLAIN)
-		is_string = true;
-	else
-		is_string = true;	/* all strings for now */
-
 	v = fy_invalid;
-	if (is_string)
-		v = fy_generic_string_size_create(gd->gb, text, len);
+
+	if (vt == fy_null || vt == fy_invalid) {
+		/* non-explicit tag */
+		style = fy_token_scalar_style(fyt);
+
+		if (style != FYSS_PLAIN) {
+			/* non-plain are strings always */
+			v = fy_generic_string_size_create(gd->gb, text, len);
+		} else {
+			/* TODO JSON YAML1.1 YAML1.2 schemas? */
+
+			v = fy_generic_create_scalar_from_text(gd->gb, FYGS_YAML1_2_CORE, text, len, FYGT_INVALID);
+		}
+	} else {
+		if (fy_generic_compare(vt, gd->vnull_tag) == 0)
+			force_type = FYGT_NULL;
+		else if (fy_generic_compare(vt, gd->vbool_tag) == 0)
+			force_type = FYGT_BOOL;
+		else if (fy_generic_compare(vt, gd->vint_tag) == 0)
+			force_type = FYGT_INT;
+		else if (fy_generic_compare(vt, gd->vfloat_tag) == 0)
+			force_type = FYGT_FLOAT;
+		else if (fy_generic_compare(vt, gd->vstr_tag) == 0)
+			force_type = FYGT_STRING;
+		else
+			force_type = FYGT_INVALID;	/* fall back */
+		v = fy_generic_create_scalar_from_text(gd->gb, FYGS_YAML1_2_CORE, text, len, force_type);
+	}
+
+	assert(v != fy_invalid);
 
 	needs_indirect = !gd->resolve &&
 			((va != fy_null && va != fy_invalid) ||
@@ -790,6 +812,13 @@ fy_generic_decoder_create(struct fy_parser *fyp, struct fy_generic_builder *gb, 
 
 	/* turn off the stream resolve */
 	fyp->cfg.flags &= ~FYPCF_RESOLVE_DOCUMENT;
+
+	/* create the scalar tags (note that on 64bits all these do not allocate) */
+	fygd->vnull_tag = fy_generic_string_create(fygd->gb, "!!null");
+	fygd->vbool_tag = fy_generic_string_create(fygd->gb, "!!bool");
+	fygd->vint_tag = fy_generic_string_create(fygd->gb, "!!int");
+	fygd->vfloat_tag = fy_generic_string_create(fygd->gb, "!!float");
+	fygd->vstr_tag = fy_generic_string_create(fygd->gb, "!!str");
 
 	return fygd;
 

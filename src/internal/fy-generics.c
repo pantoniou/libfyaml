@@ -45,7 +45,7 @@
 #include "fy-allocator-dedup.h"
 #include "fy-allocator-auto.h"
 
-#if 0
+#if 1
 union ptr {
 	void *p;
 	uintptr_t i;
@@ -114,9 +114,323 @@ fy_arena_locate_by_src(const struct fy_arena_reloc *arenas, unsigned int count, 
 	return NULL;
 }
 
-static fy_generic fy_generic_arena_relocate(const struct fy_arena_reloc *arenas, unsigned int num_arenas, fy_generic v)
+struct fy_relocation_info {
+	void *start;	/* inclusive */
+	void *end;	/* not inclusive */
+	const struct fy_arena_reloc *arenas;
+	unsigned int num_arenas;
+};
+
+static inline void *fy_generic_arena_resolve_ptr(struct fy_relocation_info *ri, fy_generic v)
 {
-	return fy_invalid;
+	void *p = fy_generic_resolve_ptr(v);
+	return (p >= ri->start && p < ri->end) ? NULL : p;
+}
+
+static inline fy_generic fy_generic_arena_relocate_ptr(struct fy_relocation_info *ri, fy_generic v)
+{
+	void *p = fy_generic_resolve_collection_ptr(v);
+	ptrdiff_t d = 0;
+	const struct fy_arena_reloc *arena;
+
+	arena = fy_arena_locate_by_src(ri->arenas, ri->num_arenas, p);
+	assert(arena);
+
+	v = (fy_generic)((ptrdiff_t)((uintptr_t)v & ~(uintptr_t)FY_INPLACE_TYPE_MASK) + d);
+	assert((v & (uintptr_t)FY_INPLACE_TYPE_MASK) == 0);
+	return v;
+}
+
+static inline fy_generic fy_generic_arena_relocate_collection_ptr(struct fy_relocation_info *ri, fy_generic v)
+{
+	void *p = fy_generic_resolve_collection_ptr(v);
+	ptrdiff_t d = 0;
+	const struct fy_arena_reloc *arena;
+
+	arena = fy_arena_locate_by_src(ri->arenas, ri->num_arenas, p);
+	assert(arena);
+
+	v = (fy_generic)((ptrdiff_t)((uintptr_t)v & ~(uintptr_t)FY_COLLECTION_MASK) + d);
+	assert((v & (uintptr_t)FY_COLLECTION_MASK) == 0);
+	return v;
+}
+
+static fy_generic fy_generic_arena_relocate(struct fy_relocation_info *ri, fy_generic v)
+{
+	void *p;
+	struct fy_generic_indirect *gi;
+	struct fy_generic_sequence *seq;
+	struct fy_generic_mapping *map;
+	fy_generic *items;
+	fy_generic *pairs;
+	size_t i, count;
+
+	/* if it's indirect, resolve the internals */
+	if (fy_generic_is_indirect(v)) {
+
+		/* check if already relocated */
+		p = fy_generic_arena_resolve_ptr(ri, v);
+		if (p) {
+			fprintf(stderr, "%s: indirect p=%p v=0x%08lx\n", __func__, p, v);
+			v = fy_generic_arena_relocate_ptr(ri, v) | FY_INDIRECT_V;
+
+			gi = fy_generic_resolve_ptr(v);
+			gi->value = fy_generic_arena_relocate(ri, gi->value);
+			gi->anchor = fy_generic_arena_relocate(ri, gi->anchor);
+			gi->tag = fy_generic_arena_relocate(ri, gi->tag);
+		} else {
+			fprintf(stderr, "%s: indirect already relocated v=0x%08lx\n", __func__, v);
+		}
+		return v;
+	}
+
+	/* if it's not indirect, it might be one of the in place formats */
+	switch (fy_generic_get_type(v)) {
+	case FYGT_NULL:
+	case FYGT_BOOL:
+		return v;
+
+	case FYGT_INT:
+		if ((v & FY_INPLACE_TYPE_MASK) == FY_INT_INPLACE_V)
+			return v;
+
+		p = fy_generic_arena_resolve_ptr(ri, v);
+		if (p)
+			v = fy_generic_arena_relocate_ptr(ri, v) | FY_INT_OUTPLACE_V;
+		break;
+
+	case FYGT_FLOAT:
+		if ((v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V)
+			return v;
+
+		p = fy_generic_arena_resolve_ptr(ri, v);
+		if (p)
+			v = fy_generic_arena_relocate_ptr(ri, v) | FY_FLOAT_OUTPLACE_V;
+		break;
+
+	case FYGT_STRING:
+		if ((v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V)
+			return v;
+
+		p = fy_generic_arena_resolve_ptr(ri, v);
+		if (p)
+			v = fy_generic_arena_relocate_ptr(ri, v) | FY_STRING_OUTPLACE_V;
+		break;
+
+	case FYGT_SEQUENCE:
+		p = fy_generic_arena_resolve_ptr(ri, v);
+		if (p) {
+			v = fy_generic_arena_relocate_collection_ptr(ri, v) | FY_SEQ_V;
+			seq = fy_generic_resolve_collection_ptr(v);
+			count = seq->count;
+			items = seq->items;
+			for (i = 0; i < count; i++)
+				items[i] = fy_generic_arena_relocate(ri, items[i]);
+		}
+		break;
+
+	case FYGT_MAPPING:
+		p = fy_generic_arena_resolve_ptr(ri, v);
+		if (p) {
+			v = fy_generic_arena_relocate_collection_ptr(ri, v) | FY_MAP_V;
+			map = fy_generic_resolve_collection_ptr(v);
+			count = map->count * 2;
+			pairs = map->pairs;
+			for (i = 0; i < count; i++)
+				pairs[i] = fy_generic_arena_relocate(ri, pairs[i]);
+		}
+		break;
+
+	default:
+		abort();
+		break;
+	}
+
+	return v;
+}
+
+#if 0
+static void fy_generic_print_primitive(FILE *fp, int level, fy_generic v)
+{
+	const char *sv;
+	fy_generic vtag, vanchor;
+	const char *tag = NULL, *anchor = NULL;
+	fy_generic iv;
+	fy_generic key, value;
+	const fy_generic *items;
+	size_t i, count, slen;
+
+	vanchor = fy_generic_get_anchor(v);
+	if (fy_generic_get_type(vanchor) == FYGT_STRING)
+		anchor = fy_generic_get_string_alloca(vanchor);
+	vtag = fy_generic_get_tag(v);
+	if (fy_generic_get_type(vtag) == FYGT_STRING)
+		tag = fy_generic_get_string_alloca(vtag);
+
+	if (anchor)
+		fprintf(fp, "&%s ", anchor);
+	if (tag)
+		fprintf(fp, "%s ", tag);
+
+	if (v == fy_invalid)
+		fprintf(fp, "invalid");
+
+	switch (fy_generic_get_type(v)) {
+	case FYGT_NULL:
+		fprintf(fp, "%s", "null");
+		return;
+
+	case FYGT_BOOL:
+		fprintf(fp, "%s", fy_generic_get_bool(v) ? "true" : "false");
+		return;
+
+	case FYGT_INT:
+		fprintf(fp, "%lld", fy_generic_get_int(v));
+		return;
+
+	case FYGT_FLOAT:
+		fprintf(fp, "%f", fy_generic_get_float(v));
+		return;
+
+	case FYGT_STRING:
+		sv = fy_generic_get_string_size_alloca(v, &slen);
+		fprintf(fp, "\"%s\"", fy_utf8_format_text_a(sv, slen, fyue_doublequote));
+		return;
+
+	case FYGT_SEQUENCE:
+		items = fy_generic_sequence_get_items(v, &count);
+		fprintf(fp, "[");
+		for (i = 0; i < count; i++) {
+			iv = items[i];
+			fy_generic_print_primitive(fp, level + 1, iv);
+			if (i + 1 < count)
+				fprintf(fp, ", ");
+		}
+		fprintf(fp, "]");
+		break;
+
+	case FYGT_MAPPING:
+		items = fy_generic_mapping_get_pairs(v, &count);
+		fprintf(fp, "{");
+		for (i = 0; i < count; i++) {
+			key = items[i * 2];
+			value = items[i * 2 + 1];
+			fy_generic_print_primitive(fp, level + 1, key);
+			fprintf(fp, ": ");
+			fy_generic_print_primitive(fp, level + 1, value);
+			if (i + 1 < count)
+				fprintf(fp, ", ");
+		}
+		fprintf(fp, "}");
+		break;
+
+	case FYGT_ALIAS:
+		sv = fy_generic_get_alias_size_alloca(v, &slen);
+		fprintf(fp, "*'%.*s'", (int)slen, sv);
+		break;
+
+	default:
+		assert(0);
+		abort();
+	}
+}
+#endif
+
+static void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
+{
+	static const char generic_type_map[] = {
+		[FYGT_INVALID] 	= '!',
+		[FYGT_NULL]	= 'n',
+		[FYGT_BOOL]	= 'b',
+		[FYGT_INT]	= 'i',
+		[FYGT_FLOAT]	= 'f',
+		[FYGT_STRING]	= '"',
+		[FYGT_SEQUENCE]	= '[',
+		[FYGT_MAPPING]	= '{',
+		[FYGT_INDIRECT]	= '^',
+		[FYGT_ALIAS]	= '*',
+	};
+	const char *sv;
+	fy_generic vtag, vanchor, v, iv, key, value;
+	const char *tag = NULL, *anchor = NULL;
+	const fy_generic *items;
+	size_t i, count, slen;
+
+	vanchor = fy_generic_get_anchor(vv);
+	if (fy_generic_get_type(vanchor) == FYGT_STRING)
+		anchor = fy_generic_get_string_alloca(vanchor);
+	vtag = fy_generic_get_tag(vv);
+	if (fy_generic_get_type(vtag) == FYGT_STRING)
+		tag = fy_generic_get_string_alloca(vtag);
+	v = fy_generic_is_indirect(vv) ? fy_generic_indirect_get_value(vv) : vv;
+
+	fprintf(fp, "%*s", level * 2, "");
+
+	if (v != vv)
+		fprintf(fp, "(%016lx) ", (unsigned long)vv);
+	if (anchor)
+		fprintf(fp, "&%s ", anchor);
+	if (tag)
+		fprintf(fp, "%s ", tag);
+
+	fprintf(fp, "%016lx ", (unsigned long)v);
+	fprintf(fp, "%c ", generic_type_map[fy_generic_get_type(v)]);
+
+
+	if (v == fy_invalid)
+		fprintf(fp, "invalid");
+
+	switch (fy_generic_get_type(v)) {
+	case FYGT_NULL:
+		fprintf(fp, "%s", "null");
+		return;
+
+	case FYGT_BOOL:
+		fprintf(fp, "%s", fy_generic_get_bool(v) ? "true" : "false");
+		return;
+
+	case FYGT_INT:
+		fprintf(fp, "%lld", fy_generic_get_int(v));
+		return;
+
+	case FYGT_FLOAT:
+		fprintf(fp, "%f", fy_generic_get_float(v));
+		return;
+
+	case FYGT_STRING:
+		sv = fy_generic_get_string_size_alloca(v, &slen);
+		fprintf(fp, "%s", fy_utf8_format_text_a(sv, slen, fyue_doublequote));
+		return;
+
+	case FYGT_SEQUENCE:
+		items = fy_generic_sequence_get_items(v, &count);
+		for (i = 0; i < count; i++) {
+			iv = items[i];
+			fy_generic_dump_primitive(fp, level + 1, iv);
+		}
+		break;
+
+	case FYGT_MAPPING:
+		items = fy_generic_mapping_get_pairs(v, &count);
+		for (i = 0; i < count; i++) {
+			key = items[i * 2];
+			value = items[i * 2 + 1];
+			fy_generic_dump_primitive(fp, level + 1, key);
+			fprintf(fp, ": ");
+			fy_generic_dump_primitive(fp, level + 1, value);
+		}
+		break;
+
+	case FYGT_ALIAS:
+		sv = fy_generic_get_alias_size_alloca(v, &slen);
+		fprintf(fp, "%.*s", (int)slen, sv);
+		break;
+
+	default:
+		assert(0);
+		abort();
+	}
+	fprintf(fp, "\n");
 }
 
 const void *fy_generic_builder_linearize(struct fy_generic_builder *gb, fy_generic *vp, size_t *sizep)
@@ -129,6 +443,7 @@ const void *fy_generic_builder_linearize(struct fy_generic_builder *gb, fy_gener
 	fy_generic v, linear_v = fy_invalid;
 	unsigned int i, j, num_arenas;
 	struct fy_arena_reloc *arenas = NULL, *arena;
+	struct fy_relocation_info ri;
 
 	if (!gb || !vp || !sizep)
 		return NULL;
@@ -161,6 +476,9 @@ const void *fy_generic_builder_linearize(struct fy_generic_builder *gb, fy_gener
 		for (j = 0; j < tag_info->num_arena_infos; j++) {
 			arena_info = &tag_info->arena_infos[j];
 
+			/* must be aligned */
+			assert(((uintptr_t)arena_info->data & 15) == 0);
+
 			size = fy_size_t_align(size, 16);	/* align at 16 always */
 			size += arena_info->size;
 		}
@@ -184,13 +502,12 @@ const void *fy_generic_builder_linearize(struct fy_generic_builder *gb, fy_gener
 
 	/* fill in the arenas */
 	arena = arenas;
+	offset = 0;
 	for (i = 0; i < info->num_tag_infos; i++) {
 		tag_info = &info->tag_infos[i];
 
 		for (j = 0; j < tag_info->num_arena_infos; j++) {
 			arena_info = &tag_info->arena_infos[j];
-
-			offset = fy_size_t_align(offset, 16);	/* align at 16 always */
 
 			/* save the arena */
 			arena->src.p = arena_info->data;
@@ -198,20 +515,49 @@ const void *fy_generic_builder_linearize(struct fy_generic_builder *gb, fy_gener
 			arena->srce.p = arena->src.p + arena->size - 1;
 			arena->dst.p = gb->linear + offset;
 
+			fprintf(stderr, "offset=0x%zx 0x%zx 0x%zx\n",
+				offset, offset + arena_info->size, size);
+			assert(offset + arena_info->size <= size);
+			/* copy it over */
+			memcpy(arena->dst.p, arena->src.p, arena->size);
+
 			offset += arena_info->size;
+			offset = fy_size_t_align(offset, 16);	/* align at 16 always */
+
 			arena++;
 		}
 	}
 
 	/* sort by src address */
-	qsort(arena, num_arenas, sizeof(*arena), arena_reloc_src_compare);
+	qsort(arenas, num_arenas, sizeof(*arenas), arena_reloc_src_compare);
 
-	fprintf(stderr, "Arenas:\n");
+	fprintf(stderr, "Arenas:");
 	for (i = 0; i < num_arenas; i++)
-		fprintf(stderr, " %p-%p", arena[i].src.p, arena[i].srce.p);
+		fprintf(stderr, " %p-%p", arenas[i].src.p, arenas[i].srce.p);
 	fprintf(stderr, "\n");
 
-	return NULL;
+	memset(&ri, 0, sizeof(ri));
+	ri.start = gb->linear;
+	ri.end = ri.start + size;
+	ri.arenas = arenas;
+	ri.num_arenas = num_arenas;
+
+	fprintf(stderr, "Linear: %p-%p (0x%zx)\n", ri.start, ri.end, (size_t)(ri.end - ri.start));
+
+	fprintf(stderr, "\nbefore\n");
+	fy_generic_dump_primitive(stderr, 0,
+			fy_generic_mapping_lookup(	/* the 1st document */
+				fy_generic_sequence_get_item(v, 0),
+				fy_generic_string_alloca("root")));
+	fprintf(stderr, "\n");
+
+#if 0
+	linear_v = fy_generic_arena_relocate(&ri, v);
+#endif
+
+	linear_v = fy_invalid;
+	linear_size = 0;
+	linear_data = NULL;
 
 out:
 	if (arenas)
@@ -373,40 +719,6 @@ struct fy_allocator *create_allocator(const struct generic_options *opt, const c
 	return NULL;
 }
 
-#if 0
-static void dump_allocator_info(struct fy_allocator *a, fy_alloc_tag tag)
-{
-	struct fy_allocator_info *info;
-	struct fy_allocator_tag_info *tag_info;
-	struct fy_allocator_arena_info *arena_info;
-	unsigned int i, j;
-
-	info = fy_allocator_get_info(a, tag);
-	if (!info) {
-		fprintf(stderr, "fy_allocator_get_info() failed\n");
-		return;
-	}
-
-	fprintf(stderr, "Allocator %p: free=%zu used=%zu total=%zu\n", a,
-			info->free, info->used, info->total);
-	for (i = 0; i < info->num_tag_infos; i++) {
-		tag_info = &info->tag_infos[i];
-
-		fprintf(stderr, "\ttag #%d: free=%zu used=%zu total=%zu\n", i,
-				tag_info->free, tag_info->used, tag_info->total);
-		for (j = 0; j < tag_info->num_arena_infos; j++) {
-			arena_info = &tag_info->arena_infos[j];
-
-			fprintf(stderr, "\t\tarena #%d: free=%zu used=%zu total=%zu data=%p-0x%zx\n", j,
-					arena_info->free, arena_info->used, arena_info->total,
-					arena_info->data, arena_info->size);
-		}
-	}
-
-	free(info);
-}
-#endif
-
 static int do_parse_generic(const struct generic_options *opt, int argc, char **argv)
 {
 	struct fy_allocator *allocator = NULL, *parent_allocator = NULL;
@@ -521,6 +833,19 @@ static int do_parse_generic(const struct generic_options *opt, int argc, char **
 
 	if (!opt->null_output)
 		fy_generic_encoder_sync(fyge);
+
+	fprintf(stderr, "before\n");
+	dump_allocator_info(gb->allocator, gb->alloc_tag);
+
+	{
+		const void *p;
+		size_t sz;
+		fy_generic v;
+
+		v = vdir;
+		p = fy_generic_builder_linearize(gb, &v, &sz);
+		(void)p;
+	}
 
 out:
 	/* all handle NULL as NOP */
