@@ -4458,6 +4458,21 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		printf("\n");
 	}
 
+	{
+		struct {
+			size_t count;
+			fy_generic items[3];
+		} _seq FY_GENERIC_CONTAINER_ALIGNMENT = {
+			3,
+			{ fy_true, fy_int_const(100), fy_string_const("info-info") },
+		};
+		fy_generic seq = (fy_generic)&_seq | FY_SEQ_V;
+
+		printf("seq-x2:\n");
+		fy_generic_print_primitive(stdout, seq);
+		printf("\n");
+	}
+
 #define ASTR(_x) \
 	({ \
 		static const char __s[sizeof(_x) + 1] __attribute__((aligned(256))) = (_x); \

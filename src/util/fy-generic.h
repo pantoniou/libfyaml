@@ -27,6 +27,10 @@
 
 #include <libfyaml.h>
 
+#if defined(HAVE_STRICT_ALIASING) && HAVE_STRICT_ALIASING && defined(__GNUC__) && !defined(__clang__)
+#define GCC_DISABLE_WSTRICT_ALIASING
+#endif
+
 enum fy_generic_type {
 	FYGT_INVALID,
 	FYGT_NULL,
@@ -660,11 +664,11 @@ fy_generic fy_generic_float_create(struct fy_generic_builder *gb, double val);
 		double __v = (_v);								\
 		double *__vp;									\
 		fy_generic _r;									\
-		float __f;									\
+		union { float f; uint32_t f_bits; } __u;					\
 												\
 		if (!isnormal(__v) || (float)__v == __v) {					\
-			__f = (float)__v;							\
-			_r = ((fy_generic)(*(uint32_t *)&__f) << FY_FLOAT_INPLACE_SHIFT) | 	\
+			__u.f = (float)__v;							\
+			_r = ((fy_generic)__u.f_bits << FY_FLOAT_INPLACE_SHIFT) | 		\
 				FY_FLOAT_INPLACE_V;						\
 		} else {									\
 			__vp = alloca(sizeof(*__vp));						\
