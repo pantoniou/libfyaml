@@ -150,9 +150,14 @@ AM_CONDITIONAL([HAVE_STATIC], [ test x$HAVE_STATIC = x1 ])
 
 dnl check whether warning flags are supported
 AX_CHECK_COMPILE_FLAG([-Wstringop-overread], , , [-Werror])
-AS_IF([test "x$ax_cv_check_cflags__Werror__wstringop_overread" = x"yes"],
+AS_IF([test "x$ax_cv_check_cflags__Werror__Wstringop_overread" = x"yes"],
       [HAVE_WSTRINGOP_OVERREAD=1], [HAVE_WSTRINGOP_OVERREAD=0])
 AC_DEFINE_UNQUOTED([HAVE_WSTRINGOP_OVERREAD], [$HAVE_WSTRINGOP_OVERREAD], [Define to 1 if -Wstringop-overread is supported])
+
+AX_CHECK_COMPILE_FLAG([-Wstrict-aliasing], , , [-Werror])
+AS_IF([test "x$ax_cv_check_cflags__Werror__Wstrict_aliasing" = x"yes"],
+      [HAVE_WSTRICT_ALIASING=1], [HAVE_WSTRICT_ALIASING=0])
+AC_DEFINE_UNQUOTED([HAVE_WSTRICT_ALIASING], [$HAVE_WSTRICT_ALIASING], [Define to 1 if -Wstrict-aliasing is supported])
 
 dnl Per target optimizations
 AC_ARG_ENABLE([portable-target],
