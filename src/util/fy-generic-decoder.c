@@ -527,7 +527,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 		if (gd->resolve) {
 			v = fy_generic_decoder_alias_resolve(gd,
-					fy_generic_string_size_alloca(anchor, anchor_size));
+					fy_string_size_alloca(anchor, anchor_size));
 			if (v == fy_invalid) {
 				fy_parser_report_error(fyp, fy_event_get_token(fye),
 					!fy_generic_decoder_alias_is_collecting(gd, va) ?

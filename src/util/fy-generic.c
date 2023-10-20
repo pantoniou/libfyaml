@@ -90,13 +90,9 @@ fy_generic fy_generic_float_create(struct fy_generic_builder *gb, double val)
 {
 	const double *valp;
 #ifdef FY_HAS_64BIT_PTR
-	float f;
-	uint32_t fi;
-
-	if (fy_double_fits_in_float(val)) {
-		f = (float)val;
-		memcpy(&fi, &f, sizeof(fi));
-		return ((fy_generic)fi << FY_FLOAT_INPLACE_SHIFT) | FY_FLOAT_INPLACE_V;
+	if (!isnormal(val) || (float)val == val) {
+		float f = (float)val;
+		return ((fy_generic)*(uint32_t *)&f << FY_FLOAT_INPLACE_SHIFT) | FY_FLOAT_INPLACE_V;
 	}
 #endif
 	valp = fy_generic_builder_store(gb, &val, sizeof(val), FY_SCALAR_ALIGNOF(double));
