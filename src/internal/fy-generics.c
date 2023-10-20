@@ -155,6 +155,7 @@ static inline fy_generic fy_generic_arena_relocate_collection_ptr(struct fy_relo
 	return v;
 }
 
+#if 0
 static fy_generic fy_generic_arena_relocate(struct fy_relocation_info *ri, fy_generic v)
 {
 	void *p;
@@ -248,6 +249,7 @@ static fy_generic fy_generic_arena_relocate(struct fy_relocation_info *ri, fy_ge
 
 	return v;
 }
+#endif
 
 #if 0
 static void fy_generic_print_primitive(FILE *fp, int level, fy_generic v)
@@ -548,7 +550,7 @@ const void *fy_generic_builder_linearize(struct fy_generic_builder *gb, fy_gener
 	fy_generic_dump_primitive(stderr, 0,
 			fy_generic_mapping_lookup(	/* the 1st document */
 				fy_generic_sequence_get_item(v, 0),
-				fy_generic_string_alloca("root")));
+				fy_string_alloca("root")));
 	fprintf(stderr, "\n");
 
 #if 0

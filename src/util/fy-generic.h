@@ -146,6 +146,10 @@ typedef uintptr_t fy_generic;
 #define FY_CONTAINER_ALIGNOF(_v) FY_MAX_ALIGNOF(_v, 16)
 #define FY_SCALAR_ALIGNOF(_v) FY_MAX_ALIGNOF(_v, 8)
 
+#define FY_INT_ALIGNMENT  __attribute__((aligned(FY_SCALAR_ALIGNOF(long long))))
+#define FY_FLOAT_ALIGNMENT __attribute__((aligned(FY_SCALAR_ALIGNOF(double))))
+#define FY_STRING_ALIGNMENT __attribute__((aligned(8)))
+
 /*
  * The encoding of generic indirect
  *
@@ -595,7 +599,8 @@ static inline fy_generic fy_generic_bool_create(struct fy_generic_builder *gb, b
 	return state ? fy_true : fy_false;
 }
 
-#define fy_generic_bool_alloca(_v)	((_v) ? fy_true : fy_false)
+#define fy_bool(_v)			((bool)(_v) ? fy_true : fy_false)
+#define fy_bool_alloca(_v)		fy_bool(_v)
 
 static inline fy_generic fy_generic_int_create(struct fy_generic_builder *gb, long long val)
 {
@@ -611,49 +616,56 @@ static inline fy_generic fy_generic_int_create(struct fy_generic_builder *gb, lo
 	return (fy_generic)valp | FY_INT_OUTPLACE_V;
 }
 
-#define fy_generic_int_alloca(_v) 						\
-	({									\
-		long long __v = (_v);						\
-		long long *__vp;						\
-		fy_generic _r;							\
-										\
-		if (__v >= FYGT_INT_INPLACE_MIN && __v <= FYGT_INT_INPLACE_MAX)	\
-			_r = (__v << FY_INT_INPLACE_SHIFT) | FY_INT_INPLACE_V;	\
-		else {								\
-			__vp = alloca(sizeof(*__vp));				\
-			assert(((uintptr_t)__vp & FY_INPLACE_TYPE_MASK) == 0);	\
-			*__vp = __v;						\
-			_r = (fy_generic)__vp | FY_INT_OUTPLACE_V;		\
-		}								\
-		_r;								\
+#define fy_int_alloca(_v) 									\
+	({											\
+		long long __v = (_v);								\
+		long long *__vp;								\
+		fy_generic _r;									\
+												\
+		if (__v >= FYGT_INT_INPLACE_MIN && __v <= FYGT_INT_INPLACE_MAX)			\
+			_r = (__v << FY_INT_INPLACE_SHIFT) | FY_INT_INPLACE_V;			\
+		else {										\
+			__vp = alloca(sizeof(*__vp));						\
+			assert(((uintptr_t)__vp & FY_INPLACE_TYPE_MASK) == 0);			\
+			*__vp = __v;								\
+			_r = (fy_generic)__vp | FY_INT_OUTPLACE_V;				\
+		}										\
+		_r;										\
 	})
+
+/* note the builtin_constant_p guard; this makes the fy_int() macro work */
+#define fy_int_const(_v)									\
+	({											\
+		fy_generic _r;									\
+												\
+		if ((_v) >= FYGT_INT_INPLACE_MIN && (_v) <= FYGT_INT_INPLACE_MAX)		\
+			_r = (fy_generic)(((_v) << FY_INT_INPLACE_SHIFT) | FY_INT_INPLACE_V);	\
+		else {										\
+			static const long long _vv FY_INT_ALIGNMENT =				\
+				__builtin_constant_p(_v) ? (_v) : 0;				\
+			assert(((uintptr_t)&_vv & FY_INPLACE_TYPE_MASK) == 0);			\
+			_r = (fy_generic)&_vv | FY_INT_OUTPLACE_V;				\
+		}										\
+		_r;										\
+	})
+
+#define fy_int(_v) (__builtin_constant_p(_v) ? fy_int_const(_v) : fy_int_alloca(_v))
 
 fy_generic fy_generic_float_create(struct fy_generic_builder *gb, double val);
 
-static inline bool fy_double_fits_in_float(double val)
-{
-	float f;
-
-	if (!isnormal(val))
-		return true;
-
-	f = (float)val;
-	return (double)f == val;
-}
-
 #ifdef FY_HAS_64BIT_PTR
-#define fy_generic_float_alloca(_v) 								\
+
+#define fy_float_alloca(_v) 									\
 	({											\
 		double __v = (_v);								\
 		double *__vp;									\
 		fy_generic _r;									\
 		float __f;									\
-		uint32_t __fi;									\
 												\
-		if (fy_double_fits_in_float(__v)) {						\
+		if (!isnormal(__v) || (float)__v == __v) {					\
 			__f = (float)__v;							\
-			memcpy(&__fi, &__f, sizeof(__fi));					\
-			_r = ((fy_generic)__fi << FY_FLOAT_INPLACE_SHIFT) | FY_FLOAT_INPLACE_V;	\
+			_r = ((fy_generic)(*(uint32_t *)&__f) << FY_FLOAT_INPLACE_SHIFT) | 	\
+				FY_FLOAT_INPLACE_V;						\
 		} else {									\
 			__vp = alloca(sizeof(*__vp));						\
 			assert(((uintptr_t)__vp & FY_INPLACE_TYPE_MASK) == 0);			\
@@ -662,8 +674,28 @@ static inline bool fy_double_fits_in_float(double val)
 		}										\
 		_r;										\
 	})
+
+/* note the builtin_constant_p guard; this makes the fy_float() macro work */
+#define fy_float_const(_v)									\
+	({											\
+		fy_generic _r;									\
+												\
+		if (!isnormal(_v) || (float)(_v) == (double)(_v)) {				\
+			static const float _vvf = __builtin_constant_p(_v) ? (float)(_v) : 0.0;	\
+			_r = ((fy_generic)(*(uint32_t *)&_vvf)  << FY_FLOAT_INPLACE_SHIFT) |	\
+				FY_FLOAT_INPLACE_V;						\
+		} else {									\
+			static const double _vv FY_FLOAT_ALIGNMENT = 				\
+				__builtin_constant_p(_v) ? (_v) : 0;				\
+			assert(((uintptr_t)&_vv & FY_INPLACE_TYPE_MASK) == 0);			\
+			_r = (fy_generic)&_vv | FY_FLOAT_OUTPLACE_V;				\
+		}										\
+		_r;										\
+	})
+
 #else
-#define fy_generic_float_alloca(_v) 					\
+
+#define fy_float_alloca(_v) 						\
 	({								\
 		double __v = (_v);					\
 		double *__vp;						\
@@ -675,7 +707,22 @@ static inline bool fy_double_fits_in_float(double val)
 		_r = (fy_generic)__vp | FY_FLOAT_OUTPLACE_V;		\
 		_r;							\
 	})
+
+/* note the builtin_constant_p guard; this makes the fy_float() macro work */
+#define fy_float_const(_v)						\
+	({								\
+		fy_generic _r;						\
+									\
+		static const double _vv FY_FLOAT_ALIGNMENT = 		\
+			__builtin_constant_p(_v) ? (_v) : 0;		\
+		assert(((uintptr_t)&_vv & FY_INPLACE_TYPE_MASK) == 0);	\
+		_r = (fy_generic)&_vv | FY_FLOAT_OUTPLACE_V;		\
+		_r;							\
+	})
+
 #endif
+
+#define fy_float(_v) (__builtin_constant_p(_v) ? fy_float_const(_v) : fy_float_alloca(_v))
 
 fy_generic fy_generic_string_size_create(struct fy_generic_builder *gb, const char *str, size_t len);
 
@@ -688,8 +735,18 @@ fy_generic fy_generic_string_vcreate(struct fy_generic_builder *gb, const char *
 fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *fmt, ...)
 	__attribute__((format(printf, 2, 3)));
 
+/* literal strings in C, are char *
+ * However you can't get a type of & "literal"
+ * So we use that to detect literal strings
+ */
+#define FY_CONST_P_INIT(_v) \
+    _Generic((_v), \
+        char *: _Generic(&(_v), char **: "", default: (_v)), \
+        default: "" )
+
 #ifdef FY_HAS_64BIT_PTR
-#define fy_generic_string_size_alloca(_v, _len) 						\
+
+#define fy_string_size_alloca(_v, _len) 							\
 	({											\
 		const char *__v = (_v);								\
 		size_t __len = (_len);								\
@@ -761,8 +818,200 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 		}										\
 		_r;										\
 	})
+
+#define fy_string_size_const(_v, _len) 								\
+	({											\
+		fy_generic _r;									\
+												\
+		switch (_len) {									\
+		case 0:										\
+			_r = ((fy_generic)0) |							\
+			     (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
+			break;									\
+		case 1:										\
+			_r = ((fy_generic)(_v)[0] <<  8) |					\
+			     (1 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
+			break;									\
+		case 2:										\
+			_r = ((fy_generic)(_v)[0] <<  8) |					\
+			     ((fy_generic)(_v)[1] << 16) |					\
+			     (2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
+			break;									\
+		case 3:										\
+			_r = ((fy_generic)(_v)[0] <<  8) |					\
+			     ((fy_generic)(_v)[1] << 16) |					\
+			     ((fy_generic)(_v)[2] << 24) |					\
+			     (3 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
+			break;									\
+		case 4:										\
+			_r = ((fy_generic)(_v)[0] <<  8) |					\
+			     ((fy_generic)(_v)[1] << 16) |					\
+			     ((fy_generic)(_v)[2] << 24) |					\
+			     ((fy_generic)(_v)[3] << 32) |					\
+			     (4 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
+			break;									\
+		case 5:										\
+			_r = ((fy_generic)(_v)[0] <<  8) |					\
+			     ((fy_generic)(_v)[1] << 16) |					\
+			     ((fy_generic)(_v)[2] << 24) |					\
+			     ((fy_generic)(_v)[3] << 32) |					\
+			     ((fy_generic)(_v)[4] << 40) |					\
+			     (5 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
+			break;									\
+		case 6:										\
+			_r = ((fy_generic)(_v)[0] <<  8) |					\
+			     ((fy_generic)(_v)[1] << 16) |					\
+			     ((fy_generic)(_v)[2] << 24) |					\
+			     ((fy_generic)(_v)[3] << 32) |					\
+			     ((fy_generic)(_v)[4] << 40) |					\
+			     ((fy_generic)(_v)[5] << 48) |					\
+			     (6 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
+			break;									\
+		case 7:										\
+			_r = ((fy_generic)(_v)[0] <<  8) |					\
+			     ((fy_generic)(_v)[1] << 16) |					\
+			     ((fy_generic)(_v)[2] << 24) |					\
+			     ((fy_generic)(_v)[3] << 32) |					\
+			     ((fy_generic)(_v)[4] << 40) |					\
+			     ((fy_generic)(_v)[5] << 48) |					\
+			     ((fy_generic)(_v)[6] << 56) |					\
+			     (7 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
+			break;									\
+		default:									\
+			if ((_len) < ((uint64_t)1 <<  7)) {					\
+				static const struct {						\
+					uint8_t l0;						\
+					char s[];						\
+				} _s FY_STRING_ALIGNMENT = {					\
+					__builtin_constant_p(_len) ? (uint8_t)(_len) : 0,	\
+					FY_CONST_P_INIT(_v)					\
+				};								\
+				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
+				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
+			} else if ((_len) < ((uint64_t)1 << 14)) {				\
+				static const struct {						\
+					uint8_t l0, l1;						\
+					char s[];						\
+				} _s FY_STRING_ALIGNMENT = {					\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 7)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
+					FY_CONST_P_INIT(_v)					\
+				};								\
+				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
+				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
+			} else if ((_len) < ((uint64_t)1 << 21)) {				\
+				static const struct {						\
+					uint8_t l0, l1, l2;					\
+					char s[];						\
+				} _s FY_STRING_ALIGNMENT = {					\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 14)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  7)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
+					FY_CONST_P_INIT(_v)					\
+				};								\
+				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
+				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
+			} else if ((_len) < ((uint64_t)1 << 28)) {				\
+				static const struct {						\
+					uint8_t l0, l1, l2, l3;					\
+					char s[];						\
+				} _s FY_STRING_ALIGNMENT = {					\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 21)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 14)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  7)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
+					FY_CONST_P_INIT(_v)					\
+				};								\
+				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
+				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
+			} else if ((_len) < ((uint64_t)1 << 35)) {				\
+				static const struct {						\
+					uint8_t l0, l1, l2, l3, l4;				\
+					char s[];						\
+				} _s FY_STRING_ALIGNMENT = {					\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 28)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 21)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 14)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  7)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
+					FY_CONST_P_INIT(_v)					\
+				};								\
+				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
+				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
+			} else if ((_len) < ((uint64_t)1 << 42)) {				\
+				static const struct {						\
+					uint8_t l0, l1, l2, l3, l4, l5;				\
+					char s[];						\
+				} _s FY_STRING_ALIGNMENT = {					\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 35)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 28)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 21)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 14)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  7)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
+					FY_CONST_P_INIT(_v)					\
+				};								\
+				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
+				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
+			} else if ((_len) < ((uint64_t)1 << 49)) {				\
+				static const struct {						\
+					uint8_t l0, l1, l2, l3, l4, l5, l6;			\
+					char s[];						\
+				} _s FY_STRING_ALIGNMENT = {					\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 42)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 35)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 28)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 21)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 14)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  7)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
+					FY_CONST_P_INIT(_v)					\
+				};								\
+				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
+				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
+			} else if ((_len) < ((uint64_t)1 << 56)) {				\
+				static const struct {						\
+					uint8_t l0, l1, l2, l3, l4, l5, l6, l7;			\
+					char s[];						\
+				} _s FY_STRING_ALIGNMENT = {					\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 49)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 42)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 35)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 28)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 21)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 14)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  7)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
+					FY_CONST_P_INIT(_v)					\
+				};								\
+				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
+				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
+			} else {								\
+				static const struct {						\
+					uint8_t l0, l1, l2, l3, l4, l5, l6, l7, l8;		\
+					char s[];						\
+				} _s FY_STRING_ALIGNMENT = {					\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 57)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 50)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 43)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 36)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 29)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 22)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 15)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  8)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? (uint8_t)(_len) : 0,	\
+					FY_CONST_P_INIT(_v)					\
+				};								\
+				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
+				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
+			}									\
+		}										\
+		_r;										\
+	})
+
 #else
-#define fy_generic_string_size_alloca(_v, _len) 						\
+
+#define fy_string_size_alloca(_v, _len) 							\
 	({											\
 		const char *__v = (_v);								\
 		size_t __len = (_len);								\
@@ -800,18 +1049,107 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 		}										\
 		_r;										\
 	})
+
+#define fy_string_size_const(_v, _len) 								\
+	({											\
+		fy_generic _r;									\
+												\
+		switch (_len) {									\
+		case 0:										\
+			_r = ((fy_generic)0) |							\
+			     (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
+			break;									\
+		case 1:										\
+			_r = ((fy_generic)(_v)[0] <<  8) |					\
+			     (1 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
+			break;									\
+		case 2:										\
+			_r = ((fy_generic)(_v)[0] <<  8) |					\
+			     ((fy_generic)(_v)[1] << 16) |					\
+			     (2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
+			break;									\
+		default:									\
+			if ((_len) < ((uint64_t)1 <<  7)) {					\
+				static const struct {						\
+					uint8_t l0;						\
+					char s[];						\
+				} _s FY_STRING_ALIGNMENT = {					\
+					__builtin_constant_p(_len) ? (uint8_t)(_len) : 0,	\
+					FY_CONST_P_INIT(_v)					\
+				};								\
+				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
+				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
+			} else if ((_len) < ((uint64_t)1 << 14)) {				\
+				static const struct {						\
+					uint8_t l0, l1;						\
+					char s[];						\
+				} _s FY_STRING_ALIGNMENT = {					\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 7)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
+					FY_CONST_P_INIT(_v)					\
+				};								\
+				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
+				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
+			} else if ((_len) < ((uint64_t)1 << 21)) {				\
+				static const struct {						\
+					uint8_t l0, l1, l2;					\
+					char s[];						\
+				} _s FY_STRING_ALIGNMENT = {					\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 14)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  7)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
+					FY_CONST_P_INIT(_v)					\
+				};								\
+				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
+				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
+			} else if ((_len) < ((uint64_t)1 << 28)) {				\
+				static const struct {						\
+					uint8_t l0, l1, l2, l3;					\
+					char s[];						\
+				} _s FY_STRING_ALIGNMENT = {					\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 21)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 14)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  7)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
+					FY_CONST_P_INIT(_v)					\
+				};								\
+				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
+				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
+			} else {								\
+				static const struct {						\
+					uint8_t l0, l1, l2, l3, l4;				\
+					char s[];						\
+				} _s FY_STRING_ALIGNMENT = {					\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 29)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 22)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 15)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  8)) | 0x80 : 0,	\
+					__builtin_constant_p(_len) ? (uint8_t)(_len) : 0,	\
+					FY_CONST_P_INIT(_v)					\
+				};								\
+				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
+				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
+			}									\
+		}										\
+		_r;										\
+	})
+
 #endif
 
-#define fy_generic_string_alloca(_v)				\
+#define fy_string_alloca(_v)					\
 	({							\
 		const char *___v = (_v);			\
 		size_t ___len = strlen(___v);			\
-		fy_generic_string_size_alloca(___v, ___len);	\
+		fy_string_size_alloca(___v, ___len);		\
 	})
+
+#define fy_string_const(_v) fy_string_size_const((_v), strlen(_v))
+
+#define fy_string(_v) (__builtin_constant_p(_v) ? fy_string_const(_v) : fy_string_alloca(_v))
 
 fy_generic fy_generic_sequence_create(struct fy_generic_builder *gb, size_t count, const fy_generic *items);
 
-#define fy_generic_sequence_alloca(_count, _items) 				\
+#define fy_sequence_alloca(_count, _items) 					\
 	({									\
 		struct fy_generic_sequence *__vp;				\
 		size_t __count = (_count);					\
@@ -822,6 +1160,17 @@ fy_generic fy_generic_sequence_create(struct fy_generic_builder *gb, size_t coun
 		memcpy(__vp->items, (_items), __count * sizeof(fy_generic)); 	\
 		(fy_generic)__vp | FY_SEQ_V;					\
 	})
+
+#if 0
+#define fy_sequence_const(_count, ...) \
+	({ \
+		static const struct fy_generic_sequence _seq FY_GENERIC_CONTAINER_ALIGNMENT = { \
+			.count = (_count), \
+	 		.items = { __VA_ARGS__ }}, \
+	 	}; \
+		(fy_generic)&_seq | FY_SEQ_V;					\
+	})
+#endif
 
 static inline const fy_generic *fy_generic_sequence_get_items(fy_generic seq, size_t *countp)
 {
@@ -866,7 +1215,7 @@ static inline size_t fy_generic_sequence_get_item_count(fy_generic seq)
 
 fy_generic fy_generic_mapping_create(struct fy_generic_builder *gb, size_t count, const fy_generic *pairs);
 
-#define fy_generic_mapping_alloca(_count, _pairs) 					\
+#define fy_mapping_alloca(_count, _pairs) 						\
 	({										\
 		struct fy_generic_mapping *__vp;					\
 		size_t __count = (_count);						\

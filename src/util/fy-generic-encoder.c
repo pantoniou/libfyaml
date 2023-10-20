@@ -231,21 +231,21 @@ int fy_generic_encoder_emit_document(struct fy_generic_encoder *fyge, fy_generic
 
 	/* the document state must be a mapping */
 	if (vds != fy_invalid && fy_generic_get_type(vds) == FYGT_MAPPING) {
-		vversion = fy_generic_mapping_lookup(vds, fy_generic_string_alloca("version"));
+		vversion = fy_generic_mapping_lookup(vds, fy_string_alloca("version"));
 
 		if (fy_generic_get_type(vversion) == FYGT_MAPPING) {
 			vers = &vers_local;
 			memset(vers, 0, sizeof(*vers));
-			vers->major = fy_generic_get_int(fy_generic_mapping_lookup(vversion, fy_generic_string_alloca("major")));
-			vers->minor = fy_generic_get_int(fy_generic_mapping_lookup(vversion, fy_generic_string_alloca("minor")));
+			vers->major = fy_generic_get_int(fy_generic_mapping_lookup(vversion, fy_string_alloca("major")));
+			vers->minor = fy_generic_get_int(fy_generic_mapping_lookup(vversion, fy_string_alloca("minor")));
 		}
 
-		vtags = fy_generic_mapping_lookup(vds, fy_generic_string_alloca("tags"));
+		vtags = fy_generic_mapping_lookup(vds, fy_string_alloca("tags"));
 		if (fy_generic_get_type(vtags) == FYGT_SEQUENCE) {
 			items = fy_generic_sequence_get_items(vtags, &count);
 
-			vhandle = fy_generic_string_alloca("handle");
-			vprefix = fy_generic_string_alloca("prefix");
+			vhandle = fy_string_alloca("handle");
+			vprefix = fy_string_alloca("prefix");
 
 			tags = alloca((count + 1) * sizeof(*tags));
 			for (i = 0; i < count; i++) {
@@ -258,8 +258,8 @@ int fy_generic_encoder_emit_document(struct fy_generic_encoder *fyge, fy_generic
 			tags[i] = NULL;
 		}
 
-		version_explicit = fy_generic_mapping_lookup(vds, fy_generic_string_alloca("version-explicit")) == fy_true;
-		tags_explicit = fy_generic_mapping_lookup(vds, fy_generic_string_alloca("tags-explicit")) == fy_true;
+		version_explicit = fy_generic_mapping_lookup(vds, fy_string_alloca("version-explicit")) == fy_true;
+		tags_explicit = fy_generic_mapping_lookup(vds, fy_string_alloca("tags-explicit")) == fy_true;
 
 		if (!version_explicit)
 			vers = NULL;
@@ -320,8 +320,8 @@ int fy_generic_encoder_emit_all_documents(struct fy_generic_encoder *fyge, fy_ge
 	if (fy_generic_get_type(vdir) != FYGT_SEQUENCE)
 		return -1;
 
-	vroot_key = fy_generic_string_alloca("root");
-	vdocs_key = fy_generic_string_alloca("docs");
+	vroot_key = fy_string_alloca("root");
+	vdocs_key = fy_string_alloca("docs");
 
 	/* no documents? nothing to emit */
 	items = fy_generic_sequence_get_items(vdir, &count);
