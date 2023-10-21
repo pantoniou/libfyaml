@@ -133,6 +133,7 @@ static inline fy_generic fy_generic_arena_relocate_ptr(struct fy_relocation_info
 	ptrdiff_t d = 0;
 	const struct fy_arena_reloc *arena;
 
+	(void)arena;
 	arena = fy_arena_locate_by_src(ri->arenas, ri->num_arenas, p);
 	assert(arena);
 
@@ -149,6 +150,8 @@ static inline fy_generic fy_generic_arena_relocate_collection_ptr(struct fy_relo
 
 	arena = fy_arena_locate_by_src(ri->arenas, ri->num_arenas, p);
 	assert(arena);
+
+	(void)arena;
 
 	v = (fy_generic)((ptrdiff_t)((uintptr_t)v & ~(uintptr_t)FY_COLLECTION_MASK) + d);
 	assert((v & (uintptr_t)FY_COLLECTION_MASK) == 0);

@@ -744,9 +744,9 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
  * So we use that to detect literal strings
  */
 #define FY_CONST_P_INIT(_v) \
-    _Generic((_v), \
+    (_Generic((_v), \
         char *: _Generic(&(_v), char **: "", default: (_v)), \
-        default: "" )
+        default: "" ))
 
 #ifdef FY_HAS_64BIT_PTR
 
@@ -888,7 +888,7 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 					char s[];						\
 				} _s FY_STRING_ALIGNMENT = {					\
 					__builtin_constant_p(_len) ? (uint8_t)(_len) : 0,	\
-					FY_CONST_P_INIT(_v)					\
+					{ FY_CONST_P_INIT(_v) }					\
 				};								\
 				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
 				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
@@ -899,7 +899,7 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 				} _s FY_STRING_ALIGNMENT = {					\
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 7)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
-					FY_CONST_P_INIT(_v)					\
+					{ FY_CONST_P_INIT(_v) }					\
 				};								\
 				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
 				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
@@ -911,7 +911,7 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 14)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  7)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
-					FY_CONST_P_INIT(_v)					\
+					{ FY_CONST_P_INIT(_v) }					\
 				};								\
 				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
 				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
@@ -924,7 +924,7 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 14)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  7)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
-					FY_CONST_P_INIT(_v)					\
+					{ FY_CONST_P_INIT(_v) }					\
 				};								\
 				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
 				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
@@ -938,7 +938,7 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 14)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  7)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
-					FY_CONST_P_INIT(_v)					\
+					{ FY_CONST_P_INIT(_v) }					\
 				};								\
 				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
 				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
@@ -953,7 +953,7 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 14)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  7)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
-					FY_CONST_P_INIT(_v)					\
+					{ FY_CONST_P_INIT(_v) }					\
 				};								\
 				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
 				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
@@ -969,7 +969,7 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 14)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  7)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
-					FY_CONST_P_INIT(_v)					\
+					{ FY_CONST_P_INIT(_v) }					\
 				};								\
 				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
 				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
@@ -986,7 +986,7 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 14)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  7)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
-					FY_CONST_P_INIT(_v)					\
+					{ FY_CONST_P_INIT(_v) }					\
 				};								\
 				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
 				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
@@ -1004,7 +1004,7 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 15)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  8)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? (uint8_t)(_len) : 0,	\
-					FY_CONST_P_INIT(_v)					\
+					{ FY_CONST_P_INIT(_v) }					\
 				};								\
 				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
 				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
@@ -1079,7 +1079,7 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 					char s[];						\
 				} _s FY_STRING_ALIGNMENT = {					\
 					__builtin_constant_p(_len) ? (uint8_t)(_len) : 0,	\
-					FY_CONST_P_INIT(_v)					\
+					{ FY_CONST_P_INIT(_v) }					\
 				};								\
 				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
 				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
@@ -1090,7 +1090,7 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 				} _s FY_STRING_ALIGNMENT = {					\
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 7)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
-					FY_CONST_P_INIT(_v)					\
+					{ FY_CONST_P_INIT(_v) }					\
 				};								\
 				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
 				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
@@ -1102,7 +1102,7 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 14)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  7)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
-					FY_CONST_P_INIT(_v)					\
+					{ FY_CONST_P_INIT(_v) }					\
 				};								\
 				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
 				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
@@ -1115,7 +1115,7 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 14)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  7)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)(_len) & 0x7f) : 0,	\
-					FY_CONST_P_INIT(_v)					\
+					{ FY_CONST_P_INIT(_v) }					\
 				};								\
 				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
 				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
@@ -1129,7 +1129,7 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >> 15)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? ((uint8_t)((_len) >>  8)) | 0x80 : 0,	\
 					__builtin_constant_p(_len) ? (uint8_t)(_len) : 0,	\
-					FY_CONST_P_INIT(_v)					\
+					{ FY_CONST_P_INIT(_v) }					\
 				};								\
 				assert(((uintptr_t)&_s & FY_INPLACE_TYPE_MASK) == 0);		\
 				_r = (fy_generic)&_s | FY_STRING_OUTPLACE_V;			\
