@@ -2040,7 +2040,7 @@ int fy_scan_directive(struct fy_parser *fyp)
 		/* skip until linebreak (or #) */
 		i = 0;
 		lastc = -1;
-		while ((c = fy_parse_peek_at(fyp, i)) != -1 && !fyp_is_lb(fyp, c)) {
+		while ((c = fy_parse_peek_at(fyp, i)) >= 0 && !fyp_is_lb(fyp, c)) {
 			if (fy_is_ws(lastc) && c == '#')
 				break;
 			lastc = c;
@@ -2050,8 +2050,11 @@ int fy_scan_directive(struct fy_parser *fyp)
 		FYP_PARSE_WARNING(fyp, 0, i, FYEM_SCAN,
 			"Unsupported directive");
 
+		FYP_PARSE_ERROR_CHECK(fyp, i, 1, FYEM_SCAN, c >= 0 || c == FYUG_EOF, err_out,
+			"Bad UTF8 input while scanning unknown %%TAG directive");
+
 		if (fy_is_ws(lastc) && c == '#') {
-			while ((c = fy_parse_peek_at(fyp, i)) != -1 && !fyp_is_lb(fyp, c))
+			while ((c = fy_parse_peek_at(fyp, i)) >= 0 && !fyp_is_lb(fyp, c))
 				i++;
 		}
 
@@ -2136,7 +2139,7 @@ int fy_scan_directive(struct fy_parser *fyp)
 	/* skip until linebreak (or #) */
 	i = 0;
 	lastc = -1;
-	while ((c = fy_parse_peek_at(fyp, i)) != -1 && !fyp_is_lb(fyp, c)) {
+	while ((c = fy_parse_peek_at(fyp, i)) >= 0 && !fyp_is_lb(fyp, c)) {
 		if (fy_is_ws(lastc) && c == '#')
 			break;
 
