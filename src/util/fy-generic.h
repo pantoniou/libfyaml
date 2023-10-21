@@ -664,10 +664,9 @@ fy_generic fy_generic_float_create(struct fy_generic_builder *gb, double val);
 		double __v = (_v);								\
 		double *__vp;									\
 		fy_generic _r;									\
-		union { float f; uint32_t f_bits; } __u;					\
 												\
 		if (!isnormal(__v) || (float)__v == __v) {					\
-			__u.f = (float)__v;							\
+			const union { float f; uint32_t f_bits; } __u = { .f = (float)__v };	\
 			_r = ((fy_generic)__u.f_bits << FY_FLOAT_INPLACE_SHIFT) | 		\
 				FY_FLOAT_INPLACE_V;						\
 		} else {									\
@@ -685,8 +684,9 @@ fy_generic fy_generic_float_create(struct fy_generic_builder *gb, double val);
 		fy_generic _r;									\
 												\
 		if (!isnormal(_v) || (float)(_v) == (double)(_v)) {				\
-			static const float _vvf = __builtin_constant_p(_v) ? (float)(_v) : 0.0;	\
-			_r = ((fy_generic)(*(uint32_t *)&_vvf)  << FY_FLOAT_INPLACE_SHIFT) |	\
+			const union { float f; uint32_t f_bits; } __u =				\
+				{ .f = __builtin_constant_p(_v) ? (float)(_v) : 0.0 };		\
+			_r = ((fy_generic)__u.f_bits  << FY_FLOAT_INPLACE_SHIFT) |		\
 				FY_FLOAT_INPLACE_V;						\
 		} else {									\
 			static const double _vv FY_FLOAT_ALIGNMENT = 				\
