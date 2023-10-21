@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 PREFIX="./src"
 PARSER="libfyaml-parser -d0 -mtestsuite" 

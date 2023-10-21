@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 if [ "x$builddir" == "x" ]; then
 	T=`realpath ./libfyaml-test`

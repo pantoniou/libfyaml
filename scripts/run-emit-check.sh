@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 BN=`basename $1`
 ON="output/$BN"
 mkdir -p output

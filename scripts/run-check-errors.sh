@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 ERROR=1
 PARSER="./src/libfyaml-parser -mtestsuite" 

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # either use the supplied email address, or the current git user's email
 if [ "x$1" != "x" ] ; then

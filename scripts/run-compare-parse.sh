@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # VALGRIND=""
 VALGRIND="valgrind"
 BN=`basename $1`
