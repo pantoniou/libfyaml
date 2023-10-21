@@ -37,7 +37,7 @@
 const char *fy_library_version(void)
 {
 #ifndef VERSION
-#warn No version defined
+#warning No version defined
 	return "UNKNOWN";
 #else
 	return VERSION;
