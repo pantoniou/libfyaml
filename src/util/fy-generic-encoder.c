@@ -67,6 +67,8 @@ int fy_encode_generic_bool(struct fy_generic_encoder *fyge, const char *anchor, 
 	const char *text;
 	size_t sz;
 
+	if (fy_generic_is_indirect(v))
+		v = fy_generic_indirect_get_value(v);
 	if (v == fy_true) {
 		text = "true";
 		sz = 4;
@@ -79,14 +81,19 @@ int fy_encode_generic_bool(struct fy_generic_encoder *fyge, const char *anchor, 
 
 int fy_encode_generic_int(struct fy_generic_encoder *fyge, const char *anchor, const char *tag, fy_generic v)
 {
+	if (fy_generic_is_indirect(v))
+		v = fy_generic_indirect_get_value(v);
 	return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, "%lld",
 			fy_generic_get_int(v));
 }
 
 int fy_encode_generic_float(struct fy_generic_encoder *fyge, const char *anchor, const char *tag, fy_generic v)
 {
-	double f = fy_generic_get_float(v);
+	double f;
 
+	if (fy_generic_is_indirect(v))
+		v = fy_generic_indirect_get_value(v);
+	f = fy_generic_get_float(v);
 	if (isfinite(f))
 		return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, "%g", f);
 
@@ -104,6 +111,8 @@ int fy_encode_generic_string(struct fy_generic_encoder *fyge, const char *anchor
 	const char *str;
 	size_t len;
 
+	if (fy_generic_is_indirect(v))
+		v = fy_generic_indirect_get_value(v);
 	str = fy_generic_get_string_size(v, &len);
 	return fy_emit_scalar_write(fyge->emit, FYSS_ANY, anchor, tag, str, len);
 }
@@ -114,6 +123,8 @@ int fy_encode_generic_sequence(struct fy_generic_encoder *fyge, const char *anch
 	size_t i, count;
 	int rc;
 
+	if (fy_generic_is_indirect(v))
+		v = fy_generic_indirect_get_value(v);
 	rc = fy_emit_eventf(fyge->emit, FYET_SEQUENCE_START, FYNS_ANY, anchor, tag);
 	if (rc)
 		goto err_out;
@@ -140,6 +151,8 @@ int fy_encode_generic_mapping(struct fy_generic_encoder *fyge, const char *ancho
 	size_t i, count;
 	int rc;
 
+	if (fy_generic_is_indirect(v))
+		v = fy_generic_indirect_get_value(v);
 	rc = fy_emit_eventf(fyge->emit, FYET_MAPPING_START, FYNS_ANY, anchor, tag);
 	if (rc)
 		goto err_out;

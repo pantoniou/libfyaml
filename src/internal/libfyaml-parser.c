@@ -4235,20 +4235,31 @@ fy_generic do_x3(void)
 	return vf;
 }
 
-fy_generic do_x4(void)
+const char *do_x4(void)
 {
 	fy_generic vstr;
 	const char *str;
 
-	asm volatile("nop; nop" : : : "memory");
+#if 1
 	vstr = fy_string("test");
-	asm volatile("nop; nop" : : "r"(vstr) : "memory");
-	str = fy_generic_get_string(vstr);
-	asm volatile("nop; nop" : : "r"(str) : "memory");
+	str = fy_generic_get_string_lval(vstr);
+#else
+	str = fy_generic_get_string_const(fy_string_const("test"));
+#endif
 
-	return vstr;
+	return strdup(str);
 }
 
+const char *do_x5(fy_generic vstr)
+{
+	const char *str;
+
+	asm volatile("nop; nop" : : : "memory");
+	str = fy_generic_get_string_lval(vstr);
+	asm volatile("nop; nop" : : : "memory");
+
+	return strdup(str);
+}
 
 char *testing_export = "This is export";
 
@@ -4568,6 +4579,10 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		szd = 0;
 		fy_decode_size(size_buf, sizeof(size_buf), &szd);
 		printf(" decoded=%zx", szd);
+
+		szd = 0;
+		fy_decode_size_nocheck(size_buf, &szd);
+		printf(" decoded_nocheck=%zx", szd);
 
 		printf("\n");
 
