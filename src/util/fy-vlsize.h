@@ -153,6 +153,28 @@ done:
 }
 
 static inline const uint8_t *
+fy_decode_size32_nocheck(const uint8_t *start, uint64_t *sizep)
+{
+	const uint8_t *p;
+	size_t size;
+	unsigned int i;
+
+	p = start;
+	size = 0;
+	for (i = 0; i < FYVL_SIZE_ENCODING_MAX_32-1; i++) {
+		size <<= 7;
+		size |= (p[i] & 0x7f);
+		if ((int8_t)p[i] >= 0)
+			goto out;
+	}
+	size <<= 8;
+	size |= p[i];
+out:
+	*sizep = size;
+	return p + i + 1;
+}
+
+static inline const uint8_t *
 fy_skip_size32(const uint8_t *start, size_t bufsz)
 {
 	const uint8_t *p, *end, *end_scan, *end_max_scan;
@@ -183,6 +205,18 @@ done:
 	if (++p >= end)
 		p = end;
 	return p;
+}
+
+static inline const uint8_t *
+fy_skip_size32_nocheck(const uint8_t *p)
+{
+	unsigned int i;
+
+	for (i = 0; i < FYVL_SIZE_ENCODING_MAX_32; ) {
+		if ((int8_t)p[i++] >= 0)
+			break;
+	}
+	return p + i;
 }
 
 static inline unsigned int
@@ -346,6 +380,28 @@ done:
 }
 
 static inline const uint8_t *
+fy_decode_size64_nocheck(const uint8_t *start, uint64_t *sizep)
+{
+	const uint8_t *p;
+	size_t size;
+	unsigned int i;
+
+	p = start;
+	size = 0;
+	for (i = 0; i < FYVL_SIZE_ENCODING_MAX_64-1; i++) {
+		size <<= 7;
+		size |= (p[i] & 0x7f);
+		if ((int8_t)p[i] >= 0)
+			goto out;
+	}
+	size <<= 8;
+	size |= p[i];
+out:
+	*sizep = size;
+	return p + i + 1;
+}
+
+static inline const uint8_t *
 fy_skip_size64(const uint8_t *start, size_t bufsz)
 {
 	const uint8_t *p, *end, *end_scan, *end_max_scan;
@@ -376,6 +432,18 @@ done:
 	if (++p >= end)
 		p = end;
 	return p;
+}
+
+static inline const uint8_t *
+fy_skip_size64_nocheck(const uint8_t *p)
+{
+	unsigned int i;
+
+	for (i = 0; i < FYVL_SIZE_ENCODING_MAX_64; ) {
+		if ((int8_t)p[i++] >= 0)
+			break;
+	}
+	return p + i;
 }
 
 /* is pointless to pretend size_t is anything other than 64 or 32 bits */
@@ -409,9 +477,35 @@ fy_decode_size(const uint8_t *start, size_t bufsz, size_t *sizep)
 }
 
 static inline const uint8_t *
+fy_decode_size_nocheck(const uint8_t *start, size_t *sizep)
+{
+#if 1
+	return fy_decode_size64_nocheck(start, sizep);
+#else
+	const uint8_t *p0, *p1;
+	size_t sz0, sz1;
+	p0 = fy_decode_size64(start, FYVL_SIZE_ENCODING_MAX_64, &sz0);
+	p1 = fy_decode_size64_nocheck(start, &sz1);
+	assert(p0 == p1);
+	if (sz0 != sz1) {
+		fprintf(stderr, "%zu %zu\n", sz0, sz1);
+	}
+	assert(sz0 == sz1);
+	*sizep = sz0;
+	return p0;
+#endif
+}
+
+static inline const uint8_t *
 fy_skip_size(const uint8_t *start, size_t bufsz)
 {
 	return fy_skip_size64(start, bufsz);
+}
+
+static inline const uint8_t *
+fy_skip_size_nocheck(const uint8_t *start)
+{
+	return fy_skip_size64_nocheck(start);
 }
 
 #define FYVL_SIZE_ENCODING_MAX FYVL_SIZE_ENCODING_MAX_64
@@ -444,9 +538,21 @@ fy_decode_size(const uint8_t *start, size_t bufsz, size_t *sizep)
 }
 
 static inline const uint8_t *
+fy_decode_size_nocheck(const uint8_t *start, size_t *sizep)
+{
+	return fy_decode_size32_nocheck(start, sizep);
+}
+
+static inline const uint8_t *
 fy_skip_size(const uint8_t *start, size_t bufsz)
 {
 	return fy_skip_size32(start, bufsz, &sz);
+}
+
+static inline const uint8_t *
+fy_skip_size_nocheck(const uint8_t *start)
+{
+	return fy_skip_size32_nocheck(start);
 }
 
 #define FYVL_SIZE_ENCODING_MAX FYVL_SIZE_ENCODING_MAX_32
