@@ -121,12 +121,12 @@ fy_generic fy_generic_string_size_create(struct fy_generic_builder *gb, const ch
 		return ((fy_generic)str[0] << 8) |
 		       ((fy_generic)str[1] << 16) |
 			(2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
+#ifdef FY_HAS_64BIT_PTR
 	case 3:
 		return ((fy_generic)str[0] << 8) |
 		       ((fy_generic)str[1] << 16) |
 		       ((fy_generic)str[2] << 24) |
 			(3 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
-#ifdef FY_HAS_64BIT_PTR
 	case 4:
 		return ((fy_generic)str[0] << 8) |
 		       ((fy_generic)str[1] << 16) |
@@ -148,15 +148,6 @@ fy_generic fy_generic_string_size_create(struct fy_generic_builder *gb, const ch
 		       ((fy_generic)str[4] << 40) |
 		       ((fy_generic)str[5] << 48) |
 			(6 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
-	case 7:
-		return ((fy_generic)str[0] << 8) |
-		       ((fy_generic)str[1] << 16) |
-		       ((fy_generic)str[2] << 24) |
-		       ((fy_generic)str[3] << 32) |
-		       ((fy_generic)str[4] << 40) |
-		       ((fy_generic)str[5] << 48) |
-		       ((fy_generic)str[6] << 56) |
-			(7 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
 #endif
 	default:
 		break;
@@ -678,8 +669,8 @@ static inline int fy_generic_string_compare(fy_generic a, fy_generic b)
 	size_t sza = 0, szb = 0;
 	int ret;
 
-	sa = fy_generic_get_string_size_alloca(a, &sza);
-	sb = fy_generic_get_string_size_alloca(b, &szb);
+	sa = fy_generic_get_string_size(a, &sza);
+	sb = fy_generic_get_string_size(b, &szb);
 
 	ret = memcmp(sa, sb, sza > szb ? szb : sza);
 
@@ -694,8 +685,8 @@ static inline int fy_generic_alias_compare(fy_generic a, fy_generic b)
 	size_t sza = 0, szb = 0;
 	int ret;
 
-	sa = fy_generic_get_alias_size_alloca(a, &sza);
-	sb = fy_generic_get_alias_size_alloca(b, &szb);
+	sa = fy_generic_get_alias_size(a, &sza);
+	sb = fy_generic_get_alias_size(b, &szb);
 
 	ret = memcmp(sa, sb, sza > szb ? szb : sza);
 

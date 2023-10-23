@@ -4160,7 +4160,7 @@ void fy_generic_print_primitive(FILE *fp, fy_generic v)
 		return;
 
 	case FYGT_STRING:
-		sv = fy_generic_get_string_size_alloca(v, &slen);
+		sv = fy_generic_get_string_size(v, &slen);
 		fprintf(fp, "'%.*s'", (int)slen, sv);
 		return;
 
@@ -4192,7 +4192,7 @@ void fy_generic_print_primitive(FILE *fp, fy_generic v)
 		break;
 
 	case FYGT_ALIAS:
-		sv = fy_generic_get_alias_size_alloca(v, &slen);
+		sv = fy_generic_get_alias_size(v, &slen);
 		fprintf(fp, "*'%.*s'", (int)slen, sv);
 		break;
 
@@ -4206,9 +4206,9 @@ fy_generic do_x(void)
 {
 	fy_generic vstr;
 
-	// asm volatile("nop; nop" : : : "memory");
-	vstr = fy_string_alloca("test");
-	// asm volatile("nop; nop" : : "r"(vstr) : "memory");
+	asm volatile("nop; nop" : : : "memory");
+	vstr = fy_string("test");
+	asm volatile("nop; nop" : : "r"(vstr) : "memory");
 
 	return vstr;
 }
@@ -4218,7 +4218,7 @@ fy_generic do_x2(void)
 	fy_generic vf;
 
 	asm volatile("nop; nop" : : : "memory");
-	vf = fy_float_alloca(128.0);
+	vf = fy_float(128.0);
 	asm volatile("nop; nop" : : "r"(vf) : "memory");
 
 	return vf;
@@ -4234,6 +4234,21 @@ fy_generic do_x3(void)
 
 	return vf;
 }
+
+fy_generic do_x4(void)
+{
+	fy_generic vstr;
+	const char *str;
+
+	asm volatile("nop; nop" : : : "memory");
+	vstr = fy_string("test");
+	asm volatile("nop; nop" : : "r"(vstr) : "memory");
+	str = fy_generic_get_string(vstr);
+	asm volatile("nop; nop" : : "r"(str) : "memory");
+
+	return vstr;
+}
+
 
 char *testing_export = "This is export";
 
@@ -4263,7 +4278,6 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		"invoice",
 	};
 	const char *sv;
-	char sinplace[FYGT_STRING_INPLACE_BUF];
 	size_t slen;
 	static const double ftable[] = {
 		0.0, 1.0, -1.0, 0.1, -0.1,
@@ -4347,43 +4361,43 @@ int do_generics(int argc, char *argv[], const char *allocator)
 #endif
 	}
 
-	printf("testing alloca methods\n");
+	printf("testing generic methods\n");
 	printf("null = %016lx\n", fy_null);
 	for (i = 0; i < ARRAY_SIZE(btable); i++) {
 		bv = btable[i];
-		gbl = fy_bool_alloca(bv);
+		gbl = fy_bool(bv);
 		printf("boolean/%s = %016lx %s\n", bv ? "true" : "false", gbl,
 				fy_generic_get_bool(gbl) ? "true" : "false");
 	}
 
 	for (i = 0; i < ARRAY_SIZE(itable); i++) {
 		iv = itable[i];
-		gi = fy_int_alloca(iv);
+		gi = fy_int(iv);
 		printf("int/%lld = %016lx %lld\n", iv, gi,
 				fy_generic_get_int(gi));
 	}
 
 	for (i = 0; i < ARRAY_SIZE(stable); i++) {
 		sv = stable[i];
-		gs = fy_string_alloca(sv);
+		gs = fy_string(sv);
 		printf("string/%s = %016lx", sv, gs);
 
-		sv = fy_generic_get_string_size(gs, sinplace, &slen);
+		sv = fy_generic_get_string_size(gs, &slen);
 		assert(sv);
 		printf(" %.*s\n", (int)slen, sv);
 	}
 
 	for (i = 0; i < ARRAY_SIZE(ftable); i++) {
 		fv = ftable[i];
-		gf = fy_float_alloca(fv);
+		gf = fy_float(fv);
 		printf("float/%f = %016lx %f\n", fv, gf,
 				fy_generic_get_float(gf));
 	}
 
 	seq = fy_sequence_alloca(3, ((fy_generic[]){
-			fy_bool_alloca(true),
-			fy_int_alloca(100),
-			fy_string_alloca("info")}));
+			fy_bool(true),
+			fy_int(100),
+			fy_string("info")}));
 	assert(seq != fy_invalid);
 
 	printf("seq:\n");
@@ -4391,9 +4405,9 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	printf("\n");
 
 	map = fy_mapping_alloca(3, ((fy_generic[]){
-			fy_string_alloca("foo"), fy_string_alloca("bar"),
-			fy_string_alloca("frooz-larger"), fy_string_alloca("what"),
-			fy_string_alloca("seq"), seq}));
+			fy_string("foo"), fy_string("bar"),
+			fy_string("frooz-larger"), fy_string("what"),
+			fy_string("seq"), seq}));
 
 	assert(map != fy_invalid);
 
@@ -4401,25 +4415,25 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	fy_generic_print_primitive(stdout, map);
 	printf("\n");
 
-	gv = fy_generic_mapping_lookup(map, fy_string_alloca("foo"));
+	gv = fy_generic_mapping_lookup(map, fy_string("foo"));
 	printf("found: ");
 	fy_generic_print_primitive(stdout, gv);
 	printf("\n");
 
 	map = fy_mapping_alloca(2, ((fy_generic[]){
-			fy_string_alloca("foo"), fy_string_alloca("bar"),
+			fy_string("foo"), fy_string("bar"),
 			fy_sequence_alloca(2, ((fy_generic[]){
-					fy_int_alloca(10),
-					fy_int_alloca(100)})),
-				fy_float_alloca(3.14)}));
+					fy_int(10),
+					fy_int(100)})),
+				fy_float(3.14)}));
 
 	fy_generic_print_primitive(stdout, map);
 	printf("\n");
 
 	gv = fy_generic_mapping_lookup(map,
 			fy_sequence_alloca(2, ((fy_generic[]){
-					fy_int_alloca(10),
-					fy_int_alloca(100)})));
+					fy_int(10),
+					fy_int(100)})));
 	printf("found: ");
 	fy_generic_print_primitive(stdout, gv);
 	printf("\n");
@@ -4493,7 +4507,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		fy_generic vstr;
 
 		asm volatile("nop; nop" : : : "memory");
-		vstr = fy_string_alloca("test");
+		vstr = fy_string("test");
 		asm volatile("nop; nop" : : "r"(vstr) : "memory");
 
 		printf("vstr=0x%08lx\n", (unsigned long)vstr);
@@ -4528,9 +4542,13 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		gs = fy_generic_string_create(gb, sv);
 		printf("string/%s = %016lx", sv, gs);
 
-		sv = fy_generic_get_string_size(gs, sinplace, &slen);
+		sv = fy_generic_get_string_size(gs, &slen);
 		assert(sv);
 		printf(" %.*s\n", (int)slen, sv);
+
+		sv = fy_generic_get_string(gs);
+		assert(sv);
+		printf("\t%s\n", sv);
 	}
 
 	for (i = 0; i < ARRAY_SIZE(sztable); i++) {

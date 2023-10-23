@@ -104,7 +104,7 @@ int fy_encode_generic_string(struct fy_generic_encoder *fyge, const char *anchor
 	const char *str;
 	size_t len;
 
-	str = fy_generic_get_string_size_alloca(v, &len);
+	str = fy_generic_get_string_size(v, &len);
 	return fy_emit_scalar_write(fyge->emit, FYSS_ANY, anchor, tag, str, len);
 }
 
@@ -162,7 +162,7 @@ err_out:
 
 int fy_encode_generic_alias(struct fy_generic_encoder *fyge, fy_generic v)
 {
-	return fy_emit_eventf(fyge->emit, FYET_ALIAS, fy_generic_get_alias_alloca(v));
+	return fy_emit_eventf(fyge->emit, FYET_ALIAS, fy_generic_get_alias(v));
 }
 
 int fy_encode_generic(struct fy_generic_encoder *fyge, fy_generic v)
@@ -173,9 +173,9 @@ int fy_encode_generic(struct fy_generic_encoder *fyge, fy_generic v)
 	if (fy_generic_is_indirect(v)) {
 		fy_generic_indirect_get(v, &gi);
 		if (fy_generic_get_type(gi.anchor) == FYGT_STRING)
-			anchor = fy_generic_get_string_alloca(gi.anchor);
+			anchor = fy_generic_get_string(gi.anchor);
 		if (fy_generic_get_type(gi.tag) == FYGT_STRING)
-			tag = fy_generic_get_string_alloca(gi.tag);
+			tag = fy_generic_get_string(gi.tag);
 	}
 
 	switch (fy_generic_get_type(v)) {
@@ -214,7 +214,7 @@ int fy_encode_generic(struct fy_generic_encoder *fyge, fy_generic v)
 
 int fy_generic_encoder_emit_document(struct fy_generic_encoder *fyge, fy_generic vroot, fy_generic vds)
 {
-	fy_generic vtags, vversion, vhandle, vprefix;
+	fy_generic vtags, vversion, vhandle, vprefix, vmajor, vminor;
 	const fy_generic *items;
 	struct fy_version *vers = NULL, vers_local;
 	struct fy_tag **tags = NULL, *tag;
@@ -231,35 +231,37 @@ int fy_generic_encoder_emit_document(struct fy_generic_encoder *fyge, fy_generic
 
 	/* the document state must be a mapping */
 	if (vds != fy_invalid && fy_generic_get_type(vds) == FYGT_MAPPING) {
-		vversion = fy_generic_mapping_lookup(vds, fy_string_alloca("version"));
+		vversion = fy_generic_mapping_lookup(vds, fy_string("version"));
 
 		if (fy_generic_get_type(vversion) == FYGT_MAPPING) {
 			vers = &vers_local;
 			memset(vers, 0, sizeof(*vers));
-			vers->major = fy_generic_get_int(fy_generic_mapping_lookup(vversion, fy_string_alloca("major")));
-			vers->minor = fy_generic_get_int(fy_generic_mapping_lookup(vversion, fy_string_alloca("minor")));
+			vmajor = fy_generic_mapping_lookup(vversion, fy_string("major"));
+			vminor = fy_generic_mapping_lookup(vversion, fy_string("minor"));
+			vers->major = fy_generic_get_int(vmajor);
+			vers->minor = fy_generic_get_int(vminor);
 		}
 
-		vtags = fy_generic_mapping_lookup(vds, fy_string_alloca("tags"));
+		vtags = fy_generic_mapping_lookup(vds, fy_string("tags"));
 		if (fy_generic_get_type(vtags) == FYGT_SEQUENCE) {
 			items = fy_generic_sequence_get_items(vtags, &count);
-
-			vhandle = fy_string_alloca("handle");
-			vprefix = fy_string_alloca("prefix");
 
 			tags = alloca((count + 1) * sizeof(*tags));
 			for (i = 0; i < count; i++) {
 				tag = alloca(sizeof(*tag));
-				tag->handle = fy_generic_get_string_alloca(fy_generic_mapping_lookup(items[i], vhandle));
-				tag->prefix = fy_generic_get_string_alloca(fy_generic_mapping_lookup(items[i], vprefix));
+				vhandle = fy_generic_mapping_lookup(items[i], fy_string("handle"));
+				vprefix = fy_generic_mapping_lookup(items[i], fy_string("prefix"));
+
+				tag->handle = fy_generic_get_string(vhandle);
+				tag->prefix = fy_generic_get_string(vprefix);
 
 				tags[i] = tag;
 			}
 			tags[i] = NULL;
 		}
 
-		version_explicit = fy_generic_mapping_lookup(vds, fy_string_alloca("version-explicit")) == fy_true;
-		tags_explicit = fy_generic_mapping_lookup(vds, fy_string_alloca("tags-explicit")) == fy_true;
+		version_explicit = fy_generic_mapping_lookup(vds, fy_string("version-explicit")) == fy_true;
+		tags_explicit = fy_generic_mapping_lookup(vds, fy_string("tags-explicit")) == fy_true;
 
 		if (!version_explicit)
 			vers = NULL;
@@ -320,8 +322,8 @@ int fy_generic_encoder_emit_all_documents(struct fy_generic_encoder *fyge, fy_ge
 	if (fy_generic_get_type(vdir) != FYGT_SEQUENCE)
 		return -1;
 
-	vroot_key = fy_string_alloca("root");
-	vdocs_key = fy_string_alloca("docs");
+	vroot_key = fy_string("root");
+	vdocs_key = fy_string("docs");
 
 	/* no documents? nothing to emit */
 	items = fy_generic_sequence_get_items(vdir, &count);
