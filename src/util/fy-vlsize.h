@@ -152,6 +152,39 @@ done:
 	return p;
 }
 
+static inline const uint8_t *
+fy_skip_size32(const uint8_t *start, size_t bufsz)
+{
+	const uint8_t *p, *end, *end_scan, *end_max_scan;
+
+	end = start + bufsz;
+
+	end_max_scan = start + FYVL_SIZE_ENCODING_MAX_32;
+
+	if (end_max_scan < end)
+		end_scan = end_max_scan;
+	else
+		end_scan = end;
+
+	end_max_scan--;
+
+	p = start;
+	while (p < end_scan) {
+		if (p < end_max_scan) {
+			if (!(*p & 0x80))
+				goto done;
+		} else
+			goto done;
+		p++;
+	}
+
+	return NULL;
+done:
+	if (++p >= end)
+		p = end;
+	return p;
+}
+
 static inline unsigned int
 fy_encode_size64_bytes(uint64_t size)
 {
@@ -312,6 +345,39 @@ done:
 	return p;
 }
 
+static inline const uint8_t *
+fy_skip_size64(const uint8_t *start, size_t bufsz)
+{
+	const uint8_t *p, *end, *end_scan, *end_max_scan;
+
+	end = start + bufsz;
+
+	end_max_scan = start + FYVL_SIZE_ENCODING_MAX_64;
+
+	if (end_max_scan < end)
+		end_scan = end_max_scan;
+	else
+		end_scan = end;
+
+	end_max_scan--;
+
+	p = start;
+	while (p < end_scan) {
+		if (p < end_max_scan) {
+			if (!(*p & 0x80))
+				goto done;
+		} else
+			goto done;
+		p++;
+	}
+
+	return NULL;
+done:
+	if (++p >= end)
+		p = end;
+	return p;
+}
+
 /* is pointless to pretend size_t is anything other than 64 or 32 bits */
 #if SIZE_MAX == UINT64_MAX
 
@@ -342,6 +408,12 @@ fy_decode_size(const uint8_t *start, size_t bufsz, size_t *sizep)
 	return ret;
 }
 
+static inline const uint8_t *
+fy_skip_size(const uint8_t *start, size_t bufsz)
+{
+	return fy_skip_size64(start, bufsz);
+}
+
 #define FYVL_SIZE_ENCODING_MAX FYVL_SIZE_ENCODING_MAX_64
 
 #else
@@ -369,6 +441,12 @@ fy_decode_size(const uint8_t *start, size_t bufsz, size_t *sizep)
 		return NULL;
 	*sizep = sz;
 	return ret;
+}
+
+static inline const uint8_t *
+fy_skip_size(const uint8_t *start, size_t bufsz)
+{
+	return fy_skip_size32(start, bufsz, &sz);
 }
 
 #define FYVL_SIZE_ENCODING_MAX FYVL_SIZE_ENCODING_MAX_32

@@ -48,19 +48,23 @@ enum fy_generic_type {
 typedef uintptr_t fy_generic;
 
 #define FYGT_INT_INPLACE_BITS_64 61
-#define FYGT_STRING_INPLACE_SIZE_64 7
+#define FYGT_STRING_INPLACE_SIZE_64 6
+#define FYGT_STRING_INPLACE_SIZE_MASK_64 7
 #define FYGT_SIZE_ENCODING_MAX_64 FYVL_SIZE_ENCODING_MAX_64
 
 #define FYGT_INT_INPLACE_BITS_32 29
-#define FYGT_STRING_INPLACE_SIZE_32 3
+#define FYGT_STRING_INPLACE_SIZE_32 2
+#define FYGT_STRING_INPLACE_SIZE_MASK_32 3
 #define FYGT_SIZE_ENCODING_MAX_32 FYVL_SIZE_ENCODING_MAX_32
 
 #ifdef FY_HAS_64BIT_PTR
 #define FYGT_INT_INPLACE_BITS FYGT_INT_INPLACE_BITS_64
 #define FYGT_STRING_INPLACE_SIZE FYGT_STRING_INPLACE_SIZE_64
+#define FYGT_STRING_INPLACE_SIZE_MASK FYGT_STRING_INPLACE_SIZE_MASK_64
 #else
 #define FYGT_INT_INPLACE_BITS FYGT_INT_INPLACE_BITS_32
 #define FYGT_STRING_INPLACE_SIZE FYGT_STRING_INPLACE_SIZE_32
+#define FYGT_STRING_INPLACE_SIZE_MASK FYGT_STRING_INPLACE_SIZE_MASK_32
 #endif
 
 #define FYGT_SIZE_ENCODING_MAX FYVL_SIZE_ENCODING_MAX
@@ -138,7 +142,6 @@ typedef uintptr_t fy_generic;
 #define fy_true		(~(fy_generic)7)
 #define fy_invalid	((fy_generic)-1)
 
-#define FYGT_STRING_INPLACE_BUF (FYGT_STRING_INPLACE_SIZE + 1)
 #define FYGT_INT_INPLACE_MAX ((1LL << (FYGT_INT_INPLACE_BITS - 1)) - 1)
 #define FYGT_INT_INPLACE_MIN (-(1LL << (FYGT_INT_INPLACE_BITS - 1)))
 
@@ -435,162 +438,125 @@ static inline void fy_generic_builder_release(struct fy_generic_builder *gb, con
 	fy_allocator_release(gb->allocator, gb->alloc_tag, ptr, size);
 }
 
-static inline bool fy_generic_get_bool(fy_generic v)
-{
-	if (fy_generic_is_indirect(v))
-		v = fy_generic_indirect_get_value(v);
-	assert(fy_generic_get_type(v) == FYGT_BOOL);
-	return (v >> FY_BOOL_INPLACE_SHIFT) != 0;
-}
-
-static inline long long fy_generic_get_int(fy_generic v)
-{
-	long long *p;
-
-	if (fy_generic_is_indirect(v))
-		v = fy_generic_indirect_get_value(v);
-
-	assert(fy_generic_get_type(v) == FYGT_INT);
-	/* inplace? */
-	if ((v & FY_INPLACE_TYPE_MASK) == FY_INT_INPLACE_V)
-		return (intptr_t)v >> FY_INPLACE_TYPE_SHIFT;
-	p = fy_generic_resolve_ptr(v);
-	return *p;
-}
-
-static inline double fy_generic_get_float(fy_generic v)
-{
-#ifndef FY_HAS_64BIT_PTR
-	float *pf;
-#endif
-	double *pd;
-
-	if (fy_generic_is_indirect(v))
-		v = fy_generic_indirect_get_value(v);
-
-	assert(fy_generic_get_type(v) == FYGT_FLOAT);
-
-	/* in place for 64 bit, pointer for 32 bit */
-	if ((v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V) {
-#ifndef FY_HAS_64BIT_PTR
-		pf = fy_generic_resolve_ptr(v);
-		return (double)*pf;
-#else
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-		return (double)*((float *)&v + 1);
-#else
-		return (double)*((float *)&v);
-#endif
-#endif
-	}
-	pd = fy_generic_resolve_ptr(v);
-	return *pd;
-}
-
-static inline const char *fy_generic_get_string_size(fy_generic v, char *inplace, size_t *lenp)
-{
-	size_t len;
-
-	if (fy_generic_is_indirect(v))
-		v = fy_generic_indirect_get_value(v);
-
-	assert(fy_generic_get_type(v) == FYGT_STRING);
-
-	/* in place */
-	if ((v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) {
-
-		len = (v >> FY_STRING_INPLACE_SIZE_SHIFT) & FYGT_STRING_INPLACE_SIZE;
-		switch (len) {
-		case 0:
-			inplace[0] = '\0';
-			break;
-		case 1:
-			inplace[0] = (char)(uint8_t)(v >> 8);
-			inplace[1] = '\0';
-			break;
-		case 2:
-			inplace[0] = (char)(uint8_t)(v >> 8);
-			inplace[1] = (char)(uint8_t)(v >> 16);
-			inplace[2] = '\0';
-			break;
-		case 3:
-			inplace[0] = (char)(uint8_t)(v >> 8);
-			inplace[1] = (char)(uint8_t)(v >> 16);
-			inplace[2] = (char)(uint8_t)(v >> 24);
-			inplace[3] = '\0';
-			break;
-#ifdef FY_HAS_64BIT_PTR
-		case 4:
-			inplace[0] = (char)(uint8_t)(v >> 8);
-			inplace[1] = (char)(uint8_t)(v >> 16);
-			inplace[2] = (char)(uint8_t)(v >> 24);
-			inplace[3] = (char)(uint8_t)(v >> 32);
-			inplace[4] = '\0';
-			break;
-		case 5:
-			inplace[0] = (char)(uint8_t)(v >> 8);
-			inplace[1] = (char)(uint8_t)(v >> 16);
-			inplace[2] = (char)(uint8_t)(v >> 24);
-			inplace[3] = (char)(uint8_t)(v >> 32);
-			inplace[4] = (char)(uint8_t)(v >> 40);
-			inplace[5] = '\0';
-			break;
-		case 6:
-			inplace[0] = (char)(uint8_t)(v >> 8);
-			inplace[1] = (char)(uint8_t)(v >> 16);
-			inplace[2] = (char)(uint8_t)(v >> 24);
-			inplace[3] = (char)(uint8_t)(v >> 32);
-			inplace[4] = (char)(uint8_t)(v >> 40);
-			inplace[5] = (char)(uint8_t)(v >> 48);
-			inplace[6] = '\0';
-			break;
-		case 7:
-			inplace[0] = (char)(uint8_t)(v >> 8);
-			inplace[1] = (char)(uint8_t)(v >> 16);
-			inplace[2] = (char)(uint8_t)(v >> 24);
-			inplace[3] = (char)(uint8_t)(v >> 32);
-			inplace[4] = (char)(uint8_t)(v >> 40);
-			inplace[5] = (char)(uint8_t)(v >> 48);
-			inplace[6] = (char)(uint8_t)(v >> 56);
-			inplace[7] = '\0';
-			break;
-#endif
-		default:	/* will never happen but the compiler is stupid */
-			assert(0);
-			len = 0;
-			break;
-
-		}
-		*lenp = len;
-		return inplace;
-	}
-	return (const char *)fy_decode_size(fy_generic_resolve_ptr(v), FYGT_SIZE_ENCODING_MAX, lenp);
-}
-
-static inline const char *fy_generic_get_string(fy_generic v, char *inplace)
-{
-	size_t size;
-
-	return fy_generic_get_string_size(v, inplace, &size);
-}
-
-#define fy_generic_get_string_size_alloca(_v, _lenp) 				\
+#define fy_generic_get_bool(_v)							\
 	({									\
 		fy_generic __v = (_v);						\
-		char *__inplace = NULL;						\
+										\
+		if (fy_generic_is_indirect(__v))				\
+			__v = fy_generic_indirect_get_value(__v);		\
+		assert(fy_generic_get_type(__v) == FYGT_BOOL);			\
+		(bool)((__v >> FY_BOOL_INPLACE_SHIFT) != 0);			\
+	})
+
+#define fy_generic_get_int(_v)							\
+	({									\
+		fy_generic __v = (_v);						\
+										\
+		if (fy_generic_is_indirect(__v))				\
+			__v = fy_generic_indirect_get_value(__v);		\
+		assert(fy_generic_get_type(__v) == FYGT_INT);			\
+		(__v & FY_INPLACE_TYPE_MASK) == FY_INT_INPLACE_V ? 		\
+			(long long)(__v >> FY_INPLACE_TYPE_SHIFT) : 		\
+			*(long long *)fy_generic_resolve_ptr(__v);		\
+	})
+
+#ifdef FY_HAS_64BIT_PTR
+
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+#define FY_INPLACE_FLOAT_ADV	1
+#else
+#define FY_INPLACE_FLOAT_ADV	0
+#endif
+
+#define fy_generic_get_float(_v)						\
+	({									\
+		fy_generic __v = (_v);						\
+										\
+		if (fy_generic_is_indirect(__v))				\
+			__v = fy_generic_indirect_get_value(__v);		\
+		assert(fy_generic_get_type(__v) == FYGT_FLOAT);			\
+		(__v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V ? 		\
+			(double)*((float *)&__v + FY_INPLACE_FLOAT_ADV) :	\
+			*(double *)fy_generic_resolve_ptr(__v);			\
+	})
+
+#else
+
+#define fy_generic_get_float(_v)						\
+	({									\
+		fy_generic __v = (_v);						\
+										\
+		if (fy_generic_is_indirect(__v))				\
+			__v = fy_generic_indirect_get_value(__v);		\
+		assert(fy_generic_get_type(__v) == FYGT_FLOAT);			\
+		(__v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V ? 		\
+			(double)*(float *)fy_generic_resolve_ptr(__v);		\
+			*(double *)fy_generic_resolve_ptr(__v);			\
+	})
+#endif
+
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+#define FY_INPLACE_STRING_ADV	1
+#else
+#define FY_INPLACE_STRING_ADV	0
+#endif
+
+/* if we can get the address of the argument, then we can return a pointer to it */
+
+#define fy_generic_get_string_size(_v, _lenp)					\
+	({									\
+		fy_generic __v = (_v);						\
+		size_t *__lenp = (_lenp);					\
+		size_t __len;							\
+		const char *__str;						\
 										\
 		if (fy_generic_is_indirect(__v))				\
 			__v = fy_generic_indirect_get_value(__v);		\
 		assert(fy_generic_get_type(__v) == FYGT_STRING);		\
-		if ((__v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V)  	\
-			__inplace = alloca(FYGT_STRING_INPLACE_BUF);		\
-		fy_generic_get_string_size(__v, __inplace, (_lenp));		\
+		if ((__v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) {	\
+			__len = (__v >> FY_STRING_INPLACE_SIZE_SHIFT) & 	\
+					FYGT_STRING_INPLACE_SIZE_MASK;		\
+			__str = (const char *)					\
+				_Generic(&(_v),					\
+					fy_generic *: \
+						(const char *)&(_v) + FY_INPLACE_STRING_ADV, \
+					default: \
+						memcpy(alloca(__len + 1), \
+							(const char *)&__v + FY_INPLACE_STRING_ADV, \
+							__len + 1));		\
+			*__lenp = __len;					\
+		} else								\
+			__str = (const char *)fy_decode_size(			\
+					fy_generic_resolve_ptr(__v), 		\
+					FYGT_SIZE_ENCODING_MAX, __lenp);	\
+		__str;								\
 	})
 
-#define fy_generic_get_string_alloca(_v) 					\
+#define fy_generic_get_string(_v)						\
 	({									\
+		fy_generic __v = (_v);						\
 		size_t __len;							\
-		fy_generic_get_string_size_alloca((_v), &__len);		\
+		const char *__str;						\
+										\
+		if (fy_generic_is_indirect(__v))				\
+			__v = fy_generic_indirect_get_value(__v);		\
+		assert(fy_generic_get_type(__v) == FYGT_STRING);		\
+		if ((__v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) { 	\
+			__len = (__v >> FY_STRING_INPLACE_SIZE_SHIFT) & 	\
+					FYGT_STRING_INPLACE_SIZE_MASK;		\
+			__str = (const char *)					\
+				_Generic(&(_v),					\
+					fy_generic *: \
+						(const char *)&(_v) + FY_INPLACE_STRING_ADV, \
+					default: \
+						memcpy(alloca(__len + 1), \
+							(const char *)&__v + FY_INPLACE_STRING_ADV, \
+							__len + 1));		\
+		} else								\
+			__str = (const char *)fy_skip_size(			\
+					fy_generic_resolve_ptr(__v), 		\
+					FYGT_SIZE_ENCODING_MAX);		\
+		__str;								\
 	})
 
 static inline fy_generic fy_generic_null_create(struct fy_generic_builder *gb)
@@ -748,7 +714,37 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
         char *: _Generic(&(_v), char **: "", default: (_v)), \
         default: "" ))
 
+
+#define FY_GENERIC_LVALUE(_v) \
+    (_Generic((_v), \
+        fy_generic: _Generic(&(_v), char **: "", default: (_v)), \
+        default: "" ))
+
 #ifdef FY_HAS_64BIT_PTR
+
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+#define FY_STRING_SHIFT7(_v0, _v1, _v2, _v3, _v4, _v5, _v6) \
+	(\
+		((fy_generic)(uint8_t)_v0 <<  8) | \
+		((fy_generic)(uint8_t)_v1 << 16) | \
+		((fy_generic)(uint8_t)_v2 << 24) | \
+		((fy_generic)(uint8_t)_v3 << 32) | \
+		((fy_generic)(uint8_t)_v4 << 40) | \
+		((fy_generic)(uint8_t)_v5 << 48) | \
+		((fy_generic)(uint8_t)_v6 << 56) \
+	)
+#else
+#define FY_STRING_SHIFT7(_v0, _v1, _v2, _v3, _v4, _v5, _v6) \
+	(\
+		((fy_generic)(uint8_t)_v6 <<  8) | \
+		((fy_generic)(uint8_t)_v5 << 16) | \
+		((fy_generic)(uint8_t)_v4 << 24) | \
+		((fy_generic)(uint8_t)_v3 << 32) | \
+		((fy_generic)(uint8_t)_v2 << 40) | \
+		((fy_generic)(uint8_t)_v1 << 48) | \
+		((fy_generic)(uint8_t)_v0 << 56) \
+	)
+#endif
 
 #define fy_string_size_alloca(_v, _len) 							\
 	({											\
@@ -759,57 +755,32 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 												\
 		switch (__len) {								\
 		case 0:										\
-			_r = ((fy_generic)0) |							\
-			     (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
+			_r = (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		case 1:										\
-			_r = ((fy_generic)__v[0] <<  8) |					\
+			_r = FY_STRING_SHIFT7(__v[0], 0, 0, 0, 0, 0, 0) |			\
 			     (1 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		case 2:										\
-			_r = ((fy_generic)__v[0] <<  8) |					\
-			     ((fy_generic)__v[1] << 16) |					\
+			_r = FY_STRING_SHIFT7(__v[0], __v[1], 0, 0, 0, 0, 0) |			\
 			     (2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		case 3:										\
-			_r = ((fy_generic)__v[0] <<  8) |					\
-			     ((fy_generic)__v[1] << 16) |					\
-			     ((fy_generic)__v[2] << 24) |					\
+			_r = FY_STRING_SHIFT7(__v[0], __v[1], __v[2], 0, 0, 0, 0) |		\
 			     (3 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		case 4:										\
-			_r = ((fy_generic)__v[0] <<  8) |					\
-			     ((fy_generic)__v[1] << 16) |					\
-			     ((fy_generic)__v[2] << 24) |					\
-			     ((fy_generic)__v[3] << 32) |					\
+			_r = FY_STRING_SHIFT7(__v[0], __v[1], __v[2], __v[3], 0, 0, 0) |	\
 			     (4 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		case 5:										\
-			_r = ((fy_generic)__v[0] <<  8) |					\
-			     ((fy_generic)__v[1] << 16) |					\
-			     ((fy_generic)__v[2] << 24) |					\
-			     ((fy_generic)__v[3] << 32) |					\
-			     ((fy_generic)__v[4] << 40) |					\
+			_r = FY_STRING_SHIFT7(__v[0], __v[1], __v[2], __v[3], __v[4], 0, 0) |	\
 			     (5 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		case 6:										\
-			_r = ((fy_generic)__v[0] <<  8) |					\
-			     ((fy_generic)__v[1] << 16) |					\
-			     ((fy_generic)__v[2] << 24) |					\
-			     ((fy_generic)__v[3] << 32) |					\
-			     ((fy_generic)__v[4] << 40) |					\
-			     ((fy_generic)__v[5] << 48) |					\
+			_r = FY_STRING_SHIFT7(__v[0], __v[1], __v[2], __v[3], __v[4], 		\
+					      __v[5], 0) |					\
 			     (6 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 7:										\
-			_r = ((fy_generic)__v[0] <<  8) |					\
-			     ((fy_generic)__v[1] << 16) |					\
-			     ((fy_generic)__v[2] << 24) |					\
-			     ((fy_generic)__v[3] << 32) |					\
-			     ((fy_generic)__v[4] << 40) |					\
-			     ((fy_generic)__v[5] << 48) |					\
-			     ((fy_generic)__v[6] << 56) |					\
-			     (7 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		default:									\
 			__vp = alloca(FYGT_SIZE_ENCODING_MAX + __len + 1); 			\
@@ -829,57 +800,33 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 												\
 		switch (_len) {									\
 		case 0:										\
-			_r = ((fy_generic)0) |							\
-			     (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
+			_r = (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		case 1:										\
-			_r = ((fy_generic)(_v)[0] <<  8) |					\
+			_r = FY_STRING_SHIFT7((_v)[0], 0, 0, 0, 0, 0, 0) |			\
 			     (1 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		case 2:										\
-			_r = ((fy_generic)(_v)[0] <<  8) |					\
-			     ((fy_generic)(_v)[1] << 16) |					\
+			_r = FY_STRING_SHIFT7((_v)[0], (_v)[1], 0, 0, 0, 0, 0) |		\
 			     (2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		case 3:										\
-			_r = ((fy_generic)(_v)[0] <<  8) |					\
-			     ((fy_generic)(_v)[1] << 16) |					\
-			     ((fy_generic)(_v)[2] << 24) |					\
+			_r = FY_STRING_SHIFT7((_v)[0], (_v)[1], (_v)[2], 0, 0, 0, 0) |		\
 			     (3 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		case 4:										\
-			_r = ((fy_generic)(_v)[0] <<  8) |					\
-			     ((fy_generic)(_v)[1] << 16) |					\
-			     ((fy_generic)(_v)[2] << 24) |					\
-			     ((fy_generic)(_v)[3] << 32) |					\
+			_r = FY_STRING_SHIFT7((_v)[0], (_v)[1], (_v)[2], (_v)[3], 0, 0, 0) |	\
 			     (4 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		case 5:										\
-			_r = ((fy_generic)(_v)[0] <<  8) |					\
-			     ((fy_generic)(_v)[1] << 16) |					\
-			     ((fy_generic)(_v)[2] << 24) |					\
-			     ((fy_generic)(_v)[3] << 32) |					\
-			     ((fy_generic)(_v)[4] << 40) |					\
+			_r = FY_STRING_SHIFT7((_v)[0], (_v)[1], (_v)[2], (_v)[3], 		\
+					      (_v)[4], 0, 0) |					\
 			     (5 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		case 6:										\
-			_r = ((fy_generic)(_v)[0] <<  8) |					\
-			     ((fy_generic)(_v)[1] << 16) |					\
-			     ((fy_generic)(_v)[2] << 24) |					\
-			     ((fy_generic)(_v)[3] << 32) |					\
-			     ((fy_generic)(_v)[4] << 40) |					\
-			     ((fy_generic)(_v)[5] << 48) |					\
+			_r = FY_STRING_SHIFT7((_v)[0], (_v)[1], (_v)[2], (_v)[3], 		\
+					      (_v)[4], (_v)[5], 0) |				\
 			     (6 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 7:										\
-			_r = ((fy_generic)(_v)[0] <<  8) |					\
-			     ((fy_generic)(_v)[1] << 16) |					\
-			     ((fy_generic)(_v)[2] << 24) |					\
-			     ((fy_generic)(_v)[3] << 32) |					\
-			     ((fy_generic)(_v)[4] << 40) |					\
-			     ((fy_generic)(_v)[5] << 48) |					\
-			     ((fy_generic)(_v)[6] << 56) |					\
-			     (7 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		default:									\
 			if ((_len) < ((uint64_t)1 <<  7)) {					\
@@ -1015,6 +962,23 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 
 #else
 
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+#define FY_STRING_SHIFT3(_v0, _v1, _v2) \
+	(\
+		((fy_generic)(uint8_t)_v0 <<  8) | \
+		((fy_generic)(uint8_t)_v1 << 16) | \
+		((fy_generic)(uint8_t)_v2 << 24)   \
+	)
+#else
+#define FY_STRING_SHIFT3(_v0, _v1, _v2) \
+	(\
+		((fy_generic)(uint8_t)_v2 <<  8) | \
+		((fy_generic)(uint8_t)_v1 << 16) | \
+		((fy_generic)(uint8_t)_v0 << 24) | \
+	)
+#endif
+
+
 #define fy_string_size_alloca(_v, _len) 							\
 	({											\
 		const char *__v = (_v);								\
@@ -1024,23 +988,15 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 												\
 		switch (len) {									\
 		case 0:										\
-			_r = ((fy_generic)0) |							\
-			     (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
+			_r = (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		case 1:										\
-			_r = ((fy_generic)__v[0] <<  8) |					\
+			_r = FY_STRING_SHIFT3(__v[0], 0, 0) |					\
 			     (1 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		case 2:										\
-			_r = ((fy_generic)__v[0] <<  8) |					\
-			     ((fy_generic)__v[1] << 16) |					\
+			_r = FY_STRING_SHIFT3(__v[0], __v[1], 0) |				\
 			     (2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 3:										\
-			_r = ((fy_generic)__v[0] <<  8) |					\
-			     ((fy_generic)__v[1] << 16) |					\
-			     ((fy_generic)__v[2] << 24) |					\
-			     (3 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		default:									\
 			__vp = alloca(FYGT_SIZE_ENCODING_MAX + __len + 1); 			\
@@ -1060,16 +1016,14 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 												\
 		switch (_len) {									\
 		case 0:										\
-			_r = ((fy_generic)0) |							\
-			     (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
+			_r = (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		case 1:										\
-			_r = ((fy_generic)(_v)[0] <<  8) |					\
+			_r = FY_STRING_SHIFT3((_v)[0], 0, 0) |					\
 			     (1 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		case 2:										\
-			_r = ((fy_generic)(_v)[0] <<  8) |					\
-			     ((fy_generic)(_v)[1] << 16) |					\
+			_r = FY_STRING_SHIFT3((_v)[0], (_v)[1], 0) |				\
 			     (2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
 		default:									\
@@ -1149,6 +1103,7 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 
 #define fy_string_const(_v) fy_string_size_const((_v), strlen(_v))
 
+#define fy_string_size(_v, _len) (__builtin_constant_p(_v) ? fy_string_size_const((_v), (_len)) : fy_string_size_alloca((_v), (_len)))
 #define fy_string(_v) (__builtin_constant_p(_v) ? fy_string_const(_v) : fy_string_alloca(_v))
 
 fy_generic fy_generic_sequence_create(struct fy_generic_builder *gb, size_t count, const fy_generic *items);
@@ -1262,31 +1217,16 @@ static inline size_t fy_generic_mapping_get_pair_count(fy_generic map)
 	return p->count;
 }
 
-static inline const char *fy_generic_get_alias_size(fy_generic v, char *inplace, size_t *lenp)
-{
-	fy_generic va;
-
-	assert(fy_generic_is_indirect(v));
-
-	va = fy_generic_indirect_get_anchor(v);
-	return fy_generic_get_string_size(va, inplace, lenp);
-}
-
-static inline const char *fy_generic_get_alias(fy_generic v, char *inplace)
-{
-	size_t size;
-
-	return fy_generic_get_alias_size(v, inplace, &size);
-}
-
-#define fy_generic_get_alias_size_alloca(_v, _lenp) \
-		fy_generic_get_string_size_alloca( \
-				fy_generic_indirect_get_anchor(_v), (_lenp))
-
-#define fy_generic_get_alias_alloca(_v) 				\
+#define fy_generic_get_alias_size(_v, _lenp)				\
 	({								\
-		size_t __len;						\
-		fy_generic_get_alias_size_alloca((_v), &__len);		\
+		fy_generic ___v = fy_generic_indirect_get_anchor(_v);	\
+		fy_generic_get_string_size(___v, (_lenp));		\
+	 })
+
+#define fy_generic_get_alias(_v)					\
+	({								\
+		fy_generic ___v = fy_generic_indirect_get_anchor(_v);	\
+		fy_generic_get_string(___v);				\
 	})
 
 fy_generic fy_generic_mapping_lookup(fy_generic map, fy_generic key);
