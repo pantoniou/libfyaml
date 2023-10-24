@@ -1161,7 +1161,7 @@ void dump_scan_token(struct fy_parser *fyp, struct fy_token *fyt, bool colorize)
 	case FYTT_FLOW_ENTRY:
 		if (colorize)
 			fputs(A_BRIGHT_YELLOW, stdout);
-		printf("BLOCK_ENTRY");
+		printf("FLOW_ENTRY");
 		break;
 	case FYTT_KEY:
 		if (colorize)
@@ -1171,7 +1171,7 @@ void dump_scan_token(struct fy_parser *fyp, struct fy_token *fyt, bool colorize)
 	case FYTT_VALUE:
 		if (colorize)
 			fputs(A_BRIGHT_YELLOW, stdout);
-		printf("KEY");
+		printf("VALUE");
 		break;
 	case FYTT_ALIAS:
 		anchor = fy_token_get_text(fyt, &anchor_len);
@@ -1199,7 +1199,7 @@ void dump_scan_token(struct fy_parser *fyp, struct fy_token *fyt, bool colorize)
 		if (colorize)
 			fputs(A_WHITE, stdout);
 
-		printf("SCALAR ");
+		printf("SCALAR");
 		value = fy_token_get_text(fyt, &len);
 		assert(value);
 		style = fy_token_scalar_style(fyt);
@@ -1207,7 +1207,7 @@ void dump_scan_token(struct fy_parser *fyp, struct fy_token *fyt, bool colorize)
 		case FYSS_PLAIN:
 			if (colorize)
 				fputs(A_WHITE, stdout);
-			printf(" ");
+			printf(" :");
 			break;
 		case FYSS_SINGLE_QUOTED:
 			if (colorize)
@@ -1232,7 +1232,7 @@ void dump_scan_token(struct fy_parser *fyp, struct fy_token *fyt, bool colorize)
 		default:
 			abort();
 		}
-		printf("%.*s", (int)len, value);
+		print_escaped(value, (int)len);
 		break;
 	default:
 		/* not handled; should not be produced by scan */
