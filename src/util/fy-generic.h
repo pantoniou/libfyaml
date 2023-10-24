@@ -257,8 +257,8 @@ static inline enum fy_generic_type fy_generic_get_direct_type(fy_generic v)
 
 static inline enum fy_generic_type fy_generic_get_type(fy_generic v)
 {
-	const uint8_t *p;
-	uint8_t flags;
+	const fy_generic *p;
+	uintptr_t flags;
 	enum fy_generic_type type;
 
 	type = fy_generic_get_direct_type(v);
@@ -272,18 +272,16 @@ static inline enum fy_generic_type fy_generic_get_type(fy_generic v)
 	flags = *p++;
 	if (!(flags & FYGIF_VALUE))
 		return FYGT_ALIAS;
-
 	/* value immediately follows */
-	memcpy(&v, p, sizeof(v));
-
+	v = *p;
 	type = fy_generic_get_direct_type(v);
 	return type != FYGT_INDIRECT ? type : FYGT_INVALID;
 }
 
 static inline void fy_generic_indirect_get(fy_generic v, struct fy_generic_indirect *gi)
 {
-	const uint8_t *p;
-	uint8_t flags;
+	const fy_generic *p;
+	uintptr_t flags;
 
 	assert(fy_generic_is_indirect(v));
 	p = fy_generic_resolve_ptr(v);
@@ -295,33 +293,23 @@ static inline void fy_generic_indirect_get(fy_generic v, struct fy_generic_indir
 
 	/* get flags */
 	flags = *p++;
-	if (flags & FYGIF_VALUE) {
-		memcpy(&gi->value, p, sizeof(gi->value));
-		p += sizeof(gi->value);
-	}
-	if (flags & FYGIF_ANCHOR) {
-		memcpy(&gi->anchor, p, sizeof(gi->anchor));
-		p += sizeof(gi->anchor);
-	}
-	if (flags & FYGIF_TAG) {
-		memcpy(&gi->tag, p, sizeof(gi->tag));
-		p += sizeof(gi->tag);
-	}
+	if (flags & FYGIF_VALUE)
+		gi->value = *p++;
+	if (flags & FYGIF_ANCHOR)
+		gi->anchor = *p++;
+	if (flags & FYGIF_TAG)
+		gi->tag = *p++;
 }
 
 static inline fy_generic fy_generic_indirect_get_value(fy_generic v)
 {
-	const uint8_t *p;
-	uint8_t flags;
-	fy_generic vv;
+	const fy_generic *p;
+	uintptr_t flags;
 
 	assert(fy_generic_is_indirect(v));
 	p = fy_generic_resolve_ptr(v);
 	flags = *p++;
-	if (!(flags & FYGIF_VALUE))
-		return fy_invalid;
-	memcpy(&vv, p, sizeof(vv));
-	return vv;
+	return (flags & FYGIF_VALUE) ? *p : fy_invalid;
 }
 
 static inline fy_generic fy_generic_indirect_get_anchor(fy_generic v)
@@ -1199,6 +1187,7 @@ static inline size_t fy_generic_mapping_get_pair_count(fy_generic map)
 	return p->count;
 }
 
+#if 0
 #define fy_generic_get_alias_size(_v, _lenp)				\
 	({								\
 		fy_generic *___vp = alloca(sizeof(fy_generic));		\
@@ -1212,6 +1201,36 @@ static inline size_t fy_generic_mapping_get_pair_count(fy_generic map)
 		*___vp = fy_generic_indirect_get_anchor(_v);		\
 		fy_generic_get_string(___vp);				\
 	})
+#endif
+
+static inline const char *fy_generic_get_alias_size(const fy_generic *vp, size_t *lenp)
+{
+	const fy_generic *p;
+	uintptr_t flags;
+
+	p = fy_generic_resolve_ptr(*vp);
+
+	flags = *p++;
+	if (flags & FYGIF_VALUE)
+		p++;
+	assert(flags & FYGIF_ANCHOR);
+	return fy_generic_get_string_size(p, lenp);
+}
+
+static inline const char *fy_generic_get_alias(const fy_generic *vp)
+{
+	const fy_generic *p;
+	uintptr_t flags;
+
+	p = fy_generic_resolve_ptr(*vp);
+
+	flags = *p++;
+	if (flags & FYGIF_VALUE)
+		p++;
+	assert(flags & FYGIF_ANCHOR);
+	return fy_generic_get_string(p);
+}
+
 
 const fy_generic *fy_generic_mapping_lookup(fy_generic map, fy_generic key);
 

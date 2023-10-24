@@ -175,7 +175,10 @@ err_out:
 
 int fy_encode_generic_alias(struct fy_generic_encoder *fyge, fy_generic v)
 {
-	return fy_emit_eventf(fyge->emit, FYET_ALIAS, fy_generic_get_alias(v));
+	const char *str;
+
+	str = fy_generic_get_alias(&v);
+	return fy_emit_eventf(fyge->emit, FYET_ALIAS, str);
 }
 
 int fy_encode_generic(struct fy_generic_encoder *fyge, fy_generic v)

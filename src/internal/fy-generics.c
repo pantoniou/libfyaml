@@ -427,7 +427,7 @@ static void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 		break;
 
 	case FYGT_ALIAS:
-		sv = fy_generic_get_alias_size(v, &slen);
+		sv = fy_generic_get_alias_size(&v, &slen);
 		fprintf(fp, "%.*s", (int)slen, sv);
 		break;
 
