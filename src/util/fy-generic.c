@@ -288,7 +288,7 @@ fy_generic fy_generic_indirect_create(struct fy_generic_builder *gb, const struc
 	const void *p;
 	struct fy_iovecw iov[4];
 	size_t cnt;
-	uint8_t flags;
+	uintptr_t flags;
 
 	cnt = 0;
 
@@ -314,7 +314,7 @@ fy_generic fy_generic_indirect_create(struct fy_generic_builder *gb, const struc
 		iov[cnt++].size = sizeof(gi->tag);
 	}
 
-	p = fy_generic_builder_storev(gb, iov, cnt, FY_SCALAR_ALIGNOF(uint8_t));	/* must be at least 8 */
+	p = fy_generic_builder_storev(gb, iov, cnt, FY_SCALAR_ALIGNOF(fy_generic));	/* must be at least 8 */
 	if (!p)
 		return fy_invalid;
 
