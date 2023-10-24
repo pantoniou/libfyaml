@@ -113,7 +113,7 @@ int fy_encode_generic_string(struct fy_generic_encoder *fyge, const char *anchor
 
 	if (fy_generic_is_indirect(v))
 		v = fy_generic_indirect_get_value(v);
-	str = fy_generic_get_string_size(v, &len);
+	str = fy_generic_get_string_size(&v, &len);
 	return fy_emit_scalar_write(fyge->emit, FYSS_ANY, anchor, tag, str, len);
 }
 
@@ -186,9 +186,9 @@ int fy_encode_generic(struct fy_generic_encoder *fyge, fy_generic v)
 	if (fy_generic_is_indirect(v)) {
 		fy_generic_indirect_get(v, &gi);
 		if (fy_generic_get_type(gi.anchor) == FYGT_STRING)
-			anchor = fy_generic_get_string(gi.anchor);
+			anchor = fy_generic_get_string(&gi.anchor);
 		if (fy_generic_get_type(gi.tag) == FYGT_STRING)
-			tag = fy_generic_get_string(gi.tag);
+			tag = fy_generic_get_string(&gi.tag);
 	}
 
 	switch (fy_generic_get_type(v)) {
@@ -227,13 +227,14 @@ int fy_encode_generic(struct fy_generic_encoder *fyge, fy_generic v)
 
 int fy_generic_encoder_emit_document(struct fy_generic_encoder *fyge, fy_generic vroot, fy_generic vds)
 {
-	fy_generic vtags, vversion, vhandle, vprefix, vmajor, vminor;
+	const fy_generic *vversionp, *vmajorp, *vminorp, *vtagsp, *vhandlep, *vprefixp;
 	const fy_generic *items;
 	struct fy_version *vers = NULL, vers_local;
 	struct fy_tag **tags = NULL, *tag;
 	bool version_explicit, tags_explicit;
+	const fy_generic *version_explicitp, *tags_explicitp;
 	int rc;
-	size_t i, count;
+	size_t i, j, count;
 
 	if (!fyge || vroot == fy_invalid)
 		return -1;
@@ -244,37 +245,51 @@ int fy_generic_encoder_emit_document(struct fy_generic_encoder *fyge, fy_generic
 
 	/* the document state must be a mapping */
 	if (vds != fy_invalid && fy_generic_get_type(vds) == FYGT_MAPPING) {
-		vversion = fy_generic_mapping_lookup(vds, fy_string("version"));
+		vversionp = fy_generic_mapping_lookup(vds, fy_string("version"));
 
-		if (fy_generic_get_type(vversion) == FYGT_MAPPING) {
+		if (vversionp) {
+			vmajorp = fy_generic_mapping_lookup(*vversionp, fy_string("major"));
+			if (!vmajorp || fy_generic_get_type(*vmajorp) != FYGT_INT)
+				goto err_out;
+			vminorp = fy_generic_mapping_lookup(*vversionp, fy_string("minor"));
+			if (!vminorp || fy_generic_get_type(*vminorp) != FYGT_INT)
+				goto err_out;
+
+			memset(&vers_local, 0, sizeof(*vers));
+			vers_local.major = fy_generic_get_int(*vmajorp);
+			vers_local.minor = fy_generic_get_int(*vminorp);
 			vers = &vers_local;
-			memset(vers, 0, sizeof(*vers));
-			vmajor = fy_generic_mapping_lookup(vversion, fy_string("major"));
-			vminor = fy_generic_mapping_lookup(vversion, fy_string("minor"));
-			vers->major = fy_generic_get_int(vmajor);
-			vers->minor = fy_generic_get_int(vminor);
 		}
 
-		vtags = fy_generic_mapping_lookup(vds, fy_string("tags"));
-		if (fy_generic_get_type(vtags) == FYGT_SEQUENCE) {
-			items = fy_generic_sequence_get_items(vtags, &count);
+		vtagsp = fy_generic_mapping_lookup(vds, fy_string("tags"));
+		if (vtagsp && fy_generic_get_type(*vtagsp) == FYGT_SEQUENCE) {
+			items = fy_generic_sequence_get_items(*vtagsp, &count);
 
 			tags = alloca((count + 1) * sizeof(*tags));
+			j = 0;
 			for (i = 0; i < count; i++) {
-				tag = alloca(sizeof(*tag));
-				vhandle = fy_generic_mapping_lookup(items[i], fy_string("handle"));
-				vprefix = fy_generic_mapping_lookup(items[i], fy_string("prefix"));
+				vhandlep = fy_generic_mapping_lookup(items[i], fy_string("handle"));
+				vprefixp = fy_generic_mapping_lookup(items[i], fy_string("prefix"));
 
-				tag->handle = fy_generic_get_string(vhandle);
-				tag->prefix = fy_generic_get_string(vprefix);
+				if (vhandlep && fy_generic_get_type(*vhandlep) == FYGT_STRING &&
+				    vprefixp && fy_generic_get_type(*vprefixp) == FYGT_STRING) {
 
-				tags[i] = tag;
+					tag = alloca(sizeof(*tag));
+					tag->handle = fy_generic_get_string(vhandlep);
+					tag->prefix = fy_generic_get_string(vprefixp);
+					tags[j++] = tag;
+				}
 			}
-			tags[i] = NULL;
+			if (j > 0)
+				tags[j++] = NULL;
+			else
+				tags = NULL;
 		}
 
-		version_explicit = fy_generic_mapping_lookup(vds, fy_string("version-explicit")) == fy_true;
-		tags_explicit = fy_generic_mapping_lookup(vds, fy_string("tags-explicit")) == fy_true;
+		version_explicitp = fy_generic_mapping_lookup(vds, fy_string("version-explicit"));
+		version_explicit = version_explicitp && *version_explicitp == fy_true;
+		tags_explicitp = fy_generic_mapping_lookup(vds, fy_string("tags-explicit"));
+		tags_explicit = tags_explicitp && *tags_explicitp == fy_true;
 
 		if (!version_explicit)
 			vers = NULL;
@@ -328,7 +343,8 @@ int fy_generic_encoder_emit_all_documents(struct fy_generic_encoder *fyge, fy_ge
 {
 	size_t i, count;
 	const fy_generic *items;
-	fy_generic vroot, vroot_key, vdocs, vdocs_key;
+	fy_generic vroot_key, vdocs_key;
+	const fy_generic *vrootp, *vdocsp;
 	int rc;
 
 	/* must be a sequence */
@@ -345,15 +361,15 @@ int fy_generic_encoder_emit_all_documents(struct fy_generic_encoder *fyge, fy_ge
 
 	for (i = 0; i < count; i++) {
 
-		vroot = fy_generic_mapping_lookup(items[i], vroot_key);
-		if (vroot == fy_invalid)
+		vrootp = fy_generic_mapping_lookup(items[i], vroot_key);
+		if (!vrootp)
 			return -1;
 
-		vdocs = fy_generic_mapping_lookup(items[i], vdocs_key);
-		if (vdocs == fy_invalid)
+		vdocsp = fy_generic_mapping_lookup(items[i], vdocs_key);
+		if (!vdocsp)
 			return -1;
 
-		rc = fy_generic_encoder_emit_document(fyge, vroot, vdocs);
+		rc = fy_generic_encoder_emit_document(fyge, *vrootp, *vdocsp);
 		if (rc)
 			return rc;
 	}

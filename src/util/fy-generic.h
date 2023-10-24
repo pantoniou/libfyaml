@@ -429,23 +429,29 @@ static inline void fy_generic_builder_release(struct fy_generic_builder *gb, con
 	fy_allocator_release(gb->allocator, gb->alloc_tag, ptr, size);
 }
 
-#define fy_generic_get_bool(_v)							\
-	({									\
-		fy_generic __v = (_v);						\
-										\
-		assert(fy_generic_get_direct_type(__v) == FYGT_BOOL);		\
-		(bool)((__v >> FY_BOOL_INPLACE_SHIFT) != 0);			\
-	})
+/* NOTE: All get method multiple-evaluate the argument, so take care */
 
-#define fy_generic_get_int(_v)							\
-	({									\
-		fy_generic __v = (_v);						\
-										\
-		assert(fy_generic_get_direct_type(__v) == FYGT_INT);		\
-		(__v & FY_INPLACE_TYPE_MASK) == FY_INT_INPLACE_V ? 		\
-			(long long)(__v >> FY_INPLACE_TYPE_SHIFT) : 		\
-			*(long long *)fy_generic_resolve_ptr(__v);		\
-	})
+#define FY_GENERIC_GET_BOOL(_v)							\
+	(									\
+		(bool)(((_v) >> FY_BOOL_INPLACE_SHIFT) != 0)			\
+	)
+
+static inline bool fy_generic_get_bool(fy_generic v)
+{
+	return FY_GENERIC_GET_BOOL(v);
+}
+
+#define FY_GENERIC_GET_INT(_v)							\
+	(									\
+		((_v) & FY_INPLACE_TYPE_MASK) == FY_INT_INPLACE_V ? 		\
+			(long long)((_v) >> FY_INPLACE_TYPE_SHIFT) : 		\
+			*(long long *)fy_generic_resolve_ptr(_v)		\
+	)
+
+static inline long long fy_generic_get_int(fy_generic v)
+{
+	return FY_GENERIC_GET_INT(v);
+}
 
 #ifdef FY_HAS_64BIT_PTR
 
@@ -455,28 +461,27 @@ static inline void fy_generic_builder_release(struct fy_generic_builder *gb, con
 #define FY_INPLACE_FLOAT_ADV	0
 #endif
 
-#define fy_generic_get_float(_v)						\
-	({									\
-		fy_generic __v = (_v);						\
-										\
-		assert(fy_generic_get_direct_type(__v) == FYGT_FLOAT);		\
-		(__v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V ? 		\
-			(double)*((float *)&__v + FY_INPLACE_FLOAT_ADV) :	\
-			*(double *)fy_generic_resolve_ptr(__v);			\
-	})
+#define FY_GENERIC_GET_FLOAT(_v)						\
+	(									\
+		((_v) & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V ? 		\
+			(double)*((float *)&(_v) + FY_INPLACE_FLOAT_ADV) :	\
+			*(double *)fy_generic_resolve_ptr(_v)			\
+	)
 
 #else
 
-#define fy_generic_get_float(_v)						\
-	({									\
-		fy_generic __v = (_v);						\
-										\
-		assert(fy_generic_get_direct_type(__v) == FYGT_FLOAT);		\
-		(__v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V ? 		\
-			(double)*(float *)fy_generic_resolve_ptr(__v);		\
-			*(double *)fy_generic_resolve_ptr(__v);			\
-	})
+#define FY_GENERIC_GET_FLOAT(_v)						\
+	(									\
+		((_v) & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V ? 		\
+			(double)*(float *)fy_generic_resolve_ptr(_v) :		\
+			*(double *)fy_generic_resolve_ptr(_v)			\
+	)
 #endif
+
+static inline double fy_generic_get_float(fy_generic v)
+{
+	return FY_GENERIC_GET_FLOAT(v);
+}
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 #define FY_INPLACE_STRING_ADV	1
@@ -488,56 +493,53 @@ static inline void fy_generic_builder_release(struct fy_generic_builder *gb, con
 
 /* if we can get the address of the argument, then we can return a pointer to it */
 
-#define fy_generic_get_inplace_string(_v)						\
+#define FY_GENERIC_GET_INPLACE_STRING(_v)						\
 	({										\
 		fy_generic *___vp = alloca(sizeof(fy_generic));				\
 		*___vp = (_v);								\
 		(const uint8_t *)___vp + FY_INPLACE_STRING_ADV;				\
 	})
 
-#define fy_generic_get_string_size(_v, _lenp)						\
-	({										\
-		fy_generic __v = (_v);							\
-		size_t *__lenp = (_lenp);						\
-		const char *__str;							\
-											\
-		assert(fy_generic_get_direct_type(__v) == FYGT_STRING);			\
-		if ((__v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) {		\
-			*__lenp = (__v >> FY_STRING_INPLACE_SIZE_SHIFT) & 		\
-					FYGT_STRING_INPLACE_SIZE_MASK;			\
-			__str = (const char *)fy_generic_get_inplace_string(__v);	\
-		} else									\
-			__str = (const char *)fy_decode_size_nocheck(			\
-					fy_generic_resolve_ptr(__v), __lenp);		\
-		__str;									\
-	})
+#define FY_GENERIC_GET_STRING_SIZE(_v, _lenp)						\
+	((const char *)(								\
+		(((_v) & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) ?		\
+			( *(_lenp) = ((_v) >> FY_STRING_INPLACE_SIZE_SHIFT) & 		\
+					FYGT_STRING_INPLACE_SIZE_MASK,			\
+			  FY_GENERIC_GET_INPLACE_STRING(_v) ) :				\
+			fy_decode_size_nocheck(						\
+					fy_generic_resolve_ptr(_v), _lenp)		\
+	))
 
-#define fy_generic_get_string(_v)							\
-	({										\
-		fy_generic __v = (_v);							\
-											\
-		assert(fy_generic_get_direct_type(__v) == FYGT_STRING);			\
-		(const char *)(								\
-			((__v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) ?		\
-				fy_generic_get_inplace_string(__v) :			\
-				fy_skip_size_nocheck(fy_generic_resolve_ptr(__v))	\
-		);									\
-	})
+#define FY_GENERIC_GET_STRING(_v)							\
+	((const char *)(								\
+		(((_v) & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) ?		\
+			FY_GENERIC_GET_INPLACE_STRING(_v) :				\
+			fy_skip_size_nocheck(fy_generic_resolve_ptr(_v))		\
+	))
 
-#define fy_generic_get_inplace_string_lval(_v)						\
-	({										\
-		(const uint8_t *)(&_v) + FY_INPLACE_STRING_ADV;				\
-	})
+#define FY_GENERIC_GET_STRING_LVAL(_v)							\
+	((const char *)(								\
+		(((_v) & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) ?		\
+			(const uint8_t *)(&(_v)) + FY_INPLACE_STRING_ADV :		\
+			fy_skip_size_nocheck(fy_generic_resolve_ptr(_v))		\
+	))
 
-#define fy_generic_get_string_lval(_v)							\
-	({										\
-		assert(fy_generic_get_direct_type(_v) == FYGT_STRING);			\
-		(const char *)(								\
-			(((_v) & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) ?	\
-				fy_generic_get_inplace_string_lval(_v) :		\
-				fy_skip_size_nocheck(fy_generic_resolve_ptr(_v))	\
-		);									\
-	})
+static inline const char *fy_generic_get_string_size(const fy_generic *vp, size_t *lenp)
+{
+	if ((*vp & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) {
+		*lenp = (*vp >> FY_STRING_INPLACE_SIZE_SHIFT) & FYGT_STRING_INPLACE_SIZE_MASK;
+		return (const char *)vp + FY_INPLACE_STRING_ADV;
+	}
+	return (const char *)fy_decode_size_nocheck(fy_generic_resolve_ptr(*vp), lenp);
+}
+
+static inline const char *fy_generic_get_string(const fy_generic *vp)
+{
+	if ((*vp & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V)
+		return (const char *)vp + FY_INPLACE_STRING_ADV;
+
+	return (const char *)fy_skip_size_nocheck(fy_generic_resolve_ptr(*vp));
+}
 
 static inline fy_generic fy_generic_null_create(struct fy_generic_builder *gb)
 {
@@ -1199,17 +1201,19 @@ static inline size_t fy_generic_mapping_get_pair_count(fy_generic map)
 
 #define fy_generic_get_alias_size(_v, _lenp)				\
 	({								\
-		fy_generic ___v = fy_generic_indirect_get_anchor(_v);	\
-		fy_generic_get_string_size(___v, (_lenp));		\
+		fy_generic *___vp = alloca(sizeof(fy_generic));		\
+		*___vp = fy_generic_indirect_get_anchor(_v);		\
+		fy_generic_get_string_size(___vp, (_lenp));		\
 	 })
 
 #define fy_generic_get_alias(_v)					\
 	({								\
-		fy_generic ___v = fy_generic_indirect_get_anchor(_v);	\
-		fy_generic_get_string(___v);				\
+		fy_generic *___vp = alloca(sizeof(fy_generic));		\
+		*___vp = fy_generic_indirect_get_anchor(_v);		\
+		fy_generic_get_string(___vp);				\
 	})
 
-fy_generic fy_generic_mapping_lookup(fy_generic map, fy_generic key);
+const fy_generic *fy_generic_mapping_lookup(fy_generic map, fy_generic key);
 
 fy_generic fy_generic_indirect_create(struct fy_generic_builder *gb, const struct fy_generic_indirect *gi);
 
