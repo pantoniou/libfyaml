@@ -266,20 +266,21 @@ fy_generic fy_generic_mapping_create(struct fy_generic_builder *gb, size_t count
 	return (fy_generic)p | FY_MAP_V;
 }
 
-fy_generic fy_generic_mapping_lookup(fy_generic map, fy_generic key)
+const fy_generic *fy_generic_mapping_lookup(fy_generic map, fy_generic key)
 {
 	struct fy_generic_mapping *p;
 	const fy_generic *pair;
 	size_t i;
 
+	if (fy_generic_is_indirect(map))
+		map = fy_generic_indirect_get_value(map);
 	p = fy_generic_resolve_collection_ptr(map);
-	assert(p);
 	pair = p->pairs;
 	for (i = 0; i < p->count; i++, pair += 2) {
 		if (fy_generic_compare(key, pair[0]) == 0)
-			return pair[1];
+			return &pair[1];
 	}
-	return fy_invalid;
+	return NULL;
 }
 
 fy_generic fy_generic_indirect_create(struct fy_generic_builder *gb, const struct fy_generic_indirect *gi)
@@ -588,7 +589,7 @@ out:
 int fy_generic_mapping_compare(fy_generic mapa, fy_generic mapb)
 {
 	size_t i, counta, countb;
-	const fy_generic *pairsa, *pairsb;
+	const fy_generic *pairsa, *pairsb, *valbp;
 	fy_generic key, vala, valb;
 	int ret;
 
@@ -616,9 +617,11 @@ int fy_generic_mapping_compare(fy_generic mapa, fy_generic mapb)
 		vala = pairsa[i * 2 + 1];
 
 		/* find if the key exists in the other mapping */
-		valb = fy_generic_mapping_lookup(mapa, key);
-		if (valb == fy_invalid)
+		valbp = fy_generic_mapping_lookup(mapa, key);
+		if (!valbp)
 			goto out;
+
+		valb = *valbp;
 
 		/* compare values */
 		ret = fy_generic_compare(vala, valb);
@@ -669,8 +672,8 @@ static inline int fy_generic_string_compare(fy_generic a, fy_generic b)
 	size_t sza = 0, szb = 0;
 	int ret;
 
-	sa = fy_generic_get_string_size(a, &sza);
-	sb = fy_generic_get_string_size(b, &szb);
+	sa = fy_generic_get_string_size(&a, &sza);
+	sb = fy_generic_get_string_size(&b, &szb);
 
 	ret = memcmp(sa, sb, sza > szb ? szb : sza);
 
@@ -681,12 +684,16 @@ static inline int fy_generic_string_compare(fy_generic a, fy_generic b)
 
 static inline int fy_generic_alias_compare(fy_generic a, fy_generic b)
 {
+	fy_generic aa, ab;
 	const char *sa, *sb;
 	size_t sza = 0, szb = 0;
 	int ret;
 
-	sa = fy_generic_get_alias_size(a, &sza);
-	sb = fy_generic_get_alias_size(b, &szb);
+	aa = fy_generic_indirect_get_anchor(a);
+	ab = fy_generic_indirect_get_anchor(b);
+
+	sa = fy_generic_get_string_size(&aa, &sza);
+	sb = fy_generic_get_string_size(&ab, &szb);
 
 	ret = memcmp(sa, sb, sza > szb ? szb : sza);
 

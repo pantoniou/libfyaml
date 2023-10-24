@@ -363,10 +363,10 @@ static void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 
 	vanchor = fy_generic_get_anchor(vv);
 	if (fy_generic_get_type(vanchor) == FYGT_STRING)
-		anchor = fy_generic_get_string(vanchor);
+		anchor = fy_generic_get_string(&vanchor);
 	vtag = fy_generic_get_tag(vv);
 	if (fy_generic_get_type(vtag) == FYGT_STRING)
-		tag = fy_generic_get_string(vtag);
+		tag = fy_generic_get_string(&vtag);
 	v = fy_generic_is_indirect(vv) ? fy_generic_indirect_get_value(vv) : vv;
 
 	fprintf(fp, "%*s", level * 2, "");
@@ -403,7 +403,7 @@ static void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 		return;
 
 	case FYGT_STRING:
-		sv = fy_generic_get_string_size(v, &slen);
+		sv = fy_generic_get_string_size(&v, &slen);
 		fprintf(fp, "%s", fy_utf8_format_text_a(sv, slen, fyue_doublequote));
 		return;
 
@@ -551,7 +551,7 @@ const void *fy_generic_builder_linearize(struct fy_generic_builder *gb, fy_gener
 
 	fprintf(stderr, "\nbefore\n");
 	fy_generic_dump_primitive(stderr, 0,
-			fy_generic_mapping_lookup(	/* the 1st document */
+			*fy_generic_mapping_lookup(	/* the 1st document */
 				fy_generic_sequence_get_item(v, 0),
 				fy_string("root")));
 	fprintf(stderr, "\n");

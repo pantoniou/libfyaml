@@ -4160,7 +4160,7 @@ void fy_generic_print_primitive(FILE *fp, fy_generic v)
 		return;
 
 	case FYGT_STRING:
-		sv = fy_generic_get_string_size(v, &slen);
+		sv = fy_generic_get_string_size(&v, &slen);
 		fprintf(fp, "'%.*s'", (int)slen, sv);
 		return;
 
@@ -4242,7 +4242,7 @@ const char *do_x4(void)
 
 #if 1
 	vstr = fy_string("test");
-	str = fy_generic_get_string_lval(vstr);
+	str = FY_GENERIC_GET_STRING_LVAL(vstr);
 #else
 	str = fy_generic_get_string_const(fy_string_const("test"));
 #endif
@@ -4255,7 +4255,7 @@ const char *do_x5(fy_generic vstr)
 	const char *str;
 
 	asm volatile("nop; nop" : : : "memory");
-	str = fy_generic_get_string_lval(vstr);
+	str = FY_GENERIC_GET_STRING_LVAL(vstr);
 	asm volatile("nop; nop" : : : "memory");
 
 	return strdup(str);
@@ -4320,7 +4320,8 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	uint32_t sz32d;
 	unsigned int i, j, k;
 	struct fy_generic_builder *gb;
-	fy_generic gbl, gi, gs, gf, gv;
+	fy_generic gbl, gi, gs, gf;
+	const fy_generic *gvp;
 	fy_generic seq, map, map2;
 	struct fy_dedup_setup_data dsetupdata;
 	struct fy_linear_setup_data lsetupdata;
@@ -4393,7 +4394,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		gs = fy_string(sv);
 		printf("string/%s = %016lx", sv, gs);
 
-		sv = fy_generic_get_string_size(gs, &slen);
+		sv = fy_generic_get_string_size(&gs, &slen);
 		assert(sv);
 		printf(" %.*s\n", (int)slen, sv);
 	}
@@ -4426,9 +4427,11 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	fy_generic_print_primitive(stdout, map);
 	printf("\n");
 
-	gv = fy_generic_mapping_lookup(map, fy_string("foo"));
+	gvp = fy_generic_mapping_lookup(map, fy_string("foo"));
+	assert(gvp);
+
 	printf("found: ");
-	fy_generic_print_primitive(stdout, gv);
+	fy_generic_print_primitive(stdout, *gvp);
 	printf("\n");
 
 	map = fy_mapping_alloca(2, ((fy_generic[]){
@@ -4441,12 +4444,13 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	fy_generic_print_primitive(stdout, map);
 	printf("\n");
 
-	gv = fy_generic_mapping_lookup(map,
+	gvp = fy_generic_mapping_lookup(map,
 			fy_sequence_alloca(2, ((fy_generic[]){
 					fy_int(10),
 					fy_int(100)})));
+	assert(gvp);
 	printf("found: ");
-	fy_generic_print_primitive(stdout, gv);
+	fy_generic_print_primitive(stdout, *gvp);
 	printf("\n");
 
 	{
@@ -4553,11 +4557,11 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		gs = fy_generic_string_create(gb, sv);
 		printf("string/%s = %016lx", sv, gs);
 
-		sv = fy_generic_get_string_size(gs, &slen);
+		sv = fy_generic_get_string_size(&gs, &slen);
 		assert(sv);
 		printf(" %.*s\n", (int)slen, sv);
 
-		sv = fy_generic_get_string(gs);
+		sv = fy_generic_get_string(&gs);
 		assert(sv);
 		printf("\t%s\n", sv);
 	}
@@ -4645,9 +4649,10 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	fy_generic_print_primitive(stdout, map);
 	printf("\n");
 
-	gv = fy_generic_mapping_lookup(map, fy_generic_string_create(gb, "foo"));
+	gvp = fy_generic_mapping_lookup(map, fy_generic_string_create(gb, "foo"));
+	assert(gvp);
 	printf("found: ");
-	fy_generic_print_primitive(stdout, gv);
+	fy_generic_print_primitive(stdout, *gvp);
 	printf("\n");
 
 	map = fy_generic_mapping_create(gb, 2, (fy_generic[]){
@@ -4660,11 +4665,12 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	fy_generic_print_primitive(stdout, map);
 	printf("\n");
 
-	gv = fy_generic_mapping_lookup(map, fy_generic_sequence_create(gb, 2, (fy_generic[]){
+	gvp = fy_generic_mapping_lookup(map, fy_generic_sequence_create(gb, 2, (fy_generic[]){
 					fy_generic_int_create(gb, 10),
 					fy_generic_int_create(gb, 100)}));
+	assert(gvp);
 	printf("found: ");
-	fy_generic_print_primitive(stdout, gv);
+	fy_generic_print_primitive(stdout, *gvp);
 	printf("\n");
 
 
