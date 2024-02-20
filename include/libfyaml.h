@@ -9074,6 +9074,7 @@ fy_type_info_generate_name(const struct fy_type_info *ti, const char *field, boo
  * Note that no attempt is made to verify that the type name is a valid
  * C one, so caller beware.
  *
+ * @kind: The kind of the type
  * @type_name: The type name to normalize
  *
  * Returns:
@@ -9081,7 +9082,7 @@ fy_type_info_generate_name(const struct fy_type_info *ti, const char *field, boo
  * This pointer must be free()'d when the caller is done with it.
  */
 char *
-fy_type_name_normalize(const char *type_name)
+fy_type_name_normalize(enum fy_type_kind kind, const char *type_name)
 	FY_EXPORT;
 
 /**

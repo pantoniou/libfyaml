@@ -557,7 +557,7 @@ struct fy_type *fy_type_create(struct fy_reflection *rfl, enum fy_type_kind type
 	}
 	if (!ft->name)
 		goto err_out;
-	ft->normalized_name = fy_type_name_normalize(ft->name);
+	ft->normalized_name = fy_type_name_normalize(ft->type_kind, ft->name);
 	if (!ft->normalized_name)
 		goto err_out;
 
@@ -1096,10 +1096,35 @@ const char *fy_decl_get_yaml_comment(struct fy_decl *decl)
 
 const char *fy_decl_get_yaml_name(struct fy_decl *decl)
 {
-	return fy_token_get_text0(
-			fy_node_get_scalar_token(
-				fy_node_by_path(
-					fy_document_root(fy_decl_get_yaml_annotation(decl)), "/name", FY_NT, FYNWF_DONT_FOLLOW)));
+	struct fy_document *fyd;
+	struct fy_node *fyn_root, *fyn;
+	struct fy_token *fyt;
+	const char *text0;
+
+	assert(decl);
+
+	fyd = fy_decl_get_yaml_annotation(decl);
+	if (!fyd)
+		return NULL;
+
+	fyn_root = fy_document_root(fyd);
+	assert(fyn_root);
+	if (!fyn_root)
+		return NULL;
+
+	fyn = fy_node_by_path(fyn_root, "/name", FY_NT, FYNWF_DONT_FOLLOW);
+	if (!fyn)
+		return NULL;
+
+	fyt = fy_node_get_scalar_token(fyn);
+	if (!fyt)
+		return NULL;
+
+	text0 = fy_token_get_text0(fyt);
+	if (!text0)
+		return NULL;
+
+	return text0;
 }
 
 void fy_import_destroy(struct fy_import *imp)
@@ -1795,6 +1820,7 @@ int fy_type_get_field_index_by_name(struct fy_type *ft, const char *field)
 		field_name = fy_decl_get_yaml_name(declf);
 		if (!field_name)
 			field_name = declf->name;
+		assert(field_name);
 
 		if (!strcmp(field_name, field))
 			return idx;
@@ -2012,7 +2038,7 @@ out:
 		free(buf);
 		buf = NULL;
 	} else if (normalized && buf) {
-		bufn = fy_type_name_normalize(buf);
+		bufn = fy_type_name_normalize(FYTK_INVALID, buf);
 		assert(bufn);
 		assert(bufn);
 		free(buf);
@@ -2131,7 +2157,7 @@ void fy_type_dump(struct fy_type *ft, bool no_location)
 	/* compare the normalized names */
 	ntn1 = fy_type_generate_name(ft, NULL, true);
 	assert(ntn1);
-	ntn2 = fy_type_name_normalize(ft->name);
+	ntn2 = fy_type_name_normalize(FYTK_INVALID, ft->name);
 	assert(ntn2);
 
 	/* display diffs in normalized names */
@@ -2140,6 +2166,7 @@ void fy_type_dump(struct fy_type *ft, bool no_location)
 
 	free(ntn2);
 	free(ntn1);
+	ntn1 = ntn2 = NULL;
 
 	printf(" size=%zu align=%zu", fy_type_get_sizeof(ft), fy_type_get_alignof(ft));
 
@@ -2267,7 +2294,7 @@ fy_reflection_lookup_type(struct fy_reflection *rfl, enum fy_type_kind type_kind
 	ntn1 = ntn2 = NULL;
 	ft = NULL;
 
-	ntn1 = fy_type_name_normalize(name);
+	ntn1 = fy_type_name_normalize(type_kind, name);
 	if (!ntn1)
 		goto err_out;
 
@@ -2844,38 +2871,71 @@ fy_type_info_generate_name(const struct fy_type_info *ti, const char *field, boo
 }
 
 char *
-fy_type_name_normalize(const char *type_name)
+fy_type_name_normalize(enum fy_type_kind type_kind, const char *type_name)
 {
 	const char *s;
-	char *d;
+	char *d, *dend;
 	char *buf;
+	const char *pfx;
+	size_t bufsz;
 	char c, lastc;
 
 	if (!type_name)
 		return NULL;
 
+	if (fy_type_kind_has_prefix(type_kind))
+		pfx = fy_type_kind_info_get_internal(type_kind)->name;
+	else
+		pfx = NULL;
+
+	bufsz = 0;
+	if (pfx)
+		bufsz += strlen(pfx) + 1;
+	bufsz += strlen(type_name) + 1;
+
 	/* the buffer will never grow, so worst case allocation */
-	buf = malloc(strlen(type_name) + 1);
+	buf = malloc(bufsz);
 	if (!buf)
 		return NULL;
 
 	s = type_name;
 	d = buf;
+	dend = d + bufsz;
 
-	lastc = -1;
-	while ((c = *s++) != '\0') {
-		/* space, if last and next was alnum keep one, otherwise skip all */
-		if (isspace(c)) {
+	(void)dend;
+	/*
+	 * Remove all spaces unless they separate [alnum]+ [alnum]+
+	 */
+
+	lastc = '\0';
+	if (pfx) {
+		while ((c = *pfx++) != '\0') {
+			assert(d < dend);
+			*d++ = c;
 			lastc = c;
-			while ((c = *s) != '\0' && isspace(c))
-				s++;
-			if (isalnum(lastc) && isalnum(c))
-				*d++ = ' ';
-			continue;
 		}
+		assert(d < dend);
+		*d++ = ' ';
+	}
+
+	for (;;) {
+		/* remove all spaces */
+		if (isspace(c = *s++)) {
+			while (isspace((c = *s++)))
+				;
+			/* if seperating alnums, put down one space */
+			if (c != '\0' && isalnum(c) && isalnum(lastc)) {
+				assert(d < dend);
+				*d++ = ' ';
+			}
+		}
+		if (c == '\0')
+			break;
+		assert(d < dend);
 		*d++ = c;
 		lastc = c;
 	}
+	assert(d < dend);
 	*d = '\0';
 
 	return buf;
@@ -2922,9 +2982,16 @@ int fy_field_info_index(const struct fy_field_info *fi)
 const struct fy_field_info *
 fy_type_info_lookup_field(const struct fy_type_info *ti, const char *name)
 {
+	struct fy_type *ft;
 	int idx;
 
-	idx = fy_type_get_field_index_by_name(fy_type_from_info(ti), name);
+	ft = fy_type_from_info(ti);
+	assert(ft);
+	if (!ft)
+		return NULL;
+
+	idx = fy_type_get_field_index_by_name(ft, name);
+	assert(idx >= 0);
 	if (idx < 0)
 		return NULL;
 	assert((unsigned int)idx < ti->count);

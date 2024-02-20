@@ -3541,6 +3541,9 @@ int fy_node_pair_set_value(struct fy_node_pair *fynp, struct fy_node *fyn)
 
 struct fy_node *fy_document_root(struct fy_document *fyd)
 {
+	if (!fyd)
+		return NULL;
+
 	return fyd->root;
 }
 

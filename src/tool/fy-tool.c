@@ -2068,7 +2068,8 @@ reflection_lookup_type_by_name(struct fy_reflection *rfl, const char *name)
 	void *prev = NULL;
 	char *nname;
 
-	nname = fy_type_name_normalize(name);
+	/* INVALID means that it's already having a prefix */
+	nname = fy_type_name_normalize(FYTK_INVALID, name);
 	if (!nname)
 		return NULL;
 
@@ -2159,12 +2160,19 @@ reflection_type_data_get_dependent(struct reflection_type_data *rtd)
 struct reflection_field_data *
 reflection_type_data_lookup_field(struct reflection_type_data *rtd, const char *field)
 {
+	const struct fy_field_info *fi;
 	int idx;
 
 	if (!rtd || !field)
 		return NULL;
 
-	idx = fy_field_info_index(fy_type_info_lookup_field(rtd->ti, field));
+	fi = fy_type_info_lookup_field(rtd->ti, field);
+	assert(fi);
+	if (!fi)
+		return NULL;
+
+	idx = fy_field_info_index(fi);
+	assert(idx >= 0);
 	if (idx < 0)
 		return NULL;
 
@@ -2215,7 +2223,6 @@ static int int_setup(struct reflection_object *ro, struct fy_event *fye, struct 
 	const char *text0;
 	int rc;
 
-	fprintf(stderr, "%s\n", __func__);
 	if (fye->type != FYET_SCALAR)
 		return -1;
 
@@ -2232,8 +2239,6 @@ static int int_setup(struct reflection_object *ro, struct fy_event *fye, struct 
 	rc = sscanf(text0, "%d", valp);
 	if (rc != 1)
 		return -1;
-
-	fprintf(stderr, "%s: %d\n", __func__, *valp);
 
 	return 0;
 }
@@ -2261,7 +2266,6 @@ int int_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const voi
 
 static int const_array_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
 {
-	fprintf(stderr, "%s\n", __func__);
 	if (fye->type != FYET_SEQUENCE_START) {
 		assert(0);
 		return -1;
@@ -2297,16 +2301,12 @@ struct reflection_object *const_array_create_child(struct reflection_object *ro_
 	int idx;
 	void *data;
 
-	fprintf(stderr, "%s\n", __func__);
-
 	assert(fy_path_in_sequence(path));
 	idx = fy_path_component_sequence_get_index(fy_path_last_not_collection_root_component(path));
-	fprintf(stderr, "%s: idx=%d\n", __func__, idx);
-
-	if ((unsigned int)idx >= ro_parent->rtd->ti->count) {
-		assert(0);
+	if (idx < 0)
 		return NULL;
-	}
+	if ((unsigned int)idx >= ro_parent->rtd->ti->count)
+		return NULL;
 
 	rtd_dep = reflection_type_data_get_dependent(ro_parent->rtd);
 	assert(rtd_dep);
@@ -2381,7 +2381,6 @@ static int struct_setup(struct reflection_object *ro, struct fy_event *fye, stru
 	struct struct_instance_data *id;
 	size_t present_map_size, size;
 
-	fprintf(stderr, "%s\n", __func__);
 	if (fye->type != FYET_MAPPING_START) {
 		assert(0);
 		return -1;
@@ -2405,7 +2404,6 @@ static void struct_cleanup(struct reflection_object *ro)
 {
 	struct struct_instance_data *id;
 
-	fprintf(stderr, "%s\n", __func__);
 	id = ro->instance_data;
 	if (id)
 		free(id);
@@ -2421,14 +2419,13 @@ static int struct_finish(struct reflection_object *ro)
 
 struct reflection_object *struct_create_child(struct reflection_object *ro_parent, struct fy_event *fye, struct fy_path *path)
 {
+	struct reflection_object *ro;
 	struct reflection_type_data *rtd;
 	struct reflection_field_data *rfd;
 	const struct fy_field_info *fi;
 	const struct fy_type_info *ti;
 	struct fy_token *fyt_key;
 	const char *field;
-
-	fprintf(stderr, "%s\n", __func__);
 
 	assert(fy_path_in_mapping(path));
 	assert(!fy_path_in_mapping_key(path));
@@ -2439,19 +2436,22 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 	field = fy_token_get_text0(fyt_key);
 	assert(field);
 
-	fprintf(stderr, "field=%s\n", field);
-
 	rtd = ro_parent->rtd;
+	assert(rtd);
 	rfd = reflection_type_data_lookup_field(rtd, field);
+	assert(rtd);
 	if (!rfd) {
+		fprintf(stderr, "reflection_type_data_lookup_field() failed\n");
 		return NULL;
 	}
 	fi = rfd->fi;
 	ti = fi->type_info;
 	/* no bitfields */
 	assert((fi->flags & FYFIF_BITFIELD) == 0);
-	return reflection_object_create_from_type(ro_parent, fy_type_info_get_userdata(ti),
+	ro = reflection_object_create_from_type(ro_parent, fy_type_info_get_userdata(ti),
 			fye, path, ro_parent->data + rfd->fi->offset, ti->size);
+	assert(ro);
+	return ro;
 }
 
 const struct reflection_object_ops *struct_object_ops(struct reflection_type_data *rtd)
@@ -2517,7 +2517,6 @@ static int enum_setup(struct reflection_object *ro, struct fy_event *fye, struct
 	union { unsigned long long u; signed long long s; } val;
 
 
-	fprintf(stderr, "%s\n", __func__);
 	if (fye->type != FYET_SCALAR)
 		return -1;
 
@@ -2830,8 +2829,6 @@ static int root_setup(struct reflection_object *ro, struct fy_event *fye, struct
 {
 	struct root_instance_data *id;
 
-	fprintf(stderr, "%s\n", __func__);
-
 	assert(ro);
 
 	id = malloc(sizeof(*id));
@@ -2861,9 +2858,8 @@ static void root_cleanup(struct reflection_object *ro)
 
 struct reflection_object *root_create_child(struct reflection_object *ro_parent, struct fy_event *fye, struct fy_path *path)
 {
+	struct reflection_object *ro;
 	struct reflection_type_data *rtd;
-
-	fprintf(stderr, "%s\n", __func__);
 
 	/* pointer */
 	switch (ro_parent->rtd->ti->kind) {
@@ -2891,8 +2887,10 @@ struct reflection_object *root_create_child(struct reflection_object *ro_parent,
 		break;
 	}
 
-	return reflection_object_create_from_type(ro_parent, rtd,
+	ro = reflection_object_create_from_type(ro_parent, rtd,
 		fye, path, ro_parent->data, ro_parent->data_size);
+	assert(ro);
+	return ro;
 }
 
 static const struct reflection_object_ops root_ops = {
@@ -3009,6 +3007,7 @@ int
 reflection_object_scalar_child(struct reflection_object *parent, struct fy_event *fye, struct fy_path *path)
 {
 	struct reflection_object *ro;
+	int ret;
 
 	if (!parent || !fye || !path)
 		return -1;
@@ -3020,10 +3019,13 @@ reflection_object_scalar_child(struct reflection_object *parent, struct fy_event
 	/* create and destroy cycle */
 	assert(parent->ops->create_child);
 	ro = parent->ops->create_child(parent, fye, path);
+	assert(ro);
 	if (!ro)
 		return -1;
 
-	return reflection_object_finish_and_destroy(ro);
+	ret = reflection_object_finish_and_destroy(ro);
+	assert(!ret);
+	return ret;
 }
 
 void reflection_type_data_cleanup(struct reflection_type_data *rtd)
@@ -4556,6 +4558,7 @@ int main(int argc, char *argv[])
 				}
 			}
 
+			fprintf(stderr, "looking up entry_type=%s\n", entry_type);
 			ti = reflection_lookup_type_by_name(rfl, entry_type);
 			if (!ti) {
 				fprintf(stderr, "Unable to lookup type info for entry_type '%s'\n", entry_type);
