@@ -218,7 +218,6 @@ void test_thread_latency(unsigned int num_threads)
 	tp = fy_thread_pool_create(&tp_cfg);
 	assert(tp);
 
-
 	count = tp->num_threads;
 	threads = alloca(count * sizeof(*threads));
 	works = alloca(count * sizeof(*works));

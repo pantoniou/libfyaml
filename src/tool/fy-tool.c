@@ -2217,6 +2217,118 @@ reflection_object_create_from_type(struct reflection_object *ro_parent, struct r
 				   struct fy_event *fye, struct fy_path *path,
 				   void *data, size_t data_size);
 
+static int char_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
+{
+	int tmpval;
+	unsigned int utmpval;
+	char *valp;
+	const char *text0;
+	int rc;
+
+	if (fye->type != FYET_SCALAR)
+		return -1;
+
+	assert(ro->rtd->ti->kind == FYTK_CHAR);
+
+	assert(ro->data);
+	assert(ro->data_size == sizeof(char));
+	assert(((uintptr_t)ro->data & (alignof(char) - 1)) == 0);
+	valp = ro->data;
+
+	text0 = fy_token_get_text0(fy_event_get_token(fye));
+	assert(text0);
+
+	rc = CHAR_MIN < 0 ? sscanf(text0, "%d", &tmpval) : sscanf(text0, "%u", &utmpval);
+	if (rc != 1)
+		return -1;
+	*valp = CHAR_MIN < 0 ? (char)tmpval : (char)utmpval;
+
+	return 0;
+}
+
+const struct reflection_object_ops *char_object_ops(struct reflection_type_data *rtd)
+{
+	static const struct reflection_object_ops ops = {
+		.setup = char_setup,
+	};
+
+	return &ops;
+}
+
+static int signed_char_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
+{
+	int tmpval;
+	signed char *valp;
+	const char *text0;
+	int rc;
+
+	if (fye->type != FYET_SCALAR)
+		return -1;
+
+	assert(ro->rtd->ti->kind == FYTK_SCHAR);
+
+	assert(ro->data);
+	assert(ro->data_size == sizeof(signed char));
+	assert(((uintptr_t)ro->data & (alignof(signed char) - 1)) == 0);
+	valp = ro->data;
+
+	text0 = fy_token_get_text0(fy_event_get_token(fye));
+	assert(text0);
+
+	rc = sscanf(text0, "%d", &tmpval);
+	if (rc != 1)
+		return -1;
+	*valp = (signed char)tmpval;
+
+	return 0;
+}
+
+const struct reflection_object_ops *signed_char_object_ops(struct reflection_type_data *rtd)
+{
+	static const struct reflection_object_ops ops = {
+		.setup = signed_char_setup,
+	};
+
+	return &ops;
+}
+
+static int unsigned_char_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
+{
+	unsigned int utmpval;
+	unsigned char *valp;
+	const char *text0;
+	int rc;
+
+	if (fye->type != FYET_SCALAR)
+		return -1;
+
+	assert(ro->rtd->ti->kind == FYTK_UCHAR);
+
+	assert(ro->data);
+	assert(ro->data_size == sizeof(unsigned char));
+	assert(((uintptr_t)ro->data & (alignof(unsigned char) - 1)) == 0);
+	valp = ro->data;
+
+	text0 = fy_token_get_text0(fy_event_get_token(fye));
+	assert(text0);
+
+	rc = sscanf(text0, "%u", &utmpval);
+	if (rc != 1)
+		return -1;
+	*valp = (unsigned char)utmpval;
+
+	return 0;
+}
+
+const struct reflection_object_ops *unsigned_char_object_ops(struct reflection_type_data *rtd)
+{
+	static const struct reflection_object_ops ops = {
+		.setup = unsigned_char_setup,
+	};
+
+	return &ops;
+}
+
 static int int_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
 {
 	int *valp;
@@ -2252,17 +2364,109 @@ const struct reflection_object_ops *int_object_ops(struct reflection_type_data *
 	return &ops;
 }
 
-int int_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size)
+int signed_emit(struct fy_emitter *fye, long long val)
 {
 	char buf[32];	/* maximum buffer space needed for 64 bit integer is 21, use 32 */
-	int len;
+	char *s, *e;
+	bool neg;
+	size_t len;
 
-	assert(data_size == sizeof(int));
-	assert(((uintptr_t)data & (alignof(int) - 1)) == 0);
+	if (val < 0) {
+		val = -val;
+		neg = true;
+	} else
+		neg = false;
 
-	len = snprintf(buf, sizeof(buf), "%d", *(const int *)data);
-	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, buf, (size_t)len, NULL, NULL));
+#undef PUTD
+#define PUTD(_c) \
+	do { \
+		assert(s > buf); \
+		*--s = (_c); \
+	} while(0)
+
+	e = buf + sizeof(buf);
+	s = e;
+	while (val) {
+		PUTD('0' + val % 10);
+		val /= 10;
+	}
+	if (s == e)
+		PUTD('0');
+	if (neg)
+		PUTD('-');
+	len = e - s;
+#undef PUTD
+
+	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, s, len, NULL, NULL));
 }
+
+int unsigned_emit(struct fy_emitter *fye, unsigned long long val)
+{
+	char buf[32];	/* maximum buffer space needed for 64 bit integer is 21, use 32 */
+	char *s, *e;
+	size_t len;
+
+#undef PUTD
+#define PUTD(_c) \
+	do { \
+		assert(s > buf); \
+		*--s = (_c); \
+	} while(0)
+
+	e = buf + sizeof(buf);
+	s = e;
+	while (val) {
+		PUTD('0' + val % 10);
+		val /= 10;
+	}
+	if (s == e)
+		PUTD('0');
+	len = e - s;
+#undef PUTD
+
+	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, s, len, NULL, NULL));
+}
+
+#define SIGNED_EMIT(_type, _method) \
+static int _method (struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size) \
+{ \
+	assert(data_size == sizeof(_type)); \
+	assert(((uintptr_t)data & (alignof(_type) - 1)) == 0); \
+	return signed_emit(fye, (long long)*(const _type *)data); \
+} \
+struct _fake_eat_semicolon
+
+#define UNSIGNED_EMIT(_type, _method) \
+static int _method (struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size) \
+{ \
+	assert(data_size == sizeof(_type)); \
+	assert(((uintptr_t)data & (alignof(_type) - 1)) == 0); \
+	return signed_emit(fye, (unsigned long long)*(const _type *)data); \
+} \
+struct _fake_eat_semicolon
+
+static int char_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size)
+{
+	char c;
+
+	assert(data_size == sizeof(char));
+	c = *(const char *)data;
+
+	return CHAR_MIN < 0 ?
+		signed_emit(fye, (long long)c) :
+		unsigned_emit(fye, (unsigned long long)c & 0xff);
+}
+
+SIGNED_EMIT(signed char, signed_char_emit);
+UNSIGNED_EMIT(unsigned char, unsigned_char_emit);
+SIGNED_EMIT(short, short_emit);
+UNSIGNED_EMIT(unsigned short, unsigned_short_emit);
+SIGNED_EMIT(int, int_emit);
+UNSIGNED_EMIT(unsigned int, unsigned_init_emit);
+SIGNED_EMIT(long, long_emit);
+UNSIGNED_EMIT(unsigned long, unsigned_long_emit);
+SIGNED_EMIT(long long, long_long_emit);
+UNSIGNED_EMIT(unsigned long long, unsigned_long_long_emit);
 
 static int const_array_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
 {
@@ -2705,10 +2909,16 @@ const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
 	[FYTK_BOOL] = {
 	},
 	[FYTK_CHAR] = {
+		.object_ops = char_object_ops,
+		.emit = char_emit,
 	},
 	[FYTK_SCHAR] = {
+		.object_ops = signed_char_object_ops,
+		.emit = signed_char_emit,
 	},
 	[FYTK_UCHAR] = {
+		.object_ops = unsigned_char_object_ops,
+		.emit = unsigned_char_emit,
 	},
 	[FYTK_SHORT] = {
 	},
