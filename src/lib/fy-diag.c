@@ -702,6 +702,11 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 				/* optimize by using the content end as a starting point */
 				s = l->content_start + l->content_len;
 				e = l->line_start + l->line_count;
+
+				/* guard against something stupid */
+				if (s > e)
+					s = e;
+
 				col8 = l->content_end_col8;
 				while ((c = fy_utf8_get(s, (e - s), &w)) >= 0) {
 					s += w;
