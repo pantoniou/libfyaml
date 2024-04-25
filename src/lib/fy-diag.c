@@ -1427,6 +1427,74 @@ void fy_node_override_report(struct fy_node *fyn, enum fy_error_type type,
 	va_end(ap);
 }
 
+void fy_diag_event_vreport(struct fy_diag *diag, struct fy_event *fye,
+			   enum fy_event_part fyep, enum fy_error_type type,
+			   const char *fmt, va_list ap)
+{
+	struct fy_diag_report_ctx drc;
+	struct fy_token *fyt;
+	bool save_on_error;
+
+	if (!fye || !diag)
+		return;
+
+	save_on_error = diag->on_error;
+	diag->on_error = false;
+
+	memset(&drc, 0, sizeof(drc));
+	drc.type = type;
+	drc.module = FYEM_UNKNOWN;
+	drc.fyt = NULL;
+	switch (fyep) {
+	case FYEP_VALUE:
+		fyt = fy_event_get_token(fye);
+		break;
+	case FYEP_TAG:
+		fyt = fy_event_get_tag_token(fye);
+		break;
+	case FYEP_ANCHOR:
+		fyt = fy_event_get_anchor_token(fye);
+		break;
+	default:
+		fyt = NULL;
+		break;
+	}
+	drc.fyt = fy_token_ref(fyt);
+	fy_diag_vreport(diag, &drc, fmt, ap);
+
+	diag->on_error = save_on_error;
+}
+
+void fy_diag_event_report(struct fy_diag *diag, struct fy_event *fye,
+			  enum fy_event_part fyep, enum fy_error_type type,
+			  const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	fy_diag_event_vreport(diag, fye, fyep, type, fmt, ap);
+	va_end(ap);
+}
+
+void fy_event_vreport(struct fy_parser *fyp, struct fy_event *fye,
+		      enum fy_event_part fyep, enum fy_error_type type,
+		      const char *fmt, va_list ap)
+{
+	return fy_diag_event_vreport(fyp->diag, fye, fyep, type, fmt, ap);
+}
+
+void
+fy_event_report(struct fy_parser *fyp, struct fy_event *fye,
+		enum fy_event_part fyep, enum fy_error_type type,
+		const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	fy_event_vreport(fyp, fye, fyep, type, fmt, ap);
+	va_end(ap);
+}
+
 void fy_parser_vlog(struct fy_parser *fyp, enum fy_error_type type,
 		    const char *fmt, va_list ap)
 {
