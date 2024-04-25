@@ -22,6 +22,7 @@
 #include <sys/stat.h>
 #include <regex.h>
 #include <stdalign.h>
+#include <inttypes.h>
 
 #include <libfyaml.h>
 
@@ -2219,8 +2220,6 @@ reflection_object_create_from_type(struct reflection_object *ro_parent, struct r
 
 static int char_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
 {
-	int tmpval;
-	unsigned int utmpval;
 	char *valp;
 	const char *text0;
 	int rc;
@@ -2238,10 +2237,9 @@ static int char_setup(struct reflection_object *ro, struct fy_event *fye, struct
 	text0 = fy_token_get_text0(fy_event_get_token(fye));
 	assert(text0);
 
-	rc = CHAR_MIN < 0 ? sscanf(text0, "%d", &tmpval) : sscanf(text0, "%u", &utmpval);
+	rc = sscanf(text0, CHAR_MIN < 0 ? "%hhd" : "%hhu", valp);
 	if (rc != 1)
 		return -1;
-	*valp = CHAR_MIN < 0 ? (char)tmpval : (char)utmpval;
 
 	return 0;
 }
@@ -2255,127 +2253,26 @@ const struct reflection_object_ops *char_object_ops(struct reflection_type_data 
 	return &ops;
 }
 
-static int signed_char_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
+union numeric_scalar {
+	intmax_t sval;
+	uintmax_t uval;
+};
+
+static int numeric_scalar_emit(struct fy_emitter *fye, bool is_signed, union numeric_scalar num)
 {
-	int tmpval;
-	signed char *valp;
-	const char *text0;
-	int rc;
-
-	if (fye->type != FYET_SCALAR)
-		return -1;
-
-	assert(ro->rtd->ti->kind == FYTK_SCHAR);
-
-	assert(ro->data);
-	assert(ro->data_size == sizeof(signed char));
-	assert(((uintptr_t)ro->data & (alignof(signed char) - 1)) == 0);
-	valp = ro->data;
-
-	text0 = fy_token_get_text0(fy_event_get_token(fye));
-	assert(text0);
-
-	rc = sscanf(text0, "%d", &tmpval);
-	if (rc != 1)
-		return -1;
-	*valp = (signed char)tmpval;
-
-	return 0;
-}
-
-const struct reflection_object_ops *signed_char_object_ops(struct reflection_type_data *rtd)
-{
-	static const struct reflection_object_ops ops = {
-		.setup = signed_char_setup,
-	};
-
-	return &ops;
-}
-
-static int unsigned_char_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
-{
-	unsigned int utmpval;
-	unsigned char *valp;
-	const char *text0;
-	int rc;
-
-	if (fye->type != FYET_SCALAR)
-		return -1;
-
-	assert(ro->rtd->ti->kind == FYTK_UCHAR);
-
-	assert(ro->data);
-	assert(ro->data_size == sizeof(unsigned char));
-	assert(((uintptr_t)ro->data & (alignof(unsigned char) - 1)) == 0);
-	valp = ro->data;
-
-	text0 = fy_token_get_text0(fy_event_get_token(fye));
-	assert(text0);
-
-	rc = sscanf(text0, "%u", &utmpval);
-	if (rc != 1)
-		return -1;
-	*valp = (unsigned char)utmpval;
-
-	return 0;
-}
-
-const struct reflection_object_ops *unsigned_char_object_ops(struct reflection_type_data *rtd)
-{
-	static const struct reflection_object_ops ops = {
-		.setup = unsigned_char_setup,
-	};
-
-	return &ops;
-}
-
-static int int_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
-{
-	int *valp;
-	const char *text0;
-	int rc;
-
-	if (fye->type != FYET_SCALAR)
-		return -1;
-
-	assert(ro->rtd->ti->kind == FYTK_INT);
-
-	assert(ro->data);
-	assert(ro->data_size == sizeof(int));
-	assert(((uintptr_t)ro->data & (alignof(int) - 1)) == 0);
-	valp = ro->data;
-
-	text0 = fy_token_get_text0(fy_event_get_token(fye));
-	assert(text0);
-
-	rc = sscanf(text0, "%d", valp);
-	if (rc != 1)
-		return -1;
-
-	return 0;
-}
-
-const struct reflection_object_ops *int_object_ops(struct reflection_type_data *rtd)
-{
-	static const struct reflection_object_ops ops = {
-		.setup = int_setup,
-	};
-
-	return &ops;
-}
-
-int signed_emit(struct fy_emitter *fye, long long val)
-{
-	char buf[32];	/* maximum buffer space needed for 64 bit integer is 21, use 32 */
+	char buf[3 * sizeof(uintmax_t) + 3];	/* maximum buffer space */
 	char *s, *e;
 	bool neg;
 	size_t len;
+	uintmax_t val;
 
-	if (val < 0) {
-		val = -val;
+	if (is_signed && num.sval < 0) {
+		val = (uintmax_t)-num.sval;
 		neg = true;
-	} else
+	} else {
+		val = num.uval;
 		neg = false;
+	}
 
 #undef PUTD
 #define PUTD(_c) \
@@ -2400,49 +2297,116 @@ int signed_emit(struct fy_emitter *fye, long long val)
 	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, s, len, NULL, NULL));
 }
 
-int unsigned_emit(struct fy_emitter *fye, unsigned long long val)
+static int signed_emit(struct fy_emitter *fye, intmax_t val)
 {
-	char buf[32];	/* maximum buffer space needed for 64 bit integer is 21, use 32 */
-	char *s, *e;
-	size_t len;
-
-#undef PUTD
-#define PUTD(_c) \
-	do { \
-		assert(s > buf); \
-		*--s = (_c); \
-	} while(0)
-
-	e = buf + sizeof(buf);
-	s = e;
-	while (val) {
-		PUTD('0' + val % 10);
-		val /= 10;
-	}
-	if (s == e)
-		PUTD('0');
-	len = e - s;
-#undef PUTD
-
-	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, s, len, NULL, NULL));
+	return numeric_scalar_emit(fye, true, (union numeric_scalar){ .sval = val });
 }
 
-#define SIGNED_EMIT(_type, _method) \
-static int _method (struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size) \
+static int unsigned_emit(struct fy_emitter *fye, uintmax_t val)
+{
+	return numeric_scalar_emit(fye, false, (union numeric_scalar){ .uval = val });
+}
+
+#define SCALAR_SETUP(_type, _is_signed, _kind, _method, _fmt) \
+static int _method (struct reflection_object *ro, struct fy_event *fye, struct fy_path *path) \
 { \
-	assert(data_size == sizeof(_type)); \
-	assert(((uintptr_t)data & (alignof(_type) - 1)) == 0); \
-	return signed_emit(fye, (long long)*(const _type *)data); \
+	struct fy_token *fyt = NULL; \
+	_type *valp; \
+	const char *text0; \
+	char *endptr; \
+	union numeric_scalar val; \
+	\
+	if (fye->type != FYET_SCALAR) { \
+		errno = EINVAL; \
+		return -1; \
+	} \
+	\
+	assert(ro->rtd->ti->kind == _kind); \
+	\
+	assert(ro->data); \
+	assert(ro->data_size == sizeof(_type)); \
+	assert(((uintptr_t)ro->data & (alignof(_type) - 1)) == 0); \
+	valp = ro->data; \
+	\
+	fyt = fy_event_get_token(fye); \
+	text0 = fy_token_get_text0(fyt); \
+	if (!text0) { \
+		errno = ENOMEM; \
+		goto err_out; \
+	} \
+	if (text0[0] == '\0') { \
+		errno = EINVAL; \
+		goto err_out; \
+	} \
+	if (_is_signed) { \
+		val.sval = strtoimax(text0, &endptr, 10); \
+		if ((val.sval == INTMAX_MIN || val.sval == INTMAX_MAX) && errno == ERANGE) \
+			goto err_out; \
+		if (sizeof(_type) < sizeof(intmax_t)) { \
+			const intmax_t minv = INTMAX_MIN >> ((sizeof(intmax_t) - sizeof(_type)) * 8); \
+			const intmax_t maxv = INTMAX_MAX >> ((sizeof(intmax_t) - sizeof(_type)) * 8); \
+			if (val.sval < minv || val.sval > maxv) { \
+				errno = ERANGE; \
+				goto err_out; \
+			} \
+		} \
+		if (*endptr != '\0') { \
+			errno = EINVAL; \
+			goto err_out; \
+		} \
+		*valp = val.sval; \
+	} else { \
+		val.uval = strtoumax(text0, &endptr, 10); \
+		if (val.uval == UINTMAX_MAX && errno == ERANGE) \
+			goto err_out; \
+		if (sizeof(_type) < sizeof(uintmax_t)) { \
+			const uintmax_t maxv = UINTMAX_MAX >> ((sizeof(uintmax_t) - sizeof(_type)) * 8); \
+			if (val.uval > maxv) { \
+				errno = ERANGE; \
+				goto err_out; \
+			} \
+		} \
+		if (*endptr != '\0') { \
+			errno = EINVAL; \
+			goto err_out; \
+		} \
+		*valp = val.uval; \
+	} \
+	return 0; \
+err_out: \
+	return -1; \
 } \
 struct _fake_eat_semicolon
 
-#define UNSIGNED_EMIT(_type, _method) \
+#define SCALAR_OPS(_type, _method, _setup_method) \
+static const struct reflection_object_ops * _method (struct reflection_type_data *rtd) \
+{ \
+	static const struct reflection_object_ops ops = { \
+		.setup = _setup_method, \
+	}; \
+\
+	return &ops; \
+} \
+struct _fake_eat_semicolon
+
+#define SCALAR_EMIT(_type, _is_signed, _method) \
 static int _method (struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size) \
 { \
+	int ret; \
 	assert(data_size == sizeof(_type)); \
 	assert(((uintptr_t)data & (alignof(_type) - 1)) == 0); \
-	return signed_emit(fye, (unsigned long long)*(const _type *)data); \
+	if (_is_signed) \
+		ret = signed_emit(fye, *(const _type *)data); \
+	else \
+		ret = unsigned_emit(fye, *(const _type *)data); \
+	return ret; \
 } \
+struct _fake_eat_semicolon
+
+#define REFLECT_SCALAR(_type, _is_signed, _method_pfx, _kind, _fmt) \
+	SCALAR_SETUP(_type, _is_signed, _kind, _method_pfx ## _setup, _fmt); \
+	SCALAR_OPS(_type, _method_pfx ## _object_ops, _method_pfx ## _setup); \
+	SCALAR_EMIT(_type, _is_signed, _method_pfx ## _emit); \
 struct _fake_eat_semicolon
 
 static int char_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size)
@@ -2453,20 +2417,20 @@ static int char_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, c
 	c = *(const char *)data;
 
 	return CHAR_MIN < 0 ?
-		signed_emit(fye, (long long)c) :
-		unsigned_emit(fye, (unsigned long long)c & 0xff);
+		signed_emit(fye, (intmax_t)c) :
+		unsigned_emit(fye, (uintmax_t)c & 0xff);
 }
 
-SIGNED_EMIT(signed char, signed_char_emit);
-UNSIGNED_EMIT(unsigned char, unsigned_char_emit);
-SIGNED_EMIT(short, short_emit);
-UNSIGNED_EMIT(unsigned short, unsigned_short_emit);
-SIGNED_EMIT(int, int_emit);
-UNSIGNED_EMIT(unsigned int, unsigned_init_emit);
-SIGNED_EMIT(long, long_emit);
-UNSIGNED_EMIT(unsigned long, unsigned_long_emit);
-SIGNED_EMIT(long long, long_long_emit);
-UNSIGNED_EMIT(unsigned long long, unsigned_long_long_emit);
+REFLECT_SCALAR(signed char,         true, signed_char,        FYTK_SCHAR,     "%hhd");
+REFLECT_SCALAR(unsigned char,      false, unsigned_char,      FYTK_UCHAR,     "%hhu");
+REFLECT_SCALAR(short,               true, short,              FYTK_SHORT,      "%hd");
+REFLECT_SCALAR(unsigned short,     false, unsigned_short,     FYTK_USHORT,     "%hu");
+REFLECT_SCALAR(int,                 true, int,                FYTK_INT,         "%d");
+REFLECT_SCALAR(unsigned int,       false, unsigned_int,       FYTK_UINT,        "%u");
+REFLECT_SCALAR(long,                true, long,               FYTK_LONG,       "%ld");
+REFLECT_SCALAR(unsigned long,      false, unsigned_long,      FYTK_ULONG,      "%lu");
+REFLECT_SCALAR(long long,           true, long_long,          FYTK_LONGLONG,  "%lld");
+REFLECT_SCALAR(unsigned long long, false, unsigned_long_long, FYTK_ULONGLONG, "%llu");
 
 static int const_array_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
 {
@@ -2654,7 +2618,9 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 	assert((fi->flags & FYFIF_BITFIELD) == 0);
 	ro = reflection_object_create_from_type(ro_parent, fy_type_info_get_userdata(ti),
 			fye, path, ro_parent->data + rfd->fi->offset, ti->size);
-	assert(ro);
+	if (!ro)
+		return NULL;
+
 	return ro;
 }
 
@@ -2921,22 +2887,36 @@ const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
 		.emit = unsigned_char_emit,
 	},
 	[FYTK_SHORT] = {
+		.object_ops = short_object_ops,
+		.emit = short_emit,
 	},
 	[FYTK_USHORT] = {
+		.object_ops = unsigned_short_object_ops,
+		.emit = unsigned_short_emit,
 	},
 	[FYTK_INT] = {
 		.object_ops = int_object_ops,
 		.emit = int_emit,
 	},
 	[FYTK_UINT] = {
+		.object_ops = unsigned_int_object_ops,
+		.emit = unsigned_int_emit,
 	},
 	[FYTK_LONG] = {
+		.object_ops = long_object_ops,
+		.emit = long_emit,
 	},
 	[FYTK_ULONG] = {
+		.object_ops = unsigned_long_object_ops,
+		.emit = unsigned_long_emit,
 	},
 	[FYTK_LONGLONG] = {
+		.object_ops = long_long_object_ops,
+		.emit = long_long_emit,
 	},
 	[FYTK_ULONGLONG] = {
+		.object_ops = unsigned_long_long_object_ops,
+		.emit = unsigned_long_long_emit,
 	},
 #ifdef FY_HAS_INT128
 	[FYTK_INT128] = {
@@ -3099,7 +3079,8 @@ struct reflection_object *root_create_child(struct reflection_object *ro_parent,
 
 	ro = reflection_object_create_from_type(ro_parent, rtd,
 		fye, path, ro_parent->data, ro_parent->data_size);
-	assert(ro);
+	if (!ro)
+		return NULL;
 	return ro;
 }
 
@@ -3153,15 +3134,14 @@ reflection_object_create_internal(struct reflection_object *parent, struct refle
 	int ret;
 
 	if (!fye || !path || !ops) {
-		assert(0);
+		errno = EINVAL;
 		return NULL;
 	}
 
 	ro = malloc(sizeof(*ro));
-	if (!ro) {
-		assert(0);
-		goto err_out;
-	}
+	if (!ro)
+		return NULL;
+
 	memset(ro, 0, sizeof(*ro));
 	ro->rtd = rtd;
 	ro->parent = parent;
@@ -3170,10 +3150,8 @@ reflection_object_create_internal(struct reflection_object *parent, struct refle
 	ro->data_size = data_size;
 	assert(ro->ops->setup);
 	ret = ro->ops->setup(ro, fye, path);
-	if (ret) {
-		assert(0);
+	if (ret)
 		goto err_out;
-	}
 
 	return ro;
 err_out:
@@ -3190,7 +3168,7 @@ reflection_object_create_from_type(struct reflection_object *ro_parent, struct r
 	const struct reflection_object_ops *ops;
 
 	if (!ro_parent || !fye || !path) {
-		assert(0);
+		errno = EINVAL;
 		return NULL;
 	}
 
@@ -3199,7 +3177,8 @@ reflection_object_create_from_type(struct reflection_object *ro_parent, struct r
 	assert(ops);
 
 	ro = reflection_object_create_internal(ro_parent, rtd, fye, path, ops, data, data_size);
-	assert(ro);
+	if (!ro)
+		return NULL;
 
 	return ro;
 }
@@ -3207,8 +3186,10 @@ reflection_object_create_from_type(struct reflection_object *ro_parent, struct r
 struct reflection_object *
 reflection_object_create_child(struct reflection_object *parent, struct fy_event *fye, struct fy_path *path)
 {
-	if (!parent || !fye || !path)
+	if (!parent || !fye || !path) {
+		errno = EINVAL;
 		return NULL;
+	}
 
 	return parent->ops->create_child(parent, fye, path);
 }
@@ -3229,7 +3210,6 @@ reflection_object_scalar_child(struct reflection_object *parent, struct fy_event
 	/* create and destroy cycle */
 	assert(parent->ops->create_child);
 	ro = parent->ops->create_child(parent, fye, path);
-	assert(ro);
 	if (!ro)
 		return -1;
 
@@ -3379,7 +3359,22 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 	switch (fye->type) {
 		/* nothing to do for those */
 	case FYET_NONE:
-		ret = FYCR_ERROR;
+		/* cleanup path in case of an error */
+		ro = fy_path_get_last_user_data(path);
+		if (ro) {
+			fy_path_set_last_user_data(path, NULL);
+			reflection_object_destroy(ro);
+		}
+
+
+		if (fy_path_in_root(path)) {
+			ro = fy_path_get_root_user_data(path);
+			assert(ro);
+			fy_path_set_root_user_data(path, NULL);
+			reflection_object_destroy(ro);
+		}
+
+		ret = FYCR_OK_CONTINUE;
 		break;
 
 	case FYET_STREAM_START:
@@ -3392,7 +3387,12 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		assert(rop);
 
 		rc = reflection_object_scalar_child(rop, fye, path);
-		assert(!rc);
+		if (rc) {
+			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR, "%s", strerror(errno));
+
+			ret = FYCR_ERROR;
+			break;
+		}
 		ret = FYCR_OK_CONTINUE;
 		break;
 
@@ -3403,7 +3403,10 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 	case FYET_DOCUMENT_START:
 		ro = reflection_object_create_internal(NULL, rd->entry, fye, path, &root_ops, rd->data, rd->data_size);
-		assert(ro);
+		if (!ro) {
+			ret = FYCR_ERROR;
+			break;
+		}
 
 		fy_path_set_root_user_data(path, ro);
 		ret = FYCR_OK_CONTINUE;
@@ -3415,7 +3418,10 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		assert(rop);
 
 		ro = reflection_object_create_child(rop, fye, path);
-		assert(ro);
+		if (!ro) {
+			ret = FYCR_ERROR;
+			break;
+		}
 
 		fy_path_set_last_user_data(path, ro);
 		ret = FYCR_OK_CONTINUE;
@@ -3460,7 +3466,6 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		abort();
 	}
 
-	assert(ret == FYCR_OK_CONTINUE || ret == FYCR_OK_STOP);
 	return ret;
 }
 
