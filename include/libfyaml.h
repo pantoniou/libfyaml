@@ -629,6 +629,19 @@ struct fy_event {
 };
 
 /**
+ * enum fy_event_part - Select part of the event
+ *
+ * @FYEP_VALUE: The value of the event (the main token)
+ * @FYEP_TAG: The tag of the event
+ * @FYEP_ANCHOR: The anchor of the event
+ */
+enum fy_event_part {
+	FYEP_VALUE,
+	FYEP_TAG,
+	FYEP_ANCHOR,
+};
+
+/**
  * fy_event_data() - Get a pointer to the event data
  *
  * Some languages *cough*golang*cough* really don't like
@@ -5307,6 +5320,45 @@ fy_node_override_report(struct fy_node *fyn, enum fy_error_type type,
 	FY_FORMAT(printf, 6, 7)
 	FY_EXPORT;
 
+/**
+ * fy_event_vreport() - Report about an event vprintf style
+ *
+ * Output a report about the given event via the specific
+ * error type, focusing at the given event part.
+ *
+ * @fyp: The parser of which the event was generated from
+ * @fye: The event
+ * @fyep: The event part which the report is about
+ * @type: The error type
+ * @fmt: The printf format string
+ * @ap: The argument list
+ */
+void
+fy_event_vreport(struct fy_parser *fyp, struct fy_event *fye,
+		 enum fy_event_part fyep, enum fy_error_type type,
+		 const char *fmt, va_list ap)
+	FY_EXPORT;
+
+/**
+ * fy_event_report() - Report about an event printf style
+ *
+ * Output a report about the given event via the specific
+ * error type, focusing at the given event part.
+ *
+ * @fyp: The parser of which the event was generated from
+ * @fye: The event
+ * @fyep: The event part which the report is about
+ * @type: The error type
+ * @fmt: The printf format string
+ * @...: The extra arguments.
+ */
+void
+fy_event_report(struct fy_parser *fyp, struct fy_event *fye,
+		enum fy_event_part fyep, enum fy_error_type type,
+		const char *fmt, ...)
+	FY_FORMAT(printf, 5, 6)
+	FY_EXPORT;
+
 typedef void (*fy_diag_output_fn)(struct fy_diag *diag, void *user,
 				  const char *buf, size_t len);
 
@@ -5874,6 +5926,104 @@ fy_diag_node_override_report(struct fy_diag *diag, struct fy_node *fyn,
 			     enum fy_error_type type, const char *file,
 			     int line, int column, const char *fmt, ...)
 	FY_FORMAT(printf, 7, 8)
+	FY_EXPORT;
+
+/**
+ * fy_diag_event_vreport() - Report about an event vprintf style using
+ *                          the given diagnostic object
+ *
+ * Output a report about the given event part via the specific
+ * error type.
+ *
+ * @diag: The diag object
+ * @fye: The event
+ * @fyep: The event part
+ * @type: The error type
+ * @fmt: The printf format string
+ * @ap: The argument list
+ */
+void
+fy_diag_event_vreport(struct fy_diag *diag, struct fy_event *fye,
+		      enum fy_event_part fyep, enum fy_error_type type,
+		      const char *fmt, va_list ap)
+	FY_EXPORT;
+
+/**
+ * fy_diag_event_report() - Report about a event printf style using
+ *                          the given diagnostic object
+ *
+ * Output a report about the given event part via the specific
+ * error type.
+ *
+ * @diag: The diag object
+ * @fye: The event
+ * @fyep: The event part
+ * @type: The error type
+ * @fmt: The printf format string
+ * @...: The extra arguments.
+ */
+void
+fy_diag_event_report(struct fy_diag *diag, struct fy_event *fye,
+		     enum fy_event_part fyep, enum fy_error_type type,
+		     const char *fmt, ...)
+	FY_FORMAT(printf, 5, 6)
+	FY_EXPORT;
+
+/**
+ * fy_diag_event_override_vreport() - Report about a token vprintf style,
+ *				      overriding file, line and column info using
+ * 				      the given diagnostic object
+ *
+ * Output a report about the given event part via the specific
+ * error type. This method will use the overrides provided in order
+ * to massage the reporting information.
+ * If @file is NULL, no file location will be reported.
+ * If either @line or @column is negative no location will be reported.
+ *
+ * @diag: The diag object
+ * @fye: The event
+ * @fyep: The event part
+ * @type: The error type
+ * @file: The file override
+ * @line: The line override
+ * @column: The column override
+ * @fmt: The printf format string
+ * @ap: The argument list
+ */
+void
+fy_diag_event_override_vreport(struct fy_diag *diag, struct fy_event *fye,
+			       enum fy_event_part fyep, enum fy_error_type type,
+			       const char *file, int line, int column,
+			       const char *fmt, va_list ap)
+	FY_EXPORT;
+
+/**
+ * fy_diag_event_override_report() - Report about a token printf style,
+ * 				     overriding file, line and column info using
+ * 				     the given diagnostic object
+ *
+ * Output a report about the given event part via the specific
+ * error type. This method will use the overrides provided in order
+ * to massage the reporting information.
+ * If @file is NULL, no file location will be reported.
+ * If either @line or @column is negative no location will be reported.
+ *
+ * @diag: The diag object
+ * @fye: The event
+ * @fyep: The event part
+ * @type: The error type
+ * @file: The file override
+ * @line: The line override
+ * @column: The column override
+ * @fmt: The printf format string
+ * @...: The extra arguments.
+ */
+void
+fy_diag_event_override_report(struct fy_diag *diag, struct fy_token *fyt,
+			      enum fy_event_part fyep, enum fy_error_type type,
+			      const char *file, int line, int column,
+			      const char *fmt, ...)
+	FY_FORMAT(printf, 8, 9)
 	FY_EXPORT;
 
 /**
