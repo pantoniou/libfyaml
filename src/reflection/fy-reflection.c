@@ -264,8 +264,8 @@ const struct fy_type_kind_info fy_type_kind_info_table[FYTK_COUNT] = {
 	[FYTK_LONGDOUBLE] = {
 		.kind		= FYTK_LONGDOUBLE,
 		.name		= "long double",
-		.size		= sizeof(double),
-		.align		= alignof(double),
+		.size		= sizeof(long double),
+		.align		= alignof(long double),
 		.enum_name	= "FYTK_LONGDOUBLE",
 	},
 #ifdef FY_HAS_FP16
