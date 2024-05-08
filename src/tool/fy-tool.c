@@ -2307,7 +2307,7 @@ static int unsigned_emit(struct fy_emitter *fye, uintmax_t val)
 	return numeric_scalar_emit(fye, false, (union numeric_scalar){ .uval = val });
 }
 
-#define SCALAR_SETUP(_type, _is_signed, _kind, _method, _fmt) \
+#define INT_SCALAR_SETUP(_type, _is_signed, _kind, _method) \
 static int _method (struct reflection_object *ro, struct fy_event *fye, struct fy_path *path) \
 { \
 	struct fy_token *fyt = NULL; \
@@ -2389,7 +2389,7 @@ static const struct reflection_object_ops * _method (struct reflection_type_data
 } \
 struct _fake_eat_semicolon
 
-#define SCALAR_EMIT(_type, _is_signed, _method) \
+#define INT_SCALAR_EMIT(_type, _is_signed, _method) \
 static int _method (struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size) \
 { \
 	int ret; \
@@ -2403,11 +2403,13 @@ static int _method (struct reflection_type_data *rtd, struct fy_emitter *fye, co
 } \
 struct _fake_eat_semicolon
 
-#define REFLECT_SCALAR(_type, _is_signed, _method_pfx, _kind, _fmt) \
-	SCALAR_SETUP(_type, _is_signed, _kind, _method_pfx ## _setup, _fmt); \
+#define INT_SCALAR_REFLECT(_type, _is_signed, _method_pfx, _kind) \
+	INT_SCALAR_SETUP(_type, _is_signed, _kind, _method_pfx ## _setup); \
 	SCALAR_OPS(_type, _method_pfx ## _object_ops, _method_pfx ## _setup); \
-	SCALAR_EMIT(_type, _is_signed, _method_pfx ## _emit); \
+	INT_SCALAR_EMIT(_type, _is_signed, _method_pfx ## _emit); \
 struct _fake_eat_semicolon
+
+
 
 static int char_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size)
 {
@@ -2421,16 +2423,16 @@ static int char_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, c
 		unsigned_emit(fye, (uintmax_t)c & 0xff);
 }
 
-REFLECT_SCALAR(signed char,         true, signed_char,        FYTK_SCHAR,     "%hhd");
-REFLECT_SCALAR(unsigned char,      false, unsigned_char,      FYTK_UCHAR,     "%hhu");
-REFLECT_SCALAR(short,               true, short,              FYTK_SHORT,      "%hd");
-REFLECT_SCALAR(unsigned short,     false, unsigned_short,     FYTK_USHORT,     "%hu");
-REFLECT_SCALAR(int,                 true, int,                FYTK_INT,         "%d");
-REFLECT_SCALAR(unsigned int,       false, unsigned_int,       FYTK_UINT,        "%u");
-REFLECT_SCALAR(long,                true, long,               FYTK_LONG,       "%ld");
-REFLECT_SCALAR(unsigned long,      false, unsigned_long,      FYTK_ULONG,      "%lu");
-REFLECT_SCALAR(long long,           true, long_long,          FYTK_LONGLONG,  "%lld");
-REFLECT_SCALAR(unsigned long long, false, unsigned_long_long, FYTK_ULONGLONG, "%llu");
+INT_SCALAR_REFLECT(signed char,         true, signed_char,        FYTK_SCHAR);
+INT_SCALAR_REFLECT(unsigned char,      false, unsigned_char,      FYTK_UCHAR);
+INT_SCALAR_REFLECT(short,               true, short,              FYTK_SHORT);
+INT_SCALAR_REFLECT(unsigned short,     false, unsigned_short,     FYTK_USHORT);
+INT_SCALAR_REFLECT(int,                 true, int,                FYTK_INT);
+INT_SCALAR_REFLECT(unsigned int,       false, unsigned_int,       FYTK_UINT);
+INT_SCALAR_REFLECT(long,                true, long,               FYTK_LONG);
+INT_SCALAR_REFLECT(unsigned long,      false, unsigned_long,      FYTK_ULONG);
+INT_SCALAR_REFLECT(long long,           true, long_long,          FYTK_LONGLONG);
+INT_SCALAR_REFLECT(unsigned long long, false, unsigned_long_long, FYTK_ULONGLONG);
 
 static int const_array_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
 {
@@ -3388,8 +3390,6 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 		rc = reflection_object_scalar_child(rop, fye, path);
 		if (rc) {
-			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR, "%s", strerror(errno));
-
 			ret = FYCR_ERROR;
 			break;
 		}
@@ -3465,6 +3465,9 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		assert(0);
 		abort();
 	}
+
+	if (ret == FYCR_ERROR)
+		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR, "%s", strerror(errno));
 
 	return ret;
 }
