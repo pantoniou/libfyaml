@@ -442,6 +442,22 @@ fy_type_kind_info_get(enum fy_type_kind type_kind)
 	return fy_type_kind_info_get_internal(type_kind);
 }
 
+size_t fy_type_kind_size(enum fy_type_kind type_kind)
+{
+	if (!fy_type_kind_is_valid(type_kind))
+		return 0;
+
+	return fy_type_kind_info_table[type_kind].size;
+}
+
+size_t fy_type_kind_align(enum fy_type_kind type_kind)
+{
+	if (!fy_type_kind_is_valid(type_kind))
+		return 0;
+
+	return fy_type_kind_info_table[type_kind].align;
+}
+
 int fy_type_kind_signess(enum fy_type_kind type_kind)
 {
 	if (!fy_type_kind_is_numeric(type_kind))

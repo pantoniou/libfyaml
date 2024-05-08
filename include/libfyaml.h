@@ -38,6 +38,7 @@ extern "C" {
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>
 
 #if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 #include <unistd.h>
@@ -8730,7 +8731,7 @@ static inline bool fy_type_kind_is_record(enum fy_type_kind type_kind)
  * fy_type_kind_is_numeric() - Check if it's a numeric type
  *
  * Check whether the type kind points to a number, either
- * integer or float
+ * boolean, integer or float
  *
  * @type_kind: The type_kind to check
  *
@@ -8740,6 +8741,82 @@ static inline bool fy_type_kind_is_record(enum fy_type_kind type_kind)
 static inline bool fy_type_kind_is_numeric(enum fy_type_kind type_kind)
 {
 	return type_kind >= FYTK_BOOL && type_kind <= FYTK_FLOAT128;
+}
+
+/**
+ * fy_type_kind_is_integer() - Check if it's a numeric integer type
+ *
+ * Check whether the type kind points to an integer
+ *
+ * @type_kind: The type_kind to check
+ *
+ * Returns:
+ * true if integer, false otherwise
+ */
+static inline bool fy_type_kind_is_integer(enum fy_type_kind type_kind)
+{
+	return type_kind >= FYTK_CHAR && type_kind <= FYTK_UINT128;
+}
+
+/**
+ * fy_type_kind_is_float() - Check if it's a numeric float type
+ *
+ * Check whether the type kind points to a float
+ *
+ * @type_kind: The type_kind to check
+ *
+ * Returns:
+ * true if float, false otherwise
+ */
+static inline bool fy_type_kind_is_float(enum fy_type_kind type_kind)
+{
+	return type_kind >= FYTK_FLOAT && type_kind <= FYTK_LONGDOUBLE;
+}
+
+/**
+ * fy_type_kind_is_signed() - Check if an integer kind is signed
+ *
+ * Check whether the type kind is a signed integer.
+ *
+ * @type_kind: The type_kind to check
+ *
+ * Returns:
+ * true if a signed integer, false otherwise
+ */
+static inline bool fy_type_kind_is_signed(enum fy_type_kind type_kind)
+{
+	if (!fy_type_kind_is_integer(type_kind))
+		return false;
+
+	/* char is signed if the minimum is negative */
+	if (type_kind == FYTK_CHAR)
+		return CHAR_MIN < 0;
+
+	/* the type kind alternate signed/unsigned starting from FYTK_SCHAR */
+	return ((type_kind - FYTK_SCHAR) & 1) == 0;
+}
+
+/**
+ * fy_type_kind_is_unsigned() - Check if an integer kind is unsigned
+ *
+ * Check whether the type kind is an unsigned integer
+ *
+ * @type_kind: The type_kind to check
+ *
+ * Returns:
+ * true if an unsigned integer, false otherwise
+ */
+static inline bool fy_type_kind_is_unsigned(enum fy_type_kind type_kind)
+{
+	if (!fy_type_kind_is_integer(type_kind))
+		return false;
+
+	/* char is unsigned if the minimum is 0 */
+	if (type_kind == FYTK_CHAR)
+		return CHAR_MIN == 0;
+
+	/* the type kind alternate signed/unsigned starting from FYTK_SCHAR */
+	return ((type_kind - FYTK_SCHAR) & 1) != 0;
 }
 
 /**
@@ -8853,6 +8930,32 @@ struct fy_type_kind_info {
  */
 const struct fy_type_kind_info *
 fy_type_kind_info_get(enum fy_type_kind type_kind)
+	FY_EXPORT;
+
+/**
+ * fy_type_kind_size() - Find out the type kind's size
+ *
+ * Return the size of the type kind
+ *
+ * @type_kind: The type_kind to check
+ *
+ * Returns:
+ * The size of the type kind or 0 on error
+ */
+size_t fy_type_kind_size(enum fy_type_kind type_kind)
+	FY_EXPORT;
+
+/**
+ * fy_type_kind_align() - Find out the type kind's align
+ *
+ * Return the align of the type kind
+ *
+ * @type_kind: The type_kind to check
+ *
+ * Returns:
+ * The align of the type kind or 0 on error
+ */
+size_t fy_type_kind_align(enum fy_type_kind type_kind)
 	FY_EXPORT;
 
 /**
