@@ -23,6 +23,7 @@
 #include <regex.h>
 #include <stdalign.h>
 #include <inttypes.h>
+#include <float.h>
 
 #include <libfyaml.h>
 
@@ -2218,6 +2219,17 @@ reflection_object_create_from_type(struct reflection_object *ro_parent, struct r
 				   struct fy_event *fye, struct fy_path *path,
 				   void *data, size_t data_size);
 
+union integer_scalar {
+	intmax_t sval;
+	uintmax_t uval;
+};
+
+union float_scalar {
+	float f;
+	double d;
+	long double ld;
+};
+
 static int
 common_scalar_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
 {
@@ -2331,6 +2343,44 @@ common_scalar_setup(struct reflection_object *ro, struct fy_event *fye, struct f
 			}
 		}
 
+	} else if (fy_type_kind_is_float(type_kind)) {
+		union float_scalar u;
+
+		/* nothing larger than this */
+		if (size > sizeof(long double))
+			goto err_inval;
+
+		/* just do in sequence */
+		switch (type_kind) {
+		case FYTK_FLOAT:
+			u.f = strtof(text0, &endptr);
+			if ((u.f <= FLT_MIN || u.f >= FLT_MAX) && errno == ERANGE)
+				goto err_out;
+			if (*endptr != '\0')
+				goto err_inval;
+			*(float *)ro->data = u.f;
+			break;
+		case FYTK_DOUBLE:
+			u.d = strtod(text0, &endptr);
+			if ((u.d <= DBL_MIN || u.d >= DBL_MAX) && errno == ERANGE)
+				goto err_out;
+			if (*endptr != '\0')
+				goto err_inval;
+			*(double *)ro->data = u.d;
+			break;
+		case FYTK_LONGDOUBLE:
+			u.ld = strtold(text0, &endptr);
+			if ((u.ld <= LDBL_MIN || u.ld >= LDBL_MAX) && errno == ERANGE)
+				goto err_out;
+			if (*endptr != '\0')
+				goto err_inval;
+			*(long double *)ro->data = u.ld;
+			break;
+
+		default:
+			goto err_inval;
+		}
+
 	} else
 		goto err_inval;
 
@@ -2352,18 +2402,16 @@ err_range:
 	goto err_out;
 }
 
-union numeric_scalar {
-	intmax_t sval;
-	uintmax_t uval;
-};
-
-static int numeric_scalar_emit(struct fy_emitter *fye, bool is_signed, union numeric_scalar num)
+static int integer_scalar_emit(struct fy_emitter *fye, enum fy_type_kind type_kind, union integer_scalar num)
 {
+	bool is_signed;
 	char buf[3 * sizeof(uintmax_t) + 3];	/* maximum buffer space */
 	char *s, *e;
 	bool neg;
 	size_t len;
 	uintmax_t val;
+
+	is_signed = fy_type_kind_is_signed(type_kind);
 
 	if (is_signed && num.sval < 0) {
 		val = (uintmax_t)-num.sval;
@@ -2396,6 +2444,36 @@ static int numeric_scalar_emit(struct fy_emitter *fye, bool is_signed, union num
 	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, s, len, NULL, NULL));
 }
 
+static int float_scalar_emit(struct fy_emitter *fye, enum fy_type_kind type_kind, union float_scalar num)
+{
+	char buf_local[80], *buf;
+	int len;
+
+	switch (type_kind) {
+	case FYTK_FLOAT:
+		num.ld = (long double)num.f;
+		break;
+	case FYTK_DOUBLE:
+		num.ld = (long double)num.d;
+		break;
+	case FYTK_LONGDOUBLE:
+		break;
+	default:
+		errno = EINVAL;
+		return -1;
+	}
+
+	buf = buf_local;
+	len = snprintf(buf_local, sizeof(buf_local), "%Lf", num.ld);
+	if (len >= (int)sizeof(buf_local)) {
+		len = snprintf(NULL, 0, "%Lf", num.ld);
+		buf = alloca(len + 1);
+		len = snprintf(buf, len, "%Lf", num.ld);
+	}
+
+	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, buf, len, NULL, NULL));
+}
+
 static int common_scalar_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size)
 {
 	enum fy_type_kind type_kind;
@@ -2414,7 +2492,7 @@ static int common_scalar_emit(struct reflection_type_data *rtd, struct fy_emitte
 
 	if (fy_type_kind_is_integer(type_kind)) {
 		bool is_signed;
-		union numeric_scalar num;
+		union integer_scalar num;
 
 		/* only allow up to uintmax */
 		if (size > sizeof(uintmax_t))
@@ -2469,7 +2547,35 @@ static int common_scalar_emit(struct reflection_type_data *rtd, struct fy_emitte
 			}
 		}
 
-		ret = numeric_scalar_emit(fye, is_signed, num);
+		ret = integer_scalar_emit(fye, type_kind, num);
+		if (ret)
+			goto err_out;
+
+	} else if (fy_type_kind_is_float(type_kind)) {
+
+		union float_scalar num;
+
+		/* only allow up to long double */
+		if (size > sizeof(long double))
+			goto err_inval;
+
+		/* just do in sequence */
+		switch (type_kind) {
+		case FYTK_FLOAT:
+			num.f = *(const float *)data;
+			break;
+		case FYTK_DOUBLE:
+			num.d = *(const double *)data;
+			break;
+		case FYTK_LONGDOUBLE:
+			num.ld = *(const long double *)data;
+			break;
+
+		default:
+			goto err_inval;
+		}
+
+		ret = float_scalar_emit(fye, type_kind, num);
 		if (ret)
 			goto err_out;
 	} else
@@ -2983,10 +3089,16 @@ const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
 	},
 #endif
 	[FYTK_FLOAT] = {
+		.object_ops = common_scalar_object_ops,
+		.emit = common_scalar_emit,
 	},
 	[FYTK_DOUBLE] = {
+		.object_ops = common_scalar_object_ops,
+		.emit = common_scalar_emit,
 	},
 	[FYTK_LONGDOUBLE] = {
+		.object_ops = common_scalar_object_ops,
+		.emit = common_scalar_emit,
 	},
 #ifdef FY_HAS_FP16
 	[FYTK_FLOAT16] = {
