@@ -2218,36 +2218,8 @@ reflection_object_create_from_type(struct reflection_object *ro_parent, struct r
 				   struct fy_event *fye, struct fy_path *path,
 				   void *data, size_t data_size);
 
-static inline const char *
-common_scalar_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path,
-		    enum fy_type_kind type_kind, size_t type_size, size_t type_align)
-{
-	struct fy_token *fyt;
-	const char *text0;
-
-	if (fye->type != FYET_SCALAR ||
-	    ro->rtd->ti->kind != type_kind ||
-	    !ro->data || ro->data_size != type_size ||
-	    ((size_t)(uintptr_t)ro->data & (type_align - 1)) != 0) {
-		errno = EINVAL;
-		return NULL;
-	}
-	fyt = fy_event_get_token(fye);
-	if (!fyt) {
-		errno = EINVAL;
-		return NULL;
-	}
-
-	text0 = fy_token_get_text0(fyt);
-	if (!text0) {
-		errno = ENOMEM;
-		return NULL;
-	}
-	return text0;
-}
-
-static inline int
-common_scalar_setup2(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
+static int
+common_scalar_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
 {
 	struct fy_token *fyt;
 	enum fy_type_kind type_kind;
@@ -2424,153 +2396,102 @@ static int numeric_scalar_emit(struct fy_emitter *fye, bool is_signed, union num
 	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, s, len, NULL, NULL));
 }
 
-static int signed_emit(struct fy_emitter *fye, intmax_t val)
+static int common_scalar_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size)
 {
-	return numeric_scalar_emit(fye, true, (union numeric_scalar){ .sval = val });
-}
+	enum fy_type_kind type_kind;
+	size_t size, align;
+	int ret;
 
-static int unsigned_emit(struct fy_emitter *fye, uintmax_t val)
-{
-	return numeric_scalar_emit(fye, false, (union numeric_scalar){ .uval = val });
-}
+	type_kind = rtd->ti->kind;
 
-#define INT_SCALAR_SETUP(_type, _kind, _method) \
-static int _method (struct reflection_object *ro, struct fy_event *fye, struct fy_path *path) \
-{ \
-	_type *valp; \
-	const char *text0; \
-	char *endptr; \
-	union numeric_scalar val; \
-	\
-	text0 = common_scalar_setup(ro, fye, path, _kind, sizeof(_type), alignof(_type)); \
-	if (!text0) \
-		goto err_out; \
-	valp = ro->data; \
-	if (text0[0] == '\0') { \
-		errno = EINVAL; \
-		goto err_out; \
-	} \
-	if (fy_type_kind_is_signed(_kind)) { \
-		val.sval = strtoimax(text0, &endptr, 10); \
-		if ((val.sval == INTMAX_MIN || val.sval == INTMAX_MAX) && errno == ERANGE) \
-			goto err_out; \
-		if (sizeof(_type) < sizeof(intmax_t)) { \
-			const intmax_t minv = INTMAX_MIN >> ((sizeof(intmax_t) - sizeof(_type)) * 8); \
-			const intmax_t maxv = INTMAX_MAX >> ((sizeof(intmax_t) - sizeof(_type)) * 8); \
-			if (val.sval < minv || val.sval > maxv) { \
-				errno = ERANGE; \
-				goto err_out; \
-			} \
-		} \
-		if (*endptr != '\0') { \
-			errno = EINVAL; \
-			goto err_out; \
-		} \
-		*valp = val.sval; \
-	} else { \
-		val.uval = strtoumax(text0, &endptr, 10); \
-		if (val.uval == UINTMAX_MAX && errno == ERANGE) \
-			goto err_out; \
-		if (sizeof(_type) < sizeof(uintmax_t)) { \
-			const uintmax_t maxv = UINTMAX_MAX >> ((sizeof(uintmax_t) - sizeof(_type)) * 8); \
-			if (val.uval > maxv) { \
-				errno = ERANGE; \
-				goto err_out; \
-			} \
-		} \
-		if (*endptr != '\0') { \
-			errno = EINVAL; \
-			goto err_out; \
-		} \
-		*valp = val.uval; \
-	} \
-	return 0; \
-err_out: \
-	return -1; \
-} \
-struct _fake_eat_semicolon
+	size = fy_type_kind_size(type_kind);
+	align = fy_type_kind_align(type_kind);
 
-#define SCALAR_OPS(_type, _method, _setup_method) \
-static const struct reflection_object_ops * _method (struct reflection_type_data *rtd) \
-{ \
-	static const struct reflection_object_ops ops = { \
-		.setup = _setup_method, \
-	}; \
-\
-	return &ops; \
-} \
-struct _fake_eat_semicolon
+	if (data_size != size || ((size_t)(uintptr_t)data & (align - 1)) != 0) {
+		errno = EINVAL;
+		return -1;
+	}
 
-#define INT_SCALAR_EMIT(_type, _method) \
-static int _method (struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size) \
-{ \
-	int ret; \
-	assert(data_size == sizeof(_type)); \
-	assert(((uintptr_t)data & (alignof(_type) - 1)) == 0); \
-	if (fy_type_kind_is_signed(rtd->ti->kind)) \
-		ret = signed_emit(fye, *(const _type *)data); \
-	else \
-		ret = unsigned_emit(fye, *(const _type *)data); \
-	return ret; \
-} \
-struct _fake_eat_semicolon
+	if (fy_type_kind_is_integer(type_kind)) {
+		bool is_signed;
+		union numeric_scalar num;
 
-#define INT_SCALAR_REFLECT(_type, _method_pfx, _kind) \
-	INT_SCALAR_SETUP(_type, _kind, _method_pfx ## _setup); \
-	SCALAR_OPS(_type, _method_pfx ## _object_ops, _method_pfx ## _setup); \
-	INT_SCALAR_EMIT(_type, _method_pfx ## _emit); \
-struct _fake_eat_semicolon
+		/* only allow up to uintmax */
+		if (size > sizeof(uintmax_t))
+			goto err_inval;
 
+		is_signed = fy_type_kind_is_signed(type_kind);
+		if (is_signed) {
+			switch (type_kind) {
+			case FYTK_CHAR:
+				num.sval = *(const char *)data;
+				break;
+			case FYTK_SCHAR:
+				num.sval = *(const signed char *)data;
+				break;
+			case FYTK_SHORT:
+				num.sval = *(const short *)data;
+				break;
+			case FYTK_INT:
+				num.sval = *(const int *)data;
+				break;
+			case FYTK_LONG:
+				num.sval = *(const long *)data;
+				break;
+			case FYTK_LONGLONG:
+				num.sval = *(const long long *)data;
+				break;
+			default:
+				goto err_inval;
+			}
+		} else {
+			switch (type_kind) {
+			case FYTK_CHAR:
+				num.uval = *(const char *)data;
+				break;
+			case FYTK_UCHAR:
+				num.uval = *(const unsigned char *)data;
+				break;
+			case FYTK_USHORT:
+				num.uval = *(const unsigned short *)data;
+				break;
+			case FYTK_UINT:
+				num.uval = *(const unsigned int *)data;
+				break;
+			case FYTK_ULONG:
+				num.uval = *(const unsigned long *)data;
+				break;
+			case FYTK_ULONGLONG:
+				num.uval = *(const unsigned long long *)data;
+				break;
+			default:
+				goto err_inval;
+			}
+		}
 
-static int char_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
-{
-	const char *text0;
-	int rc;
-
-	text0 = common_scalar_setup(ro, fye, path, FYTK_CHAR, sizeof(char), alignof(char));
-	if (!text0)
-		goto err_out;
-	rc = sscanf(text0, CHAR_MIN < 0 ? "%hhd" : "%hhu", (char *)ro->data);
-	if (rc != 1)
-		goto err_out;
+		ret = numeric_scalar_emit(fye, is_signed, num);
+		if (ret)
+			goto err_out;
+	} else
+		goto err_inval;
 
 	return 0;
-
 err_out:
+	return -1;
+
+err_inval:
+	errno = EINVAL;
 	return -1;
 }
 
-const struct reflection_object_ops *char_object_ops(struct reflection_type_data *rtd)
+static const struct reflection_object_ops *
+common_scalar_object_ops(struct reflection_type_data *rtd)
 {
 	static const struct reflection_object_ops ops = {
-		.setup = char_setup,
+		.setup = common_scalar_setup,
 	};
-
 	return &ops;
 }
-
-static int char_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size)
-{
-	char c;
-
-	assert(data_size == sizeof(char));
-	c = *(const char *)data;
-
-	return CHAR_MIN < 0 ?
-		signed_emit(fye, (intmax_t)c) :
-		unsigned_emit(fye, (uintmax_t)c & 0xff);
-}
-
-INT_SCALAR_REFLECT(signed char,       signed_char,        FYTK_SCHAR);
-INT_SCALAR_REFLECT(unsigned char,     unsigned_char,      FYTK_UCHAR);
-INT_SCALAR_REFLECT(short,             short,              FYTK_SHORT);
-INT_SCALAR_REFLECT(unsigned short,    unsigned_short,     FYTK_USHORT);
-INT_SCALAR_REFLECT(int,               int,                FYTK_INT);
-INT_SCALAR_REFLECT(unsigned int,      unsigned_int,       FYTK_UINT);
-INT_SCALAR_REFLECT(long,              long,               FYTK_LONG);
-INT_SCALAR_REFLECT(unsigned long,     unsigned_long,      FYTK_ULONG);
-INT_SCALAR_REFLECT(long long,         long_long,          FYTK_LONGLONG);
-INT_SCALAR_REFLECT(unsigned long long,unsigned_long_long, FYTK_ULONGLONG);
 
 static int const_array_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
 {
@@ -3007,48 +2928,48 @@ const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
 	[FYTK_BOOL] = {
 	},
 	[FYTK_CHAR] = {
-		.object_ops = char_object_ops,
-		.emit = char_emit,
+		.object_ops = common_scalar_object_ops,
+		.emit = common_scalar_emit,
 	},
 	[FYTK_SCHAR] = {
-		.object_ops = signed_char_object_ops,
-		.emit = signed_char_emit,
+		.object_ops = common_scalar_object_ops,
+		.emit = common_scalar_emit,
 	},
 	[FYTK_UCHAR] = {
-		.object_ops = unsigned_char_object_ops,
-		.emit = unsigned_char_emit,
+		.object_ops = common_scalar_object_ops,
+		.emit = common_scalar_emit,
 	},
 	[FYTK_SHORT] = {
-		.object_ops = short_object_ops,
-		.emit = short_emit,
+		.object_ops = common_scalar_object_ops,
+		.emit = common_scalar_emit,
 	},
 	[FYTK_USHORT] = {
-		.object_ops = unsigned_short_object_ops,
-		.emit = unsigned_short_emit,
+		.object_ops = common_scalar_object_ops,
+		.emit = common_scalar_emit,
 	},
 	[FYTK_INT] = {
-		.object_ops = int_object_ops,
-		.emit = int_emit,
+		.object_ops = common_scalar_object_ops,
+		.emit = common_scalar_emit,
 	},
 	[FYTK_UINT] = {
-		.object_ops = unsigned_int_object_ops,
-		.emit = unsigned_int_emit,
+		.object_ops = common_scalar_object_ops,
+		.emit = common_scalar_emit,
 	},
 	[FYTK_LONG] = {
-		.object_ops = long_object_ops,
-		.emit = long_emit,
+		.object_ops = common_scalar_object_ops,
+		.emit = common_scalar_emit,
 	},
 	[FYTK_ULONG] = {
-		.object_ops = unsigned_long_object_ops,
-		.emit = unsigned_long_emit,
+		.object_ops = common_scalar_object_ops,
+		.emit = common_scalar_emit,
 	},
 	[FYTK_LONGLONG] = {
-		.object_ops = long_long_object_ops,
-		.emit = long_long_emit,
+		.object_ops = common_scalar_object_ops,
+		.emit = common_scalar_emit,
 	},
 	[FYTK_ULONGLONG] = {
-		.object_ops = unsigned_long_long_object_ops,
-		.emit = unsigned_long_long_emit,
+		.object_ops = common_scalar_object_ops,
+		.emit = common_scalar_emit,
 	},
 #ifdef FY_HAS_INT128
 	[FYTK_INT128] = {
