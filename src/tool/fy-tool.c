@@ -2101,11 +2101,11 @@ struct reflection_object;
 struct reflection_encoder;
 
 struct reflection_object_ops {
-	int (*setup)(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path);
+	int (*setup)(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
 	void (*cleanup)(struct reflection_object *ro);
 	int (*finish)(struct reflection_object *ro);
-	struct reflection_object *(*create_child)(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path);
-	int (*scalar_child)(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path);
+	struct reflection_object *(*create_child)(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
+	int (*scalar_child)(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
 };
 
 struct reflection_object {
@@ -2216,7 +2216,7 @@ reflection_type_data_lookup_field_by_unsigned_enum_value(struct reflection_type_
 
 struct reflection_object *
 reflection_object_create_from_type(struct reflection_object *ro_parent, struct reflection_type_data *rtd,
-				   struct fy_event *fye, struct fy_path *path,
+				   struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
 				   void *data, size_t data_size);
 
 union integer_scalar {
@@ -2231,7 +2231,7 @@ union float_scalar {
 };
 
 static int
-common_scalar_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
+common_scalar_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct fy_token *fyt;
 	enum fy_scalar_style style;
@@ -2240,54 +2240,75 @@ common_scalar_setup(struct reflection_object *ro, struct fy_event *fye, struct f
 	const char *text0;
 	char *endptr;
 
-	if (fye->type != FYET_SCALAR || !ro->data)
-		goto err_inval;
-
 	type_kind = ro->rtd->ti->kind;
+
+	if (fye->type != FYET_SCALAR || !ro->data || !fy_type_kind_is_valid(type_kind)) {
+		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+				"%s:%d internal error", __FILE__, __LINE__);
+		goto err_internal;
+	}
 
 	size = fy_type_kind_size(type_kind);
 	align = fy_type_kind_align(type_kind);
 
-	if (ro->data_size != size ||
-	    ((size_t)(uintptr_t)ro->data & (align - 1)) != 0)
-		goto err_inval;
+	if (ro->data_size != size || ((size_t)(uintptr_t)ro->data & (align - 1)) != 0) {
+		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+				"%s:%d internal error", __FILE__, __LINE__);
+		goto err_internal;
+	}
 
 	fyt = fy_event_get_token(fye);
-	if (!fyt)
-		goto err_inval;
-
 	style = fy_token_scalar_style(fyt);
 
 	text0 = fy_token_get_text0(fyt);
-	if (!text0)
+	if (!text0) {
+		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+				"%s:%d unable to get token of the event", __FILE__, __LINE__);
 		goto err_nomem;
-	if (text0[0] == '\0')
+	}
+
+	if (text0[0] == '\0') {
+		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR, "Invalid empty scalar");
 		goto err_inval;
+	}
 
 	if (fy_type_kind_is_integer(type_kind)) {
 
-		if (style != FYSS_PLAIN)
+		if (style != FYSS_PLAIN) {
+			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+					"only plain style allowed for integers");
 			goto err_inval;
+		}
 
 		/* nothing larger than this */
-		if (size > sizeof(intmax_t))
+		if (size > sizeof(intmax_t)) {
+			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+					"integer type too large (>sizeof(intmax_t))");
 			goto err_inval;
+		}
 
 		if (fy_type_kind_is_signed(type_kind)) {
 			intmax_t sval;
 		       
+			errno = 0;
 			sval = strtoimax(text0, &endptr, 10);
-			if ((sval == INTMAX_MIN || sval == INTMAX_MAX) && errno == ERANGE)
-				goto err_out;
+
+			if ((sval == INTMAX_MIN || sval == INTMAX_MAX) && errno == ERANGE) {
+				fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+						"integer value out of intmax_t range");
+				goto err_range;
+			}
 
 			if (size < sizeof(intmax_t)) {
 				const intmax_t minv = INTMAX_MIN >> ((sizeof(intmax_t) - size) * 8);
 				const intmax_t maxv = INTMAX_MAX >> ((sizeof(intmax_t) - size) * 8);
-				if (sval < minv || sval > maxv)
+
+				if (sval < minv || sval > maxv) {
+					fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+							"integer value out of range (min=%jd, max=%jd)", minv, maxv);
 					goto err_range;
+				}
 			}
-			if (*endptr != '\0')
-				goto err_inval;
 
 			switch (type_kind) {
 			case FYTK_CHAR:
@@ -2315,15 +2336,20 @@ common_scalar_setup(struct reflection_object *ro, struct fy_event *fye, struct f
 			uintmax_t uval;
 
 			uval = strtoumax(text0, &endptr, 10);
-			if (uval == UINTMAX_MAX && errno == ERANGE)
-				goto err_out;
+			if (uval == UINTMAX_MAX && errno == ERANGE) {
+				fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+						"integer value out of uintmax_t range");
+				goto err_range;
+			}
+
 			if (size < sizeof(uintmax_t)) {
 				const uintmax_t maxv = UINTMAX_MAX >> ((sizeof(uintmax_t) - size) * 8);
-				if (uval > maxv)
+				if (uval > maxv) {
+					fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+							"integer value out of range (max=%ju)", maxv);
 					goto err_range;
+				}
 			}
-			if (*endptr != '\0')
-				goto err_inval;
 
 			switch (type_kind) {
 			case FYTK_CHAR:
@@ -2349,40 +2375,56 @@ common_scalar_setup(struct reflection_object *ro, struct fy_event *fye, struct f
 			}
 		}
 
+		if (*endptr != '\0') {
+			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+					"invalid integer format");
+			goto err_inval;
+		}
+
 	} else if (fy_type_kind_is_float(type_kind)) {
+
 		union float_scalar u;
 
-		if (style != FYSS_PLAIN)
+		if (style != FYSS_PLAIN) {
+			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+					"only plain style allowed for doubles");
 			goto err_inval;
+		}
 
 		/* nothing larger than this */
-		if (size > sizeof(long double))
+		if (size > sizeof(long double)) {
+			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+					"double type too large (>sizeof(long double))");
 			goto err_inval;
+		}
 
 		/* just do in sequence */
 		switch (type_kind) {
 		case FYTK_FLOAT:
 			u.f = strtof(text0, &endptr);
-			if ((u.f <= FLT_MIN || u.f >= FLT_MAX) && errno == ERANGE)
-				goto err_out;
-			if (*endptr != '\0')
-				goto err_inval;
+			if ((u.f <= FLT_MIN || u.f >= FLT_MAX) && errno == ERANGE) {
+				fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+						"float value out of range");
+				goto err_range;
+			}
 			*(float *)ro->data = u.f;
 			break;
 		case FYTK_DOUBLE:
 			u.d = strtod(text0, &endptr);
-			if ((u.d <= DBL_MIN || u.d >= DBL_MAX) && errno == ERANGE)
-				goto err_out;
-			if (*endptr != '\0')
-				goto err_inval;
+			if ((u.d <= DBL_MIN || u.d >= DBL_MAX) && errno == ERANGE) {
+				fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+						"double value out of range");
+				goto err_range;
+			}
 			*(double *)ro->data = u.d;
 			break;
 		case FYTK_LONGDOUBLE:
 			u.ld = strtold(text0, &endptr);
-			if ((u.ld <= LDBL_MIN || u.ld >= LDBL_MAX) && errno == ERANGE)
+			if ((u.ld <= LDBL_MIN || u.ld >= LDBL_MAX) && errno == ERANGE) {
+				fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+						"long double value out of range");
 				goto err_out;
-			if (*endptr != '\0')
-				goto err_inval;
+			}
 			*(long double *)ro->data = u.ld;
 			break;
 
@@ -2390,24 +2432,36 @@ common_scalar_setup(struct reflection_object *ro, struct fy_event *fye, struct f
 			goto err_inval;
 		}
 
+		if (*endptr != '\0')
+			goto err_inval;
+
 	} else if (type_kind == FYTK_BOOL) {
 		_Bool v;
 
-		if (style != FYSS_PLAIN)
+		if (style != FYSS_PLAIN) {
+			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+					"only plain style allowed for booleans");
 			goto err_inval;
+		}
 
 		v = false;
 		if (!strcmp(text0, "true")) {
 			v = true;
 		} else if (!strcmp(text0, "false")) {
 			v = false;
-		} else
+		} else {
+			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+					"invalid boolean");
 			goto err_inval;
+		}
 
 		*(_Bool *)ro->data = v;
 
-	} else
+	} else {
+		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+				"unsupported kind %s", fy_type_kind_name(type_kind));
 		goto err_inval;
+	}
 
 	return 0;
 
@@ -2424,6 +2478,10 @@ err_nomem:
 
 err_range:
 	errno = ERANGE;
+	goto err_out;
+
+err_internal:
+	errno = EFAULT;
 	goto err_out;
 }
 
@@ -2643,7 +2701,7 @@ common_scalar_object_ops(struct reflection_type_data *rtd)
 	return &ops;
 }
 
-static int const_array_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
+static int const_array_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	if (fye->type != FYET_SEQUENCE_START) {
 		assert(0);
@@ -2672,7 +2730,7 @@ static void const_array_cleanup(struct reflection_object *ro)
 	ro->instance_data = NULL;
 }
 
-struct reflection_object *const_array_create_child(struct reflection_object *ro_parent, struct fy_event *fye, struct fy_path *path)
+struct reflection_object *const_array_create_child(struct reflection_object *ro_parent, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct reflection_object *ro;
 	struct reflection_type_data *rtd_dep;
@@ -2694,7 +2752,7 @@ struct reflection_object *const_array_create_child(struct reflection_object *ro_
 	data = ro_parent->data + item_size * idx;
 
 	ro = reflection_object_create_from_type(ro_parent, rtd_dep,
-		fye, path, data, item_size);
+		fyp, fye, path, data, item_size);
 	if (!ro)
 		return NULL;
 
@@ -2755,7 +2813,7 @@ struct struct_instance_data {
 	uint8_t present_map[];
 };
 
-static int struct_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
+static int struct_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct struct_instance_data *id;
 	size_t present_map_size, size;
@@ -2796,7 +2854,7 @@ static int struct_finish(struct reflection_object *ro)
 	return 0;
 }
 
-struct reflection_object *struct_create_child(struct reflection_object *ro_parent, struct fy_event *fye, struct fy_path *path)
+struct reflection_object *struct_create_child(struct reflection_object *ro_parent, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct reflection_object *ro;
 	struct reflection_type_data *rtd;
@@ -2828,7 +2886,7 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 	/* no bitfields */
 	assert((fi->flags & FYFIF_BITFIELD) == 0);
 	ro = reflection_object_create_from_type(ro_parent, fy_type_info_get_userdata(ti),
-			fye, path, ro_parent->data + rfd->fi->offset, ti->size);
+			fyp, fye, path, ro_parent->data + rfd->fi->offset, ti->size);
 	if (!ro)
 		return NULL;
 
@@ -2888,7 +2946,7 @@ err_out:
 	return -1;
 }
 
-static int enum_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
+static int enum_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct reflection_type_data *rtd_dep;
 	struct reflection_field_data *rfd;
@@ -3189,14 +3247,14 @@ const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
 
 struct reflection_object *
 reflection_object_create_internal(struct reflection_object *parent, struct reflection_type_data *rtd,
-				  struct fy_event *fye, struct fy_path *path,
+				  struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
 				  const struct reflection_object_ops *ops, void *data, size_t data_size);
 
 struct root_instance_data {
 	struct reflection_decoder *rd;
 };
 
-static int root_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
+static int root_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct root_instance_data *id;
 
@@ -3227,7 +3285,7 @@ static void root_cleanup(struct reflection_object *ro)
 	}
 }
 
-struct reflection_object *root_create_child(struct reflection_object *ro_parent, struct fy_event *fye, struct fy_path *path)
+struct reflection_object *root_create_child(struct reflection_object *ro_parent, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct reflection_object *ro;
 	struct reflection_type_data *rtd;
@@ -3259,7 +3317,7 @@ struct reflection_object *root_create_child(struct reflection_object *ro_parent,
 	}
 
 	ro = reflection_object_create_from_type(ro_parent, rtd,
-		fye, path, ro_parent->data, ro_parent->data_size);
+		fyp, fye, path, ro_parent->data, ro_parent->data_size);
 	if (!ro)
 		return NULL;
 	return ro;
@@ -3307,7 +3365,7 @@ reflection_object_finish_and_destroy(struct reflection_object *ro)
 
 struct reflection_object *
 reflection_object_create_internal(struct reflection_object *parent, struct reflection_type_data *rtd,
-				  struct fy_event *fye, struct fy_path *path,
+				  struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
 				  const struct reflection_object_ops *ops,
 				  void *data, size_t data_size)
 {
@@ -3330,7 +3388,7 @@ reflection_object_create_internal(struct reflection_object *parent, struct refle
 	ro->data = data;
 	ro->data_size = data_size;
 	assert(ro->ops->setup);
-	ret = ro->ops->setup(ro, fye, path);
+	ret = ro->ops->setup(ro, fyp, fye, path);
 	if (ret)
 		goto err_out;
 
@@ -3342,7 +3400,7 @@ err_out:
 
 struct reflection_object *
 reflection_object_create_from_type(struct reflection_object *ro_parent, struct reflection_type_data *rtd,
-				   struct fy_event *fye, struct fy_path *path,
+				   struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
 				   void *data, size_t data_size)
 {
 	struct reflection_object *ro;
@@ -3357,7 +3415,8 @@ reflection_object_create_from_type(struct reflection_object *ro_parent, struct r
 	ops = rtd->ops->object_ops(rtd);
 	assert(ops);
 
-	ro = reflection_object_create_internal(ro_parent, rtd, fye, path, ops, data, data_size);
+	ro = reflection_object_create_internal(ro_parent, rtd,
+			fyp, fye, path, ops, data, data_size);
 	if (!ro)
 		return NULL;
 
@@ -3365,18 +3424,18 @@ reflection_object_create_from_type(struct reflection_object *ro_parent, struct r
 }
 
 struct reflection_object *
-reflection_object_create_child(struct reflection_object *parent, struct fy_event *fye, struct fy_path *path)
+reflection_object_create_child(struct reflection_object *parent, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	if (!parent || !fye || !path) {
 		errno = EINVAL;
 		return NULL;
 	}
 
-	return parent->ops->create_child(parent, fye, path);
+	return parent->ops->create_child(parent, fyp, fye, path);
 }
 
 int
-reflection_object_scalar_child(struct reflection_object *parent, struct fy_event *fye, struct fy_path *path)
+reflection_object_scalar_child(struct reflection_object *parent, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct reflection_object *ro;
 	int ret;
@@ -3386,11 +3445,11 @@ reflection_object_scalar_child(struct reflection_object *parent, struct fy_event
 
 	/* shortcut exists */
 	if (parent->ops->scalar_child)
-		return parent->ops->scalar_child(parent, fye, path);
+		return parent->ops->scalar_child(parent, fyp, fye, path);
 
 	/* create and destroy cycle */
 	assert(parent->ops->create_child);
-	ro = parent->ops->create_child(parent, fye, path);
+	ro = parent->ops->create_child(parent, fyp, fye, path);
 	if (!ro)
 		return -1;
 
@@ -3567,7 +3626,7 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		rop = fy_path_get_parent_user_data(path);
 		assert(rop);
 
-		rc = reflection_object_scalar_child(rop, fye, path);
+		rc = reflection_object_scalar_child(rop, fyp, fye, path);
 		if (rc) {
 			ret = FYCR_ERROR;
 			break;
@@ -3581,7 +3640,8 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		break;
 
 	case FYET_DOCUMENT_START:
-		ro = reflection_object_create_internal(NULL, rd->entry, fye, path, &root_ops, rd->data, rd->data_size);
+		ro = reflection_object_create_internal(NULL, rd->entry,
+				fyp, fye, path, &root_ops, rd->data, rd->data_size);
 		if (!ro) {
 			ret = FYCR_ERROR;
 			break;
@@ -3596,7 +3656,7 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		rop = fy_path_get_parent_user_data(path);
 		assert(rop);
 
-		ro = reflection_object_create_child(rop, fye, path);
+		ro = reflection_object_create_child(rop, fyp, fye, path);
 		if (!ro) {
 			ret = FYCR_ERROR;
 			break;
@@ -3613,6 +3673,8 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 		rc = reflection_object_finish_and_destroy(ro);
 		if (rc) {
+			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+					"reflection_object_finish_and_destroy() failed");
 			ret = FYCR_ERROR;
 			break;
 		}
@@ -3633,6 +3695,8 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 		rc = reflection_object_finish_and_destroy(ro);
 		if (rc) {
+			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+					"reflection_object_finish_and_destroy() failed");
 			ret = FYCR_ERROR;
 			break;
 		}
@@ -3644,9 +3708,6 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		assert(0);
 		abort();
 	}
-
-	if (ret == FYCR_ERROR)
-		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR, "%s", strerror(errno));
 
 	return ret;
 }
