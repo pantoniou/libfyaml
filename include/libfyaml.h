@@ -8930,7 +8930,8 @@ fy_type_kind_info_get(enum fy_type_kind type_kind)
  * Returns:
  * The size of the type kind or 0 on error
  */
-size_t fy_type_kind_size(enum fy_type_kind type_kind)
+size_t
+fy_type_kind_size(enum fy_type_kind type_kind)
 	FY_EXPORT;
 
 /**
@@ -8943,7 +8944,22 @@ size_t fy_type_kind_size(enum fy_type_kind type_kind)
  * Returns:
  * The align of the type kind or 0 on error
  */
-size_t fy_type_kind_align(enum fy_type_kind type_kind)
+size_t
+fy_type_kind_align(enum fy_type_kind type_kind)
+	FY_EXPORT;
+
+/**
+ * fy_type_kind_name() - Find out the type kind's name
+ *
+ * Return the name of the type kind
+ *
+ * @type_kind: The type_kind to check
+ *
+ * Returns:
+ * The name of the type kind or NULL on error
+ */
+const char *
+fy_type_kind_name(enum fy_type_kind type_kind)
 	FY_EXPORT;
 
 /**

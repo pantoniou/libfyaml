@@ -373,6 +373,14 @@ size_t fy_type_kind_align(enum fy_type_kind type_kind)
 	return fy_type_kind_info_table[type_kind].align;
 }
 
+const char *fy_type_kind_name(enum fy_type_kind type_kind)
+{
+	if (!fy_type_kind_is_valid(type_kind))
+		return 0;
+
+	return fy_type_kind_info_table[type_kind].name;
+}
+
 int fy_type_kind_signess(enum fy_type_kind type_kind)
 {
 	if (!fy_type_kind_is_numeric(type_kind))
