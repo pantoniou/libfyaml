@@ -2234,6 +2234,7 @@ static int
 common_scalar_setup(struct reflection_object *ro, struct fy_event *fye, struct fy_path *path)
 {
 	struct fy_token *fyt;
+	enum fy_scalar_style style;
 	enum fy_type_kind type_kind;
 	size_t size, align;
 	const char *text0;
@@ -2255,6 +2256,8 @@ common_scalar_setup(struct reflection_object *ro, struct fy_event *fye, struct f
 	if (!fyt)
 		goto err_inval;
 
+	style = fy_token_scalar_style(fyt);
+
 	text0 = fy_token_get_text0(fyt);
 	if (!text0)
 		goto err_nomem;
@@ -2262,6 +2265,9 @@ common_scalar_setup(struct reflection_object *ro, struct fy_event *fye, struct f
 		goto err_inval;
 
 	if (fy_type_kind_is_integer(type_kind)) {
+
+		if (style != FYSS_PLAIN)
+			goto err_inval;
 
 		/* nothing larger than this */
 		if (size > sizeof(intmax_t))
@@ -2346,6 +2352,9 @@ common_scalar_setup(struct reflection_object *ro, struct fy_event *fye, struct f
 	} else if (fy_type_kind_is_float(type_kind)) {
 		union float_scalar u;
 
+		if (style != FYSS_PLAIN)
+			goto err_inval;
+
 		/* nothing larger than this */
 		if (size > sizeof(long double))
 			goto err_inval;
@@ -2380,6 +2389,22 @@ common_scalar_setup(struct reflection_object *ro, struct fy_event *fye, struct f
 		default:
 			goto err_inval;
 		}
+
+	} else if (type_kind == FYTK_BOOL) {
+		_Bool v;
+
+		if (style != FYSS_PLAIN)
+			goto err_inval;
+
+		v = false;
+		if (!strcmp(text0, "true")) {
+			v = true;
+		} else if (!strcmp(text0, "false")) {
+			v = false;
+		} else
+			goto err_inval;
+
+		*(_Bool *)ro->data = v;
 
 	} else
 		goto err_inval;
@@ -2472,6 +2497,18 @@ static int float_scalar_emit(struct fy_emitter *fye, enum fy_type_kind type_kind
 	}
 
 	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, buf, len, NULL, NULL));
+}
+
+static int bool_scalar_emit(struct fy_emitter *fye, enum fy_type_kind type_kind, _Bool v)
+{
+	const char *bool_txt[2] = { "false", "true" };
+	size_t bool_txt_sz[2] = { 5, 4 };
+	const char *str;
+	size_t len;
+
+	str = bool_txt[!!v];
+	len = bool_txt_sz[!!v];
+	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, str, len, NULL, NULL));
 }
 
 static int common_scalar_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size)
@@ -2578,6 +2615,13 @@ static int common_scalar_emit(struct reflection_type_data *rtd, struct fy_emitte
 		ret = float_scalar_emit(fye, type_kind, num);
 		if (ret)
 			goto err_out;
+
+	} else if (type_kind == FYTK_BOOL) {
+
+		ret = bool_scalar_emit(fye, type_kind, *(const _Bool *)data);
+		if (ret)
+			goto err_out;
+
 	} else
 		goto err_inval;
 
@@ -3032,6 +3076,8 @@ const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
 	[FYTK_VOID] = {
 	},
 	[FYTK_BOOL] = {
+		.object_ops = common_scalar_object_ops,
+		.emit = common_scalar_emit,
 	},
 	[FYTK_CHAR] = {
 		.object_ops = common_scalar_object_ops,
