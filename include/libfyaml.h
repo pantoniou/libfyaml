@@ -8607,18 +8607,6 @@ enum fy_type_kind {
 	FYTK_FLOAT16,
 	FYTK_FLOAT128,
 
-	/* explicitly sized types */
-	FYTK_S8,
-	FYTK_U8,
-	FYTK_S16,
-	FYTK_U16,
-	FYTK_S32,
-	FYTK_U32,
-	FYTK_S64,
-	FYTK_U64,
-	FYTK_S128,
-	FYTK_U128,
-
 	/* compound */
 	FYTK_RECORD,	/* generic struct, union, class */
 	FYTK_STRUCT,
@@ -8692,7 +8680,7 @@ static inline bool fy_type_kind_is_valid(enum fy_type_kind type_kind)
  */
 static inline bool fy_type_kind_is_primitive(enum fy_type_kind type_kind)
 {
-	return type_kind >= FYTK_VOID && type_kind <= FYTK_U128;
+	return type_kind >= FYTK_VOID && type_kind <= FYTK_FLOAT128;
 }
 
 /**

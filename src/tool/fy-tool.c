@@ -3160,36 +3160,6 @@ const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
 	[FYTK_FLOAT128] = {
 	},
 #endif
-	/* the explicitly sized types are not generated */
-	/* they must be explicitly created */
-	[FYTK_S8] = {
-	},
-	[FYTK_U8] = {
-	},
-	[FYTK_S16] = {
-	},
-	[FYTK_U16] = {
-	},
-	[FYTK_S32] = {
-	},
-	[FYTK_U32] = {
-	},
-	[FYTK_S64] = {
-	},
-	[FYTK_U64] = {
-	},
-#if defined(__SIZEOF_INT128__) && __SIZEOF_INT128__ == 16
-	[FYTK_S128] = {
-	},
-	[FYTK_U128] = {
-	},
-#else
-	[FYTK_S128] = {
-	},
-	[FYTK_U128] = {
-	},
-#endif
-
 	/* these are templates */
 	[FYTK_RECORD] = {
 	},

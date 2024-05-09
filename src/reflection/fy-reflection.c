@@ -298,91 +298,6 @@ const struct fy_type_kind_info fy_type_kind_info_table[FYTK_COUNT] = {
 		.enum_name	= "FYTK_FLOAT128",
 	},
 #endif
-	/* the explicitly sized types are not generated */
-	/* they must be explicitly created */
-	[FYTK_S8] = {
-		.kind		= FYTK_S8,
-		.name		= "int8_t",
-		.size		= sizeof(int8_t),
-		.align		= alignof(int8_t),
-		.enum_name	= "FYTK_S8",
-	},
-	[FYTK_U8] = {
-		.kind		= FYTK_U8,
-		.name		= "uint8_t",
-		.size		= sizeof(uint8_t),
-		.align		= alignof(uint8_t),
-		.enum_name	= "FYTK_U8",
-	},
-	[FYTK_S16] = {
-		.kind		= FYTK_S16,
-		.name		= "int16_t",
-		.size		= sizeof(int16_t),
-		.align		= alignof(int16_t),
-		.enum_name	= "FYTK_S16",
-	},
-	[FYTK_U16] = {
-		.kind		= FYTK_U16,
-		.name		= "uint16_t",
-		.size		= sizeof(uint16_t),
-		.align		= alignof(uint16_t),
-		.enum_name	= "FYTK_U16",
-	},
-	[FYTK_S32] = {
-		.kind		= FYTK_S32,
-		.name		= "int32_t",
-		.size		= sizeof(int32_t),
-		.align		= alignof(int32_t),
-		.enum_name	= "FYTK_S32",
-	},
-	[FYTK_U32] = {
-		.kind		= FYTK_U32,
-		.name		= "uint32_t",
-		.size		= sizeof(uint32_t),
-		.align		= alignof(uint32_t),
-		.enum_name	= "FYTK_U32",
-	},
-	[FYTK_S64] = {
-		.kind		= FYTK_S64,
-		.name		= "int64_t",
-		.size		= sizeof(int64_t),
-		.align		= alignof(int64_t),
-		.enum_name	= "FYTK_S64",
-	},
-	[FYTK_U64] = {
-		.kind		= FYTK_U64,
-		.name		= "uint64_t",
-		.size		= sizeof(uint64_t),
-		.align		= alignof(uint64_t),
-		.enum_name	= "FYTK_U64",
-	},
-#ifdef FY_HAS_INT128
-	[FYTK_S128] = {
-		.kind		= FYTK_S128,
-		.name		= "__int128",
-		.size		= sizeof(__int128),
-		.align		= alignof(__int128),
-		.enum_name	= "FYTK_S128",
-	},
-	[FYTK_U128] = {
-		.kind		= FYTK_U128,
-		.name		= "unsigned __int128",
-		.size		= sizeof(unsigned __int128),
-		.align		= alignof(unsigned __int128),
-		.enum_name	= "FYTK_U128",
-	},
-#else
-	[FYTK_S128] = {
-		.kind		= FYTK_INVALID,
-		.name		= "__int128",
-		.enum_name	= "FYTK_S128",
-	},
-	[FYTK_U128] = {
-		.kind		= FYTK_INVALID,
-		.name		= "unsigned __int128",
-		.enum_name	= "FYTK_U128",
-	},
-#endif
 
 	/* these are templates */
 	[FYTK_RECORD] = {
@@ -477,11 +392,6 @@ int fy_type_kind_signess(enum fy_type_kind type_kind)
 	case FYTK_LONGDOUBLE:
 	case FYTK_FLOAT16:
 	case FYTK_FLOAT128:
-	case FYTK_S8:
-	case FYTK_S16:
-	case FYTK_S32:
-	case FYTK_S64:
-	case FYTK_S128:
 		return -1;
 	case FYTK_BOOL:
 	case FYTK_UCHAR:
@@ -490,11 +400,6 @@ int fy_type_kind_signess(enum fy_type_kind type_kind)
 	case FYTK_ULONG:
 	case FYTK_ULONGLONG:
 	case FYTK_UINT128:
-	case FYTK_U8:
-	case FYTK_U16:
-	case FYTK_U32:
-	case FYTK_U64:
-	case FYTK_U128:
 		return 1;
 	default:
 		break;
