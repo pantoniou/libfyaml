@@ -328,6 +328,8 @@ const struct fy_type_kind_info fy_type_kind_info_table[FYTK_COUNT] = {
 	[FYTK_PTR] = {
 		.kind		= FYTK_PTR,
 		.name		= "ptr",
+		.size		= sizeof(void *),
+		.align		= alignof(void *),
 		.enum_name	= "FYTK_PTR",
 	},
 	[FYTK_CONSTARRAY] = {
@@ -1023,7 +1025,8 @@ const char *fy_decl_get_yaml_comment(struct fy_decl *decl)
 	return decl->yaml_comment;
 }
 
-const char *fy_decl_get_yaml_name(struct fy_decl *decl)
+const char *
+fy_decl_get_yaml_string(struct fy_decl *decl, const char *path)
 {
 	struct fy_document *fyd;
 	struct fy_node *fyn_root, *fyn;
@@ -1041,7 +1044,7 @@ const char *fy_decl_get_yaml_name(struct fy_decl *decl)
 	if (!fyn_root)
 		return NULL;
 
-	fyn = fy_node_by_path(fyn_root, "/name", FY_NT, FYNWF_DONT_FOLLOW);
+	fyn = fy_node_by_path(fyn_root, path, FY_NT, FYNWF_DONT_FOLLOW);
 	if (!fyn)
 		return NULL;
 
@@ -1054,6 +1057,42 @@ const char *fy_decl_get_yaml_name(struct fy_decl *decl)
 		return NULL;
 
 	return text0;
+}
+
+int fy_decl_vscanf(struct fy_decl *decl, const char *fmt, va_list ap)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn_root;
+
+	assert(decl);
+
+	fyd = fy_decl_get_yaml_annotation(decl);
+	if (!fyd)
+		return -1;
+
+	fyn_root = fy_document_root(fyd);
+	assert(fyn_root);
+	if (!fyn_root)
+		return -1;
+
+	return fy_node_vscanf(fyn_root, fmt, ap);
+}
+
+int fy_decl_scanf(struct fy_decl *decl, const char *fmt, ...)
+{
+	va_list ap;
+	int ret;
+
+	va_start(ap, fmt);
+	ret = fy_decl_vscanf(decl, fmt, ap);
+	va_end(ap);
+
+	return ret;
+}
+
+const char *fy_decl_get_yaml_name(struct fy_decl *decl)
+{
+	return fy_decl_get_yaml_string(decl, "/name");
 }
 
 void fy_import_destroy(struct fy_import *imp)
@@ -2071,6 +2110,12 @@ const char *fy_type_get_yaml_name(struct fy_type *ft)
 	return ft->name;
 }
 
+int fy_type_vscanf(struct fy_type *ft, const char *fmt, va_list ap)
+{
+	if (!ft || !ft->decl)
+		return -1;
+	return fy_decl_vscanf(ft->decl, fmt, ap);
+}
 
 void fy_type_dump(struct fy_type *ft, bool no_location)
 {
@@ -3003,4 +3048,43 @@ const char *fy_type_info_get_yaml_name(const struct fy_type_info *ti)
 const char *fy_field_info_get_yaml_name(const struct fy_field_info *fi)
 {
 	return fy_decl_get_yaml_name(fy_decl_from_field_info(fi));
+}
+
+const char *fy_field_info_get_yaml_string(const struct fy_field_info *fi, const char *path)
+{
+	return fy_decl_get_yaml_string(fy_decl_from_field_info(fi), path);
+}
+
+int fy_type_info_vscanf(const struct fy_type_info *ti, const char *fmt, va_list ap)
+{
+	return fy_type_vscanf(fy_type_from_info(ti), fmt, ap);
+}
+
+int fy_type_info_scanf(const struct fy_type_info *ti, const char *fmt, ...)
+{
+	va_list ap;
+	int ret;
+
+	va_start(ap, fmt);
+	ret = fy_type_info_vscanf(ti, fmt, ap);
+	va_end(ap);
+
+	return ret;
+}
+
+int fy_field_info_vscanf(const struct fy_field_info *fi, const char *fmt, va_list ap)
+{
+	return fy_decl_vscanf(fy_decl_from_field_info(fi), fmt, ap);
+}
+
+int fy_field_info_scanf(const struct fy_field_info *fi, const char *fmt, ...)
+{
+	va_list ap;
+	int ret;
+
+	va_start(ap, fmt);
+	ret = fy_field_info_vscanf(fi, fmt, ap);
+	va_end(ap);
+
+	return ret;
 }
