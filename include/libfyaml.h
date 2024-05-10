@@ -9461,11 +9461,20 @@ fy_type_info_get_yaml_annotation(const struct fy_type_info *ti)
 	FY_EXPORT;
 
 const char *
-fy_type_info_get_yaml_name(const struct fy_type_info *ti)
+fy_type_info_get_yaml_string(const struct fy_type_info *ti, const char *path)
 	FY_EXPORT;
 
 const char *
-fy_field_info_get_yaml_name(const struct fy_field_info *fi)
+fy_type_info_get_yaml_name(const struct fy_type_info *ti)
+	FY_EXPORT;
+
+int
+fy_type_info_vscanf(const struct fy_type_info *ti, const char *fmt, va_list ap)
+	FY_EXPORT;
+
+int
+fy_type_info_scanf(const struct fy_type_info *ti, const char *fmt, ...)
+	FY_FORMAT(scanf, 2, 3)
 	FY_EXPORT;
 
 /**
@@ -9480,6 +9489,23 @@ fy_field_info_get_yaml_name(const struct fy_field_info *fi)
  */
 struct fy_document *
 fy_field_info_get_yaml_annotation(const struct fy_field_info *fi)
+	FY_EXPORT;
+
+const char *
+fy_field_info_get_yaml_string(const struct fy_field_info *fi, const char *path)
+	FY_EXPORT;
+
+const char *
+fy_field_info_get_yaml_name(const struct fy_field_info *fi)
+	FY_EXPORT;
+
+int
+fy_field_info_vscanf(const struct fy_field_info *fi, const char *fmt, va_list ap)
+	FY_EXPORT;
+
+int
+fy_field_info_scanf(const struct fy_field_info *fi, const char *fmt, ...)
+	FY_FORMAT(scanf, 2, 3)
 	FY_EXPORT;
 
 /**
