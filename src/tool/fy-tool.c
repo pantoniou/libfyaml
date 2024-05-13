@@ -2121,6 +2121,7 @@ struct reflection_object {
 
 struct reflection_field_data {
 	struct reflection_type_data *parent_rtd;
+	struct reflection_type_data *field_rtd;
 	const struct fy_field_info *fi;
 };
 
@@ -2880,18 +2881,17 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 	rtd = ro_parent->rtd;
 	assert(rtd);
 	rfd = reflection_type_data_lookup_field(rtd, field);
-	assert(rtd);
-	if (!rfd) {
-		fprintf(stderr, "reflection_type_data_lookup_field() failed\n");
-		return NULL;
-	}
+	assert(rfd);
+
+	assert(rfd->field_rtd != NULL);
+
 	fi = rfd->fi;
 	ti = fi->type_info;
 	/* no bitfields */
 	assert((fi->flags & FYFIF_BITFIELD) == 0);
 
-	ro = reflection_object_create_from_type(ro_parent, fi,
-						fy_type_info_get_userdata(ti),
+	ro = reflection_object_create_from_type(ro_parent, rfd,
+						rfd->field_rtd,
 						fyp, fye, path,
 						ro_parent->data + rfd->fi->offset, ti->size);
 	if (!ro)
@@ -3611,6 +3611,11 @@ int reflection_type_data_setup(const struct fy_type_info *ti)
 	size_t i;
 	size_t size;
 
+	/* already initialized? */
+	rtd = fy_type_info_get_userdata(ti);
+	if (rtd)
+		return 0;
+
 	size = sizeof(*rtd);
 	if (fy_type_kind_has_fields(ti->kind))
 		size += ti->count * sizeof(rtd->fields[0]);
@@ -3626,6 +3631,11 @@ int reflection_type_data_setup(const struct fy_type_info *ti)
 		rtd->fields_count = ti->count;
 		for (i = 0, fi = ti->fields, rfd = &rtd->fields[0]; i < ti->count; i++, fi++, rfd++) {
 			rfd->parent_rtd = rtd;
+
+			/* it is guaranteed by the order of iteration that it's not NULL */
+			rfd->field_rtd = fy_type_info_get_userdata(fi->type_info);
+			assert(rfd->field_rtd);
+
 			rfd->fi = fi;
 			fy_field_info_set_userdata(fi, rfd);
 		}
