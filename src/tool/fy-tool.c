@@ -2156,6 +2156,8 @@ reflection_object_create_internal(struct reflection_object *parent, const void *
 				  struct reflection_type_data *rtd,
 				  struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
 				  const struct reflection_type_ops *ops, void *data, size_t data_size);
+void
+reflection_object_destroy(struct reflection_object *ro);
 
 struct reflection_type_data *
 reflection_type_data_get_dependent(struct reflection_type_data *rtd)
@@ -2241,10 +2243,15 @@ common_scalar_setup(struct reflection_object *ro, struct fy_parser *fyp, struct 
 	size_t size, align;
 	const char *text0;
 	char *endptr;
+	void *data;
+	size_t data_size;
 
 	type_kind = ro->rtd->ti->kind;
 
-	if (fye->type != FYET_SCALAR || !ro->data || !fy_type_kind_is_valid(type_kind)) {
+	data = ro->data;
+	data_size = ro->data_size;
+
+	if (fye->type != FYET_SCALAR || !data || !data_size || !fy_type_kind_is_valid(type_kind)) {
 		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
 				"%s:%d internal error", __FILE__, __LINE__);
 		goto err_internal;
@@ -2253,7 +2260,7 @@ common_scalar_setup(struct reflection_object *ro, struct fy_parser *fyp, struct 
 	size = fy_type_kind_size(type_kind);
 	align = fy_type_kind_align(type_kind);
 
-	if (ro->data_size != size || ((size_t)(uintptr_t)ro->data & (align - 1)) != 0) {
+	if (data_size != size || ((size_t)(uintptr_t)data & (align - 1)) != 0) {
 		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
 				"%s:%d internal error", __FILE__, __LINE__);
 		goto err_internal;
@@ -2314,22 +2321,22 @@ common_scalar_setup(struct reflection_object *ro, struct fy_parser *fyp, struct 
 
 			switch (type_kind) {
 			case FYTK_CHAR:
-				*(char *)ro->data = sval;
+				*(char *)data = sval;
 				break;
 			case FYTK_SCHAR:
-				*(signed char *)ro->data = sval;
+				*(signed char *)data = sval;
 				break;
 			case FYTK_SHORT:
-				*(short *)ro->data = sval;
+				*(short *)data = sval;
 				break;
 			case FYTK_INT:
-				*(int *)ro->data = sval;
+				*(int *)data = sval;
 				break;
 			case FYTK_LONG:
-				*(long *)ro->data = sval;
+				*(long *)data = sval;
 				break;
 			case FYTK_LONGLONG:
-				*(long long *)ro->data = sval;
+				*(long long *)data = sval;
 				break;
 			default:
 				goto err_inval;
@@ -2355,22 +2362,22 @@ common_scalar_setup(struct reflection_object *ro, struct fy_parser *fyp, struct 
 
 			switch (type_kind) {
 			case FYTK_CHAR:
-				*(char *)ro->data = uval;
+				*(char *)data = uval;
 				break;
 			case FYTK_UCHAR:
-				*(unsigned char *)ro->data = uval;
+				*(unsigned char *)data = uval;
 				break;
 			case FYTK_USHORT:
-				*(unsigned short *)ro->data = uval;
+				*(unsigned short *)data = uval;
 				break;
 			case FYTK_UINT:
-				*(unsigned int *)ro->data = uval;
+				*(unsigned int *)data = uval;
 				break;
 			case FYTK_ULONG:
-				*(unsigned long *)ro->data = uval;
+				*(unsigned long *)data = uval;
 				break;
 			case FYTK_ULONGLONG:
-				*(unsigned long long *)ro->data = uval;
+				*(unsigned long long *)data = uval;
 				break;
 			default:
 				goto err_inval;
@@ -2409,7 +2416,7 @@ common_scalar_setup(struct reflection_object *ro, struct fy_parser *fyp, struct 
 						"float value out of range");
 				goto err_range;
 			}
-			*(float *)ro->data = u.f;
+			*(float *)data = u.f;
 			break;
 		case FYTK_DOUBLE:
 			u.d = strtod(text0, &endptr);
@@ -2418,7 +2425,7 @@ common_scalar_setup(struct reflection_object *ro, struct fy_parser *fyp, struct 
 						"double value out of range");
 				goto err_range;
 			}
-			*(double *)ro->data = u.d;
+			*(double *)data = u.d;
 			break;
 		case FYTK_LONGDOUBLE:
 			u.ld = strtold(text0, &endptr);
@@ -2427,7 +2434,7 @@ common_scalar_setup(struct reflection_object *ro, struct fy_parser *fyp, struct 
 						"long double value out of range");
 				goto err_out;
 			}
-			*(long double *)ro->data = u.ld;
+			*(long double *)data = u.ld;
 			break;
 
 		default:
@@ -2457,7 +2464,7 @@ common_scalar_setup(struct reflection_object *ro, struct fy_parser *fyp, struct 
 			goto err_inval;
 		}
 
-		*(_Bool *)ro->data = v;
+		*(_Bool *)data = v;
 
 	} else {
 		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
@@ -2785,6 +2792,88 @@ err_out:
 	return -1;
 }
 
+uintmax_t load_bitfield_le(const void *ptr, size_t bit_offset, size_t bit_width, bool is_signed)
+{
+	const uint8_t *p;
+	size_t off, width, space, use;
+	uint8_t bmask;
+	uintmax_t v;
+
+	v = 0;
+
+	width = bit_width;
+	p = ptr + bit_offset / 8;
+	off = bit_offset & 7;
+	if (off) {
+		space = 8 - off;
+		use = width > space ? space : width;
+
+		bmask = (((uint8_t)1 << use) - 1) << off;
+		width -= use;
+
+		v = (*p++ & bmask) >> off;
+		off = use;
+
+		// fprintf(stderr, "%s: 0. [%02x] use=%zu v=%jx\n", __func__, p[-1] & 0xff, use, v);
+	}
+	while (width >= 8) {
+		v |= (uintmax_t)*p++ << off;
+		width -= 8;
+		off += 8;
+		// fprintf(stderr, "%s: 1. [%02x] v=%jx\n", __func__, p[-1] & 0xff, v);
+	}
+	if (width) {
+		v |= (uintmax_t)(*p & ((1 << width) - 1)) << off;
+		// fprintf(stderr, "%s: 2. [%02x] off=%zu v=%jx\n", __func__, p[0], off, v);
+	}
+
+	/* sign extension? */
+	if (is_signed && bit_width < sizeof(uintmax_t) * 8 &&
+			(v & ((uintmax_t)1 << (bit_width - 1))))
+		v |= (uintmax_t)-1 << bit_width;
+
+	return v;
+}
+
+void store_bitfield_le(void *ptr, size_t bit_offset, size_t bit_width, uintmax_t v)
+{
+	uint8_t *p;
+	size_t off, width, space, use;
+	uint8_t bmask;
+
+	width = bit_width;
+	p = ptr + bit_offset / 8;
+	off = bit_offset & 7;
+	if (off) {
+		space = 8 - off;
+		use = width > space ? space : width;
+
+		bmask = (((uint8_t)1 << use) - 1) << off;
+
+		*p = (*p & ~bmask) | ((uint8_t)(v << off) & bmask);
+		p++;
+
+		// fprintf(stderr, "%s: 0. [%02x] bmask=%02x off=%zu %02x v=%jx\n", __func__, p[-1] & 0xff, bmask, off, (uint8_t)(v << off) & 0xff, v);
+
+		v >>= use;
+		width -= use;
+	}
+	while (width >= 8) {
+		*p++ = (uint8_t)v;
+
+		// fprintf(stderr, "%s: 1. [%02x] v=%jx\n", __func__, p[-1] & 0xff, v);
+
+		v >>= 8;
+		width -= 8;
+	}
+	if (width) {
+		bmask = (1 << width) - 1;
+		*p = (*p & ~bmask) | ((uint8_t)v & bmask);
+
+		// fprintf(stderr, "%s: 1. [%02x] v=%jx\n", __func__, p[0] & 0xff, v);
+	}
+}
+
 struct struct_type_data {
 	uint8_t *required_map;
 	uint8_t *optional_map;
@@ -2840,7 +2929,7 @@ static int struct_finish(struct reflection_object *ro)
 struct reflection_object *struct_create_child(struct reflection_object *ro_parent,
 					      struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
-	struct reflection_object *ro;
+	struct reflection_object *ro = NULL;
 	struct reflection_type_data *rtd;
 	struct reflection_field_data *rfd;
 	const struct fy_field_info *fi;
@@ -2866,24 +2955,91 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 
 	fi = rfd->fi;
 	ti = fi->type_info;
-	/* no bitfields */
-	assert((fi->flags & FYFIF_BITFIELD) == 0);
 
-	ro = reflection_object_create_internal(ro_parent, rfd,
-					       rfd->field_rtd,
-					       fyp, fye, path, rfd->field_rtd->ops,
-					       ro_parent->data + rfd->fi->offset, ti->size);
-	if (!ro)
-		return NULL;
+	if (!(fi->flags & FYFIF_BITFIELD)) {
+		ro = reflection_object_create_internal(ro_parent, rfd,
+						       rfd->field_rtd,
+						       fyp, fye, path, rfd->field_rtd->ops,
+						       ro_parent->data + rfd->fi->offset, ti->size);
+		if (!ro)
+			goto err_out;
+	} else {
+		enum fy_type_kind type_kind;
+		uintmax_t bitfield_data = 0;
+
+		/* this can't work for too large bitfield */
+		if (fi->bit_width > sizeof(uintmax_t) * 8)
+			goto err_out;
+
+		/* XXX TODO must walk the depends */
+		type_kind = ti->kind;
+
+		ro = reflection_object_create_internal(ro_parent, rfd,
+						       rfd->field_rtd,
+						       fyp, fye, path, rfd->field_rtd->ops,
+						       &bitfield_data, ti->size);
+		if (!ro)
+			goto err_out;
+
+		/* for either signed or unsigned case, the bits over bit_width must match sign */
+		if (fi->bit_width < sizeof(uintmax_t) * 8) {
+			uintmax_t v = bitfield_data;
+			uintmax_t sign_mask, calc_sign_mask;
+
+			if (fy_type_kind_is_signed(type_kind)) {
+				sign_mask = ~(((uintmax_t)1 << (fi->bit_width - 1)) - 1);
+				calc_sign_mask = v & sign_mask;
+
+				// fprintf(stderr, "%s: v=0x%jx sign_mask=0x%jx calc_sign_mask=0x%jx\n", __func__, v, sign_mask, calc_sign_mask);
+				if ((intmax_t)v < 0) {
+					if (calc_sign_mask != sign_mask) {
+						fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+								"value cannot fit in bitfield (min %jd)",
+								(intmax_t)sign_mask);
+						goto err_out;
+					}
+				} else {
+					if (calc_sign_mask != 0) {
+						fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+								"value cannot fit in bitfield (max %jd)",
+								(intmax_t)~sign_mask);
+						goto err_out;
+					}
+				}
+			} else {
+				// fprintf(stderr, "%s: v=0x%jx\n", __func__, v);
+
+				if (v & ~(((uintmax_t)1 << fi->bit_width) - 1)) {
+					fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+							"value cannot fit in bitfield (max %ju)",
+							((uintmax_t)1 << fi->bit_width) - 1);
+					goto err_out;
+				}
+			}
+
+			/* fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR, "cannot fit value into bitfield"); */
+		}
+
+		store_bitfield_le(ro_parent->data, fi->bit_offset, fi->bit_width, bitfield_data);
+	}
 
 	return ro;
+
+err_out:
+	reflection_object_destroy(ro);
+	return NULL;
 }
 
 int struct_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size)
 {
 	struct reflection_field_data *rfd;
 	struct reflection_type_data *rtd_field;
+	const struct fy_field_info *fi;
+	enum fy_type_kind type_kind;
 	const char *field_name;
+	const void *field_data;
+	size_t field_data_size;
+	uintmax_t bitfield_data;
 	size_t i;
 	int rc;
 
@@ -2893,19 +3049,42 @@ int struct_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const 
 
 	for (i = 0, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, rfd++) {
 
-		field_name = fy_field_info_get_yaml_name(rfd->fi);
+		fi = rfd->fi;
+
+		/* unnamed field (bitfield) */
+		if (fi->name[0] == '\0')
+			continue;
+
+		field_name = fy_field_info_get_yaml_name(fi);
 		if (!field_name)
-			field_name = rfd->fi->name;
+			field_name = fi->name;
 
 		rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, field_name, FY_NT, NULL, NULL));
 		if (rc)
 			goto err_out;
 
-		rtd_field = fy_type_info_get_userdata(rfd->fi->type_info);
+		rtd_field = fy_type_info_get_userdata(fi->type_info);
 		assert(rtd_field);
 
 		assert(rtd_field->ops->emit);
-		rc = rtd_field->ops->emit(rtd_field, fye, data + rfd->fi->offset, rtd_field->ti->size);
+
+		if (!(fi->flags & FYFIF_BITFIELD)) {
+			field_data = data + fi->offset;
+			field_data_size = rtd_field->ti->size;
+		} else {
+			/* XXX TODO must resolve typedefs here */
+			type_kind = rtd_field->ti->kind;
+			if (!fy_type_kind_is_integer(type_kind) && type_kind != FYTK_BOOL)
+				goto err_out;
+			field_data_size = rtd_field->ti->size;
+
+			bitfield_data = load_bitfield_le(data, fi->bit_offset, fi->bit_width,
+					fy_type_kind_is_signed(type_kind));
+
+			field_data = &bitfield_data;
+		}
+
+		rc = rtd_field->ops->emit(rtd_field, fye, field_data, field_data_size);
 		if (rc)
 			goto err_out;
 	}
@@ -2927,22 +3106,28 @@ static int enum_setup(struct reflection_object *ro, struct fy_parser *fyp, struc
 	size_t size, align;
 	const char *text0;
 	union { unsigned long long u; signed long long s; } val;
+	void *data;
+	size_t data_size;
 
 
 	if (fye->type != FYET_SCALAR)
 		return -1;
 
 	assert(ro->rtd->ti->kind == FYTK_ENUM);
+
+	data = ro->data;
+	data_size = ro->data_size;
+
 	rtd_dep = reflection_type_data_get_dependent(ro->rtd);
 	assert(rtd_dep);
 
-	assert(ro->data);
+	assert(data);
 
 	/* verify alignment */
 	size = rtd_dep->ti->size;
 	align = rtd_dep->ti->align;
-	assert(ro->data_size == size);
-	assert(((uintptr_t)ro->data & (align - 1)) == 0);
+	assert(data_size == size);
+	assert(((uintptr_t)data & (align - 1)) == 0);
 	(void)size;
 	(void)align;
 
@@ -2964,49 +3149,49 @@ static int enum_setup(struct reflection_object *ro, struct fy_parser *fyp, struc
 	case FYTK_CHAR:
 		if (CHAR_MIN < 0) {
 			assert(val.s >= CHAR_MIN && val.s <= CHAR_MAX);
-			*(char *)ro->data = (char)val.s;
+			*(char *)data = (char)val.s;
 		} else {
 			assert(val.u <= CHAR_MAX);
-			*(char *)ro->data = (char)val.u;
+			*(char *)data = (char)val.u;
 		}
 		break;
 	case FYTK_SCHAR:
 		assert(val.s >= SCHAR_MIN && val.s <= SCHAR_MAX);
-		*(signed char *)ro->data = (signed char)val.s;
+		*(signed char *)data = (signed char)val.s;
 		break;
 	case FYTK_UCHAR:
 		assert(val.u <= UCHAR_MAX);
-		*(unsigned char *)ro->data = (unsigned char)val.u;
+		*(unsigned char *)data = (unsigned char)val.u;
 		break;
 	case FYTK_SHORT:
 		assert(val.s >= SHRT_MIN && val.s <= SHRT_MAX);
-		*(short *)ro->data = (short)val.s;
+		*(short *)data = (short)val.s;
 		break;
 	case FYTK_USHORT:
 		assert(val.u <= USHRT_MAX);
-		*(unsigned short *)ro->data = (unsigned short)val.u;
+		*(unsigned short *)data = (unsigned short)val.u;
 		break;
 	case FYTK_INT:
 		assert(val.s >= INT_MIN && val.s <= INT_MAX);
-		*(int *)ro->data = (int)val.s;
+		*(int *)data = (int)val.s;
 		break;
 	case FYTK_UINT:
 		assert(val.u <= UINT_MAX);
-		*(unsigned int *)ro->data = (unsigned int)val.u;
+		*(unsigned int *)data = (unsigned int)val.u;
 		break;
 	case FYTK_LONG:
 		assert(val.s >= LONG_MIN && val.s <= LONG_MAX);
-		*(long *)ro->data = (long)val.s;
+		*(long *)data = (long)val.s;
 		break;
 	case FYTK_ULONG:
 		assert(val.u <= ULONG_MAX);
-		*(unsigned long *)ro->data = (unsigned long)val.u;
+		*(unsigned long *)data = (unsigned long)val.u;
 		break;
 	case FYTK_LONGLONG:
-		*(long long *)ro->data = val.s;
+		*(long long *)data = val.s;
 		break;
 	case FYTK_ULONGLONG:
-		*(unsigned long long *)ro->data = val.u;
+		*(unsigned long long *)data = val.u;
 		break;
 
 	default:
@@ -3101,12 +3286,18 @@ static int ptr_setup(struct reflection_object *ro, struct fy_parser *fyp, struct
 	size_t size, align;
 	const char *text0;
 	void *p;
+	void *data;
+	size_t data_size;
 
 	assert(ro->rtd->ti->kind == FYTK_PTR);
 
 	rtd_dep = reflection_type_data_get_dependent(ro->rtd);
 	assert(rtd_dep);
-	assert(ro->data);
+
+	data = ro->data;
+	data_size = ro->data_size;
+
+	assert(data);
 
 	type_kind = ro->rtd->ti->kind;
 	assert(fy_type_kind_is_valid(type_kind));
@@ -3116,7 +3307,7 @@ static int ptr_setup(struct reflection_object *ro, struct fy_parser *fyp, struct
 
 	fprintf(stderr, "size=%zu align=%zu\n", size, align);
 
-	assert(ro->data_size == size && ((size_t)(uintptr_t)ro->data & (align - 1)) == 0);
+	assert(data_size == size && ((size_t)(uintptr_t)data & (align - 1)) == 0);
 
 	type_kind = rtd_dep->ti->kind;
 
@@ -3135,7 +3326,7 @@ static int ptr_setup(struct reflection_object *ro, struct fy_parser *fyp, struct
 		p = strdup(text0);
 		assert(p);
 
-		*(uintptr_t *)ro->data = (uintptr_t)p;
+		*(uintptr_t *)data = (uintptr_t)p;
 
 	} else
 		return -1;
