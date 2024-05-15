@@ -2071,7 +2071,7 @@ struct reflection_encoder;
 struct reflection_type_ops;
 
 struct reflection_object {
-	// struct reflection_decoder *rd;
+	struct reflection_decoder *rd;
 	struct reflection_object *parent;
 	const void *parent_addr;
 	struct reflection_type_data *rtd;
@@ -2121,13 +2121,31 @@ struct reflection_decoder {
 	void *data;
 	size_t data_size;
 	bool data_allocated;
+	size_t mem_alloc;
+	size_t mem_count;
+	void **mem;
 };
 
+void *
+reflection_decoder_malloc(struct reflection_decoder *rd, size_t size);
+
 struct reflection_object *
-reflection_object_create_internal(struct reflection_object *parent, const void *parent_addr,
+reflection_object_create_internal(struct reflection_decoder *rd,
+				  struct reflection_object *parent, const void *parent_addr,
 				  struct reflection_type_data *rtd,
 				  struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
 				  const struct reflection_type_ops *ops, void *data, size_t data_size);
+
+struct reflection_object *
+reflection_object_create_root(struct reflection_decoder *rd,
+			      struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
+
+struct reflection_object *
+reflection_object_create(struct reflection_object *parent, const void *parent_addr,
+			 struct reflection_type_data *rtd,
+			 struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
+			 void *data, size_t data_size);
+
 void
 reflection_object_destroy(struct reflection_object *ro);
 
@@ -2282,7 +2300,7 @@ common_scalar_setup(struct reflection_object *ro, struct fy_parser *fyp, struct 
 
 		if (fy_type_kind_is_signed(type_kind)) {
 			intmax_t sval;
-		       
+
 			errno = 0;
 			sval = strtoimax(text0, &endptr, 10);
 
@@ -2736,9 +2754,8 @@ struct reflection_object *const_array_create_child(struct reflection_object *ro_
 	item_size = rtd_dep->ti->size;
 	data = ro_parent->data + item_size * idx;
 
-	ro = reflection_object_create_internal(ro_parent, (const void *)(uintptr_t)idx,
-					       rtd_dep,
-					       fyp, fye, path, rtd_dep->ops, data, item_size);
+	ro = reflection_object_create(ro_parent, (const void *)(uintptr_t)idx,
+				      rtd_dep, fyp, fye, path, data, item_size);
 	if (!ro)
 		return NULL;
 
@@ -2944,10 +2961,9 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 
 	/* non-bitfields are relatively easy */
 	if (!(fi->flags & FYFIF_BITFIELD)) {
-		ro = reflection_object_create_internal(ro_parent, rfd,
-						       rfd->field_rtd,
-						       fyp, fye, path, rfd->field_rtd->ops,
-						       ro_parent->data + rfd->fi->offset, ti->size);
+		ro = reflection_object_create(ro_parent, rfd, rfd->field_rtd,
+					      fyp, fye, path,
+					      ro_parent->data + rfd->fi->offset, ti->size);
 		if (!ro)
 			goto err_out;
 		return ro;
@@ -2966,10 +2982,8 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 	type_kind = ti_final->kind;
 
 	bitfield_data = 0;
-	ro = reflection_object_create_internal(ro_parent, rfd,
-					       rfd->field_rtd,
-					       fyp, fye, path, rfd->field_rtd->ops,
-					       &bitfield_data, ti->size);
+	ro = reflection_object_create(ro_parent, rfd, rfd->field_rtd,
+				      fyp, fye, path, &bitfield_data, ti->size);
 	if (!ro)
 		goto err_out;
 
@@ -3276,8 +3290,9 @@ static int ptr_setup(struct reflection_object *ro, struct fy_parser *fyp, struct
 	struct reflection_type_data *rtd_dep;
 	enum fy_type_kind type_kind;
 	size_t size, align;
-	const char *text0;
-	void *p;
+	const char *text;
+	size_t len;
+	char *p;
 	void *data;
 	size_t data_size;
 
@@ -3297,39 +3312,32 @@ static int ptr_setup(struct reflection_object *ro, struct fy_parser *fyp, struct
 	size = fy_type_kind_size(type_kind);
 	align = fy_type_kind_align(type_kind);
 
-	fprintf(stderr, "size=%zu align=%zu\n", size, align);
-
 	assert(data_size == size && ((size_t)(uintptr_t)data & (align - 1)) == 0);
 
 	type_kind = rtd_dep->ti->kind;
 
-	fprintf(stderr, "rtd_dep->ti->kind = %s size=%zu\n", fy_type_kind_name(type_kind), size);
+	// fprintf(stderr, "rtd_dep->ti->kind = %s size=%zu\n", fy_type_kind_name(type_kind), size);
 
 	if (type_kind == FYTK_CHAR && fye->type == FYET_SCALAR) {
-
-		fprintf(stderr, "char *\n");
 
 		fyt = fy_event_get_token(fye);
 		assert(fyt);
 
-		text0 = fy_token_get_text0(fyt);
-		assert(text0);
+		text = fy_token_get_text(fyt, &len);
+		assert(text);
 
-		p = strdup(text0);
+		p = reflection_decoder_malloc(ro->rd, len + 1);
 		assert(p);
 
-		*(uintptr_t *)data = (uintptr_t)p;
+		memcpy(p, text, len);
+		p[len] = '\0';
+
+		*(char **)data = p;
 
 	} else
 		return -1;
 
 	return 0;
-
-#if 0
-err_internal:
-	errno = EINVAL;
-	return -1;
-#endif
 }
 
 static void ptr_cleanup(struct reflection_object *ro)
@@ -3345,18 +3353,12 @@ int ptr_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const voi
 {
 	struct reflection_type_data *rtd_dep;
 	enum fy_type_kind type_kind;
-	size_t size, align;
 	const char *text;
 	size_t len;
 
 	/* verify alignment */
 	type_kind = rtd->ti->kind;
 	assert(type_kind == FYTK_PTR);
-
-	size = rtd->ti->size;
-	align = rtd->ti->align;
-
-	fprintf(stderr, "size=%zu align=%zu data_size=%zu\n", size, align, data_size);
 
 	assert(rtd->ti->kind == FYTK_PTR);
 	rtd_dep = reflection_type_data_get_dependent(rtd);
@@ -3614,10 +3616,9 @@ struct reflection_object *root_create_child(struct reflection_object *ro_parent,
 		break;
 	}
 
-	ro = reflection_object_create_internal(ro_parent, NULL,
-					       rtd,
-					       fyp, fye, path, rtd->ops,
-					       ro_parent->data, ro_parent->data_size);
+	ro = reflection_object_create(ro_parent, NULL, rtd,
+				      fyp, fye, path,
+				      ro_parent->data, ro_parent->data_size);
 	if (!ro)
 		return NULL;
 	return ro;
@@ -3666,7 +3667,8 @@ reflection_object_finish_and_destroy(struct reflection_object *ro)
 }
 
 struct reflection_object *
-reflection_object_create_internal(struct reflection_object *parent, const void *parent_addr,
+reflection_object_create_internal(struct reflection_decoder *rd,
+				  struct reflection_object *parent, const void *parent_addr,
 				  struct reflection_type_data *rtd,
 				  struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
 				  const struct reflection_type_ops *ops,
@@ -3685,6 +3687,7 @@ reflection_object_create_internal(struct reflection_object *parent, const void *
 		return NULL;
 
 	memset(ro, 0, sizeof(*ro));
+	ro->rd = rd;
 	ro->rtd = rtd;
 	ro->parent = parent;
 	ro->parent_addr = parent_addr;
@@ -3703,6 +3706,32 @@ reflection_object_create_internal(struct reflection_object *parent, const void *
 err_out:
 	reflection_object_destroy(ro);
 	return NULL;
+}
+
+struct reflection_object *
+reflection_object_create_root(struct reflection_decoder *rd,
+			      struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
+{
+	if (!rd || !fyp || !fye || !path)
+		return NULL;
+
+	return reflection_object_create_internal(rd, NULL, NULL,
+					         rd->entry, fyp, fye, path, &root_ops,
+						 rd->data, rd->data_size);
+}
+
+struct reflection_object *
+reflection_object_create(struct reflection_object *parent, const void *parent_addr,
+			 struct reflection_type_data *rtd,
+			 struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
+			 void *data, size_t data_size)
+{
+	if (!parent || !rtd || !fyp || !fye || !path || !data || !data_size)
+		return NULL;
+
+	return reflection_object_create_internal(parent->rd, parent, parent_addr,
+						 rtd, fyp, fye, path,
+						 rtd->ops, data, data_size);
 }
 
 struct reflection_object *
@@ -3832,14 +3861,62 @@ err_out:
 	return -1;
 }
 
+void *
+reflection_decoder_malloc(struct reflection_decoder *rd, size_t size)
+{
+	void *new_mem;
+	size_t new_alloc;
+	void *p;
+
+	if (!rd || !size)
+		return NULL;
+
+	if (rd->mem_count >= rd->mem_alloc) {
+		new_alloc = rd->mem_alloc * 2;
+		if (!new_alloc)
+			new_alloc = 16;
+		new_mem = realloc(rd->mem, sizeof(*rd->mem) * new_alloc);
+		if (!new_mem)
+			return NULL;
+		rd->mem_alloc = new_alloc;
+		rd->mem = new_mem;
+	}
+	assert(rd->mem_count < rd->mem_alloc);
+
+	p = malloc(size);
+	if (!p)
+		return NULL;
+
+	rd->mem[rd->mem_count++] = p;
+	return p;
+}
+
+void
+reflection_decoder_free_all(struct reflection_decoder *rd)
+{
+	void *p;
+	size_t i;
+
+	if (!rd || !rd->mem)
+		return;
+
+	for (i = 0; i < rd->mem_count; i++) {
+		p = rd->mem[i];
+		if (p)
+			free(p);
+	}
+	free(rd->mem);
+	rd->mem_alloc = 0;
+	rd->mem_count = 0;
+}
+
 void
 reflection_decoder_destroy(struct reflection_decoder *rd)
 {
 	if (!rd)
 		return;
 
-	if (rd->data && rd->data_allocated)
-		free(rd->data);
+	reflection_decoder_free_all(rd);
 
 	free(rd);
 }
@@ -3933,10 +4010,7 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		break;
 
 	case FYET_DOCUMENT_START:
-		ro = reflection_object_create_internal(NULL, NULL,
-						       rd->entry,
-						       fyp, fye, path, &root_ops,
-						       rd->data, rd->data_size);
+		ro = reflection_object_create_root(rd, fyp, fye, path);
 		if (!ro) {
 			ret = FYCR_ERROR;
 			break;
@@ -4017,6 +4091,8 @@ reflection_decoder_parse(struct reflection_decoder *rd, struct fy_parser *fyp, s
 	if (!rd || !fyp || !rtd)
 		return -1;
 
+	reflection_decoder_free_all(rd);
+
 	/* verify it's a pointer (always) */
 	if (rtd->ti->kind == FYTK_PTR) {
 		/* get the dependent type (if rtd = "int *" rtd_dep = "int") */
@@ -4042,7 +4118,7 @@ reflection_decoder_parse(struct reflection_decoder *rd, struct fy_parser *fyp, s
 		rd->data_allocated = false;
 	} else {
 		rd->data_size = type_size;
-		rd->data = malloc(rd->data_size);
+		rd->data = reflection_decoder_malloc(rd, rd->data_size);
 		if (!rd->data)
 			return -1;
 		rd->data_allocated = true;
