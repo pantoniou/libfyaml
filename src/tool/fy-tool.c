@@ -2063,37 +2063,6 @@ err_out:
 	return ret;
 }
 
-const struct fy_type_info *
-reflection_lookup_type_by_name(struct fy_reflection *rfl, const char *name)
-{
-	const struct fy_type_info *ti;
-	void *prev = NULL;
-	char *nname;
-
-	/* INVALID means that it's already having a prefix */
-	nname = fy_type_name_normalize(FYTK_INVALID, name);
-	if (!nname)
-		return NULL;
-
-	prev = NULL;
-	while ((ti = fy_type_info_iterate(rfl, &prev)) != NULL) {
-		if (!strcmp(ti->normalized_name, nname))
-			break;
-	}
-	free(nname);
-	return ti;
-}
-
-const struct fy_type_info *
-reflection_type_resolve_type(const struct fy_type_info *ti)
-{
-	if (!ti)
-		return NULL;
-	while (ti && ti->kind == FYTK_TYPEDEF)
-		ti = ti->dependent_type;
-	return ti;
-}
-
 struct reflection_type_data;
 struct reflection_field_data;
 struct reflection_decoder;
@@ -2224,6 +2193,18 @@ reflection_type_data_lookup_field_by_unsigned_enum_value(struct reflection_type_
 
 	assert((unsigned int)idx < rtd->fields_count);
 	return &rtd->fields[idx];
+}
+
+struct reflection_type_data *
+reflection_lookup_type_data_by_name(struct fy_reflection *rfl, const char *name)
+{
+	const struct fy_type_info *ti;
+
+	ti = fy_type_info_lookup(rfl, FYTK_INVALID, name);
+	if (!ti)
+		return NULL;
+
+	return fy_type_info_get_userdata(ti);
 }
 
 union integer_scalar {
@@ -4027,17 +4008,14 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 }
 
 int
-reflection_decoder_parse(struct reflection_decoder *rd, struct fy_parser *fyp, const struct fy_type_info *ti, void *data, size_t data_size)
+reflection_decoder_parse(struct reflection_decoder *rd, struct fy_parser *fyp, struct reflection_type_data *rtd, void *data, size_t data_size)
 {
-	;
-	struct reflection_type_data *rtd, *rtd_dep;
+	struct reflection_type_data *rtd_dep;
 	size_t dep_size, type_size;
 	int rc;
 
-	if (!rd || !fyp || !ti)
+	if (!rd || !fyp || !rtd)
 		return -1;
-
-	rtd = fy_type_info_get_userdata(ti);
 
 	/* verify it's a pointer (always) */
 	if (rtd->ti->kind == FYTK_PTR) {
@@ -4231,7 +4209,7 @@ int main(int argc, char *argv[])
 	const char *entry_type = NULL;
 	struct reflection_decoder *rd = NULL;
 	struct reflection_encoder *re = NULL;
-	const struct fy_type_info *ti = NULL;
+	struct reflection_type_data *rtd = NULL;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -5331,13 +5309,13 @@ int main(int argc, char *argv[])
 			}
 
 			fprintf(stderr, "looking up entry_type=%s\n", entry_type);
-			ti = reflection_lookup_type_by_name(rfl, entry_type);
-			if (!ti) {
+			rtd = reflection_lookup_type_data_by_name(rfl, entry_type);
+			if (!rtd) {
 				fprintf(stderr, "Unable to lookup type info for entry_type '%s'\n", entry_type);
 				goto cleanup;
 			}
 
-			rc = reflection_decoder_parse(rd, fyp, ti, NULL, 0);
+			rc = reflection_decoder_parse(rd, fyp, rtd, NULL, 0);
 			if (rc) {
 				fprintf(stderr, "unable to parse with the decoder\n");
 				goto cleanup;
