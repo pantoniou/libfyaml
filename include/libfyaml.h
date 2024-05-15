@@ -9343,6 +9343,24 @@ fy_type_name_normalize(enum fy_type_kind kind, const char *type_name)
 	FY_EXPORT;
 
 /**
+ * fy_type_info_lookup() - Lookup for a type by a definition
+ *
+ * Lookup for a type using the name provided.
+ * If kind is FYTK_INVALID it means that the name has the prefix
+ * embedded; i.e. struct foo.
+ * For any other kind only matching types will be returned.
+ *
+ * @kind: The kind of the type or FYTK_INVALID
+ * @name: The name of type (i.e. "struct foo")
+ *
+ * Returns:
+ * A pointer to the type or NULL if it cannot be found.
+ */
+const struct fy_type_info *
+fy_type_info_lookup(struct fy_reflection *rfl, enum fy_type_kind type_kind, const char *name)
+	FY_EXPORT;
+
+/**
  * fy_type_info_clear_marker() - Clear the marker on a type
  *
  * Clear the marker on a type. Note this call will not clear the

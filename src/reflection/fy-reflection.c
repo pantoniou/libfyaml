@@ -2821,6 +2821,26 @@ fy_type_info_reverse_iterate(struct fy_reflection *rfl, void **prevp)
 	return fy_type_get_type_info(ft);
 }
 
+const struct fy_type_info *
+fy_type_info_lookup(struct fy_reflection *rfl, enum fy_type_kind kind, const char *name)
+{
+	const struct fy_type_info *ti;
+	void *prev = NULL;
+	char *nname;
+
+	nname = fy_type_name_normalize(kind, name);
+	if (!nname)
+		return NULL;
+
+	prev = NULL;
+	while ((ti = fy_type_info_iterate(rfl, &prev)) != NULL) {
+		if (!strcmp(ti->normalized_name, nname))
+			break;
+	}
+	free(nname);
+	return ti;
+}
+
 struct fy_reflection *
 fy_type_info_to_reflection(const struct fy_type_info *ti)
 {
