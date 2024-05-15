@@ -2110,6 +2110,9 @@ struct reflection_object {
 	void *instance_data;
 	void *data;
 	size_t data_size;
+	size_t rtd_dep_chain_alloc;
+	size_t rtd_dep_chain_count;
+	struct reflection_type_data **rtd_dep_chain;
 };
 
 struct reflection_field_data {
@@ -2933,9 +2936,11 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 	struct reflection_type_data *rtd;
 	struct reflection_field_data *rfd;
 	const struct fy_field_info *fi;
-	const struct fy_type_info *ti;
+	const struct fy_type_info *ti, *ti_final, *ti_dep;
 	struct fy_token *fyt_key;
 	const char *field;
+	enum fy_type_kind type_kind;
+	uintmax_t bitfield_data, sign_mask, calc_sign_mask;
 
 	assert(fy_path_in_mapping(path));
 	assert(!fy_path_in_mapping_key(path));
@@ -2956,6 +2961,7 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 	fi = rfd->fi;
 	ti = fi->type_info;
 
+	/* non-bitfields are relatively easy */
 	if (!(fi->flags & FYFIF_BITFIELD)) {
 		ro = reflection_object_create_internal(ro_parent, rfd,
 						       rfd->field_rtd,
@@ -2963,65 +2969,65 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 						       ro_parent->data + rfd->fi->offset, ti->size);
 		if (!ro)
 			goto err_out;
-	} else {
-		enum fy_type_kind type_kind;
-		uintmax_t bitfield_data = 0;
+		return ro;
+	}
 
-		/* this can't work for too large bitfield */
-		if (fi->bit_width > sizeof(uintmax_t) * 8)
-			goto err_out;
+	/* this can't work for too large bitfield */
+	if (fi->bit_width > sizeof(bitfield_data) * 8)
+		goto err_out;
 
-		/* XXX TODO must walk the depends */
-		type_kind = ti->kind;
+	/* ok, storage is a bitfield */
 
-		ro = reflection_object_create_internal(ro_parent, rfd,
-						       rfd->field_rtd,
-						       fyp, fye, path, rfd->field_rtd->ops,
-						       &bitfield_data, ti->size);
-		if (!ro)
-			goto err_out;
+	/* walk down dependent types until we get to the final, we just need the sign */
+	for (ti_final = ti_dep = ti; ti_dep; ti_dep = ti_dep->dependent_type)
+		ti_final = ti_dep;
 
-		/* for either signed or unsigned case, the bits over bit_width must match sign */
-		if (fi->bit_width < sizeof(uintmax_t) * 8) {
-			uintmax_t v = bitfield_data;
-			uintmax_t sign_mask, calc_sign_mask;
+	type_kind = ti_final->kind;
 
-			if (fy_type_kind_is_signed(type_kind)) {
-				sign_mask = ~(((uintmax_t)1 << (fi->bit_width - 1)) - 1);
-				calc_sign_mask = v & sign_mask;
+	bitfield_data = 0;
+	ro = reflection_object_create_internal(ro_parent, rfd,
+					       rfd->field_rtd,
+					       fyp, fye, path, rfd->field_rtd->ops,
+					       &bitfield_data, ti->size);
+	if (!ro)
+		goto err_out;
 
-				// fprintf(stderr, "%s: v=0x%jx sign_mask=0x%jx calc_sign_mask=0x%jx\n", __func__, v, sign_mask, calc_sign_mask);
-				if ((intmax_t)v < 0) {
-					if (calc_sign_mask != sign_mask) {
-						fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
-								"value cannot fit in bitfield (min %jd)",
-								(intmax_t)sign_mask);
-						goto err_out;
-					}
-				} else {
-					if (calc_sign_mask != 0) {
-						fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
-								"value cannot fit in bitfield (max %jd)",
-								(intmax_t)~sign_mask);
-						goto err_out;
-					}
+	/* extent sign */
+	if (fi->bit_width < sizeof(uintmax_t) * 8) {
+		if (fy_type_kind_is_signed(type_kind)) {
+			sign_mask = ~(((uintmax_t)1 << (fi->bit_width - 1)) - 1);
+			calc_sign_mask = bitfield_data & sign_mask;
+
+			if ((intmax_t)bitfield_data < 0) {
+				if (calc_sign_mask != sign_mask) {
+					fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+							"value cannot fit in bitfield (min %jd)",
+							(intmax_t)sign_mask);
+					goto err_out;
 				}
 			} else {
-				// fprintf(stderr, "%s: v=0x%jx\n", __func__, v);
-
-				if (v & ~(((uintmax_t)1 << fi->bit_width) - 1)) {
+				if (calc_sign_mask != 0) {
 					fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
-							"value cannot fit in bitfield (max %ju)",
-							((uintmax_t)1 << fi->bit_width) - 1);
+							"value cannot fit in bitfield (max %jd)",
+							(intmax_t)~sign_mask);
 					goto err_out;
 				}
 			}
-
-			/* fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR, "cannot fit value into bitfield"); */
+		} else if (fy_type_kind_is_unsigned(type_kind) || type_kind == FYTK_BOOL) {
+			if (bitfield_data & ~(((uintmax_t)1 << fi->bit_width) - 1)) {
+				fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+						"value cannot fit in bitfield (max %ju)",
+						((uintmax_t)1 << fi->bit_width) - 1);
+				goto err_out;
+			}
+		} else {
+			// can never happen, it would not compile
+			assert(0);
 		}
-
-		store_bitfield_le(ro_parent->data, fi->bit_offset, fi->bit_width, bitfield_data);
 	}
+
+	/* store */
+	store_bitfield_le(ro_parent->data, fi->bit_offset, fi->bit_width, bitfield_data);
 
 	return ro;
 
@@ -3034,6 +3040,7 @@ int struct_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const 
 {
 	struct reflection_field_data *rfd;
 	struct reflection_type_data *rtd_field;
+	const struct fy_type_info *ti_dep, *ti_final;
 	const struct fy_field_info *fi;
 	enum fy_type_kind type_kind;
 	const char *field_name;
@@ -3072,8 +3079,12 @@ int struct_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const 
 			field_data = data + fi->offset;
 			field_data_size = rtd_field->ti->size;
 		} else {
-			/* XXX TODO must resolve typedefs here */
-			type_kind = rtd_field->ti->kind;
+			/* walk down dependent types until we get to the final, we just need the sign */
+			for (ti_final = ti_dep = rtd_field->ti; ti_dep; ti_dep = ti_dep->dependent_type)
+				ti_final = ti_dep;
+
+			type_kind = ti_final->kind;
+
 			if (!fy_type_kind_is_integer(type_kind) && type_kind != FYTK_BOOL)
 				goto err_out;
 			field_data_size = rtd_field->ti->size;
@@ -3381,6 +3392,49 @@ int ptr_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const voi
 	return -1;
 }
 
+static int typedef_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
+{
+	struct reflection_type_data *rtd_dep;
+	struct reflection_type_data **rtd_dep_chain_new;
+	size_t new_alloc;
+
+	rtd_dep = reflection_type_data_get_dependent(ro->rtd);
+
+	/* append to the dependent chain */
+	if (ro->rtd_dep_chain_count >= ro->rtd_dep_chain_alloc) {
+		new_alloc = ro->rtd_dep_chain_alloc * 2;
+		if (!new_alloc)
+			new_alloc = 4;
+		rtd_dep_chain_new = realloc(ro->rtd_dep_chain, sizeof(*ro->rtd_dep_chain) * new_alloc);
+		if (!rtd_dep_chain_new) {
+			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+					"%s:%d internal error (out of memory)", __FILE__, __LINE__);
+			goto err_out;
+		}
+		ro->rtd_dep_chain_alloc = new_alloc;
+		ro->rtd_dep_chain = rtd_dep_chain_new;
+	}
+	assert(ro->rtd_dep_chain_count < ro->rtd_dep_chain_alloc);
+	ro->rtd_dep_chain[ro->rtd_dep_chain_count++] = ro->rtd;
+
+	/* replace */
+	ro->rtd = rtd_dep;
+	ro->ops = rtd_dep->ops;
+
+	return ro->ops->setup(ro, fyp, fye, path);
+
+err_out:
+	return -1;
+}
+
+int typedef_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size)
+{
+	struct reflection_type_data *rtd_dep;
+
+	rtd_dep = reflection_type_data_get_dependent(rtd);
+	return rtd_dep->ops->emit(rtd_dep, fye, data, data_size);
+}
+
 static const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
 	[FYTK_INVALID] = {
 	},
@@ -3489,6 +3543,8 @@ static const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
 		.emit = enum_emit,
 	},
 	[FYTK_TYPEDEF] = {
+		.setup = typedef_setup,
+		.emit = typedef_emit,
 	},
 	[FYTK_PTR] = {
 		.setup = ptr_setup,
@@ -3599,6 +3655,8 @@ reflection_object_destroy(struct reflection_object *ro)
 		return;
 	if (ro->ops && ro->ops->cleanup)
 		ro->ops->cleanup(ro);
+	if (ro->rtd_dep_chain)
+		free(ro->rtd_dep_chain);
 	free(ro);
 }
 
@@ -3652,6 +3710,9 @@ reflection_object_create_internal(struct reflection_object *parent, const void *
 	ro->ops = ops;
 	ro->data = data;
 	ro->data_size = data_size;
+	ro->rtd_dep_chain_alloc = 0;
+	ro->rtd_dep_chain_count = 0;
+	ro->rtd_dep_chain = NULL;
 	assert(ro->ops->setup);
 	ret = ro->ops->setup(ro, fyp, fye, path);
 	if (ret)
