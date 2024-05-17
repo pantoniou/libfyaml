@@ -9257,6 +9257,33 @@ fy_reflection_to_packed_blob_file(struct fy_reflection *rfl, const char *blob_fi
 	FY_EXPORT;
 
 /**
+ * fy_reflection_set_userdata() - Set the userdata of a reflection
+ *
+ * Set the user data associated with the reflection
+ *
+ * @rfl: The reflection
+ * @userdata: A void pointer that can be used to retreive the data
+ */
+void
+fy_reflection_set_userdata(struct fy_reflection *rfl, void *userdata)
+	FY_EXPORT;
+
+/**
+ * fy_reflection_get_userdata() - Get the userdata associated with a reflection
+ *
+ * Retrieve the user data associated with the given type via a
+ * previous call to fy_reflection_set_userdata().
+ *
+ * @rfl: The reflection
+ *
+ * Returns:
+ * The userdata associated with the reflection, or NULL on error
+ */
+void *
+fy_reflection_get_userdata(struct fy_reflection *rfl)
+	FY_EXPORT;
+
+/**
  * fy_type_info_iterate() - Iterate over the types of the reflection
  *
  * This method iterates over all the types of a reflection.

@@ -2208,6 +2208,20 @@ err_out:
 	return NULL;
 }
 
+void fy_reflection_set_userdata(struct fy_reflection *rfl, void *userdata)
+{
+	if (!rfl)
+		return;
+	rfl->userdata = userdata;
+}
+
+void *fy_reflection_get_userdata(struct fy_reflection *rfl)
+{
+	if (!rfl)
+		return NULL;
+	return rfl->userdata;
+}
+
 int fy_reflection_import(struct fy_reflection *rfl, const void *user)
 {
 	struct fy_import *imp = NULL;
