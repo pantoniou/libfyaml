@@ -264,6 +264,7 @@ struct fy_reflection {
 	int next_source_file_id;
 	void *backend;
 	struct fy_import *imp_curr;	/* the current import */
+	void *userdata;
 };
 
 struct fy_type *fy_type_create(struct fy_reflection *rfl, enum fy_type_kind type_kind, const char *name, struct fy_decl *decl, void *user);
