@@ -2113,6 +2113,7 @@ struct reflection_type_data {
 
 struct reflection_root_data {
 	struct fy_reflection *rfl;	/* back pointer */
+	struct reflection_type_data *rtd_root;
 	size_t rtd_base_count;
 	size_t rtd_count;
 	size_t rtd_alloc;
@@ -2211,18 +2212,6 @@ reflection_type_data_lookup_field_by_unsigned_enum_value(struct reflection_type_
 
 	assert((unsigned int)idx < rtd->fields_count);
 	return &rtd->fields[idx];
-}
-
-struct reflection_type_data *
-reflection_lookup_type_data_by_name(struct fy_reflection *rfl, const char *name)
-{
-	const struct fy_type_info *ti;
-
-	ti = fy_type_info_lookup(rfl, FYTK_INVALID, name);
-	if (!ti)
-		return NULL;
-
-	return fy_type_info_get_userdata(ti);
 }
 
 union integer_scalar {
@@ -3774,61 +3763,13 @@ void reflection_type_data_destroy(struct reflection_type_data *rtd)
 	free(rtd);
 }
 
-struct reflection_type_data *
-reflection_type_data_from_info(struct reflection_root_data *rrd, const struct fy_type_info *ti)
-{
-	if (!rrd || !ti)
-		return NULL;
-
-	/* will always return the base type */
-	return fy_type_info_get_userdata(ti);
-}
-
-struct reflection_type_data *
-reflection_type_data_create(struct reflection_root_data *rrd, const struct fy_type_info *ti)
-{
-	struct reflection_type_data *rtd = NULL;
-	struct reflection_field_data *rfd;
-	const struct fy_field_info *fi;
-	size_t i;
-	size_t size;
-
-	size = sizeof(*rtd);
-	if (fy_type_kind_has_fields(ti->kind))
-		size += ti->count * sizeof(rtd->fields[0]);
-
-	rtd = malloc(size);
-	if (!rtd)
-		goto err_out;
-
-	memset(rtd, 0, size);
-	rtd->rrd = rrd;
-	rtd->ti = ti;
-	rtd->ops = &reflection_ops_table[ti->kind];
-	if (fy_type_kind_has_fields(ti->kind)) {
-		rtd->fields_count = ti->count;
-
-		for (i = 0, fi = ti->fields, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, fi++, rfd++) {
-			/* it is guaranteed by the order of iteration that it's not NULL */
-			rfd->rtd = reflection_type_data_from_info(rrd, fi->type_info);
-			/* but if it's NULL that's OK */
-
-			rfd->fi = fi;
-		}
-	}
-
-	return rtd;
-err_out:
-	reflection_type_data_destroy(rtd);
-	return NULL;
-}
-
 void reflection_cleanup_type_system(struct fy_reflection *rfl)
 {
 	struct reflection_root_data *rrd;
-	struct reflection_type_data *rtd;
-	struct reflection_field_data *rfd;
-	size_t i, j;
+	size_t i;
+
+	if (!rfl)
+		return;
 
 	rrd = fy_reflection_get_userdata(rfl);
 	if (!rrd)
@@ -3836,54 +3777,11 @@ void reflection_cleanup_type_system(struct fy_reflection *rfl)
 
 	fy_reflection_set_userdata(rfl, NULL);
 	if (rrd->rtds) {
-		for (i = 0; i < rrd->rtd_count; i++) {
-			rtd = rrd->rtds[i];
-			if (!rtd)
-				continue;
-
-			/* disassociate */
-			fy_type_info_set_userdata(rtd->ti, NULL);
-			for (j = 0, rfd = &rtd->fields[0]; j < rtd->fields_count; j++, rfd++)
-				fy_field_info_set_userdata(rfd->fi, NULL);
-
-			/* destroy */
-			reflection_type_data_destroy(rtd);
-		}
+		for (i = 0; i < rrd->rtd_count; i++)
+			reflection_type_data_destroy(rrd->rtds[i]);
 		free(rrd->rtds);
 	}
 	free(rrd);
-}
-
-static int
-reflection_root_data_add_rtd(struct reflection_root_data *rrd, struct reflection_type_data *rtd)
-{
-	size_t new_alloc;
-	struct reflection_type_data **new_rtds;
-
-	if (rrd->rtd_count >= rrd->rtd_alloc) {
-		new_alloc = rrd->rtd_alloc * 2;
-		if (!new_alloc)
-			new_alloc = 16;
-		new_rtds = realloc(rrd->rtds, sizeof(*rrd->rtds) * new_alloc);
-		if (!new_rtds)
-			return -1;
-		rrd->rtds = new_rtds;
-		rrd->rtd_alloc = new_alloc;
-	}
-	rrd->rtds[rrd->rtd_count++] = rtd;
-	return 0;
-}
-
-static void
-reflection_root_data_clean_all_markers(struct reflection_root_data *rrd)
-{
-	struct reflection_type_data *rtd;
-	size_t i;
-
-	for (i = 0; i < rrd->rtd_count; i++) {
-		rtd = rrd->rtds[i];
-		rtd->marker = false;
-	}
 }
 
 static int ptr_char_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
@@ -3973,59 +3871,134 @@ static const struct reflection_type_ops ptr_char_ops = {
 	.emit = ptr_char_emit,
 };
 
-static void
-reflection_type_data_mutate(struct reflection_type_data *rtd_parent, struct reflection_type_data *rtd, struct reflection_field_data *rfd)
+struct reflection_type_data *
+reflection_setup_type(struct reflection_root_data *rrd, struct reflection_type_data *rtd_parent,
+		      const struct fy_field_info *fi, const struct fy_type_info *ti);
+
+struct reflection_type_data *
+reflection_setup_type_lookup(struct reflection_root_data *rrd, struct reflection_type_data *rtd_parent,
+			     const struct fy_field_info *fi, const struct fy_type_info *ti)
 {
-	assert(rtd);
-	if (rtd->marker)
-		return;
+	struct reflection_type_data *rtd;
+	size_t i;
+
+	if (!rrd || !ti)
+		return NULL;
+
+	for (i = 0; i < rrd->rtd_count; i++) {
+		rtd = rrd->rtds[i];
+		if (rtd->ti == ti)
+			return rtd;
+	}
+	return NULL;
+}
+
+struct reflection_type_data *
+reflection_setup_type_resolve(struct reflection_root_data *rrd, struct reflection_type_data *rtd_parent,
+			      const struct fy_field_info *fi, const struct fy_type_info *ti)
+{
+	struct reflection_type_data *rtd;
+
+	/* exact match? */
+	rtd = reflection_setup_type_lookup(rrd, rtd_parent, fi, ti);
+	if (rtd)
+		return rtd;
+
+	return reflection_setup_type(rrd, rtd_parent, fi, ti);
+}
+
+struct reflection_type_data *
+reflection_setup_type(struct reflection_root_data *rrd, struct reflection_type_data *rtd_parent,
+		      const struct fy_field_info *fi, const struct fy_type_info *ti)
+{
+	struct reflection_type_data *rtd = NULL;
+	struct reflection_field_data *rfd;
+	const struct fy_field_info *tfi;
+	const struct reflection_type_ops *ops;
+	size_t new_alloc;
+	struct reflection_type_data **new_rtds;
+	size_t i, size;
+
+	fprintf(stderr, "%s: ti->fullname='%s'\n", __func__, ti->fullname);
+
+	size = sizeof(*rtd);
+	if (fy_type_kind_has_fields(ti->kind))
+		size += ti->count * sizeof(rtd->fields[0]);
+
+	rtd = malloc(size);
+	if (!rtd)
+		goto err_out;
+
+	memset(rtd, 0, size);
+	rtd->rrd = rrd;
+	rtd->ti = ti;
+
+	/* select ops */
+	ops = NULL;
+	if (ti->kind == FYTK_PTR && ti->dependent_type->kind == FYTK_CHAR)
+		ops = &ptr_char_ops;
+	if (!ops)
+		ops = &reflection_ops_table[ti->kind];
+	rtd->ops = ops;
+
+	/* add */
+	if (rrd->rtd_count >= rrd->rtd_alloc) {
+		new_alloc = rrd->rtd_alloc * 2;
+		if (!new_alloc)
+			new_alloc = 16;
+		new_rtds = realloc(rrd->rtds, sizeof(*rrd->rtds) * new_alloc);
+		if (!new_rtds)
+			goto err_out;
+		rrd->rtds = new_rtds;
+		rrd->rtd_alloc = new_alloc;
+	}
+	rrd->rtds[rrd->rtd_count++] = rtd;
 
 	rtd->marker = true;
 
-	/* direct mutations */
-	if (rtd->ti->kind == FYTK_PTR && rtd->rtd_dep && rtd->rtd_dep->ti->kind == FYTK_CHAR) {
-		fprintf(stderr, "%s: *char\n", __func__);
-		rtd->ops = &ptr_char_ops;
-		return;
+	/* retreive the dependent type */
+	if (ti->dependent_type) {
+		rtd->rtd_dep = reflection_setup_type_resolve(rrd, rtd, NULL, ti->dependent_type);
+		assert(rtd->rtd_dep);
 	}
 
-	/* no mutation without a parent? */
-	if (!rtd_parent)
-		return;
-}
-
-static void
-reflection_root_data_mutate(struct reflection_root_data *rrd)
-{
-	reflection_root_data_clean_all_markers(rrd);
-	struct reflection_type_data *rtd;
-	size_t i, count;
-
-	/* iterate over the all the types */
-	count = rrd->rtd_count;	/* more mutated types may be added */
-	for (i = 0; i < count; i++) {
-		rtd = rrd->rtds[i];
-
-		if (rtd->marker)
-			continue;
-
-		reflection_root_data_clean_all_markers(rrd);
-
-		reflection_type_data_mutate(NULL, rtd, NULL);
+	/* do fields */
+	if (fy_type_kind_has_fields(ti->kind)) {
+		rtd->fields_count = ti->count;
+		for (i = 0, tfi = ti->fields, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, tfi++, rfd++) {
+			rfd->fi = tfi;
+			rfd->rtd = reflection_setup_type_resolve(rrd, rtd, tfi, tfi->type_info);
+			assert(rfd->rtd);
+		}
 	}
 
-	reflection_root_data_clean_all_markers(rrd);
+	rtd->marker = false;
+
+	return rtd;
+
+err_out:
+	reflection_type_data_destroy(rtd);
+	return NULL;
 }
 
-int reflection_setup_type_system(struct fy_reflection *rfl)
+struct reflection_type_data *
+reflection_setup_type_system(struct fy_reflection *rfl, const char *entry_type)
 {
 	struct reflection_root_data *rrd;
 	struct reflection_type_data *rtd = NULL;
-	struct reflection_field_data *rfd;
-	const struct fy_type_info *ti;
-	void *prev;
-	size_t i, j;
-	int ret;
+	const struct fy_type_info *ti_root;
+
+	if (!rfl || !entry_type)
+		goto err_out;
+
+	ti_root = fy_type_info_lookup(rfl, FYTK_INVALID, entry_type);
+	if (!ti_root) {
+		fprintf(stderr, "Unable to lookup type info for entry_type '%s'\n", entry_type);
+		goto err_out;
+	}
+
+	/* cleanup anything left */
+	reflection_cleanup_type_system(rfl);
 
 	rrd = malloc(sizeof(*rrd));
 	if (!rrd)
@@ -4035,51 +4008,15 @@ int reflection_setup_type_system(struct fy_reflection *rfl)
 
 	fy_reflection_set_userdata(rfl, rrd);
 
-	/* first create the base types */
-	prev = NULL;
-	while ((ti = fy_type_info_iterate(rfl, &prev)) != NULL) {
+	rrd->rtd_root = reflection_setup_type(rrd, NULL, NULL, ti_root);
+	assert(rrd->rtd_root);
 
-		/* create */
-		rtd = reflection_type_data_create(rrd, ti);
-		if (!rtd)
-			goto err_out;
-
-		/* add */
-		ret = reflection_root_data_add_rtd(rrd, rtd);
-		if (ret)
-			goto err_out;
-
-		/* associate */
-		fy_type_info_set_userdata(ti, rtd);
-		for (i = 0, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, rfd++)
-			fy_field_info_set_userdata(rfd->fi, rfd);
-
-		rtd = NULL;
-	}
-
-	/* iterate over the all the types */
-	for (i = 0; i < rrd->rtd_count; i++) {
-		rtd = rrd->rtds[i];
-
-		/* patch types with fields with  rtd of the fields if it's missing */
-		for (j = 0, rfd = &rtd->fields[0]; j < rtd->fields_count; j++, rfd++) {
-			if (!rfd->rtd)
-				rfd->rtd = reflection_type_data_from_info(rrd, rfd->fi->type_info);
-		}
-
-		/* retreive the dependent type */
-		if (rtd->ti->dependent_type)
-			rtd->rtd_dep = reflection_type_data_from_info(rrd, rtd->ti->dependent_type);
-	}
-
-	reflection_root_data_mutate(rrd);
-
-	return 0;
+	return rrd->rtd_root;
 err_out:
 	if (rtd)
 		reflection_type_data_destroy(rtd);
 	reflection_cleanup_type_system(rfl);
-	return -1;
+	return NULL;
 }
 
 void *
@@ -5569,12 +5506,6 @@ int main(int argc, char *argv[])
 		if (type_dump)
 			reflection_type_info_c_dump(rfl);
 		else {
-			rc = reflection_setup_type_system(rfl);
-			if (rc) {
-				fprintf(stderr, "reflection_setup_type_system() failed!\n");
-				goto cleanup;
-			}
-
 			if (!entry_type) {
 				fprintf(stderr, "No entry point type; supply an --entry-type\n");
 				goto cleanup;
@@ -5605,10 +5536,9 @@ int main(int argc, char *argv[])
 				}
 			}
 
-			fprintf(stderr, "looking up entry_type=%s\n", entry_type);
-			rtd = reflection_lookup_type_data_by_name(rfl, entry_type);
+			rtd = reflection_setup_type_system(rfl, entry_type);
 			if (!rtd) {
-				fprintf(stderr, "Unable to lookup type info for entry_type '%s'\n", entry_type);
+				fprintf(stderr, "reflection_setup_type_system() failed!\n");
 				goto cleanup;
 			}
 
@@ -5618,7 +5548,7 @@ int main(int argc, char *argv[])
 				goto cleanup;
 			}
 
-			rc = reflection_encoder_emit(re, fye, rd->entry, rd->data, rd->data_size);
+			rc = reflection_encoder_emit(re, fye, rtd, rd->data, rd->data_size);
 			if (rc) {
 				fprintf(stderr, "unable to emit with the encoder\n");
 				goto cleanup;
