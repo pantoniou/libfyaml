@@ -2138,7 +2138,6 @@ struct reflection_decoder {
 	struct reflection_type_data *entry;
 	void *data;
 	size_t data_size;
-	bool data_allocated;
 
 	reflection_allocf alloc_cb;
 	reflection_freef free_cb;
@@ -4211,12 +4210,11 @@ reflection_decoder_cleanup_data(struct reflection_decoder *rd)
 	if (rd->entry && rd->data)
 		reflection_type_cleanup_data(rd->entry, rd->data, rd->free_cb, rd);
 
-	if (rd->data && rd->data_allocated)
+	if (rd->data)
 		free(rd->data);
 
 	rd->data = NULL;
 	rd->data_size = 0;
-	rd->data_allocated = false;
 }
 
 void
@@ -4413,12 +4411,8 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 
 int
-reflection_decoder_parse(struct reflection_decoder *rd, struct fy_parser *fyp, struct reflection_type_data *rtd, void *data, size_t data_size)
+reflection_decoder_parse(struct reflection_decoder *rd, struct fy_parser *fyp, struct reflection_type_data *rtd)
 {
-#if 0
-	struct reflection_type_data *rtd_dep;
-	size_t dep_size;
-#endif
 	size_t type_size;
 	int rc;
 
@@ -4429,20 +4423,10 @@ reflection_decoder_parse(struct reflection_decoder *rd, struct fy_parser *fyp, s
 
 	type_size = rtd->ti->size;
 
-	if (data) {
-		/* verify size and alignment */
-		if (type_size < data_size)
-			return -1;
-		rd->data = data;
-		rd->data_size = data_size;
-		rd->data_allocated = false;
-	} else {
-		rd->data_size = type_size;
-		rd->data = malloc(rd->data_size);
-		if (!rd->data)
-			return -1;
-		rd->data_allocated = true;
-	}
+	rd->data_size = type_size;
+	rd->data = malloc(rd->data_size);
+	if (!rd->data)
+		return -1;
 
 	/* we're good to go */
 	memset(rd->data, 0, rd->data_size);
@@ -4463,8 +4447,6 @@ struct reflection_encoder {
 	bool emitted_stream_start;
 	bool emitted_stream_end;
 	bool verbose;
-	/* bindable */
-	struct fy_emitter *fye;
 	struct reflection_type_data *entry;
 	const void *data;
 	size_t data_size;
@@ -5704,7 +5686,7 @@ int main(int argc, char *argv[])
 				goto cleanup;
 			}
 
-			rc = reflection_decoder_parse(rd, fyp, rtd, NULL, 0);
+			rc = reflection_decoder_parse(rd, fyp, rtd);
 			if (rc) {
 				fprintf(stderr, "unable to parse with the decoder\n");
 				goto cleanup;
