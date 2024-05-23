@@ -9379,12 +9379,14 @@ fy_type_name_normalize(enum fy_type_kind kind, const char *type_name)
  *
  * @kind: The kind of the type or FYTK_INVALID
  * @name: The name of type (i.e. "struct foo")
+ * @create: Create the derived type if possible
  *
  * Returns:
  * A pointer to the type or NULL if it cannot be found.
  */
 const struct fy_type_info *
-fy_type_info_lookup(struct fy_reflection *rfl, enum fy_type_kind type_kind, const char *name)
+fy_type_info_lookup(struct fy_reflection *rfl, enum fy_type_kind type_kind, const char *name,
+		    bool create)
 	FY_EXPORT;
 
 /**

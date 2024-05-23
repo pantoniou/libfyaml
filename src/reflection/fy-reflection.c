@@ -2836,7 +2836,7 @@ fy_type_info_reverse_iterate(struct fy_reflection *rfl, void **prevp)
 }
 
 const struct fy_type_info *
-fy_type_info_lookup(struct fy_reflection *rfl, enum fy_type_kind kind, const char *name)
+fy_type_info_lookup_internal(struct fy_reflection *rfl, enum fy_type_kind kind, const char *name)
 {
 	const struct fy_type_info *ti;
 	void *prev = NULL;
@@ -2853,6 +2853,69 @@ fy_type_info_lookup(struct fy_reflection *rfl, enum fy_type_kind kind, const cha
 	}
 	free(nname);
 	return ti;
+}
+
+const struct fy_type_info *
+fy_type_info_lookup(struct fy_reflection *rfl, enum fy_type_kind kind, const char *name,
+		    bool create)
+{
+	struct fy_type *ft_dep, *ft;
+	const struct fy_type_info *ti;
+	const struct fy_type_kind_info *tki;
+	char *buf, *nname = NULL;
+	size_t len;
+	char *s, *e;
+
+	ti = fy_type_info_lookup_internal(rfl, kind, name);
+	if (ti || !create)
+		return ti;
+
+	nname = fy_type_name_normalize(kind, name);
+	if (!nname)
+		return NULL;
+
+	len = strlen(nname);
+	buf = alloca(len + 1);
+	strcpy(buf, nname);
+	s = buf;
+	e = s + len;
+	ti = NULL;
+	/* if type ends with '*' it's a pointer, remove one and try */
+	if (s < e && e[-1] == '*') {
+		*--e = '\0';
+		while (s < e && isspace(e[-1]))
+			*--e = '\0';
+		ti = fy_type_info_lookup_internal(rfl, kind, buf);
+		if (ti) {
+			ft_dep = fy_type_from_info(ti);
+			assert(ft_dep);
+
+			ft = fy_type_create(rfl, FYTK_PTR, name, NULL, NULL);
+			if (!ft)
+				goto err_out;
+
+			tki = fy_type_kind_info_get_internal(FYTK_PTR);
+			ft->size = tki->size;
+			ft->align = tki->align;
+
+			ft->dependent_type = ft_dep;
+			ft->is_synthetic = true;
+
+			fy_type_list_add_tail(&rfl->types, ft);
+		}
+
+	}
+
+	if (nname)
+		free(nname);
+
+	/* try again for good this time */
+	return fy_type_info_lookup_internal(rfl, kind, name);
+
+err_out:
+	if (nname)
+		free(nname);
+	return NULL;
 }
 
 struct fy_reflection *
