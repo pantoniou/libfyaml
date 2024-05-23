@@ -2228,9 +2228,6 @@ emit_mapping_key_if_any(struct fy_emitter *fye, struct reflection_type_data *rtd
 	if (!rtd_parent || rtd_parent->ti->kind != FYTK_STRUCT || !(rfd = parent_addr))
 		return 0;
 
-	// fprintf(stdout, "\n%s: rfd->field_name=%s\n", __func__, rfd->field_name);
-	// return 0;
-
 	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, rfd->field_name, FY_NT, NULL, NULL));
 }
 
@@ -3758,35 +3755,8 @@ struct reflection_object *root_create_child(struct reflection_object *ro_parent,
 					    struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct reflection_object *ro;
-	struct reflection_type_data *rtd;
 
-	/* pointer */
-	switch (ro_parent->rtd->ti->kind) {
-	case FYTK_PTR:
-		rtd = ro_parent->rtd->rtd_dep;
-		break;
-	case FYTK_INT:
-		rtd = ro_parent->rtd;
-		break;
-	case FYTK_CONSTARRAY:
-		rtd = ro_parent->rtd;
-		break;
-	case FYTK_STRUCT:
-	case FYTK_UNION:
-		rtd = ro_parent->rtd;
-		break;
-
-	case FYTK_ENUM:
-		rtd = ro_parent->rtd;
-		break;
-
-	default:
-		assert(0);
-		abort();
-		break;
-	}
-
-	ro = reflection_object_create(ro_parent, NULL, rtd,
+	ro = reflection_object_create(ro_parent, NULL, ro_parent->rtd,
 				      fyp, fye, path,
 				      ro_parent->data, ro_parent->data_size);
 	if (!ro)
@@ -4087,7 +4057,7 @@ reflection_setup_type(struct reflection_root_data *rrd, struct reflection_type_d
 	struct reflection_type_data **new_rtds;
 	size_t i, size;
 
-	fprintf(stderr, "%s: ti->fullname='%s'\n", __func__, ti->fullname);
+	// fprintf(stderr, "%s: ti->fullname='%s'\n", __func__, ti->fullname);
 
 	size = sizeof(*rtd);
 	if (fy_type_kind_has_fields(ti->kind))
@@ -4145,6 +4115,22 @@ err_out:
 	return NULL;
 }
 
+static const struct fy_type_info *
+reflection_root_data_get_root(struct reflection_root_data *rrd, const char *entry_type)
+{
+	const struct fy_type_info *ti_root;
+
+	if (!entry_type || !*entry_type)
+		return NULL;
+
+	ti_root = fy_type_info_lookup(rrd->rfl, FYTK_INVALID, entry_type, true);
+	if (ti_root)
+		return ti_root;
+
+	fprintf(stderr, "Unable to lookup type info for entry_type '%s'\n", entry_type);
+	return NULL;
+}
+
 struct reflection_type_data *
 reflection_setup_type_system(struct fy_reflection *rfl, const char *entry_type)
 {
@@ -4154,12 +4140,6 @@ reflection_setup_type_system(struct fy_reflection *rfl, const char *entry_type)
 
 	if (!rfl || !entry_type)
 		goto err_out;
-
-	ti_root = fy_type_info_lookup(rfl, FYTK_INVALID, entry_type);
-	if (!ti_root) {
-		fprintf(stderr, "Unable to lookup type info for entry_type '%s'\n", entry_type);
-		goto err_out;
-	}
 
 	/* cleanup anything left */
 	reflection_cleanup_type_system(rfl);
@@ -4171,6 +4151,10 @@ reflection_setup_type_system(struct fy_reflection *rfl, const char *entry_type)
 	rrd->rfl = rfl;
 
 	fy_reflection_set_userdata(rfl, rrd);
+
+	ti_root = reflection_root_data_get_root(rrd, entry_type);
+	if (!ti_root)
+		goto err_out;
 
 	rrd->rtd_root = reflection_setup_type(rrd, NULL, NULL, ti_root);
 	assert(rrd->rtd_root);
@@ -4431,8 +4415,11 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 int
 reflection_decoder_parse(struct reflection_decoder *rd, struct fy_parser *fyp, struct reflection_type_data *rtd, void *data, size_t data_size)
 {
+#if 0
 	struct reflection_type_data *rtd_dep;
-	size_t dep_size, type_size;
+	size_t dep_size;
+#endif
+	size_t type_size;
 	int rc;
 
 	if (!rd || !fyp || !rtd)
@@ -4440,21 +4427,7 @@ reflection_decoder_parse(struct reflection_decoder *rd, struct fy_parser *fyp, s
 
 	reflection_decoder_cleanup_data(rd);
 
-	/* verify it's a pointer (always) */
-	if (rtd->ti->kind == FYTK_PTR) {
-		/* get the dependent type (if rtd = "int *" rtd_dep = "int") */
-		rtd_dep = rtd->rtd_dep;
-		if (!rtd_dep)
-			return -1;
-
-		dep_size = rtd_dep->ti->size;
-		if (rtd->ti->kind == FYTK_CONSTARRAY)
-			dep_size *= rtd_dep->ti->count;
-
-		type_size = dep_size;
-	} else {
-		type_size = rtd->ti->size;
-	}
+	type_size = rtd->ti->size;
 
 	if (data) {
 		/* verify size and alignment */
