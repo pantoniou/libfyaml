@@ -2071,6 +2071,9 @@ struct reflection_object;
 struct reflection_encoder;
 struct reflection_type_ops;
 
+typedef void *(*reflection_allocf)(void *user, size_t size);
+typedef void (*reflection_freef)(void *user, void *ptr);
+
 struct reflection_object {
 	struct reflection_decoder *rd;
 	struct reflection_object *parent;
@@ -2100,6 +2103,9 @@ struct reflection_type_ops {
 	/* emitter */
 	int (*emit)(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size,
 		    struct reflection_type_data *rtd_parent, void *parent_addr);
+
+	/* free */
+	void (*free)(struct reflection_type_data *rtd, void *data);
 };
 
 struct reflection_type_data {
@@ -2133,13 +2139,11 @@ struct reflection_decoder {
 	void *data;
 	size_t data_size;
 	bool data_allocated;
-	size_t mem_alloc;
-	size_t mem_count;
-	void **mem;
+
+	reflection_allocf alloc_cb;
+	reflection_freef free_cb;
 };
 
-void *
-reflection_decoder_malloc(struct reflection_decoder *rd, size_t size);
 
 struct reflection_object *
 reflection_object_create_internal(struct reflection_decoder *rd,
@@ -3395,7 +3399,7 @@ static int ptr_setup(struct reflection_object *ro, struct fy_parser *fyp, struct
 	}
 
 	len = rtd_dep->ti->size;
-	p = reflection_decoder_malloc(ro->rd, len);
+	p = (*ro->rd->alloc_cb)(ro->rd, len);
 	assert(p);
 
 	memset(p, 0, len);
@@ -3464,7 +3468,7 @@ static int ptr_char_setup(struct reflection_object *ro, struct fy_parser *fyp, s
 	text = fy_token_get_text(fyt, &len);
 	assert(text);
 
-	p = reflection_decoder_malloc(ro->rd, len + 1);
+	p = (*ro->rd->alloc_cb)(ro->rd, len + 1);
 	assert(p);
 
 	memcpy(p, text, len);
@@ -4179,53 +4183,56 @@ err_out:
 	return NULL;
 }
 
-void *
-reflection_decoder_malloc(struct reflection_decoder *rd, size_t size)
+void
+reflection_type_cleanup_data(struct reflection_type_data *rtd, void *data, reflection_freef free_cb, void *user)
 {
-	void *new_mem;
-	size_t new_alloc;
-	void *p;
+	struct reflection_field_data *rfd;
+	size_t i;
 
-	if (!rd || !size)
-		return NULL;
+	if (!rtd || !data || !free_cb)
+		return;
 
-	if (rd->mem_count >= rd->mem_alloc) {
-		new_alloc = rd->mem_alloc * 2;
-		if (!new_alloc)
-			new_alloc = 16;
-		new_mem = realloc(rd->mem, sizeof(*rd->mem) * new_alloc);
-		if (!new_mem)
-			return NULL;
-		rd->mem_alloc = new_alloc;
-		rd->mem = new_mem;
+	/* do fields */
+	for (i = 0, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, rfd++) {
+		/* don't do anything with bitfields */
+		if (rfd->fi->flags & FYFIF_BITFIELD)
+			continue;
+		reflection_type_cleanup_data(rfd->rtd, data + rfd->fi->offset, free_cb, user);
 	}
-	assert(rd->mem_count < rd->mem_alloc);
 
-	p = malloc(size);
-	if (!p)
-		return NULL;
+	/* if it's a pointer use it */
+	if (rtd->ti->kind == FYTK_PTR) {
+		data = *(void **)data;
+		if (!data)
+			return;
+	}
 
-	rd->mem[rd->mem_count++] = p;
-	return p;
+	/* retreive the dependent type */
+	if (rtd->rtd_dep)
+		reflection_type_cleanup_data(rtd->rtd_dep, data, free_cb, user);
+
+	/* if it's a pointer free it */
+	if (rtd->ti->kind == FYTK_PTR) {
+		// fprintf(stderr, "%s: ti->fullname='%s' free %p\n", __func__, rtd->ti->fullname, data);
+		(*free_cb)(user, data);
+	}
 }
 
 void
-reflection_decoder_free_all(struct reflection_decoder *rd)
+reflection_decoder_cleanup_data(struct reflection_decoder *rd)
 {
-	void *p;
-	size_t i;
-
-	if (!rd || !rd->mem)
+	if (!rd)
 		return;
 
-	for (i = 0; i < rd->mem_count; i++) {
-		p = rd->mem[i];
-		if (p)
-			free(p);
-	}
-	free(rd->mem);
-	rd->mem_alloc = 0;
-	rd->mem_count = 0;
+	if (rd->entry && rd->data)
+		reflection_type_cleanup_data(rd->entry, rd->data, rd->free_cb, rd);
+
+	if (rd->data && rd->data_allocated)
+		free(rd->data);
+
+	rd->data = NULL;
+	rd->data_size = 0;
+	rd->data_allocated = false;
 }
 
 void
@@ -4234,9 +4241,27 @@ reflection_decoder_destroy(struct reflection_decoder *rd)
 	if (!rd)
 		return;
 
-	reflection_decoder_free_all(rd);
+	reflection_decoder_cleanup_data(rd);
 
 	free(rd);
+}
+
+void *reflection_decoder_default_alloc(void *user, size_t size)
+{
+	void *p;
+
+	p = malloc(size);
+	if (!p)
+		return NULL;
+	memset(p, 0, size);
+	return p;
+}
+
+static void reflection_decoder_default_free(void *user, void *ptr)
+{
+	if (!ptr)
+		return;
+	free(ptr);
 }
 
 struct reflection_decoder *
@@ -4250,6 +4275,9 @@ reflection_decoder_create(bool verbose)
 
 	memset(rd, 0, sizeof(*rd));
 	rd->verbose = verbose;
+
+	rd->alloc_cb = reflection_decoder_default_alloc;
+	rd->free_cb = reflection_decoder_default_free;
 
 	return rd;
 
@@ -4399,6 +4427,7 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 	return ret;
 }
 
+
 int
 reflection_decoder_parse(struct reflection_decoder *rd, struct fy_parser *fyp, struct reflection_type_data *rtd, void *data, size_t data_size)
 {
@@ -4409,7 +4438,7 @@ reflection_decoder_parse(struct reflection_decoder *rd, struct fy_parser *fyp, s
 	if (!rd || !fyp || !rtd)
 		return -1;
 
-	reflection_decoder_free_all(rd);
+	reflection_decoder_cleanup_data(rd);
 
 	/* verify it's a pointer (always) */
 	if (rtd->ti->kind == FYTK_PTR) {
@@ -4436,7 +4465,7 @@ reflection_decoder_parse(struct reflection_decoder *rd, struct fy_parser *fyp, s
 		rd->data_allocated = false;
 	} else {
 		rd->data_size = type_size;
-		rd->data = reflection_decoder_malloc(rd, rd->data_size);
+		rd->data = malloc(rd->data_size);
 		if (!rd->data)
 			return -1;
 		rd->data_allocated = true;
