@@ -2085,6 +2085,8 @@ struct reflection_object {
 struct reflection_field_data {
 	struct reflection_type_data *rtd;
 	const struct fy_field_info *fi;
+	const char *field_name;
+	bool omit_if_null;
 };
 
 struct reflection_type_ops {
@@ -2212,6 +2214,20 @@ reflection_type_data_lookup_field_by_unsigned_enum_value(struct reflection_type_
 
 	assert((unsigned int)idx < rtd->fields_count);
 	return &rtd->fields[idx];
+}
+
+static int
+emit_mapping_key_if_any(struct fy_emitter *fye, struct reflection_type_data *rtd_parent, void *parent_addr)
+{
+	struct reflection_field_data *rfd;
+
+	if (!rtd_parent || rtd_parent->ti->kind != FYTK_STRUCT || !(rfd = parent_addr))
+		return 0;
+
+	// fprintf(stdout, "\n%s: rfd->field_name=%s\n", __func__, rfd->field_name);
+	// return 0;
+
+	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, rfd->field_name, FY_NT, NULL, NULL));
 }
 
 union integer_scalar {
@@ -2485,7 +2501,8 @@ err_internal:
 	goto err_out;
 }
 
-static int integer_scalar_emit(struct fy_emitter *fye, enum fy_type_kind type_kind, union integer_scalar num)
+static int integer_scalar_emit(struct fy_emitter *fye, enum fy_type_kind type_kind, union integer_scalar num,
+			       struct reflection_type_data *rtd_parent, void *parent_addr)
 {
 	bool is_signed;
 	char buf[3 * sizeof(uintmax_t) + 3];	/* maximum buffer space */
@@ -2493,6 +2510,7 @@ static int integer_scalar_emit(struct fy_emitter *fye, enum fy_type_kind type_ki
 	bool neg;
 	size_t len;
 	uintmax_t val;
+	int rc;
 
 	is_signed = fy_type_kind_is_signed(type_kind);
 
@@ -2524,13 +2542,25 @@ static int integer_scalar_emit(struct fy_emitter *fye, enum fy_type_kind type_ki
 	len = e - s;
 #undef PUTD
 
-	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, s, len, NULL, NULL));
+	rc = emit_mapping_key_if_any(fye, rtd_parent, parent_addr);
+	if (rc)
+		goto err_out;
+
+	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, s, len, NULL, NULL));
+	if (rc)
+		goto err_out;
+
+	return 0;
+err_out:
+	return -1;
 }
 
-static int float_scalar_emit(struct fy_emitter *fye, enum fy_type_kind type_kind, union float_scalar num)
+static int float_scalar_emit(struct fy_emitter *fye, enum fy_type_kind type_kind, union float_scalar num,
+			     struct reflection_type_data *rtd_parent, void *parent_addr)
 {
 	char buf_local[80], *buf;
 	int len;
+	int rc;
 
 	switch (type_kind) {
 	case FYTK_FLOAT:
@@ -2554,19 +2584,42 @@ static int float_scalar_emit(struct fy_emitter *fye, enum fy_type_kind type_kind
 		len = snprintf(buf, len, "%Lf", num.ld);
 	}
 
-	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, buf, len, NULL, NULL));
+	rc = emit_mapping_key_if_any(fye, rtd_parent, parent_addr);
+	if (rc)
+		goto err_out;
+
+	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, buf, len, NULL, NULL));
+	if (rc)
+		goto err_out;
+
+	return 0;
+err_out:
+	return -1;
 }
 
-static int bool_scalar_emit(struct fy_emitter *fye, enum fy_type_kind type_kind, _Bool v)
+static int bool_scalar_emit(struct fy_emitter *fye, enum fy_type_kind type_kind, _Bool v,
+			    struct reflection_type_data *rtd_parent, void *parent_addr)
 {
 	const char *bool_txt[2] = { "false", "true" };
 	size_t bool_txt_sz[2] = { 5, 4 };
 	const char *str;
 	size_t len;
+	int rc;
 
 	str = bool_txt[!!v];
 	len = bool_txt_sz[!!v];
-	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, str, len, NULL, NULL));
+
+	rc = emit_mapping_key_if_any(fye, rtd_parent, parent_addr);
+	if (rc)
+		goto err_out;
+
+	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, str, len, NULL, NULL));
+	if (rc)
+		goto err_out;
+
+	return 0;
+err_out:
+	return -1;
 }
 
 static int common_scalar_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size,
@@ -2643,7 +2696,7 @@ static int common_scalar_emit(struct reflection_type_data *rtd, struct fy_emitte
 			}
 		}
 
-		ret = integer_scalar_emit(fye, type_kind, num);
+		ret = integer_scalar_emit(fye, type_kind, num, rtd_parent, parent_addr);
 		if (ret)
 			goto err_out;
 
@@ -2671,13 +2724,13 @@ static int common_scalar_emit(struct reflection_type_data *rtd, struct fy_emitte
 			goto err_inval;
 		}
 
-		ret = float_scalar_emit(fye, type_kind, num);
+		ret = float_scalar_emit(fye, type_kind, num, rtd_parent, parent_addr);
 		if (ret)
 			goto err_out;
 
 	} else if (type_kind == FYTK_BOOL) {
 
-		ret = bool_scalar_emit(fye, type_kind, *(const _Bool *)data);
+		ret = bool_scalar_emit(fye, type_kind, *(const _Bool *)data, rtd_parent, parent_addr);
 		if (ret)
 			goto err_out;
 
@@ -2763,6 +2816,10 @@ int const_array_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, c
 
 	rtd_dep = rtd->rtd_dep;
 	assert(rtd_dep);
+
+	rc = emit_mapping_key_if_any(fye, rtd_parent, parent_addr);
+	if (rc)
+		goto err_out;
 
 	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_SEQUENCE_START, FYNS_ANY, NULL, NULL));
 	if (rc)
@@ -3030,12 +3087,15 @@ int struct_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const 
 	const struct fy_type_info *ti_dep, *ti_final;
 	const struct fy_field_info *fi;
 	enum fy_type_kind type_kind;
-	const char *field_name;
 	const void *field_data;
 	size_t field_data_size;
 	uintmax_t bitfield_data;
 	size_t i;
 	int rc;
+
+	rc = emit_mapping_key_if_any(fye, rtd_parent, parent_addr);
+	if (rc)
+		goto err_out;
 
 	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_MAPPING_START, FYNS_ANY, NULL, NULL));
 	if (rc)
@@ -3048,14 +3108,6 @@ int struct_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const 
 		/* unnamed field (bitfield) */
 		if (fi->name[0] == '\0')
 			continue;
-
-		field_name = fy_field_info_get_yaml_name(fi);
-		if (!field_name)
-			field_name = fi->name;
-
-		rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, field_name, FY_NT, NULL, NULL));
-		if (rc)
-			goto err_out;
 
 		rtd_field = rfd->rtd;
 		assert(rtd_field);
@@ -3209,6 +3261,7 @@ int enum_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const vo
 	union { unsigned long long u; signed long long s; } val;
 	const char *text;
 	size_t len;
+	int rc;
 
 	assert(rtd->ti->kind == FYTK_ENUM);
 	rtd_dep = rtd->rtd_dep;
@@ -3274,7 +3327,17 @@ int enum_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const vo
 	text = rfd->fi->name;
 	len = strlen(text);
 
-	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_ANY, text, len, NULL, NULL));
+	rc = emit_mapping_key_if_any(fye, rtd_parent, parent_addr);
+	if (rc)
+		goto err_out;
+
+	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_ANY, text, len, NULL, NULL));
+	if (rc)
+		goto err_out;
+
+	return 0;
+err_out:
+	return -1;
 }
 
 static inline bool text_is_null(struct fy_parser *fyp, const char *text, size_t len)
@@ -3356,6 +3419,105 @@ static int ptr_finish(struct reflection_object *ro)
 	return 0;
 }
 
+static int ptr_char_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
+{
+	struct fy_token *fyt;
+	struct reflection_type_data *rtd_dep;
+	enum fy_type_kind type_kind;
+	size_t size, align;
+	const char *text;
+	size_t len;
+	char *p;
+	void *data;
+	size_t data_size;
+
+	assert(ro->rtd->ti->kind == FYTK_PTR);
+
+	rtd_dep = ro->rtd->rtd_dep;
+	assert(rtd_dep);
+
+	data = ro->data;
+	data_size = ro->data_size;
+
+	assert(data);
+
+	type_kind = ro->rtd->ti->kind;
+	assert(fy_type_kind_is_valid(type_kind));
+
+	size = fy_type_kind_size(type_kind);
+	align = fy_type_kind_align(type_kind);
+
+	assert(data_size == size && ((size_t)(uintptr_t)data & (align - 1)) == 0);
+
+	type_kind = rtd_dep->ti->kind;
+	assert(type_kind == FYTK_CHAR);
+
+	if (fye->type != FYET_SCALAR) {
+		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+				"%s:%d expected scalar for char * type", __FILE__, __LINE__);
+		goto err_out;
+	}
+
+	fyt = fy_event_get_token(fye);
+	assert(fyt);
+
+	text = fy_token_get_text(fyt, &len);
+	assert(text);
+
+	p = reflection_decoder_malloc(ro->rd, len + 1);
+	assert(p);
+
+	memcpy(p, text, len);
+	p[len] = '\0';
+
+	*(char **)data = p;
+
+	return 0;
+err_out:
+	return -1;
+}
+
+static int ptr_char_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size,
+			 struct reflection_type_data *rtd_parent, void *parent_addr)
+{
+	struct reflection_type_data *rtd_dep;
+	enum fy_type_kind type_kind;
+	const char *text;
+	size_t len;
+	int rc;
+
+	/* verify alignment */
+	type_kind = rtd->ti->kind;
+	assert(type_kind == FYTK_PTR);
+
+	assert(rtd->ti->kind == FYTK_PTR);
+	rtd_dep = rtd->rtd_dep;
+	assert(rtd_dep);
+
+	type_kind = rtd_dep->ti->kind;
+	assert(type_kind == FYTK_CHAR);
+
+	text = *(const char **)data;
+	len = strlen(text);
+
+	rc = emit_mapping_key_if_any(fye, rtd_parent, parent_addr);
+	if (rc)
+		goto err_out;
+
+	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_ANY, text, len, NULL, NULL));
+	if (rc)
+		goto err_out;
+
+	return 0;
+err_out:
+	return -1;
+}
+
+static const struct reflection_type_ops ptr_char_ops = {
+	.setup = ptr_char_setup,
+	.emit = ptr_char_emit,
+};
+
 struct reflection_object *ptr_create_child(struct reflection_object *ro_parent,
 					   struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
@@ -3366,6 +3528,8 @@ int ptr_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const voi
 	     struct reflection_type_data *rtd_parent, void *parent_addr)
 {
 	struct reflection_type_data *rtd_dep;
+	int rc;
+
 	assert(rtd->ti->kind == FYTK_PTR);
 
 	rtd_dep = rtd->rtd_dep;
@@ -3373,11 +3537,23 @@ int ptr_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const voi
 
 	data = (const void *)*(const void * const *)data;
 	if (!data) {
-		return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, "NULL", 4, NULL, NULL));
+		rc = emit_mapping_key_if_any(fye, rtd_parent, parent_addr);
+		if (rc)
+			goto err_out;
+		rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, "NULL", 4, NULL, NULL));
+		if (rc)
+			goto err_out;
+		return 0;
 	}
 	data_size = rtd_dep->ti->size;
 
-	return rtd_dep->ops->emit(rtd_dep, fye, data, data_size, rtd, NULL);
+	rc = rtd_dep->ops->emit(rtd_dep, fye, data, data_size, rtd_parent, parent_addr);
+	if (rc)
+		goto err_out;
+
+	return 0;
+err_out:
+	return -1;
 }
 
 static int typedef_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
@@ -3401,7 +3577,11 @@ int typedef_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const
 
 	rtd_dep = rtd->rtd_dep;
 	assert(rtd_dep);
+#if 0
 	return rtd_dep->ops->emit(rtd_dep, fye, data, data_size, rtd, NULL);
+#else
+	return rtd_dep->ops->emit(rtd_dep, fye, data, data_size, rtd_parent, parent_addr);
+#endif
 }
 
 static const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
@@ -3784,93 +3964,6 @@ void reflection_cleanup_type_system(struct fy_reflection *rfl)
 	free(rrd);
 }
 
-static int ptr_char_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
-{
-	struct fy_token *fyt;
-	struct reflection_type_data *rtd_dep;
-	enum fy_type_kind type_kind;
-	size_t size, align;
-	const char *text;
-	size_t len;
-	char *p;
-	void *data;
-	size_t data_size;
-
-	assert(ro->rtd->ti->kind == FYTK_PTR);
-
-	rtd_dep = ro->rtd->rtd_dep;
-	assert(rtd_dep);
-
-	data = ro->data;
-	data_size = ro->data_size;
-
-	assert(data);
-
-	type_kind = ro->rtd->ti->kind;
-	assert(fy_type_kind_is_valid(type_kind));
-
-	size = fy_type_kind_size(type_kind);
-	align = fy_type_kind_align(type_kind);
-
-	assert(data_size == size && ((size_t)(uintptr_t)data & (align - 1)) == 0);
-
-	type_kind = rtd_dep->ti->kind;
-	assert(type_kind == FYTK_CHAR);
-
-	if (fye->type != FYET_SCALAR) {
-		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
-				"%s:%d expected scalar for char * type", __FILE__, __LINE__);
-		goto err_out;
-	}
-
-	fyt = fy_event_get_token(fye);
-	assert(fyt);
-
-	text = fy_token_get_text(fyt, &len);
-	assert(text);
-
-	p = reflection_decoder_malloc(ro->rd, len + 1);
-	assert(p);
-
-	memcpy(p, text, len);
-	p[len] = '\0';
-
-	*(char **)data = p;
-
-	return 0;
-err_out:
-	return -1;
-}
-
-static int ptr_char_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size,
-			 struct reflection_type_data *rtd_parent, void *parent_addr)
-{
-	struct reflection_type_data *rtd_dep;
-	enum fy_type_kind type_kind;
-	const char *text;
-	size_t len;
-
-	/* verify alignment */
-	type_kind = rtd->ti->kind;
-	assert(type_kind == FYTK_PTR);
-
-	assert(rtd->ti->kind == FYTK_PTR);
-	rtd_dep = rtd->rtd_dep;
-	assert(rtd_dep);
-
-	type_kind = rtd_dep->ti->kind;
-	assert(type_kind == FYTK_CHAR);
-
-	text = *(const char **)data;
-	len = strlen(text);
-	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_ANY, text, len, NULL, NULL));
-}
-
-static const struct reflection_type_ops ptr_char_ops = {
-	.setup = ptr_char_setup,
-	.emit = ptr_char_emit,
-};
-
 struct reflection_type_data *
 reflection_setup_type(struct reflection_root_data *rrd, struct reflection_type_data *rtd_parent,
 		      const struct fy_field_info *fi, const struct fy_type_info *ti);
@@ -3885,12 +3978,31 @@ reflection_setup_type_lookup(struct reflection_root_data *rrd, struct reflection
 	if (!rrd || !ti)
 		return NULL;
 
+#if 0
+	{
+		struct fy_document *fyd;
+		char *yaml_str = NULL;
+
+		fyd = fy_type_info_get_yaml_annotation(ti);
+		if (fyd)
+			yaml_str = fy_emit_document_to_string(fyd, FYECF_MODE_FLOW_ONELINE | FYECF_WIDTH_INF | FYECF_NO_ENDING_NEWLINE);
+
+		fprintf(stderr, "%s: ti=%s - yaml: %s\n", __func__, ti->fullname, yaml_str ? yaml_str : "NULL");
+
+		if (yaml_str)
+			free(yaml_str);
+	}
+#endif
+
+	rtd = NULL;
 	for (i = 0; i < rrd->rtd_count; i++) {
 		rtd = rrd->rtds[i];
 		if (rtd->ti == ti)
-			return rtd;
+			break;
+		rtd = NULL;
 	}
-	return NULL;
+
+	return rtd;
 }
 
 struct reflection_type_data *
@@ -3907,6 +4019,59 @@ reflection_setup_type_resolve(struct reflection_root_data *rrd, struct reflectio
 	return reflection_setup_type(rrd, rtd_parent, fi, ti);
 }
 
+int
+reflection_setup_type_specialize(struct reflection_root_data *rrd, struct reflection_type_data *rtd)
+{
+	const struct fy_type_info *ti;
+	struct reflection_field_data *rfd, *rfd_ref;
+	size_t i;
+
+	ti = rtd->ti;
+
+	switch (ti->kind) {
+	case FYTK_PTR:
+		if (ti->dependent_type->kind == FYTK_CHAR) {
+			rtd->ops = &ptr_char_ops;
+			break;
+		}
+		break;
+
+	case FYTK_STRUCT:
+
+		for (i = 0, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, rfd++) {
+
+			rfd->field_name = fy_field_info_get_yaml_name(rfd->fi);
+			if (!rfd->field_name)
+				rfd->field_name = rfd->fi->name;
+
+			if (rfd->rtd->ti->kind == FYTK_PTR) {
+				char *counter = NULL;
+
+				(void)fy_type_info_scanf(rfd->rtd->ti, "counter %ms", &counter);
+				if (counter) {
+					rfd_ref = reflection_type_data_lookup_field(rtd, counter);
+
+					fprintf(stderr, "%s: %s.%s counter=%s (%s)\n", __func__,
+							rtd->ti->name, rfd->fi->name, counter,
+							rfd_ref ? "found" : "N/A");
+
+					free(counter);
+					counter = NULL;
+				}
+
+				/* XXX */
+				rfd->omit_if_null = true;
+			}
+		}
+		break;
+
+	default:
+		break;
+	}
+
+	return 0;
+}
+
 struct reflection_type_data *
 reflection_setup_type(struct reflection_root_data *rrd, struct reflection_type_data *rtd_parent,
 		      const struct fy_field_info *fi, const struct fy_type_info *ti)
@@ -3914,7 +4079,6 @@ reflection_setup_type(struct reflection_root_data *rrd, struct reflection_type_d
 	struct reflection_type_data *rtd = NULL;
 	struct reflection_field_data *rfd;
 	const struct fy_field_info *tfi;
-	const struct reflection_type_ops *ops;
 	size_t new_alloc;
 	struct reflection_type_data **new_rtds;
 	size_t i, size;
@@ -3933,13 +4097,7 @@ reflection_setup_type(struct reflection_root_data *rrd, struct reflection_type_d
 	rtd->rrd = rrd;
 	rtd->ti = ti;
 
-	/* select ops */
-	ops = NULL;
-	if (ti->kind == FYTK_PTR && ti->dependent_type->kind == FYTK_CHAR)
-		ops = &ptr_char_ops;
-	if (!ops)
-		ops = &reflection_ops_table[ti->kind];
-	rtd->ops = ops;
+	rtd->ops = &reflection_ops_table[ti->kind];
 
 	/* add */
 	if (rrd->rtd_count >= rrd->rtd_alloc) {
@@ -3971,6 +4129,8 @@ reflection_setup_type(struct reflection_root_data *rrd, struct reflection_type_d
 			assert(rfd->rtd);
 		}
 	}
+
+	reflection_setup_type_specialize(rrd, rtd);
 
 	rtd->marker = false;
 
