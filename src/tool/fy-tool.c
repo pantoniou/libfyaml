@@ -3540,15 +3540,6 @@ static int ptr_setup(struct reflection_object *ro, struct fy_parser *fyp, struct
 
 	assert(ro->rtd->ti->kind == FYTK_PTR);
 
-	if (ro->parent && ro->parent_addr && ro->parent->rtd->ti->kind == FYTK_STRUCT) {
-		struct reflection_field_data *rfd = ro->parent_addr;
-
-		if (rfd->ops) {
-			ro->ops = rfd->ops;
-			return rfd->ops->setup(ro, fyp, fye, path);
-		}
-	}
-
 	rtd_dep = ro->rtd->rtd_dep;
 	assert(rtd_dep);
 
@@ -4234,12 +4225,23 @@ reflection_object_create(struct reflection_object *parent, void *parent_addr,
 			 struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
 			 void *data, size_t data_size)
 {
+	const struct reflection_type_ops *ops;
+	struct reflection_field_data *rfd;
+
 	if (!parent || !rtd || !fyp || !fye || !path || !data || !data_size)
 		return NULL;
 
+	ops = rtd->ops;
+
+	/* field ops override */
+	if (parent && parent->rtd->ti->kind == FYTK_STRUCT && (rfd = parent_addr) != NULL) {
+		if (rfd->ops)
+			ops = rfd->ops;
+	}
+
 	return reflection_object_create_internal(parent->rd, parent, parent_addr,
 						 rtd, fyp, fye, path,
-						 rtd->ops, data, data_size);
+						 ops, data, data_size);
 }
 
 struct reflection_object *
