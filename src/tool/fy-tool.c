@@ -3070,89 +3070,49 @@ int reflection_type_data_signess(struct reflection_type_data *rtd)
 	return fy_type_kind_signess(rtd->ti->kind);
 }
 
-#if 0
-uintmax_t integer_field_load(struct reflection_type_data *rtd, struct reflection_field_data *rfd, const void *data, bool *is_signedp)
+uintmax_t integer_field_load(struct reflection_field_data *rfd, const void *data)
 {
-	const struct fy_field_info *fi;
-	const struct fy_type_info *ti_dep, *ti_final;
-	struct reflection_type_data *rtd_field;
-	enum fy_type_kind type_kind;
-	size_t bit_offset, bit_width;
+	uintmax_t v;
 	bool is_signed;
 
-	fi = rfd->fi;
-	rtd_field = rfd->rtd;
+	assert(rfd);
+	assert(rfd->signess != 0);
 
-	/* walk down dependent types until we get to the final, we just need the sign */
-	for (ti_final = ti_dep = rtd_field->ti; ti_dep; ti_dep = ti_dep->dependent_type)
-		ti_final = ti_dep;
+	is_signed = rfd->signess < 0;
+	if (!(rfd->fi->flags & FYFIF_BITFIELD))
+		v = load_le(data + rfd->fi->offset, rfd->fi->type_info->size, is_signed);
+	else
+		v = load_bitfield_le(data, rfd->fi->bit_offset, rfd->fi->bit_width, is_signed);
 
-	type_kind = ti_final->kind;
-
-	if (!fy_type_kind_is_integer(type_kind) && type_kind != FYTK_BOOL) {
-		errno = EINVAL;
-		return UINTMAX_MAX;
-	}
-
-	is_signed = fy_type_kind_is_signed(type_kind);
-	if (is_signedp)
-		*is_signedp = is_signed;
-
-	if (!(fi->flags & FYFIF_BITFIELD)) {
-		bit_offset = fi->offset * 8;
-		bit_width = fi->type_info->size * 8;
-	} else {
-		bit_offset = fi->bit_offset;
-		bit_width = fi->bit_width;
-	}
-
-	errno = 0;
-	return load_bitfield_le(data, bit_offset, bit_width, is_signed);
+	return v;
 }
 
-int integer_field_store(struct reflection_type_data *rtd, struct reflection_field_data *rfd, void *data, bool *is_signedp)
+int integer_field_store_check(struct reflection_field_data *rfd, uintmax_t v)
 {
-	const struct fy_field_info *fi;
-	const struct fy_type_info *ti_dep, *ti_final;
-	struct reflection_type_data *rtd_field;
-	enum fy_type_kind type_kind;
-	size_t bit_offset, bit_width;
 	bool is_signed;
+	int rc;
 
-	fi = rfd->fi;
-	rtd_field = rfd->rtd;
+	assert(rfd);
+	assert(rfd->signess != 0);
 
-	/* walk down dependent types until we get to the final, we just need the sign */
-	for (ti_final = ti_dep = rtd_field->ti; ti_dep; ti_dep = ti_dep->dependent_type)
-		ti_final = ti_dep;
+	is_signed = rfd->signess < 0;
 
-	type_kind = ti_final->kind;
-
-	if (!fy_type_kind_is_integer(type_kind) && type_kind != FYTK_BOOL) {
-		errno = EINVAL;
-		return -1;
-	}
-
-	is_signed = fy_type_kind_is_signed(type_kind);
-	if (is_signedp)
-		*is_signedp = is_signed;
-
-	if (!(fi->flags & FYFIF_BITFIELD)) {
-		bit_offset = fi->offset * 8;
-		bit_width = fi->type_info->size * 8;
-	} else {
-		bit_offset = fi->bit_offset;
-		bit_width = fi->bit_width;
-	}
-
-#if 0
-	errno = 0;
-	return load_bitfield_le(data, bit_offset, bit_width, is_signed);
-#else
-	return 0;
-#endif
+	if (!(rfd->fi->flags & FYFIF_BITFIELD))
+		rc = store_check(rfd->fi->type_info->size * 8, v, is_signed, NULL);
+	else
+		rc = store_check(rfd->fi->bit_width, v, is_signed, NULL);
+	return rc;
 }
-#endif
+
+void integer_field_store(struct reflection_field_data *rfd, uintmax_t v, void *data)
+{
+	assert(rfd);
+
+	if (!(rfd->fi->flags & FYFIF_BITFIELD))
+		store_le(data + rfd->fi->offset, rfd->fi->type_info->size, v);
+	else
+		store_bitfield_le(data, rfd->fi->bit_offset, rfd->fi->bit_width, v);
+}
 
 struct struct_instance_data {
 	uint8_t *present_map;
@@ -3298,6 +3258,7 @@ int struct_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const 
 	struct reflection_field_data *rfd;
 	struct reflection_type_data *rtd_field;
 	const struct fy_field_info *fi;
+	const struct reflection_type_ops *ops;
 	const void *field_data;
 	size_t field_data_size;
 	uintmax_t bitfield_data;
@@ -3337,7 +3298,11 @@ int struct_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const 
 			field_data = &bitfield_data;
 		}
 
-		rc = rtd_field->ops->emit(rtd_field, fye, field_data, field_data_size, rtd, rfd);
+		ops = rfd->ops;
+		if (!ops)
+			ops = rtd_field->ops;
+
+		rc = ops->emit(rtd_field, fye, field_data, field_data_size, rtd, rfd);
 		if (rc)
 			goto err_out;
 	}
@@ -3580,7 +3545,6 @@ static int ptr_setup(struct reflection_object *ro, struct fy_parser *fyp, struct
 
 		if (rfd->ops) {
 			ro->ops = rfd->ops;
-			fprintf(stderr, "%s <<< FIELD %s\n", __func__, rfd->fi->name);
 			return rfd->ops->setup(ro, fyp, fye, path);
 		}
 	}
@@ -3800,7 +3764,6 @@ struct dyn_array_instance_data {
 
 static int dyn_array_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
-	struct reflection_field_data *rfd;
 	struct dyn_array_instance_data *id;
 
 	if (fye->type != FYET_SEQUENCE_START) {
@@ -3814,10 +3777,6 @@ static int dyn_array_setup(struct reflection_object *ro, struct fy_parser *fyp, 
 				"%s:%d internal error", __FILE__, __LINE__);
 		goto err_out;
 	}
-
-	rfd = ro->parent_addr;
-
-	fprintf(stderr, "%s <<< FIELD %s\n", __func__, rfd->fi->name);
 
 	id = malloc(sizeof(*id));
 	if (!id)
@@ -3859,14 +3818,13 @@ static int dyn_array_finish(struct reflection_object *ro)
 	id = ro->instance_data;
 	assert(id);
 
-	switch (rfd_counter->rtd->ti->kind) {
-	case FYTK_INT:
-		fprintf(stderr, "store %zu\n", id->count);
-		break;
-	default:
-		abort();
-		break;
-	}
+	/* and store the counter */
+	assert(ro->parent);
+	assert(ro->parent->data);
+
+	// fprintf(stderr, "%s: store counter=%s ro->data=%p\n", __func__, rfd_counter->field_name, ro->parent->data);
+
+	integer_field_store(rfd_counter, (uintmax_t)id->count, ro->parent->data);
 
 	return 0;
 }
@@ -3877,9 +3835,16 @@ struct reflection_object *dyn_array_create_child(struct reflection_object *ro_pa
 	struct dyn_array_instance_data *id;
 	struct reflection_object *ro;
 	struct reflection_type_data *rtd_dep;
+	struct reflection_field_data *rfd, *rfd_counter;
 	size_t item_size, new_alloc;
-	int idx;
+	int rc, idx;
 	void *data, *new_data;
+
+	rfd = ro_parent->parent_addr;
+	assert(rfd);
+
+	rfd_counter = rfd->counted_by;
+	assert(rfd_counter);
 
 	id = ro_parent->instance_data;
 	assert(id);
@@ -3889,7 +3854,13 @@ struct reflection_object *dyn_array_create_child(struct reflection_object *ro_pa
 	if (idx < 0)
 		goto err_out;
 
-	fprintf(stderr, "%s: idx=%d\n", __func__, idx);
+	/* make sure the counter can hold this */
+	rc = integer_field_store_check(rfd_counter, (uintmax_t)idx);
+	if (rc) {
+		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+				"dynarray: counter field overflow (%s)", rfd_counter->field_name);
+		goto err_out;
+	}
 
 	rtd_dep = ro_parent->rtd->rtd_dep;
 	assert(rtd_dep);
@@ -3912,7 +3883,7 @@ struct reflection_object *dyn_array_create_child(struct reflection_object *ro_pa
 		id->alloc = new_alloc;
 		*(void **)ro_parent->data = data = new_data;
 	}
-	id->count = (size_t)idx;
+	id->count = (size_t)idx + 1;
 
 	ro = reflection_object_create(ro_parent, (void *)(uintptr_t)idx,
 				      rtd_dep, fyp, fye, path, data + item_size * idx, item_size);
@@ -3928,6 +3899,54 @@ err_out:
 static int dyn_array_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size,
 			  struct reflection_type_data *rtd_parent, void *parent_addr)
 {
+
+	struct reflection_type_data *rtd_dep;
+	struct reflection_field_data *rfd, *rfd_counter;
+	const void *parent_data;
+	uintmax_t idx, count;
+	int rc;
+
+	assert(data);
+
+	rtd_dep = rtd->rtd_dep;
+	assert(rtd_dep);
+
+	rfd = parent_addr;
+	assert(rfd);
+
+	rfd_counter = rfd->counted_by;
+	assert(rfd_counter);
+
+	/* find out where the parent structure address */
+	parent_data = data - rfd->fi->offset;
+
+	data = (const void *)*(const void * const *)data;
+
+	rc = emit_mapping_key_if_any(fye, rtd_parent, parent_addr);
+	if (rc)
+		goto err_out;
+
+	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_SEQUENCE_START, FYNS_ANY, NULL, NULL));
+	if (rc)
+		goto err_out;
+
+	if (data) {
+		count = integer_field_load(rfd_counter, parent_data);
+
+		for (idx = 0; idx < count; idx++, data += rtd_dep->ti->size) {
+			assert(rtd_dep->ops->emit);
+			rc = rtd_dep->ops->emit(rtd_dep, fye, data, rtd_dep->ti->size, rtd, (void *)(uintptr_t)idx);
+			if (rc)
+				goto err_out;
+		}
+	}
+
+	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_SEQUENCE_END));
+	if (rc)
+		goto err_out;
+
+	return 0;
+err_out:
 	return -1;
 }
 
@@ -4394,8 +4413,12 @@ reflection_setup_type_specialize(struct reflection_root_data *rrd, struct reflec
 					assert(fy_type_kind_is_integer(rfd_ref->rtd->ti->kind));
 
 					/* bind them together */
+					assert(!rfd->counted_by);
 					rfd->counted_by = rfd_ref;
+
+					assert(!rfd_ref->counter_of);
 					rfd_ref->counter_of = rfd;
+
 					rfd_ref->omit_on_emit = true;
 
 					rfd->ops = &dyn_array_ops;
