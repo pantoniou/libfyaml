@@ -2105,7 +2105,6 @@ struct reflection_type_ops {
 	void (*cleanup)(struct reflection_object *ro);
 	int (*finish)(struct reflection_object *ro);
 	struct reflection_object *(*create_child)(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
-	int (*scalar_child)(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
 
 	/* emitter */
 	int (*emit)(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size,
@@ -4409,10 +4408,6 @@ reflection_object_scalar_child(struct reflection_object *parent,
 
 	if (!parent || !fye || !path)
 		return -1;
-
-	/* shortcut exists */
-	if (parent->ops->scalar_child)
-		return parent->ops->scalar_child(parent, fyp, fye, path);
 
 	/* create and destroy cycle */
 	assert(parent->ops->create_child);
