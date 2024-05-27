@@ -20,6 +20,8 @@
 #include <assert.h>
 #include <limits.h>
 #include <ctype.h>
+#include <errno.h>
+#include <inttypes.h>
 
 #include "fy-utf8.h"
 #include "fy-ctype.h"
@@ -2097,6 +2099,14 @@ const char *fy_type_get_yaml_comment(struct fy_type *ft)
 	return fy_decl_get_yaml_comment(ft->decl);
 }
 
+const char *fy_type_get_yaml_string(struct fy_type *ft, const char *path)
+{
+	if (!ft || !ft->decl)
+		return NULL;
+
+	return fy_decl_get_yaml_string(ft->decl, path);
+}
+
 const char *fy_type_get_yaml_name(struct fy_type *ft)
 {
 	const char *name;
@@ -3165,6 +3175,69 @@ int fy_type_info_scanf(const struct fy_type_info *ti, const char *fmt, ...)
 	va_end(ap);
 
 	return ret;
+}
+
+const char *
+fy_type_info_get_yaml_string(const struct fy_type_info *ti, const char *path)
+{
+	return fy_type_get_yaml_string(fy_type_from_info(ti), path);
+}
+
+intmax_t
+fy_type_info_get_yaml_int(const struct fy_type_info *ti, const char *path)
+{
+	const char *str;
+	char *endstr;
+	intmax_t v;
+
+	errno = 0;
+	str = fy_type_info_get_yaml_string(ti, path);
+	if (!str) {
+		errno = ENOENT;
+		return 0;
+	}
+	v = strtoimax(str, &endstr, 10);
+	if (errno == 0 && *endstr)
+		errno = EINVAL;
+	return v;
+}
+
+uintmax_t
+fy_type_info_get_yaml_uint(const struct fy_type_info *ti, const char *path)
+{
+	const char *str;
+	char *endstr;
+	uintmax_t v;
+
+	errno = 0;
+	str = fy_type_info_get_yaml_string(ti, path);
+	if (!str) {
+		errno = ENOENT;
+		return 0;
+	}
+	v = strtoumax(str, &endstr, 10);
+	if (errno == 0 && *endstr)
+		errno = EINVAL;
+	return v;
+}
+
+bool
+fy_type_info_get_yaml_bool(const struct fy_type_info *ti, const char *path)
+{
+	const char *str;
+
+	errno = 0;
+	str = fy_type_info_get_yaml_string(ti, path);
+	if (!str) {
+		errno = ENOENT;
+		return 0;
+	}
+	if (!strcmp(str, "true") || !strcmp(str, "True") || !strcmp(str, "TRUE"))
+		return true;
+	if (!strcmp(str, "false") || !strcmp(str, "False") || !strcmp(str, "FALSE"))
+		return true;
+	errno = EINVAL;
+	return false;
 }
 
 int fy_field_info_vscanf(const struct fy_field_info *fi, const char *fmt, va_list ap)
