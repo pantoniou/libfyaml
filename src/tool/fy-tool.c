@@ -2094,6 +2094,7 @@ struct reflection_field_data {
 	bool omit_if_null;
 	bool omit_if_empty;
 	bool omit_on_emit;
+	bool required;
 	struct reflection_field_data *counter_of;
 	struct reflection_field_data *counted_by;
 	/* override */
@@ -2104,7 +2105,7 @@ struct reflection_type_ops {
 	/* reflection object ops */
 	int (*setup)(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
 	void (*cleanup)(struct reflection_object *ro);
-	int (*finish)(struct reflection_object *ro);
+	int (*finish)(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
 	struct reflection_object *(*create_child)(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
 
 	/* emitter */
@@ -2810,15 +2811,24 @@ err_out:
 	return -1;
 }
 
-static int const_array_finish(struct reflection_object *ro)
+static int const_array_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
-	int last_idx;
+	int last_idx, count;
 
 	last_idx = (int)(uintptr_t)ro->instance_data;
-	if (last_idx != (int)(ro->rtd->ti->count - 1))	/* verify all filled */
-		return -1;
+	count = (int)ro->rtd->ti->count;
+	if (last_idx < 0)
+		last_idx = -1;
+	if ((last_idx + 1) != count) {	/* verify all filled */
+		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+				"missing #%d items (got %d out of %d)",
+				count - (last_idx + 1), last_idx + 1, count);
+		goto err_out;
+	}
 
 	return 0;
+err_out:
+	return -1;
 }
 
 static void const_array_cleanup(struct reflection_object *ro)
@@ -3169,8 +3179,12 @@ void integer_field_store(struct reflection_field_data *rfd, uintmax_t v, void *d
 		store_bitfield_le(data, rfd->fi->bit_offset, rfd->fi->bit_width, v);
 }
 
+struct field_instance_data {
+	bool present : 1;
+};
+
 struct struct_instance_data {
-	uint8_t *present_map;
+	struct field_instance_data *fid;
 };
 
 static void
@@ -3179,8 +3193,8 @@ struct_instance_data_cleanup(struct struct_instance_data *id)
 	if (!id)
 		return;
 
-	if (id->present_map)
-		free(id->present_map);
+	if (id->fid)
+		free(id->fid);
 	free(id);
 }
 
@@ -3197,11 +3211,11 @@ static int struct_setup(struct reflection_object *ro, struct fy_parser *fyp, str
 		goto err_out;
 	memset(id, 0, sizeof(*id));
 
-	size = (ro->rtd->fields_count + (sizeof(*id->present_map) * 8 - 1)) / (sizeof(*id->present_map) * 8);
-	id->present_map = malloc(size);
-	if (!id->present_map)
+	size = ro->rtd->fields_count * sizeof(*id->fid);
+	id->fid = malloc(size);
+	if (!id->fid)
 		goto err_out;
-	memset(id->present_map, 0, size);
+	memset(id->fid, 0, size);
 
 	ro->instance_data = id;
 
@@ -3221,11 +3235,31 @@ static void struct_cleanup(struct reflection_object *ro)
 	struct_instance_data_cleanup(id);
 }
 
-static int struct_finish(struct reflection_object *ro)
+static int struct_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
+	struct reflection_type_data *rtd;
+	struct reflection_field_data *rfd;
+	struct struct_instance_data *id;
+	struct field_instance_data *fid;
+	size_t i;
+
 	assert(ro->instance_data);
+	id = ro->instance_data;
+
+	rtd = ro->rtd;
+	for (i = 0, rfd = &rtd->fields[0], fid = id->fid; i < rtd->fields_count; i++, rfd++, fid++) {
+		if (rfd->required && !fid->present) {
+			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+					"missing required field '%s' of struct '%s'",
+					rfd->field_name, rtd->ti->name);
+			goto err_out;
+		}
+	}
 
 	return 0;
+
+err_out:
+	return -1;
 }
 
 struct reflection_object *struct_create_child(struct reflection_object *ro_parent,
@@ -3238,9 +3272,11 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 	const struct fy_type_info *ti;
 	struct fy_token *fyt_key;
 	const char *field;
+	struct struct_instance_data *id;
+	struct field_instance_data *fid;
 	uintmax_t bitfield_data, limit;
 	void *field_data;
-	int rc;
+	int field_idx, rc;
 
 	assert(fy_path_in_mapping(path));
 	assert(!fy_path_in_mapping_key(path));
@@ -3254,7 +3290,11 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 	rtd = ro_parent->rtd;
 	assert(rtd);
 	rfd = reflection_type_data_lookup_field(rtd, field);
-	assert(rfd);
+	if (!rfd) {
+		fy_parser_report(fyp, FYET_ERROR, fyt_key,
+				"no field '%s' found in struct '%s'", field, rtd->ti->name);
+		goto err_out;
+	}
 
 	assert(rfd->rtd != NULL);
 
@@ -3264,6 +3304,20 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 	/* this can't work for too large bitfield */
 	if ((fi->flags & FYFIF_BITFIELD) && fi->bit_width > sizeof(bitfield_data) * 8)
 		goto err_out;
+
+	field_idx = fy_field_info_index(fi);
+	assert(field_idx >= 0 && field_idx < (int)rtd->fields_count);
+
+	id = ro_parent->instance_data;
+	assert(id);
+
+	fid = &id->fid[field_idx];
+
+	if (fid->present) {
+		fy_parser_report(fyp, FYET_ERROR, fyt_key,
+				"duplicate field '%s' found in struct '%s'", field, rtd->ti->name);
+		goto err_out;
+	}
 
 	/* non-bitfields store directly */
 	if (!(fi->flags & FYFIF_BITFIELD)) {
@@ -3299,6 +3353,8 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 		/* store */
 		store_bitfield_le(ro_parent->data, fi->bit_offset, fi->bit_width, bitfield_data);
 	}
+
+	fid->present = true;
 
 	return ro;
 
@@ -3679,7 +3735,7 @@ static void ptr_cleanup(struct reflection_object *ro)
 {
 }
 
-static int ptr_finish(struct reflection_object *ro)
+static int ptr_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	return 0;
 }
@@ -3941,7 +3997,7 @@ static void dyn_array_cleanup(struct reflection_object *ro)
 	}
 }
 
-static int dyn_array_finish(struct reflection_object *ro)
+static int dyn_array_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct dyn_array_instance_data *id;
 	struct reflection_field_data *rfd, *rfd_counter;
@@ -4338,25 +4394,25 @@ reflection_object_destroy(struct reflection_object *ro)
 }
 
 int
-reflection_object_finish(struct reflection_object *ro)
+reflection_object_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	if (!ro)
 		return 0;
 	if (!ro->ops->finish)
 		return 0;
 
-	return ro->ops->finish(ro);
+	return ro->ops->finish(ro, fyp, fye, path);
 }
 
 int
-reflection_object_finish_and_destroy(struct reflection_object *ro)
+reflection_object_finish_and_destroy(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	int rc;
 
 	if (!ro)
 		return 0;
 
-	rc = reflection_object_finish(ro);
+	rc = reflection_object_finish(ro, fyp, fye, path);
 	reflection_object_destroy(ro);
 	return rc;
 }
@@ -4458,7 +4514,7 @@ reflection_object_scalar_child(struct reflection_object *parent,
 	if (!ro)
 		return -1;
 
-	ret = reflection_object_finish_and_destroy(ro);
+	ret = reflection_object_finish_and_destroy(ro, fyp, fye, path);
 	assert(!ret);
 	return ret;
 }
@@ -4585,6 +4641,10 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 
 			/* bitfields must be numeric */
 			assert(!(rfd->fi->flags & FYFIF_BITFIELD) || rfd->signess);
+
+			rfd->required = fy_type_info_get_yaml_bool(rfd->rtd->ti, "required");
+			if (errno != 0)
+				rfd->required = false;
 
 			if (rfd->rtd->ti->kind == FYTK_PTR) {
 
@@ -4964,7 +5024,7 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		assert(ro);
 		fy_path_set_root_user_data(path, NULL);
 
-		rc = reflection_object_finish_and_destroy(ro);
+		rc = reflection_object_finish_and_destroy(ro, fyp, fye, path);
 		if (rc) {
 			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
 					"reflection_object_finish_and_destroy() failed");
@@ -4986,7 +5046,7 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		assert(ro);
 		fy_path_set_last_user_data(path, NULL);
 
-		rc = reflection_object_finish_and_destroy(ro);
+		rc = reflection_object_finish_and_destroy(ro, fyp, fye, path);
 		if (rc) {
 			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
 					"reflection_object_finish_and_destroy() failed");
