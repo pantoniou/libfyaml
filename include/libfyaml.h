@@ -9482,10 +9482,6 @@ fy_type_info_get_yaml_annotation(const struct fy_type_info *ti)
 	FY_EXPORT;
 
 const char *
-fy_type_info_get_yaml_string(const struct fy_type_info *ti, const char *path)
-	FY_EXPORT;
-
-const char *
 fy_type_info_get_yaml_name(const struct fy_type_info *ti)
 	FY_EXPORT;
 
@@ -9496,6 +9492,23 @@ fy_type_info_vscanf(const struct fy_type_info *ti, const char *fmt, va_list ap)
 int
 fy_type_info_scanf(const struct fy_type_info *ti, const char *fmt, ...)
 	FY_FORMAT(scanf, 2, 3)
+	FY_EXPORT;
+
+
+const char *
+fy_type_info_get_yaml_string(const struct fy_type_info *ti, const char *path)
+	FY_EXPORT;
+
+intmax_t
+fy_type_info_get_yaml_int(const struct fy_type_info *ti, const char *path)
+	FY_EXPORT;
+
+uintmax_t
+fy_type_info_get_yaml_uint(const struct fy_type_info *ti, const char *path)
+	FY_EXPORT;
+
+bool
+fy_type_info_get_yaml_bool(const struct fy_type_info *ti, const char *path)
 	FY_EXPORT;
 
 /**
