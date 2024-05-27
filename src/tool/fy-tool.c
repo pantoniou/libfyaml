@@ -2092,6 +2092,7 @@ struct reflection_field_data {
 	const char *field_name;
 	int signess;		/* -1 signed, 1 unsigned, 0 not relevant */
 	bool omit_if_null;
+	bool omit_if_empty;
 	bool omit_on_emit;
 	struct reflection_field_data *counter_of;
 	struct reflection_field_data *counted_by;
@@ -2195,12 +2196,10 @@ reflection_type_data_lookup_field(struct reflection_type_data *rtd, const char *
 		return NULL;
 
 	fi = fy_type_info_lookup_field(rtd->ti, field);
-	assert(fi);
 	if (!fi)
 		return NULL;
 
 	idx = fy_field_info_index(fi);
-	assert(idx >= 0);
 	if (idx < 0)
 		return NULL;
 
@@ -2240,12 +2239,39 @@ reflection_type_data_lookup_field_by_unsigned_enum_value(struct reflection_type_
 	return &rtd->fields[idx];
 }
 
+static inline struct reflection_field_data *
+struct_field_data(struct reflection_type_data *rtd_parent, void *parent_addr)
+{
+	return rtd_parent && rtd_parent->ti->kind == FYTK_STRUCT ? parent_addr : NULL;
+}
+
+static inline bool
+get_omit_if_null(struct reflection_type_data *rtd_parent, void *parent_addr)
+{
+	struct reflection_field_data *rfd;
+
+	/* only for fields fow now */
+	rfd = struct_field_data(rtd_parent, parent_addr);
+	return rfd != NULL && rfd->omit_if_null;
+}
+
+static inline bool
+get_omit_if_empty(struct reflection_type_data *rtd_parent, void *parent_addr)
+{
+	struct reflection_field_data *rfd;
+
+	/* only for fields fow now */
+	rfd = struct_field_data(rtd_parent, parent_addr);
+	return rfd != NULL && rfd->omit_if_empty;
+}
+
 static int
 emit_mapping_key_if_any(struct fy_emitter *fye, struct reflection_type_data *rtd_parent, void *parent_addr)
 {
 	struct reflection_field_data *rfd;
 
-	if (!rtd_parent || rtd_parent->ti->kind != FYTK_STRUCT || !(rfd = parent_addr))
+	rfd = struct_field_data(rtd_parent, parent_addr);
+	if (!rfd)
 		return 0;
 
 	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, rfd->field_name, FY_NT, NULL, NULL));
@@ -3581,6 +3607,26 @@ static inline bool fy_event_is_null(struct fy_parser *fyp, struct fy_event *fye)
 	return text_is_null(fyp, text, len);
 }
 
+static int NULL_emit(struct reflection_type_data *rtd, struct fy_emitter *fye,
+		     struct reflection_type_data *rtd_parent, void *parent_addr)
+{
+	int rc;
+
+	if (get_omit_if_null(rtd_parent, parent_addr))
+		return 0;
+
+	rc = emit_mapping_key_if_any(fye, rtd_parent, parent_addr);
+	if (rc)
+		goto err_out;
+	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, "NULL", 4, NULL, NULL));
+	if (rc)
+		goto err_out;
+	return 0;
+
+err_out:
+	return -1;
+}
+
 static int ptr_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct reflection_type_data *rtd_dep;
@@ -3717,6 +3763,9 @@ static int ptr_char_emit(struct reflection_type_data *rtd, struct fy_emitter *fy
 	assert(type_kind == FYTK_CHAR);
 
 	text = *(const char **)data;
+	if (!text)
+		return NULL_emit(rtd, fye, rtd_parent, parent_addr);
+
 	len = strlen(text);
 
 	rc = emit_mapping_key_if_any(fye, rtd_parent, parent_addr);
@@ -3772,15 +3821,9 @@ int ptr_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const voi
 	assert(rtd_dep);
 
 	data = (const void *)*(const void * const *)data;
-	if (!data) {
-		rc = emit_mapping_key_if_any(fye, rtd_parent, parent_addr);
-		if (rc)
-			goto err_out;
-		rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, "NULL", 4, NULL, NULL));
-		if (rc)
-			goto err_out;
-		return 0;
-	}
+	if (!data)
+		return NULL_emit(rtd, fye, rtd_parent, parent_addr);
+
 	data_size = rtd_dep->ti->size;
 
 	rc = rtd_dep->ops->emit(rtd_dep, fye, data, data_size, rtd_parent, parent_addr);
@@ -4515,19 +4558,21 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 	const struct reflection_type_ops *ops;
 	const struct fy_type_info *ti;
 	size_t i;
+	char *counter = NULL, *omit_if_null = NULL;
+	int count;
 
 	ti = rtd->ti;
 
 	switch (ti->kind) {
 	case FYTK_PTR:
-		if (ti->dependent_type->kind == FYTK_CHAR) {
+		if (rtd->ti->dependent_type->kind == FYTK_CHAR) {
 			rtd->ops = &ptr_char_ops;
-			break;
 		}
 		break;
 
 	case FYTK_STRUCT:
 
+		rfd_ref = NULL;
 		for (i = 0, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, rfd++) {
 
 			/* field name */
@@ -4542,15 +4587,14 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 			assert(!(rfd->fi->flags & FYFIF_BITFIELD) || rfd->signess);
 
 			if (rfd->rtd->ti->kind == FYTK_PTR) {
-				char *counter = NULL;
 
-				(void)fy_type_info_scanf(rfd->rtd->ti, "counter %ms", &counter);
-				if (counter) {
+				count = fy_type_info_scanf(rfd->rtd->ti, "counter %ms", &counter);
+				if (count == 1) {
 					rfd_ref = reflection_type_data_lookup_field(rtd, counter);
 
-					fprintf(stderr, "%s: %s.%s counter=%s (%s)\n", __func__,
-							rtd->ti->name, rfd->fi->name, counter,
-							rfd_ref ? "found" : "N/A");
+					// fprintf(stderr, "%s: %s.%s counter=%s (%s)\n", __func__,
+					//		rtd->ti->name, rfd->fi->name, counter,
+					//		rfd_ref ? "found" : "N/A");
 
 					/* must be an integer */
 					assert(fy_type_kind_is_integer(rfd_ref->rtd->ti->kind));
@@ -4566,12 +4610,18 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 
 					rfd->ops = &dyn_array_ops;
 
+					rfd_ref = NULL;
 					free(counter);
 					counter = NULL;
 				}
 
-				/* XXX */
 				rfd->omit_if_null = true;
+				count = fy_type_info_scanf(rfd->rtd->ti, "omit-if-null %ms", &omit_if_null);
+				if (count == 1 && (!strcmp(omit_if_null, "false") || !strcmp(omit_if_null, "False"))) {
+					rfd->omit_if_null = false;
+					free(omit_if_null);
+					omit_if_null = NULL;
+				}
 			}
 		}
 		break;
