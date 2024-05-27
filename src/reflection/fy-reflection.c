@@ -3057,12 +3057,10 @@ fy_type_info_lookup_field(const struct fy_type_info *ti, const char *name)
 	int idx;
 
 	ft = fy_type_from_info(ti);
-	assert(ft);
 	if (!ft)
 		return NULL;
 
 	idx = fy_type_get_field_index_by_name(ft, name);
-	assert(idx >= 0);
 	if (idx < 0)
 		return NULL;
 	assert((unsigned int)idx < ti->count);
