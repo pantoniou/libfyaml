@@ -2123,8 +2123,9 @@ struct reflection_type_data {
 	const struct reflection_type_ops *ops;
 	bool needs_cleanup;
 	bool marker;
-	void *xdata;					/* extra data when mutated */
-	struct reflection_type_data *rtd_dep;		/* the dependent type */
+	void *xdata;						/* extra data when mutated */
+	struct reflection_field_data *rfd_flatten;		/* if struct and flattened */
+	struct reflection_type_data *rtd_dep;			/* the dependent type */
 	size_t fields_count;
 	struct reflection_field_data fields[];
 };
@@ -2186,6 +2187,13 @@ reflection_object_create(struct reflection_object *parent, void *parent_addr,
 
 void
 reflection_object_destroy(struct reflection_object *ro);
+
+int
+reflection_object_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
+
+struct reflection_object *
+reflection_object_create_child(struct reflection_object *parent,
+			       struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
 
 struct reflection_field_data *
 reflection_type_data_lookup_field(struct reflection_type_data *rtd, const char *field)
@@ -2270,12 +2278,19 @@ static int
 emit_mapping_key_if_any(struct fy_emitter *fye, struct reflection_type_data *rtd_parent, void *parent_addr)
 {
 	struct reflection_field_data *rfd;
+	const char *field_name;
 
 	rfd = struct_field_data(rtd_parent, parent_addr);
 	if (!rfd)
 		return 0;
 
-	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, rfd->field_name, FY_NT, NULL, NULL));
+	field_name = rfd->field_name;
+
+	/* do not output mapping key in flattening */
+	if (rfd && rtd_parent->rfd_flatten == rfd)
+		return 0;
+
+	return fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_PLAIN, field_name, FY_NT, NULL, NULL));
 }
 
 union integer_scalar {
@@ -3185,6 +3200,8 @@ struct field_instance_data {
 
 struct struct_instance_data {
 	struct field_instance_data *fid;
+	struct reflection_object *ro_flatten;
+	uintmax_t bitfield_data;
 };
 
 static void
@@ -3201,10 +3218,17 @@ struct_instance_data_cleanup(struct struct_instance_data *id)
 static int struct_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct struct_instance_data *id = NULL;
+	struct reflection_field_data *rfd_flatten;
 	size_t size;
+	void *field_data;
 
-	if (fye->type != FYET_MAPPING_START)
+	rfd_flatten = ro->rtd->rfd_flatten;
+	if (!rfd_flatten && fye->type != FYET_MAPPING_START) {
+		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+				"struct '%s' expects mapping start",
+				ro->rtd->ti->name);
 		goto err_out;
+	}
 
 	id = malloc(sizeof(*id));
 	if (!id)
@@ -3219,6 +3243,22 @@ static int struct_setup(struct reflection_object *ro, struct fy_parser *fyp, str
 
 	ro->instance_data = id;
 
+	if (rfd_flatten) {
+		fprintf(stderr, "%s: flatten %s\n", __func__, rfd_flatten->field_name);
+
+		/* non-bitfields store directly */
+		if (!(rfd_flatten->fi->flags & FYFIF_BITFIELD)) {
+			field_data = ro->data + rfd_flatten->fi->offset;
+		} else {
+			id->bitfield_data = 0;
+			field_data = &id->bitfield_data;
+		}
+		id->ro_flatten = reflection_object_create(ro, rfd_flatten, rfd_flatten->rtd,
+							  fyp, fye, path,
+							  field_data, rfd_flatten->fi->type_info->size);
+		assert(id->ro_flatten);
+	}
+
 	return 0;
 
 err_out:
@@ -3231,6 +3271,11 @@ static void struct_cleanup(struct reflection_object *ro)
 	struct struct_instance_data *id;
 
 	id = ro->instance_data;
+	if (id->ro_flatten) {
+		reflection_object_destroy(id->ro_flatten);
+		id->ro_flatten = NULL;
+	}
+
 	ro->instance_data = NULL;
 	struct_instance_data_cleanup(id);
 }
@@ -3238,13 +3283,49 @@ static void struct_cleanup(struct reflection_object *ro)
 static int struct_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct reflection_type_data *rtd;
-	struct reflection_field_data *rfd;
+	struct reflection_field_data *rfd, *rfd_flatten;
 	struct struct_instance_data *id;
 	struct field_instance_data *fid;
 	size_t i;
+	int rc;
 
 	assert(ro->instance_data);
 	id = ro->instance_data;
+	assert(id);
+
+	if (id->ro_flatten) {
+		rfd_flatten = ro->rtd->rfd_flatten;
+
+		rc = reflection_object_finish(id->ro_flatten, fyp, fye, path);
+		assert(!rc);
+
+		if (rfd_flatten->fi->flags & FYFIF_BITFIELD) {
+			const struct fy_field_info *fi;
+			uintmax_t limit;
+
+			fi = rfd_flatten->fi;
+
+			assert(rfd_flatten->signess != 0);
+			rc = store_check(fi->bit_width, id->bitfield_data, rfd_flatten->signess < 0, &limit);
+			if (rc) {
+				if (rfd_flatten->signess < 0) {
+					fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+							"value cannot fit in signed bitfield (%s than %jd)",
+							rc < 0 ? "smaller" : "greater", (intmax_t)limit);
+				} else {
+					fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+							"value cannot fit in unsigned bitfield (greater than %ju)",
+							limit);
+				}
+				goto err_out;
+			}
+
+			/* store */
+			store_bitfield_le(ro->data, fi->bit_offset, fi->bit_width, id->bitfield_data);
+		}
+
+		return 0;
+	}
 
 	rtd = ro->rtd;
 	for (i = 0, rfd = &rtd->fields[0], fid = id->fid; i < rtd->fields_count; i++, rfd++, fid++) {
@@ -3278,6 +3359,12 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 	void *field_data;
 	int field_idx, rc;
 
+	id = ro_parent->instance_data;
+	assert(id);
+
+	if (id->ro_flatten)
+		return reflection_object_create_child(id->ro_flatten, fyp, fye, path);
+
 	assert(fy_path_in_mapping(path));
 	assert(!fy_path_in_mapping_key(path));
 
@@ -3307,9 +3394,6 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 
 	field_idx = fy_field_info_index(fi);
 	assert(field_idx >= 0 && field_idx < (int)rtd->fields_count);
-
-	id = ro_parent->instance_data;
-	assert(id);
 
 	fid = &id->fid[field_idx];
 
@@ -3368,6 +3452,7 @@ int struct_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const 
 {
 	struct reflection_field_data *rfd;
 	struct reflection_type_data *rtd_field;
+	struct reflection_field_data *rfd_flatten;
 	const struct fy_field_info *fi;
 	const struct reflection_type_ops *ops;
 	const void *field_data;
@@ -3376,9 +3461,36 @@ int struct_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const 
 	size_t i;
 	int rc;
 
+	rfd_flatten = rtd->rfd_flatten;
+
 	rc = emit_mapping_key_if_any(fye, rtd_parent, parent_addr);
 	if (rc)
 		goto err_out;
+
+	if (rfd_flatten) {
+		rfd = rfd_flatten;
+
+		fi = rfd->fi;
+
+		rtd_field = rfd->rtd;
+		assert(rtd_field);
+
+		field_data_size = rtd_field->ti->size;
+		if (!(fi->flags & FYFIF_BITFIELD)) {
+			field_data = data + fi->offset;
+		} else {
+			bitfield_data = load_bitfield_le(data, fi->bit_offset, fi->bit_width, rfd->signess < 0);
+			field_data = &bitfield_data;
+		}
+
+		ops = reflection_type_data_ops(rtd_field, rtd, rfd);
+
+		rc = ops->emit(rtd_field, fye, field_data, field_data_size, rtd, rfd);
+		if (rc)
+			goto err_out;
+
+		return 0;
+	}
 
 	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_MAPPING_START, FYNS_ANY, NULL, NULL));
 	if (rc)
@@ -4612,10 +4724,9 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 {
 	struct reflection_field_data *rfd, *rfd_ref;
 	const struct reflection_type_ops *ops;
-	const struct fy_type_info *ti;
+	const struct fy_type_info *ti, *rfd_ti;
+	const char *str;
 	size_t i;
-	char *counter = NULL, *omit_if_null = NULL;
-	int count;
 
 	ti = rtd->ti;
 
@@ -4627,6 +4738,19 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 		break;
 
 	case FYTK_STRUCT:
+
+		str = fy_type_info_get_yaml_string(rtd->ti, "flatten-field");
+		if (str) {
+			struct reflection_field_data *rfd_flatten;
+
+			fprintf(stderr, ">>>> struct %s flatten-field=%s\n", rtd->ti->name, str);
+
+			rfd_flatten = reflection_type_data_lookup_field(rtd, str);
+			assert(rfd_flatten);
+
+			rtd->rfd_flatten = rfd_flatten;
+
+		}
 
 		rfd_ref = NULL;
 		for (i = 0, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, rfd++) {
@@ -4642,15 +4766,32 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 			/* bitfields must be numeric */
 			assert(!(rfd->fi->flags & FYFIF_BITFIELD) || rfd->signess);
 
-			rfd->required = fy_type_info_get_yaml_bool(rfd->rtd->ti, "required");
-			if (errno != 0)
+			rfd_ti = rfd->rtd->ti;
+
+			rfd->required = fy_type_info_get_yaml_bool(rfd_ti, "required");
+			if (errno != 0) {
+				errno = 0;
 				rfd->required = false;
+			}
 
-			if (rfd->rtd->ti->kind == FYTK_PTR) {
+			rfd->omit_if_empty = fy_type_info_get_yaml_bool(rfd_ti, "omit-if-empty");
+			if (errno != 0) {
+				errno = 0;
+				rfd->omit_if_empty = rfd_ti->kind == FYTK_PTR || rfd_ti->kind == FYTK_CONSTARRAY;
+			}
 
-				count = fy_type_info_scanf(rfd->rtd->ti, "counter %ms", &counter);
-				if (count == 1) {
-					rfd_ref = reflection_type_data_lookup_field(rtd, counter);
+			switch (rfd_ti->kind) {
+			case FYTK_PTR:
+				rfd->omit_if_null = fy_type_info_get_yaml_bool(rfd_ti, "omit-if-null");
+				if (errno != 0) {
+					errno = 0;
+					rfd->omit_if_null = true;
+				}
+
+				str = fy_type_info_get_yaml_string(rfd_ti, "counter");
+				if (str) {
+					rfd_ref = reflection_type_data_lookup_field(rtd, str);
+					assert(rfd_ref);
 
 					// fprintf(stderr, "%s: %s.%s counter=%s (%s)\n", __func__,
 					//		rtd->ti->name, rfd->fi->name, counter,
@@ -4671,17 +4812,15 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 					rfd->ops = &dyn_array_ops;
 
 					rfd_ref = NULL;
-					free(counter);
-					counter = NULL;
 				}
+				break;
 
-				rfd->omit_if_null = true;
-				count = fy_type_info_scanf(rfd->rtd->ti, "omit-if-null %ms", &omit_if_null);
-				if (count == 1 && (!strcmp(omit_if_null, "false") || !strcmp(omit_if_null, "False"))) {
-					rfd->omit_if_null = false;
-					free(omit_if_null);
-					omit_if_null = NULL;
-				}
+			default:
+				break;
+
+			}
+			if (rfd_ti->kind == FYTK_PTR) {
+
 			}
 		}
 		break;
@@ -4713,7 +4852,7 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 		}
 	}
 
-	fprintf(stderr, "%s: %s: needs_cleanup=%s\n", __func__, rtd->ti->fullname, rtd->needs_cleanup ? "true" : "false");
+	// fprintf(stderr, "%s: %s: needs_cleanup=%s\n", __func__, rtd->ti->fullname, rtd->needs_cleanup ? "true" : "false");
 
 	return 0;
 }
