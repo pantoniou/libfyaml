@@ -339,6 +339,17 @@ clang_lookup_type_by_type(struct fy_reflection *rfl, CXType type, struct fy_decl
 			ft_best = ft;
 		}
 	}
+
+#if 0
+	if (!ft_best) {
+		fprintf(stderr, "not found type %s - types list\n", clang_str_get_alloca(clang_getTypeSpelling(type)));
+		for (ft = fy_type_list_head(&rfl->types); ft != NULL; ft = fy_type_next(&rfl->types, ft)) {
+			ftb = ft->backend;
+			fprintf(stderr, "%s equal=%d\n", clang_str_get_alloca(clang_getTypeSpelling(ftb->type)), clang_equalTypes(ftb->type, type));
+		}
+		fprintf(stderr, "\n");
+	}
+#endif
 	return ft_best;
 }
 
@@ -356,13 +367,19 @@ clang_register_type(struct fy_reflection *rfl, struct fy_decl *decl, CXCursor cu
 
 	elaborated = false;
 	if (type.kind == CXType_Elaborated) {
-		elaborated = true;
 		type = clang_Type_getNamedType(type);
+
+		/* we don't want to register a declaration of an elaborated type */
+		decl = NULL;
+		elaborated = true;
 	}
 
 	type_kind = clang_map_type_kind(type.kind, clang_getTypeDeclaration(type).kind);
 	if (type_kind == FYTK_INVALID)
 		return NULL;
+
+	if (elaborated)
+		fprintf(stderr, "elaborated type_kind = %s\n", fy_type_kind_name(type_kind));
 
 	anonymous = decl && decl->anonymous;
 	(void)anonymous;
@@ -379,11 +396,9 @@ clang_register_type(struct fy_reflection *rfl, struct fy_decl *decl, CXCursor cu
 
 	if (!ft) {
 		if (elaborated) {
-			printf("%s: elaborated type_name=%s does not exist\n",
-					__func__, type_name);
+			fprintf(stderr, "%s: elaborated type_name=%s does not exist\n", __func__, type_name);
 
 			/* try to pull it in */
-
 			goto err_out;
 		}
 
