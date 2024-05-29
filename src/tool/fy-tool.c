@@ -2068,7 +2068,6 @@ struct reflection_type_data;
 struct reflection_field_data;
 struct reflection_decoder;
 struct reflection_object;
-struct reflection_encoder;
 struct reflection_type_ops;
 
 typedef void *(*reflection_allocf)(void *user, size_t size);
@@ -2155,7 +2154,6 @@ struct reflection_decoder {
 	bool null_output;
 	bool document_ready;
 	bool verbose;
-	bool single_document;
 
 	/* bindable */
 	struct reflection_type_data *entry;
@@ -5141,11 +5139,8 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		}
 
 		rd->document_ready = true;
-		/* on single document mode we stop here */
-		if (rd->single_document)
-			ret = FYCR_OK_STOP;
-		else
-			ret = FYCR_OK_CONTINUE;
+		/* we always stop to give a chance to consume the document */
+		ret = FYCR_OK_STOP;
 		break;
 
 	case FYET_SEQUENCE_END:
@@ -5201,9 +5196,6 @@ struct reflection_encoder {
 	bool emitted_stream_start;
 	bool emitted_stream_end;
 	bool verbose;
-	struct reflection_type_data *entry;
-	const void *data;
-	size_t data_size;
 };
 
 void
@@ -5231,30 +5223,43 @@ reflection_encoder_create(bool verbose)
 }
 
 int
-reflection_encoder_emit(struct reflection_encoder *re, struct fy_emitter *fye, struct reflection_type_data *rtd, const void *data, size_t data_size)
+reflection_encoder_emit(struct reflection_encoder *re, struct fy_emitter *fye, struct reflection_type_data *rtd,
+			const void *data, size_t data_size,
+			bool emit_ss, bool emit_ds, bool emit_de, bool emit_se)
 {
 	int rc;
 
-	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_STREAM_START));
-	if (rc)
-		goto err_out;
+	if (emit_ss) {
+		rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_STREAM_START));
+		if (rc)
+			goto err_out;
+	}
 
-	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_DOCUMENT_START, 0, NULL, NULL));
-	if (rc)
-		goto err_out;
+	if (rtd && data) {
 
-	assert(rtd->ops->emit);
-	rc = rtd->ops->emit(rtd, fye, data, data_size, NULL, NULL);
-	if (rc)
-		goto err_out;
+		if (emit_ds) {
+			rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_DOCUMENT_START, 0, NULL, NULL));
+			if (rc)
+				goto err_out;
+		}
 
-	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_DOCUMENT_END, 0));
-	if (rc)
-		goto err_out;
+		assert(rtd->ops->emit);
+		rc = rtd->ops->emit(rtd, fye, data, data_size, NULL, NULL);
+		if (rc)
+			goto err_out;
 
-	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_STREAM_END));
-	if (rc)
-		goto err_out;
+		if (emit_de) {
+			rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_DOCUMENT_END, 0));
+			if (rc)
+				goto err_out;
+		}
+	}
+
+	if (emit_se) {
+		rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_STREAM_END));
+		if (rc)
+			goto err_out;
+	}
 
 	return 0;
 err_out:
@@ -5287,6 +5292,12 @@ reflection_parse(struct fy_parser *fyp, struct reflection_type_data *rtd)
 	if (rc)
 		goto err_out;
 
+	/* got document? if not return NULL */
+	if (!rd->document_ready) {
+		(*rd->free_cb)(rd, data);
+		data = NULL;
+	}
+
 	reflection_decoder_destroy(rd);
 
 	return data;
@@ -5313,9 +5324,18 @@ reflection_parse_free(struct reflection_type_data *rtd, void *data)
 	(*free_cb)(NULL, data);
 }
 
-int reflection_emit(struct fy_emitter *fye, struct reflection_type_data *rtd, const void *data)
+enum reflection_emit_flags {
+	REF_EMIT_SS = FY_BIT(0),
+	REF_EMIT_DS = FY_BIT(1),
+	REF_EMIT_DE = FY_BIT(2),
+	REF_EMIT_SE = FY_BIT(3),
+};
+
+int reflection_emit(struct fy_emitter *fye, struct reflection_type_data *rtd, const void *data,
+		    enum reflection_emit_flags flags)
 {
 	struct reflection_encoder *re;
+	bool emit_ss, emit_ds, emit_de, emit_se;
 	int rc;
 
 	re = reflection_encoder_create(false);
@@ -5324,7 +5344,13 @@ int reflection_emit(struct fy_emitter *fye, struct reflection_type_data *rtd, co
 		goto err_out;
 	}
 
-	rc = reflection_encoder_emit(re, fye, rtd, data, rtd->ti->size);
+	emit_ss = !!(flags & REF_EMIT_SS);
+	emit_ds = !!(flags & REF_EMIT_DS);
+	emit_de = !!(flags & REF_EMIT_DE);
+	emit_se = !!(flags & REF_EMIT_SE);
+
+	rc = reflection_encoder_emit(re, fye, rtd, data, rtd ? rtd->ti->size : 0,
+				     emit_ss, emit_ds, emit_de, emit_se);
 	if (rc) {
 		fprintf(stderr, "unable to emit with the encoder\n");
 		goto err_out;
@@ -5421,6 +5447,7 @@ int main(int argc, char *argv[])
 	const char *entry_type = NULL;
 	struct reflection_type_system *rts = NULL;
 	void *rd_data = NULL;
+	bool emitted_ss;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -6507,20 +6534,32 @@ int main(int argc, char *argv[])
 				goto cleanup;
 			}
 
-			rd_data = reflection_parse(fyp, rts->rtd_root);
-			if (!rd_data) {
+			emitted_ss = false;
+
+			while ((rd_data = reflection_parse(fyp, rts->rtd_root)) != NULL) {
+
+				rc = reflection_emit(fye, rts->rtd_root, rd_data,
+						     REF_EMIT_DS | REF_EMIT_DE | (!emitted_ss ? REF_EMIT_SS : 0));
+				if (rc) {
+					fprintf(stderr, "reflection_emit() failed\n");
+					goto cleanup;
+				}
+				emitted_ss = true;
+
+				reflection_parse_free(rts->rtd_root, rd_data);
+				rd_data = NULL;
+			}
+
+			if (!emitted_ss) {
 				fprintf(stderr, "unable to reflection_parse()\n");
 				goto cleanup;
 			}
 
-			rc = reflection_emit(fye, rts->rtd_root, rd_data);
+			rc = reflection_emit(fye, NULL, NULL, REF_EMIT_SE);
 			if (rc) {
 				fprintf(stderr, "reflection_emit() failed\n");
 				goto cleanup;
 			}
-
-			reflection_parse_free(rts->rtd_root, rd_data);
-			rd_data = NULL;
 
 		}
 
