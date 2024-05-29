@@ -2063,7 +2063,7 @@ err_out:
 	return ret;
 }
 
-struct reflection_root_data;
+struct reflection_type_system;
 struct reflection_type_data;
 struct reflection_field_data;
 struct reflection_decoder;
@@ -2118,7 +2118,7 @@ struct reflection_type_ops {
 };
 
 struct reflection_type_data {
-	struct reflection_root_data *rrd;
+	struct reflection_type_system *rts;
 	const struct fy_type_info *ti;
 	const struct reflection_type_ops *ops;
 	bool needs_cleanup;
@@ -2130,7 +2130,7 @@ struct reflection_type_data {
 	struct reflection_field_data fields[];
 };
 
-struct reflection_root_data {
+struct reflection_type_system {
 	struct fy_reflection *rfl;	/* back pointer */
 	struct reflection_type_data *rtd_root;
 	size_t rtd_base_count;
@@ -4458,7 +4458,6 @@ static int root_setup(struct reflection_object *ro, struct fy_parser *fyp, struc
 		return -1;
 	}
 	memset(id, 0, sizeof(*id));
-	// id->rd = ro->rd;
 	ro->instance_data = id;
 
 	return 0;
@@ -4642,39 +4641,34 @@ void reflection_type_data_destroy(struct reflection_type_data *rtd)
 	free(rtd);
 }
 
-void reflection_cleanup_type_system(struct fy_reflection *rfl)
+void reflection_type_system_destroy(struct reflection_type_system *rts)
 {
-	struct reflection_root_data *rrd;
+	;
 	size_t i;
 
-	if (!rfl)
+	if (!rts)
 		return;
 
-	rrd = fy_reflection_get_userdata(rfl);
-	if (!rrd)
-		return;
-
-	fy_reflection_set_userdata(rfl, NULL);
-	if (rrd->rtds) {
-		for (i = 0; i < rrd->rtd_count; i++)
-			reflection_type_data_destroy(rrd->rtds[i]);
-		free(rrd->rtds);
+	if (rts->rtds) {
+		for (i = 0; i < rts->rtd_count; i++)
+			reflection_type_data_destroy(rts->rtds[i]);
+		free(rts->rtds);
 	}
-	free(rrd);
+	free(rts);
 }
 
 struct reflection_type_data *
-reflection_setup_type(struct reflection_root_data *rrd, struct reflection_type_data *rtd_parent,
+reflection_setup_type(struct reflection_type_system *rts, struct reflection_type_data *rtd_parent,
 		      const struct fy_field_info *fi, const struct fy_type_info *ti);
 
 struct reflection_type_data *
-reflection_setup_type_lookup(struct reflection_root_data *rrd, struct reflection_type_data *rtd_parent,
+reflection_setup_type_lookup(struct reflection_type_system *rts, struct reflection_type_data *rtd_parent,
 			     const struct fy_field_info *fi, const struct fy_type_info *ti)
 {
 	struct reflection_type_data *rtd;
 	size_t i;
 
-	if (!rrd || !ti)
+	if (!rts || !ti)
 		return NULL;
 
 #if 0
@@ -4694,8 +4688,8 @@ reflection_setup_type_lookup(struct reflection_root_data *rrd, struct reflection
 #endif
 
 	rtd = NULL;
-	for (i = 0; i < rrd->rtd_count; i++) {
-		rtd = rrd->rtds[i];
+	for (i = 0; i < rts->rtd_count; i++) {
+		rtd = rts->rtds[i];
 		if (rtd->ti == ti)
 			break;
 		rtd = NULL;
@@ -4705,17 +4699,17 @@ reflection_setup_type_lookup(struct reflection_root_data *rrd, struct reflection
 }
 
 struct reflection_type_data *
-reflection_setup_type_resolve(struct reflection_root_data *rrd, struct reflection_type_data *rtd_parent,
+reflection_setup_type_resolve(struct reflection_type_system *rts, struct reflection_type_data *rtd_parent,
 			      const struct fy_field_info *fi, const struct fy_type_info *ti)
 {
 	struct reflection_type_data *rtd;
 
 	/* exact match? */
-	rtd = reflection_setup_type_lookup(rrd, rtd_parent, fi, ti);
+	rtd = reflection_setup_type_lookup(rts, rtd_parent, fi, ti);
 	if (rtd)
 		return rtd;
 
-	return reflection_setup_type(rrd, rtd_parent, fi, ti);
+	return reflection_setup_type(rts, rtd_parent, fi, ti);
 }
 
 int
@@ -4858,7 +4852,7 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 }
 
 struct reflection_type_data *
-reflection_setup_type(struct reflection_root_data *rrd, struct reflection_type_data *rtd_parent,
+reflection_setup_type(struct reflection_type_system *rts, struct reflection_type_data *rtd_parent,
 		      const struct fy_field_info *fi, const struct fy_type_info *ti)
 {
 	struct reflection_type_data *rtd = NULL;
@@ -4879,29 +4873,29 @@ reflection_setup_type(struct reflection_root_data *rrd, struct reflection_type_d
 		goto err_out;
 
 	memset(rtd, 0, size);
-	rtd->rrd = rrd;
+	rtd->rts = rts;
 	rtd->ti = ti;
 
 	rtd->ops = &reflection_ops_table[ti->kind];
 
 	/* add */
-	if (rrd->rtd_count >= rrd->rtd_alloc) {
-		new_alloc = rrd->rtd_alloc * 2;
+	if (rts->rtd_count >= rts->rtd_alloc) {
+		new_alloc = rts->rtd_alloc * 2;
 		if (!new_alloc)
 			new_alloc = 16;
-		new_rtds = realloc(rrd->rtds, sizeof(*rrd->rtds) * new_alloc);
+		new_rtds = realloc(rts->rtds, sizeof(*rts->rtds) * new_alloc);
 		if (!new_rtds)
 			goto err_out;
-		rrd->rtds = new_rtds;
-		rrd->rtd_alloc = new_alloc;
+		rts->rtds = new_rtds;
+		rts->rtd_alloc = new_alloc;
 	}
-	rrd->rtds[rrd->rtd_count++] = rtd;
+	rts->rtds[rts->rtd_count++] = rtd;
 
 	rtd->marker = true;
 
 	/* retreive the dependent type */
 	if (ti->dependent_type) {
-		rtd->rtd_dep = reflection_setup_type_resolve(rrd, rtd, NULL, ti->dependent_type);
+		rtd->rtd_dep = reflection_setup_type_resolve(rts, rtd, NULL, ti->dependent_type);
 		assert(rtd->rtd_dep);
 	}
 
@@ -4910,7 +4904,7 @@ reflection_setup_type(struct reflection_root_data *rrd, struct reflection_type_d
 
 	for (i = 0, tfi = ti->fields, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, tfi++, rfd++) {
 		rfd->fi = tfi;
-		rfd->rtd = reflection_setup_type_resolve(rrd, rtd, tfi, tfi->type_info);
+		rfd->rtd = reflection_setup_type_resolve(rts, rtd, tfi, tfi->type_info);
 		assert(rfd->rtd);
 	}
 
@@ -4924,14 +4918,14 @@ err_out:
 }
 
 static const struct fy_type_info *
-reflection_root_data_get_root(struct reflection_root_data *rrd, const char *entry_type)
+reflection_root_data_get_root(struct reflection_type_system *rts, const char *entry_type)
 {
 	const struct fy_type_info *ti_root;
 
 	if (!entry_type || !*entry_type)
 		return NULL;
 
-	ti_root = fy_type_info_lookup(rrd->rfl, FYTK_INVALID, entry_type, true);
+	ti_root = fy_type_info_lookup(rts->rfl, FYTK_INVALID, entry_type, true);
 	if (ti_root)
 		return ti_root;
 
@@ -4939,41 +4933,33 @@ reflection_root_data_get_root(struct reflection_root_data *rrd, const char *entr
 	return NULL;
 }
 
-struct reflection_type_data *
-reflection_setup_type_system(struct fy_reflection *rfl, const char *entry_type)
+struct reflection_type_system *
+reflection_type_system_create(struct fy_reflection *rfl, const char *entry_type)
 {
-	struct reflection_root_data *rrd;
-	struct reflection_type_data *rtd = NULL;
+	struct reflection_type_system *rts = NULL;
 	const struct fy_type_info *ti_root;
 
 	if (!rfl || !entry_type)
 		goto err_out;
 
-	/* cleanup anything left */
-	reflection_cleanup_type_system(rfl);
-
-	rrd = malloc(sizeof(*rrd));
-	if (!rrd)
+	rts = malloc(sizeof(*rts));
+	if (!rts)
 		goto err_out;
-	memset(rrd, 0, sizeof(*rrd));
-	rrd->rfl = rfl;
+	memset(rts, 0, sizeof(*rts));
+	rts->rfl = rfl;
 
-	fy_reflection_set_userdata(rfl, rrd);
-
-	ti_root = reflection_root_data_get_root(rrd, entry_type);
+	ti_root = reflection_root_data_get_root(rts, entry_type);
 	if (!ti_root)
 		goto err_out;
 
-	rrd->rtd_root = reflection_setup_type(rrd, NULL, NULL, ti_root);
-	assert(rrd->rtd_root);
+	rts->rtd_root = reflection_setup_type(rts, NULL, NULL, ti_root);
+	assert(rts->rtd_root);
 
-	reflection_setup_type_specialize(rrd->rtd_root, NULL, NULL);
+	reflection_setup_type_specialize(rts->rtd_root, NULL, NULL);
 
-	return rrd->rtd_root;
+	return rts;
 err_out:
-	if (rtd)
-		reflection_type_data_destroy(rtd);
-	reflection_cleanup_type_system(rfl);
+	reflection_type_system_destroy(rts);
 	return NULL;
 }
 
@@ -4999,28 +4985,10 @@ void reflection_type_data_free(struct reflection_type_data *rtd, void *data, ref
 }
 
 void
-reflection_decoder_cleanup_data(struct reflection_decoder *rd)
-{
-	if (!rd)
-		return;
-
-	if (rd->entry && rd->data)
-		reflection_type_data_free(rd->entry, rd->data, rd->free_cb, rd);
-
-	if (rd->data)
-		free(rd->data);
-
-	rd->data = NULL;
-	rd->data_size = 0;
-}
-
-void
 reflection_decoder_destroy(struct reflection_decoder *rd)
 {
 	if (!rd)
 		return;
-
-	reflection_decoder_cleanup_data(rd);
 
 	free(rd);
 }
@@ -5072,18 +5040,19 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 	int rc;
 
 	assert(rd);
-	if (rd->verbose) {
-		fprintf(stderr, "%s: %c%c%c%c%c %3d - %-32s\n",
-				fy_event_type_get_text(fye->type),
-				fy_path_in_root(path) ? 'R' : '-',
-				fy_path_in_sequence(path) ? 'S' : '-',
-				fy_path_in_mapping(path) ? 'M' : '-',
-				fy_path_in_mapping_key(path) ? 'K' :
-					fy_path_in_mapping_value(path) ? 'V' : '-',
-				fy_path_in_collection_root(path) ? '/' : '-',
-				fy_path_depth(path),
-				fy_path_get_text_alloca(path));
-	}
+
+#ifndef NDEBUG
+	fy_parser_debug(fyp, "%s: %c%c%c%c%c %3d - %-32s\n",
+			fy_event_type_get_text(fye->type),
+			fy_path_in_root(path) ? 'R' : '-',
+			fy_path_in_sequence(path) ? 'S' : '-',
+			fy_path_in_mapping(path) ? 'M' : '-',
+			fy_path_in_mapping_key(path) ? 'K' :
+				fy_path_in_mapping_value(path) ? 'V' : '-',
+			fy_path_in_collection_root(path) ? '/' : '-',
+			fy_path_depth(path),
+			fy_path_get_text_alloca(path));
+#endif
 
 	/* if we're in mapping key wait until we get the whole of the key */
 	if (fy_path_in_mapping_key(path))
@@ -5206,25 +5175,15 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 
 int
-reflection_decoder_parse(struct reflection_decoder *rd, struct fy_parser *fyp, struct reflection_type_data *rtd)
+reflection_decoder_parse(struct reflection_decoder *rd, struct fy_parser *fyp, struct reflection_type_data *rtd, void *data, size_t size)
 {
-	size_t type_size;
 	int rc;
 
-	if (!rd || !fyp || !rtd)
+	if (!rd || !fyp || !rtd || !data || !size)
 		return -1;
 
-	reflection_decoder_cleanup_data(rd);
-
-	type_size = rtd->ti->size;
-
-	rd->data_size = type_size;
-	rd->data = malloc(rd->data_size);
-	if (!rd->data)
-		return -1;
-
-	/* we're good to go */
-	memset(rd->data, 0, rd->data_size);
+	rd->data = data;
+	rd->data_size = size;
 	rd->entry = rtd;
 
 	/* ignore errors for now */
@@ -5299,6 +5258,86 @@ reflection_encoder_emit(struct reflection_encoder *re, struct fy_emitter *fye, s
 
 	return 0;
 err_out:
+	return -1;
+}
+
+void *
+reflection_parse(struct fy_parser *fyp, struct reflection_type_data *rtd)
+{
+	struct reflection_decoder *rd = NULL;
+	void *data = NULL;
+	int rc;
+
+	if (!fyp || !rtd)
+		return NULL;
+
+	rd = reflection_decoder_create(false);
+	if (!rd) {
+		fprintf(stderr, "failed to create the decoder\n");
+		goto err_out;
+	}
+
+	data = (*rd->alloc_cb)(NULL, rtd->ti->size);
+	if (!data)
+		goto err_out;
+
+
+	memset(data, 0, rtd->ti->size);
+	rc = reflection_decoder_parse(rd, fyp, rtd, data, rtd->ti->size);
+	if (rc)
+		goto err_out;
+
+	reflection_decoder_destroy(rd);
+
+	return data;
+
+err_out:
+	if (data)
+		(*rd->free_cb)(rd, data);
+	if (rd)
+		reflection_decoder_destroy(rd);
+	return NULL;
+}
+
+void
+reflection_parse_free(struct reflection_type_data *rtd, void *data)
+{
+	reflection_freef free_cb;
+
+	if (!rtd || !data)
+		return;
+
+	free_cb = reflection_decoder_default_free;
+
+	reflection_type_data_free(rtd, data, free_cb, NULL);
+	(*free_cb)(NULL, data);
+}
+
+int reflection_emit(struct fy_emitter *fye, struct reflection_type_data *rtd, const void *data)
+{
+	struct reflection_encoder *re;
+	int rc;
+
+	re = reflection_encoder_create(false);
+	if (!re) {
+		fprintf(stderr, "failed to create the encoder\n");
+		goto err_out;
+	}
+
+	rc = reflection_encoder_emit(re, fye, rtd, data, rtd->ti->size);
+	if (rc) {
+		fprintf(stderr, "unable to emit with the encoder\n");
+		goto err_out;
+	}
+
+	reflection_encoder_destroy(re);
+
+	return rc;
+
+err_out:
+	if (re)
+		reflection_encoder_destroy(re);
+
 	return -1;
 }
 
@@ -5380,9 +5419,8 @@ int main(int argc, char *argv[])
 	const char *type_include = NULL, *type_exclude = NULL;
 	const char *import_c_file = NULL;
 	const char *entry_type = NULL;
-	struct reflection_decoder *rd = NULL;
-	struct reflection_encoder *re = NULL;
-	struct reflection_type_data *rtd = NULL;
+	struct reflection_type_system *rts = NULL;
+	void *rd_data = NULL;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -6455,18 +6493,6 @@ int main(int argc, char *argv[])
 				goto cleanup;
 			}
 
-			rd = reflection_decoder_create(dump_path);
-			if (!rd) {
-				fprintf(stderr, "failed to create the decoder\n");
-				goto cleanup;
-			}
-
-			re = reflection_encoder_create(dump_path);
-			if (!re) {
-				fprintf(stderr, "failed to create the encoder\n");
-				goto cleanup;
-			}
-
 			for (i = optind; i < argc; i++) {
 				rc = set_parser_input(fyp, argv[i], false);
 				if (rc) {
@@ -6475,23 +6501,27 @@ int main(int argc, char *argv[])
 				}
 			}
 
-			rtd = reflection_setup_type_system(rfl, entry_type);
-			if (!rtd) {
-				fprintf(stderr, "reflection_setup_type_system() failed!\n");
+			rts = reflection_type_system_create(rfl, entry_type);
+			if (!rts) {
+				fprintf(stderr, "reflection_type_system_create() failed!\n");
 				goto cleanup;
 			}
 
-			rc = reflection_decoder_parse(rd, fyp, rtd);
-			if (rc) {
-				fprintf(stderr, "unable to parse with the decoder\n");
+			rd_data = reflection_parse(fyp, rts->rtd_root);
+			if (!rd_data) {
+				fprintf(stderr, "unable to reflection_parse()\n");
 				goto cleanup;
 			}
 
-			rc = reflection_encoder_emit(re, fye, rtd, rd->data, rd->data_size);
+			rc = reflection_emit(fye, rts->rtd_root, rd_data);
 			if (rc) {
-				fprintf(stderr, "unable to emit with the encoder\n");
+				fprintf(stderr, "reflection_emit() failed\n");
 				goto cleanup;
 			}
+
+			reflection_parse_free(rts->rtd_root, rd_data);
+			rd_data = NULL;
+
 		}
 
 		if (generate_blob) {
@@ -6510,16 +6540,14 @@ int main(int argc, char *argv[])
 	exitcode = EXIT_SUCCESS;
 
 cleanup:
-	if (re)
-		reflection_encoder_destroy(re);
+	if (rd_data)
+		reflection_parse_free(rts->rtd_root, rd_data);
 
-	if (rd)
-		reflection_decoder_destroy(rd);
+	if (rts)
+		reflection_type_system_destroy(rts);
 
-	if (rfl) {
-		reflection_cleanup_type_system(rfl);
+	if (rfl)
 		fy_reflection_destroy(rfl);
-	}
 
 	if (fypx)
 		fy_path_exec_destroy(fypx);
