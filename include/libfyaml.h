@@ -7912,6 +7912,33 @@ struct fy_path_component *
 fy_path_last_not_collection_root_component(struct fy_path *fypp)
 	FY_EXPORT;
 
+/* Shift amount of the want mode */
+#define FYDICF_WANT_SHIFT		0
+/* Mask of the WANT mode */
+#define FYDICF_WANT_MASK			((1U << 2) - 1)
+/* Build a WANT mode option */
+#define FYDICF_WANT(x)			(((unsigned int)(x) & FYDICF_WANT_MASK) << FYDICF_WANT_SHIFT)
+
+/**
+ * enum fy_document_iterator_cfg_flags - Document iterator configuration flags
+ *
+ * These flags control the operation of the document iterator
+ *
+ * @FYDICF_WANTS_STREAM_EVENTS: Generate stream start/stream end events
+ * @FYDICF_WANTS_DOCUMENT_EVENTS: Generate stream start/stream end events
+ */
+enum fy_document_iterator_cfg_flags {
+	FYDICF_WANT_BODY_EVENTS			= FYDICF_WANT(0),
+	FYDICF_WANT_DOCUMENT_BODY_EVENTS	= FYDICF_WANT(1),
+	FYDICF_WANT_STREAM_DOCUMENT_BODY_EVENTS	= FYDICF_WANT(2),
+};
+
+struct fy_document_iterator_cfg {
+	enum fy_document_iterator_cfg_flags flags;
+	struct fy_document *fyd;
+	struct fy_node *iterate_root;
+};
+
 /**
  * fy_document_iterator_create() - Create a document iterator
  *
@@ -7923,6 +7950,30 @@ fy_path_last_not_collection_root_component(struct fy_path *fypp)
  */
 struct fy_document_iterator *
 fy_document_iterator_create(void)
+	FY_EXPORT;
+
+/**
+ * fy_document_iterator_create_cfg() - Create a document iterator using config
+ *
+ * Creates a document iterator, that can trawl through a document
+ * without using recursion. The iterator will generate all the events
+ * that created the given document starting at iterator root.
+ *
+ * @cfg: The document iterator to destroy
+ *
+ * Returns:
+ * The newly created document iterator or NULL on error
+ */
+struct fy_document_iterator *
+fy_document_iterator_create_cfg(const struct fy_document_iterator_cfg *cfg)
+	FY_EXPORT;
+
+struct fy_document_iterator *
+fy_document_iterator_create_on_document(struct fy_document *fyd)
+	FY_EXPORT;
+
+struct fy_document_iterator *
+fy_document_iterator_create_on_node(struct fy_node *fyn)
 	FY_EXPORT;
 
 /**
@@ -8077,6 +8128,36 @@ fy_document_iterator_node_next(struct fy_document_iterator *fydi)
  */
 bool
 fy_document_iterator_get_error(struct fy_document_iterator *fydi)
+	FY_EXPORT;
+
+/* XXX */
+struct fy_event *
+fy_document_iterator_generate_next(struct fy_document_iterator *fydi)
+	FY_EXPORT;
+
+enum fy_parser_event_generator_flags {
+	FYPEGF_GENERATE_DOCUMENT_EVENTS	= FY_BIT(0),
+	FYPEGF_GENERATE_STREAM_EVENTS	= FY_BIT(1),
+	FYPEGF_GENERATE_ALL_EVENTS	= FYPEGF_GENERATE_STREAM_EVENTS | FYPEGF_GENERATE_DOCUMENT_EVENTS,
+	FYPEGF_AUTO_RELEASE		= FY_BIT(2),
+};
+
+/* XXX parser uses the document iterator */
+int
+fy_parser_set_document_iterator(struct fy_parser *fyp, enum fy_parser_event_generator_flags flags,
+				struct fy_document_iterator *fydi)
+	FY_EXPORT;
+
+/* XXX parser uses the document */
+int
+fy_parser_set_document(struct fy_parser *fyp, enum fy_parser_event_generator_flags flags,
+		       struct fy_document *fyd)
+	FY_EXPORT;
+
+/* XXX parser uses the node */
+int
+fy_parser_set_node(struct fy_parser *fyp, enum fy_parser_event_generator_flags flags,
+		   struct fy_node *fyn)
 	FY_EXPORT;
 
 /*

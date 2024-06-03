@@ -5193,6 +5193,10 @@ struct fy_token *fy_scan_peek(struct fy_parser *fyp)
 	int rc, last_token_activity_counter;
 	bool have_simple_keys;
 
+	/* do not try to peek */
+	if (fy_reader_generates_events(fyp->reader))
+		return NULL;
+
 	/* nothing if stream end produced (and no stream end token in queue) */
 	if (fyp->stream_end_produced) {
 		fyt = fy_token_list_head(&fyp->queued_tokens);
@@ -5245,6 +5249,9 @@ struct fy_token *fy_scan_peek(struct fy_parser *fyp)
 		rc = fy_fetch_tokens(fyp);
 		fyp_error_check(fyp, !rc, err_out,
 				"fy_fetch_tokens() failed");
+
+		if (fy_reader_generates_events(fyp->reader))
+			return NULL;
 
 		fyp_error_check(fyp, last_token_activity_counter != fyp->token_activity_counter, err_out,
 				"out of tokens and failed to produce anymore");
@@ -5713,6 +5720,18 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		return NULL;
 
 	fyt = fy_scan_peek(fyp);
+
+	if (!fyt && fy_reader_generates_events(fyp->reader)) {
+		fye = fy_reader_generate_next_event(fyp->reader);
+		if (!fye) {
+			rc = fy_reader_input_done(fyp->reader);
+			fyp_error_check(fyp, !rc, err_out,
+					"fy_parse_input_done() failed");
+
+			return NULL;
+		}
+		return container_of(fye, struct fy_eventp, e);
+	}
 
 	/* special case without an error message for start */
 	if (!fyt && fyp->state == FYPS_NONE)
@@ -6941,6 +6960,40 @@ int fy_parser_set_input_fd(struct fy_parser *fyp, int fd)
 	fyic.type = fyit_fd;
 	fyic.fd.fd = fd;
 	fyic.ignore_stdio = !!(fyp->cfg.flags & FYPCF_DISABLE_BUFFERING);
+
+	/* must not be in the middle of something */
+	fyp_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
+			err_out, "parser cannot be reset at state '%s'",
+				state_txt[fyp->state]);
+
+	fy_parse_input_reset(fyp);
+
+	rc = fy_parse_input_append(fyp, &fyic);
+	fyp_error_check(fyp, !rc, err_out_rc,
+			"fy_parse_input_append() failed");
+
+	return 0;
+err_out:
+	rc = -1;
+err_out_rc:
+	return rc;
+}
+
+int fy_parser_set_document_iterator(struct fy_parser *fyp, enum fy_parser_event_generator_flags flags,
+				    struct fy_document_iterator *fydi)
+{
+	struct fy_input_cfg fyic;
+	int rc;
+
+	if (!fyp || !fydi)
+		return -1;
+
+	memset(&fyic, 0, sizeof(fyic));
+
+	fyic.type = fyit_dociter;
+	fyic.dociter.flags = flags;
+	fyic.dociter.fydi = fydi;
+	fyic.dociter.owns_iterator = false;
 
 	/* must not be in the middle of something */
 	fyp_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,

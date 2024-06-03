@@ -696,9 +696,7 @@ void dump_token_comments(struct fy_token *fyt, bool colorize, const char *banner
 	}
 }
 
-void dump_testsuite_event(struct fy_parser *fyp,
-			  struct fy_event *fye, bool colorize,
-			  struct fy_token_iter *iter,
+void dump_testsuite_event(struct fy_event *fye, bool colorize,
 			  bool disable_flow_markers, bool tsv_format)
 {
 	const char *anchor = NULL;
@@ -2088,6 +2086,9 @@ struct reflection_object {
 struct reflection_field_data {
 	struct reflection_type_data *rtd;
 	const struct fy_field_info *fi;
+	struct fy_document *yaml_annotation;
+	struct fy_node *fyn_default;
+	void *default_value;
 	const char *field_name;
 	int signess;		/* -1 signed, 1 unsigned, 0 not relevant */
 	bool omit_if_null;
@@ -2116,18 +2117,38 @@ struct reflection_type_ops {
 		     struct reflection_type_data *rtd_parent, void *parent_addr);
 };
 
+enum reflection_type_data_flags {
+	RTDF_PURE		= 0,		/* does not need cleanup (pure data)	*/
+	RTDF_UNPURE		= FY_BIT(0),	/* needs cleanup			*/
+	RTDF_PTR_PURE		= FY_BIT(1),	/* is pointer, but pointer to pure data */
+	RTDF_PURITY_MASK	= (RTDF_UNPURE | RTDF_PTR_PURE),
+	RTDF_SPECIALIZED	= FY_BIT(2),	/* type was specialized before		*/
+	RTDF_HAS_ANNOTATION	= FY_BIT(3),	/* type has a yaml annotation		*/
+	RTDF_HAS_DEFAULT_NODE	= FY_BIT(4),	/* type has a default node		*/
+	RTDF_HAS_DEFAULT_VALUE	= FY_BIT(5),	/* type has default parsed data		*/
+};
+
 struct reflection_type_data {
 	struct reflection_type_system *rts;
 	const struct fy_type_info *ti;
 	const struct reflection_type_ops *ops;
-	bool needs_cleanup;
+	enum reflection_type_data_flags flags;			/* flags of the type */
 	bool marker;
 	void *xdata;						/* extra data when mutated */
 	struct reflection_field_data *rfd_flatten;		/* if struct and flattened */
+	struct fy_document *yaml_annotation;			/* the yaml annotation */
+	struct fy_node *fyn_default;
+	void *default_value;
 	struct reflection_type_data *rtd_dep;			/* the dependent type */
 	size_t fields_count;
 	struct reflection_field_data fields[];
 };
+
+static inline bool
+reflection_type_data_needs_cleanup(struct reflection_type_data *rtd)
+{
+	return (rtd->flags & RTDF_PURITY_MASK) != RTDF_PURE;
+}
 
 struct reflection_type_system {
 	struct fy_reflection *rfl;	/* back pointer */
@@ -2165,6 +2186,20 @@ struct reflection_decoder {
 	reflection_freef free_cb;
 };
 
+void *
+reflection_parse(struct fy_parser *fyp, struct reflection_type_data *rtd);
+void
+reflection_parse_free(struct reflection_type_data *rtd, void *data);
+
+enum reflection_emit_flags {
+	REF_EMIT_SS = FY_BIT(0),
+	REF_EMIT_DS = FY_BIT(1),
+	REF_EMIT_DE = FY_BIT(2),
+	REF_EMIT_SE = FY_BIT(3),
+};
+
+int reflection_emit(struct fy_emitter *fye, struct reflection_type_data *rtd, const void *data,
+		    enum reflection_emit_flags flags);
 
 struct reflection_object *
 reflection_object_create_internal(struct reflection_decoder *rd,
@@ -2921,7 +2956,7 @@ void const_array_free(struct reflection_type_data *rtd, void *data, reflection_f
 	const struct reflection_type_ops *ops;
 	size_t idx;
 
-	if (rtd->rtd_dep->needs_cleanup) {
+	if (reflection_type_data_needs_cleanup(rtd->rtd_dep)) {
 		ops = reflection_type_data_ops(rtd->rtd_dep, rtd, NULL);
 		if (ops && ops->free) {
 			for (idx = 0; idx < rtd->ti->count; idx++, data += rtd->rtd_dep->ti->size) {
@@ -3278,10 +3313,139 @@ static void struct_cleanup(struct reflection_object *ro)
 	struct_instance_data_cleanup(id);
 }
 
+static int struct_handle_finish_flatten(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
+{
+	struct struct_instance_data *id;
+	struct reflection_field_data *rfd_flatten;
+	const struct fy_field_info *fi;
+	uintmax_t limit;
+	int rc;
+
+	assert(ro->instance_data);
+	id = ro->instance_data;
+	assert(id);
+
+	rfd_flatten = ro->rtd->rfd_flatten;
+
+	rc = reflection_object_finish(id->ro_flatten, fyp, fye, path);
+	assert(!rc);
+
+	if (rfd_flatten->fi->flags & FYFIF_BITFIELD) {
+
+		fi = rfd_flatten->fi;
+
+		assert(rfd_flatten->signess != 0);
+		rc = store_check(fi->bit_width, id->bitfield_data, rfd_flatten->signess < 0, &limit);
+		if (rc) {
+			if (rfd_flatten->signess < 0) {
+				fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+						"value cannot fit in signed bitfield (%s than %jd)",
+						rc < 0 ? "smaller" : "greater", (intmax_t)limit);
+			} else {
+				fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+						"value cannot fit in unsigned bitfield (greater than %ju)",
+						limit);
+			}
+			goto err_out;
+		}
+
+		/* store */
+		store_bitfield_le(ro->data, fi->bit_offset, fi->bit_width, id->bitfield_data);
+	}
+
+	return 0;
+
+err_out:
+	return -1;
+}
+
+static int struct_fill_in_default_field(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
+					const struct reflection_field_data *rfd)
+{
+	static const struct fy_parse_cfg cfg_i = { .search_path = "", .flags = 0, };
+	struct fy_parser *fyp_i = NULL;
+	struct fy_document_iterator *fydi = NULL;
+	void *parsed_default_value = NULL;
+	void *default_value;
+	uintmax_t bitfield_data, limit;
+	void *field_data;
+	int rc = -1;
+
+	fyp_i = fy_parser_create(&cfg_i);
+	if (!fyp_i)
+		goto err_out;
+
+	fydi = fy_document_iterator_create_on_node(rfd->fyn_default);
+	if (!fydi)
+		goto err_out;
+
+	rc = fy_parser_set_document_iterator(fyp_i, FYPEGF_GENERATE_ALL_EVENTS, fydi);
+	if (rc)
+		goto err_out;
+
+	parsed_default_value = reflection_parse(fyp_i, rfd->rtd);
+	if (!parsed_default_value)
+		goto err_out;
+	default_value = parsed_default_value;
+
+	fy_document_iterator_destroy(fydi);
+	fydi = NULL;
+	fy_parser_destroy(fyp_i);
+	fyp_i = NULL;
+
+	/* non-bitfields store directly */
+	if (!(rfd->fi->flags & FYFIF_BITFIELD)) {
+		field_data = ro->data + rfd->fi->offset;
+	} else {
+		bitfield_data = 0;
+		field_data = &bitfield_data;
+	}
+
+	assert(!(rfd->fi->flags & FYFIF_BITFIELD));
+
+	/* and copy it out */
+
+	if (!(rfd->fi->flags & FYFIF_BITFIELD)) {
+		memcpy(field_data, default_value, rfd->fi->type_info->size);
+	} else {
+		assert(rfd->signess != 0);
+		rc = store_check(rfd->fi->bit_width, bitfield_data, rfd->signess < 0, &limit);
+		if (rc) {
+			if (rfd->signess < 0) {
+				fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+						"value cannot fit in signed bitfield (%s than %jd)",
+						rc < 0 ? "smaller" : "greater", (intmax_t)limit);
+			} else {
+				fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+						"value cannot fit in unsigned bitfield (greater than %ju)",
+						limit);
+			}
+			goto err_out;
+		}
+
+		/* store */
+		store_bitfield_le(ro->data, rfd->fi->bit_offset, rfd->fi->bit_width, bitfield_data);
+	}
+	rc = 0;
+
+out:
+	if (parsed_default_value)
+		free(parsed_default_value);	/* XXX */
+
+	fy_document_iterator_destroy(fydi);
+	fy_parser_destroy(fyp_i);
+
+	return rc;
+
+err_out:
+	rc = -1;
+	goto out;
+}
+
 static int struct_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct reflection_type_data *rtd;
-	struct reflection_field_data *rfd, *rfd_flatten;
+	struct reflection_field_data *rfd;
 	struct struct_instance_data *id;
 	struct field_instance_data *fid;
 	size_t i;
@@ -3291,51 +3455,32 @@ static int struct_finish(struct reflection_object *ro, struct fy_parser *fyp, st
 	id = ro->instance_data;
 	assert(id);
 
-	if (id->ro_flatten) {
-		rfd_flatten = ro->rtd->rfd_flatten;
+	/* handle the flattening */
+	if (id->ro_flatten)
+		return struct_handle_finish_flatten(ro, fyp, fye, path);
 
-		rc = reflection_object_finish(id->ro_flatten, fyp, fye, path);
-		assert(!rc);
-
-		if (rfd_flatten->fi->flags & FYFIF_BITFIELD) {
-			const struct fy_field_info *fi;
-			uintmax_t limit;
-
-			fi = rfd_flatten->fi;
-
-			assert(rfd_flatten->signess != 0);
-			rc = store_check(fi->bit_width, id->bitfield_data, rfd_flatten->signess < 0, &limit);
-			if (rc) {
-				if (rfd_flatten->signess < 0) {
-					fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
-							"value cannot fit in signed bitfield (%s than %jd)",
-							rc < 0 ? "smaller" : "greater", (intmax_t)limit);
-				} else {
-					fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
-							"value cannot fit in unsigned bitfield (greater than %ju)",
-							limit);
-				}
-				goto err_out;
-			}
-
-			/* store */
-			store_bitfield_le(ro->data, fi->bit_offset, fi->bit_width, id->bitfield_data);
-		}
-
-		return 0;
-	}
-
+	rc = 0;
 	rtd = ro->rtd;
 	for (i = 0, rfd = &rtd->fields[0], fid = id->fid; i < rtd->fields_count; i++, rfd++, fid++) {
+
+		/* fill-in-default */
+		if (!fid->present && rfd->fyn_default) {
+			rc = struct_fill_in_default_field(ro, fyp, fye, path, rfd);
+			if (rc)
+				goto err_out;
+
+			fid->present = true;
+		}
+
 		if (rfd->required && !fid->present) {
 			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
 					"missing required field '%s' of struct '%s'",
 					rfd->field_name, rtd->ti->name);
-			goto err_out;
+			rc = -1;
 		}
 	}
 
-	return 0;
+	return rc;
 
 err_out:
 	return -1;
@@ -3544,7 +3689,7 @@ void struct_free(struct reflection_type_data *rtd, void *data, reflection_freef 
 	for (i = 0, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, rfd++) {
 
 		/* anything needs cleanup? */
-		if (!rfd->rtd->needs_cleanup)
+		if (!reflection_type_data_needs_cleanup(rfd->rtd))
 			continue;
 
 		/* no bitfields */
@@ -4011,7 +4156,7 @@ void ptr_free(struct reflection_type_data *rtd, void *data, reflection_freef fre
 	if (!ptr)
 		return;
 
-	if (rtd->rtd_dep->needs_cleanup) {
+	if (reflection_type_data_needs_cleanup(rtd->rtd_dep)) {
 		ops = reflection_type_data_ops(rtd->rtd_dep, rtd, NULL);
 		if (ops && ops->free)
 			ops->free(rtd->rtd_dep, ptr, free_cb, user, rtd, NULL);
@@ -4052,7 +4197,7 @@ void typedef_free(struct reflection_type_data *rtd, void *data, reflection_freef
 {
 	const struct reflection_type_ops *ops;
 
-	if (rtd->rtd_dep->needs_cleanup) {
+	if (reflection_type_data_needs_cleanup(rtd->rtd_dep)) {
 		ops = reflection_type_data_ops(rtd->rtd_dep, rtd, NULL);
 		if (ops && ops->free)
 			ops->free(rtd->rtd_dep, data, free_cb, user, rtd, NULL);
@@ -4269,7 +4414,7 @@ void dyn_array_free(struct reflection_type_data *rtd, void *data, reflection_fre
 		return;
 	*(void **)data = NULL;
 
-	if (rtd->rtd_dep->needs_cleanup) {
+	if (reflection_type_data_needs_cleanup(rtd->rtd_dep)) {
 
 		ops = reflection_type_data_ops(rtd->rtd_dep, rtd, NULL);
 		if (ops && ops->free) {
@@ -4636,6 +4781,9 @@ void reflection_type_data_destroy(struct reflection_type_data *rtd)
 	if (rtd->xdata)
 		free(rtd->xdata);
 
+	if (rtd->default_value)
+		reflection_parse_free(rtd, rtd->default_value);
+
 	free(rtd);
 }
 
@@ -4710,6 +4858,46 @@ reflection_setup_type_resolve(struct reflection_type_system *rts, struct reflect
 	return reflection_setup_type(rts, rtd_parent, fi, ti);
 }
 
+void *
+reflection_setup_type_generate_default_value(struct reflection_type_data *rtd,
+				       struct reflection_type_data *rtd_parent, void *parent_addr)
+{
+	static const struct fy_parse_cfg cfg_i = { .search_path = "", .flags = 0, };
+	struct fy_parser *fyp_i = NULL;
+	struct fy_document_iterator *fydi = NULL;
+	void *value;
+	int rc;
+
+	/* no annotation */
+	if (!rtd->fyn_default)
+		goto err_out;
+
+	fyp_i = fy_parser_create(&cfg_i);
+	if (!fyp_i)
+		goto err_out;
+
+	fydi = fy_document_iterator_create_on_node(rtd->fyn_default);
+	if (!fydi)
+		goto err_out;
+
+	rc = fy_parser_set_document_iterator(fyp_i, FYPEGF_GENERATE_ALL_EVENTS, fydi);
+	if (rc != 0)
+		goto err_out;
+
+	value = reflection_parse(fyp_i, rtd);
+	if (!value)
+		goto err_out;
+
+out:
+	fy_document_iterator_destroy(fydi);
+	fy_parser_destroy(fyp_i);
+	return value;
+
+err_out:
+	value = NULL;
+	goto out;
+}
+
 int
 reflection_setup_type_specialize(struct reflection_type_data *rtd,
 				 struct reflection_type_data *rtd_parent, void *parent_addr)
@@ -4719,6 +4907,10 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 	const struct fy_type_info *ti, *rfd_ti;
 	const char *str;
 	size_t i;
+
+	/* previously specialized? */
+	if (rtd->flags & RTDF_SPECIALIZED)
+		return 0;
 
 	ti = rtd->ti;
 
@@ -4747,10 +4939,15 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 		rfd_ref = NULL;
 		for (i = 0, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, rfd++) {
 
+			rfd->yaml_annotation = fy_field_info_get_yaml_annotation(rfd->fi);
+
 			/* field name */
 			rfd->field_name = fy_field_info_get_yaml_name(rfd->fi);
 			if (!rfd->field_name)
 				rfd->field_name = rfd->fi->name;
+
+			if (rfd->yaml_annotation)
+				rfd->fyn_default = fy_node_by_path(fy_document_root(rfd->yaml_annotation), "default", FY_NT, FYNWF_PTR_DEFAULT);
 
 			/* signess */
 			rfd->signess = reflection_type_data_signess(rfd->rtd);
@@ -4821,32 +5018,60 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 		break;
 	}
 
-	rtd->needs_cleanup = false;
+	rtd->flags = (rtd->flags & ~RTDF_PURITY_MASK) | RTDF_PURE;
 	for (i = 0, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, rfd++) {
 		reflection_setup_type_specialize(rfd->rtd, rtd, rfd);
-		rtd->needs_cleanup |= rfd->rtd->needs_cleanup;
+		rtd->flags |= (rfd->rtd->flags & RTDF_UNPURE);
 	}
 
 	if (rtd->rtd_dep) {
 		reflection_setup_type_specialize(rtd->rtd_dep, rtd, NULL);
-		rtd->needs_cleanup |= rtd->rtd_dep->needs_cleanup;
-	}
-
-	/* deps don't need cleanup, test this one */
-	if (!rtd->needs_cleanup) {
-		if (ti->kind == FYTK_PTR)
-			rtd->needs_cleanup = true;
-		else if (ti->kind == FYTK_STRUCT || ti->kind == FYTK_UNION)
-			;	/* nothing */
-		else {
-			ops = reflection_type_data_ops(rtd, rtd_parent, parent_addr);
-			rtd->needs_cleanup |= ops && ops->free;
+		rtd->flags |= (rtd->rtd_dep->flags & RTDF_UNPURE);
+		if (rtd->ti->kind == FYTK_PTR) {
+			rtd->flags |= RTDF_UNPURE;
+			/* pointer to pure data */
+			if ((rtd->rtd_dep->flags & RTDF_PURITY_MASK) == RTDF_PURE)
+				rtd->flags |= RTDF_PTR_PURE;
 		}
 	}
 
-	// fprintf(stderr, "%s: %s: needs_cleanup=%s\n", __func__, rtd->ti->fullname, rtd->needs_cleanup ? "true" : "false");
+	/* finaly if the type has a free method, then it's not pure */
+	ops = reflection_type_data_ops(rtd, rtd_parent, parent_addr);
+	if (ops && ops->free)
+		rtd->flags |= RTDF_UNPURE;
+
+	rtd->yaml_annotation = fy_type_info_get_yaml_annotation(ti);
+	if (rtd->yaml_annotation) {
+		rtd->flags |= RTDF_HAS_ANNOTATION;
+
+		rtd->fyn_default = fy_node_by_path(fy_document_root(rtd->yaml_annotation), "default", FY_NT, FYNWF_PTR_DEFAULT);
+		if (rtd->fyn_default) {
+			rtd->flags |= RTDF_HAS_DEFAULT_NODE;
+			/* generate default value if type is pure or a pointer to pure data */
+			if ((rtd->flags & RTDF_PURITY_MASK) == RTDF_PURE || (rtd->flags & RTDF_PTR_PURE)) {
+				rtd->default_value = reflection_setup_type_generate_default_value(rtd, rtd_parent, parent_addr);
+				if (!rtd->default_value) {
+					fprintf(stderr, "%s: %s: failed to generate default value\n", __func__, rtd->ti->fullname);
+					goto err_out;
+				}
+				rtd->flags |= RTDF_HAS_DEFAULT_VALUE;
+			}
+		}
+	}
+
+	rtd->flags |= RTDF_SPECIALIZED;
+
+	fprintf(stderr, "%s: %s: flags=%s%s%s%s%s%s\n", __func__, rtd->ti->fullname,
+			(rtd->flags & RTDF_UNPURE) ? " UNPURE" : "",
+			(rtd->flags & RTDF_PTR_PURE) ? " PTR_PURE" : "",
+			(rtd->flags & RTDF_SPECIALIZED) ? " SPECIALIZED" : "",
+			(rtd->flags & RTDF_HAS_ANNOTATION) ? " HAS_ANNOTATION" : "",
+			(rtd->flags & RTDF_HAS_DEFAULT_NODE) ? " HAS_DEFAULT_NODE" : "",
+			(rtd->flags & RTDF_HAS_DEFAULT_VALUE) ? " HAS_DEFAULT_VALUE" : "");
 
 	return 0;
+err_out:
+	return -1;
 }
 
 struct reflection_type_data *
@@ -4967,7 +5192,10 @@ reflection_type_data_free_internal(struct reflection_type_data *rtd, void *data,
 {
 	const struct reflection_type_ops *ops;
 
-	if (!rtd || !data || !free_cb || !rtd->needs_cleanup)
+	if (!rtd || !data || !free_cb)
+		return;
+
+	if (!reflection_type_data_needs_cleanup(rtd))
 		return;
 
 	ops = reflection_type_data_ops(rtd, rtd_parent, parent_addr);
@@ -5323,13 +5551,6 @@ reflection_parse_free(struct reflection_type_data *rtd, void *data)
 	reflection_type_data_free(rtd, data, free_cb, NULL);
 	(*free_cb)(NULL, data);
 }
-
-enum reflection_emit_flags {
-	REF_EMIT_SS = FY_BIT(0),
-	REF_EMIT_DS = FY_BIT(1),
-	REF_EMIT_DE = FY_BIT(2),
-	REF_EMIT_SE = FY_BIT(3),
-};
 
 int reflection_emit(struct fy_emitter *fye, struct reflection_type_data *rtd, const void *data,
 		    enum reflection_emit_flags flags)
@@ -5952,8 +6173,7 @@ int main(int argc, char *argv[])
 		if (!document_event_stream) {
 			/* regular test suite */
 			while ((fyev = fy_parser_parse(fyp)) != NULL) {
-				dump_testsuite_event(fyp, fyev, dcfg.colorize, iter,
-						     disable_flow_markers, tsv_format);
+				dump_testsuite_event(fyev, dcfg.colorize, disable_flow_markers, tsv_format);
 				fy_parser_event_free(fyp, fyev);
 			}
 		} else {
@@ -5967,8 +6187,7 @@ int main(int argc, char *argv[])
 				fprintf(stderr, "failed to create document iterator's stream start event\n");
 				goto cleanup;
 			}
-			dump_testsuite_event(fyp, fyev, dcfg.colorize, iter,
-					     disable_flow_markers, tsv_format);
+			dump_testsuite_event(fyev, dcfg.colorize, disable_flow_markers, tsv_format);
 			fy_document_iterator_event_free(fydi, fyev);
 
 			/* convert to document and then process the generator event stream it */
@@ -5979,13 +6198,11 @@ int main(int argc, char *argv[])
 					fprintf(stderr, "failed to create document iterator's document start event\n");
 					goto cleanup;
 				}
-				dump_testsuite_event(fyp, fyev, dcfg.colorize, iter,
-						     disable_flow_markers, tsv_format);
+				dump_testsuite_event(fyev, dcfg.colorize, disable_flow_markers, tsv_format);
 				fy_document_iterator_event_free(fydi, fyev);
 
 				while ((fyev = fy_document_iterator_body_next(fydi)) != NULL) {
-					dump_testsuite_event(fyp, fyev, dcfg.colorize, iter,
-							     disable_flow_markers, tsv_format);
+					dump_testsuite_event(fyev, dcfg.colorize, disable_flow_markers, tsv_format);
 					fy_document_iterator_event_free(fydi, fyev);
 				}
 
@@ -5994,8 +6211,7 @@ int main(int argc, char *argv[])
 					fprintf(stderr, "failed to create document iterator's stream document end\n");
 					goto cleanup;
 				}
-				dump_testsuite_event(fyp, fyev, dcfg.colorize, iter,
-						     disable_flow_markers, tsv_format);
+				dump_testsuite_event(fyev, dcfg.colorize, disable_flow_markers, tsv_format);
 				fy_document_iterator_event_free(fydi, fyev);
 
 				fy_parse_document_destroy(fyp, fyd);
@@ -6009,8 +6225,7 @@ int main(int argc, char *argv[])
 				fprintf(stderr, "failed to create document iterator's stream end event\n");
 				goto cleanup;
 			}
-			dump_testsuite_event(fyp, fyev, dcfg.colorize, iter,
-					     disable_flow_markers, tsv_format);
+			dump_testsuite_event(fyev, dcfg.colorize, disable_flow_markers, tsv_format);
 			fy_document_iterator_event_free(fydi, fyev);
 
 			fy_document_iterator_destroy(fydi);
