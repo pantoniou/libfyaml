@@ -2086,9 +2086,6 @@ struct reflection_object {
 struct reflection_field_data {
 	struct reflection_type_data *rtd;
 	const struct fy_field_info *fi;
-	struct fy_document *yaml_annotation;
-	struct fy_node *fyn_default;
-	void *default_value;
 	const char *field_name;
 	int signess;		/* -1 signed, 1 unsigned, 0 not relevant */
 	bool omit_if_null;
@@ -2133,8 +2130,6 @@ struct reflection_type_data {
 	const struct fy_type_info *ti;
 	const struct reflection_type_ops *ops;
 	enum reflection_type_data_flags flags;			/* flags of the type */
-	bool marker;
-	void *xdata;						/* extra data when mutated */
 	struct reflection_field_data *rfd_flatten;		/* if struct and flattened */
 	struct fy_document *yaml_annotation;			/* the yaml annotation */
 	struct fy_node *fyn_default;
@@ -3371,27 +3366,32 @@ static int struct_fill_in_default_field(struct reflection_object *ro, struct fy_
 	void *field_data;
 	int rc = -1;
 
-	fyp_i = fy_parser_create(&cfg_i);
-	if (!fyp_i)
-		goto err_out;
+	assert(rfd->rtd->fyn_default);
 
-	fydi = fy_document_iterator_create_on_node(rfd->fyn_default);
-	if (!fydi)
-		goto err_out;
+	if (!rfd->rtd->default_value) {
+		fyp_i = fy_parser_create(&cfg_i);
+		if (!fyp_i)
+			goto err_out;
 
-	rc = fy_parser_set_document_iterator(fyp_i, FYPEGF_GENERATE_ALL_EVENTS, fydi);
-	if (rc)
-		goto err_out;
+		fydi = fy_document_iterator_create_on_node(rfd->rtd->fyn_default);
+		if (!fydi)
+			goto err_out;
 
-	parsed_default_value = reflection_parse(fyp_i, rfd->rtd);
-	if (!parsed_default_value)
-		goto err_out;
-	default_value = parsed_default_value;
+		rc = fy_parser_set_document_iterator(fyp_i, FYPEGF_GENERATE_ALL_EVENTS, fydi);
+		if (rc)
+			goto err_out;
 
-	fy_document_iterator_destroy(fydi);
-	fydi = NULL;
-	fy_parser_destroy(fyp_i);
-	fyp_i = NULL;
+		parsed_default_value = reflection_parse(fyp_i, rfd->rtd);
+		if (!parsed_default_value)
+			goto err_out;
+		default_value = parsed_default_value;
+
+		fy_document_iterator_destroy(fydi);
+		fydi = NULL;
+		fy_parser_destroy(fyp_i);
+		fyp_i = NULL;
+	} else
+		default_value = rfd->rtd->default_value;
 
 	/* non-bitfields store directly */
 	if (!(rfd->fi->flags & FYFIF_BITFIELD)) {
@@ -3464,7 +3464,7 @@ static int struct_finish(struct reflection_object *ro, struct fy_parser *fyp, st
 	for (i = 0, rfd = &rtd->fields[0], fid = id->fid; i < rtd->fields_count; i++, rfd++, fid++) {
 
 		/* fill-in-default */
-		if (!fid->present && rfd->fyn_default) {
+		if (!fid->present && rfd->rtd->fyn_default) {
 			rc = struct_fill_in_default_field(ro, fyp, fye, path, rfd);
 			if (rc)
 				goto err_out;
@@ -4778,9 +4778,6 @@ void reflection_type_data_destroy(struct reflection_type_data *rtd)
 	if (!rtd)
 		return;
 
-	if (rtd->xdata)
-		free(rtd->xdata);
-
 	if (rtd->default_value)
 		reflection_parse_free(rtd, rtd->default_value);
 
@@ -4939,15 +4936,10 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 		rfd_ref = NULL;
 		for (i = 0, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, rfd++) {
 
-			rfd->yaml_annotation = fy_field_info_get_yaml_annotation(rfd->fi);
-
 			/* field name */
 			rfd->field_name = fy_field_info_get_yaml_name(rfd->fi);
 			if (!rfd->field_name)
 				rfd->field_name = rfd->fi->name;
-
-			if (rfd->yaml_annotation)
-				rfd->fyn_default = fy_node_by_path(fy_document_root(rfd->yaml_annotation), "default", FY_NT, FYNWF_PTR_DEFAULT);
 
 			/* signess */
 			rfd->signess = reflection_type_data_signess(rfd->rtd);
@@ -5036,9 +5028,11 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 	}
 
 	/* finaly if the type has a free method, then it's not pure */
-	ops = reflection_type_data_ops(rtd, rtd_parent, parent_addr);
-	if (ops && ops->free)
-		rtd->flags |= RTDF_UNPURE;
+	if (rtd->ti->kind != FYTK_STRUCT && rtd->ti->kind != FYTK_UNION) {
+		ops = reflection_type_data_ops(rtd, rtd_parent, parent_addr);
+		if (ops && ops->free)
+			rtd->flags |= RTDF_UNPURE;
+	}
 
 	rtd->yaml_annotation = fy_type_info_get_yaml_annotation(ti);
 	if (rtd->yaml_annotation) {
@@ -5048,7 +5042,7 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 		if (rtd->fyn_default) {
 			rtd->flags |= RTDF_HAS_DEFAULT_NODE;
 			/* generate default value if type is pure or a pointer to pure data */
-			if ((rtd->flags & RTDF_PURITY_MASK) == RTDF_PURE || (rtd->flags & RTDF_PTR_PURE)) {
+			if ((rtd->flags & RTDF_PURITY_MASK) == RTDF_PURE /* || (rtd->flags & RTDF_PTR_PURE) */ ) {
 				rtd->default_value = reflection_setup_type_generate_default_value(rtd, rtd_parent, parent_addr);
 				if (!rtd->default_value) {
 					fprintf(stderr, "%s: %s: failed to generate default value\n", __func__, rtd->ti->fullname);
@@ -5114,8 +5108,6 @@ reflection_setup_type(struct reflection_type_system *rts, struct reflection_type
 	}
 	rts->rtds[rts->rtd_count++] = rtd;
 
-	rtd->marker = true;
-
 	/* retreive the dependent type */
 	if (ti->dependent_type) {
 		rtd->rtd_dep = reflection_setup_type_resolve(rts, rtd, NULL, ti->dependent_type);
@@ -5130,8 +5122,6 @@ reflection_setup_type(struct reflection_type_system *rts, struct reflection_type
 		rfd->rtd = reflection_setup_type_resolve(rts, rtd, tfi, tfi->type_info);
 		assert(rfd->rtd);
 	}
-
-	rtd->marker = false;
 
 	return rtd;
 

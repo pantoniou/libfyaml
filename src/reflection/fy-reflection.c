@@ -2131,8 +2131,13 @@ void fy_type_dump(struct fy_type *ft, bool no_location)
 {
 	const struct fy_source_location *source_location;
 	const char *type_name;
+	const char *comment;
 	struct fy_type *ftd;
 	char *ntn1, *ntn2;
+
+	comment = fy_type_get_yaml_comment(ft);
+	if (comment)
+		printf("\t  // yaml: %s\n", comment);
 
 	printf("\t%c T#%d", ft->marker ? '*' : ' ', ft->id);
 	type_name = fy_type_kind_info_get_internal(ft->type_kind)->name;
