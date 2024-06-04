@@ -3368,6 +3368,14 @@ static int struct_fill_in_default_field(struct reflection_object *ro, struct fy_
 
 	assert(rfd->rtd->fyn_default);
 
+	/* non-bitfields store directly */
+	if (!(rfd->fi->flags & FYFIF_BITFIELD)) {
+		field_data = ro->data + rfd->fi->offset;
+	} else {
+		bitfield_data = 0;
+		field_data = &bitfield_data;
+	}
+
 	if (!rfd->rtd->default_value) {
 		fyp_i = fy_parser_create(&cfg_i);
 		if (!fyp_i)
@@ -3390,18 +3398,9 @@ static int struct_fill_in_default_field(struct reflection_object *ro, struct fy_
 		fydi = NULL;
 		fy_parser_destroy(fyp_i);
 		fyp_i = NULL;
-	} else
-		default_value = rfd->rtd->default_value;
-
-	/* non-bitfields store directly */
-	if (!(rfd->fi->flags & FYFIF_BITFIELD)) {
-		field_data = ro->data + rfd->fi->offset;
 	} else {
-		bitfield_data = 0;
-		field_data = &bitfield_data;
+		default_value = rfd->rtd->default_value;
 	}
-
-	assert(!(rfd->fi->flags & FYFIF_BITFIELD));
 
 	/* and copy it out */
 
@@ -3430,7 +3429,7 @@ static int struct_fill_in_default_field(struct reflection_object *ro, struct fy_
 
 out:
 	if (parsed_default_value)
-		free(parsed_default_value);	/* XXX */
+		free(parsed_default_value);
 
 	fy_document_iterator_destroy(fydi);
 	fy_parser_destroy(fyp_i);
@@ -4779,7 +4778,7 @@ void reflection_type_data_destroy(struct reflection_type_data *rtd)
 		return;
 
 	if (rtd->default_value)
-		reflection_parse_free(rtd, rtd->default_value);
+		free(rtd->default_value);
 
 	free(rtd);
 }
@@ -5512,7 +5511,7 @@ reflection_parse(struct fy_parser *fyp, struct reflection_type_data *rtd)
 
 	/* got document? if not return NULL */
 	if (!rd->document_ready) {
-		(*rd->free_cb)(rd, data);
+		free(data);
 		data = NULL;
 	}
 
@@ -5522,7 +5521,7 @@ reflection_parse(struct fy_parser *fyp, struct reflection_type_data *rtd)
 
 err_out:
 	if (data)
-		(*rd->free_cb)(rd, data);
+		free(data);
 	if (rd)
 		reflection_decoder_destroy(rd);
 	return NULL;
@@ -6751,7 +6750,8 @@ int main(int argc, char *argv[])
 				}
 				emitted_ss = true;
 
-				reflection_parse_free(rts->rtd_root, rd_data);
+				reflection_type_data_free(rts->rtd_root, rd_data, reflection_decoder_default_free, NULL);
+				free(rd_data);
 				rd_data = NULL;
 			}
 
@@ -6784,8 +6784,10 @@ int main(int argc, char *argv[])
 	exitcode = EXIT_SUCCESS;
 
 cleanup:
-	if (rd_data)
-		reflection_parse_free(rts->rtd_root, rd_data);
+	if (rd_data) {
+		reflection_type_data_free(rts->rtd_root, rd_data, reflection_decoder_default_free, NULL);
+		free(rd_data);
+	}
 
 	if (rts)
 		reflection_type_system_destroy(rts);
