@@ -2183,6 +2183,8 @@ struct reflection_decoder {
 
 void *
 reflection_parse(struct fy_parser *fyp, struct reflection_type_data *rtd);
+int
+reflection_parse_into(struct fy_parser *fyp, struct reflection_type_data *rtd, void *data);
 void
 reflection_parse_free(struct reflection_type_data *rtd, void *data);
 
@@ -5199,6 +5201,15 @@ void reflection_type_data_free(struct reflection_type_data *rtd, void *data, ref
 	reflection_type_data_free_internal(rtd, data, free_cb, user, NULL, NULL);
 }
 
+void *
+reflection_type_data_alloc(struct reflection_type_data *rtd, reflection_allocf alloc_cb, void *user)
+{
+	if (!rtd || !alloc_cb)
+		return NULL;
+
+	return alloc_cb(user, rtd->ti->size);
+}
+
 void
 reflection_decoder_destroy(struct reflection_decoder *rd)
 {
@@ -5499,10 +5510,9 @@ reflection_parse(struct fy_parser *fyp, struct reflection_type_data *rtd)
 		goto err_out;
 	}
 
-	data = (*rd->alloc_cb)(NULL, rtd->ti->size);
+	data = malloc(rtd->ti->size);
 	if (!data)
 		goto err_out;
-
 
 	memset(data, 0, rtd->ti->size);
 	rc = reflection_decoder_parse(rd, fyp, rtd, data, rtd->ti->size);
@@ -5527,6 +5537,36 @@ err_out:
 	return NULL;
 }
 
+int
+reflection_parse_into(struct fy_parser *fyp, struct reflection_type_data *rtd, void *data)
+{
+	struct reflection_decoder *rd = NULL;
+	int rc;
+
+	if (!fyp || !rtd || !data)
+		goto err_out;
+
+	rd = reflection_decoder_create(false);
+	if (!rd)
+		goto err_out;
+
+	memset(data, 0, rtd->ti->size);
+	rc = reflection_decoder_parse(rd, fyp, rtd, data, rtd->ti->size);
+	if (rc)
+		goto err_out;
+
+	/* if document ready return 0, if not return 1 (end) */
+	rc = rd->document_ready ? 0 : 1;
+
+out:
+	reflection_decoder_destroy(rd);
+	return rc;
+
+err_out:
+	rc = -1;
+	goto out;
+}
+
 void
 reflection_parse_free(struct reflection_type_data *rtd, void *data)
 {
@@ -5536,9 +5576,7 @@ reflection_parse_free(struct reflection_type_data *rtd, void *data)
 		return;
 
 	free_cb = reflection_decoder_default_free;
-
 	reflection_type_data_free(rtd, data, free_cb, NULL);
-	(*free_cb)(NULL, data);
 }
 
 int reflection_emit(struct fy_emitter *fye, struct reflection_type_data *rtd, const void *data,
@@ -6738,25 +6776,31 @@ int main(int argc, char *argv[])
 				goto cleanup;
 			}
 
+			rd_data = malloc(rts->rtd_root->ti->size);
+			if (!rd_data) {
+				fprintf(stderr, "malloc() failed!\n");
+				goto cleanup;
+			}
+
 			emitted_ss = false;
 
-			while ((rd_data = reflection_parse(fyp, rts->rtd_root)) != NULL) {
+			while ((rc = reflection_parse_into(fyp, rts->rtd_root, rd_data)) == 0) {
 
 				rc = reflection_emit(fye, rts->rtd_root, rd_data,
 						     REF_EMIT_DS | REF_EMIT_DE | (!emitted_ss ? REF_EMIT_SS : 0));
+
+				/* free always the contents */
+				reflection_parse_free(rts->rtd_root, rd_data);
+
 				if (rc) {
 					fprintf(stderr, "reflection_emit() failed\n");
 					goto cleanup;
 				}
 				emitted_ss = true;
-
-				reflection_type_data_free(rts->rtd_root, rd_data, reflection_decoder_default_free, NULL);
-				free(rd_data);
-				rd_data = NULL;
 			}
 
-			if (!emitted_ss) {
-				fprintf(stderr, "unable to reflection_parse()\n");
+			if (rc < 0) {
+				fprintf(stderr, "reflection_parse_into() failed\n");
 				goto cleanup;
 			}
 
@@ -6784,10 +6828,8 @@ int main(int argc, char *argv[])
 	exitcode = EXIT_SUCCESS;
 
 cleanup:
-	if (rd_data) {
-		reflection_type_data_free(rts->rtd_root, rd_data, reflection_decoder_default_free, NULL);
+	if (rd_data)
 		free(rd_data);
-	}
 
 	if (rts)
 		reflection_type_system_destroy(rts);
