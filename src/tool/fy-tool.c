@@ -3362,8 +3362,6 @@ static int struct_fill_in_default_field(struct reflection_object *ro, struct fy_
 	static const struct fy_parse_cfg cfg_i = { .search_path = "", .flags = 0, };
 	struct fy_parser *fyp_i = NULL;
 	struct fy_document_iterator *fydi = NULL;
-	void *parsed_default_value = NULL;
-	void *default_value;
 	uintmax_t bitfield_data, limit;
 	void *field_data;
 	int rc = -1;
@@ -3379,6 +3377,7 @@ static int struct_fill_in_default_field(struct reflection_object *ro, struct fy_
 	}
 
 	if (!rfd->rtd->default_value) {
+		/* no canned default available, must created each time */
 		fyp_i = fy_parser_create(&cfg_i);
 		if (!fyp_i)
 			goto err_out;
@@ -3391,24 +3390,21 @@ static int struct_fill_in_default_field(struct reflection_object *ro, struct fy_
 		if (rc)
 			goto err_out;
 
-		parsed_default_value = reflection_parse(fyp_i, rfd->rtd);
-		if (!parsed_default_value)
+		rc = reflection_parse_into(fyp_i, rfd->rtd, field_data);
+		if (rc)
 			goto err_out;
-		default_value = parsed_default_value;
 
 		fy_document_iterator_destroy(fydi);
 		fydi = NULL;
 		fy_parser_destroy(fyp_i);
 		fyp_i = NULL;
 	} else {
-		default_value = rfd->rtd->default_value;
+		/* copy from the already prepared default data area */
+		memcpy(field_data, rfd->rtd->default_value, rfd->rtd->ti->size);
 	}
 
-	/* and copy it out */
-
-	if (!(rfd->fi->flags & FYFIF_BITFIELD)) {
-		memcpy(field_data, default_value, rfd->fi->type_info->size);
-	} else {
+	/* and copy it out if it's a bitfield */
+	if (rfd->fi->flags & FYFIF_BITFIELD) {
 		assert(rfd->signess != 0);
 		rc = store_check(rfd->fi->bit_width, bitfield_data, rfd->signess < 0, &limit);
 		if (rc) {
@@ -3430,8 +3426,6 @@ static int struct_fill_in_default_field(struct reflection_object *ro, struct fy_
 	rc = 0;
 
 out:
-	if (parsed_default_value)
-		free(parsed_default_value);
 
 	fy_document_iterator_destroy(fydi);
 	fy_parser_destroy(fyp_i);
