@@ -2061,6 +2061,7 @@ err_out:
 	return ret;
 }
 
+struct reflection_object;
 struct reflection_type_system;
 struct reflection_type_data;
 struct reflection_field_data;
@@ -2071,6 +2072,27 @@ struct reflection_type_ops;
 typedef void *(*reflection_allocf)(void *user, size_t size);
 typedef void *(*reflection_reallocf)(void *user, void *ptr, size_t size);
 typedef void (*reflection_freef)(void *user, void *ptr);
+
+struct reflection_type_ops {
+	/* reflection object ops */
+	int (*setup)(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
+	void (*cleanup)(struct reflection_object *ro);
+	int (*finish)(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
+	struct reflection_object *(*create_child)(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
+
+	/* emitter */
+	int (*emit)(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size,
+		    struct reflection_type_data *rtd_parent, void *parent_addr);
+
+	/* free */
+	void (*free)(struct reflection_type_data *rtd, void *data, reflection_freef free_cb, void *user,
+		     struct reflection_type_data *rtd_parent, void *parent_addr);
+};
+
+struct reflection_type {
+	const char *name;
+	const struct reflection_type_ops ops;
+};
 
 struct reflection_object {
 	struct reflection_decoder *rd;
@@ -2098,38 +2120,33 @@ struct reflection_field_data {
 	const struct reflection_type_ops *ops;
 };
 
-struct reflection_type_ops {
-	/* reflection object ops */
-	int (*setup)(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
-	void (*cleanup)(struct reflection_object *ro);
-	int (*finish)(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
-	struct reflection_object *(*create_child)(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
-
-	/* emitter */
-	int (*emit)(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size,
-		    struct reflection_type_data *rtd_parent, void *parent_addr);
-
-	/* free */
-	void (*free)(struct reflection_type_data *rtd, void *data, reflection_freef free_cb, void *user,
-		     struct reflection_type_data *rtd_parent, void *parent_addr);
-};
-
 enum reflection_type_data_flags {
 	RTDF_PURE		= 0,		/* does not need cleanup (pure data)	*/
 	RTDF_UNPURE		= FY_BIT(0),	/* needs cleanup			*/
 	RTDF_PTR_PURE		= FY_BIT(1),	/* is pointer, but pointer to pure data */
-	RTDF_PURITY_MASK	= (RTDF_UNPURE | RTDF_PTR_PURE),
 	RTDF_SPECIALIZED	= FY_BIT(2),	/* type was specialized before		*/
 	RTDF_HAS_ANNOTATION	= FY_BIT(3),	/* type has a yaml annotation		*/
 	RTDF_HAS_DEFAULT_NODE	= FY_BIT(4),	/* type has a default node		*/
 	RTDF_HAS_DEFAULT_VALUE	= FY_BIT(5),	/* type has default parsed data		*/
+	RTDF_MUTATED		= FY_BIT(6),	/* type was mutated			*/
+	RTDF_MUTATED_OPS	= FY_BIT(7),	/* type was mutated (ops change)	*/
+	RTDF_MUTATED_PARENT	= FY_BIT(8),	/* type was mutated (parent)		*/
+	RTDF_MUTATED_PARENT_ADDR= FY_BIT(9),	/* type was mutated (parent addr)	*/
+
+	RTDF_PURITY_MASK	= (RTDF_UNPURE | RTDF_PTR_PURE),
 };
 
 struct reflection_type_data {
+	int idx;
 	struct reflection_type_system *rts;
 	const struct fy_type_info *ti;
+	struct reflection_type_data *rtd_source;		/* XXX */
+	struct reflection_type_data *rtd_parent;		/* XXX */
+	void *parent_addr;					/* XXX */
+	const char *mutation_name;				/* XXX */
 	const struct reflection_type_ops *ops;
 	enum reflection_type_data_flags flags;			/* flags of the type */
+	const char *flatten_field;				/* on struct and flatten */
 	struct reflection_field_data *rfd_flatten;		/* if struct and flattened */
 	struct fy_document *yaml_annotation;			/* the yaml annotation */
 	struct fy_node *fyn_default;
@@ -2148,7 +2165,6 @@ reflection_type_data_needs_cleanup(struct reflection_type_data *rtd)
 struct reflection_type_system {
 	struct fy_reflection *rfl;	/* back pointer */
 	struct reflection_type_data *rtd_root;
-	size_t rtd_base_count;
 	size_t rtd_count;
 	size_t rtd_alloc;
 	struct reflection_type_data **rtds;
@@ -3941,6 +3957,8 @@ static int ptr_setup(struct reflection_object *ro, struct fy_parser *fyp, struct
 	void *data, *p;
 	size_t data_size, len;
 
+	fprintf(stderr, "%s:\n", __func__);
+
 	assert(ro->rtd->ti->kind == FYTK_PTR);
 
 	rtd_dep = ro->rtd->rtd_dep;
@@ -4199,7 +4217,6 @@ void typedef_free(struct reflection_type_data *rtd, void *data, reflection_freef
 	}
 }
 
-
 struct dyn_array_instance_data {
 	size_t count;
 	size_t alloc;
@@ -4209,6 +4226,7 @@ static int dyn_array_setup(struct reflection_object *ro, struct fy_parser *fyp, 
 {
 	struct dyn_array_instance_data *id;
 
+	fprintf(stderr, "%s:\n", __func__);
 	if (fye->type != FYET_SEQUENCE_START) {
 		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
 				"Illegal event type (expecting sequence start)");
@@ -4443,6 +4461,17 @@ static const struct reflection_type_ops dyn_array_ops = {
 	.emit = dyn_array_emit,
 	.free = dyn_array_free,
 };
+
+#if 0
+static const struct reflection_type_ops dyn_array_ops_2 = {
+	.setup = dyn_array_setup_2,
+	.cleanup = dyn_array_cleanup,
+	.finish = dyn_array_finish,
+	.create_child = dyn_array_create_child,
+	.emit = dyn_array_emit,
+	.free = dyn_array_free,
+};
+#endif
 
 static const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
 	[FYTK_INVALID] = {
@@ -4795,13 +4824,48 @@ void reflection_type_system_destroy(struct reflection_type_system *rts)
 	free(rts);
 }
 
+void reflection_type_system_dump(struct reflection_type_system *rts)
+{
+	const struct reflection_type_data *rtd;
+	const struct reflection_field_data *rfd;
+	size_t i, j;
+
+	printf("reflection_type_system_dump: root=#%d:'%s'\n", rts->rtd_root->idx, rts->rtd_root->ti->fullname);
+	for (i = 0; i < rts->rtd_count; i++) {
+		rtd = rts->rtds[i];
+
+		printf("#%d:'%s' %s%s%s%s%s%s%s%s%s%s", rtd->idx, rtd->ti->fullname,
+				(rtd->flags & RTDF_UNPURE) ? " UNPURE" : "",
+				(rtd->flags & RTDF_PTR_PURE) ? " PTR_PURE" : "",
+				(rtd->flags & RTDF_SPECIALIZED) ? " SPECIALIZED" : "",
+				(rtd->flags & RTDF_HAS_ANNOTATION) ? " HAS_ANNOTATION" : "",
+				(rtd->flags & RTDF_HAS_DEFAULT_NODE) ? " HAS_DEFAULT_NODE" : "",
+				(rtd->flags & RTDF_HAS_DEFAULT_VALUE) ? " HAS_DEFAULT_VALUE" : "",
+				(rtd->flags & RTDF_MUTATED) ? " MUTATED" : "",
+				(rtd->flags & RTDF_MUTATED_OPS) ? " MUTATED_OPS" : "",
+				(rtd->flags & RTDF_MUTATED_PARENT) ? " MUTATED_PARENT" : "",
+				(rtd->flags & RTDF_MUTATED_PARENT_ADDR) ? " MUTATED_PARENT_ADDR" : "");
+		if (rtd->flags & RTDF_MUTATED)
+			printf(" MUT='%s'", rtd->mutation_name);
+		if (rtd->rtd_dep)
+			printf(" dep: #%d:'%s", rtd->rtd_dep->idx, rtd->rtd_dep->ti->fullname);
+		printf("\n");
+		for (j = 0, rfd = rtd->fields; j < rtd->fields_count; j++, rfd++) {
+			printf("\t#%d:'%s' %s (%s)", rfd->rtd->idx, rfd->rtd->ti->fullname, rfd->fi->name, rfd->field_name);
+			printf("\n");
+		}
+	}
+}
+
 struct reflection_type_data *
-reflection_setup_type(struct reflection_type_system *rts, struct reflection_type_data *rtd_parent,
-		      const struct fy_field_info *fi, const struct fy_type_info *ti);
+reflection_setup_type(struct reflection_type_system *rts,
+		      const struct fy_type_info *ti,
+		      const struct reflection_type_ops *ops);
 
 struct reflection_type_data *
 reflection_setup_type_lookup(struct reflection_type_system *rts, struct reflection_type_data *rtd_parent,
-			     const struct fy_field_info *fi, const struct fy_type_info *ti)
+			     const struct fy_field_info *fi, const struct fy_type_info *ti,
+			     const struct reflection_type_ops *ops)
 {
 	struct reflection_type_data *rtd;
 	size_t i;
@@ -4838,16 +4902,21 @@ reflection_setup_type_lookup(struct reflection_type_system *rts, struct reflecti
 
 struct reflection_type_data *
 reflection_setup_type_resolve(struct reflection_type_system *rts, struct reflection_type_data *rtd_parent,
-			      const struct fy_field_info *fi, const struct fy_type_info *ti)
+			      const struct fy_field_info *fi, const struct fy_type_info *ti,
+			      const struct reflection_type_ops *ops)
 {
 	struct reflection_type_data *rtd;
 
 	/* exact match? */
-	rtd = reflection_setup_type_lookup(rts, rtd_parent, fi, ti);
+	rtd = reflection_setup_type_lookup(rts, rtd_parent, fi, ti, ops);
 	if (rtd)
 		return rtd;
 
-	return reflection_setup_type(rts, rtd_parent, fi, ti);
+	rtd = reflection_setup_type(rts, ti, ops);
+	if (!rtd)
+		return NULL;
+
+	return rtd;
 }
 
 void *
@@ -4890,26 +4959,97 @@ err_out:
 	goto out;
 }
 
+struct reflection_type_data *
+reflection_type_data_mutate(struct reflection_type_data *rtd_source,
+			    struct reflection_type_data *rtd_parent, void *parent_addr,
+			    const struct reflection_type_ops *ops, 
+			    const char *flatten_field,
+			    const char *mutation_name)
+{
+	struct reflection_type_system *rts; 
+	struct reflection_type_data *rtd;
+	size_t i;
+
+	if (!rtd_source || !mutation_name)
+		return NULL;
+
+	rts = rtd_source->rts;
+	assert(rts);
+
+	/* first lookup if an already mutated type with the same characteristics exist */
+	for (i = 0; i < rts->rtd_count; i++) {
+		rtd = rts->rtds[i];
+
+		/* skip source and all types with different source */
+		if (rtd == rtd_source || rtd->rtd_source != rtd_source)
+			continue;
+
+		/* hit? */
+		if ((!ops || ops == rtd->ops) &&
+		    (!rtd_parent || rtd->rtd_parent == rtd_parent) &&
+		    (!parent_addr || rtd->parent_addr == parent_addr) &&
+		    (flatten_field == rtd->flatten_field || !strcmp(flatten_field, rtd->flatten_field)) &&
+		    (mutation_name == rtd->mutation_name || !strcmp(mutation_name, rtd->mutation_name))) {
+			fprintf(stderr, "lookup MUT! (#%d)\n", rtd->idx);
+			return rtd;
+		}
+	}
+
+	fprintf(stderr, "new MUT! (from #%d)\n", rtd_source->idx);
+
+	/* no hit, must mutate now */
+	rtd = reflection_setup_type(rts, rtd_source->ti, ops);
+	assert(rtd);
+
+	rtd->rtd_source = rtd_source;
+	rtd->rtd_parent = rtd_parent;
+	rtd->parent_addr = parent_addr;
+	rtd->flatten_field = flatten_field;
+
+	rtd->mutation_name = mutation_name;
+
+	/* update flags for mutation */
+	rtd->flags |= RTDF_MUTATED;
+	if (ops != rtd_source->ops)
+		rtd->flags |= RTDF_MUTATED_OPS;
+	if (rtd_parent != rtd_source->rtd_parent)
+		rtd->flags |= RTDF_MUTATED_PARENT | RTDF_MUTATED_PARENT_ADDR;
+	if (parent_addr != rtd_source->parent_addr)
+		rtd->flags |= RTDF_MUTATED_PARENT_ADDR;
+
+	return rtd;
+}
+
 int
-reflection_setup_type_specialize(struct reflection_type_data *rtd,
+reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 				 struct reflection_type_data *rtd_parent, void *parent_addr)
 {
+	struct reflection_type_data *rtd, *rtd_mut;
 	struct reflection_field_data *rfd, *rfd_ref;
 	const struct reflection_type_ops *ops;
-	const struct fy_type_info *ti, *rfd_ti;
+	const struct fy_type_info *rfd_ti;
 	const char *str;
 	size_t i;
+
+	rtd = *rtdp;
 
 	/* previously specialized? */
 	if (rtd->flags & RTDF_SPECIALIZED)
 		return 0;
 
-	ti = rtd->ti;
-
-	switch (ti->kind) {
+	switch (rtd->ti->kind) {
 	case FYTK_PTR:
-		if (rtd->ti->dependent_type->kind == FYTK_CHAR) {
-			rtd->ops = &ptr_char_ops;
+		if (rtd->ti->dependent_type->kind == FYTK_CHAR && (rtd->flags & RTDF_MUTATED) == 0) {
+
+			/* this does not need a parent */
+			rtd_mut = reflection_type_data_mutate(rtd,
+					NULL, NULL, &ptr_char_ops, NULL, "ptr_char");
+			assert(rtd_mut);
+
+			*rtdp = rtd_mut;
+			rtd = rtd_mut;
+
+			fprintf(stderr, "char *MUT!\n");
 		}
 		break;
 
@@ -4924,8 +5064,9 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 			rfd_flatten = reflection_type_data_lookup_field(rtd, str);
 			assert(rfd_flatten);
 
-			rtd->rfd_flatten = rfd_flatten;
+			rtd->flatten_field = str;
 
+			rtd->rfd_flatten = rfd_flatten;
 		}
 
 		rfd_ref = NULL;
@@ -4985,8 +5126,11 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 
 					rfd_ref->omit_on_emit = true;
 
+#if 1
 					rfd->ops = &dyn_array_ops;
-
+#else
+					rfd->rtd->ops = &dyn_array_ops;
+#endif
 					rfd_ref = NULL;
 				}
 				break;
@@ -5007,12 +5151,12 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 
 	rtd->flags = (rtd->flags & ~RTDF_PURITY_MASK) | RTDF_PURE;
 	for (i = 0, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, rfd++) {
-		reflection_setup_type_specialize(rfd->rtd, rtd, rfd);
+		reflection_setup_type_specialize(&rfd->rtd, rtd, rfd);
 		rtd->flags |= (rfd->rtd->flags & RTDF_UNPURE);
 	}
 
 	if (rtd->rtd_dep) {
-		reflection_setup_type_specialize(rtd->rtd_dep, rtd, NULL);
+		reflection_setup_type_specialize(&rtd->rtd_dep, rtd, NULL);
 		rtd->flags |= (rtd->rtd_dep->flags & RTDF_UNPURE);
 		if (rtd->ti->kind == FYTK_PTR) {
 			rtd->flags |= RTDF_UNPURE;
@@ -5029,7 +5173,7 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 			rtd->flags |= RTDF_UNPURE;
 	}
 
-	rtd->yaml_annotation = fy_type_info_get_yaml_annotation(ti);
+	rtd->yaml_annotation = fy_type_info_get_yaml_annotation(rtd->ti);
 	if (rtd->yaml_annotation) {
 		rtd->flags |= RTDF_HAS_ANNOTATION;
 
@@ -5050,32 +5194,51 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 
 	rtd->flags |= RTDF_SPECIALIZED;
 
-	fprintf(stderr, "%s: %s: flags=%s%s%s%s%s%s\n", __func__, rtd->ti->fullname,
-			(rtd->flags & RTDF_UNPURE) ? " UNPURE" : "",
-			(rtd->flags & RTDF_PTR_PURE) ? " PTR_PURE" : "",
-			(rtd->flags & RTDF_SPECIALIZED) ? " SPECIALIZED" : "",
-			(rtd->flags & RTDF_HAS_ANNOTATION) ? " HAS_ANNOTATION" : "",
-			(rtd->flags & RTDF_HAS_DEFAULT_NODE) ? " HAS_DEFAULT_NODE" : "",
-			(rtd->flags & RTDF_HAS_DEFAULT_VALUE) ? " HAS_DEFAULT_VALUE" : "");
-
 	return 0;
 err_out:
 	return -1;
 }
 
+static int
+reflection_type_data_add(struct reflection_type_system *rts, struct reflection_type_data *rtd)
+{
+	size_t new_alloc;
+	struct reflection_type_data **new_rtds;
+
+	/* add */
+	if (rts->rtd_count >= rts->rtd_alloc) {
+		new_alloc = rts->rtd_alloc * 2;
+		if (!new_alloc)
+			new_alloc = 16;
+		if (new_alloc >= INT_MAX)
+			return -1;
+		new_rtds = realloc(rts->rtds, sizeof(*rts->rtds) * new_alloc);
+		if (!new_rtds)
+			return -1;
+		rts->rtds = new_rtds;
+		rts->rtd_alloc = new_alloc;
+	}
+	rtd->idx = (int)rts->rtd_count++;
+	assert(rtd->idx >= 0);
+	rts->rtds[rtd->idx] = rtd;
+	return 0;
+}
+
 struct reflection_type_data *
-reflection_setup_type(struct reflection_type_system *rts, struct reflection_type_data *rtd_parent,
-		      const struct fy_field_info *fi, const struct fy_type_info *ti)
+reflection_setup_type(struct reflection_type_system *rts,
+		      const struct fy_type_info *ti,
+		      const struct reflection_type_ops *ops)
 {
 	struct reflection_type_data *rtd = NULL;
 	struct reflection_field_data *rfd;
 	const struct fy_field_info *tfi;
-	size_t new_alloc;
-	struct reflection_type_data **new_rtds;
 	size_t i, size;
+	int rc;
 
 	// fprintf(stderr, "%s: ti->fullname='%s'\n", __func__, ti->fullname);
 
+	if (!ops)
+		ops = &reflection_ops_table[ti->kind];
 	size = sizeof(*rtd);
 	if (fy_type_kind_has_fields(ti->kind))
 		size += ti->count * sizeof(rtd->fields[0]);
@@ -5085,28 +5248,15 @@ reflection_setup_type(struct reflection_type_system *rts, struct reflection_type
 		goto err_out;
 
 	memset(rtd, 0, size);
+	rtd->idx = -1;
 	rtd->rts = rts;
 	rtd->ti = ti;
-
-	rtd->ops = &reflection_ops_table[ti->kind];
-
-	/* add */
-	if (rts->rtd_count >= rts->rtd_alloc) {
-		new_alloc = rts->rtd_alloc * 2;
-		if (!new_alloc)
-			new_alloc = 16;
-		new_rtds = realloc(rts->rtds, sizeof(*rts->rtds) * new_alloc);
-		if (!new_rtds)
-			goto err_out;
-		rts->rtds = new_rtds;
-		rts->rtd_alloc = new_alloc;
-	}
-	rts->rtds[rts->rtd_count++] = rtd;
-
+	rtd->ops = ops;
 	/* retreive the dependent type */
 	if (ti->dependent_type) {
-		rtd->rtd_dep = reflection_setup_type_resolve(rts, rtd, NULL, ti->dependent_type);
-		assert(rtd->rtd_dep);
+		rtd->rtd_dep = reflection_setup_type_resolve(rts, rtd, NULL, ti->dependent_type, NULL);
+		if (!rtd->rtd_dep)
+			goto err_out;
 	}
 
 	/* do fields */
@@ -5114,9 +5264,14 @@ reflection_setup_type(struct reflection_type_system *rts, struct reflection_type
 
 	for (i = 0, tfi = ti->fields, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, tfi++, rfd++) {
 		rfd->fi = tfi;
-		rfd->rtd = reflection_setup_type_resolve(rts, rtd, tfi, tfi->type_info);
-		assert(rfd->rtd);
+		rfd->rtd = reflection_setup_type_resolve(rts, rtd, tfi, tfi->type_info, NULL);
+		if (!rfd->rtd)
+			goto err_out;
 	}
+
+	rc = reflection_type_data_add(rts, rtd);
+	if (rc)
+		goto err_out;
 
 	return rtd;
 
@@ -5160,10 +5315,10 @@ reflection_type_system_create(struct fy_reflection *rfl, const char *entry_type)
 	if (!ti_root)
 		goto err_out;
 
-	rts->rtd_root = reflection_setup_type(rts, NULL, NULL, ti_root);
+	rts->rtd_root = reflection_setup_type(rts, ti_root, NULL);
 	assert(rts->rtd_root);
 
-	reflection_setup_type_specialize(rts->rtd_root, NULL, NULL);
+	reflection_setup_type_specialize(&rts->rtd_root, NULL, NULL);
 
 	return rts;
 err_out:
@@ -6769,6 +6924,8 @@ int main(int argc, char *argv[])
 				fprintf(stderr, "reflection_type_system_create() failed!\n");
 				goto cleanup;
 			}
+
+			reflection_type_system_dump(rts);
 
 			rd_data = malloc(rts->rtd_root->ti->size);
 			if (!rd_data) {
