@@ -3245,6 +3245,15 @@ fy_type_info_get_yaml_bool(const struct fy_type_info *ti, const char *path)
 	return false;
 }
 
+int
+fy_type_info_get_id(const struct fy_type_info *ti)
+{
+	struct fy_type *ft;
+
+	ft = fy_type_from_info(ti);
+	return ft ? ft->id : -1;
+}
+
 int fy_field_info_vscanf(const struct fy_field_info *fi, const char *fmt, va_list ap)
 {
 	return fy_decl_vscanf(fy_decl_from_field_info(fi), fmt, ap);

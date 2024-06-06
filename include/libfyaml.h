@@ -9618,6 +9618,10 @@ bool
 fy_type_info_get_yaml_bool(const struct fy_type_info *ti, const char *path)
 	FY_EXPORT;
 
+int
+fy_type_info_get_id(const struct fy_type_info *ti)
+	FY_EXPORT;
+
 /**
  * fy_field_info_get_yaml_annotation() - Get the yaml annotation document for this field
  *
