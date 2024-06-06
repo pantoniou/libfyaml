@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+${SRCDIR}/testemitter.test --restreaming

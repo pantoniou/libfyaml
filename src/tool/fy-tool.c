@@ -42,6 +42,7 @@
 #define STRIP_TAGS_DEFAULT		false
 #define STRIP_DOC_DEFAULT		false
 #define STREAMING_DEFAULT		false
+#define RECREATING_DEFAULT      false
 #define JSON_DEFAULT			"auto"
 #define DISABLE_ACCEL_DEFAULT		false
 #define DISABLE_BUFFERING_DEFAULT	false
@@ -73,6 +74,7 @@
 #define OPT_STRIP_TAGS			2001
 #define OPT_STRIP_DOC			2002
 #define OPT_STREAMING			2003
+#define OPT_RECREATING          2004
 #define OPT_DISABLE_ACCEL		2005
 #define OPT_DISABLE_BUFFERING		2006
 #define OPT_DISABLE_DEPTH_LIMIT		2007
@@ -144,6 +146,7 @@ static struct option lopts[] = {
 	{"strip-tags",		no_argument,		0,	OPT_STRIP_TAGS },
 	{"strip-doc",		no_argument,		0,	OPT_STRIP_DOC },
 	{"streaming",		no_argument,		0,	OPT_STREAMING },
+	{"recreating",		no_argument,		0,	OPT_RECREATING },
 	{"disable-accel",	no_argument,		0,	OPT_DISABLE_ACCEL },
 	{"disable-buffering",	no_argument,		0,	OPT_DISABLE_BUFFERING },
 	{"disable-depth-limit",	no_argument,		0,	OPT_DISABLE_DEPTH_LIMIT },
@@ -289,10 +292,14 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--tsv-format             : Display testsuite in TSV format"
 							" (default %s)\n",
 							TSV_FORMAT_DEFAULT ? "true" : "false");
-		if (tool_mode == OPT_TOOL || tool_mode == OPT_DUMP)
+		if (tool_mode == OPT_TOOL || tool_mode == OPT_DUMP) {
 			fprintf(fp, "\t--streaming              : Use streaming output mode"
 								" (default %s)\n",
 								STREAMING_DEFAULT ? "true" : "false");
+			fprintf(fp, "\t--recreating             : Recreate streaming events"
+								" (default %s)\n",
+								RECREATING_DEFAULT ? "true" : "false");
+		}
 	}
 
 	if (tool_mode == OPT_TOOL || (tool_mode != OPT_DUMP && tool_mode != OPT_TESTSUITE)) {
@@ -1789,10 +1796,13 @@ int main(int argc, char *argv[])
 	struct fy_document **fyd_ins = NULL;
 	int tool_mode = OPT_TOOL;
 	struct fy_event *fyev;
+	struct fy_event *fyeev;
+	size_t eevlen;
 	struct fy_token *fyt;
 	bool join_resolve = RESOLVE_DEFAULT;
 	struct fy_token_iter *iter;
 	bool streaming = STREAMING_DEFAULT;
+	bool recreating = RECREATING_DEFAULT;
 	struct fy_diag_cfg dcfg;
 	struct fy_diag *diag = NULL;
 	struct fy_path_parse_cfg pcfg;
@@ -2027,6 +2037,9 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_STREAMING:
 			streaming = true;
+			break;
+		case OPT_RECREATING:
+			recreating = true;
 			break;
 		case OPT_DUMP_PATH:
 			dump_path = true;
@@ -2392,7 +2405,71 @@ int main(int argc, char *argv[])
 			} else {
 				while ((fyev = fy_parser_parse(fyp)) != NULL) {
 					if (!null_output) {
-						rc = fy_emit_event_from_parser(fye, fyp, fyev);
+						if (recreating) {
+							fyeev = NULL;
+							switch (fyev->type) {
+								case FYET_STREAM_START:
+								case FYET_STREAM_END:
+								case FYET_MAPPING_END:
+								case FYET_SEQUENCE_END:
+									fyeev = fy_emit_event_create(fye, fyev->type);
+									break;
+								case FYET_DOCUMENT_START:
+									fyeev = fy_emit_event_create(fye, FYET_DOCUMENT_START,
+								 				fyev->document_start.implicit,
+												fy_document_state_version_explicit(fyev->document_start.document_state)
+													? fy_document_state_version(fyev->document_start.document_state)
+													: NULL,
+												fy_document_state_tags_explicit(fyev->document_start.document_state)
+													? fy_document_state_tag_directives(fyev->document_start.document_state)
+												 	: NULL);
+									break;
+								case FYET_DOCUMENT_END:
+									fyeev = fy_emit_event_create(fye, FYET_DOCUMENT_END,
+												fyev->document_end.implicit);
+									break;
+								case FYET_MAPPING_START:
+								case FYET_SEQUENCE_START:
+									fyeev = fy_emit_event_create(fye, fyev->type,
+												fy_event_get_node_style(fyev),
+												fy_event_get_anchor_token(fyev)
+													? fy_token_get_text0(fy_event_get_anchor_token(fyev))
+													: NULL,
+												fy_event_get_tag_token(fyev)
+													? fy_tag_token_short0(fy_event_get_tag_token(fyev))
+													: NULL);
+									break;
+								case FYET_SCALAR:
+									eevlen = 0;
+									fyeev = fy_emit_event_create(fye, FYET_SCALAR,
+								 				fy_scalar_token_get_style(fy_event_get_token(fyev)),
+												fy_token_get_text(fy_event_get_token(fyev), &eevlen),
+												eevlen,
+												fy_event_get_anchor_token(fyev)
+													? fy_token_get_text0(fy_event_get_anchor_token(fyev))
+													: NULL,
+												fy_event_get_tag_token(fyev)
+													? fy_tag_token_short0(fy_event_get_tag_token(fyev))
+													: NULL);
+									break;
+								case FYET_ALIAS:
+									fyeev = fy_emit_event_create(fye, FYET_ALIAS,
+												fy_token_get_text0(fy_event_get_token(fyev)));
+									break;
+								default:
+									goto cleanup;
+							}
+							fy_parser_event_free(fyp, fyev);
+							if (fyeev == NULL) {
+								goto cleanup;
+							}
+
+							rc = fy_emit_event(fye, fyeev);
+						}
+						else {
+							rc = fy_emit_event_from_parser(fye, fyp, fyev);
+						}
+
 						if (rc)
 							goto cleanup;
 					} else {

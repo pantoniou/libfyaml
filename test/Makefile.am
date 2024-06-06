@@ -104,6 +104,7 @@ TESTS += testerrors.test
 
 TESTS += testemitter.test
 TESTS += testemitter-streaming.test
+TESTS += testemitter-restreaming.test
 
 EXTRA_DIST = test-env $(TESTS)
 
