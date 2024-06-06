@@ -4,6 +4,8 @@ EXTRA_DUMP_ARGS=""
 
 if [ "x$1" == "x--streaming" ]; then
 	EXTRA_DUMP_ARGS="$EXTRA_DUMP_ARGS --streaming"
+elif  [ "x$1" == "x--restreaming" ]; then
+	EXTRA_DUMP_ARGS="$EXTRA_DUMP_ARGS --streaming --recreating"
 fi
 
 count=0
