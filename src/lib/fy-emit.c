@@ -1376,7 +1376,7 @@ out:
 		 * - plain in block mode that can't be plain in flow mode
 		 * - special handling for plains on start of line
 		 */
-		if ((flow && !(aflags & FYTTAF_CAN_BE_PLAIN_FLOW) && !is_null_scalar) ||
+		if ((flow && !(aflags & FYTTAF_CAN_BE_PLAIN_FLOW) && !(aflags & FYTTAF_CAN_BE_SIMPLE_KEY) && !is_null_scalar) ||
 		    ((aflags & FYTTAF_QUOTE_AT_0) && indent == 0))
 			style = FYNS_DOUBLE_QUOTED;
 	}
