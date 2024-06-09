@@ -1515,6 +1515,12 @@ unsigned int fy_analyze_scalar_content(const char *data, size_t size,
 	if (break_run > 1)
 		flags |= FYACF_TRAILING_LB;
 
+	if ((flags & FYACF_STARTS_WITH_WS) ||
+		(flags & FYACF_STARTS_WITH_LB) ||
+		(flags & FYACF_ENDS_WITH_WS) ||
+		(flags & FYACF_ENDS_WITH_LB))
+		flags &= ~FYACF_FLOW_PLAIN;
+
 	return flags;
 }
 
