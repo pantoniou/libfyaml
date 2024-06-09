@@ -128,18 +128,10 @@ static void fy_input_from_data_setup(struct fy_input *fyi,
 	handle->end_mark.input_pos = size;
 	handle->end_mark.line = 0;
 	handle->end_mark.column = fy_utf8_count(data, size);
-	/* if it's plain, all is good */
-	if (simple || (aflags & FYACF_FLOW_PLAIN)) {
-		handle->storage_hint = size;	/* maximum */
-		handle->storage_hint_valid = false;
-		handle->direct_output = !!(aflags & FYACF_JSON_ESCAPE);
-		handle->style = FYAS_PLAIN;
-	} else {
-		handle->storage_hint = 0;	/* just calculate */
-		handle->storage_hint_valid = false;
-		handle->direct_output = false;
-		handle->style = FYAS_DOUBLE_QUOTED_MANUAL;
-	}
+	handle->storage_hint = 0;	/* just calculate */
+	handle->storage_hint_valid = false;
+	handle->direct_output = false;
+	handle->style = FYAS_DOUBLE_QUOTED_MANUAL;
 	handle->empty = !!(aflags & FYACF_EMPTY);
 	handle->has_lb = !!(aflags & FYACF_LB);
 	handle->has_ws = !!(aflags & FYACF_WS);
