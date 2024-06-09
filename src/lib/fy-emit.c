@@ -663,8 +663,7 @@ void fy_emit_common_node_preamble(struct fy_emitter *emit,
 	}
 
 	/* content for root always starts on a new line */
-	if ((flags & DDNF_ROOT) && emit->column != 0 &&
-            !(emit->flags & FYEF_HAD_DOCUMENT_START)) {
+	if ((flags & DDNF_ROOT) && emit->column != 0) {
 		fy_emit_putc(emit, fyewt_linebreak, '\n');
 		emit->flags = FYEF_WHITESPACE | FYEF_INDENTATION;
 	}
