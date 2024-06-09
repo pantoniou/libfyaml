@@ -295,6 +295,9 @@ int fy_tag_handle_length(const char *data, size_t len)
 	s += w;
 
 	c = fy_utf8_get(s, e - s, &w);
+	if (c == -1)
+		return len;
+
 	if (fy_is_ws(c))
 		return s - data;
 	/* if first character is !, empty handle */
@@ -364,7 +367,7 @@ int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info)
 		/* either !suffix or !handle!suffix */
 		/* we scan back to back, and split handle/suffix */
 		handle_length = fy_tag_handle_length(s, e - s);
-		if (handle_length <= 0)
+		if (handle_length < 0)
 			return -1;
 		s += handle_length;
 	}
