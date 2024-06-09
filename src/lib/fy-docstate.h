@@ -33,6 +33,7 @@ struct fy_document_state {
 	bool tags_explicit : 1;
 	bool start_implicit : 1;
 	bool end_implicit : 1;
+	bool started_explicit : 1;
 	bool json_mode : 1;
 	struct fy_mark start_mark;
 	struct fy_mark end_mark;
