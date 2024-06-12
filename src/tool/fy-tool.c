@@ -2116,7 +2116,7 @@ struct reflection_field_data {
 	bool omit_if_empty;
 	bool omit_on_emit;
 	bool required;
-	struct reflection_field_data *counted_by;
+	bool is_counter;	/* is a counter of another field */
 };
 
 enum reflection_type_data_flags {
@@ -3674,7 +3674,7 @@ int struct_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const 
 			continue;
 
 		/* field that should not appear */
-		if (rfd->omit_on_emit)
+		if (rfd->omit_on_emit || rfd->is_counter)
 			continue;
 
 		rtd_field = rfd->rtd;
@@ -4296,16 +4296,15 @@ static void dyn_array_cleanup(struct reflection_object *ro)
 static int dyn_array_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct dyn_array_instance_data *id;
-	struct reflection_field_data *rfd, *rfd_counter;
+	struct reflection_field_data *rfd;
 
 	rfd = ro->parent_addr;
 	assert(rfd);
 
-	rfd_counter = rfd->counted_by;
-	assert(rfd_counter);
-
 	id = ro->instance_data;
 	assert(id);
+
+	assert(id->rfd_counter);
 
 	/* and store the counter */
 	assert(ro->parent);
@@ -4313,7 +4312,7 @@ static int dyn_array_finish(struct reflection_object *ro, struct fy_parser *fyp,
 
 	// fprintf(stderr, "%s: store counter=%s ro->data=%p\n", __func__, rfd_counter->field_name, ro->parent->data);
 
-	integer_field_store(rfd_counter, (uintmax_t)id->count, ro->parent->data);
+	integer_field_store(id->rfd_counter, (uintmax_t)id->count, ro->parent->data);
 
 	return 0;
 }
@@ -4454,6 +4453,12 @@ void dyn_array_free(struct reflection_type_data *rtd, void *data, reflection_fre
 		return;
 	*(void **)data = NULL;
 
+	if (rtd->counter) {
+		rfd_counter = reflection_type_data_lookup_field(rtd_parent, rtd->counter);
+		assert(rfd_counter);
+	} else
+		rfd_counter = NULL;
+
 	if (reflection_type_data_needs_cleanup(rtd->rtd_dep)) {
 
 		ops = reflection_type_data_ops(rtd->rtd_dep, rtd, NULL);
@@ -4461,9 +4466,6 @@ void dyn_array_free(struct reflection_type_data *rtd, void *data, reflection_fre
 
 			rfd = parent_addr;
 			assert(rfd);
-
-			rfd_counter = rfd->counted_by;
-			assert(rfd_counter);
 
 			/* find out where the parent structure address */
 			parent_data = data - rfd->fi->offset;
@@ -5169,8 +5171,7 @@ err_out:
 
 int
 reflection_setup_type_specialize(struct reflection_type_data **rtdp,
-				 struct reflection_type_data *rtd_parent, void *parent_addr,
-				 bool disable_mutation)
+				 struct reflection_type_data *rtd_parent, void *parent_addr)
 {
 	struct reflection_type_data *rtd;
 	struct reflection_field_data *rfd, *rfd_ref, *rfd_flatten;
@@ -5193,27 +5194,25 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 		if (rtd->ti->dependent_type->kind != FYTK_CHAR)
 			break;
 
-		if (!disable_mutation && rtd->ops != &ptr_char_ops) {
+		reflection_type_mutation_reset(&rtm);
+		rtm.mutation_name = "ptr_char";
+		rtm.ops = &ptr_char_ops;
 
-			reflection_type_mutation_reset(&rtm);
-			rtm.mutation_name = "ptr_char";
-			rtm.ops = &ptr_char_ops;
+		/* this does not need a parent */
+		rtd_mut = reflection_type_data_mutate(rtd, &rtm);
+		assert(rtd_mut);
 
-			/* this does not need a parent */
-			rtd_mut = reflection_type_data_mutate(rtd, &rtm);
-			assert(rtd_mut);
+		*rtdp = rtd_mut;
+		rtd = rtd_mut;
+		rtd_mut = NULL;
 
-			*rtdp = rtd_mut;
-			rtd = rtd_mut;
-			rtd_mut = NULL;
+		fprintf(stderr, "char *MUT!\n");
 
-			fprintf(stderr, "char *MUT!\n");
-		}
 		break;
 
 	case FYTK_STRUCT:
 
-		if (!disable_mutation && (str = fy_type_info_get_yaml_string(rtd->ti, "flatten-field")) != NULL) {
+		if ((str = fy_type_info_get_yaml_string(rtd->ti, "flatten-field")) != NULL) {
 			assert(!rtd->flat_field);
 
 			fprintf(stderr, ">>>> struct %s flatten-field=%s\n", rtd->ti->name, str);
@@ -5273,13 +5272,16 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 					rfd->omit_if_null = true;
 				}
 
-				str = fy_type_info_get_yaml_string(rfd_ti, "counter");
-				if (!disable_mutation && str) {
+				if ((str = fy_type_info_get_yaml_string(rfd_ti, "counter")) != NULL) {
 					rfd_ref = reflection_type_data_lookup_field(rtd, str);
-					if (!rfd_ref) {
-						fprintf(stderr, "could not find counter %s\n", str);
-						goto err_out;
-					}
+					assert(rfd_ref);
+
+					/* must be an integer */
+					assert(fy_type_kind_is_integer(rfd_ref->rtd->ti->kind));
+
+					/* it must not be a counter to more than one */
+					assert(!rfd_ref->is_counter);
+					rfd_ref->is_counter = true;
 
 #if 0
 					fprintf(stderr, "%s: %s.%s counter=%s (%s)\n", __func__,
@@ -5287,13 +5289,6 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 							rfd_ref ? rfd_ref->field_name : "N/A");
 					fprintf(stderr, "rtd=%p rfd=%p rfd_ref=%p\n", rtd, rfd, rfd_ref);
 #endif
-
-					/* must be an integer */
-					assert(fy_type_kind_is_integer(rfd_ref->rtd->ti->kind));
-
-					/* bind them together */
-					assert(!rfd->counted_by);
-					rfd->counted_by = rfd_ref;
 
 					reflection_type_mutation_reset(&rtm);
 					rtm.mutation_name = "dyn_array";
@@ -5307,8 +5302,6 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 					rtd_mut = NULL;
 
 					fprintf(stderr, "dyn_array *MUT!\n");
-
-					rfd_ref = NULL;
 				}
 				break;
 
@@ -5326,12 +5319,12 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 	rtd->flags = (rtd->flags & ~RTDF_PURITY_MASK) | RTDF_PURE;
 	for (i = 0; i < rtd->fields_count; i++) {
 		rfd = rtd->fields[i];
-		reflection_setup_type_specialize(&rfd->rtd, rtd, rfd, disable_mutation);
+		reflection_setup_type_specialize(&rfd->rtd, rtd, rfd);
 		rtd->flags |= (rfd->rtd->flags & RTDF_UNPURE);
 	}
 
 	if (rtd->rtd_dep) {
-		reflection_setup_type_specialize(&rtd->rtd_dep, rtd, NULL, disable_mutation);
+		reflection_setup_type_specialize(&rtd->rtd_dep, rtd, NULL);
 		rtd->flags |= (rtd->rtd_dep->flags & RTDF_UNPURE);
 		if (rtd->ti->kind == FYTK_PTR) {
 			rtd->flags |= RTDF_UNPURE;
@@ -5487,7 +5480,7 @@ reflection_type_system_create(struct fy_reflection *rfl, const char *entry_type)
 	rts->rtd_root = reflection_setup_type(rts, ti_root, NULL);
 	assert(rts->rtd_root);
 
-	reflection_setup_type_specialize(&rts->rtd_root, NULL, NULL, false);
+	reflection_setup_type_specialize(&rts->rtd_root, NULL, NULL);
 
 	return rts;
 err_out:
