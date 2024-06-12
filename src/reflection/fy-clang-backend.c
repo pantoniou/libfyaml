@@ -309,48 +309,45 @@ clang_lookup_decl_by_cursor(struct fy_reflection *rfl, CXCursor cursor)
 static struct fy_type *
 clang_lookup_type_by_type(struct fy_reflection *rfl, CXType type, struct fy_decl *decl)
 {
-	struct fy_type *ft, *ft_best;
+	struct fy_type *ft;
 	struct clang_type_backend *ftb;
 	const char *c1, *c2;
 
-	ft_best = NULL;
+	c1 = decl ? fy_decl_get_yaml_comment(decl) : NULL;
+
 	for (ft = fy_type_list_head(&rfl->types); ft != NULL; ft = fy_type_next(&rfl->types, ft)) {
 		ftb = ft->backend;
 		if (!ftb)
 			continue;
+
 		if (!clang_equalTypes(ftb->type, type))
 			continue;
 
-		/* if a decl was provided we must match the comment too */
-		if (decl) {
-			c1 = fy_decl_get_yaml_comment(decl);
-			if (!c1)
-				c1 = "";
-			c2 = fy_decl_get_yaml_comment(ft->decl);
-			if (!c2)
-				c2 = "";
-			if (!strcmp(c1, c2))
-				return ft;
-		} else if (!ft_best) {
-			/* first one in */
-			ft_best = ft;
-		} else if (!ft->decl->raw_comment) {
-			/* we prefer the bare type */
-			ft_best = ft;
-		}
+		/* if it's named, there's no way to be a differentated by an annotation */
+		if (fy_type_kind_is_named(ft->type_kind))
+			return ft;
+
+		/* it's a primitive, we need to examine annotations for type match */
+		c2 = fy_decl_get_yaml_comment(ft->decl);
+
+		/* direct match without yaml annotations */
+		if (!c1 && !c2)
+			return ft;
+
+		/* match of annotations */
+		if ((c1 && c2 && !strcmp(c1, c2)))
+			return ft;
 	}
 
 #if 0
-	if (!ft_best) {
-		fprintf(stderr, "not found type %s - types list\n", clang_str_get_alloca(clang_getTypeSpelling(type)));
-		for (ft = fy_type_list_head(&rfl->types); ft != NULL; ft = fy_type_next(&rfl->types, ft)) {
-			ftb = ft->backend;
-			fprintf(stderr, "%s equal=%d\n", clang_str_get_alloca(clang_getTypeSpelling(ftb->type)), clang_equalTypes(ftb->type, type));
-		}
-		fprintf(stderr, "\n");
+	fprintf(stderr, "not found type %s - types list\n", clang_str_get_alloca(clang_getTypeSpelling(type)));
+	for (ft = fy_type_list_head(&rfl->types); ft != NULL; ft = fy_type_next(&rfl->types, ft)) {
+		ftb = ft->backend;
+		fprintf(stderr, "%s equal=%d\n", clang_str_get_alloca(clang_getTypeSpelling(ftb->type)), clang_equalTypes(ftb->type, type));
 	}
+	fprintf(stderr, "\n");
 #endif
-	return ft_best;
+	return NULL;
 }
 
 static struct fy_type *
@@ -1074,6 +1071,9 @@ static int clang_type_setup(struct fy_type *ft, void *user)
 
 		ftb->dependent_type = ttype;
 
+		// fprintf(stderr, "%s:%d %s: ftb %s ftb->dependent_type %s\n", __FILE__, __LINE__, __func__,
+		//		ftb->normalized_name, ttype->normalized_name);
+
 		elaborated = false;
 		if (ttype.kind == CXType_Elaborated) {
 			elaborated = true;
@@ -1137,10 +1137,17 @@ static int clang_type_setup(struct fy_type *ft, void *user)
 
 		ftb->dependent_type = ttype;
 
+		// fprintf(stderr, "%s:%d %s: ftb %s ftb->dependent_type %s\n", __FILE__, __LINE__, __func__,
+		//		ftb->normalized_name, ttype->normalized_name);
+
 		clang_str_setup(&ftb->dependent_type_name, clang_getTypeSpelling(ttype));
 
 		if (ftt) {
 			ft->dependent_type = ftt;
+
+			fprintf(stderr, "%s:%d %s: ft %s ft->dependent_type %s\n", __FILE__, __LINE__, __func__,
+					ft->normalized_name, ftt->normalized_name);
+
 			ft->unresolved = false;
 		} else {
 			ft->unresolved = true;
@@ -1167,6 +1174,9 @@ static int clang_type_setup(struct fy_type *ft, void *user)
 		ft2->unresolved = false;
 		ft2->was_fwd_declared = true;
 		ft2->dependent_type = ft;
+
+		fprintf(stderr, "%s:%d %s: ft2 %s ft2->dependent_type %s\n", __FILE__, __LINE__, __func__,
+				ft2->normalized_name, ft->normalized_name);
 
 		assert(rfl->unresolved_types_count > 0);
 		rfl->unresolved_types_count--;

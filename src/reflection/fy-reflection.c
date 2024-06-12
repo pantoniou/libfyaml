@@ -2290,6 +2290,7 @@ fy_reflection_lookup_type(struct fy_reflection *rfl, enum fy_type_kind type_kind
 	char *ntn1, *ntn2;
 	size_t len;
 	enum fy_type_kind type_kind_auto;
+	struct fy_document *fyd_ft;
 
 	if (!rfl || !name)
 		return NULL;
@@ -2324,7 +2325,14 @@ fy_reflection_lookup_type(struct fy_reflection *rfl, enum fy_type_kind type_kind
 			continue;
 
 		/* check name match */
-		if (!strcmp(ft->normalized_name, type_name))
+		if (strcmp(ft->normalized_name, type_name))
+			continue;
+
+		fprintf(stderr, "%s: ft->normalized_name=%s type_name=%s\n", __func__, ft->normalized_name, type_name);
+
+		/* XXX must not have annotation, or annotation must match */
+		fyd_ft = fy_type_get_yaml_annotation(ft);
+		if (!fyd_ft)
 			break;
 	}
 
@@ -2543,8 +2551,17 @@ fix_unresolved_type(struct fy_type *ft)
 	if (ft->type_kind == FYTK_PTR) {
 		ftt = fy_reflection_lookup_type(rfl, ft->dependent_type_kind, ft->dependent_type_name);
 		 /* if found, very  good, already resolved */
-		if (ftt)
+		if (ftt) {
+			fprintf(stderr, "%s:%d - ft->type_kind=%s ft->name=%s ft->dependent_type_kind=%s ft->dependent_type_name=%s found ptr\n",
+				__FILE__, __LINE__,
+				fy_type_kind_info_get_internal(ft->type_kind)->name, ft->name,
+				fy_type_kind_info_get_internal(ft->dependent_type_kind)->name, ft->dependent_type_name);
 			goto done;
+		}
+		fprintf(stderr, "%s:%d - ft->type_kind=%s ft->name=%s ft->dependent_type_kind=%s ft->dependent_type_name=%s NOT FOUND PTR\n",
+			__FILE__, __LINE__,
+			fy_type_kind_info_get_internal(ft->type_kind)->name, ft->name,
+			fy_type_kind_info_get_internal(ft->dependent_type_kind)->name, ft->dependent_type_name);
 	}
 
 	assert(ft->dependent_type_kind == FYTK_STRUCT ||
@@ -2620,9 +2637,11 @@ fix_unresolved_type(struct fy_type *ft)
 	if (!ftt)
 		goto err_out;
 
-	if (fy_type_kind_is_dependent(ftt->type_kind))
+	if (fy_type_kind_is_dependent(ftt->type_kind)) {
 		ftt->dependent_type = ftt_inner;
-	else if (element_count > 0) {
+		fprintf(stderr, "%s: ftt %s ftt->dependent_type %s\n", __func__,
+				ftt->normalized_name, ftt_inner->normalized_name);
+	} else if (element_count > 0) {
 		ftt->size = ftt_inner->size;
 		ftt->align = ftt_inner->align;
 	}
@@ -2635,6 +2654,10 @@ done:
 	assert(ftt);
 
 	ft->dependent_type = ftt;
+
+	fprintf(stderr, "%s: tt %s ft->dependent_type %s\n", __func__,
+			ft->normalized_name, ftt->normalized_name);
+
 	ft->is_synthetic = true;
 
 	return 0;
@@ -2914,6 +2937,10 @@ fy_type_info_lookup(struct fy_reflection *rfl, enum fy_type_kind kind, const cha
 			ft->align = tki->align;
 
 			ft->dependent_type = ft_dep;
+
+			fprintf(stderr, "%s: ft %s ft->dependent_type %s\n", __func__,
+					ft->normalized_name, ft_dep->normalized_name);
+
 			ft->is_synthetic = true;
 
 			fy_type_list_add_tail(&rfl->types, ft);

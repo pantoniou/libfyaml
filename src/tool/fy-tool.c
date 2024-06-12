@@ -2155,7 +2155,7 @@ struct reflection_type_data {
 	void *default_value;
 	struct reflection_type_data *rtd_dep;			/* the dependent type */
 	size_t fields_count;
-	struct reflection_field_data fields[];
+	struct reflection_field_data **fields;
 };
 
 static inline bool
@@ -2261,7 +2261,7 @@ reflection_type_data_lookup_field(struct reflection_type_data *rtd, const char *
 		return NULL;
 
 	assert((unsigned int)idx < rtd->fields_count);
-	return &rtd->fields[idx];
+	return rtd->fields[idx];
 }
 
 struct reflection_field_data *
@@ -2277,7 +2277,7 @@ reflection_type_data_lookup_field_by_enum_value(struct reflection_type_data *rtd
 		return NULL;
 
 	assert((unsigned int)idx < rtd->fields_count);
-	return &rtd->fields[idx];
+	return rtd->fields[idx];
 }
 
 struct reflection_field_data *
@@ -2293,7 +2293,7 @@ reflection_type_data_lookup_field_by_unsigned_enum_value(struct reflection_type_
 		return NULL;
 
 	assert((unsigned int)idx < rtd->fields_count);
-	return &rtd->fields[idx];
+	return rtd->fields[idx];
 }
 
 static inline struct reflection_field_data *
@@ -3271,7 +3271,7 @@ static int struct_setup(struct reflection_object *ro, struct fy_parser *fyp, str
 	void *field_data;
 
 	if (ro->rtd->field_flatten_idx >= 0)
-		rfd_flatten = &ro->rtd->fields[ro->rtd->field_flatten_idx];
+		rfd_flatten = ro->rtd->fields[ro->rtd->field_flatten_idx];
 	else
 		rfd_flatten = NULL;
 
@@ -3345,7 +3345,7 @@ static int struct_handle_finish_flatten(struct reflection_object *ro, struct fy_
 	assert(id);
 
 	if (ro->rtd->field_flatten_idx >= 0)
-		rfd_flatten = &ro->rtd->fields[ro->rtd->field_flatten_idx];
+		rfd_flatten = ro->rtd->fields[ro->rtd->field_flatten_idx];
 	else
 		rfd_flatten = NULL;
 
@@ -3481,7 +3481,9 @@ static int struct_finish(struct reflection_object *ro, struct fy_parser *fyp, st
 
 	rc = 0;
 	rtd = ro->rtd;
-	for (i = 0, rfd = &rtd->fields[0], fid = id->fid; i < rtd->fields_count; i++, rfd++, fid++) {
+	for (i = 0, fid = id->fid; i < rtd->fields_count; i++, fid++) {
+
+		rfd = rtd->fields[i];
 
 		/* fill-in-default */
 		if (!fid->present && rfd->rtd->fyn_default) {
@@ -3625,7 +3627,7 @@ int struct_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const 
 	int rc;
 
 	if (rtd->field_flatten_idx >= 0)
-		rfd_flatten = &rtd->fields[rtd->field_flatten_idx];
+		rfd_flatten = rtd->fields[rtd->field_flatten_idx];
 	else
 		rfd_flatten = NULL;
 
@@ -3662,7 +3664,9 @@ int struct_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const 
 	if (rc)
 		goto err_out;
 
-	for (i = 0, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, rfd++) {
+	for (i = 0; i < rtd->fields_count; i++) {
+
+		rfd = rtd->fields[i];
 
 		fi = rfd->fi;
 
@@ -3709,7 +3713,9 @@ void struct_free(struct reflection_type_data *rtd, void *data, reflection_freef 
 	const struct reflection_type_ops *ops;
 	size_t i;
 
-	for (i = 0, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, rfd++) {
+	for (i = 0; i < rtd->fields_count; i++) {
+
+		rfd = rtd->fields[i];
 
 		/* anything needs cleanup? */
 		if (!reflection_type_data_needs_cleanup(rfd->rtd))
@@ -4809,8 +4815,18 @@ reflection_object_scalar_child(struct reflection_object *parent,
 	return ret;
 }
 
+void reflection_field_data_destroy(struct reflection_field_data *rfd)
+{
+	if (!rfd)
+		return;
+	free(rfd);
+}
+
 void reflection_type_data_destroy(struct reflection_type_data *rtd)
 {
+	struct reflection_field_data *rfd;
+	size_t i;
+
 	if (!rtd)
 		return;
 
@@ -4819,6 +4835,15 @@ void reflection_type_data_destroy(struct reflection_type_data *rtd)
 
 	if (rtd->default_value)
 		free(rtd->default_value);
+
+	if (rtd->fields) {
+		for (i = 0; i < rtd->fields_count; i++) {
+			rfd = rtd->fields[i];
+			if (rfd)
+				reflection_field_data_destroy(rfd);
+		}
+		free(rtd->fields);
+	}
 
 	free(rtd);
 }
@@ -4869,11 +4894,12 @@ void reflection_type_system_dump(struct reflection_type_system *rts)
 		if (rtd->flags & RTDF_MUTATED)
 			printf(" MUT='%s'", rtd->mutation_name);
 		if (rtd->rtd_dep)
-			printf(" dep: #%d:'%s", rtd->rtd_dep->idx, rtd->rtd_dep->ti->fullname);
+			printf(" dep: #%d:'%s'", rtd->rtd_dep->idx, rtd->rtd_dep->ti->fullname);
 		if (rtd->yaml_annotation_str)
 			printf(" %s", rtd->yaml_annotation_str);
 		printf("\n");
-		for (j = 0, rfd = rtd->fields; j < rtd->fields_count; j++, rfd++) {
+		for (j = 0; j < rtd->fields_count; j++) {
+			rfd = rtd->fields[j];
 			printf("\t#%d:'%s' %s (%s)", rfd->rtd->idx, rfd->rtd->ti->fullname, rfd->fi->name, rfd->field_name);
 			printf("\n");
 		}
@@ -5076,9 +5102,12 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 				 struct reflection_type_data *rtd_parent, void *parent_addr,
 				 bool disable_mutation)
 {
-	struct reflection_type_data *rtd, *rtd_mut;
+	struct reflection_type_data *rtd;
 	struct reflection_field_data *rfd, *rfd_ref;
+#if 0
 	struct reflection_type_mutation rtm;
+	struct reflection_type_data *rtd_mut;
+#endif
 	const struct reflection_type_ops *ops;
 	const struct fy_type_info *rfd_ti;
 	const char *str;
@@ -5097,6 +5126,8 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 			break;
 
 		if (!disable_mutation && rtd->ops != &ptr_char_ops) {
+
+#if 0
 			reflection_type_mutation_reset(&rtm);
 			rtm.mutation_name = "ptr_char";
 			rtm.ops = &ptr_char_ops;
@@ -5110,6 +5141,9 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 			rtd_mut = NULL;
 
 			fprintf(stderr, "char *MUT!\n");
+#else
+			rtd->ops = &ptr_char_ops;
+#endif
 		}
 		break;
 
@@ -5145,7 +5179,9 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 		}
 
 		rfd_ref = NULL;
-		for (i = 0, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, rfd++) {
+		for (i = 0; i < rtd->fields_count; i++) {
+
+			rfd = rtd->fields[i];
 
 			/* field name */
 			rfd->field_name = fy_field_info_get_yaml_name(rfd->fi);
@@ -5187,7 +5223,8 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 
 					fprintf(stderr, "%s: %s.%s counter=%s (%s)\n", __func__,
 							rtd->ti->name, rfd->fi->name, str,
-							rfd_ref ? "found" : "N/A");
+							rfd_ref ? rfd_ref->field_name : "N/A");
+					fprintf(stderr, "rtd=%p rfd=%p rfd_ref=%p\n", rtd, rfd, rfd_ref);
 
 					/* must be an integer */
 					assert(fy_type_kind_is_integer(rfd_ref->rtd->ti->kind));
@@ -5225,7 +5262,8 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 	}
 
 	rtd->flags = (rtd->flags & ~RTDF_PURITY_MASK) | RTDF_PURE;
-	for (i = 0, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, rfd++) {
+	for (i = 0; i < rtd->fields_count; i++) {
+		rfd = rtd->fields[i];
 		reflection_setup_type_specialize(&rfd->rtd, rtd, rfd, disable_mutation);
 		rtd->flags |= (rfd->rtd->flags & RTDF_UNPURE);
 	}
@@ -5319,22 +5357,18 @@ reflection_setup_type(struct reflection_type_system *rts,
 	struct reflection_type_data *rtd = NULL;
 	struct reflection_field_data *rfd;
 	const struct fy_field_info *tfi;
-	size_t i, size;
+	size_t i;
 	int rc;
 
 	// fprintf(stderr, "%s: ti->fullname='%s'\n", __func__, ti->fullname);
 
 	if (!ops)
 		ops = &reflection_ops_table[ti->kind];
-	size = sizeof(*rtd);
-	if (fy_type_kind_has_fields(ti->kind))
-		size += ti->count * sizeof(rtd->fields[0]);
-
-	rtd = malloc(size);
+	rtd = malloc(sizeof(*rtd));
 	if (!rtd)
 		goto err_out;
 
-	memset(rtd, 0, size);
+	memset(rtd, 0, sizeof(*rtd));
 	rtd->idx = -1;
 	rtd->rts = rts;
 	rtd->ti = ti;
@@ -5350,7 +5384,21 @@ reflection_setup_type(struct reflection_type_system *rts,
 	/* do fields */
 	rtd->fields_count = fy_type_kind_has_fields(ti->kind) ? ti->count : 0;
 
-	for (i = 0, tfi = ti->fields, rfd = &rtd->fields[0]; i < rtd->fields_count; i++, tfi++, rfd++) {
+	if (rtd->fields_count > 0) {
+		rtd->fields = malloc(sizeof(*rtd->fields)*rtd->fields_count);
+		if (!rtd->fields)
+			goto err_out;
+		memset(rtd->fields, 0, sizeof(*rtd->fields)*rtd->fields_count);
+	}
+
+	for (i = 0, tfi = ti->fields; i < rtd->fields_count; i++, tfi++) {
+		rfd = malloc(sizeof(*rfd));
+		if (!rfd)
+			goto err_out;
+		memset(rfd, 0, sizeof(*rfd));
+
+		rtd->fields[i] = rfd;
+
 		rfd->idx = (int)i;
 		rfd->fi = tfi;
 		rfd->rtd = reflection_setup_type_resolve(rts, rtd, tfi, tfi->type_info, NULL);

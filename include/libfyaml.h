@@ -8955,6 +8955,24 @@ static inline bool fy_type_kind_is_dependent(enum fy_type_kind type_kind)
 }
 
 /**
+ * fy_type_kind_is_named() - Check if the type is named
+ *
+ * Check whether the type kind is named, i.e. has a name that uniquely
+ * identifies it.
+ *
+ * @type_kind: The type_kind to check
+ *
+ * Returns:
+ * true if it is named, false otherwise
+ */
+static inline bool fy_type_kind_is_named(enum fy_type_kind type_kind)
+{
+	return type_kind == FYTK_STRUCT || type_kind == FYTK_UNION ||
+	       type_kind == FYTK_TYPEDEF || type_kind == FYTK_ENUM ||
+	       type_kind == FYTK_FUNCTION;
+}
+
+/**
  * fy_type_kind_signess() - Find out the type's sign
  *
  * Check how the type deals with signs.
