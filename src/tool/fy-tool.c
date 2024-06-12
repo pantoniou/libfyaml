@@ -2116,7 +2116,6 @@ struct reflection_field_data {
 	bool omit_if_empty;
 	bool omit_on_emit;
 	bool required;
-	struct reflection_field_data *counter_of;
 	struct reflection_field_data *counted_by;
 };
 
@@ -3243,6 +3242,7 @@ struct field_instance_data {
 struct struct_instance_data {
 	struct field_instance_data *fid;
 	struct reflection_object *ro_flatten;
+	struct reflection_field_data *rfd_flatten;
 	uintmax_t bitfield_data;
 };
 
@@ -3260,26 +3260,26 @@ struct_instance_data_cleanup(struct struct_instance_data *id)
 static int struct_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct struct_instance_data *id = NULL;
-	struct reflection_field_data *rfd_flatten;
 	size_t size;
 	void *field_data;
 
-	if (ro->rtd->field_flatten_idx >= 0)
-		rfd_flatten = ro->rtd->fields[ro->rtd->field_flatten_idx];
-	else
-		rfd_flatten = NULL;
+	id = malloc(sizeof(*id));
+	if (!id)
+		goto err_out;
+	memset(id, 0, sizeof(*id));
 
-	if (!rfd_flatten && fye->type != FYET_MAPPING_START) {
+	if (ro->rtd->field_flatten_idx >= 0) {
+		id->rfd_flatten = ro->rtd->fields[ro->rtd->field_flatten_idx];
+	} else
+		id->rfd_flatten = NULL;
+
+	if (!id->rfd_flatten && fye->type != FYET_MAPPING_START) {
 		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
 				"struct '%s' expects mapping start (ro->rtd->idx=%d)",
 				ro->rtd->ti->name, ro->rtd->idx);
 		goto err_out;
 	}
 
-	id = malloc(sizeof(*id));
-	if (!id)
-		goto err_out;
-	memset(id, 0, sizeof(*id));
 
 	size = ro->rtd->fields_count * sizeof(*id->fid);
 	id->fid = malloc(size);
@@ -3289,19 +3289,19 @@ static int struct_setup(struct reflection_object *ro, struct fy_parser *fyp, str
 
 	ro->instance_data = id;
 
-	if (rfd_flatten) {
-		fprintf(stderr, "%s: flatten %s\n", __func__, rfd_flatten->field_name);
+	if (id->rfd_flatten) {
+		fprintf(stderr, "%s: flatten %s\n", __func__, id->rfd_flatten->field_name);
 
 		/* non-bitfields store directly */
-		if (!(rfd_flatten->fi->flags & FYFIF_BITFIELD)) {
-			field_data = ro->data + rfd_flatten->fi->offset;
+		if (!(id->rfd_flatten->fi->flags & FYFIF_BITFIELD)) {
+			field_data = ro->data + id->rfd_flatten->fi->offset;
 		} else {
 			id->bitfield_data = 0;
 			field_data = &id->bitfield_data;
 		}
-		id->ro_flatten = reflection_object_create(ro, rfd_flatten, rfd_flatten->rtd,
+		id->ro_flatten = reflection_object_create(ro, id->rfd_flatten, id->rfd_flatten->rtd,
 							  fyp, fye, path,
-							  field_data, rfd_flatten->fi->type_info->size);
+							  field_data, id->rfd_flatten->fi->type_info->size);
 		assert(id->ro_flatten);
 	}
 
@@ -3329,7 +3329,6 @@ static void struct_cleanup(struct reflection_object *ro)
 static int struct_handle_finish_flatten(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct struct_instance_data *id;
-	struct reflection_field_data *rfd_flatten;
 	const struct fy_field_info *fi;
 	uintmax_t limit;
 	int rc;
@@ -3338,22 +3337,19 @@ static int struct_handle_finish_flatten(struct reflection_object *ro, struct fy_
 	id = ro->instance_data;
 	assert(id);
 
-	if (ro->rtd->field_flatten_idx >= 0)
-		rfd_flatten = ro->rtd->fields[ro->rtd->field_flatten_idx];
-	else
-		rfd_flatten = NULL;
+	assert(id->rfd_flatten);
 
 	rc = reflection_object_finish(id->ro_flatten, fyp, fye, path);
 	assert(!rc);
 
-	if (rfd_flatten->fi->flags & FYFIF_BITFIELD) {
+	if (id->rfd_flatten->fi->flags & FYFIF_BITFIELD) {
 
-		fi = rfd_flatten->fi;
+		fi = id->rfd_flatten->fi;
 
-		assert(rfd_flatten->signess != 0);
-		rc = store_check(fi->bit_width, id->bitfield_data, rfd_flatten->signess < 0, &limit);
+		assert(id->rfd_flatten->signess != 0);
+		rc = store_check(fi->bit_width, id->bitfield_data, id->rfd_flatten->signess < 0, &limit);
 		if (rc) {
-			if (rfd_flatten->signess < 0) {
+			if (id->rfd_flatten->signess < 0) {
 				fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
 						"value cannot fit in signed bitfield (%s than %jd)",
 						rc < 0 ? "smaller" : "greater", (intmax_t)limit);
@@ -3609,9 +3605,8 @@ err_out:
 int struct_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size,
 		struct reflection_type_data *rtd_parent, void *parent_addr)
 {
-	struct reflection_field_data *rfd;
+	struct reflection_field_data *rfd, *rfd_flatten;
 	struct reflection_type_data *rtd_field;
-	struct reflection_field_data *rfd_flatten;
 	const struct fy_field_info *fi;
 	const struct reflection_type_ops *ops;
 	const void *field_data;
@@ -4474,17 +4469,6 @@ static const struct reflection_type_ops dyn_array_ops = {
 	.free = dyn_array_free,
 };
 
-#if 0
-static const struct reflection_type_ops dyn_array_ops_2 = {
-	.setup = dyn_array_setup_2,
-	.cleanup = dyn_array_cleanup,
-	.finish = dyn_array_finish,
-	.create_child = dyn_array_create_child,
-	.emit = dyn_array_emit,
-	.free = dyn_array_free,
-};
-#endif
-
 static const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
 	[FYTK_INVALID] = {
 	},
@@ -5088,11 +5072,6 @@ reflection_type_data_mutate(struct reflection_type_data *rtd_source, const struc
 
 	fprintf(stderr, "new MUT! (from #%d)\n", rtd_source->idx);
 
-#if 0
-	/* no hit, must mutate now */
-	rtd = reflection_setup_type(rts, rtd_source->ti, rtm->ops);
-	assert(rtd);
-#else
 	rtd = malloc(sizeof(*rtd));
 	if (!rtd)
 		goto err_out;
@@ -5124,7 +5103,6 @@ reflection_type_data_mutate(struct reflection_type_data *rtd_source, const struc
 		assert(0);
 		goto err_out;
 	}
-#endif
 
 	if (rtm->ops) {
 		rtd->ops = rtm->ops;
@@ -5169,10 +5147,8 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 {
 	struct reflection_type_data *rtd;
 	struct reflection_field_data *rfd, *rfd_ref;
-#if 1
 	struct reflection_type_mutation rtm;
 	struct reflection_type_data *rtd_mut;
-#endif
 	const struct reflection_type_ops *ops;
 	const struct fy_type_info *rfd_ti;
 	const char *str;
@@ -5192,7 +5168,6 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 
 		if (!disable_mutation && rtd->ops != &ptr_char_ops) {
 
-#if 1
 			reflection_type_mutation_reset(&rtm);
 			rtm.mutation_name = "ptr_char";
 			rtm.ops = &ptr_char_ops;
@@ -5206,9 +5181,6 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 			rtd_mut = NULL;
 
 			fprintf(stderr, "char *MUT!\n");
-#else
-			rtd->ops = &ptr_char_ops;
-#endif
 		}
 		break;
 
@@ -5224,7 +5196,6 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 				rfd_flatten = reflection_type_data_lookup_field(rtd, str);
 				assert(rfd_flatten);
 
-#if 1
 				reflection_type_mutation_reset(&rtm);
 				rtm.mutation_name = "flatten";
 				rtm.field_flatten_idx = rfd_flatten->idx;
@@ -5237,9 +5208,6 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 				rtd_mut = NULL;
 
 				fprintf(stderr, "flatten MUT! idx=%d field_flatten_idx=%d rtm.field_flatten_idx=%d\n", rtd->idx, rtd->field_flatten_idx, rtm.field_flatten_idx);
-#else
-				rtd->field_flatten_idx = rfd_flatten->idx;
-#endif
 			}
 		}
 
@@ -5284,12 +5252,17 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 				str = fy_type_info_get_yaml_string(rfd_ti, "counter");
 				if (!disable_mutation && str) {
 					rfd_ref = reflection_type_data_lookup_field(rtd, str);
-					assert(rfd_ref);
+					if (!rfd_ref) {
+						fprintf(stderr, "could not find counter %s\n", str);
+						goto err_out;
+					}
 
+#if 0
 					fprintf(stderr, "%s: %s.%s counter=%s (%s)\n", __func__,
 							rtd->ti->name, rfd->fi->name, str,
 							rfd_ref ? rfd_ref->field_name : "N/A");
 					fprintf(stderr, "rtd=%p rfd=%p rfd_ref=%p\n", rtd, rfd, rfd_ref);
+#endif
 
 					/* must be an integer */
 					assert(fy_type_kind_is_integer(rfd_ref->rtd->ti->kind));
@@ -5298,19 +5271,10 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 					assert(!rfd->counted_by);
 					rfd->counted_by = rfd_ref;
 
-					assert(!rfd_ref->counter_of);
-					rfd_ref->counter_of = rfd;
-
-					rfd_ref->omit_on_emit = true;
-
-#if 0
-					rfd->ops = &dyn_array_ops;
-#else
 					reflection_type_mutation_reset(&rtm);
 					rtm.mutation_name = "dyn_array";
 					rtm.ops = &dyn_array_ops;
 
-					/* this does not need a parent */
 					rtd_mut = reflection_type_data_mutate(rfd->rtd, &rtm);
 					assert(rtd_mut);
 
@@ -5318,16 +5282,13 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 					rtd_mut = NULL;
 
 					fprintf(stderr, "dyn_array *MUT!\n");
-#endif
+
 					rfd_ref = NULL;
 				}
 				break;
 
 			default:
 				break;
-
-			}
-			if (rfd_ti->kind == FYTK_PTR) {
 
 			}
 		}
@@ -5387,13 +5348,6 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 	}
 
 	rtd->flags |= RTDF_SPECIALIZED;
-
-#if 0
-	if (rtd->rtd_source) {
-		rtd_tmp = rtd->rtd_source;
-		reflection_setup_type_specialize(&rtd_tmp, rtd_parent, parent_addr, true);
-	}
-#endif
 
 	return 0;
 err_out:
