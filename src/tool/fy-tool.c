@@ -2165,12 +2165,35 @@ reflection_type_data_needs_cleanup(struct reflection_type_data *rtd)
 	return (rtd->flags & RTDF_PURITY_MASK) != RTDF_PURE;
 }
 
+int
+reflection_type_data_generate_value_into(struct reflection_type_data *rtd, struct fy_node *fyn, void *data);
+
+int
+reflection_type_data_put_default_value_into(struct reflection_type_data *rtd, void *data);
+
+struct reflection_type_system;
+
+struct reflection_type_system_ops {
+	void *(*malloc)(struct reflection_type_system *rts, size_t size);
+	void *(*realloc)(struct reflection_type_system *rts, void *ptr, size_t size);
+	void (*free)(struct reflection_type_system *rts, void *ptr);
+};
+
+struct reflection_type_system_config {
+	struct fy_reflection *rfl;
+	const char *entry_type;
+	const struct reflection_type_system_ops *ops;
+	void *user;
+};
+
 struct reflection_type_system {
+	struct reflection_type_system_config cfg;
 	struct fy_reflection *rfl;	/* back pointer */
 	struct reflection_type_data *rtd_root;
 	size_t rtd_count;
 	size_t rtd_alloc;
 	struct reflection_type_data **rtds;
+
 };
 
 static inline const struct reflection_type_ops *
@@ -3382,9 +3405,6 @@ err_out:
 static int struct_fill_in_default_field(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
 					const struct reflection_field_data *rfd)
 {
-	static const struct fy_parse_cfg cfg_i = { .search_path = "", .flags = 0, };
-	struct fy_parser *fyp_i = NULL;
-	struct fy_document_iterator *fydi = NULL;
 	uintmax_t bitfield_data, limit;
 	void *field_data;
 	int rc = -1;
@@ -3399,32 +3419,9 @@ static int struct_fill_in_default_field(struct reflection_object *ro, struct fy_
 		field_data = &bitfield_data;
 	}
 
-	if (!rfd->rtd->default_value) {
-		/* no canned default available, must created each time */
-		fyp_i = fy_parser_create(&cfg_i);
-		if (!fyp_i)
-			goto err_out;
-
-		fydi = fy_document_iterator_create_on_node(rfd->rtd->fyn_default);
-		if (!fydi)
-			goto err_out;
-
-		rc = fy_parser_set_document_iterator(fyp_i, FYPEGF_GENERATE_ALL_EVENTS, fydi);
-		if (rc)
-			goto err_out;
-
-		rc = reflection_parse_into(fyp_i, rfd->rtd, field_data);
-		if (rc)
-			goto err_out;
-
-		fy_document_iterator_destroy(fydi);
-		fydi = NULL;
-		fy_parser_destroy(fyp_i);
-		fyp_i = NULL;
-	} else {
-		/* copy from the already prepared default data area */
-		memcpy(field_data, rfd->rtd->default_value, rfd->rtd->ti->size);
-	}
+	rc = reflection_type_data_put_default_value_into(rfd->rtd, field_data);
+	if (rc)
+		goto err_out;
 
 	/* and copy it out if it's a bitfield */
 	if (rfd->fi->flags & FYFIF_BITFIELD) {
@@ -3449,10 +3446,6 @@ static int struct_fill_in_default_field(struct reflection_object *ro, struct fy_
 	rc = 0;
 
 out:
-
-	fy_document_iterator_destroy(fydi);
-	fy_parser_destroy(fyp_i);
-
 	return rc;
 
 err_out:
@@ -4071,7 +4064,8 @@ static int ptr_char_setup(struct reflection_object *ro, struct fy_parser *fyp, s
 	assert(text);
 
 	p = (*ro->rd->alloc_cb)(ro->rd, len + 1);
-	assert(p);
+	if (!p)
+		goto err_out;
 
 	memcpy(p, text, len);
 	p[len] = '\0';
@@ -4981,8 +4975,7 @@ reflection_setup_type_resolve(struct reflection_type_system *rts, struct reflect
 }
 
 void *
-reflection_setup_type_generate_default_value(struct reflection_type_data *rtd,
-				       struct reflection_type_data *rtd_parent, void *parent_addr)
+reflection_type_data_generate_value(struct reflection_type_data *rtd, struct fy_node *fyn)
 {
 	static const struct fy_parse_cfg cfg_i = { .search_path = "", .flags = 0, };
 	struct fy_parser *fyp_i = NULL;
@@ -4990,15 +4983,14 @@ reflection_setup_type_generate_default_value(struct reflection_type_data *rtd,
 	void *value;
 	int rc;
 
-	/* no annotation */
-	if (!rtd->fyn_default)
+	if (!fyn)
 		goto err_out;
 
 	fyp_i = fy_parser_create(&cfg_i);
 	if (!fyp_i)
 		goto err_out;
 
-	fydi = fy_document_iterator_create_on_node(rtd->fyn_default);
+	fydi = fy_document_iterator_create_on_node(fyn);
 	if (!fydi)
 		goto err_out;
 
@@ -5018,6 +5010,69 @@ out:
 err_out:
 	value = NULL;
 	goto out;
+}
+
+int
+reflection_type_data_generate_value_into(struct reflection_type_data *rtd, struct fy_node *fyn, void *data)
+{
+	static const struct fy_parse_cfg cfg_i = { .search_path = "", .flags = 0, };
+	struct fy_parser *fyp_i = NULL;
+	struct fy_document_iterator *fydi = NULL;
+	int rc;
+
+	if (!fyn)
+		goto err_out;
+
+	fyp_i = fy_parser_create(&cfg_i);
+	if (!fyp_i)
+		goto err_out;
+
+	fydi = fy_document_iterator_create_on_node(fyn);
+	if (!fydi)
+		goto err_out;
+
+	rc = fy_parser_set_document_iterator(fyp_i, FYPEGF_GENERATE_ALL_EVENTS, fydi);
+	if (rc)
+		goto err_out;
+
+	rc = reflection_parse_into(fyp_i, rtd, data);
+	if (rc)
+		goto err_out;
+
+out:
+	fy_document_iterator_destroy(fydi);
+	fy_parser_destroy(fyp_i);
+	return rc;
+
+err_out:
+	rc = -1;
+	goto out;
+}
+
+void *
+reflection_setup_type_generate_default_value(struct reflection_type_data *rtd,
+					     struct reflection_type_data *rtd_parent, void *parent_addr)
+{
+	return reflection_type_data_generate_value(rtd, rtd->fyn_default);
+}
+
+int
+reflection_type_data_put_default_value_into(struct reflection_type_data *rtd, void *data)
+{
+	if (!rtd || !rtd->fyn_default)
+		return -1;
+
+	/* copy from the already prepared default data area */
+	if (rtd->default_value) {
+		/* non pointer just copy into */
+		if (rtd->ti->kind != FYTK_PTR) {
+			memcpy(data, rtd->default_value, rtd->ti->size);
+			return 0;
+		}
+		abort();
+	}
+	/* no canned default available, must created each time */
+	return reflection_type_data_generate_value_into(rtd, rtd->fyn_default, data);
 }
 
 static int
@@ -5159,7 +5214,8 @@ reflection_type_data_mutate(struct reflection_type_data *rtd_source, const struc
 	rtd->fyn_default = rtd_source->fyn_default;
 	if (rtd_source->default_value) {
 		rtd->default_value = malloc(rtd->ti->size);
-		assert(rtd->default_value);
+		if (!rtd->default_value)
+			goto err_out;
 		memcpy(rtd->default_value, rtd_source->default_value, rtd->ti->size);
 	}
 
@@ -5177,6 +5233,7 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 	struct reflection_field_data *rfd, *rfd_ref, *rfd_flatten;
 	struct reflection_type_mutation rtm;
 	struct reflection_type_data *rtd_mut;
+	struct fy_node *fyn_terminator;
 	const struct reflection_type_ops *ops;
 	const struct fy_type_info *rfd_ti;
 	const char *str;
@@ -5302,6 +5359,17 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 					rtd_mut = NULL;
 
 					fprintf(stderr, "dyn_array *MUT!\n");
+
+				} else if ((fyn_terminator = fy_node_by_path(fy_document_root(rtd->yaml_annotation), "terminator", FY_NT, FYNWF_PTR_DEFAULT)) != NULL) {
+					fprintf(stderr, "terminator\n");
+#if 0
+					rtd->default_value = reflection_setup_type_generate_default_value(rtd, rtd_parent, parent_addr);
+					if (!rtd->default_value) {
+						fprintf(stderr, "%s: %s: failed to generate default value\n", __func__, rtd->ti->fullname);
+						goto err_out;
+					}
+#endif
+
 				}
 				break;
 
@@ -5458,6 +5526,59 @@ reflection_root_data_get_root(struct reflection_type_system *rts, const char *en
 	return NULL;
 }
 
+void *reflection_malloc(struct reflection_type_system *rts, size_t size)
+{
+	if (!rts)
+		return NULL;
+
+	if (!rts->cfg.ops || !rts->cfg.ops->malloc)
+		return malloc(size);
+
+	return rts->cfg.ops->malloc(rts, size);
+}
+
+void *reflection_realloc(struct reflection_type_system *rts, void *ptr, size_t size)
+{
+	if (!rts)
+		return NULL;
+
+	if (!rts->cfg.ops || !rts->cfg.ops->realloc)
+		return realloc(ptr, size);
+
+	return rts->cfg.ops->realloc(rts, ptr, size);
+}
+
+void reflection_free(struct reflection_type_system *rts, void *ptr)
+{
+	if (!rts)
+		return;
+
+	if (!rts->cfg.ops || !rts->cfg.ops->free) {
+		free(ptr);
+		return;
+	}
+
+	rts->cfg.ops->free(rts, ptr);
+}
+
+#if 0
+void *reflection_type_data_malloc(struct reflection_type_data *rtd)
+{
+	if (!rtd)
+		return NULL;
+
+	return reflection_malloc(rtd->rts, rtd->ti->size);
+}	
+
+void reflection_type_data_free(struct reflection_type_data *rtd, void *ptr)
+{
+	if (!rtd || !ptr)
+		return;
+
+	reflection_free(rtd->rts, ptr);
+}
+#endif
+
 struct reflection_type_system *
 reflection_type_system_create(struct fy_reflection *rfl, const char *entry_type)
 {
@@ -5478,7 +5599,8 @@ reflection_type_system_create(struct fy_reflection *rfl, const char *entry_type)
 		goto err_out;
 
 	rts->rtd_root = reflection_setup_type(rts, ti_root, NULL);
-	assert(rts->rtd_root);
+	if (!rts->rtd_root)
+		goto err_out;
 
 	reflection_setup_type_specialize(&rts->rtd_root, NULL, NULL);
 
@@ -6006,6 +6128,7 @@ int main(int argc, char *argv[])
 	const char *type_include = NULL, *type_exclude = NULL;
 	const char *import_c_file = NULL;
 	const char *entry_type = NULL;
+	struct reflection_type_system_config rts_cfg;
 	struct reflection_type_system *rts = NULL;
 	void *rd_data = NULL;
 	bool emitted_ss;
@@ -7082,6 +7205,12 @@ int main(int argc, char *argv[])
 					goto cleanup;
 				}
 			}
+
+			memset(&rts_cfg, 0, sizeof(rts_cfg));
+			rts_cfg.rfl = rfl;
+			rts_cfg.entry_type = entry_type;
+			rts_cfg.ops = NULL;	/* use default malloc/realloc/free */
+			rts_cfg.user = NULL;
 
 			rts = reflection_type_system_create(rfl, entry_type);
 			if (!rts) {
