@@ -2081,8 +2081,7 @@ struct reflection_type_ops {
 		    struct reflection_type_data *rtd_parent, void *parent_addr);
 
 	/* free */
-	void (*free)(struct reflection_type_data *rtd, void *data,
-		     struct reflection_type_data *rtd_parent, void *parent_addr);
+	void (*free)(struct reflection_type_data *rtd, void *data);
 };
 
 struct reflection_type {
@@ -2156,9 +2155,9 @@ struct reflection_type_data {
 };
 
 static inline bool
-reflection_type_data_needs_cleanup(struct reflection_type_data *rtd)
+reflection_type_data_needs_free(struct reflection_type_data *rtd)
 {
-	return (rtd->flags & RTDF_PURITY_MASK) != RTDF_PURE;
+	return rtd && (rtd->flags & RTDF_PURITY_MASK) != RTDF_PURE;
 }
 
 int
@@ -2205,6 +2204,8 @@ struct reflection_decoder {
 void *reflection_malloc(struct reflection_type_system *rts, size_t size);
 void *reflection_realloc(struct reflection_type_system *rts, void *ptr, size_t size);
 void reflection_free(struct reflection_type_system *rts, void *ptr);
+
+void reflection_type_data_free(struct reflection_type_data *rtd, void *data);
 
 void *
 reflection_parse(struct fy_parser *fyp, struct reflection_type_data *rtd);
@@ -2974,20 +2975,15 @@ err_out:
 	return -1;
 }
 
-void const_array_free(struct reflection_type_data *rtd, void *data,
-		      struct reflection_type_data *rtd_parent, void *parent_addr)
+void const_array_free(struct reflection_type_data *rtd, void *data)
 {
-	const struct reflection_type_ops *ops;
 	size_t idx;
 
-	if (reflection_type_data_needs_cleanup(rtd->rtd_dep)) {
-		ops = rtd->rtd_dep->ops;
-		if (ops && ops->free) {
-			for (idx = 0; idx < rtd->ti->count; idx++, data += rtd->rtd_dep->ti->size) {
-				ops->free(rtd->rtd_dep, data, rtd, (void *)(uintptr_t)idx);
-			}
-		}
-	}
+	if (!reflection_type_data_needs_free(rtd->rtd_dep))
+		return;
+
+	for (idx = 0; idx < rtd->ti->count; idx++, data += rtd->rtd_dep->ti->size)
+		reflection_type_data_free(rtd->rtd_dep, data);
 }
 
 uintmax_t load_le(const void *ptr, size_t width, bool is_signed)
@@ -3684,31 +3680,20 @@ err_out:
 	return -1;
 }
 
-void struct_free(struct reflection_type_data *rtd, void *data,
-		 struct reflection_type_data *rtd_parent, void *parent_addr)
+void struct_free(struct reflection_type_data *rtd, void *data)
 {
 	struct reflection_field_data *rfd;
-	const struct reflection_type_ops *ops;
 	size_t i;
 
 	for (i = 0; i < rtd->fields_count; i++) {
 
 		rfd = rtd->fields[i];
 
-		/* anything needs cleanup? */
-		if (!reflection_type_data_needs_cleanup(rfd->rtd))
-			continue;
-
-		/* no bitfields */
+		/* no bitfields have a cleanup */
 		if (rfd->fi->flags & FYFIF_BITFIELD)
 			continue;
 
-		/* has free callback? */
-		ops = rfd->rtd->ops;
-		if (!ops || !ops->free)
-			continue;
-
-		ops->free(rfd->rtd, data + rfd->fi->offset, rtd, rfd);
+		reflection_type_data_free(rfd->rtd, data + rfd->fi->offset);
 	}
 }
 
@@ -4007,24 +3992,16 @@ static int ptr_finish(struct reflection_object *ro, struct fy_parser *fyp, struc
 	return 0;
 }
 
-void ptr_free(struct reflection_type_data *rtd, void *data,
-	      struct reflection_type_data *rtd_parent, void *parent_addr)
+void ptr_free(struct reflection_type_data *rtd, void *data)
 {
-	const struct reflection_type_ops *ops;
 	void *ptr;
 
 	ptr = *(void **)data;
 	if (!ptr)
 		return;
-
-	if (reflection_type_data_needs_cleanup(rtd->rtd_dep)) {
-		ops = rtd->rtd_dep->ops;
-		if (ops && ops->free)
-			ops->free(rtd->rtd_dep, ptr, rtd, NULL);
-	}
-
 	*(void **)data = NULL;
 
+	reflection_type_data_free(rtd->rtd_dep, ptr);
 	reflection_free(rtd->rts, ptr);
 }
 
@@ -4125,8 +4102,7 @@ err_out:
 	return -1;
 }
 
-void ptr_char_free(struct reflection_type_data *rtd, void *data,
-	      struct reflection_type_data *rtd_parent, void *parent_addr)
+void ptr_char_free(struct reflection_type_data *rtd, void *data)
 {
 	void *ptr;
 
@@ -4201,16 +4177,9 @@ int typedef_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const
 	return rtd_dep->ops->emit(rtd_dep, fye, data, data_size, rtd_parent, parent_addr);
 }
 
-void typedef_free(struct reflection_type_data *rtd, void *data,
-		  struct reflection_type_data *rtd_parent, void *parent_addr)
+void typedef_free(struct reflection_type_data *rtd, void *data)
 {
-	const struct reflection_type_ops *ops;
-
-	if (reflection_type_data_needs_cleanup(rtd->rtd_dep)) {
-		ops = rtd->rtd_dep->ops;
-		if (ops && ops->free)
-			ops->free(rtd->rtd_dep, data, rtd, NULL);
-	}
+	reflection_type_data_free(rtd->rtd_dep, data);
 }
 
 struct dyn_array_instance_data {
@@ -4416,10 +4385,8 @@ err_out:
 	return -1;
 }
 
-void dyn_array_free(struct reflection_type_data *rtd, void *data,
-		      struct reflection_type_data *rtd_parent, void *parent_addr)
+void dyn_array_free(struct reflection_type_data *rtd, void *data)
 {
-	const struct reflection_type_ops *ops;
 	struct reflection_field_data *rfd, *rfd_counter;
 	void *parent_data;
 	uintmax_t idx, count;
@@ -4432,29 +4399,30 @@ void dyn_array_free(struct reflection_type_data *rtd, void *data,
 		return;
 	*(void **)data = NULL;
 
+	/* this must have been mutated, and filled in */
+	assert(rtd->rtd_parent);
+	assert(rtd->parent_addr);
+
 	if (rtd->counter) {
-		rfd_counter = reflection_type_data_lookup_field(rtd_parent, rtd->counter);
+		rfd_counter = reflection_type_data_lookup_field(rtd->rtd_parent, rtd->counter);
 		assert(rfd_counter);
 	} else
 		rfd_counter = NULL;
 
-	if (reflection_type_data_needs_cleanup(rtd->rtd_dep)) {
+	if (reflection_type_data_needs_free(rtd->rtd_dep)) {
 
-		ops = rtd->rtd_dep->ops;
-		if (ops && ops->free) {
+		/* the parent address is the field data */
+		rfd = rtd->parent_addr;
 
-			rfd = parent_addr;
-			assert(rfd);
+		/* find out where the parent structure address */
+		parent_data = data - rfd->fi->offset;
 
-			/* find out where the parent structure address */
-			parent_data = data - rfd->fi->offset;
+		/* load the count */
+		count = integer_field_load(rfd_counter, parent_data);
 
-			count = integer_field_load(rfd_counter, parent_data);
-
-			/* free in sequence */
-			for (idx = 0, p = ptr; idx < count; idx++, p += rtd->rtd_dep->ti->size)
-				ops->free(rtd->rtd_dep, p, rtd, (void *)(uintptr_t)idx);
-		}
+		/* free in sequence */
+		for (idx = 0, p = ptr; idx < count; idx++, p += rtd->rtd_dep->ti->size)
+			reflection_type_data_free(rtd->rtd_dep, p);
 	}
 
 	reflection_free(rtd->rts, ptr);
@@ -5331,6 +5299,8 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 					rtm.mutation_name = "dyn_array";
 					rtm.ops = &dyn_array_ops;
 					rtm.counter = str;
+					rtm.rtd_parent = rtd;
+					rtm.parent_addr = rfd;
 
 					rtd_mut = reflection_type_data_mutate(rfd->rtd, &rtm);
 					assert(rtd_mut);
@@ -5572,28 +5542,21 @@ err_out:
 	return NULL;
 }
 
-static void
-reflection_type_data_free_internal(struct reflection_type_data *rtd, void *data,
-				   struct reflection_type_data *rtd_parent, void *parent_addr)
+void reflection_type_data_free(struct reflection_type_data *rtd, void *data)
 {
 	const struct reflection_type_ops *ops;
 
 	if (!rtd || !data)
 		return;
 
-	if (!reflection_type_data_needs_cleanup(rtd))
+	if (!reflection_type_data_needs_free(rtd))
 		return;
 
 	ops = rtd->ops;
-	assert(ops);
-	assert(ops->free);
+	if (!ops || !ops->free)
+		return;
 
-	ops->free(rtd, data, rtd_parent, parent_addr);
-}
-
-void reflection_type_data_free(struct reflection_type_data *rtd, void *data)
-{
-	reflection_type_data_free_internal(rtd, data, NULL, NULL);
+	ops->free(rtd, data);
 }
 
 void
