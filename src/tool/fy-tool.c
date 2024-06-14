@@ -4570,29 +4570,6 @@ static const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
 	},
 };
 
-static int root_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
-{
-	return 0;
-}
-
-struct reflection_object *root_create_child(struct reflection_object *ro_parent,
-					    struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
-{
-	struct reflection_object *ro;
-
-	ro = reflection_object_create(ro_parent, NULL, ro_parent->rtd,
-				      fyp, fye, path,
-				      ro_parent->data, ro_parent->data_size);
-	if (!ro)
-		return NULL;
-	return ro;
-}
-
-static const struct reflection_type_ops root_ops = {
-	.setup = root_setup,
-	.create_child = root_create_child,
-};
-
 void
 reflection_object_destroy(struct reflection_object *ro)
 {
@@ -4653,10 +4630,13 @@ reflection_object_create_internal(struct reflection_object *parent, void *parent
 	ro->ops = ops;
 	ro->data = data;
 	ro->data_size = data_size;
-	assert(ro->ops->setup);
-	ret = ro->ops->setup(ro, fyp, fye, path);
-	if (ret)
-		goto err_out;
+
+	/* root has no setup */
+	if (ro->ops->setup) {
+		ret = ro->ops->setup(ro, fyp, fye, path);
+		if (ret)
+			goto err_out;
+	}
 
 	return ro;
 err_out:
@@ -4688,27 +4668,6 @@ reflection_object_create_child(struct reflection_object *parent,
 	}
 
 	return parent->ops->create_child(parent, fyp, fye, path);
-}
-
-int
-reflection_object_scalar_child(struct reflection_object *parent,
-			       struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
-{
-	struct reflection_object *ro;
-	int ret;
-
-	if (!parent || !fye || !path)
-		return -1;
-
-	/* create and destroy cycle */
-	assert(parent->ops->create_child);
-	ro = parent->ops->create_child(parent, fyp, fye, path);
-	if (!ro)
-		return -1;
-
-	ret = reflection_object_finish_and_destroy(ro, fyp, fye, path);
-	assert(!ret);
-	return ret;
 }
 
 void reflection_field_data_destroy(struct reflection_field_data *rfd)
@@ -5579,7 +5538,6 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 			reflection_object_destroy(ro);
 		}
 
-
 		if (fy_path_in_root(path)) {
 			ro = fy_path_get_root_user_data(path);
 			assert(ro);
@@ -5599,11 +5557,27 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		rop = fy_path_get_parent_user_data(path);
 		assert(rop);
 
-		rc = reflection_object_scalar_child(rop, fyp, fye, path);
+		/* create and destroy cycle */
+		if (!rop) {
+			/* in root? */
+			ro = reflection_object_create_internal(NULL, NULL,
+							       rd->entry, fyp, fye, path, rd->entry->ops,
+							       rd->data, rd->data_size);
+		} else {
+			ro = reflection_object_create_child(rop, fyp, fye, path);
+		}
+
+		if (!ro) {
+			ret = FYCR_ERROR;
+			break;
+		}
+		rc = reflection_object_finish_and_destroy(ro, fyp, fye, path);
 		if (rc) {
 			ret = FYCR_ERROR;
 			break;
 		}
+		ro = NULL;
+
 		ret = FYCR_OK_CONTINUE;
 		break;
 
@@ -5613,24 +5587,22 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		break;
 
 	case FYET_DOCUMENT_START:
-		ro = reflection_object_create_internal(NULL, NULL,
-						       rd->entry, fyp, fye, path, &root_ops,
-						       rd->data, rd->data_size);
-		if (!ro) {
-			ret = FYCR_ERROR;
-			break;
-		}
-
-		fy_path_set_root_user_data(path, ro);
+		/* something to do here? */
 		ret = FYCR_OK_CONTINUE;
 		break;
 
 	case FYET_SEQUENCE_START:
 	case FYET_MAPPING_START:
 		rop = fy_path_get_parent_user_data(path);
-		assert(rop);
+		if (!rop) {
+			/* in root, start from scratch */
+			ro = reflection_object_create_internal(NULL, NULL,
+							       rd->entry, fyp, fye, path, rd->entry->ops,
+							       rd->data, rd->data_size);
+		} else {
+			ro = reflection_object_create_child(rop, fyp, fye, path);
+		}
 
-		ro = reflection_object_create_child(rop, fyp, fye, path);
 		if (!ro) {
 			ret = FYCR_ERROR;
 			break;
@@ -5641,17 +5613,7 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		break;
 
 	case FYET_DOCUMENT_END:
-		ro = fy_path_get_root_user_data(path);
-		assert(ro);
-		fy_path_set_root_user_data(path, NULL);
-
-		rc = reflection_object_finish_and_destroy(ro, fyp, fye, path);
-		if (rc) {
-			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
-					"reflection_object_finish_and_destroy() failed");
-			ret = FYCR_ERROR;
-			break;
-		}
+		/* document end, something more to do? */
 
 		rd->document_ready = true;
 		/* we always stop to give a chance to consume the document */
