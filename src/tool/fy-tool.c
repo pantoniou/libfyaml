@@ -2091,7 +2091,6 @@ struct reflection_type {
 };
 
 struct reflection_object {
-	struct reflection_decoder *rd;
 	struct reflection_object *parent;
 	void *parent_addr;
 	struct reflection_type_data *rtd;
@@ -2230,15 +2229,10 @@ int reflection_emit(struct fy_emitter *fye, struct reflection_type_data *rtd, co
 		    enum reflection_emit_flags flags);
 
 struct reflection_object *
-reflection_object_create_internal(struct reflection_decoder *rd,
-				  struct reflection_object *parent, void *parent_addr,
+reflection_object_create_internal(struct reflection_object *parent, void *parent_addr,
 				  struct reflection_type_data *rtd,
 				  struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
 				  const struct reflection_type_ops *ops, void *data, size_t data_size);
-
-struct reflection_object *
-reflection_object_create_root(struct reflection_decoder *rd,
-			      struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
 
 struct reflection_object *
 reflection_object_create(struct reflection_object *parent, void *parent_addr,
@@ -4576,38 +4570,9 @@ static const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
 	},
 };
 
-struct root_instance_data {
-	// struct reflection_decoder *rd;
-	int dummy;
-};
-
 static int root_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
-	struct root_instance_data *id;
-
-	assert(ro);
-
-	id = malloc(sizeof(*id));
-	if (!id) {
-		assert(0);
-		return -1;
-	}
-	memset(id, 0, sizeof(*id));
-	ro->instance_data = id;
-
 	return 0;
-}
-
-static void root_cleanup(struct reflection_object *ro)
-{
-	struct root_instance_data *id;
-
-	id = ro->instance_data;
-	if (!id)
-		return;
-
-	ro->instance_data = NULL;
-	free(id);
 }
 
 struct reflection_object *root_create_child(struct reflection_object *ro_parent,
@@ -4625,7 +4590,6 @@ struct reflection_object *root_create_child(struct reflection_object *ro_parent,
 
 static const struct reflection_type_ops root_ops = {
 	.setup = root_setup,
-	.cleanup = root_cleanup,
 	.create_child = root_create_child,
 };
 
@@ -4664,8 +4628,7 @@ reflection_object_finish_and_destroy(struct reflection_object *ro, struct fy_par
 }
 
 struct reflection_object *
-reflection_object_create_internal(struct reflection_decoder *rd,
-				  struct reflection_object *parent, void *parent_addr,
+reflection_object_create_internal(struct reflection_object *parent, void *parent_addr,
 				  struct reflection_type_data *rtd,
 				  struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
 				  const struct reflection_type_ops *ops,
@@ -4684,7 +4647,6 @@ reflection_object_create_internal(struct reflection_decoder *rd,
 		return NULL;
 
 	memset(ro, 0, sizeof(*ro));
-	ro->rd = rd;
 	ro->rtd = rtd;
 	ro->parent = parent;
 	ro->parent_addr = parent_addr;
@@ -4703,18 +4665,6 @@ err_out:
 }
 
 struct reflection_object *
-reflection_object_create_root(struct reflection_decoder *rd,
-			      struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
-{
-	if (!rd || !fyp || !fye || !path)
-		return NULL;
-
-	return reflection_object_create_internal(rd, NULL, NULL,
-					         rd->entry, fyp, fye, path, &root_ops,
-						 rd->data, rd->data_size);
-}
-
-struct reflection_object *
 reflection_object_create(struct reflection_object *parent, void *parent_addr,
 			 struct reflection_type_data *rtd,
 			 struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
@@ -4723,7 +4673,7 @@ reflection_object_create(struct reflection_object *parent, void *parent_addr,
 	if (!parent || !rtd || !fyp || !fye || !path || !data || !data_size)
 		return NULL;
 
-	return reflection_object_create_internal(parent->rd, parent, parent_addr,
+	return reflection_object_create_internal(parent, parent_addr,
 						 rtd, fyp, fye, path,
 						 rtd->ops, data, data_size);
 }
@@ -5663,7 +5613,9 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		break;
 
 	case FYET_DOCUMENT_START:
-		ro = reflection_object_create_root(rd, fyp, fye, path);
+		ro = reflection_object_create_internal(NULL, NULL,
+						       rd->entry, fyp, fye, path, &root_ops,
+						       rd->data, rd->data_size);
 		if (!ro) {
 			ret = FYCR_ERROR;
 			break;
@@ -5730,7 +5682,6 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 	return ret;
 }
-
 
 int
 reflection_decoder_parse(struct reflection_decoder *rd, struct fy_parser *fyp, struct reflection_type_data *rtd, void *data, size_t size)
