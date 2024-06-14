@@ -2080,8 +2080,9 @@ struct reflection_type_ops {
 	int (*emit)(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size,
 		    struct reflection_type_data *rtd_parent, void *parent_addr);
 
-	/* free */
-	void (*free)(struct reflection_type_data *rtd, void *data);
+	/* constructor, destructor */
+	void *(*ctor)(struct reflection_type_data *rtd, void *data);
+	void (*dtor)(struct reflection_type_data *rtd, void *data);
 };
 
 struct reflection_type {
@@ -2155,9 +2156,15 @@ struct reflection_type_data {
 };
 
 static inline bool
-reflection_type_data_needs_free(struct reflection_type_data *rtd)
+reflection_type_data_has_ctor(struct reflection_type_data *rtd)
 {
-	return rtd && (rtd->flags & RTDF_PURITY_MASK) != RTDF_PURE;
+	return rtd && (rtd->flags & RTDF_PURITY_MASK) != RTDF_PURE && rtd->ops && rtd->ops->ctor;
+}
+
+static inline bool
+reflection_type_data_has_dtor(struct reflection_type_data *rtd)
+{
+	return rtd && (rtd->flags & RTDF_PURITY_MASK) != RTDF_PURE && rtd->ops && rtd->ops->dtor;
 }
 
 int
@@ -2205,7 +2212,7 @@ void *reflection_malloc(struct reflection_type_system *rts, size_t size);
 void *reflection_realloc(struct reflection_type_system *rts, void *ptr, size_t size);
 void reflection_free(struct reflection_type_system *rts, void *ptr);
 
-void reflection_type_data_free(struct reflection_type_data *rtd, void *data);
+void reflection_type_data_call_dtor(struct reflection_type_data *rtd, void *data);
 
 void *
 reflection_parse(struct fy_parser *fyp, struct reflection_type_data *rtd);
@@ -2975,15 +2982,15 @@ err_out:
 	return -1;
 }
 
-void const_array_free(struct reflection_type_data *rtd, void *data)
+void const_array_dtor(struct reflection_type_data *rtd, void *data)
 {
 	size_t idx;
 
-	if (!reflection_type_data_needs_free(rtd->rtd_dep))
+	if (!reflection_type_data_has_dtor(rtd->rtd_dep))
 		return;
 
 	for (idx = 0; idx < rtd->ti->count; idx++, data += rtd->rtd_dep->ti->size)
-		reflection_type_data_free(rtd->rtd_dep, data);
+		reflection_type_data_call_dtor(rtd->rtd_dep, data);
 }
 
 uintmax_t load_le(const void *ptr, size_t width, bool is_signed)
@@ -3680,7 +3687,7 @@ err_out:
 	return -1;
 }
 
-void struct_free(struct reflection_type_data *rtd, void *data)
+void struct_dtor(struct reflection_type_data *rtd, void *data)
 {
 	struct reflection_field_data *rfd;
 	size_t i;
@@ -3693,7 +3700,7 @@ void struct_free(struct reflection_type_data *rtd, void *data)
 		if (rfd->fi->flags & FYFIF_BITFIELD)
 			continue;
 
-		reflection_type_data_free(rfd->rtd, data + rfd->fi->offset);
+		reflection_type_data_call_dtor(rfd->rtd, data + rfd->fi->offset);
 	}
 }
 
@@ -3938,8 +3945,6 @@ static int ptr_setup(struct reflection_object *ro, struct fy_parser *fyp, struct
 	void *data, *p;
 	size_t data_size, len;
 
-	fprintf(stderr, "%s:\n", __func__);
-
 	assert(ro->rtd->ti->kind == FYTK_PTR);
 
 	rtd_dep = ro->rtd->rtd_dep;
@@ -3992,7 +3997,7 @@ static int ptr_finish(struct reflection_object *ro, struct fy_parser *fyp, struc
 	return 0;
 }
 
-void ptr_free(struct reflection_type_data *rtd, void *data)
+void ptr_dtor(struct reflection_type_data *rtd, void *data)
 {
 	void *ptr;
 
@@ -4001,7 +4006,7 @@ void ptr_free(struct reflection_type_data *rtd, void *data)
 		return;
 	*(void **)data = NULL;
 
-	reflection_type_data_free(rtd->rtd_dep, ptr);
+	reflection_type_data_call_dtor(rtd->rtd_dep, ptr);
 	reflection_free(rtd->rts, ptr);
 }
 
@@ -4102,7 +4107,7 @@ err_out:
 	return -1;
 }
 
-void ptr_char_free(struct reflection_type_data *rtd, void *data)
+void ptr_char_dtor(struct reflection_type_data *rtd, void *data)
 {
 	void *ptr;
 
@@ -4118,7 +4123,7 @@ void ptr_char_free(struct reflection_type_data *rtd, void *data)
 static const struct reflection_type_ops ptr_char_ops = {
 	.setup = ptr_char_setup,
 	.emit = ptr_char_emit,
-	.free = ptr_char_free,
+	.dtor = ptr_char_dtor,
 };
 
 struct reflection_object *ptr_create_child(struct reflection_object *ro_parent,
@@ -4177,9 +4182,9 @@ int typedef_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const
 	return rtd_dep->ops->emit(rtd_dep, fye, data, data_size, rtd_parent, parent_addr);
 }
 
-void typedef_free(struct reflection_type_data *rtd, void *data)
+void typedef_dtor(struct reflection_type_data *rtd, void *data)
 {
-	reflection_type_data_free(rtd->rtd_dep, data);
+	reflection_type_data_call_dtor(rtd->rtd_dep, data);
 }
 
 struct dyn_array_instance_data {
@@ -4192,7 +4197,6 @@ static int dyn_array_setup(struct reflection_object *ro, struct fy_parser *fyp, 
 {
 	struct dyn_array_instance_data *id;
 
-	fprintf(stderr, "%s:\n", __func__);
 	if (fye->type != FYET_SEQUENCE_START) {
 		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
 				"Illegal event type (expecting sequence start)");
@@ -4385,7 +4389,7 @@ err_out:
 	return -1;
 }
 
-void dyn_array_free(struct reflection_type_data *rtd, void *data)
+void dyn_array_dtor(struct reflection_type_data *rtd, void *data)
 {
 	struct reflection_field_data *rfd, *rfd_counter;
 	void *parent_data;
@@ -4409,7 +4413,7 @@ void dyn_array_free(struct reflection_type_data *rtd, void *data)
 	} else
 		rfd_counter = NULL;
 
-	if (reflection_type_data_needs_free(rtd->rtd_dep)) {
+	if (reflection_type_data_has_dtor(rtd->rtd_dep)) {
 
 		/* the parent address is the field data */
 		rfd = rtd->parent_addr;
@@ -4422,7 +4426,7 @@ void dyn_array_free(struct reflection_type_data *rtd, void *data)
 
 		/* free in sequence */
 		for (idx = 0, p = ptr; idx < count; idx++, p += rtd->rtd_dep->ti->size)
-			reflection_type_data_free(rtd->rtd_dep, p);
+			reflection_type_data_call_dtor(rtd->rtd_dep, p);
 	}
 
 	reflection_free(rtd->rts, ptr);
@@ -4434,7 +4438,7 @@ static const struct reflection_type_ops dyn_array_ops = {
 	.finish = dyn_array_finish,
 	.create_child = dyn_array_create_child,
 	.emit = dyn_array_emit,
-	.free = dyn_array_free,
+	.dtor = dyn_array_dtor,
 };
 
 static const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
@@ -4537,7 +4541,7 @@ static const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
 		.finish = struct_finish,
 		.create_child = struct_create_child,
 		.emit = struct_emit,
-		.free = struct_free,
+		.dtor = struct_dtor,
 	},
 	[FYTK_UNION] = {
 	},
@@ -4548,7 +4552,7 @@ static const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
 	[FYTK_TYPEDEF] = {
 		.setup = typedef_setup,
 		.emit = typedef_emit,
-		.free = typedef_free,
+		.dtor = typedef_dtor,
 	},
 	[FYTK_PTR] = {
 		.setup = ptr_setup,
@@ -4556,7 +4560,7 @@ static const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
 		.finish = ptr_finish,
 		.create_child = ptr_create_child,
 		.emit = ptr_emit,
-		.free = ptr_free,
+		.dtor = ptr_dtor,
 	},
 	[FYTK_CONSTARRAY] = {
 		.setup = const_array_setup,
@@ -4564,7 +4568,7 @@ static const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
 		.finish = const_array_finish,
 		.create_child = const_array_create_child,
 		.emit = const_array_emit,
-		.free = const_array_free,
+		.dtor = const_array_dtor,
 	},
 	[FYTK_INCOMPLETEARRAY] = {
 	},
@@ -5352,10 +5356,10 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 		}
 	}
 
-	/* finaly if the type has a free method, then it's not pure */
+	/* finaly if the type has costructor/destructor methods, then it's not pure */
 	if (rtd->ti->kind != FYTK_STRUCT && rtd->ti->kind != FYTK_UNION) {
 		ops = rtd->ops;
-		if (ops && ops->free)
+		if (ops && ops->dtor)
 			rtd->flags |= RTDF_UNPURE;
 	}
 
@@ -5542,21 +5546,12 @@ err_out:
 	return NULL;
 }
 
-void reflection_type_data_free(struct reflection_type_data *rtd, void *data)
+void reflection_type_data_call_dtor(struct reflection_type_data *rtd, void *data)
 {
-	const struct reflection_type_ops *ops;
-
-	if (!rtd || !data)
+	if (!rtd || !data || !reflection_type_data_has_dtor(rtd))
 		return;
 
-	if (!reflection_type_data_needs_free(rtd))
-		return;
-
-	ops = rtd->ops;
-	if (!ops || !ops->free)
-		return;
-
-	ops->free(rtd, data);
+	rtd->ops->dtor(rtd, data);
 }
 
 void
@@ -5904,7 +5899,7 @@ out:
 
 err_out:
 	if (rd)
-		reflection_type_data_free(rtd, data);
+		reflection_type_data_call_dtor(rtd, data);
 	rc = -1;
 	goto out;
 }
@@ -7129,7 +7124,7 @@ int main(int argc, char *argv[])
 						     REF_EMIT_DS | REF_EMIT_DE | (!emitted_ss ? REF_EMIT_SS : 0));
 
 				/* free always the contents */
-				reflection_type_data_free(rts->rtd_root, rd_data);
+				reflection_type_data_call_dtor(rts->rtd_root, rd_data);
 
 				if (rc) {
 					fprintf(stderr, "reflection_emit() failed\n");
