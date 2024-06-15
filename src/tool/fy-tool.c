@@ -2094,7 +2094,6 @@ struct reflection_object {
 	struct reflection_object *parent;
 	void *parent_addr;
 	struct reflection_type_data *rtd;
-	const struct reflection_type_ops *ops;
 	void *instance_data;
 	void *data;
 	size_t data_size;
@@ -2228,11 +2227,15 @@ enum reflection_emit_flags {
 int reflection_emit(struct fy_emitter *fye, struct reflection_type_data *rtd, const void *data,
 		    enum reflection_emit_flags flags);
 
-struct reflection_object *
-reflection_object_create_internal(struct reflection_object *parent, void *parent_addr,
-				  struct reflection_type_data *rtd,
-				  struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
-				  const struct reflection_type_ops *ops, void *data, size_t data_size);
+int
+reflection_object_setup(struct reflection_object *ro,
+			struct reflection_object *parent, void *parent_addr,
+			struct reflection_type_data *rtd,
+			struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
+			void *data, size_t data_size);
+
+void
+reflection_object_cleanup(struct reflection_object *ro);
 
 struct reflection_object *
 reflection_object_create(struct reflection_object *parent, void *parent_addr,
@@ -3972,11 +3975,10 @@ static int ptr_setup(struct reflection_object *ro, struct fy_parser *fyp, struct
 	*(void **)data = p;
 
 	ro->rtd = rtd_dep;
-	ro->ops = rtd_dep->ops;
 	ro->data = p;
 	ro->data_size = len;
 
-	return ro->ops->setup(ro, fyp, fye, path);
+	return ro->rtd->ops->setup(ro, fyp, fye, path);
 
 err_out:
 	return -1;
@@ -4161,9 +4163,8 @@ static int typedef_setup(struct reflection_object *ro, struct fy_parser *fyp, st
 
 	/* replace */
 	ro->rtd = rtd_dep;
-	ro->ops = rtd_dep->ops;
 
-	return ro->ops->setup(ro, fyp, fye, path);
+	return ro->rtd->ops->setup(ro, fyp, fye, path);
 }
 
 int typedef_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size,
@@ -4570,78 +4571,32 @@ static const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
 	},
 };
 
-void
-reflection_object_destroy(struct reflection_object *ro)
-{
-	if (!ro)
-		return;
-	if (ro->ops && ro->ops->cleanup)
-		ro->ops->cleanup(ro);
-	free(ro);
-}
-
 int
-reflection_object_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
+reflection_object_setup(struct reflection_object *ro,
+			struct reflection_object *parent, void *parent_addr,
+			struct reflection_type_data *rtd,
+			struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
+			void *data, size_t data_size)
 {
-	if (!ro)
-		return 0;
-	if (!ro->ops->finish)
-		return 0;
-
-	return ro->ops->finish(ro, fyp, fye, path);
-}
-
-int
-reflection_object_finish_and_destroy(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
-{
-	int rc;
-
-	if (!ro)
-		return 0;
-
-	rc = reflection_object_finish(ro, fyp, fye, path);
-	reflection_object_destroy(ro);
-	return rc;
-}
-
-struct reflection_object *
-reflection_object_create_internal(struct reflection_object *parent, void *parent_addr,
-				  struct reflection_type_data *rtd,
-				  struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
-				  const struct reflection_type_ops *ops,
-				  void *data, size_t data_size)
-{
-	struct reflection_object *ro = NULL;
-	int ret;
-
-	if (!fye || !path || !ops) {
-		errno = EINVAL;
-		return NULL;
-	}
-
-	ro = malloc(sizeof(*ro));
-	if (!ro)
-		return NULL;
+	if (!ro || !fye || !path || !rtd || !rtd->ops || !rtd->ops->setup)
+		return -1;
 
 	memset(ro, 0, sizeof(*ro));
 	ro->rtd = rtd;
 	ro->parent = parent;
 	ro->parent_addr = parent_addr;
-	ro->ops = ops;
 	ro->data = data;
 	ro->data_size = data_size;
 
-	/* root has no setup */
-	if (ro->ops->setup) {
-		ret = ro->ops->setup(ro, fyp, fye, path);
-		if (ret)
-			goto err_out;
-	}
+	return ro->rtd->ops->setup(ro, fyp, fye, path);
+}
 
-	return ro;
-err_out:
-	reflection_object_destroy(ro);
-	return NULL;
+void
+reflection_object_cleanup(struct reflection_object *ro)
+{
+	if (!ro || !ro->rtd->ops->cleanup)
+		return;
+	ro->rtd->ops->cleanup(ro);
 }
 
 struct reflection_object *
@@ -4650,12 +4605,44 @@ reflection_object_create(struct reflection_object *parent, void *parent_addr,
 			 struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
 			 void *data, size_t data_size)
 {
-	if (!parent || !rtd || !fyp || !fye || !path || !data || !data_size)
+	struct reflection_object *ro = NULL;
+	int rc;
+
+	ro = malloc(sizeof(*ro));
+	if (!ro)
 		return NULL;
 
-	return reflection_object_create_internal(parent, parent_addr,
-						 rtd, fyp, fye, path,
-						 rtd->ops, data, data_size);
+	rc = reflection_object_setup(ro, parent, parent_addr, rtd, fyp, fye, path, data, data_size);
+	if (rc) {
+		reflection_object_cleanup(ro);
+		return NULL;
+	}
+
+	return ro;
+}
+
+void
+reflection_object_destroy(struct reflection_object *ro)
+{
+	if (!ro)
+		return;
+	reflection_object_cleanup(ro);
+	free(ro);
+}
+
+int
+reflection_object_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
+{
+	int rc;
+
+	if (!ro)
+		return 0;
+
+	rc = 0;
+	if (ro->rtd->ops->finish)
+		rc = ro->rtd->ops->finish(ro, fyp, fye, path);
+
+	return rc;
 }
 
 struct reflection_object *
@@ -4667,7 +4654,7 @@ reflection_object_create_child(struct reflection_object *parent,
 		return NULL;
 	}
 
-	return parent->ops->create_child(parent, fyp, fye, path);
+	return parent->rtd->ops->create_child(parent, fyp, fye, path);
 }
 
 void reflection_field_data_destroy(struct reflection_field_data *rfd)
@@ -5538,13 +5525,6 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 			reflection_object_destroy(ro);
 		}
 
-		if (fy_path_in_root(path)) {
-			ro = fy_path_get_root_user_data(path);
-			assert(ro);
-			fy_path_set_root_user_data(path, NULL);
-			reflection_object_destroy(ro);
-		}
-
 		ret = FYCR_OK_CONTINUE;
 		break;
 
@@ -5560,9 +5540,9 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		/* create and destroy cycle */
 		if (!rop) {
 			/* in root? */
-			ro = reflection_object_create_internal(NULL, NULL,
-							       rd->entry, fyp, fye, path, rd->entry->ops,
-							       rd->data, rd->data_size);
+			ro = reflection_object_create(NULL, NULL,
+						      rd->entry, fyp, fye, path,
+						      rd->data, rd->data_size);
 		} else {
 			ro = reflection_object_create_child(rop, fyp, fye, path);
 		}
@@ -5571,7 +5551,9 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 			ret = FYCR_ERROR;
 			break;
 		}
-		rc = reflection_object_finish_and_destroy(ro, fyp, fye, path);
+		rc = reflection_object_finish(ro, fyp, fye, path);
+		reflection_object_destroy(ro);
+		ro = NULL;
 		if (rc) {
 			ret = FYCR_ERROR;
 			break;
@@ -5596,9 +5578,9 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		rop = fy_path_get_parent_user_data(path);
 		if (!rop) {
 			/* in root, start from scratch */
-			ro = reflection_object_create_internal(NULL, NULL,
-							       rd->entry, fyp, fye, path, rd->entry->ops,
-							       rd->data, rd->data_size);
+			ro = reflection_object_create(NULL, NULL,
+						      rd->entry, fyp, fye, path,
+						      rd->data, rd->data_size);
 		} else {
 			ro = reflection_object_create_child(rop, fyp, fye, path);
 		}
@@ -5626,10 +5608,12 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		assert(ro);
 		fy_path_set_last_user_data(path, NULL);
 
-		rc = reflection_object_finish_and_destroy(ro, fyp, fye, path);
+		rc = reflection_object_finish(ro, fyp, fye, path);
+		reflection_object_destroy(ro);
+		ro = NULL;
 		if (rc) {
 			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
-					"reflection_object_finish_and_destroy() failed");
+					"reflection_object_finish() failed");
 			ret = FYCR_ERROR;
 			break;
 		}
