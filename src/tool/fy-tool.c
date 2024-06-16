@@ -2097,7 +2097,10 @@ struct reflection_object {
 	void *instance_data;
 	void *data;
 	size_t data_size;
+	bool skip;
 };
+
+#define REFLECTION_OBJECT_SKIP	((struct reflection_object *)(void *)(uintptr_t)-1)
 
 struct reflection_field_data {
 	int refs;
@@ -2144,6 +2147,7 @@ struct reflection_type_data {
 	enum reflection_type_data_flags flags;			/* flags of the type */
 	const char *flat_field;					/* set to field which flattens us */
 	const char *counter;					/* set to the sibling field that contains the counter */
+	bool skip_unknown;					/* allowed to skip unknown fields */
 	struct fy_document *yaml_annotation;			/* the yaml annotation */
 	char *yaml_annotation_str;				/* the annotation as a string */
 	struct fy_node *fyn_default;
@@ -2204,6 +2208,8 @@ struct reflection_decoder {
 	struct reflection_type_data *entry;
 	void *data;
 	size_t data_size;
+
+	struct fy_path_component *skip_start;
 };
 
 void *reflection_malloc(struct reflection_type_system *rts, size_t size);
@@ -3521,6 +3527,11 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 	assert(rtd);
 	rfd = reflection_type_data_lookup_field(rtd, field);
 	if (!rfd) {
+
+		/* if we're allowing skipping... */
+		if (rtd->skip_unknown)
+			return REFLECTION_OBJECT_SKIP;
+
 		fy_parser_report(fyp, FYET_ERROR, fyt_key,
 				"no field '%s' found in struct '%s'", field, rtd->ti->name);
 		goto err_out;
@@ -4966,7 +4977,7 @@ reflection_type_mutation_reset(struct reflection_type_mutation *rtm)
 struct reflection_type_data *
 reflection_type_data_mutate(struct reflection_type_data *rtd_source, const struct reflection_type_mutation *rtm)
 {
-	struct reflection_type_system *rts; 
+	struct reflection_type_system *rts;
 	struct reflection_type_data *rtd = NULL;
 	size_t i;
 	int rc;
@@ -5138,6 +5149,8 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 
 			fprintf(stderr, "flatten MUT!\n");
 		}
+
+		rtd->skip_unknown = fy_type_info_get_yaml_bool(rtd->ti, "skip-unknown");
 
 		rfd_ref = NULL;
 		for (i = 0; i < rtd->fields_count; i++) {
@@ -5515,18 +5528,29 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 	if (fy_path_in_mapping_key(path))
 		return FYCR_OK_CONTINUE;
 
-	switch (fye->type) {
-		/* nothing to do for those */
-	case FYET_NONE:
+	/* cleanup */
+	if (fye->type == FYET_NONE) {
 		/* cleanup path in case of an error */
 		ro = fy_path_get_last_user_data(path);
 		if (ro) {
 			fy_path_set_last_user_data(path, NULL);
 			reflection_object_destroy(ro);
 		}
+		return FYCR_OK_CONTINUE;
+	}
 
-		ret = FYCR_OK_CONTINUE;
-		break;
+	/* if we're skiping, do an early check */
+	if (rd->skip_start) {
+
+		/* the skip ends at the end of one of those */
+		if ((fye->type == FYET_SEQUENCE_END || fye->type == FYET_MAPPING_END) &&
+		    fy_path_last_component(path) == rd->skip_start)
+			rd->skip_start = NULL;
+
+		return FYCR_OK_CONTINUE;
+	}
+
+	switch (fye->type) {
 
 	case FYET_STREAM_START:
 	case FYET_STREAM_END:
@@ -5551,8 +5575,11 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 			ret = FYCR_ERROR;
 			break;
 		}
-		rc = reflection_object_finish(ro, fyp, fye, path);
-		reflection_object_destroy(ro);
+		if (ro != REFLECTION_OBJECT_SKIP) {
+			rc = reflection_object_finish(ro, fyp, fye, path);
+			reflection_object_destroy(ro);
+		} else
+			rc = 0;
 		ro = NULL;
 		if (rc) {
 			ret = FYCR_ERROR;
@@ -5590,7 +5617,14 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 			break;
 		}
 
-		fy_path_set_last_user_data(path, ro);
+		if (ro != REFLECTION_OBJECT_SKIP) {
+			fy_path_set_last_user_data(path, ro);
+		} else {
+			/* start the skip */
+			rd->skip_start = fy_path_last_component(path);
+			assert(rd->skip_start);
+		}
+
 		ret = FYCR_OK_CONTINUE;
 		break;
 
@@ -5622,8 +5656,9 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		break;
 
 	default:
-		assert(0);
-		abort();
+		/* ignore anything else */
+		ret = FYCR_OK_CONTINUE;
+		break;
 	}
 
 	return ret;
