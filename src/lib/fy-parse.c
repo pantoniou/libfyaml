@@ -7240,6 +7240,9 @@ static enum fy_composer_return fy_parse_compose_internal(struct fy_parser *fyp)
 			if (ret != FYCR_OK_CONTINUE)
 				break;
 		}
+		if (fyp->stream_error)
+			fy_composer_halt(fyc, FYCR_ERROR);
+
 		return ret;
 	}
 
