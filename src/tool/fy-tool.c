@@ -5501,11 +5501,38 @@ err_out:
 	return NULL;
 }
 
+struct reflection_object *
+reflection_decoder_create_object(struct reflection_decoder *rd, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
+{
+	struct reflection_object *ro, *rop;
+
+	rop = fy_path_get_parent_user_data(path);
+	/* in root, start from scratch */
+	if (!rop)
+		ro = reflection_object_create(NULL, NULL,
+					      rd->entry, fyp, fye, path,
+					      rd->data, rd->data_size);
+	else
+		ro = reflection_object_create_child(rop, fyp, fye, path);
+
+	return ro;
+}
+
+int
+reflection_decoder_destroy_object(struct reflection_decoder *rd, struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
+{
+	int rc;
+
+	rc = reflection_object_finish(ro, fyp, fye, path);
+	reflection_object_destroy(ro);
+	return rc;
+}
+
 static enum fy_composer_return
 reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path, void *userdata)
 {
 	struct reflection_decoder *rd = userdata;
-	struct reflection_object *ro, *rop;
+	struct reflection_object *ro;
 	enum fy_composer_return ret;
 	int rc;
 
@@ -5557,39 +5584,6 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		ret = FYCR_OK_CONTINUE;
 		break;
 
-	case FYET_SCALAR:
-		rop = fy_path_get_parent_user_data(path);
-		assert(rop);
-
-		/* create and destroy cycle */
-		if (!rop) {
-			/* in root? */
-			ro = reflection_object_create(NULL, NULL,
-						      rd->entry, fyp, fye, path,
-						      rd->data, rd->data_size);
-		} else {
-			ro = reflection_object_create_child(rop, fyp, fye, path);
-		}
-
-		if (!ro) {
-			ret = FYCR_ERROR;
-			break;
-		}
-		if (ro != REFLECTION_OBJECT_SKIP) {
-			rc = reflection_object_finish(ro, fyp, fye, path);
-			reflection_object_destroy(ro);
-		} else
-			rc = 0;
-		ro = NULL;
-		if (rc) {
-			ret = FYCR_ERROR;
-			break;
-		}
-		ro = NULL;
-
-		ret = FYCR_OK_CONTINUE;
-		break;
-
 	/* alias not supported yet */
 	case FYET_ALIAS:
 		ret = FYCR_ERROR;
@@ -5597,34 +5591,6 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 	case FYET_DOCUMENT_START:
 		/* something to do here? */
-		ret = FYCR_OK_CONTINUE;
-		break;
-
-	case FYET_SEQUENCE_START:
-	case FYET_MAPPING_START:
-		rop = fy_path_get_parent_user_data(path);
-		if (!rop) {
-			/* in root, start from scratch */
-			ro = reflection_object_create(NULL, NULL,
-						      rd->entry, fyp, fye, path,
-						      rd->data, rd->data_size);
-		} else {
-			ro = reflection_object_create_child(rop, fyp, fye, path);
-		}
-
-		if (!ro) {
-			ret = FYCR_ERROR;
-			break;
-		}
-
-		if (ro != REFLECTION_OBJECT_SKIP) {
-			fy_path_set_last_user_data(path, ro);
-		} else {
-			/* start the skip */
-			rd->skip_start = fy_path_last_component(path);
-			assert(rd->skip_start);
-		}
-
 		ret = FYCR_OK_CONTINUE;
 		break;
 
@@ -5636,21 +5602,40 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		ret = FYCR_OK_STOP;
 		break;
 
+	case FYET_SCALAR:
+	case FYET_SEQUENCE_START:
+	case FYET_MAPPING_START:
+		ro = reflection_decoder_create_object(rd, fyp, fye, path);
+		if (!ro)
+			return FYCR_ERROR;
+
+		/* handle skip */
+		if (ro == REFLECTION_OBJECT_SKIP) {
+			if (fye->type != FYET_SCALAR)
+				rd->skip_start = fy_path_last_component(path);
+			return FYCR_OK_CONTINUE;
+		}
+
+		if (fye->type == FYET_SCALAR) {
+			rc = reflection_decoder_destroy_object(rd, ro, fyp, fye, path);
+			if (rc)
+				return FYCR_ERROR;
+		} else
+			fy_path_set_last_user_data(path, ro);
+
+		ret = FYCR_OK_CONTINUE;
+		break;
+
 	case FYET_SEQUENCE_END:
 	case FYET_MAPPING_END:
 		ro = fy_path_get_last_user_data(path);
 		assert(ro);
 		fy_path_set_last_user_data(path, NULL);
 
-		rc = reflection_object_finish(ro, fyp, fye, path);
-		reflection_object_destroy(ro);
+		rc = reflection_decoder_destroy_object(rd, ro, fyp, fye, path);
 		ro = NULL;
-		if (rc) {
-			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
-					"reflection_object_finish() failed");
-			ret = FYCR_ERROR;
-			break;
-		}
+		if (rc)
+			return FYCR_ERROR;
 
 		ret = FYCR_OK_CONTINUE;
 		break;
