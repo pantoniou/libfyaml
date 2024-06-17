@@ -62,7 +62,7 @@ struct fy_path_exec;
 struct fy_path_component;
 struct fy_path;
 struct fy_document_iterator;
-
+struct fy_document_builder;
 
 #ifndef FY_BIT
 #define FY_BIT(x) (1U << (x))
@@ -2244,6 +2244,23 @@ fy_emit_node(struct fy_emitter *emit, struct fy_node *fyn)
  */
 int
 fy_emit_root_node(struct fy_emitter *emit, struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
+ * fy_emit_body_node() - Emit a single body node using the emitter
+ *
+ * Emits a single body node using the emitter. This is used in case
+ * you need finer control over the emitting output.
+ * No stream and document events will be generated at all.
+ *
+ * @emit: The emitter
+ * @fyn: The body node to emit
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int
+fy_emit_body_node(struct fy_emitter *emit, struct fy_node *fyn)
 	FY_EXPORT;
 
 /**
@@ -8158,6 +8175,72 @@ fy_parser_set_document(struct fy_parser *fyp, enum fy_parser_event_generator_fla
 int
 fy_parser_set_node(struct fy_parser *fyp, enum fy_parser_event_generator_flags flags,
 		   struct fy_node *fyn)
+	FY_EXPORT;
+
+struct fy_document_builder_cfg {
+	struct fy_parse_cfg parse_cfg;
+	void *userdata;
+	struct fy_diag *diag;
+};
+
+struct fy_document_builder *
+fy_document_builder_create(const struct fy_document_builder_cfg *cfg)
+	FY_EXPORT;
+
+struct fy_document_builder *
+fy_document_builder_create_on_parser(struct fy_parser *fyp)
+	FY_EXPORT;
+
+void
+fy_document_builder_reset(struct fy_document_builder *fydb)
+	FY_EXPORT;
+
+void
+fy_document_builder_destroy(struct fy_document_builder *fydb)
+	FY_EXPORT;
+
+struct fy_document *
+fy_document_builder_get_document(struct fy_document_builder *fydb)
+	FY_EXPORT;
+
+bool
+fy_document_builder_is_in_stream(struct fy_document_builder *fydb)
+	FY_EXPORT;
+
+bool
+fy_document_builder_is_in_document(struct fy_document_builder *fydb)
+	FY_EXPORT;
+
+bool
+fy_document_builder_is_document_complete(struct fy_document_builder *fydb)
+	FY_EXPORT;
+
+struct fy_document *
+fy_document_builder_take_document(struct fy_document_builder *fydb)
+	FY_EXPORT;
+
+struct fy_document *
+fy_document_builder_peek_document(struct fy_document_builder *fydb)
+	FY_EXPORT;
+
+void
+fy_document_builder_set_in_stream(struct fy_document_builder *fydb)
+	FY_EXPORT;
+
+int
+fy_document_builder_set_in_document(struct fy_document_builder *fydb, struct fy_document_state *fyds, bool single)
+	FY_EXPORT;
+
+struct fy_document *
+fy_document_builder_load_document(struct fy_document_builder *fydb, struct fy_parser *fyp)
+	FY_EXPORT;
+
+struct fy_document *
+fy_parse_load_document_with_builder(struct fy_parser *fyp)
+	FY_EXPORT;
+
+int
+fy_document_builder_process_event(struct fy_document_builder *fydb, struct fy_event *fye)
 	FY_EXPORT;
 
 /*

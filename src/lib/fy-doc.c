@@ -7598,6 +7598,8 @@ fy_document_iterator_generate_next(struct fy_document_iterator *fydi)
 
 	/* generate body events... */
 	if (!(fydi->generator_state & FYDIGF_GENERATED_BODY)) {
+		if (!fydi->iterate_root)
+			fydi->iterate_root = fydi->cfg.iterate_root ? fydi->cfg.iterate_root : fy_document_root(fydi->fyd);
 		fye = fy_document_iterator_body_next(fydi);
 		if (fye)
 			return fye;
