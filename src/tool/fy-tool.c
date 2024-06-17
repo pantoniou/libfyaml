@@ -5845,10 +5845,7 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		if (ro == REFLECTION_OBJECT_SKIP || ro->consumer) {
 			if (fye->type != FYET_SCALAR) {
 				rd->skip_start = fy_path_last_component(path);
-				rd->ro_consumer = ro->consumer ? ro : NULL;
-			} else if (ro->consumer) {
-				fprintf(stderr, "scalar consumer\n");
-				assert(0);
+				rd->ro_consumer = ro != REFLECTION_OBJECT_SKIP && ro->consumer ? ro : NULL;
 			}
 			return FYCR_OK_CONTINUE;
 		}
