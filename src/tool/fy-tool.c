@@ -2098,7 +2098,6 @@ struct reflection_object {
 	void *instance_data;
 	void *data;
 	size_t data_size;
-	bool consumer;
 };
 
 #define REFLECTION_OBJECT_SKIP	((struct reflection_object *)(void *)(uintptr_t)-1)
@@ -4539,20 +4538,9 @@ static int ptr_doc_setup(struct reflection_object *ro, struct fy_parser *fyp, st
 	if (!id->fydb)
 		goto err_out;
 
-	fprintf(stderr, "created ptr_doc parser\n");
-
 	rc = reflection_object_consume_event(ro, fyp, fye, path);
 	if (rc < 0)
 		goto err_out;
-
-	fprintf(stderr, "reflection_object_consume_event() %d\n", rc);
-
-	if (rc == 0) {
-		/* need to consume more */
-		ro->consumer = true;
-	} else {
-		/* done */
-	}
 
 	return 0;
 err_out:
@@ -5767,18 +5755,21 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 			fy_path_get_text_alloca(path));
 #endif
 
+	/* are we under the control of consumer? */
 	if (rd->ro_consumer && fye->type != FYET_NONE) {
 		rc = reflection_object_consume_event(rd->ro_consumer, fyp, fye, path);
 		if (rc < 0)
 			return FYCR_ERROR;
 		if (rc == 1) {
 			rc = reflection_decoder_destroy_object(rd, rd->ro_consumer, fyp, fye, path);
+			rd->ro_consumer = NULL;
 			if (rc)
 				return FYCR_ERROR;
-			rd->ro_consumer = NULL;
 		}
+		return FYCR_OK_CONTINUE;
 	}
 
+	/* collect the keys before proceeding */
 	if (fy_path_in_mapping_key(path))
 		return FYCR_OK_CONTINUE;
 
@@ -5796,7 +5787,6 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 	/* if we're skiping, do an early check */
 	if (rd->skip_start) {
-
 		/* the skip ends at the end of one of those */
 		if ((fye->type == FYET_SEQUENCE_END || fye->type == FYET_MAPPING_END) &&
 		    fy_path_last_component(path) == rd->skip_start)
@@ -5842,14 +5832,19 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 			return FYCR_ERROR;
 
 		/* handle skip */
-		if (ro == REFLECTION_OBJECT_SKIP || ro->consumer) {
-			if (fye->type != FYET_SCALAR) {
+		if (ro == REFLECTION_OBJECT_SKIP) {
+			if (fye->type != FYET_SCALAR)
 				rd->skip_start = fy_path_last_component(path);
-				rd->ro_consumer = ro != REFLECTION_OBJECT_SKIP && ro->consumer ? ro : NULL;
-			}
 			return FYCR_OK_CONTINUE;
 		}
 
+		/* handle consuming collection */
+		if (fye->type != FYET_SCALAR && ro->rtd->ops->consume_event) {
+			rd->ro_consumer = ro;
+			return FYCR_OK_CONTINUE;
+		}
+
+		/* scalars are short lived */
 		if (fye->type == FYET_SCALAR) {
 			rc = reflection_decoder_destroy_object(rd, ro, fyp, fye, path);
 			if (rc)
