@@ -162,7 +162,7 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_event *fye,
 		if (!stop_req)
 			stop_req = ret == FYCR_OK_STOP;
 
-		rc = fy_document_builder_process_event(fypp->fydb, fyep);
+		rc = fy_document_builder_process_event(fypp->fydb, fyep ? &fyep->e : NULL);
 		if (rc == 0)
 			return FYCR_OK_CONTINUE;
 		fyc_error_check(fyc, rc > 0, err_out,
@@ -206,7 +206,7 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_event *fye,
 				"ops->create_document_builder() failed\n");
 
 		/* and pass the current event; must return 0 since we know it's a collection start */
-		rc = fy_document_builder_process_event(fypp->fydb, fyep);
+		rc = fy_document_builder_process_event(fypp->fydb, fyep ? &fyep->e : NULL);
 		fyc_error_check(fyc, !rc, err_out,
 				"fy_document_builder_process_event() failed\n");
 

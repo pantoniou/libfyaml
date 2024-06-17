@@ -34,12 +34,6 @@ struct fy_document_builder_ctx {
 	struct fy_node_pair *fynp;	/* for mapping */
 };
 
-struct fy_document_builder_cfg {
-	struct fy_parse_cfg parse_cfg;
-	void *userdata;
-	struct fy_diag *diag;
-};
-
 struct fy_document_builder {
 	struct fy_document_builder_cfg cfg;
 	struct fy_document *fyd;
@@ -52,50 +46,8 @@ struct fy_document_builder {
 	struct fy_document_builder_ctx *stack;
 };
 
-struct fy_document_builder *
-fy_document_builder_create(const struct fy_document_builder_cfg *cfg);
-
-void
-fy_document_builder_reset(struct fy_document_builder *fydb);
-
-void
-fy_document_builder_destroy(struct fy_document_builder *fydb);
-
-struct fy_document *
-fy_document_builder_get_document(struct fy_document_builder *fydb);
-
-bool
-fy_document_builder_is_in_stream(struct fy_document_builder *fydb);
-
-bool
-fy_document_builder_is_in_document(struct fy_document_builder *fydb);
-
-bool
-fy_document_builder_is_document_complete(struct fy_document_builder *fydb);
-
-struct fy_document *
-fy_document_builder_take_document(struct fy_document_builder *fydb);
-
-struct fy_document *
-fy_document_builder_peek_document(struct fy_document_builder *fydb);
-
-void
-fy_document_builder_set_in_stream(struct fy_document_builder *fydb);
-
-int
-fy_document_builder_set_in_document(struct fy_document_builder *fydb, struct fy_document_state *fyds, bool single);
-
-int
-fy_document_builder_process_event(struct fy_document_builder *fydb, struct fy_eventp *fyep);
-
-struct fy_document *
-fy_document_builder_load_document(struct fy_document_builder *fydb,
-				  struct fy_parser *fyp);
-
+/* internal only */
 struct fy_document *
 fy_document_builder_event_document(struct fy_document_builder *fydb, struct fy_eventp_list *evpl);
-
-struct fy_document *
-fy_parse_load_document_with_builder(struct fy_parser *fyp);
 
 #endif

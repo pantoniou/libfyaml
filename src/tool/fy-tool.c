@@ -2075,6 +2075,7 @@ struct reflection_type_ops {
 	void (*cleanup)(struct reflection_object *ro);
 	int (*finish)(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
 	struct reflection_object *(*create_child)(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
+	int (*consume_event)(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
 
 	/* emitter */
 	int (*emit)(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size,
@@ -2097,7 +2098,7 @@ struct reflection_object {
 	void *instance_data;
 	void *data;
 	size_t data_size;
-	bool skip;
+	bool consumer;
 };
 
 #define REFLECTION_OBJECT_SKIP	((struct reflection_object *)(void *)(uintptr_t)-1)
@@ -2148,6 +2149,7 @@ struct reflection_type_data {
 	const char *flat_field;					/* set to field which flattens us */
 	const char *counter;					/* set to the sibling field that contains the counter */
 	bool skip_unknown;					/* allowed to skip unknown fields */
+	bool document;
 	struct fy_document *yaml_annotation;			/* the yaml annotation */
 	char *yaml_annotation_str;				/* the annotation as a string */
 	struct fy_node *fyn_default;
@@ -2210,6 +2212,7 @@ struct reflection_decoder {
 	size_t data_size;
 
 	struct fy_path_component *skip_start;
+	struct reflection_object *ro_consumer;
 };
 
 void *reflection_malloc(struct reflection_type_system *rts, size_t size);
@@ -2258,6 +2261,9 @@ reflection_object_finish(struct reflection_object *ro, struct fy_parser *fyp, st
 struct reflection_object *
 reflection_object_create_child(struct reflection_object *parent,
 			       struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
+
+int
+reflection_object_consume_event(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path);
 
 struct reflection_field_data *
 reflection_type_data_lookup_field(struct reflection_type_data *rtd, const char *field)
@@ -3290,6 +3296,8 @@ static int struct_setup(struct reflection_object *ro, struct fy_parser *fyp, str
 		goto err_out;
 	memset(id, 0, sizeof(*id));
 
+	ro->instance_data = id;
+
 	if (ro->rtd->flat_field) {
 		id->rfd_flatten = reflection_type_data_lookup_field(ro->rtd, ro->rtd->flat_field);
 		if (!id->rfd_flatten)
@@ -3310,8 +3318,6 @@ static int struct_setup(struct reflection_object *ro, struct fy_parser *fyp, str
 	if (!id->fid)
 		goto err_out;
 	memset(id->fid, 0, size);
-
-	ro->instance_data = id;
 
 	if (id->rfd_flatten) {
 		fprintf(stderr, "%s: flatten %s\n", __func__, id->rfd_flatten->field_name);
@@ -4220,6 +4226,8 @@ static int dyn_array_setup(struct reflection_object *ro, struct fy_parser *fyp, 
 		goto err_out;
 	memset(id, 0, sizeof(*id));
 
+	ro->instance_data = id;
+
 	if (ro->rtd->counter) {
 		id->rfd_counter = reflection_type_data_lookup_field(ro->parent->rtd, ro->rtd->counter);
 		if (!id->rfd_counter) {
@@ -4229,8 +4237,6 @@ static int dyn_array_setup(struct reflection_object *ro, struct fy_parser *fyp, 
 		}
 	} else
 		id->rfd_counter = NULL;
-
-	ro->instance_data = id;
 
 	/* start with NULL */
 	*(void **)ro->data = NULL;
@@ -4445,6 +4451,185 @@ static const struct reflection_type_ops dyn_array_ops = {
 	.create_child = dyn_array_create_child,
 	.emit = dyn_array_emit,
 	.dtor = dyn_array_dtor,
+};
+
+struct ptr_doc_instance_data {
+	struct fy_document_builder *fydb;
+};
+
+static void ptr_doc_instance_data_cleanup(struct ptr_doc_instance_data *id)
+{
+	if (!id)
+		return;
+	fy_document_builder_destroy(id->fydb);
+	free(id);
+}
+
+static int ptr_doc_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
+{
+	struct ptr_doc_instance_data *id = ro->instance_data;
+	struct fy_document *fyd;
+	void *data;
+
+	data = ro->data;
+	assert(data);
+
+	fyd = fy_document_builder_take_document(id->fydb);
+	if (!fyd)
+		goto err_out;
+
+	*(void **)data = fyd;
+
+	return 0;
+err_out:
+	return -1;
+}
+
+static int ptr_doc_consume_event(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
+{
+	struct ptr_doc_instance_data *id = NULL;
+
+	id = ro->instance_data;
+	assert(id);
+
+	return fy_document_builder_process_event(id->fydb, fye);
+}
+
+static int ptr_doc_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
+{
+	struct ptr_doc_instance_data *id = NULL;
+	struct reflection_type_data *rtd_dep;
+	enum fy_type_kind type_kind;
+	size_t size, align;
+	void *data;
+	size_t data_size;
+	int rc;
+
+	id = malloc(sizeof(*id));
+	if (!id)
+		goto err_out;
+	memset(id, 0, sizeof(*id));
+
+	ro->instance_data = id;
+
+	assert(ro->rtd->ti->kind == FYTK_PTR);
+
+	rtd_dep = ro->rtd->rtd_dep;
+	assert(rtd_dep);
+
+	data = ro->data;
+	data_size = ro->data_size;
+
+	assert(data);
+
+	type_kind = ro->rtd->ti->kind;
+	assert(fy_type_kind_is_valid(type_kind));
+
+	size = fy_type_kind_size(type_kind);
+	align = fy_type_kind_align(type_kind);
+
+	assert(data_size == size && ((size_t)(uintptr_t)data & (align - 1)) == 0);
+
+	type_kind = rtd_dep->ti->kind;
+	assert(type_kind == FYTK_VOID);
+
+	*(char **)data = NULL;
+
+	id->fydb = fy_document_builder_create_on_parser(fyp);
+	if (!id->fydb)
+		goto err_out;
+
+	fprintf(stderr, "created ptr_doc parser\n");
+
+	rc = reflection_object_consume_event(ro, fyp, fye, path);
+	if (rc < 0)
+		goto err_out;
+
+	fprintf(stderr, "reflection_object_consume_event() %d\n", rc);
+
+	if (rc == 0) {
+		/* need to consume more */
+		ro->consumer = true;
+	} else {
+		/* done */
+	}
+
+	return 0;
+err_out:
+	ptr_doc_instance_data_cleanup(id);
+	return -1;
+}
+
+static void ptr_doc_cleanup(struct reflection_object *ro)
+{
+	struct ptr_doc_instance_data *id;
+
+
+	id = ro->instance_data;
+	if (!id)
+		return;
+	ro->instance_data = NULL;
+
+	ptr_doc_instance_data_cleanup(id);
+}
+
+static int ptr_doc_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size,
+			struct reflection_type_data *rtd_parent, void *parent_addr)
+{
+	struct reflection_type_data *rtd_dep;
+	enum fy_type_kind type_kind;
+	struct fy_document *fyd;
+	int rc;
+
+	/* verify alignment */
+	type_kind = rtd->ti->kind;
+	assert(type_kind == FYTK_PTR);
+
+	assert(rtd->ti->kind == FYTK_PTR);
+	rtd_dep = rtd->rtd_dep;
+	assert(rtd_dep);
+
+	type_kind = rtd_dep->ti->kind;
+	assert(type_kind == FYTK_VOID);
+
+	fyd = *(struct fy_document **)data;
+	if (!fyd)
+		return NULL_emit(rtd, fye, rtd_parent, parent_addr);
+
+	rc = emit_mapping_key_if_any(fye, rtd_parent, parent_addr);
+	if (rc)
+		goto err_out;
+
+	rc = fy_emit_body_node(fye, fy_document_root(fyd));
+	if (rc)
+		goto err_out;
+
+	return 0;
+
+err_out:
+	return -1;
+}
+
+void ptr_doc_dtor(struct reflection_type_data *rtd, void *data)
+{
+	struct fy_document *fyd;
+
+	fyd = *(void **)data;
+	if (!fyd)
+		return;
+
+	*(void **)data = NULL;
+
+	fy_document_destroy(fyd);
+}
+
+static const struct reflection_type_ops ptr_doc_ops = {
+	.setup = ptr_doc_setup,
+	.cleanup = ptr_doc_cleanup,
+	.finish = ptr_doc_finish,
+	.consume_event = ptr_doc_consume_event,
+	.emit = ptr_doc_emit,
+	.dtor = ptr_doc_dtor,
 };
 
 static const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
@@ -4666,6 +4851,15 @@ reflection_object_create_child(struct reflection_object *parent,
 	}
 
 	return parent->rtd->ops->create_child(parent, fyp, fye, path);
+}
+
+int
+reflection_object_consume_event(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
+{
+	if (!ro || !ro->rtd->ops->consume_event)
+		return -1;
+
+	return ro->rtd->ops->consume_event(ro, fyp, fye, path);
 }
 
 void reflection_field_data_destroy(struct reflection_field_data *rfd)
@@ -5107,22 +5301,41 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 	switch (rtd->ti->kind) {
 	case FYTK_PTR:
 		/* only for char * */
-		if (rtd->ti->dependent_type->kind != FYTK_CHAR)
+		switch (rtd->ti->dependent_type->kind) {
+		case FYTK_CHAR:
+			reflection_type_mutation_reset(&rtm);
+			rtm.mutation_name = "ptr_char";
+			rtm.ops = &ptr_char_ops;
+
+			/* this does not need a parent */
+			rtd_mut = reflection_type_data_mutate(rtd, &rtm);
+			assert(rtd_mut);
+
+			*rtdp = rtd_mut;
+			rtd = rtd_mut;
+			rtd_mut = NULL;
+
+			fprintf(stderr, "char *MUT!\n");
 			break;
 
-		reflection_type_mutation_reset(&rtm);
-		rtm.mutation_name = "ptr_char";
-		rtm.ops = &ptr_char_ops;
+		case FYTK_VOID:
+			reflection_type_mutation_reset(&rtm);
+			rtm.mutation_name = "ptr_doc";
+			rtm.ops = &ptr_doc_ops;
 
-		/* this does not need a parent */
-		rtd_mut = reflection_type_data_mutate(rtd, &rtm);
-		assert(rtd_mut);
+			/* this does not need a parent */
+			rtd_mut = reflection_type_data_mutate(rtd, &rtm);
+			assert(rtd_mut);
 
-		*rtdp = rtd_mut;
-		rtd = rtd_mut;
-		rtd_mut = NULL;
+			*rtdp = rtd_mut;
+			rtd = rtd_mut;
+			rtd_mut = NULL;
+			fprintf(stderr, "void *MUT (ptr_doc)!\n");
+			break;
 
-		fprintf(stderr, "char *MUT!\n");
+		default:
+			break;
+		}
 
 		break;
 
@@ -5469,6 +5682,9 @@ reflection_decoder_destroy(struct reflection_decoder *rd)
 	if (!rd)
 		return;
 
+	if (rd->ro_consumer)
+		reflection_object_destroy(rd->ro_consumer);
+
 	free(rd);
 }
 
@@ -5551,12 +5767,24 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 			fy_path_get_text_alloca(path));
 #endif
 
-	/* if we're in mapping key wait until we get the whole of the key */
+	if (rd->ro_consumer && fye->type != FYET_NONE) {
+		rc = reflection_object_consume_event(rd->ro_consumer, fyp, fye, path);
+		if (rc < 0)
+			return FYCR_ERROR;
+		if (rc == 1) {
+			rc = reflection_decoder_destroy_object(rd, rd->ro_consumer, fyp, fye, path);
+			if (rc)
+				return FYCR_ERROR;
+			rd->ro_consumer = NULL;
+		}
+	}
+
 	if (fy_path_in_mapping_key(path))
 		return FYCR_OK_CONTINUE;
 
 	/* cleanup */
 	if (fye->type == FYET_NONE) {
+
 		/* cleanup path in case of an error */
 		ro = fy_path_get_last_user_data(path);
 		if (ro) {
@@ -5576,6 +5804,10 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 		return FYCR_OK_CONTINUE;
 	}
+
+	/* if we're in mapping key wait until we get the whole of the key */
+	if (fy_path_in_mapping_key(path))
+		return FYCR_OK_CONTINUE;
 
 	switch (fye->type) {
 
@@ -5610,9 +5842,14 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 			return FYCR_ERROR;
 
 		/* handle skip */
-		if (ro == REFLECTION_OBJECT_SKIP) {
-			if (fye->type != FYET_SCALAR)
+		if (ro == REFLECTION_OBJECT_SKIP || ro->consumer) {
+			if (fye->type != FYET_SCALAR) {
 				rd->skip_start = fy_path_last_component(path);
+				rd->ro_consumer = ro->consumer ? ro : NULL;
+			} else if (ro->consumer) {
+				fprintf(stderr, "scalar consumer\n");
+				assert(0);
+			}
 			return FYCR_OK_CONTINUE;
 		}
 

@@ -100,6 +100,39 @@ err_out:
 	return NULL;
 }
 
+struct fy_document_builder *
+fy_document_builder_create_on_parser(struct fy_parser *fyp)
+{
+	struct fy_document_builder *fydb = NULL;
+	struct fy_document_state *fyds;
+	struct fy_document_builder_cfg cfg;
+	int rc;
+
+	if (!fyp)
+		return NULL;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.parse_cfg = fyp->cfg;
+	cfg.diag = fy_diag_ref(fyp->diag);
+
+	fydb = fy_document_builder_create(&cfg);
+	if (!fydb) {
+		fy_diag_unref(cfg.diag);
+		return NULL;
+	}
+
+	fyds = fy_parser_get_document_state(fyp);
+	if (fyds) {
+		rc = fy_document_builder_set_in_document(fydb, fyds, true);
+		if (rc) {
+			fy_document_builder_destroy(fydb);
+			return NULL;
+		}
+	}
+
+	return fydb;
+}
+
 void
 fy_document_builder_destroy(struct fy_document_builder *fydb)
 {
@@ -223,9 +256,8 @@ fy_document_builder_set_in_document(struct fy_document_builder *fydb, struct fy_
 }
 
 int
-fy_document_builder_process_event(struct fy_document_builder *fydb, struct fy_eventp *fyep)
+fy_document_builder_process_event(struct fy_document_builder *fydb, struct fy_event *fye)
 {
-	struct fy_event *fye;
 	enum fy_event_type etype;
 	struct fy_document *fyd;
 	struct fy_document_builder_ctx *c, *cp;
@@ -235,7 +267,6 @@ fy_document_builder_process_event(struct fy_document_builder *fydb, struct fy_ev
 	struct fy_token *fyt;
 	int rc;
 
-	fye = fyep ? &fyep->e : NULL;
 	etype = fye ? fye->type : FYET_NONE;
 	fyt = fye ? fy_event_get_token(fye) : NULL;
 
@@ -269,7 +300,7 @@ fy_document_builder_process_event(struct fy_document_builder *fydb, struct fy_ev
 			fydb_error_check(fydb, fydb->fyd, err_out,
 					"fy_document_create() failed");
 
-			rc = fy_document_set_document_state(fydb->fyd, fyep->e.document_start.document_state);
+			rc = fy_document_set_document_state(fydb->fyd, fye->document_start.document_state);
 			fydb_error_check(fydb, !rc, err_out,
 					"fy_document_set_document_state() failed");
 
@@ -527,7 +558,7 @@ fy_document_builder_load_document(struct fy_document_builder *fydb,
 
 	while (!fy_document_builder_is_document_complete(fydb) &&
 		(fyep = fy_parse_private(fyp)) != NULL) {
-		rc = fy_document_builder_process_event(fydb, fyep);
+		rc = fy_document_builder_process_event(fydb, &fyep->e);
 		fy_parse_eventp_recycle(fyp, fyep);
 		if (rc < 0) {
 			fyp->stream_error = true;
@@ -553,7 +584,7 @@ fy_document_builder_event_document(struct fy_document_builder *fydb, struct fy_e
 		if (fy_document_builder_is_document_complete(fydb))
 			break;
 
-		rc = fy_document_builder_process_event(fydb, fyep);
+		rc = fy_document_builder_process_event(fydb, &fyep->e);
 		if (rc < 0)
 			return NULL;
 
