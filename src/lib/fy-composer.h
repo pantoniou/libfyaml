@@ -54,4 +54,7 @@ struct fy_composer_cfg *fy_composer_get_cfg(struct fy_composer *fyc);
 void *fy_composer_get_cfg_userdata(struct fy_composer *fyc);
 struct fy_diag *fy_composer_get_diag(struct fy_composer *fyc);
 
+void fy_composer_halt_one(struct fy_composer *fyc, struct fy_path *fypp, enum fy_composer_return rc);
+void fy_composer_halt(struct fy_composer *fyc, enum fy_composer_return rc);
+
 #endif
