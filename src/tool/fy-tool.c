@@ -2124,12 +2124,14 @@ enum reflection_type_data_flags {
 	RTDF_HAS_ANNOTATION	= FY_BIT(3),	/* type has a yaml annotation		*/
 	RTDF_HAS_DEFAULT_NODE	= FY_BIT(4),	/* type has a default node		*/
 	RTDF_HAS_DEFAULT_VALUE	= FY_BIT(5),	/* type has default parsed data		*/
-	RTDF_MUTATED		= FY_BIT(6),	/* type was mutated			*/
-	RTDF_MUTATED_OPS	= FY_BIT(7),	/* type was mutated (ops change)	*/
-	RTDF_MUTATED_PARENT	= FY_BIT(8),	/* type was mutated (parent)		*/
-	RTDF_MUTATED_PARENT_ADDR= FY_BIT(9),	/* type was mutated (parent addr)	*/
-	RTDF_MUTATED_FLATTEN	= FY_BIT(10),	/* type was mutated (flatten_field)	*/
-	RTDF_MUTATED_COUNTER	= FY_BIT(11),	/* type was mutated (counter)	*/
+	RTDF_HAS_FILL_NODE	= FY_BIT(6),	/* type has a fill node			*/
+	RTDF_HAS_FILL_VALUE	= FY_BIT(7),	/* type has fill value parsed data	*/
+	RTDF_MUTATED		= FY_BIT(8),	/* type was mutated			*/
+	RTDF_MUTATED_OPS	= FY_BIT(9),	/* type was mutated (ops change)	*/
+	RTDF_MUTATED_PARENT	= FY_BIT(10),	/* type was mutated (parent)		*/
+	RTDF_MUTATED_PARENT_ADDR= FY_BIT(11),	/* type was mutated (parent addr)	*/
+	RTDF_MUTATED_FLATTEN	= FY_BIT(12),	/* type was mutated (flatten_field)	*/
+	RTDF_MUTATED_COUNTER	= FY_BIT(13),	/* type was mutated (counter)	*/
 
 	RTDF_PURITY_MASK	= (RTDF_UNPURE | RTDF_PTR_PURE),
 };
@@ -2153,6 +2155,8 @@ struct reflection_type_data {
 	char *yaml_annotation_str;				/* the annotation as a string */
 	struct fy_node *fyn_default;
 	void *default_value;
+	struct fy_node *fyn_fill;				/* fill for constant arrays */
+	void *fill_value;					/* value if possible */
 	struct reflection_type_data *rtd_dep;			/* the dependent type */
 	size_t fields_count;
 	struct reflection_field_data **fields;
@@ -2175,6 +2179,9 @@ reflection_type_data_generate_value_into(struct reflection_type_data *rtd, struc
 
 int
 reflection_type_data_put_default_value_into(struct reflection_type_data *rtd, void *data);
+
+int
+reflection_type_data_put_fill_value_into(struct reflection_type_data *rtd, void *data);
 
 struct reflection_type_system;
 
@@ -2901,17 +2908,33 @@ err_out:
 
 static int const_array_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
-	int last_idx, count;
+	void *data;
+	size_t item_size;
+	int last_idx, count, i, rc;
 
 	last_idx = (int)(uintptr_t)ro->instance_data;
 	count = (int)ro->rtd->ti->count;
 	if (last_idx < 0)
 		last_idx = -1;
 	if ((last_idx + 1) != count) {	/* verify all filled */
-		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
-				"missing #%d items (got %d out of %d)",
-				count - (last_idx + 1), last_idx + 1, count);
-		goto err_out;
+
+		/* not filled, and no fill */
+		if (!ro->rtd->fyn_fill) {
+			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+					"missing #%d items (got %d out of %d)",
+					count - (last_idx + 1), last_idx + 1, count);
+			goto err_out;
+		}
+
+		item_size = ro->rtd->rtd_dep->ti->size;
+		data = ro->data;
+		for (i = last_idx + 1; i < count; i++) {
+			assert(ro->rtd->fill_value);
+			data = ro->data + (size_t)i * item_size;
+			rc = reflection_type_data_put_fill_value_into(ro->rtd, data);
+			if (rc)
+				goto err_out;
+		}
 	}
 
 	return 0;
@@ -4882,6 +4905,9 @@ void reflection_type_data_destroy(struct reflection_type_data *rtd)
 	if (rtd->default_value)
 		free(rtd->default_value);
 
+	if (rtd->fill_value)
+		free(rtd->fill_value);
+
 	if (rtd->fields) {
 		for (i = 0; i < rtd->fields_count; i++) {
 			rfd = rtd->fields[i];
@@ -4924,13 +4950,15 @@ void reflection_type_system_dump(struct reflection_type_system *rts)
 			continue;
 		}
 
-		printf(" %s%s%s%s%s%s%s%s%s%s%s%s",
+		printf(" %s%s%s%s%s%s%s%s%s%s%s%s%s%s",
 				(rtd->flags & RTDF_UNPURE) ? " UNPURE" : "",
 				(rtd->flags & RTDF_PTR_PURE) ? " PTR_PURE" : "",
 				(rtd->flags & RTDF_SPECIALIZED) ? " SPECIALIZED" : "",
 				(rtd->flags & RTDF_HAS_ANNOTATION) ? " HAS_ANNOTATION" : "",
 				(rtd->flags & RTDF_HAS_DEFAULT_NODE) ? " HAS_DEFAULT_NODE" : "",
 				(rtd->flags & RTDF_HAS_DEFAULT_VALUE) ? " HAS_DEFAULT_VALUE" : "",
+				(rtd->flags & RTDF_HAS_FILL_NODE) ? " HAS_FILL_NODE" : "",
+				(rtd->flags & RTDF_HAS_FILL_VALUE) ? " HAS_FILL_VALUE" : "",
 				(rtd->flags & RTDF_MUTATED) ? " MUTATED" : "",
 				(rtd->flags & RTDF_MUTATED_OPS) ? " MUTATED_OPS" : "",
 				(rtd->flags & RTDF_MUTATED_PARENT) ? " MUTATED_PARENT" : "",
@@ -5110,10 +5138,41 @@ reflection_type_data_put_default_value_into(struct reflection_type_data *rtd, vo
 			memcpy(data, rtd->default_value, rtd->ti->size);
 			return 0;
 		}
+		/* not handled yet */
+		assert(0);
 		abort();
 	}
-	/* no canned default available, must created each time */
+	/* no canned default available, must be created each time */
 	return reflection_type_data_generate_value_into(rtd, rtd->fyn_default, data);
+}
+
+void *
+reflection_setup_type_generate_fill_value(struct reflection_type_data *rtd,
+					  struct reflection_type_data *rtd_parent, void *parent_addr)
+{
+	return reflection_type_data_generate_value(rtd, rtd_parent->fyn_fill);
+}
+
+int
+reflection_type_data_put_fill_value_into(struct reflection_type_data *rtd, void *data)
+{
+	if (!rtd || !rtd->fyn_fill)
+		return -1;
+
+	assert(rtd->rtd_dep);
+
+	/* copy from the already prepared fill data area */
+	if (rtd->fill_value) {
+		/* non pointer just copy into */
+		if (rtd->rtd_dep->ti->kind != FYTK_PTR) {
+			memcpy(data, rtd->fill_value, rtd->rtd_dep->ti->size);
+			return 0;
+		}
+		assert(0);
+		abort();
+	}
+	/* no canned fill available, must be created each time */
+	return reflection_type_data_generate_value_into(rtd->rtd_dep, rtd->fyn_fill, data);
 }
 
 static int
@@ -5493,6 +5552,22 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 					goto err_out;
 				}
 				rtd->flags |= RTDF_HAS_DEFAULT_VALUE;
+			}
+		}
+
+		if (rtd->ti->kind == FYTK_CONSTARRAY) {
+			rtd->fyn_fill = fy_node_by_path(fy_document_root(rtd->yaml_annotation), "fill", FY_NT, FYNWF_PTR_DEFAULT);
+			if (rtd->fyn_fill) {
+				rtd->flags |= RTDF_HAS_FILL_NODE;
+				/* generate fill value if type is pure or a pointer to pure data */
+				if ((rtd->rtd_dep->flags & RTDF_PURITY_MASK) == RTDF_PURE /* || (rtd->rtd_dep->flags & RTDF_PTR_PURE) */ ) {
+					rtd->fill_value = reflection_setup_type_generate_fill_value(rtd->rtd_dep, rtd, NULL);
+					if (!rtd->fill_value) {
+						fprintf(stderr, "%s: %s: failed to generate fill value\n", __func__, rtd->ti->fullname);
+						goto err_out;
+					}
+					rtd->flags |= RTDF_HAS_FILL_VALUE;
+				}
 			}
 		}
 	}
