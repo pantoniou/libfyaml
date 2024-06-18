@@ -2122,16 +2122,12 @@ enum reflection_type_data_flags {
 	RTDF_PTR_PURE		= FY_BIT(1),	/* is pointer, but pointer to pure data */
 	RTDF_SPECIALIZED	= FY_BIT(2),	/* type was specialized before		*/
 	RTDF_HAS_ANNOTATION	= FY_BIT(3),	/* type has a yaml annotation		*/
-	RTDF_HAS_DEFAULT_NODE	= FY_BIT(4),	/* type has a default node		*/
-	RTDF_HAS_DEFAULT_VALUE	= FY_BIT(5),	/* type has default parsed data		*/
-	RTDF_HAS_FILL_NODE	= FY_BIT(6),	/* type has a fill node			*/
-	RTDF_HAS_FILL_VALUE	= FY_BIT(7),	/* type has fill value parsed data	*/
-	RTDF_MUTATED		= FY_BIT(8),	/* type was mutated			*/
-	RTDF_MUTATED_OPS	= FY_BIT(9),	/* type was mutated (ops change)	*/
-	RTDF_MUTATED_PARENT	= FY_BIT(10),	/* type was mutated (parent)		*/
-	RTDF_MUTATED_PARENT_ADDR= FY_BIT(11),	/* type was mutated (parent addr)	*/
-	RTDF_MUTATED_FLATTEN	= FY_BIT(12),	/* type was mutated (flatten_field)	*/
-	RTDF_MUTATED_COUNTER	= FY_BIT(13),	/* type was mutated (counter)	*/
+	RTDF_MUTATED		= FY_BIT(4),	/* type was mutated			*/
+	RTDF_MUTATED_OPS	= FY_BIT(5),	/* type was mutated (ops change)	*/
+	RTDF_MUTATED_PARENT	= FY_BIT(6),	/* type was mutated (parent)		*/
+	RTDF_MUTATED_PARENT_ADDR= FY_BIT(7),	/* type was mutated (parent addr)	*/
+	RTDF_MUTATED_FLATTEN	= FY_BIT(8),	/* type was mutated (flatten_field)	*/
+	RTDF_MUTATED_COUNTER	= FY_BIT(9),	/* type was mutated (counter)	*/
 
 	RTDF_PURITY_MASK	= (RTDF_UNPURE | RTDF_PTR_PURE),
 };
@@ -2157,6 +2153,8 @@ struct reflection_type_data {
 	void *default_value;
 	struct fy_node *fyn_fill;				/* fill for constant arrays */
 	void *fill_value;					/* value if possible */
+	struct fy_node *fyn_terminator;				/* terminator for sequences */
+	void *terminator_value;					/* value if possible */
 	struct reflection_type_data *rtd_dep;			/* the dependent type */
 	size_t fields_count;
 	struct reflection_field_data **fields;
@@ -2182,6 +2180,9 @@ reflection_type_data_put_default_value_into(struct reflection_type_data *rtd, vo
 
 int
 reflection_type_data_put_fill_value_into(struct reflection_type_data *rtd, void *data);
+
+int
+reflection_type_data_put_terminator_value_into(struct reflection_type_data *rtd, void *data);
 
 struct reflection_type_system;
 
@@ -4315,6 +4316,36 @@ struct dyn_array_instance_data {
 	struct reflection_field_data *rfd_counter;
 };
 
+static int
+dyn_array_grow_for_idx(struct reflection_object *ro, size_t idx)
+{
+	struct dyn_array_instance_data *id = ro->instance_data;
+	void *data, *new_data;
+	size_t item_size, new_alloc;
+
+	if (idx >= id->alloc) {
+		data = *(void **)ro->data;
+		new_alloc = id->alloc * 2;
+		if (!new_alloc)
+			new_alloc = 8;
+
+		while (new_alloc < idx)
+			new_alloc *= 2;
+
+		item_size = ro->rtd->rtd_dep->ti->size;
+		new_data = reflection_realloc(ro->rtd->rts, data, new_alloc * item_size);
+		if (!new_data)
+			return -1;
+
+		/* zero new area */
+		memset(new_data + id->alloc * item_size, 0, (new_alloc - id->alloc) * item_size);
+		id->alloc = new_alloc;
+		*(void **)ro->data = new_data;
+	}
+
+	return 0;
+}
+
 static int dyn_array_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct dyn_array_instance_data *id;
@@ -4345,8 +4376,11 @@ static int dyn_array_setup(struct reflection_object *ro, struct fy_parser *fyp, 
 			assert(0);
 			goto err_out;
 		}
-	} else
+	} else {
 		id->rfd_counter = NULL;
+		/* there must be a terminator */
+		assert(ro->rtd->fyn_terminator);
+	}
 
 	/* start with NULL */
 	*(void **)ro->data = NULL;
@@ -4371,6 +4405,9 @@ static int dyn_array_finish(struct reflection_object *ro, struct fy_parser *fyp,
 {
 	struct dyn_array_instance_data *id;
 	struct reflection_field_data *rfd;
+	size_t item_size;
+	void *data;
+	int rc;
 
 	rfd = ro->parent_addr;
 	assert(rfd);
@@ -4378,78 +4415,90 @@ static int dyn_array_finish(struct reflection_object *ro, struct fy_parser *fyp,
 	id = ro->instance_data;
 	assert(id);
 
-	assert(id->rfd_counter);
+	if (id->rfd_counter) {
+		/* and store the counter */
+		assert(ro->parent);
+		assert(ro->parent->data);
 
-	/* and store the counter */
-	assert(ro->parent);
-	assert(ro->parent->data);
+		// fprintf(stderr, "%s: store counter=%s ro->data=%p\n", __func__, rfd_counter->field_name, ro->parent->data);
 
-	// fprintf(stderr, "%s: store counter=%s ro->data=%p\n", __func__, rfd_counter->field_name, ro->parent->data);
+		integer_field_store(id->rfd_counter, (uintmax_t)id->count, ro->parent->data);
+	} else {
+		assert(ro->rtd->terminator_value);
 
-	integer_field_store(id->rfd_counter, (uintmax_t)id->count, ro->parent->data);
+		rc = dyn_array_grow_for_idx(ro, id->count);
+		if (rc)
+			goto err_out;
+
+		item_size = ro->rtd->rtd_dep->ti->size;
+		data = *(void **)ro->data + item_size * id->count;
+
+		memcpy(data, ro->rtd->terminator_value, item_size);
+
+	}
 
 	return 0;
+err_out:
+	return -1;
 }
 
 struct reflection_object *dyn_array_create_child(struct reflection_object *ro_parent,
 						 struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct dyn_array_instance_data *id;
-	struct reflection_object *ro;
+	struct reflection_object *ro = NULL;
 	struct reflection_type_data *rtd_dep;
-	size_t item_size, new_alloc;
+	size_t item_size;
 	int rc, idx;
-	void *data, *new_data;
+	void *data;
 
 	id = ro_parent->instance_data;
 	assert(id);
-
-	assert(id->rfd_counter);
 
 	assert(fy_path_in_sequence(path));
 	idx = fy_path_component_sequence_get_index(fy_path_last_not_collection_root_component(path));
 	if (idx < 0)
 		goto err_out;
 
-	/* make sure the counter can hold this */
-	rc = integer_field_store_check(id->rfd_counter, (uintmax_t)idx);
-	if (rc) {
-		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
-				"dynarray: counter field overflow (%s)", id->rfd_counter->field_name);
-		goto err_out;
+	if (id->rfd_counter) {
+		/* make sure the counter can hold this */
+		rc = integer_field_store_check(id->rfd_counter, (uintmax_t)idx);
+		if (rc) {
+			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+					"dynarray: counter field overflow (%s)", id->rfd_counter->field_name);
+			goto err_out;
+		}
 	}
 
 	rtd_dep = ro_parent->rtd->rtd_dep;
 	assert(rtd_dep);
 
-	item_size = rtd_dep->ti->size;
 	assert(ro_parent->rtd->ti->size == sizeof(void *));
+	item_size = rtd_dep->ti->size;
 
-	data = *(void **)ro_parent->data;
-	if ((size_t)idx >= id->count) {
-		new_alloc = id->alloc * 2;
-		if (!new_alloc)
-			new_alloc = 8;
+	rc = dyn_array_grow_for_idx(ro_parent, idx);
+	if (rc)
+		goto err_out;
+	id->count = idx + 1;
 
-		while (new_alloc < (size_t)idx)
-			new_alloc *= 2;
-
-		new_data = reflection_realloc(ro_parent->rtd->rts, data, new_alloc * item_size);
-		if (!new_data)
-			goto err_out;
-		id->alloc = new_alloc;
-		*(void **)ro_parent->data = data = new_data;
-	}
-	id->count = (size_t)idx + 1;
+	data = *(void **)ro_parent->data + item_size * idx;
 
 	ro = reflection_object_create(ro_parent, (void *)(uintptr_t)idx,
-				      rtd_dep, fyp, fye, path, data + item_size * idx, item_size);
+				      rtd_dep, fyp, fye, path, data, item_size);
 	if (!ro)
 		return NULL;
+
+	/* it is illegal for the terminator value to be part of the data set */
+	if (ro_parent->rtd->terminator_value && !memcmp(ro_parent->rtd->terminator_value, data, item_size)) {
+		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+				"terminator value is not allowed in the dataset");
+		goto err_out;
+	}
 
 	return ro;
 
 err_out:
+	reflection_object_destroy(ro);
 	return NULL;
 }
 
@@ -4461,6 +4510,7 @@ static int dyn_array_emit(struct reflection_type_data *rtd, struct fy_emitter *f
 	struct reflection_field_data *rfd, *rfd_counter;
 	const void *parent_data;
 	uintmax_t idx, count;
+	size_t item_size;
 	int rc;
 
 	assert(data);
@@ -4492,11 +4542,20 @@ static int dyn_array_emit(struct reflection_type_data *rtd, struct fy_emitter *f
 		goto err_out;
 
 	if (data) {
-		count = integer_field_load(rfd_counter, parent_data);
 
-		for (idx = 0; idx < count; idx++, data += rtd_dep->ti->size) {
-			assert(rtd_dep->ops->emit);
-			rc = rtd_dep->ops->emit(rtd_dep, fye, data, rtd_dep->ti->size, rtd, (void *)(uintptr_t)idx);
+		if (rfd_counter)
+			count = integer_field_load(rfd_counter, parent_data);
+		else
+			count = UINT_MAX;
+		item_size = rtd_dep->ti->size;
+
+		for (idx = 0; idx < count; idx++, data += item_size) {
+
+			/* when using a terminator, terminate with it */
+			if (rtd->terminator_value && !memcmp(rtd->terminator_value, data, item_size))
+				break;
+
+			rc = rtd_dep->ops->emit(rtd_dep, fye, data, item_size, rtd, (void *)(uintptr_t)idx);
 			if (rc)
 				goto err_out;
 		}
@@ -4525,30 +4584,38 @@ void dyn_array_dtor(struct reflection_type_data *rtd, void *data)
 		return;
 	*(void **)data = NULL;
 
-	/* this must have been mutated, and filled in */
-	assert(rtd->rtd_parent);
-	assert(rtd->parent_addr);
-
-	if (rtd->counter) {
-		rfd_counter = reflection_type_data_lookup_field(rtd->rtd_parent, rtd->counter);
-		assert(rfd_counter);
-	} else
-		rfd_counter = NULL;
-
 	if (reflection_type_data_has_dtor(rtd->rtd_dep)) {
 
-		/* the parent address is the field data */
-		rfd = rtd->parent_addr;
+		if (rtd->counter) {
+			/* this must have been mutated, and filled in */
+			assert(rtd->rtd_parent);
+			assert(rtd->parent_addr);
 
-		/* find out where the parent structure address */
-		parent_data = data - rfd->fi->offset;
+			rfd_counter = reflection_type_data_lookup_field(rtd->rtd_parent, rtd->counter);
+			assert(rfd_counter);
 
-		/* load the count */
-		count = integer_field_load(rfd_counter, parent_data);
+			/* the parent address is the field data */
+			rfd = rtd->parent_addr;
 
-		/* free in sequence */
-		for (idx = 0, p = ptr; idx < count; idx++, p += rtd->rtd_dep->ti->size)
-			reflection_type_data_call_dtor(rtd->rtd_dep, p);
+			/* find out where the parent structure address */
+			parent_data = data - rfd->fi->offset;
+
+			/* load the count */
+			count = integer_field_load(rfd_counter, parent_data);
+
+			/* free in sequence */
+			for (idx = 0, p = ptr; idx < count; idx++, p += rtd->rtd_dep->ti->size)
+				reflection_type_data_call_dtor(rtd->rtd_dep, p);
+
+		} else {
+			rfd_counter = NULL;
+			count = 0;
+
+			/* for this to work there must be a terminator value */
+			assert(rtd->terminator_value);
+
+			assert(0);
+		}
 	}
 
 	reflection_free(rtd->rts, ptr);
@@ -4997,6 +5064,9 @@ void reflection_type_data_destroy(struct reflection_type_data *rtd)
 	if (rtd->fill_value)
 		free(rtd->fill_value);
 
+	if (rtd->terminator_value)
+		free(rtd->terminator_value);
+
 	if (rtd->fields) {
 		for (i = 0; i < rtd->fields_count; i++) {
 			rfd = rtd->fields[i];
@@ -5039,15 +5109,11 @@ void reflection_type_system_dump(struct reflection_type_system *rts)
 			continue;
 		}
 
-		printf(" %s%s%s%s%s%s%s%s%s%s%s%s%s%s",
+		printf(" %s%s%s%s%s%s%s%s%s%s",
 				(rtd->flags & RTDF_UNPURE) ? " UNPURE" : "",
 				(rtd->flags & RTDF_PTR_PURE) ? " PTR_PURE" : "",
 				(rtd->flags & RTDF_SPECIALIZED) ? " SPECIALIZED" : "",
 				(rtd->flags & RTDF_HAS_ANNOTATION) ? " HAS_ANNOTATION" : "",
-				(rtd->flags & RTDF_HAS_DEFAULT_NODE) ? " HAS_DEFAULT_NODE" : "",
-				(rtd->flags & RTDF_HAS_DEFAULT_VALUE) ? " HAS_DEFAULT_VALUE" : "",
-				(rtd->flags & RTDF_HAS_FILL_NODE) ? " HAS_FILL_NODE" : "",
-				(rtd->flags & RTDF_HAS_FILL_VALUE) ? " HAS_FILL_VALUE" : "",
 				(rtd->flags & RTDF_MUTATED) ? " MUTATED" : "",
 				(rtd->flags & RTDF_MUTATED_OPS) ? " MUTATED_OPS" : "",
 				(rtd->flags & RTDF_MUTATED_PARENT) ? " MUTATED_PARENT" : "",
@@ -5262,6 +5328,35 @@ reflection_type_data_put_fill_value_into(struct reflection_type_data *rtd, void 
 	}
 	/* no canned fill available, must be created each time */
 	return reflection_type_data_generate_value_into(rtd->rtd_dep, rtd->fyn_fill, data);
+}
+
+void *
+reflection_setup_type_generate_terminator_value(struct reflection_type_data *rtd,
+					  struct reflection_type_data *rtd_parent, void *parent_addr)
+{
+	return reflection_type_data_generate_value(rtd, rtd_parent->fyn_terminator);
+}
+
+int
+reflection_type_data_put_terminator_value_into(struct reflection_type_data *rtd, void *data)
+{
+	if (!rtd || !rtd->fyn_terminator)
+		return -1;
+
+	assert(rtd->rtd_dep);
+
+	/* copy from the already prepared terminator data area */
+	if (rtd->terminator_value) {
+		/* non pointer just copy into */
+		if (rtd->rtd_dep->ti->kind != FYTK_PTR) {
+			memcpy(data, rtd->terminator_value, rtd->rtd_dep->ti->size);
+			return 0;
+		}
+		assert(0);
+		abort();
+	}
+	/* no canned terminator available, must be created each time */
+	return reflection_type_data_generate_value_into(rtd->rtd_dep, rtd->fyn_terminator, data);
 }
 
 static int
@@ -5597,16 +5692,20 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 
 					fprintf(stderr, "dyn_array *MUT!\n");
 
-				} else if ((fyn_terminator = fy_node_by_path(fy_document_root(rtd->yaml_annotation), "terminator", FY_NT, FYNWF_PTR_DEFAULT)) != NULL) {
+				} else if ((fyn_terminator = fy_type_info_get_yaml_node(rfd_ti, "terminator")) != NULL) {
 					fprintf(stderr, "terminator\n");
-#if 0
-					rtd->default_value = reflection_setup_type_generate_default_value(rtd, rtd_parent, parent_addr);
-					if (!rtd->default_value) {
-						fprintf(stderr, "%s: %s: failed to generate default value\n", __func__, rtd->ti->fullname);
-						goto err_out;
-					}
-#endif
 
+					reflection_type_mutation_reset(&rtm);
+					rtm.mutation_name = "dyn_array";
+					rtm.ops = &dyn_array_ops;
+
+					rtd_mut = reflection_type_data_mutate(rfd->rtd, &rtm);
+					assert(rtd_mut);
+
+					rfd->rtd = rtd_mut;
+					rtd_mut = NULL;
+
+					fprintf(stderr, "dyn_array * terminator MUT!\n");
 				}
 				break;
 
@@ -5657,7 +5756,6 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 
 		rtd->fyn_default = fy_node_by_path(fy_document_root(rtd->yaml_annotation), "default", FY_NT, FYNWF_PTR_DEFAULT);
 		if (rtd->fyn_default) {
-			rtd->flags |= RTDF_HAS_DEFAULT_NODE;
 			/* generate default value if type is pure or a pointer to pure data */
 			if ((rtd->flags & RTDF_PURITY_MASK) == RTDF_PURE /* || (rtd->flags & RTDF_PTR_PURE) */ ) {
 				rtd->default_value = reflection_setup_type_generate_default_value(rtd, rtd_parent, parent_addr);
@@ -5665,14 +5763,12 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 					fprintf(stderr, "%s: %s: failed to generate default value\n", __func__, rtd->ti->fullname);
 					goto err_out;
 				}
-				rtd->flags |= RTDF_HAS_DEFAULT_VALUE;
 			}
 		}
 
 		if (rtd->ti->kind == FYTK_CONSTARRAY) {
 			rtd->fyn_fill = fy_node_by_path(fy_document_root(rtd->yaml_annotation), "fill", FY_NT, FYNWF_PTR_DEFAULT);
 			if (rtd->fyn_fill) {
-				rtd->flags |= RTDF_HAS_FILL_NODE;
 				/* generate fill value if type is pure or a pointer to pure data */
 				if ((rtd->rtd_dep->flags & RTDF_PURITY_MASK) == RTDF_PURE /* || (rtd->rtd_dep->flags & RTDF_PTR_PURE) */ ) {
 					rtd->fill_value = reflection_setup_type_generate_fill_value(rtd->rtd_dep, rtd, NULL);
@@ -5680,7 +5776,20 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 						fprintf(stderr, "%s: %s: failed to generate fill value\n", __func__, rtd->ti->fullname);
 						goto err_out;
 					}
-					rtd->flags |= RTDF_HAS_FILL_VALUE;
+				}
+			}
+		}
+
+		if (rtd->ti->kind == FYTK_PTR) {
+			rtd->fyn_terminator = fy_node_by_path(fy_document_root(rtd->yaml_annotation), "terminator", FY_NT, FYNWF_PTR_DEFAULT);
+			if (rtd->fyn_terminator) {
+				/* generate terminator value if type is pure or a pointer to pure data */
+				if ((rtd->rtd_dep->flags & RTDF_PURITY_MASK) == RTDF_PURE /* || (rtd->rtd_dep->flags & RTDF_PTR_PURE) */ ) {
+					rtd->terminator_value = reflection_setup_type_generate_terminator_value(rtd->rtd_dep, rtd, NULL);
+					if (!rtd->terminator_value) {
+						fprintf(stderr, "%s: %s: failed to generate terminator value\n", __func__, rtd->ti->fullname);
+						goto err_out;
+					}
 				}
 			}
 		}
