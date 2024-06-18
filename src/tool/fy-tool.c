@@ -2929,7 +2929,6 @@ static int const_array_finish(struct reflection_object *ro, struct fy_parser *fy
 		item_size = ro->rtd->rtd_dep->ti->size;
 		data = ro->data;
 		for (i = last_idx + 1; i < count; i++) {
-			assert(ro->rtd->fill_value);
 			data = ro->data + (size_t)i * item_size;
 			rc = reflection_type_data_put_fill_value_into(ro->rtd, data);
 			if (rc)
@@ -3023,6 +3022,95 @@ void const_array_dtor(struct reflection_type_data *rtd, void *data)
 	for (idx = 0; idx < rtd->ti->count; idx++, data += rtd->rtd_dep->ti->size)
 		reflection_type_data_call_dtor(rtd->rtd_dep, data);
 }
+
+static int constarray_char_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
+{
+	struct fy_token *fyt;
+	struct reflection_type_data *rtd_dep;
+	enum fy_type_kind type_kind;
+	const char *text;
+	size_t len;
+	void *data;
+
+	assert(ro->rtd->ti->kind == FYTK_CONSTARRAY);
+
+	rtd_dep = ro->rtd->rtd_dep;
+	assert(rtd_dep);
+
+	data = ro->data;
+	assert(data);
+
+	type_kind = ro->rtd->ti->kind;
+	assert(fy_type_kind_is_valid(type_kind));
+
+	type_kind = rtd_dep->ti->kind;
+	assert(type_kind == FYTK_CHAR);
+
+	if (fye->type != FYET_SCALAR) {
+		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+				"expected scalar for char[%zu] type", ro->rtd->ti->count);
+		goto err_out;
+	}
+
+	fyt = fy_event_get_token(fye);
+	assert(fyt);
+
+	text = fy_token_get_text(fyt, &len);
+	assert(text);
+
+	if (len >= ro->rtd->ti->count) {
+		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+				"string size too large to fit char[%zu] including terminating '\\0' (was %zu)", ro->rtd->ti->count, len);
+		goto err_out;
+	}
+	memcpy(data, text, len);
+	*((char *)data + len) = '\0';
+
+	return 0;
+err_out:
+	return -1;
+}
+
+static int constarray_char_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size,
+			 struct reflection_type_data *rtd_parent, void *parent_addr)
+{
+	struct reflection_type_data *rtd_dep;
+	enum fy_type_kind type_kind;
+	const char *text;
+	size_t len;
+	int rc;
+
+	/* verify alignment */
+	type_kind = rtd->ti->kind;
+	assert(type_kind == FYTK_CONSTARRAY);
+
+	rtd_dep = rtd->rtd_dep;
+	assert(rtd_dep);
+
+	type_kind = rtd_dep->ti->kind;
+	assert(type_kind == FYTK_CHAR);
+
+	text = data;
+
+	len = strnlen(text, rtd->ti->count);
+
+	rc = emit_mapping_key_if_any(fye, rtd_parent, parent_addr);
+	if (rc)
+		goto err_out;
+
+	rc = fy_emit_event(fye, fy_emit_event_create(fye, FYET_SCALAR, FYSS_ANY, text, len, NULL, NULL));
+	if (rc)
+		goto err_out;
+
+	return 0;
+err_out:
+	return -1;
+}
+
+static const struct reflection_type_ops constarray_char_ops = {
+	.setup = constarray_char_setup,
+	.emit = constarray_char_emit,
+};
 
 uintmax_t load_le(const void *ptr, size_t width, bool is_signed)
 {
@@ -4822,6 +4910,7 @@ reflection_object_create(struct reflection_object *parent, void *parent_addr,
 	rc = reflection_object_setup(ro, parent, parent_addr, rtd, fyp, fye, path, data, data_size);
 	if (rc) {
 		reflection_object_cleanup(ro);
+		free(ro);
 		return NULL;
 	}
 
@@ -5378,6 +5467,31 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 			rtd = rtd_mut;
 			rtd_mut = NULL;
 			fprintf(stderr, "void *MUT (ptr_doc)!\n");
+			break;
+
+		default:
+			break;
+		}
+
+		break;
+
+	case FYTK_CONSTARRAY:
+		/* only for char[] */
+		switch (rtd->ti->dependent_type->kind) {
+		case FYTK_CHAR:
+			reflection_type_mutation_reset(&rtm);
+			rtm.mutation_name = "constarray_char";
+			rtm.ops = &constarray_char_ops;
+
+			/* this does not need a parent */
+			rtd_mut = reflection_type_data_mutate(rtd, &rtm);
+			assert(rtd_mut);
+
+			*rtdp = rtd_mut;
+			rtd = rtd_mut;
+			rtd_mut = NULL;
+
+			fprintf(stderr, "char [] MUT!\n");
 			break;
 
 		default:
