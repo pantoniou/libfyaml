@@ -4424,7 +4424,9 @@ static int dyn_array_finish(struct reflection_object *ro, struct fy_parser *fyp,
 
 		integer_field_store(id->rfd_counter, (uintmax_t)id->count, ro->parent->data);
 	} else {
-		assert(ro->rtd->terminator_value);
+		if (ro->rtd->rtd_dep->ti->kind != FYTK_PTR) {
+			assert(ro->rtd->terminator_value);
+		}
 
 		rc = dyn_array_grow_for_idx(ro, id->count);
 		if (rc)
@@ -4433,7 +4435,12 @@ static int dyn_array_finish(struct reflection_object *ro, struct fy_parser *fyp,
 		item_size = ro->rtd->rtd_dep->ti->size;
 		data = *(void **)ro->data + item_size * id->count;
 
-		memcpy(data, ro->rtd->terminator_value, item_size);
+		if (ro->rtd->terminator_value)
+			memcpy(data, ro->rtd->terminator_value, item_size);
+		else if (ro->rtd->rtd_dep->ti->kind == FYTK_PTR)
+			memset(data, 0, item_size);
+		else
+			assert(0);
 
 	}
 
@@ -4555,6 +4562,10 @@ static int dyn_array_emit(struct reflection_type_data *rtd, struct fy_emitter *f
 			if (rtd->terminator_value && !memcmp(rtd->terminator_value, data, item_size))
 				break;
 
+			/* do not follow NULLs */
+			if (rtd_dep->ti->kind == FYTK_PTR && *(const void **)data == NULL)
+				break;
+
 			rc = rtd_dep->ops->emit(rtd_dep, fye, data, item_size, rtd, (void *)(uintptr_t)idx);
 			if (rc)
 				goto err_out;
@@ -4576,6 +4587,7 @@ void dyn_array_dtor(struct reflection_type_data *rtd, void *data)
 	void *parent_data;
 	uintmax_t idx, count;
 	void *ptr, *p;
+	size_t item_size;
 
 	assert(data);
 
@@ -4603,18 +4615,25 @@ void dyn_array_dtor(struct reflection_type_data *rtd, void *data)
 			/* load the count */
 			count = integer_field_load(rfd_counter, parent_data);
 
-			/* free in sequence */
-			for (idx = 0, p = ptr; idx < count; idx++, p += rtd->rtd_dep->ti->size)
-				reflection_type_data_call_dtor(rtd->rtd_dep, p);
-
 		} else {
 			rfd_counter = NULL;
-			count = 0;
+			count = UINT_MAX;
+		}
 
-			/* for this to work there must be a terminator value */
-			assert(rtd->terminator_value);
+		item_size = rtd->rtd_dep->ti->size;
 
-			assert(0);
+		/* free in sequence */
+		for (idx = 0, p = ptr; idx < count; idx++, p += item_size) {
+
+			/* do not follow NULLs */
+			if (rtd->rtd_dep->ti->kind == FYTK_PTR && *(const void **)p == NULL)
+				break;
+
+			reflection_type_data_call_dtor(rtd->rtd_dep, p);
+
+			/* when using a terminator, terminate with it */
+			if (rtd->terminator_value && !memcmp(rtd->terminator_value, p, item_size))
+				break;
 		}
 	}
 

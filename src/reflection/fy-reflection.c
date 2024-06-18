@@ -1027,6 +1027,26 @@ const char *fy_decl_get_yaml_comment(struct fy_decl *decl)
 	return decl->yaml_comment;
 }
 
+struct fy_node *
+fy_decl_get_yaml_node(struct fy_decl *decl, const char *path)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn_root;
+
+	assert(decl);
+
+	fyd = fy_decl_get_yaml_annotation(decl);
+	if (!fyd)
+		return NULL;
+
+	fyn_root = fy_document_root(fyd);
+	assert(fyn_root);
+	if (!fyn_root)
+		return NULL;
+
+	return fy_node_by_path(fyn_root, path, FY_NT, FYNWF_DONT_FOLLOW);
+}
+
 const char *
 fy_decl_get_yaml_string(struct fy_decl *decl, const char *path)
 {
@@ -2105,6 +2125,14 @@ const char *fy_type_get_yaml_string(struct fy_type *ft, const char *path)
 		return NULL;
 
 	return fy_decl_get_yaml_string(ft->decl, path);
+}
+
+struct fy_node *fy_type_get_yaml_node(struct fy_type *ft, const char *path)
+{
+	if (!ft || !ft->decl)
+		return NULL;
+
+	return fy_decl_get_yaml_node(ft->decl, path);
 }
 
 const char *fy_type_get_yaml_name(struct fy_type *ft)
@@ -3213,6 +3241,12 @@ const char *
 fy_type_info_get_yaml_string(const struct fy_type_info *ti, const char *path)
 {
 	return fy_type_get_yaml_string(fy_type_from_info(ti), path);
+}
+
+struct fy_node *
+fy_type_info_get_yaml_node(const struct fy_type_info *ti, const char *path)
+{
+	return fy_type_get_yaml_node(fy_type_from_info(ti), path);
 }
 
 intmax_t
