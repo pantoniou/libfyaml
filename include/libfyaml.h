@@ -9693,6 +9693,10 @@ bool
 fy_type_info_get_yaml_bool(const struct fy_type_info *ti, const char *path)
 	FY_EXPORT;
 
+struct fy_node *
+fy_type_info_get_yaml_node(const struct fy_type_info *ti, const char *path)
+	FY_EXPORT;
+
 int
 fy_type_info_get_id(const struct fy_type_info *ti)
 	FY_EXPORT;
