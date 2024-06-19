@@ -2176,13 +2176,7 @@ int
 reflection_type_data_generate_value_into(struct reflection_type_data *rtd, struct fy_node *fyn, void *data);
 
 int
-reflection_type_data_put_default_value_into(struct reflection_type_data *rtd, void *data);
-
-int
-reflection_type_data_put_fill_value_into(struct reflection_type_data *rtd, void *data);
-
-int
-reflection_type_data_put_terminator_value_into(struct reflection_type_data *rtd, void *data);
+reflection_type_data_put_value_into(struct reflection_type_data *rtd, void *data, struct fy_node *fyn_value, const void *value);
 
 struct reflection_type_system;
 
@@ -2931,7 +2925,8 @@ static int const_array_finish(struct reflection_object *ro, struct fy_parser *fy
 		data = ro->data;
 		for (i = last_idx + 1; i < count; i++) {
 			data = ro->data + (size_t)i * item_size;
-			rc = reflection_type_data_put_fill_value_into(ro->rtd, data);
+			rc = reflection_type_data_put_value_into(ro->rtd->rtd_dep, data,
+								 ro->rtd->fyn_fill, ro->rtd->fill_value);
 			if (rc)
 				goto err_out;
 		}
@@ -3313,21 +3308,32 @@ void store_bitfield_le(void *ptr, size_t bit_offset, size_t bit_width, uintmax_t
 	}
 }
 
-/* -1 signed, 1 unsigned, 0 not defined */
-int reflection_type_data_signess(struct reflection_type_data *rtd)
+/* walk down the dependency chain until we hit a non-dependent type */
+struct reflection_type_data *
+reflection_type_data_final_dependent(struct reflection_type_data *rtd)
 {
 	if (!rtd)
-		return 0;
+		return NULL;
 
-	/* walk down dependent types until we get to the final, we just need the sign */
+	/* walk down dependent types until we get to the final */
 	for (;;) {
-		/* TODO some kind of callback? */
 		if (!rtd->rtd_dep)
 			break;
 		rtd = rtd->rtd_dep;
 	}
+	return rtd;
+}
 
-	return fy_type_kind_signess(rtd->ti->kind);
+/* -1 signed, 1 unsigned, 0 not defined */
+int reflection_type_data_signess(struct reflection_type_data *rtd)
+{
+	struct reflection_type_data *rtd_dep_final;
+
+	rtd_dep_final = reflection_type_data_final_dependent(rtd);
+	if (!rtd_dep_final)
+		return 0;
+
+	return fy_type_kind_signess(rtd_dep_final->ti->kind);
 }
 
 uintmax_t integer_field_load(struct reflection_field_data *rfd, const void *data)
@@ -3529,7 +3535,7 @@ static int struct_fill_in_default_field(struct reflection_object *ro, struct fy_
 		field_data = &bitfield_data;
 	}
 
-	rc = reflection_type_data_put_default_value_into(rfd->rtd, field_data);
+	rc = reflection_type_data_put_value_into(rfd->rtd, field_data, rfd->rtd->fyn_default, rfd->rtd->default_value);
 	if (rc)
 		goto err_out;
 
@@ -4396,17 +4402,16 @@ static void dyn_array_cleanup(struct reflection_object *ro)
 
 	id = ro->instance_data;
 	ro->instance_data = NULL;
-	if (id) {
+	if (id) 
 		free(id);
-	}
 }
 
 static int dyn_array_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct dyn_array_instance_data *id;
 	struct reflection_field_data *rfd;
-	size_t item_size;
 	void *data;
+	size_t item_size;
 	int rc;
 
 	rfd = ro->parent_addr;
@@ -4414,6 +4419,8 @@ static int dyn_array_finish(struct reflection_object *ro, struct fy_parser *fyp,
 
 	id = ro->instance_data;
 	assert(id);
+
+	assert(id->rfd_counter || ro->rtd->fyn_terminator);
 
 	if (id->rfd_counter) {
 		/* and store the counter */
@@ -4423,11 +4430,9 @@ static int dyn_array_finish(struct reflection_object *ro, struct fy_parser *fyp,
 		// fprintf(stderr, "%s: store counter=%s ro->data=%p\n", __func__, rfd_counter->field_name, ro->parent->data);
 
 		integer_field_store(id->rfd_counter, (uintmax_t)id->count, ro->parent->data);
-	} else {
-		if (ro->rtd->rtd_dep->ti->kind != FYTK_PTR) {
-			assert(ro->rtd->terminator_value);
-		}
+	}
 
+	if (ro->rtd->fyn_terminator) {
 		rc = dyn_array_grow_for_idx(ro, id->count);
 		if (rc)
 			goto err_out;
@@ -4435,13 +4440,10 @@ static int dyn_array_finish(struct reflection_object *ro, struct fy_parser *fyp,
 		item_size = ro->rtd->rtd_dep->ti->size;
 		data = *(void **)ro->data + item_size * id->count;
 
-		if (ro->rtd->terminator_value)
-			memcpy(data, ro->rtd->terminator_value, item_size);
-		else if (ro->rtd->rtd_dep->ti->kind == FYTK_PTR)
-			memset(data, 0, item_size);
-		else
-			assert(0);
-
+		rc = reflection_type_data_put_value_into(ro->rtd->rtd_dep, data,
+							 ro->rtd->fyn_terminator, ro->rtd->terminator_value);
+		if (rc)
+			goto err_out;
 	}
 
 	return 0;
@@ -5292,24 +5294,17 @@ err_out:
 	goto out;
 }
 
-void *
-reflection_setup_type_generate_default_value(struct reflection_type_data *rtd,
-					     struct reflection_type_data *rtd_parent, void *parent_addr)
-{
-	return reflection_type_data_generate_value(rtd, rtd->fyn_default);
-}
-
 int
-reflection_type_data_put_default_value_into(struct reflection_type_data *rtd, void *data)
+reflection_type_data_put_value_into(struct reflection_type_data *rtd, void *data, struct fy_node *fyn_value, const void *value)
 {
-	if (!rtd || !rtd->fyn_default)
+	if (!rtd || !data || !fyn_value)
 		return -1;
 
-	/* copy from the already prepared default data area */
-	if (rtd->default_value) {
+	/* copy from the already prepared cache value */
+	if (value) {
 		/* non pointer just copy into */
 		if (rtd->ti->kind != FYTK_PTR) {
-			memcpy(data, rtd->default_value, rtd->ti->size);
+			memcpy(data, value, rtd->ti->size);
 			return 0;
 		}
 		/* not handled yet */
@@ -5317,65 +5312,33 @@ reflection_type_data_put_default_value_into(struct reflection_type_data *rtd, vo
 		abort();
 	}
 	/* no canned default available, must be created each time */
-	return reflection_type_data_generate_value_into(rtd, rtd->fyn_default, data);
-}
-
-void *
-reflection_setup_type_generate_fill_value(struct reflection_type_data *rtd,
-					  struct reflection_type_data *rtd_parent, void *parent_addr)
-{
-	return reflection_type_data_generate_value(rtd, rtd_parent->fyn_fill);
+	return reflection_type_data_generate_value_into(rtd, fyn_value, data);
 }
 
 int
-reflection_type_data_put_fill_value_into(struct reflection_type_data *rtd, void *data)
+reflection_type_data_generate_values(struct reflection_type_data *rtd,
+				     struct reflection_type_data *rtd_gen, const char *what,
+				     struct fy_node **fynp, void **valuep)
 {
-	if (!rtd || !rtd->fyn_fill)
+	if (!rtd || !what || !fynp || !valuep)
 		return -1;
 
-	assert(rtd->rtd_dep);
+	if (!rtd_gen)
+		rtd_gen = rtd;
 
-	/* copy from the already prepared fill data area */
-	if (rtd->fill_value) {
-		/* non pointer just copy into */
-		if (rtd->rtd_dep->ti->kind != FYTK_PTR) {
-			memcpy(data, rtd->fill_value, rtd->rtd_dep->ti->size);
-			return 0;
+	/* zero out at start */
+	*fynp = NULL;
+	*valuep = NULL;
+
+	*fynp = fy_node_by_path(fy_document_root(rtd->yaml_annotation), what, FY_NT, FYNWF_PTR_DEFAULT);
+	if (*fynp) {
+		if ((rtd_gen->flags & RTDF_PURITY_MASK) == RTDF_PURE /* || (rtd->flags & RTDF_PTR_PURE) */ ) {
+			*valuep = reflection_type_data_generate_value(rtd_gen, *fynp);
+			if (!*valuep)
+				return -1;
 		}
-		assert(0);
-		abort();
 	}
-	/* no canned fill available, must be created each time */
-	return reflection_type_data_generate_value_into(rtd->rtd_dep, rtd->fyn_fill, data);
-}
-
-void *
-reflection_setup_type_generate_terminator_value(struct reflection_type_data *rtd,
-					  struct reflection_type_data *rtd_parent, void *parent_addr)
-{
-	return reflection_type_data_generate_value(rtd, rtd_parent->fyn_terminator);
-}
-
-int
-reflection_type_data_put_terminator_value_into(struct reflection_type_data *rtd, void *data)
-{
-	if (!rtd || !rtd->fyn_terminator)
-		return -1;
-
-	assert(rtd->rtd_dep);
-
-	/* copy from the already prepared terminator data area */
-	if (rtd->terminator_value) {
-		/* non pointer just copy into */
-		if (rtd->rtd_dep->ti->kind != FYTK_PTR) {
-			memcpy(data, rtd->terminator_value, rtd->rtd_dep->ti->size);
-			return 0;
-		}
-		assert(0);
-		abort();
-	}
-	/* no canned terminator available, must be created each time */
-	return reflection_type_data_generate_value_into(rtd->rtd_dep, rtd->fyn_terminator, data);
+	return 0;
 }
 
 static int
@@ -5539,8 +5502,9 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 	struct fy_node *fyn_terminator;
 	const struct reflection_type_ops *ops;
 	const struct fy_type_info *rfd_ti;
-	const char *str;
+	const char *flatten_field, *counter;
 	size_t i;
+	int rc;
 
 	rtd = *rtdp;
 
@@ -5616,17 +5580,18 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 
 	case FYTK_STRUCT:
 
-		if ((str = fy_type_info_get_yaml_string(rtd->ti, "flatten-field")) != NULL) {
+		flatten_field = fy_type_info_get_yaml_string(rtd->ti, "flatten-field");
+		if (flatten_field) {
 			assert(!rtd->flat_field);
 
-			fprintf(stderr, ">>>> struct %s flatten-field=%s\n", rtd->ti->name, str);
+			fprintf(stderr, ">>>> struct %s flatten-field=%s\n", rtd->ti->name, flatten_field);
 
-			rfd_flatten = reflection_type_data_lookup_field(rtd, str);
+			rfd_flatten = reflection_type_data_lookup_field(rtd, flatten_field);
 			assert(rfd_flatten);
 
 			reflection_type_mutation_reset(&rtm);
 			rtm.mutation_name = "flatten";
-			rtm.flat_field = str;
+			rtm.flat_field = flatten_field;
 
 			rtd_mut = reflection_type_data_mutate(rtd, &rtm);
 			assert(rtd_mut);
@@ -5678,30 +5643,41 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 					rfd->omit_if_null = true;
 				}
 
-				if ((str = fy_type_info_get_yaml_string(rfd_ti, "counter")) != NULL) {
-					rfd_ref = reflection_type_data_lookup_field(rtd, str);
-					assert(rfd_ref);
+				counter = fy_type_info_get_yaml_string(rfd_ti, "counter");
+				fyn_terminator = fy_type_info_get_yaml_node(rfd_ti, "terminator");
 
-					/* must be an integer */
-					assert(fy_type_kind_is_integer(rfd_ref->rtd->ti->kind));
-
-					/* it must not be a counter to more than one */
-					assert(!rfd_ref->is_counter);
-					rfd_ref->is_counter = true;
-
-#if 0
-					fprintf(stderr, "%s: %s.%s counter=%s (%s)\n", __func__,
-							rtd->ti->name, rfd->fi->name, str,
-							rfd_ref ? rfd_ref->field_name : "N/A");
-					fprintf(stderr, "rtd=%p rfd=%p rfd_ref=%p\n", rtd, rfd, rfd_ref);
-#endif
+				if (counter || fyn_terminator) {
 
 					reflection_type_mutation_reset(&rtm);
 					rtm.mutation_name = "dyn_array";
 					rtm.ops = &dyn_array_ops;
-					rtm.counter = str;
-					rtm.rtd_parent = rtd;
-					rtm.parent_addr = rfd;
+
+					if (counter) {
+						rfd_ref = reflection_type_data_lookup_field(rtd, counter);
+						assert(rfd_ref);
+
+						/* must be an integer */
+						if (!fy_type_kind_is_integer(rfd_ref->rtd->ti->kind)) {
+							fprintf(stderr, "dyn_array counter field (%s) must be integer\n", counter);
+							goto err_out;
+						}
+
+						/* it must not be a counter to more than one */
+						if (rfd_ref->is_counter) {
+							fprintf(stderr, "dyn_array counter field (%s) must be a single counter\n", counter);
+							goto err_out;
+						}
+						rfd_ref->is_counter = true;
+#if 0
+						fprintf(stderr, "%s: %s.%s counter=%s (%s)\n", __func__,
+								rtd->ti->name, rfd->fi->name, str,
+								rfd_ref ? rfd_ref->field_name : "N/A");
+						fprintf(stderr, "rtd=%p rfd=%p rfd_ref=%p\n", rtd, rfd, rfd_ref);
+#endif
+						rtm.counter = counter;
+						rtm.rtd_parent = rtd;
+						rtm.parent_addr = rfd;
+					}
 
 					rtd_mut = reflection_type_data_mutate(rfd->rtd, &rtm);
 					assert(rtd_mut);
@@ -5711,20 +5687,6 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 
 					fprintf(stderr, "dyn_array *MUT!\n");
 
-				} else if ((fyn_terminator = fy_type_info_get_yaml_node(rfd_ti, "terminator")) != NULL) {
-					fprintf(stderr, "terminator\n");
-
-					reflection_type_mutation_reset(&rtm);
-					rtm.mutation_name = "dyn_array";
-					rtm.ops = &dyn_array_ops;
-
-					rtd_mut = reflection_type_data_mutate(rfd->rtd, &rtm);
-					assert(rtd_mut);
-
-					rfd->rtd = rtd_mut;
-					rtd_mut = NULL;
-
-					fprintf(stderr, "dyn_array * terminator MUT!\n");
 				}
 				break;
 
@@ -5773,44 +5735,20 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 
 		rtd->flags |= RTDF_HAS_ANNOTATION;
 
-		rtd->fyn_default = fy_node_by_path(fy_document_root(rtd->yaml_annotation), "default", FY_NT, FYNWF_PTR_DEFAULT);
-		if (rtd->fyn_default) {
-			/* generate default value if type is pure or a pointer to pure data */
-			if ((rtd->flags & RTDF_PURITY_MASK) == RTDF_PURE /* || (rtd->flags & RTDF_PTR_PURE) */ ) {
-				rtd->default_value = reflection_setup_type_generate_default_value(rtd, rtd_parent, parent_addr);
-				if (!rtd->default_value) {
-					fprintf(stderr, "%s: %s: failed to generate default value\n", __func__, rtd->ti->fullname);
-					goto err_out;
-				}
-			}
-		}
+		rc = reflection_type_data_generate_values(rtd, rtd, "default", &rtd->fyn_default, &rtd->default_value);
+		if (rc)
+			goto err_out;
 
 		if (rtd->ti->kind == FYTK_CONSTARRAY) {
-			rtd->fyn_fill = fy_node_by_path(fy_document_root(rtd->yaml_annotation), "fill", FY_NT, FYNWF_PTR_DEFAULT);
-			if (rtd->fyn_fill) {
-				/* generate fill value if type is pure or a pointer to pure data */
-				if ((rtd->rtd_dep->flags & RTDF_PURITY_MASK) == RTDF_PURE /* || (rtd->rtd_dep->flags & RTDF_PTR_PURE) */ ) {
-					rtd->fill_value = reflection_setup_type_generate_fill_value(rtd->rtd_dep, rtd, NULL);
-					if (!rtd->fill_value) {
-						fprintf(stderr, "%s: %s: failed to generate fill value\n", __func__, rtd->ti->fullname);
-						goto err_out;
-					}
-				}
-			}
+			rc = reflection_type_data_generate_values(rtd, rtd->rtd_dep, "fill", &rtd->fyn_fill, &rtd->fill_value);
+			if (rc)
+				goto err_out;
 		}
 
 		if (rtd->ti->kind == FYTK_PTR) {
-			rtd->fyn_terminator = fy_node_by_path(fy_document_root(rtd->yaml_annotation), "terminator", FY_NT, FYNWF_PTR_DEFAULT);
-			if (rtd->fyn_terminator) {
-				/* generate terminator value if type is pure or a pointer to pure data */
-				if ((rtd->rtd_dep->flags & RTDF_PURITY_MASK) == RTDF_PURE /* || (rtd->rtd_dep->flags & RTDF_PTR_PURE) */ ) {
-					rtd->terminator_value = reflection_setup_type_generate_terminator_value(rtd->rtd_dep, rtd, NULL);
-					if (!rtd->terminator_value) {
-						fprintf(stderr, "%s: %s: failed to generate terminator value\n", __func__, rtd->ti->fullname);
-						goto err_out;
-					}
-				}
-			}
+			rc = reflection_type_data_generate_values(rtd, rtd->rtd_dep, "terminator", &rtd->fyn_terminator, &rtd->terminator_value);
+			if (rc)
+				goto err_out;
 		}
 	}
 
