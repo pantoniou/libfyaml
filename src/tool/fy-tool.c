@@ -2086,6 +2086,7 @@ struct reflection_type_ops {
 	void (*dtor)(struct reflection_type_data *rtd, void *data);
 
 	int (*copy)(struct reflection_type_data *rtd, void *dst, const void *src);
+	int (*cmp)(struct reflection_type_data *rtd, const void *a, const void *b);
 };
 
 struct reflection_type {
@@ -2174,6 +2175,9 @@ reflection_type_data_generate_value_into(struct reflection_type_data *rtd, struc
 
 int
 reflection_type_data_put_value_into(struct reflection_type_data *rtd, void *data, struct fy_node *fyn_value, const void *value);
+
+int
+reflection_type_data_value_cmp(struct reflection_type_data *rtd, const void *a, const void *b);
 
 struct reflection_type_system;
 
@@ -4284,11 +4288,24 @@ err_out:
 	return -1;
 }
 
+int ptr_char_cmp(struct reflection_type_data *rtd, const void *a, const void *b)
+{
+	const char *astr, *bstr;
+
+	assert(a);
+	assert(b);
+	astr = *(const char **)a;
+	bstr = *(const char **)b;
+
+	return strcmp(astr, bstr);
+}
+
 static const struct reflection_type_ops ptr_char_ops = {
 	.setup = ptr_char_setup,
 	.emit = ptr_char_emit,
 	.dtor = ptr_char_dtor,
 	.copy = ptr_char_copy,
+	.cmp = ptr_char_cmp,
 };
 
 struct reflection_object *ptr_create_child(struct reflection_object *ro_parent,
@@ -4419,8 +4436,15 @@ static int dyn_array_setup(struct reflection_object *ro, struct fy_parser *fyp, 
 		}
 	} else {
 		id->rfd_counter = NULL;
-		/* there must be a terminator */
-		assert(ro->rtd->fyn_terminator);
+	}
+
+	/* if no counter and no terminator given, it must be a pointer */
+	if (!id->rfd_counter && !ro->rtd->fyn_terminator) {
+		if (ro->rtd->rtd_dep->ti->kind != FYTK_PTR) {
+			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+					"not counter and no terminator given error for type %s", ro->rtd->ti->fullname);
+			goto err_out;
+		}
 	}
 
 	/* start with NULL */
@@ -4455,8 +4479,6 @@ static int dyn_array_finish(struct reflection_object *ro, struct fy_parser *fyp,
 	id = ro->instance_data;
 	assert(id);
 
-	assert(id->rfd_counter || ro->rtd->fyn_terminator);
-
 	if (id->rfd_counter) {
 		/* and store the counter */
 		assert(ro->parent);
@@ -4479,6 +4501,19 @@ static int dyn_array_finish(struct reflection_object *ro, struct fy_parser *fyp,
 							 ro->rtd->fyn_terminator, ro->rtd->terminator_value);
 		if (rc)
 			goto err_out;
+	}
+
+	/* if no counter or explicit terminator, terminate with NULL for PTR arrays */
+	if (!id->rfd_counter && !ro->rtd->fyn_terminator) {
+		assert(ro->rtd->rtd_dep->ti->kind == FYTK_PTR);
+
+		rc = dyn_array_grow_for_idx(ro, id->count);
+		if (rc)
+			goto err_out;
+
+		item_size = ro->rtd->rtd_dep->ti->size;
+		data = *(void **)ro->data + item_size * id->count;
+		*(void **)data = NULL;
 	}
 
 	return 0;
@@ -4533,7 +4568,8 @@ struct reflection_object *dyn_array_create_child(struct reflection_object *ro_pa
 		return NULL;
 
 	/* it is illegal for the terminator value to be part of the data set */
-	if (ro_parent->rtd->terminator_value && !memcmp(ro_parent->rtd->terminator_value, data, item_size)) {
+
+	if (!reflection_type_data_value_cmp(ro_parent->rtd->rtd_dep, ro_parent->rtd->terminator_value, data)) {
 		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
 				"terminator value is not allowed in the dataset");
 		goto err_out;
@@ -4596,7 +4632,7 @@ static int dyn_array_emit(struct reflection_type_data *rtd, struct fy_emitter *f
 		for (idx = 0; idx < count; idx++, data += item_size) {
 
 			/* when using a terminator, terminate with it */
-			if (rtd->terminator_value && !memcmp(rtd->terminator_value, data, item_size))
+			if (!reflection_type_data_value_cmp(rtd->rtd_dep, rtd->terminator_value, data))
 				break;
 
 			/* do not follow NULLs */
@@ -4625,6 +4661,7 @@ void dyn_array_dtor(struct reflection_type_data *rtd, void *data)
 	uintmax_t idx, count;
 	void *ptr, *p;
 	size_t item_size;
+	bool is_terminator;
 
 	assert(data);
 
@@ -4666,10 +4703,12 @@ void dyn_array_dtor(struct reflection_type_data *rtd, void *data)
 			if (rtd->rtd_dep->ti->kind == FYTK_PTR && *(const void **)p == NULL)
 				break;
 
+			is_terminator = !reflection_type_data_value_cmp(rtd->rtd_dep, rtd->terminator_value, p);
+
 			reflection_type_data_call_dtor(rtd->rtd_dep, p);
 
 			/* when using a terminator, terminate with it */
-			if (rtd->terminator_value && !memcmp(rtd->terminator_value, p, item_size))
+			if (is_terminator)
 				break;
 		}
 	}
@@ -5380,12 +5419,15 @@ reflection_type_data_put_value_into(struct reflection_type_data *rtd, void *data
 	if (value) {
 		/* pure? memcpy works */
 		if ((rtd->flags & RTDF_PURITY_MASK) == RTDF_PURE) {
+			fprintf(stderr, "%s: memcpy\n", __func__);
 			memcpy(data, value, rtd->ti->size);
 			return 0;
 		}
 		/* we have a copy? */
-		if (rtd->ops->copy)
+		if (rtd->ops->copy) {
+			fprintf(stderr, "%s: copy op\n", __func__);
 			return rtd->ops->copy(rtd, data, value);
+		}
 
 		/* we have to generate manually */
 	}
@@ -5397,6 +5439,20 @@ reflection_type_data_put_value_into(struct reflection_type_data *rtd, void *data
 	return 0;
 err_out:
 	return -1;
+}
+
+int
+reflection_type_data_value_cmp(struct reflection_type_data *rtd, const void *a, const void *b)
+{
+	/* NULLs return a non match */
+	if (!rtd || !a || !b)
+		return -2;
+
+	/* if there's no cmp op, binary cmp */
+	if (!rtd->ops->cmp)
+		return memcmp(a, b, rtd->ti->size);
+
+	return rtd->ops->cmp(rtd, a, b);
 }
 
 int
@@ -5782,7 +5838,11 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 				counter = fy_type_info_get_yaml_string(rfd_ti, "counter");
 				fyn_terminator = fy_type_info_get_yaml_node(rfd_ti, "terminator");
 
-				if (counter || fyn_terminator) {
+				if (rfd->rtd->rtd_dep && rfd->rtd->rtd_dep->ti->kind == FYTK_PTR) {
+					fprintf(stderr, "%s: DEP is PTR\n", __func__);
+				}
+
+				if (counter || fyn_terminator || (rfd->rtd->rtd_dep && rfd->rtd->rtd_dep->ti->kind == FYTK_PTR)) {
 
 					reflection_type_mutation_reset(&rtm);
 					rtm.mutation_name = "dyn_array";
