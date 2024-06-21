@@ -5547,8 +5547,9 @@ reflection_type_data_mutate(struct reflection_type_data *rtd_source, const struc
 		    (!rtm->counter || !strcmp(rtm->counter, rtd->counter)) &&
 		    (!rtm->rtd_dep || rtm->rtd_dep == rtd->rtd_dep) &&
 		    (!strcmp(rtm->mutation_name, rtd->mutation_name))) {
-			fprintf(stderr, "lookup MUT! (#%d)\n", rtd->idx);
-			return reflection_type_data_ref(rtd);
+
+			rtd = reflection_type_data_ref(rtd);
+			goto out;
 		}
 	}
 
@@ -5625,18 +5626,22 @@ reflection_type_data_mutate(struct reflection_type_data *rtd_source, const struc
 	rc = reflection_type_data_add(rtd_source->rts, rtd);
 	if (rc)
 		goto err_out;
+out:
 
+	/* destroy the source (unref) if all OK */
+	reflection_type_data_destroy(rtd_source);
 	return rtd;
+
 err_out:
 	reflection_type_data_destroy(rtd);
 	return NULL;
 }
 
-int
-reflection_setup_type_specialize(struct reflection_type_data **rtdp,
+struct reflection_type_data *
+reflection_setup_type_specialize(struct reflection_type_data *rtd,
 				 struct reflection_type_data *rtd_parent, void *parent_addr)
 {
-	struct reflection_type_data *rtd;
+	struct reflection_type_data *rtd_spec;
 	struct reflection_field_data *rfd, *rfd_ref, *rfd_flatten;
 	struct reflection_type_mutation rtm;
 	struct reflection_type_data *rtd_mut;
@@ -5647,11 +5652,12 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 	size_t i;
 	int rc;
 
-	rtd = *rtdp;
+	if (!rtd)
+		return NULL;
 
 	/* previously specialized? */
 	if (rtd->flags & RTDF_SPECIALIZED)
-		return 0;
+		return rtd;
 
 	// fprintf(stderr, "%s: #%d %p\n", __func__, rtd->idx, rtd);
 
@@ -5665,17 +5671,10 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 			rtm.mutation_name = "ptr_char";
 			rtm.ops = &ptr_char_ops;
 
-			/* this does not need a parent */
 			rtd_mut = reflection_type_data_mutate(rtd, &rtm);
-			assert(rtd_mut);
-
-			// fprintf(stderr, "char *MUT! (#%d -> #%d)\n", rtd->idx, rtd_mut->idx);
-
-			reflection_type_data_destroy(rtd);
-
-			*rtdp = rtd_mut;
+			if (!rtd_mut)
+				goto err_out;
 			rtd = rtd_mut;
-			rtd_mut = NULL;
 
 			break;
 
@@ -5684,16 +5683,11 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 			rtm.mutation_name = "ptr_doc";
 			rtm.ops = &ptr_doc_ops;
 
-			/* this does not need a parent */
 			rtd_mut = reflection_type_data_mutate(rtd, &rtm);
-			assert(rtd_mut);
-
-			reflection_type_data_destroy(rtd);
-
-			*rtdp = rtd_mut;
+			if (!rtd_mut)
+				goto err_out;
 			rtd = rtd_mut;
-			rtd_mut = NULL;
-			// fprintf(stderr, "void *MUT (ptr_doc)!\n");
+
 			break;
 
 		default:
@@ -5712,15 +5706,10 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 
 			/* this does not need a parent */
 			rtd_mut = reflection_type_data_mutate(rtd, &rtm);
-			assert(rtd_mut);
-
-			reflection_type_data_destroy(rtd);
-
-			*rtdp = rtd_mut;
+			if (!rtd_mut)
+				goto err_out;
 			rtd = rtd_mut;
-			rtd_mut = NULL;
 
-			// fprintf(stderr, "char [] MUT!\n");
 			break;
 
 		default:
@@ -5745,15 +5734,9 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 			rtm.flat_field = flatten_field;
 
 			rtd_mut = reflection_type_data_mutate(rtd, &rtm);
-			assert(rtd_mut);
-
-			reflection_type_data_destroy(rtd);
-
-			*rtdp = rtd_mut;
+			if (!rtd_mut)
+				goto err_out;
 			rtd = rtd_mut;
-			rtd_mut = NULL;
-
-			// fprintf(stderr, "flatten MUT!\n");
 		}
 
 		rtd->skip_unknown = fy_type_info_get_yaml_bool(rtd->ti, "skip-unknown");
@@ -5833,15 +5816,9 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 					}
 
 					rtd_mut = reflection_type_data_mutate(rfd->rtd, &rtm);
-					assert(rtd_mut);
-
-					fprintf(stderr, "dyn_array *MUT! (#%d %p -> #%d %p)\n", rfd->rtd->idx, rfd->rtd, rtd_mut->idx, rtd_mut);
-
-					reflection_type_data_destroy(rfd->rtd);
-
+					if (!rtd_mut)
+						goto err_out;
 					rfd->rtd = rtd_mut;
-					rtd_mut = NULL;
-
 				}
 				break;
 
@@ -5859,12 +5836,18 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 	rtd->flags = (rtd->flags & ~RTDF_PURITY_MASK) | RTDF_PURE;
 	for (i = 0; i < rtd->fields_count; i++) {
 		rfd = rtd->fields[i];
-		reflection_setup_type_specialize(&rfd->rtd, rtd, rfd);
+		rtd_spec = reflection_setup_type_specialize(rfd->rtd, rtd, rfd);
+		if (!rtd_spec)
+			goto err_out;
+		rfd->rtd = rtd_spec;
 		rtd->flags |= (rfd->rtd->flags & RTDF_UNPURE);
 	}
 
 	if (rtd->rtd_dep) {
-		reflection_setup_type_specialize(&rtd->rtd_dep, rtd, NULL);
+		rtd_spec = reflection_setup_type_specialize(rtd->rtd_dep, rtd, NULL);
+		if (!rtd_spec)
+			goto err_out;
+		rtd->rtd_dep = rtd_spec;
 		rtd->flags |= (rtd->rtd_dep->flags & RTDF_UNPURE);
 		if (rtd->ti->kind == FYTK_PTR) {
 			rtd->flags |= RTDF_UNPURE;
@@ -5909,9 +5892,9 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 
 	rtd->flags |= RTDF_SPECIALIZED;
 
-	return 0;
+	return rtd;
 err_out:
-	return -1;
+	return NULL;
 }
 
 struct reflection_type_data *
@@ -6039,7 +6022,7 @@ reflection_type_system_create(const struct reflection_type_system_config *cfg)
 {
 	struct reflection_type_system *rts = NULL;
 	const struct fy_type_info *ti_root;
-	int rc;
+	struct reflection_type_data *rtd_new_root;
 
 	if (!cfg || !cfg->rfl || !cfg->entry_type)
 		goto err_out;
@@ -6061,9 +6044,11 @@ reflection_type_system_create(const struct reflection_type_system_config *cfg)
 	fprintf(stderr, "%s: before specialization\n", __func__);
 	reflection_type_system_dump(rts);
 
-	rc = reflection_setup_type_specialize(&rts->rtd_root, NULL, NULL);
-	if (rc)
+	rtd_new_root = reflection_setup_type_specialize(rts->rtd_root, NULL, NULL);
+	if (!rtd_new_root)
 		goto err_out;
+
+	rts->rtd_root = rtd_new_root;
 
 	fprintf(stderr, "%s: after specialization\n", __func__);
 	reflection_type_system_dump(rts);
