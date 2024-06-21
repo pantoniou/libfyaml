@@ -2105,7 +2105,6 @@ struct reflection_object {
 #define REFLECTION_OBJECT_SKIP	((struct reflection_object *)(void *)(uintptr_t)-1)
 
 struct reflection_field_data {
-	int refs;
 	int idx;
 	struct reflection_type_data *rtd;
 	const struct fy_field_info *fi;
@@ -2116,7 +2115,7 @@ struct reflection_field_data {
 	bool omit_on_emit;
 	bool required;
 	bool is_counter;	/* is a counter of another field */
-	struct reflection_Type_data *rtd_dep;
+//	struct reflection_type_data *rtd_dep;
 };
 
 enum reflection_type_data_flags {
@@ -5100,11 +5099,6 @@ void reflection_field_data_destroy(struct reflection_field_data *rfd)
 	if (!rfd)
 		return;
 
-	assert(rfd->refs > 0);
-
-	if (--rfd->refs > 0)
-		return;
-
 	if (rfd->rtd)
 		reflection_type_data_destroy(rfd->rtd);
 
@@ -5121,21 +5115,6 @@ reflection_type_data_ref(struct reflection_type_data *rtd)
 	assert(rtd->refs > 0);
 
 	return rtd;
-}
-
-struct reflection_field_data *
-reflection_field_data_ref(struct reflection_field_data *rfd)
-{
-	if (!rfd)
-		return NULL;
-
-	rfd->refs++;
-	assert(rfd->refs > 0);
-
-	if (rfd->rtd)
-		rfd->rtd = reflection_type_data_ref(rfd->rtd);
-
-	return rfd;
 }
 
 void reflection_type_data_destroy(struct reflection_type_data *rtd)
@@ -5240,7 +5219,9 @@ void reflection_type_system_dump(struct reflection_type_system *rts)
 		for (j = 0; j < rtd->fields_count; j++) {
 			rfd = rtd->fields[j];
 			assert(rfd->rtd);
-			printf("\t#%d:'%s' %s (%s) %d", rfd->rtd->idx, rfd->rtd->ti->fullname, rfd->fi->name, rfd->field_name, rfd->refs);
+			printf("\t#%d:'%s' %s", rfd->rtd->idx, rfd->rtd->ti->fullname, rfd->fi->name);
+			if (rfd->field_name)
+				printf(" (%s)", rfd->field_name);
 			printf("\n");
 		}
 	}
@@ -5564,7 +5545,7 @@ reflection_type_data_mutate(struct reflection_type_data *rtd_source, const struc
 {
 	struct reflection_type_system *rts;
 	struct reflection_type_data *rtd = NULL;
-	struct reflection_field_data *rfd = NULL;
+	struct reflection_field_data *rfd = NULL, *rfd_src;
 	size_t i;
 	int rc;
 
@@ -5624,8 +5605,26 @@ reflection_type_data_mutate(struct reflection_type_data *rtd_source, const struc
 		rtd->fields = malloc(sizeof(*rtd->fields)*rtd->fields_count);
 		if (!rtd->fields)
 			goto err_out;
+
 		for (i = 0; i < rtd->fields_count; i++) {
-			rfd = reflection_field_data_ref(rtd_source->fields[i]);
+
+			rfd_src = rtd_source->fields[i];
+
+			rfd = malloc(sizeof(*rfd));
+			if (!rfd)
+				goto err_out;
+
+			memset(rfd, 0, sizeof(*rfd));
+
+			rfd->idx = (int)i;
+			rfd->rtd = reflection_type_data_ref(rfd_src->rtd);
+			rfd->field_name = rfd_src->field_name;
+			rfd->fi = rfd_src->fi;
+			rfd->omit_if_null = rfd_src->omit_if_null;
+			rfd->omit_on_emit = rfd_src->omit_on_emit;
+			rfd->required = rfd_src->required;
+			rfd->is_counter = rfd_src->is_counter;
+
 			rtd->fields[i] = rfd;
 		}
 	}
@@ -5785,6 +5784,8 @@ reflection_setup_type_specialize(struct reflection_type_data **rtdp,
 
 			rtd_mut = reflection_type_data_mutate(rtd, &rtm);
 			assert(rtd_mut);
+
+			reflection_type_data_destroy(rtd);
 
 			*rtdp = rtd_mut;
 			rtd = rtd_mut;
@@ -6000,7 +6001,6 @@ reflection_setup_type(struct reflection_type_system *rts,
 			goto err_out;
 		memset(rfd, 0, sizeof(*rfd));
 
-		rfd->refs = 1;
 		rtd->fields[i] = rfd;
 
 		rfd->idx = (int)i;
