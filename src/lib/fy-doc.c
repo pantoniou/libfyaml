@@ -1365,6 +1365,9 @@ int fy_node_mapping_get_pair_index(struct fy_node *fyn, const struct fy_node_pai
 	struct fy_node_pair *fynpi;
 	int i;
 
+	if (!fy_node_is_mapping(fyn))
+		return -1;
+
 	for (i = 0, fynpi = fy_node_pair_list_head(&fyn->mapping); fynpi;
 		fynpi = fy_node_pair_next(&fyn->mapping, fynpi), i++) {
 
