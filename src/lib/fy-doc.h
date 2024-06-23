@@ -61,7 +61,7 @@ struct fy_node {
 	struct fy_node *parent;
 	struct fy_document *fyd;
 	unsigned int marks;
-	enum fy_node_type type : 2;	/* 2 bits are enough for 3 types */
+	unsigned int type : 2;	/* enum fy_node_type: 2 bits are enough for 3 types */
 	bool has_meta : 1;
 	bool attached : 1;		/* when it's attached somewhere */
 	bool synthetic : 1;		/* node has been modified programmaticaly */

@@ -66,11 +66,11 @@ struct fy_atom {
 		uint64_t tozero;			/* fast way to zero everything here */
 		struct {
 			/* save a little bit of space with bitfields */
-			enum fy_atom_style style : 8;	/* note that it's a big perf win for bytes */
-			enum fy_atom_chomp chomp : 8;
+			unsigned int style : 8;	/* enum fy_atom_style, note that it's a big perf win for bytes */
+			unsigned int chomp : 8; /* enum fy_atom_chomp */
 			unsigned int tabsize : 8;
-			enum fy_lb_mode lb_mode : 1;
-			enum fy_flow_ws_mode fws_mode : 1;
+			unsigned int lb_mode : 1; /* enum fy_lb_mode */
+			unsigned int fws_mode : 1; /* enum fy_flow_ws_mode */
 			bool direct_output : 1;		/* can directly output */
 			bool storage_hint_valid : 1;
 			bool empty : 1;			/* atom contains whitespace and linebreaks only if length > 0 */
