@@ -821,6 +821,8 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 	fy_streaming_alias_list_init(&fyp->recycled_streaming_alias);
 	fy_eventp_list_init(&fyp->mks.args);
 
+	fy_atom_reset(&fyp->last_comment);
+
 	fyp->suppress_recycling = !!(fyp->cfg.flags & FYPCF_DISABLE_RECYCLING) ||
 		                  (getenv("FY_VALGRIND") &&
 				   !getenv("FY_VALGRIND_RECYCLING"));
@@ -854,6 +856,9 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 	struct fy_token *fyt;
 
 	fy_parse_streaming_aliases_reset(fyp);
+
+	fy_input_unref(fyp->last_comment.fyi);
+	fy_atom_reset(&fyp->last_comment);
 
 	fy_input_unref(fyp->last_event_handle.fyi);
 	fy_atom_reset(&fyp->last_event_handle);
@@ -1024,6 +1029,58 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 	return 0;
 }
 
+bool
+fy_comment_atoms_seperated_by_ws(struct fy_parser *fyp, struct fy_atom *a, struct fy_atom *b)
+{
+	struct fy_atom *tmpatom;
+	struct fy_atom inbetween;
+	struct fy_atom_iter iter;
+	int c;
+	bool ws_or_lb;
+
+	if (!a || !b)
+		return NULL;
+
+	/* must be on same input */
+	if (a->fyi != b->fyi)
+		return NULL;
+
+	/* must be comments */
+	if (a->style != FYAS_COMMENT || b->style != FYAS_COMMENT)
+		return NULL;
+
+	/* a must be before */
+	if (a->end_mark.input_pos > b->start_mark.input_pos) {
+		tmpatom = a;
+		a = b;
+		b = tmpatom;
+	}
+
+	memcpy(&inbetween, a, sizeof(inbetween));
+	inbetween.start_mark = a->end_mark;
+	inbetween.end_mark = b->start_mark;
+
+	fy_atom_iter_start(&inbetween, &iter);
+	ws_or_lb = true;
+	while (ws_or_lb && (c = fy_atom_iter_utf8_get(&iter)) >= 0)
+		ws_or_lb = fy_is_ws(c) || fy_is_lb_m(c, a->lb_mode);
+	fy_atom_iter_finish(&iter);
+	return ws_or_lb;
+}
+
+static inline bool
+fy_reset_last_comment(struct fy_parser *fyp)
+{
+	if (!(fyp->cfg.flags & FYPCF_PARSE_COMMENTS))
+		return false;
+
+	if (!fy_atom_is_set(&fyp->last_comment))
+		return false;
+
+	fy_atom_reset(&fyp->last_comment);
+	return true;
+}
+
 int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 {
 	struct fy_atom *handle;
@@ -1039,10 +1096,10 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 	/* if a last comment exists and is valid */
 	if (fy_atom_is_set(&fyp->last_comment) &&
 	    (handle = fy_token_comment_handle(fyt, fycp_top, true)) != NULL) {
-		assert (!fy_atom_is_set(handle));
+
 		*handle = fyp->last_comment;
-		/* erase last comment */
-		fy_atom_reset(&fyp->last_comment);
+
+		fy_reset_last_comment(fyp);
 	}
 
 	/* right hand comment */
@@ -1075,7 +1132,7 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 	int c, c_after_ws, i, rc = 0;
 	bool tabs_allowed, sloppy_flow, no_indent;
 	ssize_t offset;
-	struct fy_atom *handle;
+	struct fy_atom this_comment;
 	struct fy_reader *fyr;
 
 	fyr = fyp->reader;
@@ -1167,13 +1224,36 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 		/* comment? */
 		if (c == '#') {
 
-			handle = NULL;
-			if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS)
-				handle = &fyp->last_comment;
+			if (!(fyp->cfg.flags & FYPCF_PARSE_COMMENTS)) {
+				rc = fy_scan_comment(fyp, NULL, false);
+				fyp_error_check(fyp, !rc, err_out_rc,
+						"fy_scan_comment() failed");
 
-			rc = fy_scan_comment(fyp, handle, false);
-			fyp_error_check(fyp, !rc, err_out_rc,
-					"fy_scan_comment() failed");
+
+			} else {
+
+				memset(&this_comment, 0, sizeof(this_comment));
+				fy_atom_reset(&this_comment);
+				rc = fy_scan_comment(fyp, &this_comment, false);
+				fyp_error_check(fyp, !rc, err_out_rc,
+						"fy_scan_comment() failed");
+
+				if (fy_atom_is_set(&fyp->last_comment)) {
+
+					/* merge consecutive comments */
+					if (fy_comment_atoms_seperated_by_ws(fyp, &fyp->last_comment, &this_comment)) {
+						fyp->last_comment.end_mark = this_comment.end_mark;
+						fy_input_unref(this_comment.fyi);
+						fy_atom_reset(&this_comment);
+					} else {
+						fy_input_unref(fyp->last_comment.fyi);
+						fy_atom_reset(&fyp->last_comment);
+						fyp->last_comment = this_comment;
+					}
+
+				} else
+					fyp->last_comment = this_comment;
+			}
 
 			tabs_allowed = (fyp->flow_level || !fyp->simple_key_allowed) || fyp_tabsize(fyp);
 		}

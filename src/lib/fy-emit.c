@@ -612,6 +612,7 @@ void fy_emit_node_comment(struct fy_emitter *emit, struct fy_node *fyn, int flag
 }
 
 void fy_emit_common_node_preamble(struct fy_emitter *emit,
+		struct fy_token *fyt_value,
 		struct fy_token *fyt_anchor,
 		struct fy_token *fyt_tag,
 		int flags, int indent)
@@ -623,10 +624,15 @@ void fy_emit_common_node_preamble(struct fy_emitter *emit,
 	size_t td_prefix_size, td_handle_size;
 	size_t tag_len = 0, anchor_len = 0;
 	bool json_mode = false;
+	struct fy_emit_save_ctx *sc = &emit->s_sc;
 
 	json_mode = fy_emit_is_json_mode(emit);
 
 	if (!json_mode) {
+
+		if (fy_emit_token_has_comment(emit, fyt_value, fycp_top))
+			fy_emit_token_comment(emit, fyt_value, sc->flags, sc->indent, fycp_top);
+
 		if (!(emit->xcfg.cfg.flags & FYECF_STRIP_LABELS)) {
 			if (fyt_anchor)
 				anchor = fy_token_get_text(fyt_anchor, &anchor_len);
@@ -675,6 +681,7 @@ void fy_emit_node_internal(struct fy_emitter *emit, struct fy_node *fyn, int fla
 	enum fy_node_type type;
 	struct fy_anchor *fya;
 	struct fy_token *fyt_anchor = NULL;
+	struct fy_token *fyt_value = NULL;
 
 	if (!(emit->xcfg.cfg.flags & FYECF_STRIP_LABELS)) {
 		fya = fy_document_lookup_anchor_by_node(emit->fyd, fyn);
@@ -682,9 +689,16 @@ void fy_emit_node_internal(struct fy_emitter *emit, struct fy_node *fyn, int fla
 			fyt_anchor = fya->anchor;
 	}
 
-	fy_emit_common_node_preamble(emit, fyt_anchor, fyn->tag, flags, indent);
-
 	type = fyn ? fyn->type : FYNT_SCALAR;
+
+	if (type == FYNT_SCALAR)
+		fyt_value = fyn ? fyn->scalar : NULL;
+	else if (type == FYNT_SEQUENCE)
+		fyt_value = fyn->sequence_start;
+	else if (type == FYNT_MAPPING)
+		fyt_value = fyn->mapping_start;
+
+	fy_emit_common_node_preamble(emit, fyt_value, fyt_anchor, fyn->tag, flags, indent);
 
 	if (type != FYNT_SCALAR && (flags & DDNF_ROOT) && emit->column != 0) {
 		fy_emit_putc(emit, fyewt_linebreak, '\n');
@@ -2977,7 +2991,7 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_parser *fyp
 		if ((emit->s_flags & DDNF_ROOT) && fy_emit_is_pretty_mode(emit) && !emit->column &&
 				!fy_emit_is_flow_mode(emit) && !(emit->s_flags & DDNF_FLOW))
 			fy_emit_document_start_indicator(emit);
-		fy_emit_common_node_preamble(emit, fye->scalar.anchor, fye->scalar.tag, emit->s_flags, emit->s_indent);
+		fy_emit_common_node_preamble(emit, fye->scalar.value, fye->scalar.anchor, fye->scalar.tag, emit->s_flags, emit->s_indent);
 		style = fye->scalar.value ?
 				fy_node_style_from_scalar_style(fye->scalar.value->scalar.style) :
 				FYNS_PLAIN;
@@ -3001,7 +3015,9 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_parser *fyp
 		else
 			xstyle = FYNS_ANY;
 
-		fy_emit_common_node_preamble(emit, fye->sequence_start.anchor, fye->sequence_start.tag, emit->s_flags, emit->s_indent);
+		fy_emit_common_node_preamble(emit, fye->sequence_start.sequence_start,
+					     fye->sequence_start.anchor, fye->sequence_start.tag,
+					     emit->s_flags, emit->s_indent);
 
 		/* create new context */
 		memset(sc, 0, sizeof(*sc));
@@ -3040,7 +3056,9 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_parser *fyp
 		else
 			xstyle = FYNS_ANY;
 
-		fy_emit_common_node_preamble(emit, fye->mapping_start.anchor, fye->mapping_start.tag, emit->s_flags, emit->s_indent);
+		fy_emit_common_node_preamble(emit, fye->mapping_start.mapping_start,
+					     fye->mapping_start.anchor, fye->mapping_start.tag,
+					     emit->s_flags, emit->s_indent);
 
 		/* create new context */
 		memset(sc, 0, sizeof(*sc));
