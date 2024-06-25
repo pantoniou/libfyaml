@@ -129,7 +129,7 @@ static void fy_input_from_data_setup(struct fy_input *fyi,
 	handle->end_mark.line = 0;
 	handle->end_mark.column = fy_utf8_count(data, size);
 	/* if it's plain, all is good */
-	if (simple || (aflags & FYACF_FLOW_PLAIN)) {
+	if ((simple || (aflags & FYACF_FLOW_PLAIN)) && !(aflags & FYACF_LB)) {
 		handle->storage_hint = size;	/* maximum */
 		handle->storage_hint_valid = false;
 		handle->direct_output = !!(aflags & FYACF_JSON_ESCAPE);
