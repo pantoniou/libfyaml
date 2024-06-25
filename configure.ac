@@ -140,9 +140,9 @@ fi
 # need that as conditional because some internal tools compile as static
 # to have access to internal libfyaml APIs
 if test "x$enable_static" = "xyes" ; then
-HAVE_STATIC=1
+	HAVE_STATIC=1
 else
-HAVE_STATIC=0
+	HAVE_STATIC=0
 fi
 AC_SUBST(HAVE_STATIC)
 AC_DEFINE_UNQUOTED([HAVE_STATIC], [$HAVE_STATIC], [Define to 1 if static linking is available])
@@ -199,6 +199,24 @@ AM_COND_IF([TARGET_HAS_AVX2],   AC_DEFINE([TARGET_HAS_AVX2],   [1], [AVX2 target
 AM_COND_IF([TARGET_HAS_AVX512], AC_DEFINE([TARGET_HAS_AVX512], [1], [AVX512 target support]))
 
 AM_COND_IF([TARGET_HAS_NEON],   AC_DEFINE([TARGET_HAS_NEON],   [1], [NEON target support]))
+
+dnl ASAN enable switch
+AC_ARG_ENABLE([static-tools],
+	      AS_HELP_STRING([--enable-static-tools],
+			     [Tools will be compiled as static executables]))
+
+HAVE_STATIC_TOOLS=0
+STATIC_TOOLS_CFLAGS=""
+STATIC_TOOLS_LDFLAGS=""
+if test "x$enable_static_tools" = "xyes" ; then
+	HAVE_STATIC_TOOLS=1
+	STATIC_TOOLS_CFLAGS="-static --static"
+	STATIC_TOOLS_LDFLAGS="-static --static"
+fi
+AC_SUBST(HAVE_STATIC_TOOLS)
+AC_SUBST(STATIC_TOOLS_LDFLAGS)
+AC_DEFINE_UNQUOTED([HAVE_STATIC_TOOLS], [$HAVE_STATIC_TOOLS], [Define to 1 if tools are static])
+AM_CONDITIONAL([HAVE_STATIC_TOOLS], [ test x$HAVE_STATIC_TOOLS = x1 ])
 
 dnl ASAN enable switch
 AC_ARG_ENABLE([asan],

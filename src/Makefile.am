@@ -188,8 +188,8 @@ fy_tool_SOURCES = \
 
 fy_tool_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/valgrind
 fy_tool_LDADD = $(AM_LDADD) libfyaml.la
-fy_tool_CFLAGS = $(AM_CFLAGS)
-fy_tool_LDFLAGS = $(AM_LDFLAGS)
+fy_tool_CFLAGS = $(AM_CFLAGS) $(STATIC_TOOLS_CFLAGS)
+fy_tool_LDFLAGS = $(AM_LDFLAGS) $(STATIC_TOOLS_LDFLAGS)
 
 include_HEADERS = \
         $(top_srcdir)/include/libfyaml.h
