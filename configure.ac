@@ -140,9 +140,10 @@ fi
 # need that as conditional because some internal tools compile as static
 # to have access to internal libfyaml APIs
 if test "x$enable_static" = "xyes" ; then
-HAVE_STATIC=1
+	HAVE_STATIC=1
+	CFLAGS="$CFLAGS -static --static"
 else
-HAVE_STATIC=0
+	HAVE_STATIC=0
 fi
 AC_SUBST(HAVE_STATIC)
 AC_DEFINE_UNQUOTED([HAVE_STATIC], [$HAVE_STATIC], [Define to 1 if static linking is available])
@@ -208,7 +209,11 @@ AC_ARG_ENABLE([asan],
 HAVE_ASAN=0
 ASAN_CFLAGS=""
 ASAN_LIBS=""
-if test "x$enable_asan" == "xyes" ; then
+if test "x$enable_static" = "xyes" ; then
+
+	AC_MSG_WARN([static compilation is incompatible with ASAN; ASAN disabled])
+
+elif test "x$enable_asan" == "xyes" ; then
 	AC_MSG_CHECKING([location of ASAN library])
 	ASANLIB1=`${CC} -print-file-name=libasan.so`
 	ASANLIB=`readlink -f "${ASANLIB1}"`
@@ -218,8 +223,8 @@ if test "x$enable_asan" == "xyes" ; then
 		ASAN_LIBS="-fsanitize=address"
 		AC_MSG_RESULT([$ASANLIB])
 		m4_version_prereq(2.64,
-			AX_APPEND_COMPILE_FLAGS([-fsanitize=address -fno-omit-frame-pointer], [CFLAGS]),
-			[CFLAGS="$CFLAGS -fsanitize=address -fno-omit-frame-pointer"])
+			AX_APPEND_COMPILE_FLAGS([${ASAN_CFLAGS}], [CFLAGS]),
+			[CFLAGS="$CFLAGS $ASAN_CFLAGS"])
 	else
 		AC_MSG_RESULT([Not found; disabling ASAN])
 	fi
