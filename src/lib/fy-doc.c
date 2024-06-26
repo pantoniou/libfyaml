@@ -2227,9 +2227,6 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 		fyd_error_check(fyd, fyn_parent->type != FYNT_SCALAR, err_out,
 				    "Illegal scalar parent node type");
 
-		fyd_error_check(fyd, fyn_from, err_out,
-				"Illegal NULL source node");
-
 		if (fyn_parent->type == FYNT_MAPPING) {
 			/* find mapping pair that contains the `to` node */
 			for (fynp = fy_node_pair_list_head(&fyn_parent->mapping); fynp;
