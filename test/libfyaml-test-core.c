@@ -1125,6 +1125,50 @@ START_TEST(doc_sort)
 }
 END_TEST
 
+START_TEST(doc_insert_at)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	int rc;
+
+	/* build document */
+	fyd = fy_document_build_from_string(NULL,
+		"apiVersion: apps/v1\n"
+		"kind: Deployment\n"
+		"metadata:\n"
+		"  annotations:\n"
+		"    x: 2024-06-12t14:50:43z\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* verify that x exists */
+	fyn = fy_node_by_path(fy_document_root(fyd), "/metadata/annotations/x", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	/* delete the x node */
+	rc = fy_document_insert_at(fyd, "/metadata/annotations/x", FY_NT, NULL);
+	ck_assert_int_eq(rc, 0);
+
+	/* verify that x now gone */
+	fyn = fy_node_by_path(fy_document_root(fyd), "/metadata/annotations/x", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_eq(fyn, NULL);
+
+	/* verify that y does not exist */
+	fyn = fy_node_by_path(fy_document_root(fyd), "/metadata/annotations/y", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_eq(fyn, NULL);
+
+	/* insert a y node */
+	rc = fy_document_insert_at(fyd, "/metadata/annotations", FY_NT,
+			fy_node_buildf(fyd, "y: 2024-06-12t14:50:43z"));
+	ck_assert_int_eq(rc, 0);
+
+	/* verify that y exists now */
+	fyn = fy_node_by_path(fy_document_root(fyd), "/metadata/annotations/y", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 static char *join_docs(const char *tgt_text, const char *tgt_path,
 		       const char *src_text, const char *src_path,
 		       const char *emit_path)
@@ -1922,7 +1966,8 @@ START_TEST(scanf_check)
 }
 END_TEST
 
-START_TEST(token_test) {
+START_TEST(token_test)
+{
         struct fy_document *fyd;
         struct fy_node *fyn_sequence, *fyn_mapping, *fyn_scalar;
         struct fy_token *fyn_sequence_start, *fyn_sequence_end,
@@ -2031,6 +2076,7 @@ TCase *libfyaml_case_core(void)
 	tcase_add_test(tc, doc_insert_remove_map);
 
 	tcase_add_test(tc, doc_sort);
+	tcase_add_test(tc, doc_insert_at);
 
 	tcase_add_test(tc, doc_join_scalar_to_scalar);
 	tcase_add_test(tc, doc_join_scalar_to_map);
