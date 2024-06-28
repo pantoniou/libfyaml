@@ -2709,6 +2709,8 @@ int main(int argc, char *argv[])
 				}
 			}
 
+			fy_path_exec_reset(fypx);
+
 			while ((fyd = fy_parse_load_document(fyp)) != NULL) {
 
 				fyn_start = fy_node_by_path(fy_document_root(fyd), from, FY_NT,
@@ -2721,8 +2723,6 @@ int main(int argc, char *argv[])
 								from);
 					continue;
 				}
-
-				fy_path_exec_reset(fypx);
 
 				rc = fy_path_exec_execute(fypx, expr, fyn_start);
 				if (rc) {
@@ -2745,6 +2745,8 @@ int main(int argc, char *argv[])
 					if (rc)
 						goto cleanup;
 				}
+
+				fy_path_exec_reset(fypx);
 
 				fy_parse_document_destroy(fyp, fyd);
 			}

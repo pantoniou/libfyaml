@@ -6271,10 +6271,12 @@ enum fy_token_type {
 
 	FYTT_PE_METHOD,		/* path expr method (chained) */
 	FYTT_SE_METHOD,		/* scalar expr method (non chained) */
+
+	FYTT_PE_BANG,		/* ! */
 };
 
 /* The number of token types available */
-#define FYTT_COUNT	(FYTT_SE_METHOD+1)
+#define FYTT_COUNT	(FYTT_PE_BANG+1)
 
 /**
  * fy_token_type_is_valid() - Check token type validity
