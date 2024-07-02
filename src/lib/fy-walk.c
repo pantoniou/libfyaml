@@ -499,7 +499,8 @@ const char *fy_path_expr_type_txt[FPET_COUNT] = {
 	[fpet_chain]			= "chain",
 	[fpet_logical_or]		= "logical-or",
 	[fpet_logical_and]		= "logical-and",
-	[fpet_logical_not]		= "logical-not",
+	[fpet_select]			= "select",
+	[fpet_unselect]			= "unselect",
 
 	[fpet_eq]			= "equals",
 	[fpet_neq]			= "not-equals",
@@ -1214,11 +1215,16 @@ int fy_path_fetch_tokens(struct fy_path_parser *fypp)
 			simple_token_count = 2;
 			break;
 		}
-		if (cn == '/' || cn == '(' || fy_is_alnum(cn)) {
+		if (cn == '/' || cn == '(' || fy_is_alnum(cn) || cn == '!') {
 			/* bang bang */
 			type = FYTT_PE_BANG;
 			simple_token_count = 1;
 		}
+		break;
+
+	case '@':
+		type = FYTT_PE_AT;
+		simple_token_count = 1;
 		break;
 
 	default:
@@ -1753,7 +1759,10 @@ enum fy_path_expr_type fy_map_token_to_path_expr_type(enum fy_token_type type, e
 		return fpet_method;
 
 	case FYTT_PE_BANG:
-		return fpet_logical_not;
+		return fpet_unselect;
+
+	case FYTT_PE_AT:
+		return fpet_select;
 
 	default:
 		/* note parentheses do not have an expression */
@@ -1845,7 +1854,8 @@ int fy_path_expr_type_prec(enum fy_path_expr_type type)
 		return 8;
 	case fpet_chain:
 		return 20;
-	case fpet_logical_not:
+	case fpet_select:
+	case fpet_unselect:
 		return 10;	/* must be less than chain */
 	case fpet_lparen:
 	case fpet_rparen:
@@ -1889,7 +1899,7 @@ pop_operand(struct fy_path_parser *fypp)
 
 #define PREFIX	0
 #define INFIX	1
-#define SUFFIX	2
+#define POSTFIX	2
 
 int fy_token_type_operator_placement(enum fy_token_type type)
 {
@@ -1914,10 +1924,60 @@ int fy_token_type_operator_placement(enum fy_token_type type)
 	case FYTT_PE_SEQ_FILTER:
 	case FYTT_PE_MAP_FILTER:
 	case FYTT_PE_UNIQUE_FILTER:
-		return SUFFIX;
+		return POSTFIX;
 	case FYTT_PE_SIBLING:
 	case FYTT_PE_BANG:
 		return PREFIX;
+	default:
+		break;
+	}
+	return -1;
+}
+
+int fy_path_expr_type_assoc(enum fy_path_expr_type type)
+{
+	switch (type) {
+	case fpet_root:
+	case fpet_select:
+	case fpet_unselect:
+		return PREFIX;
+
+	case fpet_this:
+	case fpet_parent:
+	case fpet_every_child:
+	case fpet_every_child_r:
+	case fpet_filter_collection:
+	case fpet_filter_scalar:
+	case fpet_filter_sequence:
+	case fpet_filter_mapping:
+	case fpet_filter_unique:
+	case fpet_seq_index:
+	case fpet_map_key:
+	case fpet_seq_slice:
+	case fpet_alias:
+		return POSTFIX;
+
+	case fpet_logical_or:
+	case fpet_logical_and:
+	case fpet_eq:
+	case fpet_neq:
+	case fpet_lt:
+	case fpet_gt:
+	case fpet_lte:
+	case fpet_gte:
+	case fpet_plus:
+	case fpet_minus:
+	case fpet_mult:
+	case fpet_div:
+	case fpet_arg_separator:	/* argument separator (comma in scalar mode) */
+		return INFIX;
+
+	case fpet_scalar:
+	case fpet_lparen:
+	case fpet_rparen:
+	case fpet_method:
+	case fpet_scalar_expr:
+	case fpet_path_expr:
 	default:
 		break;
 	}
@@ -3032,8 +3092,8 @@ int evaluate_new(struct fy_path_parser *fypp)
 	case fpet_method:
 		return evaluate_method(fypp, expr, NULL, NULL);
 
-	case fpet_logical_not:
-		// fprintf(stderr, "%s:%d@%s - logical not\n", __FILE__, __LINE__, __func__);
+	case fpet_select:
+	case fpet_unselect:
 
 		/* we don't need the not operator now */
 		fy_path_expr_free_recycle(fypp, expr);
@@ -3352,9 +3412,22 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 			}
 
 			ret = -1;
-			while ((expr_top = fy_expr_stack_peek(&fypp->operators)) != NULL &&
-				fy_path_expr_type_prec(expr->type) <= fy_path_expr_type_prec(expr_top->type) &&
-				!fy_path_expr_type_is_lparen(expr_top->type)) {
+			for (;;) {
+				expr_top = fy_expr_stack_peek(&fypp->operators);
+				if (!expr_top)
+					break;
+
+				if (fy_path_expr_type_prec(expr->type) > fy_path_expr_type_prec(expr_top->type))
+					break;
+
+				if (fy_path_expr_type_is_lparen(expr_top->type))
+					break;
+
+				/* XXX same priority and prefix operator (have no arguments yet) */
+				if (fy_path_expr_type_prec(expr->type) == fy_path_expr_type_prec(expr_top->type)) {
+					if (fy_path_expr_type_assoc(expr_top->type) == PREFIX)
+						break;
+				}
 
 				ret = evaluate_new(fypp);
 				/* evaluate will print diagnostic on error */
@@ -4318,44 +4391,85 @@ fy_scalar_walk_result_to_expr(struct fy_path_exec *fypx, struct fy_walk_result *
 	return exprt;
 }
 
+enum fy_walk_result_set_op {
+	FYWRSO_SELECT,
+	FYWRSO_UNSELECT,
+};
+
+static void fy_node_delete_non_marked(struct fy_node *fyn)
+{
+	struct fy_node *fyni, *fynin;
+	struct fy_node_pair *fynp, *fynpn;
+
+	if (!fyn)
+		return;
+
+	if (!(fyn->marks & FY_BIT(FYNWF_INSET_MARKER))) {
+		fy_node_delete(fyn);
+		return;
+	}
+
+	switch (fyn->type) {
+	case FYNT_SCALAR:
+		break;
+
+	case FYNT_SEQUENCE:
+		for (fyni = fy_node_list_head(&fyn->sequence); fyni; fyni = fynin) {
+			fynin = fy_node_next(&fyn->sequence, fyni);
+
+			fy_node_delete_non_marked(fyni);
+		}
+		break;
+
+	case FYNT_MAPPING:
+		for (fynp = fy_node_pair_list_head(&fyn->mapping); fynp; fynp = fynpn) {
+			fynpn = fy_node_pair_next(&fyn->mapping, fynp);
+
+			/* the mark is on the value */
+			fy_node_delete_non_marked(fynp->value);
+		}
+		break;
+	}
+}
+
 struct fy_walk_result *
-fy_walk_result_remove_from_input(struct fy_path_exec *fypx,
-				 struct fy_walk_result *input,
-				 struct fy_walk_result *remove)
+fy_walk_result_perform_set_op(struct fy_path_exec *fypx, struct fy_walk_result *input,
+			      struct fy_walk_result *set, enum fy_walk_result_set_op op)
 {
 	struct fy_walk_result *fwr, *fwrrm, *fwrin;
 	struct fy_walk_result *output = NULL;
 	char *relpath = NULL;
-	struct fy_node *fyn2;
+	struct fy_node *fyn2, *fynt;
 	int rc;
 
 	/* no input? return it */
 	if (!input)
 		return NULL;
 
-	/* no removals, return input */
-	if (!remove)
-		return input;
+	if (!set) {
+		/* on unselect, return input, on select return NULL */
+		return op == FYWRSO_UNSELECT ? input : NULL;
+	}
 
 	assert(input->type == fwrt_node_ref || input->type == fwrt_refs);
 
 #ifdef DEBUG_EXPR
-	fy_walk_result_dump(input, fypx->cfg.diag, FYET_WARNING, 0, "rm: input\n");
-	fy_walk_result_dump(input, fypx->cfg.diag, FYET_WARNING, 0, "rm: remove\n");
+	fy_walk_result_dump(input, fypx->cfg.diag, FYET_WARNING, 0, "set-op: input\n");
+	fy_walk_result_dump(input, fypx->cfg.diag, FYET_WARNING, 0, "set-op: set\n");
 #endif
 
 	for (fwrin = fy_walk_result_iter_start(input); fwrin; fwrin = fy_walk_result_iter_next(input, fwrin)) {
 
 #ifdef DEBUG_EXPR
-		fy_walk_result_dump(input, fypx->cfg.diag, FYET_WARNING, 0, "rm: fwrin\n");
+		fy_walk_result_dump(input, fypx->cfg.diag, FYET_WARNING, 0, "set-op: fwrin\n");
 #endif
 
 		fwr = NULL;
 
-		for (fwrrm = fy_walk_result_iter_start(remove); fwrrm; fwrrm = fy_walk_result_iter_next(remove, fwrrm)) {
+		for (fwrrm = fy_walk_result_iter_start(set); fwrrm; fwrrm = fy_walk_result_iter_next(set, fwrrm)) {
 
 #ifdef DEBUG_EXPR
-			fy_walk_result_dump(fwrrm, fypx->cfg.diag, FYET_WARNING, 0, "rm: fwrrm\n");
+			fy_walk_result_dump(fwrrm, fypx->cfg.diag, FYET_WARNING, 0, "set-op: fwrrm\n");
 #endif
 
 			if (!output) {
@@ -4387,23 +4501,51 @@ fy_walk_result_remove_from_input(struct fy_path_exec *fypx,
 			free(relpath);
 			relpath = NULL;
 
-			/* and remove it */
-			rc = fy_node_insert(fyn2, NULL);
-			if (rc)
-				goto err_out;
+			if (op == FYWRSO_UNSELECT) {
+				/* and remove it */
+				rc = fy_node_delete(fyn2);
+				if (rc)
+					goto err_out;
+			} else {
+
+				fynt = fyn2;
+				while (fynt && !(fynt->marks & FY_BIT(FYNWF_INSET_MARKER))) {
+					fynt->marks |= FY_BIT(FYNWF_INSET_MARKER);
+#ifdef DEBUG_EXPR
+					fy_diag_diag(fypx->cfg.diag, FYDF_WARNING, "marking: %s", fy_node_get_path_alloca(fynt));
+#endif
+					fynt = fynt->parent;
+				}
+			}
 		}
 
-		if (output && fwr)
+		if (output && fwr) {
 			fy_walk_result_list_add_tail(&output->refs, fwr);
+		}
 		fwr = NULL;
 	}
 
-	/* nothing? nothing was removed... */
-	if (!output)
-		return input;
+	if (!output) {
+		/* nothing? nothing was removed or nothing was selected */
+		return op == FYWRSO_UNSELECT ? input : NULL;
+	}
 
 	/* simplify (might remove everything if empty) */
 	output = fy_walk_result_simplify(output);
+
+	/* for all marked nodes */
+	if (output && op == FYWRSO_SELECT) {
+
+		/* delete all not marked */
+		for (fwr = fy_walk_result_iter_start(output); fwr; fwr = fy_walk_result_iter_next(output, fwr)) {
+#ifdef DEBUG_EXPR
+			fy_diag_diag(fypx->cfg.diag, FYDF_WARNING, "deleting non marked: %s", fy_node_get_path_alloca(fwr->fyn));
+#endif
+			fy_node_delete_non_marked(fwr->fyn);
+			fy_node_clear_system_marks(fwr->fyn);
+		}
+
+	}
 
 	/* get rid of input */
 	fy_walk_result_free(input);
@@ -4852,7 +4994,8 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 
 		break;
 
-	case fpet_logical_not:
+	case fpet_select:
+	case fpet_unselect:
 
 		/* pop the top in either case */
 		assert(input);
@@ -4873,7 +5016,7 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 
 		fwrn = fy_path_expr_execute(fypx, level + 1, exprn, fwrt, expr->type);
 
-		output = fy_walk_result_remove_from_input(fypx, input, fwrn);
+		output = fy_walk_result_perform_set_op(fypx, input, fwrn, expr->type == fpet_unselect ? FYWRSO_UNSELECT : FYWRSO_SELECT);
 		input = NULL;
 
 		fy_walk_result_free(fwrn);

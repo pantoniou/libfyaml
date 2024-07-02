@@ -126,7 +126,9 @@ enum fy_path_expr_type {
 	fpet_chain,		/* children move in sequence */
 	fpet_logical_or,	/* first non null result set */
 	fpet_logical_and,	/* the last non null result set */
-	fpet_logical_not,	/* negation of logical expression */
+
+	fpet_select,		/* set selection */
+	fpet_unselect,		/* negation of set selection */
 
 	fpet_eq,		/* equal expression */
 	fpet_neq,		/* not equal */

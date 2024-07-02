@@ -161,9 +161,13 @@ bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
 
 #define FYNWF_VISIT_MARKER	(FYNWF_MAX_USER_MARKER + 1)
 #define FYNWF_REF_MARKER	(FYNWF_MAX_USER_MARKER + 2)
+#define FYNWF_INSET_MARKER	(FYNWF_MAX_USER_MARKER + 3)
 
 #define FYNWF_SYSTEM_MARKS	(FY_BIT(FYNWF_VISIT_MARKER) | \
-				 FY_BIT(FYNWF_REF_MARKER))
+				 FY_BIT(FYNWF_REF_MARKER) | \
+				 FY_BIT(FYNWF_INSET_MARKER) )
+
+void fy_node_clear_system_marks(struct fy_node *fyn);
 
 bool fy_node_uses_single_input_only(struct fy_node *fyn, struct fy_input *fyi);
 struct fy_input *fy_node_get_first_input(struct fy_node *fyn);
