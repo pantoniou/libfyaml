@@ -2449,6 +2449,11 @@ err_out_rc:
 	return rc;
 }
 
+int fy_node_delete(struct fy_node *fyn)
+{
+	return fy_node_insert(fyn, NULL);
+}
+
 int fy_document_insert_at(struct fy_document *fyd,
 			  const char *path, size_t pathlen,
 			  struct fy_node *fyn)
