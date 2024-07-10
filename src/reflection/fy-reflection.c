@@ -2843,11 +2843,11 @@ fy_reflection_from_imports(const char *backend_name, const void *backend_cfg,
 		break;
 	}
 
-	/* if the reflection is not resolve, try to resolve it */
+	/* if the reflection is not resolved, try to resolve it */
 	if (!fy_reflection_is_resolved(rfl))
 		fy_reflection_fix_unresolved(rfl);
 
-	fy_reflection_dump(rfl, false, false);
+	// fy_reflection_dump(rfl, false, false);
 
 	/* if still unresolved, failure */
 	if (!fy_reflection_is_resolved(rfl))
@@ -2931,6 +2931,7 @@ fy_type_info_lookup(struct fy_reflection *rfl, enum fy_type_kind kind, const cha
 	char *buf, *nname = NULL;
 	size_t len;
 	char *s, *e;
+	bool const_ptr, restrict_ptr, volatile_ptr;
 
 	ti = fy_type_info_lookup_internal(rfl, kind, name);
 	if (ti || !create)
@@ -2949,9 +2950,33 @@ fy_type_info_lookup(struct fy_reflection *rfl, enum fy_type_kind kind, const cha
 	/* if type ends with '*' it's a pointer, remove one and try */
 	if (s < e && e[-1] == '*') {
 		*--e = '\0';
+
+		/* only one pointer allowed here */
+		if (s < e && e[-1] == '*')
+			return NULL;
+
 		while (s < e && isspace(e[-1]))
 			*--e = '\0';
-		ti = fy_type_info_lookup_internal(rfl, kind, buf);
+
+		/* collect const, restrict and volatile pointer qualifiers */
+		const_ptr = restrict_ptr = volatile_ptr = false;
+		for (;;) {
+			while (s < e && isspace(*s))
+				s++;
+			if (!const_ptr && strlen(s) > 5 && !memcmp(s, "const ", 5) && isspace(s[5])) {
+				const_ptr = true;
+				s += 6;
+			} else if (!volatile_ptr && strlen(s) > 8 && !memcmp(s, "volatile ", 8) && isspace(s[8])) {
+				volatile_ptr = true;
+				s += 8;
+			} else if (!restrict_ptr && strlen(s) > 8 && !memcmp(s, "restrict ", 8) && isspace(s[8])) {
+				restrict_ptr = true;
+				s += 8;
+			} else
+				break;
+		}
+
+		ti = fy_type_info_lookup_internal(rfl, kind, s);
 		if (ti) {
 			ft_dep = fy_type_from_info(ti);
 			assert(ft_dep);
@@ -2963,6 +2988,9 @@ fy_type_info_lookup(struct fy_reflection *rfl, enum fy_type_kind kind, const cha
 			tki = fy_type_kind_info_get_internal(FYTK_PTR);
 			ft->size = tki->size;
 			ft->align = tki->align;
+			ft->is_const = const_ptr;
+			ft->is_volatile = volatile_ptr;
+			ft->is_restrict = restrict_ptr;
 
 			ft->dependent_type = ft_dep;
 
@@ -2973,7 +3001,6 @@ fy_type_info_lookup(struct fy_reflection *rfl, enum fy_type_kind kind, const cha
 
 			fy_type_list_add_tail(&rfl->types, ft);
 		}
-
 	}
 
 	if (nname)

@@ -2185,6 +2185,8 @@ struct reflection_type_system_ops {
 	void *(*malloc)(struct reflection_type_system *rts, size_t size);
 	void *(*realloc)(struct reflection_type_system *rts, void *ptr, size_t size);
 	void (*free)(struct reflection_type_system *rts, void *ptr);
+	const void *(*store)(struct reflection_type_system *rts, const void *ptr, size_t size);
+	const void *(*lookup)(struct reflection_type_system *rts, const void *ptr, size_t size);
 };
 
 struct reflection_type_system_config {
@@ -6077,6 +6079,39 @@ void reflection_free(struct reflection_type_system *rts, void *ptr)
 	rts->cfg.ops->free(rts, ptr);
 }
 
+const void *reflection_lookup(struct reflection_type_system *rts, const void *ptr, size_t size)
+{
+	if (!rts)
+		return NULL;
+
+	/* can't lookup by default */
+	if (!rts->cfg.ops || !rts->cfg.ops->lookup)
+		return NULL;
+
+	return rts->cfg.ops->lookup(rts, ptr, size);
+}
+
+const void *reflection_store(struct reflection_type_system *rts, const void *ptr, size_t size)
+{
+	void *p;
+	const void *lookup_p;
+
+	if (!rts)
+		return NULL;
+
+	lookup_p = reflection_lookup(rts, ptr, size);
+	if (lookup_p)
+		return lookup_p;
+
+	if (!rts->cfg.ops || !rts->cfg.ops->store) {
+		p = reflection_malloc(rts, size);
+		if (!p)
+			return NULL;
+		return memcpy(p, ptr, size);
+	}
+	return rts->cfg.ops->store(rts, ptr, size);
+}
+
 struct reflection_type_system *
 reflection_type_system_create(const struct reflection_type_system_config *cfg)
 {
@@ -6096,6 +6131,9 @@ reflection_type_system_create(const struct reflection_type_system_config *cfg)
 	ti_root = reflection_root_data_get_root(rts, rts->cfg.entry_type);
 	if (!ti_root)
 		goto err_out;
+
+	fprintf(stderr, "%s: reflection dump after root\n", __func__);
+	fy_reflection_dump(rts->cfg.rfl, false, false);
 
 	rts->rtd_root = reflection_setup_type(rts, ti_root, NULL);
 	if (!rts->rtd_root)

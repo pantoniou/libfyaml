@@ -1145,8 +1145,8 @@ static int clang_type_setup(struct fy_type *ft, void *user)
 		if (ftt) {
 			ft->dependent_type = ftt;
 
-			fprintf(stderr, "%s:%d %s: ft %s ft->dependent_type %s\n", __FILE__, __LINE__, __func__,
-					ft->normalized_name, ftt->normalized_name);
+			// fprintf(stderr, "%s:%d %s: ft %s ft->dependent_type %s\n", __FILE__, __LINE__, __func__,
+			//		ft->normalized_name, ftt->normalized_name);
 
 			ft->unresolved = false;
 		} else {
