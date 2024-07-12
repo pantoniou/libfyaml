@@ -162,7 +162,7 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_event *fye,
 		if (!stop_req)
 			stop_req = ret == FYCR_OK_STOP;
 
-		rc = fy_document_builder_process_event(fypp->fydb, fyep);
+		rc = fy_document_builder_process_event(fypp->fydb, fyep ? &fyep->e : NULL);
 		if (rc == 0)
 			return FYCR_OK_CONTINUE;
 		fyc_error_check(fyc, rc > 0, err_out,
@@ -206,7 +206,7 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_event *fye,
 				"ops->create_document_builder() failed\n");
 
 		/* and pass the current event; must return 0 since we know it's a collection start */
-		rc = fy_document_builder_process_event(fypp->fydb, fyep);
+		rc = fy_document_builder_process_event(fypp->fydb, fyep ? &fyep->e : NULL);
 		fyc_error_check(fyc, !rc, err_out,
 				"fy_document_builder_process_event() failed\n");
 
@@ -313,8 +313,8 @@ err_out:
 	return FYCR_ERROR;
 }
 
-static void
-fy_composer_halt(struct fy_composer *fyc, struct fy_path *fypp, enum fy_composer_return rc)
+void
+fy_composer_halt_one(struct fy_composer *fyc, struct fy_path *fypp, enum fy_composer_return rc)
 {
 	const struct fy_composer_ops *ops;
 	struct fy_eventp ev_none;
@@ -344,6 +344,18 @@ fy_composer_halt(struct fy_composer *fyc, struct fy_path *fypp, enum fy_composer
 	ops->process_event(fyc, fypp, &ev_none.e);
 }
 
+void fy_composer_halt(struct fy_composer *fyc, enum fy_composer_return rc)
+{
+	struct fy_path *fypp;
+
+	/* for normal stop, we don't teardown */
+	if (rc == FYCR_OK_STOP)
+		return;
+
+	for (fypp = fy_path_list_head(&fyc->paths); fypp; fypp = fy_path_next(&fyc->paths, fypp))
+		fy_composer_halt_one(fyc, fypp, rc);
+}
+
 enum fy_composer_return
 fy_composer_process_event(struct fy_composer *fyc, struct fy_event *fye)
 {
@@ -363,7 +375,7 @@ fy_composer_process_event(struct fy_composer *fyc, struct fy_event *fye)
 	rc = fy_composer_process_event_private(fyc, fye, fypp);
 
 	if (rc == FYCR_ERROR || rc == FYCR_OK_STOP)
-		fy_composer_halt(fyc, fypp, rc);
+		fy_composer_halt(fyc, rc);
 
 	return rc;
 }
