@@ -14,7 +14,8 @@ INTERNAL_INCLUDES = \
 	-I$(top_srcdir)/src/lib \
 	-I$(top_srcdir)/src/xxhash \
 	-I$(top_srcdir)/src/util \
-	-I$(top_srcdir)/src/thread
+	-I$(top_srcdir)/src/thread \
+	-I$(top_srcdir)/src/allocator
 
 lib_LTLIBRARIES += libfyaml.la
 libfyaml_la_SOURCES = \
@@ -56,6 +57,15 @@ libfyaml_la_SOURCES += \
 # thread
 libfyaml_la_SOURCES += \
 	thread/fy-thread.h thread/fy-thread.c
+
+# allocator
+libfyaml_la_SOURCES += \
+	allocator/fy-allocator.c allocator/fy-allocator.h \
+	allocator/fy-allocator-linear.c allocator/fy-allocator-linear.h \
+	allocator/fy-allocator-malloc.c allocator/fy-allocator-malloc.h \
+	allocator/fy-allocator-mremap.c allocator/fy-allocator-mremap.h \
+	allocator/fy-allocator-dedup.c allocator/fy-allocator-dedup.h \
+	allocator/fy-allocator-auto.c allocator/fy-allocator-auto.h
 
 libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)
 libfyaml_la_CFLAGS = $(AM_CFLAGS)
@@ -175,6 +185,22 @@ fy_b3sum_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
 fy_b3sum_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 
 fy_b3sum_LDFLAGS = $(AM_LDFLAGS) -static
+endif
+
+# fy-allocators
+if HAVE_STATIC
+
+noinst_PROGRAMS += fy-allocators
+
+fy_allocators_SOURCES = \
+	internal/fy-allocators.c \
+	valgrind/fy-valgrind.h
+
+fy_allocators_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)
+fy_allocators_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
+fy_allocators_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
+
+fy_allocators_LDFLAGS = $(AM_LDFLAGS) -static
 endif
 
 bin_PROGRAMS += fy-tool

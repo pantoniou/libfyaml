@@ -38,10 +38,13 @@ extern "C" {
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>
 
 #if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 #include <unistd.h>
 #endif
+
+#include <sys/uio.h>
 
 /* opaque types for the user */
 struct fy_token;
@@ -8890,6 +8893,359 @@ fy_blake3_hash(struct fy_blake3_hasher *fyh, const void *mem, size_t size)
 const uint8_t *
 fy_blake3_hash_file(struct fy_blake3_hasher *fyh, const char *filename)
 	FY_EXPORT;
+
+/* forward decl of allocator interfaces */
+struct fy_allocator;
+
+/* A tag that denotes error */
+#define FY_ALLOC_TAG_ERROR	-1
+/* A tag that represents 'none' */
+#define FY_ALLOC_TAG_NONE	-2
+
+/**
+ * fy_allocator_iterate() - Iterate over available allocator names
+ *
+ * This method iterates over all the available allocator names.
+ * The start of the iteration is signalled by a NULL in \*prevp.
+ *
+ * @prevp: The previous allocator iterator pointer
+ *
+ * Returns:
+ * The next allocator name in sequence or NULL at the end.
+ */
+const char *
+fy_allocator_iterate(const char **prevp)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_is_available() - Check if an allocator is available
+ *
+ * Check if the named allocator is available.
+ *
+ * @name: The name of the allocator to check
+ *
+ * Returns:
+ * true if the allocator is available, false otherwise
+ */
+bool
+fy_allocator_is_available(const char *name)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_create() - Create an allocator.
+ *
+ * Creates an allocator of the given type, using the configuration
+ * argument provided.
+ * The allocator may be destroyed by a corresponding call to
+ * fy_allocator_destroy().
+ *
+ * You can retrieve the names of available allocators
+ * with the fy_allocator_get_names() method.
+ *
+ * @name: The name of the allocator
+ * @cfg: The type specific configuration for the allocator, or NULL
+ *       for the default.
+ *
+ * Returns:
+ * A pointer to the allocator or NULL in case of an error.
+ */
+struct fy_allocator *
+fy_allocator_create(const char *name, const void *cfg)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_destroy() - Destroy the given allocator
+ *
+ * Destroy an allocator created earlier via fy_allocator_create().
+ * Tracking allocators will release all memory allocated using them.
+ *
+ * @a: The allocator to destroy
+ */
+void
+fy_allocator_destroy(struct fy_allocator *a)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_get_tag() - Get a tag from an allocator
+ *
+ * The allocator interface requires all allocation to belong
+ * to a tag. This call creates a tag and returns its value,
+ * or an error if not available.
+ *
+ * If an allocator only provides a single tag (like the linear
+ * allocator for instance), the same tag number, usually 0, is
+ * returned.
+ *
+ * @a: The allocator
+ *
+ * Returns:
+ * The created tag or -1 in case of an error.
+ */
+int
+fy_allocator_get_tag(struct fy_allocator *a)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_release_tag() - Release a tag from an allocator
+ *
+ * Releases a tag from an allocator and frees all memory it
+ * allocated (if such an operation is provided by the allocator).
+ *
+ * @a: The allocator
+ * @tag: The tag to release
+ */
+void
+fy_allocator_release_tag(struct fy_allocator *a, int tag)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_trim_tag() - Trim a tag
+ *
+ * Trim a tag, that is free any excess memory it allocator, fitting
+ * it to the size of the content it carries.
+ * Allocators that cannot perform this operation treat it as a NOP.
+ *
+ * @a: The allocator
+ * @tag: The tag to trim
+ */
+void
+fy_allocator_trim_tag(struct fy_allocator *a, int tag)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_reset_tag() - Reset a tag
+ *
+ * Reset a tag, that is free any content it carries, but do not
+ * release the tag.
+ *
+ * @a: The allocator
+ * @tag: The tag to reset
+ */
+void
+fy_allocator_reset_tag(struct fy_allocator *a, int tag)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_alloc() - Allocate memory from an allocator
+ *
+ * Allocate memory from the given allocator tag, satisfying the
+ * size and align restrictions.
+ *
+ * @a: The allocator
+ * @tag: The tag to allocate from
+ * @size: The size of the memory to allocate
+ * @align: The alignment of the object
+ *
+ * Returns:
+ * A pointer to the allocated memory or NULL
+ */
+void *
+fy_allocator_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_free() - Free memory allocated from an allocator
+ *
+ * Attempt to free the memory allocated previously by fy_allocator_alloc()
+ * Note that non per object tracking allocators treat this as a NOP
+ *
+ * @a: The allocator
+ * @tag: The tag used to allocate the memory
+ * @ptr: The pointer to the memory to free
+ */
+void
+fy_allocator_free(struct fy_allocator *a, int tag, void *ptr)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_store() - Store an object to an allocator
+ *
+ * Store an object to an allocator and return a pointer to the location
+ * it was stored. When using a deduplicating allocator no new allocation
+ * will take place and a pointer to the object already stored will be
+ * returned.
+ *
+ * The return pointer must not be modified, the objects stored are idempotent.
+ *
+ * @a: The allocator
+ * @tag: The tag used to allocate the memory
+ * @data: The pointer to object to store
+ * @size: The size of the object
+ * @align: The alignment restriction of the object
+ *
+ * Returns:
+ * A constant pointer to the object stored, or NULL in case of an error
+ */
+const void *
+fy_allocator_store(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_storev() - Store an object to an allocator (scatter gather)
+ *
+ * Store an object to an allocator and return a pointer to the location
+ * it was stored. When using a deduplicating allocator no new allocation
+ * will take place and a pointer to the object already stored will be
+ * returned.
+ *
+ * The object is created linearly from the scatter gather io vector provided.
+ *
+ * The return pointer must not be modified, the objects stored are idempotent.
+ *
+ * @a: The allocator
+ * @tag: The tag used to allocate the memory from
+ * @iov: The I/O scatter gather vector
+ * @iovcnt: The number of vectors
+ * @align: The alignment restriction of the object
+ *
+ * Returns:
+ * A constant pointer to the object stored, or NULL in case of an error
+ */
+const void *
+fy_allocator_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_dump() - Dump internal allocator state
+ *
+ * @a: The allocator
+ */
+void
+fy_allocator_dump(struct fy_allocator *a)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_get_tag_linear_size() - Get the linear size of an allocator tag
+ *
+ * Retrieve the linear size of the content of a tag.
+ * That is the size of a buffer if one was to copy the content of the tag in
+ * that buffer in a linear manner.
+ *
+ * @a: The allocator
+ * @tag: The tag
+ *
+ * Returns:
+ * The linear size of the content stored in the tag or -1 in case of an error.
+ */
+ssize_t
+fy_allocator_get_tag_linear_size(struct fy_allocator *a, int tag)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_get_tag_single_linear() - Get the linear extend of a tag
+ *
+ * If a tag stores it's content in a single linear buffer, retrieve it
+ * directly. This is possible only under careful arrangement of allocator
+ * configuration, but it is an important optimization case.
+ *
+ * @a: The allocator
+ * @tag: The tag
+ * @sizep: Pointer to a variable that will be filled with the size.
+ *
+ * Returns:
+ * A pointer to the linear content of the tag, or NULL if othersize.
+ */
+const void *
+fy_allocator_get_tag_single_linear(struct fy_allocator *a, int tag, size_t *sizep)
+	FY_EXPORT;
+
+/**
+ * struct fy_linear_allocator_cfg - linear allocator configuration
+ *
+ * @buf: A pointer to a buffer that will be used, or NULL in order to allocate
+ * @size: Size of the buffer in bytes
+ */
+struct fy_linear_allocator_cfg {
+	void *buf;
+	size_t size;
+};
+
+/**
+ * enum fy_mremap_arena_type - The mremap allocator arena types
+ *
+ * @FYMRAT_DEFAULT: Use what's optimal for this platform
+ * @FYMRAT_MALLOC: Use malloc/realloc arena type (not recommended)
+ * @FYMRAT_MMAP: Use mmap/mremap arena type
+ *
+ */
+enum fy_mremap_arena_type {
+	FYMRAT_DEFAULT,
+	FYMRAT_MALLOC,
+	FYMRAT_MMAP,
+};
+
+/**
+ * struct fy_mremap_allocator_cfg - mremap allocator configuration
+ *
+ * If any of the fields is zero, then the system will provide (somewhat)
+ * reasonable defaults.
+ *
+ * @big_alloc_threshold: Threshold for immediately creating a new arena.
+ * @empty_threshold: The threshold under which an arena is moved to the full list.
+ * @minimum_arena_size: The minimum (and starting size) of an arena.
+ * @grow_ratio: The ratio which an arena will try to grow if full (>1.0)
+ * @balloon_ratio: The multiplier for the vm area first allocation
+ * @arena_type: The arena type
+ */
+struct fy_mremap_allocator_cfg {
+	size_t big_alloc_threshold;
+	size_t empty_threshold;
+	size_t minimum_arena_size;
+	float grow_ratio;
+	float balloon_ratio;
+	enum fy_mremap_arena_type arena_type;
+};
+
+/* malloc allocator has no configuration data, pass NULL */
+
+/**
+ * struct fy_dedup_allocator_cfg - dedup allocator configuration
+ *
+ * @parent_allocator: The parent allocator (required)
+ * @bloom_filter_bits: Number of bits of the bloom filter (or 0 for default)
+ * @bucket_count_bits: Number of bits for the bucket count (or 0 for default)
+ * @dedup_threshold: Number of bytes over which dedup takes place (default 0=always)
+ * @chain_length_grow_trigger: Chain length of a bucket over which a grow takes place (or 0 for auto)
+ * @estimated_content_size: Estimated content size (or 0 for don't know)
+ */
+struct fy_dedup_allocator_cfg {
+	struct fy_allocator *parent_allocator;
+	unsigned int bloom_filter_bits;
+	unsigned int bucket_count_bits;
+	size_t dedup_threshold;
+	unsigned int chain_length_grow_trigger;
+	size_t estimated_content_size;
+};
+
+/**
+ * enum fy_auto_allocator_scenario_type - auto allocator scenario type
+ *
+ * @FYAST_PER_TAG_FREE: only per tag freeing, no individual obj free
+ * @FYAST_PER_TAG_FREE_DEDUP: per tag freeing, dedup obj store
+ * @FYAST_PER_OBJ_FREE:	object freeing allowed, tag freeing still works
+ * @FYAST_PER_OBJ_FREE_DEDUP: per obj freeing, dedup obj store
+ * @FYAST_SINGLE_LINEAR_RANGE: just a single linear range, no frees at all
+ * @FYAST_SINGLE_LINEAR_RANGE_DEDUP: single linear range, with dedup
+ */
+enum fy_auto_allocator_scenario_type {
+	FYAST_PER_TAG_FREE,
+	FYAST_PER_TAG_FREE_DEDUP,
+	FYAST_PER_OBJ_FREE,
+	FYAST_PER_OBJ_FREE_DEDUP,
+	FYAST_SINGLE_LINEAR_RANGE,
+	FYAST_SINGLE_LINEAR_RANGE_DEDUP,
+};
+
+/**
+ * struct fy_auto_allocator_cfg - auto allocator configuration
+ *
+ * @scenario: Auto allocator scenario
+ * @estimated_max_size: Estimated max content size (or 0 for don't know)
+ */
+struct fy_auto_allocator_cfg {
+	enum fy_auto_allocator_scenario_type scenario;
+	size_t estimated_max_size;
+};
 
 #ifdef __cplusplus
 }
