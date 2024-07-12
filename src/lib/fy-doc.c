@@ -3541,6 +3541,9 @@ int fy_node_pair_set_value(struct fy_node_pair *fynp, struct fy_node *fyn)
 
 struct fy_node *fy_document_root(struct fy_document *fyd)
 {
+	if (!fyd)
+		return NULL;
+
 	return fyd->root;
 }
 
@@ -6989,9 +6992,13 @@ fy_node_sequence_add_item(struct fy_node *fyn_parent, struct fy_node *fyn)
 	return 0;
 }
 
-void fy_document_iterator_setup(struct fy_document_iterator *fydi)
+int fy_document_iterator_setup(struct fy_document_iterator *fydi, const struct fy_document_iterator_cfg *cfg)
 {
 	memset(fydi, 0, sizeof(*fydi));
+
+	if (cfg)
+		fydi->cfg = *cfg;
+
 	fydi->state = FYDIS_WAITING_STREAM_START;
 	fydi->fyd = NULL;
 	fydi->iterate_root = NULL;
@@ -7015,6 +7022,31 @@ void fy_document_iterator_setup(struct fy_document_iterator *fydi)
 	fydi->stack_top = (unsigned int)-1;
 	fydi->stack_alloc = sizeof(fydi->in_place) / sizeof(fydi->in_place[0]);
 	fydi->stack = fydi->in_place;
+
+	/* set generator state accordingly */
+	fydi->generator_state = 0;
+
+	/* without configuration, is the default */
+	if (!cfg)
+		return 0;
+
+	/* set the generator flags accordingly */
+	switch (fydi->cfg.flags & FYDICF_WANT_MASK) {
+	case FYDICF_WANT_STREAM_DOCUMENT_BODY_EVENTS:
+		fydi->generator_state |= FYDIGF_WANTS_STREAM | FYDIGF_WANTS_DOC | FYDIGF_ENDS_AFTER_DOC;
+		break;
+	case FYDICF_WANT_DOCUMENT_BODY_EVENTS:
+		fydi->generator_state |= FYDIGF_WANTS_DOC | FYDIGF_ENDS_AFTER_DOC;
+		fydi->state = FYDIS_WAITING_DOCUMENT_START;
+		break;
+	case FYDICF_WANT_BODY_EVENTS:
+		fydi->generator_state |= FYDIGF_ENDS_AFTER_BODY;
+		fydi->state = FYDIS_WAITING_BODY_START_OR_DOCUMENT_END;
+	default:
+		break;
+	}
+
+	return 0;
 }
 
 void fy_document_iterator_cleanup(struct fy_document_iterator *fydi)
@@ -7040,15 +7072,62 @@ void fy_document_iterator_cleanup(struct fy_document_iterator *fydi)
 	fydi->iterate_root = NULL;
 }
 
-struct fy_document_iterator *fy_document_iterator_create(void)
+struct fy_document_iterator *
+fy_document_iterator_create_cfg(const struct fy_document_iterator_cfg *cfg)
 {
-	struct fy_document_iterator *fydi;
+	struct fy_document_iterator *fydi = NULL;
+	int rc;
 
 	fydi = malloc(sizeof(*fydi));
 	if (!fydi)
-		return NULL;
-	fy_document_iterator_setup(fydi);
+		goto err_out;
+
+	rc = fy_document_iterator_setup(fydi, cfg);
+	if (rc)
+		goto err_out;
+
 	return fydi;
+
+err_out:
+	fy_document_iterator_destroy(fydi);
+	return NULL;
+}
+
+struct fy_document_iterator *fy_document_iterator_create(void)
+{
+	return fy_document_iterator_create_cfg(NULL);
+}
+
+struct fy_document_iterator *
+fy_document_iterator_create_on_document(struct fy_document *fyd)
+{
+	struct fy_document_iterator_cfg cfg;
+
+	if (!fyd)
+		return NULL;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = FYDICF_WANT_STREAM_DOCUMENT_BODY_EVENTS;
+	cfg.fyd = fyd;
+	cfg.iterate_root = fyd->root;
+
+	return fy_document_iterator_create_cfg(&cfg);
+}
+
+struct fy_document_iterator *
+fy_document_iterator_create_on_node(struct fy_node *fyn)
+{
+	struct fy_document_iterator_cfg cfg;
+
+	if (!fyn)
+		return NULL;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = FYDICF_WANT_STREAM_DOCUMENT_BODY_EVENTS;
+	cfg.fyd = fy_node_document(fyn);
+	cfg.iterate_root = fyn;
+
+	return fy_document_iterator_create_cfg(&cfg);
 }
 
 void fy_document_iterator_destroy(struct fy_document_iterator *fydi)
@@ -7171,7 +7250,8 @@ err_out:
 }
 
 struct fy_event *
-fy_document_iterator_document_start(struct fy_document_iterator *fydi, struct fy_document *fyd)
+fy_document_iterator_document_start_internal(struct fy_document_iterator *fydi, struct fy_document *fyd,
+					     struct fy_node *iterate_root)
 {
 	struct fy_event *fye = NULL;
 	struct fy_eventp *fyep;
@@ -7194,8 +7274,8 @@ fy_document_iterator_document_start(struct fy_document_iterator *fydi, struct fy
 
 	fydi->fyd = fyd;
 
-	/* the iteration root is the document root */
-	fydi->iterate_root = fyd->root;
+	/* the iteration root is the document root if not given */
+	fydi->iterate_root = iterate_root ? iterate_root : fyd->root;
 
 	/* suppress recycling if we must */
 	fydi->suppress_recycling = (fyd->parse_cfg.flags & FYPCF_DISABLE_RECYCLING) ||
@@ -7223,6 +7303,12 @@ err_out:
 	fy_document_iterator_event_free(fydi, fye);
 	fydi->state = FYDIS_ERROR;
 	return NULL;
+}
+
+struct fy_event *
+fy_document_iterator_document_start(struct fy_document_iterator *fydi, struct fy_document *fyd)
+{
+	return fy_document_iterator_document_start_internal(fydi, fyd, NULL);
 }
 
 struct fy_event *
@@ -7475,4 +7561,70 @@ bool fy_document_iterator_get_error(struct fy_document_iterator *fydi)
 	fy_document_iterator_cleanup(fydi);
 
 	return true;
+}
+
+struct fy_event *
+fy_document_iterator_generate_next(struct fy_document_iterator *fydi)
+{
+	struct fy_event *fye = NULL;
+
+	if (!fydi || fydi->state == FYDIS_ERROR)
+		return NULL;
+
+	if (fydi->generator_state & FYDIGF_GENERATED_NULL)
+		return NULL;
+
+	/* wants stream events and not generated yet */
+	if ((fydi->generator_state & (FYDIGF_WANTS_STREAM | FYDIGF_GENERATED_SS)) == FYDIGF_WANTS_STREAM) {
+		fye = fy_document_iterator_stream_start(fydi);
+		if (!fye)
+			return NULL;
+		fydi->generator_state |= FYDIGF_GENERATED_SS;
+		return fye;
+	}
+
+	/* wants document events and not generated yet */
+	if ((fydi->generator_state & (FYDIGF_WANTS_DOC | FYDIGF_GENERATED_DS)) == FYDIGF_WANTS_DOC) {
+		if (!fydi->cfg.fyd) {
+			fydi->state = FYDIS_ERROR;
+			return NULL;
+		}
+		fye = fy_document_iterator_document_start_internal(fydi, fydi->cfg.fyd, fydi->cfg.iterate_root);
+		if (!fye)
+			return NULL;
+		fydi->generator_state |= FYDIGF_GENERATED_DS;
+		return fye;
+	}
+
+	/* generate body events... */
+	if (!(fydi->generator_state & FYDIGF_GENERATED_BODY)) {
+		if (!fydi->iterate_root)
+			fydi->iterate_root = fydi->cfg.iterate_root ? fydi->cfg.iterate_root : fy_document_root(fydi->fyd);
+		fye = fy_document_iterator_body_next(fydi);
+		if (fye)
+			return fye;
+
+		fydi->generator_state |= FYDIGF_GENERATED_BODY;
+	}
+
+	/* wants document events and not generated yet */
+	if ((fydi->generator_state & (FYDIGF_WANTS_DOC | FYDIGF_GENERATED_DE)) == FYDIGF_WANTS_DOC) {
+		fye = fy_document_iterator_document_end(fydi);
+		if (!fye)
+			return NULL;
+		fydi->generator_state |= FYDIGF_GENERATED_DE;
+		return fye;
+	}
+
+	/* wants stream events and not generated yet */
+	if ((fydi->generator_state & (FYDIGF_WANTS_STREAM | FYDIGF_GENERATED_SE)) == FYDIGF_WANTS_STREAM) {
+		fye = fy_document_iterator_stream_end(fydi);
+		if (!fye)
+			return NULL;
+		fydi->generator_state |= FYDIGF_GENERATED_SE;
+		return fye;
+	}
+
+	fydi->generator_state |= FYDIGF_GENERATED_NULL;
+	return NULL;
 }

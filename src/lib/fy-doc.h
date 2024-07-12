@@ -213,6 +213,7 @@ enum fy_document_iterator_state {
 	FYDIS_BODY,
 	FYDIS_WAITING_DOCUMENT_END,
 	FYDIS_WAITING_STREAM_END_OR_DOCUMENT_START,
+	FYDIS_ENDED,
 	FYDIS_ERROR,
 };
 
@@ -226,6 +227,7 @@ struct fy_document_iterator_body_state {
 };
 
 struct fy_document_iterator {
+	struct fy_document_iterator_cfg cfg;
 	enum fy_document_iterator_state state;
 	struct fy_document *fyd;
 	struct fy_node *iterate_root;
@@ -242,14 +244,28 @@ struct fy_document_iterator {
 	unsigned int stack_alloc;
 	struct fy_document_iterator_body_state *stack;
 	struct fy_document_iterator_body_state in_place[FYPCF_GUARANTEED_MINIMUM_DEPTH_LIMIT];
+
+#define FYDIGF_GENERATED_SS	FY_BIT(0)
+#define FYDIGF_GENERATED_DS	FY_BIT(1)
+#define FYDIGF_GENERATED_DE	FY_BIT(2)
+#define FYDIGF_GENERATED_SE	FY_BIT(3)
+#define FYDIGF_GENERATED_BODY	FY_BIT(4)
+#define FYDIGF_GENERATED_NULL	FY_BIT(5)
+#define FYDIGF_ENDS_AFTER_BODY	FY_BIT(6)
+#define FYDIGF_ENDS_AFTER_DOC	FY_BIT(7)
+#define FYDIGF_WANTS_STREAM	FY_BIT(8)
+#define FYDIGF_WANTS_DOC	FY_BIT(9)
+	unsigned int generator_state;
 };
 
-void fy_document_iterator_setup(struct fy_document_iterator *fydi);
+int fy_document_iterator_setup(struct fy_document_iterator *fydi, const struct fy_document_iterator_cfg *cfg);
 void fy_document_iterator_cleanup(struct fy_document_iterator *fydi);
 struct fy_document_iterator *fy_document_iterator_create(void);
 void fy_document_iterator_destroy(struct fy_document_iterator *fydi);
-void fy_document_iterator_start(struct fy_document_iterator *fydi, struct fy_document *fyd);
-void fy_document_iterator_end(struct fy_document_iterator *fydi);
+
+struct fy_event *
+fy_document_iterator_document_start_internal(struct fy_document_iterator *fydi, struct fy_document *fyd,
+					     struct fy_node *iterate_root);
 
 struct fy_document_iterator_body_result {
 	struct fy_node *fyn;

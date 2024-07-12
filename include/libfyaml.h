@@ -7928,6 +7928,42 @@ struct fy_path_component *
 fy_path_last_not_collection_root_component(struct fy_path *fypp)
 	FY_EXPORT;
 
+/* Shift amount of the want mode */
+#define FYDICF_WANT_SHIFT		0
+/* Mask of the WANT mode */
+#define FYDICF_WANT_MASK			((1U << 2) - 1)
+/* Build a WANT mode option */
+#define FYDICF_WANT(x)			(((unsigned int)(x) & FYDICF_WANT_MASK) << FYDICF_WANT_SHIFT)
+
+/**
+ * enum fy_document_iterator_cfg_flags - Document iterator configuration flags
+ *
+ * These flags control the operation of the document iterator
+ *
+ * @FYDICF_WANTS_STREAM_EVENTS: Generate stream start/stream end events
+ * @FYDICF_WANTS_DOCUMENT_EVENTS: Generate stream start/stream end events
+ */
+enum fy_document_iterator_cfg_flags {
+	FYDICF_WANT_BODY_EVENTS			= FYDICF_WANT(0),
+	FYDICF_WANT_DOCUMENT_BODY_EVENTS	= FYDICF_WANT(1),
+	FYDICF_WANT_STREAM_DOCUMENT_BODY_EVENTS	= FYDICF_WANT(2),
+};
+
+/**
+ * struct fy_document_iterator_cfg - document iterator configuration structure.
+ *
+ * Argument to the fy_document_iterator_create_cfg() method.
+ *
+ * @flags: The document iterator flags
+ * @fyd: The document to iterate on (or NULL if iterate_root is set)
+ * @iterate_root: The root of iteration (NULL when fyd is not NULL)
+ */
+struct fy_document_iterator_cfg {
+	enum fy_document_iterator_cfg_flags flags;
+	struct fy_document *fyd;
+	struct fy_node *iterate_root;
+};
+
 /**
  * fy_document_iterator_create() - Create a document iterator
  *
@@ -7939,6 +7975,50 @@ fy_path_last_not_collection_root_component(struct fy_path *fypp)
  */
 struct fy_document_iterator *
 fy_document_iterator_create(void)
+	FY_EXPORT;
+
+/**
+ * fy_document_iterator_create_cfg() - Create a document iterator using config
+ *
+ * Creates a document iterator, that can trawl through a document
+ * without using recursion. The iterator will generate all the events
+ * that created the given document starting at iterator root.
+ *
+ * @cfg: The document iterator to destroy
+ *
+ * Returns:
+ * The newly created document iterator or NULL on error
+ */
+struct fy_document_iterator *
+fy_document_iterator_create_cfg(const struct fy_document_iterator_cfg *cfg)
+	FY_EXPORT;
+
+/**
+ * fy_document_iterator_create_on_document() - Create a document iterator on document
+ *
+ * Creates a document iterator, starting at the root of the given document.
+ *
+ * @fyd: The document to iterate on
+ *
+ * Returns:
+ * The newly created document iterator or NULL on error
+ */
+struct fy_document_iterator *
+fy_document_iterator_create_on_document(struct fy_document *fyd)
+	FY_EXPORT;
+
+/**
+ * fy_document_iterator_create_on_node() - Create a document iterator on node
+ *
+ * Creates a document iterator, starting at the given node
+ *
+ * @fyn: The node to iterate on
+ *
+ * Returns:
+ * The newly created document iterator or NULL on error
+ */
+struct fy_document_iterator *
+fy_document_iterator_create_on_node(struct fy_node *fyn)
 	FY_EXPORT;
 
 /**
@@ -8078,6 +8158,24 @@ fy_document_iterator_node_start(struct fy_document_iterator *fydi, struct fy_nod
  */
 struct fy_node *
 fy_document_iterator_node_next(struct fy_document_iterator *fydi)
+	FY_EXPORT;
+
+/**
+ * fy_document_iterator_generate_next() - Create events from document iterator
+ *
+ * This is a method that will handle the complex state of generating
+ * stream, document and body events on the given iterator.
+ *
+ * When generation is complete a NULL event will be generated.
+ *
+ * @fydi: The document iterator to create the event
+ *
+ * Returns:
+ * The newly created event or NULL at an error, or an end of the
+ * event stream. Use fy_document_iterator_get_error() to check if an error occured.
+ */
+struct fy_event *
+fy_document_iterator_generate_next(struct fy_document_iterator *fydi)
 	FY_EXPORT;
 
 /**
