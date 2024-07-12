@@ -2246,6 +2246,23 @@ fy_emit_root_node(struct fy_emitter *emit, struct fy_node *fyn)
 	FY_EXPORT;
 
 /**
+ * fy_emit_body_node() - Emit a single body node using the emitter
+ *
+ * Emits a single body node using the emitter. This is used in case
+ * you need finer control over the emitting output.
+ * No stream and document events will be generated at all.
+ *
+ * @emit: The emitter
+ * @fyn: The body node to emit
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int
+fy_emit_body_node(struct fy_emitter *emit, struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
  * fy_emit_explicit_document_end() - Emit an explicit document end
  *
  * Emits an explicit document end, i.e. ... . Use this if you

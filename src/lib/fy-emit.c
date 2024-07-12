@@ -3778,3 +3778,33 @@ err_emit:
 err_setup:
 	return -1;
 }
+
+int fy_emit_body_node(struct fy_emitter *emit, struct fy_node *fyn)
+{
+	struct fy_document_iterator *fydi = NULL;
+	struct fy_event *fye;
+	struct fy_document_iterator_cfg cfg;
+	int rc;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = FYDICF_WANT_BODY_EVENTS;
+	cfg.fyd = fyn->fyd;
+	cfg.iterate_root = fyn;
+
+	fydi = fy_document_iterator_create_cfg(&cfg);
+	if (!fydi)
+		goto err_out;
+
+	while ((fye = fy_document_iterator_generate_next(fydi)) != NULL) {
+		rc = fy_emit_event(emit, fye);
+		if (rc)
+			goto err_out;
+	}
+
+	fy_document_iterator_destroy(fydi);
+	return 0;
+
+err_out:
+	fy_document_iterator_destroy(fydi);
+	return -1;
+}
