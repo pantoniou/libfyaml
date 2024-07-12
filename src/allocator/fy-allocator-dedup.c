@@ -399,33 +399,35 @@ static void fy_dedup_cleanup(struct fy_allocator *a);
 #define BUCKET_ESTIMATE_DIV 1024
 #define BLOOM_ESTIMATE_DIV 128
 
-static int fy_dedup_setup(struct fy_allocator *a, const void *data)
+static int fy_dedup_setup(struct fy_allocator *a, const void *cfg_data)
 {
 	struct fy_dedup_allocator *da = NULL;
-	const struct fy_dedup_setup_data *d;
+	const struct fy_dedup_allocator_cfg *cfg;
 	unsigned int bloom_filter_bits, bucket_count_bits;
 	unsigned int bit_shift, chain_length_grow_trigger;
 	size_t dedup_threshold;
 	bool has_estimate;
 
-	if (!a || !data)
+	if (!a || !cfg_data)
 		return -1;
 
-	d = data;
-	if (!d->parent_allocator)
+	cfg = cfg_data;
+	if (!cfg->parent_allocator)
 		return -1;
 
-	has_estimate = d->estimated_content_size && d->estimated_content_size != SIZE_MAX;
+	has_estimate = cfg->estimated_content_size && cfg->estimated_content_size != SIZE_MAX;
 
 	/* power of two so ffs = log2 */
 	bit_shift = (unsigned int)fy_id_ffs(FY_ID_BITS_BITS);
 
-	bucket_count_bits = d->bucket_count_bits;
+	bucket_count_bits = cfg->bucket_count_bits;
 	if (!bucket_count_bits && has_estimate) {
 		bucket_count_bits = 1;
-		while ((1LU << bucket_count_bits) < (d->estimated_content_size / BUCKET_ESTIMATE_DIV))
+		while ((1LU << bucket_count_bits) < (cfg->estimated_content_size / BUCKET_ESTIMATE_DIV))
 			bucket_count_bits++;
+#ifdef DEBUG_GROWS
 		fprintf(stderr, "bucket_count_bits %u\n", bucket_count_bits);
+#endif
 	}
 	/* at least that amount */
 	if (bucket_count_bits < bit_shift)
@@ -434,12 +436,14 @@ static int fy_dedup_setup(struct fy_allocator *a, const void *data)
 	if (bucket_count_bits > (sizeof(int) * 8 - 1))
 		bucket_count_bits = (sizeof(int) * 8) - 1;
 
-	bloom_filter_bits = d->bloom_filter_bits;
+	bloom_filter_bits = cfg->bloom_filter_bits;
 	if (!bloom_filter_bits && has_estimate) {
 		bloom_filter_bits = 1;
-		while ((1LU << bloom_filter_bits) < (d->estimated_content_size / BLOOM_ESTIMATE_DIV))
+		while ((1LU << bloom_filter_bits) < (cfg->estimated_content_size / BLOOM_ESTIMATE_DIV))
 			bloom_filter_bits++;
+#ifdef DEBUG_GROWS
 		fprintf(stderr, "bloom_filter_bits %u\n", bloom_filter_bits);
+#endif
 	}
 	/* must be more than bucket count bits */
 	if (bloom_filter_bits < bucket_count_bits)
@@ -448,16 +452,17 @@ static int fy_dedup_setup(struct fy_allocator *a, const void *data)
 	if (bloom_filter_bits > (sizeof(int) * 8 - 1))
 		bloom_filter_bits = (sizeof(int) * 8) - 1;
 
-	dedup_threshold = d->dedup_threshold;
-	chain_length_grow_trigger = d->chain_length_grow_trigger;
+	dedup_threshold = cfg->dedup_threshold;
+	chain_length_grow_trigger = cfg->chain_length_grow_trigger;
 
 	da = container_of(a, struct fy_dedup_allocator, a);
 	memset(da, 0, sizeof(*da));
 
 	da->a.name = "dedup";
 	da->a.ops = &fy_dedup_allocator_ops;
+	da->cfg = *cfg;
 
-	da->parent_allocator = d->parent_allocator;
+	da->parent_allocator = cfg->parent_allocator;
 
 	/* just create a default mremap allocator for the entries */
 	/* we don't care if they are contiguous */
@@ -501,7 +506,7 @@ static void fy_dedup_cleanup(struct fy_allocator *a)
 		fy_dedup_tag_cleanup(da, dt);
 }
 
-struct fy_allocator *fy_dedup_create(const void *setupdata)
+struct fy_allocator *fy_dedup_create(const void *cfg)
 {
 	struct fy_dedup_allocator *da = NULL;
 	int rc;
@@ -510,7 +515,7 @@ struct fy_allocator *fy_dedup_create(const void *setupdata)
 	if (!da)
 		goto err_out;
 
-	rc = fy_dedup_setup(&da->a, setupdata);
+	rc = fy_dedup_setup(&da->a, cfg);
 	if (rc)
 		goto err_out;
 

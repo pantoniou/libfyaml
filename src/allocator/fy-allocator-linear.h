@@ -14,13 +14,9 @@
 
 #include "fy-allocator.h"
 
-struct fy_linear_setup_data {
-	void *buf;
-	size_t size;
-};
-
 struct fy_linear_allocator {
 	struct fy_allocator a;
+	struct fy_linear_allocator_cfg cfg;
 	uint64_t stats_allocations;	/* no need to keep anything else */
 	uint64_t stats_allocated;
 	void *alloc;

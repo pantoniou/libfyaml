@@ -77,9 +77,9 @@ static void dump_allocator_info(struct fy_allocator *a, int tag)
 
 static int allocator_test(const char *allocator, const char *parent_allocator, size_t size)
 {
-	struct fy_linear_setup_data lsetupdata;
-	struct fy_dedup_setup_data dsetupdata;
-	const void *gsetupdata = NULL, *psetupdata = NULL;
+	struct fy_linear_allocator_cfg lcfg;
+	struct fy_dedup_allocator_cfg dcfg;
+	const void *gcfg = NULL, *pcfg = NULL;
 	struct fy_allocator *a = NULL, *pa = NULL;
 	int tag0;
 	char *names;
@@ -101,33 +101,33 @@ static int allocator_test(const char *allocator, const char *parent_allocator, s
 	is_dedup = !strcmp(allocator, "dedup");
 
 	if (is_linear) {
-		memset(&lsetupdata, 0, sizeof(lsetupdata));
-		lsetupdata.size = size ? size : 4096;
-		gsetupdata = &lsetupdata;
+		memset(&lcfg, 0, sizeof(lcfg));
+		lcfg.size = size ? size : 4096;
+		gcfg = &lcfg;
 	} else if (is_dedup) {
 
 		fprintf(stderr, "Using parent-allocator: %s\n", parent_allocator);
 
 		if (!strcmp(parent_allocator, "linear")) {
-			memset(&lsetupdata, 0, sizeof(lsetupdata));
-			lsetupdata.size = size ? size : 4096;
+			memset(&lcfg, 0, sizeof(lcfg));
+			lcfg.size = size ? size : 4096;
 
-			psetupdata = &lsetupdata;
+			pcfg = &lcfg;
 		} else
-			psetupdata = NULL;
+			pcfg = NULL;
 
-		pa = fy_allocator_create(parent_allocator, psetupdata);
+		pa = fy_allocator_create(parent_allocator, pcfg);
 		assert(pa);
 
-		memset(&dsetupdata, 0, sizeof(dsetupdata));
-		dsetupdata.parent_allocator = pa;
-		gsetupdata = &dsetupdata;
+		memset(&dcfg, 0, sizeof(dcfg));
+		dcfg.parent_allocator = pa;
+		gcfg = &dcfg;
 	} else
-		gsetupdata = NULL;
+		gcfg = NULL;
 
 	fprintf(stderr, "Using allocator: %s\n", allocator);
 
-	a = fy_allocator_create(allocator, gsetupdata);
+	a = fy_allocator_create(allocator, gcfg);
 	assert(a);
 
 	fprintf(stderr, "Allocator created: %p\n", a);

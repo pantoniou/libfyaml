@@ -51,6 +51,7 @@ struct fy_mremap_tag {
 
 struct fy_mremap_allocator {
 	struct fy_allocator a;
+	struct fy_mremap_allocator_cfg cfg;
 	size_t pagesz;
 	size_t pageshift;
 	size_t big_alloc_threshold;	/* bigger than that and a new allocation */

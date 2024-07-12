@@ -9893,7 +9893,7 @@ struct fy_allocator;
 #define FY_ALLOC_TAG_NONE	-2
 
 struct fy_allocator *
-fy_allocator_create(const char *name, const void *setupdata)
+fy_allocator_create(const char *name, const void *cfg)
 	FY_EXPORT;
 
 void
@@ -9960,13 +9960,19 @@ const void *
 fy_allocator_get_tag_single_linear(struct fy_allocator *a, int tag, size_t *sizep)
 	FY_EXPORT;
 
+/* linear allocator setup data */
+struct fy_linear_allocator_cfg {
+	void *buf;
+	size_t size;
+};
+
 /* mremap allocator setup data */
 enum fy_mremap_arena_type {
 	FYMRAT_MALLOC,
 	FYMRAT_MMAP,
 };
 
-struct fy_mremap_setup_data {
+struct fy_mremap_allocator_cfg {
 	size_t big_alloc_threshold;	/* bigger than that and a new allocation */
 	size_t empty_threshold;		/* less than that and get moved to full */
 	size_t minimum_arena_size;	/* the minimum arena size */
@@ -9978,7 +9984,7 @@ struct fy_mremap_setup_data {
 /* malloc allocator has no setup data, pass NULL */
 
 /* dedup allocator setup data */
-struct fy_dedup_setup_data {
+struct fy_dedup_allocator_cfg {
 	struct fy_allocator *parent_allocator;
 	unsigned int bloom_filter_bits;
 	unsigned int bucket_count_bits;
@@ -9988,7 +9994,7 @@ struct fy_dedup_setup_data {
 };
 
 /* auto allocator setup data */
-enum fy_auto_scenario_type {
+enum fy_auto_allocator_scenario_type {
 	FYAST_PER_TAG_FREE,			/* only per tag freeing, no individual obj free		*/
 	FYAST_PER_TAG_FREE_DEDUP,		/* per tag freeing, dedup obj store			*/
 	FYAST_PER_OBJ_FREE,			/* object freeing allowed, tag freeing still works	*/
@@ -9997,8 +10003,8 @@ enum fy_auto_scenario_type {
 	FYAST_SINGLE_LINEAR_RANGE_DEDUP,	/* single linear range, with dedup			*/
 };
 
-struct fy_auto_setup_data {
-	enum fy_auto_scenario_type scenario;
+struct fy_auto_allocator_cfg {
+	enum fy_auto_allocator_scenario_type scenario;
 	size_t estimated_max_size;
 };
 

@@ -77,7 +77,7 @@ static void fy_malloc_cleanup(struct fy_allocator *a)
 	}
 }
 
-struct fy_allocator *fy_malloc_create(const void *setupdata)
+struct fy_allocator *fy_malloc_create(const void *cfg)
 {
 	struct fy_malloc_allocator *ma = NULL;
 	int rc;
@@ -86,7 +86,7 @@ struct fy_allocator *fy_malloc_create(const void *setupdata)
 	if (!ma)
 		goto err_out;
 
-	rc = fy_malloc_setup(&ma->a, setupdata);
+	rc = fy_malloc_setup(&ma->a, cfg);
 	if (rc)
 		goto err_out;
 

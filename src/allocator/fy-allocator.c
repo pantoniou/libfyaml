@@ -226,7 +226,7 @@ out_unlock:
 	return ret;
 }
 
-struct fy_allocator *fy_allocator_create(const char *name, const void *setupdata)
+struct fy_allocator *fy_allocator_create(const char *name, const void *cfg)
 {
 	struct fy_registered_allocator_entry *ae;
 	const struct fy_allocator_ops *ops = NULL;
@@ -260,7 +260,7 @@ struct fy_allocator *fy_allocator_create(const char *name, const void *setupdata
 	if (!ops)
 		return NULL;
 
-	return ops->create(setupdata);
+	return ops->create(cfg);
 }
 
 void fy_allocator_registry_cleanup_internal(bool show_leftovers)

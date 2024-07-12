@@ -30,9 +30,9 @@ struct fy_allocator_stats;
 struct fy_allocator_info;
 
 struct fy_allocator_ops {
-	int (*setup)(struct fy_allocator *a, const void *setupdata);
+	int (*setup)(struct fy_allocator *a, const void *cfg);
 	void (*cleanup)(struct fy_allocator *a);
-	struct fy_allocator *(*create)(const void *setupdata);
+	struct fy_allocator *(*create)(const void *cfg);
 	void (*destroy)(struct fy_allocator *a);
 	void (*dump)(struct fy_allocator *a);
 	void *(*alloc)(struct fy_allocator *a, int tag, size_t size, size_t align);

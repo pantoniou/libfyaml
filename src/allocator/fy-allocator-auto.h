@@ -16,7 +16,7 @@
 
 struct fy_auto_allocator {
 	struct fy_allocator a;
-	struct fy_auto_setup_data d;
+	struct fy_auto_allocator_cfg cfg;
 	struct fy_allocator *parent_allocator;
 	struct fy_allocator *sub_parent_allocator;
 };

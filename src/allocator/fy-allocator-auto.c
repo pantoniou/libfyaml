@@ -61,61 +61,61 @@
 #define AUTO_ALLOCATOR_DEFAULT_BUCKET_COUNT_BITS	0
 #endif
 
-static const struct fy_auto_setup_data default_setup_data = {
+static const struct fy_auto_allocator_cfg default_cfg = {
 	.scenario = FYAST_PER_TAG_FREE_DEDUP,
 	.estimated_max_size = AUTO_ALLOCATOR_DEFAULT_ESTIMATED_MAX_SIZE,
 };
 
 static void fy_auto_cleanup(struct fy_allocator *a);
 
-static int fy_auto_setup(struct fy_allocator *a, const void *data)
+static int fy_auto_setup(struct fy_allocator *a, const void *cfg_data)
 {
 	size_t pagesz, size;
 	struct fy_auto_allocator *aa;
-	const struct fy_auto_setup_data *d;
-	struct fy_mremap_setup_data mrsetupdata;
-	struct fy_dedup_setup_data dsetupdata;
-	struct fy_linear_setup_data lsetupdata;
+	const struct fy_auto_allocator_cfg *cfg;
+	struct fy_mremap_allocator_cfg mrcfg;
+	struct fy_dedup_allocator_cfg dcfg;
+	struct fy_linear_allocator_cfg lcfg;
 	struct fy_allocator *mra = NULL, *da = NULL, *ma = NULL, *la = NULL;
 	struct fy_allocator *topa = NULL, *suba = NULL;
 
 	if (!a)
 		return -1;
 
-	d = data ? data : &default_setup_data;
+	cfg = cfg_data ? cfg_data : &default_cfg;
 
-	if ((unsigned int)d->scenario > FYAST_SINGLE_LINEAR_RANGE)
+	if ((unsigned int)cfg->scenario > FYAST_SINGLE_LINEAR_RANGE)
 		return -1;
 
 	aa = container_of(a, struct fy_auto_allocator, a);
 	memset(aa, 0, sizeof(*aa));
 	aa->a.name = "auto";
 	aa->a.ops = &fy_auto_allocator_ops;
+	aa->cfg = *cfg;
 	
 	pagesz = sysconf(_SC_PAGESIZE);
-	size = d->estimated_max_size && d->estimated_max_size != SIZE_MAX ?
-			d->estimated_max_size :
+	size = cfg->estimated_max_size && cfg->estimated_max_size != SIZE_MAX ?
+			cfg->estimated_max_size :
 			AUTO_ALLOCATOR_MINIMUM_ARENA_SIZE;
 
 	/* first allocator */
-	switch (d->scenario) {
+	switch (cfg->scenario) {
 	case FYAST_PER_TAG_FREE:
 	case FYAST_PER_TAG_FREE_DEDUP:
-		memset(&mrsetupdata, 0, sizeof(mrsetupdata));
-		mrsetupdata.big_alloc_threshold = AUTO_ALLOCATOR_BIG_ALLOC_THRESHOLD;
-		mrsetupdata.empty_threshold = AUTO_ALLOCATOR_EMPTY_THRESHOLD;
-		mrsetupdata.grow_ratio = AUTO_ALLOCATOR_GROW_RATIO;
-		mrsetupdata.balloon_ratio = AUTO_ALOCATOR_BALLOON_RATIO;
-		mrsetupdata.arena_type = AUTO_ALLOCATOR_ARENA_TYPE;
+		memset(&mrcfg, 0, sizeof(mrcfg));
+		mrcfg.big_alloc_threshold = AUTO_ALLOCATOR_BIG_ALLOC_THRESHOLD;
+		mrcfg.empty_threshold = AUTO_ALLOCATOR_EMPTY_THRESHOLD;
+		mrcfg.grow_ratio = AUTO_ALLOCATOR_GROW_RATIO;
+		mrcfg.balloon_ratio = AUTO_ALOCATOR_BALLOON_RATIO;
+		mrcfg.arena_type = AUTO_ALLOCATOR_ARENA_TYPE;
 
-		mrsetupdata.minimum_arena_size = fy_size_t_align(size, pagesz);
+		mrcfg.minimum_arena_size = fy_size_t_align(size, pagesz);
 
-		mra = fy_allocator_create("mremap", &mrsetupdata);
+		mra = fy_allocator_create("mremap", &mrcfg);
 		if (!mra)
 			goto err_out;
 		topa = mra;
 
-		fprintf(stderr, "%s: mremap\n", __func__);
 		break;
 
 	case FYAST_PER_OBJ_FREE:
@@ -124,19 +124,17 @@ static int fy_auto_setup(struct fy_allocator *a, const void *data)
 		if (!ma)
 			goto err_out;
 		topa = ma;
-		fprintf(stderr, "%s: malloc\n", __func__);
 		break;
 
 	case FYAST_SINGLE_LINEAR_RANGE:
 	case FYAST_SINGLE_LINEAR_RANGE_DEDUP:
-		memset(&lsetupdata, 0, sizeof(lsetupdata));
-		lsetupdata.size = fy_size_t_align(size, pagesz);
+		memset(&lcfg, 0, sizeof(lcfg));
+		lcfg.size = fy_size_t_align(size, pagesz);
 
-		la = fy_allocator_create("linear", &lsetupdata);
+		la = fy_allocator_create("linear", &lcfg);
 		if (!la)
 			goto err_out;
 		topa = la;
-		fprintf(stderr, "%s: linear\n", __func__);
 		break;
 	}
 
@@ -144,24 +142,23 @@ static int fy_auto_setup(struct fy_allocator *a, const void *data)
 		goto err_out;
 
 	/* stack the dedup */
-	switch (d->scenario) {
+	switch (cfg->scenario) {
 	case FYAST_PER_TAG_FREE_DEDUP:
 	case FYAST_PER_OBJ_FREE_DEDUP:
 	case FYAST_SINGLE_LINEAR_RANGE_DEDUP:
-		memset(&dsetupdata, 0, sizeof(dsetupdata));
-		dsetupdata.parent_allocator = topa;
-		dsetupdata.bloom_filter_bits = AUTO_ALLOCATOR_DEFAULT_BLOOM_FILTER_BITS;
-		dsetupdata.bucket_count_bits = AUTO_ALLOCATOR_DEFAULT_BUCKET_COUNT_BITS;
-		dsetupdata.estimated_content_size = size;
+		memset(&dcfg, 0, sizeof(dcfg));
+		dcfg.parent_allocator = topa;
+		dcfg.bloom_filter_bits = AUTO_ALLOCATOR_DEFAULT_BLOOM_FILTER_BITS;
+		dcfg.bucket_count_bits = AUTO_ALLOCATOR_DEFAULT_BUCKET_COUNT_BITS;
+		dcfg.estimated_content_size = size;
 
-		da = fy_allocator_create("dedup", &dsetupdata);
+		da = fy_allocator_create("dedup", &dcfg);
 		if (!da)
 			goto err_out;
 		/* the top is sub now */
 		suba = topa;
 		topa = da;
 
-		fprintf(stderr, "%s: dedup\n", __func__);
 		break;
 
 	default:
@@ -201,7 +198,7 @@ static void fy_auto_cleanup(struct fy_allocator *a)
 	}
 }
 
-struct fy_allocator *fy_auto_create(const void *setupdata)
+struct fy_allocator *fy_auto_create(const void *cfg)
 {
 	struct fy_auto_allocator *aa = NULL;
 	int rc;
@@ -210,7 +207,7 @@ struct fy_allocator *fy_auto_create(const void *setupdata)
 	if (!aa)
 		goto err_out;
 
-	rc = fy_auto_setup(&aa->a, setupdata);
+	rc = fy_auto_setup(&aa->a, cfg);
 	if (rc)
 		goto err_out;
 

@@ -4323,8 +4323,8 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	fy_generic gbl, gi, gs, gf;
 	const fy_generic *gvp;
 	fy_generic seq, map, map2;
-	struct fy_dedup_setup_data dsetupdata;
-	struct fy_linear_setup_data lsetupdata;
+	struct fy_dedup_allocator_cfg dcfg;
+	struct fy_linear_allocator_cfg lcfg;
 	struct fy_allocator *a, *pa = NULL;
 	const void *gsetupdata = NULL;
 	char buf[4096];
@@ -4335,14 +4335,14 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		allocator = "linear";
 
 	/* setup the linear data always */
-	memset(&lsetupdata, 0, sizeof(lsetupdata));
-	lsetupdata.buf = buf;
-	lsetupdata.size = sizeof(buf);
+	memset(&lcfg, 0, sizeof(lcfg));
+	lcfg.buf = buf;
+	lcfg.size = sizeof(buf);
 
 	printf("using %s allocator\n", allocator);
 
 	if (!strcmp(allocator, "linear")) {
-		gsetupdata = &lsetupdata;
+		gsetupdata = &lcfg;
 	} else if (!strcmp(allocator, "malloc")) {
 		gsetupdata = NULL;
 	} else if (!strcmp(allocator, "mremap")) {
@@ -4350,15 +4350,15 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	} else if (!strcmp(allocator, "dedup")) {
 
 		/* create the parent allocator */
-		pa = fy_allocator_create("linear", &lsetupdata);
+		pa = fy_allocator_create("linear", &lcfg);
 		assert(pa);
 
-		memset(&dsetupdata, 0, sizeof(dsetupdata));
-		dsetupdata.parent_allocator = pa;
-		dsetupdata.bloom_filter_bits = 0;	/* use default */
-		dsetupdata.bucket_count_bits = 0;
+		memset(&dcfg, 0, sizeof(dcfg));
+		dcfg.parent_allocator = pa;
+		dcfg.bloom_filter_bits = 0;	/* use default */
+		dcfg.bucket_count_bits = 0;
 
-		gsetupdata = &dsetupdata;
+		gsetupdata = &dcfg;
 
 	} else {
 		fprintf(stderr, "unsupported allocator %s\n", allocator);
@@ -4368,7 +4368,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		/* fake a linear one */
 		rc = fy_allocator_register(allocator, &fy_linear_allocator_ops);
 		assert(!rc);
-		gsetupdata = &lsetupdata;
+		gsetupdata = &lcfg;
 		registered_allocator = true;
 #endif
 	}
@@ -4951,10 +4951,10 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator, bool null_out
 	struct fy_emitter emit_state, *emit = &emit_state;
 	struct fy_emitter_cfg emit_cfg;
 	uint8_t size_buf[FYGT_SIZE_ENCODING_MAX_64];
-	struct fy_mremap_setup_data mrsetupdata;
-	struct fy_dedup_setup_data dsetupdata;
-	struct fy_linear_setup_data lsetupdata;
-	struct fy_auto_setup_data asetupdata;
+	struct fy_mremap_allocator_cfg mrcfg;
+	struct fy_dedup_allocator_cfg dcfg;
+	struct fy_linear_allocator_cfg lcfg;
+	struct fy_auto_allocator_cfg acfg;
 	struct fy_allocator *a, *pa = NULL;
 	const void *gsetupdata = NULL;
 	bool registered_allocator = false;
@@ -4993,14 +4993,14 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator, bool null_out
 		allocator = "linear";
 
 	/* setup the linear data always */
-	memset(&lsetupdata, 0, sizeof(lsetupdata));
-	lsetupdata.buf = NULL;
-	lsetupdata.size = alloc_size;
+	memset(&lcfg, 0, sizeof(lcfg));
+	lcfg.buf = NULL;
+	lcfg.size = alloc_size;
 
 	printf("using %s allocator\n", allocator);
 
 	if (!strcmp(allocator, "linear")) {
-		gsetupdata = &lsetupdata;
+		gsetupdata = &lcfg;
 	} else if (!strcmp(allocator, "malloc")) {
 		gsetupdata = NULL;
 	} else if (!strcmp(allocator, "mremap")) {
@@ -5008,15 +5008,15 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator, bool null_out
 	} else if (!strcmp(allocator, "dedup") || !strcmp(allocator, "dedup-linear")) {
 
 		/* create the parent allocator */
-		pa = fy_allocator_create("linear", &lsetupdata);
+		pa = fy_allocator_create("linear", &lcfg);
 		assert(pa);
 
-		memset(&dsetupdata, 0, sizeof(dsetupdata));
-		dsetupdata.parent_allocator = pa;
-		dsetupdata.bloom_filter_bits = 0;	/* use default */
-		dsetupdata.bucket_count_bits = 0;
+		memset(&dcfg, 0, sizeof(dcfg));
+		dcfg.parent_allocator = pa;
+		dcfg.bloom_filter_bits = 0;	/* use default */
+		dcfg.bucket_count_bits = 0;
 
-		gsetupdata = &dsetupdata;
+		gsetupdata = &dcfg;
 
 		allocator = "dedup";
 
@@ -5026,50 +5026,50 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator, bool null_out
 		pa = fy_allocator_create("malloc", NULL);
 		assert(pa);
 
-		memset(&dsetupdata, 0, sizeof(dsetupdata));
-		dsetupdata.parent_allocator = pa;
-		dsetupdata.bloom_filter_bits = 0;	/* use default */
-		dsetupdata.bucket_count_bits = 0;
-		dsetupdata.estimated_content_size = estimated_size;
+		memset(&dcfg, 0, sizeof(dcfg));
+		dcfg.parent_allocator = pa;
+		dcfg.bloom_filter_bits = 0;	/* use default */
+		dcfg.bucket_count_bits = 0;
+		dcfg.estimated_content_size = estimated_size;
 
-		gsetupdata = &dsetupdata;
+		gsetupdata = &dcfg;
 
 		allocator = "dedup";
 	} else if (!strcmp(allocator, "dedup-mremap")) {
 
-		memset(&mrsetupdata, 0, sizeof(mrsetupdata));
-		mrsetupdata.big_alloc_threshold = SIZE_MAX;
-		mrsetupdata.empty_threshold = 64;
-		mrsetupdata.grow_ratio = 1.5;
-		mrsetupdata.balloon_ratio = 8.0;
-		mrsetupdata.arena_type = FYMRAT_MMAP;
+		memset(&mrcfg, 0, sizeof(mrcfg));
+		mrcfg.big_alloc_threshold = SIZE_MAX;
+		mrcfg.empty_threshold = 64;
+		mrcfg.grow_ratio = 1.5;
+		mrcfg.balloon_ratio = 8.0;
+		mrcfg.arena_type = FYMRAT_MMAP;
 
 		if (estimated_size && estimated_size != SSIZE_MAX)
-			mrsetupdata.minimum_arena_size = estimated_size;
+			mrcfg.minimum_arena_size = estimated_size;
 		else
-			mrsetupdata.minimum_arena_size = 16 << 20;
+			mrcfg.minimum_arena_size = 16 << 20;
 
 		/* create the parent allocator */
-		pa = fy_allocator_create("mremap", &mrsetupdata);
+		pa = fy_allocator_create("mremap", &mrcfg);
 		assert(pa);
 
-		memset(&dsetupdata, 0, sizeof(dsetupdata));
-		dsetupdata.parent_allocator = pa;
-		dsetupdata.bloom_filter_bits = 0;	/* use default */
-		dsetupdata.bucket_count_bits = 0;
-		dsetupdata.estimated_content_size = estimated_size;
+		memset(&dcfg, 0, sizeof(dcfg));
+		dcfg.parent_allocator = pa;
+		dcfg.bloom_filter_bits = 0;	/* use default */
+		dcfg.bucket_count_bits = 0;
+		dcfg.estimated_content_size = estimated_size;
 
-		gsetupdata = &dsetupdata;
+		gsetupdata = &dcfg;
 
 		allocator = "dedup";
 
 	} else if (!strcmp(allocator, "auto")) {
 
-		memset(&asetupdata, 0, sizeof(asetupdata));
-		asetupdata.scenario = FYAST_PER_TAG_FREE;
-		asetupdata.estimated_max_size = (size_t)estimated_size;
+		memset(&acfg, 0, sizeof(acfg));
+		acfg.scenario = FYAST_PER_TAG_FREE;
+		acfg.estimated_max_size = (size_t)estimated_size;
 
-		gsetupdata = &asetupdata;
+		gsetupdata = &acfg;
 
 		allocator = "auto";
 

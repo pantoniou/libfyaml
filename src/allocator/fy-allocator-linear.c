@@ -21,35 +21,36 @@
 #include "fy-utils.h"
 #include "fy-allocator-linear.h"
 
-static int fy_linear_setup(struct fy_allocator *a, const void *data)
+static int fy_linear_setup(struct fy_allocator *a, const void *cfg_data)
 {
 	struct fy_linear_allocator *la;
-	const struct fy_linear_setup_data *d;
+	const struct fy_linear_allocator_cfg *cfg;
 	void *buf, *alloc = NULL;
 
-	if (!a || !data)
+	if (!a || !cfg_data)
 		return -1;
 
-	d = data;
-	if (!d->size)
+	cfg = cfg_data;
+	if (!cfg->size)
 		return -1;
 
-	if (!d->buf) {
-		alloc = malloc(d->size);
+	if (!cfg->buf) {
+		alloc = malloc(cfg->size);
 		if (!alloc)
 			goto err_out;
 		buf = alloc;
 	} else
-		buf = d->buf;
+		buf = cfg->buf;
 
 	la = container_of(a, struct fy_linear_allocator, a);
 	memset(la, 0, sizeof(*la));
 	la->a.name = "linear";
 	la->a.ops = &fy_linear_allocator_ops;
+	la->cfg = *cfg;
 	la->alloc = alloc;
 	la->start = buf;
 	la->next = buf;
-	la->end = buf + d->size;
+	la->end = buf + cfg->size;
 
 	return 0;
 err_out:
@@ -72,31 +73,31 @@ static void fy_linear_cleanup(struct fy_allocator *a)
 	}
 }
 
-struct fy_allocator *fy_linear_create(const void *setupdata)
+struct fy_allocator *fy_linear_create(const void *cfg_data)
 {
 	struct fy_linear_allocator *la;
-	const struct fy_linear_setup_data *d;
-	struct fy_linear_setup_data newsd;
+	const struct fy_linear_allocator_cfg *cfg;
+	struct fy_linear_allocator_cfg newcfg;
 	void *s, *e, *buf, *alloc = NULL;
 	int rc;
 
-	if (!setupdata)
+	if (!cfg_data)
 		return NULL;
 
-	d = setupdata;
-	if (!d->size)
+	cfg = cfg_data;
+	if (!cfg->size)
 		return NULL;
 
-	if (!d->buf) {
-		alloc = malloc(d->size);
+	if (!cfg->buf) {
+		alloc = malloc(cfg->size);
 		if (!alloc)
 			goto err_out;
 		buf = alloc;
 	} else
-		buf = d->buf;
+		buf = cfg->buf;
 
 	s = buf;
-	e = s + d->size;
+	e = s + cfg->size;
 
 	s = fy_ptr_align(s, alignof(struct fy_linear_allocator));
 	if ((size_t)(e - s) < sizeof(*la))
@@ -105,11 +106,11 @@ struct fy_allocator *fy_linear_create(const void *setupdata)
 	la = s;
 	s += sizeof(*la);
 
-	memset(&newsd, 0, sizeof(newsd));
-	newsd.buf = s;
-	newsd.size = (size_t)(e - s);
+	memset(&newcfg, 0, sizeof(newcfg));
+	newcfg.buf = s;
+	newcfg.size = (size_t)(e - s);
 
-	rc = fy_linear_setup(&la->a, &newsd);
+	rc = fy_linear_setup(&la->a, &newcfg);
 	if (rc)
 		goto err_out;
 

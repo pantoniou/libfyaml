@@ -35,6 +35,30 @@
 #define USE_MREMAP 0
 #endif
 
+#ifndef MREMAP_ALLOCATOR_DEFAULT_BIG_ALLOC_THRESHOLD
+#define MREMAP_ALLOCATOR_DEFAULT_BIG_ALLOC_THRESHOLD	SIZE_MAX
+#endif
+
+#ifndef MREMAP_ALLOCATOR_DEFAULT_EMPTY_THRESHOLD
+#define MREMAP_ALLOCATOR_DEFAULT_EMPTY_THRESHOLD	64
+#endif
+
+#ifndef MREMAP_ALLOCATOR_DEFAULT_MINIMUM_ARENA_SIZE
+#define MREMAP_ALLOCATOR_DEFAULT_MINIMUM_ARENA_SIZE	(1U << 20)	/* 1M */
+#endif
+
+#ifndef MREMAP_ALLOCATOR_DEFAULT_GROW_RATIO
+#define MREMAP_ALLOCATOR_DEFAULT_GROW_RATIO		2.0
+#endif
+
+#ifndef MREMAP_ALLOCATOR_DEFAULT_BALLON_RATIO
+#define MREMAP_ALLOCATOR_DEFAULT_BALLON_RATIO		32.0
+#endif
+
+#ifndef MREMAP_ALLOCATOR_DEFAULT_ARENA_TYPE
+#define MREMAP_ALLOCATOR_DEFAULT_ARENA_TYPE		FYMRAT_MMAP
+#endif
+
 static struct fy_mremap_arena *
 fy_mremap_arena_create(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt, size_t size)
 {
@@ -226,10 +250,12 @@ fy_mremap_tag_from_tag(struct fy_mremap_allocator *mra, int tag)
 static void fy_mremap_tag_cleanup(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt)
 {
 	struct fy_mremap_arena *mran;
-	size_t total_sys_alloc, total_wasted;
 	struct fy_mremap_arena_list *mranl, *arena_lists[2];
 	unsigned int j;
 	int id;
+#ifdef DEBUG_ARENA
+	size_t total_sys_alloc, total_wasted;
+#endif
 
 	if (!mra || !mrt)
 		return;
@@ -244,6 +270,7 @@ static void fy_mremap_tag_cleanup(struct fy_mremap_allocator *mra, struct fy_mre
 
 	fy_id_free(mra->ids, ARRAY_SIZE(mra->ids), id);
 
+#ifdef DEBUG_ARENA
 	total_sys_alloc = 0;
 	total_wasted = 0;
 	arena_lists[0] = &mrt->arenas;
@@ -255,10 +282,8 @@ static void fy_mremap_tag_cleanup(struct fy_mremap_allocator *mra, struct fy_mre
 			total_wasted += (mran->size - mran->next);
 		}
 	}
-	/* keep the variables without warning */
-	(void)total_sys_alloc;
-	(void)total_wasted;
-	// fprintf(stderr, "total_sys_alloc=%zu total_wasted=%zu\n", total_sys_alloc, total_wasted);
+	fprintf(stderr, "total_sys_alloc=%zu total_wasted=%zu\n", total_sys_alloc, total_wasted);
+#endif
 
 #ifdef DEBUG_ARENA
 	fprintf(stderr, "%s: destroying active arenas\n", __func__);
@@ -277,8 +302,10 @@ static void fy_mremap_tag_trim(struct fy_mremap_allocator *mra, struct fy_mremap
 {
 	struct fy_mremap_arena *mran;
 	struct fy_mremap_arena_list *mranl, *arena_lists[2];
-	size_t wasted_before, wasted_after;
 	unsigned int j;
+#ifdef DEBUG_ARENA
+	size_t wasted_before, wasted_after;
+#endif
 
 	if (!mra || !mrt)
 		return;
@@ -289,6 +316,7 @@ static void fy_mremap_tag_trim(struct fy_mremap_allocator *mra, struct fy_mremap
 	arena_lists[0] = &mrt->arenas;
 	arena_lists[1] = &mrt->full_arenas;
 
+#ifdef DEBUG_ARENA
 	wasted_before = 0;
 	wasted_after = 0;
 	for (j = 0; j < ARRAY_SIZE(arena_lists); j++) {
@@ -299,10 +327,8 @@ static void fy_mremap_tag_trim(struct fy_mremap_allocator *mra, struct fy_mremap
 			wasted_after += (mran->size - mran->next);
 		}
 	}
-	/* keep the variables without warning */
-	(void)wasted_before;
-	(void)wasted_after;
-	// fprintf(stderr, "wasted_before=%zu wasted_after=%zu\n", wasted_before, wasted_after);
+	fprintf(stderr, "wasted_before=%zu wasted_after=%zu\n", wasted_before, wasted_after);
+#endif
 }
 
 static void fy_mremap_tag_reset(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt)
@@ -433,7 +459,9 @@ do_alloc:
 
 		/* still under the threshold, move it to full */
 		if (left < mra->empty_threshold) {
-			// fprintf(stderr, "move %p mran->size=%zu left=%zu to free\n", mran, mran->size, left);
+#ifdef DEBUG_ARENA
+			fprintf(stderr, "move %p mran->size=%zu left=%zu to free\n", mran, mran->size, left);
+#endif
 			fy_mremap_arena_list_del(&mrt->arenas, mran);
 			fy_mremap_arena_list_add_tail(&mrt->full_arenas, mran);
 
@@ -444,57 +472,47 @@ do_alloc:
 
 	}
 
-	// fprintf(stderr, "this %zu next %zu size %zu\n", (size_t)(s - (void *)mran), mran->next, size);
-	//
 	return ptr;
 
 err_out:
 	return NULL;
 }
 
-static const struct fy_mremap_setup_data default_setup_data = {
-	.big_alloc_threshold = SIZE_MAX,
-	.empty_threshold = 64,
-	.minimum_arena_size = 1U << 20,
-	.grow_ratio = 2.0,
-	.balloon_ratio = 32.0,
-	.arena_type = FYMRAT_MMAP,
+static const struct fy_mremap_allocator_cfg default_cfg = {
+	.big_alloc_threshold = MREMAP_ALLOCATOR_DEFAULT_BIG_ALLOC_THRESHOLD,
+	.empty_threshold = MREMAP_ALLOCATOR_DEFAULT_EMPTY_THRESHOLD,
+	.minimum_arena_size = MREMAP_ALLOCATOR_DEFAULT_MINIMUM_ARENA_SIZE,
+	.grow_ratio = MREMAP_ALLOCATOR_DEFAULT_GROW_RATIO,
+	.balloon_ratio = MREMAP_ALLOCATOR_DEFAULT_BALLON_RATIO,
+	.arena_type = MREMAP_ALLOCATOR_DEFAULT_ARENA_TYPE,
 };
 
-static int fy_mremap_setup(struct fy_allocator *a, const void *data)
+static int fy_mremap_setup(struct fy_allocator *a, const void *cfg_data)
 {
-	const struct fy_mremap_setup_data *d;
+	const struct fy_mremap_allocator_cfg *cfg;
 	struct fy_mremap_allocator *mra;
 
 	if (!a)
 		return -1;
 
-	d = data ? data : &default_setup_data;
+	cfg = cfg_data ? cfg_data : &default_cfg;
 
 	mra = container_of(a, struct fy_mremap_allocator, a);
 	memset(mra, 0, sizeof(*mra));
 	mra->a.name = "mremap";
 	mra->a.ops = &fy_mremap_allocator_ops;
+	mra->cfg = *cfg;
+
 	mra->pagesz = sysconf(_SC_PAGESIZE);
 	/* pagesz is size of 2 find the first set bit */
 	mra->pageshift = fy_id_ffs((fy_id_bits)mra->pagesz);
 
-#if 0
-	/* config */
-	mra->big_alloc_threshold = SIZE_MAX;		/* no big alloc (by default) */
-	mra->empty_threshold = 64;			/* below that free assume it's empty */
-	mra->minimum_arena_size = 1U << 20;		/* minimum arena size is 1MB */
-	mra->grow_ratio = 2.0;
-	mra->balloon_ratio = 32.0;			/* ballon ratio is 32 (so 1MB -> 32MB vm size) */
-	mra->arena_type = FYMRAT_MMAP;
-#else
-	mra->big_alloc_threshold = d->big_alloc_threshold;
-	mra->empty_threshold = d->empty_threshold;
-	mra->minimum_arena_size = d->minimum_arena_size;
-	mra->grow_ratio = d->grow_ratio;
-	mra->balloon_ratio = d->balloon_ratio;
-	mra->arena_type = d->arena_type;
-#endif
+	mra->big_alloc_threshold = cfg->big_alloc_threshold;
+	mra->empty_threshold = cfg->empty_threshold;
+	mra->minimum_arena_size = cfg->minimum_arena_size;
+	mra->grow_ratio = cfg->grow_ratio;
+	mra->balloon_ratio = cfg->balloon_ratio;
+	mra->arena_type = cfg->arena_type;
 
 	fy_id_reset(mra->ids, ARRAY_SIZE(mra->ids));
 	return 0;
@@ -515,7 +533,7 @@ static void fy_mremap_cleanup(struct fy_allocator *a)
 		fy_mremap_tag_cleanup(mra, mrt);
 }
 
-struct fy_allocator *fy_mremap_create(const void *setupdata)
+struct fy_allocator *fy_mremap_create(const void *cfg)
 {
 	struct fy_mremap_allocator *mra = NULL;
 	int rc;
@@ -524,7 +542,7 @@ struct fy_allocator *fy_mremap_create(const void *setupdata)
 	if (!mra)
 		goto err_out;
 
-	rc = fy_mremap_setup(&mra->a, setupdata);
+	rc = fy_mremap_setup(&mra->a, cfg);
 	if (rc)
 		goto err_out;
 

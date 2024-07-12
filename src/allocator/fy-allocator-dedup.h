@@ -59,6 +59,7 @@ struct fy_dedup_tag {
 
 struct fy_dedup_allocator {
 	struct fy_allocator a;
+	struct fy_dedup_allocator_cfg cfg;
 	struct fy_allocator *entries_allocator;
 	struct fy_allocator *parent_allocator;
 	unsigned long long xxseed;

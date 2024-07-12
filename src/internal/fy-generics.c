@@ -666,57 +666,57 @@ struct fy_allocator *create_allocator(const struct generic_options *opt, const c
 		*parent_allocator = NULL;
 
 	if (!strcmp(name, "linear")) {
-		struct fy_linear_setup_data linear_sd;
+		struct fy_linear_allocator_cfg linear_cfg;
 
-		memset(&linear_sd, 0, sizeof(linear_sd));
-		linear_sd.size = alloc_size;
-		return fy_allocator_create("linear", &linear_sd);
+		memset(&linear_cfg, 0, sizeof(linear_cfg));
+		linear_cfg.size = alloc_size;
+		return fy_allocator_create("linear", &linear_cfg);
 	}
 
 	if (!strcmp(name, "malloc"))
 		return fy_allocator_create("malloc", NULL);
 
 	if (!strcmp(name, "auto")) {
-		struct fy_auto_setup_data auto_sd;
+		struct fy_auto_allocator_cfg auto_cfg;
 
-		memset(&auto_sd, 0, sizeof(auto_sd));
-		auto_sd.scenario = FYAST_PER_TAG_FREE_DEDUP;
-		auto_sd.estimated_max_size = alloc_size ? alloc_size : (16 << 20);
-		return fy_allocator_create("auto", &auto_sd);
+		memset(&auto_cfg, 0, sizeof(auto_cfg));
+		auto_cfg.scenario = FYAST_PER_TAG_FREE_DEDUP;
+		auto_cfg.estimated_max_size = alloc_size ? alloc_size : (16 << 20);
+		return fy_allocator_create("auto", &auto_cfg);
 	}
 
 	if (!strcmp(name, "mremap")) {
-		struct fy_mremap_setup_data mremap_sd;
+		struct fy_mremap_allocator_cfg mremap_cfg;
 
-		memset(&mremap_sd, 0, sizeof(mremap_sd));
-		mremap_sd.big_alloc_threshold = SIZE_MAX;
-		mremap_sd.empty_threshold = 64;
-		mremap_sd.grow_ratio = 1.5;
-		mremap_sd.balloon_ratio = 8.0;
-		mremap_sd.arena_type = FYMRAT_MMAP;
-		mremap_sd.minimum_arena_size = alloc_size ? alloc_size : (16 << 20);
-		return fy_allocator_create("mremap", &mremap_sd);
+		memset(&mremap_cfg, 0, sizeof(mremap_cfg));
+		mremap_cfg.big_alloc_threshold = SIZE_MAX;
+		mremap_cfg.empty_threshold = 64;
+		mremap_cfg.grow_ratio = 1.5;
+		mremap_cfg.balloon_ratio = 8.0;
+		mremap_cfg.arena_type = FYMRAT_MMAP;
+		mremap_cfg.minimum_arena_size = alloc_size ? alloc_size : (16 << 20);
+		return fy_allocator_create("mremap", &mremap_cfg);
 	}
 
 	if (!strcmp(name, "dedup")) {
-		struct fy_dedup_setup_data dedup_sd;
+		struct fy_dedup_allocator_cfg dedup_cfg;
 
 		if (!parent_allocator)
 			return NULL;
 
-		memset(&dedup_sd, 0, sizeof(dedup_sd));
-		dedup_sd.bloom_filter_bits = 0;	/* use default */
-		dedup_sd.bucket_count_bits = 0;
-		dedup_sd.estimated_content_size = alloc_size ? alloc_size : (16 << 20);
-		dedup_sd.parent_allocator = create_allocator(opt, parent_name, NULL, alloc_size, NULL);
-		if (dedup_sd.parent_allocator) {
-			dedup_sd.estimated_content_size = alloc_size ? alloc_size : (16 << 20);
-			allocator = fy_allocator_create("dedup", &dedup_sd);
+		memset(&dedup_cfg, 0, sizeof(dedup_cfg));
+		dedup_cfg.bloom_filter_bits = 0;	/* use default */
+		dedup_cfg.bucket_count_bits = 0;
+		dedup_cfg.estimated_content_size = alloc_size ? alloc_size : (16 << 20);
+		dedup_cfg.parent_allocator = create_allocator(opt, parent_name, NULL, alloc_size, NULL);
+		if (dedup_cfg.parent_allocator) {
+			dedup_cfg.estimated_content_size = alloc_size ? alloc_size : (16 << 20);
+			allocator = fy_allocator_create("dedup", &dedup_cfg);
 			if (allocator) {
-				*parent_allocator = dedup_sd.parent_allocator;
+				*parent_allocator = dedup_cfg.parent_allocator;
 				return allocator;
 			}
-			fy_allocator_destroy(dedup_sd.parent_allocator);
+			fy_allocator_destroy(dedup_cfg.parent_allocator);
 		}
 		return NULL;
 	}
