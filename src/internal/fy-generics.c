@@ -581,7 +581,7 @@ void fy_generic_builder_linearize_release(struct fy_generic_builder *gb, fy_gene
 	/* nothing */
 }
 
-static void dump_allocator_info(struct fy_allocator *a, fy_alloc_tag tag)
+static void dump_allocator_info(struct fy_allocator *a, int tag)
 {
 	struct fy_allocator_info *info;
 	struct fy_allocator_tag_info *tag_info;

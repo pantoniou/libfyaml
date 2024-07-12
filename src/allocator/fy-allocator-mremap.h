@@ -21,11 +21,6 @@ struct fy_mremap_tag;
 
 #define FY_MREMAP_TAG_MAX	32
 
-enum fy_mremap_arena_type {
-	FYMRAT_MALLOC,
-	FYMRAT_MMAP,
-};
-
 static inline bool fy_mremap_arena_type_is_growable(enum fy_mremap_arena_type type)
 {
 	return type == FYMRAT_MMAP;
@@ -35,15 +30,6 @@ static inline bool fy_mremap_arena_type_is_trimmable(enum fy_mremap_arena_type t
 {
 	return type == FYMRAT_MMAP;
 }
-
-struct fy_mremap_setup_data {
-	size_t big_alloc_threshold;	/* bigger than that and a new allocation */
-	size_t empty_threshold;		/* less than that and get moved to full */
-	size_t minimum_arena_size;	/* the minimum arena size */
-	float grow_ratio;
-	float balloon_ratio;
-	enum fy_mremap_arena_type arena_type;
-};
 
 FY_TYPE_FWD_DECL_LIST(mremap_arena);
 struct fy_mremap_arena {

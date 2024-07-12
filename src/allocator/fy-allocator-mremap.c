@@ -209,7 +209,7 @@ static int fy_mremap_arena_trim(struct fy_mremap_allocator *mra, struct fy_mrema
 }
 
 static inline struct fy_mremap_tag *
-fy_mremap_tag_from_tag(struct fy_mremap_allocator *mra, fy_alloc_tag tag)
+fy_mremap_tag_from_tag(struct fy_mremap_allocator *mra, int tag)
 {
 	if (!mra)
 		return NULL;
@@ -595,7 +595,7 @@ void fy_mremap_dump(struct fy_allocator *a)
 	}
 }
 
-static void *fy_mremap_alloc(struct fy_allocator *a, fy_alloc_tag tag, size_t size, size_t align)
+static void *fy_mremap_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
 {
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
@@ -623,12 +623,12 @@ err_out:
 	return NULL;
 }
 
-static void fy_mremap_free(struct fy_allocator *a, fy_alloc_tag tag, void *data)
+static void fy_mremap_free(struct fy_allocator *a, int tag, void *data)
 {
 	/* no frees */
 }
 
-static int fy_mremap_update_stats(struct fy_allocator *a, fy_alloc_tag tag, struct fy_allocator_stats *stats)
+static int fy_mremap_update_stats(struct fy_allocator *a, int tag, struct fy_allocator_stats *stats)
 {
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
@@ -655,7 +655,7 @@ err_out:
 	return -1;
 }
 
-static const void *fy_mremap_storev(struct fy_allocator *a, fy_alloc_tag tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
+static const void *fy_mremap_storev(struct fy_allocator *a, int tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
 {
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
@@ -694,7 +694,7 @@ err_out:
 	return NULL;
 }
 
-static const void *fy_mremap_store(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size, size_t align)
+static const void *fy_mremap_store(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
 {
 	struct iovec iov[1];
 
@@ -707,12 +707,12 @@ static const void *fy_mremap_store(struct fy_allocator *a, fy_alloc_tag tag, con
 	return fy_mremap_storev(a, tag, iov, 1, align);
 }
 
-static void fy_mremap_release(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size)
+static void fy_mremap_release(struct fy_allocator *a, int tag, const void *data, size_t size)
 {
 	/* no releases */
 }
 
-static void fy_mremap_release_tag(struct fy_allocator *a, fy_alloc_tag tag)
+static void fy_mremap_release_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
@@ -729,7 +729,7 @@ static void fy_mremap_release_tag(struct fy_allocator *a, fy_alloc_tag tag)
 	fy_mremap_tag_cleanup(mra, mrt);
 }
 
-static fy_alloc_tag fy_mremap_get_tag(struct fy_allocator *a, const void *tag_config)
+static int fy_mremap_get_tag(struct fy_allocator *a, const void *tag_config)
 {
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
@@ -749,13 +749,13 @@ static fy_alloc_tag fy_mremap_get_tag(struct fy_allocator *a, const void *tag_co
 
 	fy_mremap_tag_setup(mra, mrt);
 
-	return (fy_alloc_tag)id;
+	return (int)id;
 
 err_out:
 	return FY_ALLOC_TAG_ERROR;
 }
 
-static void fy_mremap_trim_tag(struct fy_allocator *a, fy_alloc_tag tag)
+static void fy_mremap_trim_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
@@ -772,7 +772,7 @@ static void fy_mremap_trim_tag(struct fy_allocator *a, fy_alloc_tag tag)
 	fy_mremap_tag_trim(mra, mrt);
 }
 
-static void fy_mremap_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
+static void fy_mremap_reset_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
@@ -790,7 +790,7 @@ static void fy_mremap_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
 }
 
 static struct fy_allocator_info *
-fy_mremap_get_info(struct fy_allocator *a, fy_alloc_tag tag)
+fy_mremap_get_info(struct fy_allocator *a, int tag)
 {
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;

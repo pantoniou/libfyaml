@@ -18,15 +18,6 @@
 
 #include "fy-allocator.h"
 
-struct fy_dedup_setup_data {
-	struct fy_allocator *parent_allocator;
-	unsigned int bloom_filter_bits;
-	unsigned int bucket_count_bits;
-	size_t dedup_threshold;
-	unsigned int chain_length_grow_trigger;
-	size_t estimated_content_size;
-};
-
 #define FY_DEDUP_TAG_MAX	128
 
 FY_TYPE_FWD_DECL_LIST(dedup_entry);
@@ -59,8 +50,8 @@ struct fy_dedup_tag_data {
 
 struct fy_dedup_tag {
 	bool bloom_filter_needs_update;
-	fy_alloc_tag entries_tag;
-	fy_alloc_tag content_tag;
+	int entries_tag;
+	int content_tag;
 	struct fy_allocator_stats stats;
 	unsigned int data_active;	/* toggle to switch active and in progress */
 	struct fy_dedup_tag_data data[2];

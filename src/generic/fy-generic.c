@@ -23,9 +23,9 @@
 #include "fy-allocator.h"
 #include "fy-generic.h"
 
-struct fy_generic_builder *fy_generic_builder_create(struct fy_allocator *a, fy_alloc_tag shared_tag)
+struct fy_generic_builder *fy_generic_builder_create(struct fy_allocator *a, int shared_tag)
 {
-	fy_alloc_tag alloc_tag = FY_ALLOC_TAG_NONE;
+	int alloc_tag = FY_ALLOC_TAG_NONE;
 	struct fy_generic_builder *gb = NULL;
 
 	if (!a)

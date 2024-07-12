@@ -35,17 +35,17 @@ struct fy_allocator_ops {
 	struct fy_allocator *(*create)(const void *setupdata);
 	void (*destroy)(struct fy_allocator *a);
 	void (*dump)(struct fy_allocator *a);
-	void *(*alloc)(struct fy_allocator *a, fy_alloc_tag tag, size_t size, size_t align);
-	void (*free)(struct fy_allocator *a, fy_alloc_tag tag, void *data);
-	int (*update_stats)(struct fy_allocator *a, fy_alloc_tag tag, struct fy_allocator_stats *stats);
-	const void *(*store)(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size, size_t align);
-	const void *(*storev)(struct fy_allocator *a, fy_alloc_tag tag, const struct iovec *iov, unsigned int iovcnt, size_t align);
-	void (*release)(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size);
-	fy_alloc_tag (*get_tag)(struct fy_allocator *a, const void *tag_config);
-	void (*release_tag)(struct fy_allocator *a, fy_alloc_tag tag);
-	void (*trim_tag)(struct fy_allocator *a, fy_alloc_tag tag);
-	void (*reset_tag)(struct fy_allocator *a, fy_alloc_tag tag);
-	struct fy_allocator_info *(*get_info)(struct fy_allocator *a, fy_alloc_tag tag);
+	void *(*alloc)(struct fy_allocator *a, int tag, size_t size, size_t align);
+	void (*free)(struct fy_allocator *a, int tag, void *data);
+	int (*update_stats)(struct fy_allocator *a, int tag, struct fy_allocator_stats *stats);
+	const void *(*store)(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align);
+	const void *(*storev)(struct fy_allocator *a, int tag, const struct iovec *iov, unsigned int iovcnt, size_t align);
+	void (*release)(struct fy_allocator *a, int tag, const void *data, size_t size);
+	int (*get_tag)(struct fy_allocator *a, const void *tag_config);
+	void (*release_tag)(struct fy_allocator *a, int tag);
+	void (*trim_tag)(struct fy_allocator *a, int tag);
+	void (*reset_tag)(struct fy_allocator *a, int tag);
+	struct fy_allocator_info *(*get_info)(struct fy_allocator *a, int tag);
 };
 
 struct fy_allocator_stats {
@@ -75,7 +75,7 @@ struct fy_allocator_arena_info {
 };
 
 struct fy_allocator_tag_info {
-	fy_alloc_tag tag;
+	int tag;
 	size_t free, used, total;
 	unsigned int num_arena_infos;
 	struct fy_allocator_arena_info *arena_infos;
@@ -93,8 +93,8 @@ struct fy_allocator {
 };
 
 /* these private still */
-int fy_allocator_update_stats(struct fy_allocator *a, fy_alloc_tag tag, struct fy_allocator_stats *stats);
-struct fy_allocator_info *fy_allocator_get_info(struct fy_allocator *a, fy_alloc_tag tag);
+int fy_allocator_update_stats(struct fy_allocator *a, int tag, struct fy_allocator_stats *stats);
+struct fy_allocator_info *fy_allocator_get_info(struct fy_allocator *a, int tag);
 
 FY_TYPE_FWD_DECL_LIST(registered_allocator_entry);
 struct fy_registered_allocator_entry {

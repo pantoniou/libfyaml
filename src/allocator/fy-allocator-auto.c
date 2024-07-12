@@ -249,7 +249,7 @@ void fy_auto_dump(struct fy_allocator *a)
 	fy_allocator_dump(aa->parent_allocator);
 }
 
-static void *fy_auto_alloc(struct fy_allocator *a, fy_alloc_tag tag, size_t size, size_t align)
+static void *fy_auto_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
 {
 	struct fy_auto_allocator *aa;
 
@@ -261,7 +261,7 @@ static void *fy_auto_alloc(struct fy_allocator *a, fy_alloc_tag tag, size_t size
 	return fy_allocator_alloc(aa->parent_allocator, tag, size, align);
 }
 
-static void fy_auto_free(struct fy_allocator *a, fy_alloc_tag tag, void *data)
+static void fy_auto_free(struct fy_allocator *a, int tag, void *data)
 {
 	struct fy_auto_allocator *aa;
 
@@ -273,7 +273,7 @@ static void fy_auto_free(struct fy_allocator *a, fy_alloc_tag tag, void *data)
 	fy_allocator_free(aa->parent_allocator, tag, data);
 }
 
-static int fy_auto_update_stats(struct fy_allocator *a, fy_alloc_tag tag, struct fy_allocator_stats *stats)
+static int fy_auto_update_stats(struct fy_allocator *a, int tag, struct fy_allocator_stats *stats)
 {
 	struct fy_auto_allocator *aa;
 
@@ -285,7 +285,7 @@ static int fy_auto_update_stats(struct fy_allocator *a, fy_alloc_tag tag, struct
 	return fy_allocator_update_stats(aa->parent_allocator, tag, stats);
 }
 
-static const void *fy_auto_store(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size, size_t align)
+static const void *fy_auto_store(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
 {
 	struct fy_auto_allocator *aa;
 
@@ -297,7 +297,7 @@ static const void *fy_auto_store(struct fy_allocator *a, fy_alloc_tag tag, const
 	return fy_allocator_store(aa->parent_allocator, tag, data, size, align);
 }
 
-static const void *fy_auto_storev(struct fy_allocator *a, fy_alloc_tag tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
+static const void *fy_auto_storev(struct fy_allocator *a, int tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
 {
 	struct fy_auto_allocator *aa;
 
@@ -309,7 +309,7 @@ static const void *fy_auto_storev(struct fy_allocator *a, fy_alloc_tag tag, cons
 	return fy_allocator_storev(aa->parent_allocator, tag, iov, iovcnt, align);
 }
 
-static void fy_auto_release(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size)
+static void fy_auto_release(struct fy_allocator *a, int tag, const void *data, size_t size)
 {
 	struct fy_auto_allocator *aa;
 
@@ -321,7 +321,7 @@ static void fy_auto_release(struct fy_allocator *a, fy_alloc_tag tag, const void
 	fy_allocator_release(aa->parent_allocator, tag, data, size);
 }
 
-static fy_alloc_tag fy_auto_get_tag(struct fy_allocator *a, const void *tag_config)
+static int fy_auto_get_tag(struct fy_allocator *a, const void *tag_config)
 {
 	struct fy_auto_allocator *aa;
 
@@ -335,7 +335,7 @@ static fy_alloc_tag fy_auto_get_tag(struct fy_allocator *a, const void *tag_conf
 	return fy_allocator_get_tag(aa->parent_allocator, NULL);
 }
 
-static void fy_auto_release_tag(struct fy_allocator *a, fy_alloc_tag tag)
+static void fy_auto_release_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_auto_allocator *aa;
 
@@ -347,7 +347,7 @@ static void fy_auto_release_tag(struct fy_allocator *a, fy_alloc_tag tag)
 	fy_allocator_release_tag(aa->parent_allocator, tag);
 }
 
-static void fy_auto_trim_tag(struct fy_allocator *a, fy_alloc_tag tag)
+static void fy_auto_trim_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_auto_allocator *aa;
 
@@ -359,7 +359,7 @@ static void fy_auto_trim_tag(struct fy_allocator *a, fy_alloc_tag tag)
 	fy_allocator_trim_tag(aa->parent_allocator, tag);
 }
 
-static void fy_auto_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
+static void fy_auto_reset_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_auto_allocator *aa;
 
@@ -372,7 +372,7 @@ static void fy_auto_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
 }
 
 static struct fy_allocator_info *
-fy_auto_get_info(struct fy_allocator *a, fy_alloc_tag tag)
+fy_auto_get_info(struct fy_allocator *a, int tag)
 {
 	struct fy_auto_allocator *aa;
 

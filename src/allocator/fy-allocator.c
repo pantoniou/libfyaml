@@ -422,7 +422,7 @@ char *fy_allocator_get_names(void)
 	return names;
 }
 
-ssize_t fy_allocator_get_tag_linear_size(struct fy_allocator *a, fy_alloc_tag tag)
+ssize_t fy_allocator_get_tag_linear_size(struct fy_allocator *a, int tag)
 {
 	struct fy_allocator_info *info;
 	struct fy_allocator_tag_info *tag_info;
@@ -458,7 +458,7 @@ ssize_t fy_allocator_get_tag_linear_size(struct fy_allocator *a, fy_alloc_tag ta
 	return (ssize_t)size;
 }
 
-const void *fy_allocator_get_tag_single_linear(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep)
+const void *fy_allocator_get_tag_single_linear(struct fy_allocator *a, int tag, size_t *sizep)
 {
 	struct fy_allocator_info *info;
 	struct fy_allocator_arena_info *arena_info;
@@ -500,70 +500,70 @@ void fy_allocator_dump(struct fy_allocator *a)
 	a->ops->dump(a);
 }
 
-int fy_allocator_update_stats(struct fy_allocator *a, fy_alloc_tag tag, struct fy_allocator_stats *stats)
+int fy_allocator_update_stats(struct fy_allocator *a, int tag, struct fy_allocator_stats *stats)
 {
 	if (!a)
 		return -1;
 	return a->ops->update_stats(a, tag, stats);
 }
 
-void *fy_allocator_alloc(struct fy_allocator *a, fy_alloc_tag tag, size_t size, size_t align)
+void *fy_allocator_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
 {
 	if (!a)
 		return NULL;
 	return a->ops->alloc(a, tag, size, align);
 }
 
-void fy_allocator_free(struct fy_allocator *a, fy_alloc_tag tag, void *ptr)
+void fy_allocator_free(struct fy_allocator *a, int tag, void *ptr)
 {
 	if (!a || !ptr)
 		return;
 	a->ops->free(a, tag, ptr);
 }
 
-const void *fy_allocator_store(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size, size_t align)
+const void *fy_allocator_store(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
 {
 	if (!a)
 		return NULL;
 	return a->ops->store(a, tag, data, size, align);
 }
 
-const void *fy_allocator_storev(struct fy_allocator *a, fy_alloc_tag tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
+const void *fy_allocator_storev(struct fy_allocator *a, int tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
 {
 	if (!a)
 		return NULL;
 	return a->ops->storev(a, tag, iov, iovcnt, align);
 }
 
-void fy_allocator_release(struct fy_allocator *a, fy_alloc_tag tag, const void *ptr, size_t size)
+void fy_allocator_release(struct fy_allocator *a, int tag, const void *ptr, size_t size)
 {
 	if (!a || !ptr)
 		return;
 	a->ops->release(a, tag, ptr, size);
 }
 
-fy_alloc_tag fy_allocator_get_tag(struct fy_allocator *a, const void *tag_config)
+int fy_allocator_get_tag(struct fy_allocator *a, const void *tag_config)
 {
 	if (!a)
 		return 0;
 	return a->ops->get_tag(a, tag_config);
 }
 
-void fy_allocator_release_tag(struct fy_allocator *a, fy_alloc_tag tag)
+void fy_allocator_release_tag(struct fy_allocator *a, int tag)
 {
 	if (!a)
 		return;
 	a->ops->release_tag(a, tag);
 }
 
-void fy_allocator_trim_tag(struct fy_allocator *a, fy_alloc_tag tag)
+void fy_allocator_trim_tag(struct fy_allocator *a, int tag)
 {
 	if (!a)
 		return;
 	a->ops->trim_tag(a, tag);
 }
 
-void fy_allocator_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
+void fy_allocator_reset_tag(struct fy_allocator *a, int tag)
 {
 	if (!a)
 		return;
@@ -571,7 +571,7 @@ void fy_allocator_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
 }
 
 struct fy_allocator_info *
-fy_allocator_get_info(struct fy_allocator *a, fy_alloc_tag tag)
+fy_allocator_get_info(struct fy_allocator *a, int tag)
 {
 	if (!a)
 		return NULL;

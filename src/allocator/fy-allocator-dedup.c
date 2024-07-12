@@ -68,7 +68,7 @@ static const unsigned int bit_to_chain_length_map[] = {
 };
 
 static inline struct fy_dedup_tag *
-fy_dedup_tag_from_tag(struct fy_dedup_allocator *da, fy_alloc_tag tag)
+fy_dedup_tag_from_tag(struct fy_dedup_allocator *da, int tag)
 {
 	if (!da)
 		return NULL;
@@ -566,7 +566,7 @@ void fy_dedup_dump(struct fy_allocator *a)
 	fy_allocator_dump(da->entries_allocator);
 }
 
-static void *fy_dedup_alloc(struct fy_allocator *a, fy_alloc_tag tag, size_t size, size_t align)
+static void *fy_dedup_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
 {
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
@@ -592,7 +592,7 @@ err_out:
 	return NULL;
 }
 
-static void fy_dedup_free(struct fy_allocator *a, fy_alloc_tag tag, void *data)
+static void fy_dedup_free(struct fy_allocator *a, int tag, void *data)
 {
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
@@ -613,7 +613,7 @@ static void fy_dedup_free(struct fy_allocator *a, fy_alloc_tag tag, void *data)
 	fy_allocator_free(da->parent_allocator, dt->content_tag, data);
 }
 
-static int fy_dedup_update_stats(struct fy_allocator *a, fy_alloc_tag tag, struct fy_allocator_stats *stats)
+static int fy_dedup_update_stats(struct fy_allocator *a, int tag, struct fy_allocator_stats *stats)
 {
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
@@ -630,7 +630,7 @@ static int fy_dedup_update_stats(struct fy_allocator *a, fy_alloc_tag tag, struc
 	return fy_dedup_tag_update_stats(da, dt, stats);
 }
 
-static const void *fy_dedup_storev(struct fy_allocator *a, fy_alloc_tag tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
+static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
 {
 	XXH64_state_t xxstate;
 	struct fy_dedup_allocator *da;
@@ -795,7 +795,7 @@ err_out:
 	return NULL;
 }
 
-static const void *fy_dedup_store(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size, size_t align)
+static const void *fy_dedup_store(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
 {
 	struct iovec iov[1];
 
@@ -808,7 +808,7 @@ static const void *fy_dedup_store(struct fy_allocator *a, fy_alloc_tag tag, cons
 	return fy_dedup_storev(a, tag, iov, 1, align);
 }
 
-static void fy_dedup_release(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size)
+static void fy_dedup_release(struct fy_allocator *a, int tag, const void *data, size_t size)
 {
 	XXH64_state_t xxstate;
 	struct fy_dedup_allocator *da;
@@ -905,11 +905,11 @@ err_out:
 	return;
 }
 
-static fy_alloc_tag fy_dedup_get_tag(struct fy_allocator *a, const void *tag_config)
+static int fy_dedup_get_tag(struct fy_allocator *a, const void *tag_config)
 {
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt = NULL;
-	fy_alloc_tag tag;
+	int tag;
 	int id, rc;
 
 	if (!a)
@@ -922,7 +922,7 @@ static fy_alloc_tag fy_dedup_get_tag(struct fy_allocator *a, const void *tag_con
 	if (id < 0)
 		goto err_out;
 
-	tag = (fy_alloc_tag)id;
+	tag = (int)id;
 
 	dt = fy_dedup_tag_from_tag(da, tag);
 	assert(dt);
@@ -938,7 +938,7 @@ err_out:
 	return FY_ALLOC_TAG_ERROR;
 }
 
-static void fy_dedup_release_tag(struct fy_allocator *a, fy_alloc_tag tag)
+static void fy_dedup_release_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
@@ -955,7 +955,7 @@ static void fy_dedup_release_tag(struct fy_allocator *a, fy_alloc_tag tag)
 	fy_dedup_tag_cleanup(da, dt);
 }
 
-static void fy_dedup_trim_tag(struct fy_allocator *a, fy_alloc_tag tag)
+static void fy_dedup_trim_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
@@ -972,7 +972,7 @@ static void fy_dedup_trim_tag(struct fy_allocator *a, fy_alloc_tag tag)
 	fy_dedup_tag_trim(da, dt);
 }
 
-static void fy_dedup_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
+static void fy_dedup_reset_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
@@ -990,7 +990,7 @@ static void fy_dedup_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
 }
 
 static struct fy_allocator_info *
-fy_dedup_get_info(struct fy_allocator *a, fy_alloc_tag tag)
+fy_dedup_get_info(struct fy_allocator *a, int tag)
 {
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;

@@ -160,7 +160,7 @@ void fy_linear_dump(struct fy_allocator *a)
 			(size_t)(la->end - la->next));
 }
 
-static void *fy_linear_alloc(struct fy_allocator *a, fy_alloc_tag tag, size_t size, size_t align)
+static void *fy_linear_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
 {
 	struct fy_linear_allocator *la;
 	void *s;
@@ -188,12 +188,12 @@ err_out:
 	return NULL;
 }
 
-static void fy_linear_free(struct fy_allocator *a, fy_alloc_tag tag, void *data)
+static void fy_linear_free(struct fy_allocator *a, int tag, void *data)
 {
 	/* linear allocator does not free anything */
 }
 
-static int fy_linear_update_stats(struct fy_allocator *a, fy_alloc_tag tag, struct fy_allocator_stats *stats)
+static int fy_linear_update_stats(struct fy_allocator *a, int tag, struct fy_allocator_stats *stats)
 {
 	struct fy_linear_allocator *la;
 
@@ -211,7 +211,7 @@ static int fy_linear_update_stats(struct fy_allocator *a, fy_alloc_tag tag, stru
 	return 0;
 }
 
-static const void *fy_linear_store(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size, size_t align)
+static const void *fy_linear_store(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
 {
 	void *p;
 
@@ -230,7 +230,7 @@ err_out:
 	return NULL;
 }
 
-static const void *fy_linear_storev(struct fy_allocator *a, fy_alloc_tag tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
+static const void *fy_linear_storev(struct fy_allocator *a, int tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
 {
 	void *p, *start;
 	unsigned int i;
@@ -258,12 +258,12 @@ err_out:
 	return NULL;
 }
 
-static void fy_linear_release(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size)
+static void fy_linear_release(struct fy_allocator *a, int tag, const void *data, size_t size)
 {
 	/* nothing */
 }
 
-static fy_alloc_tag fy_linear_get_tag(struct fy_allocator *a, const void *tag_config)
+static int fy_linear_get_tag(struct fy_allocator *a, const void *tag_config)
 {
 	if (!a)
 		return FY_ALLOC_TAG_ERROR;
@@ -272,7 +272,7 @@ static fy_alloc_tag fy_linear_get_tag(struct fy_allocator *a, const void *tag_co
 	return 0;
 }
 
-static void fy_linear_release_tag(struct fy_allocator *a, fy_alloc_tag tag)
+static void fy_linear_release_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_linear_allocator *la;
 
@@ -288,17 +288,17 @@ static void fy_linear_release_tag(struct fy_allocator *a, fy_alloc_tag tag)
 	la->next = la->start;
 }
 
-static void fy_linear_trim_tag(struct fy_allocator *a, fy_alloc_tag tag)
+static void fy_linear_trim_tag(struct fy_allocator *a, int tag)
 {
 	/* nothing */
 }
 
-static void fy_linear_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
+static void fy_linear_reset_tag(struct fy_allocator *a, int tag)
 {
 	/* nothing */
 }
 
-static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, fy_alloc_tag tag)
+static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, int tag)
 {
 	struct fy_linear_allocator *la;
 	struct fy_allocator_info *info;

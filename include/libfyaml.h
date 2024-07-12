@@ -9886,12 +9886,11 @@ fy_field_info_get_userdata(const struct fy_field_info *fi)
 
 /* forward decl of allocator interfaces */
 struct fy_allocator;
-typedef int fy_alloc_tag;
 
 /* A tag that denotes error */
-#define FY_ALLOC_TAG_ERROR	((fy_alloc_tag)-1)
+#define FY_ALLOC_TAG_ERROR	-1
 /* A tag that represents 'none' */
-#define FY_ALLOC_TAG_NONE	FY_ALLOC_TAG_ERROR
+#define FY_ALLOC_TAG_NONE	-2
 
 struct fy_allocator *
 fy_allocator_create(const char *name, const void *setupdata)
@@ -9906,39 +9905,39 @@ fy_allocator_dump(struct fy_allocator *a)
 	FY_EXPORT;
 
 void *
-fy_allocator_alloc(struct fy_allocator *a, fy_alloc_tag tag, size_t size, size_t align)
+fy_allocator_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
 	FY_EXPORT;
 
 void
-fy_allocator_free(struct fy_allocator *a, fy_alloc_tag tag, void *ptr)
+fy_allocator_free(struct fy_allocator *a, int tag, void *ptr)
 	FY_EXPORT;
 
 const void *
-fy_allocator_store(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size, size_t align)
+fy_allocator_store(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
 	FY_EXPORT;
 
 const void *
-fy_allocator_storev(struct fy_allocator *a, fy_alloc_tag tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
+fy_allocator_storev(struct fy_allocator *a, int tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
 	FY_EXPORT;
 
 void
-fy_allocator_release(struct fy_allocator *a, fy_alloc_tag tag, const void *ptr, size_t size)
+fy_allocator_release(struct fy_allocator *a, int tag, const void *ptr, size_t size)
 	FY_EXPORT;
 
-fy_alloc_tag
+int
 fy_allocator_get_tag(struct fy_allocator *a, const void *tag_config)
 	FY_EXPORT;
 
 void
-fy_allocator_release_tag(struct fy_allocator *a, fy_alloc_tag tag)
+fy_allocator_release_tag(struct fy_allocator *a, int tag)
 	FY_EXPORT;
 
 void
-fy_allocator_trim_tag(struct fy_allocator *a, fy_alloc_tag tag)
+fy_allocator_trim_tag(struct fy_allocator *a, int tag)
 	FY_EXPORT;
 
 void
-fy_allocator_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
+fy_allocator_reset_tag(struct fy_allocator *a, int tag)
 	FY_EXPORT;
 
 const char *
@@ -9954,12 +9953,54 @@ fy_allocator_get_names(void)
 	FY_EXPORT;
 
 ssize_t
-fy_allocator_get_tag_linear_size(struct fy_allocator *a, fy_alloc_tag tag)
+fy_allocator_get_tag_linear_size(struct fy_allocator *a, int tag)
 	FY_EXPORT;
 
 const void *
-fy_allocator_get_tag_single_linear(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep)
+fy_allocator_get_tag_single_linear(struct fy_allocator *a, int tag, size_t *sizep)
 	FY_EXPORT;
+
+/* mremap allocator setup data */
+enum fy_mremap_arena_type {
+	FYMRAT_MALLOC,
+	FYMRAT_MMAP,
+};
+
+struct fy_mremap_setup_data {
+	size_t big_alloc_threshold;	/* bigger than that and a new allocation */
+	size_t empty_threshold;		/* less than that and get moved to full */
+	size_t minimum_arena_size;	/* the minimum arena size */
+	float grow_ratio;
+	float balloon_ratio;
+	enum fy_mremap_arena_type arena_type;
+};
+
+/* malloc allocator has no setup data, pass NULL */
+
+/* dedup allocator setup data */
+struct fy_dedup_setup_data {
+	struct fy_allocator *parent_allocator;
+	unsigned int bloom_filter_bits;
+	unsigned int bucket_count_bits;
+	size_t dedup_threshold;
+	unsigned int chain_length_grow_trigger;
+	size_t estimated_content_size;
+};
+
+/* auto allocator setup data */
+enum fy_auto_scenario_type {
+	FYAST_PER_TAG_FREE,			/* only per tag freeing, no individual obj free		*/
+	FYAST_PER_TAG_FREE_DEDUP,		/* per tag freeing, dedup obj store			*/
+	FYAST_PER_OBJ_FREE,			/* object freeing allowed, tag freeing still works	*/
+	FYAST_PER_OBJ_FREE_DEDUP,		/* per obj freeing, dedup obj store			*/
+	FYAST_SINGLE_LINEAR_RANGE,		/* just a single linear range, no frees at all		*/
+	FYAST_SINGLE_LINEAR_RANGE_DEDUP,	/* single linear range, with dedup			*/
+};
+
+struct fy_auto_setup_data {
+	enum fy_auto_scenario_type scenario;
+	size_t estimated_max_size;
+};
 
 #ifdef __cplusplus
 }

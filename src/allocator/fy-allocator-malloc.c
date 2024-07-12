@@ -24,7 +24,7 @@
 #include "fy-allocator-malloc.h"
 
 static inline struct fy_malloc_tag *
-fy_malloc_tag_from_tag(struct fy_malloc_allocator *ma, fy_alloc_tag tag)
+fy_malloc_tag_from_tag(struct fy_malloc_allocator *ma, int tag)
 {
 	if (!ma)
 		return NULL;
@@ -183,7 +183,7 @@ static void fy_malloc_tag_free(struct fy_malloc_allocator *ma, struct fy_malloc_
 	free(me);
 }
 
-static void *fy_malloc_alloc(struct fy_allocator *a, fy_alloc_tag tag, size_t size, size_t align)
+static void *fy_malloc_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
@@ -215,7 +215,7 @@ err_out:
 	return NULL;
 }
 
-static void fy_malloc_free(struct fy_allocator *a, fy_alloc_tag tag, void *data)
+static void fy_malloc_free(struct fy_allocator *a, int tag, void *data)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
@@ -234,7 +234,7 @@ static void fy_malloc_free(struct fy_allocator *a, fy_alloc_tag tag, void *data)
 	mt->stats.frees++;
 }
 
-static int fy_malloc_update_stats(struct fy_allocator *a, fy_alloc_tag tag, struct fy_allocator_stats *stats)
+static int fy_malloc_update_stats(struct fy_allocator *a, int tag, struct fy_allocator_stats *stats)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
@@ -261,7 +261,7 @@ err_out:
 	return -1;
 }
 
-static const void *fy_malloc_storev(struct fy_allocator *a, fy_alloc_tag tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
+static const void *fy_malloc_storev(struct fy_allocator *a, int tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
@@ -300,7 +300,7 @@ err_out:
 	return NULL;
 }
 
-static const void *fy_malloc_store(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size, size_t align)
+static const void *fy_malloc_store(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
 {
 	struct iovec iov[1];
 
@@ -313,7 +313,7 @@ static const void *fy_malloc_store(struct fy_allocator *a, fy_alloc_tag tag, con
 	return fy_malloc_storev(a, tag, iov, 1, align);
 }
 
-static void fy_malloc_release(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size)
+static void fy_malloc_release(struct fy_allocator *a, int tag, const void *data, size_t size)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
@@ -334,7 +334,7 @@ static void fy_malloc_release(struct fy_allocator *a, fy_alloc_tag tag, const vo
 	mt->stats.released += size;
 }
 
-static void fy_malloc_release_tag(struct fy_allocator *a, fy_alloc_tag tag)
+static void fy_malloc_release_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
@@ -355,7 +355,7 @@ static void fy_malloc_release_tag(struct fy_allocator *a, fy_alloc_tag tag)
 	fy_id_free(ma->ids, ARRAY_SIZE(ma->ids), tag);
 }
 
-static fy_alloc_tag fy_malloc_get_tag(struct fy_allocator *a, const void *tag_config)
+static int fy_malloc_get_tag(struct fy_allocator *a, const void *tag_config)
 {
 	struct fy_malloc_allocator *ma;
 	int id;
@@ -369,18 +369,18 @@ static fy_alloc_tag fy_malloc_get_tag(struct fy_allocator *a, const void *tag_co
 	if (id < 0)
 		goto err_out;
 
-	return (fy_alloc_tag)id;
+	return (int)id;
 
 err_out:
 	return FY_ALLOC_TAG_ERROR;
 }
 
-static void fy_malloc_trim_tag(struct fy_allocator *a, fy_alloc_tag tag)
+static void fy_malloc_trim_tag(struct fy_allocator *a, int tag)
 {
 	/* nothing */
 }
 
-static void fy_malloc_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
+static void fy_malloc_reset_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
@@ -400,7 +400,7 @@ static void fy_malloc_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
 }
 
 static struct fy_allocator_info *
-fy_malloc_get_info(struct fy_allocator *a, fy_alloc_tag tag)
+fy_malloc_get_info(struct fy_allocator *a, int tag)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;

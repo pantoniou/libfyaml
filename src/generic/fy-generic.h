@@ -365,12 +365,12 @@ struct fy_generic_mapping {
 struct fy_generic_builder {
 	struct fy_allocator *allocator;
 	bool owns_allocator;
-	fy_alloc_tag shared_tag;
-	fy_alloc_tag alloc_tag;
+	int shared_tag;
+	int alloc_tag;
 	void *linear;	/* when making it linear */
 };
 
-struct fy_generic_builder *fy_generic_builder_create(struct fy_allocator *a, fy_alloc_tag shared_tag);
+struct fy_generic_builder *fy_generic_builder_create(struct fy_allocator *a, int shared_tag);
 void fy_generic_builder_destroy(struct fy_generic_builder *gb);
 void fy_generic_builder_reset(struct fy_generic_builder *gb);
 

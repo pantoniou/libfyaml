@@ -43,7 +43,7 @@
 #include "fy-allocator-dedup.h"
 #include "fy-allocator-auto.h"
 
-static void dump_allocator_info(struct fy_allocator *a, fy_alloc_tag tag)
+static void dump_allocator_info(struct fy_allocator *a, int tag)
 {
 	struct fy_allocator_info *info;
 	struct fy_allocator_tag_info *tag_info;
@@ -81,7 +81,7 @@ static int allocator_test(const char *allocator, const char *parent_allocator, s
 	struct fy_dedup_setup_data dsetupdata;
 	const void *gsetupdata = NULL, *psetupdata = NULL;
 	struct fy_allocator *a = NULL, *pa = NULL;
-	fy_alloc_tag tag0;
+	int tag0;
 	char *names;
 	bool is_linear, is_dedup;
 	unsigned int *uintp[16];
