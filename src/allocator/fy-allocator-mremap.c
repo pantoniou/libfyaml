@@ -77,6 +77,7 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mr
 	case FYMRAT_MALLOC:
 		mran = calloc(1, size_page_align);
 		break;
+
 	case FYMRAT_MMAP:
 		/* allocate an initial ballooned size */
 		balloon_size = fy_size_t_align((size_t)(size_page_align * mra->balloon_ratio), mra->pagesz);
@@ -104,6 +105,12 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mr
 		}
 		if (mran == MAP_FAILED)
 			return NULL;
+		break;
+
+	default:
+		/* should never happen */
+		assert(0);
+		abort();
 		break;
 	}
 
@@ -134,6 +141,12 @@ static void fy_mremap_arena_destroy(struct fy_mremap_allocator *mra, struct fy_m
 
 	case FYMRAT_MMAP:
 		(void)munmap(mran, mran->size);
+		break;
+
+	default:
+		/* should never happen */
+		assert(0);
+		abort();
 		break;
 	}
 }
@@ -182,6 +195,12 @@ static int fy_mremap_arena_grow(struct fy_mremap_allocator *mra, struct fy_mrema
 		/* verify that we grow right */
 		assert(fy_size_t_align(mran->next, align) + size <= mran->size);
 		return 0;
+
+	default:
+		/* should never happen */
+		assert(0);
+		abort();
+		break;
 	}
 
 	return -1;
@@ -227,6 +246,12 @@ static int fy_mremap_arena_trim(struct fy_mremap_allocator *mra, struct fy_mrema
 #endif
 		mran->size = new_size;
 		return 0;
+
+	default:
+		/* should never happen */
+		assert(0);
+		abort();
+		break;
 	}
 
 	return -1;
@@ -360,14 +385,14 @@ static void fy_mremap_tag_setup(struct fy_mremap_allocator *mra, struct fy_mrema
 static void *fy_mremap_tag_alloc(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt, size_t size, size_t align)
 {
 	struct fy_mremap_arena *mran;
-	size_t left, size_page_align;
+	size_t left, size_page_align, next_sz;
 	void *ptr;
 	int rc;
 
 	/* calculate how many pages new allocation is */
 	size_page_align = fy_size_t_align(size + FY_MREMAP_ARENA_OVERHEAD, mra->pagesz);
 
-	if (size_page_align > mra->big_alloc_threshold) {
+	if (mra->big_alloc_threshold && size_page_align > mra->big_alloc_threshold) {
 
 		mran = fy_mremap_arena_create(mra, mrt, size);
 		if (!mran)
@@ -424,8 +449,13 @@ static void *fy_mremap_tag_alloc(struct fy_mremap_allocator *mra, struct fy_mrem
 	/* everything failed, we have to allocate a new arena */
 
 	/* increase by the ratio until we're over */
-	while (mrt->next_arena_sz < size)
-		mrt->next_arena_sz = (size_t)(mrt->next_arena_sz * mra->grow_ratio);
+	while (mrt->next_arena_sz < size) {
+		next_sz = (size_t)(mrt->next_arena_sz * mra->grow_ratio);
+		/* something fishy going on... */
+		if (next_sz <= mrt->next_arena_sz)
+			goto err_out;
+		mrt->next_arena_sz = next_sz;
+	}
 
 	/* all failed, just new */
 	mran = fy_mremap_arena_create(mra, mrt, mrt->next_arena_sz);
@@ -508,11 +538,28 @@ static int fy_mremap_setup(struct fy_allocator *a, const void *cfg_data)
 	mra->pageshift = fy_id_ffs((fy_id_bits)mra->pagesz);
 
 	mra->big_alloc_threshold = cfg->big_alloc_threshold;
+	if (!mra->big_alloc_threshold)
+		mra->big_alloc_threshold = MREMAP_ALLOCATOR_DEFAULT_BIG_ALLOC_THRESHOLD;
+
 	mra->empty_threshold = cfg->empty_threshold;
+	if (!mra->empty_threshold)
+		mra->empty_threshold = MREMAP_ALLOCATOR_DEFAULT_EMPTY_THRESHOLD;
+
 	mra->minimum_arena_size = cfg->minimum_arena_size;
+	if (!mra->minimum_arena_size)
+		mra->minimum_arena_size = MREMAP_ALLOCATOR_DEFAULT_MINIMUM_ARENA_SIZE;
+
 	mra->grow_ratio = cfg->grow_ratio;
+	if (mra->grow_ratio <= 1)
+		mra->grow_ratio = MREMAP_ALLOCATOR_DEFAULT_GROW_RATIO;
+
 	mra->balloon_ratio = cfg->balloon_ratio;
+	if (mra->balloon_ratio <= 1)
+		mra->balloon_ratio = MREMAP_ALLOCATOR_DEFAULT_BALLON_RATIO;
+
 	mra->arena_type = cfg->arena_type;
+	if (mra->arena_type == FYMRAT_DEFAULT)
+		mra->arena_type = MREMAP_ALLOCATOR_DEFAULT_ARENA_TYPE;
 
 	fy_id_reset(mra->ids, ARRAY_SIZE(mra->ids));
 	return 0;
@@ -673,12 +720,12 @@ err_out:
 	return -1;
 }
 
-static const void *fy_mremap_storev(struct fy_allocator *a, int tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
+static const void *fy_mremap_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
 {
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
 	void *p, *start;
-	unsigned int i;
+	int i;
 	size_t total_size, size;
 
 	if (!a || !iov)
@@ -747,7 +794,7 @@ static void fy_mremap_release_tag(struct fy_allocator *a, int tag)
 	fy_mremap_tag_cleanup(mra, mrt);
 }
 
-static int fy_mremap_get_tag(struct fy_allocator *a, const void *tag_config)
+static int fy_mremap_get_tag(struct fy_allocator *a)
 {
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;

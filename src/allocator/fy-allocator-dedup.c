@@ -210,11 +210,11 @@ static int fy_dedup_tag_setup(struct fy_dedup_allocator *da, struct fy_dedup_tag
 	dt->entries_tag = FY_ALLOC_TAG_NONE;
 	dt->content_tag = FY_ALLOC_TAG_NONE;
 
-	dt->entries_tag = fy_allocator_get_tag(da->entries_allocator, NULL);
+	dt->entries_tag = fy_allocator_get_tag(da->entries_allocator);
 	if (dt->entries_tag == FY_ALLOC_TAG_ERROR)
 		goto err_out;
 
-	dt->content_tag = fy_allocator_get_tag(da->parent_allocator, NULL);
+	dt->content_tag = fy_allocator_get_tag(da->parent_allocator);
 	if (dt->content_tag == FY_ALLOC_TAG_ERROR)
 		goto err_out;
 
@@ -635,7 +635,7 @@ static int fy_dedup_update_stats(struct fy_allocator *a, int tag, struct fy_allo
 	return fy_dedup_tag_update_stats(da, dt, stats);
 }
 
-static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
+static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
 {
 	XXH64_state_t xxstate;
 	struct fy_dedup_allocator *da;
@@ -646,9 +646,10 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	unsigned int bloom_pos, bucket_pos;
 	bool bloom_hit;
 	struct fy_dedup_entry_list *del;
-	unsigned int i, chain_length;
+	unsigned int chain_length;
 	void *s, *e, *p, *mem = NULL;
 	size_t size, total_size;
+	int i;
 
 	if (!a)
 		return NULL;
@@ -910,7 +911,7 @@ err_out:
 	return;
 }
 
-static int fy_dedup_get_tag(struct fy_allocator *a, const void *tag_config)
+static int fy_dedup_get_tag(struct fy_allocator *a)
 {
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt = NULL;

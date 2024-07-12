@@ -33,7 +33,7 @@ struct fy_generic_builder *fy_generic_builder_create(struct fy_allocator *a, int
 
 	alloc_tag = shared_tag;
 	if (alloc_tag == FY_ALLOC_TAG_NONE) {
-		alloc_tag = fy_allocator_get_tag(a, NULL);
+		alloc_tag = fy_allocator_get_tag(a);
 		if (alloc_tag == FY_ALLOC_TAG_ERROR)
 			goto err_out;
 	}

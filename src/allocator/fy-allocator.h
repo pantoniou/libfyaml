@@ -39,9 +39,9 @@ struct fy_allocator_ops {
 	void (*free)(struct fy_allocator *a, int tag, void *data);
 	int (*update_stats)(struct fy_allocator *a, int tag, struct fy_allocator_stats *stats);
 	const void *(*store)(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align);
-	const void *(*storev)(struct fy_allocator *a, int tag, const struct iovec *iov, unsigned int iovcnt, size_t align);
+	const void *(*storev)(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align);
 	void (*release)(struct fy_allocator *a, int tag, const void *data, size_t size);
-	int (*get_tag)(struct fy_allocator *a, const void *tag_config);
+	int (*get_tag)(struct fy_allocator *a);
 	void (*release_tag)(struct fy_allocator *a, int tag);
 	void (*trim_tag)(struct fy_allocator *a, int tag);
 	void (*reset_tag)(struct fy_allocator *a, int tag);
@@ -105,7 +105,9 @@ struct fy_registered_allocator_entry {
 FY_TYPE_DECL_LIST(registered_allocator_entry);
 
 /* these are private still */
+char *fy_allocator_get_names(void);
 int fy_allocator_register(const char *name, const struct fy_allocator_ops *ops);
 int fy_allocator_unregister(const char *name);
+void fy_allocator_release(struct fy_allocator *a, int tag, const void *ptr, size_t size);
 
 #endif

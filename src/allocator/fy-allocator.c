@@ -528,7 +528,7 @@ const void *fy_allocator_store(struct fy_allocator *a, int tag, const void *data
 	return a->ops->store(a, tag, data, size, align);
 }
 
-const void *fy_allocator_storev(struct fy_allocator *a, int tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
+const void *fy_allocator_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
 {
 	if (!a)
 		return NULL;
@@ -542,11 +542,11 @@ void fy_allocator_release(struct fy_allocator *a, int tag, const void *ptr, size
 	a->ops->release(a, tag, ptr, size);
 }
 
-int fy_allocator_get_tag(struct fy_allocator *a, const void *tag_config)
+int fy_allocator_get_tag(struct fy_allocator *a)
 {
 	if (!a)
 		return 0;
-	return a->ops->get_tag(a, tag_config);
+	return a->ops->get_tag(a);
 }
 
 void fy_allocator_release_tag(struct fy_allocator *a, int tag)

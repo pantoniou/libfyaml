@@ -61,6 +61,14 @@
 #define AUTO_ALLOCATOR_DEFAULT_BUCKET_COUNT_BITS	0
 #endif
 
+#ifndef AUTO_ALLOCATOR_DEFAULT_DEDUP_THRESHOLD
+#define AUTO_ALLOCATOR_DEFAULT_DEDUP_THRESHOLD		0	/* dedup everything */
+#endif
+
+#ifndef AUTO_ALLOCATOR_DEFAULT_CHAIN_LENGTH_GROW_TRIGGER
+#define AUTO_ALLOCATOR_DEFAULT_CHAIN_LENGTH_GROW_TRIGGER	0	/* let dedup decide */
+#endif
+
 static const struct fy_auto_allocator_cfg default_cfg = {
 	.scenario = FYAST_PER_TAG_FREE_DEDUP,
 	.estimated_max_size = AUTO_ALLOCATOR_DEFAULT_ESTIMATED_MAX_SIZE,
@@ -150,6 +158,8 @@ static int fy_auto_setup(struct fy_allocator *a, const void *cfg_data)
 		dcfg.parent_allocator = topa;
 		dcfg.bloom_filter_bits = AUTO_ALLOCATOR_DEFAULT_BLOOM_FILTER_BITS;
 		dcfg.bucket_count_bits = AUTO_ALLOCATOR_DEFAULT_BUCKET_COUNT_BITS;
+		dcfg.dedup_threshold = AUTO_ALLOCATOR_DEFAULT_DEDUP_THRESHOLD;
+		dcfg.chain_length_grow_trigger = AUTO_ALLOCATOR_DEFAULT_CHAIN_LENGTH_GROW_TRIGGER;
 		dcfg.estimated_content_size = size;
 
 		da = fy_allocator_create("dedup", &dcfg);
@@ -294,7 +304,7 @@ static const void *fy_auto_store(struct fy_allocator *a, int tag, const void *da
 	return fy_allocator_store(aa->parent_allocator, tag, data, size, align);
 }
 
-static const void *fy_auto_storev(struct fy_allocator *a, int tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
+static const void *fy_auto_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
 {
 	struct fy_auto_allocator *aa;
 
@@ -318,7 +328,7 @@ static void fy_auto_release(struct fy_allocator *a, int tag, const void *data, s
 	fy_allocator_release(aa->parent_allocator, tag, data, size);
 }
 
-static int fy_auto_get_tag(struct fy_allocator *a, const void *tag_config)
+static int fy_auto_get_tag(struct fy_allocator *a)
 {
 	struct fy_auto_allocator *aa;
 
@@ -329,7 +339,7 @@ static int fy_auto_get_tag(struct fy_allocator *a, const void *tag_config)
 
 	aa = container_of(a, struct fy_auto_allocator, a);
 
-	return fy_allocator_get_tag(aa->parent_allocator, NULL);
+	return fy_allocator_get_tag(aa->parent_allocator);
 }
 
 static void fy_auto_release_tag(struct fy_allocator *a, int tag)

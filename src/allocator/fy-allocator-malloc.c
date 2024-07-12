@@ -261,12 +261,12 @@ err_out:
 	return -1;
 }
 
-static const void *fy_malloc_storev(struct fy_allocator *a, int tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
+static const void *fy_malloc_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
 	void *p, *start;
-	unsigned int i;
+	int i;
 	size_t size, total_size;
 
 	if (!a || !iov)
@@ -355,7 +355,7 @@ static void fy_malloc_release_tag(struct fy_allocator *a, int tag)
 	fy_id_free(ma->ids, ARRAY_SIZE(ma->ids), tag);
 }
 
-static int fy_malloc_get_tag(struct fy_allocator *a, const void *tag_config)
+static int fy_malloc_get_tag(struct fy_allocator *a)
 {
 	struct fy_malloc_allocator *ma;
 	int id;

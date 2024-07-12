@@ -231,10 +231,10 @@ err_out:
 	return NULL;
 }
 
-static const void *fy_linear_storev(struct fy_allocator *a, int tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
+static const void *fy_linear_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
 {
 	void *p, *start;
-	unsigned int i;
+	int i;
 	size_t size;
 
 	if (!a)
@@ -264,7 +264,7 @@ static void fy_linear_release(struct fy_allocator *a, int tag, const void *data,
 	/* nothing */
 }
 
-static int fy_linear_get_tag(struct fy_allocator *a, const void *tag_config)
+static int fy_linear_get_tag(struct fy_allocator *a)
 {
 	if (!a)
 		return FY_ALLOC_TAG_ERROR;

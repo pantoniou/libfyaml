@@ -132,7 +132,7 @@ static int allocator_test(const char *allocator, const char *parent_allocator, s
 
 	fprintf(stderr, "Allocator created: %p\n", a);
 
-	tag0 = fy_allocator_get_tag(a, NULL);
+	tag0 = fy_allocator_get_tag(a);
 	assert(tag0 != FY_ALLOC_TAG_ERROR);
 
 	fprintf(stderr, "tag0 created: %d\n", tag0);
