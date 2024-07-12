@@ -9,6 +9,15 @@ AM_CPPFLAGS = \
         -I$(top_srcdir)/include
 AM_CFLAGS =
 
+INTERNAL_INCLUDES = \
+	-I$(top_srcdir)/src/valgrind \
+	-I$(top_srcdir)/src/lib \
+ 	-I$(top_srcdir)/src/xxhash \
+	-I$(top_srcdir)/src/util \
+	-I$(top_srcdir)/src/thread \
+	-I$(top_srcdir)/src/allocator \
+	-I$(top_srcdir)/src/generic
+
 lib_LTLIBRARIES += libfyaml.la
 libfyaml_la_SOURCES = \
         lib/fy-parse.c lib/fy-parse.h \
@@ -26,8 +35,10 @@ libfyaml_la_SOURCES = \
 	lib/fy-accel.c lib/fy-accel.h \
 	lib/fy-walk.c lib/fy-walk.h \
 	lib/fy-path.c lib/fy-path.h \
-	lib/fy-composer.c lib/fy-composer.h \
-	xxhash/xxhash.c xxhash/xxhash.h \
+	lib/fy-composer.c lib/fy-composer.h
+
+# util
+libfyaml_la_SOURCES += \
 	util/fy-list.h \
 	util/fy-typelist.h \
 	util/fy-ctype.c util/fy-ctype.h \
@@ -38,17 +49,33 @@ libfyaml_la_SOURCES = \
 	util/fy-id.h \
 	util/fy-align.h \
 	util/fy-bit64.h \
-	thread/fy-thread.h thread/fy-thread.c \
-	util/fy-vlsize.h \
-	util/fy-allocator.c util/fy-allocator.h \
-		util/fy-allocator-linear.c util/fy-allocator-linear.h \
-		util/fy-allocator-malloc.c util/fy-allocator-malloc.h \
-		util/fy-allocator-mremap.c util/fy-allocator-mremap.h \
-		util/fy-allocator-dedup.c util/fy-allocator-dedup.h \
-		util/fy-allocator-auto.c util/fy-allocator-auto.h \
-	util/fy-generic.c util/fy-generic.h \
-	util/fy-generic-decoder.c util/fy-generic-decoder.h \
-	util/fy-generic-encoder.c util/fy-generic-encoder.h \
+	util/fy-vlsize.h
+
+# xxhash
+libfyaml_la_SOURCES += \
+	xxhash/xxhash.c xxhash/xxhash.h
+
+# thread
+libfyaml_la_SOURCES += \
+	thread/fy-thread.h thread/fy-thread.c
+
+# allocator
+libfyaml_la_SOURCES += \
+	allocator/fy-allocator.c allocator/fy-allocator.h \
+	allocator/fy-allocator-linear.c allocator/fy-allocator-linear.h \
+	allocator/fy-allocator-malloc.c allocator/fy-allocator-malloc.h \
+	allocator/fy-allocator-mremap.c allocator/fy-allocator-mremap.h \
+	allocator/fy-allocator-dedup.c allocator/fy-allocator-dedup.h \
+	allocator/fy-allocator-auto.c allocator/fy-allocator-auto.h
+
+# generic
+libfyaml_la_SOURCES += \
+	generic/fy-generic.c generic/fy-generic.h \
+	generic/fy-generic-decoder.c generic/fy-generic-decoder.h \
+	generic/fy-generic-encoder.c generic/fy-generic-encoder.h
+
+# reflection
+libfyaml_la_SOURCES += \
 	reflection/fy-reflection.c reflection/fy-reflection-private.h \
 	reflection/fy-packed-backend.c reflection/fy-packed-backend.h \
 	reflection/fy-registry.c
@@ -58,11 +85,7 @@ libfyaml_la_SOURCES += \
 	reflection/fy-clang-backend.c reflection/fy-clang-backend.h
 endif
 
-libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) \
-		       -I$(top_srcdir)/src/lib \
-		       -I$(top_srcdir)/src/xxhash \
-		       -I$(top_srcdir)/src/util \
-		       -I$(top_srcdir)/src/thread
+libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)
 libfyaml_la_CFLAGS = $(AM_CFLAGS)
 libfyaml_la_LDFLAGS = -no-undefined $(AM_LDFLAGS) $(AM_LIBLDFLAGS) \
 		      -version $(LIBTOOL_VERSION)
@@ -148,12 +171,7 @@ libfyaml_parser_SOURCES = \
 	internal/libfyaml-parser.c \
 	valgrind/fy-valgrind.h
 
-libfyaml_parser_CPPFLAGS = $(AM_CPPFLAGS) \
-			   -I$(top_srcdir)/src/valgrind \
-			   -I$(top_srcdir)/src/lib \
-			   -I$(top_srcdir)/src/xxhash \
-			   -I$(top_srcdir)/src/util \
-			   -I$(top_srcdir)/src/thread
+libfyaml_parser_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)
 libfyaml_parser_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
 libfyaml_parser_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 
@@ -170,12 +188,7 @@ fy_thread_SOURCES = \
 	internal/fy-thread.c \
 	valgrind/fy-valgrind.h
 
-fy_thread_CPPFLAGS = $(AM_CPPFLAGS) \
-			   -I$(top_srcdir)/src/valgrind \
-			   -I$(top_srcdir)/src/lib \
-			   -I$(top_srcdir)/src/xxhash \
-			   -I$(top_srcdir)/src/util \
-			   -I$(top_srcdir)/src/thread
+fy_thread_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)
 fy_thread_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
 fy_thread_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 
@@ -191,13 +204,7 @@ fy_b3sum_SOURCES = \
 	internal/fy-b3sum.c \
 	valgrind/fy-valgrind.h
 
-fy_b3sum_CPPFLAGS = $(AM_CPPFLAGS) \
-			   -I$(top_srcdir)/src/valgrind \
-			   -I$(top_srcdir)/src/lib \
-			   -I$(top_srcdir)/src/xxhash \
-			   -I$(top_srcdir)/src/util \
-			   -I$(top_srcdir)/src/thread \
-			   -I$(top_srcdir)/src/blake3
+fy_b3sum_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES) -I$(top_srcdir)/src/blake3
 fy_b3sum_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
 fy_b3sum_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 
@@ -213,12 +220,7 @@ fy_allocators_SOURCES = \
 	internal/fy-allocators.c \
 	valgrind/fy-valgrind.h
 
-fy_allocators_CPPFLAGS = $(AM_CPPFLAGS) \
-			   -I$(top_srcdir)/src/valgrind \
-			   -I$(top_srcdir)/src/lib \
-			   -I$(top_srcdir)/src/xxhash \
-			   -I$(top_srcdir)/src/util \
-			   -I$(top_srcdir)/src/thread
+fy_allocators_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)
 fy_allocators_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
 fy_allocators_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 
@@ -234,12 +236,7 @@ fy_generics_SOURCES = \
 	internal/fy-generics.c \
 	valgrind/fy-valgrind.h
 
-fy_generics_CPPFLAGS = $(AM_CPPFLAGS) \
-			   -I$(top_srcdir)/src/valgrind \
-			   -I$(top_srcdir)/src/lib \
-			   -I$(top_srcdir)/src/xxhash \
-			   -I$(top_srcdir)/src/util \
-			   -I$(top_srcdir)/src/thread
+fy_generics_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)
 fy_generics_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
 fy_generics_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 
