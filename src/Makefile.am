@@ -38,6 +38,7 @@ libfyaml_la_SOURCES = \
 	util/fy-id.h \
 	util/fy-align.h \
 	util/fy-bit64.h \
+	util/fy-vlsize.h \
 	thread/fy-thread.h thread/fy-thread.c
 
 libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) \
