@@ -34,6 +34,7 @@ enum fy_input_type {
 	fyit_alloc,
 	fyit_callback,
 	fyit_fd,
+	fyit_dociter,
 };
 
 struct fy_input_cfg {
@@ -66,6 +67,12 @@ struct fy_input_cfg {
 		struct {
 			int fd;
 		} fd;
+		struct {
+			enum fy_parser_event_generator_flags flags;
+			struct fy_document_iterator *fydi;
+			struct fy_document *fyd;
+			bool owns_iterator;
+		} dociter;
 	};
 };
 
@@ -363,6 +370,21 @@ fy_reader_line(const struct fy_reader *fyr)
 	assert(fyr);
 	return fyr->line;
 }
+
+static FY_ALWAYS_INLINE inline bool
+fy_reader_generates_events(const struct fy_reader *fyr)
+{
+	struct fy_input *fyi;
+
+	fyi = fy_reader_current_input(fyr);
+	if (!fyi)
+		return false;
+
+	return fyi->cfg.type == fyit_dociter;
+}
+
+struct fy_event *fy_reader_generate_next_event(struct fy_reader *fyr);
+void fy_reader_event_free(struct fy_reader *fyr, struct fy_event *fye);
 
 /* force new line at the end of stream */
 static inline void fy_reader_stream_end(struct fy_reader *fyr)

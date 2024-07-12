@@ -255,6 +255,10 @@ void fy_input_close(struct fy_input *fyi)
 		/* nothing */
 		break;
 
+	case fyit_dociter:
+		/* nothing */
+		break;
+
 	default:
 		break;
 	}
@@ -299,6 +303,7 @@ ssize_t fy_input_estimate_queued_size(const struct fy_input *fyi)
 		break;
 
 	case fyit_callback:
+	case fyit_dociter:
 	default:
 		return SSIZE_MAX;	/* cannot determine */
 	}
@@ -412,6 +417,7 @@ void fy_reader_apply_mode(struct fy_reader *fyr)
 int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const struct fy_reader_input_cfg *icfg)
 {
 	struct stat sb;
+	struct fy_document_iterator *fydi;
 	int rc;
 
 	if (!fyi)
@@ -505,6 +511,12 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 	case fyit_callback:
 		break;
 
+	case fyit_dociter:
+		fydi = fyi->cfg.dociter.fydi;
+		fyr_error_check(fyr, fydi, err_out,
+				"missing document iterator");
+		break;
+
 	default:
 		assert(0);
 		break;
@@ -515,6 +527,7 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 		/* those two need no memory */
 	case fyit_memory:
 	case fyit_alloc:
+	case fyit_dociter:
 		break;
 
 		/* all the rest need it */
@@ -705,6 +718,11 @@ const void *fy_reader_ptr_slow_path(struct fy_reader *fyr, size_t *leftp)
 	case fyit_alloc:
 		left = fyi->cfg.alloc.size - fyr->current_input_pos;
 		p = fyi->cfg.alloc.data + fyr->current_input_pos;
+		break;
+
+	case fyit_dociter:
+		assert(0);
+		abort();
 		break;
 
 
@@ -929,6 +947,10 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 		p = fyi->cfg.alloc.data + pos;
 		break;
 
+	case fyit_dociter:
+		assert(0);
+		abort();
+		break;
 
 	default:
 		assert(0);
@@ -1023,6 +1045,13 @@ struct fy_input *fy_input_create(const struct fy_input_cfg *fyic)
 		if (ret == -1)
 			fyi->name = NULL;
 		break;
+
+	case fyit_dociter:
+		ret = asprintf(&fyi->name, "<dociter-@%p>", fyi->cfg.dociter.fydi);
+		if (ret == -1)
+			fyi->name = NULL;
+		break;
+
 	default:
 		assert(0);
 		break;
@@ -1079,3 +1108,45 @@ const void *fy_reader_ensure_lookahead_slow_path(struct fy_reader *fyr, size_t s
 	return p;
 }
 
+struct fy_event *fy_reader_generate_next_event(struct fy_reader *fyr)
+{
+	struct fy_input *fyi;
+	struct fy_document_iterator *fydi;
+	struct fy_event *fye;
+
+	fyi = fy_reader_current_input(fyr);
+	if (!fyi || fyi->cfg.type != fyit_dociter)
+		return NULL;
+
+	fydi = fyi->cfg.dociter.fydi;
+
+	do {
+		fye = fy_document_iterator_generate_next(fydi);
+		if (!fye)
+			return NULL;
+
+		/* remove if we don't want the event */
+		if (((fye->type == FYET_STREAM_START || fye->type == FYET_STREAM_END) &&
+				!(fyi->cfg.dociter.flags & FYPEGF_GENERATE_STREAM_EVENTS)) ||
+		    ((fye->type == FYET_DOCUMENT_START || fye->type == FYET_DOCUMENT_END) &&
+				!(fyi->cfg.dociter.flags & FYPEGF_GENERATE_DOCUMENT_EVENTS))) {
+			fy_document_iterator_event_free(fydi, fye);
+			fye = NULL;
+		}
+	} while (!fye);
+
+	return fye;
+}
+
+void fy_reader_event_free(struct fy_reader *fyr, struct fy_event *fye)
+{
+	struct fy_input *fyi;
+
+	fyi = fy_reader_current_input(fyr);
+	assert(fyi);
+	assert(fy_reader_generates_events(fyr));
+
+	assert (fyi->cfg.type == fyit_dociter);
+
+	fy_document_iterator_event_free(fyi->cfg.dociter.fydi, fye);
+}

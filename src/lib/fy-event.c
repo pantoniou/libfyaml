@@ -169,6 +169,9 @@ void fy_parser_event_free(struct fy_parser *fyp, struct fy_event *fye)
 	if (!fyp || !fye)
 		return;
 
+	if (fy_reader_generates_events(fyp->reader))
+		return fy_reader_event_free(fyp->reader, fye);
+
 	fyep = container_of(fye, struct fy_eventp, e);
 
 	fy_parse_eventp_recycle(fyp, fyep);
