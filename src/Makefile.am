@@ -33,8 +33,10 @@ libfyaml_la_SOURCES = \
 	lib/fy-accel.c lib/fy-accel.h \
 	lib/fy-walk.c lib/fy-walk.h \
 	lib/fy-path.c lib/fy-path.h \
-	lib/fy-composer.c lib/fy-composer.h \
-	xxhash/xxhash.c xxhash/xxhash.h \
+	lib/fy-composer.c lib/fy-composer.h
+
+# util
+libfyaml_la_SOURCES += \
 	util/fy-list.h \
 	util/fy-typelist.h \
 	util/fy-ctype.c util/fy-ctype.h \
@@ -45,7 +47,14 @@ libfyaml_la_SOURCES = \
 	util/fy-id.h \
 	util/fy-align.h \
 	util/fy-bit64.h \
-	util/fy-vlsize.h \
+	util/fy-vlsize.h
+
+# xxhash
+libfyaml_la_SOURCES += \
+	xxhash/xxhash.c xxhash/xxhash.h
+
+# thread
+libfyaml_la_SOURCES += \
 	thread/fy-thread.h thread/fy-thread.c
 
 libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)
