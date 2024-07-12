@@ -5066,7 +5066,7 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator, bool null_out
 	} else if (!strcmp(allocator, "auto")) {
 
 		memset(&asetupdata, 0, sizeof(asetupdata));
-		asetupdata.scenario = FYAST_BALANCED;
+		asetupdata.scenario = FYAST_PER_TAG_FREE;
 		asetupdata.estimated_max_size = (size_t)estimated_size;
 
 		gsetupdata = &asetupdata;

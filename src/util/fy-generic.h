@@ -398,7 +398,7 @@ static inline const void *fy_generic_builder_store(struct fy_generic_builder *gb
 	return fy_allocator_store(gb->allocator, gb->alloc_tag, data, size, align);
 }
 
-static inline const void *fy_generic_builder_storev(struct fy_generic_builder *gb, const struct fy_iovecw *iov, unsigned int iovcnt, size_t align)
+static inline const void *fy_generic_builder_storev(struct fy_generic_builder *gb, const struct iovec *iov, unsigned int iovcnt, size_t align)
 {
 	assert(gb);
 	return fy_allocator_storev(gb->allocator, gb->alloc_tag, iov, iovcnt, align);

@@ -261,7 +261,7 @@ err_out:
 	return -1;
 }
 
-static const void *fy_malloc_storev(struct fy_allocator *a, fy_alloc_tag tag, const struct fy_iovecw *iov, unsigned int iovcnt, size_t align)
+static const void *fy_malloc_storev(struct fy_allocator *a, fy_alloc_tag tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
@@ -280,15 +280,15 @@ static const void *fy_malloc_storev(struct fy_allocator *a, fy_alloc_tag tag, co
 
 	total_size = 0;
 	for (i = 0; i < iovcnt; i++)
-		total_size += iov[i].size;
+		total_size += iov[i].iov_len;
 
 	start = fy_malloc_tag_alloc(ma, mt, total_size, align);
 	if (!start)
 		goto err_out;
 
 	for (i = 0, p = start; i < iovcnt; i++, p += size) {
-		size = iov[i].size;
-		memcpy(p, iov[i].data, size);
+		size = iov[i].iov_len;
+		memcpy(p, iov[i].iov_base, size);
 	}
 
 	mt->stats.stores++;
@@ -302,14 +302,14 @@ err_out:
 
 static const void *fy_malloc_store(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size, size_t align)
 {
-	struct fy_iovecw iov[1];
+	struct iovec iov[1];
 
 	if (!a)
 		return NULL;
 
 	/* just call the storev */
-	iov[0].data = data;
-	iov[0].size = size;
+	iov[0].iov_base = (void *)data;
+	iov[0].iov_len = size;
 	return fy_malloc_storev(a, tag, iov, 1, align);
 }
 

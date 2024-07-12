@@ -17,20 +17,14 @@
 #include <stdbool.h>
 #include <assert.h>
 
+#include <sys/uio.h>
+
 #include "fy-typelist.h"
+
+#include <libfyaml.h>
 
 struct fy_allocator;
 struct fy_allocator_stats;
-
-typedef int fy_alloc_tag;
-
-#define FY_ALLOC_TAG_ERROR	((fy_alloc_tag)-1)
-#define FY_ALLOC_TAG_NONE	FY_ALLOC_TAG_ERROR
-
-struct fy_iovecw {
-	const void *data;
-	size_t size;
-};
 
 struct fy_allocator_stats;
 struct fy_allocator_info;
@@ -45,7 +39,7 @@ struct fy_allocator_ops {
 	void (*free)(struct fy_allocator *a, fy_alloc_tag tag, void *data);
 	int (*update_stats)(struct fy_allocator *a, fy_alloc_tag tag, struct fy_allocator_stats *stats);
 	const void *(*store)(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size, size_t align);
-	const void *(*storev)(struct fy_allocator *a, fy_alloc_tag tag, const struct fy_iovecw *iov, unsigned int iovcnt, size_t align);
+	const void *(*storev)(struct fy_allocator *a, fy_alloc_tag tag, const struct iovec *iov, unsigned int iovcnt, size_t align);
 	void (*release)(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size);
 	fy_alloc_tag (*get_tag)(struct fy_allocator *a, const void *tag_config);
 	void (*release_tag)(struct fy_allocator *a, fy_alloc_tag tag);
@@ -98,99 +92,9 @@ struct fy_allocator {
 	const struct fy_allocator_ops *ops;
 };
 
-struct fy_allocator *fy_allocator_create(const char *name, const void *setupdata);
-
-static inline void fy_allocator_destroy(struct fy_allocator *a)
-{
-	if (!a)
-		return;
-	a->ops->destroy(a);
-}
-
-static inline void fy_allocator_dump(struct fy_allocator *a)
-{
-	if (!a)
-		return;
-	a->ops->dump(a);
-}
-
-static inline int fy_allocator_update_stats(struct fy_allocator *a, fy_alloc_tag tag, struct fy_allocator_stats *stats)
-{
-	if (!a)
-		return -1;
-	return a->ops->update_stats(a, tag, stats);
-}
-
-static inline void *fy_allocator_alloc(struct fy_allocator *a, fy_alloc_tag tag, size_t size, size_t align)
-{
-	if (!a)
-		return NULL;
-	return a->ops->alloc(a, tag, size, align);
-}
-
-static inline void fy_allocator_free(struct fy_allocator *a, fy_alloc_tag tag, void *ptr)
-{
-	if (!a || !ptr)
-		return;
-	a->ops->free(a, tag, ptr);
-}
-
-static inline const void *fy_allocator_store(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size, size_t align)
-{
-	if (!a)
-		return NULL;
-	return a->ops->store(a, tag, data, size, align);
-}
-
-static inline const void *fy_allocator_storev(struct fy_allocator *a, fy_alloc_tag tag, const struct fy_iovecw *iov, unsigned int iovcnt, size_t align)
-{
-	if (!a)
-		return NULL;
-	return a->ops->storev(a, tag, iov, iovcnt, align);
-}
-
-static inline void fy_allocator_release(struct fy_allocator *a, fy_alloc_tag tag, const void *ptr, size_t size)
-{
-	if (!a || !ptr)
-		return;
-	a->ops->release(a, tag, ptr, size);
-}
-
-static inline fy_alloc_tag fy_allocator_get_tag(struct fy_allocator *a, const void *tag_config)
-{
-	if (!a)
-		return 0;
-	return a->ops->get_tag(a, tag_config);
-}
-
-static inline void fy_allocator_release_tag(struct fy_allocator *a, fy_alloc_tag tag)
-{
-	if (!a)
-		return;
-	a->ops->release_tag(a, tag);
-}
-
-static inline void fy_allocator_trim_tag(struct fy_allocator *a, fy_alloc_tag tag)
-{
-	if (!a)
-		return;
-	a->ops->trim_tag(a, tag);
-}
-
-static inline void fy_allocator_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
-{
-	if (!a)
-		return;
-	a->ops->reset_tag(a, tag);
-}
-
-static inline struct fy_allocator_info *
-fy_allocator_get_info(struct fy_allocator *a, fy_alloc_tag tag)
-{
-	if (!a)
-		return NULL;
-	return a->ops->get_info(a, tag);
-}
+/* these private still */
+int fy_allocator_update_stats(struct fy_allocator *a, fy_alloc_tag tag, struct fy_allocator_stats *stats);
+struct fy_allocator_info *fy_allocator_get_info(struct fy_allocator *a, fy_alloc_tag tag);
 
 FY_TYPE_FWD_DECL_LIST(registered_allocator_entry);
 struct fy_registered_allocator_entry {
@@ -200,14 +104,8 @@ struct fy_registered_allocator_entry {
 };
 FY_TYPE_DECL_LIST(registered_allocator_entry);
 
+/* these are private still */
 int fy_allocator_register(const char *name, const struct fy_allocator_ops *ops);
 int fy_allocator_unregister(const char *name);
-
-const char *fy_allocator_iterate(const char **prevp);
-bool fy_allocator_is_available(const char *allocator);
-char *fy_allocator_get_names(void);
-
-ssize_t fy_allocator_get_tag_linear_size(struct fy_allocator *a, fy_alloc_tag tag);
-const void *fy_allocator_get_tag_single_linear(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep);
 
 #endif

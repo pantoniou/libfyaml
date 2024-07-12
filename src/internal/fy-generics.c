@@ -680,7 +680,7 @@ struct fy_allocator *create_allocator(const struct generic_options *opt, const c
 		struct fy_auto_setup_data auto_sd;
 
 		memset(&auto_sd, 0, sizeof(auto_sd));
-		auto_sd.scenario = FYAST_BALANCED;
+		auto_sd.scenario = FYAST_PER_TAG_FREE_DEDUP;
 		auto_sd.estimated_max_size = alloc_size ? alloc_size : (16 << 20);
 		return fy_allocator_create("auto", &auto_sd);
 	}

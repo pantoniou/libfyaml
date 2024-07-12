@@ -15,9 +15,12 @@
 #include "fy-allocator.h"
 
 enum fy_auto_scenario_type {
-	FYAST_FASTEST,		/* fast, don't care about memory */
-	FYAST_CONSERVE_MEMORY,	/* conserve memory */
-	FYAST_BALANCED,		/* balance between allocs and frees */
+	FYAST_PER_TAG_FREE,			/* only per tag freeing, no individual obj free		*/
+	FYAST_PER_TAG_FREE_DEDUP,		/* per tag freeing, dedup obj store			*/
+	FYAST_PER_OBJ_FREE,			/* object freeing allowed, tag freeing still works	*/
+	FYAST_PER_OBJ_FREE_DEDUP,		/* per obj freeing, dedup obj store			*/
+	FYAST_SINGLE_LINEAR_RANGE,		/* just a single linear range, no frees at all		*/
+	FYAST_SINGLE_LINEAR_RANGE_DEDUP,	/* single linear range, with dedup			*/
 };
 
 struct fy_auto_setup_data {

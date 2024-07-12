@@ -630,7 +630,7 @@ static int fy_dedup_update_stats(struct fy_allocator *a, fy_alloc_tag tag, struc
 	return fy_dedup_tag_update_stats(da, dt, stats);
 }
 
-static const void *fy_dedup_storev(struct fy_allocator *a, fy_alloc_tag tag, const struct fy_iovecw *iov, unsigned int iovcnt, size_t align)
+static const void *fy_dedup_storev(struct fy_allocator *a, fy_alloc_tag tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
 {
 	XXH64_state_t xxstate;
 	struct fy_dedup_allocator *da;
@@ -662,7 +662,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, fy_alloc_tag tag, con
 	/* calculate data total size */
 	total_size = 0;
 	for (i = 0; i < iovcnt; i++)
-		total_size += iov[i].size;
+		total_size += iov[i].iov_len;
 
 	/* if it's under the dedup threshold just allocate and copy */
 	if (total_size < dtd->dedup_threshold) {
@@ -673,8 +673,8 @@ static const void *fy_dedup_storev(struct fy_allocator *a, fy_alloc_tag tag, con
 			goto err_out;
 
 		for (i = 0, s = p; i < iovcnt; i++) {
-			size = iov[i].size;
-			memcpy(s, iov[i].data, size);
+			size = iov[i].iov_len;
+			memcpy(s, iov[i].iov_base, size);
 			s += size;
 		}
 
@@ -683,7 +683,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, fy_alloc_tag tag, con
 
 	xxstate = da->xxstate_template;
 	for (i = 0; i < iovcnt; i++)
-		XXH64_update(&xxstate, iov[i].data, iov[i].size);
+		XXH64_update(&xxstate, iov[i].iov_base, iov[i].iov_len);
 	hash = XXH64_digest(&xxstate);
 
 	/* first check in the bloom filter */
@@ -716,8 +716,8 @@ static const void *fy_dedup_storev(struct fy_allocator *a, fy_alloc_tag tag, con
 				s = de->mem;
 				e = s + de->size;
 				for (i = 0; i < iovcnt; i++) {
-					size = iov[i].size;
-					if ((s + size) > e || memcmp(iov[i].data, s, size))
+					size = iov[i].iov_len;
+					if ((s + size) > e || memcmp(iov[i].iov_base, s, size))
 						break;
 					s += size;
 				}
@@ -761,8 +761,8 @@ new_entry:
 	/* and copy the data */
 	s = de->mem;
 	for (i = 0; i < iovcnt; i++) {
-		size = iov[i].size;
-		memcpy(s, iov[i].data, size);
+		size = iov[i].iov_len;
+		memcpy(s, iov[i].iov_base, size);
 		s += size;
 	}
 
@@ -797,14 +797,14 @@ err_out:
 
 static const void *fy_dedup_store(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size, size_t align)
 {
-	struct fy_iovecw iov[1];
+	struct iovec iov[1];
 
 	if (!a)
 		return NULL;
 
 	/* just call the storev */
-	iov[0].data = data;
-	iov[0].size = size;
+	iov[0].iov_base = (void *)data;
+	iov[0].iov_len = size;
 	return fy_dedup_storev(a, tag, iov, 1, align);
 }
 

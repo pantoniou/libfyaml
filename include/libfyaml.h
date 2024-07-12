@@ -44,6 +44,8 @@ extern "C" {
 #include <unistd.h>
 #endif
 
+#include <sys/uio.h>
+
 /* opaque types for the user */
 struct fy_token;
 struct fy_document_state;
@@ -9880,6 +9882,83 @@ fy_field_info_set_userdata(const struct fy_field_info *fi, void *userdata)
  */
 void *
 fy_field_info_get_userdata(const struct fy_field_info *fi)
+	FY_EXPORT;
+
+/* forward decl of allocator interfaces */
+struct fy_allocator;
+typedef int fy_alloc_tag;
+
+/* A tag that denotes error */
+#define FY_ALLOC_TAG_ERROR	((fy_alloc_tag)-1)
+/* A tag that represents 'none' */
+#define FY_ALLOC_TAG_NONE	FY_ALLOC_TAG_ERROR
+
+struct fy_allocator *
+fy_allocator_create(const char *name, const void *setupdata)
+	FY_EXPORT;
+
+void
+fy_allocator_destroy(struct fy_allocator *a)
+	FY_EXPORT;
+
+void
+fy_allocator_dump(struct fy_allocator *a)
+	FY_EXPORT;
+
+void *
+fy_allocator_alloc(struct fy_allocator *a, fy_alloc_tag tag, size_t size, size_t align)
+	FY_EXPORT;
+
+void
+fy_allocator_free(struct fy_allocator *a, fy_alloc_tag tag, void *ptr)
+	FY_EXPORT;
+
+const void *
+fy_allocator_store(struct fy_allocator *a, fy_alloc_tag tag, const void *data, size_t size, size_t align)
+	FY_EXPORT;
+
+const void *
+fy_allocator_storev(struct fy_allocator *a, fy_alloc_tag tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
+	FY_EXPORT;
+
+void
+fy_allocator_release(struct fy_allocator *a, fy_alloc_tag tag, const void *ptr, size_t size)
+	FY_EXPORT;
+
+fy_alloc_tag
+fy_allocator_get_tag(struct fy_allocator *a, const void *tag_config)
+	FY_EXPORT;
+
+void
+fy_allocator_release_tag(struct fy_allocator *a, fy_alloc_tag tag)
+	FY_EXPORT;
+
+void
+fy_allocator_trim_tag(struct fy_allocator *a, fy_alloc_tag tag)
+	FY_EXPORT;
+
+void
+fy_allocator_reset_tag(struct fy_allocator *a, fy_alloc_tag tag)
+	FY_EXPORT;
+
+const char *
+fy_allocator_iterate(const char **prevp)
+	FY_EXPORT;
+
+bool
+fy_allocator_is_available(const char *allocator)
+	FY_EXPORT;
+
+char *
+fy_allocator_get_names(void)
+	FY_EXPORT;
+
+ssize_t
+fy_allocator_get_tag_linear_size(struct fy_allocator *a, fy_alloc_tag tag)
+	FY_EXPORT;
+
+const void *
+fy_allocator_get_tag_single_linear(struct fy_allocator *a, fy_alloc_tag tag, size_t *sizep)
 	FY_EXPORT;
 
 #ifdef __cplusplus

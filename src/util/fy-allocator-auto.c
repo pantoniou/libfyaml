@@ -24,80 +24,159 @@
 #include "fy-allocator-linear.h"
 #include "fy-allocator-auto.h"
 
+/* fixed parameters */
+#ifndef AUTO_ALLOCATOR_BIG_ALLOC_THRESHOLD
+#define AUTO_ALLOCATOR_BIG_ALLOC_THRESHOLD	SIZE_MAX
+#endif
+
+#ifndef AUTO_ALLOCATOR_EMPTY_THRESHOLD
+#define AUTO_ALLOCATOR_EMPTY_THRESHOLD		64
+#endif
+
+#ifndef AUTO_ALLOCATOR_GROW_RATIO
+#define AUTO_ALLOCATOR_GROW_RATIO		1.5
+#endif
+
+#ifndef AUTO_ALOCATOR_BALLOON_RATIO
+#define AUTO_ALOCATOR_BALLOON_RATIO		8.0
+#endif
+
+#ifndef AUTO_ALLOCATOR_ARENA_TYPE
+#define AUTO_ALLOCATOR_ARENA_TYPE		FYMRAT_MMAP
+#endif
+
+#ifndef AUTO_ALLOCATOR_MINIMUM_ARENA_SIZE
+#define AUTO_ALLOCATOR_MINIMUM_ARENA_SIZE	((size_t)16 << 20)	/* 16 MB */
+#endif
+
+#ifndef AUTO_ALLOCATOR_DEFAULT_ESTIMATED_MAX_SIZE
+#define AUTO_ALLOCATOR_DEFAULT_ESTIMATED_MAX_SIZE ((size_t)1 << 20)	/* 1MB */
+#endif
+
+#ifndef AUTO_ALLOCATOR_DEFAULT_BLOOM_FILTER_BITS
+#define AUTO_ALLOCATOR_DEFAULT_BLOOM_FILTER_BITS	0
+#endif
+
+#ifndef AUTO_ALLOCATOR_DEFAULT_BUCKET_COUNT_BITS
+#define AUTO_ALLOCATOR_DEFAULT_BUCKET_COUNT_BITS	0
+#endif
+
 static const struct fy_auto_setup_data default_setup_data = {
-	.scenario = FYAST_BALANCED,
-	.estimated_max_size = 1048576,	/* 1MB */
+	.scenario = FYAST_PER_TAG_FREE_DEDUP,
+	.estimated_max_size = AUTO_ALLOCATOR_DEFAULT_ESTIMATED_MAX_SIZE,
 };
 
 static void fy_auto_cleanup(struct fy_allocator *a);
 
 static int fy_auto_setup(struct fy_allocator *a, const void *data)
 {
-	size_t pagesz;
+	size_t pagesz, size;
 	struct fy_auto_allocator *aa;
 	const struct fy_auto_setup_data *d;
 	struct fy_mremap_setup_data mrsetupdata;
 	struct fy_dedup_setup_data dsetupdata;
-	struct fy_allocator *mra = NULL, *da = NULL;
+	struct fy_linear_setup_data lsetupdata;
+	struct fy_allocator *mra = NULL, *da = NULL, *ma = NULL, *la = NULL;
+	struct fy_allocator *topa = NULL, *suba = NULL;
 
 	if (!a)
 		return -1;
 
-	pagesz = sysconf(_SC_PAGESIZE);
 	d = data ? data : &default_setup_data;
+
+	if ((unsigned int)d->scenario > FYAST_SINGLE_LINEAR_RANGE)
+		return -1;
 
 	aa = container_of(a, struct fy_auto_allocator, a);
 	memset(aa, 0, sizeof(*aa));
 	aa->a.name = "auto";
 	aa->a.ops = &fy_auto_allocator_ops;
+	
+	pagesz = sysconf(_SC_PAGESIZE);
+	size = d->estimated_max_size && d->estimated_max_size != SIZE_MAX ?
+			d->estimated_max_size :
+			AUTO_ALLOCATOR_MINIMUM_ARENA_SIZE;
 
-	memset(&mrsetupdata, 0, sizeof(mrsetupdata));
-	mrsetupdata.big_alloc_threshold = SIZE_MAX;
-	mrsetupdata.empty_threshold = 64;
-	mrsetupdata.grow_ratio = 1.5;
-	mrsetupdata.balloon_ratio = 8.0;
-	mrsetupdata.arena_type = FYMRAT_MMAP;
+	/* first allocator */
+	switch (d->scenario) {
+	case FYAST_PER_TAG_FREE:
+	case FYAST_PER_TAG_FREE_DEDUP:
+		memset(&mrsetupdata, 0, sizeof(mrsetupdata));
+		mrsetupdata.big_alloc_threshold = AUTO_ALLOCATOR_BIG_ALLOC_THRESHOLD;
+		mrsetupdata.empty_threshold = AUTO_ALLOCATOR_EMPTY_THRESHOLD;
+		mrsetupdata.grow_ratio = AUTO_ALLOCATOR_GROW_RATIO;
+		mrsetupdata.balloon_ratio = AUTO_ALOCATOR_BALLOON_RATIO;
+		mrsetupdata.arena_type = AUTO_ALLOCATOR_ARENA_TYPE;
 
-	if (d->estimated_max_size && d->estimated_max_size != SIZE_MAX)
-		mrsetupdata.minimum_arena_size = fy_size_t_align(d->estimated_max_size, pagesz);
-	else
-		mrsetupdata.minimum_arena_size = fy_size_t_align(16 << 20, pagesz);	/* 16 MB */
+		mrsetupdata.minimum_arena_size = fy_size_t_align(size, pagesz);
 
-	fprintf(stderr, "mrsetupdata.minimum_arena_size=%zu\n", mrsetupdata.minimum_arena_size);
+		mra = fy_allocator_create("mremap", &mrsetupdata);
+		if (!mra)
+			goto err_out;
+		topa = mra;
 
-	mra = fy_allocator_create("mremap", &mrsetupdata);
-	if (!mra)
+		fprintf(stderr, "%s: mremap\n", __func__);
+		break;
+
+	case FYAST_PER_OBJ_FREE:
+	case FYAST_PER_OBJ_FREE_DEDUP:
+		ma = fy_allocator_create("malloc", NULL);
+		if (!ma)
+			goto err_out;
+		topa = ma;
+		fprintf(stderr, "%s: malloc\n", __func__);
+		break;
+
+	case FYAST_SINGLE_LINEAR_RANGE:
+	case FYAST_SINGLE_LINEAR_RANGE_DEDUP:
+		memset(&lsetupdata, 0, sizeof(lsetupdata));
+		lsetupdata.size = fy_size_t_align(size, pagesz);
+
+		la = fy_allocator_create("linear", &lsetupdata);
+		if (!la)
+			goto err_out;
+		topa = la;
+		fprintf(stderr, "%s: linear\n", __func__);
+		break;
+	}
+
+	if (!topa)
 		goto err_out;
 
-	/* TODO switch to malloc for valgrind and asan check mode */
-	if (d->scenario == FYAST_FASTEST) {
-		aa->parent_allocator = mra;
-		aa->sub_parent_allocator = NULL;
-		mra = NULL;
-	} else {
+	/* stack the dedup */
+	switch (d->scenario) {
+	case FYAST_PER_TAG_FREE_DEDUP:
+	case FYAST_PER_OBJ_FREE_DEDUP:
+	case FYAST_SINGLE_LINEAR_RANGE_DEDUP:
 		memset(&dsetupdata, 0, sizeof(dsetupdata));
-		dsetupdata.parent_allocator = mra;
-		dsetupdata.bloom_filter_bits = 0;	/* use default */
-		dsetupdata.bucket_count_bits = 0;
-		dsetupdata.estimated_content_size = mrsetupdata.minimum_arena_size;
+		dsetupdata.parent_allocator = topa;
+		dsetupdata.bloom_filter_bits = AUTO_ALLOCATOR_DEFAULT_BLOOM_FILTER_BITS;
+		dsetupdata.bucket_count_bits = AUTO_ALLOCATOR_DEFAULT_BUCKET_COUNT_BITS;
+		dsetupdata.estimated_content_size = size;
 
 		da = fy_allocator_create("dedup", &dsetupdata);
 		if (!da)
 			goto err_out;
+		/* the top is sub now */
+		suba = topa;
+		topa = da;
 
-		aa->parent_allocator = da;
-		aa->sub_parent_allocator = mra;
+		fprintf(stderr, "%s: dedup\n", __func__);
+		break;
 
-		da = NULL;
-		mra = NULL;
+	default:
+		break;
 	}
 
+	/* OK, assign the allocators now */
+	aa->parent_allocator = topa;
+	aa->sub_parent_allocator = suba;
+
 	return 0;
+
 err_out:
-	if (da)
-		fy_allocator_destroy(da);
-	if (mra)
-		fy_allocator_destroy(mra);
+	fy_allocator_destroy(suba);
+	fy_allocator_destroy(topa);
 	fy_auto_cleanup(a);
 	return -1;
 }
@@ -218,7 +297,7 @@ static const void *fy_auto_store(struct fy_allocator *a, fy_alloc_tag tag, const
 	return fy_allocator_store(aa->parent_allocator, tag, data, size, align);
 }
 
-static const void *fy_auto_storev(struct fy_allocator *a, fy_alloc_tag tag, const struct fy_iovecw *iov, unsigned int iovcnt, size_t align)
+static const void *fy_auto_storev(struct fy_allocator *a, fy_alloc_tag tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
 {
 	struct fy_auto_allocator *aa;
 

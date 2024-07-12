@@ -230,7 +230,7 @@ err_out:
 	return NULL;
 }
 
-static const void *fy_linear_storev(struct fy_allocator *a, fy_alloc_tag tag, const struct fy_iovecw *iov, unsigned int iovcnt, size_t align)
+static const void *fy_linear_storev(struct fy_allocator *a, fy_alloc_tag tag, const struct iovec *iov, unsigned int iovcnt, size_t align)
 {
 	void *p, *start;
 	unsigned int i;
@@ -241,15 +241,15 @@ static const void *fy_linear_storev(struct fy_allocator *a, fy_alloc_tag tag, co
 
 	size = 0;
 	for (i = 0; i < iovcnt; i++)
-		size += iov[i].size;
+		size += iov[i].iov_len;
 
 	start = fy_linear_alloc(a, tag, size, align);
 	if (!start)
 		goto err_out;
 
 	for (i = 0, p = start; i < iovcnt; i++, p += size) {
-		size = iov[i].size;
-		memcpy(p, iov[i].data, size);
+		size = iov[i].iov_len;
+		memcpy(p, iov[i].iov_base, size);
 	}
 
 	return start;

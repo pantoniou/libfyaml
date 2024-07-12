@@ -106,7 +106,7 @@ fy_generic fy_generic_float_create(struct fy_generic_builder *gb, double val)
 fy_generic fy_generic_string_size_create(struct fy_generic_builder *gb, const char *str, size_t len)
 {
 	uint8_t lenbuf[FYGT_SIZE_ENCODING_MAX];
-	struct fy_iovecw iov[3];
+	struct iovec iov[3];
 	const void *s;
 	void *p;
 
@@ -156,12 +156,12 @@ fy_generic fy_generic_string_size_create(struct fy_generic_builder *gb, const ch
 	p = fy_encode_size(lenbuf, sizeof(lenbuf), len);
 	assert(p);
 
-	iov[0].data = lenbuf;
-	iov[0].size = (size_t)((uint8_t *)p - lenbuf) ;
-	iov[1].data = str;
-	iov[1].size = len;
-	iov[2].data = "\x00";	/* null terminate always */
-	iov[2].size = 1;
+	iov[0].iov_base = lenbuf;
+	iov[0].iov_len = (size_t)((uint8_t *)p - lenbuf) ;
+	iov[1].iov_base = (void *)str;
+	iov[1].iov_len = len;
+	iov[2].iov_base = "\x00";	/* null terminate always */
+	iov[2].iov_len = 1;
 
 	/* strings are aligned at 8 always */
 	s = fy_generic_builder_storev(gb, iov, ARRAY_SIZE(iov), 8);
@@ -210,7 +210,7 @@ fy_generic fy_generic_sequence_create(struct fy_generic_builder *gb, size_t coun
 {
 	struct fy_generic_sequence s;
 	const struct fy_generic_sequence *p;
-	struct fy_iovecw iov[2];
+	struct iovec iov[2];
 	size_t i;
 
 	if (count && !items)
@@ -224,10 +224,10 @@ fy_generic fy_generic_sequence_create(struct fy_generic_builder *gb, size_t coun
 	memset(&s, 0, sizeof(s));
 	s.count = count;
 
-	iov[0].data = &s;
-	iov[0].size = sizeof(s);
-	iov[1].data = items;
-	iov[1].size = count * sizeof(*items);
+	iov[0].iov_base = &s;
+	iov[0].iov_len = sizeof(s);
+	iov[1].iov_base = (void *)items;
+	iov[1].iov_len = count * sizeof(*items);
 
 	p = fy_generic_builder_storev(gb, iov, ARRAY_SIZE(iov), FY_CONTAINER_ALIGNOF(struct fy_generic_sequence));
 	if (!p)
@@ -240,7 +240,7 @@ fy_generic fy_generic_mapping_create(struct fy_generic_builder *gb, size_t count
 {
 	struct fy_generic_mapping m;
 	const struct fy_generic_mapping *p;
-	struct fy_iovecw iov[2];
+	struct iovec iov[2];
 	size_t i;
 
 	if (count && !pairs)
@@ -254,10 +254,10 @@ fy_generic fy_generic_mapping_create(struct fy_generic_builder *gb, size_t count
 	memset(&m, 0, sizeof(m));
 	m.count = count;
 
-	iov[0].data = &m;
-	iov[0].size = sizeof(m);
-	iov[1].data = pairs;
-	iov[1].size = 2 * count * sizeof(*pairs);
+	iov[0].iov_base = &m;
+	iov[0].iov_len = sizeof(m);
+	iov[1].iov_base = (void *)pairs;
+	iov[1].iov_len = 2 * count * sizeof(*pairs);
 
 	p = fy_generic_builder_storev(gb, iov, ARRAY_SIZE(iov), FY_CONTAINER_ALIGNOF(struct fy_generic_mapping));
 	if (!p)
@@ -286,7 +286,7 @@ const fy_generic *fy_generic_mapping_lookup(fy_generic map, fy_generic key)
 fy_generic fy_generic_indirect_create(struct fy_generic_builder *gb, const struct fy_generic_indirect *gi)
 {
 	const void *p;
-	struct fy_iovecw iov[4];
+	struct iovec iov[4];
 	size_t cnt;
 	uintptr_t flags;
 
@@ -299,19 +299,19 @@ fy_generic fy_generic_indirect_create(struct fy_generic_builder *gb, const struc
 		flags |= FYGIF_ANCHOR;
 	if (gi->tag != fy_null && gi->tag != fy_invalid)
 		flags |= FYGIF_TAG;
-	iov[cnt].data = &flags;
-	iov[cnt++].size = sizeof(flags);
+	iov[cnt].iov_base = &flags;
+	iov[cnt++].iov_len = sizeof(flags);
 	if (flags & FYGIF_VALUE) {
-		iov[cnt].data = &gi->value;
-		iov[cnt++].size = sizeof(gi->value);
+		iov[cnt].iov_base = (void *)&gi->value;
+		iov[cnt++].iov_len = sizeof(gi->value);
 	}
 	if (flags & FYGIF_ANCHOR) {
-		iov[cnt].data = &gi->anchor;
-		iov[cnt++].size = sizeof(gi->anchor);
+		iov[cnt].iov_base = (void *)&gi->anchor;
+		iov[cnt++].iov_len = sizeof(gi->anchor);
 	}
 	if (flags & FYGIF_TAG) {
-		iov[cnt].data = &gi->tag;
-		iov[cnt++].size = sizeof(gi->tag);
+		iov[cnt].iov_base = (void *)&gi->tag;
+		iov[cnt++].iov_len = sizeof(gi->tag);
 	}
 
 	p = fy_generic_builder_storev(gb, iov, cnt, FY_SCALAR_ALIGNOF(fy_generic));	/* must be at least 8 */
@@ -761,7 +761,7 @@ fy_generic fy_generic_builder_copy_out_of_place(struct fy_generic_builder *gb, f
 	const struct fy_generic_sequence *seqs;
 	fy_generic vi;
 	const struct fy_generic_mapping *maps;
-	struct fy_iovecw iov[2];
+	struct iovec iov[2];
 	enum fy_generic_type type;
 	size_t size, len, i, count;
 	const void *valp;
@@ -844,10 +844,10 @@ fy_generic fy_generic_builder_copy_out_of_place(struct fy_generic_builder *gb, f
 		}
 
 		if (i >= count) {
-			iov[0].data = seqs;
-			iov[0].size = sizeof(*seqs);
-			iov[1].data = items;
-			iov[1].size = size;
+			iov[0].iov_base = (void *)seqs;
+			iov[0].iov_len = sizeof(*seqs);
+			iov[1].iov_base = items;
+			iov[1].iov_len = size;
 			valp = fy_generic_builder_storev(gb, iov, ARRAY_SIZE(iov),
 					FY_CONTAINER_ALIGNOF(struct fy_generic_sequence));
 		} else
@@ -887,10 +887,10 @@ fy_generic fy_generic_builder_copy_out_of_place(struct fy_generic_builder *gb, f
 		}
 
 		if (i >= count) {
-			iov[0].data = maps;
-			iov[0].size = sizeof(*maps);
-			iov[1].data = items;
-			iov[1].size = size,
+			iov[0].iov_base = (void *)maps;
+			iov[0].iov_len = sizeof(*maps);
+			iov[1].iov_base = items;
+			iov[1].iov_len = size,
 			valp = fy_generic_builder_storev(gb, iov, ARRAY_SIZE(iov),
 					FY_CONTAINER_ALIGNOF(struct fy_generic_mapping));
 		} else
