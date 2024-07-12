@@ -9,6 +9,13 @@ AM_CPPFLAGS = \
         -I$(top_srcdir)/include
 AM_CFLAGS =
 
+INTERNAL_INCLUDES = \
+	-I$(top_srcdir)/src/valgrind \
+	-I$(top_srcdir)/src/lib \
+	-I$(top_srcdir)/src/xxhash \
+	-I$(top_srcdir)/src/util \
+	-I$(top_srcdir)/src/thread
+
 lib_LTLIBRARIES += libfyaml.la
 libfyaml_la_SOURCES = \
         lib/fy-parse.c lib/fy-parse.h \
@@ -41,11 +48,7 @@ libfyaml_la_SOURCES = \
 	util/fy-vlsize.h \
 	thread/fy-thread.h thread/fy-thread.c
 
-libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) \
-		       -I$(top_srcdir)/src/lib \
-		       -I$(top_srcdir)/src/xxhash \
-		       -I$(top_srcdir)/src/util \
-		       -I$(top_srcdir)/src/thread
+libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)
 libfyaml_la_CFLAGS = $(AM_CFLAGS)
 libfyaml_la_LDFLAGS = -no-undefined $(AM_LDFLAGS) $(AM_LIBLDFLAGS) \
 		      -version $(LIBTOOL_VERSION)
@@ -125,12 +128,7 @@ libfyaml_parser_SOURCES = \
 	internal/libfyaml-parser.c \
 	valgrind/fy-valgrind.h
 
-libfyaml_parser_CPPFLAGS = $(AM_CPPFLAGS) \
-			   -I$(top_srcdir)/src/valgrind \
-			   -I$(top_srcdir)/src/lib \
-			   -I$(top_srcdir)/src/xxhash \
-			   -I$(top_srcdir)/src/util \
-			   -I$(top_srcdir)/src/thread
+libfyaml_parser_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)
 libfyaml_parser_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
 libfyaml_parser_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 
@@ -147,12 +145,7 @@ fy_thread_SOURCES = \
 	internal/fy-thread.c \
 	valgrind/fy-valgrind.h
 
-fy_thread_CPPFLAGS = $(AM_CPPFLAGS) \
-			   -I$(top_srcdir)/src/valgrind \
-			   -I$(top_srcdir)/src/lib \
-			   -I$(top_srcdir)/src/xxhash \
-			   -I$(top_srcdir)/src/util \
-			   -I$(top_srcdir)/src/thread
+fy_thread_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)
 fy_thread_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
 fy_thread_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 
@@ -168,13 +161,7 @@ fy_b3sum_SOURCES = \
 	internal/fy-b3sum.c \
 	valgrind/fy-valgrind.h
 
-fy_b3sum_CPPFLAGS = $(AM_CPPFLAGS) \
-			   -I$(top_srcdir)/src/valgrind \
-			   -I$(top_srcdir)/src/lib \
-			   -I$(top_srcdir)/src/xxhash \
-			   -I$(top_srcdir)/src/util \
-			   -I$(top_srcdir)/src/thread \
-			   -I$(top_srcdir)/src/blake3
+fy_b3sum_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES) -I$(top_srcdir)/src/blake3
 fy_b3sum_LDADD = $(AM_LDADD) $(LIBYAML_LIBS) libfyaml.la
 fy_b3sum_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 
