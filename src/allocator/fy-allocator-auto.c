@@ -100,7 +100,7 @@ static int fy_auto_setup(struct fy_allocator *a, const void *cfg_data)
 	aa->a.name = "auto";
 	aa->a.ops = &fy_auto_allocator_ops;
 	aa->cfg = *cfg;
-	
+
 	pagesz = sysconf(_SC_PAGESIZE);
 	size = cfg->estimated_max_size && cfg->estimated_max_size != SIZE_MAX ?
 			cfg->estimated_max_size :

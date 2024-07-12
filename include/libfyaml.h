@@ -10020,7 +10020,7 @@ fy_allocator_reset_tag(struct fy_allocator *a, int tag)
  *
  * Allocate memory from the given allocator tag, satisfying the
  * size and align restrictions.
- * 
+ *
  * @a: The allocator
  * @tag: The tag to allocate from
  * @size: The size of the memory to allocate
@@ -10038,7 +10038,7 @@ fy_allocator_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
  *
  * Attempt to free the memory allocated previously by fy_allocator_alloc()
  * Note that non per object tracking allocators treat this as a NOP
- * 
+ *
  * @a: The allocator
  * @tag: The tag used to allocate the memory
  * @ptr: The pointer to the memory to free
@@ -10056,7 +10056,7 @@ fy_allocator_free(struct fy_allocator *a, int tag, void *ptr)
  * returned.
  *
  * The return pointer must not be modified, the objects stored are idempotent.
- * 
+ *
  * @a: The allocator
  * @tag: The tag used to allocate the memory
  * @data: The pointer to object to store
@@ -10081,7 +10081,7 @@ fy_allocator_store(struct fy_allocator *a, int tag, const void *data, size_t siz
  * The object is created linearly from the scatter gather io vector provided.
  *
  * The return pointer must not be modified, the objects stored are idempotent.
- * 
+ *
  * @a: The allocator
  * @tag: The tag used to allocate the memory from
  * @iov: The I/O scatter gather vector
@@ -10179,7 +10179,7 @@ enum fy_mremap_arena_type {
  */
 struct fy_mremap_allocator_cfg {
 	size_t big_alloc_threshold;
-	size_t empty_threshold;	
+	size_t empty_threshold;
 	size_t minimum_arena_size;
 	float grow_ratio;
 	float balloon_ratio;
