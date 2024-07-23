@@ -92,9 +92,6 @@ static int fy_auto_setup(struct fy_allocator *a, const void *cfg_data)
 
 	cfg = cfg_data ? cfg_data : &default_cfg;
 
-	if ((unsigned int)cfg->scenario > FYAST_SINGLE_LINEAR_RANGE)
-		return -1;
-
 	aa = container_of(a, struct fy_auto_allocator, a);
 	memset(aa, 0, sizeof(*aa));
 	aa->a.name = "auto";
@@ -144,6 +141,9 @@ static int fy_auto_setup(struct fy_allocator *a, const void *cfg_data)
 			goto err_out;
 		topa = la;
 		break;
+
+	default:
+		goto err_out;
 	}
 
 	if (!topa)
@@ -171,8 +171,14 @@ static int fy_auto_setup(struct fy_allocator *a, const void *cfg_data)
 
 		break;
 
-	default:
+		/* nothing to stack for these */
+	case FYAST_PER_TAG_FREE:
+	case FYAST_PER_OBJ_FREE:
+	case FYAST_SINGLE_LINEAR_RANGE:
 		break;
+
+	default:
+		goto err_out;
 	}
 
 	/* OK, assign the allocators now */
@@ -197,14 +203,15 @@ static void fy_auto_cleanup(struct fy_allocator *a)
 
 	aa = container_of(a, struct fy_auto_allocator, a);
 
-	if (aa->sub_parent_allocator) {
-		fy_allocator_destroy(aa->sub_parent_allocator);
-		aa->sub_parent_allocator = NULL;
-	}
-
+	/* order is important! */
 	if (aa->parent_allocator) {
 		fy_allocator_destroy(aa->parent_allocator);
 		aa->parent_allocator = NULL;
+	}
+
+	if (aa->sub_parent_allocator) {
+		fy_allocator_destroy(aa->sub_parent_allocator);
+		aa->sub_parent_allocator = NULL;
 	}
 }
 
