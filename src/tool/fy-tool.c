@@ -2094,13 +2094,44 @@ struct reflection_type {
 	const struct reflection_type_ops ops;
 };
 
+/* instance datas */
+struct field_instance_data {
+	bool present : 1;
+};
+
+struct struct_instance_data {
+	struct field_instance_data *fid;
+	struct reflection_object *ro_flatten;
+	struct reflection_field_data *rfd_flatten;
+	uintmax_t bitfield_data;
+};
+
+struct const_array_instance_data {
+	int last_idx;
+};
+
+struct dyn_array_instance_data {
+	size_t count;
+	size_t alloc;
+	struct reflection_field_data *rfd_counter;
+};
+
+struct ptr_doc_instance_data {
+	struct fy_document_builder *fydb;
+};
+
 struct reflection_object {
 	struct reflection_object *parent;
 	void *parent_addr;
 	struct reflection_type_data *rtd;
-	void *instance_data;
 	void *data;
 	size_t data_size;
+	union {
+		struct struct_instance_data id_struct;
+		struct const_array_instance_data id_const_array;
+		struct dyn_array_instance_data id_dyn_array;
+		struct ptr_doc_instance_data id_ptr_doc;
+	};
 };
 
 #define REFLECTION_OBJECT_SKIP	((struct reflection_object *)(void *)(uintptr_t)-1)
@@ -2889,14 +2920,17 @@ err_inval:
 
 static int const_array_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
+	struct const_array_instance_data *id;
+
 	if (fye->type != FYET_SEQUENCE_START) {
 		fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
 				"Illegal event type (expecting sequence start)");
 		goto err_out;
 	}
+	id = &ro->id_const_array;
+	id->last_idx = -1;
 
 	assert(ro->data);
-	ro->instance_data = (void *)(uintptr_t)-1;	/* last index of const array */
 
 	return 0;
 
@@ -2910,7 +2944,7 @@ static int const_array_finish(struct reflection_object *ro, struct fy_parser *fy
 	size_t item_size;
 	int last_idx, count, i, rc;
 
-	last_idx = (int)(uintptr_t)ro->instance_data;
+	last_idx = ro->id_const_array.last_idx;
 	count = (int)ro->rtd->ti->count;
 	if (last_idx < 0)
 		last_idx = -1;
@@ -2942,12 +2976,13 @@ err_out:
 
 static void const_array_cleanup(struct reflection_object *ro)
 {
-	ro->instance_data = NULL;
+	/* nothing */
 }
 
 struct reflection_object *const_array_create_child(struct reflection_object *ro_parent,
 						   struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
+	struct const_array_instance_data *id;
 	struct reflection_object *ro;
 	struct reflection_type_data *rtd_dep;
 	size_t item_size;
@@ -2972,7 +3007,9 @@ struct reflection_object *const_array_create_child(struct reflection_object *ro_
 	if (!ro)
 		return NULL;
 
-	ro_parent->instance_data = (void *)(uintptr_t)idx;	/* last index of const array */
+	id = &ro_parent->id_const_array;
+
+	id->last_idx = idx;	/* last index of const array */
 
 	return ro;
 }
@@ -3383,17 +3420,6 @@ void integer_field_store(struct reflection_field_data *rfd, uintmax_t v, void *d
 		store_bitfield_le(data, rfd->fi->bit_offset, rfd->fi->bit_width, v);
 }
 
-struct field_instance_data {
-	bool present : 1;
-};
-
-struct struct_instance_data {
-	struct field_instance_data *fid;
-	struct reflection_object *ro_flatten;
-	struct reflection_field_data *rfd_flatten;
-	uintmax_t bitfield_data;
-};
-
 static void
 struct_instance_data_cleanup(struct struct_instance_data *id)
 {
@@ -3402,7 +3428,6 @@ struct_instance_data_cleanup(struct struct_instance_data *id)
 
 	if (id->fid)
 		free(id->fid);
-	free(id);
 }
 
 static int struct_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
@@ -3411,12 +3436,8 @@ static int struct_setup(struct reflection_object *ro, struct fy_parser *fyp, str
 	size_t size;
 	void *field_data;
 
-	id = malloc(sizeof(*id));
-	if (!id)
-		goto err_out;
+	id = &ro->id_struct;
 	memset(id, 0, sizeof(*id));
-
-	ro->instance_data = id;
 
 	if (ro->rtd->flat_field) {
 		id->rfd_flatten = reflection_type_data_lookup_field(ro->rtd, ro->rtd->flat_field);
@@ -3467,13 +3488,12 @@ static void struct_cleanup(struct reflection_object *ro)
 {
 	struct struct_instance_data *id;
 
-	id = ro->instance_data;
+	id = &ro->id_struct;
 	if (id->ro_flatten) {
 		reflection_object_destroy(id->ro_flatten);
 		id->ro_flatten = NULL;
 	}
 
-	ro->instance_data = NULL;
 	struct_instance_data_cleanup(id);
 }
 
@@ -3484,10 +3504,7 @@ static int struct_handle_finish_flatten(struct reflection_object *ro, struct fy_
 	uintmax_t limit;
 	int rc;
 
-	assert(ro->instance_data);
-	id = ro->instance_data;
-	assert(id);
-
+	id = &ro->id_struct;
 	assert(id->rfd_flatten);
 
 	rc = reflection_object_finish(id->ro_flatten, fyp, fye, path);
@@ -3582,8 +3599,7 @@ static int struct_finish(struct reflection_object *ro, struct fy_parser *fyp, st
 	size_t i;
 	int rc;
 
-	assert(ro->instance_data);
-	id = ro->instance_data;
+	id = &ro->id_struct;
 	assert(id);
 
 	/* handle the flattening */
@@ -3635,9 +3651,7 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 	void *field_data;
 	int field_idx, rc;
 
-	id = ro_parent->instance_data;
-	assert(id);
-
+	id = &ro_parent->id_struct;
 	if (id->ro_flatten)
 		return reflection_object_create_child(id->ro_flatten, fyp, fye, path);
 
@@ -4370,19 +4384,14 @@ void typedef_dtor(struct reflection_type_data *rtd, void *data)
 	reflection_type_data_call_dtor(rtd->rtd_dep, data);
 }
 
-struct dyn_array_instance_data {
-	size_t count;
-	size_t alloc;
-	struct reflection_field_data *rfd_counter;
-};
-
 static int
 dyn_array_grow_for_idx(struct reflection_object *ro, size_t idx)
 {
-	struct dyn_array_instance_data *id = ro->instance_data;
+	struct dyn_array_instance_data *id;
 	void *data, *new_data;
 	size_t item_size, new_alloc;
 
+	id = &ro->id_dyn_array;
 	if (idx >= id->alloc) {
 		data = *(void **)ro->data;
 		new_alloc = id->alloc * 2;
@@ -4422,12 +4431,8 @@ static int dyn_array_setup(struct reflection_object *ro, struct fy_parser *fyp, 
 		goto err_out;
 	}
 
-	id = malloc(sizeof(*id));
-	if (!id)
-		goto err_out;
+	id = &ro->id_dyn_array;
 	memset(id, 0, sizeof(*id));
-
-	ro->instance_data = id;
 
 	if (ro->rtd->counter) {
 		id->rfd_counter = reflection_type_data_lookup_field(ro->parent->rtd, ro->rtd->counter);
@@ -4459,12 +4464,7 @@ err_out:
 
 static void dyn_array_cleanup(struct reflection_object *ro)
 {
-	struct dyn_array_instance_data *id;
-
-	id = ro->instance_data;
-	ro->instance_data = NULL;
-	if (id) 
-		free(id);
+	/* nothing */
 }
 
 static int dyn_array_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
@@ -4478,9 +4478,7 @@ static int dyn_array_finish(struct reflection_object *ro, struct fy_parser *fyp,
 	rfd = ro->parent_addr;
 	assert(rfd);
 
-	id = ro->instance_data;
-	assert(id);
-
+	id = &ro->id_dyn_array;
 	if (id->rfd_counter) {
 		/* and store the counter */
 		assert(ro->parent);
@@ -4533,8 +4531,7 @@ struct reflection_object *dyn_array_create_child(struct reflection_object *ro_pa
 	int rc, idx;
 	void *data;
 
-	id = ro_parent->instance_data;
-	assert(id);
+	id = &ro_parent->id_dyn_array;
 
 	assert(fy_path_in_sequence(path));
 	idx = fy_path_component_sequence_get_index(fy_path_last_not_collection_root_component(path));
@@ -4727,24 +4724,20 @@ static const struct reflection_type_ops dyn_array_ops = {
 	.dtor = dyn_array_dtor,
 };
 
-struct ptr_doc_instance_data {
-	struct fy_document_builder *fydb;
-};
-
 static void ptr_doc_instance_data_cleanup(struct ptr_doc_instance_data *id)
 {
 	if (!id)
 		return;
 	fy_document_builder_destroy(id->fydb);
-	free(id);
 }
 
 static int ptr_doc_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
-	struct ptr_doc_instance_data *id = ro->instance_data;
+	struct ptr_doc_instance_data *id;
 	struct fy_document *fyd;
 	void *data;
 
+	id = &ro->id_ptr_doc;
 	data = ro->data;
 	assert(data);
 
@@ -4761,11 +4754,9 @@ err_out:
 
 static int ptr_doc_consume_event(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
-	struct ptr_doc_instance_data *id = NULL;
+	struct ptr_doc_instance_data *id;
 
-	id = ro->instance_data;
-	assert(id);
-
+	id = &ro->id_ptr_doc;
 	return fy_document_builder_process_event(id->fydb, fye);
 }
 
@@ -4779,12 +4770,8 @@ static int ptr_doc_setup(struct reflection_object *ro, struct fy_parser *fyp, st
 	size_t data_size;
 	int rc;
 
-	id = malloc(sizeof(*id));
-	if (!id)
-		goto err_out;
+	id = &ro->id_ptr_doc;
 	memset(id, 0, sizeof(*id));
-
-	ro->instance_data = id;
 
 	assert(ro->rtd->ti->kind == FYTK_PTR);
 
@@ -4827,12 +4814,7 @@ static void ptr_doc_cleanup(struct reflection_object *ro)
 {
 	struct ptr_doc_instance_data *id;
 
-
-	id = ro->instance_data;
-	if (!id)
-		return;
-	ro->instance_data = NULL;
-
+	id = &ro->id_ptr_doc;
 	ptr_doc_instance_data_cleanup(id);
 }
 
