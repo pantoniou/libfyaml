@@ -39,7 +39,8 @@ libfyaml_test_SOURCES = \
 	libfyaml-test.c \
 	libfyaml-test-core.c \
 	libfyaml-test-meta.c \
-	libfyaml-test-emit.c
+	libfyaml-test-emit.c \
+	libfyaml-test-allocator.c
 
 # the private tests require static compilation
 # if we're compiling shared only, disable the private parts
