@@ -25,7 +25,7 @@
 
 #include "fy-allocator-mremap.h"
 
-#define DEBUG_ARENA
+// #define DEBUG_ARENA
 
 // #define DISABLE_MREMAP
 
@@ -275,11 +275,11 @@ fy_mremap_tag_from_tag(struct fy_mremap_allocator *mra, int tag)
 static void fy_mremap_tag_cleanup(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt)
 {
 	struct fy_mremap_arena *mran;
-	struct fy_mremap_arena_list *mranl, *arena_lists[2];
-	unsigned int j;
 	int id;
 #ifdef DEBUG_ARENA
+	struct fy_mremap_arena_list *mranl, *arena_lists[2];
 	size_t total_sys_alloc, total_wasted;
+	unsigned int j;
 #endif
 
 	if (!mra || !mrt)
@@ -325,8 +325,8 @@ static void fy_mremap_tag_cleanup(struct fy_mremap_allocator *mra, struct fy_mre
 
 static void fy_mremap_tag_trim(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt)
 {
-	struct fy_mremap_arena *mran;
 	struct fy_mremap_arena_list *mranl, *arena_lists[2];
+	struct fy_mremap_arena *mran;
 	unsigned int j;
 #ifdef DEBUG_ARENA
 	size_t wasted_before, wasted_after;
@@ -340,18 +340,23 @@ static void fy_mremap_tag_trim(struct fy_mremap_allocator *mra, struct fy_mremap
 
 	arena_lists[0] = &mrt->arenas;
 	arena_lists[1] = &mrt->full_arenas;
-
 #ifdef DEBUG_ARENA
 	wasted_before = 0;
 	wasted_after = 0;
+#endif
 	for (j = 0; j < ARRAY_SIZE(arena_lists); j++) {
 		mranl = arena_lists[j];
 		for (mran = fy_mremap_arena_list_head(mranl); mran; mran = fy_mremap_arena_next(mranl, mran)) {
+#ifdef DEBUG_ARENA
 			wasted_before += (mran->size - mran->next);
+#endif
 			(void)fy_mremap_arena_trim(mra, mrt, mran);
+#ifdef DEBUG_ARENA
 			wasted_after += (mran->size - mran->next);
+#endif
 		}
 	}
+#ifdef DEBUG_ARENA
 	fprintf(stderr, "wasted_before=%zu wasted_after=%zu\n", wasted_before, wasted_after);
 #endif
 }
