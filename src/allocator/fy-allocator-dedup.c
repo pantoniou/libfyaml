@@ -25,7 +25,7 @@
 
 #include "fy-allocator-dedup.h"
 
-#define DEBUG_GROWS
+// #define DEBUG_GROWS
 
 #undef BEFORE
 #define BEFORE() \
@@ -499,11 +499,12 @@ static void fy_dedup_cleanup(struct fy_allocator *a)
 
 	da = container_of(a, struct fy_dedup_allocator, a);
 
+	for (i = 0, dt = da->tags; i < ARRAY_SIZE(da->tags); i++, dt++)
+		fy_dedup_tag_cleanup(da, dt);
+
 	if (da->entries_allocator)
 		fy_allocator_destroy(da->entries_allocator);
 
-	for (i = 0, dt = da->tags; i < ARRAY_SIZE(da->tags); i++, dt++)
-		fy_dedup_tag_cleanup(da, dt);
 }
 
 struct fy_allocator *fy_dedup_create(const void *cfg)
