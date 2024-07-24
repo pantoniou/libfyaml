@@ -2095,15 +2095,15 @@ struct reflection_type {
 };
 
 /* instance datas */
-struct field_instance_data {
-	bool present : 1;
-};
-
+#define STRUCT_ID_FIELD_PRESENT_INLINE	128
 struct struct_instance_data {
-	struct field_instance_data *fid;
 	struct reflection_object *ro_flatten;
 	struct reflection_field_data *rfd_flatten;
 	uintmax_t bitfield_data;
+	union {
+		uint64_t field_present_inl[STRUCT_ID_FIELD_PRESENT_INLINE/sizeof(uint64_t)];
+		uint64_t *field_present_ind;
+	};
 };
 
 struct const_array_instance_data {
@@ -3420,14 +3420,48 @@ void integer_field_store(struct reflection_field_data *rfd, uintmax_t v, void *d
 		store_bitfield_le(data, rfd->fi->bit_offset, rfd->fi->bit_width, v);
 }
 
-static void
-struct_instance_data_cleanup(struct struct_instance_data *id)
+static inline bool
+struct_has_inline_field_presents(struct reflection_object *ro)
 {
-	if (!id)
+	return ro->rtd->fields_count < STRUCT_ID_FIELD_PRESENT_INLINE;
+}
+
+static inline bool
+struct_is_field_present(struct reflection_object *ro, size_t field_idx)
+{
+	struct struct_instance_data *id = &ro->id_struct;
+	const uint64_t *p;
+
+	if (field_idx >= ro->rtd->fields_count)
+		return false;
+
+	p = struct_has_inline_field_presents(ro) ? id->field_present_inl : id->field_present_ind;
+	return !!(p[field_idx / 64] & ((uint64_t)1 << (field_idx & 63)));
+}
+
+static inline void
+struct_set_field_present(struct reflection_object *ro, size_t field_idx)
+{
+	struct struct_instance_data *id = &ro->id_struct;
+	uint64_t *p;
+
+	if (field_idx >= ro->rtd->fields_count)
 		return;
 
-	if (id->fid)
-		free(id->fid);
+	p = struct_has_inline_field_presents(ro) ? id->field_present_inl : id->field_present_ind;
+	p[field_idx / 64] |= ((uint64_t)1 << (field_idx & 63));
+}
+
+static void struct_cleanup(struct reflection_object *ro)
+{
+	struct struct_instance_data *id;
+
+	id = &ro->id_struct;
+	if (id->ro_flatten)
+		reflection_object_destroy(id->ro_flatten);
+
+	if (!struct_has_inline_field_presents(ro) && id->field_present_ind)
+		free(id->field_present_ind);
 }
 
 static int struct_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
@@ -3453,12 +3487,13 @@ static int struct_setup(struct reflection_object *ro, struct fy_parser *fyp, str
 		goto err_out;
 	}
 
-
-	size = ro->rtd->fields_count * sizeof(*id->fid);
-	id->fid = malloc(size);
-	if (!id->fid)
-		goto err_out;
-	memset(id->fid, 0, size);
+	if (!struct_has_inline_field_presents(ro)) {
+		size = ((ro->rtd->fields_count + 63) / 64) * sizeof(uint64_t);
+		id->field_present_ind = malloc(size);
+		if (!id->field_present_ind)
+			goto err_out;
+		memset(id->field_present_ind, 0, size);
+	}
 
 	if (id->rfd_flatten) {
 		// fprintf(stderr, "%s: flatten %s\n", __func__, id->rfd_flatten->field_name);
@@ -3480,21 +3515,8 @@ static int struct_setup(struct reflection_object *ro, struct fy_parser *fyp, str
 	return 0;
 
 err_out:
-	struct_instance_data_cleanup(id);
+	struct_cleanup(ro);
 	return -1;
-}
-
-static void struct_cleanup(struct reflection_object *ro)
-{
-	struct struct_instance_data *id;
-
-	id = &ro->id_struct;
-	if (id->ro_flatten) {
-		reflection_object_destroy(id->ro_flatten);
-		id->ro_flatten = NULL;
-	}
-
-	struct_instance_data_cleanup(id);
 }
 
 static int struct_handle_finish_flatten(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
@@ -3595,7 +3617,7 @@ static int struct_finish(struct reflection_object *ro, struct fy_parser *fyp, st
 	struct reflection_type_data *rtd;
 	struct reflection_field_data *rfd;
 	struct struct_instance_data *id;
-	struct field_instance_data *fid;
+	bool is_present;
 	size_t i;
 	int rc;
 
@@ -3608,20 +3630,22 @@ static int struct_finish(struct reflection_object *ro, struct fy_parser *fyp, st
 
 	rc = 0;
 	rtd = ro->rtd;
-	for (i = 0, fid = id->fid; i < rtd->fields_count; i++, fid++) {
+	for (i = 0; i < rtd->fields_count; i++) {
 
 		rfd = rtd->fields[i];
 
 		/* fill-in-default */
-		if (!fid->present && rfd->rtd->fyn_default) {
+		is_present = struct_is_field_present(ro, i);
+		if (!is_present && rfd->rtd->fyn_default) {
 			rc = struct_fill_in_default_field(ro, fyp, fye, path, rfd);
 			if (rc)
 				goto err_out;
 
-			fid->present = true;
+			struct_set_field_present(ro, i);
+			is_present = true;
 		}
 
-		if (rfd->required && !fid->present) {
+		if (rfd->required && !is_present) {
 			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
 					"missing required field '%s' of struct '%s'",
 					rfd->field_name, rtd->ti->name);
@@ -3646,7 +3670,6 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 	struct fy_token *fyt_key;
 	const char *field;
 	struct struct_instance_data *id;
-	struct field_instance_data *fid;
 	uintmax_t bitfield_data, limit;
 	void *field_data;
 	int field_idx, rc;
@@ -3690,9 +3713,7 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 	field_idx = rfd->idx;
 	assert(field_idx >= 0 && field_idx < (int)rtd->fields_count);
 
-	fid = &id->fid[field_idx];
-
-	if (fid->present) {
+	if (struct_is_field_present(ro_parent, field_idx)) {
 		fy_parser_report(fyp, FYET_ERROR, fyt_key,
 				"duplicate field '%s' found in struct '%s'", field, rtd->ti->name);
 		goto err_out;
@@ -3733,7 +3754,7 @@ struct reflection_object *struct_create_child(struct reflection_object *ro_paren
 		store_bitfield_le(ro_parent->data, fi->bit_offset, fi->bit_width, bitfield_data);
 	}
 
-	fid->present = true;
+	struct_set_field_present(ro_parent, field_idx);
 
 	return ro;
 
@@ -4724,13 +4745,6 @@ static const struct reflection_type_ops dyn_array_ops = {
 	.dtor = dyn_array_dtor,
 };
 
-static void ptr_doc_instance_data_cleanup(struct ptr_doc_instance_data *id)
-{
-	if (!id)
-		return;
-	fy_document_builder_destroy(id->fydb);
-}
-
 static int ptr_doc_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct ptr_doc_instance_data *id;
@@ -4758,6 +4772,14 @@ static int ptr_doc_consume_event(struct reflection_object *ro, struct fy_parser 
 
 	id = &ro->id_ptr_doc;
 	return fy_document_builder_process_event(id->fydb, fye);
+}
+
+static void ptr_doc_cleanup(struct reflection_object *ro)
+{
+	struct ptr_doc_instance_data *id;
+
+	id = &ro->id_ptr_doc;
+	fy_document_builder_destroy(id->fydb);
 }
 
 static int ptr_doc_setup(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
@@ -4806,16 +4828,8 @@ static int ptr_doc_setup(struct reflection_object *ro, struct fy_parser *fyp, st
 
 	return 0;
 err_out:
-	ptr_doc_instance_data_cleanup(id);
+	ptr_doc_cleanup(ro);
 	return -1;
-}
-
-static void ptr_doc_cleanup(struct reflection_object *ro)
-{
-	struct ptr_doc_instance_data *id;
-
-	id = &ro->id_ptr_doc;
-	ptr_doc_instance_data_cleanup(id);
 }
 
 static int ptr_doc_emit(struct reflection_type_data *rtd, struct fy_emitter *fye, const void *data, size_t data_size,
