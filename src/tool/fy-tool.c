@@ -2121,7 +2121,10 @@ struct ptr_doc_instance_data {
 };
 
 struct reflection_object {
-	struct reflection_object *parent;
+	union {
+		struct reflection_object *parent;
+		struct reflection_object *next;
+	};
 	void *parent_addr;
 	struct reflection_type_data *rtd;
 	void *data;
@@ -2248,6 +2251,7 @@ struct reflection_decoder {
 
 	struct fy_path_component *skip_start;
 	struct reflection_object *ro_consumer;
+	struct reflection_object *ro_free;
 };
 
 void *reflection_malloc(struct reflection_type_system *rts, size_t size);
@@ -6131,12 +6135,20 @@ void reflection_type_data_call_dtor(struct reflection_type_data *rtd, void *data
 void
 reflection_decoder_destroy(struct reflection_decoder *rd)
 {
+	struct reflection_object *ro;
+
 	if (!rd)
 		return;
 
 	if (rd->ro_consumer) {
 		reflection_object_cleanup(rd->ro_consumer);
 		free(rd->ro_consumer);
+	}
+
+	/* free cache */
+	while ((ro = rd->ro_free) != NULL) {
+		rd->ro_free = ro->next;
+		free(ro);
 	}
 
 	free(rd);
@@ -6288,7 +6300,9 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 	case FYET_SCALAR:
 		/* scalars need no allocation */
-		rc = reflection_decoder_setup_object(&ro_scalar, rd, fyp, fye, path);
+		ro = &ro_scalar;
+
+		rc = reflection_decoder_setup_object(ro, rd, fyp, fye, path);
 
 		/* handle skip */
 		if (rc == REFLECTION_OBJECT_SKIP)
@@ -6297,8 +6311,8 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		if (rc)
 			return FYCR_ERROR;
 
-		rc = reflection_object_finish(&ro_scalar, fyp, fye, path);
-		reflection_object_cleanup(&ro_scalar);
+		rc = reflection_object_finish(ro, fyp, fye, path);
+		reflection_object_cleanup(ro);
 
 		if (rc)
 			return FYCR_ERROR;
@@ -6309,7 +6323,13 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 	case FYET_SEQUENCE_START:
 	case FYET_MAPPING_START:
-		ro = malloc(sizeof(*ro));
+
+		/* try to re-use objects to avoid allocation */
+		ro = rd->ro_free;
+		if (ro)
+			rd->ro_free = ro->next;
+		else
+			ro = malloc(sizeof(*ro));
 		if (!ro)
 			return FYCR_ERROR;
 
@@ -6350,7 +6370,10 @@ reflection_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		rc = reflection_object_finish(ro, fyp, fye, path);
 
 		reflection_object_cleanup(ro);
-		free(ro);
+
+		/* do not free, return to free list */
+		ro->next = rd->ro_free;
+		rd->ro_free = ro;
 
 		if (rc)
 			return FYCR_ERROR;
