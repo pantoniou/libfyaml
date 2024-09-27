@@ -22,8 +22,12 @@ done
 # output plan
 echo 1..$count
 
-skiplist="C4HZ"
-xfaillist=""
+declare -A skips=(
+	[UGM3]="Later jq versions rewrite numbers like 12.00 -> 12 which breaks diff"
+)
+declare -A xfails=(
+	[C4HZ]="requires schema support which libfyaml does not support yet."
+)
 
 i=0
 for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
@@ -51,16 +55,13 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 		desctxt=`cat 2>/dev/null "$tst/==="`
 
 		directive=""
-		for skip in $skiplist; do
-			if [ "$test_subtest_id" == "$skip" ]; then
-				directive="# SKIP: does not apply to libfyaml"
-				break
-			fi
-		done
+		skip_reason="${skips[$test_subtest_id]}"
+		if [ "x$skip_reason" != "x" ]; then
+			directive=" # SKIP: ${skip_reason}"
+		fi
 
 		res="ok"
-
-		if [ "x$directive" == "x" ]; then
+		if [ "x$skip_reason" == "x" ]; then
 			t1=`mktemp`
 			t2=`mktemp`
 
@@ -79,12 +80,10 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 
 			rm -f "$t1" "$t2"
 
-			for xfail in $xfaillist; do
-				if [ "$test_subtest_id" == "$xfail" ]; then
-					directive=" # TODO: known failure."
-					break
-				fi
-			done
+			xfail_reason="${xfails[$test_subtest_id]}"
+			if [ "x$xfail_reason" != "x" ]; then
+				directive=" # TODO: ${xfail_reason}"
+			fi
 		fi
 
 		echo "$res $i $test_subtest_id - $desctxt (JSON)$directive"

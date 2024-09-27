@@ -23,9 +23,12 @@ done
 # output plan
 echo 1..$count
 
-# X38W has duplicate keys after resolution
-skiplist="2JQS X38W"
-xfaillist=""
+declare -A skips=(
+	[2JQS]="duplicate keys in testcase; cannot load as document"
+	[X38W]="duplicate keys after resolution"
+)
+declare -A xfails=(
+)
 
 i=0
 for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
@@ -63,15 +66,13 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 		t2=`mktemp`
 
 		directive=""
-		for skip in $skiplist; do
-			if [ "$test_subtest_id" == "$skip" ]; then
-				directive=" # skip: duplicate keys in testcase; cannot load as document"
-				break
-			fi
-		done
+		skip_reason="${skips[$test_subtest_id]}"
+		if [ "x$skip_reason" != "x" ]; then
+			directive=" # SKIP: ${skip_reason}"
+		fi
 
 		res="ok"
-		if [ "x$directive" == "x" ]; then
+		if [ "x$skip_reason" == "x" ]; then
 			res="not ok"
 
 			${TOP_BUILDDIR}/src/fy-tool --dump --resolve "$tst/in.yaml" | ${TOP_BUILDDIR}/src/fy-tool --testsuite --disable-flow-markers - >"$t1"
@@ -86,12 +87,10 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 
 			rm -f "$t1" "$t2"
 
-			for xfail in $xfaillist; do
-				if [ "$test_subtest_id" == "$xfail" ]; then
-					directive=" # TODO: known failure."
-					break
-				fi
-			done
+			xfail_reason="${xfails[$test_subtest_id]}"
+			if [ "x$xfail_reason" != "x" ]; then
+				directive=" # TODO: ${xfail_reason}"
+			fi
 		fi
 
 		echo "$res $i $test_subtest_id - $desctxt$directive"
