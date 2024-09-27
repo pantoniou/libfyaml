@@ -3296,7 +3296,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	int breaks, breaks_length, presentation_breaks_length, first_break_length;
 	bool doc_start_end_detected, empty, empty_line, prev_empty_line, indented, prev_indented, first;
 	bool has_ws, has_lb, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb;
-	bool pending_nl, ends_with_eof, starts_with_eof;
+	bool pending_nl, ends_with_eof, starts_with_eof, content_is_eof;
 	struct fy_token *fyt;
 	size_t length, line_length, trailing_ws, trailing_breaks_length;
 	size_t leading_ws;
@@ -3304,7 +3304,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	unsigned int chomp_amt;
 	int actual_lb_length, pending_lb_length;
 	struct fy_mark indicator_mark;
-	bool generated_indent;
+	bool generated_indent, final_lb;
 #ifdef ATOM_SIZE_CHECK
 	size_t tlength;
 #endif
@@ -3403,6 +3403,9 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	fy_fill_atom_start(fyp, &handle);
 
 	starts_with_eof = c < 0;
+
+	c = fy_parse_peek(fyp);
+	content_is_eof = c < 0;	/* any error or EOF */
 
 	current_indent = fyp->indent >= 0 ? fyp->indent : 0;
 	indent = increment ? current_indent + increment : 0;
@@ -3636,42 +3639,24 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	if (chomp_amt == (unsigned int)-1)
 		chomp_amt = current_indent;
 
+	/* whether the final character is an lb (or implied to be one) */
+	final_lb = pending_nl || (!starts_with_eof && ends_with_eof);
+	trailing_lb = trailing_breaks_length > 0;
+	ends_with_ws = fy_is_ws(lastc);
+
 	switch (chomp) {
 	case FYAC_CLIP:
-		if (pending_nl || (!starts_with_eof && ends_with_eof)) {
-			if (actual_lb_length <= 2)
-				length += !ends_with_eof || pending_nl ? 1 : 0;
-			else
-				length += actual_lb_length;
-
-			ends_with_lb = true;
-			ends_with_ws = false;
-		} else {
-			if (trailing_breaks_length > 0)
-				ends_with_lb = true;
-			else if (fy_is_ws(lastc))
-				ends_with_ws = true;
-		}
-		break;
 	case FYAC_KEEP:
-		if (pending_nl || (!starts_with_eof && ends_with_eof))
-			length += actual_lb_length;
+		if (chomp == FYAC_KEEP)
+			length += breaks + presentation_breaks_length;
 
-		length += breaks + presentation_breaks_length;
+		if (final_lb && !content_is_eof)
+			length += (actual_lb_length == 0 && pending_nl) ? 1 : actual_lb_length;
 
-		trailing_lb = trailing_breaks_length > 0;
-		if (pending_nl || (!starts_with_eof && ends_with_eof) || trailing_breaks_length) {
-			ends_with_lb = true;
-			ends_with_ws = false;
-		} else if (fy_is_ws(lastc)) {
-			ends_with_ws = true;
-			ends_with_lb = false;
-		}
+		ends_with_lb = final_lb || trailing_lb;
 		break;
 	case FYAC_STRIP:
 		ends_with_lb = false;
-		if (fy_is_ws(lastc))
-			ends_with_ws = true;
 		break;
 	}
 
