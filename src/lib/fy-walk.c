@@ -2969,6 +2969,8 @@ int evaluate_new(struct fy_path_parser *fypp)
 
 		/* evaluate until we hit a match to the rparen */
 		exprl = fy_expr_stack_peek(&fypp->operators);
+		if (!exprl)
+			goto err_out;
 
 		if (!fy_path_expr_type_is_lparen(exprl->type)) {
 			ret = evaluate_new(fypp);
@@ -3004,7 +3006,8 @@ int evaluate_new(struct fy_path_parser *fypp)
 				"missing matching left parentheses");
 
 		exprl = fy_expr_stack_pop(&fypp->operators);
-		assert(exprl);
+		if (!exprl)
+			goto err_out;
 
 		exprt = fy_expr_stack_peek(&fypp->operands);
 
@@ -3048,6 +3051,8 @@ int evaluate_new(struct fy_path_parser *fypp)
 		expr->fyt = expr_lr_to_token_mark(exprl, exprr, fypp->fyi);
 
 		exprt = fy_expr_stack_pop(&fypp->operands);
+		if (!exprt)
+			goto err_out;
 
 		FYR_TOKEN_ERROR_CHECK(fyr, exprr->fyt, FYEM_PARSE,
 				exprt, err_out,
