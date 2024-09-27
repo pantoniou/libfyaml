@@ -3640,7 +3640,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	case FYAC_CLIP:
 		if (pending_nl || (!starts_with_eof && ends_with_eof)) {
 			if (actual_lb_length <= 2)
-				length += !ends_with_eof ? 1 : 0;
+				length += !ends_with_eof || pending_nl ? 1 : 0;
 			else
 				length += actual_lb_length;
 
