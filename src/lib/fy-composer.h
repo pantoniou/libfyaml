@@ -48,7 +48,7 @@ struct fy_composer {
 
 struct fy_composer *fy_composer_create(struct fy_composer_cfg *cfg);
 void fy_composer_destroy(struct fy_composer *fyc);
-int fy_composer_process_event(struct fy_composer *fyc, struct fy_event *fye);
+enum fy_composer_return fy_composer_process_event(struct fy_composer *fyc, struct fy_event *fye);
 
 struct fy_composer_cfg *fy_composer_get_cfg(struct fy_composer *fyc);
 void *fy_composer_get_cfg_userdata(struct fy_composer *fyc);

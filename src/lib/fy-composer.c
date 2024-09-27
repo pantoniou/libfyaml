@@ -363,14 +363,14 @@ fy_composer_process_event(struct fy_composer *fyc, struct fy_event *fye)
 	int rc;
 
 	if (!fyc || !fye)
-		return -1;
+		return FYCR_ERROR;
 
 	/* start at the head */
 	fypp = fy_path_list_head(&fyc->paths);
 
 	/* no top? something's very out of order */
 	if (!fypp)
-		return -1;
+		return FYCR_ERROR;
 
 	rc = fy_composer_process_event_private(fyc, fye, fypp);
 
