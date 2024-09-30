@@ -5006,6 +5006,8 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 
 		/* pop the top in either case */
 		assert(input);
+		if (!input)
+			goto out;
 
 		/* only handle inputs of node and refs */
 		if (input->type != fwrt_node_ref && input->type != fwrt_refs) {
@@ -5017,9 +5019,13 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 		/* execute the expression */
 		exprn = fy_path_expr_list_head(&expr->children);
 		assert(exprn);
+		if (!exprn)
+			goto out;
 
 		fwrt = fy_walk_result_clone(input);
 		assert(fwrt);
+		if (!fwrt)
+			goto out;
 
 		fwrn = fy_path_expr_execute(fypx, level + 1, exprn, fwrt, expr->type);
 
