@@ -4487,7 +4487,7 @@ fy_walk_result_perform_set_op(struct fy_path_exec *fypx, struct fy_walk_result *
 
 			/* if this fails, it means we don't have any output */
 			if (fwrin->fyn == fwrrm->fyn ||
-			    (relpath = fy_node_get_path_relative_to(fwrin->fyn, fwrrm->fyn)) == NULL)
+			    (fwrrm->type == fwrt_node_ref && (relpath = fy_node_get_path_relative_to(fwrin->fyn, fwrrm->fyn)) == NULL))
 				continue;
 #ifdef DEBUG_EXPR
 			fy_diag_diag(fypx->cfg.diag, FYDF_WARNING, "relpath: %s", relpath);
