@@ -600,6 +600,10 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 
 	fy_diag_get_error_colors(diag, type, &color_start, &color_end, &white);
 
+	/* pacify compilers that think these are uninitialized */
+	cols = 0;
+	rowbufsz = 0;
+
 	/* two passes, first one collects extents */
 
 	start_col = -1;

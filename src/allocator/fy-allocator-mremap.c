@@ -815,7 +815,8 @@ static int fy_mremap_get_tag(struct fy_allocator *a)
 		goto err_out;
 
 	mrt = fy_mremap_tag_from_tag(mra, id);
-	assert(mrt);
+	if (!mrt)
+		goto err_out;
 
 	fy_mremap_tag_setup(mra, mrt);
 
