@@ -2973,6 +2973,7 @@ int evaluate_new(struct fy_path_parser *fypp)
 			goto err_out;
 
 		if (!fy_path_expr_type_is_lparen(exprl->type)) {
+			exprl = NULL;
 			ret = evaluate_new(fypp);
 			if (ret)
 				goto err_out;
@@ -2996,6 +2997,7 @@ int evaluate_new(struct fy_path_parser *fypp)
 			if (fy_path_expr_type_is_lparen(exprl->type))
 				break;
 
+			exprl = NULL;
 			ret = evaluate_new(fypp);
 			if (ret)
 				goto err_out;
