@@ -210,11 +210,16 @@ int main(int argc, char *argv[])
 		"    address:\n"
 		"        lines: |\n"
 		"            458 Walkman Dr.\n"
-		"            Suite #292\n";
+		"            Suite #292\n"
+		"items:\n"
+		"    - [Asprin, 3, 2.99]"
+		"    - [Antacid, 4, 5.95]"
+		;
 	struct fy_document *fyd = NULL;
 	int rc, count, ret = EXIT_FAILURE;
 	unsigned int invoice_nr;
 	char given[256 + 1];
+	char items[2][3][16]
 ```
 
 Parsing and creating a YAML document from either the built-in
@@ -237,8 +242,9 @@ Get the invoice number and the given name using a single call.
 	/* get the invoice number and the given name */
 	count = fy_document_scanf(fyd,
 			"/invoice %u "
-			"/bill-to/given %256s",
-			&invoice_nr, given);
+			"/bill-to/given %256s "
+			"/bill-to/items/0/0 %s",
+			&invoice_nr, given, items[0][0]);
 	if (count != 2) {
 		fprintf(stderr, "Failed to retreive the two items\n");
 		goto fail;
@@ -247,6 +253,7 @@ Get the invoice number and the given name using a single call.
 	/* print them as comments in the emitted YAML */
 	printf("# invoice number was %u\n", invoice_nr);
 	printf("# given name is %s\n", given);
+	printf("# first item is %s\n", item[0][0]);
 ```
 
 In sequence, increase the invoice number, add a spouse and a secondary
