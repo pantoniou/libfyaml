@@ -794,7 +794,7 @@ static inline void fy_work_pool_wait(struct fy_work_pool *wp)
 		rc = fwait(&wp->done);
 #elif defined(__APPLE__)
 		dispatch_semaphore_wait(wp->sem, DISPATCH_TIME_FOREVER);
-		(void)rc;
+		rc = 0;
 #else
 		rc = sem_wait(&wp->sem);
 #endif
