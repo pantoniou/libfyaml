@@ -3060,7 +3060,7 @@ static int constarray_char_setup(struct reflection_object *ro, struct fy_parser 
 {
 	struct fy_token *fyt;
 	struct reflection_type_data *rtd_dep;
-	enum fy_type_kind type_kind;
+	enum fy_type_kind type_kind __attribute__((unused));
 	const char *text;
 	size_t len;
 	void *data;
@@ -3108,7 +3108,7 @@ static int constarray_char_emit(struct reflection_type_data *rtd, struct fy_emit
 			 struct reflection_type_data *rtd_parent, void *parent_addr)
 {
 	struct reflection_type_data *rtd_dep;
-	enum fy_type_kind type_kind;
+	enum fy_type_kind type_kind __attribute__((unused));
 	const char *text;
 	size_t len;
 	int rc;
@@ -3919,7 +3919,7 @@ static int enum_setup(struct reflection_object *ro, struct fy_parser *fyp, struc
 	const char *text0;
 	union { unsigned long long u; signed long long s; } val;
 	void *data;
-	size_t data_size;
+	size_t data_size __attribute__((unused));
 
 
 	if (fye->type != FYET_SCALAR)
@@ -4148,9 +4148,9 @@ static int ptr_setup(struct reflection_object *ro, struct fy_parser *fyp, struct
 {
 	struct reflection_type_data *rtd_dep;
 	enum fy_type_kind type_kind;
-	size_t size, align;
+	size_t size __attribute__((unused)), align __attribute__((unused));
 	void *data = NULL, *p = NULL;
-	size_t data_size, len;
+	size_t data_size __attribute__((unused)), len __attribute__((unused));
 	int rc;
 
 	assert(ro->rtd->ti->kind == FYTK_PTR);
@@ -4230,12 +4230,12 @@ static int ptr_char_setup(struct reflection_object *ro, struct fy_parser *fyp, s
 	struct fy_token *fyt;
 	struct reflection_type_data *rtd_dep;
 	enum fy_type_kind type_kind;
-	size_t size, align;
+	size_t size __attribute__((unused)), align __attribute__((unused));
 	const char *text;
 	size_t len;
 	char *p;
 	void *data;
-	size_t data_size;
+	size_t data_size __attribute__((unused));
 
 	assert(ro->rtd->ti->kind == FYTK_PTR);
 
@@ -4287,7 +4287,7 @@ static int ptr_char_emit(struct reflection_type_data *rtd, struct fy_emitter *fy
 			 struct reflection_type_data *rtd_parent, void *parent_addr)
 {
 	struct reflection_type_data *rtd_dep;
-	enum fy_type_kind type_kind;
+	enum fy_type_kind type_kind __attribute__((unused));
 	const char *text;
 	size_t len;
 	int rc;
@@ -4535,7 +4535,7 @@ static void dyn_array_cleanup(struct reflection_object *ro)
 static int dyn_array_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct dyn_array_instance_data *id;
-	struct reflection_field_data *rfd;
+	struct reflection_field_data *rfd __attribute__((unused));
 	void *data;
 	size_t item_size;
 	int rc;
@@ -4843,9 +4843,9 @@ static int ptr_doc_setup(struct reflection_object *ro, struct fy_parser *fyp, st
 	struct ptr_doc_instance_data *id = NULL;
 	struct reflection_type_data *rtd_dep;
 	enum fy_type_kind type_kind;
-	size_t size, align;
+	size_t size __attribute__((unused)), align __attribute__((unused));
 	void *data;
-	size_t data_size;
+	size_t data_size __attribute__((unused));
 	int rc;
 
 	id = &ro->id_ptr_doc;
@@ -4892,7 +4892,7 @@ static int ptr_doc_emit(struct reflection_type_data *rtd, struct fy_emitter *fye
 			struct reflection_type_data *rtd_parent, void *parent_addr)
 {
 	struct reflection_type_data *rtd_dep;
-	enum fy_type_kind type_kind;
+	enum fy_type_kind type_kind __attribute__((unused));
 	struct fy_document *fyd;
 	int rc;
 
