@@ -2190,6 +2190,8 @@ struct reflection_type_data {
 	void *fill_value;					/* value if possible */
 	struct fy_node *fyn_terminator;				/* terminator for sequences */
 	void *terminator_value;					/* value if possible */
+	struct fy_node *fyn_enum_missing;			/* value to substitute on missing enum */
+	void *enum_missing_value;				/* value (should always be possible) */
 	struct reflection_type_data *rtd_dep;			/* the dependent type */
 	size_t fields_count;
 	struct reflection_field_data **fields;
@@ -3575,8 +3577,9 @@ err_out:
 	return -1;
 }
 
-static int struct_fill_in_default_field(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
-					const struct reflection_field_data *rfd)
+static int struct_fill_in_field(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
+				const struct reflection_field_data *rfd,
+				struct fy_node *fyn, void *value)
 {
 	uintmax_t bitfield_data, limit;
 	void *field_data;
@@ -3592,7 +3595,7 @@ static int struct_fill_in_default_field(struct reflection_object *ro, struct fy_
 		field_data = &bitfield_data;
 	}
 
-	rc = reflection_type_data_put_value_into(rfd->rtd, field_data, rfd->rtd->fyn_default, rfd->rtd->default_value);
+	rc = reflection_type_data_put_value_into(rfd->rtd, field_data, fyn, value);
 	if (rc)
 		goto err_out;
 
@@ -3626,6 +3629,12 @@ err_out:
 	goto out;
 }
 
+static int struct_fill_in_default_field(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
+					const struct reflection_field_data *rfd)
+{
+	return struct_fill_in_field(ro, fyp, fye, path, rfd, rfd->rtd->fyn_default, rfd->rtd->default_value);
+}
+
 static int struct_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
 {
 	struct reflection_type_data *rtd;
@@ -3652,6 +3661,16 @@ static int struct_finish(struct reflection_object *ro, struct fy_parser *fyp, st
 		is_present = struct_is_field_present(ro, i);
 		if (!is_present && rfd->rtd->fyn_default) {
 			rc = struct_fill_in_default_field(ro, fyp, fye, path, rfd);
+			if (rc)
+				goto err_out;
+
+			struct_set_field_present(ro, i);
+			is_present = true;
+		}
+
+		if (!is_present && rfd->rtd->fyn_enum_missing) {
+			fprintf(stderr, "\e[31menum-missing\e[0m\n");
+			rc = struct_fill_in_field(ro, fyp, fye, path, rfd, rfd->rtd->fyn_enum_missing, rfd->rtd->enum_missing_value);
 			if (rc)
 				goto err_out;
 
@@ -5206,6 +5225,11 @@ void reflection_type_data_destroy(struct reflection_type_data *rtd)
 		reflection_free(rts, rtd->terminator_value);
 	}
 
+	if (rtd->enum_missing_value) {
+		reflection_type_data_call_dtor(rtd, rtd->enum_missing_value);
+		reflection_free(rts, rtd->enum_missing_value);
+	}
+
 	if (rtd->yaml_annotation_str)
 		free(rtd->yaml_annotation_str);
 
@@ -5541,6 +5565,14 @@ reflection_type_data_copy_annotations(struct reflection_type_data *rtd, struct r
 		memcpy(rtd->terminator_value, rtd_source->terminator_value, rtd->rtd_dep->ti->size);
 	}
 
+	rtd->fyn_enum_missing = rtd_source->fyn_enum_missing;
+	if (rtd_source->enum_missing_value) {
+		rtd->enum_missing_value = reflection_malloc(rts, rtd->ti->size);
+		if (!rtd->enum_missing_value)
+			goto err_out;
+		memcpy(rtd->enum_missing_value, rtd_source->enum_missing_value, rtd->ti->size);
+	}
+
 	return 0;
 
 err_out:
@@ -5743,6 +5775,9 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 	// fprintf(stderr, "%s: #%d %p\n", __func__, rtd->idx, rtd);
 
 	switch (rtd->ti->kind) {
+	case FYTK_ENUM:
+		fprintf(stderr, "\e[31m%s enum %s\e[0m\n", __func__, rtd->ti->fullname);
+		break;
 	case FYTK_PTR:
 		/* only for char * */
 		switch (rtd->rtd_dep->ti->kind) {
@@ -5982,6 +6017,9 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 		rc = reflection_type_data_generate_values(rtd, rtd, "default", &rtd->fyn_default, &rtd->default_value);
 		if (rc)
 			goto err_out;
+		if (rtd->fyn_default && rtd->default_value /* && rtd->ti->kind == FYTK_ENUM */) {
+			fprintf(stderr, "\e[31mdefault %s\e[0m\n", rtd->ti->fullname);
+		}
 
 		if (rtd->ti->kind == FYTK_CONSTARRAY) {
 			rc = reflection_type_data_generate_values(rtd, rtd->rtd_dep, "fill", &rtd->fyn_fill, &rtd->fill_value);
@@ -5991,6 +6029,13 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 
 		if (rtd->ti->kind == FYTK_PTR) {
 			rc = reflection_type_data_generate_values(rtd, rtd->rtd_dep, "terminator", &rtd->fyn_terminator, &rtd->terminator_value);
+			if (rc)
+				goto err_out;
+		}
+
+		if (rtd->ti->kind == FYTK_ENUM) {
+			fprintf(stderr, "\e[31mmissing %s\e[0m\n", rtd->ti->fullname);
+			rc = reflection_type_data_generate_values(rtd, rtd, "enum-missing", &rtd->fyn_enum_missing, &rtd->enum_missing_value);
 			if (rc)
 				goto err_out;
 		}
