@@ -2153,6 +2153,9 @@ struct reflection_field_data {
 	bool required;
 	bool is_counter;	/* is a counter of another field */
 //	struct reflection_type_data *rtd_dep;
+	struct fy_document *yaml_annotation;			/* of the field */
+	struct fy_node *fyn_default;
+	void *default_value;
 };
 
 enum reflection_type_data_flags {
@@ -3585,8 +3588,6 @@ static int struct_fill_in_field(struct reflection_object *ro, struct fy_parser *
 	void *field_data;
 	int rc = -1;
 
-	assert(rfd->rtd->fyn_default);
-
 	/* non-bitfields store directly */
 	if (!(rfd->fi->flags & FYFIF_BITFIELD)) {
 		field_data = ro->data + rfd->fi->offset;
@@ -3629,10 +3630,34 @@ err_out:
 	goto out;
 }
 
+static bool struct_field_has_default(const struct reflection_field_data *rfd)
+{
+	return rfd && (rfd->fyn_default || rfd->rtd->fyn_default);
+}
+
 static int struct_fill_in_default_field(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path,
 					const struct reflection_field_data *rfd)
 {
-	return struct_fill_in_field(ro, fyp, fye, path, rfd, rfd->rtd->fyn_default, rfd->rtd->default_value);
+	struct fy_node *fyn;
+	void *value;
+
+	/* first try the field default */
+	fyn = rfd->fyn_default;
+	value = rfd->default_value;
+	if (fyn || value) {
+		fprintf(stderr, "\e[31mrfd default '%s'\e[0m\n", fy_emit_node_to_string_alloca(fyn, 0));
+	}
+
+	if (!fyn || !value) {
+		fyn = rfd->rtd->fyn_default;
+		value = rfd->rtd->default_value;
+		fprintf(stderr, "\e[31mrfd->rtd default '%s'\e[0m\n", fy_emit_node_to_string_alloca(fyn, 0));
+	}
+
+	if (!fyn || !value)
+		return 0;
+
+	return struct_fill_in_field(ro, fyp, fye, path, rfd, fyn, value);
 }
 
 static int struct_finish(struct reflection_object *ro, struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path)
@@ -3659,23 +3684,23 @@ static int struct_finish(struct reflection_object *ro, struct fy_parser *fyp, st
 
 		/* fill-in-default */
 		is_present = struct_is_field_present(ro, i);
-		if (!is_present && rfd->rtd->fyn_default) {
+		if (!is_present && struct_field_has_default(rfd)) {
+
 			rc = struct_fill_in_default_field(ro, fyp, fye, path, rfd);
 			if (rc)
 				goto err_out;
 
-			struct_set_field_present(ro, i);
 			is_present = true;
+			struct_set_field_present(ro, i);
 		}
 
-		if (!is_present && rfd->rtd->fyn_enum_missing) {
+		/* enum missing */
+		if (!is_present && rfd->rtd->ti->kind == FYTK_ENUM && rfd->rtd->fyn_enum_missing) {
 			fprintf(stderr, "\e[31menum-missing\e[0m\n");
-			rc = struct_fill_in_field(ro, fyp, fye, path, rfd, rfd->rtd->fyn_enum_missing, rfd->rtd->enum_missing_value);
+			rc = struct_fill_in_field(ro, fyp, fye, path, rfd,
+					rfd->rtd->fyn_enum_missing, rfd->rtd->enum_missing_value);
 			if (rc)
 				goto err_out;
-
-			struct_set_field_present(ro, i);
-			is_present = true;
 		}
 
 		if (rfd->required && !is_present) {
@@ -5169,6 +5194,11 @@ void reflection_field_data_destroy(struct reflection_field_data *rfd)
 	if (!rfd)
 		return;
 
+	if (rfd->default_value) {
+		reflection_type_data_call_dtor(rfd->rtd, rfd->default_value);
+		reflection_free(rfd->rtd->rts, rfd->default_value);
+	}
+
 	if (rfd->rtd)
 		reflection_type_data_destroy(rfd->rtd);
 
@@ -5521,6 +5551,31 @@ reflection_type_data_generate_values(struct reflection_type_data *rtd,
 		purity_flags = rtd_gen->flags & RTDF_PURITY_MASK;
 		if (purity_flags == RTDF_PURE || rtd_gen->ops->copy) {
 			*valuep = reflection_type_data_generate_value(rtd_gen, *fynp);
+			if (!*valuep)
+				return -1;
+		}
+	}
+	return 0;
+}
+
+int
+reflection_field_data_generate_values(struct reflection_field_data *rfd, const char *what,
+				      struct fy_node **fynp, void **valuep)
+{
+	enum reflection_type_data_flags purity_flags;
+
+	if (!rfd || !what || !fynp || !valuep)
+		return -1;
+
+	/* zero out at start */
+	*fynp = NULL;
+	*valuep = NULL;
+
+	*fynp = fy_node_by_path(fy_document_root(rfd->yaml_annotation), what, FY_NT, FYNWF_PTR_DEFAULT);
+	if (*fynp) {
+		purity_flags = rfd->rtd->flags & RTDF_PURITY_MASK;
+		if (purity_flags == RTDF_PURE || rfd->rtd->ops->copy) {
+			*valuep = reflection_type_data_generate_value(rfd->rtd, *fynp);
 			if (!*valuep)
 				return -1;
 		}
@@ -5961,12 +6016,14 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 						goto err_out;
 					rfd->rtd = rtd_mut;
 				}
+
 				break;
 
 			default:
 				break;
 
 			}
+
 		}
 		break;
 
@@ -6001,7 +6058,7 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 	/* finaly if the type has costructor/destructor methods, then it's not pure */
 	if (rtd->ti->kind != FYTK_STRUCT && rtd->ti->kind != FYTK_UNION) {
 		ops = rtd->ops;
-		if (ops && ops->dtor)
+		if (ops && (ops->ctor || ops->dtor))
 			rtd->flags |= RTDF_UNPURE;
 	}
 
@@ -6017,7 +6074,7 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 		rc = reflection_type_data_generate_values(rtd, rtd, "default", &rtd->fyn_default, &rtd->default_value);
 		if (rc)
 			goto err_out;
-		if (rtd->fyn_default && rtd->default_value /* && rtd->ti->kind == FYTK_ENUM */) {
+		if (rtd->fyn_default && rtd->default_value) {
 			fprintf(stderr, "\e[31mdefault %s\e[0m\n", rtd->ti->fullname);
 		}
 
@@ -6038,6 +6095,27 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 			rc = reflection_type_data_generate_values(rtd, rtd, "enum-missing", &rtd->fyn_enum_missing, &rtd->enum_missing_value);
 			if (rc)
 				goto err_out;
+		}
+	}
+
+	/* final field bits */
+	if (fy_type_kind_has_fields(rtd->ti->kind)) {
+		for (i = 0; i < rtd->fields_count; i++) {
+			rfd = rtd->fields[i];
+
+			rfd->yaml_annotation = fy_field_info_get_yaml_annotation(rfd->fi);
+			if (!rfd->yaml_annotation)
+				continue;
+
+			rc = reflection_field_data_generate_values(rfd, "default", &rfd->fyn_default, &rfd->default_value);
+			if (rc)
+				goto err_out;
+
+			if (rfd->fyn_default)
+				fprintf(stderr, "\e[31m%s.%s generated field default '%s'\e[0m\n",
+						rtd->ti->fullname, rfd->field_name,
+						fy_emit_node_to_string_alloca(rfd->fyn_default, 0));
+
 		}
 	}
 

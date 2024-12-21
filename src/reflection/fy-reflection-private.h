@@ -414,13 +414,4 @@ static inline struct fy_decl *fy_decl_from_field_info(const struct fy_field_info
 	return ft->field_decls[idx];
 }
 
-enum fy_reflection_record_missing_fields {
-	FYRRMF_FORBIDDEN, /* yaml: { name: forbidden } */
-	FYRRMF_PERMITTED, /* yaml: { name: permitted } */
-};
-
-struct fy_reflection_record_schema {
-	enum fy_reflection_record_missing_fields missing_fields;	/* yaml: { name: missing-fields } */
-};
-
 #endif
