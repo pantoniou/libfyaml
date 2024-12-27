@@ -2167,9 +2167,11 @@ enum reflection_type_data_flags {
 	RTDF_MUTATED		= FY_BIT(4),	/* type was mutated			*/
 
 	RTDF_PURITY_MASK	= (RTDF_UNPURE | RTDF_PTR_PURE),
+	RTDF_SPECIALIZING	= FY_BIT(5),	/* in progress */
 };
 
 struct reflection_type_data {
+	bool in_progress;
 	int refs;
 	int idx;
 	struct reflection_type_system *rts;
@@ -2246,6 +2248,9 @@ struct reflection_type_system {
 	size_t rtd_alloc;
 	struct reflection_type_data **rtds;
 
+	size_t rtd_setup_count;
+	size_t rtd_setup_alloc;
+	struct reflection_type_data **rtds_setup;
 };
 
 struct reflection_decoder {
@@ -5341,6 +5346,9 @@ void reflection_type_system_destroy(struct reflection_type_system *rts)
 		// reflection_type_system_dump(rts);
 		free(rts->rtds);
 	}
+	if (rts->rtds_setup) {
+		free(rts->rtds_setup);
+	}
 	free(rts);
 }
 
@@ -5635,10 +5643,13 @@ err_out:
 }
 
 static int
-reflection_type_data_add(struct reflection_type_system *rts, struct reflection_type_data *rtd)
+reflection_type_data_add(struct reflection_type_data *rtd)
 {
+	struct reflection_type_system *rts;
 	size_t new_alloc;
 	struct reflection_type_data **new_rtds;
+
+	rts = rtd->rts;
 
 	/* add */
 	if (rts->rtd_count >= rts->rtd_alloc) {
@@ -5656,6 +5667,64 @@ reflection_type_data_add(struct reflection_type_system *rts, struct reflection_t
 	rtd->idx = (int)rts->rtd_count++;
 	assert(rtd->idx >= 0);
 	rts->rtds[rtd->idx] = rtd;
+	return 0;
+}
+
+static int
+reflection_type_data_setup_remove(struct reflection_type_data *rtd)
+{
+	struct reflection_type_system *rts;
+	size_t i;
+
+	rts = rtd->rts;
+
+	for (i = 0; i < rts->rtd_setup_count; i++) {
+		if (rts->rtds_setup[i] == rtd)
+			break;
+	}
+	if (i >= rts->rtd_setup_count)
+		return -1;
+
+	rts->rtds_setup[i] = NULL;
+
+	/* drop count for trailing NULLs */
+	while (rts->rtd_setup_count > 0 && !rts->rtds_setup[rts->rtd_setup_count-1])
+		rts->rtd_setup_count--;
+
+	return 0;
+}
+
+static int
+reflection_type_data_setup_add(struct reflection_type_data *rtd)
+{
+	struct reflection_type_system *rts;
+	size_t i, new_alloc;
+	struct reflection_type_data **new_rtds;
+
+	rts = rtd->rts;
+
+	/* first find empty slot up to count */
+	for (i = 0; i < rts->rtd_setup_count; i++) {
+		if (!rts->rtds_setup[i]) {
+			rts->rtds_setup[i] = rtd;
+			return 0;
+		}
+	}
+
+	/* add */
+	if (rts->rtd_setup_count >= rts->rtd_setup_alloc) {
+		new_alloc = rts->rtd_setup_alloc * 2;
+		if (!new_alloc)
+			new_alloc = 16;
+		if (new_alloc >= INT_MAX)
+			return -1;
+		new_rtds = realloc(rts->rtds_setup, sizeof(*rts->rtds_setup) * new_alloc);
+		if (!new_rtds)
+			return -1;
+		rts->rtds_setup = new_rtds;
+		rts->rtd_setup_alloc = new_alloc;
+	}
+	rts->rtds_setup[rts->rtd_setup_count++] = rtd;
 	return 0;
 }
 
@@ -5791,7 +5860,7 @@ reflection_type_data_mutate(struct reflection_type_data *rtd_source, const struc
 		goto err_out;
 
 	/* must be the final bit */
-	rc = reflection_type_data_add(rtd_source->rts, rtd);
+	rc = reflection_type_data_add(rtd);
 	if (rc)
 		goto err_out;
 out:
@@ -5824,8 +5893,15 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 		return NULL;
 
 	/* previously specialized? */
+#if 0
+	if (rtd->flags & (RTDF_SPECIALIZED | RTDF_SPECIALIZING))
+		return rtd;
+
+	rtd->flags |= RTDF_SPECIALIZING;
+#else
 	if (rtd->flags & RTDF_SPECIALIZED)
 		return rtd;
+#endif
 
 	// fprintf(stderr, "%s: #%d %p\n", __func__, rtd->idx, rtd);
 
@@ -6120,6 +6196,7 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 	}
 
 	rtd->flags |= RTDF_SPECIALIZED;
+	rtd->flags &= ~RTDF_SPECIALIZING;
 
 	return rtd;
 err_out:
@@ -6137,7 +6214,7 @@ reflection_setup_type(struct reflection_type_system *rts,
 	size_t i;
 	int rc;
 
-	// fprintf(stderr, "%s: ti->fullname='%s'\n", __func__, ti->fullname);
+	fprintf(stderr, "%s: ti->fullname='%s'\n", __func__, ti->fullname);
 
 	if (!ops)
 		ops = &reflection_ops_table[ti->kind];
@@ -6146,18 +6223,13 @@ reflection_setup_type(struct reflection_type_system *rts,
 		goto err_out;
 
 	memset(rtd, 0, sizeof(*rtd));
+	rtd->in_progress = true;
 	rtd->refs = 1;
 
 	rtd->idx = -1;
 	rtd->rts = rts;
 	rtd->ti = ti;
 	rtd->ops = ops;
-	/* retreive the dependent type */
-	if (ti->dependent_type) {
-		rtd->rtd_dep = reflection_setup_type_resolve(rts, rtd, NULL, ti->dependent_type, NULL);
-		if (!rtd->rtd_dep)
-			goto err_out;
-	}
 
 	/* do fields */
 	rtd->fields_count = fy_type_kind_has_fields(ti->kind) ? ti->count : 0;
@@ -6179,14 +6251,42 @@ reflection_setup_type(struct reflection_type_system *rts,
 
 		rfd->idx = (int)i;
 		rfd->fi = tfi;
-		rfd->rtd = reflection_setup_type_resolve(rts, rtd, tfi, tfi->type_info, NULL);
+
+		fprintf(stderr, "%s: ti->fullname='%s' field '%s': calling reflection_setup_type_resolve()\n", __func__,
+				ti->fullname, tfi->name);
+	}
+
+	/* add to the in progress list */
+	reflection_type_data_setup_add(rtd);
+
+	/* retreive the dependent type */
+	if (ti->dependent_type) {
+		fprintf(stderr, "%s: ti->fullname='%s' dependent_type: calling reflection_setup_type_resolve('%s')\n", __func__,
+				ti->fullname, ti->dependent_type->fullname);
+		rtd->rtd_dep = reflection_setup_type_resolve(rts, rtd, NULL, ti->dependent_type, NULL);
+		if (!rtd->rtd_dep)
+			goto err_out;
+	}
+
+	for (i = 0; i < rtd->fields_count; i++) {
+		rfd = rtd->fields[i];
+		fprintf(stderr, "%s: ti->fullname='%s' field '%s': calling reflection_setup_type_resolve()\n", __func__,
+				ti->fullname, rfd->fi->name);
+
+		rfd->rtd = reflection_setup_type_resolve(rts, rtd, rfd->fi, rfd->fi->type_info, NULL);
 		if (!rfd->rtd)
 			goto err_out;
 	}
 
-	rc = reflection_type_data_add(rts, rtd);
+	reflection_type_data_setup_remove(rtd);
+
+	fprintf(stderr, "%s: ti->fullname='%s' reflection_type_data_add()\n", __func__, ti->fullname);
+	rc = reflection_type_data_add(rtd);
 	if (rc)
 		goto err_out;
+
+	rtd->in_progress = false;
+	fprintf(stderr, "%s: ti->fullname='%s' OK\n", __func__, ti->fullname);
 
 	return rtd;
 
@@ -6309,6 +6409,7 @@ reflection_type_system_create(const struct reflection_type_system_config *cfg)
 	fprintf(stderr, "%s: before specialization\n", __func__);
 	reflection_type_system_dump(rts);
 
+	fprintf(stderr, "%s: calling reflection_setup_type_specialize()\n", __func__);
 	rtd_new_root = reflection_setup_type_specialize(rts->rtd_root, NULL, NULL);
 	if (!rtd_new_root)
 		goto err_out;

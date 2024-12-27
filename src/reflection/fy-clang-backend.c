@@ -480,6 +480,8 @@ fy_import_backend_root_visitor(CXCursor cursor, CXCursor parent, CXClientData cl
 	cursor_kind_spelling = clang_str_get_alloca(clang_getCursorKindSpelling(cursor_kind));
 	(void)cursor_kind_spelling;
 
+	fprintf(stderr, "\x1b[32m%s: %s:%s\x1b[0m\n", __func__, cursor_spelling, cursor_kind_spelling);
+
 	/* visit the children first, so that we pick up definition intermingled */
 	if (visit_children) {
 		ret = clang_visitChildren(cursor, fy_import_backend_root_visitor, imp);
