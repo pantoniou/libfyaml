@@ -2144,6 +2144,7 @@ struct reflection_object {
 struct reflection_field_data {
 	int idx;
 	struct reflection_type_data *rtd;
+	bool rtd_recursive;
 	const struct fy_field_info *fi;
 	const char *field_name;
 	int signess;		/* -1 signed, 1 unsigned, 0 not relevant */
@@ -2152,7 +2153,6 @@ struct reflection_field_data {
 	bool omit_on_emit;
 	bool required;
 	bool is_counter;	/* is a counter of another field */
-//	struct reflection_type_data *rtd_dep;
 	struct fy_document *yaml_annotation;			/* of the field */
 	struct fy_node *fyn_default;
 	void *default_value;
@@ -2197,7 +2197,9 @@ struct reflection_type_data {
 	void *terminator_value;					/* value if possible */
 	struct fy_node *fyn_enum_missing;			/* value to substitute on missing enum */
 	void *enum_missing_value;				/* value (should always be possible) */
+
 	struct reflection_type_data *rtd_dep;			/* the dependent type */
+	bool rtd_dep_recursive;
 	size_t fields_count;
 	struct reflection_field_data **fields;
 };
@@ -5204,7 +5206,7 @@ void reflection_field_data_destroy(struct reflection_field_data *rfd)
 		reflection_free(rfd->rtd->rts, rfd->default_value);
 	}
 
-	if (rfd->rtd)
+	if (rfd->rtd && !rfd->rtd_recursive)
 		reflection_type_data_destroy(rfd->rtd);
 
 	free(rfd);
@@ -5222,6 +5224,13 @@ reflection_type_data_ref(struct reflection_type_data *rtd)
 	return rtd;
 }
 
+void
+reflection_type_data_unref(struct reflection_type_data *rtd)
+{
+	assert(rtd->refs > 0);
+	rtd->refs--;
+}
+
 void reflection_type_data_destroy(struct reflection_type_data *rtd)
 {
 	struct reflection_type_system *rts;
@@ -5233,6 +5242,7 @@ void reflection_type_data_destroy(struct reflection_type_data *rtd)
 
 	// fprintf(stderr, "%s: %p\n", __func__, rtd);
 
+	fprintf(stderr, "%s: #%d %s refs=%d\n", __func__, rtd->idx, rtd->ti->fullname, rtd->refs);
 	assert(rtd->refs > 0);
 
 	// fprintf(stderr, "%s: #%d %s refs=%d\n", __func__, rtd->idx, rtd->ti->fullname, rtd->refs);
@@ -5268,13 +5278,13 @@ void reflection_type_data_destroy(struct reflection_type_data *rtd)
 	if (rtd->yaml_annotation_str)
 		free(rtd->yaml_annotation_str);
 
-	if (rtd->rtd_dep)
+	if (rtd->rtd_dep && !rtd->rtd_dep_recursive)
 		reflection_type_data_destroy(rtd->rtd_dep);
 
 	if (rtd->fields) {
 		for (i = 0; i < rtd->fields_count; i++) {
 			rfd = rtd->fields[i];
-			if (rfd)
+			if (rfd && !rfd->rtd_recursive)
 				reflection_field_data_destroy(rfd);
 		}
 		free(rtd->fields);
@@ -5396,11 +5406,50 @@ reflection_setup_type_lookup(struct reflection_type_system *rts, struct reflecti
 }
 
 struct reflection_type_data *
+reflection_setup_type_recursive(struct reflection_type_system *rts, struct reflection_type_data *rtd_parent,
+				const struct fy_field_info *fi, const struct fy_type_info *ti,
+				const struct reflection_type_ops *ops)
+{
+	struct reflection_type_data *rtd;
+	size_t i;
+
+	if (!rts || !ti)
+		return NULL;
+
+	rtd = NULL;
+	for (i = 0; i < rts->rtd_setup_count; i++) {
+		rtd = rts->rtds_setup[i];
+		if (!rtd)
+			continue;
+		if (rtd->ti == ti)
+			break;
+		rtd = NULL;
+	}
+
+	return rtd;
+}
+
+struct reflection_type_data *
 reflection_setup_type_resolve(struct reflection_type_system *rts, struct reflection_type_data *rtd_parent,
 			      const struct fy_field_info *fi, const struct fy_type_info *ti,
 			      const struct reflection_type_ops *ops)
 {
-	struct reflection_type_data *rtd;
+	struct reflection_type_data *rtd, *rtd2;
+	size_t i;
+
+	rtd = reflection_setup_type_recursive(rts, rtd_parent, fi, ti, ops);
+	if (rtd) {
+		fprintf(stderr, "%s: parent='%s' ti->fullname='%s' RECURSIVE dependent_type ('%s')\n", __func__,
+					rtd_parent->ti->fullname,
+					ti->fullname, rtd->ti->fullname);
+		for (i = 0; i < rts->rtd_setup_count; i++) {
+			rtd2 = rts->rtds_setup[i];
+			if (!rtd2)
+				continue;
+			fprintf(stderr, "> %s\n", rtd2->ti->fullname);
+		}
+		return rtd;
+	}
 
 	/* exact match? */
 	rtd = reflection_setup_type_lookup(rts, rtd_parent, fi, ti, ops);
@@ -5808,6 +5857,8 @@ reflection_type_data_mutate(struct reflection_type_data *rtd_source, const struc
 	rtd->rtd_dep = rtm->rtd_dep ? rtm->rtd_dep : rtd_source->rtd_dep;
 	rtd->rtd_dep = reflection_type_data_ref(rtd->rtd_dep);
 
+	rtd->flags = rtd_source->flags & ~(RTDF_SPECIALIZING | RTDF_SPECIALIZED);
+
 	rtd->fields_count = rtd_source->fields_count;
 	if (rtd->fields_count > 0) {
 		rtd->fields = malloc(sizeof(*rtd->fields)*rtd->fields_count);
@@ -5876,7 +5927,8 @@ err_out:
 
 struct reflection_type_data *
 reflection_setup_type_specialize(struct reflection_type_data *rtd,
-				 struct reflection_type_data *rtd_parent, void *parent_addr)
+				 struct reflection_type_data *rtd_parent, void *parent_addr,
+				 bool *recursivep)
 {
 	struct reflection_type_data *rtd_spec;
 	struct reflection_field_data *rfd, *rfd_ref, *rfd_flatten, *rfd_key;
@@ -5888,6 +5940,7 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 	const char *flatten_field, *counter, *key_field;
 	size_t i;
 	int rc;
+	bool is_recursive = false;
 
 	if (!rtd)
 		return NULL;
@@ -5897,11 +5950,15 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 	if (rtd->flags & (RTDF_SPECIALIZED | RTDF_SPECIALIZING))
 		return rtd;
 
-	rtd->flags |= RTDF_SPECIALIZING;
 #else
 	if (rtd->flags & RTDF_SPECIALIZED)
 		return rtd;
 #endif
+	if (rtd->flags & RTDF_SPECIALIZING) {
+		fprintf(stderr, "%s: #%d %p - RECURSIVE (%s)\n", __func__, rtd->idx, rtd, rtd->ti->fullname);
+		is_recursive = true;
+	} else
+		rtd->flags |= RTDF_SPECIALIZING;
 
 	// fprintf(stderr, "%s: #%d %p\n", __func__, rtd->idx, rtd);
 
@@ -5921,6 +5978,11 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 			rtd_mut = reflection_type_data_mutate(rtd, &rtm);
 			if (!rtd_mut)
 				goto err_out;
+#if 1
+			rtd_mut->flags |= RTDF_SPECIALIZING;
+			is_recursive = false;
+#endif
+
 			rtd = rtd_mut;
 
 			break;
@@ -5933,6 +5995,10 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 			rtd_mut = reflection_type_data_mutate(rtd, &rtm);
 			if (!rtd_mut)
 				goto err_out;
+#if 1
+			rtd_mut->flags |= RTDF_SPECIALIZING;
+			is_recursive = false;
+#endif
 			rtd = rtd_mut;
 
 			break;
@@ -5955,6 +6021,10 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 			rtd_mut = reflection_type_data_mutate(rtd, &rtm);
 			if (!rtd_mut)
 				goto err_out;
+#if 1
+			rtd_mut->flags |= RTDF_SPECIALIZING;
+			is_recursive = false;
+#endif
 			rtd = rtd_mut;
 
 			break;
@@ -5984,6 +6054,10 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 			rtd_mut = reflection_type_data_mutate(rtd, &rtm);
 			if (!rtd_mut)
 				goto err_out;
+#if 1
+			rtd_mut->flags |= RTDF_SPECIALIZING;
+			is_recursive = false;
+#endif
 			rtd = rtd_mut;
 		}
 
@@ -6004,6 +6078,10 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 			rtd_mut = reflection_type_data_mutate(rtd, &rtm);
 			if (!rtd_mut)
 				goto err_out;
+#if 1
+			rtd_mut->flags |= RTDF_SPECIALIZING;
+			is_recursive = false;
+#endif
 			rtd = rtd_mut;
 		}
 
@@ -6090,6 +6168,10 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 					rtd_mut = reflection_type_data_mutate(rfd->rtd, &rtm);
 					if (!rtd_mut)
 						goto err_out;
+#if 1
+					rtd_mut->flags |= RTDF_SPECIALIZING;
+					is_recursive = false;
+#endif
 					rfd->rtd = rtd_mut;
 				}
 
@@ -6107,10 +6189,21 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 		break;
 	}
 
+
+	/* if after mutations is still recursive, just return */
+	if (is_recursive & !fy_type_kind_is_primitive(reflection_type_data_final_dependent(rtd)->ti->kind)) {
+		fprintf(stderr, "%s: #%d %p - FINAL RECURSIVE (%s)\n", __func__, rtd->idx, rtd, rtd->ti->fullname);
+		if (recursivep)
+			*recursivep = true;
+		return rtd;
+	}
+	if (recursivep)
+		*recursivep = false;
+
 	rtd->flags = (rtd->flags & ~RTDF_PURITY_MASK) | RTDF_PURE;
 	for (i = 0; i < rtd->fields_count; i++) {
 		rfd = rtd->fields[i];
-		rtd_spec = reflection_setup_type_specialize(rfd->rtd, rtd, rfd);
+		rtd_spec = reflection_setup_type_specialize(rfd->rtd, rtd, rfd, &rfd->rtd_recursive);
 		if (!rtd_spec)
 			goto err_out;
 		rfd->rtd = rtd_spec;
@@ -6118,7 +6211,7 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 	}
 
 	if (rtd->rtd_dep) {
-		rtd_spec = reflection_setup_type_specialize(rtd->rtd_dep, rtd, NULL);
+		rtd_spec = reflection_setup_type_specialize(rtd->rtd_dep, rtd, NULL, &rtd->rtd_dep_recursive);
 		if (!rtd_spec)
 			goto err_out;
 		rtd->rtd_dep = rtd_spec;
@@ -6196,7 +6289,9 @@ reflection_setup_type_specialize(struct reflection_type_data *rtd,
 	}
 
 	rtd->flags |= RTDF_SPECIALIZED;
-	rtd->flags &= ~RTDF_SPECIALIZING;
+
+	if (!is_recursive)
+		rtd->flags &= ~RTDF_SPECIALIZING;
 
 	return rtd;
 err_out:
@@ -6251,9 +6346,6 @@ reflection_setup_type(struct reflection_type_system *rts,
 
 		rfd->idx = (int)i;
 		rfd->fi = tfi;
-
-		fprintf(stderr, "%s: ti->fullname='%s' field '%s': calling reflection_setup_type_resolve()\n", __func__,
-				ti->fullname, tfi->name);
 	}
 
 	/* add to the in progress list */
@@ -6410,7 +6502,7 @@ reflection_type_system_create(const struct reflection_type_system_config *cfg)
 	reflection_type_system_dump(rts);
 
 	fprintf(stderr, "%s: calling reflection_setup_type_specialize()\n", __func__);
-	rtd_new_root = reflection_setup_type_specialize(rts->rtd_root, NULL, NULL);
+	rtd_new_root = reflection_setup_type_specialize(rts->rtd_root, NULL, NULL, NULL);
 	if (!rtd_new_root)
 		goto err_out;
 
