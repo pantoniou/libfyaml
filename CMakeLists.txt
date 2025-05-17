@@ -2,11 +2,11 @@ if (POLICY CMP0048)
     cmake_policy(SET CMP0048 NEW) # Allow project(xxx VERSION a.b.c)
 endif()
 
+cmake_minimum_required(VERSION 3.0)
+
 # version number below should be the currently under development version,
 # so when doing a tag/release it is captured with the proper numbering.
 project(fyaml LANGUAGES C VERSION 0.7.2)
-
-cmake_minimum_required(VERSION 3.0)
 
 # Must use GNUInstallDirs to install libraries into correct
 # locations on all platforms.
