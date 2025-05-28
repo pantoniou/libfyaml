@@ -175,6 +175,8 @@ struct fy_parser {
 	struct fy_reader *reader;		/* the external reader, or ptr to builtin_reader */
 
 	struct fy_version default_version;
+	struct fy_version stream_version;	/* last version set in stream */
+
 	bool suppress_recycling : 1;
 	bool stream_start_produced : 1;
 	bool stream_end_produced : 1;

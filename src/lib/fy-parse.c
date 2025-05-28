@@ -106,7 +106,7 @@ int fy_parse_get_next_input(struct fy_parser *fyp)
 
 	/* set the initial reader mode according to json option and default version */
 	if (!json_mode)
-		rdmode = fy_version_compare(&fyp->default_version, fy_version_make(1, 1)) <= 0 ? fyrm_yaml_1_1 : fyrm_yaml;
+		rdmode = fy_version_compare(&fyp->stream_version, fy_version_make(1, 1)) <= 0 ? fyrm_yaml_1_1 : fyrm_yaml;
 	else
 		rdmode = fyrm_json;
 
@@ -463,7 +463,7 @@ int fy_reset_document_state(struct fy_parser *fyp)
 	fyp_scan_debug(fyp, "resetting document state");
 
 	if (!fyp->default_document_state) {
-		fyds_new = fy_document_state_default(&fyp->default_version, NULL);
+		fyds_new = fy_document_state_default(&fyp->stream_version, NULL);
 		fyp_error_check(fyp, fyds_new, err_out,
 				"fy_document_state_default() failed");
 	} else {
@@ -787,6 +787,7 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 	fyp->reader = &fyp->builtin_reader;
 
 	fyp->default_version = *vers;
+	fyp->stream_version = fyp->default_version;
 
 	fy_indent_list_init(&fyp->indent_stack);
 	fy_indent_list_init(&fyp->recycled_indent);
@@ -2168,6 +2169,9 @@ int fy_scan_directive(struct fy_parser *fyp)
 		version_length = fy_scan_yaml_version(fyp, &vers);
 		fyp_error_check(fyp, version_length > 0, err_out,
 				"fy_scan_yaml_version() failed");
+
+		/* save the version per stream */
+		fyp->stream_version = vers;
 
 		/* set the reader's mode according to the version just scanned */
 		rdmode = fy_version_compare(&vers, fy_version_make(1, 1)) <= 0 ? fyrm_yaml_1_1 : fyrm_yaml;
