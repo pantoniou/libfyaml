@@ -5867,7 +5867,7 @@ void fy_node_mapping_perform_sort(struct fy_node *fyn_map,
 		def_arg.cmp_fn = NULL;
 		def_arg.arg = NULL;
 	}
-	ctx.key_cmp = key_cmp ? : fy_node_mapping_sort_cmp_default;
+	ctx.key_cmp = key_cmp ? key_cmp : fy_node_mapping_sort_cmp_default;
 	ctx.arg = key_cmp ? arg : &def_arg;
 	ctx.fynpp = fynpp;
 	ctx.count = count;
