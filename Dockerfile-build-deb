@@ -5,7 +5,7 @@ RUN apt-get update -qq
 RUN apt-get install --no-install-recommends --fix-missing -y \
     gcc autoconf automake libtool git make libyaml-dev libltdl-dev \
     pkg-config check python3 python3-pip python3-setuptools \
-    devscripts build-essential lintian debhelper dh-buildinfo dh-autoreconf fakeroot \
+    devscripts build-essential lintian debhelper dh-autoreconf fakeroot \
     gnupg
 # install sphinx doc dependencies
 RUN pip3 install wheel sphinx git+http://github.com/return42/linuxdoc.git sphinx_rtd_theme sphinx-markdown-builder
