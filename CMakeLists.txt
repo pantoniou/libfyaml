@@ -9,6 +9,8 @@ project(fyaml LANGUAGES C VERSION 0.9.1)
 # locations on all platforms.
 include(GNUInstallDirs)
 
+option(BUILD_SHARED_LIBS "Build using shared libraries" ON)
+
 set(LIBHDRS
   src/lib/fy-accel.h
   src/lib/fy-atom.h
@@ -82,6 +84,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR}
 )
+set_target_properties(${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC
