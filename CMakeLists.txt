@@ -1,12 +1,9 @@
-if (POLICY CMP0048)
-    cmake_policy(SET CMP0048 NEW) # Allow project(xxx VERSION a.b.c)
-endif()
-
-cmake_minimum_required(VERSION 3.0)
+cmake_policy(SET CMP0048 NEW)
+cmake_minimum_required(VERSION 3.24)
 
 # version number below should be the currently under development version,
 # so when doing a tag/release it is captured with the proper numbering.
-project(fyaml LANGUAGES C VERSION 0.7.2)
+project(fyaml LANGUAGES C VERSION 0.9.1)
 
 # Must use GNUInstallDirs to install libraries into correct
 # locations on all platforms.
@@ -81,6 +78,10 @@ check_function_exists(__builtin_bswap64 HAVE___BUILTIN_BSWAP64)
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 
 set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER "Libraries")
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    VERSION ${PROJECT_VERSION}
+    SOVERSION ${PROJECT_VERSION_MAJOR}
+)
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC
@@ -96,7 +97,7 @@ target_include_directories(${PROJECT_NAME}
 #target_compile_definitions(${PROJECT_NAME} PUBLIC xx)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
-    VERSION="0.5.7.34"
+    VERSION="${PROJECT_VERSION}"
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
@@ -105,17 +106,17 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 
 # Shared options between GCC and CLANG:
 if (NOT MSVC)
-	target_compile_options(${PROJECT_NAME} PRIVATE
+    target_compile_options(${PROJECT_NAME} PRIVATE
         -Wall
         -fPIC
         -D_GNU_SOURCE
     )
 
-	if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-		target_compile_options(${PROJECT_NAME} PRIVATE
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_compile_options(${PROJECT_NAME} PRIVATE
             -O2
         )
-	endif()
+    endif()
 endif()
 
 # ==== Install & export target ========
