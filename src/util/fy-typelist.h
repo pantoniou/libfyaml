@@ -29,7 +29,7 @@ struct __useless_struct_to_allow_semicolon
 #define FY_TYPE_DECL_LIST(_type) \
 static inline void fy_ ## _type ## _list_init(struct fy_ ## _type ## _list *_l) \
 { \
-	INIT_LIST_HEAD(&_l->_lh); \
+	list_init(&_l->_lh); \
 } \
 static inline void fy_ ## _type ## _list_add(struct fy_ ## _type ## _list *_l, struct fy_ ## _type *_n) \
 { \
@@ -61,10 +61,8 @@ static inline bool fy_ ## _type ## _list_is_singular(struct fy_ ## _type ## _lis
 } \
 static inline void fy_ ## _type ## _list_del(struct fy_ ## _type ## _list *_l, struct fy_ ## _type *_n) \
 { \
-	if (_l && _n) { \
+	if (_l && _n) \
 		list_del(&_n->node); \
-		INIT_LIST_HEAD(&_n->node); \
-	} \
 } \
 static inline void fy_ ## _type ## _list_insert_after(struct fy_ ## _type ## _list *_l, \
 		struct fy_ ## _type *_p, struct fy_ ## _type *_n) \

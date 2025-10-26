@@ -15,6 +15,7 @@
 
 #include <stdio.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <unistd.h>
 #include <termios.h>
 #include <stdint.h>
@@ -45,6 +46,14 @@ struct fy_tag_scan_info {
 };
 
 int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info);
+
+#ifndef container_of
+#define container_of(ptr, type, member) \
+	({ \
+		const typeof(((type *)0)->member) *__mptr = (ptr); \
+		(type *)((void *)__mptr - offsetof(type,member)); \
+	 })
+#endif
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(x) ((sizeof(x)/sizeof((x)[0])))
