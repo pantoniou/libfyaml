@@ -49,8 +49,6 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 
 		desctxt=`cat 2>/dev/null "$tst/==="`
 
-		t=`mktemp`
-
 		directive=""
 		skip_reason="${skips[$test_subtest_id]}"
 		if [ "x$skip_reason" != "x" ]; then
@@ -60,6 +58,9 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 		res="ok"
 		if [ "x$skip_reason" == "x" ]; then
 			res="not ok"
+
+			t=`mktemp`
+
 			# run the test using document-event-stream
 			${TOP_BUILDDIR}/src/fy-tool --testsuite --document-event-stream "$tst/in.yaml" >"$t"
 			if [ $? -eq 0 ]; then
