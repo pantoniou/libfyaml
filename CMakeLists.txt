@@ -257,16 +257,21 @@ if(ENABLE_ASAN)
     endif()
 endif()
 
-# global flags if available
+# Build common compiler flags for all targets
+set(COMMON_C_FLAGS)
+set(COMMON_C_DEFINITIONS _GNU_SOURCE)
+
 if(NOT MSVC)
+    list(APPEND COMMON_C_FLAGS -Wall -Wsign-compare)
+
     check_c_compiler_flag(-Wno-unused-function COMPILER_SUPPORTS_WNO_UNUSED_FUNCTION)
     if(COMPILER_SUPPORTS_WNO_UNUSED_FUNCTION)
-        add_compile_options(-Wno-unused-function)
+        list(APPEND COMMON_C_FLAGS -Wno-unused-function)
     endif()
 
     check_c_compiler_flag(-Wno-stringop-overflow COMPILER_SUPPORTS_WNO_STRINGOP_OVERFLOW)
     if(COMPILER_SUPPORTS_WNO_STRINGOP_OVERFLOW)
-        add_compile_options(-Wno-stringop-overflow)
+        list(APPEND COMMON_C_FLAGS -Wno-stringop-overflow)
     endif()
 endif()
 
@@ -377,9 +382,11 @@ target_include_directories(b3portable PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
 )
 target_compile_definitions(b3portable PRIVATE
+    ${COMMON_C_DEFINITIONS}
     HASHER_SUFFIX=portable
     SIMD_DEGREE=1
 )
+target_compile_options(b3portable PRIVATE ${COMMON_C_FLAGS})
 
 # BLAKE3 SIMD libraries
 set(BLAKE3_TARGETS b3portable)
@@ -396,11 +403,12 @@ if(TARGET_HAS_SSE2)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
         ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
     )
-    target_compile_options(b3sse2 PRIVATE -msse2)
     target_compile_definitions(b3sse2 PRIVATE
+        ${COMMON_C_DEFINITIONS}
         HASHER_SUFFIX=sse2
         SIMD_DEGREE=4
     )
+    target_compile_options(b3sse2 PRIVATE ${COMMON_C_FLAGS} -msse2)
     list(APPEND BLAKE3_TARGETS b3sse2)
 endif()
 
@@ -416,11 +424,12 @@ if(TARGET_HAS_SSE41)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
         ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
     )
-    target_compile_options(b3sse41 PRIVATE -msse4.1)
     target_compile_definitions(b3sse41 PRIVATE
+        ${COMMON_C_DEFINITIONS}
         HASHER_SUFFIX=sse41
         SIMD_DEGREE=4
     )
+    target_compile_options(b3sse41 PRIVATE ${COMMON_C_FLAGS} -msse4.1)
     list(APPEND BLAKE3_TARGETS b3sse41)
 endif()
 
@@ -436,11 +445,12 @@ if(TARGET_HAS_AVX2)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
         ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
     )
-    target_compile_options(b3avx2 PRIVATE -mavx2)
     target_compile_definitions(b3avx2 PRIVATE
+        ${COMMON_C_DEFINITIONS}
         HASHER_SUFFIX=avx2
         SIMD_DEGREE=8
     )
+    target_compile_options(b3avx2 PRIVATE ${COMMON_C_FLAGS} -mavx2)
     list(APPEND BLAKE3_TARGETS b3avx2)
 endif()
 
@@ -456,11 +466,12 @@ if(TARGET_HAS_AVX512)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
         ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
     )
-    target_compile_options(b3avx512 PRIVATE -mavx512f -mavx512vl)
     target_compile_definitions(b3avx512 PRIVATE
+        ${COMMON_C_DEFINITIONS}
         HASHER_SUFFIX=avx512
         SIMD_DEGREE=16
     )
+    target_compile_options(b3avx512 PRIVATE ${COMMON_C_FLAGS} -mavx512f -mavx512vl)
     list(APPEND BLAKE3_TARGETS b3avx512)
 endif()
 
@@ -475,13 +486,15 @@ if(TARGET_HAS_NEON)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
         ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
     )
-    if(TARGET_CPU_ARM)
-        target_compile_options(b3neon PRIVATE -mfpu=neon)
-    endif()
     target_compile_definitions(b3neon PRIVATE
+        ${COMMON_C_DEFINITIONS}
         HASHER_SUFFIX=neon
         SIMD_DEGREE=4
     )
+    target_compile_options(b3neon PRIVATE ${COMMON_C_FLAGS})
+    if(TARGET_CPU_ARM)
+        target_compile_options(b3neon PRIVATE -mfpu=neon)
+    endif()
     list(APPEND BLAKE3_TARGETS b3neon)
 endif()
 
@@ -546,13 +559,10 @@ target_compile_definitions(fyaml_static PRIVATE
     $<$<NOT:$<CONFIG:DEBUG>>:NDEBUG>
 )
 
-if(NOT MSVC)
-    target_compile_options(fyaml_static PRIVATE
-        -Wall
-        -Wsign-compare
-        -D_GNU_SOURCE
-    )
+target_compile_definitions(fyaml_static PRIVATE ${COMMON_C_DEFINITIONS})
+target_compile_options(fyaml_static PRIVATE ${COMMON_C_FLAGS})
 
+if(NOT MSVC)
     if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
         target_compile_options(fyaml_static PRIVATE -O2)
     endif()
@@ -602,14 +612,12 @@ target_compile_definitions(fyaml PRIVATE
     $<$<NOT:$<CONFIG:DEBUG>>:NDEBUG>
 )
 
+target_compile_definitions(fyaml PRIVATE ${COMMON_C_DEFINITIONS})
+target_compile_options(fyaml PRIVATE ${COMMON_C_FLAGS})
+
 # Shared options between GCC and CLANG
 if(NOT MSVC)
-    target_compile_options(fyaml PRIVATE
-        -Wall
-        -Wsign-compare
-        -fvisibility=hidden
-        -D_GNU_SOURCE
-    )
+    target_compile_options(fyaml PRIVATE -fvisibility=hidden)
 
     if(BUILD_SHARED_LIBS)
         target_compile_options(fyaml PRIVATE -fPIC)
