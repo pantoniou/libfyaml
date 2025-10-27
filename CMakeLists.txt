@@ -639,6 +639,7 @@ if(HAVE_LIBYAML)
         src/valgrind/fy-valgrind.h
     )
     target_include_directories(libfyaml-parser PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
         ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
         ${CMAKE_CURRENT_SOURCE_DIR}/src/util
@@ -649,10 +650,17 @@ if(HAVE_LIBYAML)
     )
     if(NOT MSVC)
         # Embed libfyaml code statically, allow dynamic linking for system libraries
-        target_link_libraries(libfyaml-parser PRIVATE
-            -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
-            ${LIBYAML_LIBRARIES}
-        )
+        if(APPLE)
+            target_link_libraries(libfyaml-parser PRIVATE
+                -Wl,-force_load,$<TARGET_FILE:fyaml_static>
+                ${LIBYAML_LIBRARIES}
+            )
+        else()
+            target_link_libraries(libfyaml-parser PRIVATE
+                -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
+                ${LIBYAML_LIBRARIES}
+            )
+        endif()
         if(HAVE_ASAN)
             target_link_options(libfyaml-parser PRIVATE -fsanitize=address)
         endif()
@@ -666,6 +674,7 @@ add_executable(fy-thread
     src/valgrind/fy-valgrind.h
 )
 target_include_directories(fy-thread PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
     ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
     ${CMAKE_CURRENT_SOURCE_DIR}/src/util
@@ -673,9 +682,15 @@ target_include_directories(fy-thread PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
 )
 if(NOT MSVC)
-    target_link_libraries(fy-thread PRIVATE
-        -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
-    )
+    if(APPLE)
+        target_link_libraries(fy-thread PRIVATE
+            -Wl,-force_load,$<TARGET_FILE:fyaml_static>
+        )
+    else()
+        target_link_libraries(fy-thread PRIVATE
+            -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
+        )
+    endif()
     if(HAVE_ASAN)
         target_link_options(fy-thread PRIVATE -fsanitize=address)
     endif()
@@ -688,6 +703,7 @@ add_executable(fy-b3sum
     src/valgrind/fy-valgrind.h
 )
 target_include_directories(fy-b3sum PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
     ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
     ${CMAKE_CURRENT_SOURCE_DIR}/src/util
@@ -696,9 +712,15 @@ target_include_directories(fy-b3sum PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
 )
 if(NOT MSVC)
-    target_link_libraries(fy-b3sum PRIVATE
-        -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
-    )
+    if(APPLE)
+        target_link_libraries(fy-b3sum PRIVATE
+            -Wl,-force_load,$<TARGET_FILE:fyaml_static>
+        )
+    else()
+        target_link_libraries(fy-b3sum PRIVATE
+            -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
+        )
+    endif()
     if(HAVE_ASAN)
         target_link_options(fy-b3sum PRIVATE -fsanitize=address)
     endif()
@@ -711,6 +733,7 @@ add_executable(fy-allocators
     src/valgrind/fy-valgrind.h
 )
 target_include_directories(fy-allocators PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
     ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
     ${CMAKE_CURRENT_SOURCE_DIR}/src/util
@@ -719,9 +742,15 @@ target_include_directories(fy-allocators PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
 )
 if(NOT MSVC)
-    target_link_libraries(fy-allocators PRIVATE
-        -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
-    )
+    if(APPLE)
+        target_link_libraries(fy-allocators PRIVATE
+            -Wl,-force_load,$<TARGET_FILE:fyaml_static>
+        )
+    else()
+        target_link_libraries(fy-allocators PRIVATE
+            -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
+        )
+    endif()
     if(HAVE_ASAN)
         target_link_options(fy-allocators PRIVATE -fsanitize=address)
     endif()
@@ -793,10 +822,17 @@ if(BUILD_TESTING)
         # Link against static library to access private symbols
         # Use same pattern as internal tools
         if(NOT MSVC)
-            target_link_libraries(libfyaml-test PRIVATE
-                -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
-                ${CHECK_LIBRARIES}
-            )
+            if(APPLE)
+                target_link_libraries(libfyaml-test PRIVATE
+                    -Wl,-force_load,$<TARGET_FILE:fyaml_static>
+                    ${CHECK_LIBRARIES}
+                )
+            else()
+                target_link_libraries(libfyaml-test PRIVATE
+                    -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
+                    ${CHECK_LIBRARIES}
+                )
+            endif()
             if(HAVE_ASAN)
                 target_link_options(libfyaml-test PRIVATE -fsanitize=address)
             endif()
