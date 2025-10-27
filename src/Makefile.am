@@ -137,9 +137,8 @@ endif
 libfyaml_la_LIBADD += libb3neon.la
 endif
 
-# libfyaml-parser needs both LIBYAML and static
 if HAVE_LIBYAML
-if HAVE_STATIC
+if !CROSS_COMPILING
 
 noinst_PROGRAMS += libfyaml-parser
 
@@ -155,8 +154,7 @@ libfyaml_parser_LDFLAGS = $(AM_LDFLAGS) -static
 endif
 endif
 
-# fy-thread
-if HAVE_STATIC
+if !CROSS_COMPILING
 
 noinst_PROGRAMS += fy-thread
 
@@ -171,8 +169,7 @@ fy_thread_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 fy_thread_LDFLAGS = $(AM_LDFLAGS) -static
 endif
 
-# fy-b3sum
-if HAVE_STATIC
+if !CROSS_COMPILING
 
 noinst_PROGRAMS += fy-b3sum
 
@@ -187,8 +184,7 @@ fy_b3sum_CFLAGS = $(AM_CFLAGS) $(LIBYAML_CFLAGS)
 fy_b3sum_LDFLAGS = $(AM_LDFLAGS) -static
 endif
 
-# fy-allocators
-if HAVE_STATIC
+if !CROSS_COMPILING
 
 noinst_PROGRAMS += fy-allocators
 
@@ -211,8 +207,8 @@ fy_tool_SOURCES = \
 
 fy_tool_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/valgrind
 fy_tool_LDADD = $(AM_LDADD) libfyaml.la
-fy_tool_CFLAGS = $(AM_CFLAGS) $(STATIC_TOOLS_CFLAGS)
-fy_tool_LDFLAGS = $(AM_LDFLAGS) $(STATIC_TOOLS_LDFLAGS)
+fy_tool_CFLAGS = $(AM_CFLAGS)
+fy_tool_LDFLAGS = $(AM_LDFLAGS)
 
 include_HEADERS = \
         $(top_srcdir)/include/libfyaml.h

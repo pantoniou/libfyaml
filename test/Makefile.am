@@ -25,6 +25,12 @@ TEST_LOG_DRIVER = env AM_TAP_AWK='$(AWK)' $(SHELL) $(top_srcdir)/build-aux/tap-d
 
 TESTS =
 
+# When cross-compiling, we can build the tests but cannot execute them
+# since they are compiled for the target architecture
+if CROSS_COMPILING
+check_PROGRAMS =
+else
+
 if HAVE_COMPATIBLE_CHECK
 
 check_PROGRAMS = libfyaml-test
@@ -106,6 +112,8 @@ TESTS += testerrors.test
 TESTS += testemitter.test
 TESTS += testemitter-streaming.test
 TESTS += testemitter-restreaming.test
+
+endif # !CROSS_COMPILING
 
 EXTRA_DIST = test-env $(TESTS)
 

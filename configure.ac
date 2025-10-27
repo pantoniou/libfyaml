@@ -14,6 +14,8 @@ fi
 AC_SUBST(ACLOCAL_AMFLAGS, "-I m4")
 
 AC_CANONICAL_TARGET
+AC_CANONICAL_HOST
+AC_CANONICAL_BUILD
 
 AC_CONFIG_SRCDIR([src/lib/fy-parse.c])
 AC_CONFIG_HEADERS([config.h])
@@ -173,6 +175,16 @@ AC_SUBST(HAVE_PORTABLE_TARGET)
 AC_DEFINE_UNQUOTED([HAVE_PORTABLE_TARGET], [$HAVE_PORTABLE_TARGET], [Define to 1 if PORTABLE_TARGET is enabled])
 AM_CONDITIONAL([HAVE_PORTABLE_TARGET], [ test x$HAVE_PORTABLE_TARGET == x1 ])
 
+dnl Detect cross-compilation
+if test "x$build" != "x$host" ; then
+	CROSS_COMPILING=1
+else
+	CROSS_COMPILING=0
+fi
+AC_SUBST(CROSS_COMPILING)
+AC_DEFINE_UNQUOTED([CROSS_COMPILING], [$CROSS_COMPILING], [Define to 1 if cross compiling])
+AM_CONDITIONAL([CROSS_COMPILING], [ test x$CROSS_COMPILING = x1 ])
+
 AM_CONDITIONAL([TARGET_CPU_X86], [ test x$target_cpu = xx86 ])
 AM_CONDITIONAL([TARGET_CPU_X86_64], [ test x$target_cpu = xx86_64 ])
 AM_CONDITIONAL([TARGET_CPU_ANY_X86], [ test x$target_cpu = xx86 -o x$target_cpu = xx86_64 ])
@@ -206,24 +218,6 @@ AM_COND_IF([TARGET_HAS_AVX2],   AC_DEFINE([TARGET_HAS_AVX2],   [1], [AVX2 target
 AM_COND_IF([TARGET_HAS_AVX512], AC_DEFINE([TARGET_HAS_AVX512], [1], [AVX512 target support]))
 
 AM_COND_IF([TARGET_HAS_NEON],   AC_DEFINE([TARGET_HAS_NEON],   [1], [NEON target support]))
-
-dnl ASAN enable switch
-AC_ARG_ENABLE([static-tools],
-	      AS_HELP_STRING([--enable-static-tools],
-			     [Tools will be compiled as static executables]))
-
-HAVE_STATIC_TOOLS=0
-STATIC_TOOLS_CFLAGS=""
-STATIC_TOOLS_LDFLAGS=""
-if test "x$enable_static_tools" = "xyes" ; then
-	HAVE_STATIC_TOOLS=1
-	STATIC_TOOLS_CFLAGS="-static --static"
-	STATIC_TOOLS_LDFLAGS="-static --static"
-fi
-AC_SUBST(HAVE_STATIC_TOOLS)
-AC_SUBST(STATIC_TOOLS_LDFLAGS)
-AC_DEFINE_UNQUOTED([HAVE_STATIC_TOOLS], [$HAVE_STATIC_TOOLS], [Define to 1 if tools are static])
-AM_CONDITIONAL([HAVE_STATIC_TOOLS], [ test x$HAVE_STATIC_TOOLS = x1 ])
 
 dnl ASAN enable switch
 AC_ARG_ENABLE([asan],
@@ -471,11 +465,18 @@ LIBCLANG_CFLAGS=""
 LIBCLANG_CPPFLAGS=""
 LIBCLANG_LDFLAGS=""
 LIBCLANG_LIBS=""
-dnl TODO think about cross compilation
+if test "x$with_libclang" != "xno"; then
+	if test "x$CROSS_COMPILING" = "x1" -a "x$with_libclang" = "xauto" ; then
+		AC_MSG_WARN([Cross-compiling detected: disabling libclang auto-detection.])
+		AC_MSG_WARN([Use --with-libclang=<version> to force libclang if needed (advanced use only).])
+		with_libclang=no
+	fi
+fi
 if test "x$with_libclang" != "xno"; then
 	if test "x$with_libclang" == "xauto"; then
-		# try to auto detect (llvm 15 down to 8)
-		check="llvm-config llvm-config-15 llvm-config-14 llvm-config-13 llvm-config-12 llvm-config-11 llvm-config-10"
+		# try to auto detect (llvm 20 down to 10)
+		check="llvm-config llvm-config-20 llvm-config-19 llvm-config-18 llvm-config-17 llvm-config-16 \
+			llvm-config-15 llvm-config-14 llvm-config-13 llvm-config-12 llvm-config-11 llvm-config-10"
 	else
 		if test "x$with_libclang" == "xlatest"; then
 			check="llvm-config"
@@ -499,8 +500,14 @@ if test "x$with_libclang" != "xno"; then
 			CFLAGS="$CFLAGS $LIBCLANG_CFLAGS"
 			LDFLAGS="$LDFLAGS $LIBCLANG_LDFLAGS"
 			LIBS="$LIBS $LIBCLANG_LIBS"
-			AC_CHECK_LIB([clang], [clang_createIndex],
-				     [HAVE_LIBCLANG_LIB=1], [HAVE_LIBCLANG_LIB=0])
+
+			if test "x$CROSS_COMPILING" = "x1" ; then
+				AC_MSG_WARN([Cross-compiling: skipping libclang link test, checking headers only])
+				HAVE_LIBCLANG_LIB=1
+			else
+				AC_CHECK_LIB([clang], [clang_createIndex],
+					     [HAVE_LIBCLANG_LIB=1], [HAVE_LIBCLANG_LIB=0])
+			fi
 			AC_CHECK_HEADER([clang-c/Index.h],
 				     [HAVE_LIBCLANG_HDR=1], [HAVE_LIBCLANG_HDR=0])
 			# if we found it, break out
@@ -525,9 +532,6 @@ if test "x$with_libclang" != "xno"; then
 	LIBS=$orig_LIBS
 fi
 
-dnl it is safe to update CFLAGS, CPPFLAGS and LDFLAGS from clang
-dnl we will only link against libclang when we have to
-
 AC_SUBST(HAVE_LIBCLANG)
 AC_SUBST(LIBCLANG_CFLAGS)
 AC_SUBST(LIBCLANG_CPPFLAGS)
@@ -535,18 +539,6 @@ AC_SUBST(LIBCLANG_LDFLAGS)
 AC_SUBST(LIBCLANG_LIBS)
 AC_DEFINE_UNQUOTED([HAVE_LIBCLANG], [$HAVE_LIBCLANG], [Define to 1 if libclang is available])
 AM_CONDITIONAL([HAVE_LIBCLANG], [ test x$HAVE_LIBCLANG = x1 ])
-
-dnl AS_IF([test "x$with_libclang" != xno],
-dnl   [AC_CHECK_LIB([libclang], [main],
-dnl     [AC_SUBST([LIBREADLINE], ["-lreadline -lncurses"])
-dnl      AC_DEFINE([HAVE_LIBREADLINE], [1],
-dnl       	 [Define if you have libreadline])
-dnl     ],
-dnl     [if test "x$with_readline" != xcheck; then
-dnl        AC_MSG_FAILURE(
-dnl          [--with-readline was given, but test for readline failed])
-dnl      fi
-dnl     ], -lncurses)])
 
 dnl trim cflags, cppflags, ldflags
 CFLAGS=`echo $CFLAGS | sed -e 's/^[ ]*//'`
@@ -580,6 +572,10 @@ echo "
     EXTRA:                 ${EXTRA}
     LIBTOOL_VERSION:       ${LIBTOOL_VERSION}
     prefix:                ${prefix}
+    Build system:          ${build}
+    Host system:           ${host}
+    Target system:         ${target}
+    Cross compiling:       ${CROSS_COMPILING}
     C compiler:            ${CC}
     Linker:                ${LD}
     CFLAGS:                ${CFLAGS}
