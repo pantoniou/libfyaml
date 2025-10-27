@@ -91,7 +91,14 @@ endif()
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
-if(NOT CMAKE_USE_PTHREADS_INIT)
+
+# Windows with MinGW provides winpthreads
+if(WIN32 AND MINGW)
+    # MinGW provides winpthreads compatibility layer
+    set(CMAKE_USE_PTHREADS_INIT TRUE)
+endif()
+
+if(NOT CMAKE_USE_PTHREADS_INIT AND NOT WIN32)
     message(FATAL_ERROR "Missing required pthread support")
 endif()
 
@@ -102,6 +109,17 @@ check_function_exists(__builtin_bswap32 HAVE___BUILTIN_BSWAP32)
 check_function_exists(__builtin_bswap64 HAVE___BUILTIN_BSWAP64)
 check_function_exists(qsort_r HAVE_QSORT_R)
 check_function_exists(mremap HAVE_MREMAP)
+
+# Platform-specific functions (not available on Windows)
+if(NOT WIN32)
+    check_function_exists(sysconf HAVE_SYSCONF)
+    check_function_exists(mmap HAVE_MMAP)
+    check_function_exists(mincore HAVE_MINCORE)
+else()
+    set(HAVE_SYSCONF 0)
+    set(HAVE_MMAP 0)
+    set(HAVE_MINCORE 0)
+endif()
 
 # Check for environment variables
 check_c_source_compiles("
@@ -370,7 +388,8 @@ target_compile_definitions(b3portable PRIVATE
 # BLAKE3 SIMD libraries
 set(BLAKE3_TARGETS b3portable)
 
-if(TARGET_HAS_SSE2)
+if(TARGET_HAS_SSE2 AND NOT WIN32)
+    # Unix assembly files (.S) don't work on Windows
     add_library(b3sse2 OBJECT
         src/blake3/blake3_sse2.c
         src/blake3/blake3_sse2_x86-64_unix.S
@@ -390,7 +409,8 @@ if(TARGET_HAS_SSE2)
     list(APPEND BLAKE3_TARGETS b3sse2)
 endif()
 
-if(TARGET_HAS_SSE41)
+if(TARGET_HAS_SSE41 AND NOT WIN32)
+    # Unix assembly files (.S) don't work on Windows
     add_library(b3sse41 OBJECT
         src/blake3/blake3_sse41.c
         src/blake3/blake3_sse41_x86-64_unix.S
@@ -410,7 +430,8 @@ if(TARGET_HAS_SSE41)
     list(APPEND BLAKE3_TARGETS b3sse41)
 endif()
 
-if(TARGET_HAS_AVX2)
+if(TARGET_HAS_AVX2 AND NOT WIN32)
+    # Unix assembly files (.S) don't work on Windows
     add_library(b3avx2 OBJECT
         src/blake3/blake3_avx2.c
         src/blake3/blake3_avx2_x86-64_unix.S
@@ -430,7 +451,8 @@ if(TARGET_HAS_AVX2)
     list(APPEND BLAKE3_TARGETS b3avx2)
 endif()
 
-if(TARGET_HAS_AVX512)
+if(TARGET_HAS_AVX512 AND NOT WIN32)
+    # Unix assembly files (.S) don't work on Windows
     add_library(b3avx512 OBJECT
         src/blake3/blake3_avx512.c
         src/blake3/blake3_avx512_x86-64_unix.S

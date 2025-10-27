@@ -19,6 +19,7 @@
 #include <stdio.h>
 
 #include "fy-utils.h"
+#include "fy-platform.h"
 #include "fy-allocator-mremap.h"
 #include "fy-allocator-dedup.h"
 #include "fy-allocator-linear.h"
@@ -98,7 +99,7 @@ static int fy_auto_setup(struct fy_allocator *a, const void *cfg_data)
 	aa->a.ops = &fy_auto_allocator_ops;
 	aa->cfg = *cfg;
 
-	pagesz = sysconf(_SC_PAGESIZE);
+	pagesz = fy_get_pagesize();
 	size = cfg->estimated_max_size && cfg->estimated_max_size != SIZE_MAX ?
 			cfg->estimated_max_size :
 			AUTO_ALLOCATOR_MINIMUM_ARENA_SIZE;

@@ -459,7 +459,7 @@ Options:
 
 ## Missing features and omissions
 
-1. Windows - libfyaml is not supporting windows yet.
+1. Windows - libfyaml has **experimental Windows support** via MinGW-w64. See [WINDOWS.md](WINDOWS.md) for build instructions. MSVC support is not yet available.
 2. Unicode - libfyaml only supports UTF8 and has no support for wide character input.
 
 ## Development and contributing

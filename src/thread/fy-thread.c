@@ -16,7 +16,9 @@
 #include <alloca.h>
 #include <pthread.h>
 #include <stdlib.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 #include <errno.h>
 #include <limits.h>
 
@@ -27,6 +29,7 @@
 
 #include "fy-diag.h"
 #include "fy-utils.h"
+#include "fy-platform.h"
 #include "fy-thread.h"
 
 #undef WORK_SHUTDOWN
@@ -438,7 +441,7 @@ int fy_thread_pool_setup(struct fy_thread_pool *tp, const struct fy_thread_pool_
 		tp->cfg = *cfg;
 
 	if (!tp->cfg.num_threads) {
-		scval = sysconf(_SC_NPROCESSORS_ONLN);
+		scval = fy_get_nprocs();
 		assert(scval > 0);
 		num_threads = (unsigned int)scval;
 	} else

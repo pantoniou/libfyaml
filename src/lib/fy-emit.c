@@ -14,13 +14,16 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <limits.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 #include <ctype.h>
 #include <errno.h>
 
 #include <libfyaml.h>
 
 #include "fy-parse.h"
+#include "fy-platform.h"
 #include "fy-emit.h"
 
 static void fy_emitter_fill_default_colors(struct fy_emitter *fye);
@@ -2392,7 +2395,7 @@ static int do_buffer_output(struct fy_emitter *emit, enum fy_emitter_write_type 
 		if (!state->allocate_buffer)
 			return 0;
 
-		pagesize = sysconf(_SC_PAGESIZE);
+		pagesize = fy_get_pagesize();
 		size = state->need + pagesize - 1;
 		size = size - size % pagesize;
 

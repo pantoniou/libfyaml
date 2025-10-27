@@ -14,19 +14,23 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <limits.h>
+#include <errno.h>
+
+#ifndef _WIN32
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
-#include <limits.h>
-#include <errno.h>
+#endif
 
 #include <libfyaml.h>
 
 #include "fy-parse.h"
 #include "fy-ctype.h"
+#include "fy-platform.h"
 
 #include "fy-input.h"
 
@@ -538,7 +542,7 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 
 		fyi->chunk = fyi->cfg.chunk;
 		if (!fyi->chunk)
-			fyi->chunk = sysconf(_SC_PAGESIZE);
+			fyi->chunk = fy_get_pagesize();
 		fyi->chop = fyi->chunk * FYI_CHOP_MULT;
 		fyi->buffer = malloc(fyi->chunk);
 		fyr_error_check(fyr, fyi->buffer, err_out,

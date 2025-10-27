@@ -15,13 +15,16 @@
 #include <time.h>
 #include <inttypes.h>
 #include <math.h>
+#ifndef _WIN32
 #include <sys/mman.h>
+#endif
 
 #include <stdio.h>
 
 /* for container_of */
 #include "fy-list.h"
 #include "fy-utils.h"
+#include "fy-platform.h"
 
 #include "fy-allocator-mremap.h"
 
@@ -538,7 +541,7 @@ static int fy_mremap_setup(struct fy_allocator *a, const void *cfg_data)
 	mra->a.ops = &fy_mremap_allocator_ops;
 	mra->cfg = *cfg;
 
-	mra->pagesz = sysconf(_SC_PAGESIZE);
+	mra->pagesz = fy_get_pagesize();
 	/* pagesz is size of 2 find the first set bit */
 	mra->pageshift = fy_id_ffs((fy_id_bits)mra->pagesz);
 

@@ -8,12 +8,15 @@
 #include <stdio.h>
 #include <alloca.h>
 #include <stdlib.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include "blake3.h"
 #include "blake3_impl.h"
 #include "blake3_internal.h"
 
+#include "fy-platform.h"
 #include "fy-thread.h"
 
 struct cpusimd_data {
@@ -145,7 +148,7 @@ int blake3_backend_cpusimd_setup(unsigned int num_cpus, unsigned int mult_fact)
 	ssize_t n;
 
 	if (!num_cpus) {
-		scval = sysconf(_SC_NPROCESSORS_ONLN);
+		scval = fy_get_nprocs();
 		assert(scval > 0);
 		num_cpus = (unsigned int)scval;
 	}

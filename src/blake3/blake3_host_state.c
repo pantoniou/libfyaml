@@ -9,14 +9,17 @@
 #include <alloca.h>
 #include <pthread.h>
 #include <stdlib.h>
+#ifndef _WIN32
 #include <unistd.h>
 #include <fcntl.h>
-#include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#endif
+#include <errno.h>
 
 #include "fy-bit64.h"
+#include "fy-platform.h"
 
 #include "blake3.h"
 #include "blake3_impl.h"
@@ -122,7 +125,7 @@ int blake3_host_state_setup(blake3_host_state *hs, const blake3_host_config *cfg
 	memset(hs, 0, sizeof(*hs));
 	hs->cfg = *cfg;
 
-	scval = sysconf(_SC_NPROCESSORS_ONLN);
+	scval = fy_get_nprocs();
 	assert(scval > 0);
 
 	hs->num_cpus = (unsigned int)scval;
@@ -274,7 +277,8 @@ static int linux_block_dev_is_rotational(dev_t dev)
 
 static ssize_t linux_file_cached_size(int fd, void *mem, size_t filesize)
 {
-	long pagesize = sysconf(_SC_PAGESIZE);
+#if HAVE_MINCORE
+	long pagesize = fy_get_pagesize();
 	size_t vec_size, resident_size, i;
 	unsigned char *vec;
 	int rc;
@@ -299,6 +303,12 @@ static ssize_t linux_file_cached_size(int fd, void *mem, size_t filesize)
 
 	if (resident_size > filesize)
 		resident_size = filesize;
+#else
+	/* mincore not available - assume file is not cached */
+	(void)fd;
+	(void)mem;
+	ssize_t resident_size = 0;
+#endif
 
 	return (ssize_t)resident_size;
 }
