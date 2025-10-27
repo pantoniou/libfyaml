@@ -666,6 +666,9 @@ if(HAVE_LIBYAML)
         src/internal/libfyaml-parser.c
         src/valgrind/fy-valgrind.h
     )
+    target_compile_definitions(libfyaml-parser PRIVATE ${COMMON_C_DEFINITIONS})
+    target_compile_options(libfyaml-parser PRIVATE ${COMMON_C_FLAGS})
+
     target_include_directories(libfyaml-parser PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
