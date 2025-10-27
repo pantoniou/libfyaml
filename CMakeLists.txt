@@ -668,6 +668,7 @@ if(HAVE_LIBYAML)
     else()
         target_link_libraries(libfyaml-parser PRIVATE fyaml_static ${LIBYAML_LIBRARIES})
     endif()
+    add_dependencies(libfyaml-parser fyaml_static)
 endif()
 
 add_executable(fy-thread
@@ -698,6 +699,7 @@ if(NOT MSVC)
 else()
     target_link_libraries(fy-thread PRIVATE fyaml_static)
 endif()
+add_dependencies(fy-thread fyaml_static)
 
 add_executable(fy-b3sum
     src/internal/fy-b3sum.c
@@ -728,6 +730,7 @@ if(NOT MSVC)
 else()
     target_link_libraries(fy-b3sum PRIVATE fyaml_static)
 endif()
+add_dependencies(fy-b3sum fyaml_static)
 
 add_executable(fy-allocators
     src/internal/fy-allocators.c
@@ -758,6 +761,7 @@ if(NOT MSVC)
 else()
     target_link_libraries(fy-allocators PRIVATE fyaml_static)
 endif()
+add_dependencies(fy-allocators fyaml_static)
 
 # Testing
 if(BUILD_TESTING)
@@ -840,6 +844,7 @@ if(BUILD_TESTING)
         else()
             target_link_libraries(libfyaml-test PRIVATE fyaml_static ${CHECK_LIBRARIES})
         endif()
+        add_dependencies(libfyaml-test fyaml_static)
 
         # Set output directory to match autoconf behavior
         set_target_properties(libfyaml-test PROPERTIES
