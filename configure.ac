@@ -448,13 +448,13 @@ AC_DEFINE_UNQUOTED([HAVE_JQ], [$HAVE_JQ], [Define to 1 if you have jq available]
 AM_CONDITIONAL([HAVE_JQ], [ test x$HAVE_JQ = x1 ])
 AC_SUBST(JQ, "$JQ")
 
-# check for libclang
-AC_ARG_WITH([libclang],
-         dnl enable internet available when checking
+ dnl enable internet available when checking
 AC_ARG_ENABLE([network],
 	      AS_HELP_STRING([--disable-network],
 			     [Disable tests requiring network access]))
 
+# check for libclang
+AC_ARG_WITH([libclang],
    [AS_HELP_STRING([--with-libclang=[<version>]],
               [Enable support for libclang @<:@default=auto@:>@])],
             [with_libclang="$withval"],

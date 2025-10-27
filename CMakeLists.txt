@@ -4,6 +4,10 @@ if (POLICY CMP0048)
     cmake_policy(SET CMP0048 NEW) # Allow project(xxx VERSION a.b.c)
 endif()
 
+if (POLICY CMP0074)
+    cmake_policy(SET CMP0074 NEW) # find_package uses <PackageName>_ROOT variables
+endif()
+
 if (POLICY CMP0110)
     cmake_policy(SET CMP0110 NEW) # add_test() supports arbitrary characters in test names
 endif()
@@ -50,6 +54,32 @@ include(CheckCCompilerFlag)
 include(CheckLibraryExists)
 include(CMakeDependentOption)
 include(CTest)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckLibClang.cmake)
+
+# Macro to add libclang support to a target
+macro(add_libclang_to_target target_name link_scope)
+    if(HAVE_LIBCLANG)
+        # Split LIBCLANG_CFLAGS into list and add as compile options
+        string(REPLACE " " ";" LIBCLANG_CFLAGS_LIST "${LIBCLANG_CFLAGS}")
+        target_compile_options(${target_name} PRIVATE ${LIBCLANG_CFLAGS_LIST})
+
+        # Split LIBCLANG_LDFLAGS into list and add as link directories/options
+        # LIBCLANG_LDFLAGS typically contains -L/path/to/lib and -Wl,flags
+        # Extract only the -L paths
+        string(REGEX MATCHALL "-L([^ ]+)" LIBCLANG_L_FLAGS "${LIBCLANG_LDFLAGS}")
+        set(LIBCLANG_LINK_DIRS_LOCAL "")
+        foreach(flag ${LIBCLANG_L_FLAGS})
+            string(REGEX REPLACE "^-L" "" dir "${flag}")
+            list(APPEND LIBCLANG_LINK_DIRS_LOCAL "${dir}")
+        endforeach()
+        if(LIBCLANG_LINK_DIRS_LOCAL)
+            target_link_directories(${target_name} ${link_scope} ${LIBCLANG_LINK_DIRS_LOCAL})
+        endif()
+
+        # Add libclang libraries
+        target_link_libraries(${target_name} ${link_scope} ${LIBCLANG_LIBS})
+    endif()
+endmacro()
 
 # Options
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
@@ -59,6 +89,10 @@ option(ENABLE_ASAN "Enable ASAN support" OFF)
 option(ENABLE_NETWORK "Enable tests requiring network access" ON)
 option(ENABLE_DEVMODE "Enable development mode only debugging" OFF)
 option(BUILD_TESTING "Build tests" ON)
+option(ENABLE_LIBCLANG "Enable libclang support for reflection" ON)
+
+# Path to LLVM installation (optional, overrides automatic detection)
+set(LLVM_ROOT "" CACHE PATH "Path to LLVM installation directory (e.g., /usr/lib/llvm-15)")
 
 # Read libtool version
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/.libtool-version" LIBTOOL_VERSION)
@@ -204,6 +238,18 @@ set(HAVE_LIBCLANG 0)
 set(LIBCLANG_CFLAGS "")
 set(LIBCLANG_LDFLAGS "")
 set(LIBCLANG_LIBS "")
+set(LIBCLANG_FOUND FALSE)
+set(LIBCLANG_DETECTION_METHOD "")
+
+if(NOT ENABLE_LIBCLANG)
+    message(STATUS "libclang support disabled (ENABLE_LIBCLANG=OFF)")
+else()
+
+# If user specified LLVM_ROOT, add it to CMAKE_PREFIX_PATH for this search
+if(LLVM_ROOT)
+    message(STATUS "Using user-specified LLVM_ROOT: ${LLVM_ROOT}")
+    list(APPEND CMAKE_PREFIX_PATH "${LLVM_ROOT}")
+endif()
 
 # Try CMake config mode first
 find_package(LLVM QUIET CONFIG)
@@ -229,58 +275,17 @@ if(LLVM_FOUND AND Clang_FOUND)
     # Set up library directories
     set(LIBCLANG_LINK_DIRS ${LLVM_LIBRARY_DIRS})
 
-    # Link against libclang (C API) - check if imported target exists, else use library name
+    # Link against libclang (C API) and LLVM core libs
+    # Need to link against LLVM core for LLVMShutdown() and other LLVM APIs
     if(TARGET libclang)
-        set(LIBCLANG_LIBS_LIST libclang)
+        set(LIBCLANG_LIBS_LIST libclang LLVM)
     else()
-        set(LIBCLANG_LIBS_LIST clang)
+        set(LIBCLANG_LIBS_LIST clang LLVM)
     endif()
 
-    # Save current flags for testing
-    set(_TEMP_CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES}")
-    set(_TEMP_CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
-    set(_TEMP_CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES}")
-    set(_TEMP_CMAKE_REQUIRED_LINK_DIRECTORIES "${CMAKE_REQUIRED_LINK_DIRECTORIES}")
-
-    # Test if we can actually use libclang (skip when cross-compiling)
-    if(NOT CROSS_COMPILING)
-        set(CMAKE_REQUIRED_FLAGS "${LIBCLANG_CFLAGS_LIST}")
-        set(CMAKE_REQUIRED_INCLUDES "${LLVM_INCLUDE_DIRS};${CLANG_INCLUDE_DIRS}")
-        set(CMAKE_REQUIRED_LINK_DIRECTORIES "${LIBCLANG_LINK_DIRS}")
-        set(CMAKE_REQUIRED_LIBRARIES "${LIBCLANG_LIBS_LIST}")
-
-        check_c_source_compiles("
-            #include <clang-c/Index.h>
-            int main() {
-                CXIndex idx = clang_createIndex(0, 0);
-                clang_disposeIndex(idx);
-                return 0;
-            }
-        " LIBCLANG_WORKS)
-    else()
-        # When cross-compiling, disable libclang by default to avoid linking host libraries
-        # User can set CMAKE_PREFIX_PATH or LLVM_DIR to point to target-specific LLVM installation
-        message(STATUS "Cross-compiling: disabling libclang (to enable, set CMAKE_PREFIX_PATH to target LLVM installation)")
-        set(LIBCLANG_WORKS FALSE)
-    endif()
-
-    # Restore flags
-    set(CMAKE_REQUIRED_LIBRARIES "${_TEMP_CMAKE_REQUIRED_LIBRARIES}")
-    set(CMAKE_REQUIRED_FLAGS "${_TEMP_CMAKE_REQUIRED_FLAGS}")
-    set(CMAKE_REQUIRED_INCLUDES "${_TEMP_CMAKE_REQUIRED_INCLUDES}")
-    set(CMAKE_REQUIRED_LINK_DIRECTORIES "${_TEMP_CMAKE_REQUIRED_LINK_DIRECTORIES}")
-    unset(_TEMP_CMAKE_REQUIRED_LIBRARIES)
-    unset(_TEMP_CMAKE_REQUIRED_FLAGS)
-    unset(_TEMP_CMAKE_REQUIRED_INCLUDES)
-    unset(_TEMP_CMAKE_REQUIRED_LINK_DIRECTORIES)
-
-    if(LIBCLANG_WORKS)
-        set(HAVE_LIBCLANG 1)
-        # Convert list to string for LIBCLANG_CFLAGS
-        string(REPLACE ";" " " LIBCLANG_CFLAGS "${LIBCLANG_CFLAGS_LIST}")
-        set(LIBCLANG_LIBS "${LIBCLANG_LIBS_LIST}")
-        message(STATUS "Found libclang via CMake config")
-    endif()
+    set(LIBCLANG_INCLUDES "${LLVM_INCLUDE_DIRS};${CLANG_INCLUDE_DIRS}")
+    set(LIBCLANG_FOUND TRUE)
+    set(LIBCLANG_DETECTION_METHOD "CMake config")
 elseif(NOT CROSS_COMPILING)
     # Fallback to llvm-config method (only when not cross-compiling)
     message(STATUS "LLVM CMake config not found, trying llvm-config")
@@ -299,42 +304,60 @@ elseif(NOT CROSS_COMPILING)
         execute_process(COMMAND ${LLVM_CONFIG} --libs OUTPUT_VARIABLE LLVM_LIBS_TEMP OUTPUT_STRIP_TRAILING_WHITESPACE)
         execute_process(COMMAND ${LLVM_CONFIG} --system-libs OUTPUT_VARIABLE LLVM_SYSLIBS_TEMP OUTPUT_STRIP_TRAILING_WHITESPACE)
 
-        # Save current flags
-        set(_TEMP_CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES}")
-        set(_TEMP_CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
-
-        # Test if we can actually use libclang
-        set(CMAKE_REQUIRED_FLAGS "${LIBCLANG_CFLAGS_TEMP} ${LIBCLANG_LDFLAGS_TEMP}")
-        set(CMAKE_REQUIRED_LIBRARIES "-lclang ${LLVM_LIBS_TEMP} ${LLVM_SYSLIBS_TEMP}")
-
-        check_c_source_compiles("
-            #include <clang-c/Index.h>
-            int main() {
-                CXIndex idx = clang_createIndex(0, 0);
-                clang_disposeIndex(idx);
-                return 0;
-            }
-        " LIBCLANG_WORKS)
-
-        # Restore flags
-        set(CMAKE_REQUIRED_LIBRARIES "${_TEMP_CMAKE_REQUIRED_LIBRARIES}")
-        set(CMAKE_REQUIRED_FLAGS "${_TEMP_CMAKE_REQUIRED_FLAGS}")
-        unset(_TEMP_CMAKE_REQUIRED_LIBRARIES)
-        unset(_TEMP_CMAKE_REQUIRED_FLAGS)
-
-        if(LIBCLANG_WORKS)
-            set(HAVE_LIBCLANG 1)
-            set(LIBCLANG_CFLAGS "${LIBCLANG_CFLAGS_TEMP}")
-            set(LIBCLANG_LDFLAGS "${LIBCLANG_LDFLAGS_TEMP}")
-            set(LIBCLANG_LIBS "-lclang;${LLVM_LIBS_TEMP};${LLVM_SYSLIBS_TEMP}")
-            message(STATUS "Found libclang via llvm-config: ${LLVM_CONFIG}")
-        endif()
+        set(LIBCLANG_CFLAGS_LIST "${LIBCLANG_CFLAGS_TEMP} ${LIBCLANG_LDFLAGS_TEMP}")
+        set(LIBCLANG_LIBS_LIST "-lclang;${LLVM_LIBS_TEMP};${LLVM_SYSLIBS_TEMP}")
+        set(LIBCLANG_CFLAGS "${LIBCLANG_CFLAGS_TEMP}")
+        set(LIBCLANG_LDFLAGS "${LIBCLANG_LDFLAGS_TEMP}")
+        set(LIBCLANG_FOUND TRUE)
+        set(LIBCLANG_DETECTION_METHOD "llvm-config: ${LLVM_CONFIG}")
     endif()
 else()
     message(STATUS "Cross-compiling: LLVM CMake config not found")
-    message(STATUS "  Set CMAKE_PREFIX_PATH to LLVM install directory (e.g., /usr/lib/llvm-18)")
-    message(STATUS "  Or set LLVM_DIR to the directory containing LLVMConfig.cmake")
+    message(STATUS "  Set LLVM_ROOT to LLVM install directory (e.g., /usr/lib/llvm-18)")
+    message(STATUS "  Or set CMAKE_PREFIX_PATH or LLVM_DIR to the directory containing LLVMConfig.cmake")
 endif()
+
+# Test if libclang actually works (single test for all detection methods)
+if(LIBCLANG_FOUND)
+    if(NOT CROSS_COMPILING)
+        check_libclang_works(LIBCLANG_WORKS
+            CFLAGS "${LIBCLANG_CFLAGS_LIST}"
+            INCLUDES "${LIBCLANG_INCLUDES}"
+            LINK_DIRS "${LIBCLANG_LINK_DIRS}"
+            LIBRARIES "${LIBCLANG_LIBS_LIST}"
+        )
+    else()
+        # When cross-compiling, disable libclang by default to avoid linking host libraries
+        # User can set LLVM_ROOT, CMAKE_PREFIX_PATH, or LLVM_DIR to point to target-specific LLVM installation
+        message(STATUS "Cross-compiling: disabling libclang")
+        message(STATUS "  To enable, set LLVM_ROOT or CMAKE_PREFIX_PATH to target LLVM installation")
+        set(LIBCLANG_WORKS FALSE)
+    endif()
+
+    if(LIBCLANG_WORKS)
+        set(HAVE_LIBCLANG 1)
+        # Convert list to string for LIBCLANG_CFLAGS if needed (CMake config path)
+        if(LIBCLANG_DETECTION_METHOD STREQUAL "CMake config")
+            string(REPLACE ";" " " LIBCLANG_CFLAGS "${LIBCLANG_CFLAGS_LIST}")
+        endif()
+        set(LIBCLANG_LIBS "${LIBCLANG_LIBS_LIST}")
+        message(STATUS "Found libclang via ${LIBCLANG_DETECTION_METHOD}")
+    else()
+        message(STATUS "libclang not found or not working")
+        message(STATUS "  Reflection support will be disabled")
+        message(STATUS "  To specify libclang location: cmake -DLLVM_ROOT=/path/to/llvm")
+        message(STATUS "  To disable this check: cmake -DENABLE_LIBCLANG=OFF")
+    endif()
+else()
+    if(NOT LIBCLANG_FOUND)
+        message(STATUS "libclang not found")
+        message(STATUS "  Reflection support will be disabled")
+        message(STATUS "  To specify libclang location: cmake -DLLVM_ROOT=/path/to/llvm")
+        message(STATUS "  To disable this check: cmake -DENABLE_LIBCLANG=OFF")
+    endif()
+endif()
+
+endif() # ENABLE_LIBCLANG
 
 # Check for tools
 find_program(GIT_EXECUTABLE git)
@@ -745,27 +768,7 @@ target_link_libraries(fyaml_static
 )
 
 # Add libclang support if available
-if(HAVE_LIBCLANG)
-    # Split LIBCLANG_CFLAGS into list and add as compile options
-    string(REPLACE " " ";" LIBCLANG_CFLAGS_LIST "${LIBCLANG_CFLAGS}")
-    target_compile_options(fyaml_static PRIVATE ${LIBCLANG_CFLAGS_LIST})
-
-    # Split LIBCLANG_LDFLAGS into list and add as link directories/options
-    # LIBCLANG_LDFLAGS typically contains -L/path/to/lib and -Wl,flags
-    # Extract only the -L paths
-    string(REGEX MATCHALL "-L([^ ]+)" LIBCLANG_L_FLAGS "${LIBCLANG_LDFLAGS}")
-    set(LIBCLANG_LINK_DIRS "")
-    foreach(flag ${LIBCLANG_L_FLAGS})
-        string(REGEX REPLACE "^-L" "" dir "${flag}")
-        list(APPEND LIBCLANG_LINK_DIRS "${dir}")
-    endforeach()
-    if(LIBCLANG_LINK_DIRS)
-        target_link_directories(fyaml_static INTERFACE ${LIBCLANG_LINK_DIRS})
-    endif()
-
-    # Add libclang libraries (INTERFACE so it propagates to targets linking against fyaml_static)
-    target_link_libraries(fyaml_static INTERFACE ${LIBCLANG_LIBS})
-endif()
+add_libclang_to_target(fyaml_static INTERFACE)
 
 target_compile_definitions(fyaml_static PRIVATE
     HAVE_CONFIG_H
@@ -813,23 +816,8 @@ target_link_libraries(fyaml
         Threads::Threads
 )
 
-if(HAVE_LIBCLANG)
-    string(REPLACE " " ";" LIBCLANG_CFLAGS_LIST "${LIBCLANG_CFLAGS}")
-    target_compile_options(fyaml PRIVATE ${LIBCLANG_CFLAGS_LIST})
-
-    # Extract only the -L paths
-    string(REGEX MATCHALL "-L([^ ]+)" LIBCLANG_L_FLAGS "${LIBCLANG_LDFLAGS}")
-    set(LIBCLANG_LINK_DIRS "")
-    foreach(flag ${LIBCLANG_L_FLAGS})
-        string(REGEX REPLACE "^-L" "" dir "${flag}")
-        list(APPEND LIBCLANG_LINK_DIRS "${dir}")
-    endforeach()
-    if(LIBCLANG_LINK_DIRS)
-        target_link_directories(fyaml PRIVATE ${LIBCLANG_LINK_DIRS})
-    endif()
-
-    target_link_libraries(fyaml PRIVATE ${LIBCLANG_LIBS})
-endif()
+# Add libclang support if available
+add_libclang_to_target(fyaml PRIVATE)
 
 # Generate config.h
 configure_file(
