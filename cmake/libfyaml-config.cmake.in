@@ -1,9 +1,54 @@
 @PACKAGE_INIT@
 
+# libfyaml CMake package configuration file
+# This file provides libfyaml imported targets and dependencies
+
+include(CMakeFindDependencyMacro)
+
+# Provide version information
+set(libfyaml_VERSION "@PROJECT_VERSION@")
+set(libfyaml_VERSION_MAJOR "@VERSION_MAJOR@")
+set(libfyaml_VERSION_MINOR "@VERSION_MINOR@")
+set(libfyaml_VERSION_PATCH "@VERSION_PATCH@")
+
+# Provide feature flags (what was enabled when libfyaml was built)
+set(libfyaml_HAS_LIBCLANG "@HAVE_LIBCLANG@")
+set(libfyaml_HAS_LIBYAML "@HAVE_LIBYAML@")
+
+# Required dependency: Threads
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
-find_package(Threads REQUIRED)
+find_dependency(Threads REQUIRED)
 
+# Optional dependency: libclang (only if libfyaml was built with reflection support)
+if(libfyaml_HAS_LIBCLANG)
+    # Try CMake config first
+    find_dependency(LLVM QUIET CONFIG)
+    if(LLVM_FOUND)
+        # Help find Clang in the same LLVM installation
+        set(Clang_DIR "${LLVM_INSTALL_PREFIX}/lib/cmake/clang")
+    endif()
+    find_dependency(Clang QUIET CONFIG)
+
+    # If CMake config not found, try pkg-config as fallback
+    if(NOT LLVM_FOUND OR NOT Clang_FOUND)
+        # User must provide libclang manually if needed
+        message(STATUS "libfyaml was built with libclang support, but libclang not found via CMake config")
+        message(STATUS "  Set CMAKE_PREFIX_PATH or LLVM_DIR to locate LLVM/Clang")
+    endif()
+endif()
+
+# Import libfyaml targets (defines libfyaml::fyaml)
 include(${CMAKE_CURRENT_LIST_DIR}/libfyaml-targets.cmake)
+
+# Provide consistent naming: libfyaml::libfyaml as main target
+if(NOT TARGET libfyaml::libfyaml AND TARGET libfyaml::fyaml)
+    add_library(libfyaml::libfyaml ALIAS libfyaml::fyaml)
+endif()
+
+# Backward compatibility: provide non-namespaced target
+if(NOT TARGET fyaml AND TARGET libfyaml::fyaml)
+    add_library(fyaml ALIAS libfyaml::fyaml)
+endif()
 
 check_required_components(libfyaml)
