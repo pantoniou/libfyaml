@@ -151,6 +151,57 @@ if(PKG_CONFIG_FOUND AND BUILD_TESTING)
     endif()
 endif()
 
+# Check for libclang (for reflection support)
+set(HAVE_LIBCLANG 0)
+set(LIBCLANG_CFLAGS "")
+set(LIBCLANG_LDFLAGS "")
+set(LIBCLANG_LIBS "")
+
+# Try to find llvm-config (versions 20 down to 10)
+set(LLVM_CONFIG_NAMES llvm-config)
+foreach(ver RANGE 20 10 -1)
+    list(APPEND LLVM_CONFIG_NAMES llvm-config-${ver})
+endforeach()
+
+find_program(LLVM_CONFIG NAMES ${LLVM_CONFIG_NAMES})
+if(LLVM_CONFIG)
+    execute_process(COMMAND ${LLVM_CONFIG} --cflags OUTPUT_VARIABLE LIBCLANG_CFLAGS_TEMP OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(COMMAND ${LLVM_CONFIG} --ldflags OUTPUT_VARIABLE LIBCLANG_LDFLAGS_TEMP OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(COMMAND ${LLVM_CONFIG} --libs OUTPUT_VARIABLE LLVM_LIBS_TEMP OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(COMMAND ${LLVM_CONFIG} --system-libs OUTPUT_VARIABLE LLVM_SYSLIBS_TEMP OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+    # Save current flags
+    set(_TEMP_CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES}")
+    set(_TEMP_CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
+
+    # Test if we can actually use libclang
+    set(CMAKE_REQUIRED_FLAGS "${LIBCLANG_CFLAGS_TEMP} ${LIBCLANG_LDFLAGS_TEMP}")
+    set(CMAKE_REQUIRED_LIBRARIES "-lclang ${LLVM_LIBS_TEMP} ${LLVM_SYSLIBS_TEMP}")
+
+    check_c_source_compiles("
+        #include <clang-c/Index.h>
+        int main() {
+            CXIndex idx = clang_createIndex(0, 0);
+            clang_disposeIndex(idx);
+            return 0;
+        }
+    " LIBCLANG_WORKS)
+
+    # Restore flags
+    set(CMAKE_REQUIRED_LIBRARIES "${_TEMP_CMAKE_REQUIRED_LIBRARIES}")
+    set(CMAKE_REQUIRED_FLAGS "${_TEMP_CMAKE_REQUIRED_FLAGS}")
+    unset(_TEMP_CMAKE_REQUIRED_LIBRARIES)
+    unset(_TEMP_CMAKE_REQUIRED_FLAGS)
+
+    if(LIBCLANG_WORKS)
+        set(HAVE_LIBCLANG 1)
+        set(LIBCLANG_CFLAGS "${LIBCLANG_CFLAGS_TEMP}")
+        set(LIBCLANG_LDFLAGS "${LIBCLANG_LDFLAGS_TEMP}")
+        set(LIBCLANG_LIBS "-lclang;${LLVM_LIBS_TEMP};${LLVM_SYSLIBS_TEMP}")
+        message(STATUS "Found libclang: ${LLVM_CONFIG}")
+    endif()
+endif()
+
 # Check for tools
 find_program(GIT_EXECUTABLE git)
 if(GIT_EXECUTABLE)
@@ -559,6 +610,29 @@ target_link_libraries(fyaml_static
         Threads::Threads
 )
 
+# Add libclang support if available
+if(HAVE_LIBCLANG)
+    # Split LIBCLANG_CFLAGS into list and add as compile options
+    string(REPLACE " " ";" LIBCLANG_CFLAGS_LIST "${LIBCLANG_CFLAGS}")
+    target_compile_options(fyaml_static PRIVATE ${LIBCLANG_CFLAGS_LIST})
+
+    # Split LIBCLANG_LDFLAGS into list and add as link directories/options
+    # LIBCLANG_LDFLAGS typically contains -L/path/to/lib and -Wl,flags
+    # Extract only the -L paths
+    string(REGEX MATCHALL "-L([^ ]+)" LIBCLANG_L_FLAGS "${LIBCLANG_LDFLAGS}")
+    set(LIBCLANG_LINK_DIRS "")
+    foreach(flag ${LIBCLANG_L_FLAGS})
+        string(REGEX REPLACE "^-L" "" dir "${flag}")
+        list(APPEND LIBCLANG_LINK_DIRS "${dir}")
+    endforeach()
+    if(LIBCLANG_LINK_DIRS)
+        target_link_directories(fyaml_static INTERFACE ${LIBCLANG_LINK_DIRS})
+    endif()
+
+    # Add libclang libraries (INTERFACE so it propagates to targets linking against fyaml_static)
+    target_link_libraries(fyaml_static INTERFACE ${LIBCLANG_LIBS})
+endif()
+
 target_compile_definitions(fyaml_static PRIVATE
     HAVE_CONFIG_H
     VERSION="${PROJECT_VERSION}"
@@ -686,11 +760,13 @@ if(HAVE_LIBYAML)
             target_link_libraries(libfyaml-parser PRIVATE
                 -Wl,-force_load,$<TARGET_FILE:fyaml_static>
                 ${LIBYAML_LIBRARIES}
+                $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
             )
         else()
             target_link_libraries(libfyaml-parser PRIVATE
                 -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
                 ${LIBYAML_LIBRARIES}
+                $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
             )
         endif()
         if(HAVE_ASAN)
@@ -698,6 +774,9 @@ if(HAVE_LIBYAML)
         endif()
     else()
         target_link_libraries(libfyaml-parser PRIVATE fyaml_static ${LIBYAML_LIBRARIES})
+    endif()
+    if(HAVE_LIBCLANG)
+        target_link_directories(libfyaml-parser PRIVATE ${LIBCLANG_LINK_DIRS})
     endif()
     add_dependencies(libfyaml-parser fyaml_static)
 endif()
@@ -713,15 +792,18 @@ target_include_directories(fy-thread PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/util
     ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
     ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+    ${CMAKE_CURRENT_BINARY_DIR}
 )
 if(NOT MSVC)
     if(APPLE)
         target_link_libraries(fy-thread PRIVATE
             -Wl,-force_load,$<TARGET_FILE:fyaml_static>
+            $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
         )
     else()
         target_link_libraries(fy-thread PRIVATE
             -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
+            $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
         )
     endif()
     if(HAVE_ASAN)
@@ -729,6 +811,9 @@ if(NOT MSVC)
     endif()
 else()
     target_link_libraries(fy-thread PRIVATE fyaml_static)
+endif()
+if(HAVE_LIBCLANG)
+    target_link_directories(fy-thread PRIVATE ${LIBCLANG_LINK_DIRS})
 endif()
 add_dependencies(fy-thread fyaml_static)
 
@@ -744,15 +829,18 @@ target_include_directories(fy-b3sum PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
     ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
     ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+    ${CMAKE_CURRENT_BINARY_DIR}
 )
 if(NOT MSVC)
     if(APPLE)
         target_link_libraries(fy-b3sum PRIVATE
             -Wl,-force_load,$<TARGET_FILE:fyaml_static>
+            $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
         )
     else()
         target_link_libraries(fy-b3sum PRIVATE
             -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
+            $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
         )
     endif()
     if(HAVE_ASAN)
@@ -760,6 +848,9 @@ if(NOT MSVC)
     endif()
 else()
     target_link_libraries(fy-b3sum PRIVATE fyaml_static)
+endif()
+if(HAVE_LIBCLANG)
+    target_link_directories(fy-b3sum PRIVATE ${LIBCLANG_LINK_DIRS})
 endif()
 add_dependencies(fy-b3sum fyaml_static)
 
@@ -775,15 +866,18 @@ target_include_directories(fy-allocators PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/xxhash
     ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
     ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+    ${CMAKE_CURRENT_BINARY_DIR}
 )
 if(NOT MSVC)
     if(APPLE)
         target_link_libraries(fy-allocators PRIVATE
             -Wl,-force_load,$<TARGET_FILE:fyaml_static>
+            $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
         )
     else()
         target_link_libraries(fy-allocators PRIVATE
             -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
+            $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
         )
     endif()
     if(HAVE_ASAN)
@@ -791,6 +885,9 @@ if(NOT MSVC)
     endif()
 else()
     target_link_libraries(fy-allocators PRIVATE fyaml_static)
+endif()
+if(HAVE_LIBCLANG)
+    target_link_directories(fy-allocators PRIVATE ${LIBCLANG_LINK_DIRS})
 endif()
 add_dependencies(fy-allocators fyaml_static)
 
@@ -849,9 +946,11 @@ if(BUILD_TESTING)
         )
 
         target_include_directories(libfyaml-test PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
             ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
             ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
             ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+            ${CMAKE_CURRENT_BINARY_DIR}
             ${CHECK_INCLUDE_DIRS}
         )
 
@@ -862,11 +961,13 @@ if(BUILD_TESTING)
                 target_link_libraries(libfyaml-test PRIVATE
                     -Wl,-force_load,$<TARGET_FILE:fyaml_static>
                     ${CHECK_LIBRARIES}
+                    $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
                 )
             else()
                 target_link_libraries(libfyaml-test PRIVATE
                     -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
                     ${CHECK_LIBRARIES}
+                    $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
                 )
             endif()
             if(HAVE_ASAN)
@@ -874,6 +975,9 @@ if(BUILD_TESTING)
             endif()
         else()
             target_link_libraries(libfyaml-test PRIVATE fyaml_static ${CHECK_LIBRARIES})
+        endif()
+        if(HAVE_LIBCLANG)
+            target_link_directories(libfyaml-test PRIVATE ${LIBCLANG_LINK_DIRS})
         endif()
         add_dependencies(libfyaml-test fyaml_static)
 
@@ -1023,6 +1127,10 @@ if(BUILD_TESTING)
         list(APPEND TEST_SUITES testsuite-json.test)
     endif()
 
+    if(HAVE_LIBCLANG)
+        list(APPEND TEST_SUITES testreflection.test)
+    endif()
+
     foreach(suite IN LISTS TEST_SUITES)
         add_custom_target(check_${suite}
             COMMAND ${CMAKE_COMMAND} -E env TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR} TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR} SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test
@@ -1122,6 +1230,7 @@ message(STATUS "Build type:            ${CMAKE_BUILD_TYPE}")
 message(STATUS "HAVE_CHECK:            ${HAVE_CHECK}")
 message(STATUS "HAVE_COMPATIBLE_CHECK: ${HAVE_COMPATIBLE_CHECK}")
 message(STATUS "HAVE_LIBYAML:          ${HAVE_LIBYAML}")
+message(STATUS "HAVE_LIBCLANG:         ${HAVE_LIBCLANG}")
 message(STATUS "HAVE_NETWORK:          ${HAVE_NETWORK}")
 message(STATUS "HAVE_DEVMODE:          ${HAVE_DEVMODE}")
 message(STATUS "HAVE_GIT:              ${HAVE_GIT}")
