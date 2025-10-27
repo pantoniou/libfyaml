@@ -648,6 +648,7 @@ if(HAVE_LIBYAML)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
         ${LIBYAML_INCLUDE_DIRS}
     )
+    target_link_directories(libfyaml-parser PRIVATE ${LIBYAML_LIBRARY_DIRS})
     if(NOT MSVC)
         # Embed libfyaml code statically, allow dynamic linking for system libraries
         if(APPLE)
