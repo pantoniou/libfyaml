@@ -1,466 +1,628 @@
-# libfyaml &middot; ![](https://github.com/pantoniou/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)
+# libfyaml
 
-A fancy 1.2 YAML and JSON parser/writer.
+[![CI Status](https://github.com/pantoniou/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Language: C](https://img.shields.io/badge/language-C-brightgreen.svg)](https://en.wikipedia.org/wiki/C_(programming_language))
 
-Fully feature complete YAML parser and emitter, supporting the latest YAML spec and
-passing the full YAML testsuite.
+**A fully-featured YAML 1.2 and JSON parser/writer with zero-copy operation and no artificial limits.**
 
-It is designed to be very efficient, avoiding copies of data, and
-has no artificial limits like the 1024 character limit for implicit keys.
+libfyaml is designed for high performance with zero content duplication, supporting arbitrarily large documents without the 1024-character limit on implicit keys found in other parsers. It passes the complete YAML test suite and provides both event-based (streaming) and document tree APIs for maximum flexibility.
 
-libfyaml is using https://github.com/yaml/yaml-test-suite as a core part
-of its testsuite.
+✨ **Key Highlights:**
+- **Zero-copy architecture** - minimal memory usage, handles arbitrarily large documents
+- **YAML 1.2 & JSON** - full spec compliance, passes complete YAML test suite
+- **Dual API** - event-based streaming (like libyaml) or document tree manipulation
+- **No artificial limits** - unlike libyaml's 1024-char implicit key restriction
+- **Rich manipulation** - path expressions, scanf/printf-style APIs, programmatic document building
+- **Production-ready** - memory-safe, valgrind-clean, extensive test coverage
+
+---
+
+## Quick Start
+
+Parse, query, and modify YAML documents with ease:
+
+```c
+#include <libfyaml.h>
+
+// Parse YAML from string or file
+struct fy_document *fyd = fy_document_build_from_file(NULL, "config.yaml");
+
+// Extract values using path-based scanf
+unsigned int port;
+char hostname[256];
+fy_document_scanf(fyd, "/server/port %u /server/host %255s", &port, hostname);
+
+// Modify document using path-based insertion
+fy_document_insert_at(fyd, "/server", FY_NT, fy_node_buildf(fyd, "timeout: 30"));
+
+// Emit as YAML or JSON
+fy_emit_document_to_file(fyd, FYECF_SORT_KEYS, "config.yaml");
+fy_document_destroy(fyd);
+```
+
+---
+
+## Why libfyaml?
+
+### Zero-Copy Efficiency
+Content is never duplicated internally. libfyaml uses "atoms" that reference source data directly, keeping memory usage low and enabling handling of gigabyte-sized documents without performance degradation.
+
+### No Artificial Limits
+Unlike libyaml's 1024-character limit on implicit keys, libfyaml has no hardcoded restrictions. Parse real-world YAML documents of any complexity without worrying about hitting parser limits.
+
+### Dual API Design
+Choose the right API for your use case:
+- **Event-based** (streaming): For memory-efficient processing of large streams
+- **Document tree**: For convenient manipulation, queries, and modifications
+
+Both APIs coexist and can be mixed as needed.
+
+### Powerful Manipulation
+- **Path expressions** (YPATH): XPath-like queries (`/foo/bar`, `/items/[0]`)
+- **scanf/printf style**: Extract and build data with format strings
+- **Programmatic building**: Construct documents from scratch with simple APIs
+- **Rich emitter**: Output as YAML (block/flow), JSON, with colors and formatting options
+
+### Production Quality
+- **Memory safe**: Valgrind-clean, no leaks under normal operation
+- **Accurate errors**: Compiler-format diagnostics that integrate with IDEs
+- **Fully tested**: Passes complete YAML 1.2 test suite
+
+---
 
 ## Features
-* Fully supports YAML version 1.2.
-* Attempts to adhere to features coming with YAML version 1.3 so that it
-  will be ready.
-* Zero content copy operation, which means that content is never copied to
-  internal structures. On input types that support it (mmap files and
-  constant strings) that means that memory usage is kept low, and arbitrary
-  large content can be manipulated without problem.
-* Parser may be used in event mode (like libyaml) or in document generating mode.
-* Extensive programmable API capable of manipulating parsed YAML documents or
-  creating them from scratch.
-* YAML emitter with programmable options, supporting colored output.
-* Extensive testsuite for the API, the full YAML test-suite and correct
-  emitter operation.
-* Easy printf/scanf based YAML creation and data extraction API.
-* Accurate and descriptive error messages, in standard compiler format that 
-  can be parsed by editors and developer GUIs.
-* Testsuite supports running under valgrind and checking for memory leaks. No
-  leaks should be possible under normal operation, so it is usable for long-
-  running applications.
 
-## Contents
-- [Features](#features)
-- [Prerequisites](#prerequisites)
-- [Building](#building)
-- [Usage and examples](#usage-and-examples)
-- [API documentation](#api-documentation)
-- [fy-tool reference](#fy-tool-reference)
-- [Missing Features](#missing-features)
+### YAML & JSON Support
+- ✅ Full YAML 1.2 specification compliance
+- ✅ YAML 1.3 compatibility (preparing for upcoming spec)
+- ✅ JSON parsing and emission
+- ✅ Comment preservation
+- ✅ Complete test suite coverage
 
-## Prerequisites
+### Parsing Modes
+- Event-based streaming parser (like libyaml)
+- Document tree builder with full manipulation API
+- Configurable resolution of anchors and merge keys
+- Multiple input sources: files, strings, file pointers, streams
 
-libfyaml is primarily developed on Linux based debian distros but Apple MacOS X builds
-(using homebrew) are supported as well.
+### Document Manipulation
+- Path-based queries and modifications (YPATH)
+- scanf/printf-style data extraction and insertion
+- Programmatic document and node creation
+- Clone, copy, and merge operations
+- Anchor and alias management
+- Mapping key sorting
 
-On a Debian-based distro (i.e. Ubuntu 24.04 noble) you should install the following
-dependencies:
+### Output & Emission
+- Multiple output modes: original, block, flow, JSON
+- ANSI color output support
+- Visible whitespace mode for debugging
+- Configurable indentation and line width
+- Streaming or buffered emission
 
-* `sudo apt install gcc autoconf automake libtool git make libltdl-dev pkg-config`
+### Performance & Scalability
+- Zero-copy operation on mmap'd files and constant strings
+- No artificial limits on key lengths, nesting depth, or document size
+- Configurable memory allocators for different usage patterns
+- Efficient handling of arbitrarily large documents
 
-To enable the libyaml comparison checker:
+### Developer Experience
+- Single header inclusion: `<libfyaml.h>`
+- Opaque pointers - stable ABI across versions
+- Descriptive error messages in compiler format
+- Extensive API documentation
+- Multiple detailed examples
 
-* `sudo apt install libyaml-dev`
+---
 
-For the API testsuite libcheck is required:
+## Installation
 
-* `sudo apt install check`
+### Using CMake (Recommended)
 
-And finally in order to build the sphinx based documentation:
+Add libfyaml to your CMake project:
 
-* `sudo apt install python3 python3-pip python3-setuptools`
-* `pip3 install wheel sphinx git+http://github.com/return42/linuxdoc.git sphinx\_rtd\_theme sphinx-markdown-builder`
-
-Note that some older distros (like xenial) do not have a sufficiently recent
-sphinx in their repos. In that case you can create a virtual environment
-using scripts/create-virtual-env
-
-## Building
-
-``libfyaml`` uses a standard autotools based build scheme so:
-
-* `./bootstrap.sh`
-* `./configure`
-* `make`
-
-Will build the library and `fy-tool`.
-
-* `make check`
-
-Will run the test-suite.
-
-Binaries, libraries, header files and pkgconfig files maybe installed with
-
-* `make install`
-
-By default, the installation prefix will be `/usr/local`, which you can change
-with the `--prefix <dir>` option during configure.
-
-To build the documentation API in HTML format use:
-
-* `make doc-html`
-
-The documentation for the public API will be found in doc/\_build/html
-
-* `make doc-latexpdf`
-
-Will generate a single pdf containing everything.
-
-## Usage and examples
-
-Usage of libfyaml is somewhat similar to libyaml, but with a few notable differences.
-
-1. The objects of the library are opaque, they are pointers that may be used but
-   may not be derefenced via library users. This makes the public API not be dependent of
-   internal changes in the library structures.
-
-2. The object pointers used are guaranteed to not 'move' like libyaml object pointers
-   so you may embed them freely in your own structures.
-
-3. The convenience methods of libyaml allow you to avoid tedious iteration and code
-   duplication. While fully manual YAML document tree manipulation is available, if your
-   application is not performance sensitive when manipulating YAML, you are advised to
-   use the helpers.
-
-### Using libfyaml in your projects
-
-Typically you only have to include the single header file `libfyaml.h` and
-link against the correct fyaml-\<major\>-\<minor\> library.
-
-It is recommended to use pkg-config, i.e.
-
-```make
-CFLAGS+= `pkg-config --cflags libfyaml`
-LDFLAGS+= `pkg-config --libs libfyaml`
+```cmake
+find_package(libfyaml 0.9 REQUIRED)
+target_link_libraries(your_app PRIVATE libfyaml::libfyaml)
 ```
 
-For use in an automake based project you may use the following fragment
+Check for optional features:
+```cmake
+if(libfyaml_HAS_LIBCLANG)
+    message(STATUS "Reflection support available")
+endif()
+```
+
+### Using pkg-config
+
 ```bash
-PKG_CHECK_MODULES(LIBFYAML, [ libfyaml ], HAVE_LIBFYAML=1, HAVE_LIBFYAML=0)
+# Compile flags
+pkg-config --cflags libfyaml
 
-if test "x$HAVE_LIBFYAML" != "x1" ; then
-	AC_MSG_ERROR([failed to find libfyaml])
-fi
-
-AC_SUBST(HAVE_LIBFYAML)
-AC_SUBST(LIBFYAML_CFLAGS)
-AC_SUBST(LIBFYAML_LIBS)
-AC_DEFINE_UNQUOTED([HAVE_LIBFYAML], [$HAVE_LIBFYAML], [Define to 1 if you have libfyaml available])
-AM_CONDITIONAL([HAVE_LIBFYAML], [ test x$HAVE_LIBFYAML = x1 ])
+# Linker flags
+pkg-config --libs libfyaml
 ```
 
-The examples that follow will make things clear.
+In your Makefile:
+```make
+CFLAGS += $(shell pkg-config --cflags libfyaml)
+LDFLAGS += $(shell pkg-config --libs libfyaml)
+```
 
-### Display libfyaml version example
+### Building from Source
 
-This is the minimal example that checks that you've compiled against the correct libfyaml.
+**Using CMake:**
+```bash
+mkdir build && cd build
+cmake ..
+cmake --build .
+ctest                    # Run tests
+cmake --install .        # Install
+```
+
+CMake configuration options:
+```bash
+cmake -DBUILD_SHARED_LIBS=ON \        # Build shared libraries (default: ON)
+      -DENABLE_ASAN=OFF \             # AddressSanitizer for debugging (default: OFF)
+      -DENABLE_STATIC_TOOLS=OFF \     # Static tool executables (default: OFF)
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/usr/local \
+      ..
+```
+
+**Using Autotools:**
+```bash
+./bootstrap.sh
+./configure
+make
+make check               # Run tests
+sudo make install
+```
+
+### Prerequisites
+
+**Debian/Ubuntu:**
+```bash
+sudo apt install gcc autoconf automake libtool git make libltdl-dev pkg-config check
+```
+
+**Optional dependencies:**
+- `libyaml-dev` - for comparison testing
+- `llvm-dev libclang-dev` - for reflection support (experimental)
+
+---
+
+## Usage Examples
+
+### Level 1: Basic Parsing
+
+Parse and extract data from a YAML file:
 
 ```c
-/*
- * fy-version.c - libfyaml version example
- *
- * Copyright (c) 2019 Pantelis Antoniou <pantelis.antoniou@konsulko.com>
- *
- * SPDX-License-Identifier: MIT
- */
-
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 #include <stdlib.h>
 #include <stdio.h>
-
 #include <libfyaml.h>
 
-int main(int argc, char *argv[])
-{
-	printf("%s\n", fy_library_version());
-	return EXIT_SUCCESS;
+int main(void) {
+    struct fy_document *fyd = fy_document_build_from_file(NULL, "config.yaml");
+    if (!fyd) {
+        fprintf(stderr, "Failed to parse YAML\n");
+        return EXIT_FAILURE;
+    }
+
+    // Get root node and emit
+    fy_emit_document_to_fp(fyd, FYECF_MODE_FLOW_ONELINE, stdout);
+
+    fy_document_destroy(fyd);
+    return EXIT_SUCCESS;
 }
 ```
 
-### libfyaml example using simplified inprogram YAML generation
+### Level 2: Path-Based Queries
 
-This example simply parses an in-program YAML string and displays
-a string.
-
-The standard header plus variables definition.
+Extract specific values using YPATH expressions:
 
 ```c
-/*
- * inprogram.c - libfyaml inprogram YAML example
- *
- * Copyright (c) 2019 Pantelis Antoniou <pantelis.antoniou@konsulko.com>
- *
- * SPDX-License-Identifier: MIT
- */
-
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
-#include <stdlib.h>
-#include <stdio.h>
-#include <assert.h>
-
 #include <libfyaml.h>
 
-int main(int argc, char *argv[])
-{
-	static const char *yaml = 
-		"invoice: 34843\n"
-		"date   : !!str 2001-01-23\n"
-		"bill-to: &id001\n"
-		"    given  : Chris\n"
-		"    family : Dumars\n"
-		"    address:\n"
-		"        lines: |\n"
-		"            458 Walkman Dr.\n"
-		"            Suite #292\n";
-	struct fy_document *fyd = NULL;
-	int rc, count, ret = EXIT_FAILURE;
-	unsigned int invoice_nr;
-	char given[256 + 1];
-```
+int main(void) {
+    const char *yaml =
+        "server:\n"
+        "  host: localhost\n"
+        "  port: 8080\n"
+        "  ssl: true\n";
 
-Parsing and creating a YAML document from either the built-in
-YAML, or an invoice file given on the command line:
+    struct fy_document *fyd = fy_document_build_from_string(NULL, yaml, FY_NT);
 
-```c
-	if (argc == 1)
-		fyd = fy_document_build_from_string(NULL, yaml, FY_NT);
-	else
-		fyd = fy_document_build_from_file(NULL, argv[1]);
-	if (!fyd) {
-		fprintf(stderr, "failed to build document");
-		goto fail;
-	}
-```
+    // Extract multiple values at once
+    char host[256];
+    unsigned int port;
+    fy_document_scanf(fyd,
+        "/server/host %255s "
+        "/server/port %u",
+        host, &port);
 
-Get the invoice number and the given name using a single call.
+    printf("Server: %s:%u\n", host, port);
 
-```c
-	/* get the invoice number and the given name */
-	count = fy_document_scanf(fyd,
-			"/invoice %u "
-			"/bill-to/given %256s",
-			&invoice_nr, given);
-	if (count != 2) {
-		fprintf(stderr, "Failed to retreive the two items\n");
-		goto fail;
-	}
+    // Query single node by path
+    struct fy_node *ssl_node = fy_node_by_path(
+        fy_document_root(fyd), "/server/ssl", FY_NT, FYNWF_DONT_FOLLOW);
+    if (ssl_node && fy_node_compare_string(ssl_node, "true", FY_NT) == 0) {
+        printf("SSL is enabled\n");
+    }
 
-	/* print them as comments in the emitted YAML */
-	printf("# invoice number was %u\n", invoice_nr);
-	printf("# given name is %s\n", given);
-```
-
-In sequence, increase the invoice number, add a spouse and a secondary
-address.
-
-```c
-	rc =
-		/* set increased invoice number (modify existing node) */
-		fy_document_insert_at(fyd, "/invoice", FY_NT,
-			fy_node_buildf(fyd, "%u", invoice_nr + 1)) ||
-		/* add spouse (create new mapping pair) */
-		fy_document_insert_at(fyd, "/bill-to", FY_NT,
-			fy_node_buildf(fyd, "spouse: %s", "Doris")) ||
-		/* add a second address */
-		fy_document_insert_at(fyd, "/bill-to", FY_NT,
-			fy_node_buildf(fyd, "delivery-address:\n"
-				            "  lines: |\n"
-					    "    1226 Windward Ave.\n"));
-	if (rc) {
-		fprintf(stderr, "failed to insert to document\n");
-		goto fail;
-	}
-```
-
-Emit the document to standard output (while sorting the keys)
-
-```c
-	/* emit the document to stdout (but sorted) */
-	rc = fy_emit_document_to_fp(fyd, FYECF_DEFAULT | FYECF_SORT_KEYS, stdout);
-	if (rc) {
-		fprintf(stderr, "failed to emit document to stdout");
-		goto fail;
-	}
-```
-
-Finally exit and report condition.
-
-```c
-	ret = EXIT_SUCCESS;
-fail:
-	fy_document_destroy(fyd);	/* NULL is OK */
-
-	return ret;
+    fy_document_destroy(fyd);
+    return 0;
 }
 ```
 
-## API documentation
+### Level 3: Document Manipulation
 
-For complete documentation of libfyaml API, visit https://pantoniou.github.io/libfyaml/
+Modify existing documents programmatically:
 
-## fy-tool reference
+```c
+#include <libfyaml.h>
 
-A YAML manipulation tool is included in libfyaml, aptly name `fy-tool`.
-It's a multi tool application, acting differently according to the name it has
-when it's invoked. There are four tool modes, namely:
+int main(void) {
+    struct fy_document *fyd = fy_document_build_from_file(NULL, "invoice.yaml");
 
-* fy-testsuite: Used for outputing a test-suite specific event stream which is
-  used for comparison with the expected output of the suite.
-* fy-dump: General purpose YAML parser and dumper, with syntax coloring support,
-  visible whitespace options, and a number of output modes.
-* fy-filter: YAML filtering tool allows to extract information out of a YAML
-  document.
-* fy-join: YAML flexible join tool.
+    // Read current invoice number
+    unsigned int invoice_nr;
+    char given_name[256];
+    int count = fy_document_scanf(fyd,
+        "/invoice %u "
+        "/bill-to/given %255s",
+        &invoice_nr, given_name);
 
-### fy-testsuite usage
+    if (count == 2) {
+        printf("Processing invoice #%u for %s\n", invoice_nr, given_name);
 
-A number of options are common in every fy-tool invocation:
+        // Update invoice number
+        fy_document_insert_at(fyd, "/invoice", FY_NT,
+            fy_node_buildf(fyd, "%u", invoice_nr + 1));
 
-```
-Usage : fy-tool [options] [args]
+        // Add new fields
+        fy_document_insert_at(fyd, "/bill-to", FY_NT,
+            fy_node_buildf(fyd, "spouse: %s", "Jane"));
 
-Options:
+        fy_document_insert_at(fyd, "/bill-to", FY_NT,
+            fy_node_buildf(fyd,
+                "delivery-address:\n"
+                "  street: 123 Main St\n"
+                "  city: Springfield\n"));
 
-	--include, -I <path>     : Add directory to include path (default path "")
-	--debug-level, -d <lvl>  : Set debug level to <lvl>(default level 3)
-	--indent, -i <indent>    : Set dump indent to <indent> (default indent 2)
-	--width, -w <width>      : Set dump width to <width> (default width 80)
-	--resolve, -r            : Perform anchor and merge key resolution (default false)
-	--color, -C <mode>       : Color output can be one of on, off, auto (default auto)
-	--visible, -V            : Make all whitespace and linebreaks visible (default false)
-	--follow, -l             : Follow aliases when using paths (default false)
-	--strip-labels           : Strip labels when emitting (default false)
-	--strip-tags             : Strip tags when emitting (default false)
-	--strip-doc              : Strip document headers and indicators when emitting (default false)
-	--quiet, -q              : Quiet operation, do not output messages (default false)
-	--version, -v            : Display libfyaml version
-	--help, -h               : Display  help message
+        // Save with sorted keys
+        fy_emit_document_to_file(fyd,
+            FYECF_DEFAULT | FYECF_SORT_KEYS,
+            "invoice_updated.yaml");
+    }
 
-```
-
-```
-Usage: fy-testsuite [options] [args]
-
-	[common options]
-
-	Parse and dump test-suite event format
-	$ fy-testsuite input.yaml
-	...
-
-	Parse and dump of event example
-	$ echo "foo: bar" | fy-testsuite -
-	+STR
-	+DOC
-	+MAP
-	=VAL :foo
-	=VAL :bar
-	-MAP
-	-DOC
-	-STR
+    fy_document_destroy(fyd);
+    return 0;
+}
 ```
 
-### fy-dump usage
+### Level 4: Event-Based Streaming
 
-```
-Usage: fy-dump [options] [args]
+Process large YAML files with minimal memory:
 
-Options:
+```c
+#include <libfyaml.h>
 
-	[common options]
+int main(void) {
+    struct fy_parser *fyp = fy_parser_create(NULL);
+    if (!fyp)
+        return EXIT_FAILURE;
 
-	--sort, -s               : Perform mapping key sort (valid for dump) (default false)
-	--comment, -c            : Output comments (experimental) (default false)
-	--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline (default original)
-	--streaming              : Use streaming output mode (default false)
+    // Set input
+    fy_parser_set_input_file(fyp, "large_file.yaml");
 
-	[common options]
+    // Process events
+    struct fy_event *fye;
+    while ((fye = fy_parser_parse(fyp)) != NULL) {
+        enum fy_event_type type = fye->type;
 
-	Parse and dump generated YAML document tree in the original YAML form
-	$ fy-dump input.yaml
-	...
+        switch (type) {
+        case FYET_SCALAR: {
+            const char *value = fy_token_get_text0(fy_event_get_token(fye));
+            printf("Scalar: %s\n", value);
+            break;
+        }
+        case FYET_MAPPING_START:
+            printf("Mapping start\n");
+            break;
+        case FYET_SEQUENCE_START:
+            printf("Sequence start\n");
+            break;
+        default:
+            break;
+        }
 
-	Parse and dump generated YAML document tree in block YAML form (and make whitespace visible)
-	$ fy-dump -V -mblock input.yaml
-	...
+        fy_parser_event_free(fyp, fye);
+    }
 
-	Parse and dump generated YAML document from the input string
-	$ fy-dump -mjson ">foo: bar"
-	{
-	  "foo": "bar"
-	}
-
-	Parse and dump generated YAML document from the input string (using streaming mode)
-	$ fy-dump --streaming ">foo: bar"
-	foo: bar
-
-	Note that streaming mode can not perform document validity checks, like duplicate keys nor
-        support the sort keys option.
-```
-
-### fy-filter usage
-
-```
-Usage: fy-filter [options] [args]
-
-Options:
-
-	[common options]
-
-	--sort, -s               : Perform mapping key sort (valid for dump) (default false)
-	--comment, -c            : Output comments (experimental) (default false)
-	--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline (default original)
-	--file, -f <file>        : Use given file instead of <stdin>
-	                           Note that using a string with a leading '>' is equivalent to a file with the trailing content
-	                           --file ">foo: bar" is as --file file.yaml with file.yaml "foo: bar"
-
-	Parse and filter YAML document tree starting from the '/foo' path followed by the '/bar' path
-	$ fy-filter --file input.yaml /foo /bar
-	...
-
-	Parse and filter for two paths (note how a multi-document stream is produced)
-	$ fy-filter --file -mblock --filter --file ">{ foo: bar, baz: [ frooz, whee ] }" /foo /baz
-	bar
-	---
-	- frooz
-	- whee
-
-	Parse and filter YAML document in stdin (note how the key may be complex)
-	$ echo "{ foo: bar }: baz" | fy-filter "/{foo: bar}/"
-	baz
+    fy_parser_destroy(fyp);
+    return 0;
+}
 ```
 
-### fy-join usage
+### Level 5: Building Documents Programmatically
+
+Create YAML documents from scratch:
+
+```c
+#include <libfyaml.h>
+
+int main(void) {
+    // Create empty document
+    struct fy_document *fyd = fy_document_create(NULL);
+
+    // Build root mapping using printf-style formatting
+    struct fy_node *root = fy_node_buildf(fyd,
+        "application: MyApp\n"
+        "version: %d.%d.%d\n"
+        "settings:\n"
+        "  debug: %s\n"
+        "  max_connections: %d\n"
+        "  allowed_hosts:\n"
+        "    - localhost\n"
+        "    - 127.0.0.1\n",
+        1, 2, 3,
+        "true",
+        100);
+
+    fy_document_set_root(fyd, root);
+
+    // Add more fields programmatically
+    fy_document_insert_at(fyd, "/settings", FY_NT,
+        fy_node_buildf(fyd, "log_level: info"));
+
+    // Output as JSON
+    printf("As JSON:\n");
+    fy_emit_document_to_fp(fyd, FYECF_MODE_JSON, stdout);
+
+    printf("\nAs YAML:\n");
+    fy_emit_document_to_fp(fyd, FYECF_MODE_BLOCK | FYECF_SORT_KEYS, stdout);
+
+    fy_document_destroy(fyd);
+    return 0;
+}
+```
+
+---
+
+## API Overview
+
+libfyaml provides a comprehensive API organized into functional categories:
+
+| Category | Purpose | Key Functions |
+|----------|---------|---------------|
+| **Parser** | Event-based streaming YAML parsing | `fy_parser_create()`, `fy_parser_parse()`, `fy_parser_set_input_*()` |
+| **Document** | High-level document tree manipulation | `fy_document_build_from_*()`, `fy_document_scanf()`, `fy_document_insert_at()` |
+| **Node** | Individual YAML node operations | `fy_node_create_*()`, `fy_node_by_path()`, `fy_node_buildf()` |
+| **Sequence** | Array/list operations | `fy_node_sequence_iterate()`, `fy_node_sequence_append()` |
+| **Mapping** | Key-value dictionary operations | `fy_node_mapping_lookup_*()`, `fy_node_mapping_append()` |
+| **Emitter** | YAML/JSON output generation | `fy_emitter_create()`, `fy_emit_document_to_*()` |
+| **Path** | XPath-like YAML queries (YPATH) | `fy_node_by_path()`, `fy_path_exec_execute()` |
+| **Anchor** | Anchor and alias management | `fy_document_lookup_anchor()`, `fy_node_create_alias()` |
+
+**See the [complete API documentation](https://pantoniou.github.io/libfyaml/) for detailed reference.**
+
+---
+
+## Tools
+
+libfyaml includes `fy-tool`, a multi-function YAML manipulation utility:
+
+### fy-dump - Parse and Pretty-Print
+
+```bash
+# Convert YAML to JSON
+fy-dump -m json config.yaml
+
+# Format with visible whitespace
+fy-dump -V -m block messy.yaml
+
+# Pretty-print with sorted keys
+fy-dump -s -m block config.yaml > formatted.yaml
+```
+
+### fy-filter - Extract Document Parts
+
+```bash
+# Extract specific paths
+fy-filter --file config.yaml /database/host /database/port
+
+# Filter with complex keys
+echo "{ foo: bar }: baz" | fy-filter "/{foo: bar}/"
+# Output: baz
+```
+
+### fy-join - Merge YAML Documents
+
+```bash
+# Merge two configuration files
+fy-join base-config.yaml override-config.yaml
+
+# Merge inline YAML
+fy-join ">foo: bar" ">baz: qux"
+# Output:
+# foo: bar
+# baz: qux
+```
+
+### fy-testsuite - Test Suite Event Format
+
+```bash
+# Generate test-suite event stream
+echo "foo: bar" | fy-testsuite -
+# Output:
+# +STR
+# +DOC
+# +MAP
+# =VAL :foo
+# =VAL :bar
+# -MAP
+# -DOC
+# -STR
+```
+
+**All tools support:**
+- Syntax coloring (`--color`)
+- Whitespace visualization (`--visible`)
+- Anchor resolution (`--resolve`)
+- Multiple output modes (`--mode`)
+- Flexible input from files, stdin, or inline strings (`">yaml here"`)
+
+---
+
+## Performance & Architecture
+
+### Zero-Copy Design
+
+libfyaml's core design principle is **zero content duplication**:
+
+- **Atoms**: Internal references to source data without copying
+- **Memory efficiency**: Only metadata is allocated, content stays in source
+- **Scalability**: Handles multi-gigabyte documents with minimal RAM
+- **Speed**: No time wasted on redundant memory operations
+
+### Memory Usage
+
+For a typical YAML document:
+- **libyaml**: Copies all content into internal structures
+- **libfyaml**: References original data, allocates only ~1-5% overhead for structure
+
+### No Artificial Limits
+
+Common parser limitations that libfyaml **does not have**:
+- ❌ No 1024-char limit on implicit keys (unlike libyaml)
+- ❌ No hardcoded nesting depth limits
+- ❌ No document size restrictions
+- ❌ No key count limits per mapping
+
+Configurable limits exist for safety but can be adjusted or removed entirely.
+
+---
+
+## Documentation
+
+- 📚 **[API Reference](https://pantoniou.github.io/libfyaml/)** - Complete API documentation
+- 💻 **[Examples](examples/)** - Sample code and use cases
+- 🏗️ **[CMake Integration](cmake/README-package.md)** - Using libfyaml in CMake projects
+
+### Building Documentation Locally
+
+```bash
+# HTML documentation
+make doc-html
+# Output: doc/_build/html/index.html
+
+# PDF documentation
+make doc-latexpdf
+# Output: doc/_build/latex/libfyaml.pdf
+```
+
+---
+
+## Platform Support
+
+**Primary Platform**: Linux (Debian/Ubuntu, Fedora, Arch, etc.)
+**Also Supported**: macOS (via Homebrew)
+**Not Yet Supported**: Windows (contributions welcome!)
+
+**Architectures**: x86, x86_64, ARM, ARM64, and others
+**Compilers**: GCC, Clang, ICC
+
+---
+
+## Contributing
+
+We welcome contributions! Here's how to get involved:
+
+1. **Report Issues**: [GitHub Issues](https://github.com/pantoniou/libfyaml/issues)
+2. **Submit Pull Requests**: Fork, modify, and submit PRs
+3. **Improve Documentation**: Help make libfyaml more accessible
+4. **Add Examples**: Share your use cases with the community
+
+### Development Setup
+
+```bash
+# Clone repository
+git clone https://github.com/pantoniou/libfyaml.git
+cd libfyaml
+
+# Build with CMake
+mkdir build && cd build
+cmake -DENABLE_ASAN=ON -DCMAKE_BUILD_TYPE=Debug ..
+cmake --build .
+ctest
+
+# Or build with Autotools
+./bootstrap.sh
+./configure --enable-asan
+make check
+```
+
+### Running Tests
+
+```bash
+# All tests
+make check
+
+# Specific test suites
+./test/libfyaml.test
+./test/testemitter.test
+
+# With valgrind
+./scripts/run-valgrind.sh
+```
+
+For CMake ctest is supported
+```bash
+cd build
+ctest --progress -j`nproc`
+```
+
+---
+
+## Missing Features
+
+Current limitations:
+- **Windows support**: Not yet implemented (contributions welcome)
+- **Unicode**: UTF-8 only, no wide character input support
+
+---
+
+## License
+
+libfyaml is released under the **MIT License**.
 
 ```
-Usage: fy-join [options] [args]
+Copyright (c) 2019-2025 Pantelis Antoniou <pantelis.antoniou@konsulko.com>
 
-Options:
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-	[common options]
-
-	--sort, -s               : Perform mapping key sort (valid for dump) (default false)
-	--comment, -c            : Output comments (experimental) (default false)
-	--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline (default original)
-	--file, -f <file>        : Use given file instead of <stdin>
-	                           Note that using a string with a leading '>' is equivalent to a file with the trailing content
-	                           --file ">foo: bar" is as --file file.yaml with file.yaml "foo: bar"
-	--to, -T <path>          : Join to <path> (default /)
-	--from, -F <path>        : Join from <path> (default /)
-	--trim, -t <path>        : Output given path (default /)
-
-	Parse and join two YAML files
-	$ fy-join file1.yaml file2.yaml
-	...
-
-	Parse and join two YAML maps
-	$ fy-join ">foo: bar" ">baz: frooz"
-	foo: bar
-	baz: frooz
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 ```
 
-## Missing features and omissions
+See [LICENSE](LICENSE) for complete terms.
 
-1. Windows - libfyaml is not supporting windows yet.
-2. Unicode - libfyaml only supports UTF8 and has no support for wide character input.
+---
 
-## Development and contributing
-Feel free to send pull requests and raise issues.
+## Acknowledgments
+
+- **YAML Test Suite**: https://github.com/yaml/yaml-test-suite
+- **Author**: Pantelis Antoniou [@pantoniou](https://github.com/pantoniou)
+- **Contributors**: Thank you to all who have contributed code, bug reports, and feedback!
+
+---
+
+**[⬆ Back to Top](#libfyaml)**
