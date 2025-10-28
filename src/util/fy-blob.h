@@ -14,7 +14,6 @@
 
 #include <string.h>
 #include <stdint.h>
-#include <assert.h>
 #ifdef HAVE_BYTESWAP_H
 #include <byteswap.h>
 #else
@@ -44,6 +43,7 @@
 #include <stdbool.h>
 #include <time.h>
 
+#include "fy-utils.h"
 #include "fy-endian.h"
 
 /* special unaligned types for pointer accesses */
@@ -117,7 +117,6 @@ size_t _pfx ## _bits (struct blob_region *br, uint ## _bits ## _t v) \
 { \
 	size_t pos; \
 \
-	assert(br->curr < br->size); \
 	if (_write) { \
 		if (_bswap) \
 			v = bswap_ ## _bits (v); \
@@ -134,8 +133,6 @@ uint ## _bits ## _t _pfx ## _bits (struct blob_region *br) \
 { \
 	uint ## _bits ## _t v; \
 \
-	assert(br->curr + sizeof(v) <= br->size); \
-	assert(br->rstart); \
 	v = ((const br_ ## _bits *)(br->rstart + br->curr))->v; \
 	if (_bswap) \
 		v = bswap_ ## _bits (v); \
@@ -186,7 +183,6 @@ static inline void br_wsetup(struct blob_region *br, void *data, size_t size, en
 static inline void br_rsetup(struct blob_region *br, const void *data, size_t size, enum blob_endian_type endian)
 {
 	/* read makes no sense without data */
-	assert(data);
 	br_setup_common(br, size, endian);
 	br->rstart = data;
 }
@@ -205,7 +201,6 @@ static inline size_t br_write(struct blob_region *br, const void *data, size_t s
 {
 	size_t pos;
 
-	assert(br->curr + size <= br->size);
 	if (br->wstart)
 		memcpy(br->wstart + br->curr, data, size);
 	pos = br->curr;
@@ -217,7 +212,6 @@ static inline size_t br_w0(struct blob_region *br, size_t size)
 {
 	size_t pos;
 
-	assert(br->curr + size <= br->size);
 	if (br->wstart)
 		memset(br->wstart + br->curr, 0, size);
 	pos = br->curr;
@@ -232,7 +226,6 @@ static inline size_t br_wskip(struct blob_region *br, size_t size)
 
 static inline size_t br_wskip_to(struct blob_region *br, size_t offset)
 {
-	assert(br->curr <= offset);
 	return br_w0(br, offset - br->curr);
 }
 
@@ -245,25 +238,21 @@ typedef size_t (*br_wid_func)(struct blob_region *br, int id);
 
 static inline size_t br_wid8(struct blob_region *br, int id)
 {
-	assert((unsigned int)id < ((unsigned int)1 << 8));
 	return br_w8(br, (uint8_t)id);
 }
 
 static inline size_t br_wid16(struct blob_region *br, int id)
 {
-	assert((unsigned int)id < ((unsigned int)1 << 16));
 	return br_w16(br, (uint16_t)id);
 }
 
 static inline size_t br_wid32(struct blob_region *br, int id)
 {
-	assert((unsigned long)id < ((unsigned long)1 << 32));
 	return br_w32(br, (uint32_t)id);
 }
 
 static inline size_t br_wid64(struct blob_region *br, int id)
 {
-	assert(id >= 0);
 	return br_w64(br, (uint64_t)id);
 }
 
@@ -296,15 +285,12 @@ static inline size_t br_wX(struct blob_region *br, enum blob_id_size x_size, uin
 {
 	switch (x_size) {
 	case BID_U8:
-		assert(x < ((uint64_t)1 << 8));
 		return br_w8(br, (uint8_t)x);
 
 	case BID_U16:
-		assert(x < ((uint64_t)1 << 16));
 		return br_w16(br, (uint16_t)x);
 
 	case BID_U32:
-		assert(x < ((uint64_t)1 << 32));
 		return br_w32(br, (uint32_t)x);
 
 	case BID_U64:
@@ -315,7 +301,6 @@ static inline size_t br_wX(struct blob_region *br, enum blob_id_size x_size, uin
 
 static inline size_t br_wid(struct blob_region *br, enum blob_id_size id_size, int id)
 {
-	assert(id >= 0);
 	switch (id_size) {
 	case BID_U8:
 		return br_wid8(br, id);
@@ -336,8 +321,6 @@ static inline size_t br_read(struct blob_region *br, void *data, size_t size)
 {
 	size_t pos;
 
-	assert(br->curr + size <= br->size);
-	assert(br->rstart);
 	memcpy(data, br->rstart + br->curr, size);
 	pos = br->curr;
 	br->curr += size;
@@ -346,14 +329,11 @@ static inline size_t br_read(struct blob_region *br, void *data, size_t size)
 
 static inline void br_rskip(struct blob_region *br, size_t size)
 {
-	assert(br->curr + size <= br->size);
 	br->curr += size;
 }
 
 static inline void br_rskip_to(struct blob_region *br, size_t offset)
 {
-	assert(br->curr <= offset);
-	assert(offset <= br->size);
 	br->curr = offset;
 }
 
@@ -417,7 +397,7 @@ static inline uint64_t br_rX(struct blob_region *br, enum blob_id_size x_size)
 	case BID_U64:
 		return br_r64(br);
 	}
-	return (uint64_t)-1;
+	FY_IMPOSSIBLE_ABORT();
 }
 
 static inline int br_rid(struct blob_region *br, enum blob_id_size id_size)
@@ -443,9 +423,8 @@ static inline int br_rid(struct blob_region *br, enum blob_id_size id_size)
 
 	default:
 		id = -1;
-		break;
+		FY_IMPOSSIBLE_ABORT();
 	}
-	assert(id >= 0);
 	return id;
 }
 
