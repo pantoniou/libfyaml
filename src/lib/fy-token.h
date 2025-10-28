@@ -80,12 +80,43 @@ static inline bool fy_token_type_is_mapping_marker(enum fy_token_type type)
 #define FYACF_VALID_ANCHOR	0x040000	/* contains valid anchor (without & prefix) */
 #define FYACF_JSON_ESCAPE	0x080000	/* contains a character that JSON escapes */
 
+/* analysis flags */
+#define FYTTAF_HAS_LB			FY_BIT(0)
+#define FYTTAF_HAS_WS			FY_BIT(1)
+#define FYTTAF_HAS_CONSECUTIVE_LB	FY_BIT(2)
+#define FYTTAF_HAS_CONSECUTIVE_WS	FY_BIT(4)
+#define FYTTAF_EMPTY			FY_BIT(5)
+#define FYTTAF_CAN_BE_SIMPLE_KEY	FY_BIT(6)
+#define FYTTAF_DIRECT_OUTPUT		FY_BIT(7)
+#define FYTTAF_NO_TEXT_TOKEN		FY_BIT(8)
+#define FYTTAF_TEXT_TOKEN		FY_BIT(9)
+#define FYTTAF_CAN_BE_PLAIN		FY_BIT(10)
+#define FYTTAF_CAN_BE_SINGLE_QUOTED	FY_BIT(11)
+#define FYTTAF_CAN_BE_DOUBLE_QUOTED	FY_BIT(12)
+#define FYTTAF_CAN_BE_LITERAL		FY_BIT(13)
+#define FYTTAF_CAN_BE_FOLDED		FY_BIT(14)
+#define FYTTAF_CAN_BE_PLAIN_FLOW	FY_BIT(15)
+#define FYTTAF_QUOTE_AT_0		FY_BIT(16)
+#define FYTTAF_CAN_BE_UNQUOTED_PATH_KEY	FY_BIT(17)
+#define FYTTAF_HAS_ANY_LB		FY_BIT(18)	/* any LB including unicode, not per input */
+#define FYTTAF_HAS_START_IND		FY_BIT(19)	/* has --- at col 0 */
+#define FYTTAF_HAS_END_IND		FY_BIT(20)	/* has ... at col 0 */
+#define FYTTAF_HAS_NON_PRINT		FY_BIT(21)	/* has any non printable utf8 */
+
+#define FYTTAF_ANALYZED			FY_BIT(31)	/* analyzed mark */
+
+struct fy_token_analysis {
+	unsigned int flags;
+	int maxspan;
+	int maxcol;
+};
+
 FY_TYPE_FWD_DECL_LIST(token);
 struct fy_token {
 	struct list_head node;
 	enum fy_token_type type;
 	int refs;		/* when on document, we switch to reference counting */
-	int analyze_flags;	/* cache of the analysis flags */
+	struct fy_token_analysis analysis;
 	size_t text_len;
 	const char *text;
 	char *text0;		/* this is allocated */
@@ -169,8 +200,7 @@ fy_token_alloc_rl(struct fy_token_list *fytl)
 
 	fyt->type = FYTT_NONE;
 	fyt->refs = 1;
-
-	fyt->analyze_flags = 0;
+	memset(&fyt->analysis, 0, sizeof(fyt->analysis));
 	fyt->text_len = 0;
 	fyt->text = NULL;
 	fyt->text0 = NULL;
@@ -426,29 +456,7 @@ static inline bool fy_token_is_flow_ws(struct fy_token *fyt, int c)
 	return fy_atom_is_flow_ws(&fyt->handle, c);
 }
 
-#define FYTTAF_HAS_LB			FY_BIT(0)
-#define FYTTAF_HAS_WS			FY_BIT(1)
-#define FYTTAF_HAS_CONSECUTIVE_LB	FY_BIT(2)
-#define FYTTAF_HAS_CONSECUTIVE_WS	FY_BIT(4)
-#define FYTTAF_EMPTY			FY_BIT(5)
-#define FYTTAF_CAN_BE_SIMPLE_KEY	FY_BIT(6)
-#define FYTTAF_DIRECT_OUTPUT		FY_BIT(7)
-#define FYTTAF_NO_TEXT_TOKEN		FY_BIT(8)
-#define FYTTAF_TEXT_TOKEN		FY_BIT(9)
-#define FYTTAF_CAN_BE_PLAIN		FY_BIT(10)
-#define FYTTAF_CAN_BE_SINGLE_QUOTED	FY_BIT(11)
-#define FYTTAF_CAN_BE_DOUBLE_QUOTED	FY_BIT(12)
-#define FYTTAF_CAN_BE_LITERAL		FY_BIT(13)
-#define FYTTAF_CAN_BE_FOLDED		FY_BIT(14)
-#define FYTTAF_CAN_BE_PLAIN_FLOW	FY_BIT(15)
-#define FYTTAF_QUOTE_AT_0		FY_BIT(16)
-#define FYTTAF_CAN_BE_UNQUOTED_PATH_KEY	FY_BIT(17)
-#define FYTTAF_HAS_ANY_LB		FY_BIT(18)	/* any LB including unicode, not per input */
-#define FYTTAF_HAS_START_IND		FY_BIT(19)	/* has --- at col 0 */
-#define FYTTAF_HAS_END_IND		FY_BIT(20)	/* has ... at col 0 */
-#define FYTTAF_HAS_NON_PRINT		FY_BIT(21)	/* has any non printable utf8 */
-
-int fy_token_text_analyze(struct fy_token *fyt);
+const struct fy_token_analysis *fy_token_text_analyze(struct fy_token *fyt);
 
 unsigned int fy_analyze_scalar_content(const char *data, size_t size,
 		bool json_mode, enum fy_lb_mode lb_mode, enum fy_flow_ws_mode fws_mode);

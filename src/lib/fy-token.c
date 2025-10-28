@@ -117,7 +117,7 @@ void fy_token_clean_rl(struct fy_token_list *fytl, struct fy_token *fyt)
 	}
 
 	fyt->type = FYTT_NONE;
-	fyt->analyze_flags = 0;
+	memset(&fyt->analysis, 0, sizeof(fyt->analysis));
 	fyt->text_len = 0;
 	fyt->text = NULL;
 }
@@ -641,20 +641,27 @@ const struct fy_mark *fy_token_end_mark(struct fy_token *fyt)
 	return NULL;
 }
 
-int fy_token_text_analyze(struct fy_token *fyt)
+const struct fy_token_analysis *
+fy_token_text_analyze(struct fy_token *fyt)
 {
+	static const struct fy_token_analysis null_analysis = {
+		.flags = FYTTAF_CAN_BE_SIMPLE_KEY | FYTTAF_DIRECT_OUTPUT |
+		         FYTTAF_EMPTY | FYTTAF_CAN_BE_DOUBLE_QUOTED |
+		         FYTTAF_ANALYZED,
+		.maxspan = 0,
+		.maxcol = 0,
+	};
 	struct fy_atom_iter iter;
 	enum fy_atom_style style;
 	int c, cn, cnn, cp, col;
 	uint8_t col0si, col0ei;	/* mask for --- ... at indent 0 */
-	int flags;
+	int flags, span, maxspan, maxcol;
 
 	if (!fyt)
-		return FYTTAF_CAN_BE_SIMPLE_KEY | FYTTAF_DIRECT_OUTPUT |
-		       FYTTAF_EMPTY | FYTTAF_CAN_BE_DOUBLE_QUOTED;
+		return &null_analysis;
 
-	if (fyt->analyze_flags)
-		return fyt->analyze_flags;
+	if (fyt->analysis.flags & FYTTAF_ANALYZED)
+		return &fyt->analysis;
 
 	/* only tokens that can generate text */
 	if (fyt->type != FYTT_SCALAR &&
@@ -662,8 +669,12 @@ int fy_token_text_analyze(struct fy_token *fyt)
 	    fyt->type != FYTT_ANCHOR &&
 	    fyt->type != FYTT_ALIAS) {
 		flags = FYTTAF_NO_TEXT_TOKEN;
-		fyt->analyze_flags = flags;
-		return flags;
+
+		fyt->analysis.flags = flags | FYTTAF_ANALYZED;
+		fyt->analysis.maxspan = 0;
+		fyt->analysis.maxcol = 0;
+
+		return &fyt->analysis;
 	}
 
 	flags = FYTTAF_TEXT_TOKEN;
@@ -681,6 +692,9 @@ int fy_token_text_analyze(struct fy_token *fyt)
 	fy_atom_iter_start(&fyt->handle, &iter);
 
 	col = 0;
+	maxcol = 0;
+	maxspan = 0;
+	span = 0;
 
 	/* get first character */
 	cn = fy_atom_iter_utf8_get(&iter);
@@ -805,7 +819,16 @@ int fy_token_text_analyze(struct fy_token *fyt)
 		     (style == FYAS_DOUBLE_QUOTED && c == '\\')))
 			flags &= ~FYTTAF_DIRECT_OUTPUT;
 
+		if (cn < 0 || !c || fy_token_is_lb(fyt, c) || fy_is_ws(c)) {
+			if (span > maxspan)
+				maxspan = span;
+			span = 0;
+		} else
+			span++;
+
 		if (fy_token_is_lb(fyt, c)) {
+			if (col > maxcol)
+				maxcol = col;
 			col = 0;
 			col0si = col0ei = 0;
 		} else
@@ -822,10 +845,18 @@ int fy_token_text_analyze(struct fy_token *fyt)
 					   FYTTAF_CAN_BE_PLAIN_FLOW);
 		}
 	}
+
+	if (col > maxcol)
+		maxcol = col;
+	if (span > maxspan)
+		maxspan = span;
 out:
 	fy_atom_iter_finish(&iter);
-	fyt->analyze_flags = flags;
-	return flags;
+
+	fyt->analysis.flags = flags | FYTTAF_ANALYZED;
+	fyt->analysis.maxspan = maxspan;
+	fyt->analysis.maxcol = maxcol;
+	return &fyt->analysis;
 }
 
 const char *fy_tag_token_get_directive_handle(struct fy_token *fyt, size_t *td_handle_sizep)
@@ -1189,7 +1220,7 @@ const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 	uint8_t non_utf8[4];
 	size_t non_utf8_len, k;
 	int c, i, w, digit;
-	int aflags;
+	const struct fy_token_analysis *ta;
 
 	if (!fyt || fyt->type != FYTT_SCALAR) {
 		*lenp = 0;
@@ -1203,10 +1234,10 @@ const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 	}
 
 	/* analyze the token */
-	aflags = fy_token_text_analyze(fyt);
+	ta = fy_token_text_analyze(fyt);
 
 	/* simple one? perfect */
-	if ((aflags & FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) == FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) {
+	if ((ta->flags & FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) == FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) {
 		fyt->scalar.path_key = fy_token_get_text(fyt, &fyt->scalar.path_key_len);
 		*lenp = fyt->scalar.path_key_len;
 		return fyt->scalar.path_key;

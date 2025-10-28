@@ -1753,6 +1753,8 @@ enum fy_emitter_write_type {
  * @FYECF_MODE_DEJSON: Emit YAML trying to pretify JSON
  * @FYECF_MODE_PRETTY: Emit YAML that tries to look good
  * @FYECF_MODE_MANUAL: Emit YAML respecting all manual style hints (reformats if needed)
+ * @FYECF_MODE_FLOW_COMPACT: Emit using only the flow mode in as much as possible compact form
+ * @FYECF_MODE_JSON_COMPACT: Emit using JSON compact form
  * @FYECF_DOC_START_MARK_AUTO: Automatically generate document start markers if required
  * @FYECF_DOC_START_MARK_OFF: Do not generate document start markers
  * @FYECF_DOC_START_MARK_ON: Always generate document start markers
@@ -1800,6 +1802,8 @@ enum fy_emitter_cfg_flags {
 	FYECF_MODE_DEJSON 		= FYECF_MODE(7),
 	FYECF_MODE_PRETTY 		= FYECF_MODE(8),
 	FYECF_MODE_MANUAL 		= FYECF_MODE(9),
+	FYECF_MODE_FLOW_COMPACT		= FYECF_MODE(10),
+	FYECF_MODE_JSON_COMPACT		= FYECF_MODE(11),
 	FYECF_DOC_START_MARK_AUTO	= FYECF_DOC_START_MARK(0),
 	FYECF_DOC_START_MARK_OFF	= FYECF_DOC_START_MARK(1),
 	FYECF_DOC_START_MARK_ON		= FYECF_DOC_START_MARK(2),
