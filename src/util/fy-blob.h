@@ -72,13 +72,13 @@ enum blob_id_size {
 };
 
 static inline enum blob_id_size
-blob_count_to_id_size(unsigned long long count)
+blob_count_to_id_size(uintmax_t count)
 {
-	if (count < (1LLU << 8))
+	if (count <= (1LLU << 8))
 		return BID_U8;
-	if (count < (1LLU << 16))
+	if (count <= (1LLU << 16))
 		return BID_U16;
-	if (count < (1LLU << 32))
+	if (count <= (1LLU << 32))
 		return BID_U32;
 	return BID_U64;
 }
@@ -274,12 +274,8 @@ static inline br_wid_func br_wid_get_func(enum blob_id_size id_size)
 	return NULL;
 }
 
-static inline size_t br_wstr(struct blob_region *br, const char *str, size_t len)
-{
-	if (len == (size_t)-1)
-		len = strlen(str);
-	return br_write(br, str, len + 1);
-}
+/* write a string with optional dedup */
+size_t br_wstr(struct blob_region *br, bool dedup, const char *str);
 
 static inline size_t br_wX(struct blob_region *br, enum blob_id_size x_size, uint64_t x)
 {

@@ -93,7 +93,7 @@ int fy_blob_write(const char *file, const void *blob, size_t size)
 	if (!file || !blob)
 		return -1;
 
-	fd = open(file, O_WRONLY|O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IRGRP | S_IROTH);
+	fd = open(file, O_WRONLY|O_CREAT|O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IRGRP | S_IROTH);
 	if (fd < 0)
 		goto err_out;
 
@@ -116,4 +116,28 @@ err_out:
 	if (fd >= 0)
 		close(fd);
 	return -1;
+}
+
+size_t br_wstr(struct blob_region *br, bool dedup, const char *str)
+{
+	const char *p, *e, *pt;
+	size_t tlen, len;
+
+	len = strlen(str);
+
+	/* search in the string table for duplicates */
+	if (dedup && br->wstart) {
+		p = (const char *)br->wstart;
+		e = p + br->curr;
+		while (p < e) {
+			tlen = strlen(p);
+			if (tlen >= len) {
+				pt = p + (tlen - len);
+				if (!memcmp(pt, str, len))
+					return (size_t)(pt - (const char *)br->wstart);
+			}
+			p += tlen + 1;
+		}
+	}
+	return br_write(br, str, len + 1);
 }
