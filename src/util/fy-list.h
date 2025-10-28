@@ -5,8 +5,8 @@
  *
  * SPDX-License-Identifier: MIT
  */
-#ifndef _FY_LIST_H
-#define _FY_LIST_H
+#ifndef FY_LIST_H
+#define FY_LIST_H
 
 #include "fy-utils.h"
 
