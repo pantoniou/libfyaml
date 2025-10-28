@@ -500,7 +500,7 @@ struct fy_event_stream_start_data {
 	struct fy_token *stream_start;
 };
 
-/*
+/**
  * struct fy_event_stream_end_data - stream end event data
  *
  * @stream_end: The token that ended the stream
@@ -509,7 +509,7 @@ struct fy_event_stream_end_data {
 	struct fy_token *stream_end;
 };
 
-/*
+/**
  * struct fy_event_document_start_data - doument start event data
  *
  * @document_start: The token that started the document, or NULL if
@@ -524,7 +524,7 @@ struct fy_event_document_start_data {
 	bool implicit;
 };
 
-/*
+/**
  * struct fy_event_document_end_data - doument end event data
  *
  * @document_end: The token that ended the document, or NULL if the
@@ -536,7 +536,7 @@ struct fy_event_document_end_data {
 	bool implicit;
 };
 
-/*
+/**
  * struct fy_event_alias_data - alias event data
  *
  * @anchor: The anchor token definining this alias.
@@ -545,10 +545,10 @@ struct fy_event_alias_data {
 	struct fy_token *anchor;
 };
 
-/*
+/**
  * struct fy_event_scalar_data - scalar event data
  *
- * @.anchor: anchor token or NULL
+ * @anchor: anchor token or NULL
  * @tag: tag token or NULL
  * @value: scalar value token (cannot be NULL)
  * @tag_implicit: true if the tag was implicit or explicit
@@ -560,7 +560,7 @@ struct fy_event_scalar_data {
 	bool tag_implicit;
 };
 
-/*
+/**
  * struct fy_event_sequence_start_data - sequence start event data
  *
  * @anchor: anchor token or NULL
@@ -574,7 +574,7 @@ struct fy_event_sequence_start_data {
 	struct fy_token *sequence_start;
 };
 
-/*
+/**
  * struct fy_event_sequence_end_data - sequence end event data
  *
  * @sequence_end: The token that ended the sequence, or NULL if
@@ -584,7 +584,7 @@ struct fy_event_sequence_end_data {
 	struct fy_token *sequence_end;
 };
 
-/*
+/**
  * struct fy_event_mapping_start_data - mapping start event data
  *
  * @anchor: anchor token or NULL
@@ -598,7 +598,7 @@ struct fy_event_mapping_start_data {
 	struct fy_token *mapping_start;
 };
 
-/*
+/**
  * struct fy_event_mapping_end_data - mapping end event data
  *
  * @mapping_end: The token that ended the mapping, or NULL if
@@ -1117,6 +1117,17 @@ fy_parser_mode_is_yaml(enum fy_parser_mode mode)
 	return mode >= fypm_yaml_1_1 && mode <= fypm_yaml_1_3;
 }
 
+/**
+ * fy_parser_get_mode() - Get the parser mode
+ *
+ * Retrieve the current mode of the parser, which indicates the YAML version
+ * or format being parsed (YAML 1.1, 1.2, 1.3, or JSON).
+ *
+ * @fyp: The parser
+ *
+ * Returns:
+ * The parser mode
+ */
 enum fy_parser_mode
 fy_parser_get_mode(struct fy_parser *fyp)
 	FY_EXPORT;
@@ -1725,7 +1736,7 @@ struct fy_document *
 fy_node_document(struct fy_node *fyn)
 	FY_EXPORT;
 
-/*
+/**
  * enum fy_emitter_write_type - Type of the emitted output
  *
  * Describes the kind of emitted output, which makes it
@@ -8119,49 +8130,163 @@ struct fy_path_component *
 fy_path_last_not_collection_root_component(struct fy_path *fypp)
 	FY_EXPORT;
 
+/**
+ * struct fy_composer_ops - Composer operation callbacks
+ *
+ * Callbacks used by the composer to process events and create document builders.
+ *
+ * @process_event: Callback for processing a single YAML event with path context
+ * @create_document_builder: Callback for creating a document builder instance
+ */
 struct fy_composer_ops {
 	/* single process event callback */
 	enum fy_composer_return (*process_event)(struct fy_composer *fyc, struct fy_path *path, struct fy_event *fye);
 	struct fy_document_builder *(*create_document_builder)(struct fy_composer *fyc);
 };
 
+/**
+ * struct fy_composer_cfg - Composer configuration structure
+ *
+ * Configuration structure for creating a composer instance.
+ *
+ * @ops: Pointer to composer operation callbacks
+ * @userdata: Opaque user data pointer passed to callbacks
+ * @diag: Optional diagnostic interface to use, NULL for default
+ */
 struct fy_composer_cfg {
 	const struct fy_composer_ops *ops;
 	void *userdata;
 	struct fy_diag *diag;
 };
 
+/**
+ * fy_composer_create() - Create a composer
+ *
+ * Creates a composer with the given configuration. The composer processes
+ * YAML events using callback methods and maintains path information for
+ * intelligent document composition. The composer may be destroyed by a
+ * corresponding call to fy_composer_destroy().
+ *
+ * @cfg: The configuration for the composer
+ *
+ * Returns:
+ * A pointer to the composer or NULL in case of an error.
+ */
 struct fy_composer *
 fy_composer_create(struct fy_composer_cfg *cfg)
 	FY_EXPORT;
 
+/**
+ * fy_composer_destroy() - Destroy the given composer
+ *
+ * Destroy a composer created earlier via fy_composer_create().
+ *
+ * @fyc: The composer to destroy
+ */
 void fy_composer_destroy(struct fy_composer *fyc)
 	FY_EXPORT;
 
+/**
+ * fy_composer_process_event() - Process a YAML event through the composer
+ *
+ * Process a YAML event by calling the configured process_event callback
+ * with path context. The composer maintains the current path and provides
+ * it to the callback for intelligent processing decisions.
+ *
+ * @fyc: The composer
+ * @fye: The event to process
+ *
+ * Returns:
+ * A fy_composer_return code indicating how to proceed (continue, stop, skip, or error)
+ */
 enum fy_composer_return
 fy_composer_process_event(struct fy_composer *fyc, struct fy_event *fye)
 	FY_EXPORT;
 
+/**
+ * fy_composer_get_cfg() - Get the configuration of a composer
+ *
+ * @fyc: The composer
+ *
+ * Returns:
+ * The configuration of the composer
+ */
 struct fy_composer_cfg *
 fy_composer_get_cfg(struct fy_composer *fyc)
 	FY_EXPORT;
 
+/**
+ * fy_composer_get_cfg_userdata() - Get the userdata from composer configuration
+ *
+ * Retrieve the opaque userdata pointer from the composer's configuration.
+ *
+ * @fyc: The composer
+ *
+ * Returns:
+ * The userdata pointer from the configuration
+ */
 void *
 fy_composer_get_cfg_userdata(struct fy_composer *fyc)
 	FY_EXPORT;
 
+/**
+ * fy_composer_get_diag() - Get the diagnostic object of a composer
+ *
+ * Return a pointer to the diagnostic object of a composer object.
+ * Note that the returned diag object has a reference taken so
+ * you should fy_diag_unref() it when you're done with it.
+ *
+ * @fyc: The composer to get the diagnostic object
+ *
+ * Returns:
+ * A pointer to a ref'ed diagnostic object or NULL in case of an error.
+ */
 struct fy_diag *
 fy_composer_get_diag(struct fy_composer *fyc)
 	FY_EXPORT;
 
+/**
+ * fy_composer_get_path() - Get the current path of the composer
+ *
+ * Retrieve the current path being processed by the composer.
+ * The path represents the location in the YAML document structure
+ * where the composer is currently positioned.
+ *
+ * @fyc: The composer
+ *
+ * Returns:
+ * The current path, or NULL if no path is active
+ */
 struct fy_path *
 fy_composer_get_path(struct fy_composer *fyc)
 	FY_EXPORT;
 
+/**
+ * fy_composer_get_root_path() - Get the root path of the composer
+ *
+ * Retrieve the root path of the composer's path hierarchy.
+ *
+ * @fyc: The composer
+ *
+ * Returns:
+ * The root path, or NULL if no root exists
+ */
 struct fy_path *
 fy_composer_get_root_path(struct fy_composer *fyc)
 	FY_EXPORT;
 
+/**
+ * fy_composer_get_next_path() - Get the next path in the composer's path list
+ *
+ * Iterate through the composer's path list. Pass NULL to get the first path,
+ * or pass the previous path to get the next one.
+ *
+ * @fyc: The composer
+ * @fypp: The previous path, or NULL to get the first path
+ *
+ * Returns:
+ * The next path in the list, or NULL if no more paths exist
+ */
 struct fy_path *
 fy_composer_get_next_path(struct fy_composer *fyc, struct fy_path *fypp)
 	FY_EXPORT;
@@ -8740,7 +8865,7 @@ struct fy_thread_work {
 	struct fy_work_pool *wp;
 };
 
-/*
+/**
  * enum fy_thread_pool_cfg_flags - Thread pool configuration flags
  *
  * These flags control the operation of the thread pool.
@@ -8823,7 +8948,7 @@ const struct fy_thread_pool_cfg *
 fy_thread_pool_get_cfg(struct fy_thread_pool *tp)
 	FY_EXPORT;
 
-/*
+/**
  * fy_thread_reserve() - Reserve a thread from the pool.
  *
  * Reserve a thread from the pool and return it.
@@ -8839,7 +8964,7 @@ struct fy_thread *
 fy_thread_reserve(struct fy_thread_pool *tp)
 	FY_EXPORT;
 
-/*
+/**
  * fy_thread_unreserve() - Unreserve a previously reserved thread
  *
  * Unreserve a thread previously reserved via a call to fy_thread_reserve()
@@ -8851,7 +8976,7 @@ void
 fy_thread_unreserve(struct fy_thread *t)
 	FY_EXPORT;
 
-/*
+/**
  * fy_thread_submit_work() - Submit work for execution
  *
  * Submit work for execution. If successful the thread
@@ -8872,7 +8997,7 @@ int
 fy_thread_submit_work(struct fy_thread *t, struct fy_thread_work *work)
 	FY_EXPORT;
 
-/*
+/**
  * fy_thread_wait_work() - Wait for completion of submitted work
  *
  * Wait until submitted work to the thread has finished.
@@ -8887,7 +9012,7 @@ int
 fy_thread_wait_work(struct fy_thread *t)
 	FY_EXPORT;
 
-/*
+/**
  * fy_thread_work_join() - Submit works for execution and wait
  *
  * Submit works for possible parallel execution. If no offloading
@@ -8906,7 +9031,7 @@ fy_thread_work_join(struct fy_thread_pool *tp,
 		    fy_work_check_fn check_fn)
 	FY_EXPORT;
 
-/*
+/**
  * fy_thread_args_join() - Execute function in parallel using arguments as pointers
  *
  * Execute @fn possibly in parallel using the threads in the thread pool.
@@ -8924,7 +9049,7 @@ fy_thread_args_join(struct fy_thread_pool *tp,
 		    void **args, size_t count)
 	FY_EXPORT;
 
-/*
+/**
  * fy_thread_arg_array_join() - Execute function in parallel using argument array
  *
  * Execute @fn possibly in parallel using the threads in the thread pool.
@@ -8943,14 +9068,15 @@ fy_thread_arg_array_join(struct fy_thread_pool *tp,
 			 void *args, size_t argsize, size_t count)
 	FY_EXPORT;
 
-/*
- * fy_thread_arg_array_join() - Execute function in parallel with the same argument
+/**
+ * fy_thread_arg_join() - Execute function in parallel with the same argument
  *
  * Execute @fn possibly in parallel using the threads in the thread pool.
  * The argument of the functions is the same.
  *
  * @tp: The thread pool
  * @fn: The function to execute in parallel
+ * @check_fn: Pointer to a check function, or NULL for no checks
  * @arg: The common argument
  * @count: The count of executions
  */
@@ -9484,14 +9610,48 @@ struct fy_auto_allocator_cfg {
 
 struct fy_parser_checkpoint;
 
+/**
+ * fy_parser_checkpoint_create() - Create a parser checkpoint
+ *
+ * Create a checkpoint of the parser's current state. This allows you
+ * to save the parser state and potentially roll back to it later using
+ * fy_parser_rollback(). The checkpoint must be destroyed via
+ * fy_parser_checkpoint_destroy() when no longer needed.
+ *
+ * @fyp: The parser
+ *
+ * Returns:
+ * A pointer to the checkpoint, or NULL in case of an error
+ */
 struct fy_parser_checkpoint *
 fy_parser_checkpoint_create(struct fy_parser *fyp)
 	FY_EXPORT;
 
+/**
+ * fy_parser_checkpoint_destroy() - Destroy a parser checkpoint
+ *
+ * Destroy a checkpoint created earlier via fy_parser_checkpoint_create().
+ *
+ * @fypchk: The checkpoint to destroy
+ */
 void
 fy_parser_checkpoint_destroy(struct fy_parser_checkpoint *fypchk)
 	FY_EXPORT;
 
+/**
+ * fy_parser_rollback() - Roll back the parser to a checkpoint
+ *
+ * Roll back the parser state to a previously created checkpoint. This allows
+ * you to revert the parser to an earlier state and re-parse from that point.
+ * The checkpoint remains valid after rollback and can be used again or
+ * destroyed via fy_parser_checkpoint_destroy().
+ *
+ * @fyp: The parser
+ * @fypc: The checkpoint to roll back to
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
 int
 fy_parser_rollback(struct fy_parser *fyp, struct fy_parser_checkpoint *fypc)
 	FY_EXPORT;
