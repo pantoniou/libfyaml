@@ -578,6 +578,11 @@ set(LIBSRCS
     src/blake3/blake3_backend.c
     src/blake3/blake3_be_cpusimd.c
     src/blake3/fy-blake3.c
+    src/lib/fy-composer-diag.c
+    src/lib/fy-doc-diag.c
+    src/lib/fy-docbuilder-diag.c
+    src/lib/fy-input-diag.c
+    src/lib/fy-parse-diag.c
 )
 
 set(LIBHDRSPUB
@@ -809,6 +814,8 @@ target_include_directories(fyaml
         ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
         ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
         ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
 )
 
 target_link_libraries(fyaml

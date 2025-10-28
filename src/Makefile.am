@@ -34,7 +34,9 @@ libfyaml_la_SOURCES = \
 	lib/fy-accel.c lib/fy-accel.h \
 	lib/fy-walk.c lib/fy-walk.h \
 	lib/fy-path.c lib/fy-path.h \
-	lib/fy-composer.c lib/fy-composer.h
+	lib/fy-composer.c lib/fy-composer.h \
+	lib/fy-parse-diag.c lib/fy-input-diag.c lib/fy-doc-diag.c \
+	lib/fy-docbuilder-diag.c lib/fy-composer-diag.c
 
 # util
 libfyaml_la_SOURCES += \

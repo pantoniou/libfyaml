@@ -258,6 +258,10 @@ enum fy_error_type {
  * @FYEM_BUILD: Build document module (after tree is constructed)
  * @FYEM_INTERNAL: Internal error/diagnostic module
  * @FYEM_SYSTEM: System error/diagnostic module
+ * @FYEM_EMIT: Emitter module
+ * @FYEM_TYPESET: Prepare types module (C reflection)
+ * @FYEM_DECODE: Decode, serialization -> internal form module
+ * @FYEM_ENCODE: Encode, internal form -> serialized form module
  * @FYEM_MAX: Non inclusive maximum fy_error_module value
  */
 enum fy_error_module {
@@ -269,6 +273,10 @@ enum fy_error_module {
 	FYEM_BUILD,
 	FYEM_INTERNAL,
 	FYEM_SYSTEM,
+	FYEM_EMIT,
+	FYEM_TYPESET,
+	FYEM_DECODE,
+	FYEM_ENCODE,
 	FYEM_MAX,
 };
 
@@ -2486,6 +2494,55 @@ fy_emit_to_string(enum fy_emitter_cfg_flags flags)
 char *
 fy_emit_to_string_collect(struct fy_emitter *emit, size_t *sizep)
 	FY_EXPORT;
+
+/**
+ * fy_emitter_vlog() - Log using the emitters diagnostics printf style (va_arg)
+ *
+ * Output a log on the emitter diagnostic output
+ *
+ * @emit: The emitter
+ * @type: The error type
+ * @fmt: The printf format string
+ * @ap: The argument list
+ */
+void
+fy_emitter_vlog(struct fy_emitter *emit, enum fy_error_type type, const char *fmt, va_list ap)
+	FY_EXPORT;
+
+/**
+ * fy_emitter_log() - Log using the emitters diagnostics printf style
+ *
+ * Output a report on the emitter's diagnostics
+ *
+ * @emit: The emitter
+ * @type: The error type
+ * @fmt: The printf format string
+ * @...: The extra arguments
+ */
+void
+fy_emitter_log(struct fy_emitter *emit, enum fy_error_type type, const char *fmt, ...)
+	FY_FORMAT(printf, 3, 4)
+	FY_EXPORT;
+
+#ifndef NDEBUG
+
+#define fy_emitter_debug(_emit, _fmt, ...) \
+	fy_emitter_log((_emit), FYET_DEBUG, (_fmt) , ## __VA_ARGS__)
+#else
+
+#define fy_emitter_debug(_emit, _fmt, ...) \
+	do { } while(0)
+
+#endif
+
+#define fy_emitter_info(_emit, _fmt, ...) \
+	fy_emitter_log((_emit), FYET_INFO, (_fmt) , ## __VA_ARGS__)
+#define fy_emitter_notice(_emit, _fmt, ...) \
+	fy_emitter_log((_emit), FYET_NOTICE, (_fmt) , ## __VA_ARGS__)
+#define fy_emitter_warning(_emit, _fmt, ...) \
+	fy_emitter_log((_emit), FYET_WARNING, (_fmt) , ## __VA_ARGS__)
+#define fy_emitter_error(_emit, _fmt, ...) \
+	fy_emitter_log((_emit), FYET_ERROR, (_fmt) , ## __VA_ARGS__)
 
 /**
  * fy_node_copy() - Copy a node, associating the new node with the given document
@@ -5557,6 +5614,18 @@ fy_diag_unref(struct fy_diag *diag)
  */
 bool
 fy_diag_got_error(struct fy_diag *diag)
+	FY_EXPORT;
+
+/**
+ * fy_diag_set_error() - Sets the error produced state
+ *
+ * Sets the error produced state
+ *
+ * @diag: The diagnostic object
+ * @on_error: The set error state
+ */
+void
+fy_diag_set_error(struct fy_diag *diag, bool on_error)
 	FY_EXPORT;
 
 /**

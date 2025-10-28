@@ -22,7 +22,11 @@
 
 #include <libfyaml.h>
 
+#include "fy-diag.h"
+
 #include "fy-parse.h"
+#include "fy-input.h"
+
 
 static const char *error_type_txt[] = {
 	[FYET_DEBUG]   = "debug",
@@ -63,14 +67,18 @@ enum fy_error_type fy_string_to_error_type(const char *str)
 }
 
 static const char *error_module_txt[] = {
-	[FYEM_UNKNOWN]	= "unknown",
-	[FYEM_ATOM]	= "atom",
-	[FYEM_SCAN]	= "scan",
-	[FYEM_PARSE]	= "parse",
-	[FYEM_DOC]	= "doc",
-	[FYEM_BUILD]	= "build",
-	[FYEM_INTERNAL]	= "internal",
-	[FYEM_SYSTEM]	= "system",
+	[FYEM_UNKNOWN]			= "unknown",
+	[FYEM_ATOM]			= "atom",
+	[FYEM_SCAN]			= "scan",
+	[FYEM_PARSE]			= "parse",
+	[FYEM_DOC]			= "doc",
+	[FYEM_BUILD]			= "build",
+	[FYEM_INTERNAL]			= "internal",
+	[FYEM_SYSTEM]			= "system",
+	[FYEM_EMIT]			= "emit",
+	[FYEM_TYPESET]			= "typeset",
+	[FYEM_DECODE]			= "decode",
+	[FYEM_ENCODE]			= "encode",
 };
 
 const char *fy_error_module_to_string(enum fy_error_module module)
@@ -114,14 +122,18 @@ static const char *fy_error_level_str(enum fy_error_type level)
 static const char *fy_error_module_str(enum fy_error_module module)
 {
 	static const char *txt[] = {
-		[FYEM_UNKNOWN]	= "UNKWN",
-		[FYEM_ATOM]	= "ATOM ",
-		[FYEM_SCAN]	= "SCAN ",
-		[FYEM_PARSE]	= "PARSE",
-		[FYEM_DOC]	= "DOC  ",
-		[FYEM_BUILD]	= "BUILD",
-		[FYEM_INTERNAL]	= "INTRL",
-		[FYEM_SYSTEM]	= "SYSTM",
+		[FYEM_UNKNOWN]			= "UNKWN",
+		[FYEM_ATOM]			= "ATOM ",
+		[FYEM_SCAN]			= "SCAN ",
+		[FYEM_PARSE]			= "PARSE",
+		[FYEM_DOC]			= "DOC  ",
+		[FYEM_BUILD]			= "BUILD",
+		[FYEM_INTERNAL]			= "INTRL",
+		[FYEM_SYSTEM]			= "SYSTM",
+		[FYEM_EMIT]			= "EMIT ",
+		[FYEM_TYPESET]			= "TYPES",
+		[FYEM_DECODE]			= "DEC  ",
+		[FYEM_ENCODE]			= "ENC  ",
 	};
 
 	if ((unsigned int)module >= FYEM_MAX)
@@ -248,6 +260,12 @@ void fy_diag_destroy(struct fy_diag *diag)
 bool fy_diag_got_error(struct fy_diag *diag)
 {
 	return diag && diag->on_error;
+}
+
+void fy_diag_set_error(struct fy_diag *diag, bool on_error)
+{
+	if (diag)
+		diag->on_error = on_error;
 }
 
 void fy_diag_reset_error(struct fy_diag *diag)
@@ -444,13 +462,7 @@ int fy_vdiag(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 	if (level >= FYET_ERROR && diag->on_error)
 		level = FYET_DEBUG;
 
-	if (level < diag->cfg.level) {
-		rc = 0;
-		goto out;
-	}
-
-	/* check module enable mask */
-	if (!(diag->cfg.module_mask & FY_BIT(fydc->module))) {
+	if (!fy_diag_log_level_is_enabled(diag, level, fydc->module)) {
 		rc = 0;
 		goto out;
 	}
@@ -908,350 +920,6 @@ void fy_diag_report(struct fy_diag *diag,
 	va_end(ap);
 }
 
-/* parser */
-
-int fy_parser_vdiag(struct fy_parser *fyp, unsigned int flags,
-		    const char *file, int line, const char *func,
-		    const char *fmt, va_list ap)
-{
-	struct fy_diag_ctx fydc;
-	int rc;
-
-	if (!fyp || !fyp->diag || !fmt)
-		return -1;
-
-	/* perform the enable tests early to avoid the overhead */
-	if (((flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT) < fyp->diag->cfg.level)
-		return 0;
-
-	/* fill in fy_diag_ctx */
-	memset(&fydc, 0, sizeof(fydc));
-
-	fydc.level = (flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT;
-	fydc.module = (flags & FYDF_MODULE_MASK) >> FYDF_MODULE_SHIFT;
-	fydc.source_file = file;
-	fydc.source_line = line;
-	fydc.source_func = func;
-	fydc.line = fyp_line(fyp);
-	fydc.column = fyp_column(fyp);
-
-	rc = fy_vdiag(fyp->diag, &fydc, fmt, ap);
-
-	if (fyp && !fyp->stream_error && fyp->diag->on_error)
-		fyp->stream_error = true;
-
-	return rc;
-}
-
-int fy_parser_diag(struct fy_parser *fyp, unsigned int flags,
-	    const char *file, int line, const char *func,
-	    const char *fmt, ...)
-{
-	va_list ap;
-	int rc;
-
-	va_start(ap, fmt);
-	rc = fy_parser_vdiag(fyp, flags, file, line, func, fmt, ap);
-	va_end(ap);
-
-	return rc;
-}
-
-void fy_parser_diag_vreport(struct fy_parser *fyp,
-		            const struct fy_diag_report_ctx *fydrc,
-			    const char *fmt, va_list ap)
-{
-	struct fy_diag *diag;
-
-	if (!fyp || !fyp->diag || !fydrc || !fmt)
-		return;
-
-	diag = fyp->diag;
-
-	fy_diag_vreport(diag, fydrc, fmt, ap);
-
-	if (fyp && !fyp->stream_error && diag->on_error)
-		fyp->stream_error = true;
-}
-
-void fy_parser_diag_report(struct fy_parser *fyp,
-			   const struct fy_diag_report_ctx *fydrc,
-			   const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	fy_parser_diag_vreport(fyp, fydrc, fmt, ap);
-	va_end(ap);
-}
-
-/* document */
-
-int fy_document_vdiag(struct fy_document *fyd, unsigned int flags,
-		      const char *file, int line, const char *func,
-		      const char *fmt, va_list ap)
-{
-	struct fy_diag_ctx fydc;
-	int rc;
-
-	if (!fyd || !fmt || !fyd->diag)
-		return -1;
-
-	/* perform the enable tests early to avoid the overhead */
-	if (((flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT) < fyd->diag->cfg.level)
-		return 0;
-
-	/* fill in fy_diag_ctx */
-	memset(&fydc, 0, sizeof(fydc));
-
-	fydc.level = (flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT;
-	fydc.module = (flags & FYDF_MODULE_MASK) >> FYDF_MODULE_SHIFT;
-	fydc.source_file = file;
-	fydc.source_line = line;
-	fydc.source_func = func;
-	fydc.line = -1;
-	fydc.column = -1;
-
-	rc = fy_vdiag(fyd->diag, &fydc, fmt, ap);
-
-	return rc;
-}
-
-int fy_document_diag(struct fy_document *fyd, unsigned int flags,
-		     const char *file, int line, const char *func,
-		     const char *fmt, ...)
-{
-	va_list ap;
-	int rc;
-
-	va_start(ap, fmt);
-	rc = fy_document_vdiag(fyd, flags, file, line, func, fmt, ap);
-	va_end(ap);
-
-	return rc;
-}
-
-void fy_document_diag_vreport(struct fy_document *fyd,
-			      const struct fy_diag_report_ctx *fydrc,
-			      const char *fmt, va_list ap)
-{
-	if (!fyd || !fyd->diag || !fydrc || !fmt)
-		return;
-
-	fy_diag_vreport(fyd->diag, fydrc, fmt, ap);
-}
-
-void fy_document_diag_report(struct fy_document *fyd,
-			     const struct fy_diag_report_ctx *fydrc,
-			     const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	fy_document_diag_vreport(fyd, fydrc, fmt, ap);
-	va_end(ap);
-}
-
-/* composer */
-int fy_composer_vdiag(struct fy_composer *fyc, unsigned int flags,
-		      const char *file, int line, const char *func,
-		      const char *fmt, va_list ap)
-{
-	struct fy_diag_ctx fydc;
-	int rc;
-
-	if (!fyc || !fmt || !fyc->cfg.diag)
-		return -1;
-
-	/* perform the enable tests early to avoid the overhead */
-	if (((flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT) < fyc->cfg.diag->cfg.level)
-		return 0;
-
-	/* fill in fy_diag_ctx */
-	memset(&fydc, 0, sizeof(fydc));
-
-	fydc.level = (flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT;
-	fydc.module = (flags & FYDF_MODULE_MASK) >> FYDF_MODULE_SHIFT;
-	fydc.source_file = file;
-	fydc.source_line = line;
-	fydc.source_func = func;
-	fydc.line = -1;
-	fydc.column = -1;
-
-	rc = fy_vdiag(fyc->cfg.diag, &fydc, fmt, ap);
-
-	return rc;
-}
-
-int fy_composer_diag(struct fy_composer *fyc, unsigned int flags,
-		     const char *file, int line, const char *func,
-		     const char *fmt, ...)
-{
-	va_list ap;
-	int rc;
-
-	va_start(ap, fmt);
-	rc = fy_composer_vdiag(fyc, flags, file, line, func, fmt, ap);
-	va_end(ap);
-
-	return rc;
-}
-
-void fy_composer_diag_vreport(struct fy_composer *fyc,
-			      const struct fy_diag_report_ctx *fydrc,
-			      const char *fmt, va_list ap)
-{
-	if (!fyc || !fyc->cfg.diag || !fydrc || !fmt)
-		return;
-
-	fy_diag_vreport(fyc->cfg.diag, fydrc, fmt, ap);
-}
-
-void fy_composer_diag_report(struct fy_composer *fyc,
-			     const struct fy_diag_report_ctx *fydrc,
-			     const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	fy_composer_diag_vreport(fyc, fydrc, fmt, ap);
-	va_end(ap);
-}
-
-/* document_builder */
-int fy_document_builder_vdiag(struct fy_document_builder *fydb, unsigned int flags,
-		      const char *file, int line, const char *func,
-		      const char *fmt, va_list ap)
-{
-	struct fy_diag_ctx fydc;
-	int rc;
-
-	if (!fydb || !fmt || !fydb->cfg.diag)
-		return -1;
-
-	/* perform the enable tests early to avoid the overhead */
-	if (((flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT) < fydb->cfg.diag->cfg.level)
-		return 0;
-
-	/* fill in fy_diag_ctx */
-	memset(&fydc, 0, sizeof(fydc));
-
-	fydc.level = (flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT;
-	fydc.module = (flags & FYDF_MODULE_MASK) >> FYDF_MODULE_SHIFT;
-	fydc.source_file = file;
-	fydc.source_line = line;
-	fydc.source_func = func;
-	fydc.line = -1;
-	fydc.column = -1;
-
-	rc = fy_vdiag(fydb->cfg.diag, &fydc, fmt, ap);
-
-	return rc;
-}
-
-int fy_document_builder_diag(struct fy_document_builder *fydb, unsigned int flags,
-		     const char *file, int line, const char *func,
-		     const char *fmt, ...)
-{
-	va_list ap;
-	int rc;
-
-	va_start(ap, fmt);
-	rc = fy_document_builder_vdiag(fydb, flags, file, line, func, fmt, ap);
-	va_end(ap);
-
-	return rc;
-}
-
-void fy_document_builder_diag_vreport(struct fy_document_builder *fydb,
-			      const struct fy_diag_report_ctx *fydrc,
-			      const char *fmt, va_list ap)
-{
-	if (!fydb || !fydb->cfg.diag || !fydrc || !fmt)
-		return;
-
-	fy_diag_vreport(fydb->cfg.diag, fydrc, fmt, ap);
-}
-
-void fy_document_builder_diag_report(struct fy_document_builder *fydb,
-			     const struct fy_diag_report_ctx *fydrc,
-			     const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	fy_document_builder_diag_vreport(fydb, fydrc, fmt, ap);
-	va_end(ap);
-}
-
-/* reader */
-
-int fy_reader_vdiag(struct fy_reader *fyr, unsigned int flags,
-		    const char *file, int line, const char *func,
-		    const char *fmt, va_list ap)
-{
-	struct fy_diag_ctx fydc;
-	int fydc_level, fyd_level;
-
-	if (!fyr || !fyr->diag || !fmt)
-		return -1;
-
-	/* perform the enable tests early to avoid the overhead */
-	fydc_level = (flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT;
-	fyd_level = fyr->diag->cfg.level;
-
-	if (fydc_level < fyd_level)
-		return 0;
-
-	/* fill in fy_diag_ctx */
-	memset(&fydc, 0, sizeof(fydc));
-
-	fydc.level = fydc_level;
-	fydc.module = FYEM_SCAN;	/* reader is always scanner */
-	fydc.source_file = file;
-	fydc.source_line = line;
-	fydc.source_func = func;
-	fydc.line = fyr->line;
-	fydc.column = fyr->column;
-
-	return fy_vdiag(fyr->diag, &fydc, fmt, ap);
-}
-
-int fy_reader_diag(struct fy_reader *fyr, unsigned int flags,
-		   const char *file, int line, const char *func,
-		   const char *fmt, ...)
-{
-	va_list ap;
-	int rc;
-
-	va_start(ap, fmt);
-	rc = fy_reader_vdiag(fyr, flags, file, line, func, fmt, ap);
-	va_end(ap);
-
-	return rc;
-}
-
-void fy_reader_diag_vreport(struct fy_reader *fyr,
-		            const struct fy_diag_report_ctx *fydrc,
-			    const char *fmt, va_list ap)
-{
-	if (!fyr || !fyr->diag || !fydrc || !fmt)
-		return;
-
-	fy_diag_vreport(fyr->diag, fydrc, fmt, ap);
-}
-
-void fy_reader_diag_report(struct fy_reader *fyr,
-			   const struct fy_diag_report_ctx *fydrc,
-			   const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	fy_reader_diag_vreport(fyr, fydrc, fmt, ap);
-	va_end(ap);
-}
-
 void fy_diag_token_vreport(struct fy_diag *diag, struct fy_token *fyt,
 			  enum fy_error_type type, const char *fmt, va_list ap)
 {
@@ -1484,7 +1152,10 @@ void fy_event_vreport(struct fy_parser *fyp, struct fy_event *fye,
 		      enum fy_event_part fyep, enum fy_error_type type,
 		      const char *fmt, va_list ap)
 {
-	return fy_diag_event_vreport(fyp->diag, fye, fyep, type, fmt, ap);
+	if (fye)
+		fy_diag_event_vreport(fyp->diag, fye, fyep, type, fmt, ap);
+	else
+		fy_parser_vlog(fyp, type, fmt, ap);
 }
 
 void
@@ -1496,61 +1167,5 @@ fy_event_report(struct fy_parser *fyp, struct fy_event *fye,
 
 	va_start(ap, fmt);
 	fy_event_vreport(fyp, fye, fyep, type, fmt, ap);
-	va_end(ap);
-}
-
-void fy_parser_vlog(struct fy_parser *fyp, enum fy_error_type type,
-		    const char *fmt, va_list ap)
-{
-	struct fy_diag_ctx ctx = {
-		.level = type,
-		.module = FYEM_UNKNOWN,
-		.source_func = "",
-		.source_file = "",
-		.source_line = 0,
-		.file = NULL,
-		.line = 0,
-		.column = 0,
-	};
-
-	if (!fyp || !fyp->diag)
-		return;
-
-	(void)fy_vdiag(fyp->diag, &ctx, fmt, ap);
-}
-
-void fy_parser_log(struct fy_parser *fyp, enum fy_error_type type,
-		   const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	fy_parser_vlog(fyp, type, fmt, ap);
-	va_end(ap);
-}
-
-void fy_parser_vreport(struct fy_parser *fyp, enum fy_error_type type,
-		       struct fy_token *fyt, const char *fmt, va_list ap)
-{
-	struct fy_diag_report_ctx fydrc_local, *fydrc = &fydrc_local;
-
-	if (!fyp || !fyp->diag || !fyt)
-		return;
-
-	memset(fydrc, 0, sizeof(*fydrc));
-	fydrc->type = type;
-	fydrc->module = FYEM_UNKNOWN;
-	fydrc->fyt = fy_token_ref(fyt);
-
-	fy_parser_diag_vreport(fyp, fydrc, fmt, ap);
-}
-
-void fy_parser_report(struct fy_parser *fyp, enum fy_error_type type,
-		      struct fy_token *fyt, const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	fy_parser_vreport(fyp, type, fyt, fmt, ap);
 	va_end(ap);
 }
