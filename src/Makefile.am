@@ -137,6 +137,12 @@ endif
 libfyaml_la_LIBADD += libb3neon.la
 endif
 
+if HAVE_LIBCLANG
+libfyaml_la_CPPFLAGS += $(LIBCLANG_CPPFLAGS)
+libfyaml_la_CFLAGS += $(LIBCLANG_CFLAGS)
+libfyaml_la_LDFLAGS += $(LIBCLANG_LDFLAGS) $(LIBCLANG_LIBS)
+endif
+
 if HAVE_LIBYAML
 if !CROSS_COMPILING
 

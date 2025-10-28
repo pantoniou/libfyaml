@@ -490,12 +490,13 @@ if test "x$with_libclang" != "xno"; then
 	orig_LIBS="$LIBS"
 	for cfg in $check ; do
 		# no caching
+		$as_unset ac_cv_path_LLVM_CONFIG
 		AC_PATH_PROG([LLVM_CONFIG], [$cfg])
 		if test "x$LLVM_CONFIG" != "x" ; then
 			LIBCLANG_CFLAGS=`$LLVM_CONFIG --cflags`
 			LIBCLANG_CPPFLAGS=`$LLVM_CONFIG --cppflags`
 			LIBCLANG_LDFLAGS=`$LLVM_CONFIG --ldflags`
-			LIBCLANG_LIBS="-lclang"
+			LIBCLANG_LIBS="-lclang `$LLVM_CONFIG --libs` `$LLVM_CONFIG --system-libs`"
 			CPPFLAGS="$CPPFLAGS $LIBCLANG_CPPFLAGS"
 			CFLAGS="$CFLAGS $LIBCLANG_CFLAGS"
 			LDFLAGS="$LDFLAGS $LIBCLANG_LDFLAGS"
@@ -515,8 +516,13 @@ if test "x$with_libclang" != "xno"; then
 				HAVE_LIBCLANG=1
 				break
 			fi
-			$as_unset ac_cv_lib_clang_clang_createIndex $as_unset ac_cv_header_clang_c_Index_h \
-				LIBCLANG_CFLAGS LIBCLANG_CPPFLAGS LIBCLANG_LIBS HAVE_LIBCLANG_LIB HAVE_LIBCLANG_HDR
+			$as_unset ac_cv_lib_clang_clang_createIndex
+			$as_unset ac_cv_header_clang_c_Index_h
+			$as_unset LIBCLANG_CFLAGS
+			$as_unset LIBCLANG_CPPFLAGS
+			$as_unset LIBCLANG_LIBS
+			$as_unset HAVE_LIBCLANG_LIB
+			$as_unset HAVE_LIBCLANG_HDR
 		fi
 		CFLAGS=$orig_CFLAGS
 		LDFLAGS=$orig_LDFLAGS
@@ -524,7 +530,7 @@ if test "x$with_libclang" != "xno"; then
 		if test "x$HAVE_LIBCLANG" = "x1"; then
 			break
 		fi
-		$as_unset ac_cv_path_LLVM_CONFIG LLVM_CONFIG
+		$as_unset LLVM_CONFIG
 	done
 	CFLAGS=$orig_CFLAGS
 	CPPFLAGS=$orig_CPPFLAGS
