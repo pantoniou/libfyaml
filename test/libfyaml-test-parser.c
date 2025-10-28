@@ -517,6 +517,375 @@ START_TEST(parser_complex_nested_structure)
 }
 END_TEST
 
+/* Test: Anchor and alias resolution */
+START_TEST(parser_anchor_alias_resolution)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	char *buf;
+	int rc;
+
+	/* Build document with anchor and alias */
+	fyd = fy_document_build_from_string(NULL,
+		"base: &base\n"
+		"  name: this-is-a-name\n"
+		"  value: 42\n"
+		"copy: *base\n",
+		FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* Before resolution, alias should exist */
+	fyn = fy_node_by_path(fy_document_root(fyd), "copy", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert(fy_node_is_alias(fyn));
+
+	/* Resolve the document */
+	rc = fy_document_resolve(fyd);
+	ck_assert_int_eq(rc, 0);
+
+	/* After resolution, we should be able to access through the alias */
+	fyn = fy_node_by_path(fy_document_root(fyd), "copy/name", FY_NT, FYNWF_FOLLOW_ALIASES);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "this-is-a-name");
+
+	/* Emit resolved document */
+	buf = fy_emit_document_to_string(fyd, FYECF_MODE_FLOW_ONELINE);
+	ck_assert_ptr_ne(buf, NULL);
+	free(buf);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: Document insertion at path */
+START_TEST(parser_document_insert_at)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn, *fyn_inserted;
+	int rc;
+
+	/* Create base document */
+	fyd = fy_document_build_from_string(NULL,
+		"base:\n"
+		"  name: original\n",
+		FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* Build a node to insert */
+	fyn = fy_node_build_from_string(fyd, "inserted-value", FY_NT);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	/* Insert at a new path */
+	rc = fy_document_insert_at(fyd, "base/new-key", FY_NT, fyn);
+	ck_assert_int_eq(rc, 0);
+
+	/* Verify insertion */
+	fyn_inserted = fy_node_by_path(fy_document_root(fyd), "base/new-key", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_inserted, NULL);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn_inserted), "inserted-value");
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: Document emit with different flags */
+START_TEST(parser_document_emit_flags)
+{
+	struct fy_document *fyd;
+	char *buf;
+
+	/* Build test document */
+	fyd = fy_document_build_from_string(NULL,
+		"{ z: 1, a: 2, m: 3 }",
+		FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* Emit with default flags */
+	buf = fy_emit_document_to_string(fyd, FYECF_MODE_FLOW_ONELINE);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert(strstr(buf, "z") != NULL);
+	ck_assert(strstr(buf, "a") != NULL);
+	ck_assert(strstr(buf, "m") != NULL);
+	free(buf);
+
+	/* Emit with sorted keys */
+	buf = fy_emit_document_to_string(fyd, FYECF_MODE_FLOW_ONELINE | FYECF_SORT_KEYS);
+	ck_assert_ptr_ne(buf, NULL);
+	/* In sorted output, 'a' should come before 'z' */
+	ck_assert(strstr(buf, "a") < strstr(buf, "z"));
+	ck_assert(strstr(buf, "m") < strstr(buf, "z"));
+	free(buf);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: Multi-document stream parsing */
+START_TEST(parser_multi_document_stream)
+{
+	struct fy_parser fyp_data, *fyp = &fyp_data;
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_DEFAULT_DOC,
+	};
+	struct fy_document *fyd;
+	int count;
+	int rc;
+
+	/* Setup parser */
+	rc = fy_parse_setup(fyp, &cfg);
+	ck_assert_int_eq(rc, 0);
+
+	/* Create multi-document input */
+	const char *yaml_multi =
+		"---\n"
+		"doc: 1\n"
+		"---\n"
+		"doc: 2\n"
+		"---\n"
+		"doc: 3\n";
+
+	/* Add input */
+	struct fy_input_cfg fyic = {
+		.type = fyit_memory,
+		.memory.data = yaml_multi,
+		.memory.size = strlen(yaml_multi),
+	};
+	rc = fy_parse_input_append(fyp, &fyic);
+	ck_assert_int_eq(rc, 0);
+
+	/* Parse all documents */
+	count = 0;
+	while ((fyd = fy_parse_load_document(fyp)) != NULL) {
+		count++;
+
+		/* Verify document content */
+		struct fy_node *fyn = fy_node_by_path(fy_document_root(fyd), "doc", FY_NT, FYNWF_DONT_FOLLOW);
+		ck_assert_ptr_ne(fyn, NULL);
+
+		int doc_num = atoi(fy_node_get_scalar0(fyn));
+		ck_assert_int_eq(doc_num, count);
+
+		fy_parse_document_destroy(fyp, fyd);
+	}
+
+	ck_assert_int_eq(count, 3);
+
+	fy_parse_cleanup(fyp);
+}
+END_TEST
+
+/* Test: Empty document handling */
+START_TEST(parser_empty_document)
+{
+	struct fy_document *fyd;
+	char *buf;
+
+	/* Empty document */
+	fyd = fy_document_build_from_string(NULL, "", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* Should have null root */
+	ck_assert_ptr_eq(fy_document_root(fyd), NULL);
+
+	/* Should emit as empty */
+	buf = fy_emit_document_to_string(fyd, 0);
+	ck_assert_ptr_ne(buf, NULL);
+	free(buf);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: Document with comments (requires FYPCF_PARSE_COMMENTS) */
+START_TEST(parser_document_with_comments)
+{
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_PARSE_COMMENTS,
+	};
+	struct fy_document *fyd;
+
+	/* Build document with comments */
+	fyd = fy_document_build_from_string(&cfg,
+		"# Top comment\n"
+		"key: value # Right comment\n"
+		"# Bottom comment\n",
+		FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* Verify content (comments should be preserved in structure) */
+	struct fy_node *fyn = fy_node_by_path(fy_document_root(fyd), "key", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "value");
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: Sequence append and prepend */
+START_TEST(parser_sequence_append_prepend)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn_seq, *fyn;
+	int rc;
+
+	fyd = fy_document_create(NULL);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* Create sequence */
+	fyn_seq = fy_node_create_sequence(fyd);
+	ck_assert_ptr_ne(fyn_seq, NULL);
+	fy_document_set_root(fyd, fyn_seq);
+
+	/* Append items */
+	fyn = fy_node_create_scalar(fyd, "second", FY_NT);
+	rc = fy_node_sequence_append(fyn_seq, fyn);
+	ck_assert_int_eq(rc, 0);
+
+	/* Prepend item */
+	fyn = fy_node_create_scalar(fyd, "first", FY_NT);
+	rc = fy_node_sequence_prepend(fyn_seq, fyn);
+	ck_assert_int_eq(rc, 0);
+
+	/* Append another */
+	fyn = fy_node_create_scalar(fyd, "third", FY_NT);
+	rc = fy_node_sequence_append(fyn_seq, fyn);
+	ck_assert_int_eq(rc, 0);
+
+	/* Verify order */
+	fyn = fy_node_sequence_get_by_index(fyn_seq, 0);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "first");
+
+	fyn = fy_node_sequence_get_by_index(fyn_seq, 1);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "second");
+
+	fyn = fy_node_sequence_get_by_index(fyn_seq, 2);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "third");
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: Mapping prepend */
+START_TEST(parser_mapping_prepend)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn_map, *fyn_key, *fyn_val;
+	struct fy_node_pair *fynp;
+	int rc;
+
+	fyd = fy_document_create(NULL);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn_map = fy_node_create_mapping(fyd);
+	ck_assert_ptr_ne(fyn_map, NULL);
+	fy_document_set_root(fyd, fyn_map);
+
+	/* Append a pair */
+	fyn_key = fy_node_create_scalar(fyd, "second", FY_NT);
+	fyn_val = fy_node_create_scalar(fyd, "2", FY_NT);
+	rc = fy_node_mapping_append(fyn_map, fyn_key, fyn_val);
+	ck_assert_int_eq(rc, 0);
+
+	/* Prepend a pair */
+	fyn_key = fy_node_create_scalar(fyd, "first", FY_NT);
+	fyn_val = fy_node_create_scalar(fyd, "1", FY_NT);
+	rc = fy_node_mapping_prepend(fyn_map, fyn_key, fyn_val);
+	ck_assert_int_eq(rc, 0);
+
+	/* Verify order */
+	fynp = fy_node_mapping_get_by_index(fyn_map, 0);
+	ck_assert_ptr_ne(fynp, NULL);
+	ck_assert_str_eq(fy_node_get_scalar0(fy_node_pair_key(fynp)), "first");
+
+	fynp = fy_node_mapping_get_by_index(fyn_map, 1);
+	ck_assert_ptr_ne(fynp, NULL);
+	ck_assert_str_eq(fy_node_get_scalar0(fy_node_pair_key(fynp)), "second");
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: Node removal from sequence */
+START_TEST(parser_sequence_remove)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn_seq, *fyn;
+	int rc, count;
+
+	/* Build a sequence */
+	fyd = fy_document_build_from_string(NULL, "[ a, b, c, d ]", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn_seq = fy_document_root(fyd);
+	ck_assert_int_eq(fy_node_sequence_item_count(fyn_seq), 4);
+
+	/* Remove middle element */
+	fyn = fy_node_sequence_get_by_index(fyn_seq, 1);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "b");
+
+	rc = fy_node_sequence_remove(fyn_seq, fyn);
+	ck_assert_int_eq(rc, 0);
+	fy_node_free(fyn);
+
+	/* Verify count and order */
+	count = fy_node_sequence_item_count(fyn_seq);
+	ck_assert_int_eq(count, 3);
+
+	fyn = fy_node_sequence_get_by_index(fyn_seq, 0);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "a");
+
+	fyn = fy_node_sequence_get_by_index(fyn_seq, 1);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "c");
+
+	fyn = fy_node_sequence_get_by_index(fyn_seq, 2);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "d");
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: Node removal from mapping */
+START_TEST(parser_mapping_remove)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn_map, *fyn_key, *fyn_val;
+	int rc, count;
+
+	/* Build a mapping */
+	fyd = fy_document_build_from_string(NULL, "{ a: 1, b: 2, c: 3 }", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn_map = fy_document_root(fyd);
+	ck_assert_int_eq(fy_node_mapping_item_count(fyn_map), 3);
+
+	/* Remove by key */
+	fyn_key = fy_node_build_from_string(fyd, "b", FY_NT);
+	ck_assert_ptr_ne(fyn_key, NULL);
+
+	rc = fy_node_mapping_remove_by_key(fyn_map, fyn_key);
+	ck_assert_int_eq(rc, 0);
+	fy_node_free(fyn_key);
+
+	/* Verify count */
+	count = fy_node_mapping_item_count(fyn_map);
+	ck_assert_int_eq(count, 2);
+
+	/* Verify 'b' is gone */
+	fyn_val = fy_node_mapping_lookup_by_string(fyn_map, "b", FY_NT);
+	ck_assert_ptr_eq(fyn_val, NULL);
+
+	/* Verify others remain */
+	fyn_val = fy_node_mapping_lookup_by_string(fyn_map, "a", FY_NT);
+	ck_assert_ptr_ne(fyn_val, NULL);
+
+	fyn_val = fy_node_mapping_lookup_by_string(fyn_map, "c", FY_NT);
+	ck_assert_ptr_ne(fyn_val, NULL);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 TCase *libfyaml_case_parser(void)
 {
 	TCase *tc;
@@ -526,6 +895,8 @@ TCase *libfyaml_case_parser(void)
 	/* Mapping tests */
 	tcase_add_test(tc, parser_mapping_iterator);
 	tcase_add_test(tc, parser_mapping_key_lookup);
+	tcase_add_test(tc, parser_mapping_prepend);
+	tcase_add_test(tc, parser_mapping_remove);
 
 	/* Path query tests */
 	tcase_add_test(tc, parser_path_queries);
@@ -542,9 +913,21 @@ TCase *libfyaml_case_parser(void)
 
 	/* Sequence tests */
 	tcase_add_test(tc, parser_sequence_negative_index);
+	tcase_add_test(tc, parser_sequence_append_prepend);
+	tcase_add_test(tc, parser_sequence_remove);
 
 	/* Complex structure tests */
 	tcase_add_test(tc, parser_complex_nested_structure);
+
+	/* Anchor/alias tests */
+	tcase_add_test(tc, parser_anchor_alias_resolution);
+
+	/* Document operations */
+	tcase_add_test(tc, parser_document_insert_at);
+	tcase_add_test(tc, parser_document_emit_flags);
+	tcase_add_test(tc, parser_multi_document_stream);
+	tcase_add_test(tc, parser_empty_document);
+	tcase_add_test(tc, parser_document_with_comments);
 
 	return tc;
 }
