@@ -373,7 +373,10 @@ fy_document_builder_process_event(struct fy_document_builder *fydb, struct fy_ev
 				"fy_node_alloc() MAPPING failed");
 
 		c->fyn = fyn;
-		fyn->style = fye->mapping_start.mapping_start->type == FYTT_FLOW_MAPPING_START ? FYNS_FLOW : FYNS_BLOCK;
+		if (fye->mapping_start.mapping_start)
+			fyn->style = fye->mapping_start.mapping_start->type == FYTT_FLOW_MAPPING_START ? FYNS_FLOW : FYNS_BLOCK;
+		else
+			fyn->style = FYNS_ANY;
 		fyn->tag = fy_token_ref(fye->mapping_start.tag);
 		if (fye->mapping_start.anchor) {
 			rc = fy_document_register_anchor(fyd, fyn, fy_token_ref(fye->mapping_start.anchor));
@@ -405,7 +408,10 @@ fy_document_builder_process_event(struct fy_document_builder *fydb, struct fy_ev
 				"fy_node_alloc() SEQUENCE failed");
 
 		c->fyn = fyn;
-		fyn->style = fye->sequence_start.sequence_start->type == FYTT_FLOW_SEQUENCE_START ? FYNS_FLOW : FYNS_BLOCK;
+		if (fye->sequence_start.sequence_start)
+			fyn->style = fye->sequence_start.sequence_start->type == FYTT_FLOW_SEQUENCE_START ? FYNS_FLOW : FYNS_BLOCK;
+		else
+			fyn->style = FYNS_ANY;
 		fyn->tag = fy_token_ref(fye->sequence_start.tag);
 		if (fye->sequence_start.anchor) {
 			rc = fy_document_register_anchor(fyd, fyn, fy_token_ref(fye->sequence_start.anchor));
