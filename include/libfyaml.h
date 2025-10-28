@@ -217,9 +217,8 @@ fy_shutdown(void)
 /**
  * struct fy_tag - The YAML tag structure.
  *
- * @handle: Handle of the tag (i.e. `"!!"` )
- * @prefix: The prefix of the tag (i.e. `"tag:yaml.org,2002:"`
- *
+ * @handle: Handle of the tag (i.e. `"!!"`)
+ * @prefix: The prefix of the tag (i.e. `"tag:yaml.org,2002:"`)
  * The parser fills it according to the \%TAG directives
  * encountered during parsing.
  */
@@ -994,7 +993,7 @@ int fy_parser_set_input_callback(struct fy_parser *fyp, void *user,
 	FY_EXPORT;
 
 /**
- * fy_parser_set_input_db() - Set the parser to process the given file descriptor
+ * fy_parser_set_input_fd() - Set the parser to process the given file descriptor
  *
  * Point the parser to use @fd for processing.
  *
@@ -1234,7 +1233,7 @@ fy_parser_vreport(struct fy_parser *fyp, enum fy_error_type type, struct fy_toke
  * @type: The error type
  * @fyt: The token
  * @fmt: The printf format string
- * @..: The extra arguments
+ * @...: The extra arguments
  */
 void
 fy_parser_report(struct fy_parser *fyp, enum fy_error_type type, struct fy_token *fyt,
@@ -1779,7 +1778,24 @@ fy_node_document(struct fy_node *fyn)
  * @fyewt_single_quoted_scalar_key: Output chunk is an single quoted scalar key
  * @fyewt_double_quoted_scalar_key: Output chunk is an double quoted scalar key
  * @fyewt_comment: Output chunk is a comment
- *
+ * @fyewt_indicator_question_mark: ? indicator
+ * @fyewt_indicator_colon: : indicator
+ * @fyewt_indicator_dash: - indicator
+ * @fyewt_indicator_left_bracket: [ indicator
+ * @fyewt_indicator_right_bracket: ] indicator
+ * @fyewt_indicator_left_brace: { indicator
+ * @fyewt_indicator_right_brace: } indicator
+ * @fyewt_indicator_comma: , indicator
+ * @fyewt_indicator_bar: | indicator
+ * @fyewt_indicator_greater: > indicator
+ * @fyewt_indicator_single_quote_start: ' indicator
+ * @fyewt_indicator_single_quote_end: ' indicator
+ * @fyewt_indicator_double_quote_start: " indicator
+ * @fyewt_indicator_double_quote_end: " indicator
+ * @fyewt_indicator_ambersand: & indicator
+ * @fyewt_indicator_star: * indicator
+ * @fyewt_indicator_chomp: chomp indicator (- or +)
+ * @fyewt_indicator_explicit_indent: explicit indent indicator (0-9)
  */
 enum fy_emitter_write_type {
 	fyewt_document_indicator,
@@ -1802,7 +1818,7 @@ enum fy_emitter_write_type {
 	fyewt_single_quoted_scalar_key,
 	fyewt_double_quoted_scalar_key,
 	fyewt_comment,
-	// extended indicators
+	/* extended indicators */
 	fyewt_indicator_question_mark,
 	fyewt_indicator_colon,
 	fyewt_indicator_dash,
@@ -1819,10 +1835,9 @@ enum fy_emitter_write_type {
 	fyewt_indicator_double_quote_end,
 	fyewt_indicator_ambersand,
 	fyewt_indicator_star,
-	fyewt_indicator_chomp,			// - or +
-	fyewt_indicator_explicit_indent,	// 0-9
+	fyewt_indicator_chomp,
+	fyewt_indicator_explicit_indent,
 };
-
 #define FYEWT_EXTENDED_INDICATORS_FIRST fyewt_indicator_question_mark
 #define FYEWT_EXTENDED_INDICATORS_LAST 	fyewt_indicator_explicit_indent
 
@@ -2035,8 +2050,8 @@ enum fy_emitter_xcfg_flags {
  * @cfg: The standard emitter configuration
  * @xflags: Extra configuration flags
  * @colors: ANSI color overrides for the default output method
- * @output_fp: The output FILE *, FYEXCF_FILE_OUTPUT must be set
- * @output_fd: The output file descriptor, FYEXCF_FD_OUTPUT must be set
+ * @output_fp: The output FILE \*, FYEXCF\_FILE\_OUTPUT must be set
+ * @output_fd: The output file descriptor, FYEXCF\_FD\_OUTPUT must be set
  */
 struct fy_emitter_xcfg {
 	struct fy_emitter_cfg cfg;
@@ -2242,7 +2257,7 @@ fy_emit_eventf(struct fy_emitter *emit, enum fy_event_type type, ...)
  * Queue and output using the emitter a scalar using a standard
  * write interface.
  *
- * @emit: The emitter to use
+ * @fye: The emitter to use
  * @style: The scalar style to use
  * @anchor: The anchor or NULL
  * @tag: The tag or NULL
@@ -2264,7 +2279,7 @@ fy_emit_scalar_write(struct fy_emitter *fye, enum fy_scalar_style style,
  * Queue and output using the emitter a scalar using a standard
  * vprintf interface.
  *
- * @emit: The emitter to use
+ * @fye: The emitter to use
  * @style: The scalar style to use
  * @anchor: The anchor or NULL
  * @tag: The tag or NULL
@@ -2286,7 +2301,7 @@ fy_emit_scalar_vprintf(struct fy_emitter *fye, enum fy_scalar_style style,
  * Queue and output using the emitter a scalar using a standard
  * printf interface.
  *
- * @emit: The emitter to use
+ * @fye: The emitter to use
  * @style: The scalar style to use
  * @anchor: The anchor or NULL
  * @tag: The tag or NULL
@@ -2776,7 +2791,7 @@ fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 	FY_EXPORT;
 
 /**
- * fy_document_delete() - Delete a node from a document
+ * fy_node_delete() - Delete a node from a document
  *
  * Delete the given node.
  * If it's part of a sequence it will be removed from it.
@@ -3287,14 +3302,12 @@ fy_flow_document_build_from_string(const struct fy_parse_cfg *cfg,
  * The document is a block document, and it terminates when indentation
  * appears to do so.
  *
- * Example of block documents:
+ * Example of block documents::
  *
- * this-is-yaml
- *   foo: bar    <- starts here
- *   baz:
- *   - 1
- *   - 2
- * this-is-yaml-no-more
+ *   this-is-yaml
+ *     foo: bar    <- starts here
+ *     baz: [1, 2]
+ *   this-is-yaml-no-more
  *
  * @cfg: The parse configuration to use or NULL for the default.
  * @str: The YAML source to use.
@@ -3703,18 +3716,18 @@ fy_node_buildf(struct fy_document *fyd, const char *fmt, ...)
  * mappings, or indexes in brackets for traversing sequences.
  * Path specs may start with '/' which is silently ignored.
  *
- * A few examples will make this clear
+ * A few examples will make this clear::
  *
- * fyn = { foo: bar } - fy_node_by_path(fyn, "/foo") -> bar
- * fyn = [ foo, bar ] - fy_node_by_path(fyn, "1") -> bar
- * fyn = { { foo: bar }: baz } - fy_node_by_path(fyn, "{foo: bar}") -> baz
- * fyn = [ foo, { bar: baz } } - fy_node_by_path(fyn, "1/bar") -> baz
+ *   fyn = { foo: bar } - fy_node_by_path(fyn, "/foo") -> bar
+ *   fyn = [ foo, bar ] - fy_node_by_path(fyn, "1") -> bar
+ *   fyn = { { foo: bar }: baz } - fy_node_by_path(fyn, "{foo: bar}") -> baz
+ *   fyn = [ foo, { bar: baz } } - fy_node_by_path(fyn, "1/bar") -> baz
  *
  * Note that the special characters /{}[] are not escaped in plain style,
  * so you will not be able to use them as path traversal keys.
- * In that case you can easily use either the single, or double quoted forms:
+ * In that case you can easily use either the single, or double quoted forms::
  *
- * fyn = { foo/bar: baz } - fy_node_by_path(fyn, "'foo/bar'") -> baz
+ *   fyn = { foo/bar: baz } - fy_node_by_path(fyn, "'foo/bar'") -> baz
  *
  * @fyn: The node to use as start of the traversal operation
  * @path: The path spec to use in the traversal operation
@@ -3801,8 +3814,8 @@ fy_node_get_parent_address(struct fy_node *fyn)
 	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_parent_address((_fyn)), FY_NT)
 
 /**
- * fy_node_get_path_relative_to() - Get a path address of a node
- *                                  relative to one of it's parents
+ * fy_node_get_path_relative_to() - Get a path address of a node relative
+ *                                  to one of it's parents
  *
  * Retrieve the given node's path address relative to an arbitrary
  * parent in the tree.
@@ -3823,22 +3836,23 @@ fy_node_get_path_relative_to(struct fy_node *fyn_parent, struct fy_node *fyn)
 	FY_ALLOCA_COPY_FREE_NO_NULL(fy_node_get_path_relative_to((_fynp), (_fyn)), FY_NT)
 
 /**
- * fy_node_get_short_path() - Get a path address of a node in the shortest
- *                            path possible
+ * fy_node_get_short_path() - Get a path address of a node in the shortest path possible
  *
- * Retrieve the given node's short path address relative to the
- * closest anchor (either on this node, or it's parent).
+ * Retrieve the given nodes short path address relative to the
+ * closest anchor (either on this node, or its parent).
  * If no such parent is found then returns the absolute path
  * from the start of the document.
+ *
+ * Example::
  *
  *   --- &foo
  *   foo: &bar
  *       bar
  *   baz
  *
- * - The short path of /foo is \*foo
- * - The short path of /foo/bar is \*bar
- * - The short path of /baz is \*foo/baz
+ *   - The short path of /foo is \*foo
+ *   - The short path of /foo/bar is \*bar
+ *   - The short path of /baz is \*foo/baz
  *
  * The address is dynamically allocated and should be freed when
  * you're done with it.
@@ -6003,7 +6017,7 @@ fy_diag_token_vreport(struct fy_diag *diag, struct fy_token *fyt,
  * document.
  *
  * @diag: The diag object
- * @fyt: The token
+ * @fye: The token
  * @type: The error type
  * @fmt: The printf format string
  * @...: The extra arguments.
@@ -6244,7 +6258,7 @@ fy_diag_event_override_vreport(struct fy_diag *diag, struct fy_event *fye,
  * If either @line or @column is negative no location will be reported.
  *
  * @diag: The diag object
- * @fye: The event
+ * @fyt: The event
  * @fyep: The event part
  * @type: The error type
  * @file: The file override
@@ -6553,64 +6567,64 @@ fy_path_exec_results_iterate(struct fy_path_exec *fypx, void **prevp)
 /**
  * enum fy_token_type - Token types
  *
- * The available token types that the tokenizer produces.
- *
  * @FYTT_NONE: No token
- * @FYTT_STREAM_START: Stream start
- * @FYTT_STREAM_END: Stream end
- * @FYTT_VERSION_DIRECTIVE: Version directive
- * @FYTT_TAG_DIRECTIVE: Tag directive
- * @FYTT_DOCUMENT_START: Document start
- * @FYTT_DOCUMENT_END: Document end
- * @FYTT_BLOCK_SEQUENCE_START: Start of a block sequence
- * @FYTT_BLOCK_MAPPING_START: Start of a block mapping
- * @FYTT_BLOCK_END: End of a block mapping or a sequence
- * @FYTT_FLOW_SEQUENCE_START: Start of a flow sequence
- * @FYTT_FLOW_SEQUENCE_END: End of a flow sequence
- * @FYTT_FLOW_MAPPING_START: Start of a flow mapping
- * @FYTT_FLOW_MAPPING_END: End of a flow mapping
- * @FYTT_BLOCK_ENTRY: A block entry
- * @FYTT_FLOW_ENTRY: A flow entry
- * @FYTT_KEY: A key of a mapping
- * @FYTT_VALUE: A value of a mapping
- * @FYTT_ALIAS: An alias
- * @FYTT_ANCHOR: An anchor
- * @FYTT_TAG: A tag
- * @FYTT_SCALAR: A scalar
- * @FYTT_INPUT_MARKER: Internal input marker token
- * @FYTT_PE_SLASH: A slash
- * @FYTT_PE_ROOT: A root
- * @FYTT_PE_THIS: A this
- * @FYTT_PE_PARENT: A parent
- * @FYTT_PE_MAP_KEY: A map key
- * @FYTT_PE_SEQ_INDEX: A sequence index
- * @FYTT_PE_SEQ_SLICE: A sequence slice
- * @FYTT_PE_SCALAR_FILTER: A scalar filter
- * @FYTT_PE_COLLECTION_FILTER: A collection filter
- * @FYTT_PE_SEQ_FILTER: A sequence filter
- * @FYTT_PE_MAP_FILTER: A mapping filter
- * @FYTT_PE_UNIQUE_FILTER: Filters out duplicates
- * @FYTT_PE_EVERY_CHILD: Every child
- * @FYTT_PE_EVERY_CHILD_R: Every child recursive
- * @FYTT_PE_ALIAS: An alias
- * @FYTT_PE_SIBLING: A sibling marker
- * @FYTT_PE_COMMA: A comma
- * @FYTT_PE_BARBAR: A ||
- * @FYTT_PE_AMPAMP: A &&
- * @FYTT_PE_LPAREN: A left parenthesis
- * @FYTT_PE_RPAREN: A right parenthesis
- * @FYTT_PE_EQEQ: Equality operator
- * @FYTT_PE_NOTEQ: Non-equality operator
- * @FYTT_PE_LT: Less than operator
- * @FYTT_PE_GT: Greater than operator
- * @FYTT_PE_LTE: Less or equal than operator
- * @FYTT_PE_GTE: Greater or equal than operator
- * @FYTT_SE_PLUS: Plus operator
- * @FYTT_SE_MINUS: Minus operator
- * @FYTT_SE_MULT: Multiply operator
- * @FYTT_SE_DIV: Divide operator
- * @FYTT_PE_METHOD: Path expression method (chained)
- * @FYTT_SE_METHOD: Scalar expression method (non chained)
+ * @FYTT_STREAM_START: Stream start token
+ * @FYTT_STREAM_END: Stream end token
+ * @FYTT_VERSION_DIRECTIVE: Version directive token
+ * @FYTT_TAG_DIRECTIVE: Tag directive token
+ * @FYTT_DOCUMENT_START: Document start token
+ * @FYTT_DOCUMENT_END: Document end token
+ * @FYTT_BLOCK_SEQUENCE_START: Block sequence start token
+ * @FYTT_BLOCK_MAPPING_START: Block mapping start token
+ * @FYTT_BLOCK_END: Block end token
+ * @FYTT_FLOW_SEQUENCE_START: Flow sequence start token
+ * @FYTT_FLOW_SEQUENCE_END: Flow sequence end token
+ * @FYTT_FLOW_MAPPING_START: Flow mapping start token
+ * @FYTT_FLOW_MAPPING_END: Flow mapping end token
+ * @FYTT_BLOCK_ENTRY: Block entry token
+ * @FYTT_FLOW_ENTRY: Flow entry token
+ * @FYTT_KEY: Key token
+ * @FYTT_VALUE: Value token
+ * @FYTT_ALIAS: Alias token
+ * @FYTT_ANCHOR: Anchor token
+ * @FYTT_TAG: Tag token
+ * @FYTT_SCALAR: Scalar token
+ * @FYTT_INPUT_MARKER: Input marker token
+ * @FYTT_PE_SLASH: Path expression slash token
+ * @FYTT_PE_ROOT: Path expression root token
+ * @FYTT_PE_THIS: Path expression this token
+ * @FYTT_PE_PARENT: Path expression parent token
+ * @FYTT_PE_MAP_KEY: Path expression map key token
+ * @FYTT_PE_SEQ_INDEX: Path expression sequence index token
+ * @FYTT_PE_SEQ_SLICE: Path expression sequence slice token
+ * @FYTT_PE_SCALAR_FILTER: Path expression scalar filter token
+ * @FYTT_PE_COLLECTION_FILTER: Path expression collection filter token
+ * @FYTT_PE_SEQ_FILTER: Path expression sequence filter token
+ * @FYTT_PE_MAP_FILTER: Path expression map filter token
+ * @FYTT_PE_UNIQUE_FILTER: Path expression unique filter token
+ * @FYTT_PE_EVERY_CHILD: Path expression every child token
+ * @FYTT_PE_EVERY_CHILD_R: Path expression every child recursive token
+ * @FYTT_PE_ALIAS: Path expression alias token
+ * @FYTT_PE_SIBLING: Path expression sibling token
+ * @FYTT_PE_COMMA: Path expression comma token
+ * @FYTT_PE_BARBAR: Path expression || token
+ * @FYTT_PE_AMPAMP: Path expression && token
+ * @FYTT_PE_LPAREN: Path expression ( token
+ * @FYTT_PE_RPAREN: Path expression ) token
+ * @FYTT_PE_EQEQ: Path expression == token
+ * @FYTT_PE_NOTEQ: Path expression != token
+ * @FYTT_PE_LT: Path expression < token
+ * @FYTT_PE_GT: Path expression > token
+ * @FYTT_PE_LTE: Path expression <= token
+ * @FYTT_PE_GTE: Path expression >= token
+ * @FYTT_SE_PLUS: Scalar expression + token
+ * @FYTT_SE_MINUS: Scalar expression - token
+ * @FYTT_SE_MULT: Scalar expression \* token
+ * @FYTT_SE_DIV: Scalar expression / token
+ * @FYTT_PE_METHOD: Path expression method token
+ * @FYTT_SE_METHOD: Scalar expression method token
+ * @FYTT_PE_BANG: Path expression ! token
+ * @FYTT_PE_AT: Path expression \@ token
  */
 enum fy_token_type {
 	/* non-content token types */
@@ -6665,12 +6679,12 @@ enum fy_token_type {
 	FYTT_PE_RPAREN,
 
 	/* comparison operators */
-	FYTT_PE_EQEQ,		/* == */
-	FYTT_PE_NOTEQ,		/* != */
-	FYTT_PE_LT,		/* <  */
-	FYTT_PE_GT,		/* >  */
-	FYTT_PE_LTE,		/* <= */
-	FYTT_PE_GTE,		/* >= */
+	FYTT_PE_EQEQ,
+	FYTT_PE_NOTEQ,
+	FYTT_PE_LT,
+	FYTT_PE_GT,
+	FYTT_PE_LTE,
+	FYTT_PE_GTE,
 
 	/* scalar expression tokens */
 	FYTT_SE_PLUS,
@@ -6678,11 +6692,11 @@ enum fy_token_type {
 	FYTT_SE_MULT,
 	FYTT_SE_DIV,
 
-	FYTT_PE_METHOD,		/* path expr method (chained) */
-	FYTT_SE_METHOD,		/* scalar expr method (non chained) */
+	FYTT_PE_METHOD,
+	FYTT_SE_METHOD,
 
-	FYTT_PE_BANG,		/* ! */
-	FYTT_PE_AT,		/* @ */
+	FYTT_PE_BANG,
+	FYTT_PE_AT,
 };
 
 /* The number of token types available */
@@ -8069,7 +8083,7 @@ fy_path_component_set_sequence_user_data(struct fy_path_component *fypc, void *d
 /**
  * fy_path_get_parent_user_data() - Return the userdata of the parent collection
  *
- * @fypp: The path
+ * @path: The path
  *
  * Returns:
  * The user data associated with the parent collection of the path, or NULL if no path
@@ -8083,7 +8097,7 @@ fy_path_get_parent_user_data(struct fy_path *path)
  *
  * Note, no error condition if not a path
  *
- * @fypp: The path
+ * @path: The path
  * @data: The data to set as parent collection data
  */
 void
@@ -8093,7 +8107,7 @@ fy_path_set_parent_user_data(struct fy_path *path, void *data)
 /**
  * fy_path_get_last_user_data() - Return the userdata of the last collection
  *
- * @fypp: The path
+ * @path: The path
  *
  * Returns:
  * The user data associated with the last collection of the path, or NULL if no path
@@ -8107,7 +8121,7 @@ fy_path_get_last_user_data(struct fy_path *path)
  *
  * Note, no error condition if not a path
  *
- * @fypp: The path
+ * @path: The path
  * @data: The data to set as last collection data
  */
 void
@@ -8320,8 +8334,9 @@ fy_composer_get_next_path(struct fy_composer *fyc, struct fy_path *fypp)
  *
  * These flags control the operation of the document iterator
  *
- * @FYDICF_WANTS_STREAM_EVENTS: Generate stream start/stream end events
- * @FYDICF_WANTS_DOCUMENT_EVENTS: Generate stream start/stream end events
+ * @FYDICF_WANT_BODY_EVENTS: Generate body events
+ * @FYDICF_WANT_DOCUMENT_BODY_EVENTS: Generate document and body events
+ * @FYDICF_WANT_STREAM_DOCUMENT_BODY_EVENTS: Generate stream, document and body events
  */
 enum fy_document_iterator_cfg_flags {
 	FYDICF_WANT_BODY_EVENTS			= FYDICF_WANT(0),
@@ -8578,7 +8593,7 @@ fy_document_iterator_get_error(struct fy_document_iterator *fydi)
  *
  * Argument to the fy_document_builder_create() method
  *
- * @parser_cfg: Parser configuration
+ * @parse_cfg: Parser configuration
  * @userdata: Opaque user data pointer
  * @diag: Optional diagnostic interface to use
  */
@@ -8750,6 +8765,11 @@ fy_document_builder_set_in_stream(struct fy_document_builder *fydb)
  * Set the document builders state to in 'document'
  *
  * @fydb: The document builder
+ * @fyds: The document state
+ * @single: Single document mode
+ *
+ * Returns:
+ * 0 on success, -1 on error
  */
 int
 fy_document_builder_set_in_document(struct fy_document_builder *fydb, struct fy_document_state *fyds, bool single)
@@ -9062,7 +9082,7 @@ fy_thread_work_join(struct fy_thread_pool *tp,
  */
 void
 fy_thread_args_join(struct fy_thread_pool *tp,
-		    fy_work_exec_fn, fy_work_check_fn check_fn,
+		    fy_work_exec_fn fn, fy_work_check_fn check_fn,
 		    void **args, size_t count)
 	FY_EXPORT;
 
