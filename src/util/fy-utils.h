@@ -19,6 +19,8 @@
 #include <unistd.h>
 #include <termios.h>
 #include <stdint.h>
+#include <assert.h>
+#include <stdlib.h>
 
 /* to avoid dragging in libfyaml.h */
 #ifndef FY_BIT
@@ -90,6 +92,13 @@ int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info);
 #if defined(FY_DESTRUCTOR) && defined(NDEBUG)
 #define FY_DESTRUCTOR_SHOW_LEFTOVERS
 #endif
+
+/* something impossible is happening, assert/abort */
+#define FY_IMPOSSIBLE_ABORT() \
+	do { \
+		assert(0); \
+		abort(); \
+	} while(0)
 
 static inline void *fy_ptr_align(void *p, size_t align)
 {
