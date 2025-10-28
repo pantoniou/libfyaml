@@ -49,7 +49,7 @@ int fy_parse_input_append(struct fy_parser *fyp, const struct fy_input_cfg *fyic
 	struct fy_input *fyi = NULL;
 
 	fyi = fy_input_create(fyic);
-	fyp_error_check(fyp, fyp != NULL, err_out,
+	fyp_error_check(fyp, fyi != NULL, err_out,
 			"fy_parse_input_create() failed!");
 
 	fyi->state = FYIS_QUEUED;
@@ -535,10 +535,10 @@ int fy_check_document_version(struct fy_parser *fyp)
 	/* we only support YAML version 1.x */
 	if (major == 1) {
 		/* 1.1 is supported without warnings */
-		if (minor == 1)
+		if (minor == 1 || minor == 2)
 			goto ok;
 
-		if (minor == 2 || minor == 3)
+		if (minor == 3)
 			goto experimental;
 	}
 
@@ -855,6 +855,8 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 	struct fy_input *fyi, *fyin;
 	struct fy_eventp *fyep;
 	struct fy_token *fyt;
+
+	fy_parse_eventp_recycle(fyp, fyp->fyep_peek);
 
 	fy_parse_streaming_aliases_reset(fyp);
 
@@ -5705,10 +5707,17 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 	fy_token_list_init(&tag_directives);
 
 	/* are we done? */
-	if (fyp->stream_error || fyp->state == FYPS_END)
+	if (fyp->stream_error || fyp->state == FYPS_END) {
+		fy_parser_debug(fyp, "%s: NULL: fyp->stream_error=%s fyp->state=%s", __func__,
+			fyp->stream_error ? "true" : "false", state_txt[fyp->state]);
 		return NULL;
+	}
 
 	fyt = fy_scan_peek(fyp);
+#ifdef FY_DEVMODE
+	fy_parser_debug(fyp, "[%s]", state_txt[fyp->state]);
+	fyp_debug_dump_token(fyp, fyt, "scan_peek: ");
+#endif
 
 	if (!fyt && fy_reader_generates_events(fyp->reader)) {
 		fye = fy_reader_generate_next_event(fyp->reader);
@@ -5717,14 +5726,17 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fyp_error_check(fyp, !rc, err_out,
 					"fy_parse_input_done() failed");
 
+			fy_parser_debug(fyp, "%s: NULL: !fyt && fy_reader_generates_events(fyp->reader)", __func__);
 			return NULL;
 		}
 		return container_of(fye, struct fy_eventp, e);
 	}
 
 	/* special case without an error message for start */
-	if (!fyt && fyp->state == FYPS_NONE)
+	if (!fyt && fyp->state == FYPS_NONE) {
+		fy_parser_debug(fyp, "%s: NULL: !fyt && fyp->state==FYPS_NONE", __func__);
 		return NULL;
+	}
 
 	/* keep a copy of stream end */
 	if (fyt && fyt->type == FYTT_STREAM_END && !fyp->stream_end_token) {
@@ -6635,6 +6647,8 @@ err_out:
 	fy_token_list_unref_all_rl(fyp->recycled_token_list, &tag_directives);
 	fy_parse_eventp_recycle(fyp, fyep);
 	fyp->stream_error = true;
+
+	fy_parser_debug(fyp, "%s: NULL: stream_error=true", __func__);
 	return NULL;
 }
 
@@ -6659,12 +6673,248 @@ const char *fy_event_type_get_text(enum fy_event_type type)
 	return fy_event_type_txt[type];
 }
 
+#ifndef NDEBUG
+
+static void fy_parse_dump_eventp(struct fy_parser *fyp, struct fy_eventp *fyep, const char *pfx)
+{
+	struct fy_event *fye = NULL;
+	FILE *fp;
+	char *mbuf = NULL;
+	const char *anchor = NULL;
+	const char *tag = NULL;
+	const char *text = NULL;
+	const char *alias = NULL;
+	size_t msize, anchor_len = 0, tag_len = 0, text_len = 0, alias_len = 0;
+	enum fy_scalar_style style;
+	const uint8_t *p;
+	int i, c, w;
+
+	/* perform the enable tests early to avoid the overhead */
+	if ((FYET_DEBUG >> FYDF_LEVEL_SHIFT) < fyp->diag->cfg.level)
+		return;
+
+	fp = open_memstream(&mbuf, &msize);
+	if (!fp)
+		return;
+
+	if (!fyep) {
+		fprintf(fp, "<NULL>");
+		goto out;
+	}
+	fye = &fyep->e;
+
+	/* event type */
+	switch (fye->type) {
+	case FYET_NONE:
+		fprintf(fp, "???");
+		break;
+	case FYET_STREAM_START:
+		fprintf(fp, "+STR");
+		break;
+	case FYET_STREAM_END:
+		fprintf(fp, "-STR");
+		break;
+	case FYET_DOCUMENT_START:
+		fprintf(fp, "+DOC");
+		break;
+	case FYET_DOCUMENT_END:
+		fprintf(fp, "-DOC");
+		break;
+	case FYET_MAPPING_START:
+		fprintf(fp, "+MAP");
+		if (fye->mapping_start.anchor)
+			anchor = fy_token_get_text(fye->mapping_start.anchor, &anchor_len);
+		if (fye->mapping_start.tag)
+			tag = fy_token_get_text(fye->mapping_start.tag, &tag_len);
+		if (fy_event_get_node_style(fye) == FYNS_FLOW)
+			fprintf(fp, " {}");
+		break;
+	case FYET_MAPPING_END:
+		fprintf(fp, "-MAP");
+		break;
+	case FYET_SEQUENCE_START:
+		fprintf(fp, "+SEQ");
+		if (fye->sequence_start.anchor)
+			anchor = fy_token_get_text(fye->sequence_start.anchor, &anchor_len);
+		if (fye->sequence_start.tag)
+			tag = fy_token_get_text(fye->sequence_start.tag, &tag_len);
+		if (fy_event_get_node_style(fye) == FYNS_FLOW)
+			fprintf(fp, " []");
+		break;
+	case FYET_SEQUENCE_END:
+		fprintf(fp, "-SEQ");
+		break;
+	case FYET_SCALAR:
+		fprintf(fp, "=VAL");
+		if (fye->scalar.anchor)
+			anchor = fy_token_get_text(fye->scalar.anchor, &anchor_len);
+		if (fye->scalar.tag)
+			tag = fy_token_get_text(fye->scalar.tag, &tag_len);
+		break;
+	case FYET_ALIAS:
+		fprintf(fp, "=ALI");
+		break;
+	default:
+		break;
+	}
+
+	/* (position) anchor and tag */
+	if (anchor)
+		fprintf(fp, " &%.*s", (int)anchor_len, anchor);
+	if (tag)
+		fprintf(fp, " <%.*s>", (int)tag_len, tag);
+
+	/* style hint */
+	switch (fye->type) {
+	default:
+		break;
+	case FYET_DOCUMENT_START:
+		if (!fy_document_event_is_implicit(fye))
+			fprintf(fp, " ---");
+		break;
+	case FYET_DOCUMENT_END:
+		if (!fy_document_event_is_implicit(fye))
+			fprintf(fp, " ...");
+		break;
+	case FYET_MAPPING_START:
+		break;
+	case FYET_SEQUENCE_START:
+		break;
+	case FYET_SCALAR:
+		style = fy_token_scalar_style(fye->scalar.value);
+		switch (style) {
+		case FYSS_PLAIN:
+			fprintf(fp, " :");
+			break;
+		case FYSS_SINGLE_QUOTED:
+			fprintf(fp, " '");
+			break;
+		case FYSS_DOUBLE_QUOTED:
+			fprintf(fp, "\"");
+			break;
+		case FYSS_LITERAL:
+			fprintf(fp, " |");
+			break;
+		case FYSS_FOLDED:
+			fprintf(fp, " >");
+			break;
+		default:
+			break;
+		}
+		break;
+	case FYET_ALIAS:
+		break;
+	}
+
+	/* content */
+	switch (fye->type) {
+	default:
+		break;
+	case FYET_SCALAR:
+		text = fy_token_get_text(fye->scalar.value, &text_len);
+		for (p = (const uint8_t *)text; text_len > 0; p += w, text_len -= (size_t)w) {
+
+			/* get width from the first octet */
+			w = (p[0] & 0x80) == 0x00 ? 1 :
+			    (p[0] & 0xe0) == 0xc0 ? 2 :
+			    (p[0] & 0xf0) == 0xe0 ? 3 :
+			    (p[0] & 0xf8) == 0xf0 ? 4 : 0;
+
+			/* error, clip it */
+			if ((size_t)w > text_len)
+				break;
+
+			/* initial value */
+			c = p[0] & (0xff >> w);
+			for (i = 1; i < w; i++) {
+				if ((p[i] & 0xc0) != 0x80)
+					break;
+				c = (c << 6) | (p[i] & 0x3f);
+			}
+
+			/* check for validity */
+			if ((w == 4 && c < 0x10000) ||
+			    (w == 3 && c <   0x800) ||
+			    (w == 2 && c <    0x80) ||
+			    (c >= 0xd800 && c <= 0xdfff) || c >= 0x110000)
+				break;
+
+			switch (c) {
+			case '\\':
+				fprintf(fp, "\\\\");
+				break;
+			case '\0':
+				fprintf(fp, "\\0");
+				break;
+			case '\b':
+				fprintf(fp, "\\b");
+				break;
+			case '\f':
+				fprintf(fp, "\\f");
+				break;
+			case '\n':
+				fprintf(fp, "\\n");
+				break;
+			case '\r':
+				fprintf(fp, "\\r");
+				break;
+			case '\t':
+				fprintf(fp, "\\t");
+				break;
+			case '\a':
+				fprintf(fp, "\\a");
+				break;
+			case '\v':
+				fprintf(fp, "\\v");
+				break;
+			case '\e':
+				fprintf(fp, "\\e");
+				break;
+			case 0x85:
+				fprintf(fp, "\\N");
+				break;
+			case 0xa0:
+				fprintf(fp, "\\_");
+				break;
+			case 0x2028:
+				fprintf(fp, "\\L");
+				break;
+			case 0x2029:
+				fprintf(fp, "\\P");
+				break;
+			default:
+				if ((c >= 0x01 && c <= 0x1f) || c == 0x7f ||	/* C0 */
+				    (c >= 0x80 && c <= 0x9f))			/* C1 */
+					fprintf(fp, "\\x%02x", c);
+				else
+					fprintf(fp, "%.*s", w, p);
+				break;
+			}
+		}
+		break;
+	case FYET_ALIAS:
+		alias = fy_token_get_text(fye->alias.anchor, &alias_len);
+		fprintf(fp, " %s%.*s", "*", (int)alias_len, alias);
+		break;
+	}
+
+out:
+	fclose(fp);
+	fyp_parse_debug(fyp, "%s%s", pfx, mbuf);
+	free(mbuf);
+}
+
+#else
+static inline void
+fy_parse_dump_eventp(struct fy_parser *fyp, struct fy_eventp *fyep, const char *pfx) { }
+#endif
+
 struct fy_eventp *fy_parse_private(struct fy_parser *fyp)
 {
 	struct fy_eventp *fyep = NULL;
 
 	fyep = fy_parse_internal(fyp);
-	fyp_parse_debug(fyp, "> %s", fyep ? fy_event_type_txt[fyep->e.type] : "NULL");
+	fy_parse_dump_eventp(fyp, fyep, "gen> ");
 
 	return fyep;
 }
@@ -7055,6 +7305,13 @@ struct fy_event *fy_parser_parse(struct fy_parser *fyp)
 	if (!fyp)
 		return NULL;
 
+	if (fyp->fyep_peek) {
+		fyep = fyp->fyep_peek;
+		fyp->fyep_peek = NULL;
+		fy_parse_dump_eventp(fyp, fyep, "peek> ");
+		return &fyep->e;
+	}
+
 	if ((fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT) && fy_reader_get_mode(fyp->reader) != fyrm_json) {
 		fyep = fy_parser_parse_resolve_prolog(fyp);
 		if (fyep)
@@ -7084,6 +7341,95 @@ struct fy_event *fy_parser_parse(struct fy_parser *fyp)
 	}
 
 	return &fyep->e;
+}
+
+const struct fy_event *fy_parser_parse_peek(struct fy_parser *fyp)
+{
+	struct fy_event *fye;
+
+	if (!fyp->fyep_peek) {
+		fye = fy_parser_parse(fyp);
+		if (!fye)
+			return NULL;
+
+		fyp->fyep_peek = container_of(fye, struct fy_eventp, e);
+	}
+	return &fyp->fyep_peek->e;
+}
+
+int fy_parser_skip(struct fy_parser *fyp)
+{
+	struct fy_event *fye = 0;
+	enum fy_event_type start_type, end_type;
+	int nest, map_nest, seq_nest;
+
+	/* check that we start on a scalar/seq/map */
+	fye = fy_parser_parse(fyp);
+	if (!fye)
+		goto err_out;
+
+	start_type = fye->type;
+	fy_parser_event_free(fyp, fye);
+	fye = NULL;
+
+	if (start_type == FYET_SCALAR)
+		return 0;
+
+	map_nest = 0;
+	seq_nest = 0;
+	if (start_type == FYET_SEQUENCE_START) {
+		end_type = FYET_SEQUENCE_END;
+		seq_nest = 1;
+	} else if (start_type == FYET_MAPPING_START) {
+		end_type = FYET_MAPPING_END;
+		map_nest = 1;
+	} else
+		goto err_out;
+
+	nest = 1;
+	do {
+		fye = fy_parser_parse(fyp);
+		if (!fye)
+			goto err_out;
+
+		switch (fye->type) {
+		case FYET_SEQUENCE_START:
+			seq_nest++;
+			break;
+		case FYET_MAPPING_START:
+			map_nest++;
+			break;
+		case FYET_SEQUENCE_END:
+			seq_nest--;
+			break;
+		case FYET_MAPPING_END:
+			map_nest--;
+			break;
+		default:
+			break;
+		}
+
+		if (fye->type == start_type)
+			nest++;
+		else if (fye->type == end_type)
+			nest--;
+
+		if (map_nest < 0 || seq_nest < 0) {
+			fy_event_report(fyp, fye, FYEP_VALUE, FYET_ERROR,
+					"unbalanced collection while skipping");
+			goto err_out;
+		}
+
+		fy_parser_event_free(fyp, fye);
+		fye = NULL;
+
+	} while (nest > 0);
+
+	return 0;
+
+err_out:
+	fy_parser_event_free(fyp, fye);
+	return -1;
 }
 
 bool fy_parser_get_stream_error(struct fy_parser *fyp)
@@ -7117,7 +7463,7 @@ parse_process_event(struct fy_composer *fyc, struct fy_path *path, struct fy_eve
 	return fyp->fyc_cb(fyp, fye, path, fyp->fyc_userdata);
 }
 
-struct fy_document_builder *
+static struct fy_document_builder *
 parse_create_document_builder(struct fy_composer *fyc)
 {
 	struct fy_parser *fyp = fy_composer_get_cfg_userdata(fyc);
@@ -8156,4 +8502,537 @@ struct fy_eventp *fy_parser_parse_resolve_epilog(struct fy_parser *fyp, struct f
 		fyp->stream_error = true;
 
 	return fyep;
+}
+
+struct fy_parser_checkpoint *fy_parser_checkpoint_create(struct fy_parser *fyp)
+{
+	struct fy_parser_checkpoint *fypchk = NULL;
+	struct fy_parser *fypc = NULL;
+	struct fy_reader *fyr, *fyrc;
+	struct fy_streaming_alias *fysa, *fysac;
+	struct fy_eventp *fyep, *fyepc;
+	struct fy_indent *fyit, *fyitc;
+	struct fy_simple_key *fysk, *fyskc;
+	struct fy_parse_state_log *fypsl, *fypslc;
+	struct fy_flow *fyf, *fyfc;
+	struct fy_token *fyt;
+	struct fy_input *fyi;
+	int i;
+
+	/* must be a parser, in a document and not a checkpoint of one,
+	 * with no composer or builder, neither in a merge key state */
+	if (!fyp || /* fyp->state != FYPS_DOCUMENT_CONTENT || */
+	    fyp->is_checkpoint || fyp->fydb || fyp->fyc ||
+	    fyp->mks.active) {
+		fyp_parse_debug(fyp, "cannot take checkpoint at this state");
+		return NULL;
+	}
+
+	/* no queued inputs */
+	if (!fy_input_list_empty(&fyp->queued_inputs))
+		return NULL;
+
+	fyp_parse_debug(fyp, "taking checkpoint");
+
+	fypchk = malloc(sizeof(*fypchk));
+	fyp_error_check(fyp, fypchk != NULL, err_out,
+			"fy_parse_input_create() failed!");
+	memset(fypchk, 0, sizeof(*fypchk));
+	fypc = &fypchk->fyp_checkpoint;
+
+	/* copy everything over and then fill out the pointer */
+	*fypc = *fyp;
+
+	fypc->is_checkpoint = true;	/* mark it as a checkpoint */
+
+	/* all recycled lists are initialized */
+	fy_indent_list_init(&fypc->recycled_indent);
+	fy_parse_state_log_list_init(&fypc->recycled_parse_state_log);
+	fy_eventp_list_init(&fypc->recycled_eventp);
+	fy_token_list_init(&fypc->recycled_token);
+	fy_flow_list_init(&fypc->flow_stack);
+	fy_flow_list_init(&fypc->recycled_flow);
+	fy_streaming_alias_list_init(&fypc->recycled_streaming_alias);
+	fy_simple_key_list_init(&fypc->recycled_simple_key);
+	fy_eventp_list_init(&fypc->mks.args);
+	fypc->recycled_eventp_list = NULL;
+	fypc->recycled_token_list = NULL;
+
+	fy_input_list_init(&fypc->queued_inputs);
+	fypc->stream_end_token = fy_token_ref(fyp->stream_end_token);
+
+	fypc->last_comment.fyi = fy_input_ref(fyp->last_comment.fyi);
+	fypc->current_document_state = fy_document_state_ref(fyp->current_document_state);
+	fypc->default_document_state = fy_document_state_ref(fyp->default_document_state);
+	fypc->next_single_document = fyp->next_single_document;
+	fypc->diag = NULL;
+	fypc->last_event_handle.fyi = fy_input_ref(fyp->last_event_handle.fyi);
+
+	if (fyp->fyep_peek) {
+		fypc->fyep_peek = fy_parse_eventp_clone(fyp, fyp->fyep_peek, false);
+		fyp_parse_debug(fyp, "checkpoint has a peeked event");
+	}
+
+	/* copy the current state of the reader to the builtin reader space */
+	fyr = fyp->reader;
+	assert(fyr);
+	fyrc = &fypc->builtin_reader;
+	fypc->reader = fyrc;
+
+	*fyrc = *fyr;
+	fyrc->current_input = fy_input_ref(fyr->current_input);
+	assert(fyrc->current_input);
+	fyrc->diag = NULL;	/* no diag */
+
+	/* copy the streaming alias list */
+	if (fyp->sas.stack) {
+		fyp_parse_debug(fyp, "checkpoint has a streaming alias list");
+		if (fyp->sas.alloc <= (int)ARRAY_SIZE(fyp->sas.local))
+			fypc->sas.stack = fypc->sas.local;
+		else {
+			fypc->sas.stack = malloc(sizeof(*fyp->sas.stack) * fyp->sas.alloc);
+			assert(fypc->sas.stack);
+			memcpy(fypc->sas.stack, fyp->sas.stack, sizeof(*fyp->sas.stack) * fyp->sas.top);
+		}
+	}
+
+	fy_streaming_alias_list_init(&fypc->streaming_aliases);
+	for (fysa = fy_streaming_alias_list_head(&fyp->streaming_aliases); fysa != NULL;
+	     fysa = fy_streaming_alias_next(&fyp->streaming_aliases, fysa)) {
+
+		fysac = fy_parse_streaming_alias_create(fyp, NULL);
+		assert(fysac);
+		fysac->anchor = fy_token_ref(fysa->anchor);
+		for (fyep = fy_eventp_list_head(&fysa->events); fyep;
+		     fyep = fy_eventp_next(&fysa->events, fyep)) {
+
+			fyepc = fy_parse_eventp_clone(fyp, fyep, false);
+			assert(fyepc);
+			fy_eventp_list_add_tail(&fysac->events, fyepc);
+
+			/* scan stack and replace pointers */
+			for (i = 0; i < fypc->sas.top; i++) {
+				if (fypc->sas.stack[i].fysa == fysa)
+					fypc->sas.stack[i].fysa = fysac;
+				if (fypc->sas.stack[i].next == fyep)
+					fypc->sas.stack[i].next = fyepc;
+			}
+		}
+	}
+
+	if (fyp->cts.stack) {
+		fyp_parse_debug(fyp, "checkpoint has a cts stack");
+		if (fyp->cts.alloc <= (int)ARRAY_SIZE(fyp->cts.local))
+			fypc->cts.stack = fypc->cts.local;
+		else {
+			fypc->cts.stack = malloc(sizeof(*fyp->cts.stack) * fyp->cts.alloc);
+			assert(fypc->cts.stack);
+			memcpy(fypc->cts.stack, fyp->cts.stack, sizeof(*fyp->cts.stack) * fyp->cts.top);
+		}
+	}
+
+	/* copy all remaining lists */
+	fy_indent_list_init(&fypc->indent_stack);
+	for (fyit = fy_indent_list_head(&fyp->indent_stack); fyit != NULL;
+	     fyit = fy_indent_next(&fyp->indent_stack, fyit)) {
+
+		fyitc = fy_parse_indent_alloc(fyp);
+		assert(fyitc);
+
+		*fyitc = *fyit;
+
+		fy_indent_list_add_tail(&fypc->indent_stack, fyitc);
+	}
+
+	fy_parse_state_log_list_init(&fypc->state_stack);
+	for (fypsl = fy_parse_state_log_list_head(&fyp->state_stack); fypsl != NULL;
+	     fypsl = fy_parse_state_log_next(&fyp->state_stack, fypsl)) {
+
+		fypslc = fy_parse_parse_state_log_alloc(fyp);
+		assert(fypslc);
+
+		fypslc->state = fypsl->state;
+
+		fyp_parse_debug(fyp, "checkpoint saving parse_state %s\n", state_txt[fypslc->state]);
+
+		fy_parse_state_log_list_add_tail(&fypc->state_stack, fypslc);
+	}
+
+	/* queued tokens and simple keys are 'special' */
+	fy_token_list_init(&fypc->queued_tokens);
+	/* count, and take refs */
+	for (fyt = fy_token_list_head(&fyp->queued_tokens), i = 0; fyt != NULL;
+	     fyt = fy_token_next(&fyp->queued_tokens, fyt), i++) { }
+	fypchk->queued_token_count = i;
+	fypchk->queued_tokens = malloc(i * sizeof(*fypchk->queued_tokens));
+	assert(fypchk->queued_tokens);
+	for (fyt = fy_token_list_head(&fyp->queued_tokens), i = 0; fyt != NULL;
+	     fyt = fy_token_next(&fyp->queued_tokens, fyt), i++) {
+		fypchk->queued_tokens[i] = fy_token_ref(fyt);
+	}
+	fyp_parse_debug(fyp, "checkpoint has #%d queued tokens", fypchk->queued_token_count);
+
+	fy_simple_key_list_init(&fypc->simple_keys);
+
+	if (!fy_simple_key_list_empty(&fyp->simple_keys))
+		fyp_parse_debug(fyp, "checkpoint has pending simple keys");
+
+	for (fysk = fy_simple_key_list_head(&fyp->simple_keys); fysk != NULL;
+	     fysk = fy_simple_key_next(&fyp->simple_keys, fysk)) {
+
+		fyskc = fy_parse_simple_key_alloc(fyp);
+		assert(fyskc);
+
+		*fyskc = *fysk;
+		fyskc->token = fy_token_ref(fysk->token);
+
+		fy_simple_key_list_add_tail(&fypc->simple_keys, fyskc);
+	}
+
+	fy_input_list_init(&fypc->queued_inputs);
+	/* count, and take refs */
+	for (fyi = fy_input_list_head(&fyp->queued_inputs), i = 0; fyi != NULL;
+	     fyi = fy_input_next(&fyp->queued_inputs, fyi), i++) { }
+	fypchk->queued_input_count = i;
+	fypchk->queued_inputs = malloc(i * sizeof(*fypchk->queued_inputs));
+	assert(fypchk->queued_inputs);
+	for (fyi = fy_input_list_head(&fyp->queued_inputs), i = 0; fyi != NULL;
+	     fyi = fy_input_next(&fyp->queued_inputs, fyi), i++) {
+		fypchk->queued_inputs[i] = fy_input_ref(fyi);
+	}
+
+	fyp_parse_debug(fyp, "checkpoint flow_level=%d", fypc->flow_level);
+	fypc->flow = fyp->flow;
+	if (!fy_flow_list_empty(&fyp->flow_stack))
+		fyp_parse_debug(fyp, "checkpoint has flow state");
+
+	for (fyf = fy_flow_list_head(&fyp->flow_stack); fyf != NULL;
+	     fyf = fy_flow_next(&fyp->flow_stack, fyf)) {
+
+		fyfc = fy_parse_flow_alloc(fyp);
+		assert(fyfc);
+
+		*fyfc = *fyf;
+
+		fy_flow_list_add_tail(&fypc->flow_stack, fyfc);
+	}
+
+	fypchk->diag_on_error = fyp->diag && fyp->diag->on_error;
+
+	fyp_parse_debug(fyp, "took checkpoint");
+	return fypchk;
+
+err_out:
+	if (fypchk)
+		free(fypchk);
+	return NULL;
+}
+
+void fy_parser_checkpoint_destroy(struct fy_parser_checkpoint *fypchk)
+{
+	struct fy_parser *fypc;
+	int i;
+
+	if (!fypchk)
+		return;
+
+	if (fypchk->queued_inputs) {
+		for (i = 0; i < fypchk->queued_input_count; i++)
+			fy_input_unref(fypchk->queued_inputs[i]);
+		free(fypchk->queued_inputs);
+	}
+
+	if (fypchk->queued_tokens) {
+		for (i = 0; i < fypchk->queued_token_count; i++)
+			fy_token_unref(fypchk->queued_tokens[i]);
+		free(fypchk->queued_tokens);
+	}
+
+	fypc = &fypchk->fyp_checkpoint;
+
+	fy_parse_cleanup(fypc);
+
+	free(fypchk);
+}
+
+int fy_parser_rollback(struct fy_parser *fyp, struct fy_parser_checkpoint *fypchk)
+{
+	struct fy_parser *fypc = NULL;
+	struct fy_reader *fyr, *fyrc;
+	struct fy_indent *fyit, *fyitc;
+	struct fy_flow *fyf, *fyfc;
+	struct fy_parse_state_log *fypsl, *fypslc;
+	struct fy_input *fyi, *fyic;
+	struct fy_token *fyt;
+	int i;
+
+	if (!fypchk)
+		return -1;
+
+	fyp_parse_debug(fyp, "rolling back checkpoint");
+
+	fypc = &fypchk->fyp_checkpoint;
+
+	if (fyp->diag)
+		fyp->diag->on_error = fypchk->diag_on_error;
+
+	/* reader restore */
+	fyr = fyp->reader;
+	fyrc = fypc->reader;
+
+	assert(fyr->ops == fyrc->ops);
+	fy_input_unref(fyr->current_input);
+	fyr->current_input = fy_input_ref(fyrc->current_input);
+	fyr->mode = fyrc->mode;
+	fyr->this_input_start = fyrc->this_input_start;
+	fyr->current_input_pos = fyrc->current_input_pos;
+	fyr->current_ptr = fyrc->current_ptr;
+	fyr->current_c = fyrc->current_c;
+	fyr->current_w = fyrc->current_w;
+	fyr->current_left = fyrc->current_left;
+	fyr->line = fyrc->line;
+	fyr->column = fyrc->column;
+	fyr->tabsize = fyrc->tabsize;
+	fyr->json_mode = fyrc->json_mode;
+	fyr->lb_mode = fyrc->lb_mode;
+	fyr->fws_mode = fyrc->fws_mode;
+
+	fy_token_unref(fyp->stream_end_token);
+	fyp->stream_end_token = fy_token_ref(fypc->stream_end_token);
+
+	/* inputs restore */
+	while ((fyi = fy_input_list_pop(&fyp->queued_inputs)) != NULL)
+		fy_input_unref(fyi);
+	for (i = 0; i < fypchk->queued_input_count; i++) {
+		fyic = fypchk->queued_inputs[i];
+		fy_input_list_add_tail(&fyp->queued_inputs, fy_input_ref(fyic));
+	}
+	fyp->token_activity_counter = fypc->token_activity_counter;
+
+	fy_input_unref(fyp->last_comment.fyi);
+	fyp->last_comment = fypc->last_comment;
+	fyp->last_comment.fyi = fy_input_ref(fypc->last_comment.fyi);
+
+	/* indents */
+	while ((fyit = fy_indent_list_pop(&fyp->indent_stack)) != NULL)
+		fy_parse_indent_recycle(fyp, fyit);
+	for (fyitc = fy_indent_list_head(&fypc->indent_stack); fyitc != NULL;
+	     fyitc = fy_indent_next(&fypc->indent_stack, fyitc)) {
+
+		fyit = fy_parse_indent_alloc(fyp);
+		assert(fyit);
+
+		*fyit = *fyitc;
+
+		fy_indent_list_add_tail(&fyp->indent_stack, fyit);
+	}
+	fyp->indent = fypc->indent;
+	fyp->parent_indent = fypc->parent_indent;
+	fyp->indent_line = fypc->indent_line;
+	fyp->starting_indent = fypc->starting_indent;
+
+	/* parse state */
+	fyp->state = fypc->state;
+	while ((fypsl = fy_parse_state_log_list_pop(&fyp->state_stack)) != NULL)
+		fy_parse_parse_state_log_recycle(fyp, fypsl);
+	for (fypslc = fy_parse_state_log_list_head(&fypc->state_stack); fypslc != NULL;
+	     fypslc = fy_parse_state_log_next(&fypc->state_stack, fypslc)) {
+
+		fypsl = fy_parse_parse_state_log_alloc(fyp);
+		assert(fypsl);
+
+		fypsl->state = fypslc->state;
+
+		fy_parse_state_log_list_add_tail(&fyp->state_stack, fypsl);
+	}
+
+#ifndef NDEBUG
+	for (fypsl = fy_parse_state_log_list_head(&fyp->state_stack); fypsl != NULL;
+	     fypsl = fy_parse_state_log_next(&fyp->state_stack, fypsl)) {
+		fyp_parse_debug(fyp, "checkpoint restored parse_state %s\n", state_txt[fypsl->state]);
+	}
+#endif
+
+	while ((fyt = fy_token_list_pop(&fyp->queued_tokens)) != NULL)
+		fy_token_unref(fyt);
+	for (i = 0; i < fypchk->queued_token_count; i++) {
+		fyt = fypchk->queued_tokens[i];
+		fy_token_list_add_tail(&fyp->queued_tokens, fy_token_ref(fyt));
+	}
+	assert(fy_simple_key_list_empty(&fypc->simple_keys));
+	assert(fy_streaming_alias_list_empty(&fypc->streaming_aliases));
+
+	fyp->default_version = fypc->default_version;
+	fyp->stream_version = fypc->stream_version;
+	fyp->parser_bitflags = fypc->parser_bitflags;
+	fyp->is_checkpoint = false;
+
+	fyp_parse_debug(fyp, "checkpoint restoring flow_level=%d", fypc->flow_level);
+
+	fyp->flow_level = fypc->flow_level;
+	fyp->flow = fypc->flow;
+	while ((fyf = fy_flow_list_pop(&fyp->flow_stack)) != NULL)
+		fy_parse_flow_recycle(fyp, fyf);
+	for (fyfc = fy_flow_list_head(&fypc->flow_stack); fyfc != NULL;
+	     fyfc = fy_flow_next(&fypc->flow_stack, fyfc)) {
+
+		fyf = fy_parse_flow_alloc(fyp);
+		assert(fyf);
+
+		*fyf = *fyfc;
+
+		fy_flow_list_add_tail(&fyp->flow_stack, fyf);
+	}
+
+	fyp->pending_complex_key_column = fypc->pending_complex_key_column;
+	fyp->pending_complex_key_mark = fypc->pending_complex_key_mark;
+	fyp->last_block_mapping_key_line = fypc->last_block_mapping_key_line;
+	fyp->last_comma_mark = fypc->last_comma_mark;
+	fyp->last_tab_used_for_ws_mark = fypc->last_tab_used_for_ws_mark;
+
+	fy_document_state_unref(fyp->current_document_state);
+	fyp->current_document_state = fy_document_state_ref(fypc->current_document_state);
+	fy_document_state_unref(fyp->default_document_state);
+	fyp->default_document_state = fy_document_state_ref(fypc->default_document_state);
+
+	fyp->next_single_document = fypc->next_single_document;
+	fyp->last_event_handle = fypc->last_event_handle;
+	fy_input_unref(fyp->last_event_handle.fyi);
+	fyp->last_event_handle.fyi = fy_input_ref(fypc->last_event_handle.fyi);
+
+	fy_parse_eventp_recycle(fyp, fyp->fyep_peek);
+	fyp->fyep_peek = NULL;
+	if (fypc->fyep_peek) {
+		fyp->fyep_peek = fy_parse_eventp_clone(fyp, fypc->fyep_peek, false);
+		assert(fypc->fyep_peek);
+	}
+
+	assert(fyp->sas.top == 0);
+
+	return 0;
+}
+
+enum fy_parser_mode
+fy_parser_get_mode(struct fy_parser *fyp)
+{
+	struct fy_version *versp;
+	int major, minor;
+
+	if (!fyp)
+		return fypm_invalid;
+
+	versp = fyp->current_document_state ? &fyp->current_document_state->version : &fyp->stream_version;
+
+	switch (fy_reader_get_mode(fyp->reader)) {
+	case fyrm_yaml:
+	case fyrm_yaml_1_1:
+		major = versp->major;
+		minor = versp->minor;
+		/* 1.1, 1.2, 1.3 */
+		if (major != 1 || minor < 1 || minor > 3)
+			break;
+		return fypm_yaml_1_1 + (minor - 1);
+
+	case fyrm_json:
+		return fypm_json;
+	}
+
+	return fypm_none;
+}
+
+int fy_parser_count_sequence_items(struct fy_parser *fyp)
+{
+	const struct fy_event *fye_peek;
+	struct fy_parser_checkpoint *fypchk = NULL;
+	int rc, count;
+
+	if (!fyp)
+		return -1;
+
+	/* take a checkpoint and race ahead to find the size */
+	fypchk = fy_parser_checkpoint_create(fyp);
+	fyp_error_check(fyp, fypchk != NULL, err_out,
+			"fy_parser_checkpoint_create() failed!");
+	count = 0;
+	for (;;) {
+		fye_peek = fy_parser_parse_peek(fyp);
+		if (!fye_peek)
+			goto err_out;
+		if (fye_peek->type != FYET_SCALAR &&
+		    fye_peek->type != FYET_MAPPING_START &&
+		    fye_peek->type != FYET_SEQUENCE_START &&
+		    fye_peek->type != FYET_SEQUENCE_END)
+			goto err_out;
+
+		if (fye_peek->type == FYET_SEQUENCE_END)
+			break;
+
+		/* skip the item */
+		rc = fy_parser_skip(fyp);
+		fyp_error_check(fyp, !rc, err_out,
+				"fy_parser_skip() failed!");
+		count++;
+	}
+
+	rc = fy_parser_rollback(fyp, fypchk);
+	fyp_error_check(fyp, !rc, err_out,
+			"fy_parser_rollback() failed!");
+out:
+	fy_parser_checkpoint_destroy(fypchk);
+	return count;
+
+err_out:
+	count = -1;
+	goto out;
+}
+
+int fy_parser_count_mapping_items(struct fy_parser *fyp)
+{
+	const struct fy_event *fye_peek;
+	struct fy_parser_checkpoint *fypchk = NULL;
+	int rc, count;
+
+	if (!fyp)
+		return -1;
+
+	/* take a checkpoint and race ahead to find the size */
+	fypchk = fy_parser_checkpoint_create(fyp);
+	fyp_error_check(fyp, fypchk != NULL, err_out,
+			"fy_parser_checkpoint_create() failed!");
+	count = 0;
+	for (;;) {
+		fye_peek = fy_parser_parse_peek(fyp);
+		if (!fye_peek)
+			goto err_out;
+		if (fye_peek->type != FYET_SCALAR &&
+		    fye_peek->type != FYET_MAPPING_START &&
+		    fye_peek->type != FYET_SEQUENCE_START &&
+		    fye_peek->type != FYET_MAPPING_END)
+			goto err_out;
+
+		if (fye_peek->type == FYET_MAPPING_END)
+			break;
+
+		/* skip the key item */
+		rc = fy_parser_skip(fyp);
+		fyp_error_check(fyp, !rc, err_out,
+				"fy_parser_skip() failed!");
+
+		/* skip the value item */
+		rc = fy_parser_skip(fyp);
+		fyp_error_check(fyp, !rc, err_out,
+				"fy_parser_skip() failed!");
+		count++;
+	}
+
+	rc = fy_parser_rollback(fyp, fypchk);
+	fyp_error_check(fyp, !rc, err_out,
+			"fy_parser_rollback() failed!");
+out:
+	fy_parser_checkpoint_destroy(fypchk);
+	return count;
+
+err_out:
+	count = -1;
+	goto out;
 }

@@ -177,23 +177,30 @@ struct fy_parser {
 	struct fy_version default_version;
 	struct fy_version stream_version;	/* last version set in stream */
 
-	bool suppress_recycling : 1;
-	bool stream_start_produced : 1;
-	bool stream_end_produced : 1;
-	bool stream_end_reached : 1;
-	bool simple_key_allowed : 1;
-	bool tab_used_for_ws : 1;
-	bool stream_error : 1;
-	bool generated_block_map : 1;
-	bool last_was_comma : 1;
-	bool document_has_content : 1;
-	bool document_first_content_token : 1;
-	bool bare_document_only : 1;		/* no document start indicators allowed, no directives */
-	bool stream_has_content : 1;
-	bool parse_flow_only : 1;	/* document is in flow form, and stop parsing at the end */
-	bool parse_block_only : 1;	/* document is in embedded block form, and stop parsing at the end */
-	bool colon_follows_colon : 1;	/* "foo"::bar -> "foo": :bar */
-	bool had_directives : 1;	/* document had directives */
+	union {
+		struct {
+			bool suppress_recycling : 1;
+			bool stream_start_produced : 1;
+			bool stream_end_produced : 1;
+			bool stream_end_reached : 1;
+			bool simple_key_allowed : 1;
+			bool tab_used_for_ws : 1;
+			bool stream_error : 1;
+			bool generated_block_map : 1;
+			bool last_was_comma : 1;
+			bool document_has_content : 1;
+			bool document_first_content_token : 1;
+			bool bare_document_only : 1;		/* no document start indicators allowed, no directives */
+			bool stream_has_content : 1;
+			bool parse_flow_only : 1;	/* document is in flow form, and stop parsing at the end */
+			bool parse_block_only : 1;	/* document is in embedded block form, and stop parsing at the end */
+			bool colon_follows_colon : 1;	/* "foo"::bar -> "foo": :bar */
+			bool had_directives : 1;	/* document had directives */
+			bool is_checkpoint : 1;		/* a parser checkpoint (not a real parser) */
+		};
+		unsigned int parser_bitflags;
+	};
+
 	int flow_level;
 	int pending_complex_key_column;
 	struct fy_mark pending_complex_key_mark;
@@ -283,6 +290,7 @@ struct fy_parser {
 		struct fy_eventp_list args;
 		struct fy_document *fyd;
 	} mks;
+	struct fy_eventp *fyep_peek;
 };
 
 static inline struct fy_input *
@@ -664,6 +672,14 @@ void fy_parse_streaming_aliases_reset(struct fy_parser *fyp);
 struct fy_eventp *fy_parser_parse_resolve_prolog(struct fy_parser *fyp);
 struct fy_eventp *fy_parser_parse_resolve_epilog(struct fy_parser *fyp, struct fy_eventp *fyep);
 
+struct fy_parser_checkpoint {
+	struct fy_parser fyp_checkpoint;
+	int queued_token_count;
+	struct fy_token **queued_tokens;
+	int queued_input_count;
+	struct fy_input **queued_inputs;
+	bool diag_on_error;
+};
 
 /* diagnostics */
 

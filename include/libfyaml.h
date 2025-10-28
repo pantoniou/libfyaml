@@ -996,6 +996,75 @@ fy_parser_parse(struct fy_parser *fyp)
 	FY_EXPORT;
 
 /**
+ * fy_parser_parse_peek() - Parse and peek at the next event.
+ *
+ * It will return the next event that a call to fy_parser_parse
+ * would generate, but as read-only.
+ *
+ * You must not free this event.
+ *
+ * @fyp: The parser
+ *
+ * Returns:
+ * A peek at the next event in the stream or NULL.
+ */
+const struct fy_event *
+fy_parser_parse_peek(struct fy_parser *fyp)
+	FY_EXPORT;
+
+/**
+ * fy_parser_skip() - Skip the current scalar/collection
+ *
+ * Skips the current scalar or collection.
+ *
+ * @fyp: The parser
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int
+fy_parser_skip(struct fy_parser *fyp)
+	FY_EXPORT;
+
+/**
+ * fy_parser_count_sequence_items() - Count the sequence items
+ *
+ * Counts the number of sequence items. Parser must already
+ * be in a sequence state.
+ * Note that this uses backtracking so it might not be very
+ * efficient.
+ *
+ * @fyp: The parser
+ *
+ * Returns:
+ * The number of sequence items on success, -1 on error
+ * Note if the number of items exceeds INT_MAX, INT_MAX will
+ * be returned.
+ */
+int
+fy_parser_count_sequence_items(struct fy_parser *fyp)
+	FY_EXPORT;
+
+/**
+ * fy_parser_count_mapping_items() - Count the mapping items
+ *
+ * Counts the number of mapping items. Parser must already
+ * be in a mapping state.
+ * Note that this uses backtracking so it might not be very
+ * efficient.
+ *
+ * @fyp: The parser
+ *
+ * Returns:
+ * The number of mapping items on success, -1 on error
+ * Note if the number of items exceeds INT_MAX, INT_MAX will
+ * be returned.
+ */
+int
+fy_parser_count_mapping_items(struct fy_parser *fyp)
+	FY_EXPORT;
+
+/**
  * fy_parser_event_free() - Free an event
  *
  * Free a previously returned event from fy_parser_parse().
@@ -1018,6 +1087,37 @@ fy_parser_event_free(struct fy_parser *fyp, struct fy_event *fye)
 bool
 fy_parser_get_stream_error(struct fy_parser *fyp)
 	FY_EXPORT;
+
+enum fy_parser_mode {
+	fypm_invalid = -1,
+	fypm_none,	/* scanning for mode, not committed yet */
+	fypm_yaml_1_1,
+	fypm_yaml_1_2,
+	fypm_yaml_1_3,	/* experimental */
+	fypm_json,
+};
+
+static inline bool
+fy_parser_mode_is_yaml(enum fy_parser_mode mode)
+{
+	return mode >= fypm_yaml_1_1 && mode <= fypm_yaml_1_3;
+}
+
+enum fy_parser_mode
+fy_parser_get_mode(struct fy_parser *fyp)
+	FY_EXPORT;
+
+static inline bool
+fy_parser_is_in_yaml_mode(struct fy_parser *fyp)
+{
+	return fy_parser_mode_is_yaml(fy_parser_get_mode(fyp));
+}
+
+static inline bool
+fy_parser_is_in_json_mode(struct fy_parser *fyp)
+{
+	return fy_parser_get_mode(fyp) == fypm_json;
+}
 
 /**
  * fy_parser_vlog() - Log using the parsers diagnostics printf style (va_arg)
@@ -9367,6 +9467,20 @@ struct fy_auto_allocator_cfg {
 	enum fy_auto_allocator_scenario_type scenario;
 	size_t estimated_max_size;
 };
+
+struct fy_parser_checkpoint;
+
+struct fy_parser_checkpoint *
+fy_parser_checkpoint_create(struct fy_parser *fyp)
+	FY_EXPORT;
+
+void
+fy_parser_checkpoint_destroy(struct fy_parser_checkpoint *fypchk)
+	FY_EXPORT;
+
+int
+fy_parser_rollback(struct fy_parser *fyp, struct fy_parser_checkpoint *fypc)
+	FY_EXPORT;
 
 #ifdef __cplusplus
 }
