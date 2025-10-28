@@ -400,3 +400,43 @@ struct fy_diag *fy_composer_get_diag(struct fy_composer *fyc)
 		return NULL;
 	return fyc->cfg.diag;
 }
+
+struct fy_path *fy_composer_get_root_path(struct fy_composer *fyc)
+{
+	if (!fyc)
+		return NULL;
+	return fy_path_list_head(&fyc->paths);
+}
+
+struct fy_path *fy_composer_get_next_path(struct fy_composer *fyc, struct fy_path *fypp)
+{
+	if (!fyc || !fypp)
+		return NULL;
+	return fy_path_next(&fyc->paths, fypp);
+}
+
+struct fy_path *fy_composer_get_path(struct fy_composer *fyc)
+{
+	struct fy_path *fypp, *fyppt;
+	struct fy_path_component *fypc_last;
+
+	if (!fyc)
+		return NULL;
+
+	fypp = fy_path_list_head(&fyc->paths);
+	if (!fypp)
+		return NULL;
+
+	/* traverse until we find the last non complex key acculating */
+	for (;;) {
+		fypc_last = fy_path_component_list_tail(&fypp->components);
+		if (!fy_path_component_is_mapping(fypc_last) || !fypc_last->map.accumulating_complex_key)
+			break;
+		fyppt = fy_path_next(&fyc->paths, fypp);
+		if (!fyppt)
+			break;
+		fypp = fyppt;
+	}
+
+	return fypp;
+}

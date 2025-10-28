@@ -31,30 +31,10 @@ struct fy_event;
 struct fy_eventp;
 struct fy_document_builder;
 
-struct fy_composer_ops {
-	/* single process event callback */
-	enum fy_composer_return (*process_event)(struct fy_composer *fyc, struct fy_path *path, struct fy_event *fye);
-	struct fy_document_builder *(*create_document_builder)(struct fy_composer *fyc);
-};
-
-struct fy_composer_cfg {
-	const struct fy_composer_ops *ops;
-	void *userdata;
-	struct fy_diag *diag;
-};
-
 struct fy_composer {
 	struct fy_composer_cfg cfg;
 	struct fy_path_list paths;
 };
-
-struct fy_composer *fy_composer_create(struct fy_composer_cfg *cfg);
-void fy_composer_destroy(struct fy_composer *fyc);
-enum fy_composer_return fy_composer_process_event(struct fy_composer *fyc, struct fy_event *fye);
-
-struct fy_composer_cfg *fy_composer_get_cfg(struct fy_composer *fyc);
-void *fy_composer_get_cfg_userdata(struct fy_composer *fyc);
-struct fy_diag *fy_composer_get_diag(struct fy_composer *fyc);
 
 void fy_composer_halt_one(struct fy_composer *fyc, struct fy_path *fypp, enum fy_composer_return rc);
 void fy_composer_halt(struct fy_composer *fyc, enum fy_composer_return rc);
