@@ -18,10 +18,20 @@
 #include <ctype.h>
 #include <unistd.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <regex.h>
+#include <stdalign.h>
+#include <inttypes.h>
+#include <float.h>
+#include <limits.h>
+#include <math.h>
+#include <stdbool.h>
 
 #include <libfyaml.h>
 
 #include "fy-valgrind.h"
+#include "fy-tool-util.h"
 
 #define QUIET_DEFAULT			false
 #define INCLUDE_DEFAULT			""
@@ -51,6 +61,8 @@
 #define PREFER_RECURSIVE_DEFAULT	false
 #define YPATH_ALIASES_DEFAULT		false
 #define DISABLE_FLOW_MARKERS_DEFAULT	false
+#define DISABLE_DOC_MARKERS_DEFAULT	false
+#define DISABLE_SCALAR_STYLES_DEFAULT	false
 #define DUMP_PATH_DEFAULT		false
 #define DOCUMENT_EVENT_STREAM_DEFAULT	false
 #define COLLECT_ERRORS_DEFAULT		false
@@ -69,6 +81,7 @@
 #define OPT_YAML_VERSION_DUMP		1008
 #define OPT_COMPOSE			1009
 #define OPT_B3SUM			1010
+#define OPT_REFLECT			1011
 
 #define OPT_STRIP_LABELS		2000
 #define OPT_STRIP_TAGS			2001
@@ -92,6 +105,8 @@
 #define OPT_STRIP_EMPTY_KV		2019
 #define OPT_DISABLE_MMAP		2020
 #define OPT_TSV_FORMAT			2021
+#define OPT_DISABLE_DOC_MARKERS		2022
+#define OPT_DISABLE_SCALAR_STYLES	2023
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -162,6 +177,8 @@ static struct option lopts[] = {
 	{"prefer-recursive",	no_argument,		0,	OPT_PREFER_RECURSIVE },
 	{"ypath-aliases",	no_argument,		0,	OPT_YPATH_ALIASES },
 	{"disable-flow-markers",no_argument,		0,	OPT_DISABLE_FLOW_MARKERS },
+	{"disable-doc-markers", no_argument,		0,	OPT_DISABLE_DOC_MARKERS },
+	{"disable-scalar-styles",no_argument,		0,	OPT_DISABLE_SCALAR_STYLES },
 	{"dump-pathexpr",	no_argument,		0,	OPT_DUMP_PATHEXPR },
 	{"document-event-stream",no_argument,		0,	OPT_DOCUMENT_EVENT_STREAM },
 	{"noexec",		no_argument,		0,	OPT_NOEXEC },
@@ -204,8 +221,8 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 						DEBUG_LEVEL_DEFAULT);
 	fprintf(fp, "\t--disable-diag <x>      : Disable diag error module <x>\n");
 	fprintf(fp, "\t--enable-diag <x>       : Enable diag error module <x>\n");
-	fprintf(fp, "\t--show-diag <x>         : Show diag option <x>\n");
-	fprintf(fp, "\t--hide-diag <x>         : Hide diag optione <x>\n");
+	fprintf(fp, "\t--show-diag <x>         : Show diag option <x> (source, position, type, module)\n");
+	fprintf(fp, "\t--hide-diag <x>         : Hide diag optione <x> (source, position, type, module)\n");
 
 	fprintf(fp, "\t--indent, -i <indent>    : Set dump indent to <indent>"
 						" (default indent %d)\n",
@@ -270,6 +287,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--quiet, -q              : Quiet operation, do not "
 						"output messages (default %s)\n",
 						QUIET_DEFAULT ? "true" : "false");
+	fprintf(fp, "\t--dry-run                : Do not parse/emit\n");
 	fprintf(fp, "\t--version, -v            : Display libfyaml version\n");
 	fprintf(fp, "\t--help, -h               : Display  help message\n");
 
@@ -280,12 +298,18 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--comment, -c            : Output comments (experimental)"
 							" (default %s)\n",
 							COMMENT_DEFAULT ? "true" : "false");
-		fprintf(fp, "\t--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline, dejson, pretty|yamlfmt"
+		fprintf(fp, "\t--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline, dejson, pretty|yamlfmt, flow-compact, json-compact"
 							" (default %s)\n",
 							MODE_DEFAULT);
 		fprintf(fp, "\t--disable-flow-markers   : Disable testsuite's flow-markers"
 							" (default %s)\n",
 							DISABLE_FLOW_MARKERS_DEFAULT ? "true" : "false");
+		fprintf(fp, "\t--disable-doc-markers    : Disable testsuite's document-markers"
+							" (default %s)\n",
+							DISABLE_DOC_MARKERS_DEFAULT ? "true" : "false");
+		fprintf(fp, "\t--disable-scalar-styles  : Disable testsuite's scalar styles (all are double quoted)"
+							" (default %s)\n",
+							DISABLE_SCALAR_STYLES_DEFAULT ? "true" : "false");
 		fprintf(fp, "\t--document-event-stream  : Generate a document and then produce the event stream"
 							" (default %s)\n",
 							DOCUMENT_EVENT_STREAM_DEFAULT ? "true" : "false");
@@ -454,6 +478,8 @@ static int apply_mode_flags(const char *what, enum fy_emitter_cfg_flags *flagsp)
 		{ .name = "dejson",		.value = FYECF_MODE_DEJSON },
 		{ .name = "pretty",		.value = FYECF_MODE_PRETTY },
 		{ .name = "yamlfmt",		.value = FYECF_MODE_PRETTY },	/* alias for pretty */
+		{ .name = "flow-compact",	.value = FYECF_MODE_FLOW_COMPACT },
+		{ .name = "json-compact",	.value = FYECF_MODE_JSON_COMPACT },
 	};
 	unsigned int i;
 
@@ -479,7 +505,7 @@ int apply_flags_option(const char *arg, unsigned int *flagsp,
 {
 	const char *s, *e, *sn;
 	char *targ;
-	int len, ret;
+	int len, rc;
 
 	if (!arg || !flagsp || !modify_flags)
 		return -1;
@@ -496,758 +522,14 @@ int apply_flags_option(const char *arg, unsigned int *flagsp,
 		memcpy(targ, s, len);
 		targ[len] = '\0';
 
-		ret = modify_flags(targ, flagsp);
-		if (ret)
-			return ret;
+		rc = modify_flags(targ, flagsp);
+		if (rc)
+			return rc;
 
 		s = sn < e ? (sn + 1) : sn;
 	}
 
 	return 0;
-}
-
-void print_escaped(const char *str, size_t length)
-{
-	const uint8_t *p;
-	int i, c, w;
-
-	for (p = (const uint8_t *)str; length > 0; p += w, length -= (size_t)w) {
-
-		/* get width from the first octet */
-		w = (p[0] & 0x80) == 0x00 ? 1 :
-		    (p[0] & 0xe0) == 0xc0 ? 2 :
-		    (p[0] & 0xf0) == 0xe0 ? 3 :
-		    (p[0] & 0xf8) == 0xf0 ? 4 : 0;
-
-		/* error, clip it */
-		if ((size_t)w > length)
-			goto err_out;
-
-		/* initial value */
-		c = p[0] & (0xff >> w);
-		for (i = 1; i < w; i++) {
-			if ((p[i] & 0xc0) != 0x80)
-				goto err_out;
-			c = (c << 6) | (p[i] & 0x3f);
-		}
-
-		/* check for validity */
-		if ((w == 4 && c < 0x10000) ||
-		    (w == 3 && c <   0x800) ||
-		    (w == 2 && c <    0x80) ||
-		    (c >= 0xd800 && c <= 0xdfff) || c >= 0x110000)
-			goto err_out;
-
-		switch (c) {
-		case '\\':
-			printf("\\\\");
-			break;
-		case '\0':
-			printf("\\0");
-			break;
-		case '\b':
-			printf("\\b");
-			break;
-		case '\f':
-			printf("\\f");
-			break;
-		case '\n':
-			printf("\\n");
-			break;
-		case '\r':
-			printf("\\r");
-			break;
-		case '\t':
-			printf("\\t");
-			break;
-		case '\a':
-			printf("\\a");
-			break;
-		case '\v':
-			printf("\\v");
-			break;
-		case '\e':
-			printf("\\e");
-			break;
-		case 0x85:
-			printf("\\N");
-			break;
-		case 0xa0:
-			printf("\\_");
-			break;
-		case 0x2028:
-			printf("\\L");
-			break;
-		case 0x2029:
-			printf("\\P");
-			break;
-		default:
-			if ((c >= 0x01 && c <= 0x1f) || c == 0x7f ||	/* C0 */
-			    (c >= 0x80 && c <= 0x9f))			/* C1 */
-				printf("\\x%02x", c);
-			else
-				printf("%.*s", w, p);
-			break;
-		}
-	}
-
-	return;
-err_out:
-	fprintf(stderr, "escape input error\n");
-	abort();
-}
-
-/* ANSI colors and escapes */
-#define A_RESET			"\x1b[0m"
-#define A_BLACK			"\x1b[30m"
-#define A_RED			"\x1b[31m"
-#define A_GREEN			"\x1b[32m"
-#define A_YELLOW		"\x1b[33m"
-#define A_BLUE			"\x1b[34m"
-#define A_MAGENTA		"\x1b[35m"
-#define A_CYAN			"\x1b[36m"
-#define A_LIGHT_GRAY		"\x1b[37m"	/* dark white is gray */
-#define A_GRAY			"\x1b[1;30m"
-#define A_BRIGHT_RED		"\x1b[1;31m"
-#define A_BRIGHT_GREEN		"\x1b[1;32m"
-#define A_BRIGHT_YELLOW		"\x1b[1;33m"
-#define A_BRIGHT_BLUE		"\x1b[1;34m"
-#define A_BRIGHT_MAGENTA	"\x1b[1;35m"
-#define A_BRIGHT_CYAN		"\x1b[1;36m"
-#define A_WHITE			"\x1b[1;37m"
-
-void dump_token_comments(struct fy_token *fyt, bool colorize, const char *banner)
-{
-	static const char *placement_txt[] = {
-		[fycp_top]    = "top",
-		[fycp_right]  = "right",
-		[fycp_bottom] = "bottom",
-	};
-	enum fy_comment_placement placement;
-	char buf[4096];
-	const char *str;
-
-	if (!fyt)
-		return;
-
-	for (placement = fycp_top; placement < fycp_max; placement++) {
-		str = fy_token_get_comment(fyt, buf, sizeof(buf), placement);
-		if (!str)
-			continue;
-		fputs("\n", stdout);
-		if (colorize)
-			fputs(A_RED, stdout);
-		printf("\t%s %6s: ", banner, placement_txt[placement]);
-		print_escaped(str, strlen(str));
-		if (colorize)
-			fputs(A_RESET, stdout);
-	}
-}
-
-void dump_testsuite_event(struct fy_parser *fyp,
-			  struct fy_event *fye, bool colorize,
-			  struct fy_token_iter *iter,
-			  bool disable_flow_markers, bool tsv_format)
-{
-	const char *anchor = NULL;
-	const char *tag = NULL;
-	const char *text = NULL;
-	const char *alias = NULL;
-	size_t anchor_len = 0, tag_len = 0, text_len = 0, alias_len = 0;
-	enum fy_scalar_style style;
-	const struct fy_mark *sm, *em = NULL;
-	char separator;
-	size_t spos, epos;
-	int sline, eline, scolumn, ecolumn;
-
-	if (!tsv_format) {
-		separator = ' ';
-		spos = epos = (size_t)-1;
-		sline = eline = -1;
-		scolumn = ecolumn = -1;
-	} else {
-		sm = fy_event_start_mark(fye);
-		if (sm) {
-			spos = sm->input_pos;
-			sline = sm->line + 1;
-			scolumn = sm->column + 1;
-		} else {
-			spos = (size_t)-1;
-			sline = -1;
-			scolumn = -1;
-		}
-
-
-		em = fy_event_end_mark(fye);
-		if (em) {
-			epos = em->input_pos;
-			eline = em->line + 1;
-			ecolumn = em->column + 1;
-		} else {
-			epos = (size_t)-1;
-			eline = -1;
-			ecolumn = -1;
-		}
-		separator = '\t';
-		/* no colors for TSV */
-		colorize = false;
-		/* no flow markers for TSV */
-		disable_flow_markers = true;
-	}
-
-	/* event type */
-	switch (fye->type) {
-	case FYET_NONE:
-		if (colorize)
-			fputs(A_BRIGHT_RED, stdout);
-		printf("???");
-		break;
-	case FYET_STREAM_START:
-		if (colorize)
-			fputs(A_CYAN, stdout);
-		printf("+%s", !tsv_format ? "STR" : "str");
-		break;
-	case FYET_STREAM_END:
-		if (colorize)
-			fputs(A_CYAN, stdout);
-		printf("-%s", !tsv_format ? "STR" : "str");
-		break;
-	case FYET_DOCUMENT_START:
-		if (colorize)
-			fputs(A_CYAN, stdout);
-		printf("+%s", !tsv_format ? "DOC" : "doc");
-		break;
-	case FYET_DOCUMENT_END:
-		if (colorize)
-			fputs(A_CYAN, stdout);
-		printf("-%s", !tsv_format ? "DOC" : "doc");
-		break;
-	case FYET_MAPPING_START:
-		if (colorize)
-			fputs(A_BRIGHT_CYAN, stdout);
-		printf("+%s", !tsv_format ? "MAP" : "map");
-		if (fye->mapping_start.anchor)
-			anchor = fy_token_get_text(fye->mapping_start.anchor, &anchor_len);
-		if (fye->mapping_start.tag)
-			tag = fy_token_get_text(fye->mapping_start.tag, &tag_len);
-		if (!disable_flow_markers && fy_event_get_node_style(fye) == FYNS_FLOW)
-			printf("%c{}", separator);
-		break;
-	case FYET_MAPPING_END:
-		if (colorize)
-			fputs(A_BRIGHT_CYAN, stdout);
-		printf("-%s", !tsv_format ? "MAP" : "map");
-		break;
-	case FYET_SEQUENCE_START:
-		if (colorize)
-			fputs(A_BRIGHT_YELLOW, stdout);
-		printf("+%s", !tsv_format ? "SEQ" : "seq");
-		if (fye->sequence_start.anchor)
-			anchor = fy_token_get_text(fye->sequence_start.anchor, &anchor_len);
-		if (fye->sequence_start.tag)
-			tag = fy_token_get_text(fye->sequence_start.tag, &tag_len);
-		if (!disable_flow_markers && fy_event_get_node_style(fye) == FYNS_FLOW)
-			printf("%c[]", separator);
-		break;
-	case FYET_SEQUENCE_END:
-		if (colorize)
-			fputs(A_BRIGHT_YELLOW, stdout);
-		printf("-%s", !tsv_format ? "SEQ" : "seq");
-		break;
-	case FYET_SCALAR:
-		if (colorize)
-			fputs(A_WHITE, stdout);
-		printf("=%s", !tsv_format ? "VAL" : "val");
-		if (fye->scalar.anchor)
-			anchor = fy_token_get_text(fye->scalar.anchor, &anchor_len);
-		if (fye->scalar.tag)
-			tag = fy_token_get_text(fye->scalar.tag, &tag_len);
-		break;
-	case FYET_ALIAS:
-		if (colorize)
-			fputs(A_GREEN, stdout);
-		printf("=%s", !tsv_format ? "ALI" : "ali");
-		break;
-	default:
-		abort();
-	}
-
-	/* (position) anchor and tag */
-	if (!tsv_format) {
-		if (anchor) {
-			if (colorize)
-				fputs(A_GREEN, stdout);
-			printf("%c&%.*s", separator, (int)anchor_len, anchor);
-		}
-		if (tag) {
-			if (colorize)
-				fputs(A_GREEN, stdout);
-			printf("%c<%.*s>", separator, (int)tag_len, tag);
-		}
-	} else {
-		if (!anchor) {
-			anchor = "-";
-			anchor_len = 1;
-		}
-		if (!tag) {
-			tag = "-";
-			tag_len = 1;
-		}
-		printf("%c%zd%c%d%c%d", separator, (ssize_t)spos,
-			separator, sline, separator, scolumn);
-		printf("%c%zd%c%d%c%d", separator, (ssize_t)epos,
-			separator, eline, separator, ecolumn);
-		printf("%c%.*s", separator, (int)anchor_len, anchor);
-		printf("%c%.*s", separator, (int)tag_len, tag);
-	}
-
-	/* style hint */
-	switch (fye->type) {
-	default:
-		break;
-	case FYET_DOCUMENT_START:
-		if (!fy_document_event_is_implicit(fye))
-			printf("%c---", separator);
-		break;
-	case FYET_DOCUMENT_END:
-		if (!fy_document_event_is_implicit(fye))
-			printf("%c...", separator);
-		break;
-	case FYET_MAPPING_START:
-		if (!tsv_format)
-			break;
-		printf("%c%s", separator, fy_event_get_node_style(fye) == FYNS_FLOW ? "{}" : "");
-		break;
-	case FYET_SEQUENCE_START:
-		if (!tsv_format)
-			break;
-		printf("%c%s", separator, fy_event_get_node_style(fye) == FYNS_FLOW ? "[]" : "");
-		break;
-	case FYET_SCALAR:
-		style = fy_token_scalar_style(fye->scalar.value);
-		switch (style) {
-		case FYSS_PLAIN:
-			if (colorize)
-				fputs(A_WHITE, stdout);
-			printf("%c:", separator);
-			break;
-		case FYSS_SINGLE_QUOTED:
-			if (colorize)
-				fputs(A_YELLOW, stdout);
-			printf("%c'", separator);
-			break;
-		case FYSS_DOUBLE_QUOTED:
-			if (colorize)
-				fputs(A_YELLOW, stdout);
-			printf("%c\"", separator);
-			break;
-		case FYSS_LITERAL:
-			if (colorize)
-				fputs(A_YELLOW, stdout);
-			printf("%c|", separator);
-			break;
-		case FYSS_FOLDED:
-			if (colorize)
-				fputs(A_YELLOW, stdout);
-			printf("%c>", separator);
-			break;
-		default:
-			abort();
-		}
-		break;
-	case FYET_ALIAS:
-		if (tsv_format)
-			printf("%c*", separator);
-		break;
-	}
-
-	/* content */
-	switch (fye->type) {
-	default:
-		break;
-	case FYET_SCALAR:
-		if (tsv_format)
-			printf("%c", separator);
-		text = fy_token_get_text(fye->scalar.value, &text_len);
-		if (text && text_len > 0)
-			print_escaped(text, text_len);
-		break;
-	case FYET_ALIAS:
-		alias = fy_token_get_text(fye->alias.anchor, &alias_len);
-		printf("%c%s%.*s", separator, !tsv_format ? "*" : "", (int)alias_len, alias);
-		break;
-	}
-
-	if (colorize)
-		fputs(A_RESET, stdout);
-	fputs("\n", stdout);
-}
-
-void dump_parse_event(struct fy_parser *fyp, struct fy_event *fye, bool colorize)
-{
-	struct fy_token *fyt_tag = NULL, *fyt_anchor = NULL;
-	const char *anchor = NULL;
-	const char *tag = NULL;
-	const char *value = NULL;
-	size_t anchor_len = 0, tag_len = 0, len = 0;
-	enum fy_scalar_style style;
-	const struct fy_version *vers;
-	const struct fy_tag *tagp = NULL;
-	void *iterp;
-	struct fy_document_state *fyds;
-
-	fyt_anchor = fy_event_get_anchor_token(fye);
-	if (fyt_anchor) {
-		anchor = fy_token_get_text(fyt_anchor, &anchor_len);
-		assert(anchor);
-	}
-
-	fyt_tag = fy_event_get_tag_token(fye);
-	if (fyt_tag) {
-		tag = fy_token_get_text(fyt_tag, &tag_len);
-		assert(tag);
-		tagp = fy_tag_token_tag(fyt_tag);
-		assert(tagp);
-	}
-
-	switch (fye->type) {
-	case FYET_NONE:
-		if (colorize)
-			fputs(A_BRIGHT_RED, stdout);
-		printf("???");
-		break;
-	case FYET_STREAM_START:
-		if (colorize)
-			fputs(A_CYAN, stdout);
-		printf("STREAM_START");
-		dump_token_comments(fye->stream_start.stream_start, colorize, "");
-		break;
-	case FYET_STREAM_END:
-		if (colorize)
-			fputs(A_CYAN, stdout);
-		printf("STREAM_END");
-		dump_token_comments(fye->stream_end.stream_end, colorize, "");
-		break;
-	case FYET_DOCUMENT_START:
-		if (colorize)
-			fputs(A_CYAN, stdout);
-
-		printf("DOCUMENT_START implicit=%s",
-				fye->document_start.implicit ? "true" : "false");
-
-		fyds = fye->document_start.document_state;
-		assert(fyds);
-		vers = fy_document_state_version(fyds);
-		assert(vers);
-		printf("( V=%d.%d VE=%s TE=%s", vers->major, vers->minor,
-				fy_document_state_version_explicit(fyds) ? "true" : "false",
-				fy_document_state_tags_explicit(fyds) ? "true" : "false");
-		iterp = NULL;
-		if ((tagp = fy_document_state_tag_directive_iterate(fyds, &iterp)) != NULL) {
-			printf(" TDs: [");
-			do {
-				printf(" \"%s\",\"%s\"", tagp->handle, tagp->prefix);
-			} while ((tagp = fy_document_state_tag_directive_iterate(fyds, &iterp)) != NULL);
-			printf(" ]");
-		}
-		printf(" )");
-		dump_token_comments(fye->document_start.document_start, colorize, "");
-		break;
-
-	case FYET_DOCUMENT_END:
-		if (colorize)
-			fputs(A_CYAN, stdout);
-		printf("DOCUMENT_END implicit=%s",
-				fye->document_end.implicit ? "true" : "false");
-		dump_token_comments(fye->document_end.document_end, colorize, "");
-		break;
-	case FYET_MAPPING_START:
-		if (colorize)
-			fputs(A_BRIGHT_CYAN, stdout);
-		printf("MAPPING_START");
-		if (anchor) {
-			if (colorize)
-				fputs(A_GREEN, stdout);
-			printf(" &%.*s", (int)anchor_len, anchor);
-		}
-		if (tag) {
-			if (colorize)
-				fputs(A_GREEN, stdout);
-			printf(" <%.*s> (\"%s\",\"%s\")",
-				(int)tag_len, tag,
-				tagp->handle, tagp->prefix);
-		}
-		dump_token_comments(fye->mapping_start.mapping_start, colorize, "");
-		break;
-	case FYET_MAPPING_END:
-		if (colorize)
-			fputs(A_BRIGHT_CYAN, stdout);
-		printf("MAPPING_END");
-		dump_token_comments(fye->mapping_end.mapping_end, colorize, "");
-		break;
-	case FYET_SEQUENCE_START:
-		if (colorize)
-			fputs(A_BRIGHT_YELLOW, stdout);
-		printf("SEQUENCE_START");
-		if (anchor) {
-			if (colorize)
-				fputs(A_GREEN, stdout);
-			printf(" &%.*s", (int)anchor_len, anchor);
-		}
-		if (tag) {
-			if (colorize)
-				fputs(A_GREEN, stdout);
-			printf(" <%.*s> (\"%s\",\"%s\")",
-				(int)tag_len, tag,
-				tagp->handle, tagp->prefix);
-		}
-		dump_token_comments(fye->sequence_start.sequence_start, colorize, "");
-		break;
-	case FYET_SEQUENCE_END:
-		if (colorize)
-			fputs(A_BRIGHT_YELLOW, stdout);
-		printf("SEQUENCE_END");
-		dump_token_comments(fye->sequence_end.sequence_end, colorize, "");
-		break;
-	case FYET_SCALAR:
-		if (colorize)
-			fputs(A_WHITE, stdout);
-		printf("SCALAR");
-		if (anchor) {
-			if (colorize)
-				fputs(A_GREEN, stdout);
-			printf(" &%.*s", (int)anchor_len, anchor);
-		}
-		if (tag) {
-			if (colorize)
-				fputs(A_GREEN, stdout);
-			printf(" <%.*s> (\"%s\",\"%s\")",
-				(int)tag_len, tag,
-				tagp->handle, tagp->prefix);
-		}
-
-		style = fy_token_scalar_style(fye->scalar.value);
-		switch (style) {
-		case FYSS_PLAIN:
-			if (colorize)
-				fputs(A_WHITE, stdout);
-			printf(" ");
-			break;
-		case FYSS_SINGLE_QUOTED:
-			if (colorize)
-				fputs(A_YELLOW, stdout);
-			printf(" '");
-			break;
-		case FYSS_DOUBLE_QUOTED:
-			if (colorize)
-				fputs(A_YELLOW, stdout);
-			printf(" \"");
-			break;
-		case FYSS_LITERAL:
-			if (colorize)
-				fputs(A_YELLOW, stdout);
-			printf(" |");
-			break;
-		case FYSS_FOLDED:
-			if (colorize)
-				fputs(A_YELLOW, stdout);
-			printf(" >");
-			break;
-		default:
-			abort();
-		}
-		value = fy_token_get_text(fye->scalar.value, &len);
-		if (value && len > 0)
-			print_escaped(value, len);
-		dump_token_comments(fye->scalar.value, colorize, "");
-		break;
-	case FYET_ALIAS:
-		anchor = fy_token_get_text(fye->alias.anchor, &anchor_len);
-		if (colorize)
-			fputs(A_GREEN, stdout);
-		printf("ALIAS *%.*s", (int)anchor_len, anchor);
-		dump_token_comments(fye->alias.anchor, colorize, "");
-		break;
-	default:
-		/* ignored */
-		break;
-	}
-	if (colorize)
-		fputs(A_RESET, stdout);
-	fputs("\n", stdout);
-}
-
-void dump_scan_token(struct fy_parser *fyp, struct fy_token *fyt, bool colorize)
-{
-	const char *anchor = NULL, *value = NULL;
-	size_t anchor_len = 0, len = 0;
-	enum fy_scalar_style style;
-	const struct fy_version *vers;
-	const struct fy_tag *tag;
-
-	switch (fy_token_get_type(fyt)) {
-	case FYTT_NONE:
-		if (colorize)
-			fputs(A_BRIGHT_RED, stdout);
-		printf("NONE");
-		break;
-	case FYTT_STREAM_START:
-		if (colorize)
-			fputs(A_CYAN, stdout);
-		printf("STREAM_START");
-		break;
-	case FYTT_STREAM_END:
-		if (colorize)
-			fputs(A_CYAN, stdout);
-		printf("STREAM_END");
-		break;
-	case FYTT_VERSION_DIRECTIVE:
-		if (colorize)
-			fputs(A_CYAN, stdout);
-		vers = fy_version_directive_token_version(fyt);
-		assert(vers);
-		printf("VERSION_DIRECTIVE major=%d minor=%d", vers->major, vers->minor);
-		break;
-	case FYTT_TAG_DIRECTIVE:
-		if (colorize)
-			fputs(A_CYAN, stdout);
-		tag = fy_tag_directive_token_tag(fyt);
-		assert(tag);
-		printf("TAG_DIRECTIVE handle=\"%s\" prefix=\"%s\"", tag->handle, tag->prefix);
-		break;
-	case FYTT_DOCUMENT_START:
-		if (colorize)
-			fputs(A_CYAN, stdout);
-		printf("DOCUMENT_START");
-		break;
-	case FYTT_DOCUMENT_END:
-		if (colorize)
-			fputs(A_CYAN, stdout);
-		printf("DOCUMENT_END");
-		break;
-	case FYTT_BLOCK_SEQUENCE_START:
-		if (colorize)
-			fputs(A_BRIGHT_CYAN, stdout);
-		printf("BLOCK_SEQUENCE_START");
-		break;
-	case FYTT_BLOCK_MAPPING_START:
-		if (colorize)
-			fputs(A_BRIGHT_CYAN, stdout);
-		printf("BLOCK_MAPPING_START");
-		break;
-	case FYTT_BLOCK_END:
-		if (colorize)
-			fputs(A_BRIGHT_CYAN, stdout);
-		printf("BLOCK_END");
-		break;
-	case FYTT_FLOW_SEQUENCE_START:
-		if (colorize)
-			fputs(A_BRIGHT_YELLOW, stdout);
-		printf("FLOW_SEQUENCE_START");
-		break;
-	case FYTT_FLOW_SEQUENCE_END:
-		if (colorize)
-			fputs(A_BRIGHT_YELLOW, stdout);
-		printf("FLOW_SEQUENCE_END");
-		break;
-	case FYTT_FLOW_MAPPING_START:
-		if (colorize)
-			fputs(A_BRIGHT_YELLOW, stdout);
-		printf("FLOW_MAPPING_START");
-		break;
-	case FYTT_FLOW_MAPPING_END:
-		if (colorize)
-			fputs(A_BRIGHT_YELLOW, stdout);
-		printf("FLOW_MAPPING_END");
-		break;
-	case FYTT_BLOCK_ENTRY:
-		if (colorize)
-			fputs(A_BRIGHT_CYAN, stdout);
-		printf("BLOCK_ENTRY");
-		break;
-	case FYTT_FLOW_ENTRY:
-		if (colorize)
-			fputs(A_BRIGHT_YELLOW, stdout);
-		printf("BLOCK_ENTRY");
-		break;
-	case FYTT_KEY:
-		if (colorize)
-			fputs(A_BRIGHT_YELLOW, stdout);
-		printf("KEY");
-		break;
-	case FYTT_VALUE:
-		if (colorize)
-			fputs(A_BRIGHT_YELLOW, stdout);
-		printf("KEY");
-		break;
-	case FYTT_ALIAS:
-		anchor = fy_token_get_text(fyt, &anchor_len);
-		assert(anchor);
-		if (colorize)
-			fputs(A_GREEN, stdout);
-		printf("ALIAS *%.*s", (int)anchor_len, anchor);
-		break;
-	case FYTT_ANCHOR:
-		anchor = fy_token_get_text(fyt, &anchor_len);
-		assert(anchor);
-		if (colorize)
-			fputs(A_GREEN, stdout);
-		printf("ANCHOR &%.*s", (int)anchor_len, anchor);
-		break;
-	case FYTT_TAG:
-		tag = fy_tag_token_tag(fyt);
-		assert(tag);
-		if (colorize)
-			fputs(A_GREEN, stdout);
-		/* prefix is a suffix for tag */
-		printf("TAG handle=\"%s\" suffix=\"%s\"", tag->handle, tag->prefix);
-		break;
-	case FYTT_SCALAR:
-		if (colorize)
-			fputs(A_WHITE, stdout);
-
-		printf("SCALAR ");
-		value = fy_token_get_text(fyt, &len);
-		assert(value);
-		style = fy_token_scalar_style(fyt);
-		switch (style) {
-		case FYSS_PLAIN:
-			if (colorize)
-				fputs(A_WHITE, stdout);
-			printf(" ");
-			break;
-		case FYSS_SINGLE_QUOTED:
-			if (colorize)
-				fputs(A_YELLOW, stdout);
-			printf(" '");
-			break;
-		case FYSS_DOUBLE_QUOTED:
-			if (colorize)
-				fputs(A_YELLOW, stdout);
-			printf(" \"");
-			break;
-		case FYSS_LITERAL:
-			if (colorize)
-				fputs(A_YELLOW, stdout);
-			printf(" |");
-			break;
-		case FYSS_FOLDED:
-			if (colorize)
-				fputs(A_YELLOW, stdout);
-			printf(" >");
-			break;
-		default:
-			abort();
-		}
-		printf("%.*s", (int)len, value);
-		break;
-	default:
-		/* not handled; should not be produced by scan */
-		break;
-	}
-	if (colorize)
-		fputs(A_RESET, stdout);
-	fputs("\n", stdout);
 }
 
 static int set_parser_input(struct fy_parser *fyp, const char *what,
@@ -1294,7 +576,7 @@ compose_process_event(struct fy_parser *fyp, struct fy_event *fye, struct fy_pat
 	int rc;
 
 	if (cd->verbose) {
-		fprintf(stderr, "%s: %c%c%c%c%c %3d - %-32s\n",
+		fy_parser_info(fyp, "%s: %c%c%c%c%c %3d - %-32s\n",
 				fy_event_type_get_text(fye->type),
 				fy_path_in_root(path) ? 'R' : '-',
 				fy_path_in_sequence(path) ? 'S' : '-',
@@ -1775,7 +1057,7 @@ int main(int argc, char *argv[])
 	};
 	struct fy_emitter_xcfg emit_xcfg;
 	struct fy_parser *fyp = NULL;
-	struct fy_emitter *fye = NULL;
+	struct fy_emitter *emit = NULL;
 	int rc, exitcode = EXIT_FAILURE, opt, lidx, i, j, step = 1;
 	enum fy_error_module errmod;
 	unsigned int errmod_mask;
@@ -1818,6 +1100,8 @@ int main(int argc, char *argv[])
 	bool stdin_input;
 	void *res_iter;
 	bool disable_flow_markers = DISABLE_FLOW_MARKERS_DEFAULT;
+	bool disable_doc_markers = DISABLE_DOC_MARKERS_DEFAULT;
+	bool disable_scalar_styles = DISABLE_SCALAR_STYLES_DEFAULT;
 	bool document_event_stream = DOCUMENT_EVENT_STREAM_DEFAULT;
 	bool collect_errors = COLLECT_ERRORS_DEFAULT;
 	bool allow_duplicate_keys = ALLOW_DUPLICATE_KEYS_DEFAULT;
@@ -1825,6 +1109,7 @@ int main(int argc, char *argv[])
 	struct composer_data cd;
 	bool dump_path = DUMP_PATH_DEFAULT;
 	const char *input_arg;
+	enum dump_testsuite_event_flags dump_flags;
 	/* b3sum */
 	int opti;
 	struct b3sum_config b3cfg = default_b3sum_cfg;
@@ -1874,7 +1159,7 @@ int main(int argc, char *argv[])
 
 	emit_xflags = (VISIBLE_DEFAULT ? FYEXCF_VISIBLE_WS : 0) |
 		      (!strcmp(COLOR_DEFAULT, "auto") ? FYEXCF_COLOR_AUTO :
-                       !strcmp(COLOR_DEFAULT, "on") ? FYEXCF_COLOR_FORCE :
+		       !strcmp(COLOR_DEFAULT, "on") ? FYEXCF_COLOR_FORCE :
 		       FYEXCF_COLOR_NONE) |
 		      FYEXCF_OUTPUT_STDOUT;
 
@@ -2105,6 +1390,12 @@ int main(int argc, char *argv[])
 		case OPT_DISABLE_FLOW_MARKERS:
 			disable_flow_markers = true;
 			break;
+		case OPT_DISABLE_DOC_MARKERS:
+			disable_doc_markers = true;
+			break;
+		case OPT_DISABLE_SCALAR_STYLES:
+			disable_scalar_styles = true;
+			break;
 		case OPT_DOCUMENT_EVENT_STREAM:
 			document_event_stream = true;
 			break;
@@ -2273,8 +1564,8 @@ int main(int argc, char *argv[])
 
 		emit_xcfg.xflags = emit_xflags;
 
-		fye = fy_emitter_create(&emit_xcfg.cfg);
-		if (!fye) {
+		emit = fy_emitter_create(&emit_xcfg.cfg);
+		if (!emit) {
 			fprintf(stderr, "fy_emitter_create() failed\n");
 			goto cleanup;
 		}
@@ -2299,11 +1590,16 @@ int main(int argc, char *argv[])
 			goto cleanup;
 		}
 
+		dump_flags = (dcfg.colorize && isatty(fileno(stdout)) ? DTEF_COLORIZE : 0) |
+			     (disable_flow_markers ? DTEF_DISABLE_FLOW_MARKERS : 0) |
+			     (disable_doc_markers ? DTEF_DISABLE_DOC_MARKERS : 0) |
+			     (disable_scalar_styles ? DTEF_DISABLE_SCALAR_STYLES : 0) |
+			     (tsv_format ? DTEF_TSV_FORMAT : 0);
+
 		if (!document_event_stream) {
 			/* regular test suite */
 			while ((fyev = fy_parser_parse(fyp)) != NULL) {
-				dump_testsuite_event(fyp, fyev, dcfg.colorize, iter,
-						     disable_flow_markers, tsv_format);
+				dump_testsuite_event(fyev, dump_flags);
 				fy_parser_event_free(fyp, fyev);
 			}
 		} else {
@@ -2317,8 +1613,7 @@ int main(int argc, char *argv[])
 				fprintf(stderr, "failed to create document iterator's stream start event\n");
 				goto cleanup;
 			}
-			dump_testsuite_event(fyp, fyev, dcfg.colorize, iter,
-					     disable_flow_markers, tsv_format);
+			dump_testsuite_event(fyev, dump_flags);
 			fy_document_iterator_event_free(fydi, fyev);
 
 			/* convert to document and then process the generator event stream it */
@@ -2329,13 +1624,11 @@ int main(int argc, char *argv[])
 					fprintf(stderr, "failed to create document iterator's document start event\n");
 					goto cleanup;
 				}
-				dump_testsuite_event(fyp, fyev, dcfg.colorize, iter,
-						     disable_flow_markers, tsv_format);
+				dump_testsuite_event(fyev, dump_flags);
 				fy_document_iterator_event_free(fydi, fyev);
 
 				while ((fyev = fy_document_iterator_body_next(fydi)) != NULL) {
-					dump_testsuite_event(fyp, fyev, dcfg.colorize, iter,
-							     disable_flow_markers, tsv_format);
+					dump_testsuite_event(fyev, dump_flags);
 					fy_document_iterator_event_free(fydi, fyev);
 				}
 
@@ -2344,8 +1637,7 @@ int main(int argc, char *argv[])
 					fprintf(stderr, "failed to create document iterator's stream document end\n");
 					goto cleanup;
 				}
-				dump_testsuite_event(fyp, fyev, dcfg.colorize, iter,
-						     disable_flow_markers, tsv_format);
+				dump_testsuite_event(fyev, dump_flags);
 				fy_document_iterator_event_free(fydi, fyev);
 
 				fy_parse_document_destroy(fyp, fyd);
@@ -2359,8 +1651,7 @@ int main(int argc, char *argv[])
 				fprintf(stderr, "failed to create document iterator's stream end event\n");
 				goto cleanup;
 			}
-			dump_testsuite_event(fyp, fyev, dcfg.colorize, iter,
-					     disable_flow_markers, tsv_format);
+			dump_testsuite_event(fyev, dump_flags);
 			fy_document_iterator_event_free(fydi, fyev);
 
 			fy_document_iterator_destroy(fydi);
@@ -2396,7 +1687,7 @@ int main(int argc, char *argv[])
 			if (!streaming) {
 				while ((fyd = fy_parse_load_document(fyp)) != NULL) {
 					if (!null_output)
-						rc = fy_emit_document(fye, fyd);
+						rc = fy_emit_document(emit, fyd);
 					else
 						rc = 0;
 					fy_parse_document_destroy(fyp, fyd);
@@ -2414,28 +1705,28 @@ int main(int argc, char *argv[])
 								case FYET_STREAM_END:
 								case FYET_MAPPING_END:
 								case FYET_SEQUENCE_END:
-									fyeev = fy_emit_event_create(fye, fyev->type);
+									fyeev = fy_emit_event_create(emit, fyev->type);
 									break;
 								case FYET_DOCUMENT_START:
 									tags = fy_document_state_tag_directives(fyev->document_start.document_state);
-									fyeev = fy_emit_event_create(fye, FYET_DOCUMENT_START,
-								 				fyev->document_start.implicit,
+									fyeev = fy_emit_event_create(emit, FYET_DOCUMENT_START,
+												fyev->document_start.implicit,
 												fy_document_state_version_explicit(fyev->document_start.document_state)
 													? fy_document_state_version(fyev->document_start.document_state)
 													: NULL,
 												fy_document_state_tags_explicit(fyev->document_start.document_state)
 													? tags
-												 	: NULL);
+													: NULL);
 									if (tags)
 										free(tags);
 									break;
 								case FYET_DOCUMENT_END:
-									fyeev = fy_emit_event_create(fye, FYET_DOCUMENT_END,
+									fyeev = fy_emit_event_create(emit, FYET_DOCUMENT_END,
 												fyev->document_end.implicit);
 									break;
 								case FYET_MAPPING_START:
 								case FYET_SEQUENCE_START:
-									fyeev = fy_emit_event_create(fye, fyev->type,
+									fyeev = fy_emit_event_create(emit, fyev->type,
 												fy_event_get_node_style(fyev),
 												fy_event_get_anchor_token(fyev)
 													? fy_token_get_text0(fy_event_get_anchor_token(fyev))
@@ -2449,8 +1740,8 @@ int main(int argc, char *argv[])
 									eevtext = fy_token_get_text(fy_event_get_token(fyev), &eevlen);
 									if (!eevtext)
 										goto cleanup;
-									fyeev = fy_emit_event_create(fye, FYET_SCALAR,
-								 				fy_scalar_token_get_style(fy_event_get_token(fyev)),
+									fyeev = fy_emit_event_create(emit, FYET_SCALAR,
+											fy_scalar_token_get_style(fy_event_get_token(fyev)),
 												eevtext, eevlen,
 												fy_event_get_anchor_token(fyev)
 													? fy_token_get_text0(fy_event_get_anchor_token(fyev))
@@ -2460,7 +1751,7 @@ int main(int argc, char *argv[])
 													: NULL);
 									break;
 								case FYET_ALIAS:
-									fyeev = fy_emit_event_create(fye, FYET_ALIAS,
+									fyeev = fy_emit_event_create(emit, FYET_ALIAS,
 												fy_token_get_text0(fy_event_get_token(fyev)));
 									break;
 								default:
@@ -2471,10 +1762,10 @@ int main(int argc, char *argv[])
 								goto cleanup;
 							}
 
-							rc = fy_emit_event(fye, fyeev);
+							rc = fy_emit_event(emit, fyeev);
 						}
 						else {
-							rc = fy_emit_event_from_parser(fye, fyp, fyev);
+							rc = fy_emit_event_from_parser(emit, fyp, fyev);
 						}
 
 						if (rc)
@@ -2527,15 +1818,15 @@ int main(int argc, char *argv[])
 				if (!fyn_emit)
 					continue;
 
-				rc = fy_emit_document_start(fye, fyd, fyn_emit);
+				rc = fy_emit_document_start(emit, fyd, fyn_emit);
 				if (rc)
 					goto cleanup;
 
-				rc = fy_emit_root_node(fye, fyn_emit);
+				rc = fy_emit_root_node(emit, fyn_emit);
 				if (rc)
 					goto cleanup;
 
-				rc = fy_emit_document_end(fye);
+				rc = fy_emit_document_end(emit);
 				if (rc)
 					goto cleanup;
 
@@ -2624,15 +1915,15 @@ int main(int argc, char *argv[])
 				fprintf(stderr, "warning: empty document\n");
 		}
 
-		rc = fy_emit_document_start(fye, fyd_join, fyn_emit);
+		rc = fy_emit_document_start(emit, fyd_join, fyn_emit);
 		if (rc)
 			goto cleanup;
 
-		rc = fy_emit_root_node(fye, fyn_emit);
+		rc = fy_emit_root_node(emit, fyn_emit);
 		if (rc)
 			goto cleanup;
 
-		rc = fy_emit_document_end(fye);
+		rc = fy_emit_document_end(emit);
 		if (rc)
 			goto cleanup;
 
@@ -2665,7 +1956,7 @@ int main(int argc, char *argv[])
 				fprintf(stderr, "failed to convert path expression to document\n");
 				goto cleanup;
 			}
-			fy_emit_document(fye, fyd_pe);
+			fy_emit_document(emit, fyd_pe);
 
 			fy_document_destroy(fyd_pe);
 		}
@@ -2733,15 +2024,15 @@ int main(int argc, char *argv[])
 				res_iter = NULL;
 				while ((fyn_emit = fy_path_exec_results_iterate(fypx, &res_iter)) != NULL) {
 
-					rc = fy_emit_document_start(fye, fyd, fyn_emit);
+					rc = fy_emit_document_start(emit, fyd, fyn_emit);
 					if (rc)
 						goto cleanup;
 
-					rc = fy_emit_root_node(fye, fyn_emit);
+					rc = fy_emit_root_node(emit, fyn_emit);
 					if (rc)
 						goto cleanup;
 
-					rc = fy_emit_document_end(fye);
+					rc = fy_emit_document_end(emit);
 					if (rc)
 						goto cleanup;
 				}
@@ -2800,7 +2091,7 @@ int main(int argc, char *argv[])
 
 		memset(&cd, 0, sizeof(cd));
 		cd.fyp = fyp;
-		cd.emit = fye;
+		cd.emit = emit;
 		cd.null_output = null_output;
 		cd.single_document = false;
 		cd.verbose = dump_path;
@@ -2843,8 +2134,8 @@ cleanup:
 			fy_document_destroy(fyd_ins[j]);
 	}
 
-	if (fye)
-		fy_emitter_destroy(fye);
+	if (emit)
+		fy_emitter_destroy(emit);
 
 	if (fyp)
 		fy_parser_destroy(fyp);

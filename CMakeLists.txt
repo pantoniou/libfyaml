@@ -864,6 +864,8 @@ endif()
 # Build fy-tool
 add_executable(fy-tool
     src/tool/fy-tool.c
+    src/tool/fy-tool-util.c
+    src/tool/fy-tool-dump.c
     src/valgrind/fy-valgrind.h
 )
 

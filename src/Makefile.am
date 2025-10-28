@@ -211,6 +211,9 @@ bin_PROGRAMS += fy-tool
 
 fy_tool_SOURCES = \
 	tool/fy-tool.c \
+	tool/fy-tool-util.c \
+	tool/fy-tool-dump.c \
+	tool/fy-tool-util.h \
 	valgrind/fy-valgrind.h
 
 fy_tool_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/valgrind
