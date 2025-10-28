@@ -14,13 +14,17 @@ Synopsis
 
 **fy-join** [*OPTIONS*] [-T*PATH*] [-F*PATH*] [-t*PATH*] [<*file*> ...]
 
+**fy-ypath** [*OPTIONS*] <*ypath-expression> [<*file*> ...]
+
+**fy-compose** [*OPTIONS*] [<*file*> ...]
+
 Description
 -----------
 
 :program:`fy-tool` is a general YAML/JSON manipulation tool using `libfyaml`.
 Its operation is different depending on how it's called, either via aliases
 named `fy-dump`, `fy-testsuite`, `fy-filter`, `fy-join`, or via the
-`--dump`, `--testsuite`, `--filter`, `--join` options.
+`--dump`, `--testsuite`, `--filter`, `--join`, `--ypath` and `--compose` options.
 
 * In `dump` mode it will parse YAML/JSON input files and output YAML/JSON
   according to the output format options.
@@ -33,6 +37,14 @@ named `fy-dump`, `fy-testsuite`, `fy-filter`, `fy-join`, or via the
 
 * In `join` mode it will parse YAML/JSON files and join them into a single
   YAML/JSON document according to the given command line options.
+
+* In `ypath` mode it will parse YAML/JSON files and execute a ypath query
+  which will output a document stream according to the results. This is
+  an experimental mode under development, where the syntax is not yet
+  decided completely.
+
+* In `compose` mode, it operates similarly to dump, but the document tree
+  is created using the built-in composer API.
 
 Options
 -------
@@ -101,7 +113,7 @@ and they are as follows:
 
      The input files are always in YAML mode.
 
-   - **yes**
+   - **force**
 
      The input files are always set to JSON mode.
 
@@ -110,10 +122,50 @@ and they are as follows:
      The input files are set to JSON mode automatically when the
      file's extension is `.json`. This is the default.
 
-   Note that although libfyaml's YAML 1.2 support is complete, that simply
-   means that a valid JSON file will parse as YAML 1.2. However there
-   are instances where one requires strict JSON spec adherence, and
-   for invalid JSON to be rejected even when it's valid YAML 1.2.
+   JSON support is complete so all valid JSON files are parsed according
+   to JSON rules, even where those differ with YAML rules.
+
+.. option:: --yaml-1.1
+
+   Force YAML 1.1 rules, when input does not specify a version via a directive.
+
+.. option:: --yaml-1.2
+
+   Force YAML 1.2 rules, when input does not specify a version via a directive.
+
+.. option:: --yaml-1.3
+
+   Force YAML 1.3 rules, when input does not specify a version via a directive.
+   This option is experimental since the 1.3 spec is not yet released.
+
+.. option:: --disable-accel
+
+   Disable use of acceleration features; use less memory but potentially more CPU.
+
+.. option:: --disable-buffering
+
+   Disable use stdio bufferring, reads will be performed via unix fd reads. This
+   may reduce latency when reading from a network file descriptor, or similar.
+
+.. option:: --disable-depth-limit
+
+   Disable the object depth limit, which is usually set to a value near 60.
+   Using this option is is possible to process even pathological inputs when
+   using the default non-recursive build mode.
+
+.. option:: --prefer-recursive
+
+   Prefer recursive build methods, instead of iterative. This field is merely here
+   for evaluation purposes and will be removed in a future version.
+
+.. option:: --sloppy-flow-indentation
+
+   Use sloppy flow indentation, where indentation is not taken into account in flow
+   mode, even when the input is invalid YAML according to the spec.
+
+.. option:: --ypath-aliases
+
+   Process aliases using ypaths. Experimental option.
 
 .. option:: --streaming
 
@@ -136,6 +188,12 @@ and they are as follows:
 .. option:: -l, --follow
 
    Follow aliases when performing path traversal. By default this option is disabled.
+
+.. rubric:: Testsuite Options
+
+.. option:: --disable-flow-markers
+
+   Do not output flow-markers for the testsuite output.
 
 .. rubric:: Emitter Options
 
@@ -235,6 +293,26 @@ and they are as follows:
 
    Strip document indicators on output. Disabled by default.
 
+.. option:: --null-output
+
+   Do not generate any output, useful for profiling the parser.
+
+.. rubric:: YPATH options
+
+.. option:: --dump-pathexpr
+
+   Dump the produced path expression for debugging.
+
+.. option:: --no-exec
+
+   Do not execute the expression. Useful when used with `--dump-pathexpr`
+
+.. rubric:: Compose options
+
+.. option:: --dump-path
+
+   Dump the path while composing.
+
 .. rubric:: Tool mode select options
 
 .. option:: --dump
@@ -309,6 +387,14 @@ and they are as follows:
 
       If  first character of `FILE` is **>** the the input is the content of the option
       that follows.
+
+.. option:: --ypath
+
+   Process files and output query results using ypath.
+
+.. option:: --compose
+
+   Use the composer API to build the document instead of direct events.
 
 Examples
 --------
