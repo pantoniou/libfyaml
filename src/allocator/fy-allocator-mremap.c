@@ -108,10 +108,7 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mr
 		break;
 
 	default:
-		/* should never happen */
-		assert(0);
-		abort();
-		break;
+		FY_IMPOSSIBLE_ABORT();
 	}
 
 	if (!mran)
@@ -144,10 +141,7 @@ static void fy_mremap_arena_destroy(struct fy_mremap_allocator *mra, struct fy_m
 		break;
 
 	default:
-		/* should never happen */
-		assert(0);
-		abort();
-		break;
+		FY_IMPOSSIBLE_ABORT();
 	}
 }
 
@@ -197,10 +191,7 @@ static int fy_mremap_arena_grow(struct fy_mremap_allocator *mra, struct fy_mrema
 		return 0;
 
 	default:
-		/* should never happen */
-		assert(0);
-		abort();
-		break;
+		FY_IMPOSSIBLE_ABORT();
 	}
 
 	return -1;
@@ -248,10 +239,7 @@ static int fy_mremap_arena_trim(struct fy_mremap_allocator *mra, struct fy_mrema
 		return 0;
 
 	default:
-		/* should never happen */
-		assert(0);
-		abort();
-		break;
+		FY_IMPOSSIBLE_ABORT();
 	}
 
 	return -1;

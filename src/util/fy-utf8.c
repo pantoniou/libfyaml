@@ -944,7 +944,7 @@ void *fy_utf8_split_posix(const char *str, int *argcp, const char * const *argvp
 				break;
 
 			default:
-				abort();
+				FY_IMPOSSIBLE_ABORT();
 			}
 			break;
 
@@ -963,8 +963,7 @@ void *fy_utf8_split_posix(const char *str, int *argcp, const char * const *argvp
 				OUTC(outc);
 			break;
 		default:
-			abort();
-			break;
+			FY_IMPOSSIBLE_ABORT();
 		}
 		s += w;
 	}

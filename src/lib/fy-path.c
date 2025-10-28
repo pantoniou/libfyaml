@@ -272,7 +272,7 @@ static int fy_path_component_get_text_internal(struct fy_emit_accum *ea, struct 
 
 	switch (fypc->type) {
 	case FYPCT_NONE:
-		abort();
+		FY_IMPOSSIBLE_ABORT();
 
 	case FYPCT_MAP:
 
@@ -337,7 +337,7 @@ static int fy_path_get_text_internal(struct fy_emit_accum *ea, struct fy_path *f
 
 		switch (fypc->type) {
 		case FYPCT_NONE:
-			abort();
+			FY_IMPOSSIBLE_ABORT();
 
 		case FYPCT_MAP:
 

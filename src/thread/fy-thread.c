@@ -886,7 +886,7 @@ static void *fy_worker_thread_steal(void *arg)
 			if (!atomic_compare_exchange_strong(&t->work, &w_exp, w_stolen)) {
 				assert(w_exp != WORK_SHUTDOWN);
 				TDBG("%s: T#%u t->work:%p w:%p w_stolen:%p\n", __func__, t->id, atomic_load(&t->work), w, w_stolen);
-				abort();
+				FY_IMPOSSIBLE_ABORT();
 			}
 			w = w_stolen;
 		}

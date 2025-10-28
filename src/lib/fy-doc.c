@@ -1454,7 +1454,7 @@ fy_parse_document_load_scalar(struct fy_parser *fyp, struct fy_document *fyd,
 		fyn->scalar = fye->alias.anchor;
 		fye->alias.anchor = NULL;
 	} else
-		assert(0);
+		FY_IMPOSSIBLE_ABORT();
 
 	*fynp = fyn;
 	fyn = NULL;
@@ -7402,8 +7402,7 @@ fydi_push_collection(struct fy_document_iterator *fydi, struct fy_node *fyn)
 		break;
 
 	default:
-		assert(0);
-		break;
+		FY_IMPOSSIBLE_ABORT();
 	}
 
 	return true;

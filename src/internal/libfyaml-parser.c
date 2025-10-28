@@ -357,7 +357,7 @@ void dump_event(struct fy_parser *fyp, struct fy_event *fye)
 		printf("%-14s%s|\n", "MAPPING_END", mm);
 		break;
 	default:
-		assert(0);
+		FY_IMPOSSIBLE_ABORT();
 	}
 }
 
@@ -458,7 +458,7 @@ void dump_testsuite_event(FILE *fp, struct fy_parser *fyp, struct fy_event *fye)
 			fprintf(fp, " >");
 			break;
 		default:
-			abort();
+			FY_IMPOSSIBLE_ABORT();
 		}
 		print_escaped(fp, value, value_len);
 		fprintf(fp, "\n");
@@ -468,7 +468,7 @@ void dump_testsuite_event(FILE *fp, struct fy_parser *fyp, struct fy_event *fye)
 		fprintf(fp, "=ALI *%.*s\n", (int)anchor_len, anchor);
 		break;
 	default:
-		assert(0);
+		FY_IMPOSSIBLE_ABORT();
 	}
 }
 
@@ -1281,7 +1281,7 @@ void dump_libyaml_event(yaml_event_t *event)
 		printf("%-14s%s|\n", "MAPPING_END", mm);
 		break;
 	default:
-		assert(0);
+		FY_IMPOSSIBLE_ABORT();
 	}
 }
 
@@ -1374,7 +1374,7 @@ void dump_libyaml_testsuite_event(FILE *fp, yaml_event_t *event)
 			fprintf(fp, " >");
 			break;
 		case YAML_ANY_SCALAR_STYLE:
-			abort();
+			FY_IMPOSSIBLE_ABORT();
 		}
 		print_escaped(fp, (char *)event->data.scalar.value, event->data.scalar.length);
 		fprintf(fp, "\n");
@@ -1383,7 +1383,7 @@ void dump_libyaml_testsuite_event(FILE *fp, yaml_event_t *event)
 		fprintf(fp, "=ALI *%s\n", event->data.alias.anchor);
 		break;
 	default:
-		assert(0);
+		FY_IMPOSSIBLE_ABORT();
 	}
 }
 

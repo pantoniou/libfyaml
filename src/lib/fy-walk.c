@@ -1238,8 +1238,7 @@ again:
 
 	switch (fypp->expr_mode) {
 	case fyem_none:
-		assert(0);	/* should never happen */
-		break;
+		FY_IMPOSSIBLE_ABORT();
 
 	case fyem_path:
 
@@ -1388,8 +1387,7 @@ do_token:
 
 	switch (fypp->expr_mode) {
 	case fyem_none:
-		assert(0);	/* should never happen */
-		break;
+		FY_IMPOSSIBLE_ABORT();
 
 	case fyem_path:
 		if (fy_is_first_alpha(c))
@@ -1765,9 +1763,7 @@ enum fy_path_expr_type fy_map_token_to_path_expr_type(enum fy_token_type type, e
 		return fpet_select;
 
 	default:
-		/* note parentheses do not have an expression */
-		assert(0);
-		break;
+		FY_IMPOSSIBLE_ABORT();
 	}
 	return fpet_none;
 }
@@ -2951,9 +2947,6 @@ int evaluate_new(struct fy_path_parser *fypp)
 		break;
 
 	case fpet_lparen:
-		abort();
-		assert(0);
-
 #ifdef DEBUG_EXPR
 		FYR_TOKEN_DIAG(fyr, expr->fyt,
 			FYDF_NOTICE, FYEM_PARSE, "(");
@@ -3120,8 +3113,7 @@ int evaluate_new(struct fy_path_parser *fypp)
 		/* shoud never */
 	case fpet_scalar_expr:
 	case fpet_path_expr:
-		assert(0);
-		abort();
+		FY_IMPOSSIBLE_ABORT();
 
 	default:
 		fyr_error(fyr, "Unknown expression %s\n", fy_path_expr_type_txt[expr->type]);
@@ -3377,8 +3369,7 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 		} else {
 			switch (fypp->expr_mode) {
 			case fyem_none:
-				assert(0);	/* should never happen */
-				break;
+				FY_IMPOSSIBLE_ABORT();
 
 			case fyem_path:
 				if (fy_path_expr_type_is_conditional(expr->type)) {
@@ -3956,8 +3947,7 @@ fy_walk_result_compare_simple(struct fy_path_exec *fypx, enum fy_path_expr_type 
 
 		switch (fwrl->type) {
 		case fwrt_none:
-			abort();	/* should never happen */
-			break;
+			FY_IMPOSSIBLE_ABORT();
 
 		case fwrt_node_ref:
 			switch (type) {
@@ -3977,8 +3967,7 @@ fy_walk_result_compare_simple(struct fy_path_exec *fypx, enum fy_path_expr_type 
 			break;
 
 		case fwrt_refs:
-			assert(0);	/* should not get here */
-			break;
+			FY_IMPOSSIBLE_ABORT();
 
 		case fwrt_doc:
 			switch (type) {
@@ -4183,16 +4172,14 @@ fy_walk_result_arithmetic_simple(struct fy_path_exec *fypx,
 				output->number = fwrr->number ? (fwrl->number / fwrr->number) : INFINITY;
 				break;
 			default:
-				assert(0);
-				break;
+				FY_IMPOSSIBLE_ABORT();
 			}
 			fwrl = NULL;
 			break;
 
 		default:
 			fy_error(diag, "fwrl->type=%s\n", fy_walk_result_type_txt[fwrl->type]);
-			assert(0);
-			break;
+			FY_IMPOSSIBLE_ABORT();
 		}
 	}
 
@@ -4308,9 +4295,8 @@ fy_walk_result_lhs_rhs(struct fy_path_exec *fypx,
 				fwr = fy_walk_result_conditional_simple(fypx, expr, exprl, fwrlc, exprr, fwrrc);
 			else if (fy_path_expr_type_is_arithmetic(expr->type))
 				fwr = fy_walk_result_arithmetic_simple(fypx, expr, exprl, fwrlc, exprr, fwrrc);
-			else {
-				assert(0);
-			}
+			else
+				FY_IMPOSSIBLE_ABORT();
 
 			fwrlc = NULL;
 			fwrrc = NULL;
@@ -5010,11 +4996,8 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 			goto out;
 
 		/* only handle inputs of node and refs */
-		if (input->type != fwrt_node_ref && input->type != fwrt_refs) {
-			assert(0);
+		if (input->type != fwrt_node_ref && input->type != fwrt_refs)
 			goto out;
-		}
-
 
 		/* execute the expression */
 		exprn = fy_path_expr_list_head(&expr->children);
@@ -5038,8 +5021,7 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 
 	default:
 		fy_error(diag, "%s\n", fy_path_expr_type_txt[expr->type]);
-		assert(0);
-		break;
+		FY_IMPOSSIBLE_ABORT();
 	}
 
 out:

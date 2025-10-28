@@ -6615,9 +6615,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		break;
 
 	case FYPS_END:
-		/* should never happen */
-		assert(0);
-		break;
+		FY_IMPOSSIBLE_ABORT();
 	}
 
 	assert(fyep);

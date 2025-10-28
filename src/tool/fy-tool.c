@@ -769,7 +769,7 @@ void dump_testsuite_event(struct fy_parser *fyp,
 		printf("=%s", !tsv_format ? "ALI" : "ali");
 		break;
 	default:
-		assert(0);
+		abort();
 	}
 
 	/* (position) anchor and tag */

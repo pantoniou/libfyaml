@@ -460,7 +460,7 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 					"bad file.fd %d",  fyi->cfg.fd.fd);
 			break;
 		default:
-			assert(0);	// will never happen
+			FY_IMPOSSIBLE_ABORT();
 		}
 
 		rc = fstat(fyi->fd, &sb);
@@ -518,8 +518,7 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 		break;
 
 	default:
-		assert(0);
-		break;
+		FY_IMPOSSIBLE_ABORT();
 	}
 
 	switch (fyi->cfg.type) {
@@ -721,15 +720,12 @@ const void *fy_reader_ptr_slow_path(struct fy_reader *fyr, size_t *leftp)
 		break;
 
 	case fyit_dociter:
-		assert(0);
-		abort();
-		break;
-
+		FY_IMPOSSIBLE_ABORT();
 
 	default:
-		assert(0);	/* no streams */
 		p = NULL;
 		left = 0;
+		FY_IMPOSSIBLE_ABORT();
 		break;
 	}
 
@@ -948,13 +944,10 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 		break;
 
 	case fyit_dociter:
-		assert(0);
-		abort();
-		break;
+		FY_IMPOSSIBLE_ABORT();
 
 	default:
-		assert(0);
-		break;
+		FY_IMPOSSIBLE_ABORT();
 	}
 
 	if (leftp)
@@ -1053,8 +1046,7 @@ struct fy_input *fy_input_create(const struct fy_input_cfg *fyic)
 		break;
 
 	default:
-		assert(0);
-		break;
+		FY_IMPOSSIBLE_ABORT();
 	}
 	if (!fyi->name)
 		goto err_out;
