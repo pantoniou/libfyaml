@@ -9045,3 +9045,10 @@ void fy_shutdown(void)
 	LLVMShutdown();
 #endif
 }
+
+#ifdef FY_HAS_DESTRUCTOR
+FY_DESTRUCTOR void fy_do_cleanup(void)
+{
+	fy_shutdown();
+}
+#endif
