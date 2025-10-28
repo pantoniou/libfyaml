@@ -201,6 +201,20 @@ fy_version_supported_iterate(void **prevp)
 	FY_EXPORT;
 
 /**
+ * fy_shutdown() - Final cleanup before exit
+ *
+ * Some libraries *cough*libclang** need explicit cleanup calls
+ * at the end of program execution, even if you've never called
+ * any of their functions.
+ *
+ * This method will make sure it calls their cleanup functions
+ * so that no memory leaks are reported in valgrind etc.
+ */
+void
+fy_shutdown(void)
+	FY_EXPORT;
+
+/**
  * struct fy_tag - The YAML tag structure.
  *
  * @handle: Handle of the tag (i.e. `"!!"` )

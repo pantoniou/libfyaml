@@ -9036,3 +9036,15 @@ err_out:
 	count = -1;
 	goto out;
 }
+
+// just for LLVMShutdown
+#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
+#include <llvm-c/Core.h>
+#endif
+
+void fy_shutdown(void)
+{
+#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
+	LLVMShutdown();
+#endif
+}
