@@ -668,6 +668,22 @@ enum fy_event_part {
 };
 
 /**
+ * fy_event_get_type() - Get the event's type
+ *
+ * Return the type of the event
+ *
+ * @fye: The event
+ *
+ * Returns:
+ * The event type, or FYET_NONE when the event is invalid
+ */
+static inline enum fy_event_type
+fy_event_get_type(const struct fy_event *fye)
+{
+	return fye ? fye->type : FYET_NONE;
+}
+
+/**
  * fy_event_data() - Get a pointer to the event data
  *
  * Some languages *cough*golang*cough* really don't like
