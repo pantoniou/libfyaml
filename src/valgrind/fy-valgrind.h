@@ -105,14 +105,15 @@ do_valgrind_no_opt:
 	switch (tool) {
 
 	case fyvt_valgrind:
-		va_argc = 1 + 4 + argc - 1;
+		va_argc = 1 + 5 + argc - 1;
 		va_argv = alloca(sizeof(*va_argv) * (va_argc + 1));
 		va_argv[0] = valgrind;
 		va_argv[1] = "--leak-check=full";
-		va_argv[2] = "--track-origins=yes";
-		va_argv[3] = "--error-exitcode=5";
-		va_argv[4] = argv0;
-		memcpy(va_argv + 1 + 4, argv + 1, argc * sizeof(*va_argv));
+		va_argv[2] = "--show-leak-kinds=all";
+		va_argv[3] = "--track-origins=yes";
+		va_argv[4] = "--error-exitcode=5";
+		va_argv[5] = argv0;
+		memcpy(va_argv + 1 + 5, argv + 1, argc * sizeof(*va_argv));
 		break;
 
 	case fyvt_callgrind:
