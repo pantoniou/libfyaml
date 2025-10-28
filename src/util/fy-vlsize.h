@@ -479,21 +479,23 @@ fy_decode_size(const uint8_t *start, size_t bufsz, size_t *sizep)
 static inline const uint8_t *
 fy_decode_size_nocheck(const uint8_t *start, size_t *sizep)
 {
-#if 1
-	return fy_decode_size64_nocheck(start, sizep);
-#else
-	const uint8_t *p0, *p1;
-	size_t sz0, sz1;
-	p0 = fy_decode_size64(start, FYVL_SIZE_ENCODING_MAX_64, &sz0);
-	p1 = fy_decode_size64_nocheck(start, &sz1);
-	assert(p0 == p1);
-	if (sz0 != sz1) {
-		fprintf(stderr, "%zu %zu\n", sz0, sz1);
+	uint64_t size64;
+	const uint8_t *s;
+
+	switch (sizeof(size_t)) {
+	case sizeof(uint64_t):
+		s = fy_decode_size64_nocheck(start, &size64);
+		break;
+	case sizeof(uint32_t):
+		s = fy_decode_size32_nocheck(start, &size64);
+		break;
+	default:
+		size64 = 0;
+		s = NULL;
+		break;
 	}
-	assert(sz0 == sz1);
-	*sizep = sz0;
-	return p0;
-#endif
+	*sizep = (size_t)size64;
+	return s;
 }
 
 static inline const uint8_t *
