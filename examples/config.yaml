@@ -1,0 +1,40 @@
+# Sample configuration file for libfyaml examples
+# This file demonstrates a typical application configuration
+
+server:
+  host: localhost
+  port: 8080
+  ssl: true
+  max_connections: 100
+  timeout: 30
+
+database:
+  host: db.example.com
+  port: 5432
+  name: production_db
+  username: dbuser
+  pool_size: 10
+
+logging:
+  level: info
+  file: /var/log/app.log
+  rotate: daily
+  max_size: 100M
+
+cache:
+  enabled: true
+  type: redis
+  host: cache.example.com
+  port: 6379
+  ttl: 3600
+
+features:
+  authentication: enabled
+  api_v2: disabled
+  metrics: enabled
+  debug_mode: false
+
+allowed_origins:
+  - https://example.com
+  - https://www.example.com
+  - https://app.example.com
