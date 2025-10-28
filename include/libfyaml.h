@@ -6314,6 +6314,7 @@ struct fy_path_parse_cfg {
  * Creates a path parser with its configuration @cfg
  * The path parser may be destroyed by a corresponding call to
  * fy_path_parser_destroy().
+ * If @cfg is NULL a default yaml parser is created.
  *
  * @cfg: The configuration for the path parser
  *

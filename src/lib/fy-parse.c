@@ -6924,9 +6924,6 @@ struct fy_parser *fy_parser_create(const struct fy_parse_cfg *cfg)
 	struct fy_parser *fyp;
 	int rc;
 
-	if (!cfg)
-		return NULL;
-
 	fyp = malloc(sizeof(*fyp));
 	if (!fyp)
 		return NULL;
