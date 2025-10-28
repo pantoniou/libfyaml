@@ -160,4 +160,141 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 #define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
 #endif
 
+/* if expression is zero, then the build will break */
+#define FY_COMPILE_ERROR_ON_ZERO(_e) ((void)(sizeof(char[1 - 2*!!(_e)])))
+
+/* true, if types are the same, false otherwise (depends on builtin_types_compatible_p) */
+#if defined(__has_builtin) && __has_builtin(__builtin_types_compatible_p)
+#define FY_SAME_TYPE(_a, _b) __builtin_types_compatible_p(typeof(_a), typeof(_b))
+#else
+#define FY_SAME_TYPE(_a, _b) true
+#endif
+
+/* compile error if types are not the same */
+#define FY_CHECK_SAME_TYPE(_a, _b) \
+    FY_COMPILE_ERROR_ON_ZERO(!FY_SAME_TYPE(_a, _b))
+
+/* type safe add overflow */
+#if defined(__has_builtin) && __has_builtin(__builtin_add_overflow)
+#define FY_ADD_OVERFLOW __builtin_add_overflow
+#else
+#define FY_ADD_OVERFLOW(_a, _b, _resp) \
+({ \
+	typeof (_a) __a = (_a), __res; \
+	typeof (_b) __b = (_b); \
+	bool __overflow; \
+	\
+	FY_CHECK_SAME_TYPE(__a, __b); \
+	\
+	__res = __a + __b; \
+	/* overflow when signs of a, b same, but results different */ \
+	__overflow = ((__a ^ __result) & (__b & __result)) < 0; \
+	*(_resp) = __res; \
+	__overflow; \
+})
+#endif
+
+/* type safe sub overflow */
+#if defined(__has_builtin) && __has_builtin(__builtin_sub_overflow)
+#define FY_SUB_OVERFLOW __builtin_sub_overflow
+#else
+#define FY_SUB_OVERFLOW(_a, _b, _resp) \
+({ \
+	typeof (_a) __a = (_a), __res; \
+	typeof (_b) __b = (_b); \
+	bool __overflow; \
+	\
+	FY_CHECK_SAME_TYPE(__a, __b); \
+	\
+	__res = __a - __b; \
+	/* overflow when signs of a, b differ, but results different from minuend */ \
+	__overflow = ((__a ^ __b) & (__a & __result)) < 0; \
+	*(_resp) = __res; \
+	__overflow; \
+})
+#endif
+
+/* type safe multiply overflow */
+#if defined(__has_builtin) && __has_builtin(__builtin_mul_overflow)
+#define FY_MUL_OVERFLOW __builtin_mul_overflow
+#else
+#define FY_MUL_OVERFLOW(_a, _b, _resp) \
+({ \
+	typeof (_a) __a = (_a), __res; \
+	typeof (_b) __b = (_b); \
+	bool __overflow; \
+	\
+	FY_CHECK_SAME_TYPE(__a, __b); \
+	\
+	if (!__a || !__b) { \
+	    __overflow = false; \
+	    __res = 0; \
+	} else { \
+	    __res = __a * __b; \
+	    /* overflow when division of the result differs */ \
+	    __overflow = (__res / __a) != __b; \
+	} \
+	*(_resp) = __res; \
+	__overflow; \
+})
+#endif
+
+/* alloca formatted print methods */
+#define alloca_vsprintf(_fmt, _ap) \
+	({ \
+		const char *__fmt = (_fmt); \
+		va_list _ap_orig; \
+		int _size; \
+		int _sizew __FY_DEBUG_UNUSED__; \
+		char *_buf = NULL, *_s; \
+		\
+		va_copy(_ap_orig, (_ap)); \
+		_size = vsnprintf(NULL, 0, __fmt, _ap_orig); \
+		va_end(_ap_orig); \
+		if (_size != -1) { \
+			_buf = alloca(_size + 1); \
+			_sizew = vsnprintf(_buf, _size + 1, __fmt, _ap); \
+			assert(_size == _sizew); \
+			_s = _buf + strlen(_buf); \
+			while (_s > _buf && _s[-1] == '\n') \
+				*--_s = '\0'; \
+		} \
+		_buf; \
+	})
+
+#define alloca_sprintf(_fmt, ...) \
+	({ \
+		const char *__fmt = (_fmt); \
+		int _size; \
+		int _sizew __FY_DEBUG_UNUSED__; \
+		char *_buf = NULL, *_s; \
+		\
+		_size = snprintf(NULL, 0, __fmt, ## __VA_ARGS__); \
+		if (_size != -1) { \
+			_buf = alloca(_size + 1); \
+			_sizew = snprintf(_buf, _size + 1, __fmt, __VA_ARGS__); \
+			assert(_size == _sizew); \
+			_s = _buf + strlen(_buf); \
+			while (_s > _buf && _s[-1] == '\n') \
+				*--_s = '\0'; \
+		} \
+		_buf; \
+	})
+
+#if !defined(NDEBUG) && defined(HAVE_DEVMODE) && HAVE_DEVMODE
+#define FY_DEVMODE
+#else
+#undef FY_DEVMODE
+#endif
+
+#ifdef FY_DEVMODE
+#define __FY_DEBUG_UNUSED__	/* nothing */
+#else
+#if defined(__GNUC__) && __GNUC__ >= 4
+#define __FY_DEBUG_UNUSED__	__attribute__((__unused__))
+#else
+#define __FY_DEBUG_UNUSED__	/* nothing */
+#endif
+#endif
+
 #endif
