@@ -19,6 +19,7 @@
 
 #include <libfyaml.h>
 
+#include "fy-typelist.h"
 #include "fy-utils.h"
 #include "fy-atom.h"
 

@@ -21,7 +21,7 @@
 #include <libfyaml.h>
 
 #include "fy-list.h"
-#include "fy-input.h"
+#include "fy-ctype.h"
 
 struct fy_reader;
 struct fy_input;
@@ -147,46 +147,6 @@ const char *fy_atom_format_text(struct fy_atom *atom, char *buf, size_t maxsz);
 int fy_atom_format_utf8_length(struct fy_atom *atom);
 
 static inline void
-fy_reader_fill_atom_start(struct fy_reader *fyr, struct fy_atom *handle)
-{
-	/* start mark */
-	fy_reader_get_mark(fyr, &handle->start_mark);
-	handle->fyi = fy_reader_current_input(fyr);
-	handle->fyi_generation = fy_reader_current_input_generation(fyr);
-
-	handle->increment = 0;
-	handle->tozero = 0;
-
-	/* note that handle->data may be zero for empty input */
-}
-
-static inline void
-fy_reader_fill_atom_end_at(struct fy_reader *fyr, struct fy_atom *handle, struct fy_mark *end_mark)
-{
-	if (end_mark)
-		handle->end_mark = *end_mark;
-	else
-		fy_reader_get_mark(fyr, &handle->end_mark);
-
-	/* default is plain, modify at return */
-	handle->style = FYAS_PLAIN;
-	handle->chomp = FYAC_CLIP;
-	/* by default we don't do storage hints, it's the job of the caller */
-	handle->storage_hint = 0;
-	handle->storage_hint_valid = false;
-	handle->tabsize = fy_reader_tabsize(fyr);
-	handle->json_mode = fy_reader_json_mode(fyr);
-	handle->lb_mode = fy_reader_lb_mode(fyr);
-	handle->fws_mode = fy_reader_flow_ws_mode(fyr);
-}
-
-static inline void
-fy_reader_fill_atom_end(struct fy_reader *fyr, struct fy_atom *handle)
-{
-	fy_reader_fill_atom_end_at(fyr, handle, NULL);
-}
-
-static inline void
 fy_atom_reset_storage_hints(struct fy_atom *handle)
 {
 	handle->storage_hint = 0;
@@ -283,13 +243,7 @@ int fy_atom_strcmp(struct fy_atom *atom, const char *str);
 bool fy_atom_is_number(struct fy_atom *atom);
 int fy_atom_cmp(struct fy_atom *atom1, struct fy_atom *atom2);
 
-static inline const char *fy_atom_data(const struct fy_atom *atom)
-{
-	if (!atom)
-		return NULL;
-
-	return fy_input_start(atom->fyi) + atom->start_mark.input_pos;
-}
+const char *fy_atom_data(const struct fy_atom *atom);
 
 static inline size_t fy_atom_size(const struct fy_atom *atom)
 {

@@ -30,6 +30,7 @@
 #include "fy-docstate.h"
 #include "fy-accel.h"
 #include "fy-token.h"
+#include "fy-input.h"
 
 struct fy_document;
 

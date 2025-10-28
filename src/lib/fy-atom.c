@@ -23,6 +23,18 @@
 
 #include "fy-parse.h"
 #include "fy-doc.h"
+#include "fy-input.h"
+
+#include "fy-atom.h"
+
+const char *fy_atom_data(const struct fy_atom *atom)
+{
+	if (!atom)
+		return NULL;
+
+	return fy_input_start(atom->fyi) + atom->start_mark.input_pos;
+}
+
 
 struct fy_atom *fy_reader_fill_atom(struct fy_reader *fyr, int advance, struct fy_atom *handle)
 {
