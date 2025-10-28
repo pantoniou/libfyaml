@@ -248,7 +248,7 @@ else()
 # If user specified LLVM_ROOT, add it to CMAKE_PREFIX_PATH for this search
 if(LLVM_ROOT)
     message(STATUS "Using user-specified LLVM_ROOT: ${LLVM_ROOT}")
-    list(APPEND CMAKE_PREFIX_PATH "${LLVM_ROOT}")
+    list(PREPEND CMAKE_PREFIX_PATH "${LLVM_ROOT}")
 endif()
 
 # Try CMake config mode first
