@@ -1306,6 +1306,51 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
 
 endif()
 
+# Documentation
+find_program(SPHINX_EXECUTABLE NAMES sphinx-build)
+
+if(SPHINX_EXECUTABLE)
+    set(HAVE_SPHINX TRUE)
+    set(SPHINX_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/doc")
+    set(SPHINX_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/doc/_build")
+
+    # Add custom targets for documentation
+    add_custom_target(doc-html
+        COMMAND ${SPHINX_EXECUTABLE} -M html "${SPHINX_SOURCE_DIR}" "${SPHINX_BUILD_DIR}"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Building HTML documentation with Sphinx"
+        VERBATIM
+    )
+
+    add_custom_target(doc-man
+        COMMAND ${SPHINX_EXECUTABLE} -M man "${SPHINX_SOURCE_DIR}" "${SPHINX_BUILD_DIR}"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Building man pages with Sphinx"
+        VERBATIM
+    )
+
+    add_custom_target(doc-latexpdf
+        COMMAND ${SPHINX_EXECUTABLE} -M latexpdf "${SPHINX_SOURCE_DIR}" "${SPHINX_BUILD_DIR}"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Building PDF documentation with Sphinx"
+        VERBATIM
+    )
+
+    add_custom_target(doc-clean
+        COMMAND ${CMAKE_COMMAND} -E remove_directory "${SPHINX_BUILD_DIR}"
+        COMMENT "Cleaning documentation build directory"
+    )
+
+    message(STATUS "Sphinx found: ${SPHINX_EXECUTABLE}")
+    message(STATUS "  make doc-html     - Build HTML documentation")
+    message(STATUS "  make doc-man      - Build man pages")
+    message(STATUS "  make doc-latexpdf - Build PDF documentation")
+else()
+    set(HAVE_SPHINX FALSE)
+    message(STATUS "Sphinx not found - documentation targets disabled")
+    message(STATUS "  Install: pip3 install sphinx sphinx_rtd_theme sphinx-markdown-builder linuxdoc")
+endif()
+
 # Install targets
 install(TARGETS fyaml fy-tool
     EXPORT libfyaml-targets
@@ -1394,6 +1439,7 @@ message(STATUS "HAVE_DEVMODE:          ${HAVE_DEVMODE}")
 message(STATUS "HAVE_GIT:              ${HAVE_GIT}")
 message(STATUS "HAVE_JQ:               ${HAVE_JQ}")
 message(STATUS "HAVE_DOCKER:           ${HAVE_DOCKER}")
+message(STATUS "HAVE_SPHINX:           ${HAVE_SPHINX}")
 message(STATUS "HAVE_ASAN:             ${HAVE_ASAN}")
 message(STATUS "TARGET_HAS_SSE2:       ${TARGET_HAS_SSE2}")
 message(STATUS "TARGET_HAS_SSE41:      ${TARGET_HAS_SSE41}")
