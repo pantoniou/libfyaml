@@ -4124,6 +4124,37 @@ fy_node_get_tag(struct fy_node *fyn, size_t *lenp)
 	FY_EXPORT;
 
 /**
+ * fy_node_get_tag0() - Get the tag of the node
+ *
+ * This method will return a pointer to the text of a tag,
+ * which will be NULL terminated.
+ *
+ * @fyn: The node
+ *
+ * Returns:
+ * A pointer to the null terminated tag of the node.
+ * A NULL will be returned in case of an error.
+ */
+const char *
+fy_node_get_tag0(struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
+ * fy_node_get_tag_length() - Get the length of the tag of the node
+ *
+ * This method will return the size of the tag of the node.
+ * If the node is not tagged it will return 0.
+ *
+ * @fyn: The tagged node
+ *
+ * Returns:
+ * The size of the tag, or 0 if node is not tagged.
+ */
+size_t
+fy_node_get_tag_length(struct fy_node *fyn)
+	FY_EXPORT;
+
+/**
  * fy_node_get_scalar() - Get the scalar content of the node
  *
  * This method will return a pointer to the text of the scalar
