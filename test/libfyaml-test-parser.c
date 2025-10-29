@@ -1951,6 +1951,138 @@ START_TEST(parser_document_builder_load)
 }
 END_TEST
 
+/* Composer callback record entry */
+struct compose_record {
+	enum fy_event_type type;
+	char path[128];
+	int depth;
+	char scalar_value[64];
+};
+
+/* Composer callback data for parser_compose_callback test */
+struct compose_test_data {
+	struct compose_record records[100];
+	int record_count;
+};
+
+/* Composer callback function for testing */
+static enum fy_composer_return
+compose_test_callback(struct fy_parser *fyp, struct fy_event *fye,
+                      struct fy_path *path, void *userdata)
+{
+	struct compose_test_data *data = userdata;
+	struct compose_record *rec;
+	char *path_text;
+	const char *scalar;
+	size_t len;
+
+	if (data->record_count >= 100)
+		return FYCR_OK_CONTINUE;
+
+	rec = &data->records[data->record_count++];
+	rec->type = fye->type;
+	rec->depth = fy_path_depth(path);
+
+	/* Get path as text */
+	path_text = fy_path_get_text(path);
+	if (path_text) {
+		snprintf(rec->path, sizeof(rec->path), "%s", path_text);
+		free(path_text);
+	} else {
+		rec->path[0] = '\0';
+	}
+
+	/* For scalar events, capture the value */
+	rec->scalar_value[0] = '\0';
+	if (fye->type == FYET_SCALAR && fye->scalar.value) {
+		scalar = fy_token_get_text(fye->scalar.value, &len);
+		if (scalar && len < sizeof(rec->scalar_value) - 1) {
+			memcpy(rec->scalar_value, scalar, len);
+			rec->scalar_value[len] = '\0';
+		}
+	}
+
+	return FYCR_OK_CONTINUE;
+}
+
+START_TEST(parser_compose_callback)
+{
+	struct fy_parse_cfg cfg;
+	struct fy_parser *fyp;
+	struct compose_test_data data;
+	const char *yaml =
+		"invoice: 34843\n"
+		"date   : !!str 2001-01-23\n"
+		"bill-to: &id001\n"
+		"    given  : Chris\n"
+		"    family : Dumars\n"
+		"    address:\n"
+		"        lines: |\n"
+		"            458 Walkman Dr.\n"
+		"            Suite #292\n";
+	int rc;
+	int i;
+	bool found_invoice_key = false;
+	bool found_invoice_value = false;
+	bool found_bill_to_path = false;
+
+	/* Test compose callback mechanism */
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = FYPCF_DEFAULT_PARSE;
+
+	fyp = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+
+	fy_parser_set_string(fyp, yaml, FY_NT);
+
+	/* Initialize test data */
+	memset(&data, 0, sizeof(data));
+
+	/* Compose with callback */
+	rc = fy_parse_compose(fyp, compose_test_callback, &data);
+	ck_assert_int_eq(rc, 0);
+
+	/* Verify we got events */
+	ck_assert(data.record_count > 0);
+
+	/* Verify we have the expected events and paths */
+	for (i = 0; i < data.record_count; i++) {
+		struct compose_record *rec = &data.records[i];
+
+		/* Look for specific events we expect */
+		if (rec->type == FYET_SCALAR && strcmp(rec->scalar_value, "invoice") == 0) {
+			found_invoice_key = true;
+			/* Verify path for invoice key */
+			ck_assert(strstr(rec->path, "invoice") != NULL || strcmp(rec->path, "/") == 0);
+		}
+
+		if (rec->type == FYET_SCALAR && strcmp(rec->scalar_value, "34843") == 0) {
+			found_invoice_value = true;
+		}
+
+		/* Check for bill-to path */
+		if (rec->type == FYET_MAPPING_START && strstr(rec->path, "bill-to") != NULL) {
+			found_bill_to_path = true;
+			/* Verify depth is reasonable (should be at least 1) */
+			ck_assert(rec->depth > 0);
+		}
+	}
+
+	/* Verify we found the expected elements */
+	ck_assert(found_invoice_key);
+	ck_assert(found_invoice_value);
+	ck_assert(found_bill_to_path);
+
+	/* Verify first event is stream start */
+	ck_assert_int_eq(data.records[0].type, FYET_STREAM_START);
+
+	/* Verify last event is stream end */
+	ck_assert_int_eq(data.records[data.record_count - 1].type, FYET_STREAM_END);
+
+	fy_parser_destroy(fyp);
+}
+END_TEST
+
 TCase *libfyaml_case_parser(void)
 {
 	TCase *tc;
@@ -2029,6 +2161,9 @@ TCase *libfyaml_case_parser(void)
 	tcase_add_test(tc, parser_document_clone);
 	tcase_add_test(tc, parser_node_copy);
 	tcase_add_test(tc, parser_document_builder_load);
+
+	/* Compose callback tests */
+	tcase_add_test(tc, parser_compose_callback);
 
 	return tc;
 }

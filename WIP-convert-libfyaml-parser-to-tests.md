@@ -12,7 +12,7 @@ This document tracks the ongoing work to extract testable functionality from `sr
 - Modified `test/libfyaml-test.c` - registered new test case function `libfyaml_case_parser()`
 - All tests use the Check unit testing framework
 
-### Tests Extracted (45 total)
+### Tests Extracted (51 total: 46 parser + 5 threading)
 
 #### Mapping Tests (4 tests)
 From commented-out code in `do_build()` (lines 1710-3241):
@@ -90,13 +90,25 @@ From `do_scan()` (lines 595-605) - **REMOVED from libfyaml-parser.c**:
 From `do_build()` (lines 1513-1581) - **REMOVED from libfyaml-parser.c**:
 - `parser_manual_emitter` - Manual event emission in block and flow styles
 
-#### Parser and Document API Tests (5 tests) - **NEW in latest iteration**
+#### Parser and Document API Tests (5 tests)
 From `do_dump()` and `do_dump2()` patterns, plus additional API coverage:
 - `parser_parse_load_document` - Loading multiple documents from parser stream
 - `parser_document_resolve` - Document alias resolution
 - `parser_document_clone` - Document cloning functionality
 - `parser_node_copy` - Node copying and insertion
 - `parser_document_builder_load` - Document builder API usage
+
+#### Compose Callback Tests (1 test)
+From `do_compose()` (lines 863-879):
+- `parser_compose_callback` - Tests compose callback mechanism with event processing
+
+#### Threading Tests (5 tests) - **NEW in latest iteration**
+From `fy-thread.c` internal tool, extracted to new test file `test/libfyaml-test-thread.c`:
+- `thread_pool_create_destroy` - Thread pool creation and configuration
+- `thread_reserve_submit_wait` - Thread reservation, work submission, and waiting
+- `thread_arg_join` - Join API with argument passing
+- `thread_arg_array_join` - Parallel array processing with join
+- `thread_steal_mode` - Work stealing mode testing
 
 ## How to Test
 
@@ -236,12 +248,12 @@ fy_parser_destroy(fyp);
 ## File Structure
 
 ### test/libfyaml-test-parser.c
-- Line count: ~2,034 lines (after latest changes)
-- Test count: 45 tests
+- Line count: ~2,123 lines (after latest changes)
+- Test count: 46 tests
 - Organization:
   - Lines 1-22: Headers and includes
-  - Lines 24-1955: Test definitions (START_TEST/END_TEST blocks)
-  - Lines 1957-2034: Test case registration function
+  - Lines 24-2038: Test definitions (START_TEST/END_TEST blocks)
+  - Lines 2040-2123: Test case registration function
 
 ### Key Test Registration Pattern
 ```c
@@ -275,13 +287,22 @@ TCase *libfyaml_case_parser(void)
    - Removed do_build() function (lines 1513-1581)
    - Removed "build" mode handler
    - File reduced from 4,253 to 3,001 lines (~1,252 lines total reduction)
-10. **[pending]** - Add parser and document API tests (latest)
+10. **[complete]** - Add parser and document API tests
    - Added parser_parse_load_document (test do_dump pattern)
    - Added parser_document_resolve (alias resolution)
    - Added parser_document_clone (document cloning)
    - Added parser_node_copy (node copying and insertion)
    - Added parser_document_builder_load (test do_dump2 pattern)
-   - Total: 102 tests (57 core + 45 parser), 100% pass rate
+   - Added parser_compose_callback (test do_compose pattern with event recording)
+   - Total: 103 tests (57 core + 46 parser), 100% pass rate
+11. **[pending]** - Add threading tests from fy-thread.c (latest)
+   - Created new test file test/libfyaml-test-thread.c
+   - Added thread_pool_create_destroy (basic pool operations)
+   - Added thread_reserve_submit_wait (worker thread pattern)
+   - Added thread_arg_join (join API testing)
+   - Added thread_arg_array_join (parallel array processing)
+   - Added thread_steal_mode (work stealing functionality)
+   - Total: 108 tests (57 core + 46 parser + 5 thread), 100% pass rate
 
 ## Next Steps
 
@@ -331,5 +352,6 @@ Corresponding mode handlers and mode checks have also been removed from the main
 - Focus on functions that test public or semi-public APIs
 - Skip functions that are purely for debugging or performance testing
 - Converted functions are removed from libfyaml-parser.c to avoid duplication
-- Final test count: **102 tests** (57 core + 45 parser) with 100% pass rate
-- Comprehensive coverage of: mappings, paths, nodes, sequences, documents, events, iterators, comments, utilities, tokens, emitters, parsers, builders, resolution, cloning, and copying
+- Final test count: **108 tests** (57 core + 46 parser + 5 thread) with 100% pass rate
+- Comprehensive coverage of: mappings, paths, nodes, sequences, documents, events, iterators, comments, utilities, tokens, emitters, parsers, builders, resolution, cloning, copying, and threading
+- New test file created: test/libfyaml-test-thread.c for threading API tests
