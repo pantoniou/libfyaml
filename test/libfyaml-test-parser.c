@@ -19,6 +19,7 @@
 
 #include <libfyaml.h>
 #include "fy-parse.h"
+#include "fy-utf8.h"
 
 /* Test: Mapping iterator (forward and reverse) */
 START_TEST(parser_mapping_iterator)
@@ -1386,6 +1387,126 @@ START_TEST(parser_document_builder)
 }
 END_TEST
 
+/* Test: Shell-like string splitting (from do_shell_split) */
+START_TEST(parser_shell_split)
+{
+	const char * const *argv;
+	int argc;
+	void *mem;
+
+	/* Test simple splitting */
+	mem = fy_utf8_split_posix("arg1 arg2 arg3", &argc, &argv);
+	ck_assert_ptr_ne(mem, NULL);
+	ck_assert_int_eq(argc, 3);
+	ck_assert_str_eq(argv[0], "arg1");
+	ck_assert_str_eq(argv[1], "arg2");
+	ck_assert_str_eq(argv[2], "arg3");
+	ck_assert_ptr_eq(argv[argc], NULL);
+	free(mem);
+
+	/* Test quoted strings */
+	mem = fy_utf8_split_posix("'single quoted' \"double quoted\"", &argc, &argv);
+	ck_assert_ptr_ne(mem, NULL);
+	ck_assert_int_eq(argc, 2);
+	ck_assert_str_eq(argv[0], "single quoted");
+	ck_assert_str_eq(argv[1], "double quoted");
+	ck_assert_ptr_eq(argv[argc], NULL);
+	free(mem);
+
+	/* Test escape sequences */
+	mem = fy_utf8_split_posix("arg1\\ with\\ spaces arg2", &argc, &argv);
+	ck_assert_ptr_ne(mem, NULL);
+	ck_assert_int_eq(argc, 2);
+	ck_assert_str_eq(argv[0], "arg1 with spaces");
+	ck_assert_str_eq(argv[1], "arg2");
+	ck_assert_ptr_eq(argv[argc], NULL);
+	free(mem);
+
+	/* Test empty string */
+	mem = fy_utf8_split_posix("", &argc, &argv);
+	ck_assert_ptr_ne(mem, NULL);
+	ck_assert_int_eq(argc, 0);
+	ck_assert_ptr_eq(argv[argc], NULL);
+	free(mem);
+
+	/* Test multiple spaces */
+	mem = fy_utf8_split_posix("  arg1    arg2  ", &argc, &argv);
+	ck_assert_ptr_ne(mem, NULL);
+	ck_assert_int_eq(argc, 2);
+	ck_assert_str_eq(argv[0], "arg1");
+	ck_assert_str_eq(argv[1], "arg2");
+	ck_assert_ptr_eq(argv[argc], NULL);
+	free(mem);
+}
+END_TEST
+
+/* Test: UTF-8 validation (from do_bad_utf8) */
+START_TEST(parser_utf8_validation)
+{
+	const char *valid_ascii = "hello world";
+	const char *s, *e;
+	int c, w, pos;
+
+	/* Test valid ASCII forward */
+	s = valid_ascii;
+	e = s + strlen(valid_ascii);
+	pos = 0;
+	while (s < e) {
+		c = fy_utf8_get(s, e - s, &w);
+		ck_assert_int_ge(c, 0);
+		ck_assert_int_ge(w, 1);
+		ck_assert_int_le(w, 4);
+		s += w;
+		pos++;
+	}
+	ck_assert_int_eq(pos, 11);
+
+	/* Test valid UTF-8 forward (Greek characters) */
+	const char *greek = "\xCE\xA4\xCE\xB9\xCE\xBC\xCE\xAE"; /* Τιμή */
+	s = greek;
+	e = s + strlen(greek);
+	pos = 0;
+	while (s < e) {
+		c = fy_utf8_get(s, e - s, &w);
+		ck_assert_int_ge(c, 0);
+		ck_assert_int_eq(w, 2); /* Greek chars are 2 bytes */
+		s += w;
+		pos++;
+	}
+	ck_assert_int_eq(pos, 4);
+
+	/* Test valid ASCII backward */
+	s = valid_ascii;
+	e = s + strlen(valid_ascii);
+	pos = 0;
+	while (s < e) {
+		c = fy_utf8_get_right(s, e - s, &w);
+		ck_assert_int_ge(c, 0);
+		ck_assert_int_ge(w, 1);
+		ck_assert_int_le(w, 4);
+		e -= w;
+		pos++;
+	}
+	ck_assert_int_eq(pos, 11);
+
+	/* Test invalid UTF-8 sequence */
+	const char invalid[] = { 0x67, 0xe7, 0x67, 0x00 }; /* 'g' followed by incomplete UTF-8 */
+	s = invalid;
+	e = s + 3; /* Don't include null terminator */
+	c = fy_utf8_get(s, 1, &w); /* First char should be valid */
+	ck_assert_int_eq(c, 0x67);
+	ck_assert_int_eq(w, 1);
+	s += w;
+	c = fy_utf8_get(s, e - s, &w); /* Second char should be invalid or partial */
+	ck_assert_int_lt(c, 0); /* Should return FYUG_INV or FYUG_PARTIAL */
+
+	/* Test EOF condition */
+	c = fy_utf8_get(valid_ascii, 0, &w);
+	ck_assert_int_eq(c, FYUG_EOF);
+	ck_assert_int_eq(w, 0);
+}
+END_TEST
+
 TCase *libfyaml_case_parser(void)
 {
 	TCase *tc;
@@ -1444,6 +1565,10 @@ TCase *libfyaml_case_parser(void)
 	tcase_add_test(tc, parser_yaml_version);
 	tcase_add_test(tc, parser_flow_block_styles);
 	tcase_add_test(tc, parser_document_builder);
+
+	/* Utility function tests */
+	tcase_add_test(tc, parser_shell_split);
+	tcase_add_test(tc, parser_utf8_validation);
 
 	return tc;
 }
