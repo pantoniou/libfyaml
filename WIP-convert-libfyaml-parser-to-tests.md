@@ -254,7 +254,10 @@ TCase *libfyaml_case_parser(void)
 5. **2b04fa5** - Add event, scalar style, tag, and version tests
 6. **c930936** - more tests fixed (by user)
 7. **1b33a01** - Add utility function tests for shell splitting and UTF-8 validation
-8. **[pending]** - Add token scanning tests and remove do_scan()/do_copy() from libfyaml-parser.c (latest)
+8. **[pending]** - Major cleanup: Remove ~1,400 lines of redundant code from libfyaml-parser.c (latest)
+   - Removed 6 converted functions (do_scan, do_copy, do_iterate, do_comment, do_shell_split, do_bad_utf8)
+   - Removed ~1,177 lines of #if 0 test code from do_build()
+   - Removed corresponding mode handlers
 
 ## Next Steps
 
@@ -266,8 +269,9 @@ TCase *libfyaml_case_parser(void)
 6. Document any functions that cannot be easily tested (complex internal APIs)
 7. Wait for CI feedback after each commit to catch API mismatches
 
-## Functions Removed from libfyaml-parser.c
+## Code Removed from libfyaml-parser.c
 
+### Functions Removed
 The following functions have been successfully converted to tests and removed from `libfyaml-parser.c`:
 - `do_scan()` - Converted to 4 token scanning tests
 - `do_copy()` - Removed (internal API usage, not viable for public API tests)
@@ -276,7 +280,23 @@ The following functions have been successfully converted to tests and removed fr
 - `do_shell_split()` - Converted to 1 shell split utility test
 - `do_bad_utf8()` - Converted to 1 UTF-8 validation test
 
-Corresponding mode handlers and mode checks have also been removed from the main function.
+### Test Code Removed from do_build()
+**Removed ~1,177 lines of commented-out (#if 0) test code** from the `do_build()` function (lines 1515-2691):
+- Mapping iterator tests (forward/reverse, key lookup, prepend, remove)
+- Path query tests (node by path, path generation)
+- Node creation tests (scalars, multiline scalars, empty/populated sequences and mappings)
+- Sequence operation tests (negative index, append, prepend, insert, remove)
+- Mapping operation tests (append, prepend, remove)
+- Document operation tests (insert_at, emit with different flags)
+- Structure tests (nested structures, anchor/alias resolution)
+- Build tests (building from strings, formatted building)
+- All corresponding variable declarations for test code
+
+This test code was inside `#if 0` blocks and has been fully migrated to proper unit tests.
+
+### Mode Handlers Removed
+Corresponding mode handlers and mode checks have also been removed from the main function for:
+- `scan`, `copy`, `iterate`, `comment`, `badutf8`, `shell-split` modes
 
 ## Notes
 
