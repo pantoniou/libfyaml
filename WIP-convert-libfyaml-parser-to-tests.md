@@ -12,7 +12,7 @@ This document tracks the ongoing work to extract testable functionality from `sr
 - Modified `test/libfyaml-test.c` - registered new test case function `libfyaml_case_parser()`
 - All tests use the Check unit testing framework
 
-### Tests Extracted (35 total)
+### Tests Extracted (39 total)
 
 #### Mapping Tests (4 tests)
 From commented-out code in `do_build()` (lines 1710-3241):
@@ -74,10 +74,17 @@ From `do_parse()`, `do_testsuite()`, `dump_testsuite_event()`, `do_dump()`:
 - `parser_flow_block_styles` - Flow vs block notation
 - `parser_document_builder` - Document builder API pattern
 
-#### Utility Function Tests (2 tests) - **NEW in latest commit**
+#### Utility Function Tests (2 tests)
 From `do_shell_split()` (lines 3961-3993) and `do_bad_utf8()` (lines 3866-3959):
 - `parser_shell_split` - Shell-like string splitting with quotes and escapes
 - `parser_utf8_validation` - UTF-8 encoding/decoding validation
+
+#### Token Scanning Tests (4 tests) - **NEW in latest commit**
+From `do_scan()` (lines 595-605) - **REMOVED from libfyaml-parser.c**:
+- `parser_token_scan_scalars` - Scanning basic scalar tokens
+- `parser_token_scan_mapping` - Scanning mapping tokens (key/value pairs)
+- `parser_token_scan_sequence` - Scanning sequence tokens (flow and block)
+- `parser_token_scan_scalar_styles` - Verifying scalar style detection (plain, quoted, etc.)
 
 ## How to Test
 
@@ -102,19 +109,6 @@ make check
 ./test/libfyaml-test
 ```
 
-**Note:** The Check library is not available in the current development environment, but the code compiles successfully. The CI system should have Check installed.
-
-### Testing via CI
-The GitHub Actions workflow (`.github/workflows/ci.yaml`) automatically runs tests on push:
-
-```bash
-# Push to the feature branch
-git push -u origin claude/explore-libfyaml-tests-011CUaCE9PzP6ufkz6BHEdZj
-
-# Check CI status on GitHub
-# The workflow runs `make check` which includes all test suites
-```
-
 ### Manual Testing of Specific Functionality
 To manually test the underlying functions being tested:
 
@@ -132,14 +126,14 @@ To manually test the underlying functions being tested:
 
 ## Remaining do_* Functions to Extract
 
-### High Priority (Simpler Functions)
-- `do_scan()` (lines 595-605) - Token scanning
-  - Uses `fy_scan()` and `dump_token()` - mostly output functions
-  - Could create tests that verify token types are generated correctly
+### ~~High Priority (Simpler Functions)~~ - **COMPLETED & REMOVED**
+- ~~`do_scan()` - Token scanning~~ ✓ **REMOVED from libfyaml-parser.c**
+  - Tests extracted to `parser_token_scan_*` functions
+  - 4 tests covering scalars, mappings, sequences, and scalar styles
 
-- `do_copy()` (lines 607-664) - Low-level character copying
-  - Uses `fy_parse_get()` for character-level parsing
-  - Could test character escape sequences and UTF-8 handling
+- ~~`do_copy()` - Low-level character copying~~ ✗ **REMOVED from libfyaml-parser.c**
+  - Function removed as it uses internal parser APIs not suitable for public API tests
+  - Character-level parsing tests were not viable with public API
 
 ### Medium Priority (More Complex)
 - `do_compose()` (lines 933-948) - Document composition with event callback
@@ -230,12 +224,12 @@ fy_parser_destroy(fyp);
 ## File Structure
 
 ### test/libfyaml-test-parser.c
-- Line count: ~1,575 lines (after latest additions)
-- Test count: 35 tests
+- Line count: ~1,750 lines (after latest changes)
+- Test count: 39 tests
 - Organization:
   - Lines 1-22: Headers and includes
-  - Lines 24-1508: Test definitions (START_TEST/END_TEST blocks)
-  - Lines 1510-1575: Test case registration function
+  - Lines 24-1677: Test definitions (START_TEST/END_TEST blocks)
+  - Lines 1679-1749: Test case registration function
 
 ### Key Test Registration Pattern
 ```c
@@ -259,15 +253,18 @@ TCase *libfyaml_case_parser(void)
 4. **30a5bfd** - Add iterator and comment tests from libfyaml-parser.c
 5. **2b04fa5** - Add event, scalar style, tag, and version tests
 6. **c930936** - more tests fixed (by user)
-7. **1b33a01** - Add utility function tests for shell splitting and UTF-8 validation (latest)
+7. **1b33a01** - Add utility function tests for shell splitting and UTF-8 validation
+8. **[pending]** - Add token scanning tests and remove do_scan()/do_copy() from libfyaml-parser.c (latest)
 
 ## Next Steps
 
-1. Extract tests from `do_scan()` for token scanning
-2. Extract tests from `do_copy()` for character-level parsing
-3. Consider `do_compose()` and `do_dump2()` if they use public APIs
-4. Document any functions that cannot be easily tested (complex internal APIs)
-5. Wait for CI feedback after each commit to catch API mismatches
+1. ~~Extract tests from `do_scan()` for token scanning~~ ✓ **COMPLETED**
+2. ~~Extract tests from `do_copy()` for character-level parsing~~ ✗ **NOT VIABLE - function removed**
+3. ~~Remove `do_scan()` and `do_copy()` from libfyaml-parser.c~~ ✓ **COMPLETED**
+4. Consider `do_compose()` and `do_dump2()` if they use public APIs
+5. Extract tests from medium-priority functions if they use public APIs
+6. Document any functions that cannot be easily tested (complex internal APIs)
+7. Wait for CI feedback after each commit to catch API mismatches
 
 ## Notes
 

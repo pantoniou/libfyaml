@@ -1507,6 +1507,175 @@ START_TEST(parser_utf8_validation)
 }
 END_TEST
 
+/* Test: Token scanning - basic scalars */
+START_TEST(parser_token_scan_scalars)
+{
+	struct fy_parser *fyp;
+	struct fy_parse_cfg cfg;
+	struct fy_token *fyt;
+	const char *yaml;
+	int token_count;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = FYPCF_DEFAULT_PARSE;
+
+	/* Test simple scalar */
+	yaml = "hello";
+	fyp = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+	fy_parser_set_string(fyp, yaml, FY_NT);
+
+	token_count = 0;
+	while ((fyt = fy_scan(fyp)) != NULL) {
+		ck_assert_ptr_ne(fyt, NULL);
+		token_count++;
+		fy_token_unref(fyt);
+	}
+	ck_assert_int_gt(token_count, 0);
+	fy_parser_destroy(fyp);
+
+	/* Test multiple scalars */
+	yaml = "foo bar baz";
+	fyp = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+	fy_parser_set_string(fyp, yaml, FY_NT);
+
+	token_count = 0;
+	while ((fyt = fy_scan(fyp)) != NULL) {
+		token_count++;
+		fy_token_unref(fyt);
+	}
+	ck_assert_int_gt(token_count, 0);
+	fy_parser_destroy(fyp);
+}
+END_TEST
+
+/* Test: Token scanning - mappings */
+START_TEST(parser_token_scan_mapping)
+{
+	struct fy_parser *fyp;
+	struct fy_parse_cfg cfg;
+	struct fy_token *fyt;
+	const char *yaml;
+	int token_count;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = FYPCF_DEFAULT_PARSE;
+
+	yaml = "key: value";
+	fyp = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+	fy_parser_set_string(fyp, yaml, FY_NT);
+
+	token_count = 0;
+	while ((fyt = fy_scan(fyp)) != NULL) {
+		ck_assert_ptr_ne(fyt, NULL);
+		token_count++;
+		fy_token_unref(fyt);
+	}
+	/* Should have multiple tokens: STREAM-START, BLOCK-MAPPING-START, KEY, SCALAR, VALUE, SCALAR, etc. */
+	ck_assert_int_gt(token_count, 5);
+	fy_parser_destroy(fyp);
+
+	/* Test nested mapping */
+	yaml = "outer:\n  inner: value";
+	fyp = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+	fy_parser_set_string(fyp, yaml, FY_NT);
+
+	token_count = 0;
+	while ((fyt = fy_scan(fyp)) != NULL) {
+		token_count++;
+		fy_token_unref(fyt);
+	}
+	ck_assert_int_gt(token_count, 5);
+	fy_parser_destroy(fyp);
+}
+END_TEST
+
+/* Test: Token scanning - sequences */
+START_TEST(parser_token_scan_sequence)
+{
+	struct fy_parser *fyp;
+	struct fy_parse_cfg cfg;
+	struct fy_token *fyt;
+	const char *yaml;
+	int token_count;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = FYPCF_DEFAULT_PARSE;
+
+	/* Test flow sequence */
+	yaml = "[1, 2, 3]";
+	fyp = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+	fy_parser_set_string(fyp, yaml, FY_NT);
+
+	token_count = 0;
+	while ((fyt = fy_scan(fyp)) != NULL) {
+		token_count++;
+		fy_token_unref(fyt);
+	}
+	ck_assert_int_gt(token_count, 5);
+	fy_parser_destroy(fyp);
+
+	/* Test block sequence */
+	yaml = "- item1\n- item2\n- item3";
+	fyp = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+	fy_parser_set_string(fyp, yaml, FY_NT);
+
+	token_count = 0;
+	while ((fyt = fy_scan(fyp)) != NULL) {
+		token_count++;
+		fy_token_unref(fyt);
+	}
+	ck_assert_int_gt(token_count, 5);
+	fy_parser_destroy(fyp);
+}
+END_TEST
+
+/* Test: Token scanning - scalar styles */
+START_TEST(parser_token_scan_scalar_styles)
+{
+	struct fy_parser *fyp;
+	struct fy_parse_cfg cfg;
+	struct fy_token *fyt;
+	const char *yaml;
+	int scalar_count;
+	enum fy_scalar_style style;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = FYPCF_DEFAULT_PARSE;
+
+	/* Test different scalar styles */
+	yaml = "plain: value\n"
+	       "single: 'quoted value'\n"
+	       "double: \"quoted value\"\n";
+
+	fyp = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+	fy_parser_set_string(fyp, yaml, FY_NT);
+
+	scalar_count = 0;
+	while ((fyt = fy_scan(fyp)) != NULL) {
+		if (fyt->type == FYTT_SCALAR) {
+			style = fy_token_scalar_style(fyt);
+			/* Verify style is valid */
+			ck_assert(style == FYSS_PLAIN ||
+			          style == FYSS_SINGLE_QUOTED ||
+			          style == FYSS_DOUBLE_QUOTED ||
+			          style == FYSS_LITERAL ||
+			          style == FYSS_FOLDED);
+			scalar_count++;
+		}
+		fy_token_unref(fyt);
+	}
+	ck_assert_int_ge(scalar_count, 6); /* 6 scalars: 3 keys + 3 values */
+	fy_parser_destroy(fyp);
+}
+END_TEST
+
 TCase *libfyaml_case_parser(void)
 {
 	TCase *tc;
@@ -1569,6 +1738,12 @@ TCase *libfyaml_case_parser(void)
 	/* Utility function tests */
 	tcase_add_test(tc, parser_shell_split);
 	tcase_add_test(tc, parser_utf8_validation);
+
+	/* Token scanning tests */
+	tcase_add_test(tc, parser_token_scan_scalars);
+	tcase_add_test(tc, parser_token_scan_mapping);
+	tcase_add_test(tc, parser_token_scan_sequence);
+	tcase_add_test(tc, parser_token_scan_scalar_styles);
 
 	return tc;
 }

@@ -592,76 +592,6 @@ static void dump_token(struct fy_token *fyt)
 	}
 }
 
-int do_scan(struct fy_parser *fyp)
-{
-	struct fy_token *fyt;
-
-	while ((fyt = fy_scan(fyp)) != NULL) {
-		dump_token(fyt);
-		fy_token_unref(fyt);
-	}
-
-	return 0;
-}
-
-int do_copy(struct fy_parser *fyp)
-{
-	int c, count, line, column;
-	char buf[5], *s;
-	const char *str;
-
-	count = 0;
-	for (;;) {
-		line = fyp_line(fyp);
-		column = fyp_column(fyp);
-
-		c = fy_parse_get(fyp);
-		if (c < 0) {
-			break;
-		}
-		if (c == '\\') {
-			str = "\\\\";
-		} else if (c == '\0') {
-			str = "\\0";
-		} else if (c == '"') {
-			str = "\\\"";
-		} else if (c == '\b') {
-			str = "\\b";
-		} else if (c == '\r') {
-			str = "\\r";
-		} else if (c == '\t') {
-			str = "\\t";
-		} else if (c == '\n') {
-			str = "\\n";
-		} else {
-			s = buf;
-			if (c < 0x80)
-				*s++ = c;
-			else if (c < 0x800) {
-				*s++ = (c >> 6) | 0xc0;
-				*s++ = (c & 0x3f) | 0x80;
-			} else if (c < 0x10000) {
-				*s++ = (c >> 12) | 0xe0;
-				*s++ = ((c >> 6) & 0x3f) | 0x80;
-				*s++ = (c & 0x3f) | 0x80;
-			} else {
-				*s++ = (c >> 18) | 0xf0;
-				*s++ = ((c >> 12) & 0x3f) | 0x80;
-				*s++ = ((c >> 6) & 0x3f) | 0x80;
-				*s++ = (c & 0x3f) | 0x80;
-			}
-			*s = '\0';
-			str = buf;
-		}
-
-		printf("[%2d,%2d] = \"%s\"\n", line, column, str);
-
-		count++;
-	}
-	printf("\ncount=%d\n", count);
-
-	return 0;
-}
 
 int do_dump(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort, bool null_output)
 {
@@ -4288,8 +4218,6 @@ int main(int argc, char *argv[])
 
 	/* check mode */
 	if (strcmp(mode, "parse") &&
-	    strcmp(mode, "scan") &&
-	    strcmp(mode, "copy") &&
 	    strcmp(mode, "testsuite") &&
 	    strcmp(mode, "dump") &&
 	    strcmp(mode, "dump2") &&
@@ -4486,18 +4414,6 @@ int main(int argc, char *argv[])
 		rc = do_parse(fyp);
 		if (rc < 0) {
 			/* fprintf(stderr, "do_parse() error %d\n", rc); */
-			goto cleanup;
-		}
-	} else if (!strcmp(mode, "scan")) {
-		rc = do_scan(fyp);
-		if (rc < 0) {
-			fprintf(stderr, "do_scan() error %d\n", rc);
-			goto cleanup;
-		}
-	} else if (!strcmp(mode, "copy")) {
-		rc = do_copy(fyp);
-		if (rc < 0) {
-			fprintf(stderr, "do_copy() error %d\n", rc);
 			goto cleanup;
 		}
 	} else if (!strcmp(mode, "testsuite")) {
