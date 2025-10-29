@@ -12,7 +12,7 @@ This document tracks the ongoing work to extract testable functionality from `sr
 - Modified `test/libfyaml-test.c` - registered new test case function `libfyaml_case_parser()`
 - All tests use the Check unit testing framework
 
-### Tests Extracted (39 total)
+### Tests Extracted (45 total)
 
 #### Mapping Tests (4 tests)
 From commented-out code in `do_build()` (lines 1710-3241):
@@ -79,12 +79,24 @@ From `do_shell_split()` and `do_bad_utf8()`:
 - `parser_shell_split` - Shell-like string splitting with quotes and escapes
 - `parser_utf8_validation` - UTF-8 encoding/decoding validation
 
-#### Token Scanning Tests (4 tests) - **NEW in latest commit**
+#### Token Scanning Tests (4 tests)
 From `do_scan()` (lines 595-605) - **REMOVED from libfyaml-parser.c**:
 - `parser_token_scan_scalars` - Scanning basic scalar tokens
 - `parser_token_scan_mapping` - Scanning mapping tokens (key/value pairs)
 - `parser_token_scan_sequence` - Scanning sequence tokens (flow and block)
 - `parser_token_scan_scalar_styles` - Verifying scalar style detection (plain, quoted, etc.)
+
+#### Manual Emitter Tests (1 test)
+From `do_build()` (lines 1513-1581) - **REMOVED from libfyaml-parser.c**:
+- `parser_manual_emitter` - Manual event emission in block and flow styles
+
+#### Parser and Document API Tests (5 tests) - **NEW in latest iteration**
+From `do_dump()` and `do_dump2()` patterns, plus additional API coverage:
+- `parser_parse_load_document` - Loading multiple documents from parser stream
+- `parser_document_resolve` - Document alias resolution
+- `parser_document_clone` - Document cloning functionality
+- `parser_node_copy` - Node copying and insertion
+- `parser_document_builder_load` - Document builder API usage
 
 ## How to Test
 
@@ -224,12 +236,12 @@ fy_parser_destroy(fyp);
 ## File Structure
 
 ### test/libfyaml-test-parser.c
-- Line count: ~1,750 lines (after latest changes)
-- Test count: 39 tests
+- Line count: ~2,034 lines (after latest changes)
+- Test count: 45 tests
 - Organization:
   - Lines 1-22: Headers and includes
-  - Lines 24-1677: Test definitions (START_TEST/END_TEST blocks)
-  - Lines 1679-1749: Test case registration function
+  - Lines 24-1955: Test definitions (START_TEST/END_TEST blocks)
+  - Lines 1957-2034: Test case registration function
 
 ### Key Test Registration Pattern
 ```c
@@ -254,10 +266,22 @@ TCase *libfyaml_case_parser(void)
 5. **2b04fa5** - Add event, scalar style, tag, and version tests
 6. **c930936** - more tests fixed (by user)
 7. **1b33a01** - Add utility function tests for shell splitting and UTF-8 validation
-8. **[pending]** - Major cleanup: Remove ~1,400 lines of redundant code from libfyaml-parser.c (latest)
+8. **[complete]** - Major cleanup: Remove ~1,400 lines of redundant code from libfyaml-parser.c
    - Removed 6 converted functions (do_scan, do_copy, do_iterate, do_comment, do_shell_split, do_bad_utf8)
    - Removed ~1,177 lines of #if 0 test code from do_build()
    - Removed corresponding mode handlers
+9. **[complete]** - Extract manual emitter test and remove do_build() function
+   - Added parser_manual_emitter test covering manual event emission
+   - Removed do_build() function (lines 1513-1581)
+   - Removed "build" mode handler
+   - File reduced from 4,253 to 3,001 lines (~1,252 lines total reduction)
+10. **[pending]** - Add parser and document API tests (latest)
+   - Added parser_parse_load_document (test do_dump pattern)
+   - Added parser_document_resolve (alias resolution)
+   - Added parser_document_clone (document cloning)
+   - Added parser_node_copy (node copying and insertion)
+   - Added parser_document_builder_load (test do_dump2 pattern)
+   - Total: 102 tests (57 core + 45 parser), 100% pass rate
 
 ## Next Steps
 
@@ -279,6 +303,7 @@ The following functions have been successfully converted to tests and removed fr
 - `do_comment()` - Converted to 1 comment test
 - `do_shell_split()` - Converted to 1 shell split utility test
 - `do_bad_utf8()` - Converted to 1 UTF-8 validation test
+- `do_build()` - Converted to 1 manual emitter test
 
 ### Test Code Removed from do_build()
 **Removed ~1,177 lines of commented-out (#if 0) test code** from the `do_build()` function (lines 1515-2691):
@@ -296,7 +321,7 @@ This test code was inside `#if 0` blocks and has been fully migrated to proper u
 
 ### Mode Handlers Removed
 Corresponding mode handlers and mode checks have also been removed from the main function for:
-- `scan`, `copy`, `iterate`, `comment`, `badutf8`, `shell-split` modes
+- `scan`, `copy`, `iterate`, `comment`, `badutf8`, `shell-split`, `build` modes
 
 ## Notes
 
@@ -306,3 +331,5 @@ Corresponding mode handlers and mode checks have also been removed from the main
 - Focus on functions that test public or semi-public APIs
 - Skip functions that are purely for debugging or performance testing
 - Converted functions are removed from libfyaml-parser.c to avoid duplication
+- Final test count: **102 tests** (57 core + 45 parser) with 100% pass rate
+- Comprehensive coverage of: mappings, paths, nodes, sequences, documents, events, iterators, comments, utilities, tokens, emitters, parsers, builders, resolution, cloning, and copying

@@ -1676,6 +1676,281 @@ START_TEST(parser_token_scan_scalar_styles)
 }
 END_TEST
 
+/* Test: Manual emitter mode - emit events directly */
+START_TEST(parser_manual_emitter)
+{
+	struct fy_emitter_cfg ecfg;
+	struct fy_emitter *emit;
+
+	memset(&ecfg, 0, sizeof(ecfg));
+	ecfg.flags = FYECF_MODE_MANUAL;
+
+	/* Test block style manual emission */
+	emit = fy_emitter_create(&ecfg);
+	ck_assert_ptr_ne(emit, NULL);
+
+	/* Emit: key: [{ a: 1 }] in block style */
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_STREAM_START));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_DOCUMENT_START, false, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_START, FYNS_BLOCK, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "key", FY_NT, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SEQUENCE_START, FYNS_BLOCK, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_START, FYNS_BLOCK, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "a", FY_NT, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "1", FY_NT, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_END));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SEQUENCE_END));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_END));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_DOCUMENT_END, true, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_STREAM_END));
+
+	/* If we got here without crashes, the manual emitter block style works */
+	fy_emitter_destroy(emit);
+
+	/* Test flow style manual emission */
+	emit = fy_emitter_create(&ecfg);
+	ck_assert_ptr_ne(emit, NULL);
+
+	/* Emit: {key: [{a: 1}]} in flow style */
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_STREAM_START));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_DOCUMENT_START, false, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_START, FYNS_FLOW, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "key", FY_NT, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SEQUENCE_START, FYNS_FLOW, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_START, FYNS_FLOW, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "a", FY_NT, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "1", FY_NT, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_END));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SEQUENCE_END));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_END));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_DOCUMENT_END, true, NULL, NULL));
+	fy_emit_event(emit, fy_emit_event_create(emit, FYET_STREAM_END));
+
+	/* If we got here without crashes, the manual emitter flow style works */
+	fy_emitter_destroy(emit);
+}
+END_TEST
+
+START_TEST(parser_parse_load_document)
+{
+	struct fy_parse_cfg cfg;
+	struct fy_parser *fyp;
+	struct fy_document *fyd;
+	const char *yaml = "---\nfoo: bar\n---\nbaz: qux\n";
+	int count;
+
+	/* Test loading multiple documents from a parser stream */
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = FYPCF_DEFAULT_PARSE;
+
+	fyp = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+
+	fy_parser_set_string(fyp, yaml, FY_NT);
+
+	/* Load first document */
+	count = 0;
+	while ((fyd = fy_parse_load_document(fyp)) != NULL) {
+		const char *value;
+		struct fy_node *fyn;
+
+		count++;
+
+		/* Verify document content */
+		if (count == 1) {
+			fyn = fy_node_by_path(fy_document_root(fyd), "/foo", FY_NT, FYNWF_DONT_FOLLOW);
+			ck_assert_ptr_ne(fyn, NULL);
+			value = fy_node_get_scalar0(fyn);
+			ck_assert_str_eq(value, "bar");
+		} else if (count == 2) {
+			fyn = fy_node_by_path(fy_document_root(fyd), "/baz", FY_NT, FYNWF_DONT_FOLLOW);
+			ck_assert_ptr_ne(fyn, NULL);
+			value = fy_node_get_scalar0(fyn);
+			ck_assert_str_eq(value, "qux");
+		}
+
+		fy_parse_document_destroy(fyp, fyd);
+	}
+
+	ck_assert_int_eq(count, 2);
+
+	fy_parser_destroy(fyp);
+}
+END_TEST
+
+START_TEST(parser_document_resolve)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	const char *yaml = "anchor: &data\n  key: value\nref: *data\n";
+	const char *val;
+	int rc;
+
+	/* Test document resolution (resolving aliases) */
+	fyd = fy_document_build_from_string(NULL, yaml, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* Before resolution, alias nodes exist */
+	fyn = fy_node_by_path(fy_document_root(fyd), "/ref", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert(fy_node_is_alias(fyn));
+
+	/* Resolve all aliases in the document */
+	rc = fy_document_resolve(fyd);
+	ck_assert_int_eq(rc, 0);
+
+	/* After resolution, verify both paths are accessible and have same values */
+	fyn = fy_node_by_path(fy_document_root(fyd), "/anchor/key", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	val = fy_node_get_scalar0(fyn);
+	ck_assert_str_eq(val, "value");
+
+	fyn = fy_node_by_path(fy_document_root(fyd), "/ref/key", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	val = fy_node_get_scalar0(fyn);
+	ck_assert_str_eq(val, "value");
+
+	/* After resolution, the ref node should no longer be an alias */
+	fyn = fy_node_by_path(fy_document_root(fyd), "/ref", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert(!fy_node_is_alias(fyn));
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(parser_document_clone)
+{
+	struct fy_document *fyd, *fyd_clone;
+	struct fy_node *fyn, *fyn_clone;
+	const char *yaml = "foo: bar\nbaz: [1, 2, 3]\n";
+	const char *val1, *val2;
+
+	/* Test document cloning */
+	fyd = fy_document_build_from_string(NULL, yaml, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* Clone the document */
+	fyd_clone = fy_document_clone(fyd);
+	ck_assert_ptr_ne(fyd_clone, NULL);
+
+	/* Verify original document content */
+	fyn = fy_node_by_path(fy_document_root(fyd), "/foo", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	val1 = fy_node_get_scalar0(fyn);
+	ck_assert_str_eq(val1, "bar");
+
+	/* Verify cloned document has same content */
+	fyn_clone = fy_node_by_path(fy_document_root(fyd_clone), "/foo", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_clone, NULL);
+	val2 = fy_node_get_scalar0(fyn_clone);
+	ck_assert_str_eq(val2, "bar");
+
+	/* But they are different node objects */
+	ck_assert_ptr_ne(fyn, fyn_clone);
+
+	fy_document_destroy(fyd);
+	fy_document_destroy(fyd_clone);
+}
+END_TEST
+
+START_TEST(parser_node_copy)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn_src, *fyn_copy, *fyn_root;
+	const char *yaml = "original: {key: value}\n";
+	const char *val;
+
+	/* Test node copying */
+	fyd = fy_document_build_from_string(NULL, yaml, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* Get the source node */
+	fyn_src = fy_node_by_path(fy_document_root(fyd), "/original", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_src, NULL);
+
+	/* Copy the node */
+	fyn_copy = fy_node_copy(fyd, fyn_src);
+	ck_assert_ptr_ne(fyn_copy, NULL);
+
+	/* Verify the copy has same content */
+	fyn_root = fy_node_by_path(fyn_copy, "/key", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_root, NULL);
+	val = fy_node_get_scalar0(fyn_root);
+	ck_assert_str_eq(val, "value");
+
+	/* Add the copy to the document with a new key */
+	fy_node_mapping_append(fy_document_root(fyd),
+		fy_node_build_from_string(fyd, "copied", FY_NT),
+		fyn_copy);
+
+	/* Verify it exists at new location */
+	fyn_root = fy_node_by_path(fy_document_root(fyd), "/copied/key", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_root, NULL);
+	val = fy_node_get_scalar0(fyn_root);
+	ck_assert_str_eq(val, "value");
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(parser_document_builder_load)
+{
+	struct fy_parse_cfg parse_cfg;
+	struct fy_document_builder_cfg builder_cfg;
+	struct fy_parser *fyp;
+	struct fy_document_builder *fydb;
+	struct fy_document *fyd;
+	const char *yaml = "---\nkey: value\n---\nfoo: bar\n";
+	int count;
+
+	/* Test document builder API */
+	memset(&parse_cfg, 0, sizeof(parse_cfg));
+	parse_cfg.flags = FYPCF_DEFAULT_PARSE;
+
+	memset(&builder_cfg, 0, sizeof(builder_cfg));
+	builder_cfg.parse_cfg = parse_cfg;
+
+	fyp = fy_parser_create(&parse_cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+
+	fy_parser_set_string(fyp, yaml, FY_NT);
+
+	/* Create document builder with configuration */
+	fydb = fy_document_builder_create(&builder_cfg);
+	ck_assert_ptr_ne(fydb, NULL);
+
+	/* Load documents using builder */
+	count = 0;
+	while ((fyd = fy_document_builder_load_document(fydb, fyp)) != NULL) {
+		const char *value;
+		struct fy_node *fyn;
+
+		count++;
+
+		/* Verify document content */
+		if (count == 1) {
+			fyn = fy_node_by_path(fy_document_root(fyd), "/key", FY_NT, FYNWF_DONT_FOLLOW);
+			ck_assert_ptr_ne(fyn, NULL);
+			value = fy_node_get_scalar0(fyn);
+			ck_assert_str_eq(value, "value");
+		} else if (count == 2) {
+			fyn = fy_node_by_path(fy_document_root(fyd), "/foo", FY_NT, FYNWF_DONT_FOLLOW);
+			ck_assert_ptr_ne(fyn, NULL);
+			value = fy_node_get_scalar0(fyn);
+			ck_assert_str_eq(value, "bar");
+		}
+
+		fy_document_destroy(fyd);
+	}
+
+	ck_assert_int_eq(count, 2);
+
+	fy_document_builder_destroy(fydb);
+	fy_parser_destroy(fyp);
+}
+END_TEST
+
 TCase *libfyaml_case_parser(void)
 {
 	TCase *tc;
@@ -1744,6 +2019,16 @@ TCase *libfyaml_case_parser(void)
 	tcase_add_test(tc, parser_token_scan_mapping);
 	tcase_add_test(tc, parser_token_scan_sequence);
 	tcase_add_test(tc, parser_token_scan_scalar_styles);
+
+	/* Manual emitter tests */
+	tcase_add_test(tc, parser_manual_emitter);
+
+	/* Parser and document builder tests */
+	tcase_add_test(tc, parser_parse_load_document);
+	tcase_add_test(tc, parser_document_resolve);
+	tcase_add_test(tc, parser_document_clone);
+	tcase_add_test(tc, parser_node_copy);
+	tcase_add_test(tc, parser_document_builder_load);
 
 	return tc;
 }

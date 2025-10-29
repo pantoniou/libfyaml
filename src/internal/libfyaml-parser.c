@@ -1510,75 +1510,6 @@ static void test_diag_output(struct fy_diag *diag, void *user, const char *buf, 
 }
 #endif
 
-int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
-{
-	struct fy_emitter_cfg ecfg;
-	struct fy_emitter* emit;
-
-	memset(&ecfg, 0, sizeof(ecfg));
-	// ecfg.flags = FYECF_MODE_BLOCK;
-	ecfg.flags = FYECF_MODE_MANUAL;
-
-	emit = fy_emitter_create(&ecfg);
-
-	// key:
-	// - a: 1
-
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_STREAM_START));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_DOCUMENT_START, false, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_START, FYNS_BLOCK, NULL, NULL));
-	fy_emit_event(emit,
-		fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "key", FY_NT, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SEQUENCE_START, FYNS_BLOCK, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_START, FYNS_BLOCK, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "a", FY_NT, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "1", FY_NT, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_END));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SEQUENCE_END));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_END));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_DOCUMENT_END, true, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_STREAM_END));
-
-	fy_emitter_destroy(emit);
-
-	emit = fy_emitter_create(&ecfg);
-
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_STREAM_START));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_DOCUMENT_START, false, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_START, FYNS_FLOW, NULL, NULL));
-	fy_emit_event(emit,
-		fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "key", FY_NT, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SEQUENCE_START, FYNS_FLOW, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_START, FYNS_FLOW, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "a", FY_NT, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "1", FY_NT, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_END));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SEQUENCE_END));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_END));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_DOCUMENT_END, true, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_STREAM_END));
-
-	fy_emitter_destroy(emit);
-
-	emit = fy_emitter_create(&ecfg);
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_STREAM_START));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_DOCUMENT_START, false, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_START, FYNS_BLOCK, NULL, NULL));
-	fy_emit_event(emit,
-		fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "key", FY_NT, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SEQUENCE_START, FYNS_BLOCK, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_START, FYNS_BLOCK, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "a", FY_NT, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_PLAIN, "1", FY_NT, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_END));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_SEQUENCE_END));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_MAPPING_END));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_DOCUMENT_END, true, NULL, NULL));
-	fy_emit_event(emit, fy_emit_event_create(emit, FYET_STREAM_END));
-	fy_emitter_destroy(emit);
-
-	return 0;
-}
 
 struct pathspec_arg {
 	const char *arg;
@@ -2790,7 +2721,6 @@ int main(int argc, char *argv[])
 	    strcmp(mode, "testsuite") &&
 	    strcmp(mode, "dump") &&
 	    strcmp(mode, "dump2") &&
-	    strcmp(mode, "build") &&
 	    strcmp(mode, "walk") &&
 	    strcmp(mode, "reader") &&
 	    strcmp(mode, "compose") &&
@@ -2885,11 +2815,6 @@ int main(int argc, char *argv[])
 		cfg.flags |= FYPCF_SLOPPY_FLOW_INDENTATION;
 	}
 #endif
-
-	if (!strcmp(mode, "build")) {
-		rc = do_build(&cfg, argc - optind, argv + optind);
-		return !rc ? EXIT_SUCCESS : EXIT_FAILURE;
-	}
 
 	if (!strcmp(mode, "crash")) {
 		rc = do_crash(&cfg, argc - optind, argv + optind);
