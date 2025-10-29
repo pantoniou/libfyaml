@@ -1064,6 +1064,7 @@ int main(int argc, char *argv[])
 	bool show;
 	int indent = INDENT_DEFAULT;
 	int width = WIDTH_DEFAULT;
+	bool manual_width = false;
 	bool follow = FOLLOW_DEFAULT;
 	const char *to = TO_DEFAULT;
 	const char *from = FROM_DEFAULT;
@@ -1194,6 +1195,7 @@ int main(int argc, char *argv[])
 				fprintf(stderr, "bad width option %s\n", optarg);
 				goto err_out_usage;
 			}
+			manual_width = true;
 			break;
 		case 'd':
 			dcfg.level = fy_string_to_error_type(optarg);
@@ -1552,10 +1554,17 @@ int main(int argc, char *argv[])
 	exitcode = EXIT_FAILURE;
 
 	if (tool_mode != OPT_TESTSUITE) {
+		enum fy_emitter_cfg_flags emit_width_flags;
+
+		/* if we're dumping to a non tty stdout width is infinite */
+		if (tool_mode == OPT_DUMP && !isatty(fileno(stdout)) && !manual_width)
+			emit_width_flags = FYECF_WIDTH_INF;
+		else
+			emit_width_flags = FYECF_WIDTH(width);
 
 		memset(&emit_xcfg, 0, sizeof(emit_xcfg));
-		emit_xcfg.cfg.flags = emit_flags |
-				FYECF_INDENT(indent) | FYECF_WIDTH(width) |
+		emit_xcfg.cfg.flags = emit_flags | emit_width_flags |
+				FYECF_INDENT(indent) |
 				FYECF_EXTENDED_CFG;	// use extended config
 
 		/* unconditionally turn on document start markers for ypath */
