@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document tracks the ongoing work to extract testable functionality from `src/internal/libfyaml-parser.c` (a 4,622-line multi-mode debugging tool) into proper unit tests in the libfyaml test suite.
+This document tracks the ongoing work to extract testable functionality from `src/internal/libfyaml-parser.c` (a multi-mode debugging tool) into proper unit tests in the libfyaml test suite. Functions that have been successfully converted to tests are removed from libfyaml-parser.c to reduce code duplication and maintenance burden.
 
 ## What Has Been Done
 
@@ -55,14 +55,14 @@ From `do_build()` and `do_dump()`:
 - `parser_empty_document` - Empty/null documents
 - `parser_document_with_comments` - Documents containing comments
 
-#### Iterator Tests (3 tests)
-From `do_iterate()` (lines 967-1020):
+#### Iterator Tests (3 tests) - **REMOVED from libfyaml-parser.c**
+From `do_iterate()`:
 - `parser_document_iterator` - Document-wide node iteration
 - `parser_document_iterator_key_detection` - Detecting mapping keys during iteration
 - `parser_iterator_alias_detection` - Detecting aliases during iteration
 
-#### Comment Tests (1 test)
-From `do_comment()` (lines 1022-1077):
+#### Comment Tests (1 test) - **REMOVED from libfyaml-parser.c**
+From `do_comment()`:
 - `parser_comment_retrieval` - Retrieving comments from tokens
 
 #### Event and Parsing Tests (6 tests)
@@ -74,8 +74,8 @@ From `do_parse()`, `do_testsuite()`, `dump_testsuite_event()`, `do_dump()`:
 - `parser_flow_block_styles` - Flow vs block notation
 - `parser_document_builder` - Document builder API pattern
 
-#### Utility Function Tests (2 tests)
-From `do_shell_split()` (lines 3961-3993) and `do_bad_utf8()` (lines 3866-3959):
+#### Utility Function Tests (2 tests) - **REMOVED from libfyaml-parser.c**
+From `do_shell_split()` and `do_bad_utf8()`:
 - `parser_shell_split` - Shell-like string splitting with quotes and escapes
 - `parser_utf8_validation` - UTF-8 encoding/decoding validation
 
@@ -266,6 +266,18 @@ TCase *libfyaml_case_parser(void)
 6. Document any functions that cannot be easily tested (complex internal APIs)
 7. Wait for CI feedback after each commit to catch API mismatches
 
+## Functions Removed from libfyaml-parser.c
+
+The following functions have been successfully converted to tests and removed from `libfyaml-parser.c`:
+- `do_scan()` - Converted to 4 token scanning tests
+- `do_copy()` - Removed (internal API usage, not viable for public API tests)
+- `do_iterate()` - Converted to 3 iterator tests
+- `do_comment()` - Converted to 1 comment test
+- `do_shell_split()` - Converted to 1 shell split utility test
+- `do_bad_utf8()` - Converted to 1 UTF-8 validation test
+
+Corresponding mode handlers and mode checks have also been removed from the main function.
+
 ## Notes
 
 - Tests compile successfully even without Check library installed
@@ -273,3 +285,4 @@ TCase *libfyaml_case_parser(void)
 - User fixes API mismatches discovered during CI runs
 - Focus on functions that test public or semi-public APIs
 - Skip functions that are purely for debugging or performance testing
+- Converted functions are removed from libfyaml-parser.c to avoid duplication

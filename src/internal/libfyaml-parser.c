@@ -894,117 +894,6 @@ fy_node_belongs_to_key(struct fy_document *fyd, struct fy_node *fyn)
 	return fyd->root != fy_node_get_root(fyn);
 }
 
-int do_iterate(struct fy_parser *fyp)
-{
-	struct fy_document *fyd;
-	struct fy_document_iterator *fydi;
-	int count;
-	struct fy_node *fyn;
-	char *path;
-	size_t len;
-	const char *text;
-	char textbuf[16];
-	bool belongs_to_key;
-
-	fydi = fy_document_iterator_create();
-	assert(fydi);
-
-	count = 0;
-	while ((fyd = fy_parse_load_document(fyp)) != NULL) {
-
-		fprintf(stderr, "> Start\n");
-		fy_document_iterator_node_start(fydi, fy_document_root(fyd));
-
-		fyn = NULL;
-		while ((fyn = fy_document_iterator_node_next(fydi)) != NULL) {
-
-			belongs_to_key = fy_node_belongs_to_key(fyd, fyn);
-			path = fy_node_get_path(fyn);
-			if (fy_node_is_scalar(fyn)) {
-				text = fy_node_get_scalar(fyn, &len);
-				assert(text);
-				fy_utf8_format_text(text, len, textbuf, sizeof(textbuf), fyue_doublequote);
-				if (!fy_node_is_alias(fyn))
-					fprintf(stderr, "%40s \"%s\"%s\n", path, textbuf, belongs_to_key ? " KEY" : "");
-				else
-					fprintf(stderr, "%40s *%s%s\n", path, textbuf, belongs_to_key ? " KEY" : "");
-			} else if (fy_node_is_sequence(fyn)) {
-				fprintf(stderr, "%40s [%s\n", path, belongs_to_key ? " KEY" : "");
-			} else if (fy_node_is_mapping(fyn)) {
-				fprintf(stderr, "%40s {%s\n", path, belongs_to_key ? " KEY" : "");
-			}
-
-			free(path);
-		}
-
-		fprintf(stderr, "> End\n");
-
-		fy_parse_document_destroy(fyp, fyd);
-
-		count++;
-	}
-
-	fy_document_iterator_destroy(fydi);
-
-	return count > 0 ? 0 : -1;
-}
-
-int do_comment(struct fy_parser *fyp)
-{
-	struct fy_document *fyd;
-	int count;
-	struct fy_node *fyn;
-	struct fy_document_iterator *fydi;
-	char *path;
-	struct fy_token *fyt;
-	struct fy_atom *handle;
-	enum fy_comment_placement placement;
-	static const char *placement_txt[] =  { "top", "right", "bottom" };
-	char buf[1024];
-
-	fydi = fy_document_iterator_create();
-	assert(fydi);
-
-	count = 0;
-	while ((fyd = fy_parse_load_document(fyp)) != NULL) {
-
-		fy_document_iterator_node_start(fydi, fy_document_root(fyd));
-		fyn = NULL;
-		while ((fyn = fy_document_iterator_node_next(fydi)) != NULL) {
-
-			if (!fy_node_is_scalar(fyn))
-				continue;
-
-			fyt = fy_node_get_scalar_token(fyn);
-			if (!fyt || !fy_token_has_any_comment(fyt))
-				continue;
-
-			path = fy_node_get_path(fyn);
-
-			fprintf(stderr, "scalar at %s\n", path);
-			for (placement = fycp_top; placement < fycp_max; placement++) {
-				handle = fy_token_comment_handle(fyt, placement, false);
-				if (!handle || !fy_atom_is_set(handle))
-					continue;
-
-				if (!fy_token_get_comment(fyt, buf, sizeof(buf), placement))
-					continue;
-
-				fprintf(stderr, "%s: %s\n", placement_txt[placement], buf);
-			}
-
-			free(path);
-		}
-
-		fy_parse_document_destroy(fyp, fyd);
-
-		count++;
-	}
-
-	fy_document_iterator_destroy(fydi);
-
-	return count > 0 ? 0 : -1;
-}
 
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 
@@ -3793,134 +3682,6 @@ failed:
 	return rc;
 }
 
-int do_bad_utf8(const struct fy_parse_cfg *cfg, int argc, char *argv[])
-{
-	// char key[12] = {0x26, 0x2b, 0x74, 0x68, 0x65, 0x62, 0x65, 0x86, 0x6e, 0x67, 0x77, 0x00};
-	// char key[11] = {0x26, 0x2b, 0x74, 0x68, 0x65, 0x62, 0x65, 0x6e, 0x67, 0x77, 0x00};
-	// char key[] = {
-	//	0x22, 0xCE, 0xA4, 0xCE, 0xB9, 0xCE, 0xBC, 0xCE,
-	//	0xAE, 0x20, 0xCE, 0xB5, 0xCE, 0xBB, 0xCE, 0xBB,
-	//	0xCE, 0xB7, 0xCE, 0xBD, 0xCE, 0xB9, 0xCE, 0xBA,
-	//	0xCE, 0xAE, 0x22, 0x0A, 0x00
-	//};
-	char key[] = {
-		0x67, 0xe7, 0x67, 0x54, 0x67, 0x67, 0x67, 0x67, 0xe8,
-		0x67, 0x4e, 0x64, 0x6a, 0x67, 0x67, 0xaa, 0x6b, 0x73, 0x00
-	};
-	int *fwd;
-	int *bwd;
-	const char *s;
-	const char *e;
-	int len, i, c, w, pos;
-
-	len = strlen(key);
-
-	fwd = alloca(sizeof(*fwd) * len);
-	bwd = alloca(sizeof(*bwd) * len);
-
-	memset(fwd, 0, sizeof(*fwd) * len);
-	memset(bwd, 0, sizeof(*bwd) * len);
-
-	s = key;
-	e = s + strlen(key);
-
-	printf("forward utf8 check\n");
-	pos = 0;
-	while (s < e) {
-		c = fy_utf8_get(s, e - s, &w);
-		if (c < 0) {
-			switch (c) {
-			case FYUG_EOF:
-				printf("EOF before end at pos %d\n", pos);
-				break;
-			case FYUG_INV:
-				printf("INV before end at pos %d\n", pos);
-				break;
-			case FYUG_PARTIAL:
-				printf("PARTIAL before end at pos %d\n", pos);
-				break;
-			default:
-				printf("UKNNOWN %d before end at pos %d\n", c, pos);
-				break;
-			}
-			break;
-		}
-		fwd[pos] = c;
-		s += w;
-		pos++;
-	}
-	printf("forward utf8 check complete (end pos %d)\n", pos);
-
-	for (i = 0; i < pos; i++)
-		printf("0x%02x%s", fwd[i], i < (pos - 1) ? " " : "\n");
-
-	printf("backward utf8 check\n");
-	pos = 0;
-	s = key;
-	while (s < e) {
-		c = fy_utf8_get_right(s, e - s, &w);
-		if (c < 0) {
-			switch (c) {
-			case FYUG_EOF:
-				printf("EOF before end at pos %d\n", pos);
-				break;
-			case FYUG_INV:
-				printf("INV before end at pos %d\n", pos);
-				break;
-			case FYUG_PARTIAL:
-				printf("PARTIAL before end at pos %d\n", pos);
-				break;
-			default:
-				printf("UKNNOWN %d before end at pos %d\n", c, pos);
-				break;
-			}
-			break;
-		}
-		bwd[pos] = c;
-		e -= w;
-		pos++;
-	}
-	printf("backward utf8 check complete (end pos %d)\n", pos);
-
-	for (i = pos - 1; i >= 0; i--)
-		printf("0x%02x%s", bwd[i], i > 0 ? " " : "\n");
-
-	return 0;
-}
-
-int do_shell_split(int in_argc, char *in_argv[])
-{
-	char buf[256], line[256 + 1];
-	char *s, *e;
-	const char * const *argv;
-	int i, argc;
-	void *mem;
-
-	printf("shell split; Ctrl-D to exit\n");
-	buf[sizeof(buf)-1] = '\0';
-	while (fgets(buf, sizeof(buf) - 1, stdin)) {
-		buf[sizeof(buf)-1] = '\0';
-		strcpy(line, buf);
-		s = line;
-		e = s + strlen(line);
-		while (e > s && e[-1] == '\n')
-			*--e = '\0';
-
-		printf("input: '%s'\n", line);
-
-		mem = fy_utf8_split_posix(line, &argc, &argv);
-		if (!mem) {
-			fprintf(stderr, "Bad input '%s'\n", line);
-		} else {
-			for (i = 0; i < argc; i++) {
-				fprintf(stderr, "%d: %s\n", i, argv[i]);
-			}
-			assert(argv[argc] == NULL);
-			free(mem);
-		}
-	}
-	return 0;
-}
 
 int do_parse_timing(int argc, char *argv[], bool disable_mmap)
 {
@@ -4225,13 +3986,9 @@ int main(int argc, char *argv[])
 	    strcmp(mode, "walk") &&
 	    strcmp(mode, "reader") &&
 	    strcmp(mode, "compose") &&
-	    strcmp(mode, "iterate") &&
-	    strcmp(mode, "comment") &&
 	    strcmp(mode, "pathspec") &&
 	    strcmp(mode, "bypath") &&
 	    strcmp(mode, "crash") &&
-	    strcmp(mode, "badutf8") &&
-	    strcmp(mode, "shell-split") &&
 	    strcmp(mode, "parse-timing")
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 	    && strcmp(mode, "libyaml-scan")
@@ -4330,19 +4087,10 @@ int main(int argc, char *argv[])
 		rc = do_crash(&cfg, argc - optind, argv + optind);
 		return !rc ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
-	if (!strcmp(mode, "badutf8")) {
-		rc = do_bad_utf8(&cfg, argc - optind, argv + optind);
-		return !rc ? EXIT_SUCCESS : EXIT_FAILURE;
-	}
-
 	if (!strcmp(mode, "pathspec")) {
 		rc = do_pathspec(argc - optind, argv + optind);
 		return !rc ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
-
-	/* turn on comment parsing for comment mode */
-	if (!strcmp(mode, "comment"))
-		cfg.flags |= FYPCF_PARSE_COMMENTS;
 
 	rc = fy_parse_setup(fyp, &cfg);
 	if (rc) {
@@ -4452,28 +4200,10 @@ int main(int argc, char *argv[])
 			/* fprintf(stderr, "do_compose() error %d\n", rc); */
 			goto cleanup;
 		}
-	} else if (!strcmp(mode, "iterate")) {
-		rc = do_iterate(fyp);
-		if (rc < 0) {
-			/* fprintf(stderr, "do_iterate() error %d\n", rc); */
-			goto cleanup;
-		}
-	} else if (!strcmp(mode, "comment")) {
-		rc = do_comment(fyp);
-		if (rc < 0) {
-			/* fprintf(stderr, "do_comment() error %d\n", rc); */
-			goto cleanup;
-		}
 	} else if (!strcmp(mode, "bypath")) {
 		rc = do_bypath(fyp, walkpath, walkstart);
 		if (rc < 0) {
 			/* fprintf(stderr, "do_bypath() error %d\n", rc); */
-			goto cleanup;
-		}
-	} else if (!strcmp(mode, "shell-split")) {
-		rc = do_shell_split(argc, argv);
-		if (rc < 0) {
-			/* fprintf(stderr, "do_shell_split() error %d\n", rc); */
 			goto cleanup;
 		}
 	} else if (!strcmp(mode, "parse-timing")) {
