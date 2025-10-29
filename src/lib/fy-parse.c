@@ -4127,6 +4127,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 	handle->tabsize = fy_reader_tabsize(fyr);
 	handle->ends_with_eof = false;	/* flow scalars never end with EOF and be valid */
 	handle->is_merge_key = false;
+	handle->simple_key_allowed = false;
 
 	/* skip over block scalar end */
 	fy_reader_advance_by(fyr, 1);
@@ -4163,7 +4164,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 	bool last_ptr;
 	struct fy_mark mark, last_mark;
 	bool is_multiline, has_lb, has_ws, ends_with_eof, is_merge_key;
-	bool has_json_esc;
+	bool has_json_esc, run_has_lb, run_has_ws;
 #ifdef ATOM_SIZE_CHECK
 	size_t tlength;
 #endif
@@ -4203,6 +4204,8 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 	has_lb = false;
 	has_ws = false;
 	has_json_esc = false;
+	run_has_lb = false;
+	run_has_ws = false;
 
 	length = 0;
 	breaks_found = 0;
@@ -4328,19 +4331,25 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 			/* fyp_scan_debug(fyp, "saving mark"); */
 			last_ptr = true;
 			fy_reader_get_mark(fyr, &last_mark);
+
+			if (!has_lb && run_has_lb)
+				has_lb = true;
+
+			if (!has_ws && run_has_ws)
+				has_ws = true;
 		}
 
 		/* end? */
 		if (!(fy_is_blank(c) || fy_reader_is_lb(fyr, c)))
 			break;
 
-		has_json_esc = true;
-
 		/* consume blanks */
 		breaks_found = 0;
 		breaks_found_length = 0;
 		first_break_length = 0;
 		blanks_found = 0;
+		run_has_lb = fy_reader_is_lb(fyr, c);
+		run_has_ws = fy_is_blank(c);
 		do {
 			fy_reader_advance(fyr, c);
 
@@ -4371,10 +4380,10 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 				breaks_found++;
 				breaks_found_length += break_length;
 				blanks_found = 0;
-				has_lb = true;
+				run_has_lb = true;
 			} else {
 				blanks_found++;
-				has_ws = true;
+				run_has_ws = true;
 			}
 
 			c = nextc;
@@ -4420,6 +4429,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 	handle->tabsize = fy_reader_tabsize(fyr);
 	handle->ends_with_eof = ends_with_eof;
 	handle->is_merge_key = is_merge_key && length == 2;
+	handle->simple_key_allowed = run_has_lb;	// simple key allowed if there was an lb
 
 #ifdef ATOM_SIZE_CHECK
 	tlength = fy_atom_format_text_length(handle);
@@ -4890,7 +4900,7 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 	fyp_error_check(fyp, !rc, err_out_rc,
 			"fy_save_simple_key_mark() failed");
 
-	fyp->simple_key_allowed = handle.has_lb;
+	fyp->simple_key_allowed = handle.simple_key_allowed;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 
 	if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS) {

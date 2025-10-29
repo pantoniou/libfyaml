@@ -52,7 +52,7 @@
 #define STRIP_TAGS_DEFAULT		false
 #define STRIP_DOC_DEFAULT		false
 #define STREAMING_DEFAULT		false
-#define RECREATING_DEFAULT      false
+#define RECREATING_DEFAULT		false
 #define JSON_DEFAULT			"auto"
 #define DISABLE_ACCEL_DEFAULT		false
 #define DISABLE_BUFFERING_DEFAULT	false
@@ -1763,8 +1763,7 @@ int main(int argc, char *argv[])
 							}
 
 							rc = fy_emit_event(emit, fyeev);
-						}
-						else {
+						} else {
 							rc = fy_emit_event_from_parser(emit, fyp, fyev);
 						}
 

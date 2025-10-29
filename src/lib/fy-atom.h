@@ -86,6 +86,7 @@ struct fy_atom {
 			bool json_mode : 1;		/* atom was read in json mode */
 			bool ends_with_eof : 1;		/* atom ends at EOF of input */
 			bool is_merge_key: 1;		/* atom is just << */
+			bool simple_key_allowed : 1;	/* atom allows a simple key */
 		};
 	};
 };
