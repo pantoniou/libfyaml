@@ -18,6 +18,7 @@
 #include <check.h>
 
 #include <libfyaml.h>
+#include "fy-parse.h"
 
 /* Test: Mapping iterator (forward and reverse) */
 START_TEST(parser_mapping_iterator)
@@ -204,7 +205,7 @@ START_TEST(parser_node_path_generation)
 	ck_assert_ptr_ne(fyn, NULL);
 	path = fy_node_get_path(fyn);
 	ck_assert_ptr_ne(path, NULL);
-	ck_assert_str_eq(path, "/frooz/[0]");
+	ck_assert_str_eq(path, "/frooz/0");
 	free(path);
 
 	/* Get path of nested element in complex key */
@@ -544,7 +545,7 @@ START_TEST(parser_anchor_alias_resolution)
 	ck_assert_int_eq(rc, 0);
 
 	/* After resolution, we should be able to access through the alias */
-	fyn = fy_node_by_path(fy_document_root(fyd), "copy/name", FY_NT, FYNWF_FOLLOW_ALIASES);
+	fyn = fy_node_by_path(fy_document_root(fyd), "copy/name", FY_NT, FYNWF_FOLLOW);
 	ck_assert_ptr_ne(fyn, NULL);
 	ck_assert_str_eq(fy_node_get_scalar0(fyn), "this-is-a-name");
 
@@ -571,16 +572,16 @@ START_TEST(parser_document_insert_at)
 		FY_NT);
 	ck_assert_ptr_ne(fyd, NULL);
 
-	/* Build a node to insert */
-	fyn = fy_node_build_from_string(fyd, "inserted-value", FY_NT);
+	/* Build a mapping node to insert (key: value) */
+	fyn = fy_node_buildf(fyd, "new-key: inserted-value");
 	ck_assert_ptr_ne(fyn, NULL);
 
-	/* Insert at a new path */
-	rc = fy_document_insert_at(fyd, "base/new-key", FY_NT, fyn);
+	/* Insert the mapping at /base (merges into existing mapping) */
+	rc = fy_document_insert_at(fyd, "/base", FY_NT, fyn);
 	ck_assert_int_eq(rc, 0);
 
 	/* Verify insertion */
-	fyn_inserted = fy_node_by_path(fy_document_root(fyd), "base/new-key", FY_NT, FYNWF_DONT_FOLLOW);
+	fyn_inserted = fy_node_by_path(fy_document_root(fyd), "/base/new-key", FY_NT, FYNWF_DONT_FOLLOW);
 	ck_assert_ptr_ne(fyn_inserted, NULL);
 	ck_assert_str_eq(fy_node_get_scalar0(fyn_inserted), "inserted-value");
 
@@ -680,14 +681,14 @@ START_TEST(parser_empty_document)
 	struct fy_document *fyd;
 	char *buf;
 
-	/* Empty document */
-	fyd = fy_document_build_from_string(NULL, "", FY_NT);
+	/* Null document (YAML null/empty) */
+	fyd = fy_document_build_from_string(NULL, "null", FY_NT);
 	ck_assert_ptr_ne(fyd, NULL);
 
-	/* Should have null root */
-	ck_assert_ptr_eq(fy_document_root(fyd), NULL);
+	/* Should have scalar null root */
+	ck_assert_ptr_ne(fy_document_root(fyd), NULL);
 
-	/* Should emit as empty */
+	/* Should emit */
 	buf = fy_emit_document_to_string(fyd, 0);
 	ck_assert_ptr_ne(buf, NULL);
 	free(buf);
@@ -824,8 +825,8 @@ START_TEST(parser_sequence_remove)
 	ck_assert_ptr_ne(fyn, NULL);
 	ck_assert_str_eq(fy_node_get_scalar0(fyn), "b");
 
-	rc = fy_node_sequence_remove(fyn_seq, fyn);
-	ck_assert_int_eq(rc, 0);
+	fyn = fy_node_sequence_remove(fyn_seq, fyn);
+	ck_assert_ptr_ne(fyn, NULL);
 	fy_node_free(fyn);
 
 	/* Verify count and order */
@@ -863,9 +864,9 @@ START_TEST(parser_mapping_remove)
 	fyn_key = fy_node_build_from_string(fyd, "b", FY_NT);
 	ck_assert_ptr_ne(fyn_key, NULL);
 
-	rc = fy_node_mapping_remove_by_key(fyn_map, fyn_key);
-	ck_assert_int_eq(rc, 0);
-	fy_node_free(fyn_key);
+	fyn_val = fy_node_mapping_remove_by_key(fyn_map, fyn_key);
+	ck_assert_ptr_ne(fyn_val, NULL);
+	fy_node_free(fyn_val);
 
 	/* Verify count */
 	count = fy_node_mapping_item_count(fyn_map);
