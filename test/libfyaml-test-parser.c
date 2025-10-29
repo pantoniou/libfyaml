@@ -1073,6 +1073,298 @@ START_TEST(parser_iterator_alias_detection)
 }
 END_TEST
 
+/* Test: Event-based parsing */
+START_TEST(parser_event_generation)
+{
+	struct fy_parser fyp_data, *fyp = &fyp_data;
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_DEFAULT_DOC,
+	};
+	struct fy_event event;
+	int rc;
+	bool got_stream_start = false;
+	bool got_doc_start = false;
+	bool got_scalar = false;
+	bool got_doc_end = false;
+	bool got_stream_end = false;
+
+	/* Setup parser */
+	rc = fy_parse_setup(fyp, &cfg);
+	ck_assert_int_eq(rc, 0);
+
+	/* Add simple YAML input */
+	const char *yaml = "key: value\n";
+	struct fy_input_cfg fyic = {
+		.type = fyit_memory,
+		.memory.data = yaml,
+		.memory.size = strlen(yaml),
+	};
+	rc = fy_parse_input_append(fyp, &fyic);
+	ck_assert_int_eq(rc, 0);
+
+	/* Parse events */
+	while (fy_parse_get_event(fyp, &event)) {
+		switch (event.type) {
+		case FYET_STREAM_START:
+			got_stream_start = true;
+			break;
+		case FYET_DOCUMENT_START:
+			got_doc_start = true;
+			break;
+		case FYET_SCALAR:
+			got_scalar = true;
+			break;
+		case FYET_DOCUMENT_END:
+			got_doc_end = true;
+			break;
+		case FYET_STREAM_END:
+			got_stream_end = true;
+			break;
+		default:
+			break;
+		}
+		fy_parse_event_cleanup(fyp, &event);
+	}
+
+	/* Verify we got expected events */
+	ck_assert(got_stream_start);
+	ck_assert(got_doc_start);
+	ck_assert(got_scalar);
+	ck_assert(got_doc_end);
+	ck_assert(got_stream_end);
+
+	fy_parse_cleanup(fyp);
+}
+END_TEST
+
+/* Test: Scalar style detection */
+START_TEST(parser_scalar_styles)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	struct fy_token *fyt;
+	enum fy_scalar_style style;
+
+	/* Build document with different scalar styles */
+	fyd = fy_document_build_from_string(NULL,
+		"plain: plain value\n"
+		"single: 'single quoted'\n"
+		"double: \"double quoted\"\n"
+		"literal: |\n"
+		"  literal block\n"
+		"folded: >\n"
+		"  folded block\n",
+		FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* Check plain style */
+	fyn = fy_node_by_path(fy_document_root(fyd), "plain", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	fyt = fy_node_get_scalar_token(fyn);
+	ck_assert_ptr_ne(fyt, NULL);
+	style = fy_token_scalar_style(fyt);
+	ck_assert_int_eq(style, FYSS_PLAIN);
+
+	/* Check single quoted style */
+	fyn = fy_node_by_path(fy_document_root(fyd), "single", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	fyt = fy_node_get_scalar_token(fyn);
+	ck_assert_ptr_ne(fyt, NULL);
+	style = fy_token_scalar_style(fyt);
+	ck_assert_int_eq(style, FYSS_SINGLE_QUOTED);
+
+	/* Check double quoted style */
+	fyn = fy_node_by_path(fy_document_root(fyd), "double", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	fyt = fy_node_get_scalar_token(fyn);
+	ck_assert_ptr_ne(fyt, NULL);
+	style = fy_token_scalar_style(fyt);
+	ck_assert_int_eq(style, FYSS_DOUBLE_QUOTED);
+
+	/* Check literal style */
+	fyn = fy_node_by_path(fy_document_root(fyd), "literal", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	fyt = fy_node_get_scalar_token(fyn);
+	ck_assert_ptr_ne(fyt, NULL);
+	style = fy_token_scalar_style(fyt);
+	ck_assert_int_eq(style, FYSS_LITERAL);
+
+	/* Check folded style */
+	fyn = fy_node_by_path(fy_document_root(fyd), "folded", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	fyt = fy_node_get_scalar_token(fyn);
+	ck_assert_ptr_ne(fyt, NULL);
+	style = fy_token_scalar_style(fyt);
+	ck_assert_int_eq(style, FYSS_FOLDED);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: Tag handling */
+START_TEST(parser_tag_handling)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	struct fy_token *fyt;
+	const char *tag;
+
+	/* Build document with tags */
+	fyd = fy_document_build_from_string(NULL,
+		"string: !!str tagged string\n"
+		"integer: !!int 42\n"
+		"custom: !custom custom tag\n",
+		FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* Check string tag */
+	fyn = fy_node_by_path(fy_document_root(fyd), "string", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	tag = fy_node_get_tag(fyn);
+	ck_assert_ptr_ne(tag, NULL);
+	ck_assert(strstr(tag, "str") != NULL);
+
+	/* Check integer tag */
+	fyn = fy_node_by_path(fy_document_root(fyd), "integer", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	tag = fy_node_get_tag(fyn);
+	ck_assert_ptr_ne(tag, NULL);
+	ck_assert(strstr(tag, "int") != NULL);
+
+	/* Check custom tag */
+	fyn = fy_node_by_path(fy_document_root(fyd), "custom", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	tag = fy_node_get_tag(fyn);
+	ck_assert_ptr_ne(tag, NULL);
+	ck_assert(strstr(tag, "custom") != NULL);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: YAML version directives */
+START_TEST(parser_yaml_version)
+{
+	struct fy_parse_cfg cfg_11 = {
+		.flags = FYPCF_DEFAULT_VERSION_1_1,
+	};
+	struct fy_parse_cfg cfg_12 = {
+		.flags = FYPCF_DEFAULT_VERSION_1_2,
+	};
+	struct fy_document *fyd;
+
+	/* Parse with YAML 1.1 */
+	fyd = fy_document_build_from_string(&cfg_11, "key: value", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+	fy_document_destroy(fyd);
+
+	/* Parse with YAML 1.2 */
+	fyd = fy_document_build_from_string(&cfg_12, "key: value", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+	fy_document_destroy(fyd);
+
+	/* Parse with explicit version directive */
+	fyd = fy_document_build_from_string(NULL, "%YAML 1.2\n---\nkey: value", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: Flow and block styles */
+START_TEST(parser_flow_block_styles)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	char *buf;
+
+	/* Build document with mixed flow and block styles */
+	fyd = fy_document_build_from_string(NULL,
+		"block_map:\n"
+		"  key: value\n"
+		"flow_map: {key: value}\n"
+		"block_seq:\n"
+		"  - item\n"
+		"flow_seq: [item]\n",
+		FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* Verify block mapping */
+	fyn = fy_node_by_path(fy_document_root(fyd), "block_map", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert(fy_node_is_mapping(fyn));
+
+	/* Verify flow mapping */
+	fyn = fy_node_by_path(fy_document_root(fyd), "flow_map", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert(fy_node_is_mapping(fyn));
+
+	/* Verify block sequence */
+	fyn = fy_node_by_path(fy_document_root(fyd), "block_seq", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert(fy_node_is_sequence(fyn));
+
+	/* Verify flow sequence */
+	fyn = fy_node_by_path(fy_document_root(fyd), "flow_seq", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert(fy_node_is_sequence(fyn));
+
+	/* Emit and verify output */
+	buf = fy_emit_document_to_string(fyd, 0);
+	ck_assert_ptr_ne(buf, NULL);
+	free(buf);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: Document builder API */
+START_TEST(parser_document_builder)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn_root, *fyn_key, *fyn_val;
+	int rc;
+
+	/* Create document using builder pattern */
+	fyd = fy_document_create(NULL);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* Build root mapping */
+	fyn_root = fy_node_create_mapping(fyd);
+	ck_assert_ptr_ne(fyn_root, NULL);
+	fy_document_set_root(fyd, fyn_root);
+
+	/* Add key-value pairs using builder */
+	fyn_key = fy_node_build_from_string(fyd, "key1", FY_NT);
+	ck_assert_ptr_ne(fyn_key, NULL);
+	fyn_val = fy_node_build_from_string(fyd, "value1", FY_NT);
+	ck_assert_ptr_ne(fyn_val, NULL);
+	rc = fy_node_mapping_append(fyn_root, fyn_key, fyn_val);
+	ck_assert_int_eq(rc, 0);
+
+	/* Add another pair with complex value */
+	fyn_key = fy_node_build_from_string(fyd, "key2", FY_NT);
+	ck_assert_ptr_ne(fyn_key, NULL);
+	fyn_val = fy_node_build_from_string(fyd, "[1, 2, 3]", FY_NT);
+	ck_assert_ptr_ne(fyn_val, NULL);
+	rc = fy_node_mapping_append(fyn_root, fyn_key, fyn_val);
+	ck_assert_int_eq(rc, 0);
+
+	/* Verify the built document */
+	ck_assert_int_eq(fy_node_mapping_item_count(fyn_root), 2);
+
+	fyn_val = fy_node_mapping_lookup_by_string(fyn_root, "key1", FY_NT);
+	ck_assert_ptr_ne(fyn_val, NULL);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn_val), "value1");
+
+	fyn_val = fy_node_mapping_lookup_by_string(fyn_root, "key2", FY_NT);
+	ck_assert_ptr_ne(fyn_val, NULL);
+	ck_assert(fy_node_is_sequence(fyn_val));
+	ck_assert_int_eq(fy_node_sequence_item_count(fyn_val), 3);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 TCase *libfyaml_case_parser(void)
 {
 	TCase *tc;
@@ -1123,6 +1415,14 @@ TCase *libfyaml_case_parser(void)
 
 	/* Comment tests */
 	tcase_add_test(tc, parser_comment_retrieval);
+
+	/* Event and parsing tests */
+	tcase_add_test(tc, parser_event_generation);
+	tcase_add_test(tc, parser_scalar_styles);
+	tcase_add_test(tc, parser_tag_handling);
+	tcase_add_test(tc, parser_yaml_version);
+	tcase_add_test(tc, parser_flow_block_styles);
+	tcase_add_test(tc, parser_document_builder);
 
 	return tc;
 }
