@@ -964,24 +964,44 @@ START_TEST(parser_document_iterator_key_detection)
 	fy_document_iterator_node_start(fydi, fy_document_root(fyd));
 
 	/* Iterate and check for key nodes */
-	while ((fyn = fy_document_iterator_node_next(fydi)) != NULL) {
-		if (fy_node_is_scalar(fyn)) {
-			bool is_key = fy_node_belongs_to_key(fyd, fyn);
-			const char *text = fy_node_get_scalar0(fyn);
+	fyn = fy_document_iterator_node_next(fydi);
+	ck_assert_ptr_ne(fyn, NULL);
+	/* must be a mapping */
+	ck_assert(fy_node_is_mapping(fyn));
+	/* must be the root */
+	ck_assert_ptr_eq(fyn, fy_document_root(fyd));
 
-			/* Keys should be detected */
-			if (text && (strcmp(text, "key1") == 0 || strcmp(text, "key2") == 0)) {
-				ck_assert(is_key);
-				found_key_node = true;
-			}
-			/* Values should not be keys */
-			if (text && (strcmp(text, "value1") == 0 || strcmp(text, "value2") == 0)) {
-				ck_assert(!is_key);
-			}
-		}
-	}
+	/* get the first key */
+	fyn = fy_document_iterator_node_next(fydi);
+	ck_assert_ptr_ne(fyn, NULL);
+	/* must be a scalar */
+	ck_assert(fy_node_is_scalar(fyn));
+	ck_assert(!strcmp(fy_node_get_scalar0(fyn), "key1"));
 
-	ck_assert(found_key_node);
+	/* get the first value */
+	fyn = fy_document_iterator_node_next(fydi);
+	ck_assert_ptr_ne(fyn, NULL);
+	/* must be a scalar */
+	ck_assert(fy_node_is_scalar(fyn));
+	ck_assert(!strcmp(fy_node_get_scalar0(fyn), "value1"));
+
+	/* get the second key */
+	fyn = fy_document_iterator_node_next(fydi);
+	ck_assert_ptr_ne(fyn, NULL);
+	/* must be a scalar */
+	ck_assert(fy_node_is_scalar(fyn));
+	ck_assert(!strcmp(fy_node_get_scalar0(fyn), "key2"));
+
+	/* get the second value */
+	fyn = fy_document_iterator_node_next(fydi);
+	ck_assert_ptr_ne(fyn, NULL);
+	/* must be a scalar */
+	ck_assert(fy_node_is_scalar(fyn));
+	ck_assert(!strcmp(fy_node_get_scalar0(fyn), "value2"));
+
+	/* final, must be out of nodes */
+	fyn = fy_document_iterator_node_next(fydi);
+	ck_assert_ptr_eq(fyn, NULL);
 
 	fy_document_iterator_destroy(fydi);
 	fy_document_destroy(fyd);
@@ -1080,7 +1100,7 @@ START_TEST(parser_event_generation)
 	struct fy_parse_cfg cfg = {
 		.flags = FYPCF_DEFAULT_DOC,
 	};
-	struct fy_event event;
+	struct fy_event *event;
 	int rc;
 	bool got_stream_start = false;
 	bool got_doc_start = false;
@@ -1103,8 +1123,8 @@ START_TEST(parser_event_generation)
 	ck_assert_int_eq(rc, 0);
 
 	/* Parse events */
-	while (fy_parse_get_event(fyp, &event)) {
-		switch (event.type) {
+	while ((event = fy_parser_parse(fyp)) != NULL) {
+		switch (event->type) {
 		case FYET_STREAM_START:
 			got_stream_start = true;
 			break;
@@ -1123,7 +1143,7 @@ START_TEST(parser_event_generation)
 		default:
 			break;
 		}
-		fy_parse_event_cleanup(fyp, &event);
+		fy_parser_event_free(fyp, event);
 	}
 
 	/* Verify we got expected events */
@@ -1208,6 +1228,7 @@ START_TEST(parser_tag_handling)
 	struct fy_node *fyn;
 	struct fy_token *fyt;
 	const char *tag;
+	size_t size;
 
 	/* Build document with tags */
 	fyd = fy_document_build_from_string(NULL,
@@ -1220,21 +1241,21 @@ START_TEST(parser_tag_handling)
 	/* Check string tag */
 	fyn = fy_node_by_path(fy_document_root(fyd), "string", FY_NT, FYNWF_DONT_FOLLOW);
 	ck_assert_ptr_ne(fyn, NULL);
-	tag = fy_node_get_tag(fyn);
+	tag = fy_node_get_tag0(fyn);
 	ck_assert_ptr_ne(tag, NULL);
 	ck_assert(strstr(tag, "str") != NULL);
 
 	/* Check integer tag */
 	fyn = fy_node_by_path(fy_document_root(fyd), "integer", FY_NT, FYNWF_DONT_FOLLOW);
 	ck_assert_ptr_ne(fyn, NULL);
-	tag = fy_node_get_tag(fyn);
+	tag = fy_node_get_tag0(fyn);
 	ck_assert_ptr_ne(tag, NULL);
 	ck_assert(strstr(tag, "int") != NULL);
 
 	/* Check custom tag */
 	fyn = fy_node_by_path(fy_document_root(fyd), "custom", FY_NT, FYNWF_DONT_FOLLOW);
 	ck_assert_ptr_ne(fyn, NULL);
-	tag = fy_node_get_tag(fyn);
+	tag = fy_node_get_tag0(fyn);
 	ck_assert_ptr_ne(tag, NULL);
 	ck_assert(strstr(tag, "custom") != NULL);
 
