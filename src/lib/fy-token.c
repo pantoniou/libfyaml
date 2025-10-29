@@ -681,6 +681,28 @@ fy_token_text_analyze(struct fy_token *fyt)
 
 	style = fy_token_atom_style(fyt);
 
+	/* hardwired and fast for regular plain scalars */
+	if (style == FYAS_PLAIN && fyt->handle.storage_hint_valid &&
+	    fyt->handle.direct_output && !fyt->handle.high_ascii &&
+	    !fyt->handle.has_lb && !fyt->handle.has_ws && !fyt->handle.empty) {
+
+		flags |= FYTTAF_DIRECT_OUTPUT;
+
+		maxcol = fyt->handle.storage_hint;
+		maxspan = maxcol - 1;
+		flags |=
+			FYTTAF_DIRECT_OUTPUT |
+			FYTTAF_CAN_BE_SIMPLE_KEY |
+			FYTTAF_CAN_BE_PLAIN |
+			FYTTAF_CAN_BE_SINGLE_QUOTED |
+			FYTTAF_CAN_BE_DOUBLE_QUOTED |
+			FYTTAF_CAN_BE_LITERAL |
+			FYTTAF_CAN_BE_PLAIN_FLOW |
+			FYTTAF_CAN_BE_UNQUOTED_PATH_KEY;
+
+		goto done;
+	}
+
 	/* can this token be a simple key initial condition */
 	if (!fy_atom_style_is_block(style) && style != FYAS_URI)
 		flags |= FYTTAF_CAN_BE_SIMPLE_KEY;
@@ -853,6 +875,7 @@ fy_token_text_analyze(struct fy_token *fyt)
 out:
 	fy_atom_iter_finish(&iter);
 
+done:
 	fyt->analysis.flags = flags | FYTTAF_ANALYZED;
 	fyt->analysis.maxspan = maxspan;
 	fyt->analysis.maxcol = maxcol;

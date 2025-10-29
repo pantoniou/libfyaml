@@ -4164,7 +4164,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 	bool last_ptr;
 	struct fy_mark mark, last_mark;
 	bool is_multiline, has_lb, has_ws, ends_with_eof, is_merge_key;
-	bool has_json_esc, run_has_lb, run_has_ws;
+	bool has_json_esc, run_has_lb, run_has_ws, has_high_ascii;
 #ifdef ATOM_SIZE_CHECK
 	size_t tlength;
 #endif
@@ -4206,6 +4206,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 	has_json_esc = false;
 	run_has_lb = false;
 	run_has_ws = false;
+	has_high_ascii = false;
 
 	length = 0;
 	breaks_found = 0;
@@ -4322,6 +4323,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 			run++;
 
 			length += fy_utf8_width(c);
+			has_high_ascii |= c >= 0x80;
 
 			lastc = c;
 		}
@@ -4430,6 +4432,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 	handle->ends_with_eof = ends_with_eof;
 	handle->is_merge_key = is_merge_key && length == 2;
 	handle->simple_key_allowed = run_has_lb;	// simple key allowed if there was an lb
+	handle->high_ascii = has_high_ascii;
 
 #ifdef ATOM_SIZE_CHECK
 	tlength = fy_atom_format_text_length(handle);

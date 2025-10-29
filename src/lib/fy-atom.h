@@ -87,6 +87,7 @@ struct fy_atom {
 			bool ends_with_eof : 1;		/* atom ends at EOF of input */
 			bool is_merge_key: 1;		/* atom is just << */
 			bool simple_key_allowed : 1;	/* atom allows a simple key */
+			bool high_ascii : 1;		/* atom has utf code point >= 0x80 (only for plains) */
 		};
 	};
 };
