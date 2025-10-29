@@ -912,6 +912,23 @@ const char *fy_token_get_direct_output(struct fy_token *fyt, size_t *sizep)
 	return fy_atom_data(fya);
 }
 
+const char *fy_token_get_direct_simple_output(struct fy_token *fyt, size_t *sizep)
+{
+	const struct fy_atom *handle;
+
+	handle = fy_token_atom(fyt);
+
+	if (!(handle->style == FYAS_PLAIN && handle->storage_hint_valid &&
+	      handle->direct_output && !handle->high_ascii &&
+	      !handle->has_lb && !handle->has_ws && !handle->empty)) {
+		*sizep = 0;
+		return NULL;
+	}
+
+	*sizep = fy_atom_size(handle);
+	return fy_atom_data(handle);
+}
+
 const char *fy_tag_token_handle(struct fy_token *fyt, size_t *lenp)
 {
 	return fy_tag_token_get_directive_handle(fyt, lenp);

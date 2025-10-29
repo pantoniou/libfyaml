@@ -399,6 +399,7 @@ static inline bool fy_token_is_multiline(struct fy_token *fyt)
 }
 
 const char *fy_token_get_direct_output(struct fy_token *fyt, size_t *sizep);
+const char *fy_token_get_direct_simple_output(struct fy_token *fyt, size_t *sizep);
 
 static inline struct fy_input *fy_token_get_input(struct fy_token *fyt)
 {
