@@ -887,6 +887,192 @@ START_TEST(parser_mapping_remove)
 }
 END_TEST
 
+/* Test: Document iterator functionality */
+START_TEST(parser_document_iterator)
+{
+	struct fy_document *fyd;
+	struct fy_document_iterator *fydi;
+	struct fy_node *fyn;
+	int count;
+
+	/* Build test document with nested structure */
+	fyd = fy_document_build_from_string(NULL,
+		"root:\n"
+		"  scalar: value\n"
+		"  seq:\n"
+		"    - item1\n"
+		"    - item2\n"
+		"  map:\n"
+		"    key: val\n",
+		FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* Create iterator */
+	fydi = fy_document_iterator_create();
+	ck_assert_ptr_ne(fydi, NULL);
+
+	/* Start iteration from root */
+	fy_document_iterator_node_start(fydi, fy_document_root(fyd));
+
+	/* Count all nodes */
+	count = 0;
+	while ((fyn = fy_document_iterator_node_next(fydi)) != NULL) {
+		count++;
+
+		/* Verify node type detection works */
+		if (fy_node_is_scalar(fyn)) {
+			const char *text;
+			size_t len;
+			text = fy_node_get_scalar(fyn, &len);
+			ck_assert_ptr_ne(text, NULL);
+		} else if (fy_node_is_sequence(fyn)) {
+			/* Verify it's a sequence */
+			ck_assert(fy_node_is_sequence(fyn));
+		} else if (fy_node_is_mapping(fyn)) {
+			/* Verify it's a mapping */
+			ck_assert(fy_node_is_mapping(fyn));
+		}
+	}
+
+	/* We should have iterated through multiple nodes */
+	ck_assert_int_gt(count, 0);
+
+	/* Cleanup */
+	fy_document_iterator_destroy(fydi);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: Document iterator with key detection */
+START_TEST(parser_document_iterator_key_detection)
+{
+	struct fy_document *fyd;
+	struct fy_document_iterator *fydi;
+	struct fy_node *fyn;
+	bool found_key_node = false;
+
+	/* Build mapping document */
+	fyd = fy_document_build_from_string(NULL,
+		"key1: value1\n"
+		"key2: value2\n",
+		FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fydi = fy_document_iterator_create();
+	ck_assert_ptr_ne(fydi, NULL);
+
+	fy_document_iterator_node_start(fydi, fy_document_root(fyd));
+
+	/* Iterate and check for key nodes */
+	while ((fyn = fy_document_iterator_node_next(fydi)) != NULL) {
+		if (fy_node_is_scalar(fyn)) {
+			bool is_key = fy_node_belongs_to_key(fyd, fyn);
+			const char *text = fy_node_get_scalar0(fyn);
+
+			/* Keys should be detected */
+			if (text && (strcmp(text, "key1") == 0 || strcmp(text, "key2") == 0)) {
+				ck_assert(is_key);
+				found_key_node = true;
+			}
+			/* Values should not be keys */
+			if (text && (strcmp(text, "value1") == 0 || strcmp(text, "value2") == 0)) {
+				ck_assert(!is_key);
+			}
+		}
+	}
+
+	ck_assert(found_key_node);
+
+	fy_document_iterator_destroy(fydi);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: Comment retrieval from tokens */
+START_TEST(parser_comment_retrieval)
+{
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_PARSE_COMMENTS,
+	};
+	struct fy_document *fyd;
+	struct fy_document_iterator *fydi;
+	struct fy_node *fyn;
+	struct fy_token *fyt;
+	char buf[256];
+	bool found_comment = false;
+
+	/* Build document with comments */
+	fyd = fy_document_build_from_string(&cfg,
+		"# Top comment\n"
+		"scalar: value # Right comment\n",
+		FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fydi = fy_document_iterator_create();
+	ck_assert_ptr_ne(fydi, NULL);
+
+	fy_document_iterator_node_start(fydi, fy_document_root(fyd));
+
+	/* Iterate and check for comments */
+	while ((fyn = fy_document_iterator_node_next(fydi)) != NULL) {
+		if (!fy_node_is_scalar(fyn))
+			continue;
+
+		fyt = fy_node_get_scalar_token(fyn);
+		if (!fyt || !fy_token_has_any_comment(fyt))
+			continue;
+
+		/* Try to get comments at different placements */
+		for (int placement = fycp_top; placement < fycp_max; placement++) {
+			if (fy_token_get_comment(fyt, buf, sizeof(buf), placement)) {
+				ck_assert_ptr_ne(buf, NULL);
+				ck_assert_int_gt(strlen(buf), 0);
+				found_comment = true;
+			}
+		}
+	}
+
+	ck_assert(found_comment);
+
+	fy_document_iterator_destroy(fydi);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: Alias node detection in iterator */
+START_TEST(parser_iterator_alias_detection)
+{
+	struct fy_document *fyd;
+	struct fy_document_iterator *fydi;
+	struct fy_node *fyn;
+	bool found_alias = false;
+
+	/* Build document with anchor and alias */
+	fyd = fy_document_build_from_string(NULL,
+		"anchor: &ref value\n"
+		"alias: *ref\n",
+		FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fydi = fy_document_iterator_create();
+	ck_assert_ptr_ne(fydi, NULL);
+
+	fy_document_iterator_node_start(fydi, fy_document_root(fyd));
+
+	/* Iterate and check for alias nodes */
+	while ((fyn = fy_document_iterator_node_next(fydi)) != NULL) {
+		if (fy_node_is_scalar(fyn) && fy_node_is_alias(fyn)) {
+			found_alias = true;
+		}
+	}
+
+	ck_assert(found_alias);
+
+	fy_document_iterator_destroy(fydi);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 TCase *libfyaml_case_parser(void)
 {
 	TCase *tc;
@@ -929,6 +1115,14 @@ TCase *libfyaml_case_parser(void)
 	tcase_add_test(tc, parser_multi_document_stream);
 	tcase_add_test(tc, parser_empty_document);
 	tcase_add_test(tc, parser_document_with_comments);
+
+	/* Iterator tests */
+	tcase_add_test(tc, parser_document_iterator);
+	tcase_add_test(tc, parser_document_iterator_key_detection);
+	tcase_add_test(tc, parser_iterator_alias_detection);
+
+	/* Comment tests */
+	tcase_add_test(tc, parser_comment_retrieval);
 
 	return tc;
 }
