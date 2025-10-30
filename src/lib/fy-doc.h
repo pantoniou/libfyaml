@@ -109,6 +109,8 @@ struct fy_document {
 	struct fy_document_state *fyds;
 	struct fy_diag *diag;
 	struct fy_parse_cfg parse_cfg;
+	struct fy_allocator *allocator;	/* custom allocator (if enabled via flags) */
+	int allocator_tags[10];			/* allocator tags indexed by FYDAT_* enum */
 	struct fy_node *root;
 	bool parse_error : 1;
 

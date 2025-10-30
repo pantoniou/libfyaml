@@ -24,6 +24,7 @@
 #include "fy-doc.h"
 
 #include "fy-utils.h"
+#include "fy-allocator.h"
 
 #include "xxhash.h"
 
@@ -86,6 +87,144 @@ static inline bool is_simple_key(const char *str, size_t len)
 }
 
 static void fy_resolve_parent_node(struct fy_document *fyd, struct fy_node *fyn, struct fy_node *fyn_parent);
+
+/* Allocator helper functions */
+
+/* Create allocator instance from parse_cfg flags */
+static struct fy_allocator *
+fy_create_allocator_from_flags(unsigned int flags)
+{
+	unsigned int alloc_type;
+	const char *allocator_name;
+	struct fy_allocator *a;
+
+	/* Extract allocator type from flags */
+	alloc_type = (flags >> FYPCF_ALLOCATOR_SHIFT) & FYPCF_ALLOCATOR_MASK;
+
+	switch (alloc_type) {
+	case 0: /* FYPCF_ALLOCATOR_DEFAULT - use standard malloc */
+		return NULL;
+	case 1: /* FYPCF_ALLOCATOR_MALLOC - explicit malloc wrapper */
+		allocator_name = "malloc";
+		break;
+	case 2: /* FYPCF_ALLOCATOR_LINEAR - linear arena */
+		allocator_name = "linear";
+		break;
+	case 3: /* FYPCF_ALLOCATOR_MREMAP - mremap-based arena */
+		allocator_name = "mremap";
+		break;
+	case 4: /* FYPCF_ALLOCATOR_DEDUP - deduplication */
+		allocator_name = "dedup";
+		break;
+	case 5: /* FYPCF_ALLOCATOR_AUTO - automatic selection */
+		allocator_name = "auto";
+		break;
+	default:
+		/* Unknown allocator type, fallback to malloc */
+		return NULL;
+	}
+
+	a = fy_allocator_create(allocator_name, NULL);
+	return a;
+}
+
+/* Allocation tags for tracking different allocation types */
+enum fy_doc_alloc_tag {
+	FYDAT_DOCUMENT = 1,	/* fy_document structure */
+	FYDAT_NODE,		/* fy_node structure */
+	FYDAT_NODE_PAIR,	/* fy_node_pair structure */
+	FYDAT_ANCHOR,		/* fy_anchor structure */
+	FYDAT_ACCEL,		/* fy_accel structures */
+	FYDAT_ITERATOR,		/* fy_document_iterator */
+	FYDAT_BUILDER,		/* fy_document_builder */
+	FYDAT_COMPOSER,		/* fy_composer */
+	FYDAT_BUFFER,		/* Dynamic buffers/arrays */
+};
+
+/* Wrapper for malloc using document allocator */
+static inline void *
+fy_doc_malloc(struct fy_document *fyd, int tag_hint, size_t size)
+{
+	struct fy_allocator *a = fyd ? fyd->allocator : NULL;
+	int tag;
+
+	if (a && a->ops && a->ops->alloc &&
+	    tag_hint >= 0 && tag_hint < (int)ARRAY_SIZE(fyd->allocator_tags)) {
+		tag = fyd->allocator_tags[tag_hint];  /* Use tag for this allocation type */
+		if (tag >= 0)
+			return a->ops->alloc(a, tag, size, sizeof(void *));
+	}
+	return malloc(size);
+}
+
+/* Wrapper for calloc using document allocator */
+static inline void *
+fy_doc_calloc(struct fy_document *fyd, int tag, size_t size)
+{
+	void *ptr;
+
+	ptr = fy_doc_malloc(fyd, tag, size);
+	if (ptr)
+		memset(ptr, 0, size);
+	return ptr;
+}
+
+/* Wrapper for free using document allocator */
+static inline void
+fy_doc_free(struct fy_document *fyd, int tag_hint, void *ptr)
+{
+	struct fy_allocator *a;
+	int tag;
+
+	if (!ptr)
+		return;
+
+	a = fyd ? fyd->allocator : NULL;
+	if (a && a->ops && a->ops->free &&
+	    tag_hint >= 0 && tag_hint < (int)ARRAY_SIZE(fyd->allocator_tags)) {
+		tag = fyd->allocator_tags[tag_hint];  /* Use tag for this allocation type */
+		if (tag >= 0) {
+			a->ops->free(a, tag, ptr);
+			return;
+		}
+	}
+	free(ptr);
+}
+
+/* Wrapper for malloc using parse_cfg allocator (pre-document) */
+static inline void *
+fy_cfg_malloc(const struct fy_parse_cfg *cfg, int tag, size_t size)
+{
+	/* For document allocation, we don't have allocator instance yet,
+	 * so we just use malloc. The allocator will be created after
+	 * the document structure is allocated and initialized. */
+	(void)cfg;
+	(void)tag;
+	return malloc(size);
+}
+
+/* Wrapper for calloc using parse_cfg allocator (pre-document) */
+static inline void *
+fy_cfg_calloc(const struct fy_parse_cfg *cfg, int tag, size_t size)
+{
+	void *ptr;
+
+	ptr = fy_cfg_malloc(cfg, tag, size);
+	if (ptr)
+		memset(ptr, 0, size);
+	return ptr;
+}
+
+/* Wrapper for free using parse_cfg allocator (pre-document) */
+static inline void
+fy_cfg_free(const struct fy_parse_cfg *cfg, int tag, void *ptr)
+{
+	if (!ptr)
+		return;
+
+	/* For now, cfg-based allocations use malloc, so use free */
+	free(ptr);
+}
 
 void fy_anchor_destroy(struct fy_anchor *fya)
 {
@@ -355,6 +494,18 @@ void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 
 	fy_diag_unref(fyd->diag);
 
+	/* Release allocator tags and destroy allocator if it was created */
+	if (fyd->allocator) {
+		if (fyd->allocator->ops && fyd->allocator->ops->release_tag) {
+			int i;
+			for (i = 0; i < (int)ARRAY_SIZE(fyd->allocator_tags); i++) {
+				if (fyd->allocator_tags[i] >= 0)
+					fyd->allocator->ops->release_tag(fyd->allocator, fyd->allocator_tags[i]);
+			}
+		}
+		fy_allocator_destroy(fyd->allocator);
+	}
+
 	free(fyd);
 }
 
@@ -374,7 +525,7 @@ struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_ev
 			fye->type == FYET_DOCUMENT_START, err_out,
 			"invalid start of event stream");
 
-	fyd = malloc(sizeof(*fyd));
+	fyd = fy_cfg_malloc(&fyp->cfg, FYDAT_DOCUMENT, sizeof(*fyd));
 	fyp_error_check(fyp, fyd, err_out,
 		"malloc() failed");
 
@@ -383,9 +534,25 @@ struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_ev
 	fyd->diag = fy_diag_ref(fyp->diag);
 	fyd->parse_cfg = fyp->cfg;
 
+	/* Initialize all allocator tags to -1 */
+	for (rc = 0; rc < (int)ARRAY_SIZE(fyd->allocator_tags); rc++)
+		fyd->allocator_tags[rc] = -1;
+
+	/* Create allocator instance from flags if requested */
+	fyd->allocator = fy_create_allocator_from_flags(fyp->cfg.flags);
+
+	/* Get tags for each allocation type if allocator was created */
+	if (fyd->allocator && fyd->allocator->ops && fyd->allocator->ops->get_tag) {
+		for (rc = 0; rc < (int)ARRAY_SIZE(fyd->allocator_tags); rc++) {
+			fyd->allocator_tags[rc] = fyd->allocator->ops->get_tag(fyd->allocator);
+			if (fyd->allocator_tags[rc] < 0)
+				goto err_out;
+		}
+	}
+
 	fy_anchor_list_init(&fyd->anchors);
 	if (fy_document_can_be_accelerated(fyd)) {
-		fyd->axl = malloc(sizeof(*fyd->axl));
+		fyd->axl = fy_doc_malloc(fyd, FYDAT_ACCEL, sizeof(*fyd->axl));
 		fyp_error_check(fyp, fyd->axl, err_out,
 				"malloc() failed");
 
@@ -394,7 +561,7 @@ struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_ev
 		fyp_error_check(fyp, !rc, err_out,
 				"fy_accel_setup() failed");
 
-		fyd->naxl = malloc(sizeof(*fyd->naxl));
+		fyd->naxl = fy_doc_malloc(fyd, FYDAT_ACCEL, sizeof(*fyd->naxl));
 		fyp_error_check(fyp, fyd->axl, err_out,
 				"malloc() failed");
 
@@ -679,9 +846,12 @@ struct fy_node *fy_anchor_node(struct fy_anchor *fya)
 int fy_node_pair_free(struct fy_node_pair *fynp)
 {
 	int rc, rc_ret = 0;
+	struct fy_document *fyd;
 
 	if (!fynp)
 		return 0;
+
+	fyd = fynp->fyd;
 
 	rc = fy_node_free(fynp->key);
 	if (rc)
@@ -690,26 +860,30 @@ int fy_node_pair_free(struct fy_node_pair *fynp)
 	if (rc)
 		rc_ret = -1;
 
-	free(fynp);
+	fy_doc_free(fyd, FYDAT_NODE_PAIR, fynp);
 
 	return rc_ret;
 }
 
 void fy_node_pair_detach_and_free(struct fy_node_pair *fynp)
 {
+	struct fy_document *fyd;
+
 	if (!fynp)
 		return;
 
+	fyd = fynp->fyd;
+
 	fy_node_detach_and_free(fynp->key);
 	fy_node_detach_and_free(fynp->value);
-	free(fynp);
+	fy_doc_free(fyd, FYDAT_NODE_PAIR, fynp);
 }
 
 struct fy_node_pair *fy_node_pair_alloc(struct fy_document *fyd)
 {
 	struct fy_node_pair *fynp = NULL;
 
-	fynp = malloc(sizeof(*fynp));
+	fynp = fy_doc_malloc(fyd, FYDAT_NODE_PAIR, sizeof(*fynp));
 	if (!fynp)
 		return NULL;
 
@@ -802,12 +976,12 @@ int fy_node_free(struct fy_node *fyn)
 
 	if (fyn->xl) {
 		fy_accel_cleanup(fyn->xl);
-		free(fyn->xl);
+		fy_doc_free(fyd, FYDAT_ACCEL, fyn->xl);
 	}
 
 	fy_node_cleanup_path_expr_data(fyn);
 
-	free(fyn);
+	fy_doc_free(fyd, FYDAT_NODE, fyn);
 
 	return 0;
 }
@@ -831,7 +1005,7 @@ struct fy_node *fy_node_alloc(struct fy_document *fyd, enum fy_node_type type)
 	struct fy_node *fyn = NULL;
 	int rc;
 
-	fyn = malloc(sizeof(*fyn));
+	fyn = fy_doc_malloc(fyd, FYDAT_NODE, sizeof(*fyn));
 	if (!fyn)
 		return NULL;
 
@@ -852,7 +1026,7 @@ struct fy_node *fy_node_alloc(struct fy_document *fyd, enum fy_node_type type)
 		fy_node_pair_list_init(&fyn->mapping);
 
 		if (fy_document_is_accelerated(fyd)) {
-			fyn->xl = malloc(sizeof(*fyn->xl));
+			fyn->xl = fy_doc_malloc(fyd, FYDAT_ACCEL, sizeof(*fyn->xl));
 			fyd_error_check(fyd, fyn->xl, err_out,
 					"malloc() failed");
 
@@ -869,9 +1043,9 @@ err_out:
 	if (fyn) {
 		if (fyn->xl) {
 			fy_accel_cleanup(fyn->xl);
-			free(fyn->xl);
+			fy_doc_free(fyd, FYDAT_ACCEL, fyn->xl);
 		}
-		free(fyn);
+		fy_doc_free(fyd, FYDAT_NODE, fyn);
 	}
 	return NULL;
 }
@@ -3112,12 +3286,28 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 	if (!cfg)
 		cfg = &doc_parse_default_cfg;
 
-	fyd = malloc(sizeof(*fyd));
+	fyd = fy_cfg_malloc(cfg, FYDAT_DOCUMENT, sizeof(*fyd));
 	if (!fyd)
 		goto err_out;
 
 	memset(fyd, 0, sizeof(*fyd));
 	fyd->parse_cfg = *cfg;
+
+	/* Initialize all allocator tags to -1 */
+	for (rc = 0; rc < (int)ARRAY_SIZE(fyd->allocator_tags); rc++)
+		fyd->allocator_tags[rc] = -1;
+
+	/* Create allocator instance from flags if requested */
+	fyd->allocator = fy_create_allocator_from_flags(cfg->flags);
+
+	/* Get tags for each allocation type if allocator was created */
+	if (fyd->allocator && fyd->allocator->ops && fyd->allocator->ops->get_tag) {
+		for (rc = 0; rc < (int)ARRAY_SIZE(fyd->allocator_tags); rc++) {
+			fyd->allocator_tags[rc] = fyd->allocator->ops->get_tag(fyd->allocator);
+			if (fyd->allocator_tags[rc] < 0)
+				goto err_out;
+		}
+	}
 
 	diag = cfg->diag;
 	if (!diag) {
@@ -3131,7 +3321,7 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 
 	fy_anchor_list_init(&fyd->anchors);
 	if (fy_document_is_accelerated(fyd)) {
-		fyd->axl = malloc(sizeof(*fyd->axl));
+		fyd->axl = fy_doc_malloc(fyd, FYDAT_ACCEL, sizeof(*fyd->axl));
 		fyd_error_check(fyd, fyd->axl, err_out,
 				"malloc() failed");
 
@@ -3140,7 +3330,7 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 		fyd_error_check(fyd, !rc, err_out,
 				"fy_accel_setup() failed");
 
-		fyd->naxl = malloc(sizeof(*fyd->naxl));
+		fyd->naxl = fy_doc_malloc(fyd, FYDAT_ACCEL, sizeof(*fyd->naxl));
 		fyd_error_check(fyd, fyd->axl, err_out,
 				"malloc() failed");
 
