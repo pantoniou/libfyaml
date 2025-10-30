@@ -8544,10 +8544,9 @@ struct fy_parser_checkpoint *fy_parser_checkpoint_create(struct fy_parser *fyp)
 
 	fyp_parse_debug(fyp, "taking checkpoint");
 
-	fypchk = malloc(sizeof(*fypchk));
+	fypchk = calloc(1, sizeof(*fypchk));
 	fyp_error_check(fyp, fypchk != NULL, err_out,
 			"fy_parse_input_create() failed!");
-	memset(fypchk, 0, sizeof(*fypchk));
 	fypc = &fypchk->fyp_checkpoint;
 
 	/* copy everything over and then fill out the pointer */

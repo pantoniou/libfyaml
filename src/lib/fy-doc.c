@@ -531,11 +531,9 @@ struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_ev
 			fye->type == FYET_DOCUMENT_START, err_out,
 			"invalid start of event stream");
 
-	fyd = fy_cfg_malloc(&fyp->cfg, FYDAT_DOCUMENT, sizeof(*fyd));
+	fyd = fy_cfg_calloc(&fyp->cfg, FYDAT_DOCUMENT, sizeof(*fyd));
 	fyp_error_check(fyp, fyd, err_out,
 		"malloc() failed");
-
-	memset(fyd, 0, sizeof(*fyd));
 
 	fyd->diag = fy_diag_ref(fyp->diag);
 	fyd->parse_cfg = fyp->cfg;
@@ -1011,11 +1009,9 @@ struct fy_node *fy_node_alloc(struct fy_document *fyd, enum fy_node_type type)
 	struct fy_node *fyn = NULL;
 	int rc;
 
-	fyn = fy_doc_malloc(fyd, FYDAT_NODE, sizeof(*fyn));
+	fyn = fy_doc_calloc(fyd, FYDAT_NODE, sizeof(*fyn));
 	if (!fyn)
 		return NULL;
-
-	memset(fyn, 0, sizeof(*fyn));
 
 	fyn->style = FYNS_ANY;
 	fyn->fyd = fyd;
@@ -3292,11 +3288,9 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 	if (!cfg)
 		cfg = &doc_parse_default_cfg;
 
-	fyd = fy_cfg_malloc(cfg, FYDAT_DOCUMENT, sizeof(*fyd));
+	fyd = fy_cfg_calloc(cfg, FYDAT_DOCUMENT, sizeof(*fyd));
 	if (!fyd)
 		goto err_out;
-
-	memset(fyd, 0, sizeof(*fyd));
 	fyd->parse_cfg = *cfg;
 
 	/* Initialize all allocator tags to -1 */
