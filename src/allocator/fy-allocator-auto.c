@@ -385,6 +385,22 @@ static void fy_auto_reset_tag(struct fy_allocator *a, int tag)
 	fy_allocator_reset_tag(aa->parent_allocator, tag);
 }
 
+static unsigned int fy_auto_get_caps(struct fy_allocator *a)
+{
+	struct fy_auto_allocator *aa;
+
+	if (!a)
+		return 0;
+
+	aa = container_of(a, struct fy_auto_allocator, a);
+
+	/* Return capabilities of the wrapped allocator */
+	if (!aa->parent_allocator || !aa->parent_allocator->ops || !aa->parent_allocator->ops->get_caps)
+		return 0;
+
+	return aa->parent_allocator->ops->get_caps(aa->parent_allocator);
+}
+
 static struct fy_allocator_info *
 fy_auto_get_info(struct fy_allocator *a, int tag)
 {
@@ -415,4 +431,5 @@ const struct fy_allocator_ops fy_auto_allocator_ops = {
 	.trim_tag = fy_auto_trim_tag,
 	.reset_tag = fy_auto_reset_tag,
 	.get_info = fy_auto_get_info,
+	.get_caps = fy_auto_get_caps,
 };

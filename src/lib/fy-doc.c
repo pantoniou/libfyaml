@@ -174,6 +174,7 @@ static inline void
 fy_doc_free(struct fy_document *fyd, int tag_hint, void *ptr)
 {
 	struct fy_allocator *a;
+	unsigned int caps;
 	int tag;
 
 	if (!ptr)
@@ -184,7 +185,12 @@ fy_doc_free(struct fy_document *fyd, int tag_hint, void *ptr)
 	    tag_hint >= 0 && tag_hint < (int)ARRAY_SIZE(fyd->allocator_tags)) {
 		tag = fyd->allocator_tags[tag_hint];  /* Use tag for this allocation type */
 		if (tag >= 0) {
-			a->ops->free(a, tag, ptr);
+			/* Only call free if allocator supports individual frees */
+			caps = a->ops->get_caps ? a->ops->get_caps(a) : 0;
+			if (caps & FYACF_CAN_FREE_INDIVIDUAL) {
+				a->ops->free(a, tag, ptr);
+			}
+			/* If allocator doesn't support individual frees, skip (NOP) */
 			return;
 		}
 	}

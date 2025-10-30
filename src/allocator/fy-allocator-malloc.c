@@ -399,6 +399,11 @@ static void fy_malloc_reset_tag(struct fy_allocator *a, int tag)
 		free(me);
 }
 
+static unsigned int fy_malloc_get_caps(struct fy_allocator *a)
+{
+	return FYACF_CAN_FREE_INDIVIDUAL | FYACF_CAN_FREE_TAG;
+}
+
 static struct fy_allocator_info *
 fy_malloc_get_info(struct fy_allocator *a, int tag)
 {
@@ -541,4 +546,5 @@ const struct fy_allocator_ops fy_malloc_allocator_ops = {
 	.trim_tag = fy_malloc_trim_tag,
 	.reset_tag = fy_malloc_reset_tag,
 	.get_info = fy_malloc_get_info,
+	.get_caps = fy_malloc_get_caps,
 };
