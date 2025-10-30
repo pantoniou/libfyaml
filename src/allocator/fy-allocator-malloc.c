@@ -530,6 +530,19 @@ fy_malloc_get_caps(struct fy_allocator *a)
 	return FYACF_CAN_FREE_INDIVIDUAL | FYACF_CAN_FREE_TAG;
 }
 
+static int fy_malloc_parse_cfg(const char *cfg_str, void **cfgp)
+{
+	/* malloc allocator has no configuration */
+	if (cfgp)
+		*cfgp = NULL;
+	return 0;
+}
+
+static void fy_malloc_free_cfg(void *cfg)
+{
+	/* Nothing to free */
+}
+
 const struct fy_allocator_ops fy_malloc_allocator_ops = {
 	.setup = fy_malloc_setup,
 	.cleanup = fy_malloc_cleanup,
@@ -548,4 +561,6 @@ const struct fy_allocator_ops fy_malloc_allocator_ops = {
 	.reset_tag = fy_malloc_reset_tag,
 	.get_info = fy_malloc_get_info,
 	.get_caps = fy_malloc_get_caps,
+	.parse_cfg = fy_malloc_parse_cfg,
+	.free_cfg = fy_malloc_free_cfg,
 };

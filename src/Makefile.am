@@ -63,6 +63,7 @@ libfyaml_la_SOURCES += \
 # allocator
 libfyaml_la_SOURCES += \
 	allocator/fy-allocator.c allocator/fy-allocator.h \
+	allocator/fy-allocator-parse-util.c allocator/fy-allocator-parse-util.h \
 	allocator/fy-allocator-linear.c allocator/fy-allocator-linear.h \
 	allocator/fy-allocator-malloc.c allocator/fy-allocator-malloc.h \
 	allocator/fy-allocator-mremap.c allocator/fy-allocator-mremap.h \
@@ -213,7 +214,9 @@ fy_tool_SOURCES = \
 	tool/fy-tool.c \
 	tool/fy-tool-util.c \
 	tool/fy-tool-dump.c \
+	tool/fy-allocator-config-parse.c \
 	tool/fy-tool-util.h \
+	tool/fy-allocator-config-parse.h \
 	valgrind/fy-valgrind.h
 
 fy_tool_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/valgrind

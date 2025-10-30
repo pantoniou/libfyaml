@@ -15,11 +15,13 @@
 #include <time.h>
 #include <inttypes.h>
 #include <math.h>
+#include <ctype.h>
 
 #include <stdio.h>
 
 #include "fy-utils.h"
 #include "fy-allocator-linear.h"
+#include "fy-allocator-parse-util.h"
 
 static int fy_linear_setup(struct fy_allocator *a, const void *cfg_data)
 {
@@ -362,6 +364,86 @@ fy_linear_get_caps(struct fy_allocator *a)
 	return 0;	// can't do much
 }
 
+static int fy_linear_parse_cfg(const char *cfg_str, void **cfgp)
+{
+	struct fy_linear_allocator_cfg *cfg;
+	char *params_copy = NULL, *saveptr = NULL, *token, *key, *value;
+	int rc = -1;
+
+	if (!cfgp)
+		return -1;
+
+	cfg = calloc(1, sizeof(*cfg));
+	if (!cfg)
+		return -1;
+
+	/* Default: no buffer (allocator will allocate), zero size (error) */
+	cfg->buf = NULL;
+	cfg->size = 0;
+
+	/* If no config string, size must be provided later or use default */
+	if (!cfg_str || !*cfg_str) {
+		*cfgp = cfg;
+		return 0;
+	}
+
+	params_copy = strdup(cfg_str);
+	if (!params_copy)
+		goto err_out;
+
+	/* Parse comma-separated key=value pairs (bracket-aware) */
+	for (token = fy_strtok_bracket_r(params_copy, ",", &saveptr); token;
+	     token = fy_strtok_bracket_r(NULL, ",", &saveptr)) {
+
+		/* Find the '=' separator */
+		key = token;
+		value = strchr(token, '=');
+		if (!value) {
+			fprintf(stderr, "linear: Invalid parameter format '%s' (expected key=value)\n", token);
+			goto err_out;
+		}
+
+		*value++ = '\0';
+
+		/* Trim whitespace from key and value */
+		while (isspace(*key))
+			key++;
+		while (isspace(*value))
+			value++;
+
+		if (strcmp(key, "size") == 0) {
+			rc = fy_parse_size_suffix(value, &cfg->size);
+			if (rc) {
+				fprintf(stderr, "linear: Invalid size value '%s'\n", value);
+				goto err_out;
+			}
+		} else {
+			fprintf(stderr, "linear: Unknown parameter '%s'\n", key);
+			goto err_out;
+		}
+	}
+
+	/* Validate: size must be specified and non-zero */
+	if (cfg->size == 0) {
+		fprintf(stderr, "linear: size parameter is required and must be non-zero\n");
+		goto err_out;
+	}
+
+	free(params_copy);
+	*cfgp = cfg;
+	return 0;
+
+err_out:
+	free(params_copy);
+	free(cfg);
+	return -1;
+}
+
+static void fy_linear_free_cfg(void *cfg)
+{
+	free(cfg);
+}
+
 const struct fy_allocator_ops fy_linear_allocator_ops = {
 	.setup = fy_linear_setup,
 	.cleanup = fy_linear_cleanup,
@@ -380,4 +462,6 @@ const struct fy_allocator_ops fy_linear_allocator_ops = {
 	.reset_tag = fy_linear_reset_tag,
 	.get_info = fy_linear_get_info,
 	.get_caps = fy_linear_get_caps,
+	.parse_cfg = fy_linear_parse_cfg,
+	.free_cfg = fy_linear_free_cfg,
 };

@@ -569,6 +569,7 @@ set(LIBSRCS
     src/xxhash/xxhash.c
     src/thread/fy-thread.c
     src/allocator/fy-allocator.c
+    src/allocator/fy-allocator-parse-util.c
     src/allocator/fy-allocator-linear.c
     src/allocator/fy-allocator-malloc.c
     src/allocator/fy-allocator-mremap.c

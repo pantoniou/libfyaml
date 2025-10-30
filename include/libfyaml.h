@@ -308,6 +308,13 @@ enum fy_error_module {
 /* Build a JSON input mode option */
 #define FYPCF_JSON(x)			(((unsigned int)(x) & FYPCF_JSON_MASK) << FYPCF_JSON_SHIFT)
 
+/* Shift amount of the allocator type */
+#define FYPCF_ALLOCATOR_SHIFT		20
+/* Mask of the allocator type */
+#define FYPCF_ALLOCATOR_MASK		((1U << 3) - 1)
+/* Build an allocator type option */
+#define FYPCF_ALLOCATOR(x)		(((unsigned int)(x) & FYPCF_ALLOCATOR_MASK) << FYPCF_ALLOCATOR_SHIFT)
+
 /* guaranteed minimum depth limit for generated document */
 /* the actual limit is larger depending on the platform */
 #define FYPCF_GUARANTEED_MINIMUM_DEPTH_LIMIT	64
@@ -338,6 +345,12 @@ enum fy_error_module {
  * @FYPCF_JSON_FORCE: Force JSON mode always
  * @FYPCF_YPATH_ALIASES: Enable YPATH aliases mode
  * @FYPCF_ALLOW_DUPLICATE_KEYS: Allow duplicate keys on mappings
+ * @FYPCF_ALLOCATOR_DEFAULT: Use default malloc/free allocator (backward compatible)
+ * @FYPCF_ALLOCATOR_MALLOC: Use malloc allocator (explicit wrapper)
+ * @FYPCF_ALLOCATOR_LINEAR: Use linear arena allocator (no individual frees)
+ * @FYPCF_ALLOCATOR_MREMAP: Use mremap-based growing arena allocator
+ * @FYPCF_ALLOCATOR_DEDUP: Use deduplication allocator
+ * @FYPCF_ALLOCATOR_AUTO: Use automatic heuristic-based allocator selection
  */
 enum fy_parse_cfg_flags {
 	FYPCF_QUIET			= FY_BIT(0),
@@ -360,6 +373,12 @@ enum fy_parse_cfg_flags {
 	FYPCF_JSON_FORCE		= FYPCF_JSON(2),
 	FYPCF_YPATH_ALIASES		= FY_BIT(18),
 	FYPCF_ALLOW_DUPLICATE_KEYS	= FY_BIT(19),
+	FYPCF_ALLOCATOR_DEFAULT		= FYPCF_ALLOCATOR(0),
+	FYPCF_ALLOCATOR_MALLOC		= FYPCF_ALLOCATOR(1),
+	FYPCF_ALLOCATOR_LINEAR		= FYPCF_ALLOCATOR(2),
+	FYPCF_ALLOCATOR_MREMAP		= FYPCF_ALLOCATOR(3),
+	FYPCF_ALLOCATOR_DEDUP		= FYPCF_ALLOCATOR(4),
+	FYPCF_ALLOCATOR_AUTO		= FYPCF_ALLOCATOR(5),
 };
 
 #define FYPCF_DEFAULT_PARSE	(0)
@@ -9549,6 +9568,8 @@ fy_allocator_dump(struct fy_allocator *a)
  * @FYACF_CAN_FREE_INDIVIDUAL: Allocator supports freeing individual allocations
  * @FYACF_CAN_FREE_TAG: Allocator supports releasing entire tags
  * @FYACF_CAN_DEDUP: Allocator supports deduplication
+ * @FYCAF_CAN_QUERY_POINTER: Allocator can query if it owns pointer 
+ * @FYCAF_CAN_QUERY_POINTER_EFFICIENTLY: Allocator can query if it owns pointer efficiently
  *
  * These flags describe what operations an allocator supports.
  */
@@ -9556,6 +9577,8 @@ enum fy_allocator_cap_flags {
 	FYACF_CAN_FREE_INDIVIDUAL		= FY_BIT(0),
 	FYACF_CAN_FREE_TAG			= FY_BIT(1),
 	FYACF_CAN_DEDUP				= FY_BIT(2),
+	FYCAF_CAN_QUERY_POINTER			= FY_BIT(3),
+	FYCAF_CAN_QUERY_POINTER_EFFICIENTLY	= FY_BIT(4),
 };
 
 /**

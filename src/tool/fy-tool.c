@@ -32,6 +32,7 @@
 
 #include "fy-valgrind.h"
 #include "fy-tool-util.h"
+#include "fy-allocator-config-parse.h"
 
 #define QUIET_DEFAULT			false
 #define INCLUDE_DEFAULT			""
@@ -69,6 +70,7 @@
 #define ALLOW_DUPLICATE_KEYS_DEFAULT	false
 #define STRIP_EMPTY_KV_DEFAULT		false
 #define TSV_FORMAT_DEFAULT		false
+#define ALLOCATOR_DEFAULT		"default"
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -107,6 +109,7 @@
 #define OPT_TSV_FORMAT			2021
 #define OPT_DISABLE_DOC_MARKERS		2022
 #define OPT_DISABLE_SCALAR_STYLES	2023
+#define OPT_ALLOCATOR			2024
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -187,6 +190,7 @@ static struct option lopts[] = {
 	{"allow-duplicate-keys",no_argument,		0,	OPT_ALLOW_DUPLICATE_KEYS },
 	{"strip-empty-kv",	no_argument,		0,	OPT_STRIP_EMPTY_KV },
 	{"tsv-format",		no_argument,		0,	OPT_TSV_FORMAT },
+	{"allocator",		required_argument,	0,	OPT_ALLOCATOR },
 	{"to",			required_argument,	0,	'T' },
 	{"from",		required_argument,	0,	'F' },
 	{"quiet",		no_argument,		0,	'q' },
@@ -284,6 +288,15 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--strip-empty-kv         : Strip keys with empty values when emitting (not available in streaming mode)"
 						" (default %s)\n",
 						STRIP_EMPTY_KV_DEFAULT ? "true" : "false");
+	fprintf(fp, "\t--allocator <config>     : Use specified allocator for document/node allocations\n");
+	fprintf(fp, "\t                           Format: type[:param=value,...]\n");
+	fprintf(fp, "\t                           Types: default, malloc, linear, mremap, dedup, auto\n");
+	fprintf(fp, "\t                           Examples:\n");
+	fprintf(fp, "\t                             --allocator=linear:size=16M\n");
+	fprintf(fp, "\t                             --allocator=mremap:minimum_arena_size=4M,grow_ratio=1.5\n");
+	fprintf(fp, "\t                             --allocator=dedup:parent=linear,dedup_threshold=32\n");
+	fprintf(fp, "\t                             --allocator=auto:scenario=single_linear,estimated_max_size=100M\n");
+	fprintf(fp, "\t                           (default %s)\n", ALLOCATOR_DEFAULT);
 	fprintf(fp, "\t--quiet, -q              : Quiet operation, do not "
 						"output messages (default %s)\n",
 						QUIET_DEFAULT ? "true" : "false");
@@ -1412,6 +1425,22 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_TSV_FORMAT:
 			tsv_format = true;
+			break;
+		case OPT_ALLOCATOR:
+			cfg.flags &= ~(FYPCF_ALLOCATOR_MASK << FYPCF_ALLOCATOR_SHIFT);
+			if (!strcmp(optarg, "default")) {
+				cfg.flags |= FYPCF_ALLOCATOR_DEFAULT;
+			} else if (!strcmp(optarg, "malloc")) {
+				cfg.flags |= FYPCF_ALLOCATOR_MALLOC;
+			} else if (!strcmp(optarg, "linear")) {
+				cfg.flags |= FYPCF_ALLOCATOR_LINEAR;
+			} else if (!strcmp(optarg, "mremap")) {
+				cfg.flags |= FYPCF_ALLOCATOR_MREMAP;
+			} else if (!strcmp(optarg, "dedup")) {
+				cfg.flags |= FYPCF_ALLOCATOR_DEDUP;
+			} else if (!strcmp(optarg, "auto")) {
+				cfg.flags |= FYPCF_ALLOCATOR_AUTO;
+			}
 			break;
 
 		case OPT_DERIVE_KEY:

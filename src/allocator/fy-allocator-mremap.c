@@ -16,6 +16,7 @@
 #include <inttypes.h>
 #include <math.h>
 #include <sys/mman.h>
+#include <ctype.h>
 
 #include <stdio.h>
 
@@ -24,6 +25,7 @@
 #include "fy-utils.h"
 
 #include "fy-allocator-mremap.h"
+#include "fy-allocator-parse-util.h"
 
 // #define DEBUG_ARENA
 
@@ -984,6 +986,118 @@ fy_mremap_get_caps(struct fy_allocator *a)
 	return FYACF_CAN_FREE_TAG;
 }
 
+static int fy_mremap_parse_cfg(const char *cfg_str, void **cfgp)
+{
+	struct fy_mremap_allocator_cfg *cfg;
+	char *params_copy = NULL, *saveptr = NULL, *token, *key, *value;
+	int rc = -1;
+
+	if (!cfgp)
+		return -1;
+
+	cfg = calloc(1, sizeof(*cfg));
+	if (!cfg)
+		return -1;
+
+	/* Defaults (0 = use system defaults) */
+	cfg->big_alloc_threshold = 0;
+	cfg->empty_threshold = 0;
+	cfg->minimum_arena_size = 0;
+	cfg->grow_ratio = 0.0f;
+	cfg->balloon_ratio = 0.0f;
+	cfg->arena_type = FYMRAT_DEFAULT;
+
+	if (!cfg_str || !*cfg_str) {
+		*cfgp = cfg;
+		return 0;
+	}
+
+	params_copy = strdup(cfg_str);
+	if (!params_copy)
+		goto err_out;
+
+	/* Parse comma-separated key=value pairs (bracket-aware) */
+	for (token = fy_strtok_bracket_r(params_copy, ",", &saveptr); token;
+	     token = fy_strtok_bracket_r(NULL, ",", &saveptr)) {
+
+		/* Find the '=' separator */
+		key = token;
+		value = strchr(key, '=');
+		if (!value) {
+			fprintf(stderr, "mremap: Invalid parameter format '%s' (expected key=value)\n", token);
+			goto err_out;
+		}
+
+		*value++ = '\0';
+
+		/* Trim whitespace from key and value */
+		while (isspace(*key))
+			key++;
+		while (isspace(*value))
+			value++;
+
+		if (strcmp(key, "big_alloc_threshold") == 0) {
+			rc = fy_parse_size_suffix(value, &cfg->big_alloc_threshold);
+			if (rc) {
+				fprintf(stderr, "mremap: Invalid big_alloc_threshold value '%s'\n", value);
+				goto err_out;
+			}
+		} else if (strcmp(key, "empty_threshold") == 0) {
+			rc = fy_parse_size_suffix(value, &cfg->empty_threshold);
+			if (rc) {
+				fprintf(stderr, "mremap: Invalid empty_threshold value '%s'\n", value);
+				goto err_out;
+			}
+		} else if (strcmp(key, "minimum_arena_size") == 0) {
+			rc = fy_parse_size_suffix(value, &cfg->minimum_arena_size);
+			if (rc) {
+				fprintf(stderr, "mremap: Invalid minimum_arena_size value '%s'\n", value);
+				goto err_out;
+			}
+		} else if (strcmp(key, "grow_ratio") == 0) {
+			rc = fy_parse_float_value(value, &cfg->grow_ratio);
+			if (rc) {
+				fprintf(stderr, "mremap: Invalid grow_ratio value '%s'\n", value);
+				goto err_out;
+			}
+		} else if (strcmp(key, "balloon_ratio") == 0) {
+			rc = fy_parse_float_value(value, &cfg->balloon_ratio);
+			if (rc) {
+				fprintf(stderr, "mremap: Invalid balloon_ratio value '%s'\n", value);
+				goto err_out;
+			}
+		} else if (strcmp(key, "arena_type") == 0) {
+			if (strcmp(value, "default") == 0) {
+				cfg->arena_type = FYMRAT_DEFAULT;
+			} else if (strcmp(value, "malloc") == 0) {
+				cfg->arena_type = FYMRAT_MALLOC;
+			} else if (strcmp(value, "mmap") == 0) {
+				cfg->arena_type = FYMRAT_MMAP;
+			} else {
+				fprintf(stderr, "mremap: Invalid arena_type '%s' (use: default, malloc, mmap)\n", value);
+				goto err_out;
+			}
+		} else {
+			fprintf(stderr, "mremap: Unknown parameter '%s'\n", key);
+			goto err_out;
+		}
+	}
+
+	free(params_copy);
+	*cfgp = cfg;
+	return 0;
+
+err_out:
+	free(params_copy);
+	free(cfg);
+	return -1;
+}
+
+static void fy_mremap_free_cfg(void *cfg)
+{
+	free(cfg);
+}
+
 const struct fy_allocator_ops fy_mremap_allocator_ops = {
 	.setup = fy_mremap_setup,
 	.cleanup = fy_mremap_cleanup,
@@ -1002,4 +1116,6 @@ const struct fy_allocator_ops fy_mremap_allocator_ops = {
 	.reset_tag = fy_mremap_reset_tag,
 	.get_info = fy_mremap_get_info,
 	.get_caps = fy_mremap_get_caps,
+	.parse_cfg = fy_mremap_parse_cfg,
+	.free_cfg = fy_mremap_free_cfg,
 };

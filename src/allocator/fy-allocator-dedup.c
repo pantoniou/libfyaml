@@ -16,6 +16,7 @@
 #include <inttypes.h>
 #include <math.h>
 #include <limits.h>
+#include <ctype.h>
 
 #include <stdio.h>
 
@@ -24,6 +25,7 @@
 #include "fy-utils.h"
 
 #include "fy-allocator-dedup.h"
+#include "fy-allocator-parse-util.h"
 
 // #define DEBUG_GROWS
 
@@ -1045,6 +1047,208 @@ fy_dedup_get_caps(struct fy_allocator *a)
 	return fy_allocator_get_caps(da->parent_allocator) | FYACF_CAN_DEDUP;
 }
 
+/* Forward declaration of allocator ops lookup function */
+extern const struct fy_allocator_ops *fy_allocator_get_ops_by_name(const char *name);
+
+static int fy_dedup_parse_cfg(const char *cfg_str, void **cfgp)
+{
+	struct fy_dedup_allocator_cfg *cfg;
+	char *params_copy = NULL, *saveptr = NULL, *token, *key, *value;
+	char *parent_config_str = NULL;  /* Full parent config string */
+	char *parent_type = NULL;
+	char *parent_params = NULL;
+	void *parent_cfg = NULL;
+	const struct fy_allocator_ops *parent_ops = NULL;
+	int rc = -1;
+
+	if (!cfgp)
+		return -1;
+
+	cfg = calloc(1, sizeof(*cfg));
+	if (!cfg)
+		return -1;
+
+	/* Defaults (0 = use system defaults) */
+	cfg->parent_allocator = NULL;  /* Will be created below */
+	cfg->bloom_filter_bits = 0;
+	cfg->bucket_count_bits = 0;
+	cfg->dedup_threshold = 0;
+	cfg->chain_length_grow_trigger = 0;
+	cfg->estimated_content_size = 0;
+
+	if (!cfg_str || !*cfg_str) {
+		/* Use default parent (malloc with no config) */
+		cfg->parent_allocator = fy_allocator_create("malloc", NULL);
+		if (!cfg->parent_allocator)
+			goto err_out;
+		*cfgp = cfg;
+		return 0;
+	}
+
+	params_copy = strdup(cfg_str);
+	if (!params_copy)
+		goto err_out;
+
+	/* Parse comma-separated key=value pairs (bracket-aware) */
+	for (token = fy_strtok_bracket_r(params_copy, ",", &saveptr); token;
+	     token = fy_strtok_bracket_r(NULL, ",", &saveptr)) {
+
+		/* Find the '=' separator */
+		key = token;
+		value = strchr(key, '=');
+		if (!value) {
+			fprintf(stderr, "dedup: Invalid parameter format '%s' (expected key=value)\n", token);
+			goto err_out;
+		}
+
+		*value++ = '\0';
+
+		/* Trim whitespace from key and value */
+		while (isspace(*key))
+			key++;
+		while (isspace(*value))
+			value++;
+
+		if (strcmp(key, "parent") == 0) {
+			/* Store full parent config string for recursive parsing
+			 * Supported formats:
+			 *   - Simple: "malloc"
+			 *   - With single param: "linear:size=16M"
+			 *   - With multiple params (brackets): "[mremap:minimum_arena_size=4M,grow_ratio=1.5]"
+			 *
+			 * Brackets protect commas inside parent config from top-level tokenization
+			 */
+			free(parent_config_str);
+
+			/* Check for bracket syntax: parent=[config] */
+			if (value[0] == '[') {
+				/* Use shared bracket extraction utility (handles nested brackets) */
+				parent_config_str = fy_extract_bracketed_value(value);
+				if (!parent_config_str) {
+					fprintf(stderr, "dedup: Invalid bracket syntax in parent config\n");
+					goto err_out;
+				}
+			} else {
+				/* No brackets, use value as-is */
+				parent_config_str = strdup(value);
+				if (!parent_config_str)
+					goto err_out;
+			}
+		} else if (strcmp(key, "bloom_filter_bits") == 0) {
+			rc = fy_parse_unsigned_value(value, &cfg->bloom_filter_bits);
+			if (rc) {
+				fprintf(stderr, "dedup: Invalid bloom_filter_bits value '%s'\n", value);
+				goto err_out;
+			}
+		} else if (strcmp(key, "bucket_count_bits") == 0) {
+			rc = fy_parse_unsigned_value(value, &cfg->bucket_count_bits);
+			if (rc) {
+				fprintf(stderr, "dedup: Invalid bucket_count_bits value '%s'\n", value);
+				goto err_out;
+			}
+		} else if (strcmp(key, "dedup_threshold") == 0) {
+			rc = fy_parse_size_suffix(value, &cfg->dedup_threshold);
+			if (rc) {
+				fprintf(stderr, "dedup: Invalid dedup_threshold value '%s'\n", value);
+				goto err_out;
+			}
+		} else if (strcmp(key, "chain_length_grow_trigger") == 0) {
+			rc = fy_parse_unsigned_value(value, &cfg->chain_length_grow_trigger);
+			if (rc) {
+				fprintf(stderr, "dedup: Invalid chain_length_grow_trigger value '%s'\n", value);
+				goto err_out;
+			}
+		} else if (strcmp(key, "estimated_content_size") == 0) {
+			rc = fy_parse_size_suffix(value, &cfg->estimated_content_size);
+			if (rc) {
+				fprintf(stderr, "dedup: Invalid estimated_content_size value '%s'\n", value);
+				goto err_out;
+			}
+		} else {
+			fprintf(stderr, "dedup: Unknown parameter '%s'\n", key);
+			goto err_out;
+		}
+	}
+
+	/* Parse parent allocator config string (e.g., "linear:size=16M" or just "malloc") */
+	if (!parent_config_str) {
+		/* Default to malloc */
+		parent_config_str = strdup("malloc");
+		if (!parent_config_str)
+			goto err_out;
+	}
+
+	/* Split parent config into type and parameters */
+	parent_type = strdup(parent_config_str);
+	if (!parent_type)
+		goto err_out;
+
+	parent_params = strchr(parent_type, ':');
+	if (parent_params) {
+		*parent_params++ = '\0';  /* Split type and params */
+	}
+
+	/* Get parent allocator ops */
+	parent_ops = fy_allocator_get_ops_by_name(parent_type);
+	if (!parent_ops) {
+		fprintf(stderr, "dedup: Unknown parent allocator type '%s'\n", parent_type);
+		goto err_out;
+	}
+
+	/* Parse parent allocator config recursively if it has parse_cfg */
+	if (parent_ops->parse_cfg) {
+		rc = parent_ops->parse_cfg(parent_params, &parent_cfg);
+		if (rc) {
+			fprintf(stderr, "dedup: Failed to parse parent allocator config\n");
+			goto err_out;
+		}
+	}
+
+	/* Create parent allocator with parsed config */
+	cfg->parent_allocator = fy_allocator_create(parent_type, parent_cfg);
+	if (!cfg->parent_allocator) {
+		fprintf(stderr, "dedup: Failed to create parent allocator '%s'\n", parent_type);
+		goto err_out;
+	}
+
+	/* Free parent config (allocator owns it now) */
+	if (parent_ops->free_cfg && parent_cfg)
+		parent_ops->free_cfg(parent_cfg);
+
+	free(params_copy);
+	free(parent_config_str);
+	free(parent_type);
+	*cfgp = cfg;
+	return 0;
+
+err_out:
+	free(params_copy);
+	free(parent_config_str);
+	free(parent_type);
+	if (parent_ops && parent_ops->free_cfg && parent_cfg)
+		parent_ops->free_cfg(parent_cfg);
+	if (cfg) {
+		if (cfg->parent_allocator)
+			fy_allocator_destroy(cfg->parent_allocator);
+		free(cfg);
+	}
+	return -1;
+}
+
+static void fy_dedup_free_cfg(void *cfg)
+{
+	struct fy_dedup_allocator_cfg *dcfg = cfg;
+
+	if (!dcfg)
+		return;
+
+	/* Destroy the parent allocator we created */
+	if (dcfg->parent_allocator)
+		fy_allocator_destroy(dcfg->parent_allocator);
+
+	free(dcfg);
+}
+
 const struct fy_allocator_ops fy_dedup_allocator_ops = {
 	.setup = fy_dedup_setup,
 	.cleanup = fy_dedup_cleanup,
@@ -1063,4 +1267,6 @@ const struct fy_allocator_ops fy_dedup_allocator_ops = {
 	.reset_tag = fy_dedup_reset_tag,
 	.get_info = fy_dedup_get_info,
 	.get_caps = fy_dedup_get_caps,
+	.parse_cfg = fy_dedup_parse_cfg,
+	.free_cfg = fy_dedup_free_cfg,
 };

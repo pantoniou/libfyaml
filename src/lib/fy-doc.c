@@ -24,6 +24,7 @@
 #include "fy-doc.h"
 
 #include "fy-utils.h"
+#include "fy-allocator.h"
 
 #include "xxhash.h"
 
@@ -87,12 +88,119 @@ static inline bool is_simple_key(const char *str, size_t len)
 
 static void fy_resolve_parent_node(struct fy_document *fyd, struct fy_node *fyn, struct fy_node *fyn_parent);
 
-void fy_anchor_destroy(struct fy_anchor *fya)
+/* Allocator helper functions */
+
+/* Create allocator instance from parse_cfg flags */
+static struct fy_allocator *
+fy_create_allocator_from_flags(unsigned int flags)
+{
+	static const char *allocator_map[] = {
+		[FYPCF_ALLOCATOR_DEFAULT >> FYPCF_ALLOCATOR_SHIFT] = NULL,	/* default malloc */
+		[FYPCF_ALLOCATOR_MALLOC  >> FYPCF_ALLOCATOR_SHIFT] = "malloc",
+		[FYPCF_ALLOCATOR_LINEAR  >> FYPCF_ALLOCATOR_SHIFT] = "linear",
+		[FYPCF_ALLOCATOR_MREMAP  >> FYPCF_ALLOCATOR_SHIFT] = "mremap",
+		[FYPCF_ALLOCATOR_DEDUP   >> FYPCF_ALLOCATOR_SHIFT] = "dedup",
+		[FYPCF_ALLOCATOR_AUTO    >> FYPCF_ALLOCATOR_SHIFT] = "auto",
+	};
+	unsigned int alloc_type;
+	const char *allocator_name;
+
+	/* Extract allocator type from flags */
+	alloc_type = (flags >> FYPCF_ALLOCATOR_SHIFT) & FYPCF_ALLOCATOR_MASK;
+
+	if (alloc_type >= ARRAY_SIZE(allocator_map))
+		return NULL;
+
+	allocator_name = allocator_map[alloc_type];
+	if (!allocator_name)
+		return NULL;
+
+	return fy_allocator_create(allocator_name, NULL);
+}
+
+static const struct {
+	size_t size;
+	size_t align;
+} doc_obj_desc[FYDAT_COUNT] = {
+	[FYDAT_NODE] = {
+		.size = sizeof(struct fy_node),
+		.align = __alignof__(struct fy_node),
+	},
+	[FYDAT_NODE_PAIR] = {
+		.size = sizeof(struct fy_node_pair),
+		.align = __alignof__(struct fy_node_pair),
+	},
+	[FYDAT_ANCHOR] = {
+		.size = sizeof(struct fy_anchor),
+		.align = __alignof__(struct fy_anchor),
+	},
+	[FYDAT_ACCEL] = {
+		.size = sizeof(struct fy_accel),
+		.align = __alignof__(struct fy_accel),
+	},
+};
+
+/* Wrapper for malloc using document allocator */
+static inline void *
+fy_doc_calloc(struct fy_document *fyd, unsigned int obj_kind, size_t nmemb)
+{
+	size_t size, align, total;
+	void *p;
+	int tag;
+
+	assert(ARRAY_SIZE(doc_obj_desc) == ARRAY_SIZE(fyd->allocator_tags));
+	assert(obj_kind < ARRAY_SIZE(fyd->allocator_tags));
+
+	tag = fyd->allocator_tags[obj_kind];
+	size = doc_obj_desc[obj_kind].size;
+
+	if (!fyd->allocator || tag < 0)
+		return calloc(nmemb, size);
+
+	if (FY_MUL_OVERFLOW(size, nmemb, &total))
+		return NULL;
+
+	align = doc_obj_desc[tag].align;
+	p = fy_allocator_alloc(fyd->allocator, tag, total, align);
+	if (!p)
+		return NULL;
+	memset(p, 0, total);
+
+	return p;
+}
+
+static inline void *
+fy_doc_alloc(struct fy_document *fyd, unsigned int obj_kind)
+{
+	return fy_doc_calloc(fyd, obj_kind, 1);
+}
+
+/* Wrapper for free using document allocator */
+static inline void
+fy_doc_free(struct fy_document *fyd, int tag_hint, void *ptr)
+{
+	int tag;
+
+	if (!ptr)
+		return;
+
+	if (fyd->allocator && (unsigned int)tag_hint < ARRAY_SIZE(fyd->allocator_tags) &&
+		(tag = fyd->allocator_tags[tag_hint]) >= 0) {
+
+		if (fyd->allocator_caps & FYACF_CAN_FREE_INDIVIDUAL)
+			fy_allocator_free(fyd->allocator, tag, ptr);
+
+		return;
+	}
+	free(ptr);
+}
+
+void fy_anchor_destroy(struct fy_document *fyd, struct fy_anchor *fya)
 {
 	if (!fya)
 		return;
 	fy_token_unref(fya->anchor);
-	free(fya);
+	fy_doc_free(fyd, FYDAT_ANCHOR, fya);
 }
 
 struct fy_anchor *fy_anchor_create(struct fy_document *fyd,
@@ -100,7 +208,7 @@ struct fy_anchor *fy_anchor_create(struct fy_document *fyd,
 {
 	struct fy_anchor *fya = NULL;
 
-	fya = malloc(sizeof(*fya));
+	fya = fy_doc_alloc(fyd, FYDAT_ANCHOR);
 	if (!fya)
 		return NULL;
 
@@ -164,7 +272,7 @@ static int fy_document_set_anchor_internal(struct fy_document *fyd, struct fy_no
 			fy_accel_entry_remove(fyd->naxl, xle);
 		}
 
-		fy_anchor_destroy(fya);
+		fy_anchor_destroy(fyd, fya);
 		return 0;
 	}
 
@@ -246,7 +354,7 @@ err_out:
 err_out_rc:
 	if (data_copy)
 		free(data_copy);
-	fy_anchor_destroy(fya);
+	fy_anchor_destroy(fyd, fya);
 	fy_token_unref(fyt);
 	fy_input_unref(fyi);
 	fyd->diag->on_error = false;
@@ -339,6 +447,7 @@ struct fy_node *fy_node_get_nearest_child_of(struct fy_node *fyn_base,
 void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 {
 	struct fy_node *fyn;
+	unsigned int i;
 
 	if (!fyd)
 		return;
@@ -355,7 +464,56 @@ void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 
 	fy_diag_unref(fyd->diag);
 
+	/* Release allocator tags and destroy allocator if it was created */
+	if (fyd->allocator) {
+		for (i = 0; i < ARRAY_SIZE(fyd->allocator_tags); i++)
+			fy_allocator_release_tag(fyd->allocator, fyd->allocator_tags[i]);
+		fy_allocator_destroy(fyd->allocator);
+	}
+
 	free(fyd);
+}
+
+static int fy_setup_allocator(struct fy_document *fyd)
+{
+	unsigned int i;
+	int tag;
+
+	/* Initialize all allocator tags to -1 */
+	for (i = 0; i < ARRAY_SIZE(fyd->allocator_tags); i++)
+		fyd->allocator_tags[i] = -1;
+
+	memset(&fyd->allocator_caps, 0, sizeof(fyd->allocator_caps));
+
+	/* Create allocator instance from flags if requested */
+	fyd->allocator = fy_create_allocator_from_flags(fyd->parse_cfg.flags);
+
+	/* no allocator? no problem - just malloc free */
+	if (!fyd->allocator)
+		return 0;
+
+	/* Cache allocator capabilities for fast checks during freeing */
+	fyd->allocator_caps = fy_allocator_get_caps(fyd->allocator);
+
+	/* Get tags for each allocation type if allocator was created */
+	for (i = 0; i < ARRAY_SIZE(fyd->allocator_tags); i++) {
+		tag = fy_allocator_get_tag(fyd->allocator);
+		if (tag < 0)
+			goto err_out;
+		fyd->allocator_tags[i] = tag;
+	}
+
+	return 0;
+err_out:
+	while ((int)--i >= 0) {
+		if (fyd->allocator_tags[i] >= 0) {
+			fy_allocator_release_tag(fyd->allocator, fyd->allocator_tags[i]);
+			fyd->allocator_tags[i] = -1;
+		}
+	}
+	fy_allocator_destroy(fyd->allocator);
+	fyd->allocator = NULL;
+	return -1;
 }
 
 struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_eventp *fyep)
@@ -377,15 +535,18 @@ struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_ev
 	fyd = malloc(sizeof(*fyd));
 	fyp_error_check(fyp, fyd, err_out,
 		"malloc() failed");
-
 	memset(fyd, 0, sizeof(*fyd));
 
 	fyd->diag = fy_diag_ref(fyp->diag);
 	fyd->parse_cfg = fyp->cfg;
 
+	rc = fy_setup_allocator(fyd);
+	fyp_error_check(fyp, !rc, err_out,
+		"fy_setup_allocator() failed");
+
 	fy_anchor_list_init(&fyd->anchors);
 	if (fy_document_can_be_accelerated(fyd)) {
-		fyd->axl = malloc(sizeof(*fyd->axl));
+		fyd->axl = fy_doc_alloc(fyd, FYDAT_ACCEL);
 		fyp_error_check(fyp, fyd->axl, err_out,
 				"malloc() failed");
 
@@ -394,7 +555,7 @@ struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_ev
 		fyp_error_check(fyp, !rc, err_out,
 				"fy_accel_setup() failed");
 
-		fyd->naxl = malloc(sizeof(*fyd->naxl));
+		fyd->naxl = fy_doc_alloc(fyd, FYDAT_ACCEL);
 		fyp_error_check(fyp, fyd->axl, err_out,
 				"malloc() failed");
 
@@ -679,9 +840,12 @@ struct fy_node *fy_anchor_node(struct fy_anchor *fya)
 int fy_node_pair_free(struct fy_node_pair *fynp)
 {
 	int rc, rc_ret = 0;
+	struct fy_document *fyd;
 
 	if (!fynp)
 		return 0;
+
+	fyd = fynp->fyd;
 
 	rc = fy_node_free(fynp->key);
 	if (rc)
@@ -690,26 +854,30 @@ int fy_node_pair_free(struct fy_node_pair *fynp)
 	if (rc)
 		rc_ret = -1;
 
-	free(fynp);
+	fy_doc_free(fyd, FYDAT_NODE_PAIR, fynp);
 
 	return rc_ret;
 }
 
 void fy_node_pair_detach_and_free(struct fy_node_pair *fynp)
 {
+	struct fy_document *fyd;
+
 	if (!fynp)
 		return;
 
+	fyd = fynp->fyd;
+
 	fy_node_detach_and_free(fynp->key);
 	fy_node_detach_and_free(fynp->value);
-	free(fynp);
+	fy_doc_free(fyd, FYDAT_NODE_PAIR, fynp);
 }
 
 struct fy_node_pair *fy_node_pair_alloc(struct fy_document *fyd)
 {
 	struct fy_node_pair *fynp = NULL;
 
-	fynp = malloc(sizeof(*fynp));
+	fynp = fy_doc_alloc(fyd, FYDAT_NODE_PAIR);
 	if (!fynp)
 		return NULL;
 
@@ -755,7 +923,7 @@ int fy_node_free(struct fy_node *fyn)
 			xle = fy_accel_entry_lookup_key_value(fyd->naxl, fya->fyn, fya);
 			fy_accel_entry_remove(fyd->naxl, xle);
 
-			fy_anchor_destroy(fya);
+			fy_anchor_destroy(fyd, fya);
 		}
 		fy_accel_entry_iter_finish(&xli);
 	} else {
@@ -764,7 +932,7 @@ int fy_node_free(struct fy_node *fyn)
 			fyan = fy_anchor_next(&fyd->anchors, fya);
 			if (fya->fyn == fyn) {
 				fy_anchor_list_del(&fyd->anchors, fya);
-				fy_anchor_destroy(fya);
+				fy_anchor_destroy(fyd, fya);
 			}
 		}
 	}
@@ -802,12 +970,12 @@ int fy_node_free(struct fy_node *fyn)
 
 	if (fyn->xl) {
 		fy_accel_cleanup(fyn->xl);
-		free(fyn->xl);
+		fy_doc_free(fyd, FYDAT_ACCEL, fyn->xl);
 	}
 
 	fy_node_cleanup_path_expr_data(fyn);
 
-	free(fyn);
+	fy_doc_free(fyd, FYDAT_NODE, fyn);
 
 	return 0;
 }
@@ -831,11 +999,9 @@ struct fy_node *fy_node_alloc(struct fy_document *fyd, enum fy_node_type type)
 	struct fy_node *fyn = NULL;
 	int rc;
 
-	fyn = malloc(sizeof(*fyn));
+	fyn = fy_doc_alloc(fyd, FYDAT_NODE);
 	if (!fyn)
 		return NULL;
-
-	memset(fyn, 0, sizeof(*fyn));
 
 	fyn->style = FYNS_ANY;
 	fyn->fyd = fyd;
@@ -852,7 +1018,7 @@ struct fy_node *fy_node_alloc(struct fy_document *fyd, enum fy_node_type type)
 		fy_node_pair_list_init(&fyn->mapping);
 
 		if (fy_document_is_accelerated(fyd)) {
-			fyn->xl = malloc(sizeof(*fyn->xl));
+			fyn->xl = fy_doc_alloc(fyd, FYDAT_ACCEL);
 			fyd_error_check(fyd, fyn->xl, err_out,
 					"malloc() failed");
 
@@ -869,9 +1035,9 @@ err_out:
 	if (fyn) {
 		if (fyn->xl) {
 			fy_accel_cleanup(fyn->xl);
-			free(fyn->xl);
+			fy_doc_free(fyd, FYDAT_ACCEL, fyn->xl);
 		}
-		free(fyn);
+		fy_doc_free(fyd, FYDAT_NODE, fyn);
 	}
 	return NULL;
 }
@@ -2932,7 +3098,7 @@ void fy_document_purge_anchors(struct fy_document *fyd)
 			fy_accel_entry_remove(fyd->naxl, xle);
 		}
 
-		fy_anchor_destroy(fya);
+		fy_anchor_destroy(fyd, fya);
 	}
 
 	if (fy_document_is_accelerated(fyd)) {
@@ -3115,8 +3281,8 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 	fyd = malloc(sizeof(*fyd));
 	if (!fyd)
 		goto err_out;
-
 	memset(fyd, 0, sizeof(*fyd));
+
 	fyd->parse_cfg = *cfg;
 
 	diag = cfg->diag;
@@ -3129,9 +3295,13 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 
 	fyd->diag = diag;
 
+	rc = fy_setup_allocator(fyd);
+	fyd_error_check(fyd, !rc, err_out,
+		"fy_setup_allocator() failed");
+
 	fy_anchor_list_init(&fyd->anchors);
 	if (fy_document_is_accelerated(fyd)) {
-		fyd->axl = malloc(sizeof(*fyd->axl));
+		fyd->axl = fy_doc_alloc(fyd, FYDAT_ACCEL);
 		fyd_error_check(fyd, fyd->axl, err_out,
 				"malloc() failed");
 
@@ -3140,7 +3310,7 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 		fyd_error_check(fyd, !rc, err_out,
 				"fy_accel_setup() failed");
 
-		fyd->naxl = malloc(sizeof(*fyd->naxl));
+		fyd->naxl = fy_doc_alloc(fyd, FYDAT_ACCEL);
 		fyd_error_check(fyd, fyd->axl, err_out,
 				"malloc() failed");
 

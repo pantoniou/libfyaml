@@ -29,6 +29,8 @@ struct fy_allocator_stats;
 struct fy_allocator_stats;
 struct fy_allocator_info;
 
+/* Capability flags and structures are now in libfyaml.h (public API) */
+
 struct fy_allocator_ops {
 	int (*setup)(struct fy_allocator *a, const void *cfg);
 	void (*cleanup)(struct fy_allocator *a);
@@ -47,6 +49,8 @@ struct fy_allocator_ops {
 	void (*reset_tag)(struct fy_allocator *a, int tag);
 	struct fy_allocator_info *(*get_info)(struct fy_allocator *a, int tag);
 	unsigned int (*get_caps)(struct fy_allocator *a);	/* Get capability flags (FYACF_*) */
+	int (*parse_cfg)(const char *cfg_str, void **cfg);	/* Parse configuration string */
+	void (*free_cfg)(void *cfg);				/* Free parsed configuration */
 };
 
 struct fy_allocator_stats {
@@ -96,6 +100,7 @@ struct fy_allocator {
 /* these private still */
 int fy_allocator_update_stats(struct fy_allocator *a, int tag, struct fy_allocator_stats *stats);
 struct fy_allocator_info *fy_allocator_get_info(struct fy_allocator *a, int tag);
+/* fy_allocator_get_caps is now in public API (libfyaml.h) */
 
 FY_TYPE_FWD_DECL_LIST(registered_allocator_entry);
 struct fy_registered_allocator_entry {
