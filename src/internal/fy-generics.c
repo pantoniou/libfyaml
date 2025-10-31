@@ -489,9 +489,7 @@ const void *fy_generic_builder_linearize(struct fy_generic_builder *gb, fy_gener
 	}
 
 	/* allocate space for the arenas */
-	arenas = malloc(sizeof(*arenas) * num_arenas);
-	if (!arenas)
-		goto out;
+	arenas = alloca(sizeof(*arenas) * num_arenas);
 
 	/* nuke it to be sure */
 	if (gb->linear) {
@@ -563,9 +561,6 @@ const void *fy_generic_builder_linearize(struct fy_generic_builder *gb, fy_gener
 	linear_data = NULL;
 
 out:
-	if (arenas)
-		free(arenas);
-
 	if (info)
 		free(info);
 
@@ -724,6 +719,7 @@ struct fy_allocator *create_allocator(const struct generic_options *opt, const c
 
 static int do_parse_generic(const struct generic_options *opt, int argc, char **argv)
 {
+	struct fy_generic_builder_cfg gen_cfg;
 	struct fy_allocator *allocator = NULL, *parent_allocator = NULL;
 	struct fy_generic_builder *gb = NULL;
 	struct fy_generic_decoder *fygd = NULL;
@@ -758,7 +754,11 @@ static int do_parse_generic(const struct generic_options *opt, int argc, char **
 		goto err_out;
 	}
 
-	gb = fy_generic_builder_create(allocator, FY_ALLOC_TAG_NONE);
+	memset(&gen_cfg, 0, sizeof(gen_cfg));
+	gen_cfg.allocator = allocator;
+	gen_cfg.shared_tag = FY_ALLOC_TAG_NONE;
+
+	gb = fy_generic_builder_create(&gen_cfg);
 	if (!gb) {
 		fprintf(stderr, "fy_generic_builder_create() failed\n");
 		goto err_out;

@@ -371,9 +371,7 @@ fy_generic_decoder_create_scalar(struct fy_generic_decoder *gd, struct fy_event 
 			/* non-plain are strings always */
 			v = fy_generic_string_size_create(gd->gb, text, len);
 		} else {
-			/* TODO JSON YAML1.1 YAML1.2 schemas? */
-
-			v = fy_generic_create_scalar_from_text(gd->gb, FYGS_YAML1_2_CORE, text, len, FYGT_INVALID);
+			v = fy_generic_create_scalar_from_text(gd->gb, text, len, FYGT_INVALID);
 		}
 	} else {
 		if (fy_generic_compare(vt, gd->vnull_tag) == 0)
@@ -388,7 +386,8 @@ fy_generic_decoder_create_scalar(struct fy_generic_decoder *gd, struct fy_event 
 			force_type = FYGT_STRING;
 		else
 			force_type = FYGT_INVALID;	/* fall back */
-		v = fy_generic_create_scalar_from_text(gd->gb, FYGS_YAML1_2_CORE, text, len, force_type);
+
+		v = fy_generic_create_scalar_from_text(gd->gb, text, len, force_type);
 	}
 
 	assert(v != fy_invalid);

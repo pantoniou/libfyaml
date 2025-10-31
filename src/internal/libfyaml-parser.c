@@ -80,6 +80,7 @@
 
 #define OPT_ALLOCATOR			4003
 #define OPT_CACHE			4004
+#define OPT_SCHEMA			4005
 
 static struct option lopts[] = {
 	{"include",		required_argument,	0,	'I' },
@@ -108,6 +109,7 @@ static struct option lopts[] = {
 	{"ypath-aliases",	no_argument,		0,	OPT_YPATH_ALIASES },
 	{"allocator",		required_argument,	0,	OPT_ALLOCATOR },
 	{"cache",		required_argument,	0,	OPT_CACHE },
+	{"schema",		required_argument,	0,	OPT_SCHEMA },
 	{"quiet",		no_argument,		0,	'q' },
 	{"help",		no_argument,		0,	'h' },
 	{0,			0,              	0,	 0  },
@@ -4319,6 +4321,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	uint32_t sz32d;
 	unsigned int i, j, k;
 	struct fy_generic_builder *gb;
+	struct fy_generic_builder_cfg gcfg;
 	fy_generic gbl, gi, gs, gf;
 	const fy_generic *gvp;
 	fy_generic seq, map, map2;
@@ -4531,7 +4534,11 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	a = fy_allocator_create(allocator, gsetupdata);
 	assert(a);
 
-	gb = fy_generic_builder_create(a, FY_ALLOC_TAG_NONE);
+	memset(&gcfg, 0, sizeof(gcfg));
+	gcfg.allocator = a;
+	gcfg.shared_tag = FY_ALLOC_TAG_NONE;
+
+	gb = fy_generic_builder_create(&gcfg);
 	assert(gb);
 
 	printf("created gb=%p\n", gb);
@@ -4698,7 +4705,11 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	a = fy_allocator_create(allocator, gsetupdata);
 	assert(a);
 
-	gb = fy_generic_builder_create(a, FY_ALLOC_TAG_NONE);
+	memset(&gcfg, 0, sizeof(gcfg));
+	gcfg.allocator = a;
+	gcfg.shared_tag = FY_ALLOC_TAG_NONE;
+
+	gb = fy_generic_builder_create(&gcfg);
 	assert(gb);
 
 	map = fy_generic_mapping_create(gb, 3, (fy_generic[]){
@@ -4724,7 +4735,11 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	a = fy_allocator_create(allocator, gsetupdata);
 	assert(a);
 
-	gb = fy_generic_builder_create(a, FY_ALLOC_TAG_NONE);
+	memset(&gcfg, 0, sizeof(gcfg));
+	gcfg.allocator = a;
+	gcfg.shared_tag = FY_ALLOC_TAG_NONE;
+
+	gb = fy_generic_builder_create(&gcfg);
 	assert(gb);
 
 	iv = LLONG_MAX;
@@ -4943,7 +4958,9 @@ next5:
 	return 0;
 }
 
-int do_parse_generic(struct fy_parser *fyp, const char *allocator, bool null_output, const char *cache)
+int do_parse_generic(struct fy_parser *fyp, const char *allocator,
+		     bool null_output, const char *cache,
+		     enum fy_generic_schema schema)
 {
 	struct fy_generic_decoder *fygd = NULL;
 	struct fy_generic_encoder *fyge = NULL;
@@ -4958,6 +4975,7 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator, bool null_out
 	const void *gsetupdata = NULL;
 	bool registered_allocator = false;
 	struct fy_generic_builder *gb;
+	struct fy_generic_builder_cfg gcfg;
 	fy_generic vdir = fy_invalid;
 	int rc __FY_DEBUG_UNUSED__;
 	size_t alloc_size;
@@ -5080,7 +5098,12 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator, bool null_out
 	a = fy_allocator_create(allocator, gsetupdata);
 	assert(a);
 
-	gb = fy_generic_builder_create(a, FY_ALLOC_TAG_NONE);
+	memset(&gcfg, 0, sizeof(gcfg));
+	gcfg.allocator = a;
+	gcfg.shared_tag = FY_ALLOC_TAG_NONE;
+	gcfg.flags = (((unsigned int)schema << FYGBCF_SCHEMA_SHIFT) & FYGBCF_SCHEMA_MASK);
+
+	gb = fy_generic_builder_create(&gcfg);
 	assert(gb);
 
 	fygd = fy_generic_decoder_create(fyp, gb, false);
@@ -5336,6 +5359,7 @@ int main(int argc, char *argv[])
 	bool null_output = false;
 	const char *allocator = "linear";
 	const char *cache = NULL;
+	enum fy_generic_schema schema = FYGS_AUTO;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -5446,6 +5470,24 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_CACHE:
 			cache = optarg;
+			break;
+		case OPT_SCHEMA:
+			if (!strcmp(optarg, "auto"))
+				schema = FYGS_AUTO;
+			else if (!strcmp(optarg, "yaml1.2-failsafe"))
+				schema = FYGS_YAML1_2_FAILSAFE;
+			else if (!strcmp(optarg, "yaml1.2-core"))
+				schema = FYGS_YAML1_2_JSON;
+			else if (!strcmp(optarg, "yaml1.2-json"))
+				schema = FYGS_YAML1_2_JSON;
+			else if (!strcmp(optarg, "yaml1.1"))
+				schema = FYGS_YAML1_1;
+			else if (!strcmp(optarg, "json"))
+				schema = FYGS_JSON;
+			else {
+				fprintf(stderr, "schema option %s\n", optarg);
+				display_usage(stderr, argv[0]);
+			}
 			break;
 		case 'q':
 			cfg.flags |= FYPCF_QUIET;
@@ -5750,7 +5792,7 @@ int main(int argc, char *argv[])
 			goto cleanup;
 		}
 	} else if (!strcmp(mode, "parse-generic")) {
-		rc = do_parse_generic(fyp, allocator, null_output, cache);
+		rc = do_parse_generic(fyp, allocator, null_output, cache, schema);
 		if (rc < 0) {
 			/* fprintf(stderr, "do_generics() error %d\n", rc); */
 			goto cleanup;

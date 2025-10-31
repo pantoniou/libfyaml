@@ -362,7 +362,55 @@ struct fy_generic_mapping {
 	fy_generic pairs[];
 };
 
+enum fy_generic_schema {
+	FYGS_AUTO,
+	FYGS_YAML1_2_FAILSAFE,
+	FYGS_YAML1_2_CORE,
+	FYGS_YAML1_2_JSON,
+	FYGS_YAML1_1,
+	FYGS_JSON,
+};
+#define FYGS_COUNT (FYGS_JSON + 1)
+
+static inline bool fy_generic_schema_is_json(enum fy_generic_schema schema)
+{
+	return schema == FYGS_YAML1_2_JSON || schema == FYGS_JSON;
+}
+
+/* Shift amount of the schema mode option */
+#define FYGBCF_SCHEMA_SHIFT		0
+/* Mask of the schema mode */
+#define FYGBCF_SCHEMA_MASK		((1U << 4) - 1)
+/* Build a schema mode option */
+#define FYGBCF_SCHEMA(x)		(((unsigned int)(x) & FYGBCF_SCHEMA_MASK) << FYGBCF_SCHEMA_SHIFT)
+
+/**
+ * enum fy_generic_builder_cfg_flags - Generic builder configuration flags
+ *
+ * These flags control the state of of the generic builder
+ *
+ * @FYGBCF_OWNS_ALLOCATOR: The builder owns the allocator, will destroy
+ */
+enum fy_generic_builder_cfg_flags {
+	FYGBCF_SCHEMA_AUTO		= FYGBCF_SCHEMA(FYGS_AUTO),
+	FYGBCF_SCHEMA_YAML1_2_FAILSAFE	= FYGBCF_SCHEMA(FYGS_YAML1_2_FAILSAFE),
+	FYGBCF_SCHEMA_YAML1_2_CORE	= FYGBCF_SCHEMA(FYGS_YAML1_2_CORE),
+	FYGBCF_SCHEMA_YAML1_2_JSON	= FYGBCF_SCHEMA(FYGS_YAML1_2_JSON),
+	FYGBCF_SCHEMA_YAML1_1		= FYGBCF_SCHEMA(FYGS_YAML1_1),
+	FYGBCF_SCHEMA_JSON		= FYGBCF_SCHEMA(FYGS_JSON),
+	FYGBCF_OWNS_ALLOCATOR		= FY_BIT(4),
+};
+
+struct fy_generic_builder_cfg {
+	enum fy_generic_builder_cfg_flags flags;
+	struct fy_allocator *allocator;
+	int shared_tag;
+	struct fy_diag *diag;
+};
+
 struct fy_generic_builder {
+	struct fy_generic_builder_cfg cfg;
+	enum fy_generic_schema schema;
 	struct fy_allocator *allocator;
 	bool owns_allocator;
 	int shared_tag;
@@ -370,7 +418,7 @@ struct fy_generic_builder {
 	void *linear;	/* when making it linear */
 };
 
-struct fy_generic_builder *fy_generic_builder_create(struct fy_allocator *a, int shared_tag);
+struct fy_generic_builder *fy_generic_builder_create(const struct fy_generic_builder_cfg *cfg);
 void fy_generic_builder_destroy(struct fy_generic_builder *gb);
 void fy_generic_builder_reset(struct fy_generic_builder *gb);
 
@@ -1231,27 +1279,14 @@ static inline const char *fy_generic_get_alias(const fy_generic *vp)
 	return fy_generic_get_string(p);
 }
 
-
 const fy_generic *fy_generic_mapping_lookup(fy_generic map, fy_generic key);
 
 fy_generic fy_generic_indirect_create(struct fy_generic_builder *gb, const struct fy_generic_indirect *gi);
 
 fy_generic fy_generic_alias_create(struct fy_generic_builder *gb, fy_generic anchor);
 
-enum fy_generic_schema {
-	FYGS_YAML1_2_FAILSAFE,
-	FYGS_YAML1_2_CORE,
-	FYGS_YAML1_2_JSON,
-	FYGS_YAML1_1,
-	FYGS_JSON,
-};
-
-static inline bool fy_generic_schema_is_json(enum fy_generic_schema schema)
-{
-	return schema == FYGS_YAML1_2_JSON || schema == FYGS_JSON;
-}
-
-fy_generic fy_generic_create_scalar_from_text(struct fy_generic_builder *gb, enum fy_generic_schema schema, const char *text, size_t len, enum fy_generic_type force_type);
+fy_generic fy_generic_create_scalar_from_text(struct fy_generic_builder *gb,
+					      const char *text, size_t len, enum fy_generic_type force_type);
 
 int fy_generic_compare_out_of_place(fy_generic a, fy_generic b);
 

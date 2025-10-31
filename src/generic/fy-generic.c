@@ -23,13 +23,44 @@
 #include "fy-allocator.h"
 #include "fy-generic.h"
 
-struct fy_generic_builder *fy_generic_builder_create(struct fy_allocator *a, int shared_tag)
-{
-	int alloc_tag = FY_ALLOC_TAG_NONE;
-	struct fy_generic_builder *gb = NULL;
+static const struct fy_generic_builder_cfg default_generic_builder_cfg = {
+	.flags = FYGBCF_SCHEMA_AUTO | FYGBCF_OWNS_ALLOCATOR,
+	.allocator = NULL,	/* use default */
+	.shared_tag = FY_ALLOC_TAG_NONE,
+};
 
-	if (!a)
-		return NULL;
+struct fy_generic_builder *fy_generic_builder_create(const struct fy_generic_builder_cfg *cfg)
+{
+	struct fy_allocator *a;
+	enum fy_generic_schema schema;
+	struct fy_generic_builder *gb = NULL;
+	bool owns_allocator;
+	int shared_tag, alloc_tag;
+
+	if (!cfg)
+		cfg = &default_generic_builder_cfg;
+
+	gb = malloc(sizeof(*gb));
+	if (!gb)
+		goto err_out;
+	memset(gb, 0, sizeof(*gb));
+
+	gb->cfg = *cfg;
+
+	shared_tag = cfg->shared_tag;
+	owns_allocator = !!(cfg->flags & FYGBCF_OWNS_ALLOCATOR);
+
+	schema = (cfg->flags & FYGBCF_SCHEMA_MASK) >> FYGBCF_SCHEMA_SHIFT;
+	if (schema >= FYGS_COUNT)
+		goto err_out;
+
+	a = cfg->allocator;
+	if (!a) {
+		a = fy_allocator_create("auto", NULL);	// let the system decide
+		if (!a)
+			goto err_out;
+		owns_allocator = true;
+	}
 
 	alloc_tag = shared_tag;
 	if (alloc_tag == FY_ALLOC_TAG_NONE) {
@@ -38,22 +69,17 @@ struct fy_generic_builder *fy_generic_builder_create(struct fy_allocator *a, int
 			goto err_out;
 	}
 
-	gb = malloc(sizeof(*gb));
-	if (!gb)
-		goto err_out;
-	memset(gb, 0, sizeof(*gb));
-
+	/* ok, update */
+	gb->schema = schema;
 	gb->allocator = a;
 	gb->shared_tag = shared_tag;
 	gb->alloc_tag = alloc_tag;
+	gb->owns_allocator = owns_allocator;
 
 	return gb;
 
 err_out:
-	if (shared_tag != FY_ALLOC_TAG_NONE)
-		fy_allocator_release_tag(a, alloc_tag);
-	if (gb)
-		free(gb);
+	fy_generic_builder_destroy(gb);
 	return NULL;
 }
 
@@ -79,8 +105,10 @@ void fy_generic_builder_reset(struct fy_generic_builder *gb)
 	if (!gb)
 		return;
 
-	if (gb->linear)
+	if (gb->linear) {
 		free(gb->linear);
+		gb->linear = NULL;
+	}
 
 	if (gb->shared_tag == FY_ALLOC_TAG_NONE)
 		fy_allocator_reset_tag(gb->allocator, gb->alloc_tag);
@@ -332,8 +360,9 @@ fy_generic fy_generic_alias_create(struct fy_generic_builder *gb, fy_generic anc
 	return fy_generic_indirect_create(gb, &gi);
 }
 
-fy_generic fy_generic_create_scalar_from_text(struct fy_generic_builder *gb, enum fy_generic_schema schema, const char *text, size_t len, enum fy_generic_type force_type)
+fy_generic fy_generic_create_scalar_from_text(struct fy_generic_builder *gb, const char *text, size_t len, enum fy_generic_type force_type)
 {
+	enum fy_generic_schema schema;
 	fy_generic v;
 	const char *s, *e;
 	const char *dec, *fract, *exp;
@@ -347,6 +376,8 @@ fy_generic fy_generic_create_scalar_from_text(struct fy_generic_builder *gb, enu
 
 	v = fy_invalid;
 
+	schema = gb->schema;
+
 	/* force a string? okie-dokie */
 	if (force_type == FYGT_STRING)
 		goto do_string;
@@ -354,6 +385,10 @@ fy_generic fy_generic_create_scalar_from_text(struct fy_generic_builder *gb, enu
 	/* more than 4K it is definitely a string */
 	if (len > 4096)
 		goto do_string;
+
+	/* default schema is yaml 1.2 core */
+	if (schema == FYGS_AUTO)
+		schema = FYGS_YAML1_2_CORE;
 
 	/* first stab at direct matches */
 	switch (schema) {
