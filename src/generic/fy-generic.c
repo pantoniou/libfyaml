@@ -457,8 +457,72 @@ fy_generic fy_generic_create_scalar_from_text(struct fy_generic_builder *gb, con
 		break;
 
 	case FYGS_YAML1_1:
-		/* not yet */
-		goto do_string;
+
+		if (len == 0 || (len == 1 && *text == '~')) {
+			v = fy_null;
+			break;
+		}
+
+		if (len == 1) {
+			if (*text == 'y' || *text == 'Y') {
+				v = fy_true;
+				break;
+			}
+			if (*text == 'n' || *text == 'N') {
+				v = fy_false;
+				break;
+			}
+		}
+
+		if (len == 2) {
+			if (!memcmp(text, "on", 2) || !memcmp(text, "On", 2) || !memcmp(text, "ON", 2)) {
+				v = fy_true;
+				break;
+			}
+		}
+
+		if (len == 3) {
+			if (!memcmp(text, "off", 3) || !memcmp(text, "Off", 3) || !memcmp(text, "OFF", 3)) {
+				v = fy_false;
+				break;
+			}
+		}
+
+		if (len == 4) {
+		    if (!memcmp(text, "null", 4) || !memcmp(text, "Null", 4) || !memcmp(text, "NULL", 4)) {
+			    v = fy_null;
+			    break;
+		    }
+		    if (!memcmp(text, "true", 4) || !memcmp(text, "True", 4) || !memcmp(text, "TRUE", 4)) {
+			    v = fy_true;
+			    break;
+		    }
+		    if (!memcmp(text, ".inf", 4) || !memcmp(text, ".Inf", 4) || !memcmp(text, ".INF", 4)) {
+				v = fy_generic_float_create(gb, INFINITY);
+				break;
+		    }
+		    if (!memcmp(text, ".nan", 4) || !memcmp(text, ".Nan", 4) || !memcmp(text, ".NAN", 4)) {
+				v = fy_generic_float_create(gb, NAN);
+				break;
+		    }
+		}
+		if (len == 5) {
+		    if (!memcmp(text, "false", 5) || !memcmp(text, "False", 5) || !memcmp(text, "FALSE", 5)) {
+			    v = fy_false;
+			    break;
+		    }
+		    if (!memcmp(text, "+.inf", 5) || !memcmp(text, "+.Inf", 5) || !memcmp(text, "+.INF", 5)) {
+				v = fy_generic_float_create(gb, INFINITY);
+				break;
+		    }
+		    if (!memcmp(text, "-.inf", 5) || !memcmp(text, "-.Inf", 5) || !memcmp(text, "-.INF", 5)) {
+				v = fy_generic_float_create(gb, -INFINITY);
+				break;
+		    }
+		}
+
+		break;
+
 
 	default:
 		break;
@@ -1046,4 +1110,46 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 	}
 
 	return v;
+}
+
+enum fy_generic_schema fy_generic_builder_get_schema(struct fy_generic_builder *gb)
+{
+	return gb ? gb->schema : FYGS_AUTO;
+}
+
+void fy_generic_builder_set_schema(struct fy_generic_builder *gb, enum fy_generic_schema schema)
+{
+	if ((unsigned int)schema >= FYGS_COUNT)
+		return;
+	gb->schema = schema;
+}
+
+int fy_generic_builder_set_schema_from_parser_mode(struct fy_generic_builder *gb, enum fy_parser_mode parser_mode)
+{
+	enum fy_generic_schema schema;
+
+	if (!gb)
+		return -1;
+
+	schema = fy_generic_builder_get_schema(gb);
+	switch (parser_mode) {
+	case fypm_yaml_1_1:
+		schema = FYGS_YAML1_1;
+		break;
+	case fypm_yaml_1_2:
+	case fypm_yaml_1_3:
+		schema = FYGS_YAML1_2_CORE;
+		break;
+	case fypm_json:
+		schema = FYGS_JSON;
+		break;
+	case fypm_invalid:
+	case fypm_none:
+	default:
+		return -1;
+
+	}
+
+	fy_generic_builder_set_schema(gb, schema);
+	return 0;
 }

@@ -1347,4 +1347,9 @@ static inline fy_generic fy_generic_builder_copy(struct fy_generic_builder *gb, 
 
 fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d);
 
+enum fy_generic_schema fy_generic_builder_get_schema(struct fy_generic_builder *gb);
+void fy_generic_builder_set_schema(struct fy_generic_builder *gb, enum fy_generic_schema schema);
+
+int fy_generic_builder_set_schema_from_parser_mode(struct fy_generic_builder *gb, enum fy_parser_mode parser_mode);
+
 #endif

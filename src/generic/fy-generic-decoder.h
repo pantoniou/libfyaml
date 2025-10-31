@@ -31,6 +31,8 @@ FY_TYPE_DECL_LIST(generic_anchor);
 
 struct fy_generic_decoder {
 	struct fy_parser *fyp;
+	enum fy_generic_schema original_schema;
+	enum fy_parser_mode curr_parser_mode;
 	struct fy_generic_builder *gb;
 	bool verbose;
 	bool document_ready;

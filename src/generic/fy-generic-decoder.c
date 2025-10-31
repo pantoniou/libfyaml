@@ -572,6 +572,13 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 		gd->gdo_root = gdo;
 
+		/* update schema if possible */
+		gd->curr_parser_mode = fy_parser_get_mode(fyp);
+
+		/* if we're tracking what the parser does, set it */
+		if (gd->original_schema == FYGS_AUTO)
+			fy_generic_builder_set_schema_from_parser_mode(gd->gb, gd->curr_parser_mode);
+
 		ret = FYCR_OK_CONTINUE;
 		break;
 
@@ -798,6 +805,13 @@ fy_generic_decoder_create(struct fy_parser *fyp, struct fy_generic_builder *gb, 
 
 	fygd->fyp = fyp;
 	fygd->gb = gb;
+	fygd->original_schema = fy_generic_builder_get_schema(gb);
+	fygd->curr_parser_mode = fy_parser_get_mode(fyp);
+
+	/* if we're tracking what the parser does, set it */
+	if (fygd->original_schema == FYGS_AUTO)
+		fy_generic_builder_set_schema_from_parser_mode(gb, fygd->curr_parser_mode);
+
 	fygd->verbose = verbose;
 	fygd->resolve = !!(fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT);
 	fygd->vroot = fy_invalid;
