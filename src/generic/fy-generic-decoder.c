@@ -107,12 +107,12 @@ fy_generic_decoder_object_finalize(struct fy_generic_decoder *gd, struct fy_gene
 		break;
 
 	case FYGDOT_SEQUENCE:
-		v = fy_generic_sequence_create(gd->gb, gdo->count, gdo->items);
+		v = fy_generic_sequence_create_i(gd->gb, false, gdo->count, gdo->items);
 		break;
 
 	case FYGDOT_MAPPING:
 		assert((gdo->count % 2) == 0);
-		v = fy_generic_mapping_create(gd->gb, gdo->count / 2, gdo->items);
+		v = fy_generic_mapping_create_i(gd->gb, false, gdo->count / 2, gdo->items);
 		break;
 
 	default:
@@ -160,16 +160,17 @@ fy_generic_decoder_object_finalize(struct fy_generic_decoder *gd, struct fy_gene
 
 		vtags_items = alloca(sizeof(*vtags_items) * count);
 		for (i = 0; i < count; i++)
-			vtags_items[i] = fy_generic_mapping_create(gd->gb, 2, (fy_generic[]) {
+			vtags_items[i] = fy_generic_mapping_create_i(gd->gb, false, 2, (fy_generic[]) {
 						fy_generic_string_create(gd->gb, "handle"), fy_generic_string_create(gd->gb, tags[i]->handle),
 						fy_generic_string_create(gd->gb, "prefix"), fy_generic_string_create(gd->gb, tags[i]->prefix)});
 
-		vtags = fy_generic_sequence_create(gd->gb, count, vtags_items);
+		vtags = fy_generic_sequence_create_i(gd->gb, false, count, vtags_items);
 
-		gdo->vds = fy_generic_mapping_create(gd->gb, 4, (fy_generic[]) {
-				fy_generic_string_create(gd->gb, "version"), fy_generic_mapping_create(gd->gb, 2, (fy_generic[]) {
-						fy_generic_string_create(gd->gb, "major"), fy_generic_int_create(gd->gb, vers->major),
-						fy_generic_string_create(gd->gb, "minor"), fy_generic_int_create(gd->gb, vers->minor)}),
+		gdo->vds = fy_generic_mapping_create_i(gd->gb, false, 4, (fy_generic[]) {
+				fy_generic_string_create(gd->gb, "version"),
+						fy_generic_mapping_create_i(gd->gb, false, 2, (fy_generic[]) {
+							fy_generic_string_create(gd->gb, "major"), fy_generic_int_create(gd->gb, vers->major),
+							fy_generic_string_create(gd->gb, "minor"), fy_generic_int_create(gd->gb, vers->minor)}),
 				fy_generic_string_create(gd->gb, "version-explicit"), fy_generic_bool_create(gd->gb, version_explicit),
 				fy_generic_string_create(gd->gb, "tags"), vtags,
 				fy_generic_string_create(gd->gb, "tags-explicit"), fy_generic_bool_create(gd->gb, tags_explicit)});
@@ -898,7 +899,7 @@ fy_generic fy_generic_decoder_parse_all_documents(struct fy_generic_decoder *fyg
 
 	while ((vroot = fy_generic_decoder_parse_document(fygd, &vds)) != fy_invalid) {
 
-		ventry = fy_generic_mapping_create(fygd->gb, 2, (fy_generic[]){
+		ventry = fy_generic_mapping_create_i(fygd->gb, false, 2, (fy_generic[]){
 				fy_generic_string_create(fygd->gb, "root"), vroot,
 				fy_generic_string_create(fygd->gb, "docs"), vds });
 
@@ -921,7 +922,7 @@ fy_generic fy_generic_decoder_parse_all_documents(struct fy_generic_decoder *fyg
 	if (!count)
 		return fy_null;
 
-	vdir = fy_generic_sequence_create(fygd->gb, count, items);
+	vdir = fy_generic_sequence_create_i(fygd->gb, false, count, items);
 	free(items);
 
 	return vdir;

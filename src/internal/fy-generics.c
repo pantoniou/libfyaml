@@ -547,9 +547,9 @@ const void *fy_generic_builder_linearize(struct fy_generic_builder *gb, fy_gener
 
 	fprintf(stderr, "\nbefore\n");
 	fy_generic_dump_primitive(stderr, 0,
-			*fy_generic_mapping_lookup(	/* the 1st document */
+			fy_generic_mapping_lookup(	/* the 1st document */
 				fy_generic_sequence_get_item(v, 0),
-				fy_string("root")));
+				fy_string("root"), NULL));
 	fprintf(stderr, "\n");
 
 #if 0

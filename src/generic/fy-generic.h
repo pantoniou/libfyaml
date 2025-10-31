@@ -145,17 +145,21 @@ typedef uintptr_t fy_generic;
 #define FYGT_INT_INPLACE_MAX ((1LL << (FYGT_INT_INPLACE_BITS - 1)) - 1)
 #define FYGT_INT_INPLACE_MIN (-(1LL << (FYGT_INT_INPLACE_BITS - 1)))
 
-#define FY_GENERIC_CONTAINER_ALIGNMENT __attribute__((aligned(16)))
+#define FY_GENERIC_CONTAINER_ALIGN	16
+#define FY_GENERIC_EXTERNAL_ALIGN	FY_GENERIC_CONTAINER_ALIGN
+#define FY_GENERIC_SCALAR_ALIGN		8
+
+#define FY_GENERIC_CONTAINER_ALIGNMENT __attribute__((aligned(FY_GENERIC_CONTAINER_ALIGN)))
 #define FY_GENERIC_EXTERNAL_ALIGNMENT FY_GENERIC_CONTAINER_ALIGNMENT
 
 /* yes, plenty of side-effects, use it with care */
 #define FY_MAX_ALIGNOF(_v, _min) ((size_t)(alignof(_v) > (_min) ? alignof(_v) : (_min)))
-#define FY_CONTAINER_ALIGNOF(_v) FY_MAX_ALIGNOF(_v, 16)
-#define FY_SCALAR_ALIGNOF(_v) FY_MAX_ALIGNOF(_v, 8)
+#define FY_CONTAINER_ALIGNOF(_v) FY_MAX_ALIGNOF(_v, FY_GENERIC_CONTAINER_ALIGN)
+#define FY_SCALAR_ALIGNOF(_v) FY_MAX_ALIGNOF(_v, FY_GENERIC_SCALAR_ALIGN)
 
 #define FY_INT_ALIGNMENT  __attribute__((aligned(FY_SCALAR_ALIGNOF(long long))))
 #define FY_FLOAT_ALIGNMENT __attribute__((aligned(FY_SCALAR_ALIGNOF(double))))
-#define FY_STRING_ALIGNMENT __attribute__((aligned(8)))
+#define FY_STRING_ALIGNMENT __attribute__((aligned(FY_GENERIC_SCALAR_ALIGN)))
 
 /*
  * The encoding of generic indirect
@@ -205,6 +209,12 @@ static inline void *fy_generic_resolve_ptr(fy_generic ptr)
 	/* clear the top 3 bits (all pointers are 8 byte aligned) */
 	/* note collections have the bit 3 cleared too, so it's 16 byte aligned */
 	ptr &= ~(uintptr_t)FY_INPLACE_TYPE_MASK;
+
+	/* check for something particularly stupid */
+	if (((uintptr_t)ptr & (0xffLU << 56)))
+		fprintf(stderr, "%s: bad pointer 0x%zx\n", __func__, ptr);
+	assert(!((uintptr_t)ptr & (0xffLU << 56)));
+
 	return (void *)ptr;
 }
 
@@ -424,44 +434,37 @@ void fy_generic_builder_reset(struct fy_generic_builder *gb);
 
 static inline void *fy_generic_builder_alloc(struct fy_generic_builder *gb, size_t size, size_t align)
 {
-	assert(gb);
 	return fy_allocator_alloc(gb->allocator, gb->alloc_tag, size, align);
 }
 
 static inline void fy_generic_builder_free(struct fy_generic_builder *gb, void *ptr)
 {
-	assert(gb);
 	fy_allocator_free(gb->allocator, gb->alloc_tag, ptr);
 }
 
 static inline void fy_generic_builder_trim(struct fy_generic_builder *gb)
 {
-	assert(gb);
 	fy_allocator_trim_tag(gb->allocator, gb->alloc_tag);
 }
 
 static inline const void *fy_generic_builder_store(struct fy_generic_builder *gb, const void *data, size_t size, size_t align)
 {
-	assert(gb);
 	return fy_allocator_store(gb->allocator, gb->alloc_tag, data, size, align);
 }
 
 static inline const void *fy_generic_builder_storev(struct fy_generic_builder *gb, const struct iovec *iov, unsigned int iovcnt, size_t align)
 {
-	assert(gb);
 	return fy_allocator_storev(gb->allocator, gb->alloc_tag, iov, iovcnt, align);
 }
 
 static inline struct fy_allocator_info *
 fy_generic_builder_get_allocator_info(struct fy_generic_builder *gb)
 {
-	assert(gb);
 	return fy_allocator_get_info(gb->allocator, gb->alloc_tag);
 }
 
 static inline void fy_generic_builder_release(struct fy_generic_builder *gb, const void *ptr, size_t size)
 {
-	assert(gb);
 	fy_allocator_release(gb->allocator, gb->alloc_tag, ptr, size);
 }
 
@@ -588,7 +591,6 @@ static inline fy_generic fy_generic_bool_create(struct fy_generic_builder *gb, b
 }
 
 #define fy_bool(_v)			((bool)(_v) ? fy_true : fy_false)
-#define fy_bool_alloca(_v)		fy_bool(_v)
 
 static inline fy_generic fy_generic_int_create(struct fy_generic_builder *gb, long long val)
 {
@@ -1124,18 +1126,25 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 #define fy_string_size(_v, _len) (__builtin_constant_p(_v) ? fy_string_size_const((_v), (_len)) : fy_string_size_alloca((_v), (_len)))
 #define fy_string(_v) (__builtin_constant_p(_v) ? fy_string_const(_v) : fy_string_alloca(_v))
 
+/* internalize the value (i.e. copy it if the pointer is not part of the builder arenas) */
+fy_generic fy_generic_internalize(struct fy_generic_builder *gb, fy_generic v);
+int fy_generic_internalize_in_place(struct fy_generic_builder *gb, size_t count, fy_generic *vp);
+
+fy_generic fy_generic_sequence_create_i(struct fy_generic_builder *gb, bool internalize,
+					size_t count, const fy_generic *items);
 fy_generic fy_generic_sequence_create(struct fy_generic_builder *gb, size_t count, const fy_generic *items);
 
-#define fy_sequence_alloca(_count, _items) 					\
-	({									\
-		struct fy_generic_sequence *__vp;				\
-		size_t __count = (_count);					\
-		size_t __size = sizeof(*__vp) + __count * sizeof(fy_generic);	\
-										\
-		__vp = fy_ptr_align(alloca(__size + 15), 16);			\
-		__vp->count = (_count);						\
-		memcpy(__vp->items, (_items), __count * sizeof(fy_generic)); 	\
-		(fy_generic)__vp | FY_SEQ_V;					\
+#define fy_sequence_alloca(_count, _items) 						\
+	({										\
+		struct fy_generic_sequence *__vp;					\
+		size_t __count = (_count);						\
+		size_t __size = sizeof(*__vp) + __count * sizeof(fy_generic);		\
+											\
+		__vp = fy_ptr_align(alloca(__size + FY_GENERIC_CONTAINER_ALIGN - 1),	\
+				FY_GENERIC_CONTAINER_ALIGN);				\
+		__vp->count = (_count);							\
+		memcpy(__vp->items, (_items), __count * sizeof(fy_generic)); 		\
+		(fy_generic)__vp | FY_SEQ_V;						\
 	})
 
 #if 0
@@ -1190,6 +1199,27 @@ static inline size_t fy_generic_sequence_get_item_count(fy_generic seq)
 	return p->count;
 }
 
+fy_generic fy_generic_sequence_remove(struct fy_generic_builder *gb, fy_generic seq, size_t idx, size_t count);
+
+fy_generic fy_generic_sequence_insert_replace_i(struct fy_generic_builder *gb, bool insert, bool internalize,
+						fy_generic seq, size_t idx, size_t count, const fy_generic *items);
+fy_generic fy_generic_sequence_insert_replace(struct fy_generic_builder *gb, bool insert,
+					      fy_generic seq, size_t idx, size_t count, const fy_generic *items);
+fy_generic fy_generic_sequence_insert_i(struct fy_generic_builder *gb, bool internalize,
+					fy_generic seq, size_t idx, size_t count, const fy_generic *items);
+fy_generic fy_generic_sequence_insert(struct fy_generic_builder *gb, fy_generic seq, size_t idx, size_t count,
+				      const fy_generic *items);
+fy_generic fy_generic_sequence_replace_i(struct fy_generic_builder *gb, bool internalize,
+					 fy_generic seq, size_t idx, size_t count, const fy_generic *items);
+fy_generic fy_generic_sequence_replace(struct fy_generic_builder *gb, fy_generic seq, size_t idx, size_t count,
+				       const fy_generic *items);
+
+fy_generic fy_generic_sequence_append_i(struct fy_generic_builder *gb, bool internalize,
+					fy_generic seq, size_t count, const fy_generic *items);
+fy_generic fy_generic_sequence_append(struct fy_generic_builder *gb, fy_generic seq, size_t count, const fy_generic *items);
+
+fy_generic fy_generic_mapping_create_i(struct fy_generic_builder *gb, bool internalize,
+				       size_t count, const fy_generic *pairs);
 fy_generic fy_generic_mapping_create(struct fy_generic_builder *gb, size_t count, const fy_generic *pairs);
 
 #define fy_mapping_alloca(_count, _pairs) 						\
@@ -1198,7 +1228,8 @@ fy_generic fy_generic_mapping_create(struct fy_generic_builder *gb, size_t count
 		size_t __count = (_count);						\
 		size_t __size = sizeof(*__vp) + 2 * __count * sizeof(fy_generic);	\
 											\
-		__vp = fy_ptr_align(alloca(__size + 15), 16);				\
+		__vp = fy_ptr_align(alloca(__size + FY_GENERIC_CONTAINER_ALIGN - 1), 	\
+				FY_GENERIC_CONTAINER_ALIGN);				\
 		__vp->count = (_count);							\
 		memcpy(__vp->pairs, (_pairs), 2 * __count * sizeof(fy_generic)); 	\
 		(fy_generic)__vp | FY_MAP_V;						\
@@ -1234,6 +1265,25 @@ static inline size_t fy_generic_mapping_get_pair_count(fy_generic map)
 	assert(p);
 	return p->count;
 }
+
+fy_generic fy_generic_mapping_remove(struct fy_generic_builder *gb, fy_generic map, size_t idx, size_t count);
+
+fy_generic fy_generic_mapping_insert_replace_i(struct fy_generic_builder *gb, bool insert, bool internalize,
+						fy_generic map, size_t idx, size_t count, const fy_generic *pairs);
+fy_generic fy_generic_mapping_insert_replace(struct fy_generic_builder *gb, bool insert,
+					      fy_generic map, size_t idx, size_t count, const fy_generic *pairs);
+fy_generic fy_generic_mapping_insert_i(struct fy_generic_builder *gb, bool internalize,
+					fy_generic map, size_t idx, size_t count, const fy_generic *pairs);
+fy_generic fy_generic_mapping_insert(struct fy_generic_builder *gb, fy_generic map, size_t idx, size_t count,
+				      const fy_generic *pairs);
+fy_generic fy_generic_mapping_replace_i(struct fy_generic_builder *gb, bool internalize,
+					 fy_generic map, size_t idx, size_t count, const fy_generic *pairs);
+fy_generic fy_generic_mapping_replace(struct fy_generic_builder *gb, fy_generic map, size_t idx, size_t count,
+				       const fy_generic *pairs);
+
+fy_generic fy_generic_mapping_append_i(struct fy_generic_builder *gb, bool internalize,
+					fy_generic map, size_t count, const fy_generic *pairs);
+fy_generic fy_generic_mapping_append(struct fy_generic_builder *gb, fy_generic map, size_t count, const fy_generic *pairs);
 
 #if 0
 #define fy_generic_get_alias_size(_v, _lenp)				\
@@ -1279,7 +1329,12 @@ static inline const char *fy_generic_get_alias(const fy_generic *vp)
 	return fy_generic_get_string(p);
 }
 
-const fy_generic *fy_generic_mapping_lookup(fy_generic map, fy_generic key);
+const fy_generic fy_generic_mapping_lookup(fy_generic map, fy_generic key, size_t *idxp);
+
+fy_generic fy_generic_mapping_set_value_i(struct fy_generic_builder *gb, bool internalize,
+					  fy_generic map, fy_generic key, fy_generic value);
+fy_generic fy_generic_mapping_set_value(struct fy_generic_builder *gb, fy_generic map,
+					fy_generic key, fy_generic value);
 
 fy_generic fy_generic_indirect_create(struct fy_generic_builder *gb, const struct fy_generic_indirect *gi);
 
@@ -1310,37 +1365,44 @@ static inline int fy_generic_compare(fy_generic a, fy_generic b)
 
 fy_generic fy_generic_builder_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v);
 
-static inline fy_generic fy_generic_builder_copy(struct fy_generic_builder *gb, fy_generic v)
+static inline bool fy_generic_is_in_place(fy_generic v)
 {
 	if (v == fy_invalid)
-		return fy_invalid;
+		return true;
 
-	if (!fy_generic_is_indirect(v)) {
+	if (fy_generic_is_indirect(v))
+		return false;
 
-		switch (fy_generic_get_type(v)) {
-		case FYGT_NULL:
-		case FYGT_BOOL:
-			return v;
+	switch (fy_generic_get_type(v)) {
+	case FYGT_NULL:
+	case FYGT_BOOL:
+		return v;
 
-		case FYGT_INT:
-			if (v & FY_INT_INPLACE_V)
-				return v;
-			break;
+	case FYGT_INT:
+		if (v & FY_INT_INPLACE_V)
+			return true;
+		break;
 
-		case FYGT_FLOAT:
-			if (v & FY_FLOAT_INPLACE_V)
-				return v;
-			break;
+	case FYGT_FLOAT:
+		if (v & FY_FLOAT_INPLACE_V)
+			return true;
+		break;
 
-		case FYGT_STRING:
-			if (v & FY_STRING_INPLACE_V)
-				return v;
-			break;
+	case FYGT_STRING:
+		if (v & FY_STRING_INPLACE_V)
+			return true;
+		break;
 
-		default:
-			break;
-		}
+	default:
+		break;
 	}
+	return true;
+}
+
+static inline fy_generic fy_generic_builder_copy(struct fy_generic_builder *gb, fy_generic v)
+{
+	if (fy_generic_is_in_place(v))
+		return v;
 
 	return fy_generic_builder_copy_out_of_place(gb, v);
 }
