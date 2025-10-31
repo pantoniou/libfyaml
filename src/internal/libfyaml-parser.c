@@ -5006,6 +5006,9 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator,
 	else
 		alloc_size = (1 << 30) / 4;
 
+	if (alloc_size < 4096)
+		alloc_size = 4096;
+
 	if (!allocator)
 		allocator = "linear";
 
