@@ -483,7 +483,7 @@ static inline bool fy_generic_get_bool(fy_generic v)
 #define FY_GENERIC_GET_INT(_v)							\
 	(									\
 		((_v) & FY_INPLACE_TYPE_MASK) == FY_INT_INPLACE_V ? 		\
-			(long long)((_v) >> FY_INPLACE_TYPE_SHIFT) : 		\
+			((long long)(((_v) >> FY_INPLACE_TYPE_SHIFT) << (64 - FYGT_INT_INPLACE_BITS)) >> (64 - FYGT_INT_INPLACE_BITS)) : 		\
 			*(long long *)fy_generic_resolve_ptr(_v)		\
 	)
 
