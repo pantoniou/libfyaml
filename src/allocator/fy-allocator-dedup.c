@@ -1032,6 +1032,16 @@ fy_dedup_get_info(struct fy_allocator *a, int tag)
 	return info;
 }
 
+static bool fy_dedup_contains(struct fy_allocator *a, int tag, const void *ptr)
+{
+	/* Dedup allocator wraps a parent allocator; could delegate to parent
+	 * but for now return false to be conservative (will always copy on internalize) */
+	(void)a;
+	(void)tag;
+	(void)ptr;
+	return false;
+}
+
 const struct fy_allocator_ops fy_dedup_allocator_ops = {
 	.setup = fy_dedup_setup,
 	.cleanup = fy_dedup_cleanup,
@@ -1049,4 +1059,5 @@ const struct fy_allocator_ops fy_dedup_allocator_ops = {
 	.trim_tag = fy_dedup_trim_tag,
 	.reset_tag = fy_dedup_reset_tag,
 	.get_info = fy_dedup_get_info,
+	.contains = fy_dedup_contains,
 };

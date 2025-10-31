@@ -978,6 +978,16 @@ fy_mremap_get_info(struct fy_allocator *a, int tag)
 	return info;
 }
 
+static bool fy_mremap_contains(struct fy_allocator *a, int tag, const void *ptr)
+{
+	/* Mremap allocator doesn't track individual allocations for containment checks
+	 * Return false to be conservative (will always copy on internalize) */
+	(void)a;
+	(void)tag;
+	(void)ptr;
+	return false;
+}
+
 const struct fy_allocator_ops fy_mremap_allocator_ops = {
 	.setup = fy_mremap_setup,
 	.cleanup = fy_mremap_cleanup,
@@ -995,5 +1005,6 @@ const struct fy_allocator_ops fy_mremap_allocator_ops = {
 	.trim_tag = fy_mremap_trim_tag,
 	.reset_tag = fy_mremap_reset_tag,
 	.get_info = fy_mremap_get_info,
+	.contains = fy_mremap_contains,
 };
 

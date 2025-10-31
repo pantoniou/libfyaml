@@ -356,6 +356,19 @@ static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, int 
 	return info;
 }
 
+static bool fy_linear_contains(struct fy_allocator *a, int tag, const void *ptr)
+{
+	struct fy_linear_allocator *la;
+
+	if (!a || !ptr)
+		return false;
+
+	la = container_of(a, struct fy_linear_allocator, a);
+
+	/* Check if pointer is within the allocator's arena */
+	return ptr >= la->start && ptr < la->end;
+}
+
 const struct fy_allocator_ops fy_linear_allocator_ops = {
 	.setup = fy_linear_setup,
 	.cleanup = fy_linear_cleanup,
@@ -373,4 +386,5 @@ const struct fy_allocator_ops fy_linear_allocator_ops = {
 	.trim_tag = fy_linear_trim_tag,
 	.reset_tag = fy_linear_reset_tag,
 	.get_info = fy_linear_get_info,
+	.contains = fy_linear_contains,
 };

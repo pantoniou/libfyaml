@@ -236,13 +236,18 @@ fy_generic_string_createf(struct fy_generic_builder *gb, const char *fmt, ...)
 
 fy_generic fy_generic_internalize(struct fy_generic_builder *gb, fy_generic v)
 {
+	const void *ptr;
+
 	/* if it's in place, just return it */
 	if (fy_generic_is_in_place(v))
 		return v;
 
-	/* XXX query the builder for the pointer? is it worth it? */
+	/* Check if the pointer is already in the builder's allocator arena */
+	ptr = fy_generic_resolve_ptr(v);
+	if (fy_allocator_contains(gb->allocator, gb->alloc_tag, ptr))
+		return v;
 
-	/* for now, just copy (it's smart enough not to do the inplace ones) */
+	/* Not in our arena, need to copy */
 	return fy_generic_builder_copy(gb, v);
 }
 
@@ -738,7 +743,7 @@ fy_generic fy_generic_mapping_set_value_i(struct fy_generic_builder *gb, bool in
 
 	old_value = fy_generic_mapping_lookup(map, key, &idx);
 	if (old_value == fy_invalid)
-		return -1;
+		return fy_invalid;
 
 	return fy_generic_mapping_replace_i(gb, internalize, map, idx, 1, (fy_generic[]){ key, value });
 }

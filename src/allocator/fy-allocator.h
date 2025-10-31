@@ -46,6 +46,7 @@ struct fy_allocator_ops {
 	void (*trim_tag)(struct fy_allocator *a, int tag);
 	void (*reset_tag)(struct fy_allocator *a, int tag);
 	struct fy_allocator_info *(*get_info)(struct fy_allocator *a, int tag);
+	bool (*contains)(struct fy_allocator *a, int tag, const void *ptr);
 };
 
 struct fy_allocator_stats {
@@ -109,5 +110,12 @@ char *fy_allocator_get_names(void);
 int fy_allocator_register(const char *name, const struct fy_allocator_ops *ops);
 int fy_allocator_unregister(const char *name);
 void fy_allocator_release(struct fy_allocator *a, int tag, const void *ptr, size_t size);
+
+static inline bool fy_allocator_contains(struct fy_allocator *a, int tag, const void *ptr)
+{
+	if (!a || !a->ops || !a->ops->contains)
+		return false;
+	return a->ops->contains(a, tag, ptr);
+}
 
 #endif

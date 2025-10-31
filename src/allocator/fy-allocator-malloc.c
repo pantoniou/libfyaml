@@ -524,6 +524,16 @@ fy_malloc_get_info(struct fy_allocator *a, int tag)
 	return info;
 }
 
+static bool fy_malloc_contains(struct fy_allocator *a, int tag, const void *ptr)
+{
+	/* Malloc allocator doesn't track individual allocations for containment checks
+	 * Return false to be conservative (will always copy on internalize) */
+	(void)a;
+	(void)tag;
+	(void)ptr;
+	return false;
+}
+
 const struct fy_allocator_ops fy_malloc_allocator_ops = {
 	.setup = fy_malloc_setup,
 	.cleanup = fy_malloc_cleanup,
@@ -541,4 +551,5 @@ const struct fy_allocator_ops fy_malloc_allocator_ops = {
 	.trim_tag = fy_malloc_trim_tag,
 	.reset_tag = fy_malloc_reset_tag,
 	.get_info = fy_malloc_get_info,
+	.contains = fy_malloc_contains,
 };
