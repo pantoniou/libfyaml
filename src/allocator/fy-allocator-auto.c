@@ -400,12 +400,15 @@ fy_auto_get_info(struct fy_allocator *a, int tag)
 
 static bool fy_auto_contains(struct fy_allocator *a, int tag, const void *ptr)
 {
-	/* Auto allocator doesn't track individual allocations for containment checks
-	 * Return false to be conservative (will always copy on internalize) */
-	(void)a;
-	(void)tag;
-	(void)ptr;
-	return false;
+	struct fy_auto_allocator *aa;
+
+	if (!a || !ptr)
+		return false;
+
+	aa = container_of(a, struct fy_auto_allocator, a);
+
+	/* Delegate to parent allocator */
+	return fy_allocator_contains(aa->parent_allocator, tag, ptr);
 }
 
 const struct fy_allocator_ops fy_auto_allocator_ops = {

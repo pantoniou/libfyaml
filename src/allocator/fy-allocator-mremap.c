@@ -980,11 +980,33 @@ fy_mremap_get_info(struct fy_allocator *a, int tag)
 
 static bool fy_mremap_contains(struct fy_allocator *a, int tag, const void *ptr)
 {
-	/* Mremap allocator doesn't track individual allocations for containment checks
-	 * Return false to be conservative (will always copy on internalize) */
-	(void)a;
-	(void)tag;
-	(void)ptr;
+	struct fy_mremap_allocator *ma;
+	struct fy_mremap_tag *mt;
+	struct fy_mremap_arena *mra;
+	const uint8_t *p = ptr;
+
+	if (!a || !ptr || tag < 0 || tag >= FY_MREMAP_TAG_MAX)
+		return false;
+
+	ma = container_of(a, struct fy_mremap_allocator, a);
+	mt = &ma->tags[tag];
+
+	/* Check in active arenas */
+	for (mra = fy_mremap_arena_list_head(&mt->arenas); mra;
+	     mra = fy_mremap_arena_next(&mt->arenas, mra)) {
+		if (p >= (const uint8_t *)mra->mem &&
+		    p < (const uint8_t *)mra + mra->size)
+			return true;
+	}
+
+	/* Check in full arenas */
+	for (mra = fy_mremap_arena_list_head(&mt->full_arenas); mra;
+	     mra = fy_mremap_arena_next(&mt->full_arenas, mra)) {
+		if (p >= (const uint8_t *)mra->mem &&
+		    p < (const uint8_t *)mra + mra->size)
+			return true;
+	}
+
 	return false;
 }
 
