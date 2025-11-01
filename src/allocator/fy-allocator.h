@@ -49,6 +49,8 @@ struct fy_allocator_ops {
 	void (*reset_tag)(struct fy_allocator *a, int tag);
 	struct fy_allocator_info *(*get_info)(struct fy_allocator *a, int tag);
 	unsigned int (*get_caps)(struct fy_allocator *a);	/* Get capability flags (FYACF_*) */
+	int (*parse_cfg)(const char *cfg_str, void **cfg);	/* Parse configuration string */
+	void (*free_cfg)(void *cfg);				/* Free parsed configuration */
 };
 
 struct fy_allocator_stats {
