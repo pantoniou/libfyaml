@@ -15,6 +15,7 @@
 #include <time.h>
 #include <inttypes.h>
 #include <math.h>
+#include <ctype.h>
 
 #include <stdio.h>
 
@@ -23,6 +24,7 @@
 #include "fy-allocator-dedup.h"
 #include "fy-allocator-linear.h"
 #include "fy-allocator-auto.h"
+#include "fy-allocator-parse-util.h"
 
 /* fixed parameters */
 #ifndef AUTO_ALLOCATOR_BIG_ALLOC_THRESHOLD
@@ -410,6 +412,97 @@ fy_auto_get_caps(struct fy_allocator *a)
 	return fy_allocator_get_caps(aa->parent_allocator);
 }
 
+static int fy_auto_parse_cfg(const char *cfg_str, void **cfgp)
+{
+	struct fy_auto_allocator_cfg *cfg;
+	char *params_copy = NULL, *saveptr = NULL, *token, *key, *value;
+	int rc = -1;
+
+	if (!cfgp)
+		return -1;
+
+	cfg = calloc(1, sizeof(*cfg));
+	if (!cfg)
+		return -1;
+
+	/* Defaults */
+	cfg->scenario = FYAST_PER_TAG_FREE;
+	cfg->estimated_max_size = 0;
+
+	if (!cfg_str || !*cfg_str) {
+		*cfgp = cfg;
+		return 0;
+	}
+
+	params_copy = strdup(cfg_str);
+	if (!params_copy)
+		goto err_out;
+
+	/* Parse comma-separated key=value pairs */
+	for (token = strtok_r(params_copy, ",", &saveptr); token;
+	     token = strtok_r(NULL, ",", &saveptr)) {
+
+		/* Find the '=' separator */
+		key = token;
+		value = strchr(key, '=');
+		if (!value) {
+			fprintf(stderr, "auto: Invalid parameter format '%s' (expected key=value)\n", token);
+			goto err_out;
+		}
+
+		*value++ = '\0';
+
+		/* Trim whitespace from key and value */
+		while (isspace(*key))
+			key++;
+		while (isspace(*value))
+			value++;
+
+		if (strcmp(key, "scenario") == 0) {
+			if (strcmp(value, "per_tag_free") == 0) {
+				cfg->scenario = FYAST_PER_TAG_FREE;
+			} else if (strcmp(value, "per_tag_free_dedup") == 0) {
+				cfg->scenario = FYAST_PER_TAG_FREE_DEDUP;
+			} else if (strcmp(value, "per_obj_free") == 0) {
+				cfg->scenario = FYAST_PER_OBJ_FREE;
+			} else if (strcmp(value, "per_obj_free_dedup") == 0) {
+				cfg->scenario = FYAST_PER_OBJ_FREE_DEDUP;
+			} else if (strcmp(value, "single_linear") == 0 || strcmp(value, "single_linear_range") == 0) {
+				cfg->scenario = FYAST_SINGLE_LINEAR_RANGE;
+			} else if (strcmp(value, "single_linear_dedup") == 0 || strcmp(value, "single_linear_range_dedup") == 0) {
+				cfg->scenario = FYAST_SINGLE_LINEAR_RANGE_DEDUP;
+			} else {
+				fprintf(stderr, "auto: Invalid scenario '%s'\n", value);
+				fprintf(stderr, "auto: Valid scenarios: per_tag_free, per_tag_free_dedup, per_obj_free, per_obj_free_dedup, single_linear, single_linear_dedup\n");
+				goto err_out;
+			}
+		} else if (strcmp(key, "estimated_max_size") == 0) {
+			rc = fy_parse_size_suffix(value, &cfg->estimated_max_size);
+			if (rc) {
+				fprintf(stderr, "auto: Invalid estimated_max_size value '%s'\n", value);
+				goto err_out;
+			}
+		} else {
+			fprintf(stderr, "auto: Unknown parameter '%s'\n", key);
+			goto err_out;
+		}
+	}
+
+	free(params_copy);
+	*cfgp = cfg;
+	return 0;
+
+err_out:
+	free(params_copy);
+	free(cfg);
+	return -1;
+}
+
+static void fy_auto_free_cfg(void *cfg)
+{
+	free(cfg);
+}
+
 const struct fy_allocator_ops fy_auto_allocator_ops = {
 	.setup = fy_auto_setup,
 	.cleanup = fy_auto_cleanup,
@@ -428,4 +521,6 @@ const struct fy_allocator_ops fy_auto_allocator_ops = {
 	.reset_tag = fy_auto_reset_tag,
 	.get_info = fy_auto_get_info,
 	.get_caps = fy_auto_get_caps,
+	.parse_cfg = fy_auto_parse_cfg,
+	.free_cfg = fy_auto_free_cfg,
 };
