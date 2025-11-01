@@ -9544,6 +9544,35 @@ fy_allocator_dump(struct fy_allocator *a)
 	FY_EXPORT;
 
 /**
+ * enum fy_allocator_cap_flags - Allocator capability flags
+ *
+ * @FYACF_CAN_FREE_INDIVIDUAL: Allocator supports freeing individual allocations
+ * @FYACF_CAN_FREE_TAG: Allocator supports releasing entire tags
+ * @FYACF_CAN_DEDUP: Allocator supports deduplication
+ *
+ * These flags describe what operations an allocator supports.
+ */
+enum fy_allocator_cap_flags {
+	FYACF_CAN_FREE_INDIVIDUAL		= FY_BIT(0),
+	FYACF_CAN_FREE_TAG			= FY_BIT(1),
+	FYACF_CAN_DEDUP				= FY_BIT(2),
+};
+
+/**
+ * fy_allocator_get_caps() - Get allocator capabilities
+ *
+ * Retrieve the capabilities of an allocator.
+ *
+ * @a: The allocator
+ *
+ * Returns:
+ * The capabilities of the allocator
+ */
+enum fy_allocator_cap_flags
+fy_allocator_get_caps(struct fy_allocator *a)
+	FY_EXPORT;
+
+/**
  * fy_allocator_get_tag_linear_size() - Get the linear size of an allocator tag
  *
  * Retrieve the linear size of the content of a tag.

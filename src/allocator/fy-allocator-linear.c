@@ -356,6 +356,12 @@ static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, int 
 	return info;
 }
 
+static enum fy_allocator_cap_flags
+fy_linear_get_caps(struct fy_allocator *a)
+{
+	return 0;	// can't do much
+}
+
 const struct fy_allocator_ops fy_linear_allocator_ops = {
 	.setup = fy_linear_setup,
 	.cleanup = fy_linear_cleanup,
@@ -373,4 +379,5 @@ const struct fy_allocator_ops fy_linear_allocator_ops = {
 	.trim_tag = fy_linear_trim_tag,
 	.reset_tag = fy_linear_reset_tag,
 	.get_info = fy_linear_get_info,
+	.get_caps = fy_linear_get_caps,
 };
