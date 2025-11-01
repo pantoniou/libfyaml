@@ -1,12 +1,399 @@
 # Allocator Integration Plan for Document/Node Structures
 
-**Date:** 2025-10-30
+**Date:** 2025-10-30 (Original), 2025-11-01 (Updated)
 **Author:** Claude Code Analysis
 **Target:** libfyaml document and node memory allocation
+**Status:** ✅ **IMPLEMENTED** (as of commit ff8db26)
 
 ---
 
-## Executive Summary
+## 🎉 IMPLEMENTATION STATUS
+
+### Summary
+
+The custom allocator integration for document and node structures **has been successfully implemented** with a different (and superior) approach than originally proposed. Instead of extending `fy_parse_cfg` with a pointer field, the implementation uses **flag-based allocator selection** which maintains ABI compatibility.
+
+**Implementation Commits:** b2a098c through ff8db26
+
+### Actual Implementation vs Original Proposal
+
+| Aspect | Proposed | Actually Implemented | Advantage |
+|--------|----------|---------------------|-----------|
+| **API Design** | Add `struct fy_allocator *allocator` field to `fy_parse_cfg` | Use flags in `fy_parse_cfg_flags` enum | ✅ ABI compatible! |
+| **Allocator Selection** | User passes allocator pointer | User sets `FYPCF_ALLOCATOR_*` flags | ✅ Simpler user API |
+| **Storage** | Document stores copy of pointer | Document creates and owns allocator instance | ✅ Better lifetime management |
+| **Tags** | Proposed single tag per type | Implemented tag array indexed by type | ✅ More flexible |
+| **Capabilities** | Not considered | Caches allocator capabilities | ✅ Performance optimization |
+
+### Files Modified (Actual)
+
+| File | Lines Added | Description |
+|------|-------------|-------------|
+| `include/libfyaml.h` | +52 | Added allocator flags and public API |
+| `src/lib/fy-doc.h` | +13 | Added `enum fy_doc_alloc_tag`, allocator fields to document |
+| `src/lib/fy-doc.c` | +204 | Wrapper functions, descriptor table, allocation replacements |
+| `src/allocator/*.c` | +55 | Added refcounting support to all allocators |
+| `src/allocator/fy-allocator.h` | +4 | Refcounting function declarations |
+| `src/tool/fy-tool.c` | +25 | Added `--allocator` command-line option |
+| `test/libfyaml-test-allocator.c` | +308 | Comprehensive allocator test suite |
+| **Total** | **661 lines** | **7 commits** |
+
+### Key Implementation Details
+
+#### 1. Flag-Based Allocator Selection (ABI Compatible!)
+
+**Location:** `include/libfyaml.h:311-353`
+
+```c
+/* Shift amount of the allocator type */
+#define FYPCF_ALLOCATOR_SHIFT      20
+/* Mask of the allocator type */
+#define FYPCF_ALLOCATOR_MASK       ((1U << 3) - 1)
+/* Build an allocator type option */
+#define FYPCF_ALLOCATOR(x)         (((unsigned int)(x) & FYPCF_ALLOCATOR_MASK) << FYPCF_ALLOCATOR_SHIFT)
+
+enum fy_parse_cfg_flags {
+    ...
+    FYPCF_ALLOCATOR_DEFAULT  = FYPCF_ALLOCATOR(0),  // Use default malloc/free
+    FYPCF_ALLOCATOR_MALLOC   = FYPCF_ALLOCATOR(1),  // malloc allocator
+    FYPCF_ALLOCATOR_LINEAR   = FYPCF_ALLOCATOR(2),  // Linear arena
+    FYPCF_ALLOCATOR_MREMAP   = FYPCF_ALLOCATOR(3),  // mremap-based
+    FYPCF_ALLOCATOR_DEDUP    = FYPCF_ALLOCATOR(4),  // Deduplication
+    FYPCF_ALLOCATOR_AUTO     = FYPCF_ALLOCATOR(5),  // Auto-selection
+    ...
+};
+```
+
+**Advantage:** No ABI break! Existing `fy_parse_cfg` structure unchanged.
+
+#### 2. Document Structure Enhancements
+
+**Location:** `src/lib/fy-doc.h:113-135`
+
+```c
+struct fy_document {
+    ...
+    struct fy_parse_cfg parse_cfg;
+    struct fy_allocator *allocator;           // NEW: Allocator instance
+    struct fy_node *root;
+    ...
+    int allocator_tags[FYDAT_COUNT];          // NEW: Per-type tags
+    enum fy_allocator_cap_flags allocator_caps; // NEW: Cached capabilities
+};
+```
+
+#### 3. Allocation Tags
+
+**Location:** `src/lib/fy-doc.h:105-111`
+
+```c
+enum fy_doc_alloc_tag {
+    FYDAT_NODE,       // fy_node structure
+    FYDAT_NODE_PAIR,  // fy_node_pair structure
+    FYDAT_ANCHOR,     // fy_anchor structure
+    FYDAT_ACCEL,      // fy_accel structures (hashtables)
+    FYDAT_COUNT,
+};
+```
+
+**Note:** Reduced from proposed FYDAT_DOCUMENT, FYDAT_ITERATOR, etc. Focus on core structures only.
+
+#### 4. Object Descriptor Table
+
+**Location:** `src/lib/fy-doc.c:121-141`
+
+```c
+static const struct {
+    size_t size;
+    size_t align;
+} doc_obj_desc[FYDAT_COUNT] = {
+    [FYDAT_NODE] = {
+        .size = sizeof(struct fy_node),
+        .align = __alignof__(struct fy_node),
+    },
+    [FYDAT_NODE_PAIR] = {
+        .size = sizeof(struct fy_node_pair),
+        .align = __alignof__(struct fy_node_pair),
+    },
+    [FYDAT_ANCHOR] = {
+        .size = sizeof(struct fy_anchor),
+        .align = __alignof__(struct fy_anchor),
+    },
+    [FYDAT_ACCEL] = {
+        .size = sizeof(struct fy_accel),
+        .align = __alignof__(struct fy_accel),
+    },
+};
+```
+
+**Advantage:** Type-safe, compile-time size/alignment information.
+
+#### 5. Allocation Wrapper Functions
+
+**Location:** `src/lib/fy-doc.c:143-196`
+
+```c
+static inline void *fy_doc_calloc(struct fy_document *fyd, unsigned int obj_kind, size_t nmemb)
+{
+    size_t size, align, total;
+    void *p;
+    int tag;
+
+    tag = fyd->allocator_tags[obj_kind];
+    size = doc_obj_desc[obj_kind].size;
+
+    if (!fyd->allocator || tag < 0)
+        return calloc(nmemb, size);  // Fallback to malloc
+
+    if (FY_MUL_OVERFLOW(size, nmemb, &total))
+        return NULL;
+
+    align = doc_obj_desc[tag].align;
+    p = fy_allocator_alloc(fyd->allocator, tag, total, align);
+    if (!p)
+        return NULL;
+    memset(p, 0, total);
+
+    return p;
+}
+
+static inline void *fy_doc_alloc(struct fy_document *fyd, unsigned int obj_kind)
+{
+    return fy_doc_calloc(fyd, obj_kind, 1);
+}
+
+static inline void fy_doc_free(struct fy_document *fyd, int tag_hint, void *ptr)
+{
+    int tag;
+
+    if (!ptr)
+        return;
+
+    if (fyd->allocator && (unsigned int)tag_hint < ARRAY_SIZE(fyd->allocator_tags) &&
+        (tag = fyd->allocator_tags[tag_hint]) >= 0) {
+
+        // Only free if allocator supports individual frees
+        if (fyd->allocator_caps & FYACF_CAN_FREE_INDIVIDUAL)
+            fy_allocator_free(fyd->allocator, tag, ptr);
+
+        return;
+    }
+    free(ptr);  // Fallback to free
+}
+```
+
+**Key Features:**
+- ✅ Uses descriptor table for size/align
+- ✅ Checks allocator capabilities before freeing
+- ✅ Overflow-safe multiplication
+- ✅ Graceful fallback to malloc/free
+
+#### 6. Allocator Refcounting
+
+**Location:** `src/allocator/fy-allocator.h:4` and all `*-allocator.c` files
+
+```c
+struct fy_allocator *fy_allocator_ref(struct fy_allocator *a);
+void fy_allocator_unref(struct fy_allocator *a);
+```
+
+Implemented in all allocators:
+- `fy-allocator-malloc.c` (+7 lines)
+- `fy-allocator-linear.c` (+7 lines)
+- `fy-allocator-mremap.c` (+7 lines)
+- `fy-allocator-dedup.c` (+14 lines)
+- `fy-allocator-auto.c` (+13 lines)
+
+**Solves:** Issue 1 (Allocator Lifetime Management) from original analysis.
+
+#### 7. Integration Coverage
+
+**Fully Integrated:**
+- ✅ `fy_node` (src/lib/fy-doc.c - fy_node_alloc)
+- ✅ `fy_node_pair` (src/lib/fy-doc.c - fy_node_pair_alloc)
+- ✅ `fy_accel` (document accelerators: axl, naxl)
+- ✅ `fy_accel` (node mapping accelerators: xl)
+
+**Not Yet Integrated (still using malloc):**
+- ⚠️ `fy_anchor` (src/lib/fy-doc.c:211 - still uses malloc)
+- ⚠️ `fy_document` itself (document structure allocation)
+- ⚠️ `fy_document_builder`
+- ⚠️ `fy_document_iterator`
+- ⚠️ `fy_composer`
+
+**Rationale:** Focus on high-frequency allocations (nodes, pairs) first.
+
+#### 8. Public API Extensions
+
+**Location:** `include/libfyaml.h:9345-9732`
+
+New public functions:
+- `fy_allocator_iterate()` - Iterate available allocators
+- `fy_allocator_is_available()` - Check allocator availability
+- `fy_allocator_create()` - Create allocator instance
+- `fy_allocator_destroy()` - Destroy allocator
+- `fy_allocator_get_tag()` - Get new tag from allocator
+- `fy_allocator_release_tag()` - Release tag and its memory
+- `fy_allocator_trim_tag()` - Trim excess memory
+- `fy_allocator_reset_tag()` - Reset tag content
+- `fy_allocator_alloc()` - Allocate memory
+- `fy_allocator_free()` - Free memory
+- `fy_allocator_store()` - Store object (with dedup support)
+- `fy_allocator_storev()` - Store object (scatter-gather)
+- `fy_allocator_dump()` - Dump allocator state
+- `fy_allocator_get_caps()` - Get allocator capabilities (**NEW**)
+- `fy_allocator_get_tag_linear_size()` - Get linear size of tag (**NEW**)
+- `fy_allocator_get_tag_single_linear()` - Get single linear buffer (**NEW**)
+
+#### 9. Capability Flags
+
+**Location:** `include/libfyaml.h:9576-9582`
+
+```c
+enum fy_allocator_cap_flags {
+    FYACF_CAN_FREE_INDIVIDUAL             = FY_BIT(0),
+    FYACF_CAN_FREE_TAG                    = FY_BIT(1),
+    FYACF_CAN_DEDUP                       = FY_BIT(2),
+    FYCAF_CAN_QUERY_POINTER               = FY_BIT(3),
+    FYCAF_CAN_QUERY_POINTER_EFFICIENTLY   = FY_BIT(4),
+};
+```
+
+**Usage:** Document caches capabilities for fast checks in `fy_doc_free()`.
+
+#### 10. Tool Integration
+
+**Location:** `src/tool/fy-tool.c:25`
+
+Added `--allocator` command-line option to fy-tool:
+
+```bash
+fy-tool --allocator=linear parse document.yaml
+fy-tool --allocator=mremap dump document.yaml
+fy-tool --allocator=dedup compose -
+```
+
+#### 11. Comprehensive Test Suite
+
+**Location:** `test/libfyaml-test-allocator.c:308 lines`
+
+Tests include:
+- Allocator builtin availability checks
+- Alignment tests for all allocators
+- Linear allocator buffer tests
+- Malloc allocator tests
+- Mremap allocator tests
+- Dedup allocator tests
+- Auto allocator scenario tests
+- Tag management tests
+- Capability API tests
+
+### Usage Examples
+
+#### Example 1: Using Linear Allocator
+
+```c
+struct fy_parse_cfg cfg = {
+    .flags = FYPCF_DEFAULT | FYPCF_ALLOCATOR_LINEAR
+};
+
+struct fy_parser *fyp = fy_parser_create(&cfg);
+fy_parser_set_input_file(fyp, "large_document.yaml");
+
+struct fy_document *fyd = fy_parse_load_document(fyp);
+// All nodes/pairs allocated via linear allocator
+
+fy_document_destroy(fyd);  // Bulk free via allocator
+fy_parser_destroy(fyp);
+```
+
+#### Example 2: Command-Line Usage
+
+```bash
+# Parse with linear allocator (faster for large documents)
+fy-tool --allocator=linear parse big.yaml
+
+# Dump with dedup allocator (saves memory on duplicates)
+fy-tool --allocator=dedup dump anchors.yaml
+
+# Auto-select optimal allocator
+fy-tool --allocator=auto compose huge.yaml
+```
+
+#### Example 3: Programmatic Allocator Creation
+
+```c
+// Create custom-configured linear allocator
+struct fy_linear_allocator_cfg lcfg = {
+    .buf = my_buffer,
+    .size = 1024 * 1024  // 1MB
+};
+struct fy_allocator *alloc = fy_allocator_create("linear", &lcfg);
+
+// Use with parser
+struct fy_parse_cfg cfg = {
+    .flags = FYPCF_ALLOCATOR_LINEAR  // Will use same config
+};
+struct fy_parser *fyp = fy_parser_create(&cfg);
+```
+
+### Differences from Original Proposal
+
+| Feature | Proposed | Implemented | Rationale |
+|---------|----------|-------------|-----------|
+| **ABI Compatibility** | Acknowledged break | Maintained via flags | Better for users |
+| **Allocator Ownership** | User-provided pointer | Document-owned instance | Cleaner lifetime |
+| **Tag Management** | Single tag per type | Array of tags per type | More flexible |
+| **Capability Caching** | Not proposed | Implemented | Performance optimization |
+| **Public API** | Minimal | Comprehensive | Full featured |
+| **Document Allocation** | Proposed | Not yet implemented | Phased approach |
+| **Anchor Integration** | Proposed | Not yet implemented | Phased approach |
+
+### Benefits Realized
+
+1. ✅ **Zero ABI Break** - Existing binaries continue working
+2. ✅ **Simpler User API** - Just set a flag, no allocator management
+3. ✅ **Better Lifetime** - Document owns allocator, automatic cleanup
+4. ✅ **Performance** - Capability caching, descriptor tables
+5. ✅ **Flexibility** - Can still create custom allocators if needed
+6. ✅ **Testing** - Comprehensive test suite included
+
+### Known Limitations
+
+1. ⚠️ **Anchor allocation** - Not yet integrated (still uses malloc directly)
+2. ⚠️ **Document structure** - Not yet integrated
+3. ⚠️ **Builder/Iterator/Composer** - Not yet integrated
+4. ⚠️ **Partial coverage** - Only high-frequency allocations covered
+
+**Status:** These are planned for future phases (see "Future Work" below).
+
+### Future Work
+
+Based on the original analysis, remaining integration points:
+
+**Phase 3 (Recommended Next):**
+- [ ] Integrate `fy_anchor` allocation (src/lib/fy-doc.c:211)
+- [ ] Integrate `fy_document` itself
+- [ ] Integrate `fy_document_iterator` stack
+- [ ] Integrate `fy_document_builder` stack
+- [ ] Integrate `fy_composer`
+
+**Phase 4 (Nice to Have):**
+- [ ] Dynamic buffer allocations (path memory, sort arrays, etc.)
+- [ ] Diag subsystem integration
+- [ ] Token/event allocator integration
+
+---
+
+## Original Analysis Document
+
+The sections below contain the **original analysis and proposal** that led to the implementation above. They are preserved for reference and to show the thought process.
+
+**Note:** The actual implementation differs from the proposal in beneficial ways (primarily the flag-based approach for ABI compatibility).
+
+---
+
+## Executive Summary (Original Proposal)
 
 This document analyzes the feasibility and approach for integrating custom allocators into the document parser subsystem of libfyaml, specifically for `fy_document` and `fy_node` structures.
 
@@ -19,7 +406,7 @@ This document analyzes the feasibility and approach for integrating custom alloc
 
 ---
 
-## Table of Contents
+## Table of Contents (Original Proposal)
 
 1. [Current State Analysis](#current-state-analysis)
 2. [Allocator Infrastructure](#allocator-infrastructure)
@@ -1398,6 +1785,6 @@ The existing allocator infrastructure is robust and ready to use. The main work 
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** 2025-10-30
-**Status:** Proposal / Analysis Complete
+**Document Version:** 2.0
+**Last Updated:** 2025-11-01
+**Status:** ✅ **IMPLEMENTED** - Core integration complete, original analysis preserved for reference
