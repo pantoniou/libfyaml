@@ -391,9 +391,9 @@ static int fy_linear_parse_cfg(const char *cfg_str, void **cfgp)
 	if (!params_copy)
 		goto err_out;
 
-	/* Parse comma-separated key=value pairs */
-	for (token = strtok_r(params_copy, ",", &saveptr); token;
-	     token = strtok_r(NULL, ",", &saveptr)) {
+	/* Parse comma-separated key=value pairs (bracket-aware) */
+	for (token = fy_strtok_bracket_r(params_copy, ",", &saveptr); token;
+	     token = fy_strtok_bracket_r(NULL, ",", &saveptr)) {
 
 		/* Find the '=' separator */
 		key = token;

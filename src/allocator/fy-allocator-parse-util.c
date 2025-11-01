@@ -167,3 +167,97 @@ int fy_parse_unsigned_value(const char *str, unsigned int *valp)
 	*valp = (unsigned int)val;
 	return 0;
 }
+
+char *fy_extract_bracketed_value(const char *value)
+{
+	size_t len, i;
+	int depth = 0;
+	int start = -1, end = -1;
+
+	if (!value || value[0] != '[')
+		return NULL;
+
+	len = strlen(value);
+
+	/* Find matching closing bracket using depth tracking */
+	for (i = 0; i < len; i++) {
+		if (value[i] == '[') {
+			if (depth == 0)
+				start = i;
+			depth++;
+		} else if (value[i] == ']') {
+			depth--;
+			if (depth == 0) {
+				end = i;
+				break;  /* Found matching bracket */
+			}
+		}
+	}
+
+	/* Validate: start must be 0, end must be last char, depth must be 0 */
+	if (start != 0 || end != (int)len - 1 || depth != 0) {
+		fprintf(stderr, "Unmatched brackets in config: '%s'\n", value);
+		return NULL;
+	}
+
+	/* Extract content between brackets */
+	if (end - start <= 1)
+		return strdup("");  /* Empty brackets [] */
+
+	return strndup(value + start + 1, end - start - 1);
+}
+
+char *fy_strtok_bracket_r(char *str, const char *delim, char **saveptr)
+{
+	char *token_start, *p;
+	int depth;
+
+	/* First call: use provided string; subsequent calls: use saved position */
+	if (str != NULL)
+		*saveptr = str;
+	else
+		str = *saveptr;
+
+	if (!str || !*str)
+		return NULL;
+
+	/* Skip leading delimiters */
+	while (*str && strchr(delim, *str))
+		str++;
+
+	if (!*str) {
+		*saveptr = str;
+		return NULL;
+	}
+
+	/* Start of token */
+	token_start = str;
+	depth = 0;
+
+	/* Scan until we find a delimiter at depth 0, or end of string */
+	for (p = str; *p; p++) {
+		if (*p == '[') {
+			depth++;
+		} else if (*p == ']') {
+			depth--;
+			if (depth < 0) {
+				fprintf(stderr, "Unmatched closing bracket in config\n");
+				return NULL;
+			}
+		} else if (depth == 0 && strchr(delim, *p)) {
+			/* Found delimiter at bracket depth 0 */
+			*p = '\0';
+			*saveptr = p + 1;
+			return token_start;
+		}
+	}
+
+	/* Reached end of string */
+	if (depth != 0) {
+		fprintf(stderr, "Unmatched opening bracket in config\n");
+		return NULL;
+	}
+
+	*saveptr = p;  /* Points to '\0' */
+	return token_start;
+}

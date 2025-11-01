@@ -1050,60 +1050,6 @@ fy_dedup_get_caps(struct fy_allocator *a)
 /* Forward declaration of allocator ops lookup function */
 extern const struct fy_allocator_ops *fy_allocator_get_ops_by_name(const char *name);
 
-/**
- * extract_bracketed_content() - Extract content from properly matched brackets
- * @value: String to parse (must start with '[')
- *
- * Extracts content between matching brackets using proper depth tracking.
- * This handles nested brackets correctly by tracking bracket depth.
- *
- * Examples:
- *   "[linear:size=16M]" -> "linear:size=16M"
- *   "[dedup:parent=[linear:size=16M]]" -> "dedup:parent=[linear:size=16M]"
- *   "[mremap:a=[x,y],b=[p,q]]" -> "mremap:a=[x,y],b=[p,q]"
- *
- * Returns: Newly allocated string with extracted content, or NULL on error
- *          Caller must free the returned string.
- */
-static char *extract_bracketed_content(const char *value)
-{
-	size_t len, i;
-	int depth = 0;
-	int start = -1, end = -1;
-
-	if (!value || value[0] != '[')
-		return NULL;
-
-	len = strlen(value);
-
-	/* Find matching closing bracket using depth tracking */
-	for (i = 0; i < len; i++) {
-		if (value[i] == '[') {
-			if (depth == 0)
-				start = i;
-			depth++;
-		} else if (value[i] == ']') {
-			depth--;
-			if (depth == 0) {
-				end = i;
-				break;  /* Found matching bracket */
-			}
-		}
-	}
-
-	/* Validate: start must be 0, end must be last char, depth must be 0 */
-	if (start != 0 || end != (int)len - 1 || depth != 0) {
-		fprintf(stderr, "Unmatched brackets in config: '%s'\n", value);
-		return NULL;
-	}
-
-	/* Extract content between brackets */
-	if (end - start <= 1)
-		return strdup("");  /* Empty brackets [] */
-
-	return strndup(value + start + 1, end - start - 1);
-}
-
 static int fy_dedup_parse_cfg(const char *cfg_str, void **cfgp)
 {
 	struct fy_dedup_allocator_cfg *cfg;
@@ -1143,9 +1089,9 @@ static int fy_dedup_parse_cfg(const char *cfg_str, void **cfgp)
 	if (!params_copy)
 		goto err_out;
 
-	/* Parse comma-separated key=value pairs */
-	for (token = strtok_r(params_copy, ",", &saveptr); token;
-	     token = strtok_r(NULL, ",", &saveptr)) {
+	/* Parse comma-separated key=value pairs (bracket-aware) */
+	for (token = fy_strtok_bracket_r(params_copy, ",", &saveptr); token;
+	     token = fy_strtok_bracket_r(NULL, ",", &saveptr)) {
 
 		/* Find the '=' separator */
 		key = token;
@@ -1176,8 +1122,8 @@ static int fy_dedup_parse_cfg(const char *cfg_str, void **cfgp)
 
 			/* Check for bracket syntax: parent=[config] */
 			if (value[0] == '[') {
-				/* Use proper bracket depth tracking for nested brackets */
-				parent_config_str = extract_bracketed_content(value);
+				/* Use shared bracket extraction utility (handles nested brackets) */
+				parent_config_str = fy_extract_bracketed_value(value);
 				if (!parent_config_str) {
 					fprintf(stderr, "dedup: Invalid bracket syntax in parent config\n");
 					goto err_out;
