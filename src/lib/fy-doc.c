@@ -94,79 +94,41 @@ static void fy_resolve_parent_node(struct fy_document *fyd, struct fy_node *fyn,
 static struct fy_allocator *
 fy_create_allocator_from_flags(unsigned int flags)
 {
+	static const char *allocator_map[] = {
+		[FYPCF_ALLOCATOR_DEFAULT >> FYPCF_ALLOCATOR_SHIFT] = NULL,	/* default malloc */
+		[FYPCF_ALLOCATOR_MALLOC  >> FYPCF_ALLOCATOR_SHIFT] = "malloc",
+		[FYPCF_ALLOCATOR_LINEAR  >> FYPCF_ALLOCATOR_SHIFT] = "linear",
+		[FYPCF_ALLOCATOR_MREMAP  >> FYPCF_ALLOCATOR_SHIFT] = "mremap",
+		[FYPCF_ALLOCATOR_DEDUP   >> FYPCF_ALLOCATOR_SHIFT] = "dedup",
+		[FYPCF_ALLOCATOR_AUTO    >> FYPCF_ALLOCATOR_SHIFT] = "auto",
+	};
 	unsigned int alloc_type;
 	const char *allocator_name;
-	struct fy_allocator *a;
 
 	/* Extract allocator type from flags */
 	alloc_type = (flags >> FYPCF_ALLOCATOR_SHIFT) & FYPCF_ALLOCATOR_MASK;
 
-	switch (alloc_type) {
-	case 0: /* FYPCF_ALLOCATOR_DEFAULT - use standard malloc */
+	if (alloc_type >= ARRAY_SIZE(allocator_map))
 		return NULL;
-	case 1: /* FYPCF_ALLOCATOR_MALLOC - explicit malloc wrapper */
-		allocator_name = "malloc";
-		break;
-	case 2: /* FYPCF_ALLOCATOR_LINEAR - linear arena */
-		allocator_name = "linear";
-		break;
-	case 3: /* FYPCF_ALLOCATOR_MREMAP - mremap-based arena */
-		allocator_name = "mremap";
-		break;
-	case 4: /* FYPCF_ALLOCATOR_DEDUP - deduplication */
-		allocator_name = "dedup";
-		break;
-	case 5: /* FYPCF_ALLOCATOR_AUTO - automatic selection */
-		allocator_name = "auto";
-		break;
-	default:
-		/* Unknown allocator type, fallback to malloc */
-		return NULL;
-	}
 
-	a = fy_allocator_create(allocator_name, NULL);
-	return a;
+	allocator_name = allocator_map[alloc_type];
+	if (!allocator_name)
+		return NULL;
+
+	return fy_allocator_create(allocator_name, NULL);
 }
-
-/* Allocation tags for tracking different allocation types */
-enum fy_doc_alloc_tag {
-	FYDAT_DOCUMENT = 1,	/* fy_document structure */
-	FYDAT_NODE,		/* fy_node structure */
-	FYDAT_NODE_PAIR,	/* fy_node_pair structure */
-	FYDAT_ANCHOR,		/* fy_anchor structure */
-	FYDAT_ACCEL,		/* fy_accel structures */
-	FYDAT_ITERATOR,		/* fy_document_iterator */
-	FYDAT_BUILDER,		/* fy_document_builder */
-	FYDAT_COMPOSER,		/* fy_composer */
-	FYDAT_BUFFER,		/* Dynamic buffers/arrays */
-};
 
 /* Wrapper for malloc using document allocator */
 static inline void *
-fy_doc_malloc(struct fy_document *fyd, int tag_hint, size_t size)
+fy_doc_malloc(struct fy_document *fyd, int tag_hint, size_t size, size_t align)
 {
-	struct fy_allocator *a = fyd ? fyd->allocator : NULL;
 	int tag;
 
-	if (a && a->ops && a->ops->alloc &&
-	    tag_hint >= 0 && tag_hint < (int)ARRAY_SIZE(fyd->allocator_tags)) {
-		tag = fyd->allocator_tags[tag_hint];  /* Use tag for this allocation type */
-		if (tag >= 0)
-			return a->ops->alloc(a, tag, size, sizeof(void *));
-	}
+	if (fyd->allocator && (unsigned int)tag_hint < ARRAY_SIZE(fyd->allocator_tags) &&
+		(tag = fyd->allocator_tags[tag_hint]) >= 0)
+		return fy_allocator_alloc(fyd->allocator, tag, size, align);
+
 	return malloc(size);
-}
-
-/* Wrapper for calloc using document allocator */
-static inline void *
-fy_doc_calloc(struct fy_document *fyd, int tag, size_t size)
-{
-	void *ptr;
-
-	ptr = fy_doc_malloc(fyd, tag, size);
-	if (ptr)
-		memset(ptr, 0, size);
-	return ptr;
 }
 
 /* Wrapper for free using document allocator */
@@ -180,19 +142,13 @@ fy_doc_free(struct fy_document *fyd, int tag_hint, void *ptr)
 	if (!ptr)
 		return;
 
-	a = fyd ? fyd->allocator : NULL;
-	if (a && a->ops && a->ops->free &&
-	    tag_hint >= 0 && tag_hint < (int)ARRAY_SIZE(fyd->allocator_tags)) {
-		tag = fyd->allocator_tags[tag_hint];  /* Use tag for this allocation type */
-		if (tag >= 0) {
-			/* Only call free if allocator supports individual frees */
-			caps = a->ops->get_caps ? a->ops->get_caps(a) : 0;
-			if (caps & FYACF_CAN_FREE_INDIVIDUAL) {
-				a->ops->free(a, tag, ptr);
-			}
-			/* If allocator doesn't support individual frees, skip (NOP) */
-			return;
-		}
+	if (fyd->allocator && tag_hint < ARRAY_SIZE(fyd->allocator_tags) &&
+		(tag = fyd->allocator_tags[tag_hint]) >= 0) {
+
+		if (fyd->allocator_caps & FYACF_CAN_FREE_INDIVIDUAL)
+			fy_allocator_free(fyd->allocator, tag, ptr);
+
+		return;
 	}
 	free(ptr);
 }
@@ -201,24 +157,14 @@ fy_doc_free(struct fy_document *fyd, int tag_hint, void *ptr)
 static inline void *
 fy_cfg_malloc(const struct fy_parse_cfg *cfg, int tag, size_t size)
 {
+	void *p;
+
 	/* For document allocation, we don't have allocator instance yet,
 	 * so we just use malloc. The allocator will be created after
 	 * the document structure is allocated and initialized. */
-	(void)cfg;
-	(void)tag;
-	return malloc(size);
-}
-
-/* Wrapper for calloc using parse_cfg allocator (pre-document) */
-static inline void *
-fy_cfg_calloc(const struct fy_parse_cfg *cfg, int tag, size_t size)
-{
-	void *ptr;
-
-	ptr = fy_cfg_malloc(cfg, tag, size);
-	if (ptr)
-		memset(ptr, 0, size);
-	return ptr;
+	p = malloc(size);
+	if (p)
+		memset(p, 0, size);
 }
 
 /* Wrapper for free using parse_cfg allocator (pre-document) */
@@ -484,6 +430,7 @@ struct fy_node *fy_node_get_nearest_child_of(struct fy_node *fyn_base,
 void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 {
 	struct fy_node *fyn;
+	unsigned int i;
 
 	if (!fyd)
 		return;
@@ -502,17 +449,46 @@ void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
 
 	/* Release allocator tags and destroy allocator if it was created */
 	if (fyd->allocator) {
-		if (fyd->allocator->ops && fyd->allocator->ops->release_tag) {
-			int i;
-			for (i = 0; i < (int)ARRAY_SIZE(fyd->allocator_tags); i++) {
-				if (fyd->allocator_tags[i] >= 0)
-					fyd->allocator->ops->release_tag(fyd->allocator, fyd->allocator_tags[i]);
-			}
-		}
+		for (i = 0; i < ARRAY_SIZE(fyd->allocator_tags); i++)
+			fy_allocator_release_tag(fyd->allocator, fyd->allocator_tags[i]);
 		fy_allocator_destroy(fyd->allocator);
 	}
 
 	free(fyd);
+}
+
+static int fy_setup_allocator(struct fy_document *fyd)
+{
+	unsigned int i;
+	int tag;
+
+	/* Initialize all allocator tags to -1 */
+	for (i = 0; i < ARRAY_SIZE(fyd->allocator_tags); i++)
+		fyd->allocator_tags[i] = -1;
+
+	fyd->allocator_caps = 0;
+
+	/* Create allocator instance from flags if requested */
+	fyd->allocator = fy_create_allocator_from_flags(fyp->cfg.flags);
+
+	/* no allocator? no problem - just malloc free */
+	if (!fyd->allocator)
+		return;
+
+	/* Cache allocator capabilities for fast checks during freeing */
+	fyd->allocator_caps = fy_allocator_get_caps(fyd->allocator);
+
+	/* Get tags for each allocation type if allocator was created */
+	for (i = 0; i < ARRAY_SIZE(fyd->allocator_tags); i++) {
+		tag = fy_allocator_get_tag(fyd->allocator);
+		if (tag < 0)
+			goto err_out;
+		fyd->allocator_tags[i] = tag;
+	}
+
+	return 0;
+err_out:
+	return -1;
 }
 
 struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_eventp *fyep)
@@ -520,7 +496,8 @@ struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_ev
 	struct fy_document *fyd = NULL;
 	struct fy_document_state *fyds;
 	struct fy_event *fye = NULL;
-	int rc;
+	unsigned int i;
+	int tag, rc;
 
 	if (!fyp || !fyep)
 		return NULL;
@@ -531,28 +508,16 @@ struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_ev
 			fye->type == FYET_DOCUMENT_START, err_out,
 			"invalid start of event stream");
 
-	fyd = fy_cfg_calloc(&fyp->cfg, FYDAT_DOCUMENT, sizeof(*fyd));
+	fyd = fy_cfg_malloc(&fyp->cfg, FYDAT_DOCUMENT, sizeof(*fyd));
 	fyp_error_check(fyp, fyd, err_out,
 		"malloc() failed");
 
 	fyd->diag = fy_diag_ref(fyp->diag);
 	fyd->parse_cfg = fyp->cfg;
 
-	/* Initialize all allocator tags to -1 */
-	for (rc = 0; rc < (int)ARRAY_SIZE(fyd->allocator_tags); rc++)
-		fyd->allocator_tags[rc] = -1;
-
-	/* Create allocator instance from flags if requested */
-	fyd->allocator = fy_create_allocator_from_flags(fyp->cfg.flags);
-
-	/* Get tags for each allocation type if allocator was created */
-	if (fyd->allocator && fyd->allocator->ops && fyd->allocator->ops->get_tag) {
-		for (rc = 0; rc < (int)ARRAY_SIZE(fyd->allocator_tags); rc++) {
-			fyd->allocator_tags[rc] = fyd->allocator->ops->get_tag(fyd->allocator);
-			if (fyd->allocator_tags[rc] < 0)
-				goto err_out;
-		}
-	}
+	rc = fy_setup_allocator(fyd);
+	fyp_error_check(fyp, !rc, err_out,
+		"fy_setup_allocator() failed");
 
 	fy_anchor_list_init(&fyd->anchors);
 	if (fy_document_can_be_accelerated(fyd)) {
@@ -1009,7 +974,7 @@ struct fy_node *fy_node_alloc(struct fy_document *fyd, enum fy_node_type type)
 	struct fy_node *fyn = NULL;
 	int rc;
 
-	fyn = fy_doc_calloc(fyd, FYDAT_NODE, sizeof(*fyn));
+	fyn = fy_doc_malloc(fyd, FYDAT_NODE, sizeof(*fyn));
 	if (!fyn)
 		return NULL;
 
@@ -3288,26 +3253,10 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 	if (!cfg)
 		cfg = &doc_parse_default_cfg;
 
-	fyd = fy_cfg_calloc(cfg, FYDAT_DOCUMENT, sizeof(*fyd));
+	fyd = fy_cfg_malloc(cfg, FYDAT_DOCUMENT, sizeof(*fyd));
 	if (!fyd)
 		goto err_out;
 	fyd->parse_cfg = *cfg;
-
-	/* Initialize all allocator tags to -1 */
-	for (rc = 0; rc < (int)ARRAY_SIZE(fyd->allocator_tags); rc++)
-		fyd->allocator_tags[rc] = -1;
-
-	/* Create allocator instance from flags if requested */
-	fyd->allocator = fy_create_allocator_from_flags(cfg->flags);
-
-	/* Get tags for each allocation type if allocator was created */
-	if (fyd->allocator && fyd->allocator->ops && fyd->allocator->ops->get_tag) {
-		for (rc = 0; rc < (int)ARRAY_SIZE(fyd->allocator_tags); rc++) {
-			fyd->allocator_tags[rc] = fyd->allocator->ops->get_tag(fyd->allocator);
-			if (fyd->allocator_tags[rc] < 0)
-				goto err_out;
-		}
-	}
 
 	diag = cfg->diag;
 	if (!diag) {
@@ -3318,6 +3267,10 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 		fy_diag_ref(diag);
 
 	fyd->diag = diag;
+
+	rc = fy_setup_allocator(fyd);
+	fyd_error_check(fyd, !rc, err_out,
+		"fy_setup_allocator() failed");
 
 	fy_anchor_list_init(&fyd->anchors);
 	if (fy_document_is_accelerated(fyd)) {

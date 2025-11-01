@@ -101,6 +101,20 @@ struct fy_anchor {
 FY_TYPE_FWD_DECL_LIST(anchor);
 FY_TYPE_DECL_LIST(anchor);
 
+/* Allocation tags for tracking different allocation types */
+enum fy_doc_alloc_tag {
+	FYDAT_DOCUMENT,		/* fy_document structure */
+	FYDAT_NODE,		/* fy_node structure */
+	FYDAT_NODE_PAIR,	/* fy_node_pair structure */
+	FYDAT_ANCHOR,		/* fy_anchor structure */
+	FYDAT_ACCEL,		/* fy_accel structures */
+	FYDAT_ITERATOR,		/* fy_document_iterator */
+	FYDAT_BUILDER,		/* fy_document_builder */
+	FYDAT_COMPOSER,		/* fy_composer */
+	FYDAT_BUFFER,		/* Dynamic buffers/arrays */
+	FYDAT_COUNT,
+};
+
 struct fy_document {
 	struct list_head node;
 	struct fy_anchor_list anchors;
@@ -110,7 +124,6 @@ struct fy_document {
 	struct fy_diag *diag;
 	struct fy_parse_cfg parse_cfg;
 	struct fy_allocator *allocator;	/* custom allocator (if enabled via flags) */
-	int allocator_tags[10];			/* allocator tags indexed by FYDAT_* enum */
 	struct fy_node *root;
 	bool parse_error : 1;
 
@@ -121,6 +134,9 @@ struct fy_document {
 	void *meta_user;
 
 	struct fy_path_expr_document_data *pxdd;
+
+	int allocator_tags[FYDAT_COUNT];/* allocator tags indexed by FYDAT_* enum */
+	unsigned int allocator_caps;	/* cached allocator capability flags (FYACF_*) */
 };
 /* only the list declaration/methods */
 FY_TYPE_DECL_LIST(document);
