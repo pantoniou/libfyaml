@@ -53,7 +53,9 @@ libfyaml_test_SOURCES = \
 if HAVE_STATIC
 libfyaml_test_SOURCES += \
 	libfyaml-test-private.c \
-	libfyaml-test-private-id.c
+	libfyaml-test-private-id.c \
+	libfyaml-test-parser.c \
+	libfyaml-test-thread.c
 libfyaml_test_LDFLAGS += -static
 endif
 

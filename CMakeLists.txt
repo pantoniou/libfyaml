@@ -1098,6 +1098,8 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
             test/libfyaml-test-allocator.c
             test/libfyaml-test-private.c
             test/libfyaml-test-private-id.c
+            test/libfyaml-test-parser.c
+            test/libfyaml-test-thread.c
         )
 
         target_include_directories(libfyaml-test PRIVATE
