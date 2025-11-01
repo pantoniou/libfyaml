@@ -1111,13 +1111,30 @@ static int fy_dedup_parse_cfg(const char *cfg_str, void **cfgp)
 
 		if (strcmp(key, "parent") == 0) {
 			/* Store full parent config string for recursive parsing
-			 * This can be:
+			 * Supported formats:
 			 *   - Simple: "malloc"
-			 *   - With config: "linear:size=16M"
-			 * Note: comma-separated parent params would need special handling
+			 *   - With single param: "linear:size=16M"
+			 *   - With multiple params (brackets): "[mremap:minimum_arena_size=4M,grow_ratio=1.5]"
+			 *
+			 * Brackets protect commas inside parent config from top-level tokenization
 			 */
 			free(parent_config_str);
-			parent_config_str = strdup(value);
+
+			/* Check for bracket syntax: parent=[config] */
+			if (value[0] == '[') {
+				size_t len = strlen(value);
+				if (len > 2 && value[len-1] == ']') {
+					/* Extract content between brackets */
+					parent_config_str = strndup(value + 1, len - 2);
+				} else {
+					fprintf(stderr, "dedup: Unmatched bracket in parent config\n");
+					goto err_out;
+				}
+			} else {
+				/* No brackets, use value as-is */
+				parent_config_str = strdup(value);
+			}
+
 			if (!parent_config_str)
 				goto err_out;
 		} else if (strcmp(key, "bloom_filter_bits") == 0) {

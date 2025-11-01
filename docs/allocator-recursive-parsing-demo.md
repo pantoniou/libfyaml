@@ -58,23 +58,34 @@ fy_dedup_parse_cfg("parent=linear:size=16M,dedup_threshold=32")
 └─ Returns dedup config with fully configured linear parent
 ```
 
-### 4. Complex Nested Configuration
+### 4. Complex Nested Configuration (Bracket Syntax)
 
 ```c
-// Dedup with mremap parent (multiple parameters)
---allocator=dedup:parent=mremap:minimum_arena_size=4M:grow_ratio=1.5,dedup_threshold=64
+// Dedup with mremap parent (multiple comma-separated parameters)
+// Brackets protect the commas inside parent config from top-level tokenization
+--allocator=dedup:parent=[mremap:minimum_arena_size=4M,grow_ratio=1.5],dedup_threshold=64
 ```
 
 **Parse Flow:**
 ```
-fy_dedup_parse_cfg("parent=mremap:minimum_arena_size=4M:grow_ratio=1.5,dedup_threshold=64")
+fy_dedup_parse_cfg("parent=[mremap:minimum_arena_size=4M,grow_ratio=1.5],dedup_threshold=64")
+├─ Tokenizes on top-level commas:
+│  Token 1: "parent=[mremap:minimum_arena_size=4M,grow_ratio=1.5]"
+│  Token 2: "dedup_threshold=64"
+│
+├─ Parses parent parameter:
+│  ├─ Detects bracket syntax: value = "[mremap:minimum_arena_size=4M,grow_ratio=1.5]"
+│  ├─ Extracts bracketed content: "mremap:minimum_arena_size=4M,grow_ratio=1.5"
+│  └─ Stores as parent_config_str
+│
 ├─ Parses dedup parameters: dedup_threshold=64
-├─ Parses parent string: "mremap:minimum_arena_size=4M:grow_ratio=1.5"
-│  ├─ Splits: type="mremap", params="minimum_arena_size=4M:grow_ratio=1.5"
+│
+├─ Parses parent string: "mremap:minimum_arena_size=4M,grow_ratio=1.5"
+│  ├─ Splits: type="mremap", params="minimum_arena_size=4M,grow_ratio=1.5"
 │  └─ Gets ops: fy_allocator_get_ops_by_name("mremap")
 │
 ├─ RECURSION: Calls mremap's parser
-│  └─ mremap_ops->parse_cfg("minimum_arena_size=4M:grow_ratio=1.5", &parent_cfg)
+│  └─ mremap_ops->parse_cfg("minimum_arena_size=4M,grow_ratio=1.5", &parent_cfg)
 │     ├─ Parses minimum_arena_size=4M → 4194304
 │     ├─ Parses grow_ratio=1.5 → 1.5f
 │     └─ Returns: fy_mremap_allocator_cfg{.minimum_arena_size=4M, .grow_ratio=1.5, ...}
@@ -87,29 +98,50 @@ fy_dedup_parse_cfg("parent=mremap:minimum_arena_size=4M:grow_ratio=1.5,dedup_thr
 
 ## Code Walkthrough
 
-### Key Function: `fy_dedup_parse_cfg`
+### Key Function: `fy_dedup_parse_cfg` (with Bracket Support)
 
 ```c
 static int fy_dedup_parse_cfg(const char *cfg_str, void **cfgp)
 {
-    // ... parse dedup's own parameters (dedup_threshold, etc.) ...
+    // Tokenize on commas for top-level parameters
+    for (token = strtok_r(params_copy, ",", &saveptr); token; ...) {
+        key = token;
+        value = strchr(key, '=');
+        *value++ = '\0';
 
-    // Parse parent allocator config string (e.g., "linear:size=16M")
-    parent_type = strdup(parent_config_str);  // "linear:size=16M"
+        if (strcmp(key, "parent") == 0) {
+            // BRACKET HANDLING: Protect commas in parent config
+            if (value[0] == '[') {
+                size_t len = strlen(value);
+                if (len > 2 && value[len-1] == ']') {
+                    // Extract bracketed content
+                    // "[mremap:a=1,b=2]" → "mremap:a=1,b=2"
+                    parent_config_str = strndup(value + 1, len - 2);
+                }
+            } else {
+                // No brackets, use as-is
+                parent_config_str = strdup(value);
+            }
+        }
+        // ... parse other dedup parameters ...
+    }
+
+    // Parse parent allocator config string
+    parent_type = strdup(parent_config_str);  // "mremap:a=1,b=2"
 
     parent_params = strchr(parent_type, ':');
     if (parent_params) {
-        *parent_params++ = '\0';  // Split: type="linear", params="size=16M"
+        *parent_params++ = '\0';  // Split: type="mremap", params="a=1,b=2"
     }
 
     // Get parent allocator ops by name
-    parent_ops = fy_allocator_get_ops_by_name(parent_type);  // Gets linear ops
+    parent_ops = fy_allocator_get_ops_by_name(parent_type);
 
     // RECURSION: Call parent's parse_cfg
     if (parent_ops->parse_cfg) {
         rc = parent_ops->parse_cfg(parent_params, &parent_cfg);
-        //   ^-- This calls fy_linear_parse_cfg("size=16M", &parent_cfg)
-        //       which parses the size parameter and returns a config struct
+        //   ^-- This calls fy_mremap_parse_cfg("a=1,b=2", &parent_cfg)
+        //       The parent parser can now use commas freely!
     }
 
     // Create parent allocator with parsed config
@@ -166,7 +198,17 @@ parent_ops->free_cfg(parent_cfg);  // Frees fy_linear_allocator_cfg
 
 ## Practical Examples
 
-### Example 1: Dedup with Linear Parent (16MB)
+### Example 1: Dedup with Simple Parent (No Config)
+
+```bash
+fy-tool --allocator=dedup:parent=malloc,dedup_threshold=32 input.yaml
+```
+
+Creates:
+- Malloc allocator (default parent)
+- Dedup allocator wrapping it with 32-byte dedup threshold
+
+### Example 2: Dedup with Linear Parent (Single Parameter)
 
 ```bash
 fy-tool --allocator=dedup:parent=linear:size=16M,dedup_threshold=32 input.yaml
@@ -176,17 +218,17 @@ Creates:
 - Linear allocator with 16MB buffer
 - Dedup allocator wrapping it with 32-byte dedup threshold
 
-### Example 2: Dedup with Mremap Parent (4MB arenas, 1.5x growth)
+### Example 3: Dedup with Mremap Parent (Multiple Parameters - Bracket Syntax)
 
 ```bash
-fy-tool --allocator=dedup:parent=mremap:minimum_arena_size=4M:grow_ratio=1.5 input.yaml
+fy-tool --allocator=dedup:parent=[mremap:minimum_arena_size=4M,grow_ratio=1.5],dedup_threshold=64 input.yaml
 ```
 
 Creates:
 - Mremap allocator with 4MB minimum arena size and 1.5x growth factor
-- Dedup allocator wrapping it with default dedup settings
+- Dedup allocator wrapping it with 64-byte dedup threshold
 
-### Example 3: Auto Allocator (No Recursion, But Shows Pattern)
+### Example 4: Auto Allocator (No Recursion, But Shows Pattern)
 
 ```bash
 fy-tool --allocator=auto:scenario=single_linear,estimated_max_size=100M input.yaml
@@ -196,22 +238,45 @@ Creates:
 - Auto allocator with single_linear scenario
 - Internally creates appropriate allocators based on scenario
 
-## Limitations
+## Syntax Rules
 
-### Current Limitation: Comma in Parent Parameters
+### Parameter Separators
 
-The current implementation uses `,` to separate parameters at the top level, which means parent configurations with multiple comma-separated parameters need special handling:
+- **Top-level separator**: `,` (comma)
+- **Within allocator separator**: `:` (colon)
+- **Complex parent configs**: Use bracket syntax `[...]`
+
+### Bracket Syntax for Parent Configs
+
+When parent allocator has **multiple comma-separated parameters**, use brackets:
 
 ```bash
-# This works (colon-separated parent params)
---allocator=dedup:parent=mremap:minimum_arena_size=4M:grow_ratio=1.5,dedup_threshold=32
+# ✅ CORRECT: Brackets protect commas in parent config
+--allocator=dedup:parent=[mremap:minimum_arena_size=4M,grow_ratio=1.5],dedup_threshold=32
 
-# This would NOT work correctly (comma in parent config conflicts with top-level parsing)
+# ✅ CORRECT: Single parameter doesn't need brackets
+--allocator=dedup:parent=linear:size=16M,dedup_threshold=32
+
+# ✅ CORRECT: Simple parent (no parameters)
+--allocator=dedup:parent=malloc,dedup_threshold=32
+
+# ❌ WRONG: Without brackets, commas in parent config break parsing
 # --allocator=dedup:parent=mremap:minimum_arena_size=4M,grow_ratio=1.5,dedup_threshold=32
-#                                                         ^-- This comma breaks parsing
+#                                                        ^-- Comma treated as top-level separator
 ```
 
-**Workaround**: Parent allocators should use `:` as separator, or we need to implement proper nested/quoted parameter parsing.
+### How Bracket Parsing Works
+
+```c
+// When parser sees: parent=[mremap:minimum_arena_size=4M,grow_ratio=1.5]
+if (value[0] == '[') {
+    size_t len = strlen(value);
+    if (len > 2 && value[len-1] == ']') {
+        // Extract: "mremap:minimum_arena_size=4M,grow_ratio=1.5"
+        parent_config_str = strndup(value + 1, len - 2);
+    }
+}
+```
 
 ## Future Enhancements
 
