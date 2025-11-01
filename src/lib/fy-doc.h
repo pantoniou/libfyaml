@@ -108,10 +108,6 @@ enum fy_doc_alloc_tag {
 	FYDAT_NODE_PAIR,	/* fy_node_pair structure */
 	FYDAT_ANCHOR,		/* fy_anchor structure */
 	FYDAT_ACCEL,		/* fy_accel structures */
-	FYDAT_ITERATOR,		/* fy_document_iterator */
-	FYDAT_BUILDER,		/* fy_document_builder */
-	FYDAT_COMPOSER,		/* fy_composer */
-	FYDAT_BUFFER,		/* Dynamic buffers/arrays */
 	FYDAT_COUNT,
 };
 
@@ -136,7 +132,7 @@ struct fy_document {
 	struct fy_path_expr_document_data *pxdd;
 
 	int allocator_tags[FYDAT_COUNT];/* allocator tags indexed by FYDAT_* enum */
-	unsigned int allocator_caps;	/* cached allocator capability flags (FYACF_*) */
+	struct fy_allocator_caps allocator_caps;
 };
 /* only the list declaration/methods */
 FY_TYPE_DECL_LIST(document);
