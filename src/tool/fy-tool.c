@@ -32,6 +32,7 @@
 
 #include "fy-valgrind.h"
 #include "fy-tool-util.h"
+#include "fy-allocator-config-parse.h"
 
 #define QUIET_DEFAULT			false
 #define INCLUDE_DEFAULT			""
@@ -287,8 +288,14 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--strip-empty-kv         : Strip keys with empty values when emitting (not available in streaming mode)"
 						" (default %s)\n",
 						STRIP_EMPTY_KV_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--allocator <type>       : Use specified allocator for document/node allocations\n");
+	fprintf(fp, "\t--allocator <config>     : Use specified allocator for document/node allocations\n");
+	fprintf(fp, "\t                           Format: type[:param=value,...]\n");
 	fprintf(fp, "\t                           Types: default, malloc, linear, mremap, dedup, auto\n");
+	fprintf(fp, "\t                           Examples:\n");
+	fprintf(fp, "\t                             --allocator=linear:size=16M\n");
+	fprintf(fp, "\t                             --allocator=mremap:minimum_arena_size=4M,grow_ratio=1.5\n");
+	fprintf(fp, "\t                             --allocator=dedup:parent=linear,dedup_threshold=32\n");
+	fprintf(fp, "\t                             --allocator=auto:scenario=single_linear,estimated_max_size=100M\n");
 	fprintf(fp, "\t                           (default %s)\n", ALLOCATOR_DEFAULT);
 	fprintf(fp, "\t--quiet, -q              : Quiet operation, do not "
 						"output messages (default %s)\n",
@@ -1120,6 +1127,10 @@ int main(int argc, char *argv[])
 	/* b3sum */
 	int opti;
 	struct b3sum_config b3cfg = default_b3sum_cfg;
+	/* allocator config */
+	char *allocator_name = NULL;
+	void *allocator_cfg = NULL;
+	struct fy_allocator *allocator = NULL;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -1420,22 +1431,33 @@ int main(int argc, char *argv[])
 			tsv_format = true;
 			break;
 		case OPT_ALLOCATOR:
-			cfg.flags &= ~(FYPCF_ALLOCATOR_MASK << FYPCF_ALLOCATOR_SHIFT);
-			if (!strcmp(optarg, "default")) {
-				cfg.flags |= FYPCF_ALLOCATOR_DEFAULT;
-			} else if (!strcmp(optarg, "malloc")) {
-				cfg.flags |= FYPCF_ALLOCATOR_MALLOC;
-			} else if (!strcmp(optarg, "linear")) {
-				cfg.flags |= FYPCF_ALLOCATOR_LINEAR;
-			} else if (!strcmp(optarg, "mremap")) {
-				cfg.flags |= FYPCF_ALLOCATOR_MREMAP;
-			} else if (!strcmp(optarg, "dedup")) {
-				cfg.flags |= FYPCF_ALLOCATOR_DEDUP;
-			} else if (!strcmp(optarg, "auto")) {
-				cfg.flags |= FYPCF_ALLOCATOR_AUTO;
-			} else {
-				fprintf(stderr, "bad allocator option %s\n", optarg);
+			/* Parse allocator config string */
+			if (fy_allocator_parse_config_string(optarg, &allocator_name, &allocator_cfg) < 0) {
+				fprintf(stderr, "Failed to parse allocator config: %s\n", optarg);
 				goto err_out_usage;
+			}
+
+			/* Create the allocator with parsed config */
+			allocator = fy_allocator_create(allocator_name, allocator_cfg);
+			if (!allocator) {
+				fprintf(stderr, "Failed to create allocator: %s\n", allocator_name);
+				goto err_out_usage;
+			}
+
+			/* Also set the flag for the allocator type (for compatibility) */
+			cfg.flags &= ~(FYPCF_ALLOCATOR_MASK << FYPCF_ALLOCATOR_SHIFT);
+			if (!strcmp(allocator_name, "default")) {
+				cfg.flags |= FYPCF_ALLOCATOR_DEFAULT;
+			} else if (!strcmp(allocator_name, "malloc")) {
+				cfg.flags |= FYPCF_ALLOCATOR_MALLOC;
+			} else if (!strcmp(allocator_name, "linear")) {
+				cfg.flags |= FYPCF_ALLOCATOR_LINEAR;
+			} else if (!strcmp(allocator_name, "mremap")) {
+				cfg.flags |= FYPCF_ALLOCATOR_MREMAP;
+			} else if (!strcmp(allocator_name, "dedup")) {
+				cfg.flags |= FYPCF_ALLOCATOR_DEDUP;
+			} else if (!strcmp(allocator_name, "auto")) {
+				cfg.flags |= FYPCF_ALLOCATOR_AUTO;
 			}
 			break;
 
@@ -2153,6 +2175,14 @@ int main(int argc, char *argv[])
 	exitcode = EXIT_SUCCESS;
 
 cleanup:
+	/* Clean up allocator resources */
+	if (allocator_cfg && allocator_name)
+		fy_allocator_free_config(allocator_name, allocator_cfg);
+	if (allocator_name)
+		free(allocator_name);
+	if (allocator)
+		fy_allocator_destroy(allocator);
+
 	if (fypx)
 		fy_path_exec_destroy(fypx);
 

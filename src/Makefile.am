@@ -213,7 +213,9 @@ fy_tool_SOURCES = \
 	tool/fy-tool.c \
 	tool/fy-tool-util.c \
 	tool/fy-tool-dump.c \
+	tool/fy-allocator-config-parse.c \
 	tool/fy-tool-util.h \
+	tool/fy-allocator-config-parse.h \
 	valgrind/fy-valgrind.h
 
 fy_tool_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/valgrind
