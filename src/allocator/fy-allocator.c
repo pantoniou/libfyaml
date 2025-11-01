@@ -227,14 +227,14 @@ out_unlock:
 	return ret;
 }
 
-struct fy_allocator *fy_allocator_create(const char *name, const void *cfg)
+const struct fy_allocator_ops *fy_allocator_get_ops_by_name(const char *name)
 {
 	struct fy_registered_allocator_entry *ae;
 	const struct fy_allocator_ops *ops = NULL;
 	unsigned int i;
 
 	if (!name)
-		name = builtin_allocators[0].name;
+		return NULL;
 
 	allocator_registry_lock();
 	allocator_registry_init();
@@ -258,6 +258,18 @@ struct fy_allocator *fy_allocator_create(const char *name, const void *cfg)
 		}
 	}
 	allocator_registry_unlock();
+
+	return ops;
+}
+
+struct fy_allocator *fy_allocator_create(const char *name, const void *cfg)
+{
+	const struct fy_allocator_ops *ops;
+
+	if (!name)
+		name = builtin_allocators[0].name;
+
+	ops = fy_allocator_get_ops_by_name(name);
 	if (!ops)
 		return NULL;
 

@@ -1047,11 +1047,18 @@ fy_dedup_get_caps(struct fy_allocator *a)
 	return fy_allocator_get_caps(da->parent_allocator) | FYACF_CAN_DEDUP;
 }
 
+/* Forward declaration of allocator ops lookup function */
+extern const struct fy_allocator_ops *fy_allocator_get_ops_by_name(const char *name);
+
 static int fy_dedup_parse_cfg(const char *cfg_str, void **cfgp)
 {
 	struct fy_dedup_allocator_cfg *cfg;
 	char *params_copy = NULL, *saveptr = NULL, *token, *key, *value;
-	char parent_type_buf[32] = "malloc";  /* Default parent */
+	char *parent_config_str = NULL;  /* Full parent config string */
+	char *parent_type = NULL;
+	char *parent_params = NULL;
+	void *parent_cfg = NULL;
+	const struct fy_allocator_ops *parent_ops = NULL;
 	int rc = -1;
 
 	if (!cfgp)
@@ -1070,8 +1077,8 @@ static int fy_dedup_parse_cfg(const char *cfg_str, void **cfgp)
 	cfg->estimated_content_size = 0;
 
 	if (!cfg_str || !*cfg_str) {
-		/* Use default parent (malloc) */
-		cfg->parent_allocator = fy_allocator_create(parent_type_buf, NULL);
+		/* Use default parent (malloc with no config) */
+		cfg->parent_allocator = fy_allocator_create("malloc", NULL);
 		if (!cfg->parent_allocator)
 			goto err_out;
 		*cfgp = cfg;
@@ -1103,12 +1110,16 @@ static int fy_dedup_parse_cfg(const char *cfg_str, void **cfgp)
 			value++;
 
 		if (strcmp(key, "parent") == 0) {
-			/* Store parent type - must be one of: malloc, linear, mremap, auto */
-			if (strlen(value) >= sizeof(parent_type_buf)) {
-				fprintf(stderr, "dedup: Parent allocator name too long: '%s'\n", value);
+			/* Store full parent config string for recursive parsing
+			 * This can be:
+			 *   - Simple: "malloc"
+			 *   - With config: "linear:size=16M"
+			 * Note: comma-separated parent params would need special handling
+			 */
+			free(parent_config_str);
+			parent_config_str = strdup(value);
+			if (!parent_config_str)
 				goto err_out;
-			}
-			strcpy(parent_type_buf, value);
 		} else if (strcmp(key, "bloom_filter_bits") == 0) {
 			rc = fy_parse_unsigned_value(value, &cfg->bloom_filter_bits);
 			if (rc) {
@@ -1145,19 +1156,63 @@ static int fy_dedup_parse_cfg(const char *cfg_str, void **cfgp)
 		}
 	}
 
-	/* Create parent allocator with NULL config (use defaults) */
-	cfg->parent_allocator = fy_allocator_create(parent_type_buf, NULL);
-	if (!cfg->parent_allocator) {
-		fprintf(stderr, "dedup: Failed to create parent allocator '%s'\n", parent_type_buf);
+	/* Parse parent allocator config string (e.g., "linear:size=16M" or just "malloc") */
+	if (!parent_config_str) {
+		/* Default to malloc */
+		parent_config_str = strdup("malloc");
+		if (!parent_config_str)
+			goto err_out;
+	}
+
+	/* Split parent config into type and parameters */
+	parent_type = strdup(parent_config_str);
+	if (!parent_type)
+		goto err_out;
+
+	parent_params = strchr(parent_type, ':');
+	if (parent_params) {
+		*parent_params++ = '\0';  /* Split type and params */
+	}
+
+	/* Get parent allocator ops */
+	parent_ops = fy_allocator_get_ops_by_name(parent_type);
+	if (!parent_ops) {
+		fprintf(stderr, "dedup: Unknown parent allocator type '%s'\n", parent_type);
 		goto err_out;
 	}
 
+	/* Parse parent allocator config recursively if it has parse_cfg */
+	if (parent_ops->parse_cfg) {
+		rc = parent_ops->parse_cfg(parent_params, &parent_cfg);
+		if (rc) {
+			fprintf(stderr, "dedup: Failed to parse parent allocator config\n");
+			goto err_out;
+		}
+	}
+
+	/* Create parent allocator with parsed config */
+	cfg->parent_allocator = fy_allocator_create(parent_type, parent_cfg);
+	if (!cfg->parent_allocator) {
+		fprintf(stderr, "dedup: Failed to create parent allocator '%s'\n", parent_type);
+		goto err_out;
+	}
+
+	/* Free parent config (allocator owns it now) */
+	if (parent_ops->free_cfg && parent_cfg)
+		parent_ops->free_cfg(parent_cfg);
+
 	free(params_copy);
+	free(parent_config_str);
+	free(parent_type);
 	*cfgp = cfg;
 	return 0;
 
 err_out:
 	free(params_copy);
+	free(parent_config_str);
+	free(parent_type);
+	if (parent_ops && parent_ops->free_cfg && parent_cfg)
+		parent_ops->free_cfg(parent_cfg);
 	if (cfg) {
 		if (cfg->parent_allocator)
 			fy_allocator_destroy(cfg->parent_allocator);
