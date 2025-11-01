@@ -9568,40 +9568,31 @@ fy_allocator_dump(struct fy_allocator *a)
  * @FYACF_CAN_FREE_INDIVIDUAL: Allocator supports freeing individual allocations
  * @FYACF_CAN_FREE_TAG: Allocator supports releasing entire tags
  * @FYACF_CAN_DEDUP: Allocator supports deduplication
+ * @FYCAF_CAN_QUERY_POINTER: Allocator can query if it owns pointer 
+ * @FYCAF_CAN_QUERY_POINTER_EFFICIENTLY: Allocator can query if it owns pointer efficiently
  *
  * These flags describe what operations an allocator supports.
- * Arena-based allocators (linear, mremap) only support tag-based release.
- * Malloc-based allocators support individual frees.
- * Dedup allocator supports both plus deduplication.
  */
 enum fy_allocator_cap_flags {
-	FYACF_CAN_FREE_INDIVIDUAL	= (1 << 0),
-	FYACF_CAN_FREE_TAG		= (1 << 1),
-	FYACF_CAN_DEDUP			= (1 << 2),
-};
-
-/**
- * struct fy_allocator_caps - Allocator capabilities
- *
- * @flags: Capability flags (FYACF_*)
- *
- * Structure returned by fy_allocator_get_caps() describing allocator capabilities.
- */
-struct fy_allocator_caps {
-	unsigned int flags;
+	FYACF_CAN_FREE_INDIVIDUAL		= FY_BIT(0),
+	FYACF_CAN_FREE_TAG			= FY_BIT(1),
+	FYACF_CAN_DEDUP				= FY_BIT(2),
+	FYCAF_CAN_QUERY_POINTER			= FY_BIT(3),
+	FYCAF_CAN_QUERY_POINTER_EFFICIENTLY	= FY_BIT(4),
 };
 
 /**
  * fy_allocator_get_caps() - Get allocator capabilities
  *
- * Retrieve the capabilities of an allocator. This allows callers to determine
- * what operations are supported (e.g., individual frees, deduplication).
+ * Retrieve the capabilities of an allocator.
  *
  * @a: The allocator
- * @caps: Pointer to capabilities structure to fill
+ *
+ * Returns:
+ * The capabilities of the allocator
  */
-void
-fy_allocator_get_caps(struct fy_allocator *a, struct fy_allocator_caps *caps)
+enum fy_allocator_cap_flags
+fy_allocator_get_caps(struct fy_allocator *a)
 	FY_EXPORT;
 
 /**

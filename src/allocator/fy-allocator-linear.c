@@ -299,11 +299,6 @@ static void fy_linear_reset_tag(struct fy_allocator *a, int tag)
 	/* nothing */
 }
 
-static unsigned int fy_linear_get_caps(struct fy_allocator *a)
-{
-	return FYACF_CAN_FREE_TAG;
-}
-
 static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, int tag)
 {
 	struct fy_linear_allocator *la;
@@ -359,6 +354,12 @@ static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, int 
 	info->tag_infos = tag_info;
 
 	return info;
+}
+
+static enum fy_allocator_cap_flags
+fy_linear_get_caps(struct fy_allocator *a)
+{
+	return 0;	// can't do much
 }
 
 const struct fy_allocator_ops fy_linear_allocator_ops = {

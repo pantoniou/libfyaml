@@ -996,11 +996,6 @@ static void fy_dedup_reset_tag(struct fy_allocator *a, int tag)
 	fy_dedup_tag_reset(da, dt);
 }
 
-static unsigned int fy_dedup_get_caps(struct fy_allocator *a)
-{
-	return FYACF_CAN_FREE_INDIVIDUAL | FYACF_CAN_FREE_TAG | FYACF_CAN_DEDUP;
-}
-
 static struct fy_allocator_info *
 fy_dedup_get_info(struct fy_allocator *a, int tag)
 {
@@ -1035,6 +1030,19 @@ fy_dedup_get_info(struct fy_allocator *a, int tag)
 	}
 
 	return info;
+}
+
+static enum fy_allocator_cap_flags
+fy_dedup_get_caps(struct fy_allocator *a)
+{
+	struct fy_dedup_allocator *da;
+
+	if (!a)
+		return 0;
+
+	da = container_of(a, struct fy_dedup_allocator, a);
+
+	return fy_allocator_get_caps(da->parent_allocator) | FYACF_CAN_DEDUP;
 }
 
 const struct fy_allocator_ops fy_dedup_allocator_ops = {

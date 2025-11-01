@@ -122,10 +122,6 @@ static const struct {
 	size_t size;
 	size_t align;
 } doc_obj_desc[FYDAT_COUNT] = {
-	[FYDAT_DOCUMENT] = {
-		.size = sizeof(struct fy_document),
-		.align = __alignof__(struct fy_document),
-	},
 	[FYDAT_NODE] = {
 		.size = sizeof(struct fy_node),
 		.align = __alignof__(struct fy_node),
@@ -191,7 +187,7 @@ fy_doc_free(struct fy_document *fyd, int tag_hint, void *ptr)
 	if (fyd->allocator && (unsigned int)tag_hint < ARRAY_SIZE(fyd->allocator_tags) &&
 		(tag = fyd->allocator_tags[tag_hint]) >= 0) {
 
-		if (fyd->allocator_caps.flags & FYACF_CAN_FREE_INDIVIDUAL)
+		if (fyd->allocator_caps & FYACF_CAN_FREE_INDIVIDUAL)
 			fy_allocator_free(fyd->allocator, tag, ptr);
 
 		return;
@@ -497,7 +493,7 @@ static int fy_setup_allocator(struct fy_document *fyd)
 		return 0;
 
 	/* Cache allocator capabilities for fast checks during freeing */
-	fy_allocator_get_caps(fyd->allocator, &fyd->allocator_caps);
+	fyd->allocator_caps = fy_allocator_get_caps(fyd->allocator);
 
 	/* Get tags for each allocation type if allocator was created */
 	for (i = 0; i < ARRAY_SIZE(fyd->allocator_tags); i++) {

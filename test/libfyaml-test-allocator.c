@@ -281,7 +281,7 @@ START_TEST(allocator_auto)
 START_TEST(allocator_capabilities)
 {
 	struct fy_allocator *a = NULL;
-	struct fy_allocator_caps caps;
+	enum fy_allocator_cap_flags caps;
 	struct fy_linear_allocator_cfg lcfg;
 	static const struct {
 		const char *name;
@@ -295,7 +295,7 @@ START_TEST(allocator_capabilities)
 		},
 		{
 			.name = "linear",
-			.expected_caps = FYACF_CAN_FREE_TAG,
+			.expected_caps = 0,
 			.needs_config = true,
 		},
 		{
@@ -323,21 +323,20 @@ START_TEST(allocator_capabilities)
 		ck_assert_ptr_ne(a, NULL);
 
 		/* get capabilities */
-		memset(&caps, 0, sizeof(caps));
-		fy_allocator_get_caps(a, &caps);
+		caps = fy_allocator_get_caps(a);
 
 		/* verify capabilities match expected */
-		ck_assert_uint_eq(caps.flags, tests[i].expected_caps);
+		ck_assert_uint_eq(caps, tests[i].expected_caps);
 
 		/* check individual flags */
 		if (tests[i].expected_caps & FYACF_CAN_FREE_INDIVIDUAL) {
-			ck_assert(caps.flags & FYACF_CAN_FREE_INDIVIDUAL);
+			ck_assert(caps & FYACF_CAN_FREE_INDIVIDUAL);
 		}
 		if (tests[i].expected_caps & FYACF_CAN_FREE_TAG) {
-			ck_assert(caps.flags & FYACF_CAN_FREE_TAG);
+			ck_assert(caps & FYACF_CAN_FREE_TAG);
 		}
 		if (tests[i].expected_caps & FYACF_CAN_DEDUP) {
-			ck_assert(caps.flags & FYACF_CAN_DEDUP);
+			ck_assert(caps & FYACF_CAN_DEDUP);
 		}
 
 		/* destroy */
@@ -351,7 +350,7 @@ START_TEST(allocator_auto_capabilities)
 {
 	struct fy_auto_allocator_cfg acfg;
 	struct fy_allocator *a = NULL;
-	struct fy_allocator_caps caps;
+	enum fy_allocator_cap_flags caps;
 
 	/* Test that auto allocator returns capabilities of wrapped allocator */
 	/* Create auto allocator with dedup scenario */
@@ -362,15 +361,14 @@ START_TEST(allocator_auto_capabilities)
 	ck_assert_ptr_ne(a, NULL);
 
 	/* get capabilities - should include dedup since it wraps dedup allocator */
-	memset(&caps, 0, sizeof(caps));
-	fy_allocator_get_caps(a, &caps);
+	caps = fy_allocator_get_caps(a);
 
-	fprintf(stderr, "auto allocator caps: 0x%x\n", caps.flags);
+	fprintf(stderr, "auto allocator caps: 0x%x\n", caps);
 
 	/* auto with dedup scenario should have all capabilities */
-	ck_assert(caps.flags & FYACF_CAN_FREE_INDIVIDUAL);
-	ck_assert(caps.flags & FYACF_CAN_FREE_TAG);
-	ck_assert(caps.flags & FYACF_CAN_DEDUP);
+	ck_assert(caps & FYACF_CAN_FREE_INDIVIDUAL);
+	ck_assert(caps & FYACF_CAN_FREE_TAG);
+	ck_assert(caps & FYACF_CAN_DEDUP);
 
 	fy_allocator_destroy(a);
 }

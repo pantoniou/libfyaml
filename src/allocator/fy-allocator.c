@@ -579,17 +579,11 @@ fy_allocator_get_info(struct fy_allocator *a, int tag)
 	return a->ops->get_info(a, tag);
 }
 
-void fy_allocator_get_caps(struct fy_allocator *a, struct fy_allocator_caps *caps)
+enum fy_allocator_cap_flags
+fy_allocator_get_caps(struct fy_allocator *a)
 {
-	if (!caps)
-		return;
+	if (!a)
+		return 0;
 
-	/* Initialize to no capabilities */
-	caps->flags = 0;
-
-	if (!a || !a->ops || !a->ops->get_caps)
-		return;
-
-	/* Call the get_caps method to get capabilities dynamically */
-	caps->flags = a->ops->get_caps(a);
+	return a->ops->get_caps(a);
 }
