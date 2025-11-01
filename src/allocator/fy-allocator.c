@@ -149,7 +149,8 @@ int fy_allocator_register(const char *name, const struct fy_allocator_ops *ops)
 		!ops->release_tag ||
 		!ops->trim_tag ||
 		!ops->reset_tag ||
-		!ops->get_info)
+		!ops->get_info ||
+		!ops->get_caps)
 		return  -1;
 
 	allocator_registry_lock();
@@ -576,4 +577,13 @@ fy_allocator_get_info(struct fy_allocator *a, int tag)
 	if (!a)
 		return NULL;
 	return a->ops->get_info(a, tag);
+}
+
+enum fy_allocator_cap_flags
+fy_allocator_get_caps(struct fy_allocator *a)
+{
+	if (!a)
+		return 0;
+
+	return a->ops->get_caps(a);
 }

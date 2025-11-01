@@ -978,6 +978,12 @@ fy_mremap_get_info(struct fy_allocator *a, int tag)
 	return info;
 }
 
+static enum fy_allocator_cap_flags
+fy_mremap_get_caps(struct fy_allocator *a)
+{
+	return FYACF_CAN_FREE_TAG;
+}
+
 const struct fy_allocator_ops fy_mremap_allocator_ops = {
 	.setup = fy_mremap_setup,
 	.cleanup = fy_mremap_cleanup,
@@ -995,5 +1001,5 @@ const struct fy_allocator_ops fy_mremap_allocator_ops = {
 	.trim_tag = fy_mremap_trim_tag,
 	.reset_tag = fy_mremap_reset_tag,
 	.get_info = fy_mremap_get_info,
+	.get_caps = fy_mremap_get_caps,
 };
-
