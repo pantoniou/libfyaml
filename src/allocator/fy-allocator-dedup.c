@@ -1045,6 +1045,18 @@ fy_dedup_get_caps(struct fy_allocator *a)
 	return fy_allocator_get_caps(da->parent_allocator) | FYACF_CAN_DEDUP;
 }
 
+static bool fy_dedup_contains(struct fy_allocator *a, int tag, const void *ptr)
+{
+	struct fy_dedup_allocator *da;
+
+	if (!a || !ptr)
+		return false;
+
+	da = container_of(a, struct fy_dedup_allocator, a);
+
+	return fy_allocator_contains(da->parent_allocator, tag, ptr);
+}
+
 const struct fy_allocator_ops fy_dedup_allocator_ops = {
 	.setup = fy_dedup_setup,
 	.cleanup = fy_dedup_cleanup,
@@ -1063,4 +1075,5 @@ const struct fy_allocator_ops fy_dedup_allocator_ops = {
 	.reset_tag = fy_dedup_reset_tag,
 	.get_info = fy_dedup_get_info,
 	.get_caps = fy_dedup_get_caps,
+	.contains = fy_dedup_contains,
 };

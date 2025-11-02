@@ -984,6 +984,61 @@ fy_mremap_get_caps(struct fy_allocator *a)
 	return FYACF_CAN_FREE_TAG;
 }
 
+static bool mremap_tag_contains(struct fy_mremap_tag *mrt, const void *p)
+{
+	struct fy_mremap_arena *mra;
+
+	for (mra = fy_mremap_arena_list_head(&mrt->arenas); mra;
+	     mra = fy_mremap_arena_next(&mrt->arenas, mra)) {
+		if (p >= (const void *)mra->mem &&
+		    p < (const void *)mra->mem + mra->size)
+			return true;
+	}
+
+	for (mra = fy_mremap_arena_list_head(&mrt->full_arenas); mra;
+	     mra = fy_mremap_arena_next(&mrt->full_arenas, mra)) {
+		if (p >= (const void *)mra->mem &&
+		    p < (const void *)mra->mem + mra->size)
+			return true;
+	}
+
+	return false;
+}
+
+static bool fy_mremap_contains(struct fy_allocator *a, int tag, const void *ptr)
+{
+	struct fy_mremap_allocator *mra;
+	struct fy_mremap_tag *mrt;
+	int tag_start, tag_end;
+
+	if (!a || !ptr)
+		return false;
+
+	mra = container_of(a, struct fy_mremap_allocator, a);
+
+	if (tag >= 0) {
+		if (tag >= (int)ARRAY_SIZE(mra->tags))
+			return false;
+		tag_start = tag;
+		tag_end = tag + 1;
+	} else {
+		tag_start = 0;
+		tag_end = (int)ARRAY_SIZE(mra->tags);
+	}
+
+	for (tag = tag_start; tag < tag_end; tag++) {
+
+		mrt = fy_mremap_tag_from_tag(mra, tag);
+		if (!mrt)
+			continue;
+
+		if (mremap_tag_contains(mrt, ptr))
+			return true;
+	}
+
+	return false;
+}
+
 const struct fy_allocator_ops fy_mremap_allocator_ops = {
 	.setup = fy_mremap_setup,
 	.cleanup = fy_mremap_cleanup,
@@ -1002,4 +1057,5 @@ const struct fy_allocator_ops fy_mremap_allocator_ops = {
 	.reset_tag = fy_mremap_reset_tag,
 	.get_info = fy_mremap_get_info,
 	.get_caps = fy_mremap_get_caps,
+	.contains = fy_mremap_contains,
 };

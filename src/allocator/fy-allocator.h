@@ -47,6 +47,7 @@ struct fy_allocator_ops {
 	void (*reset_tag)(struct fy_allocator *a, int tag);
 	struct fy_allocator_info *(*get_info)(struct fy_allocator *a, int tag);
 	unsigned int (*get_caps)(struct fy_allocator *a);	/* Get capability flags (FYACF_*) */
+	bool (*contains)(struct fy_allocator *a, int tag, const void *ptr);
 };
 
 struct fy_allocator_stats {

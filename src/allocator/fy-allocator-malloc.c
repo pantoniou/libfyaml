@@ -151,7 +151,13 @@ static void *fy_malloc_tag_alloc(struct fy_malloc_allocator *ma, struct fy_mallo
 	void *p;
 	int ret;
 
-	assert(align <= 16);
+	/* XXX TODO alignment handling */
+	if (align > 16)
+		return NULL;
+
+	/* minimum alignment */
+	if (align <= 16)
+		align = 16;
 
 	reqsize = size;
 	size = size + sizeof(*me);
@@ -160,8 +166,6 @@ static void *fy_malloc_tag_alloc(struct fy_malloc_allocator *ma, struct fy_mallo
 		goto err_out;
 
 	me = p;
-	assert(((uintptr_t)me & 15) == 0);
-	assert(((uintptr_t)(&me->mem[0]) & 15) == 0);
 
 	me->size = size;
 	me->reqsize = reqsize;
@@ -527,7 +531,49 @@ fy_malloc_get_info(struct fy_allocator *a, int tag)
 static enum fy_allocator_cap_flags
 fy_malloc_get_caps(struct fy_allocator *a)
 {
-	return FYACF_CAN_FREE_INDIVIDUAL | FYACF_CAN_FREE_TAG;
+	return FYACF_CAN_FREE_INDIVIDUAL | FYACF_CAN_FREE_TAG | FYACF_HAS_CONTAINS;
+}
+
+/* malloc allocator actually tracks allocations, it's just very inefficient
+ * to scan through. It might be good for debugging though
+ */
+static bool fy_malloc_contains(struct fy_allocator *a, int tag, const void *ptr)
+{
+	struct fy_malloc_allocator *ma;
+	struct fy_malloc_tag *mt;
+	struct fy_malloc_entry *me;
+	int tag_start, tag_end;
+
+	if (!a || !ptr)
+		return false;
+
+	ma = container_of(a, struct fy_malloc_allocator, a);
+
+	if (tag >= 0) {
+		if (tag >= (int)ARRAY_SIZE(ma->tags))
+			return false;
+		tag_start = tag;
+		tag_end = tag_start + 1;
+	} else {
+		tag_start = 0;
+		tag_end = ARRAY_SIZE(ma->tags);
+	}
+
+	for (tag = tag_start; tag < tag_end; tag++) {
+		mt = fy_malloc_tag_from_tag(ma, tag);
+		if (!mt)
+			continue;
+
+		for (me = fy_malloc_entry_list_head(&mt->entries); me;
+		     me = fy_malloc_entry_next(&mt->entries, me)) {
+
+			if (ptr >= (void *)me->mem &&
+			    ptr < (void *)me->mem + me->reqsize)
+				return true;
+		}
+	}
+
+	return false;
 }
 
 const struct fy_allocator_ops fy_malloc_allocator_ops = {
@@ -548,4 +594,5 @@ const struct fy_allocator_ops fy_malloc_allocator_ops = {
 	.reset_tag = fy_malloc_reset_tag,
 	.get_info = fy_malloc_get_info,
 	.get_caps = fy_malloc_get_caps,
+	.contains = fy_malloc_contains,
 };

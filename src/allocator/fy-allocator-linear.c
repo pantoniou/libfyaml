@@ -359,7 +359,18 @@ static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, int 
 static enum fy_allocator_cap_flags
 fy_linear_get_caps(struct fy_allocator *a)
 {
-	return 0;	// can't do much
+	return FYACF_HAS_CONTAINS | FYACF_HAS_EFFICIENT_CONTAINS;
+}
+
+static bool fy_linear_contains(struct fy_allocator *a, int tag, const void *ptr)
+{
+	struct fy_linear_allocator *la;
+
+	if (!a || !ptr)
+		return false;
+
+	la = container_of(a, struct fy_linear_allocator, a);
+	return ptr >= la->start && ptr < la->end;
 }
 
 const struct fy_allocator_ops fy_linear_allocator_ops = {
@@ -380,4 +391,5 @@ const struct fy_allocator_ops fy_linear_allocator_ops = {
 	.reset_tag = fy_linear_reset_tag,
 	.get_info = fy_linear_get_info,
 	.get_caps = fy_linear_get_caps,
+	.contains = fy_linear_contains,
 };

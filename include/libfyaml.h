@@ -9549,6 +9549,8 @@ fy_allocator_dump(struct fy_allocator *a)
  * @FYACF_CAN_FREE_INDIVIDUAL: Allocator supports freeing individual allocations
  * @FYACF_CAN_FREE_TAG: Allocator supports releasing entire tags
  * @FYACF_CAN_DEDUP: Allocator supports deduplication
+ * @FYACF_HAS_CONTAINS: Allocator can report if it contains a pointer (even if inefficiently)
+ * @FYACF_HAS_EFFICIENT_CONTAINS: Allocator can report if it contains a pointer (efficiently)
  *
  * These flags describe what operations an allocator supports.
  */
@@ -9556,6 +9558,8 @@ enum fy_allocator_cap_flags {
 	FYACF_CAN_FREE_INDIVIDUAL		= FY_BIT(0),
 	FYACF_CAN_FREE_TAG			= FY_BIT(1),
 	FYACF_CAN_DEDUP				= FY_BIT(2),
+	FYACF_HAS_CONTAINS			= FY_BIT(3),
+	FYACF_HAS_EFFICIENT_CONTAINS		= FY_BIT(4),
 };
 
 /**
@@ -9570,6 +9574,22 @@ enum fy_allocator_cap_flags {
  */
 enum fy_allocator_cap_flags
 fy_allocator_get_caps(struct fy_allocator *a)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_contains() - Check if a allocator contains a pointer
+ *
+ * Report if an allocator contains the pointer
+ *
+ * @a: The allocator
+ * @tag: Tag to search in, -1 for all
+ * @ptr: The object pointer
+ *
+ * Returns:
+ * true if the pointer ptr is contained in the allocator, false otherwise
+ */
+bool
+fy_allocator_contains(struct fy_allocator *a, int tag, const void *ptr)
 	FY_EXPORT;
 
 /**

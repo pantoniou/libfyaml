@@ -385,6 +385,19 @@ static void fy_auto_reset_tag(struct fy_allocator *a, int tag)
 	fy_allocator_reset_tag(aa->parent_allocator, tag);
 }
 
+static struct fy_allocator_info *
+fy_auto_get_info(struct fy_allocator *a, int tag)
+{
+	struct fy_auto_allocator *aa;
+
+	if (!a)
+		return NULL;
+
+	aa = container_of(a, struct fy_auto_allocator, a);
+
+	return fy_allocator_get_info(aa->parent_allocator, tag);
+}
+
 static enum fy_allocator_cap_flags
 fy_auto_get_caps(struct fy_allocator *a)
 {
@@ -397,17 +410,16 @@ fy_auto_get_caps(struct fy_allocator *a)
 	return fy_allocator_get_caps(aa->parent_allocator);
 }
 
-static struct fy_allocator_info *
-fy_auto_get_info(struct fy_allocator *a, int tag)
+static bool fy_auto_contains(struct fy_allocator *a, int tag, const void *ptr)
 {
 	struct fy_auto_allocator *aa;
 
-	if (!a)
-		return NULL;
+	if (!a || !ptr)
+		return false;
 
 	aa = container_of(a, struct fy_auto_allocator, a);
 
-	return fy_allocator_get_info(aa->parent_allocator, tag);
+	return fy_allocator_contains(aa->parent_allocator, tag, ptr);
 }
 
 const struct fy_allocator_ops fy_auto_allocator_ops = {
@@ -428,4 +440,5 @@ const struct fy_allocator_ops fy_auto_allocator_ops = {
 	.reset_tag = fy_auto_reset_tag,
 	.get_info = fy_auto_get_info,
 	.get_caps = fy_auto_get_caps,
+	.contains = fy_auto_contains,
 };

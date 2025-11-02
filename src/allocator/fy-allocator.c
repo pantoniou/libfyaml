@@ -150,7 +150,8 @@ int fy_allocator_register(const char *name, const struct fy_allocator_ops *ops)
 		!ops->trim_tag ||
 		!ops->reset_tag ||
 		!ops->get_info ||
-		!ops->get_caps)
+		!ops->get_caps ||
+		!ops->contains)
 		return  -1;
 
 	allocator_registry_lock();
@@ -586,4 +587,13 @@ fy_allocator_get_caps(struct fy_allocator *a)
 		return 0;
 
 	return a->ops->get_caps(a);
+}
+
+bool
+fy_allocator_contains(struct fy_allocator *a, int tag, const void *ptr)
+{
+	if (!a)
+		return false;
+
+	return a->ops->contains(a, tag, ptr);
 }
