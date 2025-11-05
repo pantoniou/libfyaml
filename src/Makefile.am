@@ -241,3 +241,13 @@ install-exec-hook:
 
 uninstall-hook:
 	(cd "$(DESTDIR)$(bindir)" && rm -f fy-dump fy-filter fy-testsuite fy-join fy-ypath fy-compose)
+
+
+# fy-generics
+noinst_PROGRAMS += fy-generics
+fy_generics_SOURCES = \
+	internal/fy-generics.c
+fy_generics_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)
+fy_generics_LDADD = libfyaml.la
+fy_generics_LDFLAGS = $(AM_LDFLAGS) -static
+
