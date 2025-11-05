@@ -25,7 +25,7 @@
 extern const int8_t fy_utf8_width_table[32];
 
 static inline int
-fy_utf8_width_by_first_octet_no_table(uint8_t c)
+fy_utf8_width_by_first_octet_no_table(const uint8_t c)
 {
 	return (c & 0x80) == 0x00 ? 1 :
 	       (c & 0xe0) == 0xc0 ? 2 :
@@ -41,23 +41,15 @@ fy_utf8_width_by_first_octet(uint8_t c)
 
 /* assumes valid utf8 character */
 static inline size_t
-fy_utf8_width(int c)
+fy_utf8_width(const int c)
 {
-	return c <      0x80 ? 1 :
-	       c <     0x800 ? 2 :
-	       c <   0x10000 ? 3 : 4;
+	return 1 + (c >= 0x80) + (c >= 0x800) + (c >= 0x10000);
 }
 
 static inline bool
-fy_utf8_is_valid(int c)
+fy_utf8_is_valid(const int c)
 {
 	return c >= 0 && !((c >= 0xd800 && c <= 0xdfff) || c >= 0x110000);
-}
-
-static inline bool
-fy_utf8_is_printable_ascii(int c)
-{
-	return c >= 0x20 && c <= 0x7e;
 }
 
 /* generic utf8 decoder (not inlined) */
@@ -68,21 +60,270 @@ int fy_utf8_get_generic(const void *ptr, size_t left, int *widthp);
 #define FYUG_INV	-2
 #define FYUG_PARTIAL	-3
 
-static inline int fy_utf8_get(const void *ptr, size_t left, int *widthp)
+#define FY_UTF8_64_C(_x)	((int)(int32_t)(_x))
+#define FY_UTF8_64_W(_x)	(((int)((_x) >> 32)))
+
+#define FY_UTF8_64_MAKE(_w, _c)	((int64_t)(((int64_t)((_w)) << 32) | (int64_t)(_c)))
+
+static inline FY_ALWAYS_INLINE int64_t
+fy_utf8_get_branch_64(const void *ptr, size_t left)
 {
-	const uint8_t *p = ptr;
+	const uint8_t *s = ptr;
+	unsigned int a, b, c, d;
+	uint32_t code;
 
-	/* single byte (hot path) */
-	if (left <= 0) {
-		*widthp = 0;
+	if (!left)
 		return FYUG_EOF;
+
+	a = s[0];
+	if (a < 0x80) 				// 1 byte: 0xxxxxxx
+		return FY_UTF8_64_MAKE(1, a);
+
+	if (left < 2)
+		return FYUG_PARTIAL;
+
+	b = s[1];
+	if ((a & 0xe0) == 0xc0) {		// 2 bytes: 110xxxxx 10xxxxxx
+		if ((b & 0xc0) != 0x80)
+			return FYUG_INV;
+
+		code = (int)(((a & 0x1f) << 6) | (b & 0x3f));
+		if (code < 0x80)
+			return FYUG_INV;	// overlong
+
+		return FY_UTF8_64_MAKE(2, code);
 	}
 
-	if (!(p[0] & 0x80)) {
-		*widthp = 1;
-		return p[0] & 0x7f;
+	if (left < 3)
+		return FYUG_PARTIAL;
+
+	c = s[2];
+	if ((a & 0xf0) == 0xe0) {		// 3 bytes: 1110xxxx 10xxxxxx 10xxxxxx
+
+		if (((b | c) & 0xc0) != 0x80)
+			return FYUG_INV;
+
+		code = (int)(((a & 0x0f) << 12) | ((b & 0x3f) << 6) | (c & 0x3f));
+		if (code < 0x800 || (code >= 0xd800 && code <= 0xdfff))
+			return FYUG_INV;	// overlong or surrogate
+
+		return FY_UTF8_64_MAKE(3, code);
 	}
-	return fy_utf8_get_generic(ptr, left, widthp);
+
+	if (left < 4)
+		return FYUG_PARTIAL;
+
+	d = s[3];
+	if ((a & 0xf8) == 0xf0) {		// 4 bytes: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+
+		if (((b | c | d) & 0xc0) != 0x80)
+			return FYUG_INV;
+
+		code = ((a & 0x07) << 18) | ((b & 0x3f) << 12) |
+		       ((c & 0x3f) <<  6)  | (d & 0x3f);
+
+		if (code < 0x10000 || code > 0x10ffff)
+			return FYUG_INV;	// overlong or out of range
+
+		return FY_UTF8_64_MAKE(4, code);
+	}
+
+	return FYUG_INV;
+}
+
+static inline FY_ALWAYS_INLINE int
+fy_utf8_get_branch(const void *ptr, size_t left, int *widthp)
+{
+	const uint8_t *s = ptr;
+	unsigned int a, b, c, d;
+	int code;
+
+	if (!left)
+		goto err_eof;
+
+	a = s[0];
+	if (a < 0x80) {				// 1 byte: 0xxxxxxx
+		code = (int)a;
+		*widthp = 1;
+		return code;
+	}
+
+	if (left < 2)
+		goto err_partial;
+
+	b = s[1];
+	if ((a & 0xe0) == 0xc0) {		// 2 bytes: 110xxxxx 10xxxxxx
+		if ((b & 0xc0) != 0x80)
+			goto err_inv;
+
+		code = (int)(((a & 0x1f) << 6) | (b & 0x3f));
+		if (code < 0x80)
+			goto err_inv;		// overlong
+
+		*widthp = 2;
+		return code;
+	}
+
+	if (left < 3)
+		goto err_partial;
+
+	c = s[2];
+	if ((a & 0xf0) == 0xe0) {		// 3 bytes: 1110xxxx 10xxxxxx 10xxxxxx
+
+		if (((b | c) & 0xc0) != 0x80)
+			goto err_inv;
+
+		code = (int)(((a & 0x0f) << 12) | ((b & 0x3f) << 6) | (c & 0x3f));
+		if (code < 0x800 || (code >= 0xd800 && code <= 0xdfff))
+			goto err_inv;		// overlong or surrogate
+
+		*widthp = 3;
+		return code;
+	}
+
+	if (left < 4)
+		goto err_partial;
+
+	d = s[3];
+	if ((a & 0xf8) == 0xf0) {		// 4 bytes: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+
+		if (((b | c | d) & 0xc0) != 0x80)
+			goto err_inv;
+
+		code = ((a & 0x07) << 18) | ((b & 0x3f) << 12) |
+		       ((c & 0x3f) <<  6)  | (d & 0x3f);
+
+		if (code < 0x10000 || code > 0x10ffff)
+			goto err_inv;		// overlong or out of range
+
+		*widthp = 4;
+		return code;
+	}
+
+err_inv:
+	*widthp = 0;
+	return FYUG_INV;
+
+err_partial:
+	*widthp = 0;
+	return FYUG_PARTIAL;
+
+err_eof:
+	*widthp = 0;
+	return FYUG_EOF;
+}
+
+static inline FY_ALWAYS_INLINE int
+fy_utf8_get_table(const void *ptr, size_t left, int *widthp)
+{
+	const uint8_t *s = ptr;
+	unsigned int a, b, c, d;
+	int code, w;
+
+	if (!left)
+		goto err_eof;
+
+	w = fy_utf8_width_by_first_octet(s[0]);
+	if ((size_t)w > left)
+		goto err_partial;
+
+	*widthp = w;
+
+	switch (w) {
+	case 1:
+		a = s[0];
+		code = (int)a;
+		return code;
+	case 2:
+		a = s[0];
+		b = s[1];
+		if ((b & 0xc0) != 0x80)
+			goto err_inv;
+
+		code = (int)(((a & 0x1f) << 6) | (b & 0x3f));
+		if (code < 0x80)
+			goto err_inv;		// overlong
+
+		return code;
+	case 3:
+		a = s[0];
+		b = s[1];
+		c = s[2];
+
+		if (((b | c) & 0xc0) != 0x80)
+			goto err_inv;
+
+		code = (int)(((a & 0x0f) << 12) | ((b & 0x3f) << 6) | (c & 0x3f));
+		if (code < 0x800 || (code >= 0xd800 && code <= 0xdfff))
+			goto err_inv;		// overlong or surrogate
+
+		return code;
+	case 4:
+		a = s[0];
+		b = s[1];
+		c = s[2];
+		d = s[3];
+
+		if (((b | c | d) & 0xc0) != 0x80)
+			goto err_inv;
+
+		code = ((a & 0x07) << 18) | ((b & 0x3f) << 12) |
+		       ((c & 0x3f) <<  6) | (d & 0x3f);
+
+		if (code < 0x10000 || code > 0x10ffff)
+			goto err_inv;		// overlong or out of range
+
+		return code;
+
+	default:
+		break;
+	}
+
+err_inv:
+	*widthp = 0;
+	return FYUG_INV;
+
+err_partial:
+	*widthp = 0;
+	return FYUG_PARTIAL;
+
+err_eof:
+	*widthp = 0;
+	return FYUG_EOF;
+}
+
+static inline FY_ALWAYS_INLINE int
+fy_utf8_get(const void *ptr, size_t left, int *widthp)
+{
+	return fy_utf8_get_branch(ptr, left, widthp);
+}
+
+static inline FY_ALWAYS_INLINE int64_t
+fy_utf8_get_64(const void *ptr, size_t left)
+{
+	return fy_utf8_get_branch_64(ptr, left);
+}
+
+static inline FY_ALWAYS_INLINE int
+fy_utf8_get_no_width(const void *ptr, size_t left)
+{
+	int w;
+
+	return fy_utf8_get(ptr, left, &w);
+}
+
+static inline FY_ALWAYS_INLINE int
+fy_utf8_get_end(const void *ptr, const void *ptr_end, int *widthp)
+{
+	return fy_utf8_get(ptr, (size_t)(ptr_end - ptr), widthp);
+}
+
+static inline FY_ALWAYS_INLINE int
+fy_utf8_get_end_no_width(const void *ptr, const void *ptr_end)
+{
+	int w;
+
+	return fy_utf8_get(ptr, (size_t)(ptr_end - ptr), &w);
 }
 
 int fy_utf8_get_right_generic(const void *ptr, size_t left, int *widthp);
@@ -143,12 +384,12 @@ enum fy_utf8_escape {
 	fyue_doublequote_yaml_1_1,
 };
 
-static inline bool fy_utf8_escape_is_any_doublequote(enum fy_utf8_escape esc)
+static inline bool fy_utf8_escape_is_any_doublequote(const enum fy_utf8_escape esc)
 {
 	return esc >= fyue_doublequote && esc <= fyue_doublequote_yaml_1_1;
 }
 
-char *fy_utf8_format(int c, char *buf, enum fy_utf8_escape esc);
+char *fy_utf8_format(int c, char *buf, const enum fy_utf8_escape esc);
 
 #define fy_utf8_format_a(_c, _esc) \
 	({ \
@@ -172,7 +413,7 @@ char *fy_utf8_format_text(const char *buf, size_t len,
 		fy_utf8_format_text(__buf, __len, _out, _outsz, __esc); \
 	})
 
-char *fy_utf8_format_text_alloc(const char *buf, size_t len, enum fy_utf8_escape esc);
+char *fy_utf8_format_text_alloc(const char *buf, size_t len, const enum fy_utf8_escape esc);
 
 const void *fy_utf8_memchr_generic(const void *s, int c, size_t n);
 
@@ -214,19 +455,19 @@ static inline int fy_utf8_count(const void *ptr, size_t len)
 	return count;
 }
 
-int fy_utf8_parse_escape(const char **strp, size_t len, enum fy_utf8_escape esc);
+int fy_utf8_parse_escape(const char **strp, size_t len, const enum fy_utf8_escape esc);
 
 #define F_NONE			0
-#define F_NON_PRINT		FY_BIT(0)	/* non printable */
-#define F_SIMPLE_SCALAR		FY_BIT(1)	/* part of simple scalar */
-#define F_QUOTE_ESC		FY_BIT(2)	/* escape form, i.e \n */
-#define F_LB			FY_BIT(3)	/* is a linebreak */
-#define F_WS			FY_BIT(4)	/* is a whitespace */
-#define F_PUNCT			FY_BIT(5)	/* is a punctuation mark */
-#define F_LETTER		FY_BIT(6)	/* is a letter a..z A..Z */
-#define F_DIGIT			FY_BIT(7)	/* is a digit 0..9 */
+#define F_SIMPLE_SCALAR		FY_BIT(0)	/* part of simple scalar 0-9a-zA-Z_ */
+#define F_DIRECT_PRINT		FY_BIT(1)	/* 0x20..0x7e */
+#define F_LB			FY_BIT(2)	/* is a linebreak */
+#define F_WS			FY_BIT(3)	/* is a whitespace */
+#define F_LETTER		FY_BIT(4)	/* is a letter a..z A..Z */
+#define F_DIGIT			FY_BIT(5)	/* is a digit 0..9 */
+#define F_XDIGIT		FY_BIT(6)	/* is a hex digit 0..9 a-f A-F */
+#define F_FLOW_INDICATOR	FY_BIT(7)	/* is ,[]{} */
 
-extern uint8_t fy_utf8_low_ascii_flags[0x80];
+extern const uint8_t fy_utf8_low_ascii_flags[256];
 
 void *fy_utf8_split_posix(const char *str, int *argcp, const char * const *argvp[]);
 
@@ -284,6 +525,119 @@ static inline struct fy_utf8_result fy_utf8_get_s_res(const void *ptr, const voi
 	if (c < 0)
 		return (struct fy_utf8_result){ c, 0 };
 	return (struct fy_utf8_result){ c, width };
+}
+
+static inline bool fy_utf8_is_space(const int c)
+{
+	return c == ' ';
+}
+
+static inline bool fy_utf8_is_tab(const int c)
+{
+	return c == '\t';
+}
+
+static inline bool fy_utf8_is_simple_scalar_no_check(const int c)
+{
+	return fy_utf8_low_ascii_flags[(uint8_t)c] & F_SIMPLE_SCALAR;
+}
+
+static inline bool
+fy_utf8_is_printable_ascii_no_check(const int c)
+{
+	return fy_utf8_low_ascii_flags[(uint8_t)c] & F_DIRECT_PRINT;
+}
+
+static inline bool fy_utf8_is_lb_no_check(const int c)
+{
+	return fy_utf8_low_ascii_flags[(uint8_t)c] & F_LB;
+}
+
+static inline bool fy_utf8_is_ws_no_check(const int c)
+{
+	return fy_utf8_low_ascii_flags[(uint8_t)c] & F_WS;
+}
+
+static inline bool fy_utf8_is_ws_lb_no_check(const int c)
+{
+	return fy_utf8_low_ascii_flags[(uint8_t)c] & (F_WS | F_LB);
+}
+
+static inline bool fy_utf8_is_letter_no_check(const int c)
+{
+	return fy_utf8_low_ascii_flags[(uint8_t)c] & F_LETTER;
+}
+
+static inline bool fy_utf8_is_digit_no_check(const int c)
+{
+	return fy_utf8_low_ascii_flags[(uint8_t)c] & F_DIGIT;
+}
+
+static inline bool fy_utf8_is_hex_no_check(const int c)
+{
+	return fy_utf8_low_ascii_flags[(uint8_t)c] & F_XDIGIT;
+}
+
+static inline bool fy_utf8_is_flow_indicator_no_check(const int c)
+{
+	return fy_utf8_low_ascii_flags[(uint8_t)c] & F_FLOW_INDICATOR;
+}
+
+static inline bool fy_utf8_is_low_ascii(const int c)
+{
+	return (unsigned int)c < 128;
+}
+
+static inline bool fy_utf8_is_simple_scalar(const int c)
+{
+	return fy_utf8_is_low_ascii(c) && fy_utf8_is_simple_scalar_no_check(c);
+}
+
+static inline bool
+fy_utf8_is_printable_ascii_x(const int c)
+{
+	return fy_utf8_is_low_ascii(c) && fy_utf8_is_printable_ascii_no_check(c);
+}
+
+static inline bool
+fy_utf8_is_printable_ascii(const int c)
+{
+	return c >= 0x20 && c <= 0x7e;
+}
+
+static inline bool fy_utf8_is_lb(const int c)
+{
+	return fy_utf8_is_low_ascii(c) && fy_utf8_is_lb_no_check(c);
+}
+
+static inline bool fy_utf8_is_ws(const int c)
+{
+	return fy_utf8_is_low_ascii(c) && fy_utf8_is_ws_no_check(c);
+}
+
+static inline bool fy_utf8_is_ws_lb(const int c)
+{
+	return fy_utf8_is_low_ascii(c) && fy_utf8_is_ws_lb_no_check(c);
+}
+
+static inline bool fy_utf8_is_letter(const int c)
+{
+	return fy_utf8_is_low_ascii(c) && fy_utf8_is_letter_no_check(c);
+}
+
+static inline bool fy_utf8_is_digit(const int c)
+{
+	return fy_utf8_is_low_ascii(c) && fy_utf8_is_digit_no_check(c);
+}
+
+static inline bool fy_utf8_is_hex(const int c)
+{
+	return fy_utf8_is_low_ascii(c) && fy_utf8_is_hex_no_check(c);
+}
+
+static inline bool fy_utf8_is_flow_indicator(const int c)
+{
+	return fy_utf8_is_low_ascii(c) && fy_utf8_is_flow_indicator_no_check(c);
 }
 
 #endif
