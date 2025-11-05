@@ -390,3 +390,32 @@ int fy_generic_encoder_emit(struct fy_generic_encoder *fyge,
 
 	return 0;
 }
+
+int fy_generic_emit_default(fy_generic v)
+{
+	static const struct fy_emitter_cfg ecfg_default = {
+		.flags = FYECF_DEFAULT,
+	};
+	struct fy_emitter *emit = NULL;
+	struct fy_generic_encoder *fyge = NULL;
+	int rc = -1;
+
+	emit = fy_emitter_create(&ecfg_default);
+	if (!emit)
+		goto out;
+
+	fyge = fy_generic_encoder_create(emit, false);
+	if (!fyge)
+		goto out;
+
+	rc = fy_generic_encoder_emit(fyge, FYGEEF_DISABLE_DIRECTORY, v);
+	if (rc)
+		goto out;
+
+	fy_generic_encoder_sync(fyge);
+out:
+	fy_generic_encoder_destroy(fyge);
+	fy_emitter_destroy(emit);
+
+	return rc;
+}

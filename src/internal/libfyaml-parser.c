@@ -4135,6 +4135,8 @@ int do_parse_timing(int argc, char *argv[])
 
 void fy_generic_print_primitive(FILE *fp, fy_generic v)
 {
+	struct fy_generic_indirect gi;
+	const char *sep;
 	const char *sv;
 	fy_generic iv;
 	fy_generic key, value;
@@ -4143,6 +4145,24 @@ void fy_generic_print_primitive(FILE *fp, fy_generic v)
 
 	if (v == fy_invalid)
 		fprintf(fp, "invalid");
+
+	if (fy_generic_is_indirect(v)) {
+
+		fy_generic_indirect_get(v, &gi);
+
+		sep = "";
+		if (fy_generic_is_string(gi.anchor)) {
+			fprintf(fp, "%s&%s", sep, fy_generic_get_string(&gi.anchor));
+			sep = " ";
+		}
+		if (fy_generic_is_string(gi.tag)) {
+			fprintf(fp, "%s%s", sep, fy_generic_get_string(&gi.tag));
+			sep = " ";
+		}
+
+		fprintf(fp, "%s", sep);
+		v = gi.value;
+	}
 
 	switch (fy_generic_get_type(v)) {
 	case FYGT_NULL:
@@ -4875,6 +4895,34 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	fy_generic_print_primitive(stdout, seq);
 	printf("\n");
 
+	fy_generic str;
+
+	str = fy_string("zzz");
+
+	printf("str:\n");
+	fy_generic_print_primitive(stdout, str);
+	printf("\n");
+
+	fy_generic ind;
+
+	printf("str=0x%08lx\n", str);
+
+	ind = fy_indirect(str, fy_string("bbb"), fy_string("ccc"));
+	assert(ind != fy_invalid);
+
+	{
+		fy_generic *pp = fy_generic_resolve_ptr(ind);
+		printf("ind=0x%08lx [0:3]=0x%08lx 0x%08lx 0x%08lx 0x%08lx\n",
+				ind, pp[0], pp[1], pp[2], pp[3]);
+	}
+
+	printf("ind:\n");
+	fy_generic_print_primitive(stdout, ind);
+	printf("\n");
+
+	printf("str-by-get-string: %p %s\n", &str, fy_generic_get_string(&str));
+	printf("ind-by-get-string: %p %s\n", &ind, fy_generic_get_string(&ind));
+
 	if (registered_allocator) {
 		rc = fy_allocator_unregister(allocator);
 		assert(!rc);
@@ -4882,6 +4930,8 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	if (pa)
 		fy_allocator_destroy(pa);
+
+	fy_generic_emit_default(map);
 
 	return 0;
 }
