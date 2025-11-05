@@ -253,7 +253,8 @@ fy_accel_entry_lookup(struct fy_accel *xl, const void *key)
 	struct fy_accel_entry *xle;
 
 	xle = fy_accel_entry_iter_start(&xli, xl, key);
-	fy_accel_entry_iter_finish(&xli);
+	if (xle)
+		fy_accel_entry_iter_finish(&xli);
 
 	return xle;
 }
@@ -262,10 +263,13 @@ struct fy_accel_entry *
 fy_accel_entry_lookup_key_value(struct fy_accel *xl, const void *key, const void *value)
 {
 	struct fy_accel_entry_iter xli;
-	struct fy_accel_entry *xle;
+	struct fy_accel_entry *xle, *xle_start;
 
-	for (xle = fy_accel_entry_iter_start(&xli, xl, key); xle;
-	     xle = fy_accel_entry_iter_next(&xli)) {
+	xle_start = fy_accel_entry_iter_start(&xli, xl, key);
+	if (!xle_start)
+		return NULL;
+
+	for (xle = xle_start; xle; xle = fy_accel_entry_iter_next(&xli)) {
 
 		if (xle->value == value)
 			break;
