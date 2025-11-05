@@ -286,72 +286,36 @@ static inline enum fy_generic_type fy_generic_get_type(fy_generic v)
 	return type != FYGT_INDIRECT ? type : FYGT_INVALID;
 }
 
-static inline bool fy_generic_is_valid(const fy_generic v)
-{
-	return fy_generic_get_type(v) != FYGT_INVALID;
-}
-
-static inline bool fy_generic_is_null(const fy_generic v)
-{
-	return v == fy_null;
-}
-
-static inline bool fy_generic_is_bool(const fy_generic v)
-{
-	return v == fy_true || v == fy_false;
-}
-
-static inline bool fy_generic_is_int(const fy_generic v)
-{
-	return fy_generic_get_type(v) == FYGT_INT;
-}
-
-static inline bool fy_generic_is_float(const fy_generic v)
-{
-	return fy_generic_get_type(v) == FYGT_FLOAT;
-}
-
-static inline bool fy_generic_is_string(const fy_generic v)
-{
-	return fy_generic_get_type(v) == FYGT_STRING;
-}
-
-static inline bool fy_generic_is_sequence(const fy_generic v)
-{
-	return fy_generic_get_type(v) == FYGT_SEQUENCE;
-}
-
-static inline bool fy_generic_is_mapping(const fy_generic v)
-{
-	return fy_generic_get_type(v) == FYGT_MAPPING;
-}
-
-static inline bool fy_generic_is_alias(const fy_generic v)
-{
-	return fy_generic_get_type(v) == FYGT_ALIAS;
-}
-
 static inline void fy_generic_indirect_get(fy_generic v, struct fy_generic_indirect *gi)
 {
 	const fy_generic *p;
-	uintptr_t flags;
 
-	assert(fy_generic_is_indirect(v));
+	memset(gi, 0, sizeof(*gi));
+
+	if (!fy_generic_is_indirect(v)) {
+		gi->flags = FYGIF_VALUE;
+		gi->value = v;
+		gi->anchor = fy_invalid;
+		gi->tag = fy_invalid;
+		return;
+	}
+
 	p = fy_generic_resolve_ptr(v);
 
-	gi->flags = 0;
-	gi->value = fy_invalid;
-	gi->anchor = fy_invalid;
-	gi->tag = fy_invalid;
-
 	/* get flags */
-	flags = *p++;
-	if (flags & FYGIF_VALUE)
+	gi->flags = *p++;
+	if (gi->flags & FYGIF_VALUE)
 		gi->value = *p++;
-	if (flags & FYGIF_ANCHOR)
+	else
+		gi->value = fy_invalid;
+	if (gi->flags & FYGIF_ANCHOR)
 		gi->anchor = *p++;
-	if (flags & FYGIF_TAG)
+	else
+		gi->anchor = fy_invalid;
+	if (gi->flags & FYGIF_TAG)
 		gi->tag = *p++;
+	else
+		gi->tag = fy_invalid;
 }
 
 static inline fy_generic fy_generic_indirect_get_value(fy_generic v)
@@ -359,7 +323,9 @@ static inline fy_generic fy_generic_indirect_get_value(fy_generic v)
 	const fy_generic *p;
 	uintptr_t flags;
 
-	assert(fy_generic_is_indirect(v));
+	if (!fy_generic_is_indirect(v))
+		return v;
+
 	p = fy_generic_resolve_ptr(v);
 	flags = *p++;
 	return (flags & FYGIF_VALUE) ? *p : fy_invalid;
@@ -414,6 +380,51 @@ struct fy_generic_mapping {
 	size_t count;
 	fy_generic pairs[];
 };
+
+static inline bool fy_generic_is_valid(const fy_generic v)
+{
+	return fy_generic_get_type(v) != FYGT_INVALID;
+}
+
+static inline bool fy_generic_is_null(const fy_generic v)
+{
+	return v == fy_null || fy_generic_get_type(v) == FYGT_NULL;
+}
+
+static inline bool fy_generic_is_bool(const fy_generic v)
+{
+	return v == fy_true || v == fy_false || fy_generic_get_type(v) == FYGT_BOOL;
+}
+
+static inline bool fy_generic_is_int(const fy_generic v)
+{
+	return fy_generic_get_type(v) == FYGT_INT;
+}
+
+static inline bool fy_generic_is_float(const fy_generic v)
+{
+	return fy_generic_get_type(v) == FYGT_FLOAT;
+}
+
+static inline bool fy_generic_is_string(const fy_generic v)
+{
+	return fy_generic_get_type(v) == FYGT_STRING;
+}
+
+static inline bool fy_generic_is_sequence(const fy_generic v)
+{
+	return fy_generic_get_type(v) == FYGT_SEQUENCE;
+}
+
+static inline bool fy_generic_is_mapping(const fy_generic v)
+{
+	return fy_generic_get_type(v) == FYGT_MAPPING;
+}
+
+static inline bool fy_generic_is_alias(const fy_generic v)
+{
+	return fy_generic_get_type(v) == FYGT_ALIAS;
+}
 
 enum fy_generic_schema {
 	FYGS_AUTO,
@@ -520,9 +531,21 @@ static inline void fy_generic_builder_release(struct fy_generic_builder *gb, con
 		(bool)(((_v) >> FY_BOOL_INPLACE_SHIFT) != 0)			\
 	)
 
-static inline bool fy_generic_get_bool(fy_generic v)
+static inline bool fy_generic_get_bool_no_check(fy_generic v)
 {
 	return FY_GENERIC_GET_BOOL(v);
+}
+
+static inline bool fy_generic_get_bool_default(fy_generic v, bool default_value)
+{
+	return fy_generic_is_bool(v) ?
+		fy_generic_get_bool_no_check(fy_generic_indirect_get_value(v)) :
+		default_value;
+}
+
+static inline bool fy_generic_get_bool(fy_generic v)
+{
+	return fy_generic_get_bool_default(v, false);
 }
 
 #define FY_GENERIC_GET_INT(_v)							\
@@ -532,9 +555,21 @@ static inline bool fy_generic_get_bool(fy_generic v)
 			*(long long *)fy_generic_resolve_ptr(_v)		\
 	)
 
-static inline long long fy_generic_get_int(fy_generic v)
+static inline long long fy_generic_get_int_no_check(fy_generic v)
 {
 	return FY_GENERIC_GET_INT(v);
+}
+
+static inline long long fy_generic_get_int_default(fy_generic v, int default_value)
+{
+	return fy_generic_is_int(v) ?
+		fy_generic_get_int_no_check(fy_generic_indirect_get_value(v)) :
+		default_value;
+}
+
+static inline long long fy_generic_get_int(fy_generic v)
+{
+	return fy_generic_get_int_default(v, 0);
 }
 
 #ifdef FY_HAS_64BIT_PTR
@@ -562,9 +597,21 @@ static inline long long fy_generic_get_int(fy_generic v)
 	)
 #endif
 
-static inline double fy_generic_get_float(fy_generic v)
+static inline double fy_generic_get_float_no_check(fy_generic v)
 {
 	return FY_GENERIC_GET_FLOAT(v);
+}
+
+static inline double fy_generic_get_float_default(fy_generic v, double default_value)
+{
+	return fy_generic_is_float(v) ?
+		fy_generic_get_float_no_check(fy_generic_indirect_get_value(v)) :
+		default_value;
+}
+
+static inline double fy_generic_get_float(fy_generic v)
+{
+	return fy_generic_get_float_default(v, 0.0);
 }
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
@@ -608,7 +655,8 @@ static inline double fy_generic_get_float(fy_generic v)
 			fy_skip_size_nocheck(fy_generic_resolve_ptr(_v))		\
 	))
 
-static inline const char *fy_generic_get_string_size(const fy_generic *vp, size_t *lenp)
+static inline const char *
+fy_generic_get_string_size_no_check(const fy_generic *vp, size_t *lenp)
 {
 	if ((*vp & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) {
 		*lenp = (*vp >> FY_STRING_INPLACE_SIZE_SHIFT) & FYGT_STRING_INPLACE_SIZE_MASK;
@@ -617,13 +665,62 @@ static inline const char *fy_generic_get_string_size(const fy_generic *vp, size_
 	return (const char *)fy_decode_size_nocheck(fy_generic_resolve_ptr(*vp), lenp);
 }
 
-static inline const char *fy_generic_get_string(const fy_generic *vp)
+static inline const char *
+fy_generic_get_string_no_check(const fy_generic *vp)
 {
 	if ((*vp & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V)
 		return (const char *)vp + FY_INPLACE_STRING_ADV;
 
 	return (const char *)fy_skip_size_nocheck(fy_generic_resolve_ptr(*vp));
 }
+
+/* this dance is done because the inplace strings must be alloca'ed */
+#define fy_generic_get_string_size(_vp, _lenp) \
+	({ \
+		const char *__ret = NULL; \
+		const fy_generic *__vp = (_vp); \
+		size_t *__lenp = (_lenp); \
+		fy_generic __vfinal, *__vpp; \
+		\
+		if (!__vp || !fy_generic_is_string(*__vp)) { \
+			*__lenp = 0; \
+		} else { \
+			if (fy_generic_is_indirect(*__vp)) { \
+				__vfinal = fy_generic_indirect_get_value(*__vp); \
+				if ((__vfinal & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) { \
+					__vpp = alloca(sizeof(*__vpp)); \
+					*__vpp = __vfinal; \
+					__vp = __vpp; \
+				} else \
+					__vp = &__vfinal; \
+	 		} \
+			__ret = fy_generic_get_string_size_no_check(__vp, __lenp); \
+		} \
+		__ret; \
+	})
+
+#define fy_generic_get_string_default(_vp, _default_v) \
+	({ \
+		const char *__ret = (_default_v); \
+		const fy_generic *__vp = (_vp); \
+		fy_generic __vfinal, *__vpp; \
+		\
+		if (__vp || !fy_generic_is_string(*__vp)) { \
+			if (fy_generic_is_indirect(*__vp)) { \
+				__vfinal = fy_generic_indirect_get_value(*__vp); \
+				if ((__vfinal & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) { \
+					__vpp = alloca(sizeof(*__vpp)); \
+					*__vpp = __vfinal; \
+					__vp = __vpp; \
+				} else \
+					__vp = &__vfinal; \
+	 		} \
+			__ret = fy_generic_get_string_no_check(__vp); \
+		} \
+		__ret; \
+	})
+
+#define fy_generic_get_string(_vp) (fy_generic_get_string_default((_vp), NULL))
 
 static inline fy_generic fy_generic_null_create(struct fy_generic_builder *gb)
 {
@@ -1429,6 +1526,31 @@ fy_generic fy_generic_alias_create(struct fy_generic_builder *gb, fy_generic anc
 
 fy_generic fy_generic_create_scalar_from_text(struct fy_generic_builder *gb,
 					      const char *text, size_t len, enum fy_generic_type force_type);
+
+#define fy_indirect_alloca(_v, _anchor, _tag)						\
+	({										\
+		fy_generic __v = (_v), __anchor = (_anchor), __tag = (_tag), *__vp;	\
+		int __i = 1;								\
+											\
+		__vp = fy_ptr_align(alloca(4 * sizeof(*__vp) + FY_GENERIC_CONTAINER_ALIGN - 1),	\
+				FY_GENERIC_CONTAINER_ALIGN);				\
+		__vp[0] = 0;								\
+		if (__v != fy_invalid) {						\
+			 __vp[0] |= FYGIF_VALUE;					\
+			 __vp[__i++] = __v;						\
+		}									\
+		if (__anchor != fy_invalid) {						\
+			 __vp[0] |= FYGIF_ANCHOR;					\
+			 __vp[__i++] = __anchor;					\
+		}									\
+		if (_tag != fy_invalid) {						\
+			 __vp[0] |= FYGIF_TAG;						\
+			 __vp[__i++] = __tag;						\
+		}									\
+		(fy_generic)__vp | FY_INDIRECT_V;					\
+	})
+
+#define fy_indirect(_v, _anchor, _tag)	fy_indirect_alloca((_v), (_anchor), (_tag))
 
 int fy_generic_compare_out_of_place(fy_generic a, fy_generic b);
 
