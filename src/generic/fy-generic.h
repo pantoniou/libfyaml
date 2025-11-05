@@ -1205,7 +1205,7 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 		uint8_t *__vp, *__s;								\
 		fy_generic _r;									\
 												\
-		switch (len) {									\
+		switch (__len) {								\
 		case 0:										\
 			_r = (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
