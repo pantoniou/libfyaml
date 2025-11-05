@@ -15,7 +15,8 @@ INTERNAL_INCLUDES = \
 	-I$(top_srcdir)/src/xxhash \
 	-I$(top_srcdir)/src/util \
 	-I$(top_srcdir)/src/thread \
-	-I$(top_srcdir)/src/allocator
+	-I$(top_srcdir)/src/allocator \
+	-I$(top_srcdir)/src/generic
 
 lib_LTLIBRARIES += libfyaml.la
 libfyaml_la_SOURCES = \
@@ -68,6 +69,12 @@ libfyaml_la_SOURCES += \
 	allocator/fy-allocator-mremap.c allocator/fy-allocator-mremap.h \
 	allocator/fy-allocator-dedup.c allocator/fy-allocator-dedup.h \
 	allocator/fy-allocator-auto.c allocator/fy-allocator-auto.h
+
+# generic
+libfyaml_la_SOURCES += \
+	generic/fy-generic.c generic/fy-generic.h \
+	generic/fy-generic-decoder.c generic/fy-generic-decoder.h \
+	generic/fy-generic-encoder.c generic/fy-generic-encoder.h
 
 libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)
 libfyaml_la_CFLAGS = $(AM_CFLAGS)

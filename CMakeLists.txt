@@ -583,6 +583,9 @@ set(LIBSRCS
     src/lib/fy-docbuilder-diag.c
     src/lib/fy-input-diag.c
     src/lib/fy-parse-diag.c
+    src/generic/fy-generic.c
+    src/generic/fy-generic-decoder.c
+    src/generic/fy-generic-encoder.c
 )
 
 set(LIBHDRSPUB
@@ -763,6 +766,7 @@ target_include_directories(fyaml_static
         ${CMAKE_CURRENT_SOURCE_DIR}/src/xxhash
         ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
         ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
         ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
         ${CMAKE_CURRENT_BINARY_DIR}
 )
@@ -903,6 +907,7 @@ if(HAVE_LIBYAML)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/xxhash
         ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
         ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
         ${CMAKE_CURRENT_BINARY_DIR}
         ${LIBYAML_INCLUDE_DIRS}
     )
