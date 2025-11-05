@@ -1325,6 +1325,25 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 #define fy_string_size(_v, _len) (__builtin_constant_p(_v) ? fy_string_size_const((_v), (_len)) : fy_string_size_alloca((_v), (_len)))
 #define fy_string(_v) (__builtin_constant_p(_v) ? fy_string_const(_v) : fy_string_alloca(_v))
 
+#define fy_stringf(_fmt, ...) \
+	({ \
+		const char *__fmt = (_fmt); \
+		int _size; \
+		int _sizew __FY_DEBUG_UNUSED__; \
+		char *_buf = NULL, *_s; \
+		\
+		_size = snprintf(NULL, 0, __fmt, ## __VA_ARGS__); \
+		if (_size != -1) { \
+			_buf = alloca(_size + 1); \
+			_sizew = snprintf(_buf, _size + 1, __fmt, __VA_ARGS__); \
+			assert(_size == _sizew); \
+			_s = _buf + strlen(_buf); \
+			while (_s > _buf && _s[-1] == '\n') \
+				*--_s = '\0'; \
+		} \
+		fy_string_alloca(_buf); \
+	})
+
 #define fy_sequence_alloca(_count, _items) 						\
 	({										\
 		struct fy_generic_sequence *__vp;					\

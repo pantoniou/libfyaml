@@ -4933,6 +4933,20 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	fy_generic_emit_default(map);
 
+	fy_generic_emit_default(
+		fy_mapping(2, ((fy_generic[]) {
+			fy_string("foo"), fy_string("bar"),
+			fy_string("seq"), fy_sequence(3, ((fy_generic[]) {
+						fy_true,
+						fy_int(100),
+						fy_string("info")
+					}))
+			})
+		)
+	);
+
+	fy_generic_emit_default(fy_stringf("Hello there #%d", 10));
+
 	return 0;
 }
 
