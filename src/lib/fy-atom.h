@@ -71,6 +71,7 @@ struct fy_atom {
 			unsigned int tabsize : 8;
 			unsigned int lb_mode : 1; /* enum fy_lb_mode */
 			unsigned int fws_mode : 1; /* enum fy_flow_ws_mode */
+			unsigned int directive0_mode : 1;
 			bool direct_output : 1;		/* can directly output */
 			bool storage_hint_valid : 1;
 			bool empty : 1;			/* atom contains whitespace and linebreaks only if length > 0 */

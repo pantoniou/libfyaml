@@ -341,6 +341,12 @@ static inline enum fy_flow_ws_mode fyp_fws_mode(const struct fy_parser *fyp)
 	return fy_reader_flow_ws_mode(fyp->reader);
 }
 
+static inline bool fyp_directive0_mode(const struct fy_parser *fyp)
+{
+	assert(fyp);
+	return fy_reader_directive0_mode(fyp->reader);
+}
+
 static inline bool fyp_block_mode(struct fy_parser *fyp)
 {
 	return !fyp_json_mode(fyp) && !fyp->flow_level;
@@ -401,13 +407,6 @@ static inline bool fyp_is_flow_blankz(const struct fy_parser *fyp, int c)
 }
 
 static inline const void *
-fy_ptr_slow_path(struct fy_parser *fyp, size_t *leftp)
-{
-	assert(fyp);
-	return fy_reader_ptr_slow_path(fyp->reader, leftp);
-}
-
-static inline const void *
 fy_ensure_lookahead_slow_path(struct fy_parser *fyp, size_t size, size_t *leftp)
 {
 	assert(fyp);
@@ -453,10 +452,24 @@ fy_parse_strncmp(struct fy_parser *fyp, const char *str, size_t n)
 }
 
 static FY_ALWAYS_INLINE inline int
+fy_parse_peek_at_offset_width(struct fy_parser *fyp, size_t offset, int *wp)
+{
+	assert(fyp);
+	return fy_reader_peek_at_offset_width(fyp->reader, offset, wp);
+}
+
+static FY_ALWAYS_INLINE inline int
 fy_parse_peek_at_offset(struct fy_parser *fyp, size_t offset)
 {
 	assert(fyp);
 	return fy_reader_peek_at_offset(fyp->reader, offset);
+}
+
+static FY_ALWAYS_INLINE inline int
+fy_parse_peek_at_width_internal(struct fy_parser *fyp, int pos, ssize_t *offsetp, int *wp)
+{
+	assert(fyp);
+	return fy_reader_peek_at_width_internal(fyp->reader, pos, offsetp, wp);
 }
 
 static FY_ALWAYS_INLINE inline int
@@ -488,10 +501,24 @@ fy_is_generic_blankz_at_offset(struct fy_parser *fyp, size_t offset)
 }
 
 static FY_ALWAYS_INLINE inline int
+fy_parse_peek_at_width(struct fy_parser *fyp, int pos, int *wp)
+{
+	assert(fyp);
+	return fy_reader_peek_at_width(fyp->reader, pos, wp);
+}
+
+static FY_ALWAYS_INLINE inline int
 fy_parse_peek_at(struct fy_parser *fyp, int pos)
 {
 	assert(fyp);
-	return fy_reader_peek_at_internal(fyp->reader, pos, NULL);
+	return fy_reader_peek_at(fyp->reader, pos);
+}
+
+static FY_ALWAYS_INLINE inline int
+fy_parse_peek_width(struct fy_parser *fyp, int *wp)
+{
+	assert(fyp);
+	return fy_reader_peek_width(fyp->reader, wp);
 }
 
 static FY_ALWAYS_INLINE inline int
@@ -650,7 +677,7 @@ void fy_free_default(void *userdata, void *ptr);
 void *fy_realloc_default(void *userdata, void *ptr, size_t size);
 
 int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent, struct fy_atom *handle, bool sloppy_indent);
-int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent, int flow_level, struct fy_atom *handle, bool directive0);
+int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent, int flow_level, struct fy_atom *handle);
 
 void fy_reader_skip_ws_cr_nl(struct fy_reader *fyr);
 

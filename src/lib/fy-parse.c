@@ -105,11 +105,7 @@ int fy_parse_get_next_input(struct fy_parser *fyp)
 		json_mode = true;
 
 	/* set the initial reader mode according to json option and default version */
-	if (!json_mode)
-		rdmode = fy_version_compare(&fyp->stream_version, fy_version_make(1, 1)) <= 0 ? fyrm_yaml_1_1 : fyrm_yaml;
-	else
-		rdmode = fyrm_json;
-
+	rdmode = fy_reader_calculate_mode(&fyp->stream_version, json_mode);
 	fy_reader_set_mode(fyp->reader, rdmode);
 
 	memset(&icfg, 0, sizeof(icfg));
@@ -459,6 +455,7 @@ bool fy_token_tag_directive_is_overridable(struct fy_token *fyt_td)
 int fy_reset_document_state(struct fy_parser *fyp)
 {
 	struct fy_document_state *fyds_new = NULL;
+	enum fy_reader_mode rdmode;
 
 	fyp_scan_debug(fyp, "resetting document state");
 
@@ -485,6 +482,9 @@ int fy_reset_document_state(struct fy_parser *fyp)
 
 	/* and reset all aliases (TODO look for cross document aliases) */
 	fy_parse_streaming_aliases_reset(fyp);
+
+	rdmode = fy_reader_calculate_mode(&fyds_new->version, fyds_new->json_mode);
+	fy_reader_set_mode(fyp->reader, rdmode);
 
 	return 0;
 
@@ -1145,7 +1145,7 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 			"fy_reader_input_scan_token_mark() failed");
 
 	/* skip BOM at the start of the stream */
-	if (fyr->current_input_pos == 0 && (c = fy_parse_peek(fyp)) == FY_UTF8_BOM) {
+	if (fy_reader_current_input_pos(fyr) == 0 && (c = fy_parse_peek(fyp)) == FY_UTF8_BOM) {
 
 		fy_advance(fyp, c);
 		/* reset column */
@@ -2176,7 +2176,7 @@ int fy_scan_directive(struct fy_parser *fyp)
 		fyp->stream_version = vers;
 
 		/* set the reader's mode according to the version just scanned */
-		rdmode = fy_version_compare(&vers, fy_version_make(1, 1)) <= 0 ? fyrm_yaml_1_1 : fyrm_yaml;
+		rdmode = fy_reader_calculate_mode(&vers, false);
 		fy_reader_set_mode(fyp->reader, rdmode);
 
 		fy_advance_by(fyp, version_length);
@@ -3404,7 +3404,8 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	}
 
 	/* advance */
-	fy_advance(fyp, c);
+	if (fy_utf8_is_valid(c))
+		fy_advance(fyp, c);
 
 	fy_fill_atom_start(fyp, &handle);
 
@@ -3687,6 +3688,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	handle.json_mode = fyp_json_mode(fyp);
 	handle.lb_mode = fyp_lb_mode(fyp);
 	handle.fws_mode = fyp_fws_mode(fyp);
+	handle.directive0_mode = fyp_directive0_mode(fyp);
 	handle.tabsize = fyp_tabsize(fyp);
 	handle.ends_with_eof = ends_with_eof;
 	handle.is_merge_key = false;
@@ -4124,6 +4126,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 	handle->json_mode = fy_reader_json_mode(fyr);
 	handle->lb_mode = fy_reader_lb_mode(fyr);
 	handle->fws_mode = fy_reader_flow_ws_mode(fyr);
+	handle->directive0_mode = fy_reader_directive0_mode(fyr);
 	handle->tabsize = fy_reader_tabsize(fyr);
 	handle->ends_with_eof = false;	/* flow scalars never end with EOF and be valid */
 	handle->is_merge_key = false;
@@ -4155,22 +4158,270 @@ err_out:
 	return -1;
 }
 
-int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent, int flow_level, struct fy_atom *handle, bool directive0)
-{
+struct fy_fetch_plain_state {
+	struct fy_mark last_mark;
 	size_t length;
-	int rc = -1, run, nextc, lastc, breaks_found, blanks_found;
-	int breaks_found_length, first_break_length, break_length, presentation_breaks_length;
-	bool has_leading_blanks;
-	bool last_ptr;
-	struct fy_mark mark, last_mark;
-	bool is_multiline, has_lb, has_ws, ends_with_eof, is_merge_key;
-	bool has_json_esc, run_has_lb, run_has_ws, has_high_ascii;
-#ifdef ATOM_SIZE_CHECK
-	size_t tlength;
-#endif
+	int c;
+	int lastc;
+	bool has_lb;
+	bool has_ws;
+	bool has_json_esc;
+	bool has_high_ascii;
+	bool simple_key_allowed;
+	bool last_was_lb;
+};
+
+static FY_ALWAYS_INLINE inline int
+fy_reader_fetch_plain_scalar_handle_inline(struct fy_reader *fyr, int c,
+					   const int indent, const int flow_level,
+					   struct fy_atom *handle,
+					   const bool directive0,
+					   const enum fy_lb_mode lb_mode,
+					   const bool json_mode,
+					   struct fy_fetch_plain_state *state)
+{
+	int nextc, width;
+	size_t length, length_advance;
+	int blanks_found_length, breaks_found_length, first_break_length;
+	union {
+		struct {
+			bool run_has_lb : 1;
+			bool run_has_ws : 1;
+			bool has_json_esc : 1;
+			bool has_high_ascii : 1;
+			bool has_lb : 1;
+			bool has_ws : 1;
+			bool had_run : 1;
+			bool flow_level_gt_0 : 1;
+			bool flow_level_le_0_indent_ge_0 : 1;
+			bool check_tab : 1;
+			bool last_was_lb : 1;
+		};
+		unsigned short flags;
+	} u;
+	size_t run, len;
+	const char *s;
+
+	u.flags = 0;
+
+	u.flow_level_gt_0 = flow_level > 0;
+	u.flow_level_le_0_indent_ge_0 = flow_level <= 0 && indent >= 0;
+	u.check_tab = fy_reader_tabsize(fyr) || indent < 0;
+
+	length = 0;
+	length_advance = 0;
+
+	for (;;) {
+		/* break for document indicators */
+		if (fy_reader_column(fyr) == 0 &&
+		    ((!fy_reader_strncmp(fyr, "---", 3) || !fy_reader_strncmp(fyr, "...", 3)) &&
+			fy_reader_is_blankz_at_offset(fyr, 3)))
+			break;
+
+		if (c == '#')
+			break;
+
+		/* for YAML 1.1 check % directive break */
+		if (directive0 && fy_reader_column(fyr) == 0 && c == '%')
+			break;
+
+		u.had_run = false;
+		u.last_was_lb = false;
+		while (!fy_is_blankz_m(c, lb_mode)) {
+
+			if (fy_utf8_is_simple_scalar(c)) {
+				s = fy_reader_ensure_lookahead(fyr, 1, &len);
+				run = 0;
+				while (run < len && fy_utf8_is_simple_scalar_no_check((int8_t)s[run]))
+					run++;
+
+				fyr->column += run;
+				nextc = -1;
+			} else {
+
+				width = fy_utf8_width(c);
+
+				if (c == ':') {
+
+					nextc = fy_reader_peek_at_offset(fyr, width);
+
+					/* ':' followed by space terminates */
+					if (fy_is_blankz_m(nextc, lb_mode))
+						break;
+
+					/* in flow context ':' followed by flow markers */
+					if (u.flow_level_gt_0 && fy_is_flow_indicator(nextc))
+						break;
+				} else
+					nextc = -1;
+
+				/* in flow context any or , [ ] { } */
+				if (u.flow_level_gt_0 && fy_is_flow_indicator(c))
+					break;
+
+				/* check whether we have a JSON unescaped character */
+				u.has_json_esc |= !fy_is_json_unescaped(c);
+				u.has_high_ascii |= c >= 0x80;
+
+				fyr->column++;
+
+				run = width;
+			}
+
+			u.had_run = true;
+			fy_reader_advance_octets(fyr, run);
+			length += run;
+
+			c = nextc >= 0 ? nextc : fy_reader_peek(fyr);
+		}
+
+		/* save end mark if we processed more than one non-blank */
+		if (u.had_run) {
+			length += length_advance;
+
+			u.has_lb |= u.run_has_lb;
+			u.has_ws |= u.run_has_ws;
+
+			fy_reader_get_mark(fyr, &state->last_mark);
+		}
+
+		/* end? */
+		if (!(fy_is_blank_lb_m(c, lb_mode)))
+			break;
+
+		/* consume blanks */
+		breaks_found_length = 0;
+		first_break_length = 0;
+		blanks_found_length = 0;
+		u.run_has_ws = u.run_has_lb = false;
+
+		width = fy_utf8_width(c);
+		do {
+			fy_reader_advance_lb_mode(fyr, c, lb_mode);
+
+			if (u.check_tab) {
+				FYR_PARSE_ERROR_CHECK(fyr, 0, 1, FYEM_SCAN,
+						c != '\t' || fy_reader_column(fyr) >= (indent + 1), err_out,
+						"invalid tab used as indentation");
+			}
+
+			u.last_was_lb = !fy_is_blank(c);
+
+			/* if it's a break */
+			if (!u.last_was_lb) {
+				blanks_found_length += width;
+				u.run_has_ws = true;
+			} else {
+				/* first break, turn on leading blanks */
+				if (!first_break_length)
+					first_break_length = width;
+				breaks_found_length += width;
+				u.run_has_lb = true;
+			}
+
+			c = fy_reader_peek_width(fyr, &width);
+
+		} while (fy_is_blank_lb_m(c, lb_mode));
+
+		/* break out if indentation is less */
+		if (u.flow_level_le_0_indent_ge_0 && fy_reader_column(fyr) <= indent)
+			break;
+
+		length_advance = u.run_has_lb ?
+					(breaks_found_length > first_break_length ? (breaks_found_length - first_break_length) : first_break_length) :
+					blanks_found_length;
+	}
+
+	state->c = c;
+	state->length = length;
+	state->simple_key_allowed = u.run_has_lb;	// simple key allowed if there was an lb
+	state->has_lb = u.has_lb;
+	state->has_ws = u.has_ws;
+	state->has_json_esc = u.has_json_esc;
+	state->has_high_ascii = u.has_high_ascii;
+	state->last_was_lb = u.last_was_lb;
+
+	return 0;
+
+err_out:
+	return -1;
+}
+
+int fy_reader_fetch_plain_scalar_handle_yaml(struct fy_reader *fyr, int c,
+					   const int indent, const int flow_level,
+					   struct fy_atom *handle,
+					   struct fy_fetch_plain_state *state)
+{
+	return fy_reader_fetch_plain_scalar_handle_inline(fyr, c, indent, flow_level, handle,
+			false,		// directive0
+			fylb_cr_nl,	// lb_mode
+			false,		// json
+			state);
+}
+
+int fy_reader_fetch_plain_scalar_handle_json(struct fy_reader *fyr, int c,
+					   const int indent, const int flow_level,
+					   struct fy_atom *handle,
+					   struct fy_fetch_plain_state *state)
+{
+	return fy_reader_fetch_plain_scalar_handle_inline(fyr, c, indent, flow_level, handle,
+			false,		// directive0
+			fylb_cr_nl,	// lb_mode
+			true,		// json
+			state);
+}
+
+int fy_reader_fetch_plain_scalar_handle_yaml_1_1(struct fy_reader *fyr, int c,
+					   const int indent, const int flow_level,
+					   struct fy_atom *handle,
+					   struct fy_fetch_plain_state *state)
+{
+	return fy_reader_fetch_plain_scalar_handle_inline(fyr, c, indent, flow_level, handle,
+			true,			// directive0
+			fylb_cr_nl_N_L_P,	// lb_mode
+			false,			// json
+			state);
+}
+
+typedef int (*fy_reader_fetch_plain_scalar_handle_func)(struct fy_reader *fyr, int c,
+					   const int indent, const int flow_level,
+					   struct fy_atom *handle,
+					   struct fy_fetch_plain_state *state);
+
+static inline int
+fy_reader_fetch_plain_scalar_handle_switch(struct fy_reader *fyr, int c,
+					   const int indent, const int flow_level,
+					   struct fy_atom *handle,
+					   struct fy_fetch_plain_state *state)
+{
+
+	static const fy_reader_fetch_plain_scalar_handle_func funcs[] = {
+		[fyrm_yaml] = fy_reader_fetch_plain_scalar_handle_yaml,
+		[fyrm_json] = fy_reader_fetch_plain_scalar_handle_json,
+		[fyrm_yaml_1_1] = fy_reader_fetch_plain_scalar_handle_yaml_1_1,
+	};
+	fy_reader_fetch_plain_scalar_handle_func func;
+
+	assert((unsigned int)fyr->mode <= ARRAY_SIZE(funcs));
+	func = funcs[fyr->mode];
+	assert(func != NULL);
+
+	return func(fyr, c, indent, flow_level, handle, state);
+}
+
+int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c,
+					const int indent, int flow_level,
+					struct fy_atom *handle)
+{
+	struct fy_fetch_plain_state state_local, *state = &state_local;
+	const enum fy_lb_mode lb_mode = fy_reader_lb_mode(fyr);
+	bool is_merge_key, ends_with_eof, is_multiline;
+	int nextc, rc;
+
+	nextc = fy_reader_peek_at(fyr, 1);
 
 	FYR_PARSE_ERROR_CHECK(fyr, 0, 1, FYEM_SCAN,
-			!fy_reader_is_blankz(fyr, c), err_out,
+			!fy_is_blankz_m(c, lb_mode), err_out,
 			"plain scalar cannot start with blank or zero");
 
 	/* may not start with any of ,[]{}#&*!|>'\"%@` */
@@ -4180,271 +4431,83 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 
 	/* may not start with - not followed by blankz */
 	FYR_PARSE_ERROR_CHECK(fyr, 0, 2, FYEM_SCAN,
-			c != '-' || !fy_reader_is_blank_at_offset(fyr, 1), err_out,
+			c != '-' || !fy_is_blank(nextc), err_out,
 			"plain scalar cannot start with '%c' followed by blank", c);
 
 	/* may not start with -?: not followed by blankz (in block context) */
 	FYR_PARSE_ERROR_CHECK(fyr, 0, 2, FYEM_SCAN,
-			flow_level > 0 || !((c == '?' || c == ':') && fy_reader_is_blank_at_offset(fyr, 1)), err_out,
+			flow_level > 0 || !((c == '?' || c == ':') && fy_is_blank(nextc)), err_out,
 			"plain scalar cannot start with '%c' followed by blank (in block context)", c);
 
 	/* may not start with - followed by ",[]{}" in flow context */
 	FYR_PARSE_ERROR_CHECK(fyr, 0, 2, FYEM_SCAN,
-			flow_level == 0 || !(c == '-' && fy_utf8_strchr(",[]{}", fy_reader_peek_at(fyr, 1))), err_out,
+			flow_level == 0 || !(c == '-' && fy_is_flow_indicator(nextc)), err_out,
 			"plain scalar cannot start with '%c' followed by ,[]{} (in flow context)", c);
 
-	/* we can prime is_merge_key here */
-	is_merge_key = c == '<' && fy_reader_peek_at(fyr, 1) == '<';
+	memset(state, 0, sizeof(*state));
+	state->last_mark.input_pos = (size_t)-1;
 
-	fy_reader_get_mark(fyr, &mark);
+	/* we can prime is_merge_key here */
+	is_merge_key = c == '<' && nextc == '<';
 
 	fy_reader_fill_atom_start(fyr, handle);
 
-	has_leading_blanks = false;
-	has_lb = false;
-	has_ws = false;
-	has_json_esc = false;
-	run_has_lb = false;
-	run_has_ws = false;
-	has_high_ascii = false;
-
-	length = 0;
-	breaks_found = 0;
-	breaks_found_length = 0;
-	first_break_length = 0;
-	presentation_breaks_length = 0;
-	blanks_found = 0;
-	last_ptr = false;
-	memset(&last_mark, 0, sizeof(last_mark));
-	c = FYUG_EOF;
-	lastc = FYUG_EOF;
-
-	for (;;) {
-		/* break for document indicators */
-		if (fy_reader_column(fyr) == 0 &&
-		    ((!fy_reader_strncmp(fyr, "---", 3) || !fy_reader_strncmp(fyr, "...", 3)) &&
-			fy_reader_is_blankz_at_offset(fyr, 3)))
-			break;
-
-		c = fy_reader_peek(fyr);
-		if (c == '#')
-			break;
-
-		/* for YAML 1.1 check % directive break */
-		if (directive0 && fy_reader_column(fyr) == 0 && c == '%')
-			break;
-
-		/* quickly deal with runs */
-		run = 0;
-		if (c >= 0 && c <= 0x7f && (fy_utf8_low_ascii_flags[c] & F_SIMPLE_SCALAR)) {
-			size_t len, consumed;
-			const char *p, *s, *e;
-			int8_t cc;
-
-			while ((p = fy_reader_ensure_lookahead(fyr, 1, &len)) != NULL) {
-
-				s = p;
-				e = s + len;
-
-				while (s < e && (cc = (int8_t)*s) >= 0 && (fy_utf8_low_ascii_flags[cc] & F_SIMPLE_SCALAR))
-					s++;
-
-				consumed = s - p;
-				if (consumed) {
-					fy_reader_advance_octets(fyr, consumed);
-					fyr->column += consumed;
-				}
-				run += consumed;
-
-				/* we're done if stopped earlier */
-				if (s < e)
-					break;
-			}
-
-		}
-		if (run > 0) {
-			length += run;
-			if (breaks_found) {
-				/* minimum 1 sep, or more for consecutive */
-				length += breaks_found > 1 ? (breaks_found_length - first_break_length) : 1;
-				length += presentation_breaks_length;
-				breaks_found = 0;
-				blanks_found = 0;
-				presentation_breaks_length = 0;
-			} else if (blanks_found) {
-				/* just the blanks mam' */
-				length += blanks_found;
-				blanks_found = 0;
-			}
-		}
-
-		while (!fy_reader_is_blankz(fyr, c = fy_reader_peek(fyr))) {
-
-
-			if (c == ':') {
-
-				nextc = fy_reader_peek_at(fyr, 1);
-
-				/* ':' followed by space terminates */
-				if (fy_reader_is_blankz(fyr, nextc)) {
-					/* super rare case :: not followed by space  */
-					/* :: not followed by space */
-					if (lastc != ':' || fy_reader_is_blankz(fyr, nextc))
-						break;
-				}
-
-				/* in flow context ':' followed by flow markers */
-				if (flow_level > 0 && fy_utf8_strchr(",[]{}", nextc))
-					break;
-			}
-
-			/* in flow context any or , [ ] { } */
-			if (flow_level > 0 && (c == ',' || c == '[' || c == ']' || c == '{' || c == '}'))
-				break;
-
-			if (breaks_found) {
-				/* minimum 1 sep, or more for consecutive */
-				length += breaks_found > 1 ? (breaks_found_length - first_break_length) : 1;
-				length += presentation_breaks_length;
-				breaks_found = 0;
-				blanks_found = 0;
-				presentation_breaks_length = 0;
-			} else if (blanks_found) {
-				/* just the blanks mam' */
-				length += blanks_found;
-				blanks_found = 0;
-			}
-
-			/* check whether we have a JSON unescaped character */
-			if (!has_json_esc && !fy_is_json_unescaped(c))
-				has_json_esc = true;
-
-			fy_reader_advance(fyr, c);
-			run++;
-
-			length += fy_utf8_width(c);
-			has_high_ascii |= c >= 0x80;
-
-			lastc = c;
-		}
-
-		/* save end mark if we processed more than one non-blank */
-		if (run > 0) {
-			/* fyp_scan_debug(fyp, "saving mark"); */
-			last_ptr = true;
-			fy_reader_get_mark(fyr, &last_mark);
-
-			if (!has_lb && run_has_lb)
-				has_lb = true;
-
-			if (!has_ws && run_has_ws)
-				has_ws = true;
-		}
-
-		/* end? */
-		if (!(fy_is_blank(c) || fy_reader_is_lb(fyr, c)))
-			break;
-
-		/* consume blanks */
-		breaks_found = 0;
-		breaks_found_length = 0;
-		first_break_length = 0;
-		blanks_found = 0;
-		run_has_lb = fy_reader_is_lb(fyr, c);
-		run_has_ws = fy_is_blank(c);
-		do {
-			fy_reader_advance(fyr, c);
-
-			if (!fy_reader_tabsize(fyr)) {
-				/* check for tab */
-				FYR_PARSE_ERROR_CHECK(fyr, 0, 1, FYEM_SCAN,
-						c != '\t' || !has_leading_blanks || indent < 0 || fy_reader_column(fyr) >= (indent + 1), err_out,
-						"invalid tab used as indentation");
-			}
-
-			nextc = fy_reader_peek(fyr);
-
-			/* if it's a break */
-			if (fy_reader_is_lb(fyr, c)) {
-
-				if (!fy_is_lb_LS_PS(c)) {
-					break_length = 1;
-				} else {
-					break_length = fy_utf8_width(c);
-					presentation_breaks_length += break_length;
-				}
-
-				/* first break, turn on leading blanks */
-				if (!has_leading_blanks)
-					has_leading_blanks = true;
-				if (!breaks_found)
-					first_break_length = break_length;
-				breaks_found++;
-				breaks_found_length += break_length;
-				blanks_found = 0;
-				run_has_lb = true;
-			} else {
-				blanks_found++;
-				run_has_ws = true;
-			}
-
-			c = nextc;
-
-		} while (fy_is_blank(c) || fy_reader_is_lb(fyr, c));
-
-		/* break out if indentation is less */
-		if (flow_level <= 0 && indent >= 0 && fy_reader_column(fyr) < (indent + 1))
-			break;
-	}
+	rc = fy_reader_fetch_plain_scalar_handle_switch(fyr, c, indent, flow_level, handle, state);
+	if (rc)
+		goto err_out;
 
 	/* end... */
-	if (!last_ptr)
+	if (state->last_mark.input_pos == (size_t)-1)
 		fy_reader_fill_atom_end(fyr, handle);
 	else
-		fy_reader_fill_atom_end_at(fyr, handle, &last_mark);
+		fy_reader_fill_atom_end_at(fyr, handle, &state->last_mark);
 
+	c = state->c;
 	if (c == FYUG_INV || c == FYUG_PARTIAL) {
 		FYR_MARK_ERROR(fyr, &handle->start_mark, &handle->end_mark, FYEM_SCAN,
 			"plain scalar is malformed UTF8");
 		goto err_out;
 	}
-	ends_with_eof = c == FYUG_EOF && !fy_reader_is_lb(fyr, lastc);
+
+	ends_with_eof = c == FYUG_EOF && !state->last_was_lb;
 
 	is_multiline = handle->end_mark.line > handle->start_mark.line;
 
 	handle->style = FYAS_PLAIN;
 	handle->chomp = FYAC_STRIP;
-	handle->direct_output = !is_multiline && !has_json_esc && fy_atom_size(handle) == length;
+	handle->direct_output = !is_multiline && !state->has_json_esc && fy_atom_size(handle) == state->length;
 	handle->empty = false;
-	handle->has_lb = has_lb;
-	handle->has_ws = has_ws;
+	handle->has_lb = state->has_lb;
+	handle->has_ws = state->has_ws;
 	handle->starts_with_ws = false;
 	handle->starts_with_lb = false;
 	handle->ends_with_ws = false;
 	handle->ends_with_lb = false;
 	handle->trailing_lb = false;
-	handle->size0 = length == 0;
+	handle->size0 = state->length == 0;
 	handle->valid_anchor = false;
 	handle->json_mode = fy_reader_json_mode(fyr);
 	handle->lb_mode = fy_reader_lb_mode(fyr);
 	handle->fws_mode = fy_reader_flow_ws_mode(fyr);
+	handle->directive0_mode = fy_reader_directive0_mode(fyr);
 	handle->tabsize = fy_reader_tabsize(fyr);
 	handle->ends_with_eof = ends_with_eof;
-	handle->is_merge_key = is_merge_key && length == 2;
-	handle->simple_key_allowed = run_has_lb;	// simple key allowed if there was an lb
-	handle->high_ascii = has_high_ascii;
+	handle->is_merge_key = is_merge_key && state->length == 2;
+	handle->simple_key_allowed = state->simple_key_allowed;
+	handle->high_ascii = state->has_high_ascii;
 
 #ifdef ATOM_SIZE_CHECK
+	size_t tlength;
 	tlength = fy_atom_format_text_length(handle);
-	if (tlength != length) {
+	if (tlength != state->length) {
 		fyr_warning(fyr, "%s: storage hint calculation failed real %zu != hint %zu - \"%s\"", __func__,
-			tlength, length,
+			tlength, state->length,
 			fy_utf8_format_text_a(fy_atom_data(handle), fy_atom_size(handle), fyue_doublequote));
-		length = tlength;
+		state->length = tlength;
 	}
 #endif
 
-	handle->storage_hint = length;
+	handle->storage_hint = state->length;
 	handle->storage_hint_valid = true;
 
 	/* extra check in json mode */
@@ -4461,13 +4524,13 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c, int indent
 				"Invalid JSON plain scalar");
 	}
 
+
 	return 0;
 
 err_out:
 	rc = -1;
 	return rc;
 }
-
 
 int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 {
@@ -4853,8 +4916,7 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 
 	fy_get_simple_key_mark(fyp, &skm);
 
-	rc = fy_reader_fetch_plain_scalar_handle(fyp->reader, c, fyp->indent, fyp->flow_level, &handle,
-						fy_document_state_version_compare(fyp->current_document_state, fy_version_make(1, 1)) <= 0);
+	rc = fy_reader_fetch_plain_scalar_handle(fyp->reader, c, fyp->indent, fyp->flow_level, &handle);
 	if (rc) {
 		fyp->stream_error = true;
 		goto err_out_rc;
@@ -8795,17 +8857,16 @@ int fy_parser_rollback(struct fy_parser *fyp, struct fy_parser_checkpoint *fypch
 	fyr->current_input = fy_input_ref(fyrc->current_input);
 	fyr->mode = fyrc->mode;
 	fyr->this_input_start = fyrc->this_input_start;
-	fyr->current_input_pos = fyrc->current_input_pos;
 	fyr->current_ptr = fyrc->current_ptr;
-	fyr->current_c = fyrc->current_c;
-	fyr->current_w = fyrc->current_w;
-	fyr->current_left = fyrc->current_left;
+	fyr->current_ptr_start =fyrc->current_ptr_start;
+	fyr->current_ptr_end =fyrc->current_ptr_end;
 	fyr->line = fyrc->line;
 	fyr->column = fyrc->column;
 	fyr->tabsize = fyrc->tabsize;
 	fyr->json_mode = fyrc->json_mode;
 	fyr->lb_mode = fyrc->lb_mode;
 	fyr->fws_mode = fyrc->fws_mode;
+	fyr->directive0_mode = fyrc->directive0_mode;
 
 	fy_token_unref(fyp->stream_end_token);
 	fyp->stream_end_token = fy_token_ref(fypc->stream_end_token);

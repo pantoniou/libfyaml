@@ -953,6 +953,7 @@ struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn)
 	handle.json_mode = false;		/* always false */
 	handle.lb_mode = fylb_cr_nl;		/* always \r\n */
 	handle.fws_mode = fyfws_space_tab;	/* always space + tab */
+	handle.directive0_mode = false;
 
 	handle.chomp = FYAC_STRIP;
 	handle.increment = 0;
