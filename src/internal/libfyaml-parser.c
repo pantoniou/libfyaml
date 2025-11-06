@@ -4214,8 +4214,8 @@ void fy_generic_print_primitive(FILE *fp, fy_generic v)
 		break;
 
 	case FYGT_ALIAS:
-		sv = fy_generic_get_alias_size(&v, &slen);
-		fprintf(fp, "*'%.*s'", (int)slen, sv);
+		sv = fy_generic_get_alias(&v);
+		fprintf(fp, "*'%s'", sv);
 		break;
 
 	default:
