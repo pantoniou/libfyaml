@@ -4948,6 +4948,49 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	fy_generic_emit_default(seq3);
 
+
+	printf("emit NULL\n");
+	fy_generic_emit_default(fy_to_generic(NULL));
+
+	printf("emit true\n");
+	fy_generic_emit_default(fy_to_generic(true));
+
+	printf("emit false\n");
+	fy_generic_emit_default(fy_to_generic(false));
+
+	printf("emit int 1000\n");
+	fy_generic_emit_default(fy_to_generic(1000));
+
+	{
+	fy_generic v;
+	printf("emit int -1000\n");
+	v = fy_to_generic(-1000);
+	fy_generic_emit_default(v);
+
+	printf("emit char * 'Hello'\n");
+	v = fy_to_generic("Hello");
+	fy_generic_emit_default(v);
+
+	printf("emit float 100.5\n");
+	v = fy_to_generic((float)100.5);
+	fy_generic_emit_default(v);
+
+	printf("emit char * 'Hello this is a long string'\n");
+	v = fy_to_generic("Hello this is a long string");
+	fy_generic_emit_default(v);
+
+	printf("emit a mapping'\n");
+	v = fy_to_generic("Hello this is a long string");
+	fy_generic_emit_default(
+		fy_mapping(
+			fy_to_generic("foo"), fy_to_generic("bar"),
+			fy_to_generic("seq"), fy_sequence(
+						fy_to_generic(true),
+						fy_to_generic(100),
+						fy_to_generic("info"))));
+
+	}
+
 	return 0;
 }
 
