@@ -593,10 +593,9 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 			vtags_items = alloca(sizeof(*vtags_items) * count);
 			for (i = 0; i < count; i++) {
-				vtags_items[i] = fy_mapping(2, ((fy_generic[]) {
+				vtags_items[i] = fy_mapping(
 							fy_string("handle"), fy_string(tags[i]->handle),
-							fy_string("prefix"), fy_string(tags[i]->prefix)
-						}));
+							fy_string("prefix"), fy_string(tags[i]->prefix));
 			}
 
 			if (tags)
@@ -605,17 +604,15 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 			schema_txt = fy_generic_schema_get_text(fy_generic_builder_get_schema(gb));
 
-			vds = fy_generic_mapping_create(gb, 6, ((fy_generic[]) {
-					fy_string("root"), v,
-					fy_string("version"), fy_mapping(2, ((fy_generic[]) {
-								fy_string("major"), fy_int(vers->major),
-								fy_string("minor"), fy_int(vers->minor)
-							})),
-					fy_string("version-explicit"), fy_bool(version_explicit),
-					fy_string("tags"), fy_sequence(count, vtags_items),
-					fy_string("tags-explicit"), fy_bool(tags_explicit),
-					fy_string("schema"), fy_string(schema_txt)
-				}));
+			vds = fy_mapping(
+				fy_string("root"), v,
+				fy_string("version"), fy_mapping(
+						fy_string("major"), fy_int(vers->major),
+						fy_string("minor"), fy_int(vers->minor)),
+				fy_string("version-explicit"), fy_bool(version_explicit),
+				fy_string("tags"), fy_sequence_explicit(count, vtags_items),
+				fy_string("tags-explicit"), fy_bool(tags_explicit),
+				fy_string("schema"), fy_string(schema_txt));
 
 		} else
 			vds = fy_null;
@@ -623,7 +620,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		assert(vds != fy_invalid);
 
 		gd->vroot = v;
-		gd->vds = vds;
+		gd->vds = fy_generic_internalize(gb, vds);
 
 		fy_generic_decoder_object_destroy(gdo);
 		gd->document_ready = true;
