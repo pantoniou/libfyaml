@@ -675,52 +675,47 @@ fy_generic_get_string_no_check(const fy_generic *vp)
 }
 
 /* this dance is done because the inplace strings must be alloca'ed */
-#define fy_generic_get_string_size(_vp, _lenp) \
-	({ \
-		const char *__ret = NULL; \
-		const fy_generic *__vp = (_vp); \
-		size_t *__lenp = (_lenp); \
-		fy_generic __vfinal, *__vpp; \
-		\
-		if (!__vp || !fy_generic_is_string(*__vp)) { \
-			*__lenp = 0; \
-		} else { \
-			if (fy_generic_is_indirect(*__vp)) { \
-				__vfinal = fy_generic_indirect_get_value(*__vp); \
-				if ((__vfinal & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) { \
-					__vpp = alloca(sizeof(*__vpp)); \
-					*__vpp = __vfinal; \
-					__vp = __vpp; \
-				} else \
-					__vp = &__vfinal; \
-	 		} \
-			__ret = fy_generic_get_string_size_no_check(__vp, __lenp); \
-		} \
-		__ret; \
+#define fy_generic_get_string_size(_vp, _lenp)							\
+	({											\
+		const char *__ret = NULL;							\
+		const fy_generic *__vp = (_vp);							\
+		size_t *__lenp = (_lenp);							\
+		fy_generic __vfinal, *__vpp;							\
+												\
+		if (!__vp || !fy_generic_is_string(*__vp)) {					\
+			*__lenp = 0;								\
+		} else {									\
+			if (fy_generic_is_indirect(*__vp)) {					\
+				__vfinal = fy_generic_indirect_get_value(*__vp);		\
+				if ((__vfinal & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) {	\
+					__vpp = alloca(sizeof(*__vpp));				\
+					*__vpp = __vfinal;					\
+					__vp = __vpp;						\
+				} else								\
+					__vp = &__vfinal;					\
+			}									\
+			__ret = fy_generic_get_string_size_no_check(__vp, __lenp);		\
+		}										\
+		__ret;										\
 	})
 
-#define fy_generic_get_string_default(_vp, _default_v) \
-	({ \
-		const char *__ret = (_default_v); \
-		const fy_generic *__vp = (_vp); \
-		fy_generic __vfinal, *__vpp; \
-		\
-		if (__vp || !fy_generic_is_string(*__vp)) { \
-			if (fy_generic_is_indirect(*__vp)) { \
-				__vfinal = fy_generic_indirect_get_value(*__vp); \
-				if ((__vfinal & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) { \
-					__vpp = alloca(sizeof(*__vpp)); \
-					*__vpp = __vfinal; \
-					__vp = __vpp; \
-				} else \
-					__vp = &__vfinal; \
-	 		} \
-			__ret = fy_generic_get_string_no_check(__vp); \
-		} \
-		__ret; \
+#define fy_generic_get_string_default(_vp, _default_v)			\
+	({								\
+		const char *__ret = (_default_v); 			\
+		size_t __len;						\
+		__ret = fy_generic_get_string_size((_vp), &__len);	\
+		if (!__ret)						\
+	 		__ret = (_default_v);				\
+		__ret;							\
 	})
 
 #define fy_generic_get_string(_vp) (fy_generic_get_string_default((_vp), NULL))
+
+#define fy_generic_get_alias(_vp) \
+	({ \
+		fy_generic __va = fy_generic_get_anchor(*(_vp)); \
+		fy_generic_get_string(&__va); \
+	})
 
 static inline fy_generic fy_generic_null_create(struct fy_generic_builder *gb)
 {
@@ -1205,7 +1200,7 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 		uint8_t *__vp, *__s;								\
 		fy_generic _r;									\
 												\
-		switch (len) {									\
+		switch (__len) {									\
 		case 0:										\
 			_r = (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
 			break;									\
@@ -1477,7 +1472,6 @@ fy_generic fy_generic_mapping_append_i(struct fy_generic_builder *gb, bool inter
 fy_generic fy_generic_mapping_append(struct fy_generic_builder *gb, fy_generic map, size_t count, const fy_generic *pairs);
 
 const char *fy_generic_get_alias_size(const fy_generic *vp, size_t *lenp);
-const char *fy_generic_get_alias(const fy_generic *vp);
 
 const fy_generic fy_generic_mapping_get_value_index(fy_generic map, fy_generic key, size_t *idxp);
 

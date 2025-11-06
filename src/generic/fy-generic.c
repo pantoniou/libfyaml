@@ -941,42 +941,6 @@ fy_generic fy_generic_mapping_set_value(struct fy_generic_builder *gb,
 	return fy_generic_mapping_set_value_i(gb, true, map, key, value);
 }
 
-const char *fy_generic_get_alias_size(const fy_generic *vp, size_t *lenp)
-{
-	const fy_generic *p;
-	uintptr_t flags;
-
-	if (!vp || !lenp)
-		return NULL;
-
-	p = fy_generic_resolve_ptr(*vp);
-
-	flags = *p++;
-	if (flags & FYGIF_VALUE)
-		p++;
-	if (!(flags & FYGIF_ANCHOR))
-		return NULL;
-	return fy_generic_get_string_size(p, lenp);
-}
-
-const char *fy_generic_get_alias(const fy_generic *vp)
-{
-	const fy_generic *p;
-	uintptr_t flags;
-
-	if (!vp)
-		return NULL;
-
-	p = fy_generic_resolve_ptr(*vp);
-
-	flags = *p++;
-	if (flags & FYGIF_VALUE)
-		p++;
-	if (!(flags & FYGIF_ANCHOR))
-		return NULL;
-	return fy_generic_get_string(p);
-}
-
 fy_generic fy_generic_indirect_create(struct fy_generic_builder *gb, const struct fy_generic_indirect *gi)
 {
 	const void *p;
