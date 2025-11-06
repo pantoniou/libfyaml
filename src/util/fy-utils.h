@@ -297,4 +297,69 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 #endif
 #endif
 
+// C preprocessor magic follows (pilfered and adapted from h4x0r.org)
+
+#define FY_CPP_EVAL1(...)    __VA_ARGS__
+#define FY_CPP_EVAL2(...)    FY_CPP_EVAL1(FY_CPP_EVAL1(__VA_ARGS__))
+#define FY_CPP_EVAL4(...)    FY_CPP_EVAL2(FY_CPP_EVAL2(__VA_ARGS__))
+#define FY_CPP_EVAL8(...)    FY_CPP_EVAL4(FY_CPP_EVAL4(__VA_ARGS__))
+#define FY_CPP_EVAL16(...)   FY_CPP_EVAL8(FY_CPP_EVAL8(__VA_ARGS__))
+#define FY_CPP_EVAL32(...)   FY_CPP_EVAL16(FY_CPP_EVAL16(__VA_ARGS__))
+#define FY_CPP_EVAL64(...)   FY_CPP_EVAL32(FY_CPP_EVAL32(__VA_ARGS__))
+#define FY_CPP_EVAL128(...)  FY_CPP_EVAL64(FY_CPP_EVAL64(__VA_ARGS__))
+#define FY_CPP_EVAL(...)     FY_CPP_EVAL128(FY_CPP_EVAL128(__VA_ARGS__))
+
+#define FY_CPP_EMPTY()
+#define FY_CPP_POSTPONE1(macro) macro FY_CPP_EMPTY()
+
+#define FY_CPP_MAP(macro, ...) \
+    __VA_OPT__(FY_CPP_EVAL(_FY_CPP_MAP_ONE(macro, __VA_ARGS__)))
+#define _FY_CPP_MAP_ONE(macro, x, ...) macro(x) \
+    __VA_OPT__(FY_CPP_POSTPONE1(_FY_CPP_MAP_INDIRECT)()(macro, __VA_ARGS__))
+#define _FY_CPP_MAP_INDIRECT() _FY_CPP_MAP_ONE
+
+#define _FY_CPP_FIRST(x, ...) x
+#define FY_CPP_FIRST(...)     __VA_OPT__(_FY_CPP_FIRST(__VA_ARGS__))
+
+#define _FY_CPP_REST(x, ...) __VA_ARGS__
+#define FY_CPP_REST(...)     __VA_OPT__(_FY_CPP_REST(__VA_ARGS__))
+
+#define _FY_CPP_COUNT_BODY(x) +1
+#define FY_CPP_VA_COUNT(...)  (FY_CPP_MAP(_FY_CPP_COUNT_BODY, __VA_ARGS__) + 0)
+
+#define _FY_CPP_ITEM_ONE(arg) arg
+#define _FY_CPP_ITEM_LATER_ARG(arg) , _FY_CPP_ITEM_ONE(arg)
+#define _FY_CPP_ITEM_LIST(...) FY_CPP_MAP(_FY_CPP_ITEM_LATER_ARG, __VA_ARGS__)
+
+#define _FY_CPP_VA_ITEMS(...)          \
+    _FY_CPP_ITEM_ONE(FY_CPP_FIRST(__VA_ARGS__)) \
+    _FY_CPP_ITEM_LIST(FY_CPP_REST(__VA_ARGS__))
+
+#define FY_CPP_VA_ITEMS(_type, ...) \
+	((_type []) { _FY_CPP_VA_ITEMS(__VA_ARGS__) })
+
+/*
+ * example usage:
+ *
+ * int do_sum(int count, int *items)
+ * {
+ * 	int i;
+ * 	int sum;
+ *
+ * 	sum = 0;
+ * 	for (i = 0; i < count; i++)
+ * 		sum += items[i];
+ *
+ * 	return sum;
+ * }
+ *
+ * #define do_sum_macro(...) \
+ * 	do_sum( \
+ * 		FY_CPP_VA_COUNT(__VA_ARGS__), \
+ * 		FY_CPP_VA_ITEMS(int, __VA_ARGS__))
+ *
+ * sum = do_sum_macro(1, 2, 5, 100);
+ * printf("sum=%d\n", sum);
+ */
+
 #endif

@@ -4227,9 +4227,9 @@ fy_generic do_x(void)
 {
 	fy_generic vstr;
 
-	asm volatile("nop; nop" : : : "memory");
+	__asm__ volatile("nop; nop" : : : "memory");
 	vstr = fy_string("test");
-	asm volatile("nop; nop" : : "r"(vstr) : "memory");
+	__asm__ volatile("nop; nop" : : "r"(vstr) : "memory");
 
 	return vstr;
 }
@@ -4238,9 +4238,9 @@ fy_generic do_x2(void)
 {
 	fy_generic vf;
 
-	asm volatile("nop; nop" : : : "memory");
+	__asm__ volatile("nop; nop" : : : "memory");
 	vf = fy_float(128.0);
-	asm volatile("nop; nop" : : "r"(vf) : "memory");
+	__asm__ volatile("nop; nop" : : "r"(vf) : "memory");
 
 	return vf;
 }
@@ -4249,9 +4249,9 @@ fy_generic do_x3(void)
 {
 	fy_generic vf;
 
-	asm volatile("nop; nop" : : : "memory");
+	__asm__ volatile("nop; nop" : : : "memory");
 	vf = fy_float_alloca(128.1);
-	asm volatile("nop; nop" : : "r"(vf) : "memory");
+	__asm__ volatile("nop; nop" : : "r"(vf) : "memory");
 
 	return vf;
 }
@@ -4275,9 +4275,9 @@ const char *do_x5(fy_generic vstr)
 {
 	const char *str;
 
-	asm volatile("nop; nop" : : : "memory");
+	__asm__ volatile("nop; nop" : : : "memory");
 	str = FY_GENERIC_GET_STRING_LVAL(vstr);
-	asm volatile("nop; nop" : : : "memory");
+	__asm__ volatile("nop; nop" : : : "memory");
 
 	return strdup(str);
 }
@@ -4533,9 +4533,9 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	{
 		const char *ss;
 
-		asm volatile("nop; nop" : : : "memory");
+		__asm__ volatile("nop; nop" : : : "memory");
 		ss = ASTR("123");
-		asm volatile("nop; nop" : : : "memory");
+		__asm__ volatile("nop; nop" : : : "memory");
 
 		printf("%p %s\n", ss, ss);
 	}
@@ -4543,9 +4543,9 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	{
 		fy_generic vstr;
 
-		asm volatile("nop; nop" : : : "memory");
+		__asm__ volatile("nop; nop" : : : "memory");
 		vstr = fy_string("test");
-		asm volatile("nop; nop" : : "r"(vstr) : "memory");
+		__asm__ volatile("nop; nop" : : "r"(vstr) : "memory");
 
 		printf("vstr=0x%08lx\n", (unsigned long)vstr);
 	}
@@ -4709,9 +4709,9 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	{
 		const char *ss;
 
-		asm volatile("nop; nop" : : : "memory");
+		__asm__ volatile("nop; nop" : : : "memory");
 		ss = ASTR("123");
-		asm volatile("nop; nop" : : : "memory");
+		__asm__ volatile("nop; nop" : : : "memory");
 
 		printf("%p %s\n", ss, ss);
 	}
@@ -4885,10 +4885,10 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	fy_allocator_destroy(a);
 
-	seq = fy_sequence(3, ((fy_generic[]){
-			fy_bool(true),
-			fy_int(100),
-			fy_string("info-long")}));
+	seq = fy_sequence(
+		fy_bool(true),
+		fy_int(100),
+		fy_string("info-long"));
 	assert(seq != fy_invalid);
 
 	printf("seq-const:\n");
@@ -4934,18 +4934,19 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	fy_generic_emit_default(map);
 
 	fy_generic_emit_default(
-		fy_mapping(2, ((fy_generic[]) {
+		fy_mapping(
 			fy_string("foo"), fy_string("bar"),
-			fy_string("seq"), fy_sequence(3, ((fy_generic[]) {
+			fy_string("seq"), fy_sequence(
 						fy_true,
 						fy_int(100),
-						fy_string("info")
-					}))
-			})
-		)
-	);
+						fy_string("info"))));
 
 	fy_generic_emit_default(fy_stringf("Hello there #%d", 10));
+
+	fy_generic seq3 = fy_sequence( fy_bool(false), fy_int(-101), fy_string("xxx macros"));
+	assert(seq3 != fy_invalid);
+
+	fy_generic_emit_default(seq3);
 
 	return 0;
 }

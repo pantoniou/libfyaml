@@ -132,7 +132,8 @@ dnl for old autoconf version AX_APPEND_COMPILE_FLAGS does not work
 m4_version_prereq(2.64,
 	 [AX_APPEND_COMPILE_FLAGS([-Wall -Wsign-compare -Wno-stringop-overflow \
 				   -fvisibility=hidden -Wno-unused-function \
-				   -Wno-tautological-constant-out-of-range-compare],
+				   -Wno-tautological-constant-out-of-range-compare \
+				   -std=c2x],
 				  [CFLAGS], [-pedantic -Werror])],
          [CFLAGS="$CFLAGS -Wall -Wsign-compare"])
 

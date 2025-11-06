@@ -487,6 +487,12 @@ if(NOT MSVC)
     if(COMPILER_SUPPORTS_WNO_TAUTOLOGICAL_CONSTANT_OUT_OF_RANGE_COMPARE)
         list(APPEND COMMON_C_FLAGS -Wno-tautological-constant-out-of-range-compare)
     endif()
+
+    check_c_compiler_flag(-std=c2x COMPILER_SUPPORTS_C2X)
+    if(COMPILER_SUPPORTS_C2X)
+        list(APPEND COMMON_C_FLAGS -std=c2x)
+    endif()
+
 endif()
 
 # Network tests
