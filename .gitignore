@@ -14,6 +14,7 @@ config.guess
 config.h
 config.h.in
 config.h.in~
+configure~
 config.log
 config.status
 config.sub
@@ -44,6 +45,7 @@ src/libfyaml-parser
 src/fy-thread
 src/fy-b3sum
 src/fy-allocators
+src/fy-generics
 src/*.a
 stamp-h1
 tags
