@@ -593,9 +593,9 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 			vtags_items = alloca(sizeof(*vtags_items) * count);
 			for (i = 0; i < count; i++) {
-				vtags_items[i] = fy_mapping(
-							fy_string("handle"), fy_string(tags[i]->handle),
-							fy_string("prefix"), fy_string(tags[i]->prefix));
+				vtags_items[i] = fy_mapping("handle", tags[i]->handle,
+							    "prefix", tags[i]->prefix);
+				assert(fy_generic_is_valid(vtags_items[i]));
 			}
 
 			if (tags)
@@ -604,23 +604,21 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 			schema_txt = fy_generic_schema_get_text(fy_generic_builder_get_schema(gb));
 
-			vds = fy_mapping(
-				fy_string("root"), v,
-				fy_string("version"), fy_mapping(
-						fy_string("major"), fy_int(vers->major),
-						fy_string("minor"), fy_int(vers->minor)),
-				fy_string("version-explicit"), fy_bool(version_explicit),
-				fy_string("tags"), fy_sequence_explicit(count, vtags_items),
-				fy_string("tags-explicit"), fy_bool(tags_explicit),
-				fy_string("schema"), fy_string(schema_txt));
+			vds = fy_mapping("root", v,
+					 "version", fy_mapping("major", vers->major,
+							       "minor", vers->minor),
+					 "version-explicit", (_Bool)version_explicit,
+					 "tags", fy_sequence_create(count, vtags_items),
+					 "tags-explicit", (_Bool)tags_explicit,
+					 "schema", schema_txt);
+			assert(fy_generic_is_valid(vds));
 
 		} else
 			vds = fy_null;
 
-		assert(vds.v != fy_invalid_value);
-
 		gd->vroot = v;
 		gd->vds = fy_generic_internalize(gb, vds);
+		assert(fy_generic_is_valid(gd->vds));
 
 		fy_generic_decoder_object_destroy(gdo);
 		gd->document_ready = true;

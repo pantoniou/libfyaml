@@ -963,6 +963,7 @@ static inline fy_generic_value fy_generic_in_place_generic(fy_generic v)
 		unsigned long: fy_generic_in_place_uint, \
 		unsigned long long: fy_generic_in_place_uint, \
 		char *: fy_generic_in_place_char_ptr, \
+		const char *: fy_generic_in_place_char_ptr, \
 		float: fy_generic_in_place_float, \
 		double: fy_generic_in_place_double, \
 		default: fy_generic_in_place_invalid \
@@ -1037,6 +1038,7 @@ static inline size_t fy_generic_out_of_place_size_zero(...)
 		unsigned long: fy_generic_out_of_place_size_uint, \
 		unsigned long long: fy_generic_out_of_place_size_uint, \
 		char *: fy_generic_out_of_place_size_char_ptr, \
+		const char *: fy_generic_out_of_place_size_char_ptr, \
 		float: fy_generic_out_of_place_size_float, \
 		double: fy_generic_out_of_place_size_double, \
 		fy_generic: fy_generic_out_of_place_size_generic, \
@@ -1130,6 +1132,7 @@ static inline fy_generic_value fy_generic_out_of_place_put_invalid(void *buf, ..
 		unsigned long: fy_generic_out_of_place_put_uint, \
 		unsigned long long: fy_generic_out_of_place_put_uint, \
 		char *: fy_generic_out_of_place_put_char_ptr, \
+		const char *: fy_generic_out_of_place_put_char_ptr, \
 		float: fy_generic_out_of_place_put_float, \
 		double: fy_generic_out_of_place_put_double, \
 		fy_generic: fy_generic_out_of_place_put_generic, \
@@ -1706,6 +1709,9 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 
 #define fy_sequence_explicit(_count, _items) fy_sequence_alloca((_count), (_items))
 
+#define fy_sequence_create(_count, _items) \
+	((fy_generic) { .v = fy_sequence_explicit((_count), (_items)) })
+
 #define _FY_CPP_GITEM_ONE(arg) fy_to_generic(arg)
 #define _FY_CPP_GITEM_LATER_ARG(arg) , _FY_CPP_GITEM_ONE(arg)
 #define _FY_CPP_GITEM_LIST(...) FY_CPP_MAP(_FY_CPP_GITEM_LATER_ARG, __VA_ARGS__)
@@ -1814,6 +1820,9 @@ fy_generic fy_generic_mapping_create(struct fy_generic_builder *gb, size_t count
 	})
 
 #define fy_mapping_explicit(_count, _pairs) fy_mapping_alloca((_count), (_pairs))
+
+#define fy_mapping_create(_count, _items) \
+	((fy_generic) { .v = fy_mapping_explicit((_count), (_items)) })
 
 #define fy_mapping(...) \
 	fy_mapping_explicit(FY_CPP_VA_COUNT(__VA_ARGS__) / 2, FY_CPP_VA_GITEMS(__VA_ARGS__))

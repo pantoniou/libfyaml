@@ -190,6 +190,9 @@ int fy_encode_generic(struct fy_generic_encoder *fyge, fy_generic v)
 	}
 
 	switch (fy_generic_get_type(v)) {
+	case FYGT_INVALID:
+		return -1;	// invalid passed in
+
 	case FYGT_NULL:
 		return fy_encode_generic_null(fyge, anchor, tag, v);
 
@@ -215,6 +218,7 @@ int fy_encode_generic(struct fy_generic_encoder *fyge, fy_generic v)
 		return fy_encode_generic_alias(fyge, v);
 
 	default:
+		fprintf(stderr, "impossible type %d\n", (int)fy_generic_get_type(v));
 		FY_IMPOSSIBLE_ABORT();
 	}
 
