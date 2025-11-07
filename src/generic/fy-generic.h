@@ -1706,8 +1706,7 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 
 #define fy_sequence_explicit(_count, _items) fy_sequence_alloca((_count), (_items))
 
-#if 0
-#define _FY_CPP_GITEM_ONE(arg) arg
+#define _FY_CPP_GITEM_ONE(arg) fy_to_generic(arg)
 #define _FY_CPP_GITEM_LATER_ARG(arg) , _FY_CPP_GITEM_ONE(arg)
 #define _FY_CPP_GITEM_LIST(...) FY_CPP_MAP(_FY_CPP_GITEM_LATER_ARG, __VA_ARGS__)
 
@@ -1717,10 +1716,9 @@ fy_generic fy_generic_string_createf(struct fy_generic_builder *gb, const char *
 
 #define FY_CPP_VA_GITEMS(...) \
 	((fy_generic []) { _FY_CPP_VA_GITEMS(__VA_ARGS__) })
-#endif
 
 #define fy_sequence(...) \
-	((fy_generic) { .v = fy_sequence_explicit(FY_CPP_VA_COUNT(__VA_ARGS__), FY_CPP_VA_ITEMS(fy_generic, __VA_ARGS__)) })
+	((fy_generic) { .v = fy_sequence_explicit(FY_CPP_VA_COUNT(__VA_ARGS__), FY_CPP_VA_GITEMS(__VA_ARGS__)) })
 
 fy_generic fy_generic_sequence_create_i(struct fy_generic_builder *gb, bool internalize,
 					size_t count, const fy_generic *items);
@@ -1818,7 +1816,7 @@ fy_generic fy_generic_mapping_create(struct fy_generic_builder *gb, size_t count
 #define fy_mapping_explicit(_count, _pairs) fy_mapping_alloca((_count), (_pairs))
 
 #define fy_mapping(...) \
-	fy_mapping_explicit(FY_CPP_VA_COUNT(__VA_ARGS__) / 2, FY_CPP_VA_ITEMS(fy_generic, __VA_ARGS__))
+	fy_mapping_explicit(FY_CPP_VA_COUNT(__VA_ARGS__) / 2, FY_CPP_VA_GITEMS(__VA_ARGS__))
 
 const fy_generic *fy_generic_mapping_get_pairs(fy_generic map, size_t *countp);
 size_t fy_generic_mapping_get_pair_count(fy_generic map);

@@ -4922,6 +4922,19 @@ int do_generics(int argc, char *argv[], const char *allocator)
 						fy_to_generic(100),
 						fy_to_generic("info"))));
 
+
+	printf("# emit tests with type magic (null)\n");
+	fy_generic_emit_default(fy_to_generic(NULL));
+
+	printf("# emit tests with type magic (sequence [100])\n");
+	v = fy_sequence(100);
+	fy_generic_emit_default(v);
+
+	printf("# emit tests with type magic (mapping)\n");
+	fy_generic_emit_default(fy_mapping(
+				"foo", "bar",
+				"seq", fy_sequence(true, 100, "info")));
+
 	}
 
 	return 0;
