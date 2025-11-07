@@ -128,8 +128,7 @@ fy_generic fy_gb_int_create_out_of_place(struct fy_generic_builder *gb, long lon
 	return (fy_generic){ .v = (uintptr_t)valp | FY_INT_OUTPLACE_V };
 }
 
-
-fy_generic fy_gb_float_create_out_of_place(struct fy_generic_builder *gb, double val)
+fy_generic fy_gb_double_create_out_of_place(struct fy_generic_builder *gb, double val)
 {
 	const double *valp;
 	valp = fy_gb_store(gb, &val, sizeof(val), FY_SCALAR_ALIGNOF(double));
@@ -137,6 +136,12 @@ fy_generic fy_gb_float_create_out_of_place(struct fy_generic_builder *gb, double
 		return fy_invalid;
 	assert(((uintptr_t)valp & FY_INPLACE_TYPE_MASK) == 0);
 	return (fy_generic){ .v = (uintptr_t)valp | FY_FLOAT_OUTPLACE_V };
+}
+
+fy_generic fy_gb_float_create_out_of_place(struct fy_generic_builder *gb, float val)
+{
+	/* XXX floats are always stored as doubles out of place? for 32 bits. */
+	return fy_gb_double_create_out_of_place(gb, (double)val);
 }
 
 fy_generic fy_gb_string_size_create_out_of_place(struct fy_generic_builder *gb, const char *str, size_t len)
@@ -164,7 +169,6 @@ fy_generic fy_gb_string_size_create_out_of_place(struct fy_generic_builder *gb, 
 	assert(((uintptr_t)s & FY_INPLACE_TYPE_MASK) == 0);
 	return (fy_generic){ .v = (uintptr_t)s | FY_STRING_OUTPLACE_V };
 }
-
 
 fy_generic
 fy_gb_string_vcreate(struct fy_generic_builder *gb, const char *fmt, va_list ap)

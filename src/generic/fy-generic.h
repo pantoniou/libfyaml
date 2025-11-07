@@ -745,15 +745,10 @@ static inline fy_generic_value fy_generic_in_place_uint(const unsigned long long
 	return fy_invalid_value;
 }
 
-static inline fy_generic_value fy_generic_in_place_char_ptr(const char *p)
+static inline fy_generic_value fy_generic_in_place_char_ptr_len(const char *p, const size_t len)
 {
-	size_t len;
 	fy_generic_value v;
 
-	if (!p)
-		return fy_invalid_value;
-
-	len = strlen(p);
 	switch (len) {
 	case 0:
 		v = (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
@@ -766,6 +761,7 @@ static inline fy_generic_value fy_generic_in_place_char_ptr(const char *p)
 		v = FY_STRING_SHIFT7(p[0], p[1], 0, 0, 0, 0, 0) |
 		     (2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
 		break;
+#ifdef FY_HAS_64BIT_PTR
 	case 3:
 		v = FY_STRING_SHIFT7(p[0], p[1], p[2], 0, 0, 0, 0) |
 		     (3 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
@@ -782,11 +778,20 @@ static inline fy_generic_value fy_generic_in_place_char_ptr(const char *p)
 		v = FY_STRING_SHIFT7(p[0], p[1], p[2], p[3], p[4], p[5], 0) |
 		     (6 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
 		break;
+#endif
 	default:
 		v = fy_invalid_value;
 		break;
 	}
 	return v;
+}
+
+static inline fy_generic_value fy_generic_in_place_char_ptr(const char *p)
+{
+	if (!p)
+		return fy_invalid_value;
+
+	return fy_generic_in_place_char_ptr_len(p, strlen(p));
 }
 
 static inline fy_generic_value fy_generic_in_place_invalid(...)
@@ -883,7 +888,6 @@ static inline size_t fy_generic_out_of_place_size_double(const double v)
 
 #else
 
-// XXX always double for 32 bits...
 static inline size_t fy_generic_out_of_place_size_float(const float v)
 {
 	return sizeof(double);
@@ -1144,8 +1148,6 @@ static inline int fy_generic_compare(fy_generic a, fy_generic b)
         fy_generic: _Generic(&(_v), char **: "", default: (_v)), \
         default: "" ))
 
-#ifdef FY_HAS_64BIT_PTR
-
 #define fy_string_size_alloca(_v, _len) 							\
 	({											\
 		const char *__v = (_v);								\
@@ -1153,82 +1155,26 @@ static inline int fy_generic_compare(fy_generic a, fy_generic b)
 		uint8_t *__vp, *__s;								\
 		fy_generic_value _r;								\
 												\
-		switch (__len) {								\
-		case 0:										\
-			_r = (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 1:										\
-			_r = FY_STRING_SHIFT7(__v[0], 0, 0, 0, 0, 0, 0) |			\
-			     (1 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 2:										\
-			_r = FY_STRING_SHIFT7(__v[0], __v[1], 0, 0, 0, 0, 0) |			\
-			     (2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 3:										\
-			_r = FY_STRING_SHIFT7(__v[0], __v[1], __v[2], 0, 0, 0, 0) |		\
-			     (3 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 4:										\
-			_r = FY_STRING_SHIFT7(__v[0], __v[1], __v[2], __v[3], 0, 0, 0) |	\
-			     (4 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 5:										\
-			_r = FY_STRING_SHIFT7(__v[0], __v[1], __v[2], __v[3], __v[4], 0, 0) |	\
-			     (5 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 6:										\
-			_r = FY_STRING_SHIFT7(__v[0], __v[1], __v[2], __v[3], __v[4], 		\
-					      __v[5], 0) |					\
-			     (6 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		default:									\
+		_r = fy_generic_in_place_char_ptr_len(__v, __len);				\
+		if (_r == fy_invalid_value) {							\
 			__vp = alloca(FYGT_SIZE_ENCODING_MAX + __len + 1); 			\
 			assert(((uintptr_t)__vp & FY_INPLACE_TYPE_MASK) == 0);			\
 			__s = fy_encode_size(__vp, FYGT_SIZE_ENCODING_MAX, __len);		\
 			memcpy(__s, __v, __len);						\
 			__s[__len] = '\0';							\
 			_r = (fy_generic_value)__vp | FY_STRING_OUTPLACE_V;			\
-			break;									\
 		}										\
 		_r;										\
 	})
 
+#ifdef FY_HAS_64BIT_PTR
+
 #define fy_string_size_const(_v, _len) 								\
 	({											\
-		fy_generic_value _r;									\
+		fy_generic_value _r;								\
 												\
-		switch (_len) {									\
-		case 0:										\
-			_r = (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 1:										\
-			_r = FY_STRING_SHIFT7((_v)[0], 0, 0, 0, 0, 0, 0) |			\
-			     (1 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 2:										\
-			_r = FY_STRING_SHIFT7((_v)[0], (_v)[1], 0, 0, 0, 0, 0) |		\
-			     (2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 3:										\
-			_r = FY_STRING_SHIFT7((_v)[0], (_v)[1], (_v)[2], 0, 0, 0, 0) |		\
-			     (3 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 4:										\
-			_r = FY_STRING_SHIFT7((_v)[0], (_v)[1], (_v)[2], (_v)[3], 0, 0, 0) |	\
-			     (4 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 5:										\
-			_r = FY_STRING_SHIFT7((_v)[0], (_v)[1], (_v)[2], (_v)[3], 		\
-					      (_v)[4], 0, 0) |					\
-			     (5 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 6:										\
-			_r = FY_STRING_SHIFT7((_v)[0], (_v)[1], (_v)[2], (_v)[3], 		\
-					      (_v)[4], (_v)[5], 0) |				\
-			     (6 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		default:									\
+		_r = fy_generic_in_place_char_ptr_len((_v), (_len));				\
+		if (_r == fy_invalid_value) {							\
 			if ((_len) < ((uint64_t)1 <<  7)) {					\
 				static const struct {						\
 					uint8_t l0;						\
@@ -1362,54 +1308,13 @@ static inline int fy_generic_compare(fy_generic a, fy_generic b)
 
 #else
 
-#define fy_string_size_alloca(_v, _len) 							\
-	({											\
-		const char *__v = (_v);								\
-		size_t __len = (_len);								\
-		uint8_t *__vp, *__s;								\
-		fy_generic_value _r;									\
-												\
-		switch (__len) {									\
-		case 0:										\
-			_r = (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 1:										\
-			_r = FY_STRING_SHIFT3(__v[0], 0, 0) |					\
-			     (1 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 2:										\
-			_r = FY_STRING_SHIFT3(__v[0], __v[1], 0) |				\
-			     (2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		default:									\
-			__vp = alloca(FYGT_SIZE_ENCODING_MAX + __len + 1); 			\
-			assert(((uintptr_t)__vp & FY_INPLACE_TYPE_MASK) == 0);			\
-			__s = fy_encode_size(__vp, FYGT_SIZE_ENCODING_MAX, __len);		\
-			memcpy(__s, __v, __len);						\
-			__s[__len] = '\0';							\
-			_r = (fy_generic_value)__vp | FY_STRING_OUTPLACE_V;			\
-			break;									\
-		}										\
-		_r;										\
-	})
-
 #define fy_string_size_const(_v, _len) 								\
 	({											\
 		fy_generic_value _r;								\
 												\
-		switch (_len) {									\
-		case 0:										\
-			_r = (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 1:										\
-			_r = FY_STRING_SHIFT3((_v)[0], 0, 0) |					\
-			     (1 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		case 2:										\
-			_r = FY_STRING_SHIFT3((_v)[0], (_v)[1], 0) |				\
-			     (2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;		\
-			break;									\
-		default:									\
+		_r = fy_generic_in_place_char_ptr_len((_v), (_len));				\
+		_r = fy_generic_in_place_char_ptr_len((_v), (_len));				\
+		if (_r == fy_invalid_value) {							\
 			if ((_len) < ((uint64_t)1 <<  7)) {					\
 				static const struct {						\
 					uint8_t l0;						\
@@ -1472,9 +1377,8 @@ static inline int fy_generic_compare(fy_generic a, fy_generic b)
 				_r = (fy_generic_value)&_s | FY_STRING_OUTPLACE_V;		\
 			}									\
 		}										\
-		_r;							\
+		_r;										\
 	})
-
 #endif
 
 #define fy_string_alloca(_v)					\
@@ -1905,83 +1809,42 @@ fy_generic fy_gb_int_create_out_of_place(struct fy_generic_builder *gb, long lon
 static inline fy_generic
 fy_gb_int_create(struct fy_generic_builder *gb, long long val)
 {
-	if (val >= FYGT_INT_INPLACE_MIN && val <= FYGT_INT_INPLACE_MAX)
-		return (fy_generic){ .v = (val << FY_INT_INPLACE_SHIFT) | FY_INT_INPLACE_V };
+	fy_generic v = { .v = fy_generic_in_place_int(val) };
+	if (v.v != fy_invalid_value)
+		return v;
 	return fy_gb_int_create_out_of_place(gb, val);
 }
 
-fy_generic fy_gb_float_create_out_of_place(struct fy_generic_builder *gb, double val);
+fy_generic fy_gb_float_create_out_of_place(struct fy_generic_builder *gb, float val);
 
 static inline fy_generic
-fy_gb_float_create(struct fy_generic_builder *gb, double val)
+fy_gb_float_create(struct fy_generic_builder *gb, float val)
 {
-#ifdef FY_HAS_64BIT_PTR
-	if (!isnormal(val) || (float)val == val) {
-		union { float f; uint32_t f_bits; } u;
-		u.f = (float)val;
-		return (fy_generic){ .v = ((fy_generic_value)u.f_bits << FY_FLOAT_INPLACE_SHIFT) | FY_FLOAT_INPLACE_V };
-	}
-#endif
+	fy_generic v = { .v = fy_generic_in_place_float(val) };
+	if (v.v != fy_invalid_value)
+		return v;
 	return fy_gb_float_create_out_of_place(gb, val);
 }
 
+fy_generic fy_gb_double_create_out_of_place(struct fy_generic_builder *gb, double val);
+
+static inline fy_generic
+fy_gb_double_create(struct fy_generic_builder *gb, double val)
+{
+	fy_generic v = { .v = fy_generic_in_place_double(val) };
+	if (v.v != fy_invalid_value)
+		return v;
+	return fy_gb_double_create_out_of_place(gb, val);
+}
 
 fy_generic fy_gb_string_size_create_out_of_place(struct fy_generic_builder *gb, const char *str, size_t len);
 
 static inline fy_generic
 fy_gb_string_size_create(struct fy_generic_builder *gb, const char *str, size_t len)
 {
-	fy_generic_value v;
-
-	switch (len) {
-	case 0:
-		v = ((fy_generic_value)0) |
-		    (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
-		return (fy_generic){ .v = v };
-	case 1:
-		v = ((fy_generic_value)str[0] << 8) |
-		    (1 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
-		return (fy_generic){ .v = v };
-	case 2:
-		v = ((fy_generic_value)str[0] << 8) |
-		    ((fy_generic_value)str[1] << 16) |
-		    (2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
-		return (fy_generic){ .v = v };
-#ifdef FY_HAS_64BIT_PTR
-	case 3:
-		v = ((fy_generic_value)str[0] << 8) |
-		    ((fy_generic_value)str[1] << 16) |
-		    ((fy_generic_value)str[2] << 24) |
-		    (3 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
-		return (fy_generic){ .v = v };
-	case 4:
-		v = ((fy_generic_value)str[0] << 8) |
-		    ((fy_generic_value)str[1] << 16) |
-		    ((fy_generic_value)str[2] << 24) |
-		    ((fy_generic_value)str[3] << 32) |
-		    (4 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
-		return (fy_generic){ .v = v };
-	case 5:
-		v = ((fy_generic_value)str[0] << 8) |
-		    ((fy_generic_value)str[1] << 16) |
-		    ((fy_generic_value)str[2] << 24) |
-		    ((fy_generic_value)str[3] << 32) |
-		    ((fy_generic_value)str[4] << 40) |
-		    (5 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
-		return (fy_generic){ .v = v };
-	case 6:
-		v = ((fy_generic_value)str[0] << 8) |
-		    ((fy_generic_value)str[1] << 16) |
-		    ((fy_generic_value)str[2] << 24) |
-		    ((fy_generic_value)str[3] << 32) |
-		    ((fy_generic_value)str[4] << 40) |
-		    ((fy_generic_value)str[5] << 48) |
-		    (6 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
-		return (fy_generic){ .v = v };
-#endif
-	default:
-		break;
-	}
+	fy_generic v = { .v = fy_generic_in_place_char_ptr_len(str, len) };
+	if (v.v != fy_invalid_value)
+		return v;
 	return fy_gb_string_size_create_out_of_place(gb, str, len);
 }
 
