@@ -4608,6 +4608,14 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	fy_generic_print_primitive(stdout, seq);
 	printf("\n");
 
+	printf(">>>>>>>>>>>>>>>>>>>>> map using fy_gb_sequence\n");
+	map = fy_gb_mapping(gb,
+		"Hello", true,
+		"There", false,
+		"Extra", fy_gb_sequence(gb, 1, 2, 100));
+	fy_generic_print_primitive(stdout, map);
+	printf("\n");
+
 	map = fy_gb_mapping_create(gb, 3, (fy_generic[]){
 			fy_gb_string_create(gb, "foo"), fy_gb_string_create(gb, "bar"),
 			fy_gb_string_create(gb, "frooz-larger"), fy_gb_string_create(gb, "what"),

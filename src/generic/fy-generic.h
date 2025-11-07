@@ -1910,31 +1910,6 @@ fy_generic fy_gb_sequence_create_i(struct fy_generic_builder *gb, bool internali
 					size_t count, const fy_generic *items);
 fy_generic fy_gb_sequence_create(struct fy_generic_builder *gb, size_t count, const fy_generic *items);
 
-#define FY_CPP2_EMPTY(a)
-#define FY_CPP2_POSTPONE1(a, macro) macro FY_CPP2_EMPTY(a)
-
-#define FY_CPP2_MAP(a, macro, ...) \
-    __VA_OPT__(FY_CPP_EVAL(_FY_CPP2_MAP_ONE(a, macro, __VA_ARGS__)))
-
-#define _FY_CPP2_MAP_ONE(a, macro, x, ...) macro(a, x) \
-    __VA_OPT__(FY_CPP2_POSTPONE1(a, _FY_CPP2_MAP_INDIRECT)()(a, macro, __VA_ARGS__))
-#define _FY_CPP2_MAP_INDIRECT() _FY_CPP2_MAP_ONE
-
-#define _FY_CPP_GBITEM_ONE(_gb, arg) fy_gb_to_generic(_gb, arg)
-#define _FY_CPP_GBITEM_LATER_ARG(_gb, arg) , _FY_CPP_GBITEM_ONE(_gb, arg)
-#define _FY_CPP_GBITEM_LIST(_gb, ...) FY_CPP2_MAP(_gb, _FY_CPP_GBITEM_LATER_ARG, __VA_ARGS__)
-
-#define _FY_CPP_VA_GBITEMS(_gb, ...)          \
-    _FY_CPP_GBITEM_ONE(_gb, FY_CPP_FIRST(__VA_ARGS__)) \
-    _FY_CPP_GBITEM_LIST(_gb, FY_CPP_REST(__VA_ARGS__))
-
-#define FY_CPP_VA_GBITEMS(_count, _gb, ...) \
-	((fy_generic [(_count)]) { _FY_CPP_VA_GBITEMS(gb, __VA_ARGS__) })
-
-#define fy_gb_sequence(_gb, ...) \
-	((fy_generic) { .v = fy_gb_sequence_create(gb, FY_CPP_VA_COUNT(__VA_ARGS__), \
-			FY_CPP_VA_GBITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), gb, __VA_ARGS__)).v })
-
 fy_generic fy_gb_sequence_remove(struct fy_generic_builder *gb, fy_generic seq, size_t idx, size_t count);
 
 fy_generic fy_gb_sequence_insert_replace_i(struct fy_generic_builder *gb, bool insert, bool internalize,
@@ -1985,6 +1960,35 @@ fy_generic fy_gb_mapping_set_value(struct fy_generic_builder *gb, fy_generic map
 fy_generic fy_gb_indirect_create(struct fy_generic_builder *gb, const struct fy_generic_indirect *gi);
 
 fy_generic fy_gb_alias_create(struct fy_generic_builder *gb, fy_generic anchor);
+
+#define FY_CPP2_EMPTY(a)
+#define FY_CPP2_POSTPONE1(a, macro) macro FY_CPP2_EMPTY(a)
+
+#define FY_CPP2_MAP(a, macro, ...) \
+    __VA_OPT__(FY_CPP_EVAL(_FY_CPP2_MAP_ONE(a, macro, __VA_ARGS__)))
+
+#define _FY_CPP2_MAP_ONE(a, macro, x, ...) macro(a, x) \
+    __VA_OPT__(FY_CPP2_POSTPONE1(a, _FY_CPP2_MAP_INDIRECT)()(a, macro, __VA_ARGS__))
+#define _FY_CPP2_MAP_INDIRECT() _FY_CPP2_MAP_ONE
+
+#define _FY_CPP_GBITEM_ONE(_gb, arg) fy_gb_to_generic(_gb, arg)
+#define _FY_CPP_GBITEM_LATER_ARG(_gb, arg) , _FY_CPP_GBITEM_ONE(_gb, arg)
+#define _FY_CPP_GBITEM_LIST(_gb, ...) FY_CPP2_MAP(_gb, _FY_CPP_GBITEM_LATER_ARG, __VA_ARGS__)
+
+#define _FY_CPP_VA_GBITEMS(_gb, ...)          \
+    _FY_CPP_GBITEM_ONE(_gb, FY_CPP_FIRST(__VA_ARGS__)) \
+    _FY_CPP_GBITEM_LIST(_gb, FY_CPP_REST(__VA_ARGS__))
+
+#define FY_CPP_VA_GBITEMS(_count, _gb, ...) \
+	((fy_generic [(_count)]) { _FY_CPP_VA_GBITEMS(gb, __VA_ARGS__) })
+
+#define fy_gb_sequence(_gb, ...) \
+	((fy_generic) { .v = fy_gb_sequence_create(gb, FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GBITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), gb, __VA_ARGS__)).v })
+
+#define fy_gb_mapping(_gb, ...) \
+	((fy_generic) { .v = fy_gb_mapping_create(gb, FY_CPP_VA_COUNT(__VA_ARGS__) / 2, \
+			FY_CPP_VA_GBITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), gb, __VA_ARGS__)).v })
 
 fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb,
 					      const char *text, size_t len, enum fy_generic_type force_type);
