@@ -4499,21 +4499,21 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	printf("null = %016lx\n", fy_null.v);
 	for (i = 0; i < ARRAY_SIZE(btable); i++) {
 		bv = btable[i];
-		gbl = fy_generic_bool_create(gb, bv);
+		gbl = fy_gb_bool_create(gb, bv);
 		printf("boolean/%s = %016lx %s\n", bv ? "true" : "false", gbl.v,
 				fy_generic_get_bool(gbl) ? "true" : "false");
 	}
 
 	for (i = 0; i < ARRAY_SIZE(itable); i++) {
 		iv = itable[i];
-		gi = fy_generic_int_create(gb, iv);
+		gi = fy_gb_int_create(gb, iv);
 		printf("int/%lld = %016lx %lld\n", iv, gi.v,
 				fy_generic_get_int(gi));
 	}
 
 	for (i = 0; i < ARRAY_SIZE(stable); i++) {
 		sv = stable[i];
-		gs = fy_generic_string_create(gb, sv);
+		gs = fy_gb_string_create(gb, sv);
 		printf("string/%s = %016lx", sv, gs.v);
 
 		sv = fy_generic_get_string_size(&gs, &slen);
@@ -4582,25 +4582,25 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	for (i = 0; i < ARRAY_SIZE(ftable); i++) {
 		fv = ftable[i];
-		gf = fy_generic_float_create(gb, fv);
+		gf = fy_gb_float_create(gb, fv);
 		printf("float/%f = %016lx %f\n", fv, gf.v,
 				fy_generic_get_float(gf));
 	}
 
-	seq = fy_generic_sequence_create(gb, 3, (fy_generic[3]){
-			fy_generic_bool_create(gb, true),
-			fy_generic_int_create(gb, 100),
-			fy_generic_string_create(gb, "info")
+	seq = fy_gb_sequence_create(gb, 3, (fy_generic[3]){
+			fy_gb_bool_create(gb, true),
+			fy_gb_int_create(gb, 100),
+			fy_gb_string_create(gb, "info")
 		});
 	assert(fy_generic_is_valid(seq));
 
 	fy_generic_print_primitive(stdout, seq);
 	printf("\n");
 
-	map = fy_generic_mapping_create(gb, 3, (fy_generic[]){
-			fy_generic_string_create(gb, "foo"), fy_generic_string_create(gb, "bar"),
-			fy_generic_string_create(gb, "frooz-larger"), fy_generic_string_create(gb, "what"),
-			fy_generic_string_create(gb, "seq"), seq
+	map = fy_gb_mapping_create(gb, 3, (fy_generic[]){
+			fy_gb_string_create(gb, "foo"), fy_gb_string_create(gb, "bar"),
+			fy_gb_string_create(gb, "frooz-larger"), fy_gb_string_create(gb, "what"),
+			fy_gb_string_create(gb, "seq"), seq
 		});
 
 	assert(fy_generic_is_valid(map));
@@ -4608,25 +4608,25 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	fy_generic_print_primitive(stdout, map);
 	printf("\n");
 
-	gv = fy_generic_mapping_get_value(map, fy_generic_string_create(gb, "foo"));
+	gv = fy_generic_mapping_get_value(map, fy_gb_string_create(gb, "foo"));
 	assert(fy_generic_is_valid(gv));
 	printf("found: ");
 	fy_generic_print_primitive(stdout, gv);
 	printf("\n");
 
-	map = fy_generic_mapping_create(gb, 2, (fy_generic[]){
-			fy_generic_string_create(gb, "foo"), fy_generic_string_create(gb, "bar"),
-			fy_generic_sequence_create(gb, 2, (fy_generic[]){
-					fy_generic_int_create(gb, 10),
-					fy_generic_int_create(gb, 100)}),
-				fy_generic_float_create(gb, 3.14)});
+	map = fy_gb_mapping_create(gb, 2, (fy_generic[]){
+			fy_gb_string_create(gb, "foo"), fy_gb_string_create(gb, "bar"),
+			fy_gb_sequence_create(gb, 2, (fy_generic[]){
+					fy_gb_int_create(gb, 10),
+					fy_gb_int_create(gb, 100)}),
+				fy_gb_float_create(gb, 3.14)});
 
 	fy_generic_print_primitive(stdout, map);
 	printf("\n");
 
-	gv = fy_generic_mapping_get_value(map, fy_generic_sequence_create(gb, 2, (fy_generic[]){
-					fy_generic_int_create(gb, 10),
-					fy_generic_int_create(gb, 100)}));
+	gv = fy_generic_mapping_get_value(map, fy_gb_sequence_create(gb, 2, (fy_generic[]){
+					fy_gb_int_create(gb, 10),
+					fy_gb_int_create(gb, 100)}));
 	assert(fy_generic_is_valid(gv));
 	printf("found: ");
 	fy_generic_print_primitive(stdout, gv);
@@ -4665,13 +4665,13 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	gb = fy_generic_builder_create(&gcfg);
 	assert(gb);
 
-	map = fy_generic_mapping_create(gb, 3, (fy_generic[]){
-			fy_generic_string_create(gb, "foo"), fy_generic_string_create(gb, "bar"),
-			fy_generic_string_create(gb, "frooz-larger\nshould \x01 be quoted"), fy_generic_string_create(gb, "what"),
-			fy_generic_string_create(gb, "seq"), fy_generic_sequence_create(gb, 3, (fy_generic[]){
-									fy_generic_bool_create(gb, true),
-									fy_generic_int_create(gb, 100),
-									fy_generic_string_create(gb, "info")
+	map = fy_gb_mapping_create(gb, 3, (fy_generic[]){
+			fy_gb_string_create(gb, "foo"), fy_gb_string_create(gb, "bar"),
+			fy_gb_string_create(gb, "frooz-larger\nshould \x01 be quoted"), fy_gb_string_create(gb, "what"),
+			fy_gb_string_create(gb, "seq"), fy_gb_sequence_create(gb, 3, (fy_generic[]){
+									fy_gb_bool_create(gb, true),
+									fy_gb_int_create(gb, 100),
+									fy_gb_string_create(gb, "info")
 								})
 
 		});
@@ -4696,32 +4696,32 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	assert(gb);
 
 	iv = LLONG_MAX;
-	gi = fy_generic_int_create(gb, iv);
-	gi = fy_generic_int_create(gb, iv);
+	gi = fy_gb_int_create(gb, iv);
+	gi = fy_gb_int_create(gb, iv);
 	fy_allocator_dump(a);
 
-	gi = fy_generic_string_create(gb, "foo bar is big");
-	gi = fy_generic_string_create(gb, "foo bar is big");
+	gi = fy_gb_string_create(gb, "foo bar is big");
+	gi = fy_gb_string_create(gb, "foo bar is big");
 	fy_allocator_dump(a);
 
-	map = fy_generic_mapping_create(gb, 3, (fy_generic[]){
-			fy_generic_string_create(gb, "foo"), fy_generic_float_create(gb, 0.11111),
-			fy_generic_string_create(gb, "frooz-larger\nshould \x01 be quoted"), fy_generic_string_create(gb, "what"),
-			fy_generic_string_create(gb, "seq"), fy_generic_sequence_create(gb, 3, (fy_generic[]){
-									fy_generic_bool_create(gb, true),
-									fy_generic_int_create(gb, 100),
-									fy_generic_string_create(gb, "info-fffffffffffffffffffffffffff")
+	map = fy_gb_mapping_create(gb, 3, (fy_generic[]){
+			fy_gb_string_create(gb, "foo"), fy_gb_float_create(gb, 0.11111),
+			fy_gb_string_create(gb, "frooz-larger\nshould \x01 be quoted"), fy_gb_string_create(gb, "what"),
+			fy_gb_string_create(gb, "seq"), fy_gb_sequence_create(gb, 3, (fy_generic[]){
+									fy_gb_bool_create(gb, true),
+									fy_gb_int_create(gb, 100),
+									fy_gb_string_create(gb, "info-fffffffffffffffffffffffffff")
 								})
 
 		});
 
-	map2 = fy_generic_mapping_create(gb, 3, (fy_generic[]){
-			fy_generic_string_create(gb, "foo"), fy_generic_float_create(gb, 0.11111),
-			fy_generic_string_create(gb, "frooz-larger\nshould \x01 be quoted"), fy_generic_string_create(gb, "what"),
-			fy_generic_string_create(gb, "seq"), fy_generic_sequence_create(gb, 3, (fy_generic[]){
-									fy_generic_bool_create(gb, true),
-									fy_generic_int_create(gb, 100),
-									fy_generic_string_create(gb, "info-fffffffffffffffffffffffffff")
+	map2 = fy_gb_mapping_create(gb, 3, (fy_generic[]){
+			fy_gb_string_create(gb, "foo"), fy_gb_float_create(gb, 0.11111),
+			fy_gb_string_create(gb, "frooz-larger\nshould \x01 be quoted"), fy_gb_string_create(gb, "what"),
+			fy_gb_string_create(gb, "seq"), fy_gb_sequence_create(gb, 3, (fy_generic[]){
+									fy_gb_bool_create(gb, true),
+									fy_gb_int_create(gb, 100),
+									fy_gb_string_create(gb, "info-fffffffffffffffffffffffffff")
 								})
 
 		});
@@ -4746,19 +4746,19 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	gb = fy_generic_builder_create(&gcfg);
 	assert(gb);
 
-	seq = fy_generic_sequence_create(gb, 2, (fy_generic[]){ fy_true, fy_null });
+	seq = fy_gb_sequence_create(gb, 2, (fy_generic[]){ fy_true, fy_null });
 
 	printf("original\n");
 	fy_generic_print_primitive(stdout, seq);
 	printf("\n");
 
-	seq = fy_generic_sequence_append(gb, seq, 2, (fy_generic[]){ fy_int(16), fy_int(128), });
+	seq = fy_gb_sequence_append(gb, seq, 2, (fy_generic[]){ fy_int(16), fy_int(128), });
 
 	printf("appended [16, 128] \n");
 	fy_generic_print_primitive(stdout, seq);
 	printf("\n");
 
-	seq = fy_generic_sequence_insert(gb, seq, 1, 2, (fy_generic[]){ fy_true, fy_false, });
+	seq = fy_gb_sequence_insert(gb, seq, 1, 2, (fy_generic[]){ fy_true, fy_false, });
 
 	printf("inserted [true, false] at 1\n");
 	fy_generic_print_primitive(stdout, seq);
@@ -4782,12 +4782,12 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	gb = fy_generic_builder_create(&gcfg);
 	assert(gb);
 
-	map = fy_generic_mapping_create(gb, 2, (fy_generic[]){
-			fy_generic_string_create(gb, "foo"), fy_generic_string_create(gb, "bar"),
-			fy_generic_string_create(gb, "seq"), fy_generic_sequence_create(gb, 3, (fy_generic[]){
-									fy_generic_bool_create(gb, true),
-									fy_generic_int_create(gb, 100),
-									fy_generic_string_create(gb, "info")
+	map = fy_gb_mapping_create(gb, 2, (fy_generic[]){
+			fy_gb_string_create(gb, "foo"), fy_gb_string_create(gb, "bar"),
+			fy_gb_string_create(gb, "seq"), fy_gb_sequence_create(gb, 3, (fy_generic[]){
+									fy_gb_bool_create(gb, true),
+									fy_gb_int_create(gb, 100),
+									fy_gb_string_create(gb, "info")
 								})
 
 		});
@@ -4798,14 +4798,14 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	fy_generic_print_primitive(stdout, map);
 	printf("\n");
 
-	map = fy_generic_mapping_set_value(gb, map, fy_string("seq"),
+	map = fy_gb_mapping_set_value(gb, map, fy_string("seq"),
 #if 0
 						fy_sequence_alloca(3, ((fy_generic[]){ fy_bool(false), fy_int(-100), fy_string("not-info")}))
 #else
-						fy_generic_sequence_create(gb, 3, (fy_generic[]){
-									fy_generic_bool_create(gb, false),
-									fy_generic_int_create(gb, -100),
-									fy_generic_string_create(gb, "not-info")})
+						fy_gb_sequence_create(gb, 3, (fy_generic[]){
+									fy_gb_bool_create(gb, false),
+									fy_gb_int_create(gb, -100),
+									fy_gb_string_create(gb, "not-info")})
 #endif
 					   );
 	assert(fy_generic_is_valid(map));
@@ -5305,11 +5305,11 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator,
 		vdir = fy_generic_decoder_parse(fygd, FYGDPF_MULTI_DOCUMENT);
 		assert(fy_generic_is_valid(vdir));
 
-		fy_generic_builder_trim(gb);
+		fy_gb_trim(gb);
 
 #if 0
 		single_area_size = 0;
-		single_area = fy_generic_builder_get_single_area(gb, &single_area_size, &single_area_start, &single_area_alloc);
+		single_area = fy_gb_get_single_area(gb, &single_area_size, &single_area_start, &single_area_alloc);
 		if (!single_area) {
 			fprintf(stderr, "Builder has no single area\n");
 			single_area_copy = NULL;
@@ -5401,7 +5401,7 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator,
 	fprintf(stderr, "before trim\n");
 	fy_allocator_dump(a);
 
-	fy_generic_builder_trim(gb);
+	fy_gb_trim(gb);
 
 	fprintf(stderr, "after trim\n");
 	fy_allocator_dump(a);
