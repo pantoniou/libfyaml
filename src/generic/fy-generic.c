@@ -125,7 +125,7 @@ fy_generic fy_generic_int_create_out_of_place(struct fy_generic_builder *gb, lon
 	if (!valp)
 		return fy_invalid;
 	assert(((uintptr_t)valp & FY_INPLACE_TYPE_MASK) == 0);
-	return (fy_generic)valp | FY_INT_OUTPLACE_V;
+	return (fy_generic){ .v = (uintptr_t)valp | FY_INT_OUTPLACE_V };
 }
 
 
@@ -136,7 +136,7 @@ fy_generic fy_generic_float_create_out_of_place(struct fy_generic_builder *gb, d
 	if (!valp)
 		return fy_invalid;
 	assert(((uintptr_t)valp & FY_INPLACE_TYPE_MASK) == 0);
-	return (fy_generic)valp | FY_FLOAT_OUTPLACE_V;
+	return (fy_generic){ .v = (uintptr_t)valp | FY_FLOAT_OUTPLACE_V };
 }
 
 fy_generic fy_generic_string_size_create_out_of_place(struct fy_generic_builder *gb, const char *str, size_t len)
@@ -162,7 +162,7 @@ fy_generic fy_generic_string_size_create_out_of_place(struct fy_generic_builder 
 		return fy_invalid;
 
 	assert(((uintptr_t)s & FY_INPLACE_TYPE_MASK) == 0);
-	return (fy_generic)s | FY_STRING_OUTPLACE_V;
+	return (fy_generic){ .v = (uintptr_t)s | FY_STRING_OUTPLACE_V };
 }
 
 
@@ -212,7 +212,7 @@ fy_generic fy_generic_internalize_out_of_place(struct fy_generic_builder *gb, fy
 	const fy_generic *itemss;
 	fy_generic *items;
 
-	if (v == fy_invalid)
+	if (v.v == fy_invalid_value)
 		return fy_invalid;
 
 	/* indirects are handled here (note, aliases are indirect too) */
@@ -254,7 +254,7 @@ fy_generic fy_generic_internalize_out_of_place(struct fy_generic_builder *gb, fy
 
 		for (i = 0; i < count; i++) {
 			vi = fy_generic_internalize(gb, itemss[i]);
-			if (vi == fy_invalid)
+			if (vi.v == fy_invalid_value)
 				break;
 			items[i] = vi;
 		}
@@ -275,7 +275,7 @@ fy_generic fy_generic_internalize_out_of_place(struct fy_generic_builder *gb, fy
 		if (!valp)
 			break;
 
-		new_v = (fy_generic)valp | FY_SEQ_V;
+		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_SEQ_V };
 		break;
 
 	case FYGT_MAPPING:
@@ -296,7 +296,7 @@ fy_generic fy_generic_internalize_out_of_place(struct fy_generic_builder *gb, fy
 		for (i = 0; i < count; i++) {
 
 			vi = fy_generic_internalize(gb, itemss[i]);
-			if (vi == fy_invalid)
+			if (vi.v == fy_invalid_value)
 				break;
 
 			items[i] = vi;
@@ -318,7 +318,7 @@ fy_generic fy_generic_internalize_out_of_place(struct fy_generic_builder *gb, fy
 		if (!valp)
 			break;
 
-		new_v = (fy_generic)valp | FY_MAP_V;
+		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_MAP_V };
 		break;
 
 	default:
@@ -337,7 +337,7 @@ int fy_generic_internalize_array(struct fy_generic_builder *gb, size_t count, fy
 
 	for (i = 0; i < count; i++) {
 		v = fy_generic_internalize(gb, vp[i]);
-		if (v == fy_invalid)
+		if (v.v == fy_invalid_value)
 			return -1;
 		vp[i] = v;
 	}
@@ -391,7 +391,7 @@ fy_generic fy_generic_collection_create(struct fy_generic_builder *gb, bool is_m
 		count *= 2;
 
 	for (i = 0; i < count; i++) {
-		if (items[i] == fy_invalid)
+		if (items[i].v == fy_invalid_value)
 			return fy_invalid;
 	}
 
@@ -419,7 +419,7 @@ fy_generic fy_generic_collection_create(struct fy_generic_builder *gb, bool is_m
 	if (!p)
 		goto err_out;
 
-	v = (fy_generic)p | (!is_map ? FY_SEQ_V : FY_MAP_V);
+	v = (fy_generic){ .v = (uintptr_t)p | (!is_map ? FY_SEQ_V : FY_MAP_V) };
 
 out:
 	if (items_alloc)
@@ -512,8 +512,7 @@ fy_generic fy_generic_collection_remove(struct fy_generic_builder *gb, fy_generi
 	if (!p)
 		return fy_invalid;
 
-	v = (fy_generic)p | (!is_map ? FY_SEQ_V : FY_MAP_V);
-
+	v = (fy_generic){ .v = (uintptr_t)p | (!is_map ? FY_SEQ_V : FY_MAP_V) };
 	return v;
 }
 
@@ -546,7 +545,7 @@ fy_generic fy_generic_collection_insert_replace(struct fy_generic_builder *gb, f
 
 	/* check for invalids */
 	for (i = 0; i < item_count; i++) {
-		if (items[i] == fy_invalid)
+		if (items[i].v == fy_invalid_value)
 			return fy_invalid;
 	}
 
@@ -610,7 +609,7 @@ fy_generic fy_generic_collection_insert_replace(struct fy_generic_builder *gb, f
 	if (!p)
 		return fy_invalid;
 
-	v = (fy_generic)p | (!is_map ? FY_SEQ_V : FY_MAP_V);
+	v = (fy_generic){ .v = (uintptr_t)p | (!is_map ? FY_SEQ_V : FY_MAP_V) };
 
 	if (items_alloc)
 		free(items_alloc);
@@ -680,7 +679,7 @@ fy_generic fy_generic_sequence_create_i(struct fy_generic_builder *gb, bool inte
 		return fy_invalid;
 
 	for (i = 0; i < count; i++) {
-		if (items[i] == fy_invalid)
+		if (items[i].v == fy_invalid_value)
 			return fy_invalid;
 	}
 
@@ -702,7 +701,7 @@ fy_generic fy_generic_sequence_create_i(struct fy_generic_builder *gb, bool inte
 	if (!p)
 		goto err_out;
 
-	v = (fy_generic)p | FY_SEQ_V;
+	v = (fy_generic){ .v = (uintptr_t)p | FY_SEQ_V };
 
 out:
 	if (items_alloc)
@@ -778,7 +777,7 @@ fy_generic fy_generic_sequence_append(struct fy_generic_builder *gb, fy_generic 
 fy_generic fy_generic_sequence_set_item_i(struct fy_generic_builder *gb, bool internalize,
 					  fy_generic seq, size_t idx, fy_generic item)
 {
-	if (seq == fy_invalid || item == fy_invalid)
+	if (seq.v == fy_invalid_value || item.v == fy_invalid_value)
 		return fy_invalid;
 
 	return fy_generic_mapping_replace_i(gb, internalize, seq, idx, 1, &item);
@@ -921,13 +920,13 @@ fy_generic fy_generic_mapping_set_value_i(struct fy_generic_builder *gb, bool in
 	size_t idx;
 	fy_generic old_value;
 
-	if (map == fy_invalid || key == fy_invalid || value == fy_invalid)
+	if (map.v == fy_invalid_value || key.v == fy_invalid_value || value.v == fy_invalid_value)
 		return fy_invalid;
 
 	old_value = fy_generic_mapping_get_value_index(map, key, &idx);
 
 	/* found? replace */
-	if (old_value != fy_invalid)
+	if (old_value.v != fy_invalid_value)
 		return fy_generic_mapping_replace_i(gb, internalize, map, idx, 1, (fy_generic[]){ key, value });
 
 	/* not found? append */
@@ -951,11 +950,11 @@ fy_generic fy_generic_indirect_create(struct fy_generic_builder *gb, const struc
 	cnt = 0;
 
 	flags = 0;
-	if (gi->value != fy_invalid)
+	if (gi->value.v != fy_invalid_value)
 		flags |= FYGIF_VALUE;
-	if (gi->anchor != fy_null && gi->anchor != fy_invalid)
+	if (gi->anchor.v != fy_null_value && gi->anchor.v != fy_invalid_value)
 		flags |= FYGIF_ANCHOR;
-	if (gi->tag != fy_null && gi->tag != fy_invalid)
+	if (gi->tag.v != fy_null_value && gi->tag.v != fy_invalid_value)
 		flags |= FYGIF_TAG;
 	iov[cnt].iov_base = &flags;
 	iov[cnt++].iov_len = sizeof(flags);
@@ -976,7 +975,7 @@ fy_generic fy_generic_indirect_create(struct fy_generic_builder *gb, const struc
 	if (!p)
 		return fy_invalid;
 
-	return (fy_generic)p | FY_INDIRECT_V;
+	return (fy_generic){ .v = (uintptr_t)p | FY_INDIRECT_V };
 }
 
 fy_generic fy_generic_alias_create(struct fy_generic_builder *gb, fy_generic anchor)
@@ -1158,7 +1157,7 @@ fy_generic fy_generic_create_scalar_from_text(struct fy_generic_builder *gb, con
 		break;
 	}
 
-	if (v != fy_invalid)
+	if (v.v != fy_invalid_value)
 		goto do_check_cast;
 
 	s = text;
@@ -1284,7 +1283,7 @@ int fy_generic_sequence_compare(fy_generic seqa, fy_generic seqb)
 	const fy_generic *itemsa, *itemsb;
 	int ret;
 
-	if (seqa == seqb)
+	if (seqa.v == seqb.v)
 		return 0;
 
 	itemsa = fy_generic_sequence_get_items(seqa, &counta);
@@ -1312,7 +1311,7 @@ int fy_generic_sequence_compare(fy_generic seqa, fy_generic seqb)
 	/* exhaustive check */
 	return 0;
 out:
-	return seqa > seqb ? 1 : -1;	/* keep order, but it's just address based */
+	return seqa.v > seqb.v ? 1 : -1;	/* keep order, but it's just address based */
 }
 
 int fy_generic_mapping_compare(fy_generic mapa, fy_generic mapb)
@@ -1322,7 +1321,7 @@ int fy_generic_mapping_compare(fy_generic mapa, fy_generic mapb)
 	fy_generic key, vala, valb;
 	int ret;
 
-	if (mapa == mapb)
+	if (mapa.v == mapb.v)
 		return 0;
 
 	pairsa = fy_generic_mapping_get_pairs(mapa, &counta);
@@ -1347,7 +1346,7 @@ int fy_generic_mapping_compare(fy_generic mapa, fy_generic mapb)
 
 		/* find if the key exists in the other mapping */
 		valb = fy_generic_mapping_get_value(mapa, key);
-		if (valb == fy_invalid)
+		if (valb.v == fy_invalid_value)
 			goto out;
 
 		/* compare values */
@@ -1360,7 +1359,7 @@ int fy_generic_mapping_compare(fy_generic mapa, fy_generic mapb)
 
 	return 0;
 out:
-	return mapa > mapb ? 1 : -1;	/* keep order, but it's just address based */
+	return mapa.v > mapb.v ? 1 : -1;	/* keep order, but it's just address based */
 }
 
 static inline int fy_generic_bool_compare(fy_generic a, fy_generic b)
@@ -1434,12 +1433,12 @@ int fy_generic_compare_out_of_place(fy_generic a, fy_generic b)
 	enum fy_generic_type at, bt;
 
 	/* invalids are always non-matching */
-	if (a == fy_invalid || b == fy_invalid)
+	if (a.v == fy_invalid_value || b.v == fy_invalid_value)
 		return -1;
 
 	/* equals? nice - should work for null, bool, in place int, float and strings  */
 	/* also for anything that's a pointer */
-	if (a == b)
+	if (a.v == b.v)
 		return 0;
 
 	at = fy_generic_get_type(a);
@@ -1492,7 +1491,7 @@ fy_generic fy_generic_builder_copy_out_of_place(struct fy_generic_builder *gb, f
 	const fy_generic *itemss;
 	fy_generic *items;
 
-	if (v == fy_invalid)
+	if (v.v == fy_invalid_value)
 		return fy_invalid;
 
 	/* indirects are handled here (note, aliases are indirect too) */
@@ -1525,7 +1524,7 @@ fy_generic fy_generic_builder_copy_out_of_place(struct fy_generic_builder *gb, f
 		if (!valp)
 			break;
 
-		new_v = (fy_generic)valp | FY_INT_OUTPLACE_V;
+		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_INT_OUTPLACE_V };
 		break;
 
 	case FYGT_FLOAT:
@@ -1534,7 +1533,7 @@ fy_generic fy_generic_builder_copy_out_of_place(struct fy_generic_builder *gb, f
 		if (!valp)
 			break;
 
-		new_v = (fy_generic)valp | FY_FLOAT_OUTPLACE_V;
+		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_FLOAT_OUTPLACE_V };
 		break;
 
 	case FYGT_STRING:
@@ -1548,7 +1547,7 @@ fy_generic fy_generic_builder_copy_out_of_place(struct fy_generic_builder *gb, f
 		if (!valp)
 			break;
 
-		new_v = (fy_generic)valp | FY_STRING_OUTPLACE_V;
+		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_STRING_OUTPLACE_V };
 		break;
 
 	case FYGT_SEQUENCE:
@@ -1567,7 +1566,7 @@ fy_generic fy_generic_builder_copy_out_of_place(struct fy_generic_builder *gb, f
 
 		for (i = 0; i < count; i++) {
 			vi = fy_generic_builder_copy(gb, itemss[i]);
-			if (vi == fy_invalid)
+			if (vi.v == fy_invalid_value)
 				break;
 			items[i] = vi;
 		}
@@ -1588,7 +1587,7 @@ fy_generic fy_generic_builder_copy_out_of_place(struct fy_generic_builder *gb, f
 		if (!valp)
 			break;
 
-		new_v = (fy_generic)valp | FY_SEQ_V;
+		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_SEQ_V };
 		break;
 
 	case FYGT_MAPPING:
@@ -1609,7 +1608,7 @@ fy_generic fy_generic_builder_copy_out_of_place(struct fy_generic_builder *gb, f
 		for (i = 0; i < count; i++) {
 
 			vi = fy_generic_builder_copy(gb, itemss[i]);
-			if (vi == fy_invalid)
+			if (vi.v == fy_invalid_value)
 				break;
 
 			items[i] = vi;
@@ -1631,7 +1630,7 @@ fy_generic fy_generic_builder_copy_out_of_place(struct fy_generic_builder *gb, f
 		if (!valp)
 			break;
 
-		new_v = (fy_generic)valp | FY_MAP_V;
+		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_MAP_V };
 		break;
 
 	default:
@@ -1639,7 +1638,7 @@ fy_generic fy_generic_builder_copy_out_of_place(struct fy_generic_builder *gb, f
 	}
 
 	/* there must have been a change */
-	assert(new_v != v);
+	assert(new_v.v != v.v);
 
 	return new_v;
 }
@@ -1668,7 +1667,7 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 		if (p >= start && p < end)
 			return v;
 
-		v = fy_generic_relocate_ptr(v, d) | FY_INDIRECT_V;
+		v.v = fy_generic_relocate_ptr(v, d).v | FY_INDIRECT_V;
 		gi = fy_generic_resolve_ptr(v);
 		gi->value = fy_generic_relocate(start, end, gi->value, d);
 		gi->anchor = fy_generic_relocate(start, end, gi->anchor, d);
@@ -1683,36 +1682,36 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 		return v;
 
 	case FYGT_INT:
-		if ((v & FY_INPLACE_TYPE_MASK) == FY_INT_INPLACE_V)
+		if ((v.v & FY_INPLACE_TYPE_MASK) == FY_INT_INPLACE_V)
 			return v;
 
 		p = fy_generic_resolve_ptr(v);
 		if (p >= start && p < end)
 			return v;
 
-		v = fy_generic_relocate_ptr(v, d) | FY_INT_OUTPLACE_V;
+		v.v = fy_generic_relocate_ptr(v, d).v | FY_INT_OUTPLACE_V;
 		break;
 
 	case FYGT_FLOAT:
-		if ((v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V)
+		if ((v.v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V)
 			return v;
 
 		p = fy_generic_resolve_ptr(v);
 		if (p >= start && p < end)
 			return v;
 
-		v = fy_generic_relocate_ptr(v, d) | FY_FLOAT_OUTPLACE_V;
+		v.v = fy_generic_relocate_ptr(v, d).v | FY_FLOAT_OUTPLACE_V;
 		break;
 
 	case FYGT_STRING:
-		if ((v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V)
+		if ((v.v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V)
 			return v;
 
 		p = fy_generic_resolve_ptr(v);
 		if (p >= start && p < end)
 			return v;
 
-		v = fy_generic_relocate_ptr(v, d) | FY_STRING_OUTPLACE_V;
+		v.v = fy_generic_relocate_ptr(v, d).v | FY_STRING_OUTPLACE_V;
 		break;
 
 	case FYGT_SEQUENCE:
@@ -1720,7 +1719,7 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 		if (p >= start && p < end)
 			return v;
 
-		v = fy_generic_relocate_collection_ptr(v, d) | FY_SEQ_V;
+		v.v = fy_generic_relocate_collection_ptr(v, d).v | FY_SEQ_V;
 		seq = fy_generic_resolve_collection_ptr(v);
 		count = seq->count;
 		items = (fy_generic *)seq->items;
@@ -1733,7 +1732,7 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 		if (p >= start && p < end)
 			return v;
 
-		v = fy_generic_relocate_collection_ptr(v, d) | FY_MAP_V;
+		v.v = fy_generic_relocate_collection_ptr(v, d).v | FY_MAP_V;
 		map = fy_generic_resolve_collection_ptr(v);
 		count = map->count * 2;
 		pairs = (fy_generic *)map->pairs;

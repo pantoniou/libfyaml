@@ -57,8 +57,8 @@ fy_generic_decoder_object_create(struct fy_generic_decoder *gd, enum fy_generic_
 	gdo->anchor = anchor;
 	gdo->tag = tag;
 
-	gdo->v = fy_invalid;
-	gdo->vds = fy_invalid;
+	gdo->v.v = fy_invalid_value;
+	gdo->vds.v = fy_invalid_value;
 
 	return gdo;
 }
@@ -82,7 +82,7 @@ fy_generic_decoder_object_finalize(struct fy_generic_decoder *gd, struct fy_gene
 	fy_generic v, vi;
 	bool needs_indirect;
 
-	v = fy_invalid;
+	v.v = fy_invalid_value;
 
 	assert(gdo);
 
@@ -113,8 +113,8 @@ fy_generic_decoder_object_finalize(struct fy_generic_decoder *gd, struct fy_gene
 	}
 
 	needs_indirect = !gd->resolve &&
-		         ((gdo->anchor != fy_null && gdo->anchor != fy_invalid) ||
-			 (gdo->tag != fy_null && gdo->tag != fy_invalid));
+		         ((gdo->anchor.v != fy_null_value && gdo->anchor.v != fy_invalid_value) ||
+			 (gdo->tag.v != fy_null_value && gdo->tag.v != fy_invalid_value));
 
 	if (needs_indirect) {
 		struct fy_generic_indirect gi = {
@@ -124,7 +124,7 @@ fy_generic_decoder_object_finalize(struct fy_generic_decoder *gd, struct fy_gene
 		};
 
 		vi = fy_generic_indirect_create(gd->gb, &gi);
-		assert(vi != fy_invalid);
+		assert(vi.v != fy_invalid_value);
 		v = vi;
 	}
 
@@ -321,9 +321,9 @@ fy_generic_decoder_create_scalar(struct fy_generic_decoder *gd, struct fy_event 
 	text = fy_token_get_text(fyt, &len);
 	assert(text);
 
-	v = fy_invalid;
+	v.v = fy_invalid_value;
 
-	if (vt == fy_null || vt == fy_invalid) {
+	if (vt.v == fy_null_value || vt.v == fy_invalid_value) {
 		/* non-explicit tag */
 		style = fy_token_scalar_style(fyt);
 
@@ -350,11 +350,11 @@ fy_generic_decoder_create_scalar(struct fy_generic_decoder *gd, struct fy_event 
 		v = fy_generic_create_scalar_from_text(gd->gb, text, len, force_type);
 	}
 
-	assert(v != fy_invalid);
+	assert(v.v != fy_invalid_value);
 
 	needs_indirect = !gd->resolve &&
-			((va != fy_null && va != fy_invalid) ||
-			 (vt != fy_null && vt != fy_invalid));
+			((va.v != fy_null_value && va.v != fy_invalid_value) ||
+			 (vt.v != fy_null_value && vt.v != fy_invalid_value));
 
 	if (needs_indirect) {
 		struct fy_generic_indirect gi = {
@@ -364,11 +364,11 @@ fy_generic_decoder_create_scalar(struct fy_generic_decoder *gd, struct fy_event 
 		};
 
 		vi = fy_generic_indirect_create(gd->gb, &gi);
-		assert(vi != fy_invalid);
+		assert(vi.v != fy_invalid_value);
 		v = vi;
 	}
 
-	if (v == fy_invalid)
+	if (v.v == fy_invalid_value)
 		return fy_invalid;
 
 	return v;
@@ -455,7 +455,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		fyp_error_check(fyp, anchor, err_out, "fy_token_get_text() failed");
 
 		va = fy_generic_string_size_create(gb, anchor, anchor_size);
-		fyp_error_check(fyp, va != fy_invalid, err_out, "fy_generic_string_size_create() failed");
+		fyp_error_check(fyp, va.v != fy_invalid_value, err_out, "fy_generic_string_size_create() failed");
 
 	} else {
 		anchor = NULL;
@@ -469,7 +469,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		fyp_error_check(fyp, tag, err_out, "fy_token_get_text() failed");
 
 		vt = fy_generic_string_size_create(gb, tag, tag_size);
-		fyp_error_check(fyp, va != fy_invalid, err_out, "fy_generic_string_size_create() failed");
+		fyp_error_check(fyp, va.v != fy_invalid_value, err_out, "fy_generic_string_size_create() failed");
 	} else {
 		tag = NULL;
 		tag_size = 0;
@@ -490,7 +490,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 		if (gd->resolve) {
 			v = fy_generic_decoder_alias_resolve(gd, fy_string_size(anchor, anchor_size));
-			if (v == fy_invalid) {
+			if (v.v == fy_invalid_value) {
 				fy_parser_report_error(fyp, fy_event_get_token(fye),
 					!fy_generic_decoder_alias_is_collecting(gd, va) ?
 							"Unable to resolve alias" :
@@ -500,7 +500,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		} else {
 			v = fy_generic_alias_create(gb,
 					fy_generic_string_size_create(gb, anchor, anchor_size));
-			fyp_error_check(fyp, v != fy_invalid, err_out, "fy_generic_alias_create() failed");
+			fyp_error_check(fyp, v.v != fy_invalid_value, err_out, "fy_generic_alias_create() failed");
 		}
 
 		anchor = NULL;
@@ -517,7 +517,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		}
 
 		v = fy_generic_decoder_create_scalar(gd, fye, va, vt);
-		assert(v != fy_invalid);
+		assert(v.v != fy_invalid_value);
 
 		goto add_item;
 
@@ -571,7 +571,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		fy_path_set_root_user_data(path, NULL);
 
 		v = fy_generic_decoder_object_finalize(gd, gdo);
-		fyp_error_check(fyp, v != fy_invalid, err_out, "fy_generic_decoder_object_finalize() failed");
+		fyp_error_check(fyp, v.v != fy_invalid_value, err_out, "fy_generic_decoder_object_finalize() failed");
 
 		/* root object, create the document state too */
 		assert(gdo->type == FYGDOT_ROOT);
@@ -617,7 +617,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		} else
 			vds = fy_null;
 
-		assert(vds != fy_invalid);
+		assert(vds.v != fy_invalid_value);
 
 		gd->vroot = v;
 		gd->vds = fy_generic_internalize(gb, vds);
@@ -642,7 +642,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		fy_path_set_last_user_data(path, NULL);
 
 		v = fy_generic_decoder_object_finalize_and_destroy(gd, gdo);
-		fyp_error_check(fyp, v != fy_invalid, err_out, "fy_generic_decoder_object_finalize_and_destroy() failed");
+		fyp_error_check(fyp, fy_generic_is_valid(v), err_out, "fy_generic_decoder_object_finalize_and_destroy() failed");
 
 		goto add_item;
 
@@ -712,7 +712,7 @@ static int fy_generic_decoder_anchor_register(struct fy_generic_decoder *fygd, f
 	ga->content = content;
 
 	/* no content yet? collecting */
-	if (content == fy_invalid)
+	if (fy_generic_is_invalid(content))
 		fy_generic_anchor_list_add(&fygd->collecting_anchors, ga);
 	else
 		fy_generic_anchor_list_add(&fygd->complete_anchors, ga);
@@ -768,7 +768,7 @@ static void fy_generic_decoder_anchor_collection_ends(struct fy_generic_decoder 
 		if (ga->nest > 0)
 			continue;
 
-		assert(ga->content == fy_invalid);
+		assert(fy_generic_is_valid(ga->content));
 
 		/* move from collecting to complete list */
 		fy_generic_anchor_list_del(&fygd->collecting_anchors, ga);
@@ -836,11 +836,11 @@ fy_generic_decoder_create(struct fy_parser *fyp, struct fy_generic_builder *gb, 
 	fyp->cfg.flags &= ~FYPCF_RESOLVE_DOCUMENT;
 
 	/* create the scalar tags (note that on 64bits all these do not allocate) */
-	fygd->vnull_tag = fy_string_const("!!null");
-	fygd->vbool_tag = fy_string_const("!!bool");
-	fygd->vint_tag = fy_string_const("!!int");
-	fygd->vfloat_tag = fy_string_const("!!float");
-	fygd->vstr_tag = fy_string_const("!!str");
+	fygd->vnull_tag = fy_string("!!null");
+	fygd->vbool_tag = fy_string("!!bool");
+	fygd->vint_tag = fy_string("!!int");
+	fygd->vfloat_tag = fy_string("!!float");
+	fygd->vstr_tag = fy_string("!!str");
 
 	return fygd;
 
@@ -911,7 +911,7 @@ fy_generic fy_generic_decoder_parse(struct fy_generic_decoder *fygd,
 	items = NULL;
 
 	fygd->parse_flags = flags;
-	while ((vroot = fy_generic_decoder_parse_document(fygd, &vds)) != fy_invalid) {
+	while (fy_generic_is_valid(vroot = fy_generic_decoder_parse_document(fygd, &vds))) {
 
 		ventry = !(flags & FYGDPF_DISABLE_DIRECTORY) ? vds : vroot;
 
@@ -938,7 +938,7 @@ fy_generic fy_generic_decoder_parse(struct fy_generic_decoder *fygd,
 		v = items[0];
 	} else {
 		v = fy_generic_sequence_create_i(fygd->gb, false, count, items);
-		if (v == fy_invalid)
+		if (fy_generic_is_invalid(v))
 			goto err_out;
 	}
 

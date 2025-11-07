@@ -64,7 +64,7 @@ int fy_encode_generic_bool(struct fy_generic_encoder *fyge, const char *anchor, 
 
 	if (fy_generic_is_indirect(v))
 		v = fy_generic_indirect_get_value(v);
-	if (v == fy_true) {
+	if (v.v == fy_true_value) {
 		text = "true";
 		sz = 4;
 	} else {
@@ -234,7 +234,7 @@ fy_generic_encoder_emit_document(struct fy_generic_encoder *fyge, fy_generic vro
 	int rc;
 	size_t i, j, count;
 
-	if (!fyge || vroot == fy_invalid)
+	if (!fyge || vroot.v == fy_invalid_value)
 		return -1;
 
 	/* must not emit stream end twice */
@@ -287,9 +287,9 @@ fy_generic_encoder_emit_document(struct fy_generic_encoder *fyge, fy_generic vro
 		}
 
 		version_explicit = fy_generic_mapping_get_value(vds, fy_string("version-explicit"));
-		is_version_explicit = version_explicit == fy_true;
+		is_version_explicit = version_explicit.v == fy_true_value;
 		tags_explicit = fy_generic_mapping_get_value(vds, fy_string("tags-explicit"));
-		are_tags_explicit = tags_explicit == fy_true;
+		are_tags_explicit = tags_explicit.v == fy_true_value;
 
 		if (!is_version_explicit)
 			vers = NULL;
@@ -363,7 +363,7 @@ int fy_generic_encoder_emit(struct fy_generic_encoder *fyge,
 				return rc;
 		}
 	} else {
-		const fy_generic vroot_key = fy_string_const("root");
+		const fy_generic vroot_key = fy_string("root");
 
 		if ((emit_flags & FYGEEF_MULTI_DOCUMENT)) {
 			if (!fy_generic_is_sequence(v))
@@ -372,7 +372,7 @@ int fy_generic_encoder_emit(struct fy_generic_encoder *fyge,
 			for (i = 0; i < count; i++) {
 				vds = fy_generic_sequence_get_item(v, i);
 				vroot = fy_generic_mapping_get_value(vds, vroot_key);
-				if (vroot == fy_invalid)
+				if (vroot.v == fy_invalid_value)
 					return -1;
 				rc = fy_generic_encoder_emit_document(fyge, vroot, vds);
 				if (rc)
@@ -380,7 +380,7 @@ int fy_generic_encoder_emit(struct fy_generic_encoder *fyge,
 			}
 		} else {
 			vroot = fy_generic_mapping_get_value(v, vroot_key);
-			if (vroot == fy_invalid)
+			if (vroot.v == fy_invalid_value)
 				return -1;
 			rc = fy_generic_encoder_emit_document(fyge, vroot, v);
 			if (rc)
