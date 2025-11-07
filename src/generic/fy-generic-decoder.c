@@ -100,12 +100,12 @@ fy_generic_decoder_object_finalize(struct fy_generic_decoder *gd, struct fy_gene
 		break;
 
 	case FYGDOT_SEQUENCE:
-		v = fy_generic_sequence_create_i(gd->gb, false, gdo->count, gdo->items);
+		v = fy_gb_sequence_create_i(gd->gb, false, gdo->count, gdo->items);
 		break;
 
 	case FYGDOT_MAPPING:
 		assert((gdo->count % 2) == 0);
-		v = fy_generic_mapping_create_i(gd->gb, false, gdo->count / 2, gdo->items);
+		v = fy_gb_mapping_create_i(gd->gb, false, gdo->count / 2, gdo->items);
 		break;
 
 	default:
@@ -123,7 +123,7 @@ fy_generic_decoder_object_finalize(struct fy_generic_decoder *gd, struct fy_gene
 			.tag = gdo->tag,
 		};
 
-		vi = fy_generic_indirect_create(gd->gb, &gi);
+		vi = fy_gb_indirect_create(gd->gb, &gi);
 		assert(vi.v != fy_invalid_value);
 		v = vi;
 	}
@@ -329,9 +329,9 @@ fy_generic_decoder_create_scalar(struct fy_generic_decoder *gd, struct fy_event 
 
 		if (style != FYSS_PLAIN) {
 			/* non-plain are strings always */
-			v = fy_generic_string_size_create(gd->gb, text, len);
+			v = fy_gb_string_size_create(gd->gb, text, len);
 		} else {
-			v = fy_generic_create_scalar_from_text(gd->gb, text, len, FYGT_INVALID);
+			v = fy_gb_create_scalar_from_text(gd->gb, text, len, FYGT_INVALID);
 		}
 	} else {
 		if (fy_generic_compare(vt, gd->vnull_tag) == 0)
@@ -347,7 +347,7 @@ fy_generic_decoder_create_scalar(struct fy_generic_decoder *gd, struct fy_event 
 		else
 			force_type = FYGT_INVALID;	/* fall back */
 
-		v = fy_generic_create_scalar_from_text(gd->gb, text, len, force_type);
+		v = fy_gb_create_scalar_from_text(gd->gb, text, len, force_type);
 	}
 
 	assert(v.v != fy_invalid_value);
@@ -363,7 +363,7 @@ fy_generic_decoder_create_scalar(struct fy_generic_decoder *gd, struct fy_event 
 			.tag = vt,
 		};
 
-		vi = fy_generic_indirect_create(gd->gb, &gi);
+		vi = fy_gb_indirect_create(gd->gb, &gi);
 		assert(vi.v != fy_invalid_value);
 		v = vi;
 	}
@@ -454,7 +454,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		anchor = fy_token_get_text(fyt_anchor, &anchor_size);
 		fyp_error_check(fyp, anchor, err_out, "fy_token_get_text() failed");
 
-		va = fy_generic_string_size_create(gb, anchor, anchor_size);
+		va = fy_gb_string_size_create(gb, anchor, anchor_size);
 		fyp_error_check(fyp, va.v != fy_invalid_value, err_out, "fy_generic_string_size_create() failed");
 
 	} else {
@@ -468,7 +468,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		tag = fy_tag_token_short(fyt_tag, &tag_size);
 		fyp_error_check(fyp, tag, err_out, "fy_token_get_text() failed");
 
-		vt = fy_generic_string_size_create(gb, tag, tag_size);
+		vt = fy_gb_string_size_create(gb, tag, tag_size);
 		fyp_error_check(fyp, va.v != fy_invalid_value, err_out, "fy_generic_string_size_create() failed");
 	} else {
 		tag = NULL;
@@ -498,8 +498,8 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 				goto err_out;
 			}
 		} else {
-			v = fy_generic_alias_create(gb,
-					fy_generic_string_size_create(gb, anchor, anchor_size));
+			v = fy_gb_alias_create(gb,
+					fy_gb_string_size_create(gb, anchor, anchor_size));
 			fyp_error_check(fyp, v.v != fy_invalid_value, err_out, "fy_generic_alias_create() failed");
 		}
 
@@ -543,7 +543,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 		/* if we're tracking what the parser does, set it */
 		if (gd->original_schema == FYGS_AUTO)
-			fy_generic_builder_set_schema_from_parser_mode(gb, gd->curr_parser_mode);
+			fy_gb_set_schema_from_parser_mode(gb, gd->curr_parser_mode);
 
 		ret = FYCR_OK_CONTINUE;
 		break;
@@ -602,7 +602,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 				free(tags);
 			tags = NULL;
 
-			schema_txt = fy_generic_schema_get_text(fy_generic_builder_get_schema(gb));
+			schema_txt = fy_generic_schema_get_text(fy_gb_get_schema(gb));
 
 			vds = fy_mapping("root", v,
 					 "version", fy_mapping("major", vers->major,
@@ -617,7 +617,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 			vds = fy_null;
 
 		gd->vroot = v;
-		gd->vds = fy_generic_internalize(gb, vds);
+		gd->vds = fy_gb_internalize(gb, vds);
 		assert(fy_generic_is_valid(gd->vds));
 
 		fy_generic_decoder_object_destroy(gdo);
@@ -815,12 +815,12 @@ fy_generic_decoder_create(struct fy_parser *fyp, struct fy_generic_builder *gb, 
 
 	fygd->fyp = fyp;
 	fygd->gb = gb;
-	fygd->original_schema = fy_generic_builder_get_schema(gb);
+	fygd->original_schema = fy_gb_get_schema(gb);
 	fygd->curr_parser_mode = fy_parser_get_mode(fyp);
 
 	/* if we're tracking what the parser does, set it */
 	if (fygd->original_schema == FYGS_AUTO)
-		fy_generic_builder_set_schema_from_parser_mode(gb, fygd->curr_parser_mode);
+		fy_gb_set_schema_from_parser_mode(gb, fygd->curr_parser_mode);
 
 	fygd->verbose = verbose;
 	fygd->resolve = !!(fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT);
@@ -935,7 +935,7 @@ fy_generic fy_generic_decoder_parse(struct fy_generic_decoder *fygd,
 	if (!(flags & FYGDPF_MULTI_DOCUMENT)) {
 		v = items[0];
 	} else {
-		v = fy_generic_sequence_create_i(fygd->gb, false, count, items);
+		v = fy_gb_sequence_create_i(fygd->gb, false, count, items);
 		if (fy_generic_is_invalid(v))
 			goto err_out;
 	}
