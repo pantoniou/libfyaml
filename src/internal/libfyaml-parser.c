@@ -4499,21 +4499,24 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	printf("null = %016lx\n", fy_null.v);
 	for (i = 0; i < ARRAY_SIZE(btable); i++) {
 		bv = btable[i];
-		gbl = fy_gb_bool_create(gb, bv);
+		gbl = fy_gb_to_generic(gb, (_Bool)bv);
+		assert(fy_generic_is_valid(gbl));
 		printf("boolean/%s = %016lx %s\n", bv ? "true" : "false", gbl.v,
 				fy_generic_get_bool(gbl) ? "true" : "false");
 	}
 
 	for (i = 0; i < ARRAY_SIZE(itable); i++) {
 		iv = itable[i];
-		gi = fy_gb_int_create(gb, iv);
+		gi = fy_gb_to_generic(gb, iv);
+		assert(fy_generic_is_valid(gi));
 		printf("int/%lld = %016lx %lld\n", iv, gi.v,
 				fy_generic_get_int(gi));
 	}
 
 	for (i = 0; i < ARRAY_SIZE(stable); i++) {
 		sv = stable[i];
-		gs = fy_gb_string_create(gb, sv);
+		gs = fy_gb_to_generic(gb, sv);
+		assert(fy_generic_is_valid(gs));
 		printf("string/%s = %016lx", sv, gs.v);
 
 		sv = fy_generic_get_string_size(&gs, &slen);
@@ -4582,7 +4585,10 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	for (i = 0; i < ARRAY_SIZE(ftable); i++) {
 		fv = ftable[i];
-		gf = fy_gb_float_create(gb, fv);
+
+		gf = fy_gb_to_generic(gb, fv);
+		assert(fy_generic_is_valid(gf));
+
 		printf("float/%f = %016lx %f\n", fv, gf.v,
 				fy_generic_get_float(gf));
 	}
@@ -4594,6 +4600,11 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		});
 	assert(fy_generic_is_valid(seq));
 
+	fy_generic_print_primitive(stdout, seq);
+	printf("\n");
+
+	printf(">>>>>>>>>>>>>>>>>>>>> seq using fy_gb_sequence\n");
+	seq = fy_gb_sequence(gb, 100, "Hello there", false, 10.0);
 	fy_generic_print_primitive(stdout, seq);
 	printf("\n");
 

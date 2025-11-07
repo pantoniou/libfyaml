@@ -299,6 +299,8 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 
 // C preprocessor magic follows (pilfered and adapted from h4x0r.org)
 
+/* applies an expansion over a varargs list */
+
 #define FY_CPP_EVAL1(...)    __VA_ARGS__
 #define FY_CPP_EVAL2(...)    FY_CPP_EVAL1(FY_CPP_EVAL1(__VA_ARGS__))
 #define FY_CPP_EVAL4(...)    FY_CPP_EVAL2(FY_CPP_EVAL2(__VA_ARGS__))
@@ -336,7 +338,7 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
     _FY_CPP_ITEM_LIST(FY_CPP_REST(__VA_ARGS__))
 
 #define FY_CPP_VA_ITEMS(_type, ...) \
-	((_type []) { _FY_CPP_VA_ITEMS(__VA_ARGS__) })
+	((_type [FY_CPP_VA_COUNT(__VA_ARGS__)]) { _FY_CPP_VA_ITEMS(__VA_ARGS__) })
 
 /*
  * example usage:
@@ -358,7 +360,12 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
  * 		FY_CPP_VA_COUNT(__VA_ARGS__), \
  * 		FY_CPP_VA_ITEMS(int, __VA_ARGS__))
  *
- * sum = do_sum_macro(1, 2, 5, 100);
+ *   sum = do_sum_macro(1, 2, 5, 100);
+ *
+ * will expand to:
+ *
+ *   sum = do_sum(4, ((int [4]){ 1, 2, 5, 100 }));
+ *
  * printf("sum=%d\n", sum);
  */
 

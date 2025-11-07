@@ -671,7 +671,7 @@ fy_generic_get_string_no_check(const fy_generic *vp)
 		size_t __len;						\
 		__ret = fy_generic_get_string_size((_vp), &__len);	\
 		if (!__ret)						\
-	 		__ret = (_default_v);				\
+			__ret = (_default_v);				\
 		__ret;							\
 	})
 
@@ -1027,9 +1027,9 @@ static inline fy_generic_value fy_generic_out_of_place_put_invalid(void *buf, ..
 
 #define fy_to_generic_value(_v) \
 	({	\
-	 	typeof (_v) __v = (_v); \
+		typeof (_v) __v = (_v); \
 		fy_generic_value __r; \
-	 	\
+		\
 		__r = fy_to_generic_inplace(__v); \
 		if (__r == fy_invalid_value) { \
 			size_t __outofplace_size = fy_to_generic_outofplace_size(__v); \
@@ -1443,11 +1443,13 @@ static inline int fy_generic_compare(fy_generic a, fy_generic b)
     _FY_CPP_GITEM_ONE(FY_CPP_FIRST(__VA_ARGS__)) \
     _FY_CPP_GITEM_LIST(FY_CPP_REST(__VA_ARGS__))
 
-#define FY_CPP_VA_GITEMS(...) \
-	((fy_generic []) { _FY_CPP_VA_GITEMS(__VA_ARGS__) })
+#define FY_CPP_VA_GITEMS(_count, ...) \
+	((fy_generic [(_count)]) { _FY_CPP_VA_GITEMS(__VA_ARGS__) })
 
 #define fy_sequence(...) \
-	((fy_generic) { .v = fy_sequence_explicit(FY_CPP_VA_COUNT(__VA_ARGS__), FY_CPP_VA_GITEMS(__VA_ARGS__)) })
+	((fy_generic) { \
+		.v = fy_sequence_explicit(FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)) })
 
 static inline const fy_generic *fy_generic_sequence_get_items(fy_generic seq, size_t *countp)
 {
@@ -1565,7 +1567,8 @@ static inline fy_generic fy_generic_sequence_get_alias_item(fy_generic seq, size
 	((fy_generic) { .v = fy_mapping_explicit((_count), (_items)) })
 
 #define fy_mapping(...) \
-	fy_mapping_explicit(FY_CPP_VA_COUNT(__VA_ARGS__) / 2, FY_CPP_VA_GITEMS(__VA_ARGS__))
+	fy_mapping_explicit(FY_CPP_VA_COUNT(__VA_ARGS__) / 2, \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__))
 
 static inline const fy_generic *fy_generic_mapping_get_pairs(fy_generic map, size_t *countp)
 {
@@ -1682,7 +1685,7 @@ static inline fy_generic fy_generic_mapping_get_alias_value(fy_generic map, fy_g
 #define fy_indirect_alloca(_v, _anchor, _tag)						\
 	({										\
 		fy_generic_value __v = (_v);						\
-	 	fy_generic_value __anchor = (_anchor), __tag = (_tag), *__vp;	\
+		fy_generic_value __anchor = (_anchor), __tag = (_tag), *__vp;	\
 		int __i = 1;								\
 											\
 		__vp = fy_ptr_align(alloca(4 * sizeof(*__vp) + FY_GENERIC_CONTAINER_ALIGN - 1),	\
@@ -1794,7 +1797,7 @@ struct fy_generic_builder *fy_generic_builder_create(const struct fy_generic_bui
 void fy_generic_builder_destroy(struct fy_generic_builder *gb);
 void fy_generic_builder_reset(struct fy_generic_builder *gb);
 
-static inline fy_generic fy_gb_null_create(struct fy_generic_builder *gb)
+static inline fy_generic fy_gb_null_create(struct fy_generic_builder *gb, void *p)
 {
 	return fy_null;
 }
@@ -1839,6 +1842,11 @@ fy_gb_double_create(struct fy_generic_builder *gb, double val)
 
 fy_generic fy_gb_string_size_create_out_of_place(struct fy_generic_builder *gb, const char *str, size_t len);
 
+static inline fy_generic fy_gb_string_create_out_of_place(struct fy_generic_builder *gb, const char *str)
+{
+	return fy_gb_string_size_create_out_of_place(gb, str, str ? strlen(str) : 0);
+}
+
 static inline fy_generic
 fy_gb_string_size_create(struct fy_generic_builder *gb, const char *str, size_t len)
 {
@@ -1853,6 +1861,47 @@ static inline fy_generic fy_gb_string_create(struct fy_generic_builder *gb, cons
 	return fy_gb_string_size_create(gb, str, strlen(str));
 }
 
+static inline fy_generic fy_gb_invalid_create_out_of_place(struct fy_generic_builder *gb, ...)
+{
+	return fy_invalid;
+}
+
+#define fy_gb_to_generic_outofplace_put(_gb, _v) \
+	(_Generic((_v), \
+		void *: fy_gb_null_create, \
+		_Bool: fy_gb_bool_create, \
+		signed char: fy_gb_int_create_out_of_place, \
+		signed short: fy_gb_int_create_out_of_place, \
+		signed int: fy_gb_int_create_out_of_place, \
+		signed long: fy_gb_int_create_out_of_place, \
+		signed long long: fy_gb_int_create_out_of_place, \
+		unsigned char: fy_gb_int_create_out_of_place, \
+		unsigned short: fy_gb_int_create_out_of_place, \
+		unsigned int: fy_gb_int_create_out_of_place, \
+		unsigned long: fy_gb_int_create_out_of_place, \
+		unsigned long long: fy_gb_int_create_out_of_place, \
+		char *: fy_gb_string_create_out_of_place, \
+		const char *: fy_gb_string_create_out_of_place, \
+		float: fy_gb_float_create_out_of_place, \
+		double: fy_gb_double_create_out_of_place, \
+		fy_generic: fy_gb_internalize_out_of_place, \
+		default: fy_gb_invalid_create_out_of_place \
+	      )((_gb), (_v)))
+
+#define fy_gb_to_generic_value(_gb, _v) \
+	({	\
+		typeof (_v) __v = (_v); \
+		fy_generic_value __r; \
+		\
+		__r = fy_to_generic_inplace(__v); \
+		if (__r == fy_invalid_value) \
+			__r = fy_gb_to_generic_outofplace_put((_gb), __v).v; \
+		__r; \
+	})
+
+#define fy_gb_to_generic(_gb, _v) \
+	((fy_generic) { .v = fy_gb_to_generic_value((_gb), (_v)) })
+
 fy_generic fy_gb_string_vcreate(struct fy_generic_builder *gb, const char *fmt, va_list ap);
 fy_generic fy_gb_string_createf(struct fy_generic_builder *gb, const char *fmt, ...)
 	__attribute__((format(printf, 2, 3)));
@@ -1860,6 +1909,31 @@ fy_generic fy_gb_string_createf(struct fy_generic_builder *gb, const char *fmt, 
 fy_generic fy_gb_sequence_create_i(struct fy_generic_builder *gb, bool internalize,
 					size_t count, const fy_generic *items);
 fy_generic fy_gb_sequence_create(struct fy_generic_builder *gb, size_t count, const fy_generic *items);
+
+#define FY_CPP2_EMPTY(a)
+#define FY_CPP2_POSTPONE1(a, macro) macro FY_CPP2_EMPTY(a)
+
+#define FY_CPP2_MAP(a, macro, ...) \
+    __VA_OPT__(FY_CPP_EVAL(_FY_CPP2_MAP_ONE(a, macro, __VA_ARGS__)))
+
+#define _FY_CPP2_MAP_ONE(a, macro, x, ...) macro(a, x) \
+    __VA_OPT__(FY_CPP2_POSTPONE1(a, _FY_CPP2_MAP_INDIRECT)()(a, macro, __VA_ARGS__))
+#define _FY_CPP2_MAP_INDIRECT() _FY_CPP2_MAP_ONE
+
+#define _FY_CPP_GBITEM_ONE(_gb, arg) fy_gb_to_generic(_gb, arg)
+#define _FY_CPP_GBITEM_LATER_ARG(_gb, arg) , _FY_CPP_GBITEM_ONE(_gb, arg)
+#define _FY_CPP_GBITEM_LIST(_gb, ...) FY_CPP2_MAP(_gb, _FY_CPP_GBITEM_LATER_ARG, __VA_ARGS__)
+
+#define _FY_CPP_VA_GBITEMS(_gb, ...)          \
+    _FY_CPP_GBITEM_ONE(_gb, FY_CPP_FIRST(__VA_ARGS__)) \
+    _FY_CPP_GBITEM_LIST(_gb, FY_CPP_REST(__VA_ARGS__))
+
+#define FY_CPP_VA_GBITEMS(_count, _gb, ...) \
+	((fy_generic [(_count)]) { _FY_CPP_VA_GBITEMS(gb, __VA_ARGS__) })
+
+#define fy_gb_sequence(_gb, ...) \
+	((fy_generic) { .v = fy_gb_sequence_create(gb, FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GBITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), gb, __VA_ARGS__)).v })
 
 fy_generic fy_gb_sequence_remove(struct fy_generic_builder *gb, fy_generic seq, size_t idx, size_t count);
 
