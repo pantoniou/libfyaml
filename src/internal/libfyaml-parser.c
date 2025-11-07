@@ -4143,8 +4143,10 @@ void fy_generic_print_primitive(FILE *fp, fy_generic v)
 	const fy_generic *items;
 	size_t i, count, slen;
 
-	if (v == fy_invalid)
-		fprintf(fp, "invalid");
+	if (fy_generic_is_invalid(v)) {
+		fprintf(fp, "*invalid*");
+		return;
+	}
 
 	if (fy_generic_is_indirect(v)) {
 
@@ -4221,65 +4223,6 @@ void fy_generic_print_primitive(FILE *fp, fy_generic v)
 	default:
 		FY_IMPOSSIBLE_ABORT();
 	}
-}
-
-fy_generic do_x(void)
-{
-	fy_generic vstr;
-
-	__asm__ volatile("nop; nop" : : : "memory");
-	vstr = fy_string("test");
-	__asm__ volatile("nop; nop" : : "r"(vstr) : "memory");
-
-	return vstr;
-}
-
-fy_generic do_x2(void)
-{
-	fy_generic vf;
-
-	__asm__ volatile("nop; nop" : : : "memory");
-	vf = fy_float(128.0);
-	__asm__ volatile("nop; nop" : : "r"(vf) : "memory");
-
-	return vf;
-}
-
-fy_generic do_x3(void)
-{
-	fy_generic vf;
-
-	__asm__ volatile("nop; nop" : : : "memory");
-	vf = fy_float_alloca(128.1);
-	__asm__ volatile("nop; nop" : : "r"(vf) : "memory");
-
-	return vf;
-}
-
-const char *do_x4(void)
-{
-	fy_generic vstr;
-	const char *str;
-
-#if 1
-	vstr = fy_string("test");
-	str = FY_GENERIC_GET_STRING_LVAL(vstr);
-#else
-	str = fy_generic_get_string_const(fy_string_const("test"));
-#endif
-
-	return strdup(str);
-}
-
-const char *do_x5(fy_generic vstr)
-{
-	const char *str;
-
-	__asm__ volatile("nop; nop" : : : "memory");
-	str = FY_GENERIC_GET_STRING_LVAL(vstr);
-	__asm__ volatile("nop; nop" : : : "memory");
-
-	return strdup(str);
 }
 
 char *testing_export = "This is export";
@@ -4396,25 +4339,25 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	}
 
 	printf("testing generic methods\n");
-	printf("null = %016lx\n", fy_null);
+	printf("null = %016lx\n", fy_null.v);
 	for (i = 0; i < ARRAY_SIZE(btable); i++) {
 		bv = btable[i];
 		gbl = fy_bool(bv);
-		printf("boolean/%s = %016lx %s\n", bv ? "true" : "false", gbl,
+		printf("boolean/%s = %016lx %s\n", bv ? "true" : "false", gbl.v,
 				fy_generic_get_bool(gbl) ? "true" : "false");
 	}
 
 	for (i = 0; i < ARRAY_SIZE(itable); i++) {
 		iv = itable[i];
 		gi = fy_int(iv);
-		printf("int/%lld = %016lx %lld\n", iv, gi,
+		printf("int/%lld = %016lx %lld\n", iv, gi.v,
 				fy_generic_get_int(gi));
 	}
 
 	for (i = 0; i < ARRAY_SIZE(stable); i++) {
 		sv = stable[i];
 		gs = fy_string(sv);
-		printf("string/%s = %016lx", sv, gs);
+		printf("string/%s = %016lx", sv, gs.v);
 
 		sv = fy_generic_get_string_size(&gs, &slen);
 		assert(sv);
@@ -4424,60 +4367,50 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	for (i = 0; i < ARRAY_SIZE(ftable); i++) {
 		fv = ftable[i];
 		gf = fy_float(fv);
-		printf("float/%f = %016lx %f\n", fv, gf,
+		printf("float/%f = %016lx %f\n", fv, gf.v,
 				fy_generic_get_float(gf));
 	}
 
-	seq = fy_sequence_alloca(3, ((fy_generic[]){
-			fy_bool(true),
-			fy_int(100),
-			fy_string("info")}));
-	assert(seq != fy_invalid);
+	seq = fy_sequence(fy_bool(true),
+			 fy_int(100),
+			 fy_string("info"));
+	assert(fy_generic_is_sequence(seq));
 
 	printf("seq:\n");
 	fy_generic_print_primitive(stdout, seq);
 	printf("\n");
 
-	map = fy_mapping_alloca(3, ((fy_generic[]){
-			fy_string("foo"), fy_string("bar"),
-			fy_string("frooz-larger"), fy_string("what"),
-			fy_string("seq"), seq}));
-
-	assert(map != fy_invalid);
+	map = fy_mapping(fy_string("foo"), fy_string("bar"),
+			 fy_string("frooz-larger"), fy_string("what"),
+			 fy_string("seq"), seq);
+	assert(fy_generic_is_mapping(map));
 
 	printf("map:\n");
 	fy_generic_print_primitive(stdout, map);
 	printf("\n");
 
 	gv = fy_generic_mapping_get_value(map, fy_string("foo"));
-	assert(gv != fy_invalid);
+	assert(fy_generic_is_valid(gv));
 
 	printf("found: ");
 	fy_generic_print_primitive(stdout, gv);
 	printf("\n");
 
-	map = fy_mapping_alloca(2, ((fy_generic[]){
-			fy_string("foo"), fy_string("bar"),
-			fy_sequence_alloca(2, ((fy_generic[]){
-					fy_int(10),
-					fy_int(100)})),
-				fy_float(3.14)}));
+	map = fy_mapping(fy_string("foo"), fy_string("bar"),
+			 fy_sequence(fy_int(10), fy_int(100)), fy_float(3.14));
 
 	fy_generic_print_primitive(stdout, map);
 	printf("\n");
 
-	gv = fy_generic_mapping_get_value(map,
-			fy_sequence_alloca(2, ((fy_generic[]){
-					fy_int(10),
-					fy_int(100)})));
-	assert(gv != fy_invalid);
+	gv = fy_generic_mapping_get_value(map, fy_sequence(fy_int(10), fy_int(100)));
+	assert(fy_generic_is_valid(gv));
 	printf("found: ");
 	fy_generic_print_primitive(stdout, gv);
 	printf("\n");
 
 	{
-		const fy_generic t0 = fy_string_const("Hello");
-		fy_generic t1 = fy_string_const("Hello-there friends");
+		const fy_generic t0 = fy_string("Hello");
+		fy_generic t1 = fy_string("Hello-there friends");
 		fy_generic t2 = fy_string("Yet another test");
 		fy_generic t3 = fy_string(testing_export);
 
@@ -4499,10 +4432,10 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	}
 
 	{
-		fy_generic seq = fy_sequence_alloca(3, ((fy_generic[]){
+		fy_generic seq = fy_sequence(
 				fy_bool(true),
 				fy_int(100),
-				fy_string("info-info")}));
+				fy_string("info-info"));
 
 		printf("seq-x:\n");
 		fy_generic_print_primitive(stdout, seq);
@@ -4515,9 +4448,9 @@ int do_generics(int argc, char *argv[], const char *allocator)
 			fy_generic items[3];
 		} _seq FY_GENERIC_CONTAINER_ALIGNMENT = {
 			3,
-			{ fy_true, fy_int_const(100), fy_string_const("info-info") },
+			{ fy_true, fy_int_const(100), fy_string("info-info") },
 		};
-		fy_generic seq = (fy_generic)&_seq | FY_SEQ_V;
+		fy_generic seq = (fy_generic){ .v = (fy_generic_value)&_seq | FY_SEQ_V };
 
 		printf("seq-x2:\n");
 		fy_generic_print_primitive(stdout, seq);
@@ -4547,7 +4480,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		vstr = fy_string("test");
 		__asm__ volatile("nop; nop" : : "r"(vstr) : "memory");
 
-		printf("vstr=0x%08lx\n", (unsigned long)vstr);
+		printf("vstr=0x%08lx\n", (unsigned long)vstr.v);
 	}
 
 
@@ -4563,25 +4496,25 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	printf("created gb=%p\n", gb);
 
-	printf("null = %016lx\n", fy_null);
+	printf("null = %016lx\n", fy_null.v);
 	for (i = 0; i < ARRAY_SIZE(btable); i++) {
 		bv = btable[i];
 		gbl = fy_generic_bool_create(gb, bv);
-		printf("boolean/%s = %016lx %s\n", bv ? "true" : "false", gbl,
+		printf("boolean/%s = %016lx %s\n", bv ? "true" : "false", gbl.v,
 				fy_generic_get_bool(gbl) ? "true" : "false");
 	}
 
 	for (i = 0; i < ARRAY_SIZE(itable); i++) {
 		iv = itable[i];
 		gi = fy_generic_int_create(gb, iv);
-		printf("int/%lld = %016lx %lld\n", iv, gi,
+		printf("int/%lld = %016lx %lld\n", iv, gi.v,
 				fy_generic_get_int(gi));
 	}
 
 	for (i = 0; i < ARRAY_SIZE(stable); i++) {
 		sv = stable[i];
 		gs = fy_generic_string_create(gb, sv);
-		printf("string/%s = %016lx", sv, gs);
+		printf("string/%s = %016lx", sv, gs.v);
 
 		sv = fy_generic_get_string_size(&gs, &slen);
 		assert(sv);
@@ -4650,7 +4583,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	for (i = 0; i < ARRAY_SIZE(ftable); i++) {
 		fv = ftable[i];
 		gf = fy_generic_float_create(gb, fv);
-		printf("float/%f = %016lx %f\n", fv, gf,
+		printf("float/%f = %016lx %f\n", fv, gf.v,
 				fy_generic_get_float(gf));
 	}
 
@@ -4659,7 +4592,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 			fy_generic_int_create(gb, 100),
 			fy_generic_string_create(gb, "info")
 		});
-	assert(seq != fy_invalid);
+	assert(fy_generic_is_valid(seq));
 
 	fy_generic_print_primitive(stdout, seq);
 	printf("\n");
@@ -4670,13 +4603,13 @@ int do_generics(int argc, char *argv[], const char *allocator)
 			fy_generic_string_create(gb, "seq"), seq
 		});
 
-	assert(map != fy_invalid);
+	assert(fy_generic_is_valid(map));
 
 	fy_generic_print_primitive(stdout, map);
 	printf("\n");
 
 	gv = fy_generic_mapping_get_value(map, fy_generic_string_create(gb, "foo"));
-	assert(gv != fy_invalid);
+	assert(fy_generic_is_valid(gv));
 	printf("found: ");
 	fy_generic_print_primitive(stdout, gv);
 	printf("\n");
@@ -4694,7 +4627,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	gv = fy_generic_mapping_get_value(map, fy_generic_sequence_create(gb, 2, (fy_generic[]){
 					fy_generic_int_create(gb, 10),
 					fy_generic_int_create(gb, 100)}));
-	assert(gv != fy_invalid);
+	assert(fy_generic_is_valid(gv));
 	printf("found: ");
 	fy_generic_print_primitive(stdout, gv);
 	printf("\n");
@@ -4743,7 +4676,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 		});
 
-	assert(map != fy_invalid);
+	assert(fy_generic_is_valid(map));
 
 	fy_generic_builder_destroy(gb);
 
@@ -4795,7 +4728,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	fy_allocator_dump(a);
 
-	printf("map = %p map2 = %p\n", (void *)map, (void *)map2);
+	printf("map = %p map2 = %p\n", (void *)map.v, (void *)map2.v);
 
 	fy_generic_builder_destroy(gb);
 
@@ -4859,7 +4792,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 		});
 
-	assert(map != fy_invalid);
+	assert(fy_generic_is_valid(map));
 
 	printf("original map\n");
 	fy_generic_print_primitive(stdout, map);
@@ -4875,7 +4808,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 									fy_generic_string_create(gb, "not-info")})
 #endif
 					   );
-	assert(map != fy_invalid);
+	assert(fy_generic_is_valid(map));
 
 	printf("new map\n");
 	fy_generic_print_primitive(stdout, map);
@@ -4889,7 +4822,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		fy_bool(true),
 		fy_int(100),
 		fy_string("info-long"));
-	assert(seq != fy_invalid);
+	assert(fy_generic_is_valid(seq));
 
 	printf("seq-const:\n");
 	fy_generic_print_primitive(stdout, seq);
@@ -4905,15 +4838,15 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	fy_generic ind;
 
-	printf("str=0x%08lx\n", str);
+	printf("str=0x%08lx\n", str.v);
 
 	ind = fy_indirect(str, fy_string("bbb"), fy_string("ccc"));
-	assert(ind != fy_invalid);
+	assert(fy_generic_is_valid(ind));
 
 	{
-		fy_generic *pp = fy_generic_resolve_ptr(ind);
+		fy_generic_value *pp = fy_generic_resolve_ptr(ind);
 		printf("ind=0x%08lx [0:3]=0x%08lx 0x%08lx 0x%08lx 0x%08lx\n",
-				ind, pp[0], pp[1], pp[2], pp[3]);
+				ind.v, pp[0], pp[1], pp[2], pp[3]);
 	}
 
 	printf("ind:\n");
@@ -4944,7 +4877,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	fy_generic_emit_default(fy_stringf("Hello there #%d", 10));
 
 	fy_generic seq3 = fy_sequence( fy_bool(false), fy_int(-101), fy_string("xxx macros"));
-	assert(seq3 != fy_invalid);
+	assert(fy_generic_is_valid(seq3));
 
 	fy_generic_emit_default(seq3);
 
@@ -5349,15 +5282,15 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator,
 				fprintf(stderr, "success\n");
 #endif
 
-				vdir = (fy_generic)hdr[1];
+				vdir.v = (fy_generic_value)hdr[1];
 			}
 			close(fd);
 		}
 	}
 
-	if (vdir == fy_invalid) {
+	if (fy_generic_is_invalid(vdir)) {
 		vdir = fy_generic_decoder_parse(fygd, FYGDPF_MULTI_DOCUMENT);
-		assert(vdir != fy_invalid);
+		assert(fy_generic_is_valid(vdir));
 
 		fy_generic_builder_trim(gb);
 
@@ -5469,7 +5402,7 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator,
 	assert(fyge);
 
 	if (!null_output) {
-		assert(vdir != fy_invalid);
+		assert(fy_generic_is_valid(vdir));
 		rc = fy_generic_encoder_emit(fyge, FYGEEF_MULTI_DOCUMENT, vdir);
 		assert(!rc);
 	}

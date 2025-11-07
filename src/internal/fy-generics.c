@@ -137,8 +137,8 @@ static inline fy_generic fy_generic_arena_relocate_ptr(struct fy_relocation_info
 	arena = fy_arena_locate_by_src(ri->arenas, ri->num_arenas, p);
 	assert(arena);
 
-	v = (fy_generic)((ptrdiff_t)((uintptr_t)v & ~(uintptr_t)FY_INPLACE_TYPE_MASK) + d);
-	assert((v & (uintptr_t)FY_INPLACE_TYPE_MASK) == 0);
+	v.v = (fy_generic_value)((ptrdiff_t)((uintptr_t)v.v & ~(uintptr_t)FY_INPLACE_TYPE_MASK) + d);
+	assert((v.v & (uintptr_t)FY_INPLACE_TYPE_MASK) == 0);
 	return v;
 }
 
@@ -153,8 +153,8 @@ static inline fy_generic fy_generic_arena_relocate_collection_ptr(struct fy_relo
 
 	(void)arena;
 
-	v = (fy_generic)((ptrdiff_t)((uintptr_t)v & ~(uintptr_t)FY_COLLECTION_MASK) + d);
-	assert((v & (uintptr_t)FY_COLLECTION_MASK) == 0);
+	v.v = (fy_generic_value)((ptrdiff_t)((uintptr_t)v.v & ~(uintptr_t)FY_COLLECTION_MASK) + d);
+	assert((v.v & (uintptr_t)FY_COLLECTION_MASK) == 0);
 	return v;
 }
 
@@ -370,18 +370,18 @@ static void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 
 	fprintf(fp, "%*s", level * 2, "");
 
-	if (v != vv)
-		fprintf(fp, "(%016lx) ", (unsigned long)vv);
+	if (v.v != vv.v)
+		fprintf(fp, "(%016lx) ", vv.v);
 	if (anchor)
 		fprintf(fp, "&%s ", anchor);
 	if (tag)
 		fprintf(fp, "%s ", tag);
 
-	fprintf(fp, "%016lx ", (unsigned long)v);
+	fprintf(fp, "%016lx ", v.v);
 	fprintf(fp, "%c ", generic_type_map[fy_generic_get_type(v)]);
 
 
-	if (v == fy_invalid)
+	if (fy_generic_is_invalid(v))
 		fprintf(fp, "invalid");
 
 	switch (fy_generic_get_type(v)) {
@@ -816,7 +816,7 @@ static int do_parse_generic(const struct generic_options *opt, int argc, char **
 		fy_generic_builder_reset(gb);
 
 		vdir = fy_generic_decoder_parse(fygd, FYGDPF_MULTI_DOCUMENT);
-		if (vdir == fy_invalid) {
+		if (fy_generic_is_invalid(vdir)) {
 			fprintf(stderr, "Error while processing: \"%s\"\n", filename);
 			fy_parser_reset(fyp);
 		} else {
