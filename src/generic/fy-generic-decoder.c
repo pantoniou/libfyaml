@@ -630,7 +630,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 					 "tags", fy_sequence_create(count, vtags_items),
 					 "tags-explicit", (_Bool)tags_explicit,
 					 "schema", schema_txt);
-			fyp_error_check(fyp, !fy_generic_is_invalid(vtags_items[i]), err_out,
+			fyp_error_check(fyp, !fy_generic_is_invalid(vds), err_out,
 				"failed to create document directory");
 
 		} else
