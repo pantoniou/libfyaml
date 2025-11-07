@@ -6028,3 +6028,26 @@ cleanup:
 
 	return exitcode;
 }
+
+#if 0
+static inline long long generic_add_one(fy_generic v)
+{
+	return fy_generic_get_int(v) + 1;
+}
+
+long long generic_return_two(void)
+{
+	return generic_add_one(fy_to_generic(1));
+}
+
+size_t generic_return_constant_string_length(void)
+{
+	const fy_generic v = fy_to_generic("HELLO");
+	const char *s = fy_generic_get_string(&v);
+	size_t i;
+
+	for (i = 0; s[i]; i++)
+		;
+	return i;
+}
+#endif
