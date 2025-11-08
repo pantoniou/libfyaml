@@ -1304,8 +1304,8 @@ static inline int fy_generic_string_compare(fy_generic a, fy_generic b)
 	size_t sza = 0, szb = 0;
 	int ret;
 
-	sa = fy_genericp_get_string_size(&a, &sza);
-	sb = fy_genericp_get_string_size(&b, &szb);
+	sa = fy_generic_get_string_size(a, &sza);
+	sb = fy_generic_get_string_size(b, &szb);
 
 	ret = memcmp(sa, sb, sza > szb ? szb : sza);
 
@@ -1324,8 +1324,8 @@ static inline int fy_generic_alias_compare(fy_generic a, fy_generic b)
 	aa = fy_generic_indirect_get_anchor(a);
 	ab = fy_generic_indirect_get_anchor(b);
 
-	sa = fy_genericp_get_string_size(&aa, &sza);
-	sb = fy_genericp_get_string_size(&ab, &szb);
+	sa = fy_generic_get_string_size(aa, &sza);
+	sb = fy_generic_get_string_size(ab, &szb);
 
 	ret = memcmp(sa, sb, sza > szb ? szb : sza);
 
