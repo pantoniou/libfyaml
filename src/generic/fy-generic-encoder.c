@@ -356,7 +356,7 @@ int fy_generic_encoder_emit(struct fy_generic_encoder *fyge,
 				return -1;
 			count = fy_generic_sequence_get_item_count(v);
 			for (i = 0; i < count; i++) {
-				vroot = fy_generic_sequence_get_item(v, i);
+				vroot = fy_generic_sequence_get_item_generic(v, i);
 				rc = fy_generic_encoder_emit_document(fyge, vroot, fy_null);
 				if (rc)
 					return rc;
@@ -374,7 +374,7 @@ int fy_generic_encoder_emit(struct fy_generic_encoder *fyge,
 				return -1;
 			count = fy_generic_sequence_get_item_count(v);
 			for (i = 0; i < count; i++) {
-				vds = fy_generic_sequence_get_item(v, i);
+				vds = fy_generic_sequence_get_item_generic(v, i);
 				vroot = fy_generic_mapping_get_value(vds, vroot_key);
 				if (vroot.v == fy_invalid_value)
 					return -1;
