@@ -208,8 +208,8 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 {
 	const void *ptr;
 	fy_generic vi, new_v;
-	const struct fy_generic_sequence *seqs;
-	const struct fy_generic_mapping *maps;
+	const fy_generic_sequence *seqs;
+	const fy_generic_mapping *maps;
 	struct iovec iov[2];
 	enum fy_generic_type type;
 	size_t size, i, count;
@@ -275,7 +275,7 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 			iov[1].iov_base = items;
 			iov[1].iov_len = size;
 			valp = fy_gb_storev(gb, iov, ARRAY_SIZE(iov),
-					FY_CONTAINER_ALIGNOF(struct fy_generic_sequence));
+					FY_CONTAINER_ALIGNOF(fy_generic_sequence));
 		} else
 			valp = NULL;
 
@@ -318,7 +318,7 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 			iov[1].iov_base = items;
 			iov[1].iov_len = size,
 			valp = fy_gb_storev(gb, iov, ARRAY_SIZE(iov),
-					FY_CONTAINER_ALIGNOF(struct fy_generic_mapping));
+					FY_CONTAINER_ALIGNOF(fy_generic_mapping));
 		} else
 			valp = NULL;
 
@@ -386,8 +386,8 @@ fy_internalize_items(struct fy_generic_builder *gb, size_t count, const fy_gener
 fy_generic fy_gb_collection_create(struct fy_generic_builder *gb, bool is_map, size_t count, const fy_generic *items, bool internalize)
 {
 	union {
-		struct fy_generic_sequence s;
-		struct fy_generic_mapping m;
+		fy_generic_sequence s;
+		fy_generic_mapping m;
 	} u;
 	const void *p;
 	struct iovec iov[2];
@@ -425,7 +425,7 @@ fy_generic fy_gb_collection_create(struct fy_generic_builder *gb, bool is_map, s
 	iov[1].iov_base = (void *)items;
 	iov[1].iov_len = count * sizeof(fy_generic);
 
-	p = fy_gb_storev(gb, iov, ARRAY_SIZE(iov), FY_CONTAINER_ALIGNOF(struct fy_generic_sequence));
+	p = fy_gb_storev(gb, iov, ARRAY_SIZE(iov), FY_CONTAINER_ALIGNOF(fy_generic_sequence));
 	if (!p)
 		goto err_out;
 
@@ -442,10 +442,10 @@ err_out:
 	goto out;
 }
 
-static bool fy_collection_prepare(fy_generic col, size_t *countp, fy_generic **itemsp, bool *is_mapp)
+static bool fy_collection_prepare(fy_generic col, size_t *countp, const fy_generic **itemsp, bool *is_mapp)
 {
 	enum fy_generic_type type;
-	void *p;
+	const void *p;
 
 	type = fy_generic_get_type(col);
 	if (type == FYGT_SEQUENCE)
@@ -461,11 +461,13 @@ static bool fy_collection_prepare(fy_generic col, size_t *countp, fy_generic **i
 	p = fy_generic_resolve_collection_ptr(col);
 
 	if (!*is_mapp) {
-		*countp = ((struct fy_generic_sequence *)p)->count;
-		*itemsp = ((struct fy_generic_sequence *)p)->items;
+		const fy_generic_sequence *s = p;
+		*countp = s->count;
+		*itemsp = s->items;
 	} else {
-		*countp = ((struct fy_generic_mapping *)p)->count;
-		*itemsp = ((struct fy_generic_mapping *)p)->pairs;
+		const fy_generic_mapping *m = p;
+		*countp = m->count;
+		*itemsp = m->pairs;
 	}
 
 	return true;
@@ -474,11 +476,12 @@ static bool fy_collection_prepare(fy_generic col, size_t *countp, fy_generic **i
 fy_generic fy_gb_collection_remove(struct fy_generic_builder *gb, fy_generic col, size_t idx, size_t count)
 {
 	union {
-		struct fy_generic_sequence s;
-		struct fy_generic_mapping m;
+		fy_generic_sequence s;
+		fy_generic_mapping m;
 	} u;
 	const void *p;
-	fy_generic v, *old_items;
+	fy_generic v;
+	const fy_generic *old_items;
 	struct iovec iov[3];
 	size_t old_count;
 	bool is_map;
@@ -511,14 +514,14 @@ fy_generic fy_gb_collection_remove(struct fy_generic_builder *gb, fy_generic col
 	}
 
 	/* before */
-	iov[1].iov_base = old_items;
+	iov[1].iov_base = (void *)old_items;
 	iov[1].iov_len = idx * sizeof(fy_generic);
 
 	/* after */
-	iov[2].iov_base = old_items + idx + count;
+	iov[2].iov_base = (void *)(old_items + idx + count);
 	iov[2].iov_len = (old_count - (idx + count)) * sizeof(fy_generic);
 
-	p = fy_gb_storev(gb, iov, ARRAY_SIZE(iov), FY_CONTAINER_ALIGNOF(struct fy_generic_sequence));
+	p = fy_gb_storev(gb, iov, ARRAY_SIZE(iov), FY_CONTAINER_ALIGNOF(fy_generic_sequence));
 	if (!p)
 		return fy_invalid;
 
@@ -530,11 +533,12 @@ fy_generic fy_gb_collection_insert_replace(struct fy_generic_builder *gb, fy_gen
 						const fy_generic *items, bool insert, bool internalize)
 {
 	union {
-		struct fy_generic_sequence s;
-		struct fy_generic_mapping m;
+		fy_generic_sequence s;
+		fy_generic_mapping m;
 	} u;
 	const void *p;
-	fy_generic *items_alloc = NULL, items_buf[64], *old_items, v;
+	fy_generic *items_alloc = NULL, items_buf[64], v;
+	const fy_generic *old_items;
 	size_t i, old_count, new_count, remain_idx, remain_count, item_count;
 	struct iovec iov[4];
 	bool is_map;
@@ -604,7 +608,7 @@ fy_generic fy_gb_collection_insert_replace(struct fy_generic_builder *gb, fy_gen
 	}
 
 	/* before */
-	iov[1].iov_base = old_items;
+	iov[1].iov_base = (void *)old_items;
 	iov[1].iov_len = idx * sizeof(fy_generic);
 
 	/* replacement */
@@ -612,10 +616,10 @@ fy_generic fy_gb_collection_insert_replace(struct fy_generic_builder *gb, fy_gen
 	iov[2].iov_len = count * sizeof(fy_generic);
 
 	/* remainder */
-	iov[3].iov_base = old_items + remain_idx;
+	iov[3].iov_base = (void *)(old_items + remain_idx);
 	iov[3].iov_len = remain_count * sizeof(fy_generic);
 
-	p = fy_gb_storev(gb, iov, ARRAY_SIZE(iov), FY_CONTAINER_ALIGNOF(struct fy_generic_sequence));
+	p = fy_gb_storev(gb, iov, ARRAY_SIZE(iov), FY_CONTAINER_ALIGNOF(fy_generic_sequence));
 	if (!p)
 		return fy_invalid;
 
@@ -630,8 +634,8 @@ fy_generic fy_gb_collection_insert_replace(struct fy_generic_builder *gb, fy_gen
 fy_generic fy_gb_sequence_create_i(struct fy_generic_builder *gb, bool internalize,
 					size_t count, const fy_generic *items)
 {
-	struct fy_generic_sequence s;
-	const struct fy_generic_sequence *p;
+	fy_generic_sequence s;
+	const fy_generic_sequence *p;
 	struct iovec iov[2];
 	fy_generic v, *items_alloc = NULL, items_buf[64];
 	size_t i;
@@ -658,7 +662,7 @@ fy_generic fy_gb_sequence_create_i(struct fy_generic_builder *gb, bool internali
 	iov[1].iov_base = (void *)items;
 	iov[1].iov_len = count * sizeof(*items);
 
-	p = fy_gb_storev(gb, iov, ARRAY_SIZE(iov), FY_CONTAINER_ALIGNOF(struct fy_generic_sequence));
+	p = fy_gb_storev(gb, iov, ARRAY_SIZE(iov), FY_CONTAINER_ALIGNOF(fy_generic_sequence));
 	if (!p)
 		goto err_out;
 
@@ -1300,8 +1304,8 @@ static inline int fy_generic_string_compare(fy_generic a, fy_generic b)
 	size_t sza = 0, szb = 0;
 	int ret;
 
-	sa = fy_generic_get_string_size(&a, &sza);
-	sb = fy_generic_get_string_size(&b, &szb);
+	sa = fy_genericp_get_string_size(&a, &sza);
+	sb = fy_genericp_get_string_size(&b, &szb);
 
 	ret = memcmp(sa, sb, sza > szb ? szb : sza);
 
@@ -1320,8 +1324,8 @@ static inline int fy_generic_alias_compare(fy_generic a, fy_generic b)
 	aa = fy_generic_indirect_get_anchor(a);
 	ab = fy_generic_indirect_get_anchor(b);
 
-	sa = fy_generic_get_string_size(&aa, &sza);
-	sb = fy_generic_get_string_size(&ab, &szb);
+	sa = fy_genericp_get_string_size(&aa, &sza);
+	sb = fy_genericp_get_string_size(&ab, &szb);
 
 	ret = memcmp(sa, sb, sza > szb ? szb : sza);
 
@@ -1382,9 +1386,9 @@ int fy_generic_compare_out_of_place(fy_generic a, fy_generic b)
 
 fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 {
-	const struct fy_generic_sequence *seqs;
+	const fy_generic_sequence *seqs;
 	fy_generic vi, new_v;
-	const struct fy_generic_mapping *maps;
+	const fy_generic_mapping *maps;
 	struct iovec iov[2];
 	enum fy_generic_type type;
 	size_t size, len, i, count;
@@ -1479,7 +1483,7 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 			iov[1].iov_base = items;
 			iov[1].iov_len = size;
 			valp = fy_gb_storev(gb, iov, ARRAY_SIZE(iov),
-					FY_CONTAINER_ALIGNOF(struct fy_generic_sequence));
+					FY_CONTAINER_ALIGNOF(fy_generic_sequence));
 		} else
 			valp = NULL;
 
@@ -1522,7 +1526,7 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 			iov[1].iov_base = items;
 			iov[1].iov_len = size,
 			valp = fy_gb_storev(gb, iov, ARRAY_SIZE(iov),
-					FY_CONTAINER_ALIGNOF(struct fy_generic_mapping));
+					FY_CONTAINER_ALIGNOF(fy_generic_mapping));
 		} else
 			valp = NULL;
 
@@ -1547,10 +1551,10 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 
 fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d)
 {
-	void *p;
-	struct fy_generic_indirect *gi;
-	struct fy_generic_sequence *seq;
-	struct fy_generic_mapping *map;
+	const void *p;
+	fy_generic_indirect *gi;
+	fy_generic_sequence *seq;
+	fy_generic_mapping *map;
 	fy_generic *items, *pairs;
 	size_t i, count;
 
@@ -1570,7 +1574,7 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 			return v;
 
 		v.v = fy_generic_relocate_ptr(v, d).v | FY_INDIRECT_V;
-		gi = fy_generic_resolve_ptr(v);
+		gi = (struct fy_generic_indirect *)fy_generic_resolve_ptr(v);
 		gi->value = fy_generic_relocate(start, end, gi->value, d);
 		gi->anchor = fy_generic_relocate(start, end, gi->anchor, d);
 		gi->tag = fy_generic_relocate(start, end, gi->tag, d);
@@ -1622,7 +1626,7 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 			return v;
 
 		v.v = fy_generic_relocate_collection_ptr(v, d).v | FY_SEQ_V;
-		seq = fy_generic_resolve_collection_ptr(v);
+		seq = (fy_generic_sequence *)fy_generic_resolve_collection_ptr(v);
 		count = seq->count;
 		items = (fy_generic *)seq->items;
 		for (i = 0; i < count; i++)
@@ -1635,7 +1639,7 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 			return v;
 
 		v.v = fy_generic_relocate_collection_ptr(v, d).v | FY_MAP_V;
-		map = fy_generic_resolve_collection_ptr(v);
+		map = (fy_generic_mapping *)fy_generic_resolve_collection_ptr(v);
 		count = map->count * 2;
 		pairs = (fy_generic *)map->pairs;
 		for (i = 0; i < count; i++)
