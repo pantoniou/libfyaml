@@ -119,7 +119,7 @@ fy_generic_decoder_object_finalize(struct fy_generic_decoder *gd, struct fy_gene
 			 (gdo->tag.v != fy_null_value && gdo->tag.v != fy_invalid_value));
 
 	if (needs_indirect) {
-		struct fy_generic_indirect gi = {
+		fy_generic_indirect gi = {
 			.value = v,
 			.anchor = gdo->anchor,
 			.tag = gdo->tag,
@@ -372,7 +372,7 @@ fy_generic_decoder_create_scalar(struct fy_generic_decoder *gd, struct fy_event 
 			 (vt.v != fy_null_value && vt.v != fy_invalid_value));
 
 	if (needs_indirect) {
-		struct fy_generic_indirect gi = {
+		fy_generic_indirect gi = {
 			.value = v,
 			.anchor = va,
 			.tag = vt,

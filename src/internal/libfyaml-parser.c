@@ -4154,11 +4154,11 @@ void fy_generic_print_primitive(FILE *fp, fy_generic v)
 
 		sep = "";
 		if (fy_generic_is_string(gi.anchor)) {
-			fprintf(fp, "%s&%s", sep, fy_generic_get_string(&gi.anchor));
+			fprintf(fp, "%s&%s", sep, fy_genericp_get_string(&gi.anchor));
 			sep = " ";
 		}
 		if (fy_generic_is_string(gi.tag)) {
-			fprintf(fp, "%s%s", sep, fy_generic_get_string(&gi.tag));
+			fprintf(fp, "%s%s", sep, fy_genericp_get_string(&gi.tag));
 			sep = " ";
 		}
 
@@ -4184,7 +4184,7 @@ void fy_generic_print_primitive(FILE *fp, fy_generic v)
 		return;
 
 	case FYGT_STRING:
-		sv = fy_generic_get_string_size(&v, &slen);
+		sv = fy_genericp_get_string_size(&v, &slen);
 		fprintf(fp, "'%.*s'", (int)slen, sv);
 		return;
 
@@ -4216,7 +4216,7 @@ void fy_generic_print_primitive(FILE *fp, fy_generic v)
 		break;
 
 	case FYGT_ALIAS:
-		sv = fy_generic_get_alias(&v);
+		sv = fy_generic_get_alias(v);
 		fprintf(fp, "*'%s'", sv);
 		break;
 
@@ -4359,7 +4359,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		gs = fy_string(sv);
 		printf("string/%s = %016lx", sv, gs.v);
 
-		sv = fy_generic_get_string_size(&gs, &slen);
+		sv = fy_genericp_get_string_size(&gs, &slen);
 		assert(sv);
 		printf(" %.*s\n", (int)slen, sv);
 	}
@@ -4519,11 +4519,11 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		assert(fy_generic_is_valid(gs));
 		printf("string/%s = %016lx", sv, gs.v);
 
-		sv = fy_generic_get_string_size(&gs, &slen);
+		sv = fy_genericp_get_string_size(&gs, &slen);
 		assert(sv);
 		printf(" %.*s\n", (int)slen, sv);
 
-		sv = fy_generic_get_string(&gs);
+		sv = fy_genericp_get_string(&gs);
 		assert(sv);
 		printf("\t%s\n", sv);
 	}
@@ -4863,7 +4863,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	assert(fy_generic_is_valid(ind));
 
 	{
-		fy_generic_value *pp = fy_generic_resolve_ptr(ind);
+		const fy_generic_value *pp = fy_generic_resolve_ptr(ind);
 		printf("ind=0x%08lx [0:3]=0x%08lx 0x%08lx 0x%08lx 0x%08lx\n",
 				ind.v, pp[0], pp[1], pp[2], pp[3]);
 	}
@@ -4872,8 +4872,8 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	fy_generic_print_primitive(stdout, ind);
 	printf("\n");
 
-	printf("str-by-get-string: %p %s\n", &str, fy_generic_get_string(&str));
-	printf("ind-by-get-string: %p %s\n", &ind, fy_generic_get_string(&ind));
+	printf("str-by-get-string: %p %s\n", &str, fy_genericp_get_string(&str));
+	printf("ind-by-get-string: %p %s\n", &ind, fy_genericp_get_string(&ind));
 
 	if (registered_allocator) {
 		rc = fy_allocator_unregister(allocator);
@@ -4962,6 +4962,19 @@ int do_generics(int argc, char *argv[], const char *allocator)
 				"foo", "bar",
 				"seq", fy_sequence(true, 100, "info")));
 
+	}
+
+	{
+		fy_generic v;
+		const char *str;
+
+		v = fy_string("Hello this is a test");
+
+		str = fy_genericp_get_string(&v);
+		printf("fy_genericp_get_string(&v) = %s\n", str);
+
+		str = fy_generic_get_string(v);
+		printf("fy_generic_get_string(v) = %s\n", str);
 	}
 
 	return 0;
@@ -6051,7 +6064,7 @@ long long generic_return_two(void)
 size_t generic_return_constant_string_length(void)
 {
 	const fy_generic v = fy_to_generic("HELLO");
-	const char *s = fy_generic_get_string(&v);
+	const char *s = fy_genericp_get_string(&v);
 	size_t i;
 
 	for (i = 0; s[i]; i++)

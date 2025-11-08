@@ -121,15 +121,15 @@ struct fy_relocation_info {
 	unsigned int num_arenas;
 };
 
-static inline void *fy_generic_arena_resolve_ptr(struct fy_relocation_info *ri, fy_generic v)
+static inline const void *fy_generic_arena_resolve_ptr(struct fy_relocation_info *ri, fy_generic v)
 {
-	void *p = fy_generic_resolve_ptr(v);
+	const void *p = fy_generic_resolve_ptr(v);
 	return (p >= ri->start && p < ri->end) ? NULL : p;
 }
 
 static inline fy_generic fy_generic_arena_relocate_ptr(struct fy_relocation_info *ri, fy_generic v)
 {
-	void *p = fy_generic_resolve_collection_ptr(v);
+	const void *p = fy_generic_resolve_collection_ptr(v);
 	ptrdiff_t d = 0;
 	const struct fy_arena_reloc *arena;
 
@@ -144,7 +144,7 @@ static inline fy_generic fy_generic_arena_relocate_ptr(struct fy_relocation_info
 
 static inline fy_generic fy_generic_arena_relocate_collection_ptr(struct fy_relocation_info *ri, fy_generic v)
 {
-	void *p = fy_generic_resolve_collection_ptr(v);
+	const void *p = fy_generic_resolve_collection_ptr(v);
 	ptrdiff_t d = 0;
 	const struct fy_arena_reloc *arena;
 
@@ -163,8 +163,8 @@ static fy_generic fy_generic_arena_relocate(struct fy_relocation_info *ri, fy_ge
 {
 	void *p;
 	struct fy_generic_indirect *gi;
-	struct fy_generic_sequence *seq;
-	struct fy_generic_mapping *map;
+	fy_generic_sequence *seq;
+	fy_generic_mapping *map;
 	fy_generic *items;
 	fy_generic *pairs;
 	size_t i, count;
@@ -267,10 +267,10 @@ static void fy_generic_print_primitive(FILE *fp, int level, fy_generic v)
 
 	vanchor = fy_generic_get_anchor(v);
 	if (fy_generic_get_type(vanchor) == FYGT_STRING)
-		anchor = fy_generic_get_string(vanchor);
+		anchor = fy_genericp_get_string(vanchor);
 	vtag = fy_generic_get_tag(v);
 	if (fy_generic_get_type(vtag) == FYGT_STRING)
-		tag = fy_generic_get_string(vtag);
+		tag = fy_genericp_get_string(vtag);
 
 	if (anchor)
 		fprintf(fp, "&%s ", anchor);
@@ -298,7 +298,7 @@ static void fy_generic_print_primitive(FILE *fp, int level, fy_generic v)
 		return;
 
 	case FYGT_STRING:
-		sv = fy_generic_get_string_size(v, &slen);
+		sv = fy_genericp_get_string_size(v, &slen);
 		fprintf(fp, "\"%s\"", fy_utf8_format_text_a(sv, slen, fyue_doublequote));
 		return;
 
@@ -362,10 +362,10 @@ static void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 
 	vanchor = fy_generic_get_anchor(vv);
 	if (fy_generic_get_type(vanchor) == FYGT_STRING)
-		anchor = fy_generic_get_string(&vanchor);
+		anchor = fy_genericp_get_string(&vanchor);
 	vtag = fy_generic_get_tag(vv);
 	if (fy_generic_get_type(vtag) == FYGT_STRING)
-		tag = fy_generic_get_string(&vtag);
+		tag = fy_genericp_get_string(&vtag);
 	v = fy_generic_is_indirect(vv) ? fy_generic_indirect_get_value(vv) : vv;
 
 	fprintf(fp, "%*s", level * 2, "");
@@ -402,7 +402,7 @@ static void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 		return;
 
 	case FYGT_STRING:
-		sv = fy_generic_get_string_size(&v, &slen);
+		sv = fy_genericp_get_string_size(&v, &slen);
 		fprintf(fp, "%s", fy_utf8_format_text_a(sv, slen, fyue_doublequote));
 		return;
 
@@ -426,7 +426,7 @@ static void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 		break;
 
 	case FYGT_ALIAS:
-		sv = fy_generic_get_alias(&v);
+		sv = fy_generic_get_alias(v);
 		fprintf(fp, "%s", sv);
 		break;
 
