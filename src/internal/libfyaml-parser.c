@@ -4931,6 +4931,14 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	v = fy_to_generic("Hello this is a long string");
 	fy_generic_emit_default(v);
 
+	printf("##### emit empty sequence\n");
+	v = fy_sequence();
+	fy_generic_emit_default(v);
+
+	printf("##### emit empty mapping\n");
+	v = fy_mapping();
+	fy_generic_emit_default(v);
+
 	printf("emit a mapping'\n");
 	v = fy_to_generic("Hello this is a long string");
 	fy_generic_emit_default(

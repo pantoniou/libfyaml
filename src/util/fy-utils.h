@@ -327,7 +327,7 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 #define FY_CPP_REST(...)     __VA_OPT__(_FY_CPP_REST(__VA_ARGS__))
 
 #define _FY_CPP_COUNT_BODY(x) +1
-#define FY_CPP_VA_COUNT(...)  (FY_CPP_MAP(_FY_CPP_COUNT_BODY, __VA_ARGS__) + 0)
+#define FY_CPP_VA_COUNT(...)  (__VA_OPT__((FY_CPP_MAP(_FY_CPP_COUNT_BODY, __VA_ARGS__) + 0)) + 0)
 
 #define _FY_CPP_ITEM_ONE(arg) arg
 #define _FY_CPP_ITEM_LATER_ARG(arg) , _FY_CPP_ITEM_ONE(arg)

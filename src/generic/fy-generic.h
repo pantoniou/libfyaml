@@ -19,6 +19,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stdarg.h>
+#include <limits.h>
 
 #include "fy-endian.h"
 #include "fy-utils.h"
@@ -1396,26 +1397,27 @@ static inline int fy_generic_compare(fy_generic a, fy_generic b)
 #define fy_string(_v) \
 	((fy_generic){ .v = __builtin_constant_p(_v) ? fy_string_const(_v) : fy_string_alloca(_v) })
 
-#define fy_stringf(_fmt, ...) \
-	((fy_generic){ \
-		.v = ({ \
-			const char *__fmt = (_fmt); \
-			int _size; \
-			int _sizew __FY_DEBUG_UNUSED__; \
-			char *_buf = NULL, *_s; \
-			\
-			_size = snprintf(NULL, 0, __fmt, ## __VA_ARGS__); \
-			if (_size != -1) { \
-				_buf = alloca(_size + 1); \
-				_sizew = snprintf(_buf, _size + 1, __fmt, __VA_ARGS__); \
-				assert(_size == _sizew); \
-				_s = _buf + strlen(_buf); \
-				while (_s > _buf && _s[-1] == '\n') \
-					*--_s = '\0'; \
-			} \
-			fy_string_alloca(_buf); \
-		}) \
+#define fy_stringf_value(_fmt, ...) \
+	({ \
+		const char *__fmt = (_fmt); \
+		int _size; \
+		int _sizew __FY_DEBUG_UNUSED__; \
+		char *_buf = NULL, *_s; \
+		\
+		_size = snprintf(NULL, 0, __fmt, ## __VA_ARGS__); \
+		if (_size != -1) { \
+			_buf = alloca(_size + 1); \
+			_sizew = snprintf(_buf, _size + 1, __fmt, __VA_ARGS__); \
+			assert(_size == _sizew); \
+			_s = _buf + strlen(_buf); \
+			while (_s > _buf && _s[-1] == '\n') \
+				*--_s = '\0'; \
+		} \
+		fy_string_alloca(_buf); \
 	})
+
+#define fy_stringf(_fmt, ...) \
+	((fy_generic){ .v = fy_stringf_value((_fmt), ## __VA_ARGS__) })
 
 #define fy_sequence_alloca(_count, _items) 						\
 	({										\
@@ -1444,12 +1446,14 @@ static inline int fy_generic_compare(fy_generic a, fy_generic b)
     _FY_CPP_GITEM_LIST(FY_CPP_REST(__VA_ARGS__))
 
 #define FY_CPP_VA_GITEMS(_count, ...) \
-	((fy_generic [(_count)]) { _FY_CPP_VA_GITEMS(__VA_ARGS__) })
+	((fy_generic [(_count)]) { __VA_OPT__(_FY_CPP_VA_GITEMS(__VA_ARGS__)) })
 
 #define fy_sequence(...) \
 	((fy_generic) { \
-		.v = fy_sequence_explicit(FY_CPP_VA_COUNT(__VA_ARGS__), \
-			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)) })
+		.v = fy_sequence_explicit( \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS( \
+				FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)) })
 
 static inline const fy_generic *fy_generic_sequence_get_items(fy_generic seq, size_t *countp)
 {
@@ -1472,7 +1476,7 @@ static inline const fy_generic *fy_generic_sequence_get_items(fy_generic seq, si
 	return &p->items[0];
 }
 
-static inline fy_generic fy_generic_sequence_get_item(fy_generic seq, size_t idx)
+static inline fy_generic fy_generic_sequence_get_item_generic(fy_generic seq, size_t idx)
 {
 	const fy_generic *items;
 	size_t count;
@@ -1502,49 +1506,49 @@ static inline size_t fy_generic_sequence_get_item_count(fy_generic seq)
 
 static inline fy_generic fy_generic_sequence_get_null_item(fy_generic seq, size_t idx)
 {
-	fy_generic v = fy_generic_sequence_get_item(seq, idx);
+	fy_generic v = fy_generic_sequence_get_item_generic(seq, idx);
 	return fy_generic_is_null(v) ? v : fy_invalid;
 }
 
 static inline fy_generic fy_generic_sequence_get_bool_item(fy_generic seq, size_t idx)
 {
-	fy_generic v = fy_generic_sequence_get_item(seq, idx);
+	fy_generic v = fy_generic_sequence_get_item_generic(seq, idx);
 	return fy_generic_is_bool(v) ? v : fy_invalid;
 }
 
 static inline fy_generic fy_generic_sequence_get_int_item(fy_generic seq, size_t idx)
 {
-	fy_generic v = fy_generic_sequence_get_item(seq, idx);
+	fy_generic v = fy_generic_sequence_get_item_generic(seq, idx);
 	return fy_generic_is_int(v) ? v : fy_invalid;
 }
 
 static inline fy_generic fy_generic_sequence_get_float_item(fy_generic seq, size_t idx)
 {
-	fy_generic v = fy_generic_sequence_get_item(seq, idx);
+	fy_generic v = fy_generic_sequence_get_item_generic(seq, idx);
 	return fy_generic_is_float(v) ? v : fy_invalid;
 }
 
 static inline fy_generic fy_generic_sequence_get_string_item(fy_generic seq, size_t idx)
 {
-	fy_generic v = fy_generic_sequence_get_item(seq, idx);
+	fy_generic v = fy_generic_sequence_get_item_generic(seq, idx);
 	return fy_generic_is_string(v) ? v : fy_invalid;
 }
 
 static inline fy_generic fy_generic_sequence_get_sequence_item(fy_generic seq, size_t idx)
 {
-	fy_generic v = fy_generic_sequence_get_item(seq, idx);
+	fy_generic v = fy_generic_sequence_get_item_generic(seq, idx);
 	return fy_generic_is_sequence(v) ? v : fy_invalid;
 }
 
 static inline fy_generic fy_generic_sequence_get_mapping_item(fy_generic seq, size_t idx)
 {
-	fy_generic v = fy_generic_sequence_get_item(seq, idx);
+	fy_generic v = fy_generic_sequence_get_item_generic(seq, idx);
 	return fy_generic_is_mapping(v) ? v : fy_invalid;
 }
 
 static inline fy_generic fy_generic_sequence_get_alias_item(fy_generic seq, size_t idx)
 {
-	fy_generic v = fy_generic_sequence_get_item(seq, idx);
+	fy_generic v = fy_generic_sequence_get_item_generic(seq, idx);
 	return fy_generic_is_alias(v) ? v : fy_invalid;
 }
 
@@ -1567,7 +1571,8 @@ static inline fy_generic fy_generic_sequence_get_alias_item(fy_generic seq, size
 	((fy_generic) { .v = fy_mapping_explicit((_count), (_items)) })
 
 #define fy_mapping(...) \
-	fy_mapping_explicit(FY_CPP_VA_COUNT(__VA_ARGS__) / 2, \
+	fy_mapping_explicit( \
+			FY_CPP_VA_COUNT(__VA_ARGS__) / 2, \
 			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__))
 
 static inline const fy_generic *fy_generic_mapping_get_pairs(fy_generic map, size_t *countp)
@@ -1742,6 +1747,93 @@ static inline bool fy_generic_is_in_place(fy_generic v)
 	}
 	return false;
 }
+
+static inline long long
+fy_generic_get_min_max_default(fy_generic v, long long default_value,
+				long long minv, long long maxv)
+{
+	long long i;
+
+	if (!fy_generic_is_int(v))
+		return default_value;
+
+	i = fy_generic_get_int_no_check(fy_generic_indirect_get_value(v));
+	if (i < minv || i > maxv)
+		return default_value;
+	return i;
+}
+
+static inline signed char fy_generic_get_signed_char_default(fy_generic v, signed char default_value)
+{
+	return (signed char)fy_generic_get_min_max_default(v, (long long)default_value, SCHAR_MIN, SCHAR_MAX);
+}
+
+static inline signed char fy_generic_get_unsigned_char_default(fy_generic v, unsigned char default_value)
+{
+	return (unsigned char)fy_generic_get_min_max_default(v, (long long)default_value, 0, UCHAR_MAX);
+}
+
+static inline signed short fy_generic_get_signed_short_default(fy_generic v, signed short default_value)
+{
+	return (signed short)fy_generic_get_min_max_default(v, (long long)default_value, SHRT_MIN, SHRT_MAX);
+}
+
+static inline signed short fy_generic_get_unsigned_short_default(fy_generic v, unsigned short default_value)
+{
+	return (unsigned short)fy_generic_get_min_max_default(v, (long long)default_value, 0, USHRT_MAX);
+}
+
+static inline signed int fy_generic_get_signed_int_default(fy_generic v, signed int default_value)
+{
+	return (signed int)fy_generic_get_min_max_default(v, (long long)default_value, INT_MIN, INT_MAX);
+}
+
+static inline signed int fy_generic_get_unsigned_int_default(fy_generic v, unsigned int default_value)
+{
+	return (unsigned int)fy_generic_get_min_max_default(v, (long long)default_value, 0, UINT_MAX);
+}
+
+static inline signed long fy_generic_get_signed_long_default(fy_generic v, signed long default_value)
+{
+	return (signed long)fy_generic_get_min_max_default(v, (long long)default_value, LONG_MIN, LONG_MAX);
+}
+
+static inline signed long fy_generic_get_unsigned_long_default(fy_generic v, unsigned long default_value)
+{
+	return (unsigned long)fy_generic_get_min_max_default(v, (long long)default_value, 0, ULONG_MAX);
+}
+
+static inline signed long long fy_generic_get_signed_long_long_default(fy_generic v, signed long long default_value)
+{
+	return (signed long long)fy_generic_get_min_max_default(v, default_value, LLONG_MIN, LLONG_MAX);
+}
+
+/* unsigned long long is tricky because our ints are signed, so, error out for anything over ULLONG_MAX */
+static inline unsigned long long fy_generic_get_unsigned_long_long_default(fy_generic v, unsigned long long default_value)
+{
+	return (unsigned long long)fy_generic_get_min_max_default(v, (long long)default_value, 0, LLONG_MAX);
+}
+
+#define fy_generic_get_default(_v, _dv) \
+	(_Generic((_dv), \
+		_Bool: fy_generic_get_bool_default, \
+		signed char: fy_generic_get_signed_char_default, \
+		unsigned char: fy_generic_get_unsigned_char_default, \
+		signed short: fy_generic_get_signed_short_default, \
+		unsigned short: fy_generic_get_unsigned_short_default, \
+		signed int: fy_generic_get_signed_int_default, \
+		unsigned int: fy_generic_get_unsigned_int_default, \
+		signed long: fy_generic_get_signed_long_default, \
+		unsigned long: fy_generic_get_unsigned_long_default, \
+		signed long_long: fy_generic_get_signed_long_long_default, \
+		unsigned long_long: fy_generic_get_unsigned_long_long_default, \
+		char *: fy_gb_string_create_out_of_place, \
+		const char *: fy_gb_string_create_out_of_place, \
+		float: fy_gb_float_create_out_of_place, \
+		double: fy_gb_double_create_out_of_place, \
+		fy_generic: fy_gb_internalize_out_of_place, \
+		default: fy_gb_invalid_create_out_of_place \
+	      )((_gv), (_dv)))
 
 enum fy_generic_schema {
 	FYGS_AUTO,
@@ -1983,11 +2075,13 @@ fy_generic fy_gb_alias_create(struct fy_generic_builder *gb, fy_generic anchor);
 	((fy_generic [(_count)]) { _FY_CPP_VA_GBITEMS(gb, __VA_ARGS__) })
 
 #define fy_gb_sequence(_gb, ...) \
-	((fy_generic) { .v = fy_gb_sequence_create(gb, FY_CPP_VA_COUNT(__VA_ARGS__), \
+	((fy_generic) { .v = fy_gb_sequence_create(gb, \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
 			FY_CPP_VA_GBITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), gb, __VA_ARGS__)).v })
 
 #define fy_gb_mapping(_gb, ...) \
-	((fy_generic) { .v = fy_gb_mapping_create(gb, FY_CPP_VA_COUNT(__VA_ARGS__) / 2, \
+	((fy_generic) { .v = fy_gb_mapping_create(gb, \
+			FY_CPP_VA_COUNT(__VA_ARGS__) / 2, \
 			FY_CPP_VA_GBITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), gb, __VA_ARGS__)).v })
 
 fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb,
