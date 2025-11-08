@@ -62,8 +62,6 @@ int fy_encode_generic_bool(struct fy_generic_encoder *fyge, const char *anchor, 
 	const char *text;
 	size_t sz;
 
-	if (fy_generic_is_indirect(v))
-		v = fy_generic_indirect_get_value(v);
 	if (v.v == fy_true_value) {
 		text = "true";
 		sz = 4;
@@ -76,8 +74,6 @@ int fy_encode_generic_bool(struct fy_generic_encoder *fyge, const char *anchor, 
 
 int fy_encode_generic_int(struct fy_generic_encoder *fyge, const char *anchor, const char *tag, fy_generic v)
 {
-	if (fy_generic_is_indirect(v))
-		v = fy_generic_indirect_get_value(v);
 	return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, "%lld",
 			fy_generic_get_int(v));
 }
@@ -86,8 +82,6 @@ int fy_encode_generic_float(struct fy_generic_encoder *fyge, const char *anchor,
 {
 	double f;
 
-	if (fy_generic_is_indirect(v))
-		v = fy_generic_indirect_get_value(v);
 	f = fy_generic_get_float(v);
 	if (isfinite(f))
 		return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, "%g", f);
@@ -106,9 +100,7 @@ int fy_encode_generic_string(struct fy_generic_encoder *fyge, const char *anchor
 	const char *str;
 	size_t len;
 
-	if (fy_generic_is_indirect(v))
-		v = fy_generic_indirect_get_value(v);
-	str = fy_genericp_get_string_size(&v, &len);
+	str = fy_generic_get_string_size(v, &len);
 	return fy_emit_scalar_write(fyge->emit, FYSS_ANY, anchor, tag, str, len);
 }
 
@@ -118,8 +110,6 @@ int fy_encode_generic_sequence(struct fy_generic_encoder *fyge, const char *anch
 	size_t i, count;
 	int rc;
 
-	if (fy_generic_is_indirect(v))
-		v = fy_generic_indirect_get_value(v);
 	rc = fy_emit_eventf(fyge->emit, FYET_SEQUENCE_START, FYNS_ANY, anchor, tag);
 	if (rc)
 		goto err_out;
@@ -184,9 +174,9 @@ int fy_encode_generic(struct fy_generic_encoder *fyge, fy_generic v)
 	if (fy_generic_is_indirect(v)) {
 		fy_generic_indirect_get(v, &gi);
 		if (fy_generic_get_type(gi.anchor) == FYGT_STRING)
-			anchor = fy_genericp_get_string(&gi.anchor);
+			anchor = fy_generic_get_string(gi.anchor);
 		if (fy_generic_get_type(gi.tag) == FYGT_STRING)
-			tag = fy_genericp_get_string(&gi.tag);
+			tag = fy_generic_get_string(gi.tag);
 	}
 
 	switch (fy_generic_get_type(v)) {
@@ -279,8 +269,8 @@ fy_generic_encoder_emit_document(struct fy_generic_encoder *fyge, fy_generic vro
 					goto err_out;
 
 				tag = alloca(sizeof(*tag));
-				tag->handle = fy_genericp_get_string(&vhandle_prefix[0]);
-				tag->prefix = fy_genericp_get_string(&vhandle_prefix[1]);
+				tag->handle = fy_generic_get_string(vhandle_prefix[0]);
+				tag->prefix = fy_generic_get_string(vhandle_prefix[1]);
 
 				tags[j++] = tag;
 			}

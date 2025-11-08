@@ -4154,11 +4154,11 @@ void fy_generic_print_primitive(FILE *fp, fy_generic v)
 
 		sep = "";
 		if (fy_generic_is_string(gi.anchor)) {
-			fprintf(fp, "%s&%s", sep, fy_genericp_get_string(&gi.anchor));
+			fprintf(fp, "%s&%s", sep, fy_generic_get_string(gi.anchor));
 			sep = " ";
 		}
 		if (fy_generic_is_string(gi.tag)) {
-			fprintf(fp, "%s%s", sep, fy_genericp_get_string(&gi.tag));
+			fprintf(fp, "%s%s", sep, fy_generic_get_string(gi.tag));
 			sep = " ";
 		}
 
@@ -4184,7 +4184,7 @@ void fy_generic_print_primitive(FILE *fp, fy_generic v)
 		return;
 
 	case FYGT_STRING:
-		sv = fy_genericp_get_string_size(&v, &slen);
+		sv = fy_generic_get_string_size(v, &slen);
 		fprintf(fp, "'%.*s'", (int)slen, sv);
 		return;
 
@@ -4359,7 +4359,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		gs = fy_string(sv);
 		printf("string/%s = %016lx", sv, gs.v);
 
-		sv = fy_genericp_get_string_size(&gs, &slen);
+		sv = fy_generic_get_string_size(gs, &slen);
 		assert(sv);
 		printf(" %.*s\n", (int)slen, sv);
 	}
@@ -4519,11 +4519,11 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		assert(fy_generic_is_valid(gs));
 		printf("string/%s = %016lx", sv, gs.v);
 
-		sv = fy_genericp_get_string_size(&gs, &slen);
+		sv = fy_generic_get_string_size(gs, &slen);
 		assert(sv);
 		printf(" %.*s\n", (int)slen, sv);
 
-		sv = fy_genericp_get_string(&gs);
+		sv = fy_generic_get_string(gs);
 		assert(sv);
 		printf("\t%s\n", sv);
 	}
