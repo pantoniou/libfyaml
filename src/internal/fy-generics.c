@@ -358,6 +358,7 @@ static void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 	fy_generic vtag, vanchor, v, iv, key, value;
 	const char *tag = NULL, *anchor = NULL;
 	const fy_generic *items;
+	const fy_generic_map_pair *pairs;
 	size_t i, count, slen;
 
 	vanchor = fy_generic_get_anchor(vv);
@@ -415,10 +416,10 @@ static void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 		break;
 
 	case FYGT_MAPPING:
-		items = fy_generic_mapping_get_pairs(v, &count);
+		pairs = fy_generic_mapping_get_pairs(v, &count);
 		for (i = 0; i < count; i++) {
-			key = items[i * 2];
-			value = items[i * 2 + 1];
+			key = pairs[i].key;
+			value = pairs[i].value;
 			fy_generic_dump_primitive(fp, level + 1, key);
 			fprintf(fp, ": ");
 			fy_generic_dump_primitive(fp, level + 1, value);

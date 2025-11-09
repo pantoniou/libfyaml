@@ -291,7 +291,7 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 	case FYGT_MAPPING:
 		maps = fy_generic_resolve_collection_ptr(v);
 		count = maps->count * 2;
-		itemss = maps->pairs;
+		itemss = &maps->pairs[0].items[0];	// we rely on the specific map pair layout
 
 		size = sizeof(*items) * count;
 		if (size <= COPY_MALLOC_CUTOFF)
@@ -467,7 +467,7 @@ static bool fy_collection_prepare(fy_generic col, size_t *countp, const fy_gener
 	} else {
 		const fy_generic_mapping *m = p;
 		*countp = m->count;
-		*itemsp = m->pairs;
+		*itemsp = &m->pairs[0].items[0];
 	}
 
 	return true;
@@ -1223,7 +1223,7 @@ out:
 static int fy_generic_mapping_compare(fy_generic mapa, fy_generic mapb)
 {
 	size_t i, counta, countb;
-	const fy_generic *pairsa, *pairsb;
+	const fy_generic_map_pair *pairsa, *pairsb;
 	fy_generic key, vala, valb;
 	int ret;
 
@@ -1241,14 +1241,14 @@ static int fy_generic_mapping_compare(fy_generic mapa, fy_generic mapb)
 		return 0;
 
 	/* try to cheat by comparing contents */
-	ret = memcmp(pairsa, pairsb, counta * 2 * sizeof(*pairsa));
+	ret = memcmp(pairsa, pairsb, counta * sizeof(*pairsa));
 	if (!ret)
 		return 0;	/* great! binary match */
 
 	/* have to do it the hard way */
-	for (i = 0; i < counta * 2; i++) {
-		key = pairsa[i * 2];
-		vala = pairsa[i * 2 + 1];
+	for (i = 0; i < counta; i++) {
+		key = pairsa[i].key;
+		vala = pairsa[i].value;
 
 		/* find if the key exists in the other mapping */
 		valb = fy_generic_mapping_get_value(mapa, key);
@@ -1499,7 +1499,7 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 	case FYGT_MAPPING:
 		maps = fy_generic_resolve_collection_ptr(v);
 		count = maps->count * 2;
-		itemss = maps->pairs;
+		itemss = &maps->pairs[0].items[0];	// we rely on the mapping layout
 
 		size = sizeof(*items) * count;
 		if (size <= COPY_MALLOC_CUTOFF)
