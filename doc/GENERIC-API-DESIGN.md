@@ -236,8 +236,7 @@ static inline fy_map_handle fy_get_map_handle(fy_generic g, fy_map_handle def) {
 
 ### Operations on Handles
 
-Clean API for working with container handles:
-
+**Type-specific operations**:
 ```c
 // Sequence handle operations
 bool fy_seq_handle_is_valid(fy_seq_handle h);
@@ -248,6 +247,60 @@ fy_generic fy_seq_handle_get(fy_seq_handle h, size_t idx);
 bool fy_map_handle_is_valid(fy_map_handle h);
 size_t fy_map_handle_count(fy_map_handle h);
 fy_generic fy_map_handle_lookup(fy_map_handle h, const char *key);
+```
+
+**Unified operations with _Generic dispatch**:
+
+Just like Python's `len()` works on lists, dicts, and strings, libfyaml provides unified operations:
+
+```c
+// fy_len() - works on sequences, mappings, strings, and fy_generic
+#define fy_len(v) \
+    _Generic((v), \
+        fy_seq_handle: fy_seq_handle_count, \
+        fy_map_handle: fy_map_handle_count, \
+        const char *: strlen, \
+        char *: strlen, \
+        fy_generic: fy_generic_len \
+    )(v)
+
+// fy_get_item() - unified indexing/lookup
+#define fy_get_item(container, key) \
+    _Generic((container), \
+        fy_seq_handle: fy_seq_handle_get, \
+        fy_map_handle: fy_map_handle_lookup, \
+        fy_generic: fy_generic_get_item \
+    )(container, key)
+
+// fy_is_valid() - unified validity check
+#define fy_is_valid(v) \
+    _Generic((v), \
+        fy_seq_handle: fy_seq_handle_is_valid, \
+        fy_map_handle: fy_map_handle_is_valid, \
+        fy_generic: fy_generic_is_valid \
+    )(v)
+```
+
+**Python equivalence**:
+
+```python
+# Python
+len([1, 2, 3])              # list
+len({"a": 1, "b": 2})       # dict
+len("hello")                # string
+
+items[0]                    # sequence index
+config["host"]              # mapping key
+```
+
+```c
+// libfyaml - identical semantics!
+fy_len(seq_handle)          // sequence
+fy_len(map_handle)          // mapping
+fy_len("hello")             // string
+
+fy_get_item(items, 0)       // sequence index
+fy_get_item(config, "host") // mapping key
 ```
 
 ### Usage Examples
@@ -272,13 +325,13 @@ bool enabled = fy_get(v, false);
 double ratio = fy_get(v, 0.0);
 ```
 
-**Type-safe container extraction**:
+**Type-safe container extraction with unified operations**:
 ```c
 // Extract as sequence handle
 fy_seq_handle items = fy_get(value, fy_seq_invalid);
-if (fy_seq_handle_is_valid(items)) {
-    for (size_t i = 0; i < fy_seq_handle_count(items); i++) {
-        fy_generic item = fy_seq_handle_get(items, i);
+if (fy_is_valid(items)) {
+    for (size_t i = 0; i < fy_len(items); i++) {
+        fy_generic item = fy_get_item(items, i);
         const char *name = fy_get(item, "");
         printf("%s\n", name);
     }
@@ -286,26 +339,39 @@ if (fy_seq_handle_is_valid(items)) {
 
 // Extract as mapping handle
 fy_map_handle config = fy_get(value, fy_map_invalid);
-if (fy_map_handle_is_valid(config)) {
-    fy_generic host_val = fy_map_handle_lookup(config, "host");
+if (fy_is_valid(config)) {
+    fy_generic host_val = fy_get_item(config, "host");
     const char *host = fy_get(host_val, "localhost");
     printf("Host: %s\n", host);
 }
+
+// Works with all types
+printf("Items: %zu\n", fy_len(items));
+printf("Config: %zu\n", fy_len(config));
+printf("Name: %zu\n", fy_len("example"));
 ```
 
-**Combined with fy_map_get()**:
+**Combined with fy_map_get() - Complete example**:
 ```c
 // Extract nested containers type-safely
 fy_map_handle db_config = fy_map_get(root, "database", fy_map_invalid);
 fy_seq_handle users = fy_map_get(data, "users", fy_seq_invalid);
 
-if (fy_map_handle_is_valid(db_config)) {
-    fy_generic host = fy_map_handle_lookup(db_config, "host");
+if (fy_is_valid(db_config)) {
+    fy_generic host = fy_get_item(db_config, "host");
     printf("DB Host: %s\n", fy_get(host, "localhost"));
+    printf("Config entries: %zu\n", fy_len(db_config));
 }
 
-if (fy_seq_handle_is_valid(users)) {
-    printf("Users: %zu\n", fy_seq_handle_count(users));
+if (fy_is_valid(users)) {
+    printf("Users: %zu\n", fy_len(users));
+
+    // Iterate using unified operations
+    for (size_t i = 0; i < fy_len(users); i++) {
+        fy_generic user = fy_get_item(users, i);
+        const char *username = fy_get(user, "anonymous");
+        printf("  User %zu: %s\n", i, username);
+    }
 }
 ```
 
@@ -316,6 +382,8 @@ if (fy_seq_handle_is_valid(users)) {
 3. **Type safety**: `_Generic` ensures correct dispatch
 4. **Consistent API**: Same pattern across all types
 5. **Clean error handling**: Invalid handles are explicit and checkable
+6. **Unified operations**: `fy_len()`, `fy_get_item()`, and `fy_is_valid()` work polymorphically
+7. **Natural iteration**: Loop over containers just like Python with `for (i = 0; i < fy_len(c); i++)`
 
 ## The Empty Collection Pattern
 
@@ -469,7 +537,7 @@ extern const fy_map_handle fy_map_invalid;
 fy_seq_handle sh = fy_get(g, fy_seq_invalid);
 fy_map_handle mh = fy_get(g, fy_map_invalid);
 
-// Handle operations
+// Type-specific operations
 bool fy_seq_handle_is_valid(fy_seq_handle h);
 size_t fy_seq_handle_count(fy_seq_handle h);
 fy_generic fy_seq_handle_get(fy_seq_handle h, size_t idx);
@@ -477,6 +545,11 @@ fy_generic fy_seq_handle_get(fy_seq_handle h, size_t idx);
 bool fy_map_handle_is_valid(fy_map_handle h);
 size_t fy_map_handle_count(fy_map_handle h);
 fy_generic fy_map_handle_lookup(fy_map_handle h, const char *key);
+
+// Unified polymorphic operations (work on handles, fy_generic, strings)
+fy_len(v)                   // Get length/count - works on sequences, maps, strings
+fy_get_item(container, key) // Get item by index/key - works on sequences, maps
+fy_is_valid(v)              // Check validity - works on handles, fy_generic
 ```
 
 ### Mapping Operations
@@ -802,6 +875,44 @@ if (fy_is_map(value)) {
 }
 ```
 
+### Polymorphic Operations
+
+**Python**:
+```python
+# len() works on everything
+users = data.get("users", [])
+config = data.get("config", {})
+name = "example"
+
+print(f"Users: {len(users)}")
+print(f"Config: {len(config)}")
+print(f"Name: {len(name)}")
+
+# Iteration
+for i in range(len(users)):
+    user = users[i]
+    print(user.get("name", "anonymous"))
+```
+
+**libfyaml**:
+```c
+// fy_len() works on everything
+fy_seq_handle users = fy_map_get(data, "users", fy_seq_invalid);
+fy_map_handle config = fy_map_get(data, "config", fy_map_invalid);
+const char *name = "example";
+
+printf("Users: %zu\n", fy_len(users));
+printf("Config: %zu\n", fy_len(config));
+printf("Name: %zu\n", fy_len(name));
+
+// Iteration
+for (size_t i = 0; i < fy_len(users); i++) {
+    fy_generic user = fy_get_item(users, i);
+    const char *username = fy_get(user, "anonymous");
+    printf("%s\n", username);
+}
+```
+
 ## Design Principles
 
 The short-form API achieves Python ergonomics through:
@@ -815,6 +926,8 @@ The short-form API achieves Python ergonomics through:
 7. **Unified extraction**: Single `fy_get()` works with optional defaults via `__VA_OPT__`
 8. **Container handles**: Opaque wrappers avoid pointer exposure while maintaining type safety
 9. **Optional parameters**: Match Python's flexibility with variadic macro tricks
+10. **Polymorphic operations**: `fy_len()`, `fy_get_item()`, and `fy_is_valid()` work across types
+11. **Python naming**: `fy_len()` matches Python's `len()`, making the API immediately familiar
 
 ## Performance Characteristics
 
