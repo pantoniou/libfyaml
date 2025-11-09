@@ -631,11 +631,12 @@ void parse_anthropic_response(const char *json_response) {
 
     printf("Tokens: %d input, %d output\n", input_tokens, output_tokens);
 
-    // Get content array with empty sequence as default
-    fy_generic content = fy_map_get(response, "content", fy_seq_empty);
+    // Get content array - use handles for type safety
+    fy_seq_handle content = fy_map_get(response, "content", fy_seq_invalid);
 
-    for (size_t i = 0; i < fy_seq_count(content); i++) {
-        fy_generic block = fy_seq_get(content, i, fy_map_empty);
+    // Polymorphic operations: fy_len() and fy_get_item() work on handles!
+    for (size_t i = 0; i < fy_len(content); i++) {
+        fy_generic block = fy_get_item(content, i);
 
         const char *type = fy_map_get(block, "type", "unknown");
 
@@ -733,6 +734,40 @@ struct fy_document *build_anthropic_request(struct fy_generic_builder *gb) {
 }
 ```
 
+### Polymorphic Operations in Action
+
+```c
+void demonstrate_polymorphic_ops(fy_generic data) {
+    // Extract both sequences and mappings using handles
+    fy_seq_handle messages = fy_map_get(data, "messages", fy_seq_invalid);
+    fy_map_handle config = fy_map_get(data, "config", fy_map_invalid);
+    const char *api_key = fy_map_get(data, "api_key", "");
+
+    // fy_len() works polymorphically on all types!
+    printf("Messages: %zu\n", fy_len(messages));    // sequence
+    printf("Config: %zu\n", fy_len(config));         // mapping
+    printf("API Key: %zu chars\n", fy_len(api_key)); // string
+
+    // fy_get_item() works on both sequences (by index) and mappings (by key)
+    if (fy_is_valid(messages)) {
+        for (size_t i = 0; i < fy_len(messages); i++) {
+            fy_generic msg = fy_get_item(messages, i);  // sequence indexing
+            const char *role = fy_map_get(msg, "role", "");
+            printf("  Message %zu: %s\n", i, role);
+        }
+    }
+
+    if (fy_is_valid(config)) {
+        // fy_get_item() also works on mappings!
+        fy_generic host = fy_get_item(config, "host");
+        fy_generic port = fy_get_item(config, "port");
+
+        printf("  Host: %s\n", fy_get(host, "localhost"));
+        printf("  Port: %d\n", fy_get(port, 8080));
+    }
+}
+```
+
 ### Pattern Matching on Sum Types
 
 ```c
@@ -753,22 +788,18 @@ void handle_content_block(fy_generic block) {
     } else if (strcmp(type, "tool_use") == 0) {
         const char *id = fy_map_get(block, "id", "");
         const char *name = fy_map_get(block, "name", "");
-        fy_generic input = fy_map_get(block, "input", fy_map_empty);
+
+        // Extract input - could be mapping, sequence, or scalar
+        fy_map_handle input_map = fy_map_get(block, "input", fy_map_invalid);
+        fy_seq_handle input_seq = fy_map_get(block, "input", fy_seq_invalid);
 
         printf("Tool: %s (id=%s)\n", name, id);
 
-        switch (fy_type(input)) {
-            case FYGT_MAPPING:
-                printf("  Parameters: %zu fields\n", fy_map_count(input));
-                break;
-            case FYGT_SEQUENCE:
-                printf("  Parameters: %zu items\n", fy_seq_count(input));
-                break;
-            case FYGT_STRING:
-                printf("  Parameters: %s\n", fy_string_get(input));
-                break;
-            default:
-                break;
+        // fy_len() works polymorphically!
+        if (fy_is_valid(input_map)) {
+            printf("  Parameters: %zu fields\n", fy_len(input_map));
+        } else if (fy_is_valid(input_seq)) {
+            printf("  Parameters: %zu items\n", fy_len(input_seq));
         }
     }
 }
