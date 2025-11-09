@@ -564,21 +564,38 @@ static inline long long fy_generic_get_int(fy_generic v)
 	)
 #endif
 
-static inline double fy_generic_get_float_no_check(fy_generic v)
+static inline float fy_generic_get_float_no_check(fy_generic v)
 {
-	return FY_GENERIC_GET_FLOAT(v);
+	return (float)FY_GENERIC_GET_FLOAT(v);
 }
 
-static inline double fy_generic_get_float_default(fy_generic v, double default_value)
+static inline float fy_generic_get_float_default(fy_generic v, float default_value)
 {
 	return fy_generic_is_float(v) ?
 		fy_generic_get_float_no_check(fy_generic_indirect_get_value(v)) :
 		default_value;
 }
 
-static inline double fy_generic_get_float(fy_generic v)
+static inline float fy_generic_get_float(fy_generic v)
 {
-	return fy_generic_get_float_default(v, 0.0);
+	return fy_generic_get_float_default(v, 0.0f);
+}
+
+static inline double fy_generic_get_double_no_check(fy_generic v)
+{
+	return FY_GENERIC_GET_FLOAT(v);
+}
+
+static inline double fy_generic_get_double_default(fy_generic v, double default_value)
+{
+	return fy_generic_is_float(v) ?
+		fy_generic_get_double_no_check(fy_generic_indirect_get_value(v)) :
+		default_value;
+}
+
+static inline double fy_generic_get_double(fy_generic v)
+{
+	return fy_generic_get_double_default(v, 0.0);
 }
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
@@ -622,11 +639,25 @@ static inline double fy_generic_get_float(fy_generic v)
 			fy_skip_size_nocheck(fy_generic_resolve_ptr(_v))		\
 	))
 
+static inline size_t
+fy_generic_get_string_inplace_size(const fy_generic v)
+{
+	assert((v.v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V);
+	return (size_t)((v.v >> FY_STRING_INPLACE_SIZE_SHIFT) & FYGT_STRING_INPLACE_SIZE_MASK);
+}
+
+static const char *
+fy_genericp_get_string_inplace(const fy_generic *vp)
+{
+	assert(((*vp).v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V);
+	return (const char *)vp + FY_INPLACE_STRING_ADV;
+}
+
 static inline const char *
 fy_genericp_get_string_size_no_check(const fy_generic *vp, size_t *lenp)
 {
 	if (((*vp).v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) {
-		*lenp = ((*vp).v >> FY_STRING_INPLACE_SIZE_SHIFT) & FYGT_STRING_INPLACE_SIZE_MASK;
+		*lenp = fy_generic_get_string_inplace_size(*vp);
 		return (const char *)vp + FY_INPLACE_STRING_ADV;
 	}
 	return (const char *)fy_decode_size_nocheck(fy_generic_resolve_ptr(*vp), lenp);
@@ -676,7 +707,7 @@ fy_genericp_get_string_no_check(const fy_generic *vp)
 		__ret;							\
 	})
 
-#define fy_genericp_get_string(_vp) (fy_genericp_get_string_default((_vp), NULL))
+#define fy_genericp_get_string(_vp) (fy_genericp_get_string_default((_vp), ""))
 
 /* this is special cased, for inplace strings creates an alloca fy_generic to return a
  * pointer to...
@@ -713,28 +744,28 @@ fy_genericp_get_string_no_check(const fy_generic *vp)
 		__ret;							\
 	})
 
-#define fy_generic_get_string(_v) (fy_generic_get_string_default((_v), NULL))
+#define fy_generic_get_string(_v) (fy_generic_get_string_default((_v), ""))
 
-static inline const char *fy_generic_get_const_char_ptr_default(const fy_generic *vp, const char *default_value)
+static inline const char *fy_genericp_get_const_char_ptr_default(const fy_generic *vp, const char *default_value)
 {
-	return fy_generic_is_string(*vp) ?
+	return vp && fy_generic_is_string(*vp) ?
 		fy_genericp_get_string_no_check(vp) :
 		default_value;
 }
 
-static inline const char *fy_generic_get_const_char_ptr(const fy_generic *vp)
+static inline const char *fy_genericp_get_const_char_ptr(const fy_generic *vp)
 {
-	return fy_generic_get_const_char_ptr_default(vp, "");
+	return fy_genericp_get_const_char_ptr_default(vp, "");
 }
 
-static inline char *fy_generic_get_char_ptr_default(fy_generic *vp, const char *default_value)
+static inline char *fy_genericp_get_char_ptr_default(fy_generic *vp, const char *default_value)
 {
-	return (char *)fy_generic_get_const_char_ptr_default(vp, default_value);
+	return (char *)fy_genericp_get_const_char_ptr_default(vp, default_value);
 }
 
-static inline char *fy_generic_get_char_ptr(fy_generic *vp)
+static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 {
-	return fy_generic_get_char_ptr_default(vp, "");
+	return fy_genericp_get_char_ptr_default(vp, "");
 }
 
 #define fy_generic_get_alias(_v) \
@@ -1868,25 +1899,121 @@ static inline unsigned long long fy_generic_get_unsigned_long_long_default(fy_ge
 	return (unsigned long long)fy_generic_get_min_max_default(v, (long long)default_value, 0, LLONG_MAX);
 }
 
+static inline fy_generic fy_generic_get_generic_default(fy_generic v, fy_generic vdefault)
+{
+	if (fy_generic_is_valid(v))
+		return v;
+	return vdefault;
+}
+
+/* special... handling for in place strings */
+static inline const char *fy_generic_get_const_char_ptr_default(fy_generic v, const char *default_value)
+{
+	if (!fy_generic_is_string(v))
+		return default_value;
+
+	v = fy_generic_indirect_get_value(v);
+
+	/* out of place is easier actually */
+	if ((v.v & FY_INPLACE_TYPE_MASK) != FY_STRING_INPLACE_V)
+		return (const char *)fy_skip_size_nocheck(fy_generic_resolve_ptr(v));
+
+	return NULL;
+}
+
+static inline char *fy_generic_get_char_ptr_default(fy_generic v, char *default_value)
+{
+	return (char *)fy_generic_get_const_char_ptr_default(v, default_value);
+}
+
+static inline size_t fy_generic_get_const_char_ptr_default_alloca(fy_generic v)
+{
+	/* only do the alloca dance for in place strings */
+	return ((v.v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) ? sizeof(fy_generic) : 0;
+}
+
+/* never allocas for anything else */
+static inline size_t fy_generic_get_default_should_alloca_never(fy_generic v)
+{
+	return 0;
+}
+
+static inline void fy_generic_get_const_char_ptr_default_final(fy_generic v,
+		void *p, size_t size,
+		const char *default_value, const char **store_value)
+{
+	size_t len;
+	char *store = p;
+
+	/* only for in place strings */
+	assert((v.v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V);
+	len = fy_generic_get_string_inplace_size(v);
+	assert(size >= len + 1);
+
+	/* we only fill the simple generic value and return a pointer to the in place storage */
+	memcpy(store, fy_genericp_get_string_inplace(&v), len);
+	store[len] = '\0';
+	*store_value = store;
+}
+
+static inline void fy_generic_get_char_ptr_default_final(fy_generic v,
+		void *p, size_t size,
+		char *default_value, char **store_value)
+{
+	return fy_generic_get_const_char_ptr_default_final(v, p, size, default_value,
+			(const char **)store_value);
+}
+
+static inline void fy_generic_get_default_final_never(fy_generic v,
+		void *p, size_t size, ...)
+{
+	return;	// do nothing
+}
+
 #define fy_generic_get_default(_v, _dv) \
-	(_Generic((_dv), \
-		_Bool: fy_generic_get_bool_default, \
-		signed char: fy_generic_get_signed_char_default, \
-		unsigned char: fy_generic_get_unsigned_char_default, \
-		signed short: fy_generic_get_signed_short_default, \
-		unsigned short: fy_generic_get_unsigned_short_default, \
-		signed int: fy_generic_get_signed_int_default, \
-		unsigned int: fy_generic_get_unsigned_int_default, \
-		signed long: fy_generic_get_signed_long_default, \
-		unsigned long: fy_generic_get_unsigned_long_default, \
-		signed long_long: fy_generic_get_signed_long_long_default, \
-		unsigned long_long: fy_generic_get_unsigned_long_long_default, \
-		float: fy_generic_get_float_default, \
-		double: fy_generic_get_double_default, \
-		char *: fy_generic_get_char_ptr_default, \
-		const char *: fy_generic_get_const_char_ptr_default, \
-		fy_generic: fy_generic_get_generic_default, \
-	      )((_gv), (_dv)))
+	({ \
+		fy_generic __v = (_v); \
+		typeof ((_dv) + 0) __dv = (_dv); \
+		typeof ((_dv) + 0) __ret; \
+		size_t __size; \
+		void *__p; \
+		\
+		__ret = _Generic(__dv, \
+			_Bool: fy_generic_get_bool_default, \
+			signed char: fy_generic_get_signed_char_default, \
+			unsigned char: fy_generic_get_unsigned_char_default, \
+			signed short: fy_generic_get_signed_short_default, \
+			unsigned short: fy_generic_get_unsigned_short_default, \
+			signed int: fy_generic_get_signed_int_default, \
+			unsigned int: fy_generic_get_unsigned_int_default, \
+			signed long: fy_generic_get_signed_long_default, \
+			unsigned long: fy_generic_get_unsigned_long_default, \
+			signed long long: fy_generic_get_signed_long_long_default, \
+			unsigned long long: fy_generic_get_unsigned_long_long_default, \
+			float: fy_generic_get_float_default, \
+			double: fy_generic_get_double_default, \
+			char *: fy_generic_get_char_ptr_default, \
+			const char *: fy_generic_get_const_char_ptr_default, \
+			fy_generic: fy_generic_get_generic_default \
+		      )(__v, __dv); \
+		\
+		__size = _Generic(__dv, \
+			char *: fy_generic_get_const_char_ptr_default_alloca, \
+			const char *: fy_generic_get_const_char_ptr_default_alloca, \
+			default: fy_generic_get_default_should_alloca_never \
+		      )(__v); \
+		if (__size) { \
+			__p = alloca(__size); \
+			_Generic(__dv, \
+				char *: fy_generic_get_char_ptr_default_final, \
+				const char *: fy_generic_get_const_char_ptr_default_final, \
+				default: fy_generic_get_default_final_never \
+			      )(__v, __p, __size, __dv, &__ret); \
+		} \
+		__ret; \
+	})
+
+//////////////////////////////////////////////////////
 
 enum fy_generic_schema {
 	FYGS_AUTO,
