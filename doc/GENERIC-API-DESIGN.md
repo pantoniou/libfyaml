@@ -7,10 +7,11 @@ This document describes the design evolution of libfyaml's generic type system A
 1. [The Problem: Verbose Generic APIs](#the-problem-verbose-generic-apis)
 2. [Solution: Short-Form API with _Generic Dispatch](#solution-short-form-api-with-_generic-dispatch)
 3. [Type Checking Shortcuts](#type-checking-shortcuts)
-4. [The Empty Collection Pattern](#the-empty-collection-pattern)
-5. [Complete API Reference](#complete-api-reference)
-6. [Real-World Example: Anthropic Messages API](#real-world-example-anthropic-messages-api)
-7. [Python Comparison](#python-comparison)
+4. [Advanced: Unified fy_get() with Optional Parameters](#advanced-unified-fy_get-with-optional-parameters)
+5. [The Empty Collection Pattern](#the-empty-collection-pattern)
+6. [Complete API Reference](#complete-api-reference)
+7. [Real-World Example: Anthropic Messages API](#real-world-example-anthropic-messages-api)
+8. [Python Comparison](#python-comparison)
 
 ## The Problem: Verbose Generic APIs
 
@@ -155,6 +156,167 @@ if (fy_is_map(config)) {
 }
 ```
 
+## Advanced: Unified fy_get() with Optional Parameters
+
+Beyond `fy_map_get()` and `fy_seq_get()`, we can create a unified `fy_get()` that extracts values with optional type-safe defaults.
+
+### Design with __VA_OPT__
+
+Using C11's variadic macros with `__VA_OPT__`, we can make the default parameter optional:
+
+```c
+// Macro argument counting helper
+#define FY_GET_SELECT(_1, _2, NAME, ...) NAME
+
+// Main fy_get macro with optional second argument
+#define fy_get(g, ...) \
+    FY_GET_SELECT(__VA_ARGS__, FY_GET_WITH_DEFAULT, FY_GET_NO_DEFAULT, _dummy)(g, ##__VA_ARGS__)
+
+// No default: return as-is (fy_generic)
+#define FY_GET_NO_DEFAULT(g, ...) (g)
+
+// With default: dispatch based on type
+#define FY_GET_WITH_DEFAULT(g, default, ...) \
+    _Generic((default), \
+        const char *: fy_get_string, \
+        int: fy_get_int, \
+        long long: fy_get_int, \
+        double: fy_get_double, \
+        bool: fy_get_bool, \
+        fy_generic: fy_get_generic, \
+        fy_seq_handle: fy_get_seq_handle, \
+        fy_map_handle: fy_get_map_handle \
+    )(g, default)
+```
+
+### Container Handle Types
+
+To avoid exposing raw pointers in the API, we wrap container pointers in opaque handle structures:
+
+```c
+// Opaque wrapper types for type safety
+typedef struct {
+    struct fy_generic_sequence *seq;
+} fy_seq_handle;
+
+typedef struct {
+    struct fy_generic_mapping *map;
+} fy_map_handle;
+
+// Sentinel values for invalid/missing containers
+extern const fy_seq_handle fy_seq_invalid;
+extern const fy_map_handle fy_map_invalid;
+```
+
+### Helper Functions
+
+```c
+// Extract scalar types with defaults
+static inline const char *fy_get_string(fy_generic g, const char *def);
+static inline int64_t fy_get_int(fy_generic g, int64_t def);
+static inline double fy_get_double(fy_generic g, double def);
+static inline bool fy_get_bool(fy_generic g, bool def);
+static inline fy_generic fy_get_generic(fy_generic g, fy_generic def);
+
+// Extract container handles with type safety
+static inline fy_seq_handle fy_get_seq_handle(fy_generic g, fy_seq_handle def) {
+    if (fy_is_seq(g)) {
+        return (fy_seq_handle){ .seq = fy_generic_get_sequence(g) };
+    }
+    return def;
+}
+
+static inline fy_map_handle fy_get_map_handle(fy_generic g, fy_map_handle def) {
+    if (fy_is_map(g)) {
+        return (fy_map_handle){ .map = fy_generic_get_mapping(g) };
+    }
+    return def;
+}
+```
+
+### Operations on Handles
+
+Clean API for working with container handles:
+
+```c
+// Sequence handle operations
+bool fy_seq_handle_is_valid(fy_seq_handle h);
+size_t fy_seq_handle_count(fy_seq_handle h);
+fy_generic fy_seq_handle_get(fy_seq_handle h, size_t idx);
+
+// Mapping handle operations
+bool fy_map_handle_is_valid(fy_map_handle h);
+size_t fy_map_handle_count(fy_map_handle h);
+fy_generic fy_map_handle_lookup(fy_map_handle h, const char *key);
+```
+
+### Usage Examples
+
+**Python-like optional defaults**:
+```c
+// Python: value  (no conversion)
+fy_generic v = fy_get(some_value);
+
+// Python: str(value) or ""
+const char *text = fy_get(v, "");
+const char *name = fy_get(v, "unknown");
+
+// Python: int(value) or 0
+int port = fy_get(v, 0);
+int count = fy_get(v, 42);
+
+// Python: bool(value) or False
+bool enabled = fy_get(v, false);
+
+// Python: float(value) or 0.0
+double ratio = fy_get(v, 0.0);
+```
+
+**Type-safe container extraction**:
+```c
+// Extract as sequence handle
+fy_seq_handle items = fy_get(value, fy_seq_invalid);
+if (fy_seq_handle_is_valid(items)) {
+    for (size_t i = 0; i < fy_seq_handle_count(items); i++) {
+        fy_generic item = fy_seq_handle_get(items, i);
+        const char *name = fy_get(item, "");
+        printf("%s\n", name);
+    }
+}
+
+// Extract as mapping handle
+fy_map_handle config = fy_get(value, fy_map_invalid);
+if (fy_map_handle_is_valid(config)) {
+    fy_generic host_val = fy_map_handle_lookup(config, "host");
+    const char *host = fy_get(host_val, "localhost");
+    printf("Host: %s\n", host);
+}
+```
+
+**Combined with fy_map_get()**:
+```c
+// Extract nested containers type-safely
+fy_map_handle db_config = fy_map_get(root, "database", fy_map_invalid);
+fy_seq_handle users = fy_map_get(data, "users", fy_seq_invalid);
+
+if (fy_map_handle_is_valid(db_config)) {
+    fy_generic host = fy_map_handle_lookup(db_config, "host");
+    printf("DB Host: %s\n", fy_get(host, "localhost"));
+}
+
+if (fy_seq_handle_is_valid(users)) {
+    printf("Users: %zu\n", fy_seq_handle_count(users));
+}
+```
+
+### Benefits
+
+1. **Python-like syntax**: Optional defaults match Python's flexibility
+2. **No pointer exposure**: Handles hide implementation details
+3. **Type safety**: `_Generic` ensures correct dispatch
+4. **Consistent API**: Same pattern across all types
+5. **Clean error handling**: Invalid handles are explicit and checkable
+
 ## The Empty Collection Pattern
 
 The key insight for Python-equivalence: **default to empty collections instead of `fy_invalid`**.
@@ -275,11 +437,46 @@ bool fy_is_invalid(fy_generic g);
 
 ### Value Extraction
 
+**Unified extraction with optional defaults**:
+```c
+// Extract with type-safe default (optional second parameter)
+fy_get(g)           // No conversion, returns fy_generic
+fy_get(g, "")       // Extract as string with default
+fy_get(g, 0)        // Extract as int with default
+fy_get(g, 0.0)      // Extract as double with default
+fy_get(g, false)    // Extract as bool with default
+```
+
+**Direct extraction (no defaults)**:
 ```c
 bool fy_bool_get(fy_generic g);
 int64_t fy_int_get(fy_generic g);
 double fy_float_get(fy_generic g);
 const char *fy_string_get(fy_generic g);
+```
+
+**Container handles**:
+```c
+// Handle types
+typedef struct { struct fy_generic_sequence *seq; } fy_seq_handle;
+typedef struct { struct fy_generic_mapping *map; } fy_map_handle;
+
+// Sentinels
+extern const fy_seq_handle fy_seq_invalid;
+extern const fy_map_handle fy_map_invalid;
+
+// Extract handles
+fy_seq_handle sh = fy_get(g, fy_seq_invalid);
+fy_map_handle mh = fy_get(g, fy_map_invalid);
+
+// Handle operations
+bool fy_seq_handle_is_valid(fy_seq_handle h);
+size_t fy_seq_handle_count(fy_seq_handle h);
+fy_generic fy_seq_handle_get(fy_seq_handle h, size_t idx);
+
+bool fy_map_handle_is_valid(fy_map_handle h);
+size_t fy_map_handle_count(fy_map_handle h);
+fy_generic fy_map_handle_lookup(fy_map_handle h, const char *key);
 ```
 
 ### Mapping Operations
@@ -615,6 +812,9 @@ The short-form API achieves Python ergonomics through:
 4. **Consistent naming**: Short, intuitive names (`fy_map_get`, `fy_is_map`, etc.)
 5. **Zero runtime overhead**: All dispatch happens at compile time
 6. **Type safety**: Compiler catches type mismatches in defaults
+7. **Unified extraction**: Single `fy_get()` works with optional defaults via `__VA_OPT__`
+8. **Container handles**: Opaque wrappers avoid pointer exposure while maintaining type safety
+9. **Optional parameters**: Match Python's flexibility with variadic macro tricks
 
 ## Performance Characteristics
 
