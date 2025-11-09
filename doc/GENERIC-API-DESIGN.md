@@ -208,50 +208,9 @@ extern const fy_seq_handle fy_seq_invalid;
 extern const fy_map_handle fy_map_invalid;
 ```
 
-### Helper Functions
+### Unified Polymorphic Operations
 
-```c
-// Extract scalar types with defaults
-static inline const char *fy_get_string(fy_generic g, const char *def);
-static inline int64_t fy_get_int(fy_generic g, int64_t def);
-static inline double fy_get_double(fy_generic g, double def);
-static inline bool fy_get_bool(fy_generic g, bool def);
-static inline fy_generic fy_get_generic(fy_generic g, fy_generic def);
-
-// Extract container handles with type safety
-static inline fy_seq_handle fy_get_seq_handle(fy_generic g, fy_seq_handle def) {
-    if (fy_is_seq(g)) {
-        return (fy_seq_handle){ .seq = fy_generic_get_sequence(g) };
-    }
-    return def;
-}
-
-static inline fy_map_handle fy_get_map_handle(fy_generic g, fy_map_handle def) {
-    if (fy_is_map(g)) {
-        return (fy_map_handle){ .map = fy_generic_get_mapping(g) };
-    }
-    return def;
-}
-```
-
-### Operations on Handles
-
-**Type-specific operations**:
-```c
-// Sequence handle operations
-bool fy_seq_handle_is_valid(fy_seq_handle h);
-size_t fy_seq_handle_count(fy_seq_handle h);
-fy_generic fy_seq_handle_get(fy_seq_handle h, size_t idx);
-
-// Mapping handle operations
-bool fy_map_handle_is_valid(fy_map_handle h);
-size_t fy_map_handle_count(fy_map_handle h);
-fy_generic fy_map_handle_lookup(fy_map_handle h, const char *key);
-```
-
-**Unified operations with _Generic dispatch**:
-
-Just like Python's `len()` works on lists, dicts, and strings, libfyaml provides unified operations:
+**The public API** - these are the only operations external users need:
 
 ```c
 // fy_len() - works on sequences, mappings, strings, and fy_generic
@@ -281,27 +240,15 @@ Just like Python's `len()` works on lists, dicts, and strings, libfyaml provides
     )(v)
 ```
 
-**Python equivalence**:
+**Why polymorphic operations?**
 
-```python
-# Python
-len([1, 2, 3])              # list
-len({"a": 1, "b": 2})       # dict
-len("hello")                # string
+Instead of exposing type-specific functions like `fy_seq_handle_count()` or `fy_map_handle_lookup()`, the API provides a unified interface that works across all types. This matches Python's design where `len()` works on everything.
 
-items[0]                    # sequence index
-config["host"]              # mapping key
-```
-
-```c
-// libfyaml - identical semantics!
-fy_len(seq_handle)          // sequence
-fy_len(map_handle)          // mapping
-fy_len("hello")             // string
-
-fy_get_item(items, 0)       // sequence index
-fy_get_item(config, "host") // mapping key
-```
+**Benefits**:
+- **Simpler API**: Learn 3 operations instead of 6+
+- **Natural code**: Write `fy_len(container)` regardless of type
+- **Type safety**: `_Generic` ensures correct dispatch at compile time
+- **Python-like**: Matches the ergonomics users expect
 
 ### Usage Examples
 
@@ -458,6 +405,31 @@ const char *db_host = fy_map_get(
 
 ## Complete API Reference
 
+### The Lean Public API
+
+libfyaml exposes a minimal, polymorphic API that's all you need for working with generic values:
+
+**Core operations (work on everything)**:
+- `fy_len(v)` - Get length/count (sequences, mappings, strings)
+- `fy_get_item(container, key)` - Index or lookup (sequences by index, mappings by key)
+- `fy_is_valid(v)` - Check validity (handles, generics)
+
+**Type-safe extraction**:
+- `fy_get(g, default)` - Extract with type-safe default (optional second parameter)
+- `fy_map_get(map, key, default)` - Lookup in mapping with default
+
+**Type checking**:
+- `fy_type(g)` - Get type enum
+- `fy_is_*()` - Type predicates (`fy_is_map`, `fy_is_seq`, `fy_is_string`, etc.)
+
+**Construction**:
+- `fy_mapping(...)` - Create mapping (stack-allocated)
+- `fy_sequence(...)` - Create sequence (stack-allocated)
+- `fy_gb_mapping(gb, ...)` - Create mapping (heap-allocated)
+- `fy_gb_sequence(gb, ...)` - Create sequence (heap-allocated)
+
+That's it! The polymorphic operations eliminate the need to learn type-specific functions.
+
 ### Construction
 
 **Stack-allocated (temporary)**:
@@ -523,7 +495,7 @@ double fy_float_get(fy_generic g);
 const char *fy_string_get(fy_generic g);
 ```
 
-**Container handles**:
+**Container handles and polymorphic operations**:
 ```c
 // Handle types
 typedef struct { struct fy_generic_sequence *seq; } fy_seq_handle;
@@ -533,49 +505,44 @@ typedef struct { struct fy_generic_mapping *map; } fy_map_handle;
 extern const fy_seq_handle fy_seq_invalid;
 extern const fy_map_handle fy_map_invalid;
 
-// Extract handles
+// Extract handles using fy_get() or fy_map_get()
 fy_seq_handle sh = fy_get(g, fy_seq_invalid);
-fy_map_handle mh = fy_get(g, fy_map_invalid);
+fy_map_handle mh = fy_map_get(data, "config", fy_map_invalid);
 
-// Type-specific operations
-bool fy_seq_handle_is_valid(fy_seq_handle h);
-size_t fy_seq_handle_count(fy_seq_handle h);
-fy_generic fy_seq_handle_get(fy_seq_handle h, size_t idx);
+// ========================================
+// PUBLIC API: Polymorphic Operations
+// ========================================
+// These 3 operations are all you need:
 
-bool fy_map_handle_is_valid(fy_map_handle h);
-size_t fy_map_handle_count(fy_map_handle h);
-fy_generic fy_map_handle_lookup(fy_map_handle h, const char *key);
-
-// Unified polymorphic operations (work on handles, fy_generic, strings)
 fy_len(v)                   // Get length/count - works on sequences, maps, strings
 fy_get_item(container, key) // Get item by index/key - works on sequences, maps
 fy_is_valid(v)              // Check validity - works on handles, fy_generic
 ```
 
-### Mapping Operations
+### High-Level Container Operations
+
+**For fy_generic values** (when you have a `fy_generic` directly):
 
 ```c
 // Lookup with type-safe default (uses _Generic dispatch)
-fy_map_get(map, key, default)
+fy_map_get(map, key, default)    // Returns typed value or default
 
-// Count entries
+// Traditional operations (for backwards compatibility)
 size_t fy_map_count(fy_generic map);
-
-// Iteration (traditional API)
-fy_generic fy_map_iter_next(fy_generic map, fy_generic *key, fy_generic *value, void **iter);
+size_t fy_seq_count(fy_generic seq);
 ```
 
-### Sequence Operations
+**For handles** (recommended - use polymorphic operations):
 
 ```c
-// Index with type-safe default (uses _Generic dispatch)
-fy_seq_get(seq, idx, default)
+// Extract handles
+fy_seq_handle items = fy_map_get(data, "items", fy_seq_invalid);
+fy_map_handle config = fy_map_get(data, "config", fy_map_invalid);
 
-// Count items
-size_t fy_seq_count(fy_generic seq);
-
-// Iteration
-fy_generic fy_seq_get_by_index(fy_generic seq, size_t idx);
+// Then use polymorphic operations:
+fy_len(items)           // Get count
+fy_get_item(items, 0)   // Get by index
+fy_is_valid(items)      // Check validity
 ```
 
 ### Document Integration
