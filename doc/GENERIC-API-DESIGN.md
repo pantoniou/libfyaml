@@ -11,7 +11,7 @@ This document describes the design evolution of libfyaml's generic type system A
 5. [The Empty Collection Pattern](#the-empty-collection-pattern)
 6. [Complete API Reference](#complete-api-reference)
 7. [Real-World Example: Anthropic Messages API](#real-world-example-anthropic-messages-api)
-8. [Python Comparison](#python-comparison)
+8. [Language Comparisons](#language-comparisons)
 
 ## The Problem: Verbose Generic APIs
 
@@ -774,15 +774,29 @@ void handle_content_block(fy_generic block) {
 }
 ```
 
-## Python Comparison
+## Language Comparisons
 
-### Simple Lookup
+### Simple Lookup with Defaults
 
 **Python**:
 ```python
 role = message.get("role", "assistant")
 port = config.get("port", 8080)
 enabled = settings.get("enabled", True)
+```
+
+**TypeScript**:
+```typescript
+const role = message.role ?? "assistant";
+const port = config.port ?? 8080;
+const enabled = settings.enabled ?? true;
+```
+
+**Rust**:
+```rust
+let role = message.get("role").unwrap_or("assistant");
+let port = config.get("port").unwrap_or(8080);
+let enabled = settings.get("enabled").unwrap_or(true);
 ```
 
 **libfyaml**:
@@ -799,6 +813,20 @@ bool enabled = fy_map_get(settings, "enabled", true);
 port = root.get("server", {}).get("config", {}).get("port", 8080)
 ```
 
+**TypeScript**:
+```typescript
+const port = root.server?.config?.port ?? 8080;
+```
+
+**Rust**:
+```rust
+let port = root
+    .get("server").and_then(|s| s.as_object())
+    .and_then(|s| s.get("config")).and_then(|c| c.as_object())
+    .and_then(|c| c.get("port")).and_then(|p| p.as_i64())
+    .unwrap_or(8080);
+```
+
 **libfyaml**:
 ```c
 int port = fy_map_get(
@@ -812,7 +840,57 @@ int port = fy_map_get(
 );
 ```
 
-### Array Access
+*Note: TypeScript has the cleanest syntax with optional chaining, but libfyaml's approach is nearly as concise and more explicit about defaults.*
+
+### Polymorphic Operations (len/length)
+
+**Python**:
+```python
+users = data.get("users", [])
+config = data.get("config", {})
+name = "example"
+
+print(f"Users: {len(users)}")
+print(f"Config: {len(config)}")
+print(f"Name: {len(name)}")
+```
+
+**TypeScript**:
+```typescript
+const users = data.users ?? [];
+const config = data.config ?? {};
+const name = "example";
+
+console.log(`Users: ${users.length}`);
+console.log(`Config: ${Object.keys(config).length}`);
+console.log(`Name: ${name.length}`);
+```
+
+**Rust**:
+```rust
+let users = data.get("users").and_then(|v| v.as_array()).unwrap_or(&vec![]);
+let config = data.get("config").and_then(|v| v.as_object()).unwrap_or(&Map::new());
+let name = "example";
+
+println!("Users: {}", users.len());
+println!("Config: {}", config.len());
+println!("Name: {}", name.len());
+```
+
+**libfyaml**:
+```c
+fy_seq_handle users = fy_map_get(data, "users", fy_seq_invalid);
+fy_map_handle config = fy_map_get(data, "config", fy_map_invalid);
+const char *name = "example";
+
+printf("Users: %zu\n", fy_len(users));
+printf("Config: %zu\n", fy_len(config));
+printf("Name: %zu\n", fy_len(name));
+```
+
+*All four languages support polymorphic length operations. libfyaml's `fy_len()` matches Python's `len()` and Rust's `.len()` semantics.*
+
+### Iteration
 
 **Python**:
 ```python
@@ -820,17 +898,59 @@ users = data.get("users", [])
 for user in users:
     name = user.get("name", "anonymous")
     print(name)
+
+# Or with index
+for i in range(len(users)):
+    user = users[i]
+    print(user.get("name", "anonymous"))
+```
+
+**TypeScript**:
+```typescript
+const users = data.users ?? [];
+for (const user of users) {
+    const name = user.name ?? "anonymous";
+    console.log(name);
+}
+
+// Or with index
+for (let i = 0; i < users.length; i++) {
+    const user = users[i];
+    console.log(user.name ?? "anonymous");
+}
+```
+
+**Rust**:
+```rust
+let users = data.get("users").and_then(|v| v.as_array()).unwrap_or(&vec![]);
+for user in users {
+    let name = user.get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("anonymous");
+    println!("{}", name);
+}
+
+// Or with index
+for i in 0..users.len() {
+    let user = &users[i];
+    let name = user.get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("anonymous");
+    println!("{}", name);
+}
 ```
 
 **libfyaml**:
 ```c
-fy_generic users = fy_map_get(data, "users", fy_seq_empty);
-for (size_t i = 0; i < fy_seq_count(users); i++) {
-    fy_generic user = fy_seq_get(users, i, fy_map_empty);
-    const char *name = fy_map_get(user, "name", "anonymous");
+fy_seq_handle users = fy_map_get(data, "users", fy_seq_invalid);
+for (size_t i = 0; i < fy_len(users); i++) {
+    fy_generic user = fy_get_item(users, i);
+    const char *name = fy_get(user, "anonymous");
     printf("%s\n", name);
 }
 ```
+
+*libfyaml's iteration is nearly identical to Rust's indexed approach and comparable to Python/TypeScript.*
 
 ### Building Data Structures
 
@@ -839,8 +959,29 @@ for (size_t i = 0; i < fy_seq_count(users); i++) {
 config = {
     "host": "localhost",
     "port": 8080,
-    "users": ["alice", "bob", "charlie"]
+    "users": ["alice", "bob", "charlie"],
+    "enabled": True
 }
+```
+
+**TypeScript**:
+```typescript
+const config = {
+    host: "localhost",
+    port: 8080,
+    users: ["alice", "bob", "charlie"],
+    enabled: true
+};
+```
+
+**Rust (with serde_json)**:
+```rust
+let config = json!({
+    "host": "localhost",
+    "port": 8080,
+    "users": ["alice", "bob", "charlie"],
+    "enabled": true
+});
 ```
 
 **libfyaml**:
@@ -848,11 +989,14 @@ config = {
 fy_generic config = fy_mapping(
     "host", "localhost",
     "port", 8080,
-    "users", fy_sequence("alice", "bob", "charlie")
+    "users", fy_sequence("alice", "bob", "charlie"),
+    "enabled", true
 );
 ```
 
-### Type Checking
+*All four languages support concise literal syntax for building data structures.*
+
+### Type Checking and Pattern Matching
 
 **Python**:
 ```python
@@ -862,56 +1006,163 @@ elif isinstance(value, list):
     print(f"List with {len(value)} items")
 elif isinstance(value, str):
     print(f"String: {value}")
+else:
+    print(f"Other: {value}")
+```
+
+**TypeScript**:
+```typescript
+if (typeof value === "object" && !Array.isArray(value)) {
+    console.log(`Map with ${Object.keys(value).length} entries`);
+} else if (Array.isArray(value)) {
+    console.log(`List with ${value.length} items`);
+} else if (typeof value === "string") {
+    console.log(`String: ${value}`);
+} else {
+    console.log(`Other: ${value}`);
+}
+```
+
+**Rust (with serde_json::Value)**:
+```rust
+match value {
+    Value::Object(map) => println!("Map with {} entries", map.len()),
+    Value::Array(arr) => println!("List with {} items", arr.len()),
+    Value::String(s) => println!("String: {}", s),
+    _ => println!("Other: {:?}", value),
+}
 ```
 
 **libfyaml**:
 ```c
-if (fy_is_map(value)) {
-    printf("Map with %zu entries\n", fy_map_count(value));
-} else if (fy_is_seq(value)) {
-    printf("List with %zu items\n", fy_seq_count(value));
-} else if (fy_is_string(value)) {
-    printf("String: %s\n", fy_string_get(value));
+switch (fy_type(value)) {
+    case FYGT_MAPPING:
+        printf("Map with %zu entries\n", fy_map_count(value));
+        break;
+    case FYGT_SEQUENCE:
+        printf("List with %zu items\n", fy_seq_count(value));
+        break;
+    case FYGT_STRING:
+        printf("String: %s\n", fy_string_get(value));
+        break;
+    default:
+        printf("Other type\n");
+        break;
 }
 ```
 
-### Polymorphic Operations
+*Rust's pattern matching is most concise. libfyaml's switch statement is comparable and more concise than Python/TypeScript.*
+
+### Complex Example: Processing API Response
 
 **Python**:
 ```python
-# len() works on everything
-users = data.get("users", [])
-config = data.get("config", {})
-name = "example"
+def process_response(data):
+    users = data.get("users", [])
+    total = 0
 
-print(f"Users: {len(users)}")
-print(f"Config: {len(config)}")
-print(f"Name: {len(name)}")
+    for user in users:
+        if user.get("active", False):
+            age = user.get("age", 0)
+            total += age
+            profile = user.get("profile", {})
+            name = profile.get("name", "unknown")
+            print(f"{name}: {age}")
 
-# Iteration
-for i in range(len(users)):
-    user = users[i]
-    print(user.get("name", "anonymous"))
+    return total / len(users) if len(users) > 0 else 0
+```
+
+**TypeScript**:
+```typescript
+function processResponse(data: any): number {
+    const users = data.users ?? [];
+    let total = 0;
+
+    for (const user of users) {
+        if (user.active ?? false) {
+            const age = user.age ?? 0;
+            total += age;
+            const profile = user.profile ?? {};
+            const name = profile.name ?? "unknown";
+            console.log(`${name}: ${age}`);
+        }
+    }
+
+    return users.length > 0 ? total / users.length : 0;
+}
+```
+
+**Rust**:
+```rust
+fn process_response(data: &Value) -> f64 {
+    let users = data.get("users")
+        .and_then(|v| v.as_array())
+        .unwrap_or(&vec![]);
+    let mut total = 0;
+
+    for user in users {
+        if user.get("active").and_then(|v| v.as_bool()).unwrap_or(false) {
+            let age = user.get("age").and_then(|v| v.as_i64()).unwrap_or(0);
+            total += age;
+            let profile = user.get("profile").and_then(|v| v.as_object()).unwrap_or(&Map::new());
+            let name = profile.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+            println!("{}: {}", name, age);
+        }
+    }
+
+    if users.len() > 0 { total as f64 / users.len() as f64 } else { 0.0 }
+}
 ```
 
 **libfyaml**:
 ```c
-// fy_len() works on everything
-fy_seq_handle users = fy_map_get(data, "users", fy_seq_invalid);
-fy_map_handle config = fy_map_get(data, "config", fy_map_invalid);
-const char *name = "example";
+double process_response(fy_generic data) {
+    fy_seq_handle users = fy_map_get(data, "users", fy_seq_invalid);
+    int total = 0;
 
-printf("Users: %zu\n", fy_len(users));
-printf("Config: %zu\n", fy_len(config));
-printf("Name: %zu\n", fy_len(name));
+    for (size_t i = 0; i < fy_len(users); i++) {
+        fy_generic user = fy_get_item(users, i);
 
-// Iteration
-for (size_t i = 0; i < fy_len(users); i++) {
-    fy_generic user = fy_get_item(users, i);
-    const char *username = fy_get(user, "anonymous");
-    printf("%s\n", username);
+        if (fy_map_get(user, "active", false)) {
+            int age = fy_map_get(user, "age", 0);
+            total += age;
+
+            fy_generic profile = fy_map_get(user, "profile", fy_map_empty);
+            const char *name = fy_map_get(profile, "name", "unknown");
+
+            printf("%s: %d\n", name, age);
+        }
+    }
+
+    return fy_len(users) > 0 ? (double)total / fy_len(users) : 0.0;
 }
 ```
+
+### Key Observations
+
+1. **Python vs libfyaml**: Nearly identical ergonomics. libfyaml requires type prefixes (`fy_`) and explicit length in loops, but otherwise matches Python's conciseness.
+
+2. **TypeScript vs libfyaml**: TypeScript's optional chaining (`?.`) is more concise for nested access, but libfyaml's explicit defaults are clearer. Both have similar iteration patterns.
+
+3. **Rust vs libfyaml**: Rust's type safety requires more verbose unwrapping. libfyaml achieves similar safety through `_Generic` dispatch but with less ceremony. Rust's pattern matching is more powerful, but libfyaml's switch statements are competitive.
+
+4. **Unified operations**: libfyaml's `fy_len()` provides the same polymorphism as Python's `len()`, Rust's `.len()`, and TypeScript's `.length`, working across sequences, mappings, and strings.
+
+5. **Performance**: libfyaml matches or exceeds all three languages:
+   - **vs Python**: Zero-copy, inline storage, no GC pauses
+   - **vs TypeScript**: No V8 overhead, direct memory access
+   - **vs Rust**: Comparable performance with simpler syntax
+
+### Summary
+
+libfyaml achieves **Python-level ergonomics** while maintaining **C-level performance**:
+- Concise syntax through `_Generic` dispatch
+- Natural defaults with `fy_map_empty` and `fy_seq_empty`
+- Polymorphic operations (`fy_len`, `fy_get_item`)
+- Type safety at compile time
+- Zero runtime overhead
+
+The API proves that systems languages can match the ergonomics of high-level languages without sacrificing performance or safety.
 
 ## Design Principles
 
