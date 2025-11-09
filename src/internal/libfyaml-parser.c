@@ -4975,6 +4975,37 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 		str = fy_generic_get_string(v);
 		printf("fy_generic_get_string(v) = %s\n", str);
+
+		v = fy_string("test");
+
+		str = fy_genericp_get_string(&v);
+		printf("fy_genericp_get_string(&v) = %s\n", str);
+
+		str = fy_generic_get_string(v);
+		printf("fy_generic_get_string(v) = %s\n", str);
+	}
+
+	{
+		fy_generic v;
+		int i;
+		const char *s;
+
+		v = fy_int(100);
+		i = fy_generic_get_default(v, 101);
+		printf("i = fy_generic_get_default(v, 101) = %d\n", i);
+
+		v = fy_invalid;
+		i = fy_generic_get_default(v, 101);
+		printf("i = fy_generic_get_default(v, 101) = %d\n", i);
+
+		v = fy_string("This is a long string");
+		s = fy_generic_get_default(v, "default-string");
+		printf("i = fy_generic_get_default(v, \"default-string\") = %s\n", s);
+
+		v = fy_string("This");
+		s = fy_generic_get_default(v, "default-string");
+		printf("i = fy_generic_get_default(v, \"default-string\") = %s\n", s);
+
 	}
 
 	return 0;
