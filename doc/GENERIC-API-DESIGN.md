@@ -241,177 +241,154 @@ extern const fy_map_handle fy_map_invalid;
     )(v)
 ```
 
-**Write operations** (for mutable collections):
+**Functional operations** (immutable - return new collections):
 ```c
-// fy_set_item() - set item by index (sequence) or key (mapping)
-#define fy_set_item(container, key, value) \
-    _Generic((container), \
-        fy_seq_handle: fy_seq_handle_set, \
-        fy_map_handle: fy_map_handle_set \
-    )(container, key, value)
+// fy_assoc() - associate key with value (returns new mapping)
+// Like Clojure's assoc - functional update
+#define fy_assoc(map, key, value) fy_map_handle_assoc(map, key, value)
 
-// fy_append() - append to sequence (Python: list.append())
-#define fy_append(seq, value) fy_seq_handle_append(seq, value)
+// fy_dissoc() - dissociate key (returns new mapping without key)
+#define fy_dissoc(map, key) fy_map_handle_dissoc(map, key)
 
-// fy_del_item() - remove item by index or key (Python: del container[key])
-#define fy_del_item(container, key) \
-    _Generic((container), \
-        fy_seq_handle: fy_seq_handle_del, \
-        fy_map_handle: fy_map_handle_del \
-    )(container, key)
+// fy_conj() - conjoin/append value (returns new sequence)
+// Like Clojure's conj - adds to collection
+#define fy_conj(seq, value) fy_seq_handle_conj(seq, value)
 
-// fy_clear() - remove all items (Python: container.clear())
-#define fy_clear(container) \
-    _Generic((container), \
-        fy_seq_handle: fy_seq_handle_clear, \
-        fy_map_handle: fy_map_handle_clear \
-    )(container)
-
-// fy_insert() - insert at index (Python: list.insert())
-#define fy_insert(seq, index, value) fy_seq_handle_insert(seq, index, value)
+// fy_assoc_at() - associate at index (returns new sequence)
+#define fy_assoc_at(seq, index, value) fy_seq_handle_assoc_at(seq, index, value)
 ```
 
-**Python equivalence**:
+**Immutability principle**:
+
+All generic values are **immutable**. Modifications return new collections without changing the original:
+
+```c
+// Original sequence unchanged
+fy_seq_handle original = /* ... */;
+fy_seq_handle modified = fy_conj(original, fy_string("new item"));
+
+// Both exist independently
+printf("Original: %zu items\n", fy_len(original));  // Unchanged
+printf("Modified: %zu items\n", fy_len(modified));  // Original + 1
+```
+
+**Functional equivalence**:
 
 ```python
-# Python                    # libfyaml
-len(container)             # fy_len(container)
-container[key]             # fy_get_item(container, key)
-container[key] = value     # fy_set_item(container, key, value)
-del container[key]         # fy_del_item(container, key)
-container.clear()          # fy_clear(container)
-list.append(value)         # fy_append(seq, value)
-list.insert(index, value)  # fy_insert(seq, index, value)
+# Python (immutable tuples)      # libfyaml
+len(container)                   # fy_len(container)
+container[key]                   # fy_get_item(container, key)
+new_dict = {**dict, key: value}  # fy_assoc(map, key, value)
+new_list = list + [value]        # fy_conj(seq, value)
+```
+
+```clojure
+; Clojure (persistent data structures)  ; libfyaml
+(count coll)                             ; fy_len(container)
+(get coll key)                           ; fy_get_item(container, key)
+(assoc map key value)                    ; fy_assoc(map, key, value)
+(dissoc map key)                         ; fy_dissoc(map, key)
+(conj seq value)                         ; fy_conj(seq, value)
 ```
 
 **Why polymorphic operations?**
 
-Instead of exposing type-specific functions like `fy_seq_handle_count()` or `fy_map_handle_lookup()`, the API provides a unified interface that works across all types. This matches Python's design where `len()` works on everything, `[]` indexing works on both lists and dicts, and mutation operations have consistent names.
+Instead of exposing type-specific functions like `fy_seq_handle_count()` or `fy_map_handle_lookup()`, the API provides a unified interface that works across all types. This matches how `len()` works on everything in Python, and how Clojure's persistent data structures provide uniform operations.
 
 **Benefits**:
-- **Simpler API**: Learn 7 operations instead of 14+
+- **Simpler API**: Learn a few core operations instead of dozens
 - **Natural code**: Write `fy_len(container)` regardless of type
 - **Type safety**: `_Generic` ensures correct dispatch at compile time
-- **Python-like**: Matches the ergonomics users expect
-- **Consistent mutations**: `fy_set_item()` works for both sequences and mappings
+- **Functional**: Immutable values enable thread-safe, predictable code
+- **Performance**: Structural sharing makes copies cheap
 
 ### Usage Examples
 
-**Building and mutating collections**:
+**Functional updates (immutable)**:
 
 ```c
-void demonstrate_mutations(void) {
-    // Create a mutable sequence
-    struct fy_generic_builder *gb = fy_generic_builder_create();
-    fy_seq_handle items = fy_generic_builder_create_sequence(gb);
+void demonstrate_immutable_updates(void) {
+    // Start with an immutable sequence
+    fy_generic items = fy_sequence("alice", "bob", "charlie");
+    fy_seq_handle seq1 = fy_get(items, fy_seq_invalid);
 
-    // Append items (like Python: list.append())
-    fy_append(items, fy_string("alice"));
-    fy_append(items, fy_string("bob"));
-    fy_append(items, fy_string("charlie"));
+    // Add an item - returns NEW sequence, original unchanged
+    fy_seq_handle seq2 = fy_conj(seq1, fy_string("dave"));
 
-    printf("Length: %zu\n", fy_len(items));  // 3
+    printf("Original: %zu items\n", fy_len(seq1));  // 3
+    printf("Modified: %zu items\n", fy_len(seq2));  // 4
 
-    // Insert at index (like Python: list.insert(1, value))
-    fy_insert(items, 1, fy_string("betty"));
+    // Update at index - returns NEW sequence
+    fy_seq_handle seq3 = fy_assoc_at(seq2, 1, fy_string("BOBBY"));
 
-    // Set item (like Python: items[2] = value)
-    fy_set_item(items, 2, fy_string("CHARLIE"));
+    // Both originals unchanged
+    printf("seq1[1]: %s\n", fy_string_get(fy_get_item(seq1, 1)));  // bob
+    printf("seq3[1]: %s\n", fy_string_get(fy_get_item(seq3, 1)));  // BOBBY
 
-    // Iterate
-    for (size_t i = 0; i < fy_len(items); i++) {
-        fy_generic item = fy_get_item(items, i);
-        printf("  [%zu] %s\n", i, fy_string_get(item));
-    }
-    // Output: alice, betty, CHARLIE, bob
-
-    // Delete item (like Python: del items[1])
-    fy_del_item(items, 1);
-
-    printf("After delete: %zu items\n", fy_len(items));  // 3
-
-    // Clear all (like Python: items.clear())
-    fy_clear(items);
-
-    printf("After clear: %zu items\n", fy_len(items));  // 0
-
-    fy_generic_builder_destroy(gb);
+    // Chain operations naturally
+    fy_seq_handle seq4 = fy_conj(fy_conj(seq1, fy_string("eve")), fy_string("frank"));
+    printf("Chained: %zu items\n", fy_len(seq4));  // 5
 }
 ```
 
-**Building and mutating mappings**:
+**Functional mapping updates**:
 
 ```c
-void demonstrate_map_mutations(void) {
-    // Create a mutable mapping
-    struct fy_generic_builder *gb = fy_generic_builder_create();
-    fy_map_handle config = fy_generic_builder_create_mapping(gb);
+void demonstrate_map_updates(void) {
+    // Start with an immutable mapping
+    fy_generic config = fy_mapping(
+        "host", "localhost",
+        "port", 8080,
+        "enabled", true
+    );
+    fy_map_handle map1 = fy_get(config, fy_map_invalid);
 
-    // Set items (like Python: dict[key] = value)
-    fy_set_item(config, "host", fy_string("localhost"));
-    fy_set_item(config, "port", fy_int(8080));
-    fy_set_item(config, "enabled", fy_bool(true));
+    // Associate new key - returns NEW map
+    fy_map_handle map2 = fy_assoc(map1, "timeout", fy_int(30));
 
-    printf("Config has %zu entries\n", fy_len(config));  // 3
+    printf("Original: %zu entries\n", fy_len(map1));  // 3
+    printf("Modified: %zu entries\n", fy_len(map2));  // 4
 
-    // Update existing item
-    fy_set_item(config, "port", fy_int(9090));
+    // Update existing key - returns NEW map
+    fy_map_handle map3 = fy_assoc(map1, "port", fy_int(9090));
 
-    // Get and print
-    fy_generic host = fy_get_item(config, "host");
-    fy_generic port = fy_get_item(config, "port");
+    // Originals unchanged
+    fy_generic port1 = fy_get_item(map1, "port");
+    fy_generic port3 = fy_get_item(map3, "port");
 
-    printf("Host: %s\n", fy_string_get(host));      // localhost
-    printf("Port: %lld\n", fy_int_get(port));       // 9090
+    printf("map1 port: %lld\n", fy_int_get(port1));  // 8080
+    printf("map3 port: %lld\n", fy_int_get(port3));  // 9090
 
-    // Delete item (like Python: del config['enabled'])
-    fy_del_item(config, "enabled");
+    // Dissociate key - returns NEW map without that key
+    fy_map_handle map4 = fy_dissoc(map1, "enabled");
 
-    printf("After delete: %zu entries\n", fy_len(config));  // 2
-
-    // Clear all
-    fy_clear(config);
-
-    fy_generic_builder_destroy(gb);
+    printf("After dissoc: %zu entries\n", fy_len(map4));  // 2
+    printf("Original still: %zu entries\n", fy_len(map1));  // 3 (unchanged)
 }
 ```
 
-**Python comparison**:
+**Comparison with functional languages**:
 
-```python
-# Python
-items = []
-items.append("alice")
-items.append("bob")
-items.insert(1, "betty")
-items[2] = "CHARLIE"
-del items[1]
-items.clear()
+```clojure
+; Clojure (persistent data structures)
+(def items ["alice" "bob" "charlie"])
+(def items2 (conj items "dave"))           ; Original unchanged
+(def items3 (assoc items 1 "BOBBY"))       ; Returns new vector
 
-config = {}
-config["host"] = "localhost"
-config["port"] = 8080
-config["port"] = 9090  # update
-del config["enabled"]
-config.clear()
+(def config {:host "localhost" :port 8080})
+(def config2 (assoc config :timeout 30))   ; Returns new map
+(def config3 (dissoc config :enabled))     ; Returns new map
 ```
 
 ```c
-// libfyaml - nearly identical!
-fy_seq_handle items = fy_generic_builder_create_sequence(gb);
-fy_append(items, fy_string("alice"));
-fy_append(items, fy_string("bob"));
-fy_insert(items, 1, fy_string("betty"));
-fy_set_item(items, 2, fy_string("CHARLIE"));
-fy_del_item(items, 1);
-fy_clear(items);
+// libfyaml - same semantics!
+fy_generic items = fy_sequence("alice", "bob", "charlie");
+fy_seq_handle items2 = fy_conj(items, fy_string("dave"));        // Original unchanged
+fy_seq_handle items3 = fy_assoc_at(items, 1, fy_string("BOBBY")); // Returns new
 
-fy_map_handle config = fy_generic_builder_create_mapping(gb);
-fy_set_item(config, "host", fy_string("localhost"));
-fy_set_item(config, "port", fy_int(8080));
-fy_set_item(config, "port", fy_int(9090));  // update
-fy_del_item(config, "enabled");
-fy_clear(config);
+fy_generic config = fy_mapping("host", "localhost", "port", 8080);
+fy_map_handle config2 = fy_assoc(config, "timeout", fy_int(30));  // Returns new map
+fy_map_handle config3 = fy_dissoc(config, "enabled");             // Returns new map
 ```
 
 **Python-like optional defaults**:
@@ -576,12 +553,11 @@ libfyaml exposes a minimal, polymorphic API that's all you need for working with
 - `fy_get_item(container, key)` - Index or lookup (sequences by index, mappings by key)
 - `fy_is_valid(v)` - Check validity (handles, generics)
 
-**Write operations (for mutable collections)**:
-- `fy_set_item(container, key, value)` - Set by index or key (Python: `container[key] = value`)
-- `fy_append(seq, value)` - Append to sequence (Python: `list.append(value)`)
-- `fy_insert(seq, index, value)` - Insert at index (Python: `list.insert(index, value)`)
-- `fy_del_item(container, key)` - Delete by index or key (Python: `del container[key]`)
-- `fy_clear(container)` - Remove all items (Python: `container.clear()`)
+**Functional operations (immutable - return new collections)**:
+- `fy_assoc(map, key, value)` - Associate key with value (returns new mapping)
+- `fy_dissoc(map, key)` - Dissociate key (returns new mapping without key)
+- `fy_conj(seq, value)` - Conjoin/append value (returns new sequence)
+- `fy_assoc_at(seq, index, value)` - Associate at index (returns new sequence)
 
 **Type-safe extraction**:
 - `fy_get(g, default)` - Extract with type-safe default (optional second parameter)
@@ -594,10 +570,13 @@ libfyaml exposes a minimal, polymorphic API that's all you need for working with
 **Construction**:
 - `fy_mapping(...)` - Create mapping (stack-allocated, immutable)
 - `fy_sequence(...)` - Create sequence (stack-allocated, immutable)
-- `fy_gb_mapping(gb, ...)` - Create mapping (heap-allocated, mutable)
-- `fy_gb_sequence(gb, ...)` - Create sequence (heap-allocated, mutable)
+- `fy_gb_mapping(gb, ...)` - Create mapping via builder (heap-allocated)
+- `fy_gb_sequence(gb, ...)` - Create sequence via builder (heap-allocated)
 
-That's it! Just **12 core operations** - the polymorphic operations eliminate the need to learn type-specific functions.
+**Key principle**: All values are **immutable**. Operations like `fy_assoc()` and `fy_conj()` return new collections without modifying the original. This enables:
+- **Thread safety**: Immutable values are safe to share across threads
+- **Predictability**: No action-at-a-distance bugs
+- **Structural sharing**: Updates are efficient through shared structure
 
 ### Construction
 
