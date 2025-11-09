@@ -780,7 +780,7 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 #define fy_generic_get_alias(_v) \
 	({ \
 		fy_generic __va = fy_generic_get_anchor((_v)); \
-		fy_genericp_get_string(&__va); \
+		fy_generic_get_string(__va); \
 	})
 
 #define fy_bool(_v)			((bool)(_v) ? fy_true : fy_false)
