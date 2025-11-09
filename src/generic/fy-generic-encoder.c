@@ -165,7 +165,9 @@ int fy_encode_generic_alias(struct fy_generic_encoder *fyge, fy_generic v)
 	const char *str;
 
 	str = fy_generic_get_alias(v);
-	assert(str);
+	if (!str || !*str)
+		return -1;
+
 	return fy_emit_eventf(fyge->emit, FYET_ALIAS, str);
 }
 
