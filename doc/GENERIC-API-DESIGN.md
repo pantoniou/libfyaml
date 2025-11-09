@@ -290,18 +290,22 @@ extern const fy_map_handle fy_map_invalid;
 
 ```c
 // Stack-allocated (no builder - immutable, structural sharing)
-fy_seq_handle seq1 = fy_get(items, fy_seq_invalid);
-fy_seq_handle seq2 = fy_conj(seq1, fy_string("new"));  // Returns new with sharing
+fy_seq_handle seq1 = fy_get(fy_sequence("a", "b"), fy_seq_invalid);
+fy_seq_handle seq2 = fy_conj(seq1, fy_string("c"));  // Returns new with sharing
 
-// Heap-allocated via builder (persistent)
+// Heap-allocated via builder (persistent beyond stack scope)
+// Builder automatically internalizes values when you use it!
 struct fy_generic_builder *gb = fy_generic_builder_create();
-fy_seq_handle seq1 = fy_generic_builder_create_sequence(gb);
-fy_seq_handle seq2 = fy_conj(gb, seq1, fy_string("new"));  // Returns new via builder
+
+fy_seq_handle seq3 = fy_get(fy_sequence("a", "b"), fy_seq_invalid);
+fy_seq_handle seq4 = fy_conj(gb, seq3, fy_string("c"));  // Builder internalizes
 
 // Same API, different allocation strategy!
-fy_map_handle map1 = fy_get(config, fy_map_invalid);
-fy_map_handle map2 = fy_assoc(map1, "key", fy_int(42));      // Stack
-fy_map_handle map3 = fy_assoc(gb, map1, "key", fy_int(42));  // Heap
+fy_map_handle map1 = fy_get(fy_mapping("key", 1), fy_map_invalid);
+fy_map_handle map2 = fy_assoc(map1, "key2", fy_int(42));     // Stack
+fy_map_handle map3 = fy_assoc(gb, map1, "key2", fy_int(42)); // Heap (internalized)
+
+fy_generic_builder_destroy(gb);
 ```
 
 **Immutability principle**:
@@ -381,25 +385,26 @@ void demonstrate_stack_allocated(void) {
 
 ```c
 void demonstrate_builder_allocated(void) {
-    // Heap-allocated via builder - persistent across scope
+    // Heap-allocated via builder - builder automatically internalizes
     struct fy_generic_builder *gb = fy_generic_builder_create();
 
-    fy_seq_handle seq1 = fy_generic_builder_create_sequence(gb);
+    // Start with stack-allocated sequence
+    fy_seq_handle seq1 = fy_get(fy_sequence("alice", "bob"), fy_seq_invalid);
 
-    // Add items using builder - same fy_conj() API!
-    fy_seq_handle seq2 = fy_conj(gb, seq1, fy_string("alice"));
-    fy_seq_handle seq3 = fy_conj(gb, seq2, fy_string("bob"));
-    fy_seq_handle seq4 = fy_conj(gb, seq3, fy_string("charlie"));
+    // Add items using builder - builder internalizes automatically!
+    fy_seq_handle seq2 = fy_conj(gb, seq1, fy_string("charlie"));
+    fy_seq_handle seq3 = fy_conj(gb, seq2, fy_string("dave"));
 
-    printf("Built sequence: %zu items\n", fy_len(seq4));  // 3
+    printf("Built sequence: %zu items\n", fy_len(seq3));  // 4
 
     // Update at index - still returns NEW sequence
-    fy_seq_handle seq5 = fy_assoc_at(gb, seq4, 1, fy_string("BOBBY"));
+    fy_seq_handle seq4 = fy_assoc_at(gb, seq3, 1, fy_string("BOBBY"));
 
     // Originals unchanged
-    printf("seq4[1]: %s\n", fy_string_get(fy_get_item(seq4, 1)));  // bob
-    printf("seq5[1]: %s\n", fy_string_get(fy_get_item(seq5, 1)));  // BOBBY
+    printf("seq3[1]: %s\n", fy_string_get(fy_get_item(seq3, 1)));  // bob
+    printf("seq4[1]: %s\n", fy_string_get(fy_get_item(seq4, 1)));  // BOBBY
 
+    // All values now managed by builder, persist beyond stack scope
     fy_generic_builder_destroy(gb);
 }
 ```
@@ -444,30 +449,31 @@ void demonstrate_map_updates_stack(void) {
 
 ```c
 void demonstrate_map_updates_builder(void) {
-    // Heap-allocated via builder
+    // Heap-allocated via builder - builder automatically internalizes
     struct fy_generic_builder *gb = fy_generic_builder_create();
 
-    // Build initial mapping
-    fy_map_handle map1 = fy_generic_builder_create_mapping(gb);
-    map1 = fy_assoc(gb, map1, "host", fy_string("localhost"));
-    map1 = fy_assoc(gb, map1, "port", fy_int(8080));
-    map1 = fy_assoc(gb, map1, "enabled", fy_bool(true));
+    // Start with stack-allocated mapping
+    fy_map_handle map1 = fy_get(
+        fy_mapping("host", "localhost", "port", 8080, "enabled", true),
+        fy_map_invalid
+    );
 
-    printf("Built: %zu entries\n", fy_len(map1));  // 3
+    printf("Initial: %zu entries\n", fy_len(map1));  // 3
 
-    // Same fy_assoc() API - just add builder as first arg!
+    // Builder automatically internalizes when you use it!
     fy_map_handle map2 = fy_assoc(gb, map1, "timeout", fy_int(30));
 
     printf("With timeout: %zu entries\n", fy_len(map2));  // 4
     printf("Original: %zu entries\n", fy_len(map1));      // 3 (unchanged)
 
-    // Update and dissociate
+    // Update and dissociate - all managed by builder
     fy_map_handle map3 = fy_assoc(gb, map1, "port", fy_int(9090));
     fy_map_handle map4 = fy_dissoc(gb, map1, "enabled");
 
     printf("Updated port: %zu entries\n", fy_len(map3));  // 3
     printf("Removed key: %zu entries\n", fy_len(map4));   // 2
 
+    // All values persist beyond stack scope, managed by builder
     fy_generic_builder_destroy(gb);
 }
 ```
