@@ -211,9 +211,10 @@ fy_generic_decoder_object_handle_merge_key_value(struct fy_generic_decoder *gd,
 		struct fy_generic_decoder_obj *gdo, fy_generic item)
 {
 	struct fy_parser *fyp;
-	const fy_generic *pairs, *items;
-	fy_generic *tmp_pairs = NULL;
-	fy_generic vk, vv;
+	const fy_generic *items;
+	const fy_generic_map_pair *pairs;
+	fy_generic_map_pair *tmp_pairs = NULL;
+	fy_generic vk;
 	size_t i, j, k, l, count, map_count, total_count = 0;
 	int rc;
 
@@ -229,11 +230,14 @@ fy_generic_decoder_object_handle_merge_key_value(struct fy_generic_decoder *gd,
 
 	if (fy_generic_get_type(item) == FYGT_MAPPING) {
 		pairs = fy_generic_mapping_get_pairs(item, &count);
-		count *= 2;
 		for (i = 0; i < count; i++) {
-			rc = fy_generic_item_append(&gdo->items, &gdo->count, &gdo->alloc, pairs[i]);
+			rc = fy_generic_item_append(&gdo->items, &gdo->count, &gdo->alloc, pairs[i].key);
 			fyp_error_check(fyp, !rc, err_out,
-					"fy_generic_item_append failed\n");
+					"fy_generic_item_append (key) failed\n");
+
+			rc = fy_generic_item_append(&gdo->items, &gdo->count, &gdo->alloc, pairs[i].value);
+			fyp_error_check(fyp, !rc, err_out,
+					"fy_generic_item_append (value) failed\n");
 		}
 
 		return 0;
@@ -258,9 +262,9 @@ fy_generic_decoder_object_handle_merge_key_value(struct fy_generic_decoder *gd,
 
 	/* allocate worst case */
 	if (total_count <= 32)
-		tmp_pairs = alloca(sizeof(*tmp_pairs) * total_count * 2);
+		tmp_pairs = alloca(sizeof(*tmp_pairs) * total_count);
 	else {
-		tmp_pairs = malloc(sizeof(*tmp_pairs) * total_count * 2);
+		tmp_pairs = malloc(sizeof(*tmp_pairs) * total_count);
 		fyp_error_check(fyp, tmp_pairs, err_out,
 				"malloc() failed");
 	}
@@ -269,12 +273,11 @@ fy_generic_decoder_object_handle_merge_key_value(struct fy_generic_decoder *gd,
 	for (j = 0; j < map_count; j++) {
 		pairs = fy_generic_mapping_get_pairs(items[j], &count);
 		for (i = 0; i < count; i++) {
-			vk = pairs[i * 2];
-			vv = pairs[i * 2 + 1];
+			vk = pairs[i].key;
 
 			/* check if key already exists */
 			for (l = 0; l < k; l++) {
-				if (fy_generic_compare(vk, tmp_pairs[l * 2]) == 0)
+				if (fy_generic_compare(vk, tmp_pairs[l].key) == 0)
 					break;
 			}
 			/* already exists in tmp map, skip */
@@ -282,17 +285,20 @@ fy_generic_decoder_object_handle_merge_key_value(struct fy_generic_decoder *gd,
 				continue;
 
 			assert(k < total_count);
-			tmp_pairs[k * 2] = vk;
-			tmp_pairs[k * 2 + 1] = vv;
+			tmp_pairs[k] = pairs[i];
 			k++;
 		}
 	}
 
 	/* ok, insert whatever is in tmp_pairs to the current map */
-	for (l = 0; l < k * 2; l++) {
-		rc = fy_generic_item_append(&gdo->items, &gdo->count, &gdo->alloc, tmp_pairs[l]);
+	for (l = 0; l < k; l++) {
+		rc = fy_generic_item_append(&gdo->items, &gdo->count, &gdo->alloc, tmp_pairs[l].key);
 		fyp_error_check(fyp, !rc, err_out,
-				"fy_generic_item_append() failed");
+				"fy_generic_item_append() (key) failed");
+
+		rc = fy_generic_item_append(&gdo->items, &gdo->count, &gdo->alloc, tmp_pairs[l].value);
+		fyp_error_check(fyp, !rc, err_out,
+				"fy_generic_item_append() (value) failed");
 	}
 
 	if (total_count > 32)
@@ -731,9 +737,6 @@ static int fy_generic_decoder_anchor_register(struct fy_generic_decoder *gd, fy_
 	fyp_error_check(fyp, fy_generic_is_string(anchor), err_out,
 			"anchor is not a string");
 
-	fyp_error_check(fyp, !fy_generic_is_invalid(content), err_out,
-			"content is invalid");
-
 	ga = malloc(sizeof(*ga));
 	fyp_error_check(fyp, ga, err_out,
 			"malloc() failed");
@@ -799,7 +802,7 @@ static void fy_generic_decoder_anchor_collection_ends(struct fy_generic_decoder 
 		if (ga->nest > 0)
 			continue;
 
-		assert(fy_generic_is_valid(ga->content));
+		assert(fy_generic_is_invalid(ga->content));
 
 		/* move from collecting to complete list */
 		fy_generic_anchor_list_del(&gd->collecting_anchors, ga);

@@ -436,9 +436,18 @@ typedef struct fy_generic_sequence {
 	fy_generic items[];
 } fy_generic_sequence;
 
+// do not change the layout!
+typedef union fy_generic_map_pair {
+	struct {
+		fy_generic key;
+		fy_generic value;
+	};
+	fy_generic items[2];
+} fy_generic_map_pair;
+
 typedef struct fy_generic_mapping {
 	size_t count;
-	fy_generic pairs[];
+	fy_generic_map_pair pairs[];
 } fy_generic_mapping;
 
 static inline bool fy_generic_is_valid(const fy_generic v)
@@ -1660,7 +1669,8 @@ static inline fy_generic fy_generic_sequence_get_alias_item(fy_generic seq, size
 			FY_CPP_VA_COUNT(__VA_ARGS__) / 2, \
 			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__))
 
-static inline const fy_generic *fy_generic_mapping_get_pairs(fy_generic map, size_t *countp)
+static inline const fy_generic_map_pair *
+fy_generic_mapping_get_pairs(fy_generic map, size_t *countp)
 {
 	const fy_generic_mapping *p;
 
@@ -1700,18 +1710,18 @@ static inline size_t fy_generic_mapping_get_pair_count(fy_generic map)
 static inline const fy_generic fy_generic_mapping_get_value_index(fy_generic map, fy_generic key, size_t *idxp)
 {
 	const fy_generic_mapping *p;
-	const fy_generic *pair;
+	const fy_generic_map_pair *pairs;
 	size_t i;
 
 	if (fy_generic_is_indirect(map))
 		map = fy_generic_indirect_get_value(map);
 	p = fy_generic_resolve_collection_ptr(map);
-	pair = p->pairs;
-	for (i = 0; i < p->count; i++, pair += 2) {
-		if (fy_generic_compare(key, pair[0]) == 0) {
+	pairs = p->pairs;
+	for (i = 0; i < p->count; i++) {
+		if (fy_generic_compare(key, pairs[i].key) == 0) {
 			if (idxp)
 				*idxp = i;
-			return pair[1];
+			return pairs[i].value;
 		}
 	}
 	if (idxp)

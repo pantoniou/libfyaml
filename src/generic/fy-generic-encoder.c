@@ -132,7 +132,7 @@ err_out:
 
 int fy_encode_generic_mapping(struct fy_generic_encoder *fyge, const char *anchor, const char *tag, fy_generic v)
 {
-	const fy_generic *pairs;
+	const fy_generic_map_pair *pairs;
 	size_t i, count;
 	int rc;
 
@@ -143,9 +143,11 @@ int fy_encode_generic_mapping(struct fy_generic_encoder *fyge, const char *ancho
 		goto err_out;
 
 	pairs = fy_generic_mapping_get_pairs(v, &count);
-	count *= 2;
 	for (i = 0; i < count; i++) {
-		rc = fy_encode_generic(fyge, pairs[i]);
+		rc = fy_encode_generic(fyge, pairs[i].key);
+		if (rc)
+			goto err_out;
+		rc = fy_encode_generic(fyge, pairs[i].value);
 		if (rc)
 			goto err_out;
 	}
@@ -163,6 +165,7 @@ int fy_encode_generic_alias(struct fy_generic_encoder *fyge, fy_generic v)
 	const char *str;
 
 	str = fy_generic_get_alias(v);
+	assert(str);
 	return fy_emit_eventf(fyge->emit, FYET_ALIAS, str);
 }
 

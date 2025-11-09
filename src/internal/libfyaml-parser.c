@@ -4140,6 +4140,7 @@ void fy_generic_print_primitive(FILE *fp, fy_generic v)
 	const char *sv;
 	fy_generic iv;
 	fy_generic key, value;
+	const fy_generic_map_pair *pair;
 	const fy_generic *items;
 	size_t i, count, slen;
 
@@ -4201,11 +4202,11 @@ void fy_generic_print_primitive(FILE *fp, fy_generic v)
 		break;
 
 	case FYGT_MAPPING:
-		items = fy_generic_mapping_get_pairs(v, &count);
+		pair = fy_generic_mapping_get_pairs(v, &count);
 		fprintf(fp, "[");
 		for (i = 0; i < count; i++) {
-			key = items[i * 2];
-			value = items[i * 2 + 1];
+			key = pair[i].key;
+			value = pair[i].value;
 			fy_generic_print_primitive(fp, key);
 			fprintf(fp, ": ");
 			fy_generic_print_primitive(fp, value);
