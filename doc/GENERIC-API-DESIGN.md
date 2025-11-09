@@ -243,19 +243,65 @@ extern const fy_map_handle fy_map_invalid;
 
 **Functional operations** (immutable - return new collections):
 ```c
+// Polymorphic operations - work with or without builder!
+
 // fy_assoc() - associate key with value (returns new mapping)
-// Like Clojure's assoc - functional update
-#define fy_assoc(map, key, value) fy_map_handle_assoc(map, key, value)
+#define fy_assoc(...) \
+    FY_ASSOC_SELECT(__VA_ARGS__)(__VA_ARGS__)
+
+#define FY_ASSOC_SELECT(...) \
+    _Generic((FY_FIRST_ARG(__VA_ARGS__)), \
+        struct fy_generic_builder *: fy_gb_map_handle_assoc, \
+        fy_map_handle: fy_map_handle_assoc \
+    )
 
 // fy_dissoc() - dissociate key (returns new mapping without key)
-#define fy_dissoc(map, key) fy_map_handle_dissoc(map, key)
+#define fy_dissoc(...) \
+    FY_DISSOC_SELECT(__VA_ARGS__)(__VA_ARGS__)
+
+#define FY_DISSOC_SELECT(...) \
+    _Generic((FY_FIRST_ARG(__VA_ARGS__)), \
+        struct fy_generic_builder *: fy_gb_map_handle_dissoc, \
+        fy_map_handle: fy_map_handle_dissoc \
+    )
 
 // fy_conj() - conjoin/append value (returns new sequence)
-// Like Clojure's conj - adds to collection
-#define fy_conj(seq, value) fy_seq_handle_conj(seq, value)
+#define fy_conj(...) \
+    FY_CONJ_SELECT(__VA_ARGS__)(__VA_ARGS__)
+
+#define FY_CONJ_SELECT(...) \
+    _Generic((FY_FIRST_ARG(__VA_ARGS__)), \
+        struct fy_generic_builder *: fy_gb_seq_handle_conj, \
+        fy_seq_handle: fy_seq_handle_conj \
+    )
 
 // fy_assoc_at() - associate at index (returns new sequence)
-#define fy_assoc_at(seq, index, value) fy_seq_handle_assoc_at(seq, index, value)
+#define fy_assoc_at(...) \
+    FY_ASSOC_AT_SELECT(__VA_ARGS__)(__VA_ARGS__)
+
+#define FY_ASSOC_AT_SELECT(...) \
+    _Generic((FY_FIRST_ARG(__VA_ARGS__)), \
+        struct fy_generic_builder *: fy_gb_seq_handle_assoc_at, \
+        fy_seq_handle: fy_seq_handle_assoc_at \
+    )
+```
+
+**Usage patterns**:
+
+```c
+// Stack-allocated (no builder - immutable, structural sharing)
+fy_seq_handle seq1 = fy_get(items, fy_seq_invalid);
+fy_seq_handle seq2 = fy_conj(seq1, fy_string("new"));  // Returns new with sharing
+
+// Heap-allocated via builder (persistent)
+struct fy_generic_builder *gb = fy_generic_builder_create();
+fy_seq_handle seq1 = fy_generic_builder_create_sequence(gb);
+fy_seq_handle seq2 = fy_conj(gb, seq1, fy_string("new"));  // Returns new via builder
+
+// Same API, different allocation strategy!
+fy_map_handle map1 = fy_get(config, fy_map_invalid);
+fy_map_handle map2 = fy_assoc(map1, "key", fy_int(42));      // Stack
+fy_map_handle map3 = fy_assoc(gb, map1, "key", fy_int(42));  // Heap
 ```
 
 **Immutability principle**:
@@ -304,11 +350,11 @@ Instead of exposing type-specific functions like `fy_seq_handle_count()` or `fy_
 
 ### Usage Examples
 
-**Functional updates (immutable)**:
+**Functional updates (immutable) - Stack-allocated**:
 
 ```c
-void demonstrate_immutable_updates(void) {
-    // Start with an immutable sequence
+void demonstrate_stack_allocated(void) {
+    // Stack-allocated (temporary) - uses structural sharing
     fy_generic items = fy_sequence("alice", "bob", "charlie");
     fy_seq_handle seq1 = fy_get(items, fy_seq_invalid);
 
@@ -331,11 +377,38 @@ void demonstrate_immutable_updates(void) {
 }
 ```
 
-**Functional mapping updates**:
+**Functional updates with builder - Heap-allocated**:
 
 ```c
-void demonstrate_map_updates(void) {
-    // Start with an immutable mapping
+void demonstrate_builder_allocated(void) {
+    // Heap-allocated via builder - persistent across scope
+    struct fy_generic_builder *gb = fy_generic_builder_create();
+
+    fy_seq_handle seq1 = fy_generic_builder_create_sequence(gb);
+
+    // Add items using builder - same fy_conj() API!
+    fy_seq_handle seq2 = fy_conj(gb, seq1, fy_string("alice"));
+    fy_seq_handle seq3 = fy_conj(gb, seq2, fy_string("bob"));
+    fy_seq_handle seq4 = fy_conj(gb, seq3, fy_string("charlie"));
+
+    printf("Built sequence: %zu items\n", fy_len(seq4));  // 3
+
+    // Update at index - still returns NEW sequence
+    fy_seq_handle seq5 = fy_assoc_at(gb, seq4, 1, fy_string("BOBBY"));
+
+    // Originals unchanged
+    printf("seq4[1]: %s\n", fy_string_get(fy_get_item(seq4, 1)));  // bob
+    printf("seq5[1]: %s\n", fy_string_get(fy_get_item(seq5, 1)));  // BOBBY
+
+    fy_generic_builder_destroy(gb);
+}
+```
+
+**Functional mapping updates - Stack-allocated**:
+
+```c
+void demonstrate_map_updates_stack(void) {
+    // Start with an immutable mapping (stack-allocated)
     fy_generic config = fy_mapping(
         "host", "localhost",
         "port", 8080,
@@ -364,6 +437,38 @@ void demonstrate_map_updates(void) {
 
     printf("After dissoc: %zu entries\n", fy_len(map4));  // 2
     printf("Original still: %zu entries\n", fy_len(map1));  // 3 (unchanged)
+}
+```
+
+**Functional mapping updates - Heap-allocated with builder**:
+
+```c
+void demonstrate_map_updates_builder(void) {
+    // Heap-allocated via builder
+    struct fy_generic_builder *gb = fy_generic_builder_create();
+
+    // Build initial mapping
+    fy_map_handle map1 = fy_generic_builder_create_mapping(gb);
+    map1 = fy_assoc(gb, map1, "host", fy_string("localhost"));
+    map1 = fy_assoc(gb, map1, "port", fy_int(8080));
+    map1 = fy_assoc(gb, map1, "enabled", fy_bool(true));
+
+    printf("Built: %zu entries\n", fy_len(map1));  // 3
+
+    // Same fy_assoc() API - just add builder as first arg!
+    fy_map_handle map2 = fy_assoc(gb, map1, "timeout", fy_int(30));
+
+    printf("With timeout: %zu entries\n", fy_len(map2));  // 4
+    printf("Original: %zu entries\n", fy_len(map1));      // 3 (unchanged)
+
+    // Update and dissociate
+    fy_map_handle map3 = fy_assoc(gb, map1, "port", fy_int(9090));
+    fy_map_handle map4 = fy_dissoc(gb, map1, "enabled");
+
+    printf("Updated port: %zu entries\n", fy_len(map3));  // 3
+    printf("Removed key: %zu entries\n", fy_len(map4));   // 2
+
+    fy_generic_builder_destroy(gb);
 }
 ```
 
