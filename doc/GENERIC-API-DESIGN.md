@@ -212,6 +212,7 @@ extern const fy_map_handle fy_map_invalid;
 
 **The public API** - these are the only operations external users need:
 
+**Read operations**:
 ```c
 // fy_len() - works on sequences, mappings, strings, and fy_generic
 #define fy_len(v) \
@@ -240,17 +241,178 @@ extern const fy_map_handle fy_map_invalid;
     )(v)
 ```
 
+**Write operations** (for mutable collections):
+```c
+// fy_set_item() - set item by index (sequence) or key (mapping)
+#define fy_set_item(container, key, value) \
+    _Generic((container), \
+        fy_seq_handle: fy_seq_handle_set, \
+        fy_map_handle: fy_map_handle_set \
+    )(container, key, value)
+
+// fy_append() - append to sequence (Python: list.append())
+#define fy_append(seq, value) fy_seq_handle_append(seq, value)
+
+// fy_del_item() - remove item by index or key (Python: del container[key])
+#define fy_del_item(container, key) \
+    _Generic((container), \
+        fy_seq_handle: fy_seq_handle_del, \
+        fy_map_handle: fy_map_handle_del \
+    )(container, key)
+
+// fy_clear() - remove all items (Python: container.clear())
+#define fy_clear(container) \
+    _Generic((container), \
+        fy_seq_handle: fy_seq_handle_clear, \
+        fy_map_handle: fy_map_handle_clear \
+    )(container)
+
+// fy_insert() - insert at index (Python: list.insert())
+#define fy_insert(seq, index, value) fy_seq_handle_insert(seq, index, value)
+```
+
+**Python equivalence**:
+
+```python
+# Python                    # libfyaml
+len(container)             # fy_len(container)
+container[key]             # fy_get_item(container, key)
+container[key] = value     # fy_set_item(container, key, value)
+del container[key]         # fy_del_item(container, key)
+container.clear()          # fy_clear(container)
+list.append(value)         # fy_append(seq, value)
+list.insert(index, value)  # fy_insert(seq, index, value)
+```
+
 **Why polymorphic operations?**
 
-Instead of exposing type-specific functions like `fy_seq_handle_count()` or `fy_map_handle_lookup()`, the API provides a unified interface that works across all types. This matches Python's design where `len()` works on everything.
+Instead of exposing type-specific functions like `fy_seq_handle_count()` or `fy_map_handle_lookup()`, the API provides a unified interface that works across all types. This matches Python's design where `len()` works on everything, `[]` indexing works on both lists and dicts, and mutation operations have consistent names.
 
 **Benefits**:
-- **Simpler API**: Learn 3 operations instead of 6+
+- **Simpler API**: Learn 7 operations instead of 14+
 - **Natural code**: Write `fy_len(container)` regardless of type
 - **Type safety**: `_Generic` ensures correct dispatch at compile time
 - **Python-like**: Matches the ergonomics users expect
+- **Consistent mutations**: `fy_set_item()` works for both sequences and mappings
 
 ### Usage Examples
+
+**Building and mutating collections**:
+
+```c
+void demonstrate_mutations(void) {
+    // Create a mutable sequence
+    struct fy_generic_builder *gb = fy_generic_builder_create();
+    fy_seq_handle items = fy_generic_builder_create_sequence(gb);
+
+    // Append items (like Python: list.append())
+    fy_append(items, fy_string("alice"));
+    fy_append(items, fy_string("bob"));
+    fy_append(items, fy_string("charlie"));
+
+    printf("Length: %zu\n", fy_len(items));  // 3
+
+    // Insert at index (like Python: list.insert(1, value))
+    fy_insert(items, 1, fy_string("betty"));
+
+    // Set item (like Python: items[2] = value)
+    fy_set_item(items, 2, fy_string("CHARLIE"));
+
+    // Iterate
+    for (size_t i = 0; i < fy_len(items); i++) {
+        fy_generic item = fy_get_item(items, i);
+        printf("  [%zu] %s\n", i, fy_string_get(item));
+    }
+    // Output: alice, betty, CHARLIE, bob
+
+    // Delete item (like Python: del items[1])
+    fy_del_item(items, 1);
+
+    printf("After delete: %zu items\n", fy_len(items));  // 3
+
+    // Clear all (like Python: items.clear())
+    fy_clear(items);
+
+    printf("After clear: %zu items\n", fy_len(items));  // 0
+
+    fy_generic_builder_destroy(gb);
+}
+```
+
+**Building and mutating mappings**:
+
+```c
+void demonstrate_map_mutations(void) {
+    // Create a mutable mapping
+    struct fy_generic_builder *gb = fy_generic_builder_create();
+    fy_map_handle config = fy_generic_builder_create_mapping(gb);
+
+    // Set items (like Python: dict[key] = value)
+    fy_set_item(config, "host", fy_string("localhost"));
+    fy_set_item(config, "port", fy_int(8080));
+    fy_set_item(config, "enabled", fy_bool(true));
+
+    printf("Config has %zu entries\n", fy_len(config));  // 3
+
+    // Update existing item
+    fy_set_item(config, "port", fy_int(9090));
+
+    // Get and print
+    fy_generic host = fy_get_item(config, "host");
+    fy_generic port = fy_get_item(config, "port");
+
+    printf("Host: %s\n", fy_string_get(host));      // localhost
+    printf("Port: %lld\n", fy_int_get(port));       // 9090
+
+    // Delete item (like Python: del config['enabled'])
+    fy_del_item(config, "enabled");
+
+    printf("After delete: %zu entries\n", fy_len(config));  // 2
+
+    // Clear all
+    fy_clear(config);
+
+    fy_generic_builder_destroy(gb);
+}
+```
+
+**Python comparison**:
+
+```python
+# Python
+items = []
+items.append("alice")
+items.append("bob")
+items.insert(1, "betty")
+items[2] = "CHARLIE"
+del items[1]
+items.clear()
+
+config = {}
+config["host"] = "localhost"
+config["port"] = 8080
+config["port"] = 9090  # update
+del config["enabled"]
+config.clear()
+```
+
+```c
+// libfyaml - nearly identical!
+fy_seq_handle items = fy_generic_builder_create_sequence(gb);
+fy_append(items, fy_string("alice"));
+fy_append(items, fy_string("bob"));
+fy_insert(items, 1, fy_string("betty"));
+fy_set_item(items, 2, fy_string("CHARLIE"));
+fy_del_item(items, 1);
+fy_clear(items);
+
+fy_map_handle config = fy_generic_builder_create_mapping(gb);
+fy_set_item(config, "host", fy_string("localhost"));
+fy_set_item(config, "port", fy_int(8080));
+fy_set_item(config, "port", fy_int(9090));  // update
+fy_del_item(config, "enabled");
+fy_clear(config);
+```
 
 **Python-like optional defaults**:
 ```c
@@ -409,10 +571,17 @@ const char *db_host = fy_map_get(
 
 libfyaml exposes a minimal, polymorphic API that's all you need for working with generic values:
 
-**Core operations (work on everything)**:
+**Read operations (work on everything)**:
 - `fy_len(v)` - Get length/count (sequences, mappings, strings)
 - `fy_get_item(container, key)` - Index or lookup (sequences by index, mappings by key)
 - `fy_is_valid(v)` - Check validity (handles, generics)
+
+**Write operations (for mutable collections)**:
+- `fy_set_item(container, key, value)` - Set by index or key (Python: `container[key] = value`)
+- `fy_append(seq, value)` - Append to sequence (Python: `list.append(value)`)
+- `fy_insert(seq, index, value)` - Insert at index (Python: `list.insert(index, value)`)
+- `fy_del_item(container, key)` - Delete by index or key (Python: `del container[key]`)
+- `fy_clear(container)` - Remove all items (Python: `container.clear()`)
 
 **Type-safe extraction**:
 - `fy_get(g, default)` - Extract with type-safe default (optional second parameter)
@@ -423,12 +592,12 @@ libfyaml exposes a minimal, polymorphic API that's all you need for working with
 - `fy_is_*()` - Type predicates (`fy_is_map`, `fy_is_seq`, `fy_is_string`, etc.)
 
 **Construction**:
-- `fy_mapping(...)` - Create mapping (stack-allocated)
-- `fy_sequence(...)` - Create sequence (stack-allocated)
-- `fy_gb_mapping(gb, ...)` - Create mapping (heap-allocated)
-- `fy_gb_sequence(gb, ...)` - Create sequence (heap-allocated)
+- `fy_mapping(...)` - Create mapping (stack-allocated, immutable)
+- `fy_sequence(...)` - Create sequence (stack-allocated, immutable)
+- `fy_gb_mapping(gb, ...)` - Create mapping (heap-allocated, mutable)
+- `fy_gb_sequence(gb, ...)` - Create sequence (heap-allocated, mutable)
 
-That's it! The polymorphic operations eliminate the need to learn type-specific functions.
+That's it! Just **12 core operations** - the polymorphic operations eliminate the need to learn type-specific functions.
 
 ### Construction
 
