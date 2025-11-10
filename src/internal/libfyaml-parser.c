@@ -4988,8 +4988,15 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	{
 		fy_generic v;
+		bool b;
 		int i;
+		float f;
 		const char *s;
+
+		(void)b;
+		(void)i;
+		(void)f;
+		(void)s;
 
 		v = fy_int(100);
 		i = fy_generic_get_default(v, 101);
@@ -5001,11 +5008,79 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 		v = fy_string("This is a long string");
 		s = fy_generic_get_default(v, "default-string");
-		printf("i = fy_generic_get_default(v, \"default-string\") = %s\n", s);
+		printf("(\"This is a long string\") i = fy_generic_get_default(v, \"default-string\") = %s\n", s);
 
 		v = fy_string("This");
 		s = fy_generic_get_default(v, "default-string");
-		printf("i = fy_generic_get_default(v, \"default-string\") = %s\n", s);
+		printf("(\"This\") i = fy_generic_get_default(v, \"default-string\") = %s\n", s);
+
+		fy_generic seq = fy_sequence(true, 100, 10.1f, "short", "this is long");
+		printf("source seq:\n");
+		fy_generic_emit_default(seq);
+
+		b = fy_generic_sequence_get_default(seq, 0, (_Bool)false);
+		printf("[0] b = fy_generic_get_sequence_get_default(seq, 0, false) = %s\n", b ? "true" : "false");
+
+		i = fy_generic_sequence_get_default(seq, 0, -1);
+		printf("[0] i = fy_generic_get_sequence_get_default(seq, 0, -1) = %d\n", i);
+
+		i = fy_generic_sequence_get_default(seq, 1, -1);
+		printf("[0] i = fy_generic_get_sequence_get_default(seq, 1, -1) = %d\n", i);
+
+		f = fy_generic_sequence_get_default(seq, 2, 0.0f);
+		printf("[0] i = fy_generic_get_sequence_get_default(seq, 2, 0.0f) = %f\n", f);
+
+		s = fy_generic_sequence_get_default(seq, 3, "");
+		printf("[0] i = fy_generic_get_sequence_get_default(seq, 3, \"\") = %s\n", s);
+
+		s = fy_generic_sequence_get_default(seq, 4, "");
+		printf("[0] i = fy_generic_get_sequence_get_default(seq, 4, \"\") = %s\n", s);
+
+		i = fy_generic_get_type_default(int);
+		printf("fy_generic_get_type_default(int) = %d\n", i);
+		s = fy_generic_get_type_default(const char *);
+		printf("fy_generic_get_type_default(const char *) = \"%s\"\n", s);
+
+		fy_generic vv;
+
+		vv = fy_to_generic(10);
+		i = fy_generic_get(vv, int);
+		printf("fy_to_generic(10) i = %d\n", i);
+
+		vv = fy_to_generic("Hello");
+		i = fy_generic_get(vv, int);
+		printf("fy_to_generic(\"Hello\") i = %d\n", i);
+
+		fy_generic map = fy_mapping("Hello", 100, "Long key", true, "str", "indeed", "long-string", "this is what it is", "string", "wha?");
+		printf("source map:\n");
+		fy_generic_emit_default(map);
+
+		i = fy_generic_mapping_get_default(map, "Hello", -1);
+		printf("i = fy_generic_mapping_get_default(map, \"Hello\", -1) = %d\n", i);
+
+		s = fy_generic_mapping_get_default(map, "does not exist", (char *)NULL);
+		printf("s = fy_generic_mapping_get_default(map, \"does not exist\", -1) = %s\n", s);
+
+		s = fy_generic_mapping_get_default(map, "str", (char *)NULL);
+		printf("s = fy_generic_mapping_get_default(map, \"str\", NULL) = %s\n", s);
+
+		s = fy_get_default(map, "str", (char *)NULL);
+		printf("s = fy_get_default(map, \"string\", (char *)NULL) = %s\n", s);
+
+		s = fy_get_default(map, "long-string", (char *)NULL);
+		printf("s = fy_get_default(map, \"long-string\", (char *)NULL) = %s\n", s);
+
+		s = fy_get_default(map, "string", (char *)NULL);
+		printf("s = fy_get_default(map, \"string\", (char *)NULL) = %s\n", s);
+
+		seq = fy_sequence(true, 100, 10.1f, "short", "this is long");
+		printf("source seq:\n");
+		fy_generic_emit_default(seq);
+
+		size_t idx = fy_generic_get_default_coerse(3, LLONG_MAX);
+		printf("idx=%zu\n", idx);
+		s = fy_get_default(seq, 3, (char *)NULL);
+		printf("[0] i = fy_get_default(seq, 3, NULL) = %s\n", s);
 
 	}
 
