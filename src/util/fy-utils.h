@@ -369,4 +369,11 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
  * printf("sum=%d\n", sum);
  */
 
+#define fy_alloca_align(_sz, _align) \
+	({ \
+		const size_t __sz = (_sz); \
+	 	const size_t __align = (_align); \
+		__align <= sizeof(max_align_t) ? alloca(__sz) : fy_ptr_align(alloca(__sz + __align - 1), __align); \
+	})
+
 #endif
