@@ -5084,6 +5084,28 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	}
 
+	{
+		fy_generic seq = fy_sequence(10, true, "Hello there", fy_sequence(-1, -2));
+		fy_generic_emit_default(seq);
+
+		fy_generic_sequence_handle seqh = fy_generic_sequence_to_handle(seq);
+		fy_generic_emit_default(fy_to_generic(seqh));
+
+		fy_generic v;
+		v = fy_get_default(seq, 3, fy_null);
+		printf("v.v=%p\n", (void *)v.v);
+		fy_generic_emit_default(v);
+
+		seqh = fy_get_default(seq, 3, (fy_generic_sequence_handle)NULL);
+		printf("seqh=%p\n", seqh);
+		fy_generic_emit_default(fy_to_generic(seqh));
+
+		seqh = fy_get_default(seq, 4, (fy_generic_sequence_handle)NULL);
+		printf("seqh=%p\n", seqh);
+		fy_generic_emit_default(fy_to_generic(seqh));
+
+	}
+
 	return 0;
 }
 

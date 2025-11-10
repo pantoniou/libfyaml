@@ -20,6 +20,7 @@
 #include <math.h>
 #include <stdarg.h>
 #include <limits.h>
+#include <stddef.h>
 
 #include "fy-endian.h"
 #include "fy-utils.h"
@@ -443,7 +444,7 @@ static inline fy_generic fy_generic_get_tag(fy_generic v)
 typedef struct fy_generic_sequence {
 	size_t count;
 	fy_generic items[];
-} fy_generic_sequence;
+} fy_generic_sequence FY_GENERIC_CONTAINER_ALIGNMENT;
 
 // do not change the layout!
 typedef union fy_generic_map_pair {
@@ -457,24 +458,18 @@ typedef union fy_generic_map_pair {
 typedef struct fy_generic_mapping {
 	size_t count;
 	fy_generic_map_pair pairs[];
-} fy_generic_mapping;
-
-typedef struct fy_generic_sequence_handle {
-	const fy_generic_sequence *seq;
-} fy_generic_sequence_handle;
-
-typedef struct fy_generic_map_pair_handle {
-	const fy_generic_map_pair *pair;
-} fy_generic_map_pair_handle;
-
-typedef struct fy_generic_mapping_handle {
-	const fy_generic_mapping *map;
-} fy_generic_mappping_handle;
+} fy_generic_mapping FY_GENERIC_CONTAINER_ALIGNMENT;
 
 typedef struct fy_generic_sized_string {
 	const char *data;
 	size_t size;
-} fy_generic_sized_string;
+} fy_generic_sized_string FY_GENERIC_CONTAINER_ALIGNMENT;
+
+/* wrap into handles */
+typedef const fy_generic_sequence *fy_generic_sequence_handle;
+typedef const fy_generic_mapping *fy_generic_mapping_handle;
+typedef const fy_generic_map_pair *fy_generic_map_pair_handle;
+typedef const fy_generic_sized_string *fy_generic_sized_string_handle;
 
 static inline bool fy_generic_is_valid(const fy_generic v)
 {
@@ -752,7 +747,8 @@ static inline double fy_genericp_get_double(const fy_generic *vp)
 
 #define FY_GENERIC_GET_INPLACE_STRING(_v)						\
 	({										\
-		fy_generic *___vp = alloca(sizeof(fy_generic));				\
+		fy_generic *___vp = fy_alloca_align(sizeof(fy_generic), 		\
+					FY_GENERIC_SCALAR_ALIGN);			\
 		*___vp = (_v);								\
 		(const uint8_t *)___vp + FY_INPLACE_STRING_ADV;				\
 	})
@@ -828,7 +824,8 @@ fy_genericp_get_string_no_check(const fy_generic *vp)
 			if (fy_generic_is_indirect(*__vp)) {					\
 				__vfinal = fy_generic_indirect_get_value(*__vp);		\
 				if ((__vfinal.v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) {	\
-					__vpp = alloca(sizeof(*__vpp));				\
+					__vpp = fy_alloca_align(sizeof(*__vpp), 		\
+							FY_GENERIC_SCALAR_ALIGN	);		\
 					*__vpp = __vfinal;					\
 					__vp = __vpp;						\
 				} else								\
@@ -867,7 +864,7 @@ fy_genericp_get_string_no_check(const fy_generic *vp)
 		} else {									\
 			__v = fy_generic_indirect_get_value(__v);				\
 			if ((__v.v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) {		\
-				__vp = alloca(sizeof(*__vp));					\
+				__vp = fy_alloca_align(sizeof(*__vp), FY_GENERIC_SCALAR_ALIGN);	\
 				*__vp = __v;							\
 			} else 									\
 				__vp = &__v;							\
@@ -928,7 +925,7 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 		if (__v >= FYGT_INT_INPLACE_MIN && __v <= FYGT_INT_INPLACE_MAX)			\
 			_r = (__v << FY_INT_INPLACE_SHIFT) | FY_INT_INPLACE_V;			\
 		else {										\
-			__vp = alloca(sizeof(*__vp));						\
+			__vp = fy_alloca_align(sizeof(*__vp), FY_GENERIC_SCALAR_ALIGN);		\
 			assert(((uintptr_t)__vp & FY_INPLACE_TYPE_MASK) == 0);			\
 			*__vp = __v;								\
 			_r = (fy_generic_value)__vp | FY_INT_OUTPLACE_V;			\
@@ -1068,9 +1065,20 @@ static inline fy_generic_value fy_generic_in_place_generic(fy_generic v)
 	return v.v;
 }
 
+// convert it to a sequence (if it's aligned properly)
+static inline fy_generic_value fy_generic_in_place_sequence_handle(fy_generic_sequence_handle seqh)
+{
+	uintptr_t ptr = (uintptr_t)seqh;
+
+	/* if has to exist and be properly aligned */
+	if (!ptr || (ptr & (FY_GENERIC_CONTAINER_ALIGN - 1)))
+		return fy_invalid_value;
+
+	return (fy_generic_value)((uintptr_t)ptr | FY_SEQ_V);
+}
+
 #define fy_to_generic_inplace(_v) \
 	( _Generic((_v), \
-		fy_generic: fy_generic_in_place_generic, \
 		void *: fy_generic_in_place_null, \
 		_Bool: fy_generic_in_place_bool, \
 		signed char: fy_generic_in_place_int, \
@@ -1087,6 +1095,8 @@ static inline fy_generic_value fy_generic_in_place_generic(fy_generic v)
 		const char *: fy_generic_in_place_char_ptr, \
 		float: fy_generic_in_place_float, \
 		double: fy_generic_in_place_double, \
+		fy_generic: fy_generic_in_place_generic, \
+		fy_generic_sequence_handle: fy_generic_in_place_sequence_handle, \
 		default: fy_generic_in_place_invalid \
 	      )(_v))
 
@@ -1267,7 +1277,7 @@ static inline fy_generic_value fy_generic_out_of_place_put_invalid(void *buf, ..
 		__r = fy_to_generic_inplace(__v); \
 		if (__r == fy_invalid_value) { \
 			size_t __outofplace_size = fy_to_generic_outofplace_size(__v); \
-			fy_generic *__vp = __outofplace_size ? alloca(__outofplace_size) : NULL; \
+			fy_generic *__vp = __outofplace_size ? fy_alloca_align(__outofplace_size, FY_GENERIC_CONTAINER_ALIGN) : NULL; \
 			__r = fy_to_generic_outofplace_put(__vp, __v); \
 		} \
 		__r; \
@@ -1289,7 +1299,7 @@ static inline fy_generic_value fy_generic_out_of_place_put_invalid(void *buf, ..
 			_r = ((fy_generic_value)__u.f_bits << FY_FLOAT_INPLACE_SHIFT) | 	\
 				FY_FLOAT_INPLACE_V;						\
 		} else {									\
-			__vp = alloca(sizeof(*__vp));						\
+			__vp = fy_alloca_align(sizeof(*__vp), FY_GENERIC_SCALAR_ALIGN);		\
 			assert(((uintptr_t)__vp & FY_INPLACE_TYPE_MASK) == 0);			\
 			*__vp = __v;								\
 			_r = (fy_generic_value)__vp | FY_FLOAT_OUTPLACE_V;			\
@@ -1318,17 +1328,17 @@ static inline fy_generic_value fy_generic_out_of_place_put_invalid(void *buf, ..
 
 #else
 
-#define fy_float_alloca(_v) 						\
-	({								\
-		double __v = (_v);					\
-		double *__vp;						\
-		fy_generic_value _r;					\
-									\
-		__vp = alloca(sizeof(*__vp));				\
-		assert(((uintptr_t)__vp & FY_INPLACE_TYPE_MASK) == 0);	\
-		*__vp = __v;						\
-		_r = (fy_generic_value)__vp | FY_FLOAT_OUTPLACE_V;	\
-		_r;							\
+#define fy_float_alloca(_v) 							\
+	({									\
+		double __v = (_v);						\
+		double *__vp;							\
+		fy_generic_value _r;						\
+										\
+		__vp = fy_alloca_align(sizeof(*__vp), FY_GENERIC_SCALAR_ALIGN);	\
+		assert(((uintptr_t)__vp & FY_INPLACE_TYPE_MASK) == 0);		\
+		*__vp = __v;							\
+		_r = (fy_generic_value)__vp | FY_FLOAT_OUTPLACE_V;		\
+		_r;								\
 	})
 
 /* note the builtin_constant_p guard; this makes the fy_float() macro work */
@@ -1386,7 +1396,8 @@ static inline int fy_generic_compare(fy_generic a, fy_generic b)
 												\
 		_r = fy_generic_in_place_char_ptr_len(__v, __len);				\
 		if (_r == fy_invalid_value) {							\
-			__vp = alloca(FYGT_SIZE_ENCODING_MAX + __len + 1); 			\
+			__vp = fy_alloca_align(FYGT_SIZE_ENCODING_MAX + __len + 1, 		\
+					FY_GENERIC_SCALAR_ALIGN); 				\
 			assert(((uintptr_t)__vp & FY_INPLACE_TYPE_MASK) == 0);			\
 			__s = fy_encode_size(__vp, FYGT_SIZE_ENCODING_MAX, __len);		\
 			memcpy(__s, __v, __len);						\
@@ -1653,8 +1664,7 @@ static inline int fy_generic_compare(fy_generic a, fy_generic b)
 		size_t __count = (_count);						\
 		size_t __size = sizeof(*__vp) + __count * sizeof(fy_generic);		\
 											\
-		__vp = fy_ptr_align(alloca(__size + FY_GENERIC_CONTAINER_ALIGN - 1),	\
-				FY_GENERIC_CONTAINER_ALIGN);				\
+		__vp = fy_alloca_align(__size, FY_GENERIC_CONTAINER_ALIGN);		\
 		__vp->count = (_count);							\
 		memcpy(__vp->items, (_items), __count * sizeof(fy_generic)); 		\
 		(fy_generic_value)((uintptr_t)__vp | FY_SEQ_V);				\
@@ -1700,6 +1710,12 @@ fy_generic_sequence_resolve(const fy_generic seq)
 	return fy_generic_resolve_collection_ptr(seqi);
 }
 
+static inline fy_generic_sequence_handle
+fy_generic_sequence_to_handle(const fy_generic seq)
+{
+	return fy_generic_sequence_resolve(seq);
+}
+
 static inline const fy_generic *
 fy_generic_sequencep_items(const fy_generic_sequence *seqp)
 {
@@ -1729,8 +1745,7 @@ static inline const fy_generic *fy_generic_sequence_get_items(fy_generic seq, si
 		size_t __count = (_count);						\
 		size_t __size = sizeof(*__vp) + 2 * __count * sizeof(fy_generic);	\
 											\
-		__vp = fy_ptr_align(alloca(__size + FY_GENERIC_CONTAINER_ALIGN - 1), 	\
-				FY_GENERIC_CONTAINER_ALIGN);				\
+		__vp = fy_alloca_align(__size, FY_GENERIC_CONTAINER_ALIGN);		\
 		__vp->count = (_count);							\
 		memcpy(__vp->pairs, (_pairs), 2 * __count * sizeof(fy_generic)); 	\
 		(fy_generic){ .v = (uintptr_t)__vp | FY_MAP_V };			\
@@ -1880,11 +1895,10 @@ static inline fy_generic fy_generic_mapping_get_alias_value(fy_generic map, fy_g
 #define fy_indirect_alloca(_v, _anchor, _tag)						\
 	({										\
 		fy_generic_value __v = (_v);						\
-		fy_generic_value __anchor = (_anchor), __tag = (_tag), *__vp;	\
+		fy_generic_value __anchor = (_anchor), __tag = (_tag), *__vp;		\
 		int __i = 1;								\
 											\
-		__vp = fy_ptr_align(alloca(4 * sizeof(*__vp) + FY_GENERIC_CONTAINER_ALIGN - 1),	\
-				FY_GENERIC_CONTAINER_ALIGN);				\
+		__vp = fy_alloca_align(4 * sizeof(*__vp), FY_GENERIC_CONTAINER_ALIGN);	\
 		__vp[0] = 0;								\
 		if (__v != fy_invalid_value) {						\
 			 __vp[0] |= FYGIF_VALUE;					\
@@ -2145,6 +2159,7 @@ static inline void fy_generic_get_default_final_never(fy_generic v,
 			double: (double)0, \
 			char *: (char *)NULL, \
 			const char *: (const char *)NULL, \
+			fy_generic_sequence_handle: (fy_generic_sequence_handle)NULL, \
 			fy_generic: fy_null \
 		      ); \
 		__tmp; \
@@ -2184,7 +2199,7 @@ static inline void fy_generic_get_default_final_never(fy_generic v,
 			default: fy_generic_get_default_should_alloca_never \
 		      )(__v); \
 		if (__size) { \
-			__p = alloca(__size); \
+			__p = fy_alloca_align(__size, FY_GENERIC_CONTAINER_ALIGN); \
 			_Generic(__dv, \
 				char *: fy_generic_get_char_ptr_default_final, \
 				const char *: fy_generic_get_const_char_ptr_default_final, \
@@ -2255,10 +2270,26 @@ static inline size_t fy_generic_sequence_get_item_count(fy_generic seq)
 	return seqp ? seqp->count : 0;
 }
 
+static inline fy_generic_sequence_handle
+fy_generic_sequence_get_generic_sequence_handle_default(fy_generic seq, size_t idx,
+		fy_generic_sequence_handle default_value)
+{
+	const fy_generic *vp = fy_generic_sequence_get_generic_itemp(seq, idx);
+	fy_generic_sequence_handle seqh;
+
+	if (!vp)
+		return default_value;
+
+	seqh = fy_generic_sequence_to_handle(*vp);
+	if (!seqh)
+		return default_value;
+
+	return seqh;
+}
+
 static inline fy_generic fy_generic_sequence_get_generic_default(fy_generic seq, size_t idx, fy_generic default_value)
 {
 	const fy_generic *vp = fy_generic_sequence_get_generic_itemp(seq, idx);
-	printf("%s: idx=%zu\n", __func__, idx);
 	return vp ? *vp : default_value;
 }
 
@@ -2454,7 +2485,8 @@ static inline fy_generic fy_generic_sequence_get_alias_item(fy_generic seq, size
 
 #define fy_generic_sequence_get_default(_seq, _idx, _dv) \
 	({ \
-		typeof ((_dv) + 0) __ret; \
+		/* typeof ((_dv) + 0) __ret; */ \
+		typeof (1 ? (_dv) : (_dv))  __ret; \
 		\
 		printf("%s: idx=%zu\n", __func__, (size_t)_idx); \
 		__ret = _Generic((_dv), \
@@ -2474,6 +2506,7 @@ static inline fy_generic fy_generic_sequence_get_alias_item(fy_generic seq, size
 			double: fy_generic_sequence_get_double_default, \
 			char *: fy_generic_sequence_get_char_ptr_default, \
 			const char *: fy_generic_sequence_get_const_char_ptr_default, \
+			fy_generic_sequence_handle: fy_generic_sequence_get_generic_sequence_handle_default, \
 			fy_generic: fy_generic_sequence_get_generic_default \
 		      )((_seq), (_idx), (_dv)); \
 		__ret; \
@@ -2525,6 +2558,21 @@ static inline fy_generic fy_generic_mapping_get_generic_default(fy_generic map, 
 {
 	const fy_generic *vp = fy_generic_mapping_get_generic_itemp(map, key);
 	return vp ? *vp : default_value;
+}
+
+static inline fy_generic_sequence_handle fy_generic_mapping_get_sequence_handle_default(fy_generic map, fy_generic key, fy_generic_sequence_handle default_value)
+{
+	const fy_generic *vp = fy_generic_mapping_get_generic_itemp(map, key);
+	fy_generic_sequence_handle seqh;
+
+	if (!vp)
+		return default_value;
+
+	seqh = fy_generic_sequence_to_handle(*vp);
+	if (!seqh)
+		return default_value;
+
+	return seqh;
 }
 
 static inline const fy_generic *fy_generic_mapping_get_null_itemp(fy_generic map, fy_generic key)
@@ -2706,7 +2754,8 @@ static inline fy_generic fy_generic_mapping_get_alias_item(fy_generic map, fy_ge
 
 #define fy_generic_mapping_get_default(_map, _key, _dv) \
 	({ \
-		typeof ((_dv) + 0) __ret; \
+		/* typeof ((_dv) + 0) __ret; */ \
+		typeof (1 ? (_dv) : (_dv)) __ret; \
 		fy_generic __key = fy_to_generic(_key); \
 		\
 		__ret = _Generic((_dv), \
@@ -2726,6 +2775,7 @@ static inline fy_generic fy_generic_mapping_get_alias_item(fy_generic map, fy_ge
 			double: fy_generic_mapping_get_double_default, \
 			char *: fy_generic_mapping_get_char_ptr_default, \
 			const char *: fy_generic_mapping_get_const_char_ptr_default, \
+			fy_generic_sequence_handle: fy_generic_mapping_get_sequence_handle_default, \
 			fy_generic: fy_generic_mapping_get_generic_default \
 		      )((_map), __key, (_dv)); \
 		__ret; \
@@ -2739,8 +2789,10 @@ static inline fy_generic fy_generic_mapping_get_alias_item(fy_generic map, fy_ge
 #define fy_get_default(_colv, _key, _dv) \
 	({ \
 		fy_generic __colv = (_colv); \
-		typeof ((_dv) + 0) __dv = (_dv); \
-		typeof ((_dv) + 0) __ret; \
+		/* typeof ((_dv) + 0) __dv = (_dv); */ \
+		/* typeof ((_dv) + 0) __ret; */ \
+		typeof (1 ? (_dv) : (_dv)) __dv = (_dv); \
+		typeof (1 ? (_dv) : (_dv)) __ret; \
 		\
 		switch (fy_generic_get_type(__colv)) { \
 		case FYGT_MAPPING: \
