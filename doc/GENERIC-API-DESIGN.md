@@ -859,6 +859,182 @@ void render_frame(void) {
 }
 ```
 
+### Read-Only Allocators with Copy-on-Write (Planned)
+
+**Immutable cache with transactional updates** - not yet implemented but planned:
+
+```c
+// Cache of parsed files (immutable, read-only)
+struct fy_allocator *cache_alloc = fy_allocator_create_dedup();
+fy_generic cached_config = parse_yaml_file(cache_alloc, "config.yaml");
+
+// Make cache read-only (no further modifications allowed)
+fy_allocator_set_readonly(cache_alloc);
+
+// Create new allocator for incremental updates, with cache as read-only base
+struct fy_generic_builder *update_gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
+    .allocator = fy_allocator_create_cow(cache_alloc),  // Copy-on-write
+    .policy = FY_ALLOC_DEDUP  // Dedup across cache and new data
+});
+
+// Update config - only modified parts allocated in update_gb
+fy_map_handle updated_config = fy_assoc(update_gb,
+    cached_config,
+    "server.port", fy_int(9090)
+);
+
+// New values reference cached values via dedup (zero-copy for unchanged parts)
+// Only the delta (new port value and updated map node) is allocated
+
+// Transaction commit: switch to new version
+struct fy_allocator *new_cache = fy_allocator_from_builder(update_gb);
+fy_allocator_set_readonly(new_cache);
+
+// Old cache can be freed when no longer referenced
+fy_allocator_destroy(cache_alloc);
+
+// Transaction rollback alternative: just destroy update_gb, cache unchanged
+// fy_generic_builder_destroy(update_gb);
+```
+
+**How it works**:
+
+1. **Immutable cache**: Parse files into deduplicated allocator, then make read-only
+2. **COW allocator**: New allocator uses cache as read-only base for lookups
+3. **Dedup lookup order**: New allocator → cache (read-only) → allocate new
+4. **Zero-copy**: Unchanged values reference cache (no copying)
+5. **Transactional**: Commit = freeze new allocator, rollback = destroy it
+
+**Benefits**:
+- 🎯 **Immutable cache**: Parsed files cached, never modified
+- 🎯 **Zero-copy reads**: Cache hits reference existing allocator
+- 🎯 **Efficient updates**: Only deltas allocated (copy-on-write)
+- 🎯 **Transactional commits**: Atomic switch to new version
+- 🎯 **Easy rollback**: Discard update allocator, cache unchanged
+- 🎯 **Dedup across versions**: New data can reference cached data
+- 🎯 **Multi-version concurrency**: Multiple readers on old cache, one writer on new
+- 🎯 **Content-addressable**: Same content = same pointer (cache hit)
+
+**Example: Configuration file cache**:
+
+```c
+// Global cache of parsed config files
+struct {
+    struct fy_allocator *cache;
+    fy_generic configs[MAX_FILES];
+} global_cache;
+
+void init_cache(void) {
+    global_cache.cache = fy_allocator_create_dedup();
+}
+
+// Load config file (cache if not present)
+fy_generic load_config(const char *filename) {
+    // Check if already cached
+    for (size_t i = 0; i < MAX_FILES; i++) {
+        if (configs[i].filename && strcmp(configs[i].filename, filename) == 0) {
+            return configs[i].data;  // Cache hit - zero cost!
+        }
+    }
+
+    // Parse and cache
+    fy_generic config = parse_yaml_file(global_cache.cache, filename);
+    cache_entry_add(filename, config);
+
+    return config;
+}
+
+// Hot reload: create new version with updates
+fy_generic reload_config(const char *filename, fy_generic old_config) {
+    // Create COW allocator for update
+    struct fy_generic_builder *update_gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
+        .allocator = fy_allocator_create_cow(global_cache.cache),
+        .policy = FY_ALLOC_DEDUP
+    });
+
+    // Parse new file
+    fy_generic new_config = parse_yaml_file(update_gb, filename);
+
+    // Dedup will reuse unchanged values from cache!
+    // Only changed parts allocated in update_gb
+
+    // Commit: freeze new allocator
+    struct fy_allocator *new_cache = fy_allocator_from_builder(update_gb);
+    fy_allocator_set_readonly(new_cache);
+
+    // Update global cache (TODO: handle old cache cleanup)
+    return new_config;
+}
+```
+
+**Example: LSP server incremental updates**:
+
+```c
+// Language server with parsed file cache
+struct lsp_server {
+    struct fy_allocator *cache;  // All parsed files
+    fy_generic documents[1000];
+};
+
+// Edit document incrementally
+fy_generic apply_edit(struct lsp_server *lsp, const char *uri, struct edit *e) {
+    fy_generic old_doc = find_document(lsp, uri);
+
+    // Create COW allocator
+    struct fy_generic_builder *edit_gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
+        .allocator = fy_allocator_create_cow(lsp->cache),
+        .policy = FY_ALLOC_DEDUP
+    });
+
+    // Apply edit - most of AST unchanged, only affected nodes allocated
+    fy_generic new_doc = apply_incremental_edit(edit_gb, old_doc, e);
+
+    // Dedup ensures unchanged subtrees reference cache
+    // Memory usage: O(size of change), not O(size of document)!
+
+    // Commit
+    struct fy_allocator *new_cache = fy_allocator_from_builder(edit_gb);
+    fy_allocator_set_readonly(new_cache);
+
+    // Swap cache (old cache cleaned up when no references remain)
+    struct fy_allocator *old_cache = lsp->cache;
+    lsp->cache = new_cache;
+
+    return new_doc;
+}
+```
+
+**Use cases**:
+- ✅ **Configuration file caching**: Parse once, cache immutably, incremental updates
+- ✅ **Build systems**: Cache parsed build files, update only changed files
+- ✅ **LSP servers**: Cache parsed source files, incremental updates on edit
+- ✅ **Web frameworks**: Cache parsed templates, hot reload with COW
+- ✅ **Database query cache**: Cache parsed queries, invalidate selectively
+- ✅ **MVCC storage**: Multi-version storage with transaction isolation
+- ✅ **Git-like storage**: Content-addressable immutable objects
+
+**Performance characteristics**:
+- **Cache hit**: O(1) pointer dereference (zero-copy)
+- **Incremental update**: O(size of change), not O(size of data)
+- **Dedup lookup**: O(1) hash table lookup in cache
+- **Memory overhead**: Only deltas allocated, unchanged data shared
+- **Commit**: O(1) pointer swap
+- **Rollback**: O(1) destroy update allocator
+
+**Comparison to other approaches**:
+
+| Approach | Memory | Update Cost | Rollback | Immutable |
+|----------|--------|-------------|----------|-----------|
+| **Full copy** | O(n) | O(n) copy | O(1) | ❌ |
+| **In-place mutation** | O(1) | O(1) | ❌ Hard | ❌ |
+| **COW filesystem** | O(Δ) | O(Δ) | O(1) | ✅ |
+| **Git objects** | O(Δ) | O(Δ) | O(1) | ✅ |
+| **libfyaml COW** | O(Δ) | O(Δ) | O(1) | ✅ |
+
+Where Δ = size of changes
+
+This pattern enables **database-like MVCC semantics in C** with zero-copy reads, incremental writes, and transactional commits.
+
 ### Memory Management Summary
 
 | Aspect | libfyaml | Python | Rust | C++ |
@@ -2067,6 +2243,119 @@ void quick_json_parse(const char *json_str) {
 - Zero allocation overhead
 - Automatic cleanup
 - Simple code
+
+### Pattern 9: Immutable Cache with Copy-on-Write Updates (Planned)
+
+**Use case**: Fast caching of parsed files with incremental updates
+
+**Best practice**: Use read-only allocator for cache, COW allocator for updates
+
+```c
+// Global immutable cache
+struct {
+    struct fy_allocator *cache;
+    struct {
+        const char *filename;
+        fy_generic data;
+    } entries[MAX_FILES];
+} file_cache;
+
+void init_cache(void) {
+    file_cache.cache = fy_allocator_create_dedup();
+}
+
+// Parse file and cache result
+fy_generic parse_and_cache(const char *filename) {
+    // Parse into cache
+    fy_generic data = parse_yaml_file(file_cache.cache, filename);
+
+    // Add to cache
+    add_cache_entry(filename, data);
+
+    return data;
+}
+
+// Make cache immutable (no further modifications)
+void freeze_cache(void) {
+    fy_allocator_set_readonly(file_cache.cache);
+}
+
+// Incremental update with COW
+fy_generic update_cached_file(const char *filename) {
+    fy_generic old_data = lookup_cache(filename);
+
+    // Create COW allocator (uses cache as read-only base)
+    struct fy_generic_builder *update_gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
+        .allocator = fy_allocator_create_cow(file_cache.cache),
+        .policy = FY_ALLOC_DEDUP
+    });
+
+    // Parse new version
+    fy_generic new_data = parse_yaml_file(update_gb, filename);
+
+    // Dedup will reference unchanged parts from cache (zero-copy)!
+    // Only changed parts allocated in update_gb
+
+    // Commit: freeze new allocator as new cache
+    struct fy_allocator *new_cache = fy_allocator_from_builder(update_gb);
+    fy_allocator_set_readonly(new_cache);
+
+    // Swap caches
+    struct fy_allocator *old_cache = file_cache.cache;
+    file_cache.cache = new_cache;
+
+    // Clean up old cache when safe
+    // (when all readers using old_data are done)
+
+    return new_data;
+}
+
+// Transaction: try update, rollback on error
+fy_generic transactional_update(const char *filename) {
+    struct fy_generic_builder *txn_gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
+        .allocator = fy_allocator_create_cow(file_cache.cache),
+        .policy = FY_ALLOC_DEDUP
+    });
+
+    fy_generic new_data = parse_yaml_file(txn_gb, filename);
+
+    // Validate
+    if (!validate(new_data)) {
+        // Rollback: just destroy, cache unchanged
+        fy_generic_builder_destroy(txn_gb);
+        return fy_invalid;
+    }
+
+    // Commit
+    struct fy_allocator *new_cache = fy_allocator_from_builder(txn_gb);
+    fy_allocator_set_readonly(new_cache);
+
+    update_cache(new_cache);
+    return new_data;
+}
+```
+
+**Benefits**:
+- Fast cache lookups (O(1) pointer dereference, zero-copy)
+- Incremental updates (O(Δ) where Δ = size of changes)
+- Transactional semantics (commit/rollback)
+- Multi-version concurrency (multiple readers, one writer)
+- Content-addressable (dedup across versions)
+- Git-like storage (immutable objects)
+
+**Use cases**:
+- Configuration file caching with hot reload
+- Build system (cache parsed build files)
+- LSP server (incremental document edits)
+- Template engines (cache + hot reload)
+- Query cache (parsed queries with invalidation)
+
+**Performance**:
+- Cache hit: 0 ns (pointer dereference)
+- Incremental update: Proportional to change size, not file size
+- Memory: Unchanged parts shared, only deltas allocated
+- Commit: O(1) pointer swap
+- Rollback: O(1) destroy update allocator
 
 ### Anti-Patterns to Avoid
 
