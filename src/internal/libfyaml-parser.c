@@ -4934,10 +4934,12 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	printf("##### emit empty sequence\n");
 	v = fy_sequence();
+	printf("v=%08lx\n", v.v);
 	fy_generic_emit_default(v);
 
 	printf("##### emit empty mapping\n");
 	v = fy_mapping();
+	printf("v=%08lx\n", v.v);
 	fy_generic_emit_default(v);
 
 	printf("emit a mapping'\n");
@@ -5108,12 +5110,28 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		printf("v.v=%p\n", (void *)v.v);
 		fy_generic_emit_default(v);
 
-		seqh = fy_get_default(seq, 3, (fy_generic_sequence_handle)NULL);
-		printf("seqh=%p\n", seqh);
+		seqh = fy_get_default(seq, 3, fy_seq_handle_null);
+		printf("[3] seqh=%p\n", seqh);
 		fy_generic_emit_default(fy_to_generic(seqh));
+		if (seqh) {
+			printf("it's a sequence\n");
+			v = fy_get_default(seqh, 0, fy_invalid);
+			printf("[3][0] v=%p\n", (void *)v.v);
+			fy_generic_emit_default(v);
+		}
 
-		seqh = fy_get_default(seq, 4, (fy_generic_sequence_handle)NULL);
-		printf("seqh=%p\n", seqh);
+		seqh = fy_get_default(seq, 4, fy_seq_handle_null);
+		printf("[4] seqh=%p\n", seqh);
+		fy_generic_emit_default(fy_to_generic(seqh));
+		if (seqh) {
+			printf("it's a sequence\n");
+			v = fy_get_default(seqh, 0, fy_invalid);
+			printf("[3][0] v=%p\n", (void *)v.v);
+			fy_generic_emit_default(v);
+		}
+
+		seqh = fy_get_default(seq, 2, fy_seq_handle_null);
+		printf("[2] seqh=%p\n", seqh);
 		fy_generic_emit_default(fy_to_generic(seqh));
 
 		i = -1;
@@ -5125,6 +5143,34 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		printf("i=%d v=0x%08lx - is_int()=%d in_place()=%d\n", -10, v.v, fy_generic_is_int(v), fy_generic_is_in_place(v));
 		fy_generic_emit_default(fy_to_generic(v));
 
+	}
+
+	{
+		fy_generic_sized_string szstr = {
+			.data = "He\0lo",
+			.size = 5,
+		};
+		fy_generic seq, v;
+
+		(void)szstr;
+
+		v = fy_to_generic(&szstr);
+		fy_generic_emit_default(v);
+
+		v = fy_to_generic(szstr);
+		fy_generic_emit_default(v);
+
+		seq = fy_sequence(10, true, szstr, fy_sequence(-1, -2));
+		fy_generic_emit_default(seq);
+
+		seq = fy_sequence(10, true, ((fy_generic_sized_string){ .data = "More\0zero\0yes", .size = 13 }), fy_sequence(-1, -2));
+		fy_generic_emit_default(seq);
+
+		szstr = fy_get_default(seq, 2, fy_szstr_empty);
+		fy_generic_emit_default(fy_to_generic(szstr));
+
+		szstr = fy_get_default(seq, 3, fy_szstr_empty);
+		fy_generic_emit_default(fy_to_generic(szstr));
 	}
 
 	return 0;
