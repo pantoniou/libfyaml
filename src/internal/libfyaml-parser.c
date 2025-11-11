@@ -6267,4 +6267,15 @@ size_t generic_return_constant_string_length(void)
 		;
 	return i;
 }
+
+size_t checkout_seq_count(fy_generic v)
+{
+	return fy_generic_sequence_get_item_count(v);
+}
+
+size_t checkout_seq_handle_count(fy_generic_sequence_handle seqh)
+{
+	return fy_len(seqh);
+}
+
 #endif
