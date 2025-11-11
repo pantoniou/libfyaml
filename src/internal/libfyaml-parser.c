@@ -5047,6 +5047,16 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		i = fy_generic_get(vv, int);
 		printf("fy_to_generic(10) i = %d\n", i);
 
+		vv = fy_to_generic(-10);
+		i = fy_generic_get(vv, int);
+		printf("fy_to_generic(-10) i = %d\n", i);
+		fy_generic_emit_default(fy_to_generic(i));
+
+		vv = fy_to_generic(-1000);
+		i = fy_generic_get(vv, int);
+		printf("fy_to_generic(-1000) i = %d\n", i);
+		fy_generic_emit_default(fy_to_generic(i));
+
 		vv = fy_to_generic("Hello");
 		i = fy_generic_get(vv, int);
 		printf("fy_to_generic(\"Hello\") i = %d\n", i);
@@ -5085,6 +5095,8 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	}
 
 	{
+		int i;
+
 		fy_generic seq = fy_sequence(10, true, "Hello there", fy_sequence(-1, -2));
 		fy_generic_emit_default(seq);
 
@@ -5103,6 +5115,15 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		seqh = fy_get_default(seq, 4, (fy_generic_sequence_handle)NULL);
 		printf("seqh=%p\n", seqh);
 		fy_generic_emit_default(fy_to_generic(seqh));
+
+		i = -1;
+		v = fy_to_generic((signed long)i);
+		printf("i=%d v=0x%08lx - is_int()=%d in_place()=%d\n", i, v.v, fy_generic_is_int(v), fy_generic_is_in_place(v));
+		fy_generic_emit_default(v);
+
+		v = fy_to_generic(-10);
+		printf("i=%d v=0x%08lx - is_int()=%d in_place()=%d\n", i, v.v, fy_generic_is_int(v), fy_generic_is_in_place(v));
+		fy_generic_emit_default(fy_to_generic(v));
 
 	}
 
