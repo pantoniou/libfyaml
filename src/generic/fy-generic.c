@@ -877,7 +877,7 @@ fy_generic fy_gb_indirect_create(struct fy_generic_builder *gb, const struct fy_
 		iov[cnt++].iov_len = sizeof(gi->tag);
 	}
 
-	p = fy_gb_storev(gb, iov, cnt, FY_SCALAR_ALIGNOF(fy_generic));	/* must be at least 8 */
+	p = fy_gb_storev(gb, iov, cnt, FY_CONTAINER_ALIGNOF(fy_generic));	/* must be at least 16 */
 	if (!p)
 		return fy_invalid;
 
@@ -1573,7 +1573,7 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 		if (p >= start && p < end)
 			return v;
 
-		v.v = fy_generic_relocate_ptr(v, d).v | FY_INDIRECT_V;
+		v.v = fy_generic_relocate_collection_ptr(v, d).v | FY_INDIRECT_V;
 		gi = (struct fy_generic_indirect *)fy_generic_resolve_ptr(v);
 		gi->value = fy_generic_relocate(start, end, gi->value, d);
 		gi->anchor = fy_generic_relocate(start, end, gi->anchor, d);
