@@ -154,9 +154,6 @@ typedef uintptr_t fy_generic_value;
 // indirect   7 |pppppppppppppppp|pppp|p|111| 8 byte aligned pointer to an indirect
 // invalid      |1111111111111111|1111|1|111| All bits set
 // 
-// escapes:
-//              |0000000000000000|0000|1|101| escape
-//
 // 32 bit memory layout for generic types
 //
 //              |32             8|7654|3|210|
@@ -176,6 +173,13 @@ typedef uintptr_t fy_generic_value;
 //            6 |pppppppppppppppp|pppp|p|110| 8 byte aligned pointer to a string
 // indirect   7 |pppppppppppppppp|pppp|p|111| 8 byte aligned pointer to an indirect
 // invalid      |1111111111111111|1111|1|111| All bits set
+//
+// escape codes:
+//              |xxxxxxxxxxxxxxxx|xxxx|1|101| escape marker
+// fy_null      |0000000000000000|0000|1|101| alternative null value
+// fy_false     |0000000000000000|0001|1|101| alternative false boolean value
+// fy_true      |0000000000000000|0002|1|101| alternative true boolean value
+// fy_invalid   |1111111111111111|1111|1|101| alternative invalid value
 //
 
 /* we use the bottom 3 bits to get the primitive types */
@@ -273,7 +277,7 @@ typedef struct fy_generic_indirect {
 	fy_generic value;	/* the actual value */
 	fy_generic anchor;	/* string anchor or null */
 	fy_generic tag;		/* string tag or null */
-} fy_generic_indirect;
+} fy_generic_indirect FY_GENERIC_CONTAINER_ALIGNMENT;
 
 #define FYGIF_VALUE		(1U << 0)
 #define FYGIF_ANCHOR		(1U << 1)
@@ -365,7 +369,7 @@ static inline enum fy_generic_type fy_generic_get_type(fy_generic v)
 		return type;
 
 	/* get the indirect */
-	p = fy_generic_resolve_ptr(v);
+	p = fy_generic_resolve_collection_ptr(v);
 
 	/* an invalid value marks an alias, the value of the alias is at the anchor */
 	flags = *p++;
@@ -391,7 +395,7 @@ static inline void fy_generic_indirect_get(fy_generic v, fy_generic_indirect *gi
 		return;
 	}
 
-	p = fy_generic_resolve_ptr(v);
+	p = fy_generic_resolve_collection_ptr(v);
 
 	/* get flags */
 	gi->flags = *p++;
@@ -420,7 +424,7 @@ static inline const fy_generic *fy_genericp_indirect_get_valuep(const fy_generic
 	if (!fy_generic_is_indirect(*vp))
 		return vp;
 
-	p = fy_generic_resolve_ptr(*vp);
+	p = fy_generic_resolve_collection_ptr(*vp);
 	flags = *p++;
 	return (flags & FYGIF_VALUE) ? (const fy_generic *)p : NULL;
 }
