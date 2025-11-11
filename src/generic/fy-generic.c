@@ -231,7 +231,7 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 
 	/* indirects are handled here (note, aliases are indirect too) */
 	if (fy_generic_is_indirect(v)) {
-		struct fy_generic_indirect gi;
+		fy_generic_indirect gi;
 
 		fy_generic_indirect_get(v, &gi);
 
@@ -846,7 +846,7 @@ fy_generic fy_gb_mapping_set_value(struct fy_generic_builder *gb,
 	return fy_gb_mapping_set_value_i(gb, true, map, key, value);
 }
 
-fy_generic fy_gb_indirect_create(struct fy_generic_builder *gb, const struct fy_generic_indirect *gi)
+fy_generic fy_gb_indirect_create(struct fy_generic_builder *gb, const fy_generic_indirect *gi)
 {
 	const void *p;
 	struct iovec iov[4];
@@ -886,7 +886,7 @@ fy_generic fy_gb_indirect_create(struct fy_generic_builder *gb, const struct fy_
 
 fy_generic fy_gb_alias_create(struct fy_generic_builder *gb, fy_generic anchor)
 {
-	struct fy_generic_indirect gi = {
+	fy_generic_indirect gi = {
 		.value = fy_invalid,
 		.anchor = anchor,
 		.tag = fy_invalid,
@@ -1402,7 +1402,7 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 
 	/* indirects are handled here (note, aliases are indirect too) */
 	if (fy_generic_is_indirect(v)) {
-		struct fy_generic_indirect gi;
+		fy_generic_indirect gi;
 
 		fy_generic_indirect_get(v, &gi);
 
@@ -1574,7 +1574,7 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 			return v;
 
 		v.v = fy_generic_relocate_collection_ptr(v, d).v | FY_INDIRECT_V;
-		gi = (struct fy_generic_indirect *)fy_generic_resolve_ptr(v);
+		gi = (fy_generic_indirect *)fy_generic_resolve_ptr(v);
 		gi->value = fy_generic_relocate(start, end, gi->value, d);
 		gi->anchor = fy_generic_relocate(start, end, gi->anchor, d);
 		gi->tag = fy_generic_relocate(start, end, gi->tag, d);

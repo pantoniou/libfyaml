@@ -48,6 +48,7 @@ enum fy_generic_type {
 
 /* type is encoded at the lower 3 bits which is satisfied with the 8 byte alignment */
 typedef uintptr_t fy_generic_value;
+typedef intptr_t fy_generic_value_signed;
 
 #define FYGT_GENERIC_BITS_64			64
 #define FYGT_INT_INPLACE_BITS_64		61
@@ -84,6 +85,8 @@ typedef uintptr_t fy_generic_value;
 #else
 #error Unsupported generic configuration
 #endif
+
+#define FYGT_INT_INPLACE_SIGN_SHIFT		(FYGT_GENERIC_BITS - FYGT_INT_INPLACE_BITS)
 
 #define FYGT_SIZE_ENCODING_MAX FYVL_SIZE_ENCODING_MAX
 
@@ -138,48 +141,54 @@ typedef uintptr_t fy_generic_value;
 //
 //              |63             8|7654|3|210|
 // -------------+----------------+----|-+---+
-// null       0 |0000000000000000|0000|0|000|
 // sequence   0 |pppppppppppppppp|pppp|0|000| pointer to a 16 byte aligned sequence
+//              |0000000000000000|0000|0|000| empty sequence
 // mapping    0 |pppppppppppppppp|pppp|1|000| pointer to a 16 byte aligned mapping
-// bool       0 |0000000000000000|0000|1|000| false
-//            0 |1111111111111111|1111|1|000| true
+//              |0000000000000000|0000|1|000| empty mapping
 // int        1 |xxxxxxxxxxxxxxxx|xxxx|x|001| int bits <= 61
-//            2 |pppppppppppppppp|pppp|p|010| 8 byte aligned pointer to an long long
+//            2 |pppppppppppppppp|pppp|p|010| 8 byte aligned pointer to a long long
+//              |0000000000000000|0000|0|010| int zero
 // float      3 |ffffffffffffffff|0000|0|011| 32 bit float without loss of precision
 //            4 |pppppppppppppppp|pppp|p|100| pointer to 8 byte aligned double
+//              |0000000000000000|0000|0|100| float zero
 // string     5 |ssssssssssssssss|0lll|0|101| string length <= 7 lll 3 bit length
-//                                x    0      one extra available bit
-//              |xxxxxxxxxxxxxxxx|xxxx|1|101| escape
+//                                x    y      two extra available bit
 //            6 |pppppppppppppppp|pppp|p|110| 8 byte aligned pointer to a string
-// indirect   7 |pppppppppppppppp|pppp|p|111| 8 byte aligned pointer to an indirect
-// invalid      |1111111111111111|1111|1|111| All bits set
+//              |0000000000000000|0000|0|110| empty string
+// indirect   7 |pppppppppppppppp|pppp|0|111| 16 byte aligned pointer to an indirect
+//              |0000000000000000|0000|0|111| null indirect
+// escape       |xxxxxxxxxxxxxxxx|xxxx|1|111|
 // 
 // 32 bit memory layout for generic types
 //
 //              |32             8|7654|3|210|
 // -------------+----------------+----|-+---+
-// null       0 |0000000000000000|0000|0|000|
 // sequence   0 |pppppppppppppppp|pppp|0|000| pointer to a 16 byte aligned sequence
+//              |0000000000000000|0000|0|000| empty sequence
 // mapping    0 |pppppppppppppppp|pppp|1|000| pointer to a 16 byte aligned mapping
-// bool       0 |0000000000000000|0000|1|000| false
-//            0 |1111111111111111|1111|1|000| true
+//              |0000000000000000|0000|1|000| empty mapping
 // int        1 |xxxxxxxxxxxxxxxx|xxxx|x|001| int bits <= 29
 //            2 |pppppppppppppppp|pppp|1|010| 8 byte aligned pointer to an long long
+//              |0000000000000000|0000|0|010| int zero
 // float      3 |pppppppppppppppp|pppp|p|011| pointer to 8 byte aligned float
+//              |0000000000000000|0000|0|100| float zero
 //            4 |pppppppppppppppp|pppp|p|100| pointer to 8 byte aligned double
+//              |0000000000000000|0000|0|100| double zero
 // string     5 |ssssssssssssssss|00ll|0|101| string length <= 3 ll 2 bit length
-//                                xx   0      two extra available bits
-//              |xxxxxxxxxxxxxxxx|xxxx|1|101| escape
+//                                xy   z      three extra available bits
 //            6 |pppppppppppppppp|pppp|p|110| 8 byte aligned pointer to a string
-// indirect   7 |pppppppppppppppp|pppp|p|111| 8 byte aligned pointer to an indirect
-// invalid      |1111111111111111|1111|1|111| All bits set
+//              |0000000000000000|0000|0|110| empty string
+// indirect   7 |pppppppppppppppp|pppp|0|111| 16 byte aligned pointer to an indirect
+//              |0000000000000000|0000|0|111| null indirect
+// escape       |xxxxxxxxxxxxxxxx|xxxx|1|111|
 //
 // escape codes:
-//              |xxxxxxxxxxxxxxxx|xxxx|1|101| escape marker
-// fy_null      |0000000000000000|0000|1|101| alternative null value
-// fy_false     |0000000000000000|0001|1|101| alternative false boolean value
-// fy_true      |0000000000000000|0002|1|101| alternative true boolean value
-// fy_invalid   |1111111111111111|1111|1|101| alternative invalid value
+// fy_null    0 |0000000000000000|0000|1|111| null value
+// fy_false   1 |0000000000000000|0001|1|111| false boolean value
+// fy_true    2 |0000000000000000|0010|1|111| true boolean value
+// invalid      |1111111111111111|1111|1|111| All bits set
+//
+// all not defined codes map to invalid
 //
 
 /* we use the bottom 3 bits to get the primitive types */
@@ -212,21 +221,27 @@ typedef uintptr_t fy_generic_value;
 #define FY_STRING_OUTPLACE_V	6
 #define FY_STRING_INPLACE_SIZE_SHIFT	4
 
+#define FY_INDIRECT_V		7
+
 // escape mark is string inplace + set of the escape bit
 #define FY_ESCAPE_SHIFT		(FY_INPLACE_TYPE_SHIFT + 1)
 #define FY_ESCAPE_MASK		(((fy_generic_value)1 << FY_ESCAPE_SHIFT) - 1)
-#define FY_ESCAPE_MARK		((1 << FY_INPLACE_TYPE_SHIFT) | FY_STRING_INPLACE_V)
+#define FY_ESCAPE_MARK		((1 << (FY_ESCAPE_SHIFT - 1)) | FY_INDIRECT_V)
 #define FY_IS_ESCAPE(_v)	(((fy_generic_value)(_v) & FY_ESCAPE_MASK) == FY_ESCAPE_MARK)
 
-#define FY_INDIRECT_V		7
+#define FY_ESCAPE_ALT_NULL	0
+#define FY_ESCAPE_ALT_FALSE	1
+#define FY_ESCAPE_ALT_TRUE	2
 
-#define fy_null_value		((fy_generic_value)0)
-#define fy_false_value		((fy_generic_value)8)
-#define fy_true_value		(~(fy_generic_value)7)
-#define fy_invalid_value	((fy_generic_value)-1)
+#define FY_MAKE_ESCAPE(_v)		(((fy_generic_value)(_v) << FY_ESCAPE_SHIFT) | FY_ESCAPE_MARK)
 
-#define FYGT_INT_INPLACE_MAX ((1LL << (FYGT_INT_INPLACE_BITS - 1)) - 1)
-#define FYGT_INT_INPLACE_MIN (-(1LL << (FYGT_INT_INPLACE_BITS - 1)))
+#define fy_null_value			FY_MAKE_ESCAPE(FY_ESCAPE_ALT_NULL)
+#define fy_false_value			FY_MAKE_ESCAPE(FY_ESCAPE_ALT_FALSE)
+#define fy_true_value			FY_MAKE_ESCAPE(FY_ESCAPE_ALT_TRUE)
+#define fy_invalid_value		FY_MAKE_ESCAPE(-1)	// should be the same as normal invalid
+
+#define FYGT_INT_INPLACE_MAX		((1LL << (FYGT_INT_INPLACE_BITS - 1)) - 1)
+#define FYGT_INT_INPLACE_MIN		(-(1LL << (FYGT_INT_INPLACE_BITS - 1)))
 
 #define FY_GENERIC_CONTAINER_ALIGN	16
 #define FY_GENERIC_EXTERNAL_ALIGN	FY_GENERIC_CONTAINER_ALIGN
@@ -246,7 +261,10 @@ typedef uintptr_t fy_generic_value;
 
 /* the encoded type */
 typedef struct fy_generic {
-	fy_generic_value v;
+	union {
+		fy_generic_value v;
+		fy_generic_value_signed vs;
+	};
 } fy_generic;
 
 #define fy_null		((fy_generic){ .v = fy_null_value })	/* simple does it */
@@ -297,10 +315,8 @@ static inline bool fy_generic_is_indirect(fy_generic v)
 	if (v.v == fy_invalid_value)
 		return false;
 
-	if ((v.v & FY_INPLACE_TYPE_MASK) != FY_INDIRECT_V)
-		return false;
-
-	return true;
+	/* we must check against the escape mask because the escape uses the same bits for indirect v */
+	return (v.v & FY_ESCAPE_MARK) == FY_INDIRECT_V;
 }
 
 static inline const void *fy_generic_resolve_ptr(fy_generic ptr)
@@ -343,19 +359,22 @@ static inline enum fy_generic_type fy_generic_get_direct_type(fy_generic v)
 		[4] = FYGT_FLOAT,    [8 | 4] = FYGT_FLOAT,
 		[5] = FYGT_STRING,   [8 | 5] = FYGT_STRING,
 		[6] = FYGT_STRING,   [8 | 6] = FYGT_STRING,
-		[7] = FYGT_INDIRECT, [8 | 7] = FYGT_INDIRECT,
+		[7] = FYGT_INDIRECT, [8 | 7] = FYGT_INVALID,	// this is the escape
 	};
+	static const enum fy_generic_type escapes[] = {
+		[FY_ESCAPE_ALT_NULL] = FYGT_NULL,
+		[FY_ESCAPE_ALT_FALSE] = FYGT_BOOL,
+		[FY_ESCAPE_ALT_TRUE] = FYGT_BOOL,
+	};
+	enum fy_generic_type type;
+	unsigned int escape_code;
 
-	if (v.v == fy_invalid_value)
-		return FYGT_INVALID;
+	type = table[v.v & 15];
+	if (type != FYGT_INVALID)
+		return type;
 
-	if (v.v == fy_null_value)
-		return FYGT_NULL;
-
-	if (v.v == fy_true_value || v.v == fy_false_value)
-		return FYGT_BOOL;
-
-	return table[v.v & 15];
+	escape_code = (unsigned int)(v.v >> FY_ESCAPE_SHIFT);
+	return escape_code < ARRAY_SIZE(escapes) ? escapes[escape_code] : FYGT_INVALID;
 }
 
 static inline enum fy_generic_type fy_generic_get_type(fy_generic v)
@@ -625,10 +644,7 @@ static inline void *fy_genericp_get_null(const fy_generic *vp)
 	return fy_genericp_get_null_default(vp, NULL);
 }
 
-#define FY_GENERIC_GET_BOOL(_v)							\
-	(									\
-		(bool)(((_v).v >> FY_BOOL_INPLACE_SHIFT) != 0)			\
-	)
+#define FY_GENERIC_GET_BOOL(_v) ((_v).v == fy_true_value)
 
 static inline bool fy_generic_get_bool_no_check(fy_generic v)
 {
@@ -657,18 +673,21 @@ static inline bool fy_genericp_get_bool(const fy_generic *vp)
 	return fy_genericp_get_bool_default(vp, false);
 }
 
-#define FY_GENERIC_GET_INT(_v)								\
-	(										\
-		((_v).v & FY_INPLACE_TYPE_MASK) == FY_INT_INPLACE_V ? 			\
-			((long long)(((_v).v >> FY_INPLACE_TYPE_SHIFT) << 		\
-				(FYGT_GENERIC_BITS - FYGT_INT_INPLACE_BITS)) >>		\
-			 		(FYGT_GENERIC_BITS - FYGT_INT_INPLACE_BITS)) : 	\
-			*(long long *)fy_generic_resolve_ptr(_v)			\
-	)
-
 static inline long long fy_generic_get_int_no_check(fy_generic v)
 {
-	return FY_GENERIC_GET_INT(v);
+	const long long *p;
+
+	/* make sure you sign extend */
+	if ((v.v & FY_INPLACE_TYPE_MASK) == FY_INT_INPLACE_V)
+		return (long long)(
+			(fy_generic_value_signed)((v.v >> FY_INPLACE_TYPE_SHIFT) <<
+                               (FYGT_GENERIC_BITS - FYGT_INT_INPLACE_BITS)) >>
+                                       (FYGT_GENERIC_BITS - FYGT_INT_INPLACE_BITS));
+
+	p = fy_generic_resolve_ptr(v);
+	if (!p)
+		return 0;
+	return *p;
 }
 
 static inline long long fy_generic_get_int_default(fy_generic v, long long default_value)
@@ -701,27 +720,38 @@ static inline bool fy_genericp_get_int(const fy_generic *vp)
 #define FY_INPLACE_FLOAT_ADV	0
 #endif
 
-#define FY_GENERIC_GET_FLOAT(_v)						\
-	(									\
-		((_v).v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V ? 	\
-			(double)*((float *)&(_v) + FY_INPLACE_FLOAT_ADV) :	\
-			*(double *)fy_generic_resolve_ptr(_v)			\
-	)
-
-#else
-
-#define FY_GENERIC_GET_FLOAT(_v)						\
-	(									\
-		((_v).v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V ? 	\
-			(double)*(float *)fy_generic_resolve_ptr(_v) :		\
-			*(double *)fy_generic_resolve_ptr(_v)			\
-	)
 #endif
 
+#ifdef FYGT_GENERIC_64
 static inline float fy_generic_get_float_no_check(fy_generic v)
 {
-	return (float)FY_GENERIC_GET_FLOAT(v);
+	const double *p;
+
+	if ((v.v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V)
+		return *((float *)&v.v + FY_INPLACE_FLOAT_ADV);
+
+	/* the out of place values are always doubles */
+	p = fy_generic_resolve_ptr(v);
+	if (!p)
+		return 0.0;
+	return (float)*p;
 }
+#else
+static inline float fy_generic_get_float_no_check(fy_generic v)
+{
+	const void *p;
+
+	p = fy_generic_resolve_ptr(v);
+	if (!p)
+		return 0.0;
+
+	/* float, or double out of place */
+	if ((v.v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V)
+		return *(float *)p;
+	else
+		return (float)*(double *)p;
+}
+#endif
 
 static inline float fy_generic_get_float_default(fy_generic v, float default_value)
 {
@@ -745,10 +775,36 @@ static inline float fy_genericp_get_float(const fy_generic *vp)
 	return fy_genericp_get_float_default(vp, 0.0f);
 }
 
+#ifdef FYGT_GENERIC_64
 static inline double fy_generic_get_double_no_check(fy_generic v)
 {
-	return FY_GENERIC_GET_FLOAT(v);
+	const double *p;
+
+	if ((v.v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V)
+		return (double)*((float *)&v.v + FY_INPLACE_FLOAT_ADV);
+
+	/* the out of place values are always doubles */
+	p = fy_generic_resolve_ptr(v);
+	if (!p)
+		return 0.0;
+	return *p;
 }
+#else
+static inline double fy_generic_get_double_no_check(fy_generic v)
+{
+	const void *p;
+
+	p = fy_generic_resolve_ptr(v);
+	if (!p)
+		return 0.0;
+
+	/* float, or double out of place */
+	if ((v.v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V)
+		return (double)*(float *)p;
+	else
+		return *(double *)p;
+}
+#endif
 
 static inline double fy_generic_get_double_default(fy_generic v, double default_value)
 {
