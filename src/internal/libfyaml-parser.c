@@ -4135,7 +4135,7 @@ int do_parse_timing(int argc, char *argv[])
 
 void fy_generic_print_primitive(FILE *fp, fy_generic v)
 {
-	struct fy_generic_indirect gi;
+	fy_generic_indirect gi;
 	const char *sep;
 	const char *sv;
 	fy_generic iv;
@@ -4449,7 +4449,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 			fy_generic items[3];
 		} _seq FY_GENERIC_CONTAINER_ALIGNMENT = {
 			3,
-			{ fy_true, fy_int_const(100), fy_string("info-info") },
+			{ fy_true, { .v = fy_int_const(100) }, fy_string("info-info") },
 		};
 		fy_generic seq = (fy_generic){ .v = (fy_generic_value)&_seq | FY_SEQ_V };
 
@@ -5122,7 +5122,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		fy_generic_emit_default(v);
 
 		v = fy_to_generic(-10);
-		printf("i=%d v=0x%08lx - is_int()=%d in_place()=%d\n", i, v.v, fy_generic_is_int(v), fy_generic_is_in_place(v));
+		printf("i=%d v=0x%08lx - is_int()=%d in_place()=%d\n", -10, v.v, fy_generic_is_int(v), fy_generic_is_in_place(v));
 		fy_generic_emit_default(fy_to_generic(v));
 
 	}
