@@ -374,14 +374,37 @@ Instead of exposing type-specific functions like `fy_seq_handle_count()` or `fy_
 
 **Critical architectural insight:** When you combine immutability with deduplication, you get **value identity**—each unique value exists exactly once in the builder's memory.
 
-**What this enables:**
+**Two types of value stability:**
+
+1. **Inline objects** (small ints ≤61 bits, short strings ≤7 bytes, 32-bit floats): Stored directly in the 64-bit `fy_generic` value—inherently stable, no builder needed
+2. **Builder-allocated objects** (large values, collections): Deduplicated within the builder—single representation per unique value
+
+**Builder-allocated objects with deduplication:**
 ```c
-// Two identical strings
-fy_generic s1 = fy_to_generic("hello");
-fy_generic s2 = fy_to_generic("hello");
+// Create builder with deduplication policy
+struct fy_generic_builder *gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
+    .policy = FY_ALLOC_DEDUP
+});
+
+// Two identical strings get deduplicated
+fy_generic s1 = fy_gb_to_generic(gb, "hello");
+fy_generic s2 = fy_gb_to_generic(gb, "hello");
 
 // Because of deduplication: s1 == s2 (literally the same 64-bit value!)
 // No strcmp() needed - just pointer/value comparison - O(1)
+
+fy_generic_builder_destroy(gb);
+```
+
+**Inline objects are always stable:**
+```c
+// Small integers don't need builder
+fy_generic n1 = fy_to_generic(42);  // Inline storage (no allocation)
+fy_generic n2 = fy_to_generic(42);  // Same inline representation
+
+if (n1 == n2) {  // TRUE - inline values inherently stable
+    printf("Same!\n");
+}
 ```
 
 **Consequences for equality:**
@@ -392,12 +415,15 @@ fy_generic s2 = fy_to_generic("hello");
 
 **Real-world implications:**
 ```c
-// Efficient set operations
-fy_generic value = fy_to_generic(42);
-fy_generic collection = fy_sequence(1, 42, 100, 42, 200);
+struct fy_generic_builder *gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
+    .policy = FY_ALLOC_DEDUP
+});
 
-// All instances of 42 have IDENTICAL fy_generic values
-// Find with pointer equality, not value comparison
+// Efficient set operations
+fy_generic collection = fy_gb_sequence(gb, 1, 42, 100, 42, 200);
+
+// All instances of 42 are inline (inherently same value)
+// Collections are deduplicated in builder
 
 // Perfect for memoization
 fy_generic cached_result = memoize_table_lookup(input);  // O(1)
@@ -410,14 +436,18 @@ if (cached_result == fy_invalid) {
 if (tree1_node == tree2_node) {
     // Identical subtrees - no need to compare recursively
 }
+
+fy_generic_builder_destroy(gb);
 ```
 
 **Why this matters for performance:**
 - Traditional libraries: `strcmp("hello", "hello")` → 6 char comparisons
-- libfyaml: `s1 == s2` → 1 integer comparison
+- libfyaml with dedup builder: `s1 == s2` → 1 integer comparison
 - Hash tables can use the value directly (no hash function needed!)
 - Cache lookups are trivial
 - Persistent data structures become practical in C
+
+**Key point:** Value identity applies to objects stored in a dedup-enabled builder. Inline objects are stable by definition (stored in the value itself).
 
 This is the secret sauce that makes functional programming patterns viable in C.
 

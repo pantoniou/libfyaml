@@ -196,20 +196,44 @@ Updates are O(log n), not O(n). Memory overhead is minimal.
 
 Here's where it gets really interesting. **Immutability + deduplication = value identity**.
 
-Because values are immutable and deduplicated, each unique value has exactly one representation. This means:
+**Two types of value stability:**
+
+1. **Inline objects** (small ints, short strings ≤7 bytes, 32-bit floats): Stored directly in the 64-bit `fy_generic` value—inherently stable
+2. **Builder-allocated objects**: Deduplicated within the builder—single representation per unique value
+
+**Builder-allocated values with deduplication:**
 
 ```c
-fy_generic s1 = fy_to_generic("hello");
-fy_generic s2 = fy_to_generic("hello");
+// Create builder with deduplication
+struct fy_generic_builder *gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
+    .policy = FY_ALLOC_DEDUP
+});
 
-// These are literally the SAME 64-bit value
+fy_generic s1 = fy_gb_to_generic(gb, "hello");
+fy_generic s2 = fy_gb_to_generic(gb, "hello");
+
+// These are literally the SAME 64-bit value (deduplicated!)
 if (s1 == s2) {  // TRUE - just pointer/integer comparison!
     printf("Same!\n");
 }
 
+fy_generic_builder_destroy(gb);
+
 // Traditional approach:
 // if (strcmp(s1, s2) == 0) { ... }  // O(n) - must compare every character
 // libfyaml: if (s1 == s2) { ... }   // O(1) - just compare the 64-bit value
+```
+
+**Inline values are always stable:**
+
+```c
+// Small integers stored inline (no builder needed)
+fy_generic n1 = fy_to_generic(42);
+fy_generic n2 = fy_to_generic(42);
+
+if (n1 == n2) {  // TRUE - inline values inherently identical
+    printf("Same!\n");
+}
 ```
 
 **Performance impact:**
@@ -218,6 +242,8 @@ if (s1 == s2) {  // TRUE - just pointer/integer comparison!
 - Hash tables: use `fy_generic` value directly as hash
 - Sets: O(1) membership testing
 - Memoization: instant cache lookup
+
+**Key point:** Value identity from deduplication applies to builder-allocated objects. Inline objects are stable by definition (stored in the value itself).
 
 This is why deduplication isn't just about memory savings—it fundamentally changes the performance characteristics. Every comparison becomes trivial.
 

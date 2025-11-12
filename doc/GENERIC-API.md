@@ -62,16 +62,21 @@ fy_generic seq2 = fy_gb_sequence(gb,
 
 **The key insight:** Combining immutability with deduplication creates **value identity**—each unique value has exactly one representation in the builder.
 
-**What this means:**
-- Every `fy_generic` is a 64-bit value
-- Identical content produces identical `fy_generic` values (same bits)
-- Equality check is a single 64-bit integer comparison
-- **No deep comparison needed**—ever
+**Two types of stability:**
 
-**Comparison:**
+1. **Inline objects** (small ints, short strings, 32-bit floats): Stored directly in the 64-bit `fy_generic` value, inherently stable
+2. **Builder-allocated objects** (large values, collections): Deduplicated within the builder, ensuring single representation
+
+**Builder-allocated objects with deduplication:**
 ```c
-fy_generic v1 = fy_to_generic("hello");
-fy_generic v2 = fy_to_generic("hello");
+// Create builder with deduplication policy
+struct fy_generic_builder *gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
+    .policy = FY_ALLOC_DEDUP
+});
+
+// Strings allocated in builder get deduplicated
+fy_generic v1 = fy_gb_to_generic(gb, "hello");
+fy_generic v2 = fy_gb_to_generic(gb, "hello");
 
 // O(1) equality check - just compare the 64-bit values
 if (v1 == v2) {  // TRUE - same bits, because dedup ensures single representation
@@ -80,21 +85,39 @@ if (v1 == v2) {  // TRUE - same bits, because dedup ensures single representatio
 
 // Traditional approach would require strcmp() - O(n)
 // libfyaml: just compare pointers/tagged values - O(1)
+
+fy_generic_builder_destroy(gb);
+```
+
+**Inline objects are always stable:**
+```c
+// Small integers stored inline (no builder needed)
+fy_generic n1 = fy_to_generic(42);  // Inline storage (61-bit int)
+fy_generic n2 = fy_to_generic(42);  // Same inline representation
+
+if (n1 == n2) {  // TRUE - inline values are inherently stable
+    printf("Same!\n");
+}
 ```
 
 **Implications for data structures:**
 ```c
+struct fy_generic_builder *gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
+    .policy = FY_ALLOC_DEDUP
+});
+
 // Hash tables: use fy_generic directly as key
 // Sets: O(1) membership testing
 // Memoization: instant cache lookup
 // Structural sharing: cheap equality checks enable efficient persistent data structures
 
 // Example: checking if value exists in collection
-fy_generic needle = fy_to_generic(42);
-fy_generic haystack = fy_sequence(1, 42, 100, 42, 200);
+fy_generic haystack = fy_gb_sequence(gb, 1, 42, 100, 42, 200);
 
-// Each 42 has the SAME fy_generic value (dedup!)
-// So you can find it with pointer equality, not value comparison
+// All instances of 42 are inline (same value)
+// So equality check is trivial
+
+fy_generic_builder_destroy(gb);
 ```
 
 **Performance impact:**
