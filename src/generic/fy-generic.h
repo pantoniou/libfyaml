@@ -768,6 +768,184 @@ static inline size_t fy_generic_out_of_place_size_double(const double v)
 
 #endif
 
+// sequence
+static inline const fy_generic_sequence *
+fy_generic_sequence_resolve(const fy_generic seq)
+{
+	if (!fy_generic_is_indirect(seq)) {
+		if (!fy_generic_is_direct_sequence(seq))
+			return NULL;
+		return fy_generic_resolve_collection_ptr(seq);
+	}
+
+	const fy_generic seqi = fy_generic_indirect_get_value(seq);
+
+	if (!fy_generic_is_direct_sequence(seqi))
+		return NULL;
+
+	return fy_generic_resolve_collection_ptr(seqi);
+}
+
+static inline fy_generic_sequence_handle
+fy_generic_sequence_to_handle(const fy_generic seq)
+{
+	return fy_generic_sequence_resolve(seq);
+}
+
+static inline const fy_generic *
+fy_generic_sequencep_items(const fy_generic_sequence *seqp)
+{
+	return seqp ? &seqp->items[0] : NULL;
+}
+
+static inline size_t
+fy_generic_sequencep_count(const fy_generic_sequence *seqp)
+{
+	return seqp ? 0 : seqp->count;
+}
+
+static inline const fy_generic *fy_generic_sequence_get_items(fy_generic seq, size_t *countp)
+{
+	const fy_generic_sequence *seqp = fy_generic_sequence_resolve(seq);
+
+	if (!seqp) {
+		*countp = 0;
+		return NULL;
+	}
+
+	*countp = seqp->count;
+	return &seqp->items[0];
+}
+
+static inline const fy_generic *fy_generic_sequencep_get_itemp(const fy_generic_sequence *seqp, size_t idx)
+{
+	return seqp && idx < seqp->count ? fy_genericp_indirect_get_valuep(&seqp->items[idx]) : NULL;
+}
+
+// mapping
+static inline const fy_generic_mapping *
+fy_generic_mapping_resolve(const fy_generic map)
+{
+	if (!fy_generic_is_indirect(map)) {
+		if (!fy_generic_is_direct_mapping(map))
+			return NULL;
+		return fy_generic_resolve_collection_ptr(map);
+	}
+
+	const fy_generic mapi = fy_generic_indirect_get_value(map);
+
+	if (!fy_generic_is_direct_mapping(mapi))
+		return NULL;
+
+	return fy_generic_resolve_collection_ptr(mapi);
+}
+
+static inline fy_generic_mapping_handle
+fy_generic_mapping_to_handle(const fy_generic map)
+{
+	return fy_generic_mapping_resolve(map);
+}
+
+static inline const fy_generic *
+fy_generic_mappingp_items(const fy_generic_mapping *mapp)
+{
+	return mapp ? &mapp->pairs[0].items[0] : NULL;
+}
+
+static inline size_t
+fy_generic_mappingp_count(const fy_generic_mapping *mapp)
+{
+	return mapp ? 0 : mapp->count;
+}
+
+static inline const fy_generic_map_pair *
+fy_generic_mapping_get_pairs(fy_generic map, size_t *countp)
+{
+	const fy_generic_mapping *mapp = fy_generic_mapping_resolve(map);
+
+	if (!mapp) {
+		*countp = 0;
+		return NULL;
+	}
+
+	*countp = mapp->count;
+	return mapp->pairs;
+}
+
+int fy_generic_compare_out_of_place(fy_generic a, fy_generic b);
+
+static inline int fy_generic_compare(fy_generic a, fy_generic b)
+{
+	/* invalids are always non-matching */
+	if (a.v == fy_invalid_value || b.v == fy_invalid_value)
+		return -1;
+
+	/* equals? nice - should work for null, bool, in place int, float and strings  */
+	/* also for anything that's a pointer */
+	if (a.v == b.v)
+		return 0;
+
+	/* invalid types, or differing types do not match */
+	if (fy_generic_get_type(a) != fy_generic_get_type(b))
+		return -1;
+
+	return fy_generic_compare_out_of_place(a, b);
+}
+
+static inline const fy_generic *fy_generic_mappingp_valuep_index(const fy_generic_mapping *mapp, fy_generic key, size_t *idxp)
+{
+	size_t i;
+
+	if (!mapp)
+		goto err_out;
+
+	for (i = 0; i < mapp->count; i++) {
+		if (fy_generic_compare(key, mapp->pairs[i].key) == 0) {
+			if (idxp)
+				*idxp = i;
+			return &mapp->pairs[i].value;
+		}
+	}
+
+err_out:
+	if (idxp)
+		*idxp = (size_t)-1;
+	return NULL;
+}
+
+static inline const fy_generic *fy_generic_mappingp_get_valuep(const fy_generic_mapping *mapp, fy_generic key)
+{
+	size_t idx;
+	return fy_generic_mappingp_valuep_index(mapp, key, &idx);
+}
+
+static inline const fy_generic *fy_generic_mapping_get_valuep_index(fy_generic map, fy_generic key, size_t *idxp)
+{
+	return fy_generic_mappingp_valuep_index(fy_generic_mapping_resolve(map), key, idxp);
+}
+
+static inline const fy_generic *fy_generic_mapping_get_valuep(fy_generic map, fy_generic key)
+{
+	return fy_generic_mapping_get_valuep_index(map, key, NULL);
+}
+
+static inline const fy_generic fy_generic_mapping_get_value_index(fy_generic map, fy_generic key, size_t *idxp)
+{
+	const fy_generic *vp = fy_generic_mapping_get_valuep_index(map, key, idxp);
+	return vp ? *vp : fy_invalid;
+}
+
+static inline const fy_generic fy_generic_mapping_get_value(fy_generic map, fy_generic key)
+{
+	return fy_generic_mapping_get_value_index(map, key, NULL);
+}
+
+static inline size_t fy_generic_mapping_get_pair_count(fy_generic map)
+{
+	const fy_generic_mapping *mapp = fy_generic_mapping_resolve(map);
+	return mapp ? mapp->count : 0;
+}
+
 //
 // template for repetitive definitions
 //
@@ -819,6 +997,21 @@ static inline bool fy_generic_is_ ## _gtype (const fy_generic v) \
 	return fy_generic_is_direct_ ## _gtype (fy_generic_indirect_get_value(v)); \
 } \
 \
+static inline fy_generic_value fy_generic_in_place_ ## _gtype ( _ctype v) \
+{ \
+	return fy_generic_in_place_ ## _xgtype ( (_xctype)v ); \
+} \
+\
+static inline size_t fy_generic_out_of_place_size_ ## _gtype ( _ctype v) \
+{ \
+	return fy_generic_out_of_place_size_ ## _xgtype ( (_xctype)v ); \
+} \
+\
+static inline fy_generic_value fy_generic_out_of_place_put_ ##_gtype (void *buf, const _ctype v) \
+{ \
+	return fy_generic_out_of_place_put_ ## _xgtype (buf, (_xctype)v ); \
+} \
+\
 static inline _ctype fy_generic_get_ ## _gtype ## _default(fy_generic v, _ctype default_value) \
 { \
 	if (!fy_generic_is_ ## _xgtype (v)) \
@@ -844,19 +1037,38 @@ static inline _ctype fy_genericp_get_ ## _gtype (const fy_generic *vp) \
 	return fy_genericp_get_ ## _gtype ## _default(vp, _default_v ); \
 } \
 \
-static inline fy_generic_value fy_generic_in_place_ ## _gtype ( _ctype v) \
+static inline const fy_generic *fy_generic_sequencep_get_ ## _gtype ## _itemp(const fy_generic_sequence *seqp, size_t idx) \
 { \
-	return fy_generic_in_place_ ## _xgtype ( (_xctype)v ); \
+	const fy_generic *vp = fy_generic_sequencep_get_itemp(seqp, idx); \
+	return vp && fy_generic_is_direct_ ## _gtype (*vp) ? vp : NULL; \
+} \
+static inline const fy_generic *fy_generic_sequence_get_ ## _gtype ## _itemp(fy_generic seq, size_t idx) \
+{ \
+	const fy_generic_sequence *seqp = fy_generic_sequence_resolve(seq); \
+	return fy_generic_sequencep_get_ ## _gtype ## _itemp(seqp, idx); \
 } \
 \
-static inline size_t fy_generic_out_of_place_size_ ## _gtype ( _ctype v) \
+static inline _ctype fy_generic_sequence_get_ ## _gtype ## _default(fy_generic seq, size_t idx, _ctype default_value) \
 { \
-	return fy_generic_out_of_place_size_ ## _xgtype ( (_xctype)v ); \
+	const fy_generic *vp = fy_generic_sequence_get_ ## _gtype ## _itemp(seq, idx); \
+	return fy_genericp_get_  ## _gtype ## _default(vp, default_value); \
 } \
 \
-static inline fy_generic_value fy_generic_out_of_place_put_ ##_gtype (void *buf, const _ctype v) \
+static inline const fy_generic *fy_generic_mappingp_get_ ## _gtype ## _valuep(const fy_generic_mapping *mapp, fy_generic key) \
 { \
-	return fy_generic_out_of_place_put_ ## _xgtype (buf, (_xctype)v ); \
+	const fy_generic *vp = fy_generic_mappingp_get_valuep(mapp, key); \
+	return vp && fy_generic_is_direct_ ## _gtype (*vp) ? vp : NULL; \
+} \
+static inline const fy_generic *fy_generic_mapping_get_ ## _gtype ## _valuep(fy_generic map, fy_generic key) \
+{ \
+	const fy_generic_mapping *mapp = fy_generic_mapping_resolve(map); \
+	return fy_generic_mappingp_get_ ## _gtype ## _valuep(mapp, key); \
+} \
+\
+static inline _ctype fy_generic_mapping_get_ ## _gtype ## _default(fy_generic map, fy_generic key, _ctype default_value) \
+{ \
+	const fy_generic *vp = fy_generic_mapping_get_ ## _gtype ## _valuep(map, key); \
+	return fy_genericp_get_  ## _gtype ## _default(vp, default_value); \
 } \
 \
 struct fy_useless_struct_for_semicolon
@@ -905,6 +1117,25 @@ FY_GENERIC_FLOAT_RANGED_TEMPLATE(double, double, DBL_MIN, DBL_MAX, 0.0);
 	FY_GENERIC_SCALAR_DISPATCH(_base, unsigned long long, unsigned_long_long), \
 	FY_GENERIC_SCALAR_DISPATCH(_base, float, float), \
 	FY_GENERIC_SCALAR_DISPATCH(_base, double, double)
+
+#define FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, _ctype, _gtype) \
+	_ctype: _base ## _ ## _gtype ## _ ## _sfx
+
+#define FY_GENERIC_ALL_SCALARS_DISPATCH_SFX(_base, _sfx) \
+	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, void *, null), \
+	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, _Bool, bool), \
+	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, signed char, signed_char), \
+	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, unsigned char, unsigned_char), \
+	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, signed short, signed_short), \
+	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, unsigned short, unsigned_short), \
+	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, signed int, signed_int), \
+	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, unsigned int, unsigned_int), \
+	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, signed long, signed_long), \
+	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, unsigned long, unsigned_long), \
+	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, signed long long, signed_long_long), \
+	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, unsigned long long, unsigned_long_long), \
+	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, float, float), \
+	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, double, double)
 
 /* NOTE: All get method multiple-evaluate the argument, so take care */
 
@@ -1453,26 +1684,6 @@ static inline fy_generic_value fy_generic_out_of_place_put_mapping_handle(void *
 #define fy_float(_v) \
 	((fy_generic){ .v = __builtin_constant_p(_v) ? fy_float_const(_v) : fy_float_alloca(_v) })
 
-int fy_generic_compare_out_of_place(fy_generic a, fy_generic b);
-
-static inline int fy_generic_compare(fy_generic a, fy_generic b)
-{
-	/* invalids are always non-matching */
-	if (a.v == fy_invalid_value || b.v == fy_invalid_value)
-		return -1;
-
-	/* equals? nice - should work for null, bool, in place int, float and strings  */
-	/* also for anything that's a pointer */
-	if (a.v == b.v)
-		return 0;
-
-	/* invalid types, or differing types do not match */
-	if (fy_generic_get_type(a) != fy_generic_get_type(b))
-		return -1;
-
-	return fy_generic_compare_out_of_place(a, b);
-}
-
 /* literal strings in C, are char *
  * However you can't get a type of & "literal"
  * So we use that to detect literal strings
@@ -1792,54 +2003,6 @@ static inline int fy_generic_compare(fy_generic a, fy_generic b)
 			FY_CPP_VA_GITEMS( \
 				FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)) })
 
-static inline const fy_generic_sequence *
-fy_generic_sequence_resolve(const fy_generic seq)
-{
-	if (!fy_generic_is_indirect(seq)) {
-		if (!fy_generic_is_direct_sequence(seq))
-			return NULL;
-		return fy_generic_resolve_collection_ptr(seq);
-	}
-
-	const fy_generic seqi = fy_generic_indirect_get_value(seq);
-
-	if (!fy_generic_is_direct_sequence(seqi))
-		return NULL;
-
-	return fy_generic_resolve_collection_ptr(seqi);
-}
-
-static inline fy_generic_sequence_handle
-fy_generic_sequence_to_handle(const fy_generic seq)
-{
-	return fy_generic_sequence_resolve(seq);
-}
-
-static inline const fy_generic *
-fy_generic_sequencep_items(const fy_generic_sequence *seqp)
-{
-	return seqp ? &seqp->items[0] : NULL;
-}
-
-static inline size_t
-fy_generic_sequencep_count(const fy_generic_sequence *seqp)
-{
-	return seqp ? 0 : seqp->count;
-}
-
-static inline const fy_generic *fy_generic_sequence_get_items(fy_generic seq, size_t *countp)
-{
-	const fy_generic_sequence *seqp = fy_generic_sequence_resolve(seq);
-
-	if (!seqp) {
-		*countp = 0;
-		return NULL;
-	}
-
-	*countp = seqp->count;
-	return &seqp->items[0];
-}
-
 #define fy_mapping_alloca(_count, _pairs) 						\
 	({										\
 		fy_generic_mapping *__vp;						\
@@ -1866,97 +2029,6 @@ static inline const fy_generic *fy_generic_sequence_get_items(fy_generic seq, si
 		.v = fy_mapping_explicit( \
 			FY_CPP_VA_COUNT(__VA_ARGS__) / 2, \
 			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)) })
-
-static inline const fy_generic_mapping *
-fy_generic_mapping_resolve(const fy_generic map)
-{
-	if (!fy_generic_is_indirect(map)) {
-		if (!fy_generic_is_direct_mapping(map))
-			return NULL;
-		return fy_generic_resolve_collection_ptr(map);
-	}
-
-	const fy_generic mapi = fy_generic_indirect_get_value(map);
-
-	if (!fy_generic_is_direct_mapping(mapi))
-		return NULL;
-
-	return fy_generic_resolve_collection_ptr(mapi);
-}
-
-static inline fy_generic_mapping_handle
-fy_generic_mapping_to_handle(const fy_generic map)
-{
-	return fy_generic_mapping_resolve(map);
-}
-
-static inline const fy_generic *
-fy_generic_mappingp_items(const fy_generic_mapping *mapp)
-{
-	return mapp ? &mapp->pairs[0].items[0] : NULL;
-}
-
-static inline size_t
-fy_generic_mappingp_count(const fy_generic_mapping *mapp)
-{
-	return mapp ? 0 : mapp->count;
-}
-
-static inline const fy_generic_map_pair *
-fy_generic_mapping_get_pairs(fy_generic map, size_t *countp)
-{
-	const fy_generic_mapping *mapp = fy_generic_mapping_resolve(map);
-
-	if (!mapp) {
-		*countp = 0;
-		return NULL;
-	}
-
-	*countp = mapp->count;
-	return mapp->pairs;
-}
-
-static inline const fy_generic *fy_generic_mapping_lookup_valuep_index(const fy_generic_mapping *mapp, fy_generic key, size_t *idxp)
-{
-	size_t i;
-
-	if (!mapp)
-		goto err_out;
-
-	for (i = 0; i < mapp->count; i++) {
-		if (fy_generic_compare(key, mapp->pairs[i].key) == 0) {
-			if (idxp)
-				*idxp = i;
-			return &mapp->pairs[i].value;
-		}
-	}
-
-err_out:
-	if (idxp)
-		*idxp = (size_t)-1;
-	return NULL;
-}
-
-static inline const fy_generic *fy_generic_mapping_get_valuep_index(fy_generic map, fy_generic key, size_t *idxp)
-{
-	return fy_generic_mapping_lookup_valuep_index(fy_generic_mapping_resolve(map), key, idxp);
-}
-
-static inline const fy_generic *fy_generic_mapping_get_valuep(fy_generic map, fy_generic key)
-{
-	return fy_generic_mapping_get_valuep_index(map, key, NULL);
-}
-
-static inline const fy_generic fy_generic_mapping_get_value_index(fy_generic map, fy_generic key, size_t *idxp)
-{
-	const fy_generic *vp = fy_generic_mapping_get_valuep_index(map, key, idxp);
-	return vp ? *vp : fy_invalid;
-}
-
-static inline const fy_generic fy_generic_mapping_get_value(fy_generic map, fy_generic key)
-{
-	return fy_generic_mapping_get_value_index(map, key, NULL);
-}
 
 static inline fy_generic fy_generic_mapping_get_null_value(fy_generic map, fy_generic key)
 {
@@ -2135,20 +2207,7 @@ static inline void fy_generic_get_default_final_never(fy_generic v,
 	})
 
 #define fy_generic_get_default_Generic_dispatch \
-	void *: fy_generic_get_null_default, \
-	_Bool: fy_generic_get_bool_default, \
-	signed char: fy_generic_get_signed_char_default, \
-	unsigned char: fy_generic_get_unsigned_char_default, \
-	signed short: fy_generic_get_signed_short_default, \
-	unsigned short: fy_generic_get_unsigned_short_default, \
-	signed int: fy_generic_get_signed_int_default, \
-	unsigned int: fy_generic_get_unsigned_int_default, \
-	signed long: fy_generic_get_signed_long_default, \
-	unsigned long: fy_generic_get_unsigned_long_default, \
-	signed long long: fy_generic_get_signed_long_long_default, \
-	unsigned long long: fy_generic_get_unsigned_long_long_default, \
-	float: fy_generic_get_float_default, \
-	double: fy_generic_get_double_default, \
+	FY_GENERIC_ALL_SCALARS_DISPATCH_SFX(fy_generic_get, default), \
 	char *: fy_generic_get_char_ptr_default, \
 	const char *: fy_generic_get_const_char_ptr_default, \
 	fy_generic: fy_generic_get_generic_default
@@ -2186,6 +2245,7 @@ static inline void fy_generic_get_default_final_never(fy_generic v,
 #define fy_generic_get(_v, _type) \
 	(fy_generic_get_default((_v), fy_generic_get_type_default(_type)))
 
+#if 0
 /* when we have a pointer we can return to inplace strings */
 #define fy_genericp_get_default_Generic_dispatch \
 	void *: fy_generic_get_null_default, \
@@ -2219,6 +2279,7 @@ static inline void fy_generic_get_default_final_never(fy_generic v,
 
 #define fy_genericp_get(_vp, _type) \
 	(fy_genericp_get_default((_vp), fy_generic_get_type_default(_type)))
+#endif
 
 #define fy_generic_get_default_coerse(_v, _dv) \
 	({ \
@@ -2226,26 +2287,21 @@ static inline void fy_generic_get_default_final_never(fy_generic v,
 	 	fy_generic_get_default(__vv, (_dv)); \
 	})
 
-static inline const fy_generic *fy_generic_sequencep_get_generic_itemp(const fy_generic_sequence *seqp, size_t idx)
-{
-	return seqp && idx < seqp->count ? fy_genericp_indirect_get_valuep(&seqp->items[idx]) : NULL;
-}
-
-static inline const fy_generic *fy_generic_sequence_get_generic_itemp(fy_generic seq, size_t idx)
+static inline const fy_generic *fy_generic_sequence_get_itemp(fy_generic seq, size_t idx)
 {
 	const fy_generic_sequence *seqp = fy_generic_sequence_resolve(seq);
-	return fy_generic_sequencep_get_generic_itemp(seqp, idx);
+	return fy_generic_sequencep_get_itemp(seqp, idx);
 }
 
 static inline fy_generic fy_generic_sequencep_get_item_generic(const fy_generic_sequence *seqp, size_t idx)
 {
-	const fy_generic *vp = fy_generic_sequencep_get_generic_itemp(seqp, idx);
+	const fy_generic *vp = fy_generic_sequencep_get_itemp(seqp, idx);
 	return vp ? *vp : fy_invalid;
 }
 
 static inline fy_generic fy_generic_sequence_get_item_generic(fy_generic seq, size_t idx)
 {
-	const fy_generic *vp = fy_generic_sequence_get_generic_itemp(seq, idx);
+	const fy_generic *vp = fy_generic_sequence_get_itemp(seq, idx);
 	return vp ? *vp : fy_invalid;
 }
 
@@ -2264,7 +2320,7 @@ static inline fy_generic_sequence_handle
 fy_generic_sequencep_get_generic_sequence_handle_default(const fy_generic_sequence *seqp, size_t idx,
 		fy_generic_sequence_handle default_value)
 {
-	const fy_generic *vp = fy_generic_sequencep_get_generic_itemp(seqp, idx);
+	const fy_generic *vp = fy_generic_sequencep_get_itemp(seqp, idx);
 	fy_generic_sequence_handle seqh;
 
 	if (!vp)
@@ -2289,7 +2345,7 @@ static inline fy_generic_mapping_handle
 fy_generic_sequencep_get_generic_mapping_handle_default(const fy_generic_sequence *seqp, size_t idx,
 		fy_generic_mapping_handle default_value)
 {
-	const fy_generic *vp = fy_generic_sequencep_get_generic_itemp(seqp, idx);
+	const fy_generic *vp = fy_generic_sequencep_get_itemp(seqp, idx);
 	fy_generic_mapping_handle seqh;
 
 	if (!vp)
@@ -2312,7 +2368,7 @@ fy_generic_sequence_get_generic_mapping_handle_default(fy_generic seq, size_t id
 
 static inline fy_generic fy_generic_sequencep_get_generic_default(const fy_generic_sequence *seqp, size_t idx, fy_generic default_value)
 {
-	const fy_generic *vp = fy_generic_sequencep_get_generic_itemp(seqp, idx);
+	const fy_generic *vp = fy_generic_sequencep_get_itemp(seqp, idx);
 	return vp ? *vp : default_value;
 }
 
@@ -2322,139 +2378,9 @@ static inline fy_generic fy_generic_sequence_get_generic_default(fy_generic seq,
 	return fy_generic_sequencep_get_generic_default(seqp, idx, default_value);
 }
 
-static inline const fy_generic *fy_generic_sequencep_get_null_itemp(const fy_generic_sequence *seqp, size_t idx)
-{
-	const fy_generic *vp = fy_generic_sequencep_get_generic_itemp(seqp, idx);
-	return vp && fy_generic_is_direct_null(*vp) ? vp : NULL;
-}
-
-static inline const fy_generic *fy_generic_sequence_get_null_itemp(fy_generic seq, size_t idx)
-{
-	const fy_generic_sequence *seqp = fy_generic_sequence_resolve(seq);
-	return fy_generic_sequencep_get_null_itemp(seqp, idx);
-}
-
-static inline void *fy_generic_sequence_get_null_default(fy_generic seq, size_t idx, void *default_value)
-{
-	return fy_genericp_get_null_default(fy_generic_sequence_get_null_itemp(seq, idx), default_value);
-}
-
-static inline const fy_generic *fy_generic_sequencep_get_bool_itemp(const fy_generic_sequence *seqp, size_t idx)
-{
-	const fy_generic *vp = fy_generic_sequencep_get_generic_itemp(seqp, idx);
-	return vp && fy_generic_is_direct_bool(*vp) ? vp : NULL;
-}
-
-static inline const fy_generic *fy_generic_sequence_get_bool_itemp(fy_generic seq, size_t idx)
-{
-	const fy_generic_sequence *seqp = fy_generic_sequence_resolve(seq);
-	return fy_generic_sequencep_get_bool_itemp(seqp, idx);
-}
-
-static inline bool fy_generic_sequence_get_bool_default(fy_generic seq, size_t idx, bool default_value)
-{
-	return fy_genericp_get_bool_default(fy_generic_sequence_get_bool_itemp(seq, idx), default_value);
-}
-
-static inline const fy_generic *fy_generic_sequencep_get_int_itemp(const fy_generic_sequence *seqp, size_t idx)
-{
-	const fy_generic *vp = fy_generic_sequencep_get_generic_itemp(seqp, idx);
-	return vp && fy_generic_is_direct_int(*vp) ? vp : NULL;
-}
-
-static inline const fy_generic *fy_generic_sequence_get_int_itemp(fy_generic seq, size_t idx)
-{
-	const fy_generic_sequence *seqp = fy_generic_sequence_resolve(seq);
-	return fy_generic_sequencep_get_int_itemp(seqp, idx);
-}
-
-static inline signed char fy_generic_sequencep_get_signed_char_default(const fy_generic_sequence *seqp, size_t idx, signed char default_value)
-{
-	const fy_generic *vp = fy_generic_sequencep_get_int_itemp(seqp, idx);
-	return fy_genericp_get_signed_char_default(vp, default_value);
-}
-
-static inline signed char fy_generic_sequence_get_signed_char_default(fy_generic seq, size_t idx, signed char default_value)
-{
-	const fy_generic_sequence *seqp = fy_generic_sequence_resolve(seq);
-	return fy_generic_sequencep_get_signed_char_default(seqp, idx, default_value);
-}
-
-static inline unsigned char fy_generic_sequence_get_unsigned_char_default(fy_generic seq, size_t idx, unsigned char default_value)
-{
-	const fy_generic *vp = fy_generic_sequence_get_int_itemp(seq, idx);
-	return fy_genericp_get_unsigned_char_default(vp, default_value);
-}
-
-static inline signed short fy_generic_sequence_get_signed_short_default(fy_generic seq, size_t idx, signed char default_value)
-{
-	const fy_generic *vp = fy_generic_sequence_get_int_itemp(seq, idx);
-	return fy_genericp_get_signed_short_default(vp, default_value);
-}
-
-static inline unsigned short fy_generic_sequence_get_unsigned_short_default(fy_generic seq, size_t idx, unsigned char default_value)
-{
-	const fy_generic *vp = fy_generic_sequence_get_int_itemp(seq, idx);
-	return fy_genericp_get_unsigned_short_default(vp, default_value);
-}
-
-static inline signed int fy_generic_sequence_get_signed_int_default(fy_generic seq, size_t idx, signed int default_value)
-{
-	const fy_generic *vp = fy_generic_sequence_get_int_itemp(seq, idx);
-	return fy_genericp_get_signed_int_default(vp, default_value);
-}
-
-static inline unsigned int fy_generic_sequence_get_unsigned_int_default(fy_generic seq, size_t idx, unsigned int default_value)
-{
-	const fy_generic *vp = fy_generic_sequence_get_int_itemp(seq, idx);
-	return fy_genericp_get_unsigned_int_default(vp, default_value);
-}
-
-static inline signed long fy_generic_sequence_get_signed_long_default(fy_generic seq, size_t idx, signed long default_value)
-{
-	const fy_generic *vp = fy_generic_sequence_get_int_itemp(seq, idx);
-	return fy_genericp_get_signed_long_default(vp, default_value);
-}
-
-static inline unsigned long fy_generic_sequence_get_unsigned_long_default(fy_generic seq, size_t idx, unsigned long default_value)
-{
-	const fy_generic *vp = fy_generic_sequence_get_int_itemp(seq, idx);
-	return fy_genericp_get_unsigned_long_default(vp, default_value);
-}
-
-static inline signed long long fy_generic_sequence_get_signed_long_long_default(fy_generic seq, size_t idx, signed long long default_value)
-{
-	const fy_generic *vp = fy_generic_sequence_get_int_itemp(seq, idx);
-	return fy_genericp_get_signed_long_long_default(vp, default_value);
-}
-
-static inline unsigned long long fy_generic_sequence_get_unsigned_long_long_default(fy_generic seq, size_t idx, unsigned long long default_value)
-{
-	const fy_generic *vp = fy_generic_sequence_get_int_itemp(seq, idx);
-	return fy_genericp_get_unsigned_long_long_default(vp, default_value);
-}
-
-static inline const fy_generic *fy_generic_sequence_get_float_itemp(fy_generic seq, size_t idx)
-{
-	const fy_generic *vp = fy_generic_sequence_get_generic_itemp(seq, idx);
-	return vp && fy_generic_is_direct_float(*vp) ? vp : NULL;
-}
-
-static inline float fy_generic_sequence_get_float_default(fy_generic seq, size_t idx, float default_value)
-{
-	const fy_generic *vp = fy_generic_sequence_get_float_itemp(seq, idx);
-	return fy_genericp_get_float_default(vp, default_value);
-}
-
-static inline double fy_generic_sequence_get_double_default(fy_generic seq, size_t idx, double default_value)
-{
-	const fy_generic *vp = fy_generic_sequence_get_float_itemp(seq, idx);
-	return fy_genericp_get_double_default(vp, default_value);
-}
-
 static inline const fy_generic *fy_generic_sequence_get_string_itemp(fy_generic seq, size_t idx)
 {
-	const fy_generic *vp = fy_generic_sequence_get_generic_itemp(seq, idx);
+	const fy_generic *vp = fy_generic_sequence_get_itemp(seq, idx);
 	return vp && fy_generic_is_direct_string(*vp) ? vp : NULL;
 }
 
@@ -2484,19 +2410,19 @@ static inline fy_generic_sized_string fy_generic_sequence_get_szstr_default(fy_g
 
 static inline const fy_generic *fy_generic_sequence_get_sequence_itemp(fy_generic seq, size_t idx)
 {
-	const fy_generic *vp = fy_generic_sequence_get_generic_itemp(seq, idx);
+	const fy_generic *vp = fy_generic_sequence_get_itemp(seq, idx);
 	return vp && fy_generic_is_direct_sequence(*vp) ? vp : NULL;
 }
 
 static inline const fy_generic *fy_generic_sequence_get_mapping_itemp(fy_generic seq, size_t idx)
 {
-	const fy_generic *vp = fy_generic_sequence_get_generic_itemp(seq, idx);
+	const fy_generic *vp = fy_generic_sequence_get_itemp(seq, idx);
 	return vp && fy_generic_is_direct_mapping(*vp) ? vp : NULL;
 }
 
 static inline const fy_generic *fy_generic_sequence_get_alias_itemp(fy_generic seq, size_t idx)
 {
-	const fy_generic *vp = fy_generic_sequence_get_generic_itemp(seq, idx);
+	const fy_generic *vp = fy_generic_sequence_get_itemp(seq, idx);
 	return vp && fy_generic_is_direct_alias(*vp) ? vp : NULL;
 }
 
@@ -2549,20 +2475,7 @@ static inline fy_generic fy_generic_sequence_get_alias_item(fy_generic seq, size
 }
 
 #define fy_generic_sequence_get_default_Generic_dispatch \
-	void *: fy_generic_sequence_get_null_default, \
-	_Bool: fy_generic_sequence_get_bool_default, \
-	signed char: fy_generic_sequence_get_signed_char_default, \
-	unsigned char: fy_generic_sequence_get_unsigned_char_default, \
-	signed short: fy_generic_sequence_get_signed_short_default, \
-	unsigned short: fy_generic_sequence_get_unsigned_short_default, \
-	signed int: fy_generic_sequence_get_signed_int_default, \
-	unsigned int: fy_generic_sequence_get_unsigned_int_default, \
-	signed long: fy_generic_sequence_get_signed_long_default, \
-	unsigned long: fy_generic_sequence_get_unsigned_long_default, \
-	signed long long: fy_generic_sequence_get_signed_long_long_default, \
-	unsigned long long: fy_generic_sequence_get_unsigned_long_long_default, \
-	float: fy_generic_sequence_get_float_default, \
-	double: fy_generic_sequence_get_double_default, \
+	FY_GENERIC_ALL_SCALARS_DISPATCH_SFX(fy_generic_sequence_get, default), \
 	char *: fy_generic_sequence_get_char_ptr_default, \
 	const char *: fy_generic_sequence_get_const_char_ptr_default, \
 	fy_generic_sequence_handle: fy_generic_sequence_get_generic_sequence_handle_default, \
@@ -2593,42 +2506,15 @@ static inline fy_generic fy_generic_sequence_get_alias_item(fy_generic seq, size
 	(fy_generic_sequence_get_defaul_coerse((_seq), (_idxv), fy_generic_get_type_default(_type)))
 
 
-static inline const fy_generic *fy_generic_mapping_get_generic_itemp(fy_generic map, fy_generic key)
-{
-	const fy_generic_mapping *mapp = fy_generic_mapping_resolve(map);
-	const fy_generic *vp;
-
-	if (!mapp)
-		return NULL;
-
-	vp = fy_generic_mapping_lookup_valuep_index(mapp, key, NULL);
-	if (!vp)
-		return NULL;
-
-	return fy_genericp_indirect_get_valuep(vp);
-}
-
-static inline fy_generic fy_generic_mapping_get_item_generic(fy_generic map, fy_generic key)
-{
-	const fy_generic *vp = fy_generic_mapping_get_generic_itemp(map, key);
-	return vp ? *vp : fy_invalid;
-}
-
-static inline size_t fy_generic_mapping_get_pair_count(fy_generic map)
-{
-	const fy_generic_mapping *mapp = fy_generic_mapping_resolve(map);
-	return mapp ? mapp->count : 0;
-}
-
 static inline fy_generic fy_generic_mapping_get_generic_default(fy_generic map, fy_generic key, fy_generic default_value)
 {
-	const fy_generic *vp = fy_generic_mapping_get_generic_itemp(map, key);
+	const fy_generic *vp = fy_generic_mapping_get_valuep(map, key);
 	return vp ? *vp : default_value;
 }
 
 static inline fy_generic_sequence_handle fy_generic_mapping_get_sequence_handle_default(fy_generic map, fy_generic key, fy_generic_sequence_handle default_value)
 {
-	const fy_generic *vp = fy_generic_mapping_get_generic_itemp(map, key);
+	const fy_generic *vp = fy_generic_mapping_get_valuep(map, key);
 	fy_generic_sequence_handle seqh;
 
 	if (!vp)
@@ -2643,7 +2529,7 @@ static inline fy_generic_sequence_handle fy_generic_mapping_get_sequence_handle_
 
 static inline fy_generic_mapping_handle fy_generic_mapping_get_mapping_handle_default(fy_generic map, fy_generic key, fy_generic_mapping_handle default_value)
 {
-	const fy_generic *vp = fy_generic_mapping_get_generic_itemp(map, key);
+	const fy_generic *vp = fy_generic_mapping_get_valuep(map, key);
 	fy_generic_mapping_handle maph;
 
 	if (!vp)
@@ -2656,121 +2542,15 @@ static inline fy_generic_mapping_handle fy_generic_mapping_get_mapping_handle_de
 	return maph;
 }
 
-static inline const fy_generic *fy_generic_mapping_get_null_itemp(fy_generic map, fy_generic key)
+static inline const fy_generic *fy_generic_mapping_get_string_valuep(fy_generic map, fy_generic key)
 {
-	const fy_generic *vp = fy_generic_mapping_get_generic_itemp(map, key);
-	return vp && fy_generic_is_direct_null(*vp) ? vp : NULL;
-}
-
-static inline void *fy_generic_mapping_get_null_default(fy_generic map, fy_generic key, void *default_value)
-{
-	return fy_genericp_get_null_default(fy_generic_mapping_get_null_itemp(map, key), default_value);
-}
-
-static inline const fy_generic *fy_generic_mapping_get_bool_itemp(fy_generic map, fy_generic key)
-{
-	const fy_generic *vp = fy_generic_mapping_get_generic_itemp(map, key);
-	return vp && fy_generic_is_direct_bool(*vp) ? vp : NULL;
-}
-
-static inline bool fy_generic_mapping_get_bool_default(fy_generic map, fy_generic key, bool default_value)
-{
-	return fy_genericp_get_bool_default(fy_generic_mapping_get_bool_itemp(map, key), default_value);
-}
-
-static inline const fy_generic *fy_generic_mapping_get_int_itemp(fy_generic map, fy_generic key)
-{
-	const fy_generic *vp = fy_generic_mapping_get_generic_itemp(map, key);
-	return vp && fy_generic_is_direct_int(*vp) ? vp : NULL;
-}
-
-static inline signed char fy_generic_mapping_get_signed_char_default(fy_generic map, fy_generic key, signed char default_value)
-{
-	const fy_generic *vp = fy_generic_mapping_get_int_itemp(map, key);
-	return fy_genericp_get_signed_char_default(vp, default_value);
-}
-
-static inline unsigned char fy_generic_mapping_get_unsigned_char_default(fy_generic map, fy_generic key, unsigned char default_value)
-{
-	const fy_generic *vp = fy_generic_mapping_get_int_itemp(map, key);
-	return fy_genericp_get_unsigned_char_default(vp, default_value);
-}
-
-static inline signed short fy_generic_mapping_get_signed_short_default(fy_generic map, fy_generic key, signed char default_value)
-{
-	const fy_generic *vp = fy_generic_mapping_get_int_itemp(map, key);
-	return fy_genericp_get_signed_short_default(vp, default_value);
-}
-
-static inline unsigned short fy_generic_mapping_get_unsigned_short_default(fy_generic map, fy_generic key, unsigned char default_value)
-{
-	const fy_generic *vp = fy_generic_mapping_get_int_itemp(map, key);
-	return fy_genericp_get_unsigned_short_default(vp, default_value);
-}
-
-static inline signed int fy_generic_mapping_get_signed_int_default(fy_generic map, fy_generic key, signed int default_value)
-{
-	const fy_generic *vp = fy_generic_mapping_get_int_itemp(map, key);
-	return fy_genericp_get_signed_int_default(vp, default_value);
-}
-
-static inline unsigned int fy_generic_mapping_get_unsigned_int_default(fy_generic map, fy_generic key, unsigned int default_value)
-{
-	const fy_generic *vp = fy_generic_mapping_get_int_itemp(map, key);
-	return fy_genericp_get_unsigned_int_default(vp, default_value);
-}
-
-static inline signed long fy_generic_mapping_get_signed_long_default(fy_generic map, fy_generic key, signed long default_value)
-{
-	const fy_generic *vp = fy_generic_mapping_get_int_itemp(map, key);
-	return fy_genericp_get_signed_long_default(vp, default_value);
-}
-
-static inline unsigned long fy_generic_mapping_get_unsigned_long_default(fy_generic map, fy_generic key, unsigned long default_value)
-{
-	const fy_generic *vp = fy_generic_mapping_get_int_itemp(map, key);
-	return fy_genericp_get_unsigned_long_default(vp, default_value);
-}
-
-static inline signed long long fy_generic_mapping_get_signed_long_long_default(fy_generic map, fy_generic key, signed long long default_value)
-{
-	const fy_generic *vp = fy_generic_mapping_get_int_itemp(map, key);
-	return fy_genericp_get_signed_long_long_default(vp, default_value);
-}
-
-static inline unsigned long long fy_generic_mapping_get_unsigned_long_long_default(fy_generic map, fy_generic key, unsigned long long default_value)
-{
-	const fy_generic *vp = fy_generic_mapping_get_int_itemp(map, key);
-	return fy_genericp_get_unsigned_long_long_default(vp, default_value);
-}
-
-static inline const fy_generic *fy_generic_mapping_get_float_itemp(fy_generic map, fy_generic key)
-{
-	const fy_generic *vp = fy_generic_mapping_get_generic_itemp(map, key);
-	return vp && fy_generic_is_direct_float(*vp) ? vp : NULL;
-}
-
-static inline float fy_generic_mapping_get_float_default(fy_generic map, fy_generic key, float default_value)
-{
-	const fy_generic *vp = fy_generic_mapping_get_float_itemp(map, key);
-	return fy_genericp_get_float_default(vp, default_value);
-}
-
-static inline double fy_generic_mapping_get_double_default(fy_generic map, fy_generic key, double default_value)
-{
-	const fy_generic *vp = fy_generic_mapping_get_float_itemp(map, key);
-	return fy_genericp_get_double_default(vp, default_value);
-}
-
-static inline const fy_generic *fy_generic_mapping_get_string_itemp(fy_generic map, fy_generic key)
-{
-	const fy_generic *vp = fy_generic_mapping_get_generic_itemp(map, key);
+	const fy_generic *vp = fy_generic_mapping_get_valuep(map, key);
 	return vp && fy_generic_is_direct_string(*vp) ? vp : NULL;
 }
 
 static inline const char *fy_generic_mapping_get_const_char_ptr_default(fy_generic map, fy_generic key, const char *default_value)
 {
-	const fy_generic *vp = fy_generic_mapping_get_string_itemp(map, key);
+	const fy_generic *vp = fy_generic_mapping_get_string_valuep(map, key);
 	return fy_genericp_get_const_char_ptr_default(vp, default_value);
 }
 
@@ -2783,7 +2563,7 @@ static inline fy_generic_sized_string fy_generic_mapping_get_szstr_default(fy_ge
 		fy_generic_sized_string default_value)
 {
 	struct fy_generic_sized_string ret = { .data = NULL, .size = 0 };
-	const fy_generic *vp = fy_generic_mapping_get_string_itemp(map, key);
+	const fy_generic *vp = fy_generic_mapping_get_string_valuep(map, key);
 
 	if (!vp || !fy_generic_is_string(*vp))
 		return ret;
@@ -2792,58 +2572,16 @@ static inline fy_generic_sized_string fy_generic_mapping_get_szstr_default(fy_ge
 	return ret;
 }
 
-static inline const fy_generic *fy_generic_mapping_get_mapping_itemp(fy_generic map, fy_generic key)
+static inline const fy_generic *fy_generic_mapping_get_mapping_valuep(fy_generic map, fy_generic key)
 {
-	const fy_generic *vp = fy_generic_mapping_get_generic_itemp(map, key);
+	const fy_generic *vp = fy_generic_mapping_get_valuep(map, key);
 	return vp && fy_generic_is_direct_mapping(*vp) ? vp : NULL;
 }
 
-static inline const fy_generic *fy_generic_mapping_get_alias_itemp(fy_generic map, fy_generic key)
+static inline const fy_generic *fy_generic_mapping_get_alias_valuep(fy_generic map, fy_generic key)
 {
-	const fy_generic *vp = fy_generic_mapping_get_generic_itemp(map, key);
+	const fy_generic *vp = fy_generic_mapping_get_valuep(map, key);
 	return vp && fy_generic_is_direct_alias(*vp) ? vp : NULL;
-}
-
-static inline fy_generic fy_generic_mapping_get_null_item(fy_generic map, fy_generic key)
-{
-	fy_generic v = fy_generic_mapping_get_item_generic(map, key);
-	return fy_generic_is_null(v) ? v : fy_invalid;
-}
-
-static inline fy_generic fy_generic_mapping_get_bool_item(fy_generic map, fy_generic key)
-{
-	fy_generic v = fy_generic_mapping_get_item_generic(map, key);
-	return fy_generic_is_bool(v) ? v : fy_invalid;
-}
-
-static inline fy_generic fy_generic_mapping_get_int_item(fy_generic map, fy_generic key)
-{
-	fy_generic v = fy_generic_mapping_get_item_generic(map, key);
-	return fy_generic_is_int(v) ? v : fy_invalid;
-}
-
-static inline fy_generic fy_generic_mapping_get_float_item(fy_generic map, fy_generic key)
-{
-	fy_generic v = fy_generic_mapping_get_item_generic(map, key);
-	return fy_generic_is_float(v) ? v : fy_invalid;
-}
-
-static inline fy_generic fy_generic_mapping_get_string_item(fy_generic map, fy_generic key)
-{
-	fy_generic v = fy_generic_mapping_get_item_generic(map, key);
-	return fy_generic_is_string(v) ? v : fy_invalid;
-}
-
-static inline fy_generic fy_generic_mapping_get_mapping_item(fy_generic map, fy_generic key)
-{
-	fy_generic v = fy_generic_mapping_get_item_generic(map, key);
-	return fy_generic_is_mapping(v) ? v : fy_invalid;
-}
-
-static inline fy_generic fy_generic_mapping_get_alias_item(fy_generic map, fy_generic key)
-{
-	fy_generic v = fy_generic_mapping_get_item_generic(map, key);
-	return fy_generic_is_alias(v) ? v : fy_invalid;
 }
 
 #define fy_generic_mapping_get_default_Generic_dispatch \
