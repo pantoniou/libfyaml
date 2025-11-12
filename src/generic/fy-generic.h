@@ -616,9 +616,80 @@ static inline void *fy_generic_get_gnull_no_check(fy_generic v)
 	return NULL;
 }
 
+static inline fy_generic_value fy_generic_in_place_gnull(void *p)
+{
+	return p == NULL ? fy_null_value : fy_invalid_value;
+}
+
+static inline size_t fy_generic_out_of_place_size_gnull(void *v)
+{
+	return 0;
+}
+
+static inline fy_generic_value fy_generic_out_of_place_put_gnull(void *buf, void *v)
+{
+	return fy_invalid_value;	// should never happen
+}
+
 static inline bool fy_generic_get_gbool_no_check(fy_generic v)
 {
 	return v.v == fy_true_value;
+}
+
+static inline fy_generic_value fy_generic_in_place_gbool(_Bool v)
+{
+	return fy_invalid_value;	// should never happen
+}
+
+static inline size_t fy_generic_out_of_place_size_gbool(bool v)
+{
+	return 0;
+}
+
+static inline fy_generic_value fy_generic_out_of_place_put_gbool(void *buf, bool v)
+{
+	return fy_invalid_value;	// should never happen
+}
+
+static inline fy_generic_value fy_generic_in_place_gint(const long long v)
+{
+	if (v >= FYGT_INT_INPLACE_MIN && v <= FYGT_INT_INPLACE_MAX)
+		return (((fy_generic_value)(signed long long)v) << FY_INT_INPLACE_SHIFT) | FY_INT_INPLACE_V;
+	return fy_invalid_value;
+}
+
+static inline fy_generic_value fy_generic_out_of_place_put_gint(void *buf, const long long v)
+{
+	assert(((uintptr_t)buf & FY_INPLACE_TYPE_MASK) == 0);
+	*(long long *)buf = v;
+	return (fy_generic_value)buf | FY_INT_OUTPLACE_V;
+}
+
+#ifdef FYGT_GENERIC_64
+
+static inline fy_generic_value fy_generic_in_place_gfloat(const double v)
+{
+	if (!isnormal(v) || (float)v == v) {
+		const union { float f; uint32_t f_bits; } u = { .f = (float)v };
+		return ((fy_generic_value)u.f_bits << FY_FLOAT_INPLACE_SHIFT) | FY_FLOAT_INPLACE_V;
+	}
+	return fy_invalid_value;
+}
+
+#else
+
+static inline fy_generic_value fy_generic_in_place_gfloat(const double v)
+{
+	return fy_invalid_value;
+}
+
+#endif
+
+static inline fy_generic_value fy_generic_out_of_place_put_gfloat(void *buf, const double v)
+{
+	assert(((uintptr_t)buf & FY_INPLACE_TYPE_MASK) == 0);
+	*(double *)buf = v;
+	return (fy_generic_value)buf | FY_FLOAT_OUTPLACE_V;
 }
 
 static inline long long fy_generic_get_gint_no_check(fy_generic v)
@@ -638,6 +709,11 @@ static inline long long fy_generic_get_gint_no_check(fy_generic v)
 	return *p;
 }
 
+static inline size_t fy_generic_out_of_place_size_gint(const long long v)
+{
+	return (v >= FYGT_INT_INPLACE_MIN && v <= FYGT_INT_INPLACE_MAX) ? 0 : sizeof(long long);
+}
+
 #ifdef FYGT_GENERIC_64
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
@@ -649,6 +725,7 @@ static inline long long fy_generic_get_gint_no_check(fy_generic v)
 #endif
 
 #ifdef FYGT_GENERIC_64
+
 static inline float fy_generic_get_gfloat_no_check(fy_generic v)
 {
 	const double *p;
@@ -662,6 +739,12 @@ static inline float fy_generic_get_gfloat_no_check(fy_generic v)
 		return 0.0;
 	return (float)*p;
 }
+
+static inline size_t fy_generic_out_of_place_size_gfloat(const double v)
+{
+	return (!isnormal(v) || (float)v == v) ? 0 : sizeof(double);
+}
+
 #else
 static inline float fy_generic_get_gfloat_no_check(fy_generic v)
 {
@@ -677,39 +760,31 @@ static inline float fy_generic_get_gfloat_no_check(fy_generic v)
 	else
 		return (float)*(double *)p;
 }
+
+static inline size_t fy_generic_out_of_place_size_double(const double v)
+{
+	return sizeof(double);
+}
+
 #endif
 
-#ifdef FYGT_GENERIC_64
-static inline double fy_generic_get_gdouble_no_check(fy_generic v)
-{
-	const double *p;
-
-	if ((v.v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V)
-		return (double)*((float *)&v.v + FY_INPLACE_FLOAT_ADV);
-
-	/* the out of place values are always doubles */
-	p = fy_generic_resolve_ptr(v);
-	if (!p)
-		return 0.0;
-	return *p;
-}
-#else
-static inline double fy_generic_get_gdouble_no_check(fy_generic v)
-{
-	const void *p;
-
-	p = fy_generic_resolve_ptr(v);
-	if (!p)
-		return 0.0;
-
-	/* float, or double out of place */
-	if ((v.v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V)
-		return (double)*(float *)p;
-	else
-		return *(double *)p;
-}
-#endif
-
+//
+// template for repetitive definitions
+//
+// for FY_GENERIC_INT_RANGED_TEMPLATE(int, int, INT_MIN, INT_MAX, 0) ->
+//	FY_GENERIC_RANGED_TEMPLATE(int, int, INT, long long, gint, INT_MIN, INT_MAX, 0)
+// 
+// static inline long long fy_generic_get_int_no_check(fy_generic v);
+// static inline bool fy_int_is_in_range(const long long v);
+// static inline bool fy_generic_int_is_in_range_no_check(const fy_generic v);
+// static inline bool fy_generic_int_is_in_range(const fy_generic v);
+// static inline bool fy_generic_is_direct_int(const fy_generic v);
+// static inline bool fy_generic_is_int(const fy_generic v);
+// static inline int fy_generic_get_int_default(fy_generic v, int default_value);
+// static inline int fy_generic_get_int(fy_generic v);
+// static inline int fy_genericp_get_int_default(const fy_generic *vp, int default_value);
+// static inline int fy_genericp_get_int(const fy_generic *vp);
+//
 #define FY_GENERIC_RANGED_TEMPLATE(_ctype, _gtype, _gttype, _xctype, _xgtype, _xminv, _xmaxv, _default_v) \
 static inline _xctype fy_generic_get_ ## _gtype ## _no_check(fy_generic v) \
 { \
@@ -764,9 +839,24 @@ static inline _ctype fy_genericp_get_ ## _gtype ## _default(const fy_generic *vp
 	return vp ? fy_generic_get_ ## _gtype ## _default(*vp, default_value) : default_value; \
 } \
 \
-static inline _ctype fy_genericp_get ## _gtype (const fy_generic *vp) \
+static inline _ctype fy_genericp_get_ ## _gtype (const fy_generic *vp) \
 { \
 	return fy_genericp_get_ ## _gtype ## _default(vp, _default_v ); \
+} \
+\
+static inline fy_generic_value fy_generic_in_place_ ## _gtype ( _ctype v) \
+{ \
+	return fy_generic_in_place_ ## _xgtype ( (_xctype)v ); \
+} \
+\
+static inline size_t fy_generic_out_of_place_size_ ## _gtype ( _ctype v) \
+{ \
+	return fy_generic_out_of_place_size_ ## _xgtype ( (_xctype)v ); \
+} \
+\
+static inline fy_generic_value fy_generic_out_of_place_put_ ##_gtype (void *buf, const _ctype v) \
+{ \
+	return fy_generic_out_of_place_put_ ## _xgtype (buf, (_xctype)v ); \
 } \
 \
 struct fy_useless_struct_for_semicolon
@@ -796,6 +886,25 @@ FY_GENERIC_INT_RANGED_TEMPLATE(unsigned long long, unsigned_long_long, 0, LONG_M
 FY_GENERIC_INT_RANGED_TEMPLATE(signed long long, signed_long_long, LLONG_MIN, LLONG_MAX, 0);
 FY_GENERIC_FLOAT_RANGED_TEMPLATE(float, float, FLT_MIN, FLT_MAX, 0.0);
 FY_GENERIC_FLOAT_RANGED_TEMPLATE(double, double, DBL_MIN, DBL_MAX, 0.0);
+
+#define FY_GENERIC_SCALAR_DISPATCH(_base, _ctype, _gtype) \
+	_ctype: _base ## _ ## _gtype
+
+#define FY_GENERIC_ALL_SCALARS_DISPATCH(_base) \
+	FY_GENERIC_SCALAR_DISPATCH(_base, void *, null), \
+	FY_GENERIC_SCALAR_DISPATCH(_base, _Bool, bool), \
+	FY_GENERIC_SCALAR_DISPATCH(_base, signed char, signed_char), \
+	FY_GENERIC_SCALAR_DISPATCH(_base, unsigned char, unsigned_char), \
+	FY_GENERIC_SCALAR_DISPATCH(_base, signed short, signed_short), \
+	FY_GENERIC_SCALAR_DISPATCH(_base, unsigned short, unsigned_short), \
+	FY_GENERIC_SCALAR_DISPATCH(_base, signed int, signed_int), \
+	FY_GENERIC_SCALAR_DISPATCH(_base, unsigned int, unsigned_int), \
+	FY_GENERIC_SCALAR_DISPATCH(_base, signed long, signed_long), \
+	FY_GENERIC_SCALAR_DISPATCH(_base, unsigned long, unsigned_long), \
+	FY_GENERIC_SCALAR_DISPATCH(_base, signed long long, signed_long_long), \
+	FY_GENERIC_SCALAR_DISPATCH(_base, unsigned long long, unsigned_long_long), \
+	FY_GENERIC_SCALAR_DISPATCH(_base, float, float), \
+	FY_GENERIC_SCALAR_DISPATCH(_base, double, double)
 
 /* NOTE: All get method multiple-evaluate the argument, so take care */
 
@@ -1018,37 +1127,6 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 #define fy_int(_v) \
 	((fy_generic){ .v = (__builtin_constant_p(_v) ? fy_int_const(_v) : fy_int_alloca(_v)) })
 
-static inline fy_generic_value fy_generic_in_place_null(void *p)
-{
-	return p == NULL ? fy_null_value : fy_invalid_value;
-}
-
-static inline fy_generic_value fy_generic_in_place_bool(_Bool v)
-{
-	return v ? fy_true_value : fy_false_value;
-}
-
-static inline fy_generic_value fy_generic_in_place_int(const long long v)
-{
-	if (v >= FYGT_INT_INPLACE_MIN && v <= FYGT_INT_INPLACE_MAX)
-		return (((fy_generic_value)(signed long long)v) << FY_INT_INPLACE_SHIFT) | FY_INT_INPLACE_V;
-	return fy_invalid_value;
-}
-
-static inline fy_generic_value fy_generic_in_place_signed_long(long v)
-{
-	if (v >= FYGT_INT_INPLACE_MIN && v <= FYGT_INT_INPLACE_MAX)
-		return (((fy_generic_value)(signed long long)v) << FY_INT_INPLACE_SHIFT) | FY_INT_INPLACE_V;
-	return fy_invalid_value;
-}
-
-static inline fy_generic_value fy_generic_in_place_uint(const unsigned long long v)
-{
-	if (v <= FYGT_INT_INPLACE_MAX)
-		return ((fy_generic_value)v << FY_INT_INPLACE_SHIFT) | FY_INT_INPLACE_V;
-	return fy_invalid_value;
-}
-
 static inline fy_generic_value fy_generic_in_place_char_ptr_len(const char *p, const size_t len)
 {
 	fy_generic_value v;
@@ -1116,35 +1194,6 @@ static inline fy_generic_value fy_generic_in_place_invalid(...)
 	return fy_invalid_value;
 }
 
-#ifdef FYGT_GENERIC_64
-
-static inline fy_generic_value fy_generic_in_place_float(const float v)
-{
-	const union { float f; uint32_t f_bits; } u = { .f = v };
-	return ((fy_generic_value)u.f_bits << FY_FLOAT_INPLACE_SHIFT) | FY_FLOAT_INPLACE_V;
-}
-
-static inline fy_generic_value fy_generic_in_place_double(const double v)
-{
-	if (!isnormal(v) || (float)v == v)
-		return fy_generic_in_place_float((float)v);
-	return fy_invalid_value;
-}
-
-#else
-
-static inline fy_generic_value fy_generic_in_place_float(const float v)
-{
-	return fy_invalid_value;
-}
-
-static inline fy_generic_value fy_generic_in_place_double(const double v)
-{
-	return fy_invalid_value;
-}
-
-#endif
-
 // pass-through
 static inline fy_generic_value fy_generic_in_place_generic(fy_generic v)
 {
@@ -1184,22 +1233,9 @@ static inline fy_generic_value fy_generic_in_place_mapping_handle(fy_generic_map
 }
 
 #define fy_to_generic_inplace_Generic_dispatch \
-	void *: fy_generic_in_place_null, \
-	_Bool: fy_generic_in_place_bool, \
-	signed char: fy_generic_in_place_int, \
-	unsigned char: fy_generic_in_place_uint, \
-	signed short: fy_generic_in_place_int, \
-	unsigned short: fy_generic_in_place_uint, \
-	signed int: fy_generic_in_place_int, \
-	unsigned int: fy_generic_in_place_uint, \
-	signed long: fy_generic_in_place_signed_long, \
-	unsigned long: fy_generic_in_place_uint, \
-	signed long long: fy_generic_in_place_int, \
-	unsigned long long: fy_generic_in_place_uint, \
+	FY_GENERIC_ALL_SCALARS_DISPATCH(fy_generic_in_place), \
 	char *: fy_generic_in_place_char_ptr, \
 	const char *: fy_generic_in_place_char_ptr, \
-	float: fy_generic_in_place_float, \
-	double: fy_generic_in_place_double, \
 	fy_generic: fy_generic_in_place_generic, \
 	fy_generic_sequence_handle: fy_generic_in_place_sequence_handle, \
 	fy_generic_mapping_handle: fy_generic_in_place_mapping_handle, \
@@ -1210,16 +1246,6 @@ static inline fy_generic_value fy_generic_in_place_mapping_handle(fy_generic_map
 
 #define fy_to_generic_inplace(_v) ( _Generic((_v), fy_to_generic_inplace_Generic_dispatch)(_v))
 
-static inline size_t fy_generic_out_of_place_size_int(const long long v)
-{
-	return sizeof(long long);
-}
-
-static inline size_t fy_generic_out_of_place_size_uint(const unsigned long long v)
-{
-	return sizeof(unsigned long long);
-}
-
 static inline size_t fy_generic_out_of_place_size_char_ptr(const char *p)
 {
 	if (!p)
@@ -1227,32 +1253,6 @@ static inline size_t fy_generic_out_of_place_size_char_ptr(const char *p)
 
 	return FYGT_SIZE_ENCODING_MAX + strlen(p) + 1;
 }
-
-#ifdef FYGT_GENERIC_64
-
-static inline size_t fy_generic_out_of_place_size_float(const float v)
-{
-	return 0;	// should never happen
-}
-
-static inline size_t fy_generic_out_of_place_size_double(const double v)
-{
-	return sizeof(double);
-}
-
-#else
-
-static inline size_t fy_generic_out_of_place_size_float(const float v)
-{
-	return sizeof(double);
-}
-
-static inline size_t fy_generic_out_of_place_size_double(const double v)
-{
-	return sizeof(double);
-}
-
-#endif
 
 static inline size_t fy_generic_out_of_place_size_generic(...)
 {
@@ -1273,48 +1273,29 @@ static inline size_t fy_generic_out_of_place_size_szstr(fy_generic_sized_string 
 	return fy_generic_out_of_place_size_const_szstrp(&szstr);
 }
 
-static inline size_t fy_generic_out_of_place_size_zero(...)
+static inline size_t fy_generic_out_of_place_size_sequence_handle(fy_generic_sequence_handle seqh)
 {
-	return 0;
+	return 0;	// TODO calculate
+}
+
+static inline size_t fy_generic_out_of_place_size_mapping_handle(fy_generic_mapping_handle maph)
+{
+	return 0;	// TODO calculate
 }
 
 #define fy_to_generic_outofplace_size_Generic_dispatch \
-	signed char: fy_generic_out_of_place_size_int, \
-	signed short: fy_generic_out_of_place_size_int, \
-	signed int: fy_generic_out_of_place_size_int, \
-	signed long: fy_generic_out_of_place_size_int, \
-	signed long long: fy_generic_out_of_place_size_int, \
-	unsigned char: fy_generic_out_of_place_size_uint, \
-	unsigned short: fy_generic_out_of_place_size_uint, \
-	unsigned int: fy_generic_out_of_place_size_uint, \
-	unsigned long: fy_generic_out_of_place_size_uint, \
-	unsigned long long: fy_generic_out_of_place_size_uint, \
+	FY_GENERIC_ALL_SCALARS_DISPATCH(fy_generic_out_of_place_size), \
 	char *: fy_generic_out_of_place_size_char_ptr, \
 	const char *: fy_generic_out_of_place_size_char_ptr, \
-	float: fy_generic_out_of_place_size_float, \
-	double: fy_generic_out_of_place_size_double, \
 	fy_generic: fy_generic_out_of_place_size_generic, \
+	fy_generic_sequence_handle: fy_generic_out_of_place_size_sequence_handle, \
+	fy_generic_mapping_handle: fy_generic_out_of_place_size_mapping_handle, \
 	const fy_generic_sized_string *: fy_generic_out_of_place_size_const_szstrp, \
 	fy_generic_sized_string *: fy_generic_out_of_place_size_const_szstrp, \
-	fy_generic_sized_string: fy_generic_out_of_place_size_szstr, \
-	default: fy_generic_out_of_place_size_zero \
+	fy_generic_sized_string: fy_generic_out_of_place_size_szstr
 
 #define fy_to_generic_outofplace_size(_v) \
 	(_Generic((_v), fy_to_generic_outofplace_size_Generic_dispatch)(_v))
-
-static inline fy_generic_value fy_generic_out_of_place_put_int(void *buf, const long long v)
-{
-	assert(((uintptr_t)buf & FY_INPLACE_TYPE_MASK) == 0);
-	*(long long *)buf = v;
-	return (fy_generic_value)buf | FY_INT_OUTPLACE_V;
-}
-
-static inline fy_generic_value fy_generic_out_of_place_put_uint(void *buf, const unsigned long long v)
-{
-	assert(((uintptr_t)buf & FY_INPLACE_TYPE_MASK) == 0);
-	*(unsigned long long *)buf = v;
-	return (fy_generic_value)buf | FY_INT_OUTPLACE_V;
-}
 
 static inline fy_generic_value fy_generic_out_of_place_put_char_ptr(void *buf, const char *p)
 {
@@ -1332,38 +1313,6 @@ static inline fy_generic_value fy_generic_out_of_place_put_char_ptr(void *buf, c
 	s[len] = '\0';
 	return (fy_generic_value)buf | FY_STRING_OUTPLACE_V;
 }
-
-#ifdef FYGT_GENERIC_64
-
-static inline fy_generic_value fy_generic_out_of_place_put_float(void *buf, const float v)
-{
-	return fy_invalid_value;	// should never happen
-}
-
-static inline fy_generic_value fy_generic_out_of_place_put_double(void *buf, const double v)
-{
-	assert(((uintptr_t)buf & FY_INPLACE_TYPE_MASK) == 0);
-	*(double *)buf = v;
-	return (fy_generic_value)buf | FY_FLOAT_OUTPLACE_V;
-}
-
-#else
-
-static inline fy_generic_value fy_generic_out_of_place_put_float(void *buf, const float v)
-{
-	assert(((uintptr_t)buf & FY_INPLACE_TYPE_MASK) == 0);
-	*(double *)buf = v;
-	return (fy_generic_value)buf | FY_FLOAT_OUTPLACE_V;
-}
-
-static inline fy_generic_value fy_generic_out_of_place_put_double(void *buf, const double v);
-{
-	assert(((uintptr_t)buf & FY_INPLACE_TYPE_MASK) == 0);
-	*(double *)buf = v;
-	return (fy_generic_value)buf | FY_FLOAT_OUTPLACE_V;
-}
-
-#endif
 
 static inline fy_generic_value fy_generic_out_of_place_put_const_szstrp(void *buf, const fy_generic_sized_string *szstrp)
 {
@@ -1385,37 +1334,32 @@ static inline fy_generic_value fy_generic_out_of_place_put_szstr(void *buf, fy_g
 	return fy_generic_out_of_place_put_const_szstrp(buf, &szstrp);
 }
 
-static inline fy_generic_value fy_generic_out_of_place_put_generic(void *buf, ...)
+static inline fy_generic_value fy_generic_out_of_place_put_generic(void *buf, fy_generic v)
 {
 	/* we just pass-through, should never happen */
 	return fy_invalid_value;
 }
 
-static inline fy_generic_value fy_generic_out_of_place_put_invalid(void *buf, ...)
+static inline fy_generic_value fy_generic_out_of_place_put_sequence_handle(void *buf, fy_generic_sequence_handle seqh)
 {
-	return fy_invalid_value;
+	return fy_invalid_value;	// shoud never happen?
+}
+
+static inline fy_generic_value fy_generic_out_of_place_put_mapping_handle(void *buf, fy_generic_mapping_handle maph)
+{
+	return fy_invalid_value;	// shoud never happen?
 }
 
 #define fy_to_generic_outofplace_put_Generic_dispatch \
-	signed char: fy_generic_out_of_place_put_int, \
-	unsigned char: fy_generic_out_of_place_put_uint, \
-	signed short: fy_generic_out_of_place_put_int, \
-	unsigned short: fy_generic_out_of_place_put_uint, \
-	signed int: fy_generic_out_of_place_put_int, \
-	unsigned int: fy_generic_out_of_place_put_uint, \
-	signed long: fy_generic_out_of_place_put_int, \
-	unsigned long: fy_generic_out_of_place_put_uint, \
-	signed long long: fy_generic_out_of_place_put_int, \
-	unsigned long long: fy_generic_out_of_place_put_uint, \
+	FY_GENERIC_ALL_SCALARS_DISPATCH(fy_generic_out_of_place_put), \
 	char *: fy_generic_out_of_place_put_char_ptr, \
 	const char *: fy_generic_out_of_place_put_char_ptr, \
-	float: fy_generic_out_of_place_put_float, \
-	double: fy_generic_out_of_place_put_double, \
 	fy_generic: fy_generic_out_of_place_put_generic, \
+	fy_generic_sequence_handle: fy_generic_out_of_place_put_sequence_handle, \
+	fy_generic_mapping_handle: fy_generic_out_of_place_put_mapping_handle, \
 	const fy_generic_sized_string *: fy_generic_out_of_place_put_const_szstrp, \
 	fy_generic_sized_string *: fy_generic_out_of_place_put_const_szstrp, \
-	fy_generic_sized_string: fy_generic_out_of_place_put_szstr, \
-	default: fy_generic_out_of_place_put_invalid \
+	fy_generic_sized_string: fy_generic_out_of_place_put_szstr
 
 #define fy_to_generic_outofplace_put(_vp, _v) \
 	(_Generic((_v), fy_to_generic_outofplace_put_Generic_dispatch)((_vp), (_v)))
