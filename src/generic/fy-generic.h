@@ -1036,7 +1036,7 @@ static inline fy_generic_value fy_generic_out_of_place_put_ ##_gtype (void *buf,
 	return fy_generic_out_of_place_put_ ## _xgtype (buf, (_xctype)v ); \
 } \
 \
-static inline _ctype fy_generic_get_ ## _gtype ## _default(fy_generic v, _ctype default_value) \
+static inline _ctype fy_generic_cast_ ## _gtype ## _default(fy_generic v, _ctype default_value) \
 { \
 	if (!fy_generic_is_ ## _xgtype (v)) \
 		return default_value; \
@@ -1046,19 +1046,19 @@ static inline _ctype fy_generic_get_ ## _gtype ## _default(fy_generic v, _ctype 
 	return (_ctype)xv; \
 } \
 \
-static inline _ctype fy_generic_get_ ## _gtype (fy_generic v) \
+static inline _ctype fy_generic_cast_ ## _gtype (fy_generic v) \
 { \
-	return fy_generic_get_ ## _gtype ## _default(v, _default_v ); \
+	return fy_generic_cast_ ## _gtype ## _default(v, _default_v ); \
 } \
 \
-static inline _ctype fy_genericp_get_ ## _gtype ## _default(const fy_generic *vp, _ctype default_value) \
+static inline _ctype fy_genericp_cast_ ## _gtype ## _default(const fy_generic *vp, _ctype default_value) \
 { \
-	return vp ? fy_generic_get_ ## _gtype ## _default(*vp, default_value) : default_value; \
+	return vp ? fy_generic_cast_ ## _gtype ## _default(*vp, default_value) : default_value; \
 } \
 \
-static inline _ctype fy_genericp_get_ ## _gtype (const fy_generic *vp) \
+static inline _ctype fy_genericp_cast_ ## _gtype (const fy_generic *vp) \
 { \
-	return fy_genericp_get_ ## _gtype ## _default(vp, _default_v ); \
+	return fy_genericp_cast_ ## _gtype ## _default(vp, _default_v ); \
 } \
 \
 static inline const fy_generic *fy_generic_sequencep_get_ ## _gtype ## _itemp(const fy_generic_sequence *seqp, size_t idx) \
@@ -1075,7 +1075,7 @@ static inline const fy_generic *fy_generic_sequence_get_ ## _gtype ## _itemp(fy_
 static inline _ctype fy_generic_sequence_get_ ## _gtype ## _default(fy_generic seq, size_t idx, _ctype default_value) \
 { \
 	const fy_generic *vp = fy_generic_sequence_get_ ## _gtype ## _itemp(seq, idx); \
-	return fy_genericp_get_  ## _gtype ## _default(vp, default_value); \
+	return fy_genericp_cast_  ## _gtype ## _default(vp, default_value); \
 } \
 \
 static inline const fy_generic *fy_generic_mappingp_get_ ## _gtype ## _valuep(const fy_generic_mapping *mapp, fy_generic key) \
@@ -1092,7 +1092,7 @@ static inline const fy_generic *fy_generic_mapping_get_ ## _gtype ## _valuep(fy_
 static inline _ctype fy_generic_mapping_get_ ## _gtype ## _default(fy_generic map, fy_generic key, _ctype default_value) \
 { \
 	const fy_generic *vp = fy_generic_mapping_get_ ## _gtype ## _valuep(map, key); \
-	return fy_genericp_get_  ## _gtype ## _default(vp, default_value); \
+	return fy_genericp_cast_  ## _gtype ## _default(vp, default_value); \
 } \
 \
 struct fy_useless_struct_for_semicolon
@@ -2082,27 +2082,27 @@ static inline fy_generic_value fy_generic_out_of_place_put_mapping_handle(void *
 #define fy_indirect(_v, _anchor, _tag)	\
 	((fy_generic){ .v = fy_indirect_alloca((_v).v, (_anchor).v, (_tag).v) })
 
-static inline fy_generic fy_generic_get_generic_default(fy_generic v, fy_generic vdefault)
+static inline fy_generic fy_generic_cast_generic_default(fy_generic v, fy_generic vdefault)
 {
 	if (fy_generic_is_valid(v))
 		return v;
 	return vdefault;
 }
 
-static inline fy_generic_sequence_handle fy_generic_get_sequence_handle_default(fy_generic v, fy_generic_sequence_handle default_value)
+static inline fy_generic_sequence_handle fy_generic_cast_sequence_handle_default(fy_generic v, fy_generic_sequence_handle default_value)
 {
 	const fy_generic_sequence_handle seqh = fy_generic_sequence_to_handle(v);
 	return seqh ? seqh : default_value;
 }
 
-static inline fy_generic_mapping_handle fy_generic_get_mapping_handle_default(fy_generic v, fy_generic_mapping_handle default_value)
+static inline fy_generic_mapping_handle fy_generic_cast_mapping_handle_default(fy_generic v, fy_generic_mapping_handle default_value)
 {
 	const fy_generic_mapping_handle maph = fy_generic_mapping_to_handle(v);
 	return maph ? maph : default_value;
 }
 
 /* special... handling for in place strings */
-static inline const char *fy_generic_get_const_char_ptr_default(fy_generic v, const char *default_value)
+static inline const char *fy_generic_cast_const_char_ptr_default(fy_generic v, const char *default_value)
 {
 	if (!fy_generic_is_string(v))
 		return default_value;
@@ -2116,12 +2116,12 @@ static inline const char *fy_generic_get_const_char_ptr_default(fy_generic v, co
 	return NULL;
 }
 
-static inline char *fy_generic_get_char_ptr_default(fy_generic v, char *default_value)
+static inline char *fy_generic_cast_char_ptr_default(fy_generic v, char *default_value)
 {
-	return (char *)fy_generic_get_const_char_ptr_default(v, default_value);
+	return (char *)fy_generic_cast_const_char_ptr_default(v, default_value);
 }
 
-static inline fy_generic_sized_string fy_generic_get_sized_string_default(fy_generic v, const fy_generic_sized_string default_value)
+static inline fy_generic_sized_string fy_generic_cast_sized_string_default(fy_generic v, const fy_generic_sized_string default_value)
 {
 	size_t size;
 	const char *data;
@@ -2140,24 +2140,24 @@ static inline fy_generic_sized_string fy_generic_get_sized_string_default(fy_gen
 	return (fy_generic_sized_string){ .data = NULL, .size = 0 };
 }
 
-static inline size_t fy_generic_get_const_char_ptr_default_alloca(fy_generic v)
+static inline size_t fy_generic_cast_const_char_ptr_default_alloca(fy_generic v)
 {
 	/* only do the alloca dance for in place strings */
 	return ((v.v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) ? sizeof(fy_generic) : 0;
 }
 
-static inline size_t fy_generic_get_sized_string_default_alloca(fy_generic v)
+static inline size_t fy_generic_cast_sized_string_default_alloca(fy_generic v)
 {
-	return fy_generic_get_const_char_ptr_default_alloca(v);
+	return fy_generic_cast_const_char_ptr_default_alloca(v);
 }
 
 /* never allocas for anything else */
-static inline size_t fy_generic_get_default_should_alloca_never(fy_generic v)
+static inline size_t fy_generic_cast_default_should_alloca_never(fy_generic v)
 {
 	return 0;
 }
 
-static inline void fy_generic_get_const_char_ptr_default_final(fy_generic v,
+static inline void fy_generic_cast_const_char_ptr_default_final(fy_generic v,
 		void *p, size_t size,
 		const char *default_value, const char **store_value)
 {
@@ -2175,7 +2175,7 @@ static inline void fy_generic_get_const_char_ptr_default_final(fy_generic v,
 	*store_value = store;
 }
 
-static inline void fy_generic_get_sized_string_default_final(fy_generic v,
+static inline void fy_generic_cast_sized_string_default_final(fy_generic v,
 		void *p, size_t size,
 		fy_generic_sized_string default_value, fy_generic_sized_string *store_value)
 {
@@ -2195,15 +2195,15 @@ static inline void fy_generic_get_sized_string_default_final(fy_generic v,
 	store_value->size = len;
 }
 
-static inline void fy_generic_get_char_ptr_default_final(fy_generic v,
+static inline void fy_generic_cast_char_ptr_default_final(fy_generic v,
 		void *p, size_t size,
 		char *default_value, char **store_value)
 {
-	return fy_generic_get_const_char_ptr_default_final(v, p, size, default_value,
+	return fy_generic_cast_const_char_ptr_default_final(v, p, size, default_value,
 			(const char **)store_value);
 }
 
-static inline void fy_generic_get_default_final_never(fy_generic v,
+static inline void fy_generic_cast_default_final_never(fy_generic v,
 		void *p, size_t size, ...)
 {
 	return;	// do nothing
@@ -2235,56 +2235,28 @@ static inline void fy_generic_get_default_final_never(fy_generic v,
 	fy_generic: fy_null
 
 
-#define fy_generic_get_type_default(_type) \
-	({ \
-		 _type __tmp = _Generic(__tmp, fy_generic_get_type_default_Generic_dispatch); \
-		__tmp; \
-	})
+#define fy_generic_cast_default_Generic_dispatch \
+	FY_GENERIC_ALL_SCALARS_DISPATCH_SFX(fy_generic_cast, default), \
+	char *: fy_generic_cast_char_ptr_default, \
+	const char *: fy_generic_cast_const_char_ptr_default, \
+	fy_generic_sequence_handle: fy_generic_cast_sequence_handle_default, \
+	fy_generic_mapping_handle: fy_generic_cast_mapping_handle_default, \
+	fy_generic_sized_string: fy_generic_cast_sized_string_default, \
+	fy_generic: fy_generic_cast_generic_default
 
-#define fy_generic_get_default_Generic_dispatch \
-	FY_GENERIC_ALL_SCALARS_DISPATCH_SFX(fy_generic_get, default), \
-	char *: fy_generic_get_char_ptr_default, \
-	const char *: fy_generic_get_const_char_ptr_default, \
-	fy_generic_sequence_handle: fy_generic_get_sequence_handle_default, \
-	fy_generic_mapping_handle: fy_generic_get_mapping_handle_default, \
-	fy_generic_sized_string: fy_generic_get_sized_string_default, \
-	fy_generic: fy_generic_get_generic_default
+#define fy_generic_cast_default_alloca_Generic_dispatch \
+	char *: fy_generic_cast_const_char_ptr_default_alloca, \
+	const char *: fy_generic_cast_const_char_ptr_default_alloca, \
+	fy_generic_sized_string: fy_generic_cast_sized_string_default_alloca, \
+	default: fy_generic_cast_default_should_alloca_never
 
-//	fy_generic_sized_string: fy_generic_get_szstr_default,
+#define fy_generic_cast_default_final_Generic_dispatch \
+	char *: fy_generic_cast_char_ptr_default_final, \
+	const char *: fy_generic_cast_const_char_ptr_default_final, \
+	fy_generic_sized_string: fy_generic_cast_sized_string_default_final, \
+	default: fy_generic_cast_default_final_never
 
-
-#define fy_generic_get_default_alloca_Generic_dispatch \
-	char *: fy_generic_get_const_char_ptr_default_alloca, \
-	const char *: fy_generic_get_const_char_ptr_default_alloca, \
-	fy_generic_sized_string: fy_generic_get_sized_string_default_alloca, \
-	default: fy_generic_get_default_should_alloca_never
-
-#define fy_generic_get_default_final_Generic_dispatch \
-	char *: fy_generic_get_char_ptr_default_final, \
-	const char *: fy_generic_get_const_char_ptr_default_final, \
-	fy_generic_sized_string: fy_generic_get_sized_string_default_final, \
-	default: fy_generic_get_default_final_never
-
-#if 0
-#define fy_generic_get_default(_v, _dv) \
-	({ \
-		fy_generic __v = (_v); \
-		typeof ((_dv) + 0) __dv = (_dv); \
-		typeof ((_dv) + 0) __ret; \
-		size_t __size; \
-		void *__p; \
-		\
-		__ret = _Generic(__dv, fy_generic_get_default_Generic_dispatch)(__v, __dv); \
-		__size = _Generic(__dv, fy_generic_get_default_alloca_Generic_dispatch)(__v); \
-		if (__size) { \
-			__p = fy_alloca_align(__size, FY_GENERIC_CONTAINER_ALIGN); \
-			_Generic(__dv, fy_generic_get_default_final_Generic_dispatch) \
-	 			(__v, __p, __size, __dv, &__ret); \
-		} \
-		__ret; \
-	})
-#else
-#define fy_generic_get_default(_v, _dv) \
+#define fy_generic_cast_default(_v, _dv) \
 	({ \
 		fy_generic __v = (_v); \
 		fy_generic_typeof(_dv) __dv = (_dv); \
@@ -2292,20 +2264,25 @@ static inline void fy_generic_get_default_final_never(fy_generic v,
 		size_t __size; \
 		void *__p; \
 		\
-		__ret = _Generic(__dv, fy_generic_get_default_Generic_dispatch)(__v, __dv); \
-		__size = _Generic(__dv, fy_generic_get_default_alloca_Generic_dispatch)(__v); \
+		__ret = _Generic(__dv, fy_generic_cast_default_Generic_dispatch)(__v, __dv); \
+		__size = _Generic(__dv, fy_generic_cast_default_alloca_Generic_dispatch)(__v); \
 		if (__size) { \
 			__p = fy_alloca_align(__size, FY_GENERIC_CONTAINER_ALIGN); \
-			_Generic(__dv, fy_generic_get_default_final_Generic_dispatch) \
+			_Generic(__dv, fy_generic_cast_default_final_Generic_dispatch) \
 	 			(__v, __p, __size, __dv, &__ret); \
 		} \
 		__ret; \
 	})
-#endif
+
+#define fy_generic_get_type_default(_type) \
+	({ \
+		 _type __tmp = _Generic(__tmp, fy_generic_get_type_default_Generic_dispatch); \
+		__tmp; \
+	})
 
 /* when we have a pointer we can return to inplace strings */
-#define fy_generic_get(_v, _type) \
-	(fy_generic_get_default((_v), fy_generic_get_type_default(_type)))
+#define fy_generic_cast(_v, _type) \
+	(fy_generic_cast_default((_v), fy_generic_get_type_default(_type)))
 
 #if 0
 /* when we have a pointer we can return to inplace strings */
@@ -2324,9 +2301,9 @@ static inline void fy_generic_get_default_final_never(fy_generic v,
 	unsigned long long: fy_generic_get_unsigned_long_long_default, \
 	float: fy_generic_get_float_default, \
 	double: fy_generic_get_double_default, \
-	char *: fy_generic_get_char_ptr_default, \
-	const char *: fy_generic_get_const_char_ptr_default, \
-	fy_generic: fy_generic_get_generic_default
+	char *: fy_generic_cast_char_ptr_default, \
+	const char *: fy_generic_cast_const_char_ptr_default, \
+	fy_generic: fy_generic_cast_generic_default
 
 #define fy_genericp_get_default(_vp, _dv) \
 	({ \
@@ -2343,10 +2320,10 @@ static inline void fy_generic_get_default_final_never(fy_generic v,
 	(fy_genericp_get_default((_vp), fy_generic_get_type_default(_type)))
 #endif
 
-#define fy_generic_get_default_coerse(_v, _dv) \
+#define fy_generic_cast_default_coerse(_v, _dv) \
 	({ \
 		fy_generic __vv = fy_to_generic(_v); \
-	 	fy_generic_get_default(__vv, (_dv)); \
+	 	fy_generic_cast_default(__vv, (_dv)); \
 	})
 
 static inline fy_generic_sequence_handle
@@ -2665,7 +2642,7 @@ static inline fy_generic fy_get_generic_map_handle(const void *p)
 				(__colv2, __key, __dv); \
 			break; \
 		case FYGT_SEQUENCE: \
-			const size_t __index = fy_generic_get_default_coerse(_key, LLONG_MAX); \
+			const size_t __index = fy_generic_cast_default_coerse(_key, LLONG_MAX); \
 			__ret = _Generic(__dv, fy_generic_sequence_get_default_Generic_dispatch) \
 				(__colv2, __index, __dv); \
 			break; \
