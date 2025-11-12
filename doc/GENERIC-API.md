@@ -8,6 +8,7 @@ The generic type system provides a space-efficient runtime representation for YA
 
 **What it provides:**
 - Single `fy_generic` type that can hold any YAML value (null, bool, int, float, string, sequence, mapping)
+- **Sized strings** for strings with embedded `\0` bytes and binary data (YAML's double-quoted strings support escaped nulls)
 - Automatic type detection via C11 `_Generic` dispatch
 - Inline storage for small values (no allocation needed)
 - Stack-based collections for temporary data (via `alloca`)
@@ -73,9 +74,28 @@ This design makes generics ideal for multi-threaded YAML/JSON processing where m
 // Automatic type detection
 fy_generic v1 = fy_to_generic(42);           // integer
 fy_generic v2 = fy_to_generic(3.14);         // float
-fy_generic v3 = fy_to_generic("hello");      // string
+fy_generic v3 = fy_to_generic("hello");      // string (null-terminated)
 fy_generic v4 = fy_to_generic(true);         // boolean
 fy_generic v5 = fy_to_generic(NULL);         // null
+```
+
+**Sized strings (for strings with embedded `\0` or binary data):**
+```c
+// YAML allows \0 in double-quoted strings: "text\0data"
+// Regular C strings can't represent these, so use sized strings
+
+// Create sized string with explicit length
+fy_generic_sized_string sized = { .data = buffer, .len = buffer_size };
+fy_generic v6 = fy_to_generic(sized);
+
+// Extract sized string from generic
+fy_generic_sized_string result = fy_cast(value, fy_generic_sized_string);
+// Access: result.data (may contain \0), result.len
+
+// Use cases:
+// - YAML: text: "Hello\0World"  (escaped \0 in double quotes)
+// - Binary data: key: "\x00\x01\x02\xFF"
+// - C source with null bytes: code: "char x[] = \"\0\";"
 ```
 
 **Creating sequences:**

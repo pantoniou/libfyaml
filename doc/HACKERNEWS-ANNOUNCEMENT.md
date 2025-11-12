@@ -178,6 +178,7 @@ Use cases: LSP servers (incremental edits), build systems (cache parsed files), 
 
 - **Compile-time dispatch:** `_Generic` has zero runtime cost
 - **Inline storage:** 61-bit integers, 7-byte strings, 32-bit floats stored inline (no allocation)
+- **Sized strings:** Support for YAML strings with embedded `\0` bytes and binary data
 - **Deduplication:** 40-60% memory reduction on typical config workloads
 - **Arena allocation:** 10-100x faster than malloc/free
 - **Structural sharing:** Updates are O(log n), not O(n)

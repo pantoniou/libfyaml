@@ -189,12 +189,22 @@ Using C11's `_Generic`, we dispatch based on the type of the default value:
 
 ```c
 // Style 1: Type-based (uses type's implicit default)
-int port = fy_get(config, "port", int);              // 0 if missing
+int port = fy_get(config, "port", int);                   // 0 if missing
 const char *host = fy_get(config, "host", const char *);  // "" if missing
+bool enabled = fy_get(config, "enabled", bool);           // false if missing
 
 // Style 2: Explicit default (when type's default isn't what you want)
-int port = fy_get_default(config, "port", 8080);     // 8080 if missing
+int port = fy_get_default(config, "port", 8080);          // 8080 if missing
 const char *host = fy_get_default(config, "host", "localhost");  // "localhost" if missing
+
+// Sized strings (for YAML strings with embedded \0 or binary data)
+fy_generic_sized_string data = fy_get(config, "binary", fy_generic_sized_string);
+// data.data may contain \0 bytes, use data.len for length
+
+// Example: YAML file with embedded null
+// config.yaml:
+//   text: "Hello\0World"  # Double-quoted strings can contain escaped \0
+//   binary: "\x00\x01\xFF"
 ```
 
 ### Container Handle Types
