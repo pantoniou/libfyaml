@@ -126,6 +126,39 @@ fy_generic_builder_destroy(gb);
 - Hash table operations: trivial hash function (use value directly)
 - Cache lookups: perfect for memoization
 
+**Global existence optimization:**
+
+Because all values in a dedup builder are tracked globally, you can check if a value exists anywhere before doing local lookups:
+
+```c
+struct fy_generic_builder *gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
+    .policy = FY_ALLOC_DEDUP
+});
+
+fy_generic mapping = /* ... large mapping ... */;
+
+// Looking for a key in the mapping
+fy_generic search_key = fy_gb_to_generic(gb, "rare_key");
+
+// Fast path: check if key exists anywhere in builder
+if (!fy_builder_contains_value(gb, search_key)) {
+    // Key doesn't exist anywhere in builder
+    // Therefore it can't be in this mapping - early exit!
+    return fy_invalid;
+}
+
+// Key exists somewhere, do actual mapping lookup
+return fy_map_get(mapping, search_key);
+
+fy_generic_builder_destroy(gb);
+```
+
+**Why this matters:**
+- **Negative lookups are O(1)**: If key doesn't exist globally, skip expensive mapping search
+- **Common in real workloads**: Many lookups are for non-existent keys
+- **Cascades to collections**: Check once globally, then search specific collection
+- **Useful for filtering**: Quickly eliminate values that don't exist
+
 This is why immutability + deduplication isn't just about memory—it fundamentally changes the performance characteristics of the system.
 
 **Allocator considerations:**

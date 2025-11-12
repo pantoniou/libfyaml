@@ -243,6 +243,26 @@ if (n1 == n2) {  // TRUE - inline values inherently identical
 - Sets: O(1) membership testing
 - Memoization: instant cache lookup
 
+**Bonus optimization - Global existence checks:**
+
+The dedup builder tracks all values globally. Before searching for a key in a mapping, check if it exists anywhere:
+
+```c
+// Want to find "api_key" in config
+fy_generic key = fy_gb_to_generic(gb, "api_key");
+
+// Fast check: does this key exist anywhere in builder?
+if (!fy_builder_contains_value(gb, key)) {
+    // Doesn't exist anywhere - can't be in this mapping
+    return fy_invalid;  // Early exit!
+}
+
+// Key exists somewhere, do actual mapping lookup
+return fy_map_get(config, key);
+```
+
+This makes **negative lookups** (keys that don't exist) trivially cheap—a single hash table check instead of traversing collections. In real workloads, most lookups are for non-existent keys, so this optimization has outsized impact.
+
 **Key point:** Value identity from deduplication applies to builder-allocated objects. Inline objects are stable by definition (stored in the value itself).
 
 This is why deduplication isn't just about memory savings—it fundamentally changes the performance characteristics. Every comparison becomes trivial.

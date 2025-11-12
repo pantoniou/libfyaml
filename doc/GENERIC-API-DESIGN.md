@@ -447,6 +447,56 @@ fy_generic_builder_destroy(gb);
 - Cache lookups are trivial
 - Persistent data structures become practical in C
 
+**Global existence optimization:**
+
+The dedup builder maintains a global table of all values. Before searching for a key in a collection, you can check if it exists anywhere:
+
+```c
+struct fy_generic_builder *gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
+    .policy = FY_ALLOC_DEDUP
+});
+
+// Large mapping with thousands of keys
+fy_generic config = fy_gb_mapping(gb, /* ... */);
+
+// Want to find "debug_mode" in the mapping
+fy_generic key = fy_gb_to_generic(gb, "debug_mode");
+
+// Global existence check - O(1) hash table lookup
+if (!fy_builder_contains_value(gb, key)) {
+    // Key doesn't exist anywhere in builder
+    // Therefore it can't be in this specific mapping
+    // Early exit - no need to traverse the mapping!
+    return fy_invalid;
+}
+
+// Key exists somewhere, do actual lookup
+fy_generic value = fy_map_get(config, key);
+
+fy_generic_builder_destroy(gb);
+```
+
+**Why this is powerful:**
+- **Negative lookups are cheap**: Most lookups in real systems are for non-existent keys
+- **Skip expensive traversals**: If key doesn't exist globally, avoid searching collections
+- **Complements value identity**: After global check passes, actual lookup uses O(1) equality
+- **Useful for validation**: Check if a set of required keys exists before processing
+
+**Real-world example:**
+```c
+// Check if config has all required keys
+const char *required[] = {"host", "port", "database", NULL};
+
+for (const char **p = required; *p; p++) {
+    fy_generic key = fy_gb_to_generic(gb, *p);
+    if (!fy_builder_contains_value(gb, key)) {
+        fprintf(stderr, "Missing required key: %s\n", *p);
+        return -1;  // Fast failure - key doesn't exist anywhere
+    }
+}
+// All required keys exist, proceed with actual lookups
+```
+
 **Key point:** Value identity applies to objects stored in a dedup-enabled builder. Inline objects are stable by definition (stored in the value itself).
 
 This is the secret sauce that makes functional programming patterns viable in C.
