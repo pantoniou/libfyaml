@@ -4177,11 +4177,11 @@ void fy_generic_print_primitive(FILE *fp, fy_generic v)
 		return;
 
 	case FYGT_INT:
-		fprintf(fp, "%lld", fy_generic_get_int(v));
+		fprintf(fp, "%lld", fy_generic_get_long_long(v));
 		return;
 
 	case FYGT_FLOAT:
-		fprintf(fp, "%f", fy_generic_get_float(v));
+		fprintf(fp, "%f", fy_generic_get_double(v));
 		return;
 
 	case FYGT_STRING:
@@ -4352,7 +4352,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		iv = itable[i];
 		gi = fy_int(iv);
 		printf("int/%lld = %016lx %lld\n", iv, gi.v,
-				fy_generic_get_int(gi));
+				fy_generic_get_long_long(gi));
 	}
 
 	for (i = 0; i < ARRAY_SIZE(stable); i++) {
@@ -4511,7 +4511,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		gi = fy_gb_to_generic(gb, iv);
 		assert(fy_generic_is_valid(gi));
 		printf("int/%lld = %016lx %lld\n", iv, gi.v,
-				fy_generic_get_int(gi));
+				fy_generic_get_long_long(gi));
 	}
 
 	for (i = 0; i < ARRAY_SIZE(stable); i++) {

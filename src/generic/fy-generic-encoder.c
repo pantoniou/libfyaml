@@ -75,7 +75,7 @@ int fy_encode_generic_bool(struct fy_generic_encoder *fyge, const char *anchor, 
 int fy_encode_generic_int(struct fy_generic_encoder *fyge, const char *anchor, const char *tag, fy_generic v)
 {
 	return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, "%lld",
-			fy_generic_get_int(v));
+			fy_generic_get_long_long(v));
 }
 
 int fy_encode_generic_float(struct fy_generic_encoder *fyge, const char *anchor, const char *tag, fy_generic v)

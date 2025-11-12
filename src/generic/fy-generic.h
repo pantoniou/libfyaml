@@ -21,6 +21,7 @@
 #include <stdarg.h>
 #include <limits.h>
 #include <stddef.h>
+#include <float.h>
 
 #include "fy-endian.h"
 #include "fy-utils.h"
@@ -381,6 +382,40 @@ static inline enum fy_generic_type fy_generic_get_direct_type(fy_generic v)
 	return escape_code < ARRAY_SIZE(escapes) ? escapes[escape_code] : FYGT_INVALID;
 }
 
+static inline bool fy_generic_is_in_place(fy_generic v)
+{
+	if (v.v == fy_invalid_value)
+		return true;
+
+	if (fy_generic_is_indirect(v))
+		return false;
+
+	switch (fy_generic_get_direct_type(v)) {
+	case FYGT_NULL:
+	case FYGT_BOOL:
+		return true;
+
+	case FYGT_INT:
+		if ((v.v & FY_INPLACE_TYPE_MASK) == FY_INT_INPLACE_V)
+			return true;
+		break;
+
+	case FYGT_FLOAT:
+		if ((v.v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V)
+			return true;
+		break;
+
+	case FYGT_STRING:
+		if ((v.v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V)
+			return true;
+		break;
+
+	default:
+		break;
+	}
+	return false;
+}
+
 static inline enum fy_generic_type fy_generic_get_type(fy_generic v)
 {
 	const fy_generic_value *p;
@@ -454,9 +489,13 @@ static inline const fy_generic *fy_genericp_indirect_get_valuep(const fy_generic
 
 static inline fy_generic fy_generic_indirect_get_value(const fy_generic v)
 {
-	const fy_generic *vp = fy_genericp_indirect_get_valuep(&v);
+	const fy_generic_value *p;
 
-	return vp ? *vp : fy_invalid;
+	if (!fy_generic_is_indirect(v))
+		return v;
+
+	p = fy_generic_resolve_collection_ptr(v);
+	return (p[0] & FYGIF_VALUE) ? *(const fy_generic *)&p[1] : fy_invalid;
 }
 
 static inline fy_generic fy_generic_indirect_get_anchor(fy_generic v)
@@ -543,145 +582,46 @@ static inline bool fy_generic_is_invalid(const fy_generic v)
 	return v.v == fy_invalid_value;
 }
 
-static inline bool fy_generic_is_direct_null(const fy_generic v)
-{
-	return v.v == fy_null_value;
-}
+//
+// example generation for bool
+//
+// fy_generic_is_direct_bool(), fy_generic_is_bool(), fy_generic_is_range_checked_bool()
+//
+//
+#define FY_GENERIC_IS_TEMPLATE(_gtype, _gttype) \
+static inline bool fy_generic_is_direct_ ## _gtype (const fy_generic v) \
+{ \
+	return fy_generic_get_direct_type(v) == FYGT_ ## _gttype ; \
+} \
+\
+static inline bool fy_generic_is_ ## _gtype (const fy_generic v) \
+{ \
+	return fy_generic_get_direct_type(fy_generic_indirect_get_value(v)) == FYGT_ ## _gttype ; \
+} \
+\
+struct fy_useless_struct_for_semicolon
 
-static inline bool fy_generic_is_direct_bool(const fy_generic v)
-{
-	return v.v == fy_true_value || v.v == fy_false_value;
-}
+/* the base types that match the spec */
+FY_GENERIC_IS_TEMPLATE(gnull, NULL);
+FY_GENERIC_IS_TEMPLATE(gbool, BOOL);
+FY_GENERIC_IS_TEMPLATE(gint, INT);
+FY_GENERIC_IS_TEMPLATE(gfloat, FLOAT);
+FY_GENERIC_IS_TEMPLATE(string, STRING);
+FY_GENERIC_IS_TEMPLATE(sequence, SEQUENCE);
+FY_GENERIC_IS_TEMPLATE(mapping, MAPPING);
+FY_GENERIC_IS_TEMPLATE(alias, ALIAS);
 
-static inline bool fy_generic_is_direct_int(const fy_generic v)
-{
-	return fy_generic_get_direct_type(v) == FYGT_INT;
-}
-
-static inline bool fy_generic_is_direct_float(const fy_generic v)
-{
-	return fy_generic_get_direct_type(v) == FYGT_FLOAT;
-}
-
-static inline bool fy_generic_is_direct_string(const fy_generic v)
-{
-	return fy_generic_get_direct_type(v) == FYGT_STRING;
-}
-
-static inline bool fy_generic_is_direct_sequence(const fy_generic v)
-{
-	return fy_generic_get_direct_type(v) == FYGT_SEQUENCE;
-}
-
-static inline bool fy_generic_is_direct_mapping(const fy_generic v)
-{
-	return fy_generic_get_direct_type(v) == FYGT_MAPPING;
-}
-
-static inline bool fy_generic_is_direct_alias(const fy_generic v)
-{
-	return fy_generic_get_direct_type(v) == FYGT_ALIAS;
-}
-
-static inline bool fy_generic_is_null(const fy_generic v)
-{
-	return fy_generic_is_direct_null(v) || fy_generic_get_type(v) == FYGT_NULL;
-}
-
-static inline bool fy_generic_is_bool(const fy_generic v)
-{
-	return fy_generic_is_direct_bool(v) || fy_generic_get_type(v) == FYGT_BOOL;
-}
-
-static inline bool fy_generic_is_int(const fy_generic v)
-{
-	return fy_generic_is_direct_int(v) || fy_generic_get_type(v) == FYGT_INT;
-}
-
-static inline bool fy_generic_is_float(const fy_generic v)
-{
-	return fy_generic_is_direct_float(v) || fy_generic_get_type(v) == FYGT_FLOAT;
-}
-
-static inline bool fy_generic_is_string(const fy_generic v)
-{
-	return fy_generic_is_direct_string(v) || fy_generic_get_type(v) == FYGT_STRING;
-}
-
-static inline bool fy_generic_is_sequence(const fy_generic v)
-{
-	return fy_generic_is_direct_sequence(v) || fy_generic_get_type(v) == FYGT_SEQUENCE;
-}
-
-static inline bool fy_generic_is_mapping(const fy_generic v)
-{
-	return fy_generic_is_direct_mapping(v) || fy_generic_get_type(v) == FYGT_MAPPING;
-}
-
-static inline bool fy_generic_is_alias(const fy_generic v)
-{
-	return fy_generic_is_direct_alias(v) || fy_generic_get_type(v) == FYGT_ALIAS;
-}
-
-/* NOTE: All get method multiple-evaluate the argument, so take care */
-
-static inline void *fy_generic_get_null_no_check(fy_generic v)
+static inline void *fy_generic_get_gnull_no_check(fy_generic v)
 {
 	return NULL;
 }
 
-static inline void *fy_generic_get_null_default(fy_generic v, void *default_value)
+static inline bool fy_generic_get_gbool_no_check(fy_generic v)
 {
-	return fy_generic_is_null(v) ?
-		fy_generic_get_null_no_check(fy_generic_indirect_get_value(v)) :
-		default_value;
+	return v.v == fy_true_value;
 }
 
-static inline void *fy_generic_get_null(fy_generic v)
-{
-	return fy_generic_get_null_default(v, NULL);
-}
-
-static inline void *fy_genericp_get_null_default(const fy_generic *vp, void *default_value)
-{
-	return vp ? fy_generic_get_null_default(*vp, default_value) : default_value;
-}
-
-static inline void *fy_genericp_get_null(const fy_generic *vp)
-{
-	return fy_genericp_get_null_default(vp, NULL);
-}
-
-#define FY_GENERIC_GET_BOOL(_v) ((_v).v == fy_true_value)
-
-static inline bool fy_generic_get_bool_no_check(fy_generic v)
-{
-	return FY_GENERIC_GET_BOOL(v);
-}
-
-static inline bool fy_generic_get_bool_default(fy_generic v, bool default_value)
-{
-	return fy_generic_is_bool(v) ?
-		fy_generic_get_bool_no_check(fy_generic_indirect_get_value(v)) :
-		default_value;
-}
-
-static inline bool fy_generic_get_bool(fy_generic v)
-{
-	return fy_generic_get_bool_default(v, false);
-}
-
-static inline bool fy_genericp_get_bool_default(const fy_generic *vp, bool default_value)
-{
-	return vp ? fy_generic_get_bool_default(*vp, default_value) : default_value;
-}
-
-static inline bool fy_genericp_get_bool(const fy_generic *vp)
-{
-	return fy_genericp_get_bool_default(vp, false);
-}
-
-static inline long long fy_generic_get_int_no_check(fy_generic v)
+static inline long long fy_generic_get_gint_no_check(fy_generic v)
 {
 	const long long *p;
 
@@ -698,28 +638,6 @@ static inline long long fy_generic_get_int_no_check(fy_generic v)
 	return *p;
 }
 
-static inline long long fy_generic_get_int_default(fy_generic v, long long default_value)
-{
-	return fy_generic_is_int(v) ?
-		fy_generic_get_int_no_check(fy_generic_indirect_get_value(v)) :
-		default_value;
-}
-
-static inline long long fy_generic_get_int(fy_generic v)
-{
-	return fy_generic_get_int_default(v, 0);
-}
-
-static inline long long fy_genericp_get_int_default(const fy_generic *vp, long long default_value)
-{
-	return vp ? fy_generic_get_int_default(*vp, default_value) : default_value;
-}
-
-static inline bool fy_genericp_get_int(const fy_generic *vp)
-{
-	return fy_genericp_get_int_default(vp, 0);
-}
-
 #ifdef FYGT_GENERIC_64
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
@@ -731,7 +649,7 @@ static inline bool fy_genericp_get_int(const fy_generic *vp)
 #endif
 
 #ifdef FYGT_GENERIC_64
-static inline float fy_generic_get_float_no_check(fy_generic v)
+static inline float fy_generic_get_gfloat_no_check(fy_generic v)
 {
 	const double *p;
 
@@ -745,7 +663,7 @@ static inline float fy_generic_get_float_no_check(fy_generic v)
 	return (float)*p;
 }
 #else
-static inline float fy_generic_get_float_no_check(fy_generic v)
+static inline float fy_generic_get_gfloat_no_check(fy_generic v)
 {
 	const void *p;
 
@@ -761,30 +679,8 @@ static inline float fy_generic_get_float_no_check(fy_generic v)
 }
 #endif
 
-static inline float fy_generic_get_float_default(fy_generic v, float default_value)
-{
-	return fy_generic_is_float(v) ?
-		fy_generic_get_float_no_check(fy_generic_indirect_get_value(v)) :
-		default_value;
-}
-
-static inline float fy_generic_get_float(fy_generic v)
-{
-	return fy_generic_get_float_default(v, 0.0f);
-}
-
-static inline float fy_genericp_get_float_default(const fy_generic *vp, float default_value)
-{
-	return vp ? fy_generic_get_float_default(*vp, default_value) : default_value;
-}
-
-static inline float fy_genericp_get_float(const fy_generic *vp)
-{
-	return fy_genericp_get_float_default(vp, 0.0f);
-}
-
 #ifdef FYGT_GENERIC_64
-static inline double fy_generic_get_double_no_check(fy_generic v)
+static inline double fy_generic_get_gdouble_no_check(fy_generic v)
 {
 	const double *p;
 
@@ -798,7 +694,7 @@ static inline double fy_generic_get_double_no_check(fy_generic v)
 	return *p;
 }
 #else
-static inline double fy_generic_get_double_no_check(fy_generic v)
+static inline double fy_generic_get_gdouble_no_check(fy_generic v)
 {
 	const void *p;
 
@@ -814,27 +710,94 @@ static inline double fy_generic_get_double_no_check(fy_generic v)
 }
 #endif
 
-static inline double fy_generic_get_double_default(fy_generic v, double default_value)
-{
-	return fy_generic_is_float(v) ?
-		fy_generic_get_double_no_check(fy_generic_indirect_get_value(v)) :
-		default_value;
-}
+#define FY_GENERIC_RANGED_TEMPLATE(_ctype, _gtype, _gttype, _xctype, _xgtype, _xminv, _xmaxv, _default_v) \
+static inline _xctype fy_generic_get_ ## _gtype ## _no_check(fy_generic v) \
+{ \
+	return fy_generic_get_ ## _xgtype ## _no_check(v); \
+} \
+\
+static inline bool fy_ ## _gtype ## _is_in_range(const _xctype v) \
+{ \
+	return v >= (_xctype)_xminv && v <= (_xctype)_xmaxv; \
+} \
+\
+static inline bool fy_generic_ ## _gtype ## _is_in_range_no_check(const fy_generic v) \
+{ \
+	const _xctype xv = fy_generic_get_ ## _xgtype ## _no_check(v); \
+	return fy_ ## _gtype ## _is_in_range(xv); \
+} \
+\
+static inline bool fy_generic_ ## _gtype ## _is_in_range(const fy_generic v) \
+{ \
+	if (!fy_generic_is_direct_ ## _xgtype (v)) \
+		return false; \
+	return fy_generic_ ## _gtype ## _is_in_range_no_check(v); \
+} \
+\
+static inline bool fy_generic_is_direct_ ## _gtype (const fy_generic v) \
+{ \
+	return fy_generic_ ## _gtype ## _is_in_range(v); \
+} \
+\
+static inline bool fy_generic_is_ ## _gtype (const fy_generic v) \
+{ \
+	return fy_generic_is_direct_ ## _gtype (fy_generic_indirect_get_value(v)); \
+} \
+\
+static inline _ctype fy_generic_get_ ## _gtype ## _default(fy_generic v, _ctype default_value) \
+{ \
+	if (!fy_generic_is_ ## _xgtype (v)) \
+		return default_value; \
+	const _xctype xv = fy_generic_get_ ## _xgtype ## _no_check(v); \
+	if (!fy_ ## _gtype ## _is_in_range(xv)) \
+		return default_value; \
+	return (_ctype)xv; \
+} \
+\
+static inline _ctype fy_generic_get_ ## _gtype (fy_generic v) \
+{ \
+	return fy_generic_get_ ## _gtype ## _default(v, _default_v ); \
+} \
+\
+static inline _ctype fy_genericp_get_ ## _gtype ## _default(const fy_generic *vp, _ctype default_value) \
+{ \
+	return vp ? fy_generic_get_ ## _gtype ## _default(*vp, default_value) : default_value; \
+} \
+\
+static inline _ctype fy_genericp_get ## _gtype (const fy_generic *vp) \
+{ \
+	return fy_genericp_get_ ## _gtype ## _default(vp, _default_v ); \
+} \
+\
+struct fy_useless_struct_for_semicolon
 
-static inline double fy_generic_get_double(fy_generic v)
-{
-	return fy_generic_get_double_default(v, 0.0);
-}
+#define FY_GENERIC_INT_RANGED_TEMPLATE(_ctype, _gtype, _xminv, _xmaxv, _defaultv) \
+	FY_GENERIC_RANGED_TEMPLATE(_ctype, _gtype, INT, long long, gint, _xminv, _xmaxv, _defaultv)
 
-static inline double fy_genericp_get_double_default(const fy_generic *vp, double default_value)
-{
-	return vp ? fy_generic_get_double_default(*vp, default_value) : default_value;
-}
+#define FY_GENERIC_FLOAT_RANGED_TEMPLATE(_ctype, _gtype, _xminv, _xmaxv, _defaultv) \
+	FY_GENERIC_RANGED_TEMPLATE(_ctype, _gtype, FLOAT, double, gfloat, _xminv, _xmaxv, _defaultv)
 
-static inline double fy_genericp_get_double(const fy_generic *vp)
-{
-	return fy_genericp_get_double_default(vp, 0);
-}
+FY_GENERIC_RANGED_TEMPLATE(void *, null, NULL, void *, gnull, NULL, NULL, NULL);
+FY_GENERIC_RANGED_TEMPLATE(bool, bool, BOOL, bool, gbool, false, true, false);
+FY_GENERIC_INT_RANGED_TEMPLATE(char, char, CHAR_MIN, CHAR_MAX, 0);
+FY_GENERIC_INT_RANGED_TEMPLATE(unsigned char, unsigned_char, 0, UCHAR_MAX, 0);
+FY_GENERIC_INT_RANGED_TEMPLATE(signed char, signed_char, SCHAR_MIN, SCHAR_MAX, 0);
+FY_GENERIC_INT_RANGED_TEMPLATE(short, short, SHRT_MIN, SHRT_MAX, 0);
+FY_GENERIC_INT_RANGED_TEMPLATE(unsigned short, unsigned_short, 0, USHRT_MAX, 0);
+FY_GENERIC_INT_RANGED_TEMPLATE(signed short, signed_short, SHRT_MIN, SHRT_MAX, 0);
+FY_GENERIC_INT_RANGED_TEMPLATE(int, int, INT_MIN, INT_MAX, 0);
+FY_GENERIC_INT_RANGED_TEMPLATE(unsigned int, unsigned_int, 0, UINT_MAX, 0);
+FY_GENERIC_INT_RANGED_TEMPLATE(signed int, signed_int, INT_MIN, INT_MAX, 0);
+FY_GENERIC_INT_RANGED_TEMPLATE(long, long, LONG_MIN, LONG_MAX, 0);
+FY_GENERIC_INT_RANGED_TEMPLATE(unsigned long, unsigned_long, 0, ULONG_MAX, 0);
+FY_GENERIC_INT_RANGED_TEMPLATE(signed long, signed_long, LONG_MIN, LONG_MAX, 0);
+FY_GENERIC_INT_RANGED_TEMPLATE(long long, long_long, LLONG_MIN, LLONG_MAX, 0);
+FY_GENERIC_INT_RANGED_TEMPLATE(unsigned long long, unsigned_long_long, 0, LONG_MAX, 0);	// XXX not ULONG_MAX
+FY_GENERIC_INT_RANGED_TEMPLATE(signed long long, signed_long_long, LLONG_MIN, LLONG_MAX, 0);
+FY_GENERIC_FLOAT_RANGED_TEMPLATE(float, float, FLT_MIN, FLT_MAX, 0.0);
+FY_GENERIC_FLOAT_RANGED_TEMPLATE(double, double, DBL_MIN, DBL_MAX, 0.0);
+
+/* NOTE: All get method multiple-evaluate the argument, so take care */
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 #define FY_INPLACE_STRING_ADV	1
@@ -2125,156 +2088,6 @@ static inline fy_generic fy_generic_mapping_get_alias_value(fy_generic map, fy_g
 #define fy_indirect(_v, _anchor, _tag)	\
 	((fy_generic){ .v = fy_indirect_alloca((_v).v, (_anchor).v, (_tag).v) })
 
-static inline bool fy_generic_is_in_place(fy_generic v)
-{
-	if (v.v == fy_invalid_value)
-		return true;
-
-	if (fy_generic_is_indirect(v))
-		return false;
-
-	switch (fy_generic_get_type(v)) {
-	case FYGT_NULL:
-	case FYGT_BOOL:
-		return true;
-
-	case FYGT_INT:
-		if ((v.v & FY_INPLACE_TYPE_MASK) == FY_INT_INPLACE_V)
-			return true;
-		break;
-
-	case FYGT_FLOAT:
-		if ((v.v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V)
-			return true;
-		break;
-
-	case FYGT_STRING:
-		if ((v.v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V)
-			return true;
-		break;
-
-	default:
-		break;
-	}
-	return false;
-}
-
-static inline long long
-fy_generic_get_min_max_default(fy_generic v, long long default_value,
-				long long minv, long long maxv)
-{
-	long long i;
-
-	if (!fy_generic_is_int(v))
-		return default_value;
-
-	i = fy_generic_get_int_no_check(fy_generic_indirect_get_value(v));
-	if (i < minv || i > maxv)
-		return default_value;
-	return i;
-}
-
-static inline signed char fy_generic_get_signed_char_default(fy_generic v, signed char default_value)
-{
-	return (signed char)fy_generic_get_min_max_default(v, (long long)default_value, SCHAR_MIN, SCHAR_MAX);
-}
-
-static inline signed char fy_genericp_get_signed_char_default(const fy_generic *vp, signed char default_value)
-{
-	return vp ? fy_generic_get_signed_char_default(*vp, default_value) : default_value;
-}
-
-static inline signed char fy_generic_get_unsigned_char_default(fy_generic v, unsigned char default_value)
-{
-	return (unsigned char)fy_generic_get_min_max_default(v, (long long)default_value, 0, UCHAR_MAX);
-}
-
-static inline unsigned char fy_genericp_get_unsigned_char_default(const fy_generic *vp, unsigned char default_value)
-{
-	return vp ? fy_generic_get_unsigned_char_default(*vp, default_value) : default_value;
-}
-
-static inline signed short fy_generic_get_signed_short_default(fy_generic v, signed short default_value)
-{
-	return (signed short)fy_generic_get_min_max_default(v, (long long)default_value, SHRT_MIN, SHRT_MAX);
-}
-
-static inline signed short fy_genericp_get_signed_short_default(const fy_generic *vp, signed short default_value)
-{
-	return vp ? fy_generic_get_signed_short_default(*vp, default_value) : default_value;
-}
-
-static inline signed short fy_generic_get_unsigned_short_default(fy_generic v, unsigned short default_value)
-{
-	return (unsigned short)fy_generic_get_min_max_default(v, (long long)default_value, 0, USHRT_MAX);
-}
-
-static inline unsigned short fy_genericp_get_unsigned_short_default(const fy_generic *vp, unsigned short default_value)
-{
-	return vp ? fy_generic_get_unsigned_short_default(*vp, default_value) : default_value;
-}
-
-static inline signed int fy_generic_get_signed_int_default(fy_generic v, signed int default_value)
-{
-	return (signed int)fy_generic_get_min_max_default(v, (long long)default_value, INT_MIN, INT_MAX);
-}
-
-static inline signed int fy_genericp_get_signed_int_default(const fy_generic *vp, signed int default_value)
-{
-	return vp ? fy_generic_get_signed_int_default(*vp, default_value) : default_value;
-}
-
-static inline unsigned int fy_generic_get_unsigned_int_default(fy_generic v, unsigned int default_value)
-{
-	return (unsigned int)fy_generic_get_min_max_default(v, (long long)default_value, 0, UINT_MAX);
-}
-
-static inline unsigned int fy_genericp_get_unsigned_int_default(const fy_generic *vp, unsigned int default_value)
-{
-	return vp ? fy_generic_get_unsigned_int_default(*vp, default_value) : default_value;
-}
-
-static inline signed long fy_generic_get_signed_long_default(fy_generic v, signed long default_value)
-{
-	return (signed long)fy_generic_get_min_max_default(v, (long long)default_value, LONG_MIN, LONG_MAX);
-}
-
-static inline signed long fy_genericp_get_signed_long_default(const fy_generic *vp, signed long default_value)
-{
-	return vp ? fy_generic_get_signed_long_default(*vp, default_value) : default_value;
-}
-
-static inline unsigned long fy_generic_get_unsigned_long_default(fy_generic v, unsigned long default_value)
-{
-	return (unsigned long)fy_generic_get_min_max_default(v, (long long)default_value, 0, ULONG_MAX);
-}
-
-static inline unsigned long fy_genericp_get_unsigned_long_default(const fy_generic *vp, unsigned long default_value)
-{
-	return vp ? fy_generic_get_unsigned_long_default(*vp, default_value) : default_value;
-}
-
-static inline signed long long fy_generic_get_signed_long_long_default(fy_generic v, signed long long default_value)
-{
-	return (signed long long)fy_generic_get_min_max_default(v, default_value, LLONG_MIN, LLONG_MAX);
-}
-
-static inline signed long fy_genericp_get_signed_long_long_default(const fy_generic *vp, signed long long default_value)
-{
-	return vp ? fy_generic_get_signed_long_long_default(*vp, default_value) : default_value;
-}
-
-/* unsigned long long is tricky because our ints are signed, so, error out for anything over ULLONG_MAX */
-static inline unsigned long long fy_generic_get_unsigned_long_long_default(fy_generic v, unsigned long long default_value)
-{
-	return (unsigned long long)fy_generic_get_min_max_default(v, (long long)default_value, 0, LLONG_MAX);
-}
-
-static inline unsigned long long fy_genericp_get_unsigned_long_long_default(const fy_generic *vp, unsigned long long default_value)
-{
-	return vp ? fy_generic_get_unsigned_long_long_default(*vp, default_value) : default_value;
-}
-
 static inline fy_generic fy_generic_get_generic_default(fy_generic v, fy_generic vdefault)
 {
 	if (fy_generic_is_valid(v))
@@ -3150,51 +2963,6 @@ static inline fy_generic fy_get_generic_map_handle(const void *p)
 	return (fy_generic){ .v = fy_generic_in_place_mapping_handle(*maph) };
 }
 
-#if 0
-		__colv2 = _Generic(__colv, \
-			fy_generic: __colv, \
-			fy_generic_sequence_handle: ({ fy_get_generic_seq_handle(&__colv); }), \
-			fy_generic_mapping_handle: ({ fy_get_generic_map_handle(&__colv); }) \
-			); \
-
-#endif
-
-#if 0
-#define fy_get_default(_colv, _key, _dv) \
-	({ \
-		typeof (1 ? (_colv) : (_colv)) __colv = (_colv); \
-		typeof (1 ? (_dv) : (_dv)) __dv = (_dv); \
-		typeof (1 ? (_dv) : (_dv)) __ret; \
-		fy_generic __colv2; \
-		enum fy_generic_type __type; \
-		\
-		__colv2 = _Generic(__colv, \
-			fy_generic: __colv, \
-			fy_generic_sequence_handle: fy_get_generic_seq_handle(&__colv), \
-			fy_generic_mapping_handle: fy_get_generic_map_handle(&__colv) ); \
-		__type = _Generic(__colv, \
-			fy_generic: fy_generic_get_type(__colv2), \
-			fy_generic_sequence_handle: FYGT_SEQUENCE, \
-			fy_generic_mapping_handle: FYGT_MAPPING ); \
-		switch (__type) { \
-		case FYGT_MAPPING: \
-			const fy_generic __key = fy_to_generic(_key); \
-			__ret = _Generic(__dv, fy_generic_mapping_get_default_Generic_dispatch) \
-				(__colv2, __key, __dv); \
-			break; \
-		case FYGT_SEQUENCE: \
-			const size_t __index = fy_generic_get_default_coerse(_key, LLONG_MAX); \
-			__ret = _Generic(__dv, fy_generic_sequence_get_default_Generic_dispatch) \
-				(__colv2, __index, __dv); \
-			break; \
-		default: \
-			__ret = __dv; \
-			break; \
-		} \
-		__ret; \
-	})
-#else
-
 #define fy_get_default(_colv, _key, _dv) \
 	({ \
 		typeof (1 ? (_colv) : (_colv)) __colv = (_colv); \
@@ -3228,7 +2996,6 @@ static inline fy_generic fy_get_generic_map_handle(const void *p)
 		} \
 		__ret; \
 	})
-#endif
 
 #define fy_get(_colv, _key, _type) \
 	(fy_get_default((_colv), (_key), fy_generic_get_type_default(_type)))

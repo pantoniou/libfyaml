@@ -395,7 +395,7 @@ static void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 		return;
 
 	case FYGT_INT:
-		fprintf(fp, "%lld", fy_generic_get_int(v));
+		fprintf(fp, "%lld", fy_generic_get_long_long(v));
 		return;
 
 	case FYGT_FLOAT:
