@@ -41,8 +41,8 @@ Verbose, error-prone, and obscures intent.
 libfyaml's new generic API brings Python-level ergonomics to C without sacrificing performance or control. Here's that same example:
 
 ```c
-fy_generic db_config = fy_get(fy_get_item(config, "database"), fy_map_empty);
-int port = fy_get(fy_get_item(db_config, "port"), 5432);
+fy_generic db_config = fy_get_default(config, "database", fy_map_empty);
+int port = fy_get_default(db_config, "port", 5432);
 ```
 
 Type-safe, concise, and compiles to zero-overhead machine code.
@@ -64,24 +64,28 @@ But it goes much deeper than syntax sugar. We've created a complete system featu
 The key insight enabling Python-like syntax is C11's `_Generic` feature. It provides compile-time type-based dispatch:
 
 ```c
-#define fy_get(value, default) \
+#define fy_cast(value, default) \
     _Generic((default), \
-        const char *: fy_get_string, \
-        int: fy_get_int, \
-        long long: fy_get_int, \
-        double: fy_get_double, \
-        bool: fy_get_bool, \
-        fy_seq_handle: fy_get_seq_handle, \
-        fy_map_handle: fy_get_map_handle \
+        const char *: fy_cast_string, \
+        int: fy_cast_int, \
+        long long: fy_cast_int, \
+        double: fy_cast_double, \
+        bool: fy_cast_bool, \
+        fy_seq_handle: fy_cast_seq_handle, \
+        fy_map_handle: fy_cast_map_handle \
     )(value, default)
+
+// fy_get_default() combines container access with type casting
+#define fy_get_default(container, key, default) \
+    fy_cast(fy_get(container, key), default)
 ```
 
 **The magic:** The type of your default value determines which function gets called. At **compile time**. Zero runtime overhead.
 
 ```c
-const char *name = fy_get(user, "unknown");     // Calls fy_get_string
-int age = fy_get(user, 0);                      // Calls fy_get_int
-bool active = fy_get(user, false);              // Calls fy_get_bool
+const char *name = fy_get_default(user, "name", "unknown");     // Calls fy_cast_string
+int age = fy_get_default(user, "age", 0);                       // Calls fy_cast_int
+bool active = fy_get_default(user, "active", false);            // Calls fy_cast_bool
 ```
 
 The compiler resolves which function to call based on the type of the literal. No runtime type checking, no virtual dispatch, no overhead.
@@ -123,7 +127,7 @@ Unlike most C libraries, our generic values are **immutable by default**. This i
 All modification operations return **new** collections:
 
 ```c
-fy_map_handle config = fy_get(data, fy_map_invalid);
+fy_map_handle config = fy_cast(data, fy_map_invalid);
 
 // These operations return NEW maps
 fy_map_handle config2 = fy_assoc(config, "port", fy_int(9090));
@@ -131,8 +135,8 @@ fy_map_handle config3 = fy_dissoc(config, "debug");
 fy_map_handle config4 = fy_assoc(config, "timeout", fy_int(30));
 
 // Original unchanged
-fy_generic port = fy_get_item(config, "port");
-printf("%lld\n", fy_get(port, 0LL));  // Still 8080
+fy_generic port = fy_get(config, "port");
+printf("%lld\n", fy_cast(port, 0LL));  // Still 8080
 ```
 
 ### Why Immutability Matters
@@ -145,13 +149,13 @@ fy_generic app_config = load_config("app.yaml");
 
 // Thread 1 reads
 void worker_thread_1(void) {
-    const char *host = fy_get(fy_get_item(app_config, "host"), "localhost");
+    const char *host = fy_get_default(app_config, "host", "localhost");
     // No locks needed - value can't change
 }
 
 // Thread 2 reads
 void worker_thread_2(void) {
-    int port = fy_get(fy_get_item(app_config, "port"), 8080);
+    int port = fy_get_default(app_config, "port", 8080);
     // No locks needed - value can't change
 }
 ```
@@ -196,8 +200,8 @@ Values have two lifetime models:
 void process_request(const char *json) {
     fy_generic data = fy_parse_json(json);
 
-    const char *user = fy_get(fy_get_item(data, "user"), "");
-    int count = fy_get(fy_get_item(data, "count"), 0);
+    const char *user = fy_get_default(data, "user", "");
+    int count = fy_get_default(data, "count", 0);
 
     // ... use data ...
 
@@ -335,39 +339,39 @@ void process_anthropic_response(const char *json_response) {
     fy_generic response = fy_parse_json(json_response);
 
     // Extract metadata - concise and safe
-    const char *id = fy_get(fy_get_item(response, "id"), "");
-    const char *model = fy_get(fy_get_item(response, "model"), "");
-    const char *role = fy_get(fy_get_item(response, "role"), "assistant");
+    const char *id = fy_get_default(response, "id", "");
+    const char *model = fy_get_default(response, "model", "");
+    const char *role = fy_get_default(response, "role", "assistant");
 
     printf("Message ID: %s\n", id);
     printf("Model: %s\n", model);
     printf("Role: %s\n", role);
 
     // Safe nested access with empty collection defaults
-    fy_generic usage = fy_get(fy_get_item(response, "usage"), fy_map_empty);
-    int input_tokens = fy_get(fy_get_item(usage, "input_tokens"), 0);
-    int output_tokens = fy_get(fy_get_item(usage, "output_tokens"), 0);
+    fy_generic usage = fy_get_default(response, "usage", fy_map_empty);
+    int input_tokens = fy_get_default(usage, "input_tokens", 0);
+    int output_tokens = fy_get_default(usage, "output_tokens", 0);
 
     printf("Tokens: %d in, %d out\n", input_tokens, output_tokens);
 
     // Iterate over content array using polymorphic operations
-    fy_seq_handle content = fy_get(fy_get_item(response, "content"), fy_seq_invalid);
+    fy_seq_handle content = fy_cast(fy_get(response, "content"), fy_seq_invalid);
 
     for (size_t i = 0; i < fy_len(content); i++) {
-        fy_generic block = fy_get_item(content, i);
-        const char *type = fy_get(fy_get_item(block, "type"), "");
+        fy_generic block = fy_get(content, i);
+        const char *type = fy_get_default(block, "type", "");
 
         if (strcmp(type, "text") == 0) {
-            const char *text = fy_get(fy_get_item(block, "text"), "");
+            const char *text = fy_get_default(block, "text", "");
             printf("  [text] %s\n", text);
 
         } else if (strcmp(type, "tool_use") == 0) {
-            const char *tool_name = fy_get(fy_get_item(block, "name"), "");
+            const char *tool_name = fy_get_default(block, "name", "");
             printf("  [tool_use] %s\n", tool_name);
 
             // Nested navigation
-            fy_generic input = fy_get(fy_get_item(block, "input"), fy_map_empty);
-            const char *query = fy_get(fy_get_item(input, "query"), "");
+            fy_generic input = fy_get_default(block, "input", fy_map_empty);
+            const char *query = fy_get_default(input, "query", "");
             if (*query) {
                 printf("    Query: %s\n", query);
             }
@@ -621,9 +625,9 @@ int main(void) {
     fy_generic data = fy_parse_yaml(yaml);
 
     // Extract values with type-safe defaults
-    const char *name = fy_get(fy_get_item(data, "name"), "unknown");
-    int age = fy_get(fy_get_item(data, "age"), 0);
-    bool active = fy_get(fy_get_item(data, "active"), false);
+    const char *name = fy_get_default(data, "name", "unknown");
+    int age = fy_get_default(data, "age", 0);
+    bool active = fy_get_default(data, "active", false);
 
     printf("%s is %d years old and %s\n",
            name, age, active ? "active" : "inactive");

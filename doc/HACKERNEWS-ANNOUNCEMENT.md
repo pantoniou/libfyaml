@@ -11,13 +11,13 @@ A type-safe, immutable, generic value system for C that feels like Python but co
 fy_generic data = fy_parse_json(json_string);
 
 // Extract values with type-safe defaults - type inferred from default!
-const char *name = fy_get(fy_get_item(data, "name"), "unknown");
-int port = fy_get(fy_get_item(data, "port"), 8080);
-bool enabled = fy_get(fy_get_item(data, "enabled"), false);
+const char *name = fy_get_default(data, "name", "unknown");
+int port = fy_get_default(data, "port", 8080);
+bool enabled = fy_get_default(data, "enabled", false);
 
 // Safe chaining with empty collections (just like Python's .get({}).get())
-fy_generic db_config = fy_get(fy_get_item(config, "database"), fy_map_empty);
-int timeout = fy_get(fy_get_item(db_config, "timeout"), 30);
+fy_generic db_config = fy_get_default(config, "database", fy_map_empty);
+int timeout = fy_get_default(db_config, "timeout", 30);
 
 // Polymorphic operations - fy_len() works on everything
 printf("Users: %zu\n", fy_len(users));    // sequence
@@ -32,17 +32,21 @@ No verbose casting, no manual type checking, no `NULL` checks everywhere.
 **C11 `_Generic` for compile-time polymorphism:**
 
 ```c
-// fy_get() dispatches based on the type of the default value
-#define fy_get(value, default) \
+// fy_cast() dispatches based on the type of the default value
+#define fy_cast(value, default) \
     _Generic((default), \
-        const char *: fy_get_string, \
-        int: fy_get_int, \
-        long long: fy_get_int, \
-        double: fy_get_double, \
-        bool: fy_get_bool, \
-        fy_seq_handle: fy_get_seq_handle, \
-        fy_map_handle: fy_get_map_handle \
+        const char *: fy_cast_string, \
+        int: fy_cast_int, \
+        long long: fy_cast_int, \
+        double: fy_cast_double, \
+        bool: fy_cast_bool, \
+        fy_seq_handle: fy_cast_seq_handle, \
+        fy_map_handle: fy_cast_map_handle \
     )(value, default)
+
+// fy_get_default() extracts from container with default fallback
+#define fy_get_default(container, key, default) \
+    fy_cast(fy_get(container, key), default)
 
 // fy_len() works on sequences, mappings, and strings
 #define fy_len(v) \
@@ -62,19 +66,19 @@ Unlike most C libraries, values are **immutable by default** (Clojure-style pers
 
 ```c
 // Extract containers with type-safe handles
-fy_map_handle config = fy_get(data, fy_map_invalid);
-fy_seq_handle users = fy_get(data, fy_seq_invalid);
+fy_map_handle config = fy_cast(data, fy_map_invalid);
+fy_seq_handle users = fy_cast(data, fy_seq_invalid);
 
 // Functional operations return NEW collections
 fy_map_handle config2 = fy_assoc(config, "port", fy_int(9090));     // Returns new
 fy_map_handle config3 = fy_dissoc(config, "debug");                 // Returns new
 fy_seq_handle users2 = fy_conj(users, fy_string("alice"));         // Returns new
 
-// Originals unchanged - check with fy_get_item()
-fy_generic port1 = fy_get_item(config, "port");
-fy_generic port2 = fy_get_item(config2, "port");
-printf("%lld\n", fy_get(port1, 0LL));   // Still 8080
-printf("%lld\n", fy_get(port2, 0LL));   // 9090
+// Originals unchanged - check with fy_get()
+fy_generic port1 = fy_get(config, "port");
+fy_generic port2 = fy_get(config2, "port");
+printf("%lld\n", fy_cast(port1, 0LL));   // Still 8080
+printf("%lld\n", fy_cast(port2, 0LL));   // 9090
 ```
 
 **Benefits:**

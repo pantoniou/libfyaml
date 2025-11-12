@@ -7,7 +7,7 @@ This document describes the design evolution of libfyaml's generic type system A
 1. [The Problem: Verbose Generic APIs](#the-problem-verbose-generic-apis)
 2. [Solution: Short-Form API with _Generic Dispatch](#solution-short-form-api-with-_generic-dispatch)
 3. [Type Checking Shortcuts](#type-checking-shortcuts)
-4. [Advanced: Unified fy_get() with Optional Parameters](#advanced-unified-fy_get-with-optional-parameters)
+4. [Advanced: Type Casting with fy_cast()](#advanced-type-casting-with-fy_cast)
 5. [The Empty Collection Pattern](#the-empty-collection-pattern)
 6. [Memory Management and Allocators](#memory-management-and-allocators)
 7. [Iteration API](#iteration-api)
@@ -159,37 +159,39 @@ if (fy_is_map(config)) {
 }
 ```
 
-## Advanced: Unified fy_get() with Optional Parameters
+## Advanced: Type Casting with fy_cast()
 
-Beyond `fy_map_get()` and `fy_seq_get()`, we can create a unified `fy_get()` that extracts values with optional type-safe defaults.
+Beyond direct container access, we provide `fy_cast()` for type-safe conversion of fy_generic values with defaults.
 
-### Design with __VA_OPT__
+### Design with _Generic Dispatch
 
-Using C11's variadic macros with `__VA_OPT__`, we can make the default parameter optional:
+Using C11's `_Generic`, we dispatch based on the type of the default value:
 
 ```c
-// Macro argument counting helper
-#define FY_GET_SELECT(_1, _2, NAME, ...) NAME
-
-// Main fy_get macro with optional second argument
-#define fy_get(g, ...) \
-    FY_GET_SELECT(__VA_ARGS__, FY_GET_WITH_DEFAULT, FY_GET_NO_DEFAULT, _dummy)(g, ##__VA_ARGS__)
-
-// No default: return as-is (fy_generic)
-#define FY_GET_NO_DEFAULT(g, ...) (g)
-
-// With default: dispatch based on type
-#define FY_GET_WITH_DEFAULT(g, default, ...) \
+// fy_cast() dispatches based on the type of the default value
+#define fy_cast(g, default) \
     _Generic((default), \
-        const char *: fy_get_string, \
-        int: fy_get_int, \
-        long long: fy_get_int, \
-        double: fy_get_double, \
-        bool: fy_get_bool, \
-        fy_generic: fy_get_generic, \
-        fy_seq_handle: fy_get_seq_handle, \
-        fy_map_handle: fy_get_map_handle \
+        const char *: fy_cast_string, \
+        int: fy_cast_int, \
+        long long: fy_cast_int, \
+        double: fy_cast_double, \
+        bool: fy_cast_bool, \
+        fy_generic: fy_cast_generic, \
+        fy_seq_handle: fy_cast_seq_handle, \
+        fy_map_handle: fy_cast_map_handle \
     )(g, default)
+
+// fy_get_default() combines container access with casting
+#define fy_get_default(container, key, default) \
+    fy_cast(fy_get(container, key), default)
+
+// fy_get() retrieves fy_generic from container (sequence or mapping)
+#define fy_get(container, key) \
+    _Generic((container), \
+        fy_seq_handle: fy_seq_get, \
+        fy_map_handle: fy_map_get, \
+        fy_generic: fy_generic_get \
+    )(container, key)
 ```
 
 ### Container Handle Types
@@ -293,18 +295,18 @@ extern const fy_map_handle fy_map_invalid;
 
 ```c
 // Stack-allocated (no builder - immutable, structural sharing)
-fy_seq_handle seq1 = fy_get(fy_sequence("a", "b"), fy_seq_invalid);
+fy_seq_handle seq1 = fy_cast(fy_sequence("a", "b"), fy_seq_invalid);
 fy_seq_handle seq2 = fy_conj(seq1, fy_string("c"));  // Returns new with sharing
 
 // Heap-allocated via builder (persistent beyond stack scope)
 // Builder automatically internalizes values when you use it!
 struct fy_generic_builder *gb = fy_generic_builder_create();
 
-fy_seq_handle seq3 = fy_get(fy_sequence("a", "b"), fy_seq_invalid);
+fy_seq_handle seq3 = fy_cast(fy_sequence("a", "b"), fy_seq_invalid);
 fy_seq_handle seq4 = fy_conj(gb, seq3, fy_string("c"));  // Builder internalizes
 
 // Same API, different allocation strategy!
-fy_map_handle map1 = fy_get(fy_mapping("key", 1), fy_map_invalid);
+fy_map_handle map1 = fy_cast(fy_mapping("key", 1), fy_map_invalid);
 fy_map_handle map2 = fy_assoc(map1, "key2", fy_int(42));     // Stack
 fy_map_handle map3 = fy_assoc(gb, map1, "key2", fy_int(42)); // Heap (internalized)
 
@@ -330,7 +332,7 @@ printf("Modified: %zu items\n", fy_len(modified));  // Original + 1
 ```python
 # Python (immutable tuples)      # libfyaml
 len(container)                   # fy_len(container)
-container[key]                   # fy_get_item(container, key)
+container[key]                   # fy_get(container, key)
 new_dict = {**dict, key: value}  # fy_assoc(map, key, value)
 new_list = list + [value]        # fy_conj(seq, value)
 ```
@@ -507,41 +509,41 @@ fy_map_handle config3 = fy_dissoc(config, "enabled");             // Returns new
 
 **Python-like optional defaults**:
 ```c
-// Python: value  (no conversion)
-fy_generic v = fy_get(some_value);
+// Python: value (no conversion)
+fy_generic v = some_value;
 
 // Python: str(value) or ""
-const char *text = fy_get(v, "");
-const char *name = fy_get(v, "unknown");
+const char *text = fy_cast(v, "");
+const char *name = fy_cast(v, "unknown");
 
 // Python: int(value) or 0
-int port = fy_get(v, 0);
-int count = fy_get(v, 42);
+int port = fy_cast(v, 0);
+int count = fy_cast(v, 42);
 
 // Python: bool(value) or False
-bool enabled = fy_get(v, false);
+bool enabled = fy_cast(v, false);
 
 // Python: float(value) or 0.0
-double ratio = fy_get(v, 0.0);
+double ratio = fy_cast(v, 0.0);
 ```
 
 **Type-safe container extraction with unified operations**:
 ```c
 // Extract as sequence handle
-fy_seq_handle items = fy_get(value, fy_seq_invalid);
+fy_seq_handle items = fy_cast(value, fy_seq_invalid);
 if (fy_is_valid(items)) {
     for (size_t i = 0; i < fy_len(items); i++) {
-        fy_generic item = fy_get_item(items, i);
-        const char *name = fy_get(item, "");
+        fy_generic item = fy_get(items, i);
+        const char *name = fy_cast(item, "");
         printf("%s\n", name);
     }
 }
 
 // Extract as mapping handle
-fy_map_handle config = fy_get(value, fy_map_invalid);
+fy_map_handle config = fy_cast(value, fy_map_invalid);
 if (fy_is_valid(config)) {
-    fy_generic host_val = fy_get_item(config, "host");
-    const char *host = fy_get(host_val, "localhost");
+    fy_generic host_val = fy_get(config, "host");
+    const char *host = fy_cast(host_val, "localhost");
     printf("Host: %s\n", host);
 }
 
