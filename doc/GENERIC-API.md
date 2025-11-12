@@ -58,6 +58,53 @@ fy_generic seq2 = fy_gb_sequence(gb,
 - **Debugging**: Values don't change unexpectedly
 - **Performance**: Arena allocator with single pointer increment—minimal contention
 
+### Value Identity: Immutability + Deduplication = O(1) Equality
+
+**The key insight:** Combining immutability with deduplication creates **value identity**—each unique value has exactly one representation in the builder.
+
+**What this means:**
+- Every `fy_generic` is a 64-bit value
+- Identical content produces identical `fy_generic` values (same bits)
+- Equality check is a single 64-bit integer comparison
+- **No deep comparison needed**—ever
+
+**Comparison:**
+```c
+fy_generic v1 = fy_to_generic("hello");
+fy_generic v2 = fy_to_generic("hello");
+
+// O(1) equality check - just compare the 64-bit values
+if (v1 == v2) {  // TRUE - same bits, because dedup ensures single representation
+    printf("Same value!\n");
+}
+
+// Traditional approach would require strcmp() - O(n)
+// libfyaml: just compare pointers/tagged values - O(1)
+```
+
+**Implications for data structures:**
+```c
+// Hash tables: use fy_generic directly as key
+// Sets: O(1) membership testing
+// Memoization: instant cache lookup
+// Structural sharing: cheap equality checks enable efficient persistent data structures
+
+// Example: checking if value exists in collection
+fy_generic needle = fy_to_generic(42);
+fy_generic haystack = fy_sequence(1, 42, 100, 42, 200);
+
+// Each 42 has the SAME fy_generic value (dedup!)
+// So you can find it with pointer equality, not value comparison
+```
+
+**Performance impact:**
+- String equality: O(1) instead of O(n)
+- Deep tree equality: O(1) instead of O(tree size)
+- Hash table operations: trivial hash function (use value directly)
+- Cache lookups: perfect for memoization
+
+This is why immutability + deduplication isn't just about memory—it fundamentally changes the performance characteristics of the system.
+
 **Allocator considerations:**
 - **Linear/Arena**: Simple pointer bump allocation, lock-free reads
 - **Dedup**: Hash table lookup requires locking, but reads remain safe

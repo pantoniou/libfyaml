@@ -192,6 +192,35 @@ After fy_assoc(map, "b", 99):
 
 Updates are O(log n), not O(n). Memory overhead is minimal.
 
+**4. Value Identity: O(1) Equality**
+
+Here's where it gets really interesting. **Immutability + deduplication = value identity**.
+
+Because values are immutable and deduplicated, each unique value has exactly one representation. This means:
+
+```c
+fy_generic s1 = fy_to_generic("hello");
+fy_generic s2 = fy_to_generic("hello");
+
+// These are literally the SAME 64-bit value
+if (s1 == s2) {  // TRUE - just pointer/integer comparison!
+    printf("Same!\n");
+}
+
+// Traditional approach:
+// if (strcmp(s1, s2) == 0) { ... }  // O(n) - must compare every character
+// libfyaml: if (s1 == s2) { ... }   // O(1) - just compare the 64-bit value
+```
+
+**Performance impact:**
+- String equality: O(1) instead of O(n)
+- Deep tree equality: O(1) instead of O(tree size)
+- Hash tables: use `fy_generic` value directly as hash
+- Sets: O(1) membership testing
+- Memoization: instant cache lookup
+
+This is why deduplication isn't just about memory savings—it fundamentally changes the performance characteristics. Every comparison becomes trivial.
+
 ## Memory Management: The Best of All Worlds
 
 One of the hardest problems in this design was memory management. Immutable values with structural sharing typically require garbage collection (like Clojure) or reference counting (like Swift).

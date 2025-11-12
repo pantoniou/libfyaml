@@ -197,6 +197,7 @@ Typical benchmarks vs Python/Rust/C++ (parsing 1KB JSON):
 | Performance | ✅ Native | ❌ Interpreted | ✅ Native | ✅ Native |
 | Determinism | ✅ Yes | ❌ GC pauses | ✅ Yes | ✅ Yes |
 | Deduplication | ✅ Built-in | ⚠️ Strings only | ❌ Manual | ❌ Manual |
+| Value identity | ✅ O(1) equality | ❌ O(n) | ❌ O(n) | ❌ O(n) |
 | Real-time safe | ✅ Yes | ❌ No | ✅ Yes | ⚠️ Careful |
 | Memory control | ✅ Full (policy hints + custom) | ❌ Limited | ⚠️ Global | ⚠️ Per-type |
 
@@ -207,9 +208,10 @@ For 40+ years, we've accepted the false dichotomy: **either** Python's ergonomic
 The key insights:
 1. **C11 `_Generic`** enables zero-cost polymorphism
 2. **Immutability** enables thread safety without locks
-3. **Policy hints** make sophisticated allocation strategies accessible
-4. **Scope-based lifetimes** eliminate GC without reference counting
-5. **Deduplication** + **structural sharing** = efficient immutable updates
+3. **Immutability + deduplication = value identity**: Every unique value has one representation, enabling O(1) equality checks (just compare 64-bit values, no strcmp() or deep tree traversal)
+4. **Policy hints** make sophisticated allocation strategies accessible
+5. **Scope-based lifetimes** eliminate GC without reference counting
+6. **Deduplication** + **structural sharing** = efficient immutable updates
 
 ## Status and Availability
 

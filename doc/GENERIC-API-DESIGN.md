@@ -370,6 +370,57 @@ Instead of exposing type-specific functions like `fy_seq_handle_count()` or `fy_
 - **Functional**: Immutable values enable thread-safe, predictable code
 - **Performance**: Structural sharing makes copies cheap
 
+### Value Identity: The Power of Immutability + Deduplication
+
+**Critical architectural insight:** When you combine immutability with deduplication, you get **value identity**—each unique value exists exactly once in the builder's memory.
+
+**What this enables:**
+```c
+// Two identical strings
+fy_generic s1 = fy_to_generic("hello");
+fy_generic s2 = fy_to_generic("hello");
+
+// Because of deduplication: s1 == s2 (literally the same 64-bit value!)
+// No strcmp() needed - just pointer/value comparison - O(1)
+```
+
+**Consequences for equality:**
+- **String comparison**: O(1) instead of O(n)
+- **Tree comparison**: O(1) instead of O(tree size)
+- **Collection membership**: O(1) instead of deep traversal
+- **Hash tables**: Use `fy_generic` value directly as hash
+
+**Real-world implications:**
+```c
+// Efficient set operations
+fy_generic value = fy_to_generic(42);
+fy_generic collection = fy_sequence(1, 42, 100, 42, 200);
+
+// All instances of 42 have IDENTICAL fy_generic values
+// Find with pointer equality, not value comparison
+
+// Perfect for memoization
+fy_generic cached_result = memoize_table_lookup(input);  // O(1)
+if (cached_result == fy_invalid) {
+    // Compute...
+}
+
+// Efficient structural sharing
+// Can cheaply check if two trees share subtrees
+if (tree1_node == tree2_node) {
+    // Identical subtrees - no need to compare recursively
+}
+```
+
+**Why this matters for performance:**
+- Traditional libraries: `strcmp("hello", "hello")` → 6 char comparisons
+- libfyaml: `s1 == s2` → 1 integer comparison
+- Hash tables can use the value directly (no hash function needed!)
+- Cache lookups are trivial
+- Persistent data structures become practical in C
+
+This is the secret sauce that makes functional programming patterns viable in C.
+
 ### Usage Examples
 
 **Functional updates (immutable) - Stack-allocated**:
