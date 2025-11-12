@@ -128,36 +128,67 @@ fy_generic_builder_destroy(gb);
 
 **Global existence optimization:**
 
-Because all values in a dedup builder are tracked globally, you can check if a value exists anywhere before doing local lookups:
+Because all values in a dedup builder are tracked globally, you can check if a value exists anywhere before doing local lookups. However, this optimization requires careful allocator management to avoid **builder pollution**.
+
+**The builder pollution problem:**
+
+When you create temporary keys for existence checks using `fy_gb_to_generic(gb, "search_key")`, those keys get permanently inserted into the builder's dedup table—even if you're just searching, not storing. This pollutes the builder state with temporary data.
+
+**Solution: Stacked allocators (read-only + writable):**
+
+The proper pattern uses a **stacked allocator design**:
+- **Base builder** (read-only during requests): Contains actual persistent data
+- **Request-scoped child builder**: Temporary allocations that can be reset after each request
 
 ```c
-struct fy_generic_builder *gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
+// Base builder with actual data (read-only during request processing)
+struct fy_generic_builder *base_gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
     .policy = FY_ALLOC_DEDUP
 });
 
-fy_generic mapping = /* ... large mapping ... */;
+// Load persistent data
+fy_generic config = /* ... parse config files ... */;
 
-// Looking for a key in the mapping
-fy_generic search_key = fy_gb_to_generic(gb, "rare_key");
+// Request handler
+void handle_request(fy_generic req_data) {
+    // Create child builder for request-scoped temporary allocations
+    struct fy_generic_builder *req_gb = fy_generic_builder_create_child(base_gb, &(struct fy_generic_builder_cfg){
+        .policy = FY_ALLOC_ARENA  // Fast temporary allocations
+    });
 
-// Fast path: check if key exists anywhere in builder
-if (!fy_builder_contains_value(gb, search_key)) {
-    // Key doesn't exist anywhere in builder
-    // Therefore it can't be in this mapping - early exit!
-    return fy_invalid;
+    // Temporary key for search (allocated in request-scoped builder)
+    fy_generic search_key = fy_gb_to_generic(req_gb, "api_key");
+
+    // Check if exists in base builder (dedup table not polluted!)
+    if (!fy_builder_contains_value(base_gb, search_key)) {
+        fy_generic_builder_destroy(req_gb);  // Clean up temporary allocations
+        return fy_invalid;  // Fast path: doesn't exist anywhere
+    }
+
+    // Key exists somewhere, do actual mapping lookup
+    fy_generic result = fy_map_get(config, search_key);
+
+    fy_generic_builder_destroy(req_gb);  // Reset to clean state
+    return result;
 }
 
-// Key exists somewhere, do actual mapping lookup
-return fy_map_get(mapping, search_key);
-
-fy_generic_builder_destroy(gb);
+// Later: cleanup base builder
+fy_generic_builder_destroy(base_gb);
 ```
 
 **Why this matters:**
 - **Negative lookups are O(1)**: If key doesn't exist globally, skip expensive mapping search
 - **Common in real workloads**: Many lookups are for non-existent keys
+- **No builder pollution**: Temporary keys don't leak into persistent data
+- **Clean state**: Each request starts fresh without accumulated search keys
 - **Cascades to collections**: Check once globally, then search specific collection
 - **Useful for filtering**: Quickly eliminate values that don't exist
+
+**Status:** ⚠️ **Stacked allocator pattern is a planned/priority feature**. The implementation requires support for:
+- `fy_generic_builder_create_child(parent_gb, cfg)` - Create child builder inheriting parent's dedup table
+- Child builder reads from parent's dedup table without modifying it
+- Child builder's own allocations are isolated and can be destroyed without affecting parent
+- Efficient for request-scoped patterns where temporary allocations need cleanup
 
 This is why immutability + deduplication isn't just about memory—it fundamentally changes the performance characteristics of the system.
 

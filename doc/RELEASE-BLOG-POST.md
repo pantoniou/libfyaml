@@ -245,23 +245,54 @@ if (n1 == n2) {  // TRUE - inline values inherently identical
 
 **Bonus optimization - Global existence checks:**
 
-The dedup builder tracks all values globally. Before searching for a key in a mapping, check if it exists anywhere:
+The dedup builder tracks all values globally. Before searching for a key in a mapping, you can check if it exists anywhere—but this requires careful allocator management to avoid **builder pollution**.
+
+**The problem:** Creating temporary keys for searches permanently adds them to the builder:
 
 ```c
-// Want to find "api_key" in config
-fy_generic key = fy_gb_to_generic(gb, "api_key");
-
-// Fast check: does this key exist anywhere in builder?
+// ❌ This pollutes the builder!
+fy_generic key = fy_gb_to_generic(gb, "api_key");  // Now permanently in dedup table
 if (!fy_builder_contains_value(gb, key)) {
-    // Doesn't exist anywhere - can't be in this mapping
-    return fy_invalid;  // Early exit!
+    return fy_invalid;
 }
-
-// Key exists somewhere, do actual mapping lookup
-return fy_map_get(config, key);
+// Problem: "api_key" lives in builder forever, even if not in config
 ```
 
-This makes **negative lookups** (keys that don't exist) trivially cheap—a single hash table check instead of traversing collections. In real workloads, most lookups are for non-existent keys, so this optimization has outsized impact.
+**The solution: Stacked allocators**
+
+Use a **base builder** (read-only) + **child builder** (request-scoped):
+
+```c
+// Base builder with persistent data
+struct fy_generic_builder *base_gb = /* ... */;
+fy_generic config = /* ... */;
+
+void handle_request(fy_generic req_data) {
+    // Child builder for temporary allocations
+    struct fy_generic_builder *req_gb = fy_generic_builder_create_child(base_gb, &(struct fy_generic_builder_cfg){
+        .policy = FY_ALLOC_ARENA
+    });
+
+    // Temporary search key (allocated in child)
+    fy_generic key = fy_gb_to_generic(req_gb, "api_key");
+
+    // Check base builder (not polluted!)
+    if (!fy_builder_contains_value(base_gb, key)) {
+        fy_generic_builder_destroy(req_gb);  // Cleanup
+        return fy_invalid;
+    }
+
+    // Actual lookup
+    fy_generic result = fy_map_get(config, key);
+
+    fy_generic_builder_destroy(req_gb);  // Reset to clean state
+    return result;
+}
+```
+
+This makes **negative lookups** (keys that don't exist) trivially cheap—a single hash table check instead of traversing collections. In real workloads, most lookups are for non-existent keys, so this optimization has outsized impact. The stacked allocator pattern ensures temporary search keys don't pollute persistent data.
+
+**Status:** ⚠️ **Stacked allocators are a planned/priority feature** requiring `fy_generic_builder_create_child()` support.
 
 **Key point:** Value identity from deduplication applies to builder-allocated objects. Inline objects are stable by definition (stored in the value itself).
 

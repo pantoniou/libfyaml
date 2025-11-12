@@ -449,53 +449,114 @@ fy_generic_builder_destroy(gb);
 
 **Global existence optimization:**
 
-The dedup builder maintains a global table of all values. Before searching for a key in a collection, you can check if it exists anywhere:
+The dedup builder maintains a global table of all values. Before searching for a key in a collection, you can check if it exists anywhere—but this optimization requires careful allocator management to avoid **builder pollution**.
+
+**The builder pollution problem:**
+
+When you create temporary keys for existence checks using `fy_gb_to_generic(gb, "search_key")`, those keys get permanently inserted into the builder's dedup table. This happens even when you're just searching, not storing. The builder state becomes polluted with temporary data that was never meant to be persistent.
 
 ```c
+// ❌ NAIVE PATTERN - HAS POLLUTION ISSUE
 struct fy_generic_builder *gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
     .policy = FY_ALLOC_DEDUP
 });
 
-// Large mapping with thousands of keys
-fy_generic config = fy_gb_mapping(gb, /* ... */);
+fy_generic config = /* ... load config ... */;
 
-// Want to find "debug_mode" in the mapping
-fy_generic key = fy_gb_to_generic(gb, "debug_mode");
+// This pollutes the builder!
+fy_generic key = fy_gb_to_generic(gb, "debug_mode");  // Permanently added to dedup table
 
-// Global existence check - O(1) hash table lookup
 if (!fy_builder_contains_value(gb, key)) {
-    // Key doesn't exist anywhere in builder
-    // Therefore it can't be in this specific mapping
-    // Early exit - no need to traverse the mapping!
     return fy_invalid;
 }
+// Problem: "debug_mode" string now lives in builder forever, even if not in config
+```
 
-// Key exists somewhere, do actual lookup
-fy_generic value = fy_map_get(config, key);
+**Solution: Stacked allocators (read-only + writable):**
 
-fy_generic_builder_destroy(gb);
+The proper pattern uses a **stacked allocator design** with:
+- **Base builder** (read-only during requests): Contains actual persistent data
+- **Request-scoped child builder**: Temporary allocations that can be reset after each request
+
+```c
+// ✅ CORRECT PATTERN - STACKED ALLOCATORS
+// Base builder with actual data (read-only during request processing)
+struct fy_generic_builder *base_gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
+    .policy = FY_ALLOC_DEDUP
+});
+
+// Load persistent configuration
+fy_generic config = /* ... parse config files ... */;
+
+// Request handler
+void handle_request(fy_generic req_data) {
+    // Create child builder for request-scoped temporary allocations
+    struct fy_generic_builder *req_gb = fy_generic_builder_create_child(base_gb, &(struct fy_generic_builder_cfg){
+        .policy = FY_ALLOC_ARENA  // Fast temporary allocations
+    });
+
+    // Temporary key for search (allocated in request-scoped builder)
+    fy_generic search_key = fy_gb_to_generic(req_gb, "debug_mode");
+
+    // Check if exists in base builder (dedup table not polluted!)
+    if (!fy_builder_contains_value(base_gb, search_key)) {
+        fy_generic_builder_destroy(req_gb);  // Clean up temporary allocations
+        return fy_invalid;  // Fast path: doesn't exist anywhere
+    }
+
+    // Key exists somewhere, do actual mapping lookup
+    fy_generic value = fy_map_get(config, search_key);
+
+    fy_generic_builder_destroy(req_gb);  // Reset to clean state
+    return value;
+}
+
+// Later: cleanup base builder
+fy_generic_builder_destroy(base_gb);
 ```
 
 **Why this is powerful:**
 - **Negative lookups are cheap**: Most lookups in real systems are for non-existent keys
 - **Skip expensive traversals**: If key doesn't exist globally, avoid searching collections
+- **No builder pollution**: Temporary keys don't leak into persistent data
+- **Clean state**: Each request starts fresh without accumulated search keys
 - **Complements value identity**: After global check passes, actual lookup uses O(1) equality
 - **Useful for validation**: Check if a set of required keys exists before processing
 
-**Real-world example:**
+**Real-world example with validation:**
 ```c
-// Check if config has all required keys
-const char *required[] = {"host", "port", "database", NULL};
+// Base builder with config
+struct fy_generic_builder *base_gb = /* ... */;
+fy_generic config = /* ... */;
 
-for (const char **p = required; *p; p++) {
-    fy_generic key = fy_gb_to_generic(gb, *p);
-    if (!fy_builder_contains_value(gb, key)) {
-        fprintf(stderr, "Missing required key: %s\n", *p);
-        return -1;  // Fast failure - key doesn't exist anywhere
+void validate_config(void) {
+    // Request-scoped builder for temporary validation keys
+    struct fy_generic_builder *check_gb = fy_generic_builder_create_child(base_gb, &(struct fy_generic_builder_cfg){
+        .policy = FY_ALLOC_ARENA
+    });
+
+    // Check if config has all required keys
+    const char *required[] = {"host", "port", "database", NULL};
+
+    for (const char **p = required; *p; p++) {
+        fy_generic key = fy_gb_to_generic(check_gb, *p);  // Temporary in child
+        if (!fy_builder_contains_value(base_gb, key)) {
+            fprintf(stderr, "Missing required key: %s\n", *p);
+            fy_generic_builder_destroy(check_gb);  // Cleanup
+            return -1;  // Fast failure - key doesn't exist anywhere
+        }
     }
+
+    fy_generic_builder_destroy(check_gb);  // Reset - no pollution!
+    // All required keys exist, proceed with actual lookups
 }
-// All required keys exist, proceed with actual lookups
 ```
+
+**Status:** ⚠️ **Stacked allocator pattern is a planned/priority feature**. The implementation requires:
+- `fy_generic_builder_create_child(parent_gb, cfg)` - Create child builder inheriting parent's dedup table
+- Child builder reads from parent's dedup table without modifying it
+- Child builder's own allocations are isolated and can be destroyed without affecting parent
+- Efficient for request-scoped patterns where temporary allocations need cleanup
 
 **Key point:** Value identity applies to objects stored in a dedup-enabled builder. Inline objects are stable by definition (stored in the value itself).
 
