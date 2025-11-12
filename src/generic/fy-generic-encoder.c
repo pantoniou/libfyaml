@@ -74,15 +74,14 @@ int fy_encode_generic_bool(struct fy_generic_encoder *fyge, const char *anchor, 
 
 int fy_encode_generic_int(struct fy_generic_encoder *fyge, const char *anchor, const char *tag, fy_generic v)
 {
-	return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, "%lld",
-			fy_generic_get_long_long(v));
+	return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, "%lld", fy_generic_cast(v, long long));
 }
 
 int fy_encode_generic_float(struct fy_generic_encoder *fyge, const char *anchor, const char *tag, fy_generic v)
 {
 	double f;
 
-	f = fy_generic_get_float(v);
+	f = fy_generic_cast(v, double);
 	if (isfinite(f))
 		return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, "%g", f);
 
@@ -252,8 +251,8 @@ fy_generic_encoder_emit_document(struct fy_generic_encoder *fyge, fy_generic vro
 				goto err_out;
 
 			memset(&vers_local, 0, sizeof(*vers));
-			vers_local.major = fy_generic_get_int(vmajor);
-			vers_local.minor = fy_generic_get_int(vminor);
+			vers_local.major = fy_generic_cast(vmajor, int);
+			vers_local.minor = fy_generic_cast(vminor, int);
 			vers = &vers_local;
 		}
 

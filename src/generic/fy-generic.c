@@ -1272,8 +1272,8 @@ static inline int fy_generic_bool_compare(fy_generic a, fy_generic b)
 {
 	int ba, bb;
 
-	ba = (int)fy_generic_get_bool(a);
-	bb = (int)fy_generic_get_bool(b);
+	ba = (int)fy_generic_cast(a, bool);
+	bb = (int)fy_generic_cast(b, bool);
 	return ba > bb ?  1 :
 	       ba < bb ? -1 : 0;
 }
@@ -1282,8 +1282,8 @@ static inline int fy_generic_int_compare(fy_generic a, fy_generic b)
 {
 	long long ia, ib;
 
-	ia = fy_generic_get_int(a);
-	ib = fy_generic_get_int(b);
+	ia = fy_generic_cast(a, long long);
+	ib = fy_generic_cast(b, long long);
 	return ia > ib ?  1 :
 	       ia < ib ? -1 : 0;
 }
@@ -1292,24 +1292,23 @@ static inline int fy_generic_float_compare(fy_generic a, fy_generic b)
 {
 	double da, db;
 
-	da = fy_generic_get_float(a);
-	db = fy_generic_get_float(b);
+	da = fy_generic_cast(a, double);
+	db = fy_generic_cast(b, double);
 	return da > db ?  1 :
 	       da < db ? -1 : 0;
 }
 
 static inline int fy_generic_string_compare(fy_generic a, fy_generic b)
 {
-	const char *sa, *sb;
-	size_t sza = 0, szb = 0;
+	fy_generic_sized_string sa, sb;
 	int ret;
 
-	sa = fy_generic_get_string_size(a, &sza);
-	sb = fy_generic_get_string_size(b, &szb);
+	sa = fy_generic_cast(a, fy_generic_sized_string);
+	sb = fy_generic_cast(b, fy_generic_sized_string);
 
-	ret = memcmp(sa, sb, sza > szb ? szb : sza);
+	ret = memcmp(sa.data, sb.data, sa.size > sb.size ? sb.size : sa.size);
 
-	if (!ret && sza != szb)
+	if (!ret && sa.size != sb.size)
 		ret = 1;
 	return ret;
 }
@@ -1317,19 +1316,18 @@ static inline int fy_generic_string_compare(fy_generic a, fy_generic b)
 static inline int fy_generic_alias_compare(fy_generic a, fy_generic b)
 {
 	fy_generic aa, ab;
-	const char *sa, *sb;
-	size_t sza = 0, szb = 0;
+	fy_generic_sized_string sa, sb;
 	int ret;
 
 	aa = fy_generic_indirect_get_anchor(a);
 	ab = fy_generic_indirect_get_anchor(b);
 
-	sa = fy_generic_get_string_size(aa, &sza);
-	sb = fy_generic_get_string_size(ab, &szb);
+	sa = fy_generic_cast(aa, fy_generic_sized_string);
+	sb = fy_generic_cast(ab, fy_generic_sized_string);
 
-	ret = memcmp(sa, sb, sza > szb ? szb : sza);
+	ret = memcmp(sa.data, sb.data, sa.size > sb.size ? sb.size : sa.size);
 
-	if (!ret && sza != szb)
+	if (!ret && sa.size != sb.size)
 		ret = 1;
 	return ret;
 }

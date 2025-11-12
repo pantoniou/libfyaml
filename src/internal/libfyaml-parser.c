@@ -4173,15 +4173,15 @@ void fy_generic_print_primitive(FILE *fp, fy_generic v)
 		return;
 
 	case FYGT_BOOL:
-		fprintf(fp, "%s", fy_generic_get_bool(v) ? "true" : "false");
+		fprintf(fp, "%s", fy_generic_cast(v, bool) ? "true" : "false");
 		return;
 
 	case FYGT_INT:
-		fprintf(fp, "%lld", fy_generic_get_long_long(v));
+		fprintf(fp, "%lld", fy_generic_cast(v, long long));
 		return;
 
 	case FYGT_FLOAT:
-		fprintf(fp, "%f", fy_generic_get_double(v));
+		fprintf(fp, "%f", fy_generic_cast(v, double));
 		return;
 
 	case FYGT_STRING:
@@ -4345,14 +4345,14 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		bv = btable[i];
 		gbl = fy_bool(bv);
 		printf("boolean/%s = %016lx %s\n", bv ? "true" : "false", gbl.v,
-				fy_generic_get_bool(gbl) ? "true" : "false");
+				fy_generic_cast(gbl, bool) ? "true" : "false");
 	}
 
 	for (i = 0; i < ARRAY_SIZE(itable); i++) {
 		iv = itable[i];
 		gi = fy_int(iv);
 		printf("int/%lld = %016lx %lld\n", iv, gi.v,
-				fy_generic_get_long_long(gi));
+				fy_generic_cast(gi, long long));
 	}
 
 	for (i = 0; i < ARRAY_SIZE(stable); i++) {
@@ -4369,7 +4369,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		fv = ftable[i];
 		gf = fy_float(fv);
 		printf("float/%f = %016lx %f\n", fv, gf.v,
-				fy_generic_get_float(gf));
+				fy_generic_cast(gf, double));
 	}
 
 	seq = fy_sequence(fy_bool(true),
@@ -4503,7 +4503,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		gbl = fy_gb_to_generic(gb, (_Bool)bv);
 		assert(fy_generic_is_valid(gbl));
 		printf("boolean/%s = %016lx %s\n", bv ? "true" : "false", gbl.v,
-				fy_generic_get_bool(gbl) ? "true" : "false");
+				fy_generic_cast(gbl, bool) ? "true" : "false");
 	}
 
 	for (i = 0; i < ARRAY_SIZE(itable); i++) {
@@ -4511,7 +4511,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		gi = fy_gb_to_generic(gb, iv);
 		assert(fy_generic_is_valid(gi));
 		printf("int/%lld = %016lx %lld\n", iv, gi.v,
-				fy_generic_get_long_long(gi));
+				fy_generic_cast(gi, long long));
 	}
 
 	for (i = 0; i < ARRAY_SIZE(stable); i++) {
@@ -4591,7 +4591,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		assert(fy_generic_is_valid(gf));
 
 		printf("float/%f = %016lx %f\n", fv, gf.v,
-				fy_generic_get_float(gf));
+				fy_generic_cast(gf, float));
 	}
 
 	seq = fy_gb_sequence_create(gb, 3, (fy_generic[3]){
@@ -5001,20 +5001,20 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		(void)s;
 
 		v = fy_int(100);
-		i = fy_generic_get_default(v, 101);
-		printf("i = fy_generic_get_default(v, 101) = %d\n", i);
+		i = fy_generic_cast_default(v, 101);
+		printf("i = fy_generic_cast_default(v, 101) = %d\n", i);
 
 		v = fy_invalid;
-		i = fy_generic_get_default(v, 101);
-		printf("i = fy_generic_get_default(v, 101) = %d\n", i);
+		i = fy_generic_cast_default(v, 101);
+		printf("i = fy_generic_cast_default(v, 101) = %d\n", i);
 
 		v = fy_string("This is a long string");
-		s = fy_generic_get_default(v, "default-string");
-		printf("(\"This is a long string\") i = fy_generic_get_default(v, \"default-string\") = %s\n", s);
+		s = fy_generic_cast_default(v, "default-string");
+		printf("(\"This is a long string\") i = fy_generic_cast_default(v, \"default-string\") = %s\n", s);
 
 		v = fy_string("This");
-		s = fy_generic_get_default(v, "default-string");
-		printf("(\"This\") i = fy_generic_get_default(v, \"default-string\") = %s\n", s);
+		s = fy_generic_cast_default(v, "default-string");
+		printf("(\"This\") i = fy_generic_cast_default(v, \"default-string\") = %s\n", s);
 
 		fy_generic seq = fy_sequence(true, 100, 10.1f, "short", "this is long");
 		printf("source seq:\n");
@@ -5046,21 +5046,21 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		fy_generic vv;
 
 		vv = fy_to_generic(10);
-		i = fy_generic_get(vv, int);
+		i = fy_generic_cast(vv, int);
 		printf("fy_to_generic(10) i = %d\n", i);
 
 		vv = fy_to_generic(-10);
-		i = fy_generic_get(vv, int);
+		i = fy_generic_cast(vv, int);
 		printf("fy_to_generic(-10) i = %d\n", i);
 		fy_generic_emit_default(fy_to_generic(i));
 
 		vv = fy_to_generic(-1000);
-		i = fy_generic_get(vv, int);
+		i = fy_generic_cast(vv, int);
 		printf("fy_to_generic(-1000) i = %d\n", i);
 		fy_generic_emit_default(fy_to_generic(i));
 
 		vv = fy_to_generic("Hello");
-		i = fy_generic_get(vv, int);
+		i = fy_generic_cast(vv, int);
 		printf("fy_to_generic(\"Hello\") i = %d\n", i);
 
 		fy_generic map = fy_mapping("Hello", 100, "Long key", true, "str", "indeed", "long-string", "this is what it is", "string", "wha?");
@@ -5089,7 +5089,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		printf("source seq:\n");
 		fy_generic_emit_default(seq);
 
-		size_t idx = fy_generic_get_default_coerse(3, LLONG_MAX);
+		size_t idx = fy_generic_cast_default_coerse(3, LLONG_MAX);
 		printf("idx=%zu\n", idx);
 		s = fy_get_default(seq, 3, (char *)NULL);
 		printf("[0] i = fy_get_default(seq, 3, NULL) = %s\n", s);
@@ -5179,10 +5179,10 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 		printf("fy_len(seq)=%zu\n", fy_len(seq));
 
-		int x = fy_generic_get_default(seq, (int)-1);
-		printf("x = fy_generic_get_default(seq, (int)-1) = %d\n", x);
+		int x = fy_generic_cast_default(seq, (int)-1);
+		printf("x = fy_generic_cast_default(seq, (int)-1) = %d\n", x);
 
-		seqh = fy_generic_get_default(seq, (fy_generic_sequence_handle)NULL);
+		seqh = fy_generic_cast_default(seq, (fy_generic_sequence_handle)NULL);
 		printf("seqh=%p\n", seqh);
 		fy_generic_emit_default(fy_to_generic(seqh));
 
@@ -5193,12 +5193,12 @@ int do_generics(int argc, char *argv[], const char *allocator)
 			fy_generic_emit_default(v);
 #if 1
 
-			szstr = fy_generic_get_default(v, fy_szstr_empty);
+			szstr = fy_generic_cast_default(v, fy_szstr_empty);
 			printf("Got size=%zu\n", szstr.size);
 			fy_generic_emit_default(fy_to_generic(szstr));
 
 			v = fy_to_generic("Hell");
-			szstr = fy_generic_get_default(v, fy_szstr_empty);
+			szstr = fy_generic_cast_default(v, fy_szstr_empty);
 			printf("Got size=%zu\n", szstr.size);
 			fy_generic_emit_default(fy_to_generic(szstr));
 #else
@@ -6282,10 +6282,11 @@ cleanup:
 	return exitcode;
 }
 
-#if 0
+#if 1
+
 static inline long long generic_add_one(fy_generic v)
 {
-	return fy_generic_get_int(v) + 1;
+	return fy_generic_cast(v, int) + 1;
 }
 
 long long generic_return_two(void)
@@ -6312,6 +6313,14 @@ size_t checkout_seq_count(fy_generic v)
 size_t checkout_seq_handle_count(fy_generic_sequence_handle seqh)
 {
 	return fy_len(seqh);
+}
+
+char *checkout_dup_str(fy_generic v)
+{
+	const char *str;
+       
+	str = fy_generic_cast_default(v, "");
+	return strdup(str);
 }
 
 #endif
