@@ -5150,9 +5150,14 @@ int do_generics(int argc, char *argv[], const char *allocator)
 			.data = "He\0lo",
 			.size = 5,
 		};
-		fy_generic seq, v;
+		fy_generic seq, map, v;
+		fy_generic_sequence_handle seqh;
+		fy_generic_mapping_handle maph;
 
 		(void)szstr;
+		(void)seqh;
+		(void)map;
+		(void)maph;
 
 		v = fy_to_generic(&szstr);
 		fy_generic_emit_default(v);
@@ -5160,7 +5165,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		v = fy_to_generic(szstr);
 		fy_generic_emit_default(v);
 
-		seq = fy_sequence(10, true, szstr, fy_sequence(-1, -2));
+		seq = fy_sequence(10, true, szstr, fy_sequence(-1, -2), fy_mapping("Hello", 100, "There", 200));
 		fy_generic_emit_default(seq);
 
 		seq = fy_sequence(10, true, ((fy_generic_sized_string){ .data = "More\0zero\0yes", .size = 13 }), fy_sequence(-1, -2));
@@ -5171,6 +5176,37 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 		szstr = fy_get_default(seq, 3, fy_szstr_empty);
 		fy_generic_emit_default(fy_to_generic(szstr));
+
+		printf("fy_len(seq)=%zu\n", fy_len(seq));
+
+		int x = fy_generic_get_default(seq, (int)-1);
+		printf("x = fy_generic_get_default(seq, (int)-1) = %d\n", x);
+
+		seqh = fy_generic_get_default(seq, (fy_generic_sequence_handle)NULL);
+		printf("seqh=%p\n", seqh);
+		fy_generic_emit_default(fy_to_generic(seqh));
+
+		printf("trying to get szstr\n");
+		v = fy_get_default(seq, 2, fy_invalid);
+		if (fy_generic_is_valid(v)) {
+			printf("got it\n");
+			fy_generic_emit_default(v);
+#if 1
+
+			szstr = fy_generic_get_default(v, fy_szstr_empty);
+			printf("Got size=%zu\n", szstr.size);
+			fy_generic_emit_default(fy_to_generic(szstr));
+
+			v = fy_to_generic("Hell");
+			szstr = fy_generic_get_default(v, fy_szstr_empty);
+			printf("Got size=%zu\n", szstr.size);
+			fy_generic_emit_default(fy_to_generic(szstr));
+#else
+			fy_generic_typeof(v) vv;
+
+			(void)vv;
+#endif
+		}
 	}
 
 	return 0;
@@ -6270,7 +6306,7 @@ size_t generic_return_constant_string_length(void)
 
 size_t checkout_seq_count(fy_generic v)
 {
-	return fy_generic_sequence_get_item_count(v);
+	return fy_len(v);
 }
 
 size_t checkout_seq_handle_count(fy_generic_sequence_handle seqh)
