@@ -5171,6 +5171,17 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		seq = fy_sequence(10, true, ((fy_generic_sized_string){ .data = "More\0zero\0yes", .size = 13 }), fy_sequence(-1, -2));
 		fy_generic_emit_default(seq);
 
+		seqh = fy_get_default(seq, 3, fy_seq_handle_null);
+		if (seqh != fy_seq_handle_null) {
+			printf(">>>>>>>>>>>>>>>>> got seqh=%p len=%zu fy_len(seqh)=%zu\n", seqh, seqh->count, fy_len(seqh));
+			size_t i;
+
+			for (i = 0; i < fy_len(seqh); i++) {
+				printf("############### %zu: \n", i);
+			}
+		} else
+			printf("no seqh\n");
+
 		szstr = fy_get_default(seq, 2, fy_szstr_empty);
 		fy_generic_emit_default(fy_to_generic(szstr));
 
@@ -5191,7 +5202,6 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		if (fy_generic_is_valid(v)) {
 			printf("got it\n");
 			fy_generic_emit_default(v);
-#if 1
 
 			szstr = fy_generic_cast_default(v, fy_szstr_empty);
 			printf("Got size=%zu\n", szstr.size);
@@ -5201,11 +5211,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 			szstr = fy_generic_cast_default(v, fy_szstr_empty);
 			printf("Got size=%zu\n", szstr.size);
 			fy_generic_emit_default(fy_to_generic(szstr));
-#else
-			fy_generic_typeof(v) vv;
 
-			(void)vv;
-#endif
 		}
 	}
 
