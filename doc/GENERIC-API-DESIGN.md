@@ -168,30 +168,33 @@ Beyond direct container access, we provide `fy_cast()` for type-safe conversion 
 Using C11's `_Generic`, we dispatch based on the type of the default value:
 
 ```c
-// fy_cast() dispatches based on the type of the default value
-#define fy_cast(g, default) \
-    _Generic((default), \
-        const char *: fy_cast_string, \
-        int: fy_cast_int, \
-        long long: fy_cast_int, \
-        double: fy_cast_double, \
-        bool: fy_cast_bool, \
-        fy_generic: fy_cast_generic, \
-        fy_seq_handle: fy_cast_seq_handle, \
-        fy_map_handle: fy_cast_map_handle \
-    )(g, default)
+// fy_cast() - cast value to type using that type's default
+#define fy_cast(_v, _type) \
+    fy_generic_cast((_v), (_type))
 
-// fy_get_default() combines container access with casting
-#define fy_get_default(container, key, default) \
-    fy_cast(fy_get(container, key), default)
+// fy_cast_default() - cast with explicit default value
+#define fy_cast_default(_v, _dv) \
+    fy_generic_cast_default((_v), (_dv))
 
-// fy_get() retrieves fy_generic from container (sequence or mapping)
-#define fy_get(container, key) \
-    _Generic((container), \
-        fy_seq_handle: fy_seq_get, \
-        fy_map_handle: fy_map_get, \
-        fy_generic: fy_generic_get \
-    )(container, key)
+// fy_get() - get from container, cast to type using type's default
+#define fy_get(_colv, _key, _type) \
+    (fy_get_default((_colv), (_key), fy_generic_get_type_default(_type)))
+
+// fy_get_default() - get from container with explicit default
+#define fy_get_default(_colv, _key, _dv) \
+    fy_cast_default(fy_generic_get((_colv), (_key)), (_dv))
+```
+
+**Two styles for maximum flexibility:**
+
+```c
+// Style 1: Type-based (uses type's implicit default)
+int port = fy_get(config, "port", int);              // 0 if missing
+const char *host = fy_get(config, "host", const char *);  // "" if missing
+
+// Style 2: Explicit default (when type's default isn't what you want)
+int port = fy_get_default(config, "port", 8080);     // 8080 if missing
+const char *host = fy_get_default(config, "host", "localhost");  // "localhost" if missing
 ```
 
 ### Container Handle Types

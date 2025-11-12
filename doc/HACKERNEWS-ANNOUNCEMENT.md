@@ -10,14 +10,19 @@ A type-safe, immutable, generic value system for C that feels like Python but co
 // Parse JSON/YAML to generic values
 fy_generic data = fy_parse_json(json_string);
 
-// Extract values with type-safe defaults - type inferred from default!
-const char *name = fy_get_default(data, "name", "unknown");
-int port = fy_get_default(data, "port", 8080);
-bool enabled = fy_get_default(data, "enabled", false);
+// Type-based extraction (uses type's default: 0, "", NULL, false)
+const char *name = fy_get(data, "name", const char *);  // "" if missing
+int port = fy_get(data, "port", int);                   // 0 if missing
+bool enabled = fy_get(data, "enabled", bool);           // false if missing
 
-// Safe chaining with empty collections (just like Python's .get({}).get())
+// Or use explicit defaults when type's default isn't what you want
+const char *name2 = fy_get_default(data, "name", "unknown");
+int port2 = fy_get_default(data, "port", 8080);
+bool enabled2 = fy_get_default(data, "enabled", true);
+
+// Safe chaining works with both styles
 fy_generic db_config = fy_get_default(config, "database", fy_map_empty);
-int timeout = fy_get_default(db_config, "timeout", 30);
+int timeout = fy_get(db_config, "timeout", int);  // 0 if missing
 
 // Polymorphic operations - fy_len() works on everything
 printf("Users: %zu\n", fy_len(users));    // sequence
@@ -32,21 +37,21 @@ No verbose casting, no manual type checking, no `NULL` checks everywhere.
 **C11 `_Generic` for compile-time polymorphism:**
 
 ```c
-// fy_cast() dispatches based on the type of the default value
-#define fy_cast(value, default) \
-    _Generic((default), \
-        const char *: fy_cast_string, \
-        int: fy_cast_int, \
-        long long: fy_cast_int, \
-        double: fy_cast_double, \
-        bool: fy_cast_bool, \
-        fy_seq_handle: fy_cast_seq_handle, \
-        fy_map_handle: fy_cast_map_handle \
-    )(value, default)
+// fy_cast() - cast value to type using that type's default
+#define fy_cast(_v, _type) \
+    fy_generic_cast((_v), (_type))
 
-// fy_get_default() extracts from container with default fallback
-#define fy_get_default(container, key, default) \
-    fy_cast(fy_get(container, key), default)
+// fy_cast_default() - cast with explicit default value
+#define fy_cast_default(_v, _dv) \
+    fy_generic_cast_default((_v), (_dv))
+
+// fy_get() - get from container, cast to type using type's default
+#define fy_get(_colv, _key, _type) \
+    (fy_get_default((_colv), (_key), fy_generic_get_type_default(_type)))
+
+// fy_get_default() - get from container with explicit default
+#define fy_get_default(_colv, _key, _dv) \
+    fy_cast_default(fy_generic_get((_colv), (_key)), (_dv))
 
 // fy_len() works on sequences, mappings, and strings
 #define fy_len(v) \

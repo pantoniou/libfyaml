@@ -64,28 +64,35 @@ But it goes much deeper than syntax sugar. We've created a complete system featu
 The key insight enabling Python-like syntax is C11's `_Generic` feature. It provides compile-time type-based dispatch:
 
 ```c
-#define fy_cast(value, default) \
-    _Generic((default), \
-        const char *: fy_cast_string, \
-        int: fy_cast_int, \
-        long long: fy_cast_int, \
-        double: fy_cast_double, \
-        bool: fy_cast_bool, \
-        fy_seq_handle: fy_cast_seq_handle, \
-        fy_map_handle: fy_cast_map_handle \
-    )(value, default)
+// fy_cast() - cast value to type using that type's default
+#define fy_cast(_v, _type) \
+    fy_generic_cast((_v), (_type))
 
-// fy_get_default() combines container access with type casting
-#define fy_get_default(container, key, default) \
-    fy_cast(fy_get(container, key), default)
+// fy_cast_default() - cast with explicit default value
+#define fy_cast_default(_v, _dv) \
+    fy_generic_cast_default((_v), (_dv))
+
+// fy_get() - get from container, cast to type using type's default
+#define fy_get(_colv, _key, _type) \
+    (fy_get_default((_colv), (_key), fy_generic_get_type_default(_type)))
+
+// fy_get_default() - get from container with explicit default
+#define fy_get_default(_colv, _key, _dv) \
+    fy_cast_default(fy_generic_get((_colv), (_key)), (_dv))
 ```
 
-**The magic:** The type of your default value determines which function gets called. At **compile time**. Zero runtime overhead.
+**The magic:** You can use type-based extraction (with implicit defaults) or explicit defaults. At **compile time**. Zero runtime overhead.
 
 ```c
-const char *name = fy_get_default(user, "name", "unknown");     // Calls fy_cast_string
-int age = fy_get_default(user, "age", 0);                       // Calls fy_cast_int
-bool active = fy_get_default(user, "active", false);            // Calls fy_cast_bool
+// Type-based (uses type's default)
+const char *name = fy_get(user, "name", const char *);  // "" if missing
+int age = fy_get(user, "age", int);                     // 0 if missing
+bool active = fy_get(user, "active", bool);             // false if missing
+
+// Or explicit defaults
+const char *name2 = fy_get_default(user, "name", "unknown");
+int age2 = fy_get_default(user, "age", 18);
+bool active2 = fy_get_default(user, "active", true);
 ```
 
 The compiler resolves which function to call based on the type of the literal. No runtime type checking, no virtual dispatch, no overhead.
