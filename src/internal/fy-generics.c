@@ -359,7 +359,8 @@ static void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 	const char *tag = NULL, *anchor = NULL;
 	const fy_generic *items;
 	const fy_generic_map_pair *pairs;
-	size_t i, count, slen;
+	fy_generic_sized_string szstr;
+	size_t i, count;
 
 	vanchor = fy_generic_get_anchor(vv);
 	if (fy_generic_get_type(vanchor) == FYGT_STRING)
@@ -391,20 +392,20 @@ static void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 		return;
 
 	case FYGT_BOOL:
-		fprintf(fp, "%s", fy_generic_get_bool(v) ? "true" : "false");
+		fprintf(fp, "%s", fy_generic_cast(v, bool) ? "true" : "false");
 		return;
 
 	case FYGT_INT:
-		fprintf(fp, "%lld", fy_generic_get_long_long(v));
+		fprintf(fp, "%lld", fy_generic_cast(v, long long));
 		return;
 
 	case FYGT_FLOAT:
-		fprintf(fp, "%f", fy_generic_get_float(v));
+		fprintf(fp, "%f", fy_generic_cast(v, float));
 		return;
 
 	case FYGT_STRING:
-		sv = fy_generic_get_string_size(v, &slen);
-		fprintf(fp, "%s", fy_utf8_format_text_a(sv, slen, fyue_doublequote));
+		szstr = fy_generic_cast(v, fy_generic_sized_string);
+		fprintf(fp, "%s", fy_utf8_format_text_a(szstr.data, szstr.size, fyue_doublequote));
 		return;
 
 	case FYGT_SEQUENCE:

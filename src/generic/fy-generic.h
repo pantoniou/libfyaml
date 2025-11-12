@@ -2656,6 +2656,13 @@ static inline fy_generic fy_get_generic_map_handle(const void *p)
 #define fy_get(_colv, _key, _type) \
 	(fy_get_default((_colv), (_key), fy_generic_get_type_default(_type)))
 
+#define fy_cast_default(_v, _dv) \
+	fy_generic_cast_default((_v), (_dv))
+
+#define fy_cast(_v, _type) \
+	fy_generic_cast((_v), (_type))
+
+
 /* when it's a generic */
 static inline size_t fy_get_len_generic(const void *p)
 {
@@ -2683,12 +2690,14 @@ static inline size_t fy_get_len_generic(const void *p)
 
 static inline size_t fy_get_len_seq_handle(const void *p)
 {
-	return fy_generic_sequencep_get_item_count(p);
+	const fy_generic_sequence * const *seqpp = p;
+	return fy_generic_sequencep_get_item_count(*seqpp);
 }
 
 static inline size_t fy_get_len_map_handle(const void *p)
 {
-	return fy_generic_mappingp_get_pair_count(p);
+	const fy_generic_mapping * const *mappp = p;
+	return fy_generic_mappingp_get_pair_count(*mappp);
 }
 
 #define fy_len(_colv) \
