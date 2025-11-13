@@ -117,59 +117,6 @@ void fy_generic_builder_reset(struct fy_generic_builder *gb)
 		fy_allocator_reset_tag(gb->allocator, gb->alloc_tag);
 }
 
-fy_generic fy_gb_int_create_out_of_place(struct fy_generic_builder *gb, long long val)
-{
-	const long long *valp;
-
-	valp = fy_gb_store(gb, &val, sizeof(val), FY_SCALAR_ALIGNOF(long long));
-	if (!valp)
-		return fy_invalid;
-	assert(((uintptr_t)valp & FY_INPLACE_TYPE_MASK) == 0);
-	return (fy_generic){ .v = (uintptr_t)valp | FY_INT_OUTPLACE_V };
-}
-
-fy_generic fy_gb_double_create_out_of_place(struct fy_generic_builder *gb, double val)
-{
-	const double *valp;
-	valp = fy_gb_store(gb, &val, sizeof(val), FY_SCALAR_ALIGNOF(double));
-	if (!valp)
-		return fy_invalid;
-	assert(((uintptr_t)valp & FY_INPLACE_TYPE_MASK) == 0);
-	return (fy_generic){ .v = (uintptr_t)valp | FY_FLOAT_OUTPLACE_V };
-}
-
-fy_generic fy_gb_float_create_out_of_place(struct fy_generic_builder *gb, float val)
-{
-	/* XXX floats are always stored as doubles out of place? for 32 bits. */
-	return fy_gb_double_create_out_of_place(gb, (double)val);
-}
-
-fy_generic fy_gb_string_size_create_out_of_place(struct fy_generic_builder *gb, const char *str, size_t len)
-{
-	uint8_t lenbuf[FYGT_SIZE_ENCODING_MAX];
-	struct iovec iov[3];
-	const void *s;
-	void *p;
-
-	p = fy_encode_size(lenbuf, sizeof(lenbuf), len);
-	assert(p);
-
-	iov[0].iov_base = lenbuf;
-	iov[0].iov_len = (size_t)((uint8_t *)p - lenbuf) ;
-	iov[1].iov_base = (void *)str;
-	iov[1].iov_len = len;
-	iov[2].iov_base = "\x00";	/* null terminate always */
-	iov[2].iov_len = 1;
-
-	/* strings are aligned at 8 always */
-	s = fy_gb_storev(gb, iov, ARRAY_SIZE(iov), 8);
-	if (!s)
-		return fy_invalid;
-
-	assert(((uintptr_t)s & FY_INPLACE_TYPE_MASK) == 0);
-	return (fy_generic){ .v = (uintptr_t)s | FY_STRING_OUTPLACE_V };
-}
-
 fy_generic
 fy_gb_string_vcreate(struct fy_generic_builder *gb, const char *fmt, va_list ap)
 {
@@ -966,11 +913,11 @@ fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb, const ch
 			    break;
 		    }
 		    if (!memcmp(text, ".inf", 4) || !memcmp(text, ".Inf", 4) || !memcmp(text, ".INF", 4)) {
-				v = fy_gb_float_create(gb, INFINITY);
+				v = fy_gb_to_generic(gb, INFINITY);
 				break;
 		    }
 		    if (!memcmp(text, ".nan", 4) || !memcmp(text, ".Nan", 4) || !memcmp(text, ".NAN", 4)) {
-				v = fy_gb_float_create(gb, NAN);
+				v = fy_gb_to_generic(gb, NAN);
 				break;
 		    }
 		}
@@ -980,11 +927,11 @@ fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb, const ch
 			    break;
 		    }
 		    if (!memcmp(text, "+.inf", 5) || !memcmp(text, "+.Inf", 5) || !memcmp(text, "+.INF", 5)) {
-				v = fy_gb_float_create(gb, INFINITY);
+				v = fy_gb_to_generic(gb, INFINITY);
 				break;
 		    }
 		    if (!memcmp(text, "-.inf", 5) || !memcmp(text, "-.Inf", 5) || !memcmp(text, "-.INF", 5)) {
-				v = fy_gb_float_create(gb, -INFINITY);
+				v = fy_gb_to_generic(gb, -INFINITY);
 				break;
 		    }
 		}
@@ -1033,11 +980,11 @@ fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb, const ch
 			    break;
 		    }
 		    if (!memcmp(text, ".inf", 4) || !memcmp(text, ".Inf", 4) || !memcmp(text, ".INF", 4)) {
-				v = fy_gb_float_create(gb, INFINITY);
+				v = fy_gb_to_generic(gb, INFINITY);
 				break;
 		    }
 		    if (!memcmp(text, ".nan", 4) || !memcmp(text, ".Nan", 4) || !memcmp(text, ".NAN", 4)) {
-				v = fy_gb_float_create(gb, NAN);
+				v = fy_gb_to_generic(gb, NAN);
 				break;
 		    }
 		}
@@ -1047,11 +994,11 @@ fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb, const ch
 			    break;
 		    }
 		    if (!memcmp(text, "+.inf", 5) || !memcmp(text, "+.Inf", 5) || !memcmp(text, "+.INF", 5)) {
-				v = fy_gb_float_create(gb, INFINITY);
+				v = fy_gb_to_generic(gb, INFINITY);
 				break;
 		    }
 		    if (!memcmp(text, "-.inf", 5) || !memcmp(text, "-.Inf", 5) || !memcmp(text, "-.INF", 5)) {
-				v = fy_gb_float_create(gb, -INFINITY);
+				v = fy_gb_to_generic(gb, -INFINITY);
 				break;
 		    }
 		}
@@ -1159,7 +1106,7 @@ fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb, const ch
 		if (errno == ERANGE)
 			goto do_string;
 
-		v = fy_gb_int_create(gb, lv);
+		v = fy_gb_to_generic(gb, lv);
 		goto do_check_cast;
 	} else {
 		errno = 0;
@@ -1167,7 +1114,7 @@ fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb, const ch
 		if (errno == ERANGE)
 			goto do_string;
 
-		v = fy_gb_float_create(gb, dv);
+		v = fy_gb_to_generic(gb, dv);
 		goto do_check_cast;
 	}
 
