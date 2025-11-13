@@ -852,6 +852,7 @@ fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb, const ch
 	size_t dec_count, fract_count, exp_count;
 	int base;
 	long long lv;
+	unsigned long long ulv;
 	double dv;
 	char *t;
 	bool is_json;
@@ -1103,11 +1104,19 @@ fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb, const ch
 	if (!fract_count && !exp_count) {
 		errno = 0;
 		lv = strtoll(t, NULL, base);
-		if (errno == ERANGE)
-			goto do_string;
-
-		v = fy_gb_to_generic(gb, lv);
-		goto do_check_cast;
+		if (errno == 0) {
+			v = fy_gb_to_generic(gb, lv);
+			goto do_check_cast;
+		}
+		if (errno == ERANGE) {
+			errno = 0;
+			ulv = strtoull(t, NULL, base);
+			if (errno == 0) {
+				v = fy_gb_to_generic(gb, ulv);
+				goto do_check_cast;
+			}
+		}
+		goto do_string;
 	} else {
 		errno = 0;
 		dv = strtod(t, NULL);
@@ -1339,6 +1348,7 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 	size_t size, len, i, count;
 	const void *valp;
 	const uint8_t *p, *str;
+	const long long *ip;
 	const fy_generic *itemss;
 	fy_generic *items;
 
@@ -1370,8 +1380,8 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 	new_v = fy_invalid;
 	switch (type) {
 	case FYGT_INT:
-		valp = fy_gb_store(gb, fy_generic_resolve_ptr(v),
-				sizeof(long long), FY_SCALAR_ALIGNOF(long long));
+		ip = fy_generic_resolve_ptr(v);
+		valp = fy_gb_store(gb, ip, sizeof(fy_generic_decorated_int), FY_SCALAR_ALIGNOF(long long));
 		if (!valp)
 			break;
 
