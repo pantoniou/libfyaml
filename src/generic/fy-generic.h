@@ -1443,11 +1443,6 @@ static inline fy_generic_value fy_generic_in_place_szstr(const fy_generic_sized_
 	return fy_generic_in_place_const_szstrp(&szstr);
 }
 
-static inline fy_generic_value fy_generic_in_place_invalid(...)
-{
-	return fy_invalid_value;
-}
-
 // pass-through
 static inline fy_generic_value fy_generic_in_place_generic(fy_generic v)
 {
@@ -1495,8 +1490,7 @@ static inline fy_generic_value fy_generic_in_place_mapping_handle(fy_generic_map
 	fy_generic_mapping_handle: fy_generic_in_place_mapping_handle, \
 	const fy_generic_sized_string *: fy_generic_in_place_const_szstrp, \
 	fy_generic_sized_string *: fy_generic_in_place_const_szstrp, \
-	fy_generic_sized_string: fy_generic_in_place_szstr, \
-	default: fy_generic_in_place_invalid
+	fy_generic_sized_string: fy_generic_in_place_szstr
 
 #define fy_to_generic_inplace(_v) ( _Generic((_v), fy_to_generic_inplace_Generic_dispatch)(_v))
 
@@ -2901,11 +2895,6 @@ static inline fy_generic fy_gb_string_create(struct fy_generic_builder *gb, cons
 	return fy_gb_string_size_create(gb, str, strlen(str));
 }
 
-static inline fy_generic fy_gb_invalid_create_out_of_place(struct fy_generic_builder *gb, ...)
-{
-	return fy_invalid;
-}
-
 #define FY_GENERIC_GB_LVAL_TEMPLATE(_ctype, _gtype, _gttype, _xctype, _xgtype, _xminv, _xmaxv, _default_v) \
 static inline fy_generic fy_gb_ ## _gtype ## _create_out_of_place(struct fy_generic_builder *gb, const _ctype v) \
 { \
@@ -2954,8 +2943,7 @@ FY_GENERIC_GB_FLOAT_LVAL_TEMPLATE(double, double, DBL_MIN, DBL_MAX, 0.0);
 		char *: fy_gb_string_create_out_of_place, \
 		const char *: fy_gb_string_create_out_of_place, \
 		fy_generic: fy_gb_internalize_out_of_place, \
-		fy_generic_sized_string: fy_gb_szstr_create_out_of_place, \
-		default: fy_gb_invalid_create_out_of_place \
+		fy_generic_sized_string: fy_gb_szstr_create_out_of_place \
 	      )((_gb), (_v)))
 
 #define fy_gb_to_generic_value(_gb, _v) \
