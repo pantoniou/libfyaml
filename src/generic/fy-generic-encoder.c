@@ -74,7 +74,12 @@ int fy_encode_generic_bool(struct fy_generic_encoder *fyge, const char *anchor, 
 
 int fy_encode_generic_int(struct fy_generic_encoder *fyge, const char *anchor, const char *tag, fy_generic v)
 {
-	return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, "%lld", fy_generic_cast(v, long long));
+	fy_generic_decorated_int dint = fy_generic_cast(v, fy_generic_decorated_int);
+
+	if (!dint.is_unsigned)
+		return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, "%lld", dint.sv);
+	else
+		return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, "%llu", dint.uv);
 }
 
 int fy_encode_generic_float(struct fy_generic_encoder *fyge, const char *anchor, const char *tag, fy_generic v)
