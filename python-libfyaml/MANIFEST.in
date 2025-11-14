@@ -15,3 +15,48 @@ global-exclude *.so
 global-exclude *.pyd
 global-exclude __pycache__
 
+# Exclude development/benchmark files
+exclude benchmark_*.py
+exclude test_*.py
+exclude clean_yaml.py
+exclude demo_*.py
+exclude dump_*.py
+exclude example_*.py
+exclude investigate_*.py
+exclude yaml_*.py
+
+# Exclude development documentation
+exclude *-BENCHMARK*.md
+exclude *-COMPARISON*.md
+exclude *-DESIGN*.md
+exclude *-GUIDE*.md
+exclude *-NOTES*.md
+exclude *-RESULTS*.md
+exclude *-SESSION*.md
+exclude *-SUMMARY*.md
+exclude API-*.md
+exclude AUTO-*.md
+exclude COMPLETE-*.md
+exclude CONTINUATION-*.md
+exclude DEDUP-*.md
+exclude ENHANCED-*.md
+exclude FORMAT-*.md
+exclude GETATTR-*.md
+exclude MEMORY-*.md
+exclude MIGRATION-*.md
+exclude MUTATION-*.md
+exclude PARSE-*.md
+exclude PORTING-*.md
+exclude PROTOTYPE-*.md
+exclude PYYAML-*.md
+exclude RAPIDYAML-*.md
+exclude STATUS.md
+exclude TODO-*.md
+exclude TRIM-*.md
+exclude TYPE-*.md
+exclude UTILITIES-*.md
+exclude ZERO-*.md
+
+# Exclude test data
+exclude AtomicCards*.yaml
+exclude AllPrices.yaml

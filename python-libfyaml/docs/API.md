@@ -555,6 +555,9 @@ if doc.has_diag():
 ## Comparison with PyYAML
 
 This section describes how the **core `libfyaml` binding** relates to PyYAML.
+If you need a drop-in `import yaml` replacement, use
+`libfyaml.pyyaml_compat` instead — it is designed for that purpose and
+handles the differences listed below automatically.
 
 ### Where they are similar
 

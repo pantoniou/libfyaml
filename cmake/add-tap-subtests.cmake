@@ -444,7 +444,8 @@ function(add_python_tests)
 
     # Discover test files
     file(GLOB _py_test_files
-        "${_py_src_dir}/tests/core/test_*.py")
+        "${_py_src_dir}/tests/core/test_*.py"
+        "${_py_src_dir}/tests/pyyaml_compat/test_*.py")
 
     # Base environment
     set(_py_env
@@ -486,9 +487,11 @@ for node in ast.iter_child_nodes(tree):
         # Relative path from python-libfyaml/ (e.g. tests/core/test_basic.py)
         file(RELATIVE_PATH _rel_path "${_py_src_dir}" "${_py_file}")
 
-        # Suite label: "core"
+        # Suite label: "core" or "pyyaml_compat"
         if(_rel_path MATCHES "tests/core/")
             set(_suite "core")
+        else()
+            set(_suite "pyyaml_compat")
         endif()
 
         get_filename_component(_file_stem "${_py_file}" NAME_WE)

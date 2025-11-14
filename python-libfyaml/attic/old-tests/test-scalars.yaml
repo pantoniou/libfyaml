@@ -1,0 +1,348 @@
+# YAML Scalar Test Suite
+# Tests for validating parsing behavior across different schemas:
+# - yaml1.1 (YAML 1.1 spec)
+# - yaml1.2 (YAML 1.2 spec)
+# - pyyaml (PyYAML's YAML 1.1 subset)
+# - json (JSON-compatible)
+#
+# Format: Each entry shows the scalar and expected type/value per schema
+
+# =============================================================================
+# BOOLEANS
+# =============================================================================
+booleans:
+  # Core booleans (all schemas agree)
+  - {input: "true", yaml11: true, yaml12: true, pyyaml: true, json: true}
+  - {input: "false", yaml11: false, yaml12: false, pyyaml: false, json: false}
+  - {input: "True", yaml11: true, yaml12: "True", pyyaml: true, json: "True"}
+  - {input: "False", yaml11: false, yaml12: "False", pyyaml: false, json: "False"}
+  - {input: "TRUE", yaml11: true, yaml12: "TRUE", pyyaml: true, json: "TRUE"}
+  - {input: "FALSE", yaml11: false, yaml12: "FALSE", pyyaml: false, json: "FALSE"}
+
+  # YAML 1.1 yes/no/on/off
+  - {input: "yes", yaml11: true, yaml12: "yes", pyyaml: true, json: "yes"}
+  - {input: "Yes", yaml11: true, yaml12: "Yes", pyyaml: true, json: "Yes"}
+  - {input: "YES", yaml11: true, yaml12: "YES", pyyaml: true, json: "YES"}
+  - {input: "no", yaml11: false, yaml12: "no", pyyaml: false, json: "no"}
+  - {input: "No", yaml11: false, yaml12: "No", pyyaml: false, json: "No"}
+  - {input: "NO", yaml11: false, yaml12: "NO", pyyaml: false, json: "NO"}
+  - {input: "on", yaml11: true, yaml12: "on", pyyaml: true, json: "on"}
+  - {input: "On", yaml11: true, yaml12: "On", pyyaml: true, json: "On"}
+  - {input: "ON", yaml11: true, yaml12: "ON", pyyaml: true, json: "ON"}
+  - {input: "off", yaml11: false, yaml12: "off", pyyaml: false, json: "off"}
+  - {input: "Off", yaml11: false, yaml12: "Off", pyyaml: false, json: "Off"}
+  - {input: "OFF", yaml11: false, yaml12: "OFF", pyyaml: false, json: "OFF"}
+
+  # Single-letter y/n (YAML 1.1 spec but NOT PyYAML)
+  - {input: "y", yaml11: true, yaml12: "y", pyyaml: "y", json: "y"}
+  - {input: "Y", yaml11: true, yaml12: "Y", pyyaml: "Y", json: "Y"}
+  - {input: "n", yaml11: false, yaml12: "n", pyyaml: "n", json: "n"}
+  - {input: "N", yaml11: false, yaml12: "N", pyyaml: "N", json: "N"}
+
+  # Mixed case (not valid booleans in any schema)
+  - {input: "yEs", yaml11: "yEs", yaml12: "yEs", pyyaml: "yEs", json: "yEs"}
+  - {input: "nO", yaml11: "nO", yaml12: "nO", pyyaml: "nO", json: "nO"}
+  - {input: "tRue", yaml11: "tRue", yaml12: "tRue", pyyaml: "tRue", json: "tRue"}
+  - {input: "oN", yaml11: "oN", yaml12: "oN", pyyaml: "oN", json: "oN"}
+
+# =============================================================================
+# NULL
+# =============================================================================
+nulls:
+  - {input: "null", yaml11: null, yaml12: null, pyyaml: null, json: null}
+  - {input: "Null", yaml11: null, yaml12: "Null", pyyaml: null, json: "Null"}
+  - {input: "NULL", yaml11: null, yaml12: "NULL", pyyaml: null, json: "NULL"}
+  - {input: "~", yaml11: null, yaml12: null, pyyaml: null, json: "~"}
+  - {input: "", yaml11: null, yaml12: null, pyyaml: null, json: ""}
+
+# =============================================================================
+# INTEGERS - Decimal
+# =============================================================================
+integers_decimal:
+  - {input: "0", yaml11: 0, yaml12: 0, pyyaml: 0, json: 0}
+  - {input: "1", yaml11: 1, yaml12: 1, pyyaml: 1, json: 1}
+  - {input: "42", yaml11: 42, yaml12: 42, pyyaml: 42, json: 42}
+  - {input: "-42", yaml11: -42, yaml12: -42, pyyaml: -42, json: -42}
+  - {input: "+42", yaml11: 42, yaml12: 42, pyyaml: 42, json: "+42"}
+  - {input: "123456789", yaml11: 123456789, yaml12: 123456789, pyyaml: 123456789, json: 123456789}
+
+  # Leading zeros (NOT octal in YAML 1.2/JSON)
+  - {input: "007", yaml11: 7, yaml12: "007", pyyaml: 7, json: "007"}
+  - {input: "00", yaml11: 0, yaml12: "00", pyyaml: 0, json: "00"}
+
+# =============================================================================
+# INTEGERS - Octal (YAML 1.1 style: 0NNN)
+# =============================================================================
+integers_octal:
+  - {input: "010", yaml11: 8, yaml12: "010", pyyaml: 8, json: "010"}
+  - {input: "052", yaml11: 42, yaml12: "052", pyyaml: 42, json: "052"}
+  - {input: "0777", yaml11: 511, yaml12: "0777", pyyaml: 511, json: "0777"}
+  - {input: "-010", yaml11: -8, yaml12: "-010", pyyaml: -8, json: "-010"}
+  - {input: "+0777", yaml11: 511, yaml12: "+0777", pyyaml: 511, json: "+0777"}
+
+  # Invalid octal digits
+  - {input: "089", yaml11: "089", yaml12: "089", pyyaml: "089", json: "089"}
+  - {input: "0999", yaml11: "0999", yaml12: "0999", pyyaml: "0999", json: "0999"}
+
+# =============================================================================
+# INTEGERS - Octal (YAML 1.2 style: 0oNNN)
+# =============================================================================
+integers_octal_0o:
+  - {input: "0o10", yaml11: "0o10", yaml12: 8, pyyaml: "0o10", json: "0o10"}
+  - {input: "0o52", yaml11: "0o52", yaml12: 42, pyyaml: "0o52", json: "0o52"}
+  - {input: "0o777", yaml11: "0o777", yaml12: 511, pyyaml: "0o777", json: "0o777"}
+
+# =============================================================================
+# INTEGERS - Hexadecimal
+# =============================================================================
+integers_hex:
+  - {input: "0x0", yaml11: 0, yaml12: 0, pyyaml: 0, json: "0x0"}
+  - {input: "0x2A", yaml11: 42, yaml12: 42, pyyaml: 42, json: "0x2A"}
+  - {input: "0x2a", yaml11: 42, yaml12: 42, pyyaml: 42, json: "0x2a"}
+  - {input: "0xFF", yaml11: 255, yaml12: 255, pyyaml: 255, json: "0xFF"}
+  - {input: "0xDEADBEEF", yaml11: 3735928559, yaml12: 3735928559, pyyaml: 3735928559, json: "0xDEADBEEF"}
+  - {input: "-0x2A", yaml11: -42, yaml12: -42, pyyaml: -42, json: "-0x2A"}
+  - {input: "+0x2A", yaml11: 42, yaml12: 42, pyyaml: 42, json: "+0x2A"}
+
+  # Invalid hex
+  - {input: "0xGG", yaml11: "0xGG", yaml12: "0xGG", pyyaml: "0xGG", json: "0xGG"}
+
+# =============================================================================
+# INTEGERS - Binary (PyYAML only, not YAML 1.2)
+# =============================================================================
+integers_binary:
+  - {input: "0b0", yaml11: 0, yaml12: "0b0", pyyaml: 0, json: "0b0"}
+  - {input: "0b1", yaml11: 1, yaml12: "0b1", pyyaml: 1, json: "0b1"}
+  - {input: "0b101010", yaml11: 42, yaml12: "0b101010", pyyaml: 42, json: "0b101010"}
+  - {input: "0b11111111", yaml11: 255, yaml12: "0b11111111", pyyaml: 255, json: "0b11111111"}
+  - {input: "-0b101010", yaml11: -42, yaml12: "-0b101010", pyyaml: -42, json: "-0b101010"}
+
+  # Invalid binary
+  - {input: "0b102", yaml11: "0b102", yaml12: "0b102", pyyaml: "0b102", json: "0b102"}
+
+# =============================================================================
+# INTEGERS - With Underscores (PyYAML extension)
+# =============================================================================
+integers_underscore:
+  - {input: "1_000", yaml11: 1000, yaml12: "1_000", pyyaml: 1000, json: "1_000"}
+  - {input: "1_000_000", yaml11: 1000000, yaml12: "1_000_000", pyyaml: 1000000, json: "1_000_000"}
+  - {input: "0x_2A", yaml11: 42, yaml12: "0x_2A", pyyaml: 42, json: "0x_2A"}
+  - {input: "0x_DE_AD_BE_EF", yaml11: 3735928559, yaml12: "0x_DE_AD_BE_EF", pyyaml: 3735928559, json: "0x_DE_AD_BE_EF"}
+  - {input: "0b_1010_0111", yaml11: 167, yaml12: "0b_1010_0111", pyyaml: 167, json: "0b_1010_0111"}
+  - {input: "0_52", yaml11: 42, yaml12: "0_52", pyyaml: 42, json: "0_52"}
+
+  # Edge cases
+  - {input: "_1000", yaml11: "_1000", yaml12: "_1000", pyyaml: "_1000", json: "_1000"}
+  - {input: "1000_", yaml11: "1000_", yaml12: "1000_", pyyaml: "1000_", json: "1000_"}
+  - {input: "1__000", yaml11: "1__000", yaml12: "1__000", pyyaml: "1__000", json: "1__000"}
+
+# =============================================================================
+# INTEGERS - Sexagesimal (base 60, PyYAML extension)
+# =============================================================================
+integers_sexagesimal:
+  - {input: "1:0", yaml11: 60, yaml12: "1:0", pyyaml: 60, json: "1:0"}
+  - {input: "1:30", yaml11: 90, yaml12: "1:30", pyyaml: 90, json: "1:30"}
+  - {input: "1:00:00", yaml11: 3600, yaml12: "1:00:00", pyyaml: 3600, json: "1:00:00"}
+  - {input: "190:20:30", yaml11: 685230, yaml12: "190:20:30", pyyaml: 685230, json: "190:20:30"}
+  - {input: "-1:30", yaml11: -90, yaml12: "-1:30", pyyaml: -90, json: "-1:30"}
+
+  # Invalid (segment > 59)
+  - {input: "1:60", yaml11: "1:60", yaml12: "1:60", pyyaml: "1:60", json: "1:60"}
+  - {input: "1:99", yaml11: "1:99", yaml12: "1:99", pyyaml: "1:99", json: "1:99"}
+
+# =============================================================================
+# FLOATS - Basic
+# =============================================================================
+floats_basic:
+  - {input: "0.0", yaml11: 0.0, yaml12: 0.0, pyyaml: 0.0, json: 0.0}
+  - {input: "1.0", yaml11: 1.0, yaml12: 1.0, pyyaml: 1.0, json: 1.0}
+  - {input: "3.14", yaml11: 3.14, yaml12: 3.14, pyyaml: 3.14, json: 3.14}
+  - {input: "-3.14", yaml11: -3.14, yaml12: -3.14, pyyaml: -3.14, json: -3.14}
+  - {input: "+3.14", yaml11: 3.14, yaml12: 3.14, pyyaml: 3.14, json: "+3.14"}
+  - {input: "3.14159265358979", yaml11: 3.14159265358979, yaml12: 3.14159265358979, pyyaml: 3.14159265358979, json: 3.14159265358979}
+
+# =============================================================================
+# FLOATS - Dot-prefix (no integer part)
+# =============================================================================
+floats_dot_prefix:
+  - {input: ".0", yaml11: 0.0, yaml12: ".0", pyyaml: 0.0, json: ".0"}
+  - {input: ".5", yaml11: 0.5, yaml12: ".5", pyyaml: 0.5, json: ".5"}
+  - {input: ".123", yaml11: 0.123, yaml12: ".123", pyyaml: 0.123, json: ".123"}
+  - {input: "-.5", yaml11: -0.5, yaml12: "-.5", pyyaml: -0.5, json: "-.5"}
+  - {input: "+.5", yaml11: 0.5, yaml12: "+.5", pyyaml: 0.5, json: "+.5"}
+
+# =============================================================================
+# FLOATS - Trailing dot (no fractional part)
+# =============================================================================
+floats_trailing_dot:
+  - {input: "0.", yaml11: 0.0, yaml12: "0.", pyyaml: 0.0, json: "0."}
+  - {input: "1.", yaml11: 1.0, yaml12: "1.", pyyaml: 1.0, json: "1."}
+  - {input: "42.", yaml11: 42.0, yaml12: "42.", pyyaml: 42.0, json: "42."}
+  - {input: "-1.", yaml11: -1.0, yaml12: "-1.", pyyaml: -1.0, json: "-1."}
+
+# =============================================================================
+# FLOATS - Scientific notation
+# =============================================================================
+floats_scientific:
+  # With sign (PyYAML requires sign)
+  - {input: "1.0e+3", yaml11: 1000.0, yaml12: 1000.0, pyyaml: 1000.0, json: 1000.0}
+  - {input: "1.0e-3", yaml11: 0.001, yaml12: 0.001, pyyaml: 0.001, json: 0.001}
+  - {input: "1.0E+3", yaml11: 1000.0, yaml12: 1000.0, pyyaml: 1000.0, json: 1000.0}
+  - {input: "1.0E-3", yaml11: 0.001, yaml12: 0.001, pyyaml: 0.001, json: 0.001}
+  - {input: "6.022e+23", yaml11: 6.022e+23, yaml12: 6.022e+23, pyyaml: 6.022e+23, json: 6.022e+23}
+  - {input: "-1.0e+3", yaml11: -1000.0, yaml12: -1000.0, pyyaml: -1000.0, json: -1000.0}
+
+  # Without sign (YAML 1.2 accepts, PyYAML rejects)
+  - {input: "1.0e3", yaml11: 1000.0, yaml12: 1000.0, pyyaml: "1.0e3", json: 1000.0}
+  - {input: "1.0E3", yaml11: 1000.0, yaml12: 1000.0, pyyaml: "1.0E3", json: 1000.0}
+  - {input: "1e3", yaml11: 1000.0, yaml12: 1000.0, pyyaml: "1e3", json: 1000.0}
+
+  # Without fractional dot (PyYAML rejects)
+  - {input: "1e+3", yaml11: 1000.0, yaml12: 1000.0, pyyaml: "1e+3", json: 1000.0}
+  - {input: "1e-3", yaml11: 0.001, yaml12: 0.001, pyyaml: "1e-3", json: 0.001}
+
+# =============================================================================
+# FLOATS - With Underscores (PyYAML extension)
+# =============================================================================
+floats_underscore:
+  - {input: "1_000.5", yaml11: 1000.5, yaml12: "1_000.5", pyyaml: 1000.5, json: "1_000.5"}
+  - {input: "1_000.5_0", yaml11: 1000.5, yaml12: "1_000.5_0", pyyaml: 1000.5, json: "1_000.5_0"}
+  - {input: "3.14_15_92", yaml11: 3.141592, yaml12: "3.14_15_92", pyyaml: 3.141592, json: "3.14_15_92"}
+
+# =============================================================================
+# FLOATS - Sexagesimal (base 60, PyYAML extension)
+# =============================================================================
+floats_sexagesimal:
+  - {input: "1:30.5", yaml11: 90.5, yaml12: "1:30.5", pyyaml: 90.5, json: "1:30.5"}
+  - {input: "190:20:30.15", yaml11: 685230.15, yaml12: "190:20:30.15", pyyaml: 685230.15, json: "190:20:30.15"}
+  - {input: "-1:30.5", yaml11: -90.5, yaml12: "-1:30.5", pyyaml: -90.5, json: "-1:30.5"}
+
+# =============================================================================
+# FLOATS - Infinity
+# =============================================================================
+floats_infinity:
+  - {input: ".inf", yaml11: .inf, yaml12: .inf, pyyaml: .inf, json: ".inf"}
+  - {input: ".Inf", yaml11: .inf, yaml12: .inf, pyyaml: .inf, json: ".Inf"}
+  - {input: ".INF", yaml11: .inf, yaml12: .inf, pyyaml: .inf, json: ".INF"}
+  - {input: "+.inf", yaml11: .inf, yaml12: .inf, pyyaml: .inf, json: "+.inf"}
+  - {input: "+.Inf", yaml11: .inf, yaml12: .inf, pyyaml: .inf, json: "+.Inf"}
+  - {input: "-.inf", yaml11: -.inf, yaml12: -.inf, pyyaml: -.inf, json: "-.inf"}
+  - {input: "-.Inf", yaml11: -.inf, yaml12: -.inf, pyyaml: -.inf, json: "-.Inf"}
+
+  # Invalid casing
+  - {input: ".iNf", yaml11: ".iNf", yaml12: ".iNf", pyyaml: ".iNf", json: ".iNf"}
+
+# =============================================================================
+# FLOATS - NaN (case sensitivity differs!)
+# =============================================================================
+floats_nan:
+  - {input: ".nan", yaml11: .nan, yaml12: .nan, pyyaml: .nan, json: ".nan"}
+  - {input: ".NaN", yaml11: .nan, yaml12: .nan, pyyaml: .nan, json: ".NaN"}
+  - {input: ".NAN", yaml11: .nan, yaml12: .nan, pyyaml: .nan, json: ".NAN"}
+
+  # PyYAML accepts .nan, .NaN, .NAN but NOT .Nan
+  - {input: ".Nan", yaml11: .nan, yaml12: .nan, pyyaml: ".Nan", json: ".Nan"}
+  - {input: ".nAn", yaml11: ".nAn", yaml12: ".nAn", pyyaml: ".nAn", json: ".nAn"}
+
+# =============================================================================
+# TIMESTAMPS (PyYAML resolves, others may not)
+# =============================================================================
+timestamps:
+  # Date only
+  - {input: "2024-01-15", yaml11: "2024-01-15", yaml12: "2024-01-15", pyyaml: "date(2024,1,15)", json: "2024-01-15"}
+  # Note: Single-digit month/day - PyYAML keeps as string (doesn't match its timestamp regex)
+  - {input: "2024-1-5", yaml11: "2024-1-5", yaml12: "2024-1-5", pyyaml: "2024-1-5", json: "2024-1-5"}
+
+  # Date and time (space separator)
+  - {input: "2024-01-15 10:30:00", yaml11: "2024-01-15 10:30:00", yaml12: "2024-01-15 10:30:00", pyyaml: "datetime(2024,1,15,10,30)", json: "2024-01-15 10:30:00"}
+  - {input: "2024-01-15 10:30:45", yaml11: "2024-01-15 10:30:45", yaml12: "2024-01-15 10:30:45", pyyaml: "datetime(2024,1,15,10,30,45)", json: "2024-01-15 10:30:45"}
+
+  # Date and time (T separator)
+  - {input: "2024-01-15T10:30:00", yaml11: "2024-01-15T10:30:00", yaml12: "2024-01-15T10:30:00", pyyaml: "datetime(2024,1,15,10,30)", json: "2024-01-15T10:30:00"}
+  - {input: "2024-01-15t10:30:00", yaml11: "2024-01-15t10:30:00", yaml12: "2024-01-15t10:30:00", pyyaml: "datetime(2024,1,15,10,30)", json: "2024-01-15t10:30:00"}
+
+  # With timezone
+  - {input: "2024-01-15T10:30:00Z", yaml11: "2024-01-15T10:30:00Z", yaml12: "2024-01-15T10:30:00Z", pyyaml: "datetime(2024,1,15,10,30,tz=UTC)", json: "2024-01-15T10:30:00Z"}
+  - {input: "2024-01-15T10:30:00+05:30", yaml11: "2024-01-15T10:30:00+05:30", yaml12: "2024-01-15T10:30:00+05:30", pyyaml: "datetime(2024,1,15,10,30,tz=+5:30)", json: "2024-01-15T10:30:00+05:30"}
+  - {input: "2024-01-15T10:30:00-08:00", yaml11: "2024-01-15T10:30:00-08:00", yaml12: "2024-01-15T10:30:00-08:00", pyyaml: "datetime(2024,1,15,10,30,tz=-8:00)", json: "2024-01-15T10:30:00-08:00"}
+
+  # With fractional seconds
+  - {input: "2024-01-15T10:30:00.123456", yaml11: "2024-01-15T10:30:00.123456", yaml12: "2024-01-15T10:30:00.123456", pyyaml: "datetime(2024,1,15,10,30,0,123456)", json: "2024-01-15T10:30:00.123456"}
+
+  # Not timestamps (wrong format)
+  - {input: "2024/01/15", yaml11: "2024/01/15", yaml12: "2024/01/15", pyyaml: "2024/01/15", json: "2024/01/15"}
+  - {input: "01-15-2024", yaml11: "01-15-2024", yaml12: "01-15-2024", pyyaml: "01-15-2024", json: "01-15-2024"}
+  - {input: "2024-13-01", yaml11: "2024-13-01", yaml12: "2024-13-01", pyyaml: "2024-13-01", json: "2024-13-01"}
+
+# =============================================================================
+# STRINGS - Plain
+# =============================================================================
+strings_plain:
+  - {input: "hello", yaml11: "hello", yaml12: "hello", pyyaml: "hello", json: "hello"}
+  - {input: "hello world", yaml11: "hello world", yaml12: "hello world", pyyaml: "hello world", json: "hello world"}
+  - {input: "foo_bar", yaml11: "foo_bar", yaml12: "foo_bar", pyyaml: "foo_bar", json: "foo_bar"}
+  - {input: "foo-bar", yaml11: "foo-bar", yaml12: "foo-bar", pyyaml: "foo-bar", json: "foo-bar"}
+  - {input: "foo.bar", yaml11: "foo.bar", yaml12: "foo.bar", pyyaml: "foo.bar", json: "foo.bar"}
+
+# =============================================================================
+# STRINGS - Quoted (preserve as-is)
+# =============================================================================
+strings_quoted:
+  - {input: "'true'", yaml11: "true", yaml12: "true", pyyaml: "true", json: "true"}
+  - {input: "'123'", yaml11: "123", yaml12: "123", pyyaml: "123", json: "123"}
+  - {input: "'null'", yaml11: "null", yaml12: "null", pyyaml: "null", json: "null"}
+  - {input: "\"true\"", yaml11: "true", yaml12: "true", pyyaml: "true", json: "true"}
+  - {input: "\"123\"", yaml11: "123", yaml12: "123", pyyaml: "123", json: "123"}
+  - {input: "''", yaml11: "", yaml12: "", pyyaml: "", json: ""}
+  - {input: "\"\"", yaml11: "", yaml12: "", pyyaml: "", json: ""}
+
+# =============================================================================
+# EDGE CASES - Lookalikes that should stay strings
+# =============================================================================
+edge_cases:
+  # Almost booleans
+  - {input: "truee", yaml11: "truee", yaml12: "truee", pyyaml: "truee", json: "truee"}
+  - {input: "yess", yaml11: "yess", yaml12: "yess", pyyaml: "yess", json: "yess"}
+  - {input: "noo", yaml11: "noo", yaml12: "noo", pyyaml: "noo", json: "noo"}
+
+  # Almost numbers
+  - {input: "1.2.3", yaml11: "1.2.3", yaml12: "1.2.3", pyyaml: "1.2.3", json: "1.2.3"}
+  - {input: "1..0", yaml11: "1..0", yaml12: "1..0", pyyaml: "1..0", json: "1..0"}
+  - {input: "++1", yaml11: "++1", yaml12: "++1", pyyaml: "++1", json: "++1"}
+  - {input: "--1", yaml11: "--1", yaml12: "--1", pyyaml: "--1", json: "--1"}
+  - {input: "+-1", yaml11: "+-1", yaml12: "+-1", pyyaml: "+-1", json: "+-1"}
+
+  # Almost hex
+  - {input: "0xZZ", yaml11: "0xZZ", yaml12: "0xZZ", pyyaml: "0xZZ", json: "0xZZ"}
+  - {input: "0x", yaml11: "0x", yaml12: "0x", pyyaml: "0x", json: "0x"}
+
+  # Almost scientific
+  - {input: "1.0e", yaml11: "1.0e", yaml12: "1.0e", pyyaml: "1.0e", json: "1.0e"}
+  - {input: "1.0e+", yaml11: "1.0e+", yaml12: "1.0e+", pyyaml: "1.0e+", json: "1.0e+"}
+  - {input: "e3", yaml11: "e3", yaml12: "e3", pyyaml: "e3", json: "e3"}
+
+  # Almost timestamps
+  - {input: "2024-", yaml11: "2024-", yaml12: "2024-", pyyaml: "2024-", json: "2024-"}
+  - {input: "2024-01", yaml11: "2024-01", yaml12: "2024-01", pyyaml: "2024-01", json: "2024-01"}
+  - {input: "2024-01-", yaml11: "2024-01-", yaml12: "2024-01-", pyyaml: "2024-01-", json: "2024-01-"}
+
+  # Version strings (common in config files)
+  - {input: "1.0.0", yaml11: "1.0.0", yaml12: "1.0.0", pyyaml: "1.0.0", json: "1.0.0"}
+  - {input: "v1.2.3", yaml11: "v1.2.3", yaml12: "v1.2.3", pyyaml: "v1.2.3", json: "v1.2.3"}
+
+  # IP addresses and ports
+  - {input: "192.168.1.1", yaml11: "192.168.1.1", yaml12: "192.168.1.1", pyyaml: "192.168.1.1", json: "192.168.1.1"}
+  - {input: "8080", yaml11: 8080, yaml12: 8080, pyyaml: 8080, json: 8080}
+
+  # UUIDs
+  - {input: "550e8400-e29b-41d4-a716-446655440000", yaml11: "550e8400-e29b-41d4-a716-446655440000", yaml12: "550e8400-e29b-41d4-a716-446655440000", pyyaml: "550e8400-e29b-41d4-a716-446655440000", json: "550e8400-e29b-41d4-a716-446655440000"}
+
+# =============================================================================
+# SPECIAL VALUES
+# =============================================================================
+special:
+  # YAML 1.1 merge key
+  - {input: "<<", yaml11: "<<", yaml12: "<<", pyyaml: "<<", json: "<<"}
+
+  # YAML 1.1 value indicator
+  - {input: "=", yaml11: "=", yaml12: "=", pyyaml: "=", json: "="}

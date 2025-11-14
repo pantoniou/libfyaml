@@ -1632,6 +1632,16 @@ if(ENABLE_PYTHON_BINDINGS)
         get_filename_component(_name "${_src}" NAME)
         file(CREATE_LINK "${_src}" "${_PY_PKG_DST}/${_name}" SYMBOLIC COPY_ON_ERROR)
     endforeach()
+    # pyyaml_compat subpackage: link/copy individual files rather than the
+    # whole directory so COPY_ON_ERROR works correctly on Windows.
+    file(MAKE_DIRECTORY "${_PY_PKG_DST}/pyyaml_compat")
+    file(GLOB _py_compat_srcs
+        "${_PY_PKG_SRC}/pyyaml_compat/*.py"
+        "${_PY_PKG_SRC}/pyyaml_compat/*.pyi")
+    foreach(_src ${_py_compat_srcs})
+        get_filename_component(_name "${_src}" NAME)
+        file(CREATE_LINK "${_src}" "${_PY_PKG_DST}/pyyaml_compat/${_name}" SYMBOLIC COPY_ON_ERROR)
+    endforeach()
     set(HAVE_PYTHON_BINDINGS 1)
 else()
     set(HAVE_PYTHON_BINDINGS 0)
