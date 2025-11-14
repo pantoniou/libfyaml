@@ -75,3 +75,4 @@ build*/
 .cache/
 __pycache__/
 .*.swp
+.cache/

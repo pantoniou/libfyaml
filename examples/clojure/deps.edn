@@ -1,0 +1,1 @@
+{:deps {clj-commons/clj-yaml {:mvn/version "1.0.27"}}}

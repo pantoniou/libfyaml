@@ -1,0 +1,67 @@
+# Python build artifacts
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+*.so
+*.pyd
+.pytest_cache/
+.tox/
+.coverage
+htmlcov/
+
+# CMake build artifacts (from in-source build)
+CMakeCache.txt
+CMakeFiles/
+CTestTestfile.cmake
+DartConfiguration.tcl
+Testing/
+_deps/
+cmake/
+cmake_install.cmake
+compile_commands.json
+Makefile
+config.h
+libfyaml.pc
+test/
+python-libfyaml/
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# External fetched repos (use external/fetch-pyyaml.sh to populate)
+external/pyyaml-test/
+
+# Test data (large files)
+AllPrices.yaml
+AtomicCards*.yaml
+
+# Development files
+benchmark_*.py
+/test_*.py  # Ignore test_*.py in root only
+# tests/test_*.py are tracked (in git already)
+
+# Documentation (keep only essential)
+*-BENCHMARK*.md
+*-COMPARISON*.md
+*-DESIGN*.md
+*-NOTES*.md
+*-RESULTS*.md
+*-SESSION*.md
+*-SUMMARY*.md
+API-*.md
+!README.md
+!QUICKSTART.md
+!CHANGELOG.md
+!LICENSE
+!MIGRATION-TO-EXPORTED-API.md
+!PRODUCTIZATION.md
+
+# Generated files
+*.yaml.out
