@@ -2307,7 +2307,7 @@ static inline const char *fy_genericp_cast_const_char_ptr_default(const fy_gener
 
 	v = fy_generic_indirect_get_value(*vp);
 
-	if (fy_generic_is_string(v))
+	if (!fy_generic_is_string(v))
 		return default_value;
 
 	return fy_genericp_get_string_no_check(&v);
