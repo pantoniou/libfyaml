@@ -9,7 +9,22 @@ All functional operations in the generic API follow these principles:
 1. **Immutability**: Operations never modify the original collection
 2. **Structural sharing**: New collections share unchanged parts with originals
 3. **Polymorphic dispatch**: Work with both stack and builder allocations
-4. **Thread-safe**: Immutable values can be safely shared across threads
+4. **Direct generic operations**: No need to cast - operations work directly on `fy_generic` values
+5. **Thread-safe**: Immutable values can be safely shared across threads
+
+## Key Design: No Casting Required
+
+**Important**: Functional operations work directly on `fy_generic` values. You don't need to cast to concrete collection types (`fy_map_handle`, `fy_seq_handle`) - the operations handle this automatically. This makes code cleaner and more composable.
+
+```c
+// ✅ Clean and composable - works directly with fy_generic
+fy_generic config = fy_mapping("host", "localhost", "port", 8080);
+fy_generic new_config = fy_assoc(config, "timeout", fy_int(30));
+
+// ❌ Unnecessary - don't need to cast to handles
+fy_map_handle config = fy_cast(fy_mapping("host", "localhost"), fy_map_invalid);
+fy_map_handle new_config = fy_assoc(config, "timeout", fy_int(30));
+```
 
 ## Core Operations
 
@@ -21,51 +36,61 @@ Add or update a key-value pair in a mapping, returning a new mapping.
 
 ```c
 // Without builder (stack-allocated result)
-fy_map_handle new_map = fy_assoc(map, key, value);
+fy_generic new_map = fy_assoc(map, key, value);
 
 // With builder (heap-allocated result)
-fy_map_handle new_map = fy_assoc(gb, map, key, value);
+fy_generic new_map = fy_assoc(gb, map, key, value);
 ```
 
 **Parameters**:
-- `map` - Original mapping handle
-- `key` - Key to associate (can be any `fy_generic` type)
-- `value` - Value to associate
+- `map` - Original mapping (`fy_generic`)
+- `key` - Key to associate (any `fy_generic` type: string, int, sequence, etc.)
+- `value` - Value to associate (any `fy_generic` type)
 
-**Returns**: New mapping handle with the key-value pair added/updated
+**Returns**: New mapping (`fy_generic`) with the key-value pair added/updated
 
 **Examples**:
 ```c
-// Stack-allocated
-fy_map_handle config = fy_cast(fy_mapping("host", "localhost", "port", 8080), fy_map_invalid);
+// Direct generic operations - clean and composable!
+fy_generic config = fy_mapping("host", "localhost", "port", 8080);
 
 // Add new key
-fy_map_handle config2 = fy_assoc(config, "timeout", fy_int(30));
+fy_generic config2 = fy_assoc(config, "timeout", fy_int(30));
 // config2: {"host": "localhost", "port": 8080, "timeout": 30}
 // config: {"host": "localhost", "port": 8080}  (unchanged!)
 
 // Update existing key
-fy_map_handle config3 = fy_assoc(config, "port", fy_int(9090));
+fy_generic config3 = fy_assoc(config, "port", fy_int(9090));
 // config3: {"host": "localhost", "port": 9090}
 // config: {"host": "localhost", "port": 8080}  (unchanged!)
 
-// Complex keys
-fy_generic key = fy_sequence("nested", "path");
-fy_map_handle config4 = fy_assoc(config, key, fy_string("value"));
+// Complex keys work seamlessly
+fy_generic config4 = fy_assoc(config, fy_sequence("nested", "path"), fy_string("value"));
+
+// Chain operations naturally
+fy_generic prod_config = fy_assoc(
+    fy_assoc(
+        fy_assoc(config, "env", "production"),
+        "debug",
+        false
+    ),
+    "workers",
+    8
+);
 ```
 
 **With builder** (persistent across function scope):
 ```c
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
 
-fy_map_handle base_config = fy_cast(fy_mapping("env", "dev"), fy_map_invalid);
+fy_generic base_config = fy_mapping("env", "dev");
 
-// Add multiple keys
-fy_map_handle prod_config = fy_assoc(gb, base_config, "env", fy_string("prod"));
-prod_config = fy_assoc(gb, prod_config, "debug", fy_bool(false));
-prod_config = fy_assoc(gb, prod_config, "workers", fy_int(8));
+// Add multiple keys - builder makes result persistent
+fy_generic prod_config = fy_assoc(gb, base_config, "env", "prod");
+prod_config = fy_assoc(gb, prod_config, "debug", false);
+prod_config = fy_assoc(gb, prod_config, "workers", 8);
 
-// Persist beyond this scope
+// prod_config persists beyond this scope
 fy_generic_builder_destroy(gb);
 ```
 
@@ -75,38 +100,34 @@ Remove a key from a mapping, returning a new mapping without that key.
 
 ```c
 // Without builder
-fy_map_handle new_map = fy_dissoc(map, key);
+fy_generic new_map = fy_dissoc(map, key);
 
 // With builder
-fy_map_handle new_map = fy_dissoc(gb, map, key);
+fy_generic new_map = fy_dissoc(gb, map, key);
 ```
 
 **Parameters**:
-- `map` - Original mapping handle
-- `key` - Key to remove
+- `map` - Original mapping (`fy_generic`)
+- `key` - Key to remove (any `fy_generic` type)
 
-**Returns**: New mapping handle with the key removed
+**Returns**: New mapping (`fy_generic`) with the key removed
 
 **Examples**:
 ```c
-fy_map_handle config = fy_cast(
-    fy_mapping("host", "localhost", "port", 8080, "debug", true),
-    fy_map_invalid
-);
+// Direct generic operations
+fy_generic config = fy_mapping("host", "localhost", "port", 8080, "debug", true);
 
 // Remove key
-fy_map_handle prod_config = fy_dissoc(config, "debug");
+fy_generic prod_config = fy_dissoc(config, "debug");
 // prod_config: {"host": "localhost", "port": 8080}
 // config: {"host": "localhost", "port": 8080, "debug": true}  (unchanged!)
 
 // Remove non-existent key (safe, returns equivalent mapping)
-fy_map_handle same = fy_dissoc(config, "nonexistent");
+fy_generic same = fy_dissoc(config, "nonexistent");
 // same: {"host": "localhost", "port": 8080, "debug": true}
-```
 
-**Chaining dissociations**:
-```c
-fy_map_handle minimal = fy_dissoc(
+// Chain dissociations naturally
+fy_generic minimal = fy_dissoc(
     fy_dissoc(
         fy_dissoc(config, "debug"),
         "verbose"
@@ -123,31 +144,32 @@ Append an element to a sequence, returning a new sequence.
 
 ```c
 // Without builder
-fy_seq_handle new_seq = fy_conj(seq, value);
+fy_generic new_seq = fy_conj(seq, value);
 
 // With builder
-fy_seq_handle new_seq = fy_conj(gb, seq, value);
+fy_generic new_seq = fy_conj(gb, seq, value);
 ```
 
 **Parameters**:
-- `seq` - Original sequence handle
-- `value` - Value to append
+- `seq` - Original sequence (`fy_generic`)
+- `value` - Value to append (any `fy_generic` type)
 
-**Returns**: New sequence handle with value appended
+**Returns**: New sequence (`fy_generic`) with value appended
 
 **Examples**:
 ```c
-fy_seq_handle items = fy_cast(fy_sequence("alice", "bob"), fy_seq_invalid);
+// Direct generic operations
+fy_generic items = fy_sequence("alice", "bob");
 
 // Append element
-fy_seq_handle items2 = fy_conj(items, fy_string("charlie"));
+fy_generic items2 = fy_conj(items, "charlie");
 // items2: ["alice", "bob", "charlie"]
 // items: ["alice", "bob"]  (unchanged!)
 
-// Chain appends
-fy_seq_handle items3 = fy_conj(
+// Chain appends naturally
+fy_generic items3 = fy_conj(
     fy_conj(
-        fy_conj(items, fy_string("charlie")),
+        fy_conj(items, "charlie"),
         fy_string("dave")
     ),
     fy_string("eve")
@@ -159,7 +181,7 @@ fy_seq_handle items3 = fy_conj(
 ```c
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
 
-fy_seq_handle result = fy_seq_empty;
+fy_generic result = fy_sequence();  // Start with empty sequence
 
 for (size_t i = 0; i < count; i++) {
     fy_generic item = process_item(data[i]);
@@ -175,42 +197,43 @@ Update an element at a specific index in a sequence, returning a new sequence.
 
 ```c
 // Without builder
-fy_seq_handle new_seq = fy_assoc_at(seq, index, value);
+fy_generic new_seq = fy_assoc_at(seq, index, value);
 
 // With builder
-fy_seq_handle new_seq = fy_assoc_at(gb, seq, index, value);
+fy_generic new_seq = fy_assoc_at(gb, seq, index, value);
 ```
 
 **Parameters**:
-- `seq` - Original sequence handle
+- `seq` - Original sequence (`fy_generic`)
 - `index` - Zero-based index to update
-- `value` - New value for that position
+- `value` - New value for that position (any `fy_generic` type)
 
-**Returns**: New sequence handle with updated element
+**Returns**: New sequence (`fy_generic`) with updated element
 
 **Examples**:
 ```c
-fy_seq_handle items = fy_cast(fy_sequence("alice", "bob", "charlie"), fy_seq_invalid);
+// Direct generic operations
+fy_generic items = fy_sequence("alice", "bob", "charlie");
 
 // Update at index
-fy_seq_handle items2 = fy_assoc_at(items, 1, fy_string("BOBBY"));
+fy_generic items2 = fy_assoc_at(items, 1, "BOBBY");
 // items2: ["alice", "BOBBY", "charlie"]
 // items: ["alice", "bob", "charlie"]  (unchanged!)
 
-// Update multiple indices
-fy_seq_handle items3 = fy_assoc_at(
-    fy_assoc_at(items, 0, fy_string("ALICE")),
+// Update multiple indices - chains naturally
+fy_generic items3 = fy_assoc_at(
+    fy_assoc_at(items, 0, "ALICE"),
     2,
-    fy_string("CHARLIE")
+    "CHARLIE"
 );
 // items3: ["ALICE", "bob", "CHARLIE"]
 ```
 
 **Bounds checking**:
 ```c
-// Out of bounds returns fy_seq_invalid
-fy_seq_handle invalid = fy_assoc_at(items, 100, fy_string("oops"));
-if (!fy_is_valid(invalid)) {
+// Out of bounds returns fy_invalid
+fy_generic invalid = fy_assoc_at(items, 100, "oops");
+if (fy_is_invalid(invalid)) {
     // Handle error
 }
 ```
@@ -226,19 +249,22 @@ All functional operations use `_Generic` dispatch to support both stack and buil
 
 #define FY_ASSOC_SELECT(...) \
     _Generic((FY_FIRST_ARG(__VA_ARGS__)), \
-        struct fy_generic_builder *: fy_gb_map_handle_assoc, \
-        fy_map_handle: fy_map_handle_assoc \
+        struct fy_generic_builder *: fy_gb_assoc, \
+        fy_generic: fy_assoc_stack, \
+        default: fy_assoc_stack \
     )
 ```
 
 **Usage is transparent**:
 ```c
-// Stack-allocated (temporary)
-fy_map_handle tmp = fy_assoc(map, "key", value);
+// Stack-allocated (temporary) - works directly with fy_generic
+fy_generic tmp = fy_assoc(map, "key", value);
 
 // Builder-allocated (persistent)
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
-fy_map_handle persistent = fy_assoc(gb, map, "key", value);
+fy_generic persistent = fy_assoc(gb, map, "key", value);
+
+// Both return fy_generic - fully composable!
 ```
 
 ## Structural Sharing
@@ -246,19 +272,17 @@ fy_map_handle persistent = fy_assoc(gb, map, "key", value);
 Functional operations create new collections while sharing unchanged parts with the original:
 
 ```c
-fy_map_handle config = fy_cast(
-    fy_mapping(
-        "server", fy_mapping("host", "localhost", "port", 8080),
-        "database", fy_mapping("host", "db.local", "port", 5432),
-        "cache", fy_mapping("ttl", 300)
-    ),
-    fy_map_invalid
+// Direct generic operations - clean and composable
+fy_generic config = fy_mapping(
+    "server", fy_mapping("host", "localhost", "port", 8080),
+    "database", fy_mapping("host", "db.local", "port", 5432),
+    "cache", fy_mapping("ttl", 300)
 );
 
-// Update nested value
-fy_map_handle server = fy_map_get(config, "server", fy_map_invalid);
-fy_map_handle new_server = fy_assoc(server, "port", fy_int(9090));
-fy_map_handle new_config = fy_assoc(config, "server", fy_to_generic(new_server));
+// Update nested value - notice how clean this is!
+fy_generic server = fy_map_get(config, "server", fy_map_empty);
+fy_generic new_server = fy_assoc(server, "port", 9090);
+fy_generic new_config = fy_assoc(config, "server", new_server);
 
 // new_config shares "database" and "cache" mappings with config
 // Only "server" mapping is new (and it shares "host" with original)
@@ -303,9 +327,9 @@ new_config = {**config, "port": 9090}  # Full copy!
 ### libfyaml (Structural Sharing)
 
 ```c
-// libfyaml - structural sharing, thread-safe
-fy_map_handle config = fy_cast(fy_mapping("host", "localhost", "port", 8080), fy_map_invalid);
-fy_map_handle new_config = fy_assoc(config, "port", fy_int(9090));  // Structural sharing!
+// libfyaml - structural sharing, thread-safe, works directly on fy_generic
+fy_generic config = fy_mapping("host", "localhost", "port", 8080);
+fy_generic new_config = fy_assoc(config, "port", 9090);  // Structural sharing!
 ```
 
 ## Performance Characteristics
@@ -352,28 +376,25 @@ Structural sharing (libfyaml):  ~5 MB memory (10x smaller)
 ### Configuration Overrides
 
 ```c
-// Base configuration
-fy_map_handle base = fy_cast(
-    fy_mapping(
-        "timeout", 30,
-        "retries", 3,
-        "debug", false
-    ),
-    fy_map_invalid
+// Direct generic operations - clean and composable
+fy_generic base = fy_mapping(
+    "timeout", 30,
+    "retries", 3,
+    "debug", false
 );
 
 // Development override
-fy_map_handle dev = fy_assoc(
-    fy_assoc(base, "debug", fy_bool(true)),
+fy_generic dev = fy_assoc(
+    fy_assoc(base, "debug", true),
     "verbose",
-    fy_bool(true)
+    true
 );
 
 // Production override
-fy_map_handle prod = fy_assoc(
-    fy_assoc(base, "timeout", fy_int(60)),
+fy_generic prod = fy_assoc(
+    fy_assoc(base, "timeout", 60),
     "retries",
-    fy_int(5)
+    5
 );
 
 // base, dev, and prod all coexist efficiently
@@ -384,8 +405,8 @@ fy_map_handle prod = fy_assoc(
 ```c
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
 
-// Start with empty
-fy_seq_handle results = fy_seq_empty;
+// Start with empty sequence
+fy_generic results = fy_sequence();
 
 // Build incrementally
 for (size_t i = 0; i < count; i++) {
@@ -401,8 +422,8 @@ for (size_t i = 0; i < count; i++) {
 ### Functional Data Pipeline
 
 ```c
-fy_seq_handle pipeline(struct fy_generic_builder *gb, fy_seq_handle input) {
-    fy_seq_handle result = fy_seq_empty;
+fy_generic pipeline(struct fy_generic_builder *gb, fy_generic input) {
+    fy_generic result = fy_sequence();  // Start with empty
 
     for (size_t i = 0; i < fy_len(input); i++) {
         fy_generic item = fy_get_item(input, i);
@@ -412,12 +433,12 @@ fy_seq_handle pipeline(struct fy_generic_builder *gb, fy_seq_handle input) {
             continue;
         }
 
-        // Transform
+        // Transform - notice how clean this is!
         int value = fy_map_get(item, "value", 0);
-        fy_map_handle transformed = fy_assoc(item, "doubled", fy_int(value * 2));
+        fy_generic transformed = fy_assoc(item, "doubled", value * 2);
 
         // Collect
-        result = fy_conj(gb, result, fy_to_generic(transformed));
+        result = fy_conj(gb, result, transformed);
     }
 
     return result;
@@ -431,17 +452,17 @@ fy_seq_handle pipeline(struct fy_generic_builder *gb, fy_seq_handle input) {
 
 struct editor {
     struct fy_generic_builder *gb;
-    fy_map_handle versions[MAX_HISTORY];
+    fy_generic versions[MAX_HISTORY];  // Works directly with fy_generic!
     size_t current;
     size_t count;
 };
 
 void editor_edit(struct editor *ed, const char *key, fy_generic value) {
     // Get current version
-    fy_map_handle current = ed->versions[ed->current];
+    fy_generic current = ed->versions[ed->current];
 
     // Create new version (structural sharing with previous)
-    fy_map_handle new_version = fy_assoc(ed->gb, current, key, value);
+    fy_generic new_version = fy_assoc(ed->gb, current, key, value);
 
     // Add to history
     ed->current = (ed->current + 1) % MAX_HISTORY;
@@ -461,7 +482,7 @@ void editor_redo(struct editor *ed) {
     }
 }
 
-fy_map_handle editor_current(struct editor *ed) {
+fy_generic editor_current(struct editor *ed) {
     return ed->versions[ed->current];
 }
 ```
@@ -470,10 +491,10 @@ fy_map_handle editor_current(struct editor *ed) {
 
 ```c
 bool apply_transaction(struct fy_generic_builder *gb,
-                      fy_map_handle *state,
-                      fy_seq_handle operations) {
+                      fy_generic *state,
+                      fy_generic operations) {
     // Start with current state
-    fy_map_handle new_state = *state;
+    fy_generic new_state = *state;
 
     // Apply all operations
     for (size_t i = 0; i < fy_len(operations); i++) {
@@ -508,8 +529,8 @@ bool apply_transaction(struct fy_generic_builder *gb,
 Because all operations are immutable, they are inherently thread-safe:
 
 ```c
-// Shared immutable configuration
-static fy_map_handle global_config;
+// Shared immutable configuration - works directly with fy_generic
+static fy_generic global_config;
 
 // Thread 1: Read config
 void worker_thread_1(void) {
@@ -522,7 +543,7 @@ void worker_thread_2(void) {
     struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
 
     // Create new version (doesn't affect global_config)
-    fy_map_handle local_config = fy_assoc(gb, global_config, "port", fy_int(9090));
+    fy_generic local_config = fy_assoc(gb, global_config, "port", 9090);
 
     // Use local_config...
 
@@ -541,15 +562,15 @@ When using operations with a builder, values are automatically internalized:
 ```c
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
 
-// Stack-allocated input
-fy_map_handle temp = fy_cast(fy_mapping("a", 1), fy_map_invalid);
+// Stack-allocated input - direct generic operations!
+fy_generic temp = fy_mapping("a", 1);
 
 // First operation: internalizes temp into gb (one-time cost)
-fy_map_handle v1 = fy_assoc(gb, temp, "b", fy_int(2));
+fy_generic v1 = fy_assoc(gb, temp, "b", 2);
 
 // Subsequent operations: cheap! (v1 already in gb)
-fy_map_handle v2 = fy_assoc(gb, v1, "c", fy_int(3));
-fy_map_handle v3 = fy_assoc(gb, v2, "d", fy_int(4));
+fy_generic v2 = fy_assoc(gb, v1, "c", 3);
+fy_generic v3 = fy_assoc(gb, v2, "d", 4);
 
 // Amortized O(1) per operation after first internalization
 ```
@@ -559,11 +580,11 @@ fy_map_handle v3 = fy_assoc(gb, v2, "d", fy_int(4));
 ```c
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
 
-// Stack operation (temporary)
-fy_map_handle temp1 = fy_assoc(base, "key1", fy_int(1));
+// Stack operation (temporary) - works directly with fy_generic
+fy_generic temp1 = fy_assoc(base, "key1", 1);
 
 // Builder operation (persistent)
-fy_map_handle persistent1 = fy_assoc(gb, temp1, "key2", fy_int(2));
+fy_generic persistent1 = fy_assoc(gb, temp1, "key2", 2);
 
 // temp1 goes out of scope, but persistent1 remains valid
 // Builder has internalized what it needs
@@ -576,7 +597,7 @@ Future feature: COW allocators enable efficient caching with incremental updates
 ```c
 // Immutable cache
 struct fy_allocator *cache = fy_allocator_create_dedup();
-fy_map_handle cached_config = parse_config(cache, "config.yaml");
+fy_generic cached_config = parse_config(cache, "config.yaml");
 fy_allocator_set_readonly(cache);
 
 // Create COW builder for updates
@@ -586,7 +607,7 @@ struct fy_generic_builder *update_gb = fy_generic_builder_create(&(struct fy_gen
 });
 
 // Update (only delta allocated, unchanged parts reference cache)
-fy_map_handle updated = fy_assoc(update_gb, cached_config, "new_key", fy_string("value"));
+fy_generic updated = fy_assoc(update_gb, cached_config, "new_key", "value");
 
 // Dedup ensures unchanged values reference cache (zero-copy)
 // Only the delta is allocated in update_gb
