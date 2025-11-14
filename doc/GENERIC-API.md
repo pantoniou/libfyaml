@@ -9,6 +9,7 @@ The generic type system provides a space-efficient runtime representation for YA
 **What it provides:**
 - Single `fy_generic` type that can hold any YAML value (null, bool, int, float, string, sequence, mapping)
 - **Sized strings** for strings with embedded `\0` bytes and binary data (YAML's double-quoted strings support escaped nulls)
+- **Decorated integers** for full `unsigned long long` range coverage with signedness metadata
 - Automatic type detection via C11 `_Generic` dispatch
 - Inline storage for small values (no allocation needed)
 - Stack-based collections for temporary data (via `alloca`)
@@ -230,6 +231,36 @@ fy_generic_sized_string result = fy_cast(value, fy_generic_sized_string);
 // - YAML: text: "Hello\0World"  (escaped \0 in double quotes)
 // - Binary data: key: "\x00\x01\x02\xFF"
 // - C source with null bytes: code: "char x[] = \"\0\";"
+```
+
+**Decorated integers (for full unsigned long long range):**
+```c
+// Generic ints unify all C integer types (short/int/long/long long)
+// The decorated int extends this with signedness metadata for correct YAML emission
+
+// Extract decorated int from generic
+fy_generic v = fy_to_generic(large_unsigned_value);
+fy_generic_decorated_int dint = fy_cast(v, fy_generic_decorated_int);
+
+// Access: dint.sv (signed) or dint.uv (unsigned), dint.is_unsigned (flag)
+if (dint.is_unsigned)
+    printf("Unsigned: %llu\n", dint.uv);
+else
+    printf("Signed: %lld\n", dint.sv);
+
+// What is_unsigned means:
+// - For inline values (≤61 bits): is_unsigned = (value >= 0)
+//   "Can this value be interpreted as unsigned?"
+// - For out-of-place values: is_unsigned preserves creation intent
+//   Values > LLONG_MAX require is_unsigned=true for correct emission
+
+// Use cases:
+// - Large unsigned values: 0xFFFFFFFFFFFFFFFF (18446744073709551615)
+// - Correct YAML emission: distinguishes "18446744073709551615" from "-1"
+// - Value range coverage: handle full unsigned long long without extra type tag
+
+// Important: This is NOT type preservation (short/int/long already unified)
+// It's value-range coverage - ensuring correct interpretation for emission
 ```
 
 **Creating sequences:**

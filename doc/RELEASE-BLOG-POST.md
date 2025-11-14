@@ -504,6 +504,7 @@ void process_anthropic_response(const char *json_response) {
 - **`_Generic` dispatch:** Resolved at compile time, generates same code as hand-written type-specific calls
 - **Inline storage:** 61-bit integers, 7-byte strings, 32-bit floats stored inline (no allocation)
 - **Sized strings:** Full support for YAML strings with embedded `\0` bytes and binary data (via `fy_generic_sized_string`)
+- **Decorated integers:** Full `unsigned long long` range (0 to 2^64-1) with minimal overhead—ensures values like `0xFFFFFFFFFFFFFFFF` emit correctly instead of wrapping to negative
 - **No virtual dispatch:** Every call is direct
 - **No runtime type checking:** Types resolved at compile time
 

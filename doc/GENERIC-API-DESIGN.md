@@ -205,6 +205,52 @@ fy_generic_sized_string data = fy_get(config, "binary", fy_generic_sized_string)
 // config.yaml:
 //   text: "Hello\0World"  # Double-quoted strings can contain escaped \0
 //   binary: "\x00\x01\xFF"
+
+// Decorated integers (for full unsigned long long range)
+fy_generic_decorated_int num = fy_cast(value, fy_generic_decorated_int);
+if (num.is_unsigned)
+    printf("Unsigned: %llu\n", num.uv);
+else
+    printf("Signed: %lld\n", num.sv);
+
+// Example: Large unsigned value
+// config.yaml:
+//   max_uint64: 18446744073709551615  # 0xFFFFFFFFFFFFFFFF
+```
+
+### Extended Types: Sized Strings and Decorated Integers
+
+**Sized strings** (`fy_generic_sized_string`):
+- **Purpose**: Handle YAML strings with embedded `\0` bytes
+- **Fields**: `.data` (may contain nulls), `.size` (explicit length)
+- **Use case**: Binary data, YAML double-quoted strings with escaped nulls
+
+**Decorated integers** (`fy_generic_decorated_int`):
+- **Purpose**: Full `unsigned long long` range coverage without consuming a type tag bit
+- **Fields**: `.sv` / `.uv` (signed/unsigned union), `.is_unsigned` (signedness flag)
+- **Design rationale**: The generic system already unifies C integer types (short/int/long/long long). Adding a type tag for signed/unsigned would be inconsistent—why preserve signedness but not width?
+
+**What `is_unsigned` means:**
+- **For inline values** (≤61 bits): `is_unsigned = (value >= 0)` → "Can be interpreted as unsigned"
+- **For out-of-place values**: `is_unsigned` preserves creation intent → Values > `LLONG_MAX` require `is_unsigned=true` for correct emission
+
+**This is value-range coverage, not type preservation:**
+```c
+// Generic system is intentionally lossy about C types:
+short s = 42;         // → FYGT_INT
+int i = 42;           // → FYGT_INT
+long l = 42;          // → FYGT_INT
+long long ll = 42;    // → FYGT_INT
+// All become the same generic int - width information lost
+
+// But we need full value range:
+unsigned long long max = 0xFFFFFFFFFFFFFFFF;  // 18446744073709551615
+// Without decorated int, this would wrap to negative when emitted
+// With decorated int: is_unsigned=true ensures correct YAML output
+
+// The trade-off is correct:
+// - Don't waste type tag bit on signed/unsigned (inconsistent with losing width info)
+// - Do add minimal metadata (1 bool per out-of-place int) for value range coverage
 ```
 
 ### Container Handle Types
