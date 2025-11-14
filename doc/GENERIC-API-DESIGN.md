@@ -27,18 +27,24 @@ This design document is split across several files for easier navigation:
    - Comparison with imperative approaches
    - Common functional patterns
 
-4. **[GENERIC-API-REFERENCE.md](GENERIC-API-REFERENCE.md)** - API reference
+4. **[GENERIC-API-UTILITIES.md](GENERIC-API-UTILITIES.md)** - Python-like utilities
+   - Mapping utilities (`fy_keys()`, `fy_values()`, `fy_items()`, `fy_merge()`)
+   - Sequence utilities (`fy_slice()`, `fy_take()`, `fy_drop()`, `fy_reverse()`)
+   - Higher-order functions (`fy_filter()`, `fy_map()`, `fy_reduce()`)
+   - Collection utilities (`fy_count()`, `fy_flatten()`, `fy_zip()`)
+
+5. **[GENERIC-API-REFERENCE.md](GENERIC-API-REFERENCE.md)** - API reference
    - Iteration API (sequences and mappings)
    - Complete API reference
    - Construction, type checking, value extraction
    - Document integration
 
-5. **[GENERIC-API-EXAMPLES.md](GENERIC-API-EXAMPLES.md)** - Real-world usage
+6. **[GENERIC-API-EXAMPLES.md](GENERIC-API-EXAMPLES.md)** - Real-world usage
    - Anthropic Messages API example
    - Language comparisons (Python, TypeScript, Rust)
    - Complex processing examples
 
-6. **[GENERIC-API-PATTERNS.md](GENERIC-API-PATTERNS.md)** - Best practices
+7. **[GENERIC-API-PATTERNS.md](GENERIC-API-PATTERNS.md)** - Best practices
    - Configuration management
    - Per-request processing
    - Hierarchical scopes
@@ -46,7 +52,7 @@ This design document is split across several files for easier navigation:
    - Functional data transformation
    - Anti-patterns to avoid
 
-7. **[GENERIC-API-PERFORMANCE.md](GENERIC-API-PERFORMANCE.md)** - Performance
+8. **[GENERIC-API-PERFORMANCE.md](GENERIC-API-PERFORMANCE.md)** - Performance
    - Design principles
    - Performance characteristics
    - Zero-cost abstractions
