@@ -512,6 +512,75 @@ fy_generic complex_key = fy_sequence(1, 2);
 const fy_generic *value = fy_generic_mapping_lookup(map, complex_key);
 ```
 
+**Pointer-based casting (zero-overhead string access):**
+```c
+// Problem: Inline strings are stored within the fy_generic value itself
+// Getting a char* traditionally required alloca or builder allocation
+
+// Old approach (requires alloca for inline strings):
+fy_generic v = fy_to_generic("hello");  // Short string - stored inline
+const char *str = fy_cast_default(v, "");  // Triggers alloca internally
+
+// New approach (zero overhead - no alloca):
+const char *str = fy_genericp_cast_default(&v, "");
+
+// How it works:
+// - For inline strings: Returns pointer directly into the fy_generic struct
+// - For out-of-place strings: Returns pointer to heap-allocated data
+// - Zero allocation overhead in both cases!
+```
+
+**Why this matters:**
+
+Inline strings (≤7 bytes on 64-bit systems) are stored directly in the `fy_generic` value. To get a `const char*` pointer, you have two options:
+
+1. **Value-based cast** (`fy_cast_default(v, default)`):
+   - Must copy inline string to temporary buffer (via `alloca`)
+   - Allocation overhead on every call for inline strings
+   - Traditional approach
+
+2. **Pointer-based cast** (`fy_genericp_cast_default(&v, default)`):
+   - Returns pointer directly into the `fy_generic` struct for inline strings
+   - No allocation, no copying
+   - **Zero overhead for the common case**
+
+**Usage examples:**
+```c
+// Function parameter - can use pointer directly
+void process_config(fy_generic config) {
+    // Zero-overhead string access
+    const char *host = fy_genericp_cast_default(&config, "localhost");
+    int port = fy_cast_default(config, 8080);  // Ints are always inline
+
+    printf("Connecting to %s:%d\n", host, port);
+}
+
+// Array of generics - pointer-based cast avoids alloca per element
+fy_generic items[] = { fy_to_generic("foo"), fy_to_generic("bar") };
+for (size_t i = 0; i < 2; i++) {
+    const char *str = fy_genericp_cast_default(&items[i], "");
+    printf("%s\n", str);  // No alloca, just pointer into items[i]
+}
+
+// Sized strings also supported (for strings with embedded \0)
+fy_generic v = fy_to_generic(fy_generic_sized_string{ .data = buf, .size = len });
+fy_generic_sized_string result = fy_genericp_cast_default(&v, fy_szstr_empty);
+// result.data points directly into v (if inline) or to heap data (if out-of-place)
+```
+
+**Performance impact:**
+
+- **Inline strings** (most config values): Eliminates alloca overhead (~10-50 cycles saved per access)
+- **Out-of-place strings**: Same performance as value-based cast
+- **Hot paths**: Measurable speedup in string-heavy workloads
+
+**Available pointer-based cast functions:**
+- `fy_genericp_cast_default(&v, default)` - Generic dispatch (works for all types)
+- `const char *fy_genericp_cast_const_char_ptr_default(&v, "")`
+- `fy_generic_sized_string fy_genericp_cast_sized_string_default(&v, fy_szstr_empty)`
+- `fy_generic_decorated_int fy_genericp_cast_decorated_int_default(&v, fy_dint_empty)`
+- All other scalar types also supported
+
 ## Implementation Notes
 
 **Pointer Tagging:** The lower 3 bits of pointers encode the type tag (pointers are 8-byte aligned). This allows type information and small values to fit in a single pointer-sized word.
