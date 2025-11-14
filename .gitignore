@@ -71,3 +71,4 @@ debian/control
 debian/copyright
 artifacts/
 build
+.cache/
