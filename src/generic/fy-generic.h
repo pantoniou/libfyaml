@@ -408,8 +408,14 @@ static inline enum fy_generic_type fy_generic_get_direct_type_bithack(fy_generic
 		case     7:
 			return FYGT_INDIRECT;
 		case 8 | 7:
-			const unsigned int escape_code = (unsigned int)(v.v >> FY_ESCAPE_SHIFT);
-			return escape_code < FY_ESCAPE_COUNT ? FY_MAKE_ESCAPE(escape_code) : FYGT_INVALID;
+			switch ((unsigned int)(v.v >> FY_ESCAPE_SHIFT)) {
+			case FY_ESCAPE_NULL:
+				return FYGT_NULL;
+			case FY_ESCAPE_FALSE:
+			case FY_ESCAPE_TRUE:
+				return FYGT_BOOL;
+			}
+			return FYGT_INVALID;
 		default:
 			break;
 	}
@@ -2842,14 +2848,12 @@ static inline fy_generic fy_get_generic_map_handle(const void *p)
 		typeof (1 ? (_colv) : (_colv)) __colv = (_colv); \
 		typeof (1 ? (_dv) : (_dv)) __dv = (_dv); \
 		typeof (1 ? (_dv) : (_dv)) __ret; \
-		fy_generic __colv2; \
-		enum fy_generic_type __type; \
 		\
-		__colv2 = _Generic(__colv, \
+		const fy_generic __colv2 = _Generic(__colv, \
 			fy_generic: fy_get_generic_generic(&__colv), \
 			fy_generic_sequence_handle: fy_get_generic_seq_handle(&__colv), \
 			fy_generic_mapping_handle: fy_get_generic_map_handle(&__colv) ); \
-		__type = _Generic(__colv, \
+		const enum fy_generic_type __type = _Generic(__colv, \
 			fy_generic: fy_generic_get_direct_type(__colv2), \
 			fy_generic_sequence_handle: FYGT_SEQUENCE, \
 			fy_generic_mapping_handle: FYGT_MAPPING ); \
