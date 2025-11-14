@@ -322,6 +322,8 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
     __VA_OPT__(FY_CPP_POSTPONE1(_FY_CPP_MAP_INDIRECT)()(macro, __VA_ARGS__))
 #define _FY_CPP_MAP_INDIRECT() _FY_CPP_MAP_ONE
 
+#define FY_CPP_POSTPONE2(a, macro) macro FY_CPP_EMPTY()
+
 #define _FY_CPP_FIRST(x, ...) x
 #define FY_CPP_FIRST(...)     __VA_OPT__(_FY_CPP_FIRST(__VA_ARGS__))
 
@@ -341,6 +343,13 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 
 #define FY_CPP_VA_ITEMS(_type, ...) \
 	((_type [FY_CPP_VA_COUNT(__VA_ARGS__)]) { _FY_CPP_VA_ITEMS(__VA_ARGS__) })
+
+#define FY_CPP_MAP2(a, macro, ...) \
+    __VA_OPT__(FY_CPP_EVAL(_FY_CPP_MAP_ONE2(a, macro, __VA_ARGS__)))
+
+#define _FY_CPP_MAP_ONE2(a, macro, x, ...) macro(a, x) \
+    __VA_OPT__(FY_CPP_POSTPONE2(a, _FY_CPP_MAP_INDIRECT2)()(a, macro, __VA_ARGS__))
+#define _FY_CPP_MAP_INDIRECT2() _FY_CPP_MAP_ONE2
 
 /*
  * example usage:
