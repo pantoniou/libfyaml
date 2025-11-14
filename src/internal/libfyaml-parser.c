@@ -5229,13 +5229,38 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	}
 
 	{
-		extern int checkout_sum(fy_generic_sequence_handle seqh);
 		const fy_generic seq = fy_sequence(10, 100, 200, 1000);
 		fy_generic_sequence_handle seqh = fy_generic_cast_default(seq, (fy_generic_sequence_handle)NULL);
 
-		int sum = checkout_sum(seqh);
+		size_t i;
+		int sum;
+
+		__asm__ volatile("nop; nop" : : : "memory");
+		sum = 0;
+		for (i = 0; i < fy_len(seqh); i++)
+			sum += fy_get_default(seqh, i, 0);
+		__asm__ volatile("nop; nop" : : : "memory");
+
 		printf("sum=%d\n", sum);
 
+	}
+
+	{
+		const fy_generic seq = fy_sequence(10, 100, 200, 1000);
+		fy_generic_sequence_handle seqh = fy_generic_cast_default(seq, (fy_generic_sequence_handle)NULL);
+
+		assert(seqh);
+
+		size_t i;
+		int sum;
+
+		__asm__ volatile("nop; nop" : : : "memory");
+		sum = 0;
+		for (i = 0; i < fy_len(seqh); i++)
+			sum += fy_generic_sequencep_get_default(seqh, i, 0);
+		__asm__ volatile("nop; nop" : : : "memory");
+
+		printf("sum=%d\n", sum);
 	}
 
 	return 0;
