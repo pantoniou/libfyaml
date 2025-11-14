@@ -1189,6 +1189,12 @@ static inline const fy_generic *fy_generic_mapping_get_ ## _gtype ## _valuep(fy_
 	return fy_generic_mappingp_get_ ## _gtype ## _valuep(mapp, key); \
 } \
 \
+static inline _ctype fy_generic_mappingp_get_ ## _gtype ## _default(const fy_generic_mapping *mapp, fy_generic key, _ctype default_value) \
+{ \
+	const fy_generic *vp = fy_generic_mappingp_get_ ## _gtype ## _valuep(mapp, key); \
+	return fy_genericp_cast_  ## _gtype ## _default(vp, default_value); \
+} \
+\
 static inline _ctype fy_generic_mapping_get_ ## _gtype ## _default(fy_generic map, fy_generic key, _ctype default_value) \
 { \
 	const fy_generic *vp = fy_generic_mapping_get_ ## _gtype ## _valuep(map, key); \
@@ -1388,9 +1394,9 @@ fy_genericp_get_string_no_check(const fy_generic *vp)
  * pointer to...
  * Also note there is no attempt to get the size either.
  */
-#define fy_generic_get_string_size(_v, _lenp) 	 						\
+#define fy_generic_get_string_size(_v, _lenp) 							\
 	({											\
-	 	fy_generic __v = (_v);								\
+		fy_generic __v = (_v);								\
 		const char *__ret = NULL;							\
 		size_t *__lenp = (_lenp);							\
 		fy_generic *__vp;								\
@@ -1454,7 +1460,7 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 
 #define fy_int_alloca(_v) 									\
 	({											\
-	 	typeof (1 ? (_v) : (_v)) __v = (_v);						\
+		typeof (1 ? (_v) : (_v)) __v = (_v);						\
 		long long *__vp;								\
 		fy_generic_value _r;								\
 												\
@@ -2119,7 +2125,7 @@ static inline fy_generic_value fy_generic_out_of_place_put_mapping_handle(void *
 
 #define fy_stringf_value(_fmt, ...) \
 	({ \
-	 	char *_buf = fy_sprintfa((_fmt), ## __VA_ARGS__); \
+		char *_buf = fy_sprintfa((_fmt), ## __VA_ARGS__); \
 		fy_string_alloca(_buf); \
 	})
 
@@ -2450,7 +2456,7 @@ static inline void fy_generic_cast_default_final_never(fy_generic v,
 		if (__size) { \
 			__p = fy_alloca_align(__size, FY_GENERIC_CONTAINER_ALIGN); \
 			_Generic(__dv, fy_generic_cast_default_final_Generic_dispatch) \
-	 			(__v, __p, __size, __dv, &__ret); \
+				(__v, __p, __size, __dv, &__ret); \
 		} \
 		__ret; \
 	})
@@ -2533,7 +2539,7 @@ static inline const fy_generic *fy_generic_sequence_get_alias_itemp(fy_generic s
 #define fy_generic_cast_default_coerse(_v, _dv) \
 	({ \
 		fy_generic __vv = fy_to_generic(_v); \
-	 	fy_generic_cast_default(__vv, (_dv)); \
+		fy_generic_cast_default(__vv, (_dv)); \
 	})
 
 static inline fy_generic_sequence_handle
@@ -2877,6 +2883,31 @@ static inline fy_generic fy_get_generic_map_handle(const void *p)
 
 #define fy_generic_get(_colv, _key, _type) \
 	(fy_generic_get_default((_colv), (_key), fy_generic_get_type_default(_type)))
+
+#define fy_generic_get_default_2(_colv, _key, _dv) \
+	({ \
+		typeof (1 ? (_colv) : (_colv)) __colv = (_colv); \
+		typeof (1 ? (_dv) : (_dv)) __dv = (_dv); \
+		typeof (1 ? (_dv) : (_dv)) __ret; \
+		fy_generic_sequence_handle __seqh = fy_cast_default(__colv, fy_seq_handle_null); \
+		fy_generic_mapping_handle __maph = fy_cast_default(__colv, fy_map_handle_null); \
+		\
+		if (__seqh) { \
+			const size_t __index = fy_generic_cast_default_coerse(_key, LLONG_MAX); \
+			__ret = _Generic(__dv, fy_generic_sequencep_get_default_Generic_dispatch) \
+				(__seqh, __index, __dv); \
+		} else if (__maph) { \
+			const fy_generic __key = fy_to_generic(_key); \
+			__ret = _Generic(__dv, fy_generic_mappingp_get_default_Generic_dispatch) \
+				(__maph, __key, __dv); \
+		} else \
+			__ret = __dv; \
+		__ret; \
+	})
+
+#define fy_generic_get_2(_colv, _key, _type) \
+	(fy_generic_get_default_2((_colv), (_key), fy_generic_get_type_default(_type)))
+
 
 #if 0
 /* when we have a pointer we can return to inplace strings */
