@@ -667,9 +667,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	dtd = &dt->data[dt->data_active];
 
 	/* calculate data total size */
-	total_size = 0;
-	for (i = 0; i < iovcnt; i++)
-		total_size += iov[i].iov_len;
+	total_size = fy_iovec_size(iov, iovcnt);
 
 	/* if it's under the dedup threshold just allocate and copy */
 	if (total_size < dtd->dedup_threshold) {
@@ -679,12 +677,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 		if (!p)
 			goto err_out;
 
-		for (i = 0, s = p; i < iovcnt; i++) {
-			size = iov[i].iov_len;
-			memcpy(s, iov[i].iov_base, size);
-			s += size;
-		}
-
+		fy_iovec_copy_from(iov, iovcnt, p);
 		return p;
 	}
 
@@ -766,12 +759,7 @@ new_entry:
 	mem = NULL;
 
 	/* and copy the data */
-	s = de->mem;
-	for (i = 0; i < iovcnt; i++) {
-		size = iov[i].iov_len;
-		memcpy(s, iov[i].iov_base, size);
-		s += size;
-	}
+	fy_iovec_copy_from(iov, iovcnt, de->mem);
 
 	if (!fy_id_is_used(dtd->buckets_in_use, dtd->bucket_id_count, (int)bucket_pos)) {
 		fy_id_set_used(dtd->buckets_in_use, dtd->bucket_id_count, (int)bucket_pos);

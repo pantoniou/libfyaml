@@ -717,9 +717,8 @@ static const void *fy_mremap_storev(struct fy_allocator *a, int tag, const struc
 {
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
-	void *p, *start;
-	int i;
-	size_t total_size, size;
+	void *start;
+	size_t total_size;
 
 	if (!a || !iov)
 		return NULL;
@@ -730,18 +729,13 @@ static const void *fy_mremap_storev(struct fy_allocator *a, int tag, const struc
 	if (!mrt)
 		goto err_out;
 
-	total_size = 0;
-	for (i = 0; i < iovcnt; i++)
-		total_size += iov[i].iov_len;
+	total_size = fy_iovec_size(iov, iovcnt);
 
 	start = fy_mremap_tag_alloc(mra, mrt, total_size, align);
 	if (!start)
 		goto err_out;
 
-	for (i = 0, p = start; i < iovcnt; i++, p += size) {
-		size = iov[i].iov_len;
-		memcpy(p, iov[i].iov_base, size);
-	}
+	fy_iovec_copy_from(iov, iovcnt, start);
 
 	mrt->stats.stores++;
 	mrt->stats.stored += total_size;

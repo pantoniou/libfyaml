@@ -21,6 +21,8 @@
 #include <stdint.h>
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/uio.h>
 
 /* to avoid dragging in libfyaml.h */
 #ifndef FY_BIT
@@ -375,5 +377,43 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 	 	const size_t __align = (_align); \
 		__align <= sizeof(max_align_t) ? alloca(__sz) : fy_ptr_align(alloca(__sz + __align - 1), __align); \
 	})
+
+static inline size_t
+fy_iovec_size(const struct iovec *iov, int iovcnt)
+{
+	size_t size;
+	int i;
+
+	size = 0;
+	for (i = 0; i < iovcnt; i++)
+		size += iov[i].iov_len;
+	return size;
+}
+
+static inline void *
+fy_iovec_copy_from(const struct iovec *iov, int iovcnt, void *dst)
+{
+	size_t size;
+	int i;
+
+	for (i = 0; i < iovcnt; i++, dst += size) {
+		size = iov[i].iov_len;
+		memcpy(dst, iov[i].iov_base, size);
+	}
+	return dst;
+}
+
+static inline const void *
+fy_iovec_copy_to(const struct iovec *iov, int iovcnt, const void *src)
+{
+	size_t size;
+	int i;
+
+	for (i = 0; i < iovcnt; i++, src += size) {
+		size = iov[i].iov_len;
+		memcpy(iov[i].iov_base, src, size);
+	}
+	return src;
+}
 
 #endif
