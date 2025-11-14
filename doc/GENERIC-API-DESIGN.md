@@ -20,18 +20,25 @@ This design document is split across several files for easier navigation:
    - Stackable allocators
    - Custom allocators
 
-3. **[GENERIC-API-REFERENCE.md](GENERIC-API-REFERENCE.md)** - API reference
+3. **[GENERIC-API-FUNCTIONAL.md](GENERIC-API-FUNCTIONAL.md)** - Functional operations
+   - Immutable collection manipulation
+   - `fy_assoc()`, `fy_dissoc()`, `fy_conj()`, `fy_assoc_at()`
+   - Structural sharing and performance
+   - Comparison with imperative approaches
+   - Common functional patterns
+
+4. **[GENERIC-API-REFERENCE.md](GENERIC-API-REFERENCE.md)** - API reference
    - Iteration API (sequences and mappings)
    - Complete API reference
    - Construction, type checking, value extraction
    - Document integration
 
-4. **[GENERIC-API-EXAMPLES.md](GENERIC-API-EXAMPLES.md)** - Real-world usage
+5. **[GENERIC-API-EXAMPLES.md](GENERIC-API-EXAMPLES.md)** - Real-world usage
    - Anthropic Messages API example
    - Language comparisons (Python, TypeScript, Rust)
    - Complex processing examples
 
-5. **[GENERIC-API-PATTERNS.md](GENERIC-API-PATTERNS.md)** - Best practices
+6. **[GENERIC-API-PATTERNS.md](GENERIC-API-PATTERNS.md)** - Best practices
    - Configuration management
    - Per-request processing
    - Hierarchical scopes
@@ -39,7 +46,7 @@ This design document is split across several files for easier navigation:
    - Functional data transformation
    - Anti-patterns to avoid
 
-6. **[GENERIC-API-PERFORMANCE.md](GENERIC-API-PERFORMANCE.md)** - Performance
+7. **[GENERIC-API-PERFORMANCE.md](GENERIC-API-PERFORMANCE.md)** - Performance
    - Design principles
    - Performance characteristics
    - Zero-cost abstractions
