@@ -6377,7 +6377,18 @@ char *checkout_dup_str(fy_generic v)
 	return strdup(str);
 }
 
-int checkout_sum(fy_generic_sequence_handle seqh)
+int checkout_sum(fy_generic seq)
+{
+	size_t i;
+	int sum;
+
+	sum = 0;
+	for (i = 0; i < fy_len(seq); i++)
+		sum += fy_get_default(seq, i, 0);
+	return sum;
+}
+
+int checkout_sumh(fy_generic_sequence_handle seqh)
 {
 	size_t i;
 	int sum;
