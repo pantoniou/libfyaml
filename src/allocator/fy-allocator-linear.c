@@ -231,32 +231,20 @@ err_out:
 	return NULL;
 }
 
-static const void *fy_linear_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
+static const void *fy_linear_storev(struct fy_allocator *a, int tag,
+				    const struct iovec *iov, int iovcnt, size_t align)
 {
-	void *p, *start;
-	int i;
+	void *p;
 	size_t size;
 
 	if (!a)
 		return NULL;
 
-	size = 0;
-	for (i = 0; i < iovcnt; i++)
-		size += iov[i].iov_len;
-
-	start = fy_linear_alloc(a, tag, size, align);
-	if (!start)
-		goto err_out;
-
-	for (i = 0, p = start; i < iovcnt; i++, p += size) {
-		size = iov[i].iov_len;
-		memcpy(p, iov[i].iov_base, size);
-	}
-
-	return start;
-
-err_out:
-	return NULL;
+	size = fy_iovec_size(iov, iovcnt);
+	p = fy_linear_alloc(a, tag, size, align);
+	if (p)
+		fy_iovec_copy_from(iov, iovcnt, p);
+	return p;
 }
 
 static void fy_linear_release(struct fy_allocator *a, int tag, const void *data, size_t size)
