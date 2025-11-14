@@ -341,6 +341,9 @@ fy_generic fy_gb_collection_create(struct fy_generic_builder *gb, bool is_map, s
 	fy_generic v, *items_alloc = NULL, items_buf[64];
 	size_t i;
 
+	if (!count)
+		return !is_map ? fy_seq_empty : fy_map_empty;
+
 	if (count && !items)
 		return fy_invalid;
 

@@ -3189,19 +3189,9 @@ fy_generic fy_gb_indirect_create(struct fy_generic_builder *gb, const fy_generic
 
 fy_generic fy_gb_alias_create(struct fy_generic_builder *gb, fy_generic anchor);
 
-#define FY_CPP2_EMPTY(a)
-#define FY_CPP2_POSTPONE1(a, macro) macro FY_CPP2_EMPTY(a)
-
-#define FY_CPP2_MAP(a, macro, ...) \
-    __VA_OPT__(FY_CPP_EVAL(_FY_CPP2_MAP_ONE(a, macro, __VA_ARGS__)))
-
-#define _FY_CPP2_MAP_ONE(a, macro, x, ...) macro(a, x) \
-    __VA_OPT__(FY_CPP2_POSTPONE1(a, _FY_CPP2_MAP_INDIRECT)()(a, macro, __VA_ARGS__))
-#define _FY_CPP2_MAP_INDIRECT() _FY_CPP2_MAP_ONE
-
 #define _FY_CPP_GBITEM_ONE(_gb, arg) fy_gb_to_generic(_gb, arg)
 #define _FY_CPP_GBITEM_LATER_ARG(_gb, arg) , _FY_CPP_GBITEM_ONE(_gb, arg)
-#define _FY_CPP_GBITEM_LIST(_gb, ...) FY_CPP2_MAP(_gb, _FY_CPP_GBITEM_LATER_ARG, __VA_ARGS__)
+#define _FY_CPP_GBITEM_LIST(_gb, ...) FY_CPP_MAP2(_gb, _FY_CPP_GBITEM_LATER_ARG, __VA_ARGS__)
 
 #define _FY_CPP_VA_GBITEMS(_gb, ...)          \
     _FY_CPP_GBITEM_ONE(_gb, FY_CPP_FIRST(__VA_ARGS__)) \
