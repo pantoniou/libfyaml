@@ -6384,7 +6384,7 @@ int checkout_sum(fy_generic seq)
 
 	sum = 0;
 	for (i = 0; i < fy_len(seq); i++)
-		sum += fy_get_default(seq, i, 0);
+		sum += fy_generic_get_default_2(seq, i, 0);
 	return sum;
 }
 
