@@ -613,6 +613,403 @@ fy_generic updated = fy_assoc(update_gb, cached_config, "new_key", "value");
 // Only the delta is allocated in update_gb
 ```
 
+## Procedural to Functional Pattern Translation
+
+This section shows how familiar procedural (imperative) patterns translate to functional patterns using immutable operations. Understanding these translations helps you apply existing programming knowledge to the functional API.
+
+### Pattern 1: Building a Collection Iteratively
+
+**Procedural approach** (mutable append):
+```c
+// Traditional mutable vector/array
+struct vector {
+    fy_generic *items;
+    size_t count;
+    size_t capacity;
+};
+
+struct vector *vec = vector_create();
+for (size_t i = 0; i < data_count; i++) {
+    vector_append(vec, process(data[i]));  // Modifies vec in place
+}
+// vec now contains all items
+```
+
+**Functional approach** (immutable conj):
+```c
+struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
+
+fy_generic result = fy_sequence();  // Start empty
+for (size_t i = 0; i < data_count; i++) {
+    result = fy_conj(gb, result, process(data[i]));  // Creates new version
+}
+// result contains all items, intermediate versions automatically managed
+```
+
+**Key insight**: Instead of mutating a vector in place, each `fy_conj()` creates a new version. The builder manages memory efficiently through structural sharing - you get the same logical result without manual memory management.
+
+### Pattern 2: Updating a Dictionary/Map
+
+**Procedural approach** (in-place update):
+```c
+// Traditional hash table
+struct hash_map *config = hash_map_create();
+hash_map_set(config, "host", "localhost");     // Modifies config
+hash_map_set(config, "port", 8080);             // Modifies config
+hash_map_set(config, "debug", false);           // Modifies config
+
+// Later: modify existing value
+hash_map_set(config, "port", 9090);             // Overwrites old value
+```
+
+**Functional approach** (immutable assoc):
+```c
+// Start with base configuration
+fy_generic config = fy_mapping(
+    "host", "localhost",
+    "port", 8080,
+    "debug", false
+);
+
+// Create new version with updated port
+fy_generic new_config = fy_assoc(config, "port", 9090);
+
+// Both versions coexist - config unchanged, new_config has new port
+// No need to track which version is "current" unless you want to
+```
+
+**Key insight**: You don't lose the ability to have a "current" config - just reassign the variable. But now you also have the *option* to keep old versions for undo, comparison, or concurrent access.
+
+### Pattern 3: Conditional Updates
+
+**Procedural approach** (modify if condition):
+```c
+if (is_production) {
+    hash_map_set(config, "debug", false);
+    hash_map_set(config, "workers", 8);
+} else {
+    hash_map_set(config, "debug", true);
+    hash_map_set(config, "verbose", true);
+}
+// config modified in place based on condition
+```
+
+**Functional approach** (conditional creation):
+```c
+fy_generic config = base_config;
+
+if (is_production) {
+    config = fy_assoc(
+        fy_assoc(config, "debug", false),
+        "workers", 8
+    );
+} else {
+    config = fy_assoc(
+        fy_assoc(config, "debug", true),
+        "verbose", true
+    );
+}
+// config now holds appropriate version
+```
+
+**Or even cleaner - keep both versions**:
+```c
+fy_generic prod_config = fy_assoc(
+    fy_assoc(base_config, "debug", false),
+    "workers", 8
+);
+
+fy_generic dev_config = fy_assoc(
+    fy_assoc(base_config, "debug", true),
+    "verbose", true
+);
+
+// Use whichever you need, both exist simultaneously
+fy_generic config = is_production ? prod_config : dev_config;
+```
+
+### Pattern 4: Accumulating Values (Map-Reduce)
+
+**Procedural approach** (accumulator variable):
+```c
+int total = 0;
+for (size_t i = 0; i < users_count; i++) {
+    if (users[i].active) {
+        total += users[i].age;  // Mutates accumulator
+    }
+}
+int average = total / active_count;
+```
+
+**Functional approach** (same pattern with immutable collections):
+```c
+fy_generic users = get_users();
+
+int total = 0;
+int active_count = 0;
+
+for (size_t i = 0; i < fy_len(users); i++) {
+    fy_generic user = fy_get_item(users, i);
+
+    if (fy_map_get(user, "active", false)) {
+        total += fy_map_get(user, "age", 0);  // Local accumulator still fine
+        active_count++;
+    }
+}
+
+int average = active_count > 0 ? total / active_count : 0;
+```
+
+**Key insight**: Immutability applies to collections, not local variables. Regular procedural loops with accumulators work fine. The difference is that `users` collection itself never changes.
+
+### Pattern 5: Filtering and Transforming
+
+**Procedural approach** (build output list):
+```c
+struct vector *active_users = vector_create();
+for (size_t i = 0; i < users_count; i++) {
+    if (users[i].active) {
+        struct user transformed = transform_user(users[i]);
+        vector_append(active_users, transformed);  // Mutates output
+    }
+}
+```
+
+**Functional approach** (build immutable sequence):
+```c
+struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
+fy_generic users = get_users();
+fy_generic active_users = fy_sequence();
+
+for (size_t i = 0; i < fy_len(users); i++) {
+    fy_generic user = fy_get_item(users, i);
+
+    if (fy_map_get(user, "active", false)) {
+        fy_generic transformed = transform_user(user);
+        active_users = fy_conj(gb, active_users, transformed);
+    }
+}
+// active_users contains filtered and transformed results
+```
+
+**Key insight**: The loop structure is identical. The only change is using `fy_conj()` instead of a mutable append, which gives you structural sharing and the ability to keep intermediate results if needed.
+
+### Pattern 6: Updating Nested Structures
+
+**Procedural approach** (navigate and mutate):
+```c
+// Update deeply nested value
+config->server->connection->timeout = 30;
+
+// Or with hash maps:
+struct hash_map *server = hash_map_get(config, "server");
+struct hash_map *conn = hash_map_get(server, "connection");
+hash_map_set(conn, "timeout", 30);  // Modifies nested structure
+```
+
+**Functional approach** (rebuild path to change):
+```c
+// Get nested values
+fy_generic server = fy_map_get(config, "server", fy_map_empty);
+fy_generic conn = fy_map_get(server, "connection", fy_map_empty);
+
+// Update nested value
+fy_generic new_conn = fy_assoc(conn, "timeout", 30);
+fy_generic new_server = fy_assoc(server, "connection", new_conn);
+fy_generic new_config = fy_assoc(config, "server", new_server);
+
+// new_config has updated timeout, config unchanged
+// All unchanged parts (database, cache, etc.) are shared
+```
+
+**Or more concisely**:
+```c
+fy_generic new_config = fy_assoc(
+    config,
+    "server",
+    fy_assoc(
+        fy_map_get(config, "server", fy_map_empty),
+        "connection",
+        fy_assoc(
+            fy_map_get(
+                fy_map_get(config, "server", fy_map_empty),
+                "connection",
+                fy_map_empty
+            ),
+            "timeout",
+            30
+        )
+    )
+);
+```
+
+**Key insight**: You rebuild the path from the change to the root, but structural sharing means only the changed path allocates new memory. Everything else is shared.
+
+### Pattern 7: Removing Items
+
+**Procedural approach** (remove from list/map):
+```c
+// Remove from hash map
+hash_map_remove(config, "debug");  // Modifies config
+
+// Remove from vector (shifting elements)
+vector_remove_at(items, index);  // Modifies items, expensive O(n)
+```
+
+**Functional approach** (create version without item):
+```c
+// Remove from mapping
+fy_generic new_config = fy_dissoc(config, "debug");
+// config unchanged, new_config lacks "debug" key
+
+// For sequences: build new sequence excluding item
+struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
+fy_generic new_items = fy_sequence();
+
+for (size_t i = 0; i < fy_len(items); i++) {
+    if (i != index_to_remove) {
+        new_items = fy_conj(gb, new_items, fy_get_item(items, i));
+    }
+}
+// new_items lacks the item at index_to_remove
+```
+
+**Key insight**: For mappings, `fy_dissoc()` is straightforward. For sequences, you filter while building. This is efficient with structural sharing.
+
+### Pattern 8: Swapping Between Versions (Undo/Redo)
+
+**Procedural approach** (complex state tracking):
+```c
+struct state_manager {
+    void *current_state;
+    void **history;       // Deep copies of previous states
+    size_t history_count;
+};
+
+void undo(struct state_manager *sm) {
+    if (sm->history_count > 0) {
+        free_state(sm->current_state);
+        sm->current_state = deep_copy(sm->history[--sm->history_count]);
+    }
+}
+// Expensive: must deep copy entire state each time
+```
+
+**Functional approach** (just store versions):
+```c
+struct state_manager {
+    struct fy_generic_builder *gb;
+    fy_generic history[MAX_HISTORY];  // Just pointers!
+    size_t current;
+};
+
+void undo(struct state_manager *sm) {
+    if (sm->current > 0) {
+        sm->current--;  // Just move pointer
+    }
+}
+
+fy_generic get_current(struct state_manager *sm) {
+    return sm->history[sm->current];  // O(1) access
+}
+// Cheap: versions share structure, no copying needed
+```
+
+**Key insight**: Immutability makes version history trivial - just keep pointers to versions. Structural sharing means this doesn't explode memory.
+
+### Pattern 9: Thread-Safe Updates
+
+**Procedural approach** (locks required):
+```c
+pthread_mutex_t config_lock = PTHREAD_MUTEX_INITIALIZER;
+struct hash_map *global_config;
+
+void update_config(const char *key, int value) {
+    pthread_mutex_lock(&config_lock);
+    hash_map_set(global_config, key, value);  // Must lock for safety
+    pthread_mutex_unlock(&config_lock);
+}
+
+int get_config_value(const char *key) {
+    pthread_mutex_lock(&config_lock);        // Even reads need locks!
+    int value = hash_map_get(global_config, key);
+    pthread_mutex_unlock(&config_lock);
+    return value;
+}
+```
+
+**Functional approach** (lock-free reads):
+```c
+fy_generic global_config;  // Immutable once set
+
+// Reads are lock-free
+int get_config_value(const char *key) {
+    return fy_map_get(global_config, key, 0);  // No lock needed!
+}
+
+// Updates create new version (might want atomic swap for writing)
+void update_config(const char *key, int value) {
+    struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
+    fy_generic new_config = fy_assoc(gb, global_config, key, value);
+
+    // Could use atomic pointer swap here for lock-free writes too
+    global_config = new_config;  // Simple assignment (or atomic_store)
+
+    fy_generic_builder_destroy(gb);
+}
+```
+
+**Key insight**: Immutability eliminates read locks entirely. Writers create new versions without blocking readers. This is a huge win for concurrent systems.
+
+### Pattern 10: Building Results Conditionally
+
+**Procedural approach** (conditional append):
+```c
+struct vector *results = vector_create();
+for (size_t i = 0; i < count; i++) {
+    fy_generic item = process(data[i]);
+
+    if (is_valid(item)) {
+        vector_append(results, item);     // Conditional mutation
+    }
+}
+```
+
+**Functional approach** (conditional conj):
+```c
+struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
+fy_generic results = fy_sequence();
+
+for (size_t i = 0; i < count; i++) {
+    fy_generic item = process(data[i]);
+
+    if (is_valid(item)) {
+        results = fy_conj(gb, results, item);  // Conditional creation
+    }
+}
+```
+
+**Key insight**: The patterns are nearly identical. The functional version gives you immutability benefits with the same familiar control flow.
+
+## Summary: Procedural vs Functional
+
+| Procedural Pattern | Functional Equivalent | Benefits |
+|-------------------|----------------------|----------|
+| `vector_append(v, x)` | `v = fy_conj(gb, v, x)` | Can keep old versions |
+| `map_set(m, k, val)` | `m = fy_assoc(gb, m, k, val)` | Old map still accessible |
+| `map_remove(m, k)` | `m = fy_dissoc(gb, m, k)` | Non-destructive |
+| `m->field = x` (nested) | `m = fy_assoc(m, "field", x)` | Structural sharing |
+| `deep_copy(state)` | Just use same pointer | Zero-copy versioning |
+| Read with lock | `fy_map_get(m, k, 0)` | Lock-free reads |
+| Accumulator loop | Same accumulator loop | Collections immutable |
+
+**The key realization**: You still write familiar loops and conditionals. The difference is:
+- Instead of mutating collections in place, you create new versions
+- The API handles efficiency through structural sharing
+- You get thread safety and version history "for free"
+
+The procedural *control flow* (loops, conditionals, accumulators) stays the same. Only collection *updates* change from mutation to creation of new versions.
+
 ## API Summary
 
 | Operation | Mapping | Sequence | Returns |
