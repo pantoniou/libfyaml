@@ -1984,7 +1984,6 @@ static inline fy_generic_value fy_generic_out_of_place_put_mapping_handle(void *
 		fy_generic_value _r;								\
 												\
 		_r = fy_generic_in_place_char_ptr_len((_v), (_len));				\
-		_r = fy_generic_in_place_char_ptr_len((_v), (_len));				\
 		if (_r == fy_invalid_value) {							\
 			if ((_len) < ((uint64_t)1 <<  7)) {					\
 				static const struct {						\
@@ -2059,7 +2058,7 @@ static inline fy_generic_value fy_generic_out_of_place_put_mapping_handle(void *
 		fy_string_size_alloca(___v, ___len);		\
 	})
 
-#define fy_string_const(_v) fy_string_size_const((_v), strlen(_v))
+#define fy_string_const(_v) fy_string_size_const((_v), (sizeof(_v) - 1))
 
 #define fy_string_size(_v, _len) \
 	((fy_generic){ .v = __builtin_constant_p(_v) ? fy_string_size_const((_v), (_len)) : fy_string_size_alloca((_v), (_len)) })
