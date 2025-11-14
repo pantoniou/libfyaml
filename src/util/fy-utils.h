@@ -241,45 +241,42 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 })
 #endif
 
+static inline void fy_strip_trailing_nl(char *str)
+{
+	char *s;
+
+	if (str) {
+		s = str + strlen(str);
+		while (s > str && s[-1] == '\n')
+			*--s = '\0';
+	}
+}
+
 /* alloca formatted print methods */
-#define alloca_vsprintf(_fmt, _ap) \
+#define fy_vsprintfa(_fmt, _ap) \
 	({ \
 		const char *__fmt = (_fmt); \
 		va_list _ap_orig; \
 		int _size; \
-		int _sizew __FY_DEBUG_UNUSED__; \
-		char *_buf = NULL, *_s; \
+		char *_buf; \
 		\
 		va_copy(_ap_orig, (_ap)); \
 		_size = vsnprintf(NULL, 0, __fmt, _ap_orig); \
 		va_end(_ap_orig); \
-		if (_size != -1) { \
-			_buf = alloca(_size + 1); \
-			_sizew = vsnprintf(_buf, _size + 1, __fmt, _ap); \
-			assert(_size == _sizew); \
-			_s = _buf + strlen(_buf); \
-			while (_s > _buf && _s[-1] == '\n') \
-				*--_s = '\0'; \
-		} \
+		_buf = alloca(_size + 1); \
+		(void)vsnprintf(_buf, _size + 1, __fmt, (_ap)); \
 		_buf; \
 	})
 
-#define alloca_sprintf(_fmt, ...) \
+#define fy_sprintfa(_fmt, ...) \
 	({ \
 		const char *__fmt = (_fmt); \
 		int _size; \
-		int _sizew __FY_DEBUG_UNUSED__; \
-		char *_buf = NULL, *_s; \
+		char *_buf; \
 		\
 		_size = snprintf(NULL, 0, __fmt, ## __VA_ARGS__); \
-		if (_size != -1) { \
-			_buf = alloca(_size + 1); \
-			_sizew = snprintf(_buf, _size + 1, __fmt, __VA_ARGS__); \
-			assert(_size == _sizew); \
-			_s = _buf + strlen(_buf); \
-			while (_s > _buf && _s[-1] == '\n') \
-				*--_s = '\0'; \
-		} \
+		_buf = alloca(_size + 1); \
+		(void)snprintf(_buf, _size + 1, __fmt, __VA_ARGS__); \
 		_buf; \
 	})
 
