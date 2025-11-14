@@ -2068,20 +2068,7 @@ static inline fy_generic_value fy_generic_out_of_place_put_mapping_handle(void *
 
 #define fy_stringf_value(_fmt, ...) \
 	({ \
-		const char *__fmt = (_fmt); \
-		int _size; \
-		int _sizew __FY_DEBUG_UNUSED__; \
-		char *_buf = NULL, *_s; \
-		\
-		_size = snprintf(NULL, 0, __fmt, ## __VA_ARGS__); \
-		if (_size != -1) { \
-			_buf = alloca(_size + 1); \
-			_sizew = snprintf(_buf, _size + 1, __fmt, __VA_ARGS__); \
-			assert(_size == _sizew); \
-			_s = _buf + strlen(_buf); \
-			while (_s > _buf && _s[-1] == '\n') \
-				*--_s = '\0'; \
-		} \
+	 	char *_buf = fy_sprintfa((_fmt), ## __VA_ARGS__); \
 		fy_string_alloca(_buf); \
 	})
 
