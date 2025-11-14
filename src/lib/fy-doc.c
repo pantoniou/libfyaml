@@ -277,7 +277,7 @@ int fy_node_set_vanchorf(struct fy_node *fyn, const char *fmt, va_list ap)
 	if (!fyn || !fmt)
 		return -1;
 
-	return fy_document_set_anchor_internal(fyn->fyd, fyn, alloca_vsprintf(fmt, ap), FY_NT, FYDSAF_COPY);
+	return fy_document_set_anchor_internal(fyn->fyd, fyn, fy_vsprintfa(fmt, ap), FY_NT, FYDSAF_COPY);
 }
 
 int fy_node_set_anchorf(struct fy_node *fyn, const char *fmt, ...)
@@ -5018,8 +5018,7 @@ char *fy_node_get_short_path(struct fy_node *fyn)
 	struct fy_anchor *fya;
 	const char *text;
 	size_t len;
-	const char *str;
-	char *path;
+	char *str, *path;
 
 	if (!fyn)
 		return NULL;
@@ -5036,10 +5035,11 @@ char *fy_node_get_short_path(struct fy_node *fyn)
 		return NULL;
 
 	if (fyn_anchor == fyn)
-		str = alloca_sprintf("*%.*s", (int)len, text);
+		str = fy_sprintfa("*%.*s", (int)len, text);
 	else
-		str = alloca_sprintf("*%.*s/%s", (int)len, text,
+		str = fy_sprintfa("*%.*s/%s", (int)len, text,
 				fy_node_get_path_relative_to_alloca(fyn_anchor, fyn));
+	fy_strip_trailing_nl(str);
 
 	path = strdup(str);
 	return path;
@@ -5345,7 +5345,7 @@ struct fy_node *fy_node_create_vscalarf(struct fy_document *fyd, const char *fmt
 	if (!fyd || !fmt)
 		return NULL;
 
-	return fy_node_create_scalar_internal(fyd, alloca_vsprintf(fmt, ap), FY_NT, FYNCSIF_COPY);
+	return fy_node_create_scalar_internal(fyd, fy_vsprintfa(fmt, ap), FY_NT, FYNCSIF_COPY);
 }
 
 struct fy_node *fy_node_create_scalarf(struct fy_document *fyd, const char *fmt, ...)
