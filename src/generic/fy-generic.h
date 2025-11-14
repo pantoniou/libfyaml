@@ -34,6 +34,7 @@
 #define GCC_DISABLE_WSTRICT_ALIASING
 #endif
 
+/* DO NOT REORDER - we especially rely on INT, FLOAT and STRING being consecutive */
 enum fy_generic_type {
 	FYGT_INVALID,
 	FYGT_NULL,
@@ -230,15 +231,16 @@ typedef intptr_t fy_generic_value_signed;
 #define FY_ESCAPE_MARK		((1 << (FY_ESCAPE_SHIFT - 1)) | FY_INDIRECT_V)
 #define FY_IS_ESCAPE(_v)	(((fy_generic_value)(_v) & FY_ESCAPE_MASK) == FY_ESCAPE_MARK)
 
-#define FY_ESCAPE_ALT_NULL	0
-#define FY_ESCAPE_ALT_FALSE	1
-#define FY_ESCAPE_ALT_TRUE	2
+#define FY_ESCAPE_NULL		0
+#define FY_ESCAPE_FALSE		1
+#define FY_ESCAPE_TRUE		2
+#define FY_ESCAPE_COUNT		3
 
 #define FY_MAKE_ESCAPE(_v)		(((fy_generic_value)(_v) << FY_ESCAPE_SHIFT) | FY_ESCAPE_MARK)
 
-#define fy_null_value			FY_MAKE_ESCAPE(FY_ESCAPE_ALT_NULL)
-#define fy_false_value			FY_MAKE_ESCAPE(FY_ESCAPE_ALT_FALSE)
-#define fy_true_value			FY_MAKE_ESCAPE(FY_ESCAPE_ALT_TRUE)
+#define fy_null_value			FY_MAKE_ESCAPE(FY_ESCAPE_NULL)
+#define fy_false_value			FY_MAKE_ESCAPE(FY_ESCAPE_FALSE)
+#define fy_true_value			FY_MAKE_ESCAPE(FY_ESCAPE_TRUE)
 #define fy_invalid_value		FY_MAKE_ESCAPE(-1)
 #define fy_seq_empty_value		((fy_generic_value)(FY_SEQ_V | 0))
 #define fy_map_empty_value		((fy_generic_value)(FY_MAP_V | 0))
@@ -354,7 +356,7 @@ static inline fy_generic fy_generic_relocate_collection_ptr(fy_generic v, ptrdif
 	return v;
 }
 
-static inline enum fy_generic_type fy_generic_get_direct_type(fy_generic v)
+static inline enum fy_generic_type fy_generic_get_direct_type_table(fy_generic v)
 {
 	static const uint8_t table[16] = {
 		[0] = FYGT_SEQUENCE, [8 | 0] = FYGT_MAPPING,
@@ -366,10 +368,10 @@ static inline enum fy_generic_type fy_generic_get_direct_type(fy_generic v)
 		[6] = FYGT_STRING,   [8 | 6] = FYGT_STRING,
 		[7] = FYGT_INDIRECT, [8 | 7] = FYGT_INVALID,	// this is the escape
 	};
-	static const enum fy_generic_type escapes[] = {
-		[FY_ESCAPE_ALT_NULL] = FYGT_NULL,
-		[FY_ESCAPE_ALT_FALSE] = FYGT_BOOL,
-		[FY_ESCAPE_ALT_TRUE] = FYGT_BOOL,
+	static const enum fy_generic_type escapes[FY_ESCAPE_COUNT] = {
+		[FY_ESCAPE_NULL] = FYGT_NULL,
+		[FY_ESCAPE_FALSE] = FYGT_BOOL,
+		[FY_ESCAPE_TRUE] = FYGT_BOOL,
 	};
 	enum fy_generic_type type;
 	unsigned int escape_code;
@@ -381,6 +383,42 @@ static inline enum fy_generic_type fy_generic_get_direct_type(fy_generic v)
 	escape_code = (unsigned int)(v.v >> FY_ESCAPE_SHIFT);
 	return escape_code < ARRAY_SIZE(escapes) ? escapes[escape_code] : FYGT_INVALID;
 }
+
+/*
+ * The type is encoded at the lower 4 bits
+ *
+ * First we have the collections and the indirect/escape codes
+ * 0 -> seq, 8 -> mapping, 7 -> indirect, 15 -> escape codes
+ *
+ * Now we have to find the type of INT, FLOAT, STRING, they are are consecutive
+ * mask out the high bit because it is used, type is now on low 3 bits
+ *
+ * we have to map: 1, 2 -> int 3, 4 -> float 5, 6 -> string
+ * subtract 1: 0, 1 -> int 2, 3 -> float 4, 5 -> string
+ * shift right: 0 -> int, 1 -> float, 2 -> string
+ * add FYGT_INT and we're done
+ */
+static inline enum fy_generic_type fy_generic_get_direct_type_bithack(fy_generic v)
+{
+	switch (v.v & 15) {
+		case     0:
+			return FYGT_SEQUENCE;
+		case 8 | 0:
+			return FYGT_MAPPING;
+		case     7:
+			return FYGT_INDIRECT;
+		case 8 | 7:
+			const unsigned int escape_code = (unsigned int)(v.v >> FY_ESCAPE_SHIFT);
+			return escape_code < FY_ESCAPE_COUNT ? FY_MAKE_ESCAPE(escape_code) : FYGT_INVALID;
+		default:
+			break;
+	}
+
+	return FYGT_INT + (((v.v & 7) - 1) >> 1);
+}
+
+#define fy_generic_get_direct_type(_v) \
+	(fy_generic_get_direct_type_bithack((_v)))
 
 static inline bool fy_generic_is_in_place(fy_generic v)
 {
