@@ -6384,7 +6384,7 @@ int checkout_sum(fy_generic seq)
 
 	sum = 0;
 	for (i = 0; i < fy_len(seq); i++)
-		sum += fy_generic_get_default_2(seq, i, 0);
+		sum += fy_get_default(seq, i, 0);
 	return sum;
 }
 
@@ -6397,6 +6397,49 @@ int checkout_sumh(fy_generic_sequence_handle seqh)
 	for (i = 0; i < fy_len(seqh); i++)
 		sum += fy_get_default(seqh, i, 0);
 	return sum;
+}
+
+int checkout_items(fy_generic seq)
+{
+	(void)seq;
+
+	fy_generic v = fy_sequence(1, 2, 3);
+
+	return (int)fy_len(v);
+}
+
+fy_generic_sequence_handle checkout_items2(fy_generic_sequence_handle seqh)
+{
+	fy_generic seq;
+	fy_generic_sequence_handle seqh2;
+
+	seq = fy_to_generic(seqh);
+	seqh2 = fy_generic_cast_default(seq, fy_seq_handle_null);
+	return seqh2;
+}
+
+fy_generic checkout_items3(fy_generic v)
+{
+	fy_generic vv = fy_to_generic(v);
+	return vv;
+}
+
+fy_generic_sequence_handle checkout_items4(fy_generic v)
+{
+	return fy_cast_default(v, fy_seq_handle_null);
+}
+
+fy_generic checkout_items5(fy_generic_sequence_handle seqh)
+{
+	return fy_to_generic(seqh);
+}
+
+const char *checkout_items6(fy_generic v)
+{
+	const char *str;
+
+	str = fy_genericp_cast_default(&v, "");
+	return strdup(str);
 }
 
 #endif

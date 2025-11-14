@@ -317,13 +317,14 @@ typedef struct fy_generic_indirect {
 #define FYGIF_BLOCK		(5U << FYGIF_STYLE_SHIFT)	/* collection styles */
 #define FYGIF_FLOW		(6U << FYGIF_STYLE_SHIFT)
 
+static inline bool fy_generic_is_direct(fy_generic v)
+{
+	return (v.v & FY_ESCAPE_MARK) != FY_INDIRECT_V;
+}
+
 static inline bool fy_generic_is_indirect(fy_generic v)
 {
-	if (v.v == fy_invalid_value)
-		return false;
-
-	/* we must check against the escape mask because the escape uses the same bits for indirect v */
-	return (v.v & FY_ESCAPE_MARK) == FY_INDIRECT_V;
+	return !fy_generic_is_direct(v);
 }
 
 static inline const void *fy_generic_resolve_ptr(fy_generic ptr)
@@ -463,24 +464,16 @@ static inline bool fy_generic_is_in_place(fy_generic v)
 static inline enum fy_generic_type fy_generic_get_type(fy_generic v)
 {
 	const fy_generic_value *p;
-	uintptr_t flags;
-	enum fy_generic_type type;
 
-	type = fy_generic_get_direct_type(v);
-	if (type != FYGT_INDIRECT)
-		return type;
-
-	/* get the indirect */
-	p = fy_generic_resolve_collection_ptr(v);
-
-	/* an invalid value marks an alias, the value of the alias is at the anchor */
-	flags = *p++;
-	if (!(flags & FYGIF_VALUE))
-		return FYGT_ALIAS;
-	/* value immediately follows */
-	v.v = *p;
-	type = fy_generic_get_direct_type(v);
-	return type != FYGT_INDIRECT ? type : FYGT_INVALID;
+	if (fy_generic_is_indirect(v)) {
+		p = fy_generic_resolve_collection_ptr(v);
+		if (!(p[0] & FYGIF_VALUE))
+			return FYGT_ALIAS;
+		v.v = p[1];
+		if (fy_generic_is_indirect(v))
+			return FYGT_INVALID;
+	}
+	return fy_generic_get_direct_type(v);
 }
 
 static inline void fy_generic_indirect_get(fy_generic v, fy_generic_indirect *gi)
@@ -2226,11 +2219,18 @@ static inline fy_generic_value fy_generic_out_of_place_put_mapping_handle(void *
 #define fy_indirect(_v, _anchor, _tag)	\
 	((fy_generic){ .v = fy_indirect_alloca((_v).v, (_anchor).v, (_tag).v) })
 
-static inline fy_generic fy_generic_cast_generic_default(fy_generic v, fy_generic vdefault)
+static inline fy_generic fy_generic_cast_generic_default(fy_generic v, fy_generic default_value)
 {
 	if (fy_generic_is_valid(v))
 		return v;
-	return vdefault;
+	return default_value;
+}
+
+static inline fy_generic fy_genericp_cast_generic_default(const fy_generic *vp, fy_generic default_value)
+{
+	if (!vp)
+		return default_value;
+	return fy_generic_cast_generic_default(*vp, default_value);
 }
 
 static inline fy_generic_sequence_handle fy_generic_cast_sequence_handle_default(fy_generic v, fy_generic_sequence_handle default_value)
@@ -2239,10 +2239,24 @@ static inline fy_generic_sequence_handle fy_generic_cast_sequence_handle_default
 	return seqh ? seqh : default_value;
 }
 
+static inline fy_generic_sequence_handle fy_genericp_cast_sequence_handle_default(const fy_generic *vp, fy_generic_sequence_handle default_value)
+{
+	if (!vp)
+		return default_value;
+	return fy_generic_cast_sequence_handle_default(*vp, default_value);
+}
+
 static inline fy_generic_mapping_handle fy_generic_cast_mapping_handle_default(fy_generic v, fy_generic_mapping_handle default_value)
 {
 	const fy_generic_mapping_handle maph = fy_generic_mapping_to_handle(v);
 	return maph ? maph : default_value;
+}
+
+static inline fy_generic_mapping_handle fy_genericp_cast_mapping_handle_default(const fy_generic *vp, fy_generic_mapping_handle default_value)
+{
+	if (!vp)
+		return default_value;
+	return fy_generic_cast_mapping_handle_default(*vp, default_value);
 }
 
 /* special... handling for in place strings */
@@ -2284,6 +2298,43 @@ static inline fy_generic_sized_string fy_generic_cast_sized_string_default(fy_ge
 	return (fy_generic_sized_string){ .data = NULL, .size = 0 };
 }
 
+static inline const char *fy_genericp_cast_const_char_ptr_default(const fy_generic *vp, const char *default_value)
+{
+	fy_generic v;
+
+	if (!vp)
+		return default_value;
+
+	v = fy_generic_indirect_get_value(*vp);
+
+	if (fy_generic_is_string(v))
+		return default_value;
+
+	return fy_genericp_get_string_no_check(&v);
+}
+
+static inline char *fy_genericp_cast_char_ptr_default(const fy_generic *vp, char *default_value)
+{
+	return (char *)fy_genericp_cast_const_char_ptr_default(vp, default_value);
+}
+
+static inline fy_generic_sized_string fy_genericp_cast_sized_string_default(const fy_generic *vp, const fy_generic_sized_string default_value)
+{
+	fy_generic v;
+	fy_generic_sized_string ret;
+
+	if (!vp)
+		return default_value;
+
+	v = fy_generic_indirect_get_value(*vp);
+
+	if (!fy_generic_is_string(v))
+		return default_value;
+
+	ret.data = fy_genericp_get_string_size_no_check(&v, &ret.size);
+	return ret;
+}
+
 static inline fy_generic_decorated_int fy_generic_cast_decorated_int_default(fy_generic v, const fy_generic_decorated_int default_value)
 {
 	const fy_generic_decorated_int *p;
@@ -2309,6 +2360,13 @@ static inline fy_generic_decorated_int fy_generic_cast_decorated_int_default(fy_
 	dv.sv = p->sv;
 	dv.is_unsigned = p->is_unsigned;
 	return dv;
+}
+
+static inline fy_generic_decorated_int fy_genericp_cast_decorated_int_default(const fy_generic *vp, const fy_generic_decorated_int default_value)
+{
+	if (!vp)
+		return default_value;
+	return fy_generic_cast_decorated_int_default(*vp, default_value);
 }
 
 static inline size_t fy_generic_cast_const_char_ptr_default_alloca(fy_generic v)
@@ -2420,7 +2478,6 @@ static inline void fy_generic_cast_default_final_never(fy_generic v,
 	fy_generic_decorated_int: ((fy_generic_decorated_int){ }), \
 	fy_generic: fy_null
 
-
 #define fy_generic_cast_default_Generic_dispatch \
 	FY_GENERIC_ALL_SCALARS_DISPATCH_SFX(fy_generic_cast, default), \
 	char *: fy_generic_cast_char_ptr_default, \
@@ -2445,7 +2502,7 @@ static inline void fy_generic_cast_default_final_never(fy_generic v,
 
 #define fy_generic_cast_default(_v, _dv) \
 	({ \
-		fy_generic __v = (_v); \
+		fy_generic __v = fy_to_generic(_v); \
 		fy_generic_typeof(_dv) __dv = (_dv); \
 		fy_generic_typeof(_dv) __ret; \
 		size_t __size; \
@@ -2470,6 +2527,19 @@ static inline void fy_generic_cast_default_final_never(fy_generic v,
 /* when we have a pointer we can return to inplace strings */
 #define fy_generic_cast(_v, _type) \
 	(fy_generic_cast_default((_v), fy_generic_get_type_default(_type)))
+
+#define fy_genericp_cast_default_Generic_dispatch \
+	FY_GENERIC_ALL_SCALARS_DISPATCH_SFX(fy_genericp_cast, default), \
+	char *: fy_genericp_cast_char_ptr_default, \
+	const char *: fy_genericp_cast_const_char_ptr_default, \
+	fy_generic_sequence_handle: fy_genericp_cast_sequence_handle_default, \
+	fy_generic_mapping_handle: fy_genericp_cast_mapping_handle_default, \
+	fy_generic_sized_string: fy_genericp_cast_sized_string_default, \
+	fy_generic_decorated_int: fy_genericp_cast_decorated_int_default, \
+	fy_generic: fy_genericp_cast_generic_default
+
+#define fy_genericp_cast_default(_vp, _dv) \
+	(_Generic((_dv), fy_genericp_cast_default_Generic_dispatch)((_vp), (_dv)))
 
 static inline fy_generic_sequence_handle
 fy_genericp_get_generic_sequence_handle_default(const fy_generic *vp,
@@ -2526,15 +2596,6 @@ fy_genericp_get_szstr_default(const fy_generic *vp, fy_generic_sized_string defa
 	ret.data = fy_genericp_get_string_size_no_check(fy_genericp_indirect_get_valuep(vp), &ret.size);
 	return ret;
 }
-
-#if 0
-static inline const fy_generic *fy_generic_sequence_get_alias_itemp(fy_generic seq, size_t idx)
-{
-	return fy_genericp
-	const fy_generic *vp = fy_generic_sequence_get_itemp(seq, idx);
-	return vp && fy_generic_is_direct_alias(*vp) ? vp : NULL;
-}
-#endif
 
 #define fy_generic_cast_default_coerse(_v, _dv) \
 	({ \
@@ -2884,68 +2945,6 @@ static inline fy_generic fy_get_generic_map_handle(const void *p)
 #define fy_generic_get(_colv, _key, _type) \
 	(fy_generic_get_default((_colv), (_key), fy_generic_get_type_default(_type)))
 
-#define fy_generic_get_default_2(_colv, _key, _dv) \
-	({ \
-		typeof (1 ? (_colv) : (_colv)) __colv = (_colv); \
-		typeof (1 ? (_dv) : (_dv)) __dv = (_dv); \
-		typeof (1 ? (_dv) : (_dv)) __ret; \
-		fy_generic_sequence_handle __seqh = fy_cast_default(__colv, fy_seq_handle_null); \
-		fy_generic_mapping_handle __maph = fy_cast_default(__colv, fy_map_handle_null); \
-		\
-		if (__seqh) { \
-			const size_t __index = fy_generic_cast_default_coerse(_key, LLONG_MAX); \
-			__ret = _Generic(__dv, fy_generic_sequencep_get_default_Generic_dispatch) \
-				(__seqh, __index, __dv); \
-		} else if (__maph) { \
-			const fy_generic __key = fy_to_generic(_key); \
-			__ret = _Generic(__dv, fy_generic_mappingp_get_default_Generic_dispatch) \
-				(__maph, __key, __dv); \
-		} else \
-			__ret = __dv; \
-		__ret; \
-	})
-
-#define fy_generic_get_2(_colv, _key, _type) \
-	(fy_generic_get_default_2((_colv), (_key), fy_generic_get_type_default(_type)))
-
-
-#if 0
-/* when we have a pointer we can return to inplace strings */
-#define fy_genericp_get_default_Generic_dispatch \
-	void *: fy_generic_get_null_default, \
-	_Bool: fy_generic_get_bool_default, \
-	signed char: fy_generic_get_signed_char_default, \
-	unsigned char: fy_generic_get_unsigned_char_default, \
-	signed short: fy_generic_get_signed_short_default, \
-	unsigned short: fy_generic_get_unsigned_short_default, \
-	signed int: fy_generic_get_signed_int_default, \
-	unsigned int: fy_generic_get_unsigned_int_default, \
-	signed long: fy_generic_get_signed_long_default, \
-	unsigned long: fy_generic_get_unsigned_long_default, \
-	signed long long: fy_generic_get_signed_long_long_default, \
-	unsigned long long: fy_generic_get_unsigned_long_long_default, \
-	float: fy_generic_get_float_default, \
-	double: fy_generic_get_double_default, \
-	char *: fy_generic_cast_char_ptr_default, \
-	const char *: fy_generic_cast_const_char_ptr_default, \
-	fy_generic: fy_generic_cast_generic_default
-
-#define fy_genericp_get_default(_vp, _dv) \
-	({ \
-		const fy_generic __vp = (_vp); \
-		typeof ((_dv) + 0) __dv = (_dv); \
-		typeof ((_dv) + 0) __ret; \
-		size_t __size; \
-		void *__p; \
-		\
-		__ret = _Generic(__dv, fy_genericp_get_default_Generic_dispatch)(__v, __dv); \
-	})
-
-#define fy_genericp_get(_vp, _type) \
-	(fy_genericp_get_default((_vp), fy_generic_get_type_default(_type)))
-#endif
-
-
 /* when it's a generic */
 static inline size_t fy_get_len_generic(const void *p)
 {
@@ -3010,6 +3009,11 @@ static inline size_t fy_get_len_map_handle(const void *p)
 #define fy_cast(_v, _type) \
 	fy_generic_cast((_v), (_type))
 
+#define fy_castp_default(_v, _dv) \
+	fy_genericp_cast_default((_v), (_dv))
+
+#define fy_castp(_v, _type) \
+	fy_genericp_cast((_v), (_type))
 
 //////////////////////////////////////////////////////
 
