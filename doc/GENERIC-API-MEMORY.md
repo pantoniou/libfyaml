@@ -546,6 +546,320 @@ Where Δ = size of changes
 
 This pattern enables **database-like MVCC semantics in C** with zero-copy reads, incremental writes, and transactional commits.
 
+### Content-Addressable Canonical Form (Future Direction)
+
+**The vision**: Combine deduplication with **canonical ordering** to create a **deterministic, content-addressable representation** of any generic value.
+
+#### The Core Insight
+
+During normal operation, values are allocated in insertion order for performance. At **serialization/cache-write time**, canonicalize the entire arena:
+
+1. **Sort values by comparison order** within each type class
+2. **Relocate to zero-based offsets** in canonical order
+3. **Generate deterministic byte stream** suitable for content-addressable hashing
+4. **Same logical content = identical bytes** across all documents
+
+#### Why Deferred Canonicalization Works
+
+**Live allocation** (fast, insertion order):
+```c
+// Normal dedup builder - allocations happen in insertion order
+struct fy_generic_builder *gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
+    .policy = FY_ALLOC_DEDUP
+});
+
+// Values allocated as encountered
+fy_generic config = fy_mapping(
+    "port", 8080,      // Allocated first
+    "host", "localhost", // Allocated second (even though "host" < "port" lexically)
+    "timeout", 30      // Allocated third
+);
+
+// Fast: O(1) dedup lookup, O(1) arena append
+```
+
+**Serialization time** (canonicalize once):
+```c
+// Write to cache - canonicalize the arena
+uint8_t hash[32];
+size_t size;
+void *canonical = fy_serialize_canonical(gb, &size, &hash);
+
+// Inside fy_serialize_canonical():
+// 1. Topologically sort all values by comparison order
+// 2. Strings: lexicographic ("host" < "port" < "timeout")
+// 3. Integers: numeric (30 < 8080)
+// 4. Doubles: IEEE 754 total order
+// 5. Collections: recursively canonical (keys sorted)
+// 6. Relocate to zero-based offsets
+// 7. Write deterministic byte stream
+// 8. Compute b3sum hash
+```
+
+**Performance characteristics**:
+- **Live allocation**: O(1) amortized (no sorting overhead)
+- **Serialization**: O(n log n) sort + O(n) write (done once)
+- **Deserialization**: O(n) rebuild dedup table (values already canonical)
+- **Comparison within builder**: O(1) after canonicalization (pointer arithmetic!)
+
+#### Canonical Ordering by Type
+
+**Small immediates** (value in tag):
+```c
+// Integers: already canonical
+fy_generic a = fy_int(42);
+fy_generic b = fy_int(100);
+// Tag comparison: a.tag < b.tag ⟺ 42 < 100
+```
+
+**Heap values** (pointer in tag, canonical after serialization):
+```c
+// Doubles: sorted by IEEE 754 total order
+fy_generic e = fy_double(2.71828);
+fy_generic pi = fy_double(3.14159);
+fy_generic tau = fy_double(6.28318);
+
+// After canonicalization:
+// e at offset 0x0000, pi at 0x0008, tau at 0x0010
+// Pointer comparison: e.ptr < pi.ptr < tau.ptr ⟺ 2.71828 < 3.14159 < 6.28318
+```
+
+**Strings** (lexicographic order):
+```c
+// Sorted by strcmp
+fy_generic alice = fy_string("alice");
+fy_generic bob = fy_string("bob");
+fy_generic charlie = fy_string("charlie");
+
+// After canonicalization:
+// "alice" at offset 0x0000, "bob" at 0x0020, "charlie" at 0x0040
+// Pointer comparison: alice.ptr < bob.ptr < charlie.ptr
+```
+
+**Mappings** (canonical key order):
+```c
+// Key order doesn't matter - canonical form sorts keys
+fy_generic config1 = fy_mapping("port", 8080, "host", "localhost");
+fy_generic config2 = fy_mapping("host", "localhost", "port", 8080);
+
+// After canonicalization:
+// Both become: {"host": "localhost", "port": 8080} (keys sorted)
+// Dedup recognizes them as identical
+// config1.ptr == config2.ptr (same canonical form!)
+```
+
+**Sequences** (preserve insertion order):
+```c
+// Order matters for sequences
+fy_generic seq1 = fy_sequence("a", "b", "c");
+fy_generic seq2 = fy_sequence("c", "b", "a");
+
+// Different sequences (order preserved)
+// But elements internally canonicalized
+```
+
+#### O(1) Comparison After Canonicalization
+
+Once canonicalized, comparison becomes **pointer arithmetic**:
+
+```c
+// After fy_serialize_canonical() or fy_builder_canonicalize()
+int fy_compare_canonical(fy_generic a, fy_generic b) {
+    // Fast path: same builder, same type, canonical
+    if (fy_same_builder(a, b) && fy_type(a) == fy_type(b) && fy_is_canonical(a)) {
+        return (intptr_t)a.tag - (intptr_t)b.tag;  // Pointer arithmetic!
+    }
+
+    // Slow path: deep comparison
+    return fy_deep_compare(a, b);
+}
+
+bool fy_equals_canonical(fy_generic a, fy_generic b) {
+    // Deduplicated + canonical = pointer equality
+    return a.tag == b.tag && fy_same_builder(a, b);
+}
+```
+
+#### Content-Addressable Storage
+
+**Deterministic hashing** enables Git-like content addressing:
+
+```c
+// Parse YAML, build in dedup arena
+struct fy_generic_builder *gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
+    .policy = FY_ALLOC_DEDUP
+});
+fy_generic config = parse_yaml(gb, "config.yaml");
+
+// Serialize to canonical form with b3sum hash
+uint8_t hash[32];
+size_t size;
+void *canonical = fy_serialize_canonical(gb, &size, &hash);
+
+// Store in content-addressable cache
+char hash_hex[65];
+b3sum_to_hex(hash, hash_hex);
+cache_store(hash_hex, canonical, size);
+
+// Later: retrieve by content hash
+void *retrieved = cache_fetch(hash_hex);
+fy_generic restored = fy_deserialize_canonical(retrieved, size);
+```
+
+**Same content = same hash** (across all documents):
+```c
+// Two parsers, same logical content
+fy_generic doc1 = parse_yaml(gb1, "config.yaml");
+fy_generic doc2 = parse_json(gb2, "{\"host\": \"localhost\", \"port\": 8080}");
+
+// Different formats, same logical structure
+uint8_t hash1[32], hash2[32];
+fy_serialize_canonical(gb1, NULL, &hash1);
+fy_serialize_canonical(gb2, NULL, &hash2);
+
+// Identical hashes!
+assert(memcmp(hash1, hash2, 32) == 0);
+```
+
+#### Use Cases
+
+**Build system caching**:
+```c
+// Cache build outputs by input hash
+uint8_t input_hash[32];
+fy_serialize_canonical(build_config, NULL, &input_hash);
+
+void *cached_output = build_cache_lookup(input_hash);
+if (cached_output) {
+    return deserialize(cached_output);  // Cache hit!
+}
+
+// Build and cache
+output = expensive_build(build_config);
+build_cache_store(input_hash, serialize(output));
+```
+
+**Incremental computation**:
+```c
+// Track dependencies by content hash
+struct computation {
+    uint8_t input_hash[32];
+    uint8_t output_hash[32];
+    fy_generic cached_result;
+};
+
+// Check if input changed
+uint8_t current_hash[32];
+fy_serialize_canonical(input, NULL, &current_hash);
+
+if (memcmp(current_hash, comp.input_hash, 32) == 0) {
+    return comp.cached_result;  // Input unchanged, use cached result
+}
+
+// Recompute
+comp.cached_result = compute(input);
+memcpy(comp.input_hash, current_hash, 32);
+fy_serialize_canonical(comp.cached_result, NULL, &comp.output_hash);
+```
+
+**Merkle tree / structural sharing**:
+```c
+// Subtrees with same hash are structurally identical
+fy_generic prod = fy_mapping(
+    "env", "production",
+    "database", common_db_config  // Shared subtree
+);
+
+fy_generic dev = fy_mapping(
+    "env", "development",
+    "database", common_db_config  // Same pointer after dedup
+);
+
+// Subtree hash: common_db_config has identical hash in both
+uint8_t db_hash[32];
+fy_serialize_canonical_subtree(common_db_config, NULL, &db_hash);
+
+// Can efficiently detect "configs differ only in env field"
+```
+
+**Git-like IPFS/CAS**:
+```c
+// Store by content hash (like Git objects)
+uint8_t hash[32];
+void *data = fy_serialize_canonical(document, &size, &hash);
+
+// Store in content-addressable storage
+cas_put(hash, data, size);
+
+// Retrieve by hash
+void *retrieved = cas_get(hash);
+fy_generic doc = fy_deserialize_canonical(retrieved, size);
+
+// Automatic deduplication: same content stored once
+```
+
+#### Why This Approach Is Optimal
+
+**Separating concerns**:
+- ✅ **Live performance**: No sorting overhead during allocation
+- ✅ **Determinism**: Canonical form computed once at serialization
+- ✅ **Flexibility**: Can use either raw or canonical representations
+- ✅ **Compatibility**: Existing dedup code unchanged
+
+**Comparison to alternatives**:
+
+| Approach | Live Allocation | Serialization | Comparison |
+|----------|----------------|---------------|------------|
+| **Always sorted** | O(log n) insert | O(n) copy | O(1) pointer |
+| **Deferred canonical** | O(1) insert | O(n log n) sort | O(1) after canonicalization |
+| **No canonicalization** | O(1) insert | O(n) copy | O(n) deep compare |
+
+**Deferred canonicalization wins**:
+- Same O(1) live performance as non-canonical
+- One-time O(n log n) cost only when serializing (caching, persistence)
+- O(1) comparisons after canonicalization
+- Deterministic hashing for content addressing
+
+#### Implementation Sketch
+
+```c
+// Canonicalize builder in-place (for fast comparisons)
+void fy_builder_canonicalize(struct fy_generic_builder *gb) {
+    // Sort all values by type and comparison order
+    qsort_by_type_and_value(gb->arena);
+
+    // Update dedup table pointers
+    rehash_dedup_table(gb);
+
+    // Mark as canonical
+    gb->flags |= FY_BUILDER_CANONICAL;
+}
+
+// Serialize to canonical byte stream with hash
+void *fy_serialize_canonical(struct fy_generic_builder *gb,
+                              size_t *out_size,
+                              uint8_t out_hash[32]) {
+    // Topologically sort arena
+    struct arena_sorted sorted = topological_sort_arena(gb);
+
+    // Relocate to zero-based offsets
+    struct reloc_map relocs = compute_relocations(&sorted);
+
+    // Write canonical byte stream
+    void *buffer = write_canonical_stream(&sorted, &relocs, out_size);
+
+    // Compute b3sum hash
+    blake3_hasher hasher;
+    blake3_hasher_init(&hasher);
+    blake3_hasher_update(&hasher, buffer, *out_size);
+    blake3_hasher_finalize(&hasher, out_hash, 32);
+
+    return buffer;
+}
+```
+
+**This creates a genuinely novel capability**: content-addressable, immutable, deduplicated data structures in C with **deterministic hashing across all documents** - essentially building a persistent, content-addressable database with the ergonomics of native data structures.
+
 ### Memory Management Summary
 
 | Aspect | libfyaml | Python | Rust | C++ |
