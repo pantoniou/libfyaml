@@ -52,6 +52,103 @@
 
 #include "xxhash.h"
 
+#if 1
+static inline fy_generic checkout_items7(int x)
+{
+	struct fy_generic_builder *gb = NULL;
+
+	(void)gb;
+	fy_generic v1 = fy_to_generic(gb, x);
+	fy_generic v2 = fy_to_generic(x);
+
+	return fy_gb_internalize(gb, fy_sequence(v1, v2));
+}
+
+int checkout_items8(void)
+{
+	const fy_generic v = checkout_items7(10);
+	return fy_cast_default(v, (int)0);
+}
+
+static inline fy_generic checkout_items9(struct fy_generic_builder *gb, int x)
+{
+	const fy_generic v = fy_to_generic(gb, x);
+	return v;
+}
+
+int checkout_items10(struct fy_generic_builder *gb)
+{
+	const fy_generic v = checkout_items9(gb, 10);
+	return fy_cast_default(v, (int)0);
+}
+
+size_t checkout_items11(void)
+{
+	const union {
+		fy_generic_sequence s FY_GENERIC_CONTAINER_ALIGNMENT;
+		struct {
+			size_t count FY_GENERIC_CONTAINER_ALIGNMENT;
+			fy_generic items[3];
+
+		} x;
+	} u FY_GENERIC_CONTAINER_ALIGNMENT = {
+		.x = {
+			.count = 3,
+			.items = {
+				fy_to_generic(10),
+				fy_to_generic("Hello this is big"),
+				fy_to_generic(true),
+			},
+		},
+	};
+
+	return sizeof(u);
+}
+
+fy_generic_value checkout_items14(void)
+{
+	return fy_string_const("012");
+}
+
+fy_generic_value checkout_items15(void)
+{
+	return fy_string_const("0123456789");
+}
+
+const void *checkout_items16(void)
+{
+	const union {
+		fy_generic_sequence s FY_GENERIC_CONTAINER_ALIGNMENT;
+		struct {
+			size_t count FY_GENERIC_CONTAINER_ALIGNMENT;
+			fy_generic items[3];
+
+		} x;
+	} u FY_GENERIC_CONTAINER_ALIGNMENT = {
+		.x = {
+			.count = 3,
+			.items = {
+				fy_to_generic(10),
+				fy_to_generic("Hello this is big"),
+				fy_to_generic(true),
+			},
+		},
+	};
+
+	void *mem = malloc(sizeof(u));
+	memcpy(mem, &u, sizeof(u));
+	return mem;
+}
+
+const fy_generic checkout_items17(struct fy_generic_builder *gb)
+{
+	fy_generic seq = fy_sequence(10, "Hello this is big", true);
+	return fy_gb_internalize(gb, seq);
+}
+
+#endif
+
+
 #define QUIET_DEFAULT			false
 #define INCLUDE_DEFAULT			""
 #define MODE_DEFAULT			"parse"

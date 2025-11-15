@@ -618,10 +618,13 @@ typedef const fy_generic_map_pair *fy_generic_map_pair_handle;
 #define fy_szstr_empty		((fy_generic_sized_string){ })
 #define fy_dint_empty		((fy_generic_decorated_int){ })
 
+struct fy_generic_builder;
+
 #define fy_generic_typeof(_v) \
 	typeof(_Generic((_v), \
 		char *: ((char *)0), \
 		const char *: ((const char *)0), \
+		struct fy_generic_builder *: ((struct fy_generic_builder *)0), \
 		default: _v))
 
 static inline bool fy_generic_is_valid(const fy_generic v)
@@ -1469,17 +1472,19 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 		_r;										\
 	})
 
+#define fy_ensure_const(_v) \
+	(__builtin_constant_p(_v) ? (_v) : 0)
+
 /* note the builtin_constant_p guard; this makes the fy_int() macro work */
 #define fy_int_const(_v)									\
 	({											\
 		fy_generic_value _r;								\
 												\
-		if ((_v) >= FYGT_INT_INPLACE_MIN && (_v) <= FYGT_INT_INPLACE_MAX)		\
-			_r = (fy_generic_value)((((unsigned long long)(signed long long)(_v))	\
+		if ((_v) >= FYGT_INT_INPLACE_MIN && (_v) <= FYGT_INT_INPLACE_MAX)			\
+			_r = (fy_generic_value)((((unsigned long long)(signed long long)(_v))			\
 						<< FY_INT_INPLACE_SHIFT) | FY_INT_INPLACE_V);	\
 		else {										\
-			static const long long _vv FY_INT_ALIGNMENT =				\
-				__builtin_constant_p(_v) ? (_v) : 0;				\
+			static const long long _vv FY_INT_ALIGNMENT = (signed long long)fy_ensure_const(_v);	\
 			assert(((uintptr_t)&_vv & FY_INPLACE_TYPE_MASK) == 0);			\
 			_r = (fy_generic_value)&_vv | FY_INT_OUTPLACE_V;			\
 		}										\
@@ -1602,6 +1607,11 @@ static inline fy_generic_value fy_generic_in_place_mapping_handle(fy_generic_map
 	return (fy_generic_value)((uintptr_t)ptr | FY_MAP_V);
 }
 
+static inline fy_generic_value fy_generic_in_place_generic_builderp(struct fy_generic_builder *gb)
+{
+	return fy_invalid_value;
+}
+
 #define fy_to_generic_inplace_Generic_dispatch \
 	FY_GENERIC_ALL_SCALARS_DISPATCH(fy_generic_in_place), \
 	char *: fy_generic_in_place_char_ptr, \
@@ -1614,7 +1624,8 @@ static inline fy_generic_value fy_generic_in_place_mapping_handle(fy_generic_map
 	fy_generic_sized_string: fy_generic_in_place_szstr, \
 	const fy_generic_decorated_int *: fy_generic_in_place_const_dintp, \
 	fy_generic_decorated_int *: fy_generic_in_place_const_dintp, \
-	fy_generic_decorated_int: fy_generic_in_place_dint
+	fy_generic_decorated_int: fy_generic_in_place_dint, \
+	struct fy_generic_builder *: fy_generic_in_place_generic_builderp
 
 #define fy_to_generic_inplace(_v) ( _Generic((_v), fy_to_generic_inplace_Generic_dispatch)(_v))
 
@@ -1669,6 +1680,11 @@ static inline size_t fy_generic_out_of_place_size_mapping_handle(fy_generic_mapp
 	return 0;	// TODO calculate
 }
 
+static inline size_t fy_generic_out_of_place_size_generic_builderp(struct fy_generic_builder *gb)
+{
+	return 0;	// TODO calculate
+}
+
 #define fy_to_generic_outofplace_size_Generic_dispatch \
 	FY_GENERIC_ALL_SCALARS_DISPATCH(fy_generic_out_of_place_size), \
 	char *: fy_generic_out_of_place_size_char_ptr, \
@@ -1681,7 +1697,8 @@ static inline size_t fy_generic_out_of_place_size_mapping_handle(fy_generic_mapp
 	fy_generic_sized_string: fy_generic_out_of_place_size_szstr, \
 	const fy_generic_decorated_int *: fy_generic_out_of_place_size_const_dintp, \
 	fy_generic_decorated_int *: fy_generic_out_of_place_size_const_dintp, \
-	fy_generic_decorated_int: fy_generic_out_of_place_size_dint
+	fy_generic_decorated_int: fy_generic_out_of_place_size_dint, \
+	struct fy_generic_builder *: fy_generic_out_of_place_size_generic_builderp
 
 #define fy_to_generic_outofplace_size(_v) \
 	(_Generic((_v), fy_to_generic_outofplace_size_Generic_dispatch)(_v))
@@ -1753,6 +1770,11 @@ static inline fy_generic_value fy_generic_out_of_place_put_mapping_handle(void *
 	return fy_invalid_value;	// shoud never happen?
 }
 
+static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void *buf, struct fy_generic_builder *gb)
+{
+	return fy_invalid_value;	// shoud never happen?
+}
+
 #define fy_to_generic_outofplace_put_Generic_dispatch \
 	FY_GENERIC_ALL_SCALARS_DISPATCH(fy_generic_out_of_place_put), \
 	char *: fy_generic_out_of_place_put_char_ptr, \
@@ -1765,12 +1787,13 @@ static inline fy_generic_value fy_generic_out_of_place_put_mapping_handle(void *
 	fy_generic_sized_string: fy_generic_out_of_place_put_szstr, \
 	const fy_generic_decorated_int *: fy_generic_out_of_place_put_const_dintp, \
 	fy_generic_decorated_int *: fy_generic_out_of_place_put_const_dintp, \
-	fy_generic_decorated_int: fy_generic_out_of_place_put_szstr
+	fy_generic_decorated_int: fy_generic_out_of_place_put_szstr, \
+	struct fy_generic_builder *: fy_generic_out_of_place_put_generic_builderp
 
 #define fy_to_generic_outofplace_put(_vp, _v) \
 	(_Generic((_v), fy_to_generic_outofplace_put_Generic_dispatch)((_vp), (_v)))
 
-#define fy_to_generic_value(_v) \
+#define fy_to_generic_value_no_gb(_v) \
 	({	\
 		typeof (1 ? (_v) : (_v)) __v = (_v); \
 		fy_generic_value __r; \
@@ -1778,14 +1801,16 @@ static inline fy_generic_value fy_generic_out_of_place_put_mapping_handle(void *
 		__r = fy_to_generic_inplace(__v); \
 		if (__r == fy_invalid_value) { \
 			size_t __outofplace_size = fy_to_generic_outofplace_size(__v); \
-			fy_generic *__vp = __outofplace_size ? fy_alloca_align(__outofplace_size, FY_GENERIC_CONTAINER_ALIGN) : NULL; \
-			__r = fy_to_generic_outofplace_put(__vp, __v); \
+			if (__outofplace_size > 0) { \
+				fy_generic *__vp = __outofplace_size ? fy_alloca_align(__outofplace_size, FY_GENERIC_CONTAINER_ALIGN) : NULL; \
+				__r = fy_to_generic_outofplace_put(__vp, __v); \
+			} \
 		} \
 		__r; \
 	})
 
-#define fy_to_generic(_v) \
-	((fy_generic) { .v = fy_to_generic_value(_v) })
+#define fy_to_generic_no_gb(_v) \
+	((fy_generic) { .v = fy_to_generic_value_no_gb(_v) })
 
 #ifdef FYGT_GENERIC_64
 
@@ -3279,6 +3304,17 @@ FY_GENERIC_GB_FLOAT_LVAL_TEMPLATE(double, double, DBL_MIN, DBL_MAX, 0.0);
 
 #define fy_gb_to_generic(_gb, _v) \
 	((fy_generic) { .v = fy_gb_to_generic_value((_gb), (_v)) })
+
+#define fy_gb_or_NULL(_maybe_gb) \
+	(_Generic((_maybe_gb), struct fy_generic_builder *: (_maybe_gb), default: NULL))
+
+#define fy_to_generic_value(_maybe_gb, ...) \
+	(_Generic((_maybe_gb), \
+		struct fy_generic_builder *: ({ fy_gb_to_generic_value(fy_gb_or_NULL(_maybe_gb), __VA_OPT__(__VA_ARGS__) __VA_OPT__(,) 0); }), \
+		default: (fy_to_generic_value_no_gb((_maybe_gb)))))
+
+#define fy_to_generic(_maybe_gb, ...) \
+	((fy_generic) { .v = fy_to_generic_value((_maybe_gb)) })
 
 fy_generic fy_gb_string_vcreate(struct fy_generic_builder *gb, const char *fmt, va_list ap);
 fy_generic fy_gb_string_createf(struct fy_generic_builder *gb, const char *fmt, ...)
