@@ -170,6 +170,171 @@ fy_generic_builder_destroy(child_gb);  // Fast cleanup, parent unaffected
 - 🎯 Fast cleanup of child scopes
 - 🎯 Flexible allocation strategies per scope
 
+### Polymorphic Builder Interface
+
+**The breakthrough insight**: Immutability enables **safe thread-local builders** and **zero-cost context threading**.
+
+#### Why Immutability Makes Thread-Local Builders Safe
+
+Unlike mutable APIs where a thread-local context could cause "spooky action at a distance", **immutable operations never modify existing values**:
+
+```c
+// Thread-local builder is SAFE because nothing is mutated
+fy_generic_builder_push(gb);
+
+// These return NEW values - originals unchanged
+fy_generic config = fy_mapping("host", "localhost");
+fy_generic config2 = fy_assoc(config, "port", 8080);     // config still valid!
+fy_generic config3 = fy_assoc(config, "timeout", 30);    // fork from config
+
+// No mutations = no temporal coupling = thread-local "just works"
+fy_generic_builder_pop(gb);
+```
+
+**Compare to a mutable API** (where thread-local would be dangerous):
+```c
+// HYPOTHETICAL mutable API - thread-local would be risky
+dict_set(config, "port", 8080);  // Mutates in place!
+// Anyone holding a reference to 'config' sees the change
+// Thread-local builder could cause unexpected side effects
+```
+
+**Key insight**: Immutability + persistent data structures = referential transparency = safe implicit context.
+
+#### Polymorphic fy_to_generic() and Builder Detection
+
+The `fy_to_generic()` macro **transparently detects builders** using C11 `_Generic`:
+
+```c
+// Polymorphic: auto-detects builder as first argument
+fy_generic result = fy_assoc(gb, map, "key", "value");    // Uses gb
+fy_generic result = fy_assoc(map, "key", "value");        // Stack allocation
+```
+
+**Multi-tier precedence** for maximum flexibility:
+
+1. **Explicit builder** (first arg): If first argument is `struct fy_generic_builder *`, use it
+2. **Thread-local builder**: If builder pushed with `fy_generic_builder_push()`, use it
+3. **Stack allocation**: Otherwise, allocate on stack (automatic cleanup)
+
+#### Thread-Local Builder Stack
+
+**Push/pop builder context** for clean, composable code:
+
+```c
+struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
+fy_generic_builder_push(gb);
+
+// All operations transparently use thread-local builder
+fy_generic config = fy_mapping("host", "localhost");
+config = fy_assoc(config, "port", 8080);
+config = fy_assoc(config, "timeout", 30);
+
+// Complex nested expressions - builder threads through automatically
+fy_generic services = fy_sequence(
+    fy_mapping("name", "api", "port", 8080),
+    fy_mapping("name", "web", "port", 3000)
+);
+config = fy_assoc(config, "services", services);
+
+fy_generic_builder_pop(gb);
+// config persists, allocated in gb
+```
+
+**This is essentially a zero-cost monad in C**:
+- Thread-local builder = implicit "allocation context" (like Haskell's Reader monad)
+- Immutability = referential transparency
+- `_Generic` dispatch = type-safe polymorphism
+- Zero runtime overhead = compile-time dispatch
+
+#### Perfect for Functional Composition
+
+Immutability means **builder lifetime doesn't couple to value lifetime**:
+
+```c
+fy_generic_builder_push(gb);
+
+// Complex expression tree - all intermediate values immutable
+fy_generic result =
+    fy_merge(
+        fy_assoc(base_config, "env", "production"),
+        fy_mapping(
+            "database", fy_mapping(
+                "host", "db.example.com",
+                "port", 5432,
+                "pool", fy_mapping(
+                    "min", 5,
+                    "max", 20
+                )
+            ),
+            "cache", fy_mapping(
+                "enabled", true,
+                "ttl", 3600
+            )
+        )
+    );
+
+fy_generic_builder_pop(gb);
+```
+
+**Every intermediate value is immutable**, so:
+- ✅ Thread-local builder safe to use anywhere in expression tree
+- ✅ No temporal coupling between operations
+- ✅ Perfect for functional composition patterns
+- ✅ Essentially Rust-like ergonomics without borrow checker complexity
+
+#### Ergonomics Comparison
+
+**Explicit builder** (maximum control):
+```c
+struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
+fy_generic config = fy_mapping(gb, "host", "localhost");
+config = fy_assoc(gb, config, "port", 8080);
+config = fy_assoc(gb, config, "timeout", 30);
+fy_generic_builder_destroy(gb);
+```
+
+**Thread-local builder** (clean composition):
+```c
+struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
+fy_generic_builder_push(gb);
+
+fy_generic config = fy_mapping("host", "localhost");
+config = fy_assoc(config, "port", 8080);
+config = fy_assoc(config, "timeout", 30);
+
+fy_generic_builder_pop(gb);
+fy_generic_builder_destroy(gb);
+```
+
+**Stack allocation** (temporary values):
+```c
+void process_request(void) {
+    fy_generic config = fy_mapping("host", "localhost");
+    config = fy_assoc(config, "port", 8080);
+
+    // Use config...
+
+}  // Automatic cleanup
+```
+
+#### Why This Design is Novel
+
+The combination of:
+1. **C11 `_Generic`** for polymorphic dispatch
+2. **Immutability** for safe implicit context
+3. **Thread-local builders** for ergonomic composition
+4. **Structural sharing** for performance
+5. **Zero-cost abstractions** (compile-time dispatch)
+
+...creates a **genuinely novel pattern for C**: high-level language ergonomics with systems language performance and control.
+
+This hasn't been executed this cleanly in C before. It proves that with careful API design, **C can match Python/Rust ergonomics** without sacrificing:
+- ❌ Type safety (compile-time checked)
+- ❌ Performance (zero-cost abstractions)
+- ❌ Determinism (no GC, explicit lifetimes)
+- ❌ Control (full allocator control when needed)
+
 ### Custom Allocators (Power Users)
 
 **Full control** for specialized needs:
