@@ -219,7 +219,33 @@ fy_generic result = fy_assoc(map, "key", "value");        // Stack allocation
 
 #### Thread-Local Builder Stack
 
-**Push/pop builder context** for clean, composable code:
+**The implementation is trivial** - just a parent pointer and thread-local variable:
+
+```c
+struct fy_generic_builder {
+    struct fy_allocator *allocator;
+    struct fy_generic_builder *parent;  // Parent for dedup lookup chain
+    struct fy_dedup_table *dedup_table;
+    // ... other fields
+};
+
+// Thread-local: single pointer to current builder
+_Thread_local struct fy_generic_builder *fy_current_builder = NULL;
+
+// Push: link to parent
+void fy_generic_builder_push(struct fy_generic_builder *gb) {
+    gb->parent = fy_current_builder;  // Link to current (may be NULL)
+    fy_current_builder = gb;          // Make this the current
+}
+
+// Pop: restore parent
+void fy_generic_builder_pop(struct fy_generic_builder *gb) {
+    assert(fy_current_builder == gb);
+    fy_current_builder = gb->parent;  // Restore parent (may be NULL)
+}
+```
+
+**Usage pattern** - clean, composable code:
 
 ```c
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
@@ -240,6 +266,97 @@ config = fy_assoc(config, "services", services);
 fy_generic_builder_pop(gb);
 // config persists, allocated in gb
 ```
+
+**Dedup lookup** naturally walks the parent chain:
+
+```c
+void *fy_dedup_lookup(struct fy_generic_builder *gb, fy_type type, void *value) {
+    // Walk up parent chain - like lexical scope lookup
+    for (struct fy_generic_builder *b = gb; b != NULL; b = b->parent) {
+        void *existing = hashtable_lookup(b->dedup_table, type, value);
+        if (existing) {
+            return existing;  // Found in this builder or ancestor
+        }
+    }
+    return NULL;  // Not found in chain
+}
+```
+
+**The pattern that emerges**:
+- **Top builder** (current thread-local): receives all new allocations
+- **Parent builders**: read-only, used only for dedup lookups
+- **Dedup chain**: walks up like lexical scoping
+
+This is identical to:
+- Lexical scope chains in programming languages
+- Prototype chains (JavaScript `__proto__`)
+- Overlay/union filesystems (lower layers read-only)
+- Shadow page tables
+
+#### Hierarchical Builder Pattern
+
+**Long-lived parent for common data, ephemeral children for request-specific data**:
+
+```c
+// Application startup: create long-lived parent with dedup
+struct fy_generic_builder *app_gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
+    .policy = FY_ALLOC_DEDUP
+});
+fy_generic_builder_push(app_gb);
+
+// Load config - stored in parent, deduplicated
+fy_generic app_config = parse_yaml("config.yaml");
+fy_generic common_strings = fy_sequence("localhost", "production", "enabled");
+
+// Per-request processing
+void handle_request(struct request *req) {
+    // Create ephemeral child builder
+    struct fy_generic_builder *req_gb = fy_generic_builder_create(&(struct fy_generic_builder_cfg){
+        .policy = FY_ALLOC_ARENA  // Fast arena allocation
+    });
+    fy_generic_builder_push(req_gb);
+
+    // Build request-specific data
+    // Common strings like "localhost" deduplicated from parent!
+    fy_generic response = fy_mapping(
+        "host", "localhost",     // Dedup hit in parent - zero allocation!
+        "timestamp", time(NULL), // New data in child
+        "request_id", req->id    // New data in child
+    );
+
+    // Process...
+    send_response(response);
+
+    // Cleanup child - instant free of request data
+    fy_generic_builder_pop(req_gb);
+    fy_generic_builder_destroy(req_gb);
+
+    // app_config still valid, parent still alive
+}
+
+// Shutdown
+fy_generic_builder_pop(app_gb);
+fy_generic_builder_destroy(app_gb);
+```
+
+**What happens**:
+1. **Parent builder**: holds deduplicated config, long-lived strings
+2. **Child builder**: allocates request-specific data
+3. **Dedup lookup**: child checks parent chain, finds "localhost" → zero allocation
+4. **Fast cleanup**: destroying child instantly frees all request data
+5. **Parent survives**: app_config and common data unaffected
+
+**Memory efficiency**:
+- Common strings allocated once in parent
+- Each request only allocates unique data (timestamps, IDs)
+- No string duplication across requests
+- Fast per-request cleanup (arena destroy)
+
+This pattern is **perfect for**:
+- ✅ Web servers (app config + per-request data)
+- ✅ Compilers (global symbols + per-function temporaries)
+- ✅ Game engines (level data + per-frame temporaries)
+- ✅ Databases (schema + per-transaction data)
 
 **This is essentially a zero-cost monad in C**:
 - Thread-local builder = implicit "allocation context" (like Haskell's Reader monad)
