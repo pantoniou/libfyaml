@@ -307,8 +307,13 @@ static inline void fy_strip_trailing_nl(char *str)
 #define FY_CPP_EVAL16(...)   FY_CPP_EVAL8(FY_CPP_EVAL8(__VA_ARGS__))
 #define FY_CPP_EVAL32(...)   FY_CPP_EVAL16(FY_CPP_EVAL16(__VA_ARGS__))
 #define FY_CPP_EVAL64(...)   FY_CPP_EVAL32(FY_CPP_EVAL32(__VA_ARGS__))
+#if !defined(__clang__)
 #define FY_CPP_EVAL128(...)  FY_CPP_EVAL64(FY_CPP_EVAL64(__VA_ARGS__))
 #define FY_CPP_EVAL(...)     FY_CPP_EVAL128(FY_CPP_EVAL128(__VA_ARGS__))
+#else
+// clang craps out
+#define FY_CPP_EVAL(...)     FY_CPP_EVAL64(FY_CPP_EVAL64(__VA_ARGS__))
+#endif
 
 #define FY_CPP_EMPTY()
 #define FY_CPP_POSTPONE1(macro) macro FY_CPP_EMPTY()
