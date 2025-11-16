@@ -4236,99 +4236,6 @@ int do_parse_timing(int argc, char *argv[])
 	return 0;
 }
 
-void fy_generic_print_primitive(FILE *fp, fy_generic v)
-{
-	fy_generic_indirect gi;
-	const char *sep;
-	const char *sv;
-	fy_generic iv;
-	fy_generic key, value;
-	const fy_generic_map_pair *pair;
-	const fy_generic *items;
-	size_t i, count, slen;
-
-	if (fy_generic_is_invalid(v)) {
-		fprintf(fp, "*invalid*");
-		return;
-	}
-
-	if (fy_generic_is_indirect(v)) {
-
-		fy_generic_indirect_get(v, &gi);
-
-		sep = "";
-		if (fy_generic_is_string(gi.anchor)) {
-			fprintf(fp, "%s&%s", sep, fy_generic_get_string(gi.anchor));
-			sep = " ";
-		}
-		if (fy_generic_is_string(gi.tag)) {
-			fprintf(fp, "%s%s", sep, fy_generic_get_string(gi.tag));
-			sep = " ";
-		}
-
-		fprintf(fp, "%s", sep);
-		v = gi.value;
-	}
-
-	switch (fy_generic_get_type(v)) {
-	case FYGT_NULL:
-		fprintf(fp, "%s", "null");
-		return;
-
-	case FYGT_BOOL:
-		fprintf(fp, "%s", fy_generic_cast(v, bool) ? "true" : "false");
-		return;
-
-	case FYGT_INT:
-		fprintf(fp, "%lld", fy_generic_cast(v, long long));
-		return;
-
-	case FYGT_FLOAT:
-		fprintf(fp, "%f", fy_generic_cast(v, double));
-		return;
-
-	case FYGT_STRING:
-		sv = fy_generic_get_string_size(v, &slen);
-		fprintf(fp, "'%.*s'", (int)slen, sv);
-		return;
-
-	case FYGT_SEQUENCE:
-		items = fy_generic_sequence_get_items(v, &count);
-		fprintf(fp, "[");
-		for (i = 0; i < count; i++) {
-			iv = items[i];
-			fy_generic_print_primitive(fp, iv);
-			if (i + 1 < count)
-				printf(", ");
-		}
-		fprintf(fp, "]");
-		break;
-
-	case FYGT_MAPPING:
-		pair = fy_generic_mapping_get_pairs(v, &count);
-		fprintf(fp, "[");
-		for (i = 0; i < count; i++) {
-			key = pair[i].key;
-			value = pair[i].value;
-			fy_generic_print_primitive(fp, key);
-			fprintf(fp, ": ");
-			fy_generic_print_primitive(fp, value);
-			if (i + 1 < count)
-				printf(", ");
-		}
-		fprintf(fp, "]");
-		break;
-
-	case FYGT_ALIAS:
-		sv = fy_generic_get_alias(v);
-		fprintf(fp, "*'%s'", sv);
-		break;
-
-	default:
-		FY_IMPOSSIBLE_ABORT();
-	}
-}
-
 char *testing_export = "This is export";
 
 int do_generics(int argc, char *argv[], const char *allocator)
@@ -4463,7 +4370,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		gs = fy_string(sv);
 		printf("string/%s = %016lx", sv, gs.v);
 
-		sv = fy_generic_get_string_size(gs, &slen);
+		sv = fy_genericp_get_string_size(&gs, &slen);
 		assert(sv);
 		printf(" %.*s\n", (int)slen, sv);
 	}
@@ -4481,7 +4388,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	assert(fy_generic_is_sequence(seq));
 
 	printf("seq:\n");
-	fy_generic_print_primitive(stdout, seq);
+	fy_generic_dump_primitive(stdout, 0, seq);
 	printf("\n");
 
 	map = fy_mapping(fy_string("foo"), fy_string("bar"),
@@ -4490,26 +4397,26 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	assert(fy_generic_is_mapping(map));
 
 	printf("map:\n");
-	fy_generic_print_primitive(stdout, map);
+	fy_generic_dump_primitive(stdout, 0, map);
 	printf("\n");
 
 	gv = fy_generic_mapping_get_value(map, fy_string("foo"));
 	assert(fy_generic_is_valid(gv));
 
 	printf("found: ");
-	fy_generic_print_primitive(stdout, gv);
+	fy_generic_dump_primitive(stdout, 0, gv);
 	printf("\n");
 
 	map = fy_mapping(fy_string("foo"), fy_string("bar"),
 			 fy_sequence(fy_int(10), fy_int(100)), fy_float(3.14));
 
-	fy_generic_print_primitive(stdout, map);
+	fy_generic_dump_primitive(stdout, 0, map);
 	printf("\n");
 
 	gv = fy_generic_mapping_get_value(map, fy_sequence(fy_int(10), fy_int(100)));
 	assert(fy_generic_is_valid(gv));
 	printf("found: ");
-	fy_generic_print_primitive(stdout, gv);
+	fy_generic_dump_primitive(stdout, 0, gv);
 	printf("\n");
 
 	{
@@ -4519,19 +4426,19 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		fy_generic t3 = fy_string(testing_export);
 
 		printf("string_size_const t0: ");
-		fy_generic_print_primitive(stdout, t0);
+		fy_generic_dump_primitive(stdout, 0, t0);
 		printf("\n");
 
 		printf("string_size_const t1: ");
-		fy_generic_print_primitive(stdout, t1);
+		fy_generic_dump_primitive(stdout, 0, t1);
 		printf("\n");
 
 		printf("string t2: ");
-		fy_generic_print_primitive(stdout, t2);
+		fy_generic_dump_primitive(stdout, 0, t2);
 		printf("\n");
 
 		printf("string t3: ");
-		fy_generic_print_primitive(stdout, t3);
+		fy_generic_dump_primitive(stdout, 0, t3);
 		printf("\n");
 	}
 
@@ -4542,7 +4449,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 				fy_string("info-info"));
 
 		printf("seq-x:\n");
-		fy_generic_print_primitive(stdout, seq);
+		fy_generic_dump_primitive(stdout, 0, seq);
 		printf("\n");
 	}
 
@@ -4557,7 +4464,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		fy_generic seq = (fy_generic){ .v = (fy_generic_value)&_seq | FY_SEQ_V };
 
 		printf("seq-x2:\n");
-		fy_generic_print_primitive(stdout, seq);
+		fy_generic_dump_primitive(stdout, 0, seq);
 		printf("\n");
 	}
 
@@ -4623,11 +4530,11 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		assert(fy_generic_is_valid(gs));
 		printf("string/%s = %016lx", sv, gs.v);
 
-		sv = fy_generic_get_string_size(gs, &slen);
+		sv = fy_genericp_get_string_size(&gs, &slen);
 		assert(sv);
 		printf(" %.*s\n", (int)slen, sv);
 
-		sv = fy_generic_get_string(gs);
+		sv = fy_genericp_get_string(&gs);
 		assert(sv);
 		printf("\t%s\n", sv);
 	}
@@ -4704,12 +4611,12 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		});
 	assert(fy_generic_is_valid(seq));
 
-	fy_generic_print_primitive(stdout, seq);
+	fy_generic_dump_primitive(stdout, 0, seq);
 	printf("\n");
 
 	printf(">>>>>>>>>>>>>>>>>>>>> seq using fy_gb_sequence\n");
 	seq = fy_gb_sequence(gb, 100, "Hello there", false, 10.0);
-	fy_generic_print_primitive(stdout, seq);
+	fy_generic_dump_primitive(stdout, 0, seq);
 	printf("\n");
 
 	printf(">>>>>>>>>>>>>>>>>>>>> map using fy_gb_sequence\n");
@@ -4717,19 +4624,19 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		"Hello", true,
 		"There", false,
 		"Extra", fy_gb_sequence(gb, 1, 2, 100));
-	fy_generic_print_primitive(stdout, map);
+	fy_generic_dump_primitive(stdout, 0, map);
 	printf("\n");
 
 #if 0
 	printf(">>>>>>>>>>>>>>>>>>>>> seq using fy_sequence - with first argument gb\n");
 	seq = fy_sequence(gb, 100, "Hello there", false, 10.0);
-	fy_generic_print_primitive(stdout, seq);
+	fy_generic_dump_primitive(stdout, 0, seq);
 	printf("\n");
 #endif
 
 	printf(">>>>>>>>>>>>>>>>>>>>> seq using fy_sequence - without first argument gb\n");
 	seq = fy_sequence(100, "Hello there", false, 10.0);
-	fy_generic_print_primitive(stdout, seq);
+	fy_generic_dump_primitive(stdout, 0, seq);
 	printf("\n");
 
 	map = fy_gb_mapping_create(gb, 3, (fy_generic[]){
@@ -4740,13 +4647,13 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	assert(fy_generic_is_valid(map));
 
-	fy_generic_print_primitive(stdout, map);
+	fy_generic_dump_primitive(stdout, 0, map);
 	printf("\n");
 
 	gv = fy_generic_mapping_get_value(map, fy_gb_to_generic(gb, "foo"));
 	assert(fy_generic_is_valid(gv));
 	printf("found: ");
-	fy_generic_print_primitive(stdout, gv);
+	fy_generic_dump_primitive(stdout, 0, gv);
 	printf("\n");
 
 	map = fy_gb_mapping_create(gb, 2, (fy_generic[]){
@@ -4756,7 +4663,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 					fy_gb_to_generic(gb, 100)}),
 				fy_gb_to_generic(gb, 3.14)});
 
-	fy_generic_print_primitive(stdout, map);
+	fy_generic_dump_primitive(stdout, 0, map);
 	printf("\n");
 
 	gv = fy_generic_mapping_get_value(map, fy_gb_sequence_create(gb, 2, (fy_generic[]){
@@ -4764,7 +4671,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 					fy_gb_to_generic(gb, 100)}));
 	assert(fy_generic_is_valid(gv));
 	printf("found: ");
-	fy_generic_print_primitive(stdout, gv);
+	fy_generic_dump_primitive(stdout, 0, gv);
 	printf("\n");
 
 	{
@@ -4897,19 +4804,19 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	seq = fy_gb_sequence_create(gb, 2, (fy_generic[]){ fy_true, fy_null });
 
 	printf("original\n");
-	fy_generic_print_primitive(stdout, seq);
+	fy_generic_dump_primitive(stdout, 0, seq);
 	printf("\n");
 
 	seq = fy_gb_sequence_append(gb, seq, 2, (fy_generic[]){ fy_int(16), fy_int(128), });
 
 	printf("appended [16, 128] \n");
-	fy_generic_print_primitive(stdout, seq);
+	fy_generic_dump_primitive(stdout, 0, seq);
 	printf("\n");
 
 	seq = fy_gb_sequence_insert(gb, seq, 1, 2, (fy_generic[]){ fy_true, fy_false, });
 
 	printf("inserted [true, false] at 1\n");
-	fy_generic_print_primitive(stdout, seq);
+	fy_generic_dump_primitive(stdout, 0, seq);
 	printf("\n");
 
 	fy_allocator_dump(a);
@@ -4943,7 +4850,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	assert(fy_generic_is_valid(map));
 
 	printf("original map\n");
-	fy_generic_print_primitive(stdout, map);
+	fy_generic_dump_primitive(stdout, 0, map);
 	printf("\n");
 
 	map = fy_gb_mapping_set_value(gb, map, fy_string("seq"),
@@ -4959,7 +4866,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	assert(fy_generic_is_valid(map));
 
 	printf("new map\n");
-	fy_generic_print_primitive(stdout, map);
+	fy_generic_dump_primitive(stdout, 0, map);
 	printf("\n");
 
 	fy_generic_builder_destroy(gb);
@@ -4973,7 +4880,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	assert(fy_generic_is_valid(seq));
 
 	printf("seq-const:\n");
-	fy_generic_print_primitive(stdout, seq);
+	fy_generic_dump_primitive(stdout, 0, seq);
 	printf("\n");
 
 	fy_generic str;
@@ -4981,7 +4888,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	str = fy_string("zzz");
 
 	printf("str:\n");
-	fy_generic_print_primitive(stdout, str);
+	fy_generic_dump_primitive(stdout, 0, str);
 	printf("\n");
 
 	fy_generic ind;
@@ -4998,7 +4905,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	}
 
 	printf("ind:\n");
-	fy_generic_print_primitive(stdout, ind);
+	fy_generic_dump_primitive(stdout, 0, ind);
 	printf("\n");
 
 	printf("str-by-get-string: %p %s\n", &str, fy_genericp_get_string(&str));
@@ -5106,16 +5013,16 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		str = fy_genericp_get_string(&v);
 		printf("fy_genericp_get_string(&v) = %s\n", str);
 
-		str = fy_generic_get_string(v);
-		printf("fy_generic_get_string(v) = %s\n", str);
+		str = fy_generic_get_string_alloca(v);
+		printf("fy_generic_get_string_alloca(v) = %s\n", str);
 
 		v = fy_string("test");
 
 		str = fy_genericp_get_string(&v);
 		printf("fy_genericp_get_string(&v) = %s\n", str);
 
-		str = fy_generic_get_string(v);
-		printf("fy_generic_get_string(v) = %s\n", str);
+		str = fy_generic_get_string_alloca(v);
+		printf("fy_generic_get_string_alloca(v) = %s\n", str);
 	}
 
 	{

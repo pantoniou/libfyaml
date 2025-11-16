@@ -616,12 +616,10 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 			tags_explicit = fy_document_state_tags_explicit(gdo->fyds);
 
 			vtags_items = alloca(sizeof(*vtags_items) * count);
-			for (i = 0; i < count; i++) {
-				vtags_items[i] = fy_mapping("handle", tags[i]->handle,
-							    "prefix", tags[i]->prefix);
-				fyp_error_check(fyp, !fy_generic_is_invalid(vtags_items[i]), err_out,
-					"failed to create mapping for tag/handle");
-			}
+			for (i = 0; i < count; i++)
+				vtags_items[i] = fy_local_mapping(
+							"handle", tags[i]->handle,
+							"prefix", tags[i]->prefix);
 
 			if (tags)
 				free(tags);
@@ -629,16 +627,15 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 
 			schema_txt = fy_generic_schema_get_text(fy_gb_get_schema(gb));
 
-			vds = fy_mapping("root", v,
-					 "version", fy_mapping("major", vers->major,
-							       "minor", vers->minor),
-					 "version-explicit", (_Bool)version_explicit,
-					 "tags", fy_stack_sequence_create(count, vtags_items),
-					 "tags-explicit", (_Bool)tags_explicit,
-					 "schema", schema_txt);
-			fyp_error_check(fyp, !fy_generic_is_invalid(vds), err_out,
-				"failed to create document directory");
-
+			vds = fy_local_mapping(
+				"root", v,
+				"version", fy_local_mapping(
+						"major", vers->major,
+						"minor", vers->minor),
+				"version-explicit", (_Bool)version_explicit,
+				"tags", fy_local_sequence_create(count, vtags_items),
+				"tags-explicit", (_Bool)tags_explicit,
+				"schema", schema_txt);
 		} else
 			vds = fy_null;
 
