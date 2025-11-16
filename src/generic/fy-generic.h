@@ -1793,7 +1793,7 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 #define fy_to_generic_outofplace_put(_vp, _v) \
 	(_Generic((_v), fy_to_generic_outofplace_put_Generic_dispatch)((_vp), (_v)))
 
-#define fy_to_generic_value_no_gb(_v) \
+#define fy_stack_to_generic_value(_v) \
 	({	\
 		typeof (1 ? (_v) : (_v)) __v = (_v); \
 		fy_generic_value __r; \
@@ -1809,8 +1809,8 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 		__r; \
 	})
 
-#define fy_to_generic_no_gb(_v) \
-	((fy_generic) { .v = fy_to_generic_value_no_gb(_v) })
+#define fy_stack_to_generic(_v) \
+	((fy_generic) { .v = fy_stack_to_generic_value(_v) })
 
 #ifdef FYGT_GENERIC_64
 
@@ -2162,14 +2162,14 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 		(fy_generic_value)((uintptr_t)__vp | FY_SEQ_V);				\
 	})
 
-#define fy_sequence_explicit(_count, _items) \
+#define fy_stack_sequence_create_value(_count, _items) \
 	({ \
 		size_t __count = (_count); \
 		__count ? fy_sequence_alloca((_count), (_items)) : fy_seq_empty_value; \
 	})
 
-#define fy_sequence_create(_count, _items) \
-	((fy_generic) { .v = fy_sequence_explicit((_count), (_items)) })
+#define fy_stack_sequence_create(_count, _items) \
+	((fy_generic) { .v = fy_stack_sequence_create_value((_count), (_items)) })
 
 #define _FY_CPP_GITEM_ONE(arg) fy_to_generic(arg)
 #define _FY_CPP_GITEM_LATER_ARG(arg) , _FY_CPP_GITEM_ONE(arg)
@@ -2182,12 +2182,14 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 #define FY_CPP_VA_GITEMS(_count, ...) \
 	((fy_generic [(_count)]) { __VA_OPT__(_FY_CPP_VA_GITEMS(__VA_ARGS__)) })
 
-#define fy_sequence(...) \
-	((fy_generic) { \
-		.v = fy_sequence_explicit( \
+#define fy_stack_sequence_value(...) \
+	fy_stack_sequence_create_value( \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
 			FY_CPP_VA_GITEMS( \
-				FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)) })
+				FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__))
+
+#define fy_stack_sequence(...) \
+	((fy_generic) { .v = fy_stack_sequence_value(__VA_ARGS__) })
 
 #define fy_mapping_alloca(_count, _pairs) 						\
 	({										\
@@ -2201,20 +2203,22 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 		(fy_generic_value)((uintptr_t)__vp | FY_MAP_V);				\
 	})
 
-#define fy_mapping_explicit(_count, _pairs) \
+#define fy_stack_mapping_create_value(_count, _pairs) \
 	({ \
 		size_t __count = (_count); \
 		__count ? fy_mapping_alloca((_count), (_pairs)) : fy_map_empty_value; \
 	})
 
-#define fy_mapping_create(_count, _items) \
-	((fy_generic) { .v = fy_mapping_explicit((_count), (_items)) })
+#define fy_stack_mapping_create(_count, _items) \
+	((fy_generic) { .v = fy_stack_mapping_create_value((_count), (_items)) })
 
-#define fy_mapping(...) \
-	((fy_generic) { \
-		.v = fy_mapping_explicit( \
-			FY_CPP_VA_COUNT(__VA_ARGS__) / 2, \
-			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)) })
+#define fy_stack_mapping_value(...) \
+	fy_stack_mapping_create_value( \
+		FY_CPP_VA_COUNT(__VA_ARGS__) / 2, \
+		FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__))
+
+#define fy_stack_mapping(...) \
+	((fy_generic) { .v = fy_stack_mapping_value(__VA_ARGS__) })
 
 // indirect
 
@@ -3081,9 +3085,10 @@ enum fy_gb_cfg_flags {
 	FYGBCF_SCHEMA_YAML1_1		= FYGBCF_SCHEMA(FYGS_YAML1_1),
 	FYGBCF_SCHEMA_JSON		= FYGBCF_SCHEMA(FYGS_JSON),
 	FYGBCF_OWNS_ALLOCATOR		= FY_BIT(4),
+	FYGBCF_CREATE_ALLOCATOR		= FY_BIT(5),
+	FYGBCF_DUPLICATE_KEYS_DISABLED	= FY_BIT(6),
+	FYGBCF_DEDUP_ENABLED		= FY_BIT(7),
 };
-
-//////////////////////////////////////////////////////
 
 struct fy_generic_builder_cfg {
 	enum fy_gb_cfg_flags flags;
@@ -3093,6 +3098,7 @@ struct fy_generic_builder_cfg {
 };
 
 struct fy_generic_builder {
+	struct fy_generic_builder *parent;
 	struct fy_generic_builder_cfg cfg;
 	enum fy_generic_schema schema;
 	struct fy_allocator *allocator;
@@ -3101,6 +3107,8 @@ struct fy_generic_builder {
 	int alloc_tag;
 	void *linear;	/* when making it linear */
 };
+
+extern __thread struct fy_generic_builder *fy_current_gb;
 
 static inline void *fy_gb_alloc(struct fy_generic_builder *gb, size_t size, size_t align)
 {
@@ -3311,7 +3319,7 @@ FY_GENERIC_GB_FLOAT_LVAL_TEMPLATE(double, double, DBL_MIN, DBL_MAX, 0.0);
 #define fy_to_generic_value(_maybe_gb, ...) \
 	(_Generic((_maybe_gb), \
 		struct fy_generic_builder *: ({ fy_gb_to_generic_value(fy_gb_or_NULL(_maybe_gb), __VA_OPT__(__VA_ARGS__) __VA_OPT__(,) 0); }), \
-		default: (fy_to_generic_value_no_gb((_maybe_gb)))))
+		default: (fy_stack_to_generic_value((_maybe_gb)))))
 
 #define fy_to_generic(_maybe_gb, ...) \
 	((fy_generic) { .v = fy_to_generic_value((_maybe_gb)) })
@@ -3380,21 +3388,27 @@ fy_generic fy_gb_alias_create(struct fy_generic_builder *gb, fy_generic anchor);
 #define _FY_CPP_GBITEM_LIST(_gb, ...) FY_CPP_MAP2(_gb, _FY_CPP_GBITEM_LATER_ARG, __VA_ARGS__)
 
 #define _FY_CPP_VA_GBITEMS(_gb, ...)          \
-    _FY_CPP_GBITEM_ONE(_gb, FY_CPP_FIRST(__VA_ARGS__)) \
-    _FY_CPP_GBITEM_LIST(_gb, FY_CPP_REST(__VA_ARGS__))
+	_FY_CPP_GBITEM_ONE(_gb, FY_CPP_FIRST(__VA_ARGS__)) \
+	_FY_CPP_GBITEM_LIST(_gb, FY_CPP_REST(__VA_ARGS__))
 
 #define FY_CPP_VA_GBITEMS(_count, _gb, ...) \
-	((fy_generic [(_count)]) { _FY_CPP_VA_GBITEMS(gb, __VA_ARGS__) })
+	((fy_generic [(_count)]) { _FY_CPP_VA_GBITEMS((_gb), __VA_ARGS__) })
+
+#define fy_gb_sequence_value(_gb, ...) \
+	(fy_gb_sequence_create((_gb), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GBITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), (_gb), __VA_ARGS__)).v)
 
 #define fy_gb_sequence(_gb, ...) \
-	((fy_generic) { .v = fy_gb_sequence_create(gb, \
-			FY_CPP_VA_COUNT(__VA_ARGS__), \
-			FY_CPP_VA_GBITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), gb, __VA_ARGS__)).v })
+	((fy_generic) { .v = fy_gb_sequence_value((_gb) __VA_OPT__(,) __VA_ARGS__) })
+
+#define fy_gb_mapping_value(_gb, ...) \
+	(fy_gb_mapping_create((_gb), \
+			FY_CPP_VA_COUNT(__VA_ARGS__) / 2, \
+			FY_CPP_VA_GBITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), (_gb), __VA_ARGS__)).v)
 
 #define fy_gb_mapping(_gb, ...) \
-	((fy_generic) { .v = fy_gb_mapping_create(gb, \
-			FY_CPP_VA_COUNT(__VA_ARGS__) / 2, \
-			FY_CPP_VA_GBITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), gb, __VA_ARGS__)).v })
+	((fy_generic) { .v = fy_gb_mapping_value((_gb), __VA_ARGS__) })
 
 fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb,
 					      const char *text, size_t len, enum fy_generic_type force_type);
@@ -3428,5 +3442,11 @@ enum fy_generic_schema fy_gb_get_schema(struct fy_generic_builder *gb);
 void fy_gb_set_schema(struct fy_generic_builder *gb, enum fy_generic_schema schema);
 
 int fy_gb_set_schema_from_parser_mode(struct fy_generic_builder *gb, enum fy_parser_mode parser_mode);
+
+#define fy_sequence(...) 	(fy_stack_sequence(__VA_ARGS__))
+#define fy_mapping(...) 	(fy_stack_mapping(__VA_ARGS__))
+#define fy_value(_v)		(fy_to_generic(_v))
+#define fy_inplace_value(_v)	(fy_to_generic_inplace(_v))
+#define fy_is_inplace(_v)	(fy_generic_is_in_place(v))
 
 #endif

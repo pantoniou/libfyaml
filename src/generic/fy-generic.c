@@ -26,6 +26,8 @@
 // when to switch to malloc instead of alloca
 #define COPY_MALLOC_CUTOFF	256
 
+extern __thread struct fy_generic_builder *fy_current_gb;
+
 static const struct fy_generic_builder_cfg default_generic_builder_cfg = {
 	.flags = FYGBCF_SCHEMA_AUTO | FYGBCF_OWNS_ALLOCATOR,
 	.allocator = NULL,	/* use default */

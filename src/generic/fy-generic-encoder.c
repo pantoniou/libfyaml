@@ -394,10 +394,10 @@ int fy_generic_encoder_emit(struct fy_generic_encoder *fyge,
 	return 0;
 }
 
-int fy_generic_emit_default(fy_generic v)
+int fy_generic_emit(fy_generic v, enum fy_emitter_cfg_flags flags)
 {
-	static const struct fy_emitter_cfg ecfg_default = {
-		.flags = FYECF_DEFAULT,
+	struct fy_emitter_cfg ecfg_default = {
+		.flags = flags,
 	};
 	struct fy_emitter *emit = NULL;
 	struct fy_generic_encoder *fyge = NULL;
@@ -422,3 +422,15 @@ out:
 
 	return rc;
 }
+
+int fy_generic_emit_compact(fy_generic v)
+{
+	return fy_generic_emit(v, FYECF_WIDTH_INF | FYECF_MODE_FLOW_ONELINE | FYECF_STRIP_DOC);
+}
+
+int fy_generic_emit_default(fy_generic v)
+{
+	// return fy_generic_emit(v, FYECF_DEFAULT);
+	return fy_generic_emit_compact(v);
+}
+

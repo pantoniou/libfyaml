@@ -633,7 +633,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 					 "version", fy_mapping("major", vers->major,
 							       "minor", vers->minor),
 					 "version-explicit", (_Bool)version_explicit,
-					 "tags", fy_sequence_create(count, vtags_items),
+					 "tags", fy_stack_sequence_create(count, vtags_items),
 					 "tags-explicit", (_Bool)tags_explicit,
 					 "schema", schema_txt);
 			fyp_error_check(fyp, !fy_generic_is_invalid(vds), err_out,
