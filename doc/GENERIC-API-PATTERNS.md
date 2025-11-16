@@ -58,7 +58,7 @@ void handle_http_request(fy_generic request) {
     // Build response
     fy_generic response = fy_gb_mapping(req_gb,
         "status", "success",
-        "user", fy_mapping("name", username, "email", email)
+        "user", fy_local_mapping("name", username, "email", email)
     );
 
     send_response(response);
@@ -243,7 +243,7 @@ fy_seq_handle active_seniors = transform_users(gb, all_users);
 
 ```c
 // Base config (stack-allocated, immutable)
-fy_generic base_config = fy_mapping(
+fy_generic base_config = fy_local_mapping(
     "theme", "light",
     "language", "en",
     "notifications", true,
@@ -411,7 +411,7 @@ fy_generic transactional_update(const char *filename) {
 ```c
 // BAD: Storing stack value pointer beyond scope
 fy_generic *get_config_ptr(void) {
-    fy_generic config = fy_mapping("key", "value");
+    fy_generic config = fy_local_mapping("key", "value");
     return &config;  // DANGLING POINTER!
 }
 
@@ -514,7 +514,7 @@ struct fy_generic_builder *gb = fy_generic_builder_create(&(struct fy_generic_bu
 4. **Use stack values for temporary work**:
    ```c
    // No allocation overhead
-   fy_generic temp = fy_mapping("key", "value");
+   fy_generic temp = fy_local_mapping("key", "value");
    const char *value = fy_map_get(temp, "key", "");
    // Automatic cleanup
    ```

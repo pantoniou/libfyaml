@@ -9,14 +9,14 @@ Traditional generic/dynamic type APIs in C require verbose function calls with e
 ```c
 // Verbose approach
 const char *role = fy_generic_get_string_default(
-    fy_generic_mapping_lookup(message, fy_to_generic("role")),
+    fy_generic_mapping_lookup(message, fy_value("role")),
     "assistant"
 );
 
 int port = fy_generic_get_int_default(
     fy_generic_mapping_lookup(
-        fy_generic_mapping_lookup(config, fy_to_generic("server")),
-        fy_to_generic("port")
+        fy_generic_mapping_lookup(config, fy_value("server")),
+        fy_value("port")
     ),
     8080
 );
@@ -25,7 +25,7 @@ int port = fy_generic_get_int_default(
 This is far from ideal:
 - **Verbose**: Multiple function calls for simple operations
 - **Nested lookups are unreadable**: Hard to follow the chain
-- **Type conversion noise**: `fy_to_generic()` everywhere
+- **Type conversion noise**: `fy_value()` everywhere
 - **No Python-like defaults**: Can't naturally express "default to empty dict"
 
 ## Solution: Short-Form API with _Generic Dispatch
@@ -147,45 +147,41 @@ if (fy_is_map(config)) {
 
 ## Advanced: Type Casting with fy_cast()
 
-Beyond direct container access, we provide `fy_cast()` for type-safe conversion of fy_generic values with defaults.
+Beyond direct container access, we provide `fy_cast()` and `fy_get()` for type-safe conversion of fy_generic values with explicit defaults.
 
 ### Design with _Generic Dispatch
 
 Using C11's `_Generic`, we dispatch based on the type of the default value:
 
 ```c
-// fy_cast() - cast value to type using that type's default
-#define fy_cast(_v, _type) \
-    fy_generic_cast((_v), (_type))
+// fy_cast() - cast value with explicit default
+#define fy_cast(_v, _default) \
+    fy_generic_cast((_v), (_default))
 
-// fy_cast_default() - cast with explicit default value
-#define fy_cast_default(_v, _dv) \
-    fy_generic_cast_default((_v), (_dv))
+// fy_get() - get from container with explicit default
+#define fy_get(_colv, _key, _default) \
+    fy_cast(fy_generic_get((_colv), (_key)), (_default))
 
-// fy_get() - get from container, cast to type using type's default
-#define fy_get(_colv, _key, _type) \
-    (fy_get_default((_colv), (_key), fy_generic_get_type_default(_type)))
-
-// fy_get_default() - get from container with explicit default
-#define fy_get_default(_colv, _key, _dv) \
-    fy_cast_default(fy_generic_get((_colv), (_key)), (_dv))
+// fy_castp() - cast via pointer (no alloca for inline strings)
+#define fy_castp(_vp, _default) \
+    fy_generic_castp((_vp), (_default))
 ```
 
-**Two styles for maximum flexibility:**
+**Usage examples:**
 
 ```c
-// Style 1: Type-based (uses type's implicit default)
-int port = fy_get(config, "port", int);                   // 0 if missing
-const char *host = fy_get(config, "host", const char *);  // "" if missing
-bool enabled = fy_get(config, "enabled", bool);           // false if missing
+// Access config values with explicit defaults
+int port = fy_get(config, "port", 8080);              // 8080 if missing
+const char *host = fy_get(config, "host", "localhost");  // "localhost" if missing
+bool enabled = fy_get(config, "enabled", false);       // false if missing
 
-// Style 2: Explicit default (when type's default isn't what you want)
-int port = fy_get_default(config, "port", 8080);          // 8080 if missing
-const char *host = fy_get_default(config, "host", "localhost");  // "localhost" if missing
+// Type's zero/empty value as default
+int count = fy_get(config, "count", 0);             // 0 if missing
+const char *name = fy_get(config, "name", "");      // "" if missing
 
 // Sized strings (for YAML strings with embedded \0 or binary data)
-fy_generic_sized_string data = fy_get(config, "binary", fy_generic_sized_string);
-// data.data may contain \0 bytes, use data.len for length
+fy_generic_sized_string data = fy_get(config, "binary", fy_szstr_empty);
+// data.data may contain \0 bytes, use data.size for length
 
 // Example: YAML file with embedded null
 // config.yaml:
@@ -193,7 +189,7 @@ fy_generic_sized_string data = fy_get(config, "binary", fy_generic_sized_string)
 //   binary: "\x00\x01\xFF"
 
 // Decorated integers (for full unsigned long long range)
-fy_generic_decorated_int num = fy_cast(value, fy_generic_decorated_int);
+fy_generic_decorated_int num = fy_cast(value, fy_dint_empty);
 if (num.is_unsigned)
     printf("Unsigned: %llu\n", num.uv);
 else
@@ -340,18 +336,18 @@ extern const fy_map_handle fy_map_invalid;
 
 ```c
 // Stack-allocated (no builder - immutable, structural sharing)
-fy_seq_handle seq1 = fy_cast(fy_sequence("a", "b"), fy_seq_invalid);
+fy_seq_handle seq1 = fy_cast(fy_local_sequence("a", "b"), fy_seq_invalid);
 fy_seq_handle seq2 = fy_conj(seq1, fy_string("c"));  // Returns new with sharing
 
 // Heap-allocated via builder (persistent beyond stack scope)
 // Builder automatically internalizes values when you use it!
 struct fy_generic_builder *gb = fy_generic_builder_create();
 
-fy_seq_handle seq3 = fy_cast(fy_sequence("a", "b"), fy_seq_invalid);
+fy_seq_handle seq3 = fy_cast(fy_local_sequence("a", "b"), fy_seq_invalid);
 fy_seq_handle seq4 = fy_conj(gb, seq3, fy_string("c"));  // Builder internalizes
 
 // Same API, different allocation strategy!
-fy_map_handle map1 = fy_cast(fy_mapping("key", 1), fy_map_invalid);
+fy_map_handle map1 = fy_cast(fy_local_mapping("key", 1), fy_map_invalid);
 fy_map_handle map2 = fy_assoc(map1, "key2", fy_int(42));     // Stack
 fy_map_handle map3 = fy_assoc(gb, map1, "key2", fy_int(42)); // Heap (internalized)
 
@@ -431,8 +427,8 @@ fy_generic_builder_destroy(gb);
 **Inline objects are always stable:**
 ```c
 // Small integers don't need builder
-fy_generic n1 = fy_to_generic(42);  // Inline storage (no allocation)
-fy_generic n2 = fy_to_generic(42);  // Same inline representation
+fy_generic n1 = fy_value(42);  // Inline storage (no allocation)
+fy_generic n2 = fy_value(42);  // Same inline representation
 
 if (n1 == n2) {  // TRUE - inline values inherently stable
     printf("Same!\n");
@@ -601,7 +597,7 @@ This is the secret sauce that makes functional programming patterns viable in C.
 ```c
 void demonstrate_stack_allocated(void) {
     // Stack-allocated (temporary) - uses structural sharing
-    fy_generic items = fy_sequence("alice", "bob", "charlie");
+    fy_generic items = fy_local_sequence("alice", "bob", "charlie");
     fy_seq_handle seq1 = fy_get(items, fy_seq_invalid);
 
     // Add an item - returns NEW sequence, original unchanged
@@ -631,7 +627,7 @@ void demonstrate_builder_allocated(void) {
     struct fy_generic_builder *gb = fy_generic_builder_create();
 
     // Start with stack-allocated sequence
-    fy_seq_handle seq1 = fy_get(fy_sequence("alice", "bob"), fy_seq_invalid);
+    fy_seq_handle seq1 = fy_get(fy_local_sequence("alice", "bob"), fy_seq_invalid);
 
     // Add items using builder - builder internalizes automatically!
     fy_seq_handle seq2 = fy_conj(gb, seq1, fy_string("charlie"));
@@ -656,7 +652,7 @@ void demonstrate_builder_allocated(void) {
 ```c
 void demonstrate_map_updates_stack(void) {
     // Start with an immutable mapping (stack-allocated)
-    fy_generic config = fy_mapping(
+    fy_generic config = fy_local_mapping(
         "host", "localhost",
         "port", 8080,
         "enabled", true
@@ -696,7 +692,7 @@ void demonstrate_map_updates_builder(void) {
 
     // Start with stack-allocated mapping
     fy_map_handle map1 = fy_get(
-        fy_mapping("host", "localhost", "port", 8080, "enabled", true),
+        fy_local_mapping("host", "localhost", "port", 8080, "enabled", true),
         fy_map_invalid
     );
 
@@ -735,11 +731,11 @@ void demonstrate_map_updates_builder(void) {
 
 ```c
 // libfyaml - same semantics!
-fy_generic items = fy_sequence("alice", "bob", "charlie");
+fy_generic items = fy_local_sequence("alice", "bob", "charlie");
 fy_seq_handle items2 = fy_conj(items, fy_string("dave"));        // Original unchanged
 fy_seq_handle items3 = fy_assoc_at(items, 1, fy_string("BOBBY")); // Returns new
 
-fy_generic config = fy_mapping("host", "localhost", "port", 8080);
+fy_generic config = fy_local_mapping("host", "localhost", "port", 8080);
 fy_map_handle config2 = fy_assoc(config, "timeout", fy_int(30));  // Returns new map
 fy_map_handle config3 = fy_dissoc(config, "enabled");             // Returns new map
 ```
@@ -860,7 +856,7 @@ int port = fy_map_get(
 
 These can be implemented as:
 - Static inline function returning empty generic
-- Preprocessor macro expanding to `fy_mapping()` / `fy_sequence()`
+- Preprocessor macro expanding to `fy_local_mapping()` / `fy_local_sequence()`
 - Global constant (if generics are POD-compatible)
 
 ### Usage

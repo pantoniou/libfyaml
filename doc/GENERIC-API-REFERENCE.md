@@ -161,8 +161,8 @@ libfyaml exposes a minimal, polymorphic API that's all you need for working with
 - `fy_is_*()` - Type predicates (`fy_is_map`, `fy_is_seq`, `fy_is_string`, etc.)
 
 **Construction**:
-- `fy_mapping(...)` - Create mapping (stack-allocated, immutable)
-- `fy_sequence(...)` - Create sequence (stack-allocated, immutable)
+- `fy_local_mapping(...)` - Create mapping (stack-allocated, immutable)
+- `fy_local_sequence(...)` - Create sequence (stack-allocated, immutable)
 - `fy_gb_mapping(gb, ...)` - Create mapping via builder (heap-allocated)
 - `fy_gb_sequence(gb, ...)` - Create sequence via builder (heap-allocated)
 
@@ -175,12 +175,12 @@ libfyaml exposes a minimal, polymorphic API that's all you need for working with
 
 **Stack-allocated (temporary)**:
 ```c
-fy_generic msg = fy_mapping(
+fy_generic msg = fy_local_mapping(
     "role", "user",
     "content", "Hello!"
 );
 
-fy_generic items = fy_sequence("foo", "bar", "baz");
+fy_generic items = fy_local_sequence("foo", "bar", "baz");
 ```
 
 **Heap-allocated (persistent)**:

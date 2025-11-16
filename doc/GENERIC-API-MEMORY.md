@@ -11,7 +11,7 @@ libfyaml's generic API achieves **Python-level ergonomics without garbage collec
 **Stack-scoped values** (temporary, automatic cleanup):
 ```c
 void process_config(void) {
-    fy_generic config = fy_mapping("host", "localhost", "port", 8080);
+    fy_generic config = fy_local_mapping("host", "localhost", "port", 8080);
 
     const char *host = fy_map_get(config, "host", "");
     int port = fy_map_get(config, "port", 0);
@@ -120,7 +120,7 @@ fy_generic server3 = fy_gb_mapping(gb, "host", "localhost", "port", 3000);
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
 
 // Start with stack-allocated sequence
-fy_seq_handle seq1 = fy_get(fy_sequence("alice", "bob"), fy_seq_invalid);
+fy_seq_handle seq1 = fy_get(fy_local_sequence("alice", "bob"), fy_seq_invalid);
 
 // First use: internalizes seq1 into builder (one-time cost)
 fy_seq_handle seq2 = fy_conj(gb, seq1, fy_string("charlie"));
@@ -183,7 +183,7 @@ Unlike mutable APIs where a thread-local context could cause "spooky action at a
 fy_generic_builder_push(gb);
 
 // These return NEW values - originals unchanged
-fy_generic config = fy_mapping("host", "localhost");
+fy_generic config = fy_local_mapping("host", "localhost");
 fy_generic config2 = fy_assoc(config, "port", 8080);     // config still valid!
 fy_generic config3 = fy_assoc(config, "timeout", 30);    // fork from config
 
@@ -201,9 +201,9 @@ dict_set(config, "port", 8080);  // Mutates in place!
 
 **Key insight**: Immutability + persistent data structures = referential transparency = safe implicit context.
 
-#### Polymorphic fy_to_generic() and Builder Detection
+#### Polymorphic fy_value() and Builder Detection
 
-The `fy_to_generic()` macro **transparently detects builders** using C11 `_Generic`:
+The `fy_value()` macro **transparently detects builders** using C11 `_Generic`:
 
 ```c
 // Polymorphic: auto-detects builder as first argument
@@ -252,14 +252,14 @@ struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
 fy_generic_builder_push(gb);
 
 // All operations transparently use thread-local builder
-fy_generic config = fy_mapping("host", "localhost");
+fy_generic config = fy_local_mapping("host", "localhost");
 config = fy_assoc(config, "port", 8080);
 config = fy_assoc(config, "timeout", 30);
 
 // Complex nested expressions - builder threads through automatically
-fy_generic services = fy_sequence(
-    fy_mapping("name", "api", "port", 8080),
-    fy_mapping("name", "web", "port", 3000)
+fy_generic services = fy_local_sequence(
+    fy_local_mapping("name", "api", "port", 8080),
+    fy_local_mapping("name", "web", "port", 3000)
 );
 config = fy_assoc(config, "services", services);
 
@@ -306,7 +306,7 @@ fy_generic_builder_push(app_gb);
 
 // Load config - stored in parent, deduplicated
 fy_generic app_config = parse_yaml("config.yaml");
-fy_generic common_strings = fy_sequence("localhost", "production", "enabled");
+fy_generic common_strings = fy_local_sequence("localhost", "production", "enabled");
 
 // Per-request processing
 void handle_request(struct request *req) {
@@ -318,7 +318,7 @@ void handle_request(struct request *req) {
 
     // Build request-specific data
     // Common strings like "localhost" deduplicated from parent!
-    fy_generic response = fy_mapping(
+    fy_generic response = fy_local_mapping(
         "host", "localhost",     // Dedup hit in parent - zero allocation!
         "timestamp", time(NULL), // New data in child
         "request_id", req->id    // New data in child
@@ -375,16 +375,16 @@ fy_generic_builder_push(gb);
 fy_generic result =
     fy_merge(
         fy_assoc(base_config, "env", "production"),
-        fy_mapping(
-            "database", fy_mapping(
+        fy_local_mapping(
+            "database", fy_local_mapping(
                 "host", "db.example.com",
                 "port", 5432,
-                "pool", fy_mapping(
+                "pool", fy_local_mapping(
                     "min", 5,
                     "max", 20
                 )
             ),
-            "cache", fy_mapping(
+            "cache", fy_local_mapping(
                 "enabled", true,
                 "ttl", 3600
             )
@@ -405,7 +405,7 @@ fy_generic_builder_pop(gb);
 **Explicit builder** (maximum control):
 ```c
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
-fy_generic config = fy_mapping(gb, "host", "localhost");
+fy_generic config = fy_local_mapping(gb, "host", "localhost");
 config = fy_assoc(gb, config, "port", 8080);
 config = fy_assoc(gb, config, "timeout", 30);
 fy_generic_builder_destroy(gb);
@@ -416,7 +416,7 @@ fy_generic_builder_destroy(gb);
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
 fy_generic_builder_push(gb);
 
-fy_generic config = fy_mapping("host", "localhost");
+fy_generic config = fy_local_mapping("host", "localhost");
 config = fy_assoc(config, "port", 8080);
 config = fy_assoc(config, "timeout", 30);
 
@@ -427,7 +427,7 @@ fy_generic_builder_destroy(gb);
 **Stack allocation** (temporary values):
 ```c
 void process_request(void) {
-    fy_generic config = fy_mapping("host", "localhost");
+    fy_generic config = fy_local_mapping("host", "localhost");
     config = fy_assoc(config, "port", 8080);
 
     // Use config...
@@ -686,7 +686,7 @@ struct fy_generic_builder *gb = fy_generic_builder_create(&(struct fy_generic_bu
 });
 
 // Values allocated as encountered
-fy_generic config = fy_mapping(
+fy_generic config = fy_local_mapping(
     "port", 8080,      // Allocated first
     "host", "localhost", // Allocated second (even though "host" < "port" lexically)
     "timeout", 30      // Allocated third
@@ -756,8 +756,8 @@ fy_generic charlie = fy_string("charlie");
 **Mappings** (canonical key order):
 ```c
 // Key order doesn't matter - canonical form sorts keys
-fy_generic config1 = fy_mapping("port", 8080, "host", "localhost");
-fy_generic config2 = fy_mapping("host", "localhost", "port", 8080);
+fy_generic config1 = fy_local_mapping("port", 8080, "host", "localhost");
+fy_generic config2 = fy_local_mapping("host", "localhost", "port", 8080);
 
 // After canonicalization:
 // Both become: {"host": "localhost", "port": 8080} (keys sorted)
@@ -768,8 +768,8 @@ fy_generic config2 = fy_mapping("host", "localhost", "port", 8080);
 **Sequences** (preserve insertion order):
 ```c
 // Order matters for sequences
-fy_generic seq1 = fy_sequence("a", "b", "c");
-fy_generic seq2 = fy_sequence("c", "b", "a");
+fy_generic seq1 = fy_local_sequence("a", "b", "c");
+fy_generic seq2 = fy_local_sequence("c", "b", "a");
 
 // Different sequences (order preserved)
 // But elements internally canonicalized
@@ -882,12 +882,12 @@ fy_serialize_canonical(comp.cached_result, NULL, &comp.output_hash);
 **Merkle tree / structural sharing**:
 ```c
 // Subtrees with same hash are structurally identical
-fy_generic prod = fy_mapping(
+fy_generic prod = fy_local_mapping(
     "env", "production",
     "database", common_db_config  // Shared subtree
 );
 
-fy_generic dev = fy_mapping(
+fy_generic dev = fy_local_mapping(
     "env", "development",
     "database", common_db_config  // Same pointer after dedup
 );

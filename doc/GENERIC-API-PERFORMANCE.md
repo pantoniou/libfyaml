@@ -41,8 +41,8 @@ Inline strings (≤7 bytes) are stored directly within the `fy_generic` 64-bit v
 
 ```c
 // Traditional value-based cast
-fy_generic v = fy_to_generic("hello");  // Inline storage
-const char *str = fy_cast_default(v, "");
+fy_generic v = fy_value("hello");  // Inline storage
+const char *str = fy_cast(v, "");
 // Internally: alloca(8), memcpy, null-terminate → ~20-50 cycles overhead
 ```
 
@@ -52,7 +52,7 @@ Pointer-based casting (`fy_genericp_cast_default`) can return a pointer **direct
 
 ```c
 // Zero-overhead pointer-based cast
-const char *str = fy_genericp_cast_default(&v, "");
+const char *str = fy_castp(&v, "");
 // Returns: (const char *)&v + offset → ~2 cycles, no allocation!
 ```
 
@@ -84,7 +84,7 @@ For inline strings, the function returns a pointer to the string bytes embedded 
 1. **Function parameters** - Access strings without alloca:
    ```c
    void handle_request(fy_generic config) {
-       const char *method = fy_genericp_cast_default(&config, "GET");
+       const char *method = fy_castp(&config, "GET");
        // No alloca, pointer points into 'config' parameter
    }
    ```
@@ -93,7 +93,7 @@ For inline strings, the function returns a pointer to the string bytes embedded 
    ```c
    fy_generic items[100];  // Stack or heap array
    for (size_t i = 0; i < 100; i++) {
-       const char *str = fy_genericp_cast_default(&items[i], "");
+       const char *str = fy_castp(&items[i], "");
        // Pointer into items[i], no alloca per iteration
    }
    ```
@@ -106,7 +106,7 @@ For inline strings, the function returns a pointer to the string bytes embedded 
    };
 
    void process(struct request *req) {
-       const char *content_type = fy_genericp_cast_default(&req->headers, "");
+       const char *content_type = fy_castp(&req->headers, "");
        // Pointer into req->headers, no allocation
    }
    ```
@@ -118,8 +118,8 @@ The returned pointer is valid as long as the source `fy_generic` remains in scop
 ```c
 const char *str;
 {
-    fy_generic v = fy_to_generic("hello");
-    str = fy_genericp_cast_default(&v, "");  // Points into v
+    fy_generic v = fy_value("hello");
+    str = fy_castp(&v, "");  // Points into v
     printf("%s\n", str);  // ✓ OK - v still in scope
 }
 // printf("%s\n", str);  // ✗ DANGER - v destroyed, pointer dangling!
