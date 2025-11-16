@@ -2709,12 +2709,7 @@ fy_generic_sequence_get_szstr_default(fy_generic seq, size_t idx,
 	fy_generic: fy_generic_sequence_get_generic_default
 
 #define fy_generic_sequence_get_default(_seq, _idx, _dv) \
-	({ \
-		typeof (1 ? (_dv) : (_dv))  __ret; \
-		\
-		__ret = _Generic((_dv), fy_generic_sequence_get_default_Generic_dispatch)((_seq), (_idx), (_dv)); \
-		__ret; \
-	})
+	(_Generic((_dv), fy_generic_sequence_get_default_Generic_dispatch)((_seq), (_idx), (_dv)))
 
 #define fy_generic_sequence_get(_seq, _idx, _type) \
 	(fy_generic_sequence_get_default((_seq), (_idx), fy_generic_get_type_default(_type)))
@@ -2740,12 +2735,7 @@ fy_generic_sequence_get_szstr_default(fy_generic seq, size_t idx,
 	fy_generic: fy_generic_sequencep_get_generic_default
 
 #define fy_generic_sequencep_get_default(_seqp, _idx, _dv) \
-	({ \
-		typeof (1 ? (_dv) : (_dv))  __ret; \
-		\
-		__ret = _Generic((_dv), fy_generic_sequencep_get_default_Generic_dispatch)((_seqp), (_idx), (_dv)); \
-		__ret; \
-	})
+	(_Generic((_dv), fy_generic_sequencep_get_default_Generic_dispatch)((_seqp), (_idx), (_dv)))
 
 #define fy_generic_sequencep_get(_seqp, _idx, _type) \
 	(fy_generic_sequencep_get_default((_seqp), (_idx), fy_generic_get_type_default(_type)))
@@ -2860,13 +2850,7 @@ fy_generic_mapping_get_szstr_default(fy_generic map, fy_generic key,
 	fy_generic: fy_generic_mapping_get_generic_default
 
 #define fy_generic_mapping_get_default(_map, _key, _dv) \
-	({ \
-		typeof (1 ? (_dv) : (_dv)) __ret; \
-		fy_generic __key = fy_to_generic(_key); \
-		\
-		__ret = _Generic((_dv), fy_generic_mapping_get_default_Generic_dispatch)((_map), __key, (_dv)); \
-		__ret; \
-	})
+	(_Generic((_dv), fy_generic_mapping_get_default_Generic_dispatch)((_map), fy_to_generic(_key), (_dv)))
 
 #define fy_generic_mapping_get(_map, _key, _type) \
 	(fy_generic_mapping_get_default((_map), (_key), fy_generic_get_type_default(_type)))
