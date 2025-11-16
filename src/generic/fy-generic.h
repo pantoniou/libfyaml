@@ -276,8 +276,8 @@ typedef struct fy_generic {
 #define fy_false	((fy_generic){ .v = fy_false_value })
 #define fy_true		((fy_generic){ .v = fy_true_value })
 #define fy_invalid	((fy_generic){ .v = fy_invalid_value })
-#define fy_seq_empty	((fy_generic){. v = FY_SEQ_V })
-#define fy_map_empty	((fy_generic){. v = FY_MAP_V })
+#define fy_seq_empty	((fy_generic){. v = fy_seq_empty_value })
+#define fy_map_empty	((fy_generic){. v = fy_map_empty_value })
 
 /*
  * The encoding of generic indirect
@@ -1283,38 +1283,6 @@ FY_GENERIC_FLOAT_LVAL_TEMPLATE(double, double, DBL_MIN, DBL_MAX, 0.0);
 
 /* if we can get the address of the argument, then we can return a pointer to it */
 
-#define FY_GENERIC_GET_INPLACE_STRING(_v)						\
-	({										\
-		fy_generic *___vp = fy_alloca_align(sizeof(fy_generic), 		\
-					FY_GENERIC_SCALAR_ALIGN);			\
-		*___vp = (_v);								\
-		(const uint8_t *)___vp + FY_INPLACE_STRING_ADV;				\
-	})
-
-#define FY_GENERIC_GET_STRING_SIZE(_v, _lenp)						\
-	((const char *)(								\
-		(((_v) & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) ?		\
-			( *(_lenp) = ((_v) >> FY_STRING_INPLACE_SIZE_SHIFT) & 		\
-					FYGT_STRING_INPLACE_SIZE_MASK,			\
-			  FY_GENERIC_GET_INPLACE_STRING(_v) ) :				\
-			fy_decode_size_nocheck(						\
-					fy_generic_resolve_ptr(_v), _lenp)		\
-	))
-
-#define FY_GENERIC_GET_STRING(_v)							\
-	((const char *)(								\
-		(((_v) & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) ?		\
-			FY_GENERIC_GET_INPLACE_STRING(_v) :				\
-			fy_skip_size_nocheck(fy_generic_resolve_ptr(_v))		\
-	))
-
-#define FY_GENERIC_GET_STRING_LVAL(_v)							\
-	((const char *)(								\
-		(((_v) & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V) ?		\
-			(const uint8_t *)(&(_v)) + FY_INPLACE_STRING_ADV :		\
-			fy_skip_size_nocheck(fy_generic_resolve_ptr(_v))		\
-	))
-
 static inline size_t
 fy_generic_get_string_inplace_size(const fy_generic v)
 {
@@ -1390,7 +1358,7 @@ fy_genericp_get_string_no_check(const fy_generic *vp)
  * pointer to...
  * Also note there is no attempt to get the size either.
  */
-#define fy_generic_get_string_size(_v, _lenp) 							\
+#define fy_generic_get_string_size_alloca(_v, _lenp) 						\
 	({											\
 		fy_generic __v = (_v);								\
 		const char *__ret = NULL;							\
@@ -1411,17 +1379,17 @@ fy_genericp_get_string_no_check(const fy_generic *vp)
 		__ret;										\
 	})
 
-#define fy_generic_get_string_default(_v, _default_v)			\
-	({								\
-		const char *__ret;					\
-		size_t __len;						\
-		__ret = fy_generic_get_string_size((_v), &__len);	\
-		if (!__ret)						\
-			__ret = (_default_v);				\
-		__ret;							\
+#define fy_generic_get_string_default_alloca(_v, _default_v)					\
+	({											\
+		const char *__ret;								\
+		size_t __len;									\
+		__ret = fy_generic_get_string_size_alloca((_v), &__len);			\
+		if (!__ret)									\
+			__ret = (_default_v);							\
+		__ret;										\
 	})
 
-#define fy_generic_get_string(_v) (fy_generic_get_string_default((_v), ""))
+#define fy_generic_get_string_alloca(_v) (fy_generic_get_string_default_alloca((_v), ""))
 
 static inline const char *fy_genericp_get_const_char_ptr_default(const fy_generic *vp, const char *default_value)
 {
@@ -1446,13 +1414,17 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 	return fy_genericp_get_char_ptr_default(vp, "");
 }
 
-#define fy_generic_get_alias(_v) \
+#define fy_generic_get_alias_alloca(_v) \
 	({ \
 		fy_generic __va = fy_generic_get_anchor((_v)); \
-		fy_generic_get_string(__va); \
+		fy_generic_get_string_alloca(__va); \
 	})
 
-#define fy_bool(_v)			((bool)(_v) ? fy_true : fy_false)
+#define fy_bool(_v) \
+	((bool)(_v) ? fy_true : fy_false)
+
+#define fy_local_bool(_v) \
+	(fy_bool((_v))
 
 #define fy_int_alloca(_v) 									\
 	({											\
@@ -1465,7 +1437,6 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 							| FY_INT_INPLACE_V;			\
 		else {										\
 			__vp = fy_alloca_align(sizeof(*__vp), FY_GENERIC_SCALAR_ALIGN);		\
-			assert(((uintptr_t)__vp & FY_INPLACE_TYPE_MASK) == 0);			\
 			*__vp = __v;								\
 			_r = (fy_generic_value)__vp | FY_INT_OUTPLACE_V;			\
 		}										\
@@ -1491,8 +1462,11 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 		_r;										\
 	})
 
-#define fy_int(_v) \
+#define fy_local_int(_v) \
 	((fy_generic){ .v = (__builtin_constant_p(_v) ? fy_int_const(_v) : fy_int_alloca(_v)) })
+
+#define fy_int(_v) \
+	fy_local_int((_v))
 
 static inline fy_generic_value fy_generic_in_place_char_ptr_len(const char *p, const size_t len)
 {
@@ -1793,7 +1767,7 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 #define fy_to_generic_outofplace_put(_vp, _v) \
 	(_Generic((_v), fy_to_generic_outofplace_put_Generic_dispatch)((_vp), (_v)))
 
-#define fy_stack_to_generic_value(_v) \
+#define fy_local_to_generic_value(_v) \
 	({	\
 		typeof (1 ? (_v) : (_v)) __v = (_v); \
 		fy_generic_value __r; \
@@ -1809,8 +1783,8 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 		__r; \
 	})
 
-#define fy_stack_to_generic(_v) \
-	((fy_generic) { .v = fy_stack_to_generic_value(_v) })
+#define fy_local_to_generic(_v) \
+	((fy_generic) { .v = fy_local_to_generic_value(_v) })
 
 #ifdef FYGT_GENERIC_64
 
@@ -1826,7 +1800,6 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 				FY_FLOAT_INPLACE_V;						\
 		} else {									\
 			__vp = fy_alloca_align(sizeof(*__vp), FY_GENERIC_SCALAR_ALIGN);		\
-			assert(((uintptr_t)__vp & FY_INPLACE_TYPE_MASK) == 0);			\
 			*__vp = __v;								\
 			_r = (fy_generic_value)__vp | FY_FLOAT_OUTPLACE_V;			\
 		}										\
@@ -1861,7 +1834,6 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 		fy_generic_value _r;						\
 										\
 		__vp = fy_alloca_align(sizeof(*__vp), FY_GENERIC_SCALAR_ALIGN);	\
-		assert(((uintptr_t)__vp & FY_INPLACE_TYPE_MASK) == 0);		\
 		*__vp = __v;							\
 		_r = (fy_generic_value)__vp | FY_FLOAT_OUTPLACE_V;		\
 		_r;								\
@@ -1881,8 +1853,11 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 
 #endif
 
-#define fy_float(_v) \
+#define fy_local_float(_v) \
 	((fy_generic){ .v = __builtin_constant_p(_v) ? fy_float_const(_v) : fy_float_alloca(_v) })
+
+#define fy_float(_v) \
+	((fy_local_float(_v)))
 
 /* literal strings in C, are char *
  * However you can't get a type of & "literal"
@@ -1904,7 +1879,6 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 		if (_r == fy_invalid_value) {							\
 			__vp = fy_alloca_align(FYGT_SIZE_ENCODING_MAX + __len + 1, 		\
 					FY_GENERIC_SCALAR_ALIGN); 				\
-			assert(((uintptr_t)__vp & FY_INPLACE_TYPE_MASK) == 0);			\
 			__s = fy_encode_size(__vp, FYGT_SIZE_ENCODING_MAX, __len);		\
 			memcpy(__s, __v, __len);						\
 			__s[__len] = '\0';							\
@@ -2135,11 +2109,17 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 
 #define fy_string_const(_v) fy_string_size_const((_v), (sizeof(_v) - 1))
 
-#define fy_string_size(_v, _len) \
+#define fy_local_string_size(_v, _len) \
 	((fy_generic){ .v = __builtin_constant_p(_v) ? fy_string_size_const((_v), (_len)) : fy_string_size_alloca((_v), (_len)) })
 
-#define fy_string(_v) \
+#define fy_local_string(_v) \
 	((fy_generic){ .v = __builtin_constant_p(_v) ? fy_string_const(_v) : fy_string_alloca(_v) })
+
+#define fy_string_size(_v, _len) \
+	(fy_local_string_size((_v), (_len)))
+
+#define fy_string(_v) \
+	(fy_local_string((_v)))
 
 #define fy_stringf_value(_fmt, ...) \
 	({ \
@@ -2162,14 +2142,14 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 		(fy_generic_value)((uintptr_t)__vp | FY_SEQ_V);				\
 	})
 
-#define fy_stack_sequence_create_value(_count, _items) \
+#define fy_local_sequence_create_value(_count, _items) \
 	({ \
 		size_t __count = (_count); \
 		__count ? fy_sequence_alloca((_count), (_items)) : fy_seq_empty_value; \
 	})
 
-#define fy_stack_sequence_create(_count, _items) \
-	((fy_generic) { .v = fy_stack_sequence_create_value((_count), (_items)) })
+#define fy_local_sequence_create(_count, _items) \
+	((fy_generic) { .v = fy_local_sequence_create_value((_count), (_items)) })
 
 #define _FY_CPP_GITEM_ONE(arg) fy_to_generic(arg)
 #define _FY_CPP_GITEM_LATER_ARG(arg) , _FY_CPP_GITEM_ONE(arg)
@@ -2182,14 +2162,14 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 #define FY_CPP_VA_GITEMS(_count, ...) \
 	((fy_generic [(_count)]) { __VA_OPT__(_FY_CPP_VA_GITEMS(__VA_ARGS__)) })
 
-#define fy_stack_sequence_value(...) \
-	fy_stack_sequence_create_value( \
+#define fy_local_sequence_value(...) \
+	fy_local_sequence_create_value( \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
 			FY_CPP_VA_GITEMS( \
 				FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__))
 
-#define fy_stack_sequence(...) \
-	((fy_generic) { .v = fy_stack_sequence_value(__VA_ARGS__) })
+#define fy_local_sequence(...) \
+	((fy_generic) { .v = fy_local_sequence_value(__VA_ARGS__) })
 
 #define fy_mapping_alloca(_count, _pairs) 						\
 	({										\
@@ -2203,22 +2183,22 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 		(fy_generic_value)((uintptr_t)__vp | FY_MAP_V);				\
 	})
 
-#define fy_stack_mapping_create_value(_count, _pairs) \
+#define fy_local_mapping_create_value(_count, _pairs) \
 	({ \
 		size_t __count = (_count); \
 		__count ? fy_mapping_alloca((_count), (_pairs)) : fy_map_empty_value; \
 	})
 
-#define fy_stack_mapping_create(_count, _items) \
-	((fy_generic) { .v = fy_stack_mapping_create_value((_count), (_items)) })
+#define fy_local_mapping_create(_count, _items) \
+	((fy_generic) { .v = fy_local_mapping_create_value((_count), (_items)) })
 
-#define fy_stack_mapping_value(...) \
-	fy_stack_mapping_create_value( \
+#define fy_local_mapping_value(...) \
+	fy_local_mapping_create_value( \
 		FY_CPP_VA_COUNT(__VA_ARGS__) / 2, \
 		FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__))
 
-#define fy_stack_mapping(...) \
-	((fy_generic) { .v = fy_stack_mapping_value(__VA_ARGS__) })
+#define fy_local_mapping(...) \
+	((fy_generic) { .v = fy_local_mapping_value(__VA_ARGS__) })
 
 // indirect
 
@@ -2226,22 +2206,22 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 	({										\
 		fy_generic_value __v = (_v);						\
 		fy_generic_value __anchor = (_anchor), __tag = (_tag), *__vp;		\
-		int __i = 1;								\
+		int __i = 1, __count;							\
 											\
-		__vp = fy_alloca_align(4 * sizeof(*__vp), FY_GENERIC_CONTAINER_ALIGN);	\
-		__vp[0] = 0;								\
-		if (__v != fy_invalid_value) {						\
-			 __vp[0] |= FYGIF_VALUE;					\
+		__count = (1 + (__v      != fy_invalid_value) + 			\
+			       (__anchor != fy_invalid_value) + 			\
+			       (__tag    != fy_invalid_value));				\
+		__vp = fy_alloca_align(__count * sizeof(*__vp), 			\
+					FY_GENERIC_CONTAINER_ALIGN);			\
+		__vp[0] = (__v      != fy_invalid_value ? FYGIF_VALUE  : 0) |		\
+			  (__anchor != fy_invalid_value ? FYGIF_ANCHOR : 0) |		\
+			  (__tag    != fy_invalid_value ? FYGIF_TAG    : 0);		\
+		if (__v != fy_invalid_value) 						\
 			 __vp[__i++] = __v;						\
-		}									\
-		if (__anchor != fy_invalid_value) {					\
-			 __vp[0] |= FYGIF_ANCHOR;					\
+		if (__anchor != fy_invalid_value) 					\
 			 __vp[__i++] = __anchor;					\
-		}									\
-		if (_tag != fy_invalid_value) {						\
-			 __vp[0] |= FYGIF_TAG;						\
+		if (_tag != fy_invalid_value) 						\
 			 __vp[__i++] = __tag;						\
-		}									\
 		(fy_generic_value)__vp | FY_INDIRECT_V;					\
 	})
 
@@ -3319,7 +3299,7 @@ FY_GENERIC_GB_FLOAT_LVAL_TEMPLATE(double, double, DBL_MIN, DBL_MAX, 0.0);
 #define fy_to_generic_value(_maybe_gb, ...) \
 	(_Generic((_maybe_gb), \
 		struct fy_generic_builder *: ({ fy_gb_to_generic_value(fy_gb_or_NULL(_maybe_gb), __VA_OPT__(__VA_ARGS__) __VA_OPT__(,) 0); }), \
-		default: (fy_stack_to_generic_value((_maybe_gb)))))
+		default: (fy_local_to_generic_value((_maybe_gb)))))
 
 #define fy_to_generic(_maybe_gb, ...) \
 	((fy_generic) { .v = fy_to_generic_value((_maybe_gb)) })
@@ -3443,8 +3423,10 @@ void fy_gb_set_schema(struct fy_generic_builder *gb, enum fy_generic_schema sche
 
 int fy_gb_set_schema_from_parser_mode(struct fy_generic_builder *gb, enum fy_parser_mode parser_mode);
 
-#define fy_sequence(...) 	(fy_stack_sequence(__VA_ARGS__))
-#define fy_mapping(...) 	(fy_stack_mapping(__VA_ARGS__))
+void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
+
+#define fy_sequence(...) 	(fy_local_sequence(__VA_ARGS__))
+#define fy_mapping(...) 	(fy_local_mapping(__VA_ARGS__))
 #define fy_value(_v)		(fy_to_generic(_v))
 #define fy_inplace_value(_v)	(fy_to_generic_inplace(_v))
 #define fy_is_inplace(_v)	(fy_generic_is_in_place(v))

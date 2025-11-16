@@ -19,6 +19,7 @@
 
 /* for container_of */
 #include "fy-list.h"
+#include "fy-utf8.h"
 
 #include "fy-allocator.h"
 #include "fy-generic.h"
@@ -1671,3 +1672,108 @@ int fy_gb_set_schema_from_parser_mode(struct fy_generic_builder *gb, enum fy_par
 	fy_gb_set_schema(gb, schema);
 	return 0;
 }
+
+void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
+{
+	static const char generic_type_map[] = {
+		[FYGT_INVALID] 	= '!',
+		[FYGT_NULL]	= 'n',
+		[FYGT_BOOL]	= 'b',
+		[FYGT_INT]	= 'i',
+		[FYGT_FLOAT]	= 'f',
+		[FYGT_STRING]	= '"',
+		[FYGT_SEQUENCE]	= '[',
+		[FYGT_MAPPING]	= '{',
+		[FYGT_INDIRECT]	= '^',
+		[FYGT_ALIAS]	= '*',
+	};
+	const char *sv;
+	fy_generic vtag, vanchor, v, iv, key, value;
+	const char *tag = NULL, *anchor = NULL;
+	const fy_generic *items;
+	const fy_generic_map_pair *pairs;
+	fy_generic_sized_string szstr;
+	size_t i, count;
+
+	vanchor = fy_generic_get_anchor(vv);
+	vtag = fy_generic_get_tag(vv);
+#if 0
+	if (fy_generic_get_type(vanchor) == FYGT_STRING)
+		anchor = fy_generic_get_string(vanchor);
+	if (fy_generic_get_type(vtag) == FYGT_STRING)
+		tag = fy_generic_get_string(vtag);
+#else
+	anchor = fy_castp_default(&vanchor, (const char *)NULL);
+	tag = fy_castp_default(&vtag, (const char *)NULL);
+#endif
+	v = fy_generic_is_indirect(vv) ? fy_generic_indirect_get_value(vv) : vv;
+
+	fprintf(fp, "%*s", level * 2, "");
+
+	if (v.v != vv.v)
+		fprintf(fp, "(%016lx) ", vv.v);
+	if (anchor)
+		fprintf(fp, "&%s ", anchor);
+	if (tag)
+		fprintf(fp, "%s ", tag);
+
+	fprintf(fp, "%016lx ", v.v);
+	fprintf(fp, "%c ", generic_type_map[fy_generic_get_type(v)]);
+
+
+	if (fy_generic_is_invalid(v))
+		fprintf(fp, "invalid");
+
+	switch (fy_generic_get_type(v)) {
+	case FYGT_NULL:
+		fprintf(fp, "%s", "null");
+		return;
+
+	case FYGT_BOOL:
+		fprintf(fp, "%s", fy_generic_cast(v, bool) ? "true" : "false");
+		return;
+
+	case FYGT_INT:
+		fprintf(fp, "%lld", fy_generic_cast(v, long long));
+		return;
+
+	case FYGT_FLOAT:
+		fprintf(fp, "%f", fy_generic_cast(v, float));
+		return;
+
+	case FYGT_STRING:
+		szstr = fy_generic_cast(v, fy_generic_sized_string);
+		fprintf(fp, "%s", fy_utf8_format_text_a(szstr.data, szstr.size, fyue_doublequote));
+		return;
+
+	case FYGT_SEQUENCE:
+		items = fy_generic_sequence_get_items(v, &count);
+		for (i = 0; i < count; i++) {
+			iv = items[i];
+			fy_generic_dump_primitive(fp, level + 1, iv);
+		}
+		break;
+
+	case FYGT_MAPPING:
+		pairs = fy_generic_mapping_get_pairs(v, &count);
+		for (i = 0; i < count; i++) {
+			key = pairs[i].key;
+			value = pairs[i].value;
+			fy_generic_dump_primitive(fp, level + 1, key);
+			fprintf(fp, ": ");
+			fy_generic_dump_primitive(fp, level + 1, value);
+		}
+		break;
+
+	case FYGT_ALIAS:
+		vanchor = fy_generic_get_anchor(v);
+		sv = fy_castp_default(&vanchor, "");
+		fprintf(fp, "%s", sv);
+		break;
+
+	default:
+		FY_IMPOSSIBLE_ABORT();
+	}
+	fprintf(fp, "\n");
+}
+

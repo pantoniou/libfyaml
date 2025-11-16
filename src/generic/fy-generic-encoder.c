@@ -104,7 +104,7 @@ int fy_encode_generic_string(struct fy_generic_encoder *fyge, const char *anchor
 	const char *str;
 	size_t len;
 
-	str = fy_generic_get_string_size(v, &len);
+	str = fy_generic_get_string_size_alloca(v, &len);
 	return fy_emit_scalar_write(fyge->emit, FYSS_ANY, anchor, tag, str, len);
 }
 
@@ -168,7 +168,7 @@ int fy_encode_generic_alias(struct fy_generic_encoder *fyge, fy_generic v)
 {
 	const char *str;
 
-	str = fy_generic_get_alias(v);
+	str = fy_generic_get_alias_alloca(v);
 	if (!str || !*str)
 		return -1;
 
@@ -182,10 +182,11 @@ int fy_encode_generic(struct fy_generic_encoder *fyge, fy_generic v)
 
 	if (fy_generic_is_indirect(v)) {
 		fy_generic_indirect_get(v, &gi);
-		if (fy_generic_get_type(gi.anchor) == FYGT_STRING)
-			anchor = fy_generic_get_string(gi.anchor);
-		if (fy_generic_get_type(gi.tag) == FYGT_STRING)
-			tag = fy_generic_get_string(gi.tag);
+		anchor = fy_cast_default(gi.anchor, (const char *)NULL);
+		tag = fy_cast_default(gi.tag, (const char *)NULL);
+	} else {
+		anchor = NULL;
+		tag = NULL;
 	}
 
 	switch (fy_generic_get_type(v)) {
@@ -228,14 +229,13 @@ int fy_encode_generic(struct fy_generic_encoder *fyge, fy_generic v)
 static int
 fy_generic_encoder_emit_document(struct fy_generic_encoder *fyge, fy_generic vroot, fy_generic vds)
 {
-	fy_generic vversion, vmajor, vminor, vtags; //, vhandle, vprefix;
-	const fy_generic *items;
+	fy_generic_mapping_handle vds_map, maph;
+	fy_generic_sequence_handle seqh;
 	struct fy_version *vers = NULL, vers_local;
 	struct fy_tag **tags = NULL, *tag;
 	bool is_version_explicit, are_tags_explicit;
-	fy_generic version_explicit, tags_explicit;
 	int rc;
-	size_t i, j, count;
+	size_t i, j;
 
 	if (!fyge || vroot.v == fy_invalid_value)
 		return -1;
@@ -244,55 +244,38 @@ fy_generic_encoder_emit_document(struct fy_generic_encoder *fyge, fy_generic vro
 	if (fyge->emitted_stream_end)
 		return -1;
 
-	if (fy_generic_is_mapping(vds)) {
-		vversion = fy_generic_mapping_get_value(vds, fy_string("version"));
-
-		if (fy_generic_is_mapping(vversion)) {
-			vmajor = fy_generic_mapping_get_value(vversion, fy_string("major"));
-			if (!fy_generic_is_int(vmajor))
-				goto err_out;
-			vminor = fy_generic_mapping_get_value(vversion, fy_string("minor"));
-			if (!fy_generic_is_int(vminor))
-				goto err_out;
-
+	vers = NULL;
+	tags = NULL;
+	vds_map = fy_cast_default(vds, fy_map_handle_null);
+	if (vds_map) {
+		maph = fy_get_default(vds_map, "version", fy_map_handle_null);
+		if (maph) {
 			memset(&vers_local, 0, sizeof(*vers));
-			vers_local.major = fy_generic_cast(vmajor, int);
-			vers_local.minor = fy_generic_cast(vminor, int);
+			vers_local.major = fy_get_default(maph, "major", -1);
+			vers_local.minor = fy_get_default(maph, "minor", -1);
 			vers = &vers_local;
+			if (vers_local.major < 0 || vers_local.minor < 0)
+				goto err_out;
 		}
 
-		vtags = fy_generic_mapping_get_value(vds, fy_string("tags"));
-		if (fy_generic_is_sequence(vtags)) {
-			items = fy_generic_sequence_get_items(vtags, &count);
-
-			tags = alloca((count + 1) * sizeof(*tags));
+		seqh = fy_get_default(vds_map, "tags", fy_seq_handle_null);
+		if (seqh) {
+			tags = alloca((fy_len(seqh) + 1) * sizeof(*tags));
 			j = 0;
-			for (i = 0; i < count; i++) {
-
-				fy_generic *vhandle_prefix = alloca(sizeof(fy_generic) * 2);
-
-				vhandle_prefix[0] = fy_generic_mapping_get_value(items[i], fy_string("handle"));
-				vhandle_prefix[1] = fy_generic_mapping_get_value(items[i], fy_string("prefix"));
-
-				if (!fy_generic_is_string(vhandle_prefix[0]) || !fy_generic_is_string(vhandle_prefix[1]))
-					goto err_out;
-
+			for (i = 0; i < fy_len(seqh); i++) {
 				tag = alloca(sizeof(*tag));
-				tag->handle = fy_generic_get_string(vhandle_prefix[0]);
-				tag->prefix = fy_generic_get_string(vhandle_prefix[1]);
-
-				tags[j++] = tag;
+				maph = fy_get_default(seqh, i, fy_map_handle_null);
+				if (maph) {
+					tag = alloca(sizeof(*tag));
+					tag->handle = fy_get_default(maph, "handle", "");
+					tag->prefix = fy_get_default(maph, "prefix", "");
+					tags[j++] = tag;
+				}
 			}
-			if (j > 0)
-				tags[j++] = NULL;
-			else
-				tags = NULL;
+			tags[j++] = NULL;
 		}
-
-		version_explicit = fy_generic_mapping_get_value(vds, fy_string("version-explicit"));
-		is_version_explicit = version_explicit.v == fy_true_value;
-		tags_explicit = fy_generic_mapping_get_value(vds, fy_string("tags-explicit"));
-		are_tags_explicit = tags_explicit.v == fy_true_value;
+		is_version_explicit = fy_get_default(vds_map, "version-explicit", false);
+		are_tags_explicit = fy_get_default(vds_map, "tags-explicit", false);
 
 		if (!is_version_explicit)
 			vers = NULL;
