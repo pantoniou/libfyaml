@@ -40,6 +40,8 @@ int fy_generic_encoder_emit(struct fy_generic_encoder *fyge,
 			    enum fy_generic_encoder_emit_flags emit_flags, fy_generic v);
 
 /* quick and dirty to stdout */
+int fy_generic_emit(fy_generic v, enum fy_emitter_cfg_flags flags);
 int fy_generic_emit_default(fy_generic v);
+int fy_generic_emit_compact(fy_generic v);
 
 #endif

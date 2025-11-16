@@ -146,6 +146,12 @@ const fy_generic checkout_items17(struct fy_generic_builder *gb)
 	return fy_gb_internalize(gb, seq);
 }
 
+const fy_generic checkout_items18(struct fy_generic_builder *gb)
+{
+	fy_generic seq = fy_sequence(10, "Hello this is big", true);
+	return fy_gb_internalize(gb, seq);
+}
+
 #endif
 
 
@@ -4714,6 +4720,18 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	fy_generic_print_primitive(stdout, map);
 	printf("\n");
 
+#if 0
+	printf(">>>>>>>>>>>>>>>>>>>>> seq using fy_sequence - with first argument gb\n");
+	seq = fy_sequence(gb, 100, "Hello there", false, 10.0);
+	fy_generic_print_primitive(stdout, seq);
+	printf("\n");
+#endif
+
+	printf(">>>>>>>>>>>>>>>>>>>>> seq using fy_sequence - without first argument gb\n");
+	seq = fy_sequence(100, "Hello there", false, 10.0);
+	fy_generic_print_primitive(stdout, seq);
+	printf("\n");
+
 	map = fy_gb_mapping_create(gb, 3, (fy_generic[]){
 			fy_gb_to_generic(gb, "foo"), fy_gb_to_generic(gb, "bar"),
 			fy_gb_to_generic(gb, "frooz-larger"), fy_gb_to_generic(gb, "what"),
@@ -5042,10 +5060,12 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	v = fy_to_generic("Hello this is a long string");
 	fy_generic_emit_default(v);
 
+#if 0
 	printf("##### emit empty sequence\n");
 	v = fy_sequence();
 	printf("v=%08lx\n", v.v);
 	fy_generic_emit_default(v);
+#endif
 
 	printf("##### emit empty mapping\n");
 	v = fy_mapping();
