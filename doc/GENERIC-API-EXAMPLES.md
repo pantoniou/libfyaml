@@ -15,10 +15,10 @@ void parse_anthropic_response(const char *json_response) {
     fy_generic response = fy_document_to_generic(doc);
 
     // Extract top-level fields - clean and readable
-    const char *id = fy_map_get(response, "id", "");
-    const char *model = fy_map_get(response, "model", "");
-    const char *role = fy_map_get(response, "role", "assistant");
-    const char *stop_reason = fy_map_get(response, "stop_reason", "");
+    const char *id = fy_get(response, "id", "");
+    const char *model = fy_get(response, "model", "");
+    const char *role = fy_get(response, "role", "assistant");
+    const char *stop_reason = fy_get(response, "stop_reason", "");
 
     printf("Message ID: %s\n", id);
     printf("Model: %s\n", model);
@@ -26,13 +26,13 @@ void parse_anthropic_response(const char *json_response) {
     printf("Stop reason: %s\n", stop_reason);
 
     // Chained lookup with fy_map_empty - just like Python!
-    int input_tokens = fy_map_get(
-        fy_map_get(response, "usage", fy_map_empty),
+    int input_tokens = fy_get(
+        fy_get(response, "usage", fy_map_empty),
         "input_tokens",
         0
     );
-    int output_tokens = fy_map_get(
-        fy_map_get(response, "usage", fy_map_empty),
+    int output_tokens = fy_get(
+        fy_get(response, "usage", fy_map_empty),
         "output_tokens",
         0
     );
@@ -40,27 +40,27 @@ void parse_anthropic_response(const char *json_response) {
     printf("Tokens: %d input, %d output\n", input_tokens, output_tokens);
 
     // Get content array - use handles for type safety
-    fy_seq_handle content = fy_map_get(response, "content", fy_seq_invalid);
+    fy_seq_handle content = fy_get(response, "content", fy_seq_invalid);
 
     // Polymorphic operations: fy_len() and fy_get_item() work on handles!
     for (size_t i = 0; i < fy_len(content); i++) {
         fy_generic block = fy_get_item(content, i);
 
-        const char *type = fy_map_get(block, "type", "unknown");
+        const char *type = fy_get(block, "type", "unknown");
 
         if (strcmp(type, "text") == 0) {
-            const char *text = fy_map_get(block, "text", "");
+            const char *text = fy_get(block, "text", "");
             printf("  [text] %s\n", text);
 
         } else if (strcmp(type, "tool_use") == 0) {
-            const char *tool_id = fy_map_get(block, "id", "");
-            const char *tool_name = fy_map_get(block, "name", "");
+            const char *tool_id = fy_get(block, "id", "");
+            const char *tool_name = fy_get(block, "name", "");
 
             printf("  [tool_use] %s (id: %s)\n", tool_name, tool_id);
 
             // Chained lookup into tool input
-            const char *query = fy_map_get(
-                fy_map_get(block, "input", fy_map_empty),
+            const char *query = fy_get(
+                fy_get(block, "input", fy_map_empty),
                 "query",
                 ""
             );
@@ -147,9 +147,9 @@ struct fy_document *build_anthropic_request(struct fy_generic_builder *gb) {
 ```c
 void demonstrate_polymorphic_ops(fy_generic data) {
     // Extract both sequences and mappings using handles
-    fy_seq_handle messages = fy_map_get(data, "messages", fy_seq_invalid);
-    fy_map_handle config = fy_map_get(data, "config", fy_map_invalid);
-    const char *api_key = fy_map_get(data, "api_key", "");
+    fy_seq_handle messages = fy_get(data, "messages", fy_seq_invalid);
+    fy_map_handle config = fy_get(data, "config", fy_map_invalid);
+    const char *api_key = fy_get(data, "api_key", "");
 
     // fy_len() works polymorphically on all types!
     printf("Messages: %zu\n", fy_len(messages));    // sequence
@@ -160,7 +160,7 @@ void demonstrate_polymorphic_ops(fy_generic data) {
     if (fy_is_valid(messages)) {
         for (size_t i = 0; i < fy_len(messages); i++) {
             fy_generic msg = fy_get_item(messages, i);  // sequence indexing
-            const char *role = fy_map_get(msg, "role", "");
+            const char *role = fy_get(msg, "role", "");
             printf("  Message %zu: %s\n", i, role);
         }
     }
@@ -180,26 +180,26 @@ void demonstrate_polymorphic_ops(fy_generic data) {
 
 ```c
 void handle_content_block(fy_generic block) {
-    const char *type = fy_map_get(block, "type", "");
+    const char *type = fy_get(block, "type", "");
 
     if (strcmp(type, "text") == 0) {
-        const char *text = fy_map_get(block, "text", "");
+        const char *text = fy_get(block, "text", "");
         printf("Text: %s\n", text);
 
     } else if (strcmp(type, "image") == 0) {
-        fy_generic source = fy_map_get(block, "source", fy_map_empty);
-        const char *source_type = fy_map_get(source, "type", "");
-        const char *media_type = fy_map_get(source, "media_type", "");
+        fy_generic source = fy_get(block, "source", fy_map_empty);
+        const char *source_type = fy_get(source, "type", "");
+        const char *media_type = fy_get(source, "media_type", "");
 
         printf("Image: %s (%s)\n", source_type, media_type);
 
     } else if (strcmp(type, "tool_use") == 0) {
-        const char *id = fy_map_get(block, "id", "");
-        const char *name = fy_map_get(block, "name", "");
+        const char *id = fy_get(block, "id", "");
+        const char *name = fy_get(block, "name", "");
 
         // Extract input - could be mapping, sequence, or scalar
-        fy_map_handle input_map = fy_map_get(block, "input", fy_map_invalid);
-        fy_seq_handle input_seq = fy_map_get(block, "input", fy_seq_invalid);
+        fy_map_handle input_map = fy_get(block, "input", fy_map_invalid);
+        fy_seq_handle input_seq = fy_get(block, "input", fy_seq_invalid);
 
         printf("Tool: %s (id=%s)\n", name, id);
 
@@ -240,9 +240,9 @@ let enabled = settings.get("enabled").unwrap_or(true);
 
 **libfyaml**:
 ```c
-const char *role = fy_map_get(message, "role", "assistant");
-int port = fy_map_get(config, "port", 8080);
-bool enabled = fy_map_get(settings, "enabled", true);
+const char *role = fy_get(message, "role", "assistant");
+int port = fy_get(config, "port", 8080);
+bool enabled = fy_get(settings, "enabled", true);
 ```
 
 ### Nested Navigation
@@ -268,9 +268,9 @@ let port = root
 
 **libfyaml**:
 ```c
-int port = fy_map_get(
-    fy_map_get(
-        fy_map_get(root, "server", fy_map_empty),
+int port = fy_get(
+    fy_get(
+        fy_get(root, "server", fy_map_empty),
         "config",
         fy_map_empty
     ),
@@ -318,8 +318,8 @@ println!("Name: {}", name.len());
 
 **libfyaml**:
 ```c
-fy_seq_handle users = fy_map_get(data, "users", fy_seq_invalid);
-fy_map_handle config = fy_map_get(data, "config", fy_map_invalid);
+fy_seq_handle users = fy_get(data, "users", fy_seq_invalid);
+fy_map_handle config = fy_get(data, "config", fy_map_invalid);
 const char *name = "example";
 
 printf("Users: %zu\n", fy_len(users));
@@ -381,7 +381,7 @@ for i in 0..users.len() {
 
 **libfyaml**:
 ```c
-fy_seq_handle users = fy_map_get(data, "users", fy_seq_invalid);
+fy_seq_handle users = fy_get(data, "users", fy_seq_invalid);
 for (size_t i = 0; i < fy_len(users); i++) {
     fy_generic user = fy_get_item(users, i);
     const char *name = fy_get(user, "anonymous");
@@ -476,13 +476,13 @@ match value {
 ```c
 switch (fy_type(value)) {
     case FYGT_MAPPING:
-        printf("Map with %zu entries\n", fy_map_count(value));
+        printf("Map with %zu entries\n", fy_len(value));
         break;
     case FYGT_SEQUENCE:
-        printf("List with %zu items\n", fy_seq_count(value));
+        printf("List with %zu items\n", fy_len(value));
         break;
     case FYGT_STRING:
-        printf("String: %s\n", fy_string_get(value));
+        printf("String: %s\n", fy_cast(value, ""));
         break;
     default:
         printf("Other type\n");
@@ -556,18 +556,18 @@ fn process_response(data: &Value) -> f64 {
 **libfyaml**:
 ```c
 double process_response(fy_generic data) {
-    fy_seq_handle users = fy_map_get(data, "users", fy_seq_invalid);
+    fy_seq_handle users = fy_get(data, "users", fy_seq_invalid);
     int total = 0;
 
     for (size_t i = 0; i < fy_len(users); i++) {
         fy_generic user = fy_get_item(users, i);
 
-        if (fy_map_get(user, "active", false)) {
-            int age = fy_map_get(user, "age", 0);
+        if (fy_get(user, "active", false)) {
+            int age = fy_get(user, "age", 0);
             total += age;
 
-            fy_generic profile = fy_map_get(user, "profile", fy_map_empty);
-            const char *name = fy_map_get(profile, "name", "unknown");
+            fy_generic profile = fy_get(user, "profile", fy_map_empty);
+            const char *name = fy_get(profile, "name", "unknown");
 
             printf("%s: %d\n", name, age);
         }

@@ -52,8 +52,8 @@ void handle_http_request(fy_generic request) {
     fy_generic body = fy_parse_json(req_gb, request_body_str);
 
     // Extract fields
-    const char *username = fy_map_get(body, "username", "");
-    const char *email = fy_map_get(body, "email", "");
+    const char *username = fy_get(body, "username", "");
+    const char *email = fy_get(body, "email", "");
 
     // Build response
     fy_generic response = fy_gb_mapping(req_gb,
@@ -165,7 +165,7 @@ bool execute_transaction(fy_generic txn_spec) {
     // Build up transaction state
     fy_seq_handle operations = fy_seq_empty;
 
-    fy_seq_handle users = fy_map_get(txn_spec, "users", fy_seq_invalid);
+    fy_seq_handle users = fy_get(txn_spec, "users", fy_seq_invalid);
     for (size_t i = 0; i < fy_len(users); i++) {
         fy_generic user = fy_get_item(users, i);
 
@@ -211,12 +211,12 @@ fy_seq_handle transform_users(struct fy_generic_builder *gb, fy_seq_handle users
         fy_generic user = fy_get_item(users, i);
 
         // Filter: only active users
-        if (!fy_map_get(user, "active", false)) {
+        if (!fy_get(user, "active", false)) {
             continue;
         }
 
         // Transform: add computed field
-        int age = fy_map_get(user, "age", 0);
+        int age = fy_get(user, "age", 0);
         fy_map_handle enriched = fy_assoc(gb, user, "senior", fy_bool(age >= 65));
 
         // Collect
@@ -278,8 +278,8 @@ void quick_json_parse(const char *json_str) {
     fy_generic data = fy_parse_json_string(json_str);
 
     // Extract what you need
-    const char *name = fy_map_get(data, "name", "unknown");
-    int count = fy_map_get(data, "count", 0);
+    const char *name = fy_get(data, "name", "unknown");
+    int count = fy_get(data, "count", 0);
 
     printf("Name: %s, Count: %d\n", name, count);
 
@@ -515,7 +515,7 @@ struct fy_generic_builder *gb = fy_generic_builder_create(&(struct fy_generic_bu
    ```c
    // No allocation overhead
    fy_generic temp = fy_local_mapping("key", "value");
-   const char *value = fy_map_get(temp, "key", "");
+   const char *value = fy_get(temp, "key", "");
    // Automatic cleanup
    ```
 

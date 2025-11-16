@@ -280,7 +280,7 @@ fy_generic config = fy_local_mapping(
 );
 
 // Update nested value - notice how clean this is!
-fy_generic server = fy_map_get(config, "server", fy_map_empty);
+fy_generic server = fy_get(config, "server", fy_map_empty);
 fy_generic new_server = fy_assoc(server, "port", 9090);
 fy_generic new_config = fy_assoc(config, "server", new_server);
 
@@ -429,12 +429,12 @@ fy_generic pipeline(struct fy_generic_builder *gb, fy_generic input) {
         fy_generic item = fy_get_item(input, i);
 
         // Filter
-        if (!fy_map_get(item, "active", false)) {
+        if (!fy_get(item, "active", false)) {
             continue;
         }
 
         // Transform - notice how clean this is!
-        int value = fy_map_get(item, "value", 0);
+        int value = fy_get(item, "value", 0);
         fy_generic transformed = fy_assoc(item, "doubled", value * 2);
 
         // Collect
@@ -500,15 +500,15 @@ bool apply_transaction(struct fy_generic_builder *gb,
     for (size_t i = 0; i < fy_len(operations); i++) {
         fy_generic op = fy_get_item(operations, i);
 
-        const char *type = fy_map_get(op, "type", "");
+        const char *type = fy_get(op, "type", "");
 
         if (strcmp(type, "set") == 0) {
-            const char *key = fy_map_get(op, "key", "");
-            fy_generic value = fy_map_get(op, "value", fy_invalid);
+            const char *key = fy_get(op, "key", "");
+            fy_generic value = fy_get(op, "value", fy_invalid);
             new_state = fy_assoc(gb, new_state, key, value);
 
         } else if (strcmp(type, "delete") == 0) {
-            const char *key = fy_map_get(op, "key", "");
+            const char *key = fy_get(op, "key", "");
             new_state = fy_dissoc(gb, new_state, key);
 
         } else {
@@ -534,7 +534,7 @@ static fy_generic global_config;
 
 // Thread 1: Read config
 void worker_thread_1(void) {
-    const char *host = fy_map_get(global_config, "host", "localhost");
+    const char *host = fy_get(global_config, "host", "localhost");
     // Safe: global_config never changes
 }
 
@@ -751,8 +751,8 @@ int active_count = 0;
 for (size_t i = 0; i < fy_len(users); i++) {
     fy_generic user = fy_get_item(users, i);
 
-    if (fy_map_get(user, "active", false)) {
-        total += fy_map_get(user, "age", 0);  // Local accumulator still fine
+    if (fy_get(user, "active", false)) {
+        total += fy_get(user, "age", 0);  // Local accumulator still fine
         active_count++;
     }
 }
@@ -784,7 +784,7 @@ fy_generic active_users = fy_local_sequence();
 for (size_t i = 0; i < fy_len(users); i++) {
     fy_generic user = fy_get_item(users, i);
 
-    if (fy_map_get(user, "active", false)) {
+    if (fy_get(user, "active", false)) {
         fy_generic transformed = transform_user(user);
         active_users = fy_conj(gb, active_users, transformed);
     }
@@ -810,8 +810,8 @@ hash_map_set(conn, "timeout", 30);  // Modifies nested structure
 **Functional approach** (rebuild path to change):
 ```c
 // Get nested values
-fy_generic server = fy_map_get(config, "server", fy_map_empty);
-fy_generic conn = fy_map_get(server, "connection", fy_map_empty);
+fy_generic server = fy_get(config, "server", fy_map_empty);
+fy_generic conn = fy_get(server, "connection", fy_map_empty);
 
 // Update nested value
 fy_generic new_conn = fy_assoc(conn, "timeout", 30);
@@ -828,11 +828,11 @@ fy_generic new_config = fy_assoc(
     config,
     "server",
     fy_assoc(
-        fy_map_get(config, "server", fy_map_empty),
+        fy_get(config, "server", fy_map_empty),
         "connection",
         fy_assoc(
-            fy_map_get(
-                fy_map_get(config, "server", fy_map_empty),
+            fy_get(
+                fy_get(config, "server", fy_map_empty),
                 "connection",
                 fy_map_empty
             ),
@@ -944,7 +944,7 @@ fy_generic global_config;  // Immutable once set
 
 // Reads are lock-free
 int get_config_value(const char *key) {
-    return fy_map_get(global_config, key, 0);  // No lock needed!
+    return fy_get(global_config, key, 0);  // No lock needed!
 }
 
 // Updates create new version (might want atomic swap for writing)
@@ -1000,7 +1000,7 @@ for (size_t i = 0; i < count; i++) {
 | `map_remove(m, k)` | `m = fy_dissoc(gb, m, k)` | Non-destructive |
 | `m->field = x` (nested) | `m = fy_assoc(m, "field", x)` | Structural sharing |
 | `deep_copy(state)` | Just use same pointer | Zero-copy versioning |
-| Read with lock | `fy_map_get(m, k, 0)` | Lock-free reads |
+| Read with lock | `fy_get(m, k, 0)` | Lock-free reads |
 | Accumulator loop | Same accumulator loop | Collections immutable |
 
 **The key realization**: You still write familiar loops and conditionals. The difference is:

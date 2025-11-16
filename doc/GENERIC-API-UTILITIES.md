@@ -155,7 +155,7 @@ fy_generic config = fy_local_mapping(
 );
 
 if (fy_contains(config, "port")) {
-    int port = fy_map_get(config, "port", 0);
+    int port = fy_get(config, "port", 0);
     printf("Port: %d\n", port);
 }
 
@@ -514,7 +514,7 @@ size_t fy_count(fy_generic collection, fy_predicate_fn pred, void *ctx);
 **Examples**:
 ```c
 bool is_active(fy_generic user, void *ctx) {
-    return fy_map_get(user, "active", false);
+    return fy_get(user, "active", false);
 }
 
 fy_generic users = fy_local_sequence(
@@ -605,7 +605,7 @@ fy_generic doubled = fy_map(numbers, double_it, NULL);
 
 // Extract field from mapping
 fy_generic get_name(fy_generic user, void *ctx) {
-    return fy_map_get(user, "name", "");
+    return fy_get(user, "name", "");
 }
 
 fy_generic users = fy_local_sequence(
@@ -811,7 +811,7 @@ fy_generic fy_group_by(fy_generic collection, fy_key_fn fn, void *ctx);
 **Examples**:
 ```c
 fy_generic get_age_group(fy_generic user, void *ctx) {
-    int age = fy_map_get(user, "age", 0);
+    int age = fy_get(user, "age", 0);
     return fy_value(age / 10 * 10);  // Group by decade
 }
 
@@ -880,7 +880,7 @@ fy_generic result = fy_local_mapping();
 fy_generic keys_seq = fy_keys(items);
 for (size_t i = 0; i < fy_len(keys_seq); i++) {
     fy_generic key = fy_get_item(keys_seq, i);
-    int value = fy_map_get(items, key, 0);
+    int value = fy_get(items, key, 0);
 
     if (value > 10) {
         result = fy_assoc(gb, result, key, value * 2);
@@ -920,7 +920,7 @@ fy_generic doubled = fy_map(evens, double_it, NULL);
 | `d.values()` | `fy_values(d)` | Returns sequence |
 | `d.items()` | `fy_items(d)` | Returns sequence of pairs |
 | `key in d` | `fy_contains(d, key)` | Boolean check |
-| `d.get(k, default)` | `fy_map_get(d, k, default)` | With default value |
+| `d.get(k, default)` | `fy_get(d, k, default)` | With default value |
 | `{**d1, **d2}` | `fy_merge(d1, d2)` | Merge mappings |
 
 | Python (list) | libfyaml | Notes |

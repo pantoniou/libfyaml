@@ -8,11 +8,11 @@ This document provides the complete API reference for libfyaml's generic type sy
 
 **Index-based iteration** (works today):
 ```c
-fy_seq_handle users = fy_map_get(data, "users", fy_seq_invalid);
+fy_seq_handle users = fy_get(data, "users", fy_seq_invalid);
 
 for (size_t i = 0; i < fy_len(users); i++) {
     fy_generic user = fy_get_item(users, i);
-    const char *name = fy_map_get(user, "name", "anonymous");
+    const char *name = fy_get(user, "name", "anonymous");
     printf("%s\n", name);
 }
 ```
@@ -27,7 +27,7 @@ for (size_t i = 0; i < fy_len(users); i++) {
 // Usage:
 fy_generic user;
 fy_seq_foreach(user, users) {
-    const char *name = fy_map_get(user, "name", "anonymous");
+    const char *name = fy_get(user, "name", "anonymous");
     printf("%s\n", name);
 }
 ```
@@ -57,7 +57,7 @@ fy_generic fy_map_iter_value(const fy_map_iter *iter);
 
 **Usage**:
 ```c
-fy_map_handle config = fy_map_get(data, "config", fy_map_invalid);
+fy_map_handle config = fy_get(data, "config", fy_map_invalid);
 
 fy_map_iter iter = fy_map_iter_create(config);
 while (fy_map_iter_next(&iter)) {
@@ -68,7 +68,7 @@ while (fy_map_iter_next(&iter)) {
 
     switch (fy_type(value)) {
         case FYGT_STRING:
-            printf("%s\n", fy_string_get(value));
+            printf("%s\n", fy_cast(value, ""));
             break;
         case FYGT_INT:
             printf("%lld\n", fy_int_get(value));
@@ -90,7 +90,7 @@ while (fy_map_iter_next(&iter)) {
 const char *key;
 fy_generic value;
 fy_map_foreach_kv(key, value, config) {
-    printf("%s = %s\n", key, fy_string_get(value));
+    printf("%s = %s\n", key, fy_cast(value, ""));
 }
 ```
 
@@ -102,7 +102,7 @@ void fy_map_foreach(fy_map_handle map, fy_map_foreach_fn fn, void *ctx);
 
 // Usage:
 void print_entry(const char *key, fy_generic value, void *ctx) {
-    printf("%s = %s\n", key, fy_string_get(value));
+    printf("%s = %s\n", key, fy_cast(value, ""));
 }
 
 fy_map_foreach(config, print_entry, NULL);
@@ -123,13 +123,13 @@ for key, value in config.items():
 ```c
 fy_generic user;
 fy_seq_foreach(user, users) {
-    printf("%s\n", fy_map_get(user, "name", "anonymous"));
+    printf("%s\n", fy_get(user, "name", "anonymous"));
 }
 
 const char *key;
 fy_generic value;
 fy_map_foreach_kv(key, value, config) {
-    printf("%s = %s\n", key, fy_string_get(value));
+    printf("%s = %s\n", key, fy_cast(value, ""));
 }
 ```
 
@@ -154,7 +154,7 @@ libfyaml exposes a minimal, polymorphic API that's all you need for working with
 
 **Type-safe extraction**:
 - `fy_get(g, default)` - Extract with type-safe default (optional second parameter)
-- `fy_map_get(map, key, default)` - Lookup in mapping with default
+- `fy_get(map, key, default)` - Lookup in mapping with default
 
 **Type checking**:
 - `fy_type(g)` - Get type enum
@@ -233,7 +233,7 @@ fy_get(g, false)    // Extract as bool with default
 bool fy_bool_get(fy_generic g);
 int64_t fy_int_get(fy_generic g);
 double fy_float_get(fy_generic g);
-const char *fy_string_get(fy_generic g);
+const char *fy_cast(fy_generic g, "");
 ```
 
 **Container handles and polymorphic operations**:
@@ -246,9 +246,9 @@ typedef struct { struct fy_generic_mapping *map; } fy_map_handle;
 extern const fy_seq_handle fy_seq_invalid;
 extern const fy_map_handle fy_map_invalid;
 
-// Extract handles using fy_get() or fy_map_get()
+// Extract handles using fy_get() or fy_get()
 fy_seq_handle sh = fy_get(g, fy_seq_invalid);
-fy_map_handle mh = fy_map_get(data, "config", fy_map_invalid);
+fy_map_handle mh = fy_get(data, "config", fy_map_invalid);
 
 // ========================================
 // PUBLIC API: Polymorphic Operations
@@ -266,19 +266,19 @@ fy_is_valid(v)              // Check validity - works on handles, fy_generic
 
 ```c
 // Lookup with type-safe default (uses _Generic dispatch)
-fy_map_get(map, key, default)    // Returns typed value or default
+fy_get(map, key, default)    // Returns typed value or default
 
 // Traditional operations (for backwards compatibility)
-size_t fy_map_count(fy_generic map);
-size_t fy_seq_count(fy_generic seq);
+size_t fy_len(fy_generic map);
+size_t fy_len(fy_generic seq);
 ```
 
 **For handles** (recommended - use polymorphic operations):
 
 ```c
 // Extract handles
-fy_seq_handle items = fy_map_get(data, "items", fy_seq_invalid);
-fy_map_handle config = fy_map_get(data, "config", fy_map_invalid);
+fy_seq_handle items = fy_get(data, "items", fy_seq_invalid);
+fy_map_handle config = fy_get(data, "config", fy_map_invalid);
 
 // Then use polymorphic operations:
 fy_len(items)           // Get count

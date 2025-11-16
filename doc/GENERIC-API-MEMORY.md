@@ -13,8 +13,8 @@ libfyaml's generic API achieves **Python-level ergonomics without garbage collec
 void process_config(void) {
     fy_generic config = fy_local_mapping("host", "localhost", "port", 8080);
 
-    const char *host = fy_map_get(config, "host", "");
-    int port = fy_map_get(config, "port", 0);
+    const char *host = fy_get(config, "host", "");
+    int port = fy_get(config, "port", 0);
 
     // ... use config ...
 
