@@ -74,7 +74,7 @@ int fy_encode_generic_bool(struct fy_generic_encoder *fyge, const char *anchor, 
 
 int fy_encode_generic_int(struct fy_generic_encoder *fyge, const char *anchor, const char *tag, fy_generic v)
 {
-	fy_generic_decorated_int dint = fy_generic_cast(v, fy_generic_decorated_int);
+	fy_generic_decorated_int dint = fy_cast(v, fy_dint_empty);
 
 	if (!dint.is_unsigned)
 		return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, "%lld", dint.sv);
@@ -86,7 +86,8 @@ int fy_encode_generic_float(struct fy_generic_encoder *fyge, const char *anchor,
 {
 	double f;
 
-	f = fy_generic_cast(v, double);
+	f = fy_cast(v, (double)NAN);
+
 	if (isfinite(f))
 		return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, "%g", f);
 
@@ -101,11 +102,10 @@ int fy_encode_generic_float(struct fy_generic_encoder *fyge, const char *anchor,
 
 int fy_encode_generic_string(struct fy_generic_encoder *fyge, const char *anchor, const char *tag, fy_generic v)
 {
-	const char *str;
-	size_t len;
+	fy_generic_sized_string szstr;
 
-	str = fy_generic_get_string_size_alloca(v, &len);
-	return fy_emit_scalar_write(fyge->emit, FYSS_ANY, anchor, tag, str, len);
+	szstr = fy_cast(v, fy_szstr_empty);
+	return fy_emit_scalar_write(fyge->emit, FYSS_ANY, anchor, tag, szstr.data, szstr.size);
 }
 
 int fy_encode_generic_sequence(struct fy_generic_encoder *fyge, const char *anchor, const char *tag, fy_generic v)
@@ -182,8 +182,8 @@ int fy_encode_generic(struct fy_generic_encoder *fyge, fy_generic v)
 
 	if (fy_generic_is_indirect(v)) {
 		fy_generic_indirect_get(v, &gi);
-		anchor = fy_cast_default(gi.anchor, (const char *)NULL);
-		tag = fy_cast_default(gi.tag, (const char *)NULL);
+		anchor = fy_castp(&gi.anchor, (const char *)NULL);
+		tag = fy_castp(&gi.tag, (const char *)NULL);
 	} else {
 		anchor = NULL;
 		tag = NULL;
@@ -246,7 +246,7 @@ fy_generic_encoder_emit_document(struct fy_generic_encoder *fyge, fy_generic vro
 
 	vers = NULL;
 	tags = NULL;
-	vds_map = fy_cast_default(vds, fy_map_handle_null);
+	vds_map = fy_cast(vds, fy_map_handle_null);
 	if (vds_map) {
 		maph = fy_get_default(vds_map, "version", fy_map_handle_null);
 		if (maph) {

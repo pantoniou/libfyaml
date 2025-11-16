@@ -401,6 +401,9 @@ static inline enum fy_generic_type fy_generic_get_direct_type_table(fy_generic v
  */
 static inline enum fy_generic_type fy_generic_get_direct_type_bithack(fy_generic v)
 {
+	if (v.v == fy_invalid_value)
+		return FYGT_INVALID;
+
 	switch (v.v & 15) {
 		case     0:
 			return FYGT_SEQUENCE;
@@ -415,6 +418,8 @@ static inline enum fy_generic_type fy_generic_get_direct_type_bithack(fy_generic
 			case FY_ESCAPE_FALSE:
 			case FY_ESCAPE_TRUE:
 				return FYGT_BOOL;
+			default:
+				break;
 			}
 			return FYGT_INVALID;
 		default:
@@ -494,18 +499,9 @@ static inline void fy_generic_indirect_get(fy_generic v, fy_generic_indirect *gi
 
 	/* get flags */
 	gi->flags = *p++;
-	if (gi->flags & FYGIF_VALUE)
-		gi->value.v = *p++;
-	else
-		gi->value.v = fy_invalid_value;
-	if (gi->flags & FYGIF_ANCHOR)
-		gi->anchor.v = *p++;
-	else
-		gi->anchor.v = fy_invalid_value;
-	if (gi->flags & FYGIF_TAG)
-		gi->tag.v = *p++;
-	else
-		gi->tag.v = fy_invalid_value;
+	gi->value.v = (gi->flags & FYGIF_VALUE) ? *p++ : fy_invalid_value;
+	gi->anchor.v = (gi->flags & FYGIF_ANCHOR) ? *p++ : fy_invalid_value;
+	gi->tag.v = (gi->flags & FYGIF_TAG) ? *p++ : fy_invalid_value;
 }
 
 static inline const fy_generic *fy_genericp_indirect_get_valuep(const fy_generic *vp)
@@ -2271,16 +2267,22 @@ static inline fy_generic_mapping_handle fy_genericp_cast_mapping_handle_default(
 /* special... handling for in place strings */
 static inline const char *fy_generic_cast_const_char_ptr_default(fy_generic v, const char *default_value)
 {
-	if (!fy_generic_is_string(v))
+	const fy_generic *vp;
+
+	if (fy_generic_is_direct_string(v)) {
+		/* out of place is easier actually */
+		if ((v.v & FY_INPLACE_TYPE_MASK) != FY_STRING_INPLACE_V)
+			return (const char *)fy_skip_size_nocheck(fy_generic_resolve_ptr(v));
+
+		return NULL;
+	}
+
+	/* direct is stable we can return a point anywhere */
+	vp = fy_genericp_indirect_get_valuep(&v);
+	if (!vp || !fy_generic_is_direct_string(*vp))
 		return default_value;
 
-	v = fy_generic_indirect_get_value(v);
-
-	/* out of place is easier actually */
-	if ((v.v & FY_INPLACE_TYPE_MASK) != FY_STRING_INPLACE_V)
-		return (const char *)fy_skip_size_nocheck(fy_generic_resolve_ptr(v));
-
-	return NULL;
+	return fy_genericp_get_string_no_check(vp);
 }
 
 static inline char *fy_generic_cast_char_ptr_default(fy_generic v, char *default_value)
@@ -2290,36 +2292,40 @@ static inline char *fy_generic_cast_char_ptr_default(fy_generic v, char *default
 
 static inline fy_generic_sized_string fy_generic_cast_sized_string_default(fy_generic v, const fy_generic_sized_string default_value)
 {
-	size_t size;
-	const char *data;
+	fy_generic_sized_string szstr;
+	const fy_generic *vp;
 
-	if (!fy_generic_is_string(v))
-		return default_value;
+	vp = NULL;
+	if (fy_generic_is_direct_string(v)) {
+		/* out of place is easier actually */
+		if ((v.v & FY_INPLACE_TYPE_MASK) != FY_STRING_INPLACE_V)
+			vp = &v;
+	} else {
+		vp = fy_genericp_indirect_get_valuep(&v);
+		if (!vp || !fy_generic_is_direct_string(*vp))
+			vp = NULL;
+	}
 
-	v = fy_generic_indirect_get_value(v);
-
-	data = fy_genericp_get_string_size_no_check(&v, &size);
-
-	if ((v.v & FY_INPLACE_TYPE_MASK) != FY_STRING_INPLACE_V)
-		return (fy_generic_sized_string){ .data = data, .size = size };
-
-	/* NOTE: this is not directly useable, if it's inline it must be alloca'ed */
-	return (fy_generic_sized_string){ .data = NULL, .size = 0 };
+	if (vp)
+		szstr.data = fy_genericp_get_string_size_no_check(vp, &szstr.size);
+	else
+		memset(&szstr, 0, sizeof(szstr));
+	return szstr;
 }
 
 static inline const char *fy_genericp_cast_const_char_ptr_default(const fy_generic *vp, const char *default_value)
 {
-	fy_generic v;
-
 	if (!vp)
 		return default_value;
 
-	v = fy_generic_indirect_get_value(*vp);
-
-	if (!fy_generic_is_string(v))
+	vp = fy_genericp_indirect_get_valuep(vp);
+	if (!vp)
 		return default_value;
 
-	return fy_genericp_get_string_no_check(&v);
+	if (!fy_generic_is_direct_string(*vp))
+		return default_value;
+
+	return fy_genericp_get_string_no_check(vp);
 }
 
 static inline char *fy_genericp_cast_char_ptr_default(const fy_generic *vp, char *default_value)
@@ -2329,18 +2335,19 @@ static inline char *fy_genericp_cast_char_ptr_default(const fy_generic *vp, char
 
 static inline fy_generic_sized_string fy_genericp_cast_sized_string_default(const fy_generic *vp, const fy_generic_sized_string default_value)
 {
-	fy_generic v;
 	fy_generic_sized_string ret;
 
 	if (!vp)
 		return default_value;
 
-	v = fy_generic_indirect_get_value(*vp);
-
-	if (!fy_generic_is_string(v))
+	vp = fy_genericp_indirect_get_valuep(vp);
+	if (!vp)
 		return default_value;
 
-	ret.data = fy_genericp_get_string_size_no_check(&v, &ret.size);
+	if (!fy_generic_is_string(*vp))
+		return default_value;
+
+	ret.data = fy_genericp_get_string_size_no_check(vp, &ret.size);
 	return ret;
 }
 
@@ -2529,12 +2536,12 @@ static inline void fy_generic_cast_default_final_never(fy_generic v,
 
 #define fy_generic_get_type_default(_type) \
 	({ \
-		 _type __tmp = _Generic(__tmp, fy_generic_get_type_default_Generic_dispatch); \
+		_type __tmp = _Generic(__tmp, fy_generic_get_type_default_Generic_dispatch); \
 		__tmp; \
 	})
 
 /* when we have a pointer we can return to inplace strings */
-#define fy_generic_cast(_v, _type) \
+#define fy_generic_cast_typed(_v, _type) \
 	(fy_generic_cast_default((_v), fy_generic_get_type_default(_type)))
 
 #define fy_genericp_cast_default_Generic_dispatch \
@@ -2549,6 +2556,9 @@ static inline void fy_generic_cast_default_final_never(fy_generic v,
 
 #define fy_genericp_cast_default(_vp, _dv) \
 	(_Generic((_dv), fy_genericp_cast_default_Generic_dispatch)((_vp), (_dv)))
+
+#define fy_genericp_cast_typed(_vp, _type) \
+	(fy_genericp_cast_default((_vp), fy_generic_get_type_default(_type)))
 
 static inline fy_generic_sequence_handle
 fy_genericp_get_generic_sequence_handle_default(const fy_generic *vp,
@@ -2711,7 +2721,7 @@ fy_generic_sequence_get_szstr_default(fy_generic seq, size_t idx,
 #define fy_generic_sequence_get_default(_seq, _idx, _dv) \
 	(_Generic((_dv), fy_generic_sequence_get_default_Generic_dispatch)((_seq), (_idx), (_dv)))
 
-#define fy_generic_sequence_get(_seq, _idx, _type) \
+#define fy_generic_sequence_get_typed(_seq, _idx, _type) \
 	(fy_generic_sequence_get_default((_seq), (_idx), fy_generic_get_type_default(_type)))
 
 #define fy_generic_sequence_get_default_coerse(_seq, _idxv, _dv) \
@@ -2737,7 +2747,7 @@ fy_generic_sequence_get_szstr_default(fy_generic seq, size_t idx,
 #define fy_generic_sequencep_get_default(_seqp, _idx, _dv) \
 	(_Generic((_dv), fy_generic_sequencep_get_default_Generic_dispatch)((_seqp), (_idx), (_dv)))
 
-#define fy_generic_sequencep_get(_seqp, _idx, _type) \
+#define fy_generic_sequencep_get_typed(_seqp, _idx, _type) \
 	(fy_generic_sequencep_get_default((_seqp), (_idx), fy_generic_get_type_default(_type)))
 
 #define fy_generic_sequencep_get_default_coerse(_seqp, _idxv, _dv) \
@@ -2852,7 +2862,7 @@ fy_generic_mapping_get_szstr_default(fy_generic map, fy_generic key,
 #define fy_generic_mapping_get_default(_map, _key, _dv) \
 	(_Generic((_dv), fy_generic_mapping_get_default_Generic_dispatch)((_map), fy_to_generic(_key), (_dv)))
 
-#define fy_generic_mapping_get(_map, _key, _type) \
+#define fy_generic_mapping_get_typed(_map, _key, _type) \
 	(fy_generic_mapping_get_default((_map), (_key), fy_generic_get_type_default(_type)))
 
 #define fy_generic_mappingp_get_default_Generic_dispatch \
@@ -2873,7 +2883,7 @@ fy_generic_mapping_get_szstr_default(fy_generic map, fy_generic key,
 		__ret; \
 	})
 
-#define fy_generic_mappingp_get(_mapp, _key, _type) \
+#define fy_generic_mappingp_get_typed(_mapp, _key, _type) \
 	(fy_generic_mappingp_get_default((_mapp), (_key), fy_generic_get_type_default(_type)))
 
 // final polymorphism is a go go
@@ -2935,7 +2945,7 @@ static inline fy_generic fy_get_generic_map_handle(const void *p)
 		__ret; \
 	})
 
-#define fy_generic_get(_colv, _key, _type) \
+#define fy_generic_get_typed(_colv, _key, _type) \
 	(fy_generic_get_default((_colv), (_key), fy_generic_get_type_default(_type)))
 
 /* when it's a generic */
@@ -2984,29 +2994,6 @@ static inline size_t fy_get_len_map_handle(const void *p)
 			fy_generic_mapping_handle: fy_get_len_map_handle \
 			)(&__colv); \
 	})
-
-//////////////////////////////////////////////////////
-
-#define fy_len(_colv) \
-	(fy_generic_len((_colv)))
-
-#define fy_get_default(_colv, _key, _dv) \
-	(fy_generic_get_default((_colv), (_key), (_dv)))
-
-#define fy_get(_colv, _key, _type) \
-	(fy_generic_get_default((_colv), (_key), fy_generic_get_type_default(_type)))
-
-#define fy_cast_default(_v, _dv) \
-	fy_generic_cast_default((_v), (_dv))
-
-#define fy_cast(_v, _type) \
-	fy_generic_cast((_v), (_type))
-
-#define fy_castp_default(_v, _dv) \
-	fy_genericp_cast_default((_v), (_dv))
-
-#define fy_castp(_v, _type) \
-	fy_genericp_cast((_v), (_type))
 
 //////////////////////////////////////////////////////
 
@@ -3409,10 +3396,51 @@ int fy_gb_set_schema_from_parser_mode(struct fy_generic_builder *gb, enum fy_par
 
 void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 
-#define fy_sequence(...) 	(fy_local_sequence(__VA_ARGS__))
-#define fy_mapping(...) 	(fy_local_mapping(__VA_ARGS__))
-#define fy_value(_v)		(fy_to_generic(_v))
-#define fy_inplace_value(_v)	(fy_to_generic_inplace(_v))
-#define fy_is_inplace(_v)	(fy_generic_is_in_place(v))
+//////////////////////////////////////////////////////
+
+#define fy_len(_colv) \
+	(fy_generic_len((_colv)))
+
+#define fy_get_default(_colv, _key, _dv) \
+	(fy_generic_get_default((_colv), (_key), (_dv)))
+
+#define fy_get_typed(_colv, _key, _type) \
+	(fy_generic_get_default((_colv), (_key), fy_generic_get_type_default(_type)))
+
+#define fy_get(_colv, _key, _dv) \
+	(fy_get_default((_colv), (_key), (_dv))
+
+#define fy_cast_default(_v, _dv) \
+	fy_generic_cast_default((_v), (_dv))
+
+#define fy_cast_typed(_v, _type) \
+	fy_generic_cast((_v), (_type))
+
+#define fy_cast(_v, _dv) \
+	fy_cast_default((_v), (_dv))
+
+#define fy_castp_default(_v, _dv) \
+	fy_genericp_cast_default((_v), (_dv))
+
+#define fy_castp_typed(_v, _type) \
+	fy_genericp_cast_typed((_v), (_type))
+
+#define fy_castp(_v, _dv) \
+	fy_genericp_cast_default((_v), (_dv))
+
+#define fy_sequence(...) \
+	(fy_local_sequence(__VA_ARGS__))
+
+#define fy_mapping(...) \
+	(fy_local_mapping(__VA_ARGS__))
+
+#define fy_value(_v) \
+	(fy_to_generic(_v))
+
+#define fy_inplace_value(_v) \
+	(fy_to_generic_inplace(_v))
+
+#define fy_is_inplace(_v) \
+	(fy_generic_is_in_place(v))
 
 #endif
