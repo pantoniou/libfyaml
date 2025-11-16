@@ -7,15 +7,15 @@ This document covers the core design concepts of libfyaml's generic type system 
 Traditional generic/dynamic type APIs in C require verbose function calls with explicit type conversions:
 
 ```c
-// Verbose approach
+// Verbose approach (old-style low-level API)
 const char *role = fy_generic_get_string_default(
-    fy_generic_mapping_lookup(message, fy_value("role")),
+    fy_generic_get(message, fy_value("role")),
     "assistant"
 );
 
 int port = fy_generic_get_int_default(
-    fy_generic_mapping_lookup(
-        fy_generic_mapping_lookup(config, fy_value("server")),
+    fy_generic_get(
+        fy_generic_get(config, fy_value("server")),
         fy_value("port")
     ),
     8080
