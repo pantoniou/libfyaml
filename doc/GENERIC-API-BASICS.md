@@ -2,35 +2,31 @@
 
 This document covers the core design concepts of libfyaml's generic type system API.
 
-## The Problem: Verbose Generic APIs
+## Core API Design
 
-Traditional generic/dynamic type APIs in C require verbose function calls with explicit type conversions:
+The generic API provides Python-like simplicity in C using `_Generic` dispatch:
 
 ```c
-// Verbose approach (old-style low-level API)
-const char *role = fy_generic_get_string_default(
-    fy_generic_get(message, fy_value("role")),
-    "assistant"
-);
+// Clean, readable access with automatic type conversion
+const char *role = fy_get(message, "role", "assistant");
 
-int port = fy_generic_get_int_default(
-    fy_generic_get(
-        fy_generic_get(config, fy_value("server")),
-        fy_value("port")
-    ),
+// Natural nesting for deep access
+int port = fy_get(
+    fy_get(config, "server", fy_map_invalid),
+    "port",
     8080
 );
 ```
 
-This is far from ideal:
-- **Verbose**: Multiple function calls for simple operations
-- **Nested lookups are unreadable**: Hard to follow the chain
-- **Type conversion noise**: `fy_value()` everywhere
-- **No Python-like defaults**: Can't naturally express "default to empty dict"
+**Key features:**
+- **Single polymorphic function**: `fy_get()` works on both mappings and sequences
+- **Automatic type conversion**: Based on the default value type
+- **Natural defaults**: Just like Python's `dict.get(key, default)`
+- **Type-safe**: Compile-time dispatch via C11 `_Generic`
 
-## Solution: Short-Form API with _Generic Dispatch
+## API with _Generic Dispatch
 
-Using C11's `_Generic` feature, we can create type-safe shortcuts that dispatch based on the default value type:
+Using C11's `_Generic` feature, we dispatch based on the default value type:
 
 ### Core Design
 
