@@ -24,97 +24,88 @@ int port = fy_get(
 - **Natural defaults**: Just like Python's `dict.get(key, default)`
 - **Type-safe**: Compile-time dispatch via C11 `_Generic`
 
-## API with _Generic Dispatch
+## Core API Functions
 
-Using C11's `_Generic` feature, we dispatch based on the default value type:
+The API consists of just a few polymorphic functions:
 
-### Core Design
+### fy_get() - Access collections with defaults
 
 ```c
-// Mapping lookup with default
-#define fy_map_get(map, key, default) \
-    _Generic((default), \
-        const char *: fy_map_get_string, \
-        char *: fy_map_get_string, \
-        int: fy_map_get_int, \
-        long: fy_map_get_int, \
-        long long: fy_map_get_int, \
-        double: fy_map_get_double, \
-        float: fy_map_get_double, \
-        bool: fy_map_get_bool, \
-        fy_generic: fy_map_get_generic \
-    )(map, key, default)
-
-// Sequence indexing with default
-#define fy_seq_get(seq, idx, default) \
-    _Generic((default), \
-        const char *: fy_seq_get_string, \
-        char *: fy_seq_get_string, \
-        int: fy_seq_get_int, \
-        long: fy_seq_get_int, \
-        long long: fy_seq_get_int, \
-        double: fy_seq_get_double, \
-        float: fy_seq_get_double, \
-        bool: fy_seq_get_bool, \
-        fy_generic: fy_seq_get_generic \
-    )(seq, idx, default)
+// fy_get() works on both mappings (by key) and sequences (by index)
+#define fy_get(collection, key_or_index, default) \
+    // Dispatches based on type of default value
 ```
 
-### Helper Functions
-
+**Usage:**
 ```c
-// Mapping lookups
-static inline const char *fy_map_get_string(fy_generic map, const char *key, const char *def);
-static inline int64_t fy_map_get_int(fy_generic map, const char *key, int64_t def);
-static inline double fy_map_get_double(fy_generic map, const char *key, double def);
-static inline bool fy_map_get_bool(fy_generic map, const char *key, bool def);
-static inline fy_generic fy_map_get_generic(fy_generic map, const char *key, fy_generic def);
+// Mapping access
+const char *role = fy_get(message, "role", "assistant");
+int timeout = fy_get(config, "timeout", 30);
 
-// Sequence indexing
-static inline const char *fy_seq_get_string(fy_generic seq, size_t idx, const char *def);
-static inline int64_t fy_seq_get_int(fy_generic seq, size_t idx, int64_t def);
-static inline double fy_seq_get_double(fy_generic seq, size_t idx, double def);
-static inline bool fy_seq_get_bool(fy_generic seq, size_t idx, bool def);
-static inline fy_generic fy_seq_get_generic(fy_generic seq, size_t idx, fy_generic def);
-```
+// Sequence access
+const char *first = fy_get(items, 0, "");
+int value = fy_get(numbers, 2, 0);
 
-### Result
-
-```c
-// Clean, readable API
-const char *role = fy_map_get(message, "role", "assistant");
-
-int port = fy_map_get(
-    fy_map_get(config, "server", fy_map_empty),
+// Nested access
+int port = fy_get(
+    fy_get(config, "server", fy_map_invalid),
     "port",
     8080
 );
 ```
 
-**Benefits**:
-- Type-safe: Compiler catches type mismatches
-- Concise: One function call per lookup
-- Natural defaults: Type inferred from default value
-- Chainable: Nested lookups compose naturally
+### fy_cast() - Convert generics with defaults
 
-## Type Checking Shortcuts
+```c
+// Cast a generic value to a specific type
+#define fy_cast(value, default) \
+    // Returns default if conversion fails
+```
 
-Long function names were replaced with short, intuitive names:
+**Usage:**
+```c
+fy_generic v = /* ... */;
+const char *str = fy_cast(v, "");
+int num = fy_cast(v, 0);
+```
 
-### Before vs After
+### fy_castp() - Zero-overhead pointer-based cast
 
-| Verbose API | Short-Form API |
-|------------|----------------|
-| `fy_generic_get_type(g)` | `fy_type(g)` |
-| `fy_generic_is_null(g)` | `fy_is_null(g)` |
-| `fy_generic_is_bool(g)` | `fy_is_bool(g)` |
-| `fy_generic_is_int(g)` | `fy_is_int(g)` |
-| `fy_generic_is_float(g)` | `fy_is_float(g)` |
-| `fy_generic_is_string(g)` | `fy_is_string(g)` |
-| `fy_generic_is_sequence(g)` | `fy_is_seq(g)` |
-| `fy_generic_is_mapping(g)` | `fy_is_map(g)` |
-| `fy_generic_sequence_get_item_count(g)` | `fy_seq_count(g)` |
-| `fy_generic_mapping_get_pair_count(g)` | `fy_map_count(g)` |
+```c
+// Cast via pointer (no alloca for inline strings)
+#define fy_castp(value_ptr, default) \
+    // Returns pointer into value for inline types
+```
+
+**Usage:**
+```c
+fy_generic v = fy_value("hello");
+const char *str = fy_castp(&v, "");  // No alloca overhead
+```
+
+**Benefits:**
+- **Type-safe**: Compiler dispatches based on default value type
+- **Polymorphic**: Same function for mappings and sequences
+- **Natural**: Type inferred from default value
+- **Chainable**: Nested access composes naturally
+
+## Utility Functions
+
+Additional helper functions for working with generics:
+
+### Type Checking and Info
+
+| Function | Purpose |
+|----------|---------|
+| `fy_type(g)` | Get generic type |
+| `fy_is_null(g)` | Check if null |
+| `fy_is_bool(g)` | Check if boolean |
+| `fy_is_int(g)` | Check if integer |
+| `fy_is_float(g)` | Check if float |
+| `fy_is_string(g)` | Check if string |
+| `fy_is_seq(g)` | Check if sequence |
+| `fy_is_map(g)` | Check if mapping |
+| `fy_len(g)` | Get length (sequences, mappings, strings) |
 
 ### Example Usage
 
@@ -122,13 +113,13 @@ Long function names were replaced with short, intuitive names:
 // Type switching
 switch (fy_type(value)) {
     case FYGT_MAPPING:
-        printf("Map with %zu entries\n", fy_map_count(value));
+        printf("Map with %zu entries\n", fy_len(value));
         break;
     case FYGT_SEQUENCE:
-        printf("Sequence with %zu items\n", fy_seq_count(value));
+        printf("Sequence with %zu items\n", fy_len(value));
         break;
     case FYGT_STRING:
-        printf("String: %s\n", fy_string_get(value));
+        printf("String: %s\n", fy_cast(value, ""));
         break;
     default:
         break;
@@ -136,8 +127,8 @@ switch (fy_type(value)) {
 
 // Type checking
 if (fy_is_map(config)) {
-    const char *host = fy_map_get(config, "host", "localhost");
-    int port = fy_map_get(config, "port", 8080);
+    const char *host = fy_get(config, "host", "localhost");
+    int port = fy_get(config, "port", 8080);
 }
 ```
 
@@ -529,7 +520,7 @@ void handle_request(fy_generic req_data) {
     }
 
     // Key exists somewhere, do actual mapping lookup
-    fy_generic value = fy_map_get(config, search_key);
+    fy_generic value = fy_get(config, search_key);
 
     fy_generic_builder_destroy(req_gb);  // Reset to clean state
     return value;
@@ -606,8 +597,8 @@ void demonstrate_stack_allocated(void) {
     fy_seq_handle seq3 = fy_assoc_at(seq2, 1, fy_string("BOBBY"));
 
     // Both originals unchanged
-    printf("seq1[1]: %s\n", fy_string_get(fy_get_item(seq1, 1)));  // bob
-    printf("seq3[1]: %s\n", fy_string_get(fy_get_item(seq3, 1)));  // BOBBY
+    printf("seq1[1]: %s\n", fy_get(seq1, 1, ""));  // bob
+    printf("seq3[1]: %s\n", fy_get(seq3, 1, ""));  // BOBBY
 
     // Chain operations naturally
     fy_seq_handle seq4 = fy_conj(fy_conj(seq1, fy_string("eve")), fy_string("frank"));
@@ -635,8 +626,8 @@ void demonstrate_builder_allocated(void) {
     fy_seq_handle seq4 = fy_assoc_at(gb, seq3, 1, fy_string("BOBBY"));
 
     // Originals unchanged
-    printf("seq3[1]: %s\n", fy_string_get(fy_get_item(seq3, 1)));  // bob
-    printf("seq4[1]: %s\n", fy_string_get(fy_get_item(seq4, 1)));  // BOBBY
+    printf("seq3[1]: %s\n", fy_get(seq3, 1, ""));  // bob
+    printf("seq4[1]: %s\n", fy_get(seq4, 1, ""));  // BOBBY
 
     // All values now managed by builder, persist beyond stack scope
     fy_generic_builder_destroy(gb);
@@ -782,11 +773,11 @@ printf("Config: %zu\n", fy_len(config));
 printf("Name: %zu\n", fy_len("example"));
 ```
 
-**Combined with fy_map_get() - Complete example**:
+**Combined with fy_get() - Complete example**:
 ```c
 // Extract nested containers type-safely
-fy_map_handle db_config = fy_map_get(root, "database", fy_map_invalid);
-fy_seq_handle users = fy_map_get(data, "users", fy_seq_invalid);
+fy_map_handle db_config = fy_get(root, "database", fy_map_invalid);
+fy_seq_handle users = fy_get(data, "users", fy_seq_invalid);
 
 if (fy_is_valid(db_config)) {
     fy_generic host = fy_get_item(db_config, "host");
@@ -835,8 +826,8 @@ users = data.get("users", [])
 Using `fy_invalid` doesn't match this pattern:
 ```c
 // Awkward: using fy_invalid
-int port = fy_map_get(
-    fy_map_get(config, "server", fy_invalid),  // Not semantically clear
+int port = fy_get(
+    fy_get(config, "server", fy_invalid),  // Not semantically clear
     "port",
     8080
 );
@@ -859,18 +850,18 @@ These can be implemented as:
 
 ```c
 // Now matches Python exactly!
-int port = fy_map_get(
-    fy_map_get(config, "server", fy_map_empty),
+int port = fy_get(
+    fy_get(config, "server", fy_map_empty),
     "port",
     8080
 );
 
-fy_generic users = fy_map_get(data, "users", fy_seq_empty);
+fy_generic users = fy_get(data, "users", fy_seq_empty);
 
 // Deep navigation with type safety
-const char *db_host = fy_map_get(
-    fy_map_get(
-        fy_map_get(root, "database", fy_map_empty),
+const char *db_host = fy_get(
+    fy_get(
+        fy_get(root, "database", fy_map_empty),
         "connection",
         fy_map_empty
     ),
