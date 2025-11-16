@@ -1234,8 +1234,8 @@ static inline int fy_generic_bool_compare(fy_generic a, fy_generic b)
 {
 	int ba, bb;
 
-	ba = (int)fy_generic_cast(a, bool);
-	bb = (int)fy_generic_cast(b, bool);
+	ba = (int)fy_cast(a, false);
+	bb = (int)fy_cast(b, false);
 	return ba > bb ?  1 :
 	       ba < bb ? -1 : 0;
 }
@@ -1244,8 +1244,9 @@ static inline int fy_generic_int_compare(fy_generic a, fy_generic b)
 {
 	long long ia, ib;
 
-	ia = fy_generic_cast(a, long long);
-	ib = fy_generic_cast(b, long long);
+	/* XXX decorated */
+	ia = fy_cast(a, (long long)0);
+	ib = fy_cast(b, (long long)0);
 	return ia > ib ?  1 :
 	       ia < ib ? -1 : 0;
 }
@@ -1254,8 +1255,8 @@ static inline int fy_generic_float_compare(fy_generic a, fy_generic b)
 {
 	double da, db;
 
-	da = fy_generic_cast(a, double);
-	db = fy_generic_cast(b, double);
+	da = fy_cast(a, (double)NAN);
+	db = fy_cast(b, (double)NAN);
 	return da > db ?  1 :
 	       da < db ? -1 : 0;
 }
@@ -1265,8 +1266,8 @@ static inline int fy_generic_string_compare(fy_generic a, fy_generic b)
 	fy_generic_sized_string sa, sb;
 	int ret;
 
-	sa = fy_generic_cast(a, fy_generic_sized_string);
-	sb = fy_generic_cast(b, fy_generic_sized_string);
+	sa = fy_cast(a, fy_szstr_empty);
+	sb = fy_cast(b, fy_szstr_empty);
 
 	ret = memcmp(sa.data, sb.data, sa.size > sb.size ? sb.size : sa.size);
 
@@ -1278,20 +1279,16 @@ static inline int fy_generic_string_compare(fy_generic a, fy_generic b)
 static inline int fy_generic_alias_compare(fy_generic a, fy_generic b)
 {
 	fy_generic aa, ab;
-	fy_generic_sized_string sa, sb;
-	int ret;
+	const char *sa;
+	const char *sb;
 
 	aa = fy_generic_indirect_get_anchor(a);
 	ab = fy_generic_indirect_get_anchor(b);
 
-	sa = fy_generic_cast(aa, fy_generic_sized_string);
-	sb = fy_generic_cast(ab, fy_generic_sized_string);
+	sa = fy_cast(aa, (const char *)"");
+	sb = fy_cast(ab, (const char *)"");
 
-	ret = memcmp(sa.data, sb.data, sa.size > sb.size ? sb.size : sa.size);
-
-	if (!ret && sa.size != sb.size)
-		ret = 1;
-	return ret;
+	return strcmp(sa, sb);
 }
 
 int fy_generic_compare_out_of_place(fy_generic a, fy_generic b)
@@ -1687,7 +1684,6 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 		[FYGT_INDIRECT]	= '^',
 		[FYGT_ALIAS]	= '*',
 	};
-	const char *sv;
 	fy_generic vtag, vanchor, v, iv, key, value;
 	const char *tag = NULL, *anchor = NULL;
 	const fy_generic *items;
@@ -1698,13 +1694,11 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 	vanchor = fy_generic_get_anchor(vv);
 	vtag = fy_generic_get_tag(vv);
 #if 0
-	if (fy_generic_get_type(vanchor) == FYGT_STRING)
-		anchor = fy_generic_get_string(vanchor);
-	if (fy_generic_get_type(vtag) == FYGT_STRING)
-		tag = fy_generic_get_string(vtag);
+	anchor = fy_castp(&vanchor, (const char *)NULL);
+	tag = fy_castp(&vtag, (const char *)NULL);
 #else
-	anchor = fy_castp_default(&vanchor, (const char *)NULL);
-	tag = fy_castp_default(&vtag, (const char *)NULL);
+	anchor = fy_cast(vanchor, (const char *)NULL);
+	tag = fy_cast(vtag, (const char *)NULL);
 #endif
 	v = fy_generic_is_indirect(vv) ? fy_generic_indirect_get_value(vv) : vv;
 
@@ -1730,19 +1724,19 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 		return;
 
 	case FYGT_BOOL:
-		fprintf(fp, "%s", fy_generic_cast(v, bool) ? "true" : "false");
+		fprintf(fp, "%s", fy_cast(v, false) ? "true" : "false");
 		return;
 
 	case FYGT_INT:
-		fprintf(fp, "%lld", fy_generic_cast(v, long long));
+		fprintf(fp, "%lld", fy_cast(v, (long long)0));
 		return;
 
 	case FYGT_FLOAT:
-		fprintf(fp, "%f", fy_generic_cast(v, float));
+		fprintf(fp, "%f", fy_cast(v, (double)0.0));
 		return;
 
 	case FYGT_STRING:
-		szstr = fy_generic_cast(v, fy_generic_sized_string);
+		szstr = fy_cast(v, fy_szstr_empty);
 		fprintf(fp, "%s", fy_utf8_format_text_a(szstr.data, szstr.size, fyue_doublequote));
 		return;
 
@@ -1767,8 +1761,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 
 	case FYGT_ALIAS:
 		vanchor = fy_generic_get_anchor(v);
-		sv = fy_castp_default(&vanchor, "");
-		fprintf(fp, "%s", sv);
+		fprintf(fp, "%s", fy_castp(&vanchor, ""));
 		break;
 
 	default:
