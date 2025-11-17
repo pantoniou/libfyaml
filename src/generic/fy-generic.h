@@ -614,6 +614,33 @@ typedef const fy_generic_map_pair *fy_generic_map_pair_handle;
 #define fy_szstr_empty		((fy_generic_sized_string){ })
 #define fy_dint_empty		((fy_generic_decorated_int){ })
 
+static inline size_t fy_sequence_storage_size(size_t count)
+{
+	size_t size;
+
+	if (FY_MUL_OVERFLOW(count, sizeof(fy_generic), &size) ||
+	    FY_ADD_OVERFLOW(size, sizeof(struct fy_generic_sequence), &size))
+		return SIZE_MAX;
+	return size;
+}
+
+static inline size_t fy_mapping_storage_size(size_t count)
+{
+	size_t size;
+
+	if (FY_MUL_OVERFLOW(count, sizeof(fy_generic_map_pair), &size) ||
+	    FY_ADD_OVERFLOW(size, sizeof(struct fy_generic_mapping), &size))
+		return SIZE_MAX;
+	return size;
+}
+
+static inline size_t fy_collection_storage_size(bool is_map, size_t count)
+{
+	return !is_map ?
+		fy_sequence_storage_size(count) :
+		fy_mapping_storage_size(count);
+}
+
 struct fy_generic_builder;
 
 #define fy_generic_typeof(_v) \
@@ -2130,10 +2157,10 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 	({										\
 		fy_generic_sequence *__vp;						\
 		size_t __count = (_count);						\
-		size_t __size = sizeof(*__vp) + __count * sizeof(fy_generic);		\
+		size_t __size = fy_sequence_storage_size(__count);			\
 											\
 		__vp = fy_alloca_align(__size, FY_GENERIC_CONTAINER_ALIGN);		\
-		__vp->count = (_count);							\
+		__vp->count = __count;							\
 		memcpy(__vp->items, (_items), __count * sizeof(fy_generic)); 		\
 		(fy_generic_value)((uintptr_t)__vp | FY_SEQ_V);				\
 	})
@@ -2171,10 +2198,10 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 	({										\
 		fy_generic_mapping *__vp;						\
 		size_t __count = (_count);						\
-		size_t __size = sizeof(*__vp) + 2 * __count * sizeof(fy_generic);	\
+		size_t __size = fy_mapping_storage_size(__count);			\
 											\
 		__vp = fy_alloca_align(__size, FY_GENERIC_CONTAINER_ALIGN);		\
-		__vp->count = (_count);							\
+		__vp->count = __count;							\
 		memcpy(__vp->pairs, (_pairs), 2 * __count * sizeof(fy_generic)); 	\
 		(fy_generic_value)((uintptr_t)__vp | FY_MAP_V);				\
 	})
@@ -3442,5 +3469,8 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 
 #define fy_is_inplace(_v) \
 	(fy_generic_is_in_place(v))
+
+#define fy_get_type(_v) \
+	(fy_generic_get_type(_v))
 
 #endif
