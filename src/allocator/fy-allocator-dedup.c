@@ -668,6 +668,8 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 
 	/* calculate data total size */
 	total_size = fy_iovec_size(iov, iovcnt);
+	if (total_size == SIZE_MAX)
+		goto err_out;
 
 	/* if it's under the dedup threshold just allocate and copy */
 	if (total_size < dtd->dedup_threshold) {

@@ -241,6 +241,8 @@ static const void *fy_linear_storev(struct fy_allocator *a, int tag,
 		return NULL;
 
 	size = fy_iovec_size(iov, iovcnt);
+	if (size == SIZE_MAX)
+		return NULL;
 	p = fy_linear_alloc(a, tag, size, align);
 	if (p)
 		fy_iovec_copy_from(iov, iovcnt, p);

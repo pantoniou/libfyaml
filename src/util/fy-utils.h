@@ -396,8 +396,10 @@ fy_iovec_size(const struct iovec *iov, int iovcnt)
 	int i;
 
 	size = 0;
-	for (i = 0; i < iovcnt; i++)
-		size += iov[i].iov_len;
+	for (i = 0; i < iovcnt; i++) {
+		if (FY_ADD_OVERFLOW(size, iov[i].iov_len, &size))
+			return SIZE_MAX;
+	}
 	return size;
 }
 

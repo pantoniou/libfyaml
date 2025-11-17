@@ -282,6 +282,8 @@ static const void *fy_malloc_storev(struct fy_allocator *a, int tag, const struc
 		goto err_out;
 
 	total_size = fy_iovec_size(iov, iovcnt);
+	if (total_size == SIZE_MAX)
+		goto err_out;
 
 	start = fy_malloc_tag_alloc(ma, mt, total_size, align);
 	if (!start)

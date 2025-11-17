@@ -3306,6 +3306,39 @@ fy_generic fy_gb_string_vcreate(struct fy_generic_builder *gb, const char *fmt, 
 fy_generic fy_gb_string_createf(struct fy_generic_builder *gb, const char *fmt, ...)
 	__attribute__((format(printf, 2, 3)));
 
+#define FYGBF_OP_SHIFT			0
+#define FYGBF_OP_MASK			((1U << 8) - 1)
+#define FYGBF_OP(x)			(((unsigned int)(x) & FYGBF_OP_MASK) << FYGBF_OP_SHIFT)
+
+enum fy_gb_op {
+	FYGBOP_CREATE_SEQ,
+	FYGBOP_CREATE_MAP,
+	FYGBOP_INSERT,
+	FYGBOP_REPLACE,
+	FYGBOP_APPEND,
+	FYGBOP_COPY,
+};
+#define FYGBOP_COUNT	(FYGBOP_COPY + 1)
+
+enum fy_gb_flags {
+	FYGBF_CREATE_SEQ	= FYGBF_OP(FYGBOP_CREATE_SEQ),
+	FYGBF_CREATE_MAP	= FYGBF_OP(FYGBOP_CREATE_MAP),
+	FYGBF_INSERT		= FYGBF_OP(FYGBOP_INSERT),
+	FYGBF_REPLACE		= FYGBF_OP(FYGBOP_REPLACE),
+	FYGBF_APPEND		= FYGBF_OP(FYGBOP_APPEND),
+	FYGBF_COPY		= FYGBF_OP(FYGBOP_COPY),
+	FYGBF_DONT_INTERNALIZE	= FY_BIT(16),
+};
+
+fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_flags, ...);
+
+#if 0
+fy_generic fy_gb_collection_create_f(struct fy_generic_builder *gb, enum fy_gb_flags flags, size_t count, const fy_generic *items);
+
+fy_generic fy_gb_collection_remove(struct fy_generic_builder *gb, enum fy_gb_flags flags, fy_generic col, size_t idx, size_t count);
+fy_generic fy_gb_sequence_insert_replace(struct fy_generic_builder *gb, bool insert, fy_generic seq, size_t idx, size_t count, const fy_generic *items);
+#endif
+
 fy_generic fy_gb_sequence_create_i(struct fy_generic_builder *gb, bool internalize,
 					size_t count, const fy_generic *items);
 fy_generic fy_gb_sequence_create(struct fy_generic_builder *gb, size_t count, const fy_generic *items);

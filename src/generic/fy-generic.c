@@ -333,69 +333,122 @@ fy_internalize_items(struct fy_generic_builder *gb, size_t count, const fy_gener
 	return items_local;
 }
 
-fy_generic fy_gb_collection_create(struct fy_generic_builder *gb, bool is_map, size_t count, const fy_generic *items, bool internalize)
+fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_flags flags, ...)
 {
 	union {
 		fy_generic_sequence s;
 		fy_generic_mapping m;
 	} u;
 	const void *p;
-	struct iovec iov[2];
-	fy_generic v, *items_alloc = NULL, items_buf[64];
-	size_t i;
+	struct iovec iov[8];
+	int iovcnt;
+	fy_generic *items_alloc = NULL, items_buf[64];
+	fy_generic in, out;
+	fy_generic_value col_mark;
+	unsigned int op;
+	size_t count, mult, item_count;
+	const fy_generic *items;
+	bool is_map;
+	va_list ap;
 
-	if (!count)
-		return !is_map ? fy_seq_empty : fy_map_empty;
-
-	if (count && !items)
+	op = ((flags >> FYGBF_OP_SHIFT) & FYGBF_OP_MASK);
+	if (op >= FYGBOP_COUNT)
 		return fy_invalid;
 
-	if (fy_collection_storage_size(is_map, count) == SIZE_MAX)
-		return fy_invalid;
+	out = in = fy_invalid;
 
-	if (is_map)
-		count *= 2;
-
-	for (i = 0; i < count; i++) {
-		if (items[i].v == fy_invalid_value)
-			return fy_invalid;
-	}
-
-	if (internalize) {
-		items = fy_internalize_items(gb, count, items, items_buf, ARRAY_SIZE(items_buf), &items_alloc);
+	va_start(ap, src);
+	switch (op) {
+	case FYGBOP_CREATE_SEQ:
+	case FYGBOP_CREATE_MAP:
+		in = op == FYGBOP_CREATE_SEQ ? fy_seq_empty : fy_map_empty;
+		count = va_arg(ap, size_t);
+		items = va_arg(ap, const fy_generic *);
+		if (!count)
+			return in;	/* quickly return the empty collection */
 		if (!items)
-			return fy_invalid;
-	}
+			goto err_out;
+		break;
 
-	memset(&u, 0, sizeof(u));
-	if (!is_map) {
+	default:
+		goto err_out;
+	}
+	va_end(ap);
+
+	if (in.v == fy_invalid_value)
+		return fy_invalid;
+
+	switch (fy_get_type(in)) {
+	case FYGT_SEQUENCE:
+		is_map = false;
+		mult = 1;	/* 1 generics per count */
 		u.s.count = count;
 		iov[0].iov_base = &u.s;
 		iov[0].iov_len = sizeof(u.s);
-	} else {
-		u.m.count = count / 2;
+		col_mark = FY_SEQ_V;
+		break;
+	case FYGT_MAPPING:
+		is_map = true;
+		mult = 2;	/* 2 generics per count */
+		u.m.count = count;
 		iov[0].iov_base = &u.m;
 		iov[0].iov_len = sizeof(u.m);
+		col_mark = FY_MAP_V;
+		break;
+	default:
+		goto err_out;
 	}
 
-	iov[1].iov_base = (void *)items;
-	iov[1].iov_len = count * sizeof(fy_generic);
+	if (fy_collection_storage_size(is_map, count) == SIZE_MAX)
+		goto err_out;
 
-	p = fy_gb_storev(gb, iov, ARRAY_SIZE(iov), FY_CONTAINER_ALIGNOF(fy_generic_sequence));
+	// item_count = count * mult;
+	if (FY_MUL_OVERFLOW(count, mult, &item_count))
+		goto err_out;
+
+	if (!(flags & FYGBF_DONT_INTERNALIZE)) {
+		items = fy_internalize_items(gb, item_count, items, items_buf, ARRAY_SIZE(items_buf), &items_alloc);
+		if (!items)
+			goto err_out;
+	}
+
+	switch (op) {
+	case FYGBOP_CREATE_SEQ:
+	case FYGBOP_CREATE_MAP:
+		iov[1].iov_base = (void *)items;
+		iov[1].iov_len = count * sizeof(fy_generic) * mult;
+		iovcnt = 2;
+		break;
+
+	default:
+		goto err_out;
+	}
+
+	p = fy_gb_storev(gb, iov, iovcnt, FY_GENERIC_CONTAINER_ALIGN);
 	if (!p)
 		goto err_out;
 
-	v = (fy_generic){ .v = (uintptr_t)p | (!is_map ? FY_SEQ_V : FY_MAP_V) };
+	out = (fy_generic){ .v = (uintptr_t)p | col_mark };
 
 out:
 	if (items_alloc)
 		free(items_alloc);
 
-	return v;
+	return out;
 
 err_out:
-	v = fy_invalid;
+	out = fy_invalid;
 	goto out;
+}
+
+fy_generic fy_gb_collection_create(struct fy_generic_builder *gb, bool is_map, size_t count, const fy_generic *items, bool internalize)
+{
+	enum fy_gb_flags flags;
+
+	flags = (!is_map ? FYGBF_CREATE_SEQ : FYGBF_CREATE_MAP) |
+		(!internalize ? FYGBF_DONT_INTERNALIZE : 0);
+
+	return fy_gb_collection_op(gb, flags, count, items);
 }
 
 static bool fy_collection_prepare(fy_generic col, size_t *countp, const fy_generic **itemsp, bool *is_mapp)
@@ -439,7 +492,7 @@ fy_generic fy_gb_collection_remove(struct fy_generic_builder *gb, fy_generic col
 	fy_generic v;
 	const fy_generic *old_items;
 	struct iovec iov[3];
-	size_t old_count;
+	size_t old_count, tmp;
 	bool is_map;
 
 	if (!fy_collection_prepare(col, &old_count, &old_items, &is_map))
@@ -448,7 +501,9 @@ fy_generic fy_gb_collection_remove(struct fy_generic_builder *gb, fy_generic col
 	if (idx >= old_count)
 		return fy_invalid;
 
-	if (idx + count > old_count)
+	if (FY_ADD_OVERFLOW(idx, count, &tmp))
+		return fy_invalid;
+	if (tmp > old_count)
 		count = old_count - idx;
 
 	memset(&u, 0, sizeof(u));
@@ -464,18 +519,23 @@ fy_generic fy_gb_collection_remove(struct fy_generic_builder *gb, fy_generic col
 
 	/* adjust by two for maps */
 	if (is_map) {
-		idx *= 2;
-		count *= 2;
-		old_count *= 2;
+		if (FY_MUL_OVERFLOW(idx, 2, &idx) ||
+		    FY_MUL_OVERFLOW(count, 2, &count) ||
+		    FY_MUL_OVERFLOW(old_count, 2, &old_count))
+			return fy_invalid;
 	}
 
 	/* before */
+	if (FY_MUL_OVERFLOW(idx, sizeof(fy_generic), &tmp))
+		return fy_invalid;
 	iov[1].iov_base = (void *)old_items;
-	iov[1].iov_len = idx * sizeof(fy_generic);
+	iov[1].iov_len = tmp;
 
 	/* after */
+	if (FY_MUL_OVERFLOW(old_count - (idx + count), sizeof(fy_generic), &tmp))
+		return fy_invalid;
 	iov[2].iov_base = (void *)(old_items + idx + count);
-	iov[2].iov_len = (old_count - (idx + count)) * sizeof(fy_generic);
+	iov[2].iov_len = tmp;
 
 	p = fy_gb_storev(gb, iov, ARRAY_SIZE(iov), FY_CONTAINER_ALIGNOF(fy_generic_sequence));
 	if (!p)
@@ -495,7 +555,7 @@ fy_generic fy_gb_collection_insert_replace(struct fy_generic_builder *gb, fy_gen
 	const void *p;
 	fy_generic *items_alloc = NULL, items_buf[64], v;
 	const fy_generic *old_items;
-	size_t i, old_count, new_count, remain_idx, remain_count, item_count;
+	size_t i, old_count, new_count, remain_idx, remain_count, item_count, tmp;
 	struct iovec iov[4];
 	bool is_map;
 
@@ -510,8 +570,11 @@ fy_generic fy_gb_collection_insert_replace(struct fy_generic_builder *gb, fy_gen
 		return fy_invalid;
 
 	item_count = count;
-	if (is_map)
-		item_count *= 2;
+	if (is_map) {
+		// item_count *= 2;
+		if (FY_MUL_OVERFLOW(item_count, 2, &item_count))
+			return fy_invalid;
+	}
 
 	/* check for invalids */
 	for (i = 0; i < item_count; i++) {
@@ -527,19 +590,26 @@ fy_generic fy_gb_collection_insert_replace(struct fy_generic_builder *gb, fy_gen
 
 	if (!insert) {
 		/* replace */
-		if (idx + count > old_count) {
-			new_count = idx + count;
+		/* tmp = idx + count */
+		if (FY_ADD_OVERFLOW(idx, count, &tmp))
+			return fy_invalid;
+		if (tmp > old_count) {
+			new_count = tmp;
 			remain_idx = old_count;
 		} else {
 			new_count = old_count;
-			remain_idx = idx + count;
+			remain_idx = tmp;
 		}
 	} else {
 		/* insert */
-		new_count = old_count + count;
+		/* new_count = old_count + count; */
+		if (FY_ADD_OVERFLOW(old_count, count, &new_count))
+			return fy_invalid;
 		remain_idx = idx;
 	}
-	remain_count = old_count - remain_idx;
+	// remain_count = old_count - remain_idx;
+	if (FY_SUB_OVERFLOW(old_count, remain_idx, &remain_count))
+		return fy_invalid;
 
 	memset(&u, 0, sizeof(u));
 	if (!is_map) {
@@ -554,26 +624,33 @@ fy_generic fy_gb_collection_insert_replace(struct fy_generic_builder *gb, fy_gen
 
 	/* adjust by two for maps */
 	if (is_map) {
-		idx *= 2;
-		count *= 2;
-		old_count *= 2;
-		new_count *= 2;
-		remain_idx *= 2;
-		remain_count *= 2;
-		item_count *= 2;
+		if (FY_MUL_OVERFLOW(idx, 2, &idx) ||
+		    FY_MUL_OVERFLOW(count, 2, &count) ||
+		    FY_MUL_OVERFLOW(old_count, 2, &old_count) ||
+		    FY_MUL_OVERFLOW(new_count, 2, &new_count) ||
+		    FY_MUL_OVERFLOW(remain_idx, 2, &remain_idx) ||
+		    FY_MUL_OVERFLOW(remain_count, 2, &remain_count) ||
+		    FY_MUL_OVERFLOW(item_count, 2, &item_count))
+			return fy_invalid;
 	}
 
 	/* before */
+	if (FY_MUL_OVERFLOW(idx, sizeof(fy_generic), &tmp))
+		return fy_invalid;
 	iov[1].iov_base = (void *)old_items;
-	iov[1].iov_len = idx * sizeof(fy_generic);
+	iov[1].iov_len = tmp;
 
 	/* replacement */
+	if (FY_MUL_OVERFLOW(count, sizeof(fy_generic), &tmp))
+		return fy_invalid;
 	iov[2].iov_base = (void *)items;
-	iov[2].iov_len = count * sizeof(fy_generic);
+	iov[2].iov_len = tmp;
 
 	/* remainder */
+	if (FY_MUL_OVERFLOW(remain_count, sizeof(fy_generic), &tmp))
+		return fy_invalid;
 	iov[3].iov_base = (void *)(old_items + remain_idx);
-	iov[3].iov_len = remain_count * sizeof(fy_generic);
+	iov[3].iov_len = tmp;
 
 	p = fy_gb_storev(gb, iov, ARRAY_SIZE(iov), FY_CONTAINER_ALIGNOF(fy_generic_sequence));
 	if (!p)
@@ -587,66 +664,11 @@ fy_generic fy_gb_collection_insert_replace(struct fy_generic_builder *gb, fy_gen
 	return v;
 }
 
-#if 0
-fy_generic fy_gb_sequence_create_i(struct fy_generic_builder *gb, bool internalize,
-					size_t count, const fy_generic *items)
-{
-	fy_generic_sequence s;
-	const fy_generic_sequence *p;
-	struct iovec iov[2];
-	fy_generic v, *items_alloc = NULL, items_buf[64];
-	size_t storage_size;
-	size_t i;
-
-	if (count && !items)
-		return fy_invalid;
-
-	storage_size = fy_sequence_storage_size(count);
-	if (storage_size == SIZE_MAX)
-		return fy_invalid;
-
-	for (i = 0; i < count; i++) {
-		if (items[i].v == fy_invalid_value)
-			return fy_invalid;
-	}
-
-	if (internalize) {
-		items = fy_internalize_items(gb, count, items, items_buf, ARRAY_SIZE(items_buf), &items_alloc);
-		if (!items)
-			return fy_invalid;
-	}
-
-	memset(&s, 0, sizeof(s));
-	s.count = count;
-
-	iov[0].iov_base = &s;
-	iov[0].iov_len = sizeof(s);
-	iov[1].iov_base = (void *)items;
-	iov[1].iov_len = count * sizeof(*items);
-
-	p = fy_gb_storev(gb, iov, ARRAY_SIZE(iov), FY_CONTAINER_ALIGNOF(fy_generic_sequence));
-	if (!p)
-		goto err_out;
-
-	v = (fy_generic){ .v = (uintptr_t)p | FY_SEQ_V };
-
-out:
-	if (items_alloc)
-		free(items_alloc);
-
-	return v;
-
-err_out:
-	v = fy_invalid;
-	goto out;
-}
-#else
 fy_generic fy_gb_sequence_create_i(struct fy_generic_builder *gb, bool internalize,
 					size_t count, const fy_generic *items)
 {
 	return fy_gb_collection_create(gb, false, count, items, internalize);
 }
-#endif
 
 fy_generic fy_gb_sequence_create(struct fy_generic_builder *gb, size_t count, const fy_generic *items)
 {
