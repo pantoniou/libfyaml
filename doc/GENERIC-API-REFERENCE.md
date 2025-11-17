@@ -238,9 +238,9 @@ const char *fy_cast(fy_generic g, "");
 
 **Container handles and polymorphic operations**:
 ```c
-// Handle types
-typedef struct { struct fy_generic_sequence *seq; } fy_seq_handle;
-typedef struct { struct fy_generic_mapping *map; } fy_map_handle;
+// Handle types (simple const pointer typedefs)
+typedef const struct fy_generic_sequence *fy_seq_handle;
+typedef const struct fy_generic_mapping *fy_map_handle;
 
 // Sentinels
 extern const fy_seq_handle fy_seq_invalid;

@@ -13,7 +13,7 @@ The short-form API achieves Python ergonomics through:
 5. **Zero runtime overhead**: All dispatch happens at compile time
 6. **Type safety**: Compiler catches type mismatches in defaults
 7. **Unified extraction**: Single `fy_get()` works with optional defaults via `__VA_OPT__`
-8. **Container handles**: Opaque wrappers avoid pointer exposure while maintaining type safety
+8. **Container handles**: Simple const pointer typedefs for type safety without pointer wrapping
 9. **Optional parameters**: Match Python's flexibility with variadic macro tricks
 10. **Polymorphic operations**: `fy_len()`, `fy_get_item()`, and `fy_is_valid()` work across types
 11. **Python naming**: `fy_len()` matches Python's `len()`, making the API immediately familiar

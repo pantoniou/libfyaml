@@ -224,17 +224,12 @@ unsigned long long max = 0xFFFFFFFFFFFFFFFF;  // 18446744073709551615
 
 ### Container Handle Types
 
-To avoid exposing raw pointers in the API, we wrap container pointers in opaque handle structures:
+Container handles are simple const pointer typedefs for type safety:
 
 ```c
-// Opaque wrapper types for type safety
-typedef struct {
-    struct fy_generic_sequence *seq;
-} fy_seq_handle;
-
-typedef struct {
-    struct fy_generic_mapping *map;
-} fy_map_handle;
+// Handle types (simple const pointer typedefs)
+typedef const struct fy_generic_sequence *fy_seq_handle;
+typedef const struct fy_generic_mapping *fy_map_handle;
 
 // Sentinel values for invalid/missing containers
 extern const fy_seq_handle fy_seq_invalid;
