@@ -730,6 +730,8 @@ static const void *fy_mremap_storev(struct fy_allocator *a, int tag, const struc
 		goto err_out;
 
 	total_size = fy_iovec_size(iov, iovcnt);
+	if (total_size == SIZE_MAX)
+		goto err_out;
 
 	start = fy_mremap_tag_alloc(mra, mrt, total_size, align);
 	if (!start)
