@@ -346,16 +346,47 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_flags f
 	fy_generic in, out;
 	fy_generic_value col_mark;
 	unsigned int op;
-	size_t count, mult, item_count;
-	const fy_generic *items;
-	bool is_map;
+	size_t i, count, item_count, idx;
+	size_t in_count, in_item_count, out_count;
+	size_t col_item_size, tmp;
+	size_t remain_idx, remain_count;
+	const fy_generic *items, *in_items;
+	enum fy_generic_type type;
 	va_list ap;
+
+#undef MULSZ
+#define MULSZ(_x, _y) \
+	({ \
+		size_t __size; \
+		if (FY_MUL_OVERFLOW((_x), (_y), &__size)) \
+			goto err_out; \
+		__size; \
+	})
+
+#undef ADDSZ
+#define ADDSZ(_x, _y) \
+	({ \
+		size_t __size; \
+		if (FY_ADD_OVERFLOW((_x), (_y), &__size)) \
+			goto err_out; \
+		__size; \
+	})
+
+#undef SUBSZ
+#define SUBSZ(_x, _y) \
+	({ \
+		size_t __size; \
+		if (FY_SUB_OVERFLOW((_x), (_y), &__size)) \
+			goto err_out; \
+		__size; \
+	})
 
 	op = ((flags >> FYGBF_OP_SHIFT) & FYGBF_OP_MASK);
 	if (op >= FYGBOP_COUNT)
 		return fy_invalid;
 
 	out = in = fy_invalid;
+	idx = SIZE_MAX;
 
 	va_start(ap, src);
 	switch (op) {
@@ -364,10 +395,20 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_flags f
 		in = op == FYGBOP_CREATE_SEQ ? fy_seq_empty : fy_map_empty;
 		count = va_arg(ap, size_t);
 		items = va_arg(ap, const fy_generic *);
-		if (!count)
-			return in;	/* quickly return the empty collection */
-		if (!items)
-			goto err_out;
+		break;
+
+	case FYGBOP_INSERT:
+	case FYGBOP_REPLACE:
+		in = va_arg(ap, fy_generic);
+		idx = va_arg(ap, size_t);
+		count = va_arg(ap, size_t);
+		items = va_arg(ap, const fy_generic *);
+		break;
+
+	case FYGBOP_APPEND:
+		in = va_arg(ap, fy_generic);
+		count = va_arg(ap, size_t);
+		items = va_arg(ap, const fy_generic *);
 		break;
 
 	default:
@@ -378,46 +419,110 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_flags f
 	if (in.v == fy_invalid_value)
 		return fy_invalid;
 
-	switch (fy_get_type(in)) {
+	/* if no items, no modification are done */
+	if (!count)
+		return in;	/* quickly return the empty collection */
+
+	/* we must have items, otherwise it's an error */
+	if (!items)
+		goto err_out;
+
+	if (fy_generic_is_indirect(in))
+		in = fy_generic_indirect_get_value(in);
+
+	type = fy_get_type(in);
+	switch (type) {
+
 	case FYGT_SEQUENCE:
-		is_map = false;
-		mult = 1;	/* 1 generics per count */
-		u.s.count = count;
-		iov[0].iov_base = &u.s;
-		iov[0].iov_len = sizeof(u.s);
+		col_item_size = sizeof(fy_generic);
+		item_count = count;
 		col_mark = FY_SEQ_V;
+		in_items = fy_generic_sequence_get_items(in, &in_item_count);
+		in_count = in_item_count;
 		break;
+
 	case FYGT_MAPPING:
-		is_map = true;
-		mult = 2;	/* 2 generics per count */
-		u.m.count = count;
-		iov[0].iov_base = &u.m;
-		iov[0].iov_len = sizeof(u.m);
+		col_item_size = sizeof(fy_generic) * 2;
+		item_count = MULSZ(count, 2);
 		col_mark = FY_MAP_V;
+		in_items = fy_generic_mapping_get_items(in, &in_item_count);
+		in_count = in_item_count / 2;
 		break;
+
 	default:
 		goto err_out;
 	}
 
-	if (fy_collection_storage_size(is_map, count) == SIZE_MAX)
-		goto err_out;
-
-	// item_count = count * mult;
-	if (FY_MUL_OVERFLOW(count, mult, &item_count))
-		goto err_out;
-
 	if (!(flags & FYGBF_DONT_INTERNALIZE)) {
-		items = fy_internalize_items(gb, item_count, items, items_buf, ARRAY_SIZE(items_buf), &items_alloc);
+		items = fy_internalize_items(gb, item_count, items,
+				items_buf, ARRAY_SIZE(items_buf), &items_alloc);
 		if (!items)
 			goto err_out;
+	} else {
+		for (i = 0; i < item_count; i++) {
+			if (items[i].v == fy_invalid_value)
+				goto err_out;
+		}
 	}
 
 	switch (op) {
 	case FYGBOP_CREATE_SEQ:
 	case FYGBOP_CREATE_MAP:
+		/* sequence overlaps map counter */
+		u.s.count = count;
+		iov[0].iov_base = &u.s;
+		iov[0].iov_len = sizeof(u.s);
 		iov[1].iov_base = (void *)items;
-		iov[1].iov_len = count * sizeof(fy_generic) * mult;
+		iov[1].iov_len = MULSZ(count, col_item_size);
 		iovcnt = 2;
+		break;
+
+	case FYGBOP_INSERT:
+	case FYGBOP_REPLACE:
+	case FYGBOP_APPEND:
+
+		switch (op) {
+		case FYGBOP_INSERT:
+		case FYGBOP_APPEND:
+			/* any insert after extend, will be an append */
+			if (op == FYGBOP_APPEND)
+				idx = in_count;
+			if (idx > in_count)
+				idx = in_count;
+			remain_idx = idx;
+			remain_count = in_count - remain_idx;
+			out_count = ADDSZ(in_count, count);
+			break;
+
+		case FYGBOP_REPLACE:
+			/* index over the limits is at the end */
+			if (idx > in_count)
+				idx = in_count;
+			tmp = ADDSZ(idx, count);
+			if (tmp > in_count) {
+				out_count = tmp;
+				remain_idx = in_count;
+			} else {
+				out_count = in_count;
+				remain_idx = tmp;
+			}
+			break;
+		}
+
+		/* sequence overlaps map counter */
+		u.s.count = out_count;
+		iov[0].iov_base = &u.s;
+		iov[0].iov_len = sizeof(u.s);
+		/* before */
+		iov[1].iov_base = (void *)in_items;
+		iov[1].iov_len = MULSZ(idx, col_item_size);
+		/* replacement */
+		iov[2].iov_base = (void *)items;
+		iov[2].iov_len = MULSZ(count, col_item_size);
+		/* after */
+		iov[3].iov_base = (void *)in_items + remain_idx * col_item_size;
+		iov[3].iov_len = MULSZ(remain_count, col_item_size);
+		iovcnt = 4;
 		break;
 
 	default:
@@ -1116,7 +1221,7 @@ fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb, const ch
 		fract_count = s - fract;
 	}
 
-	/* extract the exponent part */ 
+	/* extract the exponent part */
 	if (s < e && (*s == 'e' || *s == 'E')) {
 		if (base != 10)
 			goto do_string;

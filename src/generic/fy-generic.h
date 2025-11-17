@@ -1008,6 +1008,20 @@ fy_generic_mapping_get_pairs(fy_generic map, size_t *countp)
 	return mapp->pairs;
 }
 
+static inline const fy_generic *
+fy_generic_mapping_get_items(fy_generic map, size_t *item_countp)
+{
+	const fy_generic_mapping *mapp = fy_generic_mapping_resolve(map);
+
+	if (!mapp) {
+		*item_countp = 0;
+		return NULL;
+	}
+
+	*item_countp = mapp->count * 2;
+	return &mapp->pairs[0].items[0];
+}
+
 int fy_generic_compare_out_of_place(fy_generic a, fy_generic b);
 
 static inline int fy_generic_compare(fy_generic a, fy_generic b)
@@ -3316,9 +3330,11 @@ enum fy_gb_op {
 	FYGBOP_INSERT,
 	FYGBOP_REPLACE,
 	FYGBOP_APPEND,
-	FYGBOP_COPY,
+	FYGBOP_ASSOC,
+	FYGBOP_DISASSOC,
+	FYGBOP_CONJ,
 };
-#define FYGBOP_COUNT	(FYGBOP_COPY + 1)
+#define FYGBOP_COUNT	(FYGBOP_APPEND + 1)
 
 enum fy_gb_flags {
 	FYGBF_CREATE_SEQ	= FYGBF_OP(FYGBOP_CREATE_SEQ),
@@ -3326,7 +3342,9 @@ enum fy_gb_flags {
 	FYGBF_INSERT		= FYGBF_OP(FYGBOP_INSERT),
 	FYGBF_REPLACE		= FYGBF_OP(FYGBOP_REPLACE),
 	FYGBF_APPEND		= FYGBF_OP(FYGBOP_APPEND),
-	FYGBF_COPY		= FYGBF_OP(FYGBOP_COPY),
+	FYGBF_ASSOC		= FYGBF_OP(FYGBOP_ASSOC),
+	FYGBF_DISASSOC		= FYGBF_OP(FYGBOP_DISASSOC),
+	FYGBF_CONJ		= FYGBF_OP(FYGBOP_CONJ),
 	FYGBF_DONT_INTERNALIZE	= FY_BIT(16),
 };
 
