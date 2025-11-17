@@ -350,6 +350,9 @@ fy_generic fy_gb_collection_create(struct fy_generic_builder *gb, bool is_map, s
 	if (count && !items)
 		return fy_invalid;
 
+	if (fy_collection_storage_size(is_map, count) == SIZE_MAX)
+		return fy_invalid;
+
 	if (is_map)
 		count *= 2;
 
@@ -584,6 +587,7 @@ fy_generic fy_gb_collection_insert_replace(struct fy_generic_builder *gb, fy_gen
 	return v;
 }
 
+#if 0
 fy_generic fy_gb_sequence_create_i(struct fy_generic_builder *gb, bool internalize,
 					size_t count, const fy_generic *items)
 {
@@ -591,9 +595,14 @@ fy_generic fy_gb_sequence_create_i(struct fy_generic_builder *gb, bool internali
 	const fy_generic_sequence *p;
 	struct iovec iov[2];
 	fy_generic v, *items_alloc = NULL, items_buf[64];
+	size_t storage_size;
 	size_t i;
 
 	if (count && !items)
+		return fy_invalid;
+
+	storage_size = fy_sequence_storage_size(count);
+	if (storage_size == SIZE_MAX)
 		return fy_invalid;
 
 	for (i = 0; i < count; i++) {
@@ -631,6 +640,13 @@ err_out:
 	v = fy_invalid;
 	goto out;
 }
+#else
+fy_generic fy_gb_sequence_create_i(struct fy_generic_builder *gb, bool internalize,
+					size_t count, const fy_generic *items)
+{
+	return fy_gb_collection_create(gb, false, count, items, internalize);
+}
+#endif
 
 fy_generic fy_gb_sequence_create(struct fy_generic_builder *gb, size_t count, const fy_generic *items)
 {
@@ -1693,13 +1709,8 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 
 	vanchor = fy_generic_get_anchor(vv);
 	vtag = fy_generic_get_tag(vv);
-#if 0
 	anchor = fy_castp(&vanchor, (const char *)NULL);
 	tag = fy_castp(&vtag, (const char *)NULL);
-#else
-	anchor = fy_cast(vanchor, (const char *)NULL);
-	tag = fy_cast(vtag, (const char *)NULL);
-#endif
 	v = fy_generic_is_indirect(vv) ? fy_generic_indirect_get_value(vv) : vv;
 
 	fprintf(fp, "%*s", level * 2, "");
