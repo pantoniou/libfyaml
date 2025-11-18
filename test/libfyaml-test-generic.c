@@ -792,6 +792,217 @@ START_TEST(generic_casts)
 }
 END_TEST
 
+/* Test: get api */
+START_TEST(generic_get)
+{
+	fy_generic seq, map;
+	fy_generic_sequence_handle seqh;
+	fy_generic_mapping_handle maph;
+	int iv;
+	bool bv;
+	const char *strv;
+
+	/* sequence */
+	seq = fy_local_sequence(-100, true, "sh", "long string");
+	ck_assert(fy_generic_is_sequence(seq));
+
+	/* manual access through seq generic value */
+	iv = fy_get(seq, 0, -1);
+	ck_assert(iv == -100);
+	bv = fy_get(seq, 1, false);
+	ck_assert(bv == true);
+	strv = fy_get(seq, 2, "");
+	ck_assert(!strcmp(strv, "sh"));
+	strv = fy_get(seq, 3, "");
+	ck_assert(!strcmp(strv, "long string"));
+
+	/* manual access through the seq handle (somewhat faster) */
+	seqh = fy_cast(seq, fy_seq_handle_null);
+	ck_assert(seqh != NULL);
+
+	iv = fy_get(seqh, 0, -1);
+	ck_assert(iv == -100);
+	bv = fy_get(seqh, 1, false);
+	ck_assert(bv == true);
+	strv = fy_get(seqh, 2, "");
+	ck_assert(!strcmp(strv, "sh"));
+	strv = fy_get(seqh, 3, "");
+	ck_assert(!strcmp(strv, "long string"));
+
+	/* try to access something that does not exist */
+	iv = fy_get(seq, -1, -1);
+	ck_assert(iv == -1);
+	iv = fy_get(seq, 1000, -1);
+	ck_assert(iv == -1);
+
+	/* mapping */
+	map = fy_local_mapping("foo", 100, "bar", 200);
+	ck_assert(fy_generic_is_mapping(map));
+
+	/* manual access through map generic value */
+	iv = fy_get(map, "foo", -1);
+	ck_assert(iv == 100);
+	iv = fy_get(map, "bar", -1);
+	ck_assert(iv == 200);
+
+	/* manual access through the map handle (somewhat faster) */
+	maph = fy_cast(map, fy_map_handle_null);
+	ck_assert(maph != NULL);
+	iv = fy_get(maph, "foo", -1);
+	ck_assert(iv == 100);
+	iv = fy_get(maph, "bar", -1);
+	ck_assert(iv == 200);
+
+	/* try to access something that does not exist */
+	iv = fy_get(maph, "dummy", -1);
+	ck_assert(iv == -1);
+}
+END_TEST
+
+/* Test: comparisons */
+START_TEST(generic_compare)
+{
+	fy_generic v1, v2;
+
+	/* nulls match always */
+	v1 = fy_value((void *)NULL);
+	v2 = fy_value((void *)NULL);
+	ck_assert(fy_compare(v1, v2) == 0);
+	ck_assert(fy_compare(v1, (void *)NULL) == 0);
+	ck_assert(fy_compare((void *)NULL, (void *)NULL) == 0);
+
+	/* false == false */
+	v1 = fy_value((_Bool)false);
+	v2 = fy_value((_Bool)false);
+	ck_assert(fy_compare(v1, v2) == 0);
+	ck_assert(fy_compare(v1, (_Bool)false) == 0);
+	ck_assert(fy_compare((_Bool)false, (_Bool)false) == 0);
+	/* true == true */
+	v1 = fy_value((_Bool)true);
+	v2 = fy_value((_Bool)true);
+	ck_assert(fy_compare(v1, v2) == 0);
+	ck_assert(fy_compare(v1, (_Bool)true) == 0);
+	ck_assert(fy_compare((_Bool)true, (_Bool)true) == 0);
+	/* false < true */
+	v1 = fy_value((_Bool)false);
+	v2 = fy_value((_Bool)true);
+	ck_assert(fy_compare(v1, v2) < 0);
+	ck_assert(fy_compare(v1, (_Bool)true) < 0);
+	ck_assert(fy_compare((_Bool)false, (_Bool)true) < 0);
+	/* true > false */
+	v1 = fy_value((_Bool)true);
+	v2 = fy_value((_Bool)false);
+	ck_assert(fy_compare(v1, v2) > 0);
+	ck_assert(fy_compare(v1, (_Bool)false) > 0);
+	ck_assert(fy_compare((_Bool)true, (_Bool)false) > 0);
+
+	/* 0 == 0 */
+	v1 = fy_value(0);
+	v2 = fy_value(0);
+	ck_assert(fy_compare(v1, v2) == 0);
+	ck_assert(fy_compare(v1, 0) == 0);
+	ck_assert(fy_compare(0, 0) == 0);
+	/* 100 > -10 */
+	v1 = fy_value(100);
+	v2 = fy_value(-10);
+	ck_assert(fy_compare(v1, v2) > 0);
+	ck_assert(fy_compare(v1, -10) > 0);
+	ck_assert(fy_compare(100, -10) > 0);
+	/* 100 < 999 */
+	v1 = fy_value(100);
+	v2 = fy_value(999);
+	ck_assert(fy_compare(v1, v2) < 0);
+	ck_assert(fy_compare(v1, 999) < 0);
+	ck_assert(fy_compare(100, 990) < 0);
+	/* unsigned LLONG_MAX + 1 > LLONG_MAX */
+	v1 = fy_value((unsigned long long)LLONG_MAX + 1);
+	v2 = fy_value((long long)LLONG_MAX);
+	ck_assert(fy_compare(v1, v2) > 0);
+	ck_assert(fy_compare(v1, (long long)LONG_MAX) > 0);
+	ck_assert(fy_compare((unsigned long long)LLONG_MAX + 1, (long long)LLONG_MAX) > 0);
+
+	/* abc == abc */
+	v1 = fy_value("abc");
+	v2 = fy_value("abc");
+	ck_assert(fy_compare(v1, v2) == 0);
+	ck_assert(fy_compare(v1, "abc") == 0);
+	ck_assert(fy_compare("abc", "abc") == 0);
+	/* abc < zxc */
+	v1 = fy_value("abc");
+	v2 = fy_value("zxc");
+	ck_assert(fy_compare(v1, v2) < 0);
+	ck_assert(fy_compare(v1, "zxc") < 0);
+	ck_assert(fy_compare("abc", "zxc") < 0);
+	/* zxc > abc */
+	v1 = fy_value("zxc");
+	v2 = fy_value("abc");
+	ck_assert(fy_compare(v1, v2) > 0);
+	ck_assert(fy_compare(v1, "abc") > 0);
+	ck_assert(fy_compare("zxc", "abc") > 0);
+
+	/* zxc000 > zxc */
+	v1 = fy_value("zxc000");
+	v2 = fy_value("zxc");
+	ck_assert(fy_compare(v1, v2) > 0);
+	ck_assert(fy_compare(v1, "zxc") > 0);
+	ck_assert(fy_compare("zxc000", "zxc") > 0);
+
+	/* "" == "" */
+	v1 = fy_value("");
+	v2 = fy_value("");
+	ck_assert(fy_compare(v1, v2) == 0);
+	ck_assert(fy_compare(v1, "") == 0);
+	ck_assert(fy_compare("", "") == 0);
+
+	/* "a" > "" */
+	v1 = fy_value("a");
+	v2 = fy_value("");
+	ck_assert(fy_compare(v1, v2) > 0);
+	ck_assert(fy_compare(v1, "") > 0);
+	ck_assert(fy_compare("a", "") > 0);
+
+	/* sequence equality */
+	v1 = fy_local_sequence(1, 2, 3);
+	v2 = fy_local_sequence(1, 2, 3);
+	ck_assert(fy_compare(v1, v2) == 0);
+	ck_assert(fy_compare(v1, fy_cast(fy_local_sequence(1, 2, 3), fy_seq_handle_null)) == 0);
+	ck_assert(fy_compare(fy_cast(fy_local_sequence(1, 2, 3), fy_seq_handle_null),
+			     fy_cast(fy_local_sequence(1, 2, 3), fy_seq_handle_null)) == 0);
+
+	/* sequence > */
+	v1 = fy_local_sequence(1, 8, 3);
+	v2 = fy_local_sequence(1, 2, 10);
+	ck_assert(fy_compare(v1, v2) > 0);
+	ck_assert(fy_compare(v1, fy_cast(fy_local_sequence(1, 2, 10), fy_seq_handle_null)) > 0);
+	ck_assert(fy_compare(fy_cast(fy_local_sequence(1, 8, 3), fy_seq_handle_null),
+			     fy_cast(fy_local_sequence(1, 2, 10), fy_seq_handle_null)) > 0);
+
+	/* mapping equality (easy) */
+	v1 = fy_local_mapping("foo", 10, "bar", 100);
+	v2 = fy_local_mapping("foo", 10, "bar", 100);
+	ck_assert(fy_compare(v1, v2) == 0);
+	ck_assert(fy_compare(v1, fy_cast(fy_local_mapping("foo", 10, "bar", 100), fy_map_handle_null)) == 0);
+	ck_assert(fy_compare(fy_cast(fy_local_mapping("foo", 10, "bar", 100), fy_map_handle_null),
+			     fy_cast(fy_local_mapping("foo", 10, "bar", 100), fy_map_handle_null)) == 0);
+
+	/* mapping equality (reorders) */
+	v1 = fy_local_mapping("foo", 10, "bar", 100);
+	v2 = fy_local_mapping("bar", 100, "foo", 10);
+	ck_assert(fy_compare(v1, v2) == 0);
+	ck_assert(fy_compare(v1, fy_cast(fy_local_mapping("foo", 10, "bar", 100), fy_map_handle_null)) == 0);
+	ck_assert(fy_compare(fy_cast(fy_local_mapping("foo", 10, "bar", 100), fy_map_handle_null),
+			     fy_cast(fy_local_mapping("bar", 100, "foo", 10), fy_map_handle_null)) == 0);
+
+	/* mapping inequality (reorders) */
+	v1 = fy_local_mapping("foo", 10, "bar", 101);
+	v2 = fy_local_mapping("bar", 100, "foo", 10);
+	ck_assert(fy_compare(v1, v2) > 0);
+	ck_assert(fy_compare(v1, fy_cast(fy_local_mapping("foo", 10, "bar", 101), fy_map_handle_null)) > 0);
+	ck_assert(fy_compare(fy_cast(fy_local_mapping("foo", 10, "bar", 101), fy_map_handle_null),
+			     fy_cast(fy_local_mapping("bar", 100, "foo", 10), fy_map_handle_null)) > 0);
+}
+END_TEST
+
 TCase *libfyaml_case_generic(void)
 {
 	TCase *tc;
@@ -816,8 +1027,14 @@ TCase *libfyaml_case_generic(void)
 	/* decorated int */
 	tcase_add_test(tc, generic_decorated_int);
 
-	/* access */
+	/* casts */
 	tcase_add_test(tc, generic_casts);
+
+	/* get */
+	tcase_add_test(tc, generic_get);
+
+	/* compare */
+	tcase_add_test(tc, generic_compare);
 
 	return tc;
 }
