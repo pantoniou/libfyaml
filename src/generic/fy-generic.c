@@ -35,20 +35,34 @@ static const struct fy_generic_builder_cfg default_generic_builder_cfg = {
 	.shared_tag = FY_ALLOC_TAG_NONE,
 };
 
-struct fy_generic_builder *fy_generic_builder_create(const struct fy_generic_builder_cfg *cfg)
+void fy_generic_builder_cleanup(struct fy_generic_builder *gb)
+{
+	if (!gb)
+		return;
+
+	if (gb->linear)
+		free(gb->linear);
+
+	/* if we own the allocator, just destroy it, everything is gone */
+	if (gb->allocator && gb->owns_allocator)
+		fy_allocator_destroy(gb->allocator);
+	else if (gb->shared_tag == FY_ALLOC_TAG_NONE)
+		fy_allocator_release_tag(gb->allocator, gb->alloc_tag);
+}
+
+int fy_generic_builder_setup(struct fy_generic_builder *gb, const struct fy_generic_builder_cfg *cfg)
 {
 	struct fy_allocator *a;
 	enum fy_generic_schema schema;
-	struct fy_generic_builder *gb = NULL;
 	bool owns_allocator;
 	int shared_tag, alloc_tag;
+
+	if (!gb)
+		return -1;
 
 	if (!cfg)
 		cfg = &default_generic_builder_cfg;
 
-	gb = malloc(sizeof(*gb));
-	if (!gb)
-		goto err_out;
 	memset(gb, 0, sizeof(*gb));
 
 	gb->cfg = *cfg;
@@ -82,11 +96,29 @@ struct fy_generic_builder *fy_generic_builder_create(const struct fy_generic_bui
 	gb->alloc_tag = alloc_tag;
 	gb->owns_allocator = owns_allocator;
 
-	return gb;
+	return 0;
 
 err_out:
-	fy_generic_builder_destroy(gb);
-	return NULL;
+	fy_generic_builder_cleanup(gb);
+	return -1;
+}
+
+struct fy_generic_builder *fy_generic_builder_create(const struct fy_generic_builder_cfg *cfg)
+{
+	struct fy_generic_builder *gb;
+	int rc;
+
+	gb = malloc(sizeof(*gb));
+	if (!gb)
+		return NULL;
+
+	rc = fy_generic_builder_setup(gb, cfg);
+	if (rc) {
+		free(gb);
+		gb = NULL;
+	}
+
+	return gb;
 }
 
 void fy_generic_builder_destroy(struct fy_generic_builder *gb)
@@ -94,14 +126,7 @@ void fy_generic_builder_destroy(struct fy_generic_builder *gb)
 	if (!gb)
 		return;
 
-	if (gb->linear)
-		free(gb->linear);
-
-	/* if we own the allocator, just destroy it, everything is gone */
-	if (gb->allocator && gb->owns_allocator)
-		fy_allocator_destroy(gb->allocator);
-	else if (gb->shared_tag == FY_ALLOC_TAG_NONE)
-		fy_allocator_release_tag(gb->allocator, gb->alloc_tag);
+	fy_generic_builder_cleanup(gb);
 
 	free(gb);
 }
@@ -209,6 +234,10 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 
 	case FYGT_SEQUENCE:
 		seqs = fy_generic_resolve_collection_ptr(v);
+		if (!seqs) {
+			new_v = fy_seq_empty;
+			break;
+		}
 		count = seqs->count;
 		itemss = seqs->items;
 
@@ -249,6 +278,10 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 
 	case FYGT_MAPPING:
 		maps = fy_generic_resolve_collection_ptr(v);
+		if (!maps) {
+			new_v = fy_map_empty;
+			break;
+		}
 		count = maps->count * 2;
 		itemss = &maps->pairs[0].items[0];	// we rely on the specific map pair layout
 
@@ -387,12 +420,22 @@ fy_generic fy_validate_out_of_place(fy_generic v)
 	if (type == FYGT_SEQUENCE || type == FYGT_MAPPING) {
 		if (type == FYGT_SEQUENCE) {
 			seqs = fy_generic_resolve_collection_ptr(v);
-			count = seqs->count;
-			itemss = seqs->items;
+			if (seqs) {
+				count = seqs->count;
+				itemss = seqs->items;
+			} else {
+				count = 0;
+				itemss = NULL;
+			}
 		} else {
 			maps = fy_generic_resolve_collection_ptr(v);
-			count = maps->count * 2;
-			itemss = &maps->pairs[0].items[0];	// we rely on the specific map pair layout
+			if (maps) {
+				count = maps->count * 2;
+				itemss = &maps->pairs[0].items[0];	// we rely on the specific map pair layout
+			} else {
+				count = 0;
+				itemss = NULL;
+			}
 		}
 
 		for (i = 0; i < count; i++) {
@@ -1679,6 +1722,10 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 
 	case FYGT_SEQUENCE:
 		seqs = fy_generic_resolve_collection_ptr(v);
+		if (!seqs) {
+			new_v = fy_seq_empty;
+			break;
+		}
 		count = seqs->count;
 		itemss = seqs->items;
 
@@ -1719,6 +1766,10 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 
 	case FYGT_MAPPING:
 		maps = fy_generic_resolve_collection_ptr(v);
+		if (!maps) {
+			new_v = fy_map_empty;
+			break;
+		}
 		count = maps->count * 2;
 		itemss = &maps->pairs[0].items[0];	// we rely on the mapping layout
 
