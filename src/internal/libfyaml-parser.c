@@ -1912,337 +1912,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	fy_document_destroy(fydt);
 	fydt = NULL;
 
-	/*****/
-
-	fydt = fy_document_build_from_string(cfg, "{ foo: 10, bar : 20, baz: [100, 101], [frob, 1]: boo }", FY_NT);
-	assert(fydt);
-
-	buf = fy_emit_node_to_string(fy_document_root(fydt), 0);
-	assert(buf);
-	printf("resulting node: \"%s\"\n", buf);
-	free(buf);
-
-	count = fy_node_mapping_item_count(fy_document_root(fydt));
-	printf("count=%d\n", count);
-	assert(count == 4);
-
-	/* try iterator first */
-	printf("forward iterator:");
-	iter = NULL;
-	while ((fynp = fy_node_mapping_iterate(fy_document_root(fydt), &iter)) != NULL) {
-		buf = fy_emit_node_to_string(fynp->key, 0);
-		assert(buf);
-		printf(" key=\"%s\"", buf);
-		free(buf);
-		buf = fy_emit_node_to_string(fynp->value, 0);
-		assert(buf);
-		printf(",value=\"%s\"", buf);
-		free(buf);
-	}
-	printf("\n");
-
-	printf("reverse iterator:");
-	iter = NULL;
-	while ((fynp = fy_node_mapping_reverse_iterate(fy_document_root(fydt), &iter)) != NULL) {
-		buf = fy_emit_node_to_string(fynp->key, 0);
-		assert(buf);
-		printf(" key=\"%s\"", buf);
-		free(buf);
-		buf = fy_emit_node_to_string(fynp->value, 0);
-		assert(buf);
-		printf(",value=\"%s\"", buf);
-		free(buf);
-	}
-	printf("\n");
-
-	printf("index based:");
-	for (i = 0; i < count; i++) {
-		fynp = fy_node_mapping_get_by_index(fy_document_root(fydt), i);
-		assert(fynp);
-		buf = fy_emit_node_to_string(fynp->key, 0);
-		assert(buf);
-		printf(" key=\"%s\"", buf);
-		free(buf);
-		buf = fy_emit_node_to_string(fynp->value, 0);
-		assert(buf);
-		printf(",value=\"%s\"", buf);
-		free(buf);
-	}
-	printf("\n");
-
-	printf("key lookup based:");
-
-	fyn = fy_node_mapping_lookup_by_string(fy_document_root(fydt), "foo", FY_NT);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s->\"%s\"\n", "foo", buf);
-	free(buf);
-
-	fyn = fy_node_mapping_lookup_by_string(fy_document_root(fydt), "bar", FY_NT);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s->\"%s\"\n", "bar", buf);
-	free(buf);
-
-	fyn = fy_node_mapping_lookup_by_string(fy_document_root(fydt), "baz", FY_NT);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s->\"%s\"\n", "baz", buf);
-	free(buf);
-
-	fyn = fy_node_mapping_lookup_by_string(fy_document_root(fydt), "[ frob, 1 ]", FY_NT);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s->\"%s\"\n", "[ frob, 1 ]", buf);
-	free(buf);
-
-	printf("\n");
-
-	fy_document_destroy(fydt);
-	fydt = NULL;
-
-	/*****/
-
-	fydt = fy_document_build_from_string(cfg, "{ "
-		"foo: 10, bar : 20, baz:{ frob: boo }, "
-		"frooz: [ seq1, { key: value} ], \"zero\\0zero\" : 0, "
-		"{ key2: value2 }: { key3: value3 } "
-		"}", FY_NT);
-
-	assert(fydt);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "/", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "/", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "foo", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "foo", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "bar", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "bar", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "baz", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "baz", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "baz/frob", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "baz/frob", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "frooz", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "frooz", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "/frooz/[0]", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "/frooz/[0]", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "/frooz/[1]", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "/frooz/[1]", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "/frooz/[1]/key", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "/frooz/[1]/key", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "\"foo\"", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "\"foo\"", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "\"zero\\0zero\"", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "zero\\0zero", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "/{ key2: value2 }", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "/{ key2: value2 }", buf);
-	free(buf);
-
-	fyn = fy_node_by_path(fy_document_root(fydt), "/{ key2: value2 }/key3", FY_NT, FYNWF_DONT_FOLLOW);
-	assert(fyn);
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "/{ key2: value2 }/key3", buf);
-	free(buf);
-
 	printf("\npaths....\n");
-
-	path = fy_node_get_path(fy_node_by_path(fy_document_root(fydt), "/", FY_NT, FYNWF_DONT_FOLLOW));
-	printf("%s path is %s\n", "/", path);
-	if (path)
-		free(path);
-
-	path = fy_node_get_path(fy_node_by_path(fy_document_root(fydt), "/frooz", FY_NT, FYNWF_DONT_FOLLOW));
-	printf("%s path is %s\n", "/frooz", path);
-	if (path)
-		free(path);
-
-	path = fy_node_get_path(fy_node_by_path(fy_document_root(fydt), "/frooz/[0]", FY_NT, FYNWF_DONT_FOLLOW));
-	printf("%s path is %s\n", "/frooz/[0]", path);
-	if (path)
-		free(path);
-
-	path = fy_node_get_path(fy_node_by_path(fy_document_root(fydt), "/{ key2: value2 }/key3", FY_NT, FYNWF_DONT_FOLLOW));
-	printf("%s path is %s\n", "/{ key2: value2 }/key3", path);
-	if (path)
-		free(path);
-
-	fy_document_destroy(fydt);
-	fydt = NULL;
-
-	/*****/
-
-	fyd = fy_document_create(cfg);
-	assert(fyd);
-
-	fyn = fy_node_build_from_string(fyd, "{ }", FY_NT);
-	assert(fyn);
-
-	buf = fy_emit_node_to_string(fyn, 0);
-	assert(buf);
-	printf("%s is \"%s\"\n", "/", buf);
-	free(buf);
-
-	fy_document_set_root(fyd, fyn);
-
-	buf = fy_emit_document_to_string(fyd, 0);
-	assert(buf);
-	printf("resulting document:\n");
-	fputs(buf, stdout);
-	free(buf);
-
-	fy_document_destroy(fyd);
-
-	/******/
-
-	fyd = fy_document_create(cfg);
-	assert(fyd);
-
-	fyn = fy_node_create_scalar(fyd, "foo", 3);
-	assert(fyn);
-	fy_document_set_root(fyd, fyn);
-
-	buf = fy_emit_document_to_string(fyd, 0);
-	assert(buf);
-	printf("resulting document:\n");
-	fputs(buf, stdout);
-	free(buf);
-
-	fy_document_destroy(fyd);
-
-	/******/
-
-	fyd = fy_document_create(cfg);
-	assert(fyd);
-
-	fyn = fy_node_create_scalar(fyd, "foo\nfoo", 7);
-	assert(fyn);
-	fy_document_set_root(fyd, fyn);
-
-	buf = fy_emit_document_to_string(fyd, 0);
-	assert(buf);
-	printf("resulting document:\n");
-	fputs(buf, stdout);
-	free(buf);
-
-	fy_document_destroy(fyd);
-
-	/******/
-
-	fyd = fy_document_create(cfg);
-	assert(fyd);
-
-	fyn = fy_node_create_sequence(fyd);
-	assert(fyn);
-	fy_document_set_root(fyd, fyn);
-
-	buf = fy_emit_document_to_string(fyd, 0);
-	assert(buf);
-	printf("resulting document:\n");
-	fputs(buf, stdout);
-	free(buf);
-
-	fy_document_destroy(fyd);
-
-	/******/
-
-	fyd = fy_document_create(cfg);
-	assert(fyd);
-
-	fyn = fy_node_create_mapping(fyd);
-	assert(fyn);
-	fy_document_set_root(fyd, fyn);
-
-	buf = fy_emit_document_to_string(fyd, 0);
-	assert(buf);
-	printf("resulting document:\n");
-	fputs(buf, stdout);
-	free(buf);
-
-	fy_document_destroy(fyd);
-
-	/******/
-
-	fyd = fy_document_create(cfg);
-	assert(fyd);
-
-	fyn = fy_node_create_sequence(fyd);
-	assert(fyn);
-
-	fy_node_sequence_append(fyn, fy_node_create_scalar(fyd, "foo", FY_NT));
-	fy_node_sequence_append(fyn, fy_node_create_scalar(fyd, "bar", FY_NT));
-	fy_node_sequence_append(fyn, fy_node_build_from_string(fyd, "{ baz: frooz }", FY_NT));
-
-	fy_document_set_root(fyd, fyn);
-
-	buf = fy_emit_document_to_string(fyd, 0);
-	assert(buf);
-	printf("resulting document:\n");
-	fputs(buf, stdout);
-	free(buf);
-
-	fy_document_destroy(fyd);
 
 	/******/
 
@@ -4399,7 +4069,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	assert(fy_generic_is_sequence(seq));
 
 	printf("seq:\n");
-	fy_generic_dump_primitive(stdout, 0, seq);
+	fy_generic_emit_default(seq);
 	printf("\n");
 
 	map = fy_mapping(fy_string("foo"), fy_string("bar"),
@@ -4408,26 +4078,26 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	assert(fy_generic_is_mapping(map));
 
 	printf("map:\n");
-	fy_generic_dump_primitive(stdout, 0, map);
+	fy_generic_emit_default(map);
 	printf("\n");
 
 	gv = fy_generic_mapping_get_value(map, fy_string("foo"));
 	assert(fy_generic_is_valid(gv));
 
 	printf("found: ");
-	fy_generic_dump_primitive(stdout, 0, gv);
+	fy_generic_emit_default(gv);
 	printf("\n");
 
 	map = fy_mapping(fy_string("foo"), fy_string("bar"),
 			 fy_sequence(fy_int(10), fy_int(100)), fy_float(3.14));
 
-	fy_generic_dump_primitive(stdout, 0, map);
+	fy_generic_emit_default(map);
 	printf("\n");
 
 	gv = fy_generic_mapping_get_value(map, fy_sequence(fy_int(10), fy_int(100)));
 	assert(fy_generic_is_valid(gv));
 	printf("found: ");
-	fy_generic_dump_primitive(stdout, 0, gv);
+	fy_generic_emit_default(gv);
 	printf("\n");
 
 	{
@@ -4437,19 +4107,19 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		fy_generic t3 = fy_string(testing_export);
 
 		printf("string_size_const t0: ");
-		fy_generic_dump_primitive(stdout, 0, t0);
+		fy_generic_emit_default(t0);
 		printf("\n");
 
 		printf("string_size_const t1: ");
-		fy_generic_dump_primitive(stdout, 0, t1);
+		fy_generic_emit_default(t1);
 		printf("\n");
 
 		printf("string t2: ");
-		fy_generic_dump_primitive(stdout, 0, t2);
+		fy_generic_emit_default(t2);
 		printf("\n");
 
 		printf("string t3: ");
-		fy_generic_dump_primitive(stdout, 0, t3);
+		fy_generic_emit_default(t3);
 		printf("\n");
 	}
 
@@ -4460,7 +4130,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 				fy_string("info-info"));
 
 		printf("seq-x:\n");
-		fy_generic_dump_primitive(stdout, 0, seq);
+		fy_generic_emit_default(seq);
 		printf("\n");
 	}
 
@@ -4475,7 +4145,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		fy_generic seq = (fy_generic){ .v = (fy_generic_value)&_seq | FY_SEQ_V };
 
 		printf("seq-x2:\n");
-		fy_generic_dump_primitive(stdout, 0, seq);
+		fy_generic_emit_default(seq);
 		printf("\n");
 	}
 
@@ -4622,12 +4292,12 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		});
 	assert(fy_generic_is_valid(seq));
 
-	fy_generic_dump_primitive(stdout, 0, seq);
+	fy_generic_emit_default(seq);
 	printf("\n");
 
 	printf(">>>>>>>>>>>>>>>>>>>>> seq using fy_gb_sequence\n");
 	seq = fy_gb_sequence(gb, 100, "Hello there", false, 10.0);
-	fy_generic_dump_primitive(stdout, 0, seq);
+	fy_generic_emit_default(seq);
 	printf("\n");
 
 	printf(">>>>>>>>>>>>>>>>>>>>> map using fy_gb_sequence\n");
@@ -4635,19 +4305,19 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		"Hello", true,
 		"There", false,
 		"Extra", fy_gb_sequence(gb, 1, 2, 100));
-	fy_generic_dump_primitive(stdout, 0, map);
+	fy_generic_emit_default(map);
 	printf("\n");
 
 #if 0
 	printf(">>>>>>>>>>>>>>>>>>>>> seq using fy_sequence - with first argument gb\n");
 	seq = fy_sequence(gb, 100, "Hello there", false, 10.0);
-	fy_generic_dump_primitive(stdout, 0, seq);
+	fy_generic_emit_default(seq);
 	printf("\n");
 #endif
 
 	printf(">>>>>>>>>>>>>>>>>>>>> seq using fy_sequence - without first argument gb\n");
 	seq = fy_sequence(100, "Hello there", false, 10.0);
-	fy_generic_dump_primitive(stdout, 0, seq);
+	fy_generic_emit_default(seq);
 	printf("\n");
 
 	map = fy_gb_mapping_create(gb, 3, (fy_generic[]){
@@ -4658,13 +4328,13 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	assert(fy_generic_is_valid(map));
 
-	fy_generic_dump_primitive(stdout, 0, map);
+	fy_generic_emit_default(map);
 	printf("\n");
 
 	gv = fy_generic_mapping_get_value(map, fy_gb_to_generic(gb, "foo"));
 	assert(fy_generic_is_valid(gv));
 	printf("found: ");
-	fy_generic_dump_primitive(stdout, 0, gv);
+	fy_generic_emit_default(gv);
 	printf("\n");
 
 	map = fy_gb_mapping_create(gb, 2, (fy_generic[]){
@@ -4674,7 +4344,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 					fy_gb_to_generic(gb, 100)}),
 				fy_gb_to_generic(gb, 3.14)});
 
-	fy_generic_dump_primitive(stdout, 0, map);
+	fy_generic_emit_default(map);
 	printf("\n");
 
 	gv = fy_generic_mapping_get_value(map, fy_gb_sequence_create(gb, 2, (fy_generic[]){
@@ -4682,7 +4352,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 					fy_gb_to_generic(gb, 100)}));
 	assert(fy_generic_is_valid(gv));
 	printf("found: ");
-	fy_generic_dump_primitive(stdout, 0, gv);
+	fy_generic_emit_default(gv);
 	printf("\n");
 
 	{
@@ -4815,19 +4485,19 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	seq = fy_gb_sequence_create(gb, 2, (fy_generic[]){ fy_true, fy_null });
 
 	printf("original\n");
-	fy_generic_dump_primitive(stdout, 0, seq);
+	fy_generic_emit_default(seq);
 	printf("\n");
 
 	seq = fy_gb_sequence_append(gb, seq, 2, (fy_generic[]){ fy_int(16), fy_int(128), });
 
 	printf("appended [16, 128] \n");
-	fy_generic_dump_primitive(stdout, 0, seq);
+	fy_generic_emit_default(seq);
 	printf("\n");
 
 	seq = fy_gb_sequence_insert(gb, seq, 1, 2, (fy_generic[]){ fy_true, fy_false, });
 
 	printf("inserted [true, false] at 1\n");
-	fy_generic_dump_primitive(stdout, 0, seq);
+	fy_generic_emit_default(seq);
 	printf("\n");
 
 	fy_allocator_dump(a);
@@ -4861,7 +4531,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	assert(fy_generic_is_valid(map));
 
 	printf("original map\n");
-	fy_generic_dump_primitive(stdout, 0, map);
+	fy_generic_emit_default(map);
 	printf("\n");
 
 	map = fy_gb_mapping_set_value(gb, map, fy_string("seq"),
@@ -4877,7 +4547,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	assert(fy_generic_is_valid(map));
 
 	printf("new map\n");
-	fy_generic_dump_primitive(stdout, 0, map);
+	fy_generic_emit_default(map);
 	printf("\n");
 
 	fy_generic_builder_destroy(gb);
@@ -4891,7 +4561,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	assert(fy_generic_is_valid(seq));
 
 	printf("seq-const:\n");
-	fy_generic_dump_primitive(stdout, 0, seq);
+	fy_generic_emit_default(seq);
 	printf("\n");
 
 	fy_generic str;
@@ -4899,7 +4569,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	str = fy_string("zzz");
 
 	printf("str:\n");
-	fy_generic_dump_primitive(stdout, 0, str);
+	fy_generic_emit_default(str);
 	printf("\n");
 
 	fy_generic ind;
@@ -4916,7 +4586,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	}
 
 	printf("ind:\n");
-	fy_generic_dump_primitive(stdout, 0, ind);
+	fy_generic_emit_default(ind);
 	printf("\n");
 
 	printf("str-by-get-string: %p %s\n", &str, fy_genericp_get_string(&str));
