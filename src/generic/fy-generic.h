@@ -3172,6 +3172,8 @@ static inline void fy_gb_release(struct fy_generic_builder *gb, const void *ptr,
 	fy_allocator_release(gb->allocator, gb->alloc_tag, ptr, size);
 }
 
+int fy_generic_builder_setup(struct fy_generic_builder *gb, const struct fy_generic_builder_cfg *cfg);
+void fy_generic_builder_cleanup(struct fy_generic_builder *gb);
 
 struct fy_generic_builder *fy_generic_builder_create(const struct fy_generic_builder_cfg *cfg);
 void fy_generic_builder_destroy(struct fy_generic_builder *gb);
