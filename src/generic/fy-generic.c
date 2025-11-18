@@ -1477,13 +1477,41 @@ static inline int fy_generic_bool_compare(fy_generic a, fy_generic b)
 
 static inline int fy_generic_int_compare(fy_generic a, fy_generic b)
 {
+	fy_generic_decorated_int dia, dib;
 	long long ia, ib;
 
-	/* XXX decorated */
-	ia = fy_cast(a, (long long)0);
-	ib = fy_cast(b, (long long)0);
-	return ia > ib ?  1 :
-	       ia < ib ? -1 : 0;
+	/* if both are in place, they're signed quick exit */
+	if (fy_generic_is_in_place(a) && fy_generic_is_in_place(b)) {
+		ia = fy_cast(a, (long long)0);
+		ib = fy_cast(b, (long long)0);
+		return ia > ib ?  1 :
+		       ia < ib ? -1 : 0;
+	}
+
+	/* need to check more thourougly */
+	dia = fy_cast(a, fy_dint_empty);
+	dib = fy_cast(b, fy_dint_empty);
+
+	/* if bit patterns match, we're good immediately */
+	if (dia.sv == dib.sv)
+		return 0;
+
+	/* signed, unsigned match, compare */
+	if (dia.is_unsigned && dib.is_unsigned)
+		return dia.uv < dib.uv ? -1 : 1;
+	if (!dia.is_unsigned && !dib.is_unsigned)
+		return dia.sv < dib.sv ? -1 : 1;
+
+	/* one is signed the other is unsigned */
+
+	/* if any of them is signed and less than 0 */
+	if (!dia.is_unsigned && dia.sv < 0)
+		return -1;
+	if (!dib.is_unsigned && dib.sv < 0)
+		return 1;
+
+	/* they are both positive, just check unsigned */
+	return dia.uv < dib.uv ? -1 : 1;
 }
 
 static inline int fy_generic_float_compare(fy_generic a, fy_generic b)
@@ -1507,7 +1535,7 @@ static inline int fy_generic_string_compare(fy_generic a, fy_generic b)
 	ret = memcmp(sa.data, sb.data, sa.size > sb.size ? sb.size : sa.size);
 
 	if (!ret && sa.size != sb.size)
-		ret = 1;
+		ret = sa.size > sb.size ? 1 : -1;
 	return ret;
 }
 

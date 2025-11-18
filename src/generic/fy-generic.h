@@ -604,6 +604,10 @@ typedef struct fy_generic_decorated_int {
 	bool is_unsigned;
 } fy_generic_decorated_int;
 
+typedef struct fy_generic_iterator {
+	size_t idx;
+} fy_generic_iterator;
+
 /* wrap into handles */
 typedef const fy_generic_sequence *fy_generic_sequence_handle;
 typedef const fy_generic_mapping *fy_generic_mapping_handle;
@@ -1026,18 +1030,22 @@ int fy_generic_compare_out_of_place(fy_generic a, fy_generic b);
 
 static inline int fy_generic_compare(fy_generic a, fy_generic b)
 {
+	enum fy_generic_type ta, tb;
+
 	/* invalids are always non-matching */
 	if (a.v == fy_invalid_value || b.v == fy_invalid_value)
-		return -1;
+		return -2;	/* -2 signal that invalid was found */
 
 	/* equals? nice - should work for null, bool, in place int, float and strings  */
 	/* also for anything that's a pointer */
 	if (a.v == b.v)
 		return 0;
 
+	ta = fy_generic_get_type(a);
+	tb = fy_generic_get_type(b);
 	/* invalid types, or differing types do not match */
-	if (fy_generic_get_type(a) != fy_generic_get_type(b))
-		return -1;
+	if (ta != tb)
+		return ta > tb ? 1 : -1;	/* but order according to types */
 
 	return fy_generic_compare_out_of_place(a, b);
 }
@@ -1832,7 +1840,7 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 
 #define fy_local_to_generic_value(_v) \
 	({	\
-	 	fy_generic_typeof(_v) __v = (_v); \
+		fy_generic_typeof(_v) __v = (_v); \
 		fy_generic_value __r; \
 		\
 		__r = fy_to_generic_inplace(__v); \
@@ -3054,7 +3062,7 @@ static inline size_t fy_get_len_map_handle(const void *p)
 
 #define fy_generic_len(_colv) \
 	({ \
-	 	fy_generic_typeof(_colv) __colv = (_colv); \
+		fy_generic_typeof(_colv) __colv = (_colv); \
 		_Generic(__colv, \
 			fy_generic: fy_get_len_generic, \
 			fy_generic_sequence_handle: fy_get_len_seq_handle, \
@@ -3319,7 +3327,7 @@ FY_GENERIC_GB_FLOAT_LVAL_TEMPLATE(double, double, -DBL_MAX, DBL_MAX, 0.0);
 
 #define fy_gb_to_generic_value(_gb, _v) \
 	({	\
-	 	fy_generic_typeof(_v) __v = (_v); \
+		fy_generic_typeof(_v) __v = (_v); \
 		fy_generic_value __r; \
 		\
 		__r = fy_to_generic_inplace(__v); \
@@ -3526,7 +3534,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	(fy_generic_get_default((_colv), (_key), fy_generic_get_type_default(_type)))
 
 #define fy_get(_colv, _key, _dv) \
-	(fy_get_default((_colv), (_key), (_dv))
+	(fy_get_default((_colv), (_key), (_dv)))
 
 #define fy_cast_default(_v, _dv) \
 	(fy_generic_cast_default((_v), (_dv)))
@@ -3563,5 +3571,8 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 
 #define fy_get_type(_v) \
 	(fy_generic_get_type(_v))
+
+#define fy_compare(_a, _b) \
+	(fy_generic_compare(fy_value(_a), fy_value(_b)))
 
 #endif
