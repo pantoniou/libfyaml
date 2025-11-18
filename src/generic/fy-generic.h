@@ -1300,6 +1300,7 @@ FY_GENERIC_FLOAT_LVAL_TEMPLATE(double, double, -DBL_MAX, DBL_MAX, 0.0);
 #define FY_GENERIC_ALL_SCALARS_DISPATCH(_base) \
 	FY_GENERIC_SCALAR_DISPATCH(_base, void *, null), \
 	FY_GENERIC_SCALAR_DISPATCH(_base, _Bool, bool), \
+	FY_GENERIC_SCALAR_DISPATCH(_base, char, char), \
 	FY_GENERIC_SCALAR_DISPATCH(_base, signed char, signed_char), \
 	FY_GENERIC_SCALAR_DISPATCH(_base, unsigned char, unsigned_char), \
 	FY_GENERIC_SCALAR_DISPATCH(_base, signed short, signed_short), \
@@ -1319,6 +1320,7 @@ FY_GENERIC_FLOAT_LVAL_TEMPLATE(double, double, -DBL_MAX, DBL_MAX, 0.0);
 #define FY_GENERIC_ALL_SCALARS_DISPATCH_SFX(_base, _sfx) \
 	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, void *, null), \
 	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, _Bool, bool), \
+	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, char, char), \
 	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, signed char, signed_char), \
 	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, unsigned char, unsigned_char), \
 	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, signed short, signed_short), \

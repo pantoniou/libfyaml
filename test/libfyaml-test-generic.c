@@ -369,7 +369,7 @@ START_TEST(generic_string_range)
 }
 END_TEST
 
-/* Test: Automatic generic type promotion, sanity testing */
+/* Test: Automatic generic type promotion */
 START_TEST(generic_type_promotion)
 {
 	fy_generic v;
@@ -500,7 +500,6 @@ START_TEST(generic_type_promotion)
 }
 END_TEST
 
-
 /* Test: testing valid, invalid propagation */
 START_TEST(generic_invalid_propagation)
 {
@@ -568,6 +567,231 @@ START_TEST(generic_invalid_propagation)
 }
 END_TEST
 
+/* Test: sized string */
+START_TEST(generic_sized_string)
+{
+	const char *str0_short = "H\0A";
+	const size_t str0_short_sz = 3;
+	const char *str0_long = "Hello\0There\0Long\0String";
+	const size_t str0_long_sz = 23;
+	const fy_generic_sized_string szstr0_short = { .data = str0_short, .size = str0_short_sz };
+	const fy_generic_sized_string szstr0_long = { .data = str0_long, .size = str0_long_sz };
+	fy_generic_sized_string szstr;
+	fy_generic v;
+
+	/* test short sized string */
+	v = fy_value(szstr0_short);
+	ck_assert(fy_generic_is_string(v));
+	szstr = fy_cast(v, fy_szstr_empty);
+
+	/* check it roundtripped */
+	ck_assert(szstr.size == szstr0_short.size);
+	ck_assert(!memcmp(szstr.data, szstr0_short.data, szstr0_short.size));
+
+	/* test long sized string */
+	v = fy_value(szstr0_long);
+	ck_assert(fy_generic_is_string(v));
+	szstr = fy_cast(v, fy_szstr_empty);
+
+	/* check it roundtripped */
+	ck_assert(szstr.size == szstr0_long.size);
+	ck_assert(!memcmp(szstr.data, szstr0_long.data, szstr0_long.size));
+}
+END_TEST
+
+/* Test: decorated int (full range int) */
+START_TEST(generic_decorated_int)
+{
+	fy_generic_decorated_int dint;
+	unsigned long long ullv;
+	fy_generic v;
+
+	/* first test in place */
+	v = fy_value(1LLU);
+	ck_assert(fy_generic_is_int_type(v));
+	ullv = fy_cast(v, 0LLU);
+	ck_assert(ullv == 1LLU);
+	dint = fy_cast(v, fy_dint_empty);
+	ck_assert(dint.uv == 1LLU);
+
+	/* test out of place, but still in signed range */
+	v = fy_value((unsigned long long)LLONG_MAX);
+	ck_assert(fy_generic_is_int_type(v));
+	ullv = fy_cast(v, 0LLU);
+	ck_assert(ullv == (unsigned long long)LLONG_MAX);
+	dint = fy_cast(v, fy_dint_empty);
+	ck_assert(dint.uv == (unsigned long long)LLONG_MAX);
+
+	/* test out of place, but now in unsigned range */
+	v = fy_value((unsigned long long)LLONG_MAX + 1);
+	ck_assert(fy_generic_is_int_type(v));
+	ullv = fy_cast(v, 0LLU);
+	ck_assert(ullv == (unsigned long long)LLONG_MAX + 1);
+	dint = fy_cast(v, fy_dint_empty);
+	ck_assert(dint.uv == (unsigned long long)LLONG_MAX + 1);
+	ck_assert(dint.is_unsigned);	/* must be marked as unsigned */
+
+	/* test maximum */
+	v = fy_value(ULLONG_MAX);
+	ck_assert(fy_generic_is_int_type(v));
+	ullv = fy_cast(v, 0LLU);
+	ck_assert(ullv == ULLONG_MAX);
+	dint = fy_cast(v, fy_dint_empty);
+	ck_assert(dint.uv == ULLONG_MAX);
+	ck_assert(dint.is_unsigned);	/* must be marked as unsigned */
+
+}
+END_TEST
+
+/* Test: casting checks */
+START_TEST(generic_casts)
+{
+	fy_generic v;
+	fy_generic_sequence_handle seqh;
+	fy_generic_mapping_handle maph;
+
+	/* first test casts that should succeed */
+
+	/* null */
+	v = fy_value((void *)NULL);
+	ck_assert(fy_cast(v, (void *)NULL) == (void *)NULL);
+
+	/* bool */
+	v = fy_value((_Bool)true);
+	ck_assert(fy_cast(v, (_Bool)false) == true);
+	v = fy_value((_Bool)false);
+	ck_assert(fy_cast(v, (_Bool)true) == false);
+
+	/* char */
+	v = fy_value('a');
+	ck_assert(fy_cast(v, '\0') == 'a');
+	v = fy_value(CHAR_MIN);
+	ck_assert(fy_cast(v, '1') == CHAR_MIN);
+	v = fy_value(CHAR_MAX);
+	ck_assert(fy_cast(v, '1') == CHAR_MAX);
+
+	v = fy_value((signed char)0x61);
+	ck_assert(fy_cast(v, (signed char)0x00) == 0x61);
+	v = fy_value(SCHAR_MIN);
+	ck_assert(fy_cast(v, '1') == SCHAR_MIN);
+	v = fy_value(SCHAR_MAX);
+	ck_assert(fy_cast(v, '1') == SCHAR_MAX);
+
+	v = fy_value((unsigned char)0xf1);
+	ck_assert(fy_cast(v, (unsigned char)0x00) == 0xf1);
+	v = fy_value(UCHAR_MAX);
+	ck_assert(fy_cast(v, '1') == UCHAR_MAX);
+
+	/* short */
+	v = fy_value(SHRT_MIN);
+	ck_assert(fy_cast(v, (short)0) == SHRT_MIN);
+	v = fy_value(SHRT_MAX);
+	ck_assert(fy_cast(v, (short)0) == SHRT_MAX);
+	v = fy_value(USHRT_MAX);
+	ck_assert(fy_cast(v, (unsigned short)0) == USHRT_MAX);
+
+	/* int */
+	v = fy_value(INT_MIN);
+	ck_assert(fy_cast(v, (int)0) == INT_MIN);
+	v = fy_value(INT_MAX);
+	ck_assert(fy_cast(v, (int)0) == INT_MAX);
+	v = fy_value(UINT_MAX);
+	ck_assert(fy_cast(v, (unsigned int)0) == UINT_MAX);
+
+	/* long */
+	v = fy_value(LONG_MIN);
+	ck_assert(fy_cast(v, (long)0) == LONG_MIN);
+	v = fy_value(LONG_MAX);
+	ck_assert(fy_cast(v, (long)0) == LONG_MAX);
+	v = fy_value(ULONG_MAX);
+	ck_assert(fy_cast(v, (unsigned long)0) == ULONG_MAX);
+
+	/* long long */
+	v = fy_value(LLONG_MIN);
+	ck_assert(fy_cast(v, (long)0) == LLONG_MIN);
+	v = fy_value(LLONG_MAX);
+	ck_assert(fy_cast(v, (long)0) == LLONG_MAX);
+	v = fy_value(ULLONG_MAX);
+	ck_assert(fy_cast(v, (unsigned long)0) == ULLONG_MAX);
+
+	/* float */
+	v = fy_value((float)FLT_MIN);
+	ck_assert(fy_cast(v, (float)NAN) == (float)FLT_MIN);
+	v = fy_value((float)FLT_MAX);
+	ck_assert(fy_cast(v, (float)NAN) == (float)FLT_MAX);
+	v = fy_value((float)-FLT_MIN);
+	ck_assert(fy_cast(v, (float)NAN) == (float)-FLT_MIN);
+	v = fy_value((float)-FLT_MAX);
+	ck_assert(fy_cast(v, (float)NAN) == (float)-FLT_MAX);
+
+	/* double */
+	v = fy_value((double)DBL_MIN);
+	ck_assert(fy_cast(v, (double)NAN) == (double)DBL_MIN);
+	v = fy_value((double)DBL_MAX);
+	ck_assert(fy_cast(v, (double)NAN) == (double)DBL_MAX);
+	v = fy_value((double)-DBL_MIN);
+	ck_assert(fy_cast(v, (double)NAN) == (double)-DBL_MIN);
+	v = fy_value((double)-DBL_MAX);
+	ck_assert(fy_cast(v, (double)NAN) == (double)-DBL_MAX);
+
+	/* string */
+	v = fy_value("This is a string");
+	ck_assert(!strcmp(fy_cast(v, ""), "This is a string"));
+
+	/* sequence */
+	v = fy_local_sequence(1, 2, 3);
+	seqh = fy_cast(v, fy_seq_handle_null);
+	ck_assert(seqh != fy_seq_handle_null);
+
+	/* mapping */
+	v = fy_local_mapping("foo", "bar",
+			     "baz", true);
+	maph = fy_cast(v, fy_map_handle_null);
+	ck_assert(maph != fy_map_handle_null);
+
+	/* now test the invalid type casts */
+	v = fy_value(true);
+	ck_assert(fy_cast(v, 0) == 0);
+	ck_assert(!strcmp(fy_cast(v, ""), ""));
+	ck_assert(fy_cast(v, 0.0f) == 0.0f);
+	ck_assert(fy_cast(v, fy_seq_handle_null) == fy_seq_handle_null);
+
+	/* onwards to the range casts */
+	v = fy_value(CHAR_MIN - 1);
+	ck_assert(fy_cast(v, (char)'0') == '0');
+	v = fy_value(CHAR_MAX + 1);
+	ck_assert(fy_cast(v, (char)'0') == '0');
+	v = fy_value(SCHAR_MIN - 1);
+	ck_assert(fy_cast(v, (signed char)0) == 0);
+	v = fy_value(SCHAR_MAX + 1);
+	ck_assert(fy_cast(v, (signed char)0) == 0);
+	v = fy_value(-1);
+	ck_assert(fy_cast(v, (unsigned char)0) == 0);
+	v = fy_value(UCHAR_MAX + 1);
+	ck_assert(fy_cast(v, (unsigned char)0) == 0);
+
+	v = fy_value(SHRT_MIN - 1);
+	ck_assert(fy_cast(v, (signed short)0) == 0);
+	v = fy_value(SHRT_MAX + 1);
+	ck_assert(fy_cast(v, (signed short)0) == 0);
+	v = fy_value(-1);
+	ck_assert(fy_cast(v, (unsigned short)0) == 0);
+	v = fy_value(USHRT_MAX + 1);
+	ck_assert(fy_cast(v, (unsigned short)0) == 0);
+
+	v = fy_value((signed long long)INT_MIN - 1);
+	ck_assert(fy_cast(v, (signed int)0) == 0);
+	v = fy_value((signed long long)INT_MAX + 1);
+	ck_assert(fy_cast(v, (signed int)0) == 0);
+	v = fy_value(-1);
+	ck_assert(fy_cast(v, (unsigned int)0) == 0);
+	v = fy_value((signed long long)UINT_MAX + 1);
+	ck_assert(fy_cast(v, (unsigned int)0) == 0);
+
+	/* LONG and LLONG are at the range limit, so don't try to be smart */
+}
+END_TEST
+
 TCase *libfyaml_case_generic(void)
 {
 	TCase *tc;
@@ -585,6 +809,15 @@ TCase *libfyaml_case_generic(void)
 
 	/* invalid propagation tests */
 	tcase_add_test(tc, generic_invalid_propagation);
+
+	/* sized string (any kind of data including zeroes) */
+	tcase_add_test(tc, generic_sized_string);
+
+	/* decorated int */
+	tcase_add_test(tc, generic_decorated_int);
+
+	/* access */
+	tcase_add_test(tc, generic_casts);
 
 	return tc;
 }

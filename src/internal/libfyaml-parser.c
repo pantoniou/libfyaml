@@ -3910,63 +3910,8 @@ char *testing_export = "This is export";
 
 int do_generics(int argc, char *argv[], const char *allocator)
 {
-	static const bool btable[] = {
-		false, true,
-	};
-	bool bv;
-	static const long long itable[] = {
-		0, 1, -1, LLONG_MAX, LLONG_MIN,
-		FYGT_INT_INPLACE_MAX, FYGT_INT_INPLACE_MIN,
-		FYGT_INT_INPLACE_MAX+1, FYGT_INT_INPLACE_MIN-1,
-	};
-	long long iv;
-	static const char *stable[] = {
-		"",	/* empty string */
-		"0",
-		"01",
-		"012",
-		"0123",
-		"01234",
-		"012345",
-		"0123456",
-		"01234567",
-		"This is a string",
-		"invoice",
-	};
-	const char *sv;
-	size_t slen;
-	static const double ftable[] = {
-		0.0, 1.0, -1.0, 0.1, -0.1,
-		128.0, -128.0,
-		256.1, -256.1,
-		INFINITY, -INFINITY,
-		NAN, -NAN,
-		100000.00001,	/* does not fit in 32 bit float */
-	};
-	double fv;
-	static const size_t sztable[] = {
-		0,
-		((size_t)1 <<  7) - 1, ((size_t)1 <<  7), ((size_t)1 <<  7) + 1,
-		((size_t)1 << 14) - 1, ((size_t)1 << 14), ((size_t)1 << 14) + 1,
-		((size_t)1 << 21) - 1, ((size_t)1 << 21), ((size_t)1 << 21) + 1,
-		((size_t)1 << 28) - 1, ((size_t)1 << 28), ((size_t)1 << 28) + 1,
-		((size_t)1 << 29) - 1, ((size_t)1 << 29), ((size_t)1 << 29) + 1,
-		((size_t)1 << 35) - 1, ((size_t)1 << 35), ((size_t)1 << 35) + 1,
-		((size_t)1 << 42) - 1, ((size_t)1 << 42), ((size_t)1 << 42) + 1,
-		((size_t)1 << 49) - 1, ((size_t)1 << 49), ((size_t)1 << 49) + 1,
-		((size_t)1 << 56) - 1, ((size_t)1 << 56), ((size_t)1 << 56) + 1,
-		((size_t)1 << 57) - 1, ((size_t)1 << 57), ((size_t)1 << 57) + 1,
-		(size_t)UINT32_MAX,
-		(size_t)UINT64_MAX,
-	};
-	uint8_t size_buf[FYGT_SIZE_ENCODING_MAX_64];
-	uint8_t *szp __FY_DEBUG_UNUSED__;
-	size_t sz, szd;
-	uint32_t sz32d;
-	unsigned int i, j, k;
 	struct fy_generic_builder *gb;
 	struct fy_generic_builder_cfg gcfg;
-	fy_generic gbl, gi, gs, gf;
 	fy_generic gv;
 	fy_generic seq, map, map2;
 	struct fy_dedup_allocator_cfg dcfg;
@@ -4017,50 +3962,6 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		gsetupdata = &lcfg;
 		registered_allocator = true;
 #endif
-	}
-
-	printf("testing generic methods\n");
-	printf("null = %016lx\n", fy_null.v);
-	for (i = 0; i < ARRAY_SIZE(btable); i++) {
-		bv = btable[i];
-		gbl = fy_bool(bv);
-		printf("boolean/%s = %016lx %s\n",
-				bv ? "true" : "false", gbl.v,
-				fy_cast(gbl, false) ? "true" : "false");
-	}
-
-	for (i = 0; i < ARRAY_SIZE(itable); i++) {
-		iv = itable[i];
-		gi = fy_int(iv);
-		printf("int/%lld = %016lx %lld\n",
-				iv, gi.v, fy_cast(gi, (long long)0));
-	}
-
-#if 0
-	for (i = 0; i < ARRAY_SIZE(stable); i++) {
-		sv = stable[i];
-		gs = fy_string(sv);
-		printf("(v) string/%s = %016lx", sv, gs.v);
-
-		sv = fy_cast(gs, (const char *)NULL);
-		printf(" %s\n", sv);
-	}
-#endif
-
-	for (i = 0; i < ARRAY_SIZE(stable); i++) {
-		sv = stable[i];
-		gs = fy_string(sv);
-		printf("(*v) string/%s = %016lx", sv, gs.v);
-
-		sv = fy_castp(&gs, (const char *)NULL);
-		printf(" %s\n", sv);
-	}
-
-	for (i = 0; i < ARRAY_SIZE(ftable); i++) {
-		fv = ftable[i];
-		gf = fy_float(fv);
-		printf("float/%f = %016lx %f\n", fv, gf.v,
-				fy_cast(gf, (double)0.0f));
 	}
 
 	seq = fy_sequence(fy_bool(true),
@@ -4187,113 +4088,6 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	assert(gb);
 
 	printf("created gb=%p\n", gb);
-
-	printf("null = %016lx\n", fy_null.v);
-	for (i = 0; i < ARRAY_SIZE(btable); i++) {
-		bv = btable[i];
-		gbl = fy_gb_to_generic(gb, (_Bool)bv);
-		assert(fy_generic_is_valid(gbl));
-		printf("boolean/%s = %016lx %s\n", bv ? "true" : "false", gbl.v,
-				fy_cast(gbl, false) ? "true" : "false");
-	}
-
-	for (i = 0; i < ARRAY_SIZE(itable); i++) {
-		iv = itable[i];
-		gi = fy_gb_to_generic(gb, iv);
-		assert(fy_generic_is_valid(gi));
-		printf("int/%lld = %016lx %lld\n", iv, gi.v,
-				fy_cast(gi, (long long)0));
-	}
-
-	for (i = 0; i < ARRAY_SIZE(stable); i++) {
-		sv = stable[i];
-		gs = fy_gb_to_generic(gb, sv);
-		assert(fy_generic_is_valid(gs));
-		printf("string/%s = %016lx", sv, gs.v);
-
-		sv = fy_genericp_get_string_size(&gs, &slen);
-		assert(sv);
-		printf(" %.*s\n", (int)slen, sv);
-
-		sv = fy_genericp_get_string(&gs);
-		assert(sv);
-		printf("\t%s\n", sv);
-	}
-
-	for (i = 0; i < ARRAY_SIZE(sztable); i++) {
-		sz = sztable[i];
-		printf("size_t/%zx =", sz);
-		j = fy_encode_size_bytes(sz);
-		assert(j <= sizeof(size_buf));
-		printf(" (%d)", j);
-
-		memset(size_buf, 0, sizeof(size_buf));
-		szp = fy_encode_size(size_buf, sizeof(size_buf), sz);
-		assert(szp);
-		assert((unsigned int)(szp - size_buf) == j);
-		for (k = 0; k < j; k++)
-			printf(" %02x", size_buf[k] & 0xff);
-
-		szd = 0;
-		fy_decode_size(size_buf, sizeof(size_buf), &szd);
-		printf(" decoded=%zx", szd);
-
-		szd = 0;
-		fy_decode_size_nocheck(size_buf, &szd);
-		printf(" decoded_nocheck=%zx", szd);
-
-		printf("\n");
-
-		/* decoding must match */
-		assert(szd == sz);
-	}
-
-	for (i = 0; i < ARRAY_SIZE(sztable); i++) {
-		sz = sztable[i];
-		if (sz > UINT32_MAX)
-			continue;
-		printf("uint32_t/%zx =", sz);
-		j = fy_encode_size32_bytes((uint32_t)sz);
-		assert(j <= sizeof(size_buf));
-		printf(" (%d)", j);
-
-		memset(size_buf, 0, sizeof(size_buf));
-		szp = fy_encode_size32(size_buf, sizeof(size_buf), (uint32_t)sz);
-		assert(szp);
-		assert((unsigned int)(szp - size_buf) == j);
-		for (k = 0; k < j; k++)
-			printf(" %02x", size_buf[k] & 0xff);
-
-		sz32d = 0;
-		fy_decode_size32(size_buf, sizeof(size_buf), &sz32d);
-		printf(" decoded=%zx", (size_t)sz32d);
-
-		printf("\n");
-
-		/* decoding must match */
-		assert(sz32d == (uint32_t)sz);
-
-	}
-
-	for (i = 0; i < ARRAY_SIZE(ftable); i++) {
-		fv = ftable[i];
-
-		gf = fy_gb_to_generic(gb, fv);
-		assert(fy_generic_is_valid(gf));
-
-		printf("float/%f = %016lx %f\n", fv, gf.v,
-				fy_cast(gf, (float)0.0f));
-	}
-
-	seq = fy_gb_sequence_create(gb, 3, (fy_generic[3]){
-			fy_gb_to_generic(gb, true),
-			fy_gb_to_generic(gb, 100),
-			fy_gb_to_generic(gb, "info")
-		});
-	assert(fy_generic_is_valid(seq));
-
-	fy_generic_emit_default(seq);
-	printf("\n");
 
 	printf(">>>>>>>>>>>>>>>>>>>>> seq using fy_gb_sequence\n");
 	seq = fy_gb_sequence(gb, 100, "Hello there", false, 10.0);
@@ -4431,14 +4225,6 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	gb = fy_generic_builder_create(&gcfg);
 	assert(gb);
-
-	iv = LLONG_MAX;
-	gi = fy_gb_to_generic(gb, iv);
-	fy_allocator_dump(a);
-
-	gi = fy_gb_to_generic(gb, "foo bar is big");
-	gi = fy_gb_to_generic(gb, "foo bar is big");
-	fy_allocator_dump(a);
 
 	map = fy_gb_mapping_create(gb, 3, (fy_generic[]){
 			fy_gb_to_generic(gb, "foo"), fy_gb_to_generic(gb, 0.11111),
