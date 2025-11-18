@@ -504,6 +504,67 @@ END_TEST
 /* Test: testing valid, invalid propagation */
 START_TEST(generic_invalid_propagation)
 {
+	fy_generic v, vv;
+
+	/* valid value passes through */
+	v = fy_value(100);
+	vv = fy_validate(v);
+	ck_assert(fy_generic_is_valid(vv));
+	ck_assert(v.v == vv.v);
+
+	/* invalid value is invalid */
+	v = fy_invalid;
+	vv = fy_validate(v);
+	ck_assert(fy_generic_is_invalid(vv));
+
+	/* a sequence with all valid items is valid */
+	v = fy_local_sequence(true, false, "string", 100000);
+	ck_assert(fy_generic_is_sequence(v));
+	vv = fy_validate(v);
+	ck_assert(fy_generic_is_valid(vv));
+	ck_assert(v.v == vv.v);
+
+	/* a sequence with an invalid item is invalid */
+	v = fy_local_sequence(true, false, fy_invalid, 100000);
+	ck_assert(fy_generic_is_sequence(v));
+	vv = fy_validate(v);
+	ck_assert(fy_generic_is_invalid(vv));
+
+	/* a mapping with all valid items is valid */
+	v = fy_local_mapping("foo", false, "bar", true);
+	ck_assert(fy_generic_is_mapping(v));
+	vv = fy_validate(v);
+	ck_assert(fy_generic_is_valid(vv));
+	ck_assert(v.v == vv.v);
+
+	/* a mapping with an invalid key is invalid */
+	v = fy_local_mapping("foo", false, fy_invalid, true);
+	ck_assert(fy_generic_is_mapping(v));
+	vv = fy_validate(v);
+	ck_assert(fy_generic_is_invalid(vv));
+
+	/* a mapping with an invalid value is invalid */
+	v = fy_local_mapping("foo", false, "bar", fy_invalid);
+	ck_assert(fy_generic_is_mapping(v));
+	vv = fy_validate(v);
+	ck_assert(fy_generic_is_invalid(vv));
+
+	/* a sequence with all deep items valid is valid */
+	v = fy_local_sequence(true, false,
+			fy_local_mapping("foo", "bar"),
+			100000);
+	ck_assert(fy_generic_is_sequence(v));
+	vv = fy_validate(v);
+	ck_assert(fy_generic_is_valid(vv));
+	ck_assert(v.v == vv.v);
+
+	/* a sequence with a deep invalid is invalid */
+	v = fy_local_sequence(true, false,
+			fy_local_mapping("foo", fy_invalid),
+			100000);
+	ck_assert(fy_generic_is_sequence(v));
+	vv = fy_validate(v);
+	ck_assert(fy_generic_is_invalid(vv));
 }
 END_TEST
 
@@ -522,6 +583,7 @@ TCase *libfyaml_case_generic(void)
 	tcase_add_test(tc, generic_string_range);
 	tcase_add_test(tc, generic_type_promotion);
 
+	/* invalid propagation tests */
 	tcase_add_test(tc, generic_invalid_propagation);
 
 	return tc;
