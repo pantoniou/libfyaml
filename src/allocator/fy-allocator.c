@@ -265,6 +265,19 @@ struct fy_allocator *fy_allocator_create(const char *name, const void *cfg)
 	return ops->create(cfg);
 }
 
+/* special in place allocator */
+struct fy_allocator *
+fy_linear_allocator_create_in_place(void *buffer, size_t size)
+{
+	const struct fy_allocator_ops *ops = &fy_linear_allocator_ops;
+	struct fy_linear_allocator_cfg cfg = { .buf = buffer, .size = size };
+
+	if (!buffer || size < FY_LINEAR_ALLOCATOR_IN_PLACE_MIN_SIZE)
+		return NULL;
+
+	return ops->create(&cfg);
+}
+
 void fy_allocator_registry_cleanup_internal(bool show_leftovers)
 {
 	struct fy_registered_allocator_entry *ae;
