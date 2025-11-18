@@ -186,8 +186,16 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 		fy_generic_indirect_get(v, &gi);
 
 		gi.value = fy_gb_internalize(gb, gi.value);
+		if (gi.value.v == fy_invalid_value)
+			return fy_invalid;
+
 		gi.anchor = fy_gb_internalize(gb, gi.anchor);
+		if (gi.anchor.v == fy_invalid_value)
+			return fy_invalid;
+
 		gi.tag = fy_gb_internalize(gb, gi.tag);
+		if (gi.tag.v == fy_invalid_value)
+			return fy_invalid;
 
 		return fy_gb_indirect_create(gb, &gi);
 	}
@@ -196,6 +204,7 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 
 	/* if we got to here, it's going to be a copy */
 	new_v = fy_invalid;
+
 	switch (type) {
 
 	case FYGT_SEQUENCE:
@@ -281,6 +290,9 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_MAP_V };
 		break;
 
+	case FYGT_INVALID:
+		break;
+
 	default:
 		/* scalars just call copy */
 		new_v = fy_gb_copy(gb, v);
@@ -333,6 +345,86 @@ fy_internalize_items(struct fy_generic_builder *gb, size_t count, const fy_gener
 	return items_local;
 }
 
+fy_generic fy_validate_out_of_place(fy_generic v)
+{
+	fy_generic vi;
+	const fy_generic_sequence *seqs;
+	const fy_generic_mapping *maps;
+	enum fy_generic_type type;
+	size_t i, count;
+	const fy_generic *itemss;
+
+	if (v.v == fy_invalid_value)
+		return fy_invalid;
+
+	/* if it's in place just return it */
+	if (fy_generic_is_in_place(v))
+		return v;
+
+	/* indirects are handled here (note, aliases are indirect too) */
+	if (fy_generic_is_indirect(v)) {
+		fy_generic_indirect gi;
+
+		fy_generic_indirect_get(v, &gi);
+
+		gi.value = fy_validate(gi.value);
+		if (gi.value.v == fy_invalid_value)
+			return fy_invalid;
+
+		gi.anchor = fy_validate(gi.anchor);
+		if (gi.anchor.v == fy_invalid_value)
+			return fy_invalid;
+
+		gi.tag = fy_validate(gi.tag);
+		if (gi.tag.v == fy_invalid_value)
+			return fy_invalid;
+
+		return v;
+	}
+
+	type = fy_generic_get_type(v);
+
+	if (type == FYGT_SEQUENCE || type == FYGT_MAPPING) {
+		if (type == FYGT_SEQUENCE) {
+			seqs = fy_generic_resolve_collection_ptr(v);
+			count = seqs->count;
+			itemss = seqs->items;
+		} else {
+			maps = fy_generic_resolve_collection_ptr(v);
+			count = maps->count * 2;
+			itemss = &maps->pairs[0].items[0];	// we rely on the specific map pair layout
+		}
+
+		for (i = 0; i < count; i++) {
+			vi = fy_validate(itemss[i]);
+			if (vi.v == fy_invalid_value)
+				return fy_invalid;
+		}
+	}
+
+	return v;
+}
+
+int fy_validate_array(size_t count, const fy_generic *vp, bool deep)
+{
+	fy_generic v;
+	size_t i;
+
+	if (!deep) {
+		for (i = 0; i < count; i++) {
+			if (vp[i].v == fy_invalid_value)
+				return -1;
+		}
+	} else {
+		for (i = 0; i < count; i++) {
+			v = fy_validate(vp[i]);
+			if (v.v == fy_invalid_value)
+				return -1;
+		}
+	}
+	return 0;
+}
+
 fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_flags flags, ...)
 {
 	union {
@@ -346,13 +438,14 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_flags f
 	fy_generic in, out;
 	fy_generic_value col_mark;
 	unsigned int op;
-	size_t i, count, item_count, idx;
+	size_t count, item_count, idx;
 	size_t in_count, in_item_count, out_count;
 	size_t col_item_size, tmp;
 	size_t remain_idx, remain_count;
 	const fy_generic *items, *in_items;
 	enum fy_generic_type type;
 	va_list ap;
+	int rc;
 
 #undef MULSZ
 #define MULSZ(_x, _y) \
@@ -459,10 +552,9 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_flags f
 		if (!items)
 			goto err_out;
 	} else {
-		for (i = 0; i < item_count; i++) {
-			if (items[i].v == fy_invalid_value)
-				goto err_out;
-		}
+		rc = fy_validate_array(item_count, items, !!(flags & FYGBF_DEEP_VALIDATE));
+		if (rc)
+			goto err_out;
 	}
 
 	switch (op) {

@@ -37,6 +37,8 @@ check_PROGRAMS = libfyaml-test
 libfyaml_test_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/valgrind/ \
 			 -I$(top_srcdir)/src/lib/ \
 			 -I$(top_srcdir)/src/util \
+			 -I$(top_srcdir)/src/allocator \
+			 -I$(top_srcdir)/src/generic \
 			 -I$(top_srcdir)/src/reflection
 libfyaml_test_LDADD = $(AM_LDADD) $(CHECK_LIBS) $(top_builddir)/src/libfyaml.la
 libfyaml_test_CFLAGS = $(AM_CFLAGS) $(CHECK_CFLAGS) 

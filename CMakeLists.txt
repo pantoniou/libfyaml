@@ -1118,6 +1118,7 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
 
     # Build libfyaml-test if check is available
     if(HAVE_COMPATIBLE_CHECK)
+
         add_executable(libfyaml-test
             test/libfyaml-test.c
             test/libfyaml-test-core.c
@@ -1130,6 +1131,9 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
             test/libfyaml-test-thread.c
             test/libfyaml-test-generic.c
         )
+
+	target_compile_options(libfyaml-test PRIVATE ${COMMON_C_FLAGS})
+	target_compile_definitions(libfyaml-test PRIVATE ${COMMON_C_DEFINITIONS})
 
         target_include_directories(libfyaml-test PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -1174,9 +1178,6 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
         set_target_properties(libfyaml-test PROPERTIES
             RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
         )
-
-	target_compile_options(libfyaml-test PRIVATE ${COMMON_C_FLAGS})
-	target_compile_definitions(libfyaml-test PRIVATE ${COMMON_C_DEFINITIONS})
 
         # Add libfyaml.test
         add_test(NAME libfyaml
