@@ -4754,6 +4754,14 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		printf("sum=%d\n", sum);
 	}
 
+	{
+		char buffer[4096];
+		struct fy_generic_builder *gb = fy_generic_builder_create_linear_in_place(FYGBCF_SCHEMA_AUTO, buffer, sizeof(buffer));
+		assert(gb);
+		fy_generic seq = fy_gb_sequence(gb, 100, "Hello there", false, 10.0);
+		fy_generic_emit_default(seq);
+	}
+
 	return 0;
 }
 

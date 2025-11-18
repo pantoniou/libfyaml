@@ -131,6 +131,48 @@ void fy_generic_builder_destroy(struct fy_generic_builder *gb)
 	free(gb);
 }
 
+struct fy_generic_builder *
+fy_generic_builder_create_linear_in_place(enum fy_gb_cfg_flags flags, void *buffer, size_t size)
+{
+	struct fy_generic_builder_cfg cfg;
+	struct fy_generic_builder *gb;
+	struct fy_allocator *a;
+	void *s, *e;
+	int rc;
+
+	if (!buffer || size < FY_GENERIC_BUILDER_LINEAR_IN_PLACE_MIN_SIZE)
+		return NULL;
+
+	s = buffer;
+	e = s + size;
+
+	/* find place in the buffer to put the builder */
+	s = fy_ptr_align(s, alignof(struct fy_generic_builder));
+	if ((size_t)(e - s) < sizeof(*gb))
+		return NULL;
+	gb = s;
+
+	/* skip over the gb and then put down the allocator */
+	s += sizeof(*gb);
+	size = (size_t)(e - s);
+	a = fy_linear_allocator_create_in_place(s, size);
+	if (!a)
+		return NULL;
+	memset(&cfg, 0, sizeof(cfg));
+	flags |=  FYGBCF_OWNS_ALLOCATOR;
+	flags &= ~FYGBCF_DEDUP_ENABLED;
+	cfg.flags = flags;
+	cfg.allocator = a;
+	cfg.shared_tag = FY_ALLOC_TAG_NONE;
+	cfg.diag = NULL;
+
+	rc = fy_generic_builder_setup(gb, &cfg);
+	if (rc)
+		return NULL;
+
+	return gb;
+}
+
 void fy_generic_builder_reset(struct fy_generic_builder *gb)
 {
 	if (!gb)

@@ -3179,6 +3179,11 @@ struct fy_generic_builder *fy_generic_builder_create(const struct fy_generic_bui
 void fy_generic_builder_destroy(struct fy_generic_builder *gb);
 void fy_generic_builder_reset(struct fy_generic_builder *gb);
 
+#define FY_GENERIC_BUILDER_LINEAR_IN_PLACE_MIN_SIZE	(FY_LINEAR_ALLOCATOR_IN_PLACE_MIN_SIZE + 128)
+
+/* no need to destroy */
+struct fy_generic_builder *fy_generic_builder_create_linear_in_place(enum fy_gb_cfg_flags flags, void *buffer, size_t size);
+
 static inline fy_generic fy_gb_null_type_create_out_of_place(struct fy_generic_builder *gb, void *p)
 {
 	return fy_invalid;
