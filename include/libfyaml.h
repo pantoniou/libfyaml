@@ -10704,6 +10704,26 @@ void
 fy_allocator_destroy(struct fy_allocator *a)
 	FY_EXPORT;
 
+/** The minimum amount of memory for an inplace linear allocator */
+#define FY_LINEAR_ALLOCATOR_IN_PLACE_MIN_SIZE	256
+
+/**
+ * fy_linear_allocator_create_in_place() - Create a linear allocator in place
+ *
+ * Creates a linear allocator in place, using the buffer provided.
+ * No memory allocations will be performed, so it's safe to embed.
+ * There is no need to call fy_allocator_destroy for this allocator.
+ *
+ * @buffer: The memory buffer to use for both storage and the allocator
+ * @size: The size of the memory buffer
+ *
+ * Returns:
+ * A pointer to the allocator, or NULL if there is no space
+ */
+struct fy_allocator *
+fy_linear_allocator_create_in_place(void *buffer, size_t size)
+	FY_EXPORT;
+
 /**
  * fy_allocator_get_tag() - Get a tag from an allocator
  *
