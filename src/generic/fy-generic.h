@@ -720,7 +720,7 @@ static inline bool fy_generic_get_bool_type_no_check(fy_generic v)
 
 static inline fy_generic_value fy_generic_in_place_bool_type(_Bool v)
 {
-	return fy_invalid_value;	// should never happen
+	return v ? fy_true_value : fy_false_value;
 }
 
 static inline size_t fy_generic_out_of_place_size_bool_type(bool v)
@@ -1489,7 +1489,7 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 
 #define fy_int_alloca(_v) 									\
 	({											\
-		typeof (1 ? (_v) : (_v)) __v = (_v);						\
+		fy_generic_typeof(_v) __v = (_v);							\
 		long long *__vp;								\
 		fy_generic_value _r;								\
 												\
@@ -1830,7 +1830,7 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 
 #define fy_local_to_generic_value(_v) \
 	({	\
-		typeof (1 ? (_v) : (_v)) __v = (_v); \
+	 	fy_generic_typeof(_v) __v = (_v); \
 		fy_generic_value __r; \
 		\
 		__r = fy_to_generic_inplace(__v); \
@@ -2941,7 +2941,7 @@ fy_generic_mapping_get_szstr_default(fy_generic map, fy_generic key,
 
 #define fy_generic_mappingp_get_default(_mapp, _key, _dv) \
 	({ \
-		typeof (1 ? (_dv) : (_dv)) __ret; \
+		fy_generic_typeof(_dv) _ret; \
 		fy_generic __key = fy_to_generic(_key); \
 		\
 		__ret = _Generic((_dv), fy_generic_mappingp_get_default_Generic_dispatch)((_mapp), __key, (_dv)); \
@@ -2980,9 +2980,9 @@ static inline fy_generic fy_get_generic_map_handle(const void *p)
 
 #define fy_generic_get_default(_colv, _key, _dv) \
 	({ \
-		typeof (1 ? (_colv) : (_colv)) __colv = (_colv); \
-		typeof (1 ? (_dv) : (_dv)) __dv = (_dv); \
-		typeof (1 ? (_dv) : (_dv)) __ret; \
+		fy_generic_typeof(_colv) __colv = (_colv); \
+		fy_generic_typeof(_dv) __dv = (_dv); \
+		fy_generic_typeof(_dv) __ret; \
 		\
 		const fy_generic __colv2 = _Generic(__colv, \
 			fy_generic: fy_get_generic_generic(&__colv), \
@@ -3052,7 +3052,7 @@ static inline size_t fy_get_len_map_handle(const void *p)
 
 #define fy_generic_len(_colv) \
 	({ \
-		typeof (1 ? (_colv) : (_colv)) __colv = (_colv); \
+	 	fy_generic_typeof(_colv) __colv = (_colv); \
 		_Generic(__colv, \
 			fy_generic: fy_get_len_generic, \
 			fy_generic_sequence_handle: fy_get_len_seq_handle, \
@@ -3317,7 +3317,7 @@ FY_GENERIC_GB_FLOAT_LVAL_TEMPLATE(double, double, -DBL_MAX, DBL_MAX, 0.0);
 
 #define fy_gb_to_generic_value(_gb, _v) \
 	({	\
-		typeof (1 ? (_v) : (_v)) __v = (_v); \
+	 	fy_generic_typeof(_v) __v = (_v); \
 		fy_generic_value __r; \
 		\
 		__r = fy_to_generic_inplace(__v); \
@@ -3369,7 +3369,8 @@ enum fy_gb_flags {
 	FYGBF_ASSOC		= FYGBF_OP(FYGBOP_ASSOC),
 	FYGBF_DISASSOC		= FYGBF_OP(FYGBOP_DISASSOC),
 	FYGBF_CONJ		= FYGBF_OP(FYGBOP_CONJ),
-	FYGBF_DONT_INTERNALIZE	= FY_BIT(16),
+	FYGBF_DONT_INTERNALIZE	= FY_BIT(16),			// do not internalize items
+	FYGBF_DEEP_VALIDATE	= FY_BIT(17),			// perform deep validation
 };
 
 fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_flags, ...);
@@ -3489,6 +3490,19 @@ static inline fy_generic fy_gb_internalize(struct fy_generic_builder *gb, fy_gen
 	return fy_gb_internalize_out_of_place(gb, v);
 }
 
+fy_generic fy_validate_out_of_place(fy_generic v);
+
+static inline fy_generic fy_validate(fy_generic v)
+{
+	/* if it's invalid or in place, just return it */
+	if (fy_generic_is_invalid(v) || fy_generic_is_in_place(v))
+		return v;
+
+	return fy_validate_out_of_place(v);
+}
+
+int fy_validate_array(size_t count, const fy_generic *vp, bool deep);
+
 fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d);
 
 enum fy_generic_schema fy_gb_get_schema(struct fy_generic_builder *gb);
@@ -3513,28 +3527,28 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	(fy_get_default((_colv), (_key), (_dv))
 
 #define fy_cast_default(_v, _dv) \
-	fy_generic_cast_default((_v), (_dv))
+	(fy_generic_cast_default((_v), (_dv)))
 
 #define fy_cast_typed(_v, _type) \
-	fy_generic_cast((_v), (_type))
+	(fy_generic_cast((_v), (_type)))
 
 #define fy_cast(_v, _dv) \
-	fy_cast_default((_v), (_dv))
+	(fy_cast_default((_v), (_dv)))
 
 #define fy_castp_default(_v, _dv) \
-	fy_genericp_cast_default((_v), (_dv))
+	(fy_genericp_cast_default((_v), (_dv)))
 
 #define fy_castp_typed(_v, _type) \
-	fy_genericp_cast_typed((_v), (_type))
+	(fy_genericp_cast_typed((_v), (_type)))
 
 #define fy_castp(_v, _dv) \
-	fy_genericp_cast_default((_v), (_dv))
+	(fy_genericp_cast_default((_v), (_dv)))
 
 #define fy_sequence(...) \
-	(fy_local_sequence(__VA_ARGS__))
+	(fy_validate(fy_local_sequence(__VA_ARGS__)))
 
 #define fy_mapping(...) \
-	(fy_local_mapping(__VA_ARGS__))
+	(fy_validate(fy_local_mapping(__VA_ARGS__)))
 
 #define fy_value(_v) \
 	(fy_to_generic(_v))
