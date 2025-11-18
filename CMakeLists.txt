@@ -1128,6 +1128,7 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
             test/libfyaml-test-private-id.c
             test/libfyaml-test-parser.c
             test/libfyaml-test-thread.c
+            test/libfyaml-test-generic.c
         )
 
         target_include_directories(libfyaml-test PRIVATE
@@ -1136,6 +1137,7 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
             ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
             ${CMAKE_CURRENT_SOURCE_DIR}/src/util
             ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+	    ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
             ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
             ${CMAKE_CURRENT_BINARY_DIR}
             ${CHECK_INCLUDE_DIRS}
@@ -1172,6 +1174,9 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
         set_target_properties(libfyaml-test PROPERTIES
             RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
         )
+
+	target_compile_options(libfyaml-test PRIVATE ${COMMON_C_FLAGS})
+	target_compile_definitions(libfyaml-test PRIVATE ${COMMON_C_DEFINITIONS})
 
         # Add libfyaml.test
         add_test(NAME libfyaml

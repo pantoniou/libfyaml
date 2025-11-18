@@ -20,6 +20,10 @@
 #include <unistd.h>
 #include <limits.h>
 #include <stdio.h>
+#include <alloca.h>
+#ifdef __linux__
+#include <linux/limits.h>
+#endif
 
 enum fy_valgrind_tool {
 	fyvt_none,
