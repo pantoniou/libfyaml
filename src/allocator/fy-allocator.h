@@ -89,7 +89,12 @@ struct fy_allocator_info {
 	struct fy_allocator_tag_info *tag_infos;
 };
 
+enum fy_allocator_flags {
+	FYAF_KEEP_STATS = FY_BIT(0),
+};
+
 struct fy_allocator {
+	enum fy_allocator_flags flags;
 	const char *name;
 	const struct fy_allocator_ops *ops;
 };
@@ -97,6 +102,17 @@ struct fy_allocator {
 /* these private still */
 int fy_allocator_update_stats(struct fy_allocator *a, int tag, struct fy_allocator_stats *stats);
 struct fy_allocator_info *fy_allocator_get_info(struct fy_allocator *a, int tag);
+
+static inline void fy_allocator_set_keep_stats(struct fy_allocator *a, bool keep_flags)
+{
+	if (!a)
+		return;
+
+	if (keep_flags)
+		a->flags |= FYAF_KEEP_STATS;
+	else
+		a->flags &= ~FYAF_KEEP_STATS;
+}
 
 FY_TYPE_FWD_DECL_LIST(registered_allocator_entry);
 struct fy_registered_allocator_entry {

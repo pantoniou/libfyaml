@@ -15,7 +15,10 @@
 
 #include <stdint.h>
 
-typedef unsigned int fy_id_bits;
+#include "fy-bit64.h"
+#include "fy-atomics.h"
+
+typedef uint64_t fy_id_bits;
 
 #define FY_ID_BITS_SZ		((size_t)(sizeof(fy_id_bits)))
 #define FY_ID_BITS_BITS 	(FY_ID_BITS_SZ * 8)	/* yes, every character is 8 bits in 2023 */

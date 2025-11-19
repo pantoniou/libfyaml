@@ -429,4 +429,8 @@ fy_iovec_copy_to(const struct iovec *iov, int iovcnt, const void *src)
 	return src;
 }
 
+/* safe bet for 2025 */
+#define FY_CACHE_LINE_SZ	64
+#define FY_CACHE_ALIGNED	__attribute__((aligned(FY_CACHE_LINE_SZ)))
+
 #endif
