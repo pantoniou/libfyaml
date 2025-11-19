@@ -35,7 +35,7 @@ static int fy_linear_setup(struct fy_allocator *a, const void *cfg_data)
 		return -1;
 
 	if (!cfg->buf) {
-		alloc = malloc(cfg->size);
+		alloc = calloc(1, cfg->size);
 		if (!alloc)
 			goto err_out;
 		buf = alloc;
@@ -49,9 +49,8 @@ static int fy_linear_setup(struct fy_allocator *a, const void *cfg_data)
 	la->cfg = *cfg;
 	la->alloc = alloc;
 	la->start = buf;
-	la->end = buf + cfg->size;
 
-	fy_atomic_store(&la->next, buf);
+	fy_atomic_store(&la->next, 0);
 
 	return 0;
 err_out:
@@ -150,7 +149,7 @@ void fy_linear_destroy(struct fy_allocator *a)
 void fy_linear_dump(struct fy_allocator *a)
 {
 	struct fy_linear_allocator *la;
-	void *next;
+	size_t next;
 
 	if (!a)
 		return;
@@ -158,18 +157,15 @@ void fy_linear_dump(struct fy_allocator *a)
 	la = container_of(a, struct fy_linear_allocator, a);
 
 	next = fy_atomic_load(&la->next);
-
 	fprintf(stderr, "linear: total %zu used %zu free %zu\n",
-			(size_t)(la->end - la->start),
-			(size_t)(next - la->start),
-			(size_t)(la->end - next));
+			la->cfg.size, next, la->cfg.size - la->next);
 }
 
 static void *fy_linear_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
 {
 	struct fy_linear_allocator *la;
-	void *s, *next, *new_next;
-	size_t real_size;
+	size_t next, new_next, real_size;
+	void *s;
 
 	assert(a);
 
@@ -178,20 +174,22 @@ static void *fy_linear_alloc(struct fy_allocator *a, int tag, size_t size, size_
 	/* atomically update the pointer */
 	do {
 		next = fy_atomic_load(&la->next);
-		s = fy_ptr_align(next, align);
-		new_next = s + size;
+		s = fy_ptr_align(la->start + next, align);
+		new_next = (s + size) - la->start;
 		/* handle both overflow and underflow */
-		if (new_next < la->start || new_next > la->end)
+		if (new_next > la->cfg.size)
 			goto err_out;
 	} while (!fy_atomic_compare_exchange_strong(&la->next, &next, new_next));
 
-	real_size = (size_t)(new_next - next);
+	real_size = new_next - next;
 
-	fy_atomic_fetch_add(&la->stats_allocations, 1);
-	fy_atomic_fetch_add(&la->stats_allocated, real_size);
+	/* only update stats if someone asked for it */
+	if (a->flags & FYAF_KEEP_STATS) {
+		fy_atomic_fetch_add(&la->stats_allocations, 1);
+		fy_atomic_fetch_add(&la->stats_allocated, real_size);
+	}
 
-	/* TODO get rid of */
-	memset(s, 0, size);
+	/* no zero-out, buffer provider should have handled this */
 
 	return s;
 
@@ -286,7 +284,7 @@ static void fy_linear_release_tag(struct fy_allocator *a, int tag)
 	la = container_of(a, struct fy_linear_allocator, a);
 
 	/* we just rewind */
-	fy_atomic_store(&la->next, la->start);
+	fy_atomic_store(&la->next, 0);
 }
 
 static void fy_linear_trim_tag(struct fy_allocator *a, int tag)
@@ -305,8 +303,7 @@ static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, int 
 	struct fy_allocator_info *info;
 	struct fy_allocator_tag_info *tag_info;
 	struct fy_allocator_arena_info *arena_info;
-	void *next;
-	size_t size;
+	size_t next, size;
 
 	if (!a)
 		return NULL;
@@ -334,9 +331,10 @@ static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, int 
 
 	/* fill-in the single arena */
 	next = fy_atomic_load(&la->next);
-	arena_info->free = (size_t)(la->end - next);
-	arena_info->used = (size_t)(next - la->start);
-	arena_info->total = (size_t)(la->end - (void *)la);
+
+	arena_info->free = la->cfg.size - next;
+	arena_info->used = next;
+	arena_info->total = la->cfg.size;
 	arena_info->data = la->start;
 	arena_info->size = arena_info->used;
 
@@ -372,7 +370,7 @@ static bool fy_linear_contains(struct fy_allocator *a, int tag, const void *ptr)
 		return false;
 
 	la = container_of(a, struct fy_linear_allocator, a);
-	return ptr >= la->start && ptr < la->end;
+	return ptr >= la->start && ptr < (la->start + la->cfg.size);
 }
 
 const struct fy_allocator_ops fy_linear_allocator_ops = {
