@@ -16,14 +16,14 @@
 #include "fy-allocator.h"
 
 struct fy_linear_allocator {
-	FY_ATOMIC size_t next FY_CACHE_ALIGNED;	// hot hot hot
+	FY_ATOMIC(size_t) next FY_CACHE_ALIGNED;	// hot hot hot
 	struct fy_allocator a;
 	struct fy_linear_allocator_cfg cfg;
 	void *alloc;
 	void *start;
 	/* no need to keep anything else */
-	FY_ATOMIC uint64_t stats_allocations;
-	FY_ATOMIC uint64_t stats_allocated;
+	FY_ATOMIC(uint64_t) stats_allocations;
+	FY_ATOMIC(uint64_t) stats_allocated;
 };
 
 extern const struct fy_allocator_ops fy_linear_allocator_ops;

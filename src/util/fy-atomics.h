@@ -43,7 +43,7 @@
 #define FY_HAVE_ATOMICS
 #else
 #undef FY_HAVE_ATOMICS
-#define _Atomic /* nothing */
+#define _Atomic(_x) _x
 #endif
 
 #if defined(FY_HAVE_STDATOMIC_H)
@@ -122,7 +122,7 @@
 #endif
 
 /* OK, now define FY version */
-#define FY_ATOMIC _Atomic
+#define FY_ATOMIC(_x) _Atomic(_x)
 #define fy_atomic_load(_ptr) \
 	atomic_load((_ptr))
 #define fy_atomic_store(_ptr, _v) \

@@ -863,6 +863,7 @@ END_TEST
 START_TEST(generic_compare)
 {
 	fy_generic v1, v2;
+	int ret;
 
 	/* nulls match always */
 	v1 = fy_value((void *)NULL);
@@ -996,10 +997,13 @@ START_TEST(generic_compare)
 	/* mapping inequality (reorders) */
 	v1 = fy_local_mapping("foo", 10, "bar", 101);
 	v2 = fy_local_mapping("bar", 100, "foo", 10);
-	ck_assert(fy_compare(v1, v2) > 0);
-	ck_assert(fy_compare(v1, fy_cast(fy_local_mapping("foo", 10, "bar", 101), fy_map_handle_null)) > 0);
-	ck_assert(fy_compare(fy_cast(fy_local_mapping("foo", 10, "bar", 101), fy_map_handle_null),
-			     fy_cast(fy_local_mapping("bar", 100, "foo", 10), fy_map_handle_null)) > 0);
+	ret = fy_compare(v1, v2);
+	ck_assert(ret > 0);
+	ret = fy_compare(v1, fy_cast(fy_local_mapping("bar", 100, "foo", 10), fy_map_handle_null));
+	ck_assert(ret > 0);
+	ret = fy_compare(fy_cast(fy_local_mapping("foo", 10, "bar", 101), fy_map_handle_null),
+			 fy_cast(fy_local_mapping("bar", 100, "foo", 10), fy_map_handle_null));
+	ck_assert(ret > 0);
 }
 END_TEST
 

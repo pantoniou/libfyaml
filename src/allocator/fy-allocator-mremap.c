@@ -528,7 +528,7 @@ static int fy_mremap_setup(struct fy_allocator *a, const void *cfg_data)
 
 	mra->pagesz = sysconf(_SC_PAGESIZE);
 	/* pagesz is size of 2 find the first set bit */
-	mra->pageshift = fy_id_ffs((fy_id_bits)mra->pagesz);
+	mra->pageshift = fy_bit64_ffs(mra->pagesz);
 
 	mra->big_alloc_threshold = cfg->big_alloc_threshold;
 	if (!mra->big_alloc_threshold)

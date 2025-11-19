@@ -26,6 +26,7 @@
 
 #include "fy-bit64.h"
 #include "fy-align.h"
+#include "fy-atomics.h"
 
 #include <libfyaml.h>
 
@@ -33,9 +34,9 @@
 // #define FY_THREAD_PORTABLE	/* define to use the portable implementation even on linux */
 
 struct fy_work_pool {
-	_Atomic(size_t) work_left;
+	FY_ATOMIC(size_t) work_left;
 #if defined(__linux__) && !defined(FY_THREAD_PORTABLE)
-	_Atomic(uint32_t) done;
+	FY_ATOMIC(uint32_t) done;
 #elif defined(__APPLE__)
 	dispatch_semaphore_t sem;
 #else
@@ -47,11 +48,11 @@ struct fy_thread {
 	struct fy_thread_pool *tp;
 	unsigned int id;
 	pthread_t tid;
-	_Atomic(struct fy_thread_work *)work;
-	_Atomic(struct fy_thread_work *)next_work;
+	FY_ATOMIC(struct fy_thread_work *)work;
+	FY_ATOMIC(struct fy_thread_work *)next_work;
 #if defined(__linux__) && !defined(FY_THREAD_PORTABLE)
-	_Atomic(uint32_t) submit;
-	_Atomic(uint32_t) done;
+	FY_ATOMIC(uint32_t) submit;
+	FY_ATOMIC(uint32_t) done;
 #else
 	pthread_mutex_t lock;
 	pthread_cond_t cond;
@@ -64,8 +65,8 @@ struct fy_thread_pool {
 	struct fy_thread_pool_cfg cfg;
 	unsigned int num_threads;
 	struct fy_thread *threads;
-	_Atomic(uint64_t) *freep;
-	_Atomic(uint64_t) *lootp;
+	FY_ATOMIC(uint64_t) *freep;
+	FY_ATOMIC(uint64_t) *lootp;
 	pthread_key_t key;
 };
 
