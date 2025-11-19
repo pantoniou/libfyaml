@@ -50,17 +50,17 @@ static void fy_thread_work_join_steal_2(struct fy_thread_pool *tp, struct fy_thr
 #if defined(__linux__) && !defined(FY_THREAD_PORTABLE)
 
 /* linux pedal to the metal implementation */
-static inline int futex(_Atomic(uint32_t) *uaddr, int futex_op, uint32_t val, const struct timespec *timeout, uint32_t *uaddr2, uint32_t val3)
+static inline int futex(FY_ATOMIC(uint32_t) *uaddr, int futex_op, uint32_t val, const struct timespec *timeout, uint32_t *uaddr2, uint32_t val3)
 {
 	return syscall(SYS_futex, uaddr, futex_op, val, timeout, uaddr2, val3);
 }
 
-static inline int fwait(_Atomic(uint32_t) *futexp)
+static inline int fwait(FY_ATOMIC(uint32_t) *futexp)
 {
 	long s;
 	uint32_t one = 1;
 
-	while (!atomic_compare_exchange_strong(futexp, &one, 0)) {
+	while (!fy_atomic_compare_exchange_strong(futexp, &one, 0)) {
 		s = futex(futexp, FUTEX_WAIT_PRIVATE, 0, NULL, NULL, 0);
 		if (s == -1 && errno != EAGAIN)
 			return -1;
@@ -68,12 +68,12 @@ static inline int fwait(_Atomic(uint32_t) *futexp)
 	return 0;
 }
 
-static inline int fpost(_Atomic(uint32_t) *futexp)
+static inline int fpost(FY_ATOMIC(uint32_t) *futexp)
 {
 	long s;
 	uint32_t zero = 0;
 
-	if (atomic_compare_exchange_strong(futexp, &zero, 1)) {
+	if (fy_atomic_compare_exchange_strong(futexp, &zero, 1)) {
 		s = futex(futexp, FUTEX_WAKE_PRIVATE, 1, NULL, NULL, 0);
 		if (s == -1)
 			return -1;
@@ -84,8 +84,8 @@ static inline int fpost(_Atomic(uint32_t) *futexp)
 static inline void fy_thread_init_sync(struct fy_thread *t)
 {
 	/* nothing more needed for futexes */
-	atomic_store(&t->submit, 0);
-	atomic_store(&t->done, 0);
+	fy_atomic_store(&t->submit, 0);
+	fy_atomic_store(&t->done, 0);
 }
 
 static inline struct fy_thread_work *fy_worker_wait_for_work(struct fy_thread *t)
@@ -93,7 +93,7 @@ static inline struct fy_thread_work *fy_worker_wait_for_work(struct fy_thread *t
 	struct fy_thread_work *w;
 	int rc __FY_DEBUG_UNUSED__;
 
-	while ((w = atomic_load(&t->work)) == NULL) {
+	while ((w = fy_atomic_load(&t->work)) == NULL) {
 		rc = fwait(&t->submit);
 		assert(!rc);
 	}
@@ -108,7 +108,7 @@ static inline void fy_worker_signal_work_done(struct fy_thread *t, struct fy_thr
 
 	/* note that the work won't be replaced if it's a shutdown */
 	exp_work = work;
-	ok = atomic_compare_exchange_strong(&t->work, &exp_work, NULL);
+	ok = fy_atomic_compare_exchange_strong(&t->work, &exp_work, NULL);
 	assert(ok);
 
 	rc = fpost(&t->done);
@@ -122,7 +122,7 @@ static inline int fy_thread_submit_work_internal(struct fy_thread *t, struct fy_
 
 	/* atomically update the work */
 	exp_work = NULL;
-	if (!atomic_compare_exchange_strong(&t->work, &exp_work, work))
+	if (!fy_atomic_compare_exchange_strong(&t->work, &exp_work, work))
 		return -1;
 
 	rc = fpost(&t->submit);
@@ -135,10 +135,10 @@ static inline int fy_thread_wait_work_internal(struct fy_thread *t)
 {
 	const struct fy_thread_work *work;
 
-	while ((work = atomic_load(&t->work)) != NULL)
+	while ((work = fy_atomic_load(&t->work)) != NULL)
 		fwait(&t->done);
 
-	atomic_store(&t->done, 0);
+	fy_atomic_store(&t->done, 0);
 
 	return 0;
 }
@@ -147,7 +147,7 @@ void fy_worker_thread_shutdown(struct fy_thread *t)
 {
 	int rc __FY_DEBUG_UNUSED__;
 
-	atomic_store(&t->work, WORK_SHUTDOWN);
+	fy_atomic_store(&t->work, WORK_SHUTDOWN);
 	rc = fpost(&t->submit);
 	assert(!rc);
 
@@ -155,7 +155,7 @@ void fy_worker_thread_shutdown(struct fy_thread *t)
 	assert(!rc);
 
 	if (!(t->tp->cfg.flags & FYTPCF_STEAL_MODE))
-		atomic_store(&t->work, NULL);
+		fy_atomic_store(&t->work, NULL);
 }
 
 #else
@@ -176,7 +176,7 @@ static inline struct fy_thread_work *fy_worker_wait_for_work(struct fy_thread *t
 	struct fy_thread_work *work;
 
 	pthread_mutex_lock(&t->lock);
-	while ((work = atomic_load(&t->work)) == NULL)
+	while ((work = fy_atomic_load(&t->work)) == NULL)
 		pthread_cond_wait(&t->cond, &t->lock);
 	pthread_mutex_unlock(&t->lock);
 
@@ -192,7 +192,7 @@ static inline void fy_worker_signal_work_done(struct fy_thread *t, struct fy_thr
 
 	/* note that the work won't be replaced if it's a shutdown */
 	exp_work = work;
-	if (!atomic_compare_exchange_strong(&t->work, &exp_work, NULL))
+	if (!fy_atomic_compare_exchange_strong(&t->work, &exp_work, NULL))
 		assert(exp_work == WORK_SHUTDOWN);
 	pthread_cond_signal(&t->wait_cond);
 	pthread_mutex_unlock(&t->wait_lock);
@@ -210,7 +210,7 @@ static inline int fy_thread_submit_work_internal(struct fy_thread *t, struct fy_
 
 	pthread_mutex_lock(&t->lock);
 	exp_work = NULL;
-	if (!atomic_compare_exchange_strong(&t->work, &exp_work, work)) {
+	if (!fy_atomic_compare_exchange_strong(&t->work, &exp_work, work)) {
 		assert(exp_work == WORK_SHUTDOWN);
 		ret = -1;
 	} else {
@@ -227,7 +227,7 @@ static inline int fy_thread_wait_work_internal(struct fy_thread *t)
 	const struct fy_thread_work *work;
 
 	pthread_mutex_lock(&t->wait_lock);
-	while ((work = atomic_load(&t->work)) != NULL)
+	while ((work = fy_atomic_load(&t->work)) != NULL)
 		pthread_cond_wait(&t->wait_cond, &t->wait_lock);
 	pthread_mutex_unlock(&t->wait_lock);
 
@@ -237,7 +237,7 @@ static inline int fy_thread_wait_work_internal(struct fy_thread *t)
 void fy_worker_thread_shutdown(struct fy_thread *t)
 {
 	pthread_mutex_lock(&t->lock);
-	atomic_store(&t->work, WORK_SHUTDOWN);
+	fy_atomic_store(&t->work, WORK_SHUTDOWN);
 	pthread_cond_signal(&t->cond);
 	pthread_mutex_unlock(&t->lock);
 	pthread_join(t->tid, NULL);
@@ -249,7 +249,7 @@ static inline struct fy_thread *fy_thread_reserve_internal(struct fy_thread_pool
 {
 	struct fy_thread *t;
 	unsigned int slot;
-	_Atomic(uint64_t) *free;
+	FY_ATOMIC(uint64_t) *free;
 	uint64_t exp, v;
 	unsigned int i, num_threads_words;
 
@@ -257,13 +257,13 @@ static inline struct fy_thread *fy_thread_reserve_internal(struct fy_thread_pool
 
 	num_threads_words = FY_BIT64_COUNT(tp->num_threads);
 	for (i = 0, free = tp->freep; i < num_threads_words; i++, free++) {
-		v = atomic_load(free);
+		v = fy_atomic_load(free);
 		while (v) {
 			slot = FY_BIT64_LOWEST(v);
 			assert(v & FY_BIT64(slot));
 			exp = v;		/* expecting the previous value */
 			v &= ~FY_BIT64(slot);	/* clear this bit */
-			if (atomic_compare_exchange_strong(free, &exp, v)) {
+			if (fy_atomic_compare_exchange_strong(free, &exp, v)) {
 				slot += i * 64;
 				t = tp->threads + slot;
 				assert(slot == t->id);
@@ -279,52 +279,52 @@ static inline struct fy_thread *fy_thread_reserve_internal(struct fy_thread_pool
 static inline void fy_thread_unreserve_internal(struct fy_thread *t)
 {
 	struct fy_thread_pool *tp;
-	_Atomic(uint64_t) *free;
+	FY_ATOMIC(uint64_t) *free;
 
 	tp = t->tp;
 	free = tp->freep + (unsigned int)(t->id / 64);
-	atomic_fetch_or(free, FY_BIT64(t->id & 63));
+	fy_atomic_fetch_or(free, FY_BIT64(t->id & 63));
 }
 
 static inline bool fy_thread_is_reserved_internal(struct fy_thread *t)
 {
 	struct fy_thread_pool *tp = t->tp;
-	_Atomic(uint64_t) *free;
+	FY_ATOMIC(uint64_t) *free;
 
 	free = tp->freep + (unsigned int)(t->id / 64);
-	return !(atomic_load(free) & FY_BIT64(t->id & 63));
+	return !(fy_atomic_load(free) & FY_BIT64(t->id & 63));
 }
 
 static inline bool fy_thread_pool_are_all_reserved_internal(struct fy_thread_pool *tp)
 {
-	_Atomic(uint64_t) *free;
+	FY_ATOMIC(uint64_t) *free;
 	uint64_t v, m;
 	unsigned int i, num_threads_words;
 
 	num_threads_words = FY_BIT64_COUNT(tp->num_threads);
 	for (i = 0, free = tp->freep; i < num_threads_words - 1; i++, free++) {
-		v = atomic_load(free);
+		v = fy_atomic_load(free);
 		if (v != (uint64_t)-1)
 			return false;
 	}
-	v = atomic_load(free);
+	v = fy_atomic_load(free);
 	m = FY_BIT64(tp->num_threads & 63) - 1;
 	return (v & m) == m;
 }
 
 static inline bool fy_thread_pool_is_any_reserved_internal(struct fy_thread_pool *tp)
 {
-	_Atomic(uint64_t) *free;
+	FY_ATOMIC(uint64_t) *free;
 	uint64_t v, m;
 	unsigned int i, num_threads_words;
 
 	num_threads_words = FY_BIT64_COUNT(tp->num_threads);
 	for (i = 0, free = tp->freep; i < num_threads_words - 1; i++, free++) {
-		v = atomic_load(free);
+		v = fy_atomic_load(free);
 		if (!v)
 			return true;
 	}
-	v = atomic_load(free);
+	v = fy_atomic_load(free);
 	m = FY_BIT64(tp->num_threads & 63) - 1;
 	return !(v & m);
 }
@@ -722,9 +722,9 @@ static inline struct fy_work_pool *fy_work_pool_init(struct fy_work_pool *wp, si
 	if (!wp)
 		return NULL;
 
-	atomic_store(&wp->work_left, work_count);
+	fy_atomic_store(&wp->work_left, work_count);
 #if defined(__linux__) && !defined(FY_THREAD_PORTABLE)
-	atomic_store(&wp->done, !work_count);
+	fy_atomic_store(&wp->done, !work_count);
 #elif defined(__APPLE__)
 	wp->sem = dispatch_semaphore_create(!work_count);
         assert(wp->sem != NULL);
@@ -764,7 +764,7 @@ static inline bool fy_work_pool_signal(struct fy_work_pool *wp)
 	if (!wp)
 		return false;
 
-	prev_work_left = atomic_fetch_sub(&wp->work_left, 1);
+	prev_work_left = fy_atomic_fetch_sub(&wp->work_left, 1);
 	if (prev_work_left == 1) {
 #if defined(__linux__) && !defined(FY_THREAD_PORTABLE)
 		rc = fpost(&wp->done);
@@ -789,7 +789,7 @@ static inline void fy_work_pool_wait(struct fy_work_pool *wp)
 		return;
 
 	/* if there's any work left, wait for it */
-	while (atomic_load(&wp->work_left) > 0) {
+	while (fy_atomic_load(&wp->work_left) > 0) {
 #if defined(__linux__) && !defined(FY_THREAD_PORTABLE)
 		rc = fwait(&wp->done);
 #elif defined(__APPLE__)
@@ -823,7 +823,7 @@ static inline struct fy_thread_work *fy_worker_thread_steal_work(struct fy_threa
 {
 	struct fy_thread *t;
 	unsigned int slot;
-	_Atomic(uint64_t) *loot;
+	FY_ATOMIC(uint64_t) *loot;
 	uint64_t exp, v;
 	unsigned int i, num_threads_words;
 	struct fy_thread_work *w, *w_exp;
@@ -833,19 +833,19 @@ static inline struct fy_thread_work *fy_worker_thread_steal_work(struct fy_threa
 
 	num_threads_words = FY_BIT64_COUNT(tp->num_threads);
 	for (i = 0, loot = tp->lootp; i < num_threads_words; i++, loot++) {
-		v = atomic_load(loot);
+		v = fy_atomic_load(loot);
 		while (v) {
 			slot = FY_BIT64_LOWEST(v);
 			assert(v & FY_BIT64(slot));
 			exp = v;		/* expecting the previous value */
 			v &= ~FY_BIT64(slot);	/* clear this bit */
 
-			if (atomic_compare_exchange_strong(loot, &exp, v)) {
+			if (fy_atomic_compare_exchange_strong(loot, &exp, v)) {
 				slot += i * 64;
 				t = tp->threads + slot;
-				if ((w = atomic_load(&t->next_work)) != NULL) {
+				if ((w = fy_atomic_load(&t->next_work)) != NULL) {
 					w_exp = w;
-					if (atomic_compare_exchange_strong(&t->next_work, &w_exp, NULL))
+					if (fy_atomic_compare_exchange_strong(&t->next_work, &w_exp, NULL))
 						return w;
 				}
 			}
@@ -883,9 +883,9 @@ static void *fy_worker_thread_steal(void *arg)
 
 			TDBG("%s: T#%u stole W:%p\n", __func__, t->id, w_stolen);
 			w_exp = w_last;
-			if (!atomic_compare_exchange_strong(&t->work, &w_exp, w_stolen)) {
+			if (!fy_atomic_compare_exchange_strong(&t->work, &w_exp, w_stolen)) {
 				assert(w_exp != WORK_SHUTDOWN);
-				TDBG("%s: T#%u t->work:%p w:%p w_stolen:%p\n", __func__, t->id, atomic_load(&t->work), w, w_stolen);
+				TDBG("%s: T#%u t->work:%p w:%p w_stolen:%p\n", __func__, t->id, fy_atomic_load(&t->work), w, w_stolen);
 				FY_IMPOSSIBLE_ABORT();
 			}
 			w = w_stolen;
@@ -895,7 +895,7 @@ static void *fy_worker_thread_steal(void *arg)
 		fy_thread_unreserve_internal(t);
 
 		w_exp = w_last;
-		if (!atomic_compare_exchange_strong(&t->work, &w_exp, NULL)) {
+		if (!fy_atomic_compare_exchange_strong(&t->work, &w_exp, NULL)) {
 			assert(w_exp != WORK_SHUTDOWN);
 			break;
 		}
@@ -971,7 +971,7 @@ static void fy_thread_work_join_steal(struct fy_thread_pool *tp, struct fy_threa
 					resolved_t = true;
 				}
 
-				if (t && atomic_load(&t->next_work) == NULL) {
+				if (t && fy_atomic_load(&t->next_work) == NULL) {
 					TDBG("%s: T#%d could not post, available to steal W:%p\n", __func__, tid, works);
 					assert(works->wp == NULL);
 
@@ -981,13 +981,13 @@ static void fy_thread_work_join_steal(struct fy_thread_pool *tp, struct fy_threa
 					works->wp = wp;
 
 					expw = NULL;
-					if (!atomic_compare_exchange_strong(&t->next_work, &expw, works)) {
+					if (!fy_atomic_compare_exchange_strong(&t->next_work, &expw, works)) {
 						TDBG("%s: T#%d could not update next_work: W:%p\n", __func__, tid, works);
 						abort();
 					}
 
 					/* set the has loot bit */
-					atomic_fetch_or(tp->lootp + (unsigned int)(t->id / 64), FY_BIT64(t->id & 63));
+					fy_atomic_fetch_or(tp->lootp + (unsigned int)(t->id / 64), FY_BIT64(t->id & 63));
 
 					has_loot = true;
 				}
@@ -1009,9 +1009,9 @@ static void fy_thread_work_join_steal(struct fy_thread_pool *tp, struct fy_threa
 			expw = works;
 
 			/* clear the has loot bit unconditionally */
-			atomic_fetch_and(tp->lootp + (unsigned int)(t->id / 64), ~FY_BIT64(t->id & 63));
+			fy_atomic_fetch_and(tp->lootp + (unsigned int)(t->id / 64), ~FY_BIT64(t->id & 63));
 
-			if (!atomic_compare_exchange_strong(&t->next_work, &expw, NULL)) {
+			if (!fy_atomic_compare_exchange_strong(&t->next_work, &expw, NULL)) {
 				TDBG("%s: T#%d had W:%p stolen, good\n", __func__, tid, works);
 				work_count--;
 				works++;
@@ -1093,7 +1093,7 @@ static void fy_thread_work_join_steal_2(struct fy_thread_pool *tp, struct fy_thr
 				resolved_t = true;
 			}
 
-			if (t && atomic_load(&t->next_work) == NULL) {
+			if (t && fy_atomic_load(&t->next_work) == NULL) {
 				TDBG("%s: T#%d could not post, available to steal W:%p\n", __func__, tid, &works[1]);
 				assert(works[1].wp == NULL);
 
@@ -1103,13 +1103,13 @@ static void fy_thread_work_join_steal_2(struct fy_thread_pool *tp, struct fy_thr
 				works[1].wp = wp;
 
 				expw = NULL;
-				if (!atomic_compare_exchange_strong(&t->next_work, &expw, &works[1])) {
+				if (!fy_atomic_compare_exchange_strong(&t->next_work, &expw, &works[1])) {
 					TDBG("%s: T#%d could not update next_work: W:%p\n", __func__, tid, &works[1]);
 					abort();
 				}
 
 				/* set the has loot bit */
-				atomic_fetch_or(tp->lootp + (unsigned int)(t->id / 64), FY_BIT64(t->id & 63));
+				fy_atomic_fetch_or(tp->lootp + (unsigned int)(t->id / 64), FY_BIT64(t->id & 63));
 
 				has_loot = true;
 			}
@@ -1126,9 +1126,9 @@ static void fy_thread_work_join_steal_2(struct fy_thread_pool *tp, struct fy_thr
 		expw = &works[1];
 
 		/* clear the has loot bit unconditionally */
-		atomic_fetch_and(tp->lootp + (unsigned int)(t->id / 64), ~FY_BIT64(t->id & 63));
+		fy_atomic_fetch_and(tp->lootp + (unsigned int)(t->id / 64), ~FY_BIT64(t->id & 63));
 
-		if (!atomic_compare_exchange_strong(&t->next_work, &expw, NULL)) {
+		if (!fy_atomic_compare_exchange_strong(&t->next_work, &expw, NULL)) {
 			TDBG("%s: T#%d had W:%p stolen\n", __func__, tid, &works[1]);
 		} else {
 			TDBG("%s: T#%d had W:%p not stolen\n", __func__, tid, &works[1]);

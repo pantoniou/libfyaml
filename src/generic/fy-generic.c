@@ -23,6 +23,7 @@
 
 #include "fy-allocator.h"
 #include "fy-generic.h"
+#include "fy-generic-encoder.h"
 
 // when to switch to malloc instead of alloca
 #define COPY_MALLOC_CUTOFF	256
@@ -1533,7 +1534,7 @@ static int fy_generic_mapping_compare(fy_generic mapa, fy_generic mapb)
 		vala = pairsa[i].value;
 
 		/* find if the key exists in the other mapping */
-		valb = fy_generic_mapping_get_value(mapa, key);
+		valb = fy_generic_mapping_get_value(mapb, key);
 		if (valb.v == fy_invalid_value)
 			goto out;
 
