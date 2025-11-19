@@ -29,6 +29,33 @@ struct fy_generic_anchor {
 };
 FY_TYPE_DECL_LIST(generic_anchor);
 
+enum fy_generic_decoder_object_type {
+	FYGDOT_INVALID = -1,
+	FYGDOT_SEQUENCE,
+	FYGDOT_MAPPING,
+	FYGDOT_ROOT,
+};
+
+FY_TYPE_FWD_DECL_LIST(generic_decoder_obj);
+struct fy_generic_decoder_obj {
+	struct list_head node;
+	enum fy_generic_decoder_object_type type;
+	size_t alloc;
+	size_t count;
+	fy_generic *items;
+	fy_generic v;
+	fy_generic anchor;
+	fy_generic tag;
+	/* for the root */
+	struct fy_document_state *fyds;
+	fy_generic vds;
+	bool supports_merge_key : 1;
+	/* for mapping, special merge key */
+	bool next_is_merge_args : 1;
+	fy_generic in_place_items[16];	// small amount of items in place
+};
+FY_TYPE_DECL_LIST(generic_decoder_obj);
+
 enum fy_generic_decoder_parse_flags {
 	FYGDPF_DISABLE_DIRECTORY	= FY_BIT(0),
 	FYGDPF_MULTI_DOCUMENT		= FY_BIT(1),
@@ -36,6 +63,7 @@ enum fy_generic_decoder_parse_flags {
 
 struct fy_generic_decoder {
 	struct fy_parser *fyp;
+	struct fy_generic_decoder_obj_list recycled_gdos;
 	enum fy_generic_schema original_schema;
 	enum fy_parser_mode curr_parser_mode;
 	struct fy_generic_builder *gb;
@@ -56,33 +84,11 @@ struct fy_generic_decoder {
 	fy_generic vstr_tag;
 };
 
-enum fy_generic_decoder_object_type {
-	FYGDOT_SEQUENCE,
-	FYGDOT_MAPPING,
-	FYGDOT_ROOT,
-};
-
 static inline bool
 fy_generic_decoder_object_type_is_valid(enum fy_generic_decoder_object_type type)
 {
 	return type >= FYGDOT_SEQUENCE && type <= FYGDOT_ROOT;
 }
-
-struct fy_generic_decoder_obj {
-	enum fy_generic_decoder_object_type type;
-	size_t alloc;
-	size_t count;
-	fy_generic *items;
-	fy_generic v;
-	fy_generic anchor;
-	fy_generic tag;
-	/* for the root */
-	struct fy_document_state *fyds;
-	fy_generic vds;
-	bool supports_merge_key : 1;
-	/* for mapping, special merge key */
-	bool next_is_merge_args : 1;
-};
 
 struct fy_generic_decoder *
 fy_generic_decoder_create(struct fy_parser *fyp, struct fy_generic_builder *gb, bool verbose);

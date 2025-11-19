@@ -39,6 +39,49 @@ static bool fy_generic_decoder_alias_is_collecting(struct fy_generic_decoder *gd
 static void fy_generic_decoder_anchor_collection_starts(struct fy_generic_decoder *gd);
 static void fy_generic_decoder_anchor_collection_ends(struct fy_generic_decoder *gd, fy_generic v);
 
+void fy_generic_decoder_object_cleanup(struct fy_generic_decoder_obj *gdo)
+{
+	if (gdo->type == FYGDOT_INVALID)	// already clean
+		return;
+
+	if (gdo->items)
+		free(gdo->items);
+	if (gdo->fyds)
+		fy_document_state_unref(gdo->fyds);
+	gdo->type = FYGDOT_INVALID;
+	gdo->alloc = 0;
+	gdo->count = 0;
+	gdo->items = 0;
+	gdo->v = fy_invalid;
+	gdo->anchor = fy_invalid;
+	gdo->tag = fy_invalid;
+	gdo->fyds = NULL;
+	gdo->vds = fy_invalid;
+	gdo->supports_merge_key = false;
+	gdo->next_is_merge_args = false;
+}
+
+struct fy_generic_decoder_obj *fy_generic_decoder_object_alloc(struct fy_generic_decoder *gd)
+{
+	struct fy_generic_decoder_obj *gdo;
+
+	if (!gd)
+		return NULL;
+
+	gdo = fy_generic_decoder_obj_list_pop(&gd->recycled_gdos);
+	if (!gdo) {
+		gdo = malloc(sizeof(*gdo));
+		if (!gdo)
+			return NULL;
+		memset(gdo, 0, sizeof(*gdo));
+	}
+
+	/* not yet instantiated */
+	gdo->type = FYGDOT_INVALID;
+
+	return gdo;
+}
+
 struct fy_generic_decoder_obj *
 fy_generic_decoder_object_create(struct fy_generic_decoder *gd, enum fy_generic_decoder_object_type type,
 		fy_generic anchor, fy_generic tag)
@@ -48,11 +91,17 @@ fy_generic_decoder_object_create(struct fy_generic_decoder *gd, enum fy_generic_
 	if (!gd || !fy_generic_decoder_object_type_is_valid(type))
 		return NULL;
 
+#if 0
 	gdo = malloc(sizeof(*gdo));
 	if (!gdo)
 		return NULL;
 
 	memset(gdo, 0, sizeof(*gdo));
+#else
+	gdo = fy_generic_decoder_object_alloc(gd);
+	if (!gdo)
+		return NULL;
+#endif
 	gdo->type = type;
 	gdo->anchor = anchor;
 	gdo->tag = tag;
@@ -64,16 +113,36 @@ fy_generic_decoder_object_create(struct fy_generic_decoder *gd, enum fy_generic_
 }
 
 static void
+fy_generic_decoder_object_free(struct fy_generic_decoder_obj *gdo)
+{
+	if (!gdo)
+		return;
+
+	fy_generic_decoder_object_cleanup(gdo);
+	free(gdo);
+}
+
+static void
 fy_generic_decoder_object_destroy(struct fy_generic_decoder_obj *gdo)
 {
 	if (!gdo)
 		return;
 
-	if (gdo->items)
-		free(gdo->items);
-	if (gdo->fyds)
-		fy_document_state_unref(gdo->fyds);
-	free(gdo);
+	fy_generic_decoder_object_cleanup(gdo);
+	fy_generic_decoder_object_free(gdo);
+}
+
+void fy_generic_decoder_object_recycle(struct fy_generic_decoder *gd, struct fy_generic_decoder_obj *gdo)
+{
+	if (!gdo)
+		return;
+
+	fy_generic_decoder_object_cleanup(gdo);
+
+	if (!gd)
+		fy_generic_decoder_object_free(gdo);
+	else
+		fy_generic_decoder_obj_list_push(&gd->recycled_gdos, gdo);
 }
 
 static fy_generic
@@ -153,7 +222,11 @@ fy_generic_decoder_object_finalize_and_destroy(struct fy_generic_decoder *gd, st
 	fy_generic v;
 
 	v = fy_generic_decoder_object_finalize(gd, gdo);
+#if 0
 	fy_generic_decoder_object_destroy(gdo);
+#else
+	fy_generic_decoder_object_recycle(gd, gdo);
+#endif
 
 	return v;
 }
@@ -644,7 +717,11 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		fyp_error_check(fyp, !fy_generic_is_invalid(gd->vds), err_out,
 				"fy_gb_internalize() failed");
 
+#if 0
 		fy_generic_decoder_object_destroy(gdo);
+#else
+		fy_generic_decoder_object_recycle(gd, gdo);
+#endif
 		gd->document_ready = true;
 
 		gd->gdo_root = NULL;
@@ -677,8 +754,13 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 			gdo = fy_path_get_root_user_data(path);
 			fy_path_set_root_user_data(path, NULL);
 		}
-		if (gdo)
+		if (gdo) {
+#if 0
 			fy_generic_decoder_object_destroy(gdo);
+#else
+			fy_generic_decoder_object_recycle(gd, gdo);
+#endif
+		}
 
 		break;
 	}
@@ -812,6 +894,7 @@ void fy_generic_decoder_destroy(struct fy_generic_decoder *gd)
 {
 	struct fy_parser *fyp;
 	struct fy_generic_anchor *ga;
+	struct fy_generic_decoder_obj *gdo;
 
 	if (!gd)
 		return;
@@ -830,6 +913,9 @@ void fy_generic_decoder_destroy(struct fy_generic_decoder *gd)
 	while ((ga = fy_generic_anchor_list_pop(&gd->complete_anchors)) != NULL)
 		free(ga);
 
+	while ((gdo = fy_generic_decoder_obj_list_pop(&gd->recycled_gdos)) != NULL)
+		fy_generic_decoder_object_free(gdo);
+
 	free(gd);
 }
 
@@ -847,6 +933,8 @@ fy_generic_decoder_create(struct fy_parser *fyp, struct fy_generic_builder *gb, 
 	memset(gd, 0, sizeof(*gd));
 
 	gd->fyp = fyp;
+	fy_generic_decoder_obj_list_init(&gd->recycled_gdos);
+
 	gd->gb = gb;
 	gd->original_schema = fy_gb_get_schema(gb);
 	gd->curr_parser_mode = fy_parser_get_mode(fyp);
