@@ -12,16 +12,18 @@
 #include "config.h"
 #endif
 
+#include "fy-atomics.h"
+
 #include "fy-allocator.h"
 
 struct fy_linear_allocator {
 	struct fy_allocator a;
 	struct fy_linear_allocator_cfg cfg;
-	uint64_t stats_allocations;	/* no need to keep anything else */
-	uint64_t stats_allocated;
+	FY_ATOMIC uint64_t stats_allocations;	/* no need to keep anything else */
+	FY_ATOMIC uint64_t stats_allocated;
 	void *alloc;
 	void *start;
-	void *next;
+	FY_ATOMIC void *next;
 	void *end;
 };
 
