@@ -33,40 +33,17 @@ typedef uint64_t fy_id_bits;
 #define FY_ID_OFFSET(_id)	((_id) / FY_ID_BITS_BITS)
 #define FY_ID_BIT_MASK(_id)	((fy_id_bits)1 << ((_id) & FY_ID_BITS_MASK))
 
-#if defined(__GNUC__) && __GNUC__ >= 4
 static inline int fy_id_ffs(const fy_id_bits id_bit)
 {
 	if (!id_bit)
 		return -1;
-	return __builtin_ffs(id_bit) - 1;
+	return FY_BIT64_FFS(id_bit) - 1;
 }
 
-#else
-static inline int fy_id_ffs(const fy_id_bits id_bit)
-{
-	return ffs((int)id_bits) - 1;
-}
-#endif
-
-#if defined(__GNUC__) && __GNUC__ >= 4
 static inline int fy_id_popcount(const fy_id_bits id_bit)
 {
-	return __builtin_popcount(id_bit);
+	return FY_BIT64_POPCNT(id_bit);
 }
-
-#else
-static inline int fy_id_popcount(fy_id_bits id_bit)
-{
-	int count, pos;
-
-	count = 0;
-	while ((pos = fy_id_ffs(id_bit)) >= 0) {
-		count++;
-		id_bit &= ~((fy_id_bits)1 << pos);
-	}
-	return count;
-}
-#endif
 
 static inline void fy_id_reset(fy_id_bits *bits, const size_t count)
 {
