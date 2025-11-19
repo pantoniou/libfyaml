@@ -265,7 +265,7 @@ static void fy_mremap_tag_cleanup(struct fy_mremap_allocator *mra, struct fy_mre
 	struct fy_mremap_arena *mran;
 	int id;
 #ifdef DEBUG_ARENA
-	struct fy_mremap_arena_list *mranl, *arena_lists[2];
+	struct fy_mremap_arena_list *mranl;
 	size_t total_sys_alloc, total_wasted;
 	unsigned int j;
 #endif
@@ -281,19 +281,13 @@ static void fy_mremap_tag_cleanup(struct fy_mremap_allocator *mra, struct fy_mre
 	if (fy_id_is_free(mra->ids, ARRAY_SIZE(mra->ids), id))
 		return;
 
-	fy_id_free(mra->ids, ARRAY_SIZE(mra->ids), id);
-
 #ifdef DEBUG_ARENA
 	total_sys_alloc = 0;
 	total_wasted = 0;
-	arena_lists[0] = &mrt->arenas;
-	arena_lists[1] = &mrt->full_arenas;
-	for (j = 0; j < ARRAY_SIZE(arena_lists); j++) {
-		mranl = arena_lists[j];
-		for (mran = fy_mremap_arena_list_head(mranl); mran; mran = fy_mremap_arena_next(mranl, mran)) {
-			total_sys_alloc += mran->size;
-			total_wasted += (mran->size - mran->next);
-		}
+	mranl = &mrt->arenas;
+	for (mran = fy_mremap_arena_list_head(mranl); mran; mran = fy_mremap_arena_next(mranl, mran)) {
+		total_sys_alloc += mran->size;
+		total_wasted += (mran->size - mran->next);
 	}
 	fprintf(stderr, "total_sys_alloc=%zu total_wasted=%zu\n", total_sys_alloc, total_wasted);
 #endif
@@ -304,18 +298,14 @@ static void fy_mremap_tag_cleanup(struct fy_mremap_allocator *mra, struct fy_mre
 	while ((mran = fy_mremap_arena_list_pop(&mrt->arenas)) != NULL)
 		fy_mremap_arena_destroy(mra, mrt, mran);
 
-#ifdef DEBUG_ARENA
-	fprintf(stderr, "%s: destroying full arenas\n", __func__);
-#endif
-	while ((mran = fy_mremap_arena_list_pop(&mrt->full_arenas)) != NULL)
-		fy_mremap_arena_destroy(mra, mrt, mran);
+	/* mark it free, must be last */
+	fy_id_free(mra->ids, ARRAY_SIZE(mra->ids), id);
 }
 
 static void fy_mremap_tag_trim(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt)
 {
-	struct fy_mremap_arena_list *mranl, *arena_lists[2];
+	struct fy_mremap_arena_list *mranl;
 	struct fy_mremap_arena *mran;
-	unsigned int j;
 #ifdef DEBUG_ARENA
 	size_t wasted_before, wasted_after;
 #endif
@@ -326,24 +316,21 @@ static void fy_mremap_tag_trim(struct fy_mremap_allocator *mra, struct fy_mremap
 	if (!fy_mremap_arena_type_is_trimmable(mra->arena_type))
 		return;
 
-	arena_lists[0] = &mrt->arenas;
-	arena_lists[1] = &mrt->full_arenas;
 #ifdef DEBUG_ARENA
 	wasted_before = 0;
 	wasted_after = 0;
 #endif
-	for (j = 0; j < ARRAY_SIZE(arena_lists); j++) {
-		mranl = arena_lists[j];
-		for (mran = fy_mremap_arena_list_head(mranl); mran; mran = fy_mremap_arena_next(mranl, mran)) {
+	mranl = &mrt->arenas;
+	for (mran = fy_mremap_arena_list_head(mranl); mran; mran = fy_mremap_arena_next(mranl, mran)) {
 #ifdef DEBUG_ARENA
-			wasted_before += (mran->size - mran->next);
+		wasted_before += (mran->size - mran->next);
 #endif
-			(void)fy_mremap_arena_trim(mra, mrt, mran);
+		(void)fy_mremap_arena_trim(mra, mrt, mran);
 #ifdef DEBUG_ARENA
-			wasted_after += (mran->size - mran->next);
+		wasted_after += (mran->size - mran->next);
 #endif
-		}
 	}
+
 #ifdef DEBUG_ARENA
 	fprintf(stderr, "wasted_before=%zu wasted_after=%zu\n", wasted_before, wasted_after);
 #endif
@@ -359,9 +346,6 @@ static void fy_mremap_tag_reset(struct fy_mremap_allocator *mra, struct fy_mrema
 	/* just destroy the arenas */
 	while ((mran = fy_mremap_arena_list_pop(&mrt->arenas)) != NULL)
 		fy_mremap_arena_destroy(mra, mrt, mran);
-
-	while ((mran = fy_mremap_arena_list_pop(&mrt->full_arenas)) != NULL)
-		fy_mremap_arena_destroy(mra, mrt, mran);
 }
 
 static void fy_mremap_tag_setup(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt)
@@ -371,7 +355,6 @@ static void fy_mremap_tag_setup(struct fy_mremap_allocator *mra, struct fy_mrema
 
 	memset(mrt, 0, sizeof(*mrt));
 	fy_mremap_arena_list_init(&mrt->arenas);
-	fy_mremap_arena_list_init(&mrt->full_arenas);
 	mrt->next_arena_sz = mra->pagesz;
 }
 
@@ -403,14 +386,8 @@ static void *fy_mremap_tag_alloc(struct fy_mremap_allocator *mra, struct fy_mrem
 	for (mran = fy_mremap_arena_list_head(&mrt->arenas); mran;
 			mran = fy_mremap_arena_next(&mrt->arenas, mran)) {
 		left = mran->size - fy_size_t_align(mran->next, align);
-		if (left >= size) {
-			/* make this the new head */
-			if (mran != fy_mremap_arena_list_head(&mrt->arenas)) {
-				fy_mremap_arena_list_del(&mrt->arenas, mran);
-				fy_mremap_arena_list_add(&mrt->arenas, mran);
-			}
+		if (left >= size)
 			goto do_alloc;
-		}
 	}
 
 	/* not found space in any arena, try to grow */
@@ -429,11 +406,6 @@ static void *fy_mremap_tag_alloc(struct fy_mremap_allocator *mra, struct fy_mrem
 			left = mran->size - fy_size_t_align(mran->next, align);
 			assert(left >= size);
 
-			/* make this the new head */
-			if (mran != fy_mremap_arena_list_head(&mrt->arenas)) {
-				fy_mremap_arena_list_del(&mrt->arenas, mran);
-				fy_mremap_arena_list_add(&mrt->arenas, mran);
-			}
 			goto do_alloc;
 		}
 
@@ -478,19 +450,6 @@ do_alloc:
 			rc = fy_mremap_arena_grow(mra, mrt, mran, size, align);
 			if (!rc)
 				left = mran->size - mran->next;
-		}
-
-		/* still under the threshold, move it to full */
-		if (left < mra->empty_threshold) {
-#ifdef DEBUG_ARENA
-			fprintf(stderr, "move %p mran->size=%zu left=%zu to free\n", mran, mran->size, left);
-#endif
-			fy_mremap_arena_list_del(&mrt->arenas, mran);
-			fy_mremap_arena_list_add_tail(&mrt->full_arenas, mran);
-
-#ifdef DEBUG_ARENA
-			fprintf(stderr, "%s: #%zu moved arena %p size=%zu (%zuMB) to full\n", __func__, mrt - mra->tags, mran, mran->size, mran->size >> 20);
-#endif
 		}
 
 	}
@@ -612,9 +571,9 @@ void fy_mremap_dump(struct fy_allocator *a)
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
 	struct fy_mremap_arena *mran;
-	struct fy_mremap_arena_list *mranl, *arena_lists[2];
-	unsigned int i, j;
+	struct fy_mremap_arena_list *mranl;
 	size_t count, active_count, full_count, total, system_total;
+	unsigned int i;
 
 	if (!a)
 		return;
@@ -631,19 +590,13 @@ void fy_mremap_dump(struct fy_allocator *a)
 			continue;
 
 		count = full_count = active_count = total = system_total = 0;
-		arena_lists[0] = &mrt->arenas;
-		arena_lists[1] = &mrt->full_arenas;
-		for (j = 0; j < ARRAY_SIZE(arena_lists); j++) {
-			mranl = arena_lists[j];
-			for (mran = fy_mremap_arena_list_head(mranl); mran; mran = fy_mremap_arena_next(mranl, mran)) {
-				total += mran->next;
-				system_total += mran->size;
-				count++;
-				if (j == 0)
-					active_count++;
-				else
-					full_count++;
-			}
+		mranl = &mrt->arenas;
+		for (mran = fy_mremap_arena_list_head(mranl); mran; mran = fy_mremap_arena_next(mranl, mran)) {
+			total += mran->next;
+			system_total += mran->size;
+			count++;
+			active_count++;
+			/* XXX full count */
 		}
 
 		fprintf(stderr, "  %d: count %zu (a=%zu/f=%zu) total %zu system %zu overhead %zu (%2.2f%%)\n", i,
@@ -787,7 +740,7 @@ static int fy_mremap_get_tag(struct fy_allocator *a)
 {
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
-	int id;
+	int id = -1;
 
 	if (!a)
 		return FY_ALLOC_TAG_ERROR;
@@ -807,6 +760,8 @@ static int fy_mremap_get_tag(struct fy_allocator *a)
 	return (int)id;
 
 err_out:
+	if (id >= 0)
+		fy_id_free(mra->ids, ARRAY_SIZE(mra->ids), id);
 	return FY_ALLOC_TAG_ERROR;
 }
 
@@ -853,11 +808,11 @@ fy_mremap_get_info(struct fy_allocator *a, int tag)
 	struct fy_allocator_info *info;
 	struct fy_allocator_tag_info *tag_info;
 	struct fy_allocator_arena_info *arena_info;
-	struct fy_mremap_arena_list *mranl, *arena_lists[2];
+	struct fy_mremap_arena_list *mranl;
 	size_t size, free, used, total;
 	size_t tag_free, tag_used, tag_total;
 	size_t arena_free, arena_used, arena_total;
-	unsigned int num_tags, num_arenas, i, j;
+	unsigned int num_tags, num_arenas, i;
 	int id;
 
 	if (!a)
@@ -923,30 +878,26 @@ fy_mremap_get_info(struct fy_allocator *a, int tag)
 				tag_info->arena_infos = arena_info;
 			}
 
-			arena_lists[0] = &mrt->arenas;
-			arena_lists[1] = &mrt->full_arenas;
-			for (j = 0; j < ARRAY_SIZE(arena_lists); j++) {
-				mranl = arena_lists[j];
-				for (mran = fy_mremap_arena_list_head(mranl); mran; mran = fy_mremap_arena_next(mranl, mran)) {
-					arena_free = (size_t)(mran->size - mran->next);
-					arena_used = (size_t)(mran->next - FY_MREMAP_ARENA_OVERHEAD);
-					arena_total = mran->size;
+			mranl = &mrt->arenas;
+			for (mran = fy_mremap_arena_list_head(mranl); mran; mran = fy_mremap_arena_next(mranl, mran)) {
+				arena_free = (size_t)(mran->size - mran->next);
+				arena_used = (size_t)(mran->next - FY_MREMAP_ARENA_OVERHEAD);
+				arena_total = mran->size;
 
-					tag_free += arena_free;
-					tag_used += arena_used;
-					tag_total += arena_total;
+				tag_free += arena_free;
+				tag_used += arena_used;
+				tag_total += arena_total;
 
-					if (!i) {
-						num_arenas++;
-					} else {
-						arena_info->free = arena_free;
-						arena_info->used = arena_used;
-						arena_info->total = arena_total;
-						arena_info->data = (void *)mran + FY_MREMAP_ARENA_OVERHEAD;
-						arena_info->size = arena_info->used;
-						arena_info++;
-						tag_info->num_arena_infos++;
-					}
+				if (!i) {
+					num_arenas++;
+				} else {
+					arena_info->free = arena_free;
+					arena_info->used = arena_used;
+					arena_info->total = arena_total;
+					arena_info->data = (void *)mran + FY_MREMAP_ARENA_OVERHEAD;
+					arena_info->size = arena_info->used;
+					arena_info++;
+					tag_info->num_arena_infos++;
 				}
 			}
 
@@ -986,13 +937,6 @@ static bool mremap_tag_contains(struct fy_mremap_tag *mrt, const void *p)
 
 	for (mra = fy_mremap_arena_list_head(&mrt->arenas); mra;
 	     mra = fy_mremap_arena_next(&mrt->arenas, mra)) {
-		if (p >= (const void *)mra->mem &&
-		    p < (const void *)mra->mem + mra->size)
-			return true;
-	}
-
-	for (mra = fy_mremap_arena_list_head(&mrt->full_arenas); mra;
-	     mra = fy_mremap_arena_next(&mrt->full_arenas, mra)) {
 		if (p >= (const void *)mra->mem &&
 		    p < (const void *)mra->mem + mra->size)
 			return true;

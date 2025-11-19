@@ -44,7 +44,6 @@ FY_TYPE_DECL_LIST(mremap_arena);
 
 struct fy_mremap_tag {
 	struct fy_mremap_arena_list arenas;
-	struct fy_mremap_arena_list full_arenas;
 	size_t next_arena_sz;
 	struct fy_allocator_stats stats;
 };
