@@ -31,19 +31,18 @@ static inline bool fy_mremap_arena_type_is_trimmable(enum fy_mremap_arena_type t
 	return type == FYMRAT_MMAP;
 }
 
-FY_TYPE_FWD_DECL_LIST(mremap_arena);
 struct fy_mremap_arena {
-	struct list_head node;
+	struct fy_mremap_arena *next_arena;
+	uint64_t flags;
 	size_t size;	/* includes the arena header */
 	size_t next;
 	uint64_t mem[] __attribute__((aligned(16)));
 };
-FY_TYPE_DECL_LIST(mremap_arena);
 
 #define FY_MREMAP_ARENA_OVERHEAD (offsetof(struct fy_mremap_arena, mem))
 
 struct fy_mremap_tag {
-	struct fy_mremap_arena_list arenas;
+	struct fy_mremap_arena *arenas;
 	size_t next_arena_sz;
 	struct fy_allocator_stats stats;
 };
