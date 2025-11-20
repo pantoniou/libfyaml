@@ -99,6 +99,7 @@ static int fy_dedup_tag_data_setup(struct fy_dedup_tag_data *dtd,
 	struct fy_dedup_tag *dt;
 	unsigned int bloom_filter_bits, bucket_count_bits, chain_length_grow_trigger;
 	size_t dedup_threshold, buckets_size;
+	unsigned int i;
 
 	assert(dtd);
 	assert(cfg);
@@ -146,6 +147,8 @@ static int fy_dedup_tag_data_setup(struct fy_dedup_tag_data *dtd,
 	dtd->buckets = malloc(buckets_size);
 	if (!dtd->buckets)
 		goto err_out;
+	for (i = 0; i < dtd->bucket_count; i++)
+		fy_dedup_entry_list_init(&dtd->buckets[i]);
 
 	dtd->bucket_id_count = (1U << dtd->bucket_count_bits) / FY_ID_BITS_BITS;
 	dtd->buckets_in_use = malloc(2 * dtd->bucket_id_count * sizeof(*dtd->buckets_in_use));
@@ -337,7 +340,6 @@ static int fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_ta
 			if (!fy_id_is_used(new_dtd->buckets_in_use, new_dtd->bucket_id_count, bucket_pos)) {
 				assert(FY_ID_OFFSET(bucket_pos) < new_dtd->bucket_id_count);
 				fy_id_set_used(new_dtd->buckets_in_use, new_dtd->bucket_id_count, bucket_pos);
-				fy_dedup_entry_list_init(new_del);
 			} else {
 				assert(FY_ID_OFFSET(bucket_pos) < new_dtd->bucket_id_count);
 				fy_id_set_used(new_dtd->buckets_collision, new_dtd->bucket_id_count, bucket_pos);
@@ -678,7 +680,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	struct fy_dedup_tag_data *dtd;
 	struct fy_dedup_entry *de;
 	uint64_t hash;
-	unsigned int bloom_pos, bucket_pos;
+	int bloom_pos, bucket_pos;
 	bool bloom_hit;
 	struct fy_dedup_entry_list *del;
 	unsigned int chain_length;
@@ -694,8 +696,6 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	dt = fy_dedup_tag_from_tag(da, tag);
 	if (!dt)
 		return NULL;
-
-	dtd = &dt->data[dt->data_active];
 
 	/* calculate data total size */
 	total_size = fy_iovec_size(iov, iovcnt);
@@ -716,58 +716,62 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	}
 #endif
 
+	/* get the hash value */
 	xxstate = da->xxstate_template;
 	for (i = 0; i < iovcnt; i++)
 		XXH64_update(&xxstate, iov[i].iov_base, iov[i].iov_len);
 	hash = XXH64_digest(&xxstate);
 
-	/* first check in the bloom filter */
-	bloom_pos = (unsigned int)hash & dtd->bloom_filter_mask;
-	assert((int)bloom_pos >= 0);
-	bloom_hit = fy_id_is_used(dtd->bloom_id, dtd->bloom_id_count, (int)bloom_pos);
-
-	bucket_pos = (unsigned int)hash & dtd->bucket_count_mask;
-	assert((int)bucket_pos >= 0);
-
-	assert(bucket_pos < dtd->bucket_count);
-	del = dtd->buckets + bucket_pos;
-
 	chain_length = 0;
-	if (bloom_hit) {
 
-		if (!fy_id_is_used(dtd->buckets_in_use, dtd->bucket_id_count, (int)bucket_pos)) {
-			/* this is possible when there was a delete and bloom filter is not updated */
-			goto new_entry;
-		}
+	/* XXX */
+	dtd = &dt->data[dt->data_active];
+	for (; dtd; dtd = NULL) {
 
-		for (de = fy_dedup_entry_list_head(del); de; de = fy_dedup_entry_next(del, de)) {
+		/* first check in the bloom filter */
+		bloom_pos = (int)((unsigned int)hash & dtd->bloom_filter_mask);
+		bucket_pos = (int)((unsigned int)hash & dtd->bucket_count_mask);
 
-			/* XXX the complete cmp is kind of an overkill */
-			if (de->hash == hash && total_size == de->size && !fy_iovec_cmp(iov, iovcnt, de->mem)) {
+		bloom_hit = fy_id_is_used(dtd->bloom_id, dtd->bloom_id_count, bloom_pos);
+		if (bloom_hit) {
+			chain_length = 0;
+			del = &dtd->buckets[bucket_pos];
+			for (de = fy_dedup_entry_list_head(del); de; de = fy_dedup_entry_next(del, de)) {
 
-				/* update stats */
-				dt->stats.dup_stores++;
-				dt->stats.dup_saved += total_size;
+				/* XXX the complete cmp is kind of an overkill */
+				if (de->hash == hash) {
+				       	if (total_size == de->size && !fy_iovec_cmp(iov, iovcnt, de->mem)) {
 
-				return de->mem;
+						/* only update stats if someone asked for it */
+						if (a->flags & FYAF_KEEP_STATS) {
+							dt->stats.dup_stores++;
+							dt->stats.dup_saved += total_size;
+						}
+
+						return de->mem;
+					}
+
+					/* mark that we had a collision here */
+					fy_id_set_used(dtd->buckets_collision, dtd->bucket_id_count, bucket_pos);
+				}
+
+				chain_length++;
 			}
-
-			/* mark that we had a collision here */
-			fy_id_set_used(dtd->buckets_collision, dtd->bucket_id_count, (int)bucket_pos);
-			chain_length++;
 		}
 	}
 
-new_entry:
+	/* XXX */
+	dtd = &dt->data[dt->data_active];
+
+	bloom_pos = (int)((unsigned int)hash & dtd->bloom_filter_mask);
+	bucket_pos = (int)((unsigned int)hash & dtd->bucket_count_mask);
+	del = &dtd->buckets[bucket_pos];
+
 	de_offset = fy_size_t_align(total_size, alignof(struct fy_dedup_entry));
 	max_align = align > alignof(struct fy_dedup_entry) ? align : alignof(struct fy_dedup_entry);
 	mem = fy_allocator_alloc(da->parent_allocator, dt->content_tag, de_offset + sizeof(*de), max_align);
 	if (!mem)
 		return NULL;
-
-	if (((uintptr_t)mem & (align - 1)) != 0) {
-		abort();
-	}
 
 	/* verify it's aligned correctly */
 	assert(((uintptr_t)mem & (align - 1)) == 0);
@@ -781,25 +785,24 @@ new_entry:
 	/* and copy the data */
 	fy_iovec_copy_from(iov, iovcnt, de->mem);
 
-	if (!fy_id_is_used(dtd->buckets_in_use, dtd->bucket_id_count, (int)bucket_pos)) {
-		fy_id_set_used(dtd->buckets_in_use, dtd->bucket_id_count, (int)bucket_pos);
-		fy_dedup_entry_list_init(del);
-	}
-
 	/* and add to the bucket */
 	fy_dedup_entry_list_add(del, de);
 
+	/* set this bucket to used */
+	fy_id_set_used(dtd->buckets_in_use, dtd->bucket_id_count, bucket_pos);
+
 	/* turn the update bit for the bloom position */
-	if (!bloom_hit)
-		fy_id_set_used(dtd->bloom_id, dtd->bloom_id_count, (int)bloom_pos);
+	fy_id_set_used(dtd->bloom_id, dtd->bloom_id_count, bloom_pos);
 
 	/* adjust by one bit, if we've hit the trigger */
 	if (chain_length > dtd->chain_length_grow_trigger)
 		fy_dedup_tag_adjust(da, dt, 1, 1);
 
-	/* update stats */
-	dt->stats.stores++;
-	dt->stats.stored += total_size;
+	/* only update stats if someone asked for it */
+	if (a->flags & FYAF_KEEP_STATS) {
+		dt->stats.stores++;
+		dt->stats.stored += total_size;
+	}
 
 	return de->mem;
 }
