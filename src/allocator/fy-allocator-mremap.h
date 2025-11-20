@@ -15,6 +15,7 @@
 #include "fy-typelist.h"
 #include "fy-id.h"
 
+#include "fy-atomics.h"
 #include "fy-allocator.h"
 
 struct fy_mremap_tag;
@@ -31,19 +32,23 @@ static inline bool fy_mremap_arena_type_is_trimmable(enum fy_mremap_arena_type t
 	return type == FYMRAT_MMAP;
 }
 
+#define FYMRAF_FULL		FY_BIT(0)
+#define FYMRAF_GROWING		FY_BIT(1)
+#define FYMRAF_CANT_GROW	FY_BIT(2)
+
 struct fy_mremap_arena {
 	struct fy_mremap_arena *next_arena;
-	uint64_t flags;
 	size_t size;	/* includes the arena header */
-	size_t next;
+	FY_ATOMIC(uint64_t) flags;
+	FY_ATOMIC(size_t) next;
 	uint64_t mem[] __attribute__((aligned(16)));
 };
 
 #define FY_MREMAP_ARENA_OVERHEAD (offsetof(struct fy_mremap_arena, mem))
 
 struct fy_mremap_tag {
-	struct fy_mremap_arena *arenas;
-	size_t next_arena_sz;
+	FY_ATOMIC(struct fy_mremap_arena *) arenas;
+	FY_ATOMIC(size_t) next_arena_sz;
 	struct fy_allocator_stats stats;
 };
 
