@@ -429,6 +429,23 @@ fy_iovec_copy_to(const struct iovec *iov, int iovcnt, const void *src)
 	return src;
 }
 
+static inline int
+fy_iovec_cmp(const struct iovec *iov, int iovcnt, const void *data)
+{
+	const void *s = data;
+	size_t size;
+	int i, ret;
+
+	for (i = 0; i < iovcnt; i++) {
+		size = iov[i].iov_len;
+		ret = memcmp(iov[i].iov_base, s, size);
+		if (ret)
+			return ret;
+		s += size;
+	}
+	return 0;
+}
+
 /* safe bet for 2025 */
 #define FY_CACHE_LINE_SZ	64
 #define FY_CACHE_ALIGNED	__attribute__((aligned(FY_CACHE_LINE_SZ)))

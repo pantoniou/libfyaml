@@ -648,8 +648,8 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	bool bloom_hit;
 	struct fy_dedup_entry_list *del;
 	unsigned int chain_length;
-	void *s, *e, *p, *mem = NULL;
-	size_t size, total_size;
+	void *p, *mem = NULL;
+	size_t total_size;
 	int i;
 
 	if (!a)
@@ -709,36 +709,21 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 
 		for (de = fy_dedup_entry_list_head(del); de; de = fy_dedup_entry_next(del, de)) {
 
-			/* match hash */
-			if (de->hash != hash) {
-				/* mark that we had a collision here */
-				fy_id_set_used(dtd->buckets_collision, dtd->bucket_id_count, (int)bucket_pos);
-			} else {
-				/* match content */
-				s = de->mem;
-				e = s + de->size;
-				for (i = 0; i < iovcnt; i++) {
-					size = iov[i].iov_len;
-					if ((s + size) > e || memcmp(iov[i].iov_base, s, size))
-						break;
-					s += size;
-				}
-				/* match */
-				if (i == iovcnt && s == e)
-					break;
+			/* XXX the complete cmp is kind of an overkill */
+			if (de->hash == hash && total_size == de->size && !fy_iovec_cmp(iov, iovcnt, de->mem)) {
+				/* increase the reference count */
+				de->refs++;
+
+				/* update stats */
+				dt->stats.dup_stores++;
+				dt->stats.dup_saved += total_size;
+
+				return de->mem;
 			}
+
+			/* mark that we had a collision here */
+			fy_id_set_used(dtd->buckets_collision, dtd->bucket_id_count, (int)bucket_pos);
 			chain_length++;
-		}
-
-		if (de) {
-			/* increase the reference count */
-			de->refs++;
-
-			/* update stats */
-			dt->stats.dup_stores++;
-			dt->stats.dup_saved += total_size;
-
-			return de->mem;
 		}
 	}
 
