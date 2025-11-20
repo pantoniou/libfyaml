@@ -24,6 +24,7 @@ FY_TYPE_FWD_DECL_LIST(dedup_entry);
 struct fy_dedup_entry {
 	struct list_head node;
 	uint64_t hash;
+	int64_t refs;
 	size_t size;
 	void *mem;
 };

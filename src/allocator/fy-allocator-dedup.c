@@ -535,12 +535,8 @@ static void fy_dedup_cleanup(struct fy_allocator *a)
 
 	da = container_of(a, struct fy_dedup_allocator, a);
 
-	for (i = 0, dt = da->tags; i < ARRAY_SIZE(da->tags); i++, dt++) {
-		if (!fy_id_is_used(da->ids, ARRAY_SIZE(da->ids), i))
-			continue;
+	for (i = 0, dt = da->tags; i < ARRAY_SIZE(da->tags); i++, dt++)
 		fy_dedup_tag_cleanup(da, dt);
-		fy_id_free(da->ids, ARRAY_SIZE(da->ids), i);
-	}
 }
 
 struct fy_allocator *fy_dedup_create(const void *cfg)
@@ -683,7 +679,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	struct fy_dedup_entry_list *del;
 	unsigned int chain_length;
 	void *mem = NULL;
-	size_t total_size, de_offset;
+	size_t total_size;
 	int i;
 
 	if (!a)
@@ -705,8 +701,10 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	if (total_size == SIZE_MAX)
 		goto err_out;
 
+#if 0
 	/* if it's under the dedup threshold just allocate and copy */
 	if (total_size < dtd->dedup_threshold) {
+
 		/* just pass to the parent allocator using the content tag */
 		void *p = fy_allocator_alloc(da->parent_allocator, dt->content_tag, total_size, align);
 		if (!p)
@@ -715,6 +713,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 		fy_iovec_copy_from(iov, iovcnt, p);
 		return p;
 	}
+#endif
 
 	xxstate = da->xxstate_template;
 	for (i = 0; i < iovcnt; i++)
@@ -744,6 +743,8 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 
 			/* XXX the complete cmp is kind of an overkill */
 			if (de->hash == hash && total_size == de->size && !fy_iovec_cmp(iov, iovcnt, de->mem)) {
+				/* increase the reference count */
+				de->refs++;
 
 				/* update stats */
 				dt->stats.dup_stores++;
@@ -759,17 +760,19 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	}
 
 new_entry:
-	de_offset = fy_size_t_align(total_size, alignof(struct fy_dedup_entry));
-	mem = fy_allocator_alloc(da->parent_allocator, dt->content_tag, de_offset + sizeof(*de), align);
+	mem = fy_allocator_alloc(da->parent_allocator, dt->content_tag, total_size, align);
 	if (!mem)
 		goto err_out;
 
 	/* verify it's aligned correctly */
 	assert(((uintptr_t)mem & (align - 1)) == 0);
 
-	de = mem + de_offset;
+	de = fy_allocator_alloc(da->parent_allocator, dt->entries_tag, sizeof(*de), alignof(struct fy_dedup_entry));
+	if (!de)
+		goto err_out;
 
 	de->hash = hash;
+	de->refs = 1;
 	de->size = total_size;
 	de->mem = mem;
 	mem = NULL;
