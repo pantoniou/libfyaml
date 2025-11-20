@@ -96,7 +96,6 @@ static void fy_dedup_tag_data_cleanup(struct fy_dedup_tag_data *dtd)
 static int fy_dedup_tag_data_setup(struct fy_dedup_tag_data *dtd,
 				   const struct fy_dedup_tag_data_cfg *cfg)
 {
-	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
 	unsigned int bloom_filter_bits, bucket_count_bits, chain_length_grow_trigger;
 	size_t dedup_threshold, buckets_size;
@@ -104,14 +103,12 @@ static int fy_dedup_tag_data_setup(struct fy_dedup_tag_data *dtd,
 	assert(dtd);
 	assert(cfg);
 
-	da = cfg->da;
 	dt = cfg->dt;
 	bloom_filter_bits = cfg->bloom_filter_bits;
 	bucket_count_bits = cfg->bucket_count_bits;
 	dedup_threshold = cfg->dedup_threshold;
 	chain_length_grow_trigger = cfg->chain_length_grow_trigger;
 
-	assert(da);
 	assert(dt);
 	(void)dt;
 
@@ -189,7 +186,7 @@ static void fy_dedup_tag_cleanup(struct fy_dedup_allocator *da, struct fy_dedup_
 
 	/* we just release the tags, the underlying allocator should free everything */
 	if (dt->entries_tag != FY_ALLOC_TAG_NONE)
-		fy_allocator_release_tag(da->entries_allocator, dt->entries_tag);
+		fy_allocator_release_tag(da->parent_allocator, dt->entries_tag);
 	if (dt->content_tag != FY_ALLOC_TAG_NONE)
 		fy_allocator_release_tag(da->parent_allocator, dt->content_tag);
 
@@ -239,7 +236,7 @@ static int fy_dedup_tag_setup(struct fy_dedup_allocator *da, struct fy_dedup_tag
 	dt->entries_tag = FY_ALLOC_TAG_NONE;
 	dt->content_tag = FY_ALLOC_TAG_NONE;
 
-	dt->entries_tag = fy_allocator_get_tag(da->entries_allocator);
+	dt->entries_tag = fy_allocator_get_tag(da->parent_allocator);
 	if (dt->entries_tag == FY_ALLOC_TAG_ERROR)
 		goto err_out;
 
@@ -399,7 +396,7 @@ static void fy_dedup_tag_trim(struct fy_dedup_allocator *da, struct fy_dedup_tag
 		return;
 
 	/* just pass them trim down to the parent */
-	fy_allocator_trim_tag(da->entries_allocator, dt->entries_tag);
+	fy_allocator_trim_tag(da->parent_allocator, dt->entries_tag);
 	fy_allocator_trim_tag(da->parent_allocator, dt->content_tag);
 }
 
@@ -411,7 +408,7 @@ static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_ta
 		return;
 
 	/* just pass them reset down to the parent */
-	fy_allocator_reset_tag(da->entries_allocator, dt->entries_tag);
+	fy_allocator_reset_tag(da->parent_allocator, dt->entries_tag);
 	fy_allocator_reset_tag(da->parent_allocator, dt->content_tag);
 
 	dtd = &dt->data[dt->data_active];
@@ -430,7 +427,7 @@ static int fy_dedup_tag_update_stats(struct fy_dedup_allocator *da, struct fy_de
 		return -1;
 
 	/* collect the underlying stats */
-	fy_allocator_update_stats(da->entries_allocator, dt->entries_tag, stats);
+	fy_allocator_update_stats(da->parent_allocator, dt->entries_tag, stats);
 	fy_allocator_update_stats(da->parent_allocator, dt->content_tag, stats);
 
 	/* and update with these ones */
@@ -512,12 +509,6 @@ static int fy_dedup_setup(struct fy_allocator *a, const void *cfg_data)
 
 	da->parent_allocator = cfg->parent_allocator;
 
-	/* just create a default mremap allocator for the entries */
-	/* we don't care if they are contiguous */
-	da->entries_allocator = fy_allocator_create("mremap", NULL);
-	if (!da->entries_allocator)
-		goto err_out;
-
 	da->bloom_filter_bits = bloom_filter_bits;
 	da->bucket_count_bits = bucket_count_bits;
 	da->dedup_threshold = dedup_threshold;
@@ -531,9 +522,6 @@ static int fy_dedup_setup(struct fy_allocator *a, const void *cfg_data)
 	fy_id_reset(da->ids, ARRAY_SIZE(da->ids));
 
 	return 0;
-err_out:
-	fy_dedup_cleanup(a);
-	return -1;
 }
 
 static void fy_dedup_cleanup(struct fy_allocator *a)
@@ -549,10 +537,6 @@ static void fy_dedup_cleanup(struct fy_allocator *a)
 
 	for (i = 0, dt = da->tags; i < ARRAY_SIZE(da->tags); i++, dt++)
 		fy_dedup_tag_cleanup(da, dt);
-
-	if (da->entries_allocator)
-		fy_allocator_destroy(da->entries_allocator);
-
 }
 
 struct fy_allocator *fy_dedup_create(const void *cfg)
@@ -616,8 +600,6 @@ void fy_dedup_dump(struct fy_allocator *a)
 
 	fprintf(stderr, "dedup: dumping parent allocator\n");
 	fy_allocator_dump(da->parent_allocator);
-	fprintf(stderr, "dedup: dumping entries allocator\n");
-	fy_allocator_dump(da->entries_allocator);
 }
 
 static void *fy_dedup_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
@@ -912,7 +894,7 @@ new_entry:
 	/* verify it's aligned correctly */
 	assert(((uintptr_t)mem & (align - 1)) == 0);
 
-	de = fy_allocator_alloc(da->entries_allocator, dt->entries_tag,
+	de = fy_allocator_alloc(da->parent_allocator, dt->entries_tag,
 				sizeof(*de), alignof(struct fy_dedup_entry));
 	if (!de)
 		goto err_out;
@@ -1057,7 +1039,7 @@ new_entry:
 	/* verify it's aligned correctly */
 	assert(((uintptr_t)mem & (align - 1)) == 0);
 
-	de = fy_allocator_alloc(da->entries_allocator, dt->entries_tag, sizeof(*de), alignof(struct fy_dedup_entry));
+	de = fy_allocator_alloc(da->parent_allocator, dt->entries_tag, sizeof(*de), alignof(struct fy_dedup_entry));
 	if (!de)
 		goto err_out;
 
