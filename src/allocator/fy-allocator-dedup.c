@@ -535,8 +535,12 @@ static void fy_dedup_cleanup(struct fy_allocator *a)
 
 	da = container_of(a, struct fy_dedup_allocator, a);
 
-	for (i = 0, dt = da->tags; i < ARRAY_SIZE(da->tags); i++, dt++)
+	for (i = 0, dt = da->tags; i < ARRAY_SIZE(da->tags); i++, dt++) {
+		if (!fy_id_is_used(da->ids, ARRAY_SIZE(da->ids), i))
+			continue;
 		fy_dedup_tag_cleanup(da, dt);
+		fy_id_free(da->ids, ARRAY_SIZE(da->ids), i);
+	}
 }
 
 struct fy_allocator *fy_dedup_create(const void *cfg)
@@ -666,277 +670,6 @@ static int fy_dedup_update_stats(struct fy_allocator *a, int tag, struct fy_allo
 	return fy_dedup_tag_update_stats(da, dt, stats);
 }
 
-static const void *
-fy_dedup_tag_data_checkv(struct fy_dedup_tag_data *dtd,
-			 const struct iovec *iov, int iovcnt, size_t align,
-			 size_t total_size, uint64_t hash,
-			 unsigned int *chain_lengthp)
-{
-	struct fy_dedup_allocator *da;
-	struct fy_dedup_tag *dt;
-	struct fy_dedup_entry *de;
-	unsigned int bloom_pos, bucket_pos;
-	bool bloom_hit;
-	struct fy_dedup_entry_list *del;
-	unsigned int chain_length;
-	void *mem = NULL;
-
-	assert(dtd);
-	assert(iov);
-
-	da = dtd->cfg.da;
-	assert(da);
-	dt = dtd->cfg.dt;
-	assert(dt);
-
-	/* calculate data total size */
-	total_size = fy_iovec_size(iov, iovcnt);
-	if (total_size == SIZE_MAX)
-		return NULL;
-
-#if 0
-	void *p;
-	/* if it's under the dedup threshold just allocate and copy */
-	if (total_size < dtd->dedup_threshold) {
-
-		/* just pass to the parent allocator using the content tag */
-		p = fy_allocator_alloc(da->parent_allocator, dt->content_tag, total_size, align);
-		if (!p)
-			goto err_out;
-
-		fy_iovec_copy_from(iov, iovcnt, p);
-		return p;
-	}
-#endif
-
-	/* first check in the bloom filter */
-	bloom_pos = (unsigned int)hash & dtd->bloom_filter_mask;
-	assert((int)bloom_pos >= 0);
-	bloom_hit = fy_id_is_used(dtd->bloom_id, dtd->bloom_id_count, (int)bloom_pos);
-	if (!bloom_hit)
-		return NULL;
-
-	bucket_pos = (unsigned int)hash & dtd->bucket_count_mask;
-	assert((int)bucket_pos >= 0);
-
-	assert(bucket_pos < dtd->bucket_count);
-	del = dtd->buckets + bucket_pos;
-
-	chain_length = 0;
-	/* HUM, is this possible? */
-	if (!fy_id_is_used(dtd->buckets_in_use, dtd->bucket_id_count, (int)bucket_pos))
-		return NULL;
-
-	for (de = fy_dedup_entry_list_head(del); de; de = fy_dedup_entry_next(del, de)) {
-
-		/* XXX the complete cmp is kind of an overkill */
-		if (de->hash == hash) {
-		       	if (total_size == de->size && !fy_iovec_cmp(iov, iovcnt, de->mem)) {
-				/* increase the reference count */
-				de->refs++;
-
-				/* update stats */
-				dt->stats.dup_stores++;
-				dt->stats.dup_saved += total_size;
-
-				return de->mem;
-			}
-			fy_id_set_used(dtd->buckets_collision, dtd->bucket_id_count, (int)bucket_pos);
-		}
-
-		chain_length++;
-	}
-
-	mem = fy_allocator_alloc(da->parent_allocator, dt->content_tag, total_size, align);
-	if (!mem)
-		goto err_out;
-
-	/* verify it's aligned correctly */
-	assert(((uintptr_t)mem & (align - 1)) == 0);
-
-	de = fy_allocator_alloc(da->parent_allocator, dt->entries_tag,
-				sizeof(*de), alignof(struct fy_dedup_entry));
-	if (!de)
-		goto err_out;
-
-	de->hash = hash;
-	de->refs = 1;
-	de->size = total_size;
-	de->mem = mem;
-	mem = NULL;
-
-	/* and copy the data */
-	fy_iovec_copy_from(iov, iovcnt, de->mem);
-
-	if (!fy_id_is_used(dtd->buckets_in_use, dtd->bucket_id_count, (int)bucket_pos)) {
-		fy_id_set_used(dtd->buckets_in_use, dtd->bucket_id_count, (int)bucket_pos);
-		fy_dedup_entry_list_init(del);
-	}
-
-	/* and add to the bucket */
-	fy_dedup_entry_list_add(del, de);
-
-	/* turn the update bit for the bloom position */
-	if (!bloom_hit)
-		fy_id_set_used(dtd->bloom_id, dtd->bloom_id_count, (int)bloom_pos);
-
-	/* adjust by one bit, if we've hit the trigger */
-	if (chain_length > dtd->chain_length_grow_trigger)
-		fy_dedup_tag_adjust(da, dt, 1, 1);
-
-	/* update stats */
-	dt->stats.stores++;
-	dt->stats.stored += total_size;
-
-	return de->mem;
-
-err_out:
-	if (mem)
-		fy_allocator_free(da->parent_allocator, dt->content_tag, mem);
-
-	return NULL;
-}
-
-
-static const void *
-fy_dedup_tag_data_storev(struct fy_dedup_tag_data *dtd,
-			 const struct iovec *iov, int iovcnt, size_t align)
-{
-	XXH64_state_t xxstate;
-	struct fy_dedup_allocator *da;
-	struct fy_dedup_tag *dt;
-	struct fy_dedup_entry *de;
-	uint64_t hash;
-	unsigned int bloom_pos, bucket_pos;
-	bool bloom_hit;
-	struct fy_dedup_entry_list *del;
-	unsigned int chain_length;
-	void *mem = NULL;
-	size_t total_size;
-	int i;
-
-	assert(dtd);
-	assert(iov);
-
-	da = dtd->cfg.da;
-	assert(da);
-	dt = dtd->cfg.dt;
-	assert(dt);
-
-	/* calculate data total size */
-	total_size = fy_iovec_size(iov, iovcnt);
-	if (total_size == SIZE_MAX)
-		return NULL;
-
-#if 0
-	void *p;
-	/* if it's under the dedup threshold just allocate and copy */
-	if (total_size < dtd->dedup_threshold) {
-
-		/* just pass to the parent allocator using the content tag */
-		p = fy_allocator_alloc(da->parent_allocator, dt->content_tag, total_size, align);
-		if (!p)
-			goto err_out;
-
-		fy_iovec_copy_from(iov, iovcnt, p);
-		return p;
-	}
-#endif
-
-	xxstate = da->xxstate_template;
-	for (i = 0; i < iovcnt; i++)
-		XXH64_update(&xxstate, iov[i].iov_base, iov[i].iov_len);
-	hash = XXH64_digest(&xxstate);
-
-	/* first check in the bloom filter */
-	bloom_pos = (unsigned int)hash & dtd->bloom_filter_mask;
-	assert((int)bloom_pos >= 0);
-	bloom_hit = fy_id_is_used(dtd->bloom_id, dtd->bloom_id_count, (int)bloom_pos);
-
-	bucket_pos = (unsigned int)hash & dtd->bucket_count_mask;
-	assert((int)bucket_pos >= 0);
-
-	assert(bucket_pos < dtd->bucket_count);
-	del = dtd->buckets + bucket_pos;
-
-	chain_length = 0;
-	if (bloom_hit) {
-		if (!fy_id_is_used(dtd->buckets_in_use, dtd->bucket_id_count, (int)bucket_pos)) {
-			/* this is possible when there was a delete and bloom filter is not updated */
-			goto new_entry;
-		}
-
-		for (de = fy_dedup_entry_list_head(del); de; de = fy_dedup_entry_next(del, de)) {
-
-			/* XXX the complete cmp is kind of an overkill */
-			if (de->hash == hash && total_size == de->size && !fy_iovec_cmp(iov, iovcnt, de->mem)) {
-				/* increase the reference count */
-				de->refs++;
-
-				/* update stats */
-				dt->stats.dup_stores++;
-				dt->stats.dup_saved += total_size;
-
-				return de->mem;
-			}
-
-			/* mark that we had a collision here */
-			fy_id_set_used(dtd->buckets_collision, dtd->bucket_id_count, (int)bucket_pos);
-			chain_length++;
-		}
-	}
-
-new_entry:
-	mem = fy_allocator_alloc(da->parent_allocator, dt->content_tag, total_size, align);
-	if (!mem)
-		goto err_out;
-
-	/* verify it's aligned correctly */
-	assert(((uintptr_t)mem & (align - 1)) == 0);
-
-	de = fy_allocator_alloc(da->parent_allocator, dt->entries_tag,
-				sizeof(*de), alignof(struct fy_dedup_entry));
-	if (!de)
-		goto err_out;
-
-	de->hash = hash;
-	de->refs = 1;
-	de->size = total_size;
-	de->mem = mem;
-	mem = NULL;
-
-	/* and copy the data */
-	fy_iovec_copy_from(iov, iovcnt, de->mem);
-
-	if (!fy_id_is_used(dtd->buckets_in_use, dtd->bucket_id_count, (int)bucket_pos)) {
-		fy_id_set_used(dtd->buckets_in_use, dtd->bucket_id_count, (int)bucket_pos);
-		fy_dedup_entry_list_init(del);
-	}
-
-	/* and add to the bucket */
-	fy_dedup_entry_list_add(del, de);
-
-	/* turn the update bit for the bloom position */
-	if (!bloom_hit)
-		fy_id_set_used(dtd->bloom_id, dtd->bloom_id_count, (int)bloom_pos);
-
-	/* adjust by one bit, if we've hit the trigger */
-	if (chain_length > dtd->chain_length_grow_trigger)
-		fy_dedup_tag_adjust(da, dt, 1, 1);
-
-	/* update stats */
-	dt->stats.stores++;
-	dt->stats.stored += total_size;
-
-	return de->mem;
-
-err_out:
-	if (mem)
-		fy_allocator_free(da->parent_allocator, dt->content_tag, mem);
-
-	return NULL;
-}
-
 static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
 {
 	XXH64_state_t xxstate;
@@ -950,7 +683,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	struct fy_dedup_entry_list *del;
 	unsigned int chain_length;
 	void *mem = NULL;
-	size_t total_size;
+	size_t total_size, de_offset;
 	int i;
 
 	if (!a)
@@ -972,20 +705,16 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	if (total_size == SIZE_MAX)
 		goto err_out;
 
-#if 0
-	void *p;
 	/* if it's under the dedup threshold just allocate and copy */
 	if (total_size < dtd->dedup_threshold) {
-
 		/* just pass to the parent allocator using the content tag */
-		p = fy_allocator_alloc(da->parent_allocator, dt->content_tag, total_size, align);
+		void *p = fy_allocator_alloc(da->parent_allocator, dt->content_tag, total_size, align);
 		if (!p)
 			goto err_out;
 
 		fy_iovec_copy_from(iov, iovcnt, p);
 		return p;
 	}
-#endif
 
 	xxstate = da->xxstate_template;
 	for (i = 0; i < iovcnt; i++)
@@ -1015,8 +744,6 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 
 			/* XXX the complete cmp is kind of an overkill */
 			if (de->hash == hash && total_size == de->size && !fy_iovec_cmp(iov, iovcnt, de->mem)) {
-				/* increase the reference count */
-				de->refs++;
 
 				/* update stats */
 				dt->stats.dup_stores++;
@@ -1032,19 +759,17 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	}
 
 new_entry:
-	mem = fy_allocator_alloc(da->parent_allocator, dt->content_tag, total_size, align);
+	de_offset = fy_size_t_align(total_size, alignof(struct fy_dedup_entry));
+	mem = fy_allocator_alloc(da->parent_allocator, dt->content_tag, de_offset + sizeof(*de), align);
 	if (!mem)
 		goto err_out;
 
 	/* verify it's aligned correctly */
 	assert(((uintptr_t)mem & (align - 1)) == 0);
 
-	de = fy_allocator_alloc(da->parent_allocator, dt->entries_tag, sizeof(*de), alignof(struct fy_dedup_entry));
-	if (!de)
-		goto err_out;
+	de = mem + de_offset;
 
 	de->hash = hash;
-	de->refs = 1;
 	de->size = total_size;
 	de->mem = mem;
 	mem = NULL;
@@ -1094,110 +819,9 @@ static const void *fy_dedup_store(struct fy_allocator *a, int tag, const void *d
 	return fy_dedup_storev(a, tag, iov, 1, align);
 }
 
-static void fy_dedup_release_actual(struct fy_allocator *a, int tag, const void *data, size_t size)
-{
-	XXH64_state_t xxstate;
-	struct fy_dedup_allocator *da;
-	struct fy_dedup_tag *dt;
-	struct fy_dedup_tag_data *dtd;
-	struct fy_dedup_entry *de;
-	struct fy_dedup_entry_list *del;
-	uint64_t hash;
-	unsigned int bloom_pos, bucket_pos;
-
-	if (!a)
-		return;
-
-	da = container_of(a, struct fy_dedup_allocator, a);
-
-	if (!data)
-		goto err_out;
-
-	dt = fy_dedup_tag_from_tag(da, tag);
-	if (!dt)
-		goto err_out;
-	dtd = &dt->data[dt->data_active];
-
-#if 0
-	/* if it's under the dedup threshold just free */
-	if (size < dtd->dedup_threshold) {
-		fy_allocator_free(da->parent_allocator, dt->content_tag, (void *)data);
-		return;
-	}
-#endif
-
-	xxstate = da->xxstate_template;
-	XXH64_update(&xxstate, data, size);
-	hash = XXH64_digest(&xxstate);
-
-	/* first check in the bloom filter */
-	bloom_pos = (unsigned int)hash & dtd->bloom_filter_mask;
-	assert((int)bloom_pos >= 0);
-	if (!fy_id_is_used(dtd->bloom_id, dtd->bloom_id_count, (int)bloom_pos))
-		goto err_out;
-
-	/* get the bucket */
-	bucket_pos = (unsigned int)hash & dtd->bucket_count_mask;
-	assert((int)bucket_pos >= 0);
-
-	/* if the bucket is not used bail early */
-	if (!fy_id_is_used(dtd->buckets_in_use, dtd->bucket_id_count, (int)bucket_pos))
-		goto err_out;
-
-	del = dtd->buckets + bucket_pos;
-	assert(bucket_pos < dtd->bucket_count);
-
-	for (de = fy_dedup_entry_list_head(del); de; de = fy_dedup_entry_next(del, de)) {
-		/* we don't have to check the hash, really, we have a pointer */
-		if (de->mem == data)
-			break;
-	}
-
-	/* no such entry found */
-	if (!de)
-		goto err_out;
-
-	/* take reference */
-	assert(de->refs > 0);
-	de->refs--;
-	if (de->refs > 0)
-		goto ok_out;
-
-	/* remove from the bucket */
-	fy_dedup_entry_list_del(del, de);
-
-	/* turn off the in use bit if last */
-	if (fy_dedup_entry_list_empty(del))
-		fy_id_set_free(dtd->buckets_in_use, dtd->bucket_id_count, (int)bucket_pos);
-
-	/* XXX find whether this was the last in bloom filter cluster
-	 * XXX and turn off the bloom filter bit
-	 */
-
-	/* we need to update the bloom filter */
-	dt->bloom_filter_needs_update = true;
-
-	bloom_pos = (unsigned int)de->hash & dtd->bloom_filter_mask;
-	assert((int)bloom_pos >= 0);
-	fy_id_set_used(dtd->bloom_update_id, dtd->bloom_id_count, (int)bloom_pos);
-
-	/* and free content and entry */
-	fy_allocator_free(da->parent_allocator, dt->content_tag, de->mem);
-	fy_allocator_free(da->parent_allocator, dt->entries_tag, de);
-
-ok_out:
-	dt->stats.releases++;
-	dt->stats.released += size;
-
-err_out:
-	return;
-}
-
 static void fy_dedup_release(struct fy_allocator *a, int tag, const void *data, size_t size)
 {
-	/* XXX we don't support release yet - it's not thread safe */
-	(void)fy_dedup_release_actual;
-
+	/* XXX we don't support release it's not worth it */
 	/* we do nothing */
 }
 
@@ -1329,13 +953,17 @@ static enum fy_allocator_cap_flags
 fy_dedup_get_caps(struct fy_allocator *a)
 {
 	struct fy_dedup_allocator *da;
+	enum fy_allocator_cap_flags flags;
 
 	if (!a)
 		return 0;
 
 	da = container_of(a, struct fy_dedup_allocator, a);
 
-	return fy_allocator_get_caps(da->parent_allocator) | FYACF_CAN_DEDUP;
+	flags = fy_allocator_get_caps(da->parent_allocator) | FYACF_CAN_DEDUP;
+	flags &= ~FYACF_CAN_FREE_INDIVIDUAL;
+
+	return flags;
 }
 
 static bool fy_dedup_contains(struct fy_allocator *a, int tag, const void *ptr)
