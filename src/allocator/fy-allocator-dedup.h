@@ -30,7 +30,21 @@ struct fy_dedup_entry {
 };
 FY_TYPE_DECL_LIST(dedup_entry);
 
+struct fy_dedup_tag;
+
+struct fy_dedup_tag_data_cfg {
+	struct fy_dedup_allocator *da;
+	struct fy_dedup_tag *dt;
+	unsigned int bloom_filter_bits;
+	unsigned int bucket_count_bits;
+	size_t dedup_threshold;
+	unsigned int chain_length_grow_trigger;
+};
+
+FY_TYPE_FWD_DECL_LIST(dedup_tag_data);
 struct fy_dedup_tag_data {
+	struct list_head node;
+	struct fy_dedup_tag_data_cfg cfg;
 	unsigned int bloom_filter_bits;
 	unsigned int bloom_filter_mask;
 	size_t bloom_id_count;
@@ -40,13 +54,13 @@ struct fy_dedup_tag_data {
 	unsigned int bucket_count_mask;
 	size_t bucket_count;
 	struct fy_dedup_entry_list *buckets;
-	struct fy_dedup_entry_list *buckets_end;
 	size_t bucket_id_count;
 	fy_id_bits *buckets_in_use;
 	fy_id_bits *buckets_collision;
 	size_t dedup_threshold;
 	unsigned int chain_length_grow_trigger;
 };
+FY_TYPE_DECL_LIST(dedup_tag_data);
 
 struct fy_dedup_tag {
 	bool bloom_filter_needs_update;
@@ -55,6 +69,7 @@ struct fy_dedup_tag {
 	struct fy_allocator_stats stats;
 	unsigned int data_active;	/* toggle to switch active and in progress */
 	struct fy_dedup_tag_data data[2];
+	struct fy_dedup_tag_data_list tag_datas;
 };
 
 struct fy_dedup_allocator {
