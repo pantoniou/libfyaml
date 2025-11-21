@@ -296,54 +296,27 @@ err_out:
 	return -1;
 }
 
-static int fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt, int bloom_filter_adjust_bits, int bucket_adjust_bits)
+static void fy_dedup_tag_data_move(struct fy_dedup_tag_data *dtd, struct fy_dedup_tag_data *new_dtd)
 {
-	struct fy_dedup_tag_data *dtd, *new_dtd;
-	unsigned int bit_shift, new_bucket_count_bits, new_bloom_filter_bits;
 	unsigned int bloom_pos, bucket_pos;
 	struct fy_dedup_entry *de;
 	struct fy_dedup_entry_list *del, *new_del;
 	struct fy_id_iter iter;
-	int rc, id;
-
+	int id;
 #ifdef DEBUG_GROWS
 	int64_t ns;
 	struct timespec before, after;
-	BEFORE();
+	const char *ban[2] = { "old", "new" };
+	struct fy_dedup_tag_data *arr[2] = { dtd, new_dtd };
+	struct fy_dedup_tag_data *d;
+	size_t bloom_count, bloom_used;
+	size_t bucket_count, bucket_used, bucket_collision;
+	unsigned int i;
 #endif
 
-	bit_shift = (unsigned int)fy_id_ffs(FY_ID_BITS_BITS);
-
-	assert(da);
-	assert(dt);
-	dtd = &dt->data[dt->data_active];
-	new_dtd = &dt->data[!dt->data_active];
-
-	new_bucket_count_bits = (unsigned int)((int)dtd->bucket_count_bits + bucket_adjust_bits);
-	if (new_bucket_count_bits > (sizeof(int) * 8 - 1))
-		new_bucket_count_bits = (sizeof(int) * 8) - 1;
-	else if (new_bucket_count_bits < bit_shift)
-		new_bucket_count_bits = bit_shift;
-
-	new_bloom_filter_bits = (unsigned int)((int)dtd->bloom_filter_bits + bloom_filter_adjust_bits);
-	if (new_bloom_filter_bits > (sizeof(int) * 8 - 1))
-		new_bloom_filter_bits = (sizeof(int) * 8) - 1;
-	else if (new_bloom_filter_bits < new_bucket_count_bits)
-		new_bloom_filter_bits = new_bucket_count_bits;
-
-	/* setup the new data */
-	rc = fy_dedup_tag_data_setup(new_dtd,
-			&(struct fy_dedup_tag_data_cfg) {
-				.da = da,
-				.dt = dt,
-				.bloom_filter_bits = new_bloom_filter_bits,
-				.bucket_count_bits = new_bucket_count_bits,
-				.dedup_threshold = da->dedup_threshold,
-				.chain_length_grow_trigger = da->chain_length_grow_trigger
-			});
-	if (rc)
-		goto err_out;
-
+#ifdef DEBUG_GROWS
+	BEFORE();
+#endif
 	fy_id_iter_begin(dtd->buckets_in_use, dtd->bucket_id_count, &iter);
 	while ((id = fy_id_iter_next(dtd->buckets_in_use, dtd->bucket_id_count, &iter)) >= 0) {
 
@@ -374,35 +347,82 @@ static int fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_ta
 	fy_id_iter_end(dtd->buckets_in_use, dtd->bucket_id_count, &iter);
 
 #ifdef DEBUG_GROWS
-
 	ns = AFTER();
 	fprintf(stderr, "%s: operation took place in %"PRId64"ns\n", __func__, ns);
 
-	{
-		const char *ban[2] = { "old", "new" };
-		struct fy_dedup_tag_data *arr[2] = { dtd, new_dtd };
-		struct fy_dedup_tag_data *d;
-		size_t bloom_count, bloom_used;
-		size_t bucket_count, bucket_used, bucket_collision;
-		unsigned int i;
-
-		for (i = 0; i < 2; i++) {
-			d = arr[i];
-			bloom_count = 1U << d->bloom_filter_bits;
-			bloom_used = fy_id_count_used(d->bloom_id, d->bloom_id_count);
-			bucket_count = 1U << d->bucket_count_bits;
-			bucket_used = fy_id_count_used(d->buckets_in_use, d->bucket_id_count);
-			bucket_collision = fy_id_count_used(d->buckets_collision, d->bucket_id_count);
+	for (i = 0; i < 2; i++) {
+		d = arr[i];
+		bloom_count = 1U << d->bloom_filter_bits;
+		bloom_used = fy_id_count_used(d->bloom_id, d->bloom_id_count);
+		bucket_count = 1U << d->bucket_count_bits;
+		bucket_used = fy_id_count_used(d->buckets_in_use, d->bucket_id_count);
+		bucket_collision = fy_id_count_used(d->buckets_collision, d->bucket_id_count);
 
 
-			fprintf(stderr, "%s:  bloom %zu used %zu (%2.2f%%) ", ban[i], bloom_count,
-					bloom_used, 100.0*(double)bloom_used/(double)bloom_count);
-			fprintf(stderr, "bucket %zu used %zu (%2.2f%%) coll %zu (%2.2f%%)\n", bucket_count,
-					bucket_used, 100.0*(double)bucket_used/(double)bucket_count,
-					bucket_collision, 100.0*(double)bucket_collision/(double)bucket_count);
-		}
+		fprintf(stderr, "%s:  bloom %zu used %zu (%2.2f%%) ", ban[i], bloom_count,
+				bloom_used, 100.0*(double)bloom_used/(double)bloom_count);
+		fprintf(stderr, "bucket %zu used %zu (%2.2f%%) coll %zu (%2.2f%%)\n", bucket_count,
+				bucket_used, 100.0*(double)bucket_used/(double)bucket_count,
+				bucket_collision, 100.0*(double)bucket_collision/(double)bucket_count);
 	}
 #endif
+}
+
+static int
+fy_dedup_tag_prepare_new(struct fy_dedup_tag_data *dtd, struct fy_dedup_tag_data *new_dtd,
+			 int bloom_filter_adjust_bits, int bucket_adjust_bits)
+{
+	unsigned int bit_shift, new_bucket_count_bits, new_bloom_filter_bits;
+	int rc;
+
+	bit_shift = (unsigned int)fy_id_ffs(FY_ID_BITS_BITS);
+
+	new_bucket_count_bits = (unsigned int)((int)dtd->bucket_count_bits + bucket_adjust_bits);
+	if (new_bucket_count_bits > (sizeof(int) * 8 - 1))
+		new_bucket_count_bits = (sizeof(int) * 8) - 1;
+	else if (new_bucket_count_bits < bit_shift)
+		new_bucket_count_bits = bit_shift;
+
+	new_bloom_filter_bits = (unsigned int)((int)dtd->bloom_filter_bits + bloom_filter_adjust_bits);
+	if (new_bloom_filter_bits > (sizeof(int) * 8 - 1))
+		new_bloom_filter_bits = (sizeof(int) * 8) - 1;
+	else if (new_bloom_filter_bits < new_bucket_count_bits)
+		new_bloom_filter_bits = new_bucket_count_bits;
+
+	/* setup the new data */
+	rc = fy_dedup_tag_data_setup(new_dtd,
+			&(struct fy_dedup_tag_data_cfg) {
+				.da = dtd->cfg.da,
+				.dt = dtd->cfg.dt,
+				.bloom_filter_bits = new_bloom_filter_bits,
+				.bucket_count_bits = new_bucket_count_bits,
+				.dedup_threshold = dtd->cfg.da->dedup_threshold,
+				.chain_length_grow_trigger = dtd->cfg.da->chain_length_grow_trigger
+			});
+	return rc;
+}
+
+
+static int
+fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
+		    int bloom_filter_adjust_bits, int bucket_adjust_bits)
+{
+	struct fy_dedup_tag_data *dtd, *new_dtd;
+	int rc;
+
+	assert(da);
+	assert(dt);
+
+	dtd = &dt->data[dt->data_active];
+	new_dtd = &dt->data[!dt->data_active];
+
+	/* prepare the new one */
+	rc = fy_dedup_tag_prepare_new(dtd, new_dtd, bloom_filter_adjust_bits, bucket_adjust_bits);
+	if (rc)
+		return rc;
+
+	/* move over the data */
+	fy_dedup_tag_data_move(dtd, new_dtd);
 
 	/* cleanup the old data */
 	fy_dedup_tag_data_cleanup(dtd);
@@ -411,9 +431,6 @@ static int fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_ta
 	dt->data_active = !dt->data_active;
 
 	return 0;
-
-err_out:
-	return -1;
 }
 
 static void fy_dedup_tag_trim(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt)
