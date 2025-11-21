@@ -25,7 +25,7 @@
 
 #include "fy-allocator-dedup.h"
 
-// #define DEBUG_GROWS
+#define DEBUG_GROWS
 
 #undef BEFORE
 #define BEFORE() \
@@ -192,9 +192,6 @@ static void fy_dedup_tag_cleanup(struct fy_dedup_allocator *da, struct fy_dedup_
 		fy_dedup_tag_data_destroy(dtd);
 	}
 
-	dtd = &dt->data[dt->data_active];
-	fy_dedup_tag_data_cleanup(dtd);
-
 	/* we just release the tags, the underlying allocator should free everything */
 	if (dt->content_tag != FY_ALLOC_TAG_NONE)
 		fy_allocator_release_tag(da->parent_allocator, dt->content_tag);
@@ -262,24 +259,6 @@ static int fy_dedup_tag_setup(struct fy_dedup_allocator *da, struct fy_dedup_tag
 
 	fy_dedup_tag_data_list_init(&dt->tag_datas);
 
-#if 1
-	dt->data_active = 0;
-	dtd = &dt->data[dt->data_active];
-
-	int rc;
-	rc = fy_dedup_tag_data_setup(dtd,
-			&(struct fy_dedup_tag_data_cfg) {
-				.da = da,
-				.dt = dt,
-				.bloom_filter_bits = da->bloom_filter_bits,
-				.bucket_count_bits = da->bucket_count_bits,
-				.dedup_threshold = da->dedup_threshold,
-				.chain_length_grow_trigger = da->chain_length_grow_trigger
-			});
-	if (rc)
-		goto err_out;
-
-#else
 	dtd = fy_dedup_tag_data_create(
 			&(struct fy_dedup_tag_data_cfg) {
 				.da = da,
@@ -293,7 +272,6 @@ static int fy_dedup_tag_setup(struct fy_dedup_allocator *da, struct fy_dedup_tag
 		goto err_out;
 
 	fy_dedup_tag_data_list_add(&dt->tag_datas, dtd);
-#endif
 
 	return 0;
 
@@ -413,28 +391,70 @@ static int
 fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 		    int bloom_filter_adjust_bits, int bucket_adjust_bits)
 {
+	size_t bucket_count, bucket_used;
 	struct fy_dedup_tag_data *dtd, *new_dtd;
+	float occupancy_ratio;
 	int rc;
 
 	assert(da);
 	assert(dt);
 
-	dtd = &dt->data[dt->data_active];
-	new_dtd = &dt->data[!dt->data_active];
+	dtd = fy_dedup_tag_data_list_head(&dt->tag_datas);
+	if (!dtd)
+		return -1;
+
+	bucket_count = 1U << dtd->bucket_count_bits;
+	bucket_used = fy_id_count_used(dtd->buckets_in_use, dtd->bucket_id_count);
+	occupancy_ratio = (double)bucket_used/(double)bucket_count;
+
+	/* do not grow until we're over 60% full */
+	if (occupancy_ratio < da->cfg.minimum_bucket_occupancy) {
+#ifdef DEBUG_GROWS
+		fprintf(stderr, "grow: abort due to less that %f%% full (is %f)\n",
+				100 * da->cfg.minimum_bucket_occupancy,
+				100 * occupancy_ratio);
+#endif
+		return 0;
+	}
+
+	new_dtd = fy_parent_allocator_alloc(&da->a, sizeof(*new_dtd), _Alignof(struct fy_dedup_tag_data));
+	if (!new_dtd)
+		return -1;
 
 	/* prepare the new one */
 	rc = fy_dedup_tag_prepare_new(dtd, new_dtd, bloom_filter_adjust_bits, bucket_adjust_bits);
-	if (rc)
+	if (rc) {
+		fy_parent_allocator_free(&da->a, new_dtd);
 		return rc;
+	}
 
-	/* move over the data */
-	fy_dedup_tag_data_move(dtd, new_dtd);
+#ifdef DEBUG_GROWS
+	{
+		size_t bloom_count, new_bloom_count, bloom_used;
+		size_t bucket_count, new_bucket_count, bucket_used, bucket_collision;
 
-	/* cleanup the old data */
-	fy_dedup_tag_data_cleanup(dtd);
+		bloom_count = 1U << dtd->bloom_filter_bits;
+		new_bloom_count = 1U << new_dtd->bloom_filter_bits;
+		bloom_used = fy_id_count_used(dtd->bloom_id, dtd->bloom_id_count);
+		bucket_count = 1U << dtd->bucket_count_bits;
+		new_bucket_count = 1U << new_dtd->bucket_count_bits;
+		bucket_used = fy_id_count_used(dtd->buckets_in_use, dtd->bucket_id_count);
+		bucket_collision = fy_id_count_used(dtd->buckets_collision, dtd->bucket_id_count);
 
-	/* switch to the new one */
-	dt->data_active = !dt->data_active;
+		fprintf(stderr, "grow: chain_length_grow_trigger=%u->%u bloom %zu->%zu used %zu (%2.2f%%) ",
+				dtd->chain_length_grow_trigger, new_dtd->chain_length_grow_trigger, 
+				bloom_count, new_bloom_count,
+				bloom_used, 100.0*(double)bloom_used/(double)bloom_count);
+		fprintf(stderr, "bucket %zu->%zu used %zu (%2.2f%%) coll %zu (%2.2f%%)\n", bucket_count, new_bucket_count,
+				bucket_used, 100.0*(double)bucket_used/(double)bucket_count,
+				bucket_collision, 100.0*(double)bucket_collision/(double)bucket_count);
+	}
+#endif
+
+	/* add to the head */
+	fy_dedup_tag_data_list_add(&dt->tag_datas, new_dtd);
+	dtd = fy_dedup_tag_data_list_head(&dt->tag_datas);
+	assert(dtd == new_dtd);
 
 	return 0;
 }
@@ -445,9 +465,6 @@ static void fy_dedup_tag_trim(struct fy_dedup_allocator *da, struct fy_dedup_tag
 		return;
 
 	/* just pass them trim down to the parent */
-#if 0
-	fy_allocator_trim_tag(da->parent_allocator, dt->entries_tag);
-#endif
 	fy_allocator_trim_tag(da->parent_allocator, dt->content_tag);
 }
 
@@ -459,17 +476,21 @@ static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_ta
 		return;
 
 	/* just pass them reset down to the parent */
-#if 0
-	fy_allocator_reset_tag(da->parent_allocator, dt->entries_tag);
-#endif
 	fy_allocator_reset_tag(da->parent_allocator, dt->content_tag);
 
-	dtd = &dt->data[dt->data_active];
+	/* pop the head which we will keep */
+	dtd = fy_dedup_tag_data_list_pop(&dt->tag_datas);
+	while ((dtd = fy_dedup_tag_data_list_pop(&dt->tag_datas)) != NULL)
+		fy_dedup_tag_data_destroy(dtd);
 
-	fy_id_reset(dtd->bloom_id, dtd->bloom_id_count);
-	fy_id_reset(dtd->bloom_update_id, dtd->bloom_id_count);
-	fy_id_reset(dtd->buckets_in_use, dtd->bucket_id_count);
-	fy_id_reset(dtd->buckets_collision, dtd->bucket_id_count);
+	if (dtd) {
+		fy_id_reset(dtd->bloom_id, dtd->bloom_id_count);
+		fy_id_reset(dtd->bloom_update_id, dtd->bloom_id_count);
+		fy_id_reset(dtd->buckets_in_use, dtd->bucket_id_count);
+		fy_id_reset(dtd->buckets_collision, dtd->bucket_id_count);
+		fy_dedup_tag_data_list_add(&dt->tag_datas, dtd);
+	}
+
 }
 
 static int fy_dedup_tag_update_stats(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt, struct fy_allocator_stats *stats)
@@ -480,9 +501,6 @@ static int fy_dedup_tag_update_stats(struct fy_dedup_allocator *da, struct fy_de
 		return -1;
 
 	/* collect the underlying stats */
-#if 0
-	fy_allocator_update_stats(da->parent_allocator, dt->entries_tag, stats);
-#endif
 	fy_allocator_update_stats(da->parent_allocator, dt->content_tag, stats);
 
 	/* and update with these ones */
@@ -598,11 +616,6 @@ static void fy_dedup_cleanup(struct fy_allocator *a)
 			fy_id_free(da->ids, ARRAY_SIZE(da->ids), i);
 		}
 	}
-
-#if 0
-	if (da->entries_tag != FY_ALLOC_TAG_NONE)
-		fy_allocator_release_tag(da->parent_allocator, dt->entries_tag);
-#endif
 }
 
 struct fy_allocator *fy_dedup_create(struct fy_allocator *parent, int parent_tag, const void *cfg)
@@ -735,7 +748,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	XXH64_state_t xxstate;
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
-	struct fy_dedup_tag_data *dtd;
+	struct fy_dedup_tag_data *dtd, *dtd_best;
 	struct fy_dedup_entry *de;
 	uint64_t hash;
 	int bloom_pos, bucket_pos;
@@ -744,6 +757,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	unsigned int chain_length;
 	void *mem = NULL;
 	size_t total_size, de_offset, max_align;
+	bool at_head;
 	int i;
 
 	if (!a || !iov)
@@ -760,14 +774,14 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	if (total_size == SIZE_MAX)
 		return NULL;
 
-#if 0
+#if 1
 	/* if it's under the dedup threshold just allocate and copy */
-	if (total_size < dtd->dedup_threshold) {
+	if (total_size < da->cfg.dedup_threshold) {
 
 		/* just pass to the parent allocator using the content tag */
 		void *p = fy_allocator_alloc(da->parent_allocator, dt->content_tag, total_size, align);
 		if (!p)
-			goto err_out;
+			return NULL;
 
 		fy_iovec_copy_from(iov, iovcnt, p);
 		return p;
@@ -783,10 +797,10 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	chain_length = 0;
 
 	/* XXX */
-	dtd = &dt->data[dt->data_active];
-	for (; dtd; dtd = NULL) {
-		assert(dtd->bloom_filter_mask);
-		assert(dtd->bucket_count_mask);
+	at_head = true;
+	dtd_best = NULL;
+	for (dtd = fy_dedup_tag_data_list_head(&dt->tag_datas); dtd;
+		     dtd = fy_dedup_tag_data_next(&dt->tag_datas, dtd)) {
 
 		/* first check in the bloom filter */
 		bloom_pos = (int)(hash & (uint64_t)dtd->bloom_filter_mask);
@@ -794,7 +808,6 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 
 		bloom_hit = fy_id_is_used(dtd->bloom_id, dtd->bloom_id_count, bloom_pos);
 		if (bloom_hit) {
-			chain_length = 0;
 			del = &dtd->buckets[bucket_pos];
 			for (de = fy_dedup_entry_list_head(del); de; de = fy_dedup_entry_next(del, de)) {
 
@@ -815,13 +828,21 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 					fy_id_set_used(dtd->buckets_collision, dtd->bucket_id_count, bucket_pos);
 				}
 
-				chain_length++;
+				if (at_head)
+					chain_length++;
 			}
+		} else {
+			if (!dtd_best)
+				dtd_best = dtd;	/* keep whenever we had a empty bloom slot */
 		}
+		at_head = false;
 	}
 
-	/* XXX */
-	dtd = &dt->data[dt->data_active];
+	/* use the one that had space, otherwise the top */
+	if (dtd_best)
+		dtd = dtd_best;
+	else
+		dtd = fy_dedup_tag_data_list_head(&dt->tag_datas);
 
 	bloom_pos = (int)((unsigned int)hash & dtd->bloom_filter_mask);
 	bucket_pos = (int)((unsigned int)hash & dtd->bucket_count_mask);

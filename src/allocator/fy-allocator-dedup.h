@@ -62,15 +62,8 @@ struct fy_dedup_tag_data {
 FY_TYPE_DECL_LIST(dedup_tag_data);
 
 struct fy_dedup_tag {
-#if 0
-	int entries_tag;
-#endif
 	int content_tag;
 	struct fy_allocator_stats stats;
-#if 1
-	unsigned int data_active;	/* toggle to switch active and in progress */
-	struct fy_dedup_tag_data data[2];
-#endif
 	struct fy_dedup_tag_data_list tag_datas;
 };
 

@@ -5008,6 +5008,7 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator,
 		dcfg.parent_allocator = pa;
 		dcfg.bloom_filter_bits = 0;	/* use default */
 		dcfg.bucket_count_bits = 0;
+		dcfg.minimum_bucket_occupancy = 0.5;
 
 		gsetupdata = &dcfg;
 
@@ -5024,6 +5025,7 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator,
 		dcfg.bloom_filter_bits = 0;	/* use default */
 		dcfg.bucket_count_bits = 0;
 		dcfg.estimated_content_size = estimated_size;
+		dcfg.minimum_bucket_occupancy = 0.5;
 
 		gsetupdata = &dcfg;
 
@@ -5051,6 +5053,7 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator,
 		dcfg.bloom_filter_bits = 0;	/* use default */
 		dcfg.bucket_count_bits = 0;
 		dcfg.estimated_content_size = estimated_size;
+		dcfg.minimum_bucket_occupancy = 0.5;
 
 		gsetupdata = &dcfg;
 
