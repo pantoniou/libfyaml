@@ -16,18 +16,17 @@
 #include "fy-id.h"
 #include "xxhash.h"
 
+#include "fy-atomics.h"
 #include "fy-allocator.h"
 
 #define FY_DEDUP_TAG_MAX	128
 
-FY_TYPE_FWD_DECL_LIST(dedup_entry);
 struct fy_dedup_entry {
-	struct list_head node;
+	struct fy_dedup_entry *next;
 	uint64_t hash;
 	size_t size;
 	void *mem;
 };
-FY_TYPE_DECL_LIST(dedup_entry);
 
 struct fy_dedup_tag;
 
@@ -52,7 +51,7 @@ struct fy_dedup_tag_data {
 	unsigned int bucket_count_bits;
 	unsigned int bucket_count_mask;
 	size_t bucket_count;
-	struct fy_dedup_entry_list *buckets;
+	FY_ATOMIC(struct fy_dedup_entry *) *buckets;
 	size_t bucket_id_count;
 	fy_id_bits *buckets_in_use;
 	size_t dedup_threshold;
