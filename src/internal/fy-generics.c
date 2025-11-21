@@ -606,6 +606,7 @@ struct fy_allocator *create_allocator(const struct generic_options *opt, const c
 		dedup_cfg.bucket_count_bits = 0;
 		dedup_cfg.estimated_content_size = alloc_size ? alloc_size : (16 << 20);
 		dedup_cfg.parent_allocator = create_allocator(opt, parent_name, NULL, alloc_size, NULL);
+		dedup_cfg.minimum_bucket_occupancy = 0.5;
 		if (dedup_cfg.parent_allocator) {
 			dedup_cfg.estimated_content_size = alloc_size ? alloc_size : (16 << 20);
 			allocator = fy_allocator_create("dedup", &dedup_cfg);

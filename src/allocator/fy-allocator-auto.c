@@ -163,6 +163,7 @@ static int fy_auto_setup(struct fy_allocator *a, struct fy_allocator *parent, in
 		dcfg.dedup_threshold = AUTO_ALLOCATOR_DEFAULT_DEDUP_THRESHOLD;
 		dcfg.chain_length_grow_trigger = AUTO_ALLOCATOR_DEFAULT_CHAIN_LENGTH_GROW_TRIGGER;
 		dcfg.estimated_content_size = size;
+		dcfg.minimum_bucket_occupancy = 0.5;
 
 		da = fy_allocator_create("dedup", &dcfg);
 		if (!da)
