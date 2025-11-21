@@ -172,7 +172,11 @@ static void fy_dedup_tag_cleanup(struct fy_dedup_allocator *da, struct fy_dedup_
 	if (!da || !dt)
 		return;
 
-	while ((dtd = fy_dedup_tag_data_list_pop(&dt->tag_datas)) != NULL) {
+	while ((dtd = fy_atomic_load(&dt->tag_datas)) != NULL) {
+
+		/* only do it if you are the winner */
+		if (!fy_atomic_compare_exchange_strong(&dt->tag_datas, &dtd, dtd->next))
+			continue;
 
 #ifdef DEBUG_GROWS
 		fprintf(stderr, "%s: dump of state at close\n", __func__);
@@ -237,13 +241,14 @@ static int fy_dedup_tag_setup(struct fy_dedup_allocator *da, struct fy_dedup_tag
 
 	memset(dt, 0, sizeof(*dt));
 
+	fy_atomic_flag_clear(&dt->growing);
 	dt->content_tag = FY_ALLOC_TAG_NONE;
 
 	dt->content_tag = fy_allocator_get_tag(da->parent_allocator);
 	if (dt->content_tag == FY_ALLOC_TAG_ERROR)
 		goto err_out;
 
-	fy_dedup_tag_data_list_init(&dt->tag_datas);
+	fy_atomic_store(&dt->tag_datas, NULL);
 
 	dtd = fy_dedup_tag_data_create(
 			&(struct fy_dedup_tag_data_cfg) {
@@ -257,7 +262,8 @@ static int fy_dedup_tag_setup(struct fy_dedup_allocator *da, struct fy_dedup_tag
 	if (!dtd)
 		goto err_out;
 
-	fy_dedup_tag_data_list_add(&dt->tag_datas, dtd);
+	/* start with this one */
+	fy_atomic_store(&dt->tag_datas, dtd);
 
 	return 0;
 
@@ -306,16 +312,25 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 		    int bloom_filter_adjust_bits, int bucket_adjust_bits)
 {
 	size_t bucket_count, bucket_used;
-	struct fy_dedup_tag_data *dtd, *new_dtd;
+	struct fy_dedup_tag_data *dtd, *new_dtd = NULL;
 	float occupancy_ratio;
 	int rc;
+
+	rc = -1;
 
 	assert(da);
 	assert(dt);
 
-	dtd = fy_dedup_tag_data_list_head(&dt->tag_datas);
+	dtd = fy_atomic_load(&dt->tag_datas);
 	if (!dtd)
 		return -1;
+
+	if (!fy_atomic_flag_test_and_set(&dt->growing)) {
+#ifdef DEBUG_GROWS
+		fprintf(stderr, "grow: abort due another grow in progress\n");
+#endif
+		return -1;
+	}
 
 	bucket_count = 1U << dtd->bucket_count_bits;
 	bucket_used = fy_id_count_used(dtd->buckets_in_use, dtd->bucket_id_count);
@@ -328,19 +343,17 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 				100 * da->cfg.minimum_bucket_occupancy,
 				100 * occupancy_ratio);
 #endif
-		return 0;
+		goto out_ok;
 	}
 
 	new_dtd = fy_parent_allocator_alloc(&da->a, sizeof(*new_dtd), _Alignof(struct fy_dedup_tag_data));
 	if (!new_dtd)
-		return -1;
+		goto err_out;
 
 	/* prepare the new one */
 	rc = fy_dedup_tag_prepare_new(dtd, new_dtd, bloom_filter_adjust_bits, bucket_adjust_bits);
-	if (rc) {
-		fy_parent_allocator_free(&da->a, new_dtd);
-		return rc;
-	}
+	if (rc)
+		goto err_out;
 
 #ifdef DEBUG_GROWS
 	{
@@ -363,12 +376,26 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 	}
 #endif
 
-	/* add to the head */
-	fy_dedup_tag_data_list_add(&dt->tag_datas, new_dtd);
-	dtd = fy_dedup_tag_data_list_head(&dt->tag_datas);
-	assert(dtd == new_dtd);
+	/* try to add it, if the head changed, then drop our stuff and pretend nothing happened */
+	new_dtd->next = dtd;
+	if (!fy_atomic_compare_exchange_strong(&dt->tag_datas, &dtd, new_dtd)) {
+#ifdef DEBUG_GROWS
+		fprintf(stderr, "grow: Update cancelled, someone beat us to it\n");
+#endif
+		fy_dedup_tag_data_cleanup(new_dtd);
+		fy_parent_allocator_free(&da->a, new_dtd);
+	}
 
-	return 0;
+out_ok:
+	rc = 0;
+out:
+	fy_atomic_flag_clear(&dt->growing);
+	return rc;
+
+err_out:
+	fy_parent_allocator_free(&da->a, new_dtd);
+	rc = -1;
+	goto out;
 }
 
 static void fy_dedup_tag_trim(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt)
@@ -382,7 +409,7 @@ static void fy_dedup_tag_trim(struct fy_dedup_allocator *da, struct fy_dedup_tag
 
 static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt)
 {
-	struct fy_dedup_tag_data *dtd;
+	struct fy_dedup_tag_data *dtd, *dtd_head;
 
 	if (!da || !dt)
 		return;
@@ -391,16 +418,26 @@ static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_ta
 	fy_allocator_reset_tag(da->parent_allocator, dt->content_tag);
 
 	/* pop the head which we will keep */
-	dtd = fy_dedup_tag_data_list_pop(&dt->tag_datas);
-	while ((dtd = fy_dedup_tag_data_list_pop(&dt->tag_datas)) != NULL)
-		fy_dedup_tag_data_destroy(dtd);
 
-	if (dtd) {
-		fy_id_reset(dtd->bloom_id, dtd->bloom_id_count);
-		fy_id_reset(dtd->buckets_in_use, dtd->bucket_id_count);
-		fy_dedup_tag_data_list_add(&dt->tag_datas, dtd);
+	dtd_head = NULL;
+	while ((dtd = fy_atomic_load(&dt->tag_datas)) != NULL) {
+		if (!fy_atomic_compare_exchange_strong(&dt->tag_datas, &dtd, dtd->next))
+			continue;
+
+		dtd->next = NULL;
+
+		/* keep the head as is */
+		if (!dtd_head) {
+			fy_dedup_tag_data_cleanup(dtd);
+			dtd_head = dtd;
+		} else
+			fy_dedup_tag_data_destroy(dtd);
 	}
 
+	if (dtd_head) {
+		dtd_head->next = NULL;
+		fy_atomic_store(&dt->tag_datas, dtd_head);
+	}
 }
 
 static int fy_dedup_tag_update_stats(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt, struct fy_allocator_stats *stats)
@@ -706,8 +743,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	/* XXX */
 	at_head = true;
 	dtd_best = NULL;
-	for (dtd = fy_dedup_tag_data_list_head(&dt->tag_datas); dtd;
-		     dtd = fy_dedup_tag_data_next(&dt->tag_datas, dtd)) {
+	for (dtd = fy_atomic_load(&dt->tag_datas); dtd; dtd = dtd->next) {
 
 		/* first check in the bloom filter */
 		bloom_pos = (int)(hash & (uint64_t)dtd->bloom_filter_mask);
@@ -748,7 +784,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	if (dtd_best)
 		dtd = dtd_best;
 	else
-		dtd = fy_dedup_tag_data_list_head(&dt->tag_datas);
+		dtd = fy_atomic_load(&dt->tag_datas);
 
 	/* recalc positions for the delected dtd */
 	bloom_pos = (int)(hash & (uint64_t)dtd->bloom_filter_mask);
