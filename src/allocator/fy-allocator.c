@@ -619,9 +619,12 @@ fy_allocator_contains(struct fy_allocator *a, int tag, const void *ptr)
 	return a->ops->contains(a, tag, ptr);
 }
 
-/* respects the parent allocator (or uses aligned_alloc if NULL) */
+/* respects the parent allocator (or uses posix_memalign if NULL) */
 void *fy_early_parent_allocator_alloc(struct fy_allocator *parent, int parent_tag, size_t size, size_t align)
 {
+	void *ptr;
+	int r;
+
 	/* yeah, not gonna work */
 	if (parent == FY_PARENT_ALLOCATOR_INPLACE)
 		return NULL;
@@ -632,7 +635,11 @@ void *fy_early_parent_allocator_alloc(struct fy_allocator *parent, int parent_ta
 	if (parent)
 		return fy_allocator_alloc(parent, parent_tag, size, align);
 
-	return aligned_alloc(align, size);
+	r = posix_memalign(&ptr, align, size);
+	if (r)
+		return NULL;
+
+	return ptr;
 }
 
 void fy_early_parent_allocator_free(struct fy_allocator *parent, int parent_tag, void *ptr)
@@ -646,49 +653,19 @@ void fy_early_parent_allocator_free(struct fy_allocator *parent, int parent_tag,
 		free(ptr);
 }
 
-/* respects the parent allocator (or uses aligned_alloc if NULL) */
+/* respects the parent allocator (or uses posix_memalign if NULL) */
 void *fy_parent_allocator_alloc(struct fy_allocator *a, size_t size, size_t align)
 {
-	struct fy_allocator *parent;
-
 	if (!a)
 		return NULL;
 
-	if (!align)
-		align = _Alignof(max_align_t);
-
-	/* use the parent allocator if available */
-	parent = fy_allocator_get_parent(a);
-	if (parent)
-		return fy_allocator_alloc(parent, a->parent_tag, size, align);
-
-	/* if no parent allocator, use malloc */
-	if (!a->parent)
-		return aligned_alloc(align, size);
-
-	/* requested in place, we can't do that */
-	return NULL;
+	return fy_early_parent_allocator_alloc(a->parent, a->parent_tag, size, align);
 }
 
 void fy_parent_allocator_free(struct fy_allocator *a, void *ptr)
 {
-	struct fy_allocator *parent;
-
 	if (!a || !ptr)
 		return;
 
-	/* allocator provided free (may not do anything) */
-	parent = fy_allocator_get_parent(a);
-	if (parent) {
-		fy_allocator_free(a->parent, a->parent_tag, ptr);
-		return;
-	}
-
-	/* default malloc */
-	if (!a->parent) {
-		free(ptr);
-		return;
-	}
-
-	/* err, in place? */
+	return fy_early_parent_allocator_free(a->parent, a->parent_tag, ptr);
 }

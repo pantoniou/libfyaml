@@ -52,6 +52,8 @@
 
 #undef FY_HAVE_SAFE_ATOMIC_OPS
 
+typedef bool atomic_flag;
+
 #define atomic_load(_ptr) \
 	(*(_ptr))
 
@@ -119,10 +121,34 @@
 		__old; \
 	})
 
+#define atomic_flag_clear(_ptr) \
+	do { \
+		*(_ptr) = false; \
+	} while(0)
+
+#define atomic_flag_set(_ptr) \
+	do { \
+		*(_ptr) = true; \
+	} while(0)
+
+
+#define atomic_flag_test_and_set(_ptr) \
+	({ \
+		volatile atomic_flag *__ptr = (_ptr); \
+	 	if (!*__ptr) { \
+			*__ptr = true; \
+			__ret = true; \
+		} else \
+			__ret = false; \
+	 	__ret; \
+	}
+
 #endif
 
 /* OK, now define FY version */
 #define FY_ATOMIC(_x) _Atomic(_x)
+#define fy_atomic_flag atomic_flag
+
 #define fy_atomic_load(_ptr) \
 	atomic_load((_ptr))
 #define fy_atomic_store(_ptr, _v) \
@@ -143,5 +169,26 @@
 	atomic_fetch_xor((_ptr), (_v))
 #define fy_atomic_fetch_and(_ptr, _v) \
 	atomic_fetch_and((_ptr), (_v))
+#define fy_atomic_flag_clear(_ptr) \
+	atomic_flag_clear((_ptr))
+#define fy_atomic_flag_set(_ptr) \
+	atomic_flag_set((_ptr))
+#define fy_atomic_flag_test_and_set(_ptr) \
+	atomic_flag_test_and_set((_ptr))
+
+static inline void fy_cpu_relax(void)
+{
+#if defined(__x86_64__) || defined(__i386__)
+	__builtin_ia32_pause();
+#elif defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+	_mm_pause();
+#elif defined(__aarch64__) || defined(__arm__)
+	__asm__ volatile ("yield");
+#elif defined(__powerpc__)
+	__asm__ volatile ("or 27,27,27");
+#else
+	__asm__ volatile ("" : : : "memory");
+#endif
+}
 
 #endif
