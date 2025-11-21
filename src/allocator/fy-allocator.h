@@ -30,9 +30,9 @@ struct fy_allocator_stats;
 struct fy_allocator_info;
 
 struct fy_allocator_ops {
-	int (*setup)(struct fy_allocator *a, const void *cfg);
+	int (*setup)(struct fy_allocator *a, struct fy_allocator *parent, int parent_tag, const void *cfg);
 	void (*cleanup)(struct fy_allocator *a);
-	struct fy_allocator *(*create)(const void *cfg);
+	struct fy_allocator *(*create)(struct fy_allocator *parent, int parent_tag, const void *cfg);
 	void (*destroy)(struct fy_allocator *a);
 	void (*dump)(struct fy_allocator *a);
 	void *(*alloc)(struct fy_allocator *a, int tag, size_t size, size_t align);
@@ -97,6 +97,8 @@ struct fy_allocator {
 	enum fy_allocator_flags flags;
 	const char *name;
 	const struct fy_allocator_ops *ops;
+	struct fy_allocator *parent;
+	int parent_tag;
 };
 
 /* these private still */
@@ -127,5 +129,25 @@ char *fy_allocator_get_names(void);
 int fy_allocator_register(const char *name, const struct fy_allocator_ops *ops);
 int fy_allocator_unregister(const char *name);
 void fy_allocator_release(struct fy_allocator *a, int tag, const void *ptr, size_t size);
+
+/* respects the parent allocator (or uses posix_memalign if NULL) */
+void *fy_early_parent_allocator_alloc(struct fy_allocator *parent, int parent_tag, size_t size, size_t align);
+void fy_early_parent_allocator_free(struct fy_allocator *parent, int parent_tag, void *ptr);
+void *fy_parent_allocator_alloc(struct fy_allocator *a, size_t size, size_t align);
+void fy_parent_allocator_free(struct fy_allocator *a, void *ptr);
+
+#define FY_PARENT_ALLOCATOR_MALLOC	((struct fy_allocator *)NULL)
+#define FY_PARENT_ALLOCATOR_INPLACE	((struct fy_allocator *)(uintptr_t)-1)
+
+static inline struct fy_allocator *
+fy_allocator_get_parent(struct fy_allocator *a)
+{
+	if (!a || !a->parent || a->parent == FY_PARENT_ALLOCATOR_INPLACE)
+		return NULL;
+	return a->parent;
+}
+
+struct fy_allocator *
+fy_allocator_create_internal(const char *name, struct fy_allocator *parent, int parent_tag, const void *cfg);
 
 #endif

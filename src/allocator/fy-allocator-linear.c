@@ -15,17 +15,19 @@
 #include <time.h>
 #include <inttypes.h>
 #include <math.h>
+#include <alloca.h>
 
 #include <stdio.h>
 
 #include "fy-utils.h"
 #include "fy-allocator-linear.h"
 
-static int fy_linear_setup(struct fy_allocator *a, const void *cfg_data)
+static int fy_linear_setup(struct fy_allocator *a, struct fy_allocator *parent, int parent_tag, const void *cfg_data)
 {
 	struct fy_linear_allocator *la;
 	const struct fy_linear_allocator_cfg *cfg;
 	void *buf, *alloc = NULL;
+	bool need_zero;
 
 	if (!a || !cfg_data)
 		return -1;
@@ -35,27 +37,32 @@ static int fy_linear_setup(struct fy_allocator *a, const void *cfg_data)
 		return -1;
 
 	if (!cfg->buf) {
-		alloc = calloc(1, cfg->size);
+		alloc = fy_early_parent_allocator_alloc(parent, parent_tag, cfg->size, 0);
 		if (!alloc)
 			goto err_out;
 		buf = alloc;
-	} else
+		need_zero = true;
+	} else {
 		buf = cfg->buf;
+		need_zero = false;
+	}
 
 	la = container_of(a, struct fy_linear_allocator, a);
 	memset(la, 0, sizeof(*la));
 	la->a.name = "linear";
 	la->a.ops = &fy_linear_allocator_ops;
+	la->a.parent = parent;
+	la->a.parent_tag = parent_tag;
 	la->cfg = *cfg;
 	la->alloc = alloc;
 	la->start = buf;
+	la->need_zero = need_zero;
 
 	fy_atomic_store(&la->next, 0);
 
 	return 0;
 err_out:
-	if (alloc)
-		free(alloc);
+	fy_early_parent_allocator_free(parent, parent_tag, alloc);
 	return -1;
 }
 
@@ -67,13 +74,11 @@ static void fy_linear_cleanup(struct fy_allocator *a)
 		return;
 
 	la = container_of(a, struct fy_linear_allocator, a);
-	if (la->alloc) {
-		free(la->alloc);
-		la->alloc = NULL;
-	}
+	fy_parent_allocator_free(&la->a, la->alloc);
+	la->alloc = NULL;
 }
 
-struct fy_allocator *fy_linear_create(const void *cfg_data)
+struct fy_allocator *fy_linear_create(struct fy_allocator *parent, int parent_tag, const void *cfg_data)
 {
 	struct fy_linear_allocator *la;
 	const struct fy_linear_allocator_cfg *cfg;
@@ -89,7 +94,7 @@ struct fy_allocator *fy_linear_create(const void *cfg_data)
 		return NULL;
 
 	if (!cfg->buf) {
-		alloc = malloc(cfg->size);
+		alloc = fy_early_parent_allocator_alloc(parent, parent_tag, cfg->size, 0);
 		if (!alloc)
 			goto err_out;
 		buf = alloc;
@@ -99,7 +104,7 @@ struct fy_allocator *fy_linear_create(const void *cfg_data)
 	s = buf;
 	e = s + cfg->size;
 
-	s = fy_ptr_align(s, alignof(struct fy_linear_allocator));
+	s = fy_ptr_align(s, _Alignof(struct fy_linear_allocator));
 	if ((size_t)(e - s) < sizeof(*la))
 		goto err_out;
 
@@ -110,25 +115,24 @@ struct fy_allocator *fy_linear_create(const void *cfg_data)
 	newcfg.buf = s;
 	newcfg.size = (size_t)(e - s);
 
-	rc = fy_linear_setup(&la->a, &newcfg);
+	rc = fy_linear_setup(&la->a, parent, parent_tag, &newcfg);
 	if (rc)
 		goto err_out;
 
-	assert(!la->alloc);
 	la->alloc = alloc;
 
 	return &la->a;
 
 err_out:
-	if (alloc)
-		free(alloc);
-
+	fy_early_parent_allocator_free(parent, parent_tag, alloc);
 	return NULL;
 }
 
 void fy_linear_destroy(struct fy_allocator *a)
 {
 	struct fy_linear_allocator *la;
+	struct fy_allocator *parent;
+	int parent_tag;
 	void *alloc;
 
 	if (!a)
@@ -139,11 +143,12 @@ void fy_linear_destroy(struct fy_allocator *a)
 	/* take out the allocation of create */
 	alloc = la->alloc;
 	la->alloc = NULL;
+	parent = la->a.parent;
+	parent_tag = la->a.parent_tag;
 
 	fy_linear_cleanup(a);
 
-	if (alloc)
-		free(alloc);
+	fy_early_parent_allocator_free(parent, parent_tag, alloc);
 }
 
 void fy_linear_dump(struct fy_allocator *a)
@@ -189,7 +194,9 @@ static void *fy_linear_alloc(struct fy_allocator *a, int tag, size_t size, size_
 		fy_atomic_fetch_add(&la->stats_allocated, real_size);
 	}
 
-	/* no zero-out, buffer provider should have handled this */
+	/* zero out buffer if not guaranteed */
+	if (la->need_zero)
+		memset(s, 0, size);
 
 	return s;
 
@@ -319,15 +326,13 @@ static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, int 
 	       sizeof(*tag_info) +
 	       sizeof(*arena_info);
 
-	info = malloc(size);
-	if (!info)
-		return NULL;
+	info = alloca(size);
 	memset(info, 0, sizeof(*info));
 
 	tag_info = (void *)(info + 1);
-	assert(((uintptr_t)tag_info % alignof(struct fy_allocator_tag_info)) == 0);
+	assert(((uintptr_t)tag_info % _Alignof(struct fy_allocator_tag_info)) == 0);
 	arena_info = (void *)(tag_info + 1);
-	assert(((uintptr_t)arena_info % alignof(struct fy_allocator_arena_info)) == 0);
+	assert(((uintptr_t)arena_info % _Alignof(struct fy_allocator_arena_info)) == 0);
 
 	/* fill-in the single arena */
 	next = fy_atomic_load(&la->next);

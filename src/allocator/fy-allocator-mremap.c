@@ -16,6 +16,7 @@
 #include <inttypes.h>
 #include <math.h>
 #include <sys/mman.h>
+#include <alloca.h>
 
 #include <stdio.h>
 
@@ -96,7 +97,10 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mr
 	size_page_align = fy_mremap_useable_arena_size(mra, size);
 	switch (mra->arena_type) {
 	case FYMRAT_MALLOC:
-		mran = calloc(1, size_page_align);
+		mran = malloc(size_page_align);
+		if (!mran)
+			return NULL;
+		memset(mran, 0, sizeof(*mran));
 		break;
 
 	case FYMRAT_MMAP:
@@ -132,8 +136,6 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mr
 		FY_IMPOSSIBLE_ABORT();
 	}
 
-	if (!mran)
-		return NULL;
 	mran->next_arena = NULL;
 	flags = 0;
 	if (!fy_mremap_arena_type_is_growable(mra->arena_type))
@@ -523,6 +525,10 @@ do_alloc:
 		ptr = (void *)mran + data_pos;
 	} while (!fy_atomic_compare_exchange_strong(&mran->next, &old_next, new_next));
 
+	/* malloc arenas need to zero out */
+	if (mra->arena_type == FYMRAT_MALLOC)
+		memset(ptr, 0, size);
+
 #ifdef DEBUG_ARENA
 	fprintf(stderr, "allocated OK %p mran->size=%zu ptr=%p size=%zu align=%zu\n", mran, mran->size, ptr, size, align);
 #endif
@@ -541,7 +547,7 @@ static const struct fy_mremap_allocator_cfg default_cfg = {
 	.arena_type = MREMAP_ALLOCATOR_DEFAULT_ARENA_TYPE,
 };
 
-static int fy_mremap_setup(struct fy_allocator *a, const void *cfg_data)
+static int fy_mremap_setup(struct fy_allocator *a, struct fy_allocator *parent, int parent_tag, const void *cfg_data)
 {
 	const struct fy_mremap_allocator_cfg *cfg;
 	struct fy_mremap_allocator *mra;
@@ -555,6 +561,8 @@ static int fy_mremap_setup(struct fy_allocator *a, const void *cfg_data)
 	memset(mra, 0, sizeof(*mra));
 	mra->a.name = "mremap";
 	mra->a.ops = &fy_mremap_allocator_ops;
+	mra->a.parent = parent;
+	mra->a.parent_tag = parent_tag;
 	mra->cfg = *cfg;
 
 	mra->pagesz = sysconf(_SC_PAGESIZE);
@@ -604,25 +612,23 @@ static void fy_mremap_cleanup(struct fy_allocator *a)
 		fy_mremap_tag_cleanup(mra, mrt);
 }
 
-struct fy_allocator *fy_mremap_create(const void *cfg)
+struct fy_allocator *fy_mremap_create(struct fy_allocator *parent, int parent_tag, const void *cfg)
 {
 	struct fy_mremap_allocator *mra = NULL;
 	int rc;
 
-	mra = malloc(sizeof(*mra));
+	mra = fy_early_parent_allocator_alloc(parent, parent_tag, sizeof(*mra), _Alignof(struct fy_mremap_allocator));
 	if (!mra)
 		goto err_out;
 
-	rc = fy_mremap_setup(&mra->a, cfg);
+	rc = fy_mremap_setup(&mra->a, parent, parent_tag, cfg);
 	if (rc)
 		goto err_out;
 
 	return &mra->a;
 
 err_out:
-	if (mra)
-		free(mra);
-
+	fy_early_parent_allocator_free(parent, parent_tag, mra);
 	return NULL;
 }
 
@@ -635,7 +641,7 @@ void fy_mremap_destroy(struct fy_allocator *a)
 
 	mra = container_of(a, struct fy_mremap_allocator, a);
 	fy_mremap_cleanup(a);
-	free(mra);
+	fy_parent_allocator_free(a, mra);
 }
 
 void fy_mremap_dump(struct fy_allocator *a)
@@ -913,15 +919,13 @@ fy_mremap_get_info(struct fy_allocator *a, int tag)
                                sizeof(*tag_info) * num_tags +
 			       sizeof(*arena_info) * num_arenas;
 
-			info = malloc(size);
-			if (!info)
-				return NULL;
+			info = alloca(size);
 			memset(info, 0, sizeof(*info));
 
 			tag_info = (void *)(info + 1);
-			assert(((uintptr_t)tag_info % alignof(struct fy_allocator_tag_info)) == 0);
+			assert(((uintptr_t)tag_info % _Alignof(struct fy_allocator_tag_info)) == 0);
 			arena_info = (void *)(tag_info + num_tags);
-			assert(((uintptr_t)arena_info % alignof(struct fy_allocator_arena_info)) == 0);
+			assert(((uintptr_t)arena_info % _Alignof(struct fy_allocator_arena_info)) == 0);
 
 			info->free = free;
 			info->used = used;

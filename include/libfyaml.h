@@ -10636,6 +10636,8 @@ fy_type_info_lookup_field_by_unsigned_enum_value(const struct fy_type_info *ti, 
 /* forward decl of allocator interfaces */
 struct fy_allocator;
 
+/* A tag that represents the default tag */
+#define FY_ALLOC_TAG_DEFAULT	0
 /* A tag that denotes error */
 #define FY_ALLOC_TAG_ERROR	-1
 /* A tag that represents 'none' */

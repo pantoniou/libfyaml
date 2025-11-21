@@ -228,7 +228,8 @@ out_unlock:
 	return ret;
 }
 
-struct fy_allocator *fy_allocator_create(const char *name, const void *cfg)
+struct fy_allocator *
+fy_allocator_create_internal(const char *name, struct fy_allocator *parent, int parent_tag, const void *cfg)
 {
 	struct fy_registered_allocator_entry *ae;
 	const struct fy_allocator_ops *ops = NULL;
@@ -262,7 +263,14 @@ struct fy_allocator *fy_allocator_create(const char *name, const void *cfg)
 	if (!ops)
 		return NULL;
 
-	return ops->create(cfg);
+	/* XXX just malloc for now */
+	return ops->create(parent, parent_tag, cfg);
+}
+
+struct fy_allocator *fy_allocator_create(const char *name, const void *cfg)
+{
+	/* for now just use internal */
+	return fy_allocator_create_internal(name, NULL, FY_ALLOC_TAG_DEFAULT, cfg);
 }
 
 /* special in place allocator */
@@ -275,7 +283,7 @@ fy_linear_allocator_create_in_place(void *buffer, size_t size)
 	if (!buffer || size < FY_LINEAR_ALLOCATOR_IN_PLACE_MIN_SIZE)
 		return NULL;
 
-	return ops->create(&cfg);
+	return ops->create(FY_PARENT_ALLOCATOR_INPLACE, FY_ALLOC_TAG_DEFAULT, &cfg);
 }
 
 void fy_allocator_registry_cleanup_internal(bool show_leftovers)
@@ -609,4 +617,78 @@ fy_allocator_contains(struct fy_allocator *a, int tag, const void *ptr)
 		return false;
 
 	return a->ops->contains(a, tag, ptr);
+}
+
+/* respects the parent allocator (or uses aligned_alloc if NULL) */
+void *fy_early_parent_allocator_alloc(struct fy_allocator *parent, int parent_tag, size_t size, size_t align)
+{
+	/* yeah, not gonna work */
+	if (parent == FY_PARENT_ALLOCATOR_INPLACE)
+		return NULL;
+
+	if (!align)
+		align = _Alignof(max_align_t);
+
+	if (parent)
+		return fy_allocator_alloc(parent, parent_tag, size, align);
+
+	return aligned_alloc(align, size);
+}
+
+void fy_early_parent_allocator_free(struct fy_allocator *parent, int parent_tag, void *ptr)
+{
+	if (!ptr || parent == FY_PARENT_ALLOCATOR_INPLACE)
+		return;
+
+	if (parent)
+		fy_allocator_free(parent, parent_tag, ptr);
+	else
+		free(ptr);
+}
+
+/* respects the parent allocator (or uses aligned_alloc if NULL) */
+void *fy_parent_allocator_alloc(struct fy_allocator *a, size_t size, size_t align)
+{
+	struct fy_allocator *parent;
+
+	if (!a)
+		return NULL;
+
+	if (!align)
+		align = _Alignof(max_align_t);
+
+	/* use the parent allocator if available */
+	parent = fy_allocator_get_parent(a);
+	if (parent)
+		return fy_allocator_alloc(parent, a->parent_tag, size, align);
+
+	/* if no parent allocator, use malloc */
+	if (!a->parent)
+		return aligned_alloc(align, size);
+
+	/* requested in place, we can't do that */
+	return NULL;
+}
+
+void fy_parent_allocator_free(struct fy_allocator *a, void *ptr)
+{
+	struct fy_allocator *parent;
+
+	if (!a || !ptr)
+		return;
+
+	/* allocator provided free (may not do anything) */
+	parent = fy_allocator_get_parent(a);
+	if (parent) {
+		fy_allocator_free(a->parent, a->parent_tag, ptr);
+		return;
+	}
+
+	/* default malloc */
+	if (!a->parent) {
+		free(ptr);
+		return;
+	}
+
+	/* err, in place? */
 }
