@@ -134,23 +134,21 @@ static int fy_dedup_tag_data_setup(struct fy_dedup_tag_data *dtd,
 
 	dtd->bloom_id_count = ((1U << dtd->bloom_filter_bits) + FY_ID_BITS_BITS - 1) / FY_ID_BITS_BITS;
 	assert(dtd->bloom_id_count > 0);
-	tmpsz = 2 * dtd->bloom_id_count * sizeof(*dtd->bloom_id);
+	tmpsz = dtd->bloom_id_count * sizeof(*dtd->bloom_id);
 	dtd->bloom_id = fy_parent_allocator_alloc(&da->a, tmpsz, _Alignof(fy_id_bits));
 	if (!dtd->bloom_id)
 		goto err_out;
-	dtd->bloom_update_id = dtd->bloom_id + dtd->bloom_id_count;
 	fy_id_reset(dtd->bloom_id, dtd->bloom_id_count);
-	fy_id_reset(dtd->bloom_update_id, dtd->bloom_id_count);
 
 	dtd->bucket_count = 1U << dtd->bucket_count_bits;
 	assert(dtd->bucket_count);
 
 	tmpsz = sizeof(*dtd->buckets) * dtd->bucket_count;
-	dtd->buckets = fy_parent_allocator_alloc(&da->a, tmpsz, _Alignof(struct fy_dedup_entry_list));
+	dtd->buckets = fy_parent_allocator_alloc(&da->a, tmpsz, _Alignof(struct fy_dedup_entry *));
 	if (!dtd->buckets)
 		goto err_out;
 	for (i = 0; i < dtd->bucket_count; i++)
-		fy_dedup_entry_list_init(&dtd->buckets[i]);
+		atomic_store(&dtd->buckets[i], NULL);
 
 	dtd->bucket_id_count = ((1U << dtd->bucket_count_bits) + FY_ID_BITS_BITS - 1) / FY_ID_BITS_BITS;
 	assert(dtd->bucket_id_count > 0);
@@ -266,73 +264,6 @@ static int fy_dedup_tag_setup(struct fy_dedup_allocator *da, struct fy_dedup_tag
 err_out:
 	fy_dedup_tag_cleanup(da, dt);
 	return -1;
-}
-
-static void fy_dedup_tag_data_move(struct fy_dedup_tag_data *dtd, struct fy_dedup_tag_data *new_dtd)
-{
-	unsigned int bloom_pos, bucket_pos;
-	struct fy_dedup_entry *de;
-	struct fy_dedup_entry_list *del, *new_del;
-	struct fy_id_iter iter;
-	int id;
-#ifdef DEBUG_GROWS
-	int64_t ns;
-	struct timespec before, after;
-	const char *ban[2] = { "old", "new" };
-	struct fy_dedup_tag_data *arr[2] = { dtd, new_dtd };
-	struct fy_dedup_tag_data *d;
-	size_t bloom_count, bloom_used;
-	size_t bucket_count, bucket_used;
-	unsigned int i;
-#endif
-
-#ifdef DEBUG_GROWS
-	BEFORE();
-#endif
-	fy_id_iter_begin(dtd->buckets_in_use, dtd->bucket_id_count, &iter);
-	while ((id = fy_id_iter_next(dtd->buckets_in_use, dtd->bucket_id_count, &iter)) >= 0) {
-
-		assert(fy_id_is_used(dtd->buckets_in_use, dtd->bucket_id_count, id));
-
-		del = dtd->buckets + id;
-
-		while ((de = fy_dedup_entry_list_pop(del)) != NULL) {
-
-			bloom_pos = (unsigned int)de->hash & new_dtd->bloom_filter_mask;
-			assert((int)bloom_pos >= 0);
-			fy_id_set_used(new_dtd->bloom_id, new_dtd->bloom_id_count, bloom_pos);
-
-			bucket_pos = (unsigned int)de->hash & new_dtd->bucket_count_mask;
-			assert((int)bucket_pos >= 0);
-
-			new_del = new_dtd->buckets + bucket_pos;
-			if (!fy_id_is_used(new_dtd->buckets_in_use, new_dtd->bucket_id_count, bucket_pos)) {
-				assert(FY_ID_OFFSET(bucket_pos) < new_dtd->bucket_id_count);
-				fy_id_set_used(new_dtd->buckets_in_use, new_dtd->bucket_id_count, bucket_pos);
-			}
-			fy_dedup_entry_list_add(new_del, de);
-		}
-	}
-	fy_id_iter_end(dtd->buckets_in_use, dtd->bucket_id_count, &iter);
-
-#ifdef DEBUG_GROWS
-	ns = AFTER();
-	fprintf(stderr, "%s: operation took place in %"PRId64"ns\n", __func__, ns);
-
-	for (i = 0; i < 2; i++) {
-		d = arr[i];
-		bloom_count = 1U << d->bloom_filter_bits;
-		bloom_used = fy_id_count_used(d->bloom_id, d->bloom_id_count);
-		bucket_count = 1U << d->bucket_count_bits;
-		bucket_used = fy_id_count_used(d->buckets_in_use, d->bucket_id_count);
-
-
-		fprintf(stderr, "%s:  bloom %zu used %zu (%2.2f%%) ", ban[i], bloom_count,
-				bloom_used, 100.0*(double)bloom_used/(double)bloom_count);
-		fprintf(stderr, "bucket %zu used %zu (%2.2f%%)\n", bucket_count,
-				bucket_used, 100.0*(double)bucket_used/(double)bucket_count);
-	}
-#endif
 }
 
 static int
@@ -466,7 +397,6 @@ static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_ta
 
 	if (dtd) {
 		fy_id_reset(dtd->bloom_id, dtd->bloom_id_count);
-		fy_id_reset(dtd->bloom_update_id, dtd->bloom_id_count);
 		fy_id_reset(dtd->buckets_in_use, dtd->bucket_id_count);
 		fy_dedup_tag_data_list_add(&dt->tag_datas, dtd);
 	}
@@ -729,11 +659,10 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
 	struct fy_dedup_tag_data *dtd, *dtd_best;
-	struct fy_dedup_entry *de;
+	struct fy_dedup_entry *de, *de_head;
 	uint64_t hash;
 	int bloom_pos, bucket_pos;
 	bool bloom_hit;
-	struct fy_dedup_entry_list *del;
 	unsigned int chain_length;
 	void *mem = NULL;
 	size_t total_size, de_offset, max_align;
@@ -786,9 +715,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 
 		bloom_hit = fy_id_is_used(dtd->bloom_id, dtd->bloom_id_count, bloom_pos);
 		if (bloom_hit) {
-			del = &dtd->buckets[bucket_pos];
-			for (de = fy_dedup_entry_list_head(del); de; de = fy_dedup_entry_next(del, de)) {
-
+			for (de = fy_atomic_load(&dtd->buckets[bucket_pos]); de; de = de->next) {
 				/* XXX the complete cmp is kind of an overkill */
 				if (de->hash == hash) {
 				       	if (total_size == de->size && !fy_iovec_cmp(iov, iovcnt, de->mem)) {
@@ -826,7 +753,6 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	/* recalc positions for the delected dtd */
 	bloom_pos = (int)(hash & (uint64_t)dtd->bloom_filter_mask);
 	bucket_pos = (int)(hash & (uint64_t)dtd->bucket_count_mask);
-	del = &dtd->buckets[bucket_pos];
 
 	/* place the dedup entry at the aligned offset after the data */
 	de_offset = fy_size_t_align(total_size, _Alignof(struct fy_dedup_entry));
@@ -847,14 +773,17 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	/* and copy the data */
 	fy_iovec_copy_from(iov, iovcnt, de->mem);
 
-	/* and add to the bucket */
-	fy_dedup_entry_list_add(del, de);
-
 	/* set this bucket to used */
 	fy_id_set_used(dtd->buckets_in_use, dtd->bucket_id_count, bucket_pos);
 
 	/* turn the update bit for the bloom position */
 	fy_id_set_used(dtd->bloom_id, dtd->bloom_id_count, bloom_pos);
+
+	/* add to the bucket last atomically */
+	do {
+		de_head = fy_atomic_load(&dtd->buckets[bucket_pos]);
+		de->next = de_head;
+	} while (!fy_atomic_compare_exchange_strong(&dtd->buckets[bucket_pos], &de_head, de));
 
 	/* adjust by one bit, if we've hit the trigger */
 	if (chain_length > dtd->chain_length_grow_trigger)
