@@ -38,7 +38,7 @@ fy_malloc_tag_from_tag(struct fy_malloc_allocator *ma, int tag)
 	return &ma->tags[tag];
 }
 
-static int fy_malloc_setup(struct fy_allocator *a, const void *data)
+static int fy_malloc_setup(struct fy_allocator *a, struct fy_allocator *parent, int parent_tag, const void *data)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
@@ -51,6 +51,8 @@ static int fy_malloc_setup(struct fy_allocator *a, const void *data)
 	memset(ma, 0, sizeof(*ma));
 	ma->a.name = "malloc";
 	ma->a.ops = &fy_malloc_allocator_ops;
+	ma->a.parent = parent;
+	ma->a.parent_tag = parent_tag;
 
 	fy_id_reset(ma->ids, ARRAY_SIZE(ma->ids));
 	for (i = 0, mt = ma->tags; i < ARRAY_SIZE(ma->tags); i++, mt++)
@@ -77,25 +79,23 @@ static void fy_malloc_cleanup(struct fy_allocator *a)
 	}
 }
 
-struct fy_allocator *fy_malloc_create(const void *cfg)
+struct fy_allocator *fy_malloc_create(struct fy_allocator *parent, int parent_tag, const void *cfg)
 {
 	struct fy_malloc_allocator *ma = NULL;
 	int rc;
 
-	ma = malloc(sizeof(*ma));
+	ma = fy_early_parent_allocator_alloc(parent, parent_tag, sizeof(*ma), _Alignof(struct fy_malloc_allocator));
 	if (!ma)
 		goto err_out;
 
-	rc = fy_malloc_setup(&ma->a, cfg);
+	rc = fy_malloc_setup(&ma->a, parent, parent_tag, cfg);
 	if (rc)
 		goto err_out;
 
 	return &ma->a;
 
 err_out:
-	if (ma)
-		free(ma);
-
+	fy_early_parent_allocator_free(parent, parent_tag, ma);
 	return NULL;
 }
 
@@ -108,7 +108,8 @@ void fy_malloc_destroy(struct fy_allocator *a)
 
 	ma = container_of(a, struct fy_malloc_allocator, a);
 	fy_malloc_cleanup(a);
-	free(ma);
+
+	fy_parent_allocator_free(a, ma);
 }
 
 void fy_malloc_dump(struct fy_allocator *a)
@@ -440,15 +441,13 @@ fy_malloc_get_info(struct fy_allocator *a, int tag)
                                sizeof(*tag_info) * num_tags +
 			       sizeof(*arena_info) * num_arenas;
 
-			info = malloc(size);
-			if (!info)
-				return NULL;
+			info = alloca(size);
 			memset(info, 0, sizeof(*info));
 
 			tag_info = (void *)(info + 1);
-			assert(((uintptr_t)tag_info % alignof(struct fy_allocator_tag_info)) == 0);
+			assert(((uintptr_t)tag_info % _Alignof(struct fy_allocator_tag_info)) == 0);
 			arena_info = (void *)(tag_info + num_tags);
-			assert(((uintptr_t)arena_info % alignof(struct fy_allocator_arena_info)) == 0);
+			assert(((uintptr_t)arena_info % _Alignof(struct fy_allocator_arena_info)) == 0);
 
 			info->free = free;
 			info->used = used;

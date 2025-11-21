@@ -76,7 +76,7 @@ static const struct fy_auto_allocator_cfg default_cfg = {
 
 static void fy_auto_cleanup(struct fy_allocator *a);
 
-static int fy_auto_setup(struct fy_allocator *a, const void *cfg_data)
+static int fy_auto_setup(struct fy_allocator *a, struct fy_allocator *parent, int parent_tag, const void *cfg_data)
 {
 	size_t pagesz, size;
 	struct fy_auto_allocator *aa;
@@ -96,6 +96,8 @@ static int fy_auto_setup(struct fy_allocator *a, const void *cfg_data)
 	memset(aa, 0, sizeof(*aa));
 	aa->a.name = "auto";
 	aa->a.ops = &fy_auto_allocator_ops;
+	aa->a.parent = parent;
+	aa->a.parent_tag = parent_tag;
 	aa->cfg = *cfg;
 
 	pagesz = sysconf(_SC_PAGESIZE);
@@ -215,24 +217,23 @@ static void fy_auto_cleanup(struct fy_allocator *a)
 	}
 }
 
-struct fy_allocator *fy_auto_create(const void *cfg)
+struct fy_allocator *fy_auto_create(struct fy_allocator *parent, int parent_tag, const void *cfg)
 {
 	struct fy_auto_allocator *aa = NULL;
 	int rc;
 
-	aa = malloc(sizeof(*aa));
+	aa = fy_early_parent_allocator_alloc(parent, parent_tag, sizeof(*aa), _Alignof(struct fy_auto_allocator));
 	if (!aa)
 		goto err_out;
 
-	rc = fy_auto_setup(&aa->a, cfg);
+	rc = fy_auto_setup(&aa->a, parent, parent_tag, cfg);
 	if (rc)
 		goto err_out;
 
 	return &aa->a;
 
 err_out:
-	if (aa)
-		free(aa);
+	fy_early_parent_allocator_free(parent, parent_tag, aa);
 
 	return NULL;
 }
@@ -248,7 +249,7 @@ void fy_auto_destroy(struct fy_allocator *a)
 
 	fy_auto_cleanup(a);
 
-	free(aa);
+	fy_parent_allocator_free(a, aa);
 }
 
 void fy_auto_dump(struct fy_allocator *a)

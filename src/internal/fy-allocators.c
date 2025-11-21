@@ -137,7 +137,7 @@ static int allocator_test(const char *allocator, const char *parent_allocator, s
 
 	fprintf(stderr, "Allocating %u integers\n", (unsigned int)ARRAY_SIZE(uintp));
 	for (i = 0; i < ARRAY_SIZE(uintp); i++) {
-		uintp[i] = fy_allocator_alloc(a, tag0, sizeof(unsigned int), alignof(unsigned int));
+		uintp[i] = fy_allocator_alloc(a, tag0, sizeof(unsigned int), _Alignof(unsigned int));
 		assert(uintp[i] != NULL);
 		fprintf(stderr, "\t%u: %p\n", i, uintp[i]);
 	}

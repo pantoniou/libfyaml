@@ -21,6 +21,7 @@ struct fy_linear_allocator {
 	struct fy_linear_allocator_cfg cfg;
 	void *alloc;
 	void *start;
+	bool need_zero;
 	/* no need to keep anything else */
 	FY_ATOMIC(uint64_t) stats_allocations;
 	FY_ATOMIC(uint64_t) stats_allocated;

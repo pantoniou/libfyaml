@@ -148,7 +148,7 @@ fy_generic_builder_create_linear_in_place(enum fy_gb_cfg_flags flags, void *buff
 	e = s + size;
 
 	/* find place in the buffer to put the builder */
-	s = fy_ptr_align(s, alignof(struct fy_generic_builder));
+	s = fy_ptr_align(s, _Alignof(struct fy_generic_builder));
 	if ((size_t)(e - s) < sizeof(*gb))
 		return NULL;
 	gb = s;

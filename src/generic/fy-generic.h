@@ -256,7 +256,7 @@ typedef intptr_t fy_generic_value_signed;
 #define FY_GENERIC_EXTERNAL_ALIGNMENT FY_GENERIC_CONTAINER_ALIGNMENT
 
 /* yes, plenty of side-effects, use it with care */
-#define FY_MAX_ALIGNOF(_v, _min) ((size_t)(alignof(_v) > (_min) ? alignof(_v) : (_min)))
+#define FY_MAX_ALIGNOF(_v, _min) ((size_t)(_Alignof(_v) > (_min) ? _Alignof(_v) : (_min)))
 #define FY_CONTAINER_ALIGNOF(_v) FY_MAX_ALIGNOF(_v, FY_GENERIC_CONTAINER_ALIGN)
 #define FY_SCALAR_ALIGNOF(_v) FY_MAX_ALIGNOF(_v, FY_GENERIC_SCALAR_ALIGN)
 

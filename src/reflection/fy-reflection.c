@@ -605,7 +605,7 @@ const struct fy_decl_type_info fy_decl_type_info_table[FYDT_COUNT] = {
 		.kind = (_kind), \
 		.name = #_type, \
 		.size = sizeof(_type), \
-		.align = alignof(_type), \
+		.align = _Alignof(_type), \
 	}
 
 const struct fy_type_info fy_type_info_primitive_table[FYTK_PRIMARY_COUNT] = {
