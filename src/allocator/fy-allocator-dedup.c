@@ -738,6 +738,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 		XXH64_update(&xxstate, iov[i].iov_base, iov[i].iov_len);
 	hash = XXH64_digest(&xxstate);
 
+again:
 	chain_length = 0;
 
 	/* XXX */
@@ -790,24 +791,27 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	bloom_pos = (int)(hash & (uint64_t)dtd->bloom_filter_mask);
 	bucket_pos = (int)(hash & (uint64_t)dtd->bucket_count_mask);
 
-	/* place the dedup entry at the aligned offset after the data */
-	de_offset = fy_size_t_align(total_size, _Alignof(struct fy_dedup_entry));
-	max_align = align > _Alignof(struct fy_dedup_entry) ? align : _Alignof(struct fy_dedup_entry);
-	mem = fy_allocator_alloc(da->parent_allocator, dt->content_tag, de_offset + sizeof(*de), max_align);
-	if (!mem)
-		return NULL;
+	/* we might be retrying; don't allocate and copy again */
+	if (!mem) {
+		/* place the dedup entry at the aligned offset after the data */
+		de_offset = fy_size_t_align(total_size, _Alignof(struct fy_dedup_entry));
+		max_align = align > _Alignof(struct fy_dedup_entry) ? align : _Alignof(struct fy_dedup_entry);
+		mem = fy_allocator_alloc(da->parent_allocator, dt->content_tag, de_offset + sizeof(*de), max_align);
+		if (!mem)
+			return NULL;
 
-	/* verify it's aligned correctly */
-	assert(((uintptr_t)mem & (align - 1)) == 0);
+		/* verify it's aligned correctly */
+		assert(((uintptr_t)mem & (align - 1)) == 0);
 
-	de = mem + de_offset;
+		de = mem + de_offset;
 
-	de->hash = hash;
-	de->size = total_size;
-	de->mem = mem;
+		de->hash = hash;
+		de->size = total_size;
+		de->mem = mem;
 
-	/* and copy the data */
-	fy_iovec_copy_from(iov, iovcnt, de->mem);
+		/* and copy the data */
+		fy_iovec_copy_from(iov, iovcnt, de->mem);
+	}
 
 	/* set this bucket to used */
 	fy_id_set_used(dtd->buckets_in_use, dtd->bucket_id_count, bucket_pos);
@@ -816,10 +820,10 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	fy_id_set_used(dtd->bloom_id, dtd->bloom_id_count, bloom_pos);
 
 	/* add to the bucket last atomically */
-	do {
-		de_head = fy_atomic_load(&dtd->buckets[bucket_pos]);
-		de->next = de_head;
-	} while (!fy_atomic_compare_exchange_strong(&dtd->buckets[bucket_pos], &de_head, de));
+	de_head = fy_atomic_load(&dtd->buckets[bucket_pos]);
+	de->next = de_head;
+	if (!fy_atomic_compare_exchange_strong(&dtd->buckets[bucket_pos], &de_head, de))
+		goto again;	// we're leaking the entry, but that's fine
 
 	/* adjust by one bit, if we've hit the trigger */
 	if (chain_length > dtd->chain_length_grow_trigger)
