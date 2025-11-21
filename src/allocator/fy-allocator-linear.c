@@ -326,7 +326,9 @@ static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, int 
 	       sizeof(*tag_info) +
 	       sizeof(*arena_info);
 
-	info = alloca(size);
+	info = malloc(size);
+	if (!info)
+		return NULL;
 	memset(info, 0, sizeof(*info));
 
 	tag_info = (void *)(info + 1);

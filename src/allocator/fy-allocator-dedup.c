@@ -410,6 +410,7 @@ static void fy_dedup_tag_trim(struct fy_dedup_allocator *da, struct fy_dedup_tag
 static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt)
 {
 	struct fy_dedup_tag_data *dtd, *dtd_head;
+	size_t i;
 
 	if (!da || !dt)
 		return;
@@ -427,16 +428,21 @@ static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_ta
 		dtd->next = NULL;
 
 		/* keep the head as is */
-		if (!dtd_head) {
-			fy_dedup_tag_data_cleanup(dtd);
+		if (!dtd_head)
 			dtd_head = dtd;
-		} else
+		else
 			fy_dedup_tag_data_destroy(dtd);
 	}
 
 	if (dtd_head) {
-		dtd_head->next = NULL;
-		fy_atomic_store(&dt->tag_datas, dtd_head);
+		dtd = dtd_head;
+
+		dtd->next = NULL;
+		fy_id_reset(dtd->bloom_id, dtd->bloom_id_count);
+		for (i = 0; i < dtd->bucket_count; i++)
+			atomic_store(&dtd->buckets[i], NULL);
+		fy_id_reset(dtd->buckets_in_use, dtd->bucket_id_count);
+		fy_atomic_store(&dt->tag_datas, dtd);
 	}
 }
 
