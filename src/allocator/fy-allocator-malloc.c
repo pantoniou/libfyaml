@@ -467,7 +467,9 @@ fy_malloc_get_info(struct fy_allocator *a, int tag)
                                sizeof(*tag_info) * num_tags +
 			       sizeof(*arena_info) * num_arenas;
 
-			info = alloca(size);
+			info = malloc(size);
+			if (!info)
+				return NULL;
 			memset(info, 0, sizeof(*info));
 
 			tag_info = (void *)(info + 1);

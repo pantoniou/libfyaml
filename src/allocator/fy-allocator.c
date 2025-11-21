@@ -286,6 +286,33 @@ fy_linear_allocator_create_in_place(void *buffer, size_t size)
 	return ops->create(FY_PARENT_ALLOCATOR_INPLACE, FY_ALLOC_TAG_DEFAULT, &cfg);
 }
 
+struct fy_allocator *
+fy_dedup_allocator_create_in_place(void *buffer, size_t size)
+{
+	struct fy_allocator *pa;
+	struct fy_dedup_allocator_cfg dcfg;
+	size_t dedup_available;
+
+	if (!buffer || size < FY_DEDUP_ALLOCATOR_IN_PLACE_MIN_SIZE)
+		return NULL;
+
+	pa = fy_linear_allocator_create_in_place(buffer, size);
+	if (!pa)
+		return NULL;
+
+	/* try to size the dedup structures to about 10% of the available space */
+	dedup_available = size - FY_LINEAR_ALLOCATOR_IN_PLACE_MIN_SIZE;
+
+	memset(&dcfg, 0, sizeof(dcfg));
+	dcfg.parent_allocator = pa;
+	dcfg.bloom_filter_bits = 0;	/* use default */
+	dcfg.bucket_count_bits = 0;
+	dcfg.estimated_content_size = dedup_available;
+	dcfg.minimum_bucket_occupancy = 1.0;	/* will never grow */
+
+	return fy_allocator_create("dedup", &dcfg);
+}
+
 void fy_allocator_registry_cleanup_internal(bool show_leftovers)
 {
 	struct fy_registered_allocator_entry *ae;
