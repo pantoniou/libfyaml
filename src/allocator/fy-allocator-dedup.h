@@ -55,7 +55,6 @@ struct fy_dedup_tag_data {
 	struct fy_dedup_entry_list *buckets;
 	size_t bucket_id_count;
 	fy_id_bits *buckets_in_use;
-	fy_id_bits *buckets_collision;
 	size_t dedup_threshold;
 	unsigned int chain_length_grow_trigger;
 };

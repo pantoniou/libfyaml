@@ -65,8 +65,9 @@ struct fy_allocator_stats {
 			uint64_t dup_saved;
 			uint64_t system_claimed;
 			uint64_t system_free;
+			uint64_t collisions;
 		};
-		uint64_t counters[12];
+		uint64_t counters[13];
 	};
 };
 

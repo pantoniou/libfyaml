@@ -25,7 +25,7 @@
 
 #include "fy-allocator-dedup.h"
 
-#define DEBUG_GROWS
+// #define DEBUG_GROWS
 
 #undef BEFORE
 #define BEFORE() \
@@ -154,13 +154,11 @@ static int fy_dedup_tag_data_setup(struct fy_dedup_tag_data *dtd,
 
 	dtd->bucket_id_count = ((1U << dtd->bucket_count_bits) + FY_ID_BITS_BITS - 1) / FY_ID_BITS_BITS;
 	assert(dtd->bucket_id_count > 0);
-	tmpsz = 2 * dtd->bucket_id_count * sizeof(*dtd->buckets_in_use);
+	tmpsz = dtd->bucket_id_count * sizeof(*dtd->buckets_in_use);
 	dtd->buckets_in_use = fy_parent_allocator_alloc(&da->a, tmpsz, _Alignof(fy_id_bits));
 	if (!dtd->buckets_in_use)
 		goto err_out;
-	dtd->buckets_collision = dtd->buckets_in_use + dtd->bucket_id_count;
 	fy_id_reset(dtd->buckets_in_use, dtd->bucket_id_count);
-	fy_id_reset(dtd->buckets_collision, dtd->bucket_id_count);
 
 	return 0;
 
@@ -183,10 +181,9 @@ static void fy_dedup_tag_cleanup(struct fy_dedup_allocator *da, struct fy_dedup_
 		fprintf(stderr, "%s: bloom count=%u used=%lu\n",
 				__func__, 1 << dtd->bloom_filter_bits,
 				fy_id_count_used(dtd->bloom_id, dtd->bloom_id_count));
-		fprintf(stderr, "%s: bucket count=%u used=%lu collision=%lu\n",
+		fprintf(stderr, "%s: bucket count=%u used=%lu\n",
 				__func__, 1 << dtd->bucket_count_bits,
-				fy_id_count_used(dtd->buckets_in_use, dtd->bucket_id_count),
-				fy_id_count_used(dtd->buckets_collision, dtd->bucket_id_count));
+				fy_id_count_used(dtd->buckets_in_use, dtd->bucket_id_count));
 #endif
 
 		fy_dedup_tag_data_destroy(dtd);
@@ -242,16 +239,7 @@ static int fy_dedup_tag_setup(struct fy_dedup_allocator *da, struct fy_dedup_tag
 
 	memset(dt, 0, sizeof(*dt));
 
-#if 0
-	dt->entries_tag = FY_ALLOC_TAG_NONE;
-#endif
 	dt->content_tag = FY_ALLOC_TAG_NONE;
-
-#if 0
-	dt->entries_tag = fy_allocator_get_tag(da->parent_allocator);
-	if (dt->entries_tag == FY_ALLOC_TAG_ERROR)
-		goto err_out;
-#endif
 
 	dt->content_tag = fy_allocator_get_tag(da->parent_allocator);
 	if (dt->content_tag == FY_ALLOC_TAG_ERROR)
@@ -294,7 +282,7 @@ static void fy_dedup_tag_data_move(struct fy_dedup_tag_data *dtd, struct fy_dedu
 	struct fy_dedup_tag_data *arr[2] = { dtd, new_dtd };
 	struct fy_dedup_tag_data *d;
 	size_t bloom_count, bloom_used;
-	size_t bucket_count, bucket_used, bucket_collision;
+	size_t bucket_count, bucket_used;
 	unsigned int i;
 #endif
 
@@ -321,9 +309,6 @@ static void fy_dedup_tag_data_move(struct fy_dedup_tag_data *dtd, struct fy_dedu
 			if (!fy_id_is_used(new_dtd->buckets_in_use, new_dtd->bucket_id_count, bucket_pos)) {
 				assert(FY_ID_OFFSET(bucket_pos) < new_dtd->bucket_id_count);
 				fy_id_set_used(new_dtd->buckets_in_use, new_dtd->bucket_id_count, bucket_pos);
-			} else {
-				assert(FY_ID_OFFSET(bucket_pos) < new_dtd->bucket_id_count);
-				fy_id_set_used(new_dtd->buckets_collision, new_dtd->bucket_id_count, bucket_pos);
 			}
 			fy_dedup_entry_list_add(new_del, de);
 		}
@@ -340,14 +325,12 @@ static void fy_dedup_tag_data_move(struct fy_dedup_tag_data *dtd, struct fy_dedu
 		bloom_used = fy_id_count_used(d->bloom_id, d->bloom_id_count);
 		bucket_count = 1U << d->bucket_count_bits;
 		bucket_used = fy_id_count_used(d->buckets_in_use, d->bucket_id_count);
-		bucket_collision = fy_id_count_used(d->buckets_collision, d->bucket_id_count);
 
 
 		fprintf(stderr, "%s:  bloom %zu used %zu (%2.2f%%) ", ban[i], bloom_count,
 				bloom_used, 100.0*(double)bloom_used/(double)bloom_count);
-		fprintf(stderr, "bucket %zu used %zu (%2.2f%%) coll %zu (%2.2f%%)\n", bucket_count,
-				bucket_used, 100.0*(double)bucket_used/(double)bucket_count,
-				bucket_collision, 100.0*(double)bucket_collision/(double)bucket_count);
+		fprintf(stderr, "bucket %zu used %zu (%2.2f%%)\n", bucket_count,
+				bucket_used, 100.0*(double)bucket_used/(double)bucket_count);
 	}
 #endif
 }
@@ -431,7 +414,7 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 #ifdef DEBUG_GROWS
 	{
 		size_t bloom_count, new_bloom_count, bloom_used;
-		size_t bucket_count, new_bucket_count, bucket_used, bucket_collision;
+		size_t bucket_count, new_bucket_count, bucket_used;
 
 		bloom_count = 1U << dtd->bloom_filter_bits;
 		new_bloom_count = 1U << new_dtd->bloom_filter_bits;
@@ -439,15 +422,13 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 		bucket_count = 1U << dtd->bucket_count_bits;
 		new_bucket_count = 1U << new_dtd->bucket_count_bits;
 		bucket_used = fy_id_count_used(dtd->buckets_in_use, dtd->bucket_id_count);
-		bucket_collision = fy_id_count_used(dtd->buckets_collision, dtd->bucket_id_count);
 
 		fprintf(stderr, "grow: chain_length_grow_trigger=%u->%u bloom %zu->%zu used %zu (%2.2f%%) ",
 				dtd->chain_length_grow_trigger, new_dtd->chain_length_grow_trigger, 
 				bloom_count, new_bloom_count,
 				bloom_used, 100.0*(double)bloom_used/(double)bloom_count);
-		fprintf(stderr, "bucket %zu->%zu used %zu (%2.2f%%) coll %zu (%2.2f%%)\n", bucket_count, new_bucket_count,
-				bucket_used, 100.0*(double)bucket_used/(double)bucket_count,
-				bucket_collision, 100.0*(double)bucket_collision/(double)bucket_count);
+		fprintf(stderr, "bucket %zu->%zu used %zu (%2.2f%%)\n", bucket_count, new_bucket_count,
+				bucket_used, 100.0*(double)bucket_used/(double)bucket_count);
 	}
 #endif
 
@@ -487,7 +468,6 @@ static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_ta
 		fy_id_reset(dtd->bloom_id, dtd->bloom_id_count);
 		fy_id_reset(dtd->bloom_update_id, dtd->bloom_id_count);
 		fy_id_reset(dtd->buckets_in_use, dtd->bucket_id_count);
-		fy_id_reset(dtd->buckets_collision, dtd->bucket_id_count);
 		fy_dedup_tag_data_list_add(&dt->tag_datas, dtd);
 	}
 
@@ -774,7 +754,6 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	if (total_size == SIZE_MAX)
 		return NULL;
 
-#if 1
 	/* if it's under the dedup threshold just allocate and copy */
 	if (total_size < da->cfg.dedup_threshold) {
 
@@ -786,7 +765,6 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 		fy_iovec_copy_from(iov, iovcnt, p);
 		return p;
 	}
-#endif
 
 	/* get the hash value */
 	xxstate = da->xxstate_template;
@@ -825,7 +803,8 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 					}
 
 					/* mark that we had a collision here */
-					fy_id_set_used(dtd->buckets_collision, dtd->bucket_id_count, bucket_pos);
+					if (a->flags & FYAF_KEEP_STATS)
+						dt->stats.collisions++;
 				}
 
 				if (at_head)
@@ -844,10 +823,12 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	else
 		dtd = fy_dedup_tag_data_list_head(&dt->tag_datas);
 
-	bloom_pos = (int)((unsigned int)hash & dtd->bloom_filter_mask);
-	bucket_pos = (int)((unsigned int)hash & dtd->bucket_count_mask);
+	/* recalc positions for the delected dtd */
+	bloom_pos = (int)(hash & (uint64_t)dtd->bloom_filter_mask);
+	bucket_pos = (int)(hash & (uint64_t)dtd->bucket_count_mask);
 	del = &dtd->buckets[bucket_pos];
 
+	/* place the dedup entry at the aligned offset after the data */
 	de_offset = fy_size_t_align(total_size, _Alignof(struct fy_dedup_entry));
 	max_align = align > _Alignof(struct fy_dedup_entry) ? align : _Alignof(struct fy_dedup_entry);
 	mem = fy_allocator_alloc(da->parent_allocator, dt->content_tag, de_offset + sizeof(*de), max_align);
