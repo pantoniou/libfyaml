@@ -23,6 +23,25 @@
 
 #include "fy-allocator-malloc.h"
 
+static inline void
+fy_malloc_tag_list_lock(struct fy_malloc_tag *mt)
+{
+	int loops FY_DEBUG_UNUSED;
+
+	loops = 0;
+	while (!fy_atomic_flag_test_and_set(&mt->lock)) {
+		loops++;
+		assert(loops < 10000000);
+		fy_cpu_relax();
+	}
+}
+
+static inline void
+fy_malloc_tag_list_unlock(struct fy_malloc_tag *mt)
+{
+	fy_atomic_flag_clear(&mt->lock);
+}
+
 static inline struct fy_malloc_tag *
 fy_malloc_tag_from_tag(struct fy_malloc_allocator *ma, int tag)
 {
@@ -55,8 +74,10 @@ static int fy_malloc_setup(struct fy_allocator *a, struct fy_allocator *parent, 
 	ma->a.parent_tag = parent_tag;
 
 	fy_id_reset(ma->ids, ARRAY_SIZE(ma->ids));
-	for (i = 0, mt = ma->tags; i < ARRAY_SIZE(ma->tags); i++, mt++)
+	for (i = 0, mt = ma->tags; i < ARRAY_SIZE(ma->tags); i++, mt++) {
 		fy_malloc_entry_list_init(&mt->entries);
+		atomic_flag_clear(&mt->lock);
+	}
 
 	return 0;
 }
@@ -73,9 +94,10 @@ static void fy_malloc_cleanup(struct fy_allocator *a)
 
 	ma = container_of(a, struct fy_malloc_allocator, a);
 
+	/* no need for locks, this is one thread only */
 	for (i = 0, mt = ma->tags; i < ARRAY_SIZE(ma->tags); i++, mt++) {
 		while ((me = fy_malloc_entry_list_pop(&mt->entries)) != NULL)
-			free(me);
+			free(me->mem);
 	}
 }
 
@@ -126,19 +148,26 @@ void fy_malloc_dump(struct fy_allocator *a)
 	ma = container_of(a, struct fy_malloc_allocator, a);
 
 	fprintf(stderr, "malloc: ");
-	for (i = 0, mt = ma->tags; i < ARRAY_SIZE(ma->tags); i++, mt++)
+	for (i = 0, mt = ma->tags; i < ARRAY_SIZE(ma->tags); i++, mt++) {
+		fy_malloc_tag_list_lock(mt);
 		fprintf(stderr, "%c", fy_malloc_entry_list_empty(&mt->entries) ? '.' : 'x');
+		fy_malloc_tag_list_unlock(mt);
+	}
 	fprintf(stderr, "\n");
 
 	for (i = 0, mt = ma->tags; i < ARRAY_SIZE(ma->tags); i++, mt++) {
-		if (fy_malloc_entry_list_empty(&mt->entries))
-			continue;
-		count = total = system_total = 0;
-		for (me = fy_malloc_entry_list_head(&mt->entries); me; me = fy_malloc_entry_next(&mt->entries, me)) {
-			count++;
-			total += me->size;
-			system_total += sizeof(*me) + me->size;
+		fy_malloc_tag_list_lock(mt);
+		if (!fy_malloc_entry_list_empty(&mt->entries)) {
+			count = total = system_total = 0;
+			for (me = fy_malloc_entry_list_head(&mt->entries); me; me = fy_malloc_entry_next(&mt->entries, me)) {
+				count++;
+				total += me->size;
+				system_total += sizeof(*me) + me->size;
+			}
 		}
+		fy_malloc_tag_list_unlock(mt);
+		if (!count)
+			continue;
 		fprintf(stderr, "  %d: count %zu total %zu system %zu overhead %zu (%2.2f%%)\n", i,
 				count, total, system_total, system_total - total,
 				100.0 * (double)(system_total - total) / (double)system_total);
@@ -148,34 +177,26 @@ void fy_malloc_dump(struct fy_allocator *a)
 static void *fy_malloc_tag_alloc(struct fy_malloc_allocator *ma, struct fy_malloc_tag *mt, size_t size, size_t align)
 {
 	struct fy_malloc_entry *me;
-	size_t reqsize;
-	void *p;
-	int ret;
+	size_t me_offset, max_align;
+	int r;
+	void *mem;
 
-	/* XXX TODO alignment handling */
-	if (align > 16)
+	me_offset = fy_size_t_align(size, _Alignof(struct fy_malloc_entry));
+	max_align = align > _Alignof(struct fy_malloc_entry) ? align : _Alignof(struct fy_malloc_entry);
+
+	r = posix_memalign(&mem, max_align, me_offset + sizeof(*me));
+	if (r)
 		return NULL;
 
-	/* minimum alignment */
-	if (align <= 16)
-		align = 16;
-
-	reqsize = size;
-	size = size + sizeof(*me);
-	ret = posix_memalign(&p, 16, size);
-	if (ret)
-		goto err_out;
-
-	me = p;
+	me = mem + me_offset;
 
 	me->size = size;
-	me->reqsize = reqsize;
+	fy_malloc_tag_list_lock(mt);
 	fy_malloc_entry_list_add_tail(&mt->entries, me);
+	fy_malloc_tag_list_unlock(mt);
+	me->mem = mem;
 
-	return &me->mem[0];
-
-err_out:
-	return NULL;
+	return mem;
 }
 
 static void fy_malloc_tag_free(struct fy_malloc_allocator *ma, struct fy_malloc_tag *mt, void *data)
@@ -184,8 +205,11 @@ static void fy_malloc_tag_free(struct fy_malloc_allocator *ma, struct fy_malloc_
 
 	me = container_of(data, struct fy_malloc_entry, mem);
 
+	fy_malloc_tag_list_lock(mt);
 	fy_malloc_entry_list_del(&mt->entries, me);
-	free(me);
+	fy_malloc_tag_list_unlock(mt);
+
+	free(me->mem);
 }
 
 static void *fy_malloc_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
@@ -350,8 +374,9 @@ static void fy_malloc_release_tag(struct fy_allocator *a, int tag)
 	if (!mt)
 		return;
 
+	/* no lock, tag release is single thread only */
 	while ((me = fy_malloc_entry_list_pop(&mt->entries)) != NULL)
-		free(me);
+		free(me->mem);
 
 	fy_id_free(ma->ids, ARRAY_SIZE(ma->ids), tag);
 }
@@ -396,8 +421,9 @@ static void fy_malloc_reset_tag(struct fy_allocator *a, int tag)
 	if (!mt)
 		return;
 
+	/* no lock, reset is single thread only */
 	while ((me = fy_malloc_entry_list_pop(&mt->entries)) != NULL)
-		free(me);
+		free(me->mem);
 }
 
 static struct fy_allocator_info *
@@ -477,9 +503,11 @@ fy_malloc_get_info(struct fy_allocator *a, int tag)
 				tag_info->arena_infos = arena_info;
 			}
 
+			fy_malloc_tag_list_lock(mt);
+
 			for (me = fy_malloc_entry_list_head(&mt->entries); me; me = fy_malloc_entry_next(&mt->entries, me)) {
 				arena_free = 0;
-				arena_used = me->reqsize;
+				arena_used = me->size;
 				arena_total = sizeof(*me) + me->size;
 
 				tag_free += arena_free;
@@ -493,11 +521,12 @@ fy_malloc_get_info(struct fy_allocator *a, int tag)
 					arena_info->used = arena_used;
 					arena_info->total = arena_total;
 					arena_info->data = me->mem;
-					arena_info->size = me->reqsize;
+					arena_info->size = me->size;
 					arena_info++;
 					tag_info->num_arena_infos++;
 				}
 			}
+			fy_malloc_tag_list_unlock(mt);
 
 			if (!i) {
 				num_tags++;
@@ -559,13 +588,16 @@ static bool fy_malloc_contains(struct fy_allocator *a, int tag, const void *ptr)
 		if (!mt)
 			continue;
 
+		fy_malloc_tag_list_lock(mt);
 		for (me = fy_malloc_entry_list_head(&mt->entries); me;
 		     me = fy_malloc_entry_next(&mt->entries, me)) {
 
-			if (ptr >= (void *)me->mem &&
-			    ptr < (void *)me->mem + me->reqsize)
+			if (ptr >= (void *)me->mem && ptr < (void *)me->mem + me->size) {
+				fy_malloc_tag_list_unlock(mt);
 				return true;
+			}
 		}
+		fy_malloc_tag_list_unlock(mt);
 	}
 
 	return false;
