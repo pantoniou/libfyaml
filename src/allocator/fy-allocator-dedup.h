@@ -39,9 +39,8 @@ struct fy_dedup_tag_data_cfg {
 	unsigned int chain_length_grow_trigger;
 };
 
-FY_TYPE_FWD_DECL_LIST(dedup_tag_data);
 struct fy_dedup_tag_data {
-	struct list_head node;
+	struct fy_dedup_tag_data *next;
 	struct fy_dedup_tag_data_cfg cfg;
 	unsigned int bloom_filter_bits;
 	unsigned int bloom_filter_mask;
@@ -57,12 +56,12 @@ struct fy_dedup_tag_data {
 	size_t dedup_threshold;
 	unsigned int chain_length_grow_trigger;
 };
-FY_TYPE_DECL_LIST(dedup_tag_data);
 
 struct fy_dedup_tag {
+	fy_atomic_flag growing;
 	int content_tag;
 	struct fy_allocator_stats stats;
-	struct fy_dedup_tag_data_list tag_datas;
+	FY_ATOMIC(struct fy_dedup_tag_data *)tag_datas;
 };
 
 struct fy_dedup_allocator {
