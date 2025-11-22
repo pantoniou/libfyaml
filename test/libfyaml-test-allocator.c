@@ -127,6 +127,7 @@ START_TEST(allocator_linear_alloc)
 	/* destroy */
 	fy_allocator_destroy(a);
 }
+END_TEST
 
 START_TEST(allocator_malloc)
 {
@@ -155,6 +156,7 @@ START_TEST(allocator_malloc)
 	/* destroy */
 	fy_allocator_destroy(a);
 }
+END_TEST
 
 START_TEST(allocator_mremap)
 {
@@ -183,11 +185,12 @@ START_TEST(allocator_mremap)
 	/* destroy */
 	fy_allocator_destroy(a);
 }
+END_TEST
 
 static inline bool
 scenario_is_single_tagged(int scenario)
 {
-	return scenario >= FYAST_SINGLE_LINEAR_RANGE && 
+	return scenario >= FYAST_SINGLE_LINEAR_RANGE &&
 	       scenario <= FYAST_SINGLE_LINEAR_RANGE_DEDUP;
 }
 
@@ -202,7 +205,7 @@ scenario_is_dedup(int scenario)
 static inline bool
 scenario_is_fixed_size(int scenario)
 {
-	return scenario >= FYAST_SINGLE_LINEAR_RANGE && 
+	return scenario >= FYAST_SINGLE_LINEAR_RANGE &&
 	       scenario <= FYAST_SINGLE_LINEAR_RANGE_DEDUP;
 }
 
@@ -277,6 +280,59 @@ START_TEST(allocator_auto)
 		a = NULL;
 	}
 }
+END_TEST
+
+START_TEST(allocator_linear_inplace)
+{
+	struct fy_allocator *a;
+	char buf[4096];
+	int tag;
+	const void *p;
+
+	a = fy_linear_allocator_create_in_place(buf, sizeof(buf));
+	ck_assert_ptr_ne(a, NULL);
+
+	tag = fy_allocator_get_tag(a);
+	ck_assert_int_ne(tag, -1);
+
+	p = fy_allocator_store(a, tag, "Hello", 6, 1);
+	ck_assert_ptr_ne(p, NULL);
+
+	ck_assert(!strcmp(p, "Hello"));
+
+	/* no release */
+}
+END_TEST
+
+START_TEST(allocator_dedup_inplace)
+{
+	struct fy_allocator *a;
+	char buf[8192];
+	int tag;
+	const void *p1, *p2;
+
+	a = fy_dedup_allocator_create_in_place(buf, sizeof(buf));
+	ck_assert_ptr_ne(a, NULL);
+
+	tag = fy_allocator_get_tag(a);
+	ck_assert_int_ne(tag, -1);
+
+	p1 = fy_allocator_store(a, tag, "Hello", 6, 1);
+	ck_assert_ptr_ne(p1, NULL);
+
+	ck_assert(!strcmp(p1, "Hello"));
+
+	p2 = fy_allocator_store(a, tag, "Hello", 6, 1);
+	ck_assert_ptr_ne(p2, NULL);
+
+	ck_assert(!strcmp(p2, "Hello"));
+
+	/* dedup must return the same pointer */
+	ck_assert(p1 == p2);
+
+	/* no release */
+}
+END_TEST
 
 TCase *libfyaml_case_allocator(void)
 {
@@ -291,6 +347,9 @@ TCase *libfyaml_case_allocator(void)
 	tcase_add_test(tc, allocator_malloc);
 	tcase_add_test(tc, allocator_mremap);
 	tcase_add_test(tc, allocator_auto);
+
+	tcase_add_test(tc, allocator_linear_inplace);
+	tcase_add_test(tc, allocator_dedup_inplace);
 
 	return tc;
 }

@@ -218,11 +218,8 @@ static int fy_linear_update_stats(struct fy_allocator *a, int tag, struct fy_all
 
 	la = container_of(a, struct fy_linear_allocator, a);
 
-	stats->allocations = la->stats_allocations;
-	stats->allocated = la->stats_allocated;
-
-	la->stats_allocations = 0;
-	la->stats_allocated = 0;
+	stats->allocations = fy_atomic_get_and_clear_counter(&la->stats_allocations);
+	stats->allocated = fy_atomic_get_and_clear_counter(&la->stats_allocated);
 
 	return 0;
 }

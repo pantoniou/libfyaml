@@ -310,7 +310,7 @@ fy_dedup_allocator_create_in_place(void *buffer, size_t size)
 	dcfg.estimated_content_size = dedup_available;
 	dcfg.minimum_bucket_occupancy = 1.0;	/* will never grow */
 
-	return fy_allocator_create("dedup", &dcfg);
+	return fy_allocator_create_internal("dedup", pa, 0, &dcfg);
 }
 
 void fy_allocator_registry_cleanup_internal(bool show_leftovers)

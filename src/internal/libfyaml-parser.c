@@ -4931,6 +4931,36 @@ next5:
 	return 0;
 }
 
+int do_test_stuff(int argc, char *argv[])
+{
+	struct fy_allocator *a;
+	char buf[65536];
+	int tag;
+	const void *p1, *p2;
+
+	a = fy_dedup_allocator_create_in_place(buf, sizeof(buf));
+	assert(a);
+
+	tag = fy_allocator_get_tag(a);
+	assert(tag != -1);
+
+	p1 = fy_allocator_store(a, tag, "Hello", 6, 1);
+	assert(p1);
+
+	assert(!strcmp(p1, "Hello"));
+
+	p2 = fy_allocator_store(a, tag, "Hello", 6, 1);
+	assert(p2);
+
+	assert(!strcmp(p2, "Hello"));
+
+	/* dedup must return the same pointer */
+	assert(p1 == p2);
+	printf("%p/%p\n", p1, p2);
+
+	return 0;
+}
+
 int do_parse_generic(struct fy_parser *fyp, const char *allocator,
 		     bool null_output, const char *cache,
 		     enum fy_generic_schema schema)
@@ -5504,7 +5534,8 @@ int main(int argc, char *argv[])
 	    strcmp(mode, "generics") &&
 	    strcmp(mode, "remap") &&
 	    strcmp(mode, "parse-generic") &&
-	    strcmp(mode, "idbit")
+	    strcmp(mode, "idbit") &&
+	    strcmp(mode, "test-stuff")
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 	    && strcmp(mode, "libyaml-scan")
 	    && strcmp(mode, "libyaml-parse")
@@ -5784,6 +5815,12 @@ int main(int argc, char *argv[])
 			/* fprintf(stderr, "do_generics() error %d\n", rc); */
 			goto cleanup;
 		}
+	} else if (!strcmp(mode, "test-stuff")) {
+		rc = do_test_stuff(argc, argv);
+		if (rc < 0) {
+			/* fprintf(stderr, "do_generics() error %d\n", rc); */
+			goto cleanup;
+		}
 	}
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 	if (!strcmp(mode, "libyaml-diff")) {
@@ -5875,7 +5912,7 @@ size_t checkout_seq_handle_count(fy_generic_sequence_handle seqh)
 char *checkout_dup_str(fy_generic v)
 {
 	const char *str;
-       
+
 	str = fy_generic_cast_default(v, "");
 	return strdup(str);
 }

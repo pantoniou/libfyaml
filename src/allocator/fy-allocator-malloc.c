@@ -557,7 +557,8 @@ fy_malloc_get_info(struct fy_allocator *a, int tag)
 static enum fy_allocator_cap_flags
 fy_malloc_get_caps(struct fy_allocator *a)
 {
-	return FYACF_CAN_FREE_INDIVIDUAL | FYACF_CAN_FREE_TAG | FYACF_HAS_CONTAINS;
+	return FYACF_CAN_FREE_INDIVIDUAL | FYACF_CAN_FREE_TAG |
+	       FYACF_HAS_CONTAINS | FYACF_HAS_TAGS;
 }
 
 /* malloc allocator actually tracks allocations, it's just very inefficient

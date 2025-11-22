@@ -58,16 +58,19 @@ struct fy_dedup_tag_data {
 };
 
 struct fy_dedup_tag {
-	fy_atomic_flag growing;
-	int content_tag;
-	struct fy_allocator_stats stats;
 	FY_ATOMIC(struct fy_dedup_tag_data *)tag_datas;
+	int content_tag;
+	fy_atomic_flag growing;
+	FY_ATOMIC(uint64_t) unique_stores;
+	FY_ATOMIC(uint64_t) dup_stores;
+	FY_ATOMIC(uint64_t) collisions;
 };
 
 struct fy_dedup_allocator {
 	struct fy_allocator a;
 	struct fy_dedup_allocator_cfg cfg;
 	struct fy_allocator *parent_allocator;
+	enum fy_allocator_cap_flags parent_caps;
 	int entries_tag;
 	unsigned long long xxseed;
 	XXH64_state_t xxstate_template;
