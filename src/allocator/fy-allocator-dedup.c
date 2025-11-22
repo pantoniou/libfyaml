@@ -242,9 +242,12 @@ static int fy_dedup_tag_setup(struct fy_dedup_allocator *da, struct fy_dedup_tag
 	memset(dt, 0, sizeof(*dt));
 
 	fy_atomic_flag_clear(&dt->growing);
-	dt->content_tag = fy_allocator_get_tag(da->parent_allocator);
-	if (dt->content_tag == FY_ALLOC_TAG_ERROR)
-		goto err_out;
+	if (da->parent_caps & FYACF_CAN_FREE_TAG) {
+		dt->content_tag = fy_allocator_get_tag(da->parent_allocator);
+		if (dt->content_tag == FY_ALLOC_TAG_ERROR)
+			goto err_out;
+	} else
+		dt->content_tag = FY_ALLOC_TAG_DEFAULT;
 
 	fy_atomic_store(&dt->tag_datas, NULL);
 
@@ -402,7 +405,8 @@ static void fy_dedup_tag_trim(struct fy_dedup_allocator *da, struct fy_dedup_tag
 		return;
 
 	/* just pass them trim down to the parent */
-	fy_allocator_trim_tag(da->parent_allocator, dt->content_tag);
+	if (da->parent_caps & FYACF_CAN_FREE_TAG)
+		fy_allocator_trim_tag(da->parent_allocator, dt->content_tag);
 }
 
 static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt)
@@ -450,6 +454,28 @@ static void fy_dedup_cleanup(struct fy_allocator *a);
 #define BUCKET_ESTIMATE_DIV 1024
 #define BLOOM_ESTIMATE_DIV 128
 
+static void fy_dedup_cleanup(struct fy_allocator *a)
+{
+	struct fy_dedup_allocator *da;
+	struct fy_dedup_tag *dt;
+	unsigned int i;
+
+	if (!a)
+		return;
+
+	da = container_of(a, struct fy_dedup_allocator, a);
+
+	for (i = 0, dt = da->tags; i < da->tag_count; i++, dt++) {
+		if (fy_id_is_used(da->ids, da->tag_id_count, i)) {
+			fy_dedup_tag_cleanup(da, dt);
+			fy_id_free(da->ids, da->tag_id_count, i);
+		}
+	}
+
+	fy_parent_allocator_free(&da->a, da->ids);
+	fy_parent_allocator_free(&da->a, da->tags);
+}
+
 static int fy_dedup_setup(struct fy_allocator *a, struct fy_allocator *parent, int parent_tag, const void *cfg_data)
 {
 	struct fy_dedup_allocator *da = NULL;
@@ -458,6 +484,8 @@ static int fy_dedup_setup(struct fy_allocator *a, struct fy_allocator *parent, i
 	unsigned int bit_shift, chain_length_grow_trigger;
 	size_t dedup_threshold, tmpsz;
 	bool has_estimate;
+	struct fy_dedup_tag *dt;
+	int rc;
 
 	if (!a || !cfg_data)
 		return -1;
@@ -528,7 +556,11 @@ static int fy_dedup_setup(struct fy_allocator *a, struct fy_allocator *parent, i
 	/* start with the state already initialized */
 	XXH64_reset(&da->xxstate_template, da->xxseed);
 
-	da->tag_count = FY_DEDUP_TAG_MAX;
+	/* there's no point in multiple tags */
+	if (da->parent_caps & FYACF_CAN_FREE_TAG)
+		da->tag_count = FY_DEDUP_TAG_MAX;
+	else
+		da->tag_count = 1;
 	da->tag_id_count = (da->tag_count + FY_ID_BITS_BITS - 1) / FY_ID_BITS_BITS;
 
 	tmpsz = da->tag_id_count * sizeof(*da->ids);
@@ -543,33 +575,17 @@ static int fy_dedup_setup(struct fy_allocator *a, struct fy_allocator *parent, i
 	if (!da->tags)
 		goto err_out;
 
+	/* start with tag 0 as general use */
+	fy_id_set_used(da->ids, da->tag_id_count, 0);
+	dt = fy_dedup_tag_from_tag(da, 0);
+	rc = fy_dedup_tag_setup(da, dt);
+	if (rc)
+		goto err_out;
+
 	return 0;
 err_out:
-	fy_parent_allocator_free(&da->a, da->ids);
-	fy_parent_allocator_free(&da->a, da->tags);
+	fy_dedup_cleanup(a);
 	return -1;
-}
-
-static void fy_dedup_cleanup(struct fy_allocator *a)
-{
-	struct fy_dedup_allocator *da;
-	struct fy_dedup_tag *dt;
-	unsigned int i;
-
-	if (!a)
-		return;
-
-	da = container_of(a, struct fy_dedup_allocator, a);
-
-	for (i = 0, dt = da->tags; i < da->tag_count; i++, dt++) {
-		if (fy_id_is_used(da->ids, da->tag_id_count, i)) {
-			fy_dedup_tag_cleanup(da, dt);
-			fy_id_free(da->ids, da->tag_id_count, i);
-		}
-	}
-
-	fy_parent_allocator_free(&da->a, da->ids);
-	fy_parent_allocator_free(&da->a, da->tags);
 }
 
 struct fy_allocator *fy_dedup_create(struct fy_allocator *parent, int parent_tag, const void *cfg)
@@ -671,6 +687,9 @@ static void fy_dedup_free(struct fy_allocator *a, int tag, void *data)
 		return;
 
 	da = container_of(a, struct fy_dedup_allocator, a);
+
+	if (!(da->parent_caps & FYACF_CAN_FREE_INDIVIDUAL))
+		return;
 
 	dt = fy_dedup_tag_from_tag(da, tag);
 	if (!dt)
@@ -881,6 +900,10 @@ static int fy_dedup_get_tag(struct fy_allocator *a)
 
 	da = container_of(a, struct fy_dedup_allocator, a);
 
+	/* for a single tag, just return 0 */
+	if (!(da->parent_caps & FYACF_CAN_FREE_TAG))
+		return 0;
+
 	/* and one from us */
 	id = fy_id_alloc(da->ids, da->tag_id_count);
 	if (id < 0)
@@ -913,6 +936,10 @@ static void fy_dedup_release_tag(struct fy_allocator *a, int tag)
 		return;
 
 	da = container_of(a, struct fy_dedup_allocator, a);
+
+	/* for a single tag, just return */
+	if (!(da->parent_caps & FYACF_CAN_FREE_TAG))
+		return;
 
 	dt = fy_dedup_tag_from_tag(da, tag);
 	if (!dt)
