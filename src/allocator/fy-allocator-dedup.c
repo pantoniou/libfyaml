@@ -75,10 +75,10 @@ fy_dedup_tag_from_tag(struct fy_dedup_allocator *da, int tag)
 	if (!da)
 		return NULL;
 
-	if ((unsigned int)tag >= ARRAY_SIZE(da->tags))
+	if ((unsigned int)tag >= da->tag_count)
 		return NULL;
 
-	if (!fy_id_is_used(da->ids, ARRAY_SIZE(da->ids), (int)tag))
+	if (!fy_id_is_used(da->ids, da->tag_id_count, tag))
 		return NULL;
 
 	return &da->tags[tag];
@@ -456,7 +456,7 @@ static int fy_dedup_setup(struct fy_allocator *a, struct fy_allocator *parent, i
 	const struct fy_dedup_allocator_cfg *cfg;
 	unsigned int bloom_filter_bits, bucket_count_bits;
 	unsigned int bit_shift, chain_length_grow_trigger;
-	size_t dedup_threshold;
+	size_t dedup_threshold, tmpsz;
 	bool has_estimate;
 
 	if (!a || !cfg_data)
@@ -528,9 +528,26 @@ static int fy_dedup_setup(struct fy_allocator *a, struct fy_allocator *parent, i
 	/* start with the state already initialized */
 	XXH64_reset(&da->xxstate_template, da->xxseed);
 
-	fy_id_reset(da->ids, ARRAY_SIZE(da->ids));
+	da->tag_count = FY_DEDUP_TAG_MAX;
+	da->tag_id_count = (da->tag_count + FY_ID_BITS_BITS - 1) / FY_ID_BITS_BITS;
+
+	tmpsz = da->tag_id_count * sizeof(*da->ids);
+	da->ids = fy_parent_allocator_alloc(&da->a, tmpsz, _Alignof(fy_id_bits));
+	if (!da->ids)
+		goto err_out;
+	assert(da->ids);
+	fy_id_reset(da->ids, da->tag_id_count);
+
+	tmpsz = da->tag_count * sizeof(*da->tags);
+	da->tags = fy_parent_allocator_alloc(&da->a, tmpsz, _Alignof(struct fy_dedup_tag));
+	if (!da->tags)
+		goto err_out;
 
 	return 0;
+err_out:
+	fy_parent_allocator_free(&da->a, da->ids);
+	fy_parent_allocator_free(&da->a, da->tags);
+	return -1;
 }
 
 static void fy_dedup_cleanup(struct fy_allocator *a)
@@ -544,12 +561,15 @@ static void fy_dedup_cleanup(struct fy_allocator *a)
 
 	da = container_of(a, struct fy_dedup_allocator, a);
 
-	for (i = 0, dt = da->tags; i < ARRAY_SIZE(da->tags); i++, dt++) {
-		if (fy_id_is_used(da->ids, ARRAY_SIZE(da->ids), i)) {
+	for (i = 0, dt = da->tags; i < da->tag_count; i++, dt++) {
+		if (fy_id_is_used(da->ids, da->tag_id_count, i)) {
 			fy_dedup_tag_cleanup(da, dt);
-			fy_id_free(da->ids, ARRAY_SIZE(da->ids), i);
+			fy_id_free(da->ids, da->tag_id_count, i);
 		}
 	}
+
+	fy_parent_allocator_free(&da->a, da->ids);
+	fy_parent_allocator_free(&da->a, da->tags);
 }
 
 struct fy_allocator *fy_dedup_create(struct fy_allocator *parent, int parent_tag, const void *cfg)
@@ -597,12 +617,12 @@ void fy_dedup_dump(struct fy_allocator *a)
 	da = container_of(a, struct fy_dedup_allocator, a);
 
 	fprintf(stderr, "dedup: ");
-	for (i = 0, dt = da->tags; i < ARRAY_SIZE(da->tags); i++, dt++)
-		fprintf(stderr, "%c", fy_id_is_free(da->ids, ARRAY_SIZE(da->ids), i) ? '.' : 'x');
+	for (i = 0, dt = da->tags; i < da->tag_count; i++, dt++)
+		fprintf(stderr, "%c", fy_id_is_free(da->ids, da->tag_id_count, i) ? '.' : 'x');
 	fprintf(stderr, "\n");
 
-	for (i = 0, dt = da->tags; i < ARRAY_SIZE(da->tags); i++, dt++) {
-		if (fy_id_is_free(da->ids, ARRAY_SIZE(da->ids), i))
+	for (i = 0, dt = da->tags; i < da->tag_count; i++, dt++) {
+		if (fy_id_is_free(da->ids, da->tag_id_count, i))
 			continue;
 
 		fprintf(stderr, "  %d: tags: content=%d\n", i, dt->content_tag);
@@ -862,7 +882,7 @@ static int fy_dedup_get_tag(struct fy_allocator *a)
 	da = container_of(a, struct fy_dedup_allocator, a);
 
 	/* and one from us */
-	id = fy_id_alloc(da->ids, ARRAY_SIZE(da->ids));
+	id = fy_id_alloc(da->ids, da->tag_id_count);
 	if (id < 0)
 		goto err_out;
 
@@ -880,7 +900,7 @@ static int fy_dedup_get_tag(struct fy_allocator *a)
 err_out:
 	fy_dedup_tag_cleanup(da, dt);
 	if (id >= 0)
-		fy_id_free(da->ids, ARRAY_SIZE(da->ids), id);
+		fy_id_free(da->ids, da->tag_id_count, id);
 	return FY_ALLOC_TAG_ERROR;
 }
 
@@ -900,7 +920,7 @@ static void fy_dedup_release_tag(struct fy_allocator *a, int tag)
 
 	fy_dedup_tag_cleanup(da, dt);
 
-	fy_id_free(da->ids, ARRAY_SIZE(da->ids), tag);
+	fy_id_free(da->ids, da->tag_count, tag);
 }
 
 static void fy_dedup_trim_tag(struct fy_allocator *a, int tag)
