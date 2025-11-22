@@ -1006,7 +1006,8 @@ fy_mremap_get_info(struct fy_allocator *a, int tag)
 static enum fy_allocator_cap_flags
 fy_mremap_get_caps(struct fy_allocator *a)
 {
-	return FYACF_CAN_FREE_TAG;
+	return FYACF_CAN_FREE_TAG | FYACF_HAS_EFFICIENT_CONTAINS | \
+	       FYACF_HAS_CONTAINS | FYACF_HAS_TAGS;
 }
 
 static bool mremap_tag_contains(struct fy_mremap_tag *mrt, const void *p)

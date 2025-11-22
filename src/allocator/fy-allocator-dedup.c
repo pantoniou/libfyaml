@@ -242,8 +242,6 @@ static int fy_dedup_tag_setup(struct fy_dedup_allocator *da, struct fy_dedup_tag
 	memset(dt, 0, sizeof(*dt));
 
 	fy_atomic_flag_clear(&dt->growing);
-	dt->content_tag = FY_ALLOC_TAG_NONE;
-
 	dt->content_tag = fy_allocator_get_tag(da->parent_allocator);
 	if (dt->content_tag == FY_ALLOC_TAG_ERROR)
 		goto err_out;
@@ -416,7 +414,8 @@ static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_ta
 		return;
 
 	/* just pass them reset down to the parent */
-	fy_allocator_reset_tag(da->parent_allocator, dt->content_tag);
+	if (da->parent_caps & FYACF_CAN_FREE_TAG)
+		fy_allocator_reset_tag(da->parent_allocator, dt->content_tag);
 
 	/* pop the head which we will keep */
 
@@ -444,25 +443,6 @@ static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_ta
 		fy_id_reset(dtd->buckets_in_use, dtd->bucket_id_count);
 		fy_atomic_store(&dt->tag_datas, dtd);
 	}
-}
-
-static int fy_dedup_tag_update_stats(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt, struct fy_allocator_stats *stats)
-{
-	unsigned int i;
-
-	if (!da || !dt)
-		return -1;
-
-	/* collect the underlying stats */
-	fy_allocator_update_stats(da->parent_allocator, dt->content_tag, stats);
-
-	/* and update with these ones */
-	for (i = 0; i < ARRAY_SIZE(dt->stats.counters); i++) {
-		stats->counters[i] += dt->stats.counters[i];
-		dt->stats.counters[i] = 0;
-	}
-
-	return 0;
 }
 
 static void fy_dedup_cleanup(struct fy_allocator *a);
@@ -536,6 +516,7 @@ static int fy_dedup_setup(struct fy_allocator *a, struct fy_allocator *parent, i
 	da->cfg = *cfg;
 
 	da->parent_allocator = cfg->parent_allocator;
+	da->parent_caps = fy_allocator_get_caps(da->parent_allocator);
 
 	da->bloom_filter_bits = bloom_filter_bits;
 	da->bucket_count_bits = bucket_count_bits;
@@ -683,6 +664,7 @@ static int fy_dedup_update_stats(struct fy_allocator *a, int tag, struct fy_allo
 {
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
+	int r;
 
 	if (!a || !stats)
 		return -1;
@@ -693,7 +675,15 @@ static int fy_dedup_update_stats(struct fy_allocator *a, int tag, struct fy_allo
 	if (!dt)
 		return -1;
 
-	return fy_dedup_tag_update_stats(da, dt, stats);
+	r = fy_allocator_update_stats(da->parent_allocator, dt->content_tag, stats);
+	if (r)
+		return -1;
+
+	stats->unique_stores += fy_atomic_get_and_clear_counter(&dt->unique_stores);
+	stats->dup_stores += fy_atomic_get_and_clear_counter(&dt->dup_stores);
+	stats->collisions += fy_atomic_get_and_clear_counter(&dt->collisions);
+
+	return 0;
 }
 
 static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
@@ -764,17 +754,15 @@ again:
 				       	if (total_size == de->size && !fy_iovec_cmp(iov, iovcnt, de->mem)) {
 
 						/* only update stats if someone asked for it */
-						if (a->flags & FYAF_KEEP_STATS) {
-							dt->stats.dup_stores++;
-							dt->stats.dup_saved += total_size;
-						}
+						if (a->flags & FYAF_KEEP_STATS)
+							fy_atomic_fetch_add(&dt->dup_stores, 1);
 
 						return de->mem;
 					}
 
 					/* mark that we had a collision here */
 					if (a->flags & FYAF_KEEP_STATS)
-						dt->stats.collisions++;
+						fy_atomic_fetch_add(&dt->collisions, 1);
 				}
 
 				if (at_head)
@@ -836,10 +824,8 @@ again:
 		fy_dedup_tag_adjust(da, dt, 1, 1);
 
 	/* only update stats if someone asked for it */
-	if (a->flags & FYAF_KEEP_STATS) {
-		dt->stats.stores++;
-		dt->stats.stored += total_size;
-	}
+	if (a->flags & FYAF_KEEP_STATS)
+		fy_atomic_fetch_add(&dt->unique_stores, 1);
 
 	return de->mem;
 }
@@ -944,6 +930,10 @@ static void fy_dedup_reset_tag(struct fy_allocator *a, int tag)
 
 	da = container_of(a, struct fy_dedup_allocator, a);
 
+	/* if it can't free an individual tag it can't reset it */
+	if (!(da->parent_caps & FYACF_CAN_FREE_TAG))
+		return;
+
 	dt = fy_dedup_tag_from_tag(da, tag);
 	if (!dt)
 		return;
@@ -998,7 +988,7 @@ fy_dedup_get_caps(struct fy_allocator *a)
 
 	da = container_of(a, struct fy_dedup_allocator, a);
 
-	flags = fy_allocator_get_caps(da->parent_allocator) | FYACF_CAN_DEDUP;
+	flags = da->parent_caps | FYACF_CAN_DEDUP;
 	flags &= ~FYACF_CAN_FREE_INDIVIDUAL;
 
 	return flags;
@@ -1013,6 +1003,9 @@ static bool fy_dedup_contains(struct fy_allocator *a, int tag, const void *ptr)
 		return false;
 
 	da = container_of(a, struct fy_dedup_allocator, a);
+
+	if (!(da->parent_caps & FYACF_HAS_CONTAINS))
+		return false;
 
 	dt = fy_dedup_tag_from_tag(da, tag);
 	if (!dt)

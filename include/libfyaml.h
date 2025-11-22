@@ -10903,6 +10903,7 @@ fy_allocator_dump(struct fy_allocator *a)
  * @FYACF_CAN_DEDUP: Allocator supports deduplication
  * @FYACF_HAS_CONTAINS: Allocator can report if it contains a pointer (even if inefficiently)
  * @FYACF_HAS_EFFICIENT_CONTAINS: Allocator can report if it contains a pointer (efficiently)
+ * @FYACF_HAS_TAGS: Allocator has individual tags or not
  *
  * These flags describe what operations an allocator supports.
  */
@@ -10912,6 +10913,7 @@ enum fy_allocator_cap_flags {
 	FYACF_CAN_DEDUP				= FY_BIT(2),
 	FYACF_HAS_CONTAINS			= FY_BIT(3),
 	FYACF_HAS_EFFICIENT_CONTAINS		= FY_BIT(4),
+	FYACF_HAS_TAGS				= FY_BIT(5),
 };
 
 /**
