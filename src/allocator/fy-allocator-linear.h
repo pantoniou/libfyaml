@@ -23,8 +23,10 @@ struct fy_linear_allocator {
 	void *start;
 	bool need_zero;
 	/* no need to keep anything else */
-	FY_ATOMIC(uint64_t) stats_allocations;
-	FY_ATOMIC(uint64_t) stats_allocated;
+	FY_ATOMIC(uint64_t) allocations;
+	FY_ATOMIC(uint64_t) allocated;
+	FY_ATOMIC(uint64_t) stores;
+	FY_ATOMIC(uint64_t) stored;
 };
 
 extern const struct fy_allocator_ops fy_linear_allocator_ops;
