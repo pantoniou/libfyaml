@@ -43,6 +43,8 @@ struct fy_allocator_ops {
 	void (*release)(struct fy_allocator *a, int tag, const void *data, size_t size);
 	int (*get_tag)(struct fy_allocator *a);
 	void (*release_tag)(struct fy_allocator *a, int tag);
+	int (*get_tag_count)(struct fy_allocator *a);
+	int (*set_tag_count)(struct fy_allocator *a, unsigned int tag_count);
 	void (*trim_tag)(struct fy_allocator *a, int tag);
 	void (*reset_tag)(struct fy_allocator *a, int tag);
 	struct fy_allocator_info *(*get_info)(struct fy_allocator *a, int tag);

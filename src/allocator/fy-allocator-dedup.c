@@ -465,11 +465,11 @@ static void fy_dedup_cleanup(struct fy_allocator *a)
 
 	da = container_of(a, struct fy_dedup_allocator, a);
 
-	for (i = 0, dt = da->tags; i < da->tag_count; i++, dt++) {
-		if (fy_id_is_used(da->ids, da->tag_id_count, i)) {
-			fy_dedup_tag_cleanup(da, dt);
-			fy_id_free(da->ids, da->tag_id_count, i);
-		}
+	for (i = 0; i < da->tag_count; i++) {
+		dt = fy_dedup_tag_from_tag(da, i);
+		if (!dt)
+			continue;
+		fy_dedup_tag_cleanup(da, dt);
 	}
 
 	fy_parent_allocator_free(&da->a, da->ids);
@@ -632,16 +632,19 @@ void fy_dedup_dump(struct fy_allocator *a)
 	da = container_of(a, struct fy_dedup_allocator, a);
 
 	fprintf(stderr, "dedup: ");
-	for (i = 0, dt = da->tags; i < da->tag_count; i++, dt++)
+	for (i = 0; i < da->tag_count; i++) {
+		dt = fy_dedup_tag_from_tag(da, i);
+		if (!dt)
+			continue;
 		fprintf(stderr, "%c", fy_id_is_free(da->ids, da->tag_id_count, i) ? '.' : 'x');
+	}
 	fprintf(stderr, "\n");
 
-	for (i = 0, dt = da->tags; i < da->tag_count; i++, dt++) {
-		if (fy_id_is_free(da->ids, da->tag_id_count, i))
+	for (i = 0; i < da->tag_count; i++) {
+		dt = fy_dedup_tag_from_tag(da, i);
+		if (!dt)
 			continue;
-
 		fprintf(stderr, "  %d: tags: content=%d\n", i, dt->content_tag);
-
 	}
 
 	fprintf(stderr, "dedup: dumping parent allocator\n");
@@ -949,6 +952,29 @@ static void fy_dedup_release_tag(struct fy_allocator *a, int tag)
 	fy_id_free(da->ids, da->tag_count, tag);
 }
 
+static int fy_dedup_get_tag_count(struct fy_allocator *a)
+{
+	struct fy_dedup_allocator *da;
+
+	if (!a)
+		return -1;
+
+	da = container_of(a, struct fy_dedup_allocator, a);
+	return da->tag_count;
+}
+
+static int fy_dedup_set_tag_count(struct fy_allocator *a, unsigned int count)
+{
+	struct fy_dedup_allocator *da;
+
+	if (!a)
+		return -1;
+
+	da = container_of(a, struct fy_dedup_allocator, a);
+	(void)da;
+	return -1;
+}
+
 static void fy_dedup_trim_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_dedup_allocator *da;
@@ -1089,6 +1115,8 @@ const struct fy_allocator_ops fy_dedup_allocator_ops = {
 	.release = fy_dedup_release,
 	.get_tag = fy_dedup_get_tag,
 	.release_tag = fy_dedup_release_tag,
+	.get_tag_count = fy_dedup_get_tag_count,
+	.set_tag_count = fy_dedup_set_tag_count,
 	.trim_tag = fy_dedup_trim_tag,
 	.reset_tag = fy_dedup_reset_tag,
 	.get_info = fy_dedup_get_info,

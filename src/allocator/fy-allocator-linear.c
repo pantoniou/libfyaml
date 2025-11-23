@@ -277,18 +277,22 @@ static int fy_linear_get_tag(struct fy_allocator *a)
 
 static void fy_linear_release_tag(struct fy_allocator *a, int tag)
 {
-	struct fy_linear_allocator *la;
+	/* nothing */
+}
 
+static int fy_linear_get_tag_count(struct fy_allocator *a)
+{
 	if (!a)
-		return;
+		return -1;
 
-	/* we only give out 0 as a tag */
-	assert(tag == 0);
+	return 1;
+}
 
-	la = container_of(a, struct fy_linear_allocator, a);
-
-	/* we just rewind */
-	fy_atomic_store(&la->next, 0);
+static int fy_linear_set_tag_count(struct fy_allocator *a, unsigned int count)
+{
+	if (!a || count != 1)
+		return -1;
+	return 0;
 }
 
 static void fy_linear_trim_tag(struct fy_allocator *a, int tag)
@@ -298,7 +302,15 @@ static void fy_linear_trim_tag(struct fy_allocator *a, int tag)
 
 static void fy_linear_reset_tag(struct fy_allocator *a, int tag)
 {
-	/* nothing */
+	struct fy_linear_allocator *la;
+
+	if (!a || tag)
+		return;
+
+	la = container_of(a, struct fy_linear_allocator, a);
+
+	/* we just rewind */
+	fy_atomic_store(&la->next, 0);
 }
 
 static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, int tag)
@@ -391,6 +403,8 @@ const struct fy_allocator_ops fy_linear_allocator_ops = {
 	.release = fy_linear_release,
 	.get_tag = fy_linear_get_tag,
 	.release_tag = fy_linear_release_tag,
+	.get_tag_count = fy_linear_get_tag_count,
+	.set_tag_count = fy_linear_set_tag_count,
 	.trim_tag = fy_linear_trim_tag,
 	.reset_tag = fy_linear_reset_tag,
 	.get_info = fy_linear_get_info,

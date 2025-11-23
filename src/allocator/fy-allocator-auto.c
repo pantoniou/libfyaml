@@ -359,8 +359,29 @@ static void fy_auto_release_tag(struct fy_allocator *a, int tag)
 		return;
 
 	aa = container_of(a, struct fy_auto_allocator, a);
-
 	fy_allocator_release_tag(aa->parent_allocator, tag);
+}
+
+static int fy_auto_get_tag_count(struct fy_allocator *a)
+{
+	struct fy_auto_allocator *aa;
+
+	if (!a)
+		return -1;
+
+	aa = container_of(a, struct fy_auto_allocator, a);
+	return fy_allocator_get_tag_count(aa->parent_allocator);
+}
+
+static int fy_auto_set_tag_count(struct fy_allocator *a, unsigned int count)
+{
+	struct fy_auto_allocator *aa;
+
+	if (!a)
+		return -1;
+
+	aa = container_of(a, struct fy_auto_allocator, a);
+	return fy_allocator_set_tag_count(aa->parent_allocator, count);
 }
 
 static void fy_auto_trim_tag(struct fy_allocator *a, int tag)
@@ -438,6 +459,8 @@ const struct fy_allocator_ops fy_auto_allocator_ops = {
 	.release = fy_auto_release,
 	.get_tag = fy_auto_get_tag,
 	.release_tag = fy_auto_release_tag,
+	.get_tag_count = fy_auto_get_tag_count,
+	.set_tag_count = fy_auto_set_tag_count,
 	.trim_tag = fy_auto_trim_tag,
 	.reset_tag = fy_auto_reset_tag,
 	.get_info = fy_auto_get_info,

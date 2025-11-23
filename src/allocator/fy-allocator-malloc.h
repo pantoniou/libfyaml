@@ -39,8 +39,10 @@ struct fy_malloc_tag {
 
 struct fy_malloc_allocator {
 	struct fy_allocator a;
-	fy_id_bits ids[FY_ID_BITS_ARRAY_COUNT_BITS(FY_MALLOC_TAG_MAX)];
-	struct fy_malloc_tag tags[FY_MALLOC_TAG_MAX];
+	fy_id_bits *ids;
+	unsigned int tag_id_count;
+	struct fy_malloc_tag *tags;
+	unsigned int tag_count;
 };
 
 extern const struct fy_allocator_ops fy_malloc_allocator_ops;

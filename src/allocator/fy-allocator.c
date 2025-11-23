@@ -147,6 +147,8 @@ int fy_allocator_register(const char *name, const struct fy_allocator_ops *ops)
 		!ops->release |
 		!ops->get_tag ||
 		!ops->release_tag ||
+		!ops->get_tag_count ||
+		!ops->set_tag_count ||
 		!ops->trim_tag ||
 		!ops->reset_tag ||
 		!ops->get_info ||
@@ -604,6 +606,20 @@ void fy_allocator_release_tag(struct fy_allocator *a, int tag)
 	if (!a)
 		return;
 	a->ops->release_tag(a, tag);
+}
+
+int fy_allocator_get_tag_count(struct fy_allocator *a)
+{
+	if (!a)
+		return -1;
+	return a->ops->get_tag_count(a);
+}
+
+int fy_allocator_set_tag_count(struct fy_allocator *a, unsigned int count)
+{
+	if (!a)
+		return -1;
+	return a->ops->set_tag_count(a, count);
 }
 
 void fy_allocator_trim_tag(struct fy_allocator *a, int tag)

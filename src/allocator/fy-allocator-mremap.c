@@ -558,8 +558,15 @@ static void fy_mremap_cleanup(struct fy_allocator *a)
 
 	mra = container_of(a, struct fy_mremap_allocator, a);
 
-	for (i = 0, mrt = mra->tags; i < mra->tag_count; i++, mrt++)
+	for (i = 0; i < mra->tag_count; i++) {
+		mrt = fy_mremap_tag_from_tag(mra, i);
+		if (!mrt)
+			continue;
 		fy_mremap_tag_cleanup(mra, mrt);
+	}
+
+	fy_parent_allocator_free(&mra->a, mra->ids);
+	fy_parent_allocator_free(&mra->a, mra->tags);
 }
 
 static int fy_mremap_setup(struct fy_allocator *a, struct fy_allocator *parent, int parent_tag, const void *cfg_data)
@@ -682,12 +689,17 @@ void fy_mremap_dump(struct fy_allocator *a)
 	mra = container_of(a, struct fy_mremap_allocator, a);
 
 	fprintf(stderr, "mremap: ");
-	for (i = 0, mrt = mra->tags; i < mra->tag_count; i++, mrt++)
+	for (i = 0; i < mra->tag_count; i++) {
+		mrt = fy_mremap_tag_from_tag(mra, i);
+		if (!mrt)
+			continue;
 		fprintf(stderr, "%c", fy_id_is_free(mra->ids, mra->tag_id_count, i) ? '.' : 'x');
+	}
 	fprintf(stderr, "\n");
 
-	for (i = 0, mrt = mra->tags; i < mra->tag_count; i++, mrt++) {
-		if (fy_id_is_free(mra->ids, mra->tag_id_count, i))
+	for (i = 0; i < mra->tag_count; i++) {
+		mrt = fy_mremap_tag_from_tag(mra, i);
+		if (!mrt)
 			continue;
 
 		count = full_count = active_count = total = system_total = 0;
@@ -867,6 +879,29 @@ err_out:
 	if (id >= 0)
 		fy_id_free(mra->ids, mra->tag_id_count, id);
 	return FY_ALLOC_TAG_ERROR;
+}
+
+static int fy_mremap_get_tag_count(struct fy_allocator *a)
+{
+	struct fy_mremap_allocator *mra;
+
+	if (!a)
+		return -1;
+
+	mra = container_of(a, struct fy_mremap_allocator, a);
+	return mra->tag_count;
+}
+
+static int fy_mremap_set_tag_count(struct fy_allocator *a, unsigned int count)
+{
+	struct fy_mremap_allocator *mra;
+
+	if (!a)
+		return -1;
+
+	mra = container_of(a, struct fy_mremap_allocator, a);
+	(void)mra;
+	return -1;
 }
 
 static void fy_mremap_trim_tag(struct fy_allocator *a, int tag)
@@ -1095,6 +1130,8 @@ const struct fy_allocator_ops fy_mremap_allocator_ops = {
 	.release = fy_mremap_release,
 	.get_tag = fy_mremap_get_tag,
 	.release_tag = fy_mremap_release_tag,
+	.get_tag_count = fy_mremap_get_tag_count,
+	.set_tag_count = fy_mremap_set_tag_count,
 	.trim_tag = fy_mremap_trim_tag,
 	.reset_tag = fy_mremap_reset_tag,
 	.get_info = fy_mremap_get_info,

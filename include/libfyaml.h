@@ -10780,6 +10780,42 @@ fy_allocator_release_tag(struct fy_allocator *a, int tag)
 	FY_EXPORT;
 
 /**
+ * fy_allocator_get_tag_count() - Get the maximum number of tags a
+ * 				  allocator supports
+ *
+ * Get the maximum amount of tags an allocator supports.
+ *
+ * If an allocator only provides a single tag (like the linear
+ * allocator for instance), 1 will be returned.
+ *
+ * @a: The allocator
+ *
+ * Returns:
+ * The number of tags, or -1 on error
+ */
+int
+fy_allocator_get_tag_count(struct fy_allocator *a)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_set_tag_count() - Set the maximum number of tags a
+ * 				  allocator supports
+ *
+ * Sets the maximum amount of tags an allocator supports.
+ * If the set allocator tag count is less than the current
+ * the additional tags will be released.
+ *
+ * @a: The allocator
+ * @count: The amount of tags the allocator should support
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int
+fy_allocator_set_tag_count(struct fy_allocator *a, unsigned int count)
+	FY_EXPORT;
+
+/**
  * fy_allocator_trim_tag() - Trim a tag
  *
  * Trim a tag, that is free any excess memory it allocator, fitting
