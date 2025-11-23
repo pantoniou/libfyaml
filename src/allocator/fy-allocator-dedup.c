@@ -556,11 +556,11 @@ static int fy_dedup_setup(struct fy_allocator *a, struct fy_allocator *parent, i
 	/* start with the state already initialized */
 	XXH64_reset(&da->xxstate_template, da->xxseed);
 
-	/* there's no point in multiple tags */
-	if (da->parent_caps & FYACF_CAN_FREE_TAG)
-		da->tag_count = FY_DEDUP_TAG_MAX;
-	else
-		da->tag_count = 1;
+	/* we use as many tags as the parent allocator */
+	rc = fy_allocator_get_tag_count(da->parent_allocator);
+	if (rc <= 0)
+		goto err_out;
+	da->tag_count = (unsigned int)rc;
 	da->tag_id_count = (da->tag_count + FY_ID_BITS_BITS - 1) / FY_ID_BITS_BITS;
 
 	tmpsz = da->tag_id_count * sizeof(*da->ids);

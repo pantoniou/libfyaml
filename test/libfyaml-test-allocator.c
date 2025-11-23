@@ -27,16 +27,17 @@
 #define ARRAY_SIZE(x) ((sizeof(x)/sizeof((x)[0])))
 #endif
 
+static const char *builtin_allocators[] = {
+	"linear",
+	"malloc",
+	"mremap",
+	"dedup",
+	"auto",
+	NULL,
+};
+
 START_TEST(allocator_builtins)
 {
-	static const char *builtin_allocators[] = {
-		"linear",
-		"malloc",
-		"mremap",
-		"dedup",
-		"auto",
-		NULL,
-	};
 	const char **pp, *p;
 
 	/* verify that all the builtins are available */
@@ -285,7 +286,7 @@ END_TEST
 START_TEST(allocator_linear_inplace)
 {
 	struct fy_allocator *a;
-	char buf[4096];
+	char buf[FY_LINEAR_ALLOCATOR_IN_PLACE_MIN_SIZE];
 	int tag;
 	const void *p;
 
@@ -307,7 +308,7 @@ END_TEST
 START_TEST(allocator_dedup_inplace)
 {
 	struct fy_allocator *a;
-	char buf[8192];
+	char buf[FY_DEDUP_ALLOCATOR_IN_PLACE_MIN_SIZE];
 	int tag;
 	const void *p1, *p2;
 
