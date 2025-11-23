@@ -297,10 +297,10 @@ fy_mremap_tag_from_tag(struct fy_mremap_allocator *mra, int tag)
 	if (!mra)
 		return NULL;
 
-	if ((unsigned int)tag >= ARRAY_SIZE(mra->tags))
+	if ((unsigned int)tag >= mra->tag_count)
 		return NULL;
 
-	if (!fy_id_is_used(mra->ids, ARRAY_SIZE(mra->ids), (int)tag))
+	if (!fy_id_is_used(mra->ids, mra->tag_id_count, (int)tag))
 		return NULL;
 
 	return &mra->tags[tag];
@@ -547,10 +547,27 @@ static const struct fy_mremap_allocator_cfg default_cfg = {
 	.arena_type = MREMAP_ALLOCATOR_DEFAULT_ARENA_TYPE,
 };
 
+static void fy_mremap_cleanup(struct fy_allocator *a)
+{
+	struct fy_mremap_allocator *mra;
+	struct fy_mremap_tag *mrt;
+	unsigned int i;
+
+	if (!a)
+		return;
+
+	mra = container_of(a, struct fy_mremap_allocator, a);
+
+	for (i = 0, mrt = mra->tags; i < mra->tag_count; i++, mrt++)
+		fy_mremap_tag_cleanup(mra, mrt);
+}
+
 static int fy_mremap_setup(struct fy_allocator *a, struct fy_allocator *parent, int parent_tag, const void *cfg_data)
 {
 	const struct fy_mremap_allocator_cfg *cfg;
 	struct fy_mremap_allocator *mra;
+	struct fy_mremap_tag *mrt;
+	size_t tmpsz;
 
 	if (!a)
 		return -1;
@@ -593,23 +610,30 @@ static int fy_mremap_setup(struct fy_allocator *a, struct fy_allocator *parent, 
 	if (mra->arena_type == FYMRAT_DEFAULT)
 		mra->arena_type = MREMAP_ALLOCATOR_DEFAULT_ARENA_TYPE;
 
-	fy_id_reset(mra->ids, ARRAY_SIZE(mra->ids));
+	mra->tag_count = FY_MREMAP_TAG_MAX;
+	mra->tag_id_count = (mra->tag_count + FY_ID_BITS_BITS - 1) / FY_ID_BITS_BITS;
+
+	tmpsz = mra->tag_id_count * sizeof(*mra->ids);
+	mra->ids = fy_parent_allocator_alloc(&mra->a, tmpsz, _Alignof(fy_id_bits));
+	if (!mra->ids)
+		goto err_out;
+	fy_id_reset(mra->ids, mra->tag_id_count);
+
+	tmpsz = mra->tag_count * sizeof(*mra->tags);
+	mra->tags = fy_parent_allocator_alloc(&mra->a, tmpsz, _Alignof(struct fy_mremap_tag));
+	if (!mra->tags)
+		goto err_out;
+
+	/* start with tag 0 as general use */
+	fy_id_set_used(mra->ids, mra->tag_id_count, 0);
+	mrt = fy_mremap_tag_from_tag(mra, 0);
+	fy_mremap_tag_setup(mra, mrt);
+
 	return 0;
-}
 
-static void fy_mremap_cleanup(struct fy_allocator *a)
-{
-	struct fy_mremap_allocator *mra;
-	struct fy_mremap_tag *mrt;
-	unsigned int i;
-
-	if (!a)
-		return;
-
-	mra = container_of(a, struct fy_mremap_allocator, a);
-
-	for (i = 0, mrt = mra->tags; i < ARRAY_SIZE(mra->tags); i++, mrt++)
-		fy_mremap_tag_cleanup(mra, mrt);
+err_out:
+	fy_mremap_cleanup(a);
+	return -1;
 }
 
 struct fy_allocator *fy_mremap_create(struct fy_allocator *parent, int parent_tag, const void *cfg)
@@ -658,12 +682,12 @@ void fy_mremap_dump(struct fy_allocator *a)
 	mra = container_of(a, struct fy_mremap_allocator, a);
 
 	fprintf(stderr, "mremap: ");
-	for (i = 0, mrt = mra->tags; i < ARRAY_SIZE(mra->tags); i++, mrt++)
-		fprintf(stderr, "%c", fy_id_is_free(mra->ids, ARRAY_SIZE(mra->ids), i) ? '.' : 'x');
+	for (i = 0, mrt = mra->tags; i < mra->tag_count; i++, mrt++)
+		fprintf(stderr, "%c", fy_id_is_free(mra->ids, mra->tag_id_count, i) ? '.' : 'x');
 	fprintf(stderr, "\n");
 
-	for (i = 0, mrt = mra->tags; i < ARRAY_SIZE(mra->tags); i++, mrt++) {
-		if (fy_id_is_free(mra->ids, ARRAY_SIZE(mra->ids), i))
+	for (i = 0, mrt = mra->tags; i < mra->tag_count; i++, mrt++) {
+		if (fy_id_is_free(mra->ids, mra->tag_id_count, i))
 			continue;
 
 		count = full_count = active_count = total = system_total = 0;
@@ -812,7 +836,7 @@ static void fy_mremap_release_tag(struct fy_allocator *a, int tag)
 	fy_mremap_tag_cleanup(mra, mrt);
 
 	/* must be last */
-	fy_id_free(mra->ids, ARRAY_SIZE(mra->ids), tag);
+	fy_id_free(mra->ids, mra->tag_id_count, tag);
 }
 
 static int fy_mremap_get_tag(struct fy_allocator *a)
@@ -827,7 +851,7 @@ static int fy_mremap_get_tag(struct fy_allocator *a)
 	mra = container_of(a, struct fy_mremap_allocator, a);
 
 	/* this is atomic, so safe for multiple threads */
-	id = fy_id_alloc(mra->ids, ARRAY_SIZE(mra->ids));
+	id = fy_id_alloc(mra->ids, mra->tag_id_count);
 	if (id < 0)
 		goto err_out;
 
@@ -841,7 +865,7 @@ static int fy_mremap_get_tag(struct fy_allocator *a)
 
 err_out:
 	if (id >= 0)
-		fy_id_free(mra->ids, ARRAY_SIZE(mra->ids), id);
+		fy_id_free(mra->ids, mra->tag_id_count, id);
 	return FY_ALLOC_TAG_ERROR;
 }
 
@@ -941,9 +965,9 @@ fy_mremap_get_info(struct fy_allocator *a, int tag)
 		used = 0;
 		total = sizeof(*mra);
 
-		for (id = 0; id < (int)ARRAY_SIZE(mra->tags); id++) {
+		for (id = 0; id < (int)mra->tag_count; id++) {
 
-			if (!fy_id_is_used(mra->ids, ARRAY_SIZE(mra->ids), id))
+			if (!fy_id_is_used(mra->ids, mra->tag_id_count, id))
 				continue;
 
 			mrt = &mra->tags[id];
@@ -1035,13 +1059,13 @@ static bool fy_mremap_contains(struct fy_allocator *a, int tag, const void *ptr)
 	mra = container_of(a, struct fy_mremap_allocator, a);
 
 	if (tag >= 0) {
-		if (tag >= (int)ARRAY_SIZE(mra->tags))
+		if (tag >= (int)mra->tag_count)
 			return false;
 		tag_start = tag;
 		tag_end = tag + 1;
 	} else {
 		tag_start = 0;
-		tag_end = (int)ARRAY_SIZE(mra->tags);
+		tag_end = (int)mra->tag_count;
 	}
 
 	for (tag = tag_start; tag < tag_end; tag++) {
