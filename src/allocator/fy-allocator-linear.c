@@ -190,8 +190,8 @@ static void *fy_linear_alloc(struct fy_allocator *a, int tag, size_t size, size_
 
 	/* only update stats if someone asked for it */
 	if (a->flags & FYAF_KEEP_STATS) {
-		fy_atomic_fetch_add(&la->stats_allocations, 1);
-		fy_atomic_fetch_add(&la->stats_allocated, real_size);
+		fy_atomic_fetch_add(&la->allocations, 1);
+		fy_atomic_fetch_add(&la->allocated, real_size);
 	}
 
 	/* zero out buffer if not guaranteed */
@@ -218,34 +218,16 @@ static int fy_linear_update_stats(struct fy_allocator *a, int tag, struct fy_all
 
 	la = container_of(a, struct fy_linear_allocator, a);
 
-	stats->allocations = fy_atomic_get_and_clear_counter(&la->stats_allocations);
-	stats->allocated = fy_atomic_get_and_clear_counter(&la->stats_allocated);
+	stats->allocations = fy_atomic_get_and_clear_counter(&la->allocations);
+	stats->allocated = fy_atomic_get_and_clear_counter(&la->allocated);
 
 	return 0;
-}
-
-static const void *fy_linear_store(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
-{
-	void *p;
-
-	if (!a)
-		return NULL;
-
-	p = fy_linear_alloc(a, tag, size, align);
-	if (!p)
-		goto err_out;
-
-	memcpy(p, data, size);
-
-	return p;
-
-err_out:
-	return NULL;
 }
 
 static const void *fy_linear_storev(struct fy_allocator *a, int tag,
 				    const struct iovec *iov, int iovcnt, size_t align)
 {
+	struct fy_linear_allocator *la;
 	void *p;
 	size_t size;
 
@@ -255,10 +237,34 @@ static const void *fy_linear_storev(struct fy_allocator *a, int tag,
 	size = fy_iovec_size(iov, iovcnt);
 	if (size == SIZE_MAX)
 		return NULL;
+
 	p = fy_linear_alloc(a, tag, size, align);
-	if (p)
-		fy_iovec_copy_from(iov, iovcnt, p);
+	if (!p)
+		return NULL;
+
+	fy_iovec_copy_from(iov, iovcnt, p);
+
+	if (a->flags & FYAF_KEEP_STATS) {
+		la = container_of(a, struct fy_linear_allocator, a);
+
+		fy_atomic_fetch_add(&la->stores, 1);
+		fy_atomic_fetch_add(&la->stores, size);
+	}
+
 	return p;
+}
+
+static const void *fy_linear_store(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
+{
+	struct iovec iov[1];
+
+	if (!a)
+		return NULL;
+
+	/* just call the storev */
+	iov[0].iov_base = (void *)data;
+	iov[0].iov_len = size;
+	return fy_linear_storev(a, tag, iov, 1, align);
 }
 
 static void fy_linear_release(struct fy_allocator *a, int tag, const void *data, size_t size)
