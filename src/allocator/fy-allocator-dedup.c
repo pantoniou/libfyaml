@@ -966,12 +966,114 @@ static int fy_dedup_get_tag_count(struct fy_allocator *a)
 static int fy_dedup_set_tag_count(struct fy_allocator *a, unsigned int count)
 {
 	struct fy_dedup_allocator *da;
+	struct fy_dedup_tag_data *dtd;
+	fy_id_bits *ids = NULL, *alloc_ids = NULL;
+	struct fy_dedup_tag *dt, *dt_new, *tags = NULL, *alloc_tags = NULL;
+	unsigned int i, tag_count, tag_id_count;
+	size_t tmpsz;
+	int rc;
 
-	if (!a)
+	if (!a || count < 1)
 		return -1;
 
 	da = container_of(a, struct fy_dedup_allocator, a);
-	(void)da;
+
+	if (count == da->tag_count)
+		return 0;
+
+	tag_count = count;
+	tag_id_count = (tag_count + FY_ID_BITS_BITS - 1) / FY_ID_BITS_BITS;
+
+	/* check if all content tag are within limits */
+	for (i = 0; i < da->tag_count; i++) {
+		dt = fy_dedup_tag_from_tag(da, i);
+		if (!dt)
+			continue;
+		if (dt->content_tag >= (int)tag_count)
+			return -1;
+	}
+
+	if (count > da->tag_count) {
+		/* we need to grow */
+		tmpsz = tag_id_count * sizeof(*da->ids);
+		alloc_ids = fy_parent_allocator_alloc(&da->a, tmpsz, _Alignof(fy_id_bits));
+		if (!alloc_ids)
+			goto err_out;
+		fy_id_reset(alloc_ids, tag_id_count);
+
+		tmpsz = tag_count * sizeof(*tags);
+		alloc_tags = fy_parent_allocator_alloc(&da->a, tmpsz, _Alignof(struct fy_dedup_tag));
+		if (!alloc_tags)
+			goto err_out;
+	}
+
+	/* shrink?, just clip */
+	if (count < da->tag_count) {
+		tags = da->tags;
+		ids = da->ids;
+		for (i = count; i < da->tag_count; i++) {
+			dt = fy_dedup_tag_from_tag(da, i);
+			if (!dt)
+				continue;
+			fy_dedup_tag_cleanup(da, dt);
+			fy_id_free(da->ids, da->tag_id_count, i);
+		}
+	} else {
+		tags = alloc_tags;
+		ids = alloc_ids;
+		/* copy over the old entries */
+		for (i = 0; i < da->tag_count; i++) {
+
+			dt = fy_dedup_tag_from_tag(da, i);
+			if (!dt)
+				continue;
+
+			dt_new = &tags[i];
+
+			fy_dedup_tag_setup(da, dt_new);
+
+			/* move the old entries over */
+			do {
+				dtd = fy_atomic_load(&dt->tag_datas);
+			} while (fy_atomic_compare_exchange_strong(&dt->tag_datas, &dtd, NULL));
+			fy_atomic_store(&dt_new->tag_datas, dtd);
+			dt_new->content_tag = dt->content_tag;
+			fy_atomic_flag_clear(&dt_new->growing);
+			fy_atomic_store(&dt_new->unique_stores, fy_atomic_load(&dt->unique_stores));
+			fy_atomic_store(&dt_new->dup_stores, fy_atomic_load(&dt->dup_stores));
+			fy_atomic_store(&dt_new->collisions, fy_atomic_load(&dt->collisions));
+
+			/* clean the old entry */
+			fy_dedup_tag_cleanup(da, dt);
+
+			fy_id_set_used(ids, tag_id_count, i);
+		}
+	}
+
+	/* ok, drop the parent bits first */
+	rc = fy_allocator_set_tag_count(da->parent_allocator, tag_count);
+	if (rc)
+		goto err_out;
+
+	/* switch */
+	if (da->tags != tags) {
+		da->tags = tags;
+		fy_parent_allocator_free(&da->a, da->tags);
+	}
+
+	if (da->ids != ids) {
+		da->ids = ids;
+		fy_parent_allocator_free(&da->a, da->ids);
+	}
+
+	da->tag_count = tag_count;
+	da->tag_id_count = tag_id_count;
+
+	return 0;
+
+err_out:
+	fy_parent_allocator_free(&da->a, alloc_tags);
+	fy_parent_allocator_free(&da->a, alloc_ids);
 	return -1;
 }
 

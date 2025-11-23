@@ -461,13 +461,86 @@ static int fy_malloc_get_tag_count(struct fy_allocator *a)
 static int fy_malloc_set_tag_count(struct fy_allocator *a, unsigned int count)
 {
 	struct fy_malloc_allocator *ma;
+	fy_id_bits *ids = NULL;
+	struct fy_malloc_tag *mt, *mt_new, *tags = NULL;
+	struct fy_malloc_entry *me;
+	unsigned int i, tag_count, tag_id_count;
+	size_t tmpsz;
 
-	if (!a)
+	if (!a || count < 1)
 		return -1;
 
 	ma = container_of(a, struct fy_malloc_allocator, a);
-	(void)ma;
 
+	if (count == ma->tag_count)
+		return 0;
+
+	tag_count = count;
+	tag_id_count = (tag_count + FY_ID_BITS_BITS - 1) / FY_ID_BITS_BITS;
+
+	/* shrink?, just clip */
+	if (count < ma->tag_count) {
+		for (i = count; i < ma->tag_count; i++) {
+			mt = fy_malloc_tag_from_tag(ma, i);
+			if (!mt)
+				continue;
+			fy_malloc_tag_cleanup(ma, mt);
+			fy_id_free(ma->ids, ma->tag_id_count, i);
+		}
+		tags = ma->tags;
+		ids = ma->ids;
+	} else {
+		/* we need to grow */
+		tmpsz = tag_id_count * sizeof(*ma->ids);
+		ids = fy_parent_allocator_alloc(&ma->a, tmpsz, _Alignof(fy_id_bits));
+		if (!ids)
+			goto err_out;
+		fy_id_reset(ids, tag_id_count);
+
+		tmpsz = tag_count * sizeof(*tags);
+		tags = fy_parent_allocator_alloc(&ma->a, tmpsz, _Alignof(struct fy_malloc_tag));
+		if (!tags)
+			goto err_out;
+
+		/* copy over the old entries */
+		for (i = 0; i < ma->tag_count; i++) {
+
+			mt = fy_malloc_tag_from_tag(ma, i);
+			if (!mt)
+				continue;
+
+			mt_new = &tags[i];
+
+			fy_malloc_tag_setup(ma, mt_new);
+			/* move the old entries over */
+			fy_malloc_tag_list_lock(mt);
+			while ((me = fy_malloc_entry_list_pop(&mt->entries)) != NULL)
+				fy_malloc_entry_list_add_tail(&mt_new->entries, me);
+			fy_malloc_tag_list_unlock(mt);
+			memcpy(&mt_new->stats, &mt->stats, sizeof(mt->stats));
+
+			/* clean the old entry */
+			fy_malloc_tag_cleanup(ma, mt);
+
+			fy_id_set_used(ids, tag_id_count, i);
+		}
+	}
+
+	if (ma->tags != tags) {
+		ma->tags = tags;
+		fy_parent_allocator_free(&ma->a, ma->tags);
+	}
+	if (ma->ids != ids) {
+		ma->ids = ids;
+		fy_parent_allocator_free(&ma->a, ma->ids);
+	}
+	ma->tag_count = tag_count;
+	ma->tag_id_count = tag_id_count;
+	return 0;
+
+err_out:
+	fy_parent_allocator_free(&ma->a, tags);
+	fy_parent_allocator_free(&ma->a, ids);
 	return -1;
 }
 
