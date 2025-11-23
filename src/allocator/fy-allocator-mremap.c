@@ -396,6 +396,10 @@ static void fy_mremap_tag_setup(struct fy_mremap_allocator *mra, struct fy_mrema
 	memset(mrt, 0, sizeof(*mrt));
 	fy_atomic_store(&mrt->arenas, NULL);
 	fy_atomic_store(&mrt->next_arena_sz, mra->pagesz);
+	fy_atomic_store(&mrt->allocations, 0);
+	fy_atomic_store(&mrt->allocated, 0);
+	fy_atomic_store(&mrt->stores, 0);
+	fy_atomic_store(&mrt->stored, 0);
 }
 
 static void *fy_mremap_tag_alloc(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt, size_t size, size_t align)
@@ -737,8 +741,10 @@ static void *fy_mremap_alloc(struct fy_allocator *a, int tag, size_t size, size_
 	if (!ptr)
 		goto err_out;
 
-	mrt->stats.allocations++;
-	mrt->stats.allocated += size;
+	if (a->flags & FYAF_KEEP_STATS) {
+		fy_atomic_fetch_add(&mrt->allocations, 1);
+		fy_atomic_fetch_add(&mrt->allocated, size);
+	}
 
 	return ptr;
 
@@ -755,7 +761,6 @@ static int fy_mremap_update_stats(struct fy_allocator *a, int tag, struct fy_all
 {
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
-	unsigned int i;
 
 	if (!a || !stats)
 		return -1;
@@ -766,11 +771,10 @@ static int fy_mremap_update_stats(struct fy_allocator *a, int tag, struct fy_all
 	if (!mrt)
 		goto err_out;
 
-	/* and update with this ones */
-	for (i = 0; i < ARRAY_SIZE(mrt->stats.counters); i++) {
-		stats->counters[i] += mrt->stats.counters[i];
-		mrt->stats.counters[i] = 0;
-	}
+	stats->allocations += fy_atomic_get_and_clear_counter(&mrt->allocations);
+	stats->allocated += fy_atomic_get_and_clear_counter(&mrt->allocated);
+	stats->stores += fy_atomic_get_and_clear_counter(&mrt->stores);
+	stats->stored += fy_atomic_get_and_clear_counter(&mrt->stored);
 
 	return 0;
 
@@ -804,8 +808,10 @@ static const void *fy_mremap_storev(struct fy_allocator *a, int tag, const struc
 
 	fy_iovec_copy_from(iov, iovcnt, start);
 
-	mrt->stats.stores++;
-	mrt->stats.stored += total_size;
+	if (a->flags & FYAF_KEEP_STATS) {
+		fy_atomic_fetch_add(&mrt->stores, 1);
+		fy_atomic_fetch_add(&mrt->stored, total_size);
+	}
 
 	return start;
 
@@ -951,7 +957,10 @@ static int fy_mremap_set_tag_count(struct fy_allocator *a, unsigned int count)
 			} while (fy_atomic_compare_exchange_strong(&mrt->arenas, &mran, NULL));
 			fy_atomic_store(&mrt_new->arenas, mran);
 			fy_atomic_store(&mrt_new->next_arena_sz, fy_atomic_load(&mrt->next_arena_sz));
-			memcpy(&mrt_new->stats, &mrt->stats, sizeof(mrt->stats));
+			fy_atomic_store(&mrt_new->allocations, fy_atomic_load(&mrt->allocations));
+			fy_atomic_store(&mrt_new->allocated, fy_atomic_load(&mrt->allocated));
+			fy_atomic_store(&mrt_new->stores, fy_atomic_load(&mrt->stores));
+			fy_atomic_store(&mrt_new->stored, fy_atomic_load(&mrt->stored));
 
 			/* clean the old entry */
 			fy_mremap_tag_cleanup(mra, mrt);
