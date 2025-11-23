@@ -24,7 +24,6 @@ FY_TYPE_FWD_DECL_LIST(malloc_entry);
 struct fy_malloc_entry {
 	struct list_head node;
 	size_t size;
-	size_t reqsize;
 	void *mem;
 };
 FY_TYPE_DECL_LIST(malloc_entry);
