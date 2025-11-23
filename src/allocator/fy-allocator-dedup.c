@@ -1044,6 +1044,7 @@ static bool fy_dedup_contains(struct fy_allocator *a, int tag, const void *ptr)
 {
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
+	int tag_start, tag_end;
 
 	if (!a || !ptr)
 		return false;
@@ -1053,11 +1054,25 @@ static bool fy_dedup_contains(struct fy_allocator *a, int tag, const void *ptr)
 	if (!(da->parent_caps & FYACF_HAS_CONTAINS))
 		return false;
 
-	dt = fy_dedup_tag_from_tag(da, tag);
-	if (!dt)
-		return false;
+	if (tag >= 0) {
+		if (tag >= (int)da->tag_count)
+			return false;
+		tag_start = tag;
+		tag_end = tag + 1;
+	} else {
+		tag_start = 0;
+		tag_end = (int)da->tag_count;
+	}
 
-	return fy_allocator_contains(da->parent_allocator, dt->content_tag, ptr);
+	for (tag = tag_start; tag < tag_end; tag++) {
+		dt = fy_dedup_tag_from_tag(da, tag);
+		if (!dt)
+			continue;
+
+		if (fy_allocator_contains(da->parent_allocator, dt->content_tag, ptr))
+			return true;
+	}
+	return false;
 }
 
 const struct fy_allocator_ops fy_dedup_allocator_ops = {
