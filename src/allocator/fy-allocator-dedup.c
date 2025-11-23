@@ -567,7 +567,6 @@ static int fy_dedup_setup(struct fy_allocator *a, struct fy_allocator *parent, i
 	da->ids = fy_parent_allocator_alloc(&da->a, tmpsz, _Alignof(fy_id_bits));
 	if (!da->ids)
 		goto err_out;
-	assert(da->ids);
 	fy_id_reset(da->ids, da->tag_id_count);
 
 	tmpsz = da->tag_count * sizeof(*da->tags);

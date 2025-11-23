@@ -63,8 +63,10 @@ struct fy_mremap_allocator {
 	float grow_ratio;
 	float balloon_ratio;
 	enum fy_mremap_arena_type arena_type;
-	fy_id_bits ids[FY_ID_BITS_ARRAY_COUNT_BITS(FY_MREMAP_TAG_MAX)];
-	struct fy_mremap_tag tags[FY_MREMAP_TAG_MAX];
+	fy_id_bits *ids;
+	unsigned int tag_id_count;
+	struct fy_mremap_tag *tags;
+	unsigned int tag_count;
 };
 
 extern const struct fy_allocator_ops fy_mremap_allocator_ops;
