@@ -49,7 +49,10 @@ struct fy_mremap_arena {
 struct fy_mremap_tag {
 	FY_ATOMIC(struct fy_mremap_arena *) arenas;
 	FY_ATOMIC(size_t) next_arena_sz;
-	struct fy_allocator_stats stats;
+	FY_ATOMIC(uint64_t) allocations;
+	FY_ATOMIC(uint64_t) allocated;
+	FY_ATOMIC(uint64_t) stores;
+	FY_ATOMIC(uint64_t) stored;
 };
 
 struct fy_mremap_allocator {
