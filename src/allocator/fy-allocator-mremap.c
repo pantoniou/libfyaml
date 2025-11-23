@@ -895,12 +895,86 @@ static int fy_mremap_get_tag_count(struct fy_allocator *a)
 static int fy_mremap_set_tag_count(struct fy_allocator *a, unsigned int count)
 {
 	struct fy_mremap_allocator *mra;
+	struct fy_mremap_arena *mran;
+	fy_id_bits *ids = NULL;
+	struct fy_mremap_tag *mrt, *mrt_new, *tags = NULL;
+	unsigned int i, tag_count, tag_id_count;
+	size_t tmpsz;
 
-	if (!a)
+	if (!a || count < 1)
 		return -1;
 
 	mra = container_of(a, struct fy_mremap_allocator, a);
-	(void)mra;
+
+	if (count == mra->tag_count)
+		return 0;
+
+	tag_count = count;
+	tag_id_count = (tag_count + FY_ID_BITS_BITS - 1) / FY_ID_BITS_BITS;
+
+	/* shrink?, just clip */
+	if (count < mra->tag_count) {
+		for (i = count; i < mra->tag_count; i++) {
+			mrt = fy_mremap_tag_from_tag(mra, i);
+			if (!mrt)
+				continue;
+			fy_mremap_tag_cleanup(mra, mrt);
+			fy_id_free(mra->ids, mra->tag_id_count, i);
+		}
+		tags = mra->tags;
+		ids = mra->ids;
+	} else {
+		/* we need to grow */
+		tmpsz = tag_id_count * sizeof(*mra->ids);
+		ids = fy_parent_allocator_alloc(&mra->a, tmpsz, _Alignof(fy_id_bits));
+		if (!ids)
+			goto err_out;
+		fy_id_reset(ids, tag_id_count);
+
+		tmpsz = tag_count * sizeof(*tags);
+		tags = fy_parent_allocator_alloc(&mra->a, tmpsz, _Alignof(struct fy_mremap_tag));
+		if (!tags)
+			goto err_out;
+
+		/* copy over the old entries */
+		for (i = 0; i < mra->tag_count; i++) {
+
+			mrt = fy_mremap_tag_from_tag(mra, i);
+			if (!mrt)
+				continue;
+
+			mrt_new = &tags[i];
+
+			fy_mremap_tag_setup(mra, mrt_new);
+			do {
+				mran = fy_atomic_load(&mrt->arenas);
+			} while (fy_atomic_compare_exchange_strong(&mrt->arenas, &mran, NULL));
+			fy_atomic_store(&mrt_new->arenas, mran);
+			fy_atomic_store(&mrt_new->next_arena_sz, fy_atomic_load(&mrt->next_arena_sz));
+			memcpy(&mrt_new->stats, &mrt->stats, sizeof(mrt->stats));
+
+			/* clean the old entry */
+			fy_mremap_tag_cleanup(mra, mrt);
+
+			fy_id_set_used(ids, tag_id_count, i);
+		}
+	}
+
+	if (mra->tags != tags) {
+		mra->tags = tags;
+		fy_parent_allocator_free(&mra->a, mra->tags);
+	}
+	if (mra->ids != ids) {
+		mra->ids = ids;
+		fy_parent_allocator_free(&mra->a, mra->ids);
+	}
+	mra->tag_count = tag_count;
+	mra->tag_id_count = tag_id_count;
+	return 0;
+
+err_out:
+	fy_parent_allocator_free(&mra->a, tags);
+	fy_parent_allocator_free(&mra->a, ids);
 	return -1;
 }
 
