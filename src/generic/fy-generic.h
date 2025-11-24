@@ -3114,22 +3114,31 @@ enum fy_gb_cfg_flags {
 	FYGBCF_CREATE_ALLOCATOR		= FY_BIT(5),
 	FYGBCF_DUPLICATE_KEYS_DISABLED	= FY_BIT(6),
 	FYGBCF_DEDUP_ENABLED		= FY_BIT(7),
+	FYGBCF_SCOPE_LEADER		= FY_BIT(8),
+	FYGBCF_CREATE_TAG		= FY_BIT(9),
 };
 
 struct fy_generic_builder_cfg {
 	enum fy_gb_cfg_flags flags;
 	struct fy_allocator *allocator;
-	int shared_tag;
+	struct fy_generic_builder *parent;
+	size_t estimated_max_size;
 	struct fy_diag *diag;
 };
 
+enum fy_gb_flags {
+	FYGBF_SCOPE_LEADER		= FY_BIT(0),	/* builder starts new scope */
+	FYGBF_DEDUP_ENABLED		= FY_BIT(1),	/* build is dedup enabled */
+	FYGBF_DEDUP_CHAIN		= FY_BIT(2),	/* builder chain is dedup */
+	FYGBF_OWNS_ALLOCATOR		= FY_BIT(3),	/* builder owns the allocator */
+	FYGBF_CREATED_TAG		= FY_BIT(4),	/* builder has created tag on allocator */
+};
+
 struct fy_generic_builder {
-	struct fy_generic_builder *parent;
 	struct fy_generic_builder_cfg cfg;
 	enum fy_generic_schema schema;
+	enum fy_gb_flags flags;
 	struct fy_allocator *allocator;
-	bool owns_allocator;
-	int shared_tag;
 	int alloc_tag;
 	void *linear;	/* when making it linear */
 };
@@ -3361,9 +3370,9 @@ fy_generic fy_gb_string_vcreate(struct fy_generic_builder *gb, const char *fmt, 
 fy_generic fy_gb_string_createf(struct fy_generic_builder *gb, const char *fmt, ...)
 	__attribute__((format(printf, 2, 3)));
 
-#define FYGBF_OP_SHIFT			0
-#define FYGBF_OP_MASK			((1U << 8) - 1)
-#define FYGBF_OP(x)			(((unsigned int)(x) & FYGBF_OP_MASK) << FYGBF_OP_SHIFT)
+#define FYGBOPF_OP_SHIFT		0
+#define FYGBOPF_OP_MASK			((1U << 8) - 1)
+#define FYGBOPF_OP(x)			(((unsigned int)(x) & FYGBOPF_OP_MASK) << FYGBOPF_OP_SHIFT)
 
 enum fy_gb_op {
 	FYGBOP_CREATE_SEQ,
@@ -3377,20 +3386,20 @@ enum fy_gb_op {
 };
 #define FYGBOP_COUNT	(FYGBOP_APPEND + 1)
 
-enum fy_gb_flags {
-	FYGBF_CREATE_SEQ	= FYGBF_OP(FYGBOP_CREATE_SEQ),
-	FYGBF_CREATE_MAP	= FYGBF_OP(FYGBOP_CREATE_MAP),
-	FYGBF_INSERT		= FYGBF_OP(FYGBOP_INSERT),
-	FYGBF_REPLACE		= FYGBF_OP(FYGBOP_REPLACE),
-	FYGBF_APPEND		= FYGBF_OP(FYGBOP_APPEND),
-	FYGBF_ASSOC		= FYGBF_OP(FYGBOP_ASSOC),
-	FYGBF_DISASSOC		= FYGBF_OP(FYGBOP_DISASSOC),
-	FYGBF_CONJ		= FYGBF_OP(FYGBOP_CONJ),
-	FYGBF_DONT_INTERNALIZE	= FY_BIT(16),			// do not internalize items
-	FYGBF_DEEP_VALIDATE	= FY_BIT(17),			// perform deep validation
+enum fy_gb_op_flags {
+	FYGBOPF_CREATE_SEQ	= FYGBOPF_OP(FYGBOP_CREATE_SEQ),
+	FYGBOPF_CREATE_MAP	= FYGBOPF_OP(FYGBOP_CREATE_MAP),
+	FYGBOPF_INSERT		= FYGBOPF_OP(FYGBOP_INSERT),
+	FYGBOPF_REPLACE		= FYGBOPF_OP(FYGBOP_REPLACE),
+	FYGBOPF_APPEND		= FYGBOPF_OP(FYGBOP_APPEND),
+	FYGBOPF_ASSOC		= FYGBOPF_OP(FYGBOP_ASSOC),
+	FYGBOPF_DISASSOC	= FYGBOPF_OP(FYGBOP_DISASSOC),
+	FYGBOPF_CONJ		= FYGBOPF_OP(FYGBOP_CONJ),
+	FYGBOPF_DONT_INTERNALIZE= FY_BIT(16),			// do not internalize items
+	FYGBOPF_DEEP_VALIDATE	= FY_BIT(17),			// perform deep validation
 };
 
-fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_flags, ...);
+fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flags, ...);
 
 #if 0
 fy_generic fy_gb_collection_create_f(struct fy_generic_builder *gb, enum fy_gb_flags flags, size_t count, const fy_generic *items);

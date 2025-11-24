@@ -33,7 +33,6 @@ extern __thread struct fy_generic_builder *fy_current_gb;
 static const struct fy_generic_builder_cfg default_generic_builder_cfg = {
 	.flags = FYGBCF_SCHEMA_AUTO | FYGBCF_OWNS_ALLOCATOR,
 	.allocator = NULL,	/* use default */
-	.shared_tag = FY_ALLOC_TAG_NONE,
 };
 
 void fy_generic_builder_cleanup(struct fy_generic_builder *gb)
@@ -45,18 +44,16 @@ void fy_generic_builder_cleanup(struct fy_generic_builder *gb)
 		free(gb->linear);
 
 	/* if we own the allocator, just destroy it, everything is gone */
-	if (gb->allocator && gb->owns_allocator)
+	if (gb->flags & FYGBF_OWNS_ALLOCATOR)
 		fy_allocator_destroy(gb->allocator);
-	else if (gb->shared_tag == FY_ALLOC_TAG_NONE)
+	else if (gb->flags & FYGBF_CREATED_TAG)
 		fy_allocator_release_tag(gb->allocator, gb->alloc_tag);
 }
 
 int fy_generic_builder_setup(struct fy_generic_builder *gb, const struct fy_generic_builder_cfg *cfg)
 {
-	struct fy_allocator *a;
 	enum fy_generic_schema schema;
-	bool owns_allocator;
-	int shared_tag, alloc_tag;
+	struct fy_auto_allocator_cfg auto_cfg;
 
 	if (!gb)
 		return -1;
@@ -64,38 +61,45 @@ int fy_generic_builder_setup(struct fy_generic_builder *gb, const struct fy_gene
 	if (!cfg)
 		cfg = &default_generic_builder_cfg;
 
-	memset(gb, 0, sizeof(*gb));
-
-	gb->cfg = *cfg;
-
-	shared_tag = cfg->shared_tag;
-	owns_allocator = !!(cfg->flags & FYGBCF_OWNS_ALLOCATOR);
-
+	/* get and verify schema */
 	schema = (cfg->flags & FYGBCF_SCHEMA_MASK) >> FYGBCF_SCHEMA_SHIFT;
 	if (schema >= FYGS_COUNT)
 		goto err_out;
 
-	a = cfg->allocator;
-	if (!a) {
-		a = fy_allocator_create("auto", NULL);	// let the system decide
-		if (!a)
+	memset(gb, 0, sizeof(*gb));
+	gb->cfg = *cfg;
+
+	gb->flags = ((cfg->flags & FYGBCF_SCOPE_LEADER) ? FYGBF_SCOPE_LEADER : 0) |
+		    ((cfg->flags & FYGBCF_DEDUP_ENABLED) ? FYGBF_DEDUP_ENABLED : 0) |
+		    ((cfg->flags & FYGBCF_OWNS_ALLOCATOR) ? FYGBF_OWNS_ALLOCATOR : 0);
+
+	/* turn on the dedup chain bit if no parent, or the parent has it too */
+	if ((gb->flags & FYGBF_DEDUP_ENABLED) &&
+		(!cfg->parent || (cfg->parent->flags & FYGBF_DEDUP_CHAIN)))
+		gb->flags |= FYGBF_DEDUP_CHAIN;
+
+	if (!cfg->allocator) {
+		memset(&auto_cfg, 0, sizeof(auto_cfg));
+		auto_cfg.scenario = (gb->flags & FYGBF_DEDUP_ENABLED) ?
+					FYAST_SINGLE_LINEAR_RANGE_DEDUP : 
+					FYAST_SINGLE_LINEAR_RANGE;
+		auto_cfg.estimated_max_size = cfg->estimated_max_size;
+		gb->allocator = fy_allocator_create("auto", &auto_cfg);	// let the system decide
+		if (!gb->allocator)
 			goto err_out;
-		owns_allocator = true;
+		gb->flags |= FYGBF_OWNS_ALLOCATOR;
+	} else {
+		gb->flags &= ~FYGBF_OWNS_ALLOCATOR;
+		gb->allocator = cfg->allocator;
 	}
 
-	alloc_tag = shared_tag;
-	if (alloc_tag == FY_ALLOC_TAG_NONE) {
-		alloc_tag = fy_allocator_get_tag(a);
-		if (alloc_tag == FY_ALLOC_TAG_ERROR)
+	if (cfg->flags & FYGBCF_CREATE_TAG) {
+		gb->alloc_tag = fy_allocator_get_tag(gb->allocator);
+		if (gb->alloc_tag == FY_ALLOC_TAG_ERROR)
 			goto err_out;
-	}
-
-	/* ok, update */
-	gb->schema = schema;
-	gb->allocator = a;
-	gb->shared_tag = shared_tag;
-	gb->alloc_tag = alloc_tag;
-	gb->owns_allocator = owns_allocator;
+		gb->flags |= FYGBF_CREATED_TAG;
+	} else
+		gb->alloc_tag = FY_ALLOC_TAG_DEFAULT;
 
 	return 0;
 
@@ -160,12 +164,10 @@ fy_generic_builder_create_linear_in_place(enum fy_gb_cfg_flags flags, void *buff
 	if (!a)
 		return NULL;
 	memset(&cfg, 0, sizeof(cfg));
-	flags |=  FYGBCF_OWNS_ALLOCATOR;
+	flags |= FYGBCF_OWNS_ALLOCATOR;
 	flags &= ~FYGBCF_DEDUP_ENABLED;
 	cfg.flags = flags;
 	cfg.allocator = a;
-	cfg.shared_tag = FY_ALLOC_TAG_NONE;
-	cfg.diag = NULL;
 
 	rc = fy_generic_builder_setup(gb, &cfg);
 	if (rc)
@@ -184,7 +186,7 @@ void fy_generic_builder_reset(struct fy_generic_builder *gb)
 		gb->linear = NULL;
 	}
 
-	if (gb->shared_tag == FY_ALLOC_TAG_NONE)
+	if (gb->flags & FYGBF_CREATED_TAG)
 		fy_allocator_reset_tag(gb->allocator, gb->alloc_tag);
 }
 
@@ -511,7 +513,7 @@ int fy_validate_array(size_t count, const fy_generic *vp, bool deep)
 	return 0;
 }
 
-fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_flags flags, ...)
+fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flags, ...)
 {
 	union {
 		fy_generic_sequence s;
@@ -560,7 +562,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_flags f
 		__size; \
 	})
 
-	op = ((flags >> FYGBF_OP_SHIFT) & FYGBF_OP_MASK);
+	op = ((flags >> FYGBOPF_OP_SHIFT) & FYGBOPF_OP_MASK);
 	if (op >= FYGBOP_COUNT)
 		return fy_invalid;
 
@@ -632,13 +634,13 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_flags f
 		goto err_out;
 	}
 
-	if (!(flags & FYGBF_DONT_INTERNALIZE)) {
+	if (!(flags & FYGBOPF_DONT_INTERNALIZE)) {
 		items = fy_internalize_items(gb, item_count, items,
 				items_buf, ARRAY_SIZE(items_buf), &items_alloc);
 		if (!items)
 			goto err_out;
 	} else {
-		rc = fy_validate_array(item_count, items, !!(flags & FYGBF_DEEP_VALIDATE));
+		rc = fy_validate_array(item_count, items, !!(flags & FYGBOPF_DEEP_VALIDATE));
 		if (rc)
 			goto err_out;
 	}
@@ -726,10 +728,10 @@ err_out:
 
 fy_generic fy_gb_collection_create(struct fy_generic_builder *gb, bool is_map, size_t count, const fy_generic *items, bool internalize)
 {
-	enum fy_gb_flags flags;
+	enum fy_gb_op_flags flags;
 
-	flags = (!is_map ? FYGBF_CREATE_SEQ : FYGBF_CREATE_MAP) |
-		(!internalize ? FYGBF_DONT_INTERNALIZE : 0);
+	flags = (!is_map ? FYGBOPF_CREATE_SEQ : FYGBOPF_CREATE_MAP) |
+		(!internalize ? FYGBOPF_DONT_INTERNALIZE : 0);
 
 	return fy_gb_collection_op(gb, flags, count, items);
 }

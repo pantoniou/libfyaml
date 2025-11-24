@@ -661,7 +661,6 @@ static int do_parse_generic(const struct generic_options *opt, int argc, char **
 
 	memset(&gen_cfg, 0, sizeof(gen_cfg));
 	gen_cfg.allocator = allocator;
-	gen_cfg.shared_tag = FY_ALLOC_TAG_NONE;
 
 	gb = fy_generic_builder_create(&gen_cfg);
 	if (!gb) {
