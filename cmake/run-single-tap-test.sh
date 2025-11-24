@@ -253,7 +253,7 @@ case "$test_suite" in
 	    fi
 	fi
 
-        rm -f "$t1"
+        rm -f "$t"
 
         echo "$res 1 $test_id - $desctxt"
 
@@ -361,7 +361,8 @@ case "$test_suite" in
             fi
         fi
 
-        rm -f "$t" "$t2"
+        rm -f "$t"
+	rm -f "$t2"
 
         echo "$res 1 $test_id - $desctxt"
 
