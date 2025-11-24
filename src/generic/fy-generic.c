@@ -81,7 +81,7 @@ int fy_generic_builder_setup(struct fy_generic_builder *gb, const struct fy_gene
 	if (!cfg->allocator) {
 		memset(&auto_cfg, 0, sizeof(auto_cfg));
 		auto_cfg.scenario = (gb->flags & FYGBF_DEDUP_ENABLED) ?
-					FYAST_SINGLE_LINEAR_RANGE_DEDUP : 
+					FYAST_SINGLE_LINEAR_RANGE_DEDUP :
 					FYAST_SINGLE_LINEAR_RANGE;
 		auto_cfg.estimated_max_size = cfg->estimated_max_size;
 		gb->allocator = fy_allocator_create("auto", &auto_cfg);	// let the system decide
@@ -137,7 +137,7 @@ void fy_generic_builder_destroy(struct fy_generic_builder *gb)
 }
 
 struct fy_generic_builder *
-fy_generic_builder_create_linear_in_place(enum fy_gb_cfg_flags flags, void *buffer, size_t size)
+fy_generic_builder_create_in_place(enum fy_gb_cfg_flags flags, struct fy_generic_builder *parent, void *buffer, size_t size)
 {
 	struct fy_generic_builder_cfg cfg;
 	struct fy_generic_builder *gb;
@@ -145,7 +145,7 @@ fy_generic_builder_create_linear_in_place(enum fy_gb_cfg_flags flags, void *buff
 	void *s, *e;
 	int rc;
 
-	if (!buffer || size < FY_GENERIC_BUILDER_LINEAR_IN_PLACE_MIN_SIZE)
+	if (!buffer)
 		return NULL;
 
 	s = buffer;
@@ -160,14 +160,19 @@ fy_generic_builder_create_linear_in_place(enum fy_gb_cfg_flags flags, void *buff
 	/* skip over the gb and then put down the allocator */
 	s += sizeof(*gb);
 	size = (size_t)(e - s);
-	a = fy_linear_allocator_create_in_place(s, size);
+
+	/* create the proper allocator according to flags (DEDUP enabled enabled dedup) */
+	a = !(flags & FYGBCF_DEDUP_ENABLED) ?
+		fy_linear_allocator_create_in_place(s, size) :
+		fy_dedup_allocator_create_in_place(s, size);
 	if (!a)
 		return NULL;
+
 	memset(&cfg, 0, sizeof(cfg));
 	flags |= FYGBCF_OWNS_ALLOCATOR;
-	flags &= ~FYGBCF_DEDUP_ENABLED;
 	cfg.flags = flags;
 	cfg.allocator = a;
+	cfg.parent = parent;
 
 	rc = fy_generic_builder_setup(gb, &cfg);
 	if (rc)
@@ -211,6 +216,32 @@ bool fy_generic_builder_contains_out_of_place(struct fy_generic_builder *gb, fy_
 		gb = gb->cfg.parent;
 	}
 	return false;
+}
+
+struct fy_generic_builder *
+fy_generic_builder_get_scope_leader(struct fy_generic_builder *gb)
+{
+	while (gb && !(gb->flags & FYGBF_SCOPE_LEADER))
+		gb = gb->cfg.parent;
+	return gb;
+}
+
+struct fy_generic_builder *fy_generic_builder_get_export_builder(struct fy_generic_builder *gb)
+{
+	gb = fy_generic_builder_get_scope_leader(gb);
+	if (!gb)
+		return NULL;
+	return gb->cfg.parent;
+}
+
+fy_generic fy_generic_builder_export(struct fy_generic_builder *gb, fy_generic v)
+{
+	struct fy_generic_builder *gb_export;
+
+	gb_export = fy_generic_builder_get_export_builder(gb);
+	if (!gb_export)
+		return fy_invalid;
+	return fy_gb_internalize(gb_export, v);
 }
 
 fy_generic

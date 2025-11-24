@@ -10735,6 +10735,7 @@ fy_linear_allocator_create_in_place(void *buffer, size_t size)
  * Creates a dedup allocator in place, using the buffer provided.
  * No memory allocations will be performed, so it's safe to embed.
  * There is no need to call fy_allocator_destroy for this allocator.
+ * The parent allocator of this will be a linear allocator.
  *
  * @buffer: The memory buffer to use for both storage and the allocator
  * @size: The size of the memory buffer

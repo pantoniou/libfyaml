@@ -1041,6 +1041,64 @@ START_TEST(generic_compare)
 }
 END_TEST
 
+#define x_fy_gb_or_NULL(_maybe_gb) \
+	(_Generic((_maybe_gb), struct fy_generic_builder *: (_maybe_gb), default: NULL))
+
+#define x_fy_gb_to_generic_value_helper(_gb, _arg, ...) \
+	fy_gb_to_generic_value((_gb), (_arg))
+
+#define x_fy_to_generic_value(_maybe_gb, ...) \
+	(_Generic((_maybe_gb), \
+		struct fy_generic_builder *: ({ x_fy_gb_to_generic_value_helper(fy_gb_or_NULL(_maybe_gb), __VA_ARGS__ __VA_OPT__(,) 0); }), \
+		default: (fy_local_to_generic_value((_maybe_gb)))))
+
+#define x_fy_to_generic(_maybe_gb, ...) \
+	((fy_generic) { .v = x_fy_to_generic_value((_maybe_gb), ##__VA_ARGS__) })
+
+/* Test: Basic builder operation */
+START_TEST(gb_basics)
+{
+	char buf[8192];
+	struct fy_generic_builder *gb;
+	fy_generic v;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	/* verify that creating inplace still makes it inplace */
+	/* int (in place) */
+	v = fy_to_generic(gb, 100);
+	ck_assert(fy_generic_is_valid(v));
+	ck_assert(fy_generic_is_int_type(v));
+	ck_assert(fy_generic_is_in_place(v));
+
+	/* int (out of place) */
+	v = fy_to_generic(gb, FYGT_INT_INPLACE_MAX+1);
+	ck_assert(fy_generic_is_valid(v));
+	ck_assert(fy_get_type(v) == FYGT_INT);
+	ck_assert(!fy_generic_is_in_place(v));
+
+	/* verify that the builder contains this out of place v */
+	ck_assert(fy_generic_builder_contains(gb, v));
+
+	/* same but using polymorphic fy_value() */
+	v = fy_value(gb, 100);
+	ck_assert(fy_generic_is_valid(v));
+	ck_assert(fy_generic_is_int_type(v));
+	ck_assert(fy_generic_is_in_place(v));
+
+	/* int (out of place) */
+	v = fy_value(gb, FYGT_INT_INPLACE_MAX+1);
+	ck_assert(fy_generic_is_valid(v));
+	ck_assert(fy_get_type(v) == FYGT_INT);
+	ck_assert(!fy_generic_is_in_place(v));
+
+	/* verify that the builder contains this out of place v */
+	ck_assert(fy_generic_builder_contains(gb, v));
+}
+END_TEST
+
 TCase *libfyaml_case_generic(void)
 {
 	TCase *tc;
@@ -1073,6 +1131,9 @@ TCase *libfyaml_case_generic(void)
 
 	/* compare */
 	tcase_add_test(tc, generic_compare);
+
+	/* builders */
+	tcase_add_test(tc, gb_basics);
 
 	return tc;
 }
