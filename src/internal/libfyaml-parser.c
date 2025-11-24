@@ -4082,7 +4082,6 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	memset(&gcfg, 0, sizeof(gcfg));
 	gcfg.allocator = a;
-	gcfg.shared_tag = FY_ALLOC_TAG_NONE;
 
 	gb = fy_generic_builder_create(&gcfg);
 	assert(gb);
@@ -4191,7 +4190,6 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	memset(&gcfg, 0, sizeof(gcfg));
 	gcfg.allocator = a;
-	gcfg.shared_tag = FY_ALLOC_TAG_NONE;
 
 	gb = fy_generic_builder_create(&gcfg);
 	assert(gb);
@@ -4221,7 +4219,6 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	memset(&gcfg, 0, sizeof(gcfg));
 	gcfg.allocator = a;
-	gcfg.shared_tag = FY_ALLOC_TAG_NONE;
 
 	gb = fy_generic_builder_create(&gcfg);
 	assert(gb);
@@ -4263,7 +4260,6 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	memset(&gcfg, 0, sizeof(gcfg));
 	gcfg.allocator = a;
-	gcfg.shared_tag = FY_ALLOC_TAG_NONE;
 
 	gb = fy_generic_builder_create(&gcfg);
 	assert(gb);
@@ -4299,7 +4295,6 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	memset(&gcfg, 0, sizeof(gcfg));
 	gcfg.allocator = a;
-	gcfg.shared_tag = FY_ALLOC_TAG_NONE;
 
 	gb = fy_generic_builder_create(&gcfg);
 	assert(gb);
@@ -5110,7 +5105,6 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator,
 
 	memset(&gcfg, 0, sizeof(gcfg));
 	gcfg.allocator = a;
-	gcfg.shared_tag = FY_ALLOC_TAG_NONE;
 	gcfg.flags = (((unsigned int)schema << FYGBCF_SCHEMA_SHIFT) & FYGBCF_SCHEMA_MASK);
 
 	gb = fy_generic_builder_create(&gcfg);
