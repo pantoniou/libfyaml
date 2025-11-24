@@ -1041,26 +1041,13 @@ START_TEST(generic_compare)
 }
 END_TEST
 
-#define x_fy_gb_or_NULL(_maybe_gb) \
-	(_Generic((_maybe_gb), struct fy_generic_builder *: (_maybe_gb), default: NULL))
-
-#define x_fy_gb_to_generic_value_helper(_gb, _arg, ...) \
-	fy_gb_to_generic_value((_gb), (_arg))
-
-#define x_fy_to_generic_value(_maybe_gb, ...) \
-	(_Generic((_maybe_gb), \
-		struct fy_generic_builder *: ({ x_fy_gb_to_generic_value_helper(fy_gb_or_NULL(_maybe_gb), __VA_ARGS__ __VA_OPT__(,) 0); }), \
-		default: (fy_local_to_generic_value((_maybe_gb)))))
-
-#define x_fy_to_generic(_maybe_gb, ...) \
-	((fy_generic) { .v = x_fy_to_generic_value((_maybe_gb), ##__VA_ARGS__) })
-
 /* Test: Basic builder operation */
 START_TEST(gb_basics)
 {
 	char buf[8192];
 	struct fy_generic_builder *gb;
-	fy_generic v;
+	fy_generic v, seq;
+	unsigned int i, len;
 
 	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
 			buf, sizeof(buf));
@@ -1096,6 +1083,99 @@ START_TEST(gb_basics)
 
 	/* verify that the builder contains this out of place v */
 	ck_assert(fy_generic_builder_contains(gb, v));
+
+	// long string
+	v = fy_value(gb, "long string out of place");
+	ck_assert(fy_generic_is_string(v));
+	ck_assert(!fy_generic_is_in_place(v));
+	ck_assert(!strcmp(fy_cast(v, ""), "long string out of place"));
+	ck_assert(!strcmp(fy_castp(&v, ""), "long string out of place"));
+
+	/* verify that the builder contains this out of place v */
+	ck_assert(fy_generic_builder_contains(gb, v));
+
+	/* a sequence is always out of place */
+	v = fy_gb_sequence(gb, 1, 10, 100);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(!fy_generic_is_in_place(v));
+	ck_assert(fy_len(v) == 3);
+
+	/* verify that the builder contains this out of place v */
+	ck_assert(fy_generic_builder_contains(gb, v));
+
+	/* same with mapping */
+	v = fy_gb_mapping(gb, "foo", 100, "bar", 200);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(!fy_generic_is_in_place(v));
+	ck_assert(fy_len(v) == 2);
+
+	/* verify that the builder contains this out of place v */
+	ck_assert(fy_generic_builder_contains(gb, v));
+
+	/* now verify that everyhing in a collection is contained in the builder */
+	seq = fy_gb_sequence(gb, 1, 10, 100, "Long string that should belong in the builder");
+
+	len = fy_len(seq);
+	for (i = 0; i < len; i++) {
+		v = fy_get(seq, i, fy_invalid);
+		ck_assert(fy_generic_is_valid(v));
+		ck_assert(fy_generic_builder_contains(gb, v));
+	}
+}
+END_TEST
+
+static fy_generic calculate_seq_sum(struct fy_generic_builder *parent_gb, fy_generic seq)
+{
+	char buf[8192];
+	struct fy_generic_builder *gb;
+	fy_generic v;
+	size_t i, len;
+	long long val, sum;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, parent_gb,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	len = fy_len(seq);
+	sum = 0;
+	for (i = 0; i < len; i++) {
+		val = fy_get(seq, i, (long long)-1);
+		ck_assert(val != -1);
+		sum += val;
+	}
+
+	/* we know that the value must be out of place */
+	v = fy_value(gb, sum);
+	ck_assert(!fy_generic_is_in_place(v));
+
+	/* export the value back */
+	return fy_generic_builder_export(gb, v);
+}
+
+/* Test: Builder scoping */
+START_TEST(gb_scoping)
+{
+	char buf[8192];
+	struct fy_generic_builder *gb;
+	fy_generic seq, v;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	seq = fy_gb_sequence(gb, 100, 200, 300, FYGT_INT_INPLACE_MAX+1);
+	ck_assert(fy_generic_is_sequence(seq));
+
+	/* calculate */
+	v = calculate_seq_sum(gb, seq);
+
+	/* verify the result is out of place */
+	ck_assert(!fy_generic_is_in_place(v));
+
+	/* verify that our builder contains it */
+	ck_assert(fy_generic_builder_contains(gb, v));
+
+	printf("%lld\n", fy_cast(v, (long long)0));
 }
 END_TEST
 
@@ -1134,6 +1214,7 @@ TCase *libfyaml_case_generic(void)
 
 	/* builders */
 	tcase_add_test(tc, gb_basics);
+	tcase_add_test(tc, gb_scoping);
 
 	return tc;
 }
