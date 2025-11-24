@@ -3191,7 +3191,7 @@ void fy_generic_builder_reset(struct fy_generic_builder *gb);
 #define FY_GENERIC_BUILDER_LINEAR_IN_PLACE_MIN_SIZE	(FY_LINEAR_ALLOCATOR_IN_PLACE_MIN_SIZE + 128)
 
 /* no need to destroy */
-struct fy_generic_builder *fy_generic_builder_create_linear_in_place(enum fy_gb_cfg_flags flags, void *buffer, size_t size);
+struct fy_generic_builder *fy_generic_builder_create_in_place(enum fy_gb_cfg_flags flags, struct fy_generic_builder *parent, void *buffer, size_t size);
 
 bool fy_generic_builder_contains_out_of_place(struct fy_generic_builder *gb, fy_generic v);
 
@@ -3210,6 +3210,10 @@ static inline bool fy_generic_builder_contains(struct fy_generic_builder *gb, fy
 
 	return fy_generic_builder_contains_out_of_place(gb, v);
 }
+
+struct fy_generic_builder *fy_generic_builder_get_scope_leader(struct fy_generic_builder *gb);
+struct fy_generic_builder *fy_generic_builder_get_export_builder(struct fy_generic_builder *gb);
+fy_generic fy_generic_builder_export(struct fy_generic_builder *gb, fy_generic v);
 
 static inline fy_generic fy_gb_null_type_create_out_of_place(struct fy_generic_builder *gb, void *p)
 {
@@ -3376,13 +3380,16 @@ FY_GENERIC_GB_FLOAT_LVAL_TEMPLATE(double, double, -DBL_MAX, DBL_MAX, 0.0);
 #define fy_gb_or_NULL(_maybe_gb) \
 	(_Generic((_maybe_gb), struct fy_generic_builder *: (_maybe_gb), default: NULL))
 
+#define fy_gb_to_generic_value_helper(_gb, _arg, ...) \
+	fy_gb_to_generic_value((_gb), (_arg))
+
 #define fy_to_generic_value(_maybe_gb, ...) \
 	(_Generic((_maybe_gb), \
-		struct fy_generic_builder *: ({ fy_gb_to_generic_value(fy_gb_or_NULL(_maybe_gb), __VA_OPT__(__VA_ARGS__) __VA_OPT__(,) 0); }), \
+		struct fy_generic_builder *: ({ fy_gb_to_generic_value_helper(fy_gb_or_NULL(_maybe_gb), __VA_ARGS__ __VA_OPT__(,) 0); }), \
 		default: (fy_local_to_generic_value((_maybe_gb)))))
 
 #define fy_to_generic(_maybe_gb, ...) \
-	((fy_generic) { .v = fy_to_generic_value((_maybe_gb)) })
+	((fy_generic) { .v = fy_to_generic_value((_maybe_gb), ##__VA_ARGS__) })
 
 fy_generic fy_gb_string_vcreate(struct fy_generic_builder *gb, const char *fmt, va_list ap);
 fy_generic fy_gb_string_createf(struct fy_generic_builder *gb, const char *fmt, ...)
@@ -3607,8 +3614,8 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 #define fy_mapping(...) \
 	(fy_validate(fy_local_mapping(__VA_ARGS__)))
 
-#define fy_value(_v) \
-	(fy_to_generic(_v))
+#define fy_value(_maybe_gb, ...) \
+	((fy_generic) { .v = fy_to_generic_value((_maybe_gb), ##__VA_ARGS__) })
 
 #define fy_inplace_value(_v) \
 	(fy_to_generic_inplace(_v))
