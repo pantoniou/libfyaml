@@ -80,30 +80,30 @@ void parse_anthropic_response(const char *json_response) {
 ```c
 struct fy_document *build_anthropic_request(struct fy_generic_builder *gb) {
     // Create message history with natural nesting
-    fy_generic messages = fy_gb_sequence(gb,
-        fy_local_mapping(
+    fy_generic messages = fy_sequence(gb,
+        fy_mapping(
             "role", "user",
             "content", "What's the weather in San Francisco?"
         ),
-        fy_local_mapping(
+        fy_mapping(
             "role", "assistant",
-            "content", fy_local_sequence(
-                fy_local_mapping(
+            "content", fy_sequence(
+                fy_mapping(
                     "type", "text",
                     "text", "I'll check the weather for you."
                 ),
-                fy_local_mapping(
+                fy_mapping(
                     "type", "tool_use",
                     "id", "toolu_01A",
                     "name", "get_weather",
-                    "input", fy_local_mapping("location", "San Francisco, CA")
+                    "input", fy_mapping("location", "San Francisco, CA")
                 )
             )
         ),
-        fy_local_mapping(
+        fy_mapping(
             "role", "user",
-            "content", fy_local_sequence(
-                fy_local_mapping(
+            "content", fy_sequence(
+                fy_mapping(
                     "type", "tool_result",
                     "tool_use_id", "toolu_01A",
                     "content", "72°F and sunny"
@@ -113,25 +113,25 @@ struct fy_document *build_anthropic_request(struct fy_generic_builder *gb) {
     );
 
     // Define available tools
-    fy_generic tools = fy_gb_sequence(gb,
-        fy_local_mapping(
+    fy_generic tools = fy_sequence(gb,
+        fy_mapping(
             "name", "get_weather",
             "description", "Get current weather for a location",
-            "input_schema", fy_local_mapping(
+            "input_schema", fy_mapping(
                 "type", "object",
-                "properties", fy_local_mapping(
-                    "location", fy_local_mapping(
+                "properties", fy_mapping(
+                    "location", fy_mapping(
                         "type", "string",
                         "description", "City and state, e.g. San Francisco, CA"
                     )
                 ),
-                "required", fy_local_sequence("location")
+                "required", fy_sequence("location")
             )
         )
     );
 
     // Build complete request
-    fy_generic request = fy_gb_mapping(gb,
+    fy_generic request = fy_mapping(gb,
         "model", "claude-3-5-sonnet-20241022",
         "max_tokens", 1024,
         "messages", messages,
@@ -425,10 +425,10 @@ let config = json!({
 
 **libfyaml**:
 ```c
-fy_generic config = fy_local_mapping(
+fy_generic config = fy_mapping(
     "host", "localhost",
     "port", 8080,
-    "users", fy_local_sequence("alice", "bob", "charlie"),
+    "users", fy_sequence("alice", "bob", "charlie"),
     "enabled", true
 );
 ```

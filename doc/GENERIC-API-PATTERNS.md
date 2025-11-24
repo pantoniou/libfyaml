@@ -56,9 +56,9 @@ void handle_http_request(fy_generic request) {
     const char *email = fy_get(body, "email", "");
 
     // Build response
-    fy_generic response = fy_gb_mapping(req_gb,
+    fy_generic response = fy_mapping(req_gb,
         "status", "success",
-        "user", fy_local_mapping("name", username, "email", email)
+        "user", fy_mapping("name", username, "email", email)
     );
 
     send_response(response);
@@ -243,7 +243,7 @@ fy_seq_handle active_seniors = transform_users(gb, all_users);
 
 ```c
 // Base config (stack-allocated, immutable)
-fy_generic base_config = fy_local_mapping(
+fy_generic base_config = fy_mapping(
     "theme", "light",
     "language", "en",
     "notifications", true,
@@ -411,13 +411,13 @@ fy_generic transactional_update(const char *filename) {
 ```c
 // BAD: Storing stack value pointer beyond scope
 fy_generic *get_config_ptr(void) {
-    fy_generic config = fy_local_mapping("key", "value");
+    fy_generic config = fy_mapping("key", "value");
     return &config;  // DANGLING POINTER!
 }
 
 // GOOD: Use builder for persistent values
 fy_generic get_config(struct fy_generic_builder *gb) {
-    return fy_gb_mapping(gb, "key", "value");  // Safe
+    return fy_mapping(gb, "key", "value");  // Safe
 }
 ```
 
@@ -448,7 +448,7 @@ struct fy_generic_builder *arena_gb = fy_generic_builder_create(&(struct fy_gene
 // Long-running loop
 while (server_running) {
     fy_generic request = receive_request();
-    fy_generic response = fy_gb_mapping(arena_gb, ...);  // Arena grows forever!
+    fy_generic response = fy_mapping(arena_gb, ...);  // Arena grows forever!
     send_response(response);
 }
 ```
@@ -464,7 +464,7 @@ struct fy_generic_builder *gb = fy_generic_builder_create(&(struct fy_generic_bu
 for (int i = 0; i < 1000000; i++) {
     char id[64];
     snprintf(id, sizeof(id), "unique-id-%d", i);  // All unique!
-    fy_generic record = fy_gb_mapping(gb, "id", id, ...);  // Dedup table wasted
+    fy_generic record = fy_mapping(gb, "id", id, ...);  // Dedup table wasted
 }
 
 // GOOD: Use fast allocator for unique data
@@ -514,7 +514,7 @@ struct fy_generic_builder *gb = fy_generic_builder_create(&(struct fy_generic_bu
 4. **Use stack values for temporary work**:
    ```c
    // No allocation overhead
-   fy_generic temp = fy_local_mapping("key", "value");
+   fy_generic temp = fy_mapping("key", "value");
    const char *value = fy_get(temp, "key", "");
    // Automatic cleanup
    ```

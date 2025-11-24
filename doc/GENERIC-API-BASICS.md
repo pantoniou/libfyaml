@@ -318,18 +318,18 @@ extern const fy_map_handle fy_map_invalid;
 
 ```c
 // Stack-allocated (no builder - immutable, structural sharing)
-fy_seq_handle seq1 = fy_cast(fy_local_sequence("a", "b"), fy_seq_invalid);
+fy_seq_handle seq1 = fy_cast(fy_sequence("a", "b"), fy_seq_invalid);
 fy_seq_handle seq2 = fy_conj(seq1, fy_string("c"));  // Returns new with sharing
 
 // Heap-allocated via builder (persistent beyond stack scope)
 // Builder automatically internalizes values when you use it!
 struct fy_generic_builder *gb = fy_generic_builder_create();
 
-fy_seq_handle seq3 = fy_cast(fy_local_sequence("a", "b"), fy_seq_invalid);
+fy_seq_handle seq3 = fy_cast(fy_sequence("a", "b"), fy_seq_invalid);
 fy_seq_handle seq4 = fy_conj(gb, seq3, fy_string("c"));  // Builder internalizes
 
 // Same API, different allocation strategy!
-fy_map_handle map1 = fy_cast(fy_local_mapping("key", 1), fy_map_invalid);
+fy_map_handle map1 = fy_cast(fy_mapping("key", 1), fy_map_invalid);
 fy_map_handle map2 = fy_assoc(map1, "key2", fy_int(42));     // Stack
 fy_map_handle map3 = fy_assoc(gb, map1, "key2", fy_int(42)); // Heap (internalized)
 
@@ -430,7 +430,7 @@ struct fy_generic_builder *gb = fy_generic_builder_create(&(struct fy_generic_bu
 });
 
 // Efficient set operations
-fy_generic collection = fy_gb_sequence(gb, 1, 42, 100, 42, 200);
+fy_generic collection = fy_sequence(gb, 1, 42, 100, 42, 200);
 
 // All instances of 42 are inline (inherently same value)
 // Collections are deduplicated in builder
@@ -579,7 +579,7 @@ This is the secret sauce that makes functional programming patterns viable in C.
 ```c
 void demonstrate_stack_allocated(void) {
     // Stack-allocated (temporary) - uses structural sharing
-    fy_generic items = fy_local_sequence("alice", "bob", "charlie");
+    fy_generic items = fy_sequence("alice", "bob", "charlie");
     fy_seq_handle seq1 = fy_get(items, fy_seq_invalid);
 
     // Add an item - returns NEW sequence, original unchanged
@@ -609,7 +609,7 @@ void demonstrate_builder_allocated(void) {
     struct fy_generic_builder *gb = fy_generic_builder_create();
 
     // Start with stack-allocated sequence
-    fy_seq_handle seq1 = fy_get(fy_local_sequence("alice", "bob"), fy_seq_invalid);
+    fy_seq_handle seq1 = fy_get(fy_sequence("alice", "bob"), fy_seq_invalid);
 
     // Add items using builder - builder internalizes automatically!
     fy_seq_handle seq2 = fy_conj(gb, seq1, fy_string("charlie"));
@@ -634,7 +634,7 @@ void demonstrate_builder_allocated(void) {
 ```c
 void demonstrate_map_updates_stack(void) {
     // Start with an immutable mapping (stack-allocated)
-    fy_generic config = fy_local_mapping(
+    fy_generic config = fy_mapping(
         "host", "localhost",
         "port", 8080,
         "enabled", true
@@ -674,7 +674,7 @@ void demonstrate_map_updates_builder(void) {
 
     // Start with stack-allocated mapping
     fy_map_handle map1 = fy_get(
-        fy_local_mapping("host", "localhost", "port", 8080, "enabled", true),
+        fy_mapping("host", "localhost", "port", 8080, "enabled", true),
         fy_map_invalid
     );
 
@@ -713,11 +713,11 @@ void demonstrate_map_updates_builder(void) {
 
 ```c
 // libfyaml - same semantics!
-fy_generic items = fy_local_sequence("alice", "bob", "charlie");
+fy_generic items = fy_sequence("alice", "bob", "charlie");
 fy_seq_handle items2 = fy_conj(items, fy_string("dave"));        // Original unchanged
 fy_seq_handle items3 = fy_assoc_at(items, 1, fy_string("BOBBY")); // Returns new
 
-fy_generic config = fy_local_mapping("host", "localhost", "port", 8080);
+fy_generic config = fy_mapping("host", "localhost", "port", 8080);
 fy_map_handle config2 = fy_assoc(config, "timeout", fy_int(30));  // Returns new map
 fy_map_handle config3 = fy_dissoc(config, "enabled");             // Returns new map
 ```
@@ -838,7 +838,7 @@ int port = fy_get(
 
 These can be implemented as:
 - Static inline function returning empty generic
-- Preprocessor macro expanding to `fy_local_mapping()` / `fy_local_sequence()`
+- Preprocessor macro expanding to `fy_mapping()` / `fy_sequence()` with no arguments
 - Global constant (if generics are POD-compatible)
 
 ### Usage

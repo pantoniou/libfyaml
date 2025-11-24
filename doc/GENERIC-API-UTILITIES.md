@@ -31,7 +31,7 @@ fy_generic fy_keys(struct fy_generic_builder *gb, fy_generic map);
 
 **Examples**:
 ```c
-fy_generic config = fy_local_mapping(
+fy_generic config = fy_mapping(
     "host", "localhost",
     "port", 8080,
     "debug", true
@@ -67,7 +67,7 @@ fy_generic fy_values(struct fy_generic_builder *gb, fy_generic map);
 
 **Examples**:
 ```c
-fy_generic config = fy_local_mapping(
+fy_generic config = fy_mapping(
     "host", "localhost",
     "port", 8080,
     "debug", true
@@ -105,7 +105,7 @@ fy_generic fy_items(struct fy_generic_builder *gb, fy_generic map);
 
 **Examples**:
 ```c
-fy_generic config = fy_local_mapping(
+fy_generic config = fy_mapping(
     "host", "localhost",
     "port", 8080
 );
@@ -149,7 +149,7 @@ bool fy_has_key(fy_generic map, fy_generic key);  // Alias
 
 **Examples**:
 ```c
-fy_generic config = fy_local_mapping(
+fy_generic config = fy_mapping(
     "host", "localhost",
     "port", 8080
 );
@@ -192,13 +192,13 @@ fy_generic fy_merge_all(struct fy_generic_builder *gb, fy_generic maps...);
 
 **Examples**:
 ```c
-fy_generic defaults = fy_local_mapping(
+fy_generic defaults = fy_mapping(
     "timeout", 30,
     "retries", 3,
     "debug", false
 );
 
-fy_generic user_config = fy_local_mapping(
+fy_generic user_config = fy_mapping(
     "timeout", 60,
     "verbose", true
 );
@@ -208,7 +208,7 @@ fy_generic final_config = fy_merge(defaults, user_config);
 // final_config: {"timeout": 60, "retries": 3, "debug": false, "verbose": true}
 
 // Merge multiple configurations
-fy_generic env_config = fy_local_mapping("debug", true);
+fy_generic env_config = fy_mapping("debug", true);
 fy_generic all = fy_merge_all(defaults, env_config, user_config, fy_end);
 ```
 
@@ -243,7 +243,7 @@ fy_generic fy_slice_py(fy_generic seq, int start, int end);
 
 **Examples**:
 ```c
-fy_generic items = fy_local_sequence("a", "b", "c", "d", "e");
+fy_generic items = fy_sequence("a", "b", "c", "d", "e");
 
 // Get middle elements
 fy_generic middle = fy_slice(items, 1, 4);
@@ -284,13 +284,13 @@ fy_generic fy_last(fy_generic seq);
 
 **Examples**:
 ```c
-fy_generic items = fy_local_sequence("alice", "bob", "charlie");
+fy_generic items = fy_sequence("alice", "bob", "charlie");
 
 fy_generic first = fy_first(items);   // "alice"
 fy_generic last = fy_last(items);     // "charlie"
 
 // Safe handling of empty sequences
-fy_generic empty = fy_local_sequence();
+fy_generic empty = fy_sequence();
 fy_generic none = fy_first(empty);    // fy_invalid
 
 if (!fy_is_invalid(none)) {
@@ -322,7 +322,7 @@ fy_generic fy_tail(fy_generic seq);  // Alias
 
 **Examples**:
 ```c
-fy_generic items = fy_local_sequence("alice", "bob", "charlie");
+fy_generic items = fy_sequence("alice", "bob", "charlie");
 
 fy_generic rest = fy_rest(items);
 // rest: ["bob", "charlie"]
@@ -359,7 +359,7 @@ fy_generic fy_drop(fy_generic seq, size_t n);
 
 **Examples**:
 ```c
-fy_generic items = fy_local_sequence(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+fy_generic items = fy_sequence(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
 
 fy_generic first_five = fy_take(items, 5);
 // first_five: [1, 2, 3, 4, 5]
@@ -394,7 +394,7 @@ fy_generic fy_reverse(struct fy_generic_builder *gb, fy_generic seq);
 
 **Examples**:
 ```c
-fy_generic items = fy_local_sequence("a", "b", "c", "d");
+fy_generic items = fy_sequence("a", "b", "c", "d");
 
 fy_generic reversed = fy_reverse(items);
 // reversed: ["d", "c", "b", "a"]
@@ -427,9 +427,9 @@ fy_generic fy_concat_all(fy_generic seqs...);  // Varargs terminated by fy_end
 
 **Examples**:
 ```c
-fy_generic first = fy_local_sequence("a", "b", "c");
-fy_generic second = fy_local_sequence("d", "e");
-fy_generic third = fy_local_sequence("f");
+fy_generic first = fy_sequence("a", "b", "c");
+fy_generic second = fy_sequence("d", "e");
+fy_generic third = fy_sequence("f");
 
 fy_generic combined = fy_concat(first, second);
 // combined: ["a", "b", "c", "d", "e"]
@@ -465,10 +465,10 @@ fy_generic fy_flatten_depth(fy_generic seq, int depth);
 
 **Examples**:
 ```c
-fy_generic nested = fy_local_sequence(
+fy_generic nested = fy_sequence(
     1,
-    fy_local_sequence(2, 3),
-    fy_local_sequence(4, fy_local_sequence(5, 6)),
+    fy_sequence(2, 3),
+    fy_sequence(4, fy_sequence(5, 6)),
     7
 );
 
@@ -477,7 +477,7 @@ fy_generic flat = fy_flatten(nested);
 
 // Flatten only one level
 fy_generic one_level = fy_flatten_depth(nested, 1);
-// one_level: [1, 2, 3, 4, fy_local_sequence(5, 6), 7]
+// one_level: [1, 2, 3, 4, fy_sequence(5, 6), 7]
 ```
 
 **Python equivalent**:
@@ -517,10 +517,10 @@ bool is_active(fy_generic user, void *ctx) {
     return fy_get(user, "active", false);
 }
 
-fy_generic users = fy_local_sequence(
-    fy_local_mapping("name", "alice", "active", true),
-    fy_local_mapping("name", "bob", "active", false),
-    fy_local_mapping("name", "charlie", "active", true)
+fy_generic users = fy_sequence(
+    fy_mapping("name", "alice", "active", true),
+    fy_mapping("name", "bob", "active", false),
+    fy_mapping("name", "charlie", "active", true)
 );
 
 size_t active_count = fy_count(users, is_active, NULL);
@@ -562,7 +562,7 @@ bool is_even(fy_generic num, void *ctx) {
     return fy_cast(num, 0) % 2 == 0;
 }
 
-fy_generic numbers = fy_local_sequence(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+fy_generic numbers = fy_sequence(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
 fy_generic evens = fy_filter(numbers, is_even, NULL);
 // evens: [2, 4, 6, 8, 10]
 ```
@@ -599,7 +599,7 @@ fy_generic double_it(fy_generic num, void *ctx) {
     return fy_value(fy_cast(num, 0) * 2);
 }
 
-fy_generic numbers = fy_local_sequence(1, 2, 3, 4, 5);
+fy_generic numbers = fy_sequence(1, 2, 3, 4, 5);
 fy_generic doubled = fy_map(numbers, double_it, NULL);
 // doubled: [2, 4, 6, 8, 10]
 
@@ -608,9 +608,9 @@ fy_generic get_name(fy_generic user, void *ctx) {
     return fy_get(user, "name", "");
 }
 
-fy_generic users = fy_local_sequence(
-    fy_local_mapping("name", "alice", "age", 30),
-    fy_local_mapping("name", "bob", "age", 25)
+fy_generic users = fy_sequence(
+    fy_mapping("name", "alice", "age", 30),
+    fy_mapping("name", "bob", "age", 25)
 );
 fy_generic names = fy_map(users, get_name, NULL);
 // names: ["alice", "bob"]
@@ -649,7 +649,7 @@ fy_generic sum_reducer(fy_generic acc, fy_generic num, void *ctx) {
     return fy_value(fy_cast(acc, 0) + fy_cast(num, 0));
 }
 
-fy_generic numbers = fy_local_sequence(1, 2, 3, 4, 5);
+fy_generic numbers = fy_sequence(1, 2, 3, 4, 5);
 fy_generic sum = fy_reduce(numbers, sum_reducer, fy_value(0), NULL);
 // sum: 15
 
@@ -662,12 +662,12 @@ fy_generic pairs_to_map(fy_generic acc, fy_generic pair, void *ctx) {
 }
 
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
-fy_generic pairs = fy_local_sequence(
-    fy_local_sequence("a", 1),
-    fy_local_sequence("b", 2),
-    fy_local_sequence("c", 3)
+fy_generic pairs = fy_sequence(
+    fy_sequence("a", 1),
+    fy_sequence("b", 2),
+    fy_sequence("c", 3)
 );
-fy_generic map = fy_reduce(pairs, pairs_to_map, fy_local_mapping(), gb);
+fy_generic map = fy_reduce(pairs, pairs_to_map, fy_mapping(), gb);
 // map: {"a": 1, "b": 2, "c": 3}
 ```
 
@@ -694,8 +694,8 @@ bool fy_empty(fy_generic collection);
 
 **Examples**:
 ```c
-fy_generic empty_seq = fy_local_sequence();
-fy_generic empty_map = fy_local_mapping();
+fy_generic empty_seq = fy_sequence();
+fy_generic empty_map = fy_mapping();
 
 if (fy_empty(empty_seq)) {
     // Handle empty case
@@ -729,12 +729,12 @@ fy_generic fy_unique(fy_generic seq);  // Alias
 
 **Examples**:
 ```c
-fy_generic items = fy_local_sequence(1, 2, 3, 2, 4, 1, 5);
+fy_generic items = fy_sequence(1, 2, 3, 2, 4, 1, 5);
 fy_generic unique = fy_distinct(items);
 // unique: [1, 2, 3, 4, 5]
 
 // Works with any comparable values
-fy_generic words = fy_local_sequence("apple", "banana", "apple", "cherry");
+fy_generic words = fy_sequence("apple", "banana", "apple", "cherry");
 fy_generic unique_words = fy_unique(words);
 // unique_words: ["apple", "banana", "cherry"]
 ```
@@ -762,15 +762,15 @@ fy_generic fy_zip_all(fy_generic seqs...);  // Varargs
 
 **Examples**:
 ```c
-fy_generic names = fy_local_sequence("alice", "bob", "charlie");
-fy_generic ages = fy_local_sequence(30, 25, 35);
+fy_generic names = fy_sequence("alice", "bob", "charlie");
+fy_generic ages = fy_sequence(30, 25, 35);
 
 fy_generic zipped = fy_zip(names, ages);
 // zipped: [["alice", 30], ["bob", 25], ["charlie", 35]]
 
 // Convert to mapping
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
-fy_generic map = fy_local_mapping();
+fy_generic map = fy_mapping();
 for (size_t i = 0; i < fy_len(zipped); i++) {
     fy_generic pair = fy_get_item(zipped, i);
     fy_generic key = fy_get_item(pair, 0);
@@ -815,11 +815,11 @@ fy_generic get_age_group(fy_generic user, void *ctx) {
     return fy_value(age / 10 * 10);  // Group by decade
 }
 
-fy_generic users = fy_local_sequence(
-    fy_local_mapping("name", "alice", "age", 25),
-    fy_local_mapping("name", "bob", "age", 32),
-    fy_local_mapping("name", "charlie", "age", 28),
-    fy_local_mapping("name", "dave", "age", 35)
+fy_generic users = fy_sequence(
+    fy_mapping("name", "alice", "age", 25),
+    fy_mapping("name", "bob", "age", 32),
+    fy_mapping("name", "charlie", "age", 28),
+    fy_mapping("name", "dave", "age", 35)
 );
 
 fy_generic by_decade = fy_group_by(users, get_age_group, NULL);
@@ -872,10 +872,10 @@ fy_generic active_ages = fy_distinct(
 ```c
 // Python: {k: v*2 for k, v in items.items() if v > 10}
 
-fy_generic items = fy_local_mapping("a", 15, "b", 5, "c", 20);
+fy_generic items = fy_mapping("a", 15, "b", 5, "c", 20);
 
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
-fy_generic result = fy_local_mapping();
+fy_generic result = fy_mapping();
 
 fy_generic keys_seq = fy_keys(items);
 for (size_t i = 0; i < fy_len(keys_seq); i++) {
@@ -894,10 +894,10 @@ for (size_t i = 0; i < fy_len(keys_seq); i++) {
 ```c
 // Python: [x*2 for x in numbers if x % 2 == 0]
 
-fy_generic numbers = fy_local_sequence(1, 2, 3, 4, 5, 6);
+fy_generic numbers = fy_sequence(1, 2, 3, 4, 5, 6);
 
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
-fy_generic result = fy_local_sequence();
+fy_generic result = fy_sequence();
 
 for (size_t i = 0; i < fy_len(numbers); i++) {
     int num = fy_cast(fy_get_item(numbers, i), 0);

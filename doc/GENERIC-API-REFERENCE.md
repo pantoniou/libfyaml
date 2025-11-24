@@ -160,11 +160,12 @@ libfyaml exposes a minimal, polymorphic API that's all you need for working with
 - `fy_type(g)` - Get type enum
 - `fy_is_*()` - Type predicates (`fy_is_map`, `fy_is_seq`, `fy_is_string`, etc.)
 
-**Construction**:
-- `fy_local_mapping(...)` - Create mapping (stack-allocated, immutable)
-- `fy_local_sequence(...)` - Create sequence (stack-allocated, immutable)
-- `fy_gb_mapping(gb, ...)` - Create mapping via builder (heap-allocated)
-- `fy_gb_sequence(gb, ...)` - Create sequence via builder (heap-allocated)
+**Construction** (polymorphic - detects builder automatically):
+- `fy_mapping(...)` - Create mapping (stack-allocated if no builder)
+- `fy_sequence(...)` - Create sequence (stack-allocated if no builder)
+- `fy_mapping(gb, ...)` - Create mapping via builder (heap-allocated)
+- `fy_sequence(gb, ...)` - Create sequence via builder (heap-allocated)
+- `fy_value(...)` / `fy_value(gb, ...)` - Create any type polymorphically
 
 **Key principle**: All values are **immutable**. Operations like `fy_assoc()` and `fy_conj()` return new collections without modifying the original. This enables:
 - **Thread safety**: Immutable values are safe to share across threads
@@ -173,26 +174,26 @@ libfyaml exposes a minimal, polymorphic API that's all you need for working with
 
 ### Construction
 
-**Stack-allocated (temporary)**:
+**Stack-allocated (temporary - no builder)**:
 ```c
-fy_generic msg = fy_local_mapping(
+fy_generic msg = fy_mapping(
     "role", "user",
     "content", "Hello!"
 );
 
-fy_generic items = fy_local_sequence("foo", "bar", "baz");
+fy_generic items = fy_sequence("foo", "bar", "baz");
 ```
 
-**Heap-allocated (persistent)**:
+**Heap-allocated (persistent - with builder)**:
 ```c
 struct fy_generic_builder *gb = fy_generic_builder_create();
 
-fy_generic msg = fy_gb_mapping(gb,
+fy_generic msg = fy_mapping(gb,
     "role", "user",
     "content", "Hello!"
 );
 
-fy_generic items = fy_gb_sequence(gb, "foo", "bar", "baz");
+fy_generic items = fy_sequence(gb, "foo", "bar", "baz");
 ```
 
 **Empty collections**:

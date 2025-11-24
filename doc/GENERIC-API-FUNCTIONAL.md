@@ -18,11 +18,11 @@ All functional operations in the generic API follow these principles:
 
 ```c
 // ✅ Clean and composable - works directly with fy_generic
-fy_generic config = fy_local_mapping("host", "localhost", "port", 8080);
+fy_generic config = fy_mapping("host", "localhost", "port", 8080);
 fy_generic new_config = fy_assoc(config, "timeout", fy_int(30));
 
 // ❌ Unnecessary - don't need to cast to handles
-fy_map_handle config = fy_cast(fy_local_mapping("host", "localhost"), fy_map_invalid);
+fy_map_handle config = fy_cast(fy_mapping("host", "localhost"), fy_map_invalid);
 fy_map_handle new_config = fy_assoc(config, "timeout", fy_int(30));
 ```
 
@@ -52,7 +52,7 @@ fy_generic new_map = fy_assoc(gb, map, key, value);
 **Examples**:
 ```c
 // Direct generic operations - clean and composable!
-fy_generic config = fy_local_mapping("host", "localhost", "port", 8080);
+fy_generic config = fy_mapping("host", "localhost", "port", 8080);
 
 // Add new key
 fy_generic config2 = fy_assoc(config, "timeout", fy_int(30));
@@ -65,7 +65,7 @@ fy_generic config3 = fy_assoc(config, "port", fy_int(9090));
 // config: {"host": "localhost", "port": 8080}  (unchanged!)
 
 // Complex keys work seamlessly
-fy_generic config4 = fy_assoc(config, fy_local_sequence("nested", "path"), fy_string("value"));
+fy_generic config4 = fy_assoc(config, fy_sequence("nested", "path"), fy_string("value"));
 
 // Chain operations naturally
 fy_generic prod_config = fy_assoc(
@@ -83,7 +83,7 @@ fy_generic prod_config = fy_assoc(
 ```c
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
 
-fy_generic base_config = fy_local_mapping("env", "dev");
+fy_generic base_config = fy_mapping("env", "dev");
 
 // Add multiple keys - builder makes result persistent
 fy_generic prod_config = fy_assoc(gb, base_config, "env", "prod");
@@ -115,7 +115,7 @@ fy_generic new_map = fy_dissoc(gb, map, key);
 **Examples**:
 ```c
 // Direct generic operations
-fy_generic config = fy_local_mapping("host", "localhost", "port", 8080, "debug", true);
+fy_generic config = fy_mapping("host", "localhost", "port", 8080, "debug", true);
 
 // Remove key
 fy_generic prod_config = fy_dissoc(config, "debug");
@@ -159,7 +159,7 @@ fy_generic new_seq = fy_conj(gb, seq, value);
 **Examples**:
 ```c
 // Direct generic operations
-fy_generic items = fy_local_sequence("alice", "bob");
+fy_generic items = fy_sequence("alice", "bob");
 
 // Append element
 fy_generic items2 = fy_conj(items, "charlie");
@@ -181,7 +181,7 @@ fy_generic items3 = fy_conj(
 ```c
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
 
-fy_generic result = fy_local_sequence();  // Start with empty sequence
+fy_generic result = fy_sequence();  // Start with empty sequence
 
 for (size_t i = 0; i < count; i++) {
     fy_generic item = process_item(data[i]);
@@ -213,7 +213,7 @@ fy_generic new_seq = fy_assoc_at(gb, seq, index, value);
 **Examples**:
 ```c
 // Direct generic operations
-fy_generic items = fy_local_sequence("alice", "bob", "charlie");
+fy_generic items = fy_sequence("alice", "bob", "charlie");
 
 // Update at index
 fy_generic items2 = fy_assoc_at(items, 1, "BOBBY");
@@ -273,10 +273,10 @@ Functional operations create new collections while sharing unchanged parts with 
 
 ```c
 // Direct generic operations - clean and composable
-fy_generic config = fy_local_mapping(
-    "server", fy_local_mapping("host", "localhost", "port", 8080),
-    "database", fy_local_mapping("host", "db.local", "port", 5432),
-    "cache", fy_local_mapping("ttl", 300)
+fy_generic config = fy_mapping(
+    "server", fy_mapping("host", "localhost", "port", 8080),
+    "database", fy_mapping("host", "db.local", "port", 5432),
+    "cache", fy_mapping("ttl", 300)
 );
 
 // Update nested value - notice how clean this is!
@@ -328,7 +328,7 @@ new_config = {**config, "port": 9090}  # Full copy!
 
 ```c
 // libfyaml - structural sharing, thread-safe, works directly on fy_generic
-fy_generic config = fy_local_mapping("host", "localhost", "port", 8080);
+fy_generic config = fy_mapping("host", "localhost", "port", 8080);
 fy_generic new_config = fy_assoc(config, "port", 9090);  // Structural sharing!
 ```
 
@@ -377,7 +377,7 @@ Structural sharing (libfyaml):  ~5 MB memory (10x smaller)
 
 ```c
 // Direct generic operations - clean and composable
-fy_generic base = fy_local_mapping(
+fy_generic base = fy_mapping(
     "timeout", 30,
     "retries", 3,
     "debug", false
@@ -406,7 +406,7 @@ fy_generic prod = fy_assoc(
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
 
 // Start with empty sequence
-fy_generic results = fy_local_sequence();
+fy_generic results = fy_sequence();
 
 // Build incrementally
 for (size_t i = 0; i < count; i++) {
@@ -423,7 +423,7 @@ for (size_t i = 0; i < count; i++) {
 
 ```c
 fy_generic pipeline(struct fy_generic_builder *gb, fy_generic input) {
-    fy_generic result = fy_local_sequence();  // Start with empty
+    fy_generic result = fy_sequence();  // Start with empty
 
     for (size_t i = 0; i < fy_len(input); i++) {
         fy_generic item = fy_get_item(input, i);
@@ -563,7 +563,7 @@ When using operations with a builder, values are automatically internalized:
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
 
 // Stack-allocated input - direct generic operations!
-fy_generic temp = fy_local_mapping("a", 1);
+fy_generic temp = fy_mapping("a", 1);
 
 // First operation: internalizes temp into gb (one-time cost)
 fy_generic v1 = fy_assoc(gb, temp, "b", 2);
@@ -639,7 +639,7 @@ for (size_t i = 0; i < data_count; i++) {
 ```c
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
 
-fy_generic result = fy_local_sequence();  // Start empty
+fy_generic result = fy_sequence();  // Start empty
 for (size_t i = 0; i < data_count; i++) {
     result = fy_conj(gb, result, process(data[i]));  // Creates new version
 }
@@ -665,7 +665,7 @@ hash_map_set(config, "port", 9090);             // Overwrites old value
 **Functional approach** (immutable assoc):
 ```c
 // Start with base configuration
-fy_generic config = fy_local_mapping(
+fy_generic config = fy_mapping(
     "host", "localhost",
     "port", 8080,
     "debug", false
@@ -779,7 +779,7 @@ for (size_t i = 0; i < users_count; i++) {
 ```c
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
 fy_generic users = get_users();
-fy_generic active_users = fy_local_sequence();
+fy_generic active_users = fy_sequence();
 
 for (size_t i = 0; i < fy_len(users); i++) {
     fy_generic user = fy_get_item(users, i);
@@ -864,7 +864,7 @@ fy_generic new_config = fy_dissoc(config, "debug");
 
 // For sequences: build new sequence excluding item
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
-fy_generic new_items = fy_local_sequence();
+fy_generic new_items = fy_sequence();
 
 for (size_t i = 0; i < fy_len(items); i++) {
     if (i != index_to_remove) {
@@ -978,7 +978,7 @@ for (size_t i = 0; i < count; i++) {
 **Functional approach** (conditional conj):
 ```c
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
-fy_generic results = fy_local_sequence();
+fy_generic results = fy_sequence();
 
 for (size_t i = 0; i < count; i++) {
     fy_generic item = process(data[i]);
