@@ -190,6 +190,29 @@ void fy_generic_builder_reset(struct fy_generic_builder *gb)
 		fy_allocator_reset_tag(gb->allocator, gb->alloc_tag);
 }
 
+bool fy_generic_builder_contains_out_of_place(struct fy_generic_builder *gb, fy_generic v)
+{
+	const void *ptr;
+
+	/* invalids never contained */
+	if (v.v == fy_invalid_value)
+		return false;
+
+	/* inplace always contained (implicitly) */
+	if (fy_generic_is_in_place(v))
+		return true;
+
+	ptr = fy_generic_resolve_ptr(v);
+
+	/* find if any of the builders in scope contain it */
+	while (gb) {
+		if (fy_allocator_contains(gb->allocator, gb->alloc_tag, ptr))
+			return true;
+		gb = gb->cfg.parent;
+	}
+	return false;
+}
+
 fy_generic
 fy_gb_string_vcreate(struct fy_generic_builder *gb, const char *fmt, va_list ap)
 {
@@ -226,7 +249,6 @@ fy_gb_string_createf(struct fy_generic_builder *gb, const char *fmt, ...)
 
 fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 {
-	const void *ptr;
 	fy_generic vi, new_v;
 	const fy_generic_sequence *seqs;
 	const fy_generic_mapping *maps;
@@ -244,9 +266,8 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 	if (fy_generic_is_in_place(v))
 		return v;
 
-	/* Check if the pointer is already in the builder's allocator arena */
-	ptr = fy_generic_resolve_ptr(v);
-	if (fy_allocator_contains(gb->allocator, gb->alloc_tag, ptr))
+	/* either in place, or contained in scope */
+	if (fy_generic_builder_contains(gb, v))
 		return v;
 
 	/* indirects are handled here (note, aliases are indirect too) */
@@ -423,7 +444,7 @@ fy_internalize_items(struct fy_generic_builder *gb, size_t count, const fy_gener
 	return items_local;
 }
 
-fy_generic fy_validate_out_of_place(fy_generic v)
+fy_generic fy_gb_validate_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 {
 	fy_generic vi;
 	const fy_generic_sequence *seqs;
@@ -439,21 +460,25 @@ fy_generic fy_validate_out_of_place(fy_generic v)
 	if (fy_generic_is_in_place(v))
 		return v;
 
+	/* if it's builder contained, then it's valid */
+	if (fy_generic_builder_contains(gb, v))
+		return v;
+
 	/* indirects are handled here (note, aliases are indirect too) */
 	if (fy_generic_is_indirect(v)) {
 		fy_generic_indirect gi;
 
 		fy_generic_indirect_get(v, &gi);
 
-		gi.value = fy_validate(gi.value);
+		gi.value = fy_gb_validate(gb, gi.value);
 		if (gi.value.v == fy_invalid_value)
 			return fy_invalid;
 
-		gi.anchor = fy_validate(gi.anchor);
+		gi.anchor = fy_gb_validate(gb, gi.anchor);
 		if (gi.anchor.v == fy_invalid_value)
 			return fy_invalid;
 
-		gi.tag = fy_validate(gi.tag);
+		gi.tag = fy_gb_validate(gb, gi.tag);
 		if (gi.tag.v == fy_invalid_value)
 			return fy_invalid;
 
@@ -484,7 +509,7 @@ fy_generic fy_validate_out_of_place(fy_generic v)
 		}
 
 		for (i = 0; i < count; i++) {
-			vi = fy_validate(itemss[i]);
+			vi = fy_gb_validate(gb, itemss[i]);
 			if (vi.v == fy_invalid_value)
 				return fy_invalid;
 		}
@@ -493,24 +518,27 @@ fy_generic fy_validate_out_of_place(fy_generic v)
 	return v;
 }
 
-int fy_validate_array(size_t count, const fy_generic *vp, bool deep)
+int fy_gb_validate_array(struct fy_generic_builder *gb, size_t count, const fy_generic *vp)
 {
 	fy_generic v;
 	size_t i;
 
-	if (!deep) {
-		for (i = 0; i < count; i++) {
-			if (vp[i].v == fy_invalid_value)
-				return -1;
-		}
-	} else {
-		for (i = 0; i < count; i++) {
-			v = fy_validate(vp[i]);
-			if (v.v == fy_invalid_value)
-				return -1;
-		}
+	for (i = 0; i < count; i++) {
+		v = fy_gb_validate(gb, vp[i]);
+		if (v.v == fy_invalid_value)
+			return -1;
 	}
 	return 0;
+}
+
+fy_generic fy_validate_out_of_place(fy_generic v)
+{
+	return fy_gb_validate_out_of_place(NULL, v);
+}
+
+int fy_validate_array(size_t count, const fy_generic *vp)
+{
+	return fy_gb_validate_array(NULL, count, vp);
 }
 
 fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flags, ...)
@@ -640,7 +668,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		if (!items)
 			goto err_out;
 	} else {
-		rc = fy_validate_array(item_count, items, !!(flags & FYGBOPF_DEEP_VALIDATE));
+		rc = fy_gb_validate_array(gb, item_count, items);
 		if (rc)
 			goto err_out;
 	}

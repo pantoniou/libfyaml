@@ -3193,6 +3193,24 @@ void fy_generic_builder_reset(struct fy_generic_builder *gb);
 /* no need to destroy */
 struct fy_generic_builder *fy_generic_builder_create_linear_in_place(enum fy_gb_cfg_flags flags, void *buffer, size_t size);
 
+bool fy_generic_builder_contains_out_of_place(struct fy_generic_builder *gb, fy_generic v);
+
+static inline bool fy_generic_builder_contains(struct fy_generic_builder *gb, fy_generic v)
+{
+	/* invalids never contained */
+	if (v.v == fy_invalid_value)
+		return false;
+
+	/* inplace always contained (implicitly) */
+	if (fy_generic_is_in_place(v))
+		return true;
+
+	if (!gb)
+		return false;
+
+	return fy_generic_builder_contains_out_of_place(gb, v);
+}
+
 static inline fy_generic fy_gb_null_type_create_out_of_place(struct fy_generic_builder *gb, void *p)
 {
 	return fy_invalid;
@@ -3527,7 +3545,20 @@ static inline fy_generic fy_validate(fy_generic v)
 	return fy_validate_out_of_place(v);
 }
 
-int fy_validate_array(size_t count, const fy_generic *vp, bool deep);
+int fy_validate_array(size_t count, const fy_generic *vp);
+
+fy_generic fy_gb_validate_out_of_place(struct fy_generic_builder *gb, fy_generic v);
+
+static inline fy_generic fy_gb_validate(struct fy_generic_builder *gb, fy_generic v)
+{
+	/* if it's invalid or in place, just return it */
+	if (fy_generic_is_invalid(v) || fy_generic_is_in_place(v))
+		return v;
+
+	return fy_gb_validate_out_of_place(gb, v);
+}
+
+int fy_gb_validate_array(struct fy_generic_builder *gb, size_t count, const fy_generic *vp);
 
 fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d);
 
