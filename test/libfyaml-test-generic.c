@@ -1179,6 +1179,57 @@ START_TEST(gb_scoping)
 }
 END_TEST
 
+/* Test: polymorphics */
+START_TEST(gb_polymorphics)
+{
+	char buf[8192];
+	struct fy_generic_builder *gb;
+	fy_generic seq, map;
+
+	/* empty sequence */
+	seq = fy_sequence();
+	ck_assert(fy_generic_is_sequence(seq));
+	ck_assert(fy_len(seq) == 0);
+
+	/* empty mapping */
+	map = fy_mapping();
+	ck_assert(fy_generic_is_mapping(map));
+	ck_assert(fy_len(map) == 0);
+
+	seq = fy_sequence(10);
+	ck_assert(fy_generic_is_sequence(seq));
+
+	seq = fy_sequence(10, true, "Hello there", fy_sequence(-1, -2));
+	ck_assert(fy_generic_is_sequence(seq));
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	/* empty sequence */
+	seq = fy_sequence(gb);
+	ck_assert(fy_generic_is_sequence(seq));
+	ck_assert(fy_len(seq) == 0);
+
+	/* empty mapping */
+	map = fy_mapping(gb);
+	ck_assert(fy_generic_is_mapping(map));
+	ck_assert(fy_len(map) == 0);
+
+	seq = fy_sequence(1, 2, 3);
+	ck_assert(fy_generic_is_sequence(seq));
+
+	/* verify that our builder does not contain it */
+	ck_assert(!fy_generic_builder_contains(gb, seq));
+
+	seq = fy_sequence(gb, 1, 2, 3);
+	ck_assert(fy_generic_is_sequence(seq));
+
+	/* verify that our builder now contain it */
+	ck_assert(fy_generic_builder_contains(gb, seq));
+}
+END_TEST
+
 TCase *libfyaml_case_generic(void)
 {
 	TCase *tc;
@@ -1215,6 +1266,8 @@ TCase *libfyaml_case_generic(void)
 	/* builders */
 	tcase_add_test(tc, gb_basics);
 	tcase_add_test(tc, gb_scoping);
+
+	tcase_add_test(tc, gb_polymorphics);
 
 	return tc;
 }

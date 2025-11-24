@@ -3499,18 +3499,27 @@ fy_generic fy_gb_alias_create(struct fy_generic_builder *gb, fy_generic anchor);
 #define FY_CPP_VA_GBITEMS(_count, _gb, ...) \
 	((fy_generic [(_count)]) { _FY_CPP_VA_GBITEMS((_gb), __VA_ARGS__) })
 
+/* this is scary, but make the thing to work when there are no arguments
+ *
+ * no arguments: -> ((0) ? : fy_seq_empty_value)
+ * args -> (0 + 1) ? fy_gb_sequence...() : fy_seq_empty_value)
+ */
 #define fy_gb_sequence_value(_gb, ...) \
-	(fy_gb_sequence_create((_gb), \
+	((0 __VA_OPT__(+1)) ? \
+		__VA_OPT__(fy_gb_sequence_create((_gb), \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
-			FY_CPP_VA_GBITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), (_gb), __VA_ARGS__)).v)
+			FY_CPP_VA_GBITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), (_gb), __VA_ARGS__)).v) : \
+		fy_seq_empty_value)
 
 #define fy_gb_sequence(_gb, ...) \
 	((fy_generic) { .v = fy_gb_sequence_value((_gb) __VA_OPT__(,) __VA_ARGS__) })
 
 #define fy_gb_mapping_value(_gb, ...) \
-	(fy_gb_mapping_create((_gb), \
+	((0 __VA_OPT__(+1)) ? \
+		__VA_OPT__(fy_gb_mapping_create((_gb), \
 			FY_CPP_VA_COUNT(__VA_ARGS__) / 2, \
-			FY_CPP_VA_GBITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), (_gb), __VA_ARGS__)).v)
+			FY_CPP_VA_GBITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), (_gb), __VA_ARGS__)).v) : \
+		fy_map_empty_value)
 
 #define fy_gb_mapping(_gb, ...) \
 	((fy_generic) { .v = fy_gb_mapping_value((_gb), __VA_ARGS__) })
@@ -3608,11 +3617,32 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 #define fy_castp(_v, _dv) \
 	(fy_genericp_cast_default((_v), (_dv)))
 
+#define fy_sequence_value_helper(_maybe_gb, ...) \
+	(_Generic((_maybe_gb), \
+		  struct fy_generic_builder *: ({ fy_gb_sequence_value(fy_gb_or_NULL(_maybe_gb), ##__VA_ARGS__); }), \
+		  default: (fy_local_sequence_value((_maybe_gb), ##__VA_ARGS__))))
+
+#define fy_sequence_value(...) \
+	((0 __VA_OPT__(+1)) ? \
+		__VA_OPT__(fy_sequence_value_helper(__VA_ARGS__)) : \
+	 	fy_seq_empty_value)
+
 #define fy_sequence(...) \
-	(fy_validate(fy_local_sequence(__VA_ARGS__)))
+	((fy_generic) { .v = fy_sequence_value(__VA_ARGS__) })
+
+
+#define fy_mapping_value_helper(_maybe_gb, ...) \
+	(_Generic((_maybe_gb), \
+		  struct fy_generic_builder *: ({ fy_gb_mapping_value(fy_gb_or_NULL(_maybe_gb), ##__VA_ARGS__); }), \
+		  default: (fy_local_mapping_value((_maybe_gb), ##__VA_ARGS__))))
+
+#define fy_mapping_value(...) \
+	((0 __VA_OPT__(+1)) ? \
+		__VA_OPT__(fy_mapping_value_helper(__VA_ARGS__)) : \
+	 	fy_map_empty_value)
 
 #define fy_mapping(...) \
-	(fy_validate(fy_local_mapping(__VA_ARGS__)))
+	((fy_generic) { .v = fy_mapping_value(__VA_ARGS__) })
 
 #define fy_value(_maybe_gb, ...) \
 	((fy_generic) { .v = fy_to_generic_value((_maybe_gb), ##__VA_ARGS__) })

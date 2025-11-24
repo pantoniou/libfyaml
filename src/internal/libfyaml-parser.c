@@ -4437,7 +4437,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 #endif
 
 	printf("##### emit empty mapping\n");
-	v = fy_mapping();
+	v = fy_map_empty;
 	printf("v=%08lx\n", v.v);
 	fy_generic_emit_default(v);
 
