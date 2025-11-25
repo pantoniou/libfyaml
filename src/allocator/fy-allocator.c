@@ -142,7 +142,6 @@ int fy_allocator_register(const char *name, const struct fy_allocator_ops *ops)
 		!ops->alloc ||
 		!ops->free ||
 		!ops->update_stats ||
-		!ops->store ||
 		!ops->storev ||
 		!ops->release |
 		!ops->get_tag ||
@@ -542,98 +541,112 @@ void fy_allocator_destroy(struct fy_allocator *a)
 {
 	if (!a)
 		return;
-	a->ops->destroy(a);
+	fy_allocator_destroy_nocheck(a);
 }
 
 void fy_allocator_dump(struct fy_allocator *a)
 {
 	if (!a)
 		return;
-	a->ops->dump(a);
+	fy_allocator_dump_nocheck(a);
 }
 
 int fy_allocator_update_stats(struct fy_allocator *a, int tag, struct fy_allocator_stats *stats)
 {
-	if (!a)
+	if (!a || !stats)
 		return -1;
-	return a->ops->update_stats(a, tag, stats);
+	return fy_allocator_update_stats_nocheck(a, tag, stats);
 }
 
 void *fy_allocator_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
 {
 	if (!a)
 		return NULL;
-	return a->ops->alloc(a, tag, size, align);
+	return fy_allocator_alloc_nocheck(a, tag, size, align);
 }
 
 void fy_allocator_free(struct fy_allocator *a, int tag, void *ptr)
 {
 	if (!a || !ptr)
 		return;
-	a->ops->free(a, tag, ptr);
+	return fy_allocator_free_nocheck(a, tag, ptr);
+}
+
+const void *fy_allocator_storev_hash(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
+{
+	if (!a || !iov)
+		return NULL;
+	return fy_allocator_storev_hash_nocheck(a, tag, iov, iovcnt, align, hash);
 }
 
 const void *fy_allocator_store(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
 {
-	if (!a)
+	struct iovec iov[1];
+
+	if (!a || !data)
 		return NULL;
-	return a->ops->store(a, tag, data, size, align);
+
+	/* just call the storev */
+	iov[0].iov_base = (void *)data;
+	iov[0].iov_len = size;
+
+	return fy_allocator_storev_hash_nocheck(a, tag, iov, 1, align, 0);
 }
 
 const void *fy_allocator_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
 {
-	if (!a)
+	if (!a || !iov)
 		return NULL;
-	return a->ops->storev(a, tag, iov, iovcnt, align);
+	return fy_allocator_storev_nocheck(a, tag, iov, iovcnt, align);
 }
 
 void fy_allocator_release(struct fy_allocator *a, int tag, const void *ptr, size_t size)
 {
 	if (!a || !ptr)
 		return;
-	a->ops->release(a, tag, ptr, size);
+	fy_allocator_release(a, tag, ptr, size);
 }
 
 int fy_allocator_get_tag(struct fy_allocator *a)
 {
 	if (!a)
 		return 0;
-	return a->ops->get_tag(a);
+	return fy_allocator_get_tag_nocheck(a);
 }
 
 void fy_allocator_release_tag(struct fy_allocator *a, int tag)
 {
 	if (!a)
 		return;
-	a->ops->release_tag(a, tag);
+	fy_allocator_release_tag_nocheck(a, tag);
 }
 
 int fy_allocator_get_tag_count(struct fy_allocator *a)
 {
 	if (!a)
 		return -1;
-	return a->ops->get_tag_count(a);
+	return fy_allocator_get_tag_count_nocheck(a);
 }
 
 int fy_allocator_set_tag_count(struct fy_allocator *a, unsigned int count)
 {
 	if (!a)
 		return -1;
-	return a->ops->set_tag_count(a, count);
+	return fy_allocator_set_tag_count_nocheck(a, count);
 }
 
 void fy_allocator_trim_tag(struct fy_allocator *a, int tag)
 {
 	if (!a)
 		return;
-	a->ops->trim_tag(a, tag);
+	fy_allocator_trim_tag_nocheck(a, tag);
 }
 
 void fy_allocator_reset_tag(struct fy_allocator *a, int tag)
 {
 	if (!a)
 		return;
-	a->ops->reset_tag(a, tag);
+	fy_allocator_reset_tag_nocheck(a, tag);
 }
 
 struct fy_allocator_info *
@@ -641,7 +654,7 @@ fy_allocator_get_info(struct fy_allocator *a, int tag)
 {
 	if (!a)
 		return NULL;
-	return a->ops->get_info(a, tag);
+	return fy_allocator_get_info_nocheck(a, tag);
 }
 
 enum fy_allocator_cap_flags
@@ -650,16 +663,16 @@ fy_allocator_get_caps(struct fy_allocator *a)
 	if (!a)
 		return 0;
 
-	return a->ops->get_caps(a);
+	return fy_allocator_get_caps_nocheck(a);
 }
 
 bool
 fy_allocator_contains(struct fy_allocator *a, int tag, const void *ptr)
 {
-	if (!a)
+	if (!a || !ptr)
 		return false;
 
-	return a->ops->contains(a, tag, ptr);
+	return fy_allocator_contains_nocheck(a, tag, ptr);
 }
 
 /* respects the parent allocator (or uses posix_memalign if NULL) */

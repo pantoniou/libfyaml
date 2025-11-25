@@ -10908,7 +10908,7 @@ fy_allocator_store(struct fy_allocator *a, int tag, const void *data, size_t siz
  *
  * The object is created linearly from the scatter gather io vector provided.
  *
- * The return pointer must not be modified, the objects stored are idempotent.
+ * The return pointer must not be modified, the objects stored are immutable.
  *
  * @a: The allocator
  * @tag: The tag used to allocate the memory from

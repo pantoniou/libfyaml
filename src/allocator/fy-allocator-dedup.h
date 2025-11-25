@@ -72,8 +72,6 @@ struct fy_dedup_allocator {
 	struct fy_allocator *parent_allocator;
 	enum fy_allocator_cap_flags parent_caps;
 	int entries_tag;
-	unsigned long long xxseed;
-	XXH64_state_t xxstate_template;
 	unsigned int bloom_filter_bits;
 	unsigned int bucket_count_bits;
 	size_t dedup_threshold;
@@ -85,5 +83,7 @@ struct fy_dedup_allocator {
 };
 
 extern const struct fy_allocator_ops fy_dedup_allocator_ops;
+
+#define FY_DEDUP_XXHASH64_SEED	FY_XXHASH64_SEED
 
 #endif

@@ -452,4 +452,6 @@ fy_iovec_cmp(const struct iovec *iov, int iovcnt, const void *data)
 #define FY_CACHE_LINE_SZ	64
 #define FY_CACHE_ALIGNED	__attribute__((aligned(FY_CACHE_LINE_SZ)))
 
+uint64_t fy_iovec_xxhash64(const struct iovec *iov, int iovcnt);
+
 #endif

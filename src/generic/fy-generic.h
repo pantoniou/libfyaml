@@ -3162,38 +3162,38 @@ extern __thread struct fy_generic_builder *fy_current_gb;
 
 static inline void *fy_gb_alloc(struct fy_generic_builder *gb, size_t size, size_t align)
 {
-	return fy_allocator_alloc(gb->allocator, gb->alloc_tag, size, align);
+	return fy_allocator_alloc_nocheck(gb->allocator, gb->alloc_tag, size, align);
 }
 
 static inline void fy_gb_free(struct fy_generic_builder *gb, void *ptr)
 {
-	fy_allocator_free(gb->allocator, gb->alloc_tag, ptr);
+	fy_allocator_free_nocheck(gb->allocator, gb->alloc_tag, ptr);
 }
 
 static inline void fy_gb_trim(struct fy_generic_builder *gb)
 {
-	fy_allocator_trim_tag(gb->allocator, gb->alloc_tag);
+	fy_allocator_trim_tag_nocheck(gb->allocator, gb->alloc_tag);
 }
 
 static inline const void *fy_gb_store(struct fy_generic_builder *gb, const void *data, size_t size, size_t align)
 {
-	return fy_allocator_store(gb->allocator, gb->alloc_tag, data, size, align);
+	return fy_allocator_store_nocheck(gb->allocator, gb->alloc_tag, data, size, align);
 }
 
 static inline const void *fy_gb_storev(struct fy_generic_builder *gb, const struct iovec *iov, unsigned int iovcnt, size_t align)
 {
-	return fy_allocator_storev(gb->allocator, gb->alloc_tag, iov, iovcnt, align);
+	return fy_allocator_storev_nocheck(gb->allocator, gb->alloc_tag, iov, iovcnt, align);
 }
 
 static inline struct fy_allocator_info *
 fy_gb_get_allocator_info(struct fy_generic_builder *gb)
 {
-	return fy_allocator_get_info(gb->allocator, gb->alloc_tag);
+	return fy_allocator_get_info_nocheck(gb->allocator, gb->alloc_tag);
 }
 
 static inline void fy_gb_release(struct fy_generic_builder *gb, const void *ptr, size_t size)
 {
-	fy_allocator_release(gb->allocator, gb->alloc_tag, ptr, size);
+	fy_allocator_release_nocheck(gb->allocator, gb->alloc_tag, ptr, size);
 }
 
 int fy_generic_builder_setup(struct fy_generic_builder *gb, const struct fy_generic_builder_cfg *cfg);

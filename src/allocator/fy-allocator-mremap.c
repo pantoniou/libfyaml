@@ -671,9 +671,6 @@ void fy_mremap_destroy(struct fy_allocator *a)
 {
 	struct fy_mremap_allocator *mra;
 
-	if (!a)
-		return;
-
 	mra = container_of(a, struct fy_mremap_allocator, a);
 	fy_mremap_cleanup(a);
 	fy_parent_allocator_free(a, mra);
@@ -686,9 +683,6 @@ void fy_mremap_dump(struct fy_allocator *a)
 	struct fy_mremap_arena *mran;
 	size_t count, active_count, full_count, total, system_total;
 	unsigned int i;
-
-	if (!a)
-		return;
 
 	mra = container_of(a, struct fy_mremap_allocator, a);
 
@@ -728,9 +722,6 @@ static void *fy_mremap_alloc(struct fy_allocator *a, int tag, size_t size, size_
 	struct fy_mremap_tag *mrt;
 	void *ptr;
 
-	if (!a || tag < 0)
-		return NULL;
-
 	mra = container_of(a, struct fy_mremap_allocator, a);
 
 	mrt = fy_mremap_tag_from_tag(mra, tag);
@@ -762,9 +753,6 @@ static int fy_mremap_update_stats(struct fy_allocator *a, int tag, struct fy_all
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
 
-	if (!a || !stats)
-		return -1;
-
 	mra = container_of(a, struct fy_mremap_allocator, a);
 
 	mrt = fy_mremap_tag_from_tag(mra, tag);
@@ -782,15 +770,12 @@ err_out:
 	return -1;
 }
 
-static const void *fy_mremap_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
+static const void *fy_mremap_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
 {
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
 	void *start;
 	size_t total_size;
-
-	if (!a || !iov)
-		return NULL;
 
 	mra = container_of(a, struct fy_mremap_allocator, a);
 
@@ -819,19 +804,6 @@ err_out:
 	return NULL;
 }
 
-static const void *fy_mremap_store(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
-{
-	struct iovec iov[1];
-
-	if (!a)
-		return NULL;
-
-	/* just call the storev */
-	iov[0].iov_base = (void *)data;
-	iov[0].iov_len = size;
-	return fy_mremap_storev(a, tag, iov, 1, align);
-}
-
 static void fy_mremap_release(struct fy_allocator *a, int tag, const void *data, size_t size)
 {
 	/* no releases */
@@ -841,9 +813,6 @@ static void fy_mremap_release_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
-
-	if (!a)
-		return;
 
 	mra = container_of(a, struct fy_mremap_allocator, a);
 
@@ -862,9 +831,6 @@ static int fy_mremap_get_tag(struct fy_allocator *a)
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
 	int id = -1;
-
-	if (!a)
-		return FY_ALLOC_TAG_ERROR;
 
 	mra = container_of(a, struct fy_mremap_allocator, a);
 
@@ -891,9 +857,6 @@ static int fy_mremap_get_tag_count(struct fy_allocator *a)
 {
 	struct fy_mremap_allocator *mra;
 
-	if (!a)
-		return -1;
-
 	mra = container_of(a, struct fy_mremap_allocator, a);
 	return mra->tag_count;
 }
@@ -907,7 +870,7 @@ static int fy_mremap_set_tag_count(struct fy_allocator *a, unsigned int count)
 	unsigned int i, tag_count, tag_id_count;
 	size_t tmpsz;
 
-	if (!a || count < 1)
+	if (count < 1)
 		return -1;
 
 	mra = container_of(a, struct fy_mremap_allocator, a);
@@ -992,9 +955,6 @@ static void fy_mremap_trim_tag(struct fy_allocator *a, int tag)
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
 
-	if (!a)
-		return;
-
 	mra = container_of(a, struct fy_mremap_allocator, a);
 
 	mrt = fy_mremap_tag_from_tag(mra, tag);
@@ -1008,9 +968,6 @@ static void fy_mremap_reset_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
-
-	if (!a)
-		return;
 
 	mra = container_of(a, struct fy_mremap_allocator, a);
 
@@ -1035,9 +992,6 @@ fy_mremap_get_info(struct fy_allocator *a, int tag)
 	size_t arena_free, arena_used, arena_total;
 	unsigned int num_tags, num_arenas, i;
 	int id;
-
-	if (!a)
-		return NULL;
 
 	mra = container_of(a, struct fy_mremap_allocator, a);
 
@@ -1171,9 +1125,6 @@ static bool fy_mremap_contains(struct fy_allocator *a, int tag, const void *ptr)
 	struct fy_mremap_tag *mrt;
 	int tag_start, tag_end;
 
-	if (!a || !ptr)
-		return false;
-
 	mra = container_of(a, struct fy_mremap_allocator, a);
 
 	if (tag >= 0) {
@@ -1208,7 +1159,6 @@ const struct fy_allocator_ops fy_mremap_allocator_ops = {
 	.alloc = fy_mremap_alloc,
 	.free = fy_mremap_free,
 	.update_stats = fy_mremap_update_stats,
-	.store = fy_mremap_store,
 	.storev = fy_mremap_storev,
 	.release = fy_mremap_release,
 	.get_tag = fy_mremap_get_tag,

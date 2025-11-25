@@ -551,11 +551,6 @@ static int fy_dedup_setup(struct fy_allocator *a, struct fy_allocator *parent, i
 	da->dedup_threshold = dedup_threshold;
 	da->chain_length_grow_trigger = chain_length_grow_trigger;
 
-	/* just a seed, perhaps it should be configurable? */
-	da->xxseed = ((uint64_t)rand() << 32) | (uint32_t)rand();
-	/* start with the state already initialized */
-	XXH64_reset(&da->xxstate_template, da->xxseed);
-
 	/* we use as many tags as the parent allocator */
 	rc = fy_allocator_get_tag_count(da->parent_allocator);
 	if (rc <= 0)
@@ -611,9 +606,6 @@ void fy_dedup_destroy(struct fy_allocator *a)
 {
 	struct fy_dedup_allocator *da;
 
-	if (!a)
-		return;
-
 	da = container_of(a, struct fy_dedup_allocator, a);
 	fy_dedup_cleanup(a);
 
@@ -625,9 +617,6 @@ void fy_dedup_dump(struct fy_allocator *a)
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
 	unsigned int i;
-
-	if (!a)
-		return;
 
 	da = container_of(a, struct fy_dedup_allocator, a);
 
@@ -657,17 +646,13 @@ static void *fy_dedup_alloc(struct fy_allocator *a, int tag, size_t size, size_t
 	struct fy_dedup_tag *dt;
 	void *p;
 
-	if (!a)
-		return NULL;
-
 	da = container_of(a, struct fy_dedup_allocator, a);
-
 	dt = fy_dedup_tag_from_tag(da, tag);
 	if (!dt)
 		goto err_out;
 
 	/* just pass to the parent allocator using the content tag */
-	p = fy_allocator_alloc(da->parent_allocator, dt->content_tag, size, align);
+	p = fy_allocator_alloc_nocheck(da->parent_allocator, dt->content_tag, size, align);
 	if (!p)
 		goto err_out;
 
@@ -682,14 +667,7 @@ static void fy_dedup_free(struct fy_allocator *a, int tag, void *data)
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
 
-	if (!a)
-		return;
-
-	if (!data)
-		return;
-
 	da = container_of(a, struct fy_dedup_allocator, a);
-
 	if (!(da->parent_caps & FYACF_CAN_FREE_INDIVIDUAL))
 		return;
 
@@ -706,9 +684,6 @@ static int fy_dedup_update_stats(struct fy_allocator *a, int tag, struct fy_allo
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
 	int r;
-
-	if (!a || !stats)
-		return -1;
 
 	da = container_of(a, struct fy_dedup_allocator, a);
 
@@ -727,27 +702,20 @@ static int fy_dedup_update_stats(struct fy_allocator *a, int tag, struct fy_allo
 	return 0;
 }
 
-static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
+static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
 {
-	XXH64_state_t xxstate;
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
 	struct fy_dedup_tag_data *dtd, *dtd_best;
 	struct fy_dedup_entry *de, *de_head;
-	uint64_t hash;
 	int bloom_pos, bucket_pos;
 	bool bloom_hit;
 	unsigned int chain_length;
 	void *mem = NULL;
 	size_t total_size, de_offset, max_align;
 	bool at_head;
-	int i;
-
-	if (!a || !iov)
-		return NULL;
 
 	da = container_of(a, struct fy_dedup_allocator, a);
-
 	dt = fy_dedup_tag_from_tag(da, tag);
 	if (!dt)
 		return NULL;
@@ -761,7 +729,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	if (total_size < da->cfg.dedup_threshold) {
 
 		/* just pass to the parent allocator using the content tag */
-		void *p = fy_allocator_alloc(da->parent_allocator, dt->content_tag, total_size, align);
+		void *p = fy_allocator_alloc_nocheck(da->parent_allocator, dt->content_tag, total_size, align);
 		if (!p)
 			return NULL;
 
@@ -769,11 +737,9 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 		return p;
 	}
 
-	/* get the hash value */
-	xxstate = da->xxstate_template;
-	for (i = 0; i < iovcnt; i++)
-		XXH64_update(&xxstate, iov[i].iov_base, iov[i].iov_len);
-	hash = XXH64_digest(&xxstate);
+	/* calculate hash if not given */
+	if (!hash)
+		hash = fy_iovec_xxhash64(iov, iovcnt);
 
 again:
 	chain_length = 0;
@@ -829,7 +795,7 @@ again:
 		/* place the dedup entry at the aligned offset after the data */
 		de_offset = fy_size_t_align(total_size, _Alignof(struct fy_dedup_entry));
 		max_align = align > _Alignof(struct fy_dedup_entry) ? align : _Alignof(struct fy_dedup_entry);
-		mem = fy_allocator_alloc(da->parent_allocator, dt->content_tag, de_offset + sizeof(*de), max_align);
+		mem = fy_allocator_alloc_nocheck(da->parent_allocator, dt->content_tag, de_offset + sizeof(*de), max_align);
 		if (!mem)
 			return NULL;
 
@@ -869,19 +835,6 @@ again:
 	return de->mem;
 }
 
-static const void *fy_dedup_store(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
-{
-	struct iovec iov[1];
-
-	if (!a)
-		return NULL;
-
-	/* just call the storev */
-	iov[0].iov_base = (void *)data;
-	iov[0].iov_len = size;
-	return fy_dedup_storev(a, tag, iov, 1, align);
-}
-
 static void fy_dedup_release(struct fy_allocator *a, int tag, const void *data, size_t size)
 {
 	/* we do nothing */
@@ -893,9 +846,6 @@ static int fy_dedup_get_tag(struct fy_allocator *a)
 	struct fy_dedup_tag *dt = NULL;
 	int tag;
 	int id, rc;
-
-	if (!a)
-		return FY_ALLOC_TAG_ERROR;
 
 	da = container_of(a, struct fy_dedup_allocator, a);
 
@@ -931,9 +881,6 @@ static void fy_dedup_release_tag(struct fy_allocator *a, int tag)
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
 
-	if (!a)
-		return;
-
 	da = container_of(a, struct fy_dedup_allocator, a);
 
 	/* for a single tag, just return */
@@ -953,9 +900,6 @@ static int fy_dedup_get_tag_count(struct fy_allocator *a)
 {
 	struct fy_dedup_allocator *da;
 
-	if (!a)
-		return -1;
-
 	da = container_of(a, struct fy_dedup_allocator, a);
 	return da->tag_count;
 }
@@ -970,7 +914,7 @@ static int fy_dedup_set_tag_count(struct fy_allocator *a, unsigned int count)
 	size_t tmpsz;
 	int rc;
 
-	if (!a || count < 1)
+	if (count < 1)
 		return -1;
 
 	da = container_of(a, struct fy_dedup_allocator, a);
@@ -1079,11 +1023,7 @@ static void fy_dedup_trim_tag(struct fy_allocator *a, int tag)
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
 
-	if (!a)
-		return;
-
 	da = container_of(a, struct fy_dedup_allocator, a);
-
 	dt = fy_dedup_tag_from_tag(da, tag);
 	if (!dt)
 		return;
@@ -1095,9 +1035,6 @@ static void fy_dedup_reset_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
-
-	if (!a)
-		return;
 
 	da = container_of(a, struct fy_dedup_allocator, a);
 
@@ -1120,9 +1057,6 @@ fy_dedup_get_info(struct fy_allocator *a, int tag)
 	struct fy_allocator_info *info;
 	struct fy_allocator_tag_info *tag_info;
 	unsigned int i;
-
-	if (!a)
-		return NULL;
 
 	/* full dump not supported yet */
 	if (tag == FY_ALLOC_TAG_NONE)
@@ -1154,9 +1088,6 @@ fy_dedup_get_caps(struct fy_allocator *a)
 	struct fy_dedup_allocator *da;
 	enum fy_allocator_cap_flags flags;
 
-	if (!a)
-		return 0;
-
 	da = container_of(a, struct fy_dedup_allocator, a);
 
 	flags = da->parent_caps | FYACF_CAN_DEDUP;
@@ -1171,11 +1102,7 @@ static bool fy_dedup_contains(struct fy_allocator *a, int tag, const void *ptr)
 	struct fy_dedup_tag *dt;
 	int tag_start, tag_end;
 
-	if (!a || !ptr)
-		return false;
-
 	da = container_of(a, struct fy_dedup_allocator, a);
-
 	if (!(da->parent_caps & FYACF_HAS_CONTAINS))
 		return false;
 
@@ -1209,7 +1136,6 @@ const struct fy_allocator_ops fy_dedup_allocator_ops = {
 	.alloc = fy_dedup_alloc,
 	.free = fy_dedup_free,
 	.update_stats = fy_dedup_update_stats,
-	.store = fy_dedup_store,
 	.storev = fy_dedup_storev,
 	.release = fy_dedup_release,
 	.get_tag = fy_dedup_get_tag,
