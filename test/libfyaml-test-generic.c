@@ -1568,8 +1568,8 @@ START_TEST(gb_dedup_scoping2)
 	v = fy_value(gb2, "This is a long string");
 	ck_assert(fy_generic_is_valid(v));
 	/* both of them should now contain it */
-	// ck_assert(fy_generic_builder_contains(gb1, v));
-	// ck_assert(fy_generic_builder_contains(gb2, v));
+	ck_assert(fy_generic_builder_contains(gb1, v));
+	ck_assert(fy_generic_builder_contains(gb2, v));
 
 	printf("v=0x%016lx\n", v.v);
 }
