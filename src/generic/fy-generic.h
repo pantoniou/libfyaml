@@ -3282,7 +3282,9 @@ static inline fy_generic fy_gb_int_type_create_out_of_place(struct fy_generic_bu
 
 	memset(&vald, 0, sizeof(vald));
 	vald.sv = val;
-	valp = fy_gb_store(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
+	valp = fy_gb_lookup(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
+	if (!valp)
+		valp = fy_gb_store(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
 	if (!valp)
 		return fy_invalid;
 	return (fy_generic){ .v = (uintptr_t)valp | FY_INT_OUTPLACE_V };
@@ -3296,7 +3298,9 @@ static inline fy_generic fy_gb_uint_type_create_out_of_place(struct fy_generic_b
 	memset(&vald, 0, sizeof(vald));
 	vald.uv = val;
 	vald.is_unsigned = val > (unsigned long long)LLONG_MAX;
-	valp = fy_gb_store(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
+	valp = fy_gb_lookup(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
+	if (!valp)
+		valp = fy_gb_store(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
 	if (!valp)
 		return fy_invalid;
 	return (fy_generic){ .v = (uintptr_t)valp | FY_INT_OUTPLACE_V };
@@ -3305,7 +3309,10 @@ static inline fy_generic fy_gb_uint_type_create_out_of_place(struct fy_generic_b
 static inline fy_generic fy_gb_float_type_create_out_of_place(struct fy_generic_builder *gb, double val)
 {
 	const double *valp;
-	valp = fy_gb_store(gb, &val, sizeof(val), FY_SCALAR_ALIGNOF(double));
+
+	valp = fy_gb_lookup(gb, &val, sizeof(val), FY_SCALAR_ALIGNOF(double));
+	if (!valp)
+		valp = fy_gb_store(gb, &val, sizeof(val), FY_SCALAR_ALIGNOF(double));
 	if (!valp)
 		return fy_invalid;
 	return (fy_generic){ .v = (uintptr_t)valp | FY_FLOAT_OUTPLACE_V };
@@ -3329,7 +3336,9 @@ static inline fy_generic fy_gb_string_size_create_out_of_place(struct fy_generic
 	iov[2].iov_len = 1;
 
 	/* strings are aligned at 8 always */
-	s = fy_gb_storev(gb, iov, ARRAY_SIZE(iov), FY_GENERIC_SCALAR_ALIGN);
+	s = fy_gb_lookupv(gb, iov, ARRAY_SIZE(iov), FY_GENERIC_SCALAR_ALIGN);
+	if (!s)
+		s = fy_gb_storev(gb, iov, ARRAY_SIZE(iov), FY_GENERIC_SCALAR_ALIGN);
 	if (!s)
 		return fy_invalid;
 
