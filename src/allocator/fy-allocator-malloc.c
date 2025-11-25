@@ -161,9 +161,6 @@ void fy_malloc_destroy(struct fy_allocator *a)
 {
 	struct fy_malloc_allocator *ma;
 
-	if (!a)
-		return;
-
 	ma = container_of(a, struct fy_malloc_allocator, a);
 	fy_malloc_cleanup(a);
 
@@ -177,9 +174,6 @@ void fy_malloc_dump(struct fy_allocator *a)
 	struct fy_malloc_entry *me;
 	unsigned int i;
 	size_t count, total, system_total;
-
-	if (!a)
-		return;
 
 	ma = container_of(a, struct fy_malloc_allocator, a);
 
@@ -260,15 +254,7 @@ static void *fy_malloc_alloc(struct fy_allocator *a, int tag, size_t size, size_
 	struct fy_malloc_tag *mt;
 	void *p;
 
-	if (!a || tag < 0)
-		return NULL;
-
-	/* maximum align is 16 TODO */
-	if (align > 16)
-		goto err_out;
-
 	ma = container_of(a, struct fy_malloc_allocator, a);
-
 	mt = fy_malloc_tag_from_tag(ma, tag);
 	if (!mt)
 		goto err_out;
@@ -291,11 +277,7 @@ static void fy_malloc_free(struct fy_allocator *a, int tag, void *data)
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
 
-	if (!a || tag < 0 || !data)
-		return;
-
 	ma = container_of(a, struct fy_malloc_allocator, a);
-
 	mt = fy_malloc_tag_from_tag(ma, tag);
 	if (!mt)
 		return;
@@ -310,9 +292,6 @@ static int fy_malloc_update_stats(struct fy_allocator *a, int tag, struct fy_all
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
 	unsigned int i;
-
-	if (!a || !stats)
-		return -1;
 
 	ma = container_of(a, struct fy_malloc_allocator, a);
 
@@ -332,15 +311,12 @@ err_out:
 	return -1;
 }
 
-static const void *fy_malloc_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
+static const void *fy_malloc_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
 	void *start;
 	size_t total_size;
-
-	if (!a || !iov)
-		return NULL;
 
 	ma = container_of(a, struct fy_malloc_allocator, a);
 
@@ -367,29 +343,12 @@ err_out:
 	return NULL;
 }
 
-static const void *fy_malloc_store(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
-{
-	struct iovec iov[1];
-
-	if (!a)
-		return NULL;
-
-	/* just call the storev */
-	iov[0].iov_base = (void *)data;
-	iov[0].iov_len = size;
-	return fy_malloc_storev(a, tag, iov, 1, align);
-}
-
 static void fy_malloc_release(struct fy_allocator *a, int tag, const void *data, size_t size)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
 
-	if (!a || !data || !size)
-		return;
-
 	ma = container_of(a, struct fy_malloc_allocator, a);
-
 	mt = fy_malloc_tag_from_tag(ma, tag);
 	if (!mt)
 		return;
@@ -406,11 +365,7 @@ static void fy_malloc_release_tag(struct fy_allocator *a, int tag)
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
 
-	if (!a)
-		return;
-
 	ma = container_of(a, struct fy_malloc_allocator, a);
-
 	mt = fy_malloc_tag_from_tag(ma, tag);
 	if (!mt)
 		return;
@@ -425,9 +380,6 @@ static int fy_malloc_get_tag(struct fy_allocator *a)
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
 	int id;
-
-	if (!a)
-		return FY_ALLOC_TAG_ERROR;
 
 	ma = container_of(a, struct fy_malloc_allocator, a);
 
@@ -451,9 +403,6 @@ static int fy_malloc_get_tag_count(struct fy_allocator *a)
 {
 	struct fy_malloc_allocator *ma;
 
-	if (!a)
-		return -1;
-
 	ma = container_of(a, struct fy_malloc_allocator, a);
 	return ma->tag_count;
 }
@@ -467,11 +416,10 @@ static int fy_malloc_set_tag_count(struct fy_allocator *a, unsigned int count)
 	unsigned int i, tag_count, tag_id_count;
 	size_t tmpsz;
 
-	if (!a || count < 1)
+	if (count < 1)
 		return -1;
 
 	ma = container_of(a, struct fy_malloc_allocator, a);
-
 	if (count == ma->tag_count)
 		return 0;
 
@@ -555,9 +503,6 @@ static void fy_malloc_reset_tag(struct fy_allocator *a, int tag)
 	struct fy_malloc_tag *mt;
 	struct fy_malloc_entry *me;
 
-	if (!a)
-		return;
-
 	ma = container_of(a, struct fy_malloc_allocator, a);
 
 	mt = fy_malloc_tag_from_tag(ma, tag);
@@ -583,9 +528,6 @@ fy_malloc_get_info(struct fy_allocator *a, int tag)
 	size_t arena_free, arena_used, arena_total;
 	unsigned int num_tags, num_arenas, i;
 	int id;
-
-	if (!a)
-		return NULL;
 
 	ma = container_of(a, struct fy_malloc_allocator, a);
 
@@ -714,11 +656,7 @@ static bool fy_malloc_contains(struct fy_allocator *a, int tag, const void *ptr)
 	struct fy_malloc_entry *me;
 	int tag_start, tag_end;
 
-	if (!a || !ptr)
-		return false;
-
 	ma = container_of(a, struct fy_malloc_allocator, a);
-
 	if (tag >= 0) {
 		if (tag >= (int)ma->tag_count)
 			return false;
@@ -758,7 +696,6 @@ const struct fy_allocator_ops fy_malloc_allocator_ops = {
 	.alloc = fy_malloc_alloc,
 	.free = fy_malloc_free,
 	.update_stats = fy_malloc_update_stats,
-	.store = fy_malloc_store,
 	.storev = fy_malloc_storev,
 	.release = fy_malloc_release,
 	.get_tag = fy_malloc_get_tag,

@@ -1536,6 +1536,45 @@ START_TEST(gb_dedup_scoping)
 }
 END_TEST
 
+/* Test: Builder dedup scoping2 */
+START_TEST(gb_dedup_scoping2)
+{
+	char buf1[8192], buf2[8192];
+	struct fy_generic_builder *gb1, *gb2;
+	fy_generic v;
+
+	/* create two stacked dedup builders */
+	gb1 = fy_generic_builder_create_in_place(
+			FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED, NULL,
+			buf1, sizeof(buf1));
+	ck_assert(gb1 != NULL);
+
+	gb2 = fy_generic_builder_create_in_place(
+			FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED, gb1,
+			buf2, sizeof(buf2));
+	ck_assert(gb2 != NULL);
+
+	/* verify that the top one has dedup chain enabled */
+	ck_assert((gb2->flags & FYGBF_DEDUP_CHAIN) != 0);
+
+	/* store a long string in the first builder */
+	v = fy_value(gb1, "This is a long string");
+	ck_assert(fy_generic_is_valid(v));
+	ck_assert(fy_generic_builder_contains(gb1, v));
+
+	printf("v=0x%016lx\n", v.v);
+
+	/* store the same string in the second */
+	v = fy_value(gb2, "This is a long string");
+	ck_assert(fy_generic_is_valid(v));
+	/* both of them should now contain it */
+	// ck_assert(fy_generic_builder_contains(gb1, v));
+	// ck_assert(fy_generic_builder_contains(gb2, v));
+
+	printf("v=0x%016lx\n", v.v);
+}
+END_TEST
+
 /* Test: polymorphics */
 START_TEST(gb_polymorphics)
 {
@@ -1630,6 +1669,7 @@ TCase *libfyaml_case_generic(void)
 	tcase_add_test(tc, gb_dedup_basics);
 	tcase_add_test(tc, gb_scoping);
 	tcase_add_test(tc, gb_dedup_scoping);
+	tcase_add_test(tc, gb_dedup_scoping2);
 
 	tcase_add_test(tc, gb_polymorphics);
 
