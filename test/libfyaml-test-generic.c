@@ -1124,7 +1124,152 @@ START_TEST(gb_basics)
 }
 END_TEST
 
-static fy_generic calculate_seq_sum(struct fy_generic_builder *parent_gb, fy_generic seq)
+/* Test: Basic dedup builder operation */
+START_TEST(gb_dedup_basics)
+{
+	char buf[8192];
+	struct fy_generic_builder *gb;
+	fy_generic v, seq, map;
+	fy_generic v_int_out_of_place, v_str_out_of_place, vseq1, vseq2, vmap1;
+	unsigned int i, len;
+
+	(void)vseq1;
+	(void)vseq2;
+	(void)vmap1;
+
+	gb = fy_generic_builder_create_in_place(
+			FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	/* verify that creating inplace still makes it inplace */
+	/* int (in place) */
+	v = fy_to_generic(gb, 100);
+	ck_assert(fy_generic_is_valid(v));
+	ck_assert(fy_generic_is_int_type(v));
+	ck_assert(fy_generic_is_in_place(v));
+
+	v = fy_to_generic(gb, FYGT_INT_INPLACE_MAX+1);
+	ck_assert(fy_generic_is_valid(v));
+	ck_assert(fy_get_type(v) == FYGT_INT);
+	ck_assert(!fy_generic_is_in_place(v));
+
+	/* save this */
+	v_int_out_of_place = v;
+
+	/* verify that the builder contains this out of place v */
+	ck_assert(fy_generic_builder_contains(gb, v));
+
+	/* same but using polymorphic fy_value() */
+	v = fy_value(gb, 100);
+	ck_assert(fy_generic_is_valid(v));
+	ck_assert(fy_generic_is_int_type(v));
+	ck_assert(fy_generic_is_in_place(v));
+
+	/* int (out of place) */
+	v = fy_value(gb, (long long)FYGT_INT_INPLACE_MAX+1);
+	ck_assert(fy_generic_is_valid(v));
+	ck_assert(fy_get_type(v) == FYGT_INT);
+	ck_assert(!fy_generic_is_in_place(v));
+
+	/* verify that the builder contains this out of place v */
+	ck_assert(fy_generic_builder_contains(gb, v));
+
+	/* verify that the value is the same one as previously */
+	ck_assert(v.v == v_int_out_of_place.v);
+
+	// printf("0x%016lx 0x%016lx\n", v.v, v_int_out_of_place.v);
+	ck_assert(v.v == v_int_out_of_place.v);
+
+	/* long string */
+	v = fy_value(gb, "long string out of place");
+	ck_assert(fy_generic_is_string(v));
+	ck_assert(!fy_generic_is_in_place(v));
+	ck_assert(!strcmp(fy_cast(v, ""), "long string out of place"));
+	ck_assert(!strcmp(fy_castp(&v, ""), "long string out of place"));
+
+	/* verify that the builder contains this out of place v */
+	ck_assert(fy_generic_builder_contains(gb, v));
+
+	/* save this */
+	v_str_out_of_place = v;
+
+	/* a sequence is always out of place */
+	v = fy_gb_sequence(gb, 1, 10, 100);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(!fy_generic_is_in_place(v));
+	ck_assert(fy_len(v) == 3);
+
+	/* verify that the builder contains this out of place v */
+	ck_assert(fy_generic_builder_contains(gb, v));
+
+	/* save it for later */
+	vseq1 = v;
+
+	/* same with mapping */
+	v = fy_gb_mapping(gb, "foo", 100, "bar", 200);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(!fy_generic_is_in_place(v));
+	ck_assert(fy_len(v) == 2);
+
+	/* save it for later */
+	vmap1 = v;
+
+	/* verify that the builder contains this out of place v */
+	ck_assert(fy_generic_builder_contains(gb, v));
+
+	/* now verify that everyhing in a collection is contained in the builder */
+	seq = fy_gb_sequence(gb, 1, 10, 100, "Long string that should belong in the builder", "long string out of place");
+
+	len = fy_len(seq);
+	for (i = 0; i < len; i++) {
+		v = fy_get(seq, i, fy_invalid);
+		ck_assert(fy_generic_is_valid(v));
+		ck_assert(fy_generic_builder_contains(gb, v));
+	}
+
+	/* get the 4th item, it should be the one that was stored earlier */
+	v = fy_get(seq, 4, fy_invalid);
+	ck_assert(fy_generic_is_valid(v));
+	ck_assert(v_str_out_of_place.v == v.v);
+
+	/* verify that an internalized local sequence is deduped */
+	seq = fy_local_sequence(1, 10, 100);
+	v = fy_gb_internalize(gb, seq);
+	ck_assert(fy_generic_is_valid(v));
+	ck_assert(fy_generic_is_sequence(v));
+
+	/* it must be the exact same value */
+	ck_assert(vseq1.v == v.v);
+
+	/* verify that an internalized local mapping is deduped */
+	map = fy_local_mapping("foo", 100, "bar", 200);
+	v = fy_gb_internalize(gb, map);
+	ck_assert(fy_generic_is_valid(v));
+	ck_assert(fy_generic_is_mapping(v));
+
+	/* it must be the exact same value */
+	ck_assert(vmap1.v == v.v);
+
+	/* verify that values are stored once */
+	v = fy_value(gb, FYGT_INT_INPLACE_MAX+1);
+	ck_assert(fy_generic_is_valid(v));
+	ck_assert(!fy_generic_is_in_place(v));
+	ck_assert(fy_get_type(v) == FYGT_INT);
+
+	ck_assert(v.v == v_int_out_of_place.v);
+
+	v = fy_gb_to_generic(gb, "long string out of place");
+	ck_assert(fy_generic_is_valid(v));
+	ck_assert(!fy_generic_is_in_place(v));
+	ck_assert(fy_get_type(v) == FYGT_STRING);
+
+	ck_assert(v.v == v_str_out_of_place.v);
+}
+END_TEST
+
+static fy_generic calculate_seq_sum(enum fy_gb_cfg_flags flags, struct fy_generic_builder *parent_gb,
+				    fy_generic seq)
 {
 	char buf[8192];
 	struct fy_generic_builder *gb;
@@ -1132,7 +1277,7 @@ static fy_generic calculate_seq_sum(struct fy_generic_builder *parent_gb, fy_gen
 	size_t i, len;
 	long long val, sum;
 
-	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, parent_gb,
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | flags, parent_gb,
 			buf, sizeof(buf));
 	ck_assert(gb != NULL);
 
@@ -1147,6 +1292,7 @@ static fy_generic calculate_seq_sum(struct fy_generic_builder *parent_gb, fy_gen
 	/* we know that the value must be out of place */
 	v = fy_value(gb, sum);
 	ck_assert(!fy_generic_is_in_place(v));
+	ck_assert(fy_generic_builder_contains(gb, v));
 
 	/* export the value back */
 	return fy_generic_builder_export(gb, v);
@@ -1158,6 +1304,7 @@ START_TEST(gb_scoping)
 	char buf[8192];
 	struct fy_generic_builder *gb;
 	fy_generic seq, v;
+	long long expected, result;
 
 	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
 			buf, sizeof(buf));
@@ -1166,8 +1313,10 @@ START_TEST(gb_scoping)
 	seq = fy_gb_sequence(gb, 100, 200, 300, FYGT_INT_INPLACE_MAX+1);
 	ck_assert(fy_generic_is_sequence(seq));
 
+	expected = 100 + 200 + 300 + FYGT_INT_INPLACE_MAX+1;
+
 	/* calculate */
-	v = calculate_seq_sum(gb, seq);
+	v = calculate_seq_sum(0, gb, seq);
 
 	/* verify the result is out of place */
 	ck_assert(!fy_generic_is_in_place(v));
@@ -1175,7 +1324,50 @@ START_TEST(gb_scoping)
 	/* verify that our builder contains it */
 	ck_assert(fy_generic_builder_contains(gb, v));
 
-	printf("%lld\n", fy_cast(v, (long long)0));
+	result = fy_cast(v, (long long)0);
+
+	printf("expected=%lld result=%lld\n", expected, result);
+	ck_assert(expected == result);
+}
+END_TEST
+
+/* Test: Builder dedup scoping */
+START_TEST(gb_dedup_scoping)
+{
+	char buf[8192];
+	struct fy_generic_builder *gb;
+	fy_generic seq, v, vexp;
+	long long expected;
+
+	gb = fy_generic_builder_create_in_place(
+			FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	seq = fy_gb_sequence(gb, 100, 200, 300, FYGT_INT_INPLACE_MAX+1);
+	ck_assert(fy_generic_is_sequence(seq));
+
+	expected = 100 + 200 + 300 + FYGT_INT_INPLACE_MAX+1;
+
+	/* internalize the expected value */
+	vexp = fy_gb_internalize(gb, fy_value(expected));
+	ck_assert(fy_generic_is_long_long(vexp));
+
+	fprintf(stderr, "vexp=0x%016lx\n", vexp.v);
+
+	/* verify the result is out of place */
+	ck_assert(!fy_generic_is_in_place(vexp));
+
+	/* calculate (but with dedup enabled) */
+	v = calculate_seq_sum(FYGBCF_DEDUP_ENABLED, gb, seq);
+
+	fprintf(stderr, "v=0x%016lx\n", v.v);
+
+	/* verify the result is out of place */
+	ck_assert(!fy_generic_is_in_place(v));
+
+	/* verify that the result is exactly the same one that we internalized */
+	ck_assert(vexp.v == v.v);
 }
 END_TEST
 
@@ -1225,7 +1417,7 @@ START_TEST(gb_polymorphics)
 	seq = fy_sequence(gb, 1, 2, 3);
 	ck_assert(fy_generic_is_sequence(seq));
 
-	/* verify that our builder now contain it */
+	/* verify that our builder now contains it */
 	ck_assert(fy_generic_builder_contains(gb, seq));
 }
 END_TEST
@@ -1265,7 +1457,9 @@ TCase *libfyaml_case_generic(void)
 
 	/* builders */
 	tcase_add_test(tc, gb_basics);
+	tcase_add_test(tc, gb_dedup_basics);
 	tcase_add_test(tc, gb_scoping);
+	tcase_add_test(tc, gb_dedup_scoping);
 
 	tcase_add_test(tc, gb_polymorphics);
 

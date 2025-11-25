@@ -601,7 +601,7 @@ typedef struct fy_generic_decorated_int {
 		signed long long sv;
 		unsigned long long uv;
 	};
-	bool is_unsigned;
+	bool is_unsigned : 1;	/* single bit, it is important for binary comparisons */
 } fy_generic_decorated_int;
 
 typedef struct fy_generic_iterator {
@@ -749,6 +749,7 @@ static inline fy_generic_value fy_generic_out_of_place_put_int_type(void *buf, c
 	struct fy_generic_decorated_int *p = buf;
 
 	assert(((uintptr_t)buf & FY_INPLACE_TYPE_MASK) == 0);
+	memset(p, 0, sizeof(*p));
 	p->sv = v;
 	p->is_unsigned = false;
 	return (fy_generic_value)buf | FY_INT_OUTPLACE_V;
@@ -766,6 +767,7 @@ static inline fy_generic_value fy_generic_out_of_place_put_uint_type(void *buf, 
 	struct fy_generic_decorated_int *p = buf;
 
 	assert(((uintptr_t)buf & FY_INPLACE_TYPE_MASK) == 0);
+	memset(p, 0, sizeof(*p));
 	p->uv = v;
 	p->is_unsigned = true;
 	return (fy_generic_value)buf | FY_INT_OUTPLACE_V;
@@ -1497,10 +1499,15 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 #define fy_local_bool(_v) \
 	(fy_bool((_v)))
 
+#define fy_int_is_unsigned(_v) 									\
+	(_Generic(_v, 										\
+		unsigned long long: ((unsigned long long)_v > (unsigned long long)LLONG_MAX),	\
+		default: false))
+
 #define fy_int_alloca(_v) 									\
 	({											\
-		fy_generic_typeof(_v) __v = (_v);							\
-		long long *__vp;								\
+		fy_generic_typeof(_v) __v = (_v);						\
+		fy_generic_decorated_int *__vp;							\
 		fy_generic_value _r;								\
 												\
 		if (__v >= FYGT_INT_INPLACE_MIN && __v <= FYGT_INT_INPLACE_MAX)			\
@@ -1508,7 +1515,9 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 							| FY_INT_INPLACE_V;			\
 		else {										\
 			__vp = fy_alloca_align(sizeof(*__vp), FY_GENERIC_SCALAR_ALIGN);		\
-			*__vp = __v;								\
+			memset(__vp, 0, sizeof(*__vp));						\
+			__vp->sv = __v;								\
+			__vp->is_unsigned = fy_int_is_unsigned(__v);				\
 			_r = (fy_generic_value)__vp | FY_INT_OUTPLACE_V;			\
 		}										\
 		_r;										\
@@ -1522,11 +1531,14 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 	({											\
 		fy_generic_value _r;								\
 												\
-		if ((_v) >= FYGT_INT_INPLACE_MIN && (_v) <= FYGT_INT_INPLACE_MAX)			\
-			_r = (fy_generic_value)((((unsigned long long)(signed long long)(_v))			\
+		if ((_v) >= FYGT_INT_INPLACE_MIN && (_v) <= FYGT_INT_INPLACE_MAX)		\
+			_r = (fy_generic_value)((((unsigned long long)(signed long long)(_v))	\
 						<< FY_INT_INPLACE_SHIFT) | FY_INT_INPLACE_V);	\
 		else {										\
-			static const long long _vv FY_INT_ALIGNMENT = (signed long long)fy_ensure_const(_v);	\
+			static const fy_generic_decorated_int _vv FY_INT_ALIGNMENT = { 		\
+				.sv = (signed long long)fy_ensure_const(_v),			\
+				.is_unsigned = fy_int_is_unsigned(_v),				\
+			};									\
 			assert(((uintptr_t)&_vv & FY_INPLACE_TYPE_MASK) == 0);			\
 			_r = (fy_generic_value)&_vv | FY_INT_OUTPLACE_V;			\
 		}										\
@@ -2434,6 +2446,8 @@ static inline fy_generic_decorated_int fy_generic_cast_decorated_int_default(fy_
 	if (!fy_generic_is_int_type(v))
 		return default_value;
 
+	memset(&dv, 0, sizeof(dv));
+
 	v = fy_generic_indirect_get_value(v);
 	// inplace? always signed */
 	if ((v.v & FY_INPLACE_TYPE_MASK) == FY_INT_INPLACE_V) {
@@ -3127,6 +3141,7 @@ struct fy_generic_builder_cfg {
 };
 
 enum fy_gb_flags {
+	FYGBF_NONE			= 0,
 	FYGBF_SCOPE_LEADER		= FY_BIT(0),	/* builder starts new scope */
 	FYGBF_DEDUP_ENABLED		= FY_BIT(1),	/* build is dedup enabled */
 	FYGBF_DEDUP_CHAIN		= FY_BIT(2),	/* builder chain is dedup */
@@ -3227,10 +3242,12 @@ static inline fy_generic fy_gb_bool_type_create_out_of_place(struct fy_generic_b
 
 static inline fy_generic fy_gb_int_type_create_out_of_place(struct fy_generic_builder *gb, long long val)
 {
-	const struct fy_generic_decorated_int vald = { .sv = val, .is_unsigned = false };
-	const long long *valp;
+	struct fy_generic_decorated_int vald;
+	const struct fy_generic_decorated_int *valp;
 
-	valp = fy_gb_store(gb, &vald, sizeof(vald), FY_SCALAR_ALIGNOF(long long));
+	memset(&vald, 0, sizeof(vald));
+	vald.sv = val;
+	valp = fy_gb_store(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
 	if (!valp)
 		return fy_invalid;
 	return (fy_generic){ .v = (uintptr_t)valp | FY_INT_OUTPLACE_V };
@@ -3238,10 +3255,13 @@ static inline fy_generic fy_gb_int_type_create_out_of_place(struct fy_generic_bu
 
 static inline fy_generic fy_gb_uint_type_create_out_of_place(struct fy_generic_builder *gb, unsigned long long val)
 {
-	const struct fy_generic_decorated_int vald = { .uv = val, .is_unsigned = true };
-	const unsigned long long *valp;
+	struct fy_generic_decorated_int vald;
+	const struct fy_generic_decorated_int *valp;
 
-	valp = fy_gb_store(gb, &vald, sizeof(vald), FY_SCALAR_ALIGNOF(unsigned long long));
+	memset(&vald, 0, sizeof(vald));
+	vald.uv = val;
+	vald.is_unsigned = val > (unsigned long long)LLONG_MAX;
+	valp = fy_gb_store(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
 	if (!valp)
 		return fy_invalid;
 	return (fy_generic){ .v = (uintptr_t)valp | FY_INT_OUTPLACE_V };

@@ -778,7 +778,6 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 again:
 	chain_length = 0;
 
-	/* XXX */
 	at_head = true;
 	dtd_best = NULL;
 	for (dtd = fy_atomic_load(&dt->tag_datas); dtd; dtd = dtd->next) {
@@ -790,7 +789,6 @@ again:
 		bloom_hit = fy_id_is_used(dtd->bloom_id, dtd->bloom_id_count, bloom_pos);
 		if (bloom_hit) {
 			for (de = fy_atomic_load(&dtd->buckets[bucket_pos]); de; de = de->next) {
-				/* XXX the complete cmp is kind of an overkill */
 				if (de->hash == hash) {
 				       	if (total_size == de->size && !fy_iovec_cmp(iov, iovcnt, de->mem)) {
 
@@ -886,7 +884,6 @@ static const void *fy_dedup_store(struct fy_allocator *a, int tag, const void *d
 
 static void fy_dedup_release(struct fy_allocator *a, int tag, const void *data, size_t size)
 {
-	/* XXX we don't support release it's not worth it */
 	/* we do nothing */
 }
 

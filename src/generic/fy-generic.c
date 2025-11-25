@@ -1817,7 +1817,7 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 			break;
 
 		size = (size_t)(str - p) + len;
-		valp = fy_gb_store(gb, p, size + 1, 8);
+		valp = fy_gb_store(gb, p, size + 1, FY_GENERIC_SCALAR_ALIGN);
 		if (!valp)
 			break;
 
