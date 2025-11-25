@@ -3185,6 +3185,37 @@ static inline const void *fy_gb_storev(struct fy_generic_builder *gb, const stru
 	return fy_allocator_storev_nocheck(gb->allocator, gb->alloc_tag, iov, iovcnt, align);
 }
 
+static inline const void *fy_gb_lookupv(struct fy_generic_builder *gb, const struct iovec *iov, unsigned int iovcnt, size_t align)
+{
+	const void *ptr;
+	uint64_t hash;
+
+	if (!(gb->flags & FYGBF_DEDUP_ENABLED))
+		return NULL;
+
+	hash = fy_iovec_xxhash64(iov, iovcnt);
+
+	while (gb && (gb->flags & FYGBF_DEDUP_ENABLED)) {
+		ptr = fy_allocator_lookupv_nocheck(gb->allocator, gb->alloc_tag, iov, iovcnt, align, hash);
+		if (ptr)
+			return ptr;
+		gb = gb->cfg.parent;
+	}
+
+	return NULL;
+}
+
+static inline const void *fy_gb_lookup(struct fy_generic_builder *gb, const void *data, size_t size, size_t align)
+{
+	struct iovec iov[1];
+
+	/* just call the storev */
+	iov[0].iov_base = (void *)data;
+	iov[0].iov_len = size;
+
+	return fy_gb_lookupv(gb, iov, 1, align);
+}
+
 static inline struct fy_allocator_info *
 fy_gb_get_allocator_info(struct fy_generic_builder *gb)
 {

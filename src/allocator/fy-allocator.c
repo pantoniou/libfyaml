@@ -143,6 +143,7 @@ int fy_allocator_register(const char *name, const struct fy_allocator_ops *ops)
 		!ops->free ||
 		!ops->update_stats ||
 		!ops->storev ||
+		!ops->lookupv ||
 		!ops->release |
 		!ops->get_tag ||
 		!ops->release_tag ||
@@ -598,6 +599,34 @@ const void *fy_allocator_storev(struct fy_allocator *a, int tag, const struct io
 	if (!a || !iov)
 		return NULL;
 	return fy_allocator_storev_nocheck(a, tag, iov, iovcnt, align);
+}
+
+const void *fy_allocator_lookupv_hash(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
+{
+	if (!a || !iov)
+		return NULL;
+	return fy_allocator_lookupv_nocheck(a, tag, iov, iovcnt, align, hash);
+}
+
+const void *fy_allocator_lookupv(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
+{
+	if (!a || !iov)
+		return NULL;
+	return fy_allocator_lookupv_nocheck(a, tag, iov, iovcnt, align, 0);
+}
+
+const void *fy_allocator_lookup(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
+{
+	struct iovec iov[1];
+
+	if (!a || !data)
+		return NULL;
+
+	/* just call the storev */
+	iov[0].iov_base = (void *)data;
+	iov[0].iov_len = size;
+
+	return fy_allocator_lookupv_nocheck(a, tag, iov, 1, align, 0);
 }
 
 void fy_allocator_release(struct fy_allocator *a, int tag, const void *ptr, size_t size)

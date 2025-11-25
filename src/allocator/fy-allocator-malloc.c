@@ -343,6 +343,12 @@ err_out:
 	return NULL;
 }
 
+static const void *fy_malloc_lookupv(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
+{
+	/* no lookups */
+	return NULL;
+}
+
 static void fy_malloc_release(struct fy_allocator *a, int tag, const void *data, size_t size)
 {
 	struct fy_malloc_allocator *ma;
@@ -697,6 +703,7 @@ const struct fy_allocator_ops fy_malloc_allocator_ops = {
 	.free = fy_malloc_free,
 	.update_stats = fy_malloc_update_stats,
 	.storev = fy_malloc_storev,
+	.lookupv = fy_malloc_lookupv,
 	.release = fy_malloc_release,
 	.get_tag = fy_malloc_get_tag,
 	.release_tag = fy_malloc_release_tag,

@@ -10924,6 +10924,48 @@ fy_allocator_storev(struct fy_allocator *a, int tag, const struct iovec *iov, in
 	FY_EXPORT;
 
 /**
+ * fy_allocator_lookup() - Lookup for object in an allocator.
+ *
+ * Lookup for the exact contents of an object stored in an allocator
+ * and return a pointer to the location it was stored.
+ * The allocator must have the FYACF_CAN_LOOKUP capability.
+ *
+ * @a: The allocator
+ * @tag: The tag used to locate the memory
+ * @data: The pointer to object to store
+ * @size: The size of the object
+ * @align: The alignment restriction of the object
+ *
+ * Returns:
+ * A constant pointer to the object stored, or NULL if the object does not exist
+ */
+const void *
+fy_allocator_lookup(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_lookupv() - Lookup for object in an allocator (scatter gather)
+ *
+ * Lookup for the exact contents of an object stored in an allocator
+ * and return a pointer to the location it was stored.
+ * The allocator must have the FYACF_CAN_LOOKUP capability.
+ *
+ * The scatter gather vector is used to recreate the object.
+ *
+ * @a: The allocator
+ * @tag: The tag used to search into
+ * @iov: The I/O scatter gather vector
+ * @iovcnt: The number of vectors
+ * @align: The alignment restriction of the object
+ *
+ * Returns:
+ * A constant pointer to the object stored, or NULL in case the object does not exist
+ */
+const void *
+fy_allocator_lookupv(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
+	FY_EXPORT;
+
+/**
  * fy_allocator_dump() - Dump internal allocator state
  *
  * @a: The allocator
@@ -10941,6 +10983,7 @@ fy_allocator_dump(struct fy_allocator *a)
  * @FYACF_HAS_CONTAINS: Allocator can report if it contains a pointer (even if inefficiently)
  * @FYACF_HAS_EFFICIENT_CONTAINS: Allocator can report if it contains a pointer (efficiently)
  * @FYACF_HAS_TAGS: Allocator has individual tags or not
+ * @FYACF_CAN_LOOKUP: Allocator supports lookup for content
  *
  * These flags describe what operations an allocator supports.
  */
@@ -10951,6 +10994,7 @@ enum fy_allocator_cap_flags {
 	FYACF_HAS_CONTAINS			= FY_BIT(3),
 	FYACF_HAS_EFFICIENT_CONTAINS		= FY_BIT(4),
 	FYACF_HAS_TAGS				= FY_BIT(5),
+	FYACF_CAN_LOOKUP			= FY_BIT(6),
 };
 
 /**
