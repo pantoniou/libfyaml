@@ -559,10 +559,7 @@ int fy_validate_array(size_t count, const fy_generic *vp)
 
 fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flags, ...)
 {
-	union {
-		fy_generic_sequence s;
-		fy_generic_mapping m;
-	} u;
+	fy_generic_collection col;
 	const void *p;
 	struct iovec iov[8];
 	int iovcnt;
@@ -693,9 +690,9 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	case FYGBOP_CREATE_SEQ:
 	case FYGBOP_CREATE_MAP:
 		/* sequence overlaps map counter */
-		u.s.count = count;
-		iov[0].iov_base = &u.s;
-		iov[0].iov_len = sizeof(u.s);
+		col.count = count;
+		iov[0].iov_base = &col;
+		iov[0].iov_len = sizeof(col);
 		iov[1].iov_base = (void *)items;
 		iov[1].iov_len = MULSZ(count, col_item_size);
 		iovcnt = 2;
@@ -734,9 +731,9 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		}
 
 		/* sequence overlaps map counter */
-		u.s.count = out_count;
-		iov[0].iov_base = &u.s;
-		iov[0].iov_len = sizeof(u.s);
+		col.count = out_count;
+		iov[0].iov_base = &col;
+		iov[0].iov_len = sizeof(col);
 		/* before */
 		iov[1].iov_base = (void *)in_items;
 		iov[1].iov_len = MULSZ(idx, col_item_size);
@@ -1740,147 +1737,8 @@ int fy_generic_compare_out_of_place(fy_generic a, fy_generic b)
 
 fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 {
-	fy_generic vi, new_v;
-	const size_t *countp;
-	struct iovec iov[2];
-	enum fy_generic_type type;
-	size_t size, i, count;
-	const void *valp;
-	const uint8_t *str, *p;
-	size_t len;
-	const fy_generic *itemss;
-	fy_generic *items;
-
-	if (v.v == fy_invalid_value)
-		return fy_invalid;
-
-	/* if it's in place just return it */
-	if (fy_generic_is_in_place(v))
-		return v;
-
-	/* indirects are handled here (note, aliases are indirect too) */
-	if (fy_generic_is_indirect(v)) {
-		fy_generic_indirect gi;
-
-		fy_generic_indirect_get(v, &gi);
-
-		gi.value = fy_gb_copy(gb, gi.value);
-		if (gi.value.v == fy_invalid_value)
-			return fy_invalid;
-
-		gi.anchor = fy_gb_copy(gb, gi.anchor);
-		if (gi.anchor.v == fy_invalid_value)
-			return fy_invalid;
-
-		gi.tag = fy_gb_copy(gb, gi.tag);
-		if (gi.tag.v == fy_invalid_value)
-			return fy_invalid;
-
-		return fy_gb_indirect_create(gb, &gi);
-	}
-
-	type = fy_generic_get_type(v);
-
-	/* if we got to here, it's going to be a copy */
-	new_v = fy_invalid;
-	valp = NULL;
-	p = fy_generic_resolve_ptr(v);
-	switch (type) {
-	case FYGT_INT:
-		if (!p)
-			break;
-		valp = fy_gb_store(gb, p, sizeof(fy_generic_decorated_int),
-				FY_SCALAR_ALIGNOF(fy_generic_decorated_int));
-		if (!valp)
-			break;
-
-		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_INT_OUTPLACE_V };
-		break;
-
-	case FYGT_FLOAT:
-		if (!p)
-			break;
-		valp = fy_gb_store(gb, p, sizeof(double), FY_SCALAR_ALIGNOF(double));
-		if (!valp)
-			break;
-
-		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_FLOAT_OUTPLACE_V };
-		break;
-
-	case FYGT_STRING:
-		if (!p)
-			break;
-		str = fy_decode_size(p, FYGT_SIZE_ENCODING_MAX, &len);
-		if (!str)
-			break;
-
-		size = (size_t)(str - p) + len;
-
-		valp = fy_gb_store(gb, p, size + 1, FY_GENERIC_SCALAR_ALIGN);
-		if (!valp)
-			break;
-
-		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_STRING_OUTPLACE_V };
-		break;
-
-	case FYGT_SEQUENCE:
-	case FYGT_MAPPING:
-		countp = fy_generic_resolve_collection_ptr(v);
-		if (!countp || !*countp) {
-			new_v = type == FYGT_SEQUENCE ? fy_seq_empty : fy_map_empty;
-			break;
-		}
-		count = *countp * (type == FYGT_MAPPING ? 2 : 1);
-		itemss = (const void *)(countp + 1);
-		size = sizeof(*items) * count;
-
-		iov[0].iov_base = (void *)countp;
-		iov[0].iov_len = sizeof(*countp);
-		iov[1].iov_base = (void *)itemss;
-		iov[1].iov_len = size;
-
-		if (size <= COPY_MALLOC_CUTOFF)
-			items = alloca(size);
-		else {
-			items = malloc(size);
-			if (!items)
-				break;
-		}
-
-		for (i = 0; i < count; i++) {
-			vi = fy_gb_copy(gb, itemss[i]);
-			if (vi.v == fy_invalid_value)
-				break;
-			items[i] = vi;
-		}
-
-		if (i >= count) {
-			iov[1].iov_base = items;
-			valp = fy_gb_storev(gb, iov, ARRAY_SIZE(iov),
-						FY_GENERIC_CONTAINER_ALIGN);
-		}
-
-		if (size > COPY_MALLOC_CUTOFF)
-			free(items);
-
-		if (!valp)
-			break;
-
-		new_v = (fy_generic){ .v = (uintptr_t)valp | (type == FYGT_SEQUENCE ? FY_SEQ_V : FY_MAP_V) };
-		break;
-
-	case FYGT_INVALID:
-		break;
-
-	case FYGT_ALIAS:
-		/* impossible since it's indirect */
-		FY_IMPOSSIBLE_ABORT();
-
-	default:
-		FY_IMPOSSIBLE_ABORT();
-	}
-
-	return new_v;
+	/* the copy is just an internalization */
+	return fy_gb_internalize(gb, v);
 }
 
 fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d)
