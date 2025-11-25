@@ -386,7 +386,9 @@ static inline void fy_strip_trailing_nl(char *str)
 	({ \
 		const size_t __sz = (_sz); \
 	 	const size_t __align = (_align); \
-		__align <= sizeof(max_align_t) ? alloca(__sz) : fy_ptr_align(alloca(__sz + __align - 1), __align); \
+		void *__p; \
+		__p = __align <= sizeof(max_align_t) ? alloca(__sz) : fy_ptr_align(alloca(__sz + __align - 1), __align); \
+		__p; \
 	})
 
 static inline size_t
