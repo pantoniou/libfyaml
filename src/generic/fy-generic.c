@@ -281,7 +281,7 @@ fy_gb_string_createf(struct fy_generic_builder *gb, const char *fmt, ...)
 fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 {
 	fy_generic vi, new_v;
-	const size_t *countp;
+	const fy_generic_collection *colp;
 	struct iovec iov[2];
 	enum fy_generic_type type;
 	size_t size, i, count;
@@ -376,17 +376,16 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 
 	case FYGT_SEQUENCE:
 	case FYGT_MAPPING:
-		countp = fy_generic_resolve_collection_ptr(v);
-		if (!countp || !*countp) {
+		colp = fy_generic_resolve_collection_ptr(v);
+		if (!colp || !colp->count) {
 			new_v = type == FYGT_SEQUENCE ? fy_seq_empty : fy_map_empty;
 			break;
 		}
-		count = *countp * (type == FYGT_MAPPING ? 2 : 1);
-		itemss = (const void *)(countp + 1);
+		itemss = fy_generic_collection_decode(type, colp, &count);
 		size = sizeof(*items) * count;
 
-		iov[0].iov_base = (void *)countp;
-		iov[0].iov_len = sizeof(*countp);
+		iov[0].iov_base = (void *)colp;
+		iov[0].iov_len = sizeof(*colp);
 		iov[1].iov_base = (void *)itemss;
 		iov[1].iov_len = size;
 
@@ -483,8 +482,7 @@ fy_internalize_items(struct fy_generic_builder *gb, size_t count, const fy_gener
 fy_generic fy_gb_validate_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 {
 	fy_generic vi;
-	const fy_generic_sequence *seqs;
-	const fy_generic_mapping *maps;
+	const fy_generic_collection *colp;
 	enum fy_generic_type type;
 	size_t i, count;
 	const fy_generic *itemss;
@@ -524,26 +522,8 @@ fy_generic fy_gb_validate_out_of_place(struct fy_generic_builder *gb, fy_generic
 	type = fy_generic_get_type(v);
 
 	if (type == FYGT_SEQUENCE || type == FYGT_MAPPING) {
-		if (type == FYGT_SEQUENCE) {
-			seqs = fy_generic_resolve_collection_ptr(v);
-			if (seqs) {
-				count = seqs->count;
-				itemss = seqs->items;
-			} else {
-				count = 0;
-				itemss = NULL;
-			}
-		} else {
-			maps = fy_generic_resolve_collection_ptr(v);
-			if (maps) {
-				count = maps->count * 2;
-				itemss = &maps->pairs[0].items[0];	// we rely on the specific map pair layout
-			} else {
-				count = 0;
-				itemss = NULL;
-			}
-		}
-
+		colp = fy_generic_resolve_collection_ptr(v);
+		itemss = fy_generic_collection_decode(type, colp, &count);
 		for (i = 0; i < count; i++) {
 			vi = fy_gb_validate(gb, itemss[i]);
 			if (vi.v == fy_invalid_value)
@@ -1907,9 +1887,8 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 {
 	const void *p;
 	fy_generic_indirect *gi;
-	fy_generic_sequence *seq;
-	fy_generic_mapping *map;
-	fy_generic *items, *pairs;
+	enum fy_generic_type type;
+	fy_generic *items;
 	size_t i, count;
 
 	/* the delta can't have those bits */
@@ -1936,7 +1915,8 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 	}
 
 	/* if it's not indirect, it might be one of the in place formats */
-	switch (fy_generic_get_type(v)) {
+	type = fy_generic_get_type(v);
+	switch (type) {
 	case FYGT_NULL:
 	case FYGT_BOOL:
 		return v;
@@ -1975,29 +1955,20 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 		break;
 
 	case FYGT_SEQUENCE:
-		p = fy_generic_resolve_ptr(v);
+	case FYGT_MAPPING:
+
+		p = fy_generic_resolve_collection_ptr(v);
+		if (!p)
+			return v;	/* either empty map or seq */
+
 		if (p >= start && p < end)
 			return v;
 
-		v.v = fy_generic_relocate_collection_ptr(v, d).v | FY_SEQ_V;
-		seq = (fy_generic_sequence *)fy_generic_resolve_collection_ptr(v);
-		count = seq->count;
-		items = (fy_generic *)seq->items;
+		items = (void *)fy_generic_collection_decode(type, p, &count);
+
+		v.v = fy_generic_relocate_collection_ptr(v, d).v | (type == FYGT_SEQUENCE ? FY_SEQ_V : FY_MAP_V);
 		for (i = 0; i < count; i++)
 			items[i] = fy_generic_relocate(start, end, items[i], d);
-		break;
-
-	case FYGT_MAPPING:
-		p = fy_generic_resolve_ptr(v);
-		if (p >= start && p < end)
-			return v;
-
-		v.v = fy_generic_relocate_collection_ptr(v, d).v | FY_MAP_V;
-		map = (fy_generic_mapping *)fy_generic_resolve_collection_ptr(v);
-		count = map->count * 2;
-		pairs = (fy_generic *)map->pairs;
-		for (i = 0; i < count; i++)
-			pairs[i] = fy_generic_relocate(start, end, pairs[i], d);
 		break;
 
 	default:

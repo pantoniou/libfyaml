@@ -594,6 +594,22 @@ typedef struct fy_generic_mapping {
 	fy_generic_map_pair pairs[];
 } fy_generic_mapping FY_GENERIC_CONTAINER_ALIGNMENT;
 
+typedef struct fy_generic_collection {
+	size_t count;	/* *2 for mapping */
+	fy_generic items[];
+} fy_generic_collection FY_GENERIC_CONTAINER_ALIGNMENT;
+
+static inline const fy_generic *
+fy_generic_collection_decode(const enum fy_generic_type type, const fy_generic_collection *colp, size_t *countp)
+{
+	if (!colp || !colp->count) {
+		*countp = 0;
+		return NULL;
+	}
+	*countp = colp->count * (type == FYGT_MAPPING ? 2 : 1);
+	return &colp->items[0];
+}
+
 typedef struct fy_generic_sized_string {
 	const char *data;
 	size_t size;
@@ -3052,11 +3068,11 @@ static inline size_t fy_get_len_generic(const void *p)
 	switch (type) {
 	case FYGT_SEQUENCE:
 	case FYGT_MAPPING:
-		const void *colp = fy_generic_resolve_collection_ptr(*vp);
+		const fy_generic_collection *colp = fy_generic_resolve_collection_ptr(*vp);
 		if (!colp)
 			return 0;	// empty seq or map
-		return type == FYGT_SEQUENCE ? fy_generic_sequencep_get_item_count(colp) :
-					       fy_generic_mappingp_get_pair_count(colp);
+		return colp->count;
+
 	case FYGT_STRING:
 		(void)fy_genericp_get_string_size_no_check(vp, &len);
 		return len;
