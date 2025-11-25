@@ -702,6 +702,51 @@ static int fy_dedup_update_stats(struct fy_allocator *a, int tag, struct fy_allo
 	return 0;
 }
 
+/* we can lookup! */
+static const void *fy_dedup_lookupv(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
+{
+	struct fy_dedup_allocator *da;
+	struct fy_dedup_tag *dt;
+	struct fy_dedup_tag_data *dtd;
+	struct fy_dedup_entry *de;
+	int bloom_pos, bucket_pos;
+	bool bloom_hit;
+	size_t total_size;
+
+	da = container_of(a, struct fy_dedup_allocator, a);
+	dt = fy_dedup_tag_from_tag(da, tag);
+	if (!dt)
+		return NULL;
+
+	/* calculate data total size */
+	total_size = fy_iovec_size(iov, iovcnt);
+	if (total_size == SIZE_MAX)
+		return NULL;
+
+	/* if it's under the dedup threshold just allocate and copy */
+	if (total_size < da->cfg.dedup_threshold)
+		return NULL;
+
+	/* calculate hash if not given */
+	if (!hash)
+		hash = fy_iovec_xxhash64(iov, iovcnt);
+
+	for (dtd = fy_atomic_load(&dt->tag_datas); dtd; dtd = dtd->next) {
+		bloom_pos = (int)(hash & (uint64_t)dtd->bloom_filter_mask);
+		bloom_hit = fy_id_is_used(dtd->bloom_id, dtd->bloom_id_count, bloom_pos);
+		if (bloom_hit) {
+			bucket_pos = (int)(hash & (uint64_t)dtd->bucket_count_mask);
+			for (de = fy_atomic_load(&dtd->buckets[bucket_pos]); de; de = de->next) {
+				if (de->hash == hash && total_size == de->size &&
+						!fy_iovec_cmp(iov, iovcnt, de->mem) &&
+						((uintptr_t)de->mem & (align - 1)) == 0)
+					return de->mem;
+			}
+		}
+	}
+	return NULL;
+}
+
 static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
 {
 	struct fy_dedup_allocator *da;
@@ -756,7 +801,8 @@ again:
 		if (bloom_hit) {
 			for (de = fy_atomic_load(&dtd->buckets[bucket_pos]); de; de = de->next) {
 				if (de->hash == hash) {
-				       	if (total_size == de->size && !fy_iovec_cmp(iov, iovcnt, de->mem)) {
+				       	if (total_size == de->size && !fy_iovec_cmp(iov, iovcnt, de->mem) &&
+							((uintptr_t)de->mem & (align - 1)) == 0) {
 
 						/* only update stats if someone asked for it */
 						if (a->flags & FYAF_KEEP_STATS)
@@ -1090,7 +1136,7 @@ fy_dedup_get_caps(struct fy_allocator *a)
 
 	da = container_of(a, struct fy_dedup_allocator, a);
 
-	flags = da->parent_caps | FYACF_CAN_DEDUP;
+	flags = da->parent_caps | FYACF_CAN_DEDUP | FYACF_CAN_LOOKUP;
 	flags &= ~FYACF_CAN_FREE_INDIVIDUAL;
 
 	return flags;
@@ -1137,6 +1183,7 @@ const struct fy_allocator_ops fy_dedup_allocator_ops = {
 	.free = fy_dedup_free,
 	.update_stats = fy_dedup_update_stats,
 	.storev = fy_dedup_storev,
+	.lookupv = fy_dedup_lookupv,
 	.release = fy_dedup_release,
 	.get_tag = fy_dedup_get_tag,
 	.release_tag = fy_dedup_release_tag,

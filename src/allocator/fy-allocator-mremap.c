@@ -804,6 +804,12 @@ err_out:
 	return NULL;
 }
 
+static const void *fy_mremap_lookupv(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
+{
+	/* no lookups */
+	return NULL;
+}
+
 static void fy_mremap_release(struct fy_allocator *a, int tag, const void *data, size_t size)
 {
 	/* no releases */
@@ -1160,6 +1166,7 @@ const struct fy_allocator_ops fy_mremap_allocator_ops = {
 	.free = fy_mremap_free,
 	.update_stats = fy_mremap_update_stats,
 	.storev = fy_mremap_storev,
+	.lookupv = fy_mremap_lookupv,
 	.release = fy_mremap_release,
 	.get_tag = fy_mremap_get_tag,
 	.release_tag = fy_mremap_release_tag,

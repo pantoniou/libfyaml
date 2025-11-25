@@ -243,6 +243,14 @@ static const void *fy_linear_storev(struct fy_allocator *a, int tag,
 	return p;
 }
 
+static const void *fy_linear_lookupv(struct fy_allocator *a, int tag,
+				    const struct iovec *iov, int iovcnt, size_t align,
+				    uint64_t hash)
+{
+	/* no way to lookup */
+	return NULL;
+}
+
 static void fy_linear_release(struct fy_allocator *a, int tag, const void *data, size_t size)
 {
 	/* nothing */
@@ -369,6 +377,7 @@ const struct fy_allocator_ops fy_linear_allocator_ops = {
 	.free = fy_linear_free,
 	.update_stats = fy_linear_update_stats,
 	.storev = fy_linear_storev,
+	.lookupv = fy_linear_lookupv,
 	.release = fy_linear_release,
 	.get_tag = fy_linear_get_tag,
 	.release_tag = fy_linear_release_tag,

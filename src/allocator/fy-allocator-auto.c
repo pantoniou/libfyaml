@@ -283,6 +283,14 @@ static const void *fy_auto_storev(struct fy_allocator *a, int tag, const struct 
 	return fy_allocator_storev_hash_nocheck(aa->parent_allocator, tag, iov, iovcnt, align, hash);
 }
 
+static const void *fy_auto_lookupv(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
+{
+	struct fy_auto_allocator *aa;
+
+	aa = container_of(a, struct fy_auto_allocator, a);
+	return fy_allocator_lookupv_nocheck(aa->parent_allocator, tag, iov, iovcnt, align, hash);
+}
+
 static void fy_auto_release(struct fy_allocator *a, int tag, const void *data, size_t size)
 {
 	struct fy_auto_allocator *aa;
@@ -377,6 +385,7 @@ const struct fy_allocator_ops fy_auto_allocator_ops = {
 	.free = fy_auto_free,
 	.update_stats = fy_auto_update_stats,
 	.storev = fy_auto_storev,
+	.lookupv = fy_auto_lookupv,
 	.release = fy_auto_release,
 	.get_tag = fy_auto_get_tag,
 	.release_tag = fy_auto_release_tag,
