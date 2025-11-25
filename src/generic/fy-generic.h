@@ -769,7 +769,7 @@ static inline fy_generic_value fy_generic_out_of_place_put_uint_type(void *buf, 
 	assert(((uintptr_t)buf & FY_INPLACE_TYPE_MASK) == 0);
 	memset(p, 0, sizeof(*p));
 	p->uv = v;
-	p->is_unsigned = true;
+	p->is_unsigned = v > (unsigned long long)LLONG_MAX;
 	return (fy_generic_value)buf | FY_INT_OUTPLACE_V;
 }
 
@@ -2454,7 +2454,7 @@ static inline fy_generic_decorated_int fy_generic_cast_decorated_int_default(fy_
 		dv.sv = (fy_generic_value_signed)((v.v >> FY_INPLACE_TYPE_SHIFT) <<
 			       (FYGT_GENERIC_BITS - FYGT_INT_INPLACE_BITS)) >>
 				       (FYGT_GENERIC_BITS - FYGT_INT_INPLACE_BITS);
-		dv.is_unsigned = dv.sv >= 0;
+		dv.is_unsigned = false;	/* in place is always unsigned */
 		return dv;
 	}
 
