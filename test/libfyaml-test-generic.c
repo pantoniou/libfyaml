@@ -1541,7 +1541,7 @@ START_TEST(gb_dedup_scoping2)
 {
 	char buf1[8192], buf2[8192];
 	struct fy_generic_builder *gb1, *gb2;
-	fy_generic v;
+	fy_generic v1, v2;
 
 	/* create two stacked dedup builders */
 	gb1 = fy_generic_builder_create_in_place(
@@ -1558,20 +1558,36 @@ START_TEST(gb_dedup_scoping2)
 	ck_assert((gb2->flags & FYGBF_DEDUP_CHAIN) != 0);
 
 	/* store a long string in the first builder */
-	v = fy_value(gb1, "This is a long string");
-	ck_assert(fy_generic_is_valid(v));
-	ck_assert(fy_generic_builder_contains(gb1, v));
-
-	printf("v=0x%016lx\n", v.v);
+	v1 = fy_value(gb1, "This is a long string");
+	ck_assert(fy_generic_is_valid(v1));
+	ck_assert(fy_generic_builder_contains(gb1, v1));
 
 	/* store the same string in the second */
-	v = fy_value(gb2, "This is a long string");
-	ck_assert(fy_generic_is_valid(v));
-	/* both of them should now contain it */
-	ck_assert(fy_generic_builder_contains(gb1, v));
-	ck_assert(fy_generic_builder_contains(gb2, v));
+	v2 = fy_value(gb2, "This is a long string");
+	ck_assert(fy_generic_is_valid(v2));
+	ck_assert(fy_generic_builder_contains(gb2, v2));
 
-	printf("v=0x%016lx\n", v.v);
+	/* both of them should now contain it */
+	ck_assert(fy_generic_builder_contains(gb1, v2));
+
+	/* and it must be the same value */
+	ck_assert(v1.v == v2.v);
+
+	/* do the same but with a collection */
+	v1 = fy_sequence(gb1, 100, 200, "This is a long string");
+	ck_assert(fy_generic_is_valid(v1));
+	ck_assert(fy_generic_is_sequence(v1));
+	ck_assert(fy_generic_builder_contains(gb1, v1));
+
+	v2 = fy_sequence(gb2, 100, 200, "This is a long string");
+	ck_assert(fy_generic_is_valid(v2));
+	ck_assert(fy_generic_is_sequence(v2));
+	ck_assert(fy_generic_builder_contains(gb1, v2));
+
+	ck_assert(fy_generic_builder_contains(gb1, v2));
+
+	/* and it must be the same value */
+	ck_assert(v1.v == v2.v);
 }
 END_TEST
 
