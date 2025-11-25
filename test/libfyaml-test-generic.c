@@ -23,6 +23,8 @@
 #include <libfyaml.h>
 
 #include "fy-generic.h"
+#include "fy-generic-decoder.h"
+#include "fy-generic-encoder.h"
 
 /* Test: Basic generic types, sanity testing */
 START_TEST(generic_basics)
@@ -1642,6 +1644,163 @@ START_TEST(gb_polymorphics)
 }
 END_TEST
 
+/* Test: collection operations */
+START_TEST(gb_collection_ops)
+{
+	char buf[16384];
+	struct fy_generic_builder *gb;
+	fy_generic items[16];
+	fy_generic v;
+	fy_generic seq, map;
+	size_t len;
+	int val;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	/* manual sequence creation */
+	items[0] = fy_value(1000);
+	items[1] = fy_value("Hello");
+	items[2] = fy_value(false);
+
+	v = fy_gb_collection_op(gb, FYGBOPF_CREATE_SEQ, 3, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, 0, -1) == 1000);
+	ck_assert(!strcmp(fy_get(v, 1, ""), "Hello"));
+	ck_assert(fy_get(v, 2, true) == false);
+
+	printf("> seq-create: ");
+	fy_generic_emit_default(v);
+
+	/* manual mapping creation */
+	items[0] = fy_value("foo");
+	items[1] = fy_value(100);
+	items[2] = fy_value("bar");
+	items[3] = fy_value(200);
+
+	v = fy_gb_collection_op(gb, FYGBOPF_CREATE_MAP, 2, items);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 2);
+	ck_assert(fy_get(v, "foo", -1) == 100);
+	ck_assert(fy_get(v, "bar", -1) == 200);
+
+	printf("> map-create: ");
+	fy_generic_emit_default(v);
+
+	/* testing insert (start with empty sequence) () -> (99) */
+	seq = fy_sequence(gb);
+	items[0] = fy_value(99);
+	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, seq, 0, 1, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, 0, -1) == 99);
+
+	printf("> seq-insert-1: ");
+	fy_generic_emit_default(v);
+
+	/* testing insert (start with empty sequence) () -> (99, 999) */
+	seq = fy_sequence(gb);
+	items[0] = fy_value(99);
+	items[1] = fy_value(999);
+	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, seq, 0, 2, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 2);
+	ck_assert(fy_get(v, 0, -1) == 99);
+	ck_assert(fy_get(v, 1, -1) == 999);
+
+	printf("> seq-insert-2: ");
+	fy_generic_emit_default(v);
+
+	/* testing insert at the beginning (1, 2) -> (100, 1, 2) */
+	seq = fy_sequence(gb, 1, 2);
+	items[0] = fy_value(100);
+	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, seq, 0, 1, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, 0, -1) == 100);
+	ck_assert(fy_get(v, 1, -1) == 1);
+	ck_assert(fy_get(v, 2, -1) == 2);
+
+	printf("> seq-insert-begin: ");
+	fy_generic_emit_default(v);
+
+	/* testing insert at the end (1, 2) -> (1, 2, 100) */
+	seq = fy_sequence(gb, 1, 2);
+	items[0] = fy_value(100);
+	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, seq, 2, 1, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, 0, -1) == 1);
+	ck_assert(fy_get(v, 1, -1) == 2);
+	ck_assert(fy_get(v, 2, -1) == 100);
+
+	printf("> seq-insert-end: ");
+	fy_generic_emit_default(v);
+
+	/* testing insert at the middle (1, 2) -> (1, 300, 2) */
+	seq = fy_sequence(gb, 1, 2);
+	items[0] = fy_value(300);
+	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, seq, 1, 1, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, 0, -1) == 1);
+	ck_assert(fy_get(v, 1, -1) == 300);
+	ck_assert(fy_get(v, 2, -1) == 2);
+
+	printf("> seq-insert-middle: ");
+	fy_generic_emit_default(v);
+
+	/* testing insert (start with empty map) () -> ("foo": 10) */
+	map = fy_mapping(gb);
+	items[0] = fy_value("foo");
+	items[1] = fy_value(10);
+	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, map, 0, 1, items);
+	ck_assert(fy_generic_is_mapping(v));
+	len = fy_len(v);
+	ck_assert(len == 1);
+	val = fy_get(v, "foo", -1);
+	ck_assert(val == 10);
+
+	printf("> map-insert-1: ");
+	fy_generic_emit_default(v);
+
+	/* testing insert (start with empty mapping) () -> ("foo": 100, "baz": -100) */
+	map = fy_mapping(gb);
+	items[0] = fy_value("foo");
+	items[1] = fy_value(100);
+	items[2] = fy_value("baz");
+	items[3] = fy_value(-100);
+	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, map, 0, 2, items);
+	ck_assert(fy_generic_is_mapping(v));
+	len = fy_len(v);
+	ck_assert(len == 2);
+	val = fy_get(v, "foo", -1);
+	ck_assert(val == 100);
+	val = fy_get(v, "baz", -1);
+	ck_assert(val == -100);
+
+	printf("> map-insert-2: ");
+	fy_generic_emit_default(v);
+
+	/* testing insert at the beginning ("foo": 1, "bar": 2) -> ("baz": 100, "foo": 1, "bar": 2) */
+	map = fy_mapping(gb, "foo", 1, "bar", 2);
+	items[0] = fy_value("baz");
+	items[1] = fy_value(100);
+	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, map, 0, 1, items);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, "foo", -1) == 1);
+	ck_assert(fy_get(v, "bar", -1) == 2);
+	ck_assert(fy_get(v, "baz", -1) == 100);
+
+	printf("> map-insert-begin: ");
+	fy_generic_emit_default(v);
+
+}
+END_TEST
+
 TCase *libfyaml_case_generic(void)
 {
 	TCase *tc;
@@ -1687,7 +1846,11 @@ TCase *libfyaml_case_generic(void)
 	tcase_add_test(tc, gb_dedup_scoping);
 	tcase_add_test(tc, gb_dedup_scoping2);
 
+	/* the polymorphic stuff */
 	tcase_add_test(tc, gb_polymorphics);
+
+	/* time to do operations on collection */
+	tcase_add_test(tc, gb_collection_ops);
 
 	return tc;
 }
