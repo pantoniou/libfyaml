@@ -281,12 +281,13 @@ fy_gb_string_createf(struct fy_generic_builder *gb, const char *fmt, ...)
 fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 {
 	fy_generic vi, new_v;
-	const fy_generic_sequence *seqs;
-	const fy_generic_mapping *maps;
+	const size_t *countp;
 	struct iovec iov[2];
 	enum fy_generic_type type;
 	size_t size, i, count;
 	const void *valp;
+	const uint8_t *str, *p;
+	size_t len;
 	const fy_generic *itemss;
 	fy_generic *items;
 
@@ -326,107 +327,111 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 
 	/* if we got to here, it's going to be a copy */
 	new_v = fy_invalid;
-
+	valp = NULL;
+	p = fy_generic_resolve_ptr(v);
 	switch (type) {
-
-	case FYGT_SEQUENCE:
-		seqs = fy_generic_resolve_collection_ptr(v);
-		if (!seqs) {
-			new_v = fy_seq_empty;
+	case FYGT_INT:
+		if (!p)
 			break;
-		}
-		count = seqs->count;
-		itemss = seqs->items;
-
-		size = sizeof(*items) * count;
-		if (size <= COPY_MALLOC_CUTOFF)
-			items = alloca(size);
-		else {
-			items = malloc(size);
-			if (!items)
-				break;
-		}
-
-		for (i = 0; i < count; i++) {
-			vi = fy_gb_internalize(gb, itemss[i]);
-			if (vi.v == fy_invalid_value)
-				break;
-			items[i] = vi;
-		}
-
-		if (i >= count) {
-			iov[0].iov_base = (void *)seqs;
-			iov[0].iov_len = sizeof(*seqs);
-			iov[1].iov_base = items;
-			iov[1].iov_len = size;
-			valp = fy_gb_storev(gb, iov, ARRAY_SIZE(iov),
-					FY_CONTAINER_ALIGNOF(fy_generic_sequence));
-		} else
-			valp = NULL;
-
-		if (size > COPY_MALLOC_CUTOFF)
-			free(items);
-
+		valp = fy_gb_lookup(gb, p, sizeof(fy_generic_decorated_int),
+				FY_SCALAR_ALIGNOF(fy_generic_decorated_int));
+		if (!valp)
+			valp = fy_gb_store(gb, p, sizeof(fy_generic_decorated_int),
+					FY_SCALAR_ALIGNOF(fy_generic_decorated_int));
 		if (!valp)
 			break;
 
-		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_SEQ_V };
+		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_INT_OUTPLACE_V };
 		break;
 
-	case FYGT_MAPPING:
-		maps = fy_generic_resolve_collection_ptr(v);
-		if (!maps) {
-			new_v = fy_map_empty;
+	case FYGT_FLOAT:
+		if (!p)
 			break;
-		}
-		count = maps->count * 2;
-		itemss = &maps->pairs[0].items[0];	// we rely on the specific map pair layout
-
-		size = sizeof(*items) * count;
-		if (size <= COPY_MALLOC_CUTOFF)
-			items = alloca(size);
-		else {
-			items = malloc(size);
-			if (!items)
-				break;
-		}
-
-		/* copy both keys and values */
-		for (i = 0; i < count; i++) {
-
-			vi = fy_gb_internalize(gb, itemss[i]);
-			if (vi.v == fy_invalid_value)
-				break;
-
-			items[i] = vi;
-		}
-
-		if (i >= count) {
-			iov[0].iov_base = (void *)maps;
-			iov[0].iov_len = sizeof(*maps);
-			iov[1].iov_base = items;
-			iov[1].iov_len = size,
-			valp = fy_gb_storev(gb, iov, ARRAY_SIZE(iov),
-					FY_CONTAINER_ALIGNOF(fy_generic_mapping));
-		} else
-			valp = NULL;
-
-		if (size > COPY_MALLOC_CUTOFF)
-			free(items);
-
+		valp = fy_gb_lookup(gb, p, sizeof(double), FY_SCALAR_ALIGNOF(double));
+		if (!valp)
+			valp = fy_gb_store(gb, p, sizeof(double), FY_SCALAR_ALIGNOF(double));
 		if (!valp)
 			break;
 
-		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_MAP_V };
+		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_FLOAT_OUTPLACE_V };
+		break;
+
+	case FYGT_STRING:
+		if (!p)
+			break;
+		str = fy_decode_size(p, FYGT_SIZE_ENCODING_MAX, &len);
+		if (!str)
+			break;
+
+		size = (size_t)(str - p) + len;
+
+		valp = fy_gb_lookup(gb, p, size + 1, FY_GENERIC_SCALAR_ALIGN);
+		if (!valp)
+			valp = fy_gb_store(gb, p, size + 1, FY_GENERIC_SCALAR_ALIGN);
+		if (!valp)
+			break;
+
+		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_STRING_OUTPLACE_V };
+		break;
+
+	case FYGT_SEQUENCE:
+	case FYGT_MAPPING:
+		countp = fy_generic_resolve_collection_ptr(v);
+		if (!countp || !*countp) {
+			new_v = type == FYGT_SEQUENCE ? fy_seq_empty : fy_map_empty;
+			break;
+		}
+		count = *countp * (type == FYGT_MAPPING ? 2 : 1);
+		itemss = (const void *)(countp + 1);
+		size = sizeof(*items) * count;
+
+		iov[0].iov_base = (void *)countp;
+		iov[0].iov_len = sizeof(*countp);
+		iov[1].iov_base = (void *)itemss;
+		iov[1].iov_len = size;
+
+		valp = fy_gb_lookupv(gb, iov, ARRAY_SIZE(iov), FY_GENERIC_CONTAINER_ALIGN);
+		if (!valp) {
+			if (size <= COPY_MALLOC_CUTOFF)
+				items = alloca(size);
+			else {
+				items = malloc(size);
+				if (!items)
+					break;
+			}
+
+			for (i = 0; i < count; i++) {
+				vi = fy_gb_internalize(gb, itemss[i]);
+				if (vi.v == fy_invalid_value)
+					break;
+				items[i] = vi;
+			}
+
+			if (i >= count) {
+				iov[1].iov_base = items;
+				valp = fy_gb_storev(gb, iov, ARRAY_SIZE(iov),
+							FY_GENERIC_CONTAINER_ALIGN);
+			}
+
+			if (size > COPY_MALLOC_CUTOFF)
+				free(items);
+
+			if (!valp)
+				break;
+		}
+
+		new_v = (fy_generic){ .v = (uintptr_t)valp | (type == FYGT_SEQUENCE ? FY_SEQ_V : FY_MAP_V) };
 		break;
 
 	case FYGT_INVALID:
 		break;
 
+	case FYGT_ALIAS:
+		/* impossible since it's indirect */
+		FY_IMPOSSIBLE_ABORT();
+
 	default:
-		/* scalars just call copy */
-		new_v = fy_gb_copy(gb, v);
-		break;
+		FY_IMPOSSIBLE_ABORT();
 	}
 
 	return new_v;
@@ -1761,7 +1766,6 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 	size_t size, len, i, count;
 	const void *valp;
 	const uint8_t *p, *str;
-	const long long *ip;
 	const fy_generic *itemss;
 	fy_generic *items;
 
@@ -1791,10 +1795,16 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 
 	/* if we got to here, it's going to be a copy */
 	new_v = fy_invalid;
+
+	p = fy_generic_resolve_ptr(v);
+	valp = NULL;
+
 	switch (type) {
 	case FYGT_INT:
-		ip = fy_generic_resolve_ptr(v);
-		valp = fy_gb_store(gb, ip, sizeof(fy_generic_decorated_int), FY_SCALAR_ALIGNOF(long long));
+		if (!p)
+			break;
+
+		valp = fy_gb_store(gb, p, sizeof(fy_generic_decorated_int), FY_GENERIC_SCALAR_ALIGN);
 		if (!valp)
 			break;
 
@@ -1802,8 +1812,10 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 		break;
 
 	case FYGT_FLOAT:
-		valp = fy_gb_store(gb, fy_generic_resolve_ptr(v),
-				sizeof(double), FY_SCALAR_ALIGNOF(double));
+		if (!p)
+			break;
+
+		valp = fy_gb_store(gb, p, sizeof(double), FY_SCALAR_ALIGNOF(double));
 		if (!valp)
 			break;
 
@@ -1811,7 +1823,8 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 		break;
 
 	case FYGT_STRING:
-		p = fy_generic_resolve_ptr(v);
+		if (!p)
+			break;
 		str = fy_decode_size(p, FYGT_SIZE_ENCODING_MAX, &len);
 		if (!str)
 			break;
@@ -1832,8 +1845,13 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 		}
 		count = seqs->count;
 		itemss = seqs->items;
-
 		size = sizeof(*items) * count;
+
+		iov[0].iov_base = (void *)seqs;
+		iov[0].iov_len = sizeof(*seqs);
+		iov[1].iov_base = (void *)itemss;
+		iov[1].iov_len = size;
+
 		if (size <= COPY_MALLOC_CUTOFF)
 			items = alloca(size);
 		else {
@@ -1850,14 +1868,10 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 		}
 
 		if (i >= count) {
-			iov[0].iov_base = (void *)seqs;
-			iov[0].iov_len = sizeof(*seqs);
 			iov[1].iov_base = items;
-			iov[1].iov_len = size;
 			valp = fy_gb_storev(gb, iov, ARRAY_SIZE(iov),
 					FY_CONTAINER_ALIGNOF(fy_generic_sequence));
-		} else
-			valp = NULL;
+		}
 
 		if (size > COPY_MALLOC_CUTOFF)
 			free(items);
@@ -1876,8 +1890,13 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 		}
 		count = maps->count * 2;
 		itemss = &maps->pairs[0].items[0];	// we rely on the mapping layout
-
 		size = sizeof(*items) * count;
+
+		iov[0].iov_base = (void *)maps;
+		iov[0].iov_len = sizeof(*maps);
+		iov[1].iov_base = (void *)itemss;
+		iov[1].iov_len = size;
+
 		if (size <= COPY_MALLOC_CUTOFF)
 			items = alloca(size);
 		else {
@@ -1897,14 +1916,10 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 		}
 
 		if (i >= count) {
-			iov[0].iov_base = (void *)maps;
-			iov[0].iov_len = sizeof(*maps);
 			iov[1].iov_base = items;
-			iov[1].iov_len = size,
 			valp = fy_gb_storev(gb, iov, ARRAY_SIZE(iov),
 					FY_CONTAINER_ALIGNOF(fy_generic_mapping));
-		} else
-			valp = NULL;
+		}
 
 		if (size > COPY_MALLOC_CUTOFF)
 			free(items);

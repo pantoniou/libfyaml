@@ -571,6 +571,10 @@ static inline fy_generic fy_generic_get_tag(fy_generic v)
 	return vt;
 }
 
+/*
+ * Generic sequence and mapping must start with the count and the items following
+ * DO NOT rearrange structure fields
+ */
 typedef struct fy_generic_sequence {
 	size_t count;
 	fy_generic items[];
