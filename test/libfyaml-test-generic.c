@@ -861,6 +861,55 @@ START_TEST(generic_get)
 }
 END_TEST
 
+/* Test: get_at */
+START_TEST(generic_get_at)
+{
+	fy_generic seq, v;
+	fy_generic_sequence_handle seqh;
+	size_t i, len;
+	int val, sum;
+
+	seq = fy_sequence(10, 100, 1000);
+	// ck_assert(fy_generic_is_sequence(seq));
+	len = fy_len(seq);
+	// ck_assert(len == 3);
+	sum = 0;
+	for (i = 0; i < len; i++) {
+		val = fy_get_at(seq, i, -1);
+		sum += val;
+		// ck_assert(val != -1);
+		// printf("%s: [%zu]=%d\n", __func__, i, val);
+	}
+
+	printf("%s: sum=%d\n", __func__, sum);
+
+	seqh = fy_cast(seq, fy_seq_handle_null);
+	ck_assert(seqh != NULL);
+	// ck_assert(fy_generic_is_sequence(seq));
+	len = fy_len(seqh);
+	// ck_assert(len == 3);
+	sum = 0;
+	for (i = 0; i < len; i++) {
+		val = fy_get_at(seqh, i, -1);
+		sum += val;
+		// ck_assert(val != -1);
+		// printf("%s: [%zu]=%d\n", __func__, i, val);
+	}
+
+	printf("%s: sum=%d\n", __func__, sum);
+
+	seqh = fy_cast(fy_sequence(800, 900, 2000), fy_seq_handle_null);
+	__asm__ volatile ("nop; nop" : : : "memory");
+	len = fy_len(seqh);
+	for (i = 0; i < len; i++) {
+		v = fy_get_at(seqh, i, fy_invalid);
+		if (v.v == fy_invalid_value)
+			abort();
+	}
+	__asm__ volatile ("nop; nop" : : : "memory");
+}
+END_TEST
+
 /* Test: comparisons */
 START_TEST(generic_compare)
 {
@@ -1798,6 +1847,34 @@ START_TEST(gb_collection_ops)
 	printf("> map-insert-begin: ");
 	fy_generic_emit_default(v);
 
+	/* testing insert at the end ("foo": 1, "bar": 2 ) -> ("foo" 1, "bar":2, "baz": 99) */
+	map = fy_mapping(gb, "foo", 1, "bar", 2);
+	items[0] = fy_value("baz");
+	items[1] = fy_value(99);
+	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, map, 2, 1, items);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, "foo", -1) == 1);
+	ck_assert(fy_get(v, "bar", -1) == 2);
+	ck_assert(fy_get(v, "baz", -1) == 99);
+
+	printf("> map-insert-end: ");
+	fy_generic_emit_default(v);
+
+	/* testing insert at the middle (1, 2) -> (1, 300, 2) */
+	seq = fy_sequence(gb, 1, 2);
+	items[0] = fy_value(300);
+	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, seq, 1, 1, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, 0, -1) == 1);
+	ck_assert(fy_get(v, 1, -1) == 300);
+	ck_assert(fy_get(v, 2, -1) == 2);
+
+	printf("> seq-insert-middle: ");
+	fy_generic_emit_default(v);
+
+
 }
 END_TEST
 
@@ -1830,6 +1907,9 @@ TCase *libfyaml_case_generic(void)
 
 	/* get */
 	tcase_add_test(tc, generic_get);
+
+	/* get_at testing */
+	tcase_add_test(tc, generic_get_at);
 
 	/* compare */
 	tcase_add_test(tc, generic_compare);

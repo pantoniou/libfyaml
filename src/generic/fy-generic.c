@@ -28,6 +28,111 @@
 // when to switch to malloc instead of alloca
 #define COPY_MALLOC_CUTOFF	256
 
+enum fy_generic_type fy_generic_get_type_indirect(fy_generic v)
+{
+	const fy_generic_value *p;
+
+	assert(fy_generic_is_indirect(v));
+
+	p = fy_generic_resolve_collection_ptr(v);
+	if (!(p[0] & FYGIF_VALUE))
+		return FYGT_ALIAS;
+	v.v = p[1];
+	if (fy_generic_is_indirect(v))
+		return FYGT_INVALID;
+	return fy_generic_get_direct_type(v);
+}
+
+void fy_generic_indirect_get(fy_generic v, fy_generic_indirect *gi)
+{
+	const fy_generic_value *p;
+
+	memset(gi, 0, sizeof(*gi));
+
+	if (!fy_generic_is_indirect(v)) {
+		gi->flags = FYGIF_VALUE;
+		gi->value = v;
+		gi->anchor.v = fy_invalid_value;
+		gi->tag.v = fy_invalid_value;
+		return;
+	}
+
+	p = fy_generic_resolve_collection_ptr(v);
+
+	/* get flags */
+	gi->flags = *p++;
+	gi->value.v = (gi->flags & FYGIF_VALUE) ? *p++ : fy_invalid_value;
+	gi->anchor.v = (gi->flags & FYGIF_ANCHOR) ? *p++ : fy_invalid_value;
+	gi->tag.v = (gi->flags & FYGIF_TAG) ? *p++ : fy_invalid_value;
+}
+
+const fy_generic *fy_genericp_indirect_get_valuep(const fy_generic *vp)
+{
+	const fy_generic_value *p;
+	uintptr_t flags;
+
+	if (!vp)
+		return NULL;
+
+	if (!fy_generic_is_indirect(*vp))
+		return vp;
+
+	p = fy_generic_resolve_collection_ptr(*vp);
+	flags = *p++;
+	return (flags & FYGIF_VALUE) ? (const fy_generic *)p : NULL;
+}
+
+fy_generic fy_generic_indirect_get_value(const fy_generic v)
+{
+	const fy_generic_value *p;
+
+	if (!fy_generic_is_indirect(v))
+		return v;
+
+	p = fy_generic_resolve_collection_ptr(v);
+	return (p[0] & FYGIF_VALUE) ? *(const fy_generic *)&p[1] : fy_invalid;
+}
+
+fy_generic fy_generic_indirect_get_anchor(fy_generic v)
+{
+	fy_generic_indirect gi;
+
+	fy_generic_indirect_get(v, &gi);
+	return gi.anchor;
+}
+
+fy_generic fy_generic_indirect_get_tag(fy_generic v)
+{
+	fy_generic_indirect gi;
+
+	fy_generic_indirect_get(v, &gi);
+	return gi.tag;
+}
+
+fy_generic fy_generic_get_anchor(fy_generic v)
+{
+	fy_generic va;
+
+	if (!fy_generic_is_indirect(v))
+		return fy_null;
+
+	va = fy_generic_indirect_get_anchor(v);
+	assert(va.v == fy_null_value || va.v == fy_invalid_value || fy_generic_get_type(va) == FYGT_STRING);
+	return va;
+}
+
+fy_generic fy_generic_get_tag(fy_generic v)
+{
+	fy_generic vt;
+
+	if (!fy_generic_is_indirect(v))
+		return fy_null;
+
+	vt = fy_generic_indirect_get_tag(v);
+	assert(vt.v == fy_null_value || vt.v == fy_invalid_value || fy_generic_get_type(vt) == FYGT_STRING);
+	return vt;
+}
+
 extern __thread struct fy_generic_builder *fy_current_gb;
 
 static const struct fy_generic_builder_cfg default_generic_builder_cfg = {
