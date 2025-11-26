@@ -772,6 +772,12 @@ bool fy_generic_is_direct_alias(const fy_generic v)
 
 FY_GENERIC_IS_TEMPLATE_INLINE(alias, ALIAS);
 
+static inline FY_ALWAYS_INLINE
+bool fy_generic_is_direct_collection(const fy_generic v)
+{
+	return (v.v & FY_INPLACE_TYPE_MASK) == 0;	/* sequence is 0, mapping is 8 (3 lower bits 0) */
+}
+
 static inline void *fy_generic_get_null_type_no_check(fy_generic v)
 {
 	return NULL;
@@ -1021,7 +1027,7 @@ static inline const fy_generic *fy_generic_sequencep_get_itemp(const fy_generic_
 {
 	if (!seqp || idx >= seqp->count)
 		return NULL;
-	return fy_genericp_indirect_get_valuep(&seqp->items[idx]);
+	return &seqp->items[idx];
 }
 
 static inline const fy_generic *fy_generic_sequence_get_itemp(fy_generic seq, size_t idx)
@@ -1582,10 +1588,16 @@ fy_genericp_get_string_no_check(const fy_generic *vp)
 
 static inline const char *fy_genericp_get_const_char_ptr_default(const fy_generic *vp, const char *default_value)
 {
-	if (!vp || !fy_generic_is_string(*vp))
+	if (!vp)
 		return default_value;
 
-	return fy_genericp_get_string_no_check(fy_genericp_indirect_get_valuep(vp));
+	if (!fy_generic_is_direct(*vp))
+		vp = fy_genericp_indirect_get_valuep(vp);
+
+	if (!vp || !fy_generic_is_direct_string(*vp))
+		return default_value;
+
+	return fy_genericp_get_string_no_check(vp);
 }
 
 static inline const char *fy_genericp_get_const_char_ptr(const fy_generic *vp)
@@ -2505,7 +2517,7 @@ static inline fy_generic_sized_string fy_generic_cast_sized_string_default(fy_ge
 			vp = &v;
 	} else {
 		vp = fy_genericp_indirect_get_valuep(&v);
-		if (!vp || !fy_generic_is_direct_string(*vp))
+		if (vp && !fy_generic_is_direct_string(*vp))
 			vp = NULL;
 	}
 
@@ -2521,11 +2533,9 @@ static inline const char *fy_genericp_cast_const_char_ptr_default(const fy_gener
 	if (!vp)
 		return default_value;
 
-	vp = fy_genericp_indirect_get_valuep(vp);
-	if (!vp)
-		return default_value;
-
-	if (!fy_generic_is_direct_string(*vp))
+	if (!fy_generic_is_direct(*vp))
+		vp = fy_genericp_indirect_get_valuep(vp);
+	if (!vp || !fy_generic_is_direct_string(*vp))
 		return default_value;
 
 	return fy_genericp_get_string_no_check(vp);
@@ -2543,11 +2553,9 @@ static inline fy_generic_sized_string fy_genericp_cast_sized_string_default(cons
 	if (!vp)
 		return default_value;
 
-	vp = fy_genericp_indirect_get_valuep(vp);
-	if (!vp)
-		return default_value;
-
-	if (!fy_generic_is_string(*vp))
+	if (!fy_generic_is_direct(*vp))
+		vp = fy_genericp_indirect_get_valuep(vp);
+	if (!vp || !fy_generic_is_direct_string(*vp))
 		return default_value;
 
 	ret.data = fy_genericp_get_string_size_no_check(vp, &ret.size);
@@ -2814,10 +2822,15 @@ fy_genericp_get_szstr_default(const fy_generic *vp, fy_generic_sized_string defa
 {
 	struct fy_generic_sized_string ret;
 
-	if (!vp || !fy_generic_is_string(*vp))
+	if (!vp)
 		return default_value;
 
-	ret.data = fy_genericp_get_string_size_no_check(fy_genericp_indirect_get_valuep(vp), &ret.size);
+	if (!fy_generic_is_direct(*vp))
+		vp = fy_genericp_indirect_get_valuep(vp);
+	if (!vp || !fy_generic_is_direct_string(*vp))
+		return default_value;
+
+	ret.data = fy_genericp_get_string_size_no_check(vp, &ret.size);
 	return ret;
 }
 
@@ -3240,7 +3253,18 @@ fy_generic_mapping_get_at_szstr_default(fy_generic map, size_t idx,
 static inline fy_generic fy_get_generic_generic(const void *p)
 {
 	const fy_generic *vp = p;
+	if (fy_generic_is_direct(*vp))
+		return *vp;
 	return fy_generic_indirect_get_value(*vp);
+}
+
+static inline enum fy_generic_type fy_get_generic_direct_collection_type(fy_generic v)
+{
+	/* seq and collection have the lower 3 bits zero */
+	if ((v.v & FY_INPLACE_TYPE_MASK) != 0)
+		return FYGT_INVALID;
+	/* sequence is 0, mapping is 8 */
+	return FYGT_SEQUENCE + ((v.v >> 3) & 1);
 }
 
 static inline fy_generic fy_get_generic_seq_handle(const void *p)
@@ -3266,7 +3290,7 @@ static inline fy_generic fy_get_generic_map_handle(const void *p)
 			fy_generic_sequence_handle: fy_get_generic_seq_handle(&__colv), \
 			fy_generic_mapping_handle: fy_get_generic_map_handle(&__colv) ); \
 		const enum fy_generic_type __type = _Generic(__colv, \
-			fy_generic: fy_generic_get_direct_type(__colv2), \
+			fy_generic: fy_get_generic_direct_collection_type(__colv2), \
 			fy_generic_sequence_handle: FYGT_SEQUENCE, \
 			fy_generic_mapping_handle: FYGT_MAPPING ); \
 		switch (__type) { \
@@ -3301,10 +3325,10 @@ static inline fy_generic fy_get_generic_map_handle(const void *p)
 			fy_generic_sequence_handle: fy_get_generic_seq_handle(&__colv), \
 			fy_generic_mapping_handle: fy_get_generic_map_handle(&__colv) ); \
 		const enum fy_generic_type __type = _Generic(__colv, \
-			fy_generic: fy_generic_get_direct_type(__colv2), \
+			fy_generic: fy_get_generic_direct_collection_type(__colv2), \
 			fy_generic_sequence_handle: FYGT_SEQUENCE, \
 			fy_generic_mapping_handle: FYGT_MAPPING ); \
-		const size_t __index = fy_generic_cast_default_coerse(_idx, LLONG_MAX); \
+		const size_t __index = (_idx); \
 		switch (__type) { \
 		case FYGT_MAPPING: \
 			__ret = _Generic(__dv, fy_generic_mapping_get_at_default_Generic_dispatch) \
@@ -3326,27 +3350,27 @@ static inline fy_generic fy_get_generic_map_handle(const void *p)
 
 
 /* when it's a generic */
-static inline size_t fy_get_len_generic(const void *p)
+static inline FY_ALWAYS_INLINE size_t
+fy_get_len_genericp(const void *p)
 {
-	const fy_generic *vp = fy_genericp_indirect_get_valuep(p);
-	enum fy_generic_type type;
+	const fy_generic *vp;
 	size_t len;
 
-	type = fy_generic_get_direct_type(*vp);
-	switch (type) {
-	case FYGT_SEQUENCE:
-	case FYGT_MAPPING:
-		const fy_generic_collection *colp = fy_generic_resolve_collection_ptr(*vp);
-		if (!colp)
-			return 0;	// empty seq or map
-		return colp->count;
+	vp = p;
+	if (!fy_generic_is_direct(*vp))
+		vp = fy_genericp_indirect_get_valuep(vp);
 
-	case FYGT_STRING:
+	/* collections (seq/map) */
+	if (fy_generic_is_direct_collection(*vp)) {
+		const fy_generic_collection *colp = fy_generic_resolve_collection_ptr(*vp);
+		return colp ? colp->count : 0;
+	}
+
+	if (fy_generic_is_direct_string(*vp)) {
 		(void)fy_genericp_get_string_size_no_check(vp, &len);
 		return len;
-	default:
-		break;
 	}
+
 	return 0;
 }
 
@@ -3366,7 +3390,7 @@ static inline size_t fy_get_len_map_handle(const void *p)
 	({ \
 		fy_generic_typeof(_colv) __colv = (_colv); \
 		_Generic(__colv, \
-			fy_generic: fy_get_len_generic, \
+			fy_generic: fy_get_len_genericp, \
 			fy_generic_sequence_handle: fy_get_len_seq_handle, \
 			fy_generic_mapping_handle: fy_get_len_map_handle \
 			)(&__colv); \
