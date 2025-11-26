@@ -589,6 +589,7 @@ typedef const fy_generic_map_pair *fy_generic_map_pair_handle;
 #define fy_map_handle_null	((fy_generic_mapping_handle)NULL)
 #define fy_szstr_empty		((fy_generic_sized_string){ })
 #define fy_dint_empty		((fy_generic_decorated_int){ })
+#define fy_map_pair_invalid	((fy_generic_map_pair) { .key = fy_invalid, .value = fy_invalid })
 
 static inline size_t fy_sequence_storage_size(size_t count)
 {
@@ -2933,6 +2934,42 @@ fy_generic_sequence_get_szstr_default(fy_generic seq, size_t idx,
 	return fy_generic_sequencep_get_szstr_default(seqp, idx, default_value);
 }
 
+static inline FY_ALWAYS_INLINE fy_generic_map_pair
+fy_generic_sequence_get_map_pair_default(fy_generic seq, size_t idx, fy_generic_map_pair default_value)
+{
+	return default_value;
+}
+
+static inline FY_ALWAYS_INLINE fy_generic_map_pair *
+fy_generic_sequence_get_map_pairp_default(fy_generic seq, size_t idx, fy_generic_map_pair *default_value)
+{
+	return default_value;
+}
+
+static inline FY_ALWAYS_INLINE const fy_generic_map_pair *
+fy_generic_sequence_get_const_map_pairp_default(fy_generic seq, size_t idx, const fy_generic_map_pair *default_value)
+{
+	return default_value;
+}
+
+static inline FY_ALWAYS_INLINE fy_generic_map_pair
+fy_generic_sequencep_get_map_pair_default(const fy_generic_sequence *seqp, size_t idx, fy_generic_map_pair default_value)
+{
+	return default_value;
+}
+
+static inline FY_ALWAYS_INLINE fy_generic_map_pair *
+fy_generic_sequencep_get_map_pairp_default(const fy_generic_sequence *seqp, size_t idx, fy_generic_map_pair *default_value)
+{
+	return default_value;
+}
+
+static inline FY_ALWAYS_INLINE const fy_generic_map_pair *
+fy_generic_sequencep_get_const_map_pairp_default(const fy_generic_sequence *seqp, size_t idx, const fy_generic_map_pair *default_value)
+{
+	return default_value;
+}
+
 #define fy_generic_sequence_get_default_Generic_dispatch \
 	FY_GENERIC_ALL_SCALARS_DISPATCH_SFX(fy_generic_sequence_get, default), \
 	char *: fy_generic_sequence_get_char_ptr_default, \
@@ -2940,7 +2977,10 @@ fy_generic_sequence_get_szstr_default(fy_generic seq, size_t idx,
 	fy_generic_sequence_handle: fy_generic_sequence_get_generic_sequence_handle_default, \
 	fy_generic_mapping_handle: fy_generic_sequence_get_generic_mapping_handle_default, \
 	fy_generic_sized_string: fy_generic_sequence_get_szstr_default, \
-	fy_generic: fy_generic_sequence_get_generic_default
+	fy_generic: fy_generic_sequence_get_generic_default, \
+	fy_generic_map_pair: fy_generic_sequence_get_map_pair_default, \
+	fy_generic_map_pair *: fy_generic_sequence_get_map_pairp_default, \
+	const fy_generic_map_pair *: fy_generic_sequence_get_const_map_pairp_default
 
 #define fy_generic_sequence_get_default(_seq, _idx, _dv) \
 	(_Generic((_dv), fy_generic_sequence_get_default_Generic_dispatch)((_seq), (_idx), (_dv)))
@@ -2966,7 +3006,10 @@ fy_generic_sequence_get_szstr_default(fy_generic seq, size_t idx,
 	fy_generic_sequence_handle: fy_generic_sequencep_get_generic_sequence_handle_default, \
 	fy_generic_mapping_handle: fy_generic_sequencep_get_generic_mapping_handle_default, \
 	fy_generic_sized_string: fy_generic_sequencep_get_szstr_default, \
-	fy_generic: fy_generic_sequencep_get_generic_default
+	fy_generic: fy_generic_sequencep_get_generic_default, \
+	fy_generic_map_pair: fy_generic_sequencep_get_map_pair_default, \
+	fy_generic_map_pair *: fy_generic_sequencep_get_map_pairp_default, \
+	const fy_generic_map_pair *: fy_generic_sequencep_get_const_map_pairp_default
 
 #define fy_generic_sequencep_get_default(_seqp, _idx, _dv) \
 	(_Generic((_dv), fy_generic_sequencep_get_default_Generic_dispatch)((_seqp), (_idx), (_dv)))
@@ -3194,6 +3237,39 @@ static inline char *fy_generic_mapping_get_at_char_ptr_default(fy_generic map, s
 	return (char *)fy_generic_mapping_get_at_const_char_ptr_default(map, idx, default_value);
 }
 
+static inline const fy_generic_map_pair *fy_generic_mappingp_get_at_map_pairp_default(const fy_generic_mapping *mapp, size_t idx, const fy_generic_map_pair *default_value)
+{
+	if (!mapp || idx >= mapp->count)
+		return default_value;
+	return &mapp->pairs[idx];
+}
+
+static inline fy_generic_map_pair fy_generic_mappingp_get_at_map_pair_default(const fy_generic_mapping *mapp, size_t idx, fy_generic_map_pair default_value)
+{
+	if (!mapp || idx >= mapp->count)
+		return default_value;
+	return mapp->pairs[idx];
+}
+
+static inline fy_generic_map_pair fy_generic_mapping_get_at_map_pair_default(fy_generic map, size_t idx, fy_generic_map_pair default_value)
+{
+	const fy_generic_mapping *mapp = fy_generic_mapping_resolve(map);
+	return fy_generic_mappingp_get_at_map_pair_default(mapp, idx, default_value);
+}
+
+static inline const fy_generic_map_pair *
+fy_generic_mapping_get_at_const_map_pairp_default(fy_generic map, size_t idx, const fy_generic_map_pair *default_value)
+{
+	const fy_generic_mapping *mapp = fy_generic_mapping_resolve(map);
+	return fy_generic_mappingp_get_at_map_pairp_default(mapp, idx, default_value);
+}
+
+static inline fy_generic_map_pair *
+fy_generic_mapping_get_at_map_pairp_default(fy_generic map, size_t idx, fy_generic_map_pair *default_value)
+{
+	return (fy_generic_map_pair *)fy_generic_mapping_get_at_const_map_pairp_default(map, idx, default_value);
+}
+
 static inline fy_generic_sized_string
 fy_generic_mappingp_get_at_szstr_default(const fy_generic_mapping *mapp, size_t idx,
 		fy_generic_sized_string default_value)
@@ -3218,7 +3294,10 @@ fy_generic_mapping_get_at_szstr_default(fy_generic map, size_t idx,
 	fy_generic_sequence_handle: fy_generic_mapping_get_at_generic_sequence_handle_default, \
 	fy_generic_mapping_handle: fy_generic_mapping_get_at_generic_mapping_handle_default, \
 	fy_generic_sized_string: fy_generic_mapping_get_at_szstr_default, \
-	fy_generic: fy_generic_mapping_get_at_generic_default
+	fy_generic: fy_generic_mapping_get_at_generic_default, \
+	fy_generic_map_pair: fy_generic_mapping_get_at_map_pair_default, \
+	fy_generic_map_pair *: fy_generic_mapping_get_at_map_pairp_default, \
+	const fy_generic_map_pair *: fy_generic_mapping_get_at_const_map_pairp_default
 
 #define fy_generic_mapping_get_at_default(_map, _idx, _dv) \
 	(_Generic((_dv), fy_generic_mapping_get_at_default_Generic_dispatch)((_map), (_idx), (_dv)))
@@ -3233,7 +3312,10 @@ fy_generic_mapping_get_at_szstr_default(fy_generic map, size_t idx,
 	fy_generic_sequence_handle: fy_generic_mappingp_get_at_generic_sequence_handle_default, \
 	fy_generic_mapping_handle: fy_generic_mappingp_get_at_generic_mapping_handle_default, \
 	fy_generic_sized_string: fy_generic_mappingp_get_at_szstr_default, \
-	fy_generic: fy_generic_mappingp_get_at_generic_default
+	fy_generic: fy_generic_mappingp_get_at_generic_default, \
+	fy_generic_map_pair: fy_generic_mappingp_get_at_map_pair_default, \
+	fy_generic_map_pair *: fy_generic_mappingp_get_at_map_pairp_default, \
+	const fy_generic_map_pair *: fy_generic_mappingp_get_at_const_map_pairp_default
 
 #define fy_generic_mappingp_get_at_default(_mapp, _idx, _dv) \
 	(_Generic((_dv), fy_generic_mappingp_get_at_default_Generic_dispatch)((_mapp), (_idx), (_dv)))

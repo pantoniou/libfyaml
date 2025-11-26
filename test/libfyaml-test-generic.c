@@ -864,49 +864,93 @@ END_TEST
 /* Test: get_at */
 START_TEST(generic_get_at)
 {
-	fy_generic seq, v;
+	fy_generic seq, map, v;
 	fy_generic_sequence_handle seqh;
+	fy_generic_map_pair mp;
+	const fy_generic_map_pair *mpp;
+	const char *key;
 	size_t i, len;
 	int val, sum;
 
 	seq = fy_sequence(10, 100, 1000);
-	// ck_assert(fy_generic_is_sequence(seq));
+	ck_assert(fy_generic_is_sequence(seq));
 	len = fy_len(seq);
-	// ck_assert(len == 3);
+	ck_assert(len == 3);
 	sum = 0;
 	for (i = 0; i < len; i++) {
 		val = fy_get_at(seq, i, -1);
+		ck_assert(val != -1);
 		sum += val;
-		// ck_assert(val != -1);
-		// printf("%s: [%zu]=%d\n", __func__, i, val);
+		printf("%s: [%zu]=%d\n", __func__, i, val);
 	}
 
 	printf("%s: sum=%d\n", __func__, sum);
+	ck_assert(sum == 1110);
 
 	seqh = fy_cast(seq, fy_seq_handle_null);
 	ck_assert(seqh != NULL);
-	// ck_assert(fy_generic_is_sequence(seq));
+	ck_assert(fy_generic_is_sequence(seq));
 	len = fy_len(seqh);
-	// ck_assert(len == 3);
+	ck_assert(len == 3);
 	sum = 0;
 	for (i = 0; i < len; i++) {
 		val = fy_get_at(seqh, i, -1);
+		ck_assert(val != -1);
 		sum += val;
-		// ck_assert(val != -1);
-		// printf("%s: [%zu]=%d\n", __func__, i, val);
+		printf("%s: [%zu]=%d\n", __func__, i, val);
 	}
 
 	printf("%s: sum=%d\n", __func__, sum);
+	ck_assert(sum == 1110);
 
-	seqh = fy_cast(fy_sequence(800, 900, 2000), fy_seq_handle_null);
-	__asm__ volatile ("nop; nop" : : : "memory");
+	seqh = fy_cast(fy_sequence(800, 900, 2000, 1), fy_seq_handle_null);
+	ck_assert(seqh);
 	len = fy_len(seqh);
+	ck_assert(len == 4);
+	sum = 0;
 	for (i = 0; i < len; i++) {
 		v = fy_get_at(seqh, i, fy_invalid);
-		if (v.v == fy_invalid_value)
-			abort();
+		ck_assert(v.v != fy_invalid_value);
+		val = fy_cast(v, -1);
+		ck_assert(val != -1);
+		sum += val;
+		printf("%s: [%zu]=%d\n", __func__, i, val);
 	}
-	__asm__ volatile ("nop; nop" : : : "memory");
+	printf("%s: sum=%d\n", __func__, sum);
+	ck_assert(sum == 3701);
+
+	map = fy_mapping("foo", 10, "bar", 20);
+	ck_assert(fy_generic_is_mapping(map));
+	len = fy_len(map);
+	ck_assert(len == 2);
+	sum = 0;
+	for (i = 0; i < len; i++) {
+		val = fy_get_at(map, i, -1);
+		ck_assert(val != -1);
+		sum += val;
+		printf("%s: [%zu]=%d\n", __func__, i, val);
+	}
+	printf("%s: sum=%d\n", __func__, sum);
+	ck_assert(sum == 30);
+
+	mp = fy_get_at(map, 0, fy_map_pair_invalid);
+	ck_assert(fy_generic_is_valid(mp.key));
+	ck_assert(fy_generic_is_valid(mp.value));
+	key = fy_cast(mp.key, "");
+	val = fy_cast(mp.value, -1);
+	printf("%s: [0] mp: key=%s value=%d\n", __func__, key, val);
+	ck_assert(!strcmp(key, "foo"));
+	ck_assert(val == 10);
+
+	mpp = fy_get_at(map, 1, ((fy_generic_map_pair *)NULL));
+	ck_assert(mpp);
+	ck_assert(fy_generic_is_valid(mpp->key));
+	ck_assert(fy_generic_is_valid(mpp->value));
+	key = fy_cast(mpp->key, "");
+	val = fy_cast(mpp->value, -1);
+	printf("%s: [1] *mp: key=%s value=%d\n", __func__, key, val);
+	ck_assert(!strcmp(key, "bar"));
+	ck_assert(val == 20);
 }
 END_TEST
 
