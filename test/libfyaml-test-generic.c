@@ -1855,6 +1855,8 @@ START_TEST(gb_collection_ops)
 	ck_assert(len == 1);
 	val = fy_get(v, "foo", -1);
 	ck_assert(val == 10);
+	val = fy_get_at(v, 0, -1);
+	ck_assert(val == 10);
 
 	printf("> map-insert-1: ");
 	fy_generic_emit_default(v);
@@ -1871,7 +1873,11 @@ START_TEST(gb_collection_ops)
 	ck_assert(len == 2);
 	val = fy_get(v, "foo", -1);
 	ck_assert(val == 100);
+	val = fy_get_at(v, 0, -1);
+	ck_assert(val == 100);
 	val = fy_get(v, "baz", -1);
+	ck_assert(val == -100);
+	val = fy_get_at(v, 1, -1);
 	ck_assert(val == -100);
 
 	printf("> map-insert-2: ");
@@ -1885,8 +1891,11 @@ START_TEST(gb_collection_ops)
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 3);
 	ck_assert(fy_get(v, "foo", -1) == 1);
+	ck_assert(fy_get_at(v, 1, -1) == 1);
 	ck_assert(fy_get(v, "bar", -1) == 2);
+	ck_assert(fy_get_at(v, 2, -1) == 2);
 	ck_assert(fy_get(v, "baz", -1) == 100);
+	ck_assert(fy_get_at(v, 0, -1) == 100);
 
 	printf("> map-insert-begin: ");
 	fy_generic_emit_default(v);
@@ -1899,25 +1908,92 @@ START_TEST(gb_collection_ops)
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 3);
 	ck_assert(fy_get(v, "foo", -1) == 1);
+	ck_assert(fy_get_at(v, 0, -1) == 1);
 	ck_assert(fy_get(v, "bar", -1) == 2);
+	ck_assert(fy_get_at(v, 1, -1) == 2);
 	ck_assert(fy_get(v, "baz", -1) == 99);
+	ck_assert(fy_get_at(v, 2, -1) == 99);
 
 	printf("> map-insert-end: ");
 	fy_generic_emit_default(v);
 
-	/* testing insert at the middle (1, 2) -> (1, 300, 2) */
-	seq = fy_sequence(gb, 1, 2);
-	items[0] = fy_value(300);
-	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, seq, 1, 1, items);
-	ck_assert(fy_generic_is_sequence(v));
+	/* testing insert at the middle ("foo": 1, "bar": 2) -> ("foo": 1, "baz": 300, "bar": 2) */
+	map = fy_mapping(gb, "foo", 1, "bar", 2);
+	items[0] = fy_value("baz");
+	items[1] = fy_value(300);
+	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, map, 1, 1, items);
+	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 3);
-	ck_assert(fy_get(v, 0, -1) == 1);
-	ck_assert(fy_get(v, 1, -1) == 300);
-	ck_assert(fy_get(v, 2, -1) == 2);
+	ck_assert(fy_get(v, "foo", -1) == 1);
+	ck_assert(fy_get_at(v, 0, -1) == 1);
+	ck_assert(fy_get(v, "bar", -1) == 2);
+	ck_assert(fy_get_at(v, 2, -1) == 2);
+	ck_assert(fy_get(v, "baz", -1) == 300);
+	ck_assert(fy_get_at(v, 1, -1) == 300);
 
-	printf("> seq-insert-middle: ");
+	printf("> map-insert-middle: ");
 	fy_generic_emit_default(v);
 
+	/* testing replace (start with empty sequence) () -> (99) */
+	seq = fy_sequence(gb);
+	items[0] = fy_value(99);
+	v = fy_gb_collection_op(gb, FYGBOPF_REPLACE, seq, 0, 1, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, 0, -1) == 99);
+
+	printf("> seq-replace-1: ");
+	fy_generic_emit_default(v);
+
+	/* testing replace (single item, replace it) (100) -> (99) */
+	seq = fy_sequence(gb, 100);
+	items[0] = fy_value(99);
+	v = fy_gb_collection_op(gb, FYGBOPF_REPLACE, seq, 0, 1, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, 0, -1) == 99);
+
+	printf("> seq-replace-2: ");
+	fy_generic_emit_default(v);
+
+	/* testing replace (single item, replace in the beginning) (100, 200) -> (98, 200) */
+	seq = fy_sequence(gb, 100, 200);
+	items[0] = fy_value(98);
+	v = fy_gb_collection_op(gb, FYGBOPF_REPLACE, seq, 0, 1, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 2);
+	ck_assert(fy_get(v, 0, -1) == 98);
+	ck_assert(fy_get(v, 1, -1) == 200);
+
+	printf("> seq-replace-3: ");
+	fy_generic_emit_default(v);
+
+	/* testing replace (single item, replace in the middle) (100, 1000, 200) -> (100, 1, 200) */
+	seq = fy_sequence(gb, 100, 1000, 200);
+	items[0] = fy_value(1);
+	v = fy_gb_collection_op(gb, FYGBOPF_REPLACE, seq, 1, 1, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, 0, -1) == 100);
+	ck_assert(fy_get(v, 1, -1) == 1);
+	ck_assert(fy_get(v, 2, -1) == 200);
+
+	printf("> seq-replace-3: ");
+	fy_generic_emit_default(v);
+
+	/* testing append (single item) (100, 1000, 200) -> (100, 1000, 200, 1) */
+	seq = fy_sequence(gb, 100, 1000, 200);
+	items[0] = fy_value(1);
+	v = fy_gb_collection_op(gb, FYGBOPF_APPEND, seq, 1, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 4);
+	ck_assert(fy_get(v, 0, -1) == 100);
+	ck_assert(fy_get(v, 1, -1) == 1000);
+	ck_assert(fy_get(v, 2, -1) == 200);
+	ck_assert(fy_get(v, 3, -1) == 1);
+
+	printf("> seq-append-1: ");
+	fy_generic_emit_default(v);
 
 }
 END_TEST

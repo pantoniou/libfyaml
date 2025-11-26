@@ -892,6 +892,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 				out_count = in_count;
 				remain_idx = tmp;
 			}
+			remain_count = in_count - remain_idx;
 			break;
 		}
 
