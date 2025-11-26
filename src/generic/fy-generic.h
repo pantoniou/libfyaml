@@ -320,7 +320,7 @@ typedef struct fy_generic_indirect {
 static inline FY_ALWAYS_INLINE
 bool fy_generic_is_direct(fy_generic v)
 {
-	return (v.v & FY_ESCAPE_MARK) != FY_INDIRECT_V;
+	return (v.v & FY_ESCAPE_MASK) != FY_INDIRECT_V;
 }
 
 static inline FY_ALWAYS_INLINE
@@ -437,7 +437,8 @@ enum fy_generic_type fy_generic_get_direct_type_bithack(fy_generic v)
 #define fy_generic_get_direct_type(_v) \
 	(fy_generic_get_direct_type_bithack((_v)))
 
-static inline bool fy_generic_is_in_place(fy_generic v)
+static inline FY_ALWAYS_INLINE bool
+fy_generic_is_in_place_normal(fy_generic v)
 {
 	if (v.v == fy_invalid_value)
 		return true;
@@ -469,6 +470,36 @@ static inline bool fy_generic_is_in_place(fy_generic v)
 		break;
 	}
 	return false;
+}
+
+static inline FY_ALWAYS_INLINE
+bool fy_generic_is_in_place_bithack(fy_generic v)
+{
+	fy_generic_value m;
+
+	/* the direct values in place */
+	switch (v.v) {
+	case fy_invalid_value:
+	case fy_true_value:
+	case fy_false_value:
+	case fy_null_value:
+	case fy_seq_empty_value:
+	case fy_map_empty_value:
+		return true;
+	}
+	/* sequence, mapping or indirect */
+	m = v.v & FY_INPLACE_TYPE_MASK;
+	if (m == 0 || m == 7)
+		return false;
+
+	/* for int, float and string, the bit 0 is the inplace marker */
+	return (m & 1);
+}
+
+static inline FY_ALWAYS_INLINE bool
+fy_generic_is_in_place(fy_generic v)
+{
+	return fy_generic_is_in_place_bithack(v);
 }
 
 enum fy_generic_type fy_generic_get_type_indirect(fy_generic v);
@@ -937,21 +968,16 @@ static inline size_t fy_generic_out_of_place_size_double(const double v)
 #endif
 
 // sequence
+
+const fy_generic_sequence *
+fy_generic_sequence_resolve_outofplace(fy_generic seq);
+
 static inline FY_ALWAYS_INLINE const fy_generic_sequence *
 fy_generic_sequence_resolve(const fy_generic seq)
 {
-	if (!fy_generic_is_indirect(seq)) {
-		if (!fy_generic_is_direct_sequence(seq))
-			return NULL;
+	if (fy_generic_is_direct_sequence(seq))
 		return fy_generic_resolve_collection_ptr(seq);
-	}
-
-	const fy_generic seqi = fy_generic_indirect_get_value(seq);
-
-	if (!fy_generic_is_direct_sequence(seqi))
-		return NULL;
-
-	return fy_generic_resolve_collection_ptr(seqi);
+	return fy_generic_sequence_resolve_outofplace(seq);
 }
 
 static inline FY_ALWAYS_INLINE fy_generic_sequence_handle
@@ -993,7 +1019,9 @@ static inline const fy_generic *fy_generic_sequence_get_items(fy_generic seq, si
 
 static inline const fy_generic *fy_generic_sequencep_get_itemp(const fy_generic_sequence *seqp, size_t idx)
 {
-	return seqp && idx < seqp->count ? fy_genericp_indirect_get_valuep(&seqp->items[idx]) : NULL;
+	if (!seqp || idx >= seqp->count)
+		return NULL;
+	return fy_genericp_indirect_get_valuep(&seqp->items[idx]);
 }
 
 static inline const fy_generic *fy_generic_sequence_get_itemp(fy_generic seq, size_t idx)
@@ -1005,25 +1033,21 @@ static inline const fy_generic *fy_generic_sequence_get_itemp(fy_generic seq, si
 static inline fy_generic fy_generic_sequence_get_item_generic(fy_generic seq, size_t idx)
 {
 	const fy_generic *vp = fy_generic_sequence_get_itemp(seq, idx);
-	return vp ? *vp : fy_invalid;
+	if (!vp)
+		return fy_invalid;
+	return *vp;
 }
 
 // mapping
+const fy_generic_mapping *
+fy_generic_mapping_resolve_outofplace(fy_generic map);
+
 static inline FY_ALWAYS_INLINE const fy_generic_mapping *
 fy_generic_mapping_resolve(const fy_generic map)
 {
-	if (!fy_generic_is_indirect(map)) {
-		if (!fy_generic_is_direct_mapping(map))
-			return NULL;
+	if (fy_generic_is_direct_mapping(map))
 		return fy_generic_resolve_collection_ptr(map);
-	}
-
-	const fy_generic mapi = fy_generic_indirect_get_value(map);
-
-	if (!fy_generic_is_direct_mapping(mapi))
-		return NULL;
-
-	return fy_generic_resolve_collection_ptr(mapi);
+	return fy_generic_mapping_resolve_outofplace(map);
 }
 
 static inline FY_ALWAYS_INLINE fy_generic_mapping_handle
