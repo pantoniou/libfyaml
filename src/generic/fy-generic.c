@@ -171,6 +171,28 @@ FY_GENERIC_IS_TEMPLATE_NON_INLINE(mapping_type, MAPPING);
 
 FY_GENERIC_IS_TEMPLATE_NON_INLINE(alias, ALIAS);
 
+const fy_generic_sequence *
+fy_generic_sequence_resolve_outofplace(fy_generic seq)
+{
+	if (fy_generic_is_indirect(seq))
+		seq = fy_generic_indirect_get_value(seq);
+
+	if (!fy_generic_is_direct_sequence(seq))
+		return NULL;
+	return fy_generic_resolve_collection_ptr(seq);
+}
+
+const fy_generic_mapping *
+fy_generic_mapping_resolve_outofplace(fy_generic map)
+{
+	if (fy_generic_is_indirect(map))
+		map = fy_generic_indirect_get_value(map);
+
+	if (!fy_generic_is_direct_mapping(map))
+		return NULL;
+	return fy_generic_resolve_collection_ptr(map);
+}
+
 extern __thread struct fy_generic_builder *fy_current_gb;
 
 static const struct fy_generic_builder_cfg default_generic_builder_cfg = {

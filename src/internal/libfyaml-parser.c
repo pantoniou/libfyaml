@@ -5903,6 +5903,22 @@ size_t checkout_seq_handle_count(fy_generic_sequence_handle seqh)
 	return fy_len(seqh);
 }
 
+fy_generic_sequence_handle checkout_seq_handle(fy_generic v)
+{
+	return fy_cast(v, fy_seq_handle_null);
+}
+
+fy_generic_mapping_handle checkout_map_handle(fy_generic v)
+{
+	return fy_cast(v, fy_map_handle_null);
+}
+
+int checkout_int(fy_generic v)
+{
+	return fy_cast(v, (int)-1);
+}
+
+
 char *checkout_dup_str(fy_generic v)
 {
 	const char *str;
