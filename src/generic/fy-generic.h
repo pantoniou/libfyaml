@@ -197,6 +197,8 @@ typedef intptr_t fy_generic_value_signed;
 #define FY_INPLACE_TYPE_SHIFT	3
 #define FY_INPLACE_TYPE_MASK	(((fy_generic_value)1 << FY_INPLACE_TYPE_SHIFT) - 1)
 
+// DO NO REORDER THE VALUES - bithacks expect them as they are in order to work
+
 #define FY_NULL_V		0
 #define FY_SEQ_V		0
 #define FY_MAP_V		8
@@ -204,8 +206,6 @@ typedef intptr_t fy_generic_value_signed;
 
 #define FY_BOOL_V		8
 #define FY_BOOL_INPLACE_SHIFT	4
-
-#define FY_EXTERNAL_V		0
 
 #define FY_INT_INPLACE_V	1
 #define FY_INT_OUTPLACE_V	2
@@ -481,8 +481,12 @@ static inline enum fy_generic_type fy_generic_get_type(fy_generic v)
 }
 
 void fy_generic_indirect_get(fy_generic v, fy_generic_indirect *gi);
+
+const fy_generic *fy_genericp_indirect_get_valuep_nocheck(const fy_generic *vp);
 const fy_generic *fy_genericp_indirect_get_valuep(const fy_generic *vp);
+fy_generic fy_generic_indirect_get_value_nocheck(const fy_generic v);
 fy_generic fy_generic_indirect_get_value(const fy_generic v);
+
 fy_generic fy_generic_indirect_get_anchor(fy_generic v);
 fy_generic fy_generic_indirect_get_tag(fy_generic v);
 fy_generic fy_generic_get_anchor(fy_generic v);
@@ -601,43 +605,141 @@ static inline bool fy_generic_is_invalid(const fy_generic v)
 	return v.v == fy_invalid_value;
 }
 
-//
-// example generation for bool
-//
-// fy_generic_is_direct_bool(), fy_generic_is_bool(), fy_generic_is_range_checked_bool()
-//
-//
-#define FY_GENERIC_IS_TEMPLATE(_gtype, _gttype) \
-static inline FY_ALWAYS_INLINE \
-bool fy_generic_is_direct_ ## _gtype (const fy_generic v) \
-{ \
-	return fy_generic_get_direct_type(v) == FYGT_ ## _gttype ; \
-} \
+#define FY_GENERIC_IS_TEMPLATE_INLINE(_gtype, _gttype) \
+\
+bool fy_generic_is_indirect_ ## _gtype ## _nocheck(const fy_generic v); \
+bool fy_generic_is_indirect_ ## _gtype (const fy_generic v); \
 \
 static inline FY_ALWAYS_INLINE \
 bool fy_generic_is_ ## _gtype (const fy_generic v) \
 { \
 	/* return fy_generic_get_direct_type(fy_generic_indirect_get_value(v)) == FYGT_ ## _gttype ; */ \
 	if (fy_generic_is_direct(v)) \
-		return fy_generic_get_direct_type(v) == FYGT_ ## _gttype; \
-	return fy_generic_get_direct_type(fy_generic_indirect_get_value(v)) == FYGT_ ## _gttype ; \
+		return fy_generic_is_direct_ ## _gtype (v); \
+	return fy_generic_is_direct_ ## _gtype (fy_generic_indirect_get_value(v)); \
+	if (fy_generic_is_direct_ ## _gtype (v)) \
+	       return true; \
+	if (!fy_generic_is_indirect(v)) \
+		return false; \
+	return fy_generic_is_indirect_ ## _gtype ## _nocheck(v); \
 } \
 \
 struct fy_useless_struct_for_semicolon
 
+#define FY_GENERIC_IS_TEMPLATE_NON_INLINE(_gtype, _gttype) \
+\
+bool fy_generic_is_indirect_ ## _gtype ## _nocheck(const fy_generic v) \
+{ \
+	return fy_generic_is_direct_ ## _gtype (fy_generic_indirect_get_value(v)); \
+} \
+\
+bool fy_generic_is_indirect_ ## _gtype (const fy_generic v) \
+{ \
+	if (!fy_generic_is_indirect(v)) \
+		return false; \
+	return fy_generic_is_direct_ ## _gtype (fy_generic_indirect_get_value(v)); \
+} \
+struct fy_useless_struct_for_semicolon
+
 /* the base types that match the spec */
-FY_GENERIC_IS_TEMPLATE(null_type, NULL);
-FY_GENERIC_IS_TEMPLATE(bool_type, BOOL);
-FY_GENERIC_IS_TEMPLATE(int_type, INT);			// by default int is signed
-FY_GENERIC_IS_TEMPLATE(uint_type, INT);			// same as int type but helps with templating
-FY_GENERIC_IS_TEMPLATE(float_type, FLOAT);
-FY_GENERIC_IS_TEMPLATE(string, STRING);
-FY_GENERIC_IS_TEMPLATE(string_type, STRING);		// alias for string
-FY_GENERIC_IS_TEMPLATE(sequence, SEQUENCE);
-FY_GENERIC_IS_TEMPLATE(sequence_type, SEQUENCE);	// alias for sequence
-FY_GENERIC_IS_TEMPLATE(mapping, MAPPING);
-FY_GENERIC_IS_TEMPLATE(mapping_type, MAPPING);		// alias for mapping
-FY_GENERIC_IS_TEMPLATE(alias, ALIAS);			// actual alias type
+static inline FY_ALWAYS_INLINE
+bool fy_generic_is_direct_null_type(const fy_generic v)
+{
+	return v.v == fy_null_value;
+}
+
+FY_GENERIC_IS_TEMPLATE_INLINE(null_type, NULL);
+
+static inline FY_ALWAYS_INLINE
+bool fy_generic_is_direct_bool_type(const fy_generic v)
+{
+	return v.v == fy_true_value || v.v == fy_false_value;
+}
+
+FY_GENERIC_IS_TEMPLATE_INLINE(bool_type, BOOL);
+
+static inline FY_ALWAYS_INLINE
+bool fy_generic_is_direct_int_type(const fy_generic v)
+{
+	// fy_generic_value m = (v.v & FY_INPLACE_TYPE_MASK);
+	// return m == FY_INT_INPLACE_V || m == FY_INT_OUTPLACE_V;
+	// FY_INT_INPLACE_V = 3, FY_INT_OUTPLACE_V = 4
+	return ((v.v & FY_INPLACE_TYPE_MASK) - FY_INT_INPLACE_V) <= 1;
+}
+
+static inline FY_ALWAYS_INLINE
+bool fy_generic_is_direct_uint_type(const fy_generic v)
+{
+	return fy_generic_is_direct_int_type(v);
+}
+
+FY_GENERIC_IS_TEMPLATE_INLINE(int_type, BOOL);
+FY_GENERIC_IS_TEMPLATE_INLINE(uint_type, BOOL);
+
+static inline FY_ALWAYS_INLINE
+bool fy_generic_is_direct_float_type(const fy_generic v)
+{
+	// fy_generic_value m = (v.v & FY_INPLACE_TYPE_MASK);
+	// return m == FY_FLOAT_INPLACE_V || m == FY_FLOAT_OUTPLACE_V;
+	return ((v.v & FY_INPLACE_TYPE_MASK) - FY_FLOAT_INPLACE_V) <= 1;
+}
+
+FY_GENERIC_IS_TEMPLATE_INLINE(float_type, FLOAT);
+
+static inline FY_ALWAYS_INLINE
+bool fy_generic_is_direct_string(const fy_generic v)
+{
+	// fy_generic_value m = (v.v & FY_INPLACE_TYPE_MASK);
+	// return m == FY_STRING_INPLACE_V || m == FY_STRING_OUTPLACE_V;
+	return ((v.v & FY_INPLACE_TYPE_MASK) - FY_STRING_INPLACE_V) <= 1;
+}
+
+static inline FY_ALWAYS_INLINE
+bool fy_generic_is_direct_string_type(const fy_generic v)
+{
+	return fy_generic_is_direct_string(v);
+}
+
+FY_GENERIC_IS_TEMPLATE_INLINE(string, STRING);
+FY_GENERIC_IS_TEMPLATE_INLINE(string_type, STRING);
+
+static inline FY_ALWAYS_INLINE
+bool fy_generic_is_direct_sequence(const fy_generic v)
+{
+	return (v.v & FY_COLLECTION_MASK) == 0;	/* sequence is 0 lower 4 bits */
+}
+
+static inline FY_ALWAYS_INLINE
+bool fy_generic_is_direct_sequence_type(const fy_generic v)
+{
+	return fy_generic_is_direct_sequence(v);
+}
+
+FY_GENERIC_IS_TEMPLATE_INLINE(sequence, SEQUENCE);
+FY_GENERIC_IS_TEMPLATE_INLINE(sequence_type, SEQUENCE);
+
+static inline FY_ALWAYS_INLINE
+bool fy_generic_is_direct_mapping(const fy_generic v)
+{
+	return (v.v & FY_COLLECTION_MASK) == 8;	/* sequence is 8 lower 4 bits */
+}
+
+static inline FY_ALWAYS_INLINE
+bool fy_generic_is_direct_mapping_type(const fy_generic v)
+{
+	return fy_generic_is_direct_mapping(v);
+}
+
+FY_GENERIC_IS_TEMPLATE_INLINE(mapping, MAPPING);
+FY_GENERIC_IS_TEMPLATE_INLINE(mapping_type, MAPPING);		// alias for mapping
+
+static inline FY_ALWAYS_INLINE
+bool fy_generic_is_direct_alias(const fy_generic v)
+{
+	return fy_generic_get_type(v) == FYGT_ALIAS;
+}
+
+FY_GENERIC_IS_TEMPLATE_INLINE(alias, ALIAS);
 
 static inline void *fy_generic_get_null_type_no_check(fy_generic v)
 {

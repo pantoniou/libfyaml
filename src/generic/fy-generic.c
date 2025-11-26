@@ -66,6 +66,17 @@ void fy_generic_indirect_get(fy_generic v, fy_generic_indirect *gi)
 	gi->tag.v = (gi->flags & FYGIF_TAG) ? *p++ : fy_invalid_value;
 }
 
+const fy_generic *fy_genericp_indirect_get_valuep_nocheck(const fy_generic *vp)
+{
+	const fy_generic_value *p;
+	uintptr_t flags;
+
+	p = fy_generic_resolve_collection_ptr(*vp);
+	flags = *p++;
+	return (flags & FYGIF_VALUE) ? (const fy_generic *)p : NULL;
+}
+
+
 const fy_generic *fy_genericp_indirect_get_valuep(const fy_generic *vp)
 {
 	const fy_generic_value *p;
@@ -80,6 +91,14 @@ const fy_generic *fy_genericp_indirect_get_valuep(const fy_generic *vp)
 	p = fy_generic_resolve_collection_ptr(*vp);
 	flags = *p++;
 	return (flags & FYGIF_VALUE) ? (const fy_generic *)p : NULL;
+}
+
+fy_generic fy_generic_indirect_get_value_nocheck(const fy_generic v)
+{
+	const fy_generic_value *p;
+
+	p = fy_generic_resolve_collection_ptr(v);
+	return (p[0] & FYGIF_VALUE) ? *(const fy_generic *)&p[1] : fy_invalid;
 }
 
 fy_generic fy_generic_indirect_get_value(const fy_generic v)
@@ -132,6 +151,25 @@ fy_generic fy_generic_get_tag(fy_generic v)
 	assert(vt.v == fy_null_value || vt.v == fy_invalid_value || fy_generic_get_type(vt) == FYGT_STRING);
 	return vt;
 }
+
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(null_type, NULL);
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(bool_type, BOOL);
+
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(int_type, BOOL);
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(uint_type, BOOL);
+
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(float_type, FLOAT);
+
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(string, STRING);
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(string_type, STRING);
+
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(sequence, SEQUENCE);
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(sequence_type, SEQUENCE);
+
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(mapping, MAPPING);
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(mapping_type, MAPPING);
+
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(alias, ALIAS);
 
 extern __thread struct fy_generic_builder *fy_current_gb;
 
