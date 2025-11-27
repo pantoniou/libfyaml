@@ -803,12 +803,20 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		idx = va_arg(ap, size_t);
 		count = va_arg(ap, size_t);
 		items = va_arg(ap, const fy_generic *);
+		if (!count)
+			return in;
+		if (!items)
+			return fy_invalid;
 		break;
 
 	case FYGBOP_APPEND:
 		in = va_arg(ap, fy_generic);
 		count = va_arg(ap, size_t);
 		items = va_arg(ap, const fy_generic *);
+		if (!count)
+			return in;
+		if (!items)
+			return fy_invalid;
 		break;
 
 	case FYGBOP_ASSOC:
@@ -816,6 +824,10 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		in = va_arg(ap, fy_generic);
 		count = va_arg(ap, size_t);	// pairs for assoc, keys for disassoc
 		items = va_arg(ap, const fy_generic *);
+		if (!count)
+			return in;
+		if (!items)
+			return fy_invalid;
 		need_work_items = true;
 		need_items_mod = true;
 		break;
@@ -830,6 +842,17 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		need_work_items = true;
 		break;
 
+	case FYGBOP_CONTAINS:
+		in = va_arg(ap, fy_generic);
+		count = va_arg(ap, size_t);	// pairs for assoc, keys for disassoc
+		items = va_arg(ap, const fy_generic *);
+		flags |= FYGBOPF_DONT_INTERNALIZE;	/* don't internalize */
+		if (!count)
+			return fy_false;
+		if (!items)
+			return fy_invalid;
+		break;
+
 	default:
 		goto err_out;
 	}
@@ -837,16 +860,6 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 
 	if (in.v == fy_invalid_value)
 		return fy_invalid;
-
-	if (has_args) {
-		/* if no items, no modification are done */
-		if (!count)
-			return in;	/* quickly return the input */
-
-		/* we must have items, otherwise it's an error */
-		if (!items)
-			goto err_out;
-	}
 
 	in_direct = in;
 	if (fy_generic_is_indirect(in_direct))
@@ -870,7 +883,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 
 	case FYGT_MAPPING:
 		col_item_size = sizeof(fy_generic) * 2;
-		item_count = op != FYGBOP_DISASSOC ? MULSZ(count, 2) : count;
+		item_count = (op != FYGBOP_DISASSOC && op != FYGBOP_CONTAINS) ? MULSZ(count, 2) : count;
 		col_mark = FY_MAP_V;
 		in_items = fy_generic_mapping_get_items(in_direct, &in_item_count);
 		in_count = in_item_count / 2;
@@ -1118,6 +1131,12 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	case FYGBOP_VALUES:
 	case FYGBOP_ITEMS:
 
+		/* if everything is gone, don't bother */
+		if (!work_item_count) {
+			out = fy_seq_empty;
+			goto out;
+		}
+
 		switch (op) {
 		case FYGBOP_KEYS:
 			for (i = 0; i < work_item_count; i++)
@@ -1153,17 +1172,33 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 
 		break;
 
+	case FYGBOP_CONTAINS:
+		/* works on both sequences and mappings */
+		k = type == FYGT_SEQUENCE ? 1 : 2;
+		for (i = 0; i < in_item_count; i += k) {
+			for (j = 0; j < item_count; j++) {
+				if (!fy_generic_compare(in_items[i], items[j])) {
+					out = fy_true;
+					goto out;
+				}
+			}
+		}
+		out = fy_false;
+		goto out;
+
 	default:
 		goto err_out;
 	}
 
-	p = fy_gb_lookupv(gb, iov, iovcnt, FY_GENERIC_CONTAINER_ALIGN);
-	if (!p)
-		p = fy_gb_storev(gb, iov, iovcnt, FY_GENERIC_CONTAINER_ALIGN);
-	if (!p)
-		goto err_out;
+	if (iovcnt > 0) {
+		p = fy_gb_lookupv(gb, iov, iovcnt, FY_GENERIC_CONTAINER_ALIGN);
+		if (!p)
+			p = fy_gb_storev(gb, iov, iovcnt, FY_GENERIC_CONTAINER_ALIGN);
+		if (!p)
+			goto err_out;
 
-	out = (fy_generic){ .v = (uintptr_t)p | col_mark };
+		out = (fy_generic){ .v = (uintptr_t)p | col_mark };
+	}
 
 out:
 	if (work_items_alloc)
