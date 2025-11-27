@@ -728,12 +728,13 @@ int fy_validate_array(size_t count, const fy_generic *vp)
 
 fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flags, ...)
 {
-	fy_generic_collection col;
-	const void *p;
 	struct iovec *iov, *iov_alloc = NULL, iov_buf[FY_GB_OP_IOV_INPLACE];
-	int iovcnt;
 	fy_generic *items_alloc = NULL, items_buf[FY_GB_OP_ITEMS_INPLACE];
 	fy_generic *work_items_alloc = NULL, work_items_buf[FY_GB_OP_WORK_ITEMS_INPLACE];
+	fy_generic_collection col;
+	fy_generic v;
+	const void *p;
+	int iovcnt;
 	fy_generic in, in_direct, out, key, value;
 	fy_generic_value col_mark;
 	unsigned int op;
@@ -743,7 +744,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	size_t remain_idx, remain_count;
 	const fy_generic *items, *in_items;
 	fy_generic *items_mod, *work_items;	/* modifiable items (for assoc/deassoc) */
-	bool need_work_items, need_items_mod;
+	bool need_work_items, need_items_mod, has_args;
 	enum fy_generic_type type;
 	va_list ap;
 
@@ -783,6 +784,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 
 	need_work_items = false;
 	need_items_mod = !(flags & FYGBOPF_DONT_INTERNALIZE);	// if we internalize, need to mod
+	has_args = true;
 	items_mod = NULL;
 	work_item_count = 0;
 
@@ -818,6 +820,16 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		need_items_mod = true;
 		break;
 
+	case FYGBOP_KEYS:
+	case FYGBOP_VALUES:
+	case FYGBOP_ITEMS:
+		in = va_arg(ap, fy_generic);
+		count = 0;
+		items = 0;
+		has_args = false;
+		need_work_items = true;
+		break;
+
 	default:
 		goto err_out;
 	}
@@ -826,13 +838,15 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	if (in.v == fy_invalid_value)
 		return fy_invalid;
 
-	/* if no items, no modification are done */
-	if (!count)
-		return in;	/* quickly return the input */
+	if (has_args) {
+		/* if no items, no modification are done */
+		if (!count)
+			return in;	/* quickly return the input */
 
-	/* we must have items, otherwise it's an error */
-	if (!items)
-		goto err_out;
+		/* we must have items, otherwise it's an error */
+		if (!items)
+			goto err_out;
+	}
 
 	in_direct = in;
 	if (fy_generic_is_indirect(in_direct))
@@ -866,34 +880,36 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		goto err_out;
 	}
 
-	/* if we need to modify the items, or we internalize we need a copy */
-	if (need_items_mod) {
-		if (item_count <= ARRAY_SIZE(items_buf)) {
-			items_mod = items_buf;
-		} else {
-			items_alloc = malloc(sizeof(*items_alloc) * item_count);
-			if (!items_alloc)
-				goto err_out;
-			items_mod = items_alloc;
+	if (has_args) {
+		/* if we need to modify the items, or we internalize we need a copy */
+		if (need_items_mod) {
+			if (item_count <= ARRAY_SIZE(items_buf)) {
+				items_mod = items_buf;
+			} else {
+				items_alloc = malloc(sizeof(*items_alloc) * item_count);
+				if (!items_alloc)
+					goto err_out;
+				items_mod = items_alloc;
+			}
+			memcpy(items_mod, items, sizeof(*items_mod) * item_count);
 		}
-		memcpy(items_mod, items, sizeof(*items_mod) * item_count);
-	}
 
-	if (!(flags & FYGBOPF_DONT_INTERNALIZE)) {
-		assert(items_mod);
-		for (i = 0; i < item_count; i++) {
-			value = fy_gb_internalize(gb, items[i]);
-			if (value.v == fy_invalid_value)
-				goto err_out;
-			items_mod[i] = value;
-		}
-		items = items_mod;
-	} else {
-		/* we validate directly on the input */
-		for (i = 0; i < item_count; i++) {
-			value = fy_gb_validate(gb, items[i]);
-			if (value.v == fy_invalid_value)
-				goto err_out;
+		if (!(flags & FYGBOPF_DONT_INTERNALIZE)) {
+			assert(items_mod);
+			for (i = 0; i < item_count; i++) {
+				value = fy_gb_internalize(gb, items[i]);
+				if (value.v == fy_invalid_value)
+					goto err_out;
+				items_mod[i] = value;
+			}
+			items = items_mod;
+		} else {
+			/* we validate directly on the input */
+			for (i = 0; i < item_count; i++) {
+				value = fy_gb_validate(gb, items[i]);
+				if (value.v == fy_invalid_value)
+					goto err_out;
+			}
 		}
 	}
 
@@ -906,6 +922,19 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		case FYGBOP_DISASSOC:
 			work_item_count = in_item_count;
 			break;
+
+		case FYGBOP_KEYS:
+		case FYGBOP_VALUES:
+		case FYGBOP_ITEMS:
+			work_item_count = in_item_count / 2;
+
+			/* nothing? just return empty seq */
+			if (!work_item_count) {
+				out = fy_seq_empty;
+				goto out;
+			}
+			break;
+
 		default:
 			goto err_out;
 		}
@@ -1083,6 +1112,45 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		iov[1].iov_base = work_items;
 		iov[1].iov_len = MULSZ(col.count, col_item_size);
 		iovcnt = 2;
+		break;
+
+	case FYGBOP_KEYS:
+	case FYGBOP_VALUES:
+	case FYGBOP_ITEMS:
+
+		switch (op) {
+		case FYGBOP_KEYS:
+			for (i = 0; i < work_item_count; i++)
+				work_items[i] = in_items[i * 2 + 0];
+			break;
+		case FYGBOP_VALUES:
+			for (i = 0; i < work_item_count; i++)
+				work_items[i] = in_items[i * 2 + 1];
+			break;
+		case FYGBOP_ITEMS:
+			for (i = 0; i < work_item_count; i++) {
+				v = fy_gb_sequence(gb, in_items[i * 2 + 0], in_items[i * 2 + 1]);
+				if (v.v == fy_invalid_value)
+					goto err_out;
+				work_items[i] = v;
+			}
+			break;
+		default:
+			goto err_out;
+		}
+
+		/* always return a sequence */
+		col_mark = FY_SEQ_V;
+		col_item_size = sizeof(fy_generic);
+
+		col.count = work_item_count;
+		iov[0].iov_base = &col;
+		iov[0].iov_len = sizeof(col);
+		/* the content */
+		iov[1].iov_base = work_items;
+		iov[1].iov_len = MULSZ(col.count, col_item_size);
+		iovcnt = 2;
+
 		break;
 
 	default:

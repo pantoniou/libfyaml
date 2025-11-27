@@ -2097,6 +2097,88 @@ START_TEST(gb_assoc_deassoc)
 }
 END_TEST
 
+/* Test: map utilities */
+START_TEST(gb_map_utils)
+{
+	char buf[16384];
+	struct fy_generic_builder *gb;
+	fy_generic map, v, seq;
+	const char *str;
+	int ival;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	/* empty map, return keys, values, items as an empty sequence */
+	map = fy_mapping();
+	v = fy_gb_collection_op(gb, FYGBOPF_KEYS, map);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(v.v == fy_seq_empty_value);
+	printf("> map-keys-on-empty: ");
+	fy_generic_emit_default(v);
+
+	v = fy_gb_collection_op(gb, FYGBOPF_VALUES, map);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(v.v == fy_seq_empty_value);
+	printf("> map-values-on-empty: ");
+	fy_generic_emit_default(v);
+
+	v = fy_gb_collection_op(gb, FYGBOPF_ITEMS, map);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(v.v == fy_seq_empty_value);
+	printf("> map-items-on-empty: ");
+	fy_generic_emit_default(v);
+
+	/* single pair map, return keys, values, items as a single item sequence */
+	map = fy_mapping("foo", 100);
+	v = fy_gb_collection_op(gb, FYGBOPF_KEYS, map);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 1);
+	str = fy_get(v, 0, "");
+	ck_assert(!strcmp(str, "foo"));
+	printf("> map-keys-on-1: ");
+	fy_generic_emit_default(v);
+
+	v = fy_gb_collection_op(gb, FYGBOPF_VALUES, map);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 1);
+	ival = fy_get(v, 0, -1);
+	ck_assert(ival == 100);
+	printf("> map-values-on-1: ");
+	fy_generic_emit_default(v);
+
+	v = fy_gb_collection_op(gb, FYGBOPF_ITEMS, map);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 1);
+	seq = fy_get(v, 0, fy_invalid);
+	ck_assert(fy_generic_is_sequence(seq));
+	str = fy_get(seq, 0, "");
+	ck_assert(!strcmp(str, "foo"));
+	ival = fy_get(seq, 1, -1);
+	ck_assert(ival == 100);
+	printf("> map-values-on-1: ");
+	fy_generic_emit_default(v);
+
+	/* bigger map */
+	map = fy_mapping("foo", 100, "bar", 200, "baz", 300, "long string key", false);
+	v = fy_gb_collection_op(gb, FYGBOPF_KEYS, map);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 4);
+	str = fy_get(v, 0, "");
+	ck_assert(!strcmp(str, "foo"));
+	str = fy_get(v, 1, "");
+	ck_assert(!strcmp(str, "bar"));
+	str = fy_get(v, 2, "");
+	ck_assert(!strcmp(str, "baz"));
+	str = fy_get(v, 3, "");
+	ck_assert(!strcmp(str, "long string key"));
+
+	printf("> map-key-on-4: ");
+	fy_generic_emit_default(v);
+}
+END_TEST
+
 TCase *libfyaml_case_generic(void)
 {
 	TCase *tc;
@@ -2151,6 +2233,9 @@ TCase *libfyaml_case_generic(void)
 	/* time to do operations on collection */
 	tcase_add_test(tc, gb_basic_collection_ops);
 	tcase_add_test(tc, gb_assoc_deassoc);
+
+	/* map utils */
+	tcase_add_test(tc, gb_map_utils);
 
 	return tc;
 }
