@@ -2302,6 +2302,86 @@ START_TEST(gb_seq_utils)
 
 	printf("> seq-concat-regular-empty: ");
 	fy_generic_emit_default(v);
+
+	/* empty sequence, reverse with nothing -> empty sequence */
+	seq = fy_sequence();
+	v = fy_gb_collection_op(gb, FYGBOPF_REVERSE, seq, 0, NULL);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(v.v == fy_seq_empty_value);
+	printf("> seq-empty-reverse-0: ");
+	fy_generic_emit_default(v);
+
+	/* empty sequence, reverse with empty sequences -> empty sequence */
+	seq = fy_sequence();
+	items[0] = fy_sequence();
+	items[1] = fy_sequence();
+	v = fy_gb_collection_op(gb, FYGBOPF_REVERSE, seq, 2, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(v.v == fy_seq_empty_value);
+	printf("> seq-empty-reverse-empty: ");
+	fy_generic_emit_default(v);
+
+	/* empty sequence, reverse with non empty sequences -> non empty sequences */
+	seq = fy_sequence();
+	items[0] = fy_sequence(1, 2);
+	items[1] = fy_sequence(3);
+	v = fy_gb_collection_op(gb, FYGBOPF_REVERSE, seq, 2, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, 0, -1) == 3);
+	ck_assert(fy_get(v, 1, -1) == 2);
+	ck_assert(fy_get(v, 2, -1) == 1);
+	printf("> seq-empty-reverse-non-empty: ");
+	fy_generic_emit_default(v);
+
+	/* a non empty sequence, reverse with empty sequences */
+	seq = fy_sequence(1, 2, 3);
+	items[0] = fy_sequence();
+	v = fy_gb_collection_op(gb, FYGBOPF_REVERSE, seq, 1, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, 0, -1) == 3);
+	ck_assert(fy_get(v, 1, -1) == 2);
+	ck_assert(fy_get(v, 2, -1) == 1);
+	printf("> seq-reverse-empty: ");
+	fy_generic_emit_default(v);
+
+	/* a non empty sequence, reverse with two non empty sequences */
+	seq = fy_sequence(1, 2, 3);
+	items[0] = fy_sequence(4, 5);
+	items[1] = fy_sequence(6, 7);
+	v = fy_gb_collection_op(gb, FYGBOPF_REVERSE, seq, 2, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 7);
+	ck_assert(fy_get(v, 0, -1) == 7);
+	ck_assert(fy_get(v, 1, -1) == 6);
+	ck_assert(fy_get(v, 2, -1) == 5);
+	ck_assert(fy_get(v, 3, -1) == 4);
+	ck_assert(fy_get(v, 4, -1) == 3);
+	ck_assert(fy_get(v, 5, -1) == 2);
+	ck_assert(fy_get(v, 6, -1) == 1);
+
+	printf("> seq-reverse-regular: ");
+	fy_generic_emit_default(v);
+
+	/* a non empty sequence, reverse with two non empty sequences and one empty in the middle*/
+	seq = fy_sequence(1, 2, 3);
+	items[0] = fy_sequence(4, 5);
+	items[1] = fy_sequence();
+	items[2] = fy_sequence(6, 7);
+	v = fy_gb_collection_op(gb, FYGBOPF_REVERSE, seq, 3, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 7);
+	ck_assert(fy_get(v, 0, -1) == 7);
+	ck_assert(fy_get(v, 1, -1) == 6);
+	ck_assert(fy_get(v, 2, -1) == 5);
+	ck_assert(fy_get(v, 3, -1) == 4);
+	ck_assert(fy_get(v, 4, -1) == 3);
+	ck_assert(fy_get(v, 5, -1) == 2);
+	ck_assert(fy_get(v, 6, -1) == 1);
+
+	printf("> seq-reverse-regular-empty: ");
+	fy_generic_emit_default(v);
 }
 END_TEST
 

@@ -854,6 +854,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		break;
 
 	case FYGBOP_CONCAT:
+	case FYGBOP_REVERSE:
 		in = va_arg(ap, fy_generic);
 		count = va_arg(ap, size_t);	// pairs for assoc, keys for disassoc
 		items = va_arg(ap, const fy_generic *);
@@ -903,7 +904,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	case FYGT_MAPPING:
 
 		/* those work only on sequences */
-		if (op == FYGBOP_CONCAT)
+		if (op == FYGBOP_CONCAT || op == FYGBOP_REVERSE)
 			goto err_out;
 
 		col_item_size = sizeof(fy_generic) * 2;
@@ -975,8 +976,22 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 			break;
 
 		case FYGBOP_CONCAT:
-			/* we need at least the amount of the input */
 			work_item_count = 0;
+			for (i = 0; i < item_count; i++) {
+				v = items[i];
+				if (!fy_generic_is_sequence(v))
+					goto err_out;
+				work_item_count += fy_len(v);
+			}
+			/* all of them are empty? just return the same */
+			if (!work_item_count) {
+				out = in;
+				goto out;
+			}
+			break;
+
+		case FYGBOP_REVERSE:
+			work_item_count = in_item_count;
 			for (i = 0; i < item_count; i++) {
 				v = items[i];
 				if (!fy_generic_is_sequence(v))
@@ -1229,9 +1244,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		goto out;
 
 	case FYGBOP_CONCAT:
-		/* works on both sequences and mappings */
 		k = 0;
-
 		for (i = 0; i < item_count; i++) {
 			tmp_items = fy_generic_sequence_get_items(items[i], &tmp_item_count);
 			if (!tmp_item_count)
@@ -1263,6 +1276,44 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		iov[2].iov_base = work_items;
 		iov[2].iov_len = MULSZ(work_item_count, col_item_size);
 		iovcnt = 3;
+		break;
+
+	case FYGBOP_REVERSE:
+		k = 0;
+		/* the extra arguments */
+		for (i = item_count - 1; (ssize_t)i >= 0; i--) {
+			tmp_items = fy_generic_sequence_get_items(items[i], &tmp_item_count);
+			if (!tmp_item_count)
+				continue;
+			for (j = tmp_item_count - 1; (ssize_t)j >= 0; j--) {
+				v = tmp_items[j];
+				if (!(flags & FYGBOPF_NO_CHECKS))
+					v = !(flags & FYGBOPF_DONT_INTERNALIZE) ?
+						fy_gb_internalize(gb, v) : fy_gb_validate(gb, v);
+				if (v.v == fy_invalid_value)
+					goto err_out;
+				assert(k < work_item_count);
+				work_items[k++] = v;
+			}
+		}
+		/* the original */
+		for (i = in_item_count - 1; (ssize_t)i >= 0; i--) {
+			v = in_items[i];
+			work_items[k++] = v;
+		}
+		assert(k == work_item_count);
+
+		/* always return a sequence */
+		col_mark = FY_SEQ_V;
+		col_item_size = sizeof(fy_generic);
+
+		col.count = work_item_count;
+		iov[0].iov_base = &col;
+		iov[0].iov_len = sizeof(col);
+		/* the extra content */
+		iov[1].iov_base = work_items;
+		iov[1].iov_len = MULSZ(work_item_count, col_item_size);
+		iovcnt = 2;
 		break;
 
 	default:
