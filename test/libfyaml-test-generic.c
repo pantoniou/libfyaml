@@ -2211,6 +2211,65 @@ START_TEST(gb_map_utils)
 	items[1] = fy_value("bar");
 	v = fy_gb_collection_op(gb, FYGBOPF_CONTAINS, map, 2, items);
 	ck_assert(v.v == fy_true_value);
+
+	/* merge, on empty map () -> merge nothing */
+	map = fy_map_empty; // fy_mapping();
+	v = fy_gb_collection_op(gb, FYGBOPF_MERGE, map, 0, NULL);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(v.v == fy_map_empty_value);
+	printf("> merge-on-empty-0: ");
+	fy_generic_emit_default(v);
+
+	/* merge, on empty map () -> merge nothing */
+	map = fy_mapping();
+	items[0] = fy_mapping();
+	v = fy_gb_collection_op(gb, FYGBOPF_MERGE, map, 1, items);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(v.v == fy_map_empty_value);
+	printf("> merge-on-empty-0: ");
+	fy_generic_emit_default(v);
+
+	/* merge, on simple map ("foo": 10) -> ("foo": 10) */
+	map = fy_mapping("foo", 10);
+	v = fy_gb_collection_op(gb, FYGBOPF_MERGE, map, 0, NULL);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, "foo", -1) == 10);
+	ck_assert(fy_get_at(v, 0, -1) == 10);
+	printf("> merge-on-unchanged: ");
+	fy_generic_emit_default(v);
+
+	/* merge, on map with duplicate
+	 * ("foo": 10, "bar": 100, "foo": 200, "baz": 1) -> ("foo": 200, "bar": 100, "baz": 1)
+	 */
+	map = fy_mapping("foo", 10, "bar", 100, "foo", 200, "baz", 1);
+	v = fy_gb_collection_op(gb, FYGBOPF_MERGE, map, 0, NULL);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, "foo", -1) == 200);
+	ck_assert(fy_get_at(v, 0, -1) == 200);
+	ck_assert(fy_get(v, "bar", -1) == 100);
+	ck_assert(fy_get_at(v, 1, -1) == 100);
+	ck_assert(fy_get(v, "baz", -1) == 1);
+	ck_assert(fy_get_at(v, 2, -1) == 1);
+	printf("> merge-dup-filter: ");
+	fy_generic_emit_default(v);
+
+	/* merge, with duplicates
+	 * ("foo": 10, "bar": 100) + ("bar":99) + ("foo":9) -> ("foo": 9, "bar": 99)
+	 */
+	map = fy_mapping("foo", 10, "bar", 100);
+	items[0] = fy_mapping("bar", 99);
+	items[1] = fy_mapping("foo", 9);
+	v = fy_gb_collection_op(gb, FYGBOPF_MERGE, map, 2, items);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 2);
+	ck_assert(fy_get(v, "foo", -1) == 9);
+	ck_assert(fy_get_at(v, 0, -1) == 9);
+	ck_assert(fy_get(v, "bar", -1) == 99);
+	ck_assert(fy_get_at(v, 1, -1) == 99);
+	printf("> merge-with-dups: ");
+	fy_generic_emit_default(v);
 }
 END_TEST
 
