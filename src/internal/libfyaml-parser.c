@@ -4270,6 +4270,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	fy_generic_emit_default(seq);
 	printf("\n");
 
+#if 0
 	seq = fy_gb_sequence_append(gb, seq, 2, (fy_generic[]){ fy_int(16), fy_int(128), });
 
 	printf("appended [16, 128] \n");
@@ -4281,6 +4282,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	printf("inserted [true, false] at 1\n");
 	fy_generic_emit_default(seq);
 	printf("\n");
+#endif
 
 	fy_allocator_dump(a);
 
@@ -4315,6 +4317,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	fy_generic_emit_default(map);
 	printf("\n");
 
+#if 0
 	map = fy_gb_mapping_set_value(gb, map, fy_string("seq"),
 #if 0
 						fy_sequence_alloca(3, ((fy_generic[]){ fy_bool(false), fy_int(-100), fy_string("not-info")}))
@@ -4326,6 +4329,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 #endif
 					   );
 	assert(fy_generic_is_valid(map));
+#endif
 
 	printf("new map\n");
 	fy_generic_emit_default(map);

@@ -3863,7 +3863,7 @@ enum fy_gb_op {
 	FYGBOP_DISASSOC,
 	FYGBOP_CONJ,
 };
-#define FYGBOP_COUNT	(FYGBOP_APPEND + 1)
+#define FYGBOP_COUNT	(FYGBOP_CONJ + 1)
 
 enum fy_gb_op_flags {
 	FYGBOPF_CREATE_SEQ	= FYGBOPF_OP(FYGBOP_CREATE_SEQ),
@@ -3878,65 +3878,42 @@ enum fy_gb_op_flags {
 	FYGBOPF_DEEP_VALIDATE	= FY_BIT(17),			// perform deep validation
 };
 
-fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flags, ...);
+fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flags, ...);
 
-#if 0
-fy_generic fy_gb_collection_create_f(struct fy_generic_builder *gb, enum fy_gb_flags flags, size_t count, const fy_generic *items);
+static inline fy_generic
+fy_gb_collection_create(struct fy_generic_builder *gb, bool is_map, size_t count, const fy_generic *items, bool internalize)
+{
+	enum fy_gb_op_flags flags;
 
-fy_generic fy_gb_collection_remove(struct fy_generic_builder *gb, enum fy_gb_flags flags, fy_generic col, size_t idx, size_t count);
-fy_generic fy_gb_sequence_insert_replace(struct fy_generic_builder *gb, bool insert, fy_generic seq, size_t idx, size_t count, const fy_generic *items);
-#endif
+	flags = (!is_map ? FYGBOPF_CREATE_SEQ : FYGBOPF_CREATE_MAP) |
+		(!internalize ? FYGBOPF_DONT_INTERNALIZE : 0);
 
-fy_generic fy_gb_sequence_create_i(struct fy_generic_builder *gb, bool internalize,
-					size_t count, const fy_generic *items);
-fy_generic fy_gb_sequence_create(struct fy_generic_builder *gb, size_t count, const fy_generic *items);
+	return fy_gb_collection_op(gb, flags, count, items);
+}
 
-fy_generic fy_gb_sequence_remove(struct fy_generic_builder *gb, fy_generic seq, size_t idx, size_t count);
+static inline fy_generic
+fy_gb_sequence_create_i(struct fy_generic_builder *gb, bool internalize, size_t count, const fy_generic *items)
+{
+	return fy_gb_collection_create(gb, false, count, items, internalize);
+}
 
-fy_generic fy_gb_sequence_insert_replace_i(struct fy_generic_builder *gb, bool insert, bool internalize,
-						fy_generic seq, size_t idx, size_t count, const fy_generic *items);
-fy_generic fy_gb_sequence_insert_replace(struct fy_generic_builder *gb, bool insert,
-					      fy_generic seq, size_t idx, size_t count, const fy_generic *items);
-fy_generic fy_gb_sequence_insert_i(struct fy_generic_builder *gb, bool internalize,
-					fy_generic seq, size_t idx, size_t count, const fy_generic *items);
-fy_generic fy_gb_sequence_insert(struct fy_generic_builder *gb, fy_generic seq, size_t idx, size_t count,
-				      const fy_generic *items);
-fy_generic fy_gb_sequence_replace_i(struct fy_generic_builder *gb, bool internalize,
-					 fy_generic seq, size_t idx, size_t count, const fy_generic *items);
-fy_generic fy_gb_sequence_replace(struct fy_generic_builder *gb, fy_generic seq, size_t idx, size_t count,
-				       const fy_generic *items);
+static inline fy_generic
+fy_gb_sequence_create(struct fy_generic_builder *gb, size_t count, const fy_generic *items)
+{
+	return fy_gb_collection_create(gb, false, count, items, true);
+}
 
-fy_generic fy_gb_sequence_append_i(struct fy_generic_builder *gb, bool internalize,
-					fy_generic seq, size_t count, const fy_generic *items);
-fy_generic fy_gb_sequence_append(struct fy_generic_builder *gb, fy_generic seq, size_t count, const fy_generic *items);
+static inline fy_generic
+fy_gb_mapping_create_i(struct fy_generic_builder *gb, bool internalize, size_t count, const fy_generic *pairs)
+{
+	return fy_gb_collection_create(gb, true, count, pairs, internalize);
+}
 
-fy_generic fy_gb_mapping_create_i(struct fy_generic_builder *gb, bool internalize,
-				       size_t count, const fy_generic *pairs);
-fy_generic fy_gb_mapping_create(struct fy_generic_builder *gb, size_t count, const fy_generic *pairs);
-
-fy_generic fy_gb_mapping_remove(struct fy_generic_builder *gb, fy_generic map, size_t idx, size_t count);
-
-fy_generic fy_gb_mapping_insert_replace_i(struct fy_generic_builder *gb, bool insert, bool internalize,
-						fy_generic map, size_t idx, size_t count, const fy_generic *pairs);
-fy_generic fy_gb_mapping_insert_replace(struct fy_generic_builder *gb, bool insert,
-					      fy_generic map, size_t idx, size_t count, const fy_generic *pairs);
-fy_generic fy_gb_mapping_insert_i(struct fy_generic_builder *gb, bool internalize,
-					fy_generic map, size_t idx, size_t count, const fy_generic *pairs);
-fy_generic fy_gb_mapping_insert(struct fy_generic_builder *gb, fy_generic map, size_t idx, size_t count,
-				      const fy_generic *pairs);
-fy_generic fy_gb_mapping_replace_i(struct fy_generic_builder *gb, bool internalize,
-					 fy_generic map, size_t idx, size_t count, const fy_generic *pairs);
-fy_generic fy_gb_mapping_replace(struct fy_generic_builder *gb, fy_generic map, size_t idx, size_t count,
-				       const fy_generic *pairs);
-
-fy_generic fy_gb_mapping_append_i(struct fy_generic_builder *gb, bool internalize,
-					fy_generic map, size_t count, const fy_generic *pairs);
-fy_generic fy_gb_mapping_append(struct fy_generic_builder *gb, fy_generic map, size_t count, const fy_generic *pairs);
-
-fy_generic fy_gb_mapping_set_value_i(struct fy_generic_builder *gb, bool internalize,
-					  fy_generic map, fy_generic key, fy_generic value);
-fy_generic fy_gb_mapping_set_value(struct fy_generic_builder *gb, fy_generic map,
-					fy_generic key, fy_generic value);
+static inline fy_generic
+fy_gb_mapping_create(struct fy_generic_builder *gb, size_t count, const fy_generic *pairs)
+{
+	return fy_gb_mapping_create_i(gb, true, count, pairs);
+}
 
 fy_generic fy_gb_indirect_create(struct fy_generic_builder *gb, const fy_generic_indirect *gi);
 

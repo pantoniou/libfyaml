@@ -1737,8 +1737,8 @@ START_TEST(gb_polymorphics)
 }
 END_TEST
 
-/* Test: collection operations */
-START_TEST(gb_collection_ops)
+/* Test: basic collection operations */
+START_TEST(gb_basic_collection_ops)
 {
 	char buf[16384];
 	struct fy_generic_builder *gb;
@@ -1994,7 +1994,106 @@ START_TEST(gb_collection_ops)
 
 	printf("> seq-append-1: ");
 	fy_generic_emit_default(v);
+}
+END_TEST
 
+/* Test: assoc/deassoc map operations */
+START_TEST(gb_assoc_deassoc)
+{
+	char buf[16384];
+	struct fy_generic_builder *gb;
+	fy_generic items[16];
+	fy_generic map, v;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	/* associate, on empty map () -> ( "foo": 10 ) */
+	map = fy_mapping();
+	items[0] = fy_value("foo");
+	items[1] = fy_value(10);
+	v = fy_gb_collection_op(gb, FYGBOPF_ASSOC, map, 1, items);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, "foo", -1) == 10);
+	ck_assert(fy_get_at(v, 0, -1) == 10);
+
+	printf("> assoc-on-empty: ");
+	fy_generic_emit_default(v);
+
+	/* associate, on non empty map ("bar": 100) -> ( "foo": 10 ) */
+	map = fy_mapping("bar", 100);
+	items[0] = fy_value("foo");
+	items[1] = fy_value(10);
+	v = fy_gb_collection_op(gb, FYGBOPF_ASSOC, map, 1, items);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 2);
+	ck_assert(fy_get(v, "bar", -1) == 100);
+	ck_assert(fy_get_at(v, 0, -1) == 100);
+	ck_assert(fy_get(v, "foo", -1) == 10);
+	ck_assert(fy_get_at(v, 1, -1) == 10);
+
+	printf("> assoc-on-non-empty: ");
+	fy_generic_emit_default(v);
+
+	/* associate, replace value ("bar": 100) -> ( "bar": 10 ) */
+	map = fy_mapping("bar", 100);
+	items[0] = fy_value("bar");
+	items[1] = fy_value(10);
+	v = fy_gb_collection_op(gb, FYGBOPF_ASSOC, map, 1, items);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, "bar", -1) == 10);
+	ck_assert(fy_get_at(v, 0, -1) == 10);
+
+	printf("> assoc-replace: ");
+	fy_generic_emit_default(v);
+
+	/* associate, replace and append value ("foo": 1, "bar": 100) -> ( "foo": 10, "bar": 100, "baz": 1000 ) */
+	map = fy_mapping("foo", 1, "bar", 100);
+	items[0] = fy_value("foo");
+	items[1] = fy_value(10);
+	items[2] = fy_value("baz");
+	items[3] = fy_value(1000);
+	v = fy_gb_collection_op(gb, FYGBOPF_ASSOC, map, 2, items);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, "foo", -1) == 10);
+	ck_assert(fy_get_at(v, 0, -1) == 10);
+	ck_assert(fy_get(v, "bar", -1) == 100);
+	ck_assert(fy_get_at(v, 1, -1) == 100);
+	ck_assert(fy_get(v, "baz", -1) == 1000);
+	ck_assert(fy_get_at(v, 2, -1) == 1000);
+
+	printf("> assoc-replace-append: ");
+	fy_generic_emit_default(v);
+
+	/* disassociate, mapping goes empty ("bar": 100) -> () */
+	map = fy_mapping("bar", 100);
+	items[0] = fy_value("bar");
+	v = fy_gb_collection_op(gb, FYGBOPF_DISASSOC, map, 1, items);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 0);
+	/* must be exactly empty */
+	ck_assert(v.v == fy_map_empty_value);
+
+	printf("> disassoc-goes-empty: ");
+	fy_generic_emit_default(v);
+
+	/* disassociate, mapping is unchanged ("bar": 100) -> ("bar": 100) */
+	map = fy_mapping("bar", 100);
+	items[0] = fy_value("foo");
+	v = fy_gb_collection_op(gb, FYGBOPF_DISASSOC, map, 1, items);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, "bar", -1) == 100);
+	ck_assert(fy_get_at(v, 0, -1) == 100);
+	/* must be exactly the same */
+	ck_assert(v.v == map.v);
+
+	printf("> disassoc-nop: ");
+	fy_generic_emit_default(v);
 }
 END_TEST
 
@@ -2050,7 +2149,8 @@ TCase *libfyaml_case_generic(void)
 	tcase_add_test(tc, gb_polymorphics);
 
 	/* time to do operations on collection */
-	tcase_add_test(tc, gb_collection_ops);
+	tcase_add_test(tc, gb_basic_collection_ops);
+	tcase_add_test(tc, gb_assoc_deassoc);
 
 	return tc;
 }
