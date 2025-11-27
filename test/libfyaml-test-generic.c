@@ -2102,6 +2102,7 @@ START_TEST(gb_map_utils)
 {
 	char buf[16384];
 	struct fy_generic_builder *gb;
+	fy_generic items[16];
 	fy_generic map, v, seq;
 	const char *str;
 	int ival;
@@ -2176,6 +2177,38 @@ START_TEST(gb_map_utils)
 
 	printf("> map-key-on-4: ");
 	fy_generic_emit_default(v);
+
+	/* contains on an empty map  */
+	map = fy_mapping();
+	items[0] = fy_value("foo");
+	v = fy_gb_collection_op(gb, FYGBOPF_CONTAINS, map, 1, items);
+	ck_assert(v.v == fy_false_value);
+
+	/* contains on an map which does not contain the key */
+	map = fy_mapping("bar", 10);
+	items[0] = fy_value("foo");
+	v = fy_gb_collection_op(gb, FYGBOPF_CONTAINS, map, 1, items);
+	ck_assert(v.v == fy_false_value);
+
+	/* contains on an map which contains the key */
+	map = fy_mapping("foo", 100);
+	items[0] = fy_value("foo");
+	v = fy_gb_collection_op(gb, FYGBOPF_CONTAINS, map, 1, items);
+	ck_assert(v.v == fy_true_value);
+
+	/* contains on an map which does not contain any of the keys */
+	map = fy_mapping("foo", 100, "bar", 1000, "baz", 5);
+	items[0] = fy_value("nope");
+	items[1] = fy_value("neither");
+	v = fy_gb_collection_op(gb, FYGBOPF_CONTAINS, map, 2, items);
+	ck_assert(v.v == fy_false_value);
+
+	/* contains on an map which contains the second key */
+	map = fy_mapping("foo", 100, "bar", 1000, "baz", 5);
+	items[0] = fy_value("nope");
+	items[1] = fy_value("bar");
+	v = fy_gb_collection_op(gb, FYGBOPF_CONTAINS, map, 2, items);
+	ck_assert(v.v == fy_true_value);
 }
 END_TEST
 
