@@ -3865,8 +3865,9 @@ enum fy_gb_op {
 	FYGBOP_VALUES,
 	FYGBOP_ITEMS,
 	FYGBOP_CONTAINS,
+	FYGBOP_CONCAT,
 };
-#define FYGBOP_COUNT	(FYGBOP_CONTAINS + 1)
+#define FYGBOP_COUNT	(FYGBOP_CONCAT + 1)
 
 enum fy_gb_op_flags {
 	FYGBOPF_CREATE_SEQ	= FYGBOPF_OP(FYGBOP_CREATE_SEQ),
@@ -3880,8 +3881,10 @@ enum fy_gb_op_flags {
 	FYGBOPF_VALUES		= FYGBOPF_OP(FYGBOP_VALUES),
 	FYGBOPF_ITEMS		= FYGBOPF_OP(FYGBOP_ITEMS),
 	FYGBOPF_CONTAINS	= FYGBOPF_OP(FYGBOP_CONTAINS),
+	FYGBOPF_CONCAT		= FYGBOPF_OP(FYGBOP_CONCAT),
 	FYGBOPF_DONT_INTERNALIZE= FY_BIT(16),			// do not internalize items
 	FYGBOPF_DEEP_VALIDATE	= FY_BIT(17),			// perform deep validation
+	FYGBOPF_NO_CHECKS	= FY_BIT(18),			// do not perform any checks on the items
 };
 
 fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flags, ...);

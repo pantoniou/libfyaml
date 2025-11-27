@@ -2090,7 +2090,9 @@ START_TEST(gb_assoc_deassoc)
 	ck_assert(fy_get(v, "bar", -1) == 100);
 	ck_assert(fy_get_at(v, 0, -1) == 100);
 	/* must be exactly the same */
-	ck_assert(v.v == map.v);
+
+	/* will not be the same value, but it will be the same content */
+	ck_assert(!fy_generic_compare(map, v));
 
 	printf("> disassoc-nop: ");
 	fy_generic_emit_default(v);
@@ -2212,6 +2214,97 @@ START_TEST(gb_map_utils)
 }
 END_TEST
 
+/* Test: seq utilities */
+START_TEST(gb_seq_utils)
+{
+	char buf[16384];
+	struct fy_generic_builder *gb;
+	fy_generic items[16];
+	fy_generic seq, v;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	/* empty sequence, concat with nothing -> empty sequence */
+	seq = fy_sequence();
+	v = fy_gb_collection_op(gb, FYGBOPF_CONCAT, seq, 0, NULL);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(v.v == fy_seq_empty_value);
+	printf("> seq-empty-concat-0: ");
+	fy_generic_emit_default(v);
+
+	/* empty sequence, concat with empty sequences -> empty sequence */
+	seq = fy_sequence();
+	items[0] = fy_sequence();
+	items[1] = fy_sequence();
+	v = fy_gb_collection_op(gb, FYGBOPF_CONCAT, seq, 2, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(v.v == fy_seq_empty_value);
+	printf("> seq-empty-concat-empty: ");
+	fy_generic_emit_default(v);
+
+	/* empty sequence, concat with non empty sequences -> non empty sequences */
+	seq = fy_sequence();
+	items[0] = fy_sequence(1, 2);
+	items[1] = fy_sequence(3);
+	v = fy_gb_collection_op(gb, FYGBOPF_CONCAT, seq, 2, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, 0, -1) == 1);
+	ck_assert(fy_get(v, 1, -1) == 2);
+	ck_assert(fy_get(v, 2, -1) == 3);
+	printf("> seq-empty-concat-non-empty: ");
+	fy_generic_emit_default(v);
+
+	/* a non empty sequence, concat with empty sequences -> same sequence */
+	seq = fy_sequence(1, 2, 3);
+	items[0] = fy_sequence();
+	v = fy_gb_collection_op(gb, FYGBOPF_CONCAT, seq, 1, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(!fy_generic_compare(seq, v));
+	printf("> seq-concat-empty: ");
+	fy_generic_emit_default(v);
+
+	/* a non empty sequence, concat with two non empty sequences */
+	seq = fy_sequence(1, 2, 3);
+	items[0] = fy_sequence(4, 5);
+	items[1] = fy_sequence(6, 7);
+	v = fy_gb_collection_op(gb, FYGBOPF_CONCAT, seq, 2, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 7);
+	ck_assert(fy_get(v, 0, -1) == 1);
+	ck_assert(fy_get(v, 1, -1) == 2);
+	ck_assert(fy_get(v, 2, -1) == 3);
+	ck_assert(fy_get(v, 3, -1) == 4);
+	ck_assert(fy_get(v, 4, -1) == 5);
+	ck_assert(fy_get(v, 5, -1) == 6);
+	ck_assert(fy_get(v, 6, -1) == 7);
+
+	printf("> seq-concat-regular: ");
+	fy_generic_emit_default(v);
+
+	/* a non empty sequence, concat with two non empty sequences and one empty in the middle*/
+	seq = fy_sequence(1, 2, 3);
+	items[0] = fy_sequence(4, 5);
+	items[1] = fy_sequence();
+	items[2] = fy_sequence(6, 7);
+	v = fy_gb_collection_op(gb, FYGBOPF_CONCAT, seq, 3, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 7);
+	ck_assert(fy_get(v, 0, -1) == 1);
+	ck_assert(fy_get(v, 1, -1) == 2);
+	ck_assert(fy_get(v, 2, -1) == 3);
+	ck_assert(fy_get(v, 3, -1) == 4);
+	ck_assert(fy_get(v, 4, -1) == 5);
+	ck_assert(fy_get(v, 5, -1) == 6);
+	ck_assert(fy_get(v, 6, -1) == 7);
+
+	printf("> seq-concat-regular-empty: ");
+	fy_generic_emit_default(v);
+}
+END_TEST
+
 TCase *libfyaml_case_generic(void)
 {
 	TCase *tc;
@@ -2269,6 +2362,9 @@ TCase *libfyaml_case_generic(void)
 
 	/* map utils */
 	tcase_add_test(tc, gb_map_utils);
+
+	/* seq utils */
+	tcase_add_test(tc, gb_seq_utils);
 
 	return tc;
 }
