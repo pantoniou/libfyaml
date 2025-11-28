@@ -2502,8 +2502,8 @@ static bool test_filter_over_100(struct fy_generic_builder *gb, fy_generic v)
 	return fy_cast(v, INT_MIN) > 100;
 }
 
-/* Test: filter map reduce */
-START_TEST(gb_filter_map_reduce)
+/* Test: filter */
+START_TEST(gb_filter)
 {
 	char buf[65536];
 	struct fy_generic_builder *gb;
@@ -2621,6 +2621,98 @@ START_TEST(gb_filter_map_reduce)
 }
 END_TEST
 
+static fy_generic test_map_double(struct fy_generic_builder *gb, fy_generic v)
+{
+	return fy_value(gb, fy_cast(v, 0) * 2);
+}
+
+static fy_generic test_map_filter_double_if_over_10(struct fy_generic_builder *gb, fy_generic v)
+{
+	int iv;
+	iv = fy_cast(v, 0);
+	return iv >= 10 ? fy_value(gb, iv * 2) : fy_invalid;
+}
+
+static fy_generic test_map_prefix_str(struct fy_generic_builder *gb, fy_generic v)
+{
+	/* verify that export to the builder works */
+	return fy_value(gb, fy_sprintfa("long-prefix-%s", fy_cast(v, "")));
+}
+
+/* Test: map */
+START_TEST(gb_map)
+{
+	char buf[65536];
+	struct fy_generic_builder *gb;
+	fy_generic items[16];
+	fy_generic seq, map, v;
+	const char *str;
+
+	(void)items;
+	(void)map;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	/* map over an empty sequence */
+	seq = fy_sequence();
+	v = fy_gb_collection_op(gb, FYGBOPF_MAP, seq, 0, NULL, test_map_double);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(v.v == fy_seq_empty_value);
+	printf("> map-seq-empty: ");
+	fy_generic_emit_default(v);
+
+	/* map a single sequence of numbers */
+	seq = fy_sequence(7, 6, 5, 8);
+	v = fy_gb_collection_op(gb, FYGBOPF_MAP, seq, 0, NULL, test_map_double);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 4);
+	ck_assert(fy_get(v, 0, -1) == 14);
+	ck_assert(fy_get(v, 1, -1) == 12);
+	ck_assert(fy_get(v, 2, -1) == 10);
+	ck_assert(fy_get(v, 3, -1) == 16);
+	printf("> map-seq-double (1): ");
+	fy_generic_emit_default(v);
+
+	/* map to prefix a sequence of strings */
+	seq = fy_sequence("foo", "bar", "baz");
+	v = fy_gb_collection_op(gb, FYGBOPF_MAP, seq, 0, NULL, test_map_prefix_str);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	str = fy_get(v, 0, "");
+	ck_assert(!strcmp(str, "long-prefix-foo"));
+	str = fy_get(v, 1, "");
+	ck_assert(!strcmp(str, "long-prefix-bar"));
+	str = fy_get(v, 2, "");
+	ck_assert(!strcmp(str, "long-prefix-baz"));
+	printf("> map-seq-str-prefix (3): ");
+	fy_generic_emit_default(v);
+
+	/* map a single map of numbers */
+	map = fy_mapping("foo", 7, "bar", 6);
+	v = fy_gb_collection_op(gb, FYGBOPF_MAP, map, 0, NULL, test_map_double);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 2);
+	ck_assert(fy_get(v, "foo", -1) == 14);
+	ck_assert(fy_get_at(v, 0, -1) == 14);
+	ck_assert(fy_get(v, "bar", -1) == 12);
+	ck_assert(fy_get_at(v, 1, -1) == 12);
+	printf("> map-map-double (1): ");
+	fy_generic_emit_default(v);
+
+	/* map and filter a single sequence of numbers */
+	seq = fy_sequence(7, 10, 4, 20);
+	v = fy_gb_collection_op(gb, FYGBOPF_MAP_FILTER, seq, 0, NULL, test_map_filter_double_if_over_10);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 2);
+	ck_assert(fy_get(v, 0, -1) == 20);
+	ck_assert(fy_get(v, 1, -1) == 40);
+	printf("> map-filter-seq-double over 10 (1): ");
+	fy_generic_emit_default(v);
+
+}
+END_TEST
 
 TCase *libfyaml_case_generic(void)
 {
@@ -2684,7 +2776,8 @@ TCase *libfyaml_case_generic(void)
 	tcase_add_test(tc, gb_seq_utils);
 
 	/* filter/map/reduce */
-	tcase_add_test(tc, gb_filter_map_reduce);
+	tcase_add_test(tc, gb_filter);
+	tcase_add_test(tc, gb_map);
 
 	return tc;
 }

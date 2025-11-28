@@ -753,7 +753,11 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	size_t remain_idx, remain_count;
 	const fy_generic *items, *in_items, *tmp_items;
 	fy_generic *items_mod, *work_items;	/* modifiable items (for assoc/deassoc) */
-	fy_generic_filter_pred_fn filter_pred_fn;
+	union {
+		fy_generic_filter_pred_fn filter_pred;
+		fy_generic_map_xform_fn map_xform;
+		void (*fn)(void);
+	} fn;
 	bool need_work_items, need_items_mod, has_args;
 	enum fy_generic_type type;
 	va_list ap;
@@ -904,11 +908,13 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		break;
 
 	case FYGBOP_FILTER:
+	case FYGBOP_MAP:
+	case FYGBOP_MAP_FILTER:
 		in = va_arg(ap, fy_generic);
 		count = va_arg(ap, size_t);
 		items = va_arg(ap, const fy_generic *);
-		filter_pred_fn = va_arg(ap, fy_generic_filter_pred_fn);
-		if (!filter_pred_fn || (count && !items))
+		fn.fn = va_arg(ap, void (*)(void));
+		if (!fn.fn || (count && !items))
 			return fy_invalid;
 		need_work_items = true;
 		break;
@@ -955,7 +961,8 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 
 		col_item_size = sizeof(fy_generic) * 2;
 		item_count = (op != FYGBOP_DISASSOC && op != FYGBOP_CONTAINS &&
-			      op != FYGBOP_MERGE && op != FYGBOP_SORT && op != FYGBOP_FILTER) ?
+			      op != FYGBOP_MERGE && op != FYGBOP_SORT &&
+			      op != FYGBOP_FILTER && op != FYGBOP_MAP && op != FYGBOP_MAP_FILTER) ?
 					MULSZ(count, 2) : count;
 		col_mark = FY_MAP_V;
 		in_items = fy_generic_mapping_get_items(in_direct, &in_item_count);
@@ -1082,6 +1089,8 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 
 		case FYGBOP_SORT:
 		case FYGBOP_FILTER:
+		case FYGBOP_MAP:
+		case FYGBOP_MAP_FILTER:
 			work_item_count = in_item_count;
 			for (i = 0; i < item_count; i++) {
 				v = items[i];
@@ -1540,6 +1549,8 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		break;
 
 	case FYGBOP_FILTER:
+	case FYGBOP_MAP:
+	case FYGBOP_MAP_FILTER:
 		assert(work_items);
 		assert(items_mod);
 
@@ -1554,47 +1565,135 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		}
 		assert(k == work_item_count);
 
-		/* the collection header */
-		if (type == FYGT_SEQUENCE) {
-			j = 0;
-			for (i = 0; i < work_item_count; i++) {
-				if (!filter_pred_fn(gb, work_items[i])) {
-					work_items[i] = fy_invalid;
-					j++;
-				}
+		key = fy_invalid;
+
+		/* unified traversal for seq/map */
+		j = 0;
+		k = type == FYGT_SEQUENCE ? 1 : 2;
+		for (i = 0; i < work_item_count; i += k) {
+			if (k <= 1) {
+				value = work_items[i];
+			} else {
+				key = work_items[i + 0];
+				value = work_items[i + 1];
 			}
-		} else {
-			j = 0;
-			for (i = 0; i < work_item_count; i += 2) {
-				if (!filter_pred_fn(gb, work_items[i + 1])) {
-					work_items[i + 0] = fy_invalid;
-					work_items[i + 1] = fy_invalid;
-					j += 2;
+			switch (op) {
+			case FYGBOP_FILTER:
+				if (!fn.filter_pred(gb, value)) {
+					key = value = fy_invalid;
+					j += k;
 				}
+				break;
+			case FYGBOP_MAP:
+				value = fn.map_xform(gb, value);
+				// an invalid value stops everything
+				if (value.v == fy_invalid_value)
+					goto err_out;
+				break;
+			case FYGBOP_MAP_FILTER:
+				value = fn.map_xform(gb, value);
+				// an invalid value removes element
+				if (value.v == fy_invalid_value) {
+					key = fy_invalid;
+					j += k;
+				}
+				break;
+			default:
+				break;
+			}
+			if (k <= 1) {
+				work_items[i] = value;
+			} else {
+				work_items[i + 0] = key;
+				work_items[i + 1] = value;
 			}
 		}
 
+#if 0
+		if (type == FYGT_SEQUENCE) {
+			for (i = 0; i < work_item_count; i++) {
+				value = work_items[i];
+				switch (op) {
+				case FYGBOP_FILTER:
+					if (!fn.filter_pred(gb, value)) {
+						v = fy_invalid;
+						j++;
+					}
+					break;
+				case FYGBOP_MAP:
+					value = fn.map_xform(gb, value);
+					// an invalid value stops everything
+					if (value.v == fy_invalid_value)
+						goto err_out;
+					break;
+				case FYGBOP_MAP_FILTER:
+					value = fn.map_xform(gb, value);
+					// an invalid value removes element
+					if (value.v == fy_invalid_value)
+						j++;
+					break;
+				default:
+					break;
+				}
+				work_items[i] = value;
+			}
+		} else {
+			for (i = 0; i < work_item_count; i += 2) {
+				key = work_items[i + 0];
+				value = work_items[i + 1];
+				switch (op) {
+				case FYGBOP_FILTER:
+					if (!fn.filter_pred(gb, work_items[i + 1])) {
+						key = value = fy_invalid;
+						j += 2;
+					}
+					break;
+				case FYGBOP_MAP:
+					value = fn.map_xform(gb, value);
+					// an invalid value stops everything
+					if (value.v == fy_invalid_value)
+						goto err_out;
+					break;
+				case FYGBOP_MAP_FILTER:
+					value = fn.map_xform(gb, value);
+					// an invalid value removes element
+					if (value.v == fy_invalid_value) {
+						key = fy_invalid;
+						j += 2;
+					}
+					break;
+				default:
+					break;
+				}
+				work_items[i + 0] = key;
+				work_items[i + 1] = value;
+			}
+		}
+#endif
+
 		/* if everything removed */
-		if (j == work_item_count)
+		if ((op == FYGBOP_FILTER || op == FYGBOP_MAP_FILTER) && j == work_item_count)
 			return type == FYGT_SEQUENCE ? fy_seq_empty : fy_map_empty;
 
 		/* if nothing removed */
-		if (j == 0)
+		if (op == FYGBOP_FILTER && j == 0)
 			return in;
 
 		/* something was removed, go over the items and remove the invalids */
-		for (i = 0; i < work_item_count; ) {
-			if (work_items[i].v != fy_invalid_value) {
-				i++;
-				continue;
+		if ((op == FYGBOP_FILTER || op == FYGBOP_MAP_FILTER) && j > 0) {
+			for (i = 0; i < work_item_count; ) {
+				if (work_items[i].v != fy_invalid_value) {
+					i++;
+					continue;
+				}
+				/* find the run */
+				for (j = i + 1; j < work_item_count; j++)
+					if (work_items[j].v != fy_invalid_value)
+						break;
+				/* remove the whole run of invalids */
+				memmove(work_items + i, work_items + j, (work_item_count - j) * sizeof(*work_items));
+				work_item_count -= (j - i);
 			}
-			/* find the run */
-			for (j = i + 1; j < work_item_count; j++)
-				if (work_items[j].v != fy_invalid_value)
-					break;
-			/* remove the whole run of invalids */
-			memmove(work_items + i, work_items + j, (work_item_count - j) * sizeof(*work_items));
-			work_item_count -= (j - i);
 		}
 
 		col.count = type == FYGT_SEQUENCE ? work_item_count : (work_item_count / 2);
