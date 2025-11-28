@@ -1566,7 +1566,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		} else {
 			j = 0;
 			for (i = 0; i < work_item_count; i += 2) {
-				if (!filter_pred_fn(gb, work_items[i + 0])) {
+				if (!filter_pred_fn(gb, work_items[i + 1])) {
 					work_items[i + 0] = fy_invalid;
 					work_items[i + 1] = fy_invalid;
 					j += 2;
