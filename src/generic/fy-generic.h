@@ -551,17 +551,6 @@ typedef struct fy_generic_collection {
 	fy_generic items[];
 } fy_generic_collection FY_GENERIC_CONTAINER_ALIGNMENT;
 
-static inline const fy_generic *
-fy_generic_collection_decode(const enum fy_generic_type type, const fy_generic_collection *colp, size_t *countp)
-{
-	if (!colp || !colp->count) {
-		*countp = 0;
-		return NULL;
-	}
-	*countp = colp->count * (type == FYGT_MAPPING ? 2 : 1);
-	return &colp->items[0];
-}
-
 typedef struct fy_generic_sized_string {
 	const char *data;
 	size_t size;
@@ -637,7 +626,7 @@ static inline bool fy_generic_is_invalid(const fy_generic v)
 	return v.v == fy_invalid_value;
 }
 
-#define FY_GENERIC_IS_TEMPLATE_INLINE(_gtype, _gttype) \
+#define FY_GENERIC_IS_TEMPLATE_INLINE(_gtype) \
 \
 bool fy_generic_is_indirect_ ## _gtype ## _nocheck(const fy_generic v); \
 bool fy_generic_is_indirect_ ## _gtype (const fy_generic v); \
@@ -645,7 +634,6 @@ bool fy_generic_is_indirect_ ## _gtype (const fy_generic v); \
 static inline FY_ALWAYS_INLINE \
 bool fy_generic_is_ ## _gtype (const fy_generic v) \
 { \
-	/* return fy_generic_get_direct_type(fy_generic_indirect_get_value(v)) == FYGT_ ## _gttype ; */ \
 	if (fy_generic_is_direct(v)) \
 		return fy_generic_is_direct_ ## _gtype (v); \
 	return fy_generic_is_direct_ ## _gtype (fy_generic_indirect_get_value(v)); \
@@ -658,7 +646,7 @@ bool fy_generic_is_ ## _gtype (const fy_generic v) \
 \
 struct fy_useless_struct_for_semicolon
 
-#define FY_GENERIC_IS_TEMPLATE_NON_INLINE(_gtype, _gttype) \
+#define FY_GENERIC_IS_TEMPLATE_NON_INLINE(_gtype) \
 \
 bool fy_generic_is_indirect_ ## _gtype ## _nocheck(const fy_generic v) \
 { \
@@ -680,7 +668,7 @@ bool fy_generic_is_direct_null_type(const fy_generic v)
 	return v.v == fy_null_value;
 }
 
-FY_GENERIC_IS_TEMPLATE_INLINE(null_type, NULL);
+FY_GENERIC_IS_TEMPLATE_INLINE(null_type);
 
 static inline FY_ALWAYS_INLINE
 bool fy_generic_is_direct_bool_type(const fy_generic v)
@@ -688,7 +676,7 @@ bool fy_generic_is_direct_bool_type(const fy_generic v)
 	return v.v == fy_true_value || v.v == fy_false_value;
 }
 
-FY_GENERIC_IS_TEMPLATE_INLINE(bool_type, BOOL);
+FY_GENERIC_IS_TEMPLATE_INLINE(bool_type);
 
 static inline FY_ALWAYS_INLINE
 bool fy_generic_is_direct_int_type(const fy_generic v)
@@ -705,8 +693,8 @@ bool fy_generic_is_direct_uint_type(const fy_generic v)
 	return fy_generic_is_direct_int_type(v);
 }
 
-FY_GENERIC_IS_TEMPLATE_INLINE(int_type, BOOL);
-FY_GENERIC_IS_TEMPLATE_INLINE(uint_type, BOOL);
+FY_GENERIC_IS_TEMPLATE_INLINE(int_type);
+FY_GENERIC_IS_TEMPLATE_INLINE(uint_type);
 
 static inline FY_ALWAYS_INLINE
 bool fy_generic_is_direct_float_type(const fy_generic v)
@@ -716,7 +704,7 @@ bool fy_generic_is_direct_float_type(const fy_generic v)
 	return ((v.v & FY_INPLACE_TYPE_MASK) - FY_FLOAT_INPLACE_V) <= 1;
 }
 
-FY_GENERIC_IS_TEMPLATE_INLINE(float_type, FLOAT);
+FY_GENERIC_IS_TEMPLATE_INLINE(float_type);
 
 static inline FY_ALWAYS_INLINE
 bool fy_generic_is_direct_string(const fy_generic v)
@@ -732,8 +720,8 @@ bool fy_generic_is_direct_string_type(const fy_generic v)
 	return fy_generic_is_direct_string(v);
 }
 
-FY_GENERIC_IS_TEMPLATE_INLINE(string, STRING);
-FY_GENERIC_IS_TEMPLATE_INLINE(string_type, STRING);
+FY_GENERIC_IS_TEMPLATE_INLINE(string);
+FY_GENERIC_IS_TEMPLATE_INLINE(string_type);
 
 static inline FY_ALWAYS_INLINE
 bool fy_generic_is_direct_sequence(const fy_generic v)
@@ -747,8 +735,8 @@ bool fy_generic_is_direct_sequence_type(const fy_generic v)
 	return fy_generic_is_direct_sequence(v);
 }
 
-FY_GENERIC_IS_TEMPLATE_INLINE(sequence, SEQUENCE);
-FY_GENERIC_IS_TEMPLATE_INLINE(sequence_type, SEQUENCE);
+FY_GENERIC_IS_TEMPLATE_INLINE(sequence);
+FY_GENERIC_IS_TEMPLATE_INLINE(sequence_type);
 
 static inline FY_ALWAYS_INLINE
 bool fy_generic_is_direct_mapping(const fy_generic v)
@@ -762,8 +750,40 @@ bool fy_generic_is_direct_mapping_type(const fy_generic v)
 	return fy_generic_is_direct_mapping(v);
 }
 
-FY_GENERIC_IS_TEMPLATE_INLINE(mapping, MAPPING);
-FY_GENERIC_IS_TEMPLATE_INLINE(mapping_type, MAPPING);		// alias for mapping
+FY_GENERIC_IS_TEMPLATE_INLINE(mapping);
+FY_GENERIC_IS_TEMPLATE_INLINE(mapping_type);
+
+static inline FY_ALWAYS_INLINE
+bool fy_generic_is_direct_collection(const fy_generic v)
+{
+	return (v.v & FY_INPLACE_TYPE_MASK) == 0;	/* sequence is 0, mapping is 8 (3 lower bits 0) */
+}
+
+FY_GENERIC_IS_TEMPLATE_INLINE(collection);
+
+static inline const fy_generic *
+fy_generic_collectionp_get_items(const enum fy_generic_type type, const fy_generic_collection *colp, size_t *countp)
+{
+	assert(type == FYGT_SEQUENCE || type == FYGT_MAPPING);
+	if (!colp || !colp->count) {
+		*countp = 0;
+		return NULL;
+	}
+	*countp = colp->count * (type == FYGT_MAPPING ? 2 : 1);
+	return &colp->items[0];
+}
+
+static inline const fy_generic_collection *
+fy_generic_get_direct_collection(fy_generic v, enum fy_generic_type *typep)
+{
+	/* collections (seq/map) */
+	if (!fy_generic_is_direct_collection(v)) {
+		*typep = FYGT_INVALID;
+		return NULL;
+	}
+	*typep = fy_generic_is_direct_sequence(v) ? FYGT_SEQUENCE : FYGT_MAPPING;
+	return fy_generic_resolve_collection_ptr(v);
+}
 
 static inline FY_ALWAYS_INLINE
 bool fy_generic_is_direct_alias(const fy_generic v)
@@ -771,13 +791,7 @@ bool fy_generic_is_direct_alias(const fy_generic v)
 	return fy_generic_get_type(v) == FYGT_ALIAS;
 }
 
-FY_GENERIC_IS_TEMPLATE_INLINE(alias, ALIAS);
-
-static inline FY_ALWAYS_INLINE
-bool fy_generic_is_direct_collection(const fy_generic v)
-{
-	return (v.v & FY_INPLACE_TYPE_MASK) == 0;	/* sequence is 0, mapping is 8 (3 lower bits 0) */
-}
+FY_GENERIC_IS_TEMPLATE_INLINE(alias);
 
 static inline void *fy_generic_get_null_type_no_check(fy_generic v)
 {
@@ -3869,8 +3883,9 @@ enum fy_gb_op {
 	FYGBOP_REVERSE,
 	FYGBOP_MERGE,
 	FYGBOP_UNIQUE,
+	FYGBOP_SORT,
 };
-#define FYGBOP_COUNT	(FYGBOP_UNIQUE + 1)
+#define FYGBOP_COUNT	(FYGBOP_SORT + 1)
 
 enum fy_gb_op_flags {
 	FYGBOPF_CREATE_SEQ	= FYGBOPF_OP(FYGBOP_CREATE_SEQ),
@@ -3888,6 +3903,7 @@ enum fy_gb_op_flags {
 	FYGBOPF_REVERSE		= FYGBOPF_OP(FYGBOP_REVERSE),
 	FYGBOPF_MERGE		= FYGBOPF_OP(FYGBOP_MERGE),
 	FYGBOPF_UNIQUE		= FYGBOPF_OP(FYGBOP_UNIQUE),
+	FYGBOPF_SORT		= FYGBOPF_OP(FYGBOP_SORT),
 	FYGBOPF_DONT_INTERNALIZE= FY_BIT(16),			// do not internalize items
 	FYGBOPF_DEEP_VALIDATE	= FY_BIT(17),			// perform deep validation
 	FYGBOPF_NO_CHECKS	= FY_BIT(18),			// do not perform any checks on the items
