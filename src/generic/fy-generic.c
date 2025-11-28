@@ -152,24 +152,26 @@ fy_generic fy_generic_get_tag(fy_generic v)
 	return vt;
 }
 
-FY_GENERIC_IS_TEMPLATE_NON_INLINE(null_type, NULL);
-FY_GENERIC_IS_TEMPLATE_NON_INLINE(bool_type, BOOL);
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(null_type);
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(bool_type);
 
-FY_GENERIC_IS_TEMPLATE_NON_INLINE(int_type, BOOL);
-FY_GENERIC_IS_TEMPLATE_NON_INLINE(uint_type, BOOL);
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(int_type);
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(uint_type);
 
-FY_GENERIC_IS_TEMPLATE_NON_INLINE(float_type, FLOAT);
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(float_type);
 
-FY_GENERIC_IS_TEMPLATE_NON_INLINE(string, STRING);
-FY_GENERIC_IS_TEMPLATE_NON_INLINE(string_type, STRING);
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(string);
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(string_type);
 
-FY_GENERIC_IS_TEMPLATE_NON_INLINE(sequence, SEQUENCE);
-FY_GENERIC_IS_TEMPLATE_NON_INLINE(sequence_type, SEQUENCE);
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(sequence);
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(sequence_type);
 
-FY_GENERIC_IS_TEMPLATE_NON_INLINE(mapping, MAPPING);
-FY_GENERIC_IS_TEMPLATE_NON_INLINE(mapping_type, MAPPING);
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(mapping);
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(mapping_type);
 
-FY_GENERIC_IS_TEMPLATE_NON_INLINE(alias, ALIAS);
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(collection);
+
+FY_GENERIC_IS_TEMPLATE_NON_INLINE(alias);
 
 const fy_generic_sequence *
 fy_generic_sequence_resolve_outofplace(fy_generic seq)
@@ -546,7 +548,7 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 			new_v = type == FYGT_SEQUENCE ? fy_seq_empty : fy_map_empty;
 			break;
 		}
-		itemss = fy_generic_collection_decode(type, colp, &count);
+		itemss = fy_generic_collectionp_get_items(type, colp, &count);
 		size = sizeof(*items) * count;
 
 		iov[0].iov_base = (void *)colp;
@@ -688,7 +690,7 @@ fy_generic fy_gb_validate_out_of_place(struct fy_generic_builder *gb, fy_generic
 
 	if (type == FYGT_SEQUENCE || type == FYGT_MAPPING) {
 		colp = fy_generic_resolve_collection_ptr(v);
-		itemss = fy_generic_collection_decode(type, colp, &count);
+		itemss = fy_generic_collectionp_get_items(type, colp, &count);
 		for (i = 0; i < count; i++) {
 			vi = fy_gb_validate(gb, itemss[i]);
 			if (vi.v == fy_invalid_value)
@@ -2147,7 +2149,7 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 		if (p >= start && p < end)
 			return v;
 
-		items = (void *)fy_generic_collection_decode(type, p, &count);
+		items = (void *)fy_generic_collectionp_get_items(type, p, &count);
 
 		v.v = fy_generic_relocate_collection_ptr(v, d).v | (type == FYGT_SEQUENCE ? FY_SEQ_V : FY_MAP_V);
 		for (i = 0; i < count; i++)
