@@ -2810,6 +2810,145 @@ START_TEST(gb_reduce)
 }
 END_TEST
 
+/* Test: parallel filter */
+START_TEST(gb_pfilter)
+{
+	struct fy_generic_builder_cfg cfg;
+	struct fy_generic_builder *gb;
+	fy_generic seq, map, v;
+	int i, loop;
+
+	/* Run tests twice: once without dedup, once with dedup */
+	for (loop = 0; loop < 2; loop++) {
+		memset(&cfg, 0, sizeof(cfg));
+		cfg.flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER;
+		if (loop == 1)
+			cfg.flags |= FYGBCF_DEDUP_ENABLED;
+
+		gb = fy_generic_builder_create(&cfg);
+		ck_assert(gb != NULL);
+
+		printf("\n=== pfilter tests %s dedup ===\n", loop == 0 ? "WITHOUT" : "WITH");
+
+		/* parallel filter an empty sequence */
+		seq = fy_sequence();
+		v = fy_gb_collection_op(gb, FYGBOPF_FILTER | FYGBOPF_PARALLEL, seq, 0, NULL, test_filter_over_100, NULL);
+		ck_assert(fy_generic_is_sequence(v));
+		ck_assert(v.v == fy_seq_empty_value);
+		printf("> pfilter-empty: ");
+		fy_generic_emit_default(v);
+
+		/* parallel filter a large sequence (forces parallel execution) */
+		fy_generic *items = malloc(sizeof(fy_generic) * 10000);
+		for (i = 0; i < 10000; i++)
+			items[i] = fy_value(gb, i);
+		seq = fy_gb_sequence_create(gb, 10000, items);
+
+		v = fy_gb_collection_op(gb, FYGBOPF_FILTER | FYGBOPF_PARALLEL, seq, 0, NULL, test_filter_over_100, NULL);
+		ck_assert(fy_generic_is_sequence(v));
+		size_t vlen = fy_len(v);
+		ck_assert(vlen == 9899);  /* 101..9999 = 9899 items */
+		/* Check that all values are > 100 (order not preserved in parallel filter) */
+		int v0 = fy_get(v, 0, -1);
+		int v5000 = fy_get(v, 5000, -1);
+		int v9898 = fy_get(v, 9898, -1);
+		ck_assert(v0 > 100);
+		ck_assert(v5000 > 100);
+		ck_assert(v9898 > 100);
+		printf("> pfilter-large-seq-over-100 (10000 items): len=%zu, first=%d, mid=%d, last=%d\n",
+		       vlen, v0, v5000, v9898);
+
+		free(items);
+
+		/* parallel filter where nothing passes */
+		seq = fy_sequence(1, 2, 3, 4, 5);
+		v = fy_gb_collection_op(gb, FYGBOPF_FILTER | FYGBOPF_PARALLEL, seq, 0, NULL, test_filter_over_100, NULL);
+		ck_assert(fy_generic_is_sequence(v));
+		ck_assert(v.v == fy_seq_empty_value);
+		printf("> pfilter-none-pass: ");
+		fy_generic_emit_default(v);
+
+		/* parallel filter on a mapping */
+		map = fy_mapping("a", 50, "b", 101, "c", 200, "d", 75);
+		v = fy_gb_collection_op(gb, FYGBOPF_FILTER | FYGBOPF_PARALLEL, map, 0, NULL, test_filter_over_100, NULL);
+		ck_assert(fy_generic_is_mapping(v));
+		size_t maplen = fy_len(v);
+		ck_assert(maplen == 2);  /* Only "b" and "c" pass */
+		int vb = fy_get(v, "b", -1);
+		int vc = fy_get(v, "c", -1);
+		ck_assert(vb == 101);
+		ck_assert(vc == 200);
+		printf("> pfilter-map-over-100: ");
+		fy_generic_emit_default(v);
+
+		fy_generic_builder_destroy(gb);
+	}
+}
+END_TEST
+
+/* Test: parallel map */
+START_TEST(gb_pmap)
+{
+	struct fy_generic_builder_cfg cfg;
+	struct fy_generic_builder *gb;
+	fy_generic seq, map, v;
+	int i, loop;
+
+	/* Run tests twice: once without dedup, once with dedup */
+	for (loop = 0; loop < 2; loop++) {
+		memset(&cfg, 0, sizeof(cfg));
+		cfg.flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER;
+		if (loop == 1)
+			cfg.flags |= FYGBCF_DEDUP_ENABLED;
+
+		gb = fy_generic_builder_create(&cfg);
+		ck_assert(gb != NULL);
+
+		printf("\n=== pmap tests %s dedup ===\n", loop == 0 ? "WITHOUT" : "WITH");
+
+		/* parallel map an empty sequence */
+		seq = fy_sequence();
+		v = fy_gb_collection_op(gb, FYGBOPF_MAP | FYGBOPF_PARALLEL, seq, 0, NULL, test_map_double, NULL);
+		ck_assert(fy_generic_is_sequence(v));
+		ck_assert(v.v == fy_seq_empty_value);
+		printf("> pmap-empty: ");
+		fy_generic_emit_default(v);
+
+		/* parallel map a large sequence (forces parallel execution) */
+		fy_generic *items = malloc(sizeof(fy_generic) * 10000);
+		ck_assert(items != NULL);
+		for (i = 0; i < 10000; i++)
+			items[i] = fy_value(gb, i);
+		seq = fy_gb_sequence_create(gb, 10000, items);
+		v = fy_gb_collection_op(gb, FYGBOPF_MAP | FYGBOPF_PARALLEL, seq, 0, NULL, test_map_double, NULL);
+		ck_assert(fy_generic_is_sequence(v));
+		ck_assert(fy_len(v) == 10000);
+		/* Check a few values */
+		ck_assert(fy_get(v, 0, -1) == 0);
+		ck_assert(fy_get(v, 1, -1) == 2);
+		ck_assert(fy_get(v, 50, -1) == 100);
+		ck_assert(fy_get(v, 5000, -1) == 10000);
+		ck_assert(fy_get(v, 9999, -1) == 19998);
+		printf("> pmap-large-seq-double (10000 items): first=%d, mid=%d, last=%d\n",
+		       fy_get(v, 0, -1), fy_get(v, 5000, -1), fy_get(v, 9999, -1));
+
+		free(items);
+
+		/* parallel map on a mapping */
+		map = fy_mapping("a", 5, "b", 10, "c", 15, "d", 20);
+		v = fy_gb_collection_op(gb, FYGBOPF_MAP | FYGBOPF_PARALLEL, map, 0, NULL, test_map_double, NULL);
+		ck_assert(fy_generic_is_mapping(v));
+		ck_assert(fy_get(v, "a", -1) == 10);
+		ck_assert(fy_get(v, "b", -1) == 20);
+		ck_assert(fy_get(v, "c", -1) == 30);
+		ck_assert(fy_get(v, "d", -1) == 40);
+		printf("> pmap-map-double: ");
+		fy_generic_emit_default(v);
+
+		fy_generic_builder_destroy(gb);
+	}
+}
+END_TEST
 
 TCase *libfyaml_case_generic(void)
 {
@@ -2876,6 +3015,10 @@ TCase *libfyaml_case_generic(void)
 	tcase_add_test(tc, gb_filter);
 	tcase_add_test(tc, gb_map);
 	tcase_add_test(tc, gb_reduce);
+
+	/* parallel filter/map */
+	tcase_add_test(tc, gb_pfilter);
+	tcase_add_test(tc, gb_pmap);
 
 	return tc;
 }
