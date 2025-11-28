@@ -3905,8 +3905,9 @@ enum fy_gb_op {
 	FYGBOP_FILTER,
 	FYGBOP_MAP,
 	FYGBOP_MAP_FILTER,
+	FYGBOP_REDUCE,
 };
-#define FYGBOP_COUNT	(FYGBOP_MAP_FILTER + 1)
+#define FYGBOP_COUNT	(FYGBOP_REDUCE + 1)
 
 enum fy_gb_op_flags {
 	FYGBOPF_CREATE_SEQ	= FYGBOPF_OP(FYGBOP_CREATE_SEQ),
@@ -3928,6 +3929,7 @@ enum fy_gb_op_flags {
 	FYGBOPF_FILTER		= FYGBOPF_OP(FYGBOP_FILTER),
 	FYGBOPF_MAP		= FYGBOPF_OP(FYGBOP_MAP),
 	FYGBOPF_MAP_FILTER	= FYGBOPF_OP(FYGBOP_MAP_FILTER),
+	FYGBOPF_REDUCE		= FYGBOPF_OP(FYGBOP_REDUCE),
 	FYGBOPF_DONT_INTERNALIZE= FY_BIT(16),			// do not internalize items
 	FYGBOPF_DEEP_VALIDATE	= FY_BIT(17),			// perform deep validation
 	FYGBOPF_NO_CHECKS	= FY_BIT(18),			// do not perform any checks on the items
@@ -3936,6 +3938,7 @@ enum fy_gb_op_flags {
 
 typedef bool (*fy_generic_filter_pred_fn)(struct fy_generic_builder *gb, fy_generic v);
 typedef fy_generic (*fy_generic_map_xform_fn)(struct fy_generic_builder *gb, fy_generic v);
+typedef fy_generic (*fy_generic_reducer_fn)(struct fy_generic_builder *gb, fy_generic accv, fy_generic v);
 
 fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flags, ...);
 

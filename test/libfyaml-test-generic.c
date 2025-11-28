@@ -2644,12 +2644,8 @@ START_TEST(gb_map)
 {
 	char buf[65536];
 	struct fy_generic_builder *gb;
-	fy_generic items[16];
 	fy_generic seq, map, v;
 	const char *str;
-
-	(void)items;
-	(void)map;
 
 	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
 			buf, sizeof(buf));
@@ -2713,6 +2709,107 @@ START_TEST(gb_map)
 
 }
 END_TEST
+
+static fy_generic fy_generic_test_sum_reducer(struct fy_generic_builder *gb, fy_generic accv, fy_generic v)
+{
+	return fy_value(gb, fy_cast(accv, 0) + fy_cast(v, 0));
+}
+
+static fy_generic fy_generic_test_concat_str_reducer(struct fy_generic_builder *gb, fy_generic accv, fy_generic v)
+{
+	return fy_value(gb, fy_sprintfa("%s%s", fy_cast(accv, ""), fy_cast(v, "")));
+}
+
+static fy_generic fy_generic_test_map_reducer(struct fy_generic_builder *gb, fy_generic accv, fy_generic v)
+{
+	const fy_generic_map_pair *pairs;
+	fy_generic kv[2];
+	size_t i, len;
+	int new_val, old_val;
+
+	if (!fy_generic_is_mapping(accv))
+		return fy_invalid;
+
+	/* nothing? */
+	pairs = fy_generic_mapping_get_pairs(v, &len);
+	if (!len)
+		return accv;
+
+	/* populate with new values */
+	for (i = 0; i < len; i++) {
+		new_val = fy_cast(pairs[i].value, 0);
+		old_val = fy_get(accv, pairs[i].key, 0);
+		kv[0] = pairs[i].key;
+		kv[1] = fy_value(gb, old_val + new_val);
+		accv = fy_gb_collection_op(gb, FYGBOPF_ASSOC, accv, 1, kv);
+	}
+	return accv;
+}
+
+/* Test: reduce */
+START_TEST(gb_reduce)
+{
+	char buf[65536];
+	struct fy_generic_builder *gb;
+	fy_generic seq, map, v;
+	int sum;
+	const char *str;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	/* sum an empty sequence */
+	seq = fy_sequence();
+	v = fy_gb_collection_op(gb, FYGBOPF_REDUCE, seq, 0, NULL, fy_value(gb, 0), fy_generic_test_sum_reducer);
+	sum = fy_cast(v, INT_MIN);
+	ck_assert(sum == 0);
+	printf("> reduce-seq-sum (empty): ");
+	fy_generic_emit_default(v);
+
+	/* sum a sequence of numbers */
+	seq = fy_sequence(7, 6, 5, 8);
+	v = fy_gb_collection_op(gb, FYGBOPF_REDUCE, seq, 0, NULL, fy_value(gb, 0), fy_generic_test_sum_reducer);
+	sum = fy_cast(v, INT_MIN);
+	ck_assert(sum == 26);
+	printf("> reduce-seq-sum (1): ");
+	fy_generic_emit_default(v);
+
+	/* concat a number of strings */
+	seq = fy_sequence("0123", "45", "6", "789");
+	v = fy_gb_collection_op(gb, FYGBOPF_REDUCE, seq, 0, NULL, fy_value(gb, ""), fy_generic_test_concat_str_reducer);
+	str = fy_cast(v, "");
+	ck_assert(!strcmp(str, "0123456789"));
+	printf("> reduce-seq-concat (1): ");
+	fy_generic_emit_default(v);
+
+	/* sum the values of a mapping */
+	map = fy_mapping("a", 7, "b", 6, "c", 5, "d", 8);
+	v = fy_gb_collection_op(gb, FYGBOPF_REDUCE, map, 0, NULL, fy_value(gb, 0), fy_generic_test_sum_reducer);
+	sum = fy_cast(v, 0);
+	ck_assert(sum == 26);
+	printf("> reduce-map-sum (1): ");
+	fy_generic_emit_default(v);
+
+	/* sum the values of a mapping */
+	seq = fy_sequence(
+			fy_mapping("foo", 10, "bar", 100),
+			fy_mapping("baz", 1),
+			fy_mapping("foo", 1, "baz", 3));
+	v = fy_gb_collection_op(gb, FYGBOPF_REDUCE, seq, 0, NULL, fy_mapping(), fy_generic_test_map_reducer);
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, "foo", -1) == 11);
+	ck_assert(fy_get_at(v, 0, -1) == 11);
+	ck_assert(fy_get(v, "bar", -1) == 100);
+	ck_assert(fy_get_at(v, 1, -1) == 100);
+	ck_assert(fy_get(v, "baz", -1) == 4);
+	ck_assert(fy_get_at(v, 2, -1) == 4);
+	printf("> reduce-complex (1): ");
+	fy_generic_emit_default(v);
+
+}
+END_TEST
+
 
 TCase *libfyaml_case_generic(void)
 {
@@ -2778,6 +2875,7 @@ TCase *libfyaml_case_generic(void)
 	/* filter/map/reduce */
 	tcase_add_test(tc, gb_filter);
 	tcase_add_test(tc, gb_map);
+	tcase_add_test(tc, gb_reduce);
 
 	return tc;
 }
