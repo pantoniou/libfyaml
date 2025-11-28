@@ -2508,7 +2508,7 @@ START_TEST(gb_filter_map_reduce)
 	char buf[65536];
 	struct fy_generic_builder *gb;
 	fy_generic items[16];
-	fy_generic seq, v;
+	fy_generic seq, map, v;
 
 	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
 			buf, sizeof(buf));
@@ -2519,7 +2519,7 @@ START_TEST(gb_filter_map_reduce)
 	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, seq, 0, NULL, test_filter_over_100);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(v.v == fy_seq_empty_value);
-	printf("> filter-empty: ");
+	printf("> filter-seq-empty: ");
 	fy_generic_emit_default(v);
 
 	/* filter a single sequence for items > 100 (none exist) */
@@ -2527,19 +2527,20 @@ START_TEST(gb_filter_map_reduce)
 	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, seq, 0, NULL, test_filter_over_100);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(v.v == fy_seq_empty_value);
-	printf("> filter-over-100 (empty): ");
+	printf("> filter-seq-over-100 (empty): ");
 	fy_generic_emit_default(v);
 
 	/* filter a single sequence for items > 100 (all exist) */
 	seq = fy_sequence(107, 106, 105, 108, 1000);
 	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, seq, 0, NULL, test_filter_over_100);
 	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 5);
 	ck_assert(fy_get(v, 0, -1) == 107);
 	ck_assert(fy_get(v, 1, -1) == 106);
 	ck_assert(fy_get(v, 2, -1) == 105);
 	ck_assert(fy_get(v, 3, -1) == 108);
 	ck_assert(fy_get(v, 4, -1) == 1000);
-	printf("> filter-over-100 (all): ");
+	printf("> filter-seq-over-100 (all): ");
 	fy_generic_emit_default(v);
 
 	/* filter a single sequence for items > 100 (one exists) */
@@ -2548,7 +2549,7 @@ START_TEST(gb_filter_map_reduce)
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 1);
 	ck_assert(fy_get(v, 0, -1) == 101);
-	printf("> filter-over-100 (101): ");
+	printf("> filter-seq-over-100 (101): ");
 	fy_generic_emit_default(v);
 
 	/* filter a complex sequence for items > 100 (two exist) */
@@ -2560,9 +2561,62 @@ START_TEST(gb_filter_map_reduce)
 	ck_assert(fy_len(v) == 2);
 	ck_assert(fy_get(v, 0, -1) == 101);
 	ck_assert(fy_get(v, 1, -1) == 102);
-	printf("> filter-over-100 (101/102): ");
+	printf("> filter-seq-over-100 (101/102): ");
 	fy_generic_emit_default(v);
 
+	/* filter an empty map */
+	map = fy_mapping();
+	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, map, 0, NULL, test_filter_over_100);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(v.v == fy_map_empty_value);
+	printf("> filter-map-empty: ");
+	fy_generic_emit_default(v);
+
+	/* filter a single mapping for items > 100 (none exist) */
+	map = fy_mapping("foo", 7, "bar", 6, "frooz", 5, "whoa", 8, "last", -100);
+	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, map, 0, NULL, test_filter_over_100);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(v.v == fy_map_empty_value);
+	printf("> filter-map-over-100 (empty): ");
+	fy_generic_emit_default(v);
+
+	/* filter a single mapping for items > 100 (all exist) */
+	map = fy_mapping("foo", 107, "bar", 106, "baz", 1000);
+	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, map, 0, NULL, test_filter_over_100);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, "foo", -1) == 107);
+	ck_assert(fy_get_at(v, 0, -1) == 107);
+	ck_assert(fy_get(v, "bar", -1) == 106);
+	ck_assert(fy_get_at(v, 1, -1) == 106);
+	ck_assert(fy_get(v, "baz", -1) == 1000);
+	ck_assert(fy_get_at(v, 2, -1) == 1000);
+	printf("> filter-map-over-100 (all): ");
+	fy_generic_emit_default(v);
+
+	/* filter a single mapping for items > 100 (one exists) */
+	map = fy_mapping("a", 7, "baz", 6, "whoa", 5, "foo", 101, "z", 8, "zz", -100);
+	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, map, 0, NULL, test_filter_over_100);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, "foo", -1) == 101);
+	ck_assert(fy_get_at(v, 0, -1) == 101);
+	printf("> filter-map-over-100 (101): ");
+	fy_generic_emit_default(v);
+
+	/* filter a complex mapping for items > 100 (two exist) */
+	map = fy_mapping("a", 7, "b", 6, "c", 5, "foo", 101, "d", 8, "e", -100);
+	items[0] = fy_mapping("aa", 1, "bar", 102);
+	items[1] = fy_mapping("aaa", 1, "bbb", 3);
+	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, map, 2, items, test_filter_over_100);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 2);
+	ck_assert(fy_get(v, "foo", -1) == 101);
+	ck_assert(fy_get_at(v, 0, -1) == 101);
+	ck_assert(fy_get(v, "bar", -1) == 102);
+	ck_assert(fy_get_at(v, 1, -1) == 102);
+	printf("> filter-map-over-100 (101/102): ");
+	fy_generic_emit_default(v);
 
 }
 END_TEST
