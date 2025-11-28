@@ -724,6 +724,13 @@ int fy_validate_array(size_t count, const fy_generic *vp)
 	return fy_gb_validate_array(NULL, count, vp);
 }
 
+static int fy_generic_seqmap_qsort_cmp(const void *a, const void *b)
+{
+	const fy_generic *vpa = a, *vpb = b;
+	/* the keys are first for maps */
+	return fy_generic_compare(*vpa, *vpb);
+}
+
 #define FY_GB_OP_IOV_INPLACE		8
 #define FY_GB_OP_ITEMS_INPLACE		64
 #define FY_GB_OP_WORK_ITEMS_INPLACE	64
@@ -879,12 +886,22 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 
 	case FYGBOP_UNIQUE:
 		in = va_arg(ap, fy_generic);
-		count = va_arg(ap, size_t);	// pairs for assoc, keys for disassoc
+		count = va_arg(ap, size_t);
 		items = va_arg(ap, const fy_generic *);
 		if (count && !items)
 			return fy_invalid;
 		need_work_items = true;
 		break;
+
+	case FYGBOP_SORT:
+		in = va_arg(ap, fy_generic);
+		count = va_arg(ap, size_t);
+		items = va_arg(ap, const fy_generic *);
+		if (count && !items)
+			return fy_invalid;
+		need_work_items = true;
+		break;
+
 	default:
 		goto err_out;
 	}
@@ -926,7 +943,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 			goto err_out;
 
 		col_item_size = sizeof(fy_generic) * 2;
-		item_count = (op != FYGBOP_DISASSOC && op != FYGBOP_CONTAINS && op != FYGBOP_MERGE) ?
+		item_count = (op != FYGBOP_DISASSOC && op != FYGBOP_CONTAINS && op != FYGBOP_MERGE && op != FYGBOP_SORT) ?
 					MULSZ(count, 2) : count;
 		col_mark = FY_MAP_V;
 		in_items = fy_generic_mapping_get_items(in_direct, &in_item_count);
@@ -1049,9 +1066,23 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 				(void)fy_generic_sequence_get_items(v, &tmp_item_count);
 				work_item_count += tmp_item_count;
 			}
-			/* it's ok if there are no extra items, we might filter dups */
 			break;
 
+		case FYGBOP_SORT:
+			work_item_count = in_item_count;
+			for (i = 0; i < item_count; i++) {
+				v = items[i];
+				if (type == FYGT_SEQUENCE) {
+					if (!fy_generic_is_sequence(v))
+						goto err_out;
+				} else {
+					if (!fy_generic_is_mapping(v))
+						goto err_out;
+				}
+				(void)fy_generic_collection_get_items(v, &tmp_item_count);
+				work_item_count += tmp_item_count;
+			}
+			break;
 		default:
 			goto err_out;
 		}
@@ -1433,7 +1464,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		}
 		assert(k == work_item_count);
 
-		/* now go over each key in the work area, and compare with all the following */
+		/* now go over each item in the work area, and compare with all the following */
 		for (i = 0; i < work_item_count; i++) {
 			v = work_items[i];
 			for (j = i + 1; j < work_item_count; ) {
@@ -1442,7 +1473,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 					j++;
 					continue;
 				}
-				/* update by remove the key/value pair */
+				/* update by removing the key/value pair */
 				memmove(work_items + j, work_items + j + 1, (work_item_count - 1 - j) * sizeof(*work_items));
 				work_item_count -= 1;
 			}
@@ -1452,6 +1483,43 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		col.count = work_item_count;
 		if (!col.count)
 			return fy_seq_empty;	/* nothing? */
+
+		iov[0].iov_base = &col;
+		iov[0].iov_len = sizeof(col);
+		/* the content */
+		iov[1].iov_base = work_items;
+		iov[1].iov_len = MULSZ(col.count, col_item_size);
+		iovcnt = 2;
+		break;
+
+	case FYGBOP_SORT:
+		/* first copy all in_item to work_items */
+		assert(work_items);
+		assert(items_mod);
+
+		/* fill the work items with the items */
+		k = 0;
+		for (i = 0; i < in_item_count; i++)
+			work_items[k++] = in_items[i];
+		for (j = 0; j < item_count; j++) {
+			tmp_items = fy_generic_collection_get_items(items[j], &tmp_item_count);
+			for (i = 0; i < tmp_item_count; i++)
+				work_items[k++] = tmp_items[i];
+		}
+		assert(k == work_item_count);
+
+		/* the collection header */
+		if (type == FYGT_SEQUENCE) {
+			col.count = work_item_count;
+			if (!col.count)
+				return fy_seq_empty;	/* nothing? */
+			qsort(work_items, work_item_count, sizeof(*work_items), fy_generic_seqmap_qsort_cmp);
+		} else {
+			col.count = work_item_count / 2;
+			if (!col.count)
+				return fy_map_empty;	/* nothing? */
+			qsort(work_items, work_item_count / 2, sizeof(*work_items) * 2, fy_generic_seqmap_qsort_cmp);
+		}
 
 		iov[0].iov_base = &col;
 		iov[0].iov_len = sizeof(col);
