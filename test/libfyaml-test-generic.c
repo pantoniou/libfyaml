@@ -2270,6 +2270,25 @@ START_TEST(gb_map_utils)
 	ck_assert(fy_get_at(v, 1, -1) == 99);
 	printf("> merge-with-dups: ");
 	fy_generic_emit_default(v);
+
+	/* sort a bunch of mappings */
+	map = fy_mapping("bar", 10, "foo", 100);
+	items[0] = fy_mapping("z", 1000);
+	items[1] = fy_mapping();
+	items[2] = fy_mapping("a", 0);
+	v = fy_gb_collection_op(gb, FYGBOPF_SORT, map, 3, items);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 4);
+	ck_assert(fy_get(v, "a", -1) == 0);
+	ck_assert(fy_get_at(v, 0, -1) == 0);
+	ck_assert(fy_get(v, "bar", -1) == 10);
+	ck_assert(fy_get_at(v, 1, -1) == 10);
+	ck_assert(fy_get(v, "foo", -1) == 100);
+	ck_assert(fy_get_at(v, 2, -1) == 100);
+	ck_assert(fy_get(v, "z", -1) == 1000);
+	ck_assert(fy_get_at(v, 3, -1) == 1000);
+	printf("> map-sort-complicated: ");
+	fy_generic_emit_default(v);
 }
 END_TEST
 
@@ -2455,6 +2474,25 @@ START_TEST(gb_seq_utils)
 	ck_assert(fy_get(v, 2, -1) == 3);
 
 	printf("> seq-unique-complicated: ");
+	fy_generic_emit_default(v);
+
+	/* sort a non empty sequence, reverse with two non empty sequences and one empty in the middle */
+	seq = fy_sequence(7, 6, 5);
+	items[0] = fy_sequence(4, 3);
+	items[1] = fy_sequence();
+	items[2] = fy_sequence(2, 1);
+	v = fy_gb_collection_op(gb, FYGBOPF_SORT, seq, 3, items);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 7);
+	ck_assert(fy_get(v, 0, -1) == 1);
+	ck_assert(fy_get(v, 1, -1) == 2);
+	ck_assert(fy_get(v, 2, -1) == 3);
+	ck_assert(fy_get(v, 3, -1) == 4);
+	ck_assert(fy_get(v, 4, -1) == 5);
+	ck_assert(fy_get(v, 5, -1) == 6);
+	ck_assert(fy_get(v, 6, -1) == 7);
+
+	printf("> seq-sort-complicated: ");
 	fy_generic_emit_default(v);
 }
 END_TEST

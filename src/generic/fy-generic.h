@@ -1220,6 +1220,24 @@ static inline size_t fy_generic_mapping_get_pair_count(fy_generic map)
 	return mapp ? mapp->count : 0;
 }
 
+static inline const fy_generic *
+fy_generic_collection_get_items(fy_generic v, size_t *countp)
+{
+	const fy_generic_collection *colp;
+	enum fy_generic_type type;
+
+	if (!fy_generic_is_direct(v))
+		v = fy_generic_indirect_get_value(v);
+
+	if (!fy_generic_is_direct_collection(v)) {
+		*countp = 0;
+		return NULL;
+	}
+	type = fy_generic_is_direct_sequence(v) ? FYGT_SEQUENCE : FYGT_MAPPING;
+	colp = fy_generic_resolve_collection_ptr(v);
+	return fy_generic_collectionp_get_items(type, colp, countp);
+}
+
 //
 // template for repetitive definitions
 //
