@@ -744,7 +744,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	fy_generic v;
 	const void *p;
 	int iovcnt;
-	fy_generic in, in_direct, out, key, key2, value;
+	fy_generic in, in_direct, out, key, key2, value, acc;
 	fy_generic_value col_mark;
 	unsigned int op;
 	size_t count, item_count, tmp_item_count, left_item_count, idx, i, j, k;
@@ -756,6 +756,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	union {
 		fy_generic_filter_pred_fn filter_pred;
 		fy_generic_map_xform_fn map_xform;
+		fy_generic_reducer_fn reducer;
 		void (*fn)(void);
 	} fn;
 	bool need_work_items, need_items_mod, has_args;
@@ -801,6 +802,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	has_args = true;
 	items_mod = NULL;
 	work_item_count = 0;
+	acc = fy_invalid;
 
 	va_start(ap, src);
 	switch (op) {
@@ -919,6 +921,19 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		need_work_items = true;
 		break;
 
+	case FYGBOP_REDUCE:
+		in = va_arg(ap, fy_generic);
+		count = va_arg(ap, size_t);
+		items = va_arg(ap, const fy_generic *);
+		acc = va_arg(ap, fy_generic);
+		fn.fn = va_arg(ap, void (*)(void));
+		if (!fn.fn)
+			return fy_invalid;
+		flags |= FYGBOPF_DONT_INTERNALIZE;	/* don't internalize */
+		if (count && !items)
+			return fy_invalid;
+		break;
+
 	default:
 		goto err_out;
 	}
@@ -962,7 +977,8 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		col_item_size = sizeof(fy_generic) * 2;
 		item_count = (op != FYGBOP_DISASSOC && op != FYGBOP_CONTAINS &&
 			      op != FYGBOP_MERGE && op != FYGBOP_SORT &&
-			      op != FYGBOP_FILTER && op != FYGBOP_MAP && op != FYGBOP_MAP_FILTER) ?
+			      op != FYGBOP_FILTER && op != FYGBOP_MAP && op != FYGBOP_MAP_FILTER &&
+			      op != FYGBOP_REDUCE) ?
 					MULSZ(count, 2) : count;
 		col_mark = FY_MAP_V;
 		in_items = fy_generic_mapping_get_items(in_direct, &in_item_count);
@@ -1609,68 +1625,6 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 			}
 		}
 
-#if 0
-		if (type == FYGT_SEQUENCE) {
-			for (i = 0; i < work_item_count; i++) {
-				value = work_items[i];
-				switch (op) {
-				case FYGBOP_FILTER:
-					if (!fn.filter_pred(gb, value)) {
-						v = fy_invalid;
-						j++;
-					}
-					break;
-				case FYGBOP_MAP:
-					value = fn.map_xform(gb, value);
-					// an invalid value stops everything
-					if (value.v == fy_invalid_value)
-						goto err_out;
-					break;
-				case FYGBOP_MAP_FILTER:
-					value = fn.map_xform(gb, value);
-					// an invalid value removes element
-					if (value.v == fy_invalid_value)
-						j++;
-					break;
-				default:
-					break;
-				}
-				work_items[i] = value;
-			}
-		} else {
-			for (i = 0; i < work_item_count; i += 2) {
-				key = work_items[i + 0];
-				value = work_items[i + 1];
-				switch (op) {
-				case FYGBOP_FILTER:
-					if (!fn.filter_pred(gb, work_items[i + 1])) {
-						key = value = fy_invalid;
-						j += 2;
-					}
-					break;
-				case FYGBOP_MAP:
-					value = fn.map_xform(gb, value);
-					// an invalid value stops everything
-					if (value.v == fy_invalid_value)
-						goto err_out;
-					break;
-				case FYGBOP_MAP_FILTER:
-					value = fn.map_xform(gb, value);
-					// an invalid value removes element
-					if (value.v == fy_invalid_value) {
-						key = fy_invalid;
-						j += 2;
-					}
-					break;
-				default:
-					break;
-				}
-				work_items[i + 0] = key;
-				work_items[i + 1] = value;
-			}
-		}
-#endif
-
 		/* if everything removed */
 		if ((op == FYGBOP_FILTER || op == FYGBOP_MAP_FILTER) && j == work_item_count)
 			return type == FYGT_SEQUENCE ? fy_seq_empty : fy_map_empty;
@@ -1706,6 +1660,34 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		iov[1].iov_len = MULSZ(col.count, col_item_size);
 		iovcnt = 2;
 		break;
+
+	case FYGBOP_REDUCE:
+		/* works on both sequences and mappings */
+		k = type == FYGT_SEQUENCE ? 1 : 2;
+		for (i = 0; i < in_item_count; i += k) {
+			acc = fn.reducer(gb, acc, in_items[i + k - 1]);
+			if (acc.v == fy_invalid_value)
+				goto err_out;
+		}
+		for (i = 0; i < item_count; i++) {
+			v = items[i];
+			if (type == FYGT_SEQUENCE) {
+				if (!fy_generic_is_sequence(v))
+					goto err_out;
+			} else {
+				if (!fy_generic_is_mapping(v))
+					goto err_out;
+			}
+			tmp_items = fy_generic_collection_get_items(v, &tmp_item_count);
+			for (j = 0; j < tmp_item_count; j += k) {
+				acc = fn.reducer(gb, acc, in_items[i + k - 1]);
+				if (acc.v == fy_invalid_value)
+					goto err_out;
+			}
+		}
+		out = acc;
+		goto out;
+
 
 	default:
 		goto err_out;
