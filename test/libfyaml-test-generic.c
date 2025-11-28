@@ -2497,6 +2497,77 @@ START_TEST(gb_seq_utils)
 }
 END_TEST
 
+static bool test_filter_over_100(struct fy_generic_builder *gb, fy_generic v)
+{
+	return fy_cast(v, INT_MIN) > 100;
+}
+
+/* Test: filter map reduce */
+START_TEST(gb_filter_map_reduce)
+{
+	char buf[65536];
+	struct fy_generic_builder *gb;
+	fy_generic items[16];
+	fy_generic seq, v;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	/* filter an empty sequence */
+	seq = fy_sequence();
+	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, seq, 0, NULL, test_filter_over_100);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(v.v == fy_seq_empty_value);
+	printf("> filter-empty: ");
+	fy_generic_emit_default(v);
+
+	/* filter a single sequence for items > 100 (none exist) */
+	seq = fy_sequence(7, 6, 5, 8, -100);
+	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, seq, 0, NULL, test_filter_over_100);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(v.v == fy_seq_empty_value);
+	printf("> filter-over-100 (empty): ");
+	fy_generic_emit_default(v);
+
+	/* filter a single sequence for items > 100 (all exist) */
+	seq = fy_sequence(107, 106, 105, 108, 1000);
+	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, seq, 0, NULL, test_filter_over_100);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_get(v, 0, -1) == 107);
+	ck_assert(fy_get(v, 1, -1) == 106);
+	ck_assert(fy_get(v, 2, -1) == 105);
+	ck_assert(fy_get(v, 3, -1) == 108);
+	ck_assert(fy_get(v, 4, -1) == 1000);
+	printf("> filter-over-100 (all): ");
+	fy_generic_emit_default(v);
+
+	/* filter a single sequence for items > 100 (one exists) */
+	seq = fy_sequence(7, 6, 5, 101, 8, -100);
+	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, seq, 0, NULL, test_filter_over_100);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, 0, -1) == 101);
+	printf("> filter-over-100 (101): ");
+	fy_generic_emit_default(v);
+
+	/* filter a complex sequence for items > 100 (two exist) */
+	seq = fy_sequence(7, 6, 5, 101, 8, -100);
+	items[0] = fy_sequence(1, 102);
+	items[1] = fy_sequence(1, 3);
+	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, seq, 2, items, test_filter_over_100);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 2);
+	ck_assert(fy_get(v, 0, -1) == 101);
+	ck_assert(fy_get(v, 1, -1) == 102);
+	printf("> filter-over-100 (101/102): ");
+	fy_generic_emit_default(v);
+
+
+}
+END_TEST
+
+
 TCase *libfyaml_case_generic(void)
 {
 	TCase *tc;
@@ -2557,6 +2628,9 @@ TCase *libfyaml_case_generic(void)
 
 	/* seq utils */
 	tcase_add_test(tc, gb_seq_utils);
+
+	/* filter/map/reduce */
+	tcase_add_test(tc, gb_filter_map_reduce);
 
 	return tc;
 }
