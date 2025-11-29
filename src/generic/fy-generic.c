@@ -1604,28 +1604,37 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 
 		/* fill the work items with the items */
 		k = 0;
-		for (i = 0; i < in_item_count; i++)
-			work_items[k++] = in_items[i];
+		memcpy(work_items + k, in_items, sizeof(*work_items) * in_item_count);
+		k += in_item_count;
 		for (j = 0; j < item_count; j++) {
 			tmp_items = fy_generic_sequence_get_items(items[j], &tmp_item_count);
-			for (i = 0; i < tmp_item_count; i++)
-				work_items[k++] = tmp_items[i];
+			memcpy(work_items + k, tmp_items, sizeof(*work_items) * tmp_item_count);
+			k += tmp_item_count;
 		}
 		assert(k == work_item_count);
 
 		/* now go over each item in the work area, and compare with all the following */
+		k = 0;
 		for (i = 0; i < work_item_count; i++) {
 			v = work_items[i];
-			for (j = i + 1; j < work_item_count; ) {
-				key2 = work_items[j + 0];
-				if (fy_generic_compare(v, work_items[j])) {
-					j++;
+			for (j = i + 1; j < work_item_count; j++) {
+				value = work_items[j];
+				if (value.v == fy_invalid_value || fy_generic_compare(v, value))
 					continue;
-				}
-				/* update by removing the key/value pair */
-				memmove(work_items + j, work_items + j + 1, (work_item_count - 1 - j) * sizeof(*work_items));
-				work_item_count -= 1;
+				work_items[j] = fy_invalid;
+				k++;
 			}
+		}
+
+		/* there were removed items */
+		if (k > 0) {
+			k = 0;
+			for (i = 0; i < work_item_count; i++) {
+				v = work_items[i];
+				if (v.v != fy_invalid_value)
+					work_items[k++] = v;
+			}
+			work_item_count = k;
 		}
 
 		/* the collection header */
