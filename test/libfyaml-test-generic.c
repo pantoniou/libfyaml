@@ -2816,7 +2816,15 @@ START_TEST(gb_pfilter)
 	struct fy_generic_builder_cfg cfg;
 	struct fy_generic_builder *gb;
 	fy_generic seq, map, v;
-	int i, loop;
+	size_t i, vlen, loop, num_items;
+	int iv, ivbegin, ivmid, ivend;
+
+	/* 10000 items to force parallelization to kick in */
+	num_items = 10000;
+
+	/* allocate a 10000 element buffer */
+	fy_generic *items = malloc(sizeof(*items) * num_items);
+	ck_assert(items != NULL);
 
 	/* Run tests twice: once without dedup, once with dedup */
 	for (loop = 0; loop < 2; loop++) {
@@ -2839,29 +2847,29 @@ START_TEST(gb_pfilter)
 		fy_generic_emit_default(v);
 
 		/* parallel filter a large sequence (forces parallel execution) */
-		fy_generic *items = malloc(sizeof(fy_generic) * 10000);
-		for (i = 0; i < 10000; i++)
-			items[i] = fy_value(gb, i);
-		seq = fy_gb_sequence_create(gb, 10000, items);
-
+		for (i = 0; i < num_items; i++)
+			items[i] = fy_value(gb, (int)i);
+		seq = fy_gb_sequence_create(gb, num_items, items);
 		v = fy_gb_collection_op(gb, FYGBOPF_FILTER | FYGBOPF_PARALLEL, seq, 0, NULL, test_filter_over_100, NULL);
 		ck_assert(fy_generic_is_sequence(v));
-		size_t vlen = fy_len(v);
-		ck_assert(vlen == 9899);  /* 101..9999 = 9899 items */
-		/* Check that all values are > 100 (order not preserved in parallel filter) */
-		int v0 = fy_get(v, 0, -1);
-		int v5000 = fy_get(v, 5000, -1);
-		int v9898 = fy_get(v, 9898, -1);
-		ck_assert(v0 > 100);
-		ck_assert(v5000 > 100);
-		ck_assert(v9898 > 100);
-		printf("> pfilter-large-seq-over-100 (10000 items): len=%zu, first=%d, mid=%d, last=%d\n",
-		       vlen, v0, v5000, v9898);
-
-		free(items);
+		vlen = fy_len(v);
+		ck_assert(vlen == num_items - 101);  /* 101..<num_items> */
+		/* Check that all values are > 100 */
+		for (i = 0; i < vlen; i++) {
+			iv = fy_get(v, i, -1);
+			ck_assert(iv > 100);
+			ck_assert(iv == (101 + (int)i));
+		}
+		ivbegin = fy_get(v, 0, -1);
+		ivmid = fy_get(v, vlen / 2, -1);
+		ivend = fy_get(v, vlen - 1, -1);
+		printf("> pfilter-large-seq-over-100 (%zu items): len=%zu, first=%d, mid=%d, last=%d\n",
+				num_items, vlen, ivbegin, ivmid, ivend);
 
 		/* parallel filter where nothing passes */
-		seq = fy_sequence(1, 2, 3, 4, 5);
+		for (i = 0; i < num_items; i++)
+			items[i] = fy_value(gb, ((int)i % 100));
+		seq = fy_gb_sequence_create(gb, num_items, items);
 		v = fy_gb_collection_op(gb, FYGBOPF_FILTER | FYGBOPF_PARALLEL, seq, 0, NULL, test_filter_over_100, NULL);
 		ck_assert(fy_generic_is_sequence(v));
 		ck_assert(v.v == fy_seq_empty_value);
@@ -2883,6 +2891,8 @@ START_TEST(gb_pfilter)
 
 		fy_generic_builder_destroy(gb);
 	}
+
+	free(items);
 }
 END_TEST
 
@@ -2892,7 +2902,15 @@ START_TEST(gb_pmap)
 	struct fy_generic_builder_cfg cfg;
 	struct fy_generic_builder *gb;
 	fy_generic seq, map, v;
-	int i, loop;
+	size_t i, vlen, loop, num_items;
+	int iv, ivbegin, ivmid, ivend;
+
+	/* 10000 items to force parallelization to kick in */
+	num_items = 10000;
+
+	/* allocate a 10000 element buffer */
+	fy_generic *items = malloc(sizeof(*items) * num_items);
+	ck_assert(items != NULL);
 
 	/* Run tests twice: once without dedup, once with dedup */
 	for (loop = 0; loop < 2; loop++) {
@@ -2915,24 +2933,23 @@ START_TEST(gb_pmap)
 		fy_generic_emit_default(v);
 
 		/* parallel map a large sequence (forces parallel execution) */
-		fy_generic *items = malloc(sizeof(fy_generic) * 10000);
-		ck_assert(items != NULL);
-		for (i = 0; i < 10000; i++)
-			items[i] = fy_value(gb, i);
-		seq = fy_gb_sequence_create(gb, 10000, items);
+		for (i = 0; i < num_items; i++)
+			items[i] = fy_value(gb, (int)i);
+		seq = fy_gb_sequence_create(gb, num_items, items);
 		v = fy_gb_collection_op(gb, FYGBOPF_MAP | FYGBOPF_PARALLEL, seq, 0, NULL, test_map_double, NULL);
 		ck_assert(fy_generic_is_sequence(v));
-		ck_assert(fy_len(v) == 10000);
-		/* Check a few values */
-		ck_assert(fy_get(v, 0, -1) == 0);
-		ck_assert(fy_get(v, 1, -1) == 2);
-		ck_assert(fy_get(v, 50, -1) == 100);
-		ck_assert(fy_get(v, 5000, -1) == 10000);
-		ck_assert(fy_get(v, 9999, -1) == 19998);
-		printf("> pmap-large-seq-double (10000 items): first=%d, mid=%d, last=%d\n",
-		       fy_get(v, 0, -1), fy_get(v, 5000, -1), fy_get(v, 9999, -1));
-
-		free(items);
+		vlen = fy_len(v);
+		ck_assert(vlen == num_items);
+		/* Check that all values are double */
+		for (i = 0; i < vlen; i++) {
+			iv = fy_get(v, i, -1);
+			ck_assert(iv == (int)(i * 2));
+		}
+		ivbegin = fy_get(v, 0, -1);
+		ivmid = fy_get(v, vlen / 2, -1);
+		ivend = fy_get(v, vlen - 1, -1);
+		printf("> pmap-large-seq-double (%zu items): len=%zu, first=%d, mid=%d, last=%d\n",
+				num_items, vlen, ivbegin, ivmid, ivend);
 
 		/* parallel map on a mapping */
 		map = fy_mapping("a", 5, "b", 10, "c", 15, "d", 20);
