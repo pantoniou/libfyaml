@@ -1554,22 +1554,35 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		assert(k == work_item_count);
 
 		/* now go over each key in the work area, and compare with all the following */
+		k = 0;
 		for (i = 0; i < work_item_count; i += 2) {
 			key = work_items[i + 0];
 			value = work_items[i + 1];
 
-			for (j = i + 2; j < work_item_count; ) {
+			for (j = i + 2; j < work_item_count; j += 2) {
 				key2 = work_items[j + 0];
-				if (fy_generic_compare(key, key2)) {
-					j += 2;
+				if (key2.v == fy_invalid_value || fy_generic_compare(key, key2))
 					continue;
-				}
-				/* update by remove the key/value pair */
 				value = work_items[j + 1];
-				memmove(work_items + j, work_items + j + 2, (work_item_count - 2 - j) * sizeof(*work_items));
-				work_item_count -= 2;
+				/* erase this pair */
+				work_items[j + 0] = fy_invalid;
+				work_items[j + 1] = fy_invalid;
+				k += 2;
 			}
 			work_items[i + 1] = value;
+		}
+
+		/* were there removed items? */
+		if (k > 0) {
+			k = 0;
+			for (i = 0; i < work_item_count; i += 2) {
+				key = work_items[i + 0];
+				if (key.v != fy_invalid_value) {
+					work_items[k++] = key;
+					work_items[k++] = work_items[i + 1];
+				}
+			}
+			work_item_count = k;
 		}
 
 		/* the collection header */
