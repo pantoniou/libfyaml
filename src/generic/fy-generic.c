@@ -835,6 +835,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	struct fy_thread_pool *tp = NULL;
 	struct fy_thread_pool_cfg tp_cfg;
 	bool need_work_items, need_items_mod, has_args, needs_thread_pool, owns_thread_pool;
+	bool need_copy_work_items;
 	enum fy_generic_type type;
 	va_list ap;
 
@@ -873,6 +874,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	idx = SIZE_MAX;
 
 	need_work_items = false;
+	need_copy_work_items = false;
 	need_items_mod = !(flags & FYGBOPF_DONT_INTERNALIZE);	// if we internalize, need to mod
 	has_args = true;
 	needs_thread_pool = false;
@@ -966,6 +968,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		if (count && !items)
 			return fy_invalid;
 		need_work_items = true;
+		need_copy_work_items = true;
 		break;
 
 	case FYGBOP_UNIQUE:
@@ -975,6 +978,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		if (count && !items)
 			return fy_invalid;
 		need_work_items = true;
+		need_copy_work_items = true;
 		break;
 
 	case FYGBOP_SORT:
@@ -984,6 +988,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		if (count && !items)
 			return fy_invalid;
 		need_work_items = true;
+		need_copy_work_items = true;
 		break;
 
 	case FYGBOP_FILTER:
@@ -1000,6 +1005,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		if (!fn.fn || (count && !items))
 			return fy_invalid;
 		need_work_items = true;
+		need_copy_work_items = true;
 		break;
 
 	case FYGBOP_REDUCE:
@@ -1210,9 +1216,10 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		if (work_item_count <= ARRAY_SIZE(work_items_buf))
 			work_items = work_items_buf;
 		else {
-			work_items = malloc(sizeof(*work_items) * work_item_count);
-			if (!work_items)
+			work_items_alloc = malloc(sizeof(*work_items) * work_item_count);
+			if (!work_items_alloc)
 				goto err_out;
+			work_items = work_items_alloc;
 		}
 
 		/* if not enough work, punt */
@@ -1221,6 +1228,17 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 			needs_thread_pool = false;
 		}
 
+		if (need_copy_work_items) {
+			k = 0;
+			memcpy(work_items + k, in_items, sizeof(*work_items) * in_item_count);
+			k += in_item_count;
+			for (j = 0; j < item_count; j++) {
+				tmp_items = fy_generic_collection_get_items(items[j], &tmp_item_count);
+				memcpy(work_items + k, tmp_items, sizeof(*work_items) * tmp_item_count);
+				k += tmp_item_count;
+			}
+			assert(k == work_item_count);
+		}
 	}
 
 	if (needs_thread_pool && !tp) {
@@ -1535,23 +1553,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	case FYGBOP_MERGE:
 		assert(work_items);
 		assert(items_mod);
-
-		/* fill the work items with the key value pairs from everyone */
-		k = 0;
-		for (i = 0; i < in_item_count; i += 2) {
-			work_items[k + 0] = in_items[i + 0];
-			work_items[k + 1] = in_items[i + 1];
-			k += 2;
-		}
-		for (j = 0; j < item_count; j++) {
-			tmp_items = fy_generic_mapping_get_items(items[j], &tmp_item_count);
-			for (i = 0; i < tmp_item_count; i += 2) {
-				work_items[k + 0] = tmp_items[i + 0];
-				work_items[k + 1] = tmp_items[i + 1];
-				k += 2;
-			}
-		}
-		assert(k == work_item_count);
+		assert(need_copy_work_items);
 
 		/* now go over each key in the work area, and compare with all the following */
 		k = 0;
@@ -1587,8 +1589,11 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 
 		/* the collection header */
 		col.count = work_item_count / 2;
-		if (!col.count)
-			return fy_map_empty;	/* nothing? */
+		if (!col.count) {
+			/* nothing? */
+			out = fy_map_empty;
+			goto out;
+		}
 
 		iov[0].iov_base = &col;
 		iov[0].iov_len = sizeof(col);
@@ -1601,17 +1606,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	case FYGBOP_UNIQUE:
 		assert(work_items);
 		assert(items_mod);
-
-		/* fill the work items with the items */
-		k = 0;
-		memcpy(work_items + k, in_items, sizeof(*work_items) * in_item_count);
-		k += in_item_count;
-		for (j = 0; j < item_count; j++) {
-			tmp_items = fy_generic_sequence_get_items(items[j], &tmp_item_count);
-			memcpy(work_items + k, tmp_items, sizeof(*work_items) * tmp_item_count);
-			k += tmp_item_count;
-		}
-		assert(k == work_item_count);
+		assert(need_copy_work_items);
 
 		/* now go over each item in the work area, and compare with all the following */
 		k = 0;
@@ -1639,8 +1634,11 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 
 		/* the collection header */
 		col.count = work_item_count;
-		if (!col.count)
-			return fy_seq_empty;	/* nothing? */
+		if (!col.count) {
+			/* nothing? */
+			out = fy_seq_empty;
+			goto out;
+		}
 
 		iov[0].iov_base = &col;
 		iov[0].iov_len = sizeof(col);
@@ -1653,28 +1651,24 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	case FYGBOP_SORT:
 		assert(work_items);
 		assert(items_mod);
-
-		/* fill the work items with the items */
-		k = 0;
-		for (i = 0; i < in_item_count; i++)
-			work_items[k++] = in_items[i];
-		for (j = 0; j < item_count; j++) {
-			tmp_items = fy_generic_collection_get_items(items[j], &tmp_item_count);
-			for (i = 0; i < tmp_item_count; i++)
-				work_items[k++] = tmp_items[i];
-		}
-		assert(k == work_item_count);
+		assert(need_copy_work_items);
 
 		/* the collection header */
 		if (type == FYGT_SEQUENCE) {
 			col.count = work_item_count;
-			if (!col.count)
-				return fy_seq_empty;	/* nothing? */
+			if (!col.count) {
+				/* nothing? */
+				out = fy_seq_empty;
+				goto out;
+			}
 			qsort(work_items, work_item_count, sizeof(*work_items), fy_generic_seqmap_qsort_cmp);
 		} else {
 			col.count = work_item_count / 2;
-			if (!col.count)
-				return fy_map_empty;	/* nothing? */
+			if (!col.count) {
+				/* nothing? */
+				out = fy_map_empty;
+				goto out;
+			}
 			qsort(work_items, work_item_count / 2, sizeof(*work_items) * 2, fy_generic_seqmap_qsort_cmp);
 		}
 
@@ -1691,17 +1685,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	case FYGBOP_MAP_FILTER:
 		assert(work_items);
 		assert(items_mod);
-
-		/* fill the work items with the items */
-		k = 0;
-		memcpy(work_items + k, in_items, in_item_count * sizeof(*work_items));
-		k += in_item_count;
-		for (j = 0; j < item_count; j++) {
-			tmp_items = fy_generic_collection_get_items(items[j], &tmp_item_count);
-			memcpy(work_items + k, tmp_items, tmp_item_count * sizeof(*work_items));
-			k += tmp_item_count;
-		}
-		assert(k == work_item_count);
+		assert(need_copy_work_items);
 
 		key = fy_invalid;
 
@@ -1767,12 +1751,16 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		}
 
 		/* if everything removed */
-		if ((op == FYGBOP_FILTER || op == FYGBOP_MAP_FILTER) && j == work_item_count)
-			return type == FYGT_SEQUENCE ? fy_seq_empty : fy_map_empty;
+		if ((op == FYGBOP_FILTER || op == FYGBOP_MAP_FILTER) && j == work_item_count) {
+			out = type == FYGT_SEQUENCE ? fy_seq_empty : fy_map_empty;
+			goto out;
+		}
 
 		/* if nothing removed */
-		if (op == FYGBOP_FILTER && j == 0)
-			return in;
+		if (op == FYGBOP_FILTER && j == 0) {
+			out = in;
+			goto out;
+		}
 
 		/* something was removed, go over the items and remove the invalids */
 		if ((op == FYGBOP_FILTER || op == FYGBOP_MAP_FILTER) && j > 0) {
@@ -1787,8 +1775,10 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		}
 
 		col.count = type == FYGT_SEQUENCE ? work_item_count : (work_item_count / 2);
-		if (!col.count)
-			return type == FYGT_SEQUENCE ? fy_seq_empty : fy_map_empty;
+		if (!col.count) {
+			out = type == FYGT_SEQUENCE ? fy_seq_empty : fy_map_empty;
+			goto out;
+		}
 		iov[0].iov_base = &col;
 		iov[0].iov_len = sizeof(col);
 		/* the content */
@@ -1823,7 +1813,6 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		}
 		out = acc;
 		goto out;
-
 
 	default:
 		goto err_out;
