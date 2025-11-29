@@ -747,7 +747,7 @@ typedef union {
 	void (*fn)(void);
 } fy_op_fn;
 
-struct fy_op_map_filter_work_arg {
+struct fy_op_work_arg {
 	unsigned int op;
 	struct fy_generic_builder *gb;
 	enum fy_generic_type type;
@@ -755,14 +755,13 @@ struct fy_op_map_filter_work_arg {
 	fy_generic *work_items;
 	size_t work_item_count;
 	size_t removed_items;
-	fy_generic vinit;
 	fy_generic vresult;
 };
 
 static void
 fy_op_map_filter_work(void *varg)
 {
-	struct fy_op_map_filter_work_arg *arg = varg;
+	struct fy_op_work_arg *arg = varg;
 	size_t i, j, stride;
 	fy_generic key, value;
 
@@ -813,6 +812,25 @@ fy_op_map_filter_work(void *varg)
 	arg->vresult = fy_true;
 }
 
+static void
+fy_op_reduce_work(void *varg)
+{
+	struct fy_op_work_arg *arg = varg;
+	size_t i, stride, valoffset;
+	fy_generic acc;
+
+	/* unified traversal for seq/map */
+	stride = arg->type == FYGT_SEQUENCE ? 1 : 2;
+	valoffset = stride - 1;
+	acc = arg->vresult;
+	for (i = 0; i < arg->work_item_count; i += stride) {
+		acc = arg->fn.reducer(arg->gb, acc, arg->work_items[i + valoffset]);
+		if (acc.v == fy_invalid_value)
+			break;
+	}
+	arg->vresult = acc;
+}
+
 fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flags, ...)
 {
 	struct iovec *iov, *iov_alloc = NULL, iov_buf[FY_GB_OP_IOV_INPLACE];
@@ -838,6 +856,10 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	bool need_copy_work_items;
 	enum fy_generic_type type;
 	va_list ap;
+	struct fy_op_work_arg *work_args;
+	struct fy_thread_work *works;
+	size_t chunk_size, start_idx, count_items;
+
 
 #undef MULSZ
 #define MULSZ(_x, _y) \
@@ -1014,11 +1036,15 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		items = va_arg(ap, const fy_generic *);
 		acc = va_arg(ap, fy_generic);
 		fn.fn = va_arg(ap, void (*)(void));
-		if (!fn.fn)
+		if (flags & FYGBOPF_PARALLEL) {
+			tp = va_arg(ap, struct fy_thread_pool *);
+			needs_thread_pool = true;
+		}
+		if (!fn.fn || (count && !items))
 			return fy_invalid;
 		flags |= FYGBOPF_DONT_INTERNALIZE;	/* don't internalize */
-		if (count && !items)
-			return fy_invalid;
+		need_work_items = true;
+		need_copy_work_items = true;
 		break;
 
 	default:
@@ -1194,6 +1220,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		case FYGBOP_FILTER:
 		case FYGBOP_MAP:
 		case FYGBOP_MAP_FILTER:
+		case FYGBOP_REDUCE:
 			work_item_count = in_item_count;
 			for (i = 0; i < item_count; i++) {
 				v = items[i];
@@ -1691,10 +1718,6 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 
 		assert(num_threads > 0);
 
-		struct fy_op_map_filter_work_arg *work_args;
-		struct fy_thread_work *works;
-		size_t chunk_size, start_idx, count_items;
-
 		work_args = alloca(sizeof(*work_args) * num_threads);
 		memset(work_args, 0, sizeof(*work_args) * num_threads); 
 
@@ -1724,7 +1747,6 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 			work_args[i].work_items = work_items + start_idx;
 			work_args[i].work_item_count = count_items;
 			work_args[i].removed_items = 0;
-			work_args[i].vinit = fy_invalid;
 			work_args[i].vresult = fy_invalid;
 
 		}
@@ -1788,28 +1810,77 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		break;
 
 	case FYGBOP_REDUCE:
-		/* works on both sequences and mappings */
-		k = type == FYGT_SEQUENCE ? 1 : 2;
-		for (i = 0; i < in_item_count; i += k) {
-			acc = fn.reducer(gb, acc, in_items[i + k - 1]);
-			if (acc.v == fy_invalid_value)
-				goto err_out;
+		assert(work_items);
+		assert(need_copy_work_items);
+
+		/* empty? return the initial accumulator */
+		if (!work_item_count) {
+			out = acc;
+			goto out;
 		}
-		for (i = 0; i < item_count; i++) {
-			v = items[i];
-			if (type == FYGT_SEQUENCE) {
-				if (!fy_generic_is_sequence(v))
-					goto err_out;
-			} else {
-				if (!fy_generic_is_mapping(v))
-					goto err_out;
+		work_args = alloca(sizeof(*work_args) * num_threads);
+		memset(work_args, 0, sizeof(*work_args) * num_threads); 
+
+		/* distribute evenly */
+		chunk_size = (work_item_count + num_threads - 1) / num_threads;
+
+		/* for mappings the chunk must be even */
+		if (type == FYGT_MAPPING && (chunk_size & 1))
+			chunk_size++;
+
+		assert(chunk_size <= work_item_count);
+
+		assert(num_threads);
+
+		for (i = 0; i < (size_t)num_threads; i++) {
+			start_idx = i * chunk_size;
+			count_items = chunk_size;
+
+			/* Last chunk might be smaller */
+			if (start_idx >= work_item_count)
+				break;
+			if (start_idx + count_items > work_item_count)
+				count_items = work_item_count - start_idx;
+
+			work_args[i].op = op;
+			work_args[i].gb = gb;
+			work_args[i].type = type;
+			work_args[i].fn = fn;
+			work_args[i].work_items = work_items + start_idx;
+			work_args[i].work_item_count = count_items;
+			work_args[i].removed_items = 0;
+			work_args[i].vresult = acc;
+		}
+
+		/* single threaded, or parallel */
+		if (num_threads > 1) {
+			works = alloca(sizeof(*works) * num_threads);
+			for (i = 0; i < (size_t)num_threads; i++) {
+				works[i].fn = fy_op_reduce_work;
+				works[i].arg = &work_args[i];
+				works[i].wp = NULL;  /* Set by work_join */
 			}
-			tmp_items = fy_generic_collection_get_items(v, &tmp_item_count);
-			for (j = 0; j < tmp_item_count; j += k) {
-				acc = fn.reducer(gb, acc, in_items[i + k - 1]);
-				if (acc.v == fy_invalid_value)
-					goto err_out;
+			/* Execute in parallel with work stealing */
+			fy_thread_work_join(tp, works, num_threads, NULL);
+
+			/* now perform the final reduce step */
+			fy_generic *partial = alloca(sizeof(*partial) * num_threads);
+			for (i = 0; i < (size_t)num_threads; i++) {
+				v = work_args[i].vresult;
+				if (v.v == fy_invalid_value) {
+					out = fy_invalid;
+					goto out;
+				}
+				partial[i] = v;
 			}
+			work_args[0].vresult = acc;
+			work_args[0].work_items = partial;
+			work_args[0].work_item_count = (size_t)num_threads;
+			fy_op_reduce_work(work_args);
+			acc = work_args->vresult;
+		} else {
+			fy_op_reduce_work(work_args);
+			acc = work_args->vresult;
 		}
 		out = acc;
 		goto out;
