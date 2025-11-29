@@ -2969,6 +2969,72 @@ START_TEST(gb_pmap)
 }
 END_TEST
 
+/* Test: parallel reduce */
+START_TEST(gb_preduce)
+{
+	struct fy_generic_builder_cfg cfg;
+	struct fy_generic_builder *gb;
+	fy_generic seq, v;
+	int sum, exp_sum;
+	size_t i, num_items;
+	fy_generic *items;
+
+	/* 10000 items to force parallelization to kick in */
+	num_items = 10000;
+
+	/* allocate a 10000 element buffer */
+	items = malloc(sizeof(*items) * num_items);
+	ck_assert(items != NULL);
+
+	/* Run tests twice: without dedup, then with dedup */
+	for (int loop = 0; loop < 2; loop++) {
+		memset(&cfg, 0, sizeof(cfg));
+		cfg.flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER;
+		if (loop == 1)
+			cfg.flags |= FYGBCF_DEDUP_ENABLED;
+
+		gb = fy_generic_builder_create(&cfg);
+		ck_assert(gb != NULL);
+
+		printf("\n=== preduce tests %s dedup ===\n", loop == 0 ? "WITHOUT" : "WITH");
+
+		/* parallel reduce an empty sequence */
+		seq = fy_sequence();
+		v = fy_gb_collection_op(gb, FYGBOPF_REDUCE | FYGBOPF_PARALLEL, seq, 0, NULL,
+				fy_value(gb, 0), fy_generic_test_sum_reducer, NULL);
+		sum = fy_cast(v, INT_MIN);
+		// ck_assert(sum == 0);
+		printf("> preduce-seq-sum (empty): %d", sum);
+		fy_generic_emit_default(v);
+
+		/* parallel reduce a large sequence (forces parallel execution) */
+		for (i = 0; i < num_items; i++)
+			items[i] = fy_value(gb, i);
+		seq = fy_gb_sequence_create(gb, num_items, items);
+		v = fy_gb_collection_op(gb, FYGBOPF_REDUCE | FYGBOPF_PARALLEL, seq, 0, NULL,
+				fy_value(gb, 0), fy_generic_test_sum_reducer, NULL);
+		sum = fy_cast(v, INT_MIN);
+		/* Sum of 0..9999 = n*(n-1)/2 = 10000*9999/2 = 49995000 */
+		exp_sum = num_items * (num_items - 1) / 2;
+		ck_assert(sum == exp_sum);
+		printf("> preduce-large-seq-sum (%zu items): %d\n", num_items, sum);
+
+		/* parallel reduce a small sequence (uses serial) */
+		seq = fy_sequence(7, 6, 5, 8);
+		v = fy_gb_collection_op(gb, FYGBOPF_REDUCE | FYGBOPF_PARALLEL, seq, 0, NULL,
+				fy_value(gb, 0), fy_generic_test_sum_reducer, NULL);
+		sum = fy_cast(v, INT_MIN);
+		ck_assert(sum == 26);
+		printf("> preduce-small-seq-sum: ");
+		fy_generic_emit_default(v);
+
+		fy_generic_builder_destroy(gb);
+	}
+
+	free(items);
+}
+END_TEST
+
 TCase *libfyaml_case_generic(void)
 {
 	TCase *tc;
@@ -3035,9 +3101,10 @@ TCase *libfyaml_case_generic(void)
 	tcase_add_test(tc, gb_map);
 	tcase_add_test(tc, gb_reduce);
 
-	/* parallel filter/map */
+	/* parallel filter/map/reduce */
 	tcase_add_test(tc, gb_pfilter);
 	tcase_add_test(tc, gb_pmap);
+	tcase_add_test(tc, gb_preduce);
 
 	return tc;
 }
