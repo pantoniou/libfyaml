@@ -2964,6 +2964,8 @@ START_TEST(gb_pmap)
 
 		fy_generic_builder_destroy(gb);
 	}
+
+	free(items);
 }
 END_TEST
 
