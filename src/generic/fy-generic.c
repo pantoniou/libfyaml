@@ -836,7 +836,6 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	struct fy_thread_pool_cfg tp_cfg;
 	bool need_work_items, need_items_mod, has_args, needs_thread_pool, owns_thread_pool;
 	enum fy_generic_type type;
-	struct fy_op_map_filter_work_arg op_arg;
 	va_list ap;
 
 #undef MULSZ
@@ -1684,76 +1683,65 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 
 		key = fy_invalid;
 
-		if (!(flags & FYGBOPF_PARALLEL)) {
-			op_arg.op = op;
-			op_arg.gb = gb;
-			op_arg.type = type;
-			op_arg.fn = fn;
-			op_arg.work_items = work_items;
-			op_arg.work_item_count = work_item_count;
-			op_arg.removed_items = 0;
-			op_arg.vinit = fy_invalid;
-			op_arg.vresult = fy_invalid;
+		assert(num_threads > 0);
 
-			/* single threaded */
-			fy_op_map_filter_work(&op_arg);
-			if (fy_generic_is_invalid(op_arg.vresult))
-				goto err_out;
-			j = op_arg.removed_items;
-		} else {
-			struct fy_op_map_filter_work_arg *work_args;
-			struct fy_thread_work *works;
-			size_t work_count, chunk_size;
+		struct fy_op_map_filter_work_arg *work_args;
+		struct fy_thread_work *works;
+		size_t chunk_size, start_idx, count_items;
 
-			/* distribute evenly */
-			chunk_size = (work_item_count + num_threads - 1) / num_threads;
+		work_args = alloca(sizeof(*work_args) * num_threads);
+		memset(work_args, 0, sizeof(*work_args) * num_threads); 
 
-			/* for mappings the chunk must be even */
-			if (type == FYGT_MAPPING && (chunk_size & 1))
-				chunk_size++;
+		/* distribute evenly */
+		chunk_size = (work_item_count + num_threads - 1) / num_threads;
 
-			work_args = alloca(sizeof(*work_args) * num_threads);
+		/* for mappings the chunk must be even */
+		if (type == FYGT_MAPPING && (chunk_size & 1))
+			chunk_size++;
+
+		assert(chunk_size <= work_item_count);
+
+		for (i = 0; i < (size_t)num_threads; i++) {
+			start_idx = i * chunk_size;
+			count_items = chunk_size;
+
+			/* Last chunk might be smaller */
+			if (start_idx >= work_item_count)
+				break;
+			if (start_idx + count_items > work_item_count)
+				count_items = work_item_count - start_idx;
+
+			work_args[i].op = op;
+			work_args[i].gb = gb;
+			work_args[i].type = type;
+			work_args[i].fn = fn;
+			work_args[i].work_items = work_items + start_idx;
+			work_args[i].work_item_count = count_items;
+			work_args[i].removed_items = 0;
+			work_args[i].vinit = fy_invalid;
+			work_args[i].vresult = fy_invalid;
+
+		}
+
+		/* single threaded, or parallel */
+		if (num_threads > 1) {
 			works = alloca(sizeof(*works) * num_threads);
-			memset(works, 0, sizeof(*works) * num_threads);
-
-			work_count = 0;
 			for (i = 0; i < (size_t)num_threads; i++) {
-				size_t start_idx = i * chunk_size;
-				size_t count_items = chunk_size;
-
-				/* Last chunk might be smaller */
-				if (start_idx >= work_item_count)
-					break;
-				if (start_idx + count_items > work_item_count)
-					count_items = work_item_count - start_idx;
-
-				work_args[i].op = op;
-				work_args[i].gb = gb;
-				work_args[i].type = type;
-				work_args[i].fn = fn;
-				work_args[i].work_items = work_items + start_idx;
-				work_args[i].work_item_count = count_items;
-				work_args[i].removed_items = 0;
-				work_args[i].vinit = fy_invalid;
-				work_args[i].vresult = fy_invalid;
-
 				works[i].fn = fy_op_map_filter_work;
 				works[i].arg = &work_args[i];
 				works[i].wp = NULL;  /* Set by work_join */
-
-				work_count++;
 			}
-
 			/* Execute in parallel with work stealing */
-			fy_thread_work_join(tp, works, work_count, NULL);
+			fy_thread_work_join(tp, works, num_threads, NULL);
+		} else 
+			fy_op_map_filter_work(work_args);
 
-			/* collect the amount of removed counts */
-			j = 0;
-			for (i = 0; i < (size_t)num_threads; i++) {
-				if (fy_generic_is_invalid(work_args[i].vresult))
-					goto err_out;
-				j += work_args[i].removed_items;
-			}
+		/* collect the amount of removed counts */
+		j = 0;
+		for (i = 0; i < (size_t)num_threads; i++) {
+			if (fy_generic_is_invalid(work_args[i].vresult))
+				goto err_out;
+			j += work_args[i].removed_items;
 		}
 
 		/* if everything removed */
