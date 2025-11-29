@@ -754,8 +754,9 @@ struct fy_op_map_filter_work_arg {
 	fy_op_fn fn;
 	fy_generic *work_items;
 	size_t work_item_count;
-	bool error;
 	size_t removed_items;
+	fy_generic vinit;
+	fy_generic vresult;
 };
 
 static void
@@ -786,7 +787,7 @@ fy_op_map_filter_work(void *varg)
 			value = arg->fn.map_xform(arg->gb, value);
 			// an invalid value stops everything
 			if (value.v == fy_invalid_value) {
-				arg->error = true;
+				arg->vresult = fy_invalid;
 				return;
 			}
 			break;
@@ -809,6 +810,7 @@ fy_op_map_filter_work(void *varg)
 		}
 	}
 	arg->removed_items = j;
+	arg->vresult = fy_true;
 }
 
 fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flags, ...)
@@ -1689,12 +1691,13 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 			op_arg.fn = fn;
 			op_arg.work_items = work_items;
 			op_arg.work_item_count = work_item_count;
-			op_arg.error = false;
 			op_arg.removed_items = 0;
+			op_arg.vinit = fy_invalid;
+			op_arg.vresult = fy_invalid;
 
 			/* single threaded */
 			fy_op_map_filter_work(&op_arg);
-			if (op_arg.error)
+			if (fy_generic_is_invalid(op_arg.vresult))
 				goto err_out;
 			j = op_arg.removed_items;
 		} else {
@@ -1730,8 +1733,9 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 				work_args[i].fn = fn;
 				work_args[i].work_items = work_items + start_idx;
 				work_args[i].work_item_count = count_items;
-				work_args[i].error = false;
 				work_args[i].removed_items = 0;
+				work_args[i].vinit = fy_invalid;
+				work_args[i].vresult = fy_invalid;
 
 				works[i].fn = fy_op_map_filter_work;
 				works[i].arg = &work_args[i];
@@ -1746,7 +1750,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 			/* collect the amount of removed counts */
 			j = 0;
 			for (i = 0; i < (size_t)num_threads; i++) {
-				if (work_args[i].error)
+				if (fy_generic_is_invalid(work_args[i].vresult))
 					goto err_out;
 				j += work_args[i].removed_items;
 			}
