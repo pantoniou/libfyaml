@@ -3906,8 +3906,10 @@ enum fy_gb_op {
 	FYGBOP_MAP,
 	FYGBOP_MAP_FILTER,
 	FYGBOP_REDUCE,
+	FYGBOP_SLICE,
+	FYGBOP_SLICE_PY,
 };
-#define FYGBOP_COUNT	(FYGBOP_REDUCE + 1)
+#define FYGBOP_COUNT	(FYGBOP_SLICE_PY + 1)
 
 enum fy_gb_op_flags {
 	FYGBOPF_CREATE_SEQ	= FYGBOPF_OP(FYGBOP_CREATE_SEQ),
@@ -3933,7 +3935,8 @@ enum fy_gb_op_flags {
 	FYGBOPF_DONT_INTERNALIZE= FY_BIT(16),			// do not internalize items
 	FYGBOPF_DEEP_VALIDATE	= FY_BIT(17),			// perform deep validation
 	FYGBOPF_NO_CHECKS	= FY_BIT(18),			// do not perform any checks on the items
-	FYGBOPF_PARALLEL	= FY_BIT(19),
+	FYGBOPF_PARALLEL	= FY_BIT(19),			// perform in parallel
+	FYGBOPF_MAP_ITEM_COUNT	= FY_BIT(20),			// the count is items, not pairs for mappings
 };
 
 typedef bool (*fy_generic_filter_pred_fn)(struct fy_generic_builder *gb, fy_generic v);
@@ -4160,5 +4163,70 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 
 #define fy_compare(_a, _b) \
 	(fy_generic_compare(fy_value(_a), fy_value(_b)))
+
+/* ops */
+
+#define fy_gb_create_mapping2(_gb, ...) \
+	(fy_gb_collection_op((_gb), \
+		FYGBOPF_CREATE_MAP | FYGBOPF_MAP_ITEM_COUNT, \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+#define fy_gb_create_sequence2(_gb, ...) \
+	(fy_gb_collection_op((_gb), \
+		FYGBOPF_CREATE_SEQ, \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+#define fy_gb_insert(_gb, _col, _idx, ...) \
+	(fy_gb_collection_op((_gb), \
+		FYGBOPF_INSERT | FYGBOPF_MAP_ITEM_COUNT, (_col), (_idx), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+#define fy_gb_replace(_gb, _col, _idx, ...) \
+	(fy_gb_collection_op((_gb), \
+		FYGBOPF_REPLACE | FYGBOPF_MAP_ITEM_COUNT, (_col), (_idx), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+#define fy_gb_append(_gb, _col, ...) \
+	(fy_gb_collection_op((_gb), \
+		FYGBOPF_APPEND | FYGBOPF_MAP_ITEM_COUNT, (_col), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+#define fy_gb_assoc(_gb, _map, ...) \
+	(fy_gb_collection_op((_gb), \
+		FYGBOPF_ASSOC | FYGBOPF_MAP_ITEM_COUNT, (_map), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+#define fy_gb_disassoc(_gb, _map, ...) \
+	(fy_gb_collection_op((_gb), \
+		FYGBOPF_DISASSOC, (_map), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+#define fy_gb_keys(_gb, _map) \
+	(fy_gb_collection_op((_gb), FYGBOPF_KEYS, (_map)))
+
+#define fy_gb_values(_gb, _map) \
+	(fy_gb_collection_op((_gb), FYGBOPF_VALUES, (_map)))
+
+#define fy_gb_items(_gb, _map) \
+	(fy_gb_collection_op((_gb), FYGBOPF_ITEMS, (_map)))
+
+#define fy_gb_append(_gb, _col, ...) \
+	(fy_gb_collection_op((_gb), \
+		FYGBOPF_APPEND | FYGBOPF_MAP_ITEM_COUNT, (_col), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+#define fy_gb_contains(_gb, _col, ...) \
+	(fy_gb_collection_op((_gb), \
+		FYGBOPF_CONTAINS | FYGBOPF_MAP_ITEM_COUNT, (_col), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
 
 #endif

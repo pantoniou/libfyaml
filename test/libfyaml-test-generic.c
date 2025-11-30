@@ -3035,6 +3035,54 @@ START_TEST(gb_preduce)
 }
 END_TEST
 
+
+/* Test: parallel reduce */
+START_TEST(simple_ops)
+{
+	char buf[65536];
+	struct fy_generic_builder *gb;
+	fy_generic v, vexp;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	v = fy_gb_create_sequence2(gb, 1, 5, 10);
+	vexp = fy_sequence(1, 5, 10);
+	ck_assert(!fy_generic_compare(v, vexp));
+	printf("> simple-seq-create: ");
+	fy_generic_emit_default(v);
+
+	v = fy_gb_create_mapping2(gb, "foo", 100, "bar", 200, "baz", 300);
+	vexp = fy_mapping("foo", 100, "bar", 200, "baz", 300);
+	ck_assert(!fy_generic_compare(v, vexp));
+	printf("> simple-map-create: ");
+	fy_generic_emit_default(v);
+
+	/* now do operations using the user friendly interface */
+	v = fy_gb_assoc(gb, fy_mapping("bar", 100), "foo", 10);
+	vexp = fy_mapping("bar", 100, "foo", 10);
+	ck_assert(!fy_generic_compare(v, vexp));
+	printf("> simple-assoc: ");
+	fy_generic_emit_default(v);
+
+	/* disassociate, mapping goes empty ("bar": 100) -> () */
+	v = fy_gb_disassoc(gb, fy_mapping("bar", 100), "bar");
+	vexp = fy_map_empty;
+	ck_assert(!fy_generic_compare(v, vexp));
+	printf("> simple-disassoc: ");
+	fy_generic_emit_default(v);
+
+	/* testing insert at the middle (1, 2) -> (1, 300, 2) */
+	v = fy_gb_insert(gb, fy_sequence(gb, 1, 2), 1, 300);
+	vexp = fy_sequence(1, 300, 2);
+	ck_assert(!fy_generic_compare(v, vexp));
+	printf("> simple-seq-insert: ");
+	fy_generic_emit_default(v);
+
+}
+END_TEST
+
 TCase *libfyaml_case_generic(void)
 {
 	TCase *tc;
@@ -3105,6 +3153,9 @@ TCase *libfyaml_case_generic(void)
 	tcase_add_test(tc, gb_pfilter);
 	tcase_add_test(tc, gb_pmap);
 	tcase_add_test(tc, gb_preduce);
+
+	/* now time to do collection operations using the simple intefaces */
+	tcase_add_test(tc, simple_ops);
 
 	return tc;
 }
