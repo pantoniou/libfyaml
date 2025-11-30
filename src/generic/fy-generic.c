@@ -1087,6 +1087,10 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		if (op == FYGBOP_CONCAT || op == FYGBOP_REVERSE || op == FYGBOP_UNIQUE)
 			goto err_out;
 
+		/* the count was given in items not pairs */
+		if (flags & FYGBOPF_MAP_ITEM_COUNT)
+			count /= 2;
+
 		col_item_size = sizeof(fy_generic) * 2;
 		item_count = (op != FYGBOP_DISASSOC && op != FYGBOP_CONTAINS &&
 			      op != FYGBOP_MERGE && op != FYGBOP_SORT &&
