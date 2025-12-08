@@ -787,6 +787,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 		hash = fy_iovec_xxhash64(iov, iovcnt);
 
 again:
+	de = NULL;
 	chain_length = 0;
 
 	at_head = true;
