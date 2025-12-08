@@ -1855,7 +1855,7 @@ static inline size_t fy_generic_out_of_place_size_char_ptr(const char *p)
 	return FYGT_SIZE_ENCODING_MAX + strlen(p) + 1;
 }
 
-static inline size_t fy_generic_out_of_place_size_generic(...)
+static inline size_t fy_generic_out_of_place_size_generic(fy_generic v)
 {
 	/* should never have to do that */
 	return 0;

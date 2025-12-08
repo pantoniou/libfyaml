@@ -768,6 +768,7 @@ fy_op_map_filter_work(void *varg)
 	/* unified traversal for seq/map */
 	stride = arg->type == FYGT_SEQUENCE ? 1 : 2;
 	j = 0;
+	key = fy_invalid;
 	for (i = 0; i < arg->work_item_count; i += stride) {
 		if (stride <= 1) {
 			value = arg->work_items[i];
@@ -894,6 +895,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 
 	out = in = fy_invalid;
 	idx = SIZE_MAX;
+	fn.fn = NULL;
 
 	need_work_items = false;
 	need_copy_work_items = false;
@@ -905,7 +907,7 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	work_item_count = 0;
 	acc = fy_invalid;
 
-	va_start(ap, src);
+	va_start(ap, flags);
 	switch (op) {
 	case FYGBOP_CREATE_SEQ:
 	case FYGBOP_CREATE_MAP:
@@ -1270,7 +1272,8 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 			}
 			assert(k == work_item_count);
 		}
-	}
+	} else
+		work_items = NULL;
 
 	if (needs_thread_pool && !tp) {
 		memset(&tp_cfg, 0, sizeof(tp_cfg));

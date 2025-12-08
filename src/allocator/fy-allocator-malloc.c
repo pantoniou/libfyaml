@@ -193,8 +193,8 @@ void fy_malloc_dump(struct fy_allocator *a)
 		if (!mt)
 			continue;
 		fy_malloc_tag_list_lock(mt);
+		count = total = system_total = 0;
 		if (!fy_malloc_entry_list_empty(&mt->entries)) {
-			count = total = system_total = 0;
 			for (me = fy_malloc_entry_list_head(&mt->entries); me; me = fy_malloc_entry_next(&mt->entries, me)) {
 				count++;
 				total += me->size;
