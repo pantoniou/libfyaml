@@ -193,8 +193,8 @@ static inline void fy_cpu_relax(void)
 
 #define fy_atomic_get_and_clear_counter(_ptr) \
 	({ \
-		typeof(_ptr) __ptr = (_ptr); \
-		typeof(*__ptr + 0) __v = fy_atomic_load(__ptr); \
+		__typeof__(_ptr) __ptr = (_ptr); \
+		__typeof__(*__ptr + 0) __v = fy_atomic_load(__ptr); \
 		fy_atomic_fetch_sub(__ptr, __v); \
 		__v; \
 	})
