@@ -610,7 +610,7 @@ static inline size_t fy_collection_storage_size(bool is_map, size_t count)
 struct fy_generic_builder;
 
 #define fy_generic_typeof(_v) \
-	typeof(_Generic((_v), \
+	__typeof__(_Generic((_v), \
 		char *: ((char *)0), \
 		const char *: ((const char *)0), \
 		struct fy_generic_builder *: ((struct fy_generic_builder *)0), \
@@ -3022,7 +3022,7 @@ fy_generic_sequencep_get_const_map_pairp_default(const fy_generic_sequence *seqp
 
 #define fy_generic_sequence_get_default_coerse(_seq, _idxv, _dv) \
 	({ \
-		typeof ((_dv) + 0) __dv = (_dv); \
+		__typeof__((_dv) + 0) __dv = (_dv); \
 		fy_generic __idxv = fy_to_generic(_idxv); \
 		size_t __idxi = (size_t)fy_generic_get_unsigned_long_long_default(__idxv, (unsigned long long)-1); \
 		fy_generic_sequence_get_default((_seq), __idxi, (_dv)); \
@@ -3051,7 +3051,7 @@ fy_generic_sequencep_get_const_map_pairp_default(const fy_generic_sequence *seqp
 
 #define fy_generic_sequencep_get_default_coerse(_seqp, _idxv, _dv) \
 	({ \
-		typeof ((_dv) + 0) __dv = (_dv); \
+		__typeof__((_dv) + 0) __dv = (_dv); \
 		fy_generic __idxv = fy_to_generic(_idxv); \
 		size_t __idxi = (size_t)fy_generic_get_unsigned_long_long_default(__idxv, (unsigned long long)-1); \
 		fy_generic_sequencep_get_default((_seqp), __idxi, (_dv)); \

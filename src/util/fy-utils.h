@@ -54,7 +54,7 @@ int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info);
 #ifndef container_of
 #define container_of(ptr, type, member) \
 	({ \
-		const typeof(((type *)0)->member) *__mptr = (ptr); \
+		const __typeof__(((type *)0)->member) *__mptr = (ptr); \
 		(type *)((void *)__mptr - offsetof(type,member)); \
 	 })
 #endif
@@ -167,7 +167,7 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 
 /* true, if types are the same, false otherwise (depends on builtin_types_compatible_p) */
 #if defined(__has_builtin) && __has_builtin(__builtin_types_compatible_p)
-#define FY_SAME_TYPE(_a, _b) __builtin_types_compatible_p(typeof(_a), typeof(_b))
+#define FY_SAME_TYPE(_a, _b) __builtin_types_compatible_p(__typeof__(_a), __typeof__(_b))
 #else
 #define FY_SAME_TYPE(_a, _b) true
 #endif
@@ -182,8 +182,8 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 #else
 #define FY_ADD_OVERFLOW(_a, _b, _resp) \
 ({ \
-	typeof (_a) __a = (_a), __res; \
-	typeof (_b) __b = (_b); \
+	__typeof__(_a) __a = (_a), __res; \
+	__typeof__(_b) __b = (_b); \
 	bool __overflow; \
 	\
 	FY_CHECK_SAME_TYPE(__a, __b); \
@@ -202,8 +202,8 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 #else
 #define FY_SUB_OVERFLOW(_a, _b, _resp) \
 ({ \
-	typeof (_a) __a = (_a), __res; \
-	typeof (_b) __b = (_b); \
+	__typeof__(_a) __a = (_a), __res; \
+	__typeof__(_b) __b = (_b); \
 	bool __overflow; \
 	\
 	FY_CHECK_SAME_TYPE(__a, __b); \
@@ -222,8 +222,8 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 #else
 #define FY_MUL_OVERFLOW(_a, _b, _resp) \
 ({ \
-	typeof (_a) __a = (_a), __res; \
-	typeof (_b) __b = (_b); \
+	__typeof__(_a) __a = (_a), __res; \
+	__typeof__(_b) __b = (_b); \
 	bool __overflow; \
 	\
 	FY_CHECK_SAME_TYPE(__a, __b); \

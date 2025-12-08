@@ -55,7 +55,7 @@
 
 /* true, if types are the same, false otherwise (depends on builtin_types_compatible_p) */
 #if defined(__has_builtin) && __has_builtin(__builtin_types_compatible_p)
-#define SAME_TYPE(_a, _b) __builtin_types_compatible_p(typeof(_a), typeof(_b))
+#define SAME_TYPE(_a, _b) __builtin_types_compatible_p(__typeof__(_a), __typeof__(_b))
 #else
 #define SAME_TYPE(_a, _b) true
 #endif
@@ -70,8 +70,8 @@
 #else
 #define ADD_OVERFLOW(_a, _b, _resp) \
 ({ \
-	typeof (_a) __a = (_a), __res; \
-	typeof (_b) __b = (_b); \
+	__typeof__(_a) __a = (_a), __res; \
+	__typeof__(_b) __b = (_b); \
 	bool __overflow; \
 	\
 	CHECK_SAME_TYPE(__a, __b); \
@@ -90,8 +90,8 @@
 #else
 #define SUB_OVERFLOW(_a, _b, _resp) \
 ({ \
-	typeof (_a) __a = (_a), __res; \
-	typeof (_b) __b = (_b); \
+	__typeof__(_a) __a = (_a), __res; \
+	__typeof__(_b) __b = (_b); \
 	bool __overflow; \
 	\
 	CHECK_SAME_TYPE(__a, __b); \
@@ -110,8 +110,8 @@
 #else
 #define MUL_OVERFLOW(_a, _b, _resp) \
 ({ \
-	typeof (_a) __a = (_a), __res; \
-	typeof (_b) __b = (_b); \
+	__typeof__(_a) __a = (_a), __res; \
+	__typeof__(_b) __b = (_b); \
 	bool __overflow; \
 	\
 	CHECK_SAME_TYPE(__a, __b); \
