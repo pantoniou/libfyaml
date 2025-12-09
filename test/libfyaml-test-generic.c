@@ -1757,7 +1757,7 @@ START_TEST(gb_basic_collection_ops)
 	items[1] = fy_value("Hello");
 	items[2] = fy_value(false);
 
-	v = fy_gb_collection_op(gb, FYGBOPF_CREATE_SEQ, 3, items);
+	v = fy_generic_op(gb, FYGBOPF_CREATE_SEQ, 3, items);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 3);
 	ck_assert(fy_get(v, 0, -1) == 1000);
@@ -1773,7 +1773,7 @@ START_TEST(gb_basic_collection_ops)
 	items[2] = fy_value("bar");
 	items[3] = fy_value(200);
 
-	v = fy_gb_collection_op(gb, FYGBOPF_CREATE_MAP, 2, items);
+	v = fy_generic_op(gb, FYGBOPF_CREATE_MAP, 2, items);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 2);
 	ck_assert(fy_get(v, "foo", -1) == 100);
@@ -1785,7 +1785,7 @@ START_TEST(gb_basic_collection_ops)
 	/* testing insert (start with empty sequence) () -> (99) */
 	seq = fy_sequence(gb);
 	items[0] = fy_value(99);
-	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, seq, 0, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_INSERT, seq, 1, items, 0);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 1);
 	ck_assert(fy_get(v, 0, -1) == 99);
@@ -1797,7 +1797,7 @@ START_TEST(gb_basic_collection_ops)
 	seq = fy_sequence(gb);
 	items[0] = fy_value(99);
 	items[1] = fy_value(999);
-	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, seq, 0, 2, items);
+	v = fy_generic_op(gb, FYGBOPF_INSERT, seq, 2, items, 0);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 2);
 	ck_assert(fy_get(v, 0, -1) == 99);
@@ -1809,7 +1809,7 @@ START_TEST(gb_basic_collection_ops)
 	/* testing insert at the beginning (1, 2) -> (100, 1, 2) */
 	seq = fy_sequence(gb, 1, 2);
 	items[0] = fy_value(100);
-	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, seq, 0, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_INSERT, seq, 1, items, 0);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 3);
 	ck_assert(fy_get(v, 0, -1) == 100);
@@ -1822,7 +1822,7 @@ START_TEST(gb_basic_collection_ops)
 	/* testing insert at the end (1, 2) -> (1, 2, 100) */
 	seq = fy_sequence(gb, 1, 2);
 	items[0] = fy_value(100);
-	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, seq, 2, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_INSERT, seq, 1, items, 2);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 3);
 	ck_assert(fy_get(v, 0, -1) == 1);
@@ -1835,7 +1835,7 @@ START_TEST(gb_basic_collection_ops)
 	/* testing insert at the middle (1, 2) -> (1, 300, 2) */
 	seq = fy_sequence(gb, 1, 2);
 	items[0] = fy_value(300);
-	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, seq, 1, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_INSERT, seq, 1, items, 1);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 3);
 	ck_assert(fy_get(v, 0, -1) == 1);
@@ -1849,7 +1849,7 @@ START_TEST(gb_basic_collection_ops)
 	map = fy_mapping(gb);
 	items[0] = fy_value("foo");
 	items[1] = fy_value(10);
-	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, map, 0, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_INSERT, map, 1, items, 0);
 	ck_assert(fy_generic_is_mapping(v));
 	len = fy_len(v);
 	ck_assert(len == 1);
@@ -1867,7 +1867,7 @@ START_TEST(gb_basic_collection_ops)
 	items[1] = fy_value(100);
 	items[2] = fy_value("baz");
 	items[3] = fy_value(-100);
-	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, map, 0, 2, items);
+	v = fy_generic_op(gb, FYGBOPF_INSERT, map, 2, items, 0);
 	ck_assert(fy_generic_is_mapping(v));
 	len = fy_len(v);
 	ck_assert(len == 2);
@@ -1887,7 +1887,7 @@ START_TEST(gb_basic_collection_ops)
 	map = fy_mapping(gb, "foo", 1, "bar", 2);
 	items[0] = fy_value("baz");
 	items[1] = fy_value(100);
-	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, map, 0, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_INSERT, map, 1, items, 0);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 3);
 	ck_assert(fy_get(v, "foo", -1) == 1);
@@ -1904,7 +1904,7 @@ START_TEST(gb_basic_collection_ops)
 	map = fy_mapping(gb, "foo", 1, "bar", 2);
 	items[0] = fy_value("baz");
 	items[1] = fy_value(99);
-	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, map, 2, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_INSERT, map, 1, items, 2);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 3);
 	ck_assert(fy_get(v, "foo", -1) == 1);
@@ -1921,7 +1921,7 @@ START_TEST(gb_basic_collection_ops)
 	map = fy_mapping(gb, "foo", 1, "bar", 2);
 	items[0] = fy_value("baz");
 	items[1] = fy_value(300);
-	v = fy_gb_collection_op(gb, FYGBOPF_INSERT, map, 1, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_INSERT, map, 1, items, 1);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 3);
 	ck_assert(fy_get(v, "foo", -1) == 1);
@@ -1937,7 +1937,7 @@ START_TEST(gb_basic_collection_ops)
 	/* testing replace (start with empty sequence) () -> (99) */
 	seq = fy_sequence(gb);
 	items[0] = fy_value(99);
-	v = fy_gb_collection_op(gb, FYGBOPF_REPLACE, seq, 0, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_REPLACE, seq, 1, items, 0);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 1);
 	ck_assert(fy_get(v, 0, -1) == 99);
@@ -1948,7 +1948,7 @@ START_TEST(gb_basic_collection_ops)
 	/* testing replace (single item, replace it) (100) -> (99) */
 	seq = fy_sequence(gb, 100);
 	items[0] = fy_value(99);
-	v = fy_gb_collection_op(gb, FYGBOPF_REPLACE, seq, 0, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_REPLACE, seq, 1, items, 0);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 1);
 	ck_assert(fy_get(v, 0, -1) == 99);
@@ -1959,7 +1959,7 @@ START_TEST(gb_basic_collection_ops)
 	/* testing replace (single item, replace in the beginning) (100, 200) -> (98, 200) */
 	seq = fy_sequence(gb, 100, 200);
 	items[0] = fy_value(98);
-	v = fy_gb_collection_op(gb, FYGBOPF_REPLACE, seq, 0, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_REPLACE, seq, 1, items, 0);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 2);
 	ck_assert(fy_get(v, 0, -1) == 98);
@@ -1971,7 +1971,7 @@ START_TEST(gb_basic_collection_ops)
 	/* testing replace (single item, replace in the middle) (100, 1000, 200) -> (100, 1, 200) */
 	seq = fy_sequence(gb, 100, 1000, 200);
 	items[0] = fy_value(1);
-	v = fy_gb_collection_op(gb, FYGBOPF_REPLACE, seq, 1, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_REPLACE, seq, 1, items, 1);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 3);
 	ck_assert(fy_get(v, 0, -1) == 100);
@@ -1984,7 +1984,7 @@ START_TEST(gb_basic_collection_ops)
 	/* testing append (single item) (100, 1000, 200) -> (100, 1000, 200, 1) */
 	seq = fy_sequence(gb, 100, 1000, 200);
 	items[0] = fy_value(1);
-	v = fy_gb_collection_op(gb, FYGBOPF_APPEND, seq, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_APPEND, seq, 1, items);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 4);
 	ck_assert(fy_get(v, 0, -1) == 100);
@@ -2013,7 +2013,7 @@ START_TEST(gb_assoc_deassoc)
 	map = fy_mapping();
 	items[0] = fy_value("foo");
 	items[1] = fy_value(10);
-	v = fy_gb_collection_op(gb, FYGBOPF_ASSOC, map, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_ASSOC, map, 1, items);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 1);
 	ck_assert(fy_get(v, "foo", -1) == 10);
@@ -2026,7 +2026,7 @@ START_TEST(gb_assoc_deassoc)
 	map = fy_mapping("bar", 100);
 	items[0] = fy_value("foo");
 	items[1] = fy_value(10);
-	v = fy_gb_collection_op(gb, FYGBOPF_ASSOC, map, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_ASSOC, map, 1, items);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 2);
 	ck_assert(fy_get(v, "bar", -1) == 100);
@@ -2041,7 +2041,7 @@ START_TEST(gb_assoc_deassoc)
 	map = fy_mapping("bar", 100);
 	items[0] = fy_value("bar");
 	items[1] = fy_value(10);
-	v = fy_gb_collection_op(gb, FYGBOPF_ASSOC, map, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_ASSOC, map, 1, items);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 1);
 	ck_assert(fy_get(v, "bar", -1) == 10);
@@ -2056,7 +2056,7 @@ START_TEST(gb_assoc_deassoc)
 	items[1] = fy_value(10);
 	items[2] = fy_value("baz");
 	items[3] = fy_value(1000);
-	v = fy_gb_collection_op(gb, FYGBOPF_ASSOC, map, 2, items);
+	v = fy_generic_op(gb, FYGBOPF_ASSOC, map, 2, items);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 3);
 	ck_assert(fy_get(v, "foo", -1) == 10);
@@ -2072,7 +2072,7 @@ START_TEST(gb_assoc_deassoc)
 	/* disassociate, mapping goes empty ("bar": 100) -> () */
 	map = fy_mapping("bar", 100);
 	items[0] = fy_value("bar");
-	v = fy_gb_collection_op(gb, FYGBOPF_DISASSOC, map, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_DISASSOC, map, 1, items);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 0);
 	/* must be exactly empty */
@@ -2084,7 +2084,7 @@ START_TEST(gb_assoc_deassoc)
 	/* disassociate, mapping is unchanged ("bar": 100) -> ("bar": 100) */
 	map = fy_mapping("bar", 100);
 	items[0] = fy_value("foo");
-	v = fy_gb_collection_op(gb, FYGBOPF_DISASSOC, map, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_DISASSOC, map, 1, items);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 1);
 	ck_assert(fy_get(v, "bar", -1) == 100);
@@ -2115,19 +2115,19 @@ START_TEST(gb_map_utils)
 
 	/* empty map, return keys, values, items as an empty sequence */
 	map = fy_mapping();
-	v = fy_gb_collection_op(gb, FYGBOPF_KEYS, map);
+	v = fy_generic_op(gb, FYGBOPF_KEYS, map);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(v.v == fy_seq_empty_value);
 	printf("> map-keys-on-empty: ");
 	fy_generic_emit_default(v);
 
-	v = fy_gb_collection_op(gb, FYGBOPF_VALUES, map);
+	v = fy_generic_op(gb, FYGBOPF_VALUES, map);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(v.v == fy_seq_empty_value);
 	printf("> map-values-on-empty: ");
 	fy_generic_emit_default(v);
 
-	v = fy_gb_collection_op(gb, FYGBOPF_ITEMS, map);
+	v = fy_generic_op(gb, FYGBOPF_ITEMS, map);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(v.v == fy_seq_empty_value);
 	printf("> map-items-on-empty: ");
@@ -2135,7 +2135,7 @@ START_TEST(gb_map_utils)
 
 	/* single pair map, return keys, values, items as a single item sequence */
 	map = fy_mapping("foo", 100);
-	v = fy_gb_collection_op(gb, FYGBOPF_KEYS, map);
+	v = fy_generic_op(gb, FYGBOPF_KEYS, map);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 1);
 	str = fy_get(v, 0, "");
@@ -2143,7 +2143,7 @@ START_TEST(gb_map_utils)
 	printf("> map-keys-on-1: ");
 	fy_generic_emit_default(v);
 
-	v = fy_gb_collection_op(gb, FYGBOPF_VALUES, map);
+	v = fy_generic_op(gb, FYGBOPF_VALUES, map);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 1);
 	ival = fy_get(v, 0, -1);
@@ -2151,7 +2151,7 @@ START_TEST(gb_map_utils)
 	printf("> map-values-on-1: ");
 	fy_generic_emit_default(v);
 
-	v = fy_gb_collection_op(gb, FYGBOPF_ITEMS, map);
+	v = fy_generic_op(gb, FYGBOPF_ITEMS, map);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 1);
 	seq = fy_get(v, 0, fy_invalid);
@@ -2165,7 +2165,7 @@ START_TEST(gb_map_utils)
 
 	/* bigger map */
 	map = fy_mapping("foo", 100, "bar", 200, "baz", 300, "long string key", false);
-	v = fy_gb_collection_op(gb, FYGBOPF_KEYS, map);
+	v = fy_generic_op(gb, FYGBOPF_KEYS, map);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 4);
 	str = fy_get(v, 0, "");
@@ -2183,38 +2183,38 @@ START_TEST(gb_map_utils)
 	/* contains on an empty map  */
 	map = fy_mapping();
 	items[0] = fy_value("foo");
-	v = fy_gb_collection_op(gb, FYGBOPF_CONTAINS, map, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_CONTAINS, map, 1, items);
 	ck_assert(v.v == fy_false_value);
 
 	/* contains on an map which does not contain the key */
 	map = fy_mapping("bar", 10);
 	items[0] = fy_value("foo");
-	v = fy_gb_collection_op(gb, FYGBOPF_CONTAINS, map, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_CONTAINS, map, 1, items);
 	ck_assert(v.v == fy_false_value);
 
 	/* contains on an map which contains the key */
 	map = fy_mapping("foo", 100);
 	items[0] = fy_value("foo");
-	v = fy_gb_collection_op(gb, FYGBOPF_CONTAINS, map, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_CONTAINS, map, 1, items);
 	ck_assert(v.v == fy_true_value);
 
 	/* contains on an map which does not contain any of the keys */
 	map = fy_mapping("foo", 100, "bar", 1000, "baz", 5);
 	items[0] = fy_value("nope");
 	items[1] = fy_value("neither");
-	v = fy_gb_collection_op(gb, FYGBOPF_CONTAINS, map, 2, items);
+	v = fy_generic_op(gb, FYGBOPF_CONTAINS, map, 2, items);
 	ck_assert(v.v == fy_false_value);
 
 	/* contains on an map which contains the second key */
 	map = fy_mapping("foo", 100, "bar", 1000, "baz", 5);
 	items[0] = fy_value("nope");
 	items[1] = fy_value("bar");
-	v = fy_gb_collection_op(gb, FYGBOPF_CONTAINS, map, 2, items);
+	v = fy_generic_op(gb, FYGBOPF_CONTAINS, map, 2, items);
 	ck_assert(v.v == fy_true_value);
 
 	/* merge, on empty map () -> merge nothing */
 	map = fy_map_empty; // fy_mapping();
-	v = fy_gb_collection_op(gb, FYGBOPF_MERGE, map, 0, NULL);
+	v = fy_generic_op(gb, FYGBOPF_MERGE, map, 0, NULL);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(v.v == fy_map_empty_value);
 	printf("> merge-on-empty-0: ");
@@ -2223,7 +2223,7 @@ START_TEST(gb_map_utils)
 	/* merge, on empty map () -> merge nothing */
 	map = fy_mapping();
 	items[0] = fy_mapping();
-	v = fy_gb_collection_op(gb, FYGBOPF_MERGE, map, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_MERGE, map, 1, items);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(v.v == fy_map_empty_value);
 	printf("> merge-on-empty-0: ");
@@ -2231,7 +2231,7 @@ START_TEST(gb_map_utils)
 
 	/* merge, on simple map ("foo": 10) -> ("foo": 10) */
 	map = fy_mapping("foo", 10);
-	v = fy_gb_collection_op(gb, FYGBOPF_MERGE, map, 0, NULL);
+	v = fy_generic_op(gb, FYGBOPF_MERGE, map, 0, NULL);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 1);
 	ck_assert(fy_get(v, "foo", -1) == 10);
@@ -2243,7 +2243,7 @@ START_TEST(gb_map_utils)
 	 * ("foo": 10, "bar": 100, "foo": 200, "baz": 1) -> ("foo": 200, "bar": 100, "baz": 1)
 	 */
 	map = fy_mapping("foo", 10, "bar", 100, "foo", 200, "baz", 1);
-	v = fy_gb_collection_op(gb, FYGBOPF_MERGE, map, 0, NULL);
+	v = fy_generic_op(gb, FYGBOPF_MERGE, map, 0, NULL);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 3);
 	ck_assert(fy_get(v, "foo", -1) == 200);
@@ -2261,7 +2261,7 @@ START_TEST(gb_map_utils)
 	map = fy_mapping("foo", 10, "bar", 100);
 	items[0] = fy_mapping("bar", 99);
 	items[1] = fy_mapping("foo", 9);
-	v = fy_gb_collection_op(gb, FYGBOPF_MERGE, map, 2, items);
+	v = fy_generic_op(gb, FYGBOPF_MERGE, map, 2, items);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 2);
 	ck_assert(fy_get(v, "foo", -1) == 9);
@@ -2276,7 +2276,7 @@ START_TEST(gb_map_utils)
 	items[0] = fy_mapping("z", 1000);
 	items[1] = fy_mapping();
 	items[2] = fy_mapping("a", 0);
-	v = fy_gb_collection_op(gb, FYGBOPF_SORT, map, 3, items);
+	v = fy_generic_op(gb, FYGBOPF_SORT, map, 3, items);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 4);
 	ck_assert(fy_get(v, "a", -1) == 0);
@@ -2306,7 +2306,7 @@ START_TEST(gb_seq_utils)
 
 	/* empty sequence, concat with nothing -> empty sequence */
 	seq = fy_sequence();
-	v = fy_gb_collection_op(gb, FYGBOPF_CONCAT, seq, 0, NULL);
+	v = fy_generic_op(gb, FYGBOPF_CONCAT, seq, 0, NULL);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(v.v == fy_seq_empty_value);
 	printf("> seq-empty-concat-0: ");
@@ -2316,7 +2316,7 @@ START_TEST(gb_seq_utils)
 	seq = fy_sequence();
 	items[0] = fy_sequence();
 	items[1] = fy_sequence();
-	v = fy_gb_collection_op(gb, FYGBOPF_CONCAT, seq, 2, items);
+	v = fy_generic_op(gb, FYGBOPF_CONCAT, seq, 2, items);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(v.v == fy_seq_empty_value);
 	printf("> seq-empty-concat-empty: ");
@@ -2326,7 +2326,7 @@ START_TEST(gb_seq_utils)
 	seq = fy_sequence();
 	items[0] = fy_sequence(1, 2);
 	items[1] = fy_sequence(3);
-	v = fy_gb_collection_op(gb, FYGBOPF_CONCAT, seq, 2, items);
+	v = fy_generic_op(gb, FYGBOPF_CONCAT, seq, 2, items);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 3);
 	ck_assert(fy_get(v, 0, -1) == 1);
@@ -2338,7 +2338,7 @@ START_TEST(gb_seq_utils)
 	/* a non empty sequence, concat with empty sequences -> same sequence */
 	seq = fy_sequence(1, 2, 3);
 	items[0] = fy_sequence();
-	v = fy_gb_collection_op(gb, FYGBOPF_CONCAT, seq, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_CONCAT, seq, 1, items);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(!fy_generic_compare(seq, v));
 	printf("> seq-concat-empty: ");
@@ -2348,7 +2348,7 @@ START_TEST(gb_seq_utils)
 	seq = fy_sequence(1, 2, 3);
 	items[0] = fy_sequence(4, 5);
 	items[1] = fy_sequence(6, 7);
-	v = fy_gb_collection_op(gb, FYGBOPF_CONCAT, seq, 2, items);
+	v = fy_generic_op(gb, FYGBOPF_CONCAT, seq, 2, items);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 7);
 	ck_assert(fy_get(v, 0, -1) == 1);
@@ -2367,7 +2367,7 @@ START_TEST(gb_seq_utils)
 	items[0] = fy_sequence(4, 5);
 	items[1] = fy_sequence();
 	items[2] = fy_sequence(6, 7);
-	v = fy_gb_collection_op(gb, FYGBOPF_CONCAT, seq, 3, items);
+	v = fy_generic_op(gb, FYGBOPF_CONCAT, seq, 3, items);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 7);
 	ck_assert(fy_get(v, 0, -1) == 1);
@@ -2383,7 +2383,7 @@ START_TEST(gb_seq_utils)
 
 	/* empty sequence, reverse with nothing -> empty sequence */
 	seq = fy_sequence();
-	v = fy_gb_collection_op(gb, FYGBOPF_REVERSE, seq, 0, NULL);
+	v = fy_generic_op(gb, FYGBOPF_REVERSE, seq, 0, NULL);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(v.v == fy_seq_empty_value);
 	printf("> seq-empty-reverse-0: ");
@@ -2393,7 +2393,7 @@ START_TEST(gb_seq_utils)
 	seq = fy_sequence();
 	items[0] = fy_sequence();
 	items[1] = fy_sequence();
-	v = fy_gb_collection_op(gb, FYGBOPF_REVERSE, seq, 2, items);
+	v = fy_generic_op(gb, FYGBOPF_REVERSE, seq, 2, items);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(v.v == fy_seq_empty_value);
 	printf("> seq-empty-reverse-empty: ");
@@ -2403,7 +2403,7 @@ START_TEST(gb_seq_utils)
 	seq = fy_sequence();
 	items[0] = fy_sequence(1, 2);
 	items[1] = fy_sequence(3);
-	v = fy_gb_collection_op(gb, FYGBOPF_REVERSE, seq, 2, items);
+	v = fy_generic_op(gb, FYGBOPF_REVERSE, seq, 2, items);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 3);
 	ck_assert(fy_get(v, 0, -1) == 3);
@@ -2415,7 +2415,7 @@ START_TEST(gb_seq_utils)
 	/* a non empty sequence, reverse with empty sequences */
 	seq = fy_sequence(1, 2, 3);
 	items[0] = fy_sequence();
-	v = fy_gb_collection_op(gb, FYGBOPF_REVERSE, seq, 1, items);
+	v = fy_generic_op(gb, FYGBOPF_REVERSE, seq, 1, items);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 3);
 	ck_assert(fy_get(v, 0, -1) == 3);
@@ -2428,7 +2428,7 @@ START_TEST(gb_seq_utils)
 	seq = fy_sequence(1, 2, 3);
 	items[0] = fy_sequence(4, 5);
 	items[1] = fy_sequence(6, 7);
-	v = fy_gb_collection_op(gb, FYGBOPF_REVERSE, seq, 2, items);
+	v = fy_generic_op(gb, FYGBOPF_REVERSE, seq, 2, items);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 7);
 	ck_assert(fy_get(v, 0, -1) == 7);
@@ -2447,7 +2447,7 @@ START_TEST(gb_seq_utils)
 	items[0] = fy_sequence(4, 5);
 	items[1] = fy_sequence();
 	items[2] = fy_sequence(6, 7);
-	v = fy_gb_collection_op(gb, FYGBOPF_REVERSE, seq, 3, items);
+	v = fy_generic_op(gb, FYGBOPF_REVERSE, seq, 3, items);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 7);
 	ck_assert(fy_get(v, 0, -1) == 7);
@@ -2466,7 +2466,7 @@ START_TEST(gb_seq_utils)
 	items[0] = fy_sequence(1, 1);
 	items[1] = fy_sequence();
 	items[2] = fy_sequence(2, 3);
-	v = fy_gb_collection_op(gb, FYGBOPF_UNIQUE, seq, 3, items);
+	v = fy_generic_op(gb, FYGBOPF_UNIQUE, seq, 3, items);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 3);
 	ck_assert(fy_get(v, 0, -1) == 1);
@@ -2481,7 +2481,7 @@ START_TEST(gb_seq_utils)
 	items[0] = fy_sequence(4, 3);
 	items[1] = fy_sequence();
 	items[2] = fy_sequence(2, 1);
-	v = fy_gb_collection_op(gb, FYGBOPF_SORT, seq, 3, items);
+	v = fy_generic_op(gb, FYGBOPF_SORT, seq, 3, items);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 7);
 	ck_assert(fy_get(v, 0, -1) == 1);
@@ -2516,7 +2516,7 @@ START_TEST(gb_filter)
 
 	/* filter an empty sequence */
 	seq = fy_sequence();
-	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, seq, 0, NULL, test_filter_over_100);
+	v = fy_generic_op(gb, FYGBOPF_FILTER, seq, 0, NULL, test_filter_over_100);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(v.v == fy_seq_empty_value);
 	printf("> filter-seq-empty: ");
@@ -2524,7 +2524,7 @@ START_TEST(gb_filter)
 
 	/* filter a single sequence for items > 100 (none exist) */
 	seq = fy_sequence(7, 6, 5, 8, -100);
-	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, seq, 0, NULL, test_filter_over_100);
+	v = fy_generic_op(gb, FYGBOPF_FILTER, seq, 0, NULL, test_filter_over_100);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(v.v == fy_seq_empty_value);
 	printf("> filter-seq-over-100 (empty): ");
@@ -2532,7 +2532,7 @@ START_TEST(gb_filter)
 
 	/* filter a single sequence for items > 100 (all exist) */
 	seq = fy_sequence(107, 106, 105, 108, 1000);
-	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, seq, 0, NULL, test_filter_over_100);
+	v = fy_generic_op(gb, FYGBOPF_FILTER, seq, 0, NULL, test_filter_over_100);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 5);
 	ck_assert(fy_get(v, 0, -1) == 107);
@@ -2545,7 +2545,7 @@ START_TEST(gb_filter)
 
 	/* filter a single sequence for items > 100 (one exists) */
 	seq = fy_sequence(7, 6, 5, 101, 8, -100);
-	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, seq, 0, NULL, test_filter_over_100);
+	v = fy_generic_op(gb, FYGBOPF_FILTER, seq, 0, NULL, test_filter_over_100);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 1);
 	ck_assert(fy_get(v, 0, -1) == 101);
@@ -2556,7 +2556,7 @@ START_TEST(gb_filter)
 	seq = fy_sequence(7, 6, 5, 101, 8, -100);
 	items[0] = fy_sequence(1, 102);
 	items[1] = fy_sequence(1, 3);
-	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, seq, 2, items, test_filter_over_100);
+	v = fy_generic_op(gb, FYGBOPF_FILTER, seq, 2, items, test_filter_over_100);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 2);
 	ck_assert(fy_get(v, 0, -1) == 101);
@@ -2566,7 +2566,7 @@ START_TEST(gb_filter)
 
 	/* filter an empty map */
 	map = fy_mapping();
-	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, map, 0, NULL, test_filter_over_100);
+	v = fy_generic_op(gb, FYGBOPF_FILTER, map, 0, NULL, test_filter_over_100);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(v.v == fy_map_empty_value);
 	printf("> filter-map-empty: ");
@@ -2574,7 +2574,7 @@ START_TEST(gb_filter)
 
 	/* filter a single mapping for items > 100 (none exist) */
 	map = fy_mapping("foo", 7, "bar", 6, "frooz", 5, "whoa", 8, "last", -100);
-	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, map, 0, NULL, test_filter_over_100);
+	v = fy_generic_op(gb, FYGBOPF_FILTER, map, 0, NULL, test_filter_over_100);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(v.v == fy_map_empty_value);
 	printf("> filter-map-over-100 (empty): ");
@@ -2582,7 +2582,7 @@ START_TEST(gb_filter)
 
 	/* filter a single mapping for items > 100 (all exist) */
 	map = fy_mapping("foo", 107, "bar", 106, "baz", 1000);
-	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, map, 0, NULL, test_filter_over_100);
+	v = fy_generic_op(gb, FYGBOPF_FILTER, map, 0, NULL, test_filter_over_100);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 3);
 	ck_assert(fy_get(v, "foo", -1) == 107);
@@ -2596,7 +2596,7 @@ START_TEST(gb_filter)
 
 	/* filter a single mapping for items > 100 (one exists) */
 	map = fy_mapping("a", 7, "baz", 6, "whoa", 5, "foo", 101, "z", 8, "zz", -100);
-	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, map, 0, NULL, test_filter_over_100);
+	v = fy_generic_op(gb, FYGBOPF_FILTER, map, 0, NULL, test_filter_over_100);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 1);
 	ck_assert(fy_get(v, "foo", -1) == 101);
@@ -2608,7 +2608,7 @@ START_TEST(gb_filter)
 	map = fy_mapping("a", 7, "b", 6, "c", 5, "foo", 101, "d", 8, "e", -100);
 	items[0] = fy_mapping("aa", 1, "bar", 102);
 	items[1] = fy_mapping("aaa", 1, "bbb", 3);
-	v = fy_gb_collection_op(gb, FYGBOPF_FILTER, map, 2, items, test_filter_over_100);
+	v = fy_generic_op(gb, FYGBOPF_FILTER, map, 2, items, test_filter_over_100);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 2);
 	ck_assert(fy_get(v, "foo", -1) == 101);
@@ -2653,7 +2653,7 @@ START_TEST(gb_map)
 
 	/* map over an empty sequence */
 	seq = fy_sequence();
-	v = fy_gb_collection_op(gb, FYGBOPF_MAP, seq, 0, NULL, test_map_double);
+	v = fy_generic_op(gb, FYGBOPF_MAP, seq, 0, NULL, test_map_double);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(v.v == fy_seq_empty_value);
 	printf("> map-seq-empty: ");
@@ -2661,7 +2661,7 @@ START_TEST(gb_map)
 
 	/* map a single sequence of numbers */
 	seq = fy_sequence(7, 6, 5, 8);
-	v = fy_gb_collection_op(gb, FYGBOPF_MAP, seq, 0, NULL, test_map_double);
+	v = fy_generic_op(gb, FYGBOPF_MAP, seq, 0, NULL, test_map_double);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 4);
 	ck_assert(fy_get(v, 0, -1) == 14);
@@ -2673,7 +2673,7 @@ START_TEST(gb_map)
 
 	/* map to prefix a sequence of strings */
 	seq = fy_sequence("foo", "bar", "baz");
-	v = fy_gb_collection_op(gb, FYGBOPF_MAP, seq, 0, NULL, test_map_prefix_str);
+	v = fy_generic_op(gb, FYGBOPF_MAP, seq, 0, NULL, test_map_prefix_str);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 3);
 	str = fy_get(v, 0, "");
@@ -2687,7 +2687,7 @@ START_TEST(gb_map)
 
 	/* map a single map of numbers */
 	map = fy_mapping("foo", 7, "bar", 6);
-	v = fy_gb_collection_op(gb, FYGBOPF_MAP, map, 0, NULL, test_map_double);
+	v = fy_generic_op(gb, FYGBOPF_MAP, map, 0, NULL, test_map_double);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 2);
 	ck_assert(fy_get(v, "foo", -1) == 14);
@@ -2699,7 +2699,7 @@ START_TEST(gb_map)
 
 	/* map and filter a single sequence of numbers */
 	seq = fy_sequence(7, 10, 4, 20);
-	v = fy_gb_collection_op(gb, FYGBOPF_MAP_FILTER, seq, 0, NULL, test_map_filter_double_if_over_10);
+	v = fy_generic_op(gb, FYGBOPF_MAP_FILTER, seq, 0, NULL, test_map_filter_double_if_over_10);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 2);
 	ck_assert(fy_get(v, 0, -1) == 20);
@@ -2741,7 +2741,7 @@ static fy_generic fy_generic_test_map_reducer(struct fy_generic_builder *gb, fy_
 		old_val = fy_get(accv, pairs[i].key, 0);
 		kv[0] = pairs[i].key;
 		kv[1] = fy_value(gb, old_val + new_val);
-		accv = fy_gb_collection_op(gb, FYGBOPF_ASSOC, accv, 1, kv);
+		accv = fy_generic_op(gb, FYGBOPF_ASSOC, accv, 1, kv);
 	}
 	return accv;
 }
@@ -2761,7 +2761,7 @@ START_TEST(gb_reduce)
 
 	/* sum an empty sequence */
 	seq = fy_sequence();
-	v = fy_gb_collection_op(gb, FYGBOPF_REDUCE, seq, 0, NULL, fy_value(gb, 0), fy_generic_test_sum_reducer);
+	v = fy_generic_op(gb, FYGBOPF_REDUCE, seq, 0, NULL, fy_generic_test_sum_reducer, fy_value(gb, 0));
 	sum = fy_cast(v, INT_MIN);
 	ck_assert(sum == 0);
 	printf("> reduce-seq-sum (empty): ");
@@ -2769,7 +2769,7 @@ START_TEST(gb_reduce)
 
 	/* sum a sequence of numbers */
 	seq = fy_sequence(7, 6, 5, 8);
-	v = fy_gb_collection_op(gb, FYGBOPF_REDUCE, seq, 0, NULL, fy_value(gb, 0), fy_generic_test_sum_reducer);
+	v = fy_generic_op(gb, FYGBOPF_REDUCE, seq, 0, NULL, fy_generic_test_sum_reducer, fy_value(gb, 0));
 	sum = fy_cast(v, INT_MIN);
 	ck_assert(sum == 26);
 	printf("> reduce-seq-sum (1): ");
@@ -2777,7 +2777,7 @@ START_TEST(gb_reduce)
 
 	/* concat a number of strings */
 	seq = fy_sequence("0123", "45", "6", "789");
-	v = fy_gb_collection_op(gb, FYGBOPF_REDUCE, seq, 0, NULL, fy_value(gb, ""), fy_generic_test_concat_str_reducer);
+	v = fy_generic_op(gb, FYGBOPF_REDUCE, seq, 0, NULL, fy_generic_test_concat_str_reducer, fy_value(gb, ""));
 	str = fy_cast(v, "");
 	ck_assert(!strcmp(str, "0123456789"));
 	printf("> reduce-seq-concat (1): ");
@@ -2785,7 +2785,7 @@ START_TEST(gb_reduce)
 
 	/* sum the values of a mapping */
 	map = fy_mapping("a", 7, "b", 6, "c", 5, "d", 8);
-	v = fy_gb_collection_op(gb, FYGBOPF_REDUCE, map, 0, NULL, fy_value(gb, 0), fy_generic_test_sum_reducer);
+	v = fy_generic_op(gb, FYGBOPF_REDUCE, map, 0, NULL, fy_generic_test_sum_reducer, fy_value(gb, 0));
 	sum = fy_cast(v, 0);
 	ck_assert(sum == 26);
 	printf("> reduce-map-sum (1): ");
@@ -2796,7 +2796,7 @@ START_TEST(gb_reduce)
 			fy_mapping("foo", 10, "bar", 100),
 			fy_mapping("baz", 1),
 			fy_mapping("foo", 1, "baz", 3));
-	v = fy_gb_collection_op(gb, FYGBOPF_REDUCE, seq, 0, NULL, fy_mapping(), fy_generic_test_map_reducer);
+	v = fy_generic_op(gb, FYGBOPF_REDUCE, seq, 0, NULL, fy_generic_test_map_reducer, fy_mapping());
 	ck_assert(fy_len(v) == 3);
 	ck_assert(fy_get(v, "foo", -1) == 11);
 	ck_assert(fy_get_at(v, 0, -1) == 11);
@@ -2840,7 +2840,7 @@ START_TEST(gb_pfilter)
 
 		/* parallel filter an empty sequence */
 		seq = fy_sequence();
-		v = fy_gb_collection_op(gb, FYGBOPF_FILTER | FYGBOPF_PARALLEL, seq, 0, NULL, test_filter_over_100, NULL);
+		v = fy_generic_op(gb, FYGBOPF_FILTER | FYGBOPF_PARALLEL, seq, 0, NULL, NULL, test_filter_over_100);
 		ck_assert(fy_generic_is_sequence(v));
 		ck_assert(v.v == fy_seq_empty_value);
 		printf("> pfilter-empty: ");
@@ -2850,7 +2850,7 @@ START_TEST(gb_pfilter)
 		for (i = 0; i < num_items; i++)
 			items[i] = fy_value(gb, (int)i);
 		seq = fy_gb_sequence_create(gb, num_items, items);
-		v = fy_gb_collection_op(gb, FYGBOPF_FILTER | FYGBOPF_PARALLEL, seq, 0, NULL, test_filter_over_100, NULL);
+		v = fy_generic_op(gb, FYGBOPF_FILTER | FYGBOPF_PARALLEL, seq, 0, NULL, NULL, test_filter_over_100);
 		ck_assert(fy_generic_is_sequence(v));
 		vlen = fy_len(v);
 		ck_assert(vlen == num_items - 101);  /* 101..<num_items> */
@@ -2870,7 +2870,7 @@ START_TEST(gb_pfilter)
 		for (i = 0; i < num_items; i++)
 			items[i] = fy_value(gb, ((int)i % 100));
 		seq = fy_gb_sequence_create(gb, num_items, items);
-		v = fy_gb_collection_op(gb, FYGBOPF_FILTER | FYGBOPF_PARALLEL, seq, 0, NULL, test_filter_over_100, NULL);
+		v = fy_generic_op(gb, FYGBOPF_FILTER | FYGBOPF_PARALLEL, seq, 0, NULL, NULL, test_filter_over_100);
 		ck_assert(fy_generic_is_sequence(v));
 		ck_assert(v.v == fy_seq_empty_value);
 		printf("> pfilter-none-pass: ");
@@ -2878,7 +2878,7 @@ START_TEST(gb_pfilter)
 
 		/* parallel filter on a mapping */
 		map = fy_mapping("a", 50, "b", 101, "c", 200, "d", 75);
-		v = fy_gb_collection_op(gb, FYGBOPF_FILTER | FYGBOPF_PARALLEL, map, 0, NULL, test_filter_over_100, NULL);
+		v = fy_generic_op(gb, FYGBOPF_FILTER | FYGBOPF_PARALLEL, map, 0, NULL, NULL, test_filter_over_100);
 		ck_assert(fy_generic_is_mapping(v));
 		size_t maplen = fy_len(v);
 		ck_assert(maplen == 2);  /* Only "b" and "c" pass */
@@ -2926,7 +2926,7 @@ START_TEST(gb_pmap)
 
 		/* parallel map an empty sequence */
 		seq = fy_sequence();
-		v = fy_gb_collection_op(gb, FYGBOPF_MAP | FYGBOPF_PARALLEL, seq, 0, NULL, test_map_double, NULL);
+		v = fy_generic_op(gb, FYGBOPF_MAP | FYGBOPF_PARALLEL, seq, 0, NULL, NULL, test_map_double);
 		ck_assert(fy_generic_is_sequence(v));
 		ck_assert(v.v == fy_seq_empty_value);
 		printf("> pmap-empty: ");
@@ -2936,7 +2936,7 @@ START_TEST(gb_pmap)
 		for (i = 0; i < num_items; i++)
 			items[i] = fy_value(gb, (int)i);
 		seq = fy_gb_sequence_create(gb, num_items, items);
-		v = fy_gb_collection_op(gb, FYGBOPF_MAP | FYGBOPF_PARALLEL, seq, 0, NULL, test_map_double, NULL);
+		v = fy_generic_op(gb, FYGBOPF_MAP | FYGBOPF_PARALLEL, seq, 0, NULL, NULL, test_map_double);
 		ck_assert(fy_generic_is_sequence(v));
 		vlen = fy_len(v);
 		ck_assert(vlen == num_items);
@@ -2953,7 +2953,7 @@ START_TEST(gb_pmap)
 
 		/* parallel map on a mapping */
 		map = fy_mapping("a", 5, "b", 10, "c", 15, "d", 20);
-		v = fy_gb_collection_op(gb, FYGBOPF_MAP | FYGBOPF_PARALLEL, map, 0, NULL, test_map_double, NULL);
+		v = fy_generic_op(gb, FYGBOPF_MAP | FYGBOPF_PARALLEL, map, 0, NULL, NULL, test_map_double);
 		ck_assert(fy_generic_is_mapping(v));
 		ck_assert(fy_get(v, "a", -1) == 10);
 		ck_assert(fy_get(v, "b", -1) == 20);
@@ -3000,8 +3000,8 @@ START_TEST(gb_preduce)
 
 		/* parallel reduce an empty sequence */
 		seq = fy_sequence();
-		v = fy_gb_collection_op(gb, FYGBOPF_REDUCE | FYGBOPF_PARALLEL, seq, 0, NULL,
-				fy_value(gb, 0), fy_generic_test_sum_reducer, NULL);
+		v = fy_generic_op(gb, FYGBOPF_REDUCE | FYGBOPF_PARALLEL, seq, 0, NULL, NULL,
+				fy_generic_test_sum_reducer, fy_value(gb, 0));
 		sum = fy_cast(v, INT_MIN);
 		// ck_assert(sum == 0);
 		printf("> preduce-seq-sum (empty): %d", sum);
@@ -3011,8 +3011,8 @@ START_TEST(gb_preduce)
 		for (i = 0; i < num_items; i++)
 			items[i] = fy_value(gb, i);
 		seq = fy_gb_sequence_create(gb, num_items, items);
-		v = fy_gb_collection_op(gb, FYGBOPF_REDUCE | FYGBOPF_PARALLEL, seq, 0, NULL,
-				fy_value(gb, 0), fy_generic_test_sum_reducer, NULL);
+		v = fy_generic_op(gb, FYGBOPF_REDUCE | FYGBOPF_PARALLEL, seq, 0, NULL, NULL,
+				fy_generic_test_sum_reducer, fy_value(gb, 0));
 		sum = fy_cast(v, INT_MIN);
 		/* Sum of 0..9999 = n*(n-1)/2 = 10000*9999/2 = 49995000 */
 		exp_sum = num_items * (num_items - 1) / 2;
@@ -3021,8 +3021,8 @@ START_TEST(gb_preduce)
 
 		/* parallel reduce a small sequence (uses serial) */
 		seq = fy_sequence(7, 6, 5, 8);
-		v = fy_gb_collection_op(gb, FYGBOPF_REDUCE | FYGBOPF_PARALLEL, seq, 0, NULL,
-				fy_value(gb, 0), fy_generic_test_sum_reducer, NULL);
+		v = fy_generic_op(gb, FYGBOPF_REDUCE | FYGBOPF_PARALLEL, seq, 0, NULL, NULL,
+				fy_generic_test_sum_reducer, fy_value(gb, 0));
 		sum = fy_cast(v, INT_MIN);
 		ck_assert(sum == 26);
 		printf("> preduce-small-seq-sum: ");

@@ -832,7 +832,1056 @@ fy_op_reduce_work(void *varg)
 	arg->vresult = acc;
 }
 
-fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flags, ...)
+fy_generic
+fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		   fy_generic in, const struct fy_generic_op_args *args)
+{
+	struct iovec *iov, *iov_alloc = NULL, iov_buf[FY_GB_OP_IOV_INPLACE];
+	fy_generic *items_alloc = NULL, items_buf[FY_GB_OP_ITEMS_INPLACE];
+	fy_generic *work_items_alloc = NULL, work_items_buf[FY_GB_OP_WORK_ITEMS_INPLACE];
+	fy_generic_collection col;
+	fy_generic v;
+	const void *p;
+	int iovcnt, num_threads;
+	fy_generic in_direct, out, key, key2, value, acc;
+	fy_generic_value col_mark;
+	unsigned int op;
+	size_t count, item_count, tmp_item_count, left_item_count, idx, i, j, k;
+	size_t in_count, in_item_count, out_count, work_item_count;
+	size_t col_item_size, tmp;
+	size_t remain_idx, remain_count;
+	const fy_generic *items, *in_items, *tmp_items;
+	fy_generic *items_mod, *work_items;	/* modifiable items (for assoc/deassoc) */
+	fy_op_fn fn;
+	struct fy_thread_pool *tp = NULL;
+	struct fy_thread_pool_cfg tp_cfg;
+	bool need_work_items, need_items_mod, has_args, needs_thread_pool, owns_thread_pool;
+	bool need_copy_work_items;
+	enum fy_generic_type type;
+	struct fy_op_work_arg *work_args;
+	struct fy_thread_work *works;
+	size_t chunk_size, start_idx, count_items;
+
+#undef MULSZ
+#define MULSZ(_x, _y) \
+	({ \
+		size_t __size; \
+		if (FY_MUL_OVERFLOW((_x), (_y), &__size)) \
+			goto err_out; \
+		__size; \
+	})
+
+#undef ADDSZ
+#define ADDSZ(_x, _y) \
+	({ \
+		size_t __size; \
+		if (FY_ADD_OVERFLOW((_x), (_y), &__size)) \
+			goto err_out; \
+		__size; \
+	})
+
+#undef SUBSZ
+#define SUBSZ(_x, _y) \
+	({ \
+		size_t __size; \
+		if (FY_SUB_OVERFLOW((_x), (_y), &__size)) \
+			goto err_out; \
+		__size; \
+	})
+
+	op = ((flags >> FYGBOPF_OP_SHIFT) & FYGBOPF_OP_MASK);
+	if (op >= FYGBOP_COUNT)
+		return fy_invalid;
+
+	out = fy_invalid;
+	idx = SIZE_MAX;
+	fn.fn = NULL;
+
+	need_work_items = false;
+	need_copy_work_items = false;
+	need_items_mod = !(flags & FYGBOPF_DONT_INTERNALIZE);	// if we internalize, need to mod
+	has_args = true;
+	needs_thread_pool = false;
+	owns_thread_pool = false;
+	items_mod = NULL;
+	work_item_count = 0;
+	acc = fy_invalid;
+
+	/* common for all */
+	count = args->common.count;
+	items = args->common.items;
+	tp = args->common.tp;
+
+	/* load args */
+	switch (op) {
+	case FYGBOP_CREATE_SEQ:
+	case FYGBOP_CREATE_MAP:
+		/* always start with an empty collection */
+		in = op == FYGBOP_CREATE_SEQ ? fy_seq_empty : fy_map_empty;
+		break;
+
+	case FYGBOP_INSERT:
+	case FYGBOP_REPLACE:
+	case FYGBOP_APPEND:
+	case FYGBOP_ASSOC:
+	case FYGBOP_DISASSOC:
+		switch (op) {
+		case FYGBOP_INSERT:
+		case FYGBOP_REPLACE:
+			idx = args->insert_replace.idx;
+			break;
+		case FYGBOP_APPEND:
+			break;
+		case FYGBOP_ASSOC:
+		case FYGBOP_DISASSOC:
+			need_work_items = true;
+			need_items_mod = true;
+			break;
+		}
+		if (!count)
+			return in;
+		if (!items)
+			return fy_invalid;
+		break;
+
+	case FYGBOP_KEYS:
+	case FYGBOP_VALUES:
+	case FYGBOP_ITEMS:
+		count = 0;	/* hum? */
+		items = 0;
+		has_args = false;
+		need_work_items = true;
+		break;
+
+	case FYGBOP_CONTAINS:
+		flags |= FYGBOPF_DONT_INTERNALIZE;	/* don't internalize */
+		if (!count)
+			return fy_false;
+		if (!items)
+			return fy_invalid;
+		break;
+
+	case FYGBOP_CONCAT:
+	case FYGBOP_REVERSE:
+		if (!count)
+			return in;			/* single? */
+		if (!items)
+			return fy_invalid;
+		need_work_items = true;
+		break;
+
+	case FYGBOP_MERGE:
+	case FYGBOP_UNIQUE:
+	case FYGBOP_SORT:
+		if (count && !items)
+			return fy_invalid;
+		need_work_items = true;
+		need_copy_work_items = true;
+		break;
+
+	case FYGBOP_FILTER:
+	case FYGBOP_MAP:
+	case FYGBOP_MAP_FILTER:
+	case FYGBOP_REDUCE:
+		switch (op) {
+		case FYGBOP_FILTER:
+			fn.filter_pred = args->filter.fn;
+			break;
+		case FYGBOP_MAP:
+		case FYGBOP_MAP_FILTER:
+			fn.map_xform = args->map_filter.fn;
+			break;
+		case FYGBOP_REDUCE:
+			fn.reducer = args->reduce.fn;
+			acc = args->reduce.acc;
+			flags |= FYGBOPF_DONT_INTERNALIZE;	/* don't internalize */
+			break;
+		}
+		if (!fn.fn || (count && !items))
+			return fy_invalid;
+		if (flags & FYGBOPF_PARALLEL)
+			needs_thread_pool = true;
+		need_work_items = true;
+		need_copy_work_items = true;
+		break;
+
+	default:
+		goto err_out;
+	}
+
+	/* internalize or validate */
+	v = in;
+	if (!(flags & FYGBOPF_NO_CHECKS))
+		v = !(flags & FYGBOPF_DONT_INTERNALIZE) ?
+			fy_gb_internalize(gb, v) : fy_gb_validate(gb, v);
+	if (v.v == fy_invalid_value)
+		return fy_invalid;
+	in = v;
+
+	in_direct = in;
+	if (fy_generic_is_indirect(in_direct))
+		in_direct = fy_generic_indirect_get_value(in);
+
+	type = fy_get_type(in_direct);
+	switch (type) {
+
+	case FYGT_SEQUENCE:
+
+		/* those work only on mappings */
+		if (op == FYGBOP_ASSOC || op == FYGBOP_DISASSOC || op == FYGBOP_MERGE)
+			goto err_out;
+
+		col_item_size = sizeof(fy_generic);
+		item_count = count;
+		col_mark = FY_SEQ_V;
+		in_items = fy_generic_sequence_get_items(in_direct, &in_item_count);
+		in_count = in_item_count;
+		break;
+
+	case FYGT_MAPPING:
+
+		/* those work only on sequences */
+		if (op == FYGBOP_CONCAT || op == FYGBOP_REVERSE || op == FYGBOP_UNIQUE)
+			goto err_out;
+
+		/* the count was given in items not pairs */
+		if (flags & FYGBOPF_MAP_ITEM_COUNT)
+			count /= 2;
+
+		col_item_size = sizeof(fy_generic) * 2;
+		item_count = (op != FYGBOP_DISASSOC && op != FYGBOP_CONTAINS &&
+			      op != FYGBOP_MERGE && op != FYGBOP_SORT &&
+			      op != FYGBOP_FILTER && op != FYGBOP_MAP && op != FYGBOP_MAP_FILTER &&
+			      op != FYGBOP_REDUCE) ?
+					MULSZ(count, 2) : count;
+		col_mark = FY_MAP_V;
+		in_items = fy_generic_mapping_get_items(in_direct, &in_item_count);
+		in_count = in_item_count / 2;
+		break;
+
+	default:
+		goto err_out;
+	}
+
+	if (has_args) {
+		/* if we need to modify the items, or we internalize we need a copy */
+		if (need_items_mod) {
+			if (item_count <= ARRAY_SIZE(items_buf)) {
+				items_mod = items_buf;
+			} else {
+				items_alloc = malloc(sizeof(*items_alloc) * item_count);
+				if (!items_alloc)
+					goto err_out;
+				items_mod = items_alloc;
+			}
+			memcpy(items_mod, items, sizeof(*items_mod) * item_count);
+		}
+
+		if (!(flags & FYGBOPF_NO_CHECKS)) {
+			if (!(flags & FYGBOPF_DONT_INTERNALIZE)) {
+				assert(items_mod);
+				for (i = 0; i < item_count; i++) {
+					value = fy_gb_internalize(gb, items[i]);
+					if (value.v == fy_invalid_value)
+						goto err_out;
+					items_mod[i] = value;
+				}
+				items = items_mod;
+			} else {
+				/* we validate directly on the input */
+				for (i = 0; i < item_count; i++) {
+					value = fy_gb_validate(gb, items[i]);
+					if (value.v == fy_invalid_value)
+						goto err_out;
+				}
+			}
+		}
+	}
+
+	if (need_work_items) {
+
+		switch (op) {
+		case FYGBOP_ASSOC:
+			work_item_count = in_item_count + item_count;
+			break;
+		case FYGBOP_DISASSOC:
+			work_item_count = in_item_count;
+			break;
+
+		case FYGBOP_KEYS:
+		case FYGBOP_VALUES:
+		case FYGBOP_ITEMS:
+			work_item_count = in_item_count / 2;
+
+			/* nothing? just return empty seq */
+			if (!work_item_count) {
+				out = fy_seq_empty;
+				goto out;
+			}
+			break;
+
+		case FYGBOP_CONCAT:
+			work_item_count = 0;
+			for (i = 0; i < item_count; i++) {
+				v = items[i];
+				if (!fy_generic_is_sequence(v))
+					goto err_out;
+				work_item_count += fy_len(v);
+			}
+			/* all of them are empty? just return the same */
+			if (!work_item_count) {
+				out = in;
+				goto out;
+			}
+			break;
+
+		case FYGBOP_REVERSE:
+			work_item_count = in_item_count;
+			for (i = 0; i < item_count; i++) {
+				v = items[i];
+				if (!fy_generic_is_sequence(v))
+					goto err_out;
+				(void)fy_generic_sequence_get_items(v, &tmp_item_count);
+				work_item_count += tmp_item_count;
+			}
+			/* all of them are empty? just return the same */
+			if (!work_item_count) {
+				out = in;
+				goto out;
+			}
+			break;
+
+		case FYGBOP_MERGE:
+
+			work_item_count = in_item_count;
+			for (i = 0; i < item_count; i++) {
+				v = items[i];
+				if (!fy_generic_is_mapping(v))
+					goto err_out;
+
+				(void)fy_generic_mapping_get_items(v, &tmp_item_count);
+				work_item_count += tmp_item_count;
+			}
+			/* it's ok if there are no extra items, we might make a dup filter */
+			break;
+
+		case FYGBOP_UNIQUE:
+			work_item_count = in_item_count;
+			for (i = 0; i < item_count; i++) {
+				v = items[i];
+				if (!fy_generic_is_sequence(v))
+					goto err_out;
+
+				(void)fy_generic_sequence_get_items(v, &tmp_item_count);
+				work_item_count += tmp_item_count;
+			}
+			break;
+
+		case FYGBOP_SORT:
+		case FYGBOP_FILTER:
+		case FYGBOP_MAP:
+		case FYGBOP_MAP_FILTER:
+		case FYGBOP_REDUCE:
+			work_item_count = in_item_count;
+			for (i = 0; i < item_count; i++) {
+				v = items[i];
+				if (type == FYGT_SEQUENCE) {
+					if (!fy_generic_is_sequence(v))
+						goto err_out;
+				} else {
+					if (!fy_generic_is_mapping(v))
+						goto err_out;
+				}
+				(void)fy_generic_collection_get_items(v, &tmp_item_count);
+				work_item_count += tmp_item_count;
+			}
+			break;
+		default:
+			goto err_out;
+		}
+
+		/* worst case, all items are added */
+		if (work_item_count <= ARRAY_SIZE(work_items_buf))
+			work_items = work_items_buf;
+		else {
+			work_items_alloc = malloc(sizeof(*work_items) * work_item_count);
+			if (!work_items_alloc)
+				goto err_out;
+			work_items = work_items_alloc;
+		}
+
+		/* if not enough work, punt */
+		if (work_item_count < FY_PARALLEL_THRESHOLD) {
+			flags &= ~FYGBOPF_PARALLEL;
+			needs_thread_pool = false;
+		}
+
+		if (need_copy_work_items) {
+			k = 0;
+			memcpy(work_items + k, in_items, sizeof(*work_items) * in_item_count);
+			k += in_item_count;
+			for (j = 0; j < item_count; j++) {
+				tmp_items = fy_generic_collection_get_items(items[j], &tmp_item_count);
+				memcpy(work_items + k, tmp_items, sizeof(*work_items) * tmp_item_count);
+				k += tmp_item_count;
+			}
+			assert(k == work_item_count);
+		}
+	} else
+		work_items = NULL;
+
+	if (needs_thread_pool && !tp) {
+		memset(&tp_cfg, 0, sizeof(tp_cfg));
+		tp_cfg.flags = FYTPCF_STEAL_MODE;
+		tp_cfg.num_threads = 0;
+		tp = fy_thread_pool_create(&tp_cfg);
+		if (!tp)
+			goto err_out;
+		owns_thread_pool = true;
+	}
+
+	num_threads = tp ? fy_thread_pool_get_num_threads(tp) : 1;
+
+	iov = iov_buf;
+
+	switch (op) {
+	case FYGBOP_CREATE_SEQ:
+	case FYGBOP_CREATE_MAP:
+		/* sequence overlaps map counter */
+		col.count = count;
+		iov[0].iov_base = &col;
+		iov[0].iov_len = sizeof(col);
+		iov[1].iov_base = (void *)items;
+		iov[1].iov_len = MULSZ(count, col_item_size);
+		iovcnt = 2;
+		break;
+
+	case FYGBOP_INSERT:
+	case FYGBOP_REPLACE:
+	case FYGBOP_APPEND:
+
+		switch (op) {
+		case FYGBOP_INSERT:
+		case FYGBOP_APPEND:
+			/* any insert after extend, will be an append */
+			if (op == FYGBOP_APPEND)
+				idx = in_count;
+			if (idx > in_count)
+				idx = in_count;
+			remain_idx = idx;
+			remain_count = in_count - remain_idx;
+			out_count = ADDSZ(in_count, count);
+			break;
+
+		case FYGBOP_REPLACE:
+			/* index over the limits is at the end */
+			if (idx > in_count)
+				idx = in_count;
+			tmp = ADDSZ(idx, count);
+			if (tmp > in_count) {
+				out_count = tmp;
+				remain_idx = in_count;
+			} else {
+				out_count = in_count;
+				remain_idx = tmp;
+			}
+			remain_count = in_count - remain_idx;
+			break;
+		}
+
+		/* sequence overlaps map counter */
+		col.count = out_count;
+		iov[0].iov_base = &col;
+		iov[0].iov_len = sizeof(col);
+		/* before */
+		iov[1].iov_base = (void *)in_items;
+		iov[1].iov_len = MULSZ(idx, col_item_size);
+		/* replacement */
+		iov[2].iov_base = (void *)items;
+		iov[2].iov_len = MULSZ(count, col_item_size);
+		/* after */
+		iov[3].iov_base = (void *)in_items + remain_idx * col_item_size;
+		iov[3].iov_len = MULSZ(remain_count, col_item_size);
+		iovcnt = 4;
+		break;
+
+	case FYGBOP_ASSOC:
+		/* first copy all in_item to work_items */
+		assert(work_items);
+		assert(work_item_count >= in_item_count);
+		assert(items_mod);
+
+		/* go over the keys in the input mapping */
+		/* replaces the values by what was in items */
+		left_item_count = item_count;
+		for (i = 0; i < in_item_count; i += 2) {
+			key = in_items[i + 0];
+			value = in_items[i + 1];
+			if (left_item_count > 0) {
+				for (j = 0; j < item_count; j += 2) {
+					if (fy_generic_compare(items_mod[j + 0], key))
+						continue;
+					value = items_mod[j + 1];
+					/* remove it from the items */
+					items_mod[j + 0] = fy_invalid;
+					items_mod[j + 1] = fy_invalid;
+					left_item_count -= 2;
+					break;
+				}
+			}
+			work_items[i + 0] = key;
+			work_items[i + 1] = value;
+		}
+		/* now append whatever is left */
+		if (left_item_count > 0) {
+			for (j = 0; j < item_count; j += 2) {
+				key = items_mod[j + 0];
+				if (key.v == fy_invalid_value)
+					continue;
+				work_items[i + 0] = key;
+				work_items[i + 1] = items_mod[j + 1];
+				i += 2;
+			}
+		}
+		/* update the new count */
+		work_item_count = i;
+		/* the collection header */
+		col.count = work_item_count / 2;
+		iov[0].iov_base = &col;
+		iov[0].iov_len = sizeof(col);
+		/* the content */
+		iov[1].iov_base = work_items;
+		iov[1].iov_len = MULSZ(col.count, col_item_size);
+		iovcnt = 2;
+		break;
+
+	case FYGBOP_DISASSOC:
+		/* first copy all in_item to work_items */
+		assert(work_items);
+		assert(work_item_count >= in_item_count);
+		assert(items_mod);
+
+		/* go over the keys in the input mapping */
+		/* removes all pairs with keys that match */
+		left_item_count = item_count;
+		for (i = 0, k = 0; i < in_item_count; i += 2) {
+			key = in_items[i + 0];
+			value = in_items[i + 1];
+			if (left_item_count > 0) {
+				for (j = 0; j < item_count; j++) {
+					if (fy_generic_compare(items_mod[j], key))
+						continue;
+					items_mod[j] = fy_invalid;
+					left_item_count--;
+					break;
+				}
+				if (j < item_count)
+					continue;
+			}
+			work_items[k + 0] = key;
+			work_items[k + 1] = value;
+			k += 2;
+		}
+		/* update the new count */
+		work_item_count = k;
+
+		/* if everything is gone, don't bother */
+		if (!work_item_count) {
+			out = fy_map_empty;
+			goto out;
+		}
+
+		/* nothing changed... */
+		if (left_item_count == item_count) {
+			out = in;
+			goto out;
+		}
+
+		/* the collection header */
+		col.count = work_item_count / 2;
+		iov[0].iov_base = &col;
+		iov[0].iov_len = sizeof(col);
+		/* the content */
+		iov[1].iov_base = work_items;
+		iov[1].iov_len = MULSZ(col.count, col_item_size);
+		iovcnt = 2;
+		break;
+
+	case FYGBOP_KEYS:
+	case FYGBOP_VALUES:
+	case FYGBOP_ITEMS:
+
+		/* if everything is gone, don't bother */
+		if (!work_item_count) {
+			out = fy_seq_empty;
+			goto out;
+		}
+
+		switch (op) {
+		case FYGBOP_KEYS:
+			for (i = 0; i < work_item_count; i++)
+				work_items[i] = in_items[i * 2 + 0];
+			break;
+		case FYGBOP_VALUES:
+			for (i = 0; i < work_item_count; i++)
+				work_items[i] = in_items[i * 2 + 1];
+			break;
+		case FYGBOP_ITEMS:
+			for (i = 0; i < work_item_count; i++) {
+				v = fy_gb_sequence(gb, in_items[i * 2 + 0], in_items[i * 2 + 1]);
+				if (v.v == fy_invalid_value)
+					goto err_out;
+				work_items[i] = v;
+			}
+			break;
+		default:
+			goto err_out;
+		}
+
+		/* always return a sequence */
+		col_mark = FY_SEQ_V;
+		col_item_size = sizeof(fy_generic);
+
+		col.count = work_item_count;
+		iov[0].iov_base = &col;
+		iov[0].iov_len = sizeof(col);
+		/* the content */
+		iov[1].iov_base = work_items;
+		iov[1].iov_len = MULSZ(col.count, col_item_size);
+		iovcnt = 2;
+
+		break;
+
+	case FYGBOP_CONTAINS:
+		/* works on both sequences and mappings */
+		k = type == FYGT_SEQUENCE ? 1 : 2;
+		for (i = 0; i < in_item_count; i += k) {
+			for (j = 0; j < item_count; j++) {
+				if (!fy_generic_compare(in_items[i], items[j])) {
+					out = fy_true;
+					goto out;
+				}
+			}
+		}
+		out = fy_false;
+		goto out;
+
+	case FYGBOP_CONCAT:
+		k = 0;
+		for (i = 0; i < item_count; i++) {
+			tmp_items = fy_generic_sequence_get_items(items[i], &tmp_item_count);
+			if (!tmp_item_count)
+				continue;
+			for (j = 0; j < tmp_item_count; j++) {
+				v = tmp_items[j];
+				if (!(flags & FYGBOPF_NO_CHECKS))
+					v = !(flags & FYGBOPF_DONT_INTERNALIZE) ?
+						fy_gb_internalize(gb, v) : fy_gb_validate(gb, v);
+				if (v.v == fy_invalid_value)
+					goto err_out;
+				assert(k < work_item_count);
+				work_items[k++] = v;
+			}
+		}
+		assert(k == work_item_count);
+
+		/* always return a sequence */
+		col_mark = FY_SEQ_V;
+		col_item_size = sizeof(fy_generic);
+
+		col.count = in_item_count + work_item_count;
+		iov[0].iov_base = &col;
+		iov[0].iov_len = sizeof(col);
+		/* the original */
+		iov[1].iov_base = (void *)in_items;
+		iov[1].iov_len = MULSZ(in_item_count, col_item_size);
+		/* the extra content */
+		iov[2].iov_base = work_items;
+		iov[2].iov_len = MULSZ(work_item_count, col_item_size);
+		iovcnt = 3;
+		break;
+
+	case FYGBOP_REVERSE:
+		k = 0;
+		/* the extra arguments */
+		for (i = item_count - 1; (ssize_t)i >= 0; i--) {
+			tmp_items = fy_generic_sequence_get_items(items[i], &tmp_item_count);
+			if (!tmp_item_count)
+				continue;
+			for (j = tmp_item_count - 1; (ssize_t)j >= 0; j--) {
+				v = tmp_items[j];
+				if (!(flags & FYGBOPF_NO_CHECKS))
+					v = !(flags & FYGBOPF_DONT_INTERNALIZE) ?
+						fy_gb_internalize(gb, v) : fy_gb_validate(gb, v);
+				if (v.v == fy_invalid_value)
+					goto err_out;
+				assert(k < work_item_count);
+				work_items[k++] = v;
+			}
+		}
+		/* the original */
+		for (i = in_item_count - 1; (ssize_t)i >= 0; i--) {
+			v = in_items[i];
+			work_items[k++] = v;
+		}
+		assert(k == work_item_count);
+
+		/* always return a sequence */
+		col_mark = FY_SEQ_V;
+		col_item_size = sizeof(fy_generic);
+
+		col.count = work_item_count;
+		iov[0].iov_base = &col;
+		iov[0].iov_len = sizeof(col);
+		/* the extra content */
+		iov[1].iov_base = work_items;
+		iov[1].iov_len = MULSZ(work_item_count, col_item_size);
+		iovcnt = 2;
+		break;
+
+	case FYGBOP_MERGE:
+		assert(work_items);
+		assert(items_mod);
+		assert(need_copy_work_items);
+
+		/* now go over each key in the work area, and compare with all the following */
+		k = 0;
+		for (i = 0; i < work_item_count; i += 2) {
+			key = work_items[i + 0];
+			value = work_items[i + 1];
+
+			for (j = i + 2; j < work_item_count; j += 2) {
+				key2 = work_items[j + 0];
+				if (key2.v == fy_invalid_value || fy_generic_compare(key, key2))
+					continue;
+				value = work_items[j + 1];
+				/* erase this pair */
+				work_items[j + 0] = fy_invalid;
+				work_items[j + 1] = fy_invalid;
+				k += 2;
+			}
+			work_items[i + 1] = value;
+		}
+
+		/* were there removed items? */
+		if (k > 0) {
+			k = 0;
+			for (i = 0; i < work_item_count; i += 2) {
+				key = work_items[i + 0];
+				if (key.v != fy_invalid_value) {
+					work_items[k++] = key;
+					work_items[k++] = work_items[i + 1];
+				}
+			}
+			work_item_count = k;
+		}
+
+		/* the collection header */
+		col.count = work_item_count / 2;
+		if (!col.count) {
+			/* nothing? */
+			out = fy_map_empty;
+			goto out;
+		}
+
+		iov[0].iov_base = &col;
+		iov[0].iov_len = sizeof(col);
+		/* the content */
+		iov[1].iov_base = work_items;
+		iov[1].iov_len = MULSZ(col.count, col_item_size);
+		iovcnt = 2;
+		break;
+
+	case FYGBOP_UNIQUE:
+		assert(work_items);
+		assert(items_mod);
+		assert(need_copy_work_items);
+
+		/* now go over each item in the work area, and compare with all the following */
+		k = 0;
+		for (i = 0; i < work_item_count; i++) {
+			v = work_items[i];
+			for (j = i + 1; j < work_item_count; j++) {
+				value = work_items[j];
+				if (value.v == fy_invalid_value || fy_generic_compare(v, value))
+					continue;
+				work_items[j] = fy_invalid;
+				k++;
+			}
+		}
+
+		/* there were removed items */
+		if (k > 0) {
+			k = 0;
+			for (i = 0; i < work_item_count; i++) {
+				v = work_items[i];
+				if (v.v != fy_invalid_value)
+					work_items[k++] = v;
+			}
+			work_item_count = k;
+		}
+
+		/* the collection header */
+		col.count = work_item_count;
+		if (!col.count) {
+			/* nothing? */
+			out = fy_seq_empty;
+			goto out;
+		}
+
+		iov[0].iov_base = &col;
+		iov[0].iov_len = sizeof(col);
+		/* the content */
+		iov[1].iov_base = work_items;
+		iov[1].iov_len = MULSZ(col.count, col_item_size);
+		iovcnt = 2;
+		break;
+
+	case FYGBOP_SORT:
+		assert(work_items);
+		assert(items_mod);
+		assert(need_copy_work_items);
+
+		/* the collection header */
+		if (type == FYGT_SEQUENCE) {
+			col.count = work_item_count;
+			if (!col.count) {
+				/* nothing? */
+				out = fy_seq_empty;
+				goto out;
+			}
+			qsort(work_items, work_item_count, sizeof(*work_items), fy_generic_seqmap_qsort_cmp);
+		} else {
+			col.count = work_item_count / 2;
+			if (!col.count) {
+				/* nothing? */
+				out = fy_map_empty;
+				goto out;
+			}
+			qsort(work_items, work_item_count / 2, sizeof(*work_items) * 2, fy_generic_seqmap_qsort_cmp);
+		}
+
+		iov[0].iov_base = &col;
+		iov[0].iov_len = sizeof(col);
+		/* the content */
+		iov[1].iov_base = work_items;
+		iov[1].iov_len = MULSZ(col.count, col_item_size);
+		iovcnt = 2;
+		break;
+
+	case FYGBOP_FILTER:
+	case FYGBOP_MAP:
+	case FYGBOP_MAP_FILTER:
+		assert(work_items);
+		assert(items_mod);
+		assert(need_copy_work_items);
+
+		key = fy_invalid;
+
+		assert(num_threads > 0);
+
+		work_args = alloca(sizeof(*work_args) * num_threads);
+		memset(work_args, 0, sizeof(*work_args) * num_threads); 
+
+		/* distribute evenly */
+		chunk_size = (work_item_count + num_threads - 1) / num_threads;
+
+		/* for mappings the chunk must be even */
+		if (type == FYGT_MAPPING && (chunk_size & 1))
+			chunk_size++;
+
+		assert(chunk_size <= work_item_count);
+
+		for (i = 0; i < (size_t)num_threads; i++) {
+			start_idx = i * chunk_size;
+			count_items = chunk_size;
+
+			/* Last chunk might be smaller */
+			if (start_idx >= work_item_count)
+				break;
+			if (start_idx + count_items > work_item_count)
+				count_items = work_item_count - start_idx;
+
+			work_args[i].op = op;
+			work_args[i].gb = gb;
+			work_args[i].type = type;
+			work_args[i].fn = fn;
+			work_args[i].work_items = work_items + start_idx;
+			work_args[i].work_item_count = count_items;
+			work_args[i].removed_items = 0;
+			work_args[i].vresult = fy_invalid;
+
+		}
+
+		/* single threaded, or parallel */
+		if (num_threads > 1) {
+			works = alloca(sizeof(*works) * num_threads);
+			for (i = 0; i < (size_t)num_threads; i++) {
+				works[i].fn = fy_op_map_filter_work;
+				works[i].arg = &work_args[i];
+				works[i].wp = NULL;  /* Set by work_join */
+			}
+			/* Execute in parallel with work stealing */
+			fy_thread_work_join(tp, works, num_threads, NULL);
+		} else 
+			fy_op_map_filter_work(work_args);
+
+		/* collect the amount of removed counts */
+		j = 0;
+		for (i = 0; i < (size_t)num_threads; i++) {
+			if (fy_generic_is_invalid(work_args[i].vresult))
+				goto err_out;
+			j += work_args[i].removed_items;
+		}
+
+		/* if everything removed */
+		if ((op == FYGBOP_FILTER || op == FYGBOP_MAP_FILTER) && j == work_item_count) {
+			out = type == FYGT_SEQUENCE ? fy_seq_empty : fy_map_empty;
+			goto out;
+		}
+
+		/* if nothing removed */
+		if (op == FYGBOP_FILTER && j == 0) {
+			out = in;
+			goto out;
+		}
+
+		/* something was removed, go over the items and remove the invalids */
+		if ((op == FYGBOP_FILTER || op == FYGBOP_MAP_FILTER) && j > 0) {
+			/* simple pass writing the non invalid values */
+			k = 0; 
+			for (i = 0; i < work_item_count; i++) {
+				v = work_items[i];
+				if (v.v != fy_invalid_value)
+					work_items[k++] = v;
+			}
+			work_item_count = k;
+		}
+
+		col.count = type == FYGT_SEQUENCE ? work_item_count : (work_item_count / 2);
+		if (!col.count) {
+			out = type == FYGT_SEQUENCE ? fy_seq_empty : fy_map_empty;
+			goto out;
+		}
+		iov[0].iov_base = &col;
+		iov[0].iov_len = sizeof(col);
+		/* the content */
+		iov[1].iov_base = work_items;
+		iov[1].iov_len = MULSZ(col.count, col_item_size);
+		iovcnt = 2;
+		break;
+
+	case FYGBOP_REDUCE:
+		assert(work_items);
+		assert(need_copy_work_items);
+
+		/* empty? return the initial accumulator */
+		if (!work_item_count) {
+			out = acc;
+			goto out;
+		}
+		work_args = alloca(sizeof(*work_args) * num_threads);
+		memset(work_args, 0, sizeof(*work_args) * num_threads); 
+
+		/* distribute evenly */
+		chunk_size = (work_item_count + num_threads - 1) / num_threads;
+
+		/* for mappings the chunk must be even */
+		if (type == FYGT_MAPPING && (chunk_size & 1))
+			chunk_size++;
+
+		assert(chunk_size <= work_item_count);
+
+		assert(num_threads);
+
+		for (i = 0; i < (size_t)num_threads; i++) {
+			start_idx = i * chunk_size;
+			count_items = chunk_size;
+
+			/* Last chunk might be smaller */
+			if (start_idx >= work_item_count)
+				break;
+			if (start_idx + count_items > work_item_count)
+				count_items = work_item_count - start_idx;
+
+			work_args[i].op = op;
+			work_args[i].gb = gb;
+			work_args[i].type = type;
+			work_args[i].fn = fn;
+			work_args[i].work_items = work_items + start_idx;
+			work_args[i].work_item_count = count_items;
+			work_args[i].removed_items = 0;
+			work_args[i].vresult = acc;
+		}
+
+		/* single threaded, or parallel */
+		if (num_threads > 1) {
+			works = alloca(sizeof(*works) * num_threads);
+			for (i = 0; i < (size_t)num_threads; i++) {
+				works[i].fn = fy_op_reduce_work;
+				works[i].arg = &work_args[i];
+				works[i].wp = NULL;  /* Set by work_join */
+			}
+			/* Execute in parallel with work stealing */
+			fy_thread_work_join(tp, works, num_threads, NULL);
+
+			/* now perform the final reduce step */
+			fy_generic *partial = alloca(sizeof(*partial) * num_threads);
+			for (i = 0; i < (size_t)num_threads; i++) {
+				v = work_args[i].vresult;
+				if (v.v == fy_invalid_value) {
+					out = fy_invalid;
+					goto out;
+				}
+				partial[i] = v;
+			}
+			work_args[0].vresult = acc;
+			work_args[0].work_items = partial;
+			work_args[0].work_item_count = (size_t)num_threads;
+			fy_op_reduce_work(work_args);
+			acc = work_args->vresult;
+		} else {
+			fy_op_reduce_work(work_args);
+			acc = work_args->vresult;
+		}
+		out = acc;
+		goto out;
+
+	default:
+		goto err_out;
+	}
+
+	if (iovcnt > 0) {
+		p = fy_gb_lookupv(gb, iov, iovcnt, FY_GENERIC_CONTAINER_ALIGN);
+		if (!p)
+			p = fy_gb_storev(gb, iov, iovcnt, FY_GENERIC_CONTAINER_ALIGN);
+		if (!p)
+			goto err_out;
+
+		out = (fy_generic){ .v = (uintptr_t)p | col_mark };
+	}
+
+out:
+	if (owns_thread_pool && tp)
+		fy_thread_pool_destroy(tp);
+
+	if (work_items_alloc)
+		free(work_items_alloc);
+
+	if (items_alloc)
+		free(items_alloc);
+
+	if (iov_alloc)
+		free(iov_alloc);
+
+	return out;
+
+err_out:
+	out = fy_invalid;
+	goto out;
+}
+
+fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flags, ...)
 {
 	struct iovec *iov, *iov_alloc = NULL, iov_buf[FY_GB_OP_IOV_INPLACE];
 	fy_generic *items_alloc = NULL, items_buf[FY_GB_OP_ITEMS_INPLACE];
@@ -860,7 +1909,6 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	struct fy_op_work_arg *work_args;
 	struct fy_thread_work *works;
 	size_t chunk_size, start_idx, count_items;
-
 
 #undef MULSZ
 #define MULSZ(_x, _y) \
@@ -919,9 +1967,9 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 	case FYGBOP_INSERT:
 	case FYGBOP_REPLACE:
 		in = va_arg(ap, fy_generic);
-		idx = va_arg(ap, size_t);
 		count = va_arg(ap, size_t);
 		items = va_arg(ap, const fy_generic *);
+		idx = va_arg(ap, size_t);
 		if (!count)
 			return in;
 		if (!items)
@@ -1021,11 +2069,11 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		in = va_arg(ap, fy_generic);
 		count = va_arg(ap, size_t);
 		items = va_arg(ap, const fy_generic *);
-		fn.fn = va_arg(ap, void (*)(void));
 		if (flags & FYGBOPF_PARALLEL) {
 			tp = va_arg(ap, struct fy_thread_pool *);
 			needs_thread_pool = true;
 		}
+		fn.fn = va_arg(ap, void (*)(void));
 		if (!fn.fn || (count && !items))
 			return fy_invalid;
 		need_work_items = true;
@@ -1036,12 +2084,12 @@ fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flag
 		in = va_arg(ap, fy_generic);
 		count = va_arg(ap, size_t);
 		items = va_arg(ap, const fy_generic *);
-		acc = va_arg(ap, fy_generic);
-		fn.fn = va_arg(ap, void (*)(void));
 		if (flags & FYGBOPF_PARALLEL) {
 			tp = va_arg(ap, struct fy_thread_pool *);
 			needs_thread_pool = true;
 		}
+		fn.fn = va_arg(ap, void (*)(void));
+		acc = va_arg(ap, fy_generic);
 		if (!fn.fn || (count && !items))
 			return fy_invalid;
 		flags |= FYGBOPF_DONT_INTERNALIZE;	/* don't internalize */
@@ -1924,6 +2972,84 @@ out:
 err_out:
 	out = fy_invalid;
 	goto out;
+}
+
+fy_generic fy_generic_op_x(struct fy_generic_builder *gb, enum fy_gb_op_flags flags, ...)
+{
+	struct fy_generic_op_args args_local, *args = &args_local;
+	va_list ap;
+	fy_generic in;
+	unsigned int op;
+
+	op = ((flags >> FYGBOPF_OP_SHIFT) & FYGBOPF_OP_MASK);
+	if (op >= FYGBOP_COUNT)
+		return fy_invalid;
+
+	memset(args, 0, sizeof(*args));
+
+	va_start(ap, flags);
+	if (op == FYGBOP_CREATE_SEQ)
+		in = fy_seq_empty;
+	else if (op == FYGBOP_CREATE_MAP)
+		in = fy_map_empty;
+	else
+		in = va_arg(ap, fy_generic);
+
+	if (op == FYGBOP_KEYS || op == FYGBOP_VALUES || op == FYGBOP_ITEMS) {
+		args->common.count = 0;
+		args->common.items = NULL;
+	} else {
+		args->common.count = va_arg(ap, size_t);
+		args->common.items = va_arg(ap, const fy_generic *);
+	}
+
+	if (flags & FYGBOPF_PARALLEL)
+		args->common.tp = va_arg(ap, struct fy_thread_pool *);
+
+	switch (op) {
+	case FYGBOP_CREATE_SEQ:
+	case FYGBOP_CREATE_MAP:
+	case FYGBOP_APPEND:
+	case FYGBOP_ASSOC:
+	case FYGBOP_DISASSOC:
+	case FYGBOP_CONTAINS:
+	case FYGBOP_CONCAT:
+	case FYGBOP_REVERSE:
+	case FYGBOP_MERGE:
+	case FYGBOP_UNIQUE:
+	case FYGBOP_SORT:
+		break;
+
+	case FYGBOP_INSERT:
+	case FYGBOP_REPLACE:
+		args->insert_replace.idx = va_arg(ap, size_t);
+		break;
+
+	case FYGBOP_KEYS:
+	case FYGBOP_VALUES:
+	case FYGBOP_ITEMS:
+		break;
+
+	case FYGBOP_FILTER:
+		args->filter.fn = va_arg(ap, fy_generic_filter_pred_fn);
+		break;
+
+	case FYGBOP_MAP:
+	case FYGBOP_MAP_FILTER:
+		args->map_filter.fn = va_arg(ap, fy_generic_map_xform_fn);
+		break;
+
+	case FYGBOP_REDUCE:
+		args->reduce.fn = va_arg(ap, fy_generic_reducer_fn);
+		args->reduce.acc = va_arg(ap, fy_generic);
+		break;
+
+	default:
+		return fy_invalid;
+	}
+	va_end(ap);
+
+	return fy_generic_op_args(gb, flags, in, args);
 }
 
 fy_generic fy_gb_indirect_create(struct fy_generic_builder *gb, const fy_generic_indirect *gi)
