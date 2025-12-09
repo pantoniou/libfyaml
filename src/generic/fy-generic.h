@@ -3911,6 +3911,54 @@ enum fy_gb_op {
 };
 #define FYGBOP_COUNT	(FYGBOP_SLICE_PY + 1)
 
+typedef bool (*fy_generic_filter_pred_fn)(struct fy_generic_builder *gb, fy_generic v);
+typedef fy_generic (*fy_generic_map_xform_fn)(struct fy_generic_builder *gb, fy_generic v);
+typedef fy_generic (*fy_generic_reducer_fn)(struct fy_generic_builder *gb, fy_generic accv, fy_generic v);
+
+/* FYGBOP_CREATE_SEQ, FYGBOP_CREATE_MAP, FYGBOP_APPEND, FYGBOP_ASSOC, FYGBOP_DISASSOC */
+/* FYGBOP_CONTAINS, FYGBOP_CONCAT, FYGBOP_REVERSE, FYGBOP_MERGE, FYGBOP_UNIQUE */
+struct fy_op_common_args {
+	size_t count;			/* x2 for map */
+	const fy_generic *items;
+	struct fy_thread_pool *tp;
+};
+
+/* FYGBOP_SORT */
+struct fy_op_sort_args {
+	struct fy_op_common_args common;
+	int (*cmp_fn)(fy_generic a, fy_generic b);
+};
+
+/* FYGBOP_INSERT, FYGBOP_REPLACE */
+struct fy_op_insert_replace_args {
+	struct fy_op_common_args common;
+	size_t idx;
+};
+
+/* FYGBOP_KEYS, FYGBOP_VALUES, FYGBOP_ITEMS */
+struct fy_op_keys_values_items_args {
+	struct fy_op_common_args common;
+};
+
+/* FYGBOP_FILTER */
+struct fy_op_filter_args {
+	struct fy_op_common_args common;
+	fy_generic_filter_pred_fn fn;
+};
+
+/* FYGBOP_MAP, FYGBOP_MAP_FILTER */
+struct fy_op_map_args {
+	struct fy_op_common_args common;
+	fy_generic_map_xform_fn fn;
+};
+
+/* FYGBOP_REDUCE */
+struct fy_op_reduce_args {
+	struct fy_op_common_args common;
+	fy_generic_reducer_fn fn;
+	fy_generic acc;
+};
+
 enum fy_gb_op_flags {
 	FYGBOPF_CREATE_SEQ	= FYGBOPF_OP(FYGBOP_CREATE_SEQ),
 	FYGBOPF_CREATE_MAP	= FYGBOPF_OP(FYGBOP_CREATE_MAP),
@@ -3939,11 +3987,23 @@ enum fy_gb_op_flags {
 	FYGBOPF_MAP_ITEM_COUNT	= FY_BIT(20),			// the count is items, not pairs for mappings
 };
 
-typedef bool (*fy_generic_filter_pred_fn)(struct fy_generic_builder *gb, fy_generic v);
-typedef fy_generic (*fy_generic_map_xform_fn)(struct fy_generic_builder *gb, fy_generic v);
-typedef fy_generic (*fy_generic_reducer_fn)(struct fy_generic_builder *gb, fy_generic accv, fy_generic v);
+struct fy_generic_op_args {
+	union {
+		/* this is common to all */
+		struct fy_op_common_args common;
+		struct fy_op_sort_args sort;
+		struct fy_op_insert_replace_args insert_replace;
+		struct fy_op_keys_values_items_args keys_value_items;
+		struct fy_op_filter_args filter;
+		struct fy_op_map_args map_filter;
+		struct fy_op_reduce_args reduce;
+	};
+};
 
-fy_generic fy_gb_collection_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flags, ...);
+fy_generic fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+			      fy_generic in, const struct fy_generic_op_args *args);
+
+fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flags, ...);
 
 static inline fy_generic
 fy_gb_collection_create(struct fy_generic_builder *gb, bool is_map, size_t count, const fy_generic *items, bool internalize)
@@ -3953,7 +4013,7 @@ fy_gb_collection_create(struct fy_generic_builder *gb, bool is_map, size_t count
 	flags = (!is_map ? FYGBOPF_CREATE_SEQ : FYGBOPF_CREATE_MAP) |
 		(!internalize ? FYGBOPF_DONT_INTERNALIZE : 0);
 
-	return fy_gb_collection_op(gb, flags, count, items);
+	return fy_generic_op(gb, flags, count, items);
 }
 
 static inline fy_generic
@@ -4167,64 +4227,66 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 /* ops */
 
 #define fy_gb_create_mapping2(_gb, ...) \
-	(fy_gb_collection_op((_gb), \
+	(fy_generic_op((_gb), \
 		FYGBOPF_CREATE_MAP | FYGBOPF_MAP_ITEM_COUNT, \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
 			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
 
 #define fy_gb_create_sequence2(_gb, ...) \
-	(fy_gb_collection_op((_gb), \
+	(fy_generic_op((_gb), \
 		FYGBOPF_CREATE_SEQ, \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
 			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
 
 #define fy_gb_insert(_gb, _col, _idx, ...) \
-	(fy_gb_collection_op((_gb), \
-		FYGBOPF_INSERT | FYGBOPF_MAP_ITEM_COUNT, (_col), (_idx), \
+	(fy_generic_op((_gb), \
+		FYGBOPF_INSERT | FYGBOPF_MAP_ITEM_COUNT, (_col), \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
-			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__), \
+			(_idx)))
 
 #define fy_gb_replace(_gb, _col, _idx, ...) \
-	(fy_gb_collection_op((_gb), \
-		FYGBOPF_REPLACE | FYGBOPF_MAP_ITEM_COUNT, (_col), (_idx), \
+	(fy_generic_op((_gb), \
+		FYGBOPF_REPLACE | FYGBOPF_MAP_ITEM_COUNT, (_col), \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
-			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__), \
+			(_idx)))
 
 #define fy_gb_append(_gb, _col, ...) \
-	(fy_gb_collection_op((_gb), \
+	(fy_generic_op((_gb), \
 		FYGBOPF_APPEND | FYGBOPF_MAP_ITEM_COUNT, (_col), \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
 			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
 
 #define fy_gb_assoc(_gb, _map, ...) \
-	(fy_gb_collection_op((_gb), \
+	(fy_generic_op((_gb), \
 		FYGBOPF_ASSOC | FYGBOPF_MAP_ITEM_COUNT, (_map), \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
 			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
 
 #define fy_gb_disassoc(_gb, _map, ...) \
-	(fy_gb_collection_op((_gb), \
+	(fy_generic_op((_gb), \
 		FYGBOPF_DISASSOC, (_map), \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
 			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
 
 #define fy_gb_keys(_gb, _map) \
-	(fy_gb_collection_op((_gb), FYGBOPF_KEYS, (_map)))
+	(fy_generic_op((_gb), FYGBOPF_KEYS, (_map)))
 
 #define fy_gb_values(_gb, _map) \
-	(fy_gb_collection_op((_gb), FYGBOPF_VALUES, (_map)))
+	(fy_generic_op((_gb), FYGBOPF_VALUES, (_map)))
 
 #define fy_gb_items(_gb, _map) \
-	(fy_gb_collection_op((_gb), FYGBOPF_ITEMS, (_map)))
+	(fy_generic_op((_gb), FYGBOPF_ITEMS, (_map)))
 
 #define fy_gb_append(_gb, _col, ...) \
-	(fy_gb_collection_op((_gb), \
+	(fy_generic_op((_gb), \
 		FYGBOPF_APPEND | FYGBOPF_MAP_ITEM_COUNT, (_col), \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
 			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
 
 #define fy_gb_contains(_gb, _col, ...) \
-	(fy_gb_collection_op((_gb), \
+	(fy_generic_op((_gb), \
 		FYGBOPF_CONTAINS | FYGBOPF_MAP_ITEM_COUNT, (_col), \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
 			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
