@@ -1956,63 +1956,57 @@ fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flag
 	acc = fy_invalid;
 
 	va_start(ap, flags);
+
+	if (op == FYGBOP_CREATE_SEQ)
+		in = fy_seq_empty;
+	else if (op == FYGBOP_CREATE_MAP)
+		in = fy_map_empty;
+	else
+		in = va_arg(ap, fy_generic);
+
+	if (op == FYGBOP_KEYS || op == FYGBOP_VALUES || op == FYGBOP_ITEMS) {
+		count = 0;
+		items = NULL;
+	} else {
+		count = va_arg(ap, size_t);
+		items = va_arg(ap, const fy_generic *);
+	}
+
+	if (flags & FYGBOPF_PARALLEL)
+		tp = va_arg(ap, struct fy_thread_pool *);
+	else
+		tp = NULL;
+
 	switch (op) {
 	case FYGBOP_CREATE_SEQ:
 	case FYGBOP_CREATE_MAP:
-		in = op == FYGBOP_CREATE_SEQ ? fy_seq_empty : fy_map_empty;
-		count = va_arg(ap, size_t);
-		items = va_arg(ap, const fy_generic *);
 		break;
 
 	case FYGBOP_INSERT:
 	case FYGBOP_REPLACE:
-		in = va_arg(ap, fy_generic);
-		count = va_arg(ap, size_t);
-		items = va_arg(ap, const fy_generic *);
-		idx = va_arg(ap, size_t);
-		if (!count)
-			return in;
-		if (!items)
-			return fy_invalid;
-		break;
-
 	case FYGBOP_APPEND:
-		in = va_arg(ap, fy_generic);
-		count = va_arg(ap, size_t);
-		items = va_arg(ap, const fy_generic *);
-		if (!count)
-			return in;
-		if (!items)
-			return fy_invalid;
-		break;
-
 	case FYGBOP_ASSOC:
 	case FYGBOP_DISASSOC:
-		in = va_arg(ap, fy_generic);
-		count = va_arg(ap, size_t);	// pairs for assoc, keys for disassoc
-		items = va_arg(ap, const fy_generic *);
+		if (op == FYGBOP_INSERT || op == FYGBOP_REPLACE)
+			idx = va_arg(ap, size_t);
 		if (!count)
 			return in;
 		if (!items)
 			return fy_invalid;
-		need_work_items = true;
-		need_items_mod = true;
+		if (op == FYGBOP_ASSOC || op == FYGBOP_DISASSOC) {
+			need_work_items = true;
+			need_items_mod = true;
+		}
 		break;
 
 	case FYGBOP_KEYS:
 	case FYGBOP_VALUES:
 	case FYGBOP_ITEMS:
-		in = va_arg(ap, fy_generic);
-		count = 0;
-		items = 0;
 		has_args = false;
 		need_work_items = true;
 		break;
 
 	case FYGBOP_CONTAINS:
-		in = va_arg(ap, fy_generic);
-		count = va_arg(ap, size_t);
-		items = va_arg(ap, const fy_generic *);
 		flags |= FYGBOPF_DONT_INTERNALIZE;	/* don't internalize */
 		if (!count)
 			return fy_false;
@@ -2022,9 +2016,6 @@ fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flag
 
 	case FYGBOP_CONCAT:
 	case FYGBOP_REVERSE:
-		in = va_arg(ap, fy_generic);
-		count = va_arg(ap, size_t);	// pairs for assoc, keys for disassoc
-		items = va_arg(ap, const fy_generic *);
 		if (!count)
 			return in;			/* single? */
 		if (!items)
@@ -2033,30 +2024,8 @@ fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flag
 		break;
 
 	case FYGBOP_MERGE:
-		in = va_arg(ap, fy_generic);
-		count = va_arg(ap, size_t);	// pairs for assoc, keys for disassoc
-		items = va_arg(ap, const fy_generic *);
-
-		if (count && !items)
-			return fy_invalid;
-		need_work_items = true;
-		need_copy_work_items = true;
-		break;
-
 	case FYGBOP_UNIQUE:
-		in = va_arg(ap, fy_generic);
-		count = va_arg(ap, size_t);
-		items = va_arg(ap, const fy_generic *);
-		if (count && !items)
-			return fy_invalid;
-		need_work_items = true;
-		need_copy_work_items = true;
-		break;
-
 	case FYGBOP_SORT:
-		in = va_arg(ap, fy_generic);
-		count = va_arg(ap, size_t);
-		items = va_arg(ap, const fy_generic *);
 		if (count && !items)
 			return fy_invalid;
 		need_work_items = true;
@@ -2066,33 +2035,14 @@ fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flag
 	case FYGBOP_FILTER:
 	case FYGBOP_MAP:
 	case FYGBOP_MAP_FILTER:
-		in = va_arg(ap, fy_generic);
-		count = va_arg(ap, size_t);
-		items = va_arg(ap, const fy_generic *);
-		if (flags & FYGBOPF_PARALLEL) {
-			tp = va_arg(ap, struct fy_thread_pool *);
-			needs_thread_pool = true;
-		}
-		fn.fn = va_arg(ap, void (*)(void));
-		if (!fn.fn || (count && !items))
-			return fy_invalid;
-		need_work_items = true;
-		need_copy_work_items = true;
-		break;
-
 	case FYGBOP_REDUCE:
-		in = va_arg(ap, fy_generic);
-		count = va_arg(ap, size_t);
-		items = va_arg(ap, const fy_generic *);
-		if (flags & FYGBOPF_PARALLEL) {
-			tp = va_arg(ap, struct fy_thread_pool *);
-			needs_thread_pool = true;
-		}
 		fn.fn = va_arg(ap, void (*)(void));
-		acc = va_arg(ap, fy_generic);
+		if (op == FYGBOP_REDUCE)
+			acc = va_arg(ap, fy_generic);
 		if (!fn.fn || (count && !items))
 			return fy_invalid;
-		flags |= FYGBOPF_DONT_INTERNALIZE;	/* don't internalize */
+		if (op == FYGBOP_REDUCE)
+			flags |= FYGBOPF_DONT_INTERNALIZE;	/* don't internalize for reduce */
 		need_work_items = true;
 		need_copy_work_items = true;
 		break;
