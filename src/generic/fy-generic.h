@@ -3959,6 +3959,12 @@ struct fy_op_reduce_args {
 	fy_generic acc;
 };
 
+/* common for filter,map,reduce */
+struct fy_op_filter_map_reduce_common {
+	struct fy_op_common_args common;
+	void (*fn)(void);
+};
+
 enum fy_gb_op_flags {
 	FYGBOPF_CREATE_SEQ	= FYGBOPF_OP(FYGBOP_CREATE_SEQ),
 	FYGBOPF_CREATE_MAP	= FYGBOPF_OP(FYGBOP_CREATE_MAP),
@@ -3997,6 +4003,7 @@ struct fy_generic_op_args {
 		struct fy_op_filter_args filter;
 		struct fy_op_map_args map_filter;
 		struct fy_op_reduce_args reduce;
+		struct fy_op_filter_map_reduce_common filter_map_reduce_common;
 	};
 };
 
