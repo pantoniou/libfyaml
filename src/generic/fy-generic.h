@@ -27,6 +27,7 @@
 #include "fy-utils.h"
 #include "fy-allocator.h"
 #include "fy-vlsize.h"
+#include "fy-atomics.h"
 
 #include <libfyaml.h>
 
@@ -3798,13 +3799,19 @@ struct fy_generic_builder {
 	struct fy_allocator *allocator;
 	int alloc_tag;
 	void *linear;	/* when making it linear */
+	FY_ATOMIC(uint64_t) allocation_failures;
 };
 
 extern __thread struct fy_generic_builder *fy_current_gb;
 
 static inline void *fy_gb_alloc(struct fy_generic_builder *gb, size_t size, size_t align)
 {
-	return fy_allocator_alloc_nocheck(gb->allocator, gb->alloc_tag, size, align);
+	void *p;
+
+	p = fy_allocator_alloc_nocheck(gb->allocator, gb->alloc_tag, size, align);
+	if (!p)
+		fy_atomic_fetch_add(&gb->allocation_failures, 1);
+	return p;
 }
 
 static inline void fy_gb_free(struct fy_generic_builder *gb, void *ptr)
@@ -3819,12 +3826,22 @@ static inline void fy_gb_trim(struct fy_generic_builder *gb)
 
 static inline const void *fy_gb_store(struct fy_generic_builder *gb, const void *data, size_t size, size_t align)
 {
-	return fy_allocator_store_nocheck(gb->allocator, gb->alloc_tag, data, size, align);
+	const void *p;
+
+	p = fy_allocator_store_nocheck(gb->allocator, gb->alloc_tag, data, size, align);
+	if (!p)
+		fy_atomic_fetch_add(&gb->allocation_failures, 1);
+	return p;
 }
 
 static inline const void *fy_gb_storev(struct fy_generic_builder *gb, const struct iovec *iov, unsigned int iovcnt, size_t align)
 {
-	return fy_allocator_storev_nocheck(gb->allocator, gb->alloc_tag, iov, iovcnt, align);
+	const void *p;
+
+	p = fy_allocator_storev_nocheck(gb->allocator, gb->alloc_tag, iov, iovcnt, align);
+	if (!p)
+		fy_atomic_fetch_add(&gb->allocation_failures, 1);
+	return p;
 }
 
 static inline const void *fy_gb_lookupv(struct fy_generic_builder *gb, const struct iovec *iov, unsigned int iovcnt, size_t align)
@@ -3869,6 +3886,11 @@ static inline void fy_gb_release(struct fy_generic_builder *gb, const void *ptr,
 	fy_allocator_release_nocheck(gb->allocator, gb->alloc_tag, ptr, size);
 }
 
+static inline uint64_t fy_gb_allocation_failures(struct fy_generic_builder *gb)
+{
+	return fy_atomic_load(&gb->allocation_failures);
+}
+
 int fy_generic_builder_setup(struct fy_generic_builder *gb, const struct fy_generic_builder_cfg *cfg);
 void fy_generic_builder_cleanup(struct fy_generic_builder *gb);
 
@@ -3880,6 +3902,9 @@ void fy_generic_builder_reset(struct fy_generic_builder *gb);
 
 /* no need to destroy */
 struct fy_generic_builder *fy_generic_builder_create_in_place(enum fy_gb_cfg_flags flags, struct fy_generic_builder *parent, void *buffer, size_t size);
+
+struct fy_allocator *fy_generic_builder_get_allocator(struct fy_generic_builder *gb);
+size_t fy_generic_builder_get_free(struct fy_generic_builder *gb);
 
 bool fy_generic_builder_contains_out_of_place(struct fy_generic_builder *gb, fy_generic v);
 
@@ -4458,13 +4483,13 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 
 /* ops */
 
-#define fy_gb_create_mapping2(_gb, ...) \
+#define fy_gb_create_mapping(_gb, ...) \
 	(fy_generic_op((_gb), \
 		FYGBOPF_CREATE_MAP | FYGBOPF_MAP_ITEM_COUNT, \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
 			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
 
-#define fy_gb_create_sequence2(_gb, ...) \
+#define fy_gb_create_sequence(_gb, ...) \
 	(fy_generic_op((_gb), \
 		FYGBOPF_CREATE_SEQ, \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
@@ -4517,11 +4542,289 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
 			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
 
+#define fy_gb_concat(_gb, _col, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_CONCAT | FYGBOPF_MAP_ITEM_COUNT, (_col), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+#define fy_gb_reverse(_gb, _col, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_REVERSE | FYGBOPF_MAP_ITEM_COUNT, (_col), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+#define fy_gb_merge(_gb, _map, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_MERGE | FYGBOPF_MAP_ITEM_COUNT, (_map), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+#define fy_gb_unique(_gb, _col, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_UNIQUE | FYGBOPF_MAP_ITEM_COUNT, (_col), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+#define fy_gb_sort(_gb, _col, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_SORT | FYGBOPF_MAP_ITEM_COUNT, (_col), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+#define fy_gb_filter(_gb, _col, _fn, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_FILTER | FYGBOPF_MAP_ITEM_COUNT, (_col), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)), \
+	 		(_fn))
+
+#define fy_gb_pfilter(_gb, _col, _tp, _fn, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_FILTER | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_PARALLEL, (_col), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)), \
+	 		(_tp), (_fn))
+
+#define fy_gb_map(_gb, _col, _fn, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_MAP | FYGBOPF_MAP_ITEM_COUNT, (_col), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)), \
+	 		(_fn))
+
+#define fy_gb_pmap(_gb, _col, _tp, _fn, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_MAP | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_PARALLEL, (_col), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)), \
+	 		(_tp), (_fn))
+
+#define fy_gb_reduce(_gb, _col, _fn, _acc, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_REDUCE | FYGBOPF_REDUCE_ITEM_COUNT, (_col), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)), \
+	 		(_fn), fy_value(_acc))
+
+#define fy_gb_preduce(_gb, _col, _tp, _fn, _acc, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_REDUCE | FYGBOPF_REDUCE_ITEM_COUNT | FYGBOPF_PARALLEL, (_col), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)), \
+	 		(_tp), (_fn), fy_value(_acc))
+
 /* iterators */
 #define fy_foreach(_v, _col) \
 	for (struct { size_t i; size_t len; } FY_LUNIQUE(_iter) = { 0, fy_len(_col) }; \
 	     FY_LUNIQUE(_iter).i < FY_LUNIQUE(_iter).len && \
 		(((_v) = fy_get_key_at_typed((_col), FY_LUNIQUE(_iter).i, __typeof__(_v))), 1); \
 	FY_LUNIQUE(_iter).i++)
+
+#define FY_GENERIC_BUILDER_IN_PLACE_MAX_SIZE	65536
+
+/* retry op, until it either succeeds, or fails without an allocation failure
+ * we will abort when we hit the maximum in place size
+ * This is safe because all values are immutable and there are no side-effects
+ * when an op fails.
+ * We also try to save and restore stack so that we don't keep around stack
+ * buffers that were too small.
+ */
+#define FY_LOCAL_OP(...) \
+	({ \
+		size_t _sz = FY_GENERIC_BUILDER_LINEAR_IN_PLACE_MIN_SIZE; \
+		char *_buf = NULL; \
+		struct fy_generic_builder *_gb = NULL; \
+		void *_stack_save; \
+		fy_generic _v = fy_invalid; \
+		\
+		_stack_save = FY_STACK_SAVE(); \
+		for (;;) { \
+			_buf = alloca(_sz); \
+			_gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL, _buf, _sz); \
+			_v = fy_generic_op(_gb, ## __VA_ARGS__); \
+			if (fy_generic_is_valid(_v)) \
+				break; \
+			FY_STACK_RESTORE(_stack_save); \
+			if (!fy_gb_allocation_failures(_gb) || _sz > FY_GENERIC_BUILDER_IN_PLACE_MAX_SIZE) \
+				break; \
+			_sz = _sz * 2; \
+		} \
+		assert(fy_generic_is_valid(_v)); \
+		_v; \
+	})
+
+#define fy_create_local_sequence(...) \
+	({ \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_CREATE_SEQ, _count, _items); \
+	})
+
+#define fy_create_local_mapping(...) \
+	({ \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_CREATE_MAP | FYGBOPF_MAP_ITEM_COUNT, _count, _items); \
+	})
+
+#define fy_local_insert(_col, _idx, ...) \
+	({ \
+		__typeof__(_col) __col = (_col); \
+		__typeof__(_idx) __idx = (_idx); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_INSERT | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items, __idx); \
+	})
+
+#define fy_local_replace( _col, _idx, ...) \
+	({ \
+		__typeof__(_col) __col = (_col); \
+		__typeof__(_idx) __idx = (_idx); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_REPLACE | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items, __idx); \
+	})
+
+#define fy_local_append( _col, ...) \
+	({ \
+		__typeof__(_col) __col = (_col); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_APPEND | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
+	})
+
+#define fy_local_assoc(_map, ...) \
+	({ \
+		__typeof__(_map) __map = (_map); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_ASSOC | FYGBOPF_MAP_ITEM_COUNT, __map, _count, _items); \
+	})
+
+#define fy_local_disassoc(_map, ...) \
+	({ \
+		__typeof__(_map) __map = (_map); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_DISASSOC, __map, _count, _items); \
+	})
+
+#define fy_local_keys(_map) \
+	({ \
+		__typeof__(_map) __map = (_map); \
+		FY_LOCAL_OP(FYGBOPF_KEYS, __map, 0, NULL); \
+	})
+
+#define fy_local_values(_map) \
+	({ \
+		__typeof__(_map) __map = (_map); \
+		FY_LOCAL_OP(FYGBOPF_VALUES, __map, 0, NULL); \
+	})
+
+#define fy_local_items(_map) \
+	({ \
+		__typeof__(_map) __map = (_map); \
+		FY_LOCAL_OP(FYGBOPF_ITEMS, __map, 0, NULL); \
+	})
+
+#define fy_local_contains(_col, ...) \
+	({ \
+		__typeof__(_col) __col = (_col); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_CONTAINS | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
+	})
+
+#define fy_local_concat(_col, ...) \
+	({ \
+		__typeof__(_col) __col = (_col); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_CONCAT | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
+	})
+
+#define fy_local_reverse(_col, ...) \
+	({ \
+		__typeof__(_col) __col = (_col); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_REVERSE | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
+	})
+
+#define fy_local_merge(_col, ...) \
+	({ \
+		__typeof__(_col) __col = (_col); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_MERGE | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
+	})
+
+#define fy_local_unique(_col, ...) \
+	({ \
+		__typeof__(_col) __col = (_col); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_UNIQUE | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
+	})
+
+#define fy_local_sort(_col, ...) \
+	({ \
+		__typeof__(_col) __col = (_col); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_SORT | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
+	})
+
+#define fy_local_filter(_col, _fn, ...) \
+	({ \
+		__typeof__(_col) __col = (_col); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_FILTER | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items, (_fn)); \
+	})
+
+#define fy_local_pfilter(_col, _tp, _fn, ...) \
+	({ \
+		__typeof__(_col) __col = (_col); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_FILTER | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_PARALLEL, \
+				__col, _count, _items, (_tp), (_fn)); \
+	})
+
+#define fy_local_map(_col, _fn, ...) \
+	({ \
+		__typeof__(_col) __col = (_col); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_MAP | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items, (_fn)); \
+	})
+
+#define fy_local_pmap(_col, _tp, _fn, ...) \
+	({ \
+		__typeof__(_col) __col = (_col); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_MAP | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_PARALLEL, \
+				__col, _count, _items, (_tp), (_fn)); \
+	})
+
+#define fy_local_reduce(_col, _fn, _acc, ...) \
+	({ \
+		__typeof__(_col) __col = (_col); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items, (_fn), fy_value(_acc)); \
+	})
+
+#define fy_local_preduce(_col, _tp, _fn, _acc, ...) \
+	({ \
+		__typeof__(_col) __col = (_col); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_PARALLEL, \
+			__col, _count, _items, (_tp), (_fn), fy_value(_acc)); \
+	})
 
 #endif

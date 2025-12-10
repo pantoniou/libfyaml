@@ -350,6 +350,31 @@ fy_generic_builder_create_in_place(enum fy_gb_cfg_flags flags, struct fy_generic
 	return gb;
 }
 
+struct fy_allocator *fy_generic_builder_get_allocator(struct fy_generic_builder *gb)
+{
+	if (!gb)
+		return NULL;
+	return gb->allocator;
+}
+
+size_t
+fy_generic_builder_get_free(struct fy_generic_builder *gb)
+{
+	struct fy_allocator_info *info;
+	size_t freesz;
+
+	if (!gb)
+		return 0;
+
+	info = fy_allocator_get_info(fy_generic_builder_get_allocator(gb), FY_ALLOC_TAG_NONE);
+	if (!info)
+		return 0;
+	freesz = info->free;	
+	free(info);
+
+	return freesz;
+}
+
 void fy_generic_builder_reset(struct fy_generic_builder *gb)
 {
 	if (!gb)

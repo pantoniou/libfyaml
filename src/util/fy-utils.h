@@ -165,8 +165,13 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 /* if expression is zero, then the build will break */
 #define FY_COMPILE_ERROR_ON_ZERO(_e) ((void)(sizeof(char[1 - 2*!!(_e)])))
 
+/* make things fail easy on non GCC/clang */
+#ifndef __has_builtin
+#define __has_builtin(x) 0
+#endif
+
 /* true, if types are the same, false otherwise (depends on builtin_types_compatible_p) */
-#if defined(__has_builtin) && __has_builtin(__builtin_types_compatible_p)
+#if __has_builtin(__builtin_types_compatible_p)
 #define FY_SAME_TYPE(_a, _b) __builtin_types_compatible_p(__typeof__(_a), __typeof__(_b))
 #else
 #define FY_SAME_TYPE(_a, _b) true
@@ -177,7 +182,7 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
     FY_COMPILE_ERROR_ON_ZERO(!FY_SAME_TYPE(_a, _b))
 
 /* type safe add overflow */
-#if defined(__has_builtin) && __has_builtin(__builtin_add_overflow)
+#if __has_builtin(__builtin_add_overflow)
 #define FY_ADD_OVERFLOW __builtin_add_overflow
 #else
 #define FY_ADD_OVERFLOW(_a, _b, _resp) \
@@ -197,7 +202,7 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 #endif
 
 /* type safe sub overflow */
-#if defined(__has_builtin) && __has_builtin(__builtin_sub_overflow)
+#if __has_builtin(__builtin_sub_overflow)
 #define FY_SUB_OVERFLOW __builtin_sub_overflow
 #else
 #define FY_SUB_OVERFLOW(_a, _b, _resp) \
@@ -217,7 +222,7 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 #endif
 
 /* type safe multiply overflow */
-#if defined(__has_builtin) && __has_builtin(__builtin_mul_overflow)
+#if __has_builtin(__builtin_mul_overflow)
 #define FY_MUL_OVERFLOW __builtin_mul_overflow
 #else
 #define FY_MUL_OVERFLOW(_a, _b, _resp) \
@@ -458,5 +463,14 @@ uint64_t fy_iovec_xxhash64(const struct iovec *iov, int iovcnt);
 #define FY_CONCAT_INNER(_a, _b) _a ## _b
 #define FY_UNIQUE(_base) FY_CONCAT(_base, __COUNTER__)
 #define FY_LUNIQUE(_base) FY_CONCAT(_base, __LINE__)
+
+#if __has_builtin(__builtin_stack_save) && __has_builtin(__builtin_stack_restore)
+#define FY_STACK_SAVE()		__builtin_stack_save()
+#define FY_STACK_RESTORE(_x)	__builtin_stack_restore((_x))
+#else
+/* no builtin? just ignore */
+#define FY_STACK_SAVE()		((void *)NULL)
+#define FY_STACK_RESTORE(_x)	do { (void)(_x); } while(0)
+#endif
 
 #endif
