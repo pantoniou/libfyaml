@@ -454,4 +454,9 @@ fy_iovec_cmp(const struct iovec *iov, int iovcnt, const void *data)
 
 uint64_t fy_iovec_xxhash64(const struct iovec *iov, int iovcnt);
 
+#define FY_CONCAT(_a, _b) FY_CONCAT_INNER(_a, _b)
+#define FY_CONCAT_INNER(_a, _b) _a ## _b
+#define FY_UNIQUE(_base) FY_CONCAT(_base, __COUNTER__)
+#define FY_LUNIQUE(_base) FY_CONCAT(_base, __LINE__)
+
 #endif
