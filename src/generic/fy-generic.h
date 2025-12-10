@@ -1141,6 +1141,30 @@ static inline int fy_generic_compare(fy_generic a, fy_generic b)
 	return fy_generic_compare_out_of_place(a, b);
 }
 
+static inline const fy_generic *fy_generic_mappingp_get_at_keyp(const fy_generic_mapping *mapp, size_t idx)
+{
+	if (!mapp || idx >= mapp->count)
+		return NULL;
+	return &mapp->pairs[idx].key;
+}
+
+static inline const fy_generic *fy_generic_mapping_get_at_keyp(fy_generic map, size_t idx)
+{
+	return fy_generic_mappingp_get_at_keyp(fy_generic_mapping_resolve(map), idx);
+}
+
+static inline const fy_generic fy_generic_mappingp_get_at_key(const fy_generic_mapping *mapp, size_t idx)
+{
+	if (!mapp || idx >= mapp->count)
+		return fy_invalid;
+	return mapp->pairs[idx].key;
+}
+
+static inline const fy_generic fy_generic_mapping_get_at_key(fy_generic map, size_t idx)
+{
+	return fy_generic_mappingp_get_at_key(fy_generic_mapping_resolve(map), idx);
+}
+
 // XXX this can be considerably sped up
 static inline const fy_generic *fy_generic_mappingp_valuep_index(const fy_generic_mapping *mapp, fy_generic key, size_t *idxp)
 {
@@ -1376,6 +1400,7 @@ static inline const fy_generic *fy_generic_mappingp_get_at_ ## _gtype ## _valuep
 	const fy_generic *vp = fy_generic_mappingp_get_at_valuep(mapp, idx); \
 	return vp && fy_generic_is_direct_ ## _gtype (*vp) ? vp : NULL; \
 } \
+\
 static inline const fy_generic *fy_generic_mapping_get_at_ ## _gtype ## _valuep(fy_generic map, size_t idx) \
 { \
 	const fy_generic_mapping *mapp = fy_generic_mapping_resolve(map); \
@@ -1394,6 +1419,35 @@ static inline _ctype fy_generic_mapping_get_at_ ## _gtype ## _default(fy_generic
 	return fy_genericp_cast_  ## _gtype ## _default(vp, default_value); \
 } \
 \
+static inline const fy_generic *fy_generic_mappingp_get_at_ ## _gtype ## _keyp(const fy_generic_mapping *mapp, size_t idx) \
+{ \
+	const fy_generic *vp = fy_generic_mappingp_get_at_keyp(mapp, idx); \
+	return vp && fy_generic_is_direct_ ## _gtype (*vp) ? vp : NULL; \
+} \
+\
+static inline const fy_generic *fy_generic_mapping_get_at_ ## _gtype ## _keyp(fy_generic map, size_t idx) \
+{ \
+	const fy_generic_mapping *mapp = fy_generic_mapping_resolve(map); \
+	return fy_generic_mappingp_get_at_ ## _gtype ## _keyp(mapp, idx); \
+} \
+\
+static inline const fy_generic *fy_generic_mapping_get_key_at_ ## _gtype ## _valuep(fy_generic map, size_t idx) \
+{ \
+	const fy_generic_mapping *mapp = fy_generic_mapping_resolve(map); \
+	return fy_generic_mappingp_get_at_ ## _gtype ## _keyp(mapp, idx); \
+} \
+\
+static inline _ctype fy_generic_mappingp_get_key_at_ ## _gtype ## _default(const fy_generic_mapping *mapp, size_t idx, _ctype default_value) \
+{ \
+	const fy_generic *vp = fy_generic_mappingp_get_at_ ## _gtype ## _keyp(mapp, idx); \
+	return fy_genericp_cast_  ## _gtype ## _default(vp, default_value); \
+} \
+\
+static inline _ctype fy_generic_mapping_get_key_at_ ## _gtype ## _default(fy_generic map, size_t idx, _ctype default_value) \
+{ \
+	const fy_generic *vp = fy_generic_mapping_get_at_ ## _gtype ## _keyp(map, idx); \
+	return fy_genericp_cast_  ## _gtype ## _default(vp, default_value); \
+} \
 struct fy_useless_struct_for_semicolon
 
 static inline bool fy_null_is_in_range(const void *v)
@@ -2738,7 +2792,10 @@ static inline void fy_generic_cast_default_final_never(fy_generic v,
 	const fy_generic_decorated_int *: (const fy_generic_decorated_int *)NULL, \
 	fy_generic_decorated_int *: (fy_generic_decorated_int *)NULL, \
 	fy_generic_decorated_int: ((fy_generic_decorated_int){ }), \
-	fy_generic: fy_null
+	fy_generic: fy_null, \
+	fy_generic_map_pair: fy_map_pair_invalid, \
+	const fy_generic_map_pair *: ((fy_generic_map_pair *)NULL), \
+	fy_generic_map_pair *: ((fy_generic_map_pair *)NULL)
 
 #define fy_generic_cast_default_Generic_dispatch \
 	FY_GENERIC_ALL_SCALARS_DISPATCH_SFX(fy_generic_cast, default), \
@@ -3319,6 +3376,7 @@ fy_generic_mapping_get_at_szstr_default(fy_generic map, size_t idx,
 	return fy_generic_mappingp_get_at_szstr_default(mapp, idx, default_value);
 }
 
+// value retrieval at pos
 #define fy_generic_mapping_get_at_default_Generic_dispatch \
 	FY_GENERIC_ALL_SCALARS_DISPATCH_SFX(fy_generic_mapping_get_at, default), \
 	char *: fy_generic_mapping_get_at_char_ptr_default, \
@@ -3352,8 +3410,133 @@ fy_generic_mapping_get_at_szstr_default(fy_generic map, size_t idx,
 #define fy_generic_mappingp_get_at_default(_mapp, _idx, _dv) \
 	(_Generic((_dv), fy_generic_mappingp_get_at_default_Generic_dispatch)((_mapp), (_idx), (_dv)))
 
-#define fy_generic_mappingp_at_get_typed(_mapp, _idx, _type) \
+#define fy_generic_mappingp_get_at_typed(_mapp, _idx, _type) \
 	(fy_generic_mappingp_get_at_default((_mapp), (_idx), fy_generic_get_type_default(_type)))
+
+// for a mapping get_at it's like a sequence of map pairs */
+static inline fy_generic_sequence_handle
+fy_generic_mappingp_get_key_at_generic_sequence_handle_default(const fy_generic_mapping *mapp, size_t idx,
+		fy_generic_sequence_handle default_value)
+{
+	return fy_genericp_get_generic_sequence_handle_default(
+			fy_generic_mappingp_get_at_keyp(mapp, idx),
+			default_value);
+}
+
+static inline fy_generic_sequence_handle
+fy_generic_mapping_get_key_at_generic_sequence_handle_default(fy_generic map, size_t idx,
+		fy_generic_sequence_handle default_value)
+{
+	const fy_generic_mapping *mapp = fy_generic_mapping_resolve(map);
+	return fy_generic_mappingp_get_key_at_generic_sequence_handle_default(mapp, idx, default_value);
+}
+
+static inline fy_generic_mapping_handle
+fy_generic_mappingp_get_key_at_generic_mapping_handle_default(const fy_generic_mapping *mapp, size_t idx,
+		fy_generic_mapping_handle default_value)
+{
+	return fy_genericp_get_generic_mapping_handle_default(
+			fy_generic_mappingp_get_at_keyp(mapp, idx),
+			default_value);
+}
+
+static inline fy_generic_mapping_handle
+fy_generic_mapping_get_key_at_generic_mapping_handle_default(fy_generic map, size_t idx,
+		fy_generic_mapping_handle default_value)
+{
+	const fy_generic_mapping *mapp = fy_generic_mapping_resolve(map);
+	return fy_generic_mappingp_get_key_at_generic_mapping_handle_default(mapp, idx, default_value);
+}
+
+static inline fy_generic fy_generic_mappingp_get_key_at_generic_default(const fy_generic_mapping *mapp, size_t idx, fy_generic default_value)
+{
+	return fy_genericp_get_generic_default(
+			fy_generic_mappingp_get_at_keyp(mapp, idx),
+			default_value);
+}
+
+static inline fy_generic fy_generic_mapping_get_key_at_generic_default(fy_generic map, size_t idx, fy_generic default_value)
+{
+	const fy_generic_mapping *mapp = fy_generic_mapping_resolve(map);
+	return fy_generic_mappingp_get_key_at_generic_default(mapp, idx, default_value);
+}
+
+static inline const char *fy_generic_mappingp_get_key_at_const_char_ptr_default(const fy_generic_mapping *mapp, size_t idx, const char *default_value)
+{
+	return fy_genericp_get_const_char_ptr_default(
+			fy_generic_mappingp_get_at_keyp(mapp, idx),
+			default_value);
+}
+
+static inline const char *fy_generic_mapping_get_key_at_const_char_ptr_default(fy_generic map, size_t idx, const char *default_value)
+{
+	const fy_generic_mapping *mapp = fy_generic_mapping_resolve(map);
+	return fy_generic_mappingp_get_key_at_const_char_ptr_default(mapp, idx, default_value);
+}
+
+static inline char *fy_generic_mappingp_get_key_at_char_ptr_default(const fy_generic_mapping *mapp, size_t idx, const char *default_value)
+{
+	return (char *)fy_generic_mappingp_get_key_at_const_char_ptr_default(mapp, idx, default_value);
+}
+
+static inline char *fy_generic_mapping_get_key_at_char_ptr_default(fy_generic map, size_t idx, char *default_value)
+{
+	return (char *)fy_generic_mapping_get_key_at_const_char_ptr_default(map, idx, default_value);
+}
+
+static inline fy_generic_sized_string
+fy_generic_mappingp_get_key_at_szstr_default(const fy_generic_mapping *mapp, size_t idx,
+		fy_generic_sized_string default_value)
+{
+	return fy_genericp_get_szstr_default(
+			fy_generic_mappingp_get_at_keyp(mapp, idx),
+			default_value);
+}
+
+static inline fy_generic_sized_string
+fy_generic_mapping_get_key_at_szstr_default(fy_generic map, size_t idx,
+		fy_generic_sized_string default_value)
+{
+	const fy_generic_mapping *mapp = fy_generic_mapping_resolve(map);
+	return fy_generic_mappingp_get_key_at_szstr_default(mapp, idx, default_value);
+}
+
+// key retrieval at pos
+#define fy_generic_mapping_get_key_at_default_Generic_dispatch \
+	FY_GENERIC_ALL_SCALARS_DISPATCH_SFX(fy_generic_mapping_get_key_at, default), \
+	char *: fy_generic_mapping_get_key_at_char_ptr_default, \
+	const char *: fy_generic_mapping_get_key_at_const_char_ptr_default, \
+	fy_generic_sequence_handle: fy_generic_mapping_get_key_at_generic_sequence_handle_default, \
+	fy_generic_mapping_handle: fy_generic_mapping_get_key_at_generic_mapping_handle_default, \
+	fy_generic_sized_string: fy_generic_mapping_get_key_at_szstr_default, \
+	fy_generic: fy_generic_mapping_get_key_at_generic_default, \
+	fy_generic_map_pair: fy_generic_mapping_get_at_map_pair_default, \
+	fy_generic_map_pair *: fy_generic_mapping_get_at_map_pairp_default, \
+	const fy_generic_map_pair *: fy_generic_mapping_get_at_const_map_pairp_default
+
+#define fy_generic_mapping_get_key_at_default(_map, _idx, _dv) \
+	(_Generic((_dv), fy_generic_mapping_get_key_at_default_Generic_dispatch)((_map), (_idx), (_dv)))
+
+#define fy_generic_mapping_get_at_typed(_map, _idx, _type) \
+	(fy_generic_mapping_get_at_default((_map), (_idx), fy_generic_get_type_default(_type)))
+
+#define fy_generic_mappingp_get_key_at_default_Generic_dispatch \
+	FY_GENERIC_ALL_SCALARS_DISPATCH_SFX(fy_generic_mappingp_get_key_at, default), \
+	char *: fy_generic_mappingp_get_key_at_char_ptr_default, \
+	const char *: fy_generic_mappingp_get_key_at_const_char_ptr_default, \
+	fy_generic_sequence_handle: fy_generic_mappingp_get_key_at_generic_sequence_handle_default, \
+	fy_generic_mapping_handle: fy_generic_mappingp_get_key_at_generic_mapping_handle_default, \
+	fy_generic_sized_string: fy_generic_mappingp_get_key_at_szstr_default, \
+	fy_generic: fy_generic_mappingp_get_key_at_generic_default, \
+	fy_generic_map_pair: fy_generic_mappingp_get_at_map_pair_default, \
+	fy_generic_map_pair *: fy_generic_mappingp_get_at_map_pairp_default, \
+	const fy_generic_map_pair *: fy_generic_mappingp_get_at_const_map_pairp_default
+
+#define fy_generic_mappingp_get_key_at_default(_mapp, _idx, _dv) \
+	(_Generic((_dv), fy_generic_mappingp_get_key_at_default_Generic_dispatch)((_mapp), (_idx), (_dv)))
+
+#define fy_generic_mappingp_get_key_at_typed(_mapp, _idx, _type) \
+	(fy_generic_mappingp_get_key_at_default((_mapp), (_idx), fy_generic_get_type_default(_type)))
 
 // final polymorphism is a go go
 
@@ -3462,6 +3645,39 @@ static inline fy_generic fy_get_generic_map_handle(const void *p)
 #define fy_generic_get_at_typed(_colv, _idx, _type) \
 	(fy_generic_get_at_default((_colv), (_idx), fy_generic_get_type_default(_type)))
 
+#define fy_generic_get_key_at_default(_colv, _idx, _dv) \
+	({ \
+		fy_generic_typeof(_colv) __colv = (_colv); \
+		fy_generic_typeof(_dv) __dv = (_dv); \
+		fy_generic_typeof(_dv) __ret; \
+		\
+		const fy_generic __colv2 = _Generic(__colv, \
+			fy_generic: fy_get_generic_generic(&__colv), \
+			fy_generic_sequence_handle: fy_get_generic_seq_handle(&__colv), \
+			fy_generic_mapping_handle: fy_get_generic_map_handle(&__colv) ); \
+		const enum fy_generic_type __type = _Generic(__colv, \
+			fy_generic: fy_get_generic_direct_collection_type(__colv2), \
+			fy_generic_sequence_handle: FYGT_SEQUENCE, \
+			fy_generic_mapping_handle: FYGT_MAPPING ); \
+		const size_t __index = (_idx); \
+		switch (__type) { \
+		case FYGT_MAPPING: \
+			__ret = _Generic(__dv, fy_generic_mapping_get_key_at_default_Generic_dispatch) \
+				(__colv2, __index, __dv); \
+			break; \
+		case FYGT_SEQUENCE: \
+			__ret = _Generic(__dv, fy_generic_sequence_get_default_Generic_dispatch) \
+				(__colv2, __index, __dv); \
+			break; \
+		default: \
+			__ret = __dv; \
+			break; \
+		} \
+		__ret; \
+	})
+
+#define fy_generic_get_key_at_typed(_colv, _idx, _type) \
+	(fy_generic_get_key_at_default((_colv), (_idx), fy_generic_get_type_default(_type)))
 
 /* when it's a generic */
 static inline FY_ALWAYS_INLINE size_t
@@ -4171,6 +4387,15 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 #define fy_get_at(_colv, _idx, _dv) \
 	(fy_get_at_default((_colv), (_idx), (_dv)))
 
+#define fy_get_key_at_default(_colv, _idx, _dv) \
+	(fy_generic_get_key_at_default((_colv), (_idx), (_dv)))
+
+#define fy_get_key_at_typed(_colv, _idx, _type) \
+	(fy_generic_get_key_at_default((_colv), (_idx), fy_generic_get_type_default(_type)))
+
+#define fy_get_key_at(_colv, _idx, _dv) \
+	(fy_get_key_at_default((_colv), (_idx), (_dv)))
+
 #define fy_cast_default(_v, _dv) \
 	(fy_generic_cast_default((_v), (_dv)))
 
@@ -4286,16 +4511,18 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 #define fy_gb_items(_gb, _map) \
 	(fy_generic_op((_gb), FYGBOPF_ITEMS, (_map)))
 
-#define fy_gb_append(_gb, _col, ...) \
-	(fy_generic_op((_gb), \
-		FYGBOPF_APPEND | FYGBOPF_MAP_ITEM_COUNT, (_col), \
-			FY_CPP_VA_COUNT(__VA_ARGS__), \
-			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
-
 #define fy_gb_contains(_gb, _col, ...) \
 	(fy_generic_op((_gb), \
 		FYGBOPF_CONTAINS | FYGBOPF_MAP_ITEM_COUNT, (_col), \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
 			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+/* iterators */
+#define fy_foreach(_v, _col) \
+	for ( \
+		struct { size_t i; size_t len; } _iter ## __COUNTER__ = { 0, fy_len(_col) }; \
+		_iter ## __COUNTER__ .i < _iter ## __COUNTER__ .len && \
+			(((_v) = fy_get_key_at_typed((_col), _iter ## __COUNTER__ .i, __typeof__(_v))), 1); \
+		_iter ## __COUNTER__ .i++)
 
 #endif

@@ -951,6 +951,14 @@ START_TEST(generic_get_at)
 	printf("%s: [1] *mp: key=%s value=%d\n", __func__, key, val);
 	ck_assert(!strcmp(key, "bar"));
 	ck_assert(val == 20);
+
+	printf("checking get_key_at\n");
+	key = fy_get_key_at(map, 0, "");
+	printf(">[%d] key=%s\n", 0, key);
+	ck_assert(!strcmp(key, "foo"));
+	key = fy_get_key_at(map, 1, "");
+	printf(">[%d] key=%s\n", 1, key);
+	ck_assert(!strcmp(key, "bar"));
 }
 END_TEST
 
@@ -3083,6 +3091,93 @@ START_TEST(simple_ops)
 }
 END_TEST
 
+/* Test: iterators */
+START_TEST(iterators)
+{
+	char buf[65536];
+	struct fy_generic_builder *gb;
+	fy_generic v, seq, map;
+	fy_generic_map_pair mp;
+	int ival, idx;
+	const char *sval;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	/* first try simple sequences */
+	seq = fy_sequence(0, 10, 20);
+	printf("fy_foreach seq generic\n");
+	idx = 0;
+	fy_foreach(v, seq) {
+		ck_assert(idx < 3);
+		ival = fy_cast(v, -1);
+		ck_assert(ival == (idx * 10));
+		idx++;
+		printf("> %d\n", ival);
+	}
+
+	printf("fy_foreach seq int\n");
+	idx = 0;
+	fy_foreach(ival, seq) {
+		ck_assert(idx < 3);
+		ck_assert(ival == (idx * 10));
+		idx++;
+		printf("> %d\n", ival);
+	}
+
+	/* sequences of strings now */
+	printf("fy_foreach seq strings\n");
+	seq = fy_sequence("Hello", "World", "!");
+	idx = 0;
+	fy_foreach(sval, seq) {
+		ck_assert(idx < 3);
+		if (idx == 0)
+			ck_assert(!strcmp(sval, "Hello"));
+		else if (idx == 1)
+			ck_assert(!strcmp(sval, "World"));
+		else if (idx == 2)
+			ck_assert(!strcmp(sval, "!"));
+		idx++;
+		printf("> %s\n", sval);
+	}
+
+	/* now try over mappings */
+	printf("fy_foreach map strings\n");
+	map = fy_mapping("foo", 100, "bar", 200);
+	idx = 0;
+	fy_foreach(sval, map) {
+		ival = fy_get(map, sval, -1);
+		if (idx == 0) {
+			ck_assert(!strcmp(sval, "foo"));
+			ck_assert(ival == 100);
+		} else if (idx == 1) {
+			ck_assert(!strcmp(sval, "bar"));
+			ck_assert(ival == 200);
+		}
+		idx++;
+		printf("> %s: %d\n", sval, ival);
+	}
+
+	/* iterate using mapping pairs */
+	printf("fy_foreach map pairs\n");
+	idx = 0;
+	fy_foreach(mp, map) {
+		sval = fy_cast(mp.key, "");
+		ival = fy_cast(mp.value, -1);
+		if (idx == 0) {
+			ck_assert(!strcmp(sval, "foo"));
+			ck_assert(ival == 100);
+		} else if (idx == 1) {
+			ck_assert(!strcmp(sval, "bar"));
+			ck_assert(ival == 200);
+		}
+		idx++;
+		printf("> %s: %d\n", sval, ival);
+	}
+}
+END_TEST
+
 TCase *libfyaml_case_generic(void)
 {
 	TCase *tc;
@@ -3156,6 +3251,9 @@ TCase *libfyaml_case_generic(void)
 
 	/* now time to do collection operations using the simple intefaces */
 	tcase_add_test(tc, simple_ops);
+
+	/* iterator test */
+	tcase_add_test(tc, iterators);
 
 	return tc;
 }
