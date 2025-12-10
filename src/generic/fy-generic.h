@@ -4519,10 +4519,9 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 
 /* iterators */
 #define fy_foreach(_v, _col) \
-	for ( \
-		struct { size_t i; size_t len; } _iter ## __COUNTER__ = { 0, fy_len(_col) }; \
-		_iter ## __COUNTER__ .i < _iter ## __COUNTER__ .len && \
-			(((_v) = fy_get_key_at_typed((_col), _iter ## __COUNTER__ .i, __typeof__(_v))), 1); \
-		_iter ## __COUNTER__ .i++)
+	for (struct { size_t i; size_t len; } FY_LUNIQUE(_iter) = { 0, fy_len(_col) }; \
+	     FY_LUNIQUE(_iter).i < FY_LUNIQUE(_iter).len && \
+		(((_v) = fy_get_key_at_typed((_col), FY_LUNIQUE(_iter).i, __typeof__(_v))), 1); \
+	FY_LUNIQUE(_iter).i++)
 
 #endif
