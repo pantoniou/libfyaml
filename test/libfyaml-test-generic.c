@@ -3055,13 +3055,13 @@ START_TEST(simple_ops)
 			buf, sizeof(buf));
 	ck_assert(gb != NULL);
 
-	v = fy_gb_create_sequence2(gb, 1, 5, 10);
+	v = fy_gb_create_sequence(gb, 1, 5, 10);
 	vexp = fy_sequence(1, 5, 10);
 	ck_assert(!fy_generic_compare(v, vexp));
 	printf("> simple-seq-create: ");
 	fy_generic_emit_default(v);
 
-	v = fy_gb_create_mapping2(gb, "foo", 100, "bar", 200, "baz", 300);
+	v = fy_gb_create_mapping(gb, "foo", 100, "bar", 200, "baz", 300);
 	vexp = fy_mapping("foo", 100, "bar", 200, "baz", 300);
 	ck_assert(!fy_generic_compare(v, vexp));
 	printf("> simple-map-create: ");
@@ -3178,6 +3178,28 @@ START_TEST(iterators)
 }
 END_TEST
 
+/* Test: local ops */
+START_TEST(local_ops)
+{
+	fy_generic seq, map;
+	fy_generic v;
+
+	/* first try simple sequence */
+	seq = fy_create_local_sequence(0, 10, 20, 30, 40, 50, 60, 70);
+	printf("> create local seq: ");
+	fy_generic_emit_default(seq);
+
+	map = fy_create_local_mapping("foo", 10, "bar", 20, "baz", 30, "frooz long string", 40);
+	printf("> create local map: ");
+	fy_generic_emit_default(map);
+
+	v = fy_local_assoc(map, "new", 100);
+	printf("> assoc local: ");
+	fy_generic_emit_default(v);
+}
+END_TEST
+
+
 TCase *libfyaml_case_generic(void)
 {
 	TCase *tc;
@@ -3254,6 +3276,9 @@ TCase *libfyaml_case_generic(void)
 
 	/* iterator test */
 	tcase_add_test(tc, iterators);
+
+	/* local operations */
+	tcase_add_test(tc, local_ops);
 
 	return tc;
 }
