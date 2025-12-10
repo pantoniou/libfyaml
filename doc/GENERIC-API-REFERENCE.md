@@ -4,108 +4,163 @@ This document provides the complete API reference for libfyaml's generic type sy
 
 ## Iteration API
 
-### Sequence Iteration
+### The `fy_foreach` Macro
 
-**Index-based iteration** (works today):
+libfyaml provides a universal `fy_foreach` macro that works with sequences, mappings, and any value types. It uses C11 `_Generic` and `__typeof__` for type-safe iteration without manual casting.
+
+**Definition**:
 ```c
-fy_seq_handle users = fy_get(data, "users", fy_seq_invalid);
-
-for (size_t i = 0; i < fy_len(users); i++) {
-    fy_generic user = fy_get_item(users, i);
-    const char *name = fy_get(user, "name", "anonymous");
-    printf("%s\n", name);
-}
+#define fy_foreach(_v, _col) \
+    for ( \
+        struct { size_t i; size_t len; } _iter ## __COUNTER__ = { 0, fy_len(_col) }; \
+        _iter ## __COUNTER__ .i < _iter ## __COUNTER__ .len && \
+            (((_v) = fy_get_key_at_typed((_col), _iter ## __COUNTER__ .i, __typeof__(_v))), 1); \
+        _iter ## __COUNTER__ .i++)
 ```
 
-**Foreach macro** (proposed):
-```c
-#define fy_seq_foreach(item, seq) \
-    for (size_t _fy_i = 0, _fy_n = fy_len(seq); \
-         _fy_i < _fy_n && ((item) = fy_get_item(seq, _fy_i), 1); \
-         _fy_i++)
+**Key features**:
+- Works with any collection type (sequences, mappings)
+- Automatic type casting based on variable type
+- No namespace pollution (`__COUNTER__` ensures unique names)
+- Zero runtime overhead (inline expansion)
 
-// Usage:
-fy_generic user;
-fy_seq_foreach(user, users) {
-    const char *name = fy_get(user, "name", "anonymous");
-    printf("%s\n", name);
+### Sequence Iteration
+
+#### Iterate as `fy_generic` Values
+
+```c
+fy_generic seq = fy_sequence(10, 20, 30, 40);
+
+fy_generic v;
+fy_foreach(v, seq) {
+    int val = fy_cast(v, 0);
+    printf("%d\n", val);
 }
+// Output: 10, 20, 30, 40
+```
+
+#### Iterate with Automatic Type Casting
+
+The macro automatically casts values based on the iterator variable's type:
+
+```c
+// Iterate as integers directly
+fy_generic seq = fy_sequence(0, 10, 20, 30);
+
+int ival;
+fy_foreach(ival, seq) {
+    printf("%d\n", ival);
+}
+// Output: 0, 10, 20, 30
+```
+
+```c
+// Iterate as strings directly
+fy_generic names = fy_sequence("Alice", "Bob", "Charlie");
+
+const char *name;
+fy_foreach(name, names) {
+    printf("Hello, %s!\n", name);
+}
+// Output:
+// Hello, Alice!
+// Hello, Bob!
+// Hello, Charlie!
+```
+
+#### Complex Values in Sequences
+
+```c
+fy_generic users = fy_sequence(
+    fy_mapping("name", "Alice", "age", 30),
+    fy_mapping("name", "Bob", "age", 25),
+    fy_mapping("name", "Charlie", "age", 35)
+);
+
+fy_generic user;
+fy_foreach(user, users) {
+    const char *name = fy_get(user, "name", "unknown");
+    int age = fy_get(user, "age", 0);
+    printf("%s is %d years old\n", name, age);
+}
+// Output:
+// Alice is 30 years old
+// Bob is 25 years old
+// Charlie is 35 years old
 ```
 
 ### Mapping Iteration
 
-**Iterator-based approach**:
+#### Iterate Over Keys (as strings)
+
 ```c
-// Iterator structure
-typedef struct {
-    fy_map_handle map;
-    void *internal_state;  // Opaque iterator position
-    const char *current_key;
-    fy_generic current_value;
-} fy_map_iter;
+fy_generic config = fy_mapping(
+    "host", "localhost",
+    "port", 8080,
+    "debug", true
+);
 
-// Create iterator
-fy_map_iter fy_map_iter_create(fy_map_handle map);
-
-// Advance to next entry (returns false when done)
-bool fy_map_iter_next(fy_map_iter *iter);
-
-// Get current key/value (after successful next())
-const char *fy_map_iter_key(const fy_map_iter *iter);
-fy_generic fy_map_iter_value(const fy_map_iter *iter);
-```
-
-**Usage**:
-```c
-fy_map_handle config = fy_get(data, "config", fy_map_invalid);
-
-fy_map_iter iter = fy_map_iter_create(config);
-while (fy_map_iter_next(&iter)) {
-    const char *key = fy_map_iter_key(&iter);
-    fy_generic value = fy_map_iter_value(&iter);
-
+const char *key;
+fy_foreach(key, config) {
+    fy_generic value = fy_get(config, key, fy_invalid);
+    // Process key-value pair
     printf("%s = ", key);
 
     switch (fy_type(value)) {
-        case FYGT_STRING:
-            printf("%s\n", fy_cast(value, ""));
-            break;
-        case FYGT_INT:
-            printf("%lld\n", fy_int_get(value));
-            break;
-        // ... handle other types
+    case FYGT_STRING:
+        printf("%s\n", fy_cast(value, ""));
+        break;
+    case FYGT_INT:
+        printf("%d\n", fy_cast(value, 0));
+        break;
+    case FYGT_BOOL:
+        printf("%s\n", fy_cast(value, false) ? "true" : "false");
+        break;
+    default:
+        printf("<other>\n");
+        break;
     }
 }
+// Output:
+// host = localhost
+// port = 8080
+// debug = true
 ```
 
-**Foreach macro for mappings**:
-```c
-#define fy_map_foreach_kv(key_var, value_var, map) \
-    for (fy_map_iter _fy_it = fy_map_iter_create(map); \
-         fy_map_iter_next(&_fy_it) && \
-         ((key_var) = fy_map_iter_key(&_fy_it), \
-          (value_var) = fy_map_iter_value(&_fy_it), 1); )
+#### Iterate Over Key-Value Pairs
 
-// Usage:
-const char *key;
-fy_generic value;
-fy_map_foreach_kv(key, value, config) {
-    printf("%s = %s\n", key, fy_cast(value, ""));
+Use `fy_generic_map_pair` to iterate over both keys and values simultaneously:
+
+```c
+fy_generic config = fy_mapping("foo", 100, "bar", 200, "baz", 300);
+
+fy_generic_map_pair mp;
+fy_foreach(mp, config) {
+    const char *key = fy_cast(mp.key, "");
+    int value = fy_cast(mp.value, 0);
+    printf("%s: %d\n", key, value);
 }
+// Output:
+// foo: 100
+// bar: 200
+// baz: 300
 ```
 
-**Callback-based iteration** (alternative):
+### Index-Based Iteration (Traditional)
+
+For cases where you need the index:
+
 ```c
-typedef void (*fy_map_foreach_fn)(const char *key, fy_generic value, void *ctx);
+fy_generic items = fy_sequence("a", "b", "c");
 
-void fy_map_foreach(fy_map_handle map, fy_map_foreach_fn fn, void *ctx);
-
-// Usage:
-void print_entry(const char *key, fy_generic value, void *ctx) {
-    printf("%s = %s\n", key, fy_cast(value, ""));
+for (size_t i = 0; i < fy_len(items); i++) {
+    fy_generic item = fy_get_item(items, i);
+    printf("[%zu] = %s\n", i, fy_cast(item, ""));
 }
-
-fy_map_foreach(config, print_entry, NULL);
+// Output:
+// [0] = a
+// [1] = b
+// [2] = c
 ```
 
 ### Comparison with Other Languages
@@ -119,21 +174,53 @@ for key, value in config.items():
     print(f"{key} = {value}")
 ```
 
-**libfyaml (with macros)**:
+**libfyaml**:
 ```c
 fy_generic user;
-fy_seq_foreach(user, users) {
+fy_foreach(user, users) {
     printf("%s\n", fy_get(user, "name", "anonymous"));
 }
 
-const char *key;
-fy_generic value;
-fy_map_foreach_kv(key, value, config) {
+fy_generic_map_pair mp;
+fy_foreach(mp, config) {
+    const char *key = fy_cast(mp.key, "");
+    fy_generic value = mp.value;
     printf("%s = %s\n", key, fy_cast(value, ""));
 }
 ```
 
 **Nearly identical ergonomics!**
+
+### Implementation Notes
+
+**Type Safety**:
+The macro uses `__typeof__` to determine the iterator variable's type and calls the appropriate `fy_get_key_at_typed()` function, which performs automatic casting:
+- `fy_generic` → Returns value as-is
+- `int`, `long`, etc. → Calls `fy_cast(v, default_int)`
+- `const char *` → Calls `fy_cast(v, default_string)`
+- `fy_generic_map_pair` → Returns key-value pair structure
+
+**Unique Iterator Variables**:
+The macro uses `__COUNTER__` to generate unique iterator variable names, allowing nested `fy_foreach` loops without conflicts:
+
+```c
+fy_generic outer_seq = fy_sequence(
+    fy_sequence(1, 2, 3),
+    fy_sequence(4, 5, 6)
+);
+
+fy_generic inner_seq;
+fy_foreach(inner_seq, outer_seq) {
+    int val;
+    fy_foreach(val, inner_seq) {
+        printf("%d ", val);
+    }
+    printf("\n");
+}
+// Output:
+// 1 2 3
+// 4 5 6
+```
 
 ## Complete API Reference
 

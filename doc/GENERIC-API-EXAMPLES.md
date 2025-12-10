@@ -577,13 +577,118 @@ double process_response(fy_generic data) {
 }
 ```
 
+### Iteration with `fy_foreach`
+
+**Python**:
+```python
+for item in items:
+    print(item)
+
+for key, value in config.items():
+    print(f"{key} = {value}")
+```
+
+**TypeScript**:
+```typescript
+for (const item of items) {
+    console.log(item);
+}
+
+for (const [key, value] of Object.entries(config)) {
+    console.log(`${key} = ${value}`);
+}
+```
+
+**Rust**:
+```rust
+for item in &items {
+    println!("{}", item);
+}
+
+for (key, value) in &config {
+    println!("{} = {}", key, value);
+}
+```
+
+**libfyaml**:
+```c
+// Iterate sequence with automatic type casting
+const char *item;
+fy_foreach(item, items) {
+    printf("%s\n", item);
+}
+
+// Iterate mapping with key-value pairs
+fy_generic_map_pair pair;
+fy_foreach(pair, config) {
+    const char *key = fy_cast(pair.key, "");
+    fy_generic value = pair.value;
+    printf("%s = %s\n", key, fy_cast(value, ""));
+}
+
+// Or just iterate keys
+const char *key;
+fy_foreach(key, config) {
+    fy_generic value = fy_get(config, key, fy_invalid);
+    printf("%s = %s\n", key, fy_cast(value, ""));
+}
+```
+
+**Nested iteration**:
+
+**Python**:
+```python
+for row in matrix:
+    for value in row:
+        print(value, end=' ')
+    print()
+```
+
+**libfyaml**:
+```c
+fy_generic row;
+fy_foreach(row, matrix) {
+    int value;
+    fy_foreach(value, row) {
+        printf("%d ", value);
+    }
+    printf("\n");
+}
+```
+
+**Functional pipeline with iteration**:
+
+**Python**:
+```python
+active_users = [u for u in users if u.get("active", False)]
+for user in active_users:
+    print(user.get("name", "unknown"))
+```
+
+**libfyaml**:
+```c
+fy_generic active_users = fy_filter(users, is_active_user);
+
+fy_generic user;
+fy_foreach(user, active_users) {
+    printf("%s\n", fy_get(user, "name", "unknown"));
+}
+```
+
+**Key advantages of `fy_foreach`**:
+- **Automatic type casting**: Iterator variable type determines conversion
+- **Works with any collection**: Sequences, mappings, and custom types
+- **Nested iteration safe**: Uses `__COUNTER__` to avoid name conflicts
+- **Zero runtime overhead**: Macro expands to efficient inline loop
+- **Python-like syntax**: `for item in collection` pattern in C
+
 ### Key Observations
 
-1. **Python vs libfyaml**: Nearly identical ergonomics. libfyaml requires type prefixes (`fy_`) and explicit length in loops, but otherwise matches Python's conciseness.
+1. **Python vs libfyaml**: Nearly identical ergonomics. libfyaml's `fy_foreach` matches Python's `for item in collection` syntax with automatic type conversion. The only difference is requiring variable declarations upfront in C.
 
-2. **TypeScript vs libfyaml**: TypeScript's optional chaining (`?.`) is more concise for nested access, but libfyaml's explicit defaults are clearer. Both have similar iteration patterns.
+2. **TypeScript vs libfyaml**: Both support type-safe iteration. libfyaml's `fy_foreach` with automatic casting is more concise than TypeScript's `for...of` with type annotations.
 
-3. **Rust vs libfyaml**: Rust's type safety requires more verbose unwrapping. libfyaml achieves similar safety through `_Generic` dispatch but with less ceremony. Rust's pattern matching is more powerful, but libfyaml's switch statements are competitive.
+3. **Rust vs libfyaml**: Rust's iteration is more explicit with borrows (`&items`). libfyaml's `fy_foreach` achieves similar zero-cost abstraction with cleaner syntax through C11 `_Generic` and `__typeof__`.
 
 4. **Unified operations**: libfyaml's `fy_len()` provides the same polymorphism as Python's `len()`, Rust's `.len()`, and TypeScript's `.length`, working across sequences, mappings, and strings.
 

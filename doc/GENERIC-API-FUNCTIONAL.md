@@ -524,6 +524,223 @@ bool apply_transaction(struct fy_generic_builder *gb,
 }
 ```
 
+## Iteration with `fy_foreach`
+
+The `fy_foreach` macro provides Python-like iteration over collections with automatic type casting.
+
+### Iterating Sequences
+
+**Basic iteration**:
+```c
+fy_generic items = fy_sequence("apple", "banana", "cherry");
+
+const char *item;
+fy_foreach(item, items) {
+    printf("- %s\n", item);
+}
+// Output:
+// - apple
+// - banana
+// - cherry
+```
+
+**With automatic type conversion**:
+```c
+fy_generic numbers = fy_sequence(10, 20, 30, 40);
+
+int num;
+fy_foreach(num, numbers) {
+    printf("Number: %d\n", num);
+}
+// Output:
+// Number: 10
+// Number: 20
+// Number: 30
+// Number: 40
+```
+
+**Processing functional results**:
+```c
+// Filter returns a new sequence - iterate over it directly
+fy_generic data = fy_sequence(5, 15, 25, 35, 45);
+fy_generic filtered = fy_filter(data, is_above_20);
+
+int value;
+fy_foreach(value, filtered) {
+    printf("%d ", value);
+}
+// Output: 25 35 45
+```
+
+### Iterating Mappings
+
+**Iterate over keys**:
+```c
+fy_generic config = fy_mapping(
+    "host", "localhost",
+    "port", 8080,
+    "debug", true
+);
+
+const char *key;
+fy_foreach(key, config) {
+    fy_generic value = fy_get(config, key, fy_invalid);
+    printf("%s = %s\n", key, fy_cast(value, ""));
+}
+// Output:
+// host = localhost
+// port = 8080
+// debug = true
+```
+
+**Iterate over key-value pairs**:
+```c
+fy_generic settings = fy_mapping("timeout", 30, "retries", 3);
+
+fy_generic_map_pair pair;
+fy_foreach(pair, settings) {
+    const char *key = fy_cast(pair.key, "");
+    int value = fy_cast(pair.value, 0);
+    printf("%s: %d\n", key, value);
+}
+// Output:
+// timeout: 30
+// retries: 3
+```
+
+### Functional Pipelines with Iteration
+
+Combine functional operations with iteration:
+
+```c
+// Process users functionally, then iterate over results
+fy_generic users = fy_sequence(
+    fy_mapping("name", "Alice", "age", 30, "active", true),
+    fy_mapping("name", "Bob", "age", 25, "active", false),
+    fy_mapping("name", "Charlie", "age", 35, "active", true)
+);
+
+// Filter active users, map to names, iterate
+fy_generic active_users = fy_filter(users, is_active);
+fy_generic names = fy_map(active_users, get_name);
+
+const char *name;
+fy_foreach(name, names) {
+    printf("Active: %s\n", name);
+}
+// Output:
+// Active: Alice
+// Active: Charlie
+```
+
+### Nested Iteration
+
+`fy_foreach` supports nesting without conflicts:
+
+```c
+fy_generic matrix = fy_sequence(
+    fy_sequence(1, 2, 3),
+    fy_sequence(4, 5, 6),
+    fy_sequence(7, 8, 9)
+);
+
+fy_generic row;
+fy_foreach(row, matrix) {
+    int value;
+    fy_foreach(value, row) {
+        printf("%d ", value);
+    }
+    printf("\n");
+}
+// Output:
+// 1 2 3
+// 4 5 6
+// 7 8 9
+```
+
+### Iterating Transformed Collections
+
+Since functional operations return new collections, you can iterate over transformed data without intermediate variables:
+
+```c
+// Transform and iterate in one flow
+fy_generic prices = fy_sequence(10, 20, 30, 40);
+
+// Double prices and iterate
+int doubled;
+fy_foreach(doubled, fy_map(prices, double_value)) {
+    printf("$%d ", doubled);
+}
+// Output: $20 $40 $60 $80
+
+// Filter and iterate
+int expensive;
+fy_foreach(expensive, fy_filter(prices, is_over_25)) {
+    printf("$%d ", expensive);
+}
+// Output: $30 $40
+```
+
+### Integration with Builder Allocations
+
+Iteration works seamlessly with builder-allocated collections:
+
+```c
+struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
+
+// Build collection with builder
+fy_generic data = fy_assoc(gb,
+    fy_assoc(gb,
+        fy_mapping("users", fy_sequence("alice", "bob")),
+        "count",
+        2
+    ),
+    "status",
+    "active"
+);
+
+// Iterate over mapping keys
+const char *key;
+fy_foreach(key, data) {
+    printf("Key: %s\n", key);
+}
+
+// Iterate over nested sequence
+fy_generic users = fy_get(data, "users", fy_seq_empty);
+const char *user;
+fy_foreach(user, users) {
+    printf("User: %s\n", user);
+}
+
+fy_generic_builder_destroy(gb);
+```
+
+### Comparison with Manual Iteration
+
+**Manual (traditional C)**:
+```c
+for (size_t i = 0; i < fy_len(items); i++) {
+    fy_generic item = fy_get_item(items, i);
+    const char *str = fy_cast(item, "");
+    printf("%s\n", str);
+}
+```
+
+**With `fy_foreach`**:
+```c
+const char *str;
+fy_foreach(str, items) {
+    printf("%s\n", str);
+}
+```
+
+**Benefits**:
+- Automatic type casting (no manual `fy_cast` needed)
+- Cleaner syntax (no index variable)
+- Works with both sequences and mappings
+- No risk of index errors
+- Nested loops don't conflict
+
 ## Thread Safety
 
 Because all operations are immutable, they are inherently thread-safe:
