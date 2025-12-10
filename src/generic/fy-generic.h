@@ -4650,7 +4650,6 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 				break; \
 			_sz = _sz * 2; \
 		} \
-		assert(fy_generic_is_valid(_v)); \
 		_v; \
 	})
 
