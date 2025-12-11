@@ -2422,12 +2422,12 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 
 #define fy_stringf_value(_fmt, ...) \
 	({ \
-		char *_buf = fy_sprintfa((_fmt), ## __VA_ARGS__); \
+		char *_buf = fy_sprintfa((_fmt) __VA_OPT__(,) __VA_ARGS__); \
 		fy_string_alloca(_buf); \
 	})
 
 #define fy_stringf(_fmt, ...) \
-	((fy_generic){ .v = fy_stringf_value((_fmt), ## __VA_ARGS__) })
+	((fy_generic){ .v = fy_stringf_value((_fmt) __VA_OPT__(,) __VA_ARGS__) })
 
 #define fy_sequence_alloca(_count, _items) 						\
 	({										\
@@ -4107,6 +4107,21 @@ FY_GENERIC_GB_FLOAT_LVAL_TEMPLATE(double, double, -DBL_MAX, DBL_MAX, 0.0);
 #define fy_gb_or_NULL(_maybe_gb) \
 	(_Generic((_maybe_gb), struct fy_generic_builder *: (_maybe_gb), default: NULL))
 
+#define fy_first_non_gb(_maybe_gb, ...) \
+	(_Generic((_maybe_gb), \
+		  struct fy_generic_builder *: FY_CPP_FIRST(__VA_ARGS__), \
+		  default: (_maybe_gb)))
+
+#define fy_second_non_gb(_maybe_gb, ...) \
+	(_Generic((_maybe_gb), \
+		  struct fy_generic_builder *: FY_CPP_SECOND(__VA_ARGS__), \
+		  default: FY_CPP_FIRST(__VA_ARGS__)))
+
+#define fy_third_non_gb(_maybe_gb, ...) \
+	(_Generic((_maybe_gb), \
+		  struct fy_generic_builder *: FY_CPP_THIRD(__VA_ARGS__), \
+		  default: FY_CPP_SECOND(__VA_ARGS__)))
+
 #define fy_gb_to_generic_value_helper(_gb, _arg, ...) \
 	fy_gb_to_generic_value((_gb), (_arg))
 
@@ -4642,7 +4657,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 		for (;;) { \
 			_buf = alloca(_sz); \
 			_gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL, _buf, _sz); \
-			_v = fy_generic_op(_gb, ## __VA_ARGS__); \
+			_v = fy_generic_op(_gb __VA_OPT__(,) __VA_ARGS__); \
 			if (fy_generic_is_valid(_v)) \
 				break; \
 			FY_STACK_RESTORE(_stack_save); \
@@ -4656,14 +4671,14 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 #define fy_create_local_sequence(...) \
 	({ \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_CREATE_SEQ, _count, _items); \
 	})
 
 #define fy_create_local_mapping(...) \
 	({ \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_CREATE_MAP | FYGBOPF_MAP_ITEM_COUNT, _count, _items); \
 	})
 
@@ -4672,7 +4687,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 		__typeof__(_col) __col = (_col); \
 		__typeof__(_idx) __idx = (_idx); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_INSERT | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items, __idx); \
 	})
 
@@ -4681,7 +4696,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 		__typeof__(_col) __col = (_col); \
 		__typeof__(_idx) __idx = (_idx); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_REPLACE | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items, __idx); \
 	})
 
@@ -4689,7 +4704,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	({ \
 		__typeof__(_col) __col = (_col); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_APPEND | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
 	})
 
@@ -4697,7 +4712,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	({ \
 		__typeof__(_map) __map = (_map); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_ASSOC | FYGBOPF_MAP_ITEM_COUNT, __map, _count, _items); \
 	})
 
@@ -4705,7 +4720,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	({ \
 		__typeof__(_map) __map = (_map); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_DISASSOC, __map, _count, _items); \
 	})
 
@@ -4731,15 +4746,17 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	({ \
 		__typeof__(_col) __col = (_col); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
-		FY_LOCAL_OP(FYGBOPF_CONTAINS | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		fy_generic _v; \
+		_v = FY_LOCAL_OP(FYGBOPF_CONTAINS | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
+		_v.v == fy_true_value; \
 	})
 
 #define fy_local_concat(_col, ...) \
 	({ \
 		__typeof__(_col) __col = (_col); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_CONCAT | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
 	})
 
@@ -4747,7 +4764,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	({ \
 		__typeof__(_col) __col = (_col); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_REVERSE | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
 	})
 
@@ -4755,7 +4772,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	({ \
 		__typeof__(_col) __col = (_col); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_MERGE | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
 	})
 
@@ -4763,7 +4780,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	({ \
 		__typeof__(_col) __col = (_col); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_UNIQUE | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
 	})
 
@@ -4771,7 +4788,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	({ \
 		__typeof__(_col) __col = (_col); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_SORT | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
 	})
 
@@ -4779,7 +4796,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	({ \
 		__typeof__(_col) __col = (_col); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_FILTER | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items, (_fn)); \
 	})
 
@@ -4787,7 +4804,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	({ \
 		__typeof__(_col) __col = (_col); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_FILTER | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_PARALLEL, \
 				__col, _count, _items, (_tp), (_fn)); \
 	})
@@ -4796,7 +4813,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	({ \
 		__typeof__(_col) __col = (_col); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_MAP | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items, (_fn)); \
 	})
 
@@ -4804,7 +4821,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	({ \
 		__typeof__(_col) __col = (_col); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_MAP | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_PARALLEL, \
 				__col, _count, _items, (_tp), (_fn)); \
 	})
@@ -4813,7 +4830,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	({ \
 		__typeof__(_col) __col = (_col); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items, (_fn), fy_value(_acc)); \
 	})
 
@@ -4821,9 +4838,84 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	({ \
 		__typeof__(_col) __col = (_col); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const void *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_PARALLEL, \
 			__col, _count, _items, (_tp), (_fn), fy_value(_acc)); \
 	})
+
+/* now the grand finale */
+#define FY_GB_OR_LOCAL_OP(_gb_or_NULL, _flags, ...) \
+	((_gb_or_NULL) ? \
+		fy_generic_op((_gb_or_NULL), (_flags) __VA_OPT__(,) __VA_ARGS__) : \
+		FY_LOCAL_OP((_flags) __VA_OPT__(,) __VA_ARGS__))
+
+#define FY_GB_OR_LOCAL_COL(_flags, _gb_or_first, ...) \
+	({ \
+		struct fy_generic_builder *_gb = fy_gb_or_NULL(_gb_or_first); \
+		const fy_generic _col = fy_first_non_gb(_gb_or_first __VA_OPT__(,) __VA_ARGS__ , fy_invalid); \
+		FY_GB_OR_LOCAL_OP(_gb, (_flags), _col, 0, NULL); \
+	})
+
+#define FY_GB_OR_LOCAL_COL_COUNT_ITEMS(_flags, _gb_or_first, ...) \
+	({ \
+		struct fy_generic_builder *_gb = fy_gb_or_NULL(_gb_or_first); \
+		const fy_generic _col = fy_first_non_gb(_gb_or_first __VA_OPT__(,) __VA_ARGS__); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__) - (_gb != NULL); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__) + (_gb != NULL); \
+		FY_GB_OR_LOCAL_OP(_gb, (_flags), _col, _count, _items); \
+	})
+
+#define FY_GB_OR_LOCAL_COL_IDX_COUNT_ITEMS(_flags, _gb_or_first, ...) \
+	({ \
+		struct fy_generic_builder *_gb = fy_gb_or_NULL(_gb_or_first); \
+		const fy_generic _col = fy_first_non_gb(_gb_or_first, __VA_ARGS__); \
+		size_t _idx = fy_second_non_gb(_gb_or_first, __VA_ARGS__); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__) - 1 - (_gb != NULL); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__) + 1 + (_gb != NULL); \
+		FY_GB_OR_LOCAL_OP(_gb, (_flags), _col, _count, _items, _idx); \
+	})
+
+#define fy_insert(_first, ...) \
+	FY_GB_OR_LOCAL_COL_IDX_COUNT_ITEMS(FYGBOPF_INSERT | FYGBOPF_MAP_ITEM_COUNT, _first __VA_OPT__(,) __VA_ARGS__)
+
+#define fy_replace(_first, ...) \
+	FY_GB_OR_LOCAL_COL_IDX_COUNT_ITEMS(FYGBOPF_REPLACE | FYGBOPF_MAP_ITEM_COUNT, _first __VA_OPT__(,) __VA_ARGS__)
+
+#define fy_append(_first, ...) \
+	FY_GB_OR_LOCAL_COL_COUNT_ITEMS(FYGBOPF_APPEND | FYGBOPF_MAP_ITEM_COUNT, _first __VA_OPT__(,) __VA_ARGS__)
+
+#define fy_assoc(_first, ...) \
+	FY_GB_OR_LOCAL_COL_COUNT_ITEMS(FYGBOPF_ASSOC | FYGBOPF_MAP_ITEM_COUNT, _first __VA_OPT__(,) __VA_ARGS__)
+
+#define fy_disassoc(_first, ...) \
+	FY_GB_OR_LOCAL_COL_COUNT_ITEMS(FYGBOPF_DISASSOC, _first __VA_OPT__(,) __VA_ARGS__)
+
+#define fy_keys(_first, ...) \
+	FY_GB_OR_LOCAL_COL(FYGBOPF_KEYS, _first __VA_OPT__(,) __VA_ARGS__)
+
+#define fy_values(_first, ...) \
+	FY_GB_OR_LOCAL_COL(FYGBOPF_VALUES, _first __VA_OPT__(,) __VA_ARGS__)
+
+#define fy_items(_first, ...) \
+	FY_GB_OR_LOCAL_COL(FYGBOPF_ITEMS, _first __VA_OPT__(,) __VA_ARGS__)
+
+#define fy_contains(_first, ...) \
+	(FY_GB_OR_LOCAL_COL_COUNT_ITEMS(FYGBOPF_CONTAINS | FYGBOPF_MAP_ITEM_COUNT, \
+					_first __VA_OPT__(,) __VA_ARGS__).v == fy_true_value)
+
+#define fy_concat(_first, ...) \
+	FY_GB_OR_LOCAL_COL_COUNT_ITEMS(FYGBOPF_CONCAT, _first __VA_OPT__(,) __VA_ARGS__)
+
+#define fy_reverse(_first, ...) \
+	FY_GB_OR_LOCAL_COL(FYGBOPF_REVERSE, _first __VA_OPT__(,) __VA_ARGS__)
+
+#define fy_merge(_first, ...) \
+	FY_GB_OR_LOCAL_COL_COUNT_ITEMS(FYGBOPF_MERGE, _first __VA_OPT__(,) __VA_ARGS__)
+
+#define fy_unique(_first, ...) \
+	FY_GB_OR_LOCAL_COL(FYGBOPF_UNIQUE, _first __VA_OPT__(,) __VA_ARGS__)
+
+#define fy_sort(_first, ...) \
+	FY_GB_OR_LOCAL_COL(FYGBOPF_SORT, _first __VA_OPT__(,) __VA_ARGS__)
 
 #endif

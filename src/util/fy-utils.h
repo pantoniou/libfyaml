@@ -334,6 +334,12 @@ static inline void fy_strip_trailing_nl(char *str)
 #define _FY_CPP_FIRST(x, ...) x
 #define FY_CPP_FIRST(...)     __VA_OPT__(_FY_CPP_FIRST(__VA_ARGS__))
 
+#define _FY_CPP_SECOND(x, y, ...) y
+#define FY_CPP_SECOND(...)     __VA_OPT__(_FY_CPP_SECOND(__VA_ARGS__))
+
+#define _FY_CPP_THIRD(x, y, ...) y
+#define FY_CPP_THIRD(...)     __VA_OPT__(_FY_CPP_THIRD(__VA_ARGS__))
+
 #define _FY_CPP_REST(x, ...) __VA_ARGS__
 #define FY_CPP_REST(...)     __VA_OPT__(_FY_CPP_REST(__VA_ARGS__))
 
