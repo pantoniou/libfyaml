@@ -3321,6 +3321,7 @@ START_TEST(unified_ops)
 	char buf[4096];
 	struct fy_generic_builder *gb;
 	fy_generic seq, map, v, vexp;
+	int sum;
 	bool ok;
 
 	gb = fy_generic_builder_create_in_place(
@@ -3514,6 +3515,58 @@ START_TEST(unified_ops)
 	ck_assert(fy_len(v) == 4);
 	ck_assert(fy_get(v, 0, -1) == 1);
 	ck_assert(fy_get(v, 3, -1) == 4);
+
+	/* filter a single sequence for items > 100 (one exists) */
+	seq = fy_sequence(7, 6, 5, 101, 8, -100);
+
+	v = fy_filter(gb, seq, test_filter_over_100);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, 0, -1) == 101);
+	printf("> fy_filter(gb, [7,6,5,101,8,-100]: ");
+	fy_generic_emit_default(v);
+
+	v = fy_filter(seq, test_filter_over_100);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, 0, -1) == 101);
+	printf("> fy_filter([7,6,5,101,8,-100]: ");
+	fy_generic_emit_default(v);
+
+	/* map a single sequence of numbers */
+	seq = fy_sequence(7, 6, 5, 8);
+	v = fy_map(gb, seq, test_map_double);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 4);
+	ck_assert(fy_get(v, 0, -1) == 14);
+	ck_assert(fy_get(v, 1, -1) == 12);
+	ck_assert(fy_get(v, 2, -1) == 10);
+	ck_assert(fy_get(v, 3, -1) == 16);
+	printf("> fy_map(gb, [7,6,5,8]): ");
+	fy_generic_emit_default(v);
+
+	v = fy_map(seq, test_map_double);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 4);
+	ck_assert(fy_get(v, 0, -1) == 14);
+	ck_assert(fy_get(v, 1, -1) == 12);
+	ck_assert(fy_get(v, 2, -1) == 10);
+	ck_assert(fy_get(v, 3, -1) == 16);
+	printf("> fy_map([7,6,5,8]) - double: ");
+	fy_generic_emit_default(v);
+
+	/* sum a sequence of numbers */
+	seq = fy_sequence(7, 6, 5, 8);
+	sum = fy_reduce(gb, seq, fy_generic_test_sum_reducer, 0);
+	ck_assert(sum == 26);
+	printf("> fy_reduce(gb, [7,6,5,8]) - sum): %d", sum);
+	fy_generic_emit_default(v);
+
+	sum = fy_reduce(seq, fy_generic_test_sum_reducer, 0);
+	ck_assert(sum == 26);
+	printf("> fy_reduce([7,6,5,8]) - sum): %d", sum);
+	fy_generic_emit_default(v);
+
 }
 END_TEST
 
