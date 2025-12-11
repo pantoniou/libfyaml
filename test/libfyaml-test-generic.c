@@ -3233,6 +3233,88 @@ START_TEST(local_ops)
 }
 END_TEST
 
+/* Test: local ops retry mechanism - create structures that exceed initial buffer size
+ * The FY_LOCAL_OP starts with ~384 bytes and doubles until 65536.
+ * We force retries by creating large structures.
+ */
+START_TEST(local_ops_retry)
+{
+	fy_generic seq, map, v;
+	int i;
+
+	printf("> Building large sequence incrementally...\n");
+	seq = fy_sequence(0, 1, 2, 3, 4, 5, 6, 7, 8, 9);
+	for (i = 1; i < 5; i++) {
+		seq = fy_concat(seq, fy_sequence(
+			i*10+0, i*10+1, i*10+2, i*10+3, i*10+4,
+			i*10+5, i*10+6, i*10+7, i*10+8, i*10+9));
+	}
+	ck_assert(fy_generic_is_valid(seq));
+	ck_assert(fy_len(seq) == 50);
+	printf("> Large sequence length: %zu\n", fy_len(seq));
+
+	/* Verify first and last elements */
+	ck_assert(fy_get_at(seq, 0, -1) == 0);
+	ck_assert(fy_get_at(seq, 49, -1) == 49);
+	fy_generic_emit_default(seq);
+
+	/* Test 2: Create a mapping with long string keys
+	 * Long strings force out-of-place allocation
+	 */
+	printf("> Creating mapping with long string keys...\n");
+	map = fy_merge(fy_map_empty,
+		fy_mapping(
+			"this_is_a_very_long_key_that_exceeds_inline_storage_01", 1,
+			"this_is_a_very_long_key_that_exceeds_inline_storage_02", 2,
+			"this_is_a_very_long_key_that_exceeds_inline_storage_03", 3,
+			"this_is_a_very_long_key_that_exceeds_inline_storage_04", 4,
+			"this_is_a_very_long_key_that_exceeds_inline_storage_05", 5,
+			"this_is_a_very_long_key_that_exceeds_inline_storage_06", 6,
+			"this_is_a_very_long_key_that_exceeds_inline_storage_07", 7,
+			"this_is_a_very_long_key_that_exceeds_inline_storage_08", 8,
+			"this_is_a_very_long_key_that_exceeds_inline_storage_09", 9,
+			"this_is_a_very_long_key_that_exceeds_inline_storage_10", 10
+		));
+	ck_assert(fy_generic_is_valid(map));
+	ck_assert(fy_len(map) == 10);
+	printf("> Long-key mapping length: %zu\n", fy_len(map));
+	fy_generic_emit_default(map);
+
+	/* Test 3: Chain operations that accumulate size */
+	printf("> Chaining operations to accumulate size...\n");
+	seq = fy_sequence(1, 2, 3);
+	for (i = 0; i < 10; i++) {
+		seq = fy_append(seq, i * 10, i * 10 + 1, i * 10 + 2);
+	}
+	ck_assert(fy_generic_is_valid(seq));
+	ck_assert(fy_len(seq) == 33);  /* 3 + 10*3 = 33 */
+	printf("> Chained sequence length: %zu\n", fy_len(seq));
+
+	/* Test 5: Large concat operation */
+	printf("> Large concat operation...\n");
+	seq = fy_sequence(0);
+	v = fy_concat(seq,
+		fy_sequence(1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
+		fy_sequence(11, 12, 13, 14, 15, 16, 17, 18, 19, 20),
+		fy_sequence(21, 22, 23, 24, 25, 26, 27, 28, 29, 30)
+	);
+	ck_assert(fy_generic_is_valid(v));
+	ck_assert(fy_len(v) == 31);  /* 1 + 10 + 10 + 10 */
+	printf("> Concat result length: %zu\n", fy_len(v));
+
+	/* Test 6: Large merge operation */
+	printf("> Large merge operation...\n");
+	map = fy_mapping("base", 0);
+	v = fy_merge(map,
+		fy_mapping("a1", 1, "a2", 2, "a3", 3),
+		fy_mapping("b1", 4, "b2", 5, "b3", 6),
+		fy_mapping("c1", 7, "c2", 8, "c3", 9)
+	);
+	ck_assert(fy_generic_is_valid(v));
+	ck_assert(fy_len(v) == 10);  /* 1 + 3 + 3 + 3 */
+	printf("> Merge result length: %zu\n", fy_len(v));
+}
+
 /* Test: unified ops - auto-dispatch based on first argument type */
 START_TEST(unified_ops)
 {
@@ -3514,6 +3596,9 @@ TCase *libfyaml_case_generic(void)
 
 	/* local operations */
 	tcase_add_test(tc, local_ops);
+
+	/* local ops retry mechanism */
+	tcase_add_test(tc, local_ops_retry);
 
 	/* unified operations */
 	tcase_add_test(tc, unified_ops);
