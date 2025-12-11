@@ -1767,6 +1767,11 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 #define fy_int(_v) \
 	fy_local_int((_v))
 
+static inline fy_generic_value fy_generic_in_place_default(...)
+{
+	return fy_invalid_value;
+}
+
 static inline fy_generic_value fy_generic_in_place_char_ptr_len(const char *p, const size_t len)
 {
 	fy_generic_value v;
@@ -1898,7 +1903,8 @@ static inline fy_generic_value fy_generic_in_place_generic_builderp(struct fy_ge
 	const fy_generic_decorated_int *: fy_generic_in_place_const_dintp, \
 	fy_generic_decorated_int *: fy_generic_in_place_const_dintp, \
 	fy_generic_decorated_int: fy_generic_in_place_dint, \
-	struct fy_generic_builder *: fy_generic_in_place_generic_builderp
+	struct fy_generic_builder *: fy_generic_in_place_generic_builderp, \
+	default: fy_generic_in_place_default
 
 #define fy_to_generic_inplace(_v) ( _Generic((_v), fy_to_generic_inplace_Generic_dispatch)(_v))
 
@@ -4875,6 +4881,16 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 		FY_GB_OR_LOCAL_OP(_gb, (_flags), _col, _count, _items, _idx); \
 	})
 
+#define FY_GB_OR_LOCAL_COL_FN_COUNT_ITEMS(_flags, _gb_or_first, ...) \
+	({ \
+		struct fy_generic_builder *_gb = fy_gb_or_NULL(_gb_or_first); \
+		const fy_generic _col = fy_first_non_gb(_gb_or_first, __VA_ARGS__); \
+		void (*_fn)(void) = (void *)fy_second_non_gb(_gb_or_first, __VA_ARGS__); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__) - 1 - (_gb != NULL); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__) + 1 + (_gb != NULL); \
+		FY_GB_OR_LOCAL_OP(_gb, (_flags), _col, _count, _items, _fn); \
+	})
+
 #define fy_insert(_first, ...) \
 	FY_GB_OR_LOCAL_COL_IDX_COUNT_ITEMS(FYGBOPF_INSERT | FYGBOPF_MAP_ITEM_COUNT, _first __VA_OPT__(,) __VA_ARGS__)
 
@@ -4917,5 +4933,35 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 
 #define fy_sort(_first, ...) \
 	FY_GB_OR_LOCAL_COL(FYGBOPF_SORT, _first __VA_OPT__(,) __VA_ARGS__)
+
+/* fy_filter(gb, col, fn) , fy_filter(col, fn) */
+#define fy_filter(_gb_or_col, _col_or_fn, ...) \
+	({ \
+		struct fy_generic_builder *_gb = fy_gb_or_NULL(_gb_or_col); \
+		const fy_generic _col = fy_first_non_gb(_gb_or_col, _col_or_fn); \
+		fy_generic_filter_pred_fn _fn = fy_second_non_gb(_gb_or_col, _col_or_fn __VA_OPT__(,) __VA_ARGS__ , NULL); \
+		FY_GB_OR_LOCAL_OP(_gb, FYGBOPF_FILTER | FYGBOPF_MAP_ITEM_COUNT, _col, 0, NULL, _fn); \
+	})
+
+/* fy_map(gb, col, fn) , fy_map(col, fn) */
+#define fy_map(_gb_or_col, _col_or_fn, ...) \
+	({ \
+		struct fy_generic_builder *_gb = fy_gb_or_NULL(_gb_or_col); \
+		const fy_generic _col = fy_first_non_gb(_gb_or_col, _col_or_fn); \
+		fy_generic_map_xform_fn _fn = fy_second_non_gb(_gb_or_col, _col_or_fn __VA_OPT__(,) __VA_ARGS__ , NULL); \
+		FY_GB_OR_LOCAL_OP(_gb, FYGBOPF_MAP | FYGBOPF_MAP_ITEM_COUNT, _col, 0, NULL, _fn); \
+	})
+
+/* fy_reduce(gb, col, fn) , fy_reduce(col, fn) */
+#define fy_reduce(_gb_or_col, _col_or_fn, _fn_or_acc, ...) \
+	({ \
+		struct fy_generic_builder *_gb = fy_gb_or_NULL(_gb_or_col); \
+		const fy_generic _col = fy_first_non_gb(_gb_or_col, _col_or_fn); \
+		fy_generic_reducer_fn _fn = fy_second_non_gb(_gb_or_col, _col_or_fn, _fn_or_acc); \
+		const fy_generic _acc = fy_value(fy_third_non_gb(_gb_or_col, _col_or_fn, _fn_or_acc __VA_OPT__(,) __VA_ARGS__ , fy_invalid)); \
+		const fy_generic _v = \
+			FY_GB_OR_LOCAL_OP(_gb, FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT, _col, 0, NULL, _fn, _acc); \
+		fy_cast(_v, fy_third_non_gb(_gb_or_col, _col_or_fn, _fn_or_acc __VA_OPT__(,) __VA_ARGS__ , fy_invalid)); \
+	})
 
 #endif
