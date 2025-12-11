@@ -2407,6 +2407,17 @@ START_TEST(gb_seq_utils)
 	printf("> seq-empty-reverse-empty: ");
 	fy_generic_emit_default(v);
 
+	/* simple sequence reverse */
+	seq = fy_sequence(1, 2, 3);
+	v = fy_generic_op(gb, FYGBOPF_REVERSE, seq, 0, NULL);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, 0, -1) == 3);
+	ck_assert(fy_get(v, 1, -1) == 2);
+	ck_assert(fy_get(v, 2, -1) == 1);
+	printf("> seq-simple-reverse: ");
+	fy_generic_emit_default(v);
+
 	/* empty sequence, reverse with non empty sequences -> non empty sequences */
 	seq = fy_sequence();
 	items[0] = fy_sequence(1, 2);
@@ -2469,6 +2480,18 @@ START_TEST(gb_seq_utils)
 	printf("> seq-reverse-regular-empty: ");
 	fy_generic_emit_default(v);
 
+	/* a simple sequence to be uniq'ed */
+	seq = fy_sequence(1, 2, 1);
+	v = fy_generic_op(gb, FYGBOPF_UNIQUE, seq, 0, NULL);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 2);
+	ck_assert(fy_get(v, 0, -1) == 1);
+	ck_assert(fy_get(v, 1, -1) == 2);
+
+	printf("> seq-unique-simple: ");
+	fy_generic_emit_default(v);
+
+
 	/* a convoluted sequence to be uniq'ed */
 	seq = fy_sequence(1, 2, 1);
 	items[0] = fy_sequence(1, 1);
@@ -2482,6 +2505,17 @@ START_TEST(gb_seq_utils)
 	ck_assert(fy_get(v, 2, -1) == 3);
 
 	printf("> seq-unique-complicated: ");
+	fy_generic_emit_default(v);
+
+	/* sort a simple sequence */
+	seq = fy_sequence(3, 2, 1);
+	v = fy_generic_op(gb, FYGBOPF_SORT, seq, 0, NULL);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, 0, -1) == 1);
+	ck_assert(fy_get(v, 1, -1) == 2);
+	ck_assert(fy_get(v, 2, -1) == 3);
+	printf("> seq-sort-simple: ");
 	fy_generic_emit_default(v);
 
 	/* sort a non empty sequence, reverse with two non empty sequences and one empty in the middle */
@@ -3199,6 +3233,207 @@ START_TEST(local_ops)
 }
 END_TEST
 
+/* Test: unified ops - auto-dispatch based on first argument type */
+START_TEST(unified_ops)
+{
+	char buf[4096];
+	struct fy_generic_builder *gb;
+	fy_generic seq, map, v, vexp;
+	bool ok;
+
+	gb = fy_generic_builder_create_in_place(
+			FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	seq = fy_sequence(gb, 1, 2, 3, 4, 5);
+	printf("> fy_sequence(gb, ...): ");
+	fy_generic_emit_default(seq);
+	ck_assert(fy_len(seq) == 5);
+
+	/* append, with and without gb */
+	v = fy_append(gb, seq, 6, 7, 8);
+	printf("> fy_append(gb, seq, ...): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 8);
+
+	v = fy_append(seq, 6, 7, 8);
+	printf("> fy_append(seq, ...): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 8);
+
+	/* insert, with and without gb */
+	v = fy_insert(gb, seq, 0, 100);
+	printf("> fy_insert(gb, seq, 0, 100): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_get_at(v, 0, -1) == 100);
+
+	v = fy_insert(seq, 0, 100);
+	printf("> fy_insert(gb, seq, 0, 100): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_get_at(v, 0, -1) == 100);
+
+	/* replace, with and without gb */
+	v = fy_replace(gb, seq, 0, 999);
+	printf("> fy_replace(gb, seq, 0, 999): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_get_at(v, 0, -1) == 999);
+
+	v = fy_replace(seq, 0, 999);
+	printf("> fy_replace(seq, 0, 999): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_get_at(v, 0, -1) == 999);
+
+	/* go with a map */
+	map = fy_mapping(gb, "a", 1, "b", 2);
+	printf("> fy_mapping(gb, ...): ");
+	fy_generic_emit_default(map);
+	ck_assert(fy_len(map) == 2);
+
+	/* assoc with and without gb */
+	v = fy_assoc(gb, map, "c", 3);
+	printf("> fy_assoc(gb, map, ...): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 3);
+
+	v = fy_assoc(map, "c", 3);
+	printf("> fy_assoc(map, ...): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 3);
+
+	/* disassoc with and without gb */
+	v = fy_disassoc(gb, map, "a");
+	printf("> fy_disassoc(gb, map, 'a'): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 1);
+
+	v = fy_disassoc(map, "a");
+	printf("> fy_disassoc(map, 'a'): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 1);
+
+	/* keys, values, and items with and without gb */
+	v = fy_keys(gb, map);
+	printf("> fy_keys(gb, map): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 2);
+
+	v = fy_keys(map);
+	printf("> fy_keys(map): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 2);
+
+	v = fy_values(gb, map);
+	printf("> fy_values(gb, map): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 2);
+
+	v = fy_values(map);
+	printf("> fy_values(map): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 2);
+
+	v = fy_items(gb, map);
+	printf("> fy_items(gb, map): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 2);
+
+	v = fy_items(map);
+	printf("> fy_items(map): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 2);
+
+	/* concat */
+	v = fy_concat(gb, seq, fy_sequence(100, 200));
+	printf("> fy_concat(gb, seq, ...): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 7);
+
+	v = fy_concat(seq, fy_sequence(100, 200));
+	printf("> fy_concat(seq, ...): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 7);
+
+	/* Test contains */
+	vexp = fy_sequence(1, 2, 3);
+	ok = fy_contains(gb, vexp, 2);
+	printf("> fy_contains(gb, [1,2,3], 2): ");
+	fy_generic_emit_default(v);
+	ck_assert(ok == true);
+
+	ok = fy_contains(vexp, 2);
+	printf("> fy_contains([1,2,3], 2): ");
+	fy_generic_emit_default(v);
+	ck_assert(ok == true);
+
+	ok = fy_contains(gb, vexp, 99);
+	printf("> fy_contains(gb, [1,2,3], 99): ");
+	fy_generic_emit_default(v);
+	ck_assert(ok == false);
+
+	ok = fy_contains(vexp, 99);
+	printf("> fy_contains([1,2,3], 99): ");
+	fy_generic_emit_default(v);
+	ck_assert(ok == false);
+
+	/* Test unique */
+	vexp = fy_sequence(1, 2, 2, 3, 3, 3);
+	v = fy_unique(gb, vexp);
+	printf("> fy_unique(gb, [1,2,2,3,3,3]): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 3);
+
+	v = fy_unique(vexp);
+	printf("> fy_unique([1,2,2,3,3,3]): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 3);
+
+	/* Test merge */
+	map = fy_mapping("a", 1);
+	v = fy_merge(gb, map, fy_mapping("b", 2, "c", 3));
+	printf("> fy_merge(gb, {a:1}, {b:2,c:3}): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 3);
+
+	map = fy_mapping("a", 1);
+	v = fy_merge(map, fy_mapping("b", 2, "c", 3));
+	printf("> fy_merge({a:1}, {b:2,c:3}): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 3);
+
+	/* Test sort */
+	vexp = fy_sequence(4, 3, 1, 2);
+	v = fy_sort(gb, vexp);
+	printf("> fy_sort(gb, [4,3,1,2]): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 4);
+	ck_assert(fy_get(v, 0, -1) == 1);
+	ck_assert(fy_get(v, 3, -1) == 4);
+
+	v = fy_sort(vexp);
+	printf("> fy_sort([4,3,1,2]): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 4);
+	ck_assert(fy_get(v, 0, -1) == 1);
+	ck_assert(fy_get(v, 3, -1) == 4);
+
+	/* Test reverse */
+	vexp = fy_sequence(4, 3, 2, 1);
+	v = fy_reverse(gb, vexp);
+	printf("> fy_reverse(gb, [4,3,2,1]): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 4);
+	ck_assert(fy_get(v, 0, -1) == 1);
+	ck_assert(fy_get(v, 3, -1) == 4);
+
+	v = fy_reverse(vexp);
+	printf("> fy_reverse([4,3,1,2]): ");
+	fy_generic_emit_default(v);
+	ck_assert(fy_len(v) == 4);
+	ck_assert(fy_get(v, 0, -1) == 1);
+	ck_assert(fy_get(v, 3, -1) == 4);
+}
+END_TEST
 
 TCase *libfyaml_case_generic(void)
 {
@@ -3279,6 +3514,9 @@ TCase *libfyaml_case_generic(void)
 
 	/* local operations */
 	tcase_add_test(tc, local_ops);
+
+	/* unified operations */
+	tcase_add_test(tc, unified_ops);
 
 	return tc;
 }

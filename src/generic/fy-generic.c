@@ -980,7 +980,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 		break;
 
 	case FYGBOP_CONCAT:
-	case FYGBOP_REVERSE:
 		if (!count)
 			return in;			/* single? */
 		if (!items)
@@ -988,6 +987,7 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 		need_work_items = true;
 		break;
 
+	case FYGBOP_REVERSE:
 	case FYGBOP_MERGE:
 	case FYGBOP_UNIQUE:
 	case FYGBOP_SORT:
@@ -1142,24 +1142,7 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 			}
 			break;
 
-		case FYGBOP_REVERSE:
-			work_item_count = in_item_count;
-			for (i = 0; i < item_count; i++) {
-				v = items[i];
-				if (!fy_generic_is_sequence(v))
-					goto err_out;
-				(void)fy_generic_sequence_get_items(v, &tmp_item_count);
-				work_item_count += tmp_item_count;
-			}
-			/* all of them are empty? just return the same */
-			if (!work_item_count) {
-				out = in;
-				goto out;
-			}
-			break;
-
 		case FYGBOP_MERGE:
-
 			work_item_count = in_item_count;
 			for (i = 0; i < item_count; i++) {
 				v = items[i];
@@ -1173,6 +1156,7 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 			break;
 
 		case FYGBOP_UNIQUE:
+		case FYGBOP_REVERSE:
 			work_item_count = in_item_count;
 			for (i = 0; i < item_count; i++) {
 				v = items[i];
@@ -1538,6 +1522,11 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 		col_item_size = sizeof(fy_generic);
 
 		col.count = work_item_count;
+		if (!col.count) {
+			/* nothing? */
+			out = fy_seq_empty;
+			goto out;
+		}
 		iov[0].iov_base = &col;
 		iov[0].iov_len = sizeof(col);
 		/* the extra content */
