@@ -815,7 +815,7 @@ fy_op_map_filter_work(void *varg)
 		case FYGBOP_FILTER:
 #if defined(__BLOCKS__)
 			if (arg->is_block)
-				ok = arg->blk.filter_pred_blk(arg->gb, value);
+				ok = arg->fn.filter_pred_blk(arg->gb, value);
 			else
 #endif
 				ok = arg->fn.filter_pred(arg->gb, value);
@@ -1985,7 +1985,12 @@ fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flag
 	case FYGBOP_MAP:
 	case FYGBOP_MAP_FILTER:
 	case FYGBOP_REDUCE:
-		args->filter_map_reduce_common.fn = va_arg(ap, void (*)(void));
+#if defined(__BLOCKS__)
+		if (flags & FYGBOPF_BLOCK_FN)
+			args->filter_map_reduce_common.blk = va_arg(ap, void (^)(void));
+		else
+#endif
+			args->filter_map_reduce_common.fn = va_arg(ap, void (*)(void));
 		if (op == FYGBOP_REDUCE)
 			args->reduce.acc = va_arg(ap, fy_generic);
 		break;
