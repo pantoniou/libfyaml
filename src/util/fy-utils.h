@@ -492,4 +492,15 @@ uint64_t fy_iovec_xxhash64(const struct iovec *iov, int iovcnt);
 #define FY_STACK_RESTORE(_x)	do { (void)(_x); } while(0)
 #endif
 
+/* possible have lambdas, either gcc or clang with block support */
+#ifdef __clang__
+#ifdef __BLOCKS__
+#define FY_HAVE_LAMBDAS
+#define FY_HAVE_BLOCK_LAMBDAS
+#endif
+#elif defined(__GNUC__)
+#define FY_HAVE_LAMBDAS
+#define FY_HAVE_NESTED_FUNC_LAMBDAS
+#endif
+
 #endif

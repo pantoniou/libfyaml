@@ -72,6 +72,9 @@
 /* Define to 1 if you have libclang available */
 #cmakedefine01 HAVE_LIBCLANG
 
+/* Define to 1 if Clang (or AppleClang) Blocks are available */
+#cmakedefine HAVE_CLANG_BLOCKS @HAVE_CLANG_BLOCKS@
+
 /* Version string */
 #define VERSION "@PROJECT_VERSION@"
 

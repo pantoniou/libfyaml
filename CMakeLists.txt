@@ -872,6 +872,24 @@ target_link_libraries(fyaml
 # Add libclang support if available
 add_libclang_to_target(fyaml PRIVATE)
 
+# check if blocks are available, and if so link them
+include(${CMAKE_SOURCE_DIR}/cmake/CheckClangBlocks.cmake)
+
+# Apply flags if available
+if (HAVE_CLANG_BLOCKS)
+    add_compile_options(-fblocks)
+
+    if (CLANG_BLOCKS_LIB)
+        link_libraries(${CLANG_BLOCKS_LIB})
+    endif()
+endif()
+
+# Generate config.h
+configure_file(
+    ${CMAKE_SOURCE_DIR}/cmake/config.h.in
+    ${CMAKE_BINARY_DIR}/config.h
+)
+
 # Generate config.h
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/config.h.in"
@@ -1504,6 +1522,7 @@ message(STATUS "HAVE_COMPATIBLE_CHECK: ${HAVE_COMPATIBLE_CHECK}")
 message(STATUS "HAVE_LIBYAML:          ${HAVE_LIBYAML}")
 message(STATUS "HAVE_CMAKE_GEXPR:      ${HAVE_CMAKE_GEXPR}")
 message(STATUS "HAVE_LIBCLANG:         ${HAVE_LIBCLANG}")
+message(STATUS "HAVE_CLANG_BLOCKS:     ${HAVE_CLANG_BLOCKS}")
 message(STATUS "HAVE_NETWORK:          ${HAVE_NETWORK}")
 message(STATUS "HAVE_DEVMODE:          ${HAVE_DEVMODE}")
 message(STATUS "HAVE_GIT:              ${HAVE_GIT}")
