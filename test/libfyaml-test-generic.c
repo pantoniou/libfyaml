@@ -3439,22 +3439,26 @@ START_TEST(unified_ops)
 
 	/* Test contains */
 	vexp = fy_sequence(1, 2, 3);
-	ok = fy_contains(gb, vexp, 2);
+	v = fy_contains(gb, vexp, 2);
+	ok = v.v == fy_true_value;
 	printf("> fy_contains(gb, [1,2,3], 2): ");
 	fy_generic_emit_default(v);
 	ck_assert(ok == true);
 
-	ok = fy_contains(vexp, 2);
+	v = fy_contains(vexp, 2);
+	ok = v.v == fy_true_value;
 	printf("> fy_contains([1,2,3], 2): ");
 	fy_generic_emit_default(v);
 	ck_assert(ok == true);
 
-	ok = fy_contains(gb, vexp, 99);
+	v = fy_contains(gb, vexp, 99);
+	ok = v.v == fy_true_value;
 	printf("> fy_contains(gb, [1,2,3], 99): ");
 	fy_generic_emit_default(v);
 	ck_assert(ok == false);
 
-	ok = fy_contains(vexp, 99);
+	v = fy_contains(vexp, 99);
+	ok = v.v == fy_true_value;
 	printf("> fy_contains([1,2,3], 99): ");
 	fy_generic_emit_default(v);
 	ck_assert(ok == false);
@@ -3557,16 +3561,115 @@ START_TEST(unified_ops)
 
 	/* sum a sequence of numbers */
 	seq = fy_sequence(7, 6, 5, 8);
-	sum = fy_reduce(gb, seq, fy_generic_test_sum_reducer, 0);
+	v = fy_reduce(gb, seq, 0, fy_generic_test_sum_reducer);
+	sum = fy_cast(v, 0);
 	ck_assert(sum == 26);
 	printf("> fy_reduce(gb, [7,6,5,8]) - sum): %d", sum);
 	fy_generic_emit_default(v);
 
-	sum = fy_reduce(seq, fy_generic_test_sum_reducer, 0);
+	v = fy_reduce(seq, 0, fy_generic_test_sum_reducer);
+	sum = fy_cast(v, 0);
 	ck_assert(sum == 26);
 	printf("> fy_reduce([7,6,5,8]) - sum): %d", sum);
 	fy_generic_emit_default(v);
 
+}
+END_TEST
+
+/* Test: lambda operations using FY_PRED/FY_XFORM/FY_REDUCER macros */
+START_TEST(lambda_ops)
+{
+	char buf[16384];
+	struct fy_generic_builder *gb;
+	fy_generic seq, v;
+	int sum;
+
+	(void)sum;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	/* Create a test sequence */
+	seq = fy_sequence(7, 6, 5, 101, 8, -100);
+
+	/* Test fy_local_filter_lambda - filter values > 100 */
+	v = fy_local_filter_lambda(seq, ({ return fy_cast(v, 0) > 100; }));
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, 0, -1) == 101);
+	printf("> fy_local_filter_lambda (> 100): ");
+	fy_generic_emit_default(v);
+
+	/* Test fy_gb_filter_lambda - filter values > 100 */
+	v = fy_gb_filter_lambda(gb, seq, ({ return fy_cast(v, 0) > 100; }));
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, 0, -1) == 101);
+	printf("> fy_gb_filter_lambda (> 100): ");
+	fy_generic_emit_default(v);
+
+	/* Test fy_filter_lambda - filter values > 100 */
+	v = fy_filter_lambda(seq, ({ return fy_cast(v, 0) > 100; }));
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, 0, -1) == 101);
+	printf("> fy_filter_lambda (> 100): ");
+	fy_generic_emit_default(v);
+
+	/* Test fy_filter_lambda with builder */
+	v = fy_filter_lambda(gb, seq, ({ return fy_cast(v, 0) > 100; }));
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, 0, -1) == 101);
+	printf("> fy_filter_lambda(gb, ...) (> 100): ");
+	fy_generic_emit_default(v);
+
+	/* Test fy_map_lambda - double values */
+	seq = fy_sequence(7, 6, 5, 8);
+	v = fy_map_lambda(seq, ({ return fy_value(fy_cast(v, 0) * 2); }));
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 4);
+	ck_assert(fy_get(v, 0, -1) == 14);
+	ck_assert(fy_get(v, 1, -1) == 12);
+	ck_assert(fy_get(v, 2, -1) == 10);
+	ck_assert(fy_get(v, 3, -1) == 16);
+	printf("> fy_map_lambda (x2): ");
+	fy_generic_emit_default(v);
+
+	/* Test fy_map_lambda with builder */
+	v = fy_map_lambda(gb, seq, ({ return fy_value(fy_cast(v, 0) * 2); }));
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 4);
+	ck_assert(fy_get(v, 0, -1) == 14);
+	printf("> fy_map_lambda(gb, ...) (x2): ");
+	fy_generic_emit_default(v);
+
+	/* Test fy_reduce_lambda - sum values */
+	seq = fy_sequence(7, 6, 5, 8);
+	v = fy_reduce_lambda(seq, 0, ({ return fy_value(fy_cast(acc, 0) + fy_cast(v, 0)); }));
+	sum = fy_cast(v, 0);
+	ck_assert(sum == 26);
+	printf("> fy_reduce_lambda (sum): %d\n", sum);
+
+	/* Test fy_reduce_lambda with builder */
+	v = fy_reduce_lambda(gb, seq, 0, ({ return fy_value(fy_cast(acc, 0) + fy_cast(v, 0)); }));
+	sum = fy_cast(v, 0);
+	ck_assert(sum == 26);
+	printf("> fy_reduce_lambda(gb, ...) (sum): %d\n", sum);
+
+	/* Test chained lambda operations: filter then map */
+	seq = fy_sequence(1, 50, 101, 200, 3);
+	v = fy_map_lambda(
+		fy_filter_lambda(seq, ({ return fy_cast(v, 0) > 100; })),
+		({ return fy_value(fy_cast(v, 0) * 10); })
+	);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 2);
+	ck_assert(fy_get(v, 0, -1) == 1010);  /* 101 * 10 */
+	ck_assert(fy_get(v, 1, -1) == 2000);  /* 200 * 10 */
+	printf("> chained filter->map with lambdas: ");
+	fy_generic_emit_default(v);
 }
 END_TEST
 
@@ -3655,6 +3758,9 @@ TCase *libfyaml_case_generic(void)
 
 	/* unified operations */
 	tcase_add_test(tc, unified_ops);
+
+	/* lambda operations */
+	tcase_add_test(tc, lambda_ops);
 
 	return tc;
 }
