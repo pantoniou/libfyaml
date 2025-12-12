@@ -4991,7 +4991,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 		fy_gb_preduce((_gb), (_col), (_acc), (_tp), _fn); \
 	})
 
-#define fy_local_preduce_lambda(_col, _acc, _expr) \
+#define fy_local_preduce_lambda(_col, _acc, _tp, _expr) \
 	({ \
 		fy_generic_reducer_fn _fn = ({ \
 			fy_generic __fy_reducer_fn(struct fy_generic_builder *gb, fy_generic acc, \
@@ -5090,51 +5090,47 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 				(_col), 0, NULL, (_tp), _block); \
 	})
 
-#if 0
 #define fy_gb_reduce_lambda(_gb, _col, _acc, _block_body) \
 	({ \
-		fy_generic_reducer_block _block = ({ \
-			fy_generic __fy_reducer_block(struct fy_generic_builder *gb, fy_generic acc, \
-						   fy_generic v) { \
-				_block_body ; \
-			} \
-			&__fy_reducer_block; }); \
-		fy_gb_reduce((_gb), (_col), (_acc), _block); \
+		fy_generic_reducer_block _block = \
+			(^fy_generic(struct fy_generic_builder *gb, fy_generic acc, fy_generic v) { \
+				return _block_body ; \
+			}); \
+		fy_generic_op((_gb), FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_BLOCK_FN, \
+				(_col), 0, NULL, _block, fy_value(_acc)); \
 	})
 
 #define fy_local_reduce_lambda(_col, _acc, _block_body) \
 	({ \
-		fy_generic_reducer_block _block = ({ \
-			fy_generic __fy_reducer_block(struct fy_generic_builder *gb, fy_generic acc, \
-						   fy_generic v) { \
-				_block_body ; \
-			} \
-			&__fy_reducer_block; }); \
-		fy_local_reduce((_col), (_acc), _block); \
+		fy_generic_reducer_block _block = \
+			(^fy_generic(struct fy_generic_builder *gb, fy_generic acc, fy_generic v) { \
+				return _block_body ; \
+			}); \
+		FY_LOCAL_OP(FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_BLOCK_FN, \
+				(_col), 0, NULL, _block, fy_value(_acc)); \
 	})
 
 #define fy_gb_preduce_lambda(_gb, _col, _acc, _tp, _block_body) \
 	({ \
-		fy_generic_reducer_block _block = ({ \
-			fy_generic __fy_reducer_block(struct fy_generic_builder *gb, fy_generic acc, \
-						   fy_generic v) { \
-				_block_body ; \
-			} \
-			&__fy_reducer_block; }); \
-		fy_gb_preduce((_gb), (_col), (_acc), (_tp), _block); \
+		fy_generic_reducer_block _block = \
+			(^fy_generic(struct fy_generic_builder *gb, fy_generic acc, fy_generic v) { \
+				return _block_body ; \
+			}); \
+		fy_generic_op((_gb), FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT | \
+				     FYGBOPF_BLOCK_FN | FYGBOPF_PARALLEL, \
+				(_col), 0, NULL, (_tp), _block, fy_value(_acc)); \
 	})
 
 #define fy_local_preduce_lambda(_col, _acc, _tp, _block_body) \
 	({ \
-		fy_generic_reducer_block _block = ({ \
-			fy_generic __fy_reducer_block(struct fy_generic_builder *gb, fy_generic acc, \
-						   fy_generic v) { \
-				_block_body ; \
-			} \
-			&__fy_reducer_block; }); \
-		fy_local_preduce((_col), (_acc), (_tp), _block); \
+		fy_generic_reducer_block _block = \
+			(^fy_generic(struct fy_generic_builder *gb, fy_generic acc, fy_generic v) { \
+				return _block_body ; \
+			}); \
+		FY_LOCAL_OP(FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT | \
+			    FYGBOPF_BLOCK_FN | FYGBOPF_PARALLEL, \
+				(_col), 0, NULL, (_tp), _block, fy_value(_acc)); \
 	})
-#endif
 
 #endif
 
