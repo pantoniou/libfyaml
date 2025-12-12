@@ -770,12 +770,21 @@ typedef union {
 	fy_generic_map_xform_fn map_xform;
 	fy_generic_reducer_fn reducer;
 	void (*fn)(void);
+#if defined(__BLOCKS__)
+	fy_generic_filter_pred_block filter_pred_blk;
+	fy_generic_map_xform_block map_xform_blk;
+	fy_generic_reducer_block reducer_blk;
+	void (^blk)(void);
+#endif
 } fy_op_fn;
 
 struct fy_op_work_arg {
 	unsigned int op;
 	struct fy_generic_builder *gb;
 	enum fy_generic_type type;
+#if defined(__BLOCKS__)
+	bool is_block;
+#endif
 	fy_op_fn fn;
 	fy_generic *work_items;
 	size_t work_item_count;
@@ -789,6 +798,7 @@ fy_op_map_filter_work(void *varg)
 	struct fy_op_work_arg *arg = varg;
 	size_t i, j, stride;
 	fy_generic key, value;
+	bool ok;
 
 	/* unified traversal for seq/map */
 	stride = arg->type == FYGT_SEQUENCE ? 1 : 2;
@@ -803,13 +813,26 @@ fy_op_map_filter_work(void *varg)
 		}
 		switch (arg->op) {
 		case FYGBOP_FILTER:
-			if (!arg->fn.filter_pred(arg->gb, value)) {
+#if defined(__BLOCKS__)
+			if (arg->is_block)
+				ok = arg->blk.filter_pred_blk(arg->gb, value);
+			else
+#endif
+				ok = arg->fn.filter_pred(arg->gb, value);
+
+			if (!ok) {
 				key = value = fy_invalid;
 				j += stride;
 			}
 			break;
 		case FYGBOP_MAP:
-			value = arg->fn.map_xform(arg->gb, value);
+#if defined(__BLOCKS__)
+			if (arg->is_block)
+				value = arg->fn.map_xform_blk(arg->gb, value);
+			else
+#else
+				value = arg->fn.map_xform(arg->gb, value);
+#endif
 			// an invalid value stops everything
 			if (value.v == fy_invalid_value) {
 				arg->vresult = fy_invalid;
@@ -817,7 +840,13 @@ fy_op_map_filter_work(void *varg)
 			}
 			break;
 		case FYGBOP_MAP_FILTER:
+#if defined(__BLOCKS__)
+			if (arg->is_block)
+				value = arg->fn.map_xform_blk(arg->gb, value);
+			else
+#else
 			value = arg->fn.map_xform(arg->gb, value);
+#endif
 			// an invalid value removes element
 			if (value.v == fy_invalid_value) {
 				key = fy_invalid;
@@ -850,7 +879,13 @@ fy_op_reduce_work(void *varg)
 	valoffset = stride - 1;
 	acc = arg->vresult;
 	for (i = 0; i < arg->work_item_count; i += stride) {
-		acc = arg->fn.reducer(arg->gb, acc, arg->work_items[i + valoffset]);
+#if defined(__BLOCKS__)
+		if (arg->is_block)
+			acc = arg->fn.reducer_blk(arg->gb, acc, arg->work_items[i + valoffset]);
+		else
+#else
+			acc = arg->fn.reducer(arg->gb, acc, arg->work_items[i + valoffset]);
+#endif
 		if (acc.v == fy_invalid_value)
 			break;
 	}
@@ -920,7 +955,7 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 
 	out = fy_invalid;
 	idx = SIZE_MAX;
-	fn.fn = NULL;
+	memset(&fn, 0, sizeof(fn));
 
 	need_work_items = false;
 	need_copy_work_items = false;
@@ -1001,10 +1036,22 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 	case FYGBOP_MAP:
 	case FYGBOP_MAP_FILTER:
 	case FYGBOP_REDUCE:
-		fn.fn = args->filter_map_reduce_common.fn;
+		if (!(flags & FYGBOPF_BLOCK_FN)) {
+			fn.fn = args->filter_map_reduce_common.fn;
+			if (!fn.fn)
+				return fy_invalid;
+		} else {
+#if defined(__BLOCKS__)
+			fn.blk = args->filter_map_reduce_common.blk;
+			if (!fn.blk)
+				return fy_invalid;
+#else
+			return fy_invalid;
+#endif
+		}
 		if (op == FYGBOP_REDUCE)
 			acc = args->reduce.acc;
-		if (!fn.fn || (count && !items))
+		if (count && !items)
 			return fy_invalid;
 		if (op == FYGBOP_REDUCE)
 			flags |= FYGBOPF_DONT_INTERNALIZE;	/* don't internalize for reduce */
@@ -1701,6 +1748,9 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 			work_args[i].op = op;
 			work_args[i].gb = gb;
 			work_args[i].type = type;
+#if defined(__BLOCKS__)
+			work_args[i].is_block = !!(flags & FYGBOPF_BLOCK_FN);
+#endif
 			work_args[i].fn = fn;
 			work_args[i].work_items = work_items + start_idx;
 			work_args[i].work_item_count = count_items;
