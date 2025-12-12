@@ -2668,6 +2668,17 @@ static fy_generic test_map_double(struct fy_generic_builder *gb, fy_generic v)
 	return fy_value(gb, fy_cast(v, 0) * 2);
 }
 
+static fy_generic test_map_double2(struct fy_generic_builder *gb, fy_generic v)
+{
+	int i = fy_cast(v, 0);
+	int j;
+
+	j = i * 2;
+	printf("i=%d -> %d\n", i, j);
+
+	return fy_value(j);
+}
+
 static fy_generic test_map_filter_double_if_over_10(struct fy_generic_builder *gb, fy_generic v)
 {
 	int iv;
@@ -2703,7 +2714,9 @@ START_TEST(gb_map)
 
 	/* map a single sequence of numbers */
 	seq = fy_sequence(7, 6, 5, 8);
-	v = fy_generic_op(gb, FYGBOPF_MAP, seq, 0, NULL, test_map_double);
+	v = fy_generic_op(gb, FYGBOPF_MAP, seq, 0, NULL, test_map_double2);
+	printf("> map-seq-double (1): ");
+	fy_generic_emit_default(v);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 4);
 	ck_assert(fy_get(v, 0, -1) == 14);
@@ -3594,7 +3607,6 @@ START_TEST(lambda_ops)
 	/* Create a test sequence */
 	seq = fy_sequence(7, 6, 5, 101, 8, -100);
 
-#ifdef FY_HAVE_NESTED_FUNC_LAMBDAS
 	/* Test fy_local_filter_lambda - filter values > 100 */
 	v = fy_local_filter_lambda(seq, (fy_cast(v, 0) > 100) );
 	ck_assert(fy_generic_is_sequence(v));
@@ -3602,7 +3614,6 @@ START_TEST(lambda_ops)
 	ck_assert(fy_get(v, 0, -1) == 101);
 	printf("> fy_local_filter_lambda (> 100): ");
 	fy_generic_emit_default(v);
-#endif
 
 	/* Test fy_gb_filter_lambda - filter values > 100 */
 	v = fy_gb_filter_lambda(gb, seq, (fy_cast(v, 0) > 100) );
@@ -3612,7 +3623,6 @@ START_TEST(lambda_ops)
 	printf("> fy_gb_filter_lambda (> 100): ");
 	fy_generic_emit_default(v);
 
-#ifdef FY_HAVE_NESTED_FUNC_LAMBDAS
 	/* Test fy_filter_lambda - filter values > 100 */
 	v = fy_filter_lambda(seq, fy_cast(v, 0) > 100 );
 	ck_assert(fy_generic_is_sequence(v));
@@ -3631,6 +3641,7 @@ START_TEST(lambda_ops)
 
 	/* Test fy_map_lambda - double values */
 	seq = fy_sequence(7, 6, 5, 8);
+
 	v = fy_map_lambda(seq, fy_value(fy_cast(v, 0) * 2));
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 4);
@@ -3649,6 +3660,7 @@ START_TEST(lambda_ops)
 	printf("> fy_map_lambda(gb, ...) (x2): ");
 	fy_generic_emit_default(v);
 
+#ifdef FY_HAVE_NESTED_FUNC_LAMBDAS
 	/* Test fy_reduce_lambda - sum values */
 	seq = fy_sequence(7, 6, 5, 8);
 	v = fy_reduce_lambda(seq, 0, fy_value(fy_cast(acc, 0) + fy_cast(v, 0)) );

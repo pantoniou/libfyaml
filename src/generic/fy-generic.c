@@ -830,9 +830,8 @@ fy_op_map_filter_work(void *varg)
 			if (arg->is_block)
 				value = arg->fn.map_xform_blk(arg->gb, value);
 			else
-#else
-				value = arg->fn.map_xform(arg->gb, value);
 #endif
+				value = arg->fn.map_xform(arg->gb, value);
 			// an invalid value stops everything
 			if (value.v == fy_invalid_value) {
 				arg->vresult = fy_invalid;
@@ -844,9 +843,8 @@ fy_op_map_filter_work(void *varg)
 			if (arg->is_block)
 				value = arg->fn.map_xform_blk(arg->gb, value);
 			else
-#else
-			value = arg->fn.map_xform(arg->gb, value);
 #endif
+				value = arg->fn.map_xform(arg->gb, value);
 			// an invalid value removes element
 			if (value.v == fy_invalid_value) {
 				key = fy_invalid;
@@ -883,9 +881,8 @@ fy_op_reduce_work(void *varg)
 		if (arg->is_block)
 			acc = arg->fn.reducer_blk(arg->gb, acc, arg->work_items[i + valoffset]);
 		else
-#else
-			acc = arg->fn.reducer(arg->gb, acc, arg->work_items[i + valoffset]);
 #endif
+			acc = arg->fn.reducer(arg->gb, acc, arg->work_items[i + valoffset]);
 		if (acc.v == fy_invalid_value)
 			break;
 	}
