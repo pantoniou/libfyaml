@@ -4175,7 +4175,39 @@ enum fy_gb_op {
 
 typedef bool (*fy_generic_filter_pred_fn)(struct fy_generic_builder *gb, fy_generic v);
 typedef fy_generic (*fy_generic_map_xform_fn)(struct fy_generic_builder *gb, fy_generic v);
-typedef fy_generic (*fy_generic_reducer_fn)(struct fy_generic_builder *gb, fy_generic accv, fy_generic v);
+typedef fy_generic (*fy_generic_reducer_fn)(struct fy_generic_builder *gb, fy_generic acc, fy_generic v);
+
+/*
+ * Lambda support for filter/map/reduce - works on both Clang (Blocks) and GCC (nested functions)
+ *
+ * Usage (body is auto-wrapped, no FY_PRED/FY_XFORM/FY_REDUCER needed):
+ *   v = fy_filter_lambda(seq, { return fy_cast(v, 0) > 100; });
+ *   v = fy_map_lambda(seq, { return fy_value(fy_cast(v, 0) * 2); });
+ *   sum = fy_reduce_lambda(seq, { return fy_value(fy_cast(acc, 0) + fy_cast(v, 0)); }, 0);
+ *
+ * With builder:
+ *   v = fy_filter_lambda(gb, seq, { return fy_cast(v, 0) > 100; });
+ *
+ * Predicate/transform variables available in body:
+ *   - FY_PRED: gb, v
+ *   - FY_XFORM: gb, v
+ *   - FY_REDUCER: gb, acc, v
+ */
+#ifdef __clang__
+  /* Clang: use Blocks extension */
+  typedef bool (^fy_generic_filter_pred_block)(struct fy_generic_builder *gb, fy_generic v);
+  typedef fy_generic (^fy_generic_map_xform_block)(struct fy_generic_builder *gb, fy_generic v);
+  typedef fy_generic (^fy_generic_reducer_block)(struct fy_generic_builder *gb, fy_generic acc, fy_generic v);
+
+  #define FY_PRED(body) (^(struct fy_generic_builder *gb, fy_generic v) body)
+  #define FY_XFORM(body) (^(struct fy_generic_builder *gb, fy_generic v) body)
+  #define FY_REDUCER(body) (^(struct fy_generic_builder *gb, fy_generic acc, fy_generic v) body)
+#else
+  /* GCC: use nested functions extension */
+  #define FY_PRED(body) ({ bool __fy_pred_fn(struct fy_generic_builder *gb, fy_generic v) body &__fy_pred_fn; })
+  #define FY_XFORM(body) ({ fy_generic __fy_xform_fn(struct fy_generic_builder *gb, fy_generic v) body &__fy_xform_fn; })
+  #define FY_REDUCER(body) ({ fy_generic __fy_reducer_fn(struct fy_generic_builder *gb, fy_generic acc, fy_generic v) body &__fy_reducer_fn; })
+#endif
 
 /* FYGBOP_CREATE_SEQ, FYGBOP_CREATE_MAP, FYGBOP_APPEND, FYGBOP_ASSOC, FYGBOP_DISASSOC */
 /* FYGBOP_CONTAINS, FYGBOP_CONCAT, FYGBOP_REVERSE, FYGBOP_MERGE, FYGBOP_UNIQUE */
@@ -4468,7 +4500,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 #define fy_sequence_value(...) \
 	((0 __VA_OPT__(+1)) ? \
 		__VA_OPT__(fy_sequence_value_helper(__VA_ARGS__)) : \
-	 	fy_seq_empty_value)
+		fy_seq_empty_value)
 
 #define fy_sequence(...) \
 	((fy_generic) { .v = fy_sequence_value(__VA_ARGS__) })
@@ -4482,7 +4514,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 #define fy_mapping_value(...) \
 	((0 __VA_OPT__(+1)) ? \
 		__VA_OPT__(fy_mapping_value_helper(__VA_ARGS__)) : \
-	 	fy_map_empty_value)
+		fy_map_empty_value)
 
 #define fy_mapping(...) \
 	((fy_generic) { .v = fy_mapping_value(__VA_ARGS__) })
@@ -4597,43 +4629,43 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	(fy_generic_op((_gb), \
 		FYGBOPF_FILTER | FYGBOPF_MAP_ITEM_COUNT, (_col), \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
-			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)), \
-	 		(_fn))
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__), \
+			(_fn)))
 
 #define fy_gb_pfilter(_gb, _col, _tp, _fn, ...) \
 	(fy_generic_op((_gb), \
 		FYGBOPF_FILTER | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_PARALLEL, (_col), \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
-			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)), \
-	 		(_tp), (_fn))
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__), \
+			(_tp), (_fn)))
 
 #define fy_gb_map(_gb, _col, _fn, ...) \
 	(fy_generic_op((_gb), \
 		FYGBOPF_MAP | FYGBOPF_MAP_ITEM_COUNT, (_col), \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
-			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)), \
-	 		(_fn))
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__), \
+			(_fn)))
 
 #define fy_gb_pmap(_gb, _col, _tp, _fn, ...) \
 	(fy_generic_op((_gb), \
 		FYGBOPF_MAP | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_PARALLEL, (_col), \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
-			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)), \
-	 		(_tp), (_fn))
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__), \
+			(_tp), (_fn)))
 
-#define fy_gb_reduce(_gb, _col, _fn, _acc, ...) \
+#define fy_gb_reduce(_gb, _col, _acc, _fn, ...) \
 	(fy_generic_op((_gb), \
-		FYGBOPF_REDUCE | FYGBOPF_REDUCE_ITEM_COUNT, (_col), \
+		FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT, (_col), \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
-			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)), \
-	 		(_fn), fy_value(_acc))
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__), \
+			(_fn), fy_value(_acc)))
 
-#define fy_gb_preduce(_gb, _col, _tp, _fn, _acc, ...) \
+#define fy_gb_preduce(_gb, _col, _tp, _acc, _fn, ...) \
 	(fy_generic_op((_gb), \
-		FYGBOPF_REDUCE | FYGBOPF_REDUCE_ITEM_COUNT | FYGBOPF_PARALLEL, (_col), \
+		FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_PARALLEL, (_col), \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
-			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)), \
-	 		(_tp), (_fn), fy_value(_acc))
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__), \
+			(_tp), (_fn), fy_value(_acc)))
 
 /* iterators */
 #define fy_foreach(_v, _col) \
@@ -4753,9 +4785,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 		__typeof__(_col) __col = (_col); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
 		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
-		fy_generic _v; \
-		_v = FY_LOCAL_OP(FYGBOPF_CONTAINS | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
-		_v.v == fy_true_value; \
+		FY_LOCAL_OP(FYGBOPF_CONTAINS | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
 	})
 
 #define fy_local_concat(_col, ...) \
@@ -4832,7 +4862,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 				__col, _count, _items, (_tp), (_fn)); \
 	})
 
-#define fy_local_reduce(_col, _fn, _acc, ...) \
+#define fy_local_reduce(_col, _acc, _fn, ...) \
 	({ \
 		__typeof__(_col) __col = (_col); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
@@ -4840,7 +4870,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 		FY_LOCAL_OP(FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items, (_fn), fy_value(_acc)); \
 	})
 
-#define fy_local_preduce(_col, _tp, _fn, _acc, ...) \
+#define fy_local_preduce(_col, _tp, _acc, _fn, ...) \
 	({ \
 		__typeof__(_col) __col = (_col); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
@@ -4848,6 +4878,139 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 		FY_LOCAL_OP(FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_PARALLEL, \
 			__col, _count, _items, (_tp), (_fn), fy_value(_acc)); \
 	})
+
+/* lambdas */
+
+#ifdef __clang__
+/* ... */
+
+#else
+
+#define fy_gb_filter_lambda(_gb, _col, _fn_body) \
+	({ \
+		fy_generic_filter_pred_fn _fn = ({ \
+			bool __fy_pred_fn(struct fy_generic_builder *gb, fy_generic v) { \
+				_fn_body ; \
+			} \
+			&__fy_pred_fn; }); \
+		fy_gb_filter((_gb), (_col), _fn); \
+	})
+
+#define fy_local_filter_lambda(_col, _fn_body) \
+	({ \
+		fy_generic_filter_pred_fn _fn = ({ \
+			bool __fy_pred_fn(struct fy_generic_builder *gb, fy_generic v) { \
+				_fn_body ; \
+			} \
+			&__fy_pred_fn; }); \
+		fy_local_filter((_col), _fn); \
+	})
+
+#define fy_gb_pfilter_lambda(_gb, _col, _fn_body) \
+	({ \
+		fy_generic_filter_pred_fn _fn = ({ \
+			bool __fy_pred_fn(struct fy_generic_builder *gb, fy_generic v) { \
+				_fn_body ; \
+			} \
+			&__fy_pred_fn; }); \
+		fy_gb_pfilter((_gb), (_col), _fn); \
+	})
+
+#define fy_local_pfilter_lambda(_col, _fn_body) \
+	({ \
+		fy_generic_filter_pred_fn _fn = ({ \
+			bool __fy_pred_fn(struct fy_generic_builder *gb, fy_generic v) { \
+				_fn_body ; \
+			} \
+			&__fy_pred_fn; }); \
+		fy_local_pfilter((_col), _fn); \
+	})
+
+#define fy_gb_map_lambda(_gb, _col, _fn_body) \
+	({ \
+		fy_generic_map_xform_fn _fn = ({ \
+			fy_generic __fy_xform_fn(struct fy_generic_builder *gb, fy_generic v) { \
+				_fn_body ; \
+			} \
+			&__fy_xform_fn; }); \
+		fy_gb_map((_gb), (_col), _fn); \
+	})
+
+#define fy_local_map_lambda(_col, _fn_body) \
+	({ \
+		fy_generic_map_xform_fn _fn = ({ \
+			fy_generic __fy_xform_fn(struct fy_generic_builder *gb, fy_generic v) { \
+				_fn_body ; \
+			} \
+			&__fy_xform_fn; }); \
+		fy_local_map((_col), _fn); \
+	})
+
+#define fy_gb_pmap_lambda(_gb, _col, _fn_body) \
+	({ \
+		fy_generic_map_xform_fn _fn = ({ \
+			fy_generic __fy_xform_fn(struct fy_generic_builder *gb, fy_generic v) { \
+				_fn_body ; \
+			} \
+			&__fy_xform_fn; }); \
+		fy_gb_pmap((_gb), (_col), _fn); \
+	})
+
+#define fy_local_pmap_lambda(_col, _fn_body) \
+	({ \
+		fy_generic_map_xform_fn _fn = ({ \
+			fy_generic __fy_xform_fn(struct fy_generic_builder *gb, fy_generic v) { \
+				_fn_body ; \
+			} \
+			&__fy_xform_fn; }); \
+		fy_local_pmap((_col), _fn); \
+	})
+
+#define fy_gb_reduce_lambda(_gb, _col, _acc, _fn_body) \
+	({ \
+		fy_generic_reducer_fn _fn = ({ \
+			fy_generic __fy_reducer_fn(struct fy_generic_builder *gb, fy_generic acc, \
+						   fy_generic v) { \
+				_fn_body ; \
+			} \
+			&__fy_reducer_fn; }); \
+		fy_gb_reduce((_gb), (_col), (_acc), _fn); \
+	})
+
+#define fy_local_reduce_lambda(_col, _acc, _fn_body) \
+	({ \
+		fy_generic_reducer_fn _fn = ({ \
+			fy_generic __fy_reducer_fn(struct fy_generic_builder *gb, fy_generic acc, \
+						   fy_generic v) { \
+				_fn_body ; \
+			} \
+			&__fy_reducer_fn; }); \
+		fy_local_reduce((_col), (_acc), _fn); \
+	})
+
+#define fy_gb_preduce_lambda(_gb, _col, _acc, _fn_body) \
+	({ \
+		fy_generic_reducer_fn _fn = ({ \
+			fy_generic __fy_reducer_fn(struct fy_generic_builder *gb, fy_generic acc, \
+						   fy_generic v) { \
+				_fn_body ; \
+			} \
+			&__fy_reducer_fn; }); \
+		fy_gb_preduce((_gb), (_col), (_acc), _fn); \
+	})
+
+#define fy_local_preduce_lambda(_col, _acc, _fn_body) \
+	({ \
+		fy_generic_reducer_fn _fn = ({ \
+			fy_generic __fy_reducer_fn(struct fy_generic_builder *gb, fy_generic acc, \
+						   fy_generic v) { \
+				_fn_body ; \
+			} \
+			&__fy_reducer_fn; }); \
+		fy_local_preduce((_col), (_acc), _fn); \
+	})
+
+#endif
 
 /* now the grand finale */
 #define FY_GB_OR_LOCAL_OP(_gb_or_NULL, _flags, ...) \
@@ -4917,7 +5080,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 
 #define fy_contains(_first, ...) \
 	(FY_GB_OR_LOCAL_COL_COUNT_ITEMS(FYGBOPF_CONTAINS | FYGBOPF_MAP_ITEM_COUNT, \
-					_first __VA_OPT__(,) __VA_ARGS__).v == fy_true_value)
+					_first __VA_OPT__(,) __VA_ARGS__))
 
 #define fy_concat(_first, ...) \
 	FY_GB_OR_LOCAL_COL_COUNT_ITEMS(FYGBOPF_CONCAT, _first __VA_OPT__(,) __VA_ARGS__)
@@ -4934,34 +5097,35 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 #define fy_sort(_first, ...) \
 	FY_GB_OR_LOCAL_COL(FYGBOPF_SORT, _first __VA_OPT__(,) __VA_ARGS__)
 
-/* fy_filter(gb, col, fn) , fy_filter(col, fn) */
-#define fy_filter(_gb_or_col, _col_or_fn, ...) \
-	({ \
-		struct fy_generic_builder *_gb = fy_gb_or_NULL(_gb_or_col); \
-		const fy_generic _col = fy_first_non_gb(_gb_or_col, _col_or_fn); \
-		fy_generic_filter_pred_fn _fn = fy_second_non_gb(_gb_or_col, _col_or_fn __VA_OPT__(,) __VA_ARGS__ , NULL); \
-		FY_GB_OR_LOCAL_OP(_gb, FYGBOPF_FILTER | FYGBOPF_MAP_ITEM_COUNT, _col, 0, NULL, _fn); \
-	})
+#define fy_filter(...) (FY_CPP_FOURTH(__VA_ARGS__, fy_gb_filter, fy_local_filter)(__VA_ARGS__))
+#define fy_pfilter(...) (FY_CPP_FIFTH(__VA_ARGS__, fy_gb_pfilter, fy_local_pfilter)(__VA_ARGS__))
 
-/* fy_map(gb, col, fn) , fy_map(col, fn) */
-#define fy_map(_gb_or_col, _col_or_fn, ...) \
-	({ \
-		struct fy_generic_builder *_gb = fy_gb_or_NULL(_gb_or_col); \
-		const fy_generic _col = fy_first_non_gb(_gb_or_col, _col_or_fn); \
-		fy_generic_map_xform_fn _fn = fy_second_non_gb(_gb_or_col, _col_or_fn __VA_OPT__(,) __VA_ARGS__ , NULL); \
-		FY_GB_OR_LOCAL_OP(_gb, FYGBOPF_MAP | FYGBOPF_MAP_ITEM_COUNT, _col, 0, NULL, _fn); \
-	})
+#define fy_map(...) (FY_CPP_FOURTH(__VA_ARGS__, fy_gb_map, fy_local_map)(__VA_ARGS__))
+#define fy_pmap(...) (FY_CPP_FIFTH(__VA_ARGS__, fy_gb_pmap, fy_local_pmap)(__VA_ARGS__))
 
-/* fy_reduce(gb, col, fn) , fy_reduce(col, fn) */
-#define fy_reduce(_gb_or_col, _col_or_fn, _fn_or_acc, ...) \
-	({ \
-		struct fy_generic_builder *_gb = fy_gb_or_NULL(_gb_or_col); \
-		const fy_generic _col = fy_first_non_gb(_gb_or_col, _col_or_fn); \
-		fy_generic_reducer_fn _fn = fy_second_non_gb(_gb_or_col, _col_or_fn, _fn_or_acc); \
-		const fy_generic _acc = fy_value(fy_third_non_gb(_gb_or_col, _col_or_fn, _fn_or_acc __VA_OPT__(,) __VA_ARGS__ , fy_invalid)); \
-		const fy_generic _v = \
-			FY_GB_OR_LOCAL_OP(_gb, FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT, _col, 0, NULL, _fn, _acc); \
-		fy_cast(_v, fy_third_non_gb(_gb_or_col, _col_or_fn, _fn_or_acc __VA_OPT__(,) __VA_ARGS__ , fy_invalid)); \
-	})
+#define fy_reduce(...) (FY_CPP_FIFTH(__VA_ARGS__, fy_gb_reduce, fy_local_reduce)(__VA_ARGS__))
+#define fy_preduce(...) (FY_CPP_SIXTH(__VA_ARGS__, fy_gb_preduce, fy_local_preduce)(__VA_ARGS__))
+
+/*
+ * Lambda variants - fy_filter_lambda, fy_map_lambda, fy_reduce_lambda
+ *
+ * These work with FY_PRED/FY_XFORM/FY_REDUCER macros which produce:
+ *   - Clang: Blocks (requires -fblocks -lBlocksRuntime)
+ *   - GCC: Nested function pointers (standard extension)
+ *
+ * Usage:
+ *   v = fy_filter_lambda(seq, FY_PRED({ return fy_cast(v, 0) > 100; }));
+ *   v = fy_map_lambda(seq, FY_XFORM({ return fy_value(fy_cast(v, 0) * 2); }));
+ *   sum = fy_reduce_lambda(seq, FY_REDUCER({ return fy_value(fy_cast(acc, 0) + fy_cast(v, 0)); }), 0);
+ */
+
+#define fy_filter_lambda(...) (FY_CPP_FOURTH(__VA_ARGS__, fy_gb_filter_lambda, fy_local_filter_lambda)(__VA_ARGS__))
+#define fy_pfilter_lambda(...) (FY_CPP_FIFTH(__VA_ARGS__, fy_gb_pfilter_lambda, fy_local_pfilter_lambda)(__VA_ARGS__))
+
+#define fy_map_lambda(...) (FY_CPP_FOURTH(__VA_ARGS__, fy_gb_map_lambda, fy_local_map_lambda)(__VA_ARGS__))
+#define fy_pmap_lambda(...) (FY_CPP_FIFTH(__VA_ARGS__, fy_gb_pmap_lambda, fy_local_pmap_lambda)(__VA_ARGS__))
+
+#define fy_reduce_lambda(...) (FY_CPP_FIFTH(__VA_ARGS__, fy_gb_reduce_lambda, fy_local_reduce_lambda)(__VA_ARGS__))
+#define fy_preduce_lambda(...) (FY_CPP_SIXTH(__VA_ARGS__, fy_gb_preduce_lambda, fy_local_preduce_lambda)(__VA_ARGS__))
 
 #endif

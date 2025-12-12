@@ -310,6 +310,7 @@ static inline void fy_strip_trailing_nl(char *str)
 #define FY_CPP_EVAL4(...)    FY_CPP_EVAL2(FY_CPP_EVAL2(__VA_ARGS__))
 #define FY_CPP_EVAL8(...)    FY_CPP_EVAL4(FY_CPP_EVAL4(__VA_ARGS__))
 #define FY_CPP_EVAL16(...)   FY_CPP_EVAL8(FY_CPP_EVAL8(__VA_ARGS__))
+#if 0
 #define FY_CPP_EVAL32(...)   FY_CPP_EVAL16(FY_CPP_EVAL16(__VA_ARGS__))
 #if !defined(__clang__)
 #define FY_CPP_EVAL64(...)   FY_CPP_EVAL32(FY_CPP_EVAL32(__VA_ARGS__))
@@ -318,6 +319,9 @@ static inline void fy_strip_trailing_nl(char *str)
 #else
 // clang craps out at 32
 #define FY_CPP_EVAL(...)     FY_CPP_EVAL32(FY_CPP_EVAL32(__VA_ARGS__))
+#endif
+#else
+#define FY_CPP_EVAL(...)     FY_CPP_EVAL16(FY_CPP_EVAL16(__VA_ARGS__))
 #endif
 
 #define FY_CPP_EMPTY()
@@ -331,14 +335,23 @@ static inline void fy_strip_trailing_nl(char *str)
 
 #define FY_CPP_POSTPONE2(a, macro) macro FY_CPP_EMPTY()
 
-#define _FY_CPP_FIRST(x, ...) x
+#define _FY_CPP_FIRST(_1, ...) _1
 #define FY_CPP_FIRST(...)     __VA_OPT__(_FY_CPP_FIRST(__VA_ARGS__))
 
-#define _FY_CPP_SECOND(x, y, ...) y
+#define _FY_CPP_SECOND(_1, _2, ...) _2
 #define FY_CPP_SECOND(...)     __VA_OPT__(_FY_CPP_SECOND(__VA_ARGS__))
 
-#define _FY_CPP_THIRD(x, y, z, ...) z
+#define _FY_CPP_THIRD(_1, _2, _3, ...) _3
 #define FY_CPP_THIRD(...)     __VA_OPT__(_FY_CPP_THIRD(__VA_ARGS__))
+
+#define _FY_CPP_FOURTH(_1, _2, _3, _4, ...) _4
+#define FY_CPP_FOURTH(...)     __VA_OPT__(_FY_CPP_FOURTH(__VA_ARGS__))
+
+#define _FY_CPP_FIFTH(_1, _2, _3, _4, _5, ...) _5
+#define FY_CPP_FIFTH(...)     __VA_OPT__(_FY_CPP_FIFTH(__VA_ARGS__))
+
+#define _FY_CPP_SIXTH(_1, _2, _3, _4, _5, _6, ...) _6
+#define FY_CPP_SIXTH(...)     __VA_OPT__(_FY_CPP_SIXTH(__VA_ARGS__))
 
 #define _FY_CPP_REST(x, ...) __VA_ARGS__
 #define FY_CPP_REST(...)     __VA_OPT__(_FY_CPP_REST(__VA_ARGS__))

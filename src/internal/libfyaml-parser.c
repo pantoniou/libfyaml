@@ -4544,7 +4544,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 		i = fy_generic_get_type_default(int);
 		printf("fy_generic_get_type_default(int) = %d\n", i);
 		s = fy_generic_get_type_default(const char *);
-		printf("fy_generic_get_type_default(const char *) = \"%s\"\n", s);
+		printf("fy_generic_get_type_default(const char *) = \"%s\"\n", s ? s : "<NULL>");
 
 		fy_generic vv;
 
