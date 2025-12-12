@@ -222,6 +222,206 @@ fy_foreach(inner_seq, outer_seq) {
 // 4 5 6
 ```
 
+## Functional Operations
+
+### Polymorphic Filter/Map/Reduce
+
+libfyaml provides unified polymorphic operations that work with or without a builder:
+
+#### `fy_filter()` - Filter Collection
+
+```c
+// Without builder (stack-allocated result)
+fy_generic filtered = fy_filter(seq, predicate_fn);
+
+// With builder (heap-allocated result)
+fy_generic filtered = fy_filter(gb, seq, predicate_fn);
+```
+
+**Predicate function signature**:
+```c
+bool predicate_fn(struct fy_generic_builder *gb, fy_generic v);
+```
+
+**Example**:
+```c
+static bool is_even(struct fy_generic_builder *gb, fy_generic v) {
+    return (fy_cast(v, 0) % 2) == 0;
+}
+
+fy_generic numbers = fy_sequence(1, 2, 3, 4, 5, 6);
+fy_generic even = fy_filter(numbers, is_even);
+// Result: [2, 4, 6]
+```
+
+#### `fy_map()` - Transform Collection
+
+```c
+// Without builder
+fy_generic mapped = fy_map(seq, transform_fn);
+
+// With builder
+fy_generic mapped = fy_map(gb, seq, transform_fn);
+```
+
+**Transform function signature**:
+```c
+fy_generic transform_fn(struct fy_generic_builder *gb, fy_generic v);
+```
+
+**Example**:
+```c
+static fy_generic double_value(struct fy_generic_builder *gb, fy_generic v) {
+    return fy_value(fy_cast(v, 0) * 2);
+}
+
+fy_generic numbers = fy_sequence(1, 2, 3, 4, 5);
+fy_generic doubled = fy_map(numbers, double_value);
+// Result: [2, 4, 6, 8, 10]
+```
+
+#### `fy_reduce()` - Reduce Collection
+
+```c
+// Without builder
+result = fy_reduce(seq, init_value, reducer_fn);
+
+// With builder
+result = fy_reduce(gb, seq, init_value, reducer_fn);
+```
+
+**Reducer function signature**:
+```c
+fy_generic reducer_fn(struct fy_generic_builder *gb, fy_generic acc, fy_generic v);
+```
+
+**Example**:
+```c
+static fy_generic sum(struct fy_generic_builder *gb, fy_generic acc, fy_generic v) {
+    return fy_value(fy_cast(acc, 0) + fy_cast(v, 0));
+}
+
+fy_generic numbers = fy_sequence(1, 2, 3, 4, 5);
+int total = fy_reduce(numbers, 0, sum);
+// Result: 15
+```
+
+### Lambda Support
+
+For inline operations without separate function definitions, libfyaml provides lambda-like syntax:
+
+**Requirements**:
+- **GCC**: Uses nested functions (standard extension, no flags needed)
+- **Clang**: Uses Blocks extension (requires `-fblocks` flag, may need `-lBlocksRuntime`)
+
+#### Filter with Lambda
+
+```c
+fy_generic numbers = fy_sequence(1, 50, 101, 200, 3);
+
+// Inline predicate - no separate function needed
+fy_generic large = fy_filter_lambda(numbers, {
+    return fy_cast(v, 0) > 100;
+});
+// Result: [101, 200]
+```
+
+**Available variables in lambda body**:
+- `gb` - Generic builder (struct fy_generic_builder *)
+- `v` - Current value (fy_generic)
+
+#### Map with Lambda
+
+```c
+// Inline transformation
+fy_generic doubled = fy_map_lambda(numbers, {
+    return fy_value(fy_cast(v, 0) * 2);
+});
+```
+
+**Available variables in lambda body**:
+- `gb` - Generic builder
+- `v` - Current value
+
+#### Reduce with Lambda
+
+```c
+// Inline reducer
+int sum = fy_reduce_lambda(numbers, 0, {
+    return fy_value(fy_cast(acc, 0) + fy_cast(v, 0));
+});
+```
+
+**Available variables in lambda body**:
+- `gb` - Generic builder
+- `acc` - Accumulator value (fy_generic)
+- `v` - Current value (fy_generic)
+
+### Parallel Operations
+
+All filter/map/reduce operations have parallel versions:
+
+```c
+struct fy_thread_pool *tp = fy_thread_pool_create(NULL);
+
+// Parallel filter
+fy_generic filtered = fy_pfilter(data, tp, predicate_fn);
+
+// Parallel map
+fy_generic mapped = fy_pmap(data, tp, transform_fn);
+
+// Parallel reduce
+int result = fy_preduce(data, 0, tp, reducer_fn);
+
+// With lambdas
+fy_generic filtered = fy_pfilter_lambda(data, tp, { return fy_cast(v, 0) > 100; });
+fy_generic mapped = fy_pmap_lambda(data, tp, { return fy_value(fy_cast(v, 0) * 2); });
+int sum = fy_preduce_lambda(data, 0, tp, { return fy_value(fy_cast(acc, 0) + fy_cast(v, 0)); });
+
+fy_thread_pool_destroy(tp);
+```
+
+**See**: [GENERIC-API-LAMBDAS.md](GENERIC-API-LAMBDAS.md) for comprehensive lambda documentation and [PARALLEL-REDUCE-RESULTS.md](PARALLEL-REDUCE-RESULTS.md) for performance benchmarks.
+
+### Functional Pipelines
+
+Combine operations for declarative data transformations:
+
+**With function pointers**:
+```c
+fy_generic data = fy_sequence(1, 50, 101, 200, 3, 75);
+
+fy_generic result = fy_map(
+    fy_filter(data, is_over_100),
+    multiply_by_10
+);
+// Steps: filter [101, 200] → map [1010, 2000]
+```
+
+**With lambdas**:
+```c
+fy_generic result = fy_map_lambda(
+    fy_filter_lambda(data, {
+        return fy_cast(v, 0) > 100;
+    }),
+    {
+        return fy_value(fy_cast(v, 0) * 10);
+    }
+);
+// Same result, no separate functions needed
+```
+
+**Iterate results**:
+```c
+int value;
+fy_foreach(value, result) {
+    printf("%d\n", value);
+}
+// Output:
+// 1010
+// 2000
+```
+
 ## Complete API Reference
 
 ### The Lean Public API
