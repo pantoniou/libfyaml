@@ -3685,6 +3685,49 @@ START_TEST(lambda_ops)
 	ck_assert(fy_get(v, 1, -1) == 2000);  /* 200 * 10 */
 	printf("> chained filter->map with lambdas: ");
 	fy_generic_emit_default(v);
+
+	/* Test parallel lambdas - fy_pfilter_lambda */
+	seq = fy_sequence(7, 6, 5, 101, 8, 200, 150);
+	v = fy_pfilter_lambda(seq, NULL, fy_cast(v, 0) > 100);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);  /* 101, 200, 150 */
+	printf("> fy_pfilter_lambda (> 100): ");
+	fy_generic_emit_default(v);
+
+	/* Test fy_pfilter_lambda with builder */
+	v = fy_pfilter_lambda(gb, seq, NULL, fy_cast(v, 0) > 100);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	printf("> fy_pfilter_lambda(gb, ...) (> 100): ");
+	fy_generic_emit_default(v);
+
+	/* Test parallel lambdas - fy_pmap_lambda */
+	seq = fy_sequence(7, 6, 5, 8);
+	v = fy_pmap_lambda(seq, NULL, fy_value(fy_cast(v, 0) * 2));
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 4);
+	printf("> fy_pmap_lambda (x2): ");
+	fy_generic_emit_default(v);
+
+	/* Test fy_pmap_lambda with builder */
+	v = fy_pmap_lambda(gb, seq, NULL, fy_value(fy_cast(v, 0) * 2));
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 4);
+	printf("> fy_pmap_lambda(gb, ...) (x2): ");
+	fy_generic_emit_default(v);
+
+	/* Test parallel lambdas - fy_preduce_lambda */
+	seq = fy_sequence(7, 6, 5, 8);
+	v = fy_preduce_lambda(seq, 0, NULL, fy_value(fy_cast(acc, 0) + fy_cast(v, 0)));
+	sum = fy_cast(v, 0);
+	ck_assert(sum == 26);
+	printf("> fy_preduce_lambda (sum): %d\n", sum);
+
+	/* Test fy_preduce_lambda with builder */
+	v = fy_preduce_lambda(gb, seq, 0, NULL, fy_value(fy_cast(acc, 0) + fy_cast(v, 0)));
+	sum = fy_cast(v, 0);
+	ck_assert(sum == 26);
+	printf("> fy_preduce_lambda(gb, ...) (sum): %d\n", sum);
 #endif
 }
 END_TEST
