@@ -821,6 +821,19 @@ target_link_libraries(fyaml_static
 # Add libclang support if available
 add_libclang_to_target(fyaml_static INTERFACE)
 
+# check if blocks are available, and if so link them
+include(${CMAKE_SOURCE_DIR}/cmake/CheckClangBlocks.cmake)
+
+# Apply flags if available
+if (HAVE_CLANG_BLOCKS)
+    add_compile_options(-fblocks)
+    list(APPEND COMMON_C_FLAGS -fblocks)
+
+    if (CLANG_BLOCKS_LIB)
+        link_libraries(${CLANG_BLOCKS_LIB})
+    endif()
+endif()
+
 target_compile_definitions(fyaml_static PRIVATE
     HAVE_CONFIG_H
     VERSION="${PROJECT_VERSION}"
@@ -871,18 +884,6 @@ target_link_libraries(fyaml
 
 # Add libclang support if available
 add_libclang_to_target(fyaml PRIVATE)
-
-# check if blocks are available, and if so link them
-include(${CMAKE_SOURCE_DIR}/cmake/CheckClangBlocks.cmake)
-
-# Apply flags if available
-if (HAVE_CLANG_BLOCKS)
-    add_compile_options(-fblocks)
-
-    if (CLANG_BLOCKS_LIB)
-        link_libraries(${CLANG_BLOCKS_LIB})
-    endif()
-endif()
 
 # Generate config.h
 configure_file(
@@ -1216,6 +1217,14 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
         if(HAVE_LIBCLANG)
             target_link_directories(libfyaml-test PRIVATE ${LIBCLANG_LINK_DIRS})
         endif()
+
+        if (HAVE_CLANG_BLOCKS)
+            target_compile_options(libfyaml-test PRIVATE -fblocks)
+            if (CLANG_BLOCKS_LIB)
+                target_link_libraries(libfyaml-test PRIVATE ${CLANG_BLOCKS_LIB})
+            endif()
+        endif()
+
         add_dependencies(libfyaml-test fyaml_static)
 
         # Set output directory to match autoconf behavior
