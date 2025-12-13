@@ -320,9 +320,7 @@ For inline operations without separate function definitions, libfyaml provides l
 fy_generic numbers = fy_sequence(1, 50, 101, 200, 3);
 
 // Inline predicate - no separate function needed
-fy_generic large = fy_filter_lambda(numbers, {
-    return fy_cast(v, 0) > 100;
-});
+fy_generic large = fy_filter_lambda(numbers, fy_cast(v, 0) > 100);
 // Result: [101, 200]
 ```
 
@@ -334,9 +332,7 @@ fy_generic large = fy_filter_lambda(numbers, {
 
 ```c
 // Inline transformation
-fy_generic doubled = fy_map_lambda(numbers, {
-    return fy_value(fy_cast(v, 0) * 2);
-});
+fy_generic doubled = fy_map_lambda(numbers, fy_value(fy_cast(v, 0) * 2));
 ```
 
 **Available variables in lambda body**:
@@ -347,9 +343,7 @@ fy_generic doubled = fy_map_lambda(numbers, {
 
 ```c
 // Inline reducer
-int sum = fy_reduce_lambda(numbers, 0, {
-    return fy_value(fy_cast(acc, 0) + fy_cast(v, 0));
-});
+int sum = fy_reduce_lambda(numbers, 0, fy_value(fy_cast(acc, 0) + fy_cast(v, 0)));
 ```
 
 **Available variables in lambda body**:
@@ -374,9 +368,9 @@ fy_generic mapped = fy_pmap(data, tp, transform_fn);
 int result = fy_preduce(data, 0, tp, reducer_fn);
 
 // With lambdas
-fy_generic filtered = fy_pfilter_lambda(data, tp, { return fy_cast(v, 0) > 100; });
-fy_generic mapped = fy_pmap_lambda(data, tp, { return fy_value(fy_cast(v, 0) * 2); });
-int sum = fy_preduce_lambda(data, 0, tp, { return fy_value(fy_cast(acc, 0) + fy_cast(v, 0)); });
+fy_generic filtered = fy_pfilter_lambda(data, tp, fy_cast(v, 0) > 100);
+fy_generic mapped = fy_pmap_lambda(data, tp, fy_value(fy_cast(v, 0) * 2));
+int sum = fy_preduce_lambda(data, 0, tp, fy_value(fy_cast(acc, 0) + fy_cast(v, 0)));
 
 fy_thread_pool_destroy(tp);
 ```
@@ -401,12 +395,8 @@ fy_generic result = fy_map(
 **With lambdas**:
 ```c
 fy_generic result = fy_map_lambda(
-    fy_filter_lambda(data, {
-        return fy_cast(v, 0) > 100;
-    }),
-    {
-        return fy_value(fy_cast(v, 0) * 10);
-    }
+    fy_filter_lambda(data, fy_cast(v, 0) > 100),
+    fy_value(fy_cast(v, 0) * 10)
 );
 // Same result, no separate functions needed
 ```

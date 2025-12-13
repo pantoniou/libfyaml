@@ -26,9 +26,7 @@ fy_generic filtered = fy_filter(data, is_over_100);
 
 **After** (lambda):
 ```c
-fy_generic filtered = fy_filter_lambda(data, {
-    return fy_cast(v, 0) > 100;
-});
+fy_generic filtered = fy_filter_lambda(data, fy_cast(v, 0) > 100);
 ```
 
 **Compiler support**:
@@ -39,26 +37,26 @@ fy_generic filtered = fy_filter_lambda(data, {
 
 **Filter**:
 ```c
-fy_generic large = fy_filter_lambda(data, { return fy_cast(v, 0) > 100; });
+fy_generic large = fy_filter_lambda(data, fy_cast(v, 0) > 100);
 ```
 
 **Map**:
 ```c
-fy_generic doubled = fy_map_lambda(data, { return fy_value(fy_cast(v, 0) * 2); });
+fy_generic doubled = fy_map_lambda(data, fy_value(fy_cast(v, 0) * 2));
 ```
 
 **Reduce**:
 ```c
-int sum = fy_reduce_lambda(data, 0, { return fy_value(fy_cast(acc, 0) + fy_cast(v, 0)); });
+int sum = fy_reduce_lambda(data, 0, fy_value(fy_cast(acc, 0) + fy_cast(v, 0)));
 ```
 
 **Parallel versions**:
 ```c
 struct fy_thread_pool *tp = fy_thread_pool_create(NULL);
 
-fy_generic filtered = fy_pfilter_lambda(data, tp, { return fy_cast(v, 0) > 100; });
-fy_generic mapped = fy_pmap_lambda(data, tp, { return fy_value(fy_cast(v, 0) * 2); });
-int sum = fy_preduce_lambda(data, 0, tp, { return fy_value(fy_cast(acc, 0) + fy_cast(v, 0)); });
+fy_generic filtered = fy_pfilter_lambda(data, tp, fy_cast(v, 0) > 100);
+fy_generic mapped = fy_pmap_lambda(data, tp, fy_value(fy_cast(v, 0) * 2));
+int sum = fy_preduce_lambda(data, 0, tp, fy_value(fy_cast(acc, 0) + fy_cast(v, 0)));
 
 fy_thread_pool_destroy(tp);
 ```
@@ -97,12 +95,8 @@ fy_generic data = fy_sequence(1, 50, 101, 200, 3, 75);
 
 // Filter values > 100, then multiply by 10
 fy_generic result = fy_map_lambda(
-    fy_filter_lambda(data, {
-        return fy_cast(v, 0) > 100;
-    }),
-    {
-        return fy_value(fy_cast(v, 0) * 10);
-    }
+    fy_filter_lambda(data, fy_cast(v, 0) > 100),
+    fy_value(fy_cast(v, 0) * 10)
 );
 // Result: [1010, 2000]
 
@@ -119,26 +113,26 @@ Each lambda type has specific variables available:
 
 **Filter lambda** (`v` only):
 ```c
-fy_filter_lambda(data, {
+fy_filter_lambda(data,
     // Available: gb, v
-    return fy_cast(v, 0) > threshold;
-});
+    fy_cast(v, 0) > threshold
+);
 ```
 
 **Map lambda** (`v` only):
 ```c
-fy_map_lambda(data, {
+fy_map_lambda(data,
     // Available: gb, v
-    return fy_value(fy_cast(v, 0) * 2);
-});
+    fy_value(fy_cast(v, 0) * 2)
+);
 ```
 
 **Reduce lambda** (`acc` and `v`):
 ```c
-fy_reduce_lambda(data, init, {
+fy_reduce_lambda(data, init,
     // Available: gb, acc, v
-    return fy_value(fy_cast(acc, 0) + fy_cast(v, 0));
-});
+    fy_value(fy_cast(acc, 0) + fy_cast(v, 0))
+);
 ```
 
 ### 5. Variable Capture
@@ -150,12 +144,8 @@ int threshold = 100;
 int multiplier = 10;
 
 fy_generic result = fy_map_lambda(
-    fy_filter_lambda(data, {
-        return fy_cast(v, 0) > threshold;  // Captures threshold
-    }),
-    {
-        return fy_value(fy_cast(v, 0) * multiplier);  // Captures multiplier
-    }
+    fy_filter_lambda(data, fy_cast(v, 0) > threshold),  // Captures threshold
+    fy_value(fy_cast(v, 0) * multiplier)  // Captures multiplier
 );
 ```
 
@@ -182,18 +172,18 @@ result = [x * 10 for x in data if x > 100]
 
 ```c
 // Filter
-fy_generic filtered = fy_filter_lambda(data, { return fy_cast(v, 0) > 100; });
+fy_generic filtered = fy_filter_lambda(data, fy_cast(v, 0) > 100);
 
 // Map
-fy_generic doubled = fy_map_lambda(data, { return fy_value(fy_cast(v, 0) * 2); });
+fy_generic doubled = fy_map_lambda(data, fy_value(fy_cast(v, 0) * 2));
 
 // Reduce
-int sum = fy_reduce_lambda(data, 0, { return fy_value(fy_cast(acc, 0) + fy_cast(v, 0)); });
+int sum = fy_reduce_lambda(data, 0, fy_value(fy_cast(acc, 0) + fy_cast(v, 0)));
 
 // Pipeline
 fy_generic result = fy_map_lambda(
-    fy_filter_lambda(data, { return fy_cast(v, 0) > 100; }),
-    { return fy_value(fy_cast(v, 0) * 10); }
+    fy_filter_lambda(data, fy_cast(v, 0) > 100),
+    fy_value(fy_cast(v, 0) * 10)
 );
 ```
 
@@ -221,18 +211,18 @@ const result = data
 
 ```c
 // Filter
-fy_generic filtered = fy_filter_lambda(data, { return fy_cast(v, 0) > 100; });
+fy_generic filtered = fy_filter_lambda(data, fy_cast(v, 0) > 100);
 
 // Map
-fy_generic doubled = fy_map_lambda(data, { return fy_value(fy_cast(v, 0) * 2); });
+fy_generic doubled = fy_map_lambda(data, fy_value(fy_cast(v, 0) * 2));
 
 // Reduce
-int sum = fy_reduce_lambda(data, 0, { return fy_value(fy_cast(acc, 0) + fy_cast(v, 0)); });
+int sum = fy_reduce_lambda(data, 0, fy_value(fy_cast(acc, 0) + fy_cast(v, 0)));
 
 // Pipeline (no chaining, but same logic)
 fy_generic result = fy_map_lambda(
-    fy_filter_lambda(data, { return fy_cast(v, 0) > 100; }),
-    { return fy_value(fy_cast(v, 0) * 10); }
+    fy_filter_lambda(data, fy_cast(v, 0) > 100),
+    fy_value(fy_cast(v, 0) * 10)
 );
 ```
 
@@ -260,12 +250,8 @@ fy_generic users = fy_sequence(
 
 // Get names of active users over 25
 fy_generic active_names = fy_map_lambda(
-    fy_filter_lambda(users, {
-        return fy_get(v, "active", false) && fy_get(v, "age", 0) > 25;
-    }),
-    {
-        return fy_get(v, "name", fy_invalid);
-    }
+    fy_filter_lambda(users, fy_get(v, "active", false) && fy_get(v, "age", 0) > 25),
+    fy_get(v, "name", fy_invalid)
 );
 
 // Iterate and print
@@ -288,11 +274,9 @@ fy_generic sales = fy_sequence(
 );
 
 // Calculate total revenue
-int total_revenue = fy_reduce_lambda(sales, 0, {
-    int price = fy_get(v, "price", 0);
-    int quantity = fy_get(v, "quantity", 0);
-    return fy_value(fy_cast(acc, 0) + (price * quantity));
-});
+int total_revenue = fy_reduce_lambda(sales, 0,
+    fy_value(fy_cast(acc, 0) + (fy_get(v, "price", 0) * fy_get(v, "quantity", 0)))
+);
 // Result: (10*5) + (20*3) + (15*2) = 50 + 60 + 30 = 140
 ```
 
@@ -305,13 +289,10 @@ fy_generic large_data = generate_large_dataset(100000);
 struct fy_thread_pool *tp = fy_thread_pool_create(NULL);
 
 // Parallel filter + map pipeline
-fy_generic result = fy_pmap_lambda(large_data, tp,
-    fy_pfilter_lambda(large_data, tp, {
-        return fy_cast(v, 0) > 1000;
-    }),
-    {
-        return fy_value(fy_cast(v, 0) * 2);
-    }
+fy_generic result = fy_pmap_lambda(
+    fy_pfilter_lambda(large_data, tp, fy_cast(v, 0) > 1000),
+    tp,
+    fy_value(fy_cast(v, 0) * 2)
 );
 
 fy_thread_pool_destroy(tp);
@@ -387,9 +368,7 @@ fy_generic result = fy_local_filter(data, my_predicate);
 
 **After** (with lambda):
 ```c
-fy_generic result = fy_filter_lambda(data, {
-    return fy_cast(v, 0) > 100;
-});
+fy_generic result = fy_filter_lambda(data, fy_cast(v, 0) > 100);
 ```
 
 **After** (with polymorphic API, keeping function):
@@ -431,15 +410,15 @@ fy_generic r2 = fy_map(gb, r1, xform);
 ```c
 // Stack
 fy_generic result = fy_map_lambda(
-    fy_filter_lambda(data, { /* predicate */ }),
-    { /* transform */ }
+    fy_filter_lambda(data, /* predicate */),
+    /* transform */
 );
 
 // Heap
 struct fy_generic_builder *gb = ...;
 fy_generic result = fy_map_lambda(gb,
-    fy_filter_lambda(gb, data, { /* predicate */ }),
-    { /* transform */ }
+    fy_filter_lambda(gb, data, /* predicate */),
+    /* transform */
 );
 ```
 

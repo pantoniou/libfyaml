@@ -34,27 +34,21 @@ fy_generic result = fy_filter(seq, is_over_100);
 **With lambda** (inline):
 ```c
 // Define logic inline
-fy_generic result = fy_filter_lambda(seq, {
-    return fy_cast(v, 0) > 100;
-});
+fy_generic result = fy_filter_lambda(seq, fy_cast(v, 0) > 100);
 ```
 
 ### Map with Lambda
 
 ```c
 // Double all values inline
-fy_generic doubled = fy_map_lambda(seq, {
-    return fy_value(fy_cast(v, 0) * 2);
-});
+fy_generic doubled = fy_map_lambda(seq, fy_value(fy_cast(v, 0) * 2));
 ```
 
 ### Reduce with Lambda
 
 ```c
 // Sum values inline
-int sum = fy_reduce_lambda(seq, 0, {
-    return fy_value(fy_cast(acc, 0) + fy_cast(v, 0));
-});
+int sum = fy_reduce_lambda(seq, 0, fy_value(fy_cast(acc, 0) + fy_cast(v, 0)));
 ```
 
 ## Lambda API Reference
@@ -78,16 +72,12 @@ fy_generic fy_filter_lambda(gb, col, { body });
 fy_generic data = fy_sequence(5, 15, 25, 35, 45);
 
 // Filter values > 20
-fy_generic filtered = fy_filter_lambda(data, {
-    return fy_cast(v, 0) > 20;
-});
+fy_generic filtered = fy_filter_lambda(data, fy_cast(v, 0) > 20);
 // Result: [25, 35, 45]
 
 // Filter with builder (persistent result)
 struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
-fy_generic filtered2 = fy_filter_lambda(gb, data, {
-    return fy_cast(v, 0) > 20;
-});
+fy_generic filtered2 = fy_filter_lambda(gb, data, fy_cast(v, 0) > 20);
 ```
 
 **Multi-line body**:
@@ -119,9 +109,7 @@ fy_generic fy_map_lambda(gb, col, { body });
 fy_generic numbers = fy_sequence(1, 2, 3, 4, 5);
 
 // Double all values
-fy_generic doubled = fy_map_lambda(numbers, {
-    return fy_value(fy_cast(v, 0) * 2);
-});
+fy_generic doubled = fy_map_lambda(numbers, fy_value(fy_cast(v, 0) * 2));
 // Result: [2, 4, 6, 8, 10]
 
 // Convert to strings
@@ -164,23 +152,17 @@ fy_generic fy_reduce_lambda(gb, col, init_value, { body });
 fy_generic numbers = fy_sequence(1, 2, 3, 4, 5);
 
 // Sum
-int sum = fy_reduce_lambda(numbers, 0, {
-    return fy_value(fy_cast(acc, 0) + fy_cast(v, 0));
-});
+int sum = fy_reduce_lambda(numbers, 0, fy_value(fy_cast(acc, 0) + fy_cast(v, 0)));
 // Result: 15
 
 // Product
-int product = fy_reduce_lambda(numbers, 1, {
-    return fy_value(fy_cast(acc, 0) * fy_cast(v, 0));
-});
+int product = fy_reduce_lambda(numbers, 1, fy_value(fy_cast(acc, 0) * fy_cast(v, 0)));
 // Result: 120
 
 // Find maximum
-int max = fy_reduce_lambda(numbers, INT_MIN, {
-    int a = fy_cast(acc, INT_MIN);
-    int b = fy_cast(v, INT_MIN);
-    return fy_value(a > b ? a : b);
-});
+int max = fy_reduce_lambda(numbers, INT_MIN,
+    fy_value(fy_cast(acc, INT_MIN) > fy_cast(v, INT_MIN) ? fy_cast(acc, INT_MIN) : fy_cast(v, INT_MIN))
+);
 // Result: 5
 
 // Build a string
@@ -237,9 +219,7 @@ fy_generic transformed = fy_pmap_lambda(large_data, tp, {
 
 ```c
 // Parallel reduce - reducer must be associative!
-int sum = fy_preduce_lambda(large_data, 0, tp, {
-    return fy_value(fy_cast(acc, 0) + fy_cast(v, 0));
-});
+int sum = fy_preduce_lambda(large_data, 0, tp, fy_value(fy_cast(acc, 0) + fy_cast(v, 0)));
 ```
 
 **Important**: Parallel reduce requires the reducer function to be associative:
@@ -256,12 +236,8 @@ fy_generic data = fy_sequence(1, 50, 101, 200, 3, 75);
 
 // Filter then map in one expression
 fy_generic result = fy_map_lambda(
-    fy_filter_lambda(data, {
-        return fy_cast(v, 0) > 100;
-    }),
-    {
-        return fy_value(fy_cast(v, 0) * 10);
-    }
+    fy_filter_lambda(data, fy_cast(v, 0) > 100),
+    fy_value(fy_cast(v, 0) * 10)
 );
 // Steps:
 // 1. Filter: [101, 200]
@@ -280,12 +256,8 @@ fy_generic users = fy_sequence(
 // Get names of active users over 25, in uppercase
 fy_generic active_names = fy_map_lambda(
     fy_map_lambda(
-        fy_filter_lambda(users, {
-            return fy_get(v, "active", false) && fy_get(v, "age", 0) > 25;
-        }),
-        {
-            return fy_get(v, "name", fy_invalid);
-        }
+        fy_filter_lambda(users, fy_get(v, "active", false) && fy_get(v, "age", 0) > 25),
+        fy_get(v, "name", fy_invalid)
     ),
     {
         const char *name = fy_cast(v, "");
@@ -308,9 +280,7 @@ Combine `fy_foreach` with lambda-filtered/mapped results:
 fy_generic data = fy_sequence(1, 50, 101, 200, 3);
 
 // Filter with lambda, iterate with foreach
-fy_generic filtered = fy_filter_lambda(data, {
-    return fy_cast(v, 0) > 100;
-});
+fy_generic filtered = fy_filter_lambda(data, fy_cast(v, 0) > 100);
 
 int value;
 fy_foreach(value, filtered) {
@@ -362,18 +332,18 @@ result = [x * 10 for x in data if x > 100]
 
 ```c
 // Filter
-fy_generic filtered = fy_filter_lambda(data, { return fy_cast(v, 0) > 100; });
+fy_generic filtered = fy_filter_lambda(data, fy_cast(v, 0) > 100);
 
 // Map
-fy_generic doubled = fy_map_lambda(data, { return fy_value(fy_cast(v, 0) * 2); });
+fy_generic doubled = fy_map_lambda(data, fy_value(fy_cast(v, 0) * 2));
 
 // Reduce
-int sum = fy_reduce_lambda(data, 0, { return fy_value(fy_cast(acc, 0) + fy_cast(v, 0)); });
+int sum = fy_reduce_lambda(data, 0, fy_value(fy_cast(acc, 0) + fy_cast(v, 0)));
 
 // Pipeline
 fy_generic result = fy_map_lambda(
-    fy_filter_lambda(data, { return fy_cast(v, 0) > 100; }),
-    { return fy_value(fy_cast(v, 0) * 10); }
+    fy_filter_lambda(data, fy_cast(v, 0) > 100),
+    fy_value(fy_cast(v, 0) * 10)
 );
 ```
 
@@ -401,18 +371,18 @@ const result = data
 
 ```c
 // Filter
-fy_generic filtered = fy_filter_lambda(data, { return fy_cast(v, 0) > 100; });
+fy_generic filtered = fy_filter_lambda(data, fy_cast(v, 0) > 100);
 
 // Map
-fy_generic doubled = fy_map_lambda(data, { return fy_value(fy_cast(v, 0) * 2); });
+fy_generic doubled = fy_map_lambda(data, fy_value(fy_cast(v, 0) * 2));
 
 // Reduce
-int sum = fy_reduce_lambda(data, 0, { return fy_value(fy_cast(acc, 0) + fy_cast(v, 0)); });
+int sum = fy_reduce_lambda(data, 0, fy_value(fy_cast(acc, 0) + fy_cast(v, 0)));
 
 // Pipeline (no chaining syntax, but same logic)
 fy_generic result = fy_map_lambda(
-    fy_filter_lambda(data, { return fy_cast(v, 0) > 100; }),
-    { return fy_value(fy_cast(v, 0) * 10); }
+    fy_filter_lambda(data, fy_cast(v, 0) > 100),
+    fy_value(fy_cast(v, 0) * 10)
 );
 ```
 
@@ -466,7 +436,7 @@ Lambda operations have the **same performance as function pointers**:
 
 **Lambda**:
 ```c
-fy_generic result = fy_filter_lambda(data, { return fy_cast(v, 0) > 100; });
+fy_generic result = fy_filter_lambda(data, fy_cast(v, 0) > 100);
 ```
 
 **Function pointer**:
@@ -493,7 +463,7 @@ Both compile to identical machine code after optimization.
 
 ```c
 // Good: simple inline logic
-fy_generic even = fy_filter_lambda(data, { return (fy_cast(v, 0) % 2) == 0; });
+fy_generic even = fy_filter_lambda(data, (fy_cast(v, 0) % 2) == 0);
 ```
 
 **❌ Avoid lambdas for**:
@@ -528,9 +498,7 @@ Lambdas can capture local variables:
 
 ```c
 int threshold = 100;
-fy_generic filtered = fy_filter_lambda(data, {
-    return fy_cast(v, 0) > threshold;  // Captures 'threshold'
-});
+fy_generic filtered = fy_filter_lambda(data, fy_cast(v, 0) > threshold);  // Captures 'threshold'
 
 // With multiple captures
 int min_val = 10;
@@ -567,7 +535,7 @@ if (fy_generic_is_invalid(safe_divide)) {
 ```c
 // Create a "threshold filter" generator
 #define make_threshold_filter(threshold_val) \
-    fy_filter_lambda(data, { return fy_cast(v, 0) > (threshold_val); })
+    fy_filter_lambda(data, fy_cast(v, 0) > (threshold_val))
 
 fy_generic data = fy_sequence(5, 15, 25, 35, 45);
 
@@ -583,10 +551,10 @@ fy_generic over_30 = make_threshold_filter(30);
 #define filter_and_double(collection, pred_body) \
     fy_map_lambda( \
         fy_filter_lambda((collection), pred_body), \
-        { return fy_value(fy_cast(v, 0) * 2); } \
+        fy_value(fy_cast(v, 0) * 2) \
     )
 
-fy_generic result = filter_and_double(data, { return fy_cast(v, 0) > 20; });
+fy_generic result = filter_and_double(data, fy_cast(v, 0) > 20);
 // Filter: [25, 35, 45]
 // Map: [50, 70, 90]
 ```
@@ -629,20 +597,19 @@ fy_generic state_machine = fy_reduce_lambda(events, fy_int(INIT), {
 
 **Problem**: Lambda can't see local variables.
 
-**Cause**: Syntax error in lambda body.
+**Cause**: Typically a compiler configuration issue or variable scope problem.
 
 **Example**:
 ```c
 int threshold = 100;
 
-// Wrong: missing 'return'
-fy_generic bad = fy_filter_lambda(data, {
-    fy_cast(v, 0) > threshold;  // Missing 'return'!
-});
+// This should work - simple expression lambda
+fy_generic filtered = fy_filter_lambda(data, fy_cast(v, 0) > threshold);
 
-// Correct:
-fy_generic good = fy_filter_lambda(data, {
-    return fy_cast(v, 0) > threshold;
+// For multi-line lambdas, use braces and return
+fy_generic complex = fy_filter_lambda(data, {
+    int val = fy_cast(v, 0);
+    return val > threshold && val < 200;
 });
 ```
 
