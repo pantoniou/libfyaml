@@ -1678,13 +1678,13 @@ fy_parse_document_load_mapping(struct fy_parser *fyp, struct fy_document *fyd,
 		fynp_item->value = fyn_value;
 		fyn_key = NULL;
 		fyn_value = NULL;
-		fy_node_pair_list_add_tail(&fyn->mapping, fynp_item);
 		if (fyn->xl) {
 			rc = fy_accel_insert(fyn->xl, fynp_item->key, fynp_item);
 			fyp_error_check(fyp, !rc, err_out_rc,
 					"fy_accel_insert() failed");
 		}
 
+		fy_node_pair_list_add_tail(&fyn->mapping, fynp_item);
 		if (fynp_item->key)
 			fynp_item->key->attached = true;
 		if (fynp_item->value)
