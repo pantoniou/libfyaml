@@ -309,19 +309,14 @@ static inline void fy_strip_trailing_nl(char *str)
 #define FY_CPP_EVAL2(...)    FY_CPP_EVAL1(FY_CPP_EVAL1(__VA_ARGS__))
 #define FY_CPP_EVAL4(...)    FY_CPP_EVAL2(FY_CPP_EVAL2(__VA_ARGS__))
 #define FY_CPP_EVAL8(...)    FY_CPP_EVAL4(FY_CPP_EVAL4(__VA_ARGS__))
-#define FY_CPP_EVAL16(...)   FY_CPP_EVAL8(FY_CPP_EVAL8(__VA_ARGS__))
-#if 0
-#define FY_CPP_EVAL32(...)   FY_CPP_EVAL16(FY_CPP_EVAL16(__VA_ARGS__))
 #if !defined(__clang__)
-#define FY_CPP_EVAL64(...)   FY_CPP_EVAL32(FY_CPP_EVAL32(__VA_ARGS__))
-#define FY_CPP_EVAL128(...)  FY_CPP_EVAL64(FY_CPP_EVAL64(__VA_ARGS__))
-#define FY_CPP_EVAL(...)     FY_CPP_EVAL128(FY_CPP_EVAL128(__VA_ARGS__))
+// gcc is better, goes to 32
+#define FY_CPP_EVAL16(...)   FY_CPP_EVAL8(FY_CPP_EVAL8(__VA_ARGS__))
+#define FY_CPP_EVAL32(...)   FY_CPP_EVAL16(FY_CPP_EVAL16(__VA_ARGS__))
+#define FY_CPP_EVAL(...)     FY_CPP_EVAL32(FY_CPP_EVAL128(__VA_ARGS__))
 #else
-// clang craps out at 32
-#define FY_CPP_EVAL(...)     FY_CPP_EVAL32(FY_CPP_EVAL32(__VA_ARGS__))
-#endif
-#else
-#define FY_CPP_EVAL(...)     FY_CPP_EVAL16(FY_CPP_EVAL16(__VA_ARGS__))
+// clang craps out at 8
+#define FY_CPP_EVAL(...)     FY_CPP_EVAL8(FY_CPP_EVAL8(__VA_ARGS__))
 #endif
 
 #define FY_CPP_EMPTY()

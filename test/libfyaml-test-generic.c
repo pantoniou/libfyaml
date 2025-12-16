@@ -3878,7 +3878,7 @@ START_TEST(get_at_flatten)
 			buf, sizeof(buf));
 	ck_assert_ptr_ne(gb, NULL);
 
-	/* Test 1: Flatten sequence of keys - sequential lookup */
+	/* Flatten sequence of keys - sequential lookup */
 	/* map["a"]["b"] where keys = seq("a", "b") */
 	nested_map = fy_local_mapping("a", fy_local_mapping("b", 42));
 	keys = fy_local_sequence("a", "b");
@@ -3886,7 +3886,7 @@ START_TEST(get_at_flatten)
 	ck_assert(fy_cast(v, -1) == 42);
 	printf("> flatten map[seq(\"a\", \"b\")] = map[\"a\"][\"b\"] = 42\n");
 
-	/* Test 2: Flatten with sequence indices */
+	/* Flatten with sequence indices */
 	/* seq[0][1] where indices = seq(0, 1) */
 	seq = fy_local_sequence(
 		fy_local_sequence(10, 20, 30),
@@ -3897,7 +3897,7 @@ START_TEST(get_at_flatten)
 	ck_assert(fy_cast(v, -1) == 60);
 	printf("> flatten seq[seq(1, 2)] = seq[1][2] = 60\n");
 
-	/* Test 3: Mixed flatten - sequence followed by scalar */
+	/* Mixed flatten - sequence followed by scalar */
 	/* map["x"]["y"]["val"] = flatten(map, seq("x", "y"), "val") */
 	nested_map = fy_local_mapping(
 		"x", fy_local_mapping(
@@ -3909,7 +3909,7 @@ START_TEST(get_at_flatten)
 	ck_assert(fy_cast(v, -1) == 123);
 	printf("> flatten map[seq(\"x\", \"y\")][\"val\"] = map[\"x\"][\"y\"][\"val\"] = 123\n");
 
-	/* Test 4: Longer path with multiple sequential lookups */
+	/* Longer path with multiple sequential lookups */
 	/* map["data"][0]["value"] */
 	inner_seq = fy_local_sequence(
 		fy_local_mapping("value", 99, "name", "first"),
@@ -3921,7 +3921,7 @@ START_TEST(get_at_flatten)
 	ck_assert(fy_cast(v, -1) == 99);
 	printf("> flatten map[\"data\"][seq(0)][\"value\"] = 99\n");
 
-	/* Test 5: Builder-based flatten lookup */
+	/* Builder-based flatten lookup */
 	inner_map = fy_gb_mapping(gb, "z", 777);
 	map = fy_gb_mapping(gb, "p", inner_map);
 	keys = fy_gb_sequence(gb, "p", "z");
@@ -3929,21 +3929,21 @@ START_TEST(get_at_flatten)
 	ck_assert(fy_cast(v, -1) == 777);
 	printf("> fy_gb_get_at_path_flatten map[seq(\"p\", \"z\")] = 777\n");
 
-	/* Test 6: Generic fy_local_get_at_path_flatten */
+	/* Generic fy_local_get_at_path_flatten */
 	nested_map = fy_local_mapping("i", fy_local_mapping("j", 555));
 	keys = fy_local_sequence("i", "j");
 	v = fy_local_get_at_path_flatten(nested_map, keys);
 	ck_assert(fy_cast(v, -1) == 555);
 	printf("> fy_local_get_at_path_flatten: map[\"i\"][\"j\"] = 555\n");
 
-	/* Test 7: Flatten with invalid mapping path component (should fail) */
+	/* Flatten with invalid mapping path component (should fail) */
 	map = fy_local_mapping("a", 1);
 	keys = fy_local_mapping("x", 10);  /* mapping as path component is invalid */
 	v = fy_local_get_at_path_flatten(map, keys);
 	ck_assert(!fy_generic_is_valid(v));
 	printf("> flatten with mapping path component returns fy_invalid\n");
 
-	/* Test 8: Complex nested structure */
+	/* Complex nested structure */
 	/* users[0]["profile"]["age"] */
 	map = fy_local_mapping(
 		"users", fy_local_sequence(
@@ -3960,24 +3960,14 @@ START_TEST(get_at_flatten)
 	ck_assert(fy_cast(v, -1) == 25);
 	printf("> complex: map[\"users\"][0][\"profile\"][\"age\"] = 25\n");
 
-#if 0
-	/* Test 9: Flatten in pipe operations */
-	path[0] = fy_value(fy_local_sequence("a", "b"));
-	inner_map = fy_local_mapping("b", 999);
-	map = fy_local_mapping("a", inner_map);
-	v = fy_local_pipe(map,
-		FY_PIPE_OP_LOOKUP_FLATTEN(1, path));
-	ck_assert(fy_cast(v, -1) == 999);
-	printf("> pipe flatten: map[\"a\"][\"b\"] = 999\n");
-
-	/* Test 10: Single key flatten */
+	/* Single key flatten */
 	map = fy_local_mapping("x", 42);
 	keys = fy_local_sequence("x");
 	v = fy_local_get_at_path_flatten(map, keys);
 	ck_assert(fy_cast(v, -1) == 42);
 	printf("> flatten single key seq(\"x\") = map[\"x\"] = 42\n");
 
-	/* Test 11: Empty sequence flatten returns input */
+	/* Empty sequence flatten returns input */
 	map = fy_local_mapping("a", 1);
 	keys = fy_local_sequence();
 	v = fy_local_get_at_path_flatten(map, keys);
@@ -3985,7 +3975,7 @@ START_TEST(get_at_flatten)
 	ck_assert(fy_get_type(v) == FYGT_MAPPING);
 	printf("> flatten with empty sequence returns input (map)\n");
 
-	/* Test 12: Longer flatten sequence */
+	/* Longer flatten sequence */
 	/* Build nested structure: map["a"]["b"]["c"]["d"] = 1000 */
 	nested_map = fy_local_mapping("d", 1000);
 	nested_map = fy_local_mapping("c", nested_map);
@@ -3995,7 +3985,6 @@ START_TEST(get_at_flatten)
 	v = fy_local_get_at_path_flatten(nested_map, keys);
 	ck_assert(fy_cast(v, -1) == 1000);
 	printf("> long flatten: map[\"a\"][\"b\"][\"c\"][\"d\"] = 1000\n");
-#endif
 }
 
 #if 0
