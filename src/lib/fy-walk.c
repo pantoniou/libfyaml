@@ -5270,6 +5270,7 @@ int fy_node_setup_path_expr_data(struct fy_node *fyn)
 		pxnd->fyi = fy_input_from_malloc_data(alloc, len + 1, NULL, false);
 		if (!pxnd->fyi)
 			goto err_no_input;
+		alloc = NULL;
 	}
 
 	fy_path_parser_reset(pxdd->fypp);
