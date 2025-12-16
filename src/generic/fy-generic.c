@@ -26,6 +26,7 @@
 
 #include "fy-generic.h"
 #include "fy-generic-encoder.h"
+#include "fy-generic-decoder.h"
 
 // when to switch to malloc instead of alloca
 #define COPY_MALLOC_CUTOFF	256
@@ -1056,6 +1057,53 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 		need_copy_work_items = true;
 		break;
 
+	case FYGBOP_GET:
+		/* get needs a key */
+		if (!count || !items)
+			return fy_invalid;
+		break;
+
+	case FYGBOP_GET_AT:
+		if (!count || !items)
+			return fy_invalid;
+		break;
+
+	case FYGBOP_GET_AT_PATH:
+		if (!count)
+			return in;
+
+		if (!items)
+			return fy_invalid;
+		need_work_items = false;
+		flags |= FYGBOPF_DONT_INTERNALIZE;
+		break;
+
+	case FYGBOP_SET:
+		/* set needs a key and value */
+		if (count < 2 || !items)
+			return fy_invalid;
+		break;
+
+	case FYGBOP_SET_AT:
+		/* set_at needs an index and value */
+		if (count < 2 || !items)
+			return fy_invalid;
+		break;
+
+	case FYGBOP_SET_AT_PATH:
+		/* set_at_path needs path components and value */
+		if (count < 2 || !items)
+			return fy_invalid;
+		break;
+
+	case FYGBOP_PARSE:
+		/* parse doesn't require items */
+		break;
+
+	case FYGBOP_EMIT:
+		/* emit doesn't require items */
+		break;
+
 	default:
 		goto err_out;
 	}
@@ -1068,6 +1116,10 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 	if (v.v == fy_invalid_value)
 		return fy_invalid;
 	in = v;
+
+	/* PARSE and EMIT don't work on collections, skip the collection handling */
+	if (op == FYGBOP_PARSE || op == FYGBOP_EMIT)
+		goto do_operation;
 
 	in_direct = in;
 	if (fy_generic_is_indirect(in_direct))
@@ -1103,7 +1155,7 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 		item_count = (op != FYGBOP_DISASSOC && op != FYGBOP_CONTAINS &&
 			      op != FYGBOP_MERGE && op != FYGBOP_SORT &&
 			      op != FYGBOP_FILTER && op != FYGBOP_MAP && op != FYGBOP_MAP_FILTER &&
-			      op != FYGBOP_REDUCE) ?
+			      op != FYGBOP_REDUCE && op != FYGBOP_GET_AT_PATH) ?
 					MULSZ(count, 2) : count;
 		col_mark = FY_MAP_V;
 		in_items = fy_generic_mapping_get_items(in_direct, &in_item_count);
@@ -1278,6 +1330,8 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 	num_threads = tp ? fy_thread_pool_get_num_threads(tp) : 1;
 
 	iov = iov_buf;
+
+do_operation:
 
 	switch (op) {
 	case FYGBOP_CREATE_SEQ:
@@ -1890,6 +1944,332 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 		out = acc;
 		goto out;
 
+	case FYGBOP_GET:
+		/* Get value by key (for mappings) or index (for sequences) */
+		key = items[0];
+		out = fy_invalid;
+		switch (type) {
+		case FYGT_SEQUENCE:
+			idx = fy_cast(key, (size_t)-1);
+			if (idx == (size_t)-1)
+				break;
+			out = fy_generic_sequence_get_item_generic(in, idx);
+			break;
+
+		case FYGT_MAPPING:
+			fy_generic_emit_default(key);
+			out = fy_generic_mapping_get_value(in, key);
+			break;
+
+		default:
+			break;
+		}
+		goto out;
+
+	case FYGBOP_GET_AT:
+		idx = fy_cast(items[0], (size_t)-1);
+		if (idx == (size_t)-1)
+			goto out;
+		out = fy_get_at(in, idx, fy_invalid);
+		goto out;
+
+	case FYGBOP_GET_AT_PATH:
+		out = in;
+		for (i = 0; i < item_count && fy_generic_is_valid(out); i++) {
+
+			if ((flags & FYGBOPF_FLATTEN_KEYS) && fy_generic_is_sequence(items[i]))
+				k = fy_len(items[i]);
+			else
+				k = 1;
+				
+			for (j = 0; j < k; j++) {
+
+				if ((flags & FYGBOPF_FLATTEN_KEYS) && fy_generic_is_sequence(items[i]))
+					key = fy_get_at(items[i], j, fy_invalid);
+				else
+					key = items[i];
+
+				if (fy_generic_is_invalid(key))
+					goto err_out;
+
+				if (fy_generic_is_sequence(out)) {
+					idx = fy_cast(key, (size_t)-1);
+					if (idx == (size_t)-1)
+						goto err_out;
+					out = fy_generic_sequence_get_item_generic(out, idx);
+				} else if (fy_generic_is_mapping(in)) {
+					out = fy_generic_mapping_get_value(out, key);
+				} else
+					goto err_out;
+			}
+		}
+		goto out;
+
+	case FYGBOP_SET:
+		/* Set value by key (mappings) or index (sequences) */
+		{
+			fy_generic key = items[0];
+			fy_generic value = items[1];
+			enum fy_generic_type in_type = fy_get_type(in);
+
+			if (in_type == FYGT_SEQUENCE) {
+				if (!fy_generic_is_int_type(key)) {
+					out = fy_invalid;
+				} else {
+					long long idx = fy_cast(key, -1);
+					fy_generic replace_items[1] = { value };
+					out = fy_generic_op(gb, FYGBOPF_REPLACE, in, (size_t)idx, 1, replace_items);
+				}
+			} else if (in_type == FYGT_MAPPING) {
+				fy_generic assoc_items[2] = { key, value };
+				out = fy_generic_op(gb, FYGBOPF_ASSOC, in, 1, assoc_items);
+			} else {
+				out = fy_invalid;
+			}
+		}
+		goto out;
+
+	case FYGBOP_SET_AT:
+		/* Set value at index (sequences only) */
+		{
+			fy_generic index_val = items[0];
+			fy_generic value = items[1];
+
+			if (fy_get_type(in) != FYGT_SEQUENCE) {
+				out = fy_invalid;
+			} else if (!fy_generic_is_int_type(index_val)) {
+				out = fy_invalid;
+			} else {
+				long long idx = fy_cast(index_val, -1);
+				fy_generic replace_items[1] = { value };
+				out = fy_generic_op(gb, FYGBOPF_REPLACE, in, (size_t)idx, 1, replace_items);
+			}
+		}
+		goto out;
+
+	case FYGBOP_SET_AT_PATH:
+		/* Set value at path with recursive update */
+		{
+			fy_generic value = items[count - 1];  /* Last item is the value */
+			size_t path_len = count - 1;          /* Everything else is the path */
+
+			if (path_len == 0) {
+				/* Empty path, return the value */
+				out = value;
+			} else if (path_len == 1) {
+				/* Single key/index, use SET */
+				fy_generic set_items[2] = { items[0], value };
+				out = fy_generic_op(gb, FYGBOPF_SET, in, 2, set_items);
+			} else {
+				/* Multi-level path: recursively update */
+				fy_generic key = items[0];
+				enum fy_generic_type in_type = fy_get_type(in);
+				fy_generic nested, updated_nested;
+
+				/* Get the nested structure */
+				if (in_type == FYGT_SEQUENCE) {
+					if (!fy_generic_is_int_type(key)) {
+						out = fy_invalid;
+						goto out;
+					}
+					long long idx = fy_cast(key, -1);
+					nested = fy_generic_sequence_get_item_generic(in, (size_t)idx);
+				} else if (in_type == FYGT_MAPPING) {
+					nested = fy_generic_mapping_get_value(in, key);
+				} else {
+					out = fy_invalid;
+					goto out;
+				}
+
+				/* Handle missing path components */
+				if (!fy_generic_is_valid(nested)) {
+					if (flags & FYGBOPF_CREATE_PATH) {
+						/* Create intermediate structure based on next key type */
+						fy_generic next_key = items[1];
+
+						/* Determine type: if next key is int, create sequence, else mapping */
+						if (fy_generic_is_int_type(next_key)) {
+							/* Create sequence with padding up to the index */
+							long long idx = fy_cast(next_key, -1);
+							size_t seq_size = (size_t)(idx + 1);
+							fy_generic *null_items = alloca(seq_size * sizeof(fy_generic));
+							size_t j;
+
+							/* Fill with fy_null */
+							for (j = 0; j < seq_size; j++)
+								null_items[j] = fy_null;
+
+							nested = fy_generic_op(gb, FYGBOPF_CREATE_SEQ, seq_size, null_items);
+						} else {
+							nested = fy_generic_op(gb, FYGBOPF_CREATE_MAP, 0, NULL);
+						}
+					} else {
+					out = fy_invalid;
+					goto out;
+					}
+				}
+
+				/* Recursively update the nested structure, propagate CREATE_PATH flag */
+				updated_nested = fy_generic_op(gb, FYGBOPF_SET_AT_PATH | (flags & FYGBOPF_CREATE_PATH),
+				                               nested,
+				                               path_len, &items[1]);
+
+				if (!fy_generic_is_valid(updated_nested)) {
+					out = fy_invalid;
+					goto out;
+				}
+
+				/* Update the current level with the new nested structure */
+				fy_generic set_items[2] = { key, updated_nested };
+				out = fy_generic_op(gb, FYGBOPF_SET, in, 2, set_items);
+			}
+		}
+		goto out;
+
+	case FYGBOP_PARSE:
+		/* Parse YAML/JSON string to generic value */
+		{
+			fy_generic_sized_string szstr;
+			struct fy_parse_cfg parse_cfg;
+			struct fy_parser *fyp = NULL;
+			struct fy_generic_decoder *fygd = NULL;
+			enum fy_generic_decoder_parse_flags parse_flags = 0;
+			enum fy_parser_mode parser_mode = fypm_yaml_1_2;
+
+			/* Input must be a string */
+			if (fy_get_type(in) != FYGT_STRING) {
+				out = fy_invalid;
+				goto out;
+			}
+
+			/* Get string data */
+			szstr = fy_generic_cast_sized_string_default(in, fy_szstr_empty);
+			if (!szstr.data) {
+				out = fy_invalid;
+				goto out;
+			}
+
+			/* Get parser mode from args */
+			if (args && args->parse.parser_mode != 0)
+				parser_mode = args->parse.parser_mode;
+
+			/* Setup parse configuration */
+			memset(&parse_cfg, 0, sizeof(parse_cfg));
+			parse_cfg.flags = FYPCF_DEFAULT_PARSE;
+
+			/* Set parser mode */
+			switch (parser_mode) {
+			case fypm_json:
+				parse_cfg.flags |= FYPCF_JSON_MASK;
+				break;
+			case fypm_yaml_1_1:
+			case fypm_yaml_1_2:
+			case fypm_yaml_1_3:
+			default:
+				/* YAML is default */
+				break;
+			}
+
+			/* Create parser */
+			fyp = fy_parser_create(&parse_cfg);
+			if (!fyp) {
+				out = fy_invalid;
+				goto out;
+			}
+
+			/* Set input string */
+			if (fy_parser_set_string(fyp, szstr.data, szstr.size) != 0) {
+				fy_parser_destroy(fyp);
+				out = fy_invalid;
+				goto out;
+			}
+
+			/* Create decoder */
+			fygd = fy_generic_decoder_create(fyp, gb, false);
+			if (!fygd) {
+				fy_parser_destroy(fyp);
+				out = fy_invalid;
+				goto out;
+			}
+
+			/* Set parse flags from args */
+			if (args && args->parse.multi_document)
+				parse_flags |= FYGDPF_MULTI_DOCUMENT;
+
+			/* Parse the input */
+			out = fy_generic_decoder_parse(fygd, parse_flags);
+
+			/* Cleanup */
+			fy_generic_decoder_destroy(fygd);
+			fy_parser_destroy(fyp);
+		}
+		goto out;
+
+	case FYGBOP_EMIT:
+		/* Emit generic value to YAML/JSON string */
+		{
+			struct fy_emitter *emit = NULL;
+			struct fy_generic_encoder *fyge = NULL;
+			enum fy_emitter_cfg_flags emit_flags = FYECF_DEFAULT;
+			enum fy_generic_encoder_emit_flags encoder_flags = 0;
+			char *output_str = NULL;
+			size_t output_len = 0;
+
+			/* Get emit flags from args */
+			if (args && args->emit.emit_flags != 0)
+				emit_flags = args->emit.emit_flags;
+
+			/* Create string emitter */
+			emit = fy_emit_to_string(emit_flags);
+			if (!emit) {
+				out = fy_invalid;
+				goto out;
+			}
+
+			/* Create encoder */
+			fyge = fy_generic_encoder_create(emit, false);
+			if (!fyge) {
+				fy_emitter_destroy(emit);
+				out = fy_invalid;
+				goto out;
+			}
+
+			/* Emit the value */
+			if (fy_generic_encoder_emit(fyge, encoder_flags, in) != 0) {
+				fy_generic_encoder_destroy(fyge);
+				fy_emitter_destroy(emit);
+				out = fy_invalid;
+				goto out;
+			}
+
+			/* Sync the encoder */
+			if (fy_generic_encoder_sync(fyge) != 0) {
+				fy_generic_encoder_destroy(fyge);
+				fy_emitter_destroy(emit);
+				out = fy_invalid;
+				goto out;
+			}
+
+			/* Collect the output */
+			output_str = fy_emit_to_string_collect(emit, &output_len);
+
+			/* Cleanup encoder and emitter */
+			fy_generic_encoder_destroy(fyge);
+			fy_emitter_destroy(emit);
+
+			if (!output_str) {
+				out = fy_invalid;
+				goto out;
+			}
+
+			/* Create string generic from output */
+			out = fy_gb_string_size_create(gb, output_str, output_len);
+
+			/* Free the output string */
+			free(output_str);
+		}
+		goto out;
+
 	default:
 		goto err_out;
 	}
@@ -1971,6 +2351,14 @@ fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flag
 	case FYGBOP_KEYS:
 	case FYGBOP_VALUES:
 	case FYGBOP_ITEMS:
+	case FYGBOP_GET:
+	case FYGBOP_GET_AT:
+	case FYGBOP_GET_AT_PATH:
+	case FYGBOP_SET:
+	case FYGBOP_SET_AT:
+	case FYGBOP_SET_AT_PATH:
+	case FYGBOP_PARSE:
+	case FYGBOP_EMIT:
 		break;
 
 	case FYGBOP_INSERT:

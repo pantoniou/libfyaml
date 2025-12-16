@@ -797,12 +797,18 @@ END_TEST
 /* Test: get api */
 START_TEST(generic_get)
 {
-	fy_generic seq, map;
+	char buf[16384];
+	struct fy_generic_builder *gb;
+	fy_generic seq, map, v;
 	fy_generic_sequence_handle seqh;
 	fy_generic_mapping_handle maph;
 	int iv;
 	bool bv;
 	const char *strv;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
 
 	/* sequence */
 	seq = fy_local_sequence(-100, true, "sh", "long string");
@@ -858,12 +864,32 @@ START_TEST(generic_get)
 	/* try to access something that does not exist */
 	iv = fy_get(maph, "dummy", -1);
 	ck_assert(iv == -1);
+
+	/* manual access through generic op */
+	seq = fy_local_sequence(-100, true, "sh", "long string");
+	v = fy_generic_op(gb, FYGBOPF_GET, seq, 1, (fy_generic [1]) { fy_value(0) } );
+	ck_assert(fy_cast(v, -1) == -100);
+	v = fy_generic_op(gb, FYGBOPF_GET, seq, 1, (fy_generic [1]) { fy_value(1) } );
+	ck_assert(fy_cast(v, false) == true);
+	v = fy_generic_op(gb, FYGBOPF_GET, seq, 1, (fy_generic [1]) { fy_value(2) } );
+	ck_assert(!strcmp(fy_cast(v, ""), "sh"));
+	v = fy_generic_op(gb, FYGBOPF_GET, seq, 1, (fy_generic [1]) { fy_value(3) } );
+	ck_assert(!strcmp(fy_cast(v, ""), "long string"));
+
+	/* manual access through generic op */
+	map = fy_local_mapping("foo", 100, "bar", 200);
+	v = fy_generic_op(gb, FYGBOPF_GET, map, 1, (fy_generic [1]) { fy_value("foo") } );
+	ck_assert(fy_cast(v, -1) == 100);
+	v = fy_generic_op(gb, FYGBOPF_GET, map, 1, (fy_generic [1]) { fy_value("bar") } );
+	ck_assert(fy_cast(v, -1) == 200);
 }
 END_TEST
 
 /* Test: get_at */
 START_TEST(generic_get_at)
 {
+	char buf[16384];
+	struct fy_generic_builder *gb;
 	fy_generic seq, map, v;
 	fy_generic_sequence_handle seqh;
 	fy_generic_map_pair mp;
@@ -871,6 +897,10 @@ START_TEST(generic_get_at)
 	const char *key;
 	size_t i, len;
 	int val, sum;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
 
 	seq = fy_sequence(10, 100, 1000);
 	ck_assert(fy_generic_is_sequence(seq));
@@ -959,6 +989,37 @@ START_TEST(generic_get_at)
 	key = fy_get_key_at(map, 1, "");
 	printf(">[%d] key=%s\n", 1, key);
 	ck_assert(!strcmp(key, "bar"));
+
+	/* using op */
+	seq = fy_sequence(10, 100, 1000);
+	len = fy_len(seq);
+	ck_assert(len == 3);
+	sum = 0;
+	for (i = 0; i < len; i++) {
+		v = fy_generic_op(gb, FYGBOPF_GET_AT, seq, 1, (fy_generic [1]) { fy_value(i) } );
+		val = fy_cast(v, -1);
+		ck_assert(val != -1);
+		sum += val;
+		printf("%s: [%zu]=%d\n", __func__, i, val);
+	}
+
+	printf("%s: sum=%d\n", __func__, sum);
+	ck_assert(sum == 1110);
+
+	map = fy_mapping("foo", 10, "bar", 20);
+	ck_assert(fy_generic_is_mapping(map));
+	len = fy_len(map);
+	ck_assert(len == 2);
+	sum = 0;
+	for (i = 0; i < len; i++) {
+		v = fy_generic_op(gb, FYGBOPF_GET_AT, map, 1, (fy_generic [1]) { fy_value(i) } );
+		val = fy_cast(v, -1);
+		ck_assert(val != -1);
+		sum += val;
+		printf("%s: [%zu]=%d\n", __func__, i, val);
+	}
+	printf("%s: sum=%d\n", __func__, sum);
+	ck_assert(sum == 30);
 }
 END_TEST
 
@@ -3733,6 +3794,363 @@ START_TEST(lambda_ops)
 END_TEST
 #endif
 
+START_TEST(get_at_path)
+{
+	char buf[16384];
+	struct fy_generic_builder *gb;
+	fy_generic seq, map, nested_map, v;
+
+	(void)nested_map;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	/* Test 1: fy_local_lookup with sequence */
+	seq = fy_local_sequence(10, 20, 30, 40, 50);
+	fy_generic_emit_default(seq);
+	v = fy_local_get_at_path(seq, 2);  /* index 2 -> value 30 */
+	ck_assert(fy_cast(v, -1) == 30);
+	printf("> fy_local_get_at_path(seq, 2) = 30\n");
+
+	/* Test 2: fy_local_lookup with mapping */
+	map = fy_local_mapping("a", 1, "b", 2, "c", 3);
+	fy_generic_emit_default(map);
+	v = fy_local_get_at_path(map, "b");  /* key "b" -> value 2 */
+	ck_assert(fy_cast(v, -1) == 2);
+	printf("> fy_local_get_at_path(map, \"b\") = 2\n");
+
+	/* Test 3: fy_local_lookup with nested path */
+	seq = fy_local_sequence(10, 20, 30);
+	nested_map = fy_local_mapping("data", seq, "name", "test");
+	v = fy_local_get_at_path(nested_map, "data", 1);  /* nested_map["data"][1] -> 20 */
+	ck_assert(fy_cast(v, -1) == 20);
+	printf("> fy_local_get_at_path(nested_map, \"data\", 1) = 20\n");
+
+	/* Test 4: fy_gb_lookup with sequence */
+	seq = fy_gb_sequence(gb, 100, 200, 300);
+	v = fy_gb_get_at_path(gb, seq, 1);  /* index 1 -> value 200 */
+	ck_assert(fy_cast(v, -1) == 200);
+	printf("> fy_gb_get_at_path(gb, seq, 1) = 200\n");
+
+	/* Test 5: fy_gb_lookup with mapping */
+	map = fy_gb_mapping(gb, "x", 10, "y", 20, "z", 30);
+	v = fy_gb_get_at_path(gb, map, "z");  /* key "z" -> value 30 */
+	ck_assert(fy_cast(v, -1) == 30);
+	printf("> fy_gb_get_at_path(gb, map, \"z\") = 30\n");
+
+	/* Test 6: fy_lookup auto-detection (local) */
+	seq = fy_local_sequence(5, 15, 25);
+	v = fy_local_get_at_path(seq, 2);  /* local, index 2 -> value 25 */
+	ck_assert(fy_cast(v, -1) == 25);
+	printf("> fy_local_get_at_path(seq, 2) = 25 [local]\n");
+
+	/* Test 7: fy_lookup auto-detection (builder) */
+	map = fy_gb_mapping(gb, "p", 7, "q", 8, "r", 9);
+	v = fy_gb_get_at_path(gb, map, "q");  /* builder, key "q" -> value 8 */
+	ck_assert(fy_cast(v, -1) == 8);
+	printf("> fy_gb_get_at_path(gb, map, \"q\") = 8 [builder]\n");
+
+	/* Test 8: invalid get at returns fy_invalid */
+	seq = fy_local_sequence(1, 2, 3);
+	v = fy_local_get_at_path(seq, "not_an_index");  /* wrong type for sequence */
+	fy_generic_emit_default(v);
+	ck_assert(!fy_generic_is_valid(v));
+	printf("> fy_local_lookup with wrong type returns fy_invalid\n");
+
+	/* Test 9: out of bounds get at returns fy_invalid */
+	v = fy_local_get_at_path(seq, 99);  /* index out of bounds */
+	ck_assert(!fy_generic_is_valid(v));
+	printf("> fy_local_lookup out of bounds returns fy_invalid\n");
+}
+END_TEST
+
+START_TEST(get_at_flatten)
+{
+	char buf[16384];
+	struct fy_generic_builder *gb;
+	fy_generic map, seq, nested_map, v, keys, inner_map, inner_seq;
+	fy_generic path[10];
+
+	(void)path;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	/* Test 1: Flatten sequence of keys - sequential lookup */
+	/* map["a"]["b"] where keys = seq("a", "b") */
+	nested_map = fy_local_mapping("a", fy_local_mapping("b", 42));
+	keys = fy_local_sequence("a", "b");
+	v = fy_local_get_at_path_flatten(nested_map, keys);
+	ck_assert(fy_cast(v, -1) == 42);
+	printf("> flatten map[seq(\"a\", \"b\")] = map[\"a\"][\"b\"] = 42\n");
+
+	/* Test 2: Flatten with sequence indices */
+	/* seq[0][1] where indices = seq(0, 1) */
+	seq = fy_local_sequence(
+		fy_local_sequence(10, 20, 30),
+		fy_local_sequence(40, 50, 60)
+	);
+	keys = fy_local_sequence(1, 2);
+	v = fy_local_get_at_path_flatten(seq, keys);
+	ck_assert(fy_cast(v, -1) == 60);
+	printf("> flatten seq[seq(1, 2)] = seq[1][2] = 60\n");
+
+	/* Test 3: Mixed flatten - sequence followed by scalar */
+	/* map["x"]["y"]["val"] = flatten(map, seq("x", "y"), "val") */
+	nested_map = fy_local_mapping(
+		"x", fy_local_mapping(
+			"y", fy_local_mapping("val", 123)
+		)
+	);
+	keys = fy_local_sequence("x", "y");
+	v = fy_local_get_at_path_flatten(nested_map, keys, "val");
+	ck_assert(fy_cast(v, -1) == 123);
+	printf("> flatten map[seq(\"x\", \"y\")][\"val\"] = map[\"x\"][\"y\"][\"val\"] = 123\n");
+
+	/* Test 4: Longer path with multiple sequential lookups */
+	/* map["data"][0]["value"] */
+	inner_seq = fy_local_sequence(
+		fy_local_mapping("value", 99, "name", "first"),
+		fy_local_mapping("value", 88, "name", "second")
+	);
+	map = fy_local_mapping("data", inner_seq);
+	keys = fy_local_sequence(0);
+	v = fy_local_get_at_path_flatten(map, "data", keys, "value");
+	ck_assert(fy_cast(v, -1) == 99);
+	printf("> flatten map[\"data\"][seq(0)][\"value\"] = 99\n");
+
+	/* Test 5: Builder-based flatten lookup */
+	inner_map = fy_gb_mapping(gb, "z", 777);
+	map = fy_gb_mapping(gb, "p", inner_map);
+	keys = fy_gb_sequence(gb, "p", "z");
+	v = fy_gb_get_at_path_flatten(gb, map, keys);
+	ck_assert(fy_cast(v, -1) == 777);
+	printf("> fy_gb_get_at_path_flatten map[seq(\"p\", \"z\")] = 777\n");
+
+	/* Test 6: Generic fy_local_get_at_path_flatten */
+	nested_map = fy_local_mapping("i", fy_local_mapping("j", 555));
+	keys = fy_local_sequence("i", "j");
+	v = fy_local_get_at_path_flatten(nested_map, keys);
+	ck_assert(fy_cast(v, -1) == 555);
+	printf("> fy_local_get_at_path_flatten: map[\"i\"][\"j\"] = 555\n");
+
+	/* Test 7: Flatten with invalid mapping path component (should fail) */
+	map = fy_local_mapping("a", 1);
+	keys = fy_local_mapping("x", 10);  /* mapping as path component is invalid */
+	v = fy_local_get_at_path_flatten(map, keys);
+	ck_assert(!fy_generic_is_valid(v));
+	printf("> flatten with mapping path component returns fy_invalid\n");
+
+	/* Test 8: Complex nested structure */
+	/* users[0]["profile"]["age"] */
+	map = fy_local_mapping(
+		"users", fy_local_sequence(
+			fy_local_mapping(
+				"profile", fy_local_mapping("age", 25, "name", "alice")
+			),
+			fy_local_mapping(
+				"profile", fy_local_mapping("age", 30, "name", "bob")
+			)
+		)
+	);
+	keys = fy_local_sequence(0);
+	v = fy_local_get_at_path_flatten(map, "users", keys, "profile", "age");
+	ck_assert(fy_cast(v, -1) == 25);
+	printf("> complex: map[\"users\"][0][\"profile\"][\"age\"] = 25\n");
+
+#if 0
+	/* Test 9: Flatten in pipe operations */
+	path[0] = fy_value(fy_local_sequence("a", "b"));
+	inner_map = fy_local_mapping("b", 999);
+	map = fy_local_mapping("a", inner_map);
+	v = fy_local_pipe(map,
+		FY_PIPE_OP_LOOKUP_FLATTEN(1, path));
+	ck_assert(fy_cast(v, -1) == 999);
+	printf("> pipe flatten: map[\"a\"][\"b\"] = 999\n");
+
+	/* Test 10: Single key flatten */
+	map = fy_local_mapping("x", 42);
+	keys = fy_local_sequence("x");
+	v = fy_local_get_at_path_flatten(map, keys);
+	ck_assert(fy_cast(v, -1) == 42);
+	printf("> flatten single key seq(\"x\") = map[\"x\"] = 42\n");
+
+	/* Test 11: Empty sequence flatten returns input */
+	map = fy_local_mapping("a", 1);
+	keys = fy_local_sequence();
+	v = fy_local_get_at_path_flatten(map, keys);
+	/* Empty sequence means no lookups, should return input */
+	ck_assert(fy_get_type(v) == FYGT_MAPPING);
+	printf("> flatten with empty sequence returns input (map)\n");
+
+	/* Test 12: Longer flatten sequence */
+	/* Build nested structure: map["a"]["b"]["c"]["d"] = 1000 */
+	nested_map = fy_local_mapping("d", 1000);
+	nested_map = fy_local_mapping("c", nested_map);
+	nested_map = fy_local_mapping("b", nested_map);
+	nested_map = fy_local_mapping("a", nested_map);
+	keys = fy_local_sequence("a", "b", "c", "d");
+	v = fy_local_get_at_path_flatten(nested_map, keys);
+	ck_assert(fy_cast(v, -1) == 1000);
+	printf("> long flatten: map[\"a\"][\"b\"][\"c\"][\"d\"] = 1000\n");
+#endif
+}
+
+#if 0
+START_TEST(parse_emit_ops)
+{
+	char buf[65536];
+	struct fy_generic_builder *gb;
+	fy_generic yaml_str, json_str, parsed, emitted;
+	fy_generic seq, map;
+	const char *result_str;
+	struct fy_generic_op_args args;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	/* Test PARSE operation with YAML */
+	yaml_str = fy_gb_string_create(gb, "- item1\n- item2\n- item3");
+	ck_assert(fy_generic_is_valid(yaml_str));
+
+	memset(&args, 0, sizeof(args));
+	args.parse.parser_mode = fypm_yaml_1_2;
+	args.parse.multi_document = false;
+
+	parsed = fy_generic_op_args(gb, FYGBOPF_PARSE, yaml_str, &args);
+	ck_assert(fy_generic_is_valid(parsed));
+	ck_assert(fy_generic_is_sequence(parsed));
+	ck_assert(fy_len(parsed) == 3);
+	ck_assert_str_eq(fy_cast(fy_get(parsed, 0, fy_null), ""), "item1");
+	ck_assert_str_eq(fy_cast(fy_get(parsed, 1, fy_null), ""), "item2");
+	ck_assert_str_eq(fy_cast(fy_get(parsed, 2, fy_null), ""), "item3");
+	printf("> PARSE YAML sequence: OK\n");
+
+	/* Test PARSE operation with JSON using args */
+	json_str = fy_gb_string_create(gb, "{\"key1\": 100, \"key2\": 200}");
+	ck_assert(fy_generic_is_valid(json_str));
+
+	memset(&args, 0, sizeof(args));
+	args.parse.parser_mode = fypm_json;
+	args.parse.multi_document = false;
+
+	parsed = fy_generic_op_args(gb, FYGBOPF_PARSE, json_str, &args);
+	ck_assert(fy_generic_is_valid(parsed));
+	ck_assert(fy_generic_is_mapping(parsed));
+	ck_assert(fy_len(parsed) == 2);
+	ck_assert(fy_cast(fy_get(parsed, "key1", fy_null), 0) == 100);
+	ck_assert(fy_cast(fy_get(parsed, "key2", fy_null), 0) == 200);
+	printf("> PARSE JSON mapping with args: OK\n");
+
+	/* Test EMIT operation - emit to YAML block */
+	seq = fy_sequence(1, 2, 3, 4, 5);
+
+	memset(&args, 0, sizeof(args));
+	args.emit.emit_flags = FYECF_MODE_BLOCK;
+
+	emitted = fy_generic_op_args(gb, FYGBOPF_EMIT, seq, &args);
+	ck_assert(fy_generic_is_valid(emitted));
+	ck_assert(fy_generic_is_string(emitted));
+	result_str = fy_generic_cast_sized_string_default(emitted, fy_szstr_empty).data;
+	ck_assert_ptr_ne(result_str, NULL);
+	printf("> EMIT sequence to YAML:\n%s\n", result_str);
+
+	/* Test EMIT operation - emit to JSON using args */
+	map = fy_mapping(2, "name", "Alice", "age", 30);
+
+	memset(&args, 0, sizeof(args));
+	args.emit.emit_flags = FYECF_MODE_JSON;
+
+	emitted = fy_generic_op_args(gb, FYGBOPF_EMIT, map, &args);
+	ck_assert(fy_generic_is_valid(emitted));
+	ck_assert(fy_generic_is_string(emitted));
+	result_str = fy_generic_cast_sized_string_default(emitted, fy_szstr_empty).data;
+	ck_assert_ptr_ne(result_str, NULL);
+	printf("> EMIT mapping to JSON:\n%s\n", result_str);
+
+	/* Test EMIT operation - emit to flow YAML using args */
+	memset(&args, 0, sizeof(args));
+	args.emit.emit_flags = FYECF_MODE_FLOW;
+
+	emitted = fy_generic_op_args(gb, FYGBOPF_EMIT, seq, &args);
+	ck_assert(fy_generic_is_valid(emitted));
+	ck_assert(fy_generic_is_string(emitted));
+	result_str = fy_generic_cast_sized_string_default(emitted, fy_szstr_empty).data;
+	ck_assert_ptr_ne(result_str, NULL);
+	printf("> EMIT sequence to YAML flow:\n%s\n", result_str);
+
+	/* Test EMIT operation - emit using args */
+	memset(&args, 0, sizeof(args));
+	args.emit.emit_flags = FYECF_MODE_JSON | FYECF_INDENT_2;
+
+	emitted = fy_generic_op_args(gb, FYGBOPF_EMIT, map, &args);
+	ck_assert(fy_generic_is_valid(emitted));
+	ck_assert(fy_generic_is_string(emitted));
+	result_str = fy_generic_cast_sized_string_default(emitted, fy_szstr_empty).data;
+	ck_assert_ptr_ne(result_str, NULL);
+	printf("> EMIT mapping to JSON with args:\n%s\n", result_str);
+
+	/* Test round-trip: YAML -> parse -> emit -> parse */
+	yaml_str = fy_gb_string_create(gb, "foo: bar\nbaz: 42");
+
+	memset(&args, 0, sizeof(args));
+	args.parse.parser_mode = fypm_yaml_1_2;
+
+	parsed = fy_generic_op_args(gb, FYGBOPF_PARSE, yaml_str, &args);
+	ck_assert(fy_generic_is_valid(parsed));
+	ck_assert(fy_generic_is_mapping(parsed));
+
+	memset(&args, 0, sizeof(args));
+	args.emit.emit_flags = FYECF_MODE_BLOCK;
+
+	emitted = fy_generic_op_args(gb, FYGBOPF_EMIT, parsed, &args);
+	ck_assert(fy_generic_is_valid(emitted));
+	ck_assert(fy_generic_is_string(emitted));
+
+	memset(&args, 0, sizeof(args));
+	args.parse.parser_mode = fypm_yaml_1_2;
+
+	parsed = fy_generic_op_args(gb, FYGBOPF_PARSE, emitted, &args);
+	ck_assert(fy_generic_is_valid(parsed));
+	ck_assert(fy_generic_is_mapping(parsed));
+	ck_assert_str_eq(fy_cast(fy_get(parsed, "foo", fy_null), ""), "bar");
+	ck_assert(fy_cast(fy_get(parsed, "baz", fy_null), 0) == 42);
+	printf("> Round-trip YAML parse->emit->parse: OK\n");
+
+	/* Test round-trip: JSON -> parse -> emit -> parse */
+	json_str = fy_gb_string_create(gb, "[1, 2, 3, 4]");
+
+	memset(&args, 0, sizeof(args));
+	args.parse.parser_mode = fypm_json;
+
+	parsed = fy_generic_op_args(gb, FYGBOPF_PARSE, json_str, &args);
+	ck_assert(fy_generic_is_valid(parsed));
+	ck_assert(fy_generic_is_sequence(parsed));
+	ck_assert(fy_len(parsed) == 4);
+
+	memset(&args, 0, sizeof(args));
+	args.emit.emit_flags = FYECF_MODE_JSON;
+
+	emitted = fy_generic_op_args(gb, FYGBOPF_EMIT, parsed, &args);
+	ck_assert(fy_generic_is_valid(emitted));
+
+	memset(&args, 0, sizeof(args));
+	args.parse.parser_mode = fypm_json;
+
+	parsed = fy_generic_op_args(gb, FYGBOPF_PARSE, emitted, &args);
+	ck_assert(fy_generic_is_valid(parsed));
+	ck_assert(fy_generic_is_sequence(parsed));
+	ck_assert(fy_len(parsed) == 4);
+	ck_assert(fy_cast(fy_get(parsed, 0, fy_null), 0) == 1);
+	ck_assert(fy_cast(fy_get(parsed, 3, fy_null), 0) == 4);
+	printf("> Round-trip JSON parse->emit->parse: OK\n");
+}
+END_TEST
+#endif
+
 TCase *libfyaml_case_generic(void)
 {
 	TCase *tc;
@@ -3822,6 +4240,17 @@ TCase *libfyaml_case_generic(void)
 #ifdef FY_HAVE_LAMBDAS
 	/* lambda operations */
 	tcase_add_test(tc, lambda_ops);
+#endif
+
+	/* get_at_path macros */
+	tcase_add_test(tc, get_at_path);
+
+	/* get_at_path flatten */
+	tcase_add_test(tc, get_at_flatten);
+
+#if 0
+	/* parse and emit operations */
+	tcase_add_test(tc, parse_emit_ops);
 #endif
 
 	return tc;

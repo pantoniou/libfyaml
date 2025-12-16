@@ -4170,8 +4170,16 @@ enum fy_gb_op {
 	FYGBOP_REDUCE,
 	FYGBOP_SLICE,
 	FYGBOP_SLICE_PY,
+	FYGBOP_GET,
+	FYGBOP_GET_AT,
+	FYGBOP_GET_AT_PATH,
+	FYGBOP_SET,
+	FYGBOP_SET_AT,
+	FYGBOP_SET_AT_PATH,
+	FYGBOP_PARSE,
+	FYGBOP_EMIT,
 };
-#define FYGBOP_COUNT	(FYGBOP_SLICE_PY + 1)
+#define FYGBOP_COUNT	(FYGBOP_EMIT + 1)
 
 typedef bool (*fy_generic_filter_pred_fn)(struct fy_generic_builder *gb, fy_generic v);
 typedef fy_generic (*fy_generic_map_xform_fn)(struct fy_generic_builder *gb, fy_generic v);
@@ -4253,6 +4261,19 @@ struct fy_op_filter_map_reduce_common {
 	};
 };
 
+/* FYGBOP_PARSE */
+struct fy_op_parse_args {
+	struct fy_op_common_args common;
+	enum fy_parser_mode parser_mode;	/* FYPM_YAML, FYPM_JSON, etc. */
+	bool multi_document;			/* parse multiple documents */
+};
+
+/* FYGBOP_EMIT */
+struct fy_op_emit_args {
+	struct fy_op_common_args common;
+	enum fy_emitter_cfg_flags emit_flags;	/* emitter configuration flags */
+};
+
 enum fy_gb_op_flags {
 	FYGBOPF_CREATE_SEQ	= FYGBOPF_OP(FYGBOP_CREATE_SEQ),
 	FYGBOPF_CREATE_MAP	= FYGBOPF_OP(FYGBOP_CREATE_MAP),
@@ -4274,12 +4295,22 @@ enum fy_gb_op_flags {
 	FYGBOPF_MAP		= FYGBOPF_OP(FYGBOP_MAP),
 	FYGBOPF_MAP_FILTER	= FYGBOPF_OP(FYGBOP_MAP_FILTER),
 	FYGBOPF_REDUCE		= FYGBOPF_OP(FYGBOP_REDUCE),
+	FYGBOPF_GET		= FYGBOPF_OP(FYGBOP_GET),
+	FYGBOPF_GET_AT		= FYGBOPF_OP(FYGBOP_GET_AT),
+	FYGBOPF_GET_AT_PATH	= FYGBOPF_OP(FYGBOP_GET_AT_PATH),
+	FYGBOPF_SET		= FYGBOPF_OP(FYGBOP_SET),
+	FYGBOPF_SET_AT		= FYGBOPF_OP(FYGBOP_SET_AT),
+	FYGBOPF_SET_AT_PATH	= FYGBOPF_OP(FYGBOP_SET_AT_PATH),
+	FYGBOPF_PARSE		= FYGBOPF_OP(FYGBOP_PARSE),
+	FYGBOPF_EMIT		= FYGBOPF_OP(FYGBOP_EMIT),
 	FYGBOPF_DONT_INTERNALIZE= FY_BIT(16),			// do not internalize items
 	FYGBOPF_DEEP_VALIDATE	= FY_BIT(17),			// perform deep validation
 	FYGBOPF_NO_CHECKS	= FY_BIT(18),			// do not perform any checks on the items
 	FYGBOPF_PARALLEL	= FY_BIT(19),			// perform in parallel
 	FYGBOPF_MAP_ITEM_COUNT	= FY_BIT(20),			// the count is items, not pairs for mappings
 	FYGBOPF_BLOCK_FN	= FY_BIT(21),			// the function is a block
+	FYGBOPF_FLATTEN_KEYS	= FY_BIT(22),			// flatten sequence keys during lookup
+	FYGBOPF_CREATE_PATH	= FY_BIT(23),			// create intermediate paths like mkdir -p
 };
 
 struct fy_generic_op_args {
@@ -4293,6 +4324,8 @@ struct fy_generic_op_args {
 		struct fy_op_map_args map_filter;
 		struct fy_op_reduce_args reduce;
 		struct fy_op_filter_map_reduce_common filter_map_reduce_common;
+		struct fy_op_parse_args parse;
+		struct fy_op_emit_args emit;
 	};
 };
 
@@ -4661,6 +4694,38 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
 			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__), \
 			(_tp), (_fn), fy_value(_acc)))
+
+#define fy_gb_get_at_path(_gb, _in, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_GET_AT_PATH, (_in), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+#define fy_local_get_at_path(_in, ...) \
+	({ \
+		__typeof__(_in) __in = (_in); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_GET_AT_PATH, __in, _count, _items); \
+	})
+
+#define fy_get_at_path(...) (FY_CPP_THIRD(__VA_ARGS__, fy_gb_get_at_path, fy_local_get_at_path)(__VA_ARGS__))
+
+#define fy_gb_get_at_path_flatten(_gb, _in, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_GET_AT_PATH | FYGBOPF_FLATTEN_KEYS, (_in), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+#define fy_local_get_at_path_flatten(_in, ...) \
+	({ \
+		__typeof__(_in) __in = (_in); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_GET_AT_PATH | FYGBOPF_FLATTEN_KEYS, __in, _count, _items); \
+	})
+
+#define fy_get_at_path_flatten(...) (FY_CPP_THIRD(__VA_ARGS__, fy_gb_get_at_path_flatten, fy_local_get_at_path_flatten)(__VA_ARGS__))
 
 /* iterators */
 #define fy_foreach(_v, _col) \
