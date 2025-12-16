@@ -2939,9 +2939,11 @@ void fy_document_purge_anchors(struct fy_document *fyd)
 	if (fy_document_is_accelerated(fyd)) {
 		fy_accel_cleanup(fyd->axl);
 		free(fyd->axl);
+		fyd->axl = NULL;
 
 		fy_accel_cleanup(fyd->naxl);
 		free(fyd->naxl);
+		fyd->naxl = NULL;
 	}
 }
 
