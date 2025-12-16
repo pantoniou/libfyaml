@@ -1676,6 +1676,8 @@ fy_parse_document_load_mapping(struct fy_parser *fyp, struct fy_document *fyd,
 
 		fynp_item->key = fyn_key;
 		fynp_item->value = fyn_value;
+		fyn_key = NULL;
+		fyn_value = NULL;
 		fy_node_pair_list_add_tail(&fyn->mapping, fynp_item);
 		if (fyn->xl) {
 			rc = fy_accel_insert(fyn->xl, fynp_item->key, fynp_item);
@@ -1688,8 +1690,6 @@ fy_parse_document_load_mapping(struct fy_parser *fyp, struct fy_document *fyd,
 		if (fynp_item->value)
 			fynp_item->value->attached = true;
 		fynp_item = NULL;
-		fyn_key = NULL;
-		fyn_value = NULL;
 	}
 
 	if (!fyep)
