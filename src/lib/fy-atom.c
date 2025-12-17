@@ -115,7 +115,7 @@ struct fy_atom *fy_reader_fill_atom_at(struct fy_reader *fyr, int advance, int c
 	struct fy_mark start_mark, end_mark;
 	int rc;
 
-	if (!fyr || !handle)
+	if (!fyr || !handle || !fyr->current_input)
 		return NULL;
 
 	/* start mark */

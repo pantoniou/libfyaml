@@ -1135,6 +1135,11 @@ const void *fy_reader_ensure_lookahead_slow_path(struct fy_reader *fyr, size_t s
 	p = fy_reader_ptr(fyr, leftp);
 	if (!p || *leftp < size) {
 
+		if (!fyr->current_input) {
+			fyr_debug(fyr, "ensure lookahead size=%zd left=%zd no input left",
+					size, *leftp);
+			return NULL;
+		}
 		fyr_debug(fyr, "ensure lookahead size=%zd left=%zd (%s - %zu)",
 				size, *leftp,
 				fy_input_get_filename(fyr->current_input),
