@@ -4193,6 +4193,7 @@ typedef fy_generic (^fy_generic_reducer_block)(struct fy_generic_builder *gb, fy
 
 /* FYGBOP_CREATE_SEQ, FYGBOP_CREATE_MAP, FYGBOP_APPEND, FYGBOP_ASSOC, FYGBOP_DISASSOC */
 /* FYGBOP_CONTAINS, FYGBOP_CONCAT, FYGBOP_REVERSE, FYGBOP_MERGE, FYGBOP_UNIQUE */
+/* GYGBOP_SET */
 struct fy_op_common_args {
 	size_t count;			/* x2 for map */
 	const fy_generic *items;
@@ -4205,8 +4206,8 @@ struct fy_op_sort_args {
 	int (*cmp_fn)(fy_generic a, fy_generic b);
 };
 
-/* FYGBOP_INSERT, FYGBOP_REPLACE */
-struct fy_op_insert_replace_args {
+/* FYGBOP_INSERT, FYGBOP_REPLACE, FYGBOP_GET_AT */
+struct fy_op_insert_replace_get_at_args {
 	struct fy_op_common_args common;
 	size_t idx;
 };
@@ -4318,7 +4319,7 @@ struct fy_generic_op_args {
 		/* this is common to all */
 		struct fy_op_common_args common;
 		struct fy_op_sort_args sort;
-		struct fy_op_insert_replace_args insert_replace;
+		struct fy_op_insert_replace_get_at_args insert_replace_get_at;
 		struct fy_op_keys_values_items_args keys_value_items;
 		struct fy_op_filter_args filter;
 		struct fy_op_map_args map_filter;
@@ -4727,6 +4728,12 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 
 #define fy_get_at_path_flatten(...) (FY_CPP_THIRD(__VA_ARGS__, fy_gb_get_at_path_flatten, fy_local_get_at_path_flatten)(__VA_ARGS__))
 
+#define fy_gb_set(_gb, _col, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_SET | FYGBOPF_MAP_ITEM_COUNT, (_col), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
 /* iterators */
 #define fy_foreach(_v, _col) \
 	for (struct { size_t i; size_t len; } FY_LUNIQUE(_iter) = { 0, fy_len(_col) }; \
@@ -4937,6 +4944,14 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_PARALLEL, \
 			__col, _count, _items, (_tp), (_fn), fy_value(_acc)); \
+	})
+
+#define fy_local_set(_col, ...) \
+	({ \
+		__typeof__(_col) __col = (_col); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_SET | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
 	})
 
 /* lambdas */
@@ -5302,5 +5317,8 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 #define fy_preduce_lambda(...) (FY_CPP_SIXTH(__VA_ARGS__, fy_gb_preduce_lambda, fy_local_preduce_lambda)(__VA_ARGS__))
 
 #endif
+
+#define fy_set(_first, ...) \
+	FY_GB_OR_LOCAL_COL_COUNT_ITEMS(FYGBOPF_SET | FYGBOPF_MAP_ITEM_COUNT, _first __VA_OPT__(,) __VA_ARGS__)
 
 #endif

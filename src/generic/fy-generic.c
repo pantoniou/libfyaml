@@ -985,8 +985,9 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 	case FYGBOP_APPEND:
 	case FYGBOP_ASSOC:
 	case FYGBOP_DISASSOC:
+	case FYGBOP_SET:
 		if (op == FYGBOP_INSERT || op == FYGBOP_REPLACE)
-			idx = args->insert_replace.idx;
+			idx = args->insert_replace_get_at.idx;
 		if (!count)
 			return in;
 		if (!items)
@@ -1064,8 +1065,9 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 		break;
 
 	case FYGBOP_GET_AT:
-		if (!count || !items)
-			return fy_invalid;
+		idx = args->insert_replace_get_at.idx;
+		need_work_items = false;
+		has_args = false;
 		break;
 
 	case FYGBOP_GET_AT_PATH:
@@ -1076,12 +1078,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 			return fy_invalid;
 		need_work_items = false;
 		flags |= FYGBOPF_DONT_INTERNALIZE;
-		break;
-
-	case FYGBOP_SET:
-		/* set needs a key and value */
-		if (count < 2 || !items)
-			return fy_invalid;
 		break;
 
 	case FYGBOP_SET_AT:
@@ -1967,9 +1963,6 @@ do_operation:
 		goto out;
 
 	case FYGBOP_GET_AT:
-		idx = fy_cast(items[0], (size_t)-1);
-		if (idx == (size_t)-1)
-			goto out;
 		out = fy_get_at(in, idx, fy_invalid);
 		goto out;
 
@@ -2006,26 +1999,17 @@ do_operation:
 		goto out;
 
 	case FYGBOP_SET:
-		/* Set value by key (mappings) or index (sequences) */
-		{
-			fy_generic key = items[0];
-			fy_generic value = items[1];
-			enum fy_generic_type in_type = fy_get_type(in);
+		out = in;
+		for (i = 0; i < item_count && fy_generic_is_valid(out); i += 2) {
+			key = items[i + 0];
+			value = items[i + 1];
 
-			if (in_type == FYGT_SEQUENCE) {
-				if (!fy_generic_is_int_type(key)) {
-					out = fy_invalid;
-				} else {
-					long long idx = fy_cast(key, -1);
-					fy_generic replace_items[1] = { value };
-					out = fy_generic_op(gb, FYGBOPF_REPLACE, in, (size_t)idx, 1, replace_items);
-				}
-			} else if (in_type == FYGT_MAPPING) {
-				fy_generic assoc_items[2] = { key, value };
-				out = fy_generic_op(gb, FYGBOPF_ASSOC, in, 1, assoc_items);
-			} else {
+			if (type == FYGT_SEQUENCE) {
+				out = fy_generic_op(gb, FYGBOPF_REPLACE, in, 1, (fy_generic []) { value }, fy_cast(key, -1) );
+			} else if (type == FYGT_MAPPING) {
+				out = fy_generic_op(gb, FYGBOPF_ASSOC, in, 1, (fy_generic []) { key, value });
+			} else
 				out = fy_invalid;
-			}
 		}
 		goto out;
 
@@ -2352,7 +2336,6 @@ fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flag
 	case FYGBOP_VALUES:
 	case FYGBOP_ITEMS:
 	case FYGBOP_GET:
-	case FYGBOP_GET_AT:
 	case FYGBOP_GET_AT_PATH:
 	case FYGBOP_SET:
 	case FYGBOP_SET_AT:
@@ -2363,7 +2346,8 @@ fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flag
 
 	case FYGBOP_INSERT:
 	case FYGBOP_REPLACE:
-		args->insert_replace.idx = va_arg(ap, size_t);
+	case FYGBOP_GET_AT:
+		args->insert_replace_get_at.idx = va_arg(ap, size_t);
 		break;
 
 	case FYGBOP_FILTER:

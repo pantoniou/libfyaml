@@ -996,7 +996,7 @@ START_TEST(generic_get_at)
 	ck_assert(len == 3);
 	sum = 0;
 	for (i = 0; i < len; i++) {
-		v = fy_generic_op(gb, FYGBOPF_GET_AT, seq, 1, (fy_generic [1]) { fy_value(i) } );
+		v = fy_generic_op(gb, FYGBOPF_GET_AT, seq, 0, NULL, i);
 		val = fy_cast(v, -1);
 		ck_assert(val != -1);
 		sum += val;
@@ -1012,7 +1012,7 @@ START_TEST(generic_get_at)
 	ck_assert(len == 2);
 	sum = 0;
 	for (i = 0; i < len; i++) {
-		v = fy_generic_op(gb, FYGBOPF_GET_AT, map, 1, (fy_generic [1]) { fy_value(i) } );
+		v = fy_generic_op(gb, FYGBOPF_GET_AT, map, 0, NULL, i);
 		val = fy_cast(v, -1);
 		ck_assert(val != -1);
 		sum += val;
