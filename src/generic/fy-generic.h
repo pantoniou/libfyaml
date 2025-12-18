@@ -49,6 +49,22 @@ enum fy_generic_type {
 	FYGT_ALIAS,
 };
 
+enum fy_generic_type_mask {
+	FYGTM_INVALID		= FY_BIT(FYGT_INVALID),
+	FYGTM_NULL		= FY_BIT(FYGT_NULL),
+	FYGTM_BOOL		= FY_BIT(FYGT_BOOL),
+	FYGTM_INT		= FY_BIT(FYGT_INT),
+	FYGTM_FLOAT		= FY_BIT(FYGT_FLOAT),
+	FYGTM_STRING		= FY_BIT(FYGT_STRING),
+	FYGTM_SEQUENCE		= FY_BIT(FYGT_SEQUENCE),
+	FYGTM_MAPPING		= FY_BIT(FYGT_MAPPING),
+	FYGTM_INDIRECT		= FY_BIT(FYGT_INDIRECT),
+	FYGTM_ALIAS		= FY_BIT(FYGT_ALIAS),
+	FYGTM_COLLECTION	= (FYGTM_SEQUENCE | FYGTM_MAPPING), 
+	FYGTM_SCALAR		= (FYGTM_NULL | FYGTM_BOOL | FYGTM_INT | FYGTM_FLOAT | FYGTM_STRING), 
+	FYGTM_ANY		= (FYGTM_COLLECTION | FYGTM_SCALAR),
+};
+
 /* type is encoded at the lower 3 bits which is satisfied with the 8 byte alignment */
 typedef uintptr_t fy_generic_value;
 typedef intptr_t fy_generic_value_signed;
@@ -3944,13 +3960,10 @@ static inline fy_generic fy_gb_bool_type_create_out_of_place(struct fy_generic_b
 	return fy_invalid;
 }
 
-static inline fy_generic fy_gb_int_type_create_out_of_place(struct fy_generic_builder *gb, long long val)
+static inline fy_generic fy_gb_dint_type_create_out_of_place(struct fy_generic_builder *gb, fy_generic_decorated_int vald)
 {
-	struct fy_generic_decorated_int vald;
 	const struct fy_generic_decorated_int *valp;
 
-	memset(&vald, 0, sizeof(vald));
-	vald.sv = val;
 	valp = fy_gb_lookup(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
 	if (!valp)
 		valp = fy_gb_store(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
@@ -3959,20 +3972,43 @@ static inline fy_generic fy_gb_int_type_create_out_of_place(struct fy_generic_bu
 	return (fy_generic){ .v = (uintptr_t)valp | FY_INT_OUTPLACE_V };
 }
 
-static inline fy_generic fy_gb_uint_type_create_out_of_place(struct fy_generic_builder *gb, unsigned long long val)
+static inline fy_generic fy_gb_int_type_create_out_of_place(struct fy_generic_builder *gb, long long val)
 {
 	struct fy_generic_decorated_int vald;
-	const struct fy_generic_decorated_int *valp;
 
 	memset(&vald, 0, sizeof(vald));
-	vald.uv = val;
-	vald.is_unsigned = val > (unsigned long long)LLONG_MAX;
+	vald.sv = val;
+#if 0
+	const struct fy_generic_decorated_int *valp;
 	valp = fy_gb_lookup(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
 	if (!valp)
 		valp = fy_gb_store(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
 	if (!valp)
 		return fy_invalid;
 	return (fy_generic){ .v = (uintptr_t)valp | FY_INT_OUTPLACE_V };
+#else
+	return fy_gb_dint_type_create_out_of_place(gb, vald);
+#endif
+}
+
+static inline fy_generic fy_gb_uint_type_create_out_of_place(struct fy_generic_builder *gb, unsigned long long val)
+{
+	struct fy_generic_decorated_int vald;
+
+	memset(&vald, 0, sizeof(vald));
+	vald.uv = val;
+	vald.is_unsigned = val > (unsigned long long)LLONG_MAX;
+#if 0
+	const struct fy_generic_decorated_int *valp;
+	valp = fy_gb_lookup(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
+	if (!valp)
+		valp = fy_gb_store(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
+	if (!valp)
+		return fy_invalid;
+	return (fy_generic){ .v = (uintptr_t)valp | FY_INT_OUTPLACE_V };
+#else
+	return fy_gb_dint_type_create_out_of_place(gb, vald);
+#endif
 }
 
 static inline fy_generic fy_gb_float_type_create_out_of_place(struct fy_generic_builder *gb, double val)
@@ -4093,7 +4129,8 @@ FY_GENERIC_GB_FLOAT_LVAL_TEMPLATE(double, double, -DBL_MAX, DBL_MAX, 0.0);
 		char *: fy_gb_string_create_out_of_place, \
 		const char *: fy_gb_string_create_out_of_place, \
 		fy_generic: fy_gb_internalize_out_of_place, \
-		fy_generic_sized_string: fy_gb_szstr_create_out_of_place \
+		fy_generic_sized_string: fy_gb_szstr_create_out_of_place, \
+		fy_generic_decorated_int: fy_gb_dint_type_create_out_of_place \
 	      )((_gb), (_v)))
 
 #define fy_gb_to_generic_value(_gb, _v) \
@@ -4148,6 +4185,12 @@ fy_generic fy_gb_string_createf(struct fy_generic_builder *gb, const char *fmt, 
 #define FYGBOPF_OP(x)			(((unsigned int)(x) & FYGBOPF_OP_MASK) << FYGBOPF_OP_SHIFT)
 
 enum fy_gb_op {
+	FYGBOP_CREATE_INV,
+	FYGBOP_CREATE_NULL,
+	FYGBOP_CREATE_BOOL,
+	FYGBOP_CREATE_INT,
+	FYGBOP_CREATE_FLT,
+	FYGBOP_CREATE_STR,
 	FYGBOP_CREATE_SEQ,
 	FYGBOP_CREATE_MAP,
 	FYGBOP_INSERT,
@@ -4200,6 +4243,16 @@ struct fy_op_common_args {
 	struct fy_thread_pool *tp;
 };
 
+struct fy_op_create_scalar_args {
+	struct fy_op_common_args common;
+	union {
+		bool bval;
+		double fval;
+		fy_generic_decorated_int ival;
+		fy_generic_sized_string sval;
+	};
+};
+
 /* FYGBOP_SORT */
 struct fy_op_sort_args {
 	struct fy_op_common_args common;
@@ -4207,7 +4260,7 @@ struct fy_op_sort_args {
 };
 
 /* FYGBOP_INSERT, FYGBOP_REPLACE, FYGBOP_GET_AT */
-struct fy_op_insert_replace_get_at_args {
+struct fy_op_insert_replace_get_set_at_args {
 	struct fy_op_common_args common;
 	size_t idx;
 };
@@ -4312,14 +4365,16 @@ enum fy_gb_op_flags {
 	FYGBOPF_BLOCK_FN	= FY_BIT(21),			// the function is a block
 	FYGBOPF_FLATTEN_KEYS	= FY_BIT(22),			// flatten sequence keys during lookup
 	FYGBOPF_CREATE_PATH	= FY_BIT(23),			// create intermediate paths like mkdir -p
+	FYGBOPF_UNSIGNED	= FY_BIT(23),			// int scalar created is unsigned (note same as CREATE_PATH)
 };
 
 struct fy_generic_op_args {
 	union {
 		/* this is common to all */
 		struct fy_op_common_args common;
+		struct fy_op_create_scalar_args scalar;
 		struct fy_op_sort_args sort;
-		struct fy_op_insert_replace_get_at_args insert_replace_get_at;
+		struct fy_op_insert_replace_get_set_at_args insert_replace_get_set_at;
 		struct fy_op_keys_values_items_args keys_value_items;
 		struct fy_op_filter_args filter;
 		struct fy_op_map_args map_filter;

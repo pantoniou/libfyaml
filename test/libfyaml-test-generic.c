@@ -3870,9 +3870,6 @@ START_TEST(get_at_flatten)
 	char buf[16384];
 	struct fy_generic_builder *gb;
 	fy_generic map, seq, nested_map, v, keys, inner_map, inner_seq;
-	fy_generic path[10];
-
-	(void)path;
 
 	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
 			buf, sizeof(buf));
@@ -3986,6 +3983,116 @@ START_TEST(get_at_flatten)
 	ck_assert(fy_cast(v, -1) == 1000);
 	printf("> long flatten: map[\"a\"][\"b\"][\"c\"][\"d\"] = 1000\n");
 }
+END_TEST
+
+#if 0
+START_TEST(set_ops)
+{
+	char buf[16384];
+	struct fy_generic_builder *gb;
+	fy_generic seq, map, v;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+
+	/* testing set, simple seq */
+	seq = fy_sequence(10, 20, 30);
+	v = fy_generic_op(gb, FYGBOPF_SET, seq, 2, (fy_generic []){ fy_value(1), fy_value(200)} );
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, 0, -1) == 10);
+	ck_assert(fy_get(v, 1, -1) == 200);
+	ck_assert(fy_get(v, 2, -1) == 30);
+
+	printf("> simple seq-set: ");
+	fy_generic_emit_default(v);
+
+	/* testing set, simple map */
+	map = fy_mapping("foo", 10, "bar", 20);
+	v = fy_generic_op(gb, FYGBOPF_SET, map, 2, (fy_generic []){ fy_value("bar"), fy_value(200)} );
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 2);
+	ck_assert(fy_get(v, "foo", -1) == 10);
+	ck_assert(fy_get(v, "bar", -1) == 200);
+
+	printf("> simple map-set: ");
+	fy_generic_emit_default(v);
+
+	/* testing set, multiple seq */
+	seq = fy_sequence(10, 20, 30);
+	v = fy_generic_op(gb, FYGBOPF_SET, seq, 6, (fy_generic []){
+			fy_value(0), fy_value(100),
+			fy_value(1), fy_value(200),
+			fy_value(2), fy_value(300) } );
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, 0, -1) == 100);
+	ck_assert(fy_get(v, 1, -1) == 200);
+	ck_assert(fy_get(v, 2, -1) == 300);
+	printf("> multiple seq-set: ");
+	fy_generic_emit_default(v);
+
+	/* testing set_at_path, simple */
+	seq = fy_sequence(10, 20, 30);
+	v = fy_generic_op(gb, FYGBOPF_SET_AT_PATH, seq,
+			2, (fy_generic []){ fy_value(1), fy_value(200)});	// /1
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, 0, -1) == 10);
+	ck_assert(fy_get(v, 1, -1) == 200);
+	ck_assert(fy_get(v, 2, -1) == 30);
+	printf("> simple seq-set-at-path /1=200: ");
+	fy_generic_emit_default(v);
+
+	/* testing set_at_path, nested */
+	seq = fy_sequence(10, 20, fy_sequence(1000, 2000));
+	v = fy_generic_op(gb, FYGBOPF_SET_AT_PATH, seq,
+			3, (fy_generic []){ fy_value(2), fy_value(0), fy_value(1)});	// /2/1
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, 0, -1) == 10);
+	ck_assert(fy_get(v, 1, -1) == 20);
+	v = fy_get(v, 2, fy_invalid);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_get(v, 0, -1) == 1);
+	ck_assert(fy_get(v, 1, -1) == 2000);
+	printf("> nested seq-set-at-path /2/1=1: ");
+	fy_generic_emit_default(v);
+
+	/* testing set_at with map, simple */
+	seq = fy_mapping("foo", 10, "bar", 20);
+	v = fy_generic_op(gb, FYGBOPF_SET, map,
+			2, (fy_generic []) { fy_value("bar"), fy_value(100) } );
+	printf("%s:%d -\n", __FILE__, __LINE__);
+	fy_generic_emit_default(v);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 2);
+	ck_assert(fy_get(v, "foo", -1) == 10);
+	ck_assert(fy_get(v, "bar", -1) == 100);
+	printf("> simple map-set-at-path /bar=100: ");
+	fy_generic_emit_default(v);
+
+	/* testing set_at_path, nested */
+	map = fy_mapping("foo", 10, "bar", fy_mapping("baz", 100));
+	printf("%s:%d map -\n", __FILE__, __LINE__);
+	fy_generic_emit_default(map);
+	v = fy_generic_op(gb, FYGBOPF_SET_AT_PATH, map,
+			3, (fy_generic []){ fy_value("bar"), fy_value("baz"), fy_value(1)});	// /bar/baz
+	printf("%s:%d result -\n", __FILE__, __LINE__);
+	fy_generic_emit_default(v);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 2);
+	ck_assert(fy_get(v, "foo", -1) == 10);
+	v = fy_get(v, 1, fy_invalid);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_get(v, "baz", -1) == 1);
+	printf("> nested map-set-at-path /bar/baz=1: ");
+	fy_generic_emit_default(v);
+}
+END_TEST
+#endif
 
 #if 0
 START_TEST(parse_emit_ops)
@@ -4237,6 +4344,8 @@ TCase *libfyaml_case_generic(void)
 	/* get_at_path flatten */
 	tcase_add_test(tc, get_at_flatten);
 
+	/* set ops */
+	// tcase_add_test(tc, set_ops);
 #if 0
 	/* parse and emit operations */
 	tcase_add_test(tc, parse_emit_ops);
