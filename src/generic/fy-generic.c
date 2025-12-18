@@ -932,7 +932,24 @@ struct fy_generic_op_desc {
 		__size; \
 	})
 
+static inline fy_generic
+fy_generic_op_internalize(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+			  fy_generic v)
+{
+	if (flags & FYGBOPF_NO_CHECKS)
+		return v;
+
+	if (flags & FYGBOPF_DONT_INTERNALIZE)
+		return fy_gb_validate(gb, v);
+
+	return fy_gb_internalize(gb, v);
+}
+
+/* iov_flags */
+#define FYGCODF_IOV_DIRECT	FY_BIT(0)	/* direct IOV from input (safe to do) */
+
 struct fy_generic_collection_op_data {
+	struct fy_generic_builder *gb;
 	enum fy_gb_op_flags flags;
 	fy_generic in;
 	fy_generic_value col_mark;
@@ -945,12 +962,30 @@ struct fy_generic_collection_op_data {
 	size_t in_count;
 	const fy_generic *in_items;
 	size_t in_item_count;
+	unsigned int iov_flags;
+	const struct iovec *iov;
+	int iovcnt;
+	size_t iov_item_count;
+	const fy_generic *iov_items;
+	fy_generic *iov_items_alloc;
+	fy_generic iov_items_local[32];
+	struct iovec iov_local[2];
 };
 
-int fy_generic_op_fill_collection_op_data(struct fy_generic_collection_op_data *cod,
-		enum fy_gb_op_flags flags, fy_generic in, const struct fy_generic_op_args *args)
+void fy_generic_collection_op_data_cleanup(struct fy_generic_collection_op_data *cod)
+{
+	if (cod->iov_items_alloc) {
+		free(cod->iov_items_alloc);
+		cod->iov_items_alloc = NULL;
+	}
+}
+
+int fy_generic_collection_op_data_setup(struct fy_generic_collection_op_data *cod,
+		struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		fy_generic in, const struct fy_generic_op_args *args)
 {
 	memset(cod, 0, sizeof(*cod));
+	cod->gb = gb;
 	cod->flags = flags;
 	cod->in = in;
 	cod->args = args;
@@ -990,21 +1025,142 @@ err_out:
 	return -1;
 }
 
+static inline int
+fy_generic_collection_op_prepare_iov(struct fy_generic_collection_op_data *cod,
+				     const struct iovec *iov, const int iovcnt)
+{
+	int i;
+	fy_generic v;
+	size_t j, count, len, idx;
+	const fy_generic *vp;
+	fy_generic *items;
+
+	if (iovcnt < 1 || !iov)
+		goto err_out;
+
+	/* the first iov must be a single size_t */
+	if (iov[0].iov_len != sizeof(struct fy_generic_collection))
+		goto err_out;
+
+	/* calculate totals */
+	cod->iov_item_count = 0;
+	for (i = 1; i < iovcnt; i++) {
+		len = iov[i].iov_len;
+		/* must be a multiple of sizeof(fy_generic) */
+		if (len % (sizeof(fy_generic)))
+			goto err_out;
+		count = len / sizeof(fy_generic);
+		cod->iov_item_count += count;
+	}
+
+	cod->iov_flags = 0;
+	/* pretend it's direct - will turn off if not so */
+	cod->iov_flags |= FYGCODF_IOV_DIRECT;
+
+	/* if no checks, trust (and don't verify) */
+	if (!(cod->flags & FYGBOPF_NO_CHECKS)) {
+		for (i = 1; i < iovcnt; i++) {
+			count = iov[i].iov_len / sizeof(fy_generic);
+			vp = iov[i].iov_base;
+			for (idx = 0; idx < count; idx++) {
+				v = vp[idx];
+
+				/* invalid? error out immediately */
+				if (fy_generic_is_invalid(v))
+					goto err_out;
+
+				/* if in place or contained in builder we're fine */
+				if (fy_generic_is_in_place(v) || fy_generic_builder_contains(cod->gb, v))
+					continue;
+
+				/* not direct */
+				cod->iov_flags &= ~FYGCODF_IOV_DIRECT;
+			}
+		}
+	}
+
+	/* the easiest case, we can use the iov provided */
+	if (cod->iov_flags & FYGCODF_IOV_DIRECT) {
+		cod->iov = iov;
+		cod->iovcnt = iovcnt;
+		return 0;
+	}
+
+	/* we have to internalize each */
+
+	/* get workspace */
+	if (cod->iov_item_count <= ARRAY_SIZE(cod->iov_items_local)) {
+		items = cod->iov_items_local;
+	} else {
+		cod->iov_items_alloc = malloc(sizeof(*cod->iov_items) * cod->iov_item_count);
+		if (!cod->iov_items_alloc)
+			goto err_out;
+		items = cod->iov_items_alloc;
+	}
+	cod->iov_items = items;
+
+	/* internalize items one by one */
+	for (j = 0, i = 1; i < iovcnt; i++) {
+		count = iov[i].iov_len / sizeof(fy_generic);
+		vp = iov[i].iov_base;
+		for (idx = 0; idx < count; idx++) {
+			v = fy_generic_op_internalize(cod->gb, cod->flags, vp[idx]);
+			if (fy_generic_is_invalid(v))
+				goto err_out;
+			items[j++] = v;
+		}
+	}
+	assert(j == cod->iov_item_count);
+
+	/* copy the collation header iov */
+	cod->iov_local[0].iov_base = iov[0].iov_base;
+	cod->iov_local[0].iov_len = iov[0].iov_len;
+	/* and the rest is a single span */
+	cod->iov_local[1].iov_base = items;
+	cod->iov_local[1].iov_len = MULSZ(cod->iov_item_count, sizeof(fy_generic));
+
+	/* and this is now our iov */
+	cod->iov = cod->iov_local;
+	cod->iovcnt = 2;
+
+	return 0;
+
+err_out:
+	if (cod->iov_items_alloc) {
+		free(cod->iov_items_alloc);
+		cod->iov_items_alloc = NULL;
+	}
+	return -1;
+}
 
 static inline fy_generic
-fy_generic_op_out_collection(struct fy_generic_builder *gb,
-			     const struct iovec *iov, const int iovcnt,
-			     const fy_generic_value col_mark)
+fy_generic_collection_op_data_out(struct fy_generic_collection_op_data *cod,
+				  const struct iovec *iov, int iovcnt)
 {
+	fy_generic v;
 	const void *p;
+	int rc;
 
-	p = fy_gb_lookupv(gb, iov, iovcnt, FY_GENERIC_CONTAINER_ALIGN);
-	if (!p)
-		p = fy_gb_storev(gb, iov, iovcnt, FY_GENERIC_CONTAINER_ALIGN);
-	if (!p)
-		return fy_invalid;
+	rc = fy_generic_collection_op_prepare_iov(cod, iov, iovcnt);
+	if (rc)
+		goto err_out;
 
-	return (fy_generic){ .v = (uintptr_t)p | col_mark };
+	/* update with what was generated */
+	iov = cod->iov;
+	iovcnt = cod->iovcnt;
+
+	p = fy_gb_lookupv(cod->gb, iov, iovcnt, FY_GENERIC_CONTAINER_ALIGN);
+	if (!p)
+		p = fy_gb_storev(cod->gb, iov, iovcnt, FY_GENERIC_CONTAINER_ALIGN);
+	if (!p)
+		goto err_out;
+
+	v = (fy_generic){ .v = (uintptr_t)p | cod->col_mark };
+
+	return v;
+
+err_out:
+	return fy_invalid;
 }
 
 static fy_generic
@@ -1060,21 +1216,33 @@ fy_generic_op_create_sequence(const struct fy_generic_op_desc *desc,
 			  struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 			  fy_generic in, const struct fy_generic_op_args *args)
 {
+	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_sequence seqh;
 	struct iovec iov[2];
+	fy_generic out;
+	int rc;
 
-	if (!args->common.count)
-		return fy_seq_empty;
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags, fy_seq_empty, args);
+	if (rc)
+		return fy_invalid;
+
+	if (!args->common.count) {
+		out = fy_seq_empty;
+		goto out;
+	}
 
 	seqh.count = args->common.count;
 	iov[0].iov_base = &seqh;
 	iov[0].iov_len = sizeof(seqh);
 	iov[1].iov_base = (void *)args->common.items;
 	iov[1].iov_len = MULSZ(seqh.count, sizeof(fy_generic));
-	return fy_generic_op_out_collection(gb, iov, ARRAY_SIZE(iov), FY_SEQ_V);
-
+	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
+out:
+	fy_generic_collection_op_data_cleanup(cod);
+	return out;
 err_out:
-	return fy_invalid;
+	out = fy_invalid;
+	goto out;
 }
 
 static fy_generic
@@ -1082,12 +1250,21 @@ fy_generic_op_create_mapping(const struct fy_generic_op_desc *desc,
 			  struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 			  fy_generic in, const struct fy_generic_op_args *args)
 {
+	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_mapping maph;
 	struct iovec iov[2];
 	size_t count;
+	fy_generic out;
+	int rc;
 
-	if (!args->common.count)
-		return fy_seq_empty;
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags, fy_map_empty, args);
+	if (rc)
+		return fy_invalid;
+
+	if (!args->common.count) {
+		out = fy_map_empty;
+		goto out;
+	}
 
 	count = args->common.count;
 
@@ -1104,23 +1281,13 @@ fy_generic_op_create_mapping(const struct fy_generic_op_desc *desc,
 	iov[0].iov_len = sizeof(maph);
 	iov[1].iov_base = (void *)args->common.items;
 	iov[1].iov_len = MULSZ(maph.count, (2 * sizeof(fy_generic)));
-	return fy_generic_op_out_collection(gb, iov, ARRAY_SIZE(iov), FY_MAP_V);
-
+	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
+out:
+	fy_generic_collection_op_data_cleanup(cod);
+	return out;
 err_out:
-	return fy_invalid;
-}
-
-static inline fy_generic
-fy_generic_op_internalize(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-			  fy_generic v)
-{
-	if (flags & FYGBOPF_NO_CHECKS)
-		return v;
-
-	if (flags & FYGBOPF_DONT_INTERNALIZE)
-		return fy_gb_validate(gb, v);
-
-	return fy_gb_internalize(gb, v);
+	out = fy_invalid;
+	goto out;
 }
 
 static fy_generic
@@ -1132,16 +1299,19 @@ fy_generic_op_insert(const struct fy_generic_op_desc *desc,
 	struct fy_generic_collection col;
 	struct iovec iov[4];
 	size_t idx, remain_count, out_count;
+	fy_generic out = fy_invalid;
 	int rc;
 
-	if (!args->common.count)
-		return in;
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags, in, args);
+	if (rc)
+		return fy_invalid;
+
+	if (!args->common.count) {
+		out = in;
+		goto out;
+	}
 
 	if (!args->common.items)
-		goto err_out;
-
-	rc = fy_generic_op_fill_collection_op_data(cod, flags, in, args);
-	if (rc)
 		goto err_out;
 
 	idx = args->insert_replace_get_set_at.idx;
@@ -1165,10 +1335,14 @@ fy_generic_op_insert(const struct fy_generic_op_desc *desc,
 	iov[3].iov_base = (void *)cod->in_items + MULSZ(idx, cod->col_item_size);
 	iov[3].iov_len = MULSZ(remain_count, cod->col_item_size);
 
-	return fy_generic_op_out_collection(gb, iov, ARRAY_SIZE(iov), cod->col_mark);
+	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
+out:
+	fy_generic_collection_op_data_cleanup(cod);
+	return out;
 
 err_out:
-	return fy_invalid;
+	out = fy_invalid;
+	goto out;
 }
 
 static fy_generic
@@ -1180,20 +1354,22 @@ fy_generic_op_replace(const struct fy_generic_op_desc *desc,
 	struct fy_generic_collection col;
 	struct iovec iov[4];
 	size_t idx, remain_idx, remain_count, out_count, tmp;
+	fy_generic out = fy_invalid;
 	int rc;
 
-	if (!args->common.count)
-		return in;
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags, in, args);
+	if (rc)
+		return fy_invalid;
+
+	if (!args->common.count) {
+		out = in;
+		goto out;
+	}
 
 	if (!args->common.items)
 		goto err_out;
 
-	rc = fy_generic_op_fill_collection_op_data(cod, flags, in, args);
-	if (rc)
-		goto err_out;
-
 	idx = args->insert_replace_get_set_at.idx;
-
 
 	/* index over the limits is at the end */
 	if (idx > cod->in_count)
@@ -1223,10 +1399,14 @@ fy_generic_op_replace(const struct fy_generic_op_desc *desc,
 	iov[3].iov_base = (void *)cod->in_items + MULSZ(remain_idx, cod->col_item_size);
 	iov[3].iov_len = MULSZ(remain_count, cod->col_item_size);
 
-	return fy_generic_op_out_collection(gb, iov, ARRAY_SIZE(iov), cod->col_mark);
+	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
+out:
+	fy_generic_collection_op_data_cleanup(cod);
+	return out;
 
 err_out:
-	return fy_invalid;
+	out = fy_invalid;
+	goto out;
 }
 
 static fy_generic
@@ -1237,16 +1417,19 @@ fy_generic_op_append(const struct fy_generic_op_desc *desc,
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_collection col;
 	struct iovec iov[3];
+	fy_generic out = fy_invalid;
 	int rc;
 
-	if (!args->common.count)
-		return in;
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags, in, args);
+	if (rc)
+		return fy_invalid;
+
+	if (!args->common.count) {
+		out = in;
+		goto out;
+	}
 
 	if (!args->common.items)
-		goto err_out;
-
-	rc = fy_generic_op_fill_collection_op_data(cod, flags, in, args);
-	if (rc)
 		goto err_out;
 
 	/* sequence overlaps map counter */
@@ -1260,10 +1443,14 @@ fy_generic_op_append(const struct fy_generic_op_desc *desc,
 	iov[2].iov_base = (void *)cod->items;
 	iov[2].iov_len = MULSZ(cod->count, cod->col_item_size);
 
-	return fy_generic_op_out_collection(gb, iov, ARRAY_SIZE(iov), cod->col_mark);
+	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
+out:
+	fy_generic_collection_op_data_cleanup(cod);
+	return out;
 
 err_out:
-	return fy_invalid;
+	out = fy_invalid;
+	goto out;
 }
 
 static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
@@ -1361,9 +1548,8 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 	fy_generic_value col_mark;
 	unsigned int op;
 	size_t count, item_count, tmp_item_count, left_item_count, idx, i, j, k;
-	size_t in_count, in_item_count, out_count, work_item_count;
-	size_t col_item_size, tmp;
-	size_t remain_idx, remain_count;
+	size_t in_item_count, work_item_count;
+	size_t col_item_size;
 	const fy_generic *items, *in_items, *tmp_items;
 	fy_generic *items_mod, *work_items;	/* modifiable items (for assoc/deassoc) */
 	fy_op_fn fn;
@@ -1405,17 +1591,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 
 	/* load args */
 	switch (op) {
-	case FYGBOP_CREATE_SEQ:
-		in = fy_seq_empty;
-		break;
-
-	case FYGBOP_CREATE_MAP:
-		in = fy_map_empty;
-		break;
-
-	case FYGBOP_INSERT:
-	case FYGBOP_REPLACE:
-	case FYGBOP_APPEND:
 	case FYGBOP_ASSOC:
 	case FYGBOP_DISASSOC:
 	case FYGBOP_SET:
@@ -1568,7 +1743,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 		item_count = count;
 		col_mark = FY_SEQ_V;
 		in_items = fy_generic_sequence_get_items(in_direct, &in_item_count);
-		in_count = in_item_count;
 		break;
 
 	case FYGT_MAPPING:
@@ -1591,7 +1765,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 					MULSZ(count, 2) : count;
 		col_mark = FY_MAP_V;
 		in_items = fy_generic_mapping_get_items(in_direct, &in_item_count);
-		in_count = in_item_count / 2;
 		break;
 
 	default:
@@ -1770,66 +1943,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 do_operation:
 
 	switch (op) {
-	case FYGBOP_CREATE_SEQ:
-	case FYGBOP_CREATE_MAP:
-		/* sequence overlaps map counter */
-		col.count = count;
-		iov[0].iov_base = &col;
-		iov[0].iov_len = sizeof(col);
-		iov[1].iov_base = (void *)items;
-		iov[1].iov_len = MULSZ(count, col_item_size);
-		iovcnt = 2;
-		break;
-
-	case FYGBOP_INSERT:
-	case FYGBOP_REPLACE:
-	case FYGBOP_APPEND:
-
-		switch (op) {
-		case FYGBOP_INSERT:
-		case FYGBOP_APPEND:
-			/* any insert after extend, will be an append */
-			if (op == FYGBOP_APPEND)
-				idx = in_count;
-			if (idx > in_count)
-				idx = in_count;
-			remain_idx = idx;
-			remain_count = in_count - remain_idx;
-			out_count = ADDSZ(in_count, count);
-			break;
-
-		case FYGBOP_REPLACE:
-			/* index over the limits is at the end */
-			if (idx > in_count)
-				idx = in_count;
-			tmp = ADDSZ(idx, count);
-			if (tmp > in_count) {
-				out_count = tmp;
-				remain_idx = in_count;
-			} else {
-				out_count = in_count;
-				remain_idx = tmp;
-			}
-			remain_count = in_count - remain_idx;
-			break;
-		}
-
-		/* sequence overlaps map counter */
-		col.count = out_count;
-		iov[0].iov_base = &col;
-		iov[0].iov_len = sizeof(col);
-		/* before */
-		iov[1].iov_base = (void *)in_items;
-		iov[1].iov_len = MULSZ(idx, col_item_size);
-		/* replacement */
-		iov[2].iov_base = (void *)items;
-		iov[2].iov_len = MULSZ(count, col_item_size);
-		/* after */
-		iov[3].iov_base = (void *)in_items + remain_idx * col_item_size;
-		iov[3].iov_len = MULSZ(remain_count, col_item_size);
-		iovcnt = 4;
-		break;
-
 	case FYGBOP_ASSOC:
 		/* first copy all in_item to work_items */
 		assert(work_items);
