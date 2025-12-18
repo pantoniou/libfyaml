@@ -932,6 +932,65 @@ struct fy_generic_op_desc {
 		__size; \
 	})
 
+struct fy_generic_collection_op_data {
+	enum fy_gb_op_flags flags;
+	fy_generic in;
+	fy_generic_value col_mark;
+	size_t col_item_size;
+	const struct fy_generic_op_args *args;
+	enum fy_generic_type type;
+	size_t count;	// this is the count of the collection
+	size_t item_count;
+	const fy_generic *items;
+	size_t in_count;
+	const fy_generic *in_items;
+	size_t in_item_count;
+};
+
+int fy_generic_op_fill_collection_op_data(struct fy_generic_collection_op_data *cod,
+		enum fy_gb_op_flags flags, fy_generic in, const struct fy_generic_op_args *args)
+{
+	memset(cod, 0, sizeof(*cod));
+	cod->flags = flags;
+	cod->in = in;
+	cod->args = args;
+
+	cod->count = args->common.count;
+	cod->items = args->common.items;
+
+	cod->in_items = fy_generic_collection_get_items(in, &cod->in_item_count);
+
+	cod->type = fy_generic_get_type(in);
+	switch (cod->type) {
+	case FYGT_SEQUENCE:
+		cod->col_mark = FY_SEQ_V;
+		cod->col_item_size = sizeof(fy_generic);
+		cod->item_count = cod->count;
+		cod->in_count = cod->in_item_count;
+		break;
+
+	case FYGT_MAPPING:
+		cod->col_mark = FY_MAP_V;
+		cod->col_item_size = 2 * sizeof(fy_generic);
+		/* count was given in items, not pairs */
+		if (flags & FYGBOPF_MAP_ITEM_COUNT) {
+			/* it must not be odd */
+			if (cod->count & 1)
+				goto err_out;
+			cod->count >>= 1;
+		}
+		cod->in_count = cod->in_item_count >> 1;
+		break;
+	default:
+		goto err_out;
+	}
+
+	return 0;
+err_out:
+	return -1;
+}
+
+
 static inline fy_generic
 fy_generic_op_out_collection(struct fy_generic_builder *gb,
 			     const struct iovec *iov, const int iovcnt,
@@ -1036,7 +1095,7 @@ fy_generic_op_create_mapping(const struct fy_generic_op_desc *desc,
 	if (flags & FYGBOPF_MAP_ITEM_COUNT) {
 		/* it must not be odd */
 		if (count & 1)
-			return fy_invalid;
+			goto err_out;
 		count >>= 1;
 	}
 
@@ -1046,6 +1105,162 @@ fy_generic_op_create_mapping(const struct fy_generic_op_desc *desc,
 	iov[1].iov_base = (void *)args->common.items;
 	iov[1].iov_len = MULSZ(maph.count, (2 * sizeof(fy_generic)));
 	return fy_generic_op_out_collection(gb, iov, ARRAY_SIZE(iov), FY_MAP_V);
+
+err_out:
+	return fy_invalid;
+}
+
+static inline fy_generic
+fy_generic_op_internalize(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+			  fy_generic v)
+{
+	if (flags & FYGBOPF_NO_CHECKS)
+		return v;
+
+	if (flags & FYGBOPF_DONT_INTERNALIZE)
+		return fy_gb_validate(gb, v);
+
+	return fy_gb_internalize(gb, v);
+}
+
+static fy_generic
+fy_generic_op_insert(const struct fy_generic_op_desc *desc,
+		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		     fy_generic in, const struct fy_generic_op_args *args)
+{
+	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
+	struct fy_generic_collection col;
+	struct iovec iov[4];
+	size_t idx, remain_count, out_count;
+	int rc;
+
+	if (!args->common.count)
+		return in;
+
+	if (!args->common.items)
+		goto err_out;
+
+	rc = fy_generic_op_fill_collection_op_data(cod, flags, in, args);
+	if (rc)
+		goto err_out;
+
+	idx = args->insert_replace_get_set_at.idx;
+	if (idx > cod->in_count)
+		idx = cod->in_count;
+
+	remain_count = cod->in_count - idx;
+	out_count = ADDSZ(cod->in_count, cod->count);
+
+	/* sequence overlaps map counter */
+	col.count = out_count;
+	iov[0].iov_base = &col;
+	iov[0].iov_len = sizeof(col);
+	/* before */
+	iov[1].iov_base = (void *)cod->in_items;
+	iov[1].iov_len = MULSZ(idx, cod->col_item_size);
+	/* replacement */
+	iov[2].iov_base = (void *)cod->items;
+	iov[2].iov_len = MULSZ(cod->count, cod->col_item_size);
+	/* after */
+	iov[3].iov_base = (void *)cod->in_items + MULSZ(idx, cod->col_item_size);
+	iov[3].iov_len = MULSZ(remain_count, cod->col_item_size);
+
+	return fy_generic_op_out_collection(gb, iov, ARRAY_SIZE(iov), cod->col_mark);
+
+err_out:
+	return fy_invalid;
+}
+
+static fy_generic
+fy_generic_op_replace(const struct fy_generic_op_desc *desc,
+		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		     fy_generic in, const struct fy_generic_op_args *args)
+{
+	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
+	struct fy_generic_collection col;
+	struct iovec iov[4];
+	size_t idx, remain_idx, remain_count, out_count, tmp;
+	int rc;
+
+	if (!args->common.count)
+		return in;
+
+	if (!args->common.items)
+		goto err_out;
+
+	rc = fy_generic_op_fill_collection_op_data(cod, flags, in, args);
+	if (rc)
+		goto err_out;
+
+	idx = args->insert_replace_get_set_at.idx;
+
+
+	/* index over the limits is at the end */
+	if (idx > cod->in_count)
+		idx = cod->in_count;
+
+	tmp = ADDSZ(idx, cod->count);
+	if (tmp > cod->in_count) {
+		out_count = tmp;
+		remain_idx = cod->in_count;
+	} else {
+		out_count = cod->in_count;
+		remain_idx = tmp;
+	}
+	remain_count = cod->in_count - remain_idx;
+
+	/* sequence overlaps map counter */
+	col.count = out_count;
+	iov[0].iov_base = &col;
+	iov[0].iov_len = sizeof(col);
+	/* before */
+	iov[1].iov_base = (void *)cod->in_items;
+	iov[1].iov_len = MULSZ(idx, cod->col_item_size);
+	/* replacement */
+	iov[2].iov_base = (void *)cod->items;
+	iov[2].iov_len = MULSZ(cod->count, cod->col_item_size);
+	/* after */
+	iov[3].iov_base = (void *)cod->in_items + MULSZ(remain_idx, cod->col_item_size);
+	iov[3].iov_len = MULSZ(remain_count, cod->col_item_size);
+
+	return fy_generic_op_out_collection(gb, iov, ARRAY_SIZE(iov), cod->col_mark);
+
+err_out:
+	return fy_invalid;
+}
+
+static fy_generic
+fy_generic_op_append(const struct fy_generic_op_desc *desc,
+		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		     fy_generic in, const struct fy_generic_op_args *args)
+{
+	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
+	struct fy_generic_collection col;
+	struct iovec iov[3];
+	int rc;
+
+	if (!args->common.count)
+		return in;
+
+	if (!args->common.items)
+		goto err_out;
+
+	rc = fy_generic_op_fill_collection_op_data(cod, flags, in, args);
+	if (rc)
+		goto err_out;
+
+	/* sequence overlaps map counter */
+	col.count = ADDSZ(cod->in_count, cod->count);
+	iov[0].iov_base = &col;
+	iov[0].iov_len = sizeof(col);
+	/* before */
+	iov[1].iov_base = (void *)cod->in_items;
+	iov[1].iov_len = MULSZ(cod->in_count, cod->col_item_size);
+	/* append */
+	iov[2].iov_base = (void *)cod->items;
+	iov[2].iov_len = MULSZ(cod->count, cod->col_item_size);
+
+	return fy_generic_op_out_collection(gb, iov, ARRAY_SIZE(iov), cod->col_mark);
 
 err_out:
 	return fy_invalid;
@@ -1107,6 +1322,27 @@ static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 		.in_mask = FYGTM_ANY,
 		.out_mask = FYGTM_MAPPING,
 		.handler = fy_generic_op_create_mapping,
+	},
+	[FYGBOP_INSERT] = {
+		.op = FYGBOP_INSERT,
+		.op_name = "insert",
+		.in_mask = FYGTM_COLLECTION,
+		.out_mask = FYGTM_COLLECTION,
+		.handler = fy_generic_op_insert,
+	},
+	[FYGBOP_REPLACE] = {
+		.op = FYGBOP_REPLACE,
+		.op_name = "replace",
+		.in_mask = FYGTM_COLLECTION,
+		.out_mask = FYGTM_COLLECTION,
+		.handler = fy_generic_op_replace,
+	},
+	[FYGBOP_APPEND] = {
+		.op = FYGBOP_APPEND,
+		.op_name = "append",
+		.in_mask = FYGTM_COLLECTION,
+		.out_mask = FYGTM_COLLECTION,
+		.handler = fy_generic_op_append,
 	},
 };
 
