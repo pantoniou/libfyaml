@@ -2085,6 +2085,7 @@ START_TEST(gb_assoc_deassoc)
 	v = fy_generic_op(gb, FYGBOPF_ASSOC, map, 1, items);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 1);
+
 	ck_assert(fy_get(v, "foo", -1) == 10);
 	ck_assert(fy_get_at(v, 0, -1) == 10);
 

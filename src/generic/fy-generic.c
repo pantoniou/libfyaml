@@ -952,6 +952,7 @@ struct fy_generic_collection_op_data {
 	struct fy_generic_builder *gb;
 	enum fy_gb_op_flags flags;
 	fy_generic in;
+	unsigned xflags;
 	fy_generic_value col_mark;
 	size_t col_item_size;
 	const struct fy_generic_op_args *args;
@@ -970,6 +971,16 @@ struct fy_generic_collection_op_data {
 	fy_generic *iov_items_alloc;
 	fy_generic iov_items_local[32];
 	struct iovec iov_local[2];
+	size_t work_item_all_count;
+	fy_generic work_items_local[32];
+	fy_generic *work_items_alloc;
+	fy_generic *work_items_all;
+	size_t work_in_items_offset;
+	fy_generic *work_in_items;
+	size_t work_items_offset;
+	fy_generic *work_items;
+	size_t work_items_expanded_offset;
+	fy_generic *work_items_expanded;
 };
 
 void fy_generic_collection_op_data_cleanup(struct fy_generic_collection_op_data *cod)
@@ -978,17 +989,34 @@ void fy_generic_collection_op_data_cleanup(struct fy_generic_collection_op_data 
 		free(cod->iov_items_alloc);
 		cod->iov_items_alloc = NULL;
 	}
+	if (cod->work_items_alloc) {
+		free(cod->work_items_alloc);
+		cod->work_items_alloc = NULL;
+	}
 }
+
+#define FYGCODSF_MAP_ITEM_COUNT_NO_MULT2	FY_BIT(0)
+#define FYGCODSF_NEED_WORK_IN_ITEMS		FY_BIT(1)
+#define FYGCODSF_NEED_WORK_ITEMS		FY_BIT(2)
+#define FYGCODSF_NEED_COPY_WORK_IN_ITEMS	FY_BIT(4)
+#define FYGCODSF_NEED_COPY_WORK_ITEMS		FY_BIT(5)
 
 int fy_generic_collection_op_data_setup(struct fy_generic_collection_op_data *cod,
 		struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		fy_generic in, const struct fy_generic_op_args *args)
+		fy_generic in, const struct fy_generic_op_args *args,
+		unsigned int xflags)
 {
+#if 0
+	size_t j, k, tmp_item_count;
+	const fy_generic *tmp_items;
+#endif
+
 	memset(cod, 0, sizeof(*cod));
 	cod->gb = gb;
 	cod->flags = flags;
 	cod->in = in;
 	cod->args = args;
+	cod->xflags = xflags;
 
 	cod->count = args->common.count;
 	cod->items = args->common.items;
@@ -1007,6 +1035,7 @@ int fy_generic_collection_op_data_setup(struct fy_generic_collection_op_data *co
 	case FYGT_MAPPING:
 		cod->col_mark = FY_MAP_V;
 		cod->col_item_size = 2 * sizeof(fy_generic);
+		cod->in_count = cod->in_item_count >> 1;
 		/* count was given in items, not pairs */
 		if (flags & FYGBOPF_MAP_ITEM_COUNT) {
 			/* it must not be odd */
@@ -1014,10 +1043,57 @@ int fy_generic_collection_op_data_setup(struct fy_generic_collection_op_data *co
 				goto err_out;
 			cod->count >>= 1;
 		}
-		cod->in_count = cod->in_item_count >> 1;
+		if (xflags & FYGCODSF_MAP_ITEM_COUNT_NO_MULT2)
+			cod->item_count = cod->count;
+		else
+			cod->item_count = MULSZ(cod->count, 2);
 		break;
 	default:
 		goto err_out;
+	}
+
+	cod->work_item_all_count = 0;
+	if (xflags & FYGCODSF_NEED_WORK_IN_ITEMS) {
+		cod->work_in_items_offset = cod->work_item_all_count;
+		cod->work_item_all_count += cod->in_item_count;
+	}
+	if (xflags & FYGCODSF_NEED_WORK_ITEMS) {
+		cod->work_items_offset = cod->work_item_all_count;
+		cod->work_item_all_count += cod->item_count;
+	}
+
+	if (cod->work_item_all_count > 0) {
+		if (cod->work_item_all_count <= ARRAY_SIZE(cod->work_items_local))
+			cod->work_items_all = cod->work_items_local;
+		else {
+			cod->work_items_alloc = malloc(sizeof(*cod->work_items_alloc) * cod->work_item_all_count);
+			if (!cod->work_items_alloc)
+				goto err_out;
+			cod->work_items_all = cod->work_items_alloc;
+		}
+
+		if (xflags & FYGCODSF_NEED_WORK_IN_ITEMS)
+			cod->work_in_items = cod->work_items_all + cod->work_in_items_offset;
+
+		if (xflags & FYGCODSF_NEED_WORK_ITEMS)
+			cod->work_items = cod->work_items_all + cod->work_items_offset;
+
+		if (xflags & FYGCODSF_NEED_COPY_WORK_IN_ITEMS)
+			memcpy(cod->work_in_items, cod->in_items, sizeof(*cod->work_items) * cod->in_item_count);
+
+		if (xflags & FYGCODSF_NEED_COPY_WORK_ITEMS)
+			memcpy(cod->work_items, cod->items, sizeof(*cod->work_items) * cod->item_count);
+
+#if 0
+		if (xflags & FYGCODSF_NEED_COPY_WORK_ITEMS) {
+			k = cod->in_item_count;
+			for (j = 0; j < cod->item_count; j++) {
+				tmp_items = fy_generic_collection_get_items(cod->items[j], &tmp_item_count);
+				memcpy(cod->work_items + k, tmp_items, sizeof(*cod->work_items) * tmp_item_count);
+				k += tmp_item_count;
+			}
+		}
+#endif
 	}
 
 	return 0;
@@ -1222,7 +1298,7 @@ fy_generic_op_create_sequence(const struct fy_generic_op_desc *desc,
 	fy_generic out;
 	int rc;
 
-	rc = fy_generic_collection_op_data_setup(cod, gb, flags, fy_seq_empty, args);
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags, fy_seq_empty, args, 0);
 	if (rc)
 		return fy_invalid;
 
@@ -1257,7 +1333,7 @@ fy_generic_op_create_mapping(const struct fy_generic_op_desc *desc,
 	fy_generic out;
 	int rc;
 
-	rc = fy_generic_collection_op_data_setup(cod, gb, flags, fy_map_empty, args);
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags, fy_map_empty, args, 0);
 	if (rc)
 		return fy_invalid;
 
@@ -1302,12 +1378,12 @@ fy_generic_op_insert(const struct fy_generic_op_desc *desc,
 	fy_generic out = fy_invalid;
 	int rc;
 
-	rc = fy_generic_collection_op_data_setup(cod, gb, flags, in, args);
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags, in, args, 0);
 	if (rc)
 		return fy_invalid;
 
 	if (!args->common.count) {
-		out = in;
+		out = fy_generic_op_internalize(gb, flags, in);
 		goto out;
 	}
 
@@ -1357,12 +1433,12 @@ fy_generic_op_replace(const struct fy_generic_op_desc *desc,
 	fy_generic out = fy_invalid;
 	int rc;
 
-	rc = fy_generic_collection_op_data_setup(cod, gb, flags, in, args);
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags, in, args, 0);
 	if (rc)
 		return fy_invalid;
 
 	if (!args->common.count) {
-		out = in;
+		out = fy_generic_op_internalize(gb, flags, in);
 		goto out;
 	}
 
@@ -1420,12 +1496,12 @@ fy_generic_op_append(const struct fy_generic_op_desc *desc,
 	fy_generic out = fy_invalid;
 	int rc;
 
-	rc = fy_generic_collection_op_data_setup(cod, gb, flags, in, args);
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags, in, args, 0);
 	if (rc)
 		return fy_invalid;
 
 	if (!args->common.count) {
-		out = in;
+		out = fy_generic_op_internalize(gb, flags, in);
 		goto out;
 	}
 
@@ -1442,6 +1518,172 @@ fy_generic_op_append(const struct fy_generic_op_desc *desc,
 	/* append */
 	iov[2].iov_base = (void *)cod->items;
 	iov[2].iov_len = MULSZ(cod->count, cod->col_item_size);
+
+	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
+out:
+	fy_generic_collection_op_data_cleanup(cod);
+	return out;
+
+err_out:
+	out = fy_invalid;
+	goto out;
+}
+
+static fy_generic
+fy_generic_op_assoc(const struct fy_generic_op_desc *desc,
+		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		     fy_generic in, const struct fy_generic_op_args *args)
+{
+	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
+	struct fy_generic_collection col;
+	struct iovec iov[2];
+	fy_generic out = fy_invalid;
+	size_t i, j, left_item_count;
+	fy_generic key, value;
+	int rc;
+
+	/* copy in + items -> work_items */
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags, in, args, 
+			FYGCODSF_NEED_WORK_IN_ITEMS | FYGCODSF_NEED_WORK_ITEMS |
+			FYGCODSF_NEED_COPY_WORK_ITEMS);
+	if (rc)
+		return fy_invalid;
+
+	/* only mappings */
+	if (!fy_generic_is_mapping(in))
+		goto err_out;
+
+	if (!args->common.count) {
+		out = fy_generic_op_internalize(gb, flags, in);
+		goto out;
+	}
+
+	if (!args->common.items)
+		goto err_out;
+
+	/* go over the keys in the input mapping */
+	/* replaces the values by what was in items */
+	left_item_count = cod->item_count;
+	for (i = 0; i < cod->in_item_count; i += 2) {
+		key = cod->in_items[i + 0];
+		value = cod->in_items[i + 1];
+		if (left_item_count > 0) {
+			for (j = 0; j < cod->item_count; j += 2) {
+				if (fy_generic_compare(cod->work_items[j + 0], key))
+					continue;
+				value = cod->work_items[j + 1];
+				/* remove it from the items */
+				cod->work_items[j + 0] = fy_invalid;
+				cod->work_items[j + 1] = fy_invalid;
+				left_item_count -= 2;
+				break;
+			}
+		}
+		cod->work_items_all[i + 0] = key;
+		cod->work_items_all[i + 1] = value;
+	}
+	/* now append whatever is left */
+	if (left_item_count > 0) {
+		for (j = 0; j < cod->item_count; j += 2) {
+			key = cod->work_items[j + 0];
+			if (key.v == fy_invalid_value)
+				continue;
+			cod->work_items_all[i + 0] = key;
+			cod->work_items_all[i + 1] = cod->work_items[j + 1];
+			i += 2;
+		}
+	}
+	/* the collection header */
+	col.count = i / 2;
+	iov[0].iov_base = &col;
+	iov[0].iov_len = sizeof(col);
+	/* the content */
+	iov[1].iov_base = cod->work_items_all;
+	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
+
+	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
+out:
+	fy_generic_collection_op_data_cleanup(cod);
+	return out;
+
+err_out:
+	out = fy_invalid;
+	goto out;
+}
+
+static fy_generic
+fy_generic_op_disassoc(const struct fy_generic_op_desc *desc,
+		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		     fy_generic in, const struct fy_generic_op_args *args)
+{
+	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
+	struct fy_generic_collection col;
+	struct iovec iov[2];
+	fy_generic out = fy_invalid;
+	size_t i, j, k, left_item_count;
+	fy_generic key, value;
+	int rc;
+
+	/* copy in + items -> work_items */
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags, in, args, 
+			FYGCODSF_MAP_ITEM_COUNT_NO_MULT2 |
+			FYGCODSF_NEED_WORK_IN_ITEMS | FYGCODSF_NEED_WORK_ITEMS |
+			FYGCODSF_NEED_COPY_WORK_ITEMS);
+	if (rc)
+		return fy_invalid;
+
+	/* only mappings */
+	if (!fy_generic_is_mapping(in))
+		goto err_out;
+
+	if (!args->common.count) {
+		out = fy_generic_op_internalize(gb, flags, in);
+		goto out;
+	}
+
+	if (!args->common.items)
+		goto err_out;
+
+	/* go over the keys in the input mapping */
+	/* replaces the values by what was in items */
+	left_item_count = cod->item_count;
+	for (i = 0, k = 0; i < cod->in_item_count; i += 2) {
+		key = cod->in_items[i + 0];
+		value = cod->in_items[i + 1];
+		if (left_item_count > 0) {
+			for (j = 0; j < cod->item_count; j += 2) {
+				if (fy_generic_compare(cod->work_items[j], key))
+					continue;
+				cod->work_items[j] = fy_invalid;
+				left_item_count--;
+				break;
+			}
+			if (j < cod->item_count)
+				continue;
+		}
+		cod->work_items_all[k + 0] = key;
+		cod->work_items_all[k + 1] = value;
+		k += 2;
+	}
+	/* if everything is gone, don't bother */
+	if (!k) {
+		out = fy_map_empty;
+		goto out;
+	}
+
+	/* nothing changed... */
+	if (left_item_count == cod->item_count) {
+		out = fy_generic_op_internalize(gb, flags, in);
+		goto out;
+	}
+
+	/* the collection header */
+	col.count = k / 2;
+	iov[0].iov_base = &col;
+	iov[0].iov_len = sizeof(col);
+	/* the content */
+	iov[1].iov_base = cod->work_items_all;
+	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
 
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
 out:
@@ -1530,6 +1772,20 @@ static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 		.in_mask = FYGTM_COLLECTION,
 		.out_mask = FYGTM_COLLECTION,
 		.handler = fy_generic_op_append,
+	},
+	[FYGBOP_ASSOC] = {
+		.op = FYGBOP_ASSOC,
+		.op_name = "assoc",
+		.in_mask = FYGTM_MAPPING,
+		.out_mask = FYGTM_MAPPING,
+		.handler = fy_generic_op_assoc,
+	},
+	[FYGBOP_DISASSOC] = {
+		.op = FYGBOP_DISASSOC,
+		.op_name = "disassoc",
+		.in_mask = FYGTM_MAPPING,
+		.out_mask = FYGTM_MAPPING,
+		.handler = fy_generic_op_disassoc,
 	},
 };
 
