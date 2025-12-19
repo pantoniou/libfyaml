@@ -1183,6 +1183,7 @@ fy_generic_collection_op_prepare_iov(struct fy_generic_collection_op_data *cod,
 
 				/* not direct */
 				cod->iov_flags &= ~FYGCODF_IOV_DIRECT;
+				break;
 			}
 		}
 	}
@@ -1885,6 +1886,151 @@ err_out:
 	goto out;
 }
 
+static fy_generic
+fy_generic_op_contains(const struct fy_generic_op_desc *desc,
+		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		     fy_generic in, const struct fy_generic_op_args *args)
+{
+	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
+	size_t i, j, k;
+	fy_generic out = fy_invalid;
+	int rc;
+
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags,
+			in, FYGT_BOOL, args, FYGCODSF_MAP_ITEM_COUNT_NO_MULT2);
+	if (rc)
+		return fy_invalid;
+
+	/* nothing? so it's not contained */
+	if (!args->common.count) {
+		out = fy_false;
+		goto out;
+	}
+
+	if (!args->common.items)
+		goto err_out;
+
+	k = cod->type == FYGT_SEQUENCE ? 1 : 2;
+	for (i = 0; i < cod->in_item_count; i += k) {
+		for (j = 0; j < cod->item_count; j++) {
+			if (!fy_generic_compare(cod->in_items[i], cod->items[j])) {
+				out = fy_true;
+				goto out;
+			}
+		}
+	}
+	out = fy_false;
+out:
+	fy_generic_collection_op_data_cleanup(cod);
+	return out;
+
+err_out:
+	out = fy_invalid;
+	goto out;
+}
+
+static fy_generic
+fy_generic_op_concat(const struct fy_generic_op_desc *desc,
+		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		     fy_generic in, const struct fy_generic_op_args *args)
+{
+	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
+	struct fy_generic_collection col;
+	struct iovec *iov;
+	struct iovec *iov_alloc = NULL;
+	const fy_generic *tmp_items;
+	size_t tmp_item_count;
+	int iovcnt;
+	size_t i, j, total;
+	fy_generic out = fy_invalid;
+	int rc;
+
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags,
+			in, FYGT_INVALID, args, 0);
+	if (rc)
+		return fy_invalid;
+
+	if (!args->common.count) {
+		out = fy_generic_op_internalize(gb, flags, in);
+		goto out;
+	}
+
+	if (!args->common.items)
+		goto err_out;
+
+	iovcnt = 1;	/* header */
+
+	/* verify that the concatenated items are the same type, and get the total */
+	total = 0;
+
+	/* input */
+	if (cod->in_item_count) {
+		total += cod->in_item_count;
+		iovcnt++;
+	}
+	/* and all the items */
+	for (j = 0; j < cod->count; j++) {
+		if (fy_generic_get_type(cod->items[j]) != cod->type)
+			goto err_out;
+		tmp_items = fy_generic_collection_get_items(cod->items[j], &tmp_item_count);
+		if (tmp_item_count) {
+			total += tmp_item_count;
+			iovcnt++;
+		}
+	}
+	/* nothing? just return empty */
+	if (total == 0) {
+		out = cod->type == FYGT_SEQUENCE ? fy_seq_empty : fy_map_empty;
+		goto out;
+	}
+
+	assert(iovcnt > 1);
+	if (iovcnt <= 16) {
+		iov = alloca(sizeof(*iov) * iovcnt);
+	} else {
+		iov_alloc = malloc(sizeof(*iov) * iovcnt);
+		if (!iov_alloc)
+			goto err_out;
+		iov = iov_alloc;
+	}
+
+	/* sequence overlaps map counter */
+	i = 0;
+	col.count = cod->type == FYGT_SEQUENCE ? total : (total / 2);
+	iov[i].iov_base = &col;
+	iov[i].iov_len = sizeof(col);
+	i++;
+
+	/* the in items */
+	if (cod->in_item_count > 0) {
+		iov[i].iov_base = (void *)cod->in_items;
+		iov[i].iov_len = MULSZ(cod->in_item_count, sizeof(fy_generic));
+		i++;
+	}
+
+	/* now all the items */
+	for (j = 0; j < cod->count; j++) {
+		tmp_items = fy_generic_collection_get_items(cod->items[j], &tmp_item_count);
+		if (tmp_item_count > 0) {
+			iov[i].iov_base = (void *)tmp_items;
+			iov[i].iov_len = MULSZ(tmp_item_count, sizeof(fy_generic));
+			i++;
+		}
+	}
+	assert((int)i == iovcnt);
+
+	out = fy_generic_collection_op_data_out(cod, iov, iovcnt);
+out:
+	if (iov_alloc)
+		free(iov_alloc);
+	fy_generic_collection_op_data_cleanup(cod);
+	return out;
+
+err_out:
+	out = fy_invalid;
+	goto out;
+}
+
 static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 	[FYGBOP_CREATE_INV] = {
 		.op = FYGBOP_CREATE_INV,
@@ -1998,6 +2144,20 @@ static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 		.out_mask = FYGTM_SEQUENCE,
 		.handler = fy_generic_op_items,
 	},
+	[FYGBOP_CONTAINS] = {
+		.op = FYGBOP_CONTAINS,
+		.op_name = "contains",
+		.in_mask = FYGTM_COLLECTION,
+		.out_mask = FYGTM_BOOL,
+		.handler = fy_generic_op_contains,
+	},
+	[FYGBOP_CONCAT] = {
+		.op = FYGBOP_CONCAT,
+		.op_name = "concat",
+		.in_mask = FYGTM_COLLECTION,	// concat works on mappings too
+		.out_mask = FYGTM_COLLECTION,
+		.handler = fy_generic_op_concat,
+	},
 };
 
 fy_generic
@@ -2065,22 +2225,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 			return in;
 		if (!items)
 			return fy_invalid;
-		break;
-
-	case FYGBOP_CONTAINS:
-		flags |= FYGBOPF_DONT_INTERNALIZE;	/* don't internalize */
-		if (!count)
-			return fy_false;
-		if (!items)
-			return fy_invalid;
-		break;
-
-	case FYGBOP_CONCAT:
-		if (!count)
-			return in;			/* single? */
-		if (!items)
-			return fy_invalid;
-		need_work_items = true;
 		break;
 
 	case FYGBOP_REVERSE:
@@ -2263,21 +2407,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 	if (need_work_items) {
 
 		switch (op) {
-		case FYGBOP_CONCAT:
-			work_item_count = 0;
-			for (i = 0; i < item_count; i++) {
-				v = items[i];
-				if (!fy_generic_is_sequence(v))
-					goto err_out;
-				work_item_count += fy_len(v);
-			}
-			/* all of them are empty? just return the same */
-			if (!work_item_count) {
-				out = in;
-				goto out;
-			}
-			break;
-
 		case FYGBOP_MERGE:
 			work_item_count = in_item_count;
 			for (i = 0; i < item_count; i++) {
@@ -2378,55 +2507,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 do_operation:
 
 	switch (op) {
-	case FYGBOP_CONTAINS:
-		/* works on both sequences and mappings */
-		k = type == FYGT_SEQUENCE ? 1 : 2;
-		for (i = 0; i < in_item_count; i += k) {
-			for (j = 0; j < item_count; j++) {
-				if (!fy_generic_compare(in_items[i], items[j])) {
-					out = fy_true;
-					goto out;
-				}
-			}
-		}
-		out = fy_false;
-		goto out;
-
-	case FYGBOP_CONCAT:
-		k = 0;
-		for (i = 0; i < item_count; i++) {
-			tmp_items = fy_generic_sequence_get_items(items[i], &tmp_item_count);
-			if (!tmp_item_count)
-				continue;
-			for (j = 0; j < tmp_item_count; j++) {
-				v = tmp_items[j];
-				if (!(flags & FYGBOPF_NO_CHECKS))
-					v = !(flags & FYGBOPF_DONT_INTERNALIZE) ?
-						fy_gb_internalize(gb, v) : fy_gb_validate(gb, v);
-				if (v.v == fy_invalid_value)
-					goto err_out;
-				assert(k < work_item_count);
-				work_items[k++] = v;
-			}
-		}
-		assert(k == work_item_count);
-
-		/* always return a sequence */
-		col_mark = FY_SEQ_V;
-		col_item_size = sizeof(fy_generic);
-
-		col.count = in_item_count + work_item_count;
-		iov[0].iov_base = &col;
-		iov[0].iov_len = sizeof(col);
-		/* the original */
-		iov[1].iov_base = (void *)in_items;
-		iov[1].iov_len = MULSZ(in_item_count, col_item_size);
-		/* the extra content */
-		iov[2].iov_base = work_items;
-		iov[2].iov_len = MULSZ(work_item_count, col_item_size);
-		iovcnt = 3;
-		break;
-
 	case FYGBOP_REVERSE:
 		k = 0;
 		/* the extra arguments */
