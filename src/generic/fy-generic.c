@@ -631,49 +631,6 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 	return new_v;
 }
 
-int fy_gb_internalize_array(struct fy_generic_builder *gb, size_t count, fy_generic *vp)
-{
-	fy_generic v;
-	size_t i;
-
-	for (i = 0; i < count; i++) {
-		v = fy_gb_internalize(gb, vp[i]);
-		if (v.v == fy_invalid_value)
-			return -1;
-		vp[i] = v;
-	}
-	return 0;
-}
-
-static const fy_generic *
-fy_internalize_items(struct fy_generic_builder *gb, size_t count, const fy_generic *items,
-		     fy_generic *items_buf, size_t buf_count, fy_generic **items_allocp)
-{
-	fy_generic *items_local;
-	int rc;
-
-	if (count <= buf_count)
-		items_local = items_buf;
-	else {
-		*items_allocp = malloc(sizeof(*items_local) * count);
-		if (!items_allocp)
-			return NULL;
-		items_local = *items_allocp;
-	}
-
-	memcpy(items_local, items, sizeof(*items_local) * count);
-	rc = fy_gb_internalize_array(gb, count, items_local);
-	if (rc) {
-		if (*items_allocp) {
-			free(*items_allocp);
-			*items_allocp = NULL;
-		}
-		return NULL;
-	}
-
-	return items_local;
-}
-
 fy_generic fy_gb_validate_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 {
 	fy_generic vi;
@@ -1285,6 +1242,8 @@ fy_generic_collection_op_data_out(struct fy_generic_collection_op_data *cod,
 err_out:
 	return fy_invalid;
 }
+
+static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT];
 
 static fy_generic
 fy_generic_op_create_inv(const struct fy_generic_op_desc *desc,
@@ -2364,6 +2323,145 @@ err_out:
 	goto out;
 }
 
+static fy_generic
+fy_generic_op_set(const struct fy_generic_op_desc *desc,
+		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		     fy_generic in, const struct fy_generic_op_args *args)
+{
+	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
+	struct fy_generic_collection col;
+	struct iovec iov[2];
+	size_t i, j, left_item_count;
+	unsigned long long idx;
+	fy_generic key, value;
+	fy_generic items_local[64];
+	fy_generic *items_alloc = NULL;
+	fy_generic *items;
+	size_t item_count;
+	fy_generic out = fy_invalid;
+	int rc;
+
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags,
+			in, FYGT_INVALID, args, FYGCODSF_MAP_ITEM_COUNT_NO_MULT2);
+	if (rc)
+		return fy_invalid;
+
+	if (args->common.count && !args->common.items)
+		goto err_out;
+
+	/* nothing, return in */
+	if (!args->common.count) {
+		out = fy_generic_op_internalize(gb, flags, in);
+		goto out;
+	}
+
+	/* must be index/key, value */
+	if (args->common.count & 1)
+		goto err_out;
+
+	/* find maximum item count (and verify that key is index) */
+	item_count = cod->in_item_count;
+
+	if (cod->type == FYGT_SEQUENCE) {
+		for (i = 0; i < cod->item_count; i += 2) {
+			idx = fy_cast(cod->items[i], (unsigned long long)-1);
+			if ((signed long long)idx < 0)
+				goto err_out;
+			if (idx >= item_count)
+				item_count = (size_t)idx + 1;
+		}
+	} else {
+		/* for mapping, start with all the items  */
+		item_count += cod->item_count;
+	}
+
+	if (item_count <= ARRAY_SIZE(items_local)) {
+		items = items_local;
+	} else {
+		items_alloc = malloc(sizeof(*items) * item_count);
+		if (!items_alloc)
+			goto err_out;
+		items = items_alloc;
+	}
+
+	/* fill up to in_item_count with the input */
+	for (i = 0; i < cod->in_item_count; i++)
+		items[i] = cod->in_items[i];
+
+	if (cod->type == FYGT_SEQUENCE) {
+
+		/* fill up to the maximum with fy_null */
+		for (; i < item_count; i++)
+			items[i] = fy_null;
+
+		/* now fill in at the correct index */
+		for (i = 0; i < cod->item_count; i += 2) {
+			idx = fy_cast(cod->items[i], (unsigned long long)-1);
+			j = (size_t)idx;
+			assert(j < item_count);
+			items[j] = cod->items[i + 1];
+		}
+	} else {
+		/* tack on the items */
+		for (j = 0; i < item_count; i++, j++)
+			items[i] = cod->items[j];
+
+		/* go over the keys in the input mapping */
+		/* replaces the values by what was in items */
+		left_item_count = cod->item_count;
+
+		for (i = 0; i < cod->in_item_count; i += 2) {
+			key = items[i + 0];
+			value = items[i + 1];
+			if (left_item_count > 0) {
+				for (j = cod->in_item_count; j < item_count; j += 2) {
+					if (fy_generic_compare(items[j + 0], key))
+						continue;
+					value = items[j + 1];
+					/* remove it from the items */
+					items[j + 0] = fy_invalid;
+					items[j + 1] = fy_invalid;
+					left_item_count -= 2;
+					break;
+				}
+			}
+			items[i + 0] = key;
+			items[i + 1] = value;
+		}
+		/* now append whatever is left */
+		if (left_item_count > 0) {
+			for (j = cod->in_item_count; j < item_count; j += 2) {
+				key = items[j + 0];
+				if (key.v == fy_invalid_value)
+					continue;
+				items[i + 0] = key;
+				items[i + 1] = items[j + 1];
+				i += 2;
+			}
+		}
+		item_count = i;
+	}
+
+	/* the collection header */
+	col.count = cod->type == FYGT_SEQUENCE ? item_count : (item_count / 2);
+	iov[0].iov_base = &col;
+	iov[0].iov_len = sizeof(col);
+	/* the content */
+	iov[1].iov_base = items;
+	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
+
+	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
+out:
+	if (items_alloc)
+		free(items_alloc);
+	fy_generic_collection_op_data_cleanup(cod);
+	return out;
+
+err_out:
+	out = fy_invalid;
+	goto out;
+}
+
 static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 	[FYGBOP_CREATE_INV] = {
 		.op = FYGBOP_CREATE_INV,
@@ -2519,6 +2617,13 @@ static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 		.out_mask = FYGTM_COLLECTION,
 		.handler = fy_generic_op_sort,
 	},
+	[FYGBOP_SET] = {
+		.op = FYGBOP_SET,
+		.op_name = "set",
+		.in_mask = FYGTM_COLLECTION,	// sort works on mappings too
+		.out_mask = FYGTM_COLLECTION,
+		.handler = fy_generic_op_set,
+	},
 };
 
 fy_generic
@@ -2580,8 +2685,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 	/* load args */
 	switch (op) {
 	case FYGBOP_SET:
-		if (op == FYGBOP_INSERT || op == FYGBOP_REPLACE)
-			idx = args->insert_replace_get_set_at.idx;
 		if (!count)
 			return in;
 		if (!items)

@@ -2139,6 +2139,14 @@ START_TEST(gb_assoc_deassoc)
 	printf("> assoc-replace-append: ");
 	fy_generic_emit_default(v);
 
+	/* simple replace */
+	map = fy_mapping("foo", 10, "bar", 20);
+	v = fy_generic_op(gb, FYGBOPF_ASSOC, map, 2, (fy_generic []){ fy_value("bar"), fy_value(200)} );
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 2);
+	ck_assert(fy_get(v, "foo", -1) == 10);
+	ck_assert(fy_get(v, "bar", -1) == 200);
+
 	/* disassociate, mapping goes empty ("bar": 100) -> () */
 	map = fy_mapping("bar", 100);
 	items[0] = fy_value("bar");
@@ -3986,7 +3994,6 @@ START_TEST(get_at_flatten)
 }
 END_TEST
 
-#if 0
 START_TEST(set_ops)
 {
 	char buf[16384];
@@ -4021,6 +4028,7 @@ START_TEST(set_ops)
 	printf("> simple map-set: ");
 	fy_generic_emit_default(v);
 
+#if 0
 	/* testing set, multiple seq */
 	seq = fy_sequence(10, 20, 30);
 	v = fy_generic_op(gb, FYGBOPF_SET, seq, 6, (fy_generic []){
@@ -4091,9 +4099,9 @@ START_TEST(set_ops)
 	ck_assert(fy_get(v, "baz", -1) == 1);
 	printf("> nested map-set-at-path /bar/baz=1: ");
 	fy_generic_emit_default(v);
+#endif
 }
 END_TEST
-#endif
 
 #if 0
 START_TEST(parse_emit_ops)
@@ -4346,7 +4354,7 @@ TCase *libfyaml_case_generic(void)
 	tcase_add_test(tc, get_at_flatten);
 
 	/* set ops */
-	// tcase_add_test(tc, set_ops);
+	tcase_add_test(tc, set_ops);
 #if 0
 	/* parse and emit operations */
 	tcase_add_test(tc, parse_emit_ops);
