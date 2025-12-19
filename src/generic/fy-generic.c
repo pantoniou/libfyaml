@@ -2125,6 +2125,95 @@ err_out:
 	goto out;
 }
 
+static fy_generic
+fy_generic_op_merge(const struct fy_generic_op_desc *desc,
+		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		     fy_generic in, const struct fy_generic_op_args *args)
+{
+	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
+	struct fy_generic_collection col;
+	struct iovec iov[2];
+	fy_generic key, value, key2;
+	size_t i, j, k;
+	fy_generic out = fy_invalid;
+	int rc;
+
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags,
+			in, FYGT_MAPPING, args,
+			FYGCODSF_MAP_ITEM_COUNT_NO_MULT2 |
+			FYGCODSF_NEED_WORK_IN_ITEMS | FYGCODSF_NEED_WORK_ITEMS_EXPANDED |
+			FYGCODSF_NEED_COPY_WORK_IN_ITEMS | FYGCODSF_NEED_COPY_WORK_ITEMS_EXPANDED);
+	if (rc)
+		return fy_invalid;
+
+	if (args->common.count && !args->common.items)
+		goto err_out;
+
+	if (cod->type != FYGT_MAPPING)
+		goto err_out;
+
+	/* verify that the extra arguments are mappings too */
+	for (i = 0; i < cod->item_count; i++) {
+		if (!fy_generic_is_mapping(cod->items[i]))
+			goto err_out;
+	}
+
+	/* now go over each key in the work area, and compare with all the following */
+	k = 0;
+	for (i = 0; i < cod->work_item_all_count; i += 2) {
+		key = cod->work_items_all[i + 0];
+		value = cod->work_items_all[i + 1];
+
+		for (j = i + 2; j < cod->work_item_all_count; j += 2) {
+			key2 = cod->work_items_all[j + 0];
+			if (key2.v == fy_invalid_value || fy_generic_compare(key, key2))
+				continue;
+			value = cod->work_items_all[j + 1];
+			/* erase this pair */
+			cod->work_items_all[j + 0] = fy_invalid;
+			cod->work_items_all[j + 1] = fy_invalid;
+			k += 2;
+		}
+		cod->work_items_all[i + 1] = value;
+	}
+	/* were there removed items? process removing invalids */
+	if (k > 0) {
+		k = 0;
+		j = cod->work_item_all_count;
+		for (i = 0; i < j; i += 2) {
+			key = cod->work_items_all[i + 0];
+			if (key.v == fy_invalid_value)
+				continue;
+			cod->work_items_all[k++] = key;
+			cod->work_items_all[k++] = cod->work_items_all[i + 1];
+		}
+	} else
+		k = cod->work_item_all_count;
+
+	/* nothing? */
+	if (k == 0) {
+		out = fy_map_empty;
+		goto out;
+	}
+
+	/* the collection header */
+	col.count = k / 2;
+	iov[0].iov_base = &col;
+	iov[0].iov_len = sizeof(col);
+	/* the content */
+	iov[1].iov_base = cod->work_items_all;
+	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
+
+	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
+out:
+	fy_generic_collection_op_data_cleanup(cod);
+	return out;
+
+err_out:
+	out = fy_invalid;
+	goto out;
+}
+
 static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 	[FYGBOP_CREATE_INV] = {
 		.op = FYGBOP_CREATE_INV,
@@ -2259,6 +2348,13 @@ static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 		.out_mask = FYGTM_COLLECTION,
 		.handler = fy_generic_op_reverse,
 	},
+	[FYGBOP_MERGE] = {
+		.op = FYGBOP_MERGE,
+		.op_name = "merge",
+		.in_mask = FYGTM_MAPPING,
+		.out_mask = FYGTM_MAPPING,
+		.handler = fy_generic_op_merge,
+	},
 };
 
 fy_generic
@@ -2272,7 +2368,7 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 	fy_generic v;
 	const void *p;
 	int iovcnt, num_threads;
-	fy_generic in_direct, out, key, key2, value, acc;
+	fy_generic in_direct, out, key, value, acc;
 	fy_generic_value col_mark;
 	unsigned int op;
 	size_t count, item_count, tmp_item_count, idx, i, j, k;
@@ -2328,7 +2424,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 			return fy_invalid;
 		break;
 
-	case FYGBOP_MERGE:
 	case FYGBOP_UNIQUE:
 	case FYGBOP_SORT:
 		if (count && !items)
@@ -2433,10 +2528,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 
 	case FYGT_SEQUENCE:
 
-		/* those work only on mappings */
-		if (op == FYGBOP_MERGE)
-			goto err_out;
-
 		col_item_size = sizeof(fy_generic);
 		item_count = count;
 		col_mark = FY_SEQ_V;
@@ -2446,8 +2537,7 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 	case FYGT_MAPPING:
 
 		/* those work only on sequences */
-		if (op == FYGBOP_CONCAT || op == FYGBOP_REVERSE || op == FYGBOP_UNIQUE ||
-		    op == FYGBOP_SET_AT)
+		if (op == FYGBOP_UNIQUE || op == FYGBOP_SET_AT)
 			goto err_out;
 
 		col_item_size = sizeof(fy_generic) * 2;
@@ -2457,7 +2547,7 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 			count /= 2;
 
 		item_count = (op != FYGBOP_CONTAINS &&
-			      op != FYGBOP_MERGE && op != FYGBOP_SORT &&
+			      op != FYGBOP_SORT &&
 			      op != FYGBOP_FILTER && op != FYGBOP_MAP && op != FYGBOP_MAP_FILTER &&
 			      op != FYGBOP_REDUCE && op != FYGBOP_GET_AT_PATH && op != FYGBOP_SET_AT_PATH) ?
 					MULSZ(count, 2) : count;
@@ -2507,19 +2597,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 	if (need_work_items) {
 
 		switch (op) {
-		case FYGBOP_MERGE:
-			work_item_count = in_item_count;
-			for (i = 0; i < item_count; i++) {
-				v = items[i];
-				if (!fy_generic_is_mapping(v))
-					goto err_out;
-
-				(void)fy_generic_mapping_get_items(v, &tmp_item_count);
-				work_item_count += tmp_item_count;
-			}
-			/* it's ok if there are no extra items, we might make a dup filter */
-			break;
-
 		case FYGBOP_UNIQUE:
 			work_item_count = in_item_count;
 			for (i = 0; i < item_count; i++) {
@@ -2606,59 +2683,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 do_operation:
 
 	switch (op) {
-	case FYGBOP_MERGE:
-		assert(work_items);
-		assert(items_mod);
-		assert(need_copy_work_items);
-
-		/* now go over each key in the work area, and compare with all the following */
-		k = 0;
-		for (i = 0; i < work_item_count; i += 2) {
-			key = work_items[i + 0];
-			value = work_items[i + 1];
-
-			for (j = i + 2; j < work_item_count; j += 2) {
-				key2 = work_items[j + 0];
-				if (key2.v == fy_invalid_value || fy_generic_compare(key, key2))
-					continue;
-				value = work_items[j + 1];
-				/* erase this pair */
-				work_items[j + 0] = fy_invalid;
-				work_items[j + 1] = fy_invalid;
-				k += 2;
-			}
-			work_items[i + 1] = value;
-		}
-
-		/* were there removed items? */
-		if (k > 0) {
-			k = 0;
-			for (i = 0; i < work_item_count; i += 2) {
-				key = work_items[i + 0];
-				if (key.v != fy_invalid_value) {
-					work_items[k++] = key;
-					work_items[k++] = work_items[i + 1];
-				}
-			}
-			work_item_count = k;
-		}
-
-		/* the collection header */
-		col.count = work_item_count / 2;
-		if (!col.count) {
-			/* nothing? */
-			out = fy_map_empty;
-			goto out;
-		}
-
-		iov[0].iov_base = &col;
-		iov[0].iov_len = sizeof(col);
-		/* the content */
-		iov[1].iov_base = work_items;
-		iov[1].iov_len = MULSZ(col.count, col_item_size);
-		iovcnt = 2;
-		break;
-
 	case FYGBOP_UNIQUE:
 		assert(work_items);
 		assert(items_mod);

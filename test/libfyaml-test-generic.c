@@ -2296,7 +2296,7 @@ START_TEST(gb_map_utils)
 	v = fy_generic_op(gb, FYGBOPF_MERGE, map, 1, items);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(v.v == fy_map_empty_value);
-	printf("> merge-on-empty-0: ");
+	printf("> merge-on-empty-empty-0: ");
 	fy_generic_emit_default(v);
 
 	/* merge, on simple map ("foo": 10) -> ("foo": 10) */
