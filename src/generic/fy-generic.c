@@ -2052,7 +2052,7 @@ fy_generic_op_reverse(const struct fy_generic_op_desc *desc,
 			}
 		}
 		/* the original */
-		for (i = cod->in_item_count - 2; (ssize_t)j >= 0; j -= 2) {
+		for (j = cod->in_item_count - 2; (ssize_t)j >= 0; j -= 2) {
 			cod->work_items_all[k++] = cod->in_items[j];
 			cod->work_items_all[k++] = cod->in_items[j + 1];
 		}
@@ -2462,6 +2462,166 @@ err_out:
 	goto out;
 }
 
+static fy_generic
+fy_generic_op_set_at(const struct fy_generic_op_desc *desc,
+		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		     fy_generic in, const struct fy_generic_op_args *args)
+{
+	struct fy_generic_op_args args_local, *args_new = &args_local;
+
+	if (!args->common.items || args->common.count != 1)
+		return fy_invalid;
+
+	memset(args_new, 0, sizeof(*args_new));
+
+	args_new->common.count = 1;
+	args_new->common.items = args->common.items;
+	args_new->common.tp = NULL;
+	args_new->insert_replace_get_set_at.idx = args->insert_replace_get_set_at.idx;
+
+	return fy_generic_op_args(gb, FYGBOPF_REPLACE, in, args);
+}
+
+static fy_generic
+fy_generic_op_set_at_path(const struct fy_generic_op_desc *desc,
+		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		     fy_generic in, const struct fy_generic_op_args *args)
+{
+	size_t i, path_count;
+	fy_generic out = fy_invalid;
+	fy_generic items_local[64];
+	fy_generic *items_alloc = NULL;
+	fy_generic *items;
+	const fy_generic *path;
+	size_t item_count;
+	fy_generic value, v;
+
+	if (args->common.count && !args->common.items)
+		goto err_out;
+
+	/* need at least 1 value */
+	if (args->common.count < 1)
+		goto err_out;
+
+	path = args->common.items;
+	path_count = args->common.count - 1;
+	value = args->common.items[path_count];
+
+	/* set / - replace */
+	if (!path_count) {
+		out = fy_generic_op_internalize(gb, flags, value);
+		goto out;
+	}
+
+	item_count = path_count;
+
+	if (item_count <= ARRAY_SIZE(items_local)) {
+		items = items_local;
+	} else {
+		items_alloc = malloc(sizeof(*items) * item_count);
+		if (!items_alloc)
+			goto err_out;
+		items = items_alloc;
+	}
+
+	/* 
+	 * in = [ 10, [ 100, 200 ] ]
+	 * items = [ 1, 1, 2000 ]
+	 * value = 2000
+	 * path = [ 1, 1 ]
+	 *
+	 * item_count = 3
+	 * path_count = 2
+	 *
+	 * v = [10, [100,200]]
+	 * i = 0: work_items[0] = [10, [100, 200]]
+	 *        v = [ 10, [100, 200]]/1 -> [100, 200]
+	 *  work_items[1] = v = [ 100, 200 ];
+	 *  --- 
+	 *  work_items[2] = 2000
+	 *  work_items = [ [10, [100, 200]], [100, 200], 2000 ]
+	 *
+	 * v = value : (2000)
+	 *
+	 *        i = 1 -> 0
+	 *        value = set(work_items[i], path[i], value)
+	 * i = 1: value = set(work_items[1], path[1], value)
+	 *        value = set([100, 200], 1, 2000)
+	 *        value = [100, 2000]
+	 * i = 0: value = set(work_items[0], path[0], value)
+	 *        value = set([10, [100, 200]], 1, [100, 2000])
+	 *        value = [10, [100, 2000]]
+	 *
+	 */
+
+	/* first go down recording as we go */
+	v = in;
+	for (i = 0; i < path_count - 1; i++) {
+		items[i] = v;
+		v = fy_generic_op(gb, FYGBOPF_GET, v, 1, (fy_generic []){path[i]});
+		if (fy_generic_is_invalid(v))
+			goto err_out;
+	}
+	items[i] = v;
+	i++;
+	assert(path_count == i);
+	while (i-- > 0) {
+		value = fy_generic_op(gb, FYGBOPF_SET, items[i], 2, (fy_generic []) { path[i], value });
+		if (fy_generic_is_invalid(v))
+			goto err_out;
+	}
+	fy_generic_emit_default(value);
+	out = value;
+out:
+	if (items_alloc)
+		free(items_alloc);
+	return out;
+
+err_out:
+	out = fy_invalid;
+	goto out;
+}
+
+static fy_generic
+fy_generic_op_get(const struct fy_generic_op_desc *desc,
+		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		     fy_generic in, const struct fy_generic_op_args *args)
+{
+	fy_generic key;
+	fy_generic out = fy_invalid;
+	size_t idx;
+
+	if (args->common.count && !args->common.items)
+		goto err_out;
+
+	/* one key exactly */
+	if (args->common.count != 1)
+		goto err_out;
+
+	key = args->common.items[0];
+
+	if (fy_generic_is_sequence(in)) {
+		idx = fy_cast(key, (size_t)-1);
+		if (idx == (size_t)-1)
+			goto err_out;
+		out = fy_generic_sequence_get_item_generic(in, idx);
+	} else if (fy_generic_is_mapping(in))
+		out = fy_generic_mapping_get_value(in, key);
+	else
+		out = fy_invalid;
+
+	if (fy_generic_is_invalid(out))
+		goto err_out;
+
+	out = fy_generic_op_internalize(gb, flags, out);
+out:
+	return out;
+
+err_out:
+	out = fy_invalid;
+	goto out;
+}
+
 static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 	[FYGBOP_CREATE_INV] = {
 		.op = FYGBOP_CREATE_INV,
@@ -2620,9 +2780,30 @@ static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 	[FYGBOP_SET] = {
 		.op = FYGBOP_SET,
 		.op_name = "set",
-		.in_mask = FYGTM_COLLECTION,	// sort works on mappings too
+		.in_mask = FYGTM_COLLECTION,
 		.out_mask = FYGTM_COLLECTION,
 		.handler = fy_generic_op_set,
+	},
+	[FYGBOP_SET_AT] = {
+		.op = FYGBOP_SET_AT,
+		.op_name = "set_at",
+		.in_mask = FYGTM_COLLECTION,
+		.out_mask = FYGTM_COLLECTION,
+		.handler = fy_generic_op_set_at,
+	},
+	[FYGBOP_SET_AT_PATH] = {
+		.op = FYGBOP_SET_AT_PATH,
+		.op_name = "set_at_path",
+		.in_mask = FYGTM_COLLECTION,
+		.out_mask = FYGTM_COLLECTION,
+		.handler = fy_generic_op_set_at_path,
+	},
+	[FYGBOP_GET] = {
+		.op = FYGBOP_GET,
+		.op_name = "get",
+		.in_mask = FYGTM_COLLECTION,
+		.out_mask = FYGTM_COLLECTION,
+		.handler = fy_generic_op_get,
 	},
 };
 
@@ -2667,6 +2848,11 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 	idx = SIZE_MAX;
 	memset(&fn, 0, sizeof(fn));
 
+	type = FYGT_INVALID;
+	work_items = NULL;
+	col_mark = 0;
+	item_count = 0;
+	col_item_size = 0;
 	need_work_items = false;
 	need_copy_work_items = false;
 	need_items_mod = !(flags & FYGBOPF_DONT_INTERNALIZE);	// if we internalize, need to mod
@@ -2684,13 +2870,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 
 	/* load args */
 	switch (op) {
-	case FYGBOP_SET:
-		if (!count)
-			return in;
-		if (!items)
-			return fy_invalid;
-		break;
-
 	case FYGBOP_FILTER:
 	case FYGBOP_MAP:
 	case FYGBOP_MAP_FILTER:
@@ -2718,12 +2897,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 		need_copy_work_items = true;
 		break;
 
-	case FYGBOP_GET:
-		/* get needs a key */
-		if (!count || !items)
-			return fy_invalid;
-		break;
-
 	case FYGBOP_GET_AT:
 		idx = args->insert_replace_get_set_at.idx;
 		need_work_items = false;
@@ -2738,19 +2911,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 			return fy_invalid;
 		need_work_items = false;
 		flags |= FYGBOPF_DONT_INTERNALIZE;
-		break;
-
-	case FYGBOP_SET_AT:
-		idx = args->insert_replace_get_set_at.idx;
-		if (!count || !items)
-			return fy_invalid;
-		break;
-
-	case FYGBOP_SET_AT_PATH:
-		/* set_at_path needs path components and value */
-		if (count < 1 || !items)
-			return fy_invalid;
-		need_work_items = true;
 		break;
 
 	case FYGBOP_PARSE:
@@ -2795,10 +2955,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 
 	case FYGT_MAPPING:
 
-		/* those work only on sequences */
-		if (op == FYGBOP_SET_AT)
-			goto err_out;
-
 		col_item_size = sizeof(fy_generic) * 2;
 
 		/* the count was given in items not pairs */
@@ -2806,7 +2962,7 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 			count /= 2;
 
 		item_count = (op != FYGBOP_FILTER && op != FYGBOP_MAP && op != FYGBOP_MAP_FILTER &&
-			      op != FYGBOP_REDUCE && op != FYGBOP_GET_AT_PATH && op != FYGBOP_SET_AT_PATH) ?
+			      op != FYGBOP_REDUCE && op != FYGBOP_GET_AT_PATH) ?
 					MULSZ(count, 2) : count;
 		col_mark = FY_MAP_V;
 		in_items = fy_generic_mapping_get_items(in_direct, &in_item_count);
@@ -2873,9 +3029,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 			}
 			break;
 
-		case FYGBOP_SET_AT_PATH:
-			work_item_count = item_count - 1;
-			break;
 		default:
 			goto err_out;
 		}
@@ -3108,28 +3261,6 @@ do_operation:
 		out = acc;
 		goto out;
 
-	case FYGBOP_GET:
-		/* Get value by key (for mappings) or index (for sequences) */
-		key = items[0];
-		out = fy_invalid;
-		switch (type) {
-		case FYGT_SEQUENCE:
-			idx = fy_cast(key, (size_t)-1);
-			if (idx == (size_t)-1)
-				break;
-			out = fy_generic_sequence_get_item_generic(in, idx);
-			break;
-
-		case FYGT_MAPPING:
-			fy_generic_emit_default(key);
-			out = fy_generic_mapping_get_value(in, key);
-			break;
-
-		default:
-			break;
-		}
-		goto out;
-
 	case FYGBOP_GET_AT:
 		out = fy_get_at(in, idx, fy_invalid);
 		goto out;
@@ -3164,72 +3295,6 @@ do_operation:
 					goto err_out;
 			}
 		}
-		goto out;
-
-	case FYGBOP_SET:
-		out = in;
-		for (i = 0; i < item_count && fy_generic_is_valid(out); i += 2) {
-
-			key = items[i + 0];
-			value = items[i + 1];
-
-			if (type == FYGT_SEQUENCE) {
-				out = fy_generic_op(gb, FYGBOPF_REPLACE, out, 1, (fy_generic []) { value }, fy_cast(key, -1) );
-			} else if (type == FYGT_MAPPING) {
-				out = fy_generic_op(gb, FYGBOPF_ASSOC, out, 1, (fy_generic []) { key, value });
-			} else
-				goto err_out;
-		}
-		goto out;
-
-	case FYGBOP_SET_AT:
-		out = fy_generic_op(gb, FYGBOPF_REPLACE, in, 1, (fy_generic []) { items[0] }, idx);
-		goto out;
-
-	case FYGBOP_SET_AT_PATH:
-		assert(work_items);
-		assert(work_item_count);
-
-		/* last item is the value */
-		value = items[item_count - 1];
-
-		j = item_count - 1;
-		printf("item_count=%zu, j=%zu\n", item_count, j);
-		/* first pass, collections up to the point */
-		v = in;
-		for (i = 0; i < j - 1; i++) {
-			work_items[i] = v;
-
-			printf("%zu: v,work_items[%zu] - ", i, i); fy_generic_emit_default(v);
-			printf("%zu: items[%zu] - ", i, i); fy_generic_emit_default(items[i]);
-
-			v = fy_generic_op(gb, FYGBOPF_GET |  FYGBOPF_MAP_ITEM_COUNT, work_items[i],
-					1, (fy_generic []){ items[i] });
-			if (fy_generic_is_invalid(v))
-				goto err_out;
-
-			printf("%zu: new-v - ", i); fy_generic_emit_default(v);
-		}
-
-		printf("done collecting\n");
-
-		/* move backwards, setting */
-		for (;;) {
-			printf("%zu: v - ", i); fy_generic_emit_default(v);
-			printf("%zu: value - ", i); fy_generic_emit_default(value);
-			printf("%zu: items[%zu] - ", i, i); fy_generic_emit_default(items[i]);
-			value = fy_generic_op(gb, FYGBOPF_SET | FYGBOPF_MAP_ITEM_COUNT, v,
-					2, (fy_generic []) { items[i], value });
-			if (fy_generic_is_invalid(value))
-				goto err_out;
-			if (i == 0)
-				break;
-			v = work_items[--i];
-			printf("%zu: new-v - ", i); fy_generic_emit_default(v);
-		}
-
-		/* the last value out is the new thing */
-		out = value;
 		goto out;
 
 	case FYGBOP_PARSE:
