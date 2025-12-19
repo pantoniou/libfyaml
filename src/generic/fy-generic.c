@@ -2622,6 +2622,82 @@ err_out:
 	goto out;
 }
 
+static fy_generic
+fy_generic_op_get_at(const struct fy_generic_op_desc *desc,
+		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		     fy_generic in, const struct fy_generic_op_args *args)
+{
+	size_t idx;
+	fy_generic out;
+
+	if (args->common.count)
+		goto err_out;
+
+	idx = args->insert_replace_get_set_at.idx;
+	if ((ssize_t)idx < 0)
+		goto err_out;
+
+	if (fy_generic_is_sequence(in)) {
+		const fy_generic_sequence *seqp = fy_generic_sequence_resolve(in);
+		if (idx >= seqp->count)
+			goto err_out;
+		out = seqp->items[idx];
+	} else if (fy_generic_is_mapping(in)) {
+		const fy_generic_mapping *mapp = fy_generic_mapping_resolve(in);
+		if (idx >= mapp->count)
+			goto err_out;
+		out = mapp->pairs[idx].value;
+	} else
+		goto err_out;
+
+	out = fy_generic_op_internalize(gb, flags, out);
+out:
+	return out;
+
+err_out:
+	out = fy_invalid;
+	goto out;
+}
+
+static fy_generic
+fy_generic_op_get_at_path(const struct fy_generic_op_desc *desc,
+		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		     fy_generic in, const struct fy_generic_op_args *args)
+{
+	size_t i, path_count;
+	fy_generic out = fy_invalid;
+	const fy_generic *path;
+	fy_generic v;
+
+	if (args->common.count && !args->common.items)
+		goto err_out;
+
+	path = args->common.items;
+	path_count = args->common.count;
+
+	/* need at least 1 path component, if not return self */
+	if (!path_count) {
+		out = fy_generic_op_internalize(gb, flags, in);
+		goto out;
+	}
+
+	/* go down */
+	v = in;
+	for (i = 0; i < path_count; i++) {
+		v = fy_generic_op(gb, FYGBOPF_GET, v, 1, (fy_generic []){path[i]});
+		if (fy_generic_is_invalid(v))
+			goto err_out;
+	}
+	/* found it */
+	out = v;
+out:
+	return out;
+
+err_out:
+	out = fy_invalid;
+	goto out;
+}
+
 static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 	[FYGBOP_CREATE_INV] = {
 		.op = FYGBOP_CREATE_INV,
@@ -2805,6 +2881,20 @@ static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 		.out_mask = FYGTM_COLLECTION,
 		.handler = fy_generic_op_get,
 	},
+	[FYGBOP_GET_AT] = {
+		.op = FYGBOP_GET_AT,
+		.op_name = "get_at",
+		.in_mask = FYGTM_COLLECTION,
+		.out_mask = FYGTM_COLLECTION,
+		.handler = fy_generic_op_get_at,
+	},
+	[FYGBOP_GET_AT_PATH] = {
+		.op = FYGBOP_GET_AT_PATH,
+		.op_name = "get_at_path",
+		.in_mask = FYGTM_COLLECTION,
+		.out_mask = FYGTM_COLLECTION,
+		.handler = fy_generic_op_get_at_path,
+	},
 };
 
 fy_generic
@@ -2897,22 +2987,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 		need_copy_work_items = true;
 		break;
 
-	case FYGBOP_GET_AT:
-		idx = args->insert_replace_get_set_at.idx;
-		need_work_items = false;
-		has_args = false;
-		break;
-
-	case FYGBOP_GET_AT_PATH:
-		if (!count)
-			return in;
-
-		if (!items)
-			return fy_invalid;
-		need_work_items = false;
-		flags |= FYGBOPF_DONT_INTERNALIZE;
-		break;
-
 	case FYGBOP_PARSE:
 		/* parse doesn't require items */
 		break;
@@ -2962,7 +3036,7 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 			count /= 2;
 
 		item_count = (op != FYGBOP_FILTER && op != FYGBOP_MAP && op != FYGBOP_MAP_FILTER &&
-			      op != FYGBOP_REDUCE && op != FYGBOP_GET_AT_PATH) ?
+			      op != FYGBOP_REDUCE) ?
 					MULSZ(count, 2) : count;
 		col_mark = FY_MAP_V;
 		in_items = fy_generic_mapping_get_items(in_direct, &in_item_count);
@@ -3259,42 +3333,6 @@ do_operation:
 			acc = work_args->vresult;
 		}
 		out = acc;
-		goto out;
-
-	case FYGBOP_GET_AT:
-		out = fy_get_at(in, idx, fy_invalid);
-		goto out;
-
-	case FYGBOP_GET_AT_PATH:
-		out = in;
-		for (i = 0; i < item_count && fy_generic_is_valid(out); i++) {
-
-			if ((flags & FYGBOPF_FLATTEN_KEYS) && fy_generic_is_sequence(items[i]))
-				k = fy_len(items[i]);
-			else
-				k = 1;
-				
-			for (j = 0; j < k; j++) {
-
-				if ((flags & FYGBOPF_FLATTEN_KEYS) && fy_generic_is_sequence(items[i]))
-					key = fy_get_at(items[i], j, fy_invalid);
-				else
-					key = items[i];
-
-				if (fy_generic_is_invalid(key))
-					goto err_out;
-
-				if (fy_generic_is_sequence(out)) {
-					idx = fy_cast(key, (size_t)-1);
-					if (idx == (size_t)-1)
-						goto err_out;
-					out = fy_generic_sequence_get_item_generic(out, idx);
-				} else if (fy_generic_is_mapping(in)) {
-					out = fy_generic_mapping_get_value(out, key);
-				} else
-					goto err_out;
-			}
-		}
 		goto out;
 
 	case FYGBOP_PARSE:

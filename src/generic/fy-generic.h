@@ -4363,7 +4363,6 @@ enum fy_gb_op_flags {
 	FYGBOPF_PARALLEL	= FY_BIT(19),			// perform in parallel
 	FYGBOPF_MAP_ITEM_COUNT	= FY_BIT(20),			// the count is items, not pairs for mappings
 	FYGBOPF_BLOCK_FN	= FY_BIT(21),			// the function is a block
-	FYGBOPF_FLATTEN_KEYS	= FY_BIT(22),			// flatten sequence keys during lookup
 	FYGBOPF_CREATE_PATH	= FY_BIT(23),			// create intermediate paths like mkdir -p
 	FYGBOPF_UNSIGNED	= FY_BIT(23),			// int scalar created is unsigned (note same as CREATE_PATH)
 };
@@ -4766,22 +4765,6 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	})
 
 #define fy_get_at_path(...) (FY_CPP_THIRD(__VA_ARGS__, fy_gb_get_at_path, fy_local_get_at_path)(__VA_ARGS__))
-
-#define fy_gb_get_at_path_flatten(_gb, _in, ...) \
-	(fy_generic_op((_gb), \
-		FYGBOPF_GET_AT_PATH | FYGBOPF_FLATTEN_KEYS, (_in), \
-			FY_CPP_VA_COUNT(__VA_ARGS__), \
-			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
-
-#define fy_local_get_at_path_flatten(_in, ...) \
-	({ \
-		__typeof__(_in) __in = (_in); \
-		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
-		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
-		FY_LOCAL_OP(FYGBOPF_GET_AT_PATH | FYGBOPF_FLATTEN_KEYS, __in, _count, _items); \
-	})
-
-#define fy_get_at_path_flatten(...) (FY_CPP_THIRD(__VA_ARGS__, fy_gb_get_at_path_flatten, fy_local_get_at_path_flatten)(__VA_ARGS__))
 
 #define fy_gb_set(_gb, _col, ...) \
 	(fy_generic_op((_gb), \

@@ -3821,6 +3821,7 @@ START_TEST(get_at_path)
 	v = fy_local_get_at_path(seq, 2);  /* index 2 -> value 30 */
 	ck_assert(fy_cast(v, -1) == 30);
 	printf("> fy_local_get_at_path(seq, 2) = 30\n");
+	fy_generic_emit_default(v);
 
 	/* Test 2: fy_local_lookup with mapping */
 	map = fy_local_mapping("a", 1, "b", 2, "c", 3);
@@ -3828,6 +3829,7 @@ START_TEST(get_at_path)
 	v = fy_local_get_at_path(map, "b");  /* key "b" -> value 2 */
 	ck_assert(fy_cast(v, -1) == 2);
 	printf("> fy_local_get_at_path(map, \"b\") = 2\n");
+	fy_generic_emit_default(v);
 
 	/* Test 3: fy_local_lookup with nested path */
 	seq = fy_local_sequence(10, 20, 30);
@@ -3871,126 +3873,6 @@ START_TEST(get_at_path)
 	v = fy_local_get_at_path(seq, 99);  /* index out of bounds */
 	ck_assert(!fy_generic_is_valid(v));
 	printf("> fy_local_lookup out of bounds returns fy_invalid\n");
-}
-END_TEST
-
-START_TEST(get_at_flatten)
-{
-	char buf[16384];
-	struct fy_generic_builder *gb;
-	fy_generic map, seq, nested_map, v, keys, inner_map, inner_seq;
-
-	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
-			buf, sizeof(buf));
-	ck_assert_ptr_ne(gb, NULL);
-
-	/* Flatten sequence of keys - sequential lookup */
-	/* map["a"]["b"] where keys = seq("a", "b") */
-	nested_map = fy_local_mapping("a", fy_local_mapping("b", 42));
-	keys = fy_local_sequence("a", "b");
-	v = fy_local_get_at_path_flatten(nested_map, keys);
-	ck_assert(fy_cast(v, -1) == 42);
-	printf("> flatten map[seq(\"a\", \"b\")] = map[\"a\"][\"b\"] = 42\n");
-
-	/* Flatten with sequence indices */
-	/* seq[0][1] where indices = seq(0, 1) */
-	seq = fy_local_sequence(
-		fy_local_sequence(10, 20, 30),
-		fy_local_sequence(40, 50, 60)
-	);
-	keys = fy_local_sequence(1, 2);
-	v = fy_local_get_at_path_flatten(seq, keys);
-	ck_assert(fy_cast(v, -1) == 60);
-	printf("> flatten seq[seq(1, 2)] = seq[1][2] = 60\n");
-
-	/* Mixed flatten - sequence followed by scalar */
-	/* map["x"]["y"]["val"] = flatten(map, seq("x", "y"), "val") */
-	nested_map = fy_local_mapping(
-		"x", fy_local_mapping(
-			"y", fy_local_mapping("val", 123)
-		)
-	);
-	keys = fy_local_sequence("x", "y");
-	v = fy_local_get_at_path_flatten(nested_map, keys, "val");
-	ck_assert(fy_cast(v, -1) == 123);
-	printf("> flatten map[seq(\"x\", \"y\")][\"val\"] = map[\"x\"][\"y\"][\"val\"] = 123\n");
-
-	/* Longer path with multiple sequential lookups */
-	/* map["data"][0]["value"] */
-	inner_seq = fy_local_sequence(
-		fy_local_mapping("value", 99, "name", "first"),
-		fy_local_mapping("value", 88, "name", "second")
-	);
-	map = fy_local_mapping("data", inner_seq);
-	keys = fy_local_sequence(0);
-	v = fy_local_get_at_path_flatten(map, "data", keys, "value");
-	ck_assert(fy_cast(v, -1) == 99);
-	printf("> flatten map[\"data\"][seq(0)][\"value\"] = 99\n");
-
-	/* Builder-based flatten lookup */
-	inner_map = fy_gb_mapping(gb, "z", 777);
-	map = fy_gb_mapping(gb, "p", inner_map);
-	keys = fy_gb_sequence(gb, "p", "z");
-	v = fy_gb_get_at_path_flatten(gb, map, keys);
-	ck_assert(fy_cast(v, -1) == 777);
-	printf("> fy_gb_get_at_path_flatten map[seq(\"p\", \"z\")] = 777\n");
-
-	/* Generic fy_local_get_at_path_flatten */
-	nested_map = fy_local_mapping("i", fy_local_mapping("j", 555));
-	keys = fy_local_sequence("i", "j");
-	v = fy_local_get_at_path_flatten(nested_map, keys);
-	ck_assert(fy_cast(v, -1) == 555);
-	printf("> fy_local_get_at_path_flatten: map[\"i\"][\"j\"] = 555\n");
-
-	/* Flatten with invalid mapping path component (should fail) */
-	map = fy_local_mapping("a", 1);
-	keys = fy_local_mapping("x", 10);  /* mapping as path component is invalid */
-	v = fy_local_get_at_path_flatten(map, keys);
-	ck_assert(!fy_generic_is_valid(v));
-	printf("> flatten with mapping path component returns fy_invalid\n");
-
-	/* Complex nested structure */
-	/* users[0]["profile"]["age"] */
-	map = fy_local_mapping(
-		"users", fy_local_sequence(
-			fy_local_mapping(
-				"profile", fy_local_mapping("age", 25, "name", "alice")
-			),
-			fy_local_mapping(
-				"profile", fy_local_mapping("age", 30, "name", "bob")
-			)
-		)
-	);
-	keys = fy_local_sequence(0);
-	v = fy_local_get_at_path_flatten(map, "users", keys, "profile", "age");
-	ck_assert(fy_cast(v, -1) == 25);
-	printf("> complex: map[\"users\"][0][\"profile\"][\"age\"] = 25\n");
-
-	/* Single key flatten */
-	map = fy_local_mapping("x", 42);
-	keys = fy_local_sequence("x");
-	v = fy_local_get_at_path_flatten(map, keys);
-	ck_assert(fy_cast(v, -1) == 42);
-	printf("> flatten single key seq(\"x\") = map[\"x\"] = 42\n");
-
-	/* Empty sequence flatten returns input */
-	map = fy_local_mapping("a", 1);
-	keys = fy_local_sequence();
-	v = fy_local_get_at_path_flatten(map, keys);
-	/* Empty sequence means no lookups, should return input */
-	ck_assert(fy_get_type(v) == FYGT_MAPPING);
-	printf("> flatten with empty sequence returns input (map)\n");
-
-	/* Longer flatten sequence */
-	/* Build nested structure: map["a"]["b"]["c"]["d"] = 1000 */
-	nested_map = fy_local_mapping("d", 1000);
-	nested_map = fy_local_mapping("c", nested_map);
-	nested_map = fy_local_mapping("b", nested_map);
-	nested_map = fy_local_mapping("a", nested_map);
-	keys = fy_local_sequence("a", "b", "c", "d");
-	v = fy_local_get_at_path_flatten(nested_map, keys);
-	ck_assert(fy_cast(v, -1) == 1000);
-	printf("> long flatten: map[\"a\"][\"b\"][\"c\"][\"d\"] = 1000\n");
 }
 END_TEST
 
@@ -4364,9 +4246,6 @@ TCase *libfyaml_case_generic(void)
 
 	/* get_at_path macros */
 	tcase_add_test(tc, get_at_path);
-
-	/* get_at_path flatten */
-	tcase_add_test(tc, get_at_flatten);
 
 	/* set ops */
 	tcase_add_test(tc, set_ops);
