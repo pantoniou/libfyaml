@@ -2214,6 +2214,90 @@ err_out:
 	goto out;
 }
 
+static fy_generic
+fy_generic_op_unique(const struct fy_generic_op_desc *desc,
+		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		     fy_generic in, const struct fy_generic_op_args *args)
+{
+	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
+	struct fy_generic_collection col;
+	struct iovec iov[2];
+	fy_generic value, v;
+	size_t i, j, k;
+	fy_generic out = fy_invalid;
+	int rc;
+
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags,
+			in, FYGT_SEQUENCE, args,
+			FYGCODSF_NEED_WORK_IN_ITEMS | FYGCODSF_NEED_WORK_ITEMS_EXPANDED |
+			FYGCODSF_NEED_COPY_WORK_IN_ITEMS | FYGCODSF_NEED_COPY_WORK_ITEMS_EXPANDED);
+	if (rc)
+		return fy_invalid;
+
+	if (args->common.count && !args->common.items)
+		goto err_out;
+
+	if (cod->type != FYGT_SEQUENCE)
+		goto err_out;
+
+	/* verify that the extra arguments are sequences too */
+	for (i = 0; i < cod->item_count; i++) {
+		if (!fy_generic_is_sequence(cod->items[i]))
+			goto err_out;
+	}
+
+	/* now go over each item in the work area, and compare with all the following */
+	k = 0;
+	for (i = 0; i < cod->work_item_all_count; i++) {
+		v = cod->work_items_all[i];
+		for (j = i + 1; j < cod->work_item_all_count; j++) {
+			value = cod->work_items_all[j];
+			if (value.v == fy_invalid_value || fy_generic_compare(v, value))
+				continue;
+			cod->work_items_all[j] = fy_invalid;
+			k++;
+		}
+	}
+
+	/* if no removed items, return the original */
+	if (!k) {
+		out = fy_generic_op_internalize(gb, flags, in);
+		goto out;
+	}
+
+	/* there were removed items */
+	k = 0;
+	for (i = 0; i < cod->work_item_all_count; i++) {
+		v = cod->work_items_all[i];
+		if (v.v == fy_invalid_value)
+			continue;
+		cod->work_items_all[k++] = v;
+	}
+
+	/* nothing? */
+	if (k == 0) {
+		out = fy_seq_empty;
+		goto out;
+	}
+
+	/* the collection header */
+	col.count = k;
+	iov[0].iov_base = &col;
+	iov[0].iov_len = sizeof(col);
+	/* the content */
+	iov[1].iov_base = cod->work_items_all;
+	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
+
+	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
+out:
+	fy_generic_collection_op_data_cleanup(cod);
+	return out;
+
+err_out:
+	out = fy_invalid;
+	goto out;
+}
+
 static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 	[FYGBOP_CREATE_INV] = {
 		.op = FYGBOP_CREATE_INV,
@@ -2355,6 +2439,13 @@ static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 		.out_mask = FYGTM_MAPPING,
 		.handler = fy_generic_op_merge,
 	},
+	[FYGBOP_UNIQUE] = {
+		.op = FYGBOP_UNIQUE,
+		.op_name = "unique",
+		.in_mask = FYGTM_SEQUENCE,
+		.out_mask = FYGTM_SEQUENCE,
+		.handler = fy_generic_op_unique,
+	},
 };
 
 fy_generic
@@ -2424,7 +2515,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 			return fy_invalid;
 		break;
 
-	case FYGBOP_UNIQUE:
 	case FYGBOP_SORT:
 		if (count && !items)
 			return fy_invalid;
@@ -2537,7 +2627,7 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 	case FYGT_MAPPING:
 
 		/* those work only on sequences */
-		if (op == FYGBOP_UNIQUE || op == FYGBOP_SET_AT)
+		if (op == FYGBOP_SET_AT)
 			goto err_out;
 
 		col_item_size = sizeof(fy_generic) * 2;
@@ -2597,18 +2687,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 	if (need_work_items) {
 
 		switch (op) {
-		case FYGBOP_UNIQUE:
-			work_item_count = in_item_count;
-			for (i = 0; i < item_count; i++) {
-				v = items[i];
-				if (!fy_generic_is_sequence(v))
-					goto err_out;
-
-				(void)fy_generic_sequence_get_items(v, &tmp_item_count);
-				work_item_count += tmp_item_count;
-			}
-			break;
-
 		case FYGBOP_SORT:
 		case FYGBOP_FILTER:
 		case FYGBOP_MAP:
@@ -2683,51 +2761,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 do_operation:
 
 	switch (op) {
-	case FYGBOP_UNIQUE:
-		assert(work_items);
-		assert(items_mod);
-		assert(need_copy_work_items);
-
-		/* now go over each item in the work area, and compare with all the following */
-		k = 0;
-		for (i = 0; i < work_item_count; i++) {
-			v = work_items[i];
-			for (j = i + 1; j < work_item_count; j++) {
-				value = work_items[j];
-				if (value.v == fy_invalid_value || fy_generic_compare(v, value))
-					continue;
-				work_items[j] = fy_invalid;
-				k++;
-			}
-		}
-
-		/* there were removed items */
-		if (k > 0) {
-			k = 0;
-			for (i = 0; i < work_item_count; i++) {
-				v = work_items[i];
-				if (v.v != fy_invalid_value)
-					work_items[k++] = v;
-			}
-			work_item_count = k;
-		}
-
-		/* the collection header */
-		col.count = work_item_count;
-		if (!col.count) {
-			/* nothing? */
-			out = fy_seq_empty;
-			goto out;
-		}
-
-		iov[0].iov_base = &col;
-		iov[0].iov_len = sizeof(col);
-		/* the content */
-		iov[1].iov_base = work_items;
-		iov[1].iov_len = MULSZ(col.count, col_item_size);
-		iovcnt = 2;
-		break;
-
 	case FYGBOP_SORT:
 		assert(work_items);
 		assert(items_mod);
