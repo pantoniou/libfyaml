@@ -1505,6 +1505,12 @@ START_TEST(gb_dedup_basics)
 	ck_assert(fy_generic_builder_contains(gb, v));
 
 	/* verify that the value is the same one as previously */
+	if (v.v != v_int_out_of_place.v) {
+		printf("======================================================================================\n");
+		printf("v.v=0x%016lx v_int_out_of_place.v=0x%016lx\n",
+				v.v, v_int_out_of_place.v);
+		printf("======================================================================================\n");
+	}
 	ck_assert(v.v == v_int_out_of_place.v);
 
 	// printf("0x%016lx 0x%016lx\n", v.v, v_int_out_of_place.v);
@@ -1619,7 +1625,9 @@ static fy_generic calculate_seq_sum(enum fy_gb_cfg_flags flags, struct fy_generi
 	}
 
 	/* we know that the value must be out of place */
+	printf("%s: fy_value before\n", __func__);
 	v = fy_value(gb, sum);
+	printf("%s: fy_value after\n", __func__);
 	ck_assert(!fy_generic_is_in_place(v));
 	ck_assert(fy_generic_builder_contains(gb, v));
 
@@ -1666,20 +1674,26 @@ START_TEST(gb_dedup_scoping)
 	char buf[8192];
 	struct fy_generic_builder *gb;
 	fy_generic seq, v, vexp;
-	long long expected;
+	long long expected, result;
 
 	gb = fy_generic_builder_create_in_place(
-			FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED, NULL,
+			FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED | FYGBCF_TRACE, NULL,
 			buf, sizeof(buf));
 	ck_assert(gb != NULL);
 
+	printf("%s: decorated int size=%zu\n", __func__, sizeof(struct fy_generic_decorated_int));
+
+	printf("%s: sequence creating\n", __func__);
 	seq = fy_gb_sequence(gb, 100, 200, 300, FYGT_INT_INPLACE_MAX+1);
+	printf("%s: sequence created\n", __func__);
 	ck_assert(fy_generic_is_sequence(seq));
 
 	expected = 100 + 200 + 300 + FYGT_INT_INPLACE_MAX+1;
 
 	/* internalize the expected value */
+	printf("%s: internalizing\n", __func__);
 	vexp = fy_gb_internalize(gb, fy_value(expected));
+	printf("%s: internalized\n", __func__);
 	ck_assert(fy_generic_is_long_long(vexp));
 
 	fprintf(stderr, "vexp=0x%016lx\n", vexp.v);
@@ -1688,7 +1702,17 @@ START_TEST(gb_dedup_scoping)
 	ck_assert(!fy_generic_is_in_place(vexp));
 
 	/* calculate (but with dedup enabled) */
-	v = calculate_seq_sum(FYGBCF_DEDUP_ENABLED, gb, seq);
+	printf("%s: sum calculating\n", __func__);
+	v = calculate_seq_sum(FYGBCF_DEDUP_ENABLED | FYGBCF_TRACE, gb, seq);
+	printf("%s: sum calculated\n", __func__);
+
+	/* verify correct result */
+	printf("%s: long long casting\n", __func__);
+	result = fy_cast(v, (long long)0);
+	printf("%s: long long casted\n", __func__);
+
+	printf("expected=%lld result=%lld\n", expected, result);
+	ck_assert(expected == result);
 
 	fprintf(stderr, "v=0x%016lx\n", v.v);
 
@@ -1697,6 +1721,7 @@ START_TEST(gb_dedup_scoping)
 
 	/* verify that the result is exactly the same one that we internalized */
 	ck_assert(vexp.v == v.v);
+
 }
 END_TEST
 
@@ -2083,6 +2108,7 @@ START_TEST(gb_assoc_deassoc)
 	items[0] = fy_value("foo");
 	items[1] = fy_value(10);
 	v = fy_generic_op(gb, FYGBOPF_ASSOC, map, 1, items);
+	fy_generic_emit_default(v);
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 1);
 
@@ -2141,7 +2167,7 @@ START_TEST(gb_assoc_deassoc)
 
 	/* simple replace */
 	map = fy_mapping("foo", 10, "bar", 20);
-	v = fy_generic_op(gb, FYGBOPF_ASSOC, map, 2, (fy_generic []){ fy_value("bar"), fy_value(200)} );
+	v = fy_generic_op(gb, FYGBOPF_ASSOC, map, 1, (fy_generic []){ fy_value("bar"), fy_value(200)} );
 	ck_assert(fy_generic_is_mapping(v));
 	ck_assert(fy_len(v) == 2);
 	ck_assert(fy_get(v, "foo", -1) == 10);
@@ -4199,6 +4225,7 @@ TCase *libfyaml_case_generic(void)
 	tcase_add_test(tc, gb_dedup_basics);
 	tcase_add_test(tc, gb_scoping);
 	tcase_add_test(tc, gb_dedup_scoping);
+
 	tcase_add_test(tc, gb_dedup_scoping2);
 
 	/* the polymorphic stuff */

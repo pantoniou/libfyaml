@@ -809,6 +809,18 @@ again:
 						if (a->flags & FYAF_KEEP_STATS)
 							fy_atomic_fetch_add(&dt->dup_stores, 1);
 
+						if (a->flags & FYAF_TRACE) {
+							int i;
+							size_t j;
+							printf("%s: %p: dup-store %p 0x%016lx %zx:", __func__, a, de->mem, hash, total_size);
+							for (i = 0; i < iovcnt; i++) {
+								for (j = 0; j < iov[i].iov_len; j++) {
+									printf("%02x", (int)(((uint8_t *)iov[i].iov_base)[j]) & 0xff);
+								}
+							}
+							printf("\n");
+						}
+
 						return de->mem;
 					}
 
@@ -878,6 +890,18 @@ again:
 	/* only update stats if someone asked for it */
 	if (a->flags & FYAF_KEEP_STATS)
 		fy_atomic_fetch_add(&dt->unique_stores, 1);
+
+	if (a->flags & FYAF_TRACE) {
+		int i;
+		size_t j;
+		printf("%s: %p: new-store %p 0x%016lx %zx:", __func__, a, de->mem, hash, total_size);
+		for (i = 0; i < iovcnt; i++) {
+			for (j = 0; j < iov[i].iov_len; j++) {
+				printf("%02x", (int)(((uint8_t *)iov[i].iov_base)[j]) & 0xff);
+			}
+		}
+		printf("\n");
+	}
 
 	return de->mem;
 }

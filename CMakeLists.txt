@@ -1511,6 +1511,9 @@ install(
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
 )
 
+# tags and cscope support
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/tags.cmake)
+
 # Print configuration summary
 message(STATUS "")
 message(STATUS "---{ ${PROJECT_NAME} ${PROJECT_VERSION} }---")

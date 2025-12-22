@@ -96,6 +96,7 @@ struct fy_allocator_info {
 
 enum fy_allocator_flags {
 	FYAF_KEEP_STATS = FY_BIT(0),
+	FYAF_TRACE	= FY_BIT(1),
 };
 
 struct fy_allocator {
@@ -119,6 +120,17 @@ static inline void fy_allocator_set_keep_stats(struct fy_allocator *a, bool keep
 		a->flags |= FYAF_KEEP_STATS;
 	else
 		a->flags &= ~FYAF_KEEP_STATS;
+}
+
+static inline void fy_allocator_set_trace(struct fy_allocator *a, bool trace)
+{
+	if (!a)
+		return;
+
+	if (trace)
+		a->flags |= FYAF_TRACE;
+	else
+		a->flags &= ~FYAF_TRACE;
 }
 
 FY_TYPE_FWD_DECL_LIST(registered_allocator_entry);

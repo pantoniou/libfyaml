@@ -579,7 +579,8 @@ typedef struct fy_generic_decorated_int {
 		signed long long sv;
 		unsigned long long uv;
 	};
-	bool is_unsigned : 1;	/* single bit, it is important for binary comparisons */
+	/* BUG: clang miscompiles this if it's a bool */
+	unsigned long long is_unsigned : 1;	/* single bit, it is important for binary comparisons */
 } fy_generic_decorated_int;
 
 typedef struct fy_generic_iterator {
@@ -3795,6 +3796,7 @@ enum fy_gb_cfg_flags {
 	FYGBCF_DEDUP_ENABLED		= FY_BIT(7),
 	FYGBCF_SCOPE_LEADER		= FY_BIT(8),
 	FYGBCF_CREATE_TAG		= FY_BIT(9),
+	FYGBCF_TRACE			= FY_BIT(10),
 };
 
 struct fy_generic_builder_cfg {
@@ -3974,41 +3976,16 @@ static inline fy_generic fy_gb_dint_type_create_out_of_place(struct fy_generic_b
 
 static inline fy_generic fy_gb_int_type_create_out_of_place(struct fy_generic_builder *gb, long long val)
 {
-	struct fy_generic_decorated_int vald;
-
-	memset(&vald, 0, sizeof(vald));
-	vald.sv = val;
-#if 0
-	const struct fy_generic_decorated_int *valp;
-	valp = fy_gb_lookup(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
-	if (!valp)
-		valp = fy_gb_store(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
-	if (!valp)
-		return fy_invalid;
-	return (fy_generic){ .v = (uintptr_t)valp | FY_INT_OUTPLACE_V };
-#else
-	return fy_gb_dint_type_create_out_of_place(gb, vald);
-#endif
+	return fy_gb_dint_type_create_out_of_place(gb, (struct fy_generic_decorated_int){
+				.sv = val,
+				.is_unsigned = false });
 }
 
 static inline fy_generic fy_gb_uint_type_create_out_of_place(struct fy_generic_builder *gb, unsigned long long val)
 {
-	struct fy_generic_decorated_int vald;
-
-	memset(&vald, 0, sizeof(vald));
-	vald.uv = val;
-	vald.is_unsigned = val > (unsigned long long)LLONG_MAX;
-#if 0
-	const struct fy_generic_decorated_int *valp;
-	valp = fy_gb_lookup(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
-	if (!valp)
-		valp = fy_gb_store(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
-	if (!valp)
-		return fy_invalid;
-	return (fy_generic){ .v = (uintptr_t)valp | FY_INT_OUTPLACE_V };
-#else
-	return fy_gb_dint_type_create_out_of_place(gb, vald);
-#endif
+	return fy_gb_dint_type_create_out_of_place(gb, (struct fy_generic_decorated_int){
+				.uv = val,
+				.is_unsigned = val > (unsigned long long)LLONG_MAX });
 }
 
 static inline fy_generic fy_gb_float_type_create_out_of_place(struct fy_generic_builder *gb, double val)
