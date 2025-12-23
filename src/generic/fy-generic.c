@@ -2799,6 +2799,88 @@ fy_op_filter_mapping_block_work(void *varg)
 }
 #endif
 
+static void
+fy_op_map_sequence_fn_work(void *varg)
+{
+	struct fy_op_work_arg *arg = varg;
+	fy_generic_map_xform_fn fn = arg->fn.map_xform;
+	fy_generic v;
+	size_t i, j;
+
+	for (i = 0, j = 0; i < arg->work_item_count; i++) {
+		v = fn(arg->gb, arg->work_items[i]);
+		if (v.v == fy_invalid_value)
+			goto err_out;
+		arg->work_items[i] = v;
+	}
+	arg->vresult = fy_true;
+	return;
+err_out:
+	arg->vresult = fy_invalid;
+}
+
+static void
+fy_op_map_mapping_fn_work(void *varg)
+{
+	struct fy_op_work_arg *arg = varg;
+	fy_generic_map_xform_fn fn = arg->fn.map_xform;
+	fy_generic v;
+	size_t i, j;
+
+	for (i = 0, j = 0; i < arg->work_item_count; i += 2) {
+		v = fn(arg->gb, arg->work_items[i + 1]);
+		if (v.v == fy_invalid_value)
+			goto err_out;
+		arg->work_items[i + 1] = v;
+	}
+	arg->vresult = fy_true;
+	return;
+err_out:
+	arg->vresult = fy_invalid;
+}
+
+#if defined(__BLOCKS__)
+static void
+fy_op_map_sequence_block_work(void *varg)
+{
+	struct fy_op_work_arg *arg = varg;
+	fy_generic_map_xform_block blk = arg->fn.map_xform_blk;
+	fy_generic v;
+	size_t i, j;
+
+	for (i = 0, j = 0; i < arg->work_item_count; i++) {
+		v = blk(arg->gb, arg->work_items[i]);
+		if (v.v == fy_invalid_value)
+			goto err_out;
+		arg->work_items[i] = v;
+	}
+	arg->vresult = fy_true;
+	return;
+err_out:
+	arg->vresult = fy_invalid;
+}
+
+static void
+fy_op_map_mapping_block_work(void *varg)
+{
+	struct fy_op_work_arg *arg = varg;
+	fy_generic_map_xform_block blk = arg->fn.map_xform_blk;
+	fy_generic v;
+	size_t i, j;
+
+	for (i = 0, j = 0; i < arg->work_item_count; i += 2) {
+		v = blk(arg->gb, arg->work_items[i + 1]);
+		if (v.v == fy_invalid_value)
+			goto err_out;
+		arg->work_items[i + 1] = v;
+	}
+	arg->vresult = fy_true;
+	return;
+err_out:
+	arg->vresult = fy_invalid;
+}
+#endif
+
 static inline fy_work_exec_fn 
 fy_select_op_exec_fn(enum fy_gb_op_flags flags, enum fy_generic_type type)
 {
@@ -2820,6 +2902,19 @@ fy_select_op_exec_fn(enum fy_gb_op_flags flags, enum fy_generic_type type)
 		}
 		return type == FYGT_SEQUENCE ? fy_op_filter_sequence_fn_work :
 		       type == FYGT_MAPPING  ? fy_op_filter_mapping_fn_work : NULL;
+		break;
+
+	case FYGBOP_MAP:
+		if (flags & FYGBOPF_BLOCK_FN) {
+#if defined(__BLOCKS__)
+			return type == FYGT_SEQUENCE ? fy_op_map_sequence_block_work :
+			       type == FYGT_MAPPING  ? fy_op_map_mapping_block_work : NULL;
+#else
+			return NULL;
+#endif
+		}
+		return type == FYGT_SEQUENCE ? fy_op_map_sequence_fn_work :
+		       type == FYGT_MAPPING  ? fy_op_map_mapping_fn_work : NULL;
 		break;
 	default:
 		break;
@@ -3068,6 +3163,98 @@ err_out:
 	goto out;
 }
 
+static fy_generic
+fy_generic_op_map(const struct fy_generic_op_desc *desc,
+		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		     fy_generic in, const struct fy_generic_op_args *args)
+{
+	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
+	struct fy_generic_parallel_op_data pd_local, *pd = &pd_local;
+	struct fy_generic_collection col;
+	fy_op_fn fn;
+	fy_work_exec_fn exec_fn;
+	fy_generic *work_items;
+	size_t work_item_count;
+	struct iovec iov[2];
+	size_t i, j, k;
+	fy_generic out = fy_invalid;
+	int rc;
+
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags,
+			in, FYGT_INVALID, args,
+			FYGCODSF_MAP_ITEM_COUNT_NO_MULT2 |
+			FYGCODSF_NEED_WORK_IN_ITEMS | FYGCODSF_NEED_WORK_ITEMS_EXPANDED |
+			FYGCODSF_NEED_COPY_WORK_IN_ITEMS | FYGCODSF_NEED_COPY_WORK_ITEMS_EXPANDED |
+			FYGCODSF_CHECK_MATCHING_COLLECTION_ITEM	|
+			((flags & FYGBOPF_PARALLEL) ? FYGCODSF_NEED_THREAD_POOL : 0));
+	if (rc)
+		return fy_invalid;
+
+	if (args->common.count && !args->common.items)
+		goto err_out;
+
+	/* nothing? return empty */
+	if (cod->work_item_all_count == 0)  {
+		out = cod->type == FYGT_SEQUENCE ? fy_seq_empty : fy_map_empty;
+		goto out;
+	}
+
+	if (flags & FYGBOPF_BLOCK_FN) {
+#if defined(__BLOCKS__)
+		fn.blk = args->filter_map_reduce_common.blk;
+		if (!fn.blk)
+			goto err_out;
+#else
+		goto err_out;
+#endif
+	} else {
+		fn.fn = args->filter_map_reduce_common.fn;
+		if (!fn.fn)
+			goto err_out;
+	}
+
+	exec_fn = fy_select_op_exec_fn(flags, cod->type);
+	if (!exec_fn)
+		goto err_out;
+
+	work_items = cod->work_items_all;
+	work_item_count = cod->work_item_all_count;
+
+	rc = fy_generic_parallel_op_data_setup(pd, cod, work_items, work_item_count);
+	if (rc)
+		goto err_out;
+
+	fy_generic_parallel_op_data_exec(pd, exec_fn, fn);
+
+	/* check for errors */
+	for (i = 0, j = 0; i < pd->work_num_threads; i++) {
+		if (pd->work_args[i].vresult.v != fy_true_value)
+			goto err_out;
+	}
+
+	fy_generic_parallel_op_data_cleanup(pd);
+
+	k = work_item_count;
+
+	/* the collection header */
+	col.count = cod->type == FYGT_SEQUENCE ? k : (k / 2);
+	iov[0].iov_base = &col;
+	iov[0].iov_len = sizeof(col);
+	/* the content */
+	iov[1].iov_base = work_items;
+	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
+
+	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
+out:
+	fy_generic_collection_op_data_cleanup(cod);
+	return out;
+
+err_out:
+	out = fy_invalid;
+	goto out;
+}
+
+
 static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 	[FYGBOP_CREATE_INV] = {
 		.op = FYGBOP_CREATE_INV,
@@ -3265,7 +3452,6 @@ static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 		.out_mask = FYGTM_COLLECTION,
 		.handler = fy_generic_op_get_at_path,
 	},
-#if 1
 	[FYGBOP_FILTER] = {
 		.op = FYGBOP_FILTER,
 		.op_name = "filter",
@@ -3273,7 +3459,13 @@ static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 		.out_mask = FYGTM_COLLECTION,
 		.handler = fy_generic_op_filter,
 	},
-#endif
+	[FYGBOP_MAP] = {
+		.op = FYGBOP_MAP,
+		.op_name = "map",
+		.in_mask = FYGTM_COLLECTION,
+		.out_mask = FYGTM_COLLECTION,
+		.handler = fy_generic_op_map,
+	},
 };
 
 fy_generic
