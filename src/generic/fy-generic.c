@@ -2799,13 +2799,180 @@ fy_op_filter_mapping_block_work(void *varg)
 }
 #endif
 
+static inline fy_work_exec_fn 
+fy_select_op_exec_fn(enum fy_gb_op_flags flags, enum fy_generic_type type)
+{
+	unsigned int op;
+
+	op = ((flags >> FYGBOPF_OP_SHIFT) & FYGBOPF_OP_MASK);
+	if (op >= FYGBOP_COUNT)
+		return NULL;
+
+	switch (op) {
+	case FYGBOP_FILTER:
+		if (flags & FYGBOPF_BLOCK_FN) {
+#if defined(__BLOCKS__)
+			return type == FYGT_SEQUENCE ? fy_op_filter_sequence_block_work :
+			       type == FYGT_MAPPING  ? fy_op_filter_mapping_block_work : NULL;
+#else
+			return NULL;
+#endif
+		}
+		return type == FYGT_SEQUENCE ? fy_op_filter_sequence_fn_work :
+		       type == FYGT_MAPPING  ? fy_op_filter_mapping_fn_work : NULL;
+		break;
+	default:
+		break;
+	}
+	return NULL;
+}
+
+struct fy_generic_parallel_op_data {
+	struct fy_generic_collection_op_data *cod;
+	struct fy_op_work_arg *work_args;
+	struct fy_thread_work *works;
+	struct fy_op_work_arg work_args_local[32];
+	struct fy_thread_work works_local[32];
+	size_t num_threads, work_num_threads;
+};
+
+static void
+fy_generic_parallel_op_data_cleanup(struct fy_generic_parallel_op_data *pd)
+{
+	if (pd->works && pd->works != pd->works_local) {
+		free(pd->works);
+		pd->works = NULL;
+	}
+	if (pd->work_args && pd->work_args != pd->work_args_local) {
+		free(pd->work_args);
+		pd->work_args = NULL;
+	}
+}
+
+static int
+fy_generic_parallel_op_data_setup(struct fy_generic_parallel_op_data *pd,
+				  struct fy_generic_collection_op_data *cod,
+				  fy_generic *work_items,
+				  size_t work_item_count)
+{
+	size_t i, chunk_size, start_idx, count_items;
+	size_t num_threads;
+	size_t work_num_threads;
+	size_t max_num_threads;
+
+	memset(pd, 0, sizeof(*pd));
+
+	pd->cod = cod;
+
+	if (cod->flags & FYGBOPF_PARALLEL) {
+		num_threads = (size_t)cod->num_threads;
+		if (!num_threads)
+			goto err_out;
+	} else
+		num_threads = 1;
+
+	max_num_threads = cod->type == FYGT_SEQUENCE ? work_item_count : (work_item_count / 2);
+
+	work_num_threads = num_threads >= max_num_threads ?
+				max_num_threads : num_threads;
+
+	if (work_num_threads <= ARRAY_SIZE(pd->work_args_local))
+		pd->work_args = pd->work_args_local;
+	else {
+		pd->work_args = malloc(sizeof(*pd->work_args) * work_num_threads);
+		if (!pd->work_args)
+			goto err_out;
+		memset(pd->work_args, 0, sizeof(*pd->work_args) * work_num_threads);
+	}
+
+	if (num_threads <= ARRAY_SIZE(pd->works_local))
+		pd->works = pd->works_local;
+	else {
+		pd->works = malloc(sizeof(*pd->works) * num_threads);
+		if (!pd->works)
+			goto err_out;
+		memset(pd->works, 0, sizeof(*pd->works) * num_threads);
+	}
+
+	if (work_num_threads > 1) {
+
+		/* distribute evenly */
+		chunk_size = (work_item_count + work_num_threads - 1) / work_num_threads;
+
+		/* for mappings the chunk must be even */
+		if (cod->type == FYGT_MAPPING && (chunk_size & 1))
+			chunk_size++;
+
+		assert(chunk_size <= work_item_count);
+
+		for (i = 0; i < work_num_threads; i++) {
+			start_idx = i * chunk_size;
+			count_items = chunk_size;
+
+			/* Last chunk might be smaller */
+			if (start_idx >= work_item_count)
+				break;
+			if (start_idx + count_items > work_item_count)
+				count_items = work_item_count - start_idx;
+
+			pd->work_args[i].gb = cod->gb;
+			pd->work_args[i].work_items = work_items + start_idx;
+			pd->work_args[i].work_item_count = count_items;
+
+			pd->works[i].arg = &pd->work_args[i];
+		}
+		/* and the dummy ones */
+		for (; i < num_threads; i++)
+			pd->works[i].fn = fy_op_dummy_work;
+
+	} else {
+		pd->work_args[0].gb = cod->gb;
+		pd->work_args[0].work_items = work_items;
+		pd->work_args[0].work_item_count = work_item_count;
+	}
+	pd->num_threads = num_threads;
+	pd->work_num_threads = work_num_threads;
+
+	return 0;
+
+err_out:
+	fy_generic_parallel_op_data_cleanup(pd);
+	return -1;
+}
+
+static void
+fy_generic_parallel_op_data_exec(struct fy_generic_parallel_op_data *pd,
+				 fy_work_exec_fn exec_fn, fy_op_fn fn)
+{
+	struct fy_generic_collection_op_data *cod = pd->cod;
+	size_t i;
+
+	if (pd->work_num_threads > 1) {
+		/* parallel, multithreaded */
+		for (i = 0; i < pd->work_num_threads; i++) {
+			pd->work_args[i].fn = fn;
+			pd->works[i].fn = exec_fn;
+		}
+		fy_thread_work_join(cod->tp, pd->works, pd->num_threads, NULL);
+	} else {
+		/* single threaded */
+		pd->work_args[0].fn = fn;
+		exec_fn(pd->work_args);
+	}
+}
+
 static fy_generic
 fy_generic_op_filter(const struct fy_generic_op_desc *desc,
 		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 		     fy_generic in, const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
+	struct fy_generic_parallel_op_data pd_local, *pd = &pd_local;
 	struct fy_generic_collection col;
+	fy_op_fn fn;
+	fy_work_exec_fn exec_fn;
+	fy_generic *work_items;
+	size_t work_item_count;
 	struct iovec iov[2];
 	size_t i, j, k;
 	fy_generic v;
@@ -2831,109 +2998,38 @@ fy_generic_op_filter(const struct fy_generic_op_desc *desc,
 		goto out;
 	}
 
-	fy_op_fn fn;
-	void (*exec_fn)(void *varg) = NULL;
-
-	if (!(flags & FYGBOPF_BLOCK_FN)) {
-		fn.fn = args->filter_map_reduce_common.fn;
-		if (!fn.fn)
-			goto err_out;
-
-		exec_fn = cod->type == FYGT_SEQUENCE ?
-				fy_op_filter_sequence_fn_work :
-				fy_op_filter_mapping_fn_work;
-	} else {
+	if (flags & FYGBOPF_BLOCK_FN) {
 #if defined(__BLOCKS__)
 		fn.blk = args->filter_map_reduce_common.blk;
 		if (!fn.blk)
 			goto err_out;
-		exec_fn = cod->type == FYGT_SEQUENCE ?
-				fy_op_filter_sequence_block_work :
-				fy_op_filter_mapping_block_work;
 #else
 		goto err_out;
 #endif
+	} else {
+		fn.fn = args->filter_map_reduce_common.fn;
+		if (!fn.fn)
+			goto err_out;
 	}
 
-	size_t num_threads, work_num_threads;
-	fy_generic *work_items;
-	size_t work_item_count;
+	exec_fn = fy_select_op_exec_fn(flags, cod->type);
+	if (!exec_fn)
+		goto err_out;
 
 	work_items = cod->work_items_all;
 	work_item_count = cod->work_item_all_count;
 
-	if (flags & FYGBOPF_PARALLEL) {
-		num_threads = (size_t)cod->num_threads;
-		if (!num_threads)
-			goto err_out;
-	} else
-		num_threads = 1;
+	rc = fy_generic_parallel_op_data_setup(pd, cod, work_items, work_item_count);
+	if (rc)
+		goto err_out;
 
-	work_num_threads = num_threads >= work_item_count ? work_item_count : num_threads;
-
-	struct fy_op_work_arg *work_args;
-
-	work_args = alloca(sizeof(*work_args) * work_num_threads);
-	memset(work_args, 0, sizeof(*work_args) * work_num_threads);
-
-	if (work_num_threads > 1) {
-		size_t start_idx, count_items;
-		size_t chunk_size;
-
-		struct fy_thread_work *works;
-
-		works = alloca(sizeof(*works) * num_threads);
-		memset(works, 0, sizeof(*works) * num_threads);
-
-		/* distribute evenly */
-		chunk_size = (work_item_count + work_num_threads - 1) / work_num_threads;
-
-		/* for mappings the chunk must be even */
-		if (cod->type == FYGT_MAPPING && (chunk_size & 1))
-			chunk_size++;
-
-		assert(chunk_size <= work_item_count);
-
-		for (i = 0; i < work_num_threads; i++) {
-			start_idx = i * chunk_size;
-			count_items = chunk_size;
-
-			/* Last chunk might be smaller */
-			if (start_idx >= work_item_count)
-				break;
-			if (start_idx + count_items > work_item_count)
-				count_items = work_item_count - start_idx;
-
-			work_args[i].type = cod->type;
-			work_args[i].gb = gb;
-			work_args[i].fn = fn;
-			work_args[i].work_items = work_items + start_idx;
-			work_args[i].work_item_count = count_items;
-
-			works[i].fn = exec_fn;
-			works[i].arg = &work_args[i];
-		}
-		/* and the dummy ones */
-		for (; i < num_threads; i++)
-			works[i].fn = fy_op_dummy_work;
-
-		/* parallel, multithreaded */
-		fy_thread_work_join(cod->tp, works, num_threads, NULL);
-
-	} else {
-		work_args[0].type = cod->type;
-		work_args[0].gb = gb;
-		work_args[0].fn = fn;
-		work_args[0].work_items = work_items;
-		work_args[0].work_item_count = work_item_count;
-
-		/* single threaded */
-		exec_fn(work_args);
-	}
+	fy_generic_parallel_op_data_exec(pd, exec_fn, fn);
 
 	/* collect the amount of removed counts */
-	for (i = 0, j = 0; i < work_num_threads; i++)
-		j += work_args[i].removed_items;
+	for (i = 0, j = 0; i < pd->work_num_threads; i++)
+		j += pd->work_args[i].removed_items;
+
+	fy_generic_parallel_op_data_cleanup(pd);
 
 	/* if everything removed, return empty */
 	if (j == work_item_count) {
