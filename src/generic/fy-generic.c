@@ -948,13 +948,6 @@ struct fy_generic_collection_op_data {
 	struct fy_thread_pool *tp;
 	struct fy_thread_pool *tp_alloc;
 	int num_threads;
-	size_t chunk_size;
-	struct fy_op_work_arg work_args_local[32];
-	struct fy_op_work_arg *work_args_alloc;
-	struct fy_op_work_arg *work_args;
-	struct fy_thread_work *works_local[32];
-	struct fy_thread_work *works_alloc;
-	struct fy_thread_work *works;
 };
 
 void fy_generic_collection_op_data_cleanup(struct fy_generic_collection_op_data *cod)
@@ -1006,6 +999,23 @@ int fy_generic_collection_op_data_setup(struct fy_generic_collection_op_data *co
 	cod->in_items = fy_generic_collection_get_items(in, &cod->in_item_count);
 
 	cod->type = fy_generic_get_type(in);
+
+	/* verify that the collections types match */
+	if (xflags & FYGCODSF_CHECK_MATCHING_COLLECTION_ITEM) {
+		if (cod->type == FYGT_SEQUENCE) {
+			for (i = 0; i < cod->item_count; i++) {
+				if (!fy_generic_is_sequence(cod->items[i]))
+					goto err_out;
+			}
+		} else if (cod->type == FYGT_MAPPING) {
+			for (i = 0; i < cod->item_count; i++) {
+				if (!fy_generic_is_mapping(cod->items[i]))
+					goto err_out;
+			}
+		} else
+			goto err_out;
+	}
+
 	if (out_type == FYGT_INVALID)
 		out_type = cod->type;
 	cod->out_type = out_type;
@@ -1129,23 +1139,12 @@ int fy_generic_collection_op_data_setup(struct fy_generic_collection_op_data *co
 				goto err_out;
 			cod->tp = cod->tp_alloc;
 		}
-	}
 
-	/* verify that the collections types match */
-	if (xflags & FYGCODSF_CHECK_MATCHING_COLLECTION_ITEM) {
-		if (cod->type == FYGT_SEQUENCE) {
-			for (i = 0; i < cod->item_count; i++) {
-				if (!fy_generic_is_sequence(cod->items[i]))
-					goto err_out;
-			}
-		} else if (cod->type == FYGT_MAPPING) {
-			for (i = 0; i < cod->item_count; i++) {
-				if (!fy_generic_is_mapping(cod->items[i]))
-					goto err_out;
-			}
-		} else
+		cod->num_threads = fy_thread_pool_get_num_threads(cod->tp);
+		if (!cod->num_threads)
 			goto err_out;
-	}
+	} else
+		cod->num_threads = 1;
 
 	return 0;
 err_out:
@@ -2726,6 +2725,80 @@ err_out:
 	goto out;
 }
 
+static void
+fy_op_dummy_work(void *varg)
+{
+	/* nothing */
+}
+
+static void
+fy_op_filter_sequence_fn_work(void *varg)
+{
+	struct fy_op_work_arg *arg = varg;
+	fy_generic_filter_pred_fn fn = arg->fn.filter_pred;
+	size_t i, j;
+
+	for (i = 0, j = 0; i < arg->work_item_count; i++) {
+		if (!fn(arg->gb, arg->work_items[i])) {
+			arg->work_items[i] = fy_invalid;
+			j++;
+		}
+	}
+	arg->removed_items = j;
+}
+
+static void
+fy_op_filter_mapping_fn_work(void *varg)
+{
+	struct fy_op_work_arg *arg = varg;
+	fy_generic_filter_pred_fn fn = arg->fn.filter_pred;
+	size_t i, j;
+
+	for (i = 0, j = 0; i < arg->work_item_count; i += 2) {
+		if (!fn(arg->gb, arg->work_items[i + 1])) {
+			arg->work_items[i] = fy_invalid;
+			arg->work_items[i + 1] = fy_invalid;
+			j += 2;
+		}
+	}
+	arg->removed_items = j;
+}
+
+#if defined(__BLOCKS__)
+static void
+fy_op_filter_sequence_block_work(void *varg)
+{
+	struct fy_op_work_arg *arg = varg;
+	fy_generic_filter_pred_block blk = arg->fn.filter_pred_blk;
+	size_t i, j;
+
+	for (i = 0, j = 0; i < arg->work_item_count; i++) {
+		if (!blk(arg->gb, arg->work_items[i])) {
+			arg->work_items[i] = fy_invalid;
+			j++;
+		}
+	}
+	arg->removed_items = j;
+}
+
+static void
+fy_op_filter_mapping_block_work(void *varg)
+{
+	struct fy_op_work_arg *arg = varg;
+	fy_generic_filter_pred_block blk = arg->fn.filter_pred_blk;
+	size_t i, j;
+
+	for (i = 0, j = 0; i < arg->work_item_count; i += 2) {
+		if (!blk(arg->gb, arg->work_items[i + 1])) {
+			arg->work_items[i] = fy_invalid;
+			arg->work_items[i + 1] = fy_invalid;
+			j += 2;
+		}
+	}
+	arg->removed_items = j;
+}
+#endif
+
 static fy_generic
 fy_generic_op_filter(const struct fy_generic_op_desc *desc,
 		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
@@ -2734,7 +2807,8 @@ fy_generic_op_filter(const struct fy_generic_op_desc *desc,
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_collection col;
 	struct iovec iov[2];
-	size_t k;
+	size_t i, j, k;
+	fy_generic v;
 	fy_generic out = fy_invalid;
 	int rc;
 
@@ -2744,7 +2818,7 @@ fy_generic_op_filter(const struct fy_generic_op_desc *desc,
 			FYGCODSF_NEED_WORK_IN_ITEMS | FYGCODSF_NEED_WORK_ITEMS_EXPANDED |
 			FYGCODSF_NEED_COPY_WORK_IN_ITEMS | FYGCODSF_NEED_COPY_WORK_ITEMS_EXPANDED |
 			FYGCODSF_CHECK_MATCHING_COLLECTION_ITEM	|
-			(flags & FYGBOPF_PARALLEL) ? FYGCODSF_NEED_THREAD_POOL : 0);
+			((flags & FYGBOPF_PARALLEL) ? FYGCODSF_NEED_THREAD_POOL : 0));
 	if (rc)
 		return fy_invalid;
 
@@ -2757,14 +2831,135 @@ fy_generic_op_filter(const struct fy_generic_op_desc *desc,
 		goto out;
 	}
 
-	k = cod->work_item_all_count;
+	fy_op_fn fn;
+	void (*exec_fn)(void *varg) = NULL;
+
+	if (!(flags & FYGBOPF_BLOCK_FN)) {
+		fn.fn = args->filter_map_reduce_common.fn;
+		if (!fn.fn)
+			goto err_out;
+
+		exec_fn = cod->type == FYGT_SEQUENCE ?
+				fy_op_filter_sequence_fn_work :
+				fy_op_filter_mapping_fn_work;
+	} else {
+#if defined(__BLOCKS__)
+		fn.blk = args->filter_map_reduce_common.blk;
+		if (!fn.blk)
+			goto err_out;
+		exec_fn = cod->type == FYGT_SEQUENCE ?
+				fy_op_filter_sequence_block_work :
+				fy_op_filter_mapping_block_work;
+#else
+		goto err_out;
+#endif
+	}
+
+	size_t num_threads, work_num_threads;
+	fy_generic *work_items;
+	size_t work_item_count;
+
+	work_items = cod->work_items_all;
+	work_item_count = cod->work_item_all_count;
+
+	if (flags & FYGBOPF_PARALLEL) {
+		num_threads = (size_t)cod->num_threads;
+		if (!num_threads)
+			goto err_out;
+	} else
+		num_threads = 1;
+
+	work_num_threads = num_threads >= work_item_count ? work_item_count : num_threads;
+
+	struct fy_op_work_arg *work_args;
+
+	work_args = alloca(sizeof(*work_args) * work_num_threads);
+	memset(work_args, 0, sizeof(*work_args) * work_num_threads);
+
+	if (work_num_threads > 1) {
+		size_t start_idx, count_items;
+		size_t chunk_size;
+
+		struct fy_thread_work *works;
+
+		works = alloca(sizeof(*works) * num_threads);
+		memset(works, 0, sizeof(*works) * num_threads);
+
+		/* distribute evenly */
+		chunk_size = (work_item_count + work_num_threads - 1) / work_num_threads;
+
+		/* for mappings the chunk must be even */
+		if (cod->type == FYGT_MAPPING && (chunk_size & 1))
+			chunk_size++;
+
+		assert(chunk_size <= work_item_count);
+
+		for (i = 0; i < work_num_threads; i++) {
+			start_idx = i * chunk_size;
+			count_items = chunk_size;
+
+			/* Last chunk might be smaller */
+			if (start_idx >= work_item_count)
+				break;
+			if (start_idx + count_items > work_item_count)
+				count_items = work_item_count - start_idx;
+
+			work_args[i].type = cod->type;
+			work_args[i].gb = gb;
+			work_args[i].fn = fn;
+			work_args[i].work_items = work_items + start_idx;
+			work_args[i].work_item_count = count_items;
+
+			works[i].fn = exec_fn;
+			works[i].arg = &work_args[i];
+		}
+		/* and the dummy ones */
+		for (; i < num_threads; i++)
+			works[i].fn = fy_op_dummy_work;
+
+		/* parallel, multithreaded */
+		fy_thread_work_join(cod->tp, works, num_threads, NULL);
+
+	} else {
+		work_args[0].type = cod->type;
+		work_args[0].gb = gb;
+		work_args[0].fn = fn;
+		work_args[0].work_items = work_items;
+		work_args[0].work_item_count = work_item_count;
+
+		/* single threaded */
+		exec_fn(work_args);
+	}
+
+	/* collect the amount of removed counts */
+	for (i = 0, j = 0; i < work_num_threads; i++)
+		j += work_args[i].removed_items;
+
+	/* if everything removed, return empty */
+	if (j == work_item_count) {
+		out = cod->type == FYGT_SEQUENCE ? fy_seq_empty : fy_map_empty;
+		goto out;
+	}
+
+	/* if nothing removed, return the input */
+	if (j == 0) {
+		out = fy_generic_op_internalize(gb, flags, in);
+		goto out;
+	}
+
+	/* something was removed, go over the items and remove the invalids */
+	for (i = 0, k = 0; i < work_item_count; i++) {
+		v = work_items[i];
+		if (v.v != fy_invalid_value)
+			work_items[k++] = v;
+	}
 
 	/* the collection header */
 	col.count = cod->type == FYGT_SEQUENCE ? k : (k / 2);
 	iov[0].iov_base = &col;
 	iov[0].iov_len = sizeof(col);
 	/* the content */
-	iov[1].iov_base = cod->work_items_all;
+	iov[1].iov_base = work_items;
 	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
 
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
@@ -2974,7 +3169,7 @@ static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 		.out_mask = FYGTM_COLLECTION,
 		.handler = fy_generic_op_get_at_path,
 	},
-#if 0
+#if 1
 	[FYGBOP_FILTER] = {
 		.op = FYGBOP_FILTER,
 		.op_name = "filter",

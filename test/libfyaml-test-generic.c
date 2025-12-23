@@ -26,6 +26,12 @@
 #include "fy-generic-decoder.h"
 #include "fy-generic-encoder.h"
 
+#if 1
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
+
 /* Test: Basic generic types, sanity testing */
 START_TEST(generic_basics)
 {
@@ -2671,6 +2677,7 @@ START_TEST(gb_filter)
 	/* filter a single sequence for items > 100 (all exist) */
 	seq = fy_sequence(107, 106, 105, 108, 1000);
 	v = fy_generic_op(gb, FYGBOPF_FILTER, seq, 0, NULL, test_filter_over_100);
+	fy_generic_emit_default(v);
 	ck_assert(fy_generic_is_sequence(v));
 	ck_assert(fy_len(v) == 5);
 	ck_assert(fy_get(v, 0, -1) == 107);
@@ -4283,3 +4290,7 @@ TCase *libfyaml_case_generic(void)
 
 	return tc;
 }
+
+#if 1
+#pragma GCC diagnostic pop
+#endif
