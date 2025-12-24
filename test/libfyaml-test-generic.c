@@ -2917,6 +2917,7 @@ START_TEST(gb_reduce)
 	/* sum a sequence of numbers */
 	seq = fy_sequence(7, 6, 5, 8);
 	v = fy_generic_op(gb, FYGBOPF_REDUCE, seq, 0, NULL, fy_generic_test_sum_reducer, fy_value(gb, 0));
+	fy_generic_emit_default(v);
 	sum = fy_cast(v, INT_MIN);
 	ck_assert(sum == 26);
 	printf("> reduce-seq-sum (1): ");

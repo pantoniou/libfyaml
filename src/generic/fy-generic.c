@@ -2868,6 +2868,76 @@ err_out:
 }
 #endif
 
+static void
+fy_op_reduce_sequence_fn_work(void *varg)
+{
+	struct fy_op_work_arg *arg = varg;
+	fy_generic_reducer_fn fn = arg->fn.reducer;
+	fy_generic acc;
+	size_t i;
+
+	acc = arg->vresult;
+	for (i = 0; i < arg->work_item_count; i++) {
+		acc = fn(arg->gb, acc, arg->work_items[i]);
+		if (fy_generic_is_invalid(acc))
+			break;
+	}
+	arg->vresult = acc;
+}
+
+static void
+fy_op_reduce_mapping_fn_work(void *varg)
+{
+	struct fy_op_work_arg *arg = varg;
+	fy_generic_reducer_fn fn = arg->fn.reducer;
+	fy_generic acc;
+	size_t i;
+
+	acc = arg->vresult;
+	for (i = 0; i < arg->work_item_count; i += 2) {
+		acc = fn(arg->gb, acc, arg->work_items[i + 1]);
+		if (fy_generic_is_invalid(acc))
+			break;
+	}
+	arg->vresult = acc;
+}
+
+#if defined(__BLOCKS__)
+static void
+fy_op_reduce_sequence_block_work(void *varg)
+{
+	struct fy_op_work_arg *arg = varg;
+	fy_generic_reducer_block blk = arg->fn.reducer_blk;
+	fy_generic acc;
+	size_t i;
+
+	acc = arg->vresult;
+	for (i = 0; i < arg->work_item_count; i++) {
+		acc = blk(arg->gb, acc, arg->work_items[i]);
+		if (fy_generic_is_invalid(acc))
+			break;
+	}
+	arg->vresult = acc;
+}
+
+static void
+fy_op_reduce_mapping_block_work(void *varg)
+{
+	struct fy_op_work_arg *arg = varg;
+	fy_generic_reducer_block blk = arg->fn.reducer_blk;
+	fy_generic acc;
+	size_t i;
+
+	acc = arg->vresult;
+	for (i = 0; i < arg->work_item_count; i += 2) {
+		acc = blk(arg->gb, acc, arg->work_items[i + 1]);
+		if (fy_generic_is_invalid(acc))
+			break;
+	}
+	arg->vresult = acc;
+}
+#endif
+
 static inline fy_work_exec_fn 
 fy_select_op_exec_fn(enum fy_gb_op_flags flags, enum fy_generic_type type)
 {
@@ -2902,6 +2972,18 @@ fy_select_op_exec_fn(enum fy_gb_op_flags flags, enum fy_generic_type type)
 		}
 		return type == FYGT_SEQUENCE ? fy_op_map_sequence_fn_work :
 		       type == FYGT_MAPPING  ? fy_op_map_mapping_fn_work : NULL;
+		break;
+	case FYGBOP_REDUCE:
+		if (flags & FYGBOPF_BLOCK_FN) {
+#if defined(__BLOCKS__)
+			return type == FYGT_SEQUENCE ? fy_op_reduce_sequence_block_work :
+			       type == FYGT_MAPPING  ? fy_op_reduce_mapping_block_work : NULL;
+#else
+			return NULL;
+#endif
+		}
+		return type == FYGT_SEQUENCE ? fy_op_reduce_sequence_fn_work :
+		       type == FYGT_MAPPING  ? fy_op_reduce_mapping_fn_work : NULL;
 		break;
 	default:
 		break;
@@ -3241,6 +3323,107 @@ err_out:
 	goto out;
 }
 
+static fy_generic
+fy_generic_op_reduce(const struct fy_generic_op_desc *desc,
+		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		     fy_generic in, const struct fy_generic_op_args *args)
+{
+	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
+	struct fy_generic_parallel_op_data pd_local, *pd = &pd_local;
+	fy_op_fn fn;
+	fy_work_exec_fn exec_fn;
+	fy_generic *work_items;
+	size_t work_item_count;
+	size_t i;
+	fy_generic acc, v;
+	fy_generic out = fy_invalid;
+	int rc;
+
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags,
+			in, FYGT_INVALID, args,
+			FYGCODSF_MAP_ITEM_COUNT_NO_MULT2 |
+			FYGCODSF_NEED_WORK_IN_ITEMS | FYGCODSF_NEED_WORK_ITEMS_EXPANDED |
+			FYGCODSF_NEED_COPY_WORK_IN_ITEMS | FYGCODSF_NEED_COPY_WORK_ITEMS_EXPANDED |
+			FYGCODSF_CHECK_MATCHING_COLLECTION_ITEM	|
+			((flags & FYGBOPF_PARALLEL) ? FYGCODSF_NEED_THREAD_POOL : 0));
+	if (rc)
+		return fy_invalid;
+
+	if (args->common.count && !args->common.items)
+		goto err_out;
+
+	if (flags & FYGBOPF_BLOCK_FN) {
+#if defined(__BLOCKS__)
+		fn.reducer_blk = args->reduce.blk;
+		if (!fn.blk)
+			goto err_out;
+#else
+		goto err_out;
+#endif
+	} else {
+		fn.reducer = args->reduce.fn;
+		if (!fn.fn)
+			goto err_out;
+	}
+	acc = args->reduce.acc;
+
+	/* nothing? return the accumulator */
+	if (cod->work_item_all_count == 0) {
+		out = fy_generic_op_internalize(gb, flags, acc);
+		goto out;
+	}
+
+	exec_fn = fy_select_op_exec_fn(flags, cod->type);
+	if (!exec_fn)
+		goto err_out;
+
+	work_items = cod->work_items_all;
+	work_item_count = cod->work_item_all_count;
+
+	rc = fy_generic_parallel_op_data_setup(pd, cod, work_items, work_item_count);
+	if (rc)
+		goto err_out;
+
+	/* seed everything with the accumulator */
+	for (i = 0; i < pd->work_num_threads; i++)
+		pd->work_args[i].vresult = acc;
+
+	/* execute the parallel reduce step */
+	fy_generic_parallel_op_data_exec(pd, exec_fn, fn);
+
+	if (pd->work_num_threads > 1) {
+		/* final reduce step, collect the results (overwrite work_items) */
+		assert(pd->work_num_threads <= work_item_count);
+		for (i = 0; i < pd->work_num_threads; i++) {
+			v = pd->work_args[i].vresult;
+			if (fy_generic_is_invalid(v))
+				goto err_out;
+			work_items[i] = v;
+		}
+		work_item_count = pd->work_num_threads;
+
+		/* single threaded final result */
+		pd->work_args[0].fn = fn;
+		pd->work_args[0].vresult = acc;
+		pd->work_args[0].work_items = work_items;
+		pd->work_args[0].work_item_count = work_item_count;
+		exec_fn(pd->work_args);
+	}
+
+	acc = pd->work_args[0].vresult;
+
+	fy_generic_parallel_op_data_cleanup(pd);
+
+	out = fy_generic_op_internalize(gb, flags, acc);
+out:
+	fy_generic_collection_op_data_cleanup(cod);
+	return out;
+
+err_out:
+	out = fy_invalid;
+	goto out;
+}
+
 
 static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 	[FYGBOP_CREATE_INV] = {
@@ -3452,6 +3635,13 @@ static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 		.in_mask = FYGTM_COLLECTION,
 		.out_mask = FYGTM_COLLECTION,
 		.handler = fy_generic_op_map,
+	},
+	[FYGBOP_REDUCE] = {
+		.op = FYGBOP_REDUCE,
+		.op_name = "reduce",
+		.in_mask = FYGTM_COLLECTION,
+		.out_mask = FYGTM_ANY,
+		.handler = fy_generic_op_reduce,
 	},
 };
 
