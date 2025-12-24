@@ -305,18 +305,17 @@ static inline void fy_strip_trailing_nl(char *str)
 
 /* applies an expansion over a varargs list */
 
-#define FY_CPP_EVAL1(...)    __VA_ARGS__
-#define FY_CPP_EVAL2(...)    FY_CPP_EVAL1(FY_CPP_EVAL1(__VA_ARGS__))
-#define FY_CPP_EVAL4(...)    FY_CPP_EVAL2(FY_CPP_EVAL2(__VA_ARGS__))
-#define FY_CPP_EVAL8(...)    FY_CPP_EVAL4(FY_CPP_EVAL4(__VA_ARGS__))
+#define FY_CPP_EVAL1(...)	__VA_ARGS__
+#define FY_CPP_EVAL2(...)	FY_CPP_EVAL1(FY_CPP_EVAL1(__VA_ARGS__))
+#define FY_CPP_EVAL4(...)	FY_CPP_EVAL2(FY_CPP_EVAL2(__VA_ARGS__))
+#define FY_CPP_EVAL8(...)	FY_CPP_EVAL4(FY_CPP_EVAL4(__VA_ARGS__))
 #if !defined(__clang__)
-// gcc is better, goes to 32
-#define FY_CPP_EVAL16(...)   FY_CPP_EVAL8(FY_CPP_EVAL8(__VA_ARGS__))
-#define FY_CPP_EVAL32(...)   FY_CPP_EVAL16(FY_CPP_EVAL16(__VA_ARGS__))
-#define FY_CPP_EVAL(...)     FY_CPP_EVAL32(FY_CPP_EVAL32(__VA_ARGS__))
+// gcc is better, goes to 16
+#define FY_CPP_EVAL16(...)	FY_CPP_EVAL8(FY_CPP_EVAL8(__VA_ARGS__))
+#define FY_CPP_EVAL(...)	FY_CPP_EVAL16(FY_CPP_EVAL16(__VA_ARGS__))
 #else
 // clang craps out at 8
-#define FY_CPP_EVAL(...)     FY_CPP_EVAL8(FY_CPP_EVAL8(__VA_ARGS__))
+#define FY_CPP_EVAL(...)	FY_CPP_EVAL8(FY_CPP_EVAL8(__VA_ARGS__))
 #endif
 
 #define FY_CPP_EMPTY()

@@ -573,14 +573,15 @@ typedef struct fy_generic_sized_string {
 	size_t size;
 } fy_generic_sized_string;
 
+#define FYGDIF_UNSIGNED_RANGE_EXTEND	FY_BIT(0)
 typedef struct fy_generic_decorated_int {
 	/* must be first */
 	union {
 		signed long long sv;
 		unsigned long long uv;
 	};
-	/* BUG: clang miscompiles this if it's a bool */
-	unsigned long long is_unsigned : 1;	/* single bit, it is important for binary comparisons */
+	/* both clang and gcc miscompile this if it's a bitfield */
+	unsigned long long flags;
 } fy_generic_decorated_int;
 
 typedef struct fy_generic_iterator {
@@ -865,7 +866,7 @@ static inline fy_generic_value fy_generic_out_of_place_put_int_type(void *buf, c
 	assert(((uintptr_t)buf & FY_INPLACE_TYPE_MASK) == 0);
 	memset(p, 0, sizeof(*p));
 	p->sv = v;
-	p->is_unsigned = false;
+	p->flags = 0;
 	return (fy_generic_value)buf | FY_INT_OUTPLACE_V;
 }
 
@@ -881,9 +882,8 @@ static inline fy_generic_value fy_generic_out_of_place_put_uint_type(void *buf, 
 	struct fy_generic_decorated_int *p = buf;
 
 	assert(((uintptr_t)buf & FY_INPLACE_TYPE_MASK) == 0);
-	memset(p, 0, sizeof(*p));
 	p->uv = v;
-	p->is_unsigned = v > (unsigned long long)LLONG_MAX;
+	p->flags = (v > (unsigned long long)LLONG_MAX) ? FYGDIF_UNSIGNED_RANGE_EXTEND : 0;
 	return (fy_generic_value)buf | FY_INT_OUTPLACE_V;
 }
 
@@ -1750,7 +1750,7 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 			__vp = fy_alloca_align(sizeof(*__vp), FY_GENERIC_SCALAR_ALIGN);		\
 			memset(__vp, 0, sizeof(*__vp));						\
 			__vp->sv = __v;								\
-			__vp->is_unsigned = fy_int_is_unsigned(__v);				\
+			__vp->flags = fy_int_is_unsigned(__v) ? FYGDIF_UNSIGNED_RANGE_EXTEND : 0; \
 			_r = (fy_generic_value)__vp | FY_INT_OUTPLACE_V;			\
 		}										\
 		_r;										\
@@ -1770,7 +1770,7 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 		else {										\
 			static const fy_generic_decorated_int _vv FY_INT_ALIGNMENT = { 		\
 				.sv = (signed long long)fy_ensure_const(_v),			\
-				.is_unsigned = fy_int_is_unsigned(_v),				\
+				.flags = fy_int_is_unsigned(_v) ? FYGDIF_UNSIGNED_RANGE_EXTEND : 0, \
 			};									\
 			assert(((uintptr_t)&_vv & FY_INPLACE_TYPE_MASK) == 0);			\
 			_r = (fy_generic_value)&_vv | FY_INT_OUTPLACE_V;			\
@@ -1856,7 +1856,9 @@ static inline fy_generic_value fy_generic_in_place_const_dintp(const fy_generic_
 	if (!dintp)
 		return fy_invalid_value;
 
-	return !dintp->is_unsigned ? fy_generic_in_place_int_type(dintp->sv) : fy_generic_in_place_int_type(dintp->uv);
+	return !(dintp->flags & FYGDIF_UNSIGNED_RANGE_EXTEND) ?
+			fy_generic_in_place_int_type(dintp->sv) :
+			fy_generic_in_place_uint_type(dintp->uv);
 }
 
 static inline fy_generic_value fy_generic_in_place_dint(const fy_generic_decorated_int dint)
@@ -1957,8 +1959,9 @@ static inline size_t fy_generic_out_of_place_size_const_dintp(const fy_generic_d
 	if (!dintp)
 		return 0;
 
-	return !dintp->is_unsigned ? fy_generic_out_of_place_size_long_long(dintp->sv) :
-				     fy_generic_out_of_place_size_unsigned_long_long(dintp->uv);
+	return !(dintp->flags & FYGDIF_UNSIGNED_RANGE_EXTEND) ?
+			fy_generic_out_of_place_size_long_long(dintp->sv) :
+			fy_generic_out_of_place_size_unsigned_long_long(dintp->uv);
 }
 
 static inline size_t fy_generic_out_of_place_size_dint(fy_generic_decorated_int dint)
@@ -2041,8 +2044,9 @@ static inline fy_generic_value fy_generic_out_of_place_put_const_dintp(void *buf
 	if (!dintp)
 		return fy_invalid_value;
 
-	return !dintp->is_unsigned ? fy_generic_out_of_place_put_long_long(buf, dintp->sv) :
-				     fy_generic_out_of_place_put_unsigned_long_long(buf, dintp->uv);
+	return !(dintp->flags & FYGDIF_UNSIGNED_RANGE_EXTEND) ?
+			fy_generic_out_of_place_put_long_long(buf, dintp->sv) :
+			fy_generic_out_of_place_put_unsigned_long_long(buf, dintp->uv);
 }
 
 static inline fy_generic_value fy_generic_out_of_place_put_dint(void *buf, fy_generic_decorated_int dint)
@@ -2681,15 +2685,13 @@ static inline fy_generic_decorated_int fy_generic_cast_decorated_int_default(fy_
 	if (!fy_generic_is_int_type(v))
 		return default_value;
 
-	memset(&dv, 0, sizeof(dv));
-
 	v = fy_generic_indirect_get_value(v);
 	// inplace? always signed */
 	if ((v.v & FY_INPLACE_TYPE_MASK) == FY_INT_INPLACE_V) {
 		dv.sv = (fy_generic_value_signed)((v.v >> FY_INPLACE_TYPE_SHIFT) <<
 			       (FYGT_GENERIC_BITS - FYGT_INT_INPLACE_BITS)) >>
 				       (FYGT_GENERIC_BITS - FYGT_INT_INPLACE_BITS);
-		dv.is_unsigned = false;	/* in place is always unsigned */
+		dv.flags = 0;	/* in place is always unsigned */
 		return dv;
 	}
 
@@ -2697,9 +2699,7 @@ static inline fy_generic_decorated_int fy_generic_cast_decorated_int_default(fy_
 	if (!p)
 		return default_value;
 
-	dv.sv = p->sv;
-	dv.is_unsigned = p->is_unsigned;
-	return dv;
+	return *p;
 }
 
 static inline fy_generic_decorated_int fy_genericp_cast_decorated_int_default(const fy_generic *vp, const fy_generic_decorated_int default_value)
@@ -3978,14 +3978,14 @@ static inline fy_generic fy_gb_int_type_create_out_of_place(struct fy_generic_bu
 {
 	return fy_gb_dint_type_create_out_of_place(gb, (struct fy_generic_decorated_int){
 				.sv = val,
-				.is_unsigned = false });
+				.flags = 0 });
 }
 
 static inline fy_generic fy_gb_uint_type_create_out_of_place(struct fy_generic_builder *gb, unsigned long long val)
 {
 	return fy_gb_dint_type_create_out_of_place(gb, (struct fy_generic_decorated_int){
 				.uv = val,
-				.is_unsigned = val > (unsigned long long)LLONG_MAX });
+				.flags = fy_int_is_unsigned(val) ? FYGDIF_UNSIGNED_RANGE_EXTEND	: 0 });
 }
 
 static inline fy_generic fy_gb_float_type_create_out_of_place(struct fy_generic_builder *gb, double val)

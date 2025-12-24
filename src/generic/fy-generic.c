@@ -2682,9 +2682,9 @@ fy_op_map_sequence_fn_work(void *varg)
 	struct fy_op_work_arg *arg = varg;
 	fy_generic_map_xform_fn fn = arg->fn.map_xform;
 	fy_generic v;
-	size_t i, j;
+	size_t i;
 
-	for (i = 0, j = 0; i < arg->work_item_count; i++) {
+	for (i = 0; i < arg->work_item_count; i++) {
 		v = fn(arg->gb, arg->work_items[i]);
 		if (v.v == fy_invalid_value)
 			goto err_out;
@@ -2702,9 +2702,9 @@ fy_op_map_mapping_fn_work(void *varg)
 	struct fy_op_work_arg *arg = varg;
 	fy_generic_map_xform_fn fn = arg->fn.map_xform;
 	fy_generic v;
-	size_t i, j;
+	size_t i;
 
-	for (i = 0, j = 0; i < arg->work_item_count; i += 2) {
+	for (i = 0; i < arg->work_item_count; i += 2) {
 		v = fn(arg->gb, arg->work_items[i + 1]);
 		if (v.v == fy_invalid_value)
 			goto err_out;
@@ -3164,7 +3164,7 @@ fy_generic_op_map(const struct fy_generic_op_desc *desc,
 	fy_generic *work_items;
 	size_t work_item_count;
 	struct iovec iov[2];
-	size_t i, j, k;
+	size_t i, k;
 	fy_generic out = fy_invalid;
 	int rc;
 
@@ -3216,7 +3216,7 @@ fy_generic_op_map(const struct fy_generic_op_desc *desc,
 	fy_generic_parallel_op_data_exec(pd, exec_fn, fn);
 
 	/* check for errors */
-	for (i = 0, j = 0; i < pd->work_num_threads; i++) {
+	for (i = 0; i < pd->work_num_threads; i++) {
 		if (pd->work_args[i].vresult.v != fy_true_value)
 			goto err_out;
 	}
@@ -4259,6 +4259,7 @@ static inline int fy_generic_bool_compare(fy_generic a, fy_generic b)
 static inline int fy_generic_int_compare(fy_generic a, fy_generic b)
 {
 	fy_generic_decorated_int dia, dib;
+	bool dia_unsigned, dib_unsigned;
 	long long ia, ib;
 
 	/* if both are in place, they're signed quick exit */
@@ -4273,22 +4274,25 @@ static inline int fy_generic_int_compare(fy_generic a, fy_generic b)
 	dia = fy_cast(a, fy_dint_empty);
 	dib = fy_cast(b, fy_dint_empty);
 
+	dia_unsigned = !!(dia.flags & FYGDIF_UNSIGNED_RANGE_EXTEND);
+	dib_unsigned = !!(dib.flags & FYGDIF_UNSIGNED_RANGE_EXTEND);
+
 	/* if bit patterns match, we're good immediately */
 	if (dia.sv == dib.sv)
 		return 0;
 
 	/* signed, unsigned match, compare */
-	if (dia.is_unsigned && dib.is_unsigned)
+	if (dia_unsigned && dib_unsigned)
 		return dia.uv < dib.uv ? -1 : 1;
-	if (!dia.is_unsigned && !dib.is_unsigned)
+	if (!dia_unsigned && !dib_unsigned)
 		return dia.sv < dib.sv ? -1 : 1;
 
 	/* one is signed the other is unsigned */
 
 	/* if any of them is signed and less than 0 */
-	if (!dia.is_unsigned && dia.sv < 0)
+	if (!dia_unsigned && dia.sv < 0)
 		return -1;
-	if (!dib.is_unsigned && dib.sv < 0)
+	if (!dib_unsigned && dib.sv < 0)
 		return 1;
 
 	/* they are both positive, just check unsigned */

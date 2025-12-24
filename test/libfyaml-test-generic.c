@@ -637,7 +637,7 @@ START_TEST(generic_decorated_int)
 	ck_assert(ullv == (unsigned long long)LLONG_MAX + 1);
 	dint = fy_cast(v, fy_dint_empty);
 	ck_assert(dint.uv == (unsigned long long)LLONG_MAX + 1);
-	ck_assert(dint.is_unsigned);	/* must be marked as unsigned */
+	ck_assert((dint.flags & FYGDIF_UNSIGNED_RANGE_EXTEND));	/* must be marked as unsigned */
 
 	/* test maximum */
 	v = fy_value(ULLONG_MAX);
@@ -646,7 +646,7 @@ START_TEST(generic_decorated_int)
 	ck_assert(ullv == ULLONG_MAX);
 	dint = fy_cast(v, fy_dint_empty);
 	ck_assert(dint.uv == ULLONG_MAX);
-	ck_assert(dint.is_unsigned);	/* must be marked as unsigned */
+	ck_assert((dint.flags & FYGDIF_UNSIGNED_RANGE_EXTEND));	/* must be marked as unsigned */
 
 }
 END_TEST
@@ -1326,7 +1326,7 @@ START_TEST(generic_is_unsigned)
 	/* manually resolve and check */
 	p = fy_generic_resolve_ptr(v);
 	ck_assert(p->sv == (long long)FYGT_INT_INPLACE_MAX+1);
-	ck_assert(p->is_unsigned == false);
+	ck_assert(!(p->flags & FYGDIF_UNSIGNED_RANGE_EXTEND));
 
 	/* again for LLONG_MAX (should still be signed */
 	v = fy_value((long long)LLONG_MAX);
@@ -1337,7 +1337,7 @@ START_TEST(generic_is_unsigned)
 	/* manually resolve and check */
 	p = fy_generic_resolve_ptr(v);
 	ck_assert(p->sv == LLONG_MAX);
-	ck_assert(p->is_unsigned == false);
+	ck_assert(!(p->flags & FYGDIF_UNSIGNED_RANGE_EXTEND));
 
 	/* now try LLONG_MAX+1 but unsigned */
 	v = fy_value((unsigned long long)LLONG_MAX + 1);
@@ -1348,7 +1348,7 @@ START_TEST(generic_is_unsigned)
 	/* manually resolve and check */
 	p = fy_generic_resolve_ptr(v);
 	ck_assert(p->uv == (unsigned long long)LLONG_MAX + 1);
-	ck_assert(p->is_unsigned == true);
+	ck_assert((p->flags & FYGDIF_UNSIGNED_RANGE_EXTEND));
 
 	/* finally try ULLONG_MAX */
 	v = fy_value(ULLONG_MAX);
@@ -1359,7 +1359,7 @@ START_TEST(generic_is_unsigned)
 	/* manually resolve and check */
 	p = fy_generic_resolve_ptr(v);
 	ck_assert(p->uv == ULLONG_MAX);
-	ck_assert(p->is_unsigned == true);
+	ck_assert((p->flags & FYGDIF_UNSIGNED_RANGE_EXTEND));
 
 	/* again but using a variable */
 	for (i = 0; i < ARRAY_SIZE(tab); i++) {
@@ -1376,7 +1376,7 @@ START_TEST(generic_is_unsigned)
 		/* manually resolve and check */
 		p = fy_generic_resolve_ptr(v);
 		ck_assert(p->uv == uv);
-		ck_assert(p->is_unsigned == is_unsigned);
+		ck_assert(!!(p->flags & FYGDIF_UNSIGNED_RANGE_EXTEND) == is_unsigned);
 	}
 
 	/* the same, but with a builder... */
@@ -1400,7 +1400,7 @@ START_TEST(generic_is_unsigned)
 	/* manually resolve and check */
 	p = fy_generic_resolve_ptr(v);
 	ck_assert(p->sv == (long long)FYGT_INT_INPLACE_MAX+1);
-	ck_assert(p->is_unsigned == false);
+	ck_assert(!(p->flags & FYGDIF_UNSIGNED_RANGE_EXTEND));
 
 	/* again for LLONG_MAX (should still be signed */
 	v = fy_value(gb, (long long)LLONG_MAX);
@@ -1412,7 +1412,7 @@ START_TEST(generic_is_unsigned)
 	/* manually resolve and check */
 	p = fy_generic_resolve_ptr(v);
 	ck_assert(p->sv == LLONG_MAX);
-	ck_assert(p->is_unsigned == false);
+	ck_assert(!(p->flags & FYGDIF_UNSIGNED_RANGE_EXTEND));
 
 	/* now try LLONG_MAX+1 but unsigned */
 	v = fy_value(gb, (unsigned long long)LLONG_MAX + 1);
@@ -1424,7 +1424,7 @@ START_TEST(generic_is_unsigned)
 	/* manually resolve and check */
 	p = fy_generic_resolve_ptr(v);
 	ck_assert(p->uv == (unsigned long long)LLONG_MAX + 1);
-	ck_assert(p->is_unsigned == true);
+	ck_assert((p->flags & FYGDIF_UNSIGNED_RANGE_EXTEND));
 
 	/* finally try ULLONG_MAX */
 	v = fy_value(gb, ULLONG_MAX);
@@ -1436,7 +1436,7 @@ START_TEST(generic_is_unsigned)
 	/* manually resolve and check */
 	p = fy_generic_resolve_ptr(v);
 	ck_assert(p->uv == ULLONG_MAX);
-	ck_assert(p->is_unsigned == true);
+	ck_assert((p->flags & FYGDIF_UNSIGNED_RANGE_EXTEND));
 
 	/* again but using a variable */
 	for (i = 0; i < ARRAY_SIZE(tab); i++) {
@@ -1454,7 +1454,7 @@ START_TEST(generic_is_unsigned)
 		/* manually resolve and check */
 		p = fy_generic_resolve_ptr(v);
 		ck_assert(p->uv == uv);
-		ck_assert(p->is_unsigned == is_unsigned);
+		ck_assert(!!(p->flags & FYGDIF_UNSIGNED_RANGE_EXTEND) == is_unsigned);
 	}
 }
 END_TEST
@@ -4222,8 +4222,8 @@ TCase *libfyaml_case_generic(void)
 	/* continue with builders */
 	tcase_add_test(tc, gb_dedup_basics);
 	tcase_add_test(tc, gb_scoping);
-	tcase_add_test(tc, gb_dedup_scoping);
 
+	tcase_add_test(tc, gb_dedup_scoping);
 	tcase_add_test(tc, gb_dedup_scoping2);
 
 	/* the polymorphic stuff */

@@ -76,7 +76,7 @@ int fy_encode_generic_int(struct fy_generic_encoder *fyge, const char *anchor, c
 {
 	fy_generic_decorated_int dint = fy_cast(v, fy_dint_empty);
 
-	if (!dint.is_unsigned)
+	if (!(dint.flags & FYGDIF_UNSIGNED_RANGE_EXTEND))
 		return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, "%lld", dint.sv);
 	else
 		return fy_emit_scalar_printf(fyge->emit, FYSS_PLAIN, anchor, tag, "%llu", dint.uv);
