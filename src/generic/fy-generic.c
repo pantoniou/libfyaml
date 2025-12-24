@@ -848,9 +848,6 @@ struct fy_generic_collection_op_data {
 	fy_generic *work_items_expanded;
 	size_t work_in_items_div2_offset;
 	fy_generic *work_in_items_div2;
-	struct fy_thread_pool *tp;
-	struct fy_thread_pool *tp_alloc;
-	int num_threads;
 };
 
 void fy_generic_collection_op_data_cleanup(struct fy_generic_collection_op_data *cod)
@@ -863,11 +860,6 @@ void fy_generic_collection_op_data_cleanup(struct fy_generic_collection_op_data 
 		free(cod->work_items_alloc);
 		cod->work_items_alloc = NULL;
 	}
-
-	if (cod->tp_alloc) {
-		fy_thread_pool_destroy(cod->tp_alloc);
-		cod->tp_alloc = NULL;
-	}
 }
 
 #define FYGCODSF_MAP_ITEM_COUNT_NO_MULT2	FY_BIT(0)
@@ -878,8 +870,7 @@ void fy_generic_collection_op_data_cleanup(struct fy_generic_collection_op_data 
 #define FYGCODSF_NEED_COPY_WORK_ITEMS		FY_BIT(5)
 #define FYGCODSF_NEED_COPY_WORK_ITEMS_EXPANDED	FY_BIT(6)
 #define FYGCODSF_NEED_WORK_IN_ITEMS_DIV2	FY_BIT(7)
-#define FYGCODSF_NEED_THREAD_POOL		FY_BIT(8)
-#define FYGCODSF_CHECK_MATCHING_COLLECTION_ITEM	FY_BIT(9)
+#define FYGCODSF_CHECK_MATCHING_COLLECTION_ITEM	FY_BIT(8)
 
 int fy_generic_collection_op_data_setup(struct fy_generic_collection_op_data *cod,
 		struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
@@ -1031,23 +1022,6 @@ int fy_generic_collection_op_data_setup(struct fy_generic_collection_op_data *co
 			}
 		}
 	}
-
-	if (xflags & FYGCODSF_NEED_THREAD_POOL) {
-		cod->tp = args->common.tp;
-		if (!cod->tp) {
-			cod->tp_alloc = fy_thread_pool_create(&(struct fy_thread_pool_cfg){
-					.flags = FYTPCF_STEAL_MODE,
-					.num_threads = 0 });
-			if (!cod->tp_alloc)
-				goto err_out;
-			cod->tp = cod->tp_alloc;
-		}
-
-		cod->num_threads = fy_thread_pool_get_num_threads(cod->tp);
-		if (!cod->num_threads)
-			goto err_out;
-	} else
-		cod->num_threads = 1;
 
 	return 0;
 err_out:
@@ -2908,11 +2882,15 @@ fy_select_op_exec_fn(enum fy_gb_op_flags flags, enum fy_generic_type type)
 }
 
 struct fy_generic_parallel_op_data {
-	struct fy_generic_collection_op_data *cod;
+	struct fy_generic_builder *gb;
+	enum fy_gb_op_flags flags;
+	struct fy_thread_pool *tp;
+	enum fy_generic_type type;
 	struct fy_op_work_arg *work_args;
 	struct fy_thread_work *works;
 	struct fy_op_work_arg work_args_local[32];
 	struct fy_thread_work works_local[32];
+	struct fy_thread_pool *tp_alloc;
 	size_t num_threads, work_num_threads;
 };
 
@@ -2927,13 +2905,20 @@ fy_generic_parallel_op_data_cleanup(struct fy_generic_parallel_op_data *pd)
 		free(pd->work_args);
 		pd->work_args = NULL;
 	}
+	if (pd->tp_alloc) {
+		fy_thread_pool_destroy(pd->tp_alloc);
+		pd->tp_alloc = NULL;
+	}
+	
 }
 
 static int
 fy_generic_parallel_op_data_setup(struct fy_generic_parallel_op_data *pd,
-				  struct fy_generic_collection_op_data *cod,
-				  fy_generic *work_items,
-				  size_t work_item_count)
+				  struct fy_generic_builder *gb,
+				  enum fy_gb_op_flags flags,
+				  struct fy_thread_pool *tp, 
+				  enum fy_generic_type type,
+				  fy_generic *work_items, size_t work_item_count)
 {
 	size_t i, chunk_size, start_idx, count_items;
 	size_t num_threads;
@@ -2942,19 +2927,38 @@ fy_generic_parallel_op_data_setup(struct fy_generic_parallel_op_data *pd,
 
 	memset(pd, 0, sizeof(*pd));
 
-	pd->cod = cod;
+	pd->gb = gb;
+	pd->flags = flags;
+	pd->tp = tp;
+	pd->type = type;
 
-	if (cod->flags & FYGBOPF_PARALLEL) {
-		num_threads = (size_t)cod->num_threads;
+	/* create thread pool if requested */
+	if ((flags & FYGBOPF_PARALLEL) && !tp) {
+		pd->tp_alloc = fy_thread_pool_create(
+				&(struct fy_thread_pool_cfg){
+					.flags = FYTPCF_STEAL_MODE,
+					.num_threads = 0 });
+		if (!pd->tp_alloc)
+			goto err_out;
+		tp = pd->tp_alloc;
+	}
+	pd->tp = tp;
+
+	if (tp) {
+		num_threads = fy_thread_pool_get_num_threads(tp);
 		if (!num_threads)
 			goto err_out;
-	} else
+	} else {
 		num_threads = 1;
+	}
 
-	max_num_threads = cod->type == FYGT_SEQUENCE ? work_item_count : (work_item_count / 2);
+	max_num_threads = pd->type == FYGT_SEQUENCE ? work_item_count : (work_item_count / 2);
 
 	work_num_threads = num_threads >= max_num_threads ?
 				max_num_threads : num_threads;
+
+	pd->num_threads = num_threads;
+	pd->work_num_threads = work_num_threads;
 
 	if (work_num_threads <= ARRAY_SIZE(pd->work_args_local))
 		pd->work_args = pd->work_args_local;
@@ -2980,7 +2984,7 @@ fy_generic_parallel_op_data_setup(struct fy_generic_parallel_op_data *pd,
 		chunk_size = (work_item_count + work_num_threads - 1) / work_num_threads;
 
 		/* for mappings the chunk must be even */
-		if (cod->type == FYGT_MAPPING && (chunk_size & 1))
+		if (pd->type == FYGT_MAPPING && (chunk_size & 1))
 			chunk_size++;
 
 		assert(chunk_size <= work_item_count);
@@ -2995,7 +2999,7 @@ fy_generic_parallel_op_data_setup(struct fy_generic_parallel_op_data *pd,
 			if (start_idx + count_items > work_item_count)
 				count_items = work_item_count - start_idx;
 
-			pd->work_args[i].gb = cod->gb;
+			pd->work_args[i].gb = pd->gb;
 			pd->work_args[i].work_items = work_items + start_idx;
 			pd->work_args[i].work_item_count = count_items;
 
@@ -3006,12 +3010,10 @@ fy_generic_parallel_op_data_setup(struct fy_generic_parallel_op_data *pd,
 			pd->works[i].fn = fy_op_dummy_work;
 
 	} else {
-		pd->work_args[0].gb = cod->gb;
+		pd->work_args[0].gb = pd->gb;
 		pd->work_args[0].work_items = work_items;
 		pd->work_args[0].work_item_count = work_item_count;
 	}
-	pd->num_threads = num_threads;
-	pd->work_num_threads = work_num_threads;
 
 	return 0;
 
@@ -3024,16 +3026,16 @@ static void
 fy_generic_parallel_op_data_exec(struct fy_generic_parallel_op_data *pd,
 				 fy_work_exec_fn exec_fn, fy_op_fn fn)
 {
-	struct fy_generic_collection_op_data *cod = pd->cod;
 	size_t i;
 
 	if (pd->work_num_threads > 1) {
+		assert(pd->tp);
 		/* parallel, multithreaded */
 		for (i = 0; i < pd->work_num_threads; i++) {
 			pd->work_args[i].fn = fn;
 			pd->works[i].fn = exec_fn;
 		}
-		fy_thread_work_join(cod->tp, pd->works, pd->num_threads, NULL);
+		fy_thread_work_join(pd->tp, pd->works, pd->num_threads, NULL);
 	} else {
 		/* single threaded */
 		pd->work_args[0].fn = fn;
@@ -3064,8 +3066,7 @@ fy_generic_op_filter(const struct fy_generic_op_desc *desc,
 			FYGCODSF_MAP_ITEM_COUNT_NO_MULT2 |
 			FYGCODSF_NEED_WORK_IN_ITEMS | FYGCODSF_NEED_WORK_ITEMS_EXPANDED |
 			FYGCODSF_NEED_COPY_WORK_IN_ITEMS | FYGCODSF_NEED_COPY_WORK_ITEMS_EXPANDED |
-			FYGCODSF_CHECK_MATCHING_COLLECTION_ITEM	|
-			((flags & FYGBOPF_PARALLEL) ? FYGCODSF_NEED_THREAD_POOL : 0));
+			FYGCODSF_CHECK_MATCHING_COLLECTION_ITEM);
 	if (rc)
 		return fy_invalid;
 
@@ -3099,7 +3100,9 @@ fy_generic_op_filter(const struct fy_generic_op_desc *desc,
 	work_items = cod->work_items_all;
 	work_item_count = cod->work_item_all_count;
 
-	rc = fy_generic_parallel_op_data_setup(pd, cod, work_items, work_item_count);
+	rc = fy_generic_parallel_op_data_setup(pd,
+			gb, flags, args->common.tp, cod->type,
+			work_items, work_item_count);
 	if (rc)
 		goto err_out;
 
@@ -3170,8 +3173,7 @@ fy_generic_op_map(const struct fy_generic_op_desc *desc,
 			FYGCODSF_MAP_ITEM_COUNT_NO_MULT2 |
 			FYGCODSF_NEED_WORK_IN_ITEMS | FYGCODSF_NEED_WORK_ITEMS_EXPANDED |
 			FYGCODSF_NEED_COPY_WORK_IN_ITEMS | FYGCODSF_NEED_COPY_WORK_ITEMS_EXPANDED |
-			FYGCODSF_CHECK_MATCHING_COLLECTION_ITEM	|
-			((flags & FYGBOPF_PARALLEL) ? FYGCODSF_NEED_THREAD_POOL : 0));
+			FYGCODSF_CHECK_MATCHING_COLLECTION_ITEM);
 	if (rc)
 		return fy_invalid;
 
@@ -3205,7 +3207,9 @@ fy_generic_op_map(const struct fy_generic_op_desc *desc,
 	work_items = cod->work_items_all;
 	work_item_count = cod->work_item_all_count;
 
-	rc = fy_generic_parallel_op_data_setup(pd, cod, work_items, work_item_count);
+	rc = fy_generic_parallel_op_data_setup(pd,
+			gb, flags, args->common.tp, cod->type,
+			work_items, work_item_count);
 	if (rc)
 		goto err_out;
 
@@ -3260,8 +3264,7 @@ fy_generic_op_reduce(const struct fy_generic_op_desc *desc,
 			FYGCODSF_MAP_ITEM_COUNT_NO_MULT2 |
 			FYGCODSF_NEED_WORK_IN_ITEMS | FYGCODSF_NEED_WORK_ITEMS_EXPANDED |
 			FYGCODSF_NEED_COPY_WORK_IN_ITEMS | FYGCODSF_NEED_COPY_WORK_ITEMS_EXPANDED |
-			FYGCODSF_CHECK_MATCHING_COLLECTION_ITEM	|
-			((flags & FYGBOPF_PARALLEL) ? FYGCODSF_NEED_THREAD_POOL : 0));
+			FYGCODSF_CHECK_MATCHING_COLLECTION_ITEM);
 	if (rc)
 		return fy_invalid;
 
@@ -3296,7 +3299,9 @@ fy_generic_op_reduce(const struct fy_generic_op_desc *desc,
 	work_items = cod->work_items_all;
 	work_item_count = cod->work_item_all_count;
 
-	rc = fy_generic_parallel_op_data_setup(pd, cod, work_items, work_item_count);
+	rc = fy_generic_parallel_op_data_setup(pd,
+			gb, flags, args->common.tp, cod->type,
+			work_items, work_item_count);
 	if (rc)
 		goto err_out;
 
