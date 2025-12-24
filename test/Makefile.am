@@ -41,8 +41,8 @@ libfyaml_test_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/valgrind/ \
 			 -I$(top_srcdir)/src/generic \
 			 -I$(top_srcdir)/src/reflection
 libfyaml_test_LDADD = $(AM_LDADD) $(CHECK_LIBS) $(top_builddir)/src/libfyaml.la
-libfyaml_test_CFLAGS = $(AM_CFLAGS) $(CHECK_CFLAGS) 
-libfyaml_test_LDFLAGS = $(AM_LDFLAGS) $(CHECK_LDFLAGS)
+libfyaml_test_CFLAGS = $(AM_CFLAGS) $(CHECK_CFLAGS) @CLANG_BLOCKS_CFLAGS@
+libfyaml_test_LDFLAGS = $(AM_LDFLAGS) $(CHECK_LDFLAGS) @CLANG_BLOCKS_LIBS@
 
 libfyaml_test_SOURCES = \
 	libfyaml-test.c \
