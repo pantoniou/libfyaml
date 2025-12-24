@@ -2854,17 +2854,6 @@ START_TEST(gb_map)
 	ck_assert(fy_get_at(v, 1, -1) == 12);
 	printf("> map-map-double (1): ");
 	fy_generic_emit_default(v);
-
-	/* map and filter a single sequence of numbers */
-	seq = fy_sequence(7, 10, 4, 20);
-	v = fy_generic_op(gb, FYGBOPF_MAP_FILTER, seq, 0, NULL, test_map_filter_double_if_over_10);
-	ck_assert(fy_generic_is_sequence(v));
-	ck_assert(fy_len(v) == 2);
-	ck_assert(fy_get(v, 0, -1) == 20);
-	ck_assert(fy_get(v, 1, -1) == 40);
-	printf("> map-filter-seq-double over 10 (1): ");
-	fy_generic_emit_default(v);
-
 }
 END_TEST
 

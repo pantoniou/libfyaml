@@ -799,19 +799,6 @@ fy_op_map_filter_work(void *varg)
 				return;
 			}
 			break;
-		case FYGBOP_MAP_FILTER:
-#if defined(__BLOCKS__)
-			if (arg->is_block)
-				value = arg->fn.map_xform_blk(arg->gb, value);
-			else
-#endif
-				value = arg->fn.map_xform(arg->gb, value);
-			// an invalid value removes element
-			if (value.v == fy_invalid_value) {
-				key = fy_invalid;
-				j += stride;
-			}
-			break;
 		default:
 			break;
 		}
@@ -3532,7 +3519,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 	switch (op) {
 	case FYGBOP_FILTER:
 	case FYGBOP_MAP:
-	case FYGBOP_MAP_FILTER:
 	case FYGBOP_REDUCE:
 		if (!(flags & FYGBOPF_BLOCK_FN)) {
 			fn.fn = args->filter_map_reduce_common.fn;
@@ -3605,8 +3591,7 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 		if (flags & FYGBOPF_MAP_ITEM_COUNT)
 			count /= 2;
 
-		item_count = (op != FYGBOP_FILTER && op != FYGBOP_MAP && op != FYGBOP_MAP_FILTER &&
-			      op != FYGBOP_REDUCE) ?
+		item_count = (op != FYGBOP_FILTER && op != FYGBOP_MAP && op != FYGBOP_REDUCE) ?
 					MULSZ(count, 2) : count;
 		col_mark = FY_MAP_V;
 		in_items = fy_generic_mapping_get_items(in_direct, &in_item_count);
@@ -3656,7 +3641,6 @@ fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
 		switch (op) {
 		case FYGBOP_FILTER:
 		case FYGBOP_MAP:
-		case FYGBOP_MAP_FILTER:
 		case FYGBOP_REDUCE:
 			work_item_count = in_item_count;
 			for (i = 0; i < item_count; i++) {
@@ -3726,7 +3710,6 @@ do_operation:
 	switch (op) {
 	case FYGBOP_FILTER:
 	case FYGBOP_MAP:
-	case FYGBOP_MAP_FILTER:
 		assert(work_items);
 		assert(items_mod);
 		assert(need_copy_work_items);
@@ -3796,7 +3779,7 @@ do_operation:
 		}
 
 		/* if everything removed */
-		if ((op == FYGBOP_FILTER || op == FYGBOP_MAP_FILTER) && j == work_item_count) {
+		if (op == FYGBOP_FILTER && j == work_item_count) {
 			out = type == FYGT_SEQUENCE ? fy_seq_empty : fy_map_empty;
 			goto out;
 		}
@@ -3808,7 +3791,7 @@ do_operation:
 		}
 
 		/* something was removed, go over the items and remove the invalids */
-		if ((op == FYGBOP_FILTER || op == FYGBOP_MAP_FILTER) && j > 0) {
+		if (op == FYGBOP_FILTER && j > 0) {
 			/* simple pass writing the non invalid values */
 			k = 0;
 			for (i = 0; i < work_item_count; i++) {
@@ -4150,7 +4133,6 @@ fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flag
 
 	case FYGBOP_FILTER:
 	case FYGBOP_MAP:
-	case FYGBOP_MAP_FILTER:
 	case FYGBOP_REDUCE:
 #if defined(__BLOCKS__)
 		if (flags & FYGBOPF_BLOCK_FN)
