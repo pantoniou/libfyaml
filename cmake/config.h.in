@@ -75,6 +75,9 @@
 /* Define to 1 if Clang (or AppleClang) Blocks are available */
 #cmakedefine HAVE_CLANG_BLOCKS @HAVE_CLANG_BLOCKS@
 
+/* Define to 1 if GCC heap trampolines are enabled */
+#cmakedefine01 HAVE_HEAP_TRAMPOLINES
+
 /* Version string */
 #define VERSION "@PROJECT_VERSION@"
 

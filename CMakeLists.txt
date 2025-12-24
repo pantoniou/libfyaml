@@ -519,6 +519,22 @@ if(NOT MSVC)
         endif()
     endif()
 
+    # GCC heap trampolines support (for nested functions)
+    # Heap trampolines are more secure than executable stack trampolines
+    # Available in GCC 14+ with -ftrampoline-impl=heap
+    # Supported targets: x86_64/i386/aarch64 Linux, x86_64/i386 Darwin
+    set(HAVE_HEAP_TRAMPOLINES 0)
+    if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        check_c_compiler_flag(-ftrampoline-impl=heap COMPILER_SUPPORTS_HEAP_TRAMPOLINES)
+        if(COMPILER_SUPPORTS_HEAP_TRAMPOLINES)
+            set(HAVE_HEAP_TRAMPOLINES 1)
+            list(APPEND COMMON_C_FLAGS -ftrampoline-impl=heap)
+            message(STATUS "GCC heap trampolines enabled (-ftrampoline-impl=heap)")
+        else()
+            message(STATUS "GCC heap trampolines not available (GCC 14+ required), using stack trampolines")
+        endif()
+    endif()
+
 endif()
 
 # Network tests
@@ -1547,6 +1563,7 @@ message(STATUS "TARGET_HAS_SSE41:      ${TARGET_HAS_SSE41}")
 message(STATUS "TARGET_HAS_AVX2:       ${TARGET_HAS_AVX2}")
 message(STATUS "TARGET_HAS_AVX512:     ${TARGET_HAS_AVX512}")
 message(STATUS "TARGET_HAS_NEON:       ${TARGET_HAS_NEON}")
+message(STATUS "HAVE_HEAP_TRAMPOLINES: ${HAVE_HEAP_TRAMPOLINES}")
 message(STATUS "TESTSUITEURL:          ${TESTSUITEURL}")
 message(STATUS "TESTSUITECHECKOUT:     ${TESTSUITECHECKOUT}")
 message(STATUS "JSONTESTSUITEURL:      ${JSONTESTSUITEURL}")
