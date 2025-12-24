@@ -3345,6 +3345,147 @@ err_out:
 	goto out;
 }
 
+static fy_generic
+fy_generic_op_parse(const struct fy_generic_op_desc *desc,
+		    struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		    fy_generic in, const struct fy_generic_op_args *args)
+{
+	fy_generic_sized_string szstr;
+	struct fy_parse_cfg parse_cfg;
+	struct fy_parser *fyp = NULL;
+	struct fy_generic_decoder *fygd = NULL;
+	enum fy_generic_decoder_parse_flags parse_flags = 0;
+	enum fy_parser_mode parser_mode = fypm_yaml_1_2;
+	fy_generic out;
+
+	if (fy_get_type(in) != FYGT_STRING)
+		goto err_out;
+
+	szstr = fy_generic_cast_sized_string_default(in, fy_szstr_empty);
+	if (!szstr.data)
+		goto err_out;
+
+	if (args && args->parse.parser_mode != 0)
+		parser_mode = args->parse.parser_mode;
+
+	/* Setup parse configuration */
+	memset(&parse_cfg, 0, sizeof(parse_cfg));
+	parse_cfg.flags = FYPCF_DEFAULT_PARSE;
+
+	/* Set parser mode */
+	switch (parser_mode) {
+	case fypm_json:
+		parse_cfg.flags |= FYPCF_JSON_MASK;
+		break;
+	case fypm_yaml_1_1:
+	case fypm_yaml_1_2:
+	case fypm_yaml_1_3:
+	default:
+		/* YAML is default */
+		break;
+	}
+
+	/* Create parser */
+	fyp = fy_parser_create(&parse_cfg);
+	if (!fyp)
+		goto err_out;
+
+	/* Set input string */
+	if (fy_parser_set_string(fyp, szstr.data, szstr.size) != 0)
+		goto err_out;
+
+	/* Create decoder */
+	fygd = fy_generic_decoder_create(fyp, gb, false);
+	if (!fygd)
+		goto err_out;
+
+	/* Set parse flags from args */
+	if (args && args->parse.multi_document)
+		parse_flags |= FYGDPF_MULTI_DOCUMENT;
+
+	/* do not create the directory */
+	parse_flags |= FYGDPF_DISABLE_DIRECTORY;
+
+	/* Parse the input */
+	out = fy_generic_decoder_parse(fygd, parse_flags);
+
+out:
+	fy_generic_decoder_destroy(fygd);
+	fy_parser_destroy(fyp);
+	return out;
+
+err_out:
+	out = fy_invalid;
+	goto out;
+}
+
+static fy_generic
+fy_generic_op_emit(const struct fy_generic_op_desc *desc,
+		   struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		   fy_generic in, const struct fy_generic_op_args *args)
+{
+	struct fy_emitter *emit = NULL;
+	struct fy_generic_encoder *fyge = NULL;
+	enum fy_emitter_cfg_flags emit_flags = FYECF_DEFAULT;
+	enum fy_generic_encoder_emit_flags encoder_flags = 0;
+	char *output_str = NULL;
+	size_t output_len = 0;
+	fy_generic out;
+	int rc;
+
+	/* Get emit flags from args */
+	if (args && args->emit.emit_flags != 0)
+		emit_flags = args->emit.emit_flags;
+
+	/* try to output something pretty */
+	emit_flags |= FYECF_WIDTH_INF | FYECF_MODE_PRETTY | FYECF_STRIP_DOC;
+
+	/* Create string emitter */
+	emit = fy_emit_to_string(emit_flags);
+	if (!emit)
+		goto err_out;
+
+	/* Create encoder */
+	fyge = fy_generic_encoder_create(emit, false);
+	if (!fyge)
+		goto err_out;
+
+	/* no directory */
+	encoder_flags |= FYGEEF_DISABLE_DIRECTORY;
+
+	/* Emit the value */
+	rc = fy_generic_encoder_emit(fyge, encoder_flags, in);
+	if (rc)
+		goto err_out;
+
+	/* Sync the encoder */
+	rc = fy_generic_encoder_sync(fyge);
+	if (rc)
+		goto err_out;
+
+	/* Collect the output */
+	output_str = fy_emit_to_string_collect(emit, &output_len);
+	if (!output_str)
+		goto err_out;
+
+	/* Create string generic from output */
+	out = fy_gb_string_size_create(gb, output_str, output_len);
+
+out:
+	/* Free the output string */
+	free(output_str);
+
+	/* Cleanup encoder and emitter */
+	fy_generic_encoder_destroy(fyge);
+	fy_emitter_destroy(emit);
+
+	return out;
+
+err_out:
+	out = fy_invalid;
+	goto out;
+}
+
 static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 	[FYGBOP_CREATE_INV] = {
 		.op = FYGBOP_CREATE_INV,
@@ -3562,6 +3703,20 @@ static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 		.in_mask = FYGTM_COLLECTION,
 		.out_mask = FYGTM_ANY,
 		.handler = fy_generic_op_reduce,
+	},
+	[FYGBOP_PARSE] = {
+		.op = FYGBOP_PARSE,
+		.op_name = "parse",
+		.in_mask = FYGTM_STRING,
+		.out_mask = FYGTM_ANY,
+		.handler = fy_generic_op_parse,
+	},
+	[FYGBOP_EMIT] = {
+		.op = FYGBOP_EMIT,
+		.op_name = "emit",
+		.in_mask = FYGTM_ANY,
+		.out_mask = FYGTM_STRING,
+		.handler = fy_generic_op_emit,
 	},
 };
 

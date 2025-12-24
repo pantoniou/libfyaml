@@ -4023,7 +4023,6 @@ START_TEST(set_ops)
 }
 END_TEST
 
-#if 0
 START_TEST(parse_emit_ops)
 {
 	char buf[65536];
@@ -4046,13 +4045,15 @@ START_TEST(parse_emit_ops)
 	args.parse.multi_document = false;
 
 	parsed = fy_generic_op_args(gb, FYGBOPF_PARSE, yaml_str, &args);
+	fy_generic_emit_default(parsed);
 	ck_assert(fy_generic_is_valid(parsed));
 	ck_assert(fy_generic_is_sequence(parsed));
 	ck_assert(fy_len(parsed) == 3);
-	ck_assert_str_eq(fy_cast(fy_get(parsed, 0, fy_null), ""), "item1");
-	ck_assert_str_eq(fy_cast(fy_get(parsed, 1, fy_null), ""), "item2");
-	ck_assert_str_eq(fy_cast(fy_get(parsed, 2, fy_null), ""), "item3");
+	ck_assert_str_eq(fy_get(parsed, 0, ""), "item1");
+	ck_assert_str_eq(fy_get(parsed, 1, ""), "item2");
+	ck_assert_str_eq(fy_get(parsed, 2, ""), "item3");
 	printf("> PARSE YAML sequence: OK\n");
+	fy_generic_emit_default(parsed);
 
 	/* Test PARSE operation with JSON using args */
 	json_str = fy_gb_string_create(gb, "{\"key1\": 100, \"key2\": 200}");
@@ -4066,9 +4067,10 @@ START_TEST(parse_emit_ops)
 	ck_assert(fy_generic_is_valid(parsed));
 	ck_assert(fy_generic_is_mapping(parsed));
 	ck_assert(fy_len(parsed) == 2);
-	ck_assert(fy_cast(fy_get(parsed, "key1", fy_null), 0) == 100);
-	ck_assert(fy_cast(fy_get(parsed, "key2", fy_null), 0) == 200);
+	ck_assert(fy_get(parsed, "key1", 0) == 100);
+	ck_assert(fy_get(parsed, "key2", 0) == 200);
 	printf("> PARSE JSON mapping with args: OK\n");
+	fy_generic_emit_default(parsed);
 
 	/* Test EMIT operation - emit to YAML block */
 	seq = fy_sequence(1, 2, 3, 4, 5);
@@ -4174,7 +4176,6 @@ START_TEST(parse_emit_ops)
 	printf("> Round-trip JSON parse->emit->parse: OK\n");
 }
 END_TEST
-#endif
 
 TCase *libfyaml_case_generic(void)
 {
@@ -4273,10 +4274,9 @@ TCase *libfyaml_case_generic(void)
 
 	/* set ops */
 	tcase_add_test(tc, set_ops);
-#if 0
+
 	/* parse and emit operations */
 	tcase_add_test(tc, parse_emit_ops);
-#endif
 
 	return tc;
 }
