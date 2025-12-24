@@ -725,7 +725,7 @@ static int do_parse_generic(const struct generic_options *opt, int argc, char **
 			fy_parser_reset(fyp);
 		} else {
 			if (!opt->null_output) {
-				rc = fy_generic_encoder_emit(fyge, FYGDPF_MULTI_DOCUMENT, vdir);
+				rc = fy_generic_encoder_emit(fyge, FYGEEF_MULTI_DOCUMENT, vdir);
 				if (rc) {
 					fprintf(stderr, "fy_generic_encoder_emit_all_documents() failed\n");
 					goto err_out;
