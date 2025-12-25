@@ -170,18 +170,29 @@ fy_generic_decoder_object_finalize(struct fy_generic_decoder *gd, struct fy_gene
 		break;
 
 	case FYGDOT_SEQUENCE:
-		v = fy_gb_sequence_create_i(gd->gb, false, gdo->count, gdo->items);
-		break;
-
 	case FYGDOT_MAPPING:
-		fyp_error_check(fyp, (gdo->count % 2) == 0, err_out,
-				"bad mapping finalize (not matched key/value) pair");
-		v = fy_gb_mapping_create_i(gd->gb, false, gdo->count / 2, gdo->items);
+		/* we know that the items in the collection are created
+		 * using the provided builder, so we can dispense with the
+		 * internalization checks
+		 */
+		struct fy_generic_op_args args = {
+			.common.count = gdo->count,
+			.common.items = gdo->items,
+		};
+		v = fy_generic_op_args(gd->gb,
+				(gdo->type == FYGDOT_SEQUENCE ?
+					FYGBOPF_CREATE_SEQ :
+					FYGBOPF_CREATE_MAP) |
+					FYGBOPF_NO_CHECKS | FYGBOPF_MAP_ITEM_COUNT,
+				fy_null, &args);
+		fyp_error_check(fyp, fy_generic_is_valid(v), err_out,
+				"unable to create collection");
 		break;
 
 	default:
 		FY_IMPOSSIBLE_ABORT();
 	}
+
 
 	needs_indirect = !gd->resolve &&
 		         ((gdo->anchor.v != fy_null_value && gdo->anchor.v != fy_invalid_value) ||
@@ -1056,7 +1067,13 @@ fy_generic fy_generic_decoder_parse(struct fy_generic_decoder *gd,
 	if (!(flags & FYGDPF_MULTI_DOCUMENT)) {
 		v = items[0];
 	} else {
-		v = fy_gb_sequence_create_i(gd->gb, false, count, items);
+		struct fy_generic_op_args args = {
+			.common.count = count,
+			.common.items = items,
+		};
+		v = fy_generic_op_args(gd->gb,
+				FYGBOPF_CREATE_SEQ | FYGBOPF_NO_CHECKS,
+				fy_null, &args);
 		if (fy_generic_is_invalid(v))
 			goto err_out;
 	}

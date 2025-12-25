@@ -4365,38 +4365,23 @@ fy_generic fy_generic_op_args(struct fy_generic_builder *gb, enum fy_gb_op_flags
 fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flags, ...);
 
 static inline fy_generic
-fy_gb_collection_create(struct fy_generic_builder *gb, bool is_map, size_t count, const fy_generic *items, bool internalize)
-{
-	enum fy_gb_op_flags flags;
-
-	flags = (!is_map ? FYGBOPF_CREATE_SEQ : FYGBOPF_CREATE_MAP) |
-		(!internalize ? FYGBOPF_DONT_INTERNALIZE : 0);
-
-	return fy_generic_op(gb, flags, count, items);
-}
-
-static inline fy_generic
-fy_gb_sequence_create_i(struct fy_generic_builder *gb, bool internalize, size_t count, const fy_generic *items)
-{
-	return fy_gb_collection_create(gb, false, count, items, internalize);
-}
-
-static inline fy_generic
 fy_gb_sequence_create(struct fy_generic_builder *gb, size_t count, const fy_generic *items)
 {
-	return fy_gb_collection_create(gb, false, count, items, true);
-}
-
-static inline fy_generic
-fy_gb_mapping_create_i(struct fy_generic_builder *gb, bool internalize, size_t count, const fy_generic *pairs)
-{
-	return fy_gb_collection_create(gb, true, count, pairs, internalize);
+	struct fy_generic_op_args args = {
+		.common.count = count,
+		.common.items = items,
+	};
+	return fy_generic_op_args(gb, FYGBOPF_CREATE_SEQ, fy_seq_empty, &args);
 }
 
 static inline fy_generic
 fy_gb_mapping_create(struct fy_generic_builder *gb, size_t count, const fy_generic *pairs)
 {
-	return fy_gb_mapping_create_i(gb, true, count, pairs);
+	struct fy_generic_op_args args = {
+		.common.count = count,
+		.common.items = pairs,
+	};
+	return fy_generic_op_args(gb, FYGBOPF_CREATE_MAP, fy_seq_empty, &args);
 }
 
 fy_generic fy_gb_indirect_create(struct fy_generic_builder *gb, const fy_generic_indirect *gi);
