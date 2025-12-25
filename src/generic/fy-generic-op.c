@@ -2655,6 +2655,204 @@ err_out:
 	goto out;
 }
 
+/* Internal helper for slicing with normalized indices */
+static fy_generic
+fy_generic_op_slice_internal(struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+			      fy_generic in, const struct fy_generic_op_args *args,
+			      size_t start, size_t end)
+{
+	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
+	struct fy_generic_collection col;
+	struct iovec iov[2];
+	size_t slice_count;
+	fy_generic out = fy_invalid;
+	int rc;
+
+	rc = fy_generic_collection_op_data_setup(cod, gb, flags,
+			in, FYGT_SEQUENCE, args, 0);
+	if (rc)
+		return fy_invalid;
+
+	/* clamp end to sequence length */
+	if (end == SIZE_MAX || end > cod->in_count)
+		end = cod->in_count;
+
+	/* clamp start to sequence length */
+	if (start > cod->in_count)
+		start = cod->in_count;
+
+	/* ensure start <= end */
+	if (start > end)
+		start = end;
+
+	/* calculate slice length */
+	slice_count = end - start;
+
+	/* empty slice? */
+	if (slice_count == 0) {
+		out = fy_seq_empty;
+		goto out;
+	}
+
+	/* the sequence collection */
+	col.count = slice_count;
+	iov[0].iov_base = &col;
+	iov[0].iov_len = sizeof(col);
+
+	/* the content (offset to start) */
+	iov[1].iov_base = (void *)(cod->in_items + start);
+	iov[1].iov_len = MULSZ(slice_count, cod->col_item_size);
+
+	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
+out:
+	fy_generic_collection_op_data_cleanup(cod);
+	return out;
+
+err_out:
+	out = fy_invalid;
+	goto out;
+}
+
+static fy_generic
+fy_generic_op_slice(const struct fy_generic_op_desc *desc,
+		    struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		    fy_generic in, const struct fy_generic_op_args *args)
+{
+	return fy_generic_op_slice_internal(gb, flags, in, args, args->slice.start, args->slice.end);
+}
+
+static fy_generic
+fy_generic_op_slice_py(const struct fy_generic_op_desc *desc,
+		       struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		       fy_generic in, const struct fy_generic_op_args *args)
+{
+	const fy_generic_sequence *seqp;
+	ssize_t start_py, end_py;
+	size_t start, end, seq_len;
+
+	/* get the sequence to determine length for negative index conversion */
+	if (fy_get_type(in) != FYGT_SEQUENCE)
+		return fy_invalid;
+
+	seqp = fy_generic_sequence_resolve(in);
+	if (!seqp)
+		return fy_invalid;
+
+	seq_len = seqp->count;
+
+	/* get Python-style start and end indices */
+	start_py = args ? args->slice_py.start : 0;
+	end_py = args ? args->slice_py.end : -1;
+
+	/* convert negative indices (Python-style: -1 is last element index) */
+	if (start_py < 0) {
+		start_py = (ssize_t)seq_len + start_py;
+		if (start_py < 0)
+			start_py = 0;
+	}
+	if (end_py < 0) {
+		end_py = (ssize_t)seq_len + end_py;
+		if (end_py < 0)
+			end_py = 0;
+	}
+
+	start = (size_t)start_py;
+	end = (size_t)end_py;
+
+	/* delegate to the internal slice function with normalized indices */
+	return fy_generic_op_slice_internal(gb, flags, in, args, start, end);
+}
+
+static fy_generic
+fy_generic_op_take(const struct fy_generic_op_desc *desc,
+		   struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		   fy_generic in, const struct fy_generic_op_args *args)
+{
+	struct fy_generic_op_args local_args;
+	size_t n;
+
+	/* get number of elements to take */
+	n = args->take.n;
+
+	/* construct args for internal slice call */
+	memset(&local_args, 0, sizeof(local_args));
+	local_args.common = args->common;
+
+	/* delegate to slice: take(n) = slice(0, n) */
+	return fy_generic_op_slice_internal(gb, flags, in, &local_args, 0, n);
+}
+
+static fy_generic
+fy_generic_op_drop(const struct fy_generic_op_desc *desc,
+		   struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		   fy_generic in, const struct fy_generic_op_args *args)
+{
+	struct fy_generic_op_args local_args;
+	size_t n;
+
+	/* get number of elements to drop */
+	n = args->drop.n;
+
+	/* construct args for internal slice call */
+	memset(&local_args, 0, sizeof(local_args));
+	local_args.common = args->common;
+
+	/* delegate to slice: drop(n) = slice(n, SIZE_MAX) */
+	return fy_generic_op_slice_internal(gb, flags, in, &local_args, n, SIZE_MAX);
+}
+
+static fy_generic
+fy_generic_op_first(const struct fy_generic_op_desc *desc,
+		    struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		    fy_generic in, const struct fy_generic_op_args *args)
+{
+	const fy_generic_sequence *seqp;
+
+	/* check that input is a sequence */
+	if (fy_get_type(in) != FYGT_SEQUENCE)
+		return fy_invalid;
+
+	seqp = fy_generic_sequence_resolve(in);
+	if (!seqp || seqp->count == 0)
+		return fy_invalid;
+
+	/* return first element */
+	return seqp->items[0];
+}
+
+static fy_generic
+fy_generic_op_last(const struct fy_generic_op_desc *desc,
+		   struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		   fy_generic in, const struct fy_generic_op_args *args)
+{
+	const fy_generic_sequence *seqp;
+
+	/* check that input is a sequence */
+	if (fy_get_type(in) != FYGT_SEQUENCE)
+		return fy_invalid;
+
+	seqp = fy_generic_sequence_resolve(in);
+	if (!seqp || seqp->count == 0)
+		return fy_invalid;
+
+	/* return last element */
+	return seqp->items[seqp->count - 1];
+}
+
+static fy_generic
+fy_generic_op_rest(const struct fy_generic_op_desc *desc,
+		   struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
+		   fy_generic in, const struct fy_generic_op_args *args)
+{
+	struct fy_generic_op_args local_args;
+
+	/* construct args for internal slice call (rest has no args, so args may be NULL) */
+	memset(&local_args, 0, sizeof(local_args));
+
+	/* delegate to slice: rest() = slice(1, SIZE_MAX) */
+	return fy_generic_op_slice_internal(gb, flags, in, &local_args, 1, SIZE_MAX);
+}
+
 static fy_generic
 fy_generic_op_parse(const struct fy_generic_op_desc *desc,
 		    struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
@@ -3014,6 +3212,55 @@ static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 		.out_mask = FYGTM_ANY,
 		.handler = fy_generic_op_reduce,
 	},
+	[FYGBOP_SLICE] = {
+		.op = FYGBOP_SLICE,
+		.op_name = "slice",
+		.in_mask = FYGTM_SEQUENCE,
+		.out_mask = FYGTM_SEQUENCE,
+		.handler = fy_generic_op_slice,
+	},
+	[FYGBOP_SLICE_PY] = {
+		.op = FYGBOP_SLICE_PY,
+		.op_name = "slice_py",
+		.in_mask = FYGTM_SEQUENCE,
+		.out_mask = FYGTM_SEQUENCE,
+		.handler = fy_generic_op_slice_py,
+	},
+	[FYGBOP_TAKE] = {
+		.op = FYGBOP_TAKE,
+		.op_name = "take",
+		.in_mask = FYGTM_SEQUENCE,
+		.out_mask = FYGTM_SEQUENCE,
+		.handler = fy_generic_op_take,
+	},
+	[FYGBOP_DROP] = {
+		.op = FYGBOP_DROP,
+		.op_name = "drop",
+		.in_mask = FYGTM_SEQUENCE,
+		.out_mask = FYGTM_SEQUENCE,
+		.handler = fy_generic_op_drop,
+	},
+	[FYGBOP_FIRST] = {
+		.op = FYGBOP_FIRST,
+		.op_name = "first",
+		.in_mask = FYGTM_SEQUENCE,
+		.out_mask = FYGTM_ANY,
+		.handler = fy_generic_op_first,
+	},
+	[FYGBOP_LAST] = {
+		.op = FYGBOP_LAST,
+		.op_name = "last",
+		.in_mask = FYGTM_SEQUENCE,
+		.out_mask = FYGTM_ANY,
+		.handler = fy_generic_op_last,
+	},
+	[FYGBOP_REST] = {
+		.op = FYGBOP_REST,
+		.op_name = "rest",
+		.in_mask = FYGTM_SEQUENCE,
+		.out_mask = FYGTM_SEQUENCE,
+		.handler = fy_generic_op_rest,
+	},
 	[FYGBOP_PARSE] = {
 		.op = FYGBOP_PARSE,
 		.op_name = "parse",
@@ -3115,6 +3362,30 @@ fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flag
 			args->filter_map_reduce_common.fn = va_arg(ap, void (*)(void));
 		if (op == FYGBOP_REDUCE)
 			args->reduce.acc = va_arg(ap, fy_generic);
+		break;
+
+	case FYGBOP_SLICE:
+		args->slice.start = va_arg(ap, size_t);
+		args->slice.end = va_arg(ap, size_t);
+		break;
+
+	case FYGBOP_SLICE_PY:
+		args->slice_py.start = va_arg(ap, ssize_t);
+		args->slice_py.end = va_arg(ap, ssize_t);
+		break;
+
+	case FYGBOP_TAKE:
+		args->take.n = va_arg(ap, size_t);
+		break;
+
+	case FYGBOP_DROP:
+		args->drop.n = va_arg(ap, size_t);
+		break;
+
+	case FYGBOP_FIRST:
+	case FYGBOP_LAST:
+	case FYGBOP_REST:
+		/* No additional arguments needed */
 		break;
 
 	default:

@@ -4244,6 +4244,11 @@ enum fy_gb_op {
 	FYGBOP_REDUCE,
 	FYGBOP_SLICE,
 	FYGBOP_SLICE_PY,
+	FYGBOP_TAKE,
+	FYGBOP_DROP,
+	FYGBOP_FIRST,
+	FYGBOP_LAST,
+	FYGBOP_REST,
 	FYGBOP_GET,
 	FYGBOP_GET_AT,
 	FYGBOP_GET_AT_PATH,
@@ -4359,6 +4364,34 @@ struct fy_op_emit_args {
 	enum fy_emitter_cfg_flags emit_flags;	/* emitter configuration flags */
 };
 
+/* FYGBOP_SLICE */
+struct fy_op_slice_args {
+	struct fy_op_common_args common;
+	size_t start;				/* starting index (inclusive) */
+	size_t end;				/* ending index (exclusive), or SIZE_MAX for end of sequence */
+};
+
+/* FYGBOP_SLICE_PY */
+struct fy_op_slice_py_args {
+	struct fy_op_common_args common;
+	ssize_t start;				/* starting index (inclusive), negative counts from end */
+	ssize_t end;				/* ending index (exclusive), negative counts from end */
+};
+
+/* FYGBOP_TAKE */
+struct fy_op_take_args {
+	struct fy_op_common_args common;
+	size_t n;				/* number of elements to take from start */
+};
+
+/* FYGBOP_DROP */
+struct fy_op_drop_args {
+	struct fy_op_common_args common;
+	size_t n;				/* number of elements to drop from start */
+};
+
+/* FYGBOP_FIRST, FYGBOP_LAST, FYGBOP_REST - no additional args needed */
+
 enum fy_gb_op_flags {
 	FYGBOPF_CREATE_SEQ	= FYGBOPF_OP(FYGBOP_CREATE_SEQ),
 	FYGBOPF_CREATE_MAP	= FYGBOPF_OP(FYGBOP_CREATE_MAP),
@@ -4379,6 +4412,13 @@ enum fy_gb_op_flags {
 	FYGBOPF_FILTER		= FYGBOPF_OP(FYGBOP_FILTER),
 	FYGBOPF_MAP		= FYGBOPF_OP(FYGBOP_MAP),
 	FYGBOPF_REDUCE		= FYGBOPF_OP(FYGBOP_REDUCE),
+	FYGBOPF_SLICE		= FYGBOPF_OP(FYGBOP_SLICE),
+	FYGBOPF_SLICE_PY	= FYGBOPF_OP(FYGBOP_SLICE_PY),
+	FYGBOPF_TAKE		= FYGBOPF_OP(FYGBOP_TAKE),
+	FYGBOPF_DROP		= FYGBOPF_OP(FYGBOP_DROP),
+	FYGBOPF_FIRST		= FYGBOPF_OP(FYGBOP_FIRST),
+	FYGBOPF_LAST		= FYGBOPF_OP(FYGBOP_LAST),
+	FYGBOPF_REST		= FYGBOPF_OP(FYGBOP_REST),
 	FYGBOPF_GET		= FYGBOPF_OP(FYGBOP_GET),
 	FYGBOPF_GET_AT		= FYGBOPF_OP(FYGBOP_GET_AT),
 	FYGBOPF_GET_AT_PATH	= FYGBOPF_OP(FYGBOP_GET_AT_PATH),
@@ -4409,6 +4449,10 @@ struct fy_generic_op_args {
 		struct fy_op_map_args map_filter;
 		struct fy_op_reduce_args reduce;
 		struct fy_op_filter_map_reduce_common filter_map_reduce_common;
+		struct fy_op_slice_args slice;
+		struct fy_op_slice_py_args slice_py;
+		struct fy_op_take_args take;
+		struct fy_op_drop_args drop;
 		struct fy_op_parse_args parse;
 		struct fy_op_emit_args emit;
 	};
@@ -5303,6 +5347,33 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 #define fy_disassoc(_first, ...) \
 	FY_GB_OR_LOCAL_COL_COUNT_ITEMS(FYGBOPF_DISASSOC, _first __VA_OPT__(,) __VA_ARGS__)
 
+/* Helper macros for slice operations */
+#define FY_GB_OR_LOCAL_SLICE(_flags, _gb_or_first, ...) \
+	({ \
+		struct fy_generic_builder *_gb = fy_gb_or_NULL(_gb_or_first); \
+		const fy_generic _seq = fy_first_non_gb(_gb_or_first, __VA_ARGS__); \
+		const size_t _start = fy_second_non_gb(_gb_or_first, __VA_ARGS__, 0); \
+		const size_t _end = fy_third_non_gb(_gb_or_first, __VA_ARGS__, 0, 0); \
+		FY_GB_OR_LOCAL_OP(_gb, (_flags), _seq, 0, NULL, _start, _end); \
+	})
+
+#define FY_GB_OR_LOCAL_SLICE_PY(_flags, _gb_or_first, ...) \
+	({ \
+		struct fy_generic_builder *_gb = fy_gb_or_NULL(_gb_or_first); \
+		const fy_generic _seq = fy_first_non_gb(_gb_or_first, __VA_ARGS__); \
+		const ssize_t _start = (ssize_t)fy_second_non_gb(_gb_or_first, __VA_ARGS__, 0); \
+		const ssize_t _end = (ssize_t)fy_third_non_gb(_gb_or_first, __VA_ARGS__, 0, 0); \
+		FY_GB_OR_LOCAL_OP(_gb, (_flags), _seq, 0, NULL, _start, _end); \
+	})
+
+#define FY_GB_OR_LOCAL_SLICE_N(_flags, _gb_or_first, ...) \
+	({ \
+		struct fy_generic_builder *_gb = fy_gb_or_NULL(_gb_or_first); \
+		const fy_generic _seq = fy_first_non_gb(_gb_or_first, __VA_ARGS__); \
+		const size_t _n = fy_second_non_gb(_gb_or_first, __VA_ARGS__, 0); \
+		FY_GB_OR_LOCAL_OP(_gb, (_flags), _seq, 0, NULL, _n); \
+	})
+
 #define fy_keys(_first, ...) \
 	FY_GB_OR_LOCAL_COL(FYGBOPF_KEYS, _first __VA_OPT__(,) __VA_ARGS__)
 
@@ -5339,6 +5410,40 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 
 #define fy_reduce(...) (FY_CPP_FIFTH(__VA_ARGS__, fy_gb_reduce, fy_local_reduce)(__VA_ARGS__))
 #define fy_preduce(...) (FY_CPP_SIXTH(__VA_ARGS__, fy_gb_preduce, fy_local_preduce)(__VA_ARGS__))
+
+/* Sequence slicing operations */
+#define fy_slice(_first, ...) \
+	FY_GB_OR_LOCAL_SLICE(FYGBOPF_SLICE, _first __VA_OPT__(,) __VA_ARGS__)
+
+#define fy_slice_py(_first, ...) \
+	FY_GB_OR_LOCAL_SLICE_PY(FYGBOPF_SLICE_PY, _first __VA_OPT__(,) __VA_ARGS__)
+
+#define fy_take(_first, ...) \
+	FY_GB_OR_LOCAL_SLICE_N(FYGBOPF_TAKE, _first __VA_OPT__(,) __VA_ARGS__)
+
+#define fy_drop(_first, ...) \
+	FY_GB_OR_LOCAL_SLICE_N(FYGBOPF_DROP, _first __VA_OPT__(,) __VA_ARGS__)
+
+#define fy_first(_first, ...) \
+	({ \
+		struct fy_generic_builder *_gb = fy_gb_or_NULL(_first); \
+		const fy_generic _seq = fy_first_non_gb(_first __VA_OPT__(,) __VA_ARGS__, fy_invalid); \
+		FY_GB_OR_LOCAL_OP(_gb, FYGBOPF_FIRST, _seq, 0, NULL); \
+	})
+
+#define fy_last(_first, ...) \
+	({ \
+		struct fy_generic_builder *_gb = fy_gb_or_NULL(_first); \
+		const fy_generic _seq = fy_first_non_gb(_first __VA_OPT__(,) __VA_ARGS__, fy_invalid); \
+		FY_GB_OR_LOCAL_OP(_gb, FYGBOPF_LAST, _seq, 0, NULL); \
+	})
+
+#define fy_rest(_first, ...) \
+	({ \
+		struct fy_generic_builder *_gb = fy_gb_or_NULL(_first); \
+		const fy_generic _seq = fy_first_non_gb(_first __VA_OPT__(,) __VA_ARGS__, fy_invalid); \
+		FY_GB_OR_LOCAL_OP(_gb, FYGBOPF_REST, _seq, 0, NULL); \
+	})
 
 /*
  * Lambda variants - fy_filter_lambda, fy_map_lambda, fy_reduce_lambda

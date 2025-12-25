@@ -4177,6 +4177,521 @@ START_TEST(parse_emit_ops)
 }
 END_TEST
 
+START_TEST(slice_ops)
+{
+	char buf[16384];
+	struct fy_generic_builder *gb;
+	struct fy_generic_op_args args;
+	fy_generic seq, sliced;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	/* Create test sequence: ["a", "b", "c", "d", "e"] */
+	seq = fy_sequence("a", "b", "c", "d", "e");
+	ck_assert(fy_generic_is_sequence(seq));
+	ck_assert(fy_len(seq) == 5);
+	printf("> Original sequence: ");
+	fy_generic_emit_default(seq);
+
+	/* Test SLICE: middle elements [1:4] -> ["b", "c", "d"] */
+	memset(&args, 0, sizeof(args));
+	args.slice.start = 1;
+	args.slice.end = 4;
+	sliced = fy_generic_op_args(gb, FYGBOPF_SLICE, seq, &args);
+	ck_assert(fy_generic_is_sequence(sliced));
+	ck_assert(fy_len(sliced) == 3);
+	ck_assert_str_eq(fy_get(sliced, 0, ""), "b");
+	ck_assert_str_eq(fy_get(sliced, 1, ""), "c");
+	ck_assert_str_eq(fy_get(sliced, 2, ""), "d");
+	printf("> Slice [1:4]: ");
+	fy_generic_emit_default(sliced);
+
+	/* Test SLICE: first 3 elements [0:3] -> ["a", "b", "c"] */
+	memset(&args, 0, sizeof(args));
+	args.slice.start = 0;
+	args.slice.end = 3;
+	sliced = fy_generic_op_args(gb, FYGBOPF_SLICE, seq, &args);
+	ck_assert(fy_generic_is_sequence(sliced));
+	ck_assert(fy_len(sliced) == 3);
+	ck_assert_str_eq(fy_get(sliced, 0, ""), "a");
+	ck_assert_str_eq(fy_get(sliced, 1, ""), "b");
+	ck_assert_str_eq(fy_get(sliced, 2, ""), "c");
+	printf("> Slice [0:3]: ");
+	fy_generic_emit_default(sliced);
+
+	/* Test SLICE: from index 2 to end [2:SIZE_MAX] -> ["c", "d", "e"] */
+	memset(&args, 0, sizeof(args));
+	args.slice.start = 2;
+	args.slice.end = SIZE_MAX;
+	sliced = fy_generic_op_args(gb, FYGBOPF_SLICE, seq, &args);
+	ck_assert(fy_generic_is_sequence(sliced));
+	ck_assert(fy_len(sliced) == 3);
+	ck_assert_str_eq(fy_get(sliced, 0, ""), "c");
+	ck_assert_str_eq(fy_get(sliced, 1, ""), "d");
+	ck_assert_str_eq(fy_get(sliced, 2, ""), "e");
+	printf("> Slice [2:end]: ");
+	fy_generic_emit_default(sliced);
+
+	/* Test SLICE: empty slice [2:2] -> [] */
+	memset(&args, 0, sizeof(args));
+	args.slice.start = 2;
+	args.slice.end = 2;
+	sliced = fy_generic_op_args(gb, FYGBOPF_SLICE, seq, &args);
+	ck_assert(fy_generic_is_sequence(sliced));
+	ck_assert(fy_len(sliced) == 0);
+	printf("> Slice [2:2] (empty): ");
+	fy_generic_emit_default(sliced);
+
+	/* Test SLICE_PY: negative indices [-2:-1] -> ["d"] */
+	memset(&args, 0, sizeof(args));
+	args.slice_py.start = -2;
+	args.slice_py.end = -1;
+	sliced = fy_generic_op_args(gb, FYGBOPF_SLICE_PY, seq, &args);
+	ck_assert(fy_generic_is_sequence(sliced));
+	ck_assert(fy_len(sliced) == 1);
+	ck_assert_str_eq(fy_get(sliced, 0, ""), "d");
+	printf("> Slice_py [-2:-1]: ");
+	fy_generic_emit_default(sliced);
+
+	/* Test SLICE_PY: all but last [0:-1] -> ["a", "b", "c", "d"] */
+	memset(&args, 0, sizeof(args));
+	args.slice_py.start = 0;
+	args.slice_py.end = -1;
+	sliced = fy_generic_op_args(gb, FYGBOPF_SLICE_PY, seq, &args);
+	ck_assert(fy_generic_is_sequence(sliced));
+	ck_assert(fy_len(sliced) == 4);
+	ck_assert_str_eq(fy_get(sliced, 0, ""), "a");
+	ck_assert_str_eq(fy_get(sliced, 1, ""), "b");
+	ck_assert_str_eq(fy_get(sliced, 2, ""), "c");
+	ck_assert_str_eq(fy_get(sliced, 3, ""), "d");
+	printf("> Slice_py [0:-1]: ");
+	fy_generic_emit_default(sliced);
+
+	/* Test slice with integers */
+	seq = fy_sequence(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+	memset(&args, 0, sizeof(args));
+	args.slice.start = 3;
+	args.slice.end = 7;
+	sliced = fy_generic_op_args(gb, FYGBOPF_SLICE, seq, &args);
+	ck_assert(fy_generic_is_sequence(sliced));
+	ck_assert(fy_len(sliced) == 4);
+	ck_assert(fy_get(sliced, 0, -1) == 4);
+	ck_assert(fy_get(sliced, 1, -1) == 5);
+	ck_assert(fy_get(sliced, 2, -1) == 6);
+	ck_assert(fy_get(sliced, 3, -1) == 7);
+	printf("> Slice integers [3:7]: ");
+	fy_generic_emit_default(sliced);
+
+	printf("> All slice tests passed!\n");
+}
+END_TEST
+
+START_TEST(take_drop_ops)
+{
+	char buf[16384];
+	struct fy_generic_builder *gb;
+	struct fy_generic_op_args args;
+	fy_generic seq, result, elem;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	/* Create test sequence: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] */
+	seq = fy_sequence(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+	ck_assert(fy_generic_is_sequence(seq));
+	ck_assert(fy_len(seq) == 10);
+	printf("> Original sequence: ");
+	fy_generic_emit_default(seq);
+
+	/* Test TAKE: first 5 elements -> [1, 2, 3, 4, 5] */
+	memset(&args, 0, sizeof(args));
+	args.take.n = 5;
+	result = fy_generic_op_args(gb, FYGBOPF_TAKE, seq, &args);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 5);
+	ck_assert(fy_get(result, 0, -1) == 1);
+	ck_assert(fy_get(result, 1, -1) == 2);
+	ck_assert(fy_get(result, 2, -1) == 3);
+	ck_assert(fy_get(result, 3, -1) == 4);
+	ck_assert(fy_get(result, 4, -1) == 5);
+	printf("> Take 5: ");
+	fy_generic_emit_default(result);
+
+	/* Test TAKE: take 0 -> [] */
+	memset(&args, 0, sizeof(args));
+	args.take.n = 0;
+	result = fy_generic_op_args(gb, FYGBOPF_TAKE, seq, &args);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 0);
+	printf("> Take 0 (empty): ");
+	fy_generic_emit_default(result);
+
+	/* Test TAKE: take more than length -> all elements */
+	memset(&args, 0, sizeof(args));
+	args.take.n = 100;
+	result = fy_generic_op_args(gb, FYGBOPF_TAKE, seq, &args);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 10);
+	printf("> Take 100 (all): ");
+	fy_generic_emit_default(result);
+
+	/* Test DROP: skip first 3 elements -> [4, 5, 6, 7, 8, 9, 10] */
+	memset(&args, 0, sizeof(args));
+	args.drop.n = 3;
+	result = fy_generic_op_args(gb, FYGBOPF_DROP, seq, &args);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 7);
+	ck_assert(fy_get(result, 0, -1) == 4);
+	ck_assert(fy_get(result, 1, -1) == 5);
+	ck_assert(fy_get(result, 2, -1) == 6);
+	ck_assert(fy_get(result, 3, -1) == 7);
+	printf("> Drop 3: ");
+	fy_generic_emit_default(result);
+
+	/* Test DROP: drop 0 -> all elements */
+	memset(&args, 0, sizeof(args));
+	args.drop.n = 0;
+	result = fy_generic_op_args(gb, FYGBOPF_DROP, seq, &args);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 10);
+	printf("> Drop 0 (all): ");
+	fy_generic_emit_default(result);
+
+	/* Test DROP: drop more than length -> empty */
+	memset(&args, 0, sizeof(args));
+	args.drop.n = 100;
+	result = fy_generic_op_args(gb, FYGBOPF_DROP, seq, &args);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 0);
+	printf("> Drop 100 (empty): ");
+	fy_generic_emit_default(result);
+
+	/* Test FIRST: get first element -> 1 */
+	elem = fy_generic_op_args(gb, FYGBOPF_FIRST, seq, NULL);
+	ck_assert(fy_generic_is_int(elem));
+	ck_assert(fy_cast(elem, -1) == 1);
+	printf("> First: ");
+	fy_generic_emit_default(elem);
+
+	/* Test LAST: get last element -> 10 */
+	elem = fy_generic_op_args(gb, FYGBOPF_LAST, seq, NULL);
+	ck_assert(fy_generic_is_int(elem));
+	ck_assert(fy_cast(elem, -1) == 10);
+	printf("> Last: ");
+	fy_generic_emit_default(elem);
+
+	/* Test REST: all but first -> [2, 3, 4, 5, 6, 7, 8, 9, 10] */
+	result = fy_generic_op_args(gb, FYGBOPF_REST, seq, NULL);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 9);
+	ck_assert(fy_get(result, 0, -1) == 2);
+	ck_assert(fy_get(result, 1, -1) == 3);
+	ck_assert(fy_get(result, 8, -1) == 10);
+	printf("> Rest: ");
+	fy_generic_emit_default(result);
+
+	/* Test with strings */
+	seq = fy_sequence("alice", "bob", "charlie", "dave");
+	printf("> String sequence: ");
+	fy_generic_emit_default(seq);
+
+	/* TAKE with strings */
+	memset(&args, 0, sizeof(args));
+	args.take.n = 2;
+	result = fy_generic_op_args(gb, FYGBOPF_TAKE, seq, &args);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 2);
+	ck_assert_str_eq(fy_get(result, 0, ""), "alice");
+	ck_assert_str_eq(fy_get(result, 1, ""), "bob");
+	printf("> Take 2: ");
+	fy_generic_emit_default(result);
+
+	/* DROP with strings */
+	memset(&args, 0, sizeof(args));
+	args.drop.n = 1;
+	result = fy_generic_op_args(gb, FYGBOPF_DROP, seq, &args);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 3);
+	ck_assert_str_eq(fy_get(result, 0, ""), "bob");
+	ck_assert_str_eq(fy_get(result, 1, ""), "charlie");
+	ck_assert_str_eq(fy_get(result, 2, ""), "dave");
+	printf("> Drop 1: ");
+	fy_generic_emit_default(result);
+
+	/* FIRST with strings */
+	elem = fy_generic_op_args(gb, FYGBOPF_FIRST, seq, NULL);
+	ck_assert(fy_generic_is_string(elem));
+	ck_assert_str_eq(fy_cast(elem, ""), "alice");
+	printf("> First: ");
+	fy_generic_emit_default(elem);
+
+	/* LAST with strings */
+	elem = fy_generic_op_args(gb, FYGBOPF_LAST, seq, NULL);
+	ck_assert(fy_generic_is_string(elem));
+	ck_assert_str_eq(fy_cast(elem, ""), "dave");
+	printf("> Last: ");
+	fy_generic_emit_default(elem);
+
+	/* REST with strings */
+	result = fy_generic_op_args(gb, FYGBOPF_REST, seq, NULL);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 3);
+	ck_assert_str_eq(fy_get(result, 0, ""), "bob");
+	ck_assert_str_eq(fy_get(result, 1, ""), "charlie");
+	ck_assert_str_eq(fy_get(result, 2, ""), "dave");
+	printf("> Rest: ");
+	fy_generic_emit_default(result);
+
+	/* Test edge cases: empty sequence */
+	seq = fy_sequence();
+	ck_assert(fy_len(seq) == 0);
+
+	/* FIRST on empty -> invalid */
+	elem = fy_generic_op_args(gb, FYGBOPF_FIRST, seq, NULL);
+	ck_assert(fy_generic_is_invalid(elem));
+	printf("> First on empty: invalid (expected)\n");
+
+	/* LAST on empty -> invalid */
+	elem = fy_generic_op_args(gb, FYGBOPF_LAST, seq, NULL);
+	ck_assert(fy_generic_is_invalid(elem));
+	printf("> Last on empty: invalid (expected)\n");
+
+	/* REST on empty -> empty */
+	result = fy_generic_op_args(gb, FYGBOPF_REST, seq, NULL);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 0);
+	printf("> Rest on empty: empty sequence (expected)\n");
+
+	/* Test edge cases: single element */
+	seq = fy_sequence("only");
+
+	/* FIRST on single */
+	elem = fy_generic_op_args(gb, FYGBOPF_FIRST, seq, NULL);
+	ck_assert(fy_generic_is_string(elem));
+	ck_assert_str_eq(fy_cast(elem, ""), "only");
+	printf("> First on single: ");
+	fy_generic_emit_default(elem);
+
+	/* LAST on single */
+	elem = fy_generic_op_args(gb, FYGBOPF_LAST, seq, NULL);
+	ck_assert(fy_generic_is_string(elem));
+	ck_assert_str_eq(fy_cast(elem, ""), "only");
+	printf("> Last on single: ");
+	fy_generic_emit_default(elem);
+
+	/* REST on single -> empty */
+	result = fy_generic_op_args(gb, FYGBOPF_REST, seq, NULL);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 0);
+	printf("> Rest on single: empty sequence\n");
+
+	printf("> All take/drop/first/last/rest tests passed!\n");
+}
+END_TEST
+
+START_TEST(polymorphic_slice_ops)
+{
+	char buf[16384];
+	struct fy_generic_builder *gb;
+	fy_generic seq, result, elem;
+
+	printf("\n> Testing polymorphic wrapper macros for slice operations\n");
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	/* Create test sequence */
+	seq = fy_sequence(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+	printf("> Test sequence: ");
+	fy_generic_emit_default(seq);
+
+	/* Test fy_slice() - local allocation */
+	result = fy_slice(seq, 2, 5);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 3);
+	ck_assert(fy_get(result, 0, -1) == 3);
+	ck_assert(fy_get(result, 1, -1) == 4);
+	ck_assert(fy_get(result, 2, -1) == 5);
+	printf("> fy_slice(seq, 2, 5) local: ");
+	fy_generic_emit_default(result);
+
+	/* Test fy_slice() - builder allocation */
+	result = fy_slice(gb, seq, 2, 5);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 3);
+	ck_assert(fy_get(result, 0, -1) == 3);
+	printf("> fy_slice(gb, seq, 2, 5) builder: ");
+	fy_generic_emit_default(result);
+
+	/* Test fy_slice_py() - local allocation with negative indices */
+	result = fy_slice_py(seq, -5, -2);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 3);
+	ck_assert(fy_get(result, 0, -1) == 6);
+	ck_assert(fy_get(result, 1, -1) == 7);
+	ck_assert(fy_get(result, 2, -1) == 8);
+	printf("> fy_slice_py(seq, -5, -2) local: ");
+	fy_generic_emit_default(result);
+
+	/* Test fy_slice_py() - builder allocation */
+	result = fy_slice_py(gb, seq, -5, -2);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 3);
+	ck_assert(fy_get(result, 0, -1) == 6);
+	printf("> fy_slice_py(gb, seq, -5, -2) builder: ");
+	fy_generic_emit_default(result);
+
+	/* Test fy_take() - local allocation */
+	result = fy_take(seq, 3);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 3);
+	ck_assert(fy_get(result, 0, -1) == 1);
+	ck_assert(fy_get(result, 1, -1) == 2);
+	ck_assert(fy_get(result, 2, -1) == 3);
+	printf("> fy_take(seq, 3) local: ");
+	fy_generic_emit_default(result);
+
+	/* Test fy_take() - builder allocation */
+	result = fy_take(gb, seq, 3);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 3);
+	ck_assert(fy_get(result, 0, -1) == 1);
+	printf("> fy_take(gb, seq, 3) builder: ");
+	fy_generic_emit_default(result);
+
+	/* Test fy_drop() - local allocation */
+	result = fy_drop(seq, 7);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 3);
+	ck_assert(fy_get(result, 0, -1) == 8);
+	ck_assert(fy_get(result, 1, -1) == 9);
+	ck_assert(fy_get(result, 2, -1) == 10);
+	printf("> fy_drop(seq, 7) local: ");
+	fy_generic_emit_default(result);
+
+	/* Test fy_drop() - builder allocation */
+	result = fy_drop(gb, seq, 7);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 3);
+	ck_assert(fy_get(result, 0, -1) == 8);
+	printf("> fy_drop(gb, seq, 7) builder: ");
+	fy_generic_emit_default(result);
+
+	/* Test fy_first() - local allocation */
+	elem = fy_first(seq);
+	ck_assert(fy_generic_is_int(elem));
+	ck_assert(fy_cast(elem, -1) == 1);
+	printf("> fy_first(seq) local: ");
+	fy_generic_emit_default(elem);
+
+	/* Test fy_first() - builder allocation */
+	elem = fy_first(gb, seq);
+	ck_assert(fy_generic_is_int(elem));
+	ck_assert(fy_cast(elem, -1) == 1);
+	printf("> fy_first(gb, seq) builder: ");
+	fy_generic_emit_default(elem);
+
+	/* Test fy_last() - local allocation */
+	elem = fy_last(seq);
+	ck_assert(fy_generic_is_int(elem));
+	ck_assert(fy_cast(elem, -1) == 10);
+	printf("> fy_last(seq) local: ");
+	fy_generic_emit_default(elem);
+
+	/* Test fy_last() - builder allocation */
+	elem = fy_last(gb, seq);
+	ck_assert(fy_generic_is_int(elem));
+	ck_assert(fy_cast(elem, -1) == 10);
+	printf("> fy_last(gb, seq) builder: ");
+	fy_generic_emit_default(elem);
+
+	/* Test fy_rest() - local allocation */
+	result = fy_rest(seq);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 9);
+	ck_assert(fy_get(result, 0, -1) == 2);
+	ck_assert(fy_get(result, 8, -1) == 10);
+	printf("> fy_rest(seq) local: ");
+	fy_generic_emit_default(result);
+
+	/* Test fy_rest() - builder allocation */
+	result = fy_rest(gb, seq);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 9);
+	ck_assert(fy_get(result, 0, -1) == 2);
+	printf("> fy_rest(gb, seq) builder: ");
+	fy_generic_emit_default(result);
+
+	/* Test with strings */
+	seq = fy_sequence("alpha", "beta", "gamma", "delta");
+	printf("> String sequence: ");
+	fy_generic_emit_default(seq);
+
+	/* fy_take with strings - local */
+	result = fy_take(seq, 2);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 2);
+	ck_assert_str_eq(fy_get(result, 0, ""), "alpha");
+	ck_assert_str_eq(fy_get(result, 1, ""), "beta");
+	printf("> fy_take(seq, 2) strings local: ");
+	fy_generic_emit_default(result);
+
+	/* fy_drop with strings - builder */
+	result = fy_drop(gb, seq, 1);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 3);
+	ck_assert_str_eq(fy_get(result, 0, ""), "beta");
+	printf("> fy_drop(gb, seq, 1) strings builder: ");
+	fy_generic_emit_default(result);
+
+	/* fy_first with strings - local */
+	elem = fy_first(seq);
+	ck_assert(fy_generic_is_string(elem));
+	ck_assert_str_eq(fy_cast(elem, ""), "alpha");
+	printf("> fy_first(seq) strings local: ");
+	fy_generic_emit_default(elem);
+
+	/* fy_last with strings - builder */
+	elem = fy_last(gb, seq);
+	ck_assert(fy_generic_is_string(elem));
+	ck_assert_str_eq(fy_cast(elem, ""), "delta");
+	printf("> fy_last(gb, seq) strings builder: ");
+	fy_generic_emit_default(elem);
+
+	/* Edge cases */
+	seq = fy_sequence();  /* empty */
+	elem = fy_first(seq);
+	ck_assert(fy_generic_is_invalid(elem));
+	printf("> fy_first on empty: invalid (expected)\n");
+
+	elem = fy_last(gb, seq);
+	ck_assert(fy_generic_is_invalid(elem));
+	printf("> fy_last on empty: invalid (expected)\n");
+
+	result = fy_rest(seq);
+	ck_assert(fy_generic_is_sequence(result));
+	ck_assert(fy_len(result) == 0);
+	printf("> fy_rest on empty: empty sequence (expected)\n");
+
+	/* Single element */
+	seq = fy_sequence(42);
+	elem = fy_first(seq);
+	ck_assert(fy_cast(elem, -1) == 42);
+	printf("> fy_first on single element: ");
+	fy_generic_emit_default(elem);
+
+	result = fy_rest(gb, seq);
+	ck_assert(fy_len(result) == 0);
+	printf("> fy_rest on single: empty sequence\n");
+
+	printf("> All polymorphic wrapper macro tests passed!\n");
+}
+END_TEST
+
 TCase *libfyaml_case_generic(void)
 {
 	TCase *tc;
@@ -4277,6 +4792,15 @@ TCase *libfyaml_case_generic(void)
 
 	/* parse and emit operations */
 	tcase_add_test(tc, parse_emit_ops);
+
+	/* slice operations */
+	tcase_add_test(tc, slice_ops);
+
+	/* take/drop/first/last/rest operations */
+	tcase_add_test(tc, take_drop_ops);
+
+	/* polymorphic wrapper macros for slice operations */
+	tcase_add_test(tc, polymorphic_slice_ops);
 
 	return tc;
 }
