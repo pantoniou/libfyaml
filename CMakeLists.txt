@@ -635,6 +635,7 @@ set(LIBSRCS
     src/generic/fy-generic.c
     src/generic/fy-generic-decoder.c
     src/generic/fy-generic-encoder.c
+    src/generic/fy-generic-op.c
     src/reflection/fy-reflection.c
     src/reflection/fy-packed-backend.c
     src/reflection/fy-null-backend.c
