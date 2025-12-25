@@ -193,12 +193,21 @@ if(BUILD_TESTING)
         set(HAVE_CHECK 1)
         set(CHECK_LIBRARIES check)
         get_target_property(CHECK_INCLUDE_DIRS check INTERFACE_INCLUDE_DIRECTORIES)
+        # Get library location to extract directory
+        get_target_property(CHECK_LIB_LOCATION check IMPORTED_LOCATION)
+        if(NOT CHECK_LIB_LOCATION)
+            get_target_property(CHECK_LIB_LOCATION check LOCATION)
+        endif()
+        if(CHECK_LIB_LOCATION)
+            get_filename_component(CHECK_LIBRARY_DIRS "${CHECK_LIB_LOCATION}" DIRECTORY)
+        endif()
         message(STATUS "Found check framework via CMake config")
 
         # Check if libcheck has srunner_set_tap (jessie has outdated libcheck)
         set(_TEMP_CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES}")
         set(_TEMP_CMAKE_REQUIRED_INCLUDES  "${CMAKE_REQUIRED_INCLUDES}")
-        set(CMAKE_REQUIRED_LIBRARIES ${CHECK_LIBRARIES})
+        # For CMake config targets, use the target directly
+        set(CMAKE_REQUIRED_LIBRARIES check)
         set(CMAKE_REQUIRED_INCLUDES ${CHECK_INCLUDE_DIRS})
 
         check_symbol_exists(srunner_set_tap "check.h" HAVE_SRUNNER_SET_TAP)
@@ -223,15 +232,22 @@ if(BUILD_TESTING)
                 # Check if libcheck has srunner_set_tap (jessie has outdated libcheck)
                 set(_TEMP_CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES}")
                 set(_TEMP_CMAKE_REQUIRED_INCLUDES  "${CMAKE_REQUIRED_INCLUDES}")
+                set(_TEMP_CMAKE_REQUIRED_LINK_OPTIONS "${CMAKE_REQUIRED_LINK_OPTIONS}")
                 set(CMAKE_REQUIRED_LIBRARIES ${CHECK_LIBRARIES})
                 set(CMAKE_REQUIRED_INCLUDES ${CHECK_INCLUDE_DIRS})
+                # Add library directories to linker flags
+                foreach(libdir ${CHECK_LIBRARY_DIRS})
+                    list(APPEND CMAKE_REQUIRED_LINK_OPTIONS "-L${libdir}")
+                endforeach()
 
                 check_symbol_exists(srunner_set_tap "check.h" HAVE_SRUNNER_SET_TAP)
 
                 set(CMAKE_REQUIRED_LIBRARIES "${_TEMP_CMAKE_REQUIRED_LIBRARIES}")
                 set(CMAKE_REQUIRED_INCLUDES  "${_TEMP_CMAKE_REQUIRED_INCLUDES}")
+                set(CMAKE_REQUIRED_LINK_OPTIONS "${_TEMP_CMAKE_REQUIRED_LINK_OPTIONS}")
                 unset(_TEMP_CMAKE_REQUIRED_LIBRARIES)
                 unset(_TEMP_CMAKE_REQUIRED_INCLUDES)
+                unset(_TEMP_CMAKE_REQUIRED_LINK_OPTIONS)
 
                 if(HAVE_SRUNNER_SET_TAP)
                     set(HAVE_COMPATIBLE_CHECK 1)
@@ -1232,6 +1248,9 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
         else()
             target_link_libraries(libfyaml-test PRIVATE fyaml_static ${CHECK_LIBRARIES})
         endif()
+        if(CHECK_LIBRARY_DIRS)
+            target_link_directories(libfyaml-test PRIVATE ${CHECK_LIBRARY_DIRS})
+        endif()
         if(HAVE_LIBCLANG)
             target_link_directories(libfyaml-test PRIVATE ${LIBCLANG_LINK_DIRS})
         endif()
@@ -1330,7 +1349,7 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
 
     # Build all test dependencies as part of default 'all' target
     # Note: CMake's 'make test' target doesn't trigger builds by design.
-    # Use 'make all test' or 'make check' or 'make build_and_test' for complete workflow.
+    # Use 'make all test' or 'make check-am' or 'make build_and_test' for complete workflow.
     set(TEST_DEPENDENCIES fy-tool fy-thread fy-b3sum fy-allocators)
     if(HAVE_COMPATIBLE_CHECK)
         list(APPEND TEST_DEPENDENCIES libfyaml-test)
@@ -1352,8 +1371,9 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     )
 
-    # keep the old behavior of check
-    add_custom_target(check
+    # Autotools-compatible test runner using test-driver
+    # NOTE: Named 'check-am' instead of 'check' to avoid conflicts with check library target
+    add_custom_target(check-am
         COMMENT "Running tests via Automake test-driver"
     )
 
@@ -1377,7 +1397,7 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
                 COMMENT "Running ${exe}"
             )
             add_dependencies(check_${exe} ${exe})
-            add_dependencies(check check_${exe})
+            add_dependencies(check-am check_${exe})
         endforeach()
     endif()
 
@@ -1415,7 +1435,7 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
             COMMENT "Running ${suite}"
         )
         add_dependencies(check_${suite} fy-tool)
-        add_dependencies(check check_${suite})
+        add_dependencies(check-am check_${suite})
     endforeach()
 
 endif()
@@ -1575,7 +1595,7 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
     message(STATUS "Test targets:")
     message(STATUS "  make all test       - Build everything then run CTest (2464 individual tests)")
     message(STATUS "  make build_and_test - Convenience target: build and test in one command")
-    message(STATUS "  make check          - Autotools-compatible TAP test runner (~10 test scripts)")
+    message(STATUS "  make check-am       - Autotools-compatible TAP test runner (~10 test scripts)")
     message(STATUS "")
     message(STATUS "NOTE: 'make test' alone will fail if binaries aren't built. Use 'make all test'.")
     message(STATUS "")
