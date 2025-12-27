@@ -50,7 +50,8 @@ libfyaml_la_SOURCES += \
 	util/fy-id.h \
 	util/fy-align.h \
 	util/fy-bit64.h \
-	util/fy-vlsize.h
+	util/fy-vlsize.h \
+	util/fy-atomics.h
 
 # xxhash
 libfyaml_la_SOURCES += \

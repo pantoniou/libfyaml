@@ -21,9 +21,10 @@
 
 #if (defined(__GNUC__) && __GNUC__ >= 4) || defined(__clang__)
 
-#define FY_BIT64_LOWEST(_x) ((unsigned int)__builtin_ctzll((unsigned long long)(_x)))
-#define FY_BIT64_HIGHEST(_x) ((unsigned int)__builtin_clzll((unsigned long long)(_x)))
-#define FY_BIT64_POPCNT(_x) ((unsigned int)__builtin_popcountl((unsigned long long)(_x)))
+#define FY_BIT64_LOWEST(_x) ((unsigned int)__builtin_ctzll((uint64_t)(_x)))
+#define FY_BIT64_HIGHEST(_x) ((unsigned int)__builtin_clzll((uint64_t)(_x)))
+#define FY_BIT64_POPCNT(_x) ((unsigned int)__builtin_popcountl((uint64_t)(_x)))
+#define FY_BIT64_FFS(_x) ((unsigned int)__builtin_ffsll((uint64_t)(_x)))
 
 static inline unsigned int fy_bit64_lowest(uint64_t x)
 {
@@ -35,14 +36,19 @@ static inline unsigned int fy_bit64_highest(uint64_t x)
 	return FY_BIT64_HIGHEST(x);
 }
 
-static inline unsigned int FY_bit64_popcnt(uint64_t x)
+static inline unsigned int fy_bit64_popcnt(uint64_t x)
 {
 	return FY_BIT64_POPCNT(x);
 }
 
+static inline unsigned int fy_bit64_ffs(uint64_t x)
+{
+	return FY_BIT64_FFS(x);
+}
+
 #else	/* portable implementation */
 
-static inline unsigned int FY_BIT64_LOWEST(uint64_t x)
+static inline unsigned int fy_bit64_lowest(uint64_t x)
 {
 	unsigned int c = 0;
 
@@ -55,7 +61,7 @@ static inline unsigned int FY_BIT64_LOWEST(uint64_t x)
 	return c;
 }
 
-static inline unsigned int FY_BIT64_HIGHEST(uint64_t x)
+static inline unsigned int fy_bit64_highest(uint64_t x)
 {
 	unsigned int c = 0;
 
@@ -68,7 +74,7 @@ static inline unsigned int FY_BIT64_HIGHEST(uint64_t x)
 	return c;
 }
 
-static inline unsigned int FY_BIT64_POPCNT(uint64_t x)
+static inline unsigned int fy_bit64_popcnt(uint64_t x)
 {
 	unsigned int count;
 
@@ -77,9 +83,15 @@ static inline unsigned int FY_BIT64_POPCNT(uint64_t x)
 	return count;
 }
 
+static inline unsigned int fy_bit64_ffs(uint64_t x)
+{
+	return x ? (fy_bit64_lowest(x) + 1) : 0;
+}
+
 #define FY_BIT64_LOWEST(_x) fy_bit64_lowest(_x)
 #define FY_BIT64_HIGEST(_x) fy_bit64_highest(_x)
 #define FY_BIT64_POPCNT(_x) fy_bit64_popcnt(_x)
+#define FY_BIT64_FFS(_x) fy_bit64_ffs(_x)
 
 #endif
 

@@ -34,17 +34,19 @@ START_TEST(id_ffs)
 		int r;
 	} ffs_check[] = {
 		{ .v = 0, .r = -1 },
-		{ .v = ~(fy_id_bits)0, .r = 0 },
-		{ .v = ((fy_id_bits)1 << 0), .r = 0 },
-		{ .v = ((fy_id_bits)1 << (FY_ID_BITS_BITS - 1)), .r = (FY_ID_BITS_BITS - 1) },
-		{ .v = ((fy_id_bits)1 << 0) | ((fy_id_bits)1 << (FY_ID_BITS_BITS - 1)), .r = 0 },
-		{ .v = ((fy_id_bits)1 << (FY_ID_BITS_BITS / 2)), .r = (FY_ID_BITS_BITS / 2), },
+		{ .v = ~(fy_id_bits_non_atomic)0, .r = 0 },
+		{ .v = ((fy_id_bits_non_atomic)1 << 0), .r = 0 },
+		{ .v = ((fy_id_bits_non_atomic)1 << (FY_ID_BITS_BITS - 1)), .r = (FY_ID_BITS_BITS - 1) },
+		{ .v = ((fy_id_bits_non_atomic)1 << 0) | ((fy_id_bits_non_atomic)1 << (FY_ID_BITS_BITS - 1)), .r = 0 },
+		{ .v = ((fy_id_bits_non_atomic)1 << (FY_ID_BITS_BITS / 2)), .r = (FY_ID_BITS_BITS / 2), },
 	};
 	unsigned int i;
+	fy_id_bits v;
 	int r;
 
 	for (i = 0; i < ARRAY_SIZE(ffs_check); i++) {
-		r = fy_id_ffs(ffs_check[i].v);
+		fy_atomic_store(&v, ffs_check[i].v);
+		r = fy_id_ffs(v);
 		ck_assert_int_eq(r, ffs_check[i].r);
 	}
 }
@@ -83,6 +85,7 @@ START_TEST(id_alloc_full)
 	expected_id = 0;
 	for (i = 0; i < ba_bits_actual; i++) {
 		id = fy_id_alloc(ba, ba_count);
+		ck_assert_int_ne(id, -1);
 		ck_assert_int_eq(id, expected_id);
 		expected_id++;
 	}
