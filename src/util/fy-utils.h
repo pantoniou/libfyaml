@@ -323,14 +323,9 @@ static inline void fy_strip_trailing_nl(char *str)
 #define _E2(...)	_E1(_E1(__VA_ARGS__))
 #define _E4(...)	_E2(_E2(__VA_ARGS__))
 #define _E8(...)	_E4(_E4(__VA_ARGS__))
-#if !defined(__clang__)
-// gcc is better, goes to 16
 #define _E16(...)	_E8(_E8(__VA_ARGS__))
-#define _E(...)		_E16(_E16(__VA_ARGS__))
-#else
-// clang craps out at 8
-#define _E(...)		_E8(_E8(__VA_ARGS__))
-#endif
+#define _E32(...)	_E16(_E16(__VA_ARGS__))
+#define _E(...)		_E32(_E32(__VA_ARGS__))
 
 #define _FMT()
 #define _FP1(m) m _FMT()

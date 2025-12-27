@@ -2503,7 +2503,7 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 	((fy_generic [(_c)]) { _FVGBIS((_g), __VA_ARGS__) })
 
 /* Public API */
-#define _FY_CPP_GITEM_ONE		_FIL1
+#define _FY_CPP_GITEM_ONE		_FLI1
 #define _FY_CPP_GITEM_LATER_ARG		_FLIL
 #define _FY_CPP_GITEM_LIST		_FLILS
 #define _FY_CPP_VA_GITEMS		_FVLIS
@@ -5352,8 +5352,8 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	({ \
 		struct fy_generic_builder *_gb = fy_gb_or_NULL(_gb_or_first); \
 		const fy_generic _seq = fy_first_non_gb(_gb_or_first, __VA_ARGS__); \
-		const size_t _start = fy_second_non_gb(_gb_or_first, __VA_ARGS__, 0); \
-		const size_t _end = fy_third_non_gb(_gb_or_first, __VA_ARGS__, 0, 0); \
+		const size_t _start = fy_second_non_gb(_gb_or_first, __VA_ARGS__); \
+		const size_t _end = fy_third_non_gb(_gb_or_first, __VA_ARGS__); \
 		FY_GB_OR_LOCAL_OP(_gb, (_flags), _seq, 0, NULL, _start, _end); \
 	})
 
@@ -5361,8 +5361,8 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	({ \
 		struct fy_generic_builder *_gb = fy_gb_or_NULL(_gb_or_first); \
 		const fy_generic _seq = fy_first_non_gb(_gb_or_first, __VA_ARGS__); \
-		const ssize_t _start = (ssize_t)fy_second_non_gb(_gb_or_first, __VA_ARGS__, 0); \
-		const ssize_t _end = (ssize_t)fy_third_non_gb(_gb_or_first, __VA_ARGS__, 0, 0); \
+		const ssize_t _start = (ssize_t)fy_second_non_gb(_gb_or_first, __VA_ARGS__); \
+		const ssize_t _end = (ssize_t)fy_third_non_gb(_gb_or_first, __VA_ARGS__); \
 		FY_GB_OR_LOCAL_OP(_gb, (_flags), _seq, 0, NULL, _start, _end); \
 	})
 
@@ -5370,7 +5370,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv);
 	({ \
 		struct fy_generic_builder *_gb = fy_gb_or_NULL(_gb_or_first); \
 		const fy_generic _seq = fy_first_non_gb(_gb_or_first, __VA_ARGS__); \
-		const size_t _n = fy_second_non_gb(_gb_or_first, __VA_ARGS__, 0); \
+		const size_t _n = fy_second_non_gb(_gb_or_first, __VA_ARGS__); \
 		FY_GB_OR_LOCAL_OP(_gb, (_flags), _seq, 0, NULL, _n); \
 	})
 
