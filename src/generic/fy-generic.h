@@ -2503,7 +2503,7 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 	((fy_generic [(_c)]) { _FVGBIS((_g), __VA_ARGS__) })
 
 /* Public API */
-#define _FY_CPP_GITEM_ONE		_FIL1
+#define _FY_CPP_GITEM_ONE		_FLI1
 #define _FY_CPP_GITEM_LATER_ARG		_FLIL
 #define _FY_CPP_GITEM_LIST		_FLILS
 #define _FY_CPP_VA_GITEMS		_FVLIS
