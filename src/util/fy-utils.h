@@ -329,23 +329,25 @@ static inline void fy_strip_trailing_nl(char *str)
 
 #define FY_CPP_POSTPONE2(a, macro) macro FY_CPP_EMPTY()
 
-#define _FY_CPP_FIRST(_1, ...) _1
-#define FY_CPP_FIRST(...)     __VA_OPT__(_FY_CPP_FIRST(__VA_ARGS__))
+#define _FY_CPP_FIRST(_1, ...)			_1
+#define FY_CPP_FIRST(...)			_FY_CPP_FIRST(__VA_OPT__(__VA_ARGS__ ,) 0)
 
-#define _FY_CPP_SECOND(_1, _2, ...) _2
-#define FY_CPP_SECOND(...)     __VA_OPT__(_FY_CPP_SECOND(__VA_ARGS__))
+#define _FY_CPP_SECOND(_1, _2, ...)		_2
+#define FY_CPP_SECOND(...)			_FY_CPP_SECOND(__VA_OPT__(__VA_ARGS__ ,) 0, 0)
 
-#define _FY_CPP_THIRD(_1, _2, _3, ...) _3
-#define FY_CPP_THIRD(...)     __VA_OPT__(_FY_CPP_THIRD(__VA_ARGS__))
+#define _FY_CPP_THIRD(_1, _2, _3, ...)		_3
+#define FY_CPP_THIRD(...)			_FY_CPP_THIRD(__VA_OPT__(__VA_ARGS__ ,) 0, 0, 0)
 
-#define _FY_CPP_FOURTH(_1, _2, _3, _4, ...) _4
-#define FY_CPP_FOURTH(...)     __VA_OPT__(_FY_CPP_FOURTH(__VA_ARGS__))
+#define _FY_CPP_FOURTH(_1, _2, _3, _4, ...)	_4
+#define FY_CPP_FOURTH(...)			_FY_CPP_FOURTH(__VA_OPT__(__VA_ARGS__ ,) 0, 0, 0, 0)
 
-#define _FY_CPP_FIFTH(_1, _2, _3, _4, _5, ...) _5
-#define FY_CPP_FIFTH(...)     __VA_OPT__(_FY_CPP_FIFTH(__VA_ARGS__))
+#define _FY_CPP_FIFTH(_1, _2, _3, _4, _5, ...)	_5
+#define FY_CPP_FIFTH(...) \
+	_FY_CPP_FIFTH(__VA_OPT__(__VA_ARGS__ ,) 0, 0, 0, 0, 0)
 
-#define _FY_CPP_SIXTH(_1, _2, _3, _4, _5, _6, ...) _6
-#define FY_CPP_SIXTH(...)     __VA_OPT__(_FY_CPP_SIXTH(__VA_ARGS__))
+#define _FY_CPP_SIXTH(_1, _2, _3, _4, _5, _6, ...)	_6
+#define FY_CPP_SIXTH(...) \
+	_FY_CPP_SIXTH(__VA_OPT__(__VA_ARGS__ ,) 0, 0, 0, 0, 0, 0)
 
 #define _FY_CPP_REST(x, ...) __VA_ARGS__
 #define FY_CPP_REST(...)     __VA_OPT__(_FY_CPP_REST(__VA_ARGS__))
