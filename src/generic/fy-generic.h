@@ -2477,6 +2477,47 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 #define fy_local_sequence_create(_count, _items) \
 	((fy_generic) { .v = fy_local_sequence_create_value((_count), (_items)) })
 
+#ifdef FY_CPP_SHORT_NAMES
+
+/* Short-name implementation */
+#define _FLI1(a) fy_to_generic(a)
+#define _FLIL(a) , _FLI1(a)
+#define _FLILS(...) FY_CPP_MAP(_FLIL, __VA_ARGS__)
+
+#define _FVLIS(...)          \
+    _FLI1(F1(__VA_ARGS__)) \
+    _FLILS(FR(__VA_ARGS__))
+
+#define _FVLISF(_c, ...) \
+	((fy_generic [(_c)]) { __VA_OPT__(_FVLIS(__VA_ARGS__)) })
+
+#define _FGBI1(_g, a) fy_gb_to_generic(_g, a)
+#define _FGBIL(_g, a) , _FGBI1(_g, a)
+#define _FGBILS(_g, ...) FM2(_g, _FGBIL, __VA_ARGS__)
+
+#define _FVGBIS(_g, ...) \
+	_FGBI1(_g, F1(__VA_ARGS__)) \
+	_FGBILS(_g, FR(__VA_ARGS__))
+
+#define _FVGBISF(_c, _g, ...) \
+	((fy_generic [(_c)]) { _FVGBIS((_g), __VA_ARGS__) })
+
+/* Public API */
+#define _FY_CPP_GITEM_ONE		_FIL1
+#define _FY_CPP_GITEM_LATER_ARG		_FLIL
+#define _FY_CPP_GITEM_LIST		_FLILS
+#define _FY_CPP_VA_GITEMS		_FVLIS
+#define FY_CPP_VA_GITEMS		_FVLISF
+
+#define _FY_CPP_GBITEM_ONE		_FGBI1
+#define _FY_CPP_GBITEM_LATER_ARG	_FGBIL
+#define _FY_CPP_GBITEM_LIST		_FGBILS
+#define _FY_CPP_VA_GBITEMS		_FVGBIS
+#define FY_CPP_VA_GBITEMS		_FVGBISF
+
+#else /* !FY_CPP_SHORT_NAMES */
+
+/* Original long-name implementation */
 #define _FY_CPP_GITEM_ONE(arg) fy_to_generic(arg)
 #define _FY_CPP_GITEM_LATER_ARG(arg) , _FY_CPP_GITEM_ONE(arg)
 #define _FY_CPP_GITEM_LIST(...) FY_CPP_MAP(_FY_CPP_GITEM_LATER_ARG, __VA_ARGS__)
@@ -2487,6 +2528,20 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 
 #define FY_CPP_VA_GITEMS(_count, ...) \
 	((fy_generic [(_count)]) { __VA_OPT__(_FY_CPP_VA_GITEMS(__VA_ARGS__)) })
+
+#define _FY_CPP_GBITEM_ONE(_gb, arg) fy_gb_to_generic(_gb, arg)
+#define _FY_CPP_GBITEM_LATER_ARG(_gb, arg) , _FY_CPP_GBITEM_ONE(_gb, arg)
+#define _FY_CPP_GBITEM_LIST(_gb, ...) FY_CPP_MAP2(_gb, _FY_CPP_GBITEM_LATER_ARG, __VA_ARGS__)
+
+#define _FY_CPP_VA_GBITEMS(_gb, ...)          \
+	_FY_CPP_GBITEM_ONE(_gb, FY_CPP_FIRST(__VA_ARGS__)) \
+	_FY_CPP_GBITEM_LIST(_gb, FY_CPP_REST(__VA_ARGS__))
+
+#define FY_CPP_VA_GBITEMS(_count, _gb, ...) \
+	((fy_generic [(_count)]) { _FY_CPP_VA_GBITEMS((_gb), __VA_ARGS__) })
+
+#endif /* FY_CPP_SHORT_NAMES */
+
 
 #define fy_local_sequence_value(...) \
 	fy_local_sequence_create_value( \
@@ -4387,17 +4442,6 @@ fy_gb_mapping_create(struct fy_generic_builder *gb, size_t count, const fy_gener
 fy_generic fy_gb_indirect_create(struct fy_generic_builder *gb, const fy_generic_indirect *gi);
 
 fy_generic fy_gb_alias_create(struct fy_generic_builder *gb, fy_generic anchor);
-
-#define _FY_CPP_GBITEM_ONE(_gb, arg) fy_gb_to_generic(_gb, arg)
-#define _FY_CPP_GBITEM_LATER_ARG(_gb, arg) , _FY_CPP_GBITEM_ONE(_gb, arg)
-#define _FY_CPP_GBITEM_LIST(_gb, ...) FY_CPP_MAP2(_gb, _FY_CPP_GBITEM_LATER_ARG, __VA_ARGS__)
-
-#define _FY_CPP_VA_GBITEMS(_gb, ...)          \
-	_FY_CPP_GBITEM_ONE(_gb, FY_CPP_FIRST(__VA_ARGS__)) \
-	_FY_CPP_GBITEM_LIST(_gb, FY_CPP_REST(__VA_ARGS__))
-
-#define FY_CPP_VA_GBITEMS(_count, _gb, ...) \
-	((fy_generic [(_count)]) { _FY_CPP_VA_GBITEMS((_gb), __VA_ARGS__) })
 
 /* this is scary, but make the thing to work when there are no arguments
  *

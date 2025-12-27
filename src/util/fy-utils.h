@@ -305,6 +305,126 @@ static inline void fy_strip_trailing_nl(char *str)
 
 /* applies an expansion over a varargs list */
 
+/*
+ * Define FY_CPP_SHORT_NAMES to use shortened macro names in the implementation.
+ * This significantly reduces expansion buffer usage during recursive macro expansion,
+ * which can help avoid internal compiler errors and speed up compilation.
+ *
+ * The public API (FY_CPP_*) remains the same regardless of this setting.
+ */
+
+// #define FY_CPP_SHORT_NAMES
+
+#ifdef FY_CPP_SHORT_NAMES
+
+/* Short-name implementation - reduces expansion buffer usage by ~60% */
+
+#define FE1(...)	__VA_ARGS__
+#define FE2(...)	FE1(FE1(__VA_ARGS__))
+#define FE4(...)	FE2(FE2(__VA_ARGS__))
+#define FE8(...)	FE4(FE4(__VA_ARGS__))
+#if !defined(__clang__)
+// gcc is better, goes to 16
+#define FE16(...)	FE8(FE8(__VA_ARGS__))
+#define FE(...)		FE16(FE16(__VA_ARGS__))
+#else
+// clang craps out at 8
+#define FE(...)		FE8(FE8(__VA_ARGS__))
+#endif
+
+#define FMT()
+#define FP1(m) m FMT()
+#define FP2(a, m) m FMT()
+
+#define _F1(_1, ...)		_1
+#define F1(...)			_F1(__VA_OPT__(__VA_ARGS__ ,) 0)
+
+#define _F2(_1, _2, ...)	_2
+#define F2(...)			_F2(__VA_OPT__(__VA_ARGS__ ,) 0, 0)
+
+#define _F3(_1, _2, _3, ...)		_3
+#define F3(...)			_F3(__VA_OPT__(__VA_ARGS__ ,) 0, 0, 0)
+
+#define _F4(_1, _2, _3, _4, ...)	_4
+#define F4(...)			_F4(__VA_OPT__(__VA_ARGS__ ,) 0, 0, 0, 0)
+
+#define _F5(_1, _2, _3, _4, _5, ...)	_5
+#define F5(...) \
+	_F5(__VA_OPT__(__VA_ARGS__ ,) 0, 0, 0, 0, 0)
+
+#define _F6(_1, _2, _3, _4, _5, _6, ...)	_6
+#define F6(...) \
+	_F6(__VA_OPT__(__VA_ARGS__ ,) 0, 0, 0, 0, 0, 0)
+
+#define _FR(x, ...) __VA_ARGS__
+#define FR(...)     __VA_OPT__(_FR(__VA_ARGS__))
+
+#define FM(m, ...) \
+    __VA_OPT__(FE(_FM1(m, __VA_ARGS__)))
+#define _FM1(m, x, ...) m(x) \
+    __VA_OPT__(FP1(_FMI)()(m, __VA_ARGS__))
+#define _FMI() _FM1
+
+#define _FCB(x) +1
+#define FVC(...)  (__VA_OPT__((FM(_FCB, __VA_ARGS__) + 0)) + 0)
+
+#define _FI1(a) a
+#define _FIL(a) , _FI1(a)
+#define _FILS(...) FM(_FIL, __VA_ARGS__)
+
+#define _FVIS(...) \
+    _FI1(F1(__VA_ARGS__)) \
+    _FILS(FR(__VA_ARGS__))
+
+#define FVIS(_t, ...) \
+	((_t [FVC(__VA_ARGS__)]) { _FVIS(__VA_ARGS__) })
+
+#define FM2(a, m, ...) \
+    __VA_OPT__(FE(_FM12(a, m, __VA_ARGS__)))
+
+#define _FM12(a, m, x, ...) m(a, x) \
+    __VA_OPT__(FP2(a, _FMI2)()(a, m, __VA_ARGS__))
+#define _FMI2() _FM12
+
+/* Public API - maps to short names */
+#define FY_CPP_EVAL1		FE1
+#define FY_CPP_EVAL2		FE2
+#define FY_CPP_EVAL4		FE4
+#define FY_CPP_EVAL8		FE8
+#if !defined(__clang__)
+#define FY_CPP_EVAL16		FE16
+#endif
+#define FY_CPP_EVAL		FE
+#define FY_CPP_EMPTY		FMT
+#define FY_CPP_POSTPONE1	FP1
+#define FY_CPP_POSTPONE2	FP2
+
+#define FY_CPP_FIRST		F1
+#define FY_CPP_SECOND		F2
+#define FY_CPP_THIRD		F3
+#define FY_CPP_FOURTH		F4
+#define FY_CPP_FIFTH		F5
+#define FY_CPP_SIXTH		F6
+#define FY_CPP_REST		FR
+
+#define FY_CPP_MAP		FM
+#define _FY_CPP_MAP_ONE		_FM1
+#define _FY_CPP_MAP_INDIRECT	_FMI
+#define _FY_CPP_COUNT_BODY	_FCB
+#define FY_CPP_VA_COUNT		FVC
+#define _FY_CPP_ITEM_ONE	_FI1
+#define _FY_CPP_ITEM_LATER_ARG	_FIL
+#define _FY_CPP_ITEM_LIST	_FILS
+#define _FY_CPP_VA_ITEMS	_FVIS
+#define FY_CPP_VA_ITEMS		FVIS
+#define FY_CPP_MAP2		FM2
+#define _FY_CPP_MAP_ONE2	_FM12
+#define _FY_CPP_MAP_INDIRECT2	_FMI2
+
+#else /* !FY_CPP_SHORT_NAMES */
+
+/* Original long-name implementation */
+
 #define FY_CPP_EVAL1(...)	__VA_ARGS__
 #define FY_CPP_EVAL2(...)	FY_CPP_EVAL1(FY_CPP_EVAL1(__VA_ARGS__))
 #define FY_CPP_EVAL4(...)	FY_CPP_EVAL2(FY_CPP_EVAL2(__VA_ARGS__))
@@ -372,6 +492,8 @@ static inline void fy_strip_trailing_nl(char *str)
 #define _FY_CPP_MAP_ONE2(a, macro, x, ...) macro(a, x) \
     __VA_OPT__(FY_CPP_POSTPONE2(a, _FY_CPP_MAP_INDIRECT2)()(a, macro, __VA_ARGS__))
 #define _FY_CPP_MAP_INDIRECT2() _FY_CPP_MAP_ONE2
+
+#endif /* FY_CPP_SHORT_NAMES */
 
 /*
  * example usage:
