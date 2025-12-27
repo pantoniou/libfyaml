@@ -1534,6 +1534,9 @@ FY_GENERIC_FLOAT_LVAL_TEMPLATE(double, double, -DBL_MAX, DBL_MAX, 0.0);
 #define FY_GENERIC_SCALAR_DISPATCH(_base, _ctype, _gtype) \
 	_ctype: _base ## _ ## _gtype
 
+#define FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, _ctype, _gtype) \
+	_ctype: _base ## _ ## _gtype ## _ ## _sfx
+
 #define FY_GENERIC_ALL_SCALARS_DISPATCH(_base) \
 	FY_GENERIC_SCALAR_DISPATCH(_base, void *, null), \
 	FY_GENERIC_SCALAR_DISPATCH(_base, _Bool, bool), \
@@ -1550,9 +1553,6 @@ FY_GENERIC_FLOAT_LVAL_TEMPLATE(double, double, -DBL_MAX, DBL_MAX, 0.0);
 	FY_GENERIC_SCALAR_DISPATCH(_base, unsigned long long, unsigned_long_long), \
 	FY_GENERIC_SCALAR_DISPATCH(_base, float, float), \
 	FY_GENERIC_SCALAR_DISPATCH(_base, double, double)
-
-#define FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, _ctype, _gtype) \
-	_ctype: _base ## _ ## _gtype ## _ ## _sfx
 
 #define FY_GENERIC_ALL_SCALARS_DISPATCH_SFX(_base, _sfx) \
 	FY_GENERIC_SCALAR_DISPATCH_SFX(_base, _sfx, void *, null), \
@@ -2482,22 +2482,22 @@ static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void
 /* Short-name implementation */
 #define _FLI1(a) fy_to_generic(a)
 #define _FLIL(a) , _FLI1(a)
-#define _FLILS(...) FY_CPP_MAP(_FLIL, __VA_ARGS__)
+#define _FLILS(...) _FM(_FLIL, __VA_ARGS__)
 
 #define _FVLIS(...)          \
-    _FLI1(F1(__VA_ARGS__)) \
-    _FLILS(FR(__VA_ARGS__))
+    _FLI1(_F1F(__VA_ARGS__)) \
+    _FLILS(_FRF(__VA_ARGS__))
 
 #define _FVLISF(_c, ...) \
 	((fy_generic [(_c)]) { __VA_OPT__(_FVLIS(__VA_ARGS__)) })
 
 #define _FGBI1(_g, a) fy_gb_to_generic(_g, a)
 #define _FGBIL(_g, a) , _FGBI1(_g, a)
-#define _FGBILS(_g, ...) FM2(_g, _FGBIL, __VA_ARGS__)
+#define _FGBILS(_g, ...) _FM2(_g, _FGBIL, __VA_ARGS__)
 
 #define _FVGBIS(_g, ...) \
-	_FGBI1(_g, F1(__VA_ARGS__)) \
-	_FGBILS(_g, FR(__VA_ARGS__))
+	_FGBI1(_g, _F1F(__VA_ARGS__)) \
+	_FGBILS(_g, _FRF(__VA_ARGS__))
 
 #define _FVGBISF(_c, _g, ...) \
 	((fy_generic [(_c)]) { _FVGBIS((_g), __VA_ARGS__) })
