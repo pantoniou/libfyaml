@@ -3879,6 +3879,7 @@ struct fy_generic_builder {
 	int alloc_tag;
 	void *linear;	/* when making it linear */
 	FY_ATOMIC(uint64_t) allocation_failures;
+	void *userdata;
 };
 
 extern __thread struct fy_generic_builder *fy_current_gb;
@@ -3976,6 +3977,24 @@ void fy_generic_builder_cleanup(struct fy_generic_builder *gb);
 struct fy_generic_builder *fy_generic_builder_create(const struct fy_generic_builder_cfg *cfg);
 void fy_generic_builder_destroy(struct fy_generic_builder *gb);
 void fy_generic_builder_reset(struct fy_generic_builder *gb);
+
+static inline void *fy_generic_builder_set_userdata(struct fy_generic_builder *gb, void *userdata)
+{
+	void *old_userdata;
+
+	if (!gb)
+		return NULL;
+	old_userdata = gb->userdata;
+	gb->userdata = userdata;
+	return old_userdata;
+}
+
+static inline void *fy_generic_builder_get_userdata(struct fy_generic_builder *gb)
+{
+	if (!gb)
+		return NULL;
+	return gb->userdata;
+}
 
 #define FY_GENERIC_BUILDER_LINEAR_IN_PLACE_MIN_SIZE	(FY_LINEAR_ALLOCATOR_IN_PLACE_MIN_SIZE + 128)
 
