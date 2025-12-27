@@ -253,7 +253,7 @@ case "$test_suite" in
 	    fi
 	fi
 
-        rm -f "$t1"
+        rm -f "$t"
 
         echo "$res 1 $test_id - $desctxt"
 
