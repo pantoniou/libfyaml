@@ -33,18 +33,19 @@
 
 #include <libfyaml.h>
 
+#include "fy-atomics.h"
 #include "fy-thread.h"
 
 static void test_worker_thread_fn(void *arg)
 {
-	_Atomic(int) *p = arg;
+	FY_ATOMIC(int) *p = arg;
 	int v, exp_v;
 
 	/* atomically increase the counter */
-	v = atomic_load(p);
+	v = fy_atomic_load(p);
 	for (;;) {
 		exp_v = v;
-		if (atomic_compare_exchange_strong(p, &exp_v, v + 1))
+		if (fy_atomic_compare_exchange_strong(p, &exp_v, v + 1))
 			return;
 		v = exp_v;
 	}
@@ -290,16 +291,16 @@ void test_thread_latency(unsigned int num_threads)
 #define STEAL_LOOP_COUNT 10000
 static void test_worker_thread_steal_fn(void *arg)
 {
-	_Atomic(int) *p = arg;
+	FY_ATOMIC(int) *p = arg;
 	int v, exp_v;
 	unsigned int i;
 
 	/* atomically increase the counter STEAL_LOOP_COUNT times */
 	for (i = 0; i < STEAL_LOOP_COUNT; i++) {
-		v = atomic_load(p);
+		v = fy_atomic_load(p);
 		for (;;) {
 			exp_v = v;
-			if (atomic_compare_exchange_strong(p, &exp_v, v + 1))
+			if (fy_atomic_compare_exchange_strong(p, &exp_v, v + 1))
 				break;
 			v = exp_v;
 		}
