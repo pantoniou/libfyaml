@@ -142,11 +142,13 @@ int fy_allocator_register(const char *name, const struct fy_allocator_ops *ops)
 		!ops->alloc ||
 		!ops->free ||
 		!ops->update_stats ||
-		!ops->store ||
 		!ops->storev ||
+		!ops->lookupv ||
 		!ops->release |
 		!ops->get_tag ||
 		!ops->release_tag ||
+		!ops->get_tag_count ||
+		!ops->set_tag_count ||
 		!ops->trim_tag ||
 		!ops->reset_tag ||
 		!ops->get_info ||
@@ -228,7 +230,8 @@ out_unlock:
 	return ret;
 }
 
-struct fy_allocator *fy_allocator_create(const char *name, const void *cfg)
+struct fy_allocator *
+fy_allocator_create_internal(const char *name, struct fy_allocator *parent, int parent_tag, const void *cfg)
 {
 	struct fy_registered_allocator_entry *ae;
 	const struct fy_allocator_ops *ops = NULL;
@@ -262,7 +265,54 @@ struct fy_allocator *fy_allocator_create(const char *name, const void *cfg)
 	if (!ops)
 		return NULL;
 
-	return ops->create(cfg);
+	/* XXX just malloc for now */
+	return ops->create(parent, parent_tag, cfg);
+}
+
+struct fy_allocator *fy_allocator_create(const char *name, const void *cfg)
+{
+	/* for now just use internal */
+	return fy_allocator_create_internal(name, NULL, FY_ALLOC_TAG_DEFAULT, cfg);
+}
+
+/* special in place allocator */
+struct fy_allocator *
+fy_linear_allocator_create_in_place(void *buffer, size_t size)
+{
+	const struct fy_allocator_ops *ops = &fy_linear_allocator_ops;
+	struct fy_linear_allocator_cfg cfg = { .buf = buffer, .size = size };
+
+	if (!buffer || size < FY_LINEAR_ALLOCATOR_IN_PLACE_MIN_SIZE)
+		return NULL;
+
+	return ops->create(FY_PARENT_ALLOCATOR_INPLACE, FY_ALLOC_TAG_DEFAULT, &cfg);
+}
+
+struct fy_allocator *
+fy_dedup_allocator_create_in_place(void *buffer, size_t size)
+{
+	struct fy_allocator *pa;
+	struct fy_dedup_allocator_cfg dcfg;
+	size_t dedup_available;
+
+	if (!buffer || size < FY_DEDUP_ALLOCATOR_IN_PLACE_MIN_SIZE)
+		return NULL;
+
+	pa = fy_linear_allocator_create_in_place(buffer, size);
+	if (!pa)
+		return NULL;
+
+	/* try to size the dedup structures to about 10% of the available space */
+	dedup_available = size - FY_LINEAR_ALLOCATOR_IN_PLACE_MIN_SIZE;
+
+	memset(&dcfg, 0, sizeof(dcfg));
+	dcfg.parent_allocator = pa;
+	dcfg.bloom_filter_bits = 0;	/* use default */
+	dcfg.bucket_count_bits = 0;
+	dcfg.estimated_content_size = dedup_available;
+	dcfg.minimum_bucket_occupancy = 1.0;	/* will never grow */
+
+	return fy_allocator_create_internal("dedup", pa, 0, &dcfg);
 }
 
 void fy_allocator_registry_cleanup_internal(bool show_leftovers)
@@ -492,84 +542,140 @@ void fy_allocator_destroy(struct fy_allocator *a)
 {
 	if (!a)
 		return;
-	a->ops->destroy(a);
+	fy_allocator_destroy_nocheck(a);
 }
 
 void fy_allocator_dump(struct fy_allocator *a)
 {
 	if (!a)
 		return;
-	a->ops->dump(a);
+	fy_allocator_dump_nocheck(a);
 }
 
 int fy_allocator_update_stats(struct fy_allocator *a, int tag, struct fy_allocator_stats *stats)
 {
-	if (!a)
+	if (!a || !stats)
 		return -1;
-	return a->ops->update_stats(a, tag, stats);
+	return fy_allocator_update_stats_nocheck(a, tag, stats);
 }
 
 void *fy_allocator_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
 {
 	if (!a)
 		return NULL;
-	return a->ops->alloc(a, tag, size, align);
+	return fy_allocator_alloc_nocheck(a, tag, size, align);
 }
 
 void fy_allocator_free(struct fy_allocator *a, int tag, void *ptr)
 {
 	if (!a || !ptr)
 		return;
-	a->ops->free(a, tag, ptr);
+	return fy_allocator_free_nocheck(a, tag, ptr);
+}
+
+const void *fy_allocator_storev_hash(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
+{
+	if (!a || !iov)
+		return NULL;
+	return fy_allocator_storev_hash_nocheck(a, tag, iov, iovcnt, align, hash);
 }
 
 const void *fy_allocator_store(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
 {
-	if (!a)
+	struct iovec iov[1];
+
+	if (!a || !data)
 		return NULL;
-	return a->ops->store(a, tag, data, size, align);
+
+	/* just call the storev */
+	iov[0].iov_base = (void *)data;
+	iov[0].iov_len = size;
+
+	return fy_allocator_storev_hash_nocheck(a, tag, iov, 1, align, 0);
 }
 
 const void *fy_allocator_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
 {
-	if (!a)
+	if (!a || !iov)
 		return NULL;
-	return a->ops->storev(a, tag, iov, iovcnt, align);
+	return fy_allocator_storev_nocheck(a, tag, iov, iovcnt, align);
+}
+
+const void *fy_allocator_lookupv_hash(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
+{
+	if (!a || !iov)
+		return NULL;
+	return fy_allocator_lookupv_nocheck(a, tag, iov, iovcnt, align, hash);
+}
+
+const void *fy_allocator_lookupv(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
+{
+	if (!a || !iov)
+		return NULL;
+	return fy_allocator_lookupv_nocheck(a, tag, iov, iovcnt, align, 0);
+}
+
+const void *fy_allocator_lookup(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
+{
+	struct iovec iov[1];
+
+	if (!a || !data)
+		return NULL;
+
+	/* just call the storev */
+	iov[0].iov_base = (void *)data;
+	iov[0].iov_len = size;
+
+	return fy_allocator_lookupv_nocheck(a, tag, iov, 1, align, 0);
 }
 
 void fy_allocator_release(struct fy_allocator *a, int tag, const void *ptr, size_t size)
 {
 	if (!a || !ptr)
 		return;
-	a->ops->release(a, tag, ptr, size);
+	fy_allocator_release(a, tag, ptr, size);
 }
 
 int fy_allocator_get_tag(struct fy_allocator *a)
 {
 	if (!a)
 		return 0;
-	return a->ops->get_tag(a);
+	return fy_allocator_get_tag_nocheck(a);
 }
 
 void fy_allocator_release_tag(struct fy_allocator *a, int tag)
 {
 	if (!a)
 		return;
-	a->ops->release_tag(a, tag);
+	fy_allocator_release_tag_nocheck(a, tag);
+}
+
+int fy_allocator_get_tag_count(struct fy_allocator *a)
+{
+	if (!a)
+		return -1;
+	return fy_allocator_get_tag_count_nocheck(a);
+}
+
+int fy_allocator_set_tag_count(struct fy_allocator *a, unsigned int count)
+{
+	if (!a)
+		return -1;
+	return fy_allocator_set_tag_count_nocheck(a, count);
 }
 
 void fy_allocator_trim_tag(struct fy_allocator *a, int tag)
 {
 	if (!a)
 		return;
-	a->ops->trim_tag(a, tag);
+	fy_allocator_trim_tag_nocheck(a, tag);
 }
 
 void fy_allocator_reset_tag(struct fy_allocator *a, int tag)
 {
 	if (!a)
 		return;
-	a->ops->reset_tag(a, tag);
+	fy_allocator_reset_tag_nocheck(a, tag);
 }
 
 struct fy_allocator_info *
@@ -577,7 +683,7 @@ fy_allocator_get_info(struct fy_allocator *a, int tag)
 {
 	if (!a)
 		return NULL;
-	return a->ops->get_info(a, tag);
+	return fy_allocator_get_info_nocheck(a, tag);
 }
 
 enum fy_allocator_cap_flags
@@ -586,14 +692,65 @@ fy_allocator_get_caps(struct fy_allocator *a)
 	if (!a)
 		return 0;
 
-	return a->ops->get_caps(a);
+	return fy_allocator_get_caps_nocheck(a);
 }
 
 bool
 fy_allocator_contains(struct fy_allocator *a, int tag, const void *ptr)
 {
-	if (!a)
+	if (!a || !ptr)
 		return false;
 
-	return a->ops->contains(a, tag, ptr);
+	return fy_allocator_contains_nocheck(a, tag, ptr);
+}
+
+/* respects the parent allocator (or uses posix_memalign if NULL) */
+void *fy_early_parent_allocator_alloc(struct fy_allocator *parent, int parent_tag, size_t size, size_t align)
+{
+	void *ptr;
+	int r;
+
+	/* yeah, not gonna work */
+	if (parent == FY_PARENT_ALLOCATOR_INPLACE)
+		return NULL;
+
+	if (!align)
+		align = _Alignof(max_align_t);
+
+	if (parent)
+		return fy_allocator_alloc(parent, parent_tag, size, align);
+
+	r = posix_memalign(&ptr, align, size);
+	if (r)
+		return NULL;
+
+	return ptr;
+}
+
+void fy_early_parent_allocator_free(struct fy_allocator *parent, int parent_tag, void *ptr)
+{
+	if (!ptr || parent == FY_PARENT_ALLOCATOR_INPLACE)
+		return;
+
+	if (parent)
+		fy_allocator_free(parent, parent_tag, ptr);
+	else
+		free(ptr);
+}
+
+/* respects the parent allocator (or uses posix_memalign if NULL) */
+void *fy_parent_allocator_alloc(struct fy_allocator *a, size_t size, size_t align)
+{
+	if (!a)
+		return NULL;
+
+	return fy_early_parent_allocator_alloc(a->parent, a->parent_tag, size, align);
+}
+
+void fy_parent_allocator_free(struct fy_allocator *a, void *ptr)
+{
+	if (!a || !ptr)
+		return;
+
+	return fy_early_parent_allocator_free(a->parent, a->parent_tag, ptr);
 }

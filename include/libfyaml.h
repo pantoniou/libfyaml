@@ -9326,6 +9326,8 @@ fy_blake3_hash_file(struct fy_blake3_hasher *fyh, const char *filename)
 /* forward decl of allocator interfaces */
 struct fy_allocator;
 
+/* A tag that represents the default tag */
+#define FY_ALLOC_TAG_DEFAULT	0
 /* A tag that denotes error */
 #define FY_ALLOC_TAG_ERROR	-1
 /* A tag that represents 'none' */
@@ -9394,6 +9396,47 @@ void
 fy_allocator_destroy(struct fy_allocator *a)
 	FY_EXPORT;
 
+/** The minimum amount of memory for an inplace linear allocator */
+#define FY_LINEAR_ALLOCATOR_IN_PLACE_MIN_SIZE	256
+
+/**
+ * fy_linear_allocator_create_in_place() - Create a linear allocator in place
+ *
+ * Creates a linear allocator in place, using the buffer provided.
+ * No memory allocations will be performed, so it's safe to embed.
+ * There is no need to call fy_allocator_destroy for this allocator.
+ *
+ * @buffer: The memory buffer to use for both storage and the allocator
+ * @size: The size of the memory buffer
+ *
+ * Returns:
+ * A pointer to the allocator, or NULL if there is no space
+ */
+struct fy_allocator *
+fy_linear_allocator_create_in_place(void *buffer, size_t size)
+	FY_EXPORT;
+
+/** The minimum amount of memory for an inplace dedup allocator */
+#define FY_DEDUP_ALLOCATOR_IN_PLACE_MIN_SIZE	4096
+
+/**
+ * fy_dedup_allocator_create_in_place() - Create a dedp allocator in place
+ *
+ * Creates a dedup allocator in place, using the buffer provided.
+ * No memory allocations will be performed, so it's safe to embed.
+ * There is no need to call fy_allocator_destroy for this allocator.
+ * The parent allocator of this will be a linear allocator.
+ *
+ * @buffer: The memory buffer to use for both storage and the allocator
+ * @size: The size of the memory buffer
+ *
+ * Returns:
+ * A pointer to the allocator, or NULL if there is no space
+ */
+struct fy_allocator *
+fy_dedup_allocator_create_in_place(void *buffer, size_t size)
+	FY_EXPORT;
+
 /**
  * fy_allocator_get_tag() - Get a tag from an allocator
  *
@@ -9425,6 +9468,42 @@ fy_allocator_get_tag(struct fy_allocator *a)
  */
 void
 fy_allocator_release_tag(struct fy_allocator *a, int tag)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_get_tag_count() - Get the maximum number of tags a
+ * 				  allocator supports
+ *
+ * Get the maximum amount of tags an allocator supports.
+ *
+ * If an allocator only provides a single tag (like the linear
+ * allocator for instance), 1 will be returned.
+ *
+ * @a: The allocator
+ *
+ * Returns:
+ * The number of tags, or -1 on error
+ */
+int
+fy_allocator_get_tag_count(struct fy_allocator *a)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_set_tag_count() - Set the maximum number of tags a
+ * 				  allocator supports
+ *
+ * Sets the maximum amount of tags an allocator supports.
+ * If the set allocator tag count is less than the current
+ * the additional tags will be released.
+ *
+ * @a: The allocator
+ * @count: The amount of tags the allocator should support
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int
+fy_allocator_set_tag_count(struct fy_allocator *a, unsigned int count)
 	FY_EXPORT;
 
 /**
@@ -9519,7 +9598,7 @@ fy_allocator_store(struct fy_allocator *a, int tag, const void *data, size_t siz
  *
  * The object is created linearly from the scatter gather io vector provided.
  *
- * The return pointer must not be modified, the objects stored are idempotent.
+ * The return pointer must not be modified, the objects stored are immutable.
  *
  * @a: The allocator
  * @tag: The tag used to allocate the memory from
@@ -9532,6 +9611,48 @@ fy_allocator_store(struct fy_allocator *a, int tag, const void *data, size_t siz
  */
 const void *
 fy_allocator_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_lookup() - Lookup for object in an allocator.
+ *
+ * Lookup for the exact contents of an object stored in an allocator
+ * and return a pointer to the location it was stored.
+ * The allocator must have the FYACF_CAN_LOOKUP capability.
+ *
+ * @a: The allocator
+ * @tag: The tag used to locate the memory
+ * @data: The pointer to object to store
+ * @size: The size of the object
+ * @align: The alignment restriction of the object
+ *
+ * Returns:
+ * A constant pointer to the object stored, or NULL if the object does not exist
+ */
+const void *
+fy_allocator_lookup(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_lookupv() - Lookup for object in an allocator (scatter gather)
+ *
+ * Lookup for the exact contents of an object stored in an allocator
+ * and return a pointer to the location it was stored.
+ * The allocator must have the FYACF_CAN_LOOKUP capability.
+ *
+ * The scatter gather vector is used to recreate the object.
+ *
+ * @a: The allocator
+ * @tag: The tag used to search into
+ * @iov: The I/O scatter gather vector
+ * @iovcnt: The number of vectors
+ * @align: The alignment restriction of the object
+ *
+ * Returns:
+ * A constant pointer to the object stored, or NULL in case the object does not exist
+ */
+const void *
+fy_allocator_lookupv(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
 	FY_EXPORT;
 
 /**
@@ -9551,6 +9672,8 @@ fy_allocator_dump(struct fy_allocator *a)
  * @FYACF_CAN_DEDUP: Allocator supports deduplication
  * @FYACF_HAS_CONTAINS: Allocator can report if it contains a pointer (even if inefficiently)
  * @FYACF_HAS_EFFICIENT_CONTAINS: Allocator can report if it contains a pointer (efficiently)
+ * @FYACF_HAS_TAGS: Allocator has individual tags or not
+ * @FYACF_CAN_LOOKUP: Allocator supports lookup for content
  *
  * These flags describe what operations an allocator supports.
  */
@@ -9560,6 +9683,8 @@ enum fy_allocator_cap_flags {
 	FYACF_CAN_DEDUP				= FY_BIT(2),
 	FYACF_HAS_CONTAINS			= FY_BIT(3),
 	FYACF_HAS_EFFICIENT_CONTAINS		= FY_BIT(4),
+	FYACF_HAS_TAGS				= FY_BIT(5),
+	FYACF_CAN_LOOKUP			= FY_BIT(6),
 };
 
 /**
@@ -9685,6 +9810,8 @@ struct fy_mremap_allocator_cfg {
  * @dedup_threshold: Number of bytes over which dedup takes place (default 0=always)
  * @chain_length_grow_trigger: Chain length of a bucket over which a grow takes place (or 0 for auto)
  * @estimated_content_size: Estimated content size (or 0 for don't know)
+ * @minimum_bucket_occupancy: The minimum amount that a tag bucket must be full before
+ * 			      growth is allowed (default 50%, or 0.0)
  */
 struct fy_dedup_allocator_cfg {
 	struct fy_allocator *parent_allocator;
@@ -9693,6 +9820,7 @@ struct fy_dedup_allocator_cfg {
 	size_t dedup_threshold;
 	unsigned int chain_length_grow_trigger;
 	size_t estimated_content_size;
+	float minimum_bucket_occupancy;
 };
 
 /**

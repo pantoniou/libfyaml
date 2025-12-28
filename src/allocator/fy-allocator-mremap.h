@@ -15,6 +15,7 @@
 #include "fy-typelist.h"
 #include "fy-id.h"
 
+#include "fy-atomics.h"
 #include "fy-allocator.h"
 
 struct fy_mremap_tag;
@@ -31,22 +32,27 @@ static inline bool fy_mremap_arena_type_is_trimmable(enum fy_mremap_arena_type t
 	return type == FYMRAT_MMAP;
 }
 
-FY_TYPE_FWD_DECL_LIST(mremap_arena);
+#define FYMRAF_FULL		FY_BIT(0)
+#define FYMRAF_GROWING		FY_BIT(1)
+#define FYMRAF_CANT_GROW	FY_BIT(2)
+
 struct fy_mremap_arena {
-	struct list_head node;
+	struct fy_mremap_arena *next_arena;
 	size_t size;	/* includes the arena header */
-	size_t next;
+	FY_ATOMIC(uint64_t) flags;
+	FY_ATOMIC(size_t) next;
 	uint64_t mem[] __attribute__((aligned(16)));
 };
-FY_TYPE_DECL_LIST(mremap_arena);
 
 #define FY_MREMAP_ARENA_OVERHEAD (offsetof(struct fy_mremap_arena, mem))
 
 struct fy_mremap_tag {
-	struct fy_mremap_arena_list arenas;
-	struct fy_mremap_arena_list full_arenas;
-	size_t next_arena_sz;
-	struct fy_allocator_stats stats;
+	FY_ATOMIC(struct fy_mremap_arena *) arenas;
+	FY_ATOMIC(size_t) next_arena_sz;
+	FY_ATOMIC(uint64_t) allocations;
+	FY_ATOMIC(uint64_t) allocated;
+	FY_ATOMIC(uint64_t) stores;
+	FY_ATOMIC(uint64_t) stored;
 };
 
 struct fy_mremap_allocator {
@@ -60,8 +66,10 @@ struct fy_mremap_allocator {
 	float grow_ratio;
 	float balloon_ratio;
 	enum fy_mremap_arena_type arena_type;
-	fy_id_bits ids[FY_ID_BITS_ARRAY_COUNT_BITS(FY_MREMAP_TAG_MAX)];
-	struct fy_mremap_tag tags[FY_MREMAP_TAG_MAX];
+	fy_id_bits *ids;
+	unsigned int tag_id_count;
+	struct fy_mremap_tag *tags;
+	unsigned int tag_count;
 };
 
 extern const struct fy_allocator_ops fy_mremap_allocator_ops;

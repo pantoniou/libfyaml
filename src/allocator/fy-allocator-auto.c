@@ -76,7 +76,7 @@ static const struct fy_auto_allocator_cfg default_cfg = {
 
 static void fy_auto_cleanup(struct fy_allocator *a);
 
-static int fy_auto_setup(struct fy_allocator *a, const void *cfg_data)
+static int fy_auto_setup(struct fy_allocator *a, struct fy_allocator *parent, int parent_tag, const void *cfg_data)
 {
 	size_t pagesz, size;
 	struct fy_auto_allocator *aa;
@@ -87,15 +87,14 @@ static int fy_auto_setup(struct fy_allocator *a, const void *cfg_data)
 	struct fy_allocator *mra = NULL, *da = NULL, *ma = NULL, *la = NULL;
 	struct fy_allocator *topa = NULL, *suba = NULL;
 
-	if (!a)
-		return -1;
-
 	cfg = cfg_data ? cfg_data : &default_cfg;
 
 	aa = container_of(a, struct fy_auto_allocator, a);
 	memset(aa, 0, sizeof(*aa));
 	aa->a.name = "auto";
 	aa->a.ops = &fy_auto_allocator_ops;
+	aa->a.parent = parent;
+	aa->a.parent_tag = parent_tag;
 	aa->cfg = *cfg;
 
 	pagesz = sysconf(_SC_PAGESIZE);
@@ -161,6 +160,7 @@ static int fy_auto_setup(struct fy_allocator *a, const void *cfg_data)
 		dcfg.dedup_threshold = AUTO_ALLOCATOR_DEFAULT_DEDUP_THRESHOLD;
 		dcfg.chain_length_grow_trigger = AUTO_ALLOCATOR_DEFAULT_CHAIN_LENGTH_GROW_TRIGGER;
 		dcfg.estimated_content_size = size;
+		dcfg.minimum_bucket_occupancy = 0.5;
 
 		da = fy_allocator_create("dedup", &dcfg);
 		if (!da)
@@ -198,9 +198,6 @@ static void fy_auto_cleanup(struct fy_allocator *a)
 {
 	struct fy_auto_allocator *aa;
 
-	if (!a)
-		return;
-
 	aa = container_of(a, struct fy_auto_allocator, a);
 
 	/* order is important! */
@@ -215,24 +212,21 @@ static void fy_auto_cleanup(struct fy_allocator *a)
 	}
 }
 
-struct fy_allocator *fy_auto_create(const void *cfg)
+struct fy_allocator *fy_auto_create(struct fy_allocator *parent, int parent_tag, const void *cfg)
 {
 	struct fy_auto_allocator *aa = NULL;
 	int rc;
 
-	aa = malloc(sizeof(*aa));
-	if (!aa)
-		goto err_out;
+	aa = fy_early_parent_allocator_alloc(parent, parent_tag, sizeof(*aa), _Alignof(struct fy_auto_allocator));
 
-	rc = fy_auto_setup(&aa->a, cfg);
+	rc = fy_auto_setup(&aa->a, parent, parent_tag, cfg);
 	if (rc)
 		goto err_out;
 
 	return &aa->a;
 
 err_out:
-	if (aa)
-		free(aa);
+	fy_early_parent_allocator_free(parent, parent_tag, aa);
 
 	return NULL;
 }
@@ -241,148 +235,118 @@ void fy_auto_destroy(struct fy_allocator *a)
 {
 	struct fy_auto_allocator *aa;
 
-	if (!a)
-		return;
-
 	aa = container_of(a, struct fy_auto_allocator, a);
 
 	fy_auto_cleanup(a);
 
-	free(aa);
+	fy_parent_allocator_free(a, aa);
 }
 
 void fy_auto_dump(struct fy_allocator *a)
 {
 	struct fy_auto_allocator *aa;
 
-	if (!a)
-		return;
-
 	aa = container_of(a, struct fy_auto_allocator, a);
 
-	fy_allocator_dump(aa->parent_allocator);
+	fy_allocator_dump_nocheck(aa->parent_allocator);
 }
 
 static void *fy_auto_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
 {
 	struct fy_auto_allocator *aa;
 
-	if (!a)
-		return NULL;
-
 	aa = container_of(a, struct fy_auto_allocator, a);
-
-	return fy_allocator_alloc(aa->parent_allocator, tag, size, align);
+	return fy_allocator_alloc_nocheck(aa->parent_allocator, tag, size, align);
 }
 
 static void fy_auto_free(struct fy_allocator *a, int tag, void *data)
 {
 	struct fy_auto_allocator *aa;
 
-	if (!a)
-		return;
-
 	aa = container_of(a, struct fy_auto_allocator, a);
-
-	fy_allocator_free(aa->parent_allocator, tag, data);
+	fy_allocator_free_nocheck(aa->parent_allocator, tag, data);
 }
 
 static int fy_auto_update_stats(struct fy_allocator *a, int tag, struct fy_allocator_stats *stats)
 {
 	struct fy_auto_allocator *aa;
 
-	if (!a)
-		return -1;
-
 	aa = container_of(a, struct fy_auto_allocator, a);
-
-	return fy_allocator_update_stats(aa->parent_allocator, tag, stats);
+	return fy_allocator_update_stats_nocheck(aa->parent_allocator, tag, stats);
 }
 
-static const void *fy_auto_store(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
+static const void *fy_auto_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
 {
 	struct fy_auto_allocator *aa;
 
-	if (!a)
-		return NULL;
-
 	aa = container_of(a, struct fy_auto_allocator, a);
-
-	return fy_allocator_store(aa->parent_allocator, tag, data, size, align);
+	return fy_allocator_storev_hash_nocheck(aa->parent_allocator, tag, iov, iovcnt, align, hash);
 }
 
-static const void *fy_auto_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
+static const void *fy_auto_lookupv(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
 {
 	struct fy_auto_allocator *aa;
 
-	if (!a)
-		return NULL;
-
 	aa = container_of(a, struct fy_auto_allocator, a);
-
-	return fy_allocator_storev(aa->parent_allocator, tag, iov, iovcnt, align);
+	return fy_allocator_lookupv_nocheck(aa->parent_allocator, tag, iov, iovcnt, align, hash);
 }
 
 static void fy_auto_release(struct fy_allocator *a, int tag, const void *data, size_t size)
 {
 	struct fy_auto_allocator *aa;
 
-	if (!a)
-		return;
-
 	aa = container_of(a, struct fy_auto_allocator, a);
-
-	fy_allocator_release(aa->parent_allocator, tag, data, size);
+	fy_allocator_release_nocheck(aa->parent_allocator, tag, data, size);
 }
 
 static int fy_auto_get_tag(struct fy_allocator *a)
 {
 	struct fy_auto_allocator *aa;
 
-	if (!a)
-		return FY_ALLOC_TAG_ERROR;
-
 	/* TODO, convert tag config? */
 
 	aa = container_of(a, struct fy_auto_allocator, a);
-
-	return fy_allocator_get_tag(aa->parent_allocator);
+	return fy_allocator_get_tag_nocheck(aa->parent_allocator);
 }
 
 static void fy_auto_release_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_auto_allocator *aa;
 
-	if (!a)
-		return;
+	aa = container_of(a, struct fy_auto_allocator, a);
+	fy_allocator_release_tag_nocheck(aa->parent_allocator, tag);
+}
+
+static int fy_auto_get_tag_count(struct fy_allocator *a)
+{
+	struct fy_auto_allocator *aa;
 
 	aa = container_of(a, struct fy_auto_allocator, a);
+	return fy_allocator_get_tag_count_nocheck(aa->parent_allocator);
+}
 
-	fy_allocator_release_tag(aa->parent_allocator, tag);
+static int fy_auto_set_tag_count(struct fy_allocator *a, unsigned int count)
+{
+	struct fy_auto_allocator *aa;
+
+	aa = container_of(a, struct fy_auto_allocator, a);
+	return fy_allocator_set_tag_count_nocheck(aa->parent_allocator, count);
 }
 
 static void fy_auto_trim_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_auto_allocator *aa;
 
-	if (!a)
-		return;
-
 	aa = container_of(a, struct fy_auto_allocator, a);
-
-	fy_allocator_trim_tag(aa->parent_allocator, tag);
+	fy_allocator_trim_tag_nocheck(aa->parent_allocator, tag);
 }
 
 static void fy_auto_reset_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_auto_allocator *aa;
 
-	if (!a)
-		return;
-
 	aa = container_of(a, struct fy_auto_allocator, a);
-
-	fy_allocator_reset_tag(aa->parent_allocator, tag);
+	fy_allocator_reset_tag_nocheck(aa->parent_allocator, tag);
 }
 
 static struct fy_allocator_info *
@@ -390,12 +354,8 @@ fy_auto_get_info(struct fy_allocator *a, int tag)
 {
 	struct fy_auto_allocator *aa;
 
-	if (!a)
-		return NULL;
-
 	aa = container_of(a, struct fy_auto_allocator, a);
-
-	return fy_allocator_get_info(aa->parent_allocator, tag);
+	return fy_allocator_get_info_nocheck(aa->parent_allocator, tag);
 }
 
 static enum fy_allocator_cap_flags
@@ -403,23 +363,16 @@ fy_auto_get_caps(struct fy_allocator *a)
 {
 	struct fy_auto_allocator *aa;
 
-	if (!a)
-		return 0;
-
 	aa = container_of(a, struct fy_auto_allocator, a);
-	return fy_allocator_get_caps(aa->parent_allocator);
+	return fy_allocator_get_caps_nocheck(aa->parent_allocator);
 }
 
 static bool fy_auto_contains(struct fy_allocator *a, int tag, const void *ptr)
 {
 	struct fy_auto_allocator *aa;
 
-	if (!a || !ptr)
-		return false;
-
 	aa = container_of(a, struct fy_auto_allocator, a);
-
-	return fy_allocator_contains(aa->parent_allocator, tag, ptr);
+	return fy_allocator_contains_nocheck(aa->parent_allocator, tag, ptr);
 }
 
 const struct fy_allocator_ops fy_auto_allocator_ops = {
@@ -431,11 +384,13 @@ const struct fy_allocator_ops fy_auto_allocator_ops = {
 	.alloc = fy_auto_alloc,
 	.free = fy_auto_free,
 	.update_stats = fy_auto_update_stats,
-	.store = fy_auto_store,
 	.storev = fy_auto_storev,
+	.lookupv = fy_auto_lookupv,
 	.release = fy_auto_release,
 	.get_tag = fy_auto_get_tag,
 	.release_tag = fy_auto_release_tag,
+	.get_tag_count = fy_auto_get_tag_count,
+	.set_tag_count = fy_auto_set_tag_count,
 	.trim_tag = fy_auto_trim_tag,
 	.reset_tag = fy_auto_reset_tag,
 	.get_info = fy_auto_get_info,

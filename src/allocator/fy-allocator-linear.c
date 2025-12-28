@@ -15,17 +15,19 @@
 #include <time.h>
 #include <inttypes.h>
 #include <math.h>
+#include <alloca.h>
 
 #include <stdio.h>
 
 #include "fy-utils.h"
 #include "fy-allocator-linear.h"
 
-static int fy_linear_setup(struct fy_allocator *a, const void *cfg_data)
+static int fy_linear_setup(struct fy_allocator *a, struct fy_allocator *parent, int parent_tag, const void *cfg_data)
 {
 	struct fy_linear_allocator *la;
 	const struct fy_linear_allocator_cfg *cfg;
 	void *buf, *alloc = NULL;
+	bool need_zero;
 
 	if (!a || !cfg_data)
 		return -1;
@@ -35,27 +37,32 @@ static int fy_linear_setup(struct fy_allocator *a, const void *cfg_data)
 		return -1;
 
 	if (!cfg->buf) {
-		alloc = malloc(cfg->size);
+		alloc = fy_early_parent_allocator_alloc(parent, parent_tag, cfg->size, 0);
 		if (!alloc)
 			goto err_out;
 		buf = alloc;
-	} else
+		need_zero = true;
+	} else {
 		buf = cfg->buf;
+		need_zero = false;
+	}
 
 	la = container_of(a, struct fy_linear_allocator, a);
 	memset(la, 0, sizeof(*la));
 	la->a.name = "linear";
 	la->a.ops = &fy_linear_allocator_ops;
+	la->a.parent = parent;
+	la->a.parent_tag = parent_tag;
 	la->cfg = *cfg;
 	la->alloc = alloc;
 	la->start = buf;
-	la->next = buf;
-	la->end = buf + cfg->size;
+	la->need_zero = need_zero;
+
+	fy_atomic_store(&la->next, 0);
 
 	return 0;
 err_out:
-	if (alloc)
-		free(alloc);
+	fy_early_parent_allocator_free(parent, parent_tag, alloc);
 	return -1;
 }
 
@@ -67,13 +74,11 @@ static void fy_linear_cleanup(struct fy_allocator *a)
 		return;
 
 	la = container_of(a, struct fy_linear_allocator, a);
-	if (la->alloc) {
-		free(la->alloc);
-		la->alloc = NULL;
-	}
+	fy_parent_allocator_free(&la->a, la->alloc);
+	la->alloc = NULL;
 }
 
-struct fy_allocator *fy_linear_create(const void *cfg_data)
+struct fy_allocator *fy_linear_create(struct fy_allocator *parent, int parent_tag, const void *cfg_data)
 {
 	struct fy_linear_allocator *la;
 	const struct fy_linear_allocator_cfg *cfg;
@@ -89,7 +94,7 @@ struct fy_allocator *fy_linear_create(const void *cfg_data)
 		return NULL;
 
 	if (!cfg->buf) {
-		alloc = malloc(cfg->size);
+		alloc = fy_early_parent_allocator_alloc(parent, parent_tag, cfg->size, 0);
 		if (!alloc)
 			goto err_out;
 		buf = alloc;
@@ -99,7 +104,7 @@ struct fy_allocator *fy_linear_create(const void *cfg_data)
 	s = buf;
 	e = s + cfg->size;
 
-	s = fy_ptr_align(s, alignof(struct fy_linear_allocator));
+	s = fy_ptr_align(s, _Alignof(struct fy_linear_allocator));
 	if ((size_t)(e - s) < sizeof(*la))
 		goto err_out;
 
@@ -110,78 +115,82 @@ struct fy_allocator *fy_linear_create(const void *cfg_data)
 	newcfg.buf = s;
 	newcfg.size = (size_t)(e - s);
 
-	rc = fy_linear_setup(&la->a, &newcfg);
+	rc = fy_linear_setup(&la->a, parent, parent_tag, &newcfg);
 	if (rc)
 		goto err_out;
 
-	assert(!la->alloc);
 	la->alloc = alloc;
 
 	return &la->a;
 
 err_out:
-	if (alloc)
-		free(alloc);
-
+	fy_early_parent_allocator_free(parent, parent_tag, alloc);
 	return NULL;
 }
 
 void fy_linear_destroy(struct fy_allocator *a)
 {
 	struct fy_linear_allocator *la;
+	struct fy_allocator *parent;
+	int parent_tag;
 	void *alloc;
-
-	if (!a)
-		return;
 
 	la = container_of(a, struct fy_linear_allocator, a);
 
 	/* take out the allocation of create */
 	alloc = la->alloc;
 	la->alloc = NULL;
+	parent = la->a.parent;
+	parent_tag = la->a.parent_tag;
 
 	fy_linear_cleanup(a);
 
-	if (alloc)
-		free(alloc);
+	fy_early_parent_allocator_free(parent, parent_tag, alloc);
 }
 
 void fy_linear_dump(struct fy_allocator *a)
 {
 	struct fy_linear_allocator *la;
-
-	if (!a)
-		return;
+	size_t next;
 
 	la = container_of(a, struct fy_linear_allocator, a);
 
+	next = fy_atomic_load(&la->next);
 	fprintf(stderr, "linear: total %zu used %zu free %zu\n",
-			(size_t)(la->end - la->start),
-			(size_t)(la->next - la->start),
-			(size_t)(la->end - la->next));
+			la->cfg.size, next, la->cfg.size - la->next);
 }
 
 static void *fy_linear_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
 {
 	struct fy_linear_allocator *la;
+	size_t next, new_next, real_size;
 	void *s;
 
 	assert(a);
 
 	la = container_of(a, struct fy_linear_allocator, a);
-	if (la->next >= la->end)
-		goto err_out;
 
-	s = fy_ptr_align(la->next, align);
-	if (s >= la->end || (size_t)(la->end - s) < size)
-		goto err_out;
+	/* atomically update the pointer */
+	do {
+		next = fy_atomic_load(&la->next);
+		s = fy_ptr_align(la->start + next, align);
+		new_next = (s + size) - la->start;
+		/* handle both overflow and underflow */
+		if (new_next > la->cfg.size)
+			goto err_out;
+	} while (!fy_atomic_compare_exchange_strong(&la->next, &next, new_next));
 
-	la->stats_allocations++;
-	la->stats_allocated += size;
+	real_size = new_next - next;
 
-	memset(s, 0, size);
+	/* only update stats if someone asked for it */
+	if (a->flags & FYAF_KEEP_STATS) {
+		fy_atomic_fetch_add(&la->allocations, 1);
+		fy_atomic_fetch_add(&la->allocated, real_size);
+	}
 
-	la->next = s + size;
+	/* zero out buffer if not guaranteed */
+	if (la->need_zero)
+		memset(s, 0, size);
 
 	return s;
 
@@ -198,64 +207,47 @@ static int fy_linear_update_stats(struct fy_allocator *a, int tag, struct fy_all
 {
 	struct fy_linear_allocator *la;
 
-	if (!a || !stats)
-		return -1;
-
 	la = container_of(a, struct fy_linear_allocator, a);
 
-	stats->allocations = la->stats_allocations;
-	stats->allocated = la->stats_allocated;
-
-	la->stats_allocations = 0;
-	la->stats_allocated = 0;
+	stats->allocations = fy_atomic_get_and_clear_counter(&la->allocations);
+	stats->allocated = fy_atomic_get_and_clear_counter(&la->allocated);
 
 	return 0;
 }
 
-static const void *fy_linear_store(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align)
+static const void *fy_linear_storev(struct fy_allocator *a, int tag,
+				    const struct iovec *iov, int iovcnt, size_t align,
+				    uint64_t hash)
 {
+	struct fy_linear_allocator *la;
 	void *p;
+	size_t size;
 
-	if (!a)
+	size = fy_iovec_size(iov, iovcnt);
+	if (size == SIZE_MAX)
 		return NULL;
 
 	p = fy_linear_alloc(a, tag, size, align);
 	if (!p)
-		goto err_out;
-
-	memcpy(p, data, size);
-
-	return p;
-
-err_out:
-	return NULL;
-}
-
-static const void *fy_linear_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align)
-{
-	void *p, *start;
-	int i;
-	size_t size;
-
-	if (!a)
 		return NULL;
 
-	size = 0;
-	for (i = 0; i < iovcnt; i++)
-		size += iov[i].iov_len;
+	fy_iovec_copy_from(iov, iovcnt, p);
 
-	start = fy_linear_alloc(a, tag, size, align);
-	if (!start)
-		goto err_out;
+	if (a->flags & FYAF_KEEP_STATS) {
+		la = container_of(a, struct fy_linear_allocator, a);
 
-	for (i = 0, p = start; i < iovcnt; i++, p += size) {
-		size = iov[i].iov_len;
-		memcpy(p, iov[i].iov_base, size);
+		fy_atomic_fetch_add(&la->stores, 1);
+		fy_atomic_fetch_add(&la->stores, size);
 	}
 
-	return start;
+	return p;
+}
 
-err_out:
+static const void *fy_linear_lookupv(struct fy_allocator *a, int tag,
+				    const struct iovec *iov, int iovcnt, size_t align,
+				    uint64_t hash)
+{
+	/* no way to lookup */
 	return NULL;
 }
 
@@ -266,27 +258,25 @@ static void fy_linear_release(struct fy_allocator *a, int tag, const void *data,
 
 static int fy_linear_get_tag(struct fy_allocator *a)
 {
-	if (!a)
-		return FY_ALLOC_TAG_ERROR;
-
 	/* always return 0, we don't do tags for linear */
 	return 0;
 }
 
 static void fy_linear_release_tag(struct fy_allocator *a, int tag)
 {
-	struct fy_linear_allocator *la;
+	/* nothing */
+}
 
-	if (!a)
-		return;
+static int fy_linear_get_tag_count(struct fy_allocator *a)
+{
+	return 1;
+}
 
-	/* we only give out 0 as a tag */
-	assert(tag == 0);
-
-	la = container_of(a, struct fy_linear_allocator, a);
-
-	/* we just rewind */
-	la->next = la->start;
+static int fy_linear_set_tag_count(struct fy_allocator *a, unsigned int count)
+{
+	if (count != 1)
+		return -1;
+	return 0;
 }
 
 static void fy_linear_trim_tag(struct fy_allocator *a, int tag)
@@ -296,7 +286,15 @@ static void fy_linear_trim_tag(struct fy_allocator *a, int tag)
 
 static void fy_linear_reset_tag(struct fy_allocator *a, int tag)
 {
-	/* nothing */
+	struct fy_linear_allocator *la;
+
+	if (tag)
+		return;
+
+	la = container_of(a, struct fy_linear_allocator, a);
+
+	/* we just rewind */
+	fy_atomic_store(&la->next, 0);
 }
 
 static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, int tag)
@@ -305,10 +303,7 @@ static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, int 
 	struct fy_allocator_info *info;
 	struct fy_allocator_tag_info *tag_info;
 	struct fy_allocator_arena_info *arena_info;
-	size_t size;
-
-	if (!a)
-		return NULL;
+	size_t next, size;
 
 	/* only single tag (or all tags with 0) */
 	if (tag != 0 && tag != FY_ALLOC_TAG_NONE)
@@ -327,14 +322,16 @@ static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, int 
 	memset(info, 0, sizeof(*info));
 
 	tag_info = (void *)(info + 1);
-	assert(((uintptr_t)tag_info % alignof(struct fy_allocator_tag_info)) == 0);
+	assert(((uintptr_t)tag_info % _Alignof(struct fy_allocator_tag_info)) == 0);
 	arena_info = (void *)(tag_info + 1);
-	assert(((uintptr_t)arena_info % alignof(struct fy_allocator_arena_info)) == 0);
+	assert(((uintptr_t)arena_info % _Alignof(struct fy_allocator_arena_info)) == 0);
 
 	/* fill-in the single arena */
-	arena_info->free = (size_t)(la->end - la->next);
-	arena_info->used = (size_t)(la->next - la->start);
-	arena_info->total = (size_t)(la->end - (void *)la);
+	next = fy_atomic_load(&la->next);
+
+	arena_info->free = la->cfg.size - next;
+	arena_info->used = next;
+	arena_info->total = la->cfg.size;
 	arena_info->data = la->start;
 	arena_info->size = arena_info->used;
 
@@ -366,11 +363,8 @@ static bool fy_linear_contains(struct fy_allocator *a, int tag, const void *ptr)
 {
 	struct fy_linear_allocator *la;
 
-	if (!a || !ptr)
-		return false;
-
 	la = container_of(a, struct fy_linear_allocator, a);
-	return ptr >= la->start && ptr < la->end;
+	return ptr >= la->start && ptr < (la->start + la->cfg.size);
 }
 
 const struct fy_allocator_ops fy_linear_allocator_ops = {
@@ -382,11 +376,13 @@ const struct fy_allocator_ops fy_linear_allocator_ops = {
 	.alloc = fy_linear_alloc,
 	.free = fy_linear_free,
 	.update_stats = fy_linear_update_stats,
-	.store = fy_linear_store,
 	.storev = fy_linear_storev,
+	.lookupv = fy_linear_lookupv,
 	.release = fy_linear_release,
 	.get_tag = fy_linear_get_tag,
 	.release_tag = fy_linear_release_tag,
+	.get_tag_count = fy_linear_get_tag_count,
+	.set_tag_count = fy_linear_set_tag_count,
 	.trim_tag = fy_linear_trim_tag,
 	.reset_tag = fy_linear_reset_tag,
 	.get_info = fy_linear_get_info,

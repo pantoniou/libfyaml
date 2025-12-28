@@ -16,21 +16,32 @@
 #include "fy-id.h"
 #include "xxhash.h"
 
+#include "fy-atomics.h"
 #include "fy-allocator.h"
 
 #define FY_DEDUP_TAG_MAX	128
 
-FY_TYPE_FWD_DECL_LIST(dedup_entry);
 struct fy_dedup_entry {
-	struct list_head node;
+	struct fy_dedup_entry *next;
 	uint64_t hash;
-	int64_t refs;
 	size_t size;
 	void *mem;
 };
-FY_TYPE_DECL_LIST(dedup_entry);
+
+struct fy_dedup_tag;
+
+struct fy_dedup_tag_data_cfg {
+	struct fy_dedup_allocator *da;
+	struct fy_dedup_tag *dt;
+	unsigned int bloom_filter_bits;
+	unsigned int bucket_count_bits;
+	size_t dedup_threshold;
+	unsigned int chain_length_grow_trigger;
+};
 
 struct fy_dedup_tag_data {
+	struct fy_dedup_tag_data *next;
+	struct fy_dedup_tag_data_cfg cfg;
 	unsigned int bloom_filter_bits;
 	unsigned int bloom_filter_mask;
 	size_t bloom_id_count;
@@ -39,39 +50,40 @@ struct fy_dedup_tag_data {
 	unsigned int bucket_count_bits;
 	unsigned int bucket_count_mask;
 	size_t bucket_count;
-	struct fy_dedup_entry_list *buckets;
-	struct fy_dedup_entry_list *buckets_end;
+	FY_ATOMIC(struct fy_dedup_entry *) *buckets;
 	size_t bucket_id_count;
 	fy_id_bits *buckets_in_use;
-	fy_id_bits *buckets_collision;
 	size_t dedup_threshold;
 	unsigned int chain_length_grow_trigger;
 };
 
 struct fy_dedup_tag {
-	bool bloom_filter_needs_update;
-	int entries_tag;
+	FY_ATOMIC(struct fy_dedup_tag_data *)tag_datas;
 	int content_tag;
-	struct fy_allocator_stats stats;
-	unsigned int data_active;	/* toggle to switch active and in progress */
-	struct fy_dedup_tag_data data[2];
+	fy_atomic_flag growing;
+	FY_ATOMIC(uint64_t) unique_stores;
+	FY_ATOMIC(uint64_t) dup_stores;
+	FY_ATOMIC(uint64_t) collisions;
 };
 
 struct fy_dedup_allocator {
 	struct fy_allocator a;
 	struct fy_dedup_allocator_cfg cfg;
-	struct fy_allocator *entries_allocator;
 	struct fy_allocator *parent_allocator;
-	unsigned long long xxseed;
-	XXH64_state_t xxstate_template;
+	enum fy_allocator_cap_flags parent_caps;
+	int entries_tag;
 	unsigned int bloom_filter_bits;
 	unsigned int bucket_count_bits;
 	size_t dedup_threshold;
 	unsigned int chain_length_grow_trigger;
-	fy_id_bits ids[FY_ID_BITS_ARRAY_COUNT_BITS(FY_DEDUP_TAG_MAX)];
-	struct fy_dedup_tag tags[FY_DEDUP_TAG_MAX];
+	fy_id_bits *ids;
+	unsigned int tag_id_count;
+	struct fy_dedup_tag *tags;
+	unsigned int tag_count;
 };
 
 extern const struct fy_allocator_ops fy_dedup_allocator_ops;
+
+#define FY_DEDUP_XXHASH64_SEED	FY_XXHASH64_SEED
 
 #endif
