@@ -467,7 +467,8 @@ int fy_vdiag(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 		goto out;
 	}
 
-	msg = alloca_vsprintf(fmt, ap);
+	msg = fy_vsprintfa(fmt, ap);
+	fy_strip_trailing_nl(msg);
 
 	/* source part */
 	if (diag->cfg.show_source) {
@@ -479,21 +480,21 @@ int fy_vdiag(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 				file_stripped++;
 		} else
 			file_stripped = "";
-		source = alloca_sprintf("%s:%d @%s()%s",
+		source = fy_sprintfa("%s:%d @%s()%s",
 				file_stripped, fydc->source_line, fydc->source_func, " ");
 	}
 
 	/* position part */
 	if (diag->cfg.show_position && fydc->line >= 0 && fydc->column >= 0)
-		position = alloca_sprintf("<%3d:%2d>%s", fydc->line, fydc->column, ": ");
+		position = fy_sprintfa("<%3d:%2d>%s", fydc->line, fydc->column, ": ");
 
 	/* type part */
 	if (diag->cfg.show_type)
-		typestr = alloca_sprintf("[%s]%s", fy_error_level_str(level), ": ");
+		typestr = fy_sprintfa("[%s]%s", fy_error_level_str(level), ": ");
 
 	/* module part */
 	if (diag->cfg.show_module)
-		modulestr = alloca_sprintf("<%s>%s", fy_error_module_str(fydc->module), ": ");
+		modulestr = fy_sprintfa("<%s>%s", fy_error_module_str(fydc->module), ": ");
 
 	if (diag->cfg.colorize) {
 		switch (level) {
@@ -855,15 +856,16 @@ void fy_diag_vreport(struct fy_diag *diag,
 	}
 
 	/* it will strip trailing newlines */
-	msg_str = alloca_vsprintf(fmt, ap);
+	msg_str = fy_vsprintfa(fmt, ap);
+	fy_strip_trailing_nl(msg_str);
 
 	/* get the colors */
 	fy_diag_get_error_colors(diag, fydrc->type, &color_start, &color_end, &white);
 
 	if (name || (line > 0 && column > 0))
 		name_str = (line > 0 && column > 0) ?
-			alloca_sprintf("%s%s:%d:%d: ", white, name, line, column) :
-			alloca_sprintf("%s%s: ", white, name);
+			fy_sprintfa("%s%s:%d:%d: ", white, name, line, column) :
+			fy_sprintfa("%s%s: ", white, name);
 
 	if (!diag->collect_errors) {
 		fy_diag_printf(diag, "%s" "%s%s: %s" "%s\n",
