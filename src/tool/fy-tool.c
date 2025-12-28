@@ -2162,6 +2162,9 @@ cleanup:
 		fy_diag_destroy(diag);
 	}
 
+	/* make valgrind happy */
+	fy_shutdown();
+
 	return exitcode;
 
 err_out_usage:
