@@ -8,11 +8,14 @@
 
 libfyaml is designed for high performance with zero content duplication, supporting arbitrarily large documents without the 1024-character limit on implicit keys found in other parsers. It passes the complete YAML test suite and provides both event-based (streaming) and document tree APIs for maximum flexibility.
 
-✨ **Key Highlights:**
+**Fully MIT Licensed** - v0.9.1 removes all GPL code, making the entire library consistently MIT licensed for use in commercial and proprietary projects.
+
+**Key Highlights:**
 - **Zero-copy architecture** - minimal memory usage, handles arbitrarily large documents
 - **YAML 1.2 & JSON** - full spec compliance, passes complete YAML test suite
 - **Dual API** - event-based streaming (like libyaml) or document tree manipulation
 - **No artificial limits** - unlike libyaml's 1024-char implicit key restriction
+- **High performance** - up to 24x faster on large files with streaming mode, thread-safe lockless allocators
 - **Rich manipulation** - path expressions, scanf/printf-style APIs, programmatic document building
 - **Production-ready** - memory-safe, valgrind-clean, extensive test coverage
 
@@ -40,6 +43,21 @@ fy_document_insert_at(fyd, "/server", FY_NT, fy_node_buildf(fyd, "timeout: 30"))
 fy_emit_document_to_file(fyd, FYECF_SORT_KEYS, "config.yaml");
 fy_document_destroy(fyd);
 ```
+
+---
+
+## What's New in v0.9.1
+
+**Major Updates:**
+
+- **GPL Code Removed**: All GPL-licensed code has been replaced with MIT-licensed implementations. The entire library is now consistently MIT licensed.
+- **Performance**: Up to 24x faster on large files with new streaming mode default in fy-tool
+- **Thread Safety**: New thread-safe lockless allocators for multi-threaded applications
+- **Stability**: Fixed 12 critical bugs including segmentation faults and memory corruption
+- **New APIs**: Parser checkpointing, composer interface, document builder, YPath set operators
+- **Build System**: CMake now at feature parity with autotools, cross-compilation support
+
+See [CHANGELOG.md](CHANGELOG.md) for complete release notes.
 
 ---
 
@@ -74,11 +92,11 @@ Both APIs coexist and can be mixed as needed.
 ## Features
 
 ### YAML & JSON Support
-- ✅ Full YAML 1.2 specification compliance
-- ✅ YAML 1.3 compatibility (preparing for upcoming spec)
-- ✅ JSON parsing and emission
-- ✅ Comment preservation
-- ✅ Complete test suite coverage
+- Full YAML 1.2 specification compliance
+- YAML 1.3 compatibility (preparing for upcoming spec)
+- JSON parsing and emission
+- Comment preservation (experimental)
+- Complete test suite coverage
 
 ### Parsing Modes
 - Event-based streaming parser (like libyaml)
@@ -104,6 +122,8 @@ Both APIs coexist and can be mixed as needed.
 ### Performance & Scalability
 - Zero-copy operation on mmap'd files and constant strings
 - No artificial limits on key lengths, nesting depth, or document size
+- Thread-safe lockless allocators (linear, mremap, dedup, auto) for multi-threaded applications
+- Streaming mode with up to 24x performance improvement on large files
 - Configurable memory allocators for different usage patterns
 - Efficient handling of arbitrarily large documents
 
@@ -123,7 +143,7 @@ Both APIs coexist and can be mixed as needed.
 Add libfyaml to your CMake project:
 
 ```cmake
-find_package(libfyaml 0.9 REQUIRED)
+find_package(libfyaml 0.9.1 REQUIRED)
 target_link_libraries(your_app PRIVATE libfyaml::libfyaml)
 ```
 
@@ -399,13 +419,17 @@ libfyaml provides a comprehensive API organized into functional categories:
 | Category | Purpose | Key Functions |
 |----------|---------|---------------|
 | **Parser** | Event-based streaming YAML parsing | `fy_parser_create()`, `fy_parser_parse()`, `fy_parser_set_input_*()` |
+| **Parser Checkpointing** | Look-ahead and peek operations | `fy_parser_parse_peek()`, `fy_parser_skip()`, `fy_parser_count_*()` |
+| **Composer** | Event-based document composition | `fy_composer_create()`, `fy_composer_process_event()` |
 | **Document** | High-level document tree manipulation | `fy_document_build_from_*()`, `fy_document_scanf()`, `fy_document_insert_at()` |
-| **Node** | Individual YAML node operations | `fy_node_create_*()`, `fy_node_by_path()`, `fy_node_buildf()` |
+| **Document Builder** | Programmatic document construction | `fy_document_builder_create()`, `fy_document_builder_*()` |
+| **Node** | Individual YAML node operations | `fy_node_create_*()`, `fy_node_by_path()`, `fy_node_buildf()`, `fy_node_delete()` |
 | **Sequence** | Array/list operations | `fy_node_sequence_iterate()`, `fy_node_sequence_append()` |
 | **Mapping** | Key-value dictionary operations | `fy_node_mapping_lookup_*()`, `fy_node_mapping_append()` |
-| **Emitter** | YAML/JSON output generation | `fy_emitter_create()`, `fy_emit_document_to_*()` |
+| **Emitter** | YAML/JSON output generation | `fy_emitter_create()`, `fy_emit_document_to_*()`, `fy_emit_body_node()` |
 | **Path** | XPath-like YAML queries (YPATH) | `fy_node_by_path()`, `fy_path_exec_execute()` |
 | **Anchor** | Anchor and alias management | `fy_document_lookup_anchor()`, `fy_node_create_alias()` |
+| **Allocator** | Memory allocation control | `fy_allocator_create()`, `fy_allocator_contains()` |
 
 **See the [complete API documentation](https://pantoniou.github.io/libfyaml/) for detailed reference.**
 
@@ -417,9 +441,14 @@ libfyaml includes `fy-tool`, a multi-function YAML manipulation utility:
 
 ### fy-dump - Parse and Pretty-Print
 
+**Note**: As of v0.9.1, fy-dump uses streaming mode by default for up to 24x better performance on large files. Use `--no-streaming` if you need forward anchor references or strict duplicate key checking.
+
 ```bash
-# Convert YAML to JSON
+# Convert YAML to JSON (streaming mode)
 fy-dump -m json config.yaml
+
+# Use document mode for forward anchors
+fy-dump --no-streaming -m json config.yaml
 
 # Format with visible whitespace
 fy-dump -V -m block messy.yaml
@@ -497,10 +526,10 @@ For a typical YAML document:
 ### No Artificial Limits
 
 Common parser limitations that libfyaml **does not have**:
-- ❌ No 1024-char limit on implicit keys (unlike libyaml)
-- ❌ No hardcoded nesting depth limits
-- ❌ No document size restrictions
-- ❌ No key count limits per mapping
+- No 1024-char limit on implicit keys (unlike libyaml)
+- No hardcoded nesting depth limits
+- No document size restrictions
+- No key count limits per mapping
 
 Configurable limits exist for safety but can be adjusted or removed entirely.
 
@@ -508,9 +537,10 @@ Configurable limits exist for safety but can be adjusted or removed entirely.
 
 ## Documentation
 
-- 📚 **[API Reference](https://pantoniou.github.io/libfyaml/)** - Complete API documentation
-- 💻 **[Examples](examples/)** - Sample code and use cases
-- 🏗️ **[CMake Integration](cmake/README-package.md)** - Using libfyaml in CMake projects
+- **[API Reference](https://pantoniou.github.io/libfyaml/)** - Complete API documentation
+- **[Examples](examples/)** - Sample code and use cases
+- **[CMake Integration](cmake/README-package.md)** - Using libfyaml in CMake projects
+- **[Changelog](CHANGELOG.md)** - Version history and release notes
 
 ### Building Documentation Locally
 
@@ -599,6 +629,8 @@ Current limitations:
 
 libfyaml is released under the **MIT License**.
 
+**As of version 0.9.1, all GPL-licensed code has been removed.** The entire library is now consistently MIT licensed, making it suitable for use in commercial and proprietary projects without any GPL licensing concerns.
+
 ```
 Copyright (c) 2019-2025 Pantelis Antoniou <pantelis.antoniou@konsulko.com>
 
@@ -625,4 +657,4 @@ See [LICENSE](LICENSE) for complete terms.
 
 ---
 
-**[⬆ Back to Top](#libfyaml)**
+**[Back to Top](#libfyaml)**
