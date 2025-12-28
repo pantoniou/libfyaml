@@ -51,7 +51,7 @@
 #define STRIP_LABELS_DEFAULT		false
 #define STRIP_TAGS_DEFAULT		false
 #define STRIP_DOC_DEFAULT		false
-#define STREAMING_DEFAULT		false
+#define STREAMING_DEFAULT		true
 #define RECREATING_DEFAULT		false
 #define JSON_DEFAULT			"auto"
 #define DISABLE_ACCEL_DEFAULT		false
@@ -87,7 +87,7 @@
 #define OPT_STRIP_TAGS			2001
 #define OPT_STRIP_DOC			2002
 #define OPT_STREAMING			2003
-#define OPT_RECREATING          2004
+#define OPT_RECREATING			2004
 #define OPT_DISABLE_ACCEL		2005
 #define OPT_DISABLE_BUFFERING		2006
 #define OPT_DISABLE_DEPTH_LIMIT		2007
@@ -107,6 +107,7 @@
 #define OPT_TSV_FORMAT			2021
 #define OPT_DISABLE_DOC_MARKERS		2022
 #define OPT_DISABLE_SCALAR_STYLES	2023
+#define OPT_NO_STREAMING		2024
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -161,6 +162,7 @@ static struct option lopts[] = {
 	{"strip-tags",		no_argument,		0,	OPT_STRIP_TAGS },
 	{"strip-doc",		no_argument,		0,	OPT_STRIP_DOC },
 	{"streaming",		no_argument,		0,	OPT_STREAMING },
+	{"no-streaming",	no_argument,		0,	OPT_NO_STREAMING },
 	{"recreating",		no_argument,		0,	OPT_RECREATING },
 	{"disable-accel",	no_argument,		0,	OPT_DISABLE_ACCEL },
 	{"disable-buffering",	no_argument,		0,	OPT_DISABLE_BUFFERING },
@@ -317,9 +319,8 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 							" (default %s)\n",
 							TSV_FORMAT_DEFAULT ? "true" : "false");
 		if (tool_mode == OPT_TOOL || tool_mode == OPT_DUMP) {
-			fprintf(fp, "\t--streaming              : Use streaming output mode"
-								" (default %s)\n",
-								STREAMING_DEFAULT ? "true" : "false");
+			fprintf(fp, "\t--streaming              : Use streaming output mode (default)");
+			fprintf(fp, "\t--no-streaming           : Don't use streaming output mode");
 			fprintf(fp, "\t--recreating             : Recreate streaming events"
 								" (default %s)\n",
 								RECREATING_DEFAULT ? "true" : "false");
@@ -1326,6 +1327,9 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_STREAMING:
 			streaming = true;
+			break;
+		case OPT_NO_STREAMING:
+			streaming = false;
 			break;
 		case OPT_RECREATING:
 			recreating = true;

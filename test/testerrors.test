@@ -20,7 +20,7 @@ for dir in "${SRCDIR}"/test-errors/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 	res="not ok"
 
 	pass_yaml=0
-	${TOP_BUILDDIR}/src/fy-tool --dump -r "$dir/in.yaml" >"$t" 2>&1
+	${TOP_BUILDDIR}/src/fy-tool --dump --no-streaming -r "$dir/in.yaml" >"$t" 2>&1
 	if [ $? -eq 0 ]; then
 		pass_yaml=1
 	fi

@@ -15,7 +15,7 @@ case "$test_suite" in
         res="not ok"
 
         pass_yaml=0
-        ${TOP_BUILDDIR}/src/fy-tool --dump -r "$dir/in.yaml" >"$t" 2>&1
+        ${TOP_BUILDDIR}/src/fy-tool --dump -r --no-streaming "$dir/in.yaml" >"$t" 2>&1
         if [ $? -eq 0 ]; then
             pass_yaml=1
         fi
