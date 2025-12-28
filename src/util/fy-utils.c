@@ -26,6 +26,8 @@
 #include "fy-ctype.h"
 #include "fy-utils.h"
 
+#include "xxhash.h"
+
 #if defined(__APPLE__) && (_POSIX_C_SOURCE < 200809L)
 
 /*
@@ -877,4 +879,22 @@ void fy_keyword_iter_advance(struct fy_keyword_iter *iter, size_t advance)
 void fy_keyword_iter_end(struct fy_keyword_iter *iter)
 {
 	/* nothing */
+}
+
+#define FY_XXHASH64_SEED	((uint64_t)0x1973198120142019U)
+
+uint64_t fy_iovec_xxhash64(const struct iovec *iov, int iovcnt)
+{
+	XXH64_state_t xxstate;
+	uint64_t hash;
+	int i;
+
+	XXH64_reset(&xxstate, FY_XXHASH64_SEED);
+	for (i = 0; i < iovcnt; i++)
+		XXH64_update(&xxstate, iov[i].iov_base, iov[i].iov_len);
+	hash = XXH64_digest(&xxstate);
+	/* XXX we never return a hash value of zero */
+	if (!hash)
+		hash++;
+	return hash;
 }
