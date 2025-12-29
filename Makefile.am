@@ -12,7 +12,9 @@ EXTRA_DIST=bootstrap.sh \
 	   build-aux/git-version-gen \
 	   README.md LICENSE \
 	   Dockerfile Dockerfile-build-deb \
-	   Dockerfile.alpine Dockerfile.centos
+	   Dockerfile.alpine Dockerfile.centos \
+	   cmake CMakeLists.txt \
+	   examples
 
 MAINTAINERCLEANFILES = \
         Makefile.in src/Makefile.in config.h.in configure \
