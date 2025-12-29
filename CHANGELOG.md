@@ -5,6 +5,11 @@ All notable changes to libfyaml will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2025-12-29
+
+### Fixed
+- **#157**: dist tarball now includes the missing CMake files
+
 ## [0.9.1] - 2025-12-28
 
 ### CRITICAL: Licensing Change
