@@ -46,6 +46,8 @@ extern "C" {
 
 #include <sys/uio.h>
 
+#include <libfyaml/fy-internal.h>
+
 /* opaque types for the user */
 struct fy_token;
 struct fy_document_state;
@@ -66,59 +68,6 @@ struct fy_path;
 struct fy_composer;
 struct fy_document_iterator;
 struct fy_document_builder;
-
-#ifndef FY_BIT
-#define FY_BIT(x) (1U << (x))
-#endif
-
-/* NULL terminated string length specifier */
-#define FY_NT	((size_t)-1)
-
-#if defined(__GNUC__) && __GNUC__ >= 4
-#define FY_EXPORT __attribute__ ((visibility ("default")))
-#define FY_DEPRECATED __attribute__ ((deprecated))
-#define FY_FORMAT(_t, _x, _y) __attribute__ ((format(_t, _x, _y)))
-#else
-#define FY_EXPORT /* nothing */
-#define FY_DEPRECATED /* nothing */
-#define FY_FORMAT(_t, x, y)	/* nothing */
-#endif
-
-/* make a copy of an allocated string and return it on stack
- * note that this is a convenience, and should not be called
- * in a loop. The string is always '\0' terminated.
- * If the _str pointer is NULL, then NULL will be returned
- */
-#ifndef FY_ALLOCA_COPY_FREE
-#define FY_ALLOCA_COPY_FREE(_str, _len)				\
-        ({							\
-                char *__str = (_str), *__stra = NULL;		\
-                size_t __len = (size_t)(_len);			\
-								\
-		if (__str) {					\
-			if (__len == FY_NT) 			\
-				__len = strlen(__str);		\
-			__stra = alloca(__len + 1);		\
-			memcpy(__stra, __str, __len);		\
-			__stra[__len] = '\0';			\
-			free(__str);				\
-		}						\
-                (const char *)__stra;				\
-        })
-#endif
-
-/* same as above but when _str == NULL return "" */
-#ifndef FY_ALLOCA_COPY_FREE_NO_NULL
-#define FY_ALLOCA_COPY_FREE_NO_NULL(_str, _len)			\
-        ({							\
-                const char *__strb;				\
-								\
-		__strb = FY_ALLOCA_COPY_FREE(_str, _len);	\
-		if (!__strb)					\
-			__strb = "";				\
-		__strb;						\
-        })
-#endif
 
 /**
  * DOC: libfyaml public API

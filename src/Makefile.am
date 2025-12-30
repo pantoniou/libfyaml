@@ -268,7 +268,13 @@ fy_tool_CFLAGS = $(AM_CFLAGS)
 fy_tool_LDFLAGS = $(AM_LDFLAGS)
 
 include_HEADERS = \
-        $(top_srcdir)/include/libfyaml.h
+        $(top_srcdir)/include/libfyaml.h \
+        $(top_srcdir)/include/libfyaml/fy-internal.h \
+        $(top_srcdir)/include/libfyaml/fy-internal-align.h \
+        $(top_srcdir)/include/libfyaml/fy-internal-endian.h \
+        $(top_srcdir)/include/libfyaml/fy-internal-vlsize.h \
+        $(top_srcdir)/include/libfyaml/fy-internal-atomics.h \
+        $(top_srcdir)/include/libfyaml/fy-internal-generic.h
 
 install-exec-hook:
 	(cd "$(DESTDIR)$(bindir)" && $(LN_S) -f fy-tool fy-dump)

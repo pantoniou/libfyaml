@@ -665,6 +665,12 @@ endif()
 
 set(LIBHDRSPUB
     include/libfyaml.h
+    include/libfyaml/fy-internal.h
+    include/libfyaml/fy-internal-align.h
+    include/libfyaml/fy-internal-endian.h
+    include/libfyaml/fy-internal-vlsize.h
+    include/libfyaml/fy-internal-atomics.h
+    include/libfyaml/fy-internal-generic.h
 )
 
 # BLAKE3 portable library

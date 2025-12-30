@@ -30,6 +30,8 @@
 
 #include <libfyaml.h>
 
+#include <libfyaml/fy-internal-generic.h>
+
 #include "fy-valgrind.h"
 #include "fy-tool-util.h"
 #include "fy-tool-reflect.h"
@@ -83,6 +85,7 @@
 #define OPT_COMPOSE			1009
 #define OPT_B3SUM			1010
 #define OPT_REFLECT			1011
+#define OPT_GENERIC			1012
 
 #define OPT_STRIP_LABELS		2000
 #define OPT_STRIP_TAGS			2001
@@ -237,6 +240,7 @@ static struct option lopts[] = {
 	{"dump-reflection",	no_argument,	        0,      OPT_DUMP_REFLECTION },
 	{"debug-reflection",	no_argument,	        0,      OPT_DEBUG_REFLECTION },
 
+	{"generic",		no_argument,		0,	OPT_GENERIC },
 	{"help",		no_argument,		0,	'h' },
 	{"version",		no_argument,		0,	'v' },
 	{0,			0,              	0,	 0  },
@@ -396,6 +400,10 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--debug-reflection       : Debug messages during reflection processing\n");
 	}
 
+	if (tool_mode == OPT_GENERIC) {
+		fprintf(fp, "\t--generic                : Generics test\n");
+	}
+
 	if (tool_mode == OPT_TOOL) {
 		fprintf(fp, "\t--dump                   : Dump mode, [arguments] are file names\n");
 		fprintf(fp, "\t--testsuite              : Testsuite mode, [arguments] are <file>s to output parse events\n");
@@ -516,6 +524,10 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\n");
 		break;
 
+	case OPT_GENERIC:
+		fprintf(fp, "\tGeneric\n");
+		fprintf(fp, "\n");
+		break;
 	}
 }
 
@@ -8624,6 +8636,11 @@ err_out:
 	return -1;
 }
 
+void test_gen(void)
+{
+	fy_emit(fy_mapping("foo", 10, "bar", 200), FYOPEF_DISABLE_DIRECTORY | FYOPEF_OUTPUT_TYPE_STDOUT, NULL);
+}
+
 int main(int argc, char *argv[])
 {
 	struct fy_parse_cfg cfg = {
@@ -8748,6 +8765,8 @@ int main(int argc, char *argv[])
 		tool_mode = OPT_B3SUM;
 	else if (!strcmp(progname, "fy-reflect"))
 		tool_mode = OPT_REFLECT;
+	else if (!strcmp(progname, "fy-generic"))
+		tool_mode = OPT_GENERIC;
 	else
 		tool_mode = OPT_TOOL;
 
@@ -8917,6 +8936,7 @@ int main(int argc, char *argv[])
 		case OPT_YAML_VERSION_DUMP:
 		case OPT_B3SUM:
 		case OPT_REFLECT:
+		case OPT_GENERIC:
 			tool_mode = opt;
 			break;
 		case OPT_STRIP_LABELS:
@@ -9923,6 +9943,9 @@ int main(int argc, char *argv[])
 		/* cleanup will take care of rfl cleanup */
 		break;
 
+	case OPT_GENERIC:
+		test_gen();
+		break;
 
 	}
 	exitcode = EXIT_SUCCESS;

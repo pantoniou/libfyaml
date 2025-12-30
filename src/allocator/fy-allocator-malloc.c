@@ -20,6 +20,7 @@
 /* for container_of */
 #include "fy-list.h"
 #include "fy-utils.h"
+#include "fy-align.h"
 
 #include "fy-allocator-malloc.h"
 

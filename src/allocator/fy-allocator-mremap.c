@@ -21,6 +21,7 @@
 #include <stdio.h>
 
 /* for container_of */
+#include "fy-align.h"
 #include "fy-list.h"
 #include "fy-utils.h"
 

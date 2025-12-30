@@ -198,8 +198,6 @@ fy_generic_mapping_resolve_outofplace(fy_generic map)
 	return fy_generic_resolve_collection_ptr(map);
 }
 
-extern __thread struct fy_generic_builder *fy_current_gb;
-
 static const struct fy_generic_builder_cfg default_generic_builder_cfg = {
 	.flags = FYGBCF_SCHEMA_AUTO | FYGBCF_OWNS_ALLOCATOR,
 	.allocator = NULL,	/* use default */
@@ -442,6 +440,111 @@ fy_generic fy_generic_builder_export(struct fy_generic_builder *gb, fy_generic v
 	return fy_gb_internalize(gb_export, v);
 }
 
+void *fy_gb_alloc(struct fy_generic_builder *gb, size_t size, size_t align)
+{
+	void *p;
+
+	p = fy_allocator_alloc_nocheck(gb->allocator, gb->alloc_tag, size, align);
+	if (!p)
+		fy_atomic_fetch_add(&gb->allocation_failures, 1);
+	return p;
+}
+
+void *fy_generic_builder_set_userdata(struct fy_generic_builder *gb, void *userdata)
+{
+	void *old_userdata;
+
+	if (!gb)
+		return NULL;
+	old_userdata = gb->userdata;
+	gb->userdata = userdata;
+	return old_userdata;
+}
+
+void *fy_generic_builder_get_userdata(struct fy_generic_builder *gb)
+{
+	if (!gb)
+		return NULL;
+	return gb->userdata;
+}
+
+void fy_gb_free(struct fy_generic_builder *gb, void *ptr)
+{
+	fy_allocator_free_nocheck(gb->allocator, gb->alloc_tag, ptr);
+}
+
+void fy_gb_trim(struct fy_generic_builder *gb)
+{
+	fy_allocator_trim_tag_nocheck(gb->allocator, gb->alloc_tag);
+}
+
+const void *fy_gb_store(struct fy_generic_builder *gb, const void *data, size_t size, size_t align)
+{
+	const void *p;
+
+	p = fy_allocator_store_nocheck(gb->allocator, gb->alloc_tag, data, size, align);
+	if (!p)
+		fy_atomic_fetch_add(&gb->allocation_failures, 1);
+	return p;
+}
+
+const void *fy_gb_storev(struct fy_generic_builder *gb, const struct iovec *iov, unsigned int iovcnt, size_t align)
+{
+	const void *p;
+
+	p = fy_allocator_storev_nocheck(gb->allocator, gb->alloc_tag, iov, iovcnt, align);
+	if (!p)
+		fy_atomic_fetch_add(&gb->allocation_failures, 1);
+	return p;
+}
+
+const void *fy_gb_lookupv(struct fy_generic_builder *gb, const struct iovec *iov, unsigned int iovcnt, size_t align)
+{
+	const void *ptr;
+	uint64_t hash;
+
+	if (!(gb->flags & FYGBF_DEDUP_ENABLED))
+		return NULL;
+
+	hash = fy_iovec_xxhash64(iov, iovcnt);
+
+	while (gb && (gb->flags & FYGBF_DEDUP_ENABLED)) {
+		ptr = fy_allocator_lookupv_nocheck(gb->allocator, gb->alloc_tag, iov, iovcnt, align, hash);
+		if (ptr)
+			return ptr;
+		gb = gb->cfg.parent;
+	}
+
+	return NULL;
+}
+
+const void *fy_gb_lookup(struct fy_generic_builder *gb, const void *data, size_t size, size_t align)
+{
+	struct iovec iov[1];
+
+	/* just call the storev */
+	iov[0].iov_base = (void *)data;
+	iov[0].iov_len = size;
+
+	return fy_gb_lookupv(gb, iov, 1, align);
+}
+
+struct fy_allocator_info *
+fy_gb_get_allocator_info(struct fy_generic_builder *gb)
+{
+	return fy_allocator_get_info_nocheck(gb->allocator, gb->alloc_tag);
+}
+
+void fy_gb_release(struct fy_generic_builder *gb, const void *ptr, size_t size)
+{
+	fy_allocator_release_nocheck(gb->allocator, gb->alloc_tag, ptr, size);
+}
+
+uint64_t fy_gb_allocation_failures(struct fy_generic_builder *gb)
+{
+	return fy_atomic_load(&gb->allocation_failures);
+}
+
 fy_generic
 fy_gb_string_vcreate(struct fy_generic_builder *gb, const char *fmt, va_list ap)
 {
@@ -474,6 +577,90 @@ fy_gb_string_createf(struct fy_generic_builder *gb, const char *fmt, ...)
 	va_end(ap);
 
 	return v;
+}
+
+fy_generic fy_gb_null_type_create_out_of_place(struct fy_generic_builder *gb, void *p)
+{
+	return fy_invalid;
+}
+
+fy_generic fy_gb_bool_type_create_out_of_place(struct fy_generic_builder *gb, bool state)
+{
+	return fy_invalid;
+}
+
+fy_generic fy_gb_dint_type_create_out_of_place(struct fy_generic_builder *gb, fy_generic_decorated_int vald)
+{
+	const struct fy_generic_decorated_int *valp;
+
+	valp = fy_gb_lookup(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
+	if (!valp)
+		valp = fy_gb_store(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
+	if (!valp)
+		return fy_invalid;
+	return (fy_generic){ .v = (uintptr_t)valp | FY_INT_OUTPLACE_V };
+}
+
+fy_generic fy_gb_int_type_create_out_of_place(struct fy_generic_builder *gb, long long val)
+{
+	return fy_gb_dint_type_create_out_of_place(gb,
+		(struct fy_generic_decorated_int){ .sv = val, .flags = 0 });
+}
+
+fy_generic fy_gb_uint_type_create_out_of_place(struct fy_generic_builder *gb, unsigned long long val)
+{
+	return fy_gb_dint_type_create_out_of_place(gb,
+		(struct fy_generic_decorated_int){ .uv = val,
+		.flags = fy_int_is_unsigned(val) ? FYGDIF_UNSIGNED_RANGE_EXTEND	: 0 });
+}
+
+fy_generic fy_gb_float_type_create_out_of_place(struct fy_generic_builder *gb, double val)
+{
+	const double *valp;
+
+	valp = fy_gb_lookup(gb, &val, sizeof(val), FY_SCALAR_ALIGNOF(double));
+	if (!valp)
+		valp = fy_gb_store(gb, &val, sizeof(val), FY_SCALAR_ALIGNOF(double));
+	if (!valp)
+		return fy_invalid;
+	return (fy_generic){ .v = (uintptr_t)valp | FY_FLOAT_OUTPLACE_V };
+}
+
+fy_generic fy_gb_string_size_create_out_of_place(struct fy_generic_builder *gb, const char *str, size_t len)
+{
+	uint8_t lenbuf[FYGT_SIZE_ENCODING_MAX];
+	struct iovec iov[3];
+	const void *s;
+	void *p;
+
+	p = fy_encode_size(lenbuf, sizeof(lenbuf), len);
+	assert(p);
+
+	iov[0].iov_base = lenbuf;
+	iov[0].iov_len = (size_t)((uint8_t *)p - lenbuf) ;
+	iov[1].iov_base = (void *)str;
+	iov[1].iov_len = len;
+	iov[2].iov_base = "\x00";	/* null terminate always */
+	iov[2].iov_len = 1;
+
+	/* strings are aligned at 8 always */
+	s = fy_gb_lookupv(gb, iov, ARRAY_SIZE(iov), FY_GENERIC_SCALAR_ALIGN);
+	if (!s)
+		s = fy_gb_storev(gb, iov, ARRAY_SIZE(iov), FY_GENERIC_SCALAR_ALIGN);
+	if (!s)
+		return fy_invalid;
+
+	return (fy_generic){ .v = (uintptr_t)s | FY_STRING_OUTPLACE_V };
+}
+
+fy_generic fy_gb_string_create_out_of_place(struct fy_generic_builder *gb, const char *str)
+{
+	return fy_gb_string_size_create_out_of_place(gb, str, str ? strlen(str) : 0);
+}
+
+fy_generic fy_gb_szstr_create_out_of_place(struct fy_generic_builder *gb, const fy_generic_sized_string szstr)
+{
+	return fy_gb_string_size_create_out_of_place(gb, szstr.data, szstr.size);
 }
 
 fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_generic v)
@@ -689,27 +876,9 @@ fy_generic fy_gb_validate_out_of_place(struct fy_generic_builder *gb, fy_generic
 	return v;
 }
 
-int fy_gb_validate_array(struct fy_generic_builder *gb, size_t count, const fy_generic *vp)
-{
-	fy_generic v;
-	size_t i;
-
-	for (i = 0; i < count; i++) {
-		v = fy_gb_validate(gb, vp[i]);
-		if (v.v == fy_invalid_value)
-			return -1;
-	}
-	return 0;
-}
-
 fy_generic fy_validate_out_of_place(fy_generic v)
 {
 	return fy_gb_validate_out_of_place(NULL, v);
-}
-
-int fy_validate_array(size_t count, const fy_generic *vp)
-{
-	return fy_gb_validate_array(NULL, count, vp);
 }
 
 fy_generic fy_gb_indirect_create(struct fy_generic_builder *gb, const fy_generic_indirect *gi)
