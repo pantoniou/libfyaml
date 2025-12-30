@@ -2027,6 +2027,7 @@ struct fy_emitter_cfg {
  * @FYEXCF_OUTPUT_FILE: Output to the fp FILE pointer
  * @FYEXCF_OUTPUT_FD: Output to the fd file descriptor
  * @FYEXCF_NULL_OUTPUT: No output
+ * @FYEXCF_OUTPUT_FILENAME: Output to the given filename
  */
 enum fy_emitter_xcfg_flags {
 	FYEXCF_COLOR_AUTO		= FYEXCF_COLOR(0),
@@ -2037,6 +2038,7 @@ enum fy_emitter_xcfg_flags {
 	FYEXCF_OUTPUT_FILE		= FYEXCF_OUTPUT(2),
 	FYEXCF_OUTPUT_FD		= FYEXCF_OUTPUT(2),
 	FYEXCF_NULL_OUTPUT		= FYEXCF_OUTPUT(3),
+	FYEXCF_OUTPUT_FILENAME		= FYEXCF_OUTPUT(4),
 	FYEXCF_VISIBLE_WS		= FY_BIT(5),
 	FYEXCF_EXTENDED_INDICATORS	= FY_BIT(6),
 };
@@ -2052,6 +2054,7 @@ enum fy_emitter_xcfg_flags {
  * @colors: ANSI color overrides for the default output method
  * @output_fp: The output FILE \*, FYEXCF\_FILE\_OUTPUT must be set
  * @output_fd: The output file descriptor, FYEXCF\_FD\_OUTPUT must be set
+ * @output_filename: The output filename, FYEXCF\_FILENAME\_OUTPUT must be set
  */
 struct fy_emitter_xcfg {
 	struct fy_emitter_cfg cfg;
@@ -2060,6 +2063,7 @@ struct fy_emitter_xcfg {
 	union {
 		FILE *output_fp;
 		int output_fd;
+		const char *output_filename;
 	};
 };
 

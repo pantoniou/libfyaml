@@ -2319,6 +2319,9 @@ void fy_emit_cleanup(struct fy_emitter *emit)
 		free(emit->sc_stack);
 
 	fy_diag_unref(emit->diag);
+
+	if (emit->owned_output_fp)
+		fclose(emit->owned_output_fp);
 }
 
 int fy_emit_node_no_check(struct fy_emitter *emit, struct fy_node *fyn)
@@ -3725,6 +3728,10 @@ static FILE *fy_emitter_get_output_fp(struct fy_emitter *fye)
 		return stderr;
 	case FYEXCF_OUTPUT_FILE:
 		return fye->xcfg.output_fp;
+	case FYEXCF_OUTPUT_FILENAME:
+		if (!fye->owned_output_fp && fye->xcfg.output_filename)
+			fye->owned_output_fp = fopen(fye->xcfg.output_filename, "wb");
+		return fye->owned_output_fp;
 	default:
 		break;
 	}
