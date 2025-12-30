@@ -1160,7 +1160,8 @@ fy_generic_mapping_get_items(fy_generic map, size_t *item_countp)
 	return &mapp->pairs[0].items[0];
 }
 
-int fy_generic_compare_out_of_place(fy_generic a, fy_generic b);
+int fy_generic_compare_out_of_place(fy_generic a, fy_generic b)
+	FY_EXPORT;
 
 static inline int fy_generic_compare(fy_generic a, fy_generic b)
 {
@@ -1258,25 +1259,25 @@ static inline const fy_generic *fy_generic_mapping_get_at_valuep(fy_generic map,
 	return fy_generic_mappingp_get_at_valuep(fy_generic_mapping_resolve(map), idx);
 }
 
-static inline const fy_generic fy_generic_mapping_get_value_index(fy_generic map, fy_generic key, size_t *idxp)
+static inline fy_generic fy_generic_mapping_get_value_index(fy_generic map, fy_generic key, size_t *idxp)
 {
 	const fy_generic *vp = fy_generic_mapping_get_valuep_index(map, key, idxp);
 	return vp ? *vp : fy_invalid;
 }
 
-static inline const fy_generic fy_generic_mapping_get_value(fy_generic map, fy_generic key)
+static inline fy_generic fy_generic_mapping_get_value(fy_generic map, fy_generic key)
 {
 	return fy_generic_mapping_get_value_index(map, key, NULL);
 }
 
-static inline const fy_generic fy_generic_mappingp_get_at_value(const fy_generic_mapping *mapp, size_t idx)
+static inline fy_generic fy_generic_mappingp_get_at_value(const fy_generic_mapping *mapp, size_t idx)
 {
 	if (!mapp || idx >= mapp->count)
 		return fy_invalid;
 	return mapp->pairs[idx].value;
 }
 
-static inline const fy_generic fy_generic_mapping_get_at_value(fy_generic map, size_t idx)
+static inline fy_generic fy_generic_mapping_get_at_value(fy_generic map, size_t idx)
 {
 	return fy_generic_mappingp_get_at_value(fy_generic_mapping_resolve(map), idx);
 }
