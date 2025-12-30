@@ -35,7 +35,7 @@ from libfyaml._libfyaml import (
     from_python,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.9.0"
 
 __all__ = [
     "FyGeneric",
