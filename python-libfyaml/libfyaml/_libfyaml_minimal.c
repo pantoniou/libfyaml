@@ -1727,28 +1727,16 @@ libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    /* Create string generic for input */
-    fy_generic input = fy_gb_string_size_create(gb, yaml_str, yaml_len);
-    if (!fy_generic_is_valid(input)) {
-        fy_generic_builder_destroy(gb);
-        fy_allocator_destroy(allocator);
-        PyErr_SetString(PyExc_RuntimeError, "Failed to create input string");
-        return NULL;
-    }
-
-    /* Set up parse arguments */
-    struct fy_generic_op_args op_args;
-    memset(&op_args, 0, sizeof(op_args));
-
+    /* Determine parse flags based on mode */
+    unsigned int parse_flags = FYOPPF_DISABLE_DIRECTORY | FYOPPF_INPUT_TYPE_STRING;
     if (strcmp(mode, "json") == 0) {
-        op_args.parse.parser_mode = fypm_json;
+        parse_flags |= FYOPPF_MODE_JSON;
     } else {
-        op_args.parse.parser_mode = fypm_yaml_1_2;
+        parse_flags |= FYOPPF_MODE_YAML_1_2;
     }
-    op_args.parse.multi_document = false;
 
-    /* Parse */
-    fy_generic parsed = fy_generic_op_args(gb, FYGBOPF_PARSE, input, &op_args);
+    /* Parse using new API */
+    fy_generic parsed = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
     if (!fy_generic_is_valid(parsed)) {
         fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_ValueError, "Failed to parse YAML/JSON");
@@ -1774,6 +1762,13 @@ libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
 static fy_generic
 python_to_generic(struct fy_generic_builder *gb, PyObject *obj)
 {
+    /* Handle FyGeneric objects - internalize into the new builder */
+    if (Py_TYPE(obj) == &FyGenericType) {
+        FyGenericObject *fyobj = (FyGenericObject *)obj;
+        /* Internalize the generic into the new builder */
+        return fy_gb_internalize(gb, fyobj->fyg);
+    }
+
     if (obj == Py_None) {
         return fy_gb_null_create(gb, NULL);
     }
@@ -1917,23 +1912,24 @@ libfyaml_dumps(PyObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    /* Set up emit arguments */
-    struct fy_generic_op_args op_args;
-    memset(&op_args, 0, sizeof(op_args));
+    /* Determine emit flags based on options */
+    unsigned int emit_flags = FYOPEF_DISABLE_DIRECTORY | FYOPEF_OUTPUT_TYPE_STRING;
 
-    /* Set emit flags based on options */
     if (json_mode) {
-        op_args.emit.emit_flags = FYECF_MODE_JSON;
+        emit_flags |= FYOPEF_MODE_JSON;
         if (!compact)
-            op_args.emit.emit_flags |= FYECF_INDENT_2;
-    } else if (compact) {
-        op_args.emit.emit_flags = FYECF_MODE_FLOW;
+            emit_flags |= FYOPEF_INDENT_2;
     } else {
-        op_args.emit.emit_flags = FYECF_MODE_BLOCK;
+        emit_flags |= FYOPEF_MODE_YAML_1_2;
+        if (compact) {
+            emit_flags |= FYOPEF_STYLE_FLOW;
+        } else {
+            emit_flags |= FYOPEF_STYLE_BLOCK;
+        }
     }
 
-    /* Emit to string - returns a string generic! */
-    fy_generic emitted = fy_generic_op_args(gb, FYGBOPF_EMIT, g, &op_args);
+    /* Emit to string using new API - returns a string generic! */
+    fy_generic emitted = fy_gb_emit(gb, g, emit_flags, NULL);
     if (!fy_generic_is_valid(emitted)) {
         fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_RuntimeError, "Failed to emit YAML/JSON");
@@ -1992,70 +1988,85 @@ libfyaml_from_python(PyObject *self, PyObject *args, PyObject *kwargs)
     return result;
 }
 
-/* load(file, mode='yaml', mutable=False) - Load YAML/JSON from file object or path */
+/* load(file, mode='yaml', dedup=True, trim=True, mutable=False) - Load YAML/JSON from file object or path */
 static PyObject *
 libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     PyObject *file_obj;
     const char *mode = "yaml";
+    int dedup = 1;  /* Default to True */
+    int trim = 1;   /* Default to True */
     int mutable = 0;  /* Default to False (read-only) */
-    static char *kwlist[] = {"file", "mode", "mutable", NULL};
+    static char *kwlist[] = {"file", "mode", "dedup", "trim", "mutable", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sp", kwlist, &file_obj, &mode, &mutable))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sppp", kwlist, &file_obj, &mode, &dedup, &trim, &mutable))
         return NULL;
 
     /* Check if it's a string (file path) or file object */
     if (PyUnicode_Check(file_obj)) {
-        /* It's a file path - open and read */
+        /* It's a file path - use fy_gb_parse_file() with mmap support */
         const char *path = PyUnicode_AsUTF8(file_obj);
         if (path == NULL)
             return NULL;
 
-        PyObject *builtins = PyImport_ImportModule("builtins");
-        if (builtins == NULL)
-            return NULL;
+        /* Create auto allocator with appropriate scenario based on dedup parameter */
+        struct fy_auto_allocator_cfg auto_cfg;
+        memset(&auto_cfg, 0, sizeof(auto_cfg));
+        auto_cfg.scenario = dedup ? FYAST_PER_TAG_FREE_DEDUP : FYAST_PER_TAG_FREE;
+        /* For files, we don't know the size upfront */
+        auto_cfg.estimated_max_size = 1024 * 1024;  /* 1MB default estimate */
 
-        PyObject *open_func = PyObject_GetAttrString(builtins, "open");
-        Py_DECREF(builtins);
-        if (open_func == NULL)
-            return NULL;
-
-        PyObject *file = PyObject_CallFunction(open_func, "ss", path, "r");
-        Py_DECREF(open_func);
-        if (file == NULL)
-            return NULL;
-
-        PyObject *content = PyObject_CallMethod(file, "read", NULL);
-        Py_DECREF(file);
-
-        if (content == NULL)
-            return NULL;
-
-        /* Build kwargs dict for loads */
-        PyObject *loads_kwargs = PyDict_New();
-        if (loads_kwargs == NULL) {
-            Py_DECREF(content);
+        struct fy_allocator *allocator = fy_allocator_create("auto", &auto_cfg);
+        if (allocator == NULL) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to create allocator");
             return NULL;
         }
 
-        PyObject *mode_str = PyUnicode_FromString(mode);
-        PyDict_SetItemString(loads_kwargs, "mode", mode_str);
-        Py_DECREF(mode_str);
+        /* Configure generic builder with allocator */
+        struct fy_generic_builder_cfg gb_cfg;
+        memset(&gb_cfg, 0, sizeof(gb_cfg));
+        gb_cfg.allocator = allocator;
+        gb_cfg.flags = FYGBCF_OWNS_ALLOCATOR;  /* Own allocator */
 
-        PyObject *mutable_obj = PyBool_FromLong(mutable);
-        PyDict_SetItemString(loads_kwargs, "mutable", mutable_obj);
-        Py_DECREF(mutable_obj);
+        /* Create generic builder */
+        struct fy_generic_builder *gb = fy_generic_builder_create(&gb_cfg);
+        if (gb == NULL) {
+            fy_allocator_destroy(allocator);
+            PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
+            return NULL;
+        }
 
-        /* Call loads with the content */
-        PyObject *loads_args = Py_BuildValue("(O)", content);
-        PyObject *result = libfyaml_loads(self, loads_args, loads_kwargs);
+        /* Determine parse flags based on mode */
+        unsigned int parse_flags = FYOPPF_DISABLE_DIRECTORY;
+        if (strcmp(mode, "json") == 0) {
+            parse_flags |= FYOPPF_MODE_JSON;
+        } else {
+            parse_flags |= FYOPPF_MODE_YAML_1_2;
+        }
 
-        Py_DECREF(loads_args);
-        Py_DECREF(loads_kwargs);
-        Py_DECREF(content);
+        /* Parse from file using mmap (via fy_gb_parse_file) */
+        fy_generic parsed = fy_gb_parse_file(gb, parse_flags, path);
+        if (!fy_generic_is_valid(parsed)) {
+            fy_generic_builder_destroy(gb);
+            PyErr_Format(PyExc_ValueError, "Failed to parse YAML/JSON from file: %s", path);
+            return NULL;
+        }
+
+        /* Create root wrapper - transfers gb ownership to Python object */
+        PyObject *result = FyGeneric_from_generic(parsed, gb, mutable);
+        if (result == NULL) {
+            fy_generic_builder_destroy(gb);
+            return NULL;
+        }
+
+        /* Auto-trim if requested (default behavior) */
+        if (trim && gb && gb->allocator) {
+            fy_allocator_trim_tag(gb->allocator, gb->alloc_tag);
+        }
+
         return result;
     } else {
-        /* Assume it's a file object - read from it */
+        /* Assume it's a file object - read from it and use loads() */
         PyObject *content = PyObject_CallMethod(file_obj, "read", NULL);
         if (content == NULL)
             return NULL;
@@ -2070,6 +2081,14 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
         PyObject *mode_str = PyUnicode_FromString(mode);
         PyDict_SetItemString(loads_kwargs, "mode", mode_str);
         Py_DECREF(mode_str);
+
+        PyObject *dedup_obj = PyBool_FromLong(dedup);
+        PyDict_SetItemString(loads_kwargs, "dedup", dedup_obj);
+        Py_DECREF(dedup_obj);
+
+        PyObject *trim_obj = PyBool_FromLong(trim);
+        PyDict_SetItemString(loads_kwargs, "trim", trim_obj);
+        Py_DECREF(trim_obj);
 
         PyObject *mutable_obj = PyBool_FromLong(mutable);
         PyDict_SetItemString(loads_kwargs, "mutable", mutable_obj);
@@ -2086,7 +2105,7 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 }
 
-/* dump(file, obj) - Dump Python object to file object or path */
+/* dump(file, obj, mode='yaml', compact=False) - Dump Python object to file object or path */
 static PyObject *
 libfyaml_dump(PyObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -2100,73 +2119,98 @@ libfyaml_dump(PyObject *self, PyObject *args, PyObject *kwargs)
                                      &file_obj, &obj, &mode, &compact))
         return NULL;
 
-    /* Build kwargs dict for dumps */
-    PyObject *dumps_kwargs = PyDict_New();
-    if (dumps_kwargs == NULL)
-        return NULL;
-
-    /* Convert mode string to json boolean */
     int json_mode = (strcmp(mode, "json") == 0);
-
-    PyObject *compact_bool = PyBool_FromLong(compact);
-    PyObject *json_bool = PyBool_FromLong(json_mode);
-
-    PyDict_SetItemString(dumps_kwargs, "compact", compact_bool);
-    PyDict_SetItemString(dumps_kwargs, "json", json_bool);
-
-    Py_DECREF(compact_bool);
-    Py_DECREF(json_bool);
-
-    /* Convert object to YAML string */
-    PyObject *dumps_args = Py_BuildValue("(O)", obj);
-    PyObject *yaml_str = libfyaml_dumps(self, dumps_args, dumps_kwargs);
-
-    Py_DECREF(dumps_args);
-    Py_DECREF(dumps_kwargs);
-
-    if (yaml_str == NULL)
-        return NULL;
 
     /* Check if it's a string (file path) or file object */
     if (PyUnicode_Check(file_obj)) {
-        /* It's a file path - open and write */
+        /* It's a file path - use fy_gb_emit_file() for direct file output */
         const char *path = PyUnicode_AsUTF8(file_obj);
-        if (path == NULL) {
-            Py_DECREF(yaml_str);
+        if (path == NULL)
+            return NULL;
+
+        /* Create generic builder */
+        struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
+        if (gb == NULL) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
             return NULL;
         }
 
-        PyObject *builtins = PyImport_ImportModule("builtins");
-        if (builtins == NULL) {
-            Py_DECREF(yaml_str);
+        /* Convert Python object to fy_generic */
+        fy_generic g = python_to_generic(gb, obj);
+        if (!fy_generic_is_valid(g)) {
+            fy_generic_builder_destroy(gb);
+            /* Exception already set by python_to_generic */
             return NULL;
         }
 
-        PyObject *open_func = PyObject_GetAttrString(builtins, "open");
-        Py_DECREF(builtins);
-        if (open_func == NULL) {
-            Py_DECREF(yaml_str);
+        /* Determine emit flags based on options */
+        unsigned int emit_flags = FYOPEF_DISABLE_DIRECTORY;
+
+        if (json_mode) {
+            emit_flags |= FYOPEF_MODE_JSON;
+            if (!compact)
+                emit_flags |= FYOPEF_INDENT_2;
+        } else {
+            emit_flags |= FYOPEF_MODE_YAML_1_2;
+            if (compact) {
+                emit_flags |= FYOPEF_STYLE_FLOW;
+            } else {
+                emit_flags |= FYOPEF_STYLE_BLOCK;
+            }
+        }
+
+        /* Emit to file using new API - returns int 0 on success */
+        fy_generic result_g = fy_gb_emit_file(gb, g, emit_flags, path);
+
+        /* Check for success: should return integer 0 */
+        if (!fy_generic_is_valid(result_g)) {
+            fy_generic_builder_destroy(gb);
+            PyErr_Format(PyExc_RuntimeError, "Failed to emit YAML/JSON to file: %s (invalid result)", path);
             return NULL;
         }
 
-        PyObject *file = PyObject_CallFunction(open_func, "ss", path, "w");
-        Py_DECREF(open_func);
-        if (file == NULL) {
-            Py_DECREF(yaml_str);
+        if (!fy_generic_is_int_type(result_g)) {
+            fy_generic_builder_destroy(gb);
+            PyErr_Format(PyExc_RuntimeError, "Failed to emit YAML/JSON to file: %s (wrong type: %d)",
+                        path, fy_get_type(result_g));
             return NULL;
         }
 
-        PyObject *result = PyObject_CallMethod(file, "write", "O", yaml_str);
-        Py_DECREF(file);
-        Py_DECREF(yaml_str);
+        int result_code = fy_cast(result_g, -1);
+        fy_generic_builder_destroy(gb);
 
-        if (result == NULL)
+        if (result_code != 0) {
+            PyErr_Format(PyExc_RuntimeError, "Failed to emit YAML/JSON to file: %s (error code: %d)", path, result_code);
             return NULL;
+        }
 
-        Py_DECREF(result);
         Py_RETURN_NONE;
     } else {
-        /* Assume it's a file object - write to it */
+        /* Assume it's a file object - use dumps() and write */
+        PyObject *dumps_kwargs = PyDict_New();
+        if (dumps_kwargs == NULL)
+            return NULL;
+
+        PyObject *compact_bool = PyBool_FromLong(compact);
+        PyObject *json_bool = PyBool_FromLong(json_mode);
+
+        PyDict_SetItemString(dumps_kwargs, "compact", compact_bool);
+        PyDict_SetItemString(dumps_kwargs, "json", json_bool);
+
+        Py_DECREF(compact_bool);
+        Py_DECREF(json_bool);
+
+        /* Convert object to YAML string */
+        PyObject *dumps_args = Py_BuildValue("(O)", obj);
+        PyObject *yaml_str = libfyaml_dumps(self, dumps_args, dumps_kwargs);
+
+        Py_DECREF(dumps_args);
+        Py_DECREF(dumps_kwargs);
+
+        if (yaml_str == NULL)
+            return NULL;
+
+        /* Write to file object */
         PyObject *result = PyObject_CallMethod(file_obj, "write", "O", yaml_str);
         Py_DECREF(yaml_str);
 
