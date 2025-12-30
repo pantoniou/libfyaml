@@ -89,6 +89,7 @@ struct fy_emitter {
 	FILE *output_fp;
 	int output_fd;
 	bool output_colorize;
+	FILE *owned_output_fp;
 
 	struct fy_document *fyd;
 	struct fy_document_state *fyds;	/* fyd->fyds when fyd != NULL */
