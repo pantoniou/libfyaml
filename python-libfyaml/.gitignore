@@ -1,0 +1,48 @@
+# Python build artifacts
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+*.so
+*.pyd
+.pytest_cache/
+.tox/
+.coverage
+htmlcov/
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Test data (large files)
+AllPrices.yaml
+AtomicCards*.yaml
+
+# Development files
+benchmark_*.py
+test_*.py
+!tests/test_*.py  # But keep tests in tests/ directory
+
+# Documentation (keep only essential)
+*-BENCHMARK*.md
+*-COMPARISON*.md
+*-DESIGN*.md
+*-NOTES*.md
+*-RESULTS*.md
+*-SESSION*.md
+*-SUMMARY*.md
+API-*.md
+!README.md
+!QUICKSTART.md
+!CHANGELOG.md
+!LICENSE
+!MIGRATION-TO-EXPORTED-API.md
+!PRODUCTIZATION.md
+
+# Generated files
+*.yaml.out
