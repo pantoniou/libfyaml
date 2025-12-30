@@ -40,22 +40,91 @@ for item in data['items']:
 
 ## Installation
 
+### Quick Start (Recommended)
+
 ```bash
-# Prerequisites
-cd ../  # libfyaml parent directory
+# Install from PyPI (when published)
+pip install libfyaml
+
+# Or install from source with automatic local build
+cd python-libfyaml
+LIBFYAML_BUILD_LOCAL=1 pip install .
+```
+
+### Installation Methods
+
+#### 1. System-Installed libfyaml (Recommended for Production)
+
+```bash
+# First, install libfyaml system-wide
+cd /path/to/libfyaml
 mkdir build && cd build
 cmake ..
-make && sudo make install
+cmake --build .
+sudo cmake --install .
 
-# Install Python bindings
-cd ../python-libfyaml
-python3 setup.py build_ext --inplace
-
-# Or install system-wide
+# Then install Python bindings
+cd /path/to/libfyaml/python-libfyaml
 pip install .
 ```
 
-**Requirements**: Python 3.7+, libfyaml with generic support, C compiler
+This method uses pkg-config to find the installed library and provides the cleanest installation.
+
+#### 2. Local Build (Recommended for Development)
+
+```bash
+# Install using parent directory build
+cd /path/to/libfyaml/python-libfyaml
+
+# Option A: Use existing build/
+pip install .
+
+# Option B: Rebuild libfyaml first
+LIBFYAML_REBUILD=1 pip install .
+
+# Option C: Force local build if missing
+LIBFYAML_BUILD_LOCAL=1 pip install .
+```
+
+This method adds RPATH to the extension, so no LD_LIBRARY_PATH is needed during development.
+
+#### 3. Development Mode
+
+```bash
+# Install in editable mode (for active development)
+cd /path/to/libfyaml/python-libfyaml
+pip install -e .
+
+# Rebuild just the Python extension after C changes
+python3 setup.py build_ext --inplace
+```
+
+### Environment Variables
+
+Control build behavior with these environment variables:
+
+- **`LIBFYAML_BUILD_LOCAL=1`** - Force use of local build (build if missing)
+- **`LIBFYAML_REBUILD=1`** - Rebuild libfyaml before installing
+- **`LIBFYAML_USE_SYSTEM=1`** - Force use of system-installed libfyaml
+
+**Examples**:
+```bash
+# Force system install (even if ../build/ exists)
+LIBFYAML_USE_SYSTEM=1 pip install .
+
+# Rebuild everything from scratch
+LIBFYAML_REBUILD=1 pip install .
+
+# Auto-build local libfyaml if not found
+LIBFYAML_BUILD_LOCAL=1 pip install .
+```
+
+### Requirements
+
+- Python 3.7+
+- C compiler (gcc, clang)
+- CMake (for building libfyaml)
+- libfyaml with generic support (automatically handled)
 
 ---
 

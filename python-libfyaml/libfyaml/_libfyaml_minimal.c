@@ -11,8 +11,8 @@
 /* Include libfyaml headers */
 #include <libfyaml.h>
 
-/* Include internal generic API headers */
-#include "generic/fy-generic.h"
+/* Include exported generic API */
+#include <libfyaml/fy-internal-generic.h>
 
 /* ========== FyGeneric Type ========== */
 
@@ -973,8 +973,8 @@ static PyObject *
 FyGeneric_trim(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
     /* Only root objects own the generic builder */
-    if (self->gb && self->gb->allocator) {
-        fy_allocator_trim_tag(self->gb->allocator, self->gb->alloc_tag);
+    if (self->gb) {
+        fy_gb_trim(self->gb);
     }
     Py_RETURN_NONE;
 }
@@ -1751,8 +1751,8 @@ libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     /* Auto-trim if requested (default behavior) */
-    if (trim && gb && gb->allocator) {
-        fy_allocator_trim_tag(gb->allocator, gb->alloc_tag);
+    if (trim && gb) {
+        fy_gb_trim(gb);
     }
 
     return result;
@@ -2060,8 +2060,8 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
         }
 
         /* Auto-trim if requested (default behavior) */
-        if (trim && gb && gb->allocator) {
-            fy_allocator_trim_tag(gb->allocator, gb->alloc_tag);
+        if (trim && gb) {
+            fy_gb_trim(gb);
         }
 
         return result;
@@ -2288,8 +2288,8 @@ libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     /* Auto-trim if requested (default behavior) */
-    if (trim && gb && gb->allocator) {
-        fy_allocator_trim_tag(gb->allocator, gb->alloc_tag);
+    if (trim && gb) {
+        fy_gb_trim(gb);
     }
 
     return result;
@@ -2368,8 +2368,8 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
         }
 
         /* Auto-trim if requested (default behavior) */
-        if (trim && gb && gb->allocator) {
-            fy_allocator_trim_tag(gb->allocator, gb->alloc_tag);
+        if (trim && gb) {
+            fy_gb_trim(gb);
         }
 
         return result;
