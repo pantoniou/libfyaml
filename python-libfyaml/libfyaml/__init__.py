@@ -28,6 +28,10 @@ from libfyaml._libfyaml import (
     loads,
     dump,
     dumps,
+    load_all,
+    loads_all,
+    dump_all,
+    dumps_all,
     from_python,
 )
 
@@ -39,5 +43,9 @@ __all__ = [
     "loads",
     "dump",
     "dumps",
+    "load_all",
+    "loads_all",
+    "dump_all",
+    "dumps_all",
     "from_python",
 ]
