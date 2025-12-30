@@ -1,3 +1,4 @@
+/* vim: set ts=4 sw=4 et: */
 /**
  * _libfyaml_minimal.c - Minimal prototype of Python bindings for libfyaml generics
  *
@@ -37,9 +38,11 @@ typedef struct {
     PyObject_HEAD
     FyGenericObject *generic_obj;  /* The FyGeneric being iterated */
     size_t index;                   /* Current position */
-    size_t count;                   /* Total items */
     enum fy_generic_type iter_type; /* SEQUENCE or MAPPING */
-    const fy_generic_map_pair *pairs; /* For mapping iteration */
+    union {
+        fy_generic_sequence_handle seqh;
+        fy_generic_mapping_handle maph;
+    } u;
 } FyGenericIteratorObject;
 
 /* FyGenericIterator: Deallocation */
@@ -62,48 +65,95 @@ FyGenericIterator_iter(PyObject *self)
 static PyObject *
 FyGenericIterator_next(FyGenericIteratorObject *self)
 {
-    if (self->index >= self->count) {
-        PyErr_SetNone(PyExc_StopIteration);
-        return NULL;
-    }
-
     PyObject *result = NULL;
+    PyObject *key_obj = NULL;
+    fy_generic key, item;
 
-    if (self->iter_type == FYGT_SEQUENCE) {
-        /* Iterate over sequence items */
-        fy_generic item = fy_get(self->generic_obj->fyg, (int)self->index, fy_invalid);
-        if (!fy_generic_is_valid(item)) {
-            PyErr_SetString(PyExc_RuntimeError, "Invalid sequence item");
-            return NULL;
-        }
-        PyObject *index_obj = PyLong_FromSize_t(self->index);
-        if (index_obj == NULL)
-            return NULL;
-        result = FyGeneric_from_parent(item, self->generic_obj, index_obj);
-        Py_DECREF(index_obj);
+    switch (self->iter_type) {
 
-    } else if (self->iter_type == FYGT_MAPPING) {
-        /* Iterate over mapping keys */
-        fy_generic key = self->pairs[self->index].key;
-        /* Convert key to Python object for path */
-        PyObject *key_obj = NULL;
-        if (fy_generic_is_string(key)) {
-            const char *key_str = fy_cast(key, "");
-            key_obj = PyUnicode_FromString(key_str);
-        } else if (fy_generic_is_int(key)) {
-            long long key_int = fy_cast(key, (long long)0);
-            key_obj = PyLong_FromLongLong(key_int);
-        } else {
-            key_obj = PyUnicode_FromString("<key>");  /* Fallback */
+    case FYGT_SEQUENCE:
+        if (self->index >= self->u.seqh->count)
+            goto out_stop;
+        item = self->u.seqh->items[self->index];
+        key_obj = PyLong_FromSize_t(self->index);
+        if (key_obj == NULL)
+            return NULL;
+
+        result = FyGeneric_from_parent(item, self->generic_obj, key_obj);
+        Py_DECREF(key_obj);
+        break;
+
+    case FYGT_MAPPING:
+        if (self->index >= self->u.maph->count)
+            goto out_stop;
+        key = self->u.maph->pairs[self->index].key;
+        item = self->u.maph->pairs[self->index].value;
+        switch (fy_get_type(key)) {
+        case FYGT_NULL:
+            key_obj = Py_None;
+            break;
+        case FYGT_BOOL:
+            key_obj = PyBool_FromLong(fy_cast(key, (_Bool)false) ? 1 : 0);
+            break;
+        case FYGT_INT:
+            key_obj = PyLong_FromLongLong(fy_cast(key, (long long)-1LL));
+            break;
+        case FYGT_FLOAT:
+            key_obj = PyFloat_FromDouble(fy_cast(key, (double)0.0));
+            break;
+        case FYGT_STRING:
+            key_obj = PyUnicode_FromString(fy_cast(key, ""));
+            break;
+        default:
+            key_obj = NULL;
+            break;
         }
         if (key_obj == NULL)
             return NULL;
+
         result = FyGeneric_from_parent(key, self->generic_obj, key_obj);
+
         Py_DECREF(key_obj);
+        break;
+
+    default:
+        return NULL;
     }
 
     self->index++;
+
     return result;
+
+out_stop:
+    PyErr_SetNone(PyExc_StopIteration);
+    return NULL;
+}
+
+/* FyGeneric: __iter__ */
+static PyObject *
+FyGeneric_iter(FyGenericObject *self)
+{
+    enum fy_generic_type type = fy_get_type(self->fyg);
+
+    if (type != FYGT_SEQUENCE && type != FYGT_MAPPING) {
+        PyErr_SetString(PyExc_TypeError, "FyGeneric is not iterable");
+        return NULL;
+    }
+
+    FyGenericIteratorObject *iter = PyObject_New(FyGenericIteratorObject, &FyGenericIteratorType);
+    if (iter == NULL)
+        return NULL;
+
+    Py_INCREF(self);
+    iter->generic_obj = self;
+    iter->iter_type = type;
+    iter->index = 0;
+    if (type == FYGT_SEQUENCE)
+        iter->u.seqh = fy_cast(self->fyg, fy_seq_handle_null);
+    else
+        iter->u.maph = fy_cast(self->fyg, fy_map_handle_null);
+
+    return (PyObject *)iter;
 }
 
 /* FyGenericIterator type object */
@@ -171,19 +221,14 @@ FyGeneric_str(FyGenericObject *self)
     enum fy_generic_type type = fy_get_type(self->fyg);
 
     switch (type) {
-        case FYGT_STRING: {
-            const char *str = fy_cast(self->fyg, "");
-            return PyUnicode_FromString(str);
-        }
+        case FYGT_STRING:
+            return PyUnicode_FromString(fy_cast(self->fyg, ""));
 
-        case FYGT_INT: {
-            long long value = fy_cast(self->fyg, (long long)0);
-            return PyUnicode_FromFormat("%lld", value);
-        }
+        case FYGT_INT:
+            return PyUnicode_FromFormat("%lld", fy_cast(self->fyg, (long long)0));
 
         case FYGT_FLOAT: {
-            double value = fy_cast(self->fyg, (double)0.0);
-            PyObject *float_obj = PyFloat_FromDouble(value);
+            PyObject *float_obj = PyFloat_FromDouble(fy_cast(self->fyg, (double)0.0));
             if (float_obj == NULL)
                 return NULL;
             PyObject *str_obj = PyObject_Str(float_obj);
@@ -191,10 +236,8 @@ FyGeneric_str(FyGenericObject *self)
             return str_obj;
         }
 
-        case FYGT_BOOL: {
-            _Bool value = fy_cast(self->fyg, (_Bool)0);
-            return PyUnicode_FromString(value ? "true" : "false");
-        }
+        case FYGT_BOOL:
+            return PyUnicode_FromString(fy_cast(self->fyg, (_Bool)false)? "true" : "false");
 
         case FYGT_NULL:
             return PyUnicode_FromString("null");
@@ -208,16 +251,14 @@ FyGeneric_str(FyGenericObject *self)
 static PyObject *
 FyGeneric_int(FyGenericObject *self)
 {
-    long long value = fy_cast(self->fyg, (long long)0);
-    return PyLong_FromLongLong(value);
+    return PyLong_FromLongLong(fy_cast(self->fyg, (long long)0));
 }
 
 /* FyGeneric: __float__ */
 static PyObject *
 FyGeneric_float(FyGenericObject *self)
 {
-    double value = fy_cast(self->fyg, (double)0.0);
-    return PyFloat_FromDouble(value);
+    return PyFloat_FromDouble(fy_cast(self->fyg, (double)0.0));
 }
 
 /* FyGeneric: __bool__ */
@@ -253,9 +294,8 @@ FyGeneric_length(FyGenericObject *self)
 {
     enum fy_generic_type type = fy_get_type(self->fyg);
 
-    if (type == FYGT_SEQUENCE || type == FYGT_MAPPING) {
+    if (type == FYGT_SEQUENCE || type == FYGT_MAPPING)
         return (Py_ssize_t)fy_len(self->fyg);
-    }
 
     PyErr_SetString(PyExc_TypeError, "Object has no len()");
     return -1;
@@ -436,110 +476,139 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
             return PyUnicode_FromString(fy_cast(self->fyg, ""));
 
         case FYGT_SEQUENCE: {
-            size_t count = fy_len(self->fyg);
-            PyObject *list = PyList_New(count);
+
+            fy_generic_sequence_handle seqh = fy_cast(self->fyg, fy_seq_handle_null);
+            if (!seqh) {
+                PyErr_SetString(PyExc_RuntimeError, "Invalid sequence");
+                return NULL;
+            }
+
+            PyObject *list = PyList_New(seqh->count);
             if (list == NULL)
                 return NULL;
 
-            for (size_t i = 0; i < count; i++) {
-                fy_generic item = fy_get(self->fyg, (int)i, fy_invalid);
-                if (!fy_generic_is_valid(item)) {
-                    Py_DECREF(list);
-                    PyErr_SetString(PyExc_RuntimeError, "Invalid sequence item");
-                    return NULL;
-                }
+            PyObject *index_obj = NULL, *item_obj = NULL, *converted = NULL;
 
-                PyObject *index_obj = PyLong_FromSize_t(i);
-                if (index_obj == NULL) {
-                    Py_DECREF(list);
-                    return NULL;
-                }
+            size_t i;
+            for (i = 0; i < seqh->count; i++) {
+                fy_generic item = seqh->items[i];
 
-                PyObject *item_obj = FyGeneric_from_parent(item, self, index_obj);
+                // NOT VERY EFFICIENT
+                index_obj = PyLong_FromSize_t(i);
+                if (index_obj == NULL)
+                    break;
+                item_obj = FyGeneric_from_parent(item, self, index_obj);
                 Py_DECREF(index_obj);
-                if (item_obj == NULL) {
-                    Py_DECREF(list);
-                    return NULL;
-                }
+                index_obj = NULL;
+                if (item_obj == NULL)
+                    break;
 
-                PyObject *converted = FyGeneric_to_python((FyGenericObject *)item_obj, NULL);
+                converted = FyGeneric_to_python((FyGenericObject *)item_obj, NULL);
                 Py_DECREF(item_obj);
-                if (converted == NULL) {
-                    Py_DECREF(list);
-                    return NULL;
-                }
+                item_obj = NULL;
+                if (converted == NULL)
+                    break;
 
                 PyList_SET_ITEM(list, i, converted);
+                converted = NULL;
+            }
+            if (i < seqh->count) {
+                Py_DECREF(list);
+                if (item_obj)
+                    Py_DECREF(item_obj);
+                if (index_obj)
+                    Py_DECREF(index_obj);
+                return NULL;
             }
             return list;
         }
 
         case FYGT_MAPPING: {
+
+            fy_generic_mapping_handle maph = fy_cast(self->fyg, fy_map_handle_null);
+            if (!maph) {
+                PyErr_SetString(PyExc_RuntimeError, "Invalid mapping");
+                return NULL;
+            }
+
             PyObject *dict = PyDict_New();
             if (dict == NULL)
                 return NULL;
 
-            size_t count;
-            const fy_generic_map_pair *pairs = fy_generic_mapping_get_pairs(self->fyg, &count);
+            PyObject *path_key = NULL, *conv_key = NULL, *val_obj = NULL, *conv_val = NULL;
+            size_t i;
 
-            for (size_t i = 0; i < count; i++) {
+            for (i = 0; i < maph->count; i++) {
                 /* First get the key as a Python object for path */
-                PyObject *path_key = NULL;
-                if (fy_generic_is_string(pairs[i].key)) {
-                    const char *key_str = fy_cast(pairs[i].key, "");
-                    path_key = PyUnicode_FromString(key_str);
-                } else if (fy_generic_is_int(pairs[i].key)) {
-                    long long key_int = fy_cast(pairs[i].key, (long long)0);
-                    path_key = PyLong_FromLongLong(key_int);
-                } else {
-                    path_key = PyUnicode_FromString("<key>");
+                fy_generic key = maph->pairs[i].key;
+
+                switch (fy_get_type(key)) {
+                case FYGT_NULL:
+                    path_key = Py_None;
+                    break;
+                case FYGT_BOOL:
+                    path_key = PyBool_FromLong(fy_cast(key, (_Bool)false) ? 1 : 0);
+                    break;
+                case FYGT_INT:
+                    path_key = PyLong_FromLongLong(fy_cast(key, (long long)-1LL));
+                    break;
+                case FYGT_FLOAT:
+                    path_key = PyFloat_FromDouble(fy_cast(key, (double)0.0));
+                    break;
+                case FYGT_STRING:
+                    path_key = PyUnicode_FromString(fy_cast(key, ""));
+                    break;
+                default:
+                    path_key = NULL;
+                    break;
                 }
-                if (path_key == NULL) {
-                    Py_DECREF(dict);
-                    return NULL;
-                }
+
+                if (!path_key)
+                    break;
 
                 /* Convert key */
-                PyObject *key_obj = FyGeneric_from_parent(pairs[i].key, self, path_key);
-                if (key_obj == NULL) {
-                    Py_DECREF(path_key);
-                    Py_DECREF(dict);
-                    return NULL;
-                }
-                PyObject *conv_key = FyGeneric_to_python((FyGenericObject *)key_obj, NULL);
+                PyObject *key_obj = FyGeneric_from_parent(maph->pairs[i].key, self, path_key);
+                if (key_obj == NULL)
+                    break;
+
+                conv_key = FyGeneric_to_python((FyGenericObject *)key_obj, NULL);
                 Py_DECREF(key_obj);
-                if (conv_key == NULL) {
-                    Py_DECREF(path_key);
-                    Py_DECREF(dict);
-                    return NULL;
-                }
+                key_obj = NULL;
+                if (conv_key == NULL)
+                    break;
 
                 /* Convert value */
-                PyObject *val_obj = FyGeneric_from_parent(pairs[i].value, self, path_key);
+                val_obj = FyGeneric_from_parent(maph->pairs[i].value, self, path_key);
                 Py_DECREF(path_key);  /* Done with path_key */
-                if (val_obj == NULL) {
-                    Py_DECREF(conv_key);
-                    Py_DECREF(dict);
-                    return NULL;
-                }
-                PyObject *conv_val = FyGeneric_to_python((FyGenericObject *)val_obj, NULL);
+                path_key = NULL;
+                if (val_obj == NULL)
+                    break;
+
+                conv_val = FyGeneric_to_python((FyGenericObject *)val_obj, NULL);
                 Py_DECREF(val_obj);
-                if (conv_val == NULL) {
-                    Py_DECREF(conv_key);
-                    Py_DECREF(dict);
-                    return NULL;
-                }
+                val_obj = NULL;
+                if (conv_val == NULL)
+                    break;
 
                 /* Add to dict */
-                if (PyDict_SetItem(dict, conv_key, conv_val) < 0) {
-                    Py_DECREF(conv_key);
-                    Py_DECREF(conv_val);
-                    Py_DECREF(dict);
-                    return NULL;
-                }
+                if (PyDict_SetItem(dict, conv_key, conv_val) < 0)
+                    break;
 
                 Py_DECREF(conv_key);
+                conv_key = NULL;
                 Py_DECREF(conv_val);
+                conv_val = NULL;
+            }
+
+            if (i < maph->count) {
+                Py_DECREF(dict);
+                if (path_key)
+                    Py_DECREF(path_key);
+                if (conv_key)
+                    Py_DECREF(conv_key);
+                if (conv_val)
+                    Py_DECREF(conv_val);
+                return NULL;
             }
 
             return dict;
@@ -592,37 +661,6 @@ static PyObject *
 FyGeneric_is_mapping(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
     return PyBool_FromLong(fy_generic_is_mapping(self->fyg));
-}
-
-/* FyGeneric: __iter__ */
-static PyObject *
-FyGeneric_iter(FyGenericObject *self)
-{
-    enum fy_generic_type type = fy_get_type(self->fyg);
-
-    if (type != FYGT_SEQUENCE && type != FYGT_MAPPING) {
-        PyErr_SetString(PyExc_TypeError, "FyGeneric is not iterable");
-        return NULL;
-    }
-
-    FyGenericIteratorObject *iter = PyObject_New(FyGenericIteratorObject, &FyGenericIteratorType);
-    if (iter == NULL)
-        return NULL;
-
-    Py_INCREF(self);
-    iter->generic_obj = self;
-    iter->index = 0;
-    iter->count = fy_len(self->fyg);
-    iter->iter_type = type;
-
-    if (type == FYGT_MAPPING) {
-        /* Get pairs for mapping iteration */
-        iter->pairs = fy_generic_mapping_get_pairs(self->fyg, &iter->count);
-    } else {
-        iter->pairs = NULL;
-    }
-
-    return (PyObject *)iter;
 }
 
 /* FyGeneric: __richcompare__ - implements ==, !=, <, <=, >, >= */
@@ -1454,8 +1492,8 @@ FyGeneric_add(PyObject *left, PyObject *right)
     double result = left_val + right_val;
 
     /* Return int if both were ints and result fits */
-    if ((Py_TYPE(left) == &FyGenericType && fy_get_type(((FyGenericObject *)left)->fyg) == FYGT_INT || PyLong_Check(left)) &&
-        (Py_TYPE(right) == &FyGenericType && fy_get_type(((FyGenericObject *)right)->fyg) == FYGT_INT || PyLong_Check(right)) &&
+    if ((Py_TYPE(left) == &FyGenericType && (fy_get_type(((FyGenericObject *)left)->fyg) == FYGT_INT || PyLong_Check(left))) &&
+        (Py_TYPE(right) == &FyGenericType && (fy_get_type(((FyGenericObject *)right)->fyg) == FYGT_INT || PyLong_Check(right))) &&
         result == (long long)result) {
         return PyLong_FromLongLong((long long)result);
     }
@@ -1493,8 +1531,8 @@ FyGeneric_sub(PyObject *left, PyObject *right)
 
     double result = left_val - right_val;
 
-    if ((Py_TYPE(left) == &FyGenericType && fy_get_type(((FyGenericObject *)left)->fyg) == FYGT_INT || PyLong_Check(left)) &&
-        (Py_TYPE(right) == &FyGenericType && fy_get_type(((FyGenericObject *)right)->fyg) == FYGT_INT || PyLong_Check(right)) &&
+    if ((Py_TYPE(left) == &FyGenericType && (fy_get_type(((FyGenericObject *)left)->fyg) == FYGT_INT || PyLong_Check(left))) &&
+        (Py_TYPE(right) == &FyGenericType && (fy_get_type(((FyGenericObject *)right)->fyg) == FYGT_INT || PyLong_Check(right))) &&
         result == (long long)result) {
         return PyLong_FromLongLong((long long)result);
     }
@@ -1532,8 +1570,8 @@ FyGeneric_mul(PyObject *left, PyObject *right)
 
     double result = left_val * right_val;
 
-    if ((Py_TYPE(left) == &FyGenericType && fy_get_type(((FyGenericObject *)left)->fyg) == FYGT_INT || PyLong_Check(left)) &&
-        (Py_TYPE(right) == &FyGenericType && fy_get_type(((FyGenericObject *)right)->fyg) == FYGT_INT || PyLong_Check(right)) &&
+    if ((Py_TYPE(left) == &FyGenericType && (fy_get_type(((FyGenericObject *)left)->fyg) == FYGT_INT || PyLong_Check(left))) &&
+        (Py_TYPE(right) == &FyGenericType && (fy_get_type(((FyGenericObject *)right)->fyg) == FYGT_INT || PyLong_Check(right))) &&
         result == (long long)result) {
         return PyLong_FromLongLong((long long)result);
     }
