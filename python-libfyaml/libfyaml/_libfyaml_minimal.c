@@ -2222,6 +2222,417 @@ libfyaml_dump(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 }
 
+/* loads_all(string, mode='yaml', dedup=True, trim=True, mutable=False) - Parse multi-document YAML */
+static PyObject *
+libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+    const char *yaml_str;
+    Py_ssize_t yaml_len;
+    const char *mode = "yaml";
+    int dedup = 1;
+    int trim = 1;
+    int mutable = 0;
+    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|sppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable))
+        return NULL;
+
+    /* Create auto allocator with appropriate scenario based on dedup parameter */
+    struct fy_auto_allocator_cfg auto_cfg;
+    memset(&auto_cfg, 0, sizeof(auto_cfg));
+    auto_cfg.scenario = dedup ? FYAST_PER_TAG_FREE_DEDUP : FYAST_PER_TAG_FREE;
+    auto_cfg.estimated_max_size = yaml_len * 2;
+
+    struct fy_allocator *allocator = fy_allocator_create("auto", &auto_cfg);
+    if (allocator == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create allocator");
+        return NULL;
+    }
+
+    /* Configure generic builder with allocator */
+    struct fy_generic_builder_cfg gb_cfg;
+    memset(&gb_cfg, 0, sizeof(gb_cfg));
+    gb_cfg.allocator = allocator;
+    gb_cfg.estimated_max_size = yaml_len * 2;
+    gb_cfg.flags = FYGBCF_OWNS_ALLOCATOR;
+
+    struct fy_generic_builder *gb = fy_generic_builder_create(&gb_cfg);
+    if (gb == NULL) {
+        fy_allocator_destroy(allocator);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
+        return NULL;
+    }
+
+    /* Determine parse flags based on mode - add MULTI_DOCUMENT flag */
+    unsigned int parse_flags = FYOPPF_DISABLE_DIRECTORY | FYOPPF_INPUT_TYPE_STRING | FYOPPF_MULTI_DOCUMENT;
+    if (strcmp(mode, "json") == 0) {
+        parse_flags |= FYOPPF_MODE_JSON;
+    } else {
+        parse_flags |= FYOPPF_MODE_YAML_1_2;
+    }
+
+    /* Parse YAML/JSON string - with MULTI_DOCUMENT, returns a sequence of documents */
+    fy_generic parsed = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
+
+    if (!fy_generic_is_valid(parsed)) {
+        fy_generic_builder_destroy(gb);
+        PyErr_SetString(PyExc_ValueError, "Failed to parse YAML/JSON");
+        return NULL;
+    }
+
+    /* Return the sequence as a FyGeneric - user can iterate it */
+    PyObject *result = FyGeneric_from_generic(parsed, gb, mutable);
+    if (result == NULL) {
+        fy_generic_builder_destroy(gb);
+        return NULL;
+    }
+
+    /* Auto-trim if requested (default behavior) */
+    if (trim && gb && gb->allocator) {
+        fy_allocator_trim_tag(gb->allocator, gb->alloc_tag);
+    }
+
+    return result;
+}
+
+/* load_all(file, mode='yaml', dedup=True, trim=True, mutable=False) - Parse multi-document from file */
+static PyObject *
+libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+    PyObject *file_obj;
+    const char *mode = "yaml";
+    int dedup = 1;
+    int trim = 1;
+    int mutable = 0;
+    static char *kwlist[] = {"file", "mode", "dedup", "trim", "mutable", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sppp", kwlist,
+                                     &file_obj, &mode, &dedup, &trim, &mutable))
+        return NULL;
+
+    /* Check if it's a string (file path) or file object */
+    if (PyUnicode_Check(file_obj)) {
+        /* It's a file path - use fy_gb_parse_file() for mmap-based loading */
+        const char *path = PyUnicode_AsUTF8(file_obj);
+        if (path == NULL)
+            return NULL;
+
+        /* Create auto allocator with appropriate scenario based on dedup parameter */
+        struct fy_auto_allocator_cfg auto_cfg;
+        memset(&auto_cfg, 0, sizeof(auto_cfg));
+        auto_cfg.scenario = dedup ? FYAST_PER_TAG_FREE_DEDUP : FYAST_PER_TAG_FREE;
+        auto_cfg.estimated_max_size = 1024 * 1024;  /* Estimate 1MB for file */
+
+        struct fy_allocator *allocator = fy_allocator_create("auto", &auto_cfg);
+        if (allocator == NULL) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to create allocator");
+            return NULL;
+        }
+
+        /* Configure generic builder with allocator */
+        struct fy_generic_builder_cfg gb_cfg;
+        memset(&gb_cfg, 0, sizeof(gb_cfg));
+        gb_cfg.allocator = allocator;
+        gb_cfg.estimated_max_size = 1024 * 1024;
+        gb_cfg.flags = FYGBCF_OWNS_ALLOCATOR;
+
+        struct fy_generic_builder *gb = fy_generic_builder_create(&gb_cfg);
+        if (gb == NULL) {
+            fy_allocator_destroy(allocator);
+            PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
+            return NULL;
+        }
+
+        /* Determine parse flags based on mode - add MULTI_DOCUMENT flag */
+        unsigned int parse_flags = FYOPPF_DISABLE_DIRECTORY | FYOPPF_MULTI_DOCUMENT;
+        if (strcmp(mode, "json") == 0) {
+            parse_flags |= FYOPPF_MODE_JSON;
+        } else {
+            parse_flags |= FYOPPF_MODE_YAML_1_2;
+        }
+
+        /* Parse from file using mmap - with MULTI_DOCUMENT, returns a sequence of documents */
+        fy_generic parsed = fy_gb_parse_file(gb, parse_flags, path);
+
+        if (!fy_generic_is_valid(parsed)) {
+            fy_generic_builder_destroy(gb);
+            PyErr_Format(PyExc_ValueError, "Failed to parse YAML/JSON file: %s", path);
+            return NULL;
+        }
+
+        /* Return the sequence as a FyGeneric - user can iterate it */
+        PyObject *result = FyGeneric_from_generic(parsed, gb, mutable);
+        if (result == NULL) {
+            fy_generic_builder_destroy(gb);
+            return NULL;
+        }
+
+        /* Auto-trim if requested (default behavior) */
+        if (trim && gb && gb->allocator) {
+            fy_allocator_trim_tag(gb->allocator, gb->alloc_tag);
+        }
+
+        return result;
+    } else {
+        /* Assume it's a file object - read and call loads_all() */
+        PyObject *read_method = PyObject_GetAttrString(file_obj, "read");
+        if (read_method == NULL)
+            return NULL;
+
+        PyObject *content = PyObject_CallObject(read_method, NULL);
+        Py_DECREF(read_method);
+
+        if (content == NULL)
+            return NULL;
+
+        /* Call loads_all with the content */
+        PyObject *loads_all_kwargs = PyDict_New();
+        if (loads_all_kwargs == NULL) {
+            Py_DECREF(content);
+            return NULL;
+        }
+
+        PyObject *mode_str = PyUnicode_FromString(mode);
+        PyObject *dedup_bool = PyBool_FromLong(dedup);
+        PyObject *trim_bool = PyBool_FromLong(trim);
+        PyObject *mutable_bool = PyBool_FromLong(mutable);
+
+        PyDict_SetItemString(loads_all_kwargs, "mode", mode_str);
+        PyDict_SetItemString(loads_all_kwargs, "dedup", dedup_bool);
+        PyDict_SetItemString(loads_all_kwargs, "trim", trim_bool);
+        PyDict_SetItemString(loads_all_kwargs, "mutable", mutable_bool);
+
+        Py_DECREF(mode_str);
+        Py_DECREF(dedup_bool);
+        Py_DECREF(trim_bool);
+        Py_DECREF(mutable_bool);
+
+        PyObject *loads_all_args = PyTuple_Pack(1, content);
+        PyObject *result = libfyaml_loads_all(self, loads_all_args, loads_all_kwargs);
+
+        Py_DECREF(loads_all_args);
+        Py_DECREF(loads_all_kwargs);
+        Py_DECREF(content);
+        return result;
+    }
+}
+
+/* dumps_all(documents, compact=False, json=False) - Dump FyGeneric sequence to multi-document string */
+static PyObject *
+libfyaml_dumps_all(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+    PyObject *documents;
+    int compact = 0;
+    int json_mode = 0;
+    static char *kwlist[] = {"documents", "compact", "json", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|pp", kwlist,
+                                     &documents, &compact, &json_mode))
+        return NULL;
+
+    /* documents must be a FyGeneric sequence */
+    if (Py_TYPE(documents) != &FyGenericType) {
+        PyErr_SetString(PyExc_TypeError, "documents must be a FyGeneric sequence (from load_all/loads_all)");
+        return NULL;
+    }
+
+    FyGenericObject *fyobj = (FyGenericObject *)documents;
+    if (!fy_generic_is_sequence(fyobj->fyg)) {
+        PyErr_SetString(PyExc_TypeError, "documents must be a sequence");
+        return NULL;
+    }
+
+    /* Create generic builder for emitting */
+    struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
+    if (gb == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
+        return NULL;
+    }
+
+    /* Internalize the sequence into our builder */
+    fy_generic doc_sequence = fy_gb_internalize(gb, fyobj->fyg);
+    if (!fy_generic_is_valid(doc_sequence)) {
+        fy_generic_builder_destroy(gb);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to internalize document sequence");
+        return NULL;
+    }
+
+    /* Determine emit flags based on options - add MULTI_DOCUMENT flag */
+    unsigned int emit_flags = FYOPEF_DISABLE_DIRECTORY | FYOPEF_OUTPUT_TYPE_STRING | FYOPEF_MULTI_DOCUMENT;
+
+    if (json_mode) {
+        emit_flags |= FYOPEF_MODE_JSON;
+        if (!compact)
+            emit_flags |= FYOPEF_INDENT_2;
+    } else {
+        emit_flags |= FYOPEF_MODE_YAML_1_2;
+        if (compact) {
+            emit_flags |= FYOPEF_STYLE_FLOW;
+        } else {
+            emit_flags |= FYOPEF_STYLE_BLOCK;
+        }
+    }
+
+    /* Emit the sequence of documents */
+    fy_generic emitted = fy_gb_emit(gb, doc_sequence, emit_flags, NULL);
+
+    if (!fy_generic_is_valid(emitted) || !fy_generic_is_string(emitted)) {
+        fy_generic_builder_destroy(gb);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to emit YAML/JSON documents");
+        return NULL;
+    }
+
+    /* Get string from emitted result */
+    const char *result_str;
+    size_t result_len;
+    result_str = fy_generic_get_string_size_alloca(emitted, &result_len);
+    if (!result_str) {
+        fy_generic_builder_destroy(gb);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to get emitted string");
+        return NULL;
+    }
+
+    PyObject *result = PyUnicode_FromStringAndSize(result_str, result_len);
+    fy_generic_builder_destroy(gb);
+    return result;
+}
+
+/* dump_all(file, documents, compact=False, json=False) - Dump FyGeneric sequence to file */
+static PyObject *
+libfyaml_dump_all(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+    PyObject *file_obj;
+    PyObject *documents;
+    int compact = 0;
+    int json_mode = 0;
+    static char *kwlist[] = {"file", "documents", "compact", "json", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OO|pp", kwlist,
+                                     &file_obj, &documents, &compact, &json_mode))
+        return NULL;
+
+    /* documents must be a FyGeneric sequence */
+    if (Py_TYPE(documents) != &FyGenericType) {
+        PyErr_SetString(PyExc_TypeError, "documents must be a FyGeneric sequence (from load_all/loads_all)");
+        return NULL;
+    }
+
+    FyGenericObject *fyobj = (FyGenericObject *)documents;
+    if (!fy_generic_is_sequence(fyobj->fyg)) {
+        PyErr_SetString(PyExc_TypeError, "documents must be a sequence");
+        return NULL;
+    }
+
+    /* Check if it's a string (file path) or file object */
+    if (PyUnicode_Check(file_obj)) {
+        /* It's a file path - use fy_gb_emit_file() for direct file output */
+        const char *path = PyUnicode_AsUTF8(file_obj);
+        if (path == NULL)
+            return NULL;
+
+        /* Create generic builder for emitting */
+        struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
+        if (gb == NULL) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
+            return NULL;
+        }
+
+        /* Internalize the sequence into our builder */
+        fy_generic doc_sequence = fy_gb_internalize(gb, fyobj->fyg);
+        if (!fy_generic_is_valid(doc_sequence)) {
+            fy_generic_builder_destroy(gb);
+            PyErr_SetString(PyExc_RuntimeError, "Failed to internalize document sequence");
+            return NULL;
+        }
+
+        /* Determine emit flags based on options - add MULTI_DOCUMENT flag */
+        unsigned int emit_flags = FYOPEF_DISABLE_DIRECTORY | FYOPEF_MULTI_DOCUMENT;
+
+        if (json_mode) {
+            emit_flags |= FYOPEF_MODE_JSON;
+            if (!compact)
+                emit_flags |= FYOPEF_INDENT_2;
+        } else {
+            emit_flags |= FYOPEF_MODE_YAML_1_2;
+            if (compact) {
+                emit_flags |= FYOPEF_STYLE_FLOW;
+            } else {
+                emit_flags |= FYOPEF_STYLE_BLOCK;
+            }
+        }
+
+        /* Emit to file using new API - returns int 0 on success */
+        fy_generic result_g = fy_gb_emit_file(gb, doc_sequence, emit_flags, path);
+
+        /* Check for success: should return integer 0 */
+        if (!fy_generic_is_valid(result_g)) {
+            fy_generic_builder_destroy(gb);
+            PyErr_Format(PyExc_RuntimeError, "Failed to emit YAML/JSON to file: %s (invalid result)", path);
+            return NULL;
+        }
+
+        if (!fy_generic_is_int_type(result_g)) {
+            fy_generic_builder_destroy(gb);
+            PyErr_Format(PyExc_RuntimeError, "Failed to emit YAML/JSON to file: %s (wrong type: %d)",
+                        path, fy_get_type(result_g));
+            return NULL;
+        }
+
+        int result_code = fy_cast(result_g, -1);
+        fy_generic_builder_destroy(gb);
+
+        if (result_code != 0) {
+            PyErr_Format(PyExc_RuntimeError, "Failed to emit YAML/JSON to file: %s (error code: %d)", path, result_code);
+            return NULL;
+        }
+
+        Py_RETURN_NONE;
+    } else {
+        /* Assume it's a file object - use dumps_all() and write */
+        PyObject *dumps_all_kwargs = PyDict_New();
+        if (dumps_all_kwargs == NULL)
+            return NULL;
+
+        PyObject *compact_bool = PyBool_FromLong(compact);
+        PyObject *json_bool = PyBool_FromLong(json_mode);
+
+        PyDict_SetItemString(dumps_all_kwargs, "compact", compact_bool);
+        PyDict_SetItemString(dumps_all_kwargs, "json", json_bool);
+
+        Py_DECREF(compact_bool);
+        Py_DECREF(json_bool);
+
+        PyObject *dumps_all_args = PyTuple_Pack(1, documents);
+        PyObject *yaml_str = libfyaml_dumps_all(self, dumps_all_args, dumps_all_kwargs);
+
+        Py_DECREF(dumps_all_args);
+        Py_DECREF(dumps_all_kwargs);
+
+        if (yaml_str == NULL)
+            return NULL;
+
+        /* Write the string to the file object */
+        PyObject *write_method = PyObject_GetAttrString(file_obj, "write");
+        if (write_method == NULL) {
+            Py_DECREF(yaml_str);
+            return NULL;
+        }
+
+        PyObject *write_args = PyTuple_Pack(1, yaml_str);
+        PyObject *result = PyObject_CallObject(write_method, write_args);
+
+        Py_DECREF(write_method);
+        Py_DECREF(write_args);
+        Py_DECREF(yaml_str);
+
+        if (result == NULL)
+            return NULL;
+
+        Py_DECREF(result);
+        Py_RETURN_NONE;
+    }
+}
+
 /* Module method table */
 static PyMethodDef module_methods[] = {
     {"loads", (PyCFunction)libfyaml_loads, METH_VARARGS | METH_KEYWORDS,
@@ -2232,6 +2643,14 @@ static PyMethodDef module_methods[] = {
      "Load YAML/JSON from file (path or file object)"},
     {"dump", (PyCFunction)libfyaml_dump, METH_VARARGS | METH_KEYWORDS,
      "Dump Python object to file (path or file object)"},
+    {"loads_all", (PyCFunction)libfyaml_loads_all, METH_VARARGS | METH_KEYWORDS,
+     "Load multiple YAML/JSON documents from string"},
+    {"load_all", (PyCFunction)libfyaml_load_all, METH_VARARGS | METH_KEYWORDS,
+     "Load multiple YAML/JSON documents from file (path or file object)"},
+    {"dumps_all", (PyCFunction)libfyaml_dumps_all, METH_VARARGS | METH_KEYWORDS,
+     "Dump multiple Python objects to YAML/JSON string"},
+    {"dump_all", (PyCFunction)libfyaml_dump_all, METH_VARARGS | METH_KEYWORDS,
+     "Dump multiple Python objects to file (path or file object)"},
     {"from_python", (PyCFunction)libfyaml_from_python, METH_VARARGS | METH_KEYWORDS,
      "Convert Python object to FyGeneric"},
     {NULL}
