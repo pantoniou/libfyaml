@@ -2032,7 +2032,7 @@ int fy_emit_document_start(struct fy_emitter *emit, struct fy_document *fyd,
 	if (!emit || !fyd || !fyd->fyds)
 		return -1;
 
-	root = fyn_root ? : fy_document_root(fyd);
+	root = fyn_root ? fyn_root : fy_document_root(fyd);
 
 	root_tag_or_anchor = root && (root->tag || fy_document_lookup_anchor_by_node(fyd, root));
 
