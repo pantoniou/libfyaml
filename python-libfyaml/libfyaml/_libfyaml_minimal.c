@@ -496,8 +496,8 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
 
             fy_generic_sequence_handle seqh = fy_cast(self->fyg, fy_seq_handle_null);
             if (!seqh) {
-                PyErr_SetString(PyExc_RuntimeError, "Invalid sequence");
-                return NULL;
+                /* Empty flow-style sequence (e.g., []) - return empty list */
+                return PyList_New(0);
             }
 
             PyObject *list = PyList_New(seqh->count);
@@ -544,8 +544,8 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
 
             fy_generic_mapping_handle maph = fy_cast(self->fyg, fy_map_handle_null);
             if (!maph) {
-                PyErr_SetString(PyExc_RuntimeError, "Invalid mapping");
-                return NULL;
+                /* Empty flow-style mapping (e.g., {}) - return empty dict */
+                return PyDict_New();
             }
 
             PyObject *dict = PyDict_New();
