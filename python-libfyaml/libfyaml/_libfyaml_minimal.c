@@ -746,21 +746,6 @@ FyGeneric_richcompare(PyObject *self, PyObject *other, int op)
 
 /* Mapping-specific methods */
 
-/* Helper: Convert fy_generic key to Python object for path tracking */
-static PyObject *
-key_to_python_obj(fy_generic key)
-{
-    if (fy_generic_is_string(key)) {
-        const char *key_str = fy_cast(key, "");
-        return PyUnicode_FromString(key_str);
-    } else if (fy_generic_is_int(key)) {
-        long long key_int = fy_cast(key, (long long)0);
-        return PyLong_FromLongLong(key_int);
-    } else {
-        return PyUnicode_FromString("<key>");
-    }
-}
-
 /* FyGeneric: keys() - return list of keys for mappings */
 static PyObject *
 FyGeneric_keys(FyGenericObject *self, PyObject *Py_UNUSED(args))
@@ -770,27 +755,28 @@ FyGeneric_keys(FyGenericObject *self, PyObject *Py_UNUSED(args))
         return NULL;
     }
 
-    size_t count;
+    size_t i, count;
     const fy_generic_map_pair *pairs = fy_generic_mapping_get_pairs(self->fyg, &count);
 
     PyObject *result = PyList_New(count);
     if (result == NULL)
         return NULL;
 
-    for (size_t i = 0; i < count; i++) {
-        PyObject *path_key = key_to_python_obj(pairs[i].key);
-        if (path_key == NULL) {
-            Py_DECREF(result);
-            return NULL;
-        }
+    for (i = 0; i < count; i++) {
+        PyObject *path_key = fy_generic_to_python_primitive(pairs[i].key);
+        if (path_key == NULL)
+            break;
 
         PyObject *key = FyGeneric_from_parent(pairs[i].key, self, path_key);
         Py_DECREF(path_key);
-        if (key == NULL) {
-            Py_DECREF(result);
-            return NULL;
-        }
+        if (key == NULL)
+            break;
+
         PyList_SET_ITEM(result, i, key);
+    }
+    if (i < count) {
+        Py_DECREF(result);
+        return NULL;
     }
 
     return result;
@@ -805,27 +791,28 @@ FyGeneric_values(FyGenericObject *self, PyObject *Py_UNUSED(args))
         return NULL;
     }
 
-    size_t count;
+    size_t i, count;
     const fy_generic_map_pair *pairs = fy_generic_mapping_get_pairs(self->fyg, &count);
 
     PyObject *result = PyList_New(count);
     if (result == NULL)
         return NULL;
 
-    for (size_t i = 0; i < count; i++) {
-        PyObject *path_key = key_to_python_obj(pairs[i].key);
-        if (path_key == NULL) {
-            Py_DECREF(result);
-            return NULL;
-        }
+    for (i = 0; i < count; i++) {
+        PyObject *path_key = fy_generic_to_python_primitive(pairs[i].key);
+        if (path_key == NULL)
+            break;
 
         PyObject *value = FyGeneric_from_parent(pairs[i].value, self, path_key);
         Py_DECREF(path_key);
-        if (value == NULL) {
-            Py_DECREF(result);
-            return NULL;
-        }
+        if (value == NULL)
+            break;
+
         PyList_SET_ITEM(result, i, value);
+    }
+    if (i < count) {
+        Py_DECREF(result);
+        return NULL;
     }
 
     return result;
@@ -840,45 +827,46 @@ FyGeneric_items(FyGenericObject *self, PyObject *Py_UNUSED(args))
         return NULL;
     }
 
-    size_t count;
+    size_t i, count;
     const fy_generic_map_pair *pairs = fy_generic_mapping_get_pairs(self->fyg, &count);
 
     PyObject *result = PyList_New(count);
     if (result == NULL)
         return NULL;
 
-    for (size_t i = 0; i < count; i++) {
-        PyObject *path_key = key_to_python_obj(pairs[i].key);
-        if (path_key == NULL) {
-            Py_DECREF(result);
-            return NULL;
-        }
+    PyObject *path_key = NULL, *key = NULL, *value = NULL, *tuple = NULL;
 
-        PyObject *key = FyGeneric_from_parent(pairs[i].key, self, path_key);
-        if (key == NULL) {
-            Py_DECREF(path_key);
-            Py_DECREF(result);
-            return NULL;
-        }
+    for (i = 0; i < count; i++) {
+        path_key = fy_generic_to_python_primitive(pairs[i].key);
+        if (path_key == NULL)
+            break;
 
-        PyObject *value = FyGeneric_from_parent(pairs[i].value, self, path_key);
+        key = FyGeneric_from_parent(pairs[i].key, self, path_key);
+        if (key == NULL)
+            break;
+
+        value = FyGeneric_from_parent(pairs[i].value, self, path_key);
         Py_DECREF(path_key);  /* Done with path_key */
-        if (value == NULL) {
-            Py_DECREF(key);
-            Py_DECREF(result);
-            return NULL;
-        }
+        path_key = NULL;
+        if (value == NULL)
+            break;
 
-        PyObject *tuple = PyTuple_Pack(2, key, value);
+        tuple = PyTuple_Pack(2, key, value);
         Py_DECREF(key);
+        key = NULL;
         Py_DECREF(value);
-
-        if (tuple == NULL) {
-            Py_DECREF(result);
-            return NULL;
-        }
+        value = NULL;
+        if (tuple == NULL)
+            break;
 
         PyList_SET_ITEM(result, i, tuple);
+    }
+    if (i < count) {
+        if (path_key)
+            Py_DECREF(path_key);
+        if (key)
+            Py_DECREF(key);
+        return NULL;
     }
 
     return result;
@@ -968,11 +956,8 @@ FyGeneric_getattro(FyGenericObject *self, PyObject *name)
             Py_INCREF(py_obj);
             break;
         case FYGT_SEQUENCE:
-            /* Delegate to list methods - convert to Python list */
-            py_obj = FyGeneric_to_python(self, NULL);
-            break;
         case FYGT_MAPPING:
-            /* Delegate to dict methods - convert to Python dict */
+            /* Delegate to list/dict methods - convert to Python list/dict */
             py_obj = FyGeneric_to_python(self, NULL);
             break;
         default: {
@@ -1008,9 +993,8 @@ static PyObject *
 FyGeneric_trim(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
     /* Only root objects own the generic builder */
-    if (self->gb) {
+    if (self->gb)
         fy_gb_trim(self->gb);
-    }
     Py_RETURN_NONE;
 }
 
@@ -1031,19 +1015,20 @@ FyGeneric_clone(FyGenericObject *self, PyObject *Py_UNUSED(args))
     /* Internalize (copy) the generic value into the new builder */
     fy_generic cloned = fy_gb_internalize(new_gb, root_obj->fyg);
     if (fy_generic_is_invalid(cloned)) {
-        fy_generic_builder_destroy(new_gb);
         PyErr_SetString(PyExc_RuntimeError, "Failed to clone generic value");
-        return NULL;
+        goto err_out;
     }
 
     /* Create a new FyGeneric Python object with the cloned value */
     PyObject *result = FyGeneric_from_generic(cloned, new_gb, root_obj->mutable);
-    if (result == NULL) {
-        fy_generic_builder_destroy(new_gb);
-        return NULL;
-    }
+    if (result == NULL)
+        goto err_out;
 
     return result;
+
+err_out:
+    fy_generic_builder_destroy(new_gb);
+    return NULL;
 }
 
 /* FyGeneric: get_path() - Get the path from root to this object */
@@ -1056,9 +1041,8 @@ FyGeneric_get_path(FyGenericObject *self, PyObject *Py_UNUSED(args))
     }
 
     /* If path tracking is disabled (mutable=False), return None */
-    if (self->path == NULL) {
+    if (self->path == NULL)
         Py_RETURN_NONE;
-    }
 
     /* Return a copy of the path list */
     Py_INCREF(self->path);
