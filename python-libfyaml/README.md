@@ -420,10 +420,10 @@ data = libfyaml.loads(content)
 
 ### ⚠️ Not Yet Ideal For
 
-- **Writing/dumping YAML**: Use PyYAML for output (libfyaml write support coming)
-- **Modifying parsed data**: FyGeneric is immutable (convert with .to_python() first)
-- **Round-trip editing**: Use ruamel.yaml to preserve formatting
+- **Modifying parsed data in-place**: FyGeneric is immutable by default (use `mutable=True` or convert with `.to_python()`)
+- **Round-trip editing with preserved formatting**: Use ruamel.yaml to preserve comments and formatting
 - **Very small files where PyYAML is "fast enough"**: libfyaml overhead not worth it
+- **Windows support**: Currently Linux/macOS only
 
 ---
 
@@ -476,12 +476,18 @@ FyGeneric objects convert to Python types on-demand:
 
 ### Q: Is it thread-safe?
 
-**A**: FyGeneric objects are immutable and safe to read from multiple threads. Parsing is thread-safe with independent documents.
+**A**: FyGeneric objects are immutable by default and safe to read from multiple threads. Parsing is thread-safe with independent documents.
 
 ### Q: Can I modify the parsed data?
 
-**A**: No, FyGeneric is immutable. Convert to Python dict first:
+**A**: FyGeneric is immutable by default. You have two options:
+
 ```python
+# Option 1: Parse as mutable (if supported in your version)
+data = libfyaml.loads(yaml, mutable=True)
+data['new_key'] = 'value'  # Works!
+
+# Option 2: Convert to Python dict
 data = libfyaml.loads(yaml)
 mutable = data.to_python()
 mutable['new_key'] = 'value'
@@ -489,7 +495,7 @@ mutable['new_key'] = 'value'
 
 ### Q: Why use this over PyYAML?
 
-**A**: 22x faster, 7.7x less memory, same API. Drop-in replacement for read-only use cases.
+**A**: 22x faster, 7.7x less memory, same API. Drop-in replacement for most use cases.
 
 ### Q: Does it support YAML 1.2?
 
@@ -497,21 +503,23 @@ mutable['new_key'] = 'value'
 
 ### Q: What about writing YAML?
 
-**A**: Not yet supported. Use PyYAML for output:
+**A**: Yes! Use `dumps()` and `dump()` to emit YAML:
 ```python
 import libfyaml
-import yaml
 
-# Read with libfyaml
+# Parse YAML
 data = libfyaml.loads(yaml_string)
-python_dict = data.to_python()
 
-# Modify
-python_dict['updated'] = True
+# Write to string
+yaml_output = libfyaml.dumps(data)
 
-# Write with PyYAML
+# Write to file
 with open('output.yaml', 'w') as f:
-    yaml.dump(python_dict, f)
+    libfyaml.dump(data, f)
+
+# Multi-document support
+docs = [doc1, doc2, doc3]
+yaml_output = libfyaml.dumps_all(docs)
 ```
 
 ### Q: How much faster is it really?
@@ -529,17 +537,17 @@ On 768 MB file:
 ### Q: What's the catch?
 
 **A**:
-- Read-only (no YAML writing yet)
-- Immutable (convert to dict for modifications)
+- Immutable by default (use `mutable=True` or convert to dict for modifications)
 - Linux/macOS only (no Windows support yet)
+- Beta software (v0.9.0 - approaching stable 1.0)
 
 ### Q: When should I NOT use this?
 
 **A**:
-- When you need to write YAML (use PyYAML)
 - When you need round-trip editing with preserved formatting (use ruamel.yaml)
 - When files are tiny (<1KB) and PyYAML is fast enough
 - When you need Windows support
+- When you require 100% PyYAML API compatibility (minor differences exist)
 
 ---
 
