@@ -35,6 +35,64 @@ from libfyaml._libfyaml import (
     from_python,
 )
 
+import json as _json
+
+
+# JSON Serialization Support
+def json_dumps(obj, **kwargs):
+    """
+    Serialize obj to a JSON formatted string, with FyGeneric support.
+
+    Automatically converts FyGeneric objects to Python equivalents before
+    serialization, allowing seamless JSON encoding of YAML-parsed data.
+
+    Args:
+        obj: Object to serialize (can contain FyGeneric objects)
+        **kwargs: Additional arguments passed to json.dumps()
+
+    Returns:
+        JSON formatted string
+
+    Example:
+        >>> import libfyaml
+        >>> data = libfyaml.loads("name: Alice\\nage: 30")
+        >>> libfyaml.json_dumps(data)
+        '{"name": "Alice", "age": 30}'
+
+        >>> # With formatting
+        >>> libfyaml.json_dumps(data, indent=2)
+        '{\\n  "name": "Alice",\\n  "age": 30\\n}'
+    """
+    # Convert FyGeneric to Python if needed
+    if isinstance(obj, FyGeneric):
+        obj = obj.to_python()
+    return _json.dumps(obj, **kwargs)
+
+
+def json_dump(obj, fp, **kwargs):
+    """
+    Serialize obj to JSON and write to file-like object, with FyGeneric support.
+
+    Automatically converts FyGeneric objects to Python equivalents before
+    serialization, allowing seamless JSON encoding of YAML-parsed data.
+
+    Args:
+        obj: Object to serialize (can contain FyGeneric objects)
+        fp: File-like object to write to
+        **kwargs: Additional arguments passed to json.dump()
+
+    Example:
+        >>> import libfyaml
+        >>> data = libfyaml.loads("name: Alice\\nage: 30")
+        >>> with open('output.json', 'w') as f:
+        ...     libfyaml.json_dump(data, f, indent=2)
+    """
+    # Convert FyGeneric to Python if needed
+    if isinstance(obj, FyGeneric):
+        obj = obj.to_python()
+    return _json.dump(obj, fp, **kwargs)
+
+
 __version__ = "0.9.0"
 
 __all__ = [
@@ -48,4 +106,6 @@ __all__ = [
     "dump_all",
     "dumps_all",
     "from_python",
+    "json_dumps",
+    "json_dump",
 ]
