@@ -32,6 +32,40 @@ static PyTypeObject FyGenericIteratorType;
 /* Forward declarations */
 static PyObject *FyGeneric_from_parent(fy_generic fyg, FyGenericObject *parent, PyObject *path_elem);
 
+/* Helper: Convert primitive fy_generic to Python object (for dict keys, iteration, etc.) */
+static PyObject *fy_generic_to_python_primitive(fy_generic value)
+{
+    switch (fy_get_type(value)) {
+    case FYGT_NULL:
+        Py_INCREF(Py_None);
+        return Py_None;
+    case FYGT_BOOL:
+        return PyBool_FromLong(fy_cast(value, (_Bool)false) ? 1 : 0);
+    case FYGT_INT:
+        return PyLong_FromLongLong(fy_cast(value, (long long)-1LL));
+    case FYGT_FLOAT:
+        return PyFloat_FromDouble(fy_cast(value, (double)0.0));
+    case FYGT_STRING:
+        return PyUnicode_FromString(fy_cast(value, ""));
+    case FYGT_SEQUENCE:
+        /* Sequences cannot be dict keys (unhashable in Python) */
+        PyErr_SetString(PyExc_TypeError, "unhashable type: 'sequence'");
+        return NULL;
+    case FYGT_MAPPING:
+        /* Mappings cannot be dict keys (unhashable in Python) */
+        PyErr_SetString(PyExc_TypeError, "unhashable type: 'mapping'");
+        return NULL;
+    case FYGT_INDIRECT:
+    case FYGT_ALIAS:
+        /* These should be resolved before reaching here */
+        PyErr_SetString(PyExc_RuntimeError, "unresolved indirect/alias type");
+        return NULL;
+    default:
+        PyErr_Format(PyExc_TypeError, "unsupported type for conversion: %d", fy_get_type(value));
+        return NULL;
+    }
+}
+
 /* ========== FyGenericIterator Type ========== */
 
 typedef struct {
@@ -88,31 +122,14 @@ FyGenericIterator_next(FyGenericIteratorObject *self)
             goto out_stop;
         key = self->u.maph->pairs[self->index].key;
         item = self->u.maph->pairs[self->index].value;
-        switch (fy_get_type(key)) {
-        case FYGT_NULL:
-            key_obj = Py_None;
-            break;
-        case FYGT_BOOL:
-            key_obj = PyBool_FromLong(fy_cast(key, (_Bool)false) ? 1 : 0);
-            break;
-        case FYGT_INT:
-            key_obj = PyLong_FromLongLong(fy_cast(key, (long long)-1LL));
-            break;
-        case FYGT_FLOAT:
-            key_obj = PyFloat_FromDouble(fy_cast(key, (double)0.0));
-            break;
-        case FYGT_STRING:
-            key_obj = PyUnicode_FromString(fy_cast(key, ""));
-            break;
-        default:
-            key_obj = NULL;
-            break;
-        }
+
+        /* Convert key to Python object for path tracking */
+        key_obj = fy_generic_to_python_primitive(key);
         if (key_obj == NULL)
             return NULL;
 
-        result = FyGeneric_from_parent(key, self->generic_obj, key_obj);
-
+        /* Return the value (not the key) */
+        result = FyGeneric_from_parent(item, self->generic_obj, key_obj);
         Py_DECREF(key_obj);
         break;
 
@@ -542,27 +559,7 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
                 /* First get the key as a Python object for path */
                 fy_generic key = maph->pairs[i].key;
 
-                switch (fy_get_type(key)) {
-                case FYGT_NULL:
-                    path_key = Py_None;
-                    break;
-                case FYGT_BOOL:
-                    path_key = PyBool_FromLong(fy_cast(key, (_Bool)false) ? 1 : 0);
-                    break;
-                case FYGT_INT:
-                    path_key = PyLong_FromLongLong(fy_cast(key, (long long)-1LL));
-                    break;
-                case FYGT_FLOAT:
-                    path_key = PyFloat_FromDouble(fy_cast(key, (double)0.0));
-                    break;
-                case FYGT_STRING:
-                    path_key = PyUnicode_FromString(fy_cast(key, ""));
-                    break;
-                default:
-                    path_key = NULL;
-                    break;
-                }
-
+                path_key = fy_generic_to_python_primitive(key);
                 if (!path_key)
                     break;
 
@@ -1463,120 +1460,228 @@ FyGeneric_as_double(FyGenericObject *obj, double *result)
 static PyObject *
 FyGeneric_add(PyObject *left, PyObject *right)
 {
-    double left_val, right_val;
+    int left_is_int = 0, right_is_int = 0;
+    long long left_int = 0, right_int = 0;
+    double left_float = 0.0, right_float = 0.0;
 
-    /* Convert left operand */
+    /* Extract left operand */
     if (Py_TYPE(left) == &FyGenericType) {
-        if (FyGeneric_as_double((FyGenericObject *)left, &left_val) < 0)
+        enum fy_generic_type type = fy_get_type(((FyGenericObject *)left)->fyg);
+        if (type == FYGT_INT) {
+            left_int = fy_cast(((FyGenericObject *)left)->fyg, (long long)0);
+            left_is_int = 1;
+        } else if (type == FYGT_FLOAT) {
+            left_float = fy_cast(((FyGenericObject *)left)->fyg, (double)0.0);
+        } else {
+            PyErr_SetString(PyExc_TypeError, "unsupported operand type(s) for +");
             return NULL;
+        }
     } else if (PyLong_Check(left)) {
-        left_val = (double)PyLong_AsLongLong(left);
-    } else if (PyFloat_Check(left)) {
-        left_val = PyFloat_AsDouble(left);
-    } else {
-        Py_RETURN_NOTIMPLEMENTED;
-    }
-
-    /* Convert right operand */
-    if (Py_TYPE(right) == &FyGenericType) {
-        if (FyGeneric_as_double((FyGenericObject *)right, &right_val) < 0)
+        left_int = PyLong_AsLongLong(left);
+        if (left_int == -1 && PyErr_Occurred())
             return NULL;
-    } else if (PyLong_Check(right)) {
-        right_val = (double)PyLong_AsLongLong(right);
-    } else if (PyFloat_Check(right)) {
-        right_val = PyFloat_AsDouble(right);
+        left_is_int = 1;
+    } else if (PyFloat_Check(left)) {
+        left_float = PyFloat_AsDouble(left);
     } else {
         Py_RETURN_NOTIMPLEMENTED;
     }
 
-    double result = left_val + right_val;
-
-    /* Return int if both were ints and result fits */
-    if ((Py_TYPE(left) == &FyGenericType && (fy_get_type(((FyGenericObject *)left)->fyg) == FYGT_INT || PyLong_Check(left))) &&
-        (Py_TYPE(right) == &FyGenericType && (fy_get_type(((FyGenericObject *)right)->fyg) == FYGT_INT || PyLong_Check(right))) &&
-        result == (long long)result) {
-        return PyLong_FromLongLong((long long)result);
+    /* Extract right operand */
+    if (Py_TYPE(right) == &FyGenericType) {
+        enum fy_generic_type type = fy_get_type(((FyGenericObject *)right)->fyg);
+        if (type == FYGT_INT) {
+            right_int = fy_cast(((FyGenericObject *)right)->fyg, (long long)0);
+            right_is_int = 1;
+        } else if (type == FYGT_FLOAT) {
+            right_float = fy_cast(((FyGenericObject *)right)->fyg, (double)0.0);
+        } else {
+            PyErr_SetString(PyExc_TypeError, "unsupported operand type(s) for +");
+            return NULL;
+        }
+    } else if (PyLong_Check(right)) {
+        right_int = PyLong_AsLongLong(right);
+        if (right_int == -1 && PyErr_Occurred())
+            return NULL;
+        right_is_int = 1;
+    } else if (PyFloat_Check(right)) {
+        right_float = PyFloat_AsDouble(right);
+    } else {
+        Py_RETURN_NOTIMPLEMENTED;
     }
 
-    return PyFloat_FromDouble(result);
+    /* Perform operation preserving type */
+    if (left_is_int && right_is_int) {
+        /* Integer addition with overflow check */
+        long long result;
+        if (__builtin_add_overflow(left_int, right_int, &result)) {
+            /* Overflow - use Python's arbitrary precision */
+            PyObject *left_obj = PyLong_FromLongLong(left_int);
+            PyObject *right_obj = PyLong_FromLongLong(right_int);
+            PyObject *result_obj = PyNumber_Add(left_obj, right_obj);
+            Py_DECREF(left_obj);
+            Py_DECREF(right_obj);
+            return result_obj;
+        }
+        return PyLong_FromLongLong(result);
+    } else {
+        /* Float arithmetic */
+        double left_val = left_is_int ? (double)left_int : left_float;
+        double right_val = right_is_int ? (double)right_int : right_float;
+        return PyFloat_FromDouble(left_val + right_val);
+    }
 }
 
 /* FyGeneric: __sub__ */
 static PyObject *
 FyGeneric_sub(PyObject *left, PyObject *right)
 {
-    double left_val, right_val;
+    int left_is_int = 0, right_is_int = 0;
+    long long left_int = 0, right_int = 0;
+    double left_float = 0.0, right_float = 0.0;
 
+    /* Extract left operand */
     if (Py_TYPE(left) == &FyGenericType) {
-        if (FyGeneric_as_double((FyGenericObject *)left, &left_val) < 0)
+        enum fy_generic_type type = fy_get_type(((FyGenericObject *)left)->fyg);
+        if (type == FYGT_INT) {
+            left_int = fy_cast(((FyGenericObject *)left)->fyg, (long long)0);
+            left_is_int = 1;
+        } else if (type == FYGT_FLOAT) {
+            left_float = fy_cast(((FyGenericObject *)left)->fyg, (double)0.0);
+        } else {
+            PyErr_SetString(PyExc_TypeError, "unsupported operand type(s) for -");
             return NULL;
+        }
     } else if (PyLong_Check(left)) {
-        left_val = (double)PyLong_AsLongLong(left);
-    } else if (PyFloat_Check(left)) {
-        left_val = PyFloat_AsDouble(left);
-    } else {
-        Py_RETURN_NOTIMPLEMENTED;
-    }
-
-    if (Py_TYPE(right) == &FyGenericType) {
-        if (FyGeneric_as_double((FyGenericObject *)right, &right_val) < 0)
+        left_int = PyLong_AsLongLong(left);
+        if (left_int == -1 && PyErr_Occurred())
             return NULL;
-    } else if (PyLong_Check(right)) {
-        right_val = (double)PyLong_AsLongLong(right);
-    } else if (PyFloat_Check(right)) {
-        right_val = PyFloat_AsDouble(right);
+        left_is_int = 1;
+    } else if (PyFloat_Check(left)) {
+        left_float = PyFloat_AsDouble(left);
     } else {
         Py_RETURN_NOTIMPLEMENTED;
     }
 
-    double result = left_val - right_val;
-
-    if ((Py_TYPE(left) == &FyGenericType && (fy_get_type(((FyGenericObject *)left)->fyg) == FYGT_INT || PyLong_Check(left))) &&
-        (Py_TYPE(right) == &FyGenericType && (fy_get_type(((FyGenericObject *)right)->fyg) == FYGT_INT || PyLong_Check(right))) &&
-        result == (long long)result) {
-        return PyLong_FromLongLong((long long)result);
+    /* Extract right operand */
+    if (Py_TYPE(right) == &FyGenericType) {
+        enum fy_generic_type type = fy_get_type(((FyGenericObject *)right)->fyg);
+        if (type == FYGT_INT) {
+            right_int = fy_cast(((FyGenericObject *)right)->fyg, (long long)0);
+            right_is_int = 1;
+        } else if (type == FYGT_FLOAT) {
+            right_float = fy_cast(((FyGenericObject *)right)->fyg, (double)0.0);
+        } else {
+            PyErr_SetString(PyExc_TypeError, "unsupported operand type(s) for -");
+            return NULL;
+        }
+    } else if (PyLong_Check(right)) {
+        right_int = PyLong_AsLongLong(right);
+        if (right_int == -1 && PyErr_Occurred())
+            return NULL;
+        right_is_int = 1;
+    } else if (PyFloat_Check(right)) {
+        right_float = PyFloat_AsDouble(right);
+    } else {
+        Py_RETURN_NOTIMPLEMENTED;
     }
 
-    return PyFloat_FromDouble(result);
+    /* Perform operation preserving type */
+    if (left_is_int && right_is_int) {
+        /* Integer subtraction with overflow check */
+        long long result;
+        if (__builtin_sub_overflow(left_int, right_int, &result)) {
+            /* Overflow - use Python's arbitrary precision */
+            PyObject *left_obj = PyLong_FromLongLong(left_int);
+            PyObject *right_obj = PyLong_FromLongLong(right_int);
+            PyObject *result_obj = PyNumber_Subtract(left_obj, right_obj);
+            Py_DECREF(left_obj);
+            Py_DECREF(right_obj);
+            return result_obj;
+        }
+        return PyLong_FromLongLong(result);
+    } else {
+        /* Float arithmetic */
+        double left_val = left_is_int ? (double)left_int : left_float;
+        double right_val = right_is_int ? (double)right_int : right_float;
+        return PyFloat_FromDouble(left_val - right_val);
+    }
 }
 
 /* FyGeneric: __mul__ */
 static PyObject *
 FyGeneric_mul(PyObject *left, PyObject *right)
 {
-    double left_val, right_val;
+    int left_is_int = 0, right_is_int = 0;
+    long long left_int = 0, right_int = 0;
+    double left_float = 0.0, right_float = 0.0;
 
+    /* Extract left operand */
     if (Py_TYPE(left) == &FyGenericType) {
-        if (FyGeneric_as_double((FyGenericObject *)left, &left_val) < 0)
+        enum fy_generic_type type = fy_get_type(((FyGenericObject *)left)->fyg);
+        if (type == FYGT_INT) {
+            left_int = fy_cast(((FyGenericObject *)left)->fyg, (long long)0);
+            left_is_int = 1;
+        } else if (type == FYGT_FLOAT) {
+            left_float = fy_cast(((FyGenericObject *)left)->fyg, (double)0.0);
+        } else {
+            PyErr_SetString(PyExc_TypeError, "unsupported operand type(s) for *");
             return NULL;
+        }
     } else if (PyLong_Check(left)) {
-        left_val = (double)PyLong_AsLongLong(left);
-    } else if (PyFloat_Check(left)) {
-        left_val = PyFloat_AsDouble(left);
-    } else {
-        Py_RETURN_NOTIMPLEMENTED;
-    }
-
-    if (Py_TYPE(right) == &FyGenericType) {
-        if (FyGeneric_as_double((FyGenericObject *)right, &right_val) < 0)
+        left_int = PyLong_AsLongLong(left);
+        if (left_int == -1 && PyErr_Occurred())
             return NULL;
-    } else if (PyLong_Check(right)) {
-        right_val = (double)PyLong_AsLongLong(right);
-    } else if (PyFloat_Check(right)) {
-        right_val = PyFloat_AsDouble(right);
+        left_is_int = 1;
+    } else if (PyFloat_Check(left)) {
+        left_float = PyFloat_AsDouble(left);
     } else {
         Py_RETURN_NOTIMPLEMENTED;
     }
 
-    double result = left_val * right_val;
-
-    if ((Py_TYPE(left) == &FyGenericType && (fy_get_type(((FyGenericObject *)left)->fyg) == FYGT_INT || PyLong_Check(left))) &&
-        (Py_TYPE(right) == &FyGenericType && (fy_get_type(((FyGenericObject *)right)->fyg) == FYGT_INT || PyLong_Check(right))) &&
-        result == (long long)result) {
-        return PyLong_FromLongLong((long long)result);
+    /* Extract right operand */
+    if (Py_TYPE(right) == &FyGenericType) {
+        enum fy_generic_type type = fy_get_type(((FyGenericObject *)right)->fyg);
+        if (type == FYGT_INT) {
+            right_int = fy_cast(((FyGenericObject *)right)->fyg, (long long)0);
+            right_is_int = 1;
+        } else if (type == FYGT_FLOAT) {
+            right_float = fy_cast(((FyGenericObject *)right)->fyg, (double)0.0);
+        } else {
+            PyErr_SetString(PyExc_TypeError, "unsupported operand type(s) for *");
+            return NULL;
+        }
+    } else if (PyLong_Check(right)) {
+        right_int = PyLong_AsLongLong(right);
+        if (right_int == -1 && PyErr_Occurred())
+            return NULL;
+        right_is_int = 1;
+    } else if (PyFloat_Check(right)) {
+        right_float = PyFloat_AsDouble(right);
+    } else {
+        Py_RETURN_NOTIMPLEMENTED;
     }
 
-    return PyFloat_FromDouble(result);
+    /* Perform operation preserving type */
+    if (left_is_int && right_is_int) {
+        /* Integer multiplication with overflow check */
+        long long result;
+        if (__builtin_mul_overflow(left_int, right_int, &result)) {
+            /* Overflow - use Python's arbitrary precision */
+            PyObject *left_obj = PyLong_FromLongLong(left_int);
+            PyObject *right_obj = PyLong_FromLongLong(right_int);
+            PyObject *result_obj = PyNumber_Multiply(left_obj, right_obj);
+            Py_DECREF(left_obj);
+            Py_DECREF(right_obj);
+            return result_obj;
+        }
+        return PyLong_FromLongLong(result);
+    } else {
+        /* Float arithmetic */
+        double left_val = left_is_int ? (double)left_int : left_float;
+        double right_val = right_is_int ? (double)right_int : right_float;
+        return PyFloat_FromDouble(left_val * right_val);
+    }
 }
 
 /* FyGeneric: __truediv__ */
@@ -1619,73 +1724,156 @@ FyGeneric_truediv(PyObject *left, PyObject *right)
 static PyObject *
 FyGeneric_floordiv(PyObject *left, PyObject *right)
 {
-    double left_val, right_val;
+    int left_is_int = 0, right_is_int = 0;
+    long long left_int = 0, right_int = 0;
+    double left_float = 0.0, right_float = 0.0;
 
+    /* Extract left operand */
     if (Py_TYPE(left) == &FyGenericType) {
-        if (FyGeneric_as_double((FyGenericObject *)left, &left_val) < 0)
+        enum fy_generic_type type = fy_get_type(((FyGenericObject *)left)->fyg);
+        if (type == FYGT_INT) {
+            left_int = fy_cast(((FyGenericObject *)left)->fyg, (long long)0);
+            left_is_int = 1;
+        } else if (type == FYGT_FLOAT) {
+            left_float = fy_cast(((FyGenericObject *)left)->fyg, (double)0.0);
+        } else {
+            PyErr_SetString(PyExc_TypeError, "unsupported operand type(s) for //");
             return NULL;
+        }
     } else if (PyLong_Check(left)) {
-        left_val = (double)PyLong_AsLongLong(left);
-    } else if (PyFloat_Check(left)) {
-        left_val = PyFloat_AsDouble(left);
-    } else {
-        Py_RETURN_NOTIMPLEMENTED;
-    }
-
-    if (Py_TYPE(right) == &FyGenericType) {
-        if (FyGeneric_as_double((FyGenericObject *)right, &right_val) < 0)
+        left_int = PyLong_AsLongLong(left);
+        if (left_int == -1 && PyErr_Occurred())
             return NULL;
-    } else if (PyLong_Check(right)) {
-        right_val = (double)PyLong_AsLongLong(right);
-    } else if (PyFloat_Check(right)) {
-        right_val = PyFloat_AsDouble(right);
+        left_is_int = 1;
+    } else if (PyFloat_Check(left)) {
+        left_float = PyFloat_AsDouble(left);
     } else {
         Py_RETURN_NOTIMPLEMENTED;
     }
 
-    if (right_val == 0.0) {
-        PyErr_SetString(PyExc_ZeroDivisionError, "integer division or modulo by zero");
-        return NULL;
+    /* Extract right operand */
+    if (Py_TYPE(right) == &FyGenericType) {
+        enum fy_generic_type type = fy_get_type(((FyGenericObject *)right)->fyg);
+        if (type == FYGT_INT) {
+            right_int = fy_cast(((FyGenericObject *)right)->fyg, (long long)0);
+            right_is_int = 1;
+        } else if (type == FYGT_FLOAT) {
+            right_float = fy_cast(((FyGenericObject *)right)->fyg, (double)0.0);
+        } else {
+            PyErr_SetString(PyExc_TypeError, "unsupported operand type(s) for //");
+            return NULL;
+        }
+    } else if (PyLong_Check(right)) {
+        right_int = PyLong_AsLongLong(right);
+        if (right_int == -1 && PyErr_Occurred())
+            return NULL;
+        right_is_int = 1;
+    } else if (PyFloat_Check(right)) {
+        right_float = PyFloat_AsDouble(right);
+    } else {
+        Py_RETURN_NOTIMPLEMENTED;
     }
 
-    return PyLong_FromLongLong((long long)(left_val / right_val));
+    /* Perform operation */
+    if (left_is_int && right_is_int) {
+        /* Integer floor division */
+        if (right_int == 0) {
+            PyErr_SetString(PyExc_ZeroDivisionError, "integer division or modulo by zero");
+            return NULL;
+        }
+        /* Python floor division semantics */
+        long long result = left_int / right_int;
+        if ((left_int ^ right_int) < 0 && left_int % right_int != 0)
+            result--;
+        return PyLong_FromLongLong(result);
+    } else {
+        /* Float floor division */
+        double left_val = left_is_int ? (double)left_int : left_float;
+        double right_val = right_is_int ? (double)right_int : right_float;
+        if (right_val == 0.0) {
+            PyErr_SetString(PyExc_ZeroDivisionError, "float floor division by zero");
+            return NULL;
+        }
+        return PyFloat_FromDouble(floor(left_val / right_val));
+    }
 }
 
 /* FyGeneric: __mod__ */
 static PyObject *
 FyGeneric_mod(PyObject *left, PyObject *right)
 {
-    double left_val, right_val;
+    int left_is_int = 0, right_is_int = 0;
+    long long left_int = 0, right_int = 0;
+    double left_float = 0.0, right_float = 0.0;
 
+    /* Extract left operand */
     if (Py_TYPE(left) == &FyGenericType) {
-        if (FyGeneric_as_double((FyGenericObject *)left, &left_val) < 0)
+        enum fy_generic_type type = fy_get_type(((FyGenericObject *)left)->fyg);
+        if (type == FYGT_INT) {
+            left_int = fy_cast(((FyGenericObject *)left)->fyg, (long long)0);
+            left_is_int = 1;
+        } else if (type == FYGT_FLOAT) {
+            left_float = fy_cast(((FyGenericObject *)left)->fyg, (double)0.0);
+        } else {
+            PyErr_SetString(PyExc_TypeError, "unsupported operand type(s) for %");
             return NULL;
+        }
     } else if (PyLong_Check(left)) {
-        left_val = (double)PyLong_AsLongLong(left);
-    } else if (PyFloat_Check(left)) {
-        left_val = PyFloat_AsDouble(left);
-    } else {
-        Py_RETURN_NOTIMPLEMENTED;
-    }
-
-    if (Py_TYPE(right) == &FyGenericType) {
-        if (FyGeneric_as_double((FyGenericObject *)right, &right_val) < 0)
+        left_int = PyLong_AsLongLong(left);
+        if (left_int == -1 && PyErr_Occurred())
             return NULL;
-    } else if (PyLong_Check(right)) {
-        right_val = (double)PyLong_AsLongLong(right);
-    } else if (PyFloat_Check(right)) {
-        right_val = PyFloat_AsDouble(right);
+        left_is_int = 1;
+    } else if (PyFloat_Check(left)) {
+        left_float = PyFloat_AsDouble(left);
     } else {
         Py_RETURN_NOTIMPLEMENTED;
     }
 
-    if (right_val == 0.0) {
-        PyErr_SetString(PyExc_ZeroDivisionError, "integer division or modulo by zero");
-        return NULL;
+    /* Extract right operand */
+    if (Py_TYPE(right) == &FyGenericType) {
+        enum fy_generic_type type = fy_get_type(((FyGenericObject *)right)->fyg);
+        if (type == FYGT_INT) {
+            right_int = fy_cast(((FyGenericObject *)right)->fyg, (long long)0);
+            right_is_int = 1;
+        } else if (type == FYGT_FLOAT) {
+            right_float = fy_cast(((FyGenericObject *)right)->fyg, (double)0.0);
+        } else {
+            PyErr_SetString(PyExc_TypeError, "unsupported operand type(s) for %");
+            return NULL;
+        }
+    } else if (PyLong_Check(right)) {
+        right_int = PyLong_AsLongLong(right);
+        if (right_int == -1 && PyErr_Occurred())
+            return NULL;
+        right_is_int = 1;
+    } else if (PyFloat_Check(right)) {
+        right_float = PyFloat_AsDouble(right);
+    } else {
+        Py_RETURN_NOTIMPLEMENTED;
     }
 
-    /* Use fmod for floating point modulo */
-    return PyFloat_FromDouble(fmod(left_val, right_val));
+    /* Perform operation */
+    if (left_is_int && right_is_int) {
+        /* Integer modulo */
+        if (right_int == 0) {
+            PyErr_SetString(PyExc_ZeroDivisionError, "integer division or modulo by zero");
+            return NULL;
+        }
+        /* Python modulo semantics (same sign as divisor) */
+        long long result = left_int % right_int;
+        if (result != 0 && (left_int ^ right_int) < 0)
+            result += right_int;
+        return PyLong_FromLongLong(result);
+    } else {
+        /* Float modulo */
+        double left_val = left_is_int ? (double)left_int : left_float;
+        double right_val = right_is_int ? (double)right_int : right_float;
+        if (right_val == 0.0) {
+            PyErr_SetString(PyExc_ZeroDivisionError, "float modulo");
+            return NULL;
+        }
+        return PyFloat_FromDouble(fmod(left_val, right_val));
+    }
 }
 
 /* FyGeneric as number */
@@ -1699,6 +1887,57 @@ static PyNumberMethods FyGeneric_as_number = {
     .nb_bool = (inquiry)FyGeneric_bool,
     .nb_int = (unaryfunc)FyGeneric_int,
     .nb_float = (unaryfunc)FyGeneric_float,
+};
+
+/* FyGeneric: __class__ property getter - returns appropriate Python type */
+static PyObject *
+FyGeneric_get_class(FyGenericObject *self, void *Py_UNUSED(closure))
+{
+    enum fy_generic_type type = fy_get_type(self->fyg);
+
+    switch (type) {
+    case FYGT_NULL:
+        /* None's type */
+        Py_INCREF(Py_TYPE(Py_None));
+        return (PyObject *)Py_TYPE(Py_None);
+    case FYGT_BOOL:
+        Py_INCREF(&PyBool_Type);
+        return (PyObject *)&PyBool_Type;
+    case FYGT_INT:
+        Py_INCREF(&PyLong_Type);
+        return (PyObject *)&PyLong_Type;
+    case FYGT_FLOAT:
+        Py_INCREF(&PyFloat_Type);
+        return (PyObject *)&PyFloat_Type;
+    case FYGT_STRING:
+        Py_INCREF(&PyUnicode_Type);
+        return (PyObject *)&PyUnicode_Type;
+    case FYGT_SEQUENCE:
+        Py_INCREF(&PyList_Type);
+        return (PyObject *)&PyList_Type;
+    case FYGT_MAPPING:
+        Py_INCREF(&PyDict_Type);
+        return (PyObject *)&PyDict_Type;
+    default:
+        /* For unknown types, return the actual FyGeneric type */
+        Py_INCREF(&FyGenericType);
+        return (PyObject *)&FyGenericType;
+    }
+}
+
+/* FyGeneric: __class__ property setter - disallow changes */
+static int
+FyGeneric_set_class(FyGenericObject *Py_UNUSED(self), PyObject *Py_UNUSED(value), void *Py_UNUSED(closure))
+{
+    PyErr_SetString(PyExc_TypeError, "__class__ assignment not supported for FyGeneric");
+    return -1;
+}
+
+/* FyGeneric getsetters */
+static PyGetSetDef FyGeneric_getsetters[] = {
+    {"__class__", (getter)FyGeneric_get_class, (setter)FyGeneric_set_class,
+     "Dynamic class based on wrapped generic type", NULL},
+    {NULL}  /* Sentinel */
 };
 
 /* FyGeneric type object */
@@ -1719,6 +1958,7 @@ static PyTypeObject FyGenericType = {
     .tp_richcompare = FyGeneric_richcompare,
     .tp_iter = (getiterfunc)FyGeneric_iter,
     .tp_methods = FyGeneric_methods,
+    .tp_getset = FyGeneric_getsetters,
 };
 
 /* ========== Module Functions ========== */
