@@ -112,18 +112,21 @@ def get_memory_usage():
     process = psutil.Process(os.getpid())
     return process.memory_info().rss
 
-def benchmark_parser(name, parse_func, json_str, iterations=10):
-    """Benchmark a JSON parser."""
+def benchmark_parser(name, parse_func, iterations=10):
+    """Benchmark a JSON parser.
+
+    parse_func should be a callable that takes no arguments and returns the parsed result.
+    """
 
     # Warmup
     for _ in range(3):
-        parse_func(json_str)
+        parse_func()
 
     # Time measurement
     times = []
     for _ in range(iterations):
         start = time.perf_counter()
-        result = parse_func(json_str)
+        result = parse_func()
         elapsed = time.perf_counter() - start
         times.append(elapsed)
 
@@ -134,7 +137,7 @@ def benchmark_parser(name, parse_func, json_str, iterations=10):
     gc.collect()
     mem_before = get_memory_usage()
 
-    result = parse_func(json_str)
+    result = parse_func()
 
     gc.collect()
     mem_after = get_memory_usage()
@@ -149,14 +152,10 @@ def benchmark_parser(name, parse_func, json_str, iterations=10):
     }
 
 
-def load_json_file(filepath):
-    """Load JSON from a file."""
-    print(f"Loading JSON file: {filepath}")
+def get_file_info(filepath):
+    """Get file size information."""
     file_size_mb = os.path.getsize(filepath) / (1024 * 1024)
-    print(f"File size: {file_size_mb:.2f} MB")
-
-    with open(filepath, 'r') as f:
-        return f.read()
+    return file_size_mb
 
 
 def run_benchmark_file(filepath):
@@ -166,68 +165,66 @@ def run_benchmark_file(filepath):
     print(f"Benchmark: Real JSON File")
     print(f"{'='*70}")
 
-    # Load file
-    json_str = load_json_file(filepath)
-    json_size_mb = len(json_str) / (1024 * 1024)
-    print(f"Loaded: {json_size_mb:.2f} MB ({len(json_str):,} bytes)")
+    # Get file info
+    file_size_mb = get_file_info(filepath)
+    print(f"File: {filepath}")
+    print(f"Size: {file_size_mb:.2f} MB")
 
     # Adjust iterations based on file size
-    if json_size_mb > 100:
+    if file_size_mb > 100:
         iterations = 3
-        print(f"\n⚠ Large file detected ({json_size_mb:.0f} MB) - using {iterations} iterations")
+        print(f"\n⚠ Large file detected ({file_size_mb:.0f} MB) - using {iterations} iterations")
         print("   (This may take several minutes...)")
-    elif json_size_mb > 10:
+    elif file_size_mb > 10:
         iterations = 5
-        print(f"\n⚠ Medium-large file ({json_size_mb:.0f} MB) - using {iterations} iterations")
+        print(f"\n⚠ Medium-large file ({file_size_mb:.0f} MB) - using {iterations} iterations")
     else:
         iterations = 10
 
     results = []
 
-    # Standard library json
+    # Standard library json - uses json.load() to read directly from file
     print("\nBenchmarking json (stdlib)...")
     results.append(benchmark_parser(
         'json (stdlib)',
-        lambda s: json.loads(s),
-        json_str,
+        lambda: json.load(open(filepath, 'r')),
         iterations=iterations
     ))
 
-    # libfyaml with dedup
+    # libfyaml with dedup - uses load() to read directly from file
     print("Benchmarking libfyaml (dedup=True)...")
     results.append(benchmark_parser(
         'libfyaml (dedup=True)',
-        lambda s: libfyaml.loads(s, mode='json', dedup=True),
-        json_str,
+        lambda: libfyaml.load(open(filepath, 'r'), mode='json', dedup=True),
         iterations=iterations
     ))
 
-    # libfyaml without dedup
+    # libfyaml without dedup - uses load() to read directly from file
     print("Benchmarking libfyaml (dedup=False)...")
     results.append(benchmark_parser(
         'libfyaml (dedup=False)',
-        lambda s: libfyaml.loads(s, mode='json', dedup=False),
-        json_str,
+        lambda: libfyaml.load(open(filepath, 'r'), mode='json', dedup=False),
         iterations=iterations
     ))
 
-    # orjson if available
+    # orjson if available - needs to read entire file since it only has loads()
     if HAS_ORJSON:
         print("Benchmarking orjson...")
+        # orjson doesn't have load(), only loads() - so we need to read the file
+        with open(filepath, 'rb') as f:
+            orjson_data = f.read()
         results.append(benchmark_parser(
             'orjson',
-            lambda s: orjson.loads(s.encode()),
-            json_str,
+            lambda: orjson.loads(orjson_data),
             iterations=iterations
         ))
 
-    # ujson if available
+    # ujson if available - has ujson.load()
     if HAS_UJSON:
         print("Benchmarking ujson...")
         results.append(benchmark_parser(
             'ujson',
-            lambda s: ujson.loads(s),
-            json_str,
+            lambda: ujson.load(open(filepath, 'r')),
             iterations=iterations
         ))
 
@@ -280,38 +277,34 @@ def run_benchmark(size, with_repetition):
     # Standard library json
     results.append(benchmark_parser(
         'json (stdlib)',
-        lambda s: json.loads(s),
-        json_str
+        lambda: json.loads(json_str)
     ))
 
     # libfyaml with dedup
     results.append(benchmark_parser(
         'libfyaml (dedup=True)',
-        lambda s: libfyaml.loads(s, mode='json', dedup=True),
-        json_str
+        lambda: libfyaml.loads(json_str, mode='json', dedup=True)
     ))
 
     # libfyaml without dedup
     results.append(benchmark_parser(
         'libfyaml (dedup=False)',
-        lambda s: libfyaml.loads(s, mode='json', dedup=False),
-        json_str
+        lambda: libfyaml.loads(json_str, mode='json', dedup=False)
     ))
 
     # orjson if available
     if HAS_ORJSON:
+        json_bytes = json_str.encode()
         results.append(benchmark_parser(
             'orjson',
-            lambda s: orjson.loads(s.encode()),
-            json_str
+            lambda: orjson.loads(json_bytes)
         ))
 
     # ujson if available
     if HAS_UJSON:
         results.append(benchmark_parser(
             'ujson',
-            lambda s: ujson.loads(s),
-            json_str
+            lambda: ujson.loads(json_str)
         ))
 
     # Print results table
