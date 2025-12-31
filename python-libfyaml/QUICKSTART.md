@@ -506,11 +506,13 @@ if 'key' in data:
 ### Issue: Need to modify data
 
 ```python
-# FyGeneric is immutable - convert to Python dict first
+# Option 1: Parse as mutable (if supported)
+data = libfyaml.loads(yaml, mutable=True)
+data['new_key'] = 'value'
+
+# Option 2: Convert to Python dict
 data = libfyaml.loads(yaml)
 mutable_dict = data.to_python()
-
-# Now you can modify
 mutable_dict['new_key'] = 'value'
 mutable_dict['existing_key'] = 'new_value'
 ```
@@ -518,18 +520,23 @@ mutable_dict['existing_key'] = 'new_value'
 ### Issue: Writing YAML back
 
 ```python
-# Currently, use PyYAML for writing
-import yaml
+# Use dumps() to emit YAML
+import libfyaml
 
 data = libfyaml.loads(yaml_string)
-python_dict = data.to_python()
 
-# Modify
+# Convert to mutable, modify, write
+python_dict = data.to_python()
 python_dict['updated'] = True
 
-# Write back
+# Write back using libfyaml
+yaml_str = libfyaml.dumps(python_dict)
 with open('output.yaml', 'w') as f:
-    yaml.dump(python_dict, f)
+    f.write(yaml_str)
+
+# Or use dump() directly
+with open('output.yaml', 'w') as f:
+    libfyaml.dump(python_dict, f)
 ```
 
 ## API Reference (Quick)
@@ -599,10 +606,10 @@ data.get(key, default)  # Get with default
 ### Common Questions
 
 **Q: Is it thread-safe?**
-A: FyGeneric objects are immutable and safe to read from multiple threads.
+A: FyGeneric objects are immutable by default and safe to read from multiple threads.
 
 **Q: Can I modify the parsed data?**
-A: No, FyGeneric is immutable. Convert to Python dict first: `data.to_python()`
+A: FyGeneric is immutable by default. Use `mutable=True` when parsing, or convert to Python dict: `data.to_python()`
 
 **Q: Why use this over PyYAML?**
 A: 22x faster, 7.7x less memory, same API
