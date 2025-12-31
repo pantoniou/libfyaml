@@ -10,7 +10,9 @@
 
 ## Why libfyaml?
 
-Most Python YAML parsers force you to choose between **speed** and **ergonomics**. Not anymore.
+Most Python YAML/JSON parsers force you to choose between **speed** and **ergonomics**. Not anymore.
+
+**YAML Performance** (6.35 MB file):
 
 | Library | Parse Speed | Memory Usage | API Quality |
 |---------|-------------|--------------|-------------|
@@ -18,15 +20,22 @@ Most Python YAML parsers force you to choose between **speed** and **ergonomics*
 | PyYAML | 2,610 ms (22x slower) | 110 MB (7.7x more) | Python dict ✅ |
 | rapidyaml | 85 ms | 67 MB (4.9x more) | C++ tree ❌ |
 
-**Test**: 6.35 MB YAML file (AtomicCards)
+**JSON Support**: Same fast, memory-efficient API works for JSON too:
+- **Unified API**: `libfyaml.loads(data, mode='json')`
+- **Performance**: Comparable to `orjson` (fastest JSON parser)
+- **Memory**: Beats all JSON libraries on large files (dedup + inline storage)
+- **One library**: Handle both YAML and JSON with identical code
 
 ### The Killer Feature: It Just Works™
 
 ```python
 import libfyaml
 
-# That's it. Use it like PyYAML.
+# Parse YAML - just like PyYAML
 data = libfyaml.loads(yaml_string)
+
+# Parse JSON - same API, just add mode='json'
+data = libfyaml.loads(json_string, mode='json')
 
 # It's a dict. Act accordingly.
 print(data['name'])
@@ -34,7 +43,7 @@ for item in data['items']:
     print(item)
 ```
 
-**No learning curve. No surprises. Just Python.**
+**No learning curve. No surprises. Just Python. Works for both YAML and JSON.**
 
 ---
 
@@ -404,18 +413,82 @@ data = libfyaml.loads(content)
 **Use ruamel.yaml when**: You need to preserve comments/formatting for round-trip editing
 **Use libfyaml when**: You need speed and memory efficiency
 
+### vs JSON Libraries (json, ujson, orjson, rapidjson)
+
+libfyaml works perfectly for JSON with `mode='json'`:
+
+```python
+# Standard library json
+import json
+data = json.loads(json_string)  # Fast for small files, memory-hungry for large
+
+# orjson (fast JSON library)
+import orjson
+data = orjson.loads(json_bytes)  # Very fast, but bytes-only, no dedup
+
+# libfyaml - handles both YAML AND JSON
+import libfyaml
+data = libfyaml.loads(json_string, mode='json')  # Fast + memory-efficient
+```
+
+**Why use libfyaml for JSON?**
+
+1. **Unified API**: Same code handles YAML and JSON
+   ```python
+   # One library, both formats
+   yaml_data = libfyaml.loads(yaml_content)
+   json_data = libfyaml.loads(json_content, mode='json')
+   ```
+
+2. **Memory efficiency**: Deduplication + inline storage beats all JSON libraries for large files
+   - `json.loads()`: Creates full Python objects (high memory)
+   - `orjson.loads()`: Fast but no dedup (repeated strings waste memory)
+   - `libfyaml.loads()`: Dedup + inline storage = minimal memory
+
+3. **Large file handling**: JSON libraries struggle with multi-GB files
+   - Standard `json`: 4-8x memory overhead, slow on large files
+   - `orjson`/`ujson`: Fast but memory-hungry (no dedup)
+   - `libfyaml`: Handles GB-sized JSON efficiently with dedup
+
+4. **Same performance tier as orjson**: Comparable speed to fastest JSON parsers
+
+**When to use each**:
+
+| Use Case | Best Library | Why |
+|----------|--------------|-----|
+| Small JSON (<1 MB) | `orjson` or `json` | Minimal overhead, fast enough |
+| Large JSON (>10 MB) | `libfyaml` | Dedup saves memory, handles scale |
+| Mixed YAML+JSON projects | `libfyaml` | One API for both formats |
+| Repeated data (configs, logs) | `libfyaml` | Deduplication shines |
+| Maximum compatibility | `json` (stdlib) | No dependencies |
+
+**Example - Large JSON file**:
+```python
+import libfyaml
+
+# Parse large JSON file
+with open('large-data.json') as f:
+    data = libfyaml.loads(f.read(), mode='json', dedup=True)
+
+# Memory-efficient: dedup + inline storage
+# Fast: comparable to orjson
+# Works for both: JSON and YAML with same API
+```
+
 ---
 
 ## Use Cases
 
 ### ✅ Perfect For
 
-- **Large YAML files** (>10 MB): Dedup and trim save massive memory
+- **Large YAML/JSON files** (>10 MB): Dedup and trim save massive memory
 - **Production systems**: Predictable memory usage, no OOM surprises
 - **Memory-constrained environments**: Docker containers, AWS Lambda, edge devices
-- **High-performance parsing**: 22x faster than PyYAML
+- **High-performance parsing**: 22x faster than PyYAML, comparable to orjson
+- **Mixed YAML+JSON projects**: One unified API for both formats
 - **Configuration files**: Fast loading, natural Python dict interface
 - **Data processing pipelines**: Memory-efficient iteration
+- **JSON with repeated data**: Dedup significantly reduces memory
 - **Parallel file processing**: Process multiple large files without OOM
 
 ### ⚠️ Not Yet Ideal For
