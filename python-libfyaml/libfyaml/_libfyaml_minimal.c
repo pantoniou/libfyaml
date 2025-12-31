@@ -272,6 +272,19 @@ FyGeneric_str(FyGenericObject *self)
 static PyObject *
 FyGeneric_int(FyGenericObject *self)
 {
+    enum fy_generic_type type = fy_get_type(self->fyg);
+    if (type == FYGT_INT) {
+        /* Get decorated int to check if it's unsigned and large */
+        fy_generic_decorated_int dint = fy_cast(self->fyg, fy_dint_empty);
+        if (dint.flags & FYGDIF_UNSIGNED_RANGE_EXTEND) {
+            /* Unsigned value > LLONG_MAX */
+            return PyLong_FromUnsignedLongLong(dint.uv);
+        } else {
+            /* Regular signed long long */
+            return PyLong_FromLongLong(dint.sv);
+        }
+    }
+    /* For non-integer types, use standard cast */
     return PyLong_FromLongLong(fy_cast(self->fyg, (long long)0));
 }
 
@@ -487,8 +500,17 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
                 Py_RETURN_FALSE;
         }
 
-        case FYGT_INT:
-            return PyLong_FromLongLong(fy_cast(self->fyg, (long long)0));
+        case FYGT_INT: {
+            /* Get decorated int to check if it's unsigned and large */
+            fy_generic_decorated_int dint = fy_cast(self->fyg, fy_dint_empty);
+            if (dint.flags & FYGDIF_UNSIGNED_RANGE_EXTEND) {
+                /* Unsigned value > LLONG_MAX */
+                return PyLong_FromUnsignedLongLong(dint.uv);
+            } else {
+                /* Regular signed long long */
+                return PyLong_FromLongLong(dint.sv);
+            }
+        }
 
         case FYGT_FLOAT:
             return PyFloat_FromDouble(fy_cast(self->fyg, (double)0.0));
@@ -1438,28 +1460,45 @@ static PyMappingMethods FyGeneric_as_mapping = {
 
 /* Structure to hold extracted numeric operand */
 typedef struct {
-    int is_int;          /* 1 if integer, 0 if float */
-    long long int_val;   /* integer value (if is_int) */
-    double float_val;    /* float value (if !is_int) */
+    int is_int;              /* 1 if integer, 0 if float */
+    int is_unsigned_large;   /* 1 if unsigned value > LLONG_MAX */
+    long long int_val;       /* signed integer value (if is_int && !is_unsigned_large) */
+    unsigned long long uint_val; /* unsigned integer value (if is_unsigned_large) */
+    double float_val;        /* float value (if !is_int) */
 } numeric_operand;
 
 /* Helper: Extract numeric operand from FyGeneric or Python object
- * Returns: 0 on success, -1 on error (sets exception), -2 for NOTIMPLEMENTED */
+ * Returns: 0 on success, -1 on error (sets exception), -2 for NOTIMPLEMENTED, -3 for overflow (returns Python object) */
 static int
-extract_numeric_operand(PyObject *obj, numeric_operand *operand, const char *op_name)
+extract_numeric_operand(PyObject *obj, numeric_operand *operand, const char *op_name, PyObject **py_obj)
 {
     /* Initialize to zero */
     operand->is_int = 0;
+    operand->is_unsigned_large = 0;
     operand->int_val = 0;
+    operand->uint_val = 0;
     operand->float_val = 0.0;
+    *py_obj = NULL;
 
     /* Handle FyGeneric objects */
     if (Py_TYPE(obj) == &FyGenericType) {
         enum fy_generic_type type = fy_get_type(((FyGenericObject *)obj)->fyg);
         if (type == FYGT_INT) {
-            operand->int_val = fy_cast(((FyGenericObject *)obj)->fyg, (long long)0);
-            operand->is_int = 1;
-            return 0;
+            /* Get decorated int to check if it's unsigned and large */
+            fy_generic_decorated_int dint = fy_cast(((FyGenericObject *)obj)->fyg, fy_dint_empty);
+
+            if (dint.flags & FYGDIF_UNSIGNED_RANGE_EXTEND) {
+                /* Unsigned value > LLONG_MAX - convert to Python for arbitrary precision */
+                *py_obj = PyLong_FromUnsignedLongLong(dint.uv);
+                if (!*py_obj)
+                    return -1;
+                return -3;  /* Overflow - use Python object */
+            } else {
+                /* Regular signed long long */
+                operand->int_val = dint.sv;
+                operand->is_int = 1;
+                return 0;
+            }
         } else if (type == FYGT_FLOAT) {
             operand->float_val = fy_cast(((FyGenericObject *)obj)->fyg, (double)0.0);
             operand->is_int = 0;
@@ -1472,9 +1511,32 @@ extract_numeric_operand(PyObject *obj, numeric_operand *operand, const char *op_
 
     /* Handle Python int */
     if (PyLong_Check(obj)) {
-        operand->int_val = PyLong_AsLongLong(obj);
-        if (operand->int_val == -1 && PyErr_Occurred())
-            return -1;
+        /* Try to extract as long long first */
+        long long val = PyLong_AsLongLong(obj);
+        if (val == -1 && PyErr_Occurred()) {
+            PyErr_Clear();
+            /* Might be too large - try unsigned long long */
+            unsigned long long uval = PyLong_AsUnsignedLongLong(obj);
+            if (uval == (unsigned long long)-1 && PyErr_Occurred()) {
+                /* Overflow even for unsigned long long - use Python's arbitrary precision */
+                PyErr_Clear();
+                *py_obj = obj;
+                Py_INCREF(obj);
+                return -3;  /* Overflow - use Python object */
+            }
+            /* Check if it fits in unsigned but not signed range */
+            if (uval > (unsigned long long)LLONG_MAX) {
+                operand->uint_val = uval;
+                operand->is_int = 1;
+                operand->is_unsigned_large = 1;
+                return 0;
+            }
+            /* It fits in signed range despite overflow - shouldn't happen */
+            operand->int_val = (long long)uval;
+            operand->is_int = 1;
+            return 0;
+        }
+        operand->int_val = val;
         operand->is_int = 1;
         return 0;
     }
@@ -1495,25 +1557,66 @@ static PyObject *
 FyGeneric_add(PyObject *left, PyObject *right)
 {
     numeric_operand left_op, right_op;
+    PyObject *left_py = NULL, *right_py = NULL, *result = NULL;
     int rc;
 
     /* Extract left operand */
-    rc = extract_numeric_operand(left, &left_op, "+");
+    rc = extract_numeric_operand(left, &left_op, "+", &left_py);
     if (rc == -1)
         return NULL;  /* Error already set */
     if (rc == -2)
         Py_RETURN_NOTIMPLEMENTED;
 
     /* Extract right operand */
-    rc = extract_numeric_operand(right, &right_op, "+");
-    if (rc == -1)
+    rc = extract_numeric_operand(right, &right_op, "+", &right_py);
+    if (rc == -1) {
+        Py_XDECREF(left_py);
         return NULL;  /* Error already set */
-    if (rc == -2)
+    }
+    if (rc == -2) {
+        Py_XDECREF(left_py);
         Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    /* If either operand overflowed, use Python's arbitrary precision */
+    if (left_py || right_py) {
+        if (!left_py) {
+            if (left_op.is_unsigned_large)
+                left_py = PyLong_FromUnsignedLongLong(left_op.uint_val);
+            else
+                left_py = PyLong_FromLongLong(left_op.int_val);
+        }
+        if (!right_py) {
+            if (right_op.is_unsigned_large)
+                right_py = PyLong_FromUnsignedLongLong(right_op.uint_val);
+            else
+                right_py = PyLong_FromLongLong(right_op.int_val);
+        }
+        if (left_py && right_py) {
+            result = PyNumber_Add(left_py, right_py);
+        }
+        Py_XDECREF(left_py);
+        Py_XDECREF(right_py);
+        return result;
+    }
 
     /* Perform operation preserving type */
     if (left_op.is_int && right_op.is_int) {
         /* Integer addition with overflow check */
+        if (left_op.is_unsigned_large || right_op.is_unsigned_large) {
+            /* Use Python for unsigned large values */
+            PyObject *left_obj = left_op.is_unsigned_large ?
+                PyLong_FromUnsignedLongLong(left_op.uint_val) :
+                PyLong_FromLongLong(left_op.int_val);
+            PyObject *right_obj = right_op.is_unsigned_large ?
+                PyLong_FromUnsignedLongLong(right_op.uint_val) :
+                PyLong_FromLongLong(right_op.int_val);
+            PyObject *result_obj = PyNumber_Add(left_obj, right_obj);
+            Py_DECREF(left_obj);
+            Py_DECREF(right_obj);
+            return result_obj;
+        }
+
         long long result;
         if (__builtin_add_overflow(left_op.int_val, right_op.int_val, &result)) {
             /* Overflow - use Python's arbitrary precision */
@@ -1527,8 +1630,17 @@ FyGeneric_add(PyObject *left, PyObject *right)
         return PyLong_FromLongLong(result);
     } else {
         /* Float arithmetic */
-        double left_val = left_op.is_int ? (double)left_op.int_val : left_op.float_val;
-        double right_val = right_op.is_int ? (double)right_op.int_val : right_op.float_val;
+        double left_val, right_val;
+        if (left_op.is_int) {
+            left_val = left_op.is_unsigned_large ? (double)left_op.uint_val : (double)left_op.int_val;
+        } else {
+            left_val = left_op.float_val;
+        }
+        if (right_op.is_int) {
+            right_val = right_op.is_unsigned_large ? (double)right_op.uint_val : (double)right_op.int_val;
+        } else {
+            right_val = right_op.float_val;
+        }
         return PyFloat_FromDouble(left_val + right_val);
     }
 }
@@ -1538,16 +1650,43 @@ static PyObject *
 FyGeneric_sub(PyObject *left, PyObject *right)
 {
     numeric_operand left_op, right_op;
+    PyObject *left_py = NULL, *right_py = NULL, *result = NULL;
     int rc;
 
     /* Extract operands */
-    rc = extract_numeric_operand(left, &left_op, "-");
+    rc = extract_numeric_operand(left, &left_op, "-", &left_py);
     if (rc == -1) return NULL;
     if (rc == -2) Py_RETURN_NOTIMPLEMENTED;
 
-    rc = extract_numeric_operand(right, &right_op, "-");
-    if (rc == -1) return NULL;
-    if (rc == -2) Py_RETURN_NOTIMPLEMENTED;
+    rc = extract_numeric_operand(right, &right_op, "-", &right_py);
+    if (rc == -1) {
+        Py_XDECREF(left_py);
+        return NULL;
+    }
+    if (rc == -2) {
+        Py_XDECREF(left_py);
+        Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    /* If either operand overflowed, use Python's arbitrary precision */
+    if (left_py || right_py || left_op.is_unsigned_large || right_op.is_unsigned_large) {
+        if (!left_py) {
+            left_py = left_op.is_unsigned_large ?
+                PyLong_FromUnsignedLongLong(left_op.uint_val) :
+                PyLong_FromLongLong(left_op.int_val);
+        }
+        if (!right_py) {
+            right_py = right_op.is_unsigned_large ?
+                PyLong_FromUnsignedLongLong(right_op.uint_val) :
+                PyLong_FromLongLong(right_op.int_val);
+        }
+        if (left_py && right_py) {
+            result = PyNumber_Subtract(left_py, right_py);
+        }
+        Py_XDECREF(left_py);
+        Py_XDECREF(right_py);
+        return result;
+    }
 
     /* Perform operation preserving type */
     if (left_op.is_int && right_op.is_int) {
@@ -1576,16 +1715,43 @@ static PyObject *
 FyGeneric_mul(PyObject *left, PyObject *right)
 {
     numeric_operand left_op, right_op;
+    PyObject *left_py = NULL, *right_py = NULL, *result = NULL;
     int rc;
 
     /* Extract operands */
-    rc = extract_numeric_operand(left, &left_op, "*");
+    rc = extract_numeric_operand(left, &left_op, "*", &left_py);
     if (rc == -1) return NULL;
     if (rc == -2) Py_RETURN_NOTIMPLEMENTED;
 
-    rc = extract_numeric_operand(right, &right_op, "*");
-    if (rc == -1) return NULL;
-    if (rc == -2) Py_RETURN_NOTIMPLEMENTED;
+    rc = extract_numeric_operand(right, &right_op, "*", &right_py);
+    if (rc == -1) {
+        Py_XDECREF(left_py);
+        return NULL;
+    }
+    if (rc == -2) {
+        Py_XDECREF(left_py);
+        Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    /* If either operand overflowed, use Python's arbitrary precision */
+    if (left_py || right_py || left_op.is_unsigned_large || right_op.is_unsigned_large) {
+        if (!left_py) {
+            left_py = left_op.is_unsigned_large ?
+                PyLong_FromUnsignedLongLong(left_op.uint_val) :
+                PyLong_FromLongLong(left_op.int_val);
+        }
+        if (!right_py) {
+            right_py = right_op.is_unsigned_large ?
+                PyLong_FromUnsignedLongLong(right_op.uint_val) :
+                PyLong_FromLongLong(right_op.int_val);
+        }
+        if (left_py && right_py) {
+            result = PyNumber_Multiply(left_py, right_py);
+        }
+        Py_XDECREF(left_py);
+        Py_XDECREF(right_py);
+        return result;
+    }
 
     /* Perform operation preserving type */
     if (left_op.is_int && right_op.is_int) {
@@ -1614,20 +1780,44 @@ static PyObject *
 FyGeneric_truediv(PyObject *left, PyObject *right)
 {
     numeric_operand left_op, right_op;
+    PyObject *left_py = NULL, *right_py = NULL;
     int rc;
 
     /* Extract operands */
-    rc = extract_numeric_operand(left, &left_op, "/");
+    rc = extract_numeric_operand(left, &left_op, "/", &left_py);
     if (rc == -1) return NULL;
     if (rc == -2) Py_RETURN_NOTIMPLEMENTED;
 
-    rc = extract_numeric_operand(right, &right_op, "/");
-    if (rc == -1) return NULL;
-    if (rc == -2) Py_RETURN_NOTIMPLEMENTED;
+    rc = extract_numeric_operand(right, &right_op, "/", &right_py);
+    if (rc == -1) {
+        Py_XDECREF(left_py);
+        return NULL;
+    }
+    if (rc == -2) {
+        Py_XDECREF(left_py);
+        Py_RETURN_NOTIMPLEMENTED;
+    }
 
     /* Convert both to double (true division always returns float) */
-    double left_val = left_op.is_int ? (double)left_op.int_val : left_op.float_val;
-    double right_val = right_op.is_int ? (double)right_op.int_val : right_op.float_val;
+    double left_val, right_val;
+
+    if (left_py) {
+        left_val = PyLong_AsDouble(left_py);
+        Py_DECREF(left_py);
+    } else if (left_op.is_int) {
+        left_val = left_op.is_unsigned_large ? (double)left_op.uint_val : (double)left_op.int_val;
+    } else {
+        left_val = left_op.float_val;
+    }
+
+    if (right_py) {
+        right_val = PyLong_AsDouble(right_py);
+        Py_DECREF(right_py);
+    } else if (right_op.is_int) {
+        right_val = right_op.is_unsigned_large ? (double)right_op.uint_val : (double)right_op.int_val;
+    } else {
+        right_val = right_op.float_val;
+    }
 
     if (right_val == 0.0) {
         PyErr_SetString(PyExc_ZeroDivisionError, "division by zero");
@@ -1642,19 +1832,46 @@ static PyObject *
 FyGeneric_floordiv(PyObject *left, PyObject *right)
 {
     numeric_operand left_op, right_op;
+    PyObject *left_py = NULL, *right_py = NULL, *result = NULL;
     int rc;
 
     /* Extract operands */
-    rc = extract_numeric_operand(left, &left_op, "//");
+    rc = extract_numeric_operand(left, &left_op, "//", &left_py);
     if (rc == -1) return NULL;
     if (rc == -2) Py_RETURN_NOTIMPLEMENTED;
 
-    rc = extract_numeric_operand(right, &right_op, "//");
-    if (rc == -1) return NULL;
-    if (rc == -2) Py_RETURN_NOTIMPLEMENTED;
+    rc = extract_numeric_operand(right, &right_op, "//", &right_py);
+    if (rc == -1) {
+        Py_XDECREF(left_py);
+        return NULL;
+    }
+    if (rc == -2) {
+        Py_XDECREF(left_py);
+        Py_RETURN_NOTIMPLEMENTED;
+    }
 
     /* Perform operation */
-    if (left_op.is_int && right_op.is_int) {
+    if ((left_op.is_int || left_py) && (right_op.is_int || right_py)) {
+        /* Integer floor division - use Python for large or overflow values */
+        if (left_py || right_py || left_op.is_unsigned_large || right_op.is_unsigned_large) {
+            if (!left_py) {
+                left_py = left_op.is_unsigned_large ?
+                    PyLong_FromUnsignedLongLong(left_op.uint_val) :
+                    PyLong_FromLongLong(left_op.int_val);
+            }
+            if (!right_py) {
+                right_py = right_op.is_unsigned_large ?
+                    PyLong_FromUnsignedLongLong(right_op.uint_val) :
+                    PyLong_FromLongLong(right_op.int_val);
+            }
+            if (left_py && right_py) {
+                result = PyNumber_FloorDivide(left_py, right_py);
+            }
+            Py_XDECREF(left_py);
+            Py_XDECREF(right_py);
+            return result;
+        }
+
         /* Integer floor division */
         if (right_op.int_val == 0) {
             PyErr_SetString(PyExc_ZeroDivisionError, "integer division or modulo by zero");
@@ -1667,8 +1884,26 @@ FyGeneric_floordiv(PyObject *left, PyObject *right)
         return PyLong_FromLongLong(result);
     } else {
         /* Float floor division */
-        double left_val = left_op.is_int ? (double)left_op.int_val : left_op.float_val;
-        double right_val = right_op.is_int ? (double)right_op.int_val : right_op.float_val;
+        double left_val, right_val;
+
+        if (left_py) {
+            left_val = PyLong_AsDouble(left_py);
+            Py_DECREF(left_py);
+        } else if (left_op.is_int) {
+            left_val = left_op.is_unsigned_large ? (double)left_op.uint_val : (double)left_op.int_val;
+        } else {
+            left_val = left_op.float_val;
+        }
+
+        if (right_py) {
+            right_val = PyLong_AsDouble(right_py);
+            Py_DECREF(right_py);
+        } else if (right_op.is_int) {
+            right_val = right_op.is_unsigned_large ? (double)right_op.uint_val : (double)right_op.int_val;
+        } else {
+            right_val = right_op.float_val;
+        }
+
         if (right_val == 0.0) {
             PyErr_SetString(PyExc_ZeroDivisionError, "float floor division by zero");
             return NULL;
@@ -1682,19 +1917,46 @@ static PyObject *
 FyGeneric_mod(PyObject *left, PyObject *right)
 {
     numeric_operand left_op, right_op;
+    PyObject *left_py = NULL, *right_py = NULL, *result = NULL;
     int rc;
 
     /* Extract operands */
-    rc = extract_numeric_operand(left, &left_op, "%");
+    rc = extract_numeric_operand(left, &left_op, "%", &left_py);
     if (rc == -1) return NULL;
     if (rc == -2) Py_RETURN_NOTIMPLEMENTED;
 
-    rc = extract_numeric_operand(right, &right_op, "%");
-    if (rc == -1) return NULL;
-    if (rc == -2) Py_RETURN_NOTIMPLEMENTED;
+    rc = extract_numeric_operand(right, &right_op, "%", &right_py);
+    if (rc == -1) {
+        Py_XDECREF(left_py);
+        return NULL;
+    }
+    if (rc == -2) {
+        Py_XDECREF(left_py);
+        Py_RETURN_NOTIMPLEMENTED;
+    }
 
     /* Perform operation */
-    if (left_op.is_int && right_op.is_int) {
+    if ((left_op.is_int || left_py) && (right_op.is_int || right_py)) {
+        /* Integer modulo - use Python for large or overflow values */
+        if (left_py || right_py || left_op.is_unsigned_large || right_op.is_unsigned_large) {
+            if (!left_py) {
+                left_py = left_op.is_unsigned_large ?
+                    PyLong_FromUnsignedLongLong(left_op.uint_val) :
+                    PyLong_FromLongLong(left_op.int_val);
+            }
+            if (!right_py) {
+                right_py = right_op.is_unsigned_large ?
+                    PyLong_FromUnsignedLongLong(right_op.uint_val) :
+                    PyLong_FromLongLong(right_op.int_val);
+            }
+            if (left_py && right_py) {
+                result = PyNumber_Remainder(left_py, right_py);
+            }
+            Py_XDECREF(left_py);
+            Py_XDECREF(right_py);
+            return result;
+        }
+
         /* Integer modulo */
         if (right_op.int_val == 0) {
             PyErr_SetString(PyExc_ZeroDivisionError, "integer division or modulo by zero");
@@ -1707,8 +1969,26 @@ FyGeneric_mod(PyObject *left, PyObject *right)
         return PyLong_FromLongLong(result);
     } else {
         /* Float modulo */
-        double left_val = left_op.is_int ? (double)left_op.int_val : left_op.float_val;
-        double right_val = right_op.is_int ? (double)right_op.int_val : right_op.float_val;
+        double left_val, right_val;
+
+        if (left_py) {
+            left_val = PyLong_AsDouble(left_py);
+            Py_DECREF(left_py);
+        } else if (left_op.is_int) {
+            left_val = left_op.is_unsigned_large ? (double)left_op.uint_val : (double)left_op.int_val;
+        } else {
+            left_val = left_op.float_val;
+        }
+
+        if (right_py) {
+            right_val = PyLong_AsDouble(right_py);
+            Py_DECREF(right_py);
+        } else if (right_op.is_int) {
+            right_val = right_op.is_unsigned_large ? (double)right_op.uint_val : (double)right_op.int_val;
+        } else {
+            right_val = right_op.float_val;
+        }
+
         if (right_val == 0.0) {
             PyErr_SetString(PyExc_ZeroDivisionError, "float modulo");
             return NULL;
@@ -1968,9 +2248,29 @@ python_to_generic(struct fy_generic_builder *gb, PyObject *obj)
     }
 
     if (PyLong_Check(obj)) {
+        /* Try to extract as long long first */
         long long val = PyLong_AsLongLong(obj);
-        if (val == -1 && PyErr_Occurred())
-            return fy_invalid;
+        if (val == -1 && PyErr_Occurred()) {
+            PyErr_Clear();
+            /* Might be too large - try unsigned long long */
+            unsigned long long uval = PyLong_AsUnsignedLongLong(obj);
+            if (uval == (unsigned long long)-1 && PyErr_Occurred()) {
+                /* Overflow even for unsigned long long - Python int too large */
+                return fy_invalid;
+            }
+            /* Check if it exceeds LLONG_MAX - need decorated int */
+            if (uval > (unsigned long long)LLONG_MAX) {
+                /* Create decorated int with unsigned range extend flag */
+                fy_generic_decorated_int dint = {
+                    .uv = uval,
+                    .flags = FYGDIF_UNSIGNED_RANGE_EXTEND
+                };
+                return fy_gb_dint_type_create_out_of_place(gb, dint);
+            }
+            /* Fits in signed range despite PyLong_AsLongLong overflow */
+            return fy_gb_long_long_create(gb, (long long)uval);
+        }
+        /* Normal signed long long */
         return fy_gb_long_long_create(gb, val);
     }
 
