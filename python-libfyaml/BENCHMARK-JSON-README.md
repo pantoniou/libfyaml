@@ -4,6 +4,12 @@
 
 The `benchmark_json.py` script benchmarks libfyaml's JSON parsing performance against other popular Python JSON libraries using real-world data.
 
+**Key Features:**
+- ✅ **Direct file loading:** Uses `libfyaml.load()` and `json.load()` to read directly from files without pre-loading into memory
+- ✅ **Real-world data:** Benchmarks with actual production JSON (AllPrintings.json)
+- ✅ **Memory efficient:** Measures actual parsing memory, not file loading overhead
+- ✅ **Fair comparison:** Each library uses its most efficient file-loading method
+
 ## Usage
 
 ### With Real Data (Default)
@@ -85,7 +91,9 @@ With the AllPrintings.json file (428MB):
 ### Included by Default
 
 - **json (stdlib):** Python's built-in JSON library
+  - Uses: `json.load(fp)` - direct file loading
 - **libfyaml:** This library (with/without dedup)
+  - Uses: `libfyaml.load(fp, mode='json', dedup=...)` - direct file loading with optional dedup
 
 ### Optional (if installed)
 
@@ -93,11 +101,13 @@ With the AllPrintings.json file (428MB):
   ```bash
   pip install orjson
   ```
+  - Uses: `orjson.loads(data)` - requires pre-loading file (no file API)
 
 - **ujson:** Ultra-fast JSON library in C
   ```bash
   pip install ujson
   ```
+  - Uses: `ujson.load(fp)` - direct file loading
 
 ## Requirements
 
