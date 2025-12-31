@@ -45,8 +45,10 @@ static PyObject *fy_generic_to_python_primitive(fy_generic value)
         return PyLong_FromLongLong(fy_cast(value, (long long)-1LL));
     case FYGT_FLOAT:
         return PyFloat_FromDouble(fy_cast(value, (double)0.0));
-    case FYGT_STRING:
-        return PyUnicode_FromString(fy_cast(value, ""));
+    case FYGT_STRING: {
+        fy_generic_sized_string szstr = fy_cast(value, fy_szstr_empty);
+        return PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+    }
     case FYGT_SEQUENCE:
         /* Sequences cannot be dict keys (unhashable in Python) */
         PyErr_SetString(PyExc_TypeError, "unhashable type: 'sequence'");
@@ -238,8 +240,10 @@ FyGeneric_str(FyGenericObject *self)
     enum fy_generic_type type = fy_get_type(self->fyg);
 
     switch (type) {
-        case FYGT_STRING:
-            return PyUnicode_FromString(fy_cast(self->fyg, ""));
+        case FYGT_STRING: {
+            fy_generic_sized_string szstr = fy_cast(self->fyg, fy_szstr_empty);
+            return PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+        }
 
         case FYGT_INT:
             return PyUnicode_FromFormat("%lld", fy_cast(self->fyg, (long long)0));
@@ -294,8 +298,8 @@ FyGeneric_bool(FyGenericObject *self)
         case FYGT_FLOAT:
             return fy_cast(self->fyg, (double)0.0) != 0.0 ? 1 : 0;
         case FYGT_STRING: {
-            const char *str = fy_cast(self->fyg, "");
-            return (str && str[0]) ? 1 : 0;
+            fy_generic_sized_string szstr = fy_cast(self->fyg, fy_szstr_empty);
+            return szstr.size > 0 ? 1 : 0;
         }
         case FYGT_SEQUENCE:
         case FYGT_MAPPING:
@@ -489,8 +493,10 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
         case FYGT_FLOAT:
             return PyFloat_FromDouble(fy_cast(self->fyg, (double)0.0));
 
-        case FYGT_STRING:
-            return PyUnicode_FromString(fy_cast(self->fyg, ""));
+        case FYGT_STRING: {
+            fy_generic_sized_string szstr = fy_cast(self->fyg, fy_szstr_empty);
+            return PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+        }
 
         case FYGT_SEQUENCE: {
 
@@ -700,16 +706,25 @@ FyGeneric_richcompare(PyObject *self, PyObject *other, int op)
                     else Py_RETURN_FALSE; \
                 } \
                 case FYGT_STRING: { \
-                    const char *self_val = fy_cast(self_obj->fyg, ""); \
-                    const char *other_val = NULL; \
+                    fy_generic_sized_string self_szstr = fy_cast(self_obj->fyg, fy_szstr_empty); \
+                    const char *other_str = NULL; \
+                    Py_ssize_t other_size = 0; \
+                    int cmp; \
                     if (PyUnicode_Check(other)) { \
-                        other_val = PyUnicode_AsUTF8(other); \
+                        other_str = PyUnicode_AsUTF8AndSize(other, &other_size); \
+                        if (!other_str) return NULL; \
                     } else if (Py_TYPE(other) == &FyGenericType) { \
-                        other_val = fy_cast(((FyGenericObject *)other)->fyg, ""); \
+                        fy_generic_sized_string other_szstr = fy_cast(((FyGenericObject *)other)->fyg, fy_szstr_empty); \
+                        other_str = other_szstr.data; \
+                        other_size = other_szstr.size; \
                     } else { \
                         Py_RETURN_NOTIMPLEMENTED; \
                     } \
-                    int cmp = strcmp(self_val, other_val); \
+                    /* Compare using memcmp for binary safety */ \
+                    size_t min_size = self_szstr.size < (size_t)other_size ? self_szstr.size : (size_t)other_size; \
+                    cmp = memcmp(self_szstr.data, other_str, min_size); \
+                    if (cmp == 0 && self_szstr.size != (size_t)other_size) \
+                        cmp = self_szstr.size < (size_t)other_size ? -1 : 1; \
                     if (cmp c_op 0) Py_RETURN_TRUE; \
                     else Py_RETURN_FALSE; \
                 } \
@@ -896,8 +911,8 @@ FyGeneric_format(FyGenericObject *self, PyObject *format_spec)
             py_obj = PyFloat_FromDouble(fy_cast(self->fyg, (double)0.0));
             break;
         case FYGT_STRING: {
-            const char *str = fy_cast(self->fyg, "");
-            py_obj = PyUnicode_FromString(str);
+            fy_generic_sized_string szstr = fy_cast(self->fyg, fy_szstr_empty);
+            py_obj = PyUnicode_FromStringAndSize(szstr.data, szstr.size);
             break;
         }
         default:
@@ -938,8 +953,8 @@ FyGeneric_getattro(FyGenericObject *self, PyObject *name)
     switch (type) {
         case FYGT_STRING: {
             /* Delegate to str methods */
-            const char *str = fy_cast(self->fyg, "");
-            py_obj = PyUnicode_FromString(str);
+            fy_generic_sized_string szstr = fy_cast(self->fyg, fy_szstr_empty);
+            py_obj = PyUnicode_FromStringAndSize(szstr.data, szstr.size);
             break;
         }
         case FYGT_INT:
@@ -1797,10 +1812,12 @@ FyGeneric_hash(FyGenericObject *self)
         temp_obj = PyFloat_FromDouble(fy_cast(self->fyg, (double)0.0));
         break;
 
-    case FYGT_STRING:
+    case FYGT_STRING: {
         /* Hash for strings */
-        temp_obj = PyUnicode_FromString(fy_cast(self->fyg, ""));
+        fy_generic_sized_string szstr = fy_cast(self->fyg, fy_szstr_empty);
+        temp_obj = PyUnicode_FromStringAndSize(szstr.data, szstr.size);
         break;
+    }
 
     case FYGT_SEQUENCE:
         /* Sequences are not hashable */
@@ -1965,10 +1982,11 @@ python_to_generic(struct fy_generic_builder *gb, PyObject *obj)
     }
 
     if (PyUnicode_Check(obj)) {
-        const char *str = PyUnicode_AsUTF8(obj);
+        Py_ssize_t size;
+        const char *str = PyUnicode_AsUTF8AndSize(obj, &size);
         if (str == NULL)
             return fy_invalid;
-        return fy_gb_string_create(gb, str);
+        return fy_gb_string_size_create(gb, str, (size_t)size);
     }
 
     if (PyList_Check(obj) || PyTuple_Check(obj)) {
@@ -2109,16 +2127,16 @@ libfyaml_dumps(PyObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    /* Extract the C string from the generic */
-    const char *yaml_str = fy_cast(emitted, "");
-    if (yaml_str == NULL) {
+    /* Extract the sized string from the generic */
+    fy_generic_sized_string szstr = fy_cast(emitted, fy_szstr_empty);
+    if (szstr.data == NULL) {
         fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_RuntimeError, "Failed to extract string from emitted generic");
         return NULL;
     }
 
     /* Create Python string (makes a copy) */
-    PyObject *result = PyUnicode_FromString(yaml_str);
+    PyObject *result = PyUnicode_FromStringAndSize(szstr.data, szstr.size);
 
     /* Clean up builder */
     fy_generic_builder_destroy(gb);
