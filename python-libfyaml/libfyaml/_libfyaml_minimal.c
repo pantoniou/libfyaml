@@ -1940,6 +1940,74 @@ static PyGetSetDef FyGeneric_getsetters[] = {
     {NULL}  /* Sentinel */
 };
 
+/* FyGeneric: __hash__ - compute hash of wrapped value */
+static Py_hash_t
+FyGeneric_hash(FyGenericObject *self)
+{
+    enum fy_generic_type type = fy_get_type(self->fyg);
+    PyObject *temp_obj = NULL;
+    Py_hash_t hash_value;
+
+    /* Only hashable types can be hashed */
+    switch (type) {
+    case FYGT_NULL:
+        /* Hash for None */
+        temp_obj = Py_None;
+        Py_INCREF(temp_obj);
+        break;
+
+    case FYGT_BOOL:
+        /* Hash for True/False */
+        temp_obj = PyBool_FromLong(fy_cast(self->fyg, (_Bool)false) ? 1 : 0);
+        break;
+
+    case FYGT_INT:
+        /* Hash for integers */
+        temp_obj = PyLong_FromLongLong(fy_cast(self->fyg, (long long)0));
+        break;
+
+    case FYGT_FLOAT:
+        /* Hash for floats */
+        temp_obj = PyFloat_FromDouble(fy_cast(self->fyg, (double)0.0));
+        break;
+
+    case FYGT_STRING:
+        /* Hash for strings */
+        temp_obj = PyUnicode_FromString(fy_cast(self->fyg, ""));
+        break;
+
+    case FYGT_SEQUENCE:
+        /* Sequences are not hashable */
+        PyErr_SetString(PyExc_TypeError, "unhashable type: 'sequence'");
+        return -1;
+
+    case FYGT_MAPPING:
+        /* Mappings are not hashable */
+        PyErr_SetString(PyExc_TypeError, "unhashable type: 'mapping'");
+        return -1;
+
+    case FYGT_INDIRECT:
+    case FYGT_ALIAS:
+        /* These should not appear here */
+        PyErr_SetString(PyExc_TypeError, "unhashable type: indirect/alias");
+        return -1;
+
+    default:
+        /* Unknown types are not hashable */
+        PyErr_Format(PyExc_TypeError, "unhashable type: %d", type);
+        return -1;
+    }
+
+    if (!temp_obj)
+        return -1;
+
+    /* Compute hash of the Python object */
+    hash_value = PyObject_Hash(temp_obj);
+    Py_DECREF(temp_obj);
+
+    return hash_value;
+}
+
 /* FyGeneric type object */
 static PyTypeObject FyGenericType = {
     PyVarObject_HEAD_INIT(NULL, 0)
@@ -1953,6 +2021,7 @@ static PyTypeObject FyGenericType = {
     .tp_as_number = &FyGeneric_as_number,
     .tp_as_sequence = &FyGeneric_as_sequence,
     .tp_as_mapping = &FyGeneric_as_mapping,
+    .tp_hash = (hashfunc)FyGeneric_hash,
     .tp_str = (reprfunc)FyGeneric_str,
     .tp_getattro = (getattrofunc)FyGeneric_getattro,
     .tp_richcompare = FyGeneric_richcompare,
