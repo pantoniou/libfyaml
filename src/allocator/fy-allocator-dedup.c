@@ -812,7 +812,7 @@ again:
 						if (a->flags & FYAF_TRACE) {
 							int i;
 							size_t j;
-							printf("%s: %p: dup-store %p 0x%016lx %zx:", __func__, a, de->mem, hash, total_size);
+							printf("%s: %p: dup-store %p 0x%016llx %zx:", __func__, a, de->mem, hash, total_size);
 							for (i = 0; i < iovcnt; i++) {
 								for (j = 0; j < iov[i].iov_len; j++) {
 									printf("%02x", (int)(((uint8_t *)iov[i].iov_base)[j]) & 0xff);
@@ -894,7 +894,7 @@ again:
 	if (a->flags & FYAF_TRACE) {
 		int i;
 		size_t j;
-		printf("%s: %p: new-store %p 0x%016lx %zx:", __func__, a, de->mem, hash, total_size);
+		printf("%s: %p: new-store %p 0x%016llx %zx:", __func__, a, de->mem, hash, total_size);
 		for (i = 0; i < iovcnt; i++) {
 			for (j = 0; j < iov[i].iov_len; j++) {
 				printf("%02x", (int)(((uint8_t *)iov[i].iov_base)[j]) & 0xff);
