@@ -8,10 +8,11 @@ the ability to check for the FyGeneric wrapper type.
 """
 
 import sys
+import os
 import unittest
 
 # Add parent directory to path for imports
-sys.path.insert(0, '.')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import libfyaml
 
