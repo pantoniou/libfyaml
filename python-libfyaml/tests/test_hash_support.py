@@ -7,10 +7,11 @@ or in sets, with hashes matching their native Python equivalents.
 """
 
 import sys
+import os
 import unittest
 
 # Add parent directory to path for imports
-sys.path.insert(0, '.')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import libfyaml
 
