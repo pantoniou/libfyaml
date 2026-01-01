@@ -292,6 +292,24 @@ FyGeneric_int(FyGenericObject *self)
 static PyObject *
 FyGeneric_float(FyGenericObject *self)
 {
+    enum fy_generic_type type = fy_get_type(self->fyg);
+
+    if (type == FYGT_INT) {
+        /* Check if we have decorated int (large unsigned) */
+        fy_generic_decorated_int dint = fy_cast(self->fyg, fy_dint_empty);
+
+        if (dint.flags & FYGDIF_UNSIGNED_RANGE_EXTEND) {
+            /* Large unsigned value - convert via Python int to preserve precision */
+            PyObject *py_int = PyLong_FromUnsignedLongLong(dint.uv);
+            if (!py_int)
+                return NULL;
+            PyObject *py_float = PyNumber_Float(py_int);
+            Py_DECREF(py_int);
+            return py_float;
+        }
+    }
+
+    /* Regular conversion */
     return PyFloat_FromDouble(fy_cast(self->fyg, (double)0.0));
 }
 
@@ -700,17 +718,90 @@ FyGeneric_richcompare(PyObject *self, PyObject *other, int op)
         case py_op: \
             switch (self_type) { \
                 case FYGT_INT: { \
-                    long long self_val = fy_cast(self_obj->fyg, (long long)0); \
-                    long long other_val; \
-                    if (PyLong_Check(other)) { \
-                        other_val = PyLong_AsLongLong(other); \
-                    } else if (Py_TYPE(other) == &FyGenericType) { \
-                        other_val = fy_cast(((FyGenericObject *)other)->fyg, (long long)0); \
+                    /* Check if we have decorated int (large unsigned) */ \
+                    fy_generic_decorated_int self_dint = fy_cast(self_obj->fyg, fy_dint_empty); \
+                    fy_generic_decorated_int other_dint; \
+                    PyObject *self_pyobj = NULL, *other_pyobj = NULL; \
+                    int use_python_cmp = 0; \
+                    int cmp_result; \
+                    long long self_val, other_val; \
+                    \
+                    /* Check if self needs Python comparison (large unsigned) */ \
+                    if (self_dint.flags & FYGDIF_UNSIGNED_RANGE_EXTEND) { \
+                        self_pyobj = PyLong_FromUnsignedLongLong(self_dint.uv); \
+                        if (!self_pyobj) return NULL; \
+                        use_python_cmp = 1; \
                     } else { \
+                        self_val = self_dint.sv; \
+                    } \
+                    \
+                    /* Handle other operand */ \
+                    if (PyLong_Check(other)) { \
+                        if (use_python_cmp) { \
+                            /* Self is large unsigned, just use other as-is */ \
+                            Py_INCREF(other); \
+                            other_pyobj = other; \
+                        } else { \
+                            /* Try to extract as long long */ \
+                            other_val = PyLong_AsLongLong(other); \
+                            if (other_val == -1 && PyErr_Occurred()) { \
+                                /* other is too large for long long - use Python comparison */ \
+                                PyErr_Clear(); \
+                                self_pyobj = PyLong_FromLongLong(self_val); \
+                                if (!self_pyobj) return NULL; \
+                                Py_INCREF(other); \
+                                other_pyobj = other; \
+                                use_python_cmp = 1; \
+                            } \
+                        } \
+                    } else if (Py_TYPE(other) == &FyGenericType) { \
+                        other_dint = fy_cast(((FyGenericObject *)other)->fyg, fy_dint_empty); \
+                        if (other_dint.flags & FYGDIF_UNSIGNED_RANGE_EXTEND) { \
+                            /* Other is large unsigned */ \
+                            other_pyobj = PyLong_FromUnsignedLongLong(other_dint.uv); \
+                            if (!other_pyobj) { \
+                                Py_XDECREF(self_pyobj); \
+                                return NULL; \
+                            } \
+                            if (!use_python_cmp) { \
+                                /* Self is regular signed, need to convert to Python */ \
+                                self_pyobj = PyLong_FromLongLong(self_val); \
+                                if (!self_pyobj) { \
+                                    Py_DECREF(other_pyobj); \
+                                    return NULL; \
+                                } \
+                            } \
+                            use_python_cmp = 1; \
+                        } else { \
+                            /* Other is regular signed */ \
+                            if (use_python_cmp) { \
+                                other_pyobj = PyLong_FromLongLong(other_dint.sv); \
+                                if (!other_pyobj) { \
+                                    Py_DECREF(self_pyobj); \
+                                    return NULL; \
+                                } \
+                            } else { \
+                                other_val = other_dint.sv; \
+                            } \
+                        } \
+                    } else { \
+                        Py_XDECREF(self_pyobj); \
                         Py_RETURN_NOTIMPLEMENTED; \
                     } \
-                    if (self_val c_op other_val) Py_RETURN_TRUE; \
-                    else Py_RETURN_FALSE; \
+                    \
+                    /* Perform comparison */ \
+                    if (use_python_cmp) { \
+                        cmp_result = PyObject_RichCompareBool(self_pyobj, other_pyobj, py_op); \
+                        Py_DECREF(self_pyobj); \
+                        Py_DECREF(other_pyobj); \
+                        if (cmp_result < 0) return NULL; \
+                        if (cmp_result) Py_RETURN_TRUE; \
+                        else Py_RETURN_FALSE; \
+                    } else { \
+                        /* Regular C long long comparison */ \
+                        if (self_val c_op other_val) Py_RETURN_TRUE; \
+                        else Py_RETURN_FALSE; \
+                    } \
                 } \
                 case FYGT_FLOAT: { \
                     double self_val = fy_cast(self_obj->fyg, (double)0.0); \
@@ -2082,10 +2173,18 @@ FyGeneric_hash(FyGenericObject *self)
         temp_obj = PyBool_FromLong(fy_cast(self->fyg, (_Bool)false) ? 1 : 0);
         break;
 
-    case FYGT_INT:
-        /* Hash for integers */
-        temp_obj = PyLong_FromLongLong(fy_cast(self->fyg, (long long)0));
+    case FYGT_INT: {
+        /* Hash for integers - handle decorated ints */
+        fy_generic_decorated_int dint = fy_cast(self->fyg, fy_dint_empty);
+        if (dint.flags & FYGDIF_UNSIGNED_RANGE_EXTEND) {
+            /* Large unsigned value */
+            temp_obj = PyLong_FromUnsignedLongLong(dint.uv);
+        } else {
+            /* Regular signed value */
+            temp_obj = PyLong_FromLongLong(dint.sv);
+        }
         break;
+    }
 
     case FYGT_FLOAT:
         /* Hash for floats */
