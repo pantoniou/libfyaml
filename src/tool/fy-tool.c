@@ -72,6 +72,7 @@
 #define ALLOW_DUPLICATE_KEYS_DEFAULT	false
 #define STRIP_EMPTY_KV_DEFAULT		false
 #define TSV_FORMAT_DEFAULT		false
+#define DEDUP_DEFAULT			false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -85,7 +86,6 @@
 #define OPT_COMPOSE			1009
 #define OPT_B3SUM			1010
 #define OPT_REFLECT			1011
-#define OPT_GENERIC			1012
 
 #define OPT_STRIP_LABELS		2000
 #define OPT_STRIP_TAGS			2001
@@ -149,6 +149,12 @@
 #define OPT_FILE_BUFFER			5010
 #define OPT_MMAP_MIN_CHUNK		5011
 #define OPT_MMAP_MAX_CHUNK		5012
+
+/* generic options */
+#define OPT_GENERIC			6000
+#define OPT_BUILDER_POLICY		6001
+#define OPT_DEDUP			6002
+#define OPT_NO_DEDUP			6003
 
 static struct option lopts[] = {
 	{"include",		required_argument,	0,	'I' },
@@ -241,6 +247,9 @@ static struct option lopts[] = {
 	{"debug-reflection",	no_argument,	        0,      OPT_DEBUG_REFLECTION },
 
 	{"generic",		no_argument,		0,	OPT_GENERIC },
+	{"builder-policy",	required_argument,	0,	OPT_BUILDER_POLICY },
+	{"dedup",		no_argument,		0,	OPT_DEDUP },
+	{"no-dedup",		no_argument,		0,	OPT_NO_DEDUP },
 	{"help",		no_argument,		0,	'h' },
 	{"version",		no_argument,		0,	'v' },
 	{0,			0,              	0,	 0  },
@@ -401,7 +410,8 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	}
 
 	if (tool_mode == OPT_GENERIC) {
-		fprintf(fp, "\t--generic                : Generics test\n");
+		fprintf(fp, "\t--generic                : Generics dump\n");
+		fprintf(fp, "\t--builder-policy         : Builder policy\n");
 	}
 
 	if (tool_mode == OPT_TOOL) {
@@ -8636,9 +8646,107 @@ err_out:
 	return -1;
 }
 
-void test_gen(void)
+static size_t estimate_max_file_size(int argc, char **argv)
 {
-	fy_emit(fy_mapping("foo", 10, "bar", 200), FYOPEF_DISABLE_DIRECTORY | FYOPEF_OUTPUT_TYPE_STDOUT, NULL);
+	struct stat sb;
+	size_t size;
+	int i, rc;
+
+	if (argc <= 0)
+		return 0;	/* can't estimate without file (probably stdin) */
+
+	size = 0;
+	for (i = 0; i < argc; i++) {
+		rc = stat(argv[i], &sb);
+		if (rc)
+			continue;
+
+		/* only do it for regular files */
+		if ((sb.st_mode & S_IFMT) != S_IFREG)
+			continue;
+
+		if ((size_t)sb.st_size > size)
+			size = sb.st_size;
+	}
+
+	return size;
+}
+
+struct generic_config {
+	bool dedup;
+	bool null_output;
+	size_t estimated_max_size;
+};
+
+struct generic_config default_generic_cfg = {
+	.dedup = true,
+	.estimated_max_size = 0,	/* adapt to input */
+};
+
+static int
+do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
+{
+	/* Create auto allocator with appropriate scenario based on dedup parameter */
+	struct fy_allocator *allocator;
+	struct fy_generic_builder *gb;
+	struct fy_auto_allocator_cfg auto_cfg;
+	struct fy_generic_builder_cfg gb_cfg;
+	size_t max_size;
+	int i, num_ok, num_inputs;
+	const char *filename;
+	fy_generic v;
+
+	max_size = gcfg->estimated_max_size;
+	if (!max_size) {
+		max_size = estimate_max_file_size(argc - optind, argv + optind);
+		if (!max_size)
+			max_size = 1U << 20;	/* 1MB */
+	}
+
+	if (max_size < (1U << 20))
+		max_size = (1U << 20);
+
+	memset(&auto_cfg, 0, sizeof(auto_cfg));
+	auto_cfg.scenario = gcfg->dedup ? FYAST_PER_TAG_FREE_DEDUP : FYAST_PER_TAG_FREE;
+	auto_cfg.estimated_max_size = (size_t)(max_size * 1.2);
+
+	allocator = fy_allocator_create("auto", &auto_cfg);
+	assert(allocator);
+
+	memset(&gb_cfg, 0, sizeof(gb_cfg));
+	gb_cfg.allocator = allocator;
+	gb_cfg.estimated_max_size = max_size;
+	gb_cfg.flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER |
+		       (gcfg->dedup ? FYGBCF_DEDUP_ENABLED : 0);
+
+	gb = fy_generic_builder_create(&gb_cfg);
+	assert(gb);
+
+	i = optind;
+	do {
+		filename = i < argc ? argv[i] : "-";
+
+		fy_generic_builder_reset(gb);
+
+		if (!strcmp(filename, "-"))
+			v = fy_parse(gb, fy_invalid, FYOPPF_DISABLE_DIRECTORY | FYOPPF_INPUT_TYPE_STDIN, NULL);
+		else
+			v = fy_parse_file(gb, FYOPPF_DISABLE_DIRECTORY, filename);
+
+		if (fy_generic_is_invalid(v)) {
+			fprintf(stderr, "Error while processing: \"%s\"\n", filename);
+			continue;
+		}
+
+		fy_emit(gb, v, FYOPEF_DISABLE_DIRECTORY| FYOPEF_MODE_YAML_1_2 | FYOPEF_OUTPUT_TYPE_STDOUT, NULL);
+
+	} while (++i < argc);
+
+	fy_generic_builder_destroy(gb);
+
+	fy_allocator_destroy(allocator);
+
+	return 0;
 }
 
 int main(int argc, char *argv[])
@@ -8715,6 +8823,9 @@ int main(int argc, char *argv[])
 	/* b3sum */
 	int opti;
 	struct b3sum_config b3cfg = default_b3sum_cfg;
+	/* generic */
+	struct generic_config gcfg = default_generic_cfg;
+	bool dedup = DEDUP_DEFAULT;
 	/* reflection */
 	struct fy_reflection *rfl = NULL;
 	const char *cflags = "";
@@ -8732,6 +8843,7 @@ int main(int argc, char *argv[])
 	struct reflection_type_data *rtd_root;
 	void *rd_data = NULL;
 	bool emitted_ss;
+
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -9149,6 +9261,13 @@ int main(int argc, char *argv[])
 			b3cfg.mmap_max_chunk = (size_t)opti;
 			break;
 
+		case OPT_DEDUP:
+			dedup = true;
+			break;
+
+		case OPT_NO_DEDUP:
+			dedup = false;
+			break;
 
 		case 'h' :
 		default:
@@ -9944,8 +10063,14 @@ int main(int argc, char *argv[])
 		break;
 
 	case OPT_GENERIC:
-		test_gen();
-		break;
+		gcfg.dedup = dedup;
+		rc = do_generic(argc, argv, optind, &gcfg);
+		if (rc == 1) {
+			/* display usage */
+			goto err_out_usage;
+		}
+		exitcode = !rc ? EXIT_SUCCESS : EXIT_FAILURE;
+		goto cleanup;
 
 	}
 	exitcode = EXIT_SUCCESS;

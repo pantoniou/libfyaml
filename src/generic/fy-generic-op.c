@@ -464,10 +464,11 @@ fy_generic_collection_op_data_out(struct fy_generic_collection_op_data *cod,
 	iovcnt = cod->iovcnt;
 
 	p = fy_gb_lookupv(cod->gb, iov, iovcnt, FY_GENERIC_CONTAINER_ALIGN);
-	if (!p)
+	if (!p) {
 		p = fy_gb_storev(cod->gb, iov, iovcnt, FY_GENERIC_CONTAINER_ALIGN);
-	if (!p)
-		goto err_out;
+		if (!p)
+			goto err_out;
+	}
 
 	v = (fy_generic){ .v = (uintptr_t)p | cod->col_mark };
 
@@ -2870,7 +2871,7 @@ fy_generic_op_parse(const struct fy_generic_op_desc *desc,
 
 	/* Setup parse configuration */
 	memset(&parse_cfg, 0, sizeof(parse_cfg));
-	parse_cfg.flags = FYPCF_DEFAULT_PARSE;
+	parse_cfg.flags = FYPCF_DEFAULT_PARSE | FYPCF_RESOLVE_DOCUMENT;	/* always resolve */
 	parse_cfg.flags &= ~(FYPCF_DEFAULT_VERSION(FYPCF_DEFAULT_VERSION_MASK) |
 			     FYPCF_JSON(FYPCF_JSON_MASK));
 

@@ -5658,4 +5658,10 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_emit_file(...) \
 	(FY_CPP_FIFTH(__VA_ARGS__, fy_gb_emit_file, fy_local_emit_file)(__VA_ARGS__))
 
+int fy_generic_emit_compact(fy_generic v)
+	FY_EXPORT;
+
+int fy_generic_emit_default(fy_generic v)
+	FY_EXPORT;
+
 #endif
