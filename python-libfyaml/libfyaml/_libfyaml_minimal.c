@@ -1411,9 +1411,47 @@ static PyMethodDef FyGeneric_methods[] = {
     {NULL}
 };
 
+/* FyGeneric: __contains__ - implements 'in' operator */
+static int
+FyGeneric_contains(FyGenericObject *self, PyObject *key)
+{
+    enum fy_generic_type type = fy_get_type(self->fyg);
+
+    if (type != FYGT_MAPPING && type != FYGT_SEQUENCE) {
+        /* For non-container types, return not implemented */
+        PyErr_SetString(PyExc_TypeError, "argument of type 'FyGeneric' is not iterable");
+        return -1;
+    }
+
+    /* Convert Python key to generic */
+    fy_generic key_generic = python_to_generic(self->gb, key);
+    if (fy_generic_is_invalid(key_generic)) {
+        /* Conversion failed */
+        PyErr_Clear();
+        return 0;
+    }
+
+    /* For mapping, check if key exists */
+    if (type == FYGT_MAPPING) {
+        fy_generic result = fy_generic_mapping_get_generic_default(self->fyg, key_generic, fy_invalid);
+        return fy_generic_is_invalid(result) ? 0 : 1;
+    }
+
+    /* For sequence, iterate to find match */
+    size_t count;
+    const fy_generic *items = fy_generic_sequence_get_items(self->fyg, &count);
+    for (size_t i = 0; i < count; i++) {
+        if (fy_generic_compare(items[i], key_generic) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* FyGeneric as sequence */
 static PySequenceMethods FyGeneric_as_sequence = {
     .sq_length = (lenfunc)FyGeneric_length,
+    .sq_contains = (objobjproc)FyGeneric_contains,
 };
 
 /* FyGeneric: __setitem__ for sequences and mappings */
