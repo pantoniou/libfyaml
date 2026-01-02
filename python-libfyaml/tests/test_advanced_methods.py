@@ -351,6 +351,69 @@ class TestGetAtPathMethod(unittest.TestCase):
             # Exception is also acceptable behavior
             pass
 
+    def test_path_with_float_element(self):
+        """Test path with float element"""
+        # YAML with bare float key
+        yaml_str = """
+        1.5:
+          nested: value
+        """
+        data = libfyaml.loads(yaml_str)
+        value = data.get_at_path([1.5, "nested"])
+        self.assertEqual(str(value), "value")
+
+    def test_path_with_bool_true_element(self):
+        """Test path with True boolean element"""
+        # YAML with bare true key
+        yaml_str = """
+        true:
+          nested: value
+        """
+        data = libfyaml.loads(yaml_str)
+        value = data.get_at_path([True, "nested"])
+        self.assertEqual(str(value), "value")
+
+    def test_path_with_bool_false_element(self):
+        """Test path with False boolean element"""
+        # YAML with bare false key
+        yaml_str = """
+        false:
+          nested: value
+        """
+        data = libfyaml.loads(yaml_str)
+        value = data.get_at_path([False, "nested"])
+        self.assertEqual(str(value), "value")
+
+    def test_path_with_none_raises_typeerror(self):
+        """Test that None in path raises TypeError"""
+        data = libfyaml.loads('{"key": "value"}')
+        with self.assertRaises(TypeError) as cm:
+            data.get_at_path([None, "key"])
+        self.assertIn("cannot be None", str(cm.exception))
+
+    def test_path_with_mixed_types(self):
+        """Test path with mixed element types (int, str, float, bool)"""
+        # Complex nested structure with various key types (bare scalars)
+        yaml_str = """
+        items:
+          - name: first
+            1.5: float_key
+            true: bool_key
+        """
+        data = libfyaml.loads(yaml_str)
+
+        # Access with integer index
+        first_item = data.get_at_path(["items", 0])
+        self.assertEqual(str(first_item["name"]), "first")
+
+        # Access with float key
+        float_val = data.get_at_path(["items", 0, 1.5])
+        self.assertEqual(str(float_val), "float_key")
+
+        # Access with bool key
+        bool_val = data.get_at_path(["items", 0, True])
+        self.assertEqual(str(bool_val), "bool_key")
+
 
 class TestUnixPathMethods(unittest.TestCase):
     """Test Unix-style path methods (get_unix_path, get_at_unix_path)"""

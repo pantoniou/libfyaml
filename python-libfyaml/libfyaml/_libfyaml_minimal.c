@@ -376,21 +376,22 @@ FyGeneric_from_parent(fy_generic fyg, FyGenericObject *parent, PyObject *path_el
 
     /* Build path from parent's path + this element */
     /* Path tracking is always enabled, regardless of mutability */
+    PyObject *path_list;
     if (parent->path == NULL) {
         /* Parent is root - create new path with just this element */
-        self->path = PyList_New(1);
-        if (self->path == NULL) {
+        path_list = PyList_New(1);
+        if (path_list == NULL) {
             Py_DECREF(self->root);
             Py_TYPE(self)->tp_free((PyObject *)self);
             return NULL;
         }
         Py_INCREF(path_elem);
-        PyList_SET_ITEM(self->path, 0, path_elem);
+        PyList_SET_ITEM(path_list, 0, path_elem);
     } else {
         /* Parent has path - copy and append */
-        Py_ssize_t parent_len = PyList_Size(parent->path);
-        self->path = PyList_New(parent_len + 1);
-        if (self->path == NULL) {
+        Py_ssize_t parent_len = PyTuple_Size(parent->path);
+        path_list = PyList_New(parent_len + 1);
+        if (path_list == NULL) {
             Py_DECREF(self->root);
             Py_TYPE(self)->tp_free((PyObject *)self);
             return NULL;
@@ -398,14 +399,23 @@ FyGeneric_from_parent(fy_generic fyg, FyGenericObject *parent, PyObject *path_el
 
         /* Copy parent's path */
         for (Py_ssize_t i = 0; i < parent_len; i++) {
-            PyObject *item = PyList_GET_ITEM(parent->path, i);
+            PyObject *item = PyTuple_GET_ITEM(parent->path, i);
             Py_INCREF(item);
-            PyList_SET_ITEM(self->path, i, item);
+            PyList_SET_ITEM(path_list, i, item);
         }
 
         /* Append new element */
         Py_INCREF(path_elem);
-        PyList_SET_ITEM(self->path, parent_len, path_elem);
+        PyList_SET_ITEM(path_list, parent_len, path_elem);
+    }
+
+    /* Convert list to tuple (paths are immutable) */
+    self->path = PyList_AsTuple(path_list);
+    Py_DECREF(path_list);
+    if (self->path == NULL) {
+        Py_DECREF(self->root);
+        Py_TYPE(self)->tp_free((PyObject *)self);
+        return NULL;
     }
 
     return (PyObject *)self;
@@ -1208,12 +1218,28 @@ FyGeneric_get_at_path(FyGenericObject *self, PyObject *path_obj)
         if (elem == NULL)
             return NULL;
 
-        if (PyLong_Check(elem)) {
+        /* Check for None and reject it */
+        if (elem == Py_None) {
+            Py_DECREF(elem);
+            PyErr_SetString(PyExc_TypeError, "Path elements cannot be None");
+            return NULL;
+        }
+        /* Check for bool BEFORE int (bool is subclass of int in Python) */
+        else if (PyBool_Check(elem)) {
+            bool val = (elem == Py_True);
+            Py_DECREF(elem);
+            path_array[i] = fy_value(val);
+        }
+        else if (PyLong_Check(elem)) {
             long idx = PyLong_AsLong(elem);
             Py_DECREF(elem);
             if (idx == -1 && PyErr_Occurred())
                 return NULL;
             path_array[i] = fy_value((int)idx);
+        } else if (PyFloat_Check(elem)) {
+            double val = PyFloat_AS_DOUBLE(elem);
+            Py_DECREF(elem);
+            path_array[i] = fy_value(val);
         } else if (PyUnicode_Check(elem)) {
             const char *str = PyUnicode_AsUTF8(elem);
             Py_DECREF(elem);
@@ -1222,7 +1248,7 @@ FyGeneric_get_at_path(FyGenericObject *self, PyObject *path_obj)
             path_array[i] = fy_value(str);
         } else {
             Py_DECREF(elem);
-            PyErr_SetString(PyExc_TypeError, "Path elements must be integers or strings");
+            PyErr_SetString(PyExc_TypeError, "Path elements must be integers, floats, booleans, or strings");
             return NULL;
         }
     }
@@ -1569,12 +1595,28 @@ FyGeneric_set_at_path(FyGenericObject *self, PyObject *args)
         if (elem == NULL)
             return NULL;
 
-        if (PyLong_Check(elem)) {
+        /* Check for None and reject it */
+        if (elem == Py_None) {
+            Py_DECREF(elem);
+            PyErr_SetString(PyExc_TypeError, "Path elements cannot be None");
+            return NULL;
+        }
+        /* Check for bool BEFORE int (bool is subclass of int in Python) */
+        else if (PyBool_Check(elem)) {
+            bool val = (elem == Py_True);
+            Py_DECREF(elem);
+            path_array[i] = fy_value(val);
+        }
+        else if (PyLong_Check(elem)) {
             long idx = PyLong_AsLong(elem);
             Py_DECREF(elem);
             if (idx == -1 && PyErr_Occurred())
                 return NULL;
             path_array[i] = fy_value((int)idx);
+        } else if (PyFloat_Check(elem)) {
+            double val = PyFloat_AS_DOUBLE(elem);
+            Py_DECREF(elem);
+            path_array[i] = fy_value(val);
         } else if (PyUnicode_Check(elem)) {
             const char *str = PyUnicode_AsUTF8(elem);
             Py_DECREF(elem);
@@ -1583,7 +1625,7 @@ FyGeneric_set_at_path(FyGenericObject *self, PyObject *args)
             path_array[i] = fy_value(str);
         } else {
             Py_DECREF(elem);
-            PyErr_SetString(PyExc_TypeError, "Path elements must be integers or strings");
+            PyErr_SetString(PyExc_TypeError, "Path elements must be integers, floats, booleans, or strings");
             return NULL;
         }
     }
