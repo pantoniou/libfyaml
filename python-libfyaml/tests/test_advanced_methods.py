@@ -194,6 +194,51 @@ class TestCloneMethod(unittest.TestCase):
         self.assertEqual(cloned_users.get_path(), [])
         self.assertEqual(users.get_path(), ['users'])
 
+    def test_clone_resets_paths_for_children(self):
+        """Test that cloned object's children have paths relative to new root"""
+        yaml_str = """
+        config:
+          server:
+            host: localhost
+            port: 8080
+          debug: true
+        """
+        data = libfyaml.loads(yaml_str)
+
+        # Original paths before cloning
+        config = data['config']
+        self.assertEqual(config.get_path(), ['config'])
+
+        server = config['server']
+        self.assertEqual(server.get_path(), ['config', 'server'])
+
+        host = server['host']
+        self.assertEqual(host.get_path(), ['config', 'server', 'host'])
+
+        # Clone the config object
+        cloned_config = config.clone()
+
+        # Cloned object should be new root
+        self.assertEqual(cloned_config.get_path(), [])
+
+        # Children of cloned object should have paths relative to new root
+        cloned_server = cloned_config['server']
+        self.assertEqual(cloned_server.get_path(), ['server'])
+
+        cloned_host = cloned_server['host']
+        self.assertEqual(cloned_host.get_path(), ['server', 'host'])
+
+        cloned_port = cloned_server['port']
+        self.assertEqual(cloned_port.get_path(), ['server', 'port'])
+
+        cloned_debug = cloned_config['debug']
+        self.assertEqual(cloned_debug.get_path(), ['debug'])
+
+        # Verify values are correct
+        self.assertEqual(str(cloned_host), 'localhost')
+        self.assertEqual(int(cloned_port), 8080)
+        self.assertEqual(bool(cloned_debug), True)
+
 
 class TestGetPathMethod(unittest.TestCase):
     """Test get_path() method for tracking paths"""
