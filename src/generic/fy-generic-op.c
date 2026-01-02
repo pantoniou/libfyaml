@@ -3000,7 +3000,6 @@ fy_generic_op_emit(const struct fy_generic_op_desc *desc,
 	case FYOPEF_MODE_YAML_1_2:
 	case FYOPEF_MODE_YAML_1_3:
 		/* XXX we only output YAML 1.2 */
-		emit_cfg_flags |= FYECF_MODE_PRETTY;
 		switch (emit_flags & FYOPEF_STYLE(FYOPEF_STYLE_MASK)) {
 		case FYOPEF_STYLE_DEFAULT:
 		case FYOPEF_STYLE_PRETTY:

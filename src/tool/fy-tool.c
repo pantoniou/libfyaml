@@ -9037,7 +9037,7 @@ int main(int argc, char *argv[])
 			break;
 		case 'i':
 			indent = atoi(optarg);
-			if (indent < 0 || indent > FYECF_INDENT_MASK) {
+			if (indent <= 0 || indent > FYECF_INDENT_MASK) {
 				fprintf(stderr, "bad indent option %s\n", optarg);
 				goto err_out_usage;
 			}
@@ -10191,7 +10191,7 @@ int main(int argc, char *argv[])
 	case OPT_GENERIC:
 		gcfg.dedup = dedup;
 		gcfg.null_output = null_output;
-		gcfg.emit_cfg_flags = emit_flags;
+		gcfg.emit_cfg_flags = emit_flags | FYECF_INDENT(indent);
 		gcfg.emit_xcfg_flags = emit_xflags;
 		gcfg.parse_cfg_flags = cfg.flags;
 		rc = do_generic(argc, argv, optind, &gcfg);

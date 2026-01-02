@@ -1553,6 +1553,10 @@ static void fy_emit_sequence_prolog(struct fy_emitter *emit, struct fy_emit_save
 
 			sc->flags = (sc->flags | DDNF_FLOW) | (sc->flags & ~DDNF_INDENTLESS);
 			fy_emit_write_indicator(emit, di_left_bracket, sc->flags, sc->indent, fyewt_indicator);
+
+			/* we need an indent afterward if not compact */
+			if (!fy_emit_is_oneline_or_compact(emit))
+				sc->flags |= DDNF_HANGING_INDENT;
 		} else {
 			sc->flags = (sc->flags & ~DDNF_FLOW);
 		}
@@ -1587,7 +1591,7 @@ static void fy_emit_sequence_item_prolog(struct fy_emitter *emit, struct fy_emit
 	sc->flags |= DDNF_SEQ;
 
 	if (fy_emit_token_has_comment(emit, fyt_value, fycp_top) ||
-	   (!fy_emit_is_oneline_or_compact(emit) && !sc->flow) ||
+	   !fy_emit_is_oneline_or_compact(emit) ||
 	    ((fy_emit_is_compact(emit) || sc->flow) && emit->column >= fy_emit_width(emit)))
 		fy_emit_write_indent(emit, sc->indent);
 
@@ -1605,13 +1609,19 @@ static void fy_emit_sequence_item_prolog(struct fy_emitter *emit, struct fy_emit
 static void fy_emit_sequence_item_epilog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
 					 bool last, struct fy_token *fyt_value)
 {
+	bool needs_hanging_indent;
+
 	if ((sc->flow || fy_emit_is_json_mode(emit)) && !last)
 		fy_emit_write_indicator(emit, di_comma, sc->flags, sc->indent, fyewt_indicator);
 
 	fy_emit_token_comment(emit, fyt_value, sc->flags, sc->indent, fycp_right);
 
-	if (last && sc->flow && (sc->flags & DDNF_HANGING_INDENT) && !fy_emit_is_oneline_or_compact(emit) && !sc->empty)
+	needs_hanging_indent = sc->flow && !fy_emit_is_oneline_or_compact(emit) && !sc->empty;
+
+	if (last && needs_hanging_indent && (sc->flags & DDNF_HANGING_INDENT))
 		fy_emit_write_indent(emit, sc->old_indent);
+	else if (needs_hanging_indent)
+		sc->flags |= DDNF_HANGING_INDENT;
 
 	sc->flags &= ~DDNF_SEQ;
 }
@@ -1671,6 +1681,10 @@ static void fy_emit_mapping_prolog(struct fy_emitter *emit, struct fy_emit_save_
 
 			sc->flags = (sc->flags | DDNF_FLOW) | (sc->flags & ~DDNF_INDENTLESS);
 			fy_emit_write_indicator(emit, di_left_brace, sc->flags, sc->indent, fyewt_indicator);
+
+			/* we need an indent afterward if not compact */
+			if (!fy_emit_is_oneline_or_compact(emit))
+				sc->flags |= DDNF_HANGING_INDENT;
 		} else {
 			sc->flags &= ~(DDNF_FLOW | DDNF_INDENTLESS);
 		}
@@ -1702,6 +1716,10 @@ static void fy_emit_mapping_key_prolog(struct fy_emitter *emit, struct fy_emit_s
 
 	sc->flags = DDNF_MAP | (sc->flags & DDNF_FLOW);
 
+	if (!fy_emit_is_oneline_or_compact(emit) ||
+	    ((fy_emit_is_compact(emit) || sc->flow) && emit->column >= fy_emit_width(emit)))
+		fy_emit_write_indent(emit, sc->indent);
+
 	if (simple_key) {
 		sc->flags |= DDNF_SIMPLE;
 		if (fyt_key && fyt_key->type == FYTT_SCALAR)
@@ -1716,7 +1734,7 @@ static void fy_emit_mapping_key_prolog(struct fy_emitter *emit, struct fy_emit_s
 	if (!fy_emit_is_oneline(emit)) {
 		if (fyt_key && fyt_key->type != FYTT_SCALAR)
 			/* always indent on non scalar keys */
-			key_over = false;
+			key_over = true;
 		else {
 			/* for scalar keys, check if key + 2 + quotes go over */
 			ta = fy_token_text_analyze(fyt_key);
@@ -1791,13 +1809,19 @@ static void fy_emit_mapping_value_prolog(struct fy_emitter *emit, struct fy_emit
 static void fy_emit_mapping_value_epilog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
 					 bool last, struct fy_token *fyt_value)
 {
+	bool needs_hanging_indent;
+
 	if ((sc->flow || fy_emit_is_json_mode(emit)) && !last)
 		fy_emit_write_indicator(emit, di_comma, sc->flags, sc->indent, fyewt_indicator);
 
 	fy_emit_token_comment(emit, fyt_value, sc->flags, sc->indent, fycp_right);
 
-	if (last && sc->flow && (sc->flags & DDNF_HANGING_INDENT) && !fy_emit_is_oneline_or_compact(emit) && !sc->empty)
+	needs_hanging_indent = sc->flow && !fy_emit_is_oneline_or_compact(emit) && !sc->empty;
+
+	if (last && needs_hanging_indent && (sc->flags & DDNF_HANGING_INDENT))
 		fy_emit_write_indent(emit, sc->old_indent);
+	else if (needs_hanging_indent)
+		sc->flags |= DDNF_HANGING_INDENT;
 
 	sc->flags &= ~DDNF_MAP;
 }
