@@ -273,7 +273,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--indent, -i <indent>    : Set dump indent to <indent>"
 						" (default indent %d)\n",
 						INDENT_DEFAULT);
-	fprintf(fp, "\t--width, -w <width>      : Set dump width to <width>"
+	fprintf(fp, "\t--width, -w <width>      : Set dump width to <width> - inf for infinite"
 						" (default width %d)\n",
 						WIDTH_DEFAULT);
 	fprintf(fp, "\t--resolve, -r            : Perform anchor and merge key resolution"
@@ -8673,13 +8673,17 @@ static size_t estimate_max_file_size(int argc, char **argv)
 }
 
 struct generic_config {
-	bool dedup;
-	bool null_output;
+	bool dedup : 1;
+	bool null_output : 1;
 	size_t estimated_max_size;
+	enum fy_parse_cfg_flags parse_cfg_flags;
+	enum fy_emitter_cfg_flags emit_cfg_flags;
+	enum fy_emitter_xcfg_flags emit_xcfg_flags;
 };
 
 struct generic_config default_generic_cfg = {
 	.dedup = true,
+	.null_output = false,
 	.estimated_max_size = 0,	/* adapt to input */
 };
 
@@ -8692,8 +8696,10 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 	struct fy_auto_allocator_cfg auto_cfg;
 	struct fy_generic_builder_cfg gb_cfg;
 	size_t max_size;
-	int i, num_ok, num_inputs;
 	const char *filename;
+	enum fy_op_parse_flags parse_flags;
+	enum fy_op_emit_flags emit_flags;
+	int i;
 	fy_generic v;
 
 	max_size = gcfg->estimated_max_size;
@@ -8728,17 +8734,131 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 
 		fy_generic_builder_reset(gb);
 
+		parse_flags = FYOPPF_DISABLE_DIRECTORY | FYOPPF_MULTI_DOCUMENT;
+		emit_flags = FYOPEF_DISABLE_DIRECTORY | FYOPEF_MODE_YAML_1_2 | FYOPEF_MULTI_DOCUMENT;
+
+		switch (gcfg->parse_cfg_flags & (FYPCF_JSON_MASK << FYPCF_JSON_SHIFT)) {
+		default:
+		case FYPCF_JSON_AUTO:
+		case FYPCF_JSON_NONE:
+			switch (gcfg->parse_cfg_flags & (FYPCF_DEFAULT_VERSION_MASK << FYPCF_DEFAULT_VERSION_SHIFT)) {
+			default:
+			case FYPCF_DEFAULT_VERSION_AUTO:
+				parse_flags |= FYOPPF_MODE_AUTO;
+				break;
+			case FYPCF_DEFAULT_VERSION_1_1:
+				parse_flags |= FYOPPF_MODE_YAML_1_1;
+				break;
+			case FYPCF_DEFAULT_VERSION_1_2:
+				parse_flags |= FYOPPF_MODE_YAML_1_2;
+				break;
+			case FYPCF_DEFAULT_VERSION_1_3:
+				parse_flags |= FYOPPF_MODE_YAML_1_3;
+				break;
+			}
+			break;
+		case FYPCF_JSON_FORCE:
+			parse_flags |= FYOPPF_MODE_JSON;
+			break;
+		}
+
 		if (!strcmp(filename, "-"))
-			v = fy_parse(gb, fy_invalid, FYOPPF_DISABLE_DIRECTORY | FYOPPF_INPUT_TYPE_STDIN, NULL);
+			v = fy_parse(gb, fy_invalid,
+				     parse_flags | FYOPPF_INPUT_TYPE_STDIN, NULL);
 		else
-			v = fy_parse_file(gb, FYOPPF_DISABLE_DIRECTORY, filename);
+			v = fy_parse_file(gb,
+					  parse_flags, filename);
+
 
 		if (fy_generic_is_invalid(v)) {
 			fprintf(stderr, "Error while processing: \"%s\"\n", filename);
 			continue;
 		}
 
-		fy_emit(gb, v, FYOPEF_DISABLE_DIRECTORY| FYOPEF_MODE_YAML_1_2 | FYOPEF_OUTPUT_TYPE_STDOUT, NULL);
+		/* we don't support arbitrary indents */
+		switch (gcfg->emit_cfg_flags & (FYECF_INDENT_MASK << FYECF_INDENT_SHIFT)) {
+		case FYECF_INDENT_DEFAULT:
+			emit_flags |= FYOPEF_INDENT_DEFAULT;
+			break;
+		case FYECF_INDENT_1:
+			emit_flags |= FYOPEF_INDENT_1;
+			break;
+		case FYECF_INDENT_2:
+			emit_flags |= FYOPEF_INDENT_2;
+			break;
+		case FYECF_INDENT_3:
+			emit_flags |= FYOPEF_INDENT_3;
+			break;
+		case FYECF_INDENT_4:
+		case FYECF_INDENT_5:
+			emit_flags |= FYOPEF_INDENT_4;
+			break;
+		case FYECF_INDENT_6:
+		case FYECF_INDENT_7:
+			emit_flags |= FYOPEF_INDENT_6;
+			break;
+		default:
+		case FYECF_INDENT_8:
+			emit_flags |= FYOPEF_INDENT_8;
+			break;
+		}
+
+		/* we don't support arbitrary widths */
+		switch (gcfg->emit_cfg_flags & (FYECF_WIDTH_MASK << FYECF_WIDTH_SHIFT)) {
+		default:
+			emit_flags |= FYOPEF_WIDTH_DEFAULT;
+			break;
+		case FYECF_WIDTH_80:
+			emit_flags |= FYOPEF_WIDTH_80;
+			break;
+		case FYECF_WIDTH_132:
+			emit_flags |= FYOPEF_WIDTH_132;
+			break;
+		case FYECF_WIDTH_INF:
+			emit_flags |= FYOPEF_WIDTH_INF;
+			break;
+		}
+
+		/* XXX must parse input */
+		emit_flags |= FYOPEF_MODE_AUTO;
+
+		/* we don't support arbitrary modes/styles */
+		switch (gcfg->emit_cfg_flags & (FYECF_MODE_MASK << FYECF_MODE_SHIFT)) {
+		case FYECF_MODE_ORIGINAL:
+		default:
+			emit_flags |= FYOPEF_STYLE_DEFAULT;
+			break;
+		case FYECF_MODE_BLOCK:
+			emit_flags |= FYOPEF_STYLE_BLOCK;
+			break;
+		case FYECF_MODE_FLOW:
+			emit_flags |= FYOPEF_STYLE_FLOW;
+			break;
+		case FYECF_MODE_PRETTY:
+			emit_flags |= FYOPEF_STYLE_PRETTY;
+			break;
+		case FYECF_MODE_FLOW_COMPACT:
+			emit_flags |= FYOPEF_STYLE_COMPACT;
+			break;
+		case FYECF_MODE_FLOW_ONELINE:
+			emit_flags |= FYOPEF_STYLE_ONELINE;
+			break;
+		}
+
+		switch (gcfg->emit_xcfg_flags & (FYEXCF_COLOR_MASK << FYEXCF_COLOR_SHIFT)) {
+		case FYEXCF_COLOR_AUTO:
+			emit_flags |= FYOPEF_COLOR_AUTO;
+			break;
+		case FYEXCF_COLOR_NONE:
+			emit_flags |= FYOPEF_COLOR_NONE;
+			break;
+		case FYEXCF_COLOR_FORCE:
+			emit_flags |= FYOPEF_COLOR_FORCE;
+			break;
+		}
+
+		if (!gcfg->null_output)
+			fy_emit(gb, v, emit_flags | FYOPEF_OUTPUT_TYPE_STDOUT, NULL);
 
 	} while (++i < argc);
 
@@ -8924,10 +9044,14 @@ int main(int argc, char *argv[])
 
 			break;
 		case 'w':
-			width = atoi(optarg);
-			if (width < 0 || width > FYECF_WIDTH_MASK) {
-				fprintf(stderr, "bad width option %s\n", optarg);
-				goto err_out_usage;
+			if (!strcmp(optarg, "inf")) {
+				width = 0;	/* infinite */
+			} else {
+				width = atoi(optarg);
+				if (width <= 8 || width > FYECF_WIDTH_MASK) {			/* it should fit %YAML 1.3 at least */
+					fprintf(stderr, "bad width option %s\n", optarg);
+					goto err_out_usage;
+				}
 			}
 			manual_width = true;
 			break;
@@ -9347,8 +9471,10 @@ int main(int argc, char *argv[])
 		/* if we're dumping to a non tty stdout width is infinite */
 		if (tool_mode == OPT_DUMP && !isatty(fileno(stdout)) && !manual_width)
 			emit_width_flags = FYECF_WIDTH_INF;
-		else
+		else if (width > 0)
 			emit_width_flags = FYECF_WIDTH(width);
+		else
+			emit_width_flags = FYECF_WIDTH_INF;
 
 		memset(&emit_xcfg, 0, sizeof(emit_xcfg));
 		emit_xcfg.cfg.flags = emit_flags | emit_width_flags |
@@ -10064,6 +10190,10 @@ int main(int argc, char *argv[])
 
 	case OPT_GENERIC:
 		gcfg.dedup = dedup;
+		gcfg.null_output = null_output;
+		gcfg.emit_cfg_flags = emit_flags;
+		gcfg.emit_xcfg_flags = emit_xflags;
+		gcfg.parse_cfg_flags = cfg.flags;
 		rc = do_generic(argc, argv, optind, &gcfg);
 		if (rc == 1) {
 			/* display usage */
