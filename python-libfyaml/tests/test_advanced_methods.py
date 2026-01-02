@@ -516,6 +516,78 @@ class TestUnixPathMethods(unittest.TestCase):
         retrieved = data.get_at_unix_path(unix_path)
         self.assertEqual(str(retrieved), str(user0))
 
+    def test_set_at_unix_path_simple(self):
+        """Test set_at_unix_path() with simple path"""
+        data = libfyaml.loads("name: Alice\nage: 30", mutable=True)
+
+        # Set existing value
+        data.set_at_unix_path("/name", "Bob")
+        self.assertEqual(str(data['name']), "Bob")
+
+        # Set another value
+        data.set_at_unix_path("/age", 25)
+        self.assertEqual(int(data['age']), 25)
+
+    def test_set_at_unix_path_nested(self):
+        """Test set_at_unix_path() with nested path"""
+        yaml_str = """
+        server:
+          host: localhost
+          port: 8080
+        """
+        data = libfyaml.loads(yaml_str, mutable=True)
+
+        # Set nested value
+        data.set_at_unix_path("/server/host", "example.com")
+        self.assertEqual(str(data['server']['host']), "example.com")
+
+        data.set_at_unix_path("/server/port", 9000)
+        self.assertEqual(int(data['server']['port']), 9000)
+
+    def test_set_at_unix_path_new_key(self):
+        """Test set_at_unix_path() adding new keys"""
+        data = libfyaml.loads("server: {host: localhost}", mutable=True)
+
+        # Add new key
+        data.set_at_unix_path("/server/port", 8080)
+        self.assertEqual(int(data['server']['port']), 8080)
+
+        # Add another new key
+        data.set_at_unix_path("/server/ssl", True)
+        self.assertEqual(bool(data['server']['ssl']), True)
+
+    def test_set_at_unix_path_sequence(self):
+        """Test set_at_unix_path() with sequence index"""
+        data = libfyaml.loads("items: [a, b, c]", mutable=True)
+
+        # Modify sequence item
+        data.set_at_unix_path("/items/1", "x")
+        self.assertEqual(str(data['items'][1]), "x")
+
+    def test_set_at_unix_path_requires_mutable(self):
+        """Test set_at_unix_path() requires mutable=True"""
+        data = libfyaml.loads("name: Alice")  # mutable=False by default
+
+        # Should raise TypeError for read-only object
+        with self.assertRaises(TypeError):
+            data.set_at_unix_path("/name", "Bob")
+
+    def test_set_at_unix_path_root_error(self):
+        """Test set_at_unix_path() cannot set at root"""
+        data = libfyaml.loads("name: Alice", mutable=True)
+
+        # Cannot set at root path "/"
+        with self.assertRaises(ValueError):
+            data.set_at_unix_path("/", {"new": "value"})
+
+    def test_set_at_unix_path_invalid_path(self):
+        """Test set_at_unix_path() with invalid path"""
+        data = libfyaml.loads("name: Alice", mutable=True)
+
+        # Path without leading "/"
+        with self.assertRaises(ValueError):
+            data.set_at_unix_path("name", "Bob")
+
 
 class TestModuleLevelPathConversion(unittest.TestCase):
     """Test module-level path conversion functions"""
