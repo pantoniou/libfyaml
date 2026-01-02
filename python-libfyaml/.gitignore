@@ -25,8 +25,8 @@ AtomicCards*.yaml
 
 # Development files
 benchmark_*.py
-test_*.py
-!tests/test_*.py  # But keep tests in tests/ directory
+/test_*.py  # Ignore test_*.py in root only
+# tests/test_*.py are tracked (in git already)
 
 # Documentation (keep only essential)
 *-BENCHMARK*.md
