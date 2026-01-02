@@ -91,17 +91,9 @@ fy_generic_decoder_object_create(struct fy_generic_decoder *gd, enum fy_generic_
 	if (!gd || !fy_generic_decoder_object_type_is_valid(type))
 		return NULL;
 
-#if 0
-	gdo = malloc(sizeof(*gdo));
-	if (!gdo)
-		return NULL;
-
-	memset(gdo, 0, sizeof(*gdo));
-#else
 	gdo = fy_generic_decoder_object_alloc(gd);
 	if (!gdo)
 		return NULL;
-#endif
 	gdo->type = type;
 	gdo->anchor = anchor;
 	gdo->tag = tag;
@@ -233,11 +225,7 @@ fy_generic_decoder_object_finalize_and_destroy(struct fy_generic_decoder *gd, st
 	fy_generic v;
 
 	v = fy_generic_decoder_object_finalize(gd, gdo);
-#if 0
-	fy_generic_decoder_object_destroy(gdo);
-#else
 	fy_generic_decoder_object_recycle(gd, gdo);
-#endif
 
 	return v;
 }
@@ -728,11 +716,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		fyp_error_check(fyp, !fy_generic_is_invalid(gd->vds), err_out,
 				"fy_gb_internalize() failed");
 
-#if 0
-		fy_generic_decoder_object_destroy(gdo);
-#else
 		fy_generic_decoder_object_recycle(gd, gdo);
-#endif
 		gd->document_ready = true;
 
 		gd->gdo_root = NULL;
@@ -766,11 +750,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 			fy_path_set_root_user_data(path, NULL);
 		}
 		if (gdo) {
-#if 0
-			fy_generic_decoder_object_destroy(gdo);
-#else
 			fy_generic_decoder_object_recycle(gd, gdo);
-#endif
 		}
 
 		break;
