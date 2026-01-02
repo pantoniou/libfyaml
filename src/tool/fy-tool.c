@@ -73,6 +73,7 @@
 #define STRIP_EMPTY_KV_DEFAULT		false
 #define TSV_FORMAT_DEFAULT		false
 #define DEDUP_DEFAULT			false
+#define NO_ENDING_NEWLINE_DEFAULT	false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -112,20 +113,21 @@
 #define OPT_DISABLE_DOC_MARKERS		2022
 #define OPT_DISABLE_SCALAR_STYLES	2023
 #define OPT_NO_STREAMING		2024
-#define OPT_CFLAGS			2025
-#define OPT_GENERATE_C			2026
-#define OPT_IMPORT_BLOB			2027
-#define OPT_GENERATE_BLOB		2028
-#define OPT_NO_PRUNE_SYSTEM		2029
-#define OPT_TYPE_INCLUDE		2030
-#define OPT_TYPE_EXCLUDE		2031
-#define OPT_IMPORT_C_FILE		2032
-#define OPT_ENTRY_TYPE			2033
-#define OPT_ENTRY_META			2034
-#define OPT_PACKED_ROUNDTRIP		2035
-#define OPT_DRY_RUN			2036
-#define OPT_DUMP_REFLECTION		2037
-#define OPT_DEBUG_REFLECTION		2038
+#define OPT_NO_ENDING_NEWLINE		2025
+#define OPT_CFLAGS			2026
+#define OPT_GENERATE_C			2027
+#define OPT_IMPORT_BLOB			2028
+#define OPT_GENERATE_BLOB		2029
+#define OPT_NO_PRUNE_SYSTEM		2030
+#define OPT_TYPE_INCLUDE		2031
+#define OPT_TYPE_EXCLUDE		2032
+#define OPT_IMPORT_C_FILE		2033
+#define OPT_ENTRY_TYPE			2034
+#define OPT_ENTRY_META			2035
+#define OPT_PACKED_ROUNDTRIP		2036
+#define OPT_DRY_RUN			2037
+#define OPT_DUMP_REFLECTION		2038
+#define OPT_DEBUG_REFLECTION		2039
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -209,6 +211,7 @@ static struct option lopts[] = {
 	{"document-event-stream",no_argument,		0,	OPT_DOCUMENT_EVENT_STREAM },
 	{"noexec",		no_argument,		0,	OPT_NOEXEC },
 	{"null-output",		no_argument,		0,	OPT_NULL_OUTPUT },
+	{"no-ending-newline",	no_argument,		0,	OPT_NO_ENDING_NEWLINE },
 	{"collect-errors",	no_argument,		0,	OPT_COLLECT_ERRORS },
 	{"allow-duplicate-keys",no_argument,		0,	OPT_ALLOW_DUPLICATE_KEYS },
 	{"strip-empty-kv",	no_argument,		0,	OPT_STRIP_EMPTY_KV },
@@ -321,6 +324,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--ypath-aliases          : Use YPATH aliases (default %s)\n",
 						YPATH_ALIASES_DEFAULT ? "true" : "false");
 	fprintf(fp, "\t--null-output            : Do not generate output (for scanner profiling)\n");
+	fprintf(fp, "\t--no-ending-newline      : Do not generate a final newline\n");
 	fprintf(fp, "\t--collect-errors         : Collect errors instead of outputting directly"
 						" (default %s)\n",
 						COLLECT_ERRORS_DEFAULT ? "true" : "false");
@@ -8857,6 +8861,9 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 			break;
 		}
 
+		if (gcfg->emit_cfg_flags & FYECF_NO_ENDING_NEWLINE)
+			emit_flags |= FYOPEF_NO_ENDING_NEWLINE;
+
 		if (!gcfg->null_output)
 			fy_emit(gb, v, emit_flags | FYOPEF_OUTPUT_TYPE_STDOUT, NULL);
 
@@ -9230,6 +9237,10 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_NULL_OUTPUT:
 			null_output = true;
+			emit_xflags |= FYEXCF_NULL_OUTPUT;
+			break;
+		case OPT_NO_ENDING_NEWLINE:
+			emit_flags |= FYECF_NO_ENDING_NEWLINE;
 			break;
 		case OPT_YAML_1_1:
 			cfg.flags &= ~(FYPCF_DEFAULT_VERSION_MASK << FYPCF_DEFAULT_VERSION_SHIFT);

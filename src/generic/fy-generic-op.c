@@ -3102,7 +3102,7 @@ fy_generic_op_emit(const struct fy_generic_op_desc *desc,
 
 	/* XXX FYOPEF_WIDTH_ADAPT_TO_TERMINAL ignoring adapt to terminal for now */
 
-	if (flags & FYOPEF_NO_ENDING_NEWLINE)
+	if (emit_flags & FYOPEF_NO_ENDING_NEWLINE)
 		emit_cfg_flags |= FYECF_NO_ENDING_NEWLINE;
 
 	switch (emit_flags & FYOPEF_OUTPUT_TYPE(FYOPEF_OUTPUT_TYPE_MASK)) {
