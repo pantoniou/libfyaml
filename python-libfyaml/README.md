@@ -691,13 +691,14 @@ python-libfyaml/
 ├── libfyaml/
 │   ├── __init__.py                   # Public API
 │   └── _libfyaml_minimal.c           # C extension
-├── tests/                             # Test suite (169 tests)
+├── tests/                             # Test suite (194 tests)
 │   ├── test_basic.py                 # Basic API tests
 │   ├── test_core.py                  # Core functionality
 │   ├── test_decorated_int.py         # Large unsigned integers
 │   ├── test_sized_string.py          # Binary-safe strings
 │   ├── test_hash_support.py          # Hash/dict key support
-│   └── test_isinstance.py            # isinstance() support
+│   ├── test_isinstance.py            # isinstance() support
+│   └── test_advanced_methods.py      # Advanced methods
 ├── benchmark_*.py                     # Performance benchmarks
 ├── test_*.py                          # Development/exploratory scripts
 └── docs/
@@ -709,7 +710,7 @@ python-libfyaml/
 
 ### Running Tests
 
-The project includes a comprehensive test suite with 169 tests covering all features:
+The project includes a comprehensive test suite with 194 tests covering all features:
 
 ```bash
 # Install pytest if not already installed
@@ -719,12 +720,13 @@ pip install pytest
 pytest tests/ -v
 
 # Run specific test files
-pytest tests/test_basic.py -v          # Basic API tests (8 tests)
-pytest tests/test_core.py -v           # Core functionality (34 tests)
-pytest tests/test_decorated_int.py -v  # Large unsigned integers (42 tests)
-pytest tests/test_sized_string.py -v   # Binary-safe strings (28 tests)
-pytest tests/test_hash_support.py -v   # Hash/dict key support (26 tests)
-pytest tests/test_isinstance.py -v     # isinstance() support (31 tests)
+pytest tests/test_basic.py -v           # Basic API tests (8 tests)
+pytest tests/test_core.py -v            # Core functionality (34 tests)
+pytest tests/test_decorated_int.py -v   # Large unsigned integers (42 tests)
+pytest tests/test_sized_string.py -v    # Binary-safe strings (28 tests)
+pytest tests/test_hash_support.py -v    # Hash/dict key support (26 tests)
+pytest tests/test_isinstance.py -v      # isinstance() support (31 tests)
+pytest tests/test_advanced_methods.py -v # Advanced methods (25 tests)
 
 # Run with coverage report
 pytest tests/ --cov=libfyaml --cov-report=html
@@ -736,6 +738,7 @@ pytest tests/ --cov=libfyaml --cov-report=html
 - **Advanced features**: Binary-safe strings, large unsigned integers (up to 2^64-1)
 - **Python integration**: isinstance(), hash(), 'in' operator, dict/list interfaces
 - **Comparison/arithmetic**: Full Python operator support
+- **Advanced methods**: Type checking (is_null, is_int, etc.), clone(), get_path(), get_at_path(), __format__()
 
 ---
 
