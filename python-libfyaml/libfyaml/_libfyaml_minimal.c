@@ -1272,6 +1272,182 @@ FyGeneric_get_at_path(FyGenericObject *self, PyObject *path_obj)
     return (PyObject *)child;
 }
 
+/* FyGeneric: get_unix_path() - Get the path as a Unix-style string */
+static PyObject *
+FyGeneric_get_unix_path(FyGenericObject *self, PyObject *Py_UNUSED(args))
+{
+    /* If this is root, return "/" */
+    if (self->root == NULL) {
+        return PyUnicode_FromString("/");
+    }
+
+    /* Get the path list */
+    if (self->path == NULL) {
+        /* Should not happen since we always build paths now */
+        Py_RETURN_NONE;
+    }
+
+    Py_ssize_t path_len = PyList_Size(self->path);
+    if (path_len == 0) {
+        return PyUnicode_FromString("/");
+    }
+
+    /* Build the Unix path string */
+    PyObject *parts = PyList_New(0);
+    if (parts == NULL)
+        return NULL;
+
+    for (Py_ssize_t i = 0; i < path_len; i++) {
+        PyObject *elem = PyList_GET_ITEM(self->path, i);
+        PyObject *str_elem;
+
+        if (PyLong_Check(elem)) {
+            /* Convert integer index to string */
+            str_elem = PyObject_Str(elem);
+        } else if (PyUnicode_Check(elem)) {
+            Py_INCREF(elem);
+            str_elem = elem;
+        } else {
+            /* Unknown type - convert to string */
+            str_elem = PyObject_Str(elem);
+        }
+
+        if (str_elem == NULL) {
+            Py_DECREF(parts);
+            return NULL;
+        }
+
+        if (PyList_Append(parts, str_elem) < 0) {
+            Py_DECREF(str_elem);
+            Py_DECREF(parts);
+            return NULL;
+        }
+        Py_DECREF(str_elem);
+    }
+
+    /* Join with "/" */
+    PyObject *sep = PyUnicode_FromString("/");
+    if (sep == NULL) {
+        Py_DECREF(parts);
+        return NULL;
+    }
+
+    PyObject *result = PyUnicode_Join(sep, parts);
+    Py_DECREF(sep);
+    Py_DECREF(parts);
+
+    if (result == NULL)
+        return NULL;
+
+    /* Prepend "/" */
+    PyObject *slash = PyUnicode_FromString("/");
+    if (slash == NULL) {
+        Py_DECREF(result);
+        return NULL;
+    }
+
+    PyObject *final = PyUnicode_Concat(slash, result);
+    Py_DECREF(slash);
+    Py_DECREF(result);
+
+    return final;
+}
+
+/* FyGeneric: get_at_unix_path(path_string) - Get value at Unix-style path (root only) */
+static PyObject *
+FyGeneric_get_at_unix_path(FyGenericObject *self, PyObject *path_str)
+{
+    /* This method only works on root objects */
+    if (self->root != NULL) {
+        PyErr_SetString(PyExc_TypeError,
+                      "get_at_unix_path() can only be called on root FyGeneric objects");
+        return NULL;
+    }
+
+    if (!PyUnicode_Check(path_str)) {
+        PyErr_SetString(PyExc_TypeError, "Path must be a string");
+        return NULL;
+    }
+
+    const char *path_cstr = PyUnicode_AsUTF8(path_str);
+    if (path_cstr == NULL)
+        return NULL;
+
+    /* Handle empty string or just "/" as root */
+    if (path_cstr[0] == '\0' || (path_cstr[0] == '/' && path_cstr[1] == '\0')) {
+        Py_INCREF(self);
+        return (PyObject *)self;
+    }
+
+    /* Path must start with "/" */
+    if (path_cstr[0] != '/') {
+        PyErr_SetString(PyExc_ValueError, "Unix path must start with '/'");
+        return NULL;
+    }
+
+    /* Skip leading "/" and split by "/" */
+    PyObject *path_without_slash = PyUnicode_FromString(path_cstr + 1);
+    if (path_without_slash == NULL)
+        return NULL;
+
+    PyObject *sep = PyUnicode_FromString("/");
+    if (sep == NULL) {
+        Py_DECREF(path_without_slash);
+        return NULL;
+    }
+
+    PyObject *parts = PyUnicode_Split(path_without_slash, sep, -1);
+    Py_DECREF(sep);
+    Py_DECREF(path_without_slash);
+
+    if (parts == NULL)
+        return NULL;
+
+    /* Convert string parts to proper types (int if numeric, string otherwise) */
+    Py_ssize_t parts_len = PyList_Size(parts);
+    PyObject *path_list = PyList_New(parts_len);
+    if (path_list == NULL) {
+        Py_DECREF(parts);
+        return NULL;
+    }
+
+    for (Py_ssize_t i = 0; i < parts_len; i++) {
+        PyObject *part = PyList_GET_ITEM(parts, i);
+        const char *part_str = PyUnicode_AsUTF8(part);
+        if (part_str == NULL) {
+            Py_DECREF(path_list);
+            Py_DECREF(parts);
+            return NULL;
+        }
+
+        /* Try to parse as integer */
+        char *endptr;
+        long idx = strtol(part_str, &endptr, 10);
+        if (*endptr == '\0' && *part_str != '\0') {
+            /* Successfully parsed as integer */
+            PyObject *idx_obj = PyLong_FromLong(idx);
+            if (idx_obj == NULL) {
+                Py_DECREF(path_list);
+                Py_DECREF(parts);
+                return NULL;
+            }
+            PyList_SET_ITEM(path_list, i, idx_obj);
+        } else {
+            /* Keep as string */
+            Py_INCREF(part);
+            PyList_SET_ITEM(path_list, i, part);
+        }
+    }
+
+    Py_DECREF(parts);
+
+    /* Call get_at_path with the parsed path list */
+    PyObject *result = FyGeneric_get_at_path(self, path_list);
+    Py_DECREF(path_list);
+
+    return result;
+}
+
 /* FyGeneric: set_at_path(path, value) - Set value at path (root only) */
 static PyObject *
 FyGeneric_set_at_path(FyGenericObject *self, PyObject *args)
@@ -1381,6 +1557,10 @@ static PyMethodDef FyGeneric_methods[] = {
      "Get the path from root to this object"},
     {"get_at_path", _PyCFunction_CAST(FyGeneric_get_at_path), METH_O,
      "Get value at path (root only)"},
+    {"get_unix_path", _PyCFunction_CAST(FyGeneric_get_unix_path), METH_NOARGS,
+     "Get the path as a Unix-style string (e.g., '/server/host')"},
+    {"get_at_unix_path", _PyCFunction_CAST(FyGeneric_get_at_unix_path), METH_O,
+     "Get value at Unix-style path (root only)"},
     {"set_at_path", _PyCFunction_CAST(FyGeneric_set_at_path), METH_VARARGS,
      "Set value at path (root only)"},
     {"__format__", _PyCFunction_CAST(FyGeneric_format), METH_O,
