@@ -1606,6 +1606,56 @@ FyGeneric_set_at_path(FyGenericObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+/* FyGeneric: set_at_unix_path(path_string, value) - Set value at Unix-style path (root only) */
+static PyObject *
+FyGeneric_set_at_unix_path(FyGenericObject *self, PyObject *args)
+{
+    PyObject *path_str, *value_obj;
+
+    if (!PyArg_ParseTuple(args, "OO", &path_str, &value_obj))
+        return NULL;
+
+    /* This method only works on root objects */
+    if (self->root != NULL) {
+        PyErr_SetString(PyExc_TypeError,
+                      "set_at_unix_path() can only be called on root FyGeneric objects");
+        return NULL;
+    }
+
+    if (!PyUnicode_Check(path_str)) {
+        PyErr_SetString(PyExc_TypeError, "Path must be a string");
+        return NULL;
+    }
+
+    const char *path_cstr = PyUnicode_AsUTF8(path_str);
+    if (path_cstr == NULL)
+        return NULL;
+
+    /* Cannot set at root */
+    if (path_cstr[0] == '\0' || (path_cstr[0] == '/' && path_cstr[1] == '\0')) {
+        PyErr_SetString(PyExc_ValueError, "Cannot set value at root path '/'");
+        return NULL;
+    }
+
+    /* Convert Unix path to path list using internal converter */
+    PyObject *path_list = unix_path_to_path_list_internal(path_cstr);
+    if (path_list == NULL)
+        return NULL;
+
+    /* Create tuple of (path_list, value_obj) for set_at_path */
+    PyObject *set_args = PyTuple_Pack(2, path_list, value_obj);
+    Py_DECREF(path_list);
+
+    if (set_args == NULL)
+        return NULL;
+
+    /* Call set_at_path with the converted path list */
+    PyObject *result = FyGeneric_set_at_path(self, set_args);
+    Py_DECREF(set_args);
+
+    return result;
+}
+
 /* FyGeneric method table */
 static PyMethodDef FyGeneric_methods[] = {
     {"to_python", _PyCFunction_CAST(FyGeneric_to_python), METH_NOARGS,
@@ -1624,6 +1674,8 @@ static PyMethodDef FyGeneric_methods[] = {
      "Get value at Unix-style path (root only)"},
     {"set_at_path", _PyCFunction_CAST(FyGeneric_set_at_path), METH_VARARGS,
      "Set value at path (root only)"},
+    {"set_at_unix_path", _PyCFunction_CAST(FyGeneric_set_at_unix_path), METH_VARARGS,
+     "Set value at Unix-style path (root only)"},
     {"__format__", _PyCFunction_CAST(FyGeneric_format), METH_O,
      "Format the value according to format specification"},
     {"is_null", _PyCFunction_CAST(FyGeneric_is_null), METH_NOARGS,
