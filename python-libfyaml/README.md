@@ -691,7 +691,7 @@ python-libfyaml/
 ├── libfyaml/
 │   ├── __init__.py                   # Public API
 │   └── _libfyaml_minimal.c           # C extension
-├── tests/                             # Test suite (194 tests)
+├── tests/                             # Test suite (197 tests)
 │   ├── test_basic.py                 # Basic API tests
 │   ├── test_core.py                  # Core functionality
 │   ├── test_decorated_int.py         # Large unsigned integers
@@ -710,7 +710,7 @@ python-libfyaml/
 
 ### Running Tests
 
-The project includes a comprehensive test suite with 194 tests covering all features:
+The project includes a comprehensive test suite with 197 tests covering all features:
 
 ```bash
 # Install pytest if not already installed
@@ -726,7 +726,7 @@ pytest tests/test_decorated_int.py -v   # Large unsigned integers (42 tests)
 pytest tests/test_sized_string.py -v    # Binary-safe strings (28 tests)
 pytest tests/test_hash_support.py -v    # Hash/dict key support (26 tests)
 pytest tests/test_isinstance.py -v      # isinstance() support (31 tests)
-pytest tests/test_advanced_methods.py -v # Advanced methods (25 tests)
+pytest tests/test_advanced_methods.py -v # Advanced methods (28 tests)
 
 # Run with coverage report
 pytest tests/ --cov=libfyaml --cov-report=html
