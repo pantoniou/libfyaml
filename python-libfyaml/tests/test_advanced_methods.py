@@ -352,6 +352,171 @@ class TestGetAtPathMethod(unittest.TestCase):
             pass
 
 
+class TestUnixPathMethods(unittest.TestCase):
+    """Test Unix-style path methods (get_unix_path, get_at_unix_path)"""
+
+    def test_get_unix_path_root(self):
+        """Test get_unix_path() for root object"""
+        data = libfyaml.loads("value: 42")
+        path = data.get_unix_path()
+
+        # Root returns "/"
+        self.assertEqual(path, "/")
+
+    def test_get_unix_path_simple(self):
+        """Test get_unix_path() for simple nested value"""
+        data = libfyaml.loads("name: Alice\nage: 30")
+
+        name = data['name']
+        self.assertEqual(name.get_unix_path(), "/name")
+
+        age = data['age']
+        self.assertEqual(age.get_unix_path(), "/age")
+
+    def test_get_unix_path_nested(self):
+        """Test get_unix_path() for nested values"""
+        yaml_str = """
+        server:
+          host: localhost
+          port: 8080
+        """
+        data = libfyaml.loads(yaml_str)
+
+        server = data['server']
+        self.assertEqual(server.get_unix_path(), "/server")
+
+        host = data['server']['host']
+        self.assertEqual(host.get_unix_path(), "/server/host")
+
+        port = data['server']['port']
+        self.assertEqual(port.get_unix_path(), "/server/port")
+
+    def test_get_unix_path_sequence_item(self):
+        """Test get_unix_path() for sequence items"""
+        data = libfyaml.loads("items: [a, b, c]")
+
+        item0 = data['items'][0]
+        self.assertEqual(item0.get_unix_path(), "/items/0")
+
+        item1 = data['items'][1]
+        self.assertEqual(item1.get_unix_path(), "/items/1")
+
+        item2 = data['items'][2]
+        self.assertEqual(item2.get_unix_path(), "/items/2")
+
+    def test_get_unix_path_deeply_nested(self):
+        """Test get_unix_path() for deeply nested values"""
+        yaml_str = """
+        level1:
+          level2:
+            level3:
+              value: deep
+        """
+        data = libfyaml.loads(yaml_str)
+
+        value = data['level1']['level2']['level3']['value']
+        self.assertEqual(value.get_unix_path(), "/level1/level2/level3/value")
+
+    def test_get_at_unix_path_root(self):
+        """Test get_at_unix_path() with root path"""
+        data = libfyaml.loads("name: Alice")
+
+        # "/" should return root
+        result = data.get_at_unix_path("/")
+        self.assertEqual(result.to_python(), data.to_python())
+
+    def test_get_at_unix_path_simple(self):
+        """Test get_at_unix_path() with simple path"""
+        data = libfyaml.loads("name: Alice\nage: 30")
+
+        name = data.get_at_unix_path("/name")
+        self.assertEqual(str(name), "Alice")
+
+        age = data.get_at_unix_path("/age")
+        self.assertEqual(int(age), 30)
+
+    def test_get_at_unix_path_nested(self):
+        """Test get_at_unix_path() with nested path"""
+        yaml_str = """
+        server:
+          host: localhost
+          port: 8080
+        """
+        data = libfyaml.loads(yaml_str)
+
+        host = data.get_at_unix_path("/server/host")
+        self.assertEqual(str(host), "localhost")
+
+        port = data.get_at_unix_path("/server/port")
+        self.assertEqual(int(port), 8080)
+
+        server = data.get_at_unix_path("/server")
+        self.assertTrue(server.is_mapping())
+
+    def test_get_at_unix_path_sequence(self):
+        """Test get_at_unix_path() with sequence index"""
+        data = libfyaml.loads("items: [a, b, c]")
+
+        item0 = data.get_at_unix_path("/items/0")
+        self.assertEqual(str(item0), "a")
+
+        item1 = data.get_at_unix_path("/items/1")
+        self.assertEqual(str(item1), "b")
+
+        item2 = data.get_at_unix_path("/items/2")
+        self.assertEqual(str(item2), "c")
+
+    def test_get_at_unix_path_deeply_nested(self):
+        """Test get_at_unix_path() with deeply nested path"""
+        yaml_str = """
+        level1:
+          level2:
+            level3:
+              value: deep
+        """
+        data = libfyaml.loads(yaml_str)
+
+        value = data.get_at_unix_path("/level1/level2/level3/value")
+        self.assertEqual(str(value), "deep")
+
+    def test_get_at_unix_path_invalid(self):
+        """Test get_at_unix_path() with invalid path"""
+        data = libfyaml.loads("name: Alice")
+
+        # Path without leading "/" should raise ValueError
+        with self.assertRaises(ValueError):
+            data.get_at_unix_path("name")
+
+    def test_unix_path_round_trip(self):
+        """Test that get_unix_path() and get_at_unix_path() are inverse operations"""
+        yaml_str = """
+        config:
+          server:
+            host: localhost
+            port: 8080
+          users:
+            - alice
+            - bob
+        """
+        data = libfyaml.loads(yaml_str)
+
+        # Test various nested values
+        host = data['config']['server']['host']
+        unix_path = host.get_unix_path()
+        retrieved = data.get_at_unix_path(unix_path)
+        self.assertEqual(str(retrieved), str(host))
+
+        port = data['config']['server']['port']
+        unix_path = port.get_unix_path()
+        retrieved = data.get_at_unix_path(unix_path)
+        self.assertEqual(int(retrieved), int(port))
+
+        user0 = data['config']['users'][0]
+        unix_path = user0.get_unix_path()
+        retrieved = data.get_at_unix_path(unix_path)
+        self.assertEqual(str(retrieved), str(user0))
+
+
 class TestFormatMethod(unittest.TestCase):
     """Test __format__() method for format string support"""
 
@@ -478,6 +643,7 @@ def run_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestCloneMethod))
     suite.addTests(loader.loadTestsFromTestCase(TestGetPathMethod))
     suite.addTests(loader.loadTestsFromTestCase(TestGetAtPathMethod))
+    suite.addTests(loader.loadTestsFromTestCase(TestUnixPathMethods))
     suite.addTests(loader.loadTestsFromTestCase(TestFormatMethod))
     suite.addTests(loader.loadTestsFromTestCase(TestAdvancedPatterns))
 
