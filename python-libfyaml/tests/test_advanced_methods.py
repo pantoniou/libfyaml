@@ -126,46 +126,73 @@ class TestCloneMethod(unittest.TestCase):
         # Should be different objects
         self.assertIsNot(data, cloned)
 
-    def test_clone_preserves_structure(self):
-        """Test that clone preserves document structure"""
-        yaml_str = """
-        config:
-          host: localhost
-          port: 8080
-        """
-        data = libfyaml.loads(yaml_str)
-        cloned = data.clone()
+    def test_clone_nested_value_creates_new_root(self):
+        """Test that cloning nested value creates new root from that point"""
+        data = libfyaml.loads("config: {host: localhost, port: 8080}")
+        config = data['config']
+        cloned = config.clone()
 
-        # Verify structure is preserved
-        self.assertEqual(str(cloned['config']['host']), "localhost")
-        self.assertEqual(int(cloned['config']['port']), 8080)
+        # clone() should create new root from the nested value
+        # Not the whole original document!
+        self.assertEqual(cloned.to_python(), {'host': 'localhost', 'port': 8080})
 
-    def test_clone_nested_value_returns_root(self):
-        """Test that cloning nested value returns root document"""
+        # Verify it's a true root (not nested)
+        self.assertEqual(cloned.get_path(), [])
+
+        # Can access values directly
+        self.assertEqual(str(cloned['host']), 'localhost')
+        self.assertEqual(int(cloned['port']), 8080)
+
+    def test_clone_sequence_creates_new_root(self):
+        """Test cloning sequence creates new root"""
         data = libfyaml.loads("items: [1, 2, 3]")
         items = data['items']
         cloned = items.clone()
 
-        # clone() appears to clone the whole document, not just the subset
-        # This preserves the full document structure
-        self.assertIsNotNone(cloned)
-        self.assertTrue(isinstance(cloned, type(data)))
+        # Should be the sequence as new root
+        self.assertEqual(cloned.to_python(), [1, 2, 3])
+        self.assertEqual(cloned.get_path(), [])
 
-    def test_clone_deep_structure(self):
-        """Test cloning deeply nested structures"""
+    def test_clone_preserves_nested_structure(self):
+        """Test cloning nested value preserves its internal structure"""
         yaml_str = """
+        database:
+          server:
+            host: localhost
+            port: 5432
+          users:
+            - admin
+            - readonly
+        """
+        data = libfyaml.loads(yaml_str)
+
+        # Clone the 'database' substructure
+        database = data['database']
+        cloned_db = database.clone()
+
+        # Should preserve the internal structure
+        self.assertEqual(str(cloned_db['server']['host']), "localhost")
+        self.assertEqual(int(cloned_db['server']['port']), 5432)
+        self.assertEqual(str(cloned_db['users'][0]), "admin")
+
+    def test_clone_independence(self):
+        """Test that cloned values are truly independent"""
+        data = libfyaml.loads("""
         users:
           - name: Alice
             age: 30
           - name: Bob
             age: 25
-        """
-        data = libfyaml.loads(yaml_str)
-        cloned = data.clone()
+        """)
 
-        # Should have same nested values
-        self.assertEqual(str(cloned['users'][0]['name']), "Alice")
-        self.assertEqual(int(cloned['users'][1]['age']), 25)
+        # Clone just the users array
+        users = data['users']
+        cloned_users = users.clone()
+
+        # Verify independence - cloned is new root
+        self.assertEqual(cloned_users.to_python(), users.to_python())
+        self.assertEqual(cloned_users.get_path(), [])
+        self.assertEqual(users.get_path(), ['users'])
 
 
 class TestGetPathMethod(unittest.TestCase):
@@ -180,8 +207,8 @@ class TestGetPathMethod(unittest.TestCase):
         self.assertIsNotNone(path)
         self.assertEqual(path, [])
 
-    def test_get_path_nested_value(self):
-        """Test get_path() for nested values"""
+    def test_get_path_nested_mapping(self):
+        """Test get_path() for nested mapping value"""
         yaml_str = """
         server:
           host: localhost
@@ -189,25 +216,42 @@ class TestGetPathMethod(unittest.TestCase):
         """
         data = libfyaml.loads(yaml_str)
 
-        # Access nested value
-        host = data['server']['host']
-        path = host.get_path()
+        # Access nested values and verify paths
+        server = data['server']
+        self.assertEqual(server.get_path(), ['server'])
 
-        # get_path() may return None for nested values
-        # (only root has path tracking)
-        # This is acceptable behavior
-        self.assertTrue(path is None or isinstance(path, str))
+        host = data['server']['host']
+        self.assertEqual(host.get_path(), ['server', 'host'])
+
+        port = data['server']['port']
+        self.assertEqual(port.get_path(), ['server', 'port'])
 
     def test_get_path_sequence_item(self):
         """Test get_path() for sequence items"""
         data = libfyaml.loads("items: [a, b, c]")
 
-        # Access sequence item
-        item = data['items'][1]
-        path = item.get_path()
+        # Access sequence items
+        item0 = data['items'][0]
+        self.assertEqual(item0.get_path(), ['items', 0])
 
-        # get_path() may return None for nested values
-        self.assertTrue(path is None or isinstance(path, str))
+        item1 = data['items'][1]
+        self.assertEqual(item1.get_path(), ['items', 1])
+
+        item2 = data['items'][2]
+        self.assertEqual(item2.get_path(), ['items', 2])
+
+    def test_get_path_deeply_nested(self):
+        """Test get_path() for deeply nested values"""
+        yaml_str = """
+        level1:
+          level2:
+            level3:
+              value: deep
+        """
+        data = libfyaml.loads(yaml_str)
+
+        value = data['level1']['level2']['level3']['value']
+        self.assertEqual(value.get_path(), ['level1', 'level2', 'level3', 'value'])
 
 
 class TestGetAtPathMethod(unittest.TestCase):
@@ -360,18 +404,23 @@ class TestAdvancedPatterns(unittest.TestCase):
     def test_clone_and_verify_independence(self):
         """Test that cloned objects are truly independent"""
         data = libfyaml.loads("config: {host: localhost, port: 8080}")
-        cloned = data.clone()
 
-        # Verify they start equal
-        self.assertEqual(data.to_python(), cloned.to_python())
+        # Clone from root
+        cloned_root = data.clone()
+        self.assertEqual(data.to_python(), cloned_root.to_python())
+        self.assertEqual(cloned_root.get_path(), [])
 
-        # Both should be mappings (at root level)
-        self.assertTrue(data.is_mapping())
-        self.assertTrue(cloned.is_mapping())
+        # Clone from nested value
+        config = data['config']
+        cloned_config = config.clone()
 
-        # Verify nested structure is preserved
-        self.assertEqual(str(data['config']['host']), str(cloned['config']['host']))
-        self.assertEqual(int(data['config']['port']), int(cloned['config']['port']))
+        # Cloned config should be new root with just the config data
+        self.assertEqual(cloned_config.to_python(), {'host': 'localhost', 'port': 8080})
+        self.assertEqual(cloned_config.get_path(), [])
+
+        # Can access directly without 'config' key
+        self.assertEqual(str(cloned_config['host']), 'localhost')
+        self.assertEqual(int(cloned_config['port']), 8080)
 
 
 def run_tests():
