@@ -374,43 +374,38 @@ FyGeneric_from_parent(fy_generic fyg, FyGenericObject *parent, PyObject *path_el
     FyGenericObject *root_obj = (FyGenericObject *)self->root;
     self->mutable = root_obj->mutable;
 
-    /* Only build path if root is mutable */
-    if (self->mutable) {
-        /* Build path from parent's path + this element */
-        if (parent->path == NULL) {
-            /* Parent is root - create new path with just this element */
-            self->path = PyList_New(1);
-            if (self->path == NULL) {
-                Py_DECREF(self->root);
-                Py_TYPE(self)->tp_free((PyObject *)self);
-                return NULL;
-            }
-            Py_INCREF(path_elem);
-            PyList_SET_ITEM(self->path, 0, path_elem);
-        } else {
-            /* Parent has path - copy and append */
-            Py_ssize_t parent_len = PyList_Size(parent->path);
-            self->path = PyList_New(parent_len + 1);
-            if (self->path == NULL) {
-                Py_DECREF(self->root);
-                Py_TYPE(self)->tp_free((PyObject *)self);
-                return NULL;
-            }
-
-            /* Copy parent's path */
-            for (Py_ssize_t i = 0; i < parent_len; i++) {
-                PyObject *item = PyList_GET_ITEM(parent->path, i);
-                Py_INCREF(item);
-                PyList_SET_ITEM(self->path, i, item);
-            }
-
-            /* Append new element */
-            Py_INCREF(path_elem);
-            PyList_SET_ITEM(self->path, parent_len, path_elem);
+    /* Build path from parent's path + this element */
+    /* Path tracking is always enabled, regardless of mutability */
+    if (parent->path == NULL) {
+        /* Parent is root - create new path with just this element */
+        self->path = PyList_New(1);
+        if (self->path == NULL) {
+            Py_DECREF(self->root);
+            Py_TYPE(self)->tp_free((PyObject *)self);
+            return NULL;
         }
+        Py_INCREF(path_elem);
+        PyList_SET_ITEM(self->path, 0, path_elem);
     } else {
-        /* Read-only mode - no path tracking */
-        self->path = NULL;
+        /* Parent has path - copy and append */
+        Py_ssize_t parent_len = PyList_Size(parent->path);
+        self->path = PyList_New(parent_len + 1);
+        if (self->path == NULL) {
+            Py_DECREF(self->root);
+            Py_TYPE(self)->tp_free((PyObject *)self);
+            return NULL;
+        }
+
+        /* Copy parent's path */
+        for (Py_ssize_t i = 0; i < parent_len; i++) {
+            PyObject *item = PyList_GET_ITEM(parent->path, i);
+            Py_INCREF(item);
+            PyList_SET_ITEM(self->path, i, item);
+        }
+
+        /* Append new element */
+        Py_INCREF(path_elem);
+        PyList_SET_ITEM(self->path, parent_len, path_elem);
     }
 
     return (PyObject *)self;
@@ -1130,7 +1125,7 @@ FyGeneric_trim(FyGenericObject *self, PyObject *Py_UNUSED(args))
 static PyObject *
 FyGeneric_clone(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
-    /* Get the root object (source of truth for mutable flag and generic value) */
+    /* Get the root object for mutable flag */
     FyGenericObject *root_obj = self->root ? (FyGenericObject *)self->root : self;
 
     /* Create a new builder for the clone */
@@ -1140,8 +1135,9 @@ FyGeneric_clone(FyGenericObject *self, PyObject *Py_UNUSED(args))
         return NULL;
     }
 
-    /* Internalize (copy) the generic value into the new builder */
-    fy_generic cloned = fy_gb_internalize(new_gb, root_obj->fyg);
+    /* Internalize (copy) the generic value from THIS object (not root) */
+    /* This creates a new root starting from the current value */
+    fy_generic cloned = fy_gb_internalize(new_gb, self->fyg);
     if (fy_generic_is_invalid(cloned)) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to clone generic value");
         goto err_out;
@@ -1168,11 +1164,12 @@ FyGeneric_get_path(FyGenericObject *self, PyObject *Py_UNUSED(args))
         return PyList_New(0);
     }
 
-    /* If path tracking is disabled (mutable=False), return None */
-    if (self->path == NULL)
+    /* Return the path list (always available for nested values) */
+    if (self->path == NULL) {
+        /* Should not happen since we always build paths now */
         Py_RETURN_NONE;
+    }
 
-    /* Return a copy of the path list */
     Py_INCREF(self->path);
     return self->path;
 }
