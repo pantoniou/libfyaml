@@ -517,6 +517,83 @@ class TestUnixPathMethods(unittest.TestCase):
         self.assertEqual(str(retrieved), str(user0))
 
 
+class TestModuleLevelPathConversion(unittest.TestCase):
+    """Test module-level path conversion functions"""
+
+    def test_path_list_to_unix_path_simple(self):
+        """Test path_list_to_unix_path() with simple paths"""
+        # Simple nested path
+        result = libfyaml.path_list_to_unix_path(['server', 'host'])
+        self.assertEqual(result, '/server/host')
+
+        # Single element
+        result = libfyaml.path_list_to_unix_path(['name'])
+        self.assertEqual(result, '/name')
+
+    def test_path_list_to_unix_path_with_indices(self):
+        """Test path_list_to_unix_path() with sequence indices"""
+        result = libfyaml.path_list_to_unix_path(['items', 0])
+        self.assertEqual(result, '/items/0')
+
+        result = libfyaml.path_list_to_unix_path(['users', 1, 'name'])
+        self.assertEqual(result, '/users/1/name')
+
+    def test_path_list_to_unix_path_empty(self):
+        """Test path_list_to_unix_path() with empty list (root)"""
+        result = libfyaml.path_list_to_unix_path([])
+        self.assertEqual(result, '/')
+
+    def test_path_list_to_unix_path_tuple(self):
+        """Test path_list_to_unix_path() with tuple"""
+        result = libfyaml.path_list_to_unix_path(('server', 'port'))
+        self.assertEqual(result, '/server/port')
+
+    def test_unix_path_to_path_list_simple(self):
+        """Test unix_path_to_path_list() with simple paths"""
+        result = libfyaml.unix_path_to_path_list('/server/host')
+        self.assertEqual(result, ['server', 'host'])
+
+        result = libfyaml.unix_path_to_path_list('/name')
+        self.assertEqual(result, ['name'])
+
+    def test_unix_path_to_path_list_with_indices(self):
+        """Test unix_path_to_path_list() with sequence indices"""
+        result = libfyaml.unix_path_to_path_list('/items/0')
+        self.assertEqual(result, ['items', 0])
+
+        result = libfyaml.unix_path_to_path_list('/users/1/name')
+        self.assertEqual(result, ['users', 1, 'name'])
+
+    def test_unix_path_to_path_list_root(self):
+        """Test unix_path_to_path_list() with root path"""
+        result = libfyaml.unix_path_to_path_list('/')
+        self.assertEqual(result, [])
+
+    def test_unix_path_to_path_list_invalid(self):
+        """Test unix_path_to_path_list() with invalid path"""
+        # Path without leading "/"
+        with self.assertRaises(ValueError):
+            libfyaml.unix_path_to_path_list('server/host')
+
+    def test_path_conversion_round_trip(self):
+        """Test that path conversions are inverse operations"""
+        # List to Unix to List
+        original_list = ['server', 'config', 'port']
+        unix_path = libfyaml.path_list_to_unix_path(original_list)
+        result_list = libfyaml.unix_path_to_path_list(unix_path)
+        self.assertEqual(result_list, original_list)
+
+        # Unix to List to Unix
+        original_unix = '/database/users/0/name'
+        path_list = libfyaml.unix_path_to_path_list(original_unix)
+        result_unix = libfyaml.path_list_to_unix_path(path_list)
+        self.assertEqual(result_unix, original_unix)
+
+        # Root round trip
+        self.assertEqual(libfyaml.unix_path_to_path_list('/'), [])
+        self.assertEqual(libfyaml.path_list_to_unix_path([]), '/')
+
+
 class TestFormatMethod(unittest.TestCase):
     """Test __format__() method for format string support"""
 
@@ -644,6 +721,7 @@ def run_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestGetPathMethod))
     suite.addTests(loader.loadTestsFromTestCase(TestGetAtPathMethod))
     suite.addTests(loader.loadTestsFromTestCase(TestUnixPathMethods))
+    suite.addTests(loader.loadTestsFromTestCase(TestModuleLevelPathConversion))
     suite.addTests(loader.loadTestsFromTestCase(TestFormatMethod))
     suite.addTests(loader.loadTestsFromTestCase(TestAdvancedPatterns))
 
