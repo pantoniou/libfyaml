@@ -33,6 +33,8 @@ from libfyaml._libfyaml import (
     dump_all,
     dumps_all,
     from_python,
+    path_list_to_unix_path,
+    unix_path_to_path_list,
 )
 
 import json as _json
@@ -106,6 +108,8 @@ __all__ = [
     "dump_all",
     "dumps_all",
     "from_python",
+    "path_list_to_unix_path",
+    "unix_path_to_path_list",
     "json_dumps",
     "json_dump",
 ]

@@ -1272,22 +1272,20 @@ FyGeneric_get_at_path(FyGenericObject *self, PyObject *path_obj)
     return (PyObject *)child;
 }
 
-/* FyGeneric: get_unix_path() - Get the path as a Unix-style string */
+/* Internal: Convert path list to Unix-style path string */
 static PyObject *
-FyGeneric_get_unix_path(FyGenericObject *self, PyObject *Py_UNUSED(args))
+path_list_to_unix_path_internal(PyObject *path_list)
 {
-    /* If this is root, return "/" */
-    if (self->root == NULL) {
-        return PyUnicode_FromString("/");
+    if (!PyList_Check(path_list) && !PyTuple_Check(path_list)) {
+        PyErr_SetString(PyExc_TypeError, "Path must be a list or tuple");
+        return NULL;
     }
 
-    /* Get the path list */
-    if (self->path == NULL) {
-        /* Should not happen since we always build paths now */
-        Py_RETURN_NONE;
-    }
+    Py_ssize_t path_len = PySequence_Size(path_list);
+    if (path_len < 0)
+        return NULL;
 
-    Py_ssize_t path_len = PyList_Size(self->path);
+    /* Empty list returns "/" */
     if (path_len == 0) {
         return PyUnicode_FromString("/");
     }
@@ -1298,18 +1296,23 @@ FyGeneric_get_unix_path(FyGenericObject *self, PyObject *Py_UNUSED(args))
         return NULL;
 
     for (Py_ssize_t i = 0; i < path_len; i++) {
-        PyObject *elem = PyList_GET_ITEM(self->path, i);
-        PyObject *str_elem;
+        PyObject *elem = PySequence_GetItem(path_list, i);
+        if (elem == NULL) {
+            Py_DECREF(parts);
+            return NULL;
+        }
 
+        PyObject *str_elem;
         if (PyLong_Check(elem)) {
             /* Convert integer index to string */
             str_elem = PyObject_Str(elem);
+            Py_DECREF(elem);
         } else if (PyUnicode_Check(elem)) {
-            Py_INCREF(elem);
-            str_elem = elem;
+            str_elem = elem;  /* Already a string, transfer ownership */
         } else {
             /* Unknown type - convert to string */
             str_elem = PyObject_Str(elem);
+            Py_DECREF(elem);
         }
 
         if (str_elem == NULL) {
@@ -1353,30 +1356,13 @@ FyGeneric_get_unix_path(FyGenericObject *self, PyObject *Py_UNUSED(args))
     return final;
 }
 
-/* FyGeneric: get_at_unix_path(path_string) - Get value at Unix-style path (root only) */
+/* Internal: Convert Unix-style path string to path list */
 static PyObject *
-FyGeneric_get_at_unix_path(FyGenericObject *self, PyObject *path_str)
+unix_path_to_path_list_internal(const char *path_cstr)
 {
-    /* This method only works on root objects */
-    if (self->root != NULL) {
-        PyErr_SetString(PyExc_TypeError,
-                      "get_at_unix_path() can only be called on root FyGeneric objects");
-        return NULL;
-    }
-
-    if (!PyUnicode_Check(path_str)) {
-        PyErr_SetString(PyExc_TypeError, "Path must be a string");
-        return NULL;
-    }
-
-    const char *path_cstr = PyUnicode_AsUTF8(path_str);
-    if (path_cstr == NULL)
-        return NULL;
-
-    /* Handle empty string or just "/" as root */
+    /* Handle empty string or just "/" as root (empty list) */
     if (path_cstr[0] == '\0' || (path_cstr[0] == '/' && path_cstr[1] == '\0')) {
-        Py_INCREF(self);
-        return (PyObject *)self;
+        return PyList_New(0);
     }
 
     /* Path must start with "/" */
@@ -1440,6 +1426,81 @@ FyGeneric_get_at_unix_path(FyGenericObject *self, PyObject *path_str)
     }
 
     Py_DECREF(parts);
+    return path_list;
+}
+
+/* Module-level: path_list_to_unix_path(path_list) - Convert path list to Unix-style string */
+static PyObject *
+libfyaml_path_list_to_unix_path(PyObject *Py_UNUSED(self), PyObject *path_list)
+{
+    return path_list_to_unix_path_internal(path_list);
+}
+
+/* Module-level: unix_path_to_path_list(unix_path) - Convert Unix-style string to path list */
+static PyObject *
+libfyaml_unix_path_to_path_list(PyObject *Py_UNUSED(self), PyObject *unix_path)
+{
+    if (!PyUnicode_Check(unix_path)) {
+        PyErr_SetString(PyExc_TypeError, "Path must be a string");
+        return NULL;
+    }
+
+    const char *path_cstr = PyUnicode_AsUTF8(unix_path);
+    if (path_cstr == NULL)
+        return NULL;
+
+    return unix_path_to_path_list_internal(path_cstr);
+}
+
+/* FyGeneric: get_unix_path() - Get the path as a Unix-style string */
+static PyObject *
+FyGeneric_get_unix_path(FyGenericObject *self, PyObject *Py_UNUSED(args))
+{
+    /* If this is root, return "/" */
+    if (self->root == NULL) {
+        return PyUnicode_FromString("/");
+    }
+
+    /* Get the path list */
+    if (self->path == NULL) {
+        /* Should not happen since we always build paths now */
+        Py_RETURN_NONE;
+    }
+
+    /* Use internal converter */
+    return path_list_to_unix_path_internal(self->path);
+}
+
+/* FyGeneric: get_at_unix_path(path_string) - Get value at Unix-style path (root only) */
+static PyObject *
+FyGeneric_get_at_unix_path(FyGenericObject *self, PyObject *path_str)
+{
+    /* This method only works on root objects */
+    if (self->root != NULL) {
+        PyErr_SetString(PyExc_TypeError,
+                      "get_at_unix_path() can only be called on root FyGeneric objects");
+        return NULL;
+    }
+
+    if (!PyUnicode_Check(path_str)) {
+        PyErr_SetString(PyExc_TypeError, "Path must be a string");
+        return NULL;
+    }
+
+    const char *path_cstr = PyUnicode_AsUTF8(path_str);
+    if (path_cstr == NULL)
+        return NULL;
+
+    /* Handle empty string or just "/" as root */
+    if (path_cstr[0] == '\0' || (path_cstr[0] == '/' && path_cstr[1] == '\0')) {
+        Py_INCREF(self);
+        return (PyObject *)self;
+    }
+
+    /* Convert Unix path to path list using internal converter */
+    PyObject *path_list = unix_path_to_path_list_internal(path_cstr);
+    if (path_list == NULL)
+        return NULL;
 
     /* Call get_at_path with the parsed path list */
     PyObject *result = FyGeneric_get_at_path(self, path_list);
@@ -3458,6 +3519,10 @@ static PyMethodDef module_methods[] = {
      "Dump multiple Python objects to file (path or file object)"},
     {"from_python", _PyCFunction_CAST(libfyaml_from_python), METH_VARARGS | METH_KEYWORDS,
      "Convert Python object to FyGeneric"},
+    {"path_list_to_unix_path", _PyCFunction_CAST(libfyaml_path_list_to_unix_path), METH_O,
+     "Convert path list (e.g., ['server', 'host']) to Unix-style path string (e.g., '/server/host')"},
+    {"unix_path_to_path_list", _PyCFunction_CAST(libfyaml_unix_path_to_path_list), METH_O,
+     "Convert Unix-style path string (e.g., '/server/host') to path list (e.g., ['server', 'host'])"},
     {NULL}
 };
 
