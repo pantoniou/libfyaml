@@ -8,7 +8,7 @@
 #ifndef FY_ENDIAN_H
 #define FY_ENDIAN_H
 
-#if defined(__linux__) || defined(__CYGWIN__) || defined(__OpenBSD__)
+#if defined(__linux__) || defined(__CYGWIN__) || defined(__OpenBSD__) || defined(__GNU__)
 # include <endian.h>
 #elif defined(__APPLE__)
 # include <libkern/OSByteOrder.h>
