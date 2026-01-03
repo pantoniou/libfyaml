@@ -13,6 +13,8 @@ This test verifies advanced functionality including:
 import sys
 import os
 import unittest
+import tempfile
+import io
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -137,7 +139,7 @@ class TestCloneMethod(unittest.TestCase):
         self.assertEqual(cloned.to_python(), {'host': 'localhost', 'port': 8080})
 
         # Verify it's a true root (not nested)
-        self.assertEqual(cloned.get_path(), [])
+        self.assertEqual(cloned.get_path(), ())
 
         # Can access values directly
         self.assertEqual(str(cloned['host']), 'localhost')
@@ -151,7 +153,7 @@ class TestCloneMethod(unittest.TestCase):
 
         # Should be the sequence as new root
         self.assertEqual(cloned.to_python(), [1, 2, 3])
-        self.assertEqual(cloned.get_path(), [])
+        self.assertEqual(cloned.get_path(), ())
 
     def test_clone_preserves_nested_structure(self):
         """Test cloning nested value preserves its internal structure"""
@@ -191,8 +193,8 @@ class TestCloneMethod(unittest.TestCase):
 
         # Verify independence - cloned is new root
         self.assertEqual(cloned_users.to_python(), users.to_python())
-        self.assertEqual(cloned_users.get_path(), [])
-        self.assertEqual(users.get_path(), ['users'])
+        self.assertEqual(cloned_users.get_path(), ())
+        self.assertEqual(users.get_path(), ('users',))
 
     def test_clone_resets_paths_for_children(self):
         """Test that cloned object's children have paths relative to new root"""
@@ -207,37 +209,80 @@ class TestCloneMethod(unittest.TestCase):
 
         # Original paths before cloning
         config = data['config']
-        self.assertEqual(config.get_path(), ['config'])
+        self.assertEqual(config.get_path(), ('config',))
 
         server = config['server']
-        self.assertEqual(server.get_path(), ['config', 'server'])
+        self.assertEqual(server.get_path(), ('config', 'server'))
 
         host = server['host']
-        self.assertEqual(host.get_path(), ['config', 'server', 'host'])
+        self.assertEqual(host.get_path(), ('config', 'server', 'host'))
 
         # Clone the config object
         cloned_config = config.clone()
 
         # Cloned object should be new root
-        self.assertEqual(cloned_config.get_path(), [])
+        self.assertEqual(cloned_config.get_path(), ())
 
         # Children of cloned object should have paths relative to new root
         cloned_server = cloned_config['server']
-        self.assertEqual(cloned_server.get_path(), ['server'])
+        self.assertEqual(cloned_server.get_path(), ('server',))
 
         cloned_host = cloned_server['host']
-        self.assertEqual(cloned_host.get_path(), ['server', 'host'])
+        self.assertEqual(cloned_host.get_path(), ('server', 'host'))
 
         cloned_port = cloned_server['port']
-        self.assertEqual(cloned_port.get_path(), ['server', 'port'])
+        self.assertEqual(cloned_port.get_path(), ('server', 'port'))
 
         cloned_debug = cloned_config['debug']
-        self.assertEqual(cloned_debug.get_path(), ['debug'])
+        self.assertEqual(cloned_debug.get_path(), ('debug',))
 
         # Verify values are correct
         self.assertEqual(str(cloned_host), 'localhost')
         self.assertEqual(int(cloned_port), 8080)
         self.assertEqual(bool(cloned_debug), True)
+
+    def test_clone_has_independent_builder(self):
+        """Test that cloned object has independent builder"""
+        data = libfyaml.loads('{"key": "value"}')
+        cloned = data.clone()
+
+        # Both should work independently
+        self.assertEqual(str(data), str(cloned))
+
+        # Cloned object should be a root (has its own builder)
+        self.assertEqual(cloned.get_path(), ())
+
+    def test_clone_works_correctly(self):
+        """Test that clone() produces functionally equivalent objects"""
+        yaml_str = """
+        users:
+          - name: Alice
+            age: 30
+          - name: Bob
+            age: 25
+        """
+        data = libfyaml.loads(yaml_str)
+        cloned = data.clone()
+
+        # Should have identical Python representation
+        self.assertEqual(data.to_python(), cloned.to_python())
+
+        # Should be able to access nested values
+        self.assertEqual(str(cloned['users'][0]['name']), 'Alice')
+        self.assertEqual(int(cloned['users'][1]['age']), 25)
+
+    def test_nested_clone_works_correctly(self):
+        """Test cloning nested values produces correct results"""
+        data = libfyaml.loads('{"level1": {"level2": {"level3": "value"}}}')
+
+        # Clone from level2
+        level2 = data['level1']['level2']
+        cloned_level2 = level2.clone()
+
+        # Should have just level3 as new root
+        self.assertEqual(cloned_level2.to_python(), {'level3': 'value'})
+        self.assertEqual(cloned_level2.get_path(), ())
+        self.assertEqual(str(cloned_level2['level3']), 'value')
 
 
 class TestGetPathMethod(unittest.TestCase):
@@ -248,9 +293,9 @@ class TestGetPathMethod(unittest.TestCase):
         data = libfyaml.loads("value: 42")
         path = data.get_path()
 
-        # Root returns empty list (no path from root to itself)
+        # Root returns empty tuple (no path from root to itself)
         self.assertIsNotNone(path)
-        self.assertEqual(path, [])
+        self.assertEqual(path, ())
 
     def test_get_path_nested_mapping(self):
         """Test get_path() for nested mapping value"""
@@ -263,13 +308,13 @@ class TestGetPathMethod(unittest.TestCase):
 
         # Access nested values and verify paths
         server = data['server']
-        self.assertEqual(server.get_path(), ['server'])
+        self.assertEqual(server.get_path(), ('server',))
 
         host = data['server']['host']
-        self.assertEqual(host.get_path(), ['server', 'host'])
+        self.assertEqual(host.get_path(), ('server', 'host'))
 
         port = data['server']['port']
-        self.assertEqual(port.get_path(), ['server', 'port'])
+        self.assertEqual(port.get_path(), ('server', 'port'))
 
     def test_get_path_sequence_item(self):
         """Test get_path() for sequence items"""
@@ -277,13 +322,13 @@ class TestGetPathMethod(unittest.TestCase):
 
         # Access sequence items
         item0 = data['items'][0]
-        self.assertEqual(item0.get_path(), ['items', 0])
+        self.assertEqual(item0.get_path(), ('items', 0))
 
         item1 = data['items'][1]
-        self.assertEqual(item1.get_path(), ['items', 1])
+        self.assertEqual(item1.get_path(), ('items', 1))
 
         item2 = data['items'][2]
-        self.assertEqual(item2.get_path(), ['items', 2])
+        self.assertEqual(item2.get_path(), ('items', 2))
 
     def test_get_path_deeply_nested(self):
         """Test get_path() for deeply nested values"""
@@ -296,7 +341,29 @@ class TestGetPathMethod(unittest.TestCase):
         data = libfyaml.loads(yaml_str)
 
         value = data['level1']['level2']['level3']['value']
-        self.assertEqual(value.get_path(), ['level1', 'level2', 'level3', 'value'])
+        self.assertEqual(value.get_path(), ('level1', 'level2', 'level3', 'value'))
+
+    def test_path_is_tuple_not_list(self):
+        """Test that get_path() returns tuple, not list"""
+        data = libfyaml.loads('{"server": {"host": "localhost"}}')
+        path = data['server']['host'].get_path()
+        self.assertIsInstance(path, tuple, "Path should be a tuple for immutability")
+        self.assertEqual(path, ('server', 'host'))
+
+    def test_root_path_is_empty_tuple(self):
+        """Test that root get_path() returns empty tuple"""
+        data = libfyaml.loads('{"key": "value"}')
+        path = data.get_path()
+        self.assertIsInstance(path, tuple, "Root path should be a tuple")
+        self.assertEqual(path, ())
+
+    def test_path_is_immutable(self):
+        """Test that returned path tuple cannot be modified"""
+        data = libfyaml.loads('{"key": "value"}')
+        path = data['key'].get_path()
+        self.assertIsInstance(path, tuple)
+        with self.assertRaises(TypeError, msg="Tuples don't support item assignment"):
+            path[0] = 'modified'  # Should raise TypeError
 
 
 class TestGetAtPathMethod(unittest.TestCase):
@@ -830,7 +897,7 @@ class TestAdvancedPatterns(unittest.TestCase):
         # Clone from root
         cloned_root = data.clone()
         self.assertEqual(data.to_python(), cloned_root.to_python())
-        self.assertEqual(cloned_root.get_path(), [])
+        self.assertEqual(cloned_root.get_path(), ())
 
         # Clone from nested value
         config = data['config']
@@ -838,11 +905,185 @@ class TestAdvancedPatterns(unittest.TestCase):
 
         # Cloned config should be new root with just the config data
         self.assertEqual(cloned_config.to_python(), {'host': 'localhost', 'port': 8080})
-        self.assertEqual(cloned_config.get_path(), [])
+        self.assertEqual(cloned_config.get_path(), ())
 
         # Can access directly without 'config' key
         self.assertEqual(str(cloned_config['host']), 'localhost')
         self.assertEqual(int(cloned_config['port']), 8080)
+
+
+class TestDumpMethod(unittest.TestCase):
+    """Test dump() instance method for serializing values"""
+
+    def test_dump_returns_string_with_no_args(self):
+        """Test dump() with no arguments returns YAML string"""
+        data = libfyaml.loads('{"key": "value"}')
+        result = data.dump()
+
+        self.assertIsInstance(result, str)
+        self.assertIn('key:', result)
+        self.assertIn('value', result)
+
+    def test_dump_yaml_mode(self):
+        """Test dump(mode='yaml') returns YAML format"""
+        data = libfyaml.loads('{"name": "test", "count": 42}')
+        result = data.dump(mode='yaml')
+
+        self.assertIsInstance(result, str)
+        # YAML format uses key: value
+        self.assertIn('name:', result)
+        self.assertIn('count:', result)
+
+    def test_dump_json_mode(self):
+        """Test dump(mode='json') returns JSON format"""
+        data = libfyaml.loads('{"name": "test", "count": 42}')
+        result = data.dump(mode='json')
+
+        self.assertIsInstance(result, str)
+        # JSON format uses quotes and braces
+        self.assertIn('"name"', result)
+        self.assertIn('"test"', result)
+        self.assertIn('{', result)
+        self.assertIn('}', result)
+
+    def test_dump_compact_yaml(self):
+        """Test dump(compact=True) returns flow-style YAML"""
+        data = libfyaml.loads('{"a": 1, "b": 2}')
+        result = data.dump(compact=True)
+
+        self.assertIsInstance(result, str)
+        # Flow style should be more compact (may be on one line)
+        # At minimum, should not have excessive newlines
+        line_count = result.count('\n')
+        self.assertLessEqual(line_count, 3)  # Compact should be minimal lines
+
+    def test_dump_block_yaml(self):
+        """Test dump(compact=False) returns block-style YAML"""
+        data = libfyaml.loads('{"a": 1, "b": 2}')
+        result = data.dump(compact=False)
+
+        self.assertIsInstance(result, str)
+        # Block style uses newlines
+        self.assertIn('\n', result)
+
+    def test_dump_to_file_path(self):
+        """Test dump(file=path) writes to file"""
+        data = libfyaml.loads('{"key": "value"}')
+
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.yaml') as f:
+            path = f.name
+
+        try:
+            result = data.dump(file=path)
+
+            # Should return None when writing to file
+            self.assertIsNone(result)
+
+            # Verify file was written
+            with open(path, 'r') as f:
+                content = f.read()
+
+            self.assertIn('key:', content)
+            self.assertIn('value', content)
+        finally:
+            os.unlink(path)
+
+    def test_dump_to_file_object(self):
+        """Test dump(file=file_obj) writes to file object"""
+        data = libfyaml.loads('{"key": "value"}')
+        output = io.StringIO()
+
+        result = data.dump(file=output)
+
+        # Should return None when writing to file
+        self.assertIsNone(result)
+
+        # Verify content was written
+        content = output.getvalue()
+        self.assertIn('key:', content)
+        self.assertIn('value', content)
+
+    def test_dump_nested_value(self):
+        """Test dump() on nested value creates new root"""
+        data = libfyaml.loads('{"server": {"host": "localhost", "port": 8080}}')
+        server = data['server']
+
+        result = server.dump()
+
+        # Should dump just the server dict as a new root
+        self.assertIn('host:', result)
+        self.assertIn('localhost', result)
+        self.assertIn('port:', result)
+        # Should NOT include 'server:' key (it's the new root)
+        self.assertNotIn('server:', result)
+
+    def test_dump_scalar_value(self):
+        """Test dump() on scalar values"""
+        data = libfyaml.loads('{"number": 42}')
+        number = data['number']
+
+        result = number.dump()
+
+        # Scalar should dump as itself
+        self.assertIn('42', result)
+
+    def test_dump_list_value(self):
+        """Test dump() on list value"""
+        data = libfyaml.loads('{"items": [1, 2, 3]}')
+        items = data['items']
+
+        result = items.dump()
+
+        # Should dump as list
+        self.assertIn('1', result)
+        self.assertIn('2', result)
+        self.assertIn('3', result)
+
+    def test_dump_json_mode_with_file(self):
+        """Test dump(file=path, mode='json') writes JSON to file"""
+        data = libfyaml.loads('{"key": "value"}')
+
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
+            path = f.name
+
+        try:
+            result = data.dump(file=path, mode='json')
+
+            self.assertIsNone(result)
+
+            # Verify JSON was written
+            with open(path, 'r') as f:
+                content = f.read()
+
+            self.assertIn('"key"', content)
+            self.assertIn('"value"', content)
+            self.assertIn('{', content)
+        finally:
+            os.unlink(path)
+
+    def test_dump_preserves_types(self):
+        """Test dump() preserves all YAML types correctly"""
+        yaml_str = """
+        string: hello
+        integer: 42
+        float: 3.14
+        boolean: true
+        null_value: null
+        list: [1, 2, 3]
+        dict: {a: 1, b: 2}
+        """
+        data = libfyaml.loads(yaml_str)
+        result = data.dump()
+
+        # Should contain all values
+        self.assertIn('string:', result)
+        self.assertIn('hello', result)
+        self.assertIn('integer:', result)
+        self.assertIn('42', result)
+        self.assertIn('float:', result)
+        self.assertIn('3.14', result)
+        self.assertIn('boolean:', result)
+        self.assertIn('true', result)
 
 
 def run_tests():
@@ -859,6 +1100,7 @@ def run_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestModuleLevelPathConversion))
     suite.addTests(loader.loadTestsFromTestCase(TestFormatMethod))
     suite.addTests(loader.loadTestsFromTestCase(TestAdvancedPatterns))
+    suite.addTests(loader.loadTestsFromTestCase(TestDumpMethod))
 
     # Run with verbose output
     runner = unittest.TextTestRunner(verbosity=2)

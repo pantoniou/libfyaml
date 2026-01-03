@@ -376,46 +376,37 @@ FyGeneric_from_parent(fy_generic fyg, FyGenericObject *parent, PyObject *path_el
 
     /* Build path from parent's path + this element */
     /* Path tracking is always enabled, regardless of mutability */
-    PyObject *path_list;
+    /* Create tuple directly - no intermediate list needed */
     if (parent->path == NULL) {
-        /* Parent is root - create new path with just this element */
-        path_list = PyList_New(1);
-        if (path_list == NULL) {
+        /* Parent is root - create new tuple with just this element */
+        self->path = PyTuple_New(1);
+        if (self->path == NULL) {
             Py_DECREF(self->root);
             Py_TYPE(self)->tp_free((PyObject *)self);
             return NULL;
         }
         Py_INCREF(path_elem);
-        PyList_SET_ITEM(path_list, 0, path_elem);
+        PyTuple_SET_ITEM(self->path, 0, path_elem);
     } else {
         /* Parent has path - copy and append */
         Py_ssize_t parent_len = PyTuple_Size(parent->path);
-        path_list = PyList_New(parent_len + 1);
-        if (path_list == NULL) {
+        self->path = PyTuple_New(parent_len + 1);
+        if (self->path == NULL) {
             Py_DECREF(self->root);
             Py_TYPE(self)->tp_free((PyObject *)self);
             return NULL;
         }
 
-        /* Copy parent's path */
+        /* Copy parent's path elements */
         for (Py_ssize_t i = 0; i < parent_len; i++) {
             PyObject *item = PyTuple_GET_ITEM(parent->path, i);
             Py_INCREF(item);
-            PyList_SET_ITEM(path_list, i, item);
+            PyTuple_SET_ITEM(self->path, i, item);
         }
 
         /* Append new element */
         Py_INCREF(path_elem);
-        PyList_SET_ITEM(path_list, parent_len, path_elem);
-    }
-
-    /* Convert list to tuple (paths are immutable) */
-    self->path = PyList_AsTuple(path_list);
-    Py_DECREF(path_list);
-    if (self->path == NULL) {
-        Py_DECREF(self->root);
-        Py_TYPE(self)->tp_free((PyObject *)self);
-        return NULL;
+        PyTuple_SET_ITEM(self->path, parent_len, path_elem);
     }
 
     return (PyObject *)self;
@@ -711,6 +702,208 @@ FyGeneric_is_mapping(FyGenericObject *self, PyObject *Py_UNUSED(args))
     return PyBool_FromLong(fy_generic_is_mapping(self->fyg));
 }
 
+/* Comparison helper functions */
+
+/* Helper: Compare integers with support for large unsigned values */
+static PyObject *
+compare_int_helper(fy_generic self_fyg, PyObject *other, int op)
+{
+    /* Check if we have decorated int (large unsigned) */
+    fy_generic_decorated_int self_dint = fy_cast(self_fyg, fy_dint_empty);
+    fy_generic_decorated_int other_dint;
+    PyObject *self_pyobj = NULL, *other_pyobj = NULL;
+    int use_python_cmp = 0;
+    int cmp_result;
+    long long self_val, other_val;
+
+    /* Check if self needs Python comparison (large unsigned) */
+    if (self_dint.flags & FYGDIF_UNSIGNED_RANGE_EXTEND) {
+        self_pyobj = PyLong_FromUnsignedLongLong(self_dint.uv);
+        if (!self_pyobj) return NULL;
+        use_python_cmp = 1;
+    } else {
+        self_val = self_dint.sv;
+    }
+
+    /* Handle other operand */
+    if (PyLong_Check(other)) {
+        if (use_python_cmp) {
+            /* Self is large unsigned, just use other as-is */
+            Py_INCREF(other);
+            other_pyobj = other;
+        } else {
+            /* Try to extract as long long */
+            other_val = PyLong_AsLongLong(other);
+            if (other_val == -1 && PyErr_Occurred()) {
+                /* other is too large for long long - use Python comparison */
+                PyErr_Clear();
+                self_pyobj = PyLong_FromLongLong(self_val);
+                if (!self_pyobj) return NULL;
+                Py_INCREF(other);
+                other_pyobj = other;
+                use_python_cmp = 1;
+            }
+        }
+    } else if (Py_TYPE(other) == &FyGenericType) {
+        other_dint = fy_cast(((FyGenericObject *)other)->fyg, fy_dint_empty);
+        if (other_dint.flags & FYGDIF_UNSIGNED_RANGE_EXTEND) {
+            /* Other is large unsigned */
+            other_pyobj = PyLong_FromUnsignedLongLong(other_dint.uv);
+            if (!other_pyobj) {
+                Py_XDECREF(self_pyobj);
+                return NULL;
+            }
+            if (!use_python_cmp) {
+                /* Self is regular signed, need to convert to Python */
+                self_pyobj = PyLong_FromLongLong(self_val);
+                if (!self_pyobj) {
+                    Py_DECREF(other_pyobj);
+                    return NULL;
+                }
+            }
+            use_python_cmp = 1;
+        } else {
+            /* Other is regular signed */
+            if (use_python_cmp) {
+                other_pyobj = PyLong_FromLongLong(other_dint.sv);
+                if (!other_pyobj) {
+                    Py_DECREF(self_pyobj);
+                    return NULL;
+                }
+            } else {
+                other_val = other_dint.sv;
+            }
+        }
+    } else {
+        Py_XDECREF(self_pyobj);
+        Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    /* Perform comparison */
+    if (use_python_cmp) {
+        cmp_result = PyObject_RichCompareBool(self_pyobj, other_pyobj, op);
+        Py_DECREF(self_pyobj);
+        Py_DECREF(other_pyobj);
+        if (cmp_result < 0) return NULL;
+        if (cmp_result) Py_RETURN_TRUE;
+        else Py_RETURN_FALSE;
+    } else {
+        /* Regular C long long comparison */
+        int result;
+        switch (op) {
+            case Py_EQ: result = (self_val == other_val); break;
+            case Py_NE: result = (self_val != other_val); break;
+            case Py_LT: result = (self_val < other_val); break;
+            case Py_LE: result = (self_val <= other_val); break;
+            case Py_GT: result = (self_val > other_val); break;
+            case Py_GE: result = (self_val >= other_val); break;
+            default: Py_RETURN_NOTIMPLEMENTED;
+        }
+        if (result) Py_RETURN_TRUE;
+        else Py_RETURN_FALSE;
+    }
+}
+
+/* Helper: Compare floats */
+static PyObject *
+compare_float_helper(fy_generic self_fyg, PyObject *other, int op)
+{
+    double self_val = fy_cast(self_fyg, (double)0.0);
+    double other_val;
+
+    if (PyFloat_Check(other)) {
+        other_val = PyFloat_AsDouble(other);
+    } else if (PyLong_Check(other)) {
+        other_val = (double)PyLong_AsLongLong(other);
+    } else if (Py_TYPE(other) == &FyGenericType) {
+        other_val = fy_cast(((FyGenericObject *)other)->fyg, (double)0.0);
+    } else {
+        Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    int result;
+    switch (op) {
+        case Py_EQ: result = (self_val == other_val); break;
+        case Py_NE: result = (self_val != other_val); break;
+        case Py_LT: result = (self_val < other_val); break;
+        case Py_LE: result = (self_val <= other_val); break;
+        case Py_GT: result = (self_val > other_val); break;
+        case Py_GE: result = (self_val >= other_val); break;
+        default: Py_RETURN_NOTIMPLEMENTED;
+    }
+    if (result) Py_RETURN_TRUE;
+    else Py_RETURN_FALSE;
+}
+
+/* Helper: Compare strings (binary-safe) */
+static PyObject *
+compare_string_helper(fy_generic self_fyg, PyObject *other, int op)
+{
+    fy_generic_sized_string self_szstr = fy_cast(self_fyg, fy_szstr_empty);
+    const char *other_str = NULL;
+    Py_ssize_t other_size = 0;
+    int cmp;
+
+    if (PyUnicode_Check(other)) {
+        other_str = PyUnicode_AsUTF8AndSize(other, &other_size);
+        if (!other_str) return NULL;
+    } else if (Py_TYPE(other) == &FyGenericType) {
+        fy_generic_sized_string other_szstr = fy_cast(((FyGenericObject *)other)->fyg, fy_szstr_empty);
+        other_str = other_szstr.data;
+        other_size = other_szstr.size;
+    } else {
+        Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    /* Compare using memcmp for binary safety */
+    size_t min_size = self_szstr.size < (size_t)other_size ? self_szstr.size : (size_t)other_size;
+    cmp = memcmp(self_szstr.data, other_str, min_size);
+    if (cmp == 0 && self_szstr.size != (size_t)other_size)
+        cmp = self_szstr.size < (size_t)other_size ? -1 : 1;
+
+    int result;
+    switch (op) {
+        case Py_EQ: result = (cmp == 0); break;
+        case Py_NE: result = (cmp != 0); break;
+        case Py_LT: result = (cmp < 0); break;
+        case Py_LE: result = (cmp <= 0); break;
+        case Py_GT: result = (cmp > 0); break;
+        case Py_GE: result = (cmp >= 0); break;
+        default: Py_RETURN_NOTIMPLEMENTED;
+    }
+    if (result) Py_RETURN_TRUE;
+    else Py_RETURN_FALSE;
+}
+
+/* Helper: Compare booleans */
+static PyObject *
+compare_bool_helper(fy_generic self_fyg, PyObject *other, int op)
+{
+    _Bool self_val = fy_cast(self_fyg, (_Bool)0);
+    _Bool other_val;
+
+    if (PyBool_Check(other)) {
+        other_val = (other == Py_True);
+    } else if (Py_TYPE(other) == &FyGenericType) {
+        other_val = fy_cast(((FyGenericObject *)other)->fyg, (_Bool)0);
+    } else {
+        Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    int result;
+    switch (op) {
+        case Py_EQ: result = (self_val == other_val); break;
+        case Py_NE: result = (self_val != other_val); break;
+        case Py_LT: result = (self_val < other_val); break;
+        case Py_LE: result = (self_val <= other_val); break;
+        case Py_GT: result = (self_val > other_val); break;
+        case Py_GE: result = (self_val >= other_val); break;
+        default: Py_RETURN_NOTIMPLEMENTED;
+    }
+    if (result) Py_RETURN_TRUE;
+    else Py_RETURN_FALSE;
+}
+
 /* FyGeneric: __richcompare__ - implements ==, !=, <, <=, >, >= */
 static PyObject *
 FyGeneric_richcompare(PyObject *self, PyObject *other, int op)
@@ -718,163 +911,19 @@ FyGeneric_richcompare(PyObject *self, PyObject *other, int op)
     FyGenericObject *self_obj = (FyGenericObject *)self;
     enum fy_generic_type self_type = fy_get_type(self_obj->fyg);
 
-    /* Helper macro for comparisons */
-    #define DO_COMPARE(py_op, c_op) \
-        case py_op: \
-            switch (self_type) { \
-                case FYGT_INT: { \
-                    /* Check if we have decorated int (large unsigned) */ \
-                    fy_generic_decorated_int self_dint = fy_cast(self_obj->fyg, fy_dint_empty); \
-                    fy_generic_decorated_int other_dint; \
-                    PyObject *self_pyobj = NULL, *other_pyobj = NULL; \
-                    int use_python_cmp = 0; \
-                    int cmp_result; \
-                    long long self_val, other_val; \
-                    \
-                    /* Check if self needs Python comparison (large unsigned) */ \
-                    if (self_dint.flags & FYGDIF_UNSIGNED_RANGE_EXTEND) { \
-                        self_pyobj = PyLong_FromUnsignedLongLong(self_dint.uv); \
-                        if (!self_pyobj) return NULL; \
-                        use_python_cmp = 1; \
-                    } else { \
-                        self_val = self_dint.sv; \
-                    } \
-                    \
-                    /* Handle other operand */ \
-                    if (PyLong_Check(other)) { \
-                        if (use_python_cmp) { \
-                            /* Self is large unsigned, just use other as-is */ \
-                            Py_INCREF(other); \
-                            other_pyobj = other; \
-                        } else { \
-                            /* Try to extract as long long */ \
-                            other_val = PyLong_AsLongLong(other); \
-                            if (other_val == -1 && PyErr_Occurred()) { \
-                                /* other is too large for long long - use Python comparison */ \
-                                PyErr_Clear(); \
-                                self_pyobj = PyLong_FromLongLong(self_val); \
-                                if (!self_pyobj) return NULL; \
-                                Py_INCREF(other); \
-                                other_pyobj = other; \
-                                use_python_cmp = 1; \
-                            } \
-                        } \
-                    } else if (Py_TYPE(other) == &FyGenericType) { \
-                        other_dint = fy_cast(((FyGenericObject *)other)->fyg, fy_dint_empty); \
-                        if (other_dint.flags & FYGDIF_UNSIGNED_RANGE_EXTEND) { \
-                            /* Other is large unsigned */ \
-                            other_pyobj = PyLong_FromUnsignedLongLong(other_dint.uv); \
-                            if (!other_pyobj) { \
-                                Py_XDECREF(self_pyobj); \
-                                return NULL; \
-                            } \
-                            if (!use_python_cmp) { \
-                                /* Self is regular signed, need to convert to Python */ \
-                                self_pyobj = PyLong_FromLongLong(self_val); \
-                                if (!self_pyobj) { \
-                                    Py_DECREF(other_pyobj); \
-                                    return NULL; \
-                                } \
-                            } \
-                            use_python_cmp = 1; \
-                        } else { \
-                            /* Other is regular signed */ \
-                            if (use_python_cmp) { \
-                                other_pyobj = PyLong_FromLongLong(other_dint.sv); \
-                                if (!other_pyobj) { \
-                                    Py_DECREF(self_pyobj); \
-                                    return NULL; \
-                                } \
-                            } else { \
-                                other_val = other_dint.sv; \
-                            } \
-                        } \
-                    } else { \
-                        Py_XDECREF(self_pyobj); \
-                        Py_RETURN_NOTIMPLEMENTED; \
-                    } \
-                    \
-                    /* Perform comparison */ \
-                    if (use_python_cmp) { \
-                        cmp_result = PyObject_RichCompareBool(self_pyobj, other_pyobj, py_op); \
-                        Py_DECREF(self_pyobj); \
-                        Py_DECREF(other_pyobj); \
-                        if (cmp_result < 0) return NULL; \
-                        if (cmp_result) Py_RETURN_TRUE; \
-                        else Py_RETURN_FALSE; \
-                    } else { \
-                        /* Regular C long long comparison */ \
-                        if (self_val c_op other_val) Py_RETURN_TRUE; \
-                        else Py_RETURN_FALSE; \
-                    } \
-                } \
-                case FYGT_FLOAT: { \
-                    double self_val = fy_cast(self_obj->fyg, (double)0.0); \
-                    double other_val; \
-                    if (PyFloat_Check(other)) { \
-                        other_val = PyFloat_AsDouble(other); \
-                    } else if (PyLong_Check(other)) { \
-                        other_val = (double)PyLong_AsLongLong(other); \
-                    } else if (Py_TYPE(other) == &FyGenericType) { \
-                        other_val = fy_cast(((FyGenericObject *)other)->fyg, (double)0.0); \
-                    } else { \
-                        Py_RETURN_NOTIMPLEMENTED; \
-                    } \
-                    if (self_val c_op other_val) Py_RETURN_TRUE; \
-                    else Py_RETURN_FALSE; \
-                } \
-                case FYGT_STRING: { \
-                    fy_generic_sized_string self_szstr = fy_cast(self_obj->fyg, fy_szstr_empty); \
-                    const char *other_str = NULL; \
-                    Py_ssize_t other_size = 0; \
-                    int cmp; \
-                    if (PyUnicode_Check(other)) { \
-                        other_str = PyUnicode_AsUTF8AndSize(other, &other_size); \
-                        if (!other_str) return NULL; \
-                    } else if (Py_TYPE(other) == &FyGenericType) { \
-                        fy_generic_sized_string other_szstr = fy_cast(((FyGenericObject *)other)->fyg, fy_szstr_empty); \
-                        other_str = other_szstr.data; \
-                        other_size = other_szstr.size; \
-                    } else { \
-                        Py_RETURN_NOTIMPLEMENTED; \
-                    } \
-                    /* Compare using memcmp for binary safety */ \
-                    size_t min_size = self_szstr.size < (size_t)other_size ? self_szstr.size : (size_t)other_size; \
-                    cmp = memcmp(self_szstr.data, other_str, min_size); \
-                    if (cmp == 0 && self_szstr.size != (size_t)other_size) \
-                        cmp = self_szstr.size < (size_t)other_size ? -1 : 1; \
-                    if (cmp c_op 0) Py_RETURN_TRUE; \
-                    else Py_RETURN_FALSE; \
-                } \
-                case FYGT_BOOL: { \
-                    _Bool self_val = fy_cast(self_obj->fyg, (_Bool)0); \
-                    _Bool other_val; \
-                    if (PyBool_Check(other)) { \
-                        other_val = (other == Py_True); \
-                    } else if (Py_TYPE(other) == &FyGenericType) { \
-                        other_val = fy_cast(((FyGenericObject *)other)->fyg, (_Bool)0); \
-                    } else { \
-                        Py_RETURN_NOTIMPLEMENTED; \
-                    } \
-                    if (self_val c_op other_val) Py_RETURN_TRUE; \
-                    else Py_RETURN_FALSE; \
-                } \
-                default: \
-                    Py_RETURN_NOTIMPLEMENTED; \
-            }
-
-    switch (op) {
-        DO_COMPARE(Py_EQ, ==)
-        DO_COMPARE(Py_NE, !=)
-        DO_COMPARE(Py_LT, <)
-        DO_COMPARE(Py_LE, <=)
-        DO_COMPARE(Py_GT, >)
-        DO_COMPARE(Py_GE, >=)
+    /* Dispatch to type-specific comparison helper */
+    switch (self_type) {
+        case FYGT_INT:
+            return compare_int_helper(self_obj->fyg, other, op);
+        case FYGT_FLOAT:
+            return compare_float_helper(self_obj->fyg, other, op);
+        case FYGT_STRING:
+            return compare_string_helper(self_obj->fyg, other, op);
+        case FYGT_BOOL:
+            return compare_bool_helper(self_obj->fyg, other, op);
         default:
             Py_RETURN_NOTIMPLEMENTED;
     }
-
-    #undef DO_COMPARE
 }
 
 /* Mapping-specific methods */
@@ -1138,7 +1187,7 @@ FyGeneric_clone(FyGenericObject *self, PyObject *Py_UNUSED(args))
     /* Get the root object for mutable flag */
     FyGenericObject *root_obj = self->root ? (FyGenericObject *)self->root : self;
 
-    /* Create a new builder for the clone */
+    /* Create a new builder for the clone with default configuration */
     struct fy_generic_builder *new_gb = fy_generic_builder_create(NULL);
     if (new_gb == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create builder for clone");
@@ -1169,12 +1218,12 @@ err_out:
 static PyObject *
 FyGeneric_get_path(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
-    /* If this is root, return empty list */
+    /* If this is root, return empty tuple */
     if (self->root == NULL) {
-        return PyList_New(0);
+        return PyTuple_New(0);
     }
 
-    /* Return the path list (always available for nested values) */
+    /* Return the path tuple (always available for nested values) */
     if (self->path == NULL) {
         /* Should not happen since we always build paths now */
         Py_RETURN_NONE;
@@ -1275,9 +1324,10 @@ FyGeneric_get_at_path(FyGenericObject *self, PyObject *path_obj)
     Py_INCREF(child->root);
     child->mutable = self->mutable;
 
-    /* Build the path as a Python list for the child */
+    /* Build the path as a Python tuple for the child */
+    /* Create tuple directly - no intermediate list needed */
     if (self->mutable && path_len > 0) {
-        child->path = PyList_New(path_len);
+        child->path = PyTuple_New(path_len);
         if (child->path == NULL) {
             Py_DECREF(child);
             return NULL;
@@ -1289,7 +1339,7 @@ FyGeneric_get_at_path(FyGenericObject *self, PyObject *path_obj)
                 Py_DECREF(child);
                 return NULL;
             }
-            PyList_SET_ITEM(child->path, i, elem);
+            PyTuple_SET_ITEM(child->path, i, elem);
         }
     } else {
         child->path = NULL;
@@ -1699,9 +1749,131 @@ FyGeneric_set_at_unix_path(FyGenericObject *self, PyObject *args)
 }
 
 /* FyGeneric method table */
+/* FyGeneric: dump(file=None, mode='yaml', compact=False) - Dump to file or return string */
+static PyObject *
+FyGeneric_dump(FyGenericObject *self, PyObject *args, PyObject *kwargs)
+{
+    PyObject *file_obj = NULL;
+    const char *mode = "yaml";
+    int compact = 0;
+    static char *kwlist[] = {"file", "mode", "compact", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|Osp", kwlist,
+                                     &file_obj, &mode, &compact))
+        return NULL;
+
+    int json_mode = (strcmp(mode, "json") == 0);
+
+    /* Get root object for builder access */
+    FyGenericObject *root_obj = (self->root == NULL) ? self : (FyGenericObject *)self->root;
+    if (!root_obj->gb) {
+        PyErr_SetString(PyExc_RuntimeError, "No builder available");
+        return NULL;
+    }
+
+    /* Determine emit flags based on options */
+    unsigned int emit_flags = FYOPEF_DISABLE_DIRECTORY;
+
+    if (json_mode) {
+        emit_flags |= FYOPEF_MODE_JSON;
+        if (!compact)
+            emit_flags |= FYOPEF_INDENT_2;
+    } else {
+        emit_flags |= FYOPEF_MODE_YAML_1_2;
+        if (compact) {
+            emit_flags |= FYOPEF_STYLE_FLOW;
+        } else {
+            emit_flags |= FYOPEF_STYLE_BLOCK;
+        }
+    }
+
+    /* If no file specified, return as string (like dumps()) */
+    if (file_obj == NULL || file_obj == Py_None) {
+        emit_flags |= FYOPEF_OUTPUT_TYPE_STRING;
+
+        /* Emit to string */
+        fy_generic emitted = fy_gb_emit(root_obj->gb, self->fyg, emit_flags, NULL);
+        if (!fy_generic_is_valid(emitted)) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to emit YAML/JSON");
+            return NULL;
+        }
+
+        /* Extract the sized string from the generic */
+        fy_generic_sized_string szstr = fy_cast(emitted, fy_szstr_empty);
+        if (szstr.data == NULL) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to extract string from emitted generic");
+            return NULL;
+        }
+
+        /* Create Python string (makes a copy) */
+        return PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+    }
+
+    /* Check if it's a file path (string) */
+    if (PyUnicode_Check(file_obj)) {
+        const char *path = PyUnicode_AsUTF8(file_obj);
+        if (path == NULL)
+            return NULL;
+
+        /* Emit to file using fy_gb_emit_file() */
+        fy_generic result_g = fy_gb_emit_file(root_obj->gb, self->fyg, emit_flags, path);
+
+        /* Check for success: should return integer 0 */
+        if (!fy_generic_is_valid(result_g) || !fy_generic_is_int_type(result_g)) {
+            PyErr_Format(PyExc_RuntimeError, "Failed to emit YAML/JSON to file: %s", path);
+            return NULL;
+        }
+
+        int result_code = fy_cast(result_g, -1);
+        if (result_code != 0) {
+            PyErr_Format(PyExc_RuntimeError, "Failed to emit YAML/JSON to file: %s (error code: %d)",
+                        path, result_code);
+            return NULL;
+        }
+
+        Py_RETURN_NONE;
+    }
+
+    /* Assume it's a file object */
+    /* Note: stdout/stderr detection could be done via PyObject_AsFileDescriptor()
+     * for future optimization with direct emitter API, but for now we emit to
+     * string and write to the file object which works for all file-like objects */
+    emit_flags |= FYOPEF_OUTPUT_TYPE_STRING;
+
+    fy_generic emitted = fy_gb_emit(root_obj->gb, self->fyg, emit_flags, NULL);
+    if (!fy_generic_is_valid(emitted)) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to emit YAML/JSON");
+        return NULL;
+    }
+
+    /* Extract the sized string from the generic */
+    fy_generic_sized_string szstr = fy_cast(emitted, fy_szstr_empty);
+    if (szstr.data == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to extract string from emitted generic");
+        return NULL;
+    }
+
+    /* Create Python string */
+    PyObject *yaml_str = PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+    if (yaml_str == NULL)
+        return NULL;
+
+    /* Write to file object */
+    PyObject *result = PyObject_CallMethod(file_obj, "write", "O", yaml_str);
+    Py_DECREF(yaml_str);
+
+    if (result == NULL)
+        return NULL;
+
+    Py_DECREF(result);
+    Py_RETURN_NONE;
+}
+
 static PyMethodDef FyGeneric_methods[] = {
     {"to_python", _PyCFunction_CAST(FyGeneric_to_python), METH_NOARGS,
      "Convert to Python object (recursive)"},
+    {"dump", _PyCFunction_CAST(FyGeneric_dump), METH_VARARGS | METH_KEYWORDS,
+     "Dump to file or return as string"},
     {"trim", _PyCFunction_CAST(FyGeneric_trim), METH_NOARGS,
      "Trim allocator to release unused memory"},
     {"clone", _PyCFunction_CAST(FyGeneric_clone), METH_NOARGS,
@@ -1821,7 +1993,7 @@ FyGeneric_ass_subscript(FyGenericObject *self, PyObject *key, PyObject *value)
     }
 
     /* Build full path: self->path + [key] + [value] */
-    Py_ssize_t existing_path_len = self->path ? PyList_Size(self->path) : 0;
+    Py_ssize_t existing_path_len = self->path ? PyTuple_Size(self->path) : 0;
     Py_ssize_t total_path_len = existing_path_len + 1;  /* +1 for new key */
     Py_ssize_t total_len = total_path_len + 1;  /* +1 for value */
 
@@ -1830,10 +2002,16 @@ FyGeneric_ass_subscript(FyGenericObject *self, PyObject *key, PyObject *value)
 
     /* Copy existing path elements */
     for (Py_ssize_t i = 0; i < existing_path_len; i++) {
-        PyObject *elem = PyList_GET_ITEM(self->path, i);
-        if (PyLong_Check(elem)) {
+        PyObject *elem = PyTuple_GET_ITEM(self->path, i);
+        if (PyBool_Check(elem)) {
+            bool val = (elem == Py_True);
+            path_array[i] = fy_value(val);
+        } else if (PyLong_Check(elem)) {
             long idx = PyLong_AsLong(elem);
             path_array[i] = fy_value((int)idx);
+        } else if (PyFloat_Check(elem)) {
+            double val = PyFloat_AS_DOUBLE(elem);
+            path_array[i] = fy_value(val);
         } else if (PyUnicode_Check(elem)) {
             const char *str = PyUnicode_AsUTF8(elem);
             if (str == NULL)
