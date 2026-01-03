@@ -952,10 +952,12 @@ class TestDumpMethod(unittest.TestCase):
         result = data.dump(compact=True)
 
         self.assertIsInstance(result, str)
-        # Flow style should be more compact (may be on one line)
-        # At minimum, should not have excessive newlines
-        line_count = result.count('\n')
-        self.assertLessEqual(line_count, 3)  # Compact should be minimal lines
+        # Flow style uses braces/brackets for collections
+        # Count opening braces and brackets - should have at least 2 (one pair)
+        brace_count = result.count('{') + result.count('}')
+        bracket_count = result.count('[') + result.count(']')
+        flow_indicators = brace_count + bracket_count
+        self.assertGreaterEqual(flow_indicators, 2, "Flow style should use braces/brackets")
 
     def test_dump_block_yaml(self):
         """Test dump(compact=False) returns block-style YAML"""
@@ -963,8 +965,38 @@ class TestDumpMethod(unittest.TestCase):
         result = data.dump(compact=False)
 
         self.assertIsInstance(result, str)
-        # Block style uses newlines
-        self.assertIn('\n', result)
+        # Block style should NOT use braces/brackets for collections
+        brace_count = result.count('{') + result.count('}')
+        bracket_count = result.count('[') + result.count(']')
+        flow_indicators = brace_count + bracket_count
+        self.assertEqual(flow_indicators, 0, "Block style should not use braces/brackets")
+
+    def test_dump_oneline_with_newline(self):
+        """Test dump(compact=True) produces one-line flow style with terminating newline"""
+        data = libfyaml.loads('{"a": 1, "b": 2}')
+        result = data.dump(compact=True, strip_newline=False)
+
+        self.assertIsInstance(result, str)
+        # Should end with newline by default
+        self.assertTrue(result.endswith('\n'), "Should end with newline by default")
+        # Should have exactly one line (excluding the terminating newline)
+        lines = result.rstrip('\n').split('\n')
+        self.assertEqual(len(lines), 1, "Should be one line (excluding terminating newline)")
+        # Should use flow style (braces/brackets)
+        flow_indicators = result.count('{') + result.count('}') + result.count('[') + result.count(']')
+        self.assertGreaterEqual(flow_indicators, 2, "Should use flow style")
+
+    def test_dump_oneline_without_newline(self):
+        """Test dump(compact=True, strip_newline=True) produces one-line flow without terminating newline"""
+        data = libfyaml.loads('{"a": 1, "b": 2}')
+        result = data.dump(compact=True, strip_newline=True)
+
+        self.assertIsInstance(result, str)
+        # Should NOT have any newlines at all
+        self.assertNotIn('\n', result, "Should not contain any newlines")
+        # Should use flow style (braces/brackets)
+        flow_indicators = result.count('{') + result.count('}') + result.count('[') + result.count(']')
+        self.assertGreaterEqual(flow_indicators, 2, "Should use flow style")
 
     def test_dump_to_file_path(self):
         """Test dump(file=path) writes to file"""
