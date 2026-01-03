@@ -359,6 +359,22 @@ struct fy_allocator *fy_generic_builder_get_allocator(struct fy_generic_builder 
 	return gb->allocator;
 }
 
+const struct fy_generic_builder_cfg *
+fy_generic_builder_get_cfg(struct fy_generic_builder *gb)
+{
+	if (!gb)
+		return NULL;
+	return &gb->cfg;
+}
+
+enum fy_gb_flags
+fy_generic_builder_get_flags(struct fy_generic_builder *gb)
+{
+	if (!gb)
+		return 0;
+	return gb->flags;
+}
+
 size_t
 fy_generic_builder_get_free(struct fy_generic_builder *gb)
 {

@@ -3972,6 +3972,14 @@ struct fy_allocator *
 fy_generic_builder_get_allocator(struct fy_generic_builder *gb)
 	FY_EXPORT;
 
+const struct fy_generic_builder_cfg *
+fy_generic_builder_get_cfg(struct fy_generic_builder *gb)
+	FY_EXPORT;
+
+enum fy_gb_flags
+fy_generic_builder_get_flags(struct fy_generic_builder *gb)
+	FY_EXPORT;
+
 size_t
 fy_generic_builder_get_free(struct fy_generic_builder *gb)
 	FY_EXPORT;
