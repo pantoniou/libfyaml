@@ -125,7 +125,7 @@ AC_TYPE_OFF_T
 AC_TYPE_UID_T
 AC_CHECK_DECLS(environ)
 
-AC_CHECK_HEADERS([byteswap.h])
+AC_CHECK_HEADERS([alloca.h byteswap.h])
 AC_CHECK_FUNCS([__builtin_bswap16 __builtin_bswap32 __builtin_bswap64])
 
 dnl for old autoconf version AX_APPEND_COMPILE_FLAGS does not work
