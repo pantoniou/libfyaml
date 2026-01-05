@@ -169,12 +169,12 @@ AC_ARG_ENABLE([portable-target],
 	      AS_HELP_STRING([--enable-portable-target],
 			     [Enable portable mode (disable per-target optimizations)]))
 HAVE_PORTABLE_TARGET=0
-if test "x$enable_portable_target" == "xyes"; then
+if test "x$enable_portable_target" = "xyes"; then
 	HAVE_PORTABLE_TARGET=1
 fi
 AC_SUBST(HAVE_PORTABLE_TARGET)
 AC_DEFINE_UNQUOTED([HAVE_PORTABLE_TARGET], [$HAVE_PORTABLE_TARGET], [Define to 1 if PORTABLE_TARGET is enabled])
-AM_CONDITIONAL([HAVE_PORTABLE_TARGET], [ test x$HAVE_PORTABLE_TARGET == x1 ])
+AM_CONDITIONAL([HAVE_PORTABLE_TARGET], [ test x$HAVE_PORTABLE_TARGET = x1 ])
 
 dnl Detect cross-compilation
 if test "x$build" != "x$host" ; then
@@ -228,7 +228,7 @@ AC_ARG_ENABLE([asan],
 HAVE_ASAN=0
 ASAN_CFLAGS=""
 ASAN_LIBS=""
-if test "x$enable_asan" == "xyes" ; then
+if test "x$enable_asan" = "xyes" ; then
 	AC_MSG_CHECKING([location of ASAN library])
 	ASANLIB1=`${CC} -print-file-name=libasan.so`
 	ASANLIB=`readlink -f "${ASANLIB1}"`
@@ -474,12 +474,12 @@ if test "x$with_libclang" != "xno"; then
 	fi
 fi
 if test "x$with_libclang" != "xno"; then
-	if test "x$with_libclang" == "xauto"; then
+	if test "x$with_libclang" = "xauto"; then
 		# try to auto detect (llvm 20 down to 10)
 		check="llvm-config llvm-config-20 llvm-config-19 llvm-config-18 llvm-config-17 llvm-config-16 \
 			llvm-config-15 llvm-config-14 llvm-config-13 llvm-config-12 llvm-config-11 llvm-config-10"
 	else
-		if test "x$with_libclang" == "xlatest"; then
+		if test "x$with_libclang" = "xlatest"; then
 			check="llvm-config"
 		else
 			check="llvm-config-$with_libclang"
