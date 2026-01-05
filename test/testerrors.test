@@ -32,11 +32,11 @@ for dir in "${SRCDIR}"/test-errors/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 	echo "$errmsg" >"$t"
 
 	# all errors test are expected to fail
-	if [ "$pass_yaml" == "0" ]; then
+	if [ "$pass_yaml" = "0" ]; then
 		res="ok"
 
 		# diff is pointless under valgrind
-		if [ "x$USE_VALGRIND" == "x" ]; then
+		if [ "x$USE_VALGRIND" = "x" ]; then
 			diff_err=0
 			diff -u "$dir/test.error" "$t"
 			if [ $? -eq 0 ]; then

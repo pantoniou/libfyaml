@@ -61,7 +61,7 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 		fi
 
 		res="ok"
-		if [ "x$skip_reason" == "x" ]; then
+		if [ "x$skip_reason" = "x" ]; then
 			t1=`mktemp`
 			t2=`mktemp`
 

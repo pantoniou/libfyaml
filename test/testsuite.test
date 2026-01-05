@@ -42,14 +42,14 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 
 		directive=""
 		for skip in $skiplist; do
-			if [ "$test_subtest_id" == "$skip" ]; then
+			if [ "$test_subtest_id" = "$skip" ]; then
 				directive=" # SKIP"
 				break
 			fi
 		done
 
 		res="ok"
-		if [ "x$directive" == "x" ]; then
+		if [ "x$directive" = "x" ]; then
 			res="not ok"
 
 			pass_yaml=0
@@ -60,14 +60,14 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 
 			if [ -e "$tst/error" ]; then
 				# test is expected to fail
-				if [ $pass_yaml == "0" ]; then
+				if [ $pass_yaml = "0" ]; then
 					res="ok"
 				else
 					res="not ok"
 				fi
 			else
 				# test is expected to pass
-				if [ $pass_yaml == "1" ]; then
+				if [ $pass_yaml = "1" ]; then
 					diff_yaml=0
 					# diff -u "$tst/test.event" "$t" | sed -e 's/^/# /'
 					diff -u "$tst/test.event" "$t"
@@ -84,7 +84,7 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 			rm -f "$t"
 
 			for xfail in $xfaillist; do
-				if [ "$test_subtest_id" == "$xfail" ]; then
+				if [ "$test_subtest_id" = "$xfail" ]; then
 					directive=" # TODO: known failure."
 					break
 				fi

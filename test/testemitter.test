@@ -2,9 +2,9 @@
 
 EXTRA_DUMP_ARGS=""
 
-if [ "x$1" == "x--streaming" ]; then
+if [ "x$1" = "x--streaming" ]; then
 	EXTRA_DUMP_ARGS="$EXTRA_DUMP_ARGS --streaming"
-elif  [ "x$1" == "x--restreaming" ]; then
+elif  [ "x$1" = "x--restreaming" ]; then
 	EXTRA_DUMP_ARGS="$EXTRA_DUMP_ARGS --streaming --recreating"
 fi
 
@@ -38,7 +38,7 @@ for f in "${SRCDIR}"/emitter-examples/*.yaml; do
 	fi
 
 	# all errors test are expected to fail
-	if [ "$pass_parse" == "1" ]; then
+	if [ "$pass_parse" = "1" ]; then
 		diff -u "$t1" "$t2"
 		if [ $? -eq 0 ]; then
 			res="ok"
