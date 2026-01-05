@@ -675,7 +675,7 @@ again:
 	e = iter->end;
 
 	/* skip whitespace */
-	while (s < e && isblank(*s))
+	while (s < e && isblank((unsigned char)*s))
 		s++;
 
 	if (s >= e)
@@ -695,12 +695,12 @@ again:
 		le -= 2;
 
 	/* backtrack while there's space at the end of line */
-	while (le > s && isblank(le[-1]))
+	while (le > s && isblank((unsigned char)le[-1]))
 		le--;
 
 	/* check if the whole line is punctuation so it's formatting */
 	t = s;
-	while (t < le && ispunct(*t))
+	while (t < le && ispunct((unsigned char)*t))
 		t++;
 
 	/* everything is punctuation? */
@@ -715,11 +715,11 @@ again:
 	}
 
 	/* something is there, skip over '// ' or '* ' */
-	if ((le - s) > 3 && s[0] == '/' && s[1] == '/' && isblank(s[2]))
+	if ((le - s) > 3 && s[0] == '/' && s[1] == '/' && isblank((unsigned char)s[2]))
 		s += 3;
-	else if ((le - s) > 2 && s[0] == '*' && isblank(s[1]))
+	else if ((le - s) > 2 && s[0] == '*' && isblank((unsigned char)s[1]))
 		s += 2;
-	else if (iter->line == 0 && (le - s) > 3 && s[0] == '/' && s[1] == '*' && isblank(s[2]))
+	else if (iter->line == 0 && (le - s) > 3 && s[0] == '/' && s[1] == '*' && isblank((unsigned char)s[2]))
 		s += 3;
 
 	iter->line++;

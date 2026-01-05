@@ -875,12 +875,12 @@ static int do_b3sum_check_file(struct fy_blake3_hasher *hasher, const char *chec
 
 		length = 0;
 		s = linebuf;
-		while (isxdigit(*s))
+		while (isxdigit((unsigned char)*s))
 			s++;
 
 		length = s - linebuf;
 
-		if (length == 0 || length > (FY_BLAKE3_OUT_LEN * 2) || (length % 1) || !isspace(*s)) {
+		if (length == 0 || length > (FY_BLAKE3_OUT_LEN * 2) || (length % 1) || !isspace((unsigned char)*s)) {
 			fprintf(stderr, "Bad line found at file \"%s\" line #%d\n", check_filename, line);
 			fprintf(stderr, "%s\n", linebuf);
 			goto err_out;
@@ -888,7 +888,7 @@ static int do_b3sum_check_file(struct fy_blake3_hasher *hasher, const char *chec
 
 		*s++ = '\0';
 
-		while (isspace(*s))
+		while (isspace((unsigned char)*s))
 			s++;
 
 		length >>= 1;	/* to bytes */
