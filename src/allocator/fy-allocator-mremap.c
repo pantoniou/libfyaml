@@ -16,7 +16,11 @@
 #include <inttypes.h>
 #include <math.h>
 #include <sys/mman.h>
+
+#ifdef HAVE_ALLOCA_H
 #include <alloca.h>
+#endif
+
 
 #include <stdio.h>
 

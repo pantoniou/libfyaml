@@ -5,7 +5,11 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
+
+#ifdef HAVE_ALLOCA_H
 #include <alloca.h>
+#endif
+
 #include <stdlib.h>
 #include <errno.h>
 

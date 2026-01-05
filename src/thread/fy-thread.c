@@ -13,7 +13,11 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
+
+#ifdef HAVE_ALLOCA_H
 #include <alloca.h>
+#endif
+
 #include <pthread.h>
 #include <stdlib.h>
 #include <unistd.h>

@@ -15,7 +15,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <assert.h>
+
+#ifdef HAVE_ALLOCA_H
 #include <alloca.h>
+#endif
+
 
 #include "fy-utils.h"
 

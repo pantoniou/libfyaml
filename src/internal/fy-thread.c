@@ -20,7 +20,11 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+
+#ifdef HAVE_ALLOCA_H
 #include <alloca.h>
+#endif
+
 #include <stdbool.h>
 #include <getopt.h>
 #include <ctype.h>
