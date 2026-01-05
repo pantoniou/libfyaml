@@ -4186,7 +4186,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 		switch (ptr_flags) {
 		default:
 		case FYNWF_PTR_YAML:
-			while (s < e && isspace(*s))
+			while (s < e && isspace((unsigned char)*s))
 				s++;
 
 			c = *s;
@@ -4203,13 +4203,13 @@ fy_node_by_path_internal(struct fy_node *fyn,
 
 			s = end_idx;
 
-			while (s < e && isspace(*s))
+			while (s < e && isspace((unsigned char)*s))
 				s++;
 
 			if (c == '[' && *s++ != ']')
 				return NULL;
 
-			while (s < e && isspace(*s))
+			while (s < e && isspace((unsigned char)*s))
 				s++;
 
 			break;
@@ -4480,7 +4480,7 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 
 	/* first path component may be an alias */
 	if ((flags & FYNWF_FOLLOW) && fyn && path) {
-		while (s < e && isspace(*s))
+		while (s < e && isspace((unsigned char)*s))
 			s++;
 
 		if (s >= e || *s != '*')
@@ -6248,10 +6248,10 @@ int fy_node_vscanf(struct fy_node *fyn, const char *fmt, va_list ap)
 		}
 
 		/* trim spaces from key */
-		while (isspace(*s))
+		while (isspace((unsigned char)*s))
 			s++;
 		te = t;
-		while (te > s && isspace(te[-1]))
+		while (te > s && isspace((unsigned char)te[-1]))
 			*--te = '\0';
 
 		key = s;
@@ -6259,7 +6259,7 @@ int fy_node_vscanf(struct fy_node *fyn, const char *fmt, va_list ap)
 		/* we have to scan until the next space that's not in char set */
 		fmtspec = t;
 		while (t < e) {
-			if (isspace(*t))
+			if (isspace((unsigned char)*t))
 				break;
 			/* character set (may include space) */
 			if (*t == '[') {

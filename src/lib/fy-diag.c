@@ -52,7 +52,7 @@ enum fy_error_type fy_string_to_error_type(const char *str)
 	if (!str)
 		return FYET_MAX;
 
-	if (isdigit(*str)) {
+	if (isdigit((unsigned char)*str)) {
 		level = atoi(str);
 		if (level >= 0 && level < FYET_MAX)
 			return (enum fy_error_type)level;
