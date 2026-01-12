@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
 
 	fy_valgrind_check(&argc, &argv);
 
-	while ((opt = getopt_long_only(argc, argv, "qh", lopts, &lidx)) != -1) {
+	while ((opt = getopt_long(argc, argv, "qh", lopts, &lidx)) != -1) {
 		switch (opt) {
 		case 'q':
 			quiet = true;
