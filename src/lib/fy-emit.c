@@ -128,6 +128,9 @@ static inline int fy_emit_width(struct fy_emitter *emit)
 {
 	int width;
 
+	if (fy_emit_is_oneline(emit))
+		return INT_MAX;
+
 	width = (emit->xcfg.cfg.flags & FYECF_WIDTH(FYECF_WIDTH_MASK)) >> FYECF_WIDTH_SHIFT;
 	if (width == 0)
 		return 80;
