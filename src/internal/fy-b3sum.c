@@ -316,7 +316,7 @@ int main(int argc, char *argv[])
 	uint8_t key[BLAKE3_OUT_LEN];
 	ssize_t rdn;
 
-	while ((opt = getopt_long_only(argc, argv, "cl:b:dh", lopts, &lidx)) != -1) {
+	while ((opt = getopt_long(argc, argv, "cl:b:dh", lopts, &lidx)) != -1) {
 		switch (opt) {
 
 		case OPT_DERIVE_KEY:

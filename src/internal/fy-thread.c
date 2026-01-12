@@ -550,7 +550,7 @@ int main(int argc, char *argv[])
 	unsigned int num_threads = 0;
 	int exitcode = EXIT_FAILURE, opti;
 
-	while ((opt = getopt_long_only(argc, argv, "h", lopts, &lidx)) != -1) {
+	while ((opt = getopt_long(argc, argv, "h", lopts, &lidx)) != -1) {
 		switch (opt) {
 		case OPT_NUM_THREADS:
 			opti = atoi(optarg);

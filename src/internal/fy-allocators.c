@@ -257,7 +257,7 @@ int main(int argc, char *argv[])
 	const char *parent_allocator = "linear";
 	size_t size = 0;
 
-	while ((opt = getopt_long_only(argc, argv, "a:p:s:h", lopts, &lidx)) != -1) {
+	while ((opt = getopt_long(argc, argv, "a:p:s:h", lopts, &lidx)) != -1) {
 		switch (opt) {
 		case 'a':
 		case 'p':
