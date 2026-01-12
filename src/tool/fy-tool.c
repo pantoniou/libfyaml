@@ -69,6 +69,7 @@
 #define ALLOW_DUPLICATE_KEYS_DEFAULT	false
 #define STRIP_EMPTY_KV_DEFAULT		false
 #define TSV_FORMAT_DEFAULT		false
+#define NO_ENDING_NEWLINE_DEFAULT	false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -108,6 +109,7 @@
 #define OPT_DISABLE_DOC_MARKERS		2022
 #define OPT_DISABLE_SCALAR_STYLES	2023
 #define OPT_NO_STREAMING		2024
+#define OPT_NO_ENDING_NEWLINE		2025
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -169,9 +171,9 @@ static struct option lopts[] = {
 	{"disable-depth-limit",	no_argument,		0,	OPT_DISABLE_DEPTH_LIMIT },
 	{"disable-mmap",	no_argument,		0,	OPT_DISABLE_MMAP },
 	{"disable-diag",	required_argument,	0,	OPT_DISABLE_DIAG },
-	{"enable-diag", 	required_argument,	0,	OPT_ENABLE_DIAG },
+	{"enable-diag",		required_argument,	0,	OPT_ENABLE_DIAG },
 	{"show-diag",		required_argument,	0,	OPT_SHOW_DIAG },
-	{"hide-diag", 		required_argument,	0,	OPT_HIDE_DIAG },
+	{"hide-diag",		required_argument,	0,	OPT_HIDE_DIAG },
 	{"yaml-1.1",		no_argument,		0,	OPT_YAML_1_1 },
 	{"yaml-1.2",		no_argument,		0,	OPT_YAML_1_2 },
 	{"yaml-1.3",		no_argument,		0,	OPT_YAML_1_3 },
@@ -185,6 +187,7 @@ static struct option lopts[] = {
 	{"document-event-stream",no_argument,		0,	OPT_DOCUMENT_EVENT_STREAM },
 	{"noexec",		no_argument,		0,	OPT_NOEXEC },
 	{"null-output",		no_argument,		0,	OPT_NULL_OUTPUT },
+	{"no-ending-newline",	no_argument,		0,	OPT_NO_ENDING_NEWLINE },
 	{"collect-errors",	no_argument,		0,	OPT_COLLECT_ERRORS },
 	{"allow-duplicate-keys",no_argument,		0,	OPT_ALLOW_DUPLICATE_KEYS },
 	{"strip-empty-kv",	no_argument,		0,	OPT_STRIP_EMPTY_KV },
@@ -208,7 +211,7 @@ static struct option lopts[] = {
 
 	{"help",		no_argument,		0,	'h' },
 	{"version",		no_argument,		0,	'v' },
-	{0,			0,              	0,	 0  },
+	{0,			0,			0,	 0  },
 };
 
 static void display_usage(FILE *fp, char *progname, int tool_mode)
@@ -277,6 +280,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--ypath-aliases          : Use YPATH aliases (default %s)\n",
 						YPATH_ALIASES_DEFAULT ? "true" : "false");
 	fprintf(fp, "\t--null-output            : Do not generate output (for scanner profiling)\n");
+	fprintf(fp, "\t--no-ending-newline      : Do not generate a final newline\n");
 	fprintf(fp, "\t--collect-errors         : Collect errors instead of outputting directly"
 						" (default %s)\n",
 						COLLECT_ERRORS_DEFAULT ? "true" : "false");
@@ -1184,7 +1188,7 @@ int main(int argc, char *argv[])
 			break;
 		case 'i':
 			indent = atoi(optarg);
-			if (indent < 0 || indent > FYECF_INDENT_MASK) {
+			if (indent <= 0 || indent > FYECF_INDENT_MASK) {
 				fprintf(stderr, "bad indent option %s\n", optarg);
 				goto err_out_usage;
 			}
@@ -1375,6 +1379,10 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_NULL_OUTPUT:
 			null_output = true;
+			emit_xflags |= FYEXCF_NULL_OUTPUT;
+			break;
+		case OPT_NO_ENDING_NEWLINE:
+			emit_flags |= FYECF_NO_ENDING_NEWLINE;
 			break;
 		case OPT_YAML_1_1:
 			cfg.flags &= ~(FYPCF_DEFAULT_VERSION_MASK << FYPCF_DEFAULT_VERSION_SHIFT);
