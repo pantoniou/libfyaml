@@ -3,6 +3,9 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+/* Define to 1 if you have alloca.h */
+#cmakedefine HAVE_ALLOCA_H
+
 /* Define to 1 if you have byteswap.h */
 #cmakedefine HAVE_BYTESWAP_H
 

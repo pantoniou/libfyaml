@@ -148,6 +148,7 @@ if(NOT CMAKE_USE_PTHREADS_INIT)
 endif()
 
 # Check for headers and functions
+check_include_file("alloca.h" HAVE_ALLOCA_H)
 check_include_file("byteswap.h" HAVE_BYTESWAP_H)
 check_function_exists(__builtin_bswap16 HAVE___BUILTIN_BSWAP16)
 check_function_exists(__builtin_bswap32 HAVE___BUILTIN_BSWAP32)
