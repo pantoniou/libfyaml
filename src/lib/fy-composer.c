@@ -173,6 +173,9 @@ fy_composer_process_event_private(struct fy_composer *fyc, struct fy_event *fye,
 		fyc_error_check(fyc, fyd, err_out,
 				"fy_document_builder_take_document() failed\n");
 
+		fy_document_builder_destroy(fypp->fydb);
+		fypp->fydb = NULL;
+
 		fypc_last->map.is_complex_key = true;
 		fypc_last->map.accumulating_complex_key = false;
 		fypc_last->map.complex_key = fyd;
