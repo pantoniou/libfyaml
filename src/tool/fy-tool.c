@@ -229,7 +229,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--indent, -i <indent>    : Set dump indent to <indent>"
 						" (default indent %d)\n",
 						INDENT_DEFAULT);
-	fprintf(fp, "\t--width, -w <width>      : Set dump width to <width>"
+	fprintf(fp, "\t--width, -w <width>      : Set dump width to <width> - inf for infinite"
 						" (default width %d)\n",
 						WIDTH_DEFAULT);
 	fprintf(fp, "\t--resolve, -r            : Perform anchor and merge key resolution"
@@ -1191,10 +1191,14 @@ int main(int argc, char *argv[])
 
 			break;
 		case 'w':
-			width = atoi(optarg);
-			if (width < 0 || width > FYECF_WIDTH_MASK) {
-				fprintf(stderr, "bad width option %s\n", optarg);
-				goto err_out_usage;
+			if (!strcmp(optarg, "inf")) {
+				width = 0;	/* infinite */
+			} else {
+				width = atoi(optarg);
+				if (width <= 8 || width > FYECF_WIDTH_MASK) {			/* it should fit %YAML 1.3 at least */
+					fprintf(stderr, "bad width option %s\n", optarg);
+					goto err_out_usage;
+				}
 			}
 			manual_width = true;
 			break;
@@ -1563,8 +1567,10 @@ int main(int argc, char *argv[])
 		/* if we're dumping to a non tty stdout width is infinite */
 		if (tool_mode == OPT_DUMP && !isatty(fileno(stdout)) && !manual_width)
 			emit_width_flags = FYECF_WIDTH_INF;
-		else
+		else if (width > 0)
 			emit_width_flags = FYECF_WIDTH(width);
+		else
+			emit_width_flags = FYECF_WIDTH_INF;
 
 		memset(&emit_xcfg, 0, sizeof(emit_xcfg));
 		emit_xcfg.cfg.flags = emit_flags | emit_width_flags |
