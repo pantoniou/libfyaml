@@ -556,10 +556,6 @@ void fy_emit_document_start_indicator(struct fy_emitter *emit)
 	if (emit->column)
 		fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
 
-	/* stripping doc indicators, do not emit */
-	if (emit->xcfg.cfg.flags & FYECF_STRIP_DOC)
-		goto no_doc_emit;
-
 	/* ok, emit document start indicator */
 	fy_emit_puts_simple(emit, fyewt_document_indicator, "---");
 	emit->flags &= ~FYEF_WHITESPACE;
@@ -716,7 +712,7 @@ void fy_emit_common_node_preamble(struct fy_emitter *emit,
 	if ((flags & DDNF_ROOT) && emit->column != 0 &&
             !(emit->flags & FYEF_HAD_DOCUMENT_START)) {
 		fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
-		emit->flags = FYEF_WHITESPACE | FYEF_INDENTATION;
+		emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
 	}
 }
 
@@ -746,7 +742,7 @@ void fy_emit_node_internal(struct fy_emitter *emit, struct fy_node *fyn, int fla
 
 	if (type != FYNT_SCALAR && (flags & DDNF_ROOT) && emit->column != 0) {
 		fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
-		emit->flags = FYEF_WHITESPACE | FYEF_INDENTATION;
+		emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
 	}
 
 	switch (type) {
@@ -1423,8 +1419,8 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 
 	if (flow && (style == FYNS_ANY || style == FYNS_LITERAL || style == FYNS_FOLDED)) {
 
-		/* if there's a linebreak, use double quoted style */
-		if (ta->flags & FYTTAF_HAS_ANY_LB) {
+		/* if there's a linebreak, or ends in a colon, use double quoted style */
+		if (ta->flags & (FYTTAF_HAS_ANY_LB | FYTTAF_ENDS_WITH_COLON)) {
 			style = FYNS_DOUBLE_QUOTED;
 			goto out;
 		}
@@ -1553,6 +1549,10 @@ static void fy_emit_sequence_prolog(struct fy_emitter *emit, struct fy_emit_save
 
 			sc->flags = (sc->flags | DDNF_FLOW) | (sc->flags & ~DDNF_INDENTLESS);
 			fy_emit_write_indicator(emit, di_left_bracket, sc->flags, sc->indent, fyewt_indicator);
+
+			/* we need an indent afterward if not compact */
+			if (!fy_emit_is_oneline_or_compact(emit))
+				sc->flags |= DDNF_HANGING_INDENT;
 		} else {
 			sc->flags = (sc->flags & ~DDNF_FLOW);
 		}
@@ -1587,7 +1587,7 @@ static void fy_emit_sequence_item_prolog(struct fy_emitter *emit, struct fy_emit
 	sc->flags |= DDNF_SEQ;
 
 	if (fy_emit_token_has_comment(emit, fyt_value, fycp_top) ||
-	   (!fy_emit_is_oneline_or_compact(emit) && !sc->flow) ||
+	   !fy_emit_is_oneline_or_compact(emit) ||
 	    ((fy_emit_is_compact(emit) || sc->flow) && emit->column >= fy_emit_width(emit)))
 		fy_emit_write_indent(emit, sc->indent);
 
@@ -1605,13 +1605,19 @@ static void fy_emit_sequence_item_prolog(struct fy_emitter *emit, struct fy_emit
 static void fy_emit_sequence_item_epilog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
 					 bool last, struct fy_token *fyt_value)
 {
+	bool needs_hanging_indent;
+
 	if ((sc->flow || fy_emit_is_json_mode(emit)) && !last)
 		fy_emit_write_indicator(emit, di_comma, sc->flags, sc->indent, fyewt_indicator);
 
 	fy_emit_token_comment(emit, fyt_value, sc->flags, sc->indent, fycp_right);
 
-	if (last && sc->flow && (sc->flags & DDNF_HANGING_INDENT) && !fy_emit_is_oneline_or_compact(emit) && !sc->empty)
+	needs_hanging_indent = sc->flow && !fy_emit_is_oneline_or_compact(emit) && !sc->empty;
+
+	if (last && needs_hanging_indent && (sc->flags & DDNF_HANGING_INDENT))
 		fy_emit_write_indent(emit, sc->old_indent);
+	else if (needs_hanging_indent)
+		sc->flags |= DDNF_HANGING_INDENT;
 
 	sc->flags &= ~DDNF_SEQ;
 }
@@ -1671,6 +1677,10 @@ static void fy_emit_mapping_prolog(struct fy_emitter *emit, struct fy_emit_save_
 
 			sc->flags = (sc->flags | DDNF_FLOW) | (sc->flags & ~DDNF_INDENTLESS);
 			fy_emit_write_indicator(emit, di_left_brace, sc->flags, sc->indent, fyewt_indicator);
+
+			/* we need an indent afterward if not compact */
+			if (!fy_emit_is_oneline_or_compact(emit))
+				sc->flags |= DDNF_HANGING_INDENT;
 		} else {
 			sc->flags &= ~(DDNF_FLOW | DDNF_INDENTLESS);
 		}
@@ -1702,6 +1712,10 @@ static void fy_emit_mapping_key_prolog(struct fy_emitter *emit, struct fy_emit_s
 
 	sc->flags = DDNF_MAP | (sc->flags & DDNF_FLOW);
 
+	if (!fy_emit_is_oneline_or_compact(emit) ||
+	    ((fy_emit_is_compact(emit) || sc->flow) && emit->column >= fy_emit_width(emit)))
+		fy_emit_write_indent(emit, sc->indent);
+
 	if (simple_key) {
 		sc->flags |= DDNF_SIMPLE;
 		if (fyt_key && fyt_key->type == FYTT_SCALAR)
@@ -1716,7 +1730,7 @@ static void fy_emit_mapping_key_prolog(struct fy_emitter *emit, struct fy_emit_s
 	if (!fy_emit_is_oneline(emit)) {
 		if (fyt_key && fyt_key->type != FYTT_SCALAR)
 			/* always indent on non scalar keys */
-			key_over = false;
+			key_over = true;
 		else {
 			/* for scalar keys, check if key + 2 + quotes go over */
 			ta = fy_token_text_analyze(fyt_key);
@@ -1791,13 +1805,19 @@ static void fy_emit_mapping_value_prolog(struct fy_emitter *emit, struct fy_emit
 static void fy_emit_mapping_value_epilog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
 					 bool last, struct fy_token *fyt_value)
 {
+	bool needs_hanging_indent;
+
 	if ((sc->flow || fy_emit_is_json_mode(emit)) && !last)
 		fy_emit_write_indicator(emit, di_comma, sc->flags, sc->indent, fyewt_indicator);
 
 	fy_emit_token_comment(emit, fyt_value, sc->flags, sc->indent, fycp_right);
 
-	if (last && sc->flow && (sc->flags & DDNF_HANGING_INDENT) && !fy_emit_is_oneline_or_compact(emit) && !sc->empty)
+	needs_hanging_indent = sc->flow && !fy_emit_is_oneline_or_compact(emit) && !sc->empty;
+
+	if (last && needs_hanging_indent && (sc->flags & DDNF_HANGING_INDENT))
 		fy_emit_write_indent(emit, sc->old_indent);
+	else if (needs_hanging_indent)
+		sc->flags |= DDNF_HANGING_INDENT;
 
 	sc->flags &= ~DDNF_MAP;
 }
@@ -1937,18 +1957,21 @@ int fy_emit_common_document_start(struct fy_emitter *emit,
 	enum fy_emitter_cfg_flags dsm_flags = flags & FYECF_DOC_START_MARK(FYECF_DOC_START_MARK_MASK);
 	bool vd, td, dsm;
 	bool had_non_default_tag = false;
+	bool strip_doc = false;
 
 	if (!emit || !fyds || emit->fyds)
 		return -1;
+
+	strip_doc = !!(emit->xcfg.cfg.flags & FYECF_STRIP_DOC);
 
 	emit->fyds = fy_document_state_ref(fyds);
 
 	vd = ((vd_flags == FYECF_VERSION_DIR_AUTO && fyds->version_explicit) ||
 	       vd_flags == FYECF_VERSION_DIR_ON) &&
-	      !(emit->xcfg.cfg.flags & FYECF_STRIP_DOC);
+	      !strip_doc;
 	td = ((td_flags == FYECF_TAG_DIR_AUTO && fyds->tags_explicit) ||
 	       td_flags == FYECF_TAG_DIR_ON) &&
-	      !(emit->xcfg.cfg.flags & FYECF_STRIP_DOC);
+	      !strip_doc;
 
 	/* if either a version or directive tags exist, and no previous
 	 * explicit document end existed, output one now
@@ -1956,7 +1979,7 @@ int fy_emit_common_document_start(struct fy_emitter *emit,
 	if (!fy_emit_is_json_mode(emit) && (vd || td) && !(emit->flags & FYEF_HAD_DOCUMENT_END)) {
 		if (emit->column)
 			fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
-		if (!(emit->xcfg.cfg.flags & FYECF_STRIP_DOC)) {
+		if (!strip_doc) {
 			fy_emit_puts_simple(emit, fyewt_document_indicator, "...");
 			emit->flags &= ~FYEF_WHITESPACE;
 			emit->flags |= FYEF_HAD_DOCUMENT_END;
@@ -1969,7 +1992,7 @@ int fy_emit_common_document_start(struct fy_emitter *emit,
 		fy_emit_printf(emit, fyewt_version_directive, "%%YAML %d.%d",
 					fyds->version.major, fyds->version.minor);
 		fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
-		emit->flags = FYEF_WHITESPACE | FYEF_INDENTATION;
+		emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
 	}
 
 	if (!fy_emit_is_json_mode(emit) && td) {
@@ -1991,7 +2014,7 @@ int fy_emit_common_document_start(struct fy_emitter *emit,
 					(int)td_handle_size, td_handle,
 					(int)td_prefix_size, td_prefix);
 			fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
-			emit->flags = FYEF_WHITESPACE | FYEF_INDENTATION;
+			emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
 		}
 	}
 
@@ -2003,8 +2026,8 @@ int fy_emit_common_document_start(struct fy_emitter *emit,
 	 */
 	dsm = (dsm_flags == FYECF_DOC_START_MARK_AUTO &&
 			(!fyds->start_implicit ||
-			  fyds->tags_explicit || fyds->version_explicit ||
-			  had_non_default_tag)) ||
+			(fyds->tags_explicit && had_non_default_tag) ||
+			fyds->version_explicit )) ||
 	       dsm_flags == FYECF_DOC_START_MARK_ON;
 
 	/* if there was previous output without document end */
@@ -2012,8 +2035,13 @@ int fy_emit_common_document_start(struct fy_emitter *emit,
 	           !(emit->flags & FYEF_HAD_DOCUMENT_END))
 		dsm = true;
 
+	/* there was *any* document end output (and no document end) */
+	if (!dsm && (emit->flags & FYEF_HAD_DOCUMENT_END_OUTPUT) &&
+		    !(emit->flags & FYEF_HAD_DOCUMENT_END))
+		dsm = true;
+
 	/* output document start indicator if we should */
-	if (dsm)
+	if (dsm && !fy_emit_is_json_mode(emit))
 		fy_emit_document_start_indicator(emit);
 
 	/* clear that in any case */
@@ -2070,13 +2098,13 @@ int fy_emit_common_document_end(struct fy_emitter *emit, bool override_state, bo
 	if (!(emit->xcfg.cfg.flags & FYECF_NO_ENDING_NEWLINE)) {
 		if (emit->column != 0) {
 			fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
-			emit->flags = FYEF_WHITESPACE | FYEF_INDENTATION;
+			emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
 		}
 
 		if (!fy_emit_is_json_mode(emit) && dem) {
 			fy_emit_puts_simple(emit, fyewt_document_indicator, "...");
 			fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
-			emit->flags = FYEF_WHITESPACE | FYEF_INDENTATION;
+			emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
 			emit->flags |= FYEF_HAD_DOCUMENT_END;
 		} else
 			emit->flags &= ~FYEF_HAD_DOCUMENT_END;
@@ -2084,7 +2112,7 @@ int fy_emit_common_document_end(struct fy_emitter *emit, bool override_state, bo
 		if (!fy_emit_is_json_mode(emit) && dem) {
 			if (emit->column != 0) {
 				fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
-				emit->flags = FYEF_WHITESPACE | FYEF_INDENTATION;
+				emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
 			}
 			fy_emit_puts_simple(emit, fyewt_document_indicator, "...");
 			emit->flags &= ~(FYEF_WHITESPACE | FYEF_INDENTATION);
@@ -2122,13 +2150,13 @@ int fy_emit_common_explicit_document_end(struct fy_emitter *emit)
 
 	if (emit->column != 0) {
 		fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
-		emit->flags = FYEF_WHITESPACE | FYEF_INDENTATION;
+		emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
 	}
 
 	if (!fy_emit_is_json_mode(emit)) {
 		fy_emit_puts_simple(emit, fyewt_document_indicator, "...");
 		fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
-		emit->flags = FYEF_WHITESPACE | FYEF_INDENTATION;
+		emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
 		emit->flags |= FYEF_HAD_DOCUMENT_END;
 	} else
 		emit->flags &= ~FYEF_HAD_DOCUMENT_END;
@@ -2163,9 +2191,9 @@ void fy_emit_reset(struct fy_emitter *emit, bool reset_events)
 	emit->column = 0;
 	emit->flow_level = 0;
 	emit->output_error = 0;
-	/* start as if there was a previous document with an explicit end */
-	/* this allows implicit documents start without an indicator */
-	emit->flags = FYEF_WHITESPACE | FYEF_INDENTATION | FYEF_HAD_DOCUMENT_END;
+	/* clear/set flags for a fresh start */
+	emit->flags &= ~(FYEF_OPEN_ENDED | FYEF_HAD_DOCUMENT_START | FYEF_HAD_DOCUMENT_OUTPUT); 
+	emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
 
 	emit->state = FYES_NONE;
 
@@ -3116,7 +3144,7 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_parser *fyp
 	if (fye->type != FYET_ALIAS && fye->type != FYET_SCALAR &&
 			(emit->s_flags & DDNF_ROOT) && emit->column != 0) {
 		fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
-		emit->flags = FYEF_WHITESPACE | FYEF_INDENTATION;
+		emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
 	}
 
 	emit->s_flags = flags;
@@ -3298,6 +3326,7 @@ static int fy_emit_handle_document_end(struct fy_emitter *emit, struct fy_parser
 
 	fy_emit_reset(emit, false);
 	fy_emit_goto_state(emit, FYES_DOCUMENT_START);
+	emit->flags |= FYEF_HAD_DOCUMENT_END_OUTPUT;
 	return 0;
 }
 

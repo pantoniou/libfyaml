@@ -861,10 +861,13 @@ fy_token_text_analyze(struct fy_token *fyt)
 
 		/* last character */
 		if (cn < 0) {
-			/* if ends with whitespace or linebreak, can't be plain */
-			if (fy_is_ws(c) || fy_token_is_lb(fyt, c))
+			/* if ends with whitespace or linebreak, or : can't be plain */
+			if (fy_is_ws(c) || fy_token_is_lb(fyt, c) || c == ':') {
 				flags &= ~(FYTTAF_CAN_BE_PLAIN |
 					   FYTTAF_CAN_BE_PLAIN_FLOW);
+				if (c == ':')
+					flags |= FYTTAF_ENDS_WITH_COLON;
+			}
 		}
 	}
 
@@ -1484,6 +1487,12 @@ unsigned int fy_analyze_scalar_content(const char *data, size_t size,
 
 	s = data;
 	e = data + size;
+
+	/* if it ends in : can't be a plain */
+	if (e > s && e[-1] == ':') {
+		flags &= ~(FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN);
+		flags |= FYACF_ENDS_WITH_COLON;
+	}
 
 	col = 0;
 	first = true;

@@ -79,6 +79,7 @@ static inline bool fy_token_type_is_mapping_marker(enum fy_token_type type)
 #define FYACF_SIZE0		0x020000	/* contains absolutely nothing */
 #define FYACF_VALID_ANCHOR	0x040000	/* contains valid anchor (without & prefix) */
 #define FYACF_JSON_ESCAPE	0x080000	/* contains a character that JSON escapes */
+#define FYACF_ENDS_WITH_COLON	0x100000	/* ends with : */
 
 /* analysis flags */
 #define FYTTAF_HAS_LB			FY_BIT(0)
@@ -102,6 +103,7 @@ static inline bool fy_token_type_is_mapping_marker(enum fy_token_type type)
 #define FYTTAF_HAS_START_IND		FY_BIT(19)	/* has --- at col 0 */
 #define FYTTAF_HAS_END_IND		FY_BIT(20)	/* has ... at col 0 */
 #define FYTTAF_HAS_NON_PRINT		FY_BIT(21)	/* has any non printable utf8 */
+#define FYTTAF_ENDS_WITH_COLON		FY_BIT(22)	/* ends with a colon */
 
 #define FYTTAF_ANALYZED			FY_BIT(31)	/* analyzed mark */
 
