@@ -32,7 +32,9 @@
 
 // #define DEBUG_ARENA
 
-// #define DISABLE_MREMAP
+#if defined(__NetBSD__)
+#define DISABLE_MREMAP
+#endif
 
 #if HAVE_MREMAP && !defined(DISABLE_MREMAP)
 #define USE_MREMAP 1
