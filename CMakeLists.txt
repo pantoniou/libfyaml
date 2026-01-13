@@ -555,6 +555,12 @@ if(NOT MSVC)
 
 endif()
 
+# the options for the libs
+set(LIB_OPTS "")
+if(BUILD_SHARED_LIBS)
+    list(APPEND LIB_OPTS "-fPIC")
+endif()
+
 # Network tests
 if(ENABLE_NETWORK)
     set(HAVE_NETWORK 1)
@@ -671,7 +677,7 @@ target_compile_definitions(b3portable PRIVATE
     HASHER_SUFFIX=portable
     SIMD_DEGREE=1
 )
-target_compile_options(b3portable PRIVATE ${COMMON_C_FLAGS})
+target_compile_options(b3portable PRIVATE ${COMMON_C_FLAGS} ${LIB_OPTS})
 
 # BLAKE3 SIMD libraries
 set(BLAKE3_TARGETS b3portable)
@@ -693,7 +699,7 @@ if(TARGET_HAS_SSE2)
         HASHER_SUFFIX=sse2
         SIMD_DEGREE=4
     )
-    target_compile_options(b3sse2 PRIVATE ${COMMON_C_FLAGS} -msse2)
+    target_compile_options(b3sse2 PRIVATE ${COMMON_C_FLAGS} -msse2 ${LIB_OPTS})
     list(APPEND BLAKE3_TARGETS b3sse2)
 endif()
 
@@ -714,7 +720,7 @@ if(TARGET_HAS_SSE41)
         HASHER_SUFFIX=sse41
         SIMD_DEGREE=4
     )
-    target_compile_options(b3sse41 PRIVATE ${COMMON_C_FLAGS} -msse4.1)
+    target_compile_options(b3sse41 PRIVATE ${COMMON_C_FLAGS} -msse4.1 ${LIB_OPTS})
     list(APPEND BLAKE3_TARGETS b3sse41)
 endif()
 
@@ -735,7 +741,7 @@ if(TARGET_HAS_AVX2)
         HASHER_SUFFIX=avx2
         SIMD_DEGREE=8
     )
-    target_compile_options(b3avx2 PRIVATE ${COMMON_C_FLAGS} -mavx2)
+    target_compile_options(b3avx2 PRIVATE ${COMMON_C_FLAGS} -mavx2 ${LIB_OPTS})
     list(APPEND BLAKE3_TARGETS b3avx2)
 endif()
 
@@ -756,7 +762,7 @@ if(TARGET_HAS_AVX512)
         HASHER_SUFFIX=avx512
         SIMD_DEGREE=16
     )
-    target_compile_options(b3avx512 PRIVATE ${COMMON_C_FLAGS} -mavx512f -mavx512vl)
+    target_compile_options(b3avx512 PRIVATE ${COMMON_C_FLAGS} -mavx512f -mavx512vl ${LIB_OPTS})
     list(APPEND BLAKE3_TARGETS b3avx512)
 endif()
 
@@ -776,7 +782,7 @@ if(TARGET_HAS_NEON)
         HASHER_SUFFIX=neon
         SIMD_DEGREE=4
     )
-    target_compile_options(b3neon PRIVATE ${COMMON_C_FLAGS})
+    target_compile_options(b3neon PRIVATE ${COMMON_C_FLAGS} ${LIB_OPTS})
     if(TARGET_CPU_ARM)
         target_compile_options(b3neon PRIVATE -mfpu=neon)
     endif()
@@ -929,11 +935,8 @@ target_compile_options(fyaml PRIVATE ${COMMON_C_FLAGS})
 
 # Shared options between GCC and CLANG
 if(NOT MSVC)
+    target_compile_options(fyaml PRIVATE ${LIB_OPTS})
     target_compile_options(fyaml PRIVATE -fvisibility=hidden)
-
-    if(BUILD_SHARED_LIBS)
-        target_compile_options(fyaml PRIVATE -fPIC)
-    endif()
 
     if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
         target_compile_options(fyaml PRIVATE -O2)
