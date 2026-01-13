@@ -1110,7 +1110,7 @@ err_out:
 int fy_path_fetch_tokens(struct fy_path_parser *fypp)
 {
 	enum fy_token_type type;
-	struct fy_token *fyt;
+	struct fy_token *fyt = NULL;
 	struct fy_reader *fyr;
 	int c, cn, rc, simple_token_count;
 
@@ -1119,6 +1119,7 @@ int fy_path_fetch_tokens(struct fy_path_parser *fypp)
 
 		fyt = fy_path_token_queue(fypp, FYTT_STREAM_START, fy_reader_fill_atom_a(fyr, 0));
 		fyr_error_check(fyr, fyt, err_out, "fy_path_token_queue() failed\n");
+		fyt = NULL;
 
 		fypp->stream_start_produced = true;
 		return 0;
@@ -1136,6 +1137,7 @@ int fy_path_fetch_tokens(struct fy_path_parser *fypp)
 		/* produce stream end continuously */
 		fyt = fy_path_token_queue(fypp, FYTT_STREAM_END, fy_reader_fill_atom_a(fyr, 0));
 		fyr_error_check(fyr, fyt, err_out, "fy_path_token_queue() failed\n");
+		fyt = NULL;
 
 		return 0;
 	}
@@ -1381,6 +1383,7 @@ do_token:
 	if (simple_token_count > 0) {
 		fyt = fy_path_token_queue(fypp, type, fy_reader_fill_atom_a(fyr, simple_token_count));
 		fyr_error_check(fyr, fyt, err_out, "fy_path_token_queue() failed\n");
+		fyt = NULL;
 
 		return 0;
 	}
@@ -1423,7 +1426,7 @@ do_token:
 		break;
 	}
 
-	FYR_PARSE_ERROR(fyr, 0, 1, FYEM_SCAN, "bad path expression starts here c=%d", c);
+	// FYR_PARSE_ERROR(fyr, 0, 1, FYEM_SCAN, "bad path expression starts here c=%d", c);
 
 err_out:
 	fypp->stream_error = true;
