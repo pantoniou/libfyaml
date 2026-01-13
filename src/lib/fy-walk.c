@@ -3205,7 +3205,7 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 	struct fy_reader *fyr;
 	struct fy_token *fyt = NULL;
 	enum fy_token_type fytt;
-	struct fy_path_expr *expr, *expr_top, *exprt;
+	struct fy_path_expr *expr = NULL, *expr_top, *exprt;
 	enum fy_expr_mode old_scan_mode, prev_scan_mode;
 	int ret, rc;
 
@@ -3509,6 +3509,8 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 	return expr;
 
 err_out:
+	if (expr)
+		fy_path_expr_free(expr);
 #ifdef DEBUG_EXPR
 	fy_notice(fypp->cfg.diag, "operator stack (error)\n");
 	fy_expr_stack_dump(fypp->cfg.diag, &fypp->operators);
