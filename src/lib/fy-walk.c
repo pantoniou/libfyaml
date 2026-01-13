@@ -4441,7 +4441,11 @@ fy_walk_result_perform_set_op(struct fy_path_exec *fypx, struct fy_walk_result *
 
 	if (!set) {
 		/* on unselect, return input, on select return NULL */
-		return op == FYWRSO_UNSELECT ? input : NULL;
+		if (op == FYWRSO_UNSELECT)
+			return input;
+
+		fy_walk_result_free(input);
+		return NULL;
 	}
 
 	assert(input->type == fwrt_node_ref || input->type == fwrt_refs);
@@ -4520,7 +4524,11 @@ fy_walk_result_perform_set_op(struct fy_path_exec *fypx, struct fy_walk_result *
 
 	if (!output) {
 		/* nothing? nothing was removed or nothing was selected */
-		return op == FYWRSO_UNSELECT ? input : NULL;
+		if (op == FYWRSO_UNSELECT)
+			return input;
+
+		fy_walk_result_free(input);
+		return NULL;
 	}
 
 	/* simplify (might remove everything if empty) */
