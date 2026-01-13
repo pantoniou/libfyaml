@@ -325,6 +325,7 @@ struct fy_path_parser {
 	bool stream_start_produced;
 	bool stream_end_produced;
 	bool stream_error;
+	bool owns_diag;
 	int token_activity_counter;
 
 	struct fy_input *fyi;
