@@ -5,6 +5,50 @@ All notable changes to libfyaml will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2026-01-14
+
+### Added
+
+- fy-tool: `-winf` option for infinite width output
+- fy-tool: `--no-output-newline` option (useful with oneline mode)
+- Emitter: `FYEXCF_OUTPUT_FILENAME` extended option for direct file output
+
+### Changed
+
+- JSON emit mode now works like YAML flow mode (less special-casing)
+- Compact emit mode now produces truly compact output (no indentation)
+- Emitter only changes plain scalar style when space or linebreak is present (preserves numeric scalars better)
+
+### Fixed
+
+- **#170**: Wrong length return when buffer ends mid UTF-8 sequence
+- **#167**: Oneline styles now correctly use infinite width
+- **#139**: Walk path parser now always creates diagnostics (fixes token reference leak)
+- **#137**: Walk memory leak on parse error path
+- **#136**: Walk memory leak when no output is generated
+- **#131**: Walk memory leak when expression error occurs
+- Composer: Memory leak when back-to-back complex keys exist
+- Emitter: Broken flow mode output
+- Emitter: Unnecessary plain scalar style changes
+
+### Platform Support
+
+**Supported platforms**: Linux, macOS, FreeBSD, OpenBSD, and NetBSD.
+
+- **NetBSD**: Disabled mremap (different semantics than Linux)
+- **NetBSD**: CMake shared libraries now correctly built with -fPIC
+- **NetBSD**: Only include alloca.h if it exists
+- **NetBSD**: Fixed ctype(3) argument casting (unsigned char)
+- **GNU/Hurd**: Use `<endian.h>` for endianness detection
+- Use `getopt_long` instead of `getopt_long_only` for portability
+- Fix test(1) operator in test suite (use POSIX `=` not bash `==`)
+- Fix `-Wformat` warning (use PRIx64 for uint64_t)
+
+### Statistics
+
+- 25 commits since v0.9.2
+- 6 bug fix issues closed
+
 ## [0.9.2] - 2025-12-29
 
 ### Fixed
@@ -130,5 +174,7 @@ Jose Luis Blanco-Claraco, Andrey Somov, Orange_233, Martin Diehl
 
 Initial public release with comprehensive YAML 1.2 support.
 
+[0.9.3]: https://github.com/pantoniou/libfyaml/compare/v0.9.2...v0.9.3
+[0.9.2]: https://github.com/pantoniou/libfyaml/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/pantoniou/libfyaml/compare/v0.9...v0.9.1
 [0.9]: https://github.com/pantoniou/libfyaml/releases/tag/v0.9
