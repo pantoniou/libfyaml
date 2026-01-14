@@ -24,6 +24,7 @@ Example:
 
 from libfyaml._libfyaml import (
     FyGeneric,
+    FyDocumentState,
     load,
     loads,
     dump,
@@ -99,6 +100,7 @@ __version__ = "0.9.0"
 
 __all__ = [
     "FyGeneric",
+    "FyDocumentState",
     "load",
     "loads",
     "dump",
