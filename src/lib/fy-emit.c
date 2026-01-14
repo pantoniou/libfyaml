@@ -1469,8 +1469,9 @@ out:
 		    ((ta->flags & FYTTAF_QUOTE_AT_0) && indent == 0))
 			style = FYNS_DOUBLE_QUOTED;
 
-		/* make it double quoted, but only if not already over the width */
-		if (style == FYNS_PLAIN && emit->column < fy_emit_width(emit) && (emit->column + ta->maxspan) > fy_emit_width(emit))
+		/* make it double quoted, but only if not already over the width (and contains a space/lb) */
+		if (style == FYNS_PLAIN && (ta->flags & (FYTTAF_HAS_LB | FYTTAF_HAS_WS)) &&
+			emit->column < fy_emit_width(emit) && (emit->column + ta->maxspan) > fy_emit_width(emit))
 			style = FYNS_DOUBLE_QUOTED;
 	}
 
