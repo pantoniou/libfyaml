@@ -1,8 +1,8 @@
 /* vim: set ts=4 sw=4 et: */
 /**
- * _libfyaml_minimal.c - Minimal prototype of Python bindings for libfyaml generics
+ * _libfyaml.c - Python bindings for libfyaml generics
  *
- * Demonstrates NumPy-like lazy conversion with the actual generic API.
+ * Provides NumPy-like lazy conversion with the generic API.
  */
 
 #define PY_SSIZE_T_CLEAN
@@ -259,10 +259,10 @@ FyGeneric_str(FyGenericObject *self)
         }
 
         case FYGT_BOOL:
-            return PyUnicode_FromString(fy_cast(self->fyg, (_Bool)false)? "true" : "false");
+            return PyUnicode_FromString(fy_cast(self->fyg, (_Bool)false) ? "True" : "False");
 
         case FYGT_NULL:
-            return PyUnicode_FromString("null");
+            return PyUnicode_FromString("None");
 
         case FYGT_SEQUENCE:
         case FYGT_MAPPING: {
@@ -4018,7 +4018,7 @@ static PyMethodDef module_methods[] = {
 static struct PyModuleDef libfyaml_module = {
     PyModuleDef_HEAD_INIT,
     .m_name = "_libfyaml",
-    .m_doc = "Minimal libfyaml Python bindings prototype",
+    .m_doc = "Python bindings for libfyaml generic type system",
     .m_size = -1,
     .m_methods = module_methods,
 };
