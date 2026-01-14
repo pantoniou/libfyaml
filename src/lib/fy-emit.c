@@ -1544,25 +1544,23 @@ static void fy_emit_sequence_prolog(struct fy_emitter *emit, struct fy_emit_save
 			sc->flow = sc->empty;
 		else
 			sc->flow = fy_emit_is_flow_mode(emit) || emit->flow_level || sc->flow_token || sc->empty;
+	} else
+		sc->flow = true;
 
-		if (sc->flow) {
-			if (!emit->flow_level) {
-				sc->indent = fy_emit_increase_indent(emit, sc->flags, sc->indent);
-				sc->old_indent = sc->indent;
-			}
-
-			sc->flags = (sc->flags | DDNF_FLOW) | (sc->flags & ~DDNF_INDENTLESS);
-			fy_emit_write_indicator(emit, di_left_bracket, sc->flags, sc->indent, fyewt_indicator);
-
-			/* we need an indent afterward if not compact */
-			if (!fy_emit_is_oneline_or_compact(emit))
-				sc->flags |= DDNF_HANGING_INDENT;
-		} else {
-			sc->flags = (sc->flags & ~DDNF_FLOW);
+	if (sc->flow) {
+		if (!emit->flow_level) {
+			sc->indent = fy_emit_increase_indent(emit, sc->flags, sc->indent);
+			sc->old_indent = sc->indent;
 		}
-	} else {
+
 		sc->flags = (sc->flags | DDNF_FLOW) | (sc->flags & ~DDNF_INDENTLESS);
 		fy_emit_write_indicator(emit, di_left_bracket, sc->flags, sc->indent, fyewt_indicator);
+
+		/* we need an indent afterward if not compact */
+		if (!fy_emit_is_oneline_or_compact(emit))
+			sc->flags |= DDNF_HANGING_INDENT;
+	} else {
+		sc->flags = (sc->flags & ~DDNF_FLOW);
 	}
 
 	if (!fy_emit_is_oneline_or_compact(emit)) {
@@ -1672,25 +1670,23 @@ static void fy_emit_mapping_prolog(struct fy_emitter *emit, struct fy_emit_save_
 			sc->flow = sc->empty;
 		else
 			sc->flow = fy_emit_is_flow_mode(emit) || emit->flow_level || sc->flow_token || sc->empty;
+	} else
+		sc->flow = true;
 
-		if (sc->flow) {
-			if (!emit->flow_level) {
-				sc->indent = fy_emit_increase_indent(emit, sc->flags, sc->indent);
-				sc->old_indent = sc->indent;
-			}
-
-			sc->flags = (sc->flags | DDNF_FLOW) | (sc->flags & ~DDNF_INDENTLESS);
-			fy_emit_write_indicator(emit, di_left_brace, sc->flags, sc->indent, fyewt_indicator);
-
-			/* we need an indent afterward if not compact */
-			if (!fy_emit_is_oneline_or_compact(emit))
-				sc->flags |= DDNF_HANGING_INDENT;
-		} else {
-			sc->flags &= ~(DDNF_FLOW | DDNF_INDENTLESS);
+	if (sc->flow) {
+		if (!emit->flow_level) {
+			sc->indent = fy_emit_increase_indent(emit, sc->flags, sc->indent);
+			sc->old_indent = sc->indent;
 		}
-	} else {
+
 		sc->flags = (sc->flags | DDNF_FLOW) | (sc->flags & ~DDNF_INDENTLESS);
 		fy_emit_write_indicator(emit, di_left_brace, sc->flags, sc->indent, fyewt_indicator);
+
+		/* we need an indent afterward if not compact */
+		if (!fy_emit_is_oneline_or_compact(emit))
+			sc->flags |= DDNF_HANGING_INDENT;
+	} else {
+		sc->flags &= ~(DDNF_FLOW | DDNF_INDENTLESS);
 	}
 
 	if (!fy_emit_is_oneline_or_compact(emit) && !sc->empty)
