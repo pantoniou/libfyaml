@@ -1565,7 +1565,7 @@ static void fy_emit_sequence_prolog(struct fy_emitter *emit, struct fy_emit_save
 		fy_emit_write_indicator(emit, di_left_bracket, sc->flags, sc->indent, fyewt_indicator);
 	}
 
-	if (!fy_emit_is_oneline(emit)) {
+	if (!fy_emit_is_oneline_or_compact(emit)) {
 		if (was_flow || (sc->flags & (DDNF_ROOT | DDNF_SEQ)))
 			sc->indent = fy_emit_increase_indent(emit, sc->flags, sc->indent);
 	}
@@ -1693,7 +1693,7 @@ static void fy_emit_mapping_prolog(struct fy_emitter *emit, struct fy_emit_save_
 		fy_emit_write_indicator(emit, di_left_brace, sc->flags, sc->indent, fyewt_indicator);
 	}
 
-	if (!fy_emit_is_oneline(emit) && !sc->empty)
+	if (!fy_emit_is_oneline_or_compact(emit) && !sc->empty)
 		sc->indent = fy_emit_increase_indent(emit, sc->flags, sc->indent);
 
 	sc->flags &= ~DDNF_ROOT;
@@ -1731,7 +1731,7 @@ static void fy_emit_mapping_key_prolog(struct fy_emitter *emit, struct fy_emit_s
 	}
 
 	do_indent = false;
-	if (!fy_emit_is_oneline(emit)) {
+	if (!fy_emit_is_oneline_or_compact(emit)) {
 		if (fyt_key && fyt_key->type != FYTT_SCALAR)
 			/* always indent on non scalar keys */
 			key_over = true;
@@ -1794,7 +1794,7 @@ static void fy_emit_mapping_value_prolog(struct fy_emitter *emit, struct fy_emit
 	bool value_over;
 
 	/* don't do anything for those cases */
-	if (!sc->flow || fy_emit_is_oneline(emit) || !fyt_value || fyt_value->type != FYTT_SCALAR)
+	if (!sc->flow || fy_emit_is_oneline_or_compact(emit) || !fyt_value || fyt_value->type != FYTT_SCALAR)
 		return;
 
 	ta = fy_token_text_analyze(fyt_value);
