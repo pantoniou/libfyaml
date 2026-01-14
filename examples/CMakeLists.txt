@@ -1,3 +1,4 @@
+set(CMAKE_PREFIX_PATH "/home/panto/work/libfyaml/build")
 cmake_minimum_required(VERSION 3.12)
 project(libfyaml-examples C)
 

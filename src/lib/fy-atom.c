@@ -1470,7 +1470,7 @@ int fy_atom_iter_utf8_quoted_get(struct fy_atom_iter *iter, size_t *lenp, uint8_
 		nread = fy_atom_iter_read(iter, buf + 1, w - 1);
 		if (nread != (w - 1)) {
 			if (nread != -1 && nread < (w - 1))
-				*lenp += nread;
+				*lenp = nread;
 			return 0;
 		}
 	}
