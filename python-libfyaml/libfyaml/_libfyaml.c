@@ -3313,7 +3313,38 @@ create_builder_with_config(int dedup, size_t estimated_size)
     return gb;
 }
 
-/* loads(string, mode='yaml', dedup=True, trim=True, mutable=False) - Parse YAML/JSON from string */
+/* Helper: Parse mode string and return appropriate FYOPPF flags
+ * Supported modes:
+ *   - "yaml" or "yaml1.2" or "1.2" → YAML 1.2 (default)
+ *   - "yaml1.1" or "1.1" → YAML 1.1 (supports merge keys)
+ *   - "json" → JSON mode
+ * Returns 0 on error (with Python exception set)
+ */
+static unsigned int
+parse_mode_flags(const char *mode)
+{
+    if (mode == NULL || strcmp(mode, "yaml") == 0 ||
+        strcmp(mode, "yaml1.2") == 0 || strcmp(mode, "1.2") == 0) {
+        return FYOPPF_MODE_YAML_1_2;
+    } else if (strcmp(mode, "yaml1.1") == 0 || strcmp(mode, "1.1") == 0) {
+        return FYOPPF_MODE_YAML_1_1;
+    } else if (strcmp(mode, "json") == 0) {
+        return FYOPPF_MODE_JSON;
+    } else {
+        PyErr_Format(PyExc_ValueError,
+            "Invalid mode '%s'. Supported modes: 'yaml', 'yaml1.1', 'yaml1.2', '1.1', '1.2', 'json'",
+            mode);
+        return 0;
+    }
+}
+
+/* loads(string, mode='yaml', dedup=True, trim=True, mutable=False) - Parse YAML/JSON from string
+ *
+ * mode can be:
+ *   - 'yaml' or 'yaml1.2' or '1.2': YAML 1.2 (default)
+ *   - 'yaml1.1' or '1.1': YAML 1.1 (supports merge keys <<)
+ *   - 'json': JSON mode
+ */
 static PyObject *
 libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -3328,6 +3359,11 @@ libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|sppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable))
         return NULL;
 
+    /* Parse mode string to flags */
+    unsigned int mode_flags = parse_mode_flags(mode);
+    if (mode_flags == 0)
+        return NULL;  /* Exception already set */
+
     /* Create generic builder using helper */
     struct fy_generic_builder *gb = create_builder_with_config(dedup, yaml_len * 2);
     if (gb == NULL) {
@@ -3335,15 +3371,8 @@ libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    /* Determine parse flags based on mode - no DISABLE_DIRECTORY to preserve metadata */
-    unsigned int parse_flags = FYOPPF_INPUT_TYPE_STRING;
-    if (strcmp(mode, "json") == 0) {
-        parse_flags |= FYOPPF_MODE_JSON;
-    } else {
-        parse_flags |= FYOPPF_MODE_YAML_1_2;
-    }
-
     /* Parse - returns a directory (sequence of VDS) */
+    unsigned int parse_flags = FYOPPF_INPUT_TYPE_STRING | mode_flags;
     fy_generic vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
     if (!fy_generic_is_valid(vdir)) {
         fy_generic_builder_destroy(gb);
@@ -3667,13 +3696,13 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
             return NULL;
         }
 
-        /* Determine parse flags based on mode - no DISABLE_DIRECTORY to preserve metadata */
-        unsigned int parse_flags = 0;
-        if (strcmp(mode, "json") == 0) {
-            parse_flags |= FYOPPF_MODE_JSON;
-        } else {
-            parse_flags |= FYOPPF_MODE_YAML_1_2;
-        }
+        /* Parse mode string to flags */
+        unsigned int mode_flags = parse_mode_flags(mode);
+        if (mode_flags == 0)
+            return NULL;  /* Exception already set */
+
+        /* Determine parse flags */
+        unsigned int parse_flags = mode_flags;
 
         /* Parse from file - returns a directory (sequence of VDS) */
         fy_generic vdir = fy_gb_parse_file(gb, parse_flags, path);
@@ -3922,13 +3951,13 @@ libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    /* Determine parse flags based on mode - MULTI_DOCUMENT for multiple docs */
-    unsigned int parse_flags = FYOPPF_INPUT_TYPE_STRING | FYOPPF_MULTI_DOCUMENT;
-    if (strcmp(mode, "json") == 0) {
-        parse_flags |= FYOPPF_MODE_JSON;
-    } else {
-        parse_flags |= FYOPPF_MODE_YAML_1_2;
-    }
+    /* Parse mode string to flags */
+    unsigned int mode_flags = parse_mode_flags(mode);
+    if (mode_flags == 0)
+        return NULL;  /* Exception already set */
+
+    /* Parse flags: MULTI_DOCUMENT for multiple docs */
+    unsigned int parse_flags = FYOPPF_INPUT_TYPE_STRING | FYOPPF_MULTI_DOCUMENT | mode_flags;
 
     /* Parse - returns a directory (sequence of VDS) */
     fy_generic vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
@@ -4021,13 +4050,13 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
             return NULL;
         }
 
-        /* Determine parse flags based on mode - MULTI_DOCUMENT for multiple docs */
-        unsigned int parse_flags = FYOPPF_MULTI_DOCUMENT;
-        if (strcmp(mode, "json") == 0) {
-            parse_flags |= FYOPPF_MODE_JSON;
-        } else {
-            parse_flags |= FYOPPF_MODE_YAML_1_2;
-        }
+        /* Parse mode string to flags */
+        unsigned int mode_flags = parse_mode_flags(mode);
+        if (mode_flags == 0)
+            return NULL;  /* Exception already set */
+
+        /* Parse flags: MULTI_DOCUMENT for multiple docs */
+        unsigned int parse_flags = FYOPPF_MULTI_DOCUMENT | mode_flags;
 
         /* Parse from file - returns a directory (sequence of VDS) */
         fy_generic vdir = fy_gb_parse_file(gb, parse_flags, path);
