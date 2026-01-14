@@ -21,6 +21,7 @@
 typedef struct {
     PyObject_HEAD
     fy_generic fyg;
+    fy_generic vds;  /* VDS (virtual document state) for metadata access (fy_invalid if none) */
     struct fy_generic_builder *gb;  /* Non-NULL only for root (owner) */
     PyObject *root;  /* Reference to root object (NULL if this is root) */
     PyObject *path;  /* List of path elements from root (NULL if root or not mutable) */
@@ -188,6 +189,190 @@ static PyTypeObject FyGenericIteratorType = {
     .tp_iter = FyGenericIterator_iter,
     .tp_iternext = (iternextfunc)FyGenericIterator_next,
 };
+
+/* ========== FyDocumentState Type ========== */
+
+typedef struct {
+    PyObject_HEAD
+    fy_generic vds;                     /* Reference to VDS */
+    PyObject *owner;                    /* Keep parent FyGeneric alive */
+} FyDocumentStateObject;
+
+static PyTypeObject FyDocumentStateType;
+
+/* FyDocumentState: Deallocation */
+static void
+FyDocumentState_dealloc(FyDocumentStateObject *self)
+{
+    Py_XDECREF(self->owner);
+    Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+/* FyDocumentState: __repr__ */
+static PyObject *
+FyDocumentState_repr(FyDocumentStateObject *self)
+{
+    struct fy_document_state *fyds = fy_generic_vds_get_document_state(self->vds);
+    if (fyds == NULL)
+        return PyUnicode_FromString("<FyDocumentState: invalid>");
+
+    const struct fy_version *vers = fy_document_state_version(fyds);
+    if (vers)
+        return PyUnicode_FromFormat("<FyDocumentState: YAML %d.%d>", vers->major, vers->minor);
+    else
+        return PyUnicode_FromString("<FyDocumentState>");
+}
+
+/* FyDocumentState: version property getter */
+static PyObject *
+FyDocumentState_get_version(FyDocumentStateObject *self, void *closure)
+{
+    struct fy_document_state *fyds = fy_generic_vds_get_document_state(self->vds);
+    if (fyds == NULL) {
+        Py_INCREF(Py_None);
+        return Py_None;
+    }
+
+    const struct fy_version *vers = fy_document_state_version(fyds);
+    if (vers == NULL) {
+        Py_INCREF(Py_None);
+        return Py_None;
+    }
+
+    return Py_BuildValue("(ii)", vers->major, vers->minor);
+}
+
+/* FyDocumentState: version_explicit property getter */
+static PyObject *
+FyDocumentState_get_version_explicit(FyDocumentStateObject *self, void *closure)
+{
+    struct fy_document_state *fyds = fy_generic_vds_get_document_state(self->vds);
+    if (fyds == NULL) {
+        Py_INCREF(Py_False);
+        return Py_False;
+    }
+
+    return PyBool_FromLong(fy_document_state_version_explicit(fyds));
+}
+
+/* FyDocumentState: tags property getter - returns list of dicts */
+static PyObject *
+FyDocumentState_get_tags(FyDocumentStateObject *self, void *closure)
+{
+    struct fy_document_state *fyds = fy_generic_vds_get_document_state(self->vds);
+    if (fyds == NULL) {
+        return PyList_New(0);
+    }
+
+    PyObject *result = PyList_New(0);
+    if (result == NULL)
+        return NULL;
+
+    void *iter = NULL;
+    const struct fy_tag *tag;
+    while ((tag = fy_document_state_tag_directive_iterate(fyds, &iter)) != NULL) {
+        PyObject *tag_dict = PyDict_New();
+        if (tag_dict == NULL) {
+            Py_DECREF(result);
+            return NULL;
+        }
+
+        /* Add handle and prefix */
+        PyObject *handle = tag->handle ? PyUnicode_FromString(tag->handle) : Py_None;
+        PyObject *prefix = tag->prefix ? PyUnicode_FromString(tag->prefix) : Py_None;
+
+        if (handle == Py_None) Py_INCREF(handle);
+        if (prefix == Py_None) Py_INCREF(prefix);
+
+        PyDict_SetItemString(tag_dict, "handle", handle);
+        PyDict_SetItemString(tag_dict, "prefix", prefix);
+        Py_DECREF(handle);
+        Py_DECREF(prefix);
+
+        if (PyList_Append(result, tag_dict) < 0) {
+            Py_DECREF(tag_dict);
+            Py_DECREF(result);
+            return NULL;
+        }
+        Py_DECREF(tag_dict);
+    }
+
+    return result;
+}
+
+/* FyDocumentState: tags_explicit property getter */
+static PyObject *
+FyDocumentState_get_tags_explicit(FyDocumentStateObject *self, void *closure)
+{
+    struct fy_document_state *fyds = fy_generic_vds_get_document_state(self->vds);
+    if (fyds == NULL) {
+        Py_INCREF(Py_False);
+        return Py_False;
+    }
+
+    return PyBool_FromLong(fy_document_state_tags_explicit(fyds));
+}
+
+/* FyDocumentState: json_mode property getter */
+static PyObject *
+FyDocumentState_get_json_mode(FyDocumentStateObject *self, void *closure)
+{
+    struct fy_document_state *fyds = fy_generic_vds_get_document_state(self->vds);
+    if (fyds == NULL) {
+        Py_INCREF(Py_False);
+        return Py_False;
+    }
+
+    return PyBool_FromLong(fy_document_state_json_mode(fyds));
+}
+
+/* FyDocumentState getsetters */
+static PyGetSetDef FyDocumentState_getsetters[] = {
+    {"version", (getter)FyDocumentState_get_version, NULL,
+     "YAML version as (major, minor) tuple", NULL},
+    {"version_explicit", (getter)FyDocumentState_get_version_explicit, NULL,
+     "True if version was explicitly set via %YAML directive", NULL},
+    {"tags", (getter)FyDocumentState_get_tags, NULL,
+     "List of tag directives as dicts with 'handle' and 'prefix' keys", NULL},
+    {"tags_explicit", (getter)FyDocumentState_get_tags_explicit, NULL,
+     "True if tags were explicitly set via %TAG directives", NULL},
+    {"json_mode", (getter)FyDocumentState_get_json_mode, NULL,
+     "True if document was parsed as JSON", NULL},
+    {NULL}  /* Sentinel */
+};
+
+/* FyDocumentState type object */
+static PyTypeObject FyDocumentStateType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "libfyaml.FyDocumentState",
+    .tp_doc = "Document state with version and tag directives",
+    .tp_basicsize = sizeof(FyDocumentStateObject),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_dealloc = (destructor)FyDocumentState_dealloc,
+    .tp_repr = (reprfunc)FyDocumentState_repr,
+    .tp_getset = FyDocumentState_getsetters,
+};
+
+/* Helper: Create FyDocumentState from VDS and owner */
+static PyObject *
+FyDocumentState_from_vds(fy_generic vds, PyObject *owner)
+{
+    if (!fy_generic_is_valid(vds)) {
+        Py_INCREF(Py_None);
+        return Py_None;
+    }
+
+    FyDocumentStateObject *self = PyObject_New(FyDocumentStateObject, &FyDocumentStateType);
+    if (self == NULL)
+        return NULL;
+
+    self->vds = vds;
+    self->owner = owner;
+    Py_INCREF(owner);
+
+    return (PyObject *)self;
+}
 
 /* ========== FyGeneric Type ========== */
 
@@ -472,6 +657,7 @@ FyGeneric_from_parent(fy_generic fyg, FyGenericObject *parent, PyObject *path_el
         return NULL;
 
     self->fyg = fyg;
+    self->vds = fy_invalid;  /* Children don't have their own VDS */
     self->gb = NULL;  /* Children don't own the builder */
 
     /* Reference the root to keep builder alive */
@@ -531,6 +717,32 @@ FyGeneric_from_generic(fy_generic fyg, struct fy_generic_builder *gb, int mutabl
         return NULL;
 
     self->fyg = fyg;
+    self->vds = fy_invalid;  /* No VDS by default */
+    self->gb = gb;       /* Root owns the builder */
+    self->root = NULL;   /* This is the root */
+    self->path = NULL;   /* Root has no path */
+    self->mutable = mutable;  /* Set mutability */
+
+    return (PyObject *)self;
+}
+
+/* Helper: Create root FyGeneric wrapper with VDS (owns builder) */
+static PyObject *
+FyGeneric_from_vds(fy_generic vds, struct fy_generic_builder *gb, int mutable)
+{
+    FyGenericObject *self;
+
+    /* Extract root from VDS */
+    fy_generic fyg = fy_generic_vds_get_root(vds);
+    if (!fy_generic_is_valid(fyg))
+        return NULL;
+
+    self = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
+    if (self == NULL)
+        return NULL;
+
+    self->fyg = fyg;
+    self->vds = vds;     /* Store VDS for metadata access */
     self->gb = gb;       /* Root owns the builder */
     self->root = NULL;   /* This is the root */
     self->path = NULL;   /* Root has no path */
@@ -2943,10 +3155,28 @@ FyGeneric_set_class(FyGenericObject *Py_UNUSED(self), PyObject *Py_UNUSED(value)
     return -1;
 }
 
+/* FyGeneric: document_state property getter */
+static PyObject *
+FyGeneric_get_document_state(FyGenericObject *self, void *Py_UNUSED(closure))
+{
+    /* document_state is available for objects that have VDS stored */
+    /* This includes both single-doc roots and multi-doc documents */
+
+    if (!fy_generic_is_valid(self->vds)) {
+        /* No VDS stored - this is either a child object or parsed without directory */
+        Py_INCREF(Py_None);
+        return Py_None;
+    }
+
+    return FyDocumentState_from_vds(self->vds, (PyObject *)self);
+}
+
 /* FyGeneric getsetters */
 static PyGetSetDef FyGeneric_getsetters[] = {
     {"__class__", (getter)FyGeneric_get_class, (setter)FyGeneric_set_class,
      "Dynamic class based on wrapped generic type", NULL},
+    {"document_state", (getter)FyGeneric_get_document_state, NULL,
+     "Document state with version and tag directives (None if not available)", NULL},
     {NULL}  /* Sentinel */
 };
 
@@ -3105,24 +3335,45 @@ libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    /* Determine parse flags based on mode */
-    unsigned int parse_flags = FYOPPF_DISABLE_DIRECTORY | FYOPPF_INPUT_TYPE_STRING;
+    /* Determine parse flags based on mode - no DISABLE_DIRECTORY to preserve metadata */
+    unsigned int parse_flags = FYOPPF_INPUT_TYPE_STRING;
     if (strcmp(mode, "json") == 0) {
         parse_flags |= FYOPPF_MODE_JSON;
     } else {
         parse_flags |= FYOPPF_MODE_YAML_1_2;
     }
 
-    /* Parse using new API */
-    fy_generic parsed = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
-    if (!fy_generic_is_valid(parsed)) {
+    /* Parse - returns a directory (sequence of VDS) */
+    fy_generic vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
+    if (!fy_generic_is_valid(vdir)) {
         fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_ValueError, "Failed to parse YAML/JSON");
         return NULL;
     }
 
-    /* Create root wrapper - transfers gb ownership to Python object */
-    PyObject *result = FyGeneric_from_generic(parsed, gb, mutable);
+    /* Get document count - for loads() we expect exactly one */
+    int doc_count = fy_generic_dir_get_document_count(vdir);
+    if (doc_count < 1) {
+        fy_generic_builder_destroy(gb);
+        PyErr_SetString(PyExc_ValueError, "No documents found in input");
+        return NULL;
+    }
+    if (doc_count > 1) {
+        fy_generic_builder_destroy(gb);
+        PyErr_SetString(PyExc_ValueError, "Multiple documents found; use loads_all() instead");
+        return NULL;
+    }
+
+    /* Get VDS for the single document */
+    fy_generic vds = fy_generic_dir_get_document_vds(vdir, 0);
+    if (!fy_generic_is_valid(vds)) {
+        fy_generic_builder_destroy(gb);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to get document VDS");
+        return NULL;
+    }
+
+    /* Create root wrapper with VDS - transfers gb ownership to Python object */
+    PyObject *result = FyGeneric_from_vds(vds, gb, mutable);
     if (result == NULL) {
         fy_generic_builder_destroy(gb);
         return NULL;
@@ -3416,24 +3667,45 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
             return NULL;
         }
 
-        /* Determine parse flags based on mode */
-        unsigned int parse_flags = FYOPPF_DISABLE_DIRECTORY;
+        /* Determine parse flags based on mode - no DISABLE_DIRECTORY to preserve metadata */
+        unsigned int parse_flags = 0;
         if (strcmp(mode, "json") == 0) {
             parse_flags |= FYOPPF_MODE_JSON;
         } else {
             parse_flags |= FYOPPF_MODE_YAML_1_2;
         }
 
-        /* Parse from file using mmap (via fy_gb_parse_file) */
-        fy_generic parsed = fy_gb_parse_file(gb, parse_flags, path);
-        if (!fy_generic_is_valid(parsed)) {
+        /* Parse from file - returns a directory (sequence of VDS) */
+        fy_generic vdir = fy_gb_parse_file(gb, parse_flags, path);
+        if (!fy_generic_is_valid(vdir)) {
             fy_generic_builder_destroy(gb);
             PyErr_Format(PyExc_ValueError, "Failed to parse YAML/JSON from file: %s", path);
             return NULL;
         }
 
-        /* Create root wrapper - transfers gb ownership to Python object */
-        PyObject *result = FyGeneric_from_generic(parsed, gb, mutable);
+        /* Get document count - for load() we expect exactly one */
+        int doc_count = fy_generic_dir_get_document_count(vdir);
+        if (doc_count < 1) {
+            fy_generic_builder_destroy(gb);
+            PyErr_SetString(PyExc_ValueError, "No documents found in file");
+            return NULL;
+        }
+        if (doc_count > 1) {
+            fy_generic_builder_destroy(gb);
+            PyErr_SetString(PyExc_ValueError, "Multiple documents found; use load_all() instead");
+            return NULL;
+        }
+
+        /* Get VDS for the single document */
+        fy_generic vds = fy_generic_dir_get_document_vds(vdir, 0);
+        if (!fy_generic_is_valid(vds)) {
+            fy_generic_builder_destroy(gb);
+            PyErr_SetString(PyExc_RuntimeError, "Failed to get document VDS");
+            return NULL;
+        }
+
+        /* Create root wrapper with VDS - transfers gb ownership to Python object */
+        PyObject *result = FyGeneric_from_vds(vds, gb, mutable);
         if (result == NULL) {
             fy_generic_builder_destroy(gb);
             return NULL;
@@ -3602,6 +3874,32 @@ libfyaml_dump(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 }
 
+/* Helper: Create FyGeneric from VDS with reference to parent (for multi-doc) */
+static PyObject *
+FyGeneric_from_vds_with_parent(fy_generic vds, FyGenericObject *parent, int mutable)
+{
+    FyGenericObject *self;
+
+    /* Extract root from VDS */
+    fy_generic fyg = fy_generic_vds_get_root(vds);
+    if (!fy_generic_is_valid(fyg))
+        return NULL;
+
+    self = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
+    if (self == NULL)
+        return NULL;
+
+    self->fyg = fyg;
+    self->vds = vds;          /* Store VDS for metadata access */
+    self->gb = NULL;          /* Not the owner of the builder */
+    self->root = (PyObject *)parent;  /* Reference parent to keep builder alive */
+    Py_INCREF(parent);
+    self->path = NULL;        /* Root of this document */
+    self->mutable = mutable;
+
+    return (PyObject *)self;
+}
+
 /* loads_all(string, mode='yaml', dedup=True, trim=True, mutable=False) - Parse multi-document YAML */
 static PyObject *
 libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
@@ -3617,55 +3915,74 @@ libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|sppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable))
         return NULL;
 
-    /* Create auto allocator with appropriate scenario based on dedup parameter */
-    struct fy_auto_allocator_cfg auto_cfg;
-    memset(&auto_cfg, 0, sizeof(auto_cfg));
-    auto_cfg.scenario = dedup ? FYAST_PER_TAG_FREE_DEDUP : FYAST_PER_TAG_FREE;
-    auto_cfg.estimated_max_size = yaml_len * 2;
-
-    struct fy_allocator *allocator = fy_allocator_create("auto", &auto_cfg);
-    if (allocator == NULL) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to create allocator");
-        return NULL;
-    }
-
-    /* Configure generic builder with allocator */
-    struct fy_generic_builder_cfg gb_cfg;
-    memset(&gb_cfg, 0, sizeof(gb_cfg));
-    gb_cfg.allocator = allocator;
-    gb_cfg.estimated_max_size = yaml_len * 2;
-    gb_cfg.flags = FYGBCF_OWNS_ALLOCATOR;
-
-    struct fy_generic_builder *gb = fy_generic_builder_create(&gb_cfg);
+    /* Create generic builder using helper */
+    struct fy_generic_builder *gb = create_builder_with_config(dedup, yaml_len * 2);
     if (gb == NULL) {
-        fy_allocator_destroy(allocator);
         PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
         return NULL;
     }
 
-    /* Determine parse flags based on mode - add MULTI_DOCUMENT flag */
-    unsigned int parse_flags = FYOPPF_DISABLE_DIRECTORY | FYOPPF_INPUT_TYPE_STRING | FYOPPF_MULTI_DOCUMENT;
+    /* Determine parse flags based on mode - MULTI_DOCUMENT for multiple docs */
+    unsigned int parse_flags = FYOPPF_INPUT_TYPE_STRING | FYOPPF_MULTI_DOCUMENT;
     if (strcmp(mode, "json") == 0) {
         parse_flags |= FYOPPF_MODE_JSON;
     } else {
         parse_flags |= FYOPPF_MODE_YAML_1_2;
     }
 
-    /* Parse YAML/JSON string - with MULTI_DOCUMENT, returns a sequence of documents */
-    fy_generic parsed = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
-
-    if (!fy_generic_is_valid(parsed)) {
+    /* Parse - returns a directory (sequence of VDS) */
+    fy_generic vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
+    if (!fy_generic_is_valid(vdir)) {
         fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_ValueError, "Failed to parse YAML/JSON");
         return NULL;
     }
 
-    /* Return the sequence as a FyGeneric - user can iterate it */
-    PyObject *result = FyGeneric_from_generic(parsed, gb, mutable);
-    if (result == NULL) {
+    /* Get document count */
+    int doc_count = fy_generic_dir_get_document_count(vdir);
+
+    /* Create a holder FyGeneric that owns the builder (invisible to user) */
+    FyGenericObject *holder = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
+    if (holder == NULL) {
         fy_generic_builder_destroy(gb);
         return NULL;
     }
+    holder->fyg = vdir;
+    holder->vds = fy_invalid;
+    holder->gb = gb;         /* Holder owns the builder */
+    holder->root = NULL;
+    holder->path = NULL;
+    holder->mutable = mutable;
+
+    /* Create Python list to hold all documents */
+    PyObject *result = PyList_New(doc_count);
+    if (result == NULL) {
+        Py_DECREF(holder);
+        return NULL;
+    }
+
+    /* Create FyGeneric for each document from its VDS */
+    for (int i = 0; i < doc_count; i++) {
+        fy_generic vds = fy_generic_dir_get_document_vds(vdir, i);
+        if (!fy_generic_is_valid(vds)) {
+            Py_DECREF(result);
+            Py_DECREF(holder);
+            PyErr_SetString(PyExc_RuntimeError, "Failed to get document VDS");
+            return NULL;
+        }
+
+        PyObject *doc = FyGeneric_from_vds_with_parent(vds, holder, mutable);
+        if (doc == NULL) {
+            Py_DECREF(result);
+            Py_DECREF(holder);
+            return NULL;
+        }
+
+        PyList_SET_ITEM(result, i, doc);  /* Steals reference */
+    }
+
+    /* Release our reference to holder - the docs in the list keep it alive */
+    Py_DECREF(holder);
 
     /* Auto-trim if requested (default behavior) */
     if (trim && gb) {
@@ -3697,55 +4014,74 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
         if (path == NULL)
             return NULL;
 
-        /* Create auto allocator with appropriate scenario based on dedup parameter */
-        struct fy_auto_allocator_cfg auto_cfg;
-        memset(&auto_cfg, 0, sizeof(auto_cfg));
-        auto_cfg.scenario = dedup ? FYAST_PER_TAG_FREE_DEDUP : FYAST_PER_TAG_FREE;
-        auto_cfg.estimated_max_size = 1024 * 1024;  /* Estimate 1MB for file */
-
-        struct fy_allocator *allocator = fy_allocator_create("auto", &auto_cfg);
-        if (allocator == NULL) {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to create allocator");
-            return NULL;
-        }
-
-        /* Configure generic builder with allocator */
-        struct fy_generic_builder_cfg gb_cfg;
-        memset(&gb_cfg, 0, sizeof(gb_cfg));
-        gb_cfg.allocator = allocator;
-        gb_cfg.estimated_max_size = 1024 * 1024;
-        gb_cfg.flags = FYGBCF_OWNS_ALLOCATOR;
-
-        struct fy_generic_builder *gb = fy_generic_builder_create(&gb_cfg);
+        /* Create generic builder using helper (1MB estimate for files) */
+        struct fy_generic_builder *gb = create_builder_with_config(dedup, 1024 * 1024);
         if (gb == NULL) {
-            fy_allocator_destroy(allocator);
             PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
             return NULL;
         }
 
-        /* Determine parse flags based on mode - add MULTI_DOCUMENT flag */
-        unsigned int parse_flags = FYOPPF_DISABLE_DIRECTORY | FYOPPF_MULTI_DOCUMENT;
+        /* Determine parse flags based on mode - MULTI_DOCUMENT for multiple docs */
+        unsigned int parse_flags = FYOPPF_MULTI_DOCUMENT;
         if (strcmp(mode, "json") == 0) {
             parse_flags |= FYOPPF_MODE_JSON;
         } else {
             parse_flags |= FYOPPF_MODE_YAML_1_2;
         }
 
-        /* Parse from file using mmap - with MULTI_DOCUMENT, returns a sequence of documents */
-        fy_generic parsed = fy_gb_parse_file(gb, parse_flags, path);
-
-        if (!fy_generic_is_valid(parsed)) {
+        /* Parse from file - returns a directory (sequence of VDS) */
+        fy_generic vdir = fy_gb_parse_file(gb, parse_flags, path);
+        if (!fy_generic_is_valid(vdir)) {
             fy_generic_builder_destroy(gb);
             PyErr_Format(PyExc_ValueError, "Failed to parse YAML/JSON file: %s", path);
             return NULL;
         }
 
-        /* Return the sequence as a FyGeneric - user can iterate it */
-        PyObject *result = FyGeneric_from_generic(parsed, gb, mutable);
-        if (result == NULL) {
+        /* Get document count */
+        int doc_count = fy_generic_dir_get_document_count(vdir);
+
+        /* Create a holder FyGeneric that owns the builder */
+        FyGenericObject *holder = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
+        if (holder == NULL) {
             fy_generic_builder_destroy(gb);
             return NULL;
         }
+        holder->fyg = vdir;
+        holder->vds = fy_invalid;
+        holder->gb = gb;
+        holder->root = NULL;
+        holder->path = NULL;
+        holder->mutable = mutable;
+
+        /* Create Python list to hold all documents */
+        PyObject *result = PyList_New(doc_count);
+        if (result == NULL) {
+            Py_DECREF(holder);
+            return NULL;
+        }
+
+        /* Create FyGeneric for each document from its VDS */
+        for (int i = 0; i < doc_count; i++) {
+            fy_generic vds = fy_generic_dir_get_document_vds(vdir, i);
+            if (!fy_generic_is_valid(vds)) {
+                Py_DECREF(result);
+                Py_DECREF(holder);
+                PyErr_SetString(PyExc_RuntimeError, "Failed to get document VDS");
+                return NULL;
+            }
+
+            PyObject *doc = FyGeneric_from_vds_with_parent(vds, holder, mutable);
+            if (doc == NULL) {
+                Py_DECREF(result);
+                Py_DECREF(holder);
+                return NULL;
+            }
+
+            PyList_SET_ITEM(result, i, doc);
+        }
+
+        /* Release our reference to holder - docs keep it alive */
+        Py_DECREF(holder);
 
         /* Auto-trim if requested (default behavior) */
         if (trim && gb) {
@@ -3810,18 +4146,6 @@ libfyaml_dumps_all(PyObject *self, PyObject *args, PyObject *kwargs)
                                      &documents, &compact, &json_mode))
         return NULL;
 
-    /* documents must be a FyGeneric sequence */
-    if (Py_TYPE(documents) != &FyGenericType) {
-        PyErr_SetString(PyExc_TypeError, "documents must be a FyGeneric sequence (from load_all/loads_all)");
-        return NULL;
-    }
-
-    FyGenericObject *fyobj = (FyGenericObject *)documents;
-    if (!fy_generic_is_sequence(fyobj->fyg)) {
-        PyErr_SetString(PyExc_TypeError, "documents must be a sequence");
-        return NULL;
-    }
-
     /* Create generic builder for emitting */
     struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
     if (gb == NULL) {
@@ -3829,11 +4153,43 @@ libfyaml_dumps_all(PyObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    /* Internalize the sequence into our builder */
-    fy_generic doc_sequence = fy_gb_internalize(gb, fyobj->fyg);
+    fy_generic doc_sequence;
+
+    /* Accept either a FyGeneric sequence or a Python list of FyGeneric objects */
+    if (Py_TYPE(documents) == &FyGenericType) {
+        /* FyGeneric sequence - internalize it */
+        FyGenericObject *fyobj = (FyGenericObject *)documents;
+        if (!fy_generic_is_sequence(fyobj->fyg)) {
+            fy_generic_builder_destroy(gb);
+            PyErr_SetString(PyExc_TypeError, "documents must be a sequence");
+            return NULL;
+        }
+        doc_sequence = fy_gb_internalize(gb, fyobj->fyg);
+    } else if (PyList_Check(documents)) {
+        /* Python list - build a sequence from it */
+        Py_ssize_t count = PyList_Size(documents);
+        fy_generic *items = alloca(count * sizeof(fy_generic));
+
+        for (Py_ssize_t i = 0; i < count; i++) {
+            PyObject *item = PyList_GET_ITEM(documents, i);
+            if (Py_TYPE(item) != &FyGenericType) {
+                fy_generic_builder_destroy(gb);
+                PyErr_SetString(PyExc_TypeError, "all documents must be FyGeneric objects");
+                return NULL;
+            }
+            FyGenericObject *fyitem = (FyGenericObject *)item;
+            items[i] = fy_gb_internalize(gb, fyitem->fyg);
+        }
+        doc_sequence = fy_gb_sequence_create(gb, count, items);
+    } else {
+        fy_generic_builder_destroy(gb);
+        PyErr_SetString(PyExc_TypeError, "documents must be a list or FyGeneric sequence");
+        return NULL;
+    }
+
     if (!fy_generic_is_valid(doc_sequence)) {
         fy_generic_builder_destroy(gb);
-        PyErr_SetString(PyExc_RuntimeError, "Failed to internalize document sequence");
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create document sequence");
         return NULL;
     }
 
@@ -4036,6 +4392,9 @@ PyInit__libfyaml(void)
     if (PyType_Ready(&FyGenericIteratorType) < 0)
         return NULL;
 
+    if (PyType_Ready(&FyDocumentStateType) < 0)
+        return NULL;
+
     /* Create module */
     m = PyModule_Create(&libfyaml_module);
     if (m == NULL)
@@ -4045,6 +4404,13 @@ PyInit__libfyaml(void)
     Py_INCREF(&FyGenericType);
     if (PyModule_AddObject(m, "FyGeneric", (PyObject *)&FyGenericType) < 0) {
         Py_DECREF(&FyGenericType);
+        Py_DECREF(m);
+        return NULL;
+    }
+
+    Py_INCREF(&FyDocumentStateType);
+    if (PyModule_AddObject(m, "FyDocumentState", (PyObject *)&FyDocumentStateType) < 0) {
+        Py_DECREF(&FyDocumentStateType);
         Py_DECREF(m);
         return NULL;
     }
