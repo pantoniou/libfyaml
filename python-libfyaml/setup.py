@@ -180,7 +180,7 @@ def configure_extension():
 
     return Extension(
         'libfyaml._libfyaml',
-        sources=['libfyaml/_libfyaml_minimal.c'],
+        sources=['libfyaml/_libfyaml.c'],
         include_dirs=include_dirs,
         library_dirs=library_dirs,
         libraries=libraries,
