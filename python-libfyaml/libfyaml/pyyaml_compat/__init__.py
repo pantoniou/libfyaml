@@ -25,32 +25,71 @@ Supported API:
 
 import libfyaml as fy
 
-# Import submodules for 'from yaml.nodes import ...' compatibility
+# Import submodules for 'from yaml.xxx import ...' compatibility
 from libfyaml.pyyaml_compat import nodes
+from libfyaml.pyyaml_compat import constructor
 
 
-# Stub classes for isinstance checks and API compatibility
-# These don't do anything - libfyaml always uses safe parsing
-class SafeLoader:
-    """Stub class for PyYAML API compatibility."""
-    pass
+# Loader classes with add_constructor support for custom tags
+class BaseLoader:
+    """Base loader class for PyYAML API compatibility."""
+    yaml_constructors = {}
+    yaml_multi_constructors = {}
+
+    @classmethod
+    def add_constructor(cls, tag, constructor_func):
+        """Add a constructor for a specific YAML tag."""
+        cls.yaml_constructors[tag] = constructor_func
+
+    @classmethod
+    def add_multi_constructor(cls, tag_prefix, multi_constructor):
+        """Add a multi-constructor for a tag prefix."""
+        cls.yaml_multi_constructors[tag_prefix] = multi_constructor
+
+    def construct_scalar(self, node):
+        """Construct a scalar value from a node."""
+        if node is None:
+            return ''
+        return node.value if hasattr(node, 'value') else str(node)
 
 
-class SafeDumper:
-    """Stub class for PyYAML API compatibility."""
-    pass
+class SafeLoader(BaseLoader):
+    """Safe loader class for PyYAML API compatibility."""
+    yaml_constructors = {}
+    yaml_multi_constructors = {}
 
 
-# C-accelerated versions (same as safe versions in libfyaml)
+class Loader(SafeLoader):
+    """Full loader class (same as SafeLoader in our safe implementation)."""
+    yaml_constructors = {}
+    yaml_multi_constructors = {}
+
+
+# C-accelerated versions (same as regular versions in libfyaml)
 CSafeLoader = SafeLoader
+CLoader = Loader
+CBaseLoader = BaseLoader
+
+
+# Dumper classes
+class BaseDumper:
+    """Base dumper class for PyYAML API compatibility."""
+    pass
+
+
+class SafeDumper(BaseDumper):
+    """Safe dumper class for PyYAML API compatibility."""
+    pass
+
+
+class Dumper(SafeDumper):
+    """Full dumper class for PyYAML API compatibility."""
+    pass
+
+
+# C-accelerated dumper versions
 CSafeDumper = SafeDumper
-
-
-# Also provide Loader/Dumper aliases for broader compatibility
-Loader = SafeLoader
-Dumper = SafeDumper
-CLoader = CSafeLoader
-CDumper = CSafeDumper
+CDumper = Dumper
 
 
 def _normalize_yaml(text):
@@ -312,3 +351,12 @@ ComposerError = YAMLError
 ConstructorError = YAMLError
 EmitterError = YAMLError
 RepresenterError = YAMLError
+
+# Re-export node types at module level (yaml.ScalarNode, etc.)
+from libfyaml.pyyaml_compat.nodes import (
+    Node,
+    ScalarNode,
+    SequenceNode,
+    MappingNode,
+    CollectionNode,
+)
