@@ -16,17 +16,25 @@
 /* Include exported generic API */
 #include <libfyaml/fy-internal-generic.h>
 
+/* Forward declarations */
+typedef struct FyDocumentStateObject FyDocumentStateObject;
+
 /* ========== FyGeneric Type ========== */
 
 typedef struct {
     PyObject_HEAD
-    fy_generic fyg;
-    fy_generic vds;  /* VDS (virtual document state) for metadata access (fy_invalid if none) */
-    struct fy_generic_builder *gb;  /* Non-NULL only for root (owner) */
-    PyObject *root;  /* Reference to root object (NULL if this is root) */
-    PyObject *path;  /* List of path elements from root (NULL if root or not mutable) */
-    int mutable;     /* Whether this object supports mutation (only root sets this) */
+    fy_generic fyg;         /* The generic value */
+    PyObject *doc_state;    /* Reference to FyDocumentState (always non-NULL) */
+    PyObject *path;         /* Tuple of path elements from root (NULL if root) */
 } FyGenericObject;
+
+/* Helper macros to access doc_state fields from FyGenericObject */
+#define FYG_DOC_STATE(self) ((FyDocumentStateObject *)(self)->doc_state)
+#define FYG_GB(self) (FYG_DOC_STATE(self)->gb)
+#define FYG_VDS(self) (FYG_DOC_STATE(self)->vds)
+#define FYG_MUTABLE(self) (FYG_DOC_STATE(self)->mutable)
+#define FYG_ROOT_FYG(self) (FYG_DOC_STATE(self)->root_fyg)
+#define FYG_IS_ROOT(self) ((self)->path == NULL)
 
 static PyTypeObject FyGenericType;
 static PyTypeObject FyGenericIteratorType;
@@ -192,11 +200,14 @@ static PyTypeObject FyGenericIteratorType = {
 
 /* ========== FyDocumentState Type ========== */
 
-typedef struct {
+struct FyDocumentStateObject {
     PyObject_HEAD
-    fy_generic vds;                     /* Reference to VDS */
-    PyObject *owner;                    /* Keep parent FyGeneric alive */
-} FyDocumentStateObject;
+    fy_generic root_fyg;                /* Root generic value (updated on mutations) */
+    fy_generic vds;                     /* VDS for metadata (fy_invalid if none) */
+    struct fy_generic_builder *gb;      /* Builder (owned, NULL if shared) */
+    int mutable;                        /* Whether mutation is allowed */
+    PyObject *parent;                   /* Reference to parent doc_state (for sharing) */
+};
 
 static PyTypeObject FyDocumentStateType;
 
@@ -204,7 +215,11 @@ static PyTypeObject FyDocumentStateType;
 static void
 FyDocumentState_dealloc(FyDocumentStateObject *self)
 {
-    Py_XDECREF(self->owner);
+    if (self->gb != NULL) {
+        /* This doc_state owns the builder - destroy it */
+        fy_generic_builder_destroy(self->gb);
+    }
+    Py_XDECREF(self->parent);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -354,22 +369,37 @@ static PyTypeObject FyDocumentStateType = {
     .tp_getset = FyDocumentState_getsetters,
 };
 
-/* Helper: Create FyDocumentState from VDS and owner */
+/* Helper: Create root FyDocumentState (owns builder) */
 static PyObject *
-FyDocumentState_from_vds(fy_generic vds, PyObject *owner)
+FyDocumentState_create(fy_generic root_fyg, fy_generic vds, struct fy_generic_builder *gb, int mutable)
 {
-    if (!fy_generic_is_valid(vds)) {
-        Py_INCREF(Py_None);
-        return Py_None;
-    }
-
     FyDocumentStateObject *self = PyObject_New(FyDocumentStateObject, &FyDocumentStateType);
     if (self == NULL)
         return NULL;
 
+    self->root_fyg = root_fyg;
     self->vds = vds;
-    self->owner = owner;
-    Py_INCREF(owner);
+    self->gb = gb;       /* Owns the builder */
+    self->mutable = mutable;
+    self->parent = NULL; /* No parent - this is the owner */
+
+    return (PyObject *)self;
+}
+
+/* Helper: Create child FyDocumentState (shares parent's builder) */
+static PyObject *
+FyDocumentState_create_child(fy_generic root_fyg, fy_generic vds, FyDocumentStateObject *parent)
+{
+    FyDocumentStateObject *self = PyObject_New(FyDocumentStateObject, &FyDocumentStateType);
+    if (self == NULL)
+        return NULL;
+
+    self->root_fyg = root_fyg;
+    self->vds = vds;
+    self->gb = NULL;              /* Child doesn't own the builder */
+    self->mutable = parent->mutable;
+    self->parent = (PyObject *)parent;
+    Py_INCREF(parent);
 
     return (PyObject *)self;
 }
@@ -380,21 +410,8 @@ FyDocumentState_from_vds(fy_generic vds, PyObject *owner)
 static void
 FyGeneric_dealloc(FyGenericObject *self)
 {
-    if (self->gb != NULL) {
-        /* This is the root - destroy the builder */
-        fy_generic_builder_destroy(self->gb);
-    }
-
-    if (self->root != NULL) {
-        /* This is a child - release reference to root */
-        Py_DECREF(self->root);
-    }
-
-    if (self->path != NULL) {
-        /* Release path list */
-        Py_DECREF(self->path);
-    }
-
+    Py_XDECREF(self->doc_state);
+    Py_XDECREF(self->path);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -452,13 +469,13 @@ FyGeneric_str(FyGenericObject *self)
         case FYGT_SEQUENCE:
         case FYGT_MAPPING: {
             /* Emit collections as oneline flow */
-            FyGenericObject *root_obj = (self->root == NULL) ? self : (FyGenericObject *)self->root;
-            assert(root_obj->gb != NULL);
+            struct fy_generic_builder *gb = FYG_GB(self);
+            assert(gb != NULL);
 
             unsigned int emit_flags = FYOPEF_DISABLE_DIRECTORY | FYOPEF_MODE_YAML_1_2 |
                                      FYOPEF_STYLE_ONELINE | FYOPEF_OUTPUT_TYPE_STRING;
 
-            fy_generic emitted = fy_gb_emit(root_obj->gb, self->fyg, emit_flags, NULL);
+            fy_generic emitted = fy_gb_emit(gb, self->fyg, emit_flags, NULL);
             if (!fy_generic_is_valid(emitted)) {
                 PyErr_SetString(PyExc_RuntimeError, "Failed to emit collection as string");
                 return NULL;
@@ -657,25 +674,17 @@ FyGeneric_from_parent(fy_generic fyg, FyGenericObject *parent, PyObject *path_el
         return NULL;
 
     self->fyg = fyg;
-    self->vds = fy_invalid;  /* Children don't have their own VDS */
-    self->gb = NULL;  /* Children don't own the builder */
 
-    /* Reference the root to keep builder alive */
-    self->root = parent->root ? parent->root : (PyObject *)parent;
-    Py_INCREF(self->root);
-
-    /* Get mutable flag from root */
-    FyGenericObject *root_obj = (FyGenericObject *)self->root;
-    self->mutable = root_obj->mutable;
+    /* Share parent's doc_state */
+    self->doc_state = parent->doc_state;
+    Py_INCREF(self->doc_state);
 
     /* Build path from parent's path + this element */
-    /* Path tracking is always enabled, regardless of mutability */
-    /* Create tuple directly - no intermediate list needed */
     if (parent->path == NULL) {
         /* Parent is root - create new tuple with just this element */
         self->path = PyTuple_New(1);
         if (self->path == NULL) {
-            Py_DECREF(self->root);
+            Py_DECREF(self->doc_state);
             Py_TYPE(self)->tp_free((PyObject *)self);
             return NULL;
         }
@@ -686,7 +695,7 @@ FyGeneric_from_parent(fy_generic fyg, FyGenericObject *parent, PyObject *path_el
         Py_ssize_t parent_len = PyTuple_Size(parent->path);
         self->path = PyTuple_New(parent_len + 1);
         if (self->path == NULL) {
-            Py_DECREF(self->root);
+            Py_DECREF(self->doc_state);
             Py_TYPE(self)->tp_free((PyObject *)self);
             return NULL;
         }
@@ -710,18 +719,20 @@ FyGeneric_from_parent(fy_generic fyg, FyGenericObject *parent, PyObject *path_el
 static PyObject *
 FyGeneric_from_generic(fy_generic fyg, struct fy_generic_builder *gb, int mutable)
 {
-    FyGenericObject *self;
-
-    self = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
-    if (self == NULL)
+    /* Create doc_state first (it owns the builder and root value) */
+    PyObject *doc_state = FyDocumentState_create(fyg, fy_invalid, gb, mutable);
+    if (doc_state == NULL)
         return NULL;
 
+    FyGenericObject *self = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
+    if (self == NULL) {
+        Py_DECREF(doc_state);
+        return NULL;
+    }
+
     self->fyg = fyg;
-    self->vds = fy_invalid;  /* No VDS by default */
-    self->gb = gb;       /* Root owns the builder */
-    self->root = NULL;   /* This is the root */
-    self->path = NULL;   /* Root has no path */
-    self->mutable = mutable;  /* Set mutability */
+    self->doc_state = doc_state;  /* Takes ownership */
+    self->path = NULL;            /* Root has no path */
 
     return (PyObject *)self;
 }
@@ -730,23 +741,25 @@ FyGeneric_from_generic(fy_generic fyg, struct fy_generic_builder *gb, int mutabl
 static PyObject *
 FyGeneric_from_vds(fy_generic vds, struct fy_generic_builder *gb, int mutable)
 {
-    FyGenericObject *self;
-
     /* Extract root from VDS */
     fy_generic fyg = fy_generic_vds_get_root(vds);
     if (!fy_generic_is_valid(fyg))
         return NULL;
 
-    self = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
-    if (self == NULL)
+    /* Create doc_state first (it owns the builder, VDS, and root value) */
+    PyObject *doc_state = FyDocumentState_create(fyg, vds, gb, mutable);
+    if (doc_state == NULL)
         return NULL;
 
+    FyGenericObject *self = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
+    if (self == NULL) {
+        Py_DECREF(doc_state);
+        return NULL;
+    }
+
     self->fyg = fyg;
-    self->vds = vds;     /* Store VDS for metadata access */
-    self->gb = gb;       /* Root owns the builder */
-    self->root = NULL;   /* This is the root */
-    self->path = NULL;   /* Root has no path */
-    self->mutable = mutable;  /* Set mutability */
+    self->doc_state = doc_state;  /* Takes ownership */
+    self->path = NULL;            /* Root has no path */
 
     return (PyObject *)self;
 }
@@ -1589,9 +1602,9 @@ static fy_generic python_to_generic(struct fy_generic_builder *gb, PyObject *obj
 static PyObject *
 FyGeneric_trim(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
-    /* Only root objects own the generic builder */
-    if (self->gb)
-        fy_gb_trim(self->gb);
+    struct fy_generic_builder *gb = FYG_GB(self);
+    if (gb)
+        fy_gb_trim(gb);
     Py_RETURN_NONE;
 }
 
@@ -1599,14 +1612,11 @@ FyGeneric_trim(FyGenericObject *self, PyObject *Py_UNUSED(args))
 static PyObject *
 FyGeneric_clone(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
-    /* Get the root object for mutable flag and builder config */
-    FyGenericObject *root_obj = self->root ? (FyGenericObject *)self->root : self;
-
-    /* Root objects always have a valid builder */
-    assert(root_obj->gb != NULL);
+    struct fy_generic_builder *gb = FYG_GB(self);
+    assert(gb != NULL);
 
     /* Get parent's config and copy it, but set allocator to NULL for new instance */
-    const struct fy_generic_builder_cfg *parent_cfg = fy_generic_builder_get_cfg(root_obj->gb);
+    const struct fy_generic_builder_cfg *parent_cfg = fy_generic_builder_get_cfg(gb);
     assert(parent_cfg != NULL);  /* Can't fail if gb is not NULL */
 
     struct fy_generic_builder_cfg cfg = *parent_cfg;
@@ -1629,7 +1639,7 @@ FyGeneric_clone(FyGenericObject *self, PyObject *Py_UNUSED(args))
     }
 
     /* Create a new FyGeneric Python object with the cloned value */
-    PyObject *result = FyGeneric_from_generic(cloned, new_gb, root_obj->mutable);
+    PyObject *result = FyGeneric_from_generic(cloned, new_gb, FYG_MUTABLE(self));
     if (result == NULL)
         goto err_out;
 
@@ -1645,7 +1655,7 @@ static PyObject *
 FyGeneric_get_path(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
     /* If this is root, return empty tuple */
-    if (self->root == NULL) {
+    if (FYG_IS_ROOT(self)) {
         return PyTuple_New(0);
     }
 
@@ -1664,13 +1674,14 @@ static PyObject *
 FyGeneric_get_at_path(FyGenericObject *self, PyObject *path_obj)
 {
     /* This method only works on root objects */
-    if (self->root != NULL) {
+    if (!FYG_IS_ROOT(self)) {
         PyErr_SetString(PyExc_TypeError,
                       "get_at_path() can only be called on root FyGeneric objects");
         return NULL;
     }
 
-    if (!self->gb) {
+    struct fy_generic_builder *gb = FYG_GB(self);
+    if (!gb) {
         PyErr_SetString(PyExc_RuntimeError, "No builder available");
         return NULL;
     }
@@ -1729,7 +1740,7 @@ FyGeneric_get_at_path(FyGenericObject *self, PyObject *path_obj)
     }
 
     /* Call GET_AT_PATH operation */
-    fy_generic result = fy_generic_op(self->gb, FYGBOPF_GET_AT_PATH, self->fyg,
+    fy_generic result = fy_generic_op(gb, FYGBOPF_GET_AT_PATH, self->fyg,
                                      path_len, path_array);
 
     if (fy_generic_is_invalid(result)) {
@@ -1745,14 +1756,11 @@ FyGeneric_get_at_path(FyGenericObject *self, PyObject *path_obj)
         return NULL;
 
     child->fyg = result;
-    child->gb = NULL;
-    child->root = (PyObject *)self;
-    Py_INCREF(child->root);
-    child->mutable = self->mutable;
+    child->doc_state = self->doc_state;
+    Py_INCREF(child->doc_state);
 
     /* Build the path as a Python tuple for the child */
-    /* Create tuple directly - no intermediate list needed */
-    if (self->mutable && path_len > 0) {
+    if (path_len > 0) {
         child->path = PyTuple_New(path_len);
         if (child->path == NULL) {
             Py_DECREF(child);
@@ -1959,7 +1967,7 @@ static PyObject *
 FyGeneric_get_unix_path(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
     /* If this is root, return "/" */
-    if (self->root == NULL) {
+    if (FYG_IS_ROOT(self)) {
         return PyUnicode_FromString("/");
     }
 
@@ -1978,7 +1986,7 @@ static PyObject *
 FyGeneric_get_at_unix_path(FyGenericObject *self, PyObject *path_str)
 {
     /* This method only works on root objects */
-    if (self->root != NULL) {
+    if (!FYG_IS_ROOT(self)) {
         PyErr_SetString(PyExc_TypeError,
                       "get_at_unix_path() can only be called on root FyGeneric objects");
         return NULL;
@@ -2021,20 +2029,21 @@ FyGeneric_set_at_path(FyGenericObject *self, PyObject *args)
         return NULL;
 
     /* This method only works on root objects */
-    if (self->root != NULL) {
+    if (!FYG_IS_ROOT(self)) {
         PyErr_SetString(PyExc_TypeError,
                       "set_at_path() can only be called on root FyGeneric objects");
         return NULL;
     }
 
     /* Check if mutation is allowed */
-    if (!self->mutable) {
+    if (!FYG_MUTABLE(self)) {
         PyErr_SetString(PyExc_TypeError,
                       "This FyGeneric object is read-only. Create with mutable=True to enable mutation.");
         return NULL;
     }
 
-    if (!self->gb) {
+    struct fy_generic_builder *gb = FYG_GB(self);
+    if (!gb) {
         PyErr_SetString(PyExc_RuntimeError, "No builder available");
         return NULL;
     }
@@ -2055,7 +2064,7 @@ FyGeneric_set_at_path(FyGenericObject *self, PyObject *args)
     }
 
     /* Convert value to generic */
-    fy_generic new_value = python_to_generic(self->gb, value_obj);
+    fy_generic new_value = python_to_generic(gb, value_obj);
     if (fy_generic_is_invalid(new_value)) {
         if (!PyErr_Occurred())
             PyErr_SetString(PyExc_ValueError, "Failed to convert value to generic");
@@ -2110,7 +2119,7 @@ FyGeneric_set_at_path(FyGenericObject *self, PyObject *args)
     path_array[path_len] = new_value;
 
     /* Call SET_AT_PATH operation */
-    fy_generic new_root = fy_generic_op(self->gb, FYGBOPF_SET_AT_PATH, self->fyg,
+    fy_generic new_root = fy_generic_op(gb, FYGBOPF_SET_AT_PATH, self->fyg,
                                        path_len + 1, path_array);
 
     if (fy_generic_is_invalid(new_root)) {
@@ -2134,7 +2143,7 @@ FyGeneric_set_at_unix_path(FyGenericObject *self, PyObject *args)
         return NULL;
 
     /* This method only works on root objects */
-    if (self->root != NULL) {
+    if (!FYG_IS_ROOT(self)) {
         PyErr_SetString(PyExc_TypeError,
                       "set_at_unix_path() can only be called on root FyGeneric objects");
         return NULL;
@@ -2231,9 +2240,9 @@ FyGeneric_dump(FyGenericObject *self, PyObject *args, PyObject *kwargs)
 
     int json_mode = (strcmp(mode, "json") == 0);
 
-    /* Get root object for builder access */
-    FyGenericObject *root_obj = (self->root == NULL) ? self : (FyGenericObject *)self->root;
-    if (!root_obj->gb) {
+    /* Get builder access */
+    struct fy_generic_builder *gb = FYG_GB(self);
+    if (!gb) {
         PyErr_SetString(PyExc_RuntimeError, "No builder available");
         return NULL;
     }
@@ -2246,7 +2255,7 @@ FyGeneric_dump(FyGenericObject *self, PyObject *args, PyObject *kwargs)
         emit_flags |= FYOPEF_OUTPUT_TYPE_STRING;
 
         /* Emit to string */
-        fy_generic emitted = fy_gb_emit(root_obj->gb, self->fyg, emit_flags, NULL);
+        fy_generic emitted = fy_gb_emit(gb, self->fyg, emit_flags, NULL);
         if (!fy_generic_is_valid(emitted)) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to emit YAML/JSON");
             return NULL;
@@ -2270,7 +2279,7 @@ FyGeneric_dump(FyGenericObject *self, PyObject *args, PyObject *kwargs)
             return NULL;
 
         /* Emit to file using fy_gb_emit_file() */
-        fy_generic result_g = fy_gb_emit_file(root_obj->gb, self->fyg, emit_flags, path);
+        fy_generic result_g = fy_gb_emit_file(gb, self->fyg, emit_flags, path);
 
         /* Check for success: should return integer 0 */
         if (!fy_generic_is_valid(result_g) || !fy_generic_is_int_type(result_g)) {
@@ -2294,7 +2303,7 @@ FyGeneric_dump(FyGenericObject *self, PyObject *args, PyObject *kwargs)
      * string and write to the file object which works for all file-like objects */
     emit_flags |= FYOPEF_OUTPUT_TYPE_STRING;
 
-    fy_generic emitted = fy_gb_emit(root_obj->gb, self->fyg, emit_flags, NULL);
+    fy_generic emitted = fy_gb_emit(gb, self->fyg, emit_flags, NULL);
     if (!fy_generic_is_valid(emitted)) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to emit YAML/JSON");
         return NULL;
@@ -2380,12 +2389,12 @@ FyGeneric_contains(FyGenericObject *self, PyObject *key)
         return -1;
     }
 
-    /* Get root object for builder access */
-    FyGenericObject *root_obj = (self->root == NULL) ? self : (FyGenericObject *)self->root;
-    assert(root_obj->gb != NULL);
+    /* Get builder access */
+    struct fy_generic_builder *gb = FYG_GB(self);
+    assert(gb != NULL);
 
     /* Convert Python key to generic */
-    fy_generic key_generic = python_to_generic(root_obj->gb, key);
+    fy_generic key_generic = python_to_generic(gb, key);
     if (fy_generic_is_invalid(key_generic)) {
         /* Conversion failed */
         PyErr_Clear();
@@ -2399,7 +2408,7 @@ FyGeneric_contains(FyGenericObject *self, PyObject *key)
     }
 
     /* For sequence, use OP_CONTAINS operation */
-    fy_generic result = fy_gb_contains(root_obj->gb, self->fyg, key_generic);
+    fy_generic result = fy_gb_contains(gb, self->fyg, key_generic);
     if (fy_generic_is_invalid(result)) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to perform contains operation");
         return -1;
@@ -2421,17 +2430,15 @@ FyGeneric_ass_subscript(FyGenericObject *self, PyObject *key, PyObject *value)
 {
     enum fy_generic_type type = fy_get_type(self->fyg);
 
-    /* Get the root object that owns the builder */
-    FyGenericObject *root_obj = self->root ? (FyGenericObject *)self->root : self;
-
     /* Check if mutation is allowed */
-    if (!root_obj->mutable) {
+    if (!FYG_MUTABLE(self)) {
         PyErr_SetString(PyExc_TypeError,
                       "This FyGeneric object is read-only. Create with mutable=True to enable mutation.");
         return -1;
     }
 
-    if (!root_obj->gb) {
+    struct fy_generic_builder *gb = FYG_GB(self);
+    if (!gb) {
         PyErr_SetString(PyExc_RuntimeError, "No builder available for mutation");
         return -1;
     }
@@ -2442,7 +2449,7 @@ FyGeneric_ass_subscript(FyGenericObject *self, PyObject *key, PyObject *value)
     }
 
     /* Convert Python value to generic */
-    fy_generic new_value = python_to_generic(root_obj->gb, value);
+    fy_generic new_value = python_to_generic(gb, value);
     if (fy_generic_is_invalid(new_value)) {
         if (!PyErr_Occurred())
             PyErr_SetString(PyExc_ValueError, "Failed to convert value to generic");
@@ -2531,7 +2538,7 @@ FyGeneric_ass_subscript(FyGenericObject *self, PyObject *key, PyObject *value)
     path_array[total_path_len] = new_value;
 
     /* Call SET_AT_PATH on root with full path */
-    new_root = fy_generic_op(root_obj->gb, FYGBOPF_SET_AT_PATH, root_obj->fyg,
+    new_root = fy_generic_op(gb, FYGBOPF_SET_AT_PATH, FYG_ROOT_FYG(self),
                             total_len, path_array);
 
     if (fy_generic_is_invalid(new_root)) {
@@ -2539,8 +2546,8 @@ FyGeneric_ass_subscript(FyGenericObject *self, PyObject *key, PyObject *value)
         return -1;
     }
 
-    /* Update the root's fyg */
-    root_obj->fyg = new_root;
+    /* Update the root's fyg in doc_state */
+    FYG_DOC_STATE(self)->root_fyg = new_root;
 
     return 0;
 }
@@ -3162,13 +3169,16 @@ FyGeneric_get_document_state(FyGenericObject *self, void *Py_UNUSED(closure))
     /* document_state is available for objects that have VDS stored */
     /* This includes both single-doc roots and multi-doc documents */
 
-    if (!fy_generic_is_valid(self->vds)) {
+    fy_generic vds = FYG_VDS(self);
+    if (!fy_generic_is_valid(vds)) {
         /* No VDS stored - this is either a child object or parsed without directory */
         Py_INCREF(Py_None);
         return Py_None;
     }
 
-    return FyDocumentState_from_vds(self->vds, (PyObject *)self);
+    /* Return the doc_state object (borrowed ref, so INCREF for return) */
+    Py_INCREF(self->doc_state);
+    return self->doc_state;
 }
 
 /* FyGeneric getsetters */
@@ -3903,28 +3913,30 @@ libfyaml_dump(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 }
 
-/* Helper: Create FyGeneric from VDS with reference to parent (for multi-doc) */
+/* Helper: Create FyGeneric from VDS with reference to parent's doc_state (for multi-doc) */
 static PyObject *
 FyGeneric_from_vds_with_parent(fy_generic vds, FyGenericObject *parent, int mutable)
 {
-    FyGenericObject *self;
-
     /* Extract root from VDS */
     fy_generic fyg = fy_generic_vds_get_root(vds);
     if (!fy_generic_is_valid(fyg))
         return NULL;
 
-    self = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
-    if (self == NULL)
+    /* Create child doc_state that references parent's doc_state */
+    FyDocumentStateObject *parent_ds = (FyDocumentStateObject *)parent->doc_state;
+    PyObject *doc_state = FyDocumentState_create_child(fyg, vds, parent_ds);
+    if (doc_state == NULL)
         return NULL;
 
+    FyGenericObject *self = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
+    if (self == NULL) {
+        Py_DECREF(doc_state);
+        return NULL;
+    }
+
     self->fyg = fyg;
-    self->vds = vds;          /* Store VDS for metadata access */
-    self->gb = NULL;          /* Not the owner of the builder */
-    self->root = (PyObject *)parent;  /* Reference parent to keep builder alive */
-    Py_INCREF(parent);
-    self->path = NULL;        /* Root of this document */
-    self->mutable = mutable;
+    self->doc_state = doc_state;  /* Takes ownership */
+    self->path = NULL;            /* Root of this document */
 
     return (PyObject *)self;
 }
@@ -3971,17 +3983,21 @@ libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
     int doc_count = fy_generic_dir_get_document_count(vdir);
 
     /* Create a holder FyGeneric that owns the builder (invisible to user) */
-    FyGenericObject *holder = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
-    if (holder == NULL) {
+    /* Create doc_state first (it owns the builder) */
+    PyObject *holder_doc_state = FyDocumentState_create(vdir, fy_invalid, gb, mutable);
+    if (holder_doc_state == NULL) {
         fy_generic_builder_destroy(gb);
         return NULL;
     }
+
+    FyGenericObject *holder = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
+    if (holder == NULL) {
+        Py_DECREF(holder_doc_state);
+        return NULL;
+    }
     holder->fyg = vdir;
-    holder->vds = fy_invalid;
-    holder->gb = gb;         /* Holder owns the builder */
-    holder->root = NULL;
+    holder->doc_state = holder_doc_state;
     holder->path = NULL;
-    holder->mutable = mutable;
 
     /* Create Python list to hold all documents */
     PyObject *result = PyList_New(doc_count);
@@ -4070,17 +4086,21 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
         int doc_count = fy_generic_dir_get_document_count(vdir);
 
         /* Create a holder FyGeneric that owns the builder */
-        FyGenericObject *holder = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
-        if (holder == NULL) {
+        /* Create doc_state first (it owns the builder) */
+        PyObject *holder_doc_state = FyDocumentState_create(vdir, fy_invalid, gb, mutable);
+        if (holder_doc_state == NULL) {
             fy_generic_builder_destroy(gb);
             return NULL;
         }
+
+        FyGenericObject *holder = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
+        if (holder == NULL) {
+            Py_DECREF(holder_doc_state);
+            return NULL;
+        }
         holder->fyg = vdir;
-        holder->vds = fy_invalid;
-        holder->gb = gb;
-        holder->root = NULL;
+        holder->doc_state = holder_doc_state;
         holder->path = NULL;
-        holder->mutable = mutable;
 
         /* Create Python list to hold all documents */
         PyObject *result = PyList_New(doc_count);
