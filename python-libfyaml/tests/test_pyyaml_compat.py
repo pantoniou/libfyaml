@@ -38,13 +38,25 @@ class TestStubClasses:
         """CSafeDumper should be same as SafeDumper."""
         assert yaml.CSafeDumper is yaml.SafeDumper
 
-    def test_loader_alias(self):
-        """Loader should be an alias for SafeLoader."""
-        assert yaml.Loader is yaml.SafeLoader
+    def test_loader_exists(self):
+        """Loader class should exist and be subclass of SafeLoader."""
+        assert hasattr(yaml, 'Loader')
+        assert issubclass(yaml.Loader, yaml.SafeLoader)
 
-    def test_dumper_alias(self):
-        """Dumper should be an alias for SafeDumper."""
-        assert yaml.Dumper is yaml.SafeDumper
+    def test_dumper_exists(self):
+        """Dumper class should exist and be subclass of SafeDumper."""
+        assert hasattr(yaml, 'Dumper')
+        assert issubclass(yaml.Dumper, yaml.SafeDumper)
+
+    def test_base_loader_exists(self):
+        """BaseLoader class should exist."""
+        assert hasattr(yaml, 'BaseLoader')
+
+    def test_loader_has_add_constructor(self):
+        """Loader classes should have add_constructor method."""
+        assert hasattr(yaml.Loader, 'add_constructor')
+        assert hasattr(yaml.SafeLoader, 'add_constructor')
+        assert hasattr(yaml.BaseLoader, 'add_constructor')
 
 
 class TestLoad:
