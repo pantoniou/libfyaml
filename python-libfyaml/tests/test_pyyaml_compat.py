@@ -349,7 +349,7 @@ class TestRoundTrip:
         """Round-trip nested structure."""
         original = {
             'list': [1, 2, 3],
-            'nested': {'x': True, 'y': False},
+            'nested': {'enabled': True, 'disabled': False},  # Avoid 'y' - it's a bool in YAML 1.1
             'string': 'hello world'
         }
         dumped = yaml.safe_dump(original)
