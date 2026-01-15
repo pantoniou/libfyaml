@@ -3,6 +3,12 @@
 Provides minimal compatibility for code that imports yaml.constructor.
 """
 
+
+class ConstructorError(Exception):
+    """YAML constructor error."""
+    pass
+
+
 from libfyaml.pyyaml_compat.nodes import (
     Node,
     ScalarNode,
