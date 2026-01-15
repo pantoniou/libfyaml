@@ -25,9 +25,17 @@ Supported API:
 
 import libfyaml as fy
 
+# Version info for compatibility
+__version__ = '6.0.1'  # Mimic PyYAML version for compatibility checks
+__with_libyaml__ = True  # We're using libfyaml as backend
+
 # Import submodules for 'from yaml.xxx import ...' compatibility
 from libfyaml.pyyaml_compat import nodes
 from libfyaml.pyyaml_compat import constructor
+from libfyaml.pyyaml_compat import representer
+from libfyaml.pyyaml_compat import parser
+from libfyaml.pyyaml_compat import cyaml
+from libfyaml.pyyaml_compat import resolver
 
 
 # Loader classes with add_constructor support for custom tags
@@ -71,20 +79,45 @@ CLoader = Loader
 CBaseLoader = BaseLoader
 
 
-# Dumper classes
+# Dumper classes with add_representer support
 class BaseDumper:
     """Base dumper class for PyYAML API compatibility."""
-    pass
+    yaml_representers = {}
+    yaml_multi_representers = {}
+
+    @classmethod
+    def add_representer(cls, data_type, representer_func):
+        """Add a representer for a specific type."""
+        cls.yaml_representers[data_type] = representer_func
+
+    @classmethod
+    def add_multi_representer(cls, data_type, representer_func):
+        """Add a multi-representer for a type and its subclasses."""
+        cls.yaml_multi_representers[data_type] = representer_func
+
+    def represent_mapping(self, tag, mapping):
+        """Represent a mapping."""
+        return mapping
+
+    def represent_sequence(self, tag, sequence):
+        """Represent a sequence."""
+        return sequence
+
+    def represent_scalar(self, tag, value):
+        """Represent a scalar."""
+        return value
 
 
 class SafeDumper(BaseDumper):
     """Safe dumper class for PyYAML API compatibility."""
-    pass
+    yaml_representers = {}
+    yaml_multi_representers = {}
 
 
 class Dumper(SafeDumper):
     """Full dumper class for PyYAML API compatibility."""
-    pass
+    yaml_representers = {}
+    yaml_multi_representers = {}
 
 
 # C-accelerated dumper versions
@@ -142,7 +175,8 @@ def load(stream, Loader=SafeLoader):
     if handled:
         return result
 
-    return fy.loads(stream).to_python()
+    # Use yaml1.1 mode for PyYAML compatibility (merge keys, octal, etc.)
+    return fy.loads(stream, mode='yaml1.1').to_python()
 
 
 def safe_load(stream):
@@ -188,7 +222,8 @@ def compose(stream, Loader=SafeLoader):
         # For empty collections, create FyGeneric from them
         return fy.from_python(result)
 
-    return fy.loads(stream)
+    # Use yaml1.1 mode for PyYAML compatibility
+    return fy.loads(stream, mode='yaml1.1')
 
 
 def compose_all(stream, Loader=SafeLoader):
@@ -204,7 +239,8 @@ def compose_all(stream, Loader=SafeLoader):
     if hasattr(stream, 'read'):
         stream = stream.read()
 
-    for doc in fy.loads_all(stream):
+    # Use yaml1.1 mode for PyYAML compatibility
+    for doc in fy.loads_all(stream, mode='yaml1.1'):
         yield doc
 
 
@@ -224,7 +260,8 @@ def load_all(stream, Loader=SafeLoader):
     """
     if hasattr(stream, 'read'):
         stream = stream.read()
-    for doc in fy.loads_all(stream):
+    # Use yaml1.1 mode for PyYAML compatibility
+    for doc in fy.loads_all(stream, mode='yaml1.1'):
         yield doc.to_python()
 
 
