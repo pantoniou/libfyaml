@@ -1035,6 +1035,67 @@ FyGeneric_is_mapping(FyGenericObject *self, PyObject *Py_UNUSED(args))
     return PyBool_FromLong(fy_generic_is_mapping(self->fyg));
 }
 
+static PyObject *
+FyGeneric_is_indirect(FyGenericObject *self, PyObject *Py_UNUSED(args))
+{
+    return PyBool_FromLong(fy_generic_is_indirect(self->fyg));
+}
+
+/* FyGeneric: Tag and anchor access methods */
+static PyObject *
+FyGeneric_get_tag(FyGenericObject *self, PyObject *Py_UNUSED(args))
+{
+    fy_generic tag = fy_generic_get_tag(self->fyg);
+
+    /* Check if tag is null or invalid */
+    if (fy_generic_is_null(tag) || fy_generic_is_invalid(tag))
+        Py_RETURN_NONE;
+
+    /* Tag should be a string */
+    if (!fy_generic_is_string(tag)) {
+        PyErr_SetString(PyExc_RuntimeError, "tag is not a string");
+        return NULL;
+    }
+
+    /* Convert to Python string */
+    fy_generic_sized_string szstr = fy_cast(tag, fy_szstr_empty);
+    return PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+}
+
+static PyObject *
+FyGeneric_get_anchor(FyGenericObject *self, PyObject *Py_UNUSED(args))
+{
+    fy_generic anchor = fy_generic_get_anchor(self->fyg);
+
+    /* Check if anchor is null or invalid */
+    if (fy_generic_is_null(anchor) || fy_generic_is_invalid(anchor))
+        Py_RETURN_NONE;
+
+    /* Anchor should be a string */
+    if (!fy_generic_is_string(anchor)) {
+        PyErr_SetString(PyExc_RuntimeError, "anchor is not a string");
+        return NULL;
+    }
+
+    /* Convert to Python string */
+    fy_generic_sized_string szstr = fy_cast(anchor, fy_szstr_empty);
+    return PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+}
+
+static PyObject *
+FyGeneric_has_tag(FyGenericObject *self, PyObject *Py_UNUSED(args))
+{
+    fy_generic tag = fy_generic_get_tag(self->fyg);
+    return PyBool_FromLong(!fy_generic_is_null(tag) && !fy_generic_is_invalid(tag));
+}
+
+static PyObject *
+FyGeneric_has_anchor(FyGenericObject *self, PyObject *Py_UNUSED(args))
+{
+    fy_generic anchor = fy_generic_get_anchor(self->fyg);
+    return PyBool_FromLong(!fy_generic_is_null(anchor) && !fy_generic_is_invalid(anchor));
+}
+
 /* Comparison helper functions */
 
 /* Helper: Compare integers with support for large unsigned values */
@@ -2368,6 +2429,16 @@ static PyMethodDef FyGeneric_methods[] = {
      "Check if value is sequence"},
     {"is_mapping", _PyCFunction_CAST(FyGeneric_is_mapping), METH_NOARGS,
      "Check if value is mapping"},
+    {"is_indirect", _PyCFunction_CAST(FyGeneric_is_indirect), METH_NOARGS,
+     "Check if value is indirect (has tag or anchor)"},
+    {"get_tag", _PyCFunction_CAST(FyGeneric_get_tag), METH_NOARGS,
+     "Get the tag of this value (or None if no tag)"},
+    {"get_anchor", _PyCFunction_CAST(FyGeneric_get_anchor), METH_NOARGS,
+     "Get the anchor of this value (or None if no anchor)"},
+    {"has_tag", _PyCFunction_CAST(FyGeneric_has_tag), METH_NOARGS,
+     "Check if value has a tag"},
+    {"has_anchor", _PyCFunction_CAST(FyGeneric_has_anchor), METH_NOARGS,
+     "Check if value has an anchor"},
     {"keys", _PyCFunction_CAST(FyGeneric_keys), METH_NOARGS,
      "Return list of keys (for mappings)"},
     {"values", _PyCFunction_CAST(FyGeneric_values), METH_NOARGS,
