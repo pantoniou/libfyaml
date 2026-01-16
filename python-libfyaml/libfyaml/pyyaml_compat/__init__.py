@@ -36,6 +36,7 @@ from libfyaml.pyyaml_compat import representer
 from libfyaml.pyyaml_compat import parser
 from libfyaml.pyyaml_compat import cyaml
 from libfyaml.pyyaml_compat import resolver
+from libfyaml.pyyaml_compat import scanner
 
 
 # Loader classes with add_constructor support for custom tags
@@ -153,12 +154,57 @@ def _normalize_yaml(text):
     return text, False
 
 
+class _NodeWrapper:
+    """Wrap FyGeneric to look like PyYAML node for constructors."""
+
+    def __init__(self, generic):
+        self._generic = generic
+        self.tag = generic.get_tag()
+        # For scalars, provide the value directly
+        if not generic.is_mapping() and not generic.is_sequence():
+            self.value = generic.to_python()
+        else:
+            self.value = generic
+
+    def __repr__(self):
+        return f"<_NodeWrapper tag={self.tag!r} value={self.value!r}>"
+
+
+def _convert_with_constructors(node, constructors, multi_constructors):
+    """Recursively convert FyGeneric to Python, applying tag constructors."""
+    tag = node.get_tag()
+
+    # Check for exact tag match first
+    if tag and tag in constructors:
+        constructor = constructors[tag]
+        wrapped_node = _NodeWrapper(node)
+        return constructor(None, wrapped_node)  # (loader, node)
+
+    # Check for multi-constructors (tag prefix matches)
+    if tag and multi_constructors:
+        for prefix, multi_constructor in multi_constructors.items():
+            if prefix and tag.startswith(prefix):
+                wrapped_node = _NodeWrapper(node)
+                return multi_constructor(None, tag[len(prefix):], wrapped_node)
+
+    # Default conversion by type
+    if node.is_mapping():
+        return {_convert_with_constructors(k, constructors, multi_constructors):
+                _convert_with_constructors(v, constructors, multi_constructors)
+                for k, v in node.items()}
+    elif node.is_sequence():
+        return [_convert_with_constructors(item, constructors, multi_constructors)
+                for item in node]
+    else:
+        return node.to_python()
+
+
 def load(stream, Loader=SafeLoader):
     """Parse YAML stream and return Python object.
 
     Args:
         stream: String or file-like object containing YAML
-        Loader: Loader class (ignored - libfyaml always uses safe parsing)
+        Loader: Loader class (used for custom constructors via add_constructor)
 
     Returns:
         Python object (dict, list, str, int, float, bool, or None)
@@ -176,7 +222,16 @@ def load(stream, Loader=SafeLoader):
         return result
 
     # Use yaml1.1 mode for PyYAML compatibility (merge keys, octal, etc.)
-    return fy.loads(stream, mode='yaml1.1').to_python()
+    doc = fy.loads(stream, mode='yaml1.1')
+
+    # Check for registered constructors
+    constructors = getattr(Loader, 'yaml_constructors', {})
+    multi_constructors = getattr(Loader, 'yaml_multi_constructors', {})
+
+    if constructors or multi_constructors:
+        return _convert_with_constructors(doc, constructors, multi_constructors)
+
+    return doc.to_python()
 
 
 def safe_load(stream):
