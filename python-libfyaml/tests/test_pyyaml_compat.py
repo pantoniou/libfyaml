@@ -457,3 +457,127 @@ class TestEdgeCases:
 """)
         assert 'line1' in data['text']
         assert 'line2' in data['text']
+
+
+class TestCustomConstructors:
+    """Test custom tag constructors."""
+
+    def test_add_constructor_basic(self):
+        """Test basic add_constructor functionality."""
+        class CustomType:
+            def __init__(self, value):
+                self.value = value
+
+        def custom_constructor(loader, node):
+            return CustomType(node.value)
+
+        # Create a fresh loader class to avoid polluting shared state
+        class TestLoader(yaml.SafeLoader):
+            yaml_constructors = {}
+
+        TestLoader.add_constructor('!custom', custom_constructor)
+        result = yaml.load("value: !custom test", Loader=TestLoader)
+        assert isinstance(result['value'], CustomType)
+        assert result['value'].value == 'test'
+
+    def test_constructor_with_mapping(self):
+        """Test constructor with mapping value."""
+        def env_constructor(loader, node):
+            # node.value is the FyGeneric for mappings
+            if hasattr(node.value, 'to_python'):
+                return f"ENV:{node.value.to_python()}"
+            return f"ENV:{node.value}"
+
+        class TestLoader(yaml.SafeLoader):
+            yaml_constructors = {}
+
+        TestLoader.add_constructor('!ENV', env_constructor)
+        result = yaml.load("config: !ENV {name: MY_VAR}", Loader=TestLoader)
+        assert 'ENV:' in result['config']
+
+    def test_constructor_with_sequence(self):
+        """Test constructor with sequence value."""
+        def list_constructor(loader, node):
+            if hasattr(node.value, 'to_python'):
+                items = node.value.to_python()
+            else:
+                items = node.value
+            return {'items': items, 'count': len(items)}
+
+        class TestLoader(yaml.SafeLoader):
+            yaml_constructors = {}
+
+        TestLoader.add_constructor('!counted', list_constructor)
+        result = yaml.load("data: !counted [a, b, c]", Loader=TestLoader)
+        assert result['data']['count'] == 3
+        assert result['data']['items'] == ['a', 'b', 'c']
+
+    def test_nested_custom_tags(self):
+        """Test nested structures with custom tags."""
+        def upper_constructor(loader, node):
+            return node.value.upper()
+
+        class TestLoader(yaml.SafeLoader):
+            yaml_constructors = {}
+
+        TestLoader.add_constructor('!upper', upper_constructor)
+        result = yaml.load("""
+items:
+  - !upper hello
+  - !upper world
+  - normal
+""", Loader=TestLoader)
+        assert result['items'][0] == 'HELLO'
+        assert result['items'][1] == 'WORLD'
+        assert result['items'][2] == 'normal'
+
+    def test_tag_access_methods(self):
+        """Test get_tag(), has_tag() methods on FyGeneric."""
+        import libfyaml as fy
+
+        doc = fy.loads("value: !custom test")
+        assert doc['value'].has_tag()
+        assert doc['value'].get_tag() == '!custom'
+
+        doc2 = fy.loads("value: plain")
+        assert not doc2['value'].has_tag()
+        assert doc2['value'].get_tag() is None
+
+    def test_anchor_access_methods(self):
+        """Test get_anchor(), has_anchor() methods on FyGeneric."""
+        import libfyaml as fy
+
+        doc = fy.loads("value: &myanchor test")
+        assert doc['value'].has_anchor()
+        assert doc['value'].get_anchor() == 'myanchor'
+
+        doc2 = fy.loads("value: plain")
+        assert not doc2['value'].has_anchor()
+        assert doc2['value'].get_anchor() is None
+
+    def test_standard_yaml_tags_preserved(self):
+        """Test that standard YAML tags are accessible."""
+        import libfyaml as fy
+
+        doc = fy.loads('value: !!int "42"')
+        # Standard tags use full URI form
+        assert doc['value'].has_tag()
+        tag = doc['value'].get_tag()
+        assert 'int' in tag
+
+    def test_constructor_not_invoked_without_tag(self):
+        """Test that constructors don't interfere with untagged values."""
+        call_count = [0]
+
+        def counting_constructor(loader, node):
+            call_count[0] += 1
+            return node.value
+
+        class TestLoader(yaml.SafeLoader):
+            yaml_constructors = {}
+
+        TestLoader.add_constructor('!count', counting_constructor)
+        result = yaml.load("a: 1\nb: 2\nc: 3", Loader=TestLoader)
+
+        assert call_count[0] == 0  # Constructor should not be called
+        assert result == {'a': 1, 'b': 2, 'c': 3}
