@@ -41,25 +41,184 @@ from libfyaml.pyyaml_compat import scanner
 
 # Loader classes with add_constructor support for custom tags
 class BaseLoader:
-    """Base loader class for PyYAML API compatibility."""
+    """Base loader class for PyYAML API compatibility.
+
+    This class provides PyYAML-compatible constructor methods that work
+    with FyGeneric nodes wrapped in _NodeWrapper objects.
+    """
     yaml_constructors = {}
     yaml_multi_constructors = {}
+
+    def __init__(self, stream=None):
+        """Initialize loader with optional stream."""
+        self._stream = stream
 
     @classmethod
     def add_constructor(cls, tag, constructor_func):
         """Add a constructor for a specific YAML tag."""
+        # Create a copy of the dict for this class if it's inherited
+        if 'yaml_constructors' not in cls.__dict__:
+            cls.yaml_constructors = cls.yaml_constructors.copy()
         cls.yaml_constructors[tag] = constructor_func
 
     @classmethod
     def add_multi_constructor(cls, tag_prefix, multi_constructor):
         """Add a multi-constructor for a tag prefix."""
+        if 'yaml_multi_constructors' not in cls.__dict__:
+            cls.yaml_multi_constructors = cls.yaml_multi_constructors.copy()
         cls.yaml_multi_constructors[tag_prefix] = multi_constructor
 
     def construct_scalar(self, node):
-        """Construct a scalar value from a node."""
+        """Construct a scalar value from a node.
+
+        Args:
+            node: A _NodeWrapper or FyGeneric node
+
+        Returns:
+            The scalar value (str, int, float, bool, or None)
+        """
         if node is None:
             return ''
-        return node.value if hasattr(node, 'value') else str(node)
+        # Handle _NodeWrapper
+        if hasattr(node, '_generic'):
+            return node._generic.to_python()
+        # Handle FyGeneric directly
+        if hasattr(node, 'to_python'):
+            return node.to_python()
+        # Handle raw value
+        if hasattr(node, 'value'):
+            return node.value
+        return str(node)
+
+    def construct_mapping(self, node, deep=False):
+        """Construct a mapping (dict) from a node.
+
+        Args:
+            node: A _NodeWrapper or FyGeneric mapping node
+            deep: If True, recursively construct nested objects
+
+        Returns:
+            A dictionary
+        """
+        if node is None:
+            return {}
+        # Get the generic from wrapper
+        generic = node._generic if hasattr(node, '_generic') else node
+        if hasattr(generic, 'value'):
+            generic = generic.value
+
+        if hasattr(generic, 'is_mapping') and generic.is_mapping():
+            if deep:
+                return {self.construct_object(k, deep=True): self.construct_object(v, deep=True)
+                        for k, v in generic.items()}
+            else:
+                return {k.to_python() if hasattr(k, 'to_python') else k:
+                        v.to_python() if hasattr(v, 'to_python') else v
+                        for k, v in generic.items()}
+        elif isinstance(generic, dict):
+            return generic
+        return {}
+
+    def construct_sequence(self, node, deep=False):
+        """Construct a sequence (list) from a node.
+
+        Args:
+            node: A _NodeWrapper or FyGeneric sequence node
+            deep: If True, recursively construct nested objects
+
+        Returns:
+            A list
+        """
+        if node is None:
+            return []
+        # Get the generic from wrapper
+        generic = node._generic if hasattr(node, '_generic') else node
+        if hasattr(generic, 'value'):
+            generic = generic.value
+
+        if hasattr(generic, 'is_sequence') and generic.is_sequence():
+            if deep:
+                return [self.construct_object(item, deep=True) for item in generic]
+            else:
+                return [item.to_python() if hasattr(item, 'to_python') else item
+                        for item in generic]
+        elif isinstance(generic, list):
+            return generic
+        return []
+
+    def construct_object(self, node, deep=False):
+        """Construct a Python object from a node.
+
+        This is the main entry point for constructing objects. It checks
+        for registered constructors and dispatches appropriately.
+
+        Args:
+            node: A _NodeWrapper or FyGeneric node
+            deep: If True, recursively construct nested objects
+
+        Returns:
+            The constructed Python object
+        """
+        if node is None:
+            return None
+
+        # Get the generic
+        generic = node._generic if hasattr(node, '_generic') else node
+
+        # Get tag
+        tag = None
+        if hasattr(node, 'tag'):
+            tag = node.tag
+        elif hasattr(generic, 'get_tag'):
+            tag = generic.get_tag()
+
+        # Check for exact tag match in constructors
+        if tag and tag in self.yaml_constructors:
+            constructor = self.yaml_constructors[tag]
+            wrapped = _NodeWrapper(generic) if not hasattr(node, '_generic') else node
+            return constructor(self, wrapped)
+
+        # Check for multi-constructors (tag prefix matches)
+        if tag and self.yaml_multi_constructors:
+            for prefix, multi_constructor in self.yaml_multi_constructors.items():
+                if prefix and tag.startswith(prefix):
+                    wrapped = _NodeWrapper(generic) if not hasattr(node, '_generic') else node
+                    return multi_constructor(self, tag[len(prefix):], wrapped)
+
+        # Check for None tag constructor (catch-all)
+        if None in self.yaml_constructors:
+            constructor = self.yaml_constructors[None]
+            wrapped = _NodeWrapper(generic) if not hasattr(node, '_generic') else node
+            return constructor(self, wrapped)
+
+        # Default: convert based on type
+        if hasattr(generic, 'is_mapping') and generic.is_mapping():
+            return self.construct_mapping(node, deep=deep)
+        elif hasattr(generic, 'is_sequence') and generic.is_sequence():
+            return self.construct_sequence(node, deep=deep)
+        elif hasattr(generic, 'to_python'):
+            return generic.to_python()
+        elif hasattr(node, 'value'):
+            return node.value
+        return node
+
+    def construct_pairs(self, node, deep=False):
+        """Construct a list of (key, value) pairs from a mapping node."""
+        if node is None:
+            return []
+        generic = node._generic if hasattr(node, '_generic') else node
+        if hasattr(generic, 'value'):
+            generic = generic.value
+
+        if hasattr(generic, 'is_mapping') and generic.is_mapping():
+            if deep:
+                return [(self.construct_object(k, deep=True), self.construct_object(v, deep=True))
+                        for k, v in generic.items()]
+            else:
+                return [(k.to_python() if hasattr(k, 'to_python') else k,
+                         v.to_python() if hasattr(v, 'to_python') else v)
+                        for k, v in generic.items()]
+        return []
 
 
 class SafeLoader(BaseLoader):
@@ -68,14 +227,28 @@ class SafeLoader(BaseLoader):
     yaml_multi_constructors = {}
 
 
+class FullLoader(SafeLoader):
+    """Full loader class for PyYAML API compatibility."""
+    yaml_constructors = {}
+    yaml_multi_constructors = {}
+
+
+class UnsafeLoader(SafeLoader):
+    """Unsafe loader class for PyYAML API compatibility."""
+    yaml_constructors = {}
+    yaml_multi_constructors = {}
+
+
 class Loader(SafeLoader):
-    """Full loader class (same as SafeLoader in our safe implementation)."""
+    """Default loader class (same as SafeLoader in our safe implementation)."""
     yaml_constructors = {}
     yaml_multi_constructors = {}
 
 
 # C-accelerated versions (same as regular versions in libfyaml)
 CSafeLoader = SafeLoader
+CFullLoader = FullLoader
+CUnsafeLoader = UnsafeLoader
 CLoader = Loader
 CBaseLoader = BaseLoader
 
@@ -155,48 +328,55 @@ def _normalize_yaml(text):
 
 
 class _NodeWrapper:
-    """Wrap FyGeneric to look like PyYAML node for constructors."""
+    """Wrap FyGeneric to look like PyYAML node for constructors.
+
+    This provides compatibility with PyYAML's Node interface, allowing
+    constructors written for PyYAML to work with libfyaml's FyGeneric.
+    """
 
     def __init__(self, generic):
         self._generic = generic
-        self.tag = generic.get_tag()
+        self.tag = generic.get_tag() if hasattr(generic, 'get_tag') else None
         # For scalars, provide the value directly
-        if not generic.is_mapping() and not generic.is_sequence():
+        if hasattr(generic, 'is_mapping') and not generic.is_mapping() and not generic.is_sequence():
             self.value = generic.to_python()
         else:
             self.value = generic
+        # Provide start_mark/end_mark for compatibility (some constructors check these)
+        self.start_mark = None
+        self.end_mark = None
 
     def __repr__(self):
         return f"<_NodeWrapper tag={self.tag!r} value={self.value!r}>"
 
 
-def _convert_with_constructors(node, constructors, multi_constructors):
-    """Recursively convert FyGeneric to Python, applying tag constructors."""
-    tag = node.get_tag()
+def _convert_with_loader(node, loader):
+    """Recursively convert FyGeneric to Python using loader's construct methods.
 
-    # Check for exact tag match first
-    if tag and tag in constructors:
-        constructor = constructors[tag]
-        wrapped_node = _NodeWrapper(node)
-        return constructor(None, wrapped_node)  # (loader, node)
+    Args:
+        node: FyGeneric node to convert
+        loader: Loader instance with construct_* methods
 
-    # Check for multi-constructors (tag prefix matches)
-    if tag and multi_constructors:
-        for prefix, multi_constructor in multi_constructors.items():
-            if prefix and tag.startswith(prefix):
-                wrapped_node = _NodeWrapper(node)
-                return multi_constructor(None, tag[len(prefix):], wrapped_node)
+    Returns:
+        Constructed Python object
+    """
+    # Use the loader's construct_object which handles tags and recursion
+    wrapped = _NodeWrapper(node)
+    return loader.construct_object(wrapped, deep=True)
 
-    # Default conversion by type
-    if node.is_mapping():
-        return {_convert_with_constructors(k, constructors, multi_constructors):
-                _convert_with_constructors(v, constructors, multi_constructors)
-                for k, v in node.items()}
-    elif node.is_sequence():
-        return [_convert_with_constructors(item, constructors, multi_constructors)
-                for item in node]
-    else:
-        return node.to_python()
+
+class _ConstructorProxy(BaseLoader):
+    """Lightweight proxy that provides construct_* methods for any Loader class.
+
+    This allows us to use the constructor methods without instantiating the
+    full Loader class (which may have parser dependencies like CParser).
+    """
+
+    def __init__(self, loader_class, stream=None):
+        super().__init__(stream)
+        # Copy constructors from the target class
+        self.yaml_constructors = getattr(loader_class, 'yaml_constructors', {})
+        self.yaml_multi_constructors = getattr(loader_class, 'yaml_multi_constructors', {})
 
 
 def load(stream, Loader=SafeLoader):
@@ -224,12 +404,15 @@ def load(stream, Loader=SafeLoader):
     # Use yaml1.1 mode for PyYAML compatibility (merge keys, octal, etc.)
     doc = fy.loads(stream, mode='yaml1.1')
 
-    # Check for registered constructors
+    # Check for registered constructors on the Loader class
     constructors = getattr(Loader, 'yaml_constructors', {})
     multi_constructors = getattr(Loader, 'yaml_multi_constructors', {})
 
     if constructors or multi_constructors:
-        return _convert_with_constructors(doc, constructors, multi_constructors)
+        # Create a lightweight proxy with the constructors
+        # This avoids instantiating Loaders that inherit from parsers (like AnsibleLoader)
+        loader = _ConstructorProxy(Loader, stream)
+        return _convert_with_loader(doc, loader)
 
     return doc.to_python()
 
