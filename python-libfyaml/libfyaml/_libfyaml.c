@@ -118,7 +118,8 @@ FyGenericIterator_next(FyGenericIteratorObject *self)
     switch (self->iter_type) {
 
     case FYGT_SEQUENCE:
-        if (self->index >= self->u.seqh->count)
+        /* Empty sequence has NULL handle */
+        if (self->u.seqh == NULL || self->index >= self->u.seqh->count)
             goto out_stop;
         item = self->u.seqh->items[self->index];
         key_obj = PyLong_FromSize_t(self->index);
@@ -130,7 +131,8 @@ FyGenericIterator_next(FyGenericIteratorObject *self)
         break;
 
     case FYGT_MAPPING:
-        if (self->index >= self->u.maph->count)
+        /* Empty mapping has NULL handle */
+        if (self->u.maph == NULL || self->index >= self->u.maph->count)
             goto out_stop;
         key = self->u.maph->pairs[self->index].key;
         item = self->u.maph->pairs[self->index].value;
