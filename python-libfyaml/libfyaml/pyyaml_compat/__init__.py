@@ -37,6 +37,14 @@ from libfyaml.pyyaml_compat import parser
 from libfyaml.pyyaml_compat import cyaml
 from libfyaml.pyyaml_compat import resolver
 from libfyaml.pyyaml_compat import scanner
+from libfyaml.pyyaml_compat import composer
+from libfyaml.pyyaml_compat import error
+
+# Import error classes for direct access (yaml.YAMLError, etc.)
+from libfyaml.pyyaml_compat.error import YAMLError, MarkedYAMLError, Mark
+from libfyaml.pyyaml_compat.scanner import ScannerError
+from libfyaml.pyyaml_compat.parser import ParserError
+from libfyaml.pyyaml_compat.composer import ComposerError
 
 
 # Loader classes with add_constructor support for custom tags
@@ -379,6 +387,52 @@ class _ConstructorProxy(BaseLoader):
         self.yaml_multi_constructors = getattr(loader_class, 'yaml_multi_constructors', {})
 
 
+def _diag_to_exception(diag_list, stream_name='<string>'):
+    """Convert libfyaml diagnostic info to PyYAML-style exception.
+
+    Args:
+        diag_list: List of diagnostic dicts from libfyaml
+        stream_name: Name of the stream for error messages
+
+    Returns:
+        YAMLError subclass matching PyYAML's error format
+    """
+    if not diag_list:
+        return YAMLError("Unknown YAML error")
+
+    # Get the first (or most relevant) error
+    err = diag_list[0]
+    message = err.get('message', 'Unknown error')
+
+    # Create Mark for problem location
+    # libfyaml uses 1-indexed line/column, PyYAML Mark uses 0-indexed
+    line = err.get('line', 1) - 1
+    column = err.get('column', 1) - 1
+    content = err.get('content', '')
+
+    # Create a Mark with snippet support
+    problem_mark = Mark(
+        name=stream_name,
+        index=0,  # We don't have exact index
+        line=line,
+        column=column,
+        buffer=content + '\n' if content else None,
+        pointer=column if content else None
+    )
+
+    # Determine error type from message
+    msg_lower = message.lower()
+    if 'alias' in msg_lower:
+        return ComposerError(problem=message, problem_mark=problem_mark)
+    elif 'scanner' in msg_lower or 'unexpected' in msg_lower:
+        return ScannerError(problem=message, problem_mark=problem_mark)
+    elif 'parser' in msg_lower or 'expected' in msg_lower:
+        return ParserError(problem=message, problem_mark=problem_mark)
+    else:
+        # Default to MarkedYAMLError for unknown error types
+        return MarkedYAMLError(problem=message, problem_mark=problem_mark)
+
+
 def load(stream, Loader=SafeLoader):
     """Parse YAML stream and return Python object.
 
@@ -389,10 +443,15 @@ def load(stream, Loader=SafeLoader):
     Returns:
         Python object (dict, list, str, int, float, bool, or None)
 
+    Raises:
+        YAMLError: If parsing fails (ComposerError, ScannerError, ParserError, etc.)
+
     Example:
         >>> load("foo: bar", Loader=SafeLoader)
         {'foo': 'bar'}
     """
+    # Get stream name for error messages
+    stream_name = getattr(stream, 'name', '<string>')
     if hasattr(stream, 'read'):
         stream = stream.read()
 
@@ -402,7 +461,16 @@ def load(stream, Loader=SafeLoader):
         return result
 
     # Use yaml1.1 mode for PyYAML compatibility (merge keys, octal, etc.)
-    doc = fy.loads(stream, mode='yaml1.1')
+    # Use collect_diag=True to get error details for PyYAML-style exceptions
+    doc = fy.loads(stream, mode='yaml1.1', collect_diag=True)
+
+    # Check if we got an error (collect_diag returns diag sequence on error)
+    if doc.is_sequence():
+        # This is a diagnostic sequence, not a document
+        diag_list = doc.to_python()
+        if diag_list and isinstance(diag_list, list) and len(diag_list) > 0:
+            if isinstance(diag_list[0], dict) and 'message' in diag_list[0]:
+                raise _diag_to_exception(diag_list, stream_name)
 
     # Check for registered constructors on the Loader class
     constructors = getattr(Loader, 'yaml_constructors', {})
@@ -607,23 +675,14 @@ def safe_dump_all(documents, stream=None, **kwargs):
 
 # Additional compatibility - these are less commonly used but may be needed
 
-class YAMLError(Exception):
-    """Base exception for YAML errors."""
-    pass
-
-
 class YAMLLoadWarning(UserWarning):
     """Warning for unsafe YAML loading."""
     pass
 
 
-# Expose common error types
-MarkedYAMLError = YAMLError
-ScannerError = YAMLError
-ParserError = YAMLError
-ReaderError = YAMLError
-ComposerError = YAMLError
-ConstructorError = YAMLError
+# Reader error and other less common errors (alias to MarkedYAMLError for now)
+ReaderError = MarkedYAMLError
+ConstructorError = MarkedYAMLError
 EmitterError = YAMLError
 RepresenterError = YAMLError
 

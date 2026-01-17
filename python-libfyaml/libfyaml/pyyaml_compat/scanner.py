@@ -1,11 +1,13 @@
-"""PyYAML scanner module compatibility stubs.
+"""PyYAML scanner module compatibility.
 
-Provides Scanner classes for API compatibility.
+Provides Scanner classes and ScannerError for API compatibility.
 """
 
+from .error import MarkedYAMLError
 
-class ScannerError(Exception):
-    """YAML scanner error."""
+
+class ScannerError(MarkedYAMLError):
+    """YAML scanner error (tokenization phase)."""
     pass
 
 
