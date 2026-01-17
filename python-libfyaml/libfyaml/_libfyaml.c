@@ -1098,6 +1098,26 @@ FyGeneric_has_anchor(FyGenericObject *self, PyObject *Py_UNUSED(args))
     return PyBool_FromLong(!fy_generic_is_null(anchor) && !fy_generic_is_invalid(anchor));
 }
 
+static PyObject *
+FyGeneric_get_diag(FyGenericObject *self, PyObject *Py_UNUSED(args))
+{
+    fy_generic diag = fy_generic_get_diag(self->fyg);
+
+    /* Check if diag is null or invalid - no diagnostics available */
+    if (fy_generic_is_null(diag) || fy_generic_is_invalid(diag))
+        Py_RETURN_NONE;
+
+    /* Diag is a sequence of error mappings - wrap it as FyGeneric, sharing parent's doc_state */
+    return FyGeneric_from_parent(diag, self, NULL);
+}
+
+static PyObject *
+FyGeneric_has_diag(FyGenericObject *self, PyObject *Py_UNUSED(args))
+{
+    fy_generic diag = fy_generic_get_diag(self->fyg);
+    return PyBool_FromLong(!fy_generic_is_null(diag) && !fy_generic_is_invalid(diag));
+}
+
 /* Comparison helper functions */
 
 /* Helper: Compare integers with support for large unsigned values */
@@ -2441,6 +2461,10 @@ static PyMethodDef FyGeneric_methods[] = {
      "Check if value has a tag"},
     {"has_anchor", _PyCFunction_CAST(FyGeneric_has_anchor), METH_NOARGS,
      "Check if value has an anchor"},
+    {"get_diag", _PyCFunction_CAST(FyGeneric_get_diag), METH_NOARGS,
+     "Get diagnostic info for this value (or None if not available)"},
+    {"has_diag", _PyCFunction_CAST(FyGeneric_has_diag), METH_NOARGS,
+     "Check if value has diagnostic info"},
     {"keys", _PyCFunction_CAST(FyGeneric_keys), METH_NOARGS,
      "Return list of keys (for mappings)"},
     {"values", _PyCFunction_CAST(FyGeneric_values), METH_NOARGS,
@@ -3437,9 +3461,10 @@ libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
     int dedup = 1;  /* Default to True */
     int trim = 1;   /* Default to True */
     int mutable = 0;  /* Default to False (read-only) */
-    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", NULL};
+    int collect_diag = 0;  /* Default to False */
+    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|sppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|spppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag))
         return NULL;
 
     /* Parse mode string to flags */
@@ -3456,7 +3481,24 @@ libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
 
     /* Parse - returns a directory (sequence of VDS) */
     unsigned int parse_flags = FYOPPF_INPUT_TYPE_STRING | mode_flags;
+    if (collect_diag)
+        parse_flags |= FYOPPF_COLLECT_DIAG;
     fy_generic vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
+
+    /* When collect_diag is enabled, errors return an indirect with diag attached */
+    if (collect_diag) {
+        fy_generic diag = fy_generic_get_diag(vdir);
+        if (fy_generic_is_valid(diag) && !fy_generic_is_null(diag)) {
+            /* Return the diag sequence directly - it contains the error info */
+            PyObject *result = FyGeneric_from_generic(diag, gb, mutable);
+            if (result == NULL) {
+                fy_generic_builder_destroy(gb);
+                return NULL;
+            }
+            return result;
+        }
+    }
+
     if (!fy_generic_is_valid(vdir)) {
         fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_ValueError, "Failed to parse YAML/JSON");
@@ -3751,7 +3793,7 @@ libfyaml_from_python(PyObject *self, PyObject *args, PyObject *kwargs)
     return result;
 }
 
-/* load(file, mode='yaml', dedup=True, trim=True, mutable=False) - Load YAML/JSON from file object or path */
+/* load(file, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False) - Load YAML/JSON from file object or path */
 static PyObject *
 libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -3760,9 +3802,10 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
     int dedup = 1;  /* Default to True */
     int trim = 1;   /* Default to True */
     int mutable = 0;  /* Default to False (read-only) */
-    static char *kwlist[] = {"file", "mode", "dedup", "trim", "mutable", NULL};
+    int collect_diag = 0;  /* Default to False */
+    static char *kwlist[] = {"file", "mode", "dedup", "trim", "mutable", "collect_diag", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sppp", kwlist, &file_obj, &mode, &dedup, &trim, &mutable))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|spppp", kwlist, &file_obj, &mode, &dedup, &trim, &mutable, &collect_diag))
         return NULL;
 
     /* Check if it's a string (file path) or file object */
@@ -3786,6 +3829,8 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
 
         /* Determine parse flags */
         unsigned int parse_flags = mode_flags;
+        if (collect_diag)
+            parse_flags |= FYOPPF_COLLECT_DIAG;
 
         /* Parse from file - returns a directory (sequence of VDS) */
         fy_generic vdir = fy_gb_parse_file(gb, parse_flags, path);
@@ -4014,7 +4059,7 @@ FyGeneric_from_vds_with_parent(fy_generic vds, FyGenericObject *parent, int muta
     return (PyObject *)self;
 }
 
-/* loads_all(string, mode='yaml', dedup=True, trim=True, mutable=False) - Parse multi-document YAML */
+/* loads_all(string, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False) - Parse multi-document YAML */
 static PyObject *
 libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -4024,9 +4069,10 @@ libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
     int dedup = 1;
     int trim = 1;
     int mutable = 0;
-    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", NULL};
+    int collect_diag = 0;
+    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|sppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|spppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag))
         return NULL;
 
     /* Create generic builder using helper */
@@ -4043,6 +4089,8 @@ libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
 
     /* Parse flags: MULTI_DOCUMENT for multiple docs */
     unsigned int parse_flags = FYOPPF_INPUT_TYPE_STRING | FYOPPF_MULTI_DOCUMENT | mode_flags;
+    if (collect_diag)
+        parse_flags |= FYOPPF_COLLECT_DIAG;
 
     /* Parse - returns a directory (sequence of VDS) */
     fy_generic vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
@@ -4110,7 +4158,7 @@ libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
     return result;
 }
 
-/* load_all(file, mode='yaml', dedup=True, trim=True, mutable=False) - Parse multi-document from file */
+/* load_all(file, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False) - Parse multi-document from file */
 static PyObject *
 libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -4119,10 +4167,11 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
     int dedup = 1;
     int trim = 1;
     int mutable = 0;
-    static char *kwlist[] = {"file", "mode", "dedup", "trim", "mutable", NULL};
+    int collect_diag = 0;
+    static char *kwlist[] = {"file", "mode", "dedup", "trim", "mutable", "collect_diag", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sppp", kwlist,
-                                     &file_obj, &mode, &dedup, &trim, &mutable))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|spppp", kwlist,
+                                     &file_obj, &mode, &dedup, &trim, &mutable, &collect_diag))
         return NULL;
 
     /* Check if it's a string (file path) or file object */
@@ -4146,6 +4195,8 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
 
         /* Parse flags: MULTI_DOCUMENT for multiple docs */
         unsigned int parse_flags = FYOPPF_MULTI_DOCUMENT | mode_flags;
+        if (collect_diag)
+            parse_flags |= FYOPPF_COLLECT_DIAG;
 
         /* Parse from file - returns a directory (sequence of VDS) */
         fy_generic vdir = fy_gb_parse_file(gb, parse_flags, path);
