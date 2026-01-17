@@ -1,11 +1,16 @@
-"""PyYAML parser module compatibility stubs."""
+"""PyYAML parser module compatibility.
+
+Provides Parser classes and ParserError for API compatibility.
+"""
+
+from .error import MarkedYAMLError
 
 
-class ParserError(Exception):
-    """YAML parser error."""
+class ParserError(MarkedYAMLError):
+    """YAML parser error (grammar phase)."""
     pass
 
 
 class Parser:
-    """Base YAML parser class."""
+    """YAML parser stub."""
     pass
