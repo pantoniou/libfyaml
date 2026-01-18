@@ -581,3 +581,354 @@ items:
 
         assert call_count[0] == 0  # Constructor should not be called
         assert result == {'a': 1, 'b': 2, 'c': 3}
+
+
+class TestBinaryTag:
+    """Test !!binary tag support (base64 encoding)."""
+
+    def test_binary_basic(self):
+        """Load base64-encoded binary data."""
+        import base64
+        data = yaml.safe_load("data: !!binary R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
+        assert isinstance(data['data'], bytes)
+        # This is a 1x1 transparent GIF
+        assert data['data'][:3] == b'GIF'
+
+    def test_binary_with_newlines(self):
+        """Load binary with line breaks (common in YAML files)."""
+        import base64
+        # Base64 for "Hello, World!"
+        data = yaml.safe_load("""
+data: !!binary |
+  SGVsbG8s
+  IFdvcmxk
+  IQ==
+""")
+        assert isinstance(data['data'], bytes)
+        assert data['data'] == b'Hello, World!'
+
+    def test_binary_empty(self):
+        """Load empty binary data."""
+        data = yaml.safe_load("data: !!binary ''")
+        assert data['data'] == b''
+
+    def test_binary_full_tag(self):
+        """Load binary with full YAML tag."""
+        data = yaml.safe_load("data: !<tag:yaml.org,2002:binary> SGVsbG8=")
+        assert isinstance(data['data'], bytes)
+        assert data['data'] == b'Hello'
+
+
+class TestTimestampTag:
+    """Test timestamp/datetime parsing."""
+
+    def test_date_only(self):
+        """Parse date-only value."""
+        import datetime
+        data = yaml.safe_load("date: 2024-01-15")
+        assert isinstance(data['date'], datetime.date)
+        assert data['date'] == datetime.date(2024, 1, 15)
+
+    def test_datetime_basic(self):
+        """Parse basic datetime."""
+        import datetime
+        data = yaml.safe_load("time: 2024-01-15 10:30:00")
+        assert isinstance(data['time'], datetime.datetime)
+        assert data['time'].year == 2024
+        assert data['time'].month == 1
+        assert data['time'].day == 15
+        assert data['time'].hour == 10
+        assert data['time'].minute == 30
+
+    def test_datetime_with_t(self):
+        """Parse datetime with T separator."""
+        import datetime
+        data = yaml.safe_load("time: 2024-01-15T10:30:00")
+        assert isinstance(data['time'], datetime.datetime)
+        assert data['time'].hour == 10
+
+    def test_datetime_with_timezone_utc(self):
+        """Parse datetime with UTC timezone."""
+        import datetime
+        data = yaml.safe_load("time: 2024-01-15T10:30:00Z")
+        assert isinstance(data['time'], datetime.datetime)
+        assert data['time'].tzinfo == datetime.timezone.utc
+
+    def test_datetime_with_timezone_offset(self):
+        """Parse datetime with timezone offset."""
+        import datetime
+        data = yaml.safe_load("time: 2024-01-15T10:30:00+05:30")
+        assert isinstance(data['time'], datetime.datetime)
+        assert data['time'].tzinfo is not None
+
+    def test_datetime_with_microseconds(self):
+        """Parse datetime with microseconds."""
+        import datetime
+        data = yaml.safe_load("time: 2024-01-15T10:30:00.123456")
+        assert isinstance(data['time'], datetime.datetime)
+        assert data['time'].microsecond == 123456
+
+    def test_timestamp_explicit_tag(self):
+        """Parse with explicit !!timestamp tag."""
+        import datetime
+        data = yaml.safe_load("time: !!timestamp 2024-01-15")
+        assert isinstance(data['time'], datetime.date)
+
+
+class TestSetTag:
+    """Test !!set tag support."""
+
+    def test_set_basic(self):
+        """Load a basic set."""
+        data = yaml.safe_load("""
+items: !!set
+  a:
+  b:
+  c:
+""")
+        assert isinstance(data['items'], set)
+        assert data['items'] == {'a', 'b', 'c'}
+
+    def test_set_flow_style(self):
+        """Load set in flow style."""
+        data = yaml.safe_load("items: !!set {a: null, b: null, c: null}")
+        assert isinstance(data['items'], set)
+        assert data['items'] == {'a', 'b', 'c'}
+
+    def test_set_empty(self):
+        """Load empty set."""
+        data = yaml.safe_load("items: !!set {}")
+        assert isinstance(data['items'], set)
+        assert data['items'] == set()
+
+
+class TestOmapTag:
+    """Test !!omap tag support (ordered mapping)."""
+
+    def test_omap_basic(self):
+        """Load a basic ordered map."""
+        from collections import OrderedDict
+        data = yaml.safe_load("""
+items: !!omap
+  - a: 1
+  - b: 2
+  - c: 3
+""")
+        assert isinstance(data['items'], OrderedDict)
+        assert list(data['items'].keys()) == ['a', 'b', 'c']
+        assert list(data['items'].values()) == [1, 2, 3]
+
+    def test_omap_flow_style(self):
+        """Load omap in flow style."""
+        from collections import OrderedDict
+        data = yaml.safe_load("items: !!omap [{a: 1}, {b: 2}, {c: 3}]")
+        assert isinstance(data['items'], OrderedDict)
+        assert list(data['items'].keys()) == ['a', 'b', 'c']
+
+    def test_omap_preserves_order(self):
+        """Verify omap preserves insertion order."""
+        from collections import OrderedDict
+        data = yaml.safe_load("""
+items: !!omap
+  - z: 26
+  - a: 1
+  - m: 13
+""")
+        assert list(data['items'].keys()) == ['z', 'a', 'm']
+
+
+class TestPairsTag:
+    """Test !!pairs tag support."""
+
+    def test_pairs_basic(self):
+        """Load basic pairs."""
+        data = yaml.safe_load("""
+items: !!pairs
+  - a: 1
+  - b: 2
+  - a: 3
+""")
+        assert isinstance(data['items'], list)
+        assert data['items'] == [('a', 1), ('b', 2), ('a', 3)]
+
+    def test_pairs_allows_duplicates(self):
+        """Pairs allows duplicate keys (unlike omap)."""
+        data = yaml.safe_load("""
+items: !!pairs
+  - x: 1
+  - x: 2
+  - x: 3
+""")
+        assert data['items'] == [('x', 1), ('x', 2), ('x', 3)]
+
+
+class TestCustomRepresenters:
+    """Test custom representers with add_representer()."""
+
+    def test_add_representer_basic(self):
+        """Test basic add_representer functionality."""
+        class Point:
+            def __init__(self, x, y):
+                self.x = x
+                self.y = y
+
+        def point_representer(dumper, data):
+            return {'x': data.x, 'y': data.y}
+
+        # Create a fresh dumper class to avoid polluting shared state
+        class TestDumper(yaml.SafeDumper):
+            yaml_representers = yaml.SafeDumper.yaml_representers.copy()
+
+        TestDumper.add_representer(Point, point_representer)
+        result = yaml.dump({'point': Point(10, 20)}, Dumper=TestDumper)
+        assert 'x: 10' in result
+        assert 'y: 20' in result
+
+    def test_add_representer_nested(self):
+        """Test representer with nested data."""
+        class Config:
+            def __init__(self, name, values):
+                self.name = name
+                self.values = values
+
+        def config_representer(dumper, data):
+            return {'name': data.name, 'values': data.values}
+
+        class TestDumper(yaml.SafeDumper):
+            yaml_representers = yaml.SafeDumper.yaml_representers.copy()
+
+        TestDumper.add_representer(Config, config_representer)
+        config = Config('test', [1, 2, 3])
+        result = yaml.dump(config, Dumper=TestDumper)
+        assert 'name: test' in result
+        assert '1' in result and '2' in result and '3' in result
+
+    def test_multi_representer(self):
+        """Test multi-representer for type hierarchy."""
+        class Animal:
+            def __init__(self, name):
+                self.name = name
+
+        class Dog(Animal):
+            pass
+
+        class Cat(Animal):
+            pass
+
+        def animal_representer(dumper, data):
+            return {'type': type(data).__name__, 'name': data.name}
+
+        class TestDumper(yaml.SafeDumper):
+            yaml_representers = yaml.SafeDumper.yaml_representers.copy()
+            yaml_multi_representers = {}
+
+        TestDumper.add_multi_representer(Animal, animal_representer)
+        result = yaml.dump([Dog('Buddy'), Cat('Whiskers')], Dumper=TestDumper)
+        assert 'Dog' in result
+        assert 'Cat' in result
+        assert 'Buddy' in result
+        assert 'Whiskers' in result
+
+
+class TestDatetimeRepresenter:
+    """Test datetime representation in dump()."""
+
+    def test_dump_datetime(self):
+        """Dump datetime object."""
+        import datetime
+        dt = datetime.datetime(2024, 1, 15, 10, 30, 0)
+        result = yaml.safe_dump({'time': dt})
+        assert '2024-01-15' in result
+        assert '10:30:00' in result
+
+    def test_dump_date(self):
+        """Dump date object."""
+        import datetime
+        d = datetime.date(2024, 1, 15)
+        result = yaml.safe_dump({'date': d})
+        assert '2024-01-15' in result
+
+    def test_dump_datetime_with_timezone(self):
+        """Dump datetime with timezone."""
+        import datetime
+        dt = datetime.datetime(2024, 1, 15, 10, 30, 0, tzinfo=datetime.timezone.utc)
+        result = yaml.safe_dump({'time': dt})
+        assert '2024-01-15' in result
+
+
+class TestSetRepresenter:
+    """Test set representation in dump()."""
+
+    def test_dump_set(self):
+        """Dump set object."""
+        data = {'items': {'a', 'b', 'c'}}
+        result = yaml.safe_dump(data)
+        # Set is converted to mapping with null values
+        assert 'a:' in result or 'a :' in result
+
+    def test_dump_frozenset(self):
+        """Dump frozenset object."""
+        data = {'items': frozenset(['x', 'y'])}
+        result = yaml.safe_dump(data)
+        assert 'x' in result and 'y' in result
+
+
+class TestOrderedDictRepresenter:
+    """Test OrderedDict representation in dump()."""
+
+    def test_dump_ordereddict(self):
+        """Dump OrderedDict object."""
+        from collections import OrderedDict
+        data = OrderedDict([('z', 26), ('a', 1), ('m', 13)])
+        result = yaml.safe_dump(data)
+        # OrderedDict is converted to regular dict for YAML
+        assert 'z:' in result
+        assert 'a:' in result
+        assert 'm:' in result
+
+
+class TestBytesRepresenter:
+    """Test bytes representation in dump()."""
+
+    def test_dump_bytes(self):
+        """Dump bytes object."""
+        data = {'data': b'Hello, World!'}
+        result = yaml.safe_dump(data)
+        # Bytes should be represented (as base64 or escaped)
+        assert 'data' in result
+
+
+class TestDatetimeRoundTrip:
+    """Test datetime round-trip (load -> dump -> load)."""
+
+    def test_date_roundtrip(self):
+        """Round-trip date value."""
+        import datetime
+        original = {'date': datetime.date(2024, 1, 15)}
+        dumped = yaml.safe_dump(original)
+        loaded = yaml.safe_load(dumped)
+        assert loaded['date'] == datetime.date(2024, 1, 15)
+
+    def test_datetime_roundtrip(self):
+        """Round-trip datetime value."""
+        import datetime
+        original = {'time': datetime.datetime(2024, 1, 15, 10, 30, 0)}
+        dumped = yaml.safe_dump(original)
+        loaded = yaml.safe_load(dumped)
+        assert isinstance(loaded['time'], datetime.datetime)
+        assert loaded['time'].year == 2024
+        assert loaded['time'].month == 1
+        assert loaded['time'].day == 15
+
+
+class TestSetOmapRoundTrip:
+    """Test set/omap round-trip."""
+
+    def test_ordereddict_roundtrip(self):
+        """Round-trip OrderedDict."""
+        from collections import OrderedDict
+        original = OrderedDict([('a', 1), ('b', 2), ('c', 3)])
+        dumped = yaml.safe_dump(original)
+        loaded = yaml.safe_load(dumped)
+        # After round-trip, becomes regular dict (order preserved in Python 3.7+)
+        assert loaded == {'a': 1, 'b': 2, 'c': 3}
