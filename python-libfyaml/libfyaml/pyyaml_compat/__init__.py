@@ -755,16 +755,36 @@ def _diag_to_exception(diag_list, stream_name='<string>'):
     )
 
     # Determine error type from message
+    # Scanner errors: tokenization issues (tabs, invalid characters, indentation)
+    # Parser errors: grammar issues (unclosed braces, missing values, structure)
     msg_lower = message.lower()
-    if 'alias' in msg_lower:
+
+    # Scanner error patterns (tokenization/lexing phase)
+    scanner_patterns = [
+        'tab', 'indentation', 'invalid character', 'escape', 'encoding',
+        'byte order', 'invalid unicode', 'invalid multiline',
+    ]
+    # Parser error patterns (grammar/syntax phase)
+    parser_patterns = [
+        'expected', 'unexpected', 'found', 'while parsing', 'while scanning',
+        'did not find', 'mapping', 'sequence', 'block', 'flow',
+    ]
+
+    if 'alias' in msg_lower or 'anchor' in msg_lower:
         return ComposerError(problem=message, problem_mark=problem_mark)
-    elif 'scanner' in msg_lower or 'unexpected' in msg_lower:
-        return ScannerError(problem=message, problem_mark=problem_mark)
-    elif 'parser' in msg_lower or 'expected' in msg_lower:
-        return ParserError(problem=message, problem_mark=problem_mark)
-    else:
-        # Default to MarkedYAMLError for unknown error types
-        return MarkedYAMLError(problem=message, problem_mark=problem_mark)
+
+    # Check for scanner patterns first (more specific)
+    for pattern in scanner_patterns:
+        if pattern in msg_lower:
+            return ScannerError(problem=message, problem_mark=problem_mark)
+
+    # Check for parser patterns
+    for pattern in parser_patterns:
+        if pattern in msg_lower:
+            return ParserError(problem=message, problem_mark=problem_mark)
+
+    # Default to ScannerError for unknown tokenization issues
+    return ScannerError(problem=message, problem_mark=problem_mark)
 
 
 def load(stream, Loader=SafeLoader):
@@ -796,7 +816,12 @@ def load(stream, Loader=SafeLoader):
 
     # Use yaml1.1 mode for PyYAML compatibility (merge keys, octal, etc.)
     # Use collect_diag=True to get error details for PyYAML-style exceptions
-    doc = fy.loads(stream, mode='yaml1.1', collect_diag=True)
+    try:
+        doc = fy.loads(stream, mode='yaml1.1', collect_diag=True)
+    except ValueError as e:
+        # libfyaml throws ValueError for some parse errors without diagnostics
+        # Convert to ParserError for PyYAML compatibility
+        raise ParserError(problem=str(e))
 
     # Check if we got an error (collect_diag returns diag sequence on error)
     if doc.is_sequence():
