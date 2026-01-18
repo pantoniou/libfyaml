@@ -24,10 +24,244 @@ Supported API:
 """
 
 import libfyaml as fy
+import base64
+import datetime
+import re
+from collections import OrderedDict
 
 # Version info for compatibility
 __version__ = '6.0.1'  # Mimic PyYAML version for compatibility checks
 __with_libyaml__ = True  # We're using libfyaml as backend
+
+
+# ============================================================================
+# Standard YAML Tag Constructors and Representers
+# ============================================================================
+
+# ISO 8601 date/time patterns for YAML 1.1 compatibility
+_TIMESTAMP_REGEXP = re.compile(
+    r'^(?P<year>[0-9][0-9][0-9][0-9])'
+    r'-(?P<month>[0-9][0-9]?)'
+    r'-(?P<day>[0-9][0-9]?)'
+    r'(?:(?:[Tt]|[ \t]+)'
+    r'(?P<hour>[0-9][0-9]?)'
+    r':(?P<minute>[0-9][0-9])'
+    r':(?P<second>[0-9][0-9])'
+    r'(?:\.(?P<fraction>[0-9]*))?'
+    r'(?:[ \t]*(?P<tz>Z|(?P<tz_sign>[-+])(?P<tz_hour>[0-9][0-9]?)'
+    r'(?::(?P<tz_minute>[0-9][0-9]))?))?)?$')
+
+_DATE_REGEXP = re.compile(
+    r'^(?P<year>[0-9][0-9][0-9][0-9])'
+    r'-(?P<month>[0-9][0-9]?)'
+    r'-(?P<day>[0-9][0-9]?)$')
+
+
+def _try_implicit_timestamp(value):
+    """Try to parse a string as a YAML timestamp (for implicit resolution).
+
+    This is called for untagged scalar strings to check if they match
+    the ISO 8601 date/time patterns that PyYAML implicitly resolves.
+
+    Args:
+        value: String value to check
+
+    Returns:
+        datetime.date or datetime.datetime if pattern matches, None otherwise
+    """
+    if not isinstance(value, str):
+        return None
+
+    # Try date-only first (simpler pattern)
+    match = _DATE_REGEXP.match(value)
+    if match:
+        values = match.groupdict()
+        try:
+            year = int(values['year'])
+            month = int(values['month'])
+            day = int(values['day'])
+            return datetime.date(year, month, day)
+        except (ValueError, TypeError):
+            return None
+
+    # Try full timestamp
+    match = _TIMESTAMP_REGEXP.match(value)
+    if match:
+        values = match.groupdict()
+        try:
+            year = int(values['year'])
+            month = int(values['month'])
+            day = int(values['day'])
+            if values['hour'] is None:
+                return datetime.date(year, month, day)
+            hour = int(values['hour'])
+            minute = int(values['minute'])
+            second = int(values['second'])
+            fraction = 0
+            if values['fraction']:
+                fraction_s = values['fraction'][:6].ljust(6, '0')
+                fraction = int(fraction_s)
+            tz = None
+            if values['tz']:
+                if values['tz'] == 'Z':
+                    tz = datetime.timezone.utc
+                else:
+                    tz_sign = -1 if values['tz_sign'] == '-' else 1
+                    tz_hour = int(values['tz_hour'])
+                    tz_minute = int(values['tz_minute']) if values['tz_minute'] else 0
+                    tz = datetime.timezone(datetime.timedelta(
+                        hours=tz_sign * tz_hour,
+                        minutes=tz_sign * tz_minute))
+            return datetime.datetime(year, month, day, hour, minute, second, fraction, tz)
+        except (ValueError, TypeError):
+            return None
+
+    return None
+
+
+def _construct_yaml_timestamp(loader, node):
+    """Construct a datetime from a YAML timestamp.
+
+    Supports both full timestamps (datetime) and date-only values (date).
+    """
+    value = loader.construct_scalar(node)
+    if value is None:
+        return None
+
+    result = _try_implicit_timestamp(value)
+    if result is not None:
+        return result
+
+    # Return as string if no pattern matched
+    return value
+
+
+def _construct_yaml_binary(loader, node):
+    """Construct bytes from a base64-encoded YAML binary value."""
+    value = loader.construct_scalar(node)
+    if value is None:
+        return b''
+    if isinstance(value, bytes):
+        return value
+    # Remove whitespace (YAML allows line breaks in binary data)
+    value = value.replace('\n', '').replace('\r', '').replace(' ', '')
+    try:
+        return base64.b64decode(value)
+    except Exception:
+        return value.encode('utf-8')
+
+
+def _construct_yaml_omap(loader, node):
+    """Construct an OrderedDict from a YAML !!omap sequence.
+
+    !!omap is a sequence of single-key mappings.
+    """
+    if node is None:
+        return OrderedDict()
+
+    generic = node._generic if hasattr(node, '_generic') else node
+    if hasattr(generic, 'value'):
+        generic = generic.value
+
+    omap = OrderedDict()
+    if hasattr(generic, 'is_sequence') and generic.is_sequence():
+        for item in generic:
+            if hasattr(item, 'is_mapping') and item.is_mapping():
+                for k, v in item.items():
+                    key = k.to_python() if hasattr(k, 'to_python') else k
+                    value = v.to_python() if hasattr(v, 'to_python') else v
+                    omap[key] = value
+    elif isinstance(generic, list):
+        for item in generic:
+            if isinstance(item, dict):
+                for k, v in item.items():
+                    omap[k] = v
+    return omap
+
+
+def _construct_yaml_set(loader, node):
+    """Construct a set from a YAML !!set mapping.
+
+    !!set is a mapping where only keys matter (values are null).
+    """
+    if node is None:
+        return set()
+
+    generic = node._generic if hasattr(node, '_generic') else node
+    if hasattr(generic, 'value'):
+        generic = generic.value
+
+    result = set()
+    if hasattr(generic, 'is_mapping') and generic.is_mapping():
+        for k, v in generic.items():
+            key = k.to_python() if hasattr(k, 'to_python') else k
+            result.add(key)
+    elif isinstance(generic, dict):
+        result = set(generic.keys())
+    return result
+
+
+def _construct_yaml_pairs(loader, node):
+    """Construct a list of (key, value) pairs from a YAML !!pairs sequence.
+
+    Similar to !!omap but allows duplicate keys.
+    """
+    if node is None:
+        return []
+
+    generic = node._generic if hasattr(node, '_generic') else node
+    if hasattr(generic, 'value'):
+        generic = generic.value
+
+    pairs = []
+    if hasattr(generic, 'is_sequence') and generic.is_sequence():
+        for item in generic:
+            if hasattr(item, 'is_mapping') and item.is_mapping():
+                for k, v in item.items():
+                    key = k.to_python() if hasattr(k, 'to_python') else k
+                    value = v.to_python() if hasattr(v, 'to_python') else v
+                    pairs.append((key, value))
+    elif isinstance(generic, list):
+        for item in generic:
+            if isinstance(item, dict):
+                for k, v in item.items():
+                    pairs.append((k, v))
+    return pairs
+
+
+# Representer functions for dump()
+def _represent_datetime(dumper, data):
+    """Represent a datetime object as ISO format string."""
+    if data.tzinfo is not None:
+        value = data.isoformat()
+    else:
+        value = data.strftime('%Y-%m-%d %H:%M:%S')
+        if data.microsecond:
+            value += '.%06d' % data.microsecond
+    return value
+
+
+def _represent_date(dumper, data):
+    """Represent a date object as ISO format string."""
+    return data.isoformat()
+
+
+def _represent_bytes(dumper, data):
+    """Represent bytes as base64-encoded binary."""
+    # For dump(), we return a dict with special marker for binary
+    # The dump function will handle converting this to proper YAML
+    encoded = base64.b64encode(data).decode('ascii')
+    return {'__yaml_binary__': encoded}
+
+
+def _represent_set(dumper, data):
+    """Represent a set as a mapping with null values."""
+    return {item: None for item in data}
+
+
+def _represent_ordereddict(dumper, data):
+    """Represent an OrderedDict as a regular mapping."""
+    return dict(data)
 
 # Import submodules for 'from yaml.xxx import ...' compatibility
 from libfyaml.pyyaml_compat import nodes
@@ -205,7 +439,13 @@ class BaseLoader:
         elif hasattr(generic, 'is_sequence') and generic.is_sequence():
             return self.construct_sequence(node, deep=deep)
         elif hasattr(generic, 'to_python'):
-            return generic.to_python()
+            value = generic.to_python()
+            # Try implicit timestamp resolution for untagged string scalars
+            if not tag and isinstance(value, str):
+                timestamp = _try_implicit_timestamp(value)
+                if timestamp is not None:
+                    return timestamp
+            return value
         elif hasattr(node, 'value'):
             return node.value
         return node
@@ -230,26 +470,47 @@ class BaseLoader:
 
 
 class SafeLoader(BaseLoader):
-    """Safe loader class for PyYAML API compatibility."""
-    yaml_constructors = {}
+    """Safe loader class for PyYAML API compatibility.
+
+    Includes default constructors for standard YAML tags:
+    - !!binary (base64-encoded bytes)
+    - !!timestamp (ISO 8601 dates and times)
+    - !!set (set type)
+    - !!omap (ordered mapping)
+    - !!pairs (list of pairs)
+    """
+    yaml_constructors = {
+        # Standard YAML 1.1 tags
+        'tag:yaml.org,2002:binary': _construct_yaml_binary,
+        'tag:yaml.org,2002:timestamp': _construct_yaml_timestamp,
+        'tag:yaml.org,2002:set': _construct_yaml_set,
+        'tag:yaml.org,2002:omap': _construct_yaml_omap,
+        'tag:yaml.org,2002:pairs': _construct_yaml_pairs,
+        # Short forms
+        '!!binary': _construct_yaml_binary,
+        '!!timestamp': _construct_yaml_timestamp,
+        '!!set': _construct_yaml_set,
+        '!!omap': _construct_yaml_omap,
+        '!!pairs': _construct_yaml_pairs,
+    }
     yaml_multi_constructors = {}
 
 
 class FullLoader(SafeLoader):
     """Full loader class for PyYAML API compatibility."""
-    yaml_constructors = {}
+    yaml_constructors = SafeLoader.yaml_constructors.copy()
     yaml_multi_constructors = {}
 
 
 class UnsafeLoader(SafeLoader):
     """Unsafe loader class for PyYAML API compatibility."""
-    yaml_constructors = {}
+    yaml_constructors = SafeLoader.yaml_constructors.copy()
     yaml_multi_constructors = {}
 
 
 class Loader(SafeLoader):
     """Default loader class (same as SafeLoader in our safe implementation)."""
-    yaml_constructors = {}
+    yaml_constructors = SafeLoader.yaml_constructors.copy()
     yaml_multi_constructors = {}
 
 
@@ -267,15 +528,73 @@ class BaseDumper:
     yaml_representers = {}
     yaml_multi_representers = {}
 
+    def __init__(self, stream=None, default_style=None, default_flow_style=False,
+                 canonical=None, indent=None, width=None, allow_unicode=None,
+                 line_break=None, encoding=None, explicit_start=None,
+                 explicit_end=None, version=None, tags=None, sort_keys=True):
+        """Initialize dumper with optional parameters."""
+        self._stream = stream
+        self._default_style = default_style
+        self._default_flow_style = default_flow_style
+        self._canonical = canonical
+        self._indent = indent
+        self._width = width
+        self._allow_unicode = allow_unicode
+        self._line_break = line_break
+        self._encoding = encoding
+        self._explicit_start = explicit_start
+        self._explicit_end = explicit_end
+        self._version = version
+        self._tags = tags
+        self._sort_keys = sort_keys
+
     @classmethod
     def add_representer(cls, data_type, representer_func):
         """Add a representer for a specific type."""
+        # Create a copy of the dict for this class if it's inherited
+        if 'yaml_representers' not in cls.__dict__:
+            cls.yaml_representers = cls.yaml_representers.copy()
         cls.yaml_representers[data_type] = representer_func
 
     @classmethod
     def add_multi_representer(cls, data_type, representer_func):
         """Add a multi-representer for a type and its subclasses."""
+        # Create a copy of the dict for this class if it's inherited
+        if 'yaml_multi_representers' not in cls.__dict__:
+            cls.yaml_multi_representers = cls.yaml_multi_representers.copy()
         cls.yaml_multi_representers[data_type] = representer_func
+
+    def represent_data(self, data):
+        """Represent Python data using registered representers.
+
+        This is the main entry point for representation. It checks for
+        registered representers and dispatches appropriately.
+
+        Args:
+            data: Python object to represent
+
+        Returns:
+            Represented data (potentially modified by representer)
+        """
+        data_type = type(data)
+
+        # Check for exact type match
+        if data_type in self.yaml_representers:
+            representer = self.yaml_representers[data_type]
+            return representer(self, data)
+
+        # Check for multi-representers (type hierarchy)
+        for base_type, representer in self.yaml_multi_representers.items():
+            if base_type is not None and isinstance(data, base_type):
+                return representer(self, data)
+
+        # Check for None type representer (catch-all)
+        if None in self.yaml_representers:
+            representer = self.yaml_representers[None]
+            return representer(self, data)
+
+        # Return data unchanged
+        return data
 
     def represent_mapping(self, tag, mapping):
         """Represent a mapping."""
@@ -291,14 +610,29 @@ class BaseDumper:
 
 
 class SafeDumper(BaseDumper):
-    """Safe dumper class for PyYAML API compatibility."""
-    yaml_representers = {}
+    """Safe dumper class for PyYAML API compatibility.
+
+    Includes default representers for standard Python types:
+    - datetime.datetime
+    - datetime.date
+    - bytes (as base64)
+    - set (as mapping with null values)
+    - OrderedDict
+    """
+    yaml_representers = {
+        datetime.datetime: _represent_datetime,
+        datetime.date: _represent_date,
+        bytes: _represent_bytes,
+        set: _represent_set,
+        frozenset: _represent_set,
+        OrderedDict: _represent_ordereddict,
+    }
     yaml_multi_representers = {}
 
 
 class Dumper(SafeDumper):
     """Full dumper class for PyYAML API compatibility."""
-    yaml_representers = {}
+    yaml_representers = SafeDumper.yaml_representers.copy()
     yaml_multi_representers = {}
 
 
@@ -585,6 +919,54 @@ def safe_load_all(stream):
     return load_all(stream, SafeLoader)
 
 
+def _apply_representers(data, dumper):
+    """Recursively apply representers to data before serialization.
+
+    This transforms Python objects using registered representers,
+    producing data that can be serialized by libfyaml.
+
+    Args:
+        data: Python object to transform
+        dumper: Dumper instance with representers
+
+    Returns:
+        Transformed data suitable for from_python()
+    """
+    data_type = type(data)
+
+    # Check for exact type match in representers
+    representers = getattr(dumper, 'yaml_representers', {})
+    multi_representers = getattr(dumper, 'yaml_multi_representers', {})
+
+    if data_type in representers:
+        representer = representers[data_type]
+        result = representer(dumper, data)
+        # Recursively apply to result
+        return _apply_representers(result, dumper)
+
+    # Check for multi-representers (type hierarchy)
+    for base_type, representer in multi_representers.items():
+        if base_type is not None and isinstance(data, base_type):
+            result = representer(dumper, data)
+            return _apply_representers(result, dumper)
+
+    # Check for None type representer (catch-all)
+    if None in representers:
+        representer = representers[None]
+        result = representer(dumper, data)
+        return _apply_representers(result, dumper)
+
+    # Recursively process containers
+    if isinstance(data, dict):
+        return {_apply_representers(k, dumper): _apply_representers(v, dumper)
+                for k, v in data.items()}
+    elif isinstance(data, (list, tuple)):
+        return [_apply_representers(item, dumper) for item in data]
+
+    # Return data unchanged
+    return data
+
+
 def dump(data, stream=None, Dumper=SafeDumper, default_flow_style=False,
          default_style=None, canonical=None, indent=None, width=None,
          allow_unicode=True, line_break=None, encoding=None,
@@ -595,7 +977,7 @@ def dump(data, stream=None, Dumper=SafeDumper, default_flow_style=False,
     Args:
         data: Python object to serialize
         stream: File-like object to write to (optional)
-        Dumper: Dumper class (ignored - libfyaml uses its own emitter)
+        Dumper: Dumper class (uses registered representers for custom types)
         default_flow_style: Use flow style for collections (default: False)
         indent: Indentation width (default: 2)
         sort_keys: Sort dictionary keys (default: True)
@@ -608,6 +990,21 @@ def dump(data, stream=None, Dumper=SafeDumper, default_flow_style=False,
         >>> dump({"foo": "bar"})
         'foo: bar\\n'
     """
+    # Apply representers to transform custom types
+    representers = getattr(Dumper, 'yaml_representers', {})
+    multi_representers = getattr(Dumper, 'yaml_multi_representers', {})
+
+    if representers or multi_representers:
+        # Create dumper instance for representer methods
+        dumper = Dumper(stream, default_style=default_style,
+                       default_flow_style=default_flow_style,
+                       canonical=canonical, indent=indent, width=width,
+                       allow_unicode=allow_unicode, line_break=line_break,
+                       encoding=encoding, explicit_start=explicit_start,
+                       explicit_end=explicit_end, version=version, tags=tags,
+                       sort_keys=sort_keys)
+        data = _apply_representers(data, dumper)
+
     # Convert Python object to FyGeneric
     doc = fy.from_python(data)
 
@@ -652,6 +1049,21 @@ def dump_all(documents, stream=None, Dumper=SafeDumper, default_flow_style=False
     Returns:
         YAML string if stream is None, otherwise None
     """
+    # Apply representers to transform custom types
+    representers = getattr(Dumper, 'yaml_representers', {})
+    multi_representers = getattr(Dumper, 'yaml_multi_representers', {})
+
+    if representers or multi_representers:
+        # Create dumper instance for representer methods
+        dumper = Dumper(stream, default_style=default_style,
+                       default_flow_style=default_flow_style,
+                       canonical=canonical, indent=indent, width=width,
+                       allow_unicode=allow_unicode, line_break=line_break,
+                       encoding=encoding, explicit_start=explicit_start,
+                       explicit_end=explicit_end, version=version, tags=tags,
+                       sort_keys=sort_keys)
+        documents = [_apply_representers(data, dumper) for data in documents]
+
     # Convert all documents to FyGeneric
     docs = [fy.from_python(data) for data in documents]
 
