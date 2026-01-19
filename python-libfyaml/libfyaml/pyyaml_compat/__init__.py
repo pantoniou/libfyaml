@@ -467,6 +467,34 @@ class BaseLoader:
                         for k, v in generic.items()]
         return []
 
+    def construct_yaml_object(self, node, cls):
+        """Construct a Python object from a YAML node using __setstate__.
+
+        This is used by YAMLObject subclasses for default deserialization.
+
+        Args:
+            node: A YAML node (mapping)
+            cls: The class to instantiate
+
+        Returns:
+            An instance of cls with state set from the mapping
+        """
+        # Get the state from the mapping
+        state = self.construct_mapping(node, deep=True)
+
+        # Create instance
+        instance = cls.__new__(cls)
+
+        # Set state
+        if hasattr(instance, '__setstate__'):
+            instance.__setstate__(state)
+        else:
+            # Default: update __dict__
+            if isinstance(state, dict):
+                instance.__dict__.update(state)
+
+        return instance
+
 
 class SafeLoader(BaseLoader):
     """Safe loader class for PyYAML API compatibility.
@@ -519,6 +547,115 @@ CFullLoader = FullLoader
 CUnsafeLoader = UnsafeLoader
 CLoader = Loader
 CBaseLoader = BaseLoader
+
+
+# Module-level functions for adding constructors/representers
+def add_constructor(tag, constructor, Loader=None):
+    """Add a constructor for the given tag.
+
+    Args:
+        tag: YAML tag to match
+        constructor: Function(loader, node) -> object
+        Loader: Loader class to add constructor to (default: Loader)
+    """
+    if Loader is None:
+        Loader = globals()['Loader']
+    Loader.add_constructor(tag, constructor)
+
+
+def add_multi_constructor(tag_prefix, multi_constructor, Loader=None):
+    """Add a multi-constructor for the given tag prefix.
+
+    Args:
+        tag_prefix: YAML tag prefix to match
+        multi_constructor: Function(loader, tag_suffix, node) -> object
+        Loader: Loader class to add constructor to (default: Loader)
+    """
+    if Loader is None:
+        Loader = globals()['Loader']
+    Loader.add_multi_constructor(tag_prefix, multi_constructor)
+
+
+def add_representer(data_type, representer, Dumper=None):
+    """Add a representer for the given data type.
+
+    Args:
+        data_type: Python type to represent
+        representer: Function(dumper, data) -> node
+        Dumper: Dumper class to add representer to (default: Dumper)
+    """
+    if Dumper is None:
+        Dumper = globals()['Dumper']
+    Dumper.add_representer(data_type, representer)
+
+
+def add_multi_representer(data_type, multi_representer, Dumper=None):
+    """Add a multi-representer for the given data type.
+
+    Args:
+        data_type: Python type (and subclasses) to represent
+        multi_representer: Function(dumper, data) -> node
+        Dumper: Dumper class to add representer to (default: Dumper)
+    """
+    if Dumper is None:
+        Dumper = globals()['Dumper']
+    Dumper.add_multi_representer(data_type, multi_representer)
+
+
+class YAMLObjectMetaclass(type):
+    """Metaclass for YAMLObject that auto-registers constructors/representers."""
+
+    def __init__(cls, name, bases, kwds):
+        super().__init__(name, bases, kwds)
+        if 'yaml_tag' in kwds and kwds['yaml_tag'] is not None:
+            # Get the loader and dumper classes
+            yaml_loader = getattr(cls, 'yaml_loader', None)
+            yaml_dumper = getattr(cls, 'yaml_dumper', None)
+
+            # Register constructor
+            if yaml_loader is not None:
+                if isinstance(yaml_loader, (list, tuple)):
+                    loaders = yaml_loader
+                else:
+                    loaders = [yaml_loader]
+                for loader in loaders:
+                    loader.add_constructor(cls.yaml_tag, cls.from_yaml)
+
+            # Register representer
+            if yaml_dumper is not None:
+                if isinstance(yaml_dumper, (list, tuple)):
+                    dumpers = yaml_dumper
+                else:
+                    dumpers = [yaml_dumper]
+                for dumper in dumpers:
+                    dumper.add_representer(cls, cls.to_yaml)
+
+
+class YAMLObject(metaclass=YAMLObjectMetaclass):
+    """Base class for YAML-serializable objects.
+
+    Subclasses should define:
+        yaml_tag: The YAML tag for this class (e.g., '!myobject')
+        yaml_loader: Loader class(es) to register with (default: Loader)
+        yaml_dumper: Dumper class(es) to register with (default: Dumper)
+
+    And optionally override:
+        from_yaml(cls, loader, node): Construct object from YAML node
+        to_yaml(cls, dumper, data): Represent object as YAML node
+    """
+    yaml_tag = None
+    yaml_loader = None  # Will be set after Loader is defined
+    yaml_dumper = None  # Will be set after Dumper is defined
+
+    @classmethod
+    def from_yaml(cls, loader, node):
+        """Construct an instance from a YAML node."""
+        return loader.construct_yaml_object(node, cls)
+
+    @classmethod
+    def to_yaml(cls, dumper, data):
+        """Represent an instance as a YAML node."""
+        return dumper.represent_yaml_object(cls.yaml_tag, data, cls)
 
 
 # Dumper classes with add_representer support
@@ -666,6 +803,29 @@ class BaseDumper:
             ScalarNode with the value
         """
         return ScalarNode(tag, value, style=style)
+
+    def represent_yaml_object(self, tag, data, cls, flow_style=None):
+        """Represent a Python object as a YAML mapping with a tag.
+
+        This is used by YAMLObject subclasses for default serialization.
+
+        Args:
+            tag: YAML tag for the object
+            data: The object to represent
+            cls: The class of the object
+            flow_style: Optional flow style
+
+        Returns:
+            MappingNode with the object's state
+        """
+        # Get state
+        if hasattr(data, '__getstate__'):
+            state = data.__getstate__()
+        else:
+            state = data.__dict__.copy()
+
+        # Represent as mapping
+        return self.represent_mapping(tag, state.items())
 
 
 class SafeDumper(BaseDumper):
