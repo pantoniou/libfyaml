@@ -137,14 +137,17 @@ int fy_accel_resize(struct fy_accel *xl, unsigned int min_buckets)
 
 int fy_accel_grow(struct fy_accel *xl)
 {
+	unsigned int idx;
+
 	if (!xl)
 		return -1;
 
 	/* should not grow indefinetely */
-	if (xl->next_exp2 >= sizeof(prime_lt_pow2)/sizeof(prime_lt_pow2[0]))
+	idx = xl->next_exp2 + 1;
+	if (idx >= ARRAY_SIZE(prime_lt_pow2))
 		return -1;
 
-	return fy_accel_resize(xl, prime_lt_pow2[xl->next_exp2 + 1]);
+	return fy_accel_resize(xl, prime_lt_pow2[idx]);
 }
 
 int fy_accel_shrink(struct fy_accel *xl)
