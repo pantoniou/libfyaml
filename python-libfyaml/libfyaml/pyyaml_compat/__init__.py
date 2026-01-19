@@ -136,6 +136,35 @@ def _construct_yaml_timestamp(loader, node):
     return value
 
 
+# ============================================================================
+# PyYAML Deviations from YAML 1.1 Spec
+# ============================================================================
+#
+# PyYAML's YAML 1.1 implementation deviates from the strict spec in several ways.
+# These are NOT currently handled by libfyaml's yaml1.1 mode:
+#
+# 1. BOOLEANS - PyYAML uses a restricted set:
+#    - Accepts: yes/Yes/YES, no/No/NO, true/True/TRUE, false/False/FALSE, on/On/ON, off/Off/OFF
+#    - Does NOT accept single-letter: y/Y/n/N (YAML 1.1 spec includes these)
+#    - This means {y: value, n: value} keeps string keys in PyYAML but gets bool keys in strict YAML 1.1
+#
+# 2. INTEGERS with underscores - PyYAML supports underscore separators:
+#    - Decimal: +685_230, -1_000_000
+#    - Hex: 0x_0A_74_AE
+#    - Binary: 0b1010_0111_0100_1010_1110
+#    - Octal: 0_2472256
+#
+# 3. SEXAGESIMAL integers (base 60) - PyYAML supports:
+#    - 190:20:30 → 685230 (190*3600 + 20*60 + 30)
+#
+# 4. SEXAGESIMAL floats (base 60) - PyYAML supports:
+#    - 190:20:30.15 → 685230.15
+#
+# To achieve full PyYAML compatibility, libfyaml would need a dedicated
+# 'yaml1.1-pyyaml' mode that implements these PyYAML-specific behaviors.
+# ============================================================================
+
+
 def _construct_yaml_binary(loader, node):
     """Construct bytes from a base64-encoded YAML binary value."""
     value = loader.construct_scalar(node)
@@ -152,31 +181,32 @@ def _construct_yaml_binary(loader, node):
 
 
 def _construct_yaml_omap(loader, node):
-    """Construct an OrderedDict from a YAML !!omap sequence.
+    """Construct a list of tuples from a YAML !!omap sequence.
 
     !!omap is a sequence of single-key mappings.
+    PyYAML returns a list of (key, value) tuples, not an OrderedDict.
     """
     if node is None:
-        return OrderedDict()
+        return []
 
     generic = node._generic if hasattr(node, '_generic') else node
     if hasattr(generic, 'value'):
         generic = generic.value
 
-    omap = OrderedDict()
+    pairs = []
     if hasattr(generic, 'is_sequence') and generic.is_sequence():
         for item in generic:
             if hasattr(item, 'is_mapping') and item.is_mapping():
                 for k, v in item.items():
                     key = k.to_python() if hasattr(k, 'to_python') else k
                     value = v.to_python() if hasattr(v, 'to_python') else v
-                    omap[key] = value
+                    pairs.append((key, value))
     elif isinstance(generic, list):
         for item in generic:
             if isinstance(item, dict):
                 for k, v in item.items():
-                    omap[k] = v
-    return omap
+                    pairs.append((k, v))
+    return pairs
 
 
 def _construct_yaml_set(loader, node):
@@ -254,8 +284,10 @@ def _represent_bytes(dumper, data):
 
 
 def _represent_set(dumper, data):
-    """Represent a set as a mapping with null values."""
-    return {item: None for item in data}
+    """Represent a set as a tagged mapping with null values."""
+    # Convert to mapping with null values and apply !!set tag
+    set_mapping = {item: None for item in data}
+    return fy.from_python(set_mapping, tag='tag:yaml.org,2002:set')
 
 
 def _represent_ordereddict(dumper, data):
@@ -425,6 +457,11 @@ class BaseLoader:
                 if prefix and tag.startswith(prefix):
                     wrapped = _NodeWrapper(generic) if not hasattr(node, '_generic') else node
                     return multi_constructor(self, tag[len(prefix):], wrapped)
+            # Check for None prefix (catch-all multi-constructor)
+            if None in self.yaml_multi_constructors:
+                multi_constructor = self.yaml_multi_constructors[None]
+                wrapped = _NodeWrapper(generic) if not hasattr(node, '_generic') else node
+                return multi_constructor(self, tag, wrapped)
 
         # Check for None tag constructor (catch-all)
         if None in self.yaml_constructors:
@@ -1283,6 +1320,10 @@ def _apply_representers(data, dumper):
     if isinstance(data, (ScalarNode, MappingNode, SequenceNode)):
         return _node_to_python(data)
 
+    # FyGeneric objects are already in the right format - don't process further
+    if isinstance(data, fy.FyGeneric):
+        return data
+
     data_type = type(data)
 
     # Check for exact type match in representers
@@ -1319,21 +1360,26 @@ def _apply_representers(data, dumper):
 
 
 def _convert_tagged_values(data):
-    """Convert TaggedScalar objects and bytes to tagged FyGeneric values.
+    """Convert TaggedScalar objects, bytes, and sets to tagged FyGeneric values.
 
     This function recursively walks the data structure and converts:
     - TaggedScalar objects to tagged FyGeneric using from_python(obj, tag=...)
     - bytes to tagged FyGeneric with !!binary tag
+    - sets/frozensets to tagged FyGeneric with !!set tag
 
     The resulting structure can be passed to from_python(), which will
     recognize and internalize the FyGeneric objects.
 
     Args:
-        data: Python object, possibly containing TaggedScalar or bytes
+        data: Python object, possibly containing TaggedScalar, bytes, or sets
 
     Returns:
-        Data with TaggedScalars/bytes replaced by tagged FyGeneric values
+        Data with TaggedScalars/bytes/sets replaced by tagged FyGeneric values
     """
+    # FyGeneric objects are already in the right format - don't process
+    if isinstance(data, fy.FyGeneric):
+        return data
+
     if isinstance(data, TaggedScalar):
         # Convert TaggedScalar to tagged FyGeneric
         return fy.from_python(data.value, tag=data.tag)
@@ -1341,6 +1387,10 @@ def _convert_tagged_values(data):
         # Convert bytes to base64 and create tagged FyGeneric with !!binary tag
         encoded = base64.standard_b64encode(data).decode('ascii')
         return fy.from_python(encoded, tag='tag:yaml.org,2002:binary')
+    elif isinstance(data, (set, frozenset)):
+        # Convert set to mapping with null values and !!set tag
+        set_mapping = {_convert_tagged_values(item): None for item in data}
+        return fy.from_python(set_mapping, tag='tag:yaml.org,2002:set')
     elif isinstance(data, dict):
         return {_convert_tagged_values(k): _convert_tagged_values(v) for k, v in data.items()}
     elif isinstance(data, (list, tuple)):
@@ -1360,6 +1410,10 @@ def _sort_keys_recursive(data, sort_keys):
         Data with sorted keys (if sort_keys is True)
     """
     if not sort_keys:
+        return data
+
+    # FyGeneric objects are already in the right format - don't process
+    if isinstance(data, fy.FyGeneric):
         return data
 
     if isinstance(data, dict):
