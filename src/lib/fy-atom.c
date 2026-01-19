@@ -52,21 +52,20 @@ struct fy_atom *fy_reader_fill_atom(struct fy_reader *fyr, int advance, struct f
 
 int fy_reader_advance_mark(struct fy_reader *fyr, int advance, struct fy_mark *m)
 {
-	int i, c, tabsize;
+	int c, tabsize, w;
 	bool is_line_break;
 
 	tabsize = fy_reader_tabsize(fyr);
-	i = 0;
 	while (advance-- > 0) {
-		c = fy_reader_peek_at(fyr, i++);
+		c = fy_reader_peek_at_offset_width(fyr, m->input_pos, &w);
 		if (c == -1)
 			return -1;
 		m->input_pos += fy_utf8_width(c);
 
 		/* first check for CR/LF */
-		if (c == '\r' && fy_reader_peek_at(fyr, i) == '\n') {
+		if (c == '\r' &&
+			fy_reader_peek_at_offset(fyr, m->input_pos + (size_t)w) == '\n') {
 			m->input_pos++;
-			i++;
 			is_line_break = true;
 		} else if (fy_reader_is_lb(fyr, c))
 			is_line_break = true;
