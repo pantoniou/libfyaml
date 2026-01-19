@@ -248,10 +248,9 @@ def _represent_date(dumper, data):
 
 def _represent_bytes(dumper, data):
     """Represent bytes as base64-encoded binary."""
-    # For dump(), we return a dict with special marker for binary
-    # The dump function will handle converting this to proper YAML
-    encoded = base64.b64encode(data).decode('ascii')
-    return {'__yaml_binary__': encoded}
+    encoded = base64.standard_b64encode(data).decode('ascii')
+    # Use plain style because libfyaml doesn't handle literal style with tags properly
+    return ScalarNode('tag:yaml.org,2002:binary', encoded, style=None)
 
 
 def _represent_set(dumper, data):
@@ -835,10 +834,23 @@ def load(stream, Loader=SafeLoader):
     constructors = getattr(Loader, 'yaml_constructors', {})
     multi_constructors = getattr(Loader, 'yaml_multi_constructors', {})
 
+    # Always use SafeLoader's constructors as baseline for standard tags like !!binary
+    # Then overlay any Loader-specific constructors
+    if not constructors and not multi_constructors:
+        # Loader has no constructors (e.g., factory function like AnsibleLoader)
+        # Use SafeLoader's constructors for standard tag handling
+        constructors = SafeLoader.yaml_constructors
+        multi_constructors = SafeLoader.yaml_multi_constructors
+
     if constructors or multi_constructors:
         # Create a lightweight proxy with the constructors
         # This avoids instantiating Loaders that inherit from parsers (like AnsibleLoader)
         loader = _ConstructorProxy(Loader, stream)
+        # Ensure SafeLoader constructors are available as fallback
+        if Loader is not SafeLoader:
+            for tag, func in SafeLoader.yaml_constructors.items():
+                if tag not in loader.yaml_constructors:
+                    loader.yaml_constructors[tag] = func
         return _convert_with_loader(doc, loader)
 
     return doc.to_python()
@@ -944,6 +956,65 @@ def safe_load_all(stream):
     return load_all(stream, SafeLoader)
 
 
+def _node_to_python(node):
+    """Convert a PyYAML Node back to a Python value for serialization.
+
+    Args:
+        node: A ScalarNode, MappingNode, or SequenceNode
+
+    Returns:
+        Python value that can be passed to from_python()
+    """
+    if isinstance(node, ScalarNode):
+        tag = node.tag
+        value = node.value
+
+        # Handle standard YAML tags
+        if tag == 'tag:yaml.org,2002:null' or value in ('null', 'Null', 'NULL', '~', ''):
+            return None
+        elif tag == 'tag:yaml.org,2002:bool':
+            return value.lower() in ('true', 'yes', 'on')
+        elif tag == 'tag:yaml.org,2002:int':
+            return int(value)
+        elif tag == 'tag:yaml.org,2002:float':
+            return float(value)
+        elif tag == 'tag:yaml.org,2002:binary':
+            # Binary data - decode from base64
+            return base64.standard_b64decode(value)
+        elif tag and tag.startswith('!'):
+            # Custom tag - wrap in TaggedScalar for later emission
+            return TaggedScalar(tag, value, node.style)
+        else:
+            # Plain string
+            return value
+
+    elif isinstance(node, MappingNode):
+        result = {}
+        for key_node, value_node in node.value:
+            key = _node_to_python(key_node)
+            value = _node_to_python(value_node)
+            result[key] = value
+        return result
+
+    elif isinstance(node, SequenceNode):
+        return [_node_to_python(item) for item in node.value]
+
+    # Unknown node type - return as-is
+    return node
+
+
+class TaggedScalar:
+    """Wrapper for scalar values with custom YAML tags."""
+
+    def __init__(self, tag, value, style=None):
+        self.tag = tag
+        self.value = value
+        self.style = style
+
+    def __repr__(self):
+        return f"TaggedScalar({self.tag!r}, {self.value!r})"
+
+
 def _apply_representers(data, dumper):
     """Recursively apply representers to data before serialization.
 
@@ -957,6 +1028,10 @@ def _apply_representers(data, dumper):
     Returns:
         Transformed data suitable for from_python()
     """
+    # Handle Node objects returned by representers
+    if isinstance(data, (ScalarNode, MappingNode, SequenceNode)):
+        return _node_to_python(data)
+
     data_type = type(data)
 
     # Check for exact type match in representers
@@ -990,6 +1065,37 @@ def _apply_representers(data, dumper):
 
     # Return data unchanged
     return data
+
+
+def _convert_tagged_values(data):
+    """Convert TaggedScalar objects and bytes to tagged FyGeneric values.
+
+    This function recursively walks the data structure and converts:
+    - TaggedScalar objects to tagged FyGeneric using from_python(obj, tag=...)
+    - bytes to tagged FyGeneric with !!binary tag
+
+    The resulting structure can be passed to from_python(), which will
+    recognize and internalize the FyGeneric objects.
+
+    Args:
+        data: Python object, possibly containing TaggedScalar or bytes
+
+    Returns:
+        Data with TaggedScalars/bytes replaced by tagged FyGeneric values
+    """
+    if isinstance(data, TaggedScalar):
+        # Convert TaggedScalar to tagged FyGeneric
+        return fy.from_python(data.value, tag=data.tag)
+    elif isinstance(data, bytes):
+        # Convert bytes to base64 and create tagged FyGeneric with !!binary tag
+        encoded = base64.standard_b64encode(data).decode('ascii')
+        return fy.from_python(encoded, tag='tag:yaml.org,2002:binary')
+    elif isinstance(data, dict):
+        return {_convert_tagged_values(k): _convert_tagged_values(v) for k, v in data.items()}
+    elif isinstance(data, (list, tuple)):
+        return [_convert_tagged_values(item) for item in data]
+    else:
+        return data
 
 
 def dump(data, stream=None, Dumper=SafeDumper, default_flow_style=False,
@@ -1030,10 +1136,12 @@ def dump(data, stream=None, Dumper=SafeDumper, default_flow_style=False,
                        sort_keys=sort_keys)
         data = _apply_representers(data, dumper)
 
-    # Convert Python object to FyGeneric
-    doc = fy.from_python(data)
+    # Convert TaggedScalars and bytes to tagged FyGeneric values
+    data = _convert_tagged_values(data)
 
-    # Use module-level dumps function
+    # Convert Python object to FyGeneric and use libfyaml
+    # from_python() will internalize any embedded FyGeneric objects
+    doc = fy.from_python(data)
     result = fy.dumps(doc)
 
     if stream is not None:
@@ -1088,6 +1196,9 @@ def dump_all(documents, stream=None, Dumper=SafeDumper, default_flow_style=False
                        explicit_end=explicit_end, version=version, tags=tags,
                        sort_keys=sort_keys)
         documents = [_apply_representers(data, dumper) for data in documents]
+
+    # Convert TaggedScalars and bytes to tagged FyGeneric values
+    documents = [_convert_tagged_values(data) for data in documents]
 
     # Convert all documents to FyGeneric
     docs = [fy.from_python(data) for data in documents]
