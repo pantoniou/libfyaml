@@ -710,38 +710,38 @@ items: !!set
 
 
 class TestOmapTag:
-    """Test !!omap tag support (ordered mapping)."""
+    """Test !!omap tag support (ordered mapping).
+
+    Note: PyYAML returns a list of tuples for !!omap, not an OrderedDict.
+    """
 
     def test_omap_basic(self):
         """Load a basic ordered map."""
-        from collections import OrderedDict
         data = yaml.safe_load("""
 items: !!omap
   - a: 1
   - b: 2
   - c: 3
 """)
-        assert isinstance(data['items'], OrderedDict)
-        assert list(data['items'].keys()) == ['a', 'b', 'c']
-        assert list(data['items'].values()) == [1, 2, 3]
+        # PyYAML returns list of tuples for !!omap
+        assert isinstance(data['items'], list)
+        assert data['items'] == [('a', 1), ('b', 2), ('c', 3)]
 
     def test_omap_flow_style(self):
         """Load omap in flow style."""
-        from collections import OrderedDict
         data = yaml.safe_load("items: !!omap [{a: 1}, {b: 2}, {c: 3}]")
-        assert isinstance(data['items'], OrderedDict)
-        assert list(data['items'].keys()) == ['a', 'b', 'c']
+        assert isinstance(data['items'], list)
+        assert data['items'] == [('a', 1), ('b', 2), ('c', 3)]
 
     def test_omap_preserves_order(self):
         """Verify omap preserves insertion order."""
-        from collections import OrderedDict
         data = yaml.safe_load("""
 items: !!omap
   - z: 26
   - a: 1
   - m: 13
 """)
-        assert list(data['items'].keys()) == ['z', 'a', 'm']
+        assert data['items'] == [('z', 26), ('a', 1), ('m', 13)]
 
 
 class TestPairsTag:
