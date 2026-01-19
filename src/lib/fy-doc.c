@@ -1943,11 +1943,11 @@ struct fy_document *fy_parse_load_document(struct fy_parser *fyp)
 }
 
 struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *fyn_from,
-				      struct fy_node *fyn_parent)
+				      struct fy_node *fyn_parent, int depth)
 {
 	struct fy_document *fyd_from;
-	struct fy_node *fyn, *fyni, *fynit;
-	struct fy_node_pair *fynp, *fynpt;
+	struct fy_node *fyn = NULL, *fyni = NULL, *fynit = NULL;
+	struct fy_node_pair *fynp = NULL, *fynpt = NULL;
 	struct fy_anchor *fya, *fya_from;
 	const char *anchor;
 	size_t anchor_len;
@@ -1955,6 +1955,11 @@ struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *f
 
 	if (!fyd || !fyn_from || !fyn_from->fyd)
 		return NULL;
+
+	FYD_NODE_ERROR_CHECK(fyd, fyn_from, FYEM_DOC,
+			depth < FY_NODE_PATH_WALK_DEPTH_DEFAULT, err_out,
+			"maximum node copy depth exceeded %d (max %d)",
+			depth, FY_NODE_PATH_WALK_DEPTH_DEFAULT);
 
 	fyd_from = fyn_from->fyd;
 
@@ -1975,12 +1980,13 @@ struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *f
 		for (fyni = fy_node_list_head(&fyn_from->sequence); fyni;
 				fyni = fy_node_next(&fyn_from->sequence, fyni)) {
 
-			fynit = fy_node_copy_internal(fyd, fyni, fyn);
+			fynit = fy_node_copy_internal(fyd, fyni, fyn, depth + 1);
 			fyd_error_check(fyd, fynit, err_out,
 					"fy_node_copy_internal() failed");
 
 			fy_node_list_add_tail(&fyn->sequence, fynit);
 			fynit->attached = true;
+			fynit = NULL;
 		}
 
 		break;
@@ -1992,9 +1998,24 @@ struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *f
 			fyd_error_check(fyd, fynpt, err_out,
 					"fy_node_pair_alloc() failed");
 
-			fynpt->key = fy_node_copy_internal(fyd, fynp->key, fyn);
-			fynpt->value = fy_node_copy_internal(fyd, fynp->value, fyn);
+			if (fynp->key) {
+				fynpt->key = fy_node_copy_internal(fyd, fynp->key, fyn, depth + 1);
+				fyd_error_check(fyd, fynpt->key, err_out,
+						"fy_node_copy_internal() key failed");
+			}
+			if (fynp->value) {
+				fynpt->value = fy_node_copy_internal(fyd, fynp->value, fyn, depth + 1);
+				fyd_error_check(fyd, fynpt->value, err_out,
+						"fy_node_copy_internal() key failed");
+			}
 			fynp->parent = fyn;
+
+			if (fynpt->key) {
+				fynpt->key->attached = true;
+				fynpt->key->key_root = true;
+			}
+			if (fynpt->value)
+				fynpt->value->attached = true;
 
 			fy_node_pair_list_add_tail(&fyn->mapping, fynpt);
 			if (fyn->xl) {
@@ -2002,12 +2023,7 @@ struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *f
 				fyd_error_check(fyd, !rc, err_out,
 						"fy_accel_insert() failed");
 			}
-			if (fynpt->key) {
-				fynpt->key->attached = true;
-				fynpt->key->key_root = true;
-			}
-			if (fynpt->value)
-				fynpt->value->attached = true;
+			fynpt = NULL;
 		}
 		break;
 	}
@@ -2041,6 +2057,9 @@ struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *f
 	return fyn;
 
 err_out:
+	fy_node_free(fynit);
+	fy_node_pair_free(fynpt);
+	fy_node_free(fyn);
 	return NULL;
 }
 
@@ -2051,7 +2070,7 @@ struct fy_node *fy_node_copy(struct fy_document *fyd, struct fy_node *fyn_from)
 	if (!fyd)
 		return NULL;
 
-	fyn = fy_node_copy_internal(fyd, fyn_from, NULL);
+	fyn = fy_node_copy_internal(fyd, fyn_from, NULL, 0);
 	if (!fyn) {
 		fyd->diag->on_error = false;
 		return NULL;
