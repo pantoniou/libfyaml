@@ -1976,7 +1976,9 @@ int fy_emit_common_document_start(struct fy_emitter *emit,
 	/* if either a version or directive tags exist, and no previous
 	 * explicit document end existed, output one now
 	 */
-	if (!fy_emit_is_json_mode(emit) && (vd || td) && !(emit->flags & FYEF_HAD_DOCUMENT_END)) {
+	if (!fy_emit_is_json_mode(emit) && (vd || td) &&
+		(emit->flags & (FYEF_HAD_DOCUMENT_END | FYEF_HAD_DOCUMENT_OUTPUT)) ==
+			(FYEF_HAD_DOCUMENT_END | FYEF_HAD_DOCUMENT_OUTPUT)) {
 		if (emit->column)
 			fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
 		if (!strip_doc) {
