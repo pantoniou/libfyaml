@@ -1165,9 +1165,32 @@ def load_all(stream, Loader=None):
         raise TypeError("load_all() missing 1 required positional argument: 'Loader'")
     if hasattr(stream, 'read'):
         stream = stream.read()
+
+    # Check for registered constructors on the Loader class
+    constructors = getattr(Loader, 'yaml_constructors', {})
+    multi_constructors = getattr(Loader, 'yaml_multi_constructors', {})
+
+    # Always use SafeLoader's constructors as baseline for standard tags
+    if not constructors and not multi_constructors:
+        constructors = SafeLoader.yaml_constructors
+        multi_constructors = SafeLoader.yaml_multi_constructors
+
+    # Create a lightweight proxy with the constructors if needed
+    loader = None
+    if constructors or multi_constructors:
+        loader = _ConstructorProxy(Loader, stream)
+        # Ensure SafeLoader constructors are available as fallback
+        if Loader is not SafeLoader:
+            for tag, func in SafeLoader.yaml_constructors.items():
+                if tag not in loader.yaml_constructors:
+                    loader.yaml_constructors[tag] = func
+
     # Use yaml1.1 mode for PyYAML compatibility
     for doc in fy.loads_all(stream, mode='yaml1.1'):
-        yield doc.to_python()
+        if loader:
+            yield _convert_with_loader(doc, loader)
+        else:
+            yield doc.to_python()
 
 
 def safe_load_all(stream):
