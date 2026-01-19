@@ -577,10 +577,29 @@ class BaseDumper:
         """
         data_type = type(data)
 
-        # Check for exact type match
+        # Check for exact type match first
         if data_type in self.yaml_representers:
             representer = self.yaml_representers[data_type]
             return representer(self, data)
+
+        # Handle basic scalar types before checking multi_representers
+        # This prevents strings from matching Sequence multi_representers
+        if data is None:
+            return ScalarNode('tag:yaml.org,2002:null', 'null')
+        elif data_type is bool:
+            return ScalarNode('tag:yaml.org,2002:bool', 'true' if data else 'false')
+        elif data_type is int:
+            return ScalarNode('tag:yaml.org,2002:int', str(data))
+        elif data_type is float:
+            if data != data:  # NaN
+                return ScalarNode('tag:yaml.org,2002:float', '.nan')
+            elif data == float('inf'):
+                return ScalarNode('tag:yaml.org,2002:float', '.inf')
+            elif data == float('-inf'):
+                return ScalarNode('tag:yaml.org,2002:float', '-.inf')
+            return ScalarNode('tag:yaml.org,2002:float', repr(data))
+        elif data_type is str:
+            return ScalarNode('tag:yaml.org,2002:str', data)
 
         # Check for multi-representers (type hierarchy)
         for base_type, representer in self.yaml_multi_representers.items():
@@ -596,16 +615,57 @@ class BaseDumper:
         return data
 
     def represent_mapping(self, tag, mapping):
-        """Represent a mapping."""
-        return mapping
+        """Represent a mapping as a MappingNode.
+
+        Args:
+            tag: YAML tag for the mapping
+            mapping: Iterable of (key, value) pairs (dict.items(), list of tuples, etc.)
+
+        Returns:
+            MappingNode with key-value pairs as (key_node, value_node) tuples
+        """
+        # Convert mapping items to node pairs
+        value = []
+        for key, val in mapping:
+            key_node = self.represent_data(key)
+            if not isinstance(key_node, (ScalarNode, MappingNode, SequenceNode)):
+                key_node = ScalarNode('tag:yaml.org,2002:str', str(key))
+            val_node = self.represent_data(val)
+            if not isinstance(val_node, (ScalarNode, MappingNode, SequenceNode)):
+                val_node = ScalarNode('tag:yaml.org,2002:str', str(val))
+            value.append((key_node, val_node))
+        return MappingNode(tag, value)
 
     def represent_sequence(self, tag, sequence):
-        """Represent a sequence."""
-        return sequence
+        """Represent a sequence as a SequenceNode.
 
-    def represent_scalar(self, tag, value):
-        """Represent a scalar."""
-        return value
+        Args:
+            tag: YAML tag for the sequence
+            sequence: Iterable of items
+
+        Returns:
+            SequenceNode with items as nodes
+        """
+        value = []
+        for item in sequence:
+            node = self.represent_data(item)
+            if not isinstance(node, (ScalarNode, MappingNode, SequenceNode)):
+                node = ScalarNode('tag:yaml.org,2002:str', str(item))
+            value.append(node)
+        return SequenceNode(tag, value)
+
+    def represent_scalar(self, tag, value, style=None):
+        """Represent a scalar as a ScalarNode.
+
+        Args:
+            tag: YAML tag for the scalar
+            value: Scalar value
+            style: Optional style for the scalar
+
+        Returns:
+            ScalarNode with the value
+        """
+        return ScalarNode(tag, value, style=style)
 
 
 class SafeDumper(BaseDumper):
@@ -786,23 +846,26 @@ def _diag_to_exception(diag_list, stream_name='<string>'):
     return ScannerError(problem=message, problem_mark=problem_mark)
 
 
-def load(stream, Loader=SafeLoader):
+def load(stream, Loader=None):
     """Parse YAML stream and return Python object.
 
     Args:
         stream: String or file-like object containing YAML
-        Loader: Loader class (used for custom constructors via add_constructor)
+        Loader: Loader class (required - use SafeLoader, FullLoader, or UnsafeLoader)
 
     Returns:
         Python object (dict, list, str, int, float, bool, or None)
 
     Raises:
+        TypeError: If Loader is not specified
         YAMLError: If parsing fails (ComposerError, ScannerError, ParserError, etc.)
 
     Example:
         >>> load("foo: bar", Loader=SafeLoader)
         {'foo': 'bar'}
     """
+    if Loader is None:
+        raise TypeError("load() missing 1 required positional argument: 'Loader'")
     # Get stream name for error messages
     stream_name = getattr(stream, 'name', '<string>')
     if hasattr(stream, 'read'):
@@ -921,20 +984,25 @@ def compose_all(stream, Loader=SafeLoader):
         yield doc
 
 
-def load_all(stream, Loader=SafeLoader):
+def load_all(stream, Loader=None):
     """Parse all YAML documents in stream.
 
     Args:
         stream: String or file-like object containing YAML
-        Loader: Loader class (ignored - libfyaml always uses safe parsing)
+        Loader: Loader class (required - use SafeLoader, FullLoader, or UnsafeLoader)
 
     Yields:
         Python objects, one per YAML document
 
+    Raises:
+        TypeError: If Loader is not specified
+
     Example:
-        >>> list(load_all("---\\nfoo: 1\\n---\\nbar: 2\\n"))
+        >>> list(load_all("---\\nfoo: 1\\n---\\nbar: 2\\n", Loader=SafeLoader))
         [{'foo': 1}, {'bar': 2}]
     """
+    if Loader is None:
+        raise TypeError("load_all() missing 1 required positional argument: 'Loader'")
     if hasattr(stream, 'read'):
         stream = stream.read()
     # Use yaml1.1 mode for PyYAML compatibility
@@ -1098,6 +1166,34 @@ def _convert_tagged_values(data):
         return data
 
 
+def _sort_keys_recursive(data, sort_keys):
+    """Recursively sort dictionary keys if sort_keys is True.
+
+    Args:
+        data: Python object to process
+        sort_keys: Whether to sort dictionary keys
+
+    Returns:
+        Data with sorted keys (if sort_keys is True)
+    """
+    if not sort_keys:
+        return data
+
+    if isinstance(data, dict):
+        # Sort keys and recursively process values
+        sorted_items = sorted(data.items(), key=lambda x: (
+            # Sort by type first (strings before booleans), then by value
+            (0, str(x[0])) if isinstance(x[0], str) else
+            (1, str(x[0])) if isinstance(x[0], bool) else
+            (2, str(x[0]))
+        ))
+        return {k: _sort_keys_recursive(v, sort_keys) for k, v in sorted_items}
+    elif isinstance(data, (list, tuple)):
+        return [_sort_keys_recursive(item, sort_keys) for item in data]
+    else:
+        return data
+
+
 def dump(data, stream=None, Dumper=SafeDumper, default_flow_style=False,
          default_style=None, canonical=None, indent=None, width=None,
          allow_unicode=True, line_break=None, encoding=None,
@@ -1135,6 +1231,9 @@ def dump(data, stream=None, Dumper=SafeDumper, default_flow_style=False,
                        explicit_end=explicit_end, version=version, tags=tags,
                        sort_keys=sort_keys)
         data = _apply_representers(data, dumper)
+
+    # Sort dictionary keys if requested
+    data = _sort_keys_recursive(data, sort_keys)
 
     # Convert TaggedScalars and bytes to tagged FyGeneric values
     data = _convert_tagged_values(data)
@@ -1196,6 +1295,9 @@ def dump_all(documents, stream=None, Dumper=SafeDumper, default_flow_style=False
                        explicit_end=explicit_end, version=version, tags=tags,
                        sort_keys=sort_keys)
         documents = [_apply_representers(data, dumper) for data in documents]
+
+    # Sort dictionary keys if requested
+    documents = [_sort_keys_recursive(data, sort_keys) for data in documents]
 
     # Convert TaggedScalars and bytes to tagged FyGeneric values
     documents = [_convert_tagged_values(data) for data in documents]
