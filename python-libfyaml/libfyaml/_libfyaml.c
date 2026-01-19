@@ -3757,16 +3757,18 @@ libfyaml_dumps(PyObject *self, PyObject *args, PyObject *kwargs)
     return result;
 }
 
-/* from_python(obj, mutable=False) - Convert Python object to FyGeneric */
+/* from_python(obj, tag=None, mutable=False, dedup=True) - Convert Python object to FyGeneric */
 static PyObject *
 libfyaml_from_python(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     PyObject *obj;
+    const char *tag = NULL;
+    Py_ssize_t tag_len = 0;
     int mutable = 0;  /* Default to False (read-only) */
     int dedup = 1;  /* Default to True, like loads/load */
-    static char *kwlist[] = {"obj", "mutable", "dedup", NULL};
+    static char *kwlist[] = {"obj", "tag", "mutable", "dedup", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|pp", kwlist, &obj, &mutable, &dedup))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|z#pp", kwlist, &obj, &tag, &tag_len, &mutable, &dedup))
         return NULL;
 
     /* Create generic builder using helper (estimate 64KB for typical Python objects) */
@@ -3781,6 +3783,30 @@ libfyaml_from_python(PyObject *self, PyObject *args, PyObject *kwargs)
     if (!fy_generic_is_valid(g)) {
         fy_generic_builder_destroy(gb);
         return NULL;
+    }
+
+    /* If tag is provided, wrap in indirect with tag */
+    if (tag != NULL && tag_len > 0) {
+        fy_generic tag_generic = fy_gb_string_size_create(gb, tag, (size_t)tag_len);
+        if (!fy_generic_is_valid(tag_generic)) {
+            fy_generic_builder_destroy(gb);
+            PyErr_SetString(PyExc_RuntimeError, "Failed to create tag string");
+            return NULL;
+        }
+
+        struct fy_generic_indirect gi = {
+            .flags = FYGIF_VALUE | FYGIF_TAG,
+            .value = g,
+            .anchor = fy_null,
+            .tag = tag_generic,
+            .diag = fy_null
+        };
+        g = fy_gb_indirect_create(gb, &gi);
+        if (!fy_generic_is_valid(g)) {
+            fy_generic_builder_destroy(gb);
+            PyErr_SetString(PyExc_RuntimeError, "Failed to create tagged generic");
+            return NULL;
+        }
     }
 
     /* Create root wrapper - transfers gb ownership to Python object */
@@ -4535,7 +4561,7 @@ static PyMethodDef module_methods[] = {
     {"dump_all", _PyCFunction_CAST(libfyaml_dump_all), METH_VARARGS | METH_KEYWORDS,
      "Dump multiple Python objects to file (path or file object)"},
     {"from_python", _PyCFunction_CAST(libfyaml_from_python), METH_VARARGS | METH_KEYWORDS,
-     "Convert Python object to FyGeneric"},
+     "Convert Python object to FyGeneric (with optional tag)"},
     {"path_list_to_unix_path", _PyCFunction_CAST(libfyaml_path_list_to_unix_path), METH_O,
      "Convert path list (e.g., ['server', 'host']) to Unix-style path string (e.g., '/server/host')"},
     {"unix_path_to_path_list", _PyCFunction_CAST(libfyaml_unix_path_to_path_list), METH_O,
