@@ -101,9 +101,10 @@ null_value: null
         assert data == {'foo': 'bar'}
 
     def test_load_without_loader(self):
-        """Load without explicit Loader (uses default)."""
-        data = yaml.load("foo: bar")
-        assert data == {'foo': 'bar'}
+        """Load without explicit Loader raises TypeError (PyYAML 5.1+ behavior)."""
+        import pytest
+        with pytest.raises(TypeError):
+            yaml.load("foo: bar")
 
 
 class TestSafeLoad:
@@ -126,7 +127,7 @@ class TestLoadAll:
 
     def test_load_all_multi_doc(self):
         """Load multiple documents."""
-        docs = list(yaml.load_all("---\na: 1\n---\nb: 2\n---\nc: 3\n"))
+        docs = list(yaml.load_all("---\na: 1\n---\nb: 2\n---\nc: 3\n", Loader=yaml.SafeLoader))
         assert len(docs) == 3
         assert docs[0] == {'a': 1}
         assert docs[1] == {'b': 2}
@@ -134,15 +135,21 @@ class TestLoadAll:
 
     def test_load_all_single_doc(self):
         """Load single document returns single item."""
-        docs = list(yaml.load_all("foo: bar"))
+        docs = list(yaml.load_all("foo: bar", Loader=yaml.SafeLoader))
         assert len(docs) == 1
         assert docs[0] == {'foo': 'bar'}
 
     def test_load_all_from_file(self):
         """Load all from file-like object."""
         stream = io.StringIO("---\nx: 1\n---\ny: 2\n")
-        docs = list(yaml.load_all(stream))
+        docs = list(yaml.load_all(stream, Loader=yaml.SafeLoader))
         assert len(docs) == 2
+
+    def test_load_all_without_loader(self):
+        """Load all without explicit Loader raises TypeError (PyYAML 5.1+ behavior)."""
+        import pytest
+        with pytest.raises(TypeError):
+            list(yaml.load_all("foo: bar"))
 
 
 class TestSafeLoadAll:
