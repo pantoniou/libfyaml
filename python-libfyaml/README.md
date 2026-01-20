@@ -637,6 +637,68 @@ On 768 MB file:
 
 ---
 
+## PyYAML Compatibility
+
+libfyaml provides a drop-in PyYAML replacement via `pyyaml_compat`:
+
+```python
+# Instead of:
+import yaml
+
+# Use:
+from libfyaml import pyyaml_compat as yaml
+
+# Then use normally:
+data = yaml.safe_load("foo: bar")
+output = yaml.safe_dump({"foo": "bar"})
+```
+
+### Fully Supported
+
+| Feature | Status |
+|---------|--------|
+| `load()` / `safe_load()` | Full support (with yaml1.1 mode) |
+| `load_all()` / `safe_load_all()` | Full support |
+| `dump()` / `safe_dump()` | Full support |
+| `dump_all()` / `safe_dump_all()` | Full support |
+| `compose()` / `compose_all()` | Full support |
+| `add_constructor()` | Full support |
+| `add_multi_constructor()` | Full support (including None catch-all) |
+| `add_representer()` | Full support |
+| Standard tags (`!!binary`, `!!timestamp`, `!!omap`, `!!set`) | Full support |
+| Error classes (`YAMLError`, `ScannerError`, etc.) | Full support |
+| Loader/Dumper classes | Full support (stubs for API compatibility) |
+
+### Not Implemented (Streaming API)
+
+The following PyYAML streaming features are **not implemented**:
+
+| Feature | Reason |
+|---------|--------|
+| `scan()` | Returns tokens - rarely used directly |
+| `parse()` | Returns events - rarely used directly |
+| `emit()` | Emits events to stream - rarely used directly |
+| `serialize()` | Serializes nodes to stream - rarely used directly |
+| Token/Event classes | Internal PyYAML implementation details |
+| `add_implicit_resolver()` | Stub only - complex feature rarely needed |
+| `add_path_resolver()` | Stub only - complex feature rarely needed |
+
+**Why not implemented?** These streaming APIs are used in <5% of PyYAML usage. Most applications use `safe_load()`/`safe_dump()` which are fully supported. The streaming API would require significant implementation effort for minimal benefit.
+
+**Workaround**: If you need streaming, continue using PyYAML for that specific code path, or convert your code to use `load_all()`/`dump_all()` for multi-document processing.
+
+### Known Deviations
+
+Minor differences from PyYAML behavior (documented in code):
+
+1. **Booleans**: libfyaml's yaml1.1 mode accepts `y/Y/n/N` as booleans per YAML 1.1 spec; PyYAML doesn't
+2. **Integer formats**: PyYAML supports underscores (`1_000_000`) and sexagesimal (`190:20:30`)
+3. **Line numbers**: Mark objects may have slightly different line/column positions
+
+These are edge cases that rarely affect real-world usage.
+
+---
+
 ## Benchmarking
 
 ### Run Your Own Benchmarks
@@ -761,13 +823,11 @@ Contributions welcome! This is an experimental binding showcasing libfyaml's gen
 
 ### Areas for Contribution
 
-- Windows support
-- YAML writing (dumps/dump functions)
-- Mutable document modification
-- Better error messages
-- Type stubs for mypy
-- Comprehensive test suite
-- CI/CD setup
+- Windows support (mmap/mremap portability)
+- Better error messages with context
+- Streaming API (`scan()`, `parse()`, `emit()`) if demand arises
+- Additional PyYAML edge case compatibility
+- Performance optimizations
 
 ---
 
