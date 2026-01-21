@@ -2,6 +2,8 @@
 
 This guide helps you run the CI pipeline locally on Ubuntu and macOS.
 
+**For BSD systems (FreeBSD, OpenBSD, NetBSD):** See [BSD-SETUP.md](BSD-SETUP.md) for BSD-specific instructions and self-hosted runner setup.
+
 ## Quick Start
 
 ### 1. Install Dependencies

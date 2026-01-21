@@ -1,0 +1,91 @@
+name: NetBSD CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  build:
+    name: NetBSD - ${{ matrix.compiler }} - ${{ matrix.build_system }}
+    runs-on: [self-hosted, netbsd]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [clang, gcc]
+        build_system: [autotools, cmake]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo pkgin -y install \
+          autoconf automake libtool gmake \
+          libyaml pkg-config check \
+          python3 py39-pip py39-setuptools \
+          cmake ninja-build gcc12
+
+    - name: Set compiler environment
+      run: |
+        if [ "${{ matrix.compiler }}" = "gcc" ]; then
+          # NetBSD may install gcc with version suffix
+          echo "CC=gcc" >> $GITHUB_ENV
+          echo "CXX=g++" >> $GITHUB_ENV
+        else
+          echo "CC=clang" >> $GITHUB_ENV
+          echo "CXX=clang++" >> $GITHUB_ENV
+        fi
+
+    # Autotools build
+    - name: Bootstrap (Autotools)
+      if: matrix.build_system == 'autotools'
+      run: ./bootstrap.sh
+
+    - name: Configure (Autotools)
+      if: matrix.build_system == 'autotools'
+      run: ./configure
+
+    - name: Build (Autotools)
+      if: matrix.build_system == 'autotools'
+      run: gmake -j$(sysctl -n hw.ncpu)
+
+    # Note: make check is not working on NetBSD with Autotools
+    # - name: Test (Autotools)
+    #   if: matrix.build_system == 'autotools'
+    #   run: gmake check
+
+    - name: Distribution check (Autotools)
+      if: matrix.build_system == 'autotools'
+      run: gmake distcheck
+
+    # CMake build
+    - name: Configure (CMake)
+      if: matrix.build_system == 'cmake'
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_TESTING=ON \
+          -DENABLE_NETWORK=ON
+
+    - name: Build (CMake)
+      if: matrix.build_system == 'cmake'
+      run: cmake --build build
+
+    - name: Test (CMake)
+      if: matrix.build_system == 'cmake'
+      working-directory: build
+      run: ctest --output-on-failure
+
+    - name: Upload test logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-logs-netbsd-${{ matrix.compiler }}-${{ matrix.build_system }}
+        path: |
+          test/*.log
+          test-suite.log
+          build/Testing/Temporary/
+          build/**/*.log
