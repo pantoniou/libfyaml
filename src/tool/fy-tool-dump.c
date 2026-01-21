@@ -130,14 +130,13 @@ void dump_token_comments(struct fy_token *fyt, bool colorize, const char *banner
 		[fycp_bottom] = "bottom",
 	};
 	enum fy_comment_placement placement;
-	char buf[4096];
 	const char *str;
 
 	if (!fyt)
 		return;
 
 	for (placement = fycp_top; placement < fycp_max; placement++) {
-		str = fy_token_get_comment(fyt, buf, sizeof(buf), placement);
+		str = fy_token_get_comment(fyt, placement);
 		if (!str)
 			continue;
 		fputs("\n", stdout);

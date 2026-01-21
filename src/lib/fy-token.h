@@ -113,6 +113,13 @@ struct fy_token_analysis {
 	int maxcol;
 };
 
+struct fy_token_comment {
+	struct fy_token_comment *next;
+	enum fy_comment_placement placement;
+	struct fy_atom handle;
+	char *comment;
+};
+
 FY_TYPE_FWD_DECL_LIST(token);
 struct fy_token {
 	struct list_head node;
@@ -123,7 +130,8 @@ struct fy_token {
 	const char *text;
 	char *text0;		/* this is allocated */
 	struct fy_atom handle;
-	struct fy_atom *comment;	/* only when enabled */
+	struct fy_token_comment *token_comment;
+	char *comments;		/* this is allocated */
 	union  {
 		struct {
 			unsigned int tag_length;	/* from start */
@@ -207,7 +215,8 @@ fy_token_alloc_rl(struct fy_token_list *fytl)
 	fyt->text = NULL;
 	fyt->text0 = NULL;
 	fyt->handle.fyi = NULL;
-	fyt->comment = NULL;
+	fyt->token_comment = NULL;
+	fyt->comments = NULL;
 
 	return fyt;
 }

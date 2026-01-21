@@ -1099,3 +1099,18 @@ void fy_document_iterator_event_free(struct fy_document_iterator *fydi, struct f
 
 	fy_document_iterator_eventp_recycle(fydi, fyep);
 }
+
+const char *
+fy_event_get_comments(struct fy_event *fye)
+{
+	struct fy_token *fyt;
+
+	if (!fye)
+		return NULL;
+
+	fyt = fy_event_get_token(fye);
+	if (!fyt)
+		return NULL;
+
+	return fy_token_get_comments(fyt);
+}

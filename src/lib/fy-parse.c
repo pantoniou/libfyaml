@@ -823,6 +823,7 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 	fy_eventp_list_init(&fyp->mks.args);
 
 	fy_atom_reset(&fyp->last_comment);
+	fy_atom_reset(&fyp->override_comment);
 
 	fyp->suppress_recycling = !!(fyp->cfg.flags & FYPCF_DISABLE_RECYCLING) ||
 		                  (getenv("FY_VALGRIND") &&
@@ -862,6 +863,9 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 
 	fy_input_unref(fyp->last_comment.fyi);
 	fy_atom_reset(&fyp->last_comment);
+
+	fy_input_unref(fyp->override_comment.fyi);
+	fy_atom_reset(&fyp->override_comment);
 
 	fy_input_unref(fyp->last_event_handle.fyi);
 	fy_atom_reset(&fyp->last_event_handle);
@@ -1084,11 +1088,25 @@ fy_reset_last_comment(struct fy_parser *fyp)
 	return true;
 }
 
+static inline bool
+fy_reset_override_comment(struct fy_parser *fyp)
+{
+	if (!(fyp->cfg.flags & FYPCF_PARSE_COMMENTS))
+		return false;
+
+	if (!fy_atom_is_set(&fyp->override_comment))
+		return false;
+
+	fy_atom_reset(&fyp->override_comment);
+	return true;
+}
+
+/* -1 error, 0, no comment attached, 1 comment attached */
 int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 {
 	struct fy_atom *handle;
 	struct fy_mark fym;
-	int c, rc;
+	int c, rc, count;
 
 	if (!fyp || !fyt)
 		return -1;
@@ -1096,11 +1114,36 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 	if (!(fyp->cfg.flags & FYPCF_PARSE_COMMENTS))
 		return 0;
 
+	count = 0;
+
+	/* special handling for document start */
+	if (fyt->type == FYTT_DOCUMENT_START && fy_atom_is_set(&fyp->override_comment)) {
+
+		handle = fy_token_comment_handle(fyt, fycp_top, true);
+		fyp_error_check(fyp, handle, err_out,
+				"fy_token_comment_handle() top failed\n");
+
+		fy_input_unref(handle->fyi);
+		fy_atom_reset(handle);
+
+		*handle = fyp->override_comment;
+		count++;
+
+		fy_reset_override_comment(fyp);
+	}
+
 	/* if a last comment exists and is valid */
-	if (fy_atom_is_set(&fyp->last_comment) &&
-	    (handle = fy_token_comment_handle(fyt, fycp_top, true)) != NULL) {
+	if (fy_atom_is_set(&fyp->last_comment)) {
+
+		handle = fy_token_comment_handle(fyt, count == 0 ? fycp_top : fycp_right, true);
+		fyp_error_check(fyp, handle, err_out,
+				"fy_token_comment_handle() top failed\n");
+
+		fy_input_unref(handle->fyi);
+		fy_atom_reset(handle);
 
 		*handle = fyp->last_comment;
+		count++;
 
 		fy_reset_last_comment(fyp);
 	}
@@ -1111,23 +1154,124 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 	while (fy_is_ws(c = fy_parse_peek(fyp)))
 		fy_advance(fyp, c);
 
-	if (c == '#') {
-		fy_get_mark(fyp, &fym);
+	if (c != '#')
+		return 0;
 
-		/* it's a right comment only if it's on the same line */
-		if (fym.line == fyt->handle.end_mark.line)
-			handle = fy_token_comment_handle(fyt, fycp_right, true);
-		else
-			handle = &fyp->last_comment;	/* otherwise, last comment */
+	fy_get_mark(fyp, &fym);
 
-		rc = fy_scan_comment(fyp, handle, false);
-		fyp_error_check(fyp, !rc, err_out_rc,
-				"fy_scan_comment() failed");
-	}
+	/* only the one that in the same line */
+	if (fym.line != fyt->handle.end_mark.line)
+		return 0;
+
+	/* it's a right comment only if it's on the same line */
+	handle = fy_token_comment_handle(fyt, fycp_right, true);
+	fyp_error_check(fyp, handle, err_out,
+			"fy_token_comment_handle() right failed\n");
+
+	fy_input_unref(handle->fyi);
+	fy_atom_reset(handle);
+
+	rc = fy_scan_comment(fyp, handle, false);
+	fyp_error_check(fyp, !rc, err_out_rc,
+			"fy_scan_comment() failed");
+
+	if (fy_atom_is_set(handle))
+		count++;
+	return count;
+
+err_out_rc:
+	return rc;
+err_out:
+	rc = -1;
+	goto err_out;
+}
+
+int fy_fetch_flow_collection_entry(struct fy_parser *fyp, int c);
+
+int fy_parse_handle_comma(struct fy_parser *fyp, int c)
+{
+	struct fy_mark m;
+	int rc;
+
+	fyp->indent_line = fyp_line(fyp);
+
+	fyp_error_check(fyp, c == ',', err_out,
+			"illegal comma");
+
+	fy_get_mark(fyp, &m);
+
+	fyp_scan_debug(fyp, "fy_fetch_flow_collection_entry(%c)", c);
+	rc = fy_fetch_flow_collection_entry(fyp, c);
+	fyp_error_check(fyp, !rc, err_out_rc,
+			"fy_fetch_flow_collection_entry() failed");
+
+	fyp->last_was_comma = true;
+	fyp->last_comma_mark = m;
+
 	return 0;
 
 err_out_rc:
 	return rc;
+err_out:
+	rc = -1;
+	goto err_out_rc;
+}
+
+int fy_parse_handle_right_comment_after_comma(struct fy_parser *fyp, struct fy_token *fyt)
+{
+	int c, rc, start_line;
+
+	/* not collecting comment or now in flow mode */
+	if (!(fyp->cfg.flags & FYPCF_PARSE_COMMENTS) || !fyp->flow_level)
+		return 0;
+
+	/* we can only attach right to these tokens */
+	if (fyt->type != FYTT_SCALAR &&
+	    fyt->type != FYTT_FLOW_SEQUENCE_END &&
+	    fyt->type != FYTT_FLOW_MAPPING_END)
+		return 0;
+
+	/* skip white space while we're on the same line */
+	start_line = fyp_line(fyp);
+	while (fy_is_ws(c = fy_parse_peek(fyp)))
+		fy_advance(fyp, c);
+
+	/* is it a comma at the same line? */
+	if (c != ',' || start_line != fyp_line(fyp))
+		return 0;
+
+	/* immediately parse the comma because grab the scalar to attach the comment */
+	rc = fy_parse_handle_comma(fyp, ',');
+	fyp_error_check(fyp, !rc, err_out_rc,
+		"fy_parse_handle_comma() failed");
+
+	return 0;
+err_out_rc:
+	return rc;
+}
+
+int fy_parse_handle_comments_after_token(struct fy_parser *fyp, struct fy_token *fyt)
+{
+	int rc;
+
+	if (!(fyp->cfg.flags & FYPCF_PARSE_COMMENTS))
+		return 0;
+
+	rc = fy_attach_comments_if_any(fyp, fyt);
+	fyp_error_check(fyp, rc >= 0, err_out_rc,
+			"fy_attach_right_hand_comment() failed");
+
+	rc = fy_parse_handle_right_comment_after_comma(fyp, fyt);
+	fyp_error_check(fyp, rc >= 0, err_out_rc,
+			"fy_parse_handle_right_comment_after_comma() failed");
+
+	return 0;
+
+err_out_rc:
+	return rc;
+err_out:
+	rc = -1;
+	goto err_out;
 }
 
 int fy_scan_to_next_token(struct fy_parser *fyp)
@@ -1231,8 +1375,6 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 				rc = fy_scan_comment(fyp, NULL, false);
 				fyp_error_check(fyp, !rc, err_out_rc,
 						"fy_scan_comment() failed");
-
-
 			} else {
 
 				memset(&this_comment, 0, sizeof(this_comment));
@@ -1243,16 +1385,21 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 
 				if (fy_atom_is_set(&fyp->last_comment)) {
 
-					/* merge consecutive comments */
-					if (fy_comment_atoms_seperated_by_ws(fyp, &fyp->last_comment, &this_comment)) {
-						fyp->last_comment.end_mark = this_comment.end_mark;
-						fy_input_unref(this_comment.fyi);
-						fy_atom_reset(&this_comment);
+					/* merge consecutive override comments */
+					if (fy_atom_is_set(&fyp->override_comment) &&
+						fy_comment_atoms_seperated_by_ws(fyp, &fyp->override_comment, &fyp->last_comment)) {
+						fyp->override_comment.end_mark = fyp->last_comment.end_mark;
 					} else {
-						fy_input_unref(fyp->last_comment.fyi);
-						fy_atom_reset(&fyp->last_comment);
-						fyp->last_comment = this_comment;
+						/* override comment keeps the last comment */
+						fy_input_unref(fyp->override_comment.fyi);
+						fy_atom_reset(&fyp->override_comment);
+						fyp->override_comment.fyi = fy_input_ref(fyp->last_comment.fyi);
+						fyp->override_comment = fyp->last_comment;
 					}
+
+					fy_input_unref(fyp->last_comment.fyi);
+					fy_atom_reset(&fyp->last_comment);
+					fyp->last_comment = this_comment;
 
 				} else
 					fyp->last_comment = this_comment;
@@ -2295,6 +2442,10 @@ int fy_fetch_document_indicator(struct fy_parser *fyp, enum fy_token_type type)
 	while (fy_is_ws(c = fy_parse_peek(fyp)))
 		fy_advance(fyp, c);
 
+	rc = fy_attach_comments_if_any(fyp, fyt);
+	fyp_error_check(fyp, rc >= 0, err_out_rc,
+			"fy_attach_right_hand_comment() failed");
+
 	return 0;
 
 err_out:
@@ -2350,6 +2501,28 @@ int fy_fetch_flow_collection_mark_start(struct fy_parser *fyp, int c)
 		rc = fy_save_simple_key_mark(fyp, &skm, type, NULL);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_save_simple_key_mark() failed");
+	}
+
+	/* if a last comment exists and is valid */
+	if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
+			(fy_atom_is_set(&fyp->override_comment) || fy_atom_is_set(&fyp->last_comment))) {
+
+		struct fy_atom *handle;
+
+		handle = fy_token_comment_handle(fyt, fycp_top, true);
+		fyp_error_check(fyp, handle, err_out,
+			"fy_token_comment_handle() failed");
+
+		fy_input_unref(handle->fyi);
+		fy_atom_reset(handle);
+
+		if (fy_atom_is_set(&fyp->override_comment)) {
+			*handle = fyp->override_comment;
+			fy_atom_reset(&fyp->override_comment);
+		} else if (fy_atom_is_set(&fyp->last_comment)) {
+			*handle = fyp->last_comment;
+			fy_atom_reset(&fyp->last_comment);
+		}
 	}
 
 	/* increase flow level */
@@ -2482,6 +2655,11 @@ int fy_fetch_flow_collection_mark_end(struct fy_parser *fyp, int c)
 		}
 	}
 
+	rc = fy_parse_handle_comments_after_token(fyp, fyt);
+	fyp_error_check(fyp, !rc, err_out_rc,
+			"fy_parse_handle_comments_after_token() failed");
+
+
 	return 0;
 
 err_out:
@@ -2522,7 +2700,10 @@ int fy_fetch_flow_collection_entry(struct fy_parser *fyp, int c)
 	fyp->tab_used_for_ws = false;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 
-	fyt_last = fy_token_list_tail(&fyp->queued_tokens);
+	if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS)
+		fyt_last = fy_token_list_tail(&fyp->queued_tokens);
+	else
+		fyt_last = NULL;
 
 	fyt = fy_token_queue_simple(fyp, &fyp->queued_tokens, type, 1);
 	fyp_error_check(fyp, fyt, err_out,
@@ -2536,20 +2717,21 @@ int fy_fetch_flow_collection_entry(struct fy_parser *fyp, int c)
 			"invalid comment after comma");
 
 	/* skip white space */
-	while (fy_is_ws(c = fy_parse_peek(fyp)))
-		fy_advance(fyp, c);
+	if (fyt_last) {
+		while (fy_is_ws(c = fy_parse_peek(fyp)))
+			fy_advance(fyp, c);
 
-	if (c == '#') {
-		if (fyt_last)
-			fyt = fyt_last;
+		if (c == '#') {
+			handle = fy_token_comment_handle(fyt_last, fycp_right, true);
+			fyp_error_check(fyp, handle, err_out,
+				"fy_token_comment_handle() failed");
+			fy_input_unref(handle->fyi);
+			fy_atom_reset(handle);
 
-		handle = NULL;
-		if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS)
-			handle = fy_token_comment_handle(fyt, fycp_right, true);
-
-		rc = fy_scan_comment(fyp, handle, true);
-		fyp_error_check(fyp, !rc, err_out_rc,
-				"fy_scan_comment() failed");
+			rc = fy_scan_comment(fyp, handle, true);
+			fyp_error_check(fyp, !rc, err_out_rc,
+					"fy_scan_comment() failed");
+		}
 	}
 
 	return 0;
@@ -2565,6 +2747,7 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 	struct fy_mark mark;
 	struct fy_simple_key *fysk;
 	struct fy_token *fyt;
+	struct fy_atom *handle;
 
 	fyp_error_check(fyp, c == '-', err_out,
 			"illegal block entry");
@@ -2601,7 +2784,29 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 		fyt = fy_token_queue_simple_internal(fyp, &fyp->queued_tokens, FYTT_BLOCK_SEQUENCE_START, 0);
 		fyp_error_check(fyp, fyt, err_out,
 				"fy_token_queue_simple_internal() failed");
+
+		/* if a last comment exists and is valid */
+		if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
+				(fy_atom_is_set(&fyp->override_comment) || fy_atom_is_set(&fyp->last_comment))) {
+
+			handle = fy_token_comment_handle(fyt, fycp_top, true);
+			fyp_error_check(fyp, handle, err_out,
+				"fy_token_comment_handle() failed");
+			fy_input_unref(handle->fyi);
+			fy_atom_reset(handle);
+
+			if (fy_atom_is_set(&fyp->override_comment)) {
+				*handle = fyp->override_comment;
+				fy_atom_reset(&fyp->override_comment);
+			} else if (fy_atom_is_set(&fyp->last_comment)) {
+				*handle = fyp->last_comment;
+				fy_atom_reset(&fyp->last_comment);
+			}
+		}
 	}
+
+	/* always reset the override comment */
+	fy_reset_override_comment(fyp);
 
 	if (c == '-' && fyp->flow_level) {
 		/* this is an error, but we let the parser catch it */
@@ -2687,6 +2892,26 @@ int fy_fetch_key(struct fy_parser *fyp, int c)
 		fyt = fy_token_queue_simple_internal(fyp, &fyp->queued_tokens, FYTT_BLOCK_MAPPING_START, 0);
 		fyp_error_check(fyp, fyt, err_out,
 				"fy_token_queue_simple_internal() failed");
+
+		/* if a last comment exists and is valid */
+		if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
+				(fy_atom_is_set(&fyp->override_comment) || fy_atom_is_set(&fyp->last_comment))) {
+
+			handle = fy_token_comment_handle(fyt, fycp_top, true);
+			fyp_error_check(fyp, handle, err_out,
+				"fy_token_comment_handle() failed");
+
+			fy_input_unref(handle->fyi);
+			fy_atom_reset(handle);
+
+			if (fy_atom_is_set(&fyp->override_comment)) {
+				*handle = fyp->override_comment;
+				fy_atom_reset(&fyp->override_comment);
+			} else if (fy_atom_is_set(&fyp->last_comment)) {
+				*handle = fyp->last_comment;
+				fy_atom_reset(&fyp->last_comment);
+			}
+		}
 	}
 
 	rc = fy_remove_simple_key(fyp, FYTT_KEY);
@@ -2720,12 +2945,15 @@ int fy_fetch_key(struct fy_parser *fyp, int c)
 	} else
 		fyp->tab_used_for_ws = false;	// XXX
 
-	/* comment? */
-	if (c == '#') {
+	/* comment which we care about? */
+	if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) && c == '#') {
 
-		handle = NULL;
-		if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS)
-			handle = fy_token_comment_handle(fyt, fycp_right, true);
+		handle = fy_token_comment_handle(fyt, fycp_right, true);
+		fyp_error_check(fyp, handle, err_out,
+			"fy_token_comment_handle() failed");
+
+		fy_input_unref(handle->fyi);
+		fy_atom_reset(handle);
 
 		rc = fy_scan_comment(fyp, handle, false);
 		fyp_error_check(fyp, !rc, err_out_rc,
@@ -2884,6 +3112,40 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 		fyp_error_check(fyp, fyt, err_out,
 				"fy_token_queue_simple_internal() failed");
 
+		/* if a last comment exists and is valid */
+		if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS) {
+
+			struct fy_atom *key_handle, *handle;
+
+			if (fysk && fysk->token) {
+				key_handle = fy_token_comment_handle(fysk->token, fycp_top, true);
+				fyp_error_check(fyp, key_handle, err_out,
+					"fy_token_comment_handle() failed");
+
+				handle = fy_token_comment_handle(fyt, fycp_top, true);
+				fyp_error_check(fyp, handle, err_out,
+					"fy_token_comment_handle() failed");
+
+				/* move the comment to the block mapping start */
+				fy_input_unref(handle->fyi);
+				fy_atom_reset(handle);
+				*handle = *key_handle;
+				fy_atom_reset(key_handle);
+			}
+
+			handle = fy_token_comment_handle(fyt, fycp_top, true);
+			fyp_error_check(fyp, handle, err_out,
+				"fy_token_comment_handle() failed");
+
+			if (fy_atom_is_set(&fyp->override_comment)) {
+				*handle = fyp->override_comment;
+				fy_atom_reset(&fyp->override_comment);
+			} else if (fy_atom_is_set(&fyp->last_comment)) {
+				*handle = fyp->last_comment;
+				fy_atom_reset(&fyp->last_comment);
+			}
+		}
+
 		/* update with this mark */
 		fyt->handle.start_mark = fyt->handle.end_mark = mark_insert;
 	}
@@ -2952,22 +3214,24 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 				fyp->pending_complex_key_column);
 	}
 
-	if (fyt_insert) {
+	if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) && fyt_insert) {
 		/* eat whitespace */
 		while (fy_is_blank(c = fy_parse_peek(fyp)))
 			fy_advance(fyp, c);
 
 		/* comment? */
 		if (c == '#') {
-			chandle = NULL;
-			if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS)
-				chandle = fy_token_comment_handle(fyt_insert, fycp_right, true);
+			chandle = fy_token_comment_handle(fyt_insert, fycp_right, true);
+			fyp_error_check(fyp, chandle, err_out,
+				"fy_token_comment_handle() failed");
+
+			fy_input_unref(chandle->fyi);
+			fy_atom_reset(chandle);
 
 			rc = fy_scan_comment(fyp, chandle, false);
 			fyp_error_check(fyp, !rc, err_out_rc,
 					"fy_scan_comment() failed");
 		}
-
 	}
 
 	return 0;
@@ -3710,11 +3974,9 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	fyp_error_check(fyp, fyt, err_out_rc,
 			"fy_token_queue() failed");
 
-	if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS) {
-		rc = fy_attach_comments_if_any(fyp, fyt);
-		fyp_error_check(fyp, !rc, err_out_rc,
-				"fy_attach_right_hand_comment() failed");
-	}
+	rc = fy_attach_comments_if_any(fyp, fyt);
+	fyp_error_check(fyp, rc >= 0, err_out_rc,
+			"fy_attach_right_hand_comment() failed");
 
 	if (generated_indent) {
 		rc = fy_pop_indent(fyp);
@@ -4615,11 +4877,9 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 			"invalid comment without whitespace after %s scalar",
 				is_single ? "single-quoted" : "double-quoted");
 
-	if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS) {
-		rc = fy_attach_comments_if_any(fyp, fyt);
-		fyp_error_check(fyp, !rc, err_out_rc,
-				"fy_attach_right_hand_comment() failed");
-	}
+	rc = fy_parse_handle_comments_after_token(fyp, fyt);
+	fyp_error_check(fyp, !rc, err_out_rc,
+			"fy_parse_handle_comments_after_token() failed");
 
 	return 0;
 
@@ -4968,11 +5228,9 @@ int fy_fetch_plain_scalar(struct fy_parser *fyp, int c)
 	fyp->simple_key_allowed = handle.simple_key_allowed;
 	fyp_scan_debug(fyp, "simple_key_allowed -> %s\n", fyp->simple_key_allowed ? "true" : "false");
 
-	if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS) {
-		rc = fy_attach_comments_if_any(fyp, fyt);
-		fyp_error_check(fyp, !rc, err_out_rc,
-				"fy_attach_right_hand_comment() failed");
-	}
+	rc = fy_parse_handle_comments_after_token(fyp, fyt);
+	fyp_error_check(fyp, !rc, err_out_rc,
+			"fy_parse_handle_comments_after_token() failed");
 
 	return 0;
 
@@ -4984,7 +5242,6 @@ err_out_rc:
 
 int fy_fetch_tokens(struct fy_parser *fyp)
 {
-	struct fy_mark m;
 	bool was_double_colon;
 	int c, rc;
 
@@ -5121,17 +5378,9 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 
 	if (c == ',') {
 
-		fyp->indent_line = fyp_line(fyp);
-
-		fy_get_mark(fyp, &m);
-
-		fyp_scan_debug(fyp, "fy_fetch_flow_collection_entry(%c)", c);
-		rc = fy_fetch_flow_collection_entry(fyp, c);
+		rc = fy_parse_handle_comma(fyp, ',');
 		fyp_error_check(fyp, !rc, err_out_rc,
-				"fy_fetch_flow_collection_entry() failed");
-
-		fyp->last_was_comma = true;
-		fyp->last_comma_mark = m;
+			"fy_parse_handle_comma() failed");
 
 		goto out;
 	}
@@ -5467,6 +5716,7 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 	struct fy_token *fyt_td;
 	struct fy_token *fytn;
 	struct fy_atom *ev_handle = NULL;
+	int rc;
 
 	fyds = fyp->current_document_state;
 	assert(fyds);
@@ -5543,6 +5793,10 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 		fy_input_ref(fytn->handle.fyi);
 
 		fye->sequence_start.sequence_start = fytn;
+
+		rc = fy_attach_comments_if_any(fyp, fye->sequence_start.sequence_start);
+		fyp_error_check(fyp, rc >= 0, err_out,
+				"fy_attach_comments_if_any() failed");
 
 		fy_parse_state_set(fyp, FYPS_INDENTLESS_SEQUENCE_ENTRY);
 
@@ -8639,6 +8893,7 @@ struct fy_parser_checkpoint *fy_parser_checkpoint_create(struct fy_parser *fyp)
 	fypc->stream_end_token = fy_token_ref(fyp->stream_end_token);
 
 	fypc->last_comment.fyi = fy_input_ref(fyp->last_comment.fyi);
+	fypc->override_comment.fyi = fy_input_ref(fyp->override_comment.fyi);
 	fypc->current_document_state = fy_document_state_ref(fyp->current_document_state);
 	fypc->default_document_state = fy_document_state_ref(fyp->default_document_state);
 	fypc->next_single_document = fyp->next_single_document;
@@ -8888,6 +9143,10 @@ int fy_parser_rollback(struct fy_parser *fyp, struct fy_parser_checkpoint *fypch
 	fy_input_unref(fyp->last_comment.fyi);
 	fyp->last_comment = fypc->last_comment;
 	fyp->last_comment.fyi = fy_input_ref(fypc->last_comment.fyi);
+
+	fy_input_unref(fyp->override_comment.fyi);
+	fyp->override_comment = fypc->override_comment;
+	fyp->override_comment.fyi = fy_input_ref(fypc->override_comment.fyi);
 
 	/* indents */
 	while ((fyit = fy_indent_list_pop(&fyp->indent_stack)) != NULL)

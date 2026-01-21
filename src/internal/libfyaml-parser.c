@@ -1030,7 +1030,7 @@ int do_comment(struct fy_parser *fyp)
 	struct fy_atom *handle;
 	enum fy_comment_placement placement;
 	static const char *placement_txt[] =  { "top", "right", "bottom" };
-	char buf[1024];
+	const char *comment;
 
 	fydi = fy_document_iterator_create();
 	assert(fydi);
@@ -1057,10 +1057,11 @@ int do_comment(struct fy_parser *fyp)
 				if (!handle || !fy_atom_is_set(handle))
 					continue;
 
-				if (!fy_token_get_comment(fyt, buf, sizeof(buf), placement))
+				comment = fy_token_get_comment(fyt, placement);
+				if (!comment)
 					continue;
 
-				fprintf(stderr, "%s: %s\n", placement_txt[placement], buf);
+				fprintf(stderr, "%s: %s\n", placement_txt[placement], comment);
 			}
 
 			free(path);

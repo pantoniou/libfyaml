@@ -7666,3 +7666,61 @@ fy_document_iterator_generate_next(struct fy_document_iterator *fydi)
 	fydi->generator_state |= FYDIGF_GENERATED_NULL;
 	return NULL;
 }
+
+const char *
+fy_node_get_comment(struct fy_node *fyn, enum fy_comment_placement placement)
+{
+	struct fy_token *fyt;
+
+	if (!fyn)
+		return NULL;
+
+	switch (fyn->type) {
+	case FYNT_SCALAR:
+		fyt = fyn->scalar;
+		break;
+	case FYNT_SEQUENCE:
+		fyt = fyn->sequence_start;
+		break;
+	case FYNT_MAPPING:
+		fyt = fyn->mapping_start;
+		break;
+	default:
+		fyt = NULL;
+		break;
+	}
+
+	if (!fyt)
+		return NULL;
+
+	return fy_token_get_comment(fyt, placement);
+}
+
+const char *
+fy_node_get_comments(struct fy_node *fyn)
+{
+	struct fy_token *fyt;
+
+	if (!fyn)
+		return NULL;
+
+	switch (fyn->type) {
+	case FYNT_SCALAR:
+		fyt = fyn->scalar;
+		break;
+	case FYNT_SEQUENCE:
+		fyt = fyn->sequence_start;
+		break;
+	case FYNT_MAPPING:
+		fyt = fyn->mapping_start;
+		break;
+	default:
+		fyt = NULL;
+		break;
+	}
+
+	if (!fyt)
+		return NULL;
+
+	return fy_token_get_comments(fyt);
+}

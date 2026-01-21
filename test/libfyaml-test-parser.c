@@ -1017,8 +1017,8 @@ START_TEST(parser_comment_retrieval)
 	struct fy_document_iterator *fydi;
 	struct fy_node *fyn;
 	struct fy_token *fyt;
-	char buf[256];
 	bool found_comment = false;
+	const char *comment;
 
 	/* Build document with comments */
 	fyd = fy_document_build_from_string(&cfg,
@@ -1043,9 +1043,10 @@ START_TEST(parser_comment_retrieval)
 
 		/* Try to get comments at different placements */
 		for (int placement = fycp_top; placement < fycp_max; placement++) {
-			if (fy_token_get_comment(fyt, buf, sizeof(buf), placement)) {
-				ck_assert_ptr_ne(buf, NULL);
-				ck_assert_int_gt(strlen(buf), 0);
+			comment = fy_token_get_comment(fyt, placement);
+			if (comment) {
+				ck_assert_ptr_ne(comment, NULL);
+				ck_assert_int_gt(strlen(comment), 0);
 				found_comment = true;
 			}
 		}
@@ -2079,6 +2080,164 @@ START_TEST(parser_compose_callback)
 }
 END_TEST
 
+START_TEST(parser_comments_0)
+{
+	struct fy_parse_cfg cfg;
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	const char *comment;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = FYPCF_DEFAULT_DOC | FYPCF_PARSE_COMMENTS;
+
+	/* root scalar right comment */
+	fyd = fy_document_build_from_string(&cfg, "foo # right\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn = fy_document_root(fyd);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	/* no top */
+	comment = fy_node_get_comment(fyn, fycp_top);
+	ck_assert_ptr_eq(comment, NULL);
+
+	/* right */
+	comment = fy_node_get_comment(fyn, fycp_right);
+	ck_assert_ptr_ne(comment, NULL);
+	ck_assert_ptr_ne(strstr(comment, "right"), NULL);
+
+	/* no bootm */
+	comment = fy_node_get_comment(fyn, fycp_bottom);
+	ck_assert_ptr_eq(comment, NULL);
+
+	/* all */
+	comment = fy_node_get_comments(fyn);
+	ck_assert_ptr_ne(comment, NULL);
+	ck_assert_ptr_ne(strstr(comment, "right"), NULL);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(parser_comments_1)
+{
+	struct fy_parse_cfg cfg;
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	const char *comment;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = FYPCF_DEFAULT_DOC | FYPCF_PARSE_COMMENTS;
+
+	/* root scalar top & right comment */
+	fyd = fy_document_build_from_string(&cfg, "# top\nfoo # right\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn = fy_document_root(fyd);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	/* top */
+	comment = fy_node_get_comment(fyn, fycp_top);
+	ck_assert_ptr_ne(comment, NULL);
+	ck_assert_ptr_ne(strstr(comment, "top"), NULL);
+	ck_assert_ptr_eq(strstr(comment, "right"), NULL);
+
+	/* right */
+	comment = fy_node_get_comment(fyn, fycp_right);
+	ck_assert_ptr_ne(comment, NULL);
+	ck_assert_ptr_eq(strstr(comment, "top"), NULL);
+	ck_assert_ptr_ne(strstr(comment, "right"), NULL);
+
+	/* no bootm */
+	comment = fy_node_get_comment(fyn, fycp_bottom);
+	ck_assert_ptr_eq(comment, NULL);
+
+	/* all */
+	comment = fy_node_get_comments(fyn);
+	ck_assert_ptr_ne(comment, NULL);
+	ck_assert_ptr_ne(strstr(comment, "top"), NULL);
+	ck_assert_ptr_ne(strstr(comment, "right"), NULL);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(parser_comments_2)
+{
+	struct fy_parse_cfg cfg;
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	const char *comment;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = FYPCF_DEFAULT_DOC | FYPCF_PARSE_COMMENTS;
+
+	/* root scalar right comment */
+	fyd = fy_document_build_from_string(&cfg, "# top\n[]\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn = fy_document_root(fyd);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	/* top */
+	comment = fy_node_get_comment(fyn, fycp_top);
+	ck_assert_ptr_ne(comment, NULL);
+	ck_assert_ptr_ne(strstr(comment, "top"), NULL);
+
+	/* all */
+	comment = fy_node_get_comments(fyn);
+	ck_assert_ptr_ne(comment, NULL);
+	ck_assert_ptr_ne(strstr(comment, "top"), NULL);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(parser_comments_3)
+{
+	struct fy_parse_cfg cfg;
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	const char *comment;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = FYPCF_DEFAULT_DOC | FYPCF_PARSE_COMMENTS;
+
+	/* root scalar right comment */
+	fyd = fy_document_build_from_string(&cfg, "# top seq\n- foo # right item\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn = fy_document_root(fyd);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	/* top */
+	comment = fy_node_get_comment(fyn, fycp_top);
+	ck_assert_ptr_ne(comment, NULL);
+	ck_assert_ptr_ne(strstr(comment, "top seq"), NULL);
+
+	/* all */
+	comment = fy_node_get_comments(fyn);
+	ck_assert_ptr_ne(comment, NULL);
+	ck_assert_ptr_ne(strstr(comment, "top seq"), NULL);
+
+	/* get the first item of the sequence */
+	fyn = fy_node_by_path(fy_document_root(fyd), "/0", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	/* right */
+	comment = fy_node_get_comment(fyn, fycp_right);
+	ck_assert_ptr_ne(comment, NULL);
+	ck_assert_ptr_ne(strstr(comment, "right item"), NULL);
+
+	/* all */
+	comment = fy_node_get_comments(fyn);
+	ck_assert_ptr_ne(comment, NULL);
+	ck_assert_ptr_ne(strstr(comment, "right item"), NULL);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 TCase *libfyaml_case_parser(void)
 {
 	TCase *tc;
@@ -2160,6 +2319,12 @@ TCase *libfyaml_case_parser(void)
 
 	/* Compose callback tests */
 	tcase_add_test(tc, parser_compose_callback);
+
+	/* Comment extraction tests */
+	tcase_add_test(tc, parser_comments_0);
+	tcase_add_test(tc, parser_comments_1);
+	tcase_add_test(tc, parser_comments_2);
+	tcase_add_test(tc, parser_comments_3);
 
 	return tc;
 }

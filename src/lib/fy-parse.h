@@ -217,6 +217,8 @@ struct fy_parser {
 
 	/* last comment */
 	struct fy_atom last_comment;
+	/* next comment */
+	struct fy_atom override_comment;
 
 	/* indent stack */
 	struct fy_indent_list indent_stack;

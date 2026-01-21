@@ -1391,8 +1391,6 @@ enum fy_comment_placement {
  * fy_token_get_comment() - Get zero terminated comment of a token
  *
  * @fyt: The token out of which the comment text will be returned.
- * @buf: The buffer to be filled with the contents of the token
- * @maxsz: The maximum size of the comment buffer
  * @which: The comment placement
  *
  * Returns:
@@ -1400,8 +1398,64 @@ enum fy_comment_placement {
  * NULL in case of an error or if the token has no comment.
  */
 const char *
-fy_token_get_comment(struct fy_token *fyt, char *buf, size_t maxsz,
-		     enum fy_comment_placement which)
+fy_token_get_comment(struct fy_token *fyt, enum fy_comment_placement which)
+	FY_EXPORT;
+
+/**
+ * fy_token_get_comments() - Get all comments of a token
+ *
+ * @fyt: The token
+ *
+ * Returns:
+ * A pointer to a zero terminated text representation of all the comments.
+ * The comments of all the placements are concatenated and returned as one.
+ * NULL in case of an error or if the event has no comments.
+ */
+const char *
+fy_token_get_comments(struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
+ * fy_event_get_comments() - Get all comments of an event
+ *
+ * @fye: The event
+ *
+ * Returns:
+ * A pointer to a zero terminated text representation of all the comments.
+ * The comments of all the placements are concatenated and returned as one.
+ * NULL in case of an error or if the event has no comments.
+ * The pointer must be free'ed if it's not NULL via a call to free()
+ */
+const char *
+fy_event_get_comments(struct fy_event *fye)
+	FY_EXPORT;
+
+/**
+ * fy_node_get_comment() - Get comment of a node
+ *
+ * @fyn: The node
+ * @placement: The placement of the comment
+ *
+ * Returns:
+ * A pointer to a zero terminated text representation of the comment.
+ * NULL in case of an error or if the event has no such comments.
+ */
+const char *
+fy_node_get_comment(struct fy_node *fyn, enum fy_comment_placement which)
+	FY_EXPORT;
+
+/**
+ * fy_node_get_comments() - Get all comments of a node
+ *
+ * @fyn: The node
+ *
+ * Returns:
+ * A pointer to a zero terminated text representation of all the comments.
+ * The comments of all the placements are concatenated and returned as one.
+ * NULL in case of an error or if the event has no comments.
+ */
+const char *
+fy_node_get_comments(struct fy_node *fyn)
 	FY_EXPORT;
 
 /**
