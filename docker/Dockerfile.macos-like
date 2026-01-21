@@ -1,0 +1,71 @@
+# Dockerfile for libfyaml CI - macOS-like Environment
+#
+# NOTE: Docker cannot run actual macOS. This container provides a Linux
+# environment configured similarly to macOS GitHub Actions runners:
+# - Clang as the default compiler (like Xcode's clang)
+# - Similar package versions to Homebrew
+# - LLVM toolchain for reflection support
+#
+# For actual macOS testing, use:
+# - GitHub Actions with macos-latest runner
+# - A physical/virtual macOS machine
+# - macOS-specific CI services
+
+FROM ubuntu:24.04
+
+LABEL maintainer="Pantelis Antoniou <pantelis.antoniou@konsulko.com>"
+LABEL description="libfyaml CI build environment - macOS-like (Linux-based)"
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# Install base dependencies
+RUN apt-get update -qq && apt-get install --no-install-recommends -y \
+    # Build essentials
+    build-essential \
+    # Clang toolchain (default on macOS)
+    clang \
+    clang-tools \
+    lld \
+    # Also include GCC for testing
+    gcc \
+    g++ \
+    # Autotools
+    autoconf \
+    automake \
+    libtool \
+    # CMake and Ninja (like Homebrew provides)
+    cmake \
+    ninja-build \
+    # Package config and utilities
+    pkg-config \
+    git \
+    curl \
+    wget \
+    ca-certificates \
+    # Test framework
+    check \
+    # Libraries
+    libyaml-dev \
+    libltdl-dev \
+    # Python
+    python3 \
+    python3-pip \
+    python3-setuptools \
+    # LLVM/libclang for reflection support
+    llvm-dev \
+    libclang-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set default compiler to Clang (like macOS)
+ENV CC=clang
+ENV CXX=clang++
+
+# Create build user (non-root)
+RUN useradd -m -s /bin/bash builder
+USER builder
+WORKDIR /home/builder
+
+# Default command
+CMD ["/bin/bash"]

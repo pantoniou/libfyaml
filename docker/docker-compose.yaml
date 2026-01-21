@@ -1,0 +1,87 @@
+# Docker Compose for libfyaml CI environments
+#
+# Usage:
+#   docker compose build                    # Build all images
+#   docker compose run ubuntu               # Interactive Ubuntu shell
+#   docker compose run debian               # Interactive Debian shell
+#   docker compose run macos-like           # Interactive macOS-like shell
+#
+# Build and test:
+#   docker compose run ubuntu ./docker/scripts/build-autotools.sh
+#   docker compose run debian ./docker/scripts/build-cmake.sh
+#
+# Run specific compiler:
+#   docker compose run -e CC=clang -e CXX=clang++ ubuntu bash
+
+services:
+  ubuntu:
+    build:
+      context: .
+      dockerfile: Dockerfile.ubuntu
+    image: libfyaml-ci:ubuntu
+    volumes:
+      - ..:/home/builder/libfyaml:ro
+      - build-ubuntu:/home/builder/build
+    working_dir: /home/builder/libfyaml
+    environment:
+      - CC=gcc
+      - CXX=g++
+
+  ubuntu-clang:
+    build:
+      context: .
+      dockerfile: Dockerfile.ubuntu
+    image: libfyaml-ci:ubuntu
+    volumes:
+      - ..:/home/builder/libfyaml:ro
+      - build-ubuntu-clang:/home/builder/build
+    working_dir: /home/builder/libfyaml
+    environment:
+      - CC=clang
+      - CXX=clang++
+
+  debian:
+    build:
+      context: .
+      dockerfile: Dockerfile.debian
+    image: libfyaml-ci:debian
+    volumes:
+      - ..:/home/builder/libfyaml:ro
+      - build-debian:/home/builder/build
+    working_dir: /home/builder/libfyaml
+    environment:
+      - CC=gcc
+      - CXX=g++
+
+  debian-clang:
+    build:
+      context: .
+      dockerfile: Dockerfile.debian
+    image: libfyaml-ci:debian
+    volumes:
+      - ..:/home/builder/libfyaml:ro
+      - build-debian-clang:/home/builder/build
+    working_dir: /home/builder/libfyaml
+    environment:
+      - CC=clang
+      - CXX=clang++
+
+  macos-like:
+    build:
+      context: .
+      dockerfile: Dockerfile.macos-like
+    image: libfyaml-ci:macos-like
+    volumes:
+      - ..:/home/builder/libfyaml:ro
+      - build-macos-like:/home/builder/build
+    working_dir: /home/builder/libfyaml
+    environment:
+      - CC=clang
+      - CXX=clang++
+
+volumes:
+  build-ubuntu:
+  build-ubuntu-clang:
+  build-debian:
+  build-debian-clang:
+  build-macos-like:

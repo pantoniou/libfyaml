@@ -1,0 +1,58 @@
+# Dockerfile for libfyaml CI - Ubuntu Latest
+# Mirrors the ubuntu-latest GitHub Actions runner environment
+
+FROM ubuntu:24.04
+
+LABEL maintainer="Pantelis Antoniou <pantelis.antoniou@konsulko.com>"
+LABEL description="libfyaml CI build environment - Ubuntu"
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# Install base dependencies
+RUN apt-get update -qq && apt-get install --no-install-recommends -y \
+    # Build essentials
+    build-essential \
+    gcc \
+    g++ \
+    clang \
+    # Autotools
+    autoconf \
+    automake \
+    libtool \
+    # CMake and Ninja
+    cmake \
+    ninja-build \
+    # Package config and utilities
+    pkg-config \
+    git \
+    curl \
+    wget \
+    ca-certificates \
+    # Test framework
+    check \
+    # Libraries
+    libyaml-dev \
+    libltdl-dev \
+    # Python (for some tests/scripts)
+    python3 \
+    python3-pip \
+    python3-setuptools \
+    # LLVM/libclang for reflection support
+    llvm-dev \
+    libclang-dev \
+    clang \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set default compiler to GCC
+ENV CC=gcc
+ENV CXX=g++
+
+# Create build user (non-root)
+RUN useradd -m -s /bin/bash builder
+USER builder
+WORKDIR /home/builder
+
+# Default command
+CMD ["/bin/bash"]
