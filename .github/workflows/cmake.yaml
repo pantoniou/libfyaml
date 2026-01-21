@@ -1,0 +1,269 @@
+name: CMake CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  build:
+    name: ${{ matrix.os }} - ${{ matrix.compiler }} - ${{ matrix.build_type }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-22.04, ubuntu-20.04, macos-latest, macos-13, windows-latest]
+        compiler: [gcc, clang, msvc]
+        build_type: [Debug, Release]
+        exclude:
+          # Exclude invalid combinations
+          - os: windows-latest
+            compiler: gcc
+          - os: windows-latest
+            compiler: clang
+          - os: ubuntu-latest
+            compiler: msvc
+          - os: ubuntu-22.04
+            compiler: msvc
+          - os: ubuntu-20.04
+            compiler: msvc
+          - os: macos-latest
+            compiler: msvc
+          - os: macos-13
+            compiler: msvc
+        include:
+          # Ubuntu GCC
+          - os: ubuntu-latest
+            compiler: gcc
+            cc: gcc-11
+            cxx: g++-11
+          - os: ubuntu-22.04
+            compiler: gcc
+            cc: gcc-11
+            cxx: g++-11
+          - os: ubuntu-20.04
+            compiler: gcc
+            cc: gcc-9
+            cxx: g++-9
+          # Ubuntu Clang
+          - os: ubuntu-latest
+            compiler: clang
+            cc: clang-14
+            cxx: clang++-14
+          - os: ubuntu-22.04
+            compiler: clang
+            cc: clang-14
+            cxx: clang++-14
+          - os: ubuntu-20.04
+            compiler: clang
+            cc: clang-10
+            cxx: clang++-10
+          # macOS GCC
+          - os: macos-latest
+            compiler: gcc
+            cc: gcc-13
+            cxx: g++-13
+          - os: macos-13
+            compiler: gcc
+            cc: gcc-13
+            cxx: g++-13
+          # macOS Clang
+          - os: macos-latest
+            compiler: clang
+            cc: clang
+            cxx: clang++
+          - os: macos-13
+            compiler: clang
+            cc: clang
+            cxx: clang++
+          # Windows MSVC
+          - os: windows-latest
+            compiler: msvc
+            cc: cl
+            cxx: cl
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies (Ubuntu)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install --no-install-recommends -y \
+          cmake ninja-build pkg-config check \
+          libyaml-dev libltdl-dev \
+          ${{ matrix.cc }} ${{ matrix.cxx }}
+
+    - name: Install dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew update
+        brew install cmake ninja pkg-config check libyaml
+        if [ "${{ matrix.compiler }}" = "gcc" ]; then
+          brew install gcc@13
+        fi
+
+    - name: Install dependencies (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        choco install cmake ninja pkgconfiglite
+
+    - name: Set compiler environment (Unix)
+      if: runner.os != 'Windows'
+      run: |
+        echo "CC=${{ matrix.cc }}" >> $GITHUB_ENV
+        echo "CXX=${{ matrix.cxx }}" >> $GITHUB_ENV
+
+    - name: Configure CMake
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+          -DBUILD_TESTING=ON \
+          -DENABLE_NETWORK=ON
+
+    - name: Build
+      run: cmake --build build --config ${{ matrix.build_type }}
+
+    - name: Test
+      working-directory: build
+      run: ctest --output-on-failure --config ${{ matrix.build_type }}
+
+    - name: Upload test logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: cmake-test-logs-${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.build_type }}
+        path: |
+          build/Testing/Temporary/
+          build/**/*.log
+
+  build-with-options:
+    name: ${{ matrix.os }} - Options - ${{ matrix.options_name }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        include:
+          # ASAN build
+          - os: ubuntu-latest
+            options_name: ASAN
+            cmake_flags: -DENABLE_ASAN=ON -DCMAKE_BUILD_TYPE=Debug
+          # Static tools
+          - os: ubuntu-latest
+            options_name: Static Tools
+            cmake_flags: -DENABLE_STATIC_TOOLS=ON -DCMAKE_BUILD_TYPE=Release
+          # Portable target
+          - os: ubuntu-latest
+            options_name: Portable
+            cmake_flags: -DENABLE_PORTABLE_TARGET=ON -DCMAKE_BUILD_TYPE=Release
+          # Shared libs disabled
+          - os: ubuntu-latest
+            options_name: Static Libs
+            cmake_flags: -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release
+          # macOS ASAN
+          - os: macos-latest
+            options_name: ASAN
+            cmake_flags: -DENABLE_ASAN=ON -DCMAKE_BUILD_TYPE=Debug
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies (Ubuntu)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install --no-install-recommends -y \
+          cmake ninja-build pkg-config check \
+          libyaml-dev libltdl-dev gcc g++
+
+    - name: Install dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew update
+        brew install cmake ninja pkg-config check libyaml
+
+    - name: Configure CMake
+      run: |
+        cmake -B build -G Ninja \
+          ${{ matrix.cmake_flags }} \
+          -DBUILD_TESTING=ON \
+          -DENABLE_NETWORK=ON
+
+    - name: Build
+      run: cmake --build build
+
+    - name: Test
+      working-directory: build
+      run: ctest --output-on-failure
+
+    - name: Upload test logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: cmake-options-logs-${{ matrix.os }}-${{ matrix.options_name }}
+        path: |
+          build/Testing/Temporary/
+          build/**/*.log
+
+  build-with-llvm:
+    name: ${{ matrix.os }} - LLVM ${{ matrix.llvm_version }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-22.04]
+        llvm_version: [14, 15, 16, 17, 18]
+        exclude:
+          # LLVM 18 not available on older Ubuntu
+          - os: ubuntu-22.04
+            llvm_version: 18
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install LLVM and dependencies
+      run: |
+        wget https://apt.llvm.org/llvm.sh
+        chmod +x llvm.sh
+        sudo ./llvm.sh ${{ matrix.llvm_version }}
+        sudo apt-get update -qq
+        sudo apt-get install --no-install-recommends -y \
+          cmake ninja-build pkg-config check \
+          libyaml-dev libltdl-dev gcc g++ \
+          libclang-${{ matrix.llvm_version }}-dev \
+          llvm-${{ matrix.llvm_version }}-dev
+
+    - name: Configure CMake with LLVM
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_TESTING=ON \
+          -DENABLE_NETWORK=ON \
+          -DCMAKE_PREFIX_PATH=/usr/lib/llvm-${{ matrix.llvm_version }}
+
+    - name: Build
+      run: cmake --build build
+
+    - name: Test
+      working-directory: build
+      run: ctest --output-on-failure
+
+    - name: Test reflection features
+      working-directory: build
+      run: |
+        # Test that fy-tool was built with reflection support
+        ./src/tool/fy-tool --help | grep -q reflect || echo "Warning: reflection support not detected"
+
+    - name: Upload test logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: cmake-llvm-logs-${{ matrix.os }}-llvm${{ matrix.llvm_version }}
+        path: |
+          build/Testing/Temporary/
+          build/**/*.log

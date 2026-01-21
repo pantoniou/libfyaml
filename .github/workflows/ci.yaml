@@ -1,29 +1,111 @@
-name: Standard Automake CI
+name: Autotools CI
 
-on: [push]
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
 
 jobs:
   build:
+    name: ${{ matrix.os }} - ${{ matrix.compiler }}
+    runs-on: ${{ matrix.os }}
 
-    runs-on: ubuntu-latest
-    
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-22.04, ubuntu-20.04, macos-latest, macos-13]
+        compiler: [gcc, clang]
+        include:
+          # Add specific compiler versions
+          - os: ubuntu-latest
+            compiler: gcc
+            cc: gcc-11
+            cxx: g++-11
+          - os: ubuntu-latest
+            compiler: clang
+            cc: clang-14
+            cxx: clang++-14
+          - os: ubuntu-22.04
+            compiler: gcc
+            cc: gcc-11
+            cxx: g++-11
+          - os: ubuntu-22.04
+            compiler: clang
+            cc: clang-14
+            cxx: clang++-14
+          - os: ubuntu-20.04
+            compiler: gcc
+            cc: gcc-9
+            cxx: g++-9
+          - os: ubuntu-20.04
+            compiler: clang
+            cc: clang-10
+            cxx: clang++-10
+          - os: macos-latest
+            compiler: gcc
+            cc: gcc-13
+            cxx: g++-13
+          - os: macos-latest
+            compiler: clang
+            cc: clang
+            cxx: clang++
+          - os: macos-13
+            compiler: gcc
+            cc: gcc-13
+            cxx: g++-13
+          - os: macos-13
+            compiler: clang
+            cc: clang
+            cxx: clang++
+
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
 
-    - name: apt-deps
-      run: sudo apt-get update -qq && sudo apt-get install --no-install-recommends -y gcc autoconf automake libtool git make libyaml-dev libltdl-dev pkg-config check python3 python3-pip python3-setuptools
+    - name: Install dependencies (Ubuntu)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install --no-install-recommends -y \
+          autoconf automake libtool git make \
+          libyaml-dev libltdl-dev pkg-config check \
+          python3 python3-pip python3-setuptools \
+          ${{ matrix.cc }} ${{ matrix.cxx }}
 
-    - name: boostrap
+    - name: Install dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew update
+        brew install autoconf automake libtool pkg-config check libyaml
+        if [ "${{ matrix.compiler }}" = "gcc" ]; then
+          brew install gcc@13
+        fi
+
+    - name: Set compiler environment
+      run: |
+        echo "CC=${{ matrix.cc }}" >> $GITHUB_ENV
+        echo "CXX=${{ matrix.cxx }}" >> $GITHUB_ENV
+
+    - name: Bootstrap
       run: ./bootstrap.sh
 
-    - name: configure
+    - name: Configure
       run: ./configure
 
-    - name: make
-      run: make
+    - name: Build
+      run: make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
 
-    - name: make check
+    - name: Test
       run: make check
 
-    - name: make distcheck
+    - name: Distribution check
       run: make distcheck
+
+    - name: Upload test logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-logs-${{ matrix.os }}-${{ matrix.compiler }}
+        path: |
+          test/*.log
+          test-suite.log
