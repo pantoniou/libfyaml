@@ -297,4 +297,7 @@ void fy_atom_raw_line_iter_finish(struct fy_atom_raw_line_iter *iter);
 const struct fy_raw_line *
 fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter);
 
+const char *
+fy_atom_lines_containing(struct fy_atom *atom, size_t *lenp);
+
 #endif

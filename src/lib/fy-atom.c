@@ -1894,3 +1894,39 @@ void fy_atom_raw_line_iter_finish(struct fy_atom_raw_line_iter *iter)
 {
 	/* nothing */
 }
+
+/* returns the line of the atom, marking exactly where the atom is */
+const char *fy_atom_lines_containing(struct fy_atom *atom, size_t *lenp)
+{
+	const struct fy_raw_line *l, *ln;
+	struct fy_atom_raw_line_iter iter;
+	bool first_line, last_line;
+	const char *start, *end;
+
+	if (!atom || !lenp) {
+		if (lenp)
+			*lenp = 0;
+		return NULL;
+	}
+
+	start = end = NULL;
+
+	fy_atom_raw_line_iter_start(atom, &iter);
+	l = fy_atom_raw_line_iter_next(&iter);
+	for (; l != NULL; l = ln) {
+		/* get the next too */
+		ln = fy_atom_raw_line_iter_next(&iter);
+
+		first_line = l->lineno <= 1;
+		last_line = ln == NULL;
+
+		if (first_line)
+			start = l->line_start;
+		if (last_line)
+			end = l->line_start + l->line_count;
+	}
+	fy_atom_raw_line_iter_finish(&iter);
+
+	*lenp = end - start;
+	return start;
+}
