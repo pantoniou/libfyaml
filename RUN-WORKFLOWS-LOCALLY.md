@@ -4,21 +4,67 @@ This guide shows you how to test GitHub Actions workflows on your local machine 
 
 ## Installing act
 
-### Linux
+**Note:** There is no official Debian/Ubuntu repository for act. Use one of these safe methods:
+
+### Option 1: Safe Installation Script (Recommended for Linux)
 
 ```bash
-curl -s https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash
+# Downloads from GitHub releases and prompts before installing
+./install-act-safe.sh
 ```
 
-### macOS
+This script:
+- Downloads the official binary from GitHub releases
+- Verifies the download
+- Asks before installing (no automatic sudo)
+- Offers user-local installation (no sudo needed)
+
+### Option 2: Manual Installation (Most Secure)
 
 ```bash
+# 1. Download latest release
+VERSION=$(curl -s https://api.github.com/repos/nektos/act/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+curl -L -o act.tar.gz "https://github.com/nektos/act/releases/download/v${VERSION}/act_Linux_x86_64.tar.gz"
+
+# 2. Extract
+tar xzf act.tar.gz
+
+# 3. Verify
+./act --version
+
+# 4. Install system-wide (requires sudo)
+sudo install -m 755 act /usr/local/bin/act
+
+# OR install to user directory (no sudo)
+mkdir -p ~/.local/bin
+install -m 755 act ~/.local/bin/act
+echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### Option 3: Homebrew (macOS and Linux)
+
+```bash
+# macOS
+brew install act
+
+# Linux (if Homebrew/Linuxbrew is installed)
 brew install act
 ```
 
-### Manual Installation
+### Option 4: Official Script (Quick but requires trust)
 
-Download from: https://github.com/nektos/act/releases
+```bash
+# This pipes to bash, so only use if you trust the source
+curl -s https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash
+```
+
+### Verify Installation
+
+```bash
+act --version
+which act
+```
 
 ## Basic Usage
 
