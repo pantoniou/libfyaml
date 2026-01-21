@@ -3017,6 +3017,16 @@ typedef int (*fy_node_mapping_sort_fn)(const struct fy_node_pair *fynp_a,
 				       void *arg);
 
 /**
+ * fy_node_mapping_sort_cmp_default() - Mapping sort of two scalars, default implementation
+ *
+ * Implements fy_node_mapping_sort_fn
+ *
+ */
+int fy_node_mapping_sort_cmp_default(const struct fy_node_pair *fynp_a,
+					    const struct fy_node_pair *fynp_b,
+					    void *arg);
+
+/**
  * typedef fy_node_scalar_compare_fn - Node compare method function for scalars
  *
  * @fyn_a: The first scalar node used in the comparison
@@ -3031,6 +3041,16 @@ typedef int (*fy_node_mapping_sort_fn)(const struct fy_node_pair *fynp_a,
 typedef int (*fy_node_scalar_compare_fn)(struct fy_node *fyn_a,
 					 struct fy_node *fyn_b,
 					 void *arg);
+
+/**
+ * fy_node_scalar_cmp_default() - Compare two scalars, default implementation
+ *
+ * Implements fy_node_scalar_compare_fn
+ *
+ */
+int fy_node_scalar_cmp_default(struct fy_node *fyn_a,
+				      struct fy_node *fyn_b,
+				      void *arg);
 
 /**
  * fy_node_compare() - Compare two nodes for equality
