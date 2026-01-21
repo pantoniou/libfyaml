@@ -32,6 +32,7 @@ struct fy_document_state *fy_document_state_alloc(void)
 		return NULL;
 	memset(fyds, 0, sizeof(*fyds));
 
+	fyds->fyt_ds = NULL;
 	fyds->fyt_vd = NULL;
 	fy_token_list_init(&fyds->fyt_td);
 
@@ -47,6 +48,7 @@ void fy_document_state_free(struct fy_document_state *fyds)
 
 	assert(fyds->refs == 1);
 
+	fy_token_unref(fyds->fyt_ds);
 	fy_token_unref(fyds->fyt_vd);
 	fy_token_list_unref_all(&fyds->fyt_td);
 
@@ -156,6 +158,7 @@ struct fy_document_state *fy_document_state_default(
 	memset(&fyds->start_mark, 0, sizeof(fyds->start_mark));
 	memset(&fyds->end_mark, 0, sizeof(fyds->end_mark));
 
+	fyds->fyt_ds = NULL;
 	fyds->fyt_vd = NULL;
 	fy_token_list_init(&fyds->fyt_td);
 
@@ -190,6 +193,20 @@ struct fy_document_state *fy_document_state_copy(struct fy_document_state *fyds)
 
 	fyds_new->start_mark = fyds->start_mark;
 	fyds_new->end_mark = fyds->end_mark;
+
+	if (fyds->fyt_ds) {
+		fyt = fy_token_alloc();
+		if (!fyt)
+			goto err_out;
+
+		fyt->type = FYTT_DOCUMENT_START;
+		fyt->handle = fyds->fyt_ds->handle;
+
+		/* take reference */
+		fy_input_ref(fyt->handle.fyi);
+
+		fyds_new->fyt_ds = fyt;
+	}
 
 	if (fyds->fyt_vd) {
 		fyt = fy_token_alloc();

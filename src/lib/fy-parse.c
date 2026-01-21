@@ -6051,6 +6051,11 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		fye->document_start.document_state = fy_document_state_ref(fyds);
 		fye->document_start.implicit = fyds->start_implicit;
 
+		/* update the handle of the document start token */
+		fytn = fyds->fyt_ds;
+		fyds->fyt_ds = fy_token_ref(fye->document_start.document_start);
+		fy_token_unref(fytn);
+
 		ev_handle = &fye->document_start.document_start->handle;
 		break;
 

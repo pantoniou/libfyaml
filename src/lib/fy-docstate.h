@@ -37,6 +37,7 @@ struct fy_document_state {
 	bool json_mode : 1;
 	struct fy_mark start_mark;
 	struct fy_mark end_mark;
+	struct fy_token *fyt_ds;		/* the document start token (if any) */
 	struct fy_token *fyt_vd;		/* version directive */
 	struct fy_token_list fyt_td;		/* tag directives */
 };
