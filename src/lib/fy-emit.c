@@ -2430,6 +2430,8 @@ int fy_emit_document_no_check(struct fy_emitter *emit, struct fy_document *fyd)
 
 	rc = fy_emit_document_end(emit);
 
+	fy_emit_reset(emit, false);
+
 	return rc;
 }
 
