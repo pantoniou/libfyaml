@@ -1,0 +1,208 @@
+name: Ubuntu Latest Test
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  autotools-gcc:
+    name: Autotools with GCC
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install --no-install-recommends -y \
+          autoconf automake libtool git make \
+          libyaml-dev libltdl-dev pkg-config check \
+          python3 python3-pip python3-setuptools \
+          gcc g++
+
+    - name: Bootstrap
+      run: ./bootstrap.sh
+
+    - name: Configure
+      run: ./configure
+
+    - name: Build
+      run: make -j$(nproc)
+
+    - name: Test
+      run: make check
+
+    - name: Upload test logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-logs-autotools-gcc
+        path: |
+          test/*.log
+          test-suite.log
+
+  autotools-clang:
+    name: Autotools with Clang
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install --no-install-recommends -y \
+          autoconf automake libtool git make \
+          libyaml-dev libltdl-dev pkg-config check \
+          python3 python3-pip python3-setuptools \
+          clang
+
+    - name: Set compiler environment
+      run: |
+        echo "CC=clang" >> $GITHUB_ENV
+        echo "CXX=clang++" >> $GITHUB_ENV
+
+    - name: Bootstrap
+      run: ./bootstrap.sh
+
+    - name: Configure
+      run: ./configure
+
+    - name: Build
+      run: make -j$(nproc)
+
+    - name: Test
+      run: make check
+
+    - name: Upload test logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-logs-autotools-clang
+        path: |
+          test/*.log
+          test-suite.log
+
+  cmake-gcc-debug:
+    name: CMake with GCC (Debug)
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install --no-install-recommends -y \
+          cmake ninja-build pkg-config check \
+          libyaml-dev libltdl-dev \
+          gcc g++
+
+    - name: Configure
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DBUILD_TESTING=ON \
+          -DENABLE_NETWORK=ON
+
+    - name: Build
+      run: cmake --build build
+
+    - name: Test
+      working-directory: build
+      run: ctest --output-on-failure
+
+    - name: Upload test logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-logs-cmake-gcc-debug
+        path: |
+          build/Testing/Temporary/
+          build/**/*.log
+
+  cmake-clang-release:
+    name: CMake with Clang (Release)
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install --no-install-recommends -y \
+          cmake ninja-build pkg-config check \
+          libyaml-dev libltdl-dev \
+          clang
+
+    - name: Set compiler environment
+      run: |
+        echo "CC=clang" >> $GITHUB_ENV
+        echo "CXX=clang++" >> $GITHUB_ENV
+
+    - name: Configure
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_TESTING=ON \
+          -DENABLE_NETWORK=ON
+
+    - name: Build
+      run: cmake --build build
+
+    - name: Test
+      working-directory: build
+      run: ctest --output-on-failure
+
+    - name: Upload test logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-logs-cmake-clang-release
+        path: |
+          build/Testing/Temporary/
+          build/**/*.log
+
+  cmake-with-asan:
+    name: CMake with AddressSanitizer
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install --no-install-recommends -y \
+          cmake ninja-build pkg-config check \
+          libyaml-dev libltdl-dev \
+          gcc g++
+
+    - name: Configure
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DENABLE_ASAN=ON \
+          -DBUILD_TESTING=ON \
+          -DENABLE_NETWORK=ON
+
+    - name: Build
+      run: cmake --build build
+
+    - name: Test
+      working-directory: build
+      run: ctest --output-on-failure
+
+    - name: Upload test logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-logs-cmake-asan
+        path: |
+          build/Testing/Temporary/
+          build/**/*.log
