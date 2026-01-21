@@ -297,6 +297,14 @@ void fy_diag_set_collect_errors(struct fy_diag *diag, bool collect_errors)
 	}
 }
 
+bool fy_diag_get_collect_errors(struct fy_diag *diag)
+{
+	if (!diag || diag->destroyed)
+		return false;
+
+	return diag->collect_errors;
+}
+
 struct fy_diag_error *fy_diag_errors_iterate(struct fy_diag *diag, void **prevp)
 {
 	struct fy_diag_errorp *errp;

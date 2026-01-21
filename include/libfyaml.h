@@ -5851,6 +5851,20 @@ fy_diag_set_collect_errors(struct fy_diag *diag, bool collect_errors)
 	FY_EXPORT;
 
 /**
+ * fy_diag_get_collect_errors() - Get collect errors state
+ *
+ * Get the collect errors mode.
+ *
+ * @diag: The diagnostic object
+ *
+ * Returns:
+ * true collecting errors, false otherwise
+ */
+bool
+fy_diag_get_collect_errors(struct fy_diag *diag)
+	FY_EXPORT;
+
+/**
  * fy_diag_cfg_default() - Fill in the configuration structure
  * 			   with defaults
  *
