@@ -1,0 +1,15 @@
+# act configuration for libfyaml
+# This file configures the 'act' tool for running GitHub Actions locally
+# See: https://github.com/nektos/act
+
+# Use medium-sized images for better compatibility
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+-P ubuntu-22.04=catthehacker/ubuntu:act-22.04
+-P ubuntu-20.04=catthehacker/ubuntu:act-20.04
+-P macos-latest=catthehacker/ubuntu:act-latest
+-P macos-13=catthehacker/ubuntu:act-latest
+
+# Use amd64 architecture
+--container-architecture linux/amd64
+
+# Note: BSD workflows require actual BSD systems and won't work with act
