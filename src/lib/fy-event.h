@@ -46,6 +46,9 @@ const char *fy_event_get_anchor(struct fy_event *fye, size_t *anchor_lenp);
 struct fy_eventp *
 fy_eventp_vcreate_internal(struct fy_eventp_list *recycled_list, struct fy_diag *diag,
 			   struct fy_document_state *fyds, enum fy_event_type type, va_list ap);
+
+struct fy_token_list;
+
 void fy_eventp_clean_rl(struct fy_token_list *fytl, struct fy_eventp *fyep);
 
 /* convert to event dump string, string is malloc'ed */

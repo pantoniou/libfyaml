@@ -1390,6 +1390,9 @@ enum fy_comment_placement {
 /**
  * fy_token_get_comment() - Get zero terminated comment of a token
  *
+ * Get the comment that is attached at a token having the given
+ * placement.
+ *
  * @fyt: The token out of which the comment text will be returned.
  * @which: The comment placement
  *
@@ -1404,6 +1407,8 @@ fy_token_get_comment(struct fy_token *fyt, enum fy_comment_placement which)
 /**
  * fy_token_get_comments() - Get all comments of a token
  *
+ * Get all the comments that are attached on a token
+ *
  * @fyt: The token
  *
  * Returns:
@@ -1413,6 +1418,26 @@ fy_token_get_comment(struct fy_token *fyt, enum fy_comment_placement which)
  */
 const char *
 fy_token_get_comments(struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
+ * fy_token_set_comment() - Attach a comment to a token
+ *
+ * Attach the given comment on the token at the specified placement.
+ * If another comment is already present it will be overriden.
+ * If text is NULL the comment is removed.
+ *
+ * @fyt: The token out of which the comment text will be attached
+ * @which: The placement
+ * @text: The text of the comment
+ * @len: The length of the comment (FY_NT means the length of text)
+ *
+ * Returns:
+ * 0 on success, -1 on failure.
+ */
+int
+fy_token_set_comment(struct fy_token *fyt, enum fy_comment_placement which,
+		     const char *text, size_t len)
 	FY_EXPORT;
 
 /**

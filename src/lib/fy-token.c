@@ -1195,7 +1195,7 @@ fy_token_get_comment(struct fy_token *fyt, enum fy_comment_placement which)
 	enum comment_out_state state;
 	bool output;
 
-	if ((unsigned int)which >= fycp_max)
+	if (!fyt || (unsigned int)which >= fycp_max)
 		return NULL;
 
 	for (tk = fyt->token_comment; tk; tk = tk->next) {
@@ -1222,7 +1222,7 @@ fy_token_get_comment(struct fy_token *fyt, enum fy_comment_placement which)
 			if (!tk->comment)
 				return NULL;
 			s = tk->comment;
-			e = s + size;
+			e = s + size + 1;
 		}
 
 		/* start expecting # */
@@ -1340,6 +1340,72 @@ err_out:
 	if (accum)
 		free(accum);
 	return NULL;
+}
+
+int
+fy_token_set_comment(struct fy_token *fyt, enum fy_comment_placement which,
+		     const char *text, size_t len)
+{
+	struct fy_token_comment *tk, *tk_prev;
+	struct fy_input *fyi = NULL;
+	char *data = NULL;
+	struct fy_atom *handle;
+
+	if (!fyt || (unsigned int)which >= fycp_max)
+		return -1;
+
+	tk_prev = NULL;
+	for (tk = fyt->token_comment; tk; tk = tk->next) {
+		if (tk->placement == which)
+			break;
+		tk_prev = tk;
+	}
+
+	/* removal of comment */
+	if (!text && tk) {
+		if (!tk_prev)
+			fyt->token_comment = tk->next;
+		else
+			tk_prev = tk->next;
+
+		fy_input_unref(tk->handle.fyi);
+		fy_atom_reset(&tk->handle);
+		if (tk->comment)
+			free(tk->comment);
+		free(tk);
+		return 0;
+	}
+
+	if (len == FY_NT)
+		len = strlen(text);
+
+	/* OK, need to create */
+	data = malloc(len + 1);
+	if (!data)
+		goto err_out;
+
+	/* copy and always NULL terminate */
+	memcpy(data, text, len);
+	data[len] = '\0';
+
+	handle = tk ? &tk->handle : fy_token_comment_handle(fyt, which, true);
+	if (!handle)
+		goto err_out;
+
+	fy_input_unref(handle->fyi);
+	fy_atom_reset(handle);
+
+	fyi = fy_input_from_malloc_data(data, len, handle, true);
+	if (!fyi)
+		goto err_out;
+
+	return 0;
+
+err_out:
+	fy_input_unref(fyi);
+	if (data)
+		free(data);
+	return -1;
 }
 
 const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
