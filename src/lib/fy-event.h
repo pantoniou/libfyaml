@@ -43,6 +43,14 @@ struct fy_eventp *fy_parse_eventp_clone(struct fy_parser *fyp, struct fy_eventp 
 struct fy_token *fy_event_get_and_clear_anchor_token(struct fy_event *fye);
 const char *fy_event_get_anchor(struct fy_event *fye, size_t *anchor_lenp);
 
+struct fy_eventp *
+fy_eventp_vcreate_internal(struct fy_eventp_list *recycled_list, struct fy_diag *diag,
+			   struct fy_document_state *fyds, enum fy_event_type type, va_list ap);
+void fy_eventp_clean_rl(struct fy_token_list *fytl, struct fy_eventp *fyep);
+
+/* convert to event dump string, string is malloc'ed */
+char *fy_event_to_string(struct fy_event *fye);
+
 struct fy_document_iterator;
 
 struct fy_eventp *fy_document_iterator_eventp_alloc(struct fy_document_iterator *fydi);

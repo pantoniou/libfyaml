@@ -980,4 +980,9 @@ void fy_reader_diag_report(struct fy_reader *fyr,
 #define FYR_NODE_WARNING(_fyr, _fyn, _type, _module, _fmt, ...) \
 	FYR_NODE_DIAG(_fyr, _fyn, FYET_WARNING, _module, _fmt, ## __VA_ARGS__)
 
+struct fy_input *fy_input_from_data(const char *data, size_t size,
+				    struct fy_atom *handle, bool simple);
+struct fy_input *fy_input_from_malloc_data(char *data, size_t size,
+					   struct fy_atom *handle, bool simple);
+
 #endif
