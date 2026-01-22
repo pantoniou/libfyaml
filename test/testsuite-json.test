@@ -22,10 +22,10 @@ done
 # output plan
 echo 1..$count
 
-declare -A skips=(
+declare -A xfails=(
 	[UGM3]="Later jq versions rewrite numbers like 12.00 -> 12 which breaks diff"
 )
-declare -A xfails=(
+declare -A skips=(
 	[C4HZ]="requires schema support which libfyaml does not support yet."
 )
 
