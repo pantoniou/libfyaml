@@ -3,7 +3,8 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
-#include "fy-generic.h"
+#include <libfyaml.h>
+#include <libfyaml/fy-internal-generic.h>
 #include "fy-thread.h"
 
 // More expensive map operation
@@ -52,7 +53,7 @@ int main(int argc, char **argv)
 	size_t size;
 	double start, end, serial_time, parallel_time;
 	int iterations = 5;
-	int i, j, dedup_mode;
+	(void)result;  // Suppress unused variable warning
 
 	if (argc > 1)
 		size = atoi(argv[1]);
@@ -71,7 +72,7 @@ int main(int argc, char **argv)
 	printf("Thread pool created with %d threads\n\n", fy_thread_pool_get_num_threads(tp));
 
 	// Run benchmarks twice: without dedup, then with dedup
-	for (dedup_mode = 0; dedup_mode < 2; dedup_mode++) {
+	for (int dedup_mode = 0; dedup_mode < 2; dedup_mode++) {
 		printf("\n");
 		printf("###############################################\n");
 		printf("# %s DEDUP\n", dedup_mode == 0 ? "WITHOUT" : "WITH");
@@ -85,7 +86,7 @@ int main(int argc, char **argv)
 
 		// Create test sequence
 		items = malloc(sizeof(fy_generic) * size);
-		for (i = 0; i < size; i++)
+		for (size_t i = 0; i < size; i++)
 			items[i] = fy_value(gb, i);
 		seq = fy_gb_sequence_create(gb, size, items);
 		free(items);
@@ -95,8 +96,8 @@ int main(int argc, char **argv)
 
 		// Serial map
 		start = get_time_sec();
-		for (j = 0; j < iterations; j++) {
-			result = fy_gb_collection_op(gb, FYGBOPF_MAP, seq, 0, NULL, bench_map_heavy);
+		for (int j = 0; j < iterations; j++) {
+			result = fy_gb_map(gb, seq, bench_map_heavy);
 		}
 		end = get_time_sec();
 		serial_time = (end - start) * 1000 / iterations;
@@ -104,8 +105,8 @@ int main(int argc, char **argv)
 
 		// Parallel map (reusing thread pool!)
 		start = get_time_sec();
-		for (j = 0; j < iterations; j++) {
-			result = fy_gb_pmap(gb, tp, seq, 0, NULL, bench_map_heavy);
+		for (int j = 0; j < iterations; j++) {
+			result = fy_gb_pmap(gb, seq, tp, bench_map_heavy);
 		}
 		end = get_time_sec();
 		parallel_time = (end - start) * 1000 / iterations;
@@ -119,8 +120,8 @@ int main(int argc, char **argv)
 
 		// Serial filter
 		start = get_time_sec();
-		for (j = 0; j < iterations; j++) {
-			result = fy_gb_collection_op(gb, FYGBOPF_FILTER, seq, 0, NULL, bench_filter_heavy);
+		for (int j = 0; j < iterations; j++) {
+			result = fy_gb_filter(gb, seq, bench_filter_heavy);
 		}
 		end = get_time_sec();
 		serial_time = (end - start) * 1000 / iterations;
@@ -128,8 +129,8 @@ int main(int argc, char **argv)
 
 		// Parallel filter (reusing thread pool!)
 		start = get_time_sec();
-		for (j = 0; j < iterations; j++) {
-			result = fy_gb_pfilter(gb, tp, seq, 0, NULL, bench_filter_heavy);
+		for (int j = 0; j < iterations; j++) {
+			result = fy_gb_pfilter(gb, seq, tp, bench_filter_heavy);
 		}
 		end = get_time_sec();
 		parallel_time = (end - start) * 1000 / iterations;

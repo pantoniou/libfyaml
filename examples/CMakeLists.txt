@@ -57,9 +57,16 @@ install(FILES
     DESTINATION share/doc/libfyaml/examples
 )
 
+# Include benchmarks subdirectory
+option(BUILD_BENCHMARKS "Build benchmark executables" ON)
+if(BUILD_BENCHMARKS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/CMakeLists.txt")
+    add_subdirectory(benchmarks)
+endif()
+
 # Show configuration info
 message(STATUS "libfyaml examples configuration:")
 message(STATUS "  Examples to build: ${EXAMPLES}")
+message(STATUS "  Build benchmarks: ${BUILD_BENCHMARKS}")
 if(libfyaml_FOUND)
     message(STATUS "  Found libfyaml via CMake config")
     if(libfyaml_HAS_LIBCLANG)

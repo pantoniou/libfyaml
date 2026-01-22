@@ -11,9 +11,11 @@
  */
 
 #include <libfyaml.h>
+#include <libfyaml/fy-internal-generic.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <stdatomic.h>
 
 #define MAX_THREADS 8
@@ -29,34 +31,19 @@ struct map_task {
 static void *process_item(void *arg)
 {
 	struct map_task *task = arg;
-	char buf[4096];
-	struct fy_generic_builder *gb_local;
 	fy_generic result;
-
-	/* Create thread-local builder with parent for dedup */
-	gb_local = fy_generic_builder_create_in_place(
-		FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED,
-		task->gb,
-		buf, sizeof(buf));
-
-	if (!gb_local) {
-		task->output = fy_invalid;
-		return NULL;
-	}
 
 	/* Process item - add a field */
 	if (fy_generic_is_mapping(task->input)) {
-		result = fy_gb_mapping(gb_local,
+		result = fy_gb_mapping(task->gb,
 			"original", task->input,
 			"processed", true,
-			"thread_id", pthread_self());
+			"thread_id", (int64_t)pthread_self());
 	} else {
 		result = task->input;  /* pass through */
 	}
 
-	/* Export back to parent builder */
-	task->output = fy_generic_builder_export(gb_local, result);
-
+	task->output = result;
 	return NULL;
 }
 
@@ -101,46 +88,43 @@ static fy_generic parallel_map(struct fy_generic_builder *gb, fy_generic seq)
 		items[i] = tasks[i].output;
 	}
 
-	return fy_gb_sequence_alloca(gb, items, len);
+	return fy_gb_sequence_create(gb, len, items);
 }
 
 int main(int argc, char *argv[])
 {
-	struct fy_document *fyd = NULL;
 	struct fy_generic_builder *gb = NULL;
+	struct fy_generic_builder_cfg cfg;
 	fy_generic data, processed;
-	char *output;
-	char buf[1024 * 1024];  /* 1MB builder buffer */
 
 	if (argc < 2) {
 		fprintf(stderr, "Usage: %s <yaml-file>\n", argv[0]);
 		return 1;
 	}
 
-	/* Parse YAML document */
-	fyd = fy_document_build_from_file(NULL, argv[1]);
-	if (!fyd) {
-		fprintf(stderr, "Failed to parse YAML\n");
-		return 1;
-	}
-
 	/* Create builder with dedup for parallel processing */
-	gb = fy_generic_builder_create_in_place(
-		FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED,
-		NULL,
-		buf, sizeof(buf));
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED;
+	gb = fy_generic_builder_create(&cfg);
 
 	if (!gb) {
 		fprintf(stderr, "Failed to create builder\n");
-		fy_document_destroy(fyd);
 		return 1;
 	}
 
-	/* Convert document to generic */
-	data = fy_document_root_to_generic(fyd, gb);
-	if (!fy_generic_is_valid(data)) {
-		fprintf(stderr, "Failed to convert to generic\n");
-		fy_document_destroy(fyd);
+	/* Parse YAML file directly to generic */
+	fy_generic doc = fy_gb_parse_file(gb, 0, argv[1]);
+	if (fy_generic_is_invalid(doc)) {
+		fprintf(stderr, "Failed to parse YAML file\n");
+		fy_generic_builder_destroy(gb);
+		return 1;
+	}
+
+	/* Extract root content from document wrapper */
+	data = fy_get(doc, "root", fy_invalid);
+	if (fy_generic_is_invalid(data)) {
+		fprintf(stderr, "Failed to get root from document\n");
+		fy_generic_builder_destroy(gb);
 		return 1;
 	}
 
@@ -148,13 +132,9 @@ int main(int argc, char *argv[])
 	printf("Processing %zu items in parallel...\n", fy_len(data));
 	processed = parallel_map(gb, data);
 
-	/* Emit result */
-	output = fy_emit_generic_to_string(processed, 0);
-	if (output) {
-		printf("%s", output);
-		free(output);
-	}
+	/* Emit result to stdout */
+	fy_generic_emit_default(processed);
 
-	fy_document_destroy(fyd);
+	fy_generic_builder_destroy(gb);
 	return 0;
 }

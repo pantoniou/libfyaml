@@ -26,7 +26,7 @@ static double bench_insert_keys(int iterations) {
     double start = get_time_ms();
     for (int iter = 0; iter < iterations; iter++) {
         struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
-        fy_generic map = fy_mapping_empty();
+        fy_generic map = fy_map_empty;
 
         for (int i = 0; i < 1000; i++) {
             char key[32];
@@ -205,14 +205,14 @@ int main(int argc, char **argv) {
     fy_generic config = fy_mapping("host", "localhost", "port", 8080);
     fy_generic new_config = fy_assoc(config, "timeout", 30);
     printf("  Base config created: %s\n",
-           fy_is_invalid(config) ? "ERROR" : "OK");
+           fy_generic_is_invalid(config) ? "ERROR" : "OK");
     printf("  Assoc operation: %s\n",
-           fy_is_invalid(new_config) ? "ERROR" : "OK");
+           fy_generic_is_invalid(new_config) ? "ERROR" : "OK");
 
     fy_generic seq = fy_sequence("a", "b", "c");
-    fy_generic new_seq = fy_conj(seq, "d");
+    fy_generic new_seq = fy_append(seq, "d");
     printf("  Sequence conj: %s\n",
-           fy_is_invalid(new_seq) ? "ERROR" : "OK");
+           fy_generic_is_invalid(new_seq) ? "ERROR" : "OK");
 
     printf("\nPerformance Benchmarks:\n");
     printf("-----------------------\n\n");
