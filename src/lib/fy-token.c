@@ -1349,7 +1349,12 @@ fy_token_set_comment(struct fy_token *fyt, enum fy_comment_placement which,
 	struct fy_token_comment *tk, *tk_prev;
 	struct fy_input *fyi = NULL;
 	char *data = NULL;
+	const char *s, *e;
+	char utf8buf[FY_UTF8_MAX_WIDTH];
+	int c, lastc, w;
+	size_t sz;
 	struct fy_atom *handle;
+	FILE *fp;
 
 	if (!fyt || (unsigned int)which >= fycp_max)
 		return -1;
@@ -1379,14 +1384,33 @@ fy_token_set_comment(struct fy_token *fyt, enum fy_comment_placement which,
 	if (len == FY_NT)
 		len = strlen(text);
 
-	/* OK, need to create */
-	data = malloc(len + 1);
-	if (!data)
+	data = NULL;
+
+	fp = open_memstream(&data, &sz);
+	if (!fp)
 		goto err_out;
 
-	/* copy and always NULL terminate */
-	memcpy(data, text, len);
-	data[len] = '\0';
+	s = text;
+	e = text + len;
+	lastc = -1;
+	fputs("# ", fp);
+	while ((c = fy_utf8_get(s, e - s, &w)) > 0) {
+		s += w;
+		if (lastc == '\n')
+			fputs("\n# ", fp);
+		if (fy_token_is_lb(fyt, c)) {
+			c = '\n';
+		} else {
+			assert(w <= sizeof(utf8buf));
+			fy_utf8_put_unchecked(utf8buf, c);
+			fwrite(utf8buf, 1, w, fp);
+		}
+		lastc = c;
+	}
+	fclose(fp);
+	fp = NULL;
+
+	len = sz;
 
 	handle = tk ? &tk->handle : fy_token_comment_handle(fyt, which, true);
 	if (!handle)
@@ -1402,6 +1426,8 @@ fy_token_set_comment(struct fy_token *fyt, enum fy_comment_placement which,
 	return 0;
 
 err_out:
+	if (fp)
+		fclose(fp);
 	fy_input_unref(fyi);
 	if (data)
 		free(data);
