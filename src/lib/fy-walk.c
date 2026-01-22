@@ -39,6 +39,9 @@ const char *fy_walk_result_type_txt[FWRT_COUNT] = {
 	[fwrt_refs]	= "refs",
 };
 
+
+static struct fy_node *fy_node_alias_resolve_by_ypath_internal(struct fy_node *fyn, bool *errorp);
+
 void fy_walk_result_dump(struct fy_walk_result *fwr, struct fy_diag *diag, enum fy_error_type errlevel, int level,
 		const char *fmt, ...);
 
@@ -66,10 +69,11 @@ void fy_walk_result_vdump(struct fy_walk_result *fwr, struct fy_diag *diag, enum
 	if (fmt) {
 		banner = NULL;
 		rc = vasprintf(&banner, fmt, ap);
-		assert(rc != -1);
-		assert(banner);
+		if (rc == -1 || !banner)
+			goto err_out;
 		fy_diag_diag(diag, errlevel, "%-*s%s", level*2, "", banner);
 		free(banner);
+		banner = NULL;
 	}
 	if (!fwr)
 		goto out;
@@ -80,7 +84,8 @@ void fy_walk_result_vdump(struct fy_walk_result *fwr, struct fy_diag *diag, enum
 		break;
 	case fwrt_node_ref:
 		texta = fy_node_get_path(fwr->fyn);
-		assert(texta);
+		if (!texta)
+			goto err_out;
 		text = texta;
 		break;
 	case fwrt_number:
@@ -92,7 +97,8 @@ void fy_walk_result_vdump(struct fy_walk_result *fwr, struct fy_diag *diag, enum
 		break;
 	case fwrt_doc:
 		texta = fy_emit_document_to_string(fwr->fyd, FYECF_WIDTH_INF | FYECF_INDENT_DEFAULT | FYECF_MODE_FLOW_ONELINE);
-		assert(texta);
+		if (!texta)
+			goto err_out;
 		text = texta;
 		break;
 	case fwrt_refs:
@@ -110,6 +116,7 @@ void fy_walk_result_vdump(struct fy_walk_result *fwr, struct fy_diag *diag, enum
 
 	if (texta)
 		free(texta);
+	texta = NULL;
 
 	if (fwr->type == fwrt_refs) {
 		for (fwr2 = fy_walk_result_list_head(&fwr->refs); fwr2; fwr2 = fy_walk_result_next(&fwr->refs, fwr2))
@@ -117,6 +124,10 @@ void fy_walk_result_vdump(struct fy_walk_result *fwr, struct fy_diag *diag, enum
 	}
 out:
 	diag->on_error = save_on_error;
+	return;
+err_out:
+	diag->on_error = true;
+	return;
 }
 
 void fy_walk_result_dump(struct fy_walk_result *fwr, struct fy_diag *diag, enum fy_error_type errlevel, int level,
@@ -421,11 +432,15 @@ fy_walk_result_flatten_rl(struct fy_walk_result_list *fwrl, struct fy_walk_resul
 		return NULL;
 
 	fwrf = fy_walk_result_create_rl(fwrl, fwrt_refs);
-	assert(fwrf);
+	if (!fwrf)
+		goto err_out;
 
 	fy_walk_result_flatten_internal(fwr, fwrf);
 	fy_walk_result_free_rl(fwrl, fwr);
 	return fwrf;
+
+err_out:
+	return NULL;
 }
 
 struct fy_walk_result *
@@ -651,13 +666,8 @@ int fy_expr_stack_push(struct fy_expr_stack *stack, struct fy_path_expr *expr)
 	unsigned int alloc;
 	size_t size;
 
-	if (!stack || !expr)
-		return -1;
-
-	assert(stack->items);
-	assert(stack->alloc > 0);
-
-	assert(expr->fyt);
+	if (!stack || !expr || !stack->items || stack->alloc <= 0 || !expr->fyt)
+		goto err_out;
 
 	/* grow the stack if required */
 	if (stack->top >= stack->alloc) {
@@ -681,6 +691,9 @@ int fy_expr_stack_push(struct fy_expr_stack *stack, struct fy_path_expr *expr)
 	stack->items[stack->top++] = expr;
 
 	return 0;
+
+err_out:
+	return -1;
 }
 
 struct fy_path_expr *fy_expr_stack_peek_at(struct fy_expr_stack *stack, unsigned int pos)
@@ -877,7 +890,8 @@ int fy_path_fetch_seq_index_or_slice(struct fy_path_parser *fypp, int c)
 	fyr = &fypp->reader;
 
 	/* verify that the called context is correct */
-	assert(fy_is_num(c) || (c == '-' && fy_is_num(fy_reader_peek_at(fyr, 1))));
+	if (!(fy_is_num(c) || (c == '-' && fy_is_num(fy_reader_peek_at(fyr, 1)))))
+		goto err_out;
 
 	i = 0;
 	indices[0] = indices[1] = -1;
@@ -949,7 +963,8 @@ int fy_path_fetch_plain_or_method(struct fy_path_parser *fypp, int c,
 
 	fyr = &fypp->reader;
 
-	assert(fy_is_first_alpha(c));
+	if (!fy_is_first_alpha(c))
+		goto err_out;
 
 	type = fytt_plain;
 
@@ -985,10 +1000,13 @@ int fy_path_fetch_dot_method(struct fy_path_parser *fypp, int c, enum fy_token_t
 
 	fyr = &fypp->reader;
 
-	assert(c == '.');
+	if (c != '.')
+		goto err_out;
+
 	fy_reader_advance(fyr, c);
 	c = fy_reader_peek(fyr);
-	assert(fy_is_first_alpha(c));
+	if (!fy_is_first_alpha(c))
+		goto err_out;
 
 	/* verify that the called context is correct */
 	i = 1;
@@ -1020,7 +1038,8 @@ int fy_path_fetch_flow_document(struct fy_path_parser *fypp, int c, enum fy_toke
 	fyr = &fypp->reader;
 
 	/* verify that the called context is correct */
-	assert(fy_is_path_flow_key_start(c));
+	if (!fy_is_path_flow_key_start(c))
+		goto err_out;
 
 	fy_reader_fill_atom_start(fyr, &handle);
 
@@ -1072,7 +1091,8 @@ int fy_path_fetch_flow_scalar(struct fy_path_parser *fypp, int c)
 	fyr = &fypp->reader;
 
 	/* verify that the called context is correct */
-	assert(fy_is_path_flow_scalar_start(c));
+	if (!fy_is_path_flow_scalar_start(c))
+		goto err_out;
 
 	is_single = c == '\'';
 
@@ -1102,7 +1122,8 @@ int fy_path_fetch_number(struct fy_path_parser *fypp, int c)
 	fyr = &fypp->reader;
 
 	/* verify that the called context is correct */
-	assert(fy_is_num(c) || (c == '-' && fy_is_num(fy_reader_peek_at(fyr, 1))));
+	if (!(fy_is_num(c) || (c == '-' && fy_is_num(fy_reader_peek_at(fyr, 1)))))
+		goto err_out;
 
 	i = 0;
 	if (c == '-')
@@ -1438,10 +1459,8 @@ do_token:
 		if (fy_is_num(c) || (c == '-' && fy_is_num(fy_reader_peek_at(fyr, 1))))
 			return fy_path_fetch_number(fypp, c);
 
-#if 0
-		if (c == '.' && fy_is_first_alpha(fy_reader_peek_at(fyr, 1)))
-			return fy_path_fetch_dot_method(fypp, c, FYTT_SE_METHOD);
-#endif
+		// if (c == '.' && fy_is_first_alpha(fy_reader_peek_at(fyr, 1)))
+		//	return fy_path_fetch_dot_method(fypp, c, FYTT_SE_METHOD);
 
 		break;
 	}
@@ -2029,9 +2048,11 @@ expr_to_token_mark(struct fy_path_expr *expr, struct fy_input *fyi)
 		return NULL;
 
 	ms = fy_path_expr_start_mark(expr);
-	assert(ms);
+	if (!ms)
+		goto err_out;
 	me = fy_path_expr_end_mark(expr);
-	assert(me);
+	if (!me)
+		goto err_out;
 
 	memset(&handle, 0, sizeof(handle));
 	handle.start_mark = *ms;
@@ -2041,6 +2062,8 @@ expr_to_token_mark(struct fy_path_expr *expr, struct fy_input *fyi)
 	handle.chomp = FYAC_CLIP;
 
 	return fy_token_create(FYTT_INPUT_MARKER, &handle);
+err_out:
+	return NULL;
 }
 
 struct fy_token *
@@ -2053,9 +2076,11 @@ expr_lr_to_token_mark(struct fy_path_expr *exprl, struct fy_path_expr *exprr, st
 		return NULL;
 
 	ms = fy_path_expr_start_mark(exprl);
-	assert(ms);
+	if (!ms)
+		goto err_out;
 	me = fy_path_expr_end_mark(exprr);
-	assert(me);
+	if (!me)
+		goto err_out;
 
 	memset(&handle, 0, sizeof(handle));
 	handle.start_mark = *ms;
@@ -2065,6 +2090,8 @@ expr_lr_to_token_mark(struct fy_path_expr *exprl, struct fy_path_expr *exprr, st
 	handle.chomp = FYAC_CLIP;
 
 	return fy_token_create(FYTT_INPUT_MARKER, &handle);
+err_out:
+	return NULL;
 }
 
 int
@@ -2103,7 +2130,8 @@ int push_operand_lr(struct fy_path_parser *fypp,
 	int ret;
 
 	optimize = false;
-	assert(exprl || exprr);
+	if (!exprl && !exprr)
+		goto err_out;
 
 	fyr = &fypp->reader;
 
@@ -2121,25 +2149,13 @@ int push_operand_lr(struct fy_path_parser *fypp,
 	expr->type = type;
 	expr->fyt = NULL;
 
-	if (exprl) {
-		assert(exprl->fyt);
-		ms = fy_token_start_mark(exprl->fyt);
-		assert(ms);
-	} else {
-		ms = fy_token_start_mark(exprr->fyt);
-		assert(ms);
-	}
+	ms = fy_token_start_mark(exprl ? exprl->fyt : exprr->fyt);
+	if (!ms)
+		goto err_out;
 
-	if (exprr) {
-		assert(exprr->fyt);
-		me = fy_token_end_mark(exprr->fyt);
-		assert(me);
-	} else {
-		me = fy_token_end_mark(exprl->fyt);
-		assert(me);
-	}
-
-	assert(ms && me);
+	me = fy_token_end_mark(exprr ? exprr->fyt : exprl->fyt);
+	if (!me)
+		goto err_out;
 
 	memset(&handle, 0, sizeof(handle));
 	handle.start_mark = *ms;
@@ -2217,14 +2233,16 @@ common_builtin_ref_exec(const struct fy_method *fym,
 	struct fy_path_exec *fypx, int level,
 	struct fy_path_expr *expr,
 	struct fy_walk_result *input,
-	struct fy_walk_result **args, int nargs);
+	struct fy_walk_result **args, int nargs,
+	bool *errorp);
 
 static struct fy_walk_result *
 common_builtin_collection_exec(const struct fy_method *fym,
 	struct fy_path_exec *fypx, int level,
 	struct fy_path_expr *expr,
 	struct fy_walk_result *input,
-	struct fy_walk_result **args, int nargs);
+	struct fy_walk_result **args, int nargs,
+	bool *errorp);
 
 
 static struct fy_walk_result *
@@ -2232,14 +2250,16 @@ test_exec(const struct fy_method *fym,
 	  struct fy_path_exec *fypx, int level,
 	  struct fy_path_expr *expr,
 	  struct fy_walk_result *input,
-	  struct fy_walk_result **args, int nargs);
+	  struct fy_walk_result **args, int nargs,
+	  bool *errorp);
 
 static struct fy_walk_result *
 sum_exec(const struct fy_method *fym,
 	 struct fy_path_exec *fypx, int level,
 	 struct fy_path_expr *expr,
 	 struct fy_walk_result *input,
-	 struct fy_walk_result **args, int nargs);
+	 struct fy_walk_result **args, int nargs,
+	 bool *errorp);
 
 static const struct fy_method fy_methods[] = {
 	[fymi_test] = {
@@ -2340,45 +2360,51 @@ common_builtin_ref_exec(const struct fy_method *fym,
 	    struct fy_path_exec *fypx, int level,
             struct fy_path_expr *expr,
 	    struct fy_walk_result *input,
-	    struct fy_walk_result **args, int nargs)
+	    struct fy_walk_result **args, int nargs,
+	    bool *errorp)
 {
 	enum fy_method_idx midx;
 	struct fy_walk_result *output = NULL;
 	struct fy_walk_result *fwr, *fwrn;
 	struct fy_node *fyn, *fynt;
+	bool error;
 	int i;
 
+	if (errorp)
+		*errorp = false;
+
 	if (!fypx || !input)
-		goto out;
+		goto err_out;
 
 	i = fy_method_to_builtin_idx(fym);
 	if (i < 0)
-		goto out;
+		goto err_out;
 	midx = (enum fy_method_idx)i;
 
 	switch (midx) {
 	case fymi_key:
 	case fymi_value:
 		if (!args || nargs != 1 || !args[0] || args[0]->type != fwrt_string)
-			goto out;
+			goto err_out;
 		break;
 	case fymi_index:
 		if (!args || nargs != 1 || !args[0] || args[0]->type != fwrt_number)
-			goto out;
+			goto err_out;
 		break;
 	case fymi_root:
 	case fymi_parent:
 	case fymi_this:
 	case fymi_null:
 		if (nargs != 0)
-			goto out;
+			goto err_out;
 		break;
 	default:
-		goto out;
+		goto err_out;
 	}
 
 	output = fy_path_exec_walk_result_create(fypx, fwrt_refs);
-	assert(output);
+	if (!output)
+		goto err_out;
 
 	for (fwr = fy_walk_result_iter_start(input); fwr;
 			fwr = fy_walk_result_iter_next(input, fwr)) {
@@ -2396,8 +2422,9 @@ common_builtin_ref_exec(const struct fy_method *fym,
 		case fymi_null:
 			/* dereference alias */
 			if (fy_node_is_alias(fynt)) {
-				// fprintf(stderr, "%s: %s calling fy_node_alias_resolve_by_ypath()\n", __func__, fy_node_get_path_alloca(fyn));
-				fynt = fy_node_alias_resolve_by_ypath(fynt);
+				fynt = fy_node_alias_resolve_by_ypath_internal(fynt, &error);
+				if (error)
+					goto err_out;
 			}
 			break;
 		default:
@@ -2450,8 +2477,8 @@ common_builtin_ref_exec(const struct fy_method *fym,
 			continue;
 
 		fwrn = fy_path_exec_walk_result_create(fypx, fwrt_node_ref, fyn);
-		assert(fwrn);
-
+		if (!fwrn)
+			goto err_out;
 		fy_walk_result_list_add_tail(&output->refs, fwrn);
 	}
 
@@ -2462,7 +2489,8 @@ common_builtin_ref_exec(const struct fy_method *fym,
 			output = NULL;
 		} else if (fy_walk_result_list_is_singular(&output->refs)) {
 			fwr = fy_walk_result_list_pop(&output->refs);
-			assert(fwr);
+			if (!fwr)
+				goto err_out;
 			fy_walk_result_free(output);
 			output = fwr;
 		}
@@ -2475,6 +2503,11 @@ out:
 			fy_walk_result_free(args[i]);
 	}
 	return output;
+err_out:
+	if (errorp)
+		*errorp = true;
+	fy_walk_result_free(output);
+	goto out;
 }
 
 static struct fy_walk_result *
@@ -2482,7 +2515,8 @@ common_builtin_collection_exec(const struct fy_method *fym,
 	 struct fy_path_exec *fypx, int level,
 	 struct fy_path_expr *expr,
 	 struct fy_walk_result *input,
-	 struct fy_walk_result **args, int nargs)
+	 struct fy_walk_result **args, int nargs,
+	 bool *errorp)
 {
 	enum fy_method_idx midx;
 	struct fy_walk_result *output = NULL;
@@ -2490,14 +2524,18 @@ common_builtin_collection_exec(const struct fy_method *fym,
 	struct fy_path_expr *expr_arg;
 	bool match, done;
 	int input_count, match_count;
+	bool error;
 	int i;
 
+	if (errorp)
+		*errorp = false;
+
 	if (!fypx || !input)
-		goto out;
+		goto err_out;
 
 	i = fy_method_to_builtin_idx(fym);
 	if (i < 0)
-		goto out;
+		goto err_out;
 	midx = (enum fy_method_idx)i;
 
 	switch (midx) {
@@ -2505,25 +2543,27 @@ common_builtin_collection_exec(const struct fy_method *fym,
 	case fymi_all:
 	case fymi_select:
 		if (!args || nargs != 1 || !args[0])
-			goto out;
+			goto err_out;
 		break;
 	default:
-		goto out;
+		goto err_out;
 	}
 
 	expr_arg = fy_path_expr_list_head(&expr->children);
-	assert(expr_arg);
+	if (!expr_arg)
+		goto err_out;
 
 	/* only handle inputs of node and refs */
 	if (input->type != fwrt_node_ref && input->type != fwrt_refs)
-		goto out;
+		goto err_out;
 
 	output = NULL;
 
 	switch (midx) {
 	case fymi_select:
 		output = fy_path_exec_walk_result_create(fypx, fwrt_refs);
-		assert(output);
+		if (!output)
+			goto err_out;
 		break;
 	default:
 		break;
@@ -2537,9 +2577,13 @@ common_builtin_collection_exec(const struct fy_method *fym,
 		input_count++;
 
 		fwrt = fy_walk_result_clone(fwr);
-		assert(fwrt);
+		if (!fwrt)
+			goto err_out;
 
-		fwrn = fy_path_expr_execute(fypx, level + 1, expr_arg, fwrt, expr->type);
+		fwrn = fy_path_expr_execute(fypx, level + 1, expr_arg, fwrt, expr->type, &error);
+		fwrt = NULL;
+		if (error)
+			goto err_out;
 
 		match = fwrn != NULL;
 		if (match)
@@ -2564,7 +2608,8 @@ common_builtin_collection_exec(const struct fy_method *fym,
 				break;
 			if (match) {
 				fwrt = fy_walk_result_clone(fwr);
-				assert(fwrt);
+				if (!fwrt)
+					goto err_out;
 				fy_walk_result_list_add_tail(&output->refs, fwrt);
 			}
 			break;
@@ -2573,8 +2618,8 @@ common_builtin_collection_exec(const struct fy_method *fym,
 			break;
 		}
 
-		if (fwrn)
-			fy_walk_result_free(fwrn);
+		fy_walk_result_free(fwrn);
+		fwrn = NULL;
 	}
 
 	switch (midx) {
@@ -2602,21 +2647,28 @@ common_builtin_collection_exec(const struct fy_method *fym,
 			output = NULL;
 		} else if (fy_walk_result_list_is_singular(&output->refs)) {
 			fwr = fy_walk_result_list_pop(&output->refs);
-			assert(fwr);
+			if (!fwr)
+				goto err_out;
 			fy_walk_result_free(output);
 			output = fwr;
 		}
 	}
 
 out:
-	if (input)
-		fy_walk_result_free(input);
+	fy_walk_result_free(input);
 	if (args) {
 		for (i = 0; i < nargs; i++)
 			fy_walk_result_free(args[i]);
 	}
 
 	return output;
+
+err_out:
+	if (errorp)
+		*errorp = true;
+	fy_walk_result_free(output);
+	output = NULL;
+	goto out;
 }
 
 static struct fy_walk_result *
@@ -2624,7 +2676,8 @@ test_exec(const struct fy_method *fym,
 	  struct fy_path_exec *fypx, int level,
 	  struct fy_path_expr *expr,
 	  struct fy_walk_result *input,
-	  struct fy_walk_result **args, int nargs)
+	  struct fy_walk_result **args, int nargs,
+	  bool *errorp)
 {
 	int i;
 	struct fy_walk_result *output = NULL;
@@ -2657,7 +2710,8 @@ sum_exec(const struct fy_method *fym,
 	 struct fy_path_exec *fypx, int level,
          struct fy_path_expr *expr,
 	 struct fy_walk_result *input,
-	 struct fy_walk_result **args, int nargs)
+	 struct fy_walk_result **args, int nargs,
+	 bool *errorp)
 {
 	int i;
 	struct fy_walk_result *output = NULL;
@@ -2724,7 +2778,8 @@ int evaluate_method(struct fy_path_parser *fypp, struct fy_path_expr *exprm,
 		fy_path_expr_order(exprm, exprt) < 0) {
 
 		exprt = fy_expr_stack_pop(&fypp->operands);
-		assert(exprt);
+		if (!exprt)
+			goto err_out;
 
 #ifdef DEBUG_EXPR
 		FYR_TOKEN_DIAG(fyr, exprt->fyt,
@@ -2795,10 +2850,8 @@ int evaluate_new(struct fy_path_parser *fypp)
 	fyr = &fypp->reader;
 
 	expr = fy_expr_stack_pop(&fypp->operators);
-	fyr_error_check(fyr, expr, err_out,
+	fyr_error_check(fyr, expr && expr->fyt, err_out,
 			"pop_operator() failed to find token operator to evaluate\n");
-
-	assert(expr->fyt);
 
 #ifdef DEBUG_EXPR
 	FYR_TOKEN_DIAG(fyr, expr->fyt,
@@ -2870,7 +2923,8 @@ int evaluate_new(struct fy_path_parser *fypp)
 			expr->fyt = NULL;
 
 		} else {
-			assert(exprr && exprl);
+			if (!(exprr && exprl))
+				goto err_out;
 
 			// fyr_notice(fyr, "CHAIN operator\n");
 		}
@@ -3055,7 +3109,8 @@ int evaluate_new(struct fy_path_parser *fypp)
 		if (exprm && exprm->type == fpet_method) {
 
 			exprm = fy_expr_stack_pop(&fypp->operators);
-			assert(exprm);
+			if (!exprm)
+				goto err_out;
 
 			return evaluate_method(fypp, exprm, exprl, exprr);
 		}
@@ -3545,14 +3600,19 @@ err_out:
 }
 
 static struct fy_node *
-fy_path_expr_execute_single_result(struct fy_diag *diag, struct fy_path_expr *expr, struct fy_node *fyn)
+fy_path_expr_execute_single_result(struct fy_diag *diag, struct fy_path_expr *expr, struct fy_node *fyn, bool *errorp)
 {
 	struct fy_token *fyt;
 	struct fy_anchor *fya;
 	const char *text;
 	size_t len;
+	bool error;
 
-	assert(expr);
+	if (errorp)
+		*errorp = false;
+
+	if (!expr)
+		goto err_out;
 
 	switch (expr->type) {
 	case fpet_root:
@@ -3560,8 +3620,9 @@ fy_path_expr_execute_single_result(struct fy_diag *diag, struct fy_path_expr *ex
 
 	case fpet_this:
 		if (fy_node_is_alias(fyn)) {
-			// fprintf(stderr, "%s:%d %s calling fy_node_alias_resolve_by_ypath()\n", __func__, __LINE__, fy_node_get_path_alloca(fyn));
-			fyn = fy_node_alias_resolve_by_ypath(fyn);
+			fyn = fy_node_alias_resolve_by_ypath_internal(fyn, &error);
+			if (error)
+				goto err_out;
 		}
 
 		return fyn;
@@ -3571,12 +3632,12 @@ fy_path_expr_execute_single_result(struct fy_diag *diag, struct fy_path_expr *ex
 
 	case fpet_alias:
 		fyt = expr->fyt;
-		assert(fyt);
-		assert(fyt->type == FYTT_PE_ALIAS);
+		if (!fyt || fyt->type != FYTT_PE_ALIAS)
+			goto err_out;
 
 		text = fy_token_get_text(fyt, &len);
 		if (!text || len < 1)
-			break;
+			goto err_out;
 
 		if (*text == '*') {
 			text++;
@@ -3584,17 +3645,19 @@ fy_path_expr_execute_single_result(struct fy_diag *diag, struct fy_path_expr *ex
 		}
 		fya = fy_document_lookup_anchor(fyn->fyd, text, len);
 		if (!fya)
-			break;
+			goto err_out;
+
 		return fya->fyn;
 
 	case fpet_seq_index:
 		fyt = expr->fyt;
-		assert(fyt);
-		assert(fyt->type == FYTT_PE_SEQ_INDEX);
+		if (!fyt || fyt->type != FYTT_PE_SEQ_INDEX)
+			goto err_out;
 
 		if (fy_node_is_alias(fyn)) {
-			// fprintf(stderr, "%s:%d %s calling fy_node_alias_resolve_by_ypath()\n", __func__, __LINE__, fy_node_get_path_alloca(fyn));
-			fyn = fy_node_alias_resolve_by_ypath(fyn);
+			fyn = fy_node_alias_resolve_by_ypath_internal(fyn, &error);
+			if (error)
+				goto err_out;
 		}
 
 		/* only on sequence */
@@ -3605,12 +3668,13 @@ fy_path_expr_execute_single_result(struct fy_diag *diag, struct fy_path_expr *ex
 
 	case fpet_map_key:
 		fyt = expr->fyt;
-		assert(fyt);
-		assert(fyt->type == FYTT_PE_MAP_KEY);
+		if (!fyt || fyt->type != FYTT_PE_MAP_KEY)
+			goto err_out;
 
 		if (fy_node_is_alias(fyn)) {
-			// fprintf(stderr, "%s:%d %s calling fy_node_alias_resolve_by_ypath()\n", __func__, __LINE__, fy_node_get_path_alloca(fyn));
-			fyn = fy_node_alias_resolve_by_ypath(fyn);
+			fyn = fy_node_alias_resolve_by_ypath_internal(fyn, &error);
+			if (error)
+				goto err_out;
 		}
 
 		if (!fy_node_is_mapping(fyn))
@@ -3634,8 +3698,9 @@ fy_path_expr_execute_single_result(struct fy_diag *diag, struct fy_path_expr *ex
 	case fpet_filter_collection:
 
 		if (fy_node_is_alias(fyn)) {
-			// fprintf(stderr, "%s:%d %s calling fy_node_alias_resolve_by_ypath()\n", __func__, __LINE__, fy_node_get_path_alloca(fyn));
-			fyn = fy_node_alias_resolve_by_ypath(fyn);
+			fyn = fy_node_alias_resolve_by_ypath_internal(fyn, &error);
+			if (error)
+				goto err_out;
 		}
 
 		if (!(fy_node_is_mapping(fyn) || fy_node_is_sequence(fyn)))
@@ -3645,8 +3710,9 @@ fy_path_expr_execute_single_result(struct fy_diag *diag, struct fy_path_expr *ex
 	case fpet_filter_sequence:
 
 		if (fy_node_is_alias(fyn)) {
-			// fprintf(stderr, "%s:%d %s calling fy_node_alias_resolve_by_ypath()\n", __func__, __LINE__, fy_node_get_path_alloca(fyn));
-			fyn = fy_node_alias_resolve_by_ypath(fyn);
+			fyn = fy_node_alias_resolve_by_ypath_internal(fyn, &error);
+			if (error)
+				goto err_out;
 		}
 
 		if (!fy_node_is_sequence(fyn))
@@ -3656,8 +3722,9 @@ fy_path_expr_execute_single_result(struct fy_diag *diag, struct fy_path_expr *ex
 	case fpet_filter_mapping:
 
 		if (fy_node_is_alias(fyn)) {
-			// fprintf(stderr, "%s:%d %s calling fy_node_alias_resolve_by_ypath()\n", __func__, __LINE__, fy_node_get_path_alloca(fyn));
-			fyn = fy_node_alias_resolve_by_ypath(fyn);
+			fyn = fy_node_alias_resolve_by_ypath_internal(fyn, &error);
+			if (error)
+				goto err_out;
 		}
 
 		if (!fy_node_is_mapping(fyn))
@@ -3668,6 +3735,11 @@ fy_path_expr_execute_single_result(struct fy_diag *diag, struct fy_path_expr *ex
 		break;
 	}
 
+	return NULL;
+
+err_out:
+	if (errorp)
+		*errorp = true;
 	return NULL;
 }
 
@@ -3831,10 +3903,6 @@ int fy_path_exec_reset(struct fy_path_exec *fypx)
 struct fy_walk_result *fy_walk_result_simplify(struct fy_walk_result *fwr)
 {
 	struct fy_walk_result *fwr2;
-#if 0
-	struct fy_walk_result *fwrf;
-	bool recursive;
-#endif
 
 	/* no fwr */
 	if (!fwr)
@@ -3853,45 +3921,21 @@ struct fy_walk_result *fy_walk_result_simplify(struct fy_walk_result *fwr)
 	/* single element, switch it out */
 	if (fy_walk_result_list_is_singular(&fwr->refs)) {
 		fwr2 = fy_walk_result_list_pop(&fwr->refs);
-		assert(fwr2);
+		if (!fwr2)
+			goto err_out;
 
 		fy_walk_result_free(fwr);
 		fwr = fwr2;
 	}
 
 	return fwr;
-#if 0
-	/* non recursive return immediately */
-	if (fwr->type != fwrt_refs)
-		return fwr;
-
-	/* flatten if recursive */
-	recursive = false;
-	for (fwr2 = fy_walk_result_list_head(&fwr->refs); fwr2;
-		fwr2 = fy_walk_result_next(&fwr->refs, fwr2)) {
-
-		/* refs, recursive */
-		if (fwr2->type == fwrt_refs) {
-			recursive = true;
-			break;
-		}
-	}
-
-	if (!recursive)
-		return fwr;
-
-	fwrf = fy_path_exec_walk_result_create(fypx, fwrt_refs);
-	assert(fwrf);
-
-	fy_walk_result_flatten_internal(fwr, fwrf);
-
+err_out:
 	fy_walk_result_free(fwr);
-	return fwrf;
-#endif
-
+	return NULL;
 }
 
-int fy_walk_result_all_children_recursive_internal(struct fy_path_exec *fypx, struct fy_node *fyn, struct fy_walk_result *output)
+int fy_walk_result_all_children_recursive_internal(struct fy_path_exec *fypx, struct fy_node *fyn,
+		struct fy_walk_result *output)
 {
 	struct fy_node *fyni;
 	struct fy_walk_result *fwr;
@@ -3901,14 +3945,15 @@ int fy_walk_result_all_children_recursive_internal(struct fy_path_exec *fypx, st
 	if (!fyn)
 		return 0;
 
-	assert(output);
-	assert(output->type == fwrt_refs);
+	if (!output || output->type != fwrt_refs)
+		goto err_out;
 
 	/* this node */
 	fwr = fy_path_exec_walk_result_create(fypx, fwrt_node_ref, fyn);
 	if (!fwr)
-		return -1;
+		goto err_out;
 	fy_walk_result_list_add_tail(&output->refs, fwr);
+	fwr = NULL;
 
 	if (fy_node_is_scalar(fyn))
 		return 0;
@@ -3917,20 +3962,26 @@ int fy_walk_result_all_children_recursive_internal(struct fy_path_exec *fypx, st
 	while ((fyni = fy_node_collection_iterate(fyn, &prevp)) != NULL) {
 		ret = fy_walk_result_all_children_recursive_internal(fypx, fyni, output);
 		if (ret)
-			return ret;
+			goto err_out;
 	}
 
 	return 0;
+err_out:
+	return -1;
 }
 
 bool
 fy_walk_result_compare_simple(struct fy_path_exec *fypx, enum fy_path_expr_type type,
-			      struct fy_walk_result *fwrl, struct fy_walk_result *fwrr)
+			      struct fy_walk_result *fwrl, struct fy_walk_result *fwrr,
+			      bool *errorp)
 {
 	struct fy_token *fyt;
 	struct fy_walk_result *fwrt;
 	const char *str;
-	bool match;
+	bool match, ret, error;
+
+	if (errorp)
+		*errorp = false;
 
 	/* both NULL */
 	if (!fwrl && !fwrr) {
@@ -3957,14 +4008,15 @@ fy_walk_result_compare_simple(struct fy_path_exec *fypx, enum fy_path_expr_type 
 	/* both are non NULL */
 
 	/* none should be multiple */
-	assert(fwrl->type != fwrt_refs && fwrr->type != fwrt_refs);
+	if (fwrl->type == fwrt_refs || fwrr->type == fwrt_refs)
+		goto err_out;
 
 	/* both are the same type */
 	if (fwrl->type == fwrr->type) {
 
 		switch (fwrl->type) {
 		case fwrt_none:
-			FY_IMPOSSIBLE_ABORT();
+			goto err_out;
 
 		case fwrt_node_ref:
 			switch (type) {
@@ -3979,12 +4031,12 @@ fy_walk_result_compare_simple(struct fy_path_exec *fypx, enum fy_path_expr_type 
 					return true;
 				return !fy_node_compare(fwrl->fyn, fwrr->fyn);
 			default:
-				break;
+				goto err_out;
 			}
 			break;
 
 		case fwrt_refs:
-			FY_IMPOSSIBLE_ABORT();
+			goto err_out;
 
 		case fwrt_doc:
 			switch (type) {
@@ -4001,7 +4053,7 @@ fy_walk_result_compare_simple(struct fy_path_exec *fypx, enum fy_path_expr_type 
 					match = !match;
 				return match;
 			default:
-				break;
+				goto err_out;
 			}
 			break;
 
@@ -4020,7 +4072,7 @@ fy_walk_result_compare_simple(struct fy_path_exec *fypx, enum fy_path_expr_type 
 			case fpet_gte:
 				return fwrl->number >= fwrr->number;
 			default:
-				break;
+				goto err_out;
 			}
 			break;
 
@@ -4039,7 +4091,7 @@ fy_walk_result_compare_simple(struct fy_path_exec *fypx, enum fy_path_expr_type 
 			case fpet_gte:
 				return strcmp(fwrl->string, fwrr->string) >= 0;
 			default:
-				break;
+				goto err_out;
 			}
 			break;
 		}
@@ -4062,11 +4114,14 @@ fy_walk_result_compare_simple(struct fy_path_exec *fypx, enum fy_path_expr_type 
 			type = fpet_lt;
 			break;
 		default:
-			break;
+			goto err_out;
 		}
 
 		/* swap left with right */
-		return fy_walk_result_compare_simple(fypx, type, fwrr, fwrl);
+		ret = fy_walk_result_compare_simple(fypx, type, fwrr, fwrl, &error);
+		if (error)
+			goto err_out;
+		return ret;
 	}
 
 	switch (fwrl->type) {
@@ -4079,10 +4134,12 @@ fy_walk_result_compare_simple(struct fy_path_exec *fypx, enum fy_path_expr_type 
 		}
 
 		fyt = fy_node_get_scalar_token(fwrl->fyn);
-		assert(fyt);
+		if (!fyt)
+			goto err_out;
 
 		str = fy_token_get_text0(fyt);
-		assert(str);
+		if (!str)
+			goto err_out;
 
 		fwrt = NULL;
 		/* node ref against */
@@ -4090,7 +4147,8 @@ fy_walk_result_compare_simple(struct fy_path_exec *fypx, enum fy_path_expr_type 
 		case fwrt_string:
 			/* create a new temporary walk result */
 			fwrt = fy_path_exec_walk_result_create(fypx, fwrt_string, str);
-			assert(fwrt);
+			if (!fwrt)
+				goto err_out;
 
 			break;
 
@@ -4101,7 +4159,8 @@ fy_walk_result_compare_simple(struct fy_path_exec *fypx, enum fy_path_expr_type 
 
 			/* create a new temporary walk result */
 			fwrt = fy_path_exec_walk_result_create(fypx, fwrt_number, strtod(str, NULL));
-			assert(fwrt);
+			if (!fwrt)
+				goto err_out;
 			break;
 
 		default:
@@ -4111,10 +4170,13 @@ fy_walk_result_compare_simple(struct fy_path_exec *fypx, enum fy_path_expr_type 
 		if (!fwrt)
 			return false;
 
-		match = fy_walk_result_compare_simple(fypx, type, fwrt, fwrr);
+		match = fy_walk_result_compare_simple(fypx, type, fwrt, fwrr, &error);
+		if (error)
+			goto err_out;
 
 		/* free the temporary result */
 		fy_walk_result_free(fwrt);
+		fwrt = NULL;
 
 		return match;
 
@@ -4123,21 +4185,30 @@ fy_walk_result_compare_simple(struct fy_path_exec *fypx, enum fy_path_expr_type 
 	}
 
 	return false;
+
+err_out:
+	if (errorp)
+		*errorp = true;
+	return false;
 }
 
 struct fy_walk_result *
 fy_walk_result_arithmetic_simple(struct fy_path_exec *fypx,
 				 struct fy_path_expr *expr,
 				 struct fy_path_expr *exprl, struct fy_walk_result *fwrl,
-				 struct fy_path_expr *exprr, struct fy_walk_result *fwrr)
+				 struct fy_path_expr *exprr, struct fy_walk_result *fwrr,
+				 bool *errorp)
 {
 	struct fy_diag *diag;
 	struct fy_walk_result *output = NULL;
 	char *str;
 	size_t len, len1, len2;
 
+	if (errorp)
+		*errorp = false;
+
 	if (!fwrl || !fwrr)
-		goto out;
+		goto err_out;
 
 	diag = fypx->cfg.diag;
 
@@ -4158,7 +4229,8 @@ fy_walk_result_arithmetic_simple(struct fy_path_exec *fypx,
 			len2 = strlen(fwrr->string);
 			len = len1 + len2;
 			str = malloc(len + 1);
-			assert(str);
+			if (!str)
+				goto err_out;
 			memcpy(str, fwrl->string, len1);
 			memcpy(str + len1, fwrr->string, len2);
 			str[len] = '\0';
@@ -4204,41 +4276,67 @@ out:
 	fy_walk_result_free(fwrl);
 	fy_walk_result_free(fwrr);
 	return output;
+
+err_out:
+	fy_walk_result_free(output);
+	output = NULL;
+	if (errorp)
+		*errorp = true;
+	goto out;
 }
 
 struct fy_walk_result *
 fy_walk_result_conditional_simple(struct fy_path_exec *fypx,
 				  struct fy_path_expr *expr,
 				  struct fy_path_expr *exprl, struct fy_walk_result *fwrl,
-				  struct fy_path_expr *exprr, struct fy_walk_result *fwrr)
+				  struct fy_path_expr *exprr, struct fy_walk_result *fwrr,
+				  bool *errorp)
 {
-	bool match;
+	bool match, error;
 
-	match = fy_walk_result_compare_simple(fypx, expr->type, fwrl, fwrr);
+	if (errorp)
+		*errorp = false;
+
+	match = fy_walk_result_compare_simple(fypx, expr->type, fwrl, fwrr, &error);
+	if (error)
+		goto err_out;
+
+	/* path expr, return left hand side result if match */
+
+	fy_walk_result_free(fwrr);
+	fwrr = NULL;
 
 	if (!match) {
 		fy_walk_result_free(fwrl);
-		fy_walk_result_free(fwrr);
-		return NULL;
+		fwrl = NULL;
 	}
 
-	/* path expr, return left hand side result */
-	fy_walk_result_free(fwrr);
 	return fwrl;
+
+err_out:
+	fy_walk_result_free(fwrl);
+	fy_walk_result_free(fwrr);
+	if (errorp)
+		*errorp = true;
+	return NULL;
 }
 
 struct fy_walk_result *
 fy_walk_result_lhs_rhs(struct fy_path_exec *fypx,
 		       struct fy_path_expr *expr,
 		       struct fy_path_expr *exprl, struct fy_walk_result *fwrl,
-		       struct fy_path_expr *exprr, struct fy_walk_result *fwrr)
+		       struct fy_path_expr *exprr, struct fy_walk_result *fwrr,
+		       bool *errorp)
 {
-	struct fy_walk_result *output = NULL, *fwr, *fwrrt, *fwrlt, *fwrlc, *fwrrc;
+	struct fy_walk_result *output = NULL, *fwr = NULL, *fwrrt = NULL, *fwrlt = NULL, *fwrlc = NULL, *fwrrc = NULL;
 	struct fy_walk_result *outputl = NULL, *outputr = NULL;
+	bool error;
 
-	assert(expr);
-	assert(exprl);
-	assert(exprr);
+	if (errorp)
+		*errorp = false;
+
+	if (!expr || !exprl || !exprr)
+		goto err_out;
 
 	/* only supports those */
 	if (!fy_path_expr_type_is_conditional(expr->type) &&
@@ -4259,7 +4357,8 @@ fy_walk_result_lhs_rhs(struct fy_path_exec *fypx,
 	}
 
 	output = fy_path_exec_walk_result_create(fypx, fwrt_refs);
-	assert(output);
+	if (!output)
+		goto err_out;
 
 	for (fwrlt = fy_walk_result_iter_start(fwrl); fwrlt;
 			fwrlt = fy_walk_result_iter_next(fwrl, fwrlt)) {
@@ -4268,15 +4367,24 @@ fy_walk_result_lhs_rhs(struct fy_path_exec *fypx,
 		if (fwrlt->type == fwrt_refs) {
 
 			fwrlc = fy_walk_result_clone(fwrlt);
-			assert(fwrlc);
+			if (!fwrlc)
+				goto err_out;
 			fwrrc = fy_walk_result_clone(fwrr);
-			assert(fwrrc);
+			if (!fwrrc)
+				goto err_out;
 
-			outputl = fy_walk_result_lhs_rhs(fypx, expr, exprl, fwrlc, exprr, fwrrc);
+			outputl = fy_walk_result_lhs_rhs(fypx, expr, exprl, fwrlc, exprr, fwrrc, &error);
+			fwrlc = NULL;
+			fwrrc = NULL;
+			if (error)
+				goto err_out;
+
 			if (outputl)
 				fy_walk_result_list_add_tail(&output->refs, outputl);
-			else
+			else {
 				fy_walk_result_free(outputl);
+				outputl = NULL;
+			}
 			continue;
 		}
 
@@ -4288,35 +4396,50 @@ fy_walk_result_lhs_rhs(struct fy_path_exec *fypx,
 			if (fwrrt->type == fwrt_refs) {
 
 				fwrlc = fy_walk_result_clone(fwrlt);
-				assert(fwrlc);
+				if (!fwrlc)
+					goto err_out;
 				fwrrc = fy_walk_result_clone(fwrrt);
-				assert(fwrrc);
+				if (!fwrrc)
+					goto err_out;
 
-				outputr = fy_walk_result_lhs_rhs(fypx, expr, exprl, fwrlc, exprr, fwrrc);
+				outputr = fy_walk_result_lhs_rhs(fypx, expr, exprl, fwrlc, exprr, fwrrc, &error);
+				fwrlc = NULL;
+				fwrrc = NULL;
+				if (error)
+					goto err_out;
+
 				if (outputr)
 					fy_walk_result_list_add_tail(&output->refs, outputr);
-				else
+				else {
 					fy_walk_result_free(outputr);
+					outputr = NULL;
+				}
 				continue;
 			}
 
 
 			fwrlc = fy_walk_result_clone(fwrlt);
-			assert(fwrlc);
+			if (!fwrlc)
+				goto err_out;
 			fwrrc = fy_walk_result_clone(fwrrt);
-			assert(fwrrc);
+			if (!fwrrc)
+				goto err_out;
 
 			fwr = NULL;
-
-			if (fy_path_expr_type_is_conditional(expr->type))
-				fwr = fy_walk_result_conditional_simple(fypx, expr, exprl, fwrlc, exprr, fwrrc);
-			else if (fy_path_expr_type_is_arithmetic(expr->type))
-				fwr = fy_walk_result_arithmetic_simple(fypx, expr, exprl, fwrlc, exprr, fwrrc);
-			else
+			if (fy_path_expr_type_is_conditional(expr->type)) {
+				fwr = fy_walk_result_conditional_simple(fypx, expr, exprl, fwrlc, exprr, fwrrc, &error);
+				fwrlc = NULL;
+				fwrrc = NULL;
+				if (error)
+					goto err_out;
+			} else if (fy_path_expr_type_is_arithmetic(expr->type)) {
+				fwr = fy_walk_result_arithmetic_simple(fypx, expr, exprl, fwrlc, exprr, fwrrc, &error);
+				fwrlc = NULL;
+				fwrrc = NULL;
+				if (error)
+					goto err_out;
+			} else
 				FY_IMPOSSIBLE_ABORT();
-
-			fwrlc = NULL;
-			fwrrc = NULL;
 
 			if (fwr)
 				fy_walk_result_list_add_tail(&output->refs, fwr);
@@ -4324,14 +4447,21 @@ fy_walk_result_lhs_rhs(struct fy_path_exec *fypx,
 	}
 
 out:
+	fy_walk_result_free(fwrlc);
+	fy_walk_result_free(fwrrc);
 	fy_walk_result_free(fwrl);
 	fy_walk_result_free(fwrr);
 
 	return fy_walk_result_simplify(output);
+err_out:
+	fy_walk_result_free(output);
+	output = NULL;
+	goto out;
 }
 
 struct fy_path_expr *
-fy_scalar_walk_result_to_expr(struct fy_path_exec *fypx, struct fy_walk_result *fwr, enum fy_path_expr_type ptype)
+fy_scalar_walk_result_to_expr(struct fy_path_exec *fypx, struct fy_walk_result *fwr,
+		enum fy_path_expr_type ptype, bool *errorp)
 {
 	struct fy_input *fyit = NULL;
 	struct fy_path_expr *exprt = NULL;
@@ -4340,53 +4470,63 @@ fy_scalar_walk_result_to_expr(struct fy_path_exec *fypx, struct fy_walk_result *
 	char *buf;
 	int rc __FY_DEBUG_UNUSED__;
 
-	exprt = NULL;
+	if (errorp)
+		*errorp = false;
 
 	if (!fwr)
-		return NULL;
+		goto err_out;
 
 	collection_addressing = ptype == fpet_chain || ptype == fpet_multi;
 
 	switch (fwr->type) {
 	case fwrt_string:
 		fyit = fy_input_from_malloc_data(fwr->string, FY_NT, &handle, true);
-		assert(fyit);
+		if (!fyit)
+			goto err_out;
 
 		fwr->string = NULL;
 		fy_walk_result_free(fwr);
 		fwr = NULL;
 
 		exprt = fy_path_expr_alloc();
-		assert(exprt);
+		if (!exprt)
+			goto err_out;
 		if (collection_addressing) {
 			exprt->type = fpet_map_key;
 			exprt->fyt = fy_token_create(FYTT_PE_MAP_KEY, &handle, NULL);
-			assert(exprt->fyt);
+			if (!exprt->fyt)
+				goto err_out;
 		} else {
 			exprt->type = fpet_scalar;
 			exprt->fyt = fy_token_create(FYTT_SCALAR, &handle, FYSS_PLAIN, NULL);
-			assert(exprt->fyt);
+			if (!exprt->fyt)
+				goto err_out;
 		}
 		break;
 
 	case fwrt_number:
 
 		rc = asprintf(&buf, "%d", (int)fwr->number);
-		assert(rc != -1);
+		if (rc == -1)
+			goto err_out;
 
 		fyit = fy_input_from_malloc_data(buf, FY_NT, &handle, true);
-		assert(fyit);
+		if (!fyit)
+			goto err_out;
 
 		exprt = fy_path_expr_alloc();
-		assert(exprt);
+		if (!exprt)
+			goto err_out;
 		if (collection_addressing) {
 			exprt->type = fpet_seq_index;
 			exprt->fyt = fy_token_create(FYTT_PE_SEQ_INDEX, &handle, (int)fwr->number);
-			assert(exprt->fyt);
+			if (!exprt->fyt)
+				goto err_out;
 		} else {
 			exprt->type = fpet_scalar;
 			exprt->fyt = fy_token_create(FYTT_SCALAR, &handle, FYSS_PLAIN, NULL);
-			assert(exprt->fyt);
+			if (!exprt->fyt)
+				goto err_out;
 		}
 
 		break;
@@ -4395,10 +4535,17 @@ fy_scalar_walk_result_to_expr(struct fy_path_exec *fypx, struct fy_walk_result *
 		break;
 	}
 
+out:
 	fy_walk_result_free(fwr);
 	fy_input_unref(fyit);
 
 	return exprt;
+err_out:
+	fy_path_expr_free(exprt);
+	exprt = NULL;
+	if (errorp)
+		*errorp = true;
+	goto out;
 }
 
 enum fy_walk_result_set_op {
@@ -4465,7 +4612,8 @@ fy_walk_result_perform_set_op(struct fy_path_exec *fypx, struct fy_walk_result *
 		return NULL;
 	}
 
-	assert(input->type == fwrt_node_ref || input->type == fwrt_refs);
+	if (input->type != fwrt_node_ref && input->type != fwrt_refs)
+		goto err_out;
 
 #ifdef DEBUG_EXPR
 	fy_walk_result_dump(input, fypx->cfg.diag, FYET_WARNING, 0, "set-op: input\n");
@@ -4565,25 +4713,27 @@ fy_walk_result_perform_set_op(struct fy_path_exec *fypx, struct fy_walk_result *
 
 	}
 
+out:
 	/* get rid of input */
 	fy_walk_result_free(input);
 	return output;
 
 err_out:
-	fy_walk_result_free(input);
 	fy_walk_result_free(output);
+	output = NULL;
 	if (relpath)
 		free(relpath);
-	return NULL;
+	goto out;
 }
 
 struct fy_walk_result *
 fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *expr,
-		     struct fy_walk_result *input, enum fy_path_expr_type ptype)
+		     struct fy_walk_result *input, enum fy_path_expr_type ptype,
+		     bool *errorp)
 {
 	struct fy_diag *diag;
-	struct fy_walk_result *fwr, *fwrn, *fwrt, *fwrtn;
-	struct fy_walk_result *output = NULL, *input1, *output1, *input2, *output2;
+	struct fy_walk_result *fwr = NULL, *fwrn = NULL, *fwrt = NULL, *fwrtn = NULL;
+	struct fy_walk_result *output = NULL, *input1 = NULL, *output1 = NULL, *input2 = NULL, *output2 = NULL;
 	struct fy_path_expr *exprn, *exprl, *exprr;
 	struct fy_node *fyn, *fynn, *fyni;
 	struct fy_token *fyt;
@@ -4593,6 +4743,7 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 	unsigned int nargs;
 	struct fy_walk_result **fwr_args;
 	void *prevp;
+	bool error;
 	int rc __FY_DEBUG_UNUSED__;
 
 	/* error */
@@ -4610,11 +4761,15 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 	if (input && input->type == fwrt_refs && !fy_path_expr_type_handles_refs(expr->type)) {
 
 		output = fy_path_exec_walk_result_create(fypx, fwrt_refs);
-		assert(output);
+		if (!output)
+			goto err_out;
 
 		while ((fwr = fy_walk_result_list_pop(&input->refs)) != NULL) {
 
-			fwrn = fy_path_expr_execute(fypx, level + 1, expr, fwr, ptype);
+			fwrn = fy_path_expr_execute(fypx, level + 1, expr, fwr, ptype, &error);
+			fwr = NULL;
+			if (error)
+				goto err_out;
 			if (fwrn)
 				fy_walk_result_list_add_tail(&output->refs, fwrn);
 		}
@@ -4629,7 +4784,9 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 
 		if (input && input->type == fwrt_node_ref) {
 
-			fynn = fy_path_expr_execute_single_result(diag, expr, input->fyn);
+			fynn = fy_path_expr_execute_single_result(diag, expr, input->fyn, &error);
+			if (error)
+				goto err_out;
 			if (!fynn)
 				goto out;
 
@@ -4657,7 +4814,9 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 		for (exprn = fy_path_expr_list_head(&expr->children); exprn;
 			exprn = fy_path_expr_next(&expr->children, exprn)) {
 
-			output = fy_path_expr_execute(fypx, level + 1, exprn, output, expr->type);
+			output = fy_path_expr_execute(fypx, level + 1, exprn, output, expr->type, &error);
+			if (error)
+				goto err_out;
 			if (!output)
 				break;
 		}
@@ -4671,20 +4830,26 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 
 		/* allocate a refs output result */
 		output = fy_path_exec_walk_result_create(fypx, fwrt_refs);
-		assert(output);
+		if (!output)
+			goto err_out;
 
 		/* iterate over each multi item */
 		for (exprn = fy_path_expr_list_head(&expr->children); exprn;
 			exprn = fy_path_expr_next(&expr->children, exprn)) {
 
 			input2 = fy_walk_result_clone(input);
-			assert(input2);
+			if (!input2)
+				goto err_out;
 
-			output2 = fy_path_expr_execute(fypx, level + 1, exprn, input2, expr->type);
+			output2 = fy_path_expr_execute(fypx, level + 1, exprn, input2, expr->type, &error);
+			input2 = NULL;
+			if (error)
+				goto err_out;
 			if (!output2)
 				continue;
 
 			fy_walk_result_list_add_tail(&output->refs, output2);
+			output2 = NULL;
 		}
 		fy_walk_result_free(input);
 		input = NULL;
@@ -4720,8 +4885,8 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 		prevp = NULL;
 		while ((fyni = fy_node_collection_iterate(fyn, &prevp)) != NULL) {
 			fwr = fy_path_exec_walk_result_create(fypx, fwrt_node_ref, fyni);
-			assert(fwr);
-
+			if (!fwr)
+				goto err_out;
 			fy_walk_result_list_add_tail(&output->refs, fwr);
 		}
 
@@ -4747,8 +4912,8 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 		fy_walk_result_list_init(&output->refs);
 
 		rc = fy_walk_result_all_children_recursive_internal(fypx, fyn, output);
-		assert(!rc);
-
+		if (rc)
+			goto err_out;
 		break;
 
 	case fpet_seq_slice:
@@ -4757,14 +4922,13 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 			goto out;
 
 		/* only valid for node ref on a sequence */
-		if (input->type != fwrt_node_ref || !fy_node_is_sequence(input->fyn)) {
+		if (input->type != fwrt_node_ref || !fy_node_is_sequence(input->fyn))
 			break;
-		}
 		fyn = input->fyn;
 
 		fyt = expr->fyt;
-		assert(fyt);
-		assert(fyt->type == FYTT_PE_SEQ_SLICE);
+		if (!fyt || fyt->type != FYTT_PE_SEQ_SLICE)
+			goto err_out;
 
 		start = fyt->seq_slice.start_index;
 		end = fyt->seq_slice.end_index;
@@ -4792,7 +4956,8 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 				continue;
 
 			fwr = fy_path_exec_walk_result_create(fypx, fwrt_node_ref, fynn);
-			assert(fwr);
+			if (!fwr)
+				goto err_out;
 
 			fy_walk_result_list_add_tail(&output->refs, fwr);
 		}
@@ -4811,14 +4976,16 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 	case fpet_div:
 
 		exprl = fy_path_expr_lhs(expr);
-		assert(exprl);
-
+		if (!exprl)
+			goto err_out;
 		exprr = fy_path_expr_rhs(expr);
-		assert(exprr);
+		if (!exprr)
+			goto err_out;
 
 		if (input) {
 			input1 = fy_walk_result_clone(input);
-			assert(input1);
+			if (!input1)
+				goto err_out;
 
 			input2 = input;
 			input = NULL;
@@ -4829,11 +4996,21 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 		}
 
 		/* execute LHS and RHS */
-		output1 = fy_path_expr_execute(fypx, level + 1, exprl, input1, expr->type);
-		output2 = fy_path_expr_execute(fypx, level + 1, exprr, input2, expr->type);
+		output1 = fy_path_expr_execute(fypx, level + 1, exprl, input1, expr->type, &error);
+		input1 = NULL;
+		if (error)
+			goto err_out;
 
-		output = fy_walk_result_lhs_rhs(fypx, expr, exprl, output1, exprr, output2);
+		output2 = fy_path_expr_execute(fypx, level + 1, exprr, input2, expr->type, &error);
+		input2 = NULL;
+		if (error)
+			goto err_out;
 
+		output = fy_walk_result_lhs_rhs(fypx, expr, exprl, output1, exprr, output2, &error);
+		output1 = NULL;
+		output2 = NULL;
+		if (error)
+			goto err_out;
 		break;
 
 	case fpet_scalar:
@@ -4841,10 +5018,12 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 		/* duck typing! */
 		if (fy_token_is_number(expr->fyt)) {
 			output = fy_path_exec_walk_result_create(fypx, fwrt_number, token_number(expr->fyt));
-			assert(output);
+			if (!output)
+				goto err_out;
 		} else {
 			output = fy_path_exec_walk_result_create(fypx, fwrt_string, fy_token_get_text0(expr->fyt));
-			assert(output);
+			if (!output)
+				goto err_out;
 		}
 
 		fy_walk_result_free(input);
@@ -4860,12 +5039,16 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 
 			if (input) {
 				input1 = fy_walk_result_clone(input);
-				assert(input1);
-			} else {
+				if (!input1)
+					goto err_out;
+			} else
 				input1 = NULL;
-			}
 
-			output = fy_path_expr_execute(fypx, level + 1, exprn, input1, expr->type);
+			output = fy_path_expr_execute(fypx, level + 1, exprn, input1, expr->type, &error);
+			input1 = NULL;
+			if (error)
+				goto err_out;
+
 			if (output)
 				break;
 		}
@@ -4880,12 +5063,16 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 
 			if (input) {
 				input1 = fy_walk_result_clone(input);
-				assert(input1);
-			} else {
+				if (!input1)
+					goto err_out;
+			} else
 				input1 = NULL;
-			}
 
-			output1 = fy_path_expr_execute(fypx, level + 1, exprn, input1, expr->type);
+			output1 = fy_path_expr_execute(fypx, level + 1, exprn, input1, expr->type, &error);
+			input1 = NULL;
+			if (error)
+				goto err_out;
+
 			if (output1) {
 				fy_walk_result_free(output);
 				output = output1;
@@ -4930,9 +5117,12 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 				if (fwrt->type == fwrt_refs)
 					continue;
 
-				assert(fwrt != fwr);
+				if (fwrt == fwr)
+					goto err_out;
 
-				match = fy_walk_result_compare_simple(fypx, fpet_eq, fwr, fwrt);
+				match = fy_walk_result_compare_simple(fypx, fpet_eq, fwr, fwrt, &error);
+				if (error)
+					goto err_out;
 
 				if (match) {
 					fy_walk_result_list_del(&input->refs, fwrt);
@@ -4948,31 +5138,33 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 	case fpet_scalar_expr:
 
 		exprl = fy_path_expr_list_head(&expr->children);
-		if (!exprl) {
-			fy_warning(diag, "%s:%d\n", __FILE__, __LINE__);
+		if (!exprl)
 			goto out;
-		}
 
-		output = fy_path_expr_execute(fypx, level + 1, exprl, NULL, ptype);
-		if (!output) {
-			fy_warning(diag, "%s:%d\n", __FILE__, __LINE__);
+		output = fy_path_expr_execute(fypx, level + 1, exprl, NULL, ptype, &error);
+		if (error)
+			goto err_out;
+
+		if (!output)
 			goto out;
-		}
 
-		exprt = fy_scalar_walk_result_to_expr(fypx, output, ptype);
+		exprt = fy_scalar_walk_result_to_expr(fypx, output, ptype, &error);
+		if (error)
+			goto err_out;
+
+		fy_walk_result_free(output);
 		output = NULL;
-		if (!exprt) {
-			fy_warning(diag, "%s:%d\n", __FILE__, __LINE__);
-			break;
-		}
 
-		output = fy_path_expr_execute(fypx, level + 1, exprt, input, ptype);
-		if (!output) {
-			fy_warning(diag, "%s:%d\n", __FILE__, __LINE__);
-		}
+		if (!exprt)
+			break;
+
+		output = fy_path_expr_execute(fypx, level + 1, exprt, input, ptype, &error);
 		input = NULL;
+		if (error)
+			goto err_out;
 
 		fy_path_expr_free(exprt);
+		exprt = NULL;
 		break;
 
 	case fpet_path_expr:
@@ -4980,13 +5172,17 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 		if (!exprl)
 			goto out;
 
-		output = fy_path_expr_execute(fypx, level + 1, exprl, input, ptype);
+		output = fy_path_expr_execute(fypx, level + 1, exprl, input, ptype, &error);
+		input = NULL;
+		if (error)
+			goto err_out;
 		input = NULL;
 		break;
 
 	case fpet_method:
 
-		assert(expr->fym);
+		if (!expr->fym)
+			goto err_out;
 
 		/* execute the arguments */
 		nargs = expr->fym->nargs;
@@ -4998,16 +5194,23 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 
 				if (input) {
 					input1 = fy_walk_result_clone(input);
-					assert(input1);
+					if (!input1)
+						goto err_out;
 				} else
 					input1 = NULL;
 
-				fwr_args[i] = fy_path_expr_execute(fypx, level + 1, exprt, input1, expr->type);
+				fwr_args[i] = fy_path_expr_execute(fypx, level + 1, exprt, input1,
+							expr->type, &error);
+				input1 = NULL;
+				if (error)
+					goto err_out;
 			}
 		} else
 			fwr_args = NULL;
 
-		output = expr->fym->exec(expr->fym, fypx, level + 1, expr, input, fwr_args, nargs);
+		output = expr->fym->exec(expr->fym, fypx, level + 1, expr, input, fwr_args, nargs, &error);
+		if (error)
+			goto err_out;
 		input = NULL;
 
 		break;
@@ -5016,26 +5219,26 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 	case fpet_unselect:
 
 		/* pop the top in either case */
-		assert(input);
 		if (!input)
-			goto out;
+			goto err_out;
 
 		/* only handle inputs of node and refs */
 		if (input->type != fwrt_node_ref && input->type != fwrt_refs)
-			goto out;
+			goto err_out;
 
 		/* execute the expression */
 		exprn = fy_path_expr_list_head(&expr->children);
-		assert(exprn);
 		if (!exprn)
-			goto out;
+			goto err_out;
 
 		fwrt = fy_walk_result_clone(input);
-		assert(fwrt);
 		if (!fwrt)
-			goto out;
+			goto err_out;
 
-		fwrn = fy_path_expr_execute(fypx, level + 1, exprn, fwrt, expr->type);
+		fwrn = fy_path_expr_execute(fypx, level + 1, exprn, fwrt, expr->type, &error);
+		fwrt = NULL;
+		if (error)
+			goto err_out;
 
 		output = fy_walk_result_perform_set_op(fypx, input, fwrn, expr->type == fpet_unselect ? FYWRSO_UNSELECT : FYWRSO_SELECT);
 		input = NULL;
@@ -5050,6 +5253,10 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 	}
 
 out:
+	fy_walk_result_free(output1);
+	fy_walk_result_free(output2);
+	fy_walk_result_free(input1);
+	fy_walk_result_free(input2);
 	fy_walk_result_free(input);
 	output = fy_walk_result_simplify(output);
 
@@ -5058,12 +5265,20 @@ out:
 		fy_walk_result_dump(output, diag, FYET_NOTICE, level, "output %s\n", fy_path_expr_type_txt[expr->type]);
 #endif
 	return output;
+
+err_out:
+	if (errorp)
+		*errorp = true;
+	fy_walk_result_free(output);
+	output = NULL;
+	goto out;
 }
 
 static int fy_path_exec_execute_internal(struct fy_path_exec *fypx,
 		struct fy_path_expr *expr, struct fy_node *fyn_start)
 {
 	struct fy_walk_result *fwr;
+	bool error;
 
 	if (!fypx || !expr || !fyn_start)
 		return -1;
@@ -5072,9 +5287,13 @@ static int fy_path_exec_execute_internal(struct fy_path_exec *fypx,
 	fypx->result = NULL;
 
 	fwr = fy_path_exec_walk_result_create(fypx, fwrt_node_ref, fyn_start);
-	assert(fwr);
+	if (!fwr)
+		goto err_out;
 
-	fwr = fy_path_expr_execute(fypx, 0, expr, fwr, fpet_none);
+	fwr = fy_path_expr_execute(fypx, 0, expr, fwr, fpet_none, &error);
+	if (error)
+		goto err_out;
+
 	if (!fwr)
 		return 0;
 
@@ -5087,6 +5306,9 @@ static int fy_path_exec_execute_internal(struct fy_path_exec *fypx,
 	fypx->result = fwr;
 
 	return 0;
+err_out:
+	fy_walk_result_free(fwr);
+	return -1;
 }
 
 int fy_path_exec_execute(struct fy_path_exec *fypx, struct fy_path_expr *expr, struct fy_node *fyn_start)
@@ -5269,7 +5491,8 @@ int fy_node_setup_path_expr_data(struct fy_node *fyn)
 			return rc;
 	}
 	pxdd = fyn->fyd->pxdd;
-	assert(pxdd);
+	if (!pxdd)
+		goto err_out;
 
 	pxnd = malloc(sizeof(*pxnd));
 	if (!pxnd)
@@ -5323,6 +5546,7 @@ err_no_input:
 err_no_text:
 	free(pxnd);
 err_no_mem:
+err_out:
 	return -1;
 }
 
@@ -5380,10 +5604,12 @@ fy_node_alias_resolve_by_ypath_result(struct fy_node *fyn)
 			"fy_node_setup_path_expr_data() failed");
 
 	pxnd = fyn->pxnd;
-	assert(pxnd);
+	if (!pxnd)
+		goto err_out;
 
 	pxdd = fyd->pxdd;
-	assert(pxdd);
+	if (!pxdd)
+		goto err_out;
 
 	if (pxnd->traversals++ > 0) {
 		FYD_NODE_ERROR(fyd, fyn, FYEM_DOC,
@@ -5399,32 +5625,10 @@ fy_node_alias_resolve_by_ypath_result(struct fy_node *fyn)
 
 	fy_path_exec_set_result_recycle_list(fypx, &pxdd->fwr_recycle);
 
-#if 0
-	{
-		struct fy_document *fyd_pe;
-		const char *text;
-		size_t len;
-
-		text = fy_token_get_text(fyn->scalar, &len);
-		if (text) {
-			fyd_pe = fy_path_expr_to_document(pxnd->expr);
-			if (fyd_pe) {
-				fprintf(stderr, "%s: %.*s\n", __func__, (int)len, text);
-				fy_document_default_emit_to_fp(fyd_pe, stderr);
-				fy_document_destroy(fyd_pe);
-			}
-		}
-	}
-#endif
-
-	// fprintf(stderr, "%s: %s 2\n", __func__, fy_node_get_path_alloca(fyn));
-
 	/* execute, starting at this */
 	rc = fy_path_exec_execute(fypx, pxnd->expr, fyn);
-	fyd_error_check(fyd, !rc, err_out,
-			"fy_path_exec_execute() failed");
-
-	// fprintf(stderr, "%s: %s 3\n", __func__, fy_node_get_path_alloca(fyn));
+	if (rc)
+		goto err_out;
 
 	fwr = fy_path_exec_take_results(fypx);
 
@@ -5435,8 +5639,6 @@ fy_node_alias_resolve_by_ypath_result(struct fy_node *fyn)
 	if (!fwr)
 		return NULL;
 
-	// fprintf(stderr, "%s: %s 4\n", __func__, fy_node_get_path_alloca(fyn));
-
 	return fwr;
 
 err_out:
@@ -5446,30 +5648,46 @@ err_out:
 	return NULL;
 }
 
-struct fy_node *fy_node_alias_resolve_by_ypath(struct fy_node *fyn)
+static struct fy_node *
+fy_node_alias_resolve_by_ypath_internal(struct fy_node *fyn, bool *errorp)
 {
 	struct fy_anchor *fya;
 	struct fy_walk_result *fwr;
 	void *iterp;
 
 	if (!fyn || !fy_node_is_alias(fyn))
-		return NULL;
+		goto err_out;
 
 	/* simple and common enough to do it now */
 	fya = fy_document_lookup_anchor_by_token(fyn->fyd, fyn->scalar);
-	if (fya)
+	if (fya) {
+		if (errorp)
+			*errorp = false;
 		return fya->fyn;
+	}
 
 	fwr = fy_node_alias_resolve_by_ypath_result(fyn);
 	if (!fwr)
-		return NULL;
+		goto err_out;
 
 	iterp = NULL;
 	fyn = fy_walk_result_node_iterate(fwr, &iterp);
 
 	fy_walk_result_free(fwr);
 
+	if (errorp)
+		*errorp = false;
+
 	return fyn;
+err_out:
+	if (errorp)
+		*errorp = true;
+	return NULL;
+}
+
+struct fy_node *fy_node_alias_resolve_by_ypath(struct fy_node *fyn)
+{
+	return fy_node_alias_resolve_by_ypath_internal(fyn, NULL);
 }
 
 struct fy_walk_result *
@@ -5509,7 +5727,8 @@ fy_node_by_ypath_result(struct fy_node *fyn, const char *path, size_t len)
 			"fy_node_setup_path_expr_data() failed");
 
 	pxdd = fyd->pxdd;
-	assert(pxdd);
+	if (!pxdd)
+		goto err_out;
 
 	fyi = fy_input_from_data(path, len, NULL, false);
 	fyd_error_check(fyd, fyi, err_no_input,

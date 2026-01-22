@@ -3309,13 +3309,14 @@ static struct fy_document *fy_document_build_internal(const struct fy_parse_cfg 
 		fyp->stream_error = false;
 
 	/* if we collect diagnostics, we can continue */
-	fyp_error_check(fyp, fyd || (fyp->cfg.flags & FYPCF_COLLECT_DIAG), err_out,
-			"fy_parse_load_document() failed");
+	if (!fyd && !(fyp->cfg.flags & FYPCF_COLLECT_DIAG))
+		goto err_out;
 
 	/* no document, but we're collecting diagnostics */
 	if (!fyd) {
 
-		fyp_error(fyp, "fy_parse_load_document() failed");
+		if (fyp->cfg.flags & FYPCF_COLLECT_DIAG)
+			fyp_error(fyp, "fy_parse_load_document() failed");
 
 		fyp->stream_error = false;
 		fyd = fy_parse_document_create(fyp, NULL);

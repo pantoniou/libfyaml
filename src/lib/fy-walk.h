@@ -268,7 +268,8 @@ struct fy_method {
 		struct fy_path_exec *fypx, int level,
 		struct fy_path_expr *expr,
 		struct fy_walk_result *input,
-		struct fy_walk_result **args, int nargs);
+		struct fy_walk_result **args, int nargs,
+		bool *errorp);
 };
 
 FY_TYPE_FWD_DECL_LIST(path_expr);
@@ -397,7 +398,8 @@ fy_path_exec_unref(struct fy_path_exec *fypx)
 
 struct fy_walk_result *
 fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *expr,
-		     struct fy_walk_result *input, enum fy_path_expr_type ptype);
+		     struct fy_walk_result *input, enum fy_path_expr_type ptype,
+		     bool *errorp);
 
 static inline struct fy_walk_result_list *
 fy_path_exec_walk_result_rl(struct fy_path_exec *fypx)
