@@ -21,7 +21,8 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
-#include "fy-generic.h"
+#include <libfyaml.h>
+#include <libfyaml/fy-internal-generic.h>
 #include "fy-thread.h"
 
 // Light reducer: simple sum
@@ -64,7 +65,7 @@ int main(int argc, char **argv)
 	double start, end, serial_time, parallel_time;
 	int iterations_light = 100;
 	int iterations_heavy = 5;
-	int i, j, dedup_mode;
+	(void)result;  // Suppress unused variable warning
 
 	if (argc > 1)
 		size = atoi(argv[1]);
@@ -83,7 +84,7 @@ int main(int argc, char **argv)
 	printf("Thread pool created with %d threads\n\n", fy_thread_pool_get_num_threads(tp));
 
 	// Run benchmarks twice: without dedup, then with dedup
-	for (dedup_mode = 0; dedup_mode < 2; dedup_mode++) {
+	for (int dedup_mode = 0; dedup_mode < 2; dedup_mode++) {
 		printf("\n");
 		printf("###############################################\n");
 		printf("# %s DEDUP\n", dedup_mode == 0 ? "WITHOUT" : "WITH");
@@ -97,7 +98,7 @@ int main(int argc, char **argv)
 
 		// Create test sequence
 		items = malloc(sizeof(fy_generic) * size);
-		for (i = 0; i < size; i++)
+		for (size_t i = 0; i < size; i++)
 			items[i] = fy_value(gb, i);
 		seq = fy_gb_sequence_create(gb, size, items);
 		free(items);
@@ -108,7 +109,7 @@ int main(int argc, char **argv)
 
 		// Serial reduce
 		start = get_time_sec();
-		for (j = 0; j < iterations_light; j++) {
+		for (int j = 0; j < iterations_light; j++) {
 			result = fy_gb_reduce(gb, seq, 0, bench_reduce_sum);
 		}
 		end = get_time_sec();
@@ -117,7 +118,7 @@ int main(int argc, char **argv)
 
 		// Parallel reduce (reusing thread pool!)
 		start = get_time_sec();
-		for (j = 0; j < iterations_light; j++) {
+		for (int j = 0; j < iterations_light; j++) {
 			result = fy_gb_preduce(gb, seq, 0, tp, bench_reduce_sum);
 		}
 		end = get_time_sec();
@@ -133,7 +134,7 @@ int main(int argc, char **argv)
 
 		// Serial reduce
 		start = get_time_sec();
-		for (j = 0; j < iterations_heavy; j++) {
+		for (int j = 0; j < iterations_heavy; j++) {
 			result = fy_gb_reduce(gb, seq, 0, bench_reduce_heavy);
 		}
 		end = get_time_sec();
@@ -142,7 +143,7 @@ int main(int argc, char **argv)
 
 		// Parallel reduce (reusing thread pool!)
 		start = get_time_sec();
-		for (j = 0; j < iterations_heavy; j++) {
+		for (int j = 0; j < iterations_heavy; j++) {
 			result = fy_gb_preduce(gb, seq, 0, tp, bench_reduce_heavy);
 		}
 		end = get_time_sec();
