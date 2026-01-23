@@ -2041,6 +2041,276 @@ START_TEST(token_test)
 }
 END_TEST
 
+/* test style change on a plain */
+START_TEST(style_set_plain_scalar)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	enum fy_node_style style;
+	char *buf;
+
+	fyd = fy_document_build_from_string(NULL, "foo\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn = fy_document_root(fyd);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	fprintf(stderr, "--------------\n");
+	fprintf(stderr, "-- original --\n");
+	fprintf(stderr, "--------------\n");
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(buf, NULL);
+	fprintf(stderr, "%s", buf);
+	free(buf);
+	fprintf(stderr, "--------------\n");
+
+	fprintf(stderr, "-----------\n");
+	fprintf(stderr, "-- plain --\n");
+	fprintf(stderr, "-----------\n");
+	style = fy_node_set_style(fyn, FYNS_PLAIN);
+	ck_assert(style == FYNS_PLAIN);
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, "foo\n");
+	fprintf(stderr, "%s", buf);
+	free(buf);
+
+	fprintf(stderr, "-------------------\n");
+	fprintf(stderr, "-- single quoted --\n");
+	fprintf(stderr, "-------------------\n");
+	style = fy_node_set_style(fyn, FYNS_SINGLE_QUOTED);
+	ck_assert(style == FYNS_SINGLE_QUOTED);
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, "'foo'\n");
+	fprintf(stderr, "%s", buf);
+	free(buf);
+
+	fprintf(stderr, "-------------------\n");
+	fprintf(stderr, "-- double quoted --\n");
+	fprintf(stderr, "-------------------\n");
+	style = fy_node_set_style(fyn, FYNS_DOUBLE_QUOTED);
+	ck_assert(style == FYNS_DOUBLE_QUOTED);
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, "\"foo\"\n");
+	fprintf(stderr, "%s", buf);
+	free(buf);
+
+	fprintf(stderr, "-------------\n");
+	fprintf(stderr, "-- literal --\n");
+	fprintf(stderr, "-------------\n");
+	style = fy_node_set_style(fyn, FYNS_LITERAL);
+	ck_assert(style == FYNS_LITERAL);
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, "|-\n  foo\n");
+	fprintf(stderr, "%s", buf);
+	free(buf);
+
+	/* NOTE we don't try folded, because we never support emitting one */
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* test style change on a double quoted scalar which ends with colon */
+START_TEST(style_set_double_quoted_scalar_colon)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	enum fy_node_style style;
+	char *buf;
+
+	/* simple double quoted scalar that can't be a plain */
+	fyd = fy_document_build_from_string(NULL, "\"foo:\"\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn = fy_document_root(fyd);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	fprintf(stderr, "--------------\n");
+	fprintf(stderr, "-- original --\n");
+	fprintf(stderr, "--------------\n");
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(buf, NULL);
+	fprintf(stderr, "%s", buf);
+	free(buf);
+	fprintf(stderr, "--------------\n");
+
+	/* we can't convert to a plain, it ends with : */
+	fprintf(stderr, "-----------\n");
+	fprintf(stderr, "-- plain --\n");
+	fprintf(stderr, "-----------\n");
+	style = fy_node_set_style(fyn, FYNS_PLAIN);
+	ck_assert(style != FYNS_PLAIN);
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(buf, NULL);
+	fprintf(stderr, "%s", buf);
+	free(buf);
+
+	fprintf(stderr, "-------------------\n");
+	fprintf(stderr, "-- single quoted --\n");
+	fprintf(stderr, "-------------------\n");
+	style = fy_node_set_style(fyn, FYNS_SINGLE_QUOTED);
+	ck_assert(style == FYNS_SINGLE_QUOTED);
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, "'foo:'\n");
+	fprintf(stderr, "%s", buf);
+	free(buf);
+
+	fprintf(stderr, "-------------------\n");
+	fprintf(stderr, "-- double quoted --\n");
+	fprintf(stderr, "-------------------\n");
+	style = fy_node_set_style(fyn, FYNS_DOUBLE_QUOTED);
+	ck_assert(style == FYNS_DOUBLE_QUOTED);
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, "\"foo:\"\n");
+	fprintf(stderr, "%s", buf);
+	free(buf);
+
+	/* literal has no problem with it */
+	fprintf(stderr, "-------------\n");
+	fprintf(stderr, "-- literal --\n");
+	fprintf(stderr, "-------------\n");
+	style = fy_node_set_style(fyn, FYNS_LITERAL);
+	ck_assert(style == FYNS_LITERAL);
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, "|-\n  foo:\n");
+	fprintf(stderr, "%s", buf);
+	free(buf);
+
+	/* NOTE we don't try folded, because we never support emitting one */
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* test style change on a double quoted scalar which contains a \0 */
+START_TEST(style_set_double_quoted_scalar_0)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	enum fy_node_style style;
+	char *buf;
+
+	/* simple double quoted scalar that can't be anything else */
+	fyd = fy_document_build_from_string(NULL, "\"foo\\0\"\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn = fy_document_root(fyd);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	fprintf(stderr, "--------------\n");
+	fprintf(stderr, "-- original --\n");
+	fprintf(stderr, "--------------\n");
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(buf, NULL);
+	fprintf(stderr, "%s", buf);
+	free(buf);
+	fprintf(stderr, "--------------\n");
+
+	/* we can't convert to a plain */
+	fprintf(stderr, "-----------\n");
+	fprintf(stderr, "-- plain --\n");
+	fprintf(stderr, "-----------\n");
+	style = fy_node_set_style(fyn, FYNS_PLAIN);
+	ck_assert(style != FYNS_PLAIN);
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(buf, NULL);
+	fprintf(stderr, "%s", buf);
+	free(buf);
+
+	fprintf(stderr, "-------------------\n");
+	fprintf(stderr, "-- single quoted --\n");
+	fprintf(stderr, "-------------------\n");
+	style = fy_node_set_style(fyn, FYNS_SINGLE_QUOTED);
+	ck_assert(style != FYNS_SINGLE_QUOTED);
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(buf, NULL);
+	fprintf(stderr, "%s", buf);
+	free(buf);
+
+	fprintf(stderr, "-------------------\n");
+	fprintf(stderr, "-- double quoted --\n");
+	fprintf(stderr, "-------------------\n");
+	style = fy_node_set_style(fyn, FYNS_DOUBLE_QUOTED);
+	ck_assert(style == FYNS_DOUBLE_QUOTED);
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, "\"foo\\0\"\n");
+	fprintf(stderr, "%s", buf);
+	free(buf);
+
+	/* literal has no problem with it */
+	fprintf(stderr, "-------------\n");
+	fprintf(stderr, "-- literal --\n");
+	fprintf(stderr, "-------------\n");
+	style = fy_node_set_style(fyn, FYNS_LITERAL);
+	ck_assert(style != FYNS_LITERAL);
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(buf, NULL);
+	fprintf(stderr, "%s", buf);
+	free(buf);
+
+	/* NOTE we don't try folded, because we never support emitting one */
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* test style change on a collection */
+START_TEST(style_set_collection)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	enum fy_node_style style;
+	char *buf;
+
+	fyd = fy_document_build_from_string(NULL, "- one\n- two\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn = fy_document_root(fyd);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	fprintf(stderr, "--------------\n");
+	fprintf(stderr, "-- original --\n");
+	fprintf(stderr, "--------------\n");
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(buf, NULL);
+	fprintf(stderr, "%s", buf);
+	free(buf);
+	fprintf(stderr, "--------------\n");
+
+	fprintf(stderr, "----------\n");
+	fprintf(stderr, "-- flow --\n");
+	fprintf(stderr, "----------\n");
+	style = fy_node_set_style(fyn, FYNS_FLOW);
+	ck_assert(style == FYNS_FLOW);
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, "[\n  one,\n  two\n]\n");
+	fprintf(stderr, "%s", buf);
+	free(buf);
+
+	fprintf(stderr, "-----------\n");
+	fprintf(stderr, "-- block --\n");
+	fprintf(stderr, "-----------\n");
+	style = fy_node_set_style(fyn, FYNS_BLOCK);
+	ck_assert(style == FYNS_BLOCK);
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, "- one\n- two\n");
+	fprintf(stderr, "%s", buf);
+	free(buf);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 TCase *libfyaml_case_core(void)
 {
 	TCase *tc;
@@ -2112,6 +2382,11 @@ TCase *libfyaml_case_core(void)
 	tcase_add_test(tc, scanf_check);
 
         tcase_add_test(tc, token_test);
+
+	tcase_add_test(tc, style_set_plain_scalar);
+	tcase_add_test(tc, style_set_double_quoted_scalar_colon);
+	tcase_add_test(tc, style_set_double_quoted_scalar_0);
+	tcase_add_test(tc, style_set_collection);
 
 	return tc;
 }

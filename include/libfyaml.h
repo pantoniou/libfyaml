@@ -3468,6 +3468,24 @@ fy_node_get_style(struct fy_node *fyn)
 	FY_EXPORT;
 
 /**
+ * fy_node_set_style() - Set the node style
+ *
+ * Try to set the node rendering style of a node.
+ * If the style of node is illegal (for example
+ * you can't set an arbitrary scalar that contains
+ * zeroes to plain) then the actual style that was
+ * set will be returned.
+ *
+ * @fyn: The node
+ *
+ * Returns:
+ * The final node style
+ */
+enum fy_node_style
+fy_node_set_style(struct fy_node *fyn, enum fy_node_style style)
+	FY_EXPORT;
+
+/**
  * fy_node_get_start_token() - Get the node start token
  *
  * Retrieve the node start token.

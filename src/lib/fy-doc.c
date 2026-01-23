@@ -3407,6 +3407,81 @@ enum fy_node_style fy_node_get_style(struct fy_node *fyn)
 	return fyn ? fyn->style : FYNS_PLAIN;
 }
 
+enum fy_node_style fy_node_set_style(struct fy_node *fyn, enum fy_node_style style)
+{
+	const struct fy_token_analysis *ta;
+
+	/* a NULL node is always plain */
+	if (!fyn)
+		return FYNS_PLAIN;
+
+	/* same style */
+	if (style == fyn->style)
+		return style;
+
+	/* can't change an alias style */
+	if (fyn->style == FYNS_ALIAS)
+		return fyn->style;
+
+	/* any is easy... */
+	if (style == FYNS_ANY) {
+		fyn->style = style;
+		return style;
+	}
+
+	/* for a collection the choices are limited */
+	if (fyn->type == FYNT_MAPPING ||
+	    fyn->type == FYNT_SEQUENCE) {
+
+		/* only flow/block style is allowed */
+		if (style == FYNS_FLOW || style == FYNS_BLOCK)
+			fyn->style = style;
+
+		return fyn->style;
+	}
+
+	/* a scalar, analyze it */
+	ta = fy_token_text_analyze(fyn->scalar);
+	switch (style) {
+	case FYNS_PLAIN:
+		if (ta->flags & FYTTAF_CAN_BE_PLAIN)
+			fyn->style = style;
+		break;
+	case FYNS_SINGLE_QUOTED:
+		if (ta->flags & FYTTAF_CAN_BE_SINGLE_QUOTED)
+			fyn->style = style;
+		break;
+
+	case FYNS_DOUBLE_QUOTED:
+		if (ta->flags & FYTTAF_CAN_BE_DOUBLE_QUOTED)
+			fyn->style = style;
+		break;
+
+	case FYNS_LITERAL:
+		if (ta->flags & FYTTAF_CAN_BE_LITERAL)
+			fyn->style = style;
+		break;
+
+	case FYNS_FOLDED:
+		/* we never support changing style to folded
+		 * it is never emitted and frankly not worth the effort.
+		 */
+		break;
+
+	default:
+		/* anything else, doesn't take */
+		break;
+
+	}
+
+	/* NOTE even if the style has 'taken' the emitter is free to change it
+	 * since the style might not be possible at a given state. For example
+	 * setting a literal style when the emitter is in flow mode obviously
+	 * will not work.
+	 */
+	return fyn->style;
+}
+
 struct fy_token *fy_node_get_start_token(struct fy_node *fyn)
 {
         if (!fyn)
