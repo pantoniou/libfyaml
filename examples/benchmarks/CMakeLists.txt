@@ -92,17 +92,6 @@ if(FYAML_INCLUDE_DIR)
 endif()
 
 #
-# Benchmark: bench_parallel
-# Basic parallel map/filter operations
-#
-add_executable(bench_parallel bench_parallel.c)
-target_link_libraries(bench_parallel PRIVATE ${FYAML_TARGET} Threads::Threads)
-target_compile_options(bench_parallel PRIVATE ${BENCH_COMPILE_OPTIONS})
-if(FYAML_INCLUDE_DIR)
-    target_include_directories(bench_parallel PRIVATE ${FYAML_INCLUDE_DIR})
-endif()
-
-#
 # Benchmarks requiring internal headers (thread pool)
 # Only build if we have access to source tree
 #
@@ -114,6 +103,15 @@ if(LIBFYAML_SOURCE_DIR AND EXISTS "${LIBFYAML_SOURCE_DIR}/src/thread/fy-thread.h
         ${LIBFYAML_SOURCE_DIR}/src/util
         ${LIBFYAML_SOURCE_DIR}/build  # for config.h
     )
+
+    #
+    # Benchmark: bench_parallel
+    # Basic parallel map/filter with thread pool
+    #
+    add_executable(bench_parallel bench_parallel.c)
+    target_link_libraries(bench_parallel PRIVATE ${FYAML_TARGET} Threads::Threads)
+    target_include_directories(bench_parallel PRIVATE ${INTERNAL_INCLUDE_DIRS})
+    target_compile_options(bench_parallel PRIVATE ${BENCH_COMPILE_OPTIONS})
 
     #
     # Benchmark: bench_parallel_heavy
@@ -142,7 +140,7 @@ if(LIBFYAML_SOURCE_DIR AND EXISTS "${LIBFYAML_SOURCE_DIR}/src/thread/fy-thread.h
     target_include_directories(bench_parallel_reduce PRIVATE ${INTERNAL_INCLUDE_DIRS})
     target_compile_options(bench_parallel_reduce PRIVATE ${BENCH_COMPILE_OPTIONS})
 
-    set(THREAD_POOL_BENCHMARKS bench_parallel_heavy bench_parallel_light bench_parallel_reduce)
+    set(THREAD_POOL_BENCHMARKS bench_parallel bench_parallel_heavy bench_parallel_light bench_parallel_reduce)
     message(STATUS "Building thread-pool benchmarks: ${THREAD_POOL_BENCHMARKS}")
 else()
     message(STATUS "Skipping thread-pool benchmarks (internal headers not available)")
@@ -163,7 +161,6 @@ endif()
 # Collect all benchmark targets
 set(ALL_BENCHMARKS
     bench_functional
-    bench_parallel
     ${THREAD_POOL_BENCHMARKS}
     yaml-parallel-example
 )
