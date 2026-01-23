@@ -940,9 +940,15 @@ class _NodeWrapper:
             self.value = generic.to_python()
         else:
             self.value = generic
-        # Provide start_mark/end_mark for compatibility (some constructors check these)
+        # Extract start_mark/end_mark from marker if available
         self.start_mark = None
         self.end_mark = None
+        if hasattr(generic, 'get_marker'):
+            marker = generic.get_marker()
+            if marker is not None:
+                # marker is (start_byte, start_line, start_col, end_byte, end_line, end_col)
+                self.start_mark = Mark('<string>', marker[0], marker[1], marker[2])
+                self.end_mark = Mark('<string>', marker[3], marker[4], marker[5])
 
     def __repr__(self):
         return f"<_NodeWrapper tag={self.tag!r} value={self.value!r}>"

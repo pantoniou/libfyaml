@@ -1118,6 +1118,79 @@ FyGeneric_has_diag(FyGenericObject *self, PyObject *Py_UNUSED(args))
     return PyBool_FromLong(!fy_generic_is_null(diag) && !fy_generic_is_invalid(diag));
 }
 
+static PyObject *
+FyGeneric_get_marker(FyGenericObject *self, PyObject *Py_UNUSED(args))
+{
+    fy_generic marker = fy_generic_get_marker(self->fyg);
+
+    /* Check if marker is null or invalid - no marker available */
+    if (fy_generic_is_null(marker) || fy_generic_is_invalid(marker))
+        Py_RETURN_NONE;
+
+    /* Marker is a sequence of 6 ints: start_byte, start_line, start_col, end_byte, end_line, end_col */
+    if (!fy_generic_is_sequence(marker)) {
+        PyErr_SetString(PyExc_RuntimeError, "marker is not a sequence");
+        return NULL;
+    }
+
+    size_t len = fy_generic_sequence_get_item_count(marker);
+    if (len != 6) {
+        PyErr_Format(PyExc_RuntimeError, "marker has %zu elements, expected 6", len);
+        return NULL;
+    }
+
+    PyObject *tuple = PyTuple_New(6);
+    if (!tuple)
+        return NULL;
+
+    for (size_t i = 0; i < 6; i++) {
+        fy_generic item = fy_generic_sequence_get_item_generic(marker, i);
+        long long val = fy_cast(item, (long long)-1LL);
+        PyObject *pyval = PyLong_FromLongLong(val);
+        if (!pyval) {
+            Py_DECREF(tuple);
+            return NULL;
+        }
+        PyTuple_SET_ITEM(tuple, i, pyval);
+    }
+
+    return tuple;
+}
+
+static PyObject *
+FyGeneric_has_marker(FyGenericObject *self, PyObject *Py_UNUSED(args))
+{
+    fy_generic marker = fy_generic_get_marker(self->fyg);
+    return PyBool_FromLong(!fy_generic_is_null(marker) && !fy_generic_is_invalid(marker));
+}
+
+static PyObject *
+FyGeneric_get_comment(FyGenericObject *self, PyObject *Py_UNUSED(args))
+{
+    fy_generic comment = fy_generic_get_comment(self->fyg);
+
+    /* Check if comment is null or invalid - no comment available */
+    if (fy_generic_is_null(comment) || fy_generic_is_invalid(comment))
+        Py_RETURN_NONE;
+
+    /* Comment should be a string */
+    if (!fy_generic_is_string(comment)) {
+        PyErr_SetString(PyExc_RuntimeError, "comment is not a string");
+        return NULL;
+    }
+
+    /* Convert to Python string */
+    fy_generic_sized_string szstr = fy_cast(comment, fy_szstr_empty);
+    return PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+}
+
+static PyObject *
+FyGeneric_has_comment(FyGenericObject *self, PyObject *Py_UNUSED(args))
+{
+    fy_generic comment = fy_generic_get_comment(self->fyg);
+    return PyBool_FromLong(!fy_generic_is_null(comment) && !fy_generic_is_invalid(comment));
+}
+
 /* Comparison helper functions */
 
 /* Helper: Compare integers with support for large unsigned values */
@@ -2465,6 +2538,14 @@ static PyMethodDef FyGeneric_methods[] = {
      "Get diagnostic info for this value (or None if not available)"},
     {"has_diag", _PyCFunction_CAST(FyGeneric_has_diag), METH_NOARGS,
      "Check if value has diagnostic info"},
+    {"get_marker", _PyCFunction_CAST(FyGeneric_get_marker), METH_NOARGS,
+     "Get position marker (start_byte, start_line, start_col, end_byte, end_line, end_col) or None"},
+    {"has_marker", _PyCFunction_CAST(FyGeneric_has_marker), METH_NOARGS,
+     "Check if value has a position marker"},
+    {"get_comment", _PyCFunction_CAST(FyGeneric_get_comment), METH_NOARGS,
+     "Get comment associated with this value (or None)"},
+    {"has_comment", _PyCFunction_CAST(FyGeneric_has_comment), METH_NOARGS,
+     "Check if value has an associated comment"},
     {"keys", _PyCFunction_CAST(FyGeneric_keys), METH_NOARGS,
      "Return list of keys (for mappings)"},
     {"values", _PyCFunction_CAST(FyGeneric_values), METH_NOARGS,
@@ -3445,7 +3526,7 @@ parse_mode_flags(const char *mode)
     }
 }
 
-/* loads(string, mode='yaml', dedup=True, trim=True, mutable=False) - Parse YAML/JSON from string
+/* loads(string, mode='yaml', dedup=True, trim=True, mutable=False, create_markers=False, keep_comments=False) - Parse YAML/JSON from string
  *
  * mode can be:
  *   - 'yaml' or 'yaml1.2' or '1.2': YAML 1.2 (default)
@@ -3462,9 +3543,11 @@ libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
     int trim = 1;   /* Default to True */
     int mutable = 0;  /* Default to False (read-only) */
     int collect_diag = 0;  /* Default to False */
-    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", NULL};
+    int create_markers = 0;  /* Default to False */
+    int keep_comments = 0;  /* Default to False */
+    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|spppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|spppppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments))
         return NULL;
 
     /* Parse mode string to flags */
@@ -3483,6 +3566,10 @@ libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
     unsigned int parse_flags = FYOPPF_INPUT_TYPE_STRING | mode_flags;
     if (collect_diag)
         parse_flags |= FYOPPF_COLLECT_DIAG;
+    if (create_markers)
+        parse_flags |= FYOPPF_CREATE_MARKERS;
+    if (keep_comments)
+        parse_flags |= FYOPPF_KEEP_COMMENTS;
     fy_generic vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
 
     /* When collect_diag is enabled, errors return an indirect with diag attached */
@@ -3799,7 +3886,9 @@ libfyaml_from_python(PyObject *self, PyObject *args, PyObject *kwargs)
             .value = g,
             .anchor = fy_null,
             .tag = tag_generic,
-            .diag = fy_null
+            .diag = fy_null,
+            .marker = fy_null,
+            .comment = fy_null
         };
         g = fy_gb_indirect_create(gb, &gi);
         if (!fy_generic_is_valid(g)) {
@@ -3829,9 +3918,11 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
     int trim = 1;   /* Default to True */
     int mutable = 0;  /* Default to False (read-only) */
     int collect_diag = 0;  /* Default to False */
-    static char *kwlist[] = {"file", "mode", "dedup", "trim", "mutable", "collect_diag", NULL};
+    int create_markers = 0;  /* Default to False */
+    int keep_comments = 0;  /* Default to False */
+    static char *kwlist[] = {"file", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|spppp", kwlist, &file_obj, &mode, &dedup, &trim, &mutable, &collect_diag))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|spppppp", kwlist, &file_obj, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments))
         return NULL;
 
     /* Check if it's a string (file path) or file object */
@@ -3857,6 +3948,10 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
         unsigned int parse_flags = mode_flags;
         if (collect_diag)
             parse_flags |= FYOPPF_COLLECT_DIAG;
+        if (create_markers)
+            parse_flags |= FYOPPF_CREATE_MARKERS;
+        if (keep_comments)
+            parse_flags |= FYOPPF_KEEP_COMMENTS;
 
         /* Parse from file - returns a directory (sequence of VDS) */
         fy_generic vdir = fy_gb_parse_file(gb, parse_flags, path);
@@ -3928,6 +4023,14 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
         PyObject *mutable_obj = PyBool_FromLong(mutable);
         PyDict_SetItemString(loads_kwargs, "mutable", mutable_obj);
         Py_DECREF(mutable_obj);
+
+        PyObject *markers_obj = PyBool_FromLong(create_markers);
+        PyDict_SetItemString(loads_kwargs, "create_markers", markers_obj);
+        Py_DECREF(markers_obj);
+
+        PyObject *comments_obj = PyBool_FromLong(keep_comments);
+        PyDict_SetItemString(loads_kwargs, "keep_comments", comments_obj);
+        Py_DECREF(comments_obj);
 
         /* Call loads with the content */
         PyObject *loads_args = Py_BuildValue("(O)", content);
@@ -4085,7 +4188,7 @@ FyGeneric_from_vds_with_parent(fy_generic vds, FyGenericObject *parent, int muta
     return (PyObject *)self;
 }
 
-/* loads_all(string, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False) - Parse multi-document YAML */
+/* loads_all(string, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False, create_markers=False, keep_comments=False) - Parse multi-document YAML */
 static PyObject *
 libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -4096,9 +4199,11 @@ libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
     int trim = 1;
     int mutable = 0;
     int collect_diag = 0;
-    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", NULL};
+    int create_markers = 0;
+    int keep_comments = 0;
+    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|spppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|spppppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments))
         return NULL;
 
     /* Create generic builder using helper */
@@ -4117,6 +4222,10 @@ libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
     unsigned int parse_flags = FYOPPF_INPUT_TYPE_STRING | FYOPPF_MULTI_DOCUMENT | mode_flags;
     if (collect_diag)
         parse_flags |= FYOPPF_COLLECT_DIAG;
+    if (create_markers)
+        parse_flags |= FYOPPF_CREATE_MARKERS;
+    if (keep_comments)
+        parse_flags |= FYOPPF_KEEP_COMMENTS;
 
     /* Parse - returns a directory (sequence of VDS) */
     fy_generic vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
@@ -4184,7 +4293,7 @@ libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
     return result;
 }
 
-/* load_all(file, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False) - Parse multi-document from file */
+/* load_all(file, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False, create_markers=False, keep_comments=False) - Parse multi-document from file */
 static PyObject *
 libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -4194,10 +4303,12 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
     int trim = 1;
     int mutable = 0;
     int collect_diag = 0;
-    static char *kwlist[] = {"file", "mode", "dedup", "trim", "mutable", "collect_diag", NULL};
+    int create_markers = 0;
+    int keep_comments = 0;
+    static char *kwlist[] = {"file", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|spppp", kwlist,
-                                     &file_obj, &mode, &dedup, &trim, &mutable, &collect_diag))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|spppppp", kwlist,
+                                     &file_obj, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments))
         return NULL;
 
     /* Check if it's a string (file path) or file object */
@@ -4223,6 +4334,10 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
         unsigned int parse_flags = FYOPPF_MULTI_DOCUMENT | mode_flags;
         if (collect_diag)
             parse_flags |= FYOPPF_COLLECT_DIAG;
+        if (create_markers)
+            parse_flags |= FYOPPF_CREATE_MARKERS;
+        if (keep_comments)
+            parse_flags |= FYOPPF_KEEP_COMMENTS;
 
         /* Parse from file - returns a directory (sequence of VDS) */
         fy_generic vdir = fy_gb_parse_file(gb, parse_flags, path);
@@ -4311,16 +4426,22 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
         PyObject *dedup_bool = PyBool_FromLong(dedup);
         PyObject *trim_bool = PyBool_FromLong(trim);
         PyObject *mutable_bool = PyBool_FromLong(mutable);
+        PyObject *markers_bool = PyBool_FromLong(create_markers);
+        PyObject *comments_bool = PyBool_FromLong(keep_comments);
 
         PyDict_SetItemString(loads_all_kwargs, "mode", mode_str);
         PyDict_SetItemString(loads_all_kwargs, "dedup", dedup_bool);
         PyDict_SetItemString(loads_all_kwargs, "trim", trim_bool);
         PyDict_SetItemString(loads_all_kwargs, "mutable", mutable_bool);
+        PyDict_SetItemString(loads_all_kwargs, "create_markers", markers_bool);
+        PyDict_SetItemString(loads_all_kwargs, "keep_comments", comments_bool);
 
         Py_DECREF(mode_str);
         Py_DECREF(dedup_bool);
         Py_DECREF(trim_bool);
         Py_DECREF(mutable_bool);
+        Py_DECREF(markers_bool);
+        Py_DECREF(comments_bool);
 
         PyObject *loads_all_args = PyTuple_Pack(1, content);
         PyObject *result = libfyaml_loads_all(self, loads_all_args, loads_all_kwargs);
