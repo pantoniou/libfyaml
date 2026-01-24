@@ -885,6 +885,21 @@ class SafeDumper(BaseDumper):
     }
     yaml_multi_representers = {}
 
+    @staticmethod
+    def represent_dict(dumper, data):
+        """Represent a dict as a mapping."""
+        return dumper.represent_mapping('tag:yaml.org,2002:map', data.items())
+
+    @staticmethod
+    def represent_list(dumper, data):
+        """Represent a list/sequence."""
+        return dumper.represent_sequence('tag:yaml.org,2002:seq', data)
+
+    @staticmethod
+    def represent_str(dumper, data):
+        """Represent a string."""
+        return dumper.represent_scalar('tag:yaml.org,2002:str', data)
+
 
 class Dumper(SafeDumper):
     """Full dumper class for PyYAML API compatibility."""
@@ -952,6 +967,81 @@ class _NodeWrapper:
 
     def __repr__(self):
         return f"<_NodeWrapper tag={self.tag!r} value={self.value!r}>"
+
+
+def _fygeneric_to_node(generic, stream_name='<string>'):
+    """Convert an FyGeneric tree to a PyYAML Node tree with marks.
+
+    This enables proper integration with PyYAML-compatible constructors
+    (like Ansible's AnsibleConstructor) that expect Node objects with
+    tag, value, start_mark, and end_mark attributes.
+
+    Args:
+        generic: FyGeneric object from libfyaml
+        stream_name: Name for the stream in Mark objects
+
+    Returns:
+        A ScalarNode, SequenceNode, or MappingNode with proper marks
+    """
+    # Extract marks from the generic's marker
+    start_mark = None
+    end_mark = None
+    if hasattr(generic, 'get_marker'):
+        marker = generic.get_marker()
+        if marker is not None:
+            start_mark = Mark(stream_name, marker[0], marker[1], marker[2])
+            end_mark = Mark(stream_name, marker[3], marker[4], marker[5])
+
+    # Get custom tag if any
+    custom_tag = None
+    if hasattr(generic, 'get_tag'):
+        custom_tag = generic.get_tag()
+
+    if hasattr(generic, 'is_mapping') and generic.is_mapping():
+        tag = custom_tag or 'tag:yaml.org,2002:map'
+        pairs = []
+        for k, v in generic.items():
+            key_node = _fygeneric_to_node(k, stream_name)
+            val_node = _fygeneric_to_node(v, stream_name)
+            pairs.append((key_node, val_node))
+        return MappingNode(tag, pairs, start_mark=start_mark, end_mark=end_mark)
+
+    elif hasattr(generic, 'is_sequence') and generic.is_sequence():
+        tag = custom_tag or 'tag:yaml.org,2002:seq'
+        items = [_fygeneric_to_node(item, stream_name) for item in generic]
+        return SequenceNode(tag, items, start_mark=start_mark, end_mark=end_mark)
+
+    else:
+        # Scalar - determine tag from Python value
+        value = generic.to_python() if hasattr(generic, 'to_python') else generic
+        if custom_tag:
+            tag = custom_tag
+            str_value = str(value) if value is not None else ''
+        elif value is None:
+            tag = 'tag:yaml.org,2002:null'
+            str_value = 'null'
+        elif isinstance(value, bool):
+            tag = 'tag:yaml.org,2002:bool'
+            str_value = 'true' if value else 'false'
+        elif isinstance(value, int):
+            tag = 'tag:yaml.org,2002:int'
+            str_value = str(value)
+        elif isinstance(value, float):
+            tag = 'tag:yaml.org,2002:float'
+            if value != value:  # NaN
+                str_value = '.nan'
+            elif value == float('inf'):
+                str_value = '.inf'
+            elif value == float('-inf'):
+                str_value = '-.inf'
+            else:
+                str_value = repr(value)
+        else:
+            str_value = str(value) if value is not None else ''
+            # Use resolver to detect implicit types (timestamps, etc.)
+            from libfyaml.pyyaml_compat.resolver import Resolver as _Resolver
+            tag = _Resolver().resolve(ScalarNode, str_value, (True, False))
+        return ScalarNode(tag, str_value, start_mark=start_mark, end_mark=end_mark)
 
 
 def _convert_with_loader(node, loader):
@@ -1049,6 +1139,29 @@ def _diag_to_exception(diag_list, stream_name='<string>'):
     return ScannerError(problem=message, problem_mark=problem_mark)
 
 
+def _is_constructor_loader(Loader):
+    """Check if Loader has a real construct_document method (from SafeConstructor or similar).
+
+    This detects Loaders like AnsibleLoader that inherit from SafeConstructor
+    and need proper Node trees with start_mark/end_mark for construction.
+    Also handles factory functions that wrap loader classes.
+    """
+    if not isinstance(Loader, type):
+        # Not a class - could be a factory function
+        return False
+    from libfyaml.pyyaml_compat.constructor import BaseConstructor as OurBaseConstructor
+    # Check if the Loader inherits from our BaseConstructor (which has construct_document)
+    # or has construct_document from PyYAML's SafeConstructor
+    try:
+        if issubclass(Loader, OurBaseConstructor):
+            return True
+    except TypeError:
+        pass
+    if hasattr(Loader, 'construct_document') and hasattr(Loader, 'construct_object'):
+        return True
+    return False
+
+
 def load(stream, Loader=None):
     """Parse YAML stream and return Python object.
 
@@ -1071,6 +1184,7 @@ def load(stream, Loader=None):
         raise TypeError("load() missing 1 required positional argument: 'Loader'")
     # Get stream name for error messages
     stream_name = getattr(stream, 'name', '<string>')
+    original_stream = stream
     if hasattr(stream, 'read'):
         stream = stream.read()
 
@@ -1096,6 +1210,29 @@ def load(stream, Loader=None):
         if diag_list and isinstance(diag_list, list) and len(diag_list) > 0:
             if isinstance(diag_list[0], dict) and 'message' in diag_list[0]:
                 raise _diag_to_exception(diag_list, stream_name)
+
+    # For Loaders that have construct_document (like AnsibleLoader), use
+    # the Node-tree path: convert FyGeneric → Node tree → feed to constructor
+    if _is_constructor_loader(Loader):
+        root_node = _fygeneric_to_node(doc, stream_name)
+        # Instantiate the Loader (parser won't actually parse since we provide nodes)
+        loader = Loader(original_stream)
+        try:
+            return loader.construct_document(root_node)
+        finally:
+            if hasattr(loader, 'dispose'):
+                loader.dispose()
+    elif callable(Loader) and not isinstance(Loader, type):
+        # Factory function (e.g., ansible.parsing.yaml.loader.AnsibleLoader)
+        # Try creating an instance and check if it has construct_document
+        root_node = _fygeneric_to_node(doc, stream_name)
+        loader = Loader(original_stream)
+        if hasattr(loader, 'construct_document'):
+            try:
+                return loader.construct_document(root_node)
+            finally:
+                if hasattr(loader, 'dispose'):
+                    loader.dispose()
 
     # Check for registered constructors on the Loader class
     constructors = getattr(Loader, 'yaml_constructors', {})
