@@ -912,30 +912,30 @@ CSafeDumper = SafeDumper
 CDumper = Dumper
 
 
+_BARE_TAGGED_BLOCK_SCALAR_RE = re.compile(r'^![^\s]+\s+[|>]')
+
+
 def _normalize_yaml(text):
     """Normalize YAML text to handle edge cases libfyaml doesn't parse directly.
 
-    Some bare values (empty string, null, [], {}) need special handling.
-    """
-    stripped = text.strip()
+    Only two cases need Python-level normalization:
+    1. Empty/whitespace-only input (libfyaml raises "No documents found")
+    2. Bare tagged block scalars without --- (invalid YAML that PyYAML accepts)
 
-    # Empty or whitespace-only -> None
+    Note: libfyaml natively handles ~, null, [], {}, "", '' etc.
+    """
+    stripped = text.strip() if isinstance(text, (str, bytes)) else text
+
+    # Empty or whitespace-only -> None (PyYAML returns None, libfyaml raises)
     if not stripped:
         return None, True
 
-    # Bare null values -> None
-    if stripped in ('~', 'null', 'Null', 'NULL'):
-        return None, True
-
-    # Empty collections need document marker for libfyaml
-    if stripped in ('[]', '[ ]'):
-        return [], True
-    if stripped in ('{}', '{ }'):
-        return {}, True
-
-    # Bare quoted empty string
-    if stripped in ('""', "''"):
-        return '', True
+    # Tagged block scalar without document start marker (e.g. "!!binary |\n  data")
+    # is not valid YAML but PyYAML accepts it. Prepend "--- " to make it valid.
+    match_text = stripped.decode('utf-8', errors='replace') if isinstance(stripped, bytes) else stripped
+    if _BARE_TAGGED_BLOCK_SCALAR_RE.match(match_text):
+        prefix = b'--- ' if isinstance(text, bytes) else '--- '
+        return prefix + text, False
 
     return text, False
 
@@ -1192,6 +1192,7 @@ def load(stream, Loader=None):
     result, handled = _normalize_yaml(stream)
     if handled:
         return result
+    stream = result  # Use normalized text (e.g. with --- prepended for bare tagged block scalars)
 
     # Use yaml1.1 mode for PyYAML compatibility (merge keys, octal, etc.)
     # Use collect_diag=True to get error details for PyYAML-style exceptions
@@ -1302,6 +1303,7 @@ def compose(stream, Loader=SafeLoader):
             return None
         # For empty collections, create FyGeneric from them
         return fy.from_python(result)
+    stream = result  # Use normalized text
 
     # Use yaml1.1 mode for PyYAML compatibility
     return fy.loads(stream, mode='yaml1.1', create_markers=True)
