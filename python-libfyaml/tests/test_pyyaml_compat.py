@@ -204,10 +204,12 @@ class TestCompose:
         node = yaml.compose("")
         assert node is None
 
-    def test_compose_null_returns_none(self):
-        """compose() with null returns None."""
+    def test_compose_null_returns_node(self):
+        """compose() with null returns a node representing null (like PyYAML)."""
         node = yaml.compose("null")
-        assert node is None
+        # PyYAML returns ScalarNode(tag='tag:yaml.org,2002:null', value='null')
+        # We return FyGeneric with null value
+        assert node.to_python() is None
 
     def test_compose_empty_mapping(self):
         """compose() with empty mapping."""
