@@ -13,4 +13,9 @@ class ParserError(MarkedYAMLError):
 
 class Parser:
     """YAML parser stub."""
-    pass
+
+    def __init__(self, stream=None):
+        self._stream = stream
+
+    def dispose(self):
+        pass
