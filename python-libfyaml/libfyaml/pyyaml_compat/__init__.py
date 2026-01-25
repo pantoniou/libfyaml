@@ -39,22 +39,24 @@ __with_libyaml__ = True  # We're using libfyaml as backend
 # ============================================================================
 
 # ISO 8601 date/time patterns for YAML 1.1 compatibility
+# Full timestamp pattern (date + time required, 1-digit month/day OK)
 _TIMESTAMP_REGEXP = re.compile(
     r'^(?P<year>[0-9][0-9][0-9][0-9])'
     r'-(?P<month>[0-9][0-9]?)'
     r'-(?P<day>[0-9][0-9]?)'
-    r'(?:(?:[Tt]|[ \t]+)'
+    r'(?:[Tt]|[ \t]+)'  # Time separator REQUIRED (not optional like before)
     r'(?P<hour>[0-9][0-9]?)'
     r':(?P<minute>[0-9][0-9])'
     r':(?P<second>[0-9][0-9])'
     r'(?:\.(?P<fraction>[0-9]*))?'
     r'(?:[ \t]*(?P<tz>Z|(?P<tz_sign>[-+])(?P<tz_hour>[0-9][0-9]?)'
-    r'(?::(?P<tz_minute>[0-9][0-9]))?))?)?$')
+    r'(?::(?P<tz_minute>[0-9][0-9]))?))?$')
 
+# Date-only requires 2-digit month/day (PyYAML behavior)
 _DATE_REGEXP = re.compile(
     r'^(?P<year>[0-9][0-9][0-9][0-9])'
-    r'-(?P<month>[0-9][0-9]?)'
-    r'-(?P<day>[0-9][0-9]?)$')
+    r'-(?P<month>[0-9][0-9])'
+    r'-(?P<day>[0-9][0-9])$')
 
 
 def _try_implicit_timestamp(value):
