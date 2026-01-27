@@ -139,31 +139,19 @@ def _construct_yaml_timestamp(loader, node):
 
 
 # ============================================================================
-# PyYAML Deviations from YAML 1.1 Spec
+# Scalar Resolution
 # ============================================================================
 #
-# PyYAML's YAML 1.1 implementation deviates from the strict spec in several ways.
-# These are NOT currently handled by libfyaml's yaml1.1 mode:
+# All scalar type resolution (booleans, integers, floats, nulls) is handled
+# by the C library's 'yaml1.1-pyyaml' mode, which matches PyYAML's behavior
+# including its deviations from the strict YAML 1.1 spec:
+#   - Restricted boolean set (no single-letter y/Y/n/N)
+#   - Required explicit sign on scientific notation exponents
+#   - Required dot in float mantissa for scientific notation
 #
-# 1. BOOLEANS - PyYAML uses a restricted set:
-#    - Accepts: yes/Yes/YES, no/No/NO, true/True/TRUE, false/False/FALSE, on/On/ON, off/Off/OFF
-#    - Does NOT accept single-letter: y/Y/n/N (YAML 1.1 spec includes these)
-#    - This means {y: value, n: value} keeps string keys in PyYAML but gets bool keys in strict YAML 1.1
-#
-# 2. INTEGERS with underscores - PyYAML supports underscore separators:
-#    - Decimal: +685_230, -1_000_000
-#    - Hex: 0x_0A_74_AE
-#    - Binary: 0b1010_0111_0100_1010_1110
-#    - Octal: 0_2472256
-#
-# 3. SEXAGESIMAL integers (base 60) - PyYAML supports:
-#    - 190:20:30 → 685230 (190*3600 + 20*60 + 30)
-#
-# 4. SEXAGESIMAL floats (base 60) - PyYAML supports:
-#    - 190:20:30.15 → 685230.15
-#
-# To achieve full PyYAML compatibility, libfyaml would need a dedicated
-# 'yaml1.1-pyyaml' mode that implements these PyYAML-specific behaviors.
+# The only scalar type NOT handled by the C library is timestamps
+# (ISO 8601 dates/datetimes), which are resolved in Python via
+# _try_implicit_timestamp() since they produce Python-specific types.
 # ============================================================================
 
 
