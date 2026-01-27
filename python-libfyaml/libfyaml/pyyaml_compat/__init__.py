@@ -1200,7 +1200,7 @@ def load(stream, Loader=None):
     # Use collect_diag=True to get error details for PyYAML-style exceptions
     # Use create_markers=True to provide start_mark/end_mark on nodes
     try:
-        doc = fy.loads(stream, mode='yaml1.1', collect_diag=True, create_markers=True)
+        doc = fy.loads(stream, mode='yaml1.1-pyyaml', collect_diag=True, create_markers=True)
     except ValueError as e:
         # libfyaml throws ValueError for some parse errors without diagnostics
         # Convert to ParserError for PyYAML compatibility
@@ -1308,7 +1308,7 @@ def compose(stream, Loader=SafeLoader):
     stream = result  # Use normalized text
 
     # Use yaml1.1 mode for PyYAML compatibility
-    return fy.loads(stream, mode='yaml1.1', create_markers=True)
+    return fy.loads(stream, mode='yaml1.1-pyyaml', create_markers=True)
 
 
 def compose_all(stream, Loader=SafeLoader):
@@ -1325,7 +1325,7 @@ def compose_all(stream, Loader=SafeLoader):
         stream = stream.read()
 
     # Use yaml1.1 mode for PyYAML compatibility
-    for doc in fy.loads_all(stream, mode='yaml1.1', create_markers=True):
+    for doc in fy.loads_all(stream, mode='yaml1.1-pyyaml', create_markers=True):
         yield doc
 
 
@@ -1371,7 +1371,7 @@ def load_all(stream, Loader=None):
                     loader.yaml_constructors[tag] = func
 
     # Use yaml1.1 mode for PyYAML compatibility
-    for doc in fy.loads_all(stream, mode='yaml1.1', create_markers=True):
+    for doc in fy.loads_all(stream, mode='yaml1.1-pyyaml', create_markers=True):
         if loader:
             yield _convert_with_loader(doc, loader)
         else:
