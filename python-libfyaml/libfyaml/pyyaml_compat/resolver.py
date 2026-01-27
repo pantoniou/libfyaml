@@ -56,27 +56,10 @@ class Resolver(BaseResolver):
     yaml_implicit_resolvers = {}
 
 
-# Register standard YAML 1.1 implicit resolvers
-Resolver.add_implicit_resolver(
-    'tag:yaml.org,2002:bool',
-    re.compile(r'^(?:yes|Yes|YES|no|No|NO|true|True|TRUE|false|False|FALSE|on|On|ON|off|Off|OFF)$'),
-    list('yYnNtTfFoO'))
-
-Resolver.add_implicit_resolver(
-    'tag:yaml.org,2002:int',
-    re.compile(r'^(?:[-+]?0b[0-1_]+|[-+]?0[0-7_]+|[-+]?(?:0|[1-9][0-9_]*)|[-+]?0x[0-9a-fA-F_]+)$'),
-    list('-+0123456789'))
-
-Resolver.add_implicit_resolver(
-    'tag:yaml.org,2002:float',
-    re.compile(r'^(?:[-+]?(?:[0-9][0-9_]*)\.[0-9_]*(?:[eE][-+]?[0-9]+)?|\.[0-9_]+(?:[eE][-+]?[0-9]+)?|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN))$'),
-    list('-+0123456789.'))
-
-Resolver.add_implicit_resolver(
-    'tag:yaml.org,2002:null',
-    re.compile(r'^(?:~|null|Null|NULL|)$'),
-    ['~', 'n', 'N', ''])
-
+# Note: bool, int, float, and null resolution is handled by the C library's
+# yaml1.1-pyyaml mode. Only timestamp resolution is needed here since the
+# C library returns timestamps as strings (Python datetime conversion is
+# language-specific).
 Resolver.add_implicit_resolver(
     'tag:yaml.org,2002:timestamp',
     re.compile(r'^(?:[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]|[0-9][0-9][0-9][0-9]-[0-9][0-9]?-[0-9][0-9]?(?:[Tt]|[ \t]+)[0-9][0-9]?:[0-9][0-9]:[0-9][0-9](?:\.[0-9]*)?(?:[ \t]*(?:Z|[-+][0-9][0-9]?(?::[0-9][0-9])?))?)$'),
