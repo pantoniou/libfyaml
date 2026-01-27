@@ -3505,6 +3505,7 @@ create_builder_with_config(int dedup, size_t estimated_size)
  * Supported modes:
  *   - "yaml" or "yaml1.2" or "1.2" → YAML 1.2 (default)
  *   - "yaml1.1" or "1.1" → YAML 1.1 (supports merge keys)
+ *   - "yaml1.1-pyyaml" or "pyyaml" → YAML 1.1 with PyYAML quirks
  *   - "json" → JSON mode
  * Returns 0 on error (with Python exception set)
  */
@@ -3516,11 +3517,13 @@ parse_mode_flags(const char *mode)
         return FYOPPF_MODE_YAML_1_2;
     } else if (strcmp(mode, "yaml1.1") == 0 || strcmp(mode, "1.1") == 0) {
         return FYOPPF_MODE_YAML_1_1;
+    } else if (strcmp(mode, "yaml1.1-pyyaml") == 0 || strcmp(mode, "pyyaml") == 0) {
+        return FYOPPF_MODE_YAML_1_1_PYYAML;
     } else if (strcmp(mode, "json") == 0) {
         return FYOPPF_MODE_JSON;
     } else {
         PyErr_Format(PyExc_ValueError,
-            "Invalid mode '%s'. Supported modes: 'yaml', 'yaml1.1', 'yaml1.2', '1.1', '1.2', 'json'",
+            "Invalid mode '%s'. Supported modes: 'yaml', 'yaml1.1', 'yaml1.1-pyyaml', 'pyyaml', 'yaml1.2', '1.1', '1.2', 'json'",
             mode);
         return 0;
     }
