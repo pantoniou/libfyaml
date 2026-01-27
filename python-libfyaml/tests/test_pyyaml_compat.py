@@ -978,8 +978,12 @@ neg_inf: -.inf
         assert data['value'] == 255
 
     def test_scientific_notation(self):
-        """Parse scientific notation float."""
-        data = yaml.safe_load("value: 1.5e10")
+        """Parse scientific notation float.
+
+        Note: PyYAML requires explicit sign on exponent (e+/e-).
+        '1.5e10' is a string in PyYAML; '1.5e+10' is a float.
+        """
+        data = yaml.safe_load("value: 1.5e+10")
         assert data['value'] == 1.5e10
 
     def test_quoted_strings(self):
