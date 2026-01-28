@@ -290,7 +290,7 @@ static const void *fy_malloc_storev(struct fy_allocator *a, int tag, const struc
 	if (!start)
 		goto err_out;
 
-	for (i = 0, p = start; i < iovcnt; i++, p += size) {
+	for (i = 0, p = start; i < iovcnt; i++, p = (char *)p + size) {
 		size = iov[i].iov_len;
 		memcpy(p, iov[i].iov_base, size);
 	}
@@ -568,7 +568,7 @@ static bool fy_malloc_contains(struct fy_allocator *a, int tag, const void *ptr)
 		     me = fy_malloc_entry_next(&mt->entries, me)) {
 
 			if (ptr >= (void *)me->mem &&
-			    ptr < (void *)me->mem + me->reqsize)
+			    ptr < (void *)((char *)me->mem + me->reqsize))
 				return true;
 		}
 	}

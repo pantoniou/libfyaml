@@ -682,7 +682,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 		for (i = 0, s = p; i < iovcnt; i++) {
 			size = iov[i].iov_len;
 			memcpy(s, iov[i].iov_base, size);
-			s += size;
+			s = (char *)s + size;
 		}
 
 		return p;
@@ -721,12 +721,12 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 			} else {
 				/* match content */
 				s = de->mem;
-				e = s + de->size;
+				e = (char *)s + de->size;
 				for (i = 0; i < iovcnt; i++) {
 					size = iov[i].iov_len;
-					if ((s + size) > e || memcmp(iov[i].iov_base, s, size))
+					if (((char *)s + size) > (char *)e || memcmp(iov[i].iov_base, s, size))
 						break;
-					s += size;
+					s = (char *)s + size;
 				}
 				/* match */
 				if (i == iovcnt && s == e)
@@ -770,7 +770,7 @@ new_entry:
 	for (i = 0; i < iovcnt; i++) {
 		size = iov[i].iov_len;
 		memcpy(s, iov[i].iov_base, size);
-		s += size;
+		s = (char *)s + size;
 	}
 
 	if (!fy_id_is_used(dtd->buckets_in_use, dtd->bucket_id_count, (int)bucket_pos)) {

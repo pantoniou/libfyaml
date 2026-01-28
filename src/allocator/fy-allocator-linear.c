@@ -50,7 +50,7 @@ static int fy_linear_setup(struct fy_allocator *a, const void *cfg_data)
 	la->alloc = alloc;
 	la->start = buf;
 	la->next = buf;
-	la->end = buf + cfg->size;
+	la->end = (char *)buf + cfg->size;
 
 	return 0;
 err_out:
@@ -97,18 +97,18 @@ struct fy_allocator *fy_linear_create(const void *cfg_data)
 		buf = cfg->buf;
 
 	s = buf;
-	e = s + cfg->size;
+	e = (char *)s + cfg->size;
 
 	s = fy_ptr_align(s, alignof(struct fy_linear_allocator));
-	if ((size_t)(e - s) < sizeof(*la))
+	if ((size_t)((char *)e - (char *)s) < sizeof(*la))
 		goto err_out;
 
 	la = s;
-	s += sizeof(*la);
+	s = (char *)s + sizeof(*la);
 
 	memset(&newcfg, 0, sizeof(newcfg));
 	newcfg.buf = s;
-	newcfg.size = (size_t)(e - s);
+	newcfg.size = (size_t)((char *)e - (char *)s);
 
 	rc = fy_linear_setup(&la->a, &newcfg);
 	if (rc)
@@ -156,9 +156,9 @@ void fy_linear_dump(struct fy_allocator *a)
 	la = container_of(a, struct fy_linear_allocator, a);
 
 	fprintf(stderr, "linear: total %zu used %zu free %zu\n",
-			(size_t)(la->end - la->start),
-			(size_t)(la->next - la->start),
-			(size_t)(la->end - la->next));
+			(size_t)((char *)la->end - (char *)la->start),
+			(size_t)((char *)la->next - (char *)la->start),
+			(size_t)((char *)la->end - (char *)la->next));
 }
 
 static void *fy_linear_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
@@ -173,7 +173,7 @@ static void *fy_linear_alloc(struct fy_allocator *a, int tag, size_t size, size_
 		goto err_out;
 
 	s = fy_ptr_align(la->next, align);
-	if (s >= la->end || (size_t)(la->end - s) < size)
+	if (s >= la->end || (size_t)((char *)la->end - (char *)s) < size)
 		goto err_out;
 
 	la->stats_allocations++;
@@ -181,7 +181,7 @@ static void *fy_linear_alloc(struct fy_allocator *a, int tag, size_t size, size_
 
 	memset(s, 0, size);
 
-	la->next = s + size;
+	la->next = (char *)s + size;
 
 	return s;
 
@@ -248,7 +248,7 @@ static const void *fy_linear_storev(struct fy_allocator *a, int tag, const struc
 	if (!start)
 		goto err_out;
 
-	for (i = 0, p = start; i < iovcnt; i++, p += size) {
+	for (i = 0, p = start; i < iovcnt; i++, p = (char *)p + size) {
 		size = iov[i].iov_len;
 		memcpy(p, iov[i].iov_base, size);
 	}
@@ -332,9 +332,9 @@ static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, int 
 	assert(((uintptr_t)arena_info % alignof(struct fy_allocator_arena_info)) == 0);
 
 	/* fill-in the single arena */
-	arena_info->free = (size_t)(la->end - la->next);
-	arena_info->used = (size_t)(la->next - la->start);
-	arena_info->total = (size_t)(la->end - (void *)la);
+	arena_info->free = (size_t)((char *)la->end - (char *)la->next);
+	arena_info->used = (size_t)((char *)la->next - (char *)la->start);
+	arena_info->total = (size_t)((char *)la->end - (char *)la);
 	arena_info->data = la->start;
 	arena_info->size = arena_info->used;
 

@@ -912,8 +912,8 @@ struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn)
 	if (!fyt_start || !fyt_end)
 		return NULL;
 
-	s = fy_input_start(fyi) + fyt_start->handle.start_mark.input_pos;
-	e = fy_input_start(fyi) + fyt_end->handle.end_mark.input_pos;
+	s = (const char *)fy_input_start(fyi) + fyt_start->handle.start_mark.input_pos;
+	e = (const char *)fy_input_start(fyi) + fyt_end->handle.end_mark.input_pos;
 	size = (size_t)(e - s);
 
 	if (size > 0)

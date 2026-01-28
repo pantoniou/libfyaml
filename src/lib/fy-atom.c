@@ -32,7 +32,7 @@ const char *fy_atom_data(const struct fy_atom *atom)
 	if (!atom)
 		return NULL;
 
-	return fy_input_start(atom->fyi) + atom->start_mark.input_pos;
+	return (const char *)fy_input_start(atom->fyi) + atom->start_mark.input_pos;
 }
 
 

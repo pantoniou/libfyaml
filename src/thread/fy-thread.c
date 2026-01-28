@@ -588,7 +588,7 @@ void fy_thread_arg_array_join(struct fy_thread_pool *tp, fy_work_exec_fn fn, fy_
 	for (i = 0; i < count; i++) {
 		works[i].fn = fn;
 		works[i].arg = args;
-		args += argsize;
+		args = (char *)args + argsize;
 	}
 
 	fy_thread_work_join(tp, works, count, check_fn);

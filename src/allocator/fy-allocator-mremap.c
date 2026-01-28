@@ -93,7 +93,7 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mr
 			/* either it fails, or it moves we handle it */
 #else
 			/* we don't shrink, we just unmap over the limit  */
-			rc = munmap(mem + size_page_align, balloon_size - size_page_align);
+			rc = munmap((char *)mem + size_page_align, balloon_size - size_page_align);
 			if (rc) {
 #ifdef DEBUG_ARENA
 				fprintf(stderr, "%s: failed to unmap for shink\n", __func__);
@@ -173,8 +173,8 @@ static int fy_mremap_arena_grow(struct fy_mremap_allocator *mra, struct fy_mrema
 		assert(mem == mran);
 #else
 		/* do a mmap right after the one we have, if it succeeds we have grown */
-		mem = mmap((void *)mran + mran->size, mran->size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-		if (mem != (void *)mran + mran->size) {
+		mem = mmap((char *)mran + mran->size, mran->size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+		if (mem != (char *)mran + mran->size) {
 			if (mem != MAP_FAILED)
 				munmap(mem, mran->size);
 			break;
@@ -231,7 +231,7 @@ static int fy_mremap_arena_trim(struct fy_mremap_allocator *mra, struct fy_mrema
 			return -1;
 #else
 		/* we don't shrink, we just unmap over the limit  */
-		rc = munmap((void *)mran + new_size, mran->size - new_size);
+		rc = munmap((char *)mran + new_size, mran->size - new_size);
 		if (rc)
 			return -1;
 #endif
@@ -465,7 +465,7 @@ static void *fy_mremap_tag_alloc(struct fy_mremap_allocator *mra, struct fy_mrem
 
 do_alloc:
 	mran->next = fy_size_t_align(mran->next, align);
-	ptr = (void *)mran + mran->next;
+	ptr = (char *)mran + mran->next;
 	mran->next += size;
 	left = mran->size - mran->next;
 	assert((ssize_t)left >= 0);
@@ -738,7 +738,7 @@ static const void *fy_mremap_storev(struct fy_allocator *a, int tag, const struc
 	if (!start)
 		goto err_out;
 
-	for (i = 0, p = start; i < iovcnt; i++, p += size) {
+	for (i = 0, p = start; i < iovcnt; i++, p = (char *)p + size) {
 		size = iov[i].iov_len;
 		memcpy(p, iov[i].iov_base, size);
 	}
@@ -946,7 +946,7 @@ fy_mremap_get_info(struct fy_allocator *a, int tag)
 						arena_info->free = arena_free;
 						arena_info->used = arena_used;
 						arena_info->total = arena_total;
-						arena_info->data = (void *)mran + FY_MREMAP_ARENA_OVERHEAD;
+						arena_info->data = (char *)mran + FY_MREMAP_ARENA_OVERHEAD;
 						arena_info->size = arena_info->used;
 						arena_info++;
 						tag_info->num_arena_infos++;
@@ -991,14 +991,14 @@ static bool mremap_tag_contains(struct fy_mremap_tag *mrt, const void *p)
 	for (mra = fy_mremap_arena_list_head(&mrt->arenas); mra;
 	     mra = fy_mremap_arena_next(&mrt->arenas, mra)) {
 		if (p >= (const void *)mra->mem &&
-		    p < (const void *)mra->mem + mra->size)
+		    p < (const void *)((const char *)mra->mem + mra->size))
 			return true;
 	}
 
 	for (mra = fy_mremap_arena_list_head(&mrt->full_arenas); mra;
 	     mra = fy_mremap_arena_next(&mrt->full_arenas, mra)) {
 		if (p >= (const void *)mra->mem &&
-		    p < (const void *)mra->mem + mra->size)
+		    p < (const void *)((const char *)mra->mem + mra->size))
 			return true;
 	}
 

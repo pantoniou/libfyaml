@@ -163,7 +163,7 @@ static int fy_tag_token_format_internal(const struct fy_token *fyt, void *out, s
 	if (out) {
 		outsz = *outszp;
 		o = out;
-		oe = out + outsz;
+		oe = (char *)out + outsz;
 	}
 
 	if (!fyt->tag.fyt_td)
@@ -250,7 +250,7 @@ static int fy_tag_directive_token_format_internal(const struct fy_token *fyt,
 	if (out) {
 		outsz = *outszp;
 		o = out;
-		oe = out + outsz;
+		oe = (char *)out + outsz;
 	}
 
 #define O_CPY(_src, _len) \
