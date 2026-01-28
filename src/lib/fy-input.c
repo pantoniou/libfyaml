@@ -14,14 +14,22 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <limits.h>
+#include <errno.h>
+
+#ifdef _WIN32
+#include "fy-win32.h"
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#else
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
-#include <limits.h>
-#include <errno.h>
+#endif
 
 #include <libfyaml.h>
 
@@ -36,6 +44,64 @@
 #ifndef FYI_CHOP_MULT
 #define FYI_CHOP_MULT	16
 #endif
+
+/*
+ * Normalize line endings in a buffer region (CRLF -> LF, standalone CR -> LF)
+ * This modifies the buffer in place and returns the new size after normalization.
+ *
+ * Parameters:
+ *   buf     - start of the buffer
+ *   start   - offset where new data begins (data before this is already normalized)
+ *   count   - number of new bytes to process
+ *   pending_cr - pointer to flag tracking if previous chunk ended with CR
+ *
+ * Returns the adjusted count after removing CR characters.
+ */
+static size_t fy_normalize_line_endings(char *buf, size_t start, size_t count, bool *pending_cr)
+{
+	char *src, *dst, *end;
+	size_t removed = 0;
+
+	if (!count)
+		return 0;
+
+	src = buf + start;
+	dst = src;
+	end = src + count;
+
+	/* Handle pending CR from previous read */
+	if (*pending_cr) {
+		*pending_cr = false;
+		if (*src == '\n') {
+			/* CRLF spanning chunks - skip the LF (CR already converted to LF) */
+			src++;
+			removed++;
+		}
+	}
+
+	while (src < end) {
+		if (*src == '\r') {
+			/* Convert CR to LF */
+			*dst++ = '\n';
+			src++;
+			/* Check if followed by LF */
+			if (src < end) {
+				if (*src == '\n') {
+					/* CRLF - skip the LF since we already output LF */
+					src++;
+					removed++;
+				}
+			} else {
+				/* CR at end of buffer - mark pending */
+				*pending_cr = true;
+			}
+		} else {
+			*dst++ = *src++;
+		}
+	}
+
+	return count - removed;
+}
 
 struct fy_input *fy_input_alloc(void)
 {
@@ -332,13 +398,19 @@ struct fy_diag *fy_reader_get_diag(struct fy_reader *fyr)
 
 int fy_reader_file_open(struct fy_reader *fyr, const char *filename)
 {
+	int flags = O_RDONLY;
+
 	if (!fyr || !filename)
 		return -1;
 
 	if (fyr->ops && fyr->ops->file_open)
 		return fyr->ops->file_open(fyr, filename);
 
-	return open(filename, O_RDONLY);
+#ifdef _WIN32
+	/* On Windows, open in binary mode to prevent CRLF conversion */
+	flags |= O_BINARY;
+#endif
+	return open(filename, flags);
 }
 
 void fy_reader_reset(struct fy_reader *fyr)
@@ -965,6 +1037,9 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 			}
 
 			assert(nread > 0);
+
+			/* Normalize line endings (CRLF -> LF, CR -> LF) */
+			nread = fy_normalize_line_endings((char *)fyi->buffer, fyi->read, nread, &fyi->pending_cr);
 
 			fyi->read += nread;
 			left = fyi->read - pos;
