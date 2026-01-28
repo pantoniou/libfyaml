@@ -621,7 +621,7 @@ fy_parser_set_reader(struct fy_parser *fyp, struct fy_reader *fyr)
 {
 	if (!fyp)
 		return;
-	fyp->reader = fyr ? : &fyp->builtin_reader;
+	fyp->reader = fyr ? fyr : &fyp->builtin_reader;
 }
 
 static inline void
