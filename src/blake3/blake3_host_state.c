@@ -6,15 +6,22 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
+#ifdef _WIN32
+#include <malloc.h>
+#include "fy-win32.h"
+#else
 #include <alloca.h>
 #include <pthread.h>
+#endif
 #include <stdlib.h>
+#ifndef _WIN32
 #include <unistd.h>
 #include <fcntl.h>
-#include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#endif
+#include <errno.h>
 
 #include "fy-bit64.h"
 

@@ -5,7 +5,11 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
+#ifdef _WIN32
+#include <malloc.h>
+#else
 #include <alloca.h>
+#endif
 #include <stdlib.h>
 #include <errno.h>
 

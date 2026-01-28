@@ -15,11 +15,16 @@
 #include <time.h>
 #include <inttypes.h>
 
+#ifdef _WIN32
+#include "fy-win32.h"
+#endif
+
 #include <stdio.h>
 
 /* for container_of */
 #include "fy-list.h"
 #include "fy-utils.h"
+#include "fy-align.h"
 
 #include "fy-allocator-malloc.h"
 
@@ -73,7 +78,7 @@ static void fy_malloc_cleanup(struct fy_allocator *a)
 
 	for (i = 0, mt = ma->tags; i < ARRAY_SIZE(ma->tags); i++, mt++) {
 		while ((me = fy_malloc_entry_list_pop(&mt->entries)) != NULL)
-			free(me);
+			posix_memalign_free(me);
 	}
 }
 
@@ -184,7 +189,7 @@ static void fy_malloc_tag_free(struct fy_malloc_allocator *ma, struct fy_malloc_
 	me = container_of(data, struct fy_malloc_entry, mem);
 
 	fy_malloc_entry_list_del(&mt->entries, me);
-	free(me);
+	posix_memalign_free(me);
 }
 
 static void *fy_malloc_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
@@ -354,7 +359,7 @@ static void fy_malloc_release_tag(struct fy_allocator *a, int tag)
 		return;
 
 	while ((me = fy_malloc_entry_list_pop(&mt->entries)) != NULL)
-		free(me);
+		posix_memalign_free(me);
 
 	fy_id_free(ma->ids, ARRAY_SIZE(ma->ids), tag);
 }
@@ -400,7 +405,7 @@ static void fy_malloc_reset_tag(struct fy_allocator *a, int tag)
 		return;
 
 	while ((me = fy_malloc_entry_list_pop(&mt->entries)) != NULL)
-		free(me);
+		posix_memalign_free(me);
 }
 
 static struct fy_allocator_info *

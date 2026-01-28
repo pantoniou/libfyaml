@@ -15,7 +15,13 @@
 #include <time.h>
 #include <inttypes.h>
 #include <math.h>
+
+#ifdef _WIN32
+#include "fy-win32.h"
+#else
 #include <sys/mman.h>
+#include <unistd.h>
+#endif
 
 #include <stdio.h>
 

@@ -6,9 +6,14 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
+#ifdef _WIN32
+#include <malloc.h>
+#include "fy-win32.h"
+#else
 #include <alloca.h>
-#include <stdlib.h>
 #include <unistd.h>
+#endif
+#include <stdlib.h>
 
 #include "fy-bit64.h"
 

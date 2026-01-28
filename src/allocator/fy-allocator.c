@@ -18,10 +18,16 @@
 
 #include <stdio.h>
 
+#ifdef _WIN32
+#include "fy-win32.h"
+#else
 #include <sys/mman.h>
+#endif
 
 #ifndef FY_NON_LOCKING_REGISTRY
+#ifndef _WIN32
 #include <pthread.h>
+#endif
 #endif
 
 /* for container_of */
@@ -40,6 +46,26 @@ static bool allocator_registry_initialized = false;
 static bool allocator_registry_locked = false;
 
 #ifndef FY_NON_LOCKING_REGISTRY
+#ifdef _WIN32
+static CRITICAL_SECTION allocator_registry_mutex;
+static LONG allocator_registry_mutex_initialized = 0;
+static inline void allocator_registry_lock(void)
+{
+	/* Initialize on first use using interlocked operation */
+	if (InterlockedCompareExchange(&allocator_registry_mutex_initialized, 1, 0) == 0)
+		InitializeCriticalSection(&allocator_registry_mutex);
+	EnterCriticalSection(&allocator_registry_mutex);
+	assert(!allocator_registry_locked);
+	allocator_registry_locked = true;
+}
+
+static inline void allocator_registry_unlock(void)
+{
+	assert(allocator_registry_locked);
+	allocator_registry_locked = false;
+	LeaveCriticalSection(&allocator_registry_mutex);
+}
+#else
 static pthread_mutex_t allocator_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
 static inline void allocator_registry_lock(void)
 {
@@ -62,6 +88,7 @@ static inline void allocator_registry_unlock(void)
 	rc = pthread_mutex_unlock(&allocator_registry_mutex);
 	assert(!rc);
 }
+#endif
 #else
 static inline void allocator_registry_lock(void)
 {

@@ -6,9 +6,15 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
+
+#ifdef _WIN32
+#include <malloc.h>  /* for alloca on Windows */
+#include "fy-win32.h"
+#else
 #include <alloca.h>
 #include <pthread.h>
-#include <stdlib.h>
+#endif
 
 #include "blake3.h"
 #include "blake3_impl.h"

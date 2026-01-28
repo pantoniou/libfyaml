@@ -15,8 +15,13 @@
 
 #include <stdio.h>
 #include <stdbool.h>
+#ifdef _WIN32
+#include "fy-win32.h"
+#include <io.h>
+#else
 #include <unistd.h>
 #include <termios.h>
+#endif
 #include <stdint.h>
 #include <string.h>
 
@@ -67,6 +72,14 @@
 /* type safe add overflow */
 #if defined(__has_builtin) && __has_builtin(__builtin_add_overflow)
 #define ADD_OVERFLOW __builtin_add_overflow
+#elif defined(_MSC_VER)
+/* MSVC-compatible version - simple overflow check for unsigned types */
+static inline bool fy_add_overflow_size_t(size_t a, size_t b, size_t *resp)
+{
+	*resp = a + b;
+	return *resp < a;
+}
+#define ADD_OVERFLOW(a, b, resp) fy_add_overflow_size_t((size_t)(a), (size_t)(b), (size_t*)(resp))
 #else
 #define ADD_OVERFLOW(_a, _b, _resp) \
 ({ \
@@ -87,6 +100,14 @@
 /* type safe sub overflow */
 #if defined(__has_builtin) && __has_builtin(__builtin_sub_overflow)
 #define SUB_OVERFLOW __builtin_sub_overflow
+#elif defined(_MSC_VER)
+/* MSVC-compatible version */
+static inline bool fy_sub_overflow_size_t(size_t a, size_t b, size_t *resp)
+{
+	*resp = a - b;
+	return a < b;
+}
+#define SUB_OVERFLOW(a, b, resp) fy_sub_overflow_size_t((size_t)(a), (size_t)(b), (size_t*)(resp))
 #else
 #define SUB_OVERFLOW(_a, _b, _resp) \
 ({ \
@@ -107,6 +128,18 @@
 /* type safe multiply overflow */
 #if defined(__has_builtin) && __has_builtin(__builtin_mul_overflow)
 #define MUL_OVERFLOW __builtin_mul_overflow
+#elif defined(_MSC_VER)
+/* MSVC-compatible version */
+static inline bool fy_mul_overflow_size_t(size_t a, size_t b, size_t *resp)
+{
+	if (a == 0 || b == 0) {
+		*resp = 0;
+		return false;
+	}
+	*resp = a * b;
+	return (*resp / a) != b;
+}
+#define MUL_OVERFLOW(a, b, resp) fy_mul_overflow_size_t((size_t)(a), (size_t)(b), (size_t*)(resp))
 #else
 #define MUL_OVERFLOW(_a, _b, _resp) \
 ({ \

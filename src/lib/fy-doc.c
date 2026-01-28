@@ -15,8 +15,13 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <errno.h>
-#include <unistd.h>
 #include <limits.h>
+
+#ifdef _WIN32
+#include "fy-win32.h"
+#else
+#include <unistd.h>
+#endif
 
 #include <libfyaml.h>
 
@@ -3962,6 +3967,22 @@ bool fy_node_is_empty(struct fy_node *fyn)
 	return true;
 }
 
+#ifdef _MSC_VER
+/* MSVC version - use _alloca with helper function */
+static __inline struct fy_node_walk_ctx *
+fy_node_walk_ctx_init_impl(struct fy_node_walk_ctx *ctx, unsigned int max_depth, unsigned int mark)
+{
+	ctx->max_depth = max_depth;
+	ctx->next_slot = 0;
+	ctx->mark = mark;
+	return ctx;
+}
+#define fy_node_walk_ctx_create_a(_max_depth, _mark) \
+	fy_node_walk_ctx_init_impl( \
+		(struct fy_node_walk_ctx *)_alloca(sizeof(struct fy_node_walk_ctx) + sizeof(struct fy_node *) * (_max_depth)), \
+		(_max_depth), \
+		(_mark))
+#else
 #define fy_node_walk_ctx_create_a(_max_depth, _mark) \
 	({ \
 		unsigned int __max_depth = (_max_depth); \
@@ -3973,6 +3994,7 @@ bool fy_node_is_empty(struct fy_node *fyn)
 		_ctx->mark = (_mark); \
 		_ctx; \
 	})
+#endif
 
 static inline void fy_node_walk_mark_start(struct fy_node_walk_ctx *ctx)
 {
