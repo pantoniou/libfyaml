@@ -19,7 +19,11 @@
 #if defined(__GNUC__) || defined(__clang__)
 #define FY_ALIGNED_TO(x) __attribute__ ((aligned(x)))
 #elif defined(_MSC_VER)
-#define FY_ALIGNED_TO(x) __declspec(align(x))
+/* MSVC __declspec(align) can only appear at the beginning, not after type
+ * For trailing alignment attributes we disable them on MSVC.
+ * Performance may be slightly impacted but correctness is maintained.
+ */
+#define FY_ALIGNED_TO(x) /* nothing - MSVC doesn't support trailing alignment */
 #else
 #define FY_ALIGNED_TO(x) /* nothing */
 #endif
@@ -33,12 +37,13 @@
 
 /* provide posix_memalign for platforms that don't have it */
 #ifdef _WIN32
+#include <errno.h>
 static inline int posix_memalign(void **ptr, size_t align, size_t size)
 {
 	void *p;
 
-	/* must be a power of two */
-	if ((size & (size -1)) != 0) {
+	/* alignment must be a power of two and at least sizeof(void*) */
+	if ((align & (align - 1)) != 0 || align < sizeof(void *)) {
 		*ptr = NULL;
 		return EINVAL;
 	}
@@ -48,7 +53,8 @@ static inline int posix_memalign(void **ptr, size_t align, size_t size)
 		*ptr = NULL;
 		return ENOMEM;
 	}
-	return p;
+	*ptr = p;
+	return 0;
 }
 
 static inline void posix_memalign_free(void *p)

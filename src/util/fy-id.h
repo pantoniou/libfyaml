@@ -9,7 +9,11 @@
 #define FY_ID_H
 
 #include <stdlib.h>
+#ifdef _WIN32
+/* strings.h doesn't exist on Windows, and string.h covers the needed functions */
+#else
 #include <strings.h>
+#endif
 #include <string.h>
 #include <assert.h>
 
