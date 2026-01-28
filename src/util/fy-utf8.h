@@ -15,7 +15,12 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <assert.h>
+
+#ifdef _WIN32
+#include <malloc.h>  /* alloca on Windows */
+#else
 #include <alloca.h>
+#endif
 
 #include "fy-utils.h"
 
@@ -391,11 +396,25 @@ static inline bool fy_utf8_escape_is_any_doublequote(const enum fy_utf8_escape e
 
 char *fy_utf8_format(int c, char *buf, const enum fy_utf8_escape esc);
 
+#ifdef _MSC_VER
+/* MSVC doesn't support GCC statement expressions - use static buffers */
+#define FY_UTF8_FORMAT_A_BUFSZ 256
+static __declspec(thread) char fy_utf8_format_a_buf[FY_UTF8_FORMAT_A_BUFSZ];
+static __declspec(thread) char fy_utf8_format_text_a_buf[4096];
+
+#define fy_utf8_format_a(_c, _esc) \
+	fy_utf8_format((_c), fy_utf8_format_a_buf, (_esc))
+
+#define fy_utf8_format_text_a(_buf, _len, _esc) \
+	fy_utf8_format_text((_buf), (_len), fy_utf8_format_text_a_buf, sizeof(fy_utf8_format_text_a_buf) - 1, (_esc))
+#else
+/* GCC/Clang version with statement expressions */
 #define fy_utf8_format_a(_c, _esc) \
 	({ \
 	 	char *_buf = alloca(FY_UTF8_FORMAT_BUFMIN); \
 	 	fy_utf8_format((_c), _buf, _esc); \
 	})
+#endif
 
 size_t fy_utf8_format_text_length(const char *buf, size_t len,
 			          enum fy_utf8_escape esc);
@@ -403,6 +422,7 @@ char *fy_utf8_format_text(const char *buf, size_t len,
 			  char *out, size_t maxsz,
 			  enum fy_utf8_escape esc);
 
+#ifndef _MSC_VER
 #define fy_utf8_format_text_a(_buf, _len, _esc) \
 	({ \
 		const char *__buf = (_buf); \
@@ -412,6 +432,7 @@ char *fy_utf8_format_text(const char *buf, size_t len,
 		char *_out = alloca(_outsz + 1); \
 		fy_utf8_format_text(__buf, __len, _out, _outsz, __esc); \
 	})
+#endif
 
 char *fy_utf8_format_text_alloc(const char *buf, size_t len, const enum fy_utf8_escape esc);
 
@@ -437,7 +458,7 @@ static inline const void *fy_utf8_strchr(const void *s, int c)
 
 static inline int fy_utf8_count(const void *ptr, size_t len)
 {
-	const uint8_t *s = ptr, *e = ptr + len;
+	const uint8_t *s = (const uint8_t *)ptr, *e = (const uint8_t *)ptr + len;
 	int w, count;
 
 	count = 0;

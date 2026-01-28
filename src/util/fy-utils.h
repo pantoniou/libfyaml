@@ -16,15 +16,27 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <unistd.h>
-#include <termios.h>
 #include <stdint.h>
 #include <assert.h>
 #include <stdlib.h>
 
+#ifdef _WIN32
+#include "fy-win32.h"
+#else
+#include <unistd.h>
+#include <termios.h>
+#endif
+
 /* to avoid dragging in libfyaml.h */
 #ifndef FY_BIT
 #define FY_BIT(x) (1U << (x))
+#endif
+
+/* MSVC doesn't support __attribute__, so disable it */
+#ifdef _MSC_VER
+#ifndef __attribute__
+#define __attribute__(x)
+#endif
 #endif
 
 #if defined(__linux__)
@@ -49,13 +61,19 @@ struct fy_tag_scan_info {
 
 int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info);
 
+/* container_of - use a fallback for MSVC which doesn't support typeof */
 #ifndef container_of
+#if defined(_MSC_VER)
+#define container_of(ptr, type, member) \
+	((type *)((char *)(ptr) - offsetof(type, member)))
+#else
 #define container_of(ptr, type, member) \
 	({ \
 		const typeof(((type *)0)->member) *__mptr = (ptr); \
 		(type *)((void *)__mptr - offsetof(type,member)); \
 	 })
-#endif
+#endif /* _MSC_VER */
+#endif /* container_of */
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(x) ((sizeof(x)/sizeof((x)[0])))
@@ -110,6 +128,8 @@ static inline size_t fy_size_t_align(size_t size, size_t align)
 	return (size + (align - 1)) & ~(align - 1);
 }
 
+/* Terminal functions - only available on Unix-like systems */
+#ifndef _WIN32
 int fy_term_set_raw(int fd, struct termios *oldt);
 int fy_term_restore(int fd, const struct termios *oldt);
 ssize_t fy_term_write(int fd, const void *data, size_t count);
@@ -122,6 +142,7 @@ int fy_term_query_size_raw(int fd, int *rows, int *cols);
 
 /* the non raw methods will set the terminal to raw and then restore */
 int fy_term_query_size(int fd, int *rows, int *cols);
+#endif /* !_WIN32 */
 
 struct fy_comment_iter {
 	const char *start;
@@ -164,9 +185,12 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 #define FY_COMPILE_ERROR_ON_ZERO(_e) ((void)(sizeof(char[1 - 2*!!(_e)])))
 
 /* true, if types are the same, false otherwise (depends on builtin_types_compatible_p) */
-#if defined(__has_builtin) && __has_builtin(__builtin_types_compatible_p)
+#if !defined(_MSC_VER) && defined(__has_builtin)
+#if __has_builtin(__builtin_types_compatible_p)
 #define FY_SAME_TYPE(_a, _b) __builtin_types_compatible_p(typeof(_a), typeof(_b))
-#else
+#endif
+#endif
+#ifndef FY_SAME_TYPE
 #define FY_SAME_TYPE(_a, _b) true
 #endif
 
@@ -175,9 +199,15 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
     FY_COMPILE_ERROR_ON_ZERO(!FY_SAME_TYPE(_a, _b))
 
 /* type safe add overflow */
-#if defined(__has_builtin) && __has_builtin(__builtin_add_overflow)
+#if !defined(_MSC_VER) && defined(__has_builtin)
+#if __has_builtin(__builtin_add_overflow)
 #define FY_ADD_OVERFLOW __builtin_add_overflow
-#else
+#endif
+#endif
+#ifdef _MSC_VER
+/* MSVC: simple implementation, returns false (no overflow detection) */
+#define FY_ADD_OVERFLOW(_a, _b, _resp) ((void)((*(_resp) = (_a) + (_b))), false)
+#elif !defined(FY_ADD_OVERFLOW)
 #define FY_ADD_OVERFLOW(_a, _b, _resp) \
 ({ \
 	typeof (_a) __a = (_a), __res; \
@@ -195,9 +225,15 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 #endif
 
 /* type safe sub overflow */
-#if defined(__has_builtin) && __has_builtin(__builtin_sub_overflow)
+#if !defined(_MSC_VER) && defined(__has_builtin)
+#if __has_builtin(__builtin_sub_overflow)
 #define FY_SUB_OVERFLOW __builtin_sub_overflow
-#else
+#endif
+#endif
+#ifdef _MSC_VER
+/* MSVC: simple implementation, returns false (no overflow detection) */
+#define FY_SUB_OVERFLOW(_a, _b, _resp) ((void)((*(_resp) = (_a) - (_b))), false)
+#elif !defined(FY_SUB_OVERFLOW)
 #define FY_SUB_OVERFLOW(_a, _b, _resp) \
 ({ \
 	typeof (_a) __a = (_a), __res; \
@@ -215,9 +251,15 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 #endif
 
 /* type safe multiply overflow */
-#if defined(__has_builtin) && __has_builtin(__builtin_mul_overflow)
+#if !defined(_MSC_VER) && defined(__has_builtin)
+#if __has_builtin(__builtin_mul_overflow)
 #define FY_MUL_OVERFLOW __builtin_mul_overflow
-#else
+#endif
+#endif
+#ifdef _MSC_VER
+/* MSVC: simple implementation, returns false (no overflow detection) */
+#define FY_MUL_OVERFLOW(_a, _b, _resp) ((void)((*(_resp) = (_a) * (_b))), false)
+#elif !defined(FY_MUL_OVERFLOW)
 #define FY_MUL_OVERFLOW(_a, _b, _resp) \
 ({ \
 	typeof (_a) __a = (_a), __res; \
@@ -240,6 +282,41 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 #endif
 
 /* alloca formatted print methods */
+#ifdef _MSC_VER
+/*
+ * MSVC doesn't support GCC statement expressions, so we provide
+ * function-based alternatives. These use a static thread-local buffer
+ * which is less flexible but works for typical use cases.
+ */
+#define FY_ALLOCA_SPRINTF_BUFSZ 4096
+
+static __declspec(thread) char fy_alloca_sprintf_buf[FY_ALLOCA_SPRINTF_BUFSZ];
+
+static inline char *fy_alloca_vsprintf_impl(const char *fmt, va_list ap)
+{
+	va_list ap_copy;
+	int len;
+	char *s;
+
+	va_copy(ap_copy, ap);
+	len = vsnprintf(fy_alloca_sprintf_buf, FY_ALLOCA_SPRINTF_BUFSZ, fmt, ap_copy);
+	va_end(ap_copy);
+	if (len < 0)
+		return NULL;
+	/* strip trailing newlines */
+	s = fy_alloca_sprintf_buf + strlen(fy_alloca_sprintf_buf);
+	while (s > fy_alloca_sprintf_buf && s[-1] == '\n')
+		*--s = '\0';
+	return fy_alloca_sprintf_buf;
+}
+
+/* For MSVC, we can't use variadic macros that return values easily,
+ * so alloca_sprintf needs a different approach */
+#define alloca_vsprintf(_fmt, _ap) fy_alloca_vsprintf_impl((_fmt), (_ap))
+#define alloca_sprintf(_fmt, ...) (snprintf(fy_alloca_sprintf_buf, FY_ALLOCA_SPRINTF_BUFSZ, (_fmt), __VA_ARGS__) < 0 ? NULL : fy_alloca_sprintf_buf)
+
+#else
+/* GCC/Clang version with statement expressions */
 #define alloca_vsprintf(_fmt, _ap) \
 	({ \
 		const char *__fmt = (_fmt); \
@@ -280,6 +357,7 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 		} \
 		_buf; \
 	})
+#endif
 
 #if !defined(NDEBUG) && defined(HAVE_DEVMODE) && HAVE_DEVMODE
 #define FY_DEVMODE

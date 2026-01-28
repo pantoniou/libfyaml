@@ -40,9 +40,38 @@ static inline unsigned int FY_bit64_popcnt(uint64_t x)
 	return FY_BIT64_POPCNT(x);
 }
 
+#elif defined(_MSC_VER)	/* MSVC implementation */
+
+#include <intrin.h>
+
+static inline unsigned int fy_bit64_lowest(uint64_t x)
+{
+	unsigned long index;
+	if (_BitScanForward64(&index, x))
+		return (unsigned int)index;
+	return 64;
+}
+
+static inline unsigned int fy_bit64_highest(uint64_t x)
+{
+	unsigned long index;
+	if (_BitScanReverse64(&index, x))
+		return 63 - (unsigned int)index;
+	return 64;
+}
+
+static inline unsigned int fy_bit64_popcnt(uint64_t x)
+{
+	return (unsigned int)__popcnt64(x);
+}
+
+#define FY_BIT64_LOWEST(_x) fy_bit64_lowest(_x)
+#define FY_BIT64_HIGHEST(_x) fy_bit64_highest(_x)
+#define FY_BIT64_POPCNT(_x) fy_bit64_popcnt(_x)
+
 #else	/* portable implementation */
 
-static inline unsigned int FY_BIT64_LOWEST(uint64_t x)
+static inline unsigned int fy_bit64_lowest(uint64_t x)
 {
 	unsigned int c = 0;
 
@@ -55,7 +84,7 @@ static inline unsigned int FY_BIT64_LOWEST(uint64_t x)
 	return c;
 }
 
-static inline unsigned int FY_BIT64_HIGHEST(uint64_t x)
+static inline unsigned int fy_bit64_highest(uint64_t x)
 {
 	unsigned int c = 0;
 
@@ -68,7 +97,7 @@ static inline unsigned int FY_BIT64_HIGHEST(uint64_t x)
 	return c;
 }
 
-static inline unsigned int FY_BIT64_POPCNT(uint64_t x)
+static inline unsigned int fy_bit64_popcnt(uint64_t x)
 {
 	unsigned int count;
 
@@ -78,7 +107,7 @@ static inline unsigned int FY_BIT64_POPCNT(uint64_t x)
 }
 
 #define FY_BIT64_LOWEST(_x) fy_bit64_lowest(_x)
-#define FY_BIT64_HIGEST(_x) fy_bit64_highest(_x)
+#define FY_BIT64_HIGHEST(_x) fy_bit64_highest(_x)
 #define FY_BIT64_POPCNT(_x) fy_bit64_popcnt(_x)
 
 #endif

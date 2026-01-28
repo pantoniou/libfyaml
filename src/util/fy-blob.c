@@ -9,11 +9,16 @@
 #include "config.h"
 #endif
 
+#include <errno.h>
+#include <stdlib.h>
+
+#ifdef _WIN32
+#include "fy-win32.h"
+#else
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <errno.h>
-#include <stdlib.h>
+#endif
 
 #include "fy-blob.h"
 

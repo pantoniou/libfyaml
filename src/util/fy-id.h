@@ -9,7 +9,11 @@
 #define FY_ID_H
 
 #include <stdlib.h>
+#ifdef _WIN32
+/* strings.h doesn't exist on Windows, and string.h covers the needed functions */
+#else
 #include <strings.h>
+#endif
 #include <string.h>
 #include <assert.h>
 
@@ -38,10 +42,22 @@ static inline int fy_id_ffs(const fy_id_bits id_bit)
 	return __builtin_ffs(id_bit) - 1;
 }
 
+#elif defined(_MSC_VER)
+#include <intrin.h>
+static inline int fy_id_ffs(const fy_id_bits id_bit)
+{
+	unsigned long index;
+	if (!id_bit)
+		return -1;
+	if (_BitScanForward(&index, id_bit))
+		return (int)index;
+	return -1;
+}
+
 #else
 static inline int fy_id_ffs(const fy_id_bits id_bit)
 {
-	return ffs((int)id_bits) - 1;
+	return ffs((int)id_bit) - 1;
 }
 #endif
 

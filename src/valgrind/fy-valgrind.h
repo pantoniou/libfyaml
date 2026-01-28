@@ -13,6 +13,17 @@
 #include "config.h"
 #endif
 
+/* Valgrind is not available on Windows */
+#ifdef _WIN32
+
+static inline void fy_valgrind_check(int *argcp, char ***argvp)
+{
+	(void)argcp;
+	(void)argvp;
+}
+
+#else /* !_WIN32 */
+
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -155,4 +166,6 @@ do_valgrind_no_opt:
 	fprintf(stderr, "warning: failed to start valgrind, continue without");
 }
 
-#endif
+#endif /* !_WIN32 */
+
+#endif /* FY_VALGRIND_H */

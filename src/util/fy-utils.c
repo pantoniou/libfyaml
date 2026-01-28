@@ -15,12 +15,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <ctype.h>
+
+#ifdef _WIN32
+#include "fy-win32.h"
+#else
 #include <termios.h>
 #include <unistd.h>
 #include <sys/select.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#include <ctype.h>
+#endif
 
 #include "fy-utf8.h"
 #include "fy-ctype.h"
@@ -402,6 +407,9 @@ int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info)
 }
 
 /* simple terminal methods; mainly for getting size of terminal */
+/* These functions are not available on Windows */
+#ifndef _WIN32
+
 int fy_term_set_raw(int fd, struct termios *oldt)
 {
 	struct termios newt, t;
@@ -636,6 +644,68 @@ int fy_term_query_size(int fd, int *rows, int *cols)
 
 	return ret;
 }
+
+#else /* _WIN32 */
+
+/* Terminal functions are not supported on Windows - return failure */
+
+int fy_term_set_raw(int fd, void *oldt)
+{
+	(void)fd;
+	(void)oldt;
+	return -1;
+}
+
+int fy_term_restore(int fd, const void *oldt)
+{
+	(void)fd;
+	(void)oldt;
+	return -1;
+}
+
+ssize_t fy_term_write(int fd, const void *data, size_t count)
+{
+	(void)fd;
+	(void)data;
+	(void)count;
+	return -1;
+}
+
+ssize_t fy_term_read(int fd, void *data, size_t count, int timeout_us)
+{
+	(void)fd;
+	(void)data;
+	(void)count;
+	(void)timeout_us;
+	return -1;
+}
+
+ssize_t fy_term_read_escape(int fd, void *data, size_t count, int timeout_us)
+{
+	(void)fd;
+	(void)data;
+	(void)count;
+	(void)timeout_us;
+	return -1;
+}
+
+int fy_term_query_size_raw(int fd, int *rows, int *cols)
+{
+	(void)fd;
+	(void)rows;
+	(void)cols;
+	return -1;
+}
+
+int fy_term_query_size(int fd, int *rows, int *cols)
+{
+	(void)fd;
+	(void)rows;
+	(void)cols;
+	return -1;
+}
+
+#endif /* !_WIN32 - end of terminal functions */
 
 int fy_comment_iter_begin(const char *comment, size_t size, struct fy_comment_iter *iter)
 {
