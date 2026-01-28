@@ -383,7 +383,7 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 
 	last_was_ws = false;
 
-	ts = atom->tabsize ? : 8;	/* pick it up from the atom (if there is) */
+	ts = atom->tabsize ? atom->tabsize : 8;	/* pick it up from the atom (if there is) */
 
 	/* consecutive whitespace */
 	cws = 0;
@@ -653,7 +653,7 @@ void fy_atom_iter_start(const struct fy_atom *atom, struct fy_atom_iter *iter)
 	iter->chomp = atom->increment;
 
 	/* default tab size is 8 */
-	iter->tabsize = atom->tabsize ? : 8;
+	iter->tabsize = atom->tabsize ? atom->tabsize : 8;
 
 	memset(iter->li, 0, sizeof(iter->li));
 	li = &iter->li[1];
