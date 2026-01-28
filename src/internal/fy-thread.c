@@ -14,15 +14,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include "fy-win32.h"
+#include <malloc.h>
+#else
 #include <unistd.h>
 #include <fcntl.h>
-#include <unistd.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <alloca.h>
+#endif
 #include <stdbool.h>
-#include <getopt.h>
+#include "fy-getopt.h"
 #include <ctype.h>
 #include <assert.h>
 #include <time.h>
@@ -34,6 +38,19 @@
 #include <libfyaml.h>
 
 #include "fy-thread.h"
+
+/* Helper to get number of online processors */
+static inline unsigned int get_num_processors(void)
+{
+#ifdef _WIN32
+	SYSTEM_INFO sysinfo;
+	GetSystemInfo(&sysinfo);
+	return sysinfo.dwNumberOfProcessors;
+#else
+	long scval = sysconf(_SC_NPROCESSORS_ONLN);
+	return scval > 0 ? (unsigned int)scval : 1;
+#endif
+}
 
 static void test_worker_thread_fn(void *arg)
 {
@@ -56,18 +73,12 @@ void test_worker_threads(unsigned int num_threads)
 	struct fy_thread_pool *tp;
 	struct fy_thread **threads, *t;
 	struct fy_thread_work *works;
-	long scval;
 	unsigned int i, count, num_cpus;
 	int rc, test_count;
 
 	(void)rc;
 
-	if (num_threads == 0) {
-		scval = sysconf(_SC_NPROCESSORS_ONLN);
-		assert(scval > 0);
-		num_cpus = (unsigned int)scval;
-	} else
-		num_cpus = num_threads;
+	num_cpus = (num_threads == 0) ? get_num_processors() : num_threads;
 
 	memset(&tp_cfg, 0, sizeof(tp_cfg));
 	tp_cfg.flags = 0;
@@ -128,18 +139,12 @@ void test_thread_join(unsigned int num_threads)
 	struct fy_thread_pool_cfg tp_cfg;
 	struct fy_thread_pool *tp;
 	void **args;
-	long scval;
 	unsigned int count, num_cpus;
 	int rc, test_count;
 
 	(void)rc;
 
-	if (num_threads == 0) {
-		scval = sysconf(_SC_NPROCESSORS_ONLN);
-		assert(scval > 0);
-		num_cpus = (unsigned int)scval;
-	} else
-		num_cpus = num_threads;
+	num_cpus = (num_threads == 0) ? get_num_processors() : num_threads;
 
 	memset(&tp_cfg, 0, sizeof(tp_cfg));
 	tp_cfg.flags = 0;
@@ -196,19 +201,13 @@ void test_thread_latency(unsigned int num_threads)
 	struct fy_thread_pool *tp;
 	struct fy_thread **threads, *t;
 	struct fy_thread_work *works;
-	long scval;
 	unsigned int i, count, num_cpus;
 	int rc;
 	struct thread_latency_state *states, *s;
 
 	(void)rc;
 
-	if (num_threads == 0) {
-		scval = sysconf(_SC_NPROCESSORS_ONLN);
-		assert(scval > 0);
-		num_cpus = (unsigned int)scval;
-	} else
-		num_cpus = num_threads;
+	num_cpus = (num_threads == 0) ? get_num_processors() : num_threads;
 
 	memset(&tp_cfg, 0, sizeof(tp_cfg));
 	tp_cfg.flags = 0;
@@ -311,19 +310,12 @@ void test_thread_join_steal(unsigned int num_threads)
 	struct fy_thread_pool_cfg tp_cfg;
 	struct fy_thread_pool *tp;
 	void **args;
-	long scval;
 	unsigned int count, num_cpus;
 	int rc, test_count;
 
 	(void)rc;
 
-	if (num_threads == 0) {
-		scval = sysconf(_SC_NPROCESSORS_ONLN);
-		assert(scval > 0);
-		num_cpus = (unsigned int)scval;
-	} else
-		num_cpus = num_threads;
-
+	num_cpus = (num_threads == 0) ? get_num_processors() : num_threads;
 
 	tp_cfg.flags = FYTPCF_STEAL_MODE;
 	tp_cfg.num_threads = num_cpus;
@@ -416,13 +408,15 @@ void test_thread_join_sum(unsigned int num_threads, unsigned int count, bool ste
 	struct fy_thread_pool *tp;
 	struct timespec before, after;
 	unsigned int i, num_cpus;
-	long scval;
 	uint8_t *values;
 	int rc;
 	uint64_t sum_single, sum_multi;
 	struct sum_args args[2];
-	long long table_multi[times];
+	long long *table_multi;
 	long long ns;
+
+	table_multi = (long long *)malloc(times * sizeof(long long));
+	assert(table_multi);
 
 	(void)rc;
 
@@ -445,12 +439,7 @@ void test_thread_join_sum(unsigned int num_threads, unsigned int count, bool ste
 	ns = delta_ns(before, after);
 	fprintf(stderr, "%s: calculated sum=%"PRIu64" (single threaded) done in %lldus\n", __func__, sum_single,  ns / 1000);
 
-	if (num_threads == 0) {
-		scval = sysconf(_SC_NPROCESSORS_ONLN);
-		assert(scval > 0);
-		num_cpus = (unsigned int)scval;
-	} else
-		num_cpus = num_threads;
+	num_cpus = (num_threads == 0) ? get_num_processors() : num_threads;
 
 	memset(&tp_cfg, 0, sizeof(tp_cfg));
 	tp_cfg.flags = steal_mode ? FYTPCF_STEAL_MODE : 0;
@@ -503,6 +492,7 @@ void test_thread_join_sum(unsigned int num_threads, unsigned int count, bool ste
 
 	fy_thread_pool_destroy(tp);
 
+	free(table_multi);
 	free(values);
 }
 
