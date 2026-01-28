@@ -961,6 +961,8 @@ target_include_directories(fy-tool PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
 )
 
+target_compile_definitions(fy-tool PRIVATE ${COMMON_C_DEFINITIONS})
+
 target_link_libraries(fy-tool PRIVATE fyaml)
 
 if(ENABLE_STATIC_TOOLS AND NOT MSVC)
