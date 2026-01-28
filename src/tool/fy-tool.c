@@ -1130,6 +1130,24 @@ int main(int argc, char *argv[])
 	/* On Windows, set stdin/stdout to binary mode to prevent CRLF conversion */
 	_setmode(_fileno(stdin), _O_BINARY);
 	_setmode(_fileno(stdout), _O_BINARY);
+
+	/* Enable ANSI escape sequence processing for colored output.
+	 * Skip this on Wine - the host terminal handles ANSI natively and
+	 * enabling VT processing causes Wine to interpret sequences internally. */
+	if (!GetModuleHandleA("ntdll.dll") ||
+	    !GetProcAddress(GetModuleHandleA("ntdll.dll"), "wine_get_version")) {
+		HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+		HANDLE hErr = GetStdHandle(STD_ERROR_HANDLE);
+		DWORD dwMode = 0;
+		if (hOut != INVALID_HANDLE_VALUE && GetConsoleMode(hOut, &dwMode)) {
+			dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+			SetConsoleMode(hOut, dwMode);
+		}
+		if (hErr != INVALID_HANDLE_VALUE && GetConsoleMode(hErr, &dwMode)) {
+			dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+			SetConsoleMode(hErr, dwMode);
+		}
+	}
 #endif
 
 	/* select the appropriate tool mode */
