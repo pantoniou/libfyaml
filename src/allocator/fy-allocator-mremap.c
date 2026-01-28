@@ -280,7 +280,7 @@ static void fy_mremap_tag_cleanup(struct fy_mremap_allocator *mra, struct fy_mre
 		return;
 
 	/* get the id from the pointer */
-	id = mrt - mra->tags;
+	id = (int)(mrt - mra->tags);
 	assert((unsigned int)id < ARRAY_SIZE(mra->tags));
 
 	/* already clean? */

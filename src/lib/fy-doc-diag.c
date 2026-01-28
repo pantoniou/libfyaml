@@ -40,7 +40,7 @@ int fy_document_vdiag(struct fy_document *fyd, unsigned int flags,
 		return -1;
 
 	/* perform the enable tests early to avoid the overhead */
-	if (((flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT) < fyd->diag->cfg.level)
+	if ((int)((flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT) < fyd->diag->cfg.level)
 		return 0;
 
 	/* fill in fy_diag_ctx */

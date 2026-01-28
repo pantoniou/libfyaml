@@ -960,6 +960,12 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 			nreadreq = fyi->allocated - fyi->read;
 			assert(nreadreq > 0);
 
+			/* for windows clamp to int */
+#ifdef _WIN32
+			if (nreadreq > INT_MAX)
+				nreadreq = INT_MAX;
+#endif
+
 			if (fyi->cfg.type == fyit_callback) {
 
 				fyr_debug(fyr, "performing callback request of %zu", nreadreq);
@@ -1006,10 +1012,14 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 
 				fyr_debug(fyr, "performing read request of %zu", nreadreq);
 
+#ifndef _WIN32
 				do {
 					snread = read(fyi->fd, (char *)fyi->buffer + fyi->read, nreadreq);
 				} while (snread == -1 && errno == EAGAIN);
+#else
+				snread = (ssize_t)read(fyi->fd, (char *)fyi->buffer + fyi->read, (unsigned int)nreadreq);
 
+#endif
 				fyr_debug(fyr, "read returned %zd", snread);
 
 				if (snread == -1) {

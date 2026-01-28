@@ -132,10 +132,10 @@ static int fy_dedup_tag_data_setup(struct fy_dedup_allocator *da, struct fy_dedu
 			dtd->chain_length_grow_trigger++;
 	}
 
-	dtd->bloom_filter_mask = (1U << dtd->bloom_filter_bits) - 1;
-	dtd->bucket_count_mask = (1U << dtd->bucket_count_bits) - 1;
+	dtd->bloom_filter_mask = ((unsigned int)1 << dtd->bloom_filter_bits) - 1;
+	dtd->bucket_count_mask = ((unsigned int)1 << dtd->bucket_count_bits) - 1;
 
-	dtd->bloom_id_count = (1U << dtd->bloom_filter_bits) / FY_ID_BITS_BITS;
+	dtd->bloom_id_count = ((size_t)1 << dtd->bloom_filter_bits) / FY_ID_BITS_BITS;
 	dtd->bloom_id = malloc(2 * dtd->bloom_id_count * sizeof(*dtd->bloom_id));
 	if (!dtd->bloom_id)
 		goto err_out;
@@ -143,7 +143,7 @@ static int fy_dedup_tag_data_setup(struct fy_dedup_allocator *da, struct fy_dedu
 	fy_id_reset(dtd->bloom_id, dtd->bloom_id_count);
 	fy_id_reset(dtd->bloom_update_id, dtd->bloom_id_count);
 
-	dtd->bucket_count = 1U << dtd->bucket_count_bits;
+	dtd->bucket_count = (size_t)1 << dtd->bucket_count_bits;
 
 	buckets_size = sizeof(*dtd->buckets) * dtd->bucket_count;
 	dtd->buckets = malloc(buckets_size);
@@ -151,7 +151,7 @@ static int fy_dedup_tag_data_setup(struct fy_dedup_allocator *da, struct fy_dedu
 		goto err_out;
 	dtd->buckets_end = dtd->buckets + dtd->bucket_count;
 
-	dtd->bucket_id_count = (1U << dtd->bucket_count_bits) / FY_ID_BITS_BITS;
+	dtd->bucket_id_count = ((size_t)1 << dtd->bucket_count_bits) / FY_ID_BITS_BITS;
 	dtd->buckets_in_use = malloc(2 * dtd->bucket_id_count * sizeof(*dtd->buckets_in_use));
 	if (!dtd->buckets_in_use)
 		goto err_out;
@@ -175,7 +175,7 @@ static void fy_dedup_tag_cleanup(struct fy_dedup_allocator *da, struct fy_dedup_
 		return;
 
 	/* get the id from the pointer */
-	id = dt - da->tags;
+	id = (int)(dt - da->tags);
 	assert((unsigned int)id < ARRAY_SIZE(da->tags));
 
 	/* already clean? */
@@ -436,7 +436,7 @@ static int fy_dedup_setup(struct fy_allocator *a, const void *cfg_data)
 	bucket_count_bits = cfg->bucket_count_bits;
 	if (!bucket_count_bits && has_estimate) {
 		bucket_count_bits = 1;
-		while ((1LU << bucket_count_bits) < (cfg->estimated_content_size / BUCKET_ESTIMATE_DIV))
+		while (((size_t)1 << bucket_count_bits) < (cfg->estimated_content_size / BUCKET_ESTIMATE_DIV))
 			bucket_count_bits++;
 #ifdef DEBUG_GROWS
 		fprintf(stderr, "bucket_count_bits %u\n", bucket_count_bits);
@@ -452,7 +452,7 @@ static int fy_dedup_setup(struct fy_allocator *a, const void *cfg_data)
 	bloom_filter_bits = cfg->bloom_filter_bits;
 	if (!bloom_filter_bits && has_estimate) {
 		bloom_filter_bits = 1;
-		while ((1LU << bloom_filter_bits) < (cfg->estimated_content_size / BLOOM_ESTIMATE_DIV))
+		while (((size_t)1 << bloom_filter_bits) < (cfg->estimated_content_size / BLOOM_ESTIMATE_DIV))
 			bloom_filter_bits++;
 #ifdef DEBUG_GROWS
 		fprintf(stderr, "bloom_filter_bits %u\n", bloom_filter_bits);

@@ -1871,7 +1871,7 @@ int fy_path_expr_type_prec(enum fy_path_expr_type type)
 static inline FY_UNUSED void
 dump_operand_stack(struct fy_path_parser *fypp)
 {
-	return fy_expr_stack_dump(fypp->cfg.diag, &fypp->operands);
+	fy_expr_stack_dump(fypp->cfg.diag, &fypp->operands);
 }
 
 static inline int
@@ -2314,7 +2314,7 @@ static inline int fy_method_to_builtin_idx(const struct fy_method *fym)
 {
 	if (!fym || fym < fy_methods || fym >= &fy_methods[ARRAY_SIZE(fy_methods)])
 		return -1;
-	return fym - fy_methods;
+	return (int)(fym - fy_methods);
 }
 
 static struct fy_walk_result *

@@ -301,14 +301,14 @@ int fy_tag_handle_length(const char *data, size_t len)
 
 	c = fy_utf8_get(s, e - s, &w);
 	if (c == -1)
-		return len;
+		return (int)len;
 
 	if (fy_is_ws(c))
-		return s - data;
+		return (int)(s - data);
 	/* if first character is !, empty handle */
 	if (c == '!') {
 		s += w;
-		return s - data;
+		return (int)(s - data);
 	}
 	if (!fy_is_first_alpha(c))
 		return -1;
@@ -318,7 +318,7 @@ int fy_tag_handle_length(const char *data, size_t len)
 	if (c == '!')
 		s += w;
 
-	return s - data;
+	return (int)(s - data);
 }
 
 int fy_tag_uri_length(const char *data, size_t len)
@@ -335,7 +335,7 @@ int fy_tag_uri_length(const char *data, size_t len)
 			break;
 		s += w;
 	}
-	uri_length = s - data;
+	uri_length = (int)(s - data);
 
 	if (!fy_tag_uri_is_valid(data, uri_length))
 		return -1;

@@ -144,13 +144,26 @@ static bool fy_token_text_needs_rebuild(struct fy_token *fyt)
 	return fya->fyi_generation != fya->fyi->generation;
 }
 
-static int fy_tag_token_format_internal(const struct fy_token *fyt, void *out, size_t *outszp)
+#define O_CPY(_src, _len) \
+	do { \
+		size_t _l = (_len); \
+		if (o && _l) { \
+			size_t _cl = _l; \
+			if (_cl > (size_t)(oe - o)) \
+				_cl = (size_t)(oe - o); \
+			memcpy(o, (_src), _cl); \
+			o += _cl; \
+		} \
+		len += _l; \
+	} while(0)
+
+static size_t fy_tag_token_format_internal(const struct fy_token *fyt, void *out, size_t *outszp)
 {
 	char *o = NULL, *oe = NULL;
 	size_t outsz;
 	const char *handle, *suffix;
-	size_t handle_size, suffix_size;
-	int len, code_length, rlen;
+	size_t len, rlen, handle_size, suffix_size;
+	int code_length;
 	uint8_t code[4];
 	const char *t, *s, *e;
 
@@ -167,27 +180,14 @@ static int fy_tag_token_format_internal(const struct fy_token *fyt, void *out, s
 	}
 
 	if (!fyt->tag.fyt_td)
-		return -1;
+		return 0;
 
 	handle = fy_tag_directive_token_prefix(fyt->tag.fyt_td, &handle_size);
 	if (!handle)
-		return -1;
+		return 0;
 
 	suffix = fy_atom_data(&fyt->handle) + fyt->tag.skip + fyt->tag.handle_length;
 	suffix_size = fyt->tag.suffix_length;
-
-#define O_CPY(_src, _len) \
-	do { \
-		int _l = (_len); \
-		if (o && _l) { \
-			int _cl = _l; \
-			if (_cl > (oe - o)) \
-				_cl = oe - o; \
-			memcpy(o, (_src), _cl); \
-			o += _cl; \
-		} \
-		len += _l; \
-	} while(0)
 
 	len = 0;
 	O_CPY(handle, handle_size);
@@ -198,7 +198,7 @@ static int fy_tag_token_format_internal(const struct fy_token *fyt, void *out, s
 	while (s < e) {
 		/* find next escape */
 		t = memchr(s, '%', e - s);
-		rlen = (t ? t : e) - s;
+		rlen = (size_t)((t ? t : e) - s);
 		O_CPY(s, rlen);
 
 		/* end of string */
@@ -216,28 +216,28 @@ static int fy_tag_token_format_internal(const struct fy_token *fyt, void *out, s
 		s = t;
 	}
 
-#undef O_CPY
 	return len;
-
 }
 
-int fy_tag_token_format_text_length(const struct fy_token *fyt)
+size_t fy_tag_token_format_text_length(const struct fy_token *fyt)
 {
 	return fy_tag_token_format_internal(fyt, NULL, NULL);
 }
 
 const char *fy_tag_token_format_text(const struct fy_token *fyt, char *buf, size_t maxsz)
 {
+	if (maxsz > 0)
+		buf[0] = '\0';
 	fy_tag_token_format_internal(fyt, buf, &maxsz);
 	return buf;
 }
 
-static int fy_tag_directive_token_format_internal(const struct fy_token *fyt,
+static size_t fy_tag_directive_token_format_internal(const struct fy_token *fyt,
 			void *out, size_t *outszp)
 {
 	char *o = NULL, *oe = NULL;
 	size_t outsz;
-	int len;
+	size_t len;
 	const char *handle, *prefix;
 	size_t handle_size, prefix_size;
 
@@ -252,19 +252,6 @@ static int fy_tag_directive_token_format_internal(const struct fy_token *fyt,
 		o = out;
 		oe = (char *)out + outsz;
 	}
-
-#define O_CPY(_src, _len) \
-	do { \
-		int _l = (_len); \
-		if (o && _l) { \
-			int _cl = _l; \
-			if (_cl > (oe - o)) \
-				_cl = oe - o; \
-			memcpy(o, (_src), _cl); \
-			o += _cl; \
-		} \
-		len += _l; \
-	} while(0)
 
 	len = 0;
 
@@ -283,12 +270,11 @@ static int fy_tag_directive_token_format_internal(const struct fy_token *fyt,
 	if (!handle_size)
 		O_CPY(">", 1);
 
-#undef O_CPY
 	return len;
-
 }
+#undef O_CPY
 
-int fy_tag_directive_token_format_text_length(const struct fy_token *fyt)
+size_t fy_tag_directive_token_format_text_length(const struct fy_token *fyt)
 {
 	return fy_tag_directive_token_format_internal(fyt, NULL, NULL);
 }
@@ -533,9 +519,9 @@ struct fy_token *fy_parse_token_create(struct fy_parser *fyp, enum fy_token_type
 	return fyt;
 }
 
-int fy_token_format_text_length(struct fy_token *fyt)
+size_t fy_token_format_text_length(struct fy_token *fyt)
 {
-	int length;
+	size_t length;
 
 	if (!fyt)
 		return 0;
@@ -553,7 +539,6 @@ int fy_token_format_text_length(struct fy_token *fyt)
 	}
 
 	length = fy_atom_format_text_length(&fyt->handle);
-
 	return length;
 }
 
@@ -587,7 +572,7 @@ const char *fy_token_format_text(struct fy_token *fyt, char *buf, size_t maxsz)
 	return str;
 }
 
-int fy_token_format_utf8_length(struct fy_token *fyt)
+size_t fy_token_format_utf8_length(struct fy_token *fyt)
 {
 	const char *str;
 	size_t len;
@@ -610,7 +595,6 @@ int fy_token_format_utf8_length(struct fy_token *fyt)
 
 	return fy_atom_format_utf8_length(&fyt->handle);
 }
-
 
 struct fy_atom *fy_token_atom(struct fy_token *fyt)
 {
@@ -688,7 +672,7 @@ fy_token_text_analyze(struct fy_token *fyt)
 
 		flags |= FYTTAF_DIRECT_OUTPUT;
 
-		maxcol = fyt->handle.storage_hint;
+		maxcol = (int)fyt->handle.storage_hint;
 		maxspan = maxcol - 1;
 		flags |=
 			FYTTAF_DIRECT_OUTPUT |
@@ -1064,7 +1048,7 @@ const char *fy_tag_token_short(struct fy_token *fyt, size_t *lenp)
 	text0[handle_len + suffix_len] = '\0';
 
 	fyt->tag.short0 = text0;
-	fyt->tag.short_length = handle_len + suffix_len;
+	fyt->tag.short_length = (unsigned int)(handle_len + suffix_len);
 
 	*lenp = fyt->tag.short_length;
 
@@ -1091,7 +1075,7 @@ const struct fy_version * fy_version_directive_token_version(struct fy_token *fy
 
 static void fy_token_prepare_text(struct fy_token *fyt)
 {
-	int ret;
+	size_t ret;
 
 	assert(fyt);
 
@@ -1099,7 +1083,7 @@ static void fy_token_prepare_text(struct fy_token *fyt)
 	ret = fy_token_format_text_length(fyt);
 
 	/* no text on this token? */
-	if (ret == -1) {
+	if (ret == 0) {
 		fyt->text_len = 0;
 		fyt->text = fyt->text0 = strdup("");
 		return;
@@ -1363,7 +1347,7 @@ const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 			case '\v':
 				fy_emit_accum_utf8_put(&ea, 'v');
 				break;
-			case '\e':
+			case '\x1b':
 				fy_emit_accum_utf8_put(&ea, 'e');
 				break;
 			case 0x85:
@@ -1615,7 +1599,7 @@ char *fy_token_debug_text(struct fy_token *fyt)
 out:
 	text = fy_token_get_text(fyt, &length);
 
-	wlen = length > 8 ? 8 : length;
+	wlen = length > 8 ? 8 : (int)length;
 
 	rc = asprintf(&buf, "%s:%.*s%s", typetxt, wlen, text, wlen < (int)length ? "..." : "");
 	assert(rc != -1);

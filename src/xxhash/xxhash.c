@@ -1623,9 +1623,9 @@ void XXH128_digest (const XXH128_state_t* state_in, void* out)
     XXH_endianess endian_detected = (XXH_endianess)XXH_CPU_LITTLE_ENDIAN;
 
     if ((endian_detected==XXH_littleEndian) || XXH_FORCE_NATIVE_FORMAT)
-        return XXH128_digest_endian(state_in, XXH_littleEndian, (unsigned long long*)out);
+        XXH128_digest_endian(state_in, XXH_littleEndian, (unsigned long long*)out);
     else
-        return XXH128_digest_endian(state_in, XXH_bigEndian, (unsigned long long*)out);
+        XXH128_digest_endian(state_in, XXH_bigEndian, (unsigned long long*)out);
 }
 
 
@@ -1875,7 +1875,7 @@ void XXH256_digest (const XXH256_state_t* state_in, void* out)
     XXH_endianess endian_detected = (XXH_endianess)XXH_CPU_LITTLE_ENDIAN;
 
     if ((endian_detected==XXH_littleEndian) || XXH_FORCE_NATIVE_FORMAT)
-        return XXH256_digest_endian(state_in, XXH_littleEndian, (unsigned long long*)out);
+        XXH256_digest_endian(state_in, XXH_littleEndian, (unsigned long long*)out);
     else
-        return XXH256_digest_endian(state_in, XXH_bigEndian, (unsigned long long*)out);
+        XXH256_digest_endian(state_in, XXH_bigEndian, (unsigned long long*)out);
 }

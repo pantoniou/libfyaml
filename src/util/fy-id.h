@@ -95,7 +95,7 @@ static inline int fy_id_alloc(fy_id_bits *bits, const size_t count)
 		pos = fy_id_ffs(~*bits);
 		if (pos >= 0) {
 			*bits |= FY_ID_BIT_MASK(pos);
-			return (i * FY_ID_BITS_BITS) + pos;
+			return ((int)i * FY_ID_BITS_BITS) + pos;
 		}
 	}
 	return -1;

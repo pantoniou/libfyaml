@@ -338,7 +338,7 @@ fy_emit_accum_empty(struct fy_emit_accum *ea)
 	return ea->next == 0;
 }
 
-static inline int
+static inline size_t
 fy_emit_accum_size(struct fy_emit_accum *ea)
 {
 	return ea->next;

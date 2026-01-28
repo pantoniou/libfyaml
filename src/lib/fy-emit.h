@@ -125,7 +125,7 @@ struct fy_emitter {
 int fy_emit_setup(struct fy_emitter *emit, const struct fy_emitter_cfg *cfg);
 void fy_emit_cleanup(struct fy_emitter *emit);
 
-void fy_emit_write(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int len);
+void fy_emit_write(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, size_t len);
 
 static inline bool fy_emit_whitespace(struct fy_emitter *emit)
 {

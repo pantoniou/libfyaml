@@ -50,7 +50,7 @@ static inline void fy_emit_token_unref(struct fy_emitter *emit, struct fy_parser
 }
 
 /* fwd decl */
-void fy_emit_write(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int len);
+void fy_emit_write(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, size_t len);
 void fy_emit_printf(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *fmt, ...)
 		__attribute__((format(printf, 3, 4)));
 
@@ -214,23 +214,23 @@ void fy_emit_scalar(struct fy_emitter *emit, struct fy_node *fyn, int flags, int
 void fy_emit_sequence(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent);
 void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent);
 
-void fy_emit_write(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int len);
+void fy_emit_write(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, size_t len);
 void fy_emit_puts(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str);
 void fy_emit_putc(struct fy_emitter *emit, enum fy_emitter_write_type type, int c);
 
 /* simple write, just ascii, advance column */
-void fy_emit_write_simple(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int len)
+void fy_emit_write_simple(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, size_t len)
 {
 	int outlen;
 
 	if (!len)
 		return;
 
-	outlen = emit->xcfg.cfg.output(emit, type, str, len, emit->xcfg.cfg.userdata);
-	if (outlen != len)
+	outlen = emit->xcfg.cfg.output(emit, type, str, (int)len, emit->xcfg.cfg.userdata);
+	if (outlen != (int)len)
 		emit->output_error = true;
 
-	emit->column += len;
+	emit->column += (int)len;
 }
 
 /* simple puts as above */
@@ -250,17 +250,17 @@ void fy_emit_putc_simple(struct fy_emitter *emit, enum fy_emitter_write_type typ
 	}
 }
 
-void fy_emit_write(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int len)
+void fy_emit_write(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, size_t len)
 {
 	int c, w;
 	const char *m, *e;
 	int outlen;
 
-	if (!len)
+	if (!len || len > INT_MAX)
 		return;
 
-	outlen = emit->xcfg.cfg.output(emit, type, str, len, emit->xcfg.cfg.userdata);
-	if (outlen != len)
+	outlen = emit->xcfg.cfg.output(emit, type, str, (int)len, emit->xcfg.cfg.userdata);
+	if (outlen != (int)len)
 		emit->output_error = true;
 
 	e = str + len;
@@ -616,7 +616,7 @@ void fy_emit_token_comment(struct fy_emitter *emit, struct fy_token *fyt, int fl
 	struct fy_atom *handle;
 	char *text;
 	const char *t;
-	int len;
+	size_t len;
 
 	handle = fy_emit_token_comment_handle(emit, fyt, placement);
 	if (!handle)
@@ -1110,7 +1110,7 @@ void fy_emit_token_write_quoted(struct fy_emitter *emit, struct fy_token *fyt, i
 					case '\v':
 						fy_emit_accum_utf8_put(&emit->ea, 'v');
 						break;
-					case '\e':
+					case '\x1b':	// \e
 						fy_emit_accum_utf8_put(&emit->ea, 'e');
 						break;
 					case 0x85:
@@ -2516,11 +2516,14 @@ static int do_buffer_output(struct fy_emitter *emit, enum fy_emitter_write_type 
 	size_t left, pagesize, size, len;
 	char *bufnew;
 
+	if (leni < 0)
+		return -1;
+
 	/* convert to unsigned and use that */
 	len = (size_t)leni;
 
 	/* no funky business */
-	if (len < 0)
+	if ((ssize_t)len < 0)
 		return -1;
 
 	state->need += len;
@@ -2548,7 +2551,7 @@ static int do_buffer_output(struct fy_emitter *emit, enum fy_emitter_write_type 
 		memcpy(state->buf + state->pos, str, len);
 	state->pos += len;
 
-	return len;
+	return (int)len;
 }
 
 static void
@@ -2717,7 +2720,9 @@ int fy_emit_document_to_buffer(struct fy_document *fyd, enum fy_emitter_cfg_flag
 	rc = fy_emit_str_internal(fyd, flags, NULL, &buf, &size, false);
 	if (rc != 0)
 		return -1;
-	return size;
+	if ((int)size < 0)
+		return -1;
+	return (int)size;
 }
 
 char *fy_emit_document_to_string(struct fy_document *fyd, enum fy_emitter_cfg_flags flags)
@@ -2786,15 +2791,15 @@ fy_emit_to_string_collect(struct fy_emitter *emit, size_t *sizep)
 static int do_file_output(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int leni, void *userdata)
 {
 	FILE *fp = userdata;
-	size_t len;
-
-	len = (size_t)leni;
+	size_t len, wrn;
 
 	/* no funky stuff */
-	if (len < 0)
+	if (leni < 0)
 		return -1;
 
-	return fwrite(str, 1, len, fp);
+	len = (size_t)leni;
+	wrn = fwrite(str, 1, len, fp);
+	return (int)wrn;
 }
 
 int fy_emit_document_to_fp(struct fy_document *fyd, enum fy_emitter_cfg_flags flags,
@@ -2867,9 +2872,13 @@ static int do_fd_output(struct fy_emitter *emit, enum fy_emitter_write_type type
 	total = 0;
 	while (len > 0) {
 
+#ifndef _WIN32
 		do {
 			wrn = write(fd, str, len);
 		} while (wrn == -1 && errno == EAGAIN);
+#else
+		wrn = write(fd, str, (unsigned int)len);
+#endif
 
 		if (wrn == -1)
 			return -1;
@@ -2879,7 +2888,7 @@ static int do_fd_output(struct fy_emitter *emit, enum fy_emitter_write_type type
 
 		len -= wrn;
 		str += wrn;
-		total += wrn;
+		total += (int)wrn;
 	}
 
 	return total;
@@ -2920,7 +2929,7 @@ int fy_emit_node_to_buffer(struct fy_node *fyn, enum fy_emitter_cfg_flags flags,
 	rc = fy_emit_str_internal(NULL, flags, fyn, &buf, &size, false);
 	if (rc != 0)
 		return -1;
-	return size;
+	return (int)size;
 }
 
 char *fy_emit_node_to_string(struct fy_node *fyn, enum fy_emitter_cfg_flags flags)
@@ -3767,9 +3776,13 @@ static inline ssize_t raw_default_output(FILE *fp, int fd, const char *data, siz
 	wrn = 0;
 	if (fd >= 0) {
 		while (len > 0) {
+#ifndef _WIN32
 			do {
 				twrn = write(fd, data, len);
 			} while (twrn == -1 && errno == EAGAIN);
+#else
+			twrn = write(fd, data, (unsigned int)len);
+#endif
 			if (twrn <= 0)
 				return wrn;
 			data += twrn;
@@ -3873,7 +3886,7 @@ int fy_emitter_default_output(struct fy_emitter *fye, enum fy_emitter_write_type
 	if (color)
 		raw_default_output(fp, fd, color, strlen(color));
 
-	ret = raw_default_output(fp, fd, str, len);
+	ret = (int)raw_default_output(fp, fd, str, len);
 
 	if (color)
 		raw_default_output(fp, fd, A_RESET, strlen(A_RESET));
