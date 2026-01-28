@@ -914,7 +914,7 @@ set(FY_TOOL_SOURCES
 
 # Add portable getopt on Windows
 if(WIN32)
-    list(APPEND FY_TOOL_SOURCES src/util/fy-getopt.c)
+    list(APPEND FY_TOOL_SOURCES src/util/getopt.c)
 endif()
 
 add_executable(fy-tool ${FY_TOOL_SOURCES})

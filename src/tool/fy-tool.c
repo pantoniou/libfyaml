@@ -1226,7 +1226,7 @@ int main(int argc, char *argv[])
 		       FYEXCF_COLOR_NONE) |
 		      FYEXCF_OUTPUT_STDOUT;
 
-	while ((opt = getopt_long_only(argc, argv,
+	while ((opt = getopt_long(argc, argv,
 					"I:" "d:" "i:" "w:" "rsc" "C:" "m:" "V" "f:" "t:" "T:F:" "j:" "qhvl",
 					lopts, &lidx)) != -1) {
 		switch (opt) {
