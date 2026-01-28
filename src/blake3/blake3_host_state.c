@@ -458,7 +458,7 @@ int blake3_hash_file(blake3_hasher *hasher, const char *filename,
 		while (left > 0) {
 			chunk = left > max_chunk ? max_chunk : left;
 			blake3_hasher_update(hasher, p, chunk);
-			p += chunk;
+			p = (char *)p + chunk;
 			left -= chunk;
 		}
 	} else {

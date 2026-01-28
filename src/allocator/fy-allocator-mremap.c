@@ -32,7 +32,7 @@
 
 // #define DEBUG_ARENA
 
-#if defined(__NetBSD__)
+#if defined(__NetBSD__) || defined(_WIN32)
 #define DISABLE_MREMAP
 #endif
 
@@ -124,7 +124,7 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mr
 			/* either it fails, or it moves we handle it */
 #else
 			/* we don't shrink, we just unmap over the limit  */
-			rc = munmap(mem + size_page_align, balloon_size - size_page_align);
+			rc = munmap((char *)mem + size_page_align, balloon_size - size_page_align);
 			if (rc) {
 #ifdef DEBUG_ARENA
 				fprintf(stderr, "%s: failed to unmap for shink\n", __func__);
@@ -227,8 +227,8 @@ static int fy_mremap_arena_grow(struct fy_mremap_allocator *mra, struct fy_mrema
 		assert(mem == mran);
 #else
 		/* do a mmap right after the one we have, if it succeeds we have grown */
-		mem = mmap((void *)mran + mran->size, mran->size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-		if (mem != (void *)mran + mran->size) {
+		mem = mmap((char *)mran + mran->size, mran->size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+		if (mem != (char *)mran + mran->size) {
 			if (mem != MAP_FAILED)
 				munmap(mem, mran->size);
 			break;
@@ -283,7 +283,7 @@ static int fy_mremap_arena_trim(struct fy_mremap_allocator *mra, struct fy_mrema
 			return -1;
 #else
 		/* we don't shrink, we just unmap over the limit  */
-		rc = munmap((void *)mran + new_size, mran->size - new_size);
+		rc = munmap((char *)mran + new_size, mran->size - new_size);
 		if (rc)
 			return -1;
 #endif
@@ -1080,7 +1080,7 @@ fy_mremap_get_info(struct fy_allocator *a, int tag)
 					arena_info->free = arena_free;
 					arena_info->used = arena_used;
 					arena_info->total = arena_total;
-					arena_info->data = (void *)mran + FY_MREMAP_ARENA_OVERHEAD;
+					arena_info->data = (char *)mran + FY_MREMAP_ARENA_OVERHEAD;
 					arena_info->size = arena_info->used;
 					arena_info++;
 					tag_info->num_arena_infos++;
@@ -1124,7 +1124,7 @@ static bool mremap_tag_contains(struct fy_mremap_tag *mrt, const void *p)
 
 	for (mra = fy_atomic_load(&mrt->arenas); mra; mra = mra->next_arena) {
 		if (p >= (const void *)mra->mem &&
-		    p < (const void *)mra->mem + mra->size)
+		    p < (const void *)((const char *)mra->mem + mra->size))
 			return true;
 	}
 

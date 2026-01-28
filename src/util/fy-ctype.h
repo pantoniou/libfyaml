@@ -334,7 +334,7 @@ static inline const void *fy_skip_lb(const void *ptr, size_t left)
 	if (c == '\r' && left > (size_t)width && *(char *)ptr == '\n')
 		width++;
 
-	return ptr + width;
+	return (const char *)ptr + width;
 }
 
 /* given a pointer to a chunk of memory, return pointer to first

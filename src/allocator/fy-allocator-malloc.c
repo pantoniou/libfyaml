@@ -682,7 +682,8 @@ static bool fy_malloc_contains(struct fy_allocator *a, int tag, const void *ptr)
 		for (me = fy_malloc_entry_list_head(&mt->entries); me;
 		     me = fy_malloc_entry_next(&mt->entries, me)) {
 
-			if (ptr >= (void *)me->mem && ptr < (void *)me->mem + me->size) {
+			if (ptr >= (void *)me->mem &&
+			    ptr < (void *)((char *)me->mem + me->size)) {
 				fy_malloc_tag_list_unlock(mt);
 				return true;
 			}
