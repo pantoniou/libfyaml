@@ -319,7 +319,7 @@ fy_utf8_get_no_width(const void *ptr, size_t left)
 static inline FY_ALWAYS_INLINE int
 fy_utf8_get_end(const void *ptr, const void *ptr_end, int *widthp)
 {
-	return fy_utf8_get(ptr, (size_t)(ptr_end - ptr), widthp);
+	return fy_utf8_get(ptr, (size_t)((const char *)ptr_end - (const char *)ptr), widthp);
 }
 
 static inline FY_ALWAYS_INLINE int
@@ -327,14 +327,14 @@ fy_utf8_get_end_no_width(const void *ptr, const void *ptr_end)
 {
 	int w;
 
-	return fy_utf8_get(ptr, (size_t)(ptr_end - ptr), &w);
+	return fy_utf8_get(ptr, (size_t)((const char *)ptr_end - (const char *)ptr), &w);
 }
 
 int fy_utf8_get_right_generic(const void *ptr, size_t left, int *widthp);
 
 static inline int fy_utf8_get_right(const void *ptr, size_t left, int *widthp)
 {
-	const uint8_t *p = ptr + left;
+	const uint8_t *p = (const uint8_t *)ptr + left;
 
 	/* single byte (hot path) */
 	if (left > 0 && !(p[-1] & 0x80)) {
