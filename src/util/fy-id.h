@@ -34,7 +34,7 @@ typedef unsigned int fy_id_bits;
 #define FY_ID_OFFSET(_id)	((_id) / FY_ID_BITS_BITS)
 #define FY_ID_BIT_MASK(_id)	((fy_id_bits)1 << ((_id) & FY_ID_BITS_MASK))
 
-#if defined(__GNUC__) && __GNUC__ >= 4
+#if (defined(__GNUC__) && __GNUC__ >= 4) || defined(__clang__)
 static inline int fy_id_ffs(const fy_id_bits id_bit)
 {
 	if (!id_bit)
@@ -61,7 +61,7 @@ static inline int fy_id_ffs(const fy_id_bits id_bit)
 }
 #endif
 
-#if defined(__GNUC__) && __GNUC__ >= 4
+#if (defined(__GNUC__) && __GNUC__ >= 4) || defined(__clang__)
 static inline int fy_id_popcount(const fy_id_bits id_bit)
 {
 	return __builtin_popcount(id_bit);
