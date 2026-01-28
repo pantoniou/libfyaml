@@ -15,14 +15,20 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+
+#ifdef _WIN32
+#include "fy-win32.h"
+#include <stdatomic.h>
+/* Windows threading uses native Win32 APIs */
+#else
 #include <stdatomic.h>
 #include <pthread.h>
-
 #ifndef __APPLE__
 #include <semaphore.h>
 #else
 #include <dispatch/dispatch.h>
 #endif
+#endif /* _WIN32 */
 
 #include "fy-bit64.h"
 #include "fy-align.h"
@@ -34,6 +40,7 @@
 // #define FY_THREAD_PORTABLE	/* define to use the portable implementation even on linux */
 
 struct fy_work_pool {
+#if !defined(_WIN32)
 	FY_ATOMIC(size_t) work_left;
 #if defined(__linux__) && !defined(FY_THREAD_PORTABLE)
 	FY_ATOMIC(uint32_t) done;
@@ -42,11 +49,15 @@ struct fy_work_pool {
 #else
 	sem_t sem;
 #endif
+#else	// _WIN32
+	HANDLE sem;
+#endif
 };
 
 struct fy_thread {
 	struct fy_thread_pool *tp;
 	unsigned int id;
+#ifndef _WIN32
 	pthread_t tid;
 	FY_ATOMIC(struct fy_thread_work *)work;
 	FY_ATOMIC(struct fy_thread_work *)next_work;
@@ -59,6 +70,13 @@ struct fy_thread {
 	pthread_mutex_t wait_lock;
 	pthread_cond_t wait_cond;
 #endif
+#else	// _WIN32
+	HANDLE tid;
+	HANDLE submit_event;
+	HANDLE done_event;
+	CRITICAL_SECTION lock;
+	CRITICAL_SECTION wait_lock;
+#endif
 };
 
 struct fy_thread_pool {
@@ -67,7 +85,11 @@ struct fy_thread_pool {
 	struct fy_thread *threads;
 	FY_ATOMIC(uint64_t) *freep;
 	FY_ATOMIC(uint64_t) *lootp;
+#if !defined(_WIN32)
 	pthread_key_t key;
+#else	// _WIN32
+	DWORD key;
+#endif
 };
 
 /* those are internal only */
