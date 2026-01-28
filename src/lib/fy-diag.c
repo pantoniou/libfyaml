@@ -201,9 +201,16 @@ static void fy_diag_update_term_info(struct fy_diag *diag)
 		goto out;
 
 	rows = columns = 0;
+#ifndef _WIN32
 	ret = fy_term_query_size(fd, &rows, &columns);
 	if (ret != 0)
 		goto out;
+#else
+	/* for windows just hardcode for now */
+	rows = 25;
+	columns = 80;
+	(void)ret;
+#endif
 
 	if (rows > 0 && columns > 0) {
 		diag->term_info.rows = rows;
@@ -259,7 +266,7 @@ void fy_diag_destroy(struct fy_diag *diag)
 	while ((errp = fy_diag_errorp_list_pop(&diag->errors)) != NULL)
 		fy_diag_errorp_free(errp);
 
-	return fy_diag_unref(diag);
+	fy_diag_unref(diag);
 }
 
 bool fy_diag_got_error(struct fy_diag *diag)
@@ -805,14 +812,14 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 				}
 			}
 			display = rowbuf;
-			display_len = rbs - rowbuf;
+			display_len = (int)(rbs - rowbuf);
 
 			tilde_start = content_start_col - line_shift;
 			tilde_width = content_width;
 			if (tilde_start + tilde_width > cols)
 				tilde_width = cols - tilde_start;
 			if ((size_t)tilde_width >= rowbufsz)
-				tilde_width = rowbufsz - 1;	/* guard */
+				tilde_width = (int)(rowbufsz - 1);	/* guard */
 			tilde_width_m1 = tilde_width > 0 ? (tilde_width - 1) : 0;
 
 			/* output the line */

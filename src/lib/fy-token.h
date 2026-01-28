@@ -321,11 +321,11 @@ fy_token_list_queue(struct fy_token_list *fytl, enum fy_token_type type, ...)
 	return fyt;
 }
 
-int fy_tag_token_format_text_length(const struct fy_token *fyt);
+size_t fy_tag_token_format_text_length(const struct fy_token *fyt);
 const char *fy_tag_token_format_text(const struct fy_token *fyt, char *buf, size_t maxsz);
-int fy_token_format_utf8_length(struct fy_token *fyt);
+size_t fy_token_format_utf8_length(struct fy_token *fyt);
 
-int fy_token_format_text_length(struct fy_token *fyt);
+size_t fy_token_format_text_length(struct fy_token *fyt);
 const char *fy_token_format_text(struct fy_token *fyt, char *buf, size_t maxsz);
 
 /* non-parser token methods */

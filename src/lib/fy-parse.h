@@ -420,7 +420,7 @@ static inline void
 fy_get_mark(struct fy_parser *fyp, struct fy_mark *fym)
 {
 	assert(fyp);
-	return fy_reader_get_mark(fyp->reader, fym);
+	fy_reader_get_mark(fyp->reader, fym);
 }
 
 static inline const void *
@@ -442,7 +442,7 @@ static inline void
 fy_advance_octets(struct fy_parser *fyp, size_t advance)
 {
 	assert(fyp);
-	return fy_reader_advance_octets(fyp->reader, advance);
+	fy_reader_advance_octets(fyp->reader, advance);
 }
 
 /* compare string at the current point (n max) */

@@ -59,9 +59,13 @@
 #define COMPILE_ERROR_ON_ZERO(_e) ((void)(sizeof(char[1 - 2*!!(_e)])))
 
 /* true, if types are the same, false otherwise (depends on builtin_types_compatible_p) */
-#if defined(__has_builtin) && __has_builtin(__builtin_types_compatible_p)
+#if defined(__has_builtin)
+#if __has_builtin(__builtin_types_compatible_p)
 #define SAME_TYPE(_a, _b) __builtin_types_compatible_p(__typeof__(_a), __typeof__(_b))
-#else
+#endif
+#endif
+
+#ifndef SAME_TYPE
 #define SAME_TYPE(_a, _b) true
 #endif
 
@@ -70,9 +74,13 @@
     COMPILE_ERROR_ON_ZERO(!SAME_TYPE(_a, _b))
 
 /* type safe add overflow */
-#if defined(__has_builtin) && __has_builtin(__builtin_add_overflow)
+#if defined(__has_builtin)
+#if __has_builtin(__builtin_add_overflow)
 #define ADD_OVERFLOW __builtin_add_overflow
-#elif defined(_MSC_VER)
+#endif
+#endif
+#ifndef ADD_OVERFLOW
+#if defined(_MSC_VER)
 /* MSVC-compatible version - simple overflow check for unsigned types */
 static inline bool fy_add_overflow_size_t(size_t a, size_t b, size_t *resp)
 {
@@ -96,11 +104,16 @@ static inline bool fy_add_overflow_size_t(size_t a, size_t b, size_t *resp)
 	__overflow; \
 })
 #endif
+#endif
 
 /* type safe sub overflow */
-#if defined(__has_builtin) && __has_builtin(__builtin_sub_overflow)
+#if defined(__has_builtin)
+#if __has_builtin(__builtin_sub_overflow)
 #define SUB_OVERFLOW __builtin_sub_overflow
-#elif defined(_MSC_VER)
+#endif
+#endif
+#ifndef SUB_OVERFLOW
+#if defined(_MSC_VER)
 /* MSVC-compatible version */
 static inline bool fy_sub_overflow_size_t(size_t a, size_t b, size_t *resp)
 {
@@ -124,11 +137,16 @@ static inline bool fy_sub_overflow_size_t(size_t a, size_t b, size_t *resp)
 	__overflow; \
 })
 #endif
+#endif
 
 /* type safe multiply overflow */
-#if defined(__has_builtin) && __has_builtin(__builtin_mul_overflow)
+#if defined(__has_builtin)
+#if __has_builtin(__builtin_mul_overflow)
 #define MUL_OVERFLOW __builtin_mul_overflow
-#elif defined(_MSC_VER)
+#endif
+#endif
+#ifndef MUL_OVERFLOW 
+#if defined(_MSC_VER)
 /* MSVC-compatible version */
 static inline bool fy_mul_overflow_size_t(size_t a, size_t b, size_t *resp)
 {
@@ -160,6 +178,7 @@ static inline bool fy_mul_overflow_size_t(size_t a, size_t b, size_t *resp)
 	*(_resp) = __res; \
 	__overflow; \
 })
+#endif
 #endif
 
 /* ANSI colors and escapes */
@@ -240,21 +259,21 @@ void store_le(void *ptr, size_t width, uintmax_t v);
 uintmax_t load_bitfield_le(const void *ptr, size_t bit_offset, size_t bit_width, bool is_signed);
 void store_bitfield_le(void *ptr, size_t bit_offset, size_t bit_width, uintmax_t v);
 
-static inline intmax_t signed_integer_max_from_bit_width(int bit_width)
+static inline intmax_t signed_integer_max_from_bit_width(size_t bit_width)
 {
-	assert((size_t)bit_width <= sizeof(intmax_t) * 8);
+	assert(bit_width <= sizeof(intmax_t) * 8);
 	return INTMAX_MAX >> (sizeof(intmax_t) * 8 - bit_width);
 }
 
-static inline intmax_t signed_integer_min_from_bit_width(int bit_width)
+static inline intmax_t signed_integer_min_from_bit_width(size_t bit_width)
 {
-	assert((size_t)bit_width <= sizeof(intmax_t) * 8);
+	assert(bit_width <= sizeof(intmax_t) * 8);
 	return INTMAX_MIN >> (sizeof(intmax_t) * 8 - bit_width);
 }
 
-static inline uintmax_t unsigned_integer_max_from_bit_width(int bit_width)
+static inline uintmax_t unsigned_integer_max_from_bit_width(size_t bit_width)
 {
-	assert((size_t)bit_width <= sizeof(uintmax_t) * 8);
+	assert(bit_width <= sizeof(uintmax_t) * 8);
 	return UINTMAX_MAX >> (sizeof(uintmax_t) * 8 - bit_width);
 }
 

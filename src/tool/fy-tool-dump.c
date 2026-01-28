@@ -98,7 +98,7 @@ void print_escaped(const char *str, size_t length)
 		case '\v':
 			printf("\\v");
 			break;
-		case '\e':
+		case '\x1b':
 			printf("\\e");
 			break;
 		case 0x85:

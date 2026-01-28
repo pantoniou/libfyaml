@@ -161,7 +161,7 @@ int blake3_backend_cpusimd_setup(unsigned int num_cpus, unsigned int mult_fact)
 	if (num_cpus <= 1)
 		return 0;
 
-	num_simd_cpus = round_down_to_power_of_2(num_cpus);
+	num_simd_cpus = (unsigned int)round_down_to_power_of_2(num_cpus);
 
 	if (!mult_fact)
 		mult_fact = 1;

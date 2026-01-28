@@ -359,7 +359,7 @@ const struct fy_version *fy_version_supported_iterate(void **prevp)
 
 	versp++;
 
-	idx = versp - fy_map_option_to_version;
+	idx = (unsigned int)(versp - fy_map_option_to_version);
 	if (idx >= sizeof(fy_map_option_to_version)/sizeof(fy_map_option_to_version[0]))
 		return NULL;
 
@@ -1051,15 +1051,15 @@ fy_comment_atoms_seperated_by_ws(struct fy_parser *fyp, struct fy_atom *a, struc
 	bool ws_or_lb;
 
 	if (!a || !b)
-		return NULL;
+		return false;
 
 	/* must be on same input */
 	if (a->fyi != b->fyi)
-		return NULL;
+		return false;
 
 	/* must be comments */
 	if (a->style != FYAS_COMMENT || b->style != FYAS_COMMENT)
-		return NULL;
+		return false;
 
 	/* a must be before */
 	if (a->end_mark.input_pos > b->start_mark.input_pos) {
@@ -3537,7 +3537,7 @@ int fy_scan_block_scalar_indent(struct fy_parser *fyp, int indent, int *breaks, 
 
 		fy_advance(fyp, c);
 
-		break_length = fy_utf8_width(c);
+		break_length = (int)fy_utf8_width(c);
 
 		(*breaks)++;
 		(*breaks_length) += 1;
@@ -3777,7 +3777,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 
 		if (!fy_is_z(c)) {
 			/* eat line break */
-			actual_lb_length = fy_utf8_width(c);
+			actual_lb_length = (int)fy_utf8_width(c);
 			fy_advance(fyp, c);
 
 			has_lb = true;
@@ -4136,7 +4136,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 				size_t len, consumed;
 				const char *p, *s, *e;
 				int8_t cc;
-				int run;
+				size_t run;
 
 				run = 0;
 				while ((p = fy_reader_ensure_lookahead(fyr, 1, &len)) != NULL) {
@@ -4150,7 +4150,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 					consumed = s - p;
 					if (consumed) {
 						fy_reader_advance_octets(fyr, consumed);
-						fyr->column += consumed;
+						fyr->column += (int)consumed;
 						lastc = (int)cc;
 					}
 					run += consumed;
@@ -4345,7 +4345,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 				if (!fy_is_lb_LS_PS(c)) {
 					break_length = 1;
 				} else {
-					break_length = fy_utf8_width(c);
+					break_length = (int)fy_utf8_width(c);
 					presentation_breaks_length += break_length;
 				}
 
@@ -4502,11 +4502,11 @@ fy_reader_fetch_plain_scalar_handle_inline(struct fy_reader *fyr, int c,
 				while (run < len && fy_utf8_is_simple_scalar_no_check((int8_t)s[run]))
 					run++;
 
-				fyr->column += run;
+				fyr->column += (int)run;
 				nextc = -1;
 			} else {
 
-				width = fy_utf8_width(c);
+				width = (int)fy_utf8_width(c);
 
 				if (c == ':') {
 
@@ -4562,7 +4562,7 @@ fy_reader_fetch_plain_scalar_handle_inline(struct fy_reader *fyr, int c,
 		blanks_found_length = 0;
 		u.run_has_ws = u.run_has_lb = false;
 
-		width = fy_utf8_width(c);
+		width = (int)fy_utf8_width(c);
 		do {
 			fy_reader_advance_lb_mode(fyr, c, lb_mode);
 
@@ -5024,7 +5024,7 @@ void fy_reader_skip_space(struct fy_reader *fyr)
 		consumed = s - p;
 		if (consumed) {
 			fy_reader_advance_octets(fyr, consumed);
-			fyr->column += consumed;
+			fyr->column += (int)consumed;
 		}
 
 		if (s < e)
@@ -6037,6 +6037,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 	char tbuf[16] __FY_DEBUG_UNUSED__;
 	int rc;
 
+	(void)tbuf;
 	version_directive = NULL;
 	fy_token_list_init(&tag_directives);
 
