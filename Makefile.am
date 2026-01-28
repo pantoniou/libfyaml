@@ -7,14 +7,62 @@ tarball-version:
 	echo $(VERSION) > .tarball-version
 
 # files to keep in the distribution (in case you want to boostrap)
-EXTRA_DIST=bootstrap.sh \
-	   build-aux/shave.in build-aux/shave-libtool.in \
-	   build-aux/git-version-gen \
-	   README.md LICENSE \
-	   Dockerfile Dockerfile-build-deb \
-	   Dockerfile.alpine Dockerfile.centos \
-	   cmake CMakeLists.txt \
-	   examples
+EXTRA_DIST = \
+	.dockerignore \
+	.github/workflows/ci.yaml \
+	.gitignore \
+	.libtool-version \
+	.tarball-version \
+	AUTHORS \
+	CHANGELOG.md \
+	CMakeLists.txt \
+	Dockerfile \
+	Dockerfile-build-deb \
+	Dockerfile.alpine \
+	Dockerfile.centos \
+	LICENSE \
+	Makefile.am \
+	README.md \
+	bootstrap.sh \
+	build-aux/git-version-gen \
+	build-aux/shave-libtool.in \
+	build-aux/shave.in \
+	cmake/CheckClangBlocks.cmake \
+	cmake/CheckLibClang.cmake \
+	cmake/MSVCCrossCompile.cmake \
+	cmake/add-tap-subtests.cmake \
+	cmake/clang-windows-toolchain.cmake \
+	cmake/config.h.in \
+	cmake/fyaml-config.cmake.in \
+	cmake/generate-def.cmake \
+	cmake/generate-jsontestsuite-list.sh \
+	cmake/generate-testsuite-list.sh \
+	cmake/libfyaml-config.cmake.in \
+	cmake/libfyaml.pc.in \
+	cmake/run-single-tap-test.sh \
+	cmake/tags.cmake \
+	examples/CMakeLists.txt \
+	examples/README.md \
+	examples/basic-parsing.c \
+	examples/build-from-scratch.c \
+	examples/config.yaml \
+	examples/document-manipulation.c \
+	examples/event-streaming.c \
+	examples/invoice.yaml \
+	examples/path-queries.c \
+	examples/quick-start.c \
+	libfyaml.pc.in \
+	m4/ax_check_compile_flag.m4 \
+	m4/ax_check_define.m4 \
+	m4/ax_check_enable_debug.m4 \
+	m4/ax_check_flag.m4 \
+	m4/ax_cxx_compile_stdcxx.m4 \
+	m4/ax_cxx_compile_stdcxx_11.m4 \
+	m4/ax_define_dir.m4 \
+	m4/ax_is_release.m4 \
+	m4/ax_pthread.m4 \
+	m4/ax_tls.m4 \
+	m4/shave.m4
 
 MAINTAINERCLEANFILES = \
         Makefile.in src/Makefile.in config.h.in configure \
@@ -47,6 +95,7 @@ maintainer-clean-local:
 # extra file to put in the distribution
 EXTRA_DIST += \
 	scripts/create-virtual-env \
+	scripts/get-gpg-key-id-by-email.sh \
 	scripts/install-linuxdoc.sh \
 	scripts/run-check-errors.sh \
 	scripts/run-compare-dump.sh \

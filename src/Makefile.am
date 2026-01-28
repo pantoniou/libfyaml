@@ -244,3 +244,9 @@ install-exec-hook:
 
 uninstall-hook:
 	(cd "$(DESTDIR)$(bindir)" && rm -f fy-dump fy-filter fy-testsuite fy-join fy-ypath fy-compose)
+
+EXTRA_DIST =  \
+	getopt/getopt.c \
+	getopt/getopt.h \
+	util/fy-win32.h
+

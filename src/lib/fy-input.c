@@ -14,17 +14,21 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/mman.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/ioctl.h>
 #include <limits.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
+#ifndef _WIN32
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sys/ioctl.h>
+#endif
 
 #include <libfyaml.h>
 
+#include "fy-win32.h"
 #include "fy-parse.h"
 #include "fy-ctype.h"
 
@@ -332,13 +336,15 @@ struct fy_diag *fy_reader_get_diag(struct fy_reader *fyr)
 
 int fy_reader_file_open(struct fy_reader *fyr, const char *filename)
 {
+	int flags = O_RDONLY;
+
 	if (!fyr || !filename)
 		return -1;
 
 	if (fyr->ops && fyr->ops->file_open)
 		return fyr->ops->file_open(fyr, filename);
 
-	return open(filename, O_RDONLY);
+	return open(filename, flags);
 }
 
 void fy_reader_reset(struct fy_reader *fyr)
@@ -940,7 +946,6 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 				do {
 					snread = read(fyi->fd, (char *)fyi->buffer + fyi->read, nreadreq);
 				} while (snread == -1 && errno == EAGAIN);
-
 				fyr_debug(fyr, "read returned %zd", snread);
 
 				if (snread == -1) {

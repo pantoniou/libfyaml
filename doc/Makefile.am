@@ -43,9 +43,11 @@ maintainer-clean-local:
 	@rm -rf Makefile.in
 
 EXTRA_DIST = \
+	canned-man/fy-tool.1 \
 	conf.py \
+	include \
 	index.rst \
 	intro.rst \
 	libfyaml.rst \
 	man/fy-tool.rst \
-	canned-man/fy-tool.1
+	windows-support.txt

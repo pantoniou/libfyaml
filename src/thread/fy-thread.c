@@ -18,23 +18,34 @@
 #include <alloca.h>
 #endif
 
-#include <pthread.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <errno.h>
 #include <limits.h>
+
+#ifndef _WIN32
+#include <pthread.h>
+#include <unistd.h>
+#endif
 
 #if defined(__linux__)
 #include <sys/syscall.h>
 #include <linux/futex.h>
 #endif
 
+#include "fy-win32.h"
 #include "fy-diag.h"
 #include "fy-utils.h"
 #include "fy-thread.h"
 
 #undef WORK_SHUTDOWN
 #define WORK_SHUTDOWN 	((struct fy_thread_work *)(void *)-1)
+
+/* Platform-specific thread-local storage access */
+#ifdef _WIN32
+#define fy_thread_getspecific(key) TlsGetValue(key)
+#else
+#define fy_thread_getspecific(key) pthread_getspecific(key)
+#endif
 
 #ifdef FY_THREAD_DEBUG
 #define TDBG(_fmt, ...) \
@@ -44,14 +55,106 @@
 	do { /* nothing */ } while(0)
 #endif
 
+#ifdef _WIN32
+static DWORD WINAPI fy_worker_thread_standard(void *arg);
+static DWORD WINAPI fy_worker_thread_steal(void *arg);
+#else
 static void *fy_worker_thread_standard(void *arg);
 static void *fy_worker_thread_steal(void *arg);
+#endif
 
 static void fy_thread_work_join_standard(struct fy_thread_pool *tp, struct fy_thread_work *works, size_t work_count, fy_work_check_fn check_fn);
 static void fy_thread_work_join_steal(struct fy_thread_pool *tp, struct fy_thread_work *works, size_t work_count, fy_work_check_fn check_fn);
 static void fy_thread_work_join_steal_2(struct fy_thread_pool *tp, struct fy_thread_work works[2], fy_work_check_fn check_fn);
 
-#if defined(__linux__) && !defined(FY_THREAD_PORTABLE)
+#if defined(_WIN32)
+
+/* Windows implementation using Events and Critical Sections */
+
+static inline void fy_thread_init_sync(struct fy_thread *t)
+{
+	t->submit_event = CreateEvent(NULL, FALSE, FALSE, NULL);
+	t->done_event = CreateEvent(NULL, FALSE, FALSE, NULL);
+	InitializeCriticalSection(&t->lock);
+	InitializeCriticalSection(&t->wait_lock);
+}
+
+static inline struct fy_thread_work *fy_worker_wait_for_work(struct fy_thread *t)
+{
+	struct fy_thread_work *work;
+
+	while ((work = fy_atomic_load(&t->work)) == NULL)
+		WaitForSingleObject(t->submit_event, INFINITE);
+
+	return work;
+}
+
+static inline void fy_worker_signal_work_done(struct fy_thread *t, struct fy_thread_work *work)
+{
+	struct fy_thread_work *exp_work;
+
+	EnterCriticalSection(&t->wait_lock);
+
+	exp_work = work;
+	if (!fy_atomic_compare_exchange_strong(&t->work, &exp_work, NULL))
+		assert(exp_work == WORK_SHUTDOWN);
+	SetEvent(t->done_event);
+	LeaveCriticalSection(&t->wait_lock);
+}
+
+static inline int fy_thread_submit_work_internal(struct fy_thread *t, struct fy_thread_work *work)
+{
+	struct fy_thread_work *exp_work;
+	int ret;
+
+	assert(t);
+	assert(work);
+
+	EnterCriticalSection(&t->lock);
+	exp_work = NULL;
+	if (!fy_atomic_compare_exchange_strong(&t->work, &exp_work, work)) {
+		assert(exp_work == WORK_SHUTDOWN);
+		ret = -1;
+	} else {
+		SetEvent(t->submit_event);
+		ret = 0;
+	}
+	LeaveCriticalSection(&t->lock);
+
+	return ret;
+}
+
+static inline int fy_thread_wait_work_internal(struct fy_thread *t)
+{
+	const struct fy_thread_work *work;
+
+	EnterCriticalSection(&t->wait_lock);
+	while ((work = fy_atomic_load(&t->work)) != NULL) {
+		LeaveCriticalSection(&t->wait_lock);
+		WaitForSingleObject(t->done_event, INFINITE);
+		EnterCriticalSection(&t->wait_lock);
+	}
+	LeaveCriticalSection(&t->wait_lock);
+
+	return 0;
+}
+
+void fy_worker_thread_shutdown(struct fy_thread *t)
+{
+	EnterCriticalSection(&t->lock);
+	fy_atomic_store(&t->work, WORK_SHUTDOWN);
+	SetEvent(t->submit_event);
+	LeaveCriticalSection(&t->lock);
+
+	WaitForSingleObject(t->tid, INFINITE);
+	CloseHandle(t->tid);
+	CloseHandle(t->submit_event);
+	CloseHandle(t->done_event);
+	DeleteCriticalSection(&t->lock);
+	DeleteCriticalSection(&t->wait_lock);
+}
+
+#elif defined(__linux__) && !defined(FY_THREAD_PORTABLE)
 
 /* linux pedal to the metal implementation */
 static inline int futex(FY_ATOMIC(uint32_t) *uaddr, int futex_op, uint32_t val, const struct timespec *timeout, uint32_t *uaddr2, uint32_t val3)
@@ -419,6 +522,11 @@ void fy_thread_pool_cleanup(struct fy_thread_pool *tp)
 		fy_cacheline_free(tp->threads);
 	}
 
+#ifdef _WIN32
+	if (tp->key != TLS_OUT_OF_INDEXES)
+		TlsFree(tp->key);
+#endif
+
 	memset(tp, 0, sizeof(*tp));
 }
 
@@ -427,9 +535,13 @@ int fy_thread_pool_setup(struct fy_thread_pool *tp, const struct fy_thread_pool_
 	struct fy_thread *t;
 	unsigned int i, num_threads, num_threads_words;
 	size_t size, free_offset, loot_offset, thread_bitmask_size;
+#ifdef _WIN32
+	LPTHREAD_START_ROUTINE start_routine;
+#else
 	void *(*start_routine)(void *);
-	long scval;
 	int rc __FY_DEBUG_UNUSED__;
+#endif
+	long scval;
 
 	assert(tp);
 
@@ -471,8 +583,13 @@ int fy_thread_pool_setup(struct fy_thread_pool *tp, const struct fy_thread_pool_
 
 	memset(tp->threads, 0, size);
 
+#ifdef _WIN32
+	tp->key = TlsAlloc();
+	assert(tp->key != TLS_OUT_OF_INDEXES);
+#else
 	rc = pthread_key_create(&tp->key, NULL);
 	assert(!rc);
+#endif
 
 	tp->freep = (_Atomic(uint64_t) *)((char *)tp->threads + free_offset);
 	tp->lootp = (_Atomic(uint64_t) *)((char *)tp->threads + loot_offset);
@@ -497,9 +614,15 @@ int fy_thread_pool_setup(struct fy_thread_pool *tp, const struct fy_thread_pool_
 				fy_worker_thread_steal;
 
 	for (i = 0, t = tp->threads; i < tp->num_threads; i++, t++) {
+#ifdef _WIN32
+		t->tid = CreateThread(NULL, 0, start_routine, t, 0, NULL);
+		if (t->tid == NULL)
+			goto err_out;
+#else
 		rc = pthread_create(&t->tid, NULL, start_routine, t);
 		if (rc)
 			goto err_out;
+#endif
 	}
 
 	return 0;
@@ -619,7 +742,11 @@ void fy_thread_arg_join(struct fy_thread_pool *tp, fy_work_exec_fn fn, fy_work_c
 /*
  * the standard (non-stealing implementation)
  */
+#ifdef _WIN32
+static DWORD WINAPI fy_worker_thread_standard(void *arg)
+#else
 static void *fy_worker_thread_standard(void *arg)
+#endif
 {
 	struct fy_thread *t = arg;
 	struct fy_thread_pool *tp;
@@ -628,14 +755,22 @@ static void *fy_worker_thread_standard(void *arg)
 	tp = t->tp;
 
 	/* store per thread info */
+#ifdef _WIN32
+	TlsSetValue(tp->key, t);
+#else
 	pthread_setspecific(tp->key, t);
+#endif
 
 	while ((work = fy_worker_wait_for_work(t)) != WORK_SHUTDOWN) {
 		work->fn(work->arg);
 		fy_worker_signal_work_done(t, work);
 	}
 
+#ifdef _WIN32
+	return 0;
+#else
 	return NULL;
+#endif
 }
 
 static void fy_thread_work_join_standard(struct fy_thread_pool *tp, struct fy_thread_work *works, size_t work_count, fy_work_check_fn check_fn)
@@ -719,7 +854,7 @@ static void fy_thread_work_join_standard(struct fy_thread_pool *tp, struct fy_th
  */
 static inline struct fy_work_pool *fy_work_pool_init(struct fy_work_pool *wp, size_t work_count)
 {
-#if !(defined(__linux__) && !defined(FY_THREAD_PORTABLE))
+#if !(defined(__linux__) && !defined(FY_THREAD_PORTABLE)) && !defined(_WIN32)
 	int rc __FY_DEBUG_UNUSED__;
 #endif
 
@@ -733,6 +868,9 @@ static inline struct fy_work_pool *fy_work_pool_init(struct fy_work_pool *wp, si
 	wp->sem = dispatch_semaphore_create(!work_count);
         assert(wp->sem != NULL);
 	(void)rc;
+#elif defined(_WIN32)
+	wp->sem = CreateSemaphore(NULL, !work_count, LONG_MAX, NULL);
+	assert(wp->sem != NULL);
 #else
 	rc = sem_init(&wp->sem, 0, !work_count);
 	assert(!rc);
@@ -742,14 +880,16 @@ static inline struct fy_work_pool *fy_work_pool_init(struct fy_work_pool *wp, si
 
 static inline void fy_work_pool_cleanup(struct fy_work_pool *wp)
 {
-#if !(defined(__linux__) && !defined(FY_THREAD_PORTABLE))
+#if !(defined(__linux__) && !defined(FY_THREAD_PORTABLE)) && !defined(_WIN32)
 	int rc __FY_DEBUG_UNUSED__;
 #endif
 
 	if (!wp)
 		return;
 
-#if defined(__linux__) && !defined(FY_THREAD_PORTABLE)
+#if defined(_WIN32)
+	CloseHandle(wp->sem);
+#elif defined(__linux__) && !defined(FY_THREAD_PORTABLE)
 	/* nothing */
 #elif defined(__APPLE__)
 	/* nothing */
@@ -763,14 +903,18 @@ static inline void fy_work_pool_cleanup(struct fy_work_pool *wp)
 static inline bool fy_work_pool_signal(struct fy_work_pool *wp)
 {
 	size_t prev_work_left;
+#if !defined(_WIN32)
 	int rc __FY_DEBUG_UNUSED__;
+#endif
 
 	if (!wp)
 		return false;
 
 	prev_work_left = fy_atomic_fetch_sub(&wp->work_left, 1);
 	if (prev_work_left == 1) {
-#if defined(__linux__) && !defined(FY_THREAD_PORTABLE)
+#if defined(_WIN32)
+		ReleaseSemaphore(wp->sem, 1, NULL);
+#elif defined(__linux__) && !defined(FY_THREAD_PORTABLE)
 		rc = fpost(&wp->done);
 		assert(!rc);
 #elif defined(__APPLE__)
@@ -787,7 +931,11 @@ static inline bool fy_work_pool_signal(struct fy_work_pool *wp)
 
 static inline void fy_work_pool_wait(struct fy_work_pool *wp)
 {
+#if !defined(_WIN32)
 	int rc __FY_DEBUG_UNUSED__;
+#else
+	DWORD rc __FY_DEBUG_UNUSED__;
+#endif
 
 	if (!wp)
 		return;
@@ -796,13 +944,17 @@ static inline void fy_work_pool_wait(struct fy_work_pool *wp)
 	while (fy_atomic_load(&wp->work_left) > 0) {
 #if defined(__linux__) && !defined(FY_THREAD_PORTABLE)
 		rc = fwait(&wp->done);
+		assert(!rc || (rc == -1 && errno == EAGAIN));
 #elif defined(__APPLE__)
 		dispatch_semaphore_wait(wp->sem, DISPATCH_TIME_FOREVER);
 		rc = 0;
+#elif defined(_WIN32)
+		rc = WaitForSingleObject(wp->sem, INFINITE);
+		assert(rc == WAIT_OBJECT_0);
 #else
 		rc = sem_wait(&wp->sem);
-#endif
 		assert(!rc || (rc == -1 && errno == EAGAIN));
+#endif
 	}
 }
 
@@ -860,7 +1012,11 @@ static inline struct fy_thread_work *fy_worker_thread_steal_work(struct fy_threa
 	return NULL;
 }
 
+#ifdef _WIN32
+static DWORD WINAPI fy_worker_thread_steal(void *arg)
+#else
 static void *fy_worker_thread_steal(void *arg)
+#endif
 {
 	struct fy_thread *t = arg;
 	struct fy_thread_pool *tp;
@@ -869,7 +1025,11 @@ static void *fy_worker_thread_steal(void *arg)
 	tp = t->tp;
 
 	/* store per thread info */
+#ifdef _WIN32
+	TlsSetValue(tp->key, t);
+#else
 	pthread_setspecific(tp->key, t);
+#endif
 
 	TDBG("%s: T#%u in steal mode\n", __func__, t->id);
 
@@ -906,7 +1066,11 @@ static void *fy_worker_thread_steal(void *arg)
 	}
 	TDBG("%s: T#%u leaving steal mode\n", __func__, t->id);
 
+#ifdef _WIN32
+	return 0;
+#else
 	return NULL;
+#endif
 }
 
 static void fy_thread_work_join_steal(struct fy_thread_pool *tp, struct fy_thread_work *works, size_t work_count, fy_work_check_fn check_fn)
@@ -925,7 +1089,11 @@ static void fy_thread_work_join_steal(struct fy_thread_pool *tp, struct fy_threa
 	(void)rc;
 
 #ifdef FY_THREAD_DEBUG
-	t = pthread_getspecific(tp->key);
+#ifdef _WIN32
+	t = TlsGetValue(tp->key);
+#else
+	t = fy_thread_getspecific(tp->key);
+#endif
 	tid = t ? (int)t->id : -1;
 	resolved_t = true;
 #else
@@ -971,7 +1139,7 @@ static void fy_thread_work_join_steal(struct fy_thread_pool *tp, struct fy_threa
 			if (work_count > 0) {
 
 				if (!resolved_t) {
-					t = pthread_getspecific(tp->key);
+					t = fy_thread_getspecific(tp->key);
 					tid = t ? (int)t->id : -1;
 					resolved_t = true;
 				}
@@ -1060,7 +1228,11 @@ static void fy_thread_work_join_steal_2(struct fy_thread_pool *tp, struct fy_thr
 	(void)tid;
 
 #ifdef FY_THREAD_DEBUG
-	t = pthread_getspecific(tp->key);
+#ifdef _WIN32
+	t = TlsGetValue(tp->key);
+#else
+	t = fy_thread_getspecific(tp->key);
+#endif
 	tid = t ? (int)t->id : -1;
 	resolved_t = true;
 #else
@@ -1093,7 +1265,7 @@ static void fy_thread_work_join_steal_2(struct fy_thread_pool *tp, struct fy_thr
 
 		} else {
 			if (!resolved_t) {
-				t = pthread_getspecific(tp->key);
+				t = fy_thread_getspecific(tp->key);
 				tid = t ? (int)t->id : -1;
 				resolved_t = true;
 			}

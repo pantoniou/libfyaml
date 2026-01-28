@@ -9,10 +9,8 @@
 #define FY_ID_H
 
 #include <stdlib.h>
-#include <strings.h>
 #include <string.h>
 #include <assert.h>
-
 #include <stdint.h>
 
 #include "fy-bit64.h"
@@ -61,7 +59,6 @@ static inline int fy_id_alloc(fy_id_bits *bits, const size_t count)
 	fy_id_bits_non_atomic v, new_v;
 
 	for (i = 0; i < count; i++, bits++) {
-
 		for (;;) {
 			v = fy_atomic_load(bits);
 			pos = fy_id_ffs(~v);

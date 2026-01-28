@@ -7,7 +7,6 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <pthread.h>
 #include <stdalign.h>
 
 #define BLAKE3_VERSION_STRING "1.4.1"

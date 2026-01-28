@@ -21,11 +21,17 @@
 #include <time.h>
 #include <inttypes.h>
 
-#include <libfyaml.h>
+#include <getopt.h>
+
+#ifndef _WIN32
+#include "fy-win32.h"
+#endif
 
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 #include <yaml.h>
 #endif
+
+#include <libfyaml.h>
 
 #include "fy-parse.h"
 #include "fy-walk.h"
@@ -1663,7 +1669,7 @@ static void do_accel_kv(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 		key = fy_kv_store_key_by_index(&kvs, idx);
 		assert(key);
 
-		printf("removing #%d - %s\n", idx, key);
+		printf("removing #%d - %s\n", idx, key ? key : "<NULL>");
 
 		rc = fy_kv_store_remove(&kvs, key);
 		assert(!rc);

@@ -14,18 +14,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-#include <getopt.h>
 #include <ctype.h>
-#include <unistd.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <regex.h>
 #include <stdalign.h>
 #include <inttypes.h>
 #include <float.h>
 #include <limits.h>
 #include <math.h>
+#include <errno.h>
+#include <fcntl.h>
 
 #include <libfyaml.h>
 

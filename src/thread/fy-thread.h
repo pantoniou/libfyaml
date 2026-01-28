@@ -15,15 +15,17 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-#include <stdatomic.h>
-#include <pthread.h>
 
+#ifndef _WIN32
+#include <pthread.h>
 #ifndef __APPLE__
 #include <semaphore.h>
 #else
 #include <dispatch/dispatch.h>
 #endif
+#endif
 
+#include "fy-win32.h"
 #include "fy-bit64.h"
 #include "fy-align.h"
 #include "fy-atomics.h"
@@ -39,6 +41,8 @@ struct fy_work_pool {
 	FY_ATOMIC(uint32_t) done;
 #elif defined(__APPLE__)
 	dispatch_semaphore_t sem;
+#elif defined(_WIN32)
+	HANDLE sem;
 #else
 	sem_t sem;
 #endif
@@ -47,12 +51,21 @@ struct fy_work_pool {
 struct fy_thread {
 	struct fy_thread_pool *tp;
 	unsigned int id;
-	pthread_t tid;
 	FY_ATOMIC(struct fy_thread_work *)work;
 	FY_ATOMIC(struct fy_thread_work *)next_work;
+#ifndef _WIN32
+	pthread_t tid;
+#else
+	HANDLE tid;
+#endif
 #if defined(__linux__) && !defined(FY_THREAD_PORTABLE)
 	FY_ATOMIC(uint32_t) submit;
 	FY_ATOMIC(uint32_t) done;
+#elif defined(_WIN32)
+	HANDLE submit_event;
+	HANDLE done_event;
+	CRITICAL_SECTION lock;
+	CRITICAL_SECTION wait_lock;
 #else
 	pthread_mutex_t lock;
 	pthread_cond_t cond;
@@ -67,7 +80,11 @@ struct fy_thread_pool {
 	struct fy_thread *threads;
 	FY_ATOMIC(uint64_t) *freep;
 	FY_ATOMIC(uint64_t) *lootp;
+#if !defined(_WIN32)
 	pthread_key_t key;
+#else	// _WIN32
+	DWORD key;
+#endif
 };
 
 /* those are internal only */

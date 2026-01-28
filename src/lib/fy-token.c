@@ -1386,7 +1386,7 @@ fy_token_set_comment(struct fy_token *fyt, enum fy_comment_placement which,
 		if (fy_token_is_lb(fyt, c)) {
 			c = '\n';
 		} else {
-			assert(w <= sizeof(utf8buf));
+			assert((size_t)w <= sizeof(utf8buf));
 			fy_utf8_put_unchecked(utf8buf, c);
 			fwrite(utf8buf, 1, w, fp);
 		}

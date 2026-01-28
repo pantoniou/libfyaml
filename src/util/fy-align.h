@@ -19,7 +19,7 @@
 #if defined(__GNUC__) || defined(__clang__)
 #define FY_ALIGNED_TO(x) __attribute__ ((aligned(x)))
 #elif defined(_MSC_VER)
-#define FY_ALIGNED_TO(x) __declspec(align(x))
+#define FY_ALIGNED_TO(x) /* nothing - MSVC doesn't support trailing alignment */
 #else
 #define FY_ALIGNED_TO(x) /* nothing */
 #endif

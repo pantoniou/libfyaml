@@ -42,9 +42,28 @@ extern "C" {
 
 #if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 #include <unistd.h>
-#endif
-
 #include <sys/uio.h>
+#elif defined(_WIN32)
+/* Windows compatibility definitions */
+#ifndef _SSIZE_T_DEFINED
+#define _SSIZE_T_DEFINED
+#ifdef _WIN64
+typedef __int64 ssize_t;
+#else
+typedef int ssize_t;
+#endif
+#endif
+/* Windows doesn't have sys/uio.h, provide iovec definition */
+#ifndef _FY_IOVEC_DEFINED
+#define _FY_IOVEC_DEFINED
+struct iovec {
+	void *iov_base;
+	size_t iov_len;
+};
+#endif
+#else
+#include <sys/uio.h>
+#endif
 
 /* opaque types for the user */
 struct fy_token;
@@ -74,10 +93,18 @@ struct fy_document_builder;
 /* NULL terminated string length specifier */
 #define FY_NT	((size_t)-1)
 
+/* DLL export/import macros
+ * Note: On Windows, a .def file (src/lib/fyaml.def) is used to export
+ * public API symbols. The FY_EXPORT macro is kept for GCC visibility.
+ */
 #if defined(__GNUC__) && __GNUC__ >= 4
 #define FY_EXPORT __attribute__ ((visibility ("default")))
 #define FY_DEPRECATED __attribute__ ((deprecated))
 #define FY_FORMAT(_t, _x, _y) __attribute__ ((format(_t, _x, _y)))
+#elif defined(_MSC_VER)
+#define FY_EXPORT /* nothing - exports handled via .def file */
+#define FY_DEPRECATED /* nothing - MSVC __declspec must be prefix */
+#define FY_FORMAT(_t, _x, _y) /* nothing */
 #else
 #define FY_EXPORT /* nothing */
 #define FY_DEPRECATED /* nothing */
@@ -90,6 +117,36 @@ struct fy_document_builder;
  * If the _str pointer is NULL, then NULL will be returned
  */
 #ifndef FY_ALLOCA_COPY_FREE
+#ifdef _MSC_VER
+/*
+ * MSVC doesn't support GCC statement expressions, so we provide
+ * function-based alternatives using thread-local storage.
+ */
+#define FY_ALLOCA_COPY_FREE_BUFSZ 8192
+static __declspec(thread) char fy_alloca_copy_free_buf[FY_ALLOCA_COPY_FREE_BUFSZ];
+
+static __inline const char *fy_alloca_copy_free_impl(char *str, size_t len)
+{
+	size_t actual_len;
+	if (!str)
+		return NULL;
+	actual_len = (len == FY_NT) ? strlen(str) : len;
+	if (actual_len >= FY_ALLOCA_COPY_FREE_BUFSZ)
+		actual_len = FY_ALLOCA_COPY_FREE_BUFSZ - 1;
+	memcpy(fy_alloca_copy_free_buf, str, actual_len);
+	fy_alloca_copy_free_buf[actual_len] = '\0';
+	free(str);
+	return fy_alloca_copy_free_buf;
+}
+
+#define FY_ALLOCA_COPY_FREE(_str, _len) \
+	fy_alloca_copy_free_impl((_str), (size_t)(_len))
+
+#define FY_ALLOCA_COPY_FREE_NO_NULL(_str, _len) \
+	(fy_alloca_copy_free_impl((_str), (size_t)(_len)) ? fy_alloca_copy_free_buf : "")
+
+#else
+/* GCC/Clang version with statement expressions */
 #define FY_ALLOCA_COPY_FREE(_str, _len)				\
         ({							\
                 char *__str = (_str), *__stra = NULL;		\
@@ -105,10 +162,8 @@ struct fy_document_builder;
 		}						\
                 (const char *)__stra;				\
         })
-#endif
 
 /* same as above but when _str == NULL return "" */
-#ifndef FY_ALLOCA_COPY_FREE_NO_NULL
 #define FY_ALLOCA_COPY_FREE_NO_NULL(_str, _len)			\
         ({							\
                 const char *__strb;				\
@@ -118,6 +173,7 @@ struct fy_document_builder;
 			__strb = "";				\
 		__strb;						\
         })
+#endif
 #endif
 
 /**
@@ -6035,6 +6091,20 @@ fy_diagf(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 	FY_FORMAT(printf, 3, 4)
 	FY_EXPORT;
 
+#ifdef _MSC_VER
+/* MSVC doesn't support GCC statement expressions, use do-while(0) instead */
+#define fy_diag_diag(_diag, _level, _fmt, ...) \
+	do { \
+		struct fy_diag_ctx _ctx; \
+		memset(&_ctx, 0, sizeof(_ctx)); \
+		_ctx.level = (_level); \
+		_ctx.module = FYEM_UNKNOWN; \
+		_ctx.source_func = __func__; \
+		_ctx.source_file = __FILE__; \
+		_ctx.source_line = __LINE__; \
+		fy_diagf((_diag), &_ctx, (_fmt) , ## __VA_ARGS__); \
+	} while(0)
+#else
 #define fy_diag_diag(_diag, _level, _fmt, ...) \
 	({ \
 		struct fy_diag_ctx _ctx = { \
@@ -6049,6 +6119,7 @@ fy_diagf(struct fy_diag *diag, const struct fy_diag_ctx *fydc,
 		}; \
 		fy_diagf((_diag), &_ctx, (_fmt) , ## __VA_ARGS__); \
 	})
+#endif
 
 #ifndef NDEBUG
 

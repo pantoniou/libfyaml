@@ -11,13 +11,10 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <stdarg.h>
-#include <unistd.h>
 #include <ctype.h>
 
 #include <libfyaml.h>
@@ -26,7 +23,6 @@
 
 #include "fy-parse.h"
 #include "fy-input.h"
-
 
 static const char *error_type_txt[] = {
 	[FYET_DEBUG]   = "debug",
@@ -254,7 +250,7 @@ void fy_diag_destroy(struct fy_diag *diag)
 	while ((errp = fy_diag_errorp_list_pop(&diag->errors)) != NULL)
 		fy_diag_errorp_free(errp);
 
-	return fy_diag_unref(diag);
+	fy_diag_unref(diag);
 }
 
 bool fy_diag_got_error(struct fy_diag *diag)

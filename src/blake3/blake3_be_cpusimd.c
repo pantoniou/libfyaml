@@ -12,13 +12,13 @@
 #endif
 
 #include <stdlib.h>
-#include <unistd.h>
 
 #include "blake3.h"
 #include "blake3_impl.h"
 #include "blake3_internal.h"
 
 #include "fy-thread.h"
+#include "fy-win32.h"
 
 struct cpusimd_data {
 	unsigned int num_cpus;
