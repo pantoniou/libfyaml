@@ -509,6 +509,12 @@ if(NOT MSVC)
     if(COMPILER_SUPPORTS_WNO_TAUTOLOGICAL_CONSTANT_OUT_OF_RANGE_COMPARE)
         list(APPEND COMMON_C_FLAGS -Wno-tautological-constant-out-of-range-compare)
     endif()
+
+    # Additional flags for clang cross-compiling to Windows (non-clang-cl)
+    if(WIN32 AND CMAKE_C_COMPILER_ID STREQUAL "Clang")
+        list(APPEND COMMON_C_FLAGS -Wno-implicit-function-declaration)
+        list(APPEND COMMON_C_FLAGS -Wno-incompatible-function-pointer-types)
+    endif()
 endif()
 
 # Network tests
@@ -879,8 +885,8 @@ target_compile_definitions(fyaml PRIVATE
 target_compile_definitions(fyaml PRIVATE ${COMMON_C_DEFINITIONS})
 target_compile_options(fyaml PRIVATE ${COMMON_C_FLAGS})
 
-# Shared options between GCC and CLANG
-if(NOT MSVC)
+# Shared options between GCC and CLANG (skip for Windows cross-compilation)
+if(NOT MSVC AND NOT WIN32)
     target_compile_options(fyaml PRIVATE -fvisibility=hidden)
 
     if(BUILD_SHARED_LIBS)
