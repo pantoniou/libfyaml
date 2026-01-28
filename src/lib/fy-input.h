@@ -274,13 +274,13 @@ int fy_reader_input_scan_token_mark_slow_path(struct fy_reader *fyr);
 static FY_ALWAYS_INLINE inline size_t
 fy_reader_current_input_pos(const struct fy_reader *fyr)
 {
-	return (size_t)(fyr->current_ptr - fyr->current_ptr_start);
+	return (size_t)((const char *)fyr->current_ptr - (const char *)fyr->current_ptr_start);
 }
 
 static FY_ALWAYS_INLINE inline size_t
 fy_reader_current_left(const struct fy_reader *fyr)
 {
-	return (size_t)(fyr->current_ptr_end - fyr->current_ptr);
+	return (size_t)((const char *)fyr->current_ptr_end - (const char *)fyr->current_ptr);
 }
 
 static inline bool
@@ -564,7 +564,7 @@ fy_reader_peek_at_offset_width(struct fy_reader *fyr, size_t offset, int *wp)
 	assert(fyr);
 
 	if ((ssize_t)(fy_reader_current_left(fyr) - offset) >= 4)
-		return fy_utf8_get(fyr->current_ptr + offset, 4, wp);
+		return fy_utf8_get((const char *)fyr->current_ptr + offset, 4, wp);
 
 	return fy_reader_peek_at_offset_width_slow_path(fyr, offset, wp);
 }
@@ -577,7 +577,7 @@ fy_reader_peek_at_offset_width_64(struct fy_reader *fyr, size_t offset)
 	assert(fyr);
 
 	if ((ssize_t)(fy_reader_current_left(fyr) - offset) >= 4)
-		return fy_utf8_get_64(fyr->current_ptr + offset, 4);
+		return fy_utf8_get_64((const char *)fyr->current_ptr + offset, 4);
 
 	return fy_reader_peek_at_offset_width_slow_path_64(fyr, offset);
 }
@@ -695,7 +695,7 @@ fy_reader_peek_block(struct fy_reader *fyr, size_t *lenp)
 static FY_ALWAYS_INLINE inline void
 fy_reader_advance_octets(struct fy_reader *fyr, size_t advance)
 {
-	fyr->current_ptr += advance;
+	fyr->current_ptr = (const char *)fyr->current_ptr + advance;
 }
 
 void fy_reader_advance_slow_path(struct fy_reader *fyr, int c);
