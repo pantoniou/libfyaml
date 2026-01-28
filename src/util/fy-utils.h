@@ -16,13 +16,18 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <unistd.h>
-#include <termios.h>
 #include <stdint.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef _WIN32
+#include <unistd.h>
+#include <termios.h>
 #include <sys/uio.h>
+#endif
+
+#include "fy-win32.h"
 
 /*
  * Define FY_CPP_SHORT_NAMES to use shortened macro names in the implementation.
@@ -37,6 +42,13 @@
 /* to avoid dragging in libfyaml.h */
 #ifndef FY_BIT
 #define FY_BIT(x) (1U << (x))
+#endif
+
+/* MSVC doesn't support __attribute__, so disable it */
+#if defined(_MSC_VER) && !defined(__clang__)
+#ifndef __attribute__
+#define __attribute__(x)
+#endif
 #endif
 
 #if defined(__linux__)
@@ -61,37 +73,50 @@ struct fy_tag_scan_info {
 
 int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info);
 
+/* container_of - use a fallback for MSVC which doesn't support typeof */
 #ifndef container_of
+#if defined(_MSC_VER)
+#define container_of(ptr, type, member) \
+	((type *)((char *)(ptr) - offsetof(type, member)))
+#else
 #define container_of(ptr, type, member) \
 	({ \
 		const __typeof__(((type *)0)->member) *__mptr = (ptr); \
 		(type *)((void *)__mptr - offsetof(type,member)); \
 	 })
-#endif
+#endif /* _MSC_VER */
+#endif /* container_of */
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(x) ((sizeof(x)/sizeof((x)[0])))
 #endif
 
-#if defined(NDEBUG) && (defined(__GNUC__) && __GNUC__ >= 4)
+/* even if we're compiling for windows with _MSC_VER defined, clang-cl has attributes */
+#if (defined(__GNUC__) && __GNUC__ >= 4) || defined(__clang__)
+#define FY_HAS_GCC_ATTRIBUTES
+#else
+#undef FY_HAS_GCC_ATTRIBUTES
+#endif
+
+#if defined(FY_HAS_GCC_ATTRIBUTES) && defined(NDEBUG)
 #define FY_ALWAYS_INLINE __attribute__((always_inline))
 #else
 #define FY_ALWAYS_INLINE /* nothing */
 #endif
 
-#if defined(__GNUC__) && __GNUC__ >= 4
+#if defined(FY_HAS_GCC_ATTRIBUTES)
 #define FY_UNUSED __attribute__((unused))
 #else
 #define FY_UNUSED /* nothing */
 #endif
 
-#if defined(NDEBUG) && defined(__GNUC__) && __GNUC__ >= 4
+#if defined(FY_HAS_GCC_ATTRIBUTES) && defined(NDEBUG)
 #define FY_DEBUG_UNUSED __attribute__((unused))
 #else
 #define FY_DEBUG_UNUSED /* nothing */
 #endif
 
-#if defined(__GNUC__) && __GNUC__ >= 4
+#if defined(FY_HAS_GCC_ATTRIBUTES)
 #define FY_CONSTRUCTOR __attribute__((constructor))
 #define FY_DESTRUCTOR __attribute__((destructor))
 #define FY_HAS_CONSTRUCTOR
@@ -122,17 +147,7 @@ static inline size_t fy_size_t_align(size_t size, size_t align)
 	return (size + (align - 1)) & ~(align - 1);
 }
 
-int fy_term_set_raw(int fd, struct termios *oldt);
-int fy_term_restore(int fd, const struct termios *oldt);
-ssize_t fy_term_write(int fd, const void *data, size_t count);
-int fy_term_safe_write(int fd, const void *data, size_t count);
-ssize_t fy_term_read(int fd, void *data, size_t count, int timeout_us);
-ssize_t fy_term_read_escape(int fd, void *buf, size_t count);
-
-/* the raw methods require the terminal to be in raw mode */
-int fy_term_query_size_raw(int fd, int *rows, int *cols);
-
-/* the non raw methods will set the terminal to raw and then restore */
+/* this is expected to be supported */
 int fy_term_query_size(int fd, int *rows, int *cols);
 
 struct fy_comment_iter {
@@ -181,9 +196,12 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 #endif
 
 /* true, if types are the same, false otherwise (depends on builtin_types_compatible_p) */
+#if !defined(_MSC_VER) && defined(__has_builtin)
 #if __has_builtin(__builtin_types_compatible_p)
 #define FY_SAME_TYPE(_a, _b) __builtin_types_compatible_p(__typeof__(_a), __typeof__(_b))
-#else
+#endif
+#endif
+#ifndef FY_SAME_TYPE
 #define FY_SAME_TYPE(_a, _b) true
 #endif
 
@@ -192,9 +210,15 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
     FY_COMPILE_ERROR_ON_ZERO(!FY_SAME_TYPE(_a, _b))
 
 /* type safe add overflow */
+#if !defined(_MSC_VER) && defined(__has_builtin)
 #if __has_builtin(__builtin_add_overflow)
 #define FY_ADD_OVERFLOW __builtin_add_overflow
-#else
+#endif
+#endif
+#ifdef _MSC_VER
+/* MSVC: simple implementation, returns false (no overflow detection) */
+#define FY_ADD_OVERFLOW(_a, _b, _resp) ((void)((*(_resp) = (_a) + (_b))), false)
+#elif !defined(FY_ADD_OVERFLOW)
 #define FY_ADD_OVERFLOW(_a, _b, _resp) \
 ({ \
 	__typeof__(_a) __a = (_a), __res; \
@@ -212,9 +236,15 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 #endif
 
 /* type safe sub overflow */
+#if !defined(_MSC_VER) && defined(__has_builtin)
 #if __has_builtin(__builtin_sub_overflow)
 #define FY_SUB_OVERFLOW __builtin_sub_overflow
-#else
+#endif
+#endif
+#ifdef _MSC_VER
+/* MSVC: simple implementation, returns false (no overflow detection) */
+#define FY_SUB_OVERFLOW(_a, _b, _resp) ((void)((*(_resp) = (_a) - (_b))), false)
+#elif !defined(FY_SUB_OVERFLOW)
 #define FY_SUB_OVERFLOW(_a, _b, _resp) \
 ({ \
 	__typeof__(_a) __a = (_a), __res; \
@@ -232,9 +262,15 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 #endif
 
 /* type safe multiply overflow */
+#if !defined(_MSC_VER) && defined(__has_builtin)
 #if __has_builtin(__builtin_mul_overflow)
 #define FY_MUL_OVERFLOW __builtin_mul_overflow
-#else
+#endif
+#endif
+#ifdef _MSC_VER
+/* MSVC: simple implementation, returns false (no overflow detection) */
+#define FY_MUL_OVERFLOW(_a, _b, _resp) ((void)((*(_resp) = (_a) * (_b))), false)
+#elif !defined(FY_MUL_OVERFLOW)
 #define FY_MUL_OVERFLOW(_a, _b, _resp) \
 ({ \
 	__typeof__(_a) __a = (_a), __res; \
@@ -268,6 +304,48 @@ static inline void fy_strip_trailing_nl(char *str)
 }
 
 /* alloca formatted print methods */
+#ifdef _MSC_VER
+/*
+ * MSVC doesn't support GCC statement expressions, so we provide
+ * function-based alternatives. These use a static thread-local buffer
+ * which is less flexible but works for typical use cases.
+ */
+#define FY_ALLOCA_SPRINTF_BUFSZ 4096
+
+static __declspec(thread) char fy_alloca_sprintf_buf[FY_ALLOCA_SPRINTF_BUFSZ];
+
+static inline char *fy_alloca_vsprintf_impl(const char *fmt, va_list ap)
+{
+	va_list ap_copy;
+	int len;
+	char *s;
+
+	va_copy(ap_copy, ap);
+	len = vsnprintf(fy_alloca_sprintf_buf, FY_ALLOCA_SPRINTF_BUFSZ, fmt, ap_copy);
+	va_end(ap_copy);
+	if (len < 0)
+		return NULL;
+	/* strip trailing newlines */
+	s = fy_alloca_sprintf_buf + strlen(fy_alloca_sprintf_buf);
+	while (s > fy_alloca_sprintf_buf && s[-1] == '\n')
+		*--s = '\0';
+	return fy_alloca_sprintf_buf;
+}
+
+/* For MSVC, we can't use variadic macros that return values easily,
+ * so fy_vsprintfa needs a different approach
+ * This is not very efficient and wastes memory but it's the best
+ * we can do with the potato compiler
+ */
+#define fy_vsprintfa(_fmt, _ap) \
+	strcpy(alloca(FY_ALLOCA_SPRINTF_BUFSZ + 1), \
+			fy_alloca_vsprintf_impl((_fmt), (_ap)))
+#define fy_sprintfa(_fmt, ...) \
+	strcpy(alloca(FY_ALLOCA_SPRINTF_BUFSZ + 1), \
+			(snprintf(fy_alloca_sprintf_buf, FY_ALLOCA_SPRINTF_BUFSZ, (_fmt), __VA_ARGS__) < 0 ? \
+				"" : fy_alloca_sprintf_buf))
+#else
+/* GCC/Clang version with statement expressions */
 #define fy_vsprintfa(_fmt, _ap) \
 	({ \
 		const char *__fmt = (_fmt); \
@@ -294,6 +372,7 @@ static inline void fy_strip_trailing_nl(char *str)
 		(void)snprintf(_buf, _size + 1, __fmt, __VA_ARGS__); \
 		_buf; \
 	})
+#endif
 
 #if !defined(NDEBUG) && defined(HAVE_DEVMODE) && HAVE_DEVMODE
 #define FY_DEVMODE
@@ -301,14 +380,10 @@ static inline void fy_strip_trailing_nl(char *str)
 #undef FY_DEVMODE
 #endif
 
-#ifdef FY_DEVMODE
-#define __FY_DEBUG_UNUSED__	/* nothing */
-#else
-#if defined(__GNUC__) && __GNUC__ >= 4
+#if defined(FY_HAS_GCC_ATTRIBUTES) && !defined(FY_DEVMODE)
 #define __FY_DEBUG_UNUSED__	__attribute__((__unused__))
 #else
 #define __FY_DEBUG_UNUSED__	/* nothing */
-#endif
 #endif
 
 // C preprocessor magic follows (pilfered and adapted from h4x0r.org)

@@ -22,10 +22,13 @@
 /* for container_of */
 #include "fy-list.h"
 #include "fy-utils.h"
+#include "fy-win32.h"
 
 #include "fy-allocator-dedup.h"
 
 // #define DEBUG_GROWS
+
+#ifdef DEBUG_GROWS
 
 #undef BEFORE
 #define BEFORE() \
@@ -34,11 +37,22 @@
 	} while(0)
 
 #undef AFTER
+#ifdef _MSC_VER
+static __inline int64_t fy_dedup_after_calc(const struct timespec *before, const struct timespec *after)
+{
+	return (int64_t)(after->tv_sec - before->tv_sec) * (int64_t)1000000000UL + (int64_t)(after->tv_nsec - before->tv_nsec);
+}
+#define AFTER() \
+	(clock_gettime(CLOCK_MONOTONIC, &after), fy_dedup_after_calc(&before, &after))
+#else
 #define AFTER() \
 	({ \
 		clock_gettime(CLOCK_MONOTONIC, &after); \
 		(int64_t)(after.tv_sec - before.tv_sec) * (int64_t)1000000000UL + (int64_t)(after.tv_nsec - before.tv_nsec); \
 	})
+#endif
+
+#endif
 
 static const unsigned int bit_to_chain_length_map[] = {
 	[0] = 1,	/* 1 */

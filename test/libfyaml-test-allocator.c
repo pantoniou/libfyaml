@@ -14,8 +14,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-#include <getopt.h>
-#include <unistd.h>
 #include <limits.h>
 #include <stdint.h>
 

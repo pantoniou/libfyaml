@@ -17,10 +17,13 @@
 #include <stdbool.h>
 #include <assert.h>
 
+#ifndef _WIN32
 #include <sys/uio.h>
+#endif
 
 #include "fy-typelist.h"
 #include "fy-utils.h"
+#include "fy-win32.h"
 
 #include <libfyaml.h>
 

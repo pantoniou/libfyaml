@@ -12,15 +12,10 @@
 #include <string.h>
 #include <stdatomic.h>
 #include <stdalign.h>
-
-#ifndef _WIN32
 #include <stdlib.h>
+
 #if defined(__linux__)
 #include <malloc.h>
-#endif
-#endif
-
-#if defined(__linux__)
 #include <sys/sysmacros.h>
 #endif
 
@@ -69,7 +64,14 @@
 
 #if defined(IS_X86)
 #if defined(_MSC_VER)
+#if defined(__clang__)
+/* clang-cl: intrin.h pulls in mmintrin.h which has vector type bugs
+ * when cross-compiling. Declare only the intrinsics we actually need. */
+unsigned long long _xgetbv(unsigned int);
+void __cpuid(int[4], int);
+#else
 #include <intrin.h>
+#endif
 #endif
 #endif
 
