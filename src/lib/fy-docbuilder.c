@@ -15,7 +15,12 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <errno.h>
+
+#ifdef _WIN32
+#include "fy-win32.h"
+#else
 #include <unistd.h>
+#endif
 
 #include <libfyaml.h>
 

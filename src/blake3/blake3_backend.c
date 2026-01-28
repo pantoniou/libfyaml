@@ -11,8 +11,12 @@
 #include <alloca.h>
 #endif
 
+#ifdef _WIN32
+#include <malloc.h>
+#include "fy-win32.h"
+#endif
+
 #include <stdlib.h>
-#include <unistd.h>
 
 #include "fy-bit64.h"
 

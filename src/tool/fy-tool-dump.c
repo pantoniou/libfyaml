@@ -14,13 +14,20 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-#include <getopt.h>
+#include "fy-getopt.h"
 #include <ctype.h>
+#ifdef _WIN32
+#include "fy-win32.h"
+#include <io.h>
+#else
 #include <unistd.h>
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#ifndef _WIN32
 #include <regex.h>
+#endif
 #include <stdalign.h>
 #include <inttypes.h>
 #include <float.h>

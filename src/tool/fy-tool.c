@@ -14,13 +14,22 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-#include <getopt.h>
+#include "fy-getopt.h"
 #include <ctype.h>
+#ifdef _WIN32
+#include "fy-win32.h"
+#include <io.h>
+#define isatty _isatty
+#define fileno _fileno
+#else
 #include <unistd.h>
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#ifndef _WIN32
 #include <regex.h>
+#endif
 #include <stdalign.h>
 #include <inttypes.h>
 #include <float.h>
@@ -1122,12 +1131,41 @@ int main(int argc, char *argv[])
 
 	fy_valgrind_check(&argc, &argv);
 
+#ifdef _WIN32
+	/* On Windows, set stdin/stdout to binary mode to prevent CRLF conversion */
+	_setmode(_fileno(stdin), _O_BINARY);
+	_setmode(_fileno(stdout), _O_BINARY);
+#endif
+
 	/* select the appropriate tool mode */
 	progname = strrchr(argv[0], '/');
+#ifdef _WIN32
+	/* On Windows, also check for backslash */
+	{
+		const char *p = strrchr(argv[0], '\\');
+		if (p && (!progname || p > progname))
+			progname = p;
+	}
+#endif
 	if (!progname)
 		progname = argv[0];
 	else
 		progname++;
+
+#ifdef _WIN32
+	/* On Windows, strip .exe extension for comparison */
+	{
+		static char progname_buf[256];
+		size_t len = strlen(progname);
+		if (len > 4 && !_stricmp(progname + len - 4, ".exe")) {
+			if (len - 4 < sizeof(progname_buf)) {
+				memcpy(progname_buf, progname, len - 4);
+				progname_buf[len - 4] = '\0';
+				progname = progname_buf;
+			}
+		}
+	}
+#endif
 
 	/* default mode is dump */
 	if (!strcmp(progname, "fy-filter"))

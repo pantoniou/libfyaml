@@ -14,9 +14,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include "fy-win32.h"
+#include <malloc.h>
+#else
 #include <unistd.h>
 #include <fcntl.h>
-#include <unistd.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -26,7 +29,7 @@
 #endif
 
 #include <stdbool.h>
-#include <getopt.h>
+#include "fy-getopt.h"
 #include <ctype.h>
 #include <assert.h>
 #include <time.h>

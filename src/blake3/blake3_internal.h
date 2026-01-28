@@ -7,8 +7,13 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <pthread.h>
 #include <stdatomic.h>
+
+#ifdef _WIN32
+#include "fy-win32.h"
+#else
+#include <pthread.h>
+#endif
 
 #include "blake3.h"
 

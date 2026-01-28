@@ -14,9 +14,14 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <limits.h>
-#include <unistd.h>
 #include <ctype.h>
 #include <errno.h>
+
+#ifdef _WIN32
+#include "fy-win32.h"
+#else
+#include <unistd.h>
+#endif
 
 #include <libfyaml.h>
 

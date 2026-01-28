@@ -256,13 +256,13 @@ fy_token_alloc(void)
 static inline FY_ALWAYS_INLINE void
 fy_token_clean(struct fy_token *fyt)
 {
-	return fy_token_clean_rl(NULL, fyt);
+	fy_token_clean_rl(NULL, fyt);
 }
 
 static inline FY_ALWAYS_INLINE void
 fy_token_free(struct fy_token *fyt)
 {
-	return fy_token_free_rl(NULL, fyt);
+	fy_token_free_rl(NULL, fyt);
 }
 
 static inline FY_ALWAYS_INLINE struct fy_token *
@@ -280,13 +280,13 @@ fy_token_ref(struct fy_token *fyt)
 static inline FY_ALWAYS_INLINE void
 fy_token_unref(struct fy_token *fyt)
 {
-	return fy_token_unref_rl(NULL, fyt);
+	fy_token_unref_rl(NULL, fyt);
 }
 
 static inline void
 fy_token_list_unref_all(struct fy_token_list *fytl_tofree)
 {
-	return fy_token_list_unref_all_rl(NULL, fytl_tofree);
+	fy_token_list_unref_all_rl(NULL, fytl_tofree);
 }
 
 /* recycling aware */
@@ -476,6 +476,21 @@ unsigned int fy_analyze_scalar_content(const char *data, size_t size,
 /* must be freed */
 char *fy_token_debug_text(struct fy_token *fyt);
 
+#ifdef _MSC_VER
+/* MSVC version using thread-local buffer */
+#define FY_TOKEN_DEBUG_TEXT_A_BUFSZ 4096
+static __declspec(thread) char fy_token_debug_text_a_buf[FY_TOKEN_DEBUG_TEXT_A_BUFSZ];
+static __inline const char *fy_token_debug_text_a_impl(struct fy_token *fyt)
+{
+	char *buf = fy_token_debug_text(fyt);
+	if (!buf) return "";
+	strncpy(fy_token_debug_text_a_buf, buf, FY_TOKEN_DEBUG_TEXT_A_BUFSZ - 1);
+	fy_token_debug_text_a_buf[FY_TOKEN_DEBUG_TEXT_A_BUFSZ - 1] = '\0';
+	free(buf);
+	return fy_token_debug_text_a_buf;
+}
+#define fy_token_debug_text_a(_fyt) fy_token_debug_text_a_impl(_fyt)
+#else
 #define fy_token_debug_text_a(_fyt) \
 	({ \
 		struct fy_token *__fyt = (_fyt); \
@@ -490,6 +505,7 @@ char *fy_token_debug_text(struct fy_token *fyt);
 		} \
 		_rbuf; \
 	})
+#endif
 
 int fy_token_memcmp(struct fy_token *fyt, const void *ptr, size_t len);
 int fy_token_strcmp(struct fy_token *fyt, const char *str);

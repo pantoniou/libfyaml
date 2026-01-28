@@ -11,8 +11,13 @@
 #include <alloca.h>
 #endif
 
+#ifdef _WIN32
+#include <malloc.h>  /* for alloca on Windows */
+#include "fy-win32.h"
+#endif
+
 #include <pthread.h>
-#include <stdlib.h>
+#endif
 
 #include "blake3.h"
 #include "blake3_impl.h"

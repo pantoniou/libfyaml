@@ -17,7 +17,11 @@
 #include <stdbool.h>
 #include <assert.h>
 
+#ifdef _WIN32
+#include "fy-win32.h"
+#else
 #include <sys/uio.h>
+#endif
 
 #include "fy-typelist.h"
 #include "fy-utils.h"

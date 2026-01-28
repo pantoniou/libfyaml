@@ -7,8 +7,13 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <pthread.h>
 #include <stdalign.h>
+
+#ifdef _WIN32
+#include "fy-win32.h"
+#else
+#include <pthread.h>
+#endif
 
 #define BLAKE3_VERSION_STRING "1.4.1"
 

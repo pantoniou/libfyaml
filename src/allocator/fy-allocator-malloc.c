@@ -15,11 +15,16 @@
 #include <time.h>
 #include <inttypes.h>
 
+#ifdef _WIN32
+#include "fy-win32.h"
+#endif
+
 #include <stdio.h>
 
 /* for container_of */
 #include "fy-list.h"
 #include "fy-utils.h"
+#include "fy-align.h"
 
 #include "fy-allocator-malloc.h"
 
@@ -69,7 +74,7 @@ static void fy_malloc_tag_cleanup(struct fy_malloc_allocator *ma, struct fy_mall
 
 	/* cleanup should happen from a single thread */
 	while ((me = fy_malloc_entry_list_pop(&mt->entries)) != NULL)
-		free(me->mem);
+		fy_align_free(me->mem);
 }
 
 static void fy_malloc_cleanup(struct fy_allocator *a)
@@ -214,14 +219,13 @@ static void *fy_malloc_tag_alloc(struct fy_malloc_allocator *ma, struct fy_mallo
 {
 	struct fy_malloc_entry *me;
 	size_t me_offset, max_align;
-	int r;
 	void *mem;
 
 	me_offset = fy_size_t_align(size, _Alignof(struct fy_malloc_entry));
 	max_align = align > _Alignof(struct fy_malloc_entry) ? align : _Alignof(struct fy_malloc_entry);
 
-	r = posix_memalign(&mem, max_align, me_offset + sizeof(*me));
-	if (r)
+	mem = fy_align_alloc(max_align, me_offset + sizeof(*me));
+	if (!mem)
 		return NULL;
 
 	me = mem + me_offset;
@@ -245,7 +249,7 @@ static void fy_malloc_tag_free(struct fy_malloc_allocator *ma, struct fy_malloc_
 	fy_malloc_entry_list_del(&mt->entries, me);
 	fy_malloc_tag_list_unlock(mt);
 
-	free(me->mem);
+	fy_align_free(me->mem);
 }
 
 static void *fy_malloc_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
@@ -517,7 +521,7 @@ static void fy_malloc_reset_tag(struct fy_allocator *a, int tag)
 
 	/* no lock, reset is single thread only */
 	while ((me = fy_malloc_entry_list_pop(&mt->entries)) != NULL)
-		free(me->mem);
+		fy_align_free(me);
 }
 
 static struct fy_allocator_info *
