@@ -7,8 +7,6 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <pthread.h>
-#include <stdatomic.h>
 
 #include "blake3.h"
 

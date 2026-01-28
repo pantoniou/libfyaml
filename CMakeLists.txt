@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.14)
 
 if (POLICY CMP0048)
     cmake_policy(SET CMP0048 NEW) # Allow project(xxx VERSION a.b.c)
@@ -43,6 +43,10 @@ else()
     set(VERSION_EXTRA "")
 endif()
 
+# Optional MSVC cross-compilation support via msvc-wine
+# Usage: cmake -DMSVC_WINE_DIR=/path/to/msvc [-DMSVC_WINE_COMPILER=cl|clang-cl|clang] ..
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/MSVCCrossCompile.cmake OPTIONAL)
+
 project(libfyaml LANGUAGES C ASM VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH})
 
 # Must use GNUInstallDirs to install libraries into correct locations on all platforms
@@ -85,7 +89,7 @@ macro(add_libclang_to_target target_name link_scope)
         endif()
 
         # Add libclang libraries
-	target_link_libraries(${target_name} ${link_scope} ${LIBCLANG_LIBS})
+        target_link_libraries(${target_name} ${link_scope} ${LIBCLANG_LIBS})
     endif()
 endmacro()
 
@@ -97,7 +101,7 @@ option(ENABLE_ASAN "Enable ASAN support" OFF)
 option(ENABLE_NETWORK "Enable tests requiring network access" ON)
 option(ENABLE_DEVMODE "Enable development mode only debugging" OFF)
 option(BUILD_TESTING "Build tests" ON)
-option(ENABLE_LIBCLANG "Enable libclang support for reflection" ON)
+option(ENABLE_LIBCLANG "Enable libclang support for reflection" OFF)
 
 # Path to LLVM installation (optional, overrides automatic detection)
 set(LLVM_ROOT "" CACHE PATH "Path to LLVM installation directory (e.g., /usr/lib/llvm-15)")
@@ -140,11 +144,21 @@ else()
 endif()
 
 # Check for required dependencies
-set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
-set(THREADS_PREFER_PTHREAD_FLAG TRUE)
-find_package(Threads REQUIRED)
-if(NOT CMAKE_USE_PTHREADS_INIT)
-    message(FATAL_ERROR "Missing required pthread support")
+if(NOT WIN32)
+    set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+    set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+    find_package(Threads REQUIRED)
+    if(NOT CMAKE_USE_PTHREADS_INIT)
+        message(FATAL_ERROR "Missing required pthread support")
+    endif()
+else()
+    # Windows uses native threading APIs
+    set(CMAKE_USE_WIN32_THREADS_INIT TRUE)
+endif()
+
+# detect if we're on clang-cl
+if(WIN32 AND MSVC AND CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    set(CLANG_CL TRUE)
 endif()
 
 # Check for headers and functions
@@ -162,6 +176,11 @@ check_c_source_compiles("
     int main() { return 0; }
 " HAVE_DECL_ENVIRON)
 
+# find PkgConfig
+if(NOT CMAKE_CROSSCOMPILING)
+    find_package(PkgConfig)
+endif()
+
 # Check for optional dependencies
 
 # libyaml detection - try CMake config first, then pkg-config
@@ -173,7 +192,6 @@ if(yaml_FOUND)
     set(LIBYAML_LIBRARIES yaml)
     message(STATUS "Found libyaml via CMake config")
 else()
-    find_package(PkgConfig)
     if(PKG_CONFIG_FOUND)
         pkg_check_modules(LIBYAML yaml-0.1)
         if(LIBYAML_FOUND)
@@ -185,10 +203,10 @@ else()
     endif()
 endif()
 
-# check framework detection - try CMake config first, then pkg-config
+# check framework detection - try CMake config first, then pkg-config, then FetchContent
 set(HAVE_CHECK 0)
 set(HAVE_COMPATIBLE_CHECK 0)
-if(BUILD_TESTING)
+if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     find_package(check QUIET CONFIG)
     if(check_FOUND)
         set(HAVE_CHECK 1)
@@ -223,7 +241,6 @@ if(BUILD_TESTING)
         endif()
     else()
         # Fall back to pkg-config
-        find_package(PkgConfig)
         if(PKG_CONFIG_FOUND)
             pkg_check_modules(CHECK check)
             if(CHECK_FOUND)
@@ -255,6 +272,28 @@ if(BUILD_TESTING)
                 endif()
             endif()
         endif()
+    endif()
+
+    # Fall back to FetchContent if check not found (useful on Windows)
+    if(NOT HAVE_CHECK)
+        include(FetchContent)
+        message(STATUS "check framework not found, fetching via FetchContent...")
+        FetchContent_Declare(
+            check
+            GIT_REPOSITORY https://github.com/libcheck/check.git
+            GIT_TAG        0.15.2
+        )
+        # Disable check's own tests and docs
+        set(CHECK_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+        set(CHECK_ENABLE_GCOV OFF CACHE BOOL "" FORCE)
+        FetchContent_MakeAvailable(check)
+
+        set(HAVE_CHECK 1)
+        set(CHECK_LIBRARIES check)
+        set(CHECK_INCLUDE_DIRS "${check_SOURCE_DIR}/src" "${check_BINARY_DIR}" "${check_BINARY_DIR}/src")
+        set(HAVE_SRUNNER_SET_TAP 1)  # 0.15.2 has srunner_set_tap
+        set(HAVE_COMPATIBLE_CHECK 1)
+        message(STATUS "Found check framework via FetchContent")
     endif()
 endif()
 
@@ -390,6 +429,14 @@ else()
 
 endif() # ENABLE_LIBCLANG
 
+# check for bash
+find_program(BASH_EXECUTABLE bash)
+if(BASH_EXECUTABLE)
+    set(HAVE_BASH 1)
+else()
+    set(HAVE_BASH 0)
+endif()
+
 # Check for tools
 find_program(GIT_EXECUTABLE git)
 if(GIT_EXECUTABLE)
@@ -412,7 +459,7 @@ else()
     set(HAVE_DOCKER 0)
 endif()
 
-# Test suite URLs
+# Test suite URLs and commits
 if(NOT TESTSUITEURL)
     set(TESTSUITEURL "https://github.com/yaml/yaml-test-suite")
 endif()
@@ -426,6 +473,23 @@ if(NOT JSONTESTSUITECHECKOUT)
     set(JSONTESTSUITECHECKOUT "d64aefb55228d9584d3e5b2433f720ea8fd00c82")
 endif()
 
+# FetchContent for test suites (downloaded at configure time when network is available)
+include(FetchContent)
+if(ENABLE_NETWORK)
+    FetchContent_Declare(
+        yaml_test_suite
+        GIT_REPOSITORY ${TESTSUITEURL}
+        GIT_TAG        ${TESTSUITECHECKOUT}
+        GIT_SHALLOW    TRUE
+    )
+    FetchContent_Declare(
+        json_test_suite
+        GIT_REPOSITORY ${JSONTESTSUITEURL}
+        GIT_TAG        ${JSONTESTSUITECHECKOUT}
+        GIT_SHALLOW    FALSE
+    )
+endif()
+
 # SIMD capability detection
 set(TARGET_HAS_SSE2 FALSE)
 set(TARGET_HAS_SSE41 FALSE)
@@ -433,7 +497,11 @@ set(TARGET_HAS_AVX2 FALSE)
 set(TARGET_HAS_AVX512 FALSE)
 set(TARGET_HAS_NEON FALSE)
 
-if(TARGET_CPU_ANY_X86 AND NOT ENABLE_PORTABLE_TARGET)
+# Disable SIMD assembly on Windows (uses Unix assembly syntax)
+# Use portable implementations instead
+if(WIN32)
+    message(STATUS "Windows detected: using portable SIMD implementations")
+elseif(TARGET_CPU_ANY_X86 AND NOT ENABLE_PORTABLE_TARGET)
     check_c_source_compiles("
         #include <emmintrin.h>
         int main() { __m128i a = _mm_setzero_si128(); return 0; }
@@ -498,7 +566,23 @@ endif()
 
 # Build common compiler flags for all targets
 set(COMMON_C_FLAGS)
-set(COMMON_C_DEFINITIONS _GNU_SOURCE)
+if(WIN32)
+    set(COMMON_C_DEFINITIONS WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
+else()
+    set(COMMON_C_DEFINITIONS _GNU_SOURCE)
+endif()
+
+# MSVC requires C11 for stdatomic.h
+if(MSVC)
+    # Use /std:c17 for better C11/C17 support in MSVC
+    set(CMAKE_C_STANDARD 17)
+    set(CMAKE_C_STANDARD_REQUIRED ON)
+
+    # Enable experimental C11 atomics in MSVC (only)
+    if(NOT CLANG_CL)
+        add_compile_options(/experimental:c11atomics)
+    endif()
+endif()
 
 if(NOT MSVC)
     list(APPEND COMMON_C_FLAGS -Wall -Wsign-compare)
@@ -557,8 +641,10 @@ endif()
 
 # the options for the libs
 set(LIB_OPTS "")
-if(BUILD_SHARED_LIBS)
-    list(APPEND LIB_OPTS "-fPIC")
+if(NOT MSVC AND NOT WIN32)
+    if(BUILD_SHARED_LIBS)
+        list(APPEND LIB_OPTS "-fPIC")
+    endif()
 endif()
 
 # Network tests
@@ -615,6 +701,7 @@ set(UTILHDRS
     src/util/fy-align.h
     src/util/fy-bit64.h
     src/util/fy-vlsize.h
+    src/util/fy-win32.h
 )
 
 set(LIBSRCS
@@ -802,6 +889,26 @@ foreach(blake3_target ${BLAKE3_TARGETS})
     target_sources(fyaml PRIVATE $<TARGET_OBJECTS:${blake3_target}>)
 endforeach()
 
+# On Windows, use a .def file to export only the public API symbols
+# This is needed because libfyaml uses GCC-style suffix attributes for FY_EXPORT
+# which are incompatible with MSVC's __declspec prefix requirement
+if(WIN32 AND BUILD_SHARED_LIBS)
+    # Generate the .def file from the public header during build
+    set(GENERATED_DEF_FILE "${CMAKE_CURRENT_BINARY_DIR}/fyaml.def")
+    add_custom_command(
+        OUTPUT ${GENERATED_DEF_FILE}
+        COMMAND ${CMAKE_COMMAND}
+            -DINPUT_HEADER=${CMAKE_CURRENT_SOURCE_DIR}/include/libfyaml.h
+            -DOUTPUT_DEF=${GENERATED_DEF_FILE}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/generate-def.cmake
+        DEPENDS
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/libfyaml.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/cmake/generate-def.cmake
+        COMMENT "Generating fyaml.def from libfyaml.h"
+    )
+    target_sources(fyaml PRIVATE "${GENERATED_DEF_FILE}")
+endif()
+
 add_library(libfyaml::libfyaml ALIAS fyaml)
 
 # Always build a static library for internal tools (they need access to internal APIs)
@@ -839,10 +946,12 @@ target_include_directories(fyaml_static
         ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-target_link_libraries(fyaml_static
-    PUBLIC
-        Threads::Threads
-)
+if(NOT WIN32)
+    target_link_libraries(fyaml_static
+        PUBLIC
+            Threads::Threads
+    )
+endif()
 
 # Add libclang support if available
 add_libclang_to_target(fyaml_static INTERFACE)
@@ -903,19 +1012,17 @@ target_include_directories(fyaml
         ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
 )
 
-target_link_libraries(fyaml
-    PUBLIC
-        Threads::Threads
-)
+if(NOT WIN32)
+    target_link_libraries(fyaml
+        PUBLIC
+            Threads::Threads
+    )
+else()
+    # Windows needs no extra libraries for threading (uses kernel32)
+endif()
 
 # Add libclang support if available
 add_libclang_to_target(fyaml PRIVATE)
-
-# Generate config.h
-configure_file(
-    ${CMAKE_SOURCE_DIR}/cmake/config.h.in
-    ${CMAKE_BINARY_DIR}/config.h
-)
 
 # Generate config.h
 configure_file(
@@ -933,10 +1040,13 @@ target_compile_definitions(fyaml PRIVATE
 target_compile_definitions(fyaml PRIVATE ${COMMON_C_DEFINITIONS})
 target_compile_options(fyaml PRIVATE ${COMMON_C_FLAGS})
 
-# Shared options between GCC and CLANG
-if(NOT MSVC)
-    target_compile_options(fyaml PRIVATE ${LIB_OPTS})
+# Shared options between GCC and CLANG (skip for Windows cross-compilation)
+if(NOT MSVC AND NOT WIN32)
     target_compile_options(fyaml PRIVATE -fvisibility=hidden)
+
+    if(BUILD_SHARED_LIBS)
+        target_compile_options(fyaml PRIVATE -fPIC)
+    endif()
 
     if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
         target_compile_options(fyaml PRIVATE -O2)
@@ -949,17 +1059,35 @@ if(NOT MSVC)
     endif()
 endif()
 
+# on windows we need a fall-back getopt
+if(WIN32)
+    set(GETOPT_SOURCES src/getopt/getopt.c)
+    set(GETOPT_INCLUDES "${CMAKE_CURRENT_SOURCE_DIR}/src/getopt")
+else()
+    set(GETOPT_SOURCES)
+    set(GETOPT_INCLUDES)
+endif()
+
 # Build fy-tool
-add_executable(fy-tool
+set(FY_TOOL_SOURCES
     src/tool/fy-tool.c
     src/tool/fy-tool-util.c
     src/tool/fy-tool-dump.c
-    src/valgrind/fy-valgrind.h
+    ${GETOPT_SOURCES}
 )
 
-target_include_directories(fy-tool PRIVATE
+set(FY_TOOL_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
+    ${GETOPT_INCLUDES}
 )
+
+if(WIN32)
+    list(APPEND FY_TOOL_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/src/util")
+endif()
+
+add_executable(fy-tool ${FY_TOOL_SOURCES})
+target_include_directories(fy-tool PRIVATE ${FY_TOOL_INCLUDE_DIRS})
+target_compile_definitions(fy-tool PRIVATE ${COMMON_C_DEFINITIONS})
 
 target_link_libraries(fy-tool PRIVATE fyaml)
 
@@ -972,28 +1100,29 @@ endif()
 # System libraries are dynamically linked (works with or without ASAN)
 # Skip when cross-compiling since these tools cannot be executed on build host
 
-if(NOT CROSS_COMPILING)
+set(INTERNAL_TOOL_INCLUDES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/xxhash
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${LIBYAML_INCLUDE_DIRS}
+    ${GETOPT_INCLUDES}
+)
 
 # libfyaml-parser requires libyaml
 if(HAVE_LIBYAML)
     add_executable(libfyaml-parser
         src/internal/libfyaml-parser.c
-        src/valgrind/fy-valgrind.h
+        ${GETOPT_SOURCES}
     )
     target_compile_definitions(libfyaml-parser PRIVATE ${COMMON_C_DEFINITIONS})
     target_compile_options(libfyaml-parser PRIVATE ${COMMON_C_FLAGS})
 
-    target_include_directories(libfyaml-parser PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/util
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/xxhash
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
-        ${CMAKE_CURRENT_BINARY_DIR}
-        ${LIBYAML_INCLUDE_DIRS}
-    )
+    target_include_directories(libfyaml-parser PRIVATE ${INTERNAL_TOOL_INCLUDES})
     target_link_directories(libfyaml-parser PRIVATE ${LIBYAML_LIBRARY_DIRS})
     if(NOT MSVC)
         # Embed libfyaml code statically, allow dynamic linking for system libraries
@@ -1024,17 +1153,12 @@ endif()
 
 add_executable(fy-thread
     src/internal/fy-thread.c
-    src/valgrind/fy-valgrind.h
+    ${GETOPT_SOURCES}
 )
-target_include_directories(fy-thread PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/util
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
-    ${CMAKE_CURRENT_BINARY_DIR}
-)
+target_include_directories(fy-thread PRIVATE ${INTERNAL_TOOL_INCLUDES})
+target_compile_definitions(fy-thread PRIVATE
+    ${COMMON_C_DEFINITIONS}
+    FY_STATIC)
 if(NOT MSVC)
     if(APPLE)
         target_link_libraries(fy-thread PRIVATE
@@ -1060,18 +1184,15 @@ add_dependencies(fy-thread fyaml_static)
 
 add_executable(fy-b3sum
     src/internal/fy-b3sum.c
-    src/valgrind/fy-valgrind.h
+    ${GETOPT_SOURCES}
 )
 target_include_directories(fy-b3sum PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/util
     ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
-    ${CMAKE_CURRENT_BINARY_DIR}
+    ${INTERNAL_TOOL_INCLUDES}
 )
+target_compile_definitions(fy-b3sum PRIVATE
+    ${COMMON_C_DEFINITIONS}
+    FY_STATIC)
 if(NOT MSVC)
     if(APPLE)
         target_link_libraries(fy-b3sum PRIVATE
@@ -1097,18 +1218,12 @@ add_dependencies(fy-b3sum fyaml_static)
 
 add_executable(fy-allocators
     src/internal/fy-allocators.c
-    src/valgrind/fy-valgrind.h
+    ${GETOPT_SOURCES}
 )
-target_include_directories(fy-allocators PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/util
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/xxhash
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
-    ${CMAKE_CURRENT_BINARY_DIR}
-)
+target_include_directories(fy-allocators PRIVATE ${INTERNAL_TOOL_INCLUDES})
+target_compile_definitions(fy-allocators PRIVATE
+    ${COMMON_C_DEFINITIONS}
+    FY_STATIC)
 if(NOT MSVC)
     if(APPLE)
         target_link_libraries(fy-allocators PRIVATE
@@ -1132,10 +1247,14 @@ if(HAVE_LIBCLANG)
 endif()
 add_dependencies(fy-allocators fyaml_static)
 
-endif() # NOT CROSS_COMPILING (internal tools)
+if(BUILD_TESTING AND NOT CROSS_COMPILING AND HAVE_CHECK AND HAVE_BASH)
+    set(CAN_TEST 1)
+else()
+    set(CAN_TEST 0)
+endif()
 
 # Testing
-if(BUILD_TESTING AND NOT CROSS_COMPILING)
+if(CAN_TEST)
     # Include TAP subtest registration functions
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/add-tap-subtests.cmake)
 
@@ -1145,36 +1264,6 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
     # Create src directory for compatibility with test scripts
     # Tests expect tools at build/src/
     file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/src)
-    add_custom_command(TARGET fy-tool POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E create_symlink
-            ${CMAKE_CURRENT_BINARY_DIR}/fy-tool
-            ${CMAKE_CURRENT_BINARY_DIR}/src/fy-tool
-        COMMENT "Creating symlink for test compatibility"
-    )
-
-    # Create symlinks for internal tools
-    add_custom_command(TARGET fy-thread POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E create_symlink
-            ${CMAKE_CURRENT_BINARY_DIR}/fy-thread
-            ${CMAKE_CURRENT_BINARY_DIR}/src/fy-thread
-    )
-    add_custom_command(TARGET fy-b3sum POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E create_symlink
-            ${CMAKE_CURRENT_BINARY_DIR}/fy-b3sum
-            ${CMAKE_CURRENT_BINARY_DIR}/src/fy-b3sum
-    )
-    add_custom_command(TARGET fy-allocators POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E create_symlink
-            ${CMAKE_CURRENT_BINARY_DIR}/fy-allocators
-            ${CMAKE_CURRENT_BINARY_DIR}/src/fy-allocators
-    )
-    if(HAVE_LIBYAML)
-        add_custom_command(TARGET libfyaml-parser POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E create_symlink
-                ${CMAKE_CURRENT_BINARY_DIR}/libfyaml-parser
-                ${CMAKE_CURRENT_BINARY_DIR}/src/libfyaml-parser
-        )
-    endif()
 
     # Build libfyaml-test if check is available
     if(HAVE_COMPATIBLE_CHECK)
@@ -1189,6 +1278,7 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
             test/libfyaml-test-private-id.c
             test/libfyaml-test-parser.c
             test/libfyaml-test-thread.c
+            ${GETOPT_SOURCES}
         )
 
         target_compile_options(libfyaml-test PRIVATE ${COMMON_C_FLAGS})
@@ -1202,6 +1292,7 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
             ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
             ${CMAKE_CURRENT_BINARY_DIR}
             ${CHECK_INCLUDE_DIRS}
+            ${GETOPT_INCLUDES}
         )
 
         # Link against static library to access private symbols
@@ -1247,13 +1338,10 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
             RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
         )
 
-        # Add libfyaml.test
+        # Add the libfyaml-test binary as the libfyaml test
         add_test(NAME libfyaml
-            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test/libfyaml.test
+            COMMAND $<TARGET_FILE:libfyaml-test>
             WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-        )
-        set_tests_properties(libfyaml PROPERTIES
-            ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test"
         )
     endif()
 
@@ -1265,28 +1353,18 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
     add_testemitter_tests(testemitter-streaming "--streaming")
     add_testemitter_tests(testemitter-restreaming "--streaming --recreating")
 
-    # Network and git-dependent tests
-    if(HAVE_NETWORK AND HAVE_GIT)
-        # YAML test suite - setup fixture
-        add_test(NAME yaml-test-suite-setup
-            COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_BINARY_DIR}/test
-                ${CMAKE_COMMAND}
-                -DGIT_EXECUTABLE=${GIT_EXECUTABLE}
-                -DTESTSUITEURL=${TESTSUITEURL}
-                -DTESTSUITECHECKOUT=${TESTSUITECHECKOUT}
-                -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/test
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/setup-yaml-test-suite.cmake
-        )
-        set_tests_properties(yaml-test-suite-setup PROPERTIES
-            FIXTURES_SETUP yaml-test-suite-data
-        )
+    # Network-dependent tests using FetchContent
+    if(HAVE_NETWORK)
+        # Download test suites at configure time via FetchContent
+        message(STATUS "Fetching YAML test suite...")
+        FetchContent_MakeAvailable(yaml_test_suite)
+        message(STATUS "Fetching JSON test suite...")
+        FetchContent_MakeAvailable(json_test_suite)
 
         # YAML test suite tests - register individual subtests
-        # Three modes (handled automatically by add_testsuite_tests):
-        # 1. If test-suite-data exists: scan filesystem and register tests
-        # 2. If cmake/testsuite-tests.cmake exists: use pre-generated list
-        # 3. Otherwise: use monolithic test (re-run cmake after downloading data)
-        # To generate cmake/testsuite-tests.cmake, see cmake/README-testsuite-generation.md
+        # Two modes (handled automatically by add_testsuite_tests):
+        # 1. If test-suite-data exists (via FetchContent symlink): scan filesystem
+        # 2. If cmake/testsuite-tests.cmake exists: use pre-generated list (offline builds)
         add_testsuite_tests(testsuite testsuite.test)
         add_testsuite_tests(testsuite-evstream testsuite-evstream.test)
         add_testsuite_tests(testsuite-resolution testsuite-resolution.test)
@@ -1294,31 +1372,9 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
             add_testsuite_tests(testsuite-json testsuite-json.test)
         endif()
 
-        # JSON test suite - setup fixture
-        add_test(NAME json-test-suite-setup
-            COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_BINARY_DIR}/test
-                ${CMAKE_COMMAND}
-                -DGIT_EXECUTABLE=${GIT_EXECUTABLE}
-                -DTESTSUITEURL=${JSONTESTSUITEURL}
-                -DTESTSUITECHECKOUT=${JSONTESTSUITECHECKOUT}
-                -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/test
-                -DREPO_NAME=json-test-suite-data
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/setup-yaml-test-suite.cmake
-        )
-        set_tests_properties(json-test-suite-setup PROPERTIES
-            FIXTURES_SETUP json-test-suite-data
-        )
-
         # JSON test suite - register individual subtests
-        # Three modes (handled automatically by add_jsontestsuite_tests):
-        # 1. If json-test-suite-data exists: scan filesystem and register tests
-        # 2. If cmake/jsontestsuite-tests.cmake exists: use pre-generated list
-        # 3. Otherwise: use monolithic test (re-run cmake after downloading data)
-        # To generate cmake/jsontestsuite-tests.cmake, see cmake/README-testsuite-generation.md
         add_jsontestsuite_tests()
     endif()
-
-    set(TEST_DRIVER ${CMAKE_SOURCE_DIR}/build-aux/tap-driver.sh)
 
     # Build all test dependencies as part of default 'all' target
     # Note: CMake's 'make test' target doesn't trigger builds by design.
@@ -1329,49 +1385,6 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
     endif()
     if(HAVE_LIBYAML)
         list(APPEND TEST_DEPENDENCIES libfyaml-parser)
-    endif()
-
-    add_custom_target(build_tests ALL
-        DEPENDS ${TEST_DEPENDENCIES}
-        COMMENT "Building test dependencies"
-    )
-
-    # Convenience target that builds and runs tests in one command
-    add_custom_target(build_and_test
-        COMMAND ${CMAKE_CTEST_COMMAND}
-        DEPENDS ${TEST_DEPENDENCIES}
-        COMMENT "Building and running tests"
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    )
-
-    # Autotools-compatible test runner using test-driver
-    # NOTE: Named 'check-am' instead of 'check' to avoid conflicts with check library target
-    add_custom_target(check-am
-        COMMENT "Running tests via Automake test-driver"
-    )
-
-    if(HAVE_COMPATIBLE_CHECK)
-        set(TEST_EXECUTABLES
-            libfyaml-test
-        )
-
-        foreach(exe IN LISTS TEST_EXECUTABLES)
-            add_custom_target(check_${exe}
-                    COMMAND ${CMAKE_COMMAND} -E env TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR} TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR} SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test
-                    ${TEST_DRIVER}
-                    --test-name ${exe}
-                    --log-file ${exe}.log
-                    --trs-file ${exe}.trs
-                    --comments
-                    --color-tests yes
-                    --expect-failure 0
-                    -- ${CMAKE_CURRENT_BINARY_DIR}/test/${exe}
-                WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-                COMMENT "Running ${exe}"
-            )
-            add_dependencies(check_${exe} ${exe})
-            add_dependencies(check-am check_${exe})
-        endforeach()
     endif()
 
     set(TEST_SUITES
@@ -1392,25 +1405,6 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
     if(HAVE_LIBCLANG)
         list(APPEND TEST_SUITES testreflection.test)
     endif()
-
-    foreach(suite IN LISTS TEST_SUITES)
-        add_custom_target(check_${suite}
-            COMMAND ${CMAKE_COMMAND} -E env TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR} TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR} SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test
-                ${TEST_DRIVER}
-                --test-name ${suite}
-                --log-file ${suite}.log
-                --trs-file ${suite}.trs
-                --comments
-                --color-tests yes
-                --expect-failure 0
-                -- ${CMAKE_SOURCE_DIR}/test/${suite}
-            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-            COMMENT "Running ${suite}"
-        )
-        add_dependencies(check_${suite} fy-tool)
-        add_dependencies(check-am check_${suite})
-    endforeach()
-
 endif()
 
 # Documentation
@@ -1467,15 +1461,17 @@ install(TARGETS fyaml fy-tool
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
-# Create symlinks for fy-tool
-install(CODE "
-    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-dump WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
-    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-filter WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
-    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-testsuite WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
-    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-join WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
-    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-ypath WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
-    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-compose WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
-")
+# Create symlinks for fy-tool (not on Windows - symlinks require special privileges)
+if(NOT WIN32)
+    install(CODE "
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-dump WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-filter WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-testsuite WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-join WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-ypath WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-compose WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+    ")
+endif()
 
 install(EXPORT libfyaml-targets
     FILE libfyaml-targets.cmake
@@ -1540,6 +1536,7 @@ message(STATUS "Target system:         ${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_PROCE
 message(STATUS "Cross compiling:       ${CROSS_COMPILING}")
 message(STATUS "C compiler:            ${CMAKE_C_COMPILER}")
 message(STATUS "Build type:            ${CMAKE_BUILD_TYPE}")
+message(STATUS "HAVE_BASH:             ${HAVE_BASH}")
 message(STATUS "HAVE_CHECK:            ${HAVE_CHECK}")
 message(STATUS "HAVE_COMPATIBLE_CHECK: ${HAVE_COMPATIBLE_CHECK}")
 message(STATUS "HAVE_LIBYAML:          ${HAVE_LIBYAML}")
@@ -1563,16 +1560,9 @@ message(STATUS "TESTSUITEURL:          ${TESTSUITEURL}")
 message(STATUS "TESTSUITECHECKOUT:     ${TESTSUITECHECKOUT}")
 message(STATUS "JSONTESTSUITEURL:      ${JSONTESTSUITEURL}")
 message(STATUS "JSONTESTSUITECHECKOUT: ${JSONTESTSUITECHECKOUT}")
+message(STATUS "CAN_TEST:              ${CAN_TEST}")
 message(STATUS "")
-if(BUILD_TESTING AND NOT CROSS_COMPILING)
-    message(STATUS "Test targets:")
-    message(STATUS "  make all test       - Build everything then run CTest (2464 individual tests)")
-    message(STATUS "  make build_and_test - Convenience target: build and test in one command")
-    message(STATUS "  make check-am       - Autotools-compatible TAP test runner (~10 test scripts)")
-    message(STATUS "")
-    message(STATUS "NOTE: 'make test' alone will fail if binaries aren't built. Use 'make all test'.")
-    message(STATUS "")
-elseif(CROSS_COMPILING)
+if(CROSS_COMPILING)
     message(STATUS "Tests disabled when cross-compiling (target binaries cannot execute on build host)")
     message(STATUS "")
 endif()

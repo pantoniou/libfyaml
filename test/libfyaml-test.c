@@ -11,20 +11,14 @@
 #endif
 
 #include <stdio.h>
-#include <getopt.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 #include <check.h>
 
 #include "fy-valgrind.h"
 
 #define QUIET_DEFAULT			false
-
-static struct option lopts[] = {
-	{"quiet",		no_argument,		0,	'q' },
-	{"help",		no_argument,		0,	'h' },
-	{0,			0,              	0,	 0  },
-};
 
 static void display_usage(FILE *fp, char *progname)
 {
@@ -70,25 +64,24 @@ Suite *libfyaml_suite(void)
 
 int main(int argc, char *argv[])
 {
-	int exitcode = EXIT_FAILURE, opt, lidx;
+	int exitcode = EXIT_FAILURE;
 	bool quiet = QUIET_DEFAULT;
-	int number_failed;
+	int i, number_failed;
 	Suite *s;
 	SRunner *sr;
 
 	fy_valgrind_check(&argc, &argv);
 
-	while ((opt = getopt_long(argc, argv, "qh", lopts, &lidx)) != -1) {
-		switch (opt) {
-		case 'q':
+	/* don't use getopt - it's not there in windows */
+	for (i = 1; i < argc; i++) {
+		if (!strcmp(argv[i], "-q") || !strcmp(argv[1], "--quiet")) {
 			quiet = true;
-			break;
-		case 'h' :
-		default:
-			if (opt != 'h')
-				fprintf(stderr, "Unknown option\n");
-			display_usage(opt == 'h' ? stdout : stderr, argv[0]);
+		} else if (!strcmp(argv[1], "-h") || !strcmp(argv[1], "--help")) {
+			display_usage(stdout, argv[0]);
 			return EXIT_SUCCESS;
+		} else {
+			display_usage(stderr, argv[0]);
+			return EXIT_FAILURE;
 		}
 	}
 

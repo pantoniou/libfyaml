@@ -14,8 +14,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-#include <getopt.h>
-#include <unistd.h>
 #include <limits.h>
 
 #include <check.h>
@@ -1533,7 +1531,7 @@ START_TEST(manual_scalar_esc)
 {
 #undef MANUAL_SCALAR_ESC
 #undef MANUAL_SCALAR_ESC_TXT
-#define MANUAL_SCALAR_ESC "\\\"\0\a\b\t\v\f\r\e\xc2\x85\xc2\xa0\xe2\x80\xa8\xe2\x80\xa9"
+#define MANUAL_SCALAR_ESC "\\\"\0\a\b\t\v\f\r\x1b\xc2\x85\xc2\xa0\xe2\x80\xa8\xe2\x80\xa9"
 #define MANUAL_SCALAR_ESC_TXT "\"\\\\\\\"\\0\\a\\b\\t\\v\\f\\r\\e\\N\\_\\L\\P\""
 	const char *what = MANUAL_SCALAR_ESC;
 	size_t what_sz = sizeof(MANUAL_SCALAR_ESC) - 1;

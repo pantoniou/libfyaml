@@ -11,20 +11,16 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <sys/mman.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/ioctl.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <limits.h>
+#include <fcntl.h>
 
 #include <libfyaml.h>
 
+#include "fy-win32.h"
 #include "fy-parse.h"
 
 #include "fy-utils.h"

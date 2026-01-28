@@ -21,11 +21,17 @@
 #include <time.h>
 #include <inttypes.h>
 
-#include <libfyaml.h>
+#include <getopt.h>
+
+#ifndef _WIN32
+#include "fy-win32.h"
+#endif
 
 #if defined(HAVE_LIBYAML) && HAVE_LIBYAML
 #include <yaml.h>
 #endif
+
+#include <libfyaml.h>
 
 #include "fy-parse.h"
 #include "fy-walk.h"

@@ -11,13 +11,15 @@
 #include <alloca.h>
 #endif
 
+#ifndef _WIN32
 #include <pthread.h>
-#include <stdlib.h>
+#endif
 
 #include "blake3.h"
 #include "blake3_impl.h"
 #include "blake3_internal.h"
 
+#include "fy-win32.h"
 #include "fy-thread.h"
 
 // GCC gets confused sometimes

@@ -1205,7 +1205,7 @@ char *fy_event_to_string(struct fy_event *fye)
 			case '\v':
 				fprintf(fp, "\\v");
 				break;
-			case '\e':
+			case '\x1b':
 				fprintf(fp, "\\e");
 				break;
 			case 0x85:

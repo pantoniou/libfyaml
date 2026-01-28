@@ -127,7 +127,7 @@ struct fy_utf8_fmt_esc_map {
 };
 
 static const struct fy_utf8_fmt_esc_map esc_all = {
-	.ch  = (const int []){ '\\', '\0', '\b', '\r', '\t', '\f', '\n', '\v', '\a', '\e', 0x85, 0xa0, 0x2028, 0x2029, -1 },
+	.ch  = (const int []){ '\\', '\0', '\b', '\r', '\t', '\f', '\n', '\v', '\a', '\x1b', 0x85, 0xa0, 0x2028, 0x2029, -1 },
 	.map = (const int []){ '\\',  '0',  'b',  'r',  't',  'f',  'n',  'v',  'a',  'e',  'N',  '_',    'L',    'P',  0 }
 };
 
@@ -351,7 +351,7 @@ int fy_utf8_parse_escape(const char **strp, size_t len, enum fy_utf8_escape esc)
 			value = '\v';
 			break;
 		case 'e':
-			value = '\e';
+			value = '\x1b';
 			break;
 		case ' ':
 			value = ' ';

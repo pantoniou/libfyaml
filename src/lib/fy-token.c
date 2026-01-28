@@ -1533,7 +1533,7 @@ const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 			case '\v':
 				fy_emit_accum_utf8_put(&ea, 'v');
 				break;
-			case '\e':
+			case '\x1b':
 				fy_emit_accum_utf8_put(&ea, 'e');
 				break;
 			case 0x85:

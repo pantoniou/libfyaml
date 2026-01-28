@@ -15,18 +15,21 @@
 #include <time.h>
 #include <inttypes.h>
 #include <math.h>
+#include <stdio.h>
+
+#ifndef _WIN32
 #include <sys/mman.h>
+#include <unistd.h>
+#endif
 
 #ifdef HAVE_ALLOCA_H
 #include <alloca.h>
 #endif
 
-
-#include <stdio.h>
-
 /* for container_of */
 #include "fy-list.h"
 #include "fy-utils.h"
+#include "fy-win32.h"
 
 #include "fy-allocator-mremap.h"
 

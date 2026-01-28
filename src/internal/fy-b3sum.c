@@ -14,23 +14,26 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/mman.h>
-#include <sys/types.h>
-#include <sys/stat.h>
+#include <stdbool.h>
+#include <ctype.h>
+#include <assert.h>
 
 #ifdef HAVE_ALLOCA_H
 #include <alloca.h>
 #endif
 
-#include <stdbool.h>
-#include <getopt.h>
-#include <ctype.h>
-#include <assert.h>
+#ifndef _WIN32
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#else
+#include "fy-win32.h"
+#endif
 
-#include <stdatomic.h>
+#include <getopt.h>
+
 #include <blake3.h>
 
 #define OPT_NO_MMAP		128

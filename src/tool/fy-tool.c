@@ -14,13 +14,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-#include <getopt.h>
 #include <ctype.h>
-#include <unistd.h>
+
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <regex.h>
 #include <stdalign.h>
 #include <inttypes.h>
 #include <float.h>
@@ -30,8 +28,21 @@
 
 #include <libfyaml.h>
 
+#ifndef _WIN32
+#include <unistd.h>
+#include <regex.h>
+#else
+#include "fy-win32.h"
+#endif
+
+#include <getopt.h>
+
 #include "fy-valgrind.h"
 #include "fy-tool-util.h"
+
+#ifdef _WIN32
+#undef SORT_DEFAULT
+#endif
 
 #define QUIET_DEFAULT			false
 #define INCLUDE_DEFAULT			""
@@ -1124,12 +1135,59 @@ int main(int argc, char *argv[])
 
 	fy_valgrind_check(&argc, &argv);
 
+#ifdef _WIN32
+	/* On Windows, set stdin/stdout to binary mode to prevent CRLF conversion */
+	_setmode(_fileno(stdin), _O_BINARY);
+	_setmode(_fileno(stdout), _O_BINARY);
+
+	/* Enable ANSI escape sequence processing for colored output.
+	 * Skip this on Wine - the host terminal handles ANSI natively and
+	 * enabling VT processing causes Wine to interpret sequences internally. */
+	if (!GetModuleHandleA("ntdll.dll") ||
+	    !GetProcAddress(GetModuleHandleA("ntdll.dll"), "wine_get_version")) {
+		HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+		HANDLE hErr = GetStdHandle(STD_ERROR_HANDLE);
+		DWORD dwMode = 0;
+		if (hOut != INVALID_HANDLE_VALUE && GetConsoleMode(hOut, &dwMode)) {
+			dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+			SetConsoleMode(hOut, dwMode);
+		}
+		if (hErr != INVALID_HANDLE_VALUE && GetConsoleMode(hErr, &dwMode)) {
+			dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+			SetConsoleMode(hErr, dwMode);
+		}
+	}
+#endif
+
 	/* select the appropriate tool mode */
 	progname = strrchr(argv[0], '/');
+#ifdef _WIN32
+	/* On Windows, also check for backslash */
+	{
+		char *p = strrchr(argv[0], '\\');
+		if (p && (!progname || p > progname))
+			progname = p;
+	}
+#endif
 	if (!progname)
 		progname = argv[0];
 	else
 		progname++;
+
+#ifdef _WIN32
+	/* On Windows, strip .exe extension for comparison */
+	{
+		static char progname_buf[256];
+		size_t len = strlen(progname);
+		if (len > 4 && !_stricmp(progname + len - 4, ".exe")) {
+			if (len - 4 < sizeof(progname_buf)) {
+				memcpy(progname_buf, progname, len - 4);
+				progname_buf[len - 4] = '\0';
+				progname = progname_buf;
+			}
+		}
+	}
+#endif
 
 	/* default mode is dump */
 	if (!strcmp(progname, "fy-filter"))

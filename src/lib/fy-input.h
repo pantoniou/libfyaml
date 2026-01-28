@@ -105,6 +105,7 @@ struct fy_input {
 	void *addr;		/* mmaped for files, allocated for streams */
 	bool eof : 1;		/* got EOF */
 	bool err : 1;		/* got an error */
+	bool pending_cr;	/* for line ending normalization across read boundaries */
 
 	/* propagated */
 	bool json_mode;
@@ -725,7 +726,14 @@ fy_reader_advance_lb_mode(struct fy_reader *fyr, const int c, const enum fy_lb_m
 {
 	assert(fy_utf8_is_valid(c));
 	fy_reader_advance_octets(fyr, fy_utf8_width(c));
-	fy_reader_update_state_lb_mode(fyr, c, lb_mode);
+	/* Handle CRLF as single line break */
+	if (c == '\r' && fy_reader_peek(fyr) == '\n') {
+		fy_reader_advance_octets(fyr, 1);
+		fyr->column = 0;
+		fyr->line++;
+	} else {
+		fy_reader_update_state_lb_mode(fyr, c, lb_mode);
+	}
 }
 
 static FY_ALWAYS_INLINE inline void

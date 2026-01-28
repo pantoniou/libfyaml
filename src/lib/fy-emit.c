@@ -14,7 +14,6 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <limits.h>
-#include <unistd.h>
 #include <ctype.h>
 #include <errno.h>
 
@@ -1091,7 +1090,7 @@ void fy_emit_token_write_quoted(struct fy_emitter *emit, struct fy_token *fyt, i
 					case '\v':
 						fy_emit_accum_utf8_put(&emit->ea, 'v');
 						break;
-					case '\e':
+					case '\x1b':	// \e
 						fy_emit_accum_utf8_put(&emit->ea, 'e');
 						break;
 					case 0x85:

@@ -9,12 +9,16 @@
 #include "config.h"
 #endif
 
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/stat.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <fcntl.h>
 
+#ifndef _WIN32
+#include <unistd.h>
+#include <sys/stat.h>
+#endif
+
+#include "fy-win32.h"
 #include "fy-blob.h"
 
 /* define optimized methods for probing */
