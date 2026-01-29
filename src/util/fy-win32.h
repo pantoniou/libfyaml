@@ -228,18 +228,67 @@ static inline int fy_win32_munmap(void *addr, size_t length)
 #define STDERR_FILENO 2
 #endif
 
-/* Use _open, _close, _read, _write on Windows */
+/* Use _open, _close on Windows */
 #ifndef open
 #define open _open
 #endif
 #ifndef close
 #define close _close
 #endif
+
+/*
+ * Windows _read/_write use unsigned int (32-bit) for count.
+ * Provide wrappers that handle size_t properly by chunking large I/O.
+ */
+static inline ssize_t fy_win32_read(int fd, void *buf, size_t count)
+{
+	unsigned char *p = (unsigned char *)buf;
+	size_t remaining = count;
+	ssize_t total = 0;
+
+	while (remaining > 0) {
+		unsigned int chunk = (remaining > UINT_MAX) ? UINT_MAX : (unsigned int)remaining;
+		int ret = _read(fd, p, chunk);
+		if (ret < 0)
+			return (total > 0) ? total : -1;
+		if (ret == 0)
+			break;
+		total += ret;
+		p += ret;
+		remaining -= ret;
+		if ((unsigned int)ret < chunk)
+			break;  /* short read */
+	}
+	return total;
+}
+
+static inline ssize_t fy_win32_write(int fd, const void *buf, size_t count)
+{
+	const unsigned char *p = (const unsigned char *)buf;
+	size_t remaining = count;
+	ssize_t total = 0;
+
+	while (remaining > 0) {
+		unsigned int chunk = (remaining > UINT_MAX) ? UINT_MAX : (unsigned int)remaining;
+		int ret = _write(fd, p, chunk);
+		if (ret < 0)
+			return (total > 0) ? total : -1;
+		if (ret == 0)
+			break;
+		total += ret;
+		p += ret;
+		remaining -= ret;
+		if ((unsigned int)ret < chunk)
+			break;  /* short write */
+	}
+	return total;
+}
+
 #ifndef read
-#define read _read
+#define read fy_win32_read
 #endif
 #ifndef write
-#define write _write
+#define write fy_win32_write
 #endif
 #ifndef lseek
 #define lseek _lseek
