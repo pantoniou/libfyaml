@@ -178,7 +178,7 @@ static void *fy_linear_alloc(struct fy_allocator *a, int tag, size_t size, size_
 	do {
 		next = fy_atomic_load(&la->next);
 		s = fy_ptr_align(la->start + next, align);
-		new_next = (size_t)(((char *)s + size) - la->start);
+		new_next = (size_t)(((char *)s + size) - (char *)la->start);
 		/* handle both overflow and underflow */
 		if (new_next > la->cfg.size)
 			goto err_out;

@@ -14,6 +14,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef HAVE_ALLOCA_H
+#include <alloca.h>
+#endif
+
 #ifdef _WIN32
 #include "fy-win32.h"
 #include <malloc.h>
@@ -23,18 +28,16 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-
-#ifdef HAVE_ALLOCA_H
-#include <alloca.h>
 #endif
 
 #include <stdbool.h>
-#include "fy-getopt.h"
 #include <ctype.h>
 #include <assert.h>
 
 #include <stdatomic.h>
 #include <blake3.h>
+
+#include "fy-getopt.h"
 
 #define OPT_NO_MMAP		128
 #define OPT_NO_MTHREAD		129

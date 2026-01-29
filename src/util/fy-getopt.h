@@ -8,9 +8,8 @@
 #define FY_GETOPT_H
 
 #ifdef _WIN32
-#include "getopt.h"
+#include "getopt-fallback.h"
 #else
-#define INCLUDED_GETOPT_PORT_H	// guard
 #include <getopt.h>
 #endif
 

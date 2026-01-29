@@ -16,6 +16,7 @@
 #include "fy-win32.h"
 #endif
 
+#ifndef _WIN32
 #include <pthread.h>
 #endif
 

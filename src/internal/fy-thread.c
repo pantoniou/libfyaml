@@ -14,22 +14,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef _WIN32
-#include "fy-win32.h"
-#include <malloc.h>
-#else
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 
 #ifdef HAVE_ALLOCA_H
 #include <alloca.h>
 #endif
 
+#ifdef _WIN32
+#include "fy-win32.h"
+#include <malloc.h>
+#endif
+
+#ifndef _WIN32
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#endif
+
 #include <stdbool.h>
-#include "fy-getopt.h"
 #include <ctype.h>
 #include <assert.h>
 #include <time.h>
@@ -42,6 +45,8 @@
 
 #include "fy-atomics.h"
 #include "fy-thread.h"
+
+#include "fy-getopt.h"
 
 /* Helper to get number of online processors */
 static inline unsigned int get_num_processors(void)

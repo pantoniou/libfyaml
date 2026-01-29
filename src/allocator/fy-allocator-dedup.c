@@ -875,7 +875,7 @@ again:
 		/* verify it's aligned correctly */
 		assert(((uintptr_t)mem & (align - 1)) == 0);
 
-		de = (char *)mem + de_offset;
+		de = (void *)((char *)mem + de_offset);
 
 		de->hash = hash;
 		de->size = total_size;

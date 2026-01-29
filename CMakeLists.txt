@@ -992,7 +992,7 @@ set(FY_TOOL_SOURCES
 
 # Add portable getopt on Windows
 if(WIN32)
-    list(APPEND FY_TOOL_SOURCES src/util/getopt.c)
+    list(APPEND FY_TOOL_SOURCES src/util/getopt-fallback.c)
 endif()
 
 add_executable(fy-tool ${FY_TOOL_SOURCES})
@@ -1019,7 +1019,7 @@ if(NOT CROSS_COMPILING)
 
 # Helper variable for Windows getopt source
 if(WIN32)
-    set(FY_GETOPT_SOURCE src/util/getopt.c)
+    set(FY_GETOPT_SOURCE src/util/getopt-fallback.c)
 else()
     set(FY_GETOPT_SOURCE)
 endif()
