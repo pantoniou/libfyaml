@@ -140,11 +140,16 @@ else()
 endif()
 
 # Check for required dependencies
-set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
-set(THREADS_PREFER_PTHREAD_FLAG TRUE)
-find_package(Threads REQUIRED)
-if(NOT CMAKE_USE_PTHREADS_INIT)
-    message(FATAL_ERROR "Missing required pthread support")
+if(NOT WIN32)
+    set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+    set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+    find_package(Threads REQUIRED)
+    if(NOT CMAKE_USE_PTHREADS_INIT)
+        message(FATAL_ERROR "Missing required pthread support")
+    endif()
+else()
+    # Windows uses native threading APIs
+    set(CMAKE_USE_WIN32_THREADS_INIT TRUE)
 endif()
 
 # Check for headers and functions
@@ -433,7 +438,11 @@ set(TARGET_HAS_AVX2 FALSE)
 set(TARGET_HAS_AVX512 FALSE)
 set(TARGET_HAS_NEON FALSE)
 
-if(TARGET_CPU_ANY_X86 AND NOT ENABLE_PORTABLE_TARGET)
+# Disable SIMD assembly on Windows (uses Unix assembly syntax)
+# Use portable implementations instead
+if(WIN32)
+    message(STATUS "Windows detected: using portable SIMD implementations")
+elseif(TARGET_CPU_ANY_X86 AND NOT ENABLE_PORTABLE_TARGET)
     check_c_source_compiles("
         #include <emmintrin.h>
         int main() { __m128i a = _mm_setzero_si128(); return 0; }
@@ -498,7 +507,20 @@ endif()
 
 # Build common compiler flags for all targets
 set(COMMON_C_FLAGS)
-set(COMMON_C_DEFINITIONS _GNU_SOURCE)
+if(WIN32)
+    set(COMMON_C_DEFINITIONS WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
+else()
+    set(COMMON_C_DEFINITIONS _GNU_SOURCE)
+endif()
+
+# MSVC requires C11 for stdatomic.h
+if(MSVC)
+    # Use /std:c17 for better C11/C17 support in MSVC
+    set(CMAKE_C_STANDARD 17)
+    set(CMAKE_C_STANDARD_REQUIRED ON)
+    # Enable experimental C11 atomics in MSVC
+    add_compile_options(/experimental:c11atomics)
+endif()
 
 if(NOT MSVC)
     list(APPEND COMMON_C_FLAGS -Wall -Wsign-compare)
@@ -615,6 +637,7 @@ set(UTILHDRS
     src/util/fy-align.h
     src/util/fy-bit64.h
     src/util/fy-vlsize.h
+    src/util/fy-win32.h
 )
 
 set(LIBSRCS
@@ -802,6 +825,13 @@ foreach(blake3_target ${BLAKE3_TARGETS})
     target_sources(fyaml PRIVATE $<TARGET_OBJECTS:${blake3_target}>)
 endforeach()
 
+# On Windows, use a .def file to export only the public API symbols
+# This is needed because libfyaml uses GCC-style suffix attributes for FY_EXPORT
+# which are incompatible with MSVC's __declspec prefix requirement
+if(WIN32 AND BUILD_SHARED_LIBS)
+    target_sources(fyaml PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/lib/fyaml.def)
+endif()
+
 add_library(libfyaml::libfyaml ALIAS fyaml)
 
 # Always build a static library for internal tools (they need access to internal APIs)
@@ -839,10 +869,12 @@ target_include_directories(fyaml_static
         ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-target_link_libraries(fyaml_static
-    PUBLIC
-        Threads::Threads
-)
+if(NOT WIN32)
+    target_link_libraries(fyaml_static
+        PUBLIC
+            Threads::Threads
+    )
+endif()
 
 # Add libclang support if available
 add_libclang_to_target(fyaml_static INTERFACE)
@@ -903,19 +935,17 @@ target_include_directories(fyaml
         ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
 )
 
-target_link_libraries(fyaml
-    PUBLIC
-        Threads::Threads
-)
+if(NOT WIN32)
+    target_link_libraries(fyaml
+        PUBLIC
+            Threads::Threads
+    )
+else()
+    # Windows needs no extra libraries for threading (uses kernel32)
+endif()
 
 # Add libclang support if available
 add_libclang_to_target(fyaml PRIVATE)
-
-# Generate config.h
-configure_file(
-    ${CMAKE_SOURCE_DIR}/cmake/config.h.in
-    ${CMAKE_BINARY_DIR}/config.h
-)
 
 # Generate config.h
 configure_file(
@@ -933,10 +963,13 @@ target_compile_definitions(fyaml PRIVATE
 target_compile_definitions(fyaml PRIVATE ${COMMON_C_DEFINITIONS})
 target_compile_options(fyaml PRIVATE ${COMMON_C_FLAGS})
 
-# Shared options between GCC and CLANG
-if(NOT MSVC)
-    target_compile_options(fyaml PRIVATE ${LIB_OPTS})
+# Shared options between GCC and CLANG (skip for Windows cross-compilation)
+if(NOT MSVC AND NOT WIN32)
     target_compile_options(fyaml PRIVATE -fvisibility=hidden)
+
+    if(BUILD_SHARED_LIBS)
+        target_compile_options(fyaml PRIVATE -fPIC)
+    endif()
 
     if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
         target_compile_options(fyaml PRIVATE -O2)
@@ -950,15 +983,23 @@ if(NOT MSVC)
 endif()
 
 # Build fy-tool
-add_executable(fy-tool
+set(FY_TOOL_SOURCES
     src/tool/fy-tool.c
     src/tool/fy-tool-util.c
     src/tool/fy-tool-dump.c
     src/valgrind/fy-valgrind.h
 )
 
+# Add portable getopt on Windows
+if(WIN32)
+    list(APPEND FY_TOOL_SOURCES src/util/getopt.c)
+endif()
+
+add_executable(fy-tool ${FY_TOOL_SOURCES})
+
 target_include_directories(fy-tool PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/util
 )
 
 target_compile_definitions(fy-tool PRIVATE ${COMMON_C_DEFINITIONS})
@@ -975,6 +1016,13 @@ endif()
 # Skip when cross-compiling since these tools cannot be executed on build host
 
 if(NOT CROSS_COMPILING)
+
+# Helper variable for Windows getopt source
+if(WIN32)
+    set(FY_GETOPT_SOURCE src/util/getopt.c)
+else()
+    set(FY_GETOPT_SOURCE)
+endif()
 
 # libfyaml-parser requires libyaml
 if(HAVE_LIBYAML)
@@ -1027,6 +1075,7 @@ endif()
 add_executable(fy-thread
     src/internal/fy-thread.c
     src/valgrind/fy-valgrind.h
+    ${FY_GETOPT_SOURCE}
 )
 target_include_directories(fy-thread PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -1037,6 +1086,7 @@ target_include_directories(fy-thread PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
     ${CMAKE_CURRENT_BINARY_DIR}
 )
+target_compile_definitions(fy-thread PRIVATE FY_STATIC)
 if(NOT MSVC)
     if(APPLE)
         target_link_libraries(fy-thread PRIVATE
@@ -1063,6 +1113,7 @@ add_dependencies(fy-thread fyaml_static)
 add_executable(fy-b3sum
     src/internal/fy-b3sum.c
     src/valgrind/fy-valgrind.h
+    ${FY_GETOPT_SOURCE}
 )
 target_include_directories(fy-b3sum PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -1074,6 +1125,7 @@ target_include_directories(fy-b3sum PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
     ${CMAKE_CURRENT_BINARY_DIR}
 )
+target_compile_definitions(fy-b3sum PRIVATE FY_STATIC)
 if(NOT MSVC)
     if(APPLE)
         target_link_libraries(fy-b3sum PRIVATE
@@ -1100,6 +1152,7 @@ add_dependencies(fy-b3sum fyaml_static)
 add_executable(fy-allocators
     src/internal/fy-allocators.c
     src/valgrind/fy-valgrind.h
+    ${FY_GETOPT_SOURCE}
 )
 target_include_directories(fy-allocators PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -1111,6 +1164,7 @@ target_include_directories(fy-allocators PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
     ${CMAKE_CURRENT_BINARY_DIR}
 )
+target_compile_definitions(fy-allocators PRIVATE FY_STATIC)
 if(NOT MSVC)
     if(APPLE)
         target_link_libraries(fy-allocators PRIVATE
