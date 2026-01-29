@@ -43,6 +43,10 @@ else()
     set(VERSION_EXTRA "")
 endif()
 
+# Optional MSVC cross-compilation support via msvc-wine
+# Usage: cmake -DMSVC_WINE_DIR=/path/to/msvc [-DMSVC_WINE_COMPILER=cl|clang-cl|clang] ..
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/MSVCCrossCompile.cmake OPTIONAL)
+
 project(libfyaml LANGUAGES C ASM VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH})
 
 # Must use GNUInstallDirs to install libraries into correct locations on all platforms
