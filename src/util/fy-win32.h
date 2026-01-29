@@ -551,7 +551,7 @@ struct iovec {
 };
 #endif
 
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && !defined(__clang__)
 typedef union {
     void*        p;
     double       d;

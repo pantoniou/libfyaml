@@ -152,6 +152,11 @@ else()
     set(CMAKE_USE_WIN32_THREADS_INIT TRUE)
 endif()
 
+# detect if we're on clang-cl
+if(WIN32 AND MSVC AND CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    set(CLANG_CL TRUE)
+endif()
+
 # Check for headers and functions
 check_include_file("alloca.h" HAVE_ALLOCA_H)
 check_include_file("byteswap.h" HAVE_BYTESWAP_H)
@@ -518,8 +523,11 @@ if(MSVC)
     # Use /std:c17 for better C11/C17 support in MSVC
     set(CMAKE_C_STANDARD 17)
     set(CMAKE_C_STANDARD_REQUIRED ON)
-    # Enable experimental C11 atomics in MSVC
-    add_compile_options(/experimental:c11atomics)
+
+    # Enable experimental C11 atomics in MSVC (only)
+    if(NOT CLANG_CL)
+        add_compile_options(/experimental:c11atomics)
+    endif()
 endif()
 
 if(NOT MSVC)
@@ -579,8 +587,10 @@ endif()
 
 # the options for the libs
 set(LIB_OPTS "")
-if(BUILD_SHARED_LIBS)
-    list(APPEND LIB_OPTS "-fPIC")
+if(NOT MSVC AND NOT WIN32)
+    if(BUILD_SHARED_LIBS)
+        list(APPEND LIB_OPTS "-fPIC")
+    endif()
 endif()
 
 # Network tests
