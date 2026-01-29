@@ -2940,13 +2940,9 @@ static int do_fd_output(struct fy_emitter *emit, enum fy_emitter_write_type type
 	total = 0;
 	while (len > 0) {
 
-#ifndef _WIN32
 		do {
 			wrn = write(fd, str, len);
 		} while (wrn == -1 && errno == EAGAIN);
-#else
-		wrn = write(fd, str, (unsigned int)len);
-#endif
 
 		if (wrn == -1)
 			return -1;
@@ -3858,13 +3854,9 @@ static inline ssize_t raw_default_output(FILE *fp, int fd, const char *data, siz
 	wrn = 0;
 	if (fd >= 0) {
 		while (len > 0) {
-#ifndef _WIN32
 			do {
 				twrn = write(fd, data, len);
 			} while (twrn == -1 && errno == EAGAIN);
-#else
-			twrn = write(fd, data, (unsigned int)len);
-#endif
 			if (twrn <= 0)
 				return wrn;
 			data += twrn;

@@ -67,13 +67,9 @@ void *fy_blob_read(const char *file, size_t *sizep)
 	p = blob;
 	left = size;
 	while (left > 0) {
-#ifndef _WIN32
 		do {
 			rdn = read(fd, p, left);
 		} while (rdn == -1 && errno == EAGAIN);
-#else
-		rdn = read(fd, p, (unsigned int)left);
-#endif
 		if (rdn < 0)
 			goto err_out;
 		p += rdn;
@@ -109,13 +105,9 @@ int fy_blob_write(const char *file, const void *blob, size_t size)
 	p = blob;
 	left = size;
 	while (left > 0) {
-#ifndef _WIN32
 		do {
 			wrn = write(fd, p, left);
 		} while (wrn == -1 && errno == EAGAIN);
-#else
-		wrn = write(fd, p, (unsigned int)left);
-#endif
 		if (wrn < 0)
 			goto err_out;
 		p += wrn;
