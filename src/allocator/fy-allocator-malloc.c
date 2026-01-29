@@ -96,8 +96,8 @@ static void fy_malloc_cleanup(struct fy_allocator *a)
 		fy_malloc_tag_cleanup(ma, mt);
 	}
 
-	fy_parent_allocator_free(&ma->a, ma->ids);
-	fy_parent_allocator_free(&ma->a, ma->tags);
+	fy_parent_allocator_free(&ma->a, (void *)ma->ids);
+	fy_parent_allocator_free(&ma->a, (void *)ma->tags);
 }
 
 static int fy_malloc_setup(struct fy_allocator *a, struct fy_allocator *parent, int parent_tag, const void *data)
@@ -228,7 +228,7 @@ static void *fy_malloc_tag_alloc(struct fy_malloc_allocator *ma, struct fy_mallo
 	if (!mem)
 		return NULL;
 
-	me = mem + me_offset;
+	me = (void *)((char *)mem + me_offset);
 
 	me->size = size;
 	fy_malloc_tag_list_lock(mt);
@@ -490,7 +490,7 @@ static int fy_malloc_set_tag_count(struct fy_allocator *a, unsigned int count)
 	}
 	if (ma->ids != ids) {
 		ma->ids = ids;
-		fy_parent_allocator_free(&ma->a, ma->ids);
+		fy_parent_allocator_free(&ma->a, (void *)ma->ids);
 	}
 	ma->tag_count = tag_count;
 	ma->tag_id_count = tag_id_count;
@@ -498,7 +498,7 @@ static int fy_malloc_set_tag_count(struct fy_allocator *a, unsigned int count)
 
 err_out:
 	fy_parent_allocator_free(&ma->a, tags);
-	fy_parent_allocator_free(&ma->a, ids);
+	fy_parent_allocator_free(&ma->a, (void *)ids);
 	return -1;
 }
 

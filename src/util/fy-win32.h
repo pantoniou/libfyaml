@@ -551,6 +551,14 @@ struct iovec {
 };
 #endif
 
+#if defined(_MSC_VER)
+typedef union {
+    void*        p;
+    double       d;
+    __int64      i64;
+} max_align_t;
+#endif
+
 #endif /* _WIN32 */
 
 #endif /* FY_WIN32_H */

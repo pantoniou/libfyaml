@@ -40,42 +40,41 @@
 // #define FY_THREAD_PORTABLE	/* define to use the portable implementation even on linux */
 
 struct fy_work_pool {
-#if !defined(_WIN32)
 	FY_ATOMIC(size_t) work_left;
 #if defined(__linux__) && !defined(FY_THREAD_PORTABLE)
 	FY_ATOMIC(uint32_t) done;
 #elif defined(__APPLE__)
 	dispatch_semaphore_t sem;
+#elif defined(_WIN32)
+	HANDLE sem;
 #else
 	sem_t sem;
-#endif
-#else	// _WIN32
-	HANDLE sem;
 #endif
 };
 
 struct fy_thread {
 	struct fy_thread_pool *tp;
 	unsigned int id;
-#ifndef _WIN32
-	pthread_t tid;
 	FY_ATOMIC(struct fy_thread_work *)work;
 	FY_ATOMIC(struct fy_thread_work *)next_work;
+#ifndef _WIN32
+	pthread_t tid;
+#else
+	HANDLE tid;
+#endif
 #if defined(__linux__) && !defined(FY_THREAD_PORTABLE)
 	FY_ATOMIC(uint32_t) submit;
 	FY_ATOMIC(uint32_t) done;
+#elif defined(_WIN32)
+	HANDLE submit_event;
+	HANDLE done_event;
+	CRITICAL_SECTION lock;
+	CRITICAL_SECTION wait_lock;
 #else
 	pthread_mutex_t lock;
 	pthread_cond_t cond;
 	pthread_mutex_t wait_lock;
 	pthread_cond_t wait_cond;
-#endif
-#else	// _WIN32
-	HANDLE tid;
-	HANDLE submit_event;
-	HANDLE done_event;
-	CRITICAL_SECTION lock;
-	CRITICAL_SECTION wait_lock;
 #endif
 };
 

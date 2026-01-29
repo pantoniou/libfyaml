@@ -191,6 +191,17 @@ static inline void fy_cpu_relax(void)
 #endif
 }
 
+static inline uint64_t
+fy_atomic_get_and_clear_counter(FY_ATOMIC(uint64_t) *ptr)
+{
+	uint64_t v;
+
+	v = fy_atomic_load(ptr);
+	fy_atomic_fetch_sub(ptr, v);
+	return v;
+}
+
+#if 0
 #define fy_atomic_get_and_clear_counter(_ptr) \
 	({ \
 		__typeof__(_ptr) __ptr = (_ptr); \
@@ -198,5 +209,6 @@ static inline void fy_cpu_relax(void)
 		fy_atomic_fetch_sub(__ptr, __v); \
 		__v; \
 	})
+#endif
 
 #endif

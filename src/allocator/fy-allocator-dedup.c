@@ -101,9 +101,9 @@ static void fy_dedup_tag_data_cleanup(struct fy_dedup_tag_data *dtd)
 {
 	struct fy_dedup_allocator *da = dtd->cfg.da;
 
-	fy_parent_allocator_free(&da->a, dtd->buckets);
-	fy_parent_allocator_free(&da->a, dtd->bloom_id);
-	fy_parent_allocator_free(&da->a, dtd->buckets_in_use);
+	fy_parent_allocator_free(&da->a, (void *)dtd->buckets);
+	fy_parent_allocator_free(&da->a, (void *)dtd->bloom_id);
+	fy_parent_allocator_free(&da->a, (void *)dtd->buckets_in_use);
 }
 
 static int fy_dedup_tag_data_setup(struct fy_dedup_tag_data *dtd,
@@ -346,9 +346,9 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 		return -1;
 	}
 
-	bucket_count = 1U << dtd->bucket_count_bits;
+	bucket_count = (size_t)1 << dtd->bucket_count_bits;
 	bucket_used = fy_id_count_used(dtd->buckets_in_use, dtd->bucket_id_count);
-	occupancy_ratio = (double)bucket_used/(double)bucket_count;
+	occupancy_ratio = (float)((double)bucket_used/(double)bucket_count);
 
 	/* do not grow until we're over 60% full */
 	if (occupancy_ratio < da->cfg.minimum_bucket_occupancy) {
@@ -485,7 +485,7 @@ static void fy_dedup_cleanup(struct fy_allocator *a)
 		fy_dedup_tag_cleanup(da, dt);
 	}
 
-	fy_parent_allocator_free(&da->a, da->ids);
+	fy_parent_allocator_free(&da->a, (void *)da->ids);
 	fy_parent_allocator_free(&da->a, da->tags);
 }
 
@@ -1090,7 +1090,7 @@ static int fy_dedup_set_tag_count(struct fy_allocator *a, unsigned int count)
 
 	if (da->ids != ids) {
 		da->ids = ids;
-		fy_parent_allocator_free(&da->a, da->ids);
+		fy_parent_allocator_free(&da->a, (void *)da->ids);
 	}
 
 	da->tag_count = tag_count;
@@ -1100,7 +1100,7 @@ static int fy_dedup_set_tag_count(struct fy_allocator *a, unsigned int count)
 
 err_out:
 	fy_parent_allocator_free(&da->a, alloc_tags);
-	fy_parent_allocator_free(&da->a, alloc_ids);
+	fy_parent_allocator_free(&da->a, (void *)alloc_ids);
 	return -1;
 }
 

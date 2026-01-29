@@ -33,6 +33,7 @@
 /* for container_of */
 #include "fy-list.h"
 #include "fy-utils.h"
+#include "fy-align.h"
 
 #include "fy-allocator.h"
 #include "fy-allocator-linear.h"
@@ -597,7 +598,7 @@ void fy_allocator_free(struct fy_allocator *a, int tag, void *ptr)
 {
 	if (!a || !ptr)
 		return;
-	return fy_allocator_free_nocheck(a, tag, ptr);
+	fy_allocator_free_nocheck(a, tag, ptr);
 }
 
 const void *fy_allocator_storev_hash(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
@@ -734,9 +735,6 @@ fy_allocator_contains(struct fy_allocator *a, int tag, const void *ptr)
 /* respects the parent allocator (or uses posix_memalign if NULL) */
 void *fy_early_parent_allocator_alloc(struct fy_allocator *parent, int parent_tag, size_t size, size_t align)
 {
-	void *ptr;
-	int r;
-
 	/* yeah, not gonna work */
 	if (parent == FY_PARENT_ALLOCATOR_INPLACE)
 		return NULL;
@@ -747,11 +745,7 @@ void *fy_early_parent_allocator_alloc(struct fy_allocator *parent, int parent_ta
 	if (parent)
 		return fy_allocator_alloc(parent, parent_tag, size, align);
 
-	r = posix_memalign(&ptr, align, size);
-	if (r)
-		return NULL;
-
-	return ptr;
+	return fy_align_alloc(align, size);
 }
 
 void fy_early_parent_allocator_free(struct fy_allocator *parent, int parent_tag, void *ptr)
@@ -762,7 +756,7 @@ void fy_early_parent_allocator_free(struct fy_allocator *parent, int parent_tag,
 	if (parent)
 		fy_allocator_free(parent, parent_tag, ptr);
 	else
-		free(ptr);
+		fy_align_free(ptr);
 }
 
 /* respects the parent allocator (or uses posix_memalign if NULL) */
@@ -779,5 +773,5 @@ void fy_parent_allocator_free(struct fy_allocator *a, void *ptr)
 	if (!a || !ptr)
 		return;
 
-	return fy_early_parent_allocator_free(a->parent, a->parent_tag, ptr);
+	fy_early_parent_allocator_free(a->parent, a->parent_tag, ptr);
 }

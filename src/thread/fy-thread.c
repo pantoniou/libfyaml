@@ -84,7 +84,7 @@ static inline struct fy_thread_work *fy_worker_wait_for_work(struct fy_thread *t
 {
 	struct fy_thread_work *work;
 
-	while ((work = atomic_load(&t->work)) == NULL)
+	while ((work = fy_atomic_load(&t->work)) == NULL)
 		WaitForSingleObject(t->submit_event, INFINITE);
 
 	return work;
@@ -97,7 +97,7 @@ static inline void fy_worker_signal_work_done(struct fy_thread *t, struct fy_thr
 	EnterCriticalSection(&t->wait_lock);
 
 	exp_work = work;
-	if (!atomic_compare_exchange_strong(&t->work, &exp_work, NULL))
+	if (!fy_atomic_compare_exchange_strong(&t->work, &exp_work, NULL))
 		assert(exp_work == WORK_SHUTDOWN);
 	SetEvent(t->done_event);
 	LeaveCriticalSection(&t->wait_lock);
@@ -113,7 +113,7 @@ static inline int fy_thread_submit_work_internal(struct fy_thread *t, struct fy_
 
 	EnterCriticalSection(&t->lock);
 	exp_work = NULL;
-	if (!atomic_compare_exchange_strong(&t->work, &exp_work, work)) {
+	if (!fy_atomic_compare_exchange_strong(&t->work, &exp_work, work)) {
 		assert(exp_work == WORK_SHUTDOWN);
 		ret = -1;
 	} else {
@@ -130,7 +130,7 @@ static inline int fy_thread_wait_work_internal(struct fy_thread *t)
 	const struct fy_thread_work *work;
 
 	EnterCriticalSection(&t->wait_lock);
-	while ((work = atomic_load(&t->work)) != NULL) {
+	while ((work = fy_atomic_load(&t->work)) != NULL) {
 		LeaveCriticalSection(&t->wait_lock);
 		WaitForSingleObject(t->done_event, INFINITE);
 		EnterCriticalSection(&t->wait_lock);
@@ -143,7 +143,7 @@ static inline int fy_thread_wait_work_internal(struct fy_thread *t)
 void fy_worker_thread_shutdown(struct fy_thread *t)
 {
 	EnterCriticalSection(&t->lock);
-	atomic_store(&t->work, WORK_SHUTDOWN);
+	fy_atomic_store(&t->work, WORK_SHUTDOWN);
 	SetEvent(t->submit_event);
 	LeaveCriticalSection(&t->lock);
 
