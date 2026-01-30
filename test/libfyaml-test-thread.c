@@ -130,7 +130,7 @@ START_TEST(thread_arg_join)
 	ck_assert_ptr_ne(tp, NULL);
 
 	/* Use arg_join to execute the same function multiple times */
-	fy_thread_arg_join(tp, atomic_increment_worker, NULL, &counter, num_tasks);
+	fy_thread_arg_join(tp, atomic_increment_worker, NULL, (void *)&counter, num_tasks);
 
 	/* Verify counter was incremented num_tasks times */
 	ck_assert_int_eq(fy_atomic_load(&counter), (int)num_tasks);
@@ -233,7 +233,7 @@ START_TEST(thread_steal_mode)
 	ck_assert_ptr_ne(tp, NULL);
 
 	/* Execute many tasks with work stealing enabled */
-	fy_thread_arg_join(tp, steal_mode_worker, NULL, &counter, num_tasks);
+	fy_thread_arg_join(tp, steal_mode_worker, NULL, (void *)&counter, num_tasks);
 
 	/* Verify all tasks completed: 16 tasks * 100 increments each */
 	ck_assert_int_eq(fy_atomic_load(&counter), (int)(num_tasks * 100));
