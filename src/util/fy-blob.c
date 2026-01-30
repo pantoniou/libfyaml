@@ -11,15 +11,14 @@
 
 #include <errno.h>
 #include <stdlib.h>
-
-#ifdef _WIN32
-#include "fy-win32.h"
-#else
-#include <unistd.h>
 #include <fcntl.h>
+
+#ifndef _WIN32
+#include <unistd.h>
 #include <sys/stat.h>
 #endif
 
+#include "fy-win32.h"
 #include "fy-blob.h"
 
 /* define optimized methods for probing */

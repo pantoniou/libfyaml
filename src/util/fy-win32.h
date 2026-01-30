@@ -37,6 +37,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <stdarg.h>
+#include <malloc.h>
 
 /* ssize_t is not defined on Windows */
 #ifndef _SSIZE_T_DEFINED
@@ -257,7 +258,7 @@ static inline ssize_t fy_win32_read(int fd, void *buf, size_t count)
 		unsigned int chunk = (remaining > UINT_MAX) ? UINT_MAX : (unsigned int)remaining;
 		int ret = _read(fd, p, chunk);
 		if (ret < 0)
-			return (total > 0) ? total : -1;
+			return total > 0 ? total : -1;
 		if (ret == 0)
 			break;
 		total += ret;
@@ -279,7 +280,7 @@ static inline ssize_t fy_win32_write(int fd, const void *buf, size_t count)
 		unsigned int chunk = (remaining > UINT_MAX) ? UINT_MAX : (unsigned int)remaining;
 		int ret = _write(fd, p, chunk);
 		if (ret < 0)
-			return (total > 0) ? total : -1;
+			return total > 0 ? total : -1;
 		if (ret == 0)
 			break;
 		total += ret;
@@ -534,8 +535,6 @@ static inline int fy_win32_clock_gettime(int clock_id, struct timespec *tp)
 	FILETIME ft;
 	ULARGE_INTEGER uli;
 
-	(void)clock_id;
-
 	if (clock_id == CLOCK_MONOTONIC) {
 		if (!QueryPerformanceFrequency(&freq))
 			return -1;
@@ -572,28 +571,6 @@ static inline int fy_win32_clock_gettime(int clock_id, struct timespec *tp)
 #ifndef alloca
 #define alloca _alloca
 #endif
-
-/*
- * posix_memalign is defined in fy-align.h with proper _aligned_malloc handling.
- * Code that uses posix_memalign should include fy-align.h and use
- * posix_memalign_free() for deallocation on Windows.
- */
-
-/*
- * open_memstream emulation for Windows
- * This is a simplified implementation using a temporary file
- */
-static inline FILE *fy_win32_open_memstream(char **ptr, size_t *sizeloc)
-{
-	/* Not implemented - would require significant work */
-	/* For now, return NULL and let callers handle it */
-	(void)ptr;
-	(void)sizeloc;
-	errno = ENOSYS;
-	return NULL;
-}
-
-#define open_memstream fy_win32_open_memstream
 
 /*
  * iovec structure for scatter/gather I/O

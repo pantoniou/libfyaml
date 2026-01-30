@@ -11,11 +11,6 @@
 #include <alloca.h>
 #endif
 
-#ifdef _WIN32
-#include <malloc.h>
-#include "fy-win32.h"
-#endif
-
 #include <stdlib.h>
 
 #include "blake3.h"
@@ -23,6 +18,7 @@
 #include "blake3_internal.h"
 
 #include "fy-thread.h"
+#include "fy-win32.h"
 
 struct cpusimd_data {
 	unsigned int num_cpus;

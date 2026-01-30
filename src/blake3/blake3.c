@@ -11,11 +11,6 @@
 #include <alloca.h>
 #endif
 
-#ifdef _WIN32
-#include <malloc.h>  /* for alloca on Windows */
-#include "fy-win32.h"
-#endif
-
 #ifndef _WIN32
 #include <pthread.h>
 #endif
@@ -24,6 +19,7 @@
 #include "blake3_impl.h"
 #include "blake3_internal.h"
 
+#include "fy-win32.h"
 #include "fy-thread.h"
 
 // GCC gets confused sometimes

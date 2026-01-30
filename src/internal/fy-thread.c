@@ -19,11 +19,6 @@
 #include <alloca.h>
 #endif
 
-#ifdef _WIN32
-#include "fy-win32.h"
-#include <malloc.h>
-#endif
-
 #ifndef _WIN32
 #include <unistd.h>
 #include <fcntl.h>
@@ -39,10 +34,9 @@
 #include <stdint.h>
 #include <inttypes.h>
 
-#include <stdatomic.h>
-
 #include <libfyaml.h>
 
+#include "fy-win32.h"
 #include "fy-atomics.h"
 #include "fy-thread.h"
 
@@ -51,14 +45,8 @@
 /* Helper to get number of online processors */
 static inline unsigned int get_num_processors(void)
 {
-#ifdef _WIN32
-	SYSTEM_INFO sysinfo;
-	GetSystemInfo(&sysinfo);
-	return sysinfo.dwNumberOfProcessors;
-#else
 	long scval = sysconf(_SC_NPROCESSORS_ONLN);
 	return scval > 0 ? (unsigned int)scval : 1;
-#endif
 }
 
 static void test_worker_thread_fn(void *arg)

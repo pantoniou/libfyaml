@@ -6,14 +6,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#ifdef HAVE_ALLOCA_H
-#include <alloca.h>
-#endif
-
-#ifdef _WIN32
-#include <malloc.h>
-#endif
-
 #include <stdlib.h>
 #include <errno.h>
 

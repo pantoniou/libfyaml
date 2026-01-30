@@ -17,9 +17,7 @@
 #include <errno.h>
 #include <ctype.h>
 
-#ifdef _WIN32
-#include "fy-win32.h"
-#else
+#ifndef _WIN32
 #include <termios.h>
 #include <unistd.h>
 #include <sys/select.h>
@@ -27,6 +25,7 @@
 #include <sys/types.h>
 #endif
 
+#include "fy-win32.h"
 #include "fy-utf8.h"
 #include "fy-ctype.h"
 #include "fy-utils.h"
@@ -769,6 +768,7 @@ void fy_comment_iter_end(struct fy_comment_iter *iter)
 
 char *fy_get_cooked_comment(const char *raw_comment, size_t size)
 {
+	struct fy_memstream *fyms = NULL;
 	struct fy_comment_iter iter;
 	FILE *fp;
 	char *buf;
@@ -779,8 +779,8 @@ char *fy_get_cooked_comment(const char *raw_comment, size_t size)
 	if (!raw_comment)
 		return NULL;
 
-	fp = open_memstream(&buf, &len);
-	if (!fp)
+	fyms = fy_memstream_open(&fp);
+	if (!fyms)
 		return NULL;
 
 	ret = 0;
@@ -792,8 +792,7 @@ char *fy_get_cooked_comment(const char *raw_comment, size_t size)
 	}
 	fy_comment_iter_end(&iter);
 
-	fclose(fp);
-
+	buf = fy_memstream_close(fyms, &len);
 	if (ret < 0) {
 		if (buf)
 			free(buf);

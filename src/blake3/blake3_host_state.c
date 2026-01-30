@@ -6,17 +6,12 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
 
 #ifdef HAVE_ALLOCA_H
 #include <alloca.h>
 #endif
-
-#ifdef _WIN32
-#include <malloc.h>
-#include "fy-win32.h"
-#endif
-
-#include <stdlib.h>
 
 #ifndef _WIN32
 #include <pthread.h>
@@ -26,7 +21,6 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #endif
-#include <errno.h>
 
 #include "fy-bit64.h"
 
@@ -35,6 +29,7 @@
 #include "blake3_internal.h"
 
 #include "fy-thread.h"
+#include "fy-win32.h"
 
 /* 256K threshold for using alloca */
 #define BLAKE3_ALLOCA_BUFFER_SIZE	(256U << 10)

@@ -21,9 +21,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if !defined(_WIN32)
+#ifndef _WIN32
+#include <unistd.h>
+#include <termios.h>
 #include <sys/uio.h>
 #endif
+
+#include "fy-win32.h"
 
 /*
  * Define FY_CPP_SHORT_NAMES to use shortened macro names in the implementation.
@@ -34,13 +38,6 @@
  */
 
 #define FY_CPP_SHORT_NAMES
-
-#ifdef _WIN32
-#include "fy-win32.h"
-#else
-#include <unistd.h>
-#include <termios.h>
-#endif
 
 /* to avoid dragging in libfyaml.h */
 #ifndef FY_BIT

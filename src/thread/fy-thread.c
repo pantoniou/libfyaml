@@ -22,18 +22,17 @@
 #include <errno.h>
 #include <limits.h>
 
-#ifdef _WIN32
-#include "fy-win32.h"
-#include <malloc.h>  /* for alloca on Windows */
-#else
+#ifndef _WIN32
 #include <pthread.h>
 #include <unistd.h>
+#endif
+
 #if defined(__linux__)
 #include <sys/syscall.h>
 #include <linux/futex.h>
 #endif
-#endif
 
+#include "fy-win32.h"
 #include "fy-diag.h"
 #include "fy-utils.h"
 #include "fy-thread.h"

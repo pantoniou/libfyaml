@@ -17,21 +17,12 @@
 #include <stdarg.h>
 #include <ctype.h>
 
-#ifdef _WIN32
-#include "fy-win32.h"
-#else
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#endif
-
 #include <libfyaml.h>
 
 #include "fy-diag.h"
 
 #include "fy-parse.h"
 #include "fy-input.h"
-
 
 static const char *error_type_txt[] = {
 	[FYET_DEBUG]   = "debug",

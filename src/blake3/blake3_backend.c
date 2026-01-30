@@ -7,15 +7,6 @@
 #include <string.h>
 #include <stdio.h>
 
-#ifdef HAVE_ALLOCA_H
-#include <alloca.h>
-#endif
-
-#ifdef _WIN32
-#include <malloc.h>
-#include "fy-win32.h"
-#endif
-
 #include <stdlib.h>
 
 #include "fy-bit64.h"

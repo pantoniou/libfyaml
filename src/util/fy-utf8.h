@@ -18,10 +18,9 @@
 
 #ifdef HAVE_ALLOCA_H
 #include <alloca.h>
-#elif defined(_WIN32)
-#include <malloc.h>  /* alloca on Windows */
 #endif
 
+#include "fy-win32.h"
 #include "fy-utils.h"
 
 #define FY_UTF8_MIN_WIDTH 1

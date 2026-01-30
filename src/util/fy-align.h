@@ -19,10 +19,6 @@
 #if defined(__GNUC__) || defined(__clang__)
 #define FY_ALIGNED_TO(x) __attribute__ ((aligned(x)))
 #elif defined(_MSC_VER)
-/* MSVC __declspec(align) can only appear at the beginning, not after type
- * For trailing alignment attributes we disable them on MSVC.
- * Performance may be slightly impacted but correctness is maintained.
- */
 #define FY_ALIGNED_TO(x) /* nothing - MSVC doesn't support trailing alignment */
 #else
 #define FY_ALIGNED_TO(x) /* nothing */
@@ -35,57 +31,31 @@
 #define FY_CACHELINE_SIZE_ALIGN(_x) FY_ALIGN(FY_CACHELINE_SIZE, _x)
 #define FY_CACHELINE_ALIGN FY_ALIGNED_TO(FY_CACHELINE_SIZE)
 
-/* provide posix_memalign for platforms that don't have it */
-#ifdef _WIN32
-#include <errno.h>
-static inline int posix_memalign(void **ptr, size_t align, size_t size)
-{
-	void *p;
-
-	/* alignment must be a power of two and at least sizeof(void*) */
-	if ((align & (align - 1)) != 0 || align < sizeof(void *)) {
-		*ptr = NULL;
-		return EINVAL;
-	}
-
-	p = _aligned_malloc(size, align);
-	if (!p) {
-		*ptr = NULL;
-		return ENOMEM;
-	}
-	*ptr = p;
-	return 0;
-}
-
-static inline void posix_memalign_free(void *p)
-{
-	_aligned_free(p);
-}
-
-#else
-/* normal implementations just use free */
-static inline void posix_memalign_free(void *p)
-{
-	free(p);
-}
-#endif
-
 static inline void *fy_align_alloc(size_t align, size_t size)
 {
 	void *p;
-	int rc;
 
 	size = FY_ALIGN(align, size);
-	rc = posix_memalign(&p, align, size);
-	if (rc)
+#ifndef _WIN32
+	if (posix_memalign(&p, align, size))
 		return NULL;
+#else
+	p = _aligned_malloc(size, align);
+	if (!p)
+		return NULL;
+#endif
 	return p;
 }
 
 static inline void fy_align_free(void *p)
 {
-	if (p)
-		posix_memalign_free(p);
+	if (!p)
+		return;
+#ifndef _WIN32
+	free(p);
+#else
+	_aligned_free(p);
+#endif
 }
 
 static inline void *fy_cacheline_alloc(size_t size)

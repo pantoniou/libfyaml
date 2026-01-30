@@ -28,12 +28,7 @@
 
 #include <libfyaml.h>
 
-#ifdef _WIN32
 #include "fy-win32.h"
-#include <io.h>
-#define isatty _isatty
-#define fileno _fileno
-#endif
 
 #ifndef _WIN32
 #include <unistd.h>

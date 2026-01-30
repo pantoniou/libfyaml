@@ -16,20 +16,11 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <limits.h>
-
-#ifdef _WIN32
-#include "fy-win32.h"
-#else
-#include <sys/mman.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/ioctl.h>
 #include <fcntl.h>
-#include <unistd.h>
-#endif
 
 #include <libfyaml.h>
 
+#include "fy-win32.h"
 #include "fy-parse.h"
 
 #include "fy-utils.h"

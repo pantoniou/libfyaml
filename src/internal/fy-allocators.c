@@ -14,15 +14,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef HAVE_ALLOCA_H
-#include <alloca.h>
-#endif
-
-#ifdef _WIN32
-#include "fy-win32.h"
-#include <malloc.h>
-#endif
+#include <stdbool.h>
+#include <ctype.h>
+#include <assert.h>
+#include <time.h>
+#include <stdint.h>
+#include <inttypes.h>
+#include <stdalign.h>
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -32,17 +30,10 @@
 #include <sys/stat.h>
 #endif
 
-#include <stdbool.h>
-#include <ctype.h>
-#include <assert.h>
-#include <time.h>
-#include <stdint.h>
-#include <inttypes.h>
-#include <stdalign.h>
-
 #include <libfyaml.h>
 
 #include "fy-utils.h"
+#include "fy-win32.h"
 
 #include "fy-allocator.h"
 #include "fy-allocator-linear.h"

@@ -16,23 +16,19 @@
 #include <stdarg.h>
 #include <limits.h>
 #include <errno.h>
-
-#ifdef _WIN32
-#include "fy-win32.h"
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#else
-#include <fcntl.h>
+
+#ifndef _WIN32
 #include <unistd.h>
 #include <sys/mman.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <sys/ioctl.h>
 #endif
 
 #include <libfyaml.h>
 
+#include "fy-win32.h"
 #include "fy-parse.h"
 #include "fy-ctype.h"
 
@@ -958,12 +954,6 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 		do {
 			nreadreq = fyi->allocated - fyi->read;
 			assert(nreadreq > 0);
-
-			/* for windows clamp to int */
-#ifdef _WIN32
-			if (nreadreq > INT_MAX)
-				nreadreq = INT_MAX;
-#endif
 
 			if (fyi->cfg.type == fyit_callback) {
 

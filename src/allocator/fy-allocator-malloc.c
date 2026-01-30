@@ -14,17 +14,13 @@
 #include <stdalign.h>
 #include <time.h>
 #include <inttypes.h>
-
-#ifdef _WIN32
-#include "fy-win32.h"
-#endif
-
 #include <stdio.h>
 
 /* for container_of */
 #include "fy-list.h"
 #include "fy-utils.h"
 #include "fy-align.h"
+#include "fy-win32.h"
 
 #include "fy-allocator-malloc.h"
 

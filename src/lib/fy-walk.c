@@ -18,12 +18,6 @@
 #include <math.h>
 #include <limits.h>
 
-#ifdef _WIN32
-#include "fy-win32.h"
-#else
-#include <unistd.h>
-#endif
-
 #include <libfyaml.h>
 
 #include "fy-parse.h"

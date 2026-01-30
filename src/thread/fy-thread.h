@@ -16,20 +16,16 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-#ifdef _WIN32
-#include "fy-win32.h"
-#include <stdatomic.h>
-/* Windows threading uses native Win32 APIs */
-#else
-#include <stdatomic.h>
+#ifndef _WIN32
 #include <pthread.h>
 #ifndef __APPLE__
 #include <semaphore.h>
 #else
 #include <dispatch/dispatch.h>
 #endif
-#endif /* _WIN32 */
+#endif
 
+#include "fy-win32.h"
 #include "fy-bit64.h"
 #include "fy-align.h"
 #include "fy-atomics.h"

@@ -12,15 +12,10 @@
 #include <string.h>
 #include <stdatomic.h>
 #include <stdalign.h>
-
-#ifndef _WIN32
 #include <stdlib.h>
+
 #if defined(__linux__)
 #include <malloc.h>
-#endif
-#endif
-
-#if defined(__linux__)
 #include <sys/sysmacros.h>
 #endif
 
