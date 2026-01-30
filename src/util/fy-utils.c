@@ -411,8 +411,8 @@ int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info)
 /* simple terminal methods; mainly for getting size of terminal */
 /* These functions are not available on Windows */
 #ifndef _WIN32
-
-int fy_term_set_raw(int fd, struct termios *oldt)
+static int
+fy_term_set_raw(int fd, struct termios *oldt)
 {
 	struct termios newt, t;
 	int ret;
@@ -439,7 +439,8 @@ int fy_term_set_raw(int fd, struct termios *oldt)
 	return 0;
 }
 
-int fy_term_restore(int fd, const struct termios *oldt)
+static int
+fy_term_restore(int fd, const struct termios *oldt)
 {
 	/* must be a terminal */
 	if (!isatty(fd))
@@ -448,7 +449,8 @@ int fy_term_restore(int fd, const struct termios *oldt)
 	return tcsetattr(fd, TCSANOW, oldt);
 }
 
-ssize_t fy_term_write(int fd, const void *data, size_t count)
+static ssize_t
+fy_term_write(int fd, const void *data, size_t count)
 {
 	ssize_t wrn, r;
 
@@ -471,7 +473,8 @@ ssize_t fy_term_write(int fd, const void *data, size_t count)
 	return wrn > 0 ? wrn : r;
 }
 
-int fy_term_safe_write(int fd, const void *data, size_t count)
+static int
+fy_term_safe_write(int fd, const void *data, size_t count)
 {
 	if (!isatty(fd))
 		return -1;
@@ -479,7 +482,8 @@ int fy_term_safe_write(int fd, const void *data, size_t count)
 	return fy_term_write(fd, data, count) == (ssize_t)count ? 0 : -1;
 }
 
-ssize_t fy_term_read(int fd, void *data, size_t count, int timeout_us)
+static ssize_t
+fy_term_read(int fd, void *data, size_t count, int timeout_us)
 {
 	ssize_t rdn, r;
 	struct timeval tv, tvto, *tvp;
@@ -531,7 +535,8 @@ ssize_t fy_term_read(int fd, void *data, size_t count, int timeout_us)
 	return rdn > 0 ? rdn : r;
 }
 
-ssize_t fy_term_read_escape(int fd, void *buf, size_t count)
+static ssize_t
+fy_term_read_escape(int fd, void *buf, size_t count)
 {
 	char *p;
 	int r, rdn;
@@ -580,7 +585,8 @@ ssize_t fy_term_read_escape(int fd, void *buf, size_t count)
 	return rdn;
 }
 
-int fy_term_query_size_raw(int fd, int *rows, int *cols)
+static int
+fy_term_query_size_raw(int fd, int *rows, int *cols)
 {
 	char buf[32];
 	char *s, *e;
@@ -649,62 +655,21 @@ int fy_term_query_size(int fd, int *rows, int *cols)
 
 #else /* _WIN32 */
 
-/* Terminal functions are not supported on Windows - return failure */
-
-int fy_term_set_raw(int fd, void *oldt)
-{
-	(void)fd;
-	(void)oldt;
-	return -1;
-}
-
-int fy_term_restore(int fd, const void *oldt)
-{
-	(void)fd;
-	(void)oldt;
-	return -1;
-}
-
-ssize_t fy_term_write(int fd, const void *data, size_t count)
-{
-	(void)fd;
-	(void)data;
-	(void)count;
-	return -1;
-}
-
-ssize_t fy_term_read(int fd, void *data, size_t count, int timeout_us)
-{
-	(void)fd;
-	(void)data;
-	(void)count;
-	(void)timeout_us;
-	return -1;
-}
-
-ssize_t fy_term_read_escape(int fd, void *data, size_t count, int timeout_us)
-{
-	(void)fd;
-	(void)data;
-	(void)count;
-	(void)timeout_us;
-	return -1;
-}
-
-int fy_term_query_size_raw(int fd, int *rows, int *cols)
-{
-	(void)fd;
-	(void)rows;
-	(void)cols;
-	return -1;
-}
-
 int fy_term_query_size(int fd, int *rows, int *cols)
 {
-	(void)fd;
-	(void)rows;
-	(void)cols;
-	return -1;
+	CONSOLE_SCREEN_BUFFER_INFO csbi;
+	HANDLE h;
+
+	if (fd != _fileno(stdout) && fd != _fileno(stderr))
+		return -1;
+
+	h = GetStdHandle(STD_OUTPUT_HANDLE);
+	if (!GetConsoleScreenBufferInfo(h, &csbi))
+		return -1;
+
+	*cols = (int)(csbi.srWindow.Right  - csbi.srWindow.Left + 1);
+	*rows = (int)(csbi.srWindow.Bottom - csbi.srWindow.Top  + 1);
+	return 0;
 }
 
 #endif /* !_WIN32 - end of terminal functions */

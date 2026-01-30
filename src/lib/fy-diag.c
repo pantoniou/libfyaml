@@ -201,16 +201,9 @@ static void fy_diag_update_term_info(struct fy_diag *diag)
 		goto out;
 
 	rows = columns = 0;
-#ifndef _WIN32
 	ret = fy_term_query_size(fd, &rows, &columns);
 	if (ret != 0)
 		goto out;
-#else
-	/* for windows just hardcode for now */
-	rows = 25;
-	columns = 80;
-	(void)ret;
-#endif
 
 	if (rows > 0 && columns > 0) {
 		diag->term_info.rows = rows;

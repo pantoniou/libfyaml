@@ -70,7 +70,7 @@ static inline void allocator_registry_unlock(void)
 static pthread_mutex_t allocator_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
 static inline void allocator_registry_lock(void)
 {
-	int rc FY_UNUSED;
+	int rc FY_DEBUG_UNUSED;
 
 	rc = pthread_mutex_lock(&allocator_registry_mutex);
 	assert(!rc);
@@ -81,7 +81,7 @@ static inline void allocator_registry_lock(void)
 
 static inline void allocator_registry_unlock(void)
 {
-	int rc FY_UNUSED;
+	int rc FY_DEBUG_UNUSED;
 
 	assert(allocator_registry_locked);
 	allocator_registry_locked = false;

@@ -1087,6 +1087,8 @@ static void fy_thread_work_join_steal(struct fy_thread_pool *tp, struct fy_threa
 	resolved_t = false;
 	tid = -1;
 	(void)tid;
+	(void)rc;
+	(void)tid;
 
 #ifdef FY_THREAD_DEBUG
 #ifdef _WIN32

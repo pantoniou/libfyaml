@@ -31,6 +31,8 @@
 
 // #define DEBUG_GROWS
 
+#ifdef DEBUG_GROWS
+
 #undef BEFORE
 #define BEFORE() \
 	do { \
@@ -51,6 +53,8 @@ static __inline int64_t fy_dedup_after_calc(const struct timespec *before, const
 		clock_gettime(CLOCK_MONOTONIC, &after); \
 		(int64_t)(after.tv_sec - before.tv_sec) * (int64_t)1000000000UL + (int64_t)(after.tv_nsec - before.tv_nsec); \
 	})
+#endif
+
 #endif
 
 static const unsigned int bit_to_chain_length_map[] = {
