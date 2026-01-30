@@ -1215,35 +1215,39 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
     # Create src directory for compatibility with test scripts
     # Tests expect tools at build/src/
     file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/src)
-    add_custom_command(TARGET fy-tool POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E create_symlink
-            ${CMAKE_CURRENT_BINARY_DIR}/fy-tool
-            ${CMAKE_CURRENT_BINARY_DIR}/src/fy-tool
-        COMMENT "Creating symlink for test compatibility"
-    )
 
-    # Create symlinks for internal tools
-    add_custom_command(TARGET fy-thread POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E create_symlink
-            ${CMAKE_CURRENT_BINARY_DIR}/fy-thread
-            ${CMAKE_CURRENT_BINARY_DIR}/src/fy-thread
-    )
-    add_custom_command(TARGET fy-b3sum POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E create_symlink
-            ${CMAKE_CURRENT_BINARY_DIR}/fy-b3sum
-            ${CMAKE_CURRENT_BINARY_DIR}/src/fy-b3sum
-    )
-    add_custom_command(TARGET fy-allocators POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E create_symlink
-            ${CMAKE_CURRENT_BINARY_DIR}/fy-allocators
-            ${CMAKE_CURRENT_BINARY_DIR}/src/fy-allocators
-    )
-    if(HAVE_LIBYAML)
-        add_custom_command(TARGET libfyaml-parser POST_BUILD
+    # Create symlinks for test compatibility (not on Windows - symlinks require special privileges)
+    if(NOT WIN32)
+        add_custom_command(TARGET fy-tool POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E create_symlink
-                ${CMAKE_CURRENT_BINARY_DIR}/libfyaml-parser
-                ${CMAKE_CURRENT_BINARY_DIR}/src/libfyaml-parser
+                ${CMAKE_CURRENT_BINARY_DIR}/fy-tool
+                ${CMAKE_CURRENT_BINARY_DIR}/src/fy-tool
+            COMMENT "Creating symlink for test compatibility"
         )
+
+        # Create symlinks for internal tools
+        add_custom_command(TARGET fy-thread POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E create_symlink
+                ${CMAKE_CURRENT_BINARY_DIR}/fy-thread
+                ${CMAKE_CURRENT_BINARY_DIR}/src/fy-thread
+        )
+        add_custom_command(TARGET fy-b3sum POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E create_symlink
+                ${CMAKE_CURRENT_BINARY_DIR}/fy-b3sum
+                ${CMAKE_CURRENT_BINARY_DIR}/src/fy-b3sum
+        )
+        add_custom_command(TARGET fy-allocators POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E create_symlink
+                ${CMAKE_CURRENT_BINARY_DIR}/fy-allocators
+                ${CMAKE_CURRENT_BINARY_DIR}/src/fy-allocators
+        )
+        if(HAVE_LIBYAML)
+            add_custom_command(TARGET libfyaml-parser POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E create_symlink
+                    ${CMAKE_CURRENT_BINARY_DIR}/libfyaml-parser
+                    ${CMAKE_CURRENT_BINARY_DIR}/src/libfyaml-parser
+            )
+        endif()
     endif()
 
     # Build libfyaml-test if check is available
@@ -1537,15 +1541,17 @@ install(TARGETS fyaml fy-tool
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
-# Create symlinks for fy-tool
-install(CODE "
-    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-dump WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
-    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-filter WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
-    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-testsuite WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
-    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-join WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
-    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-ypath WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
-    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-compose WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
-")
+# Create symlinks for fy-tool (not on Windows - symlinks require special privileges)
+if(NOT WIN32)
+    install(CODE "
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-dump WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-filter WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-testsuite WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-join WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-ypath WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-compose WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+    ")
+endif()
 
 install(EXPORT libfyaml-targets
     FILE libfyaml-targets.cmake
