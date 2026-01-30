@@ -308,9 +308,6 @@ static inline ssize_t fy_win32_write(int fd, const void *buf, size_t count)
 #ifndef fileno
 #define fileno _fileno
 #endif
-#ifndef isatty
-#define isatty _isatty
-#endif
 #ifndef fdopen
 #define fdopen _fdopen
 #endif
@@ -330,6 +327,24 @@ static inline ssize_t fy_win32_write(int fd, const void *buf, size_t count)
 #endif
 #ifndef fstat
 #define fstat _fstat64
+#endif
+
+#ifndef isatty
+
+static inline int
+fy_win32_isatty(int fd)
+{
+	HANDLE h;
+	DWORD mode;
+
+	h = (HANDLE)_get_osfhandle(fd);
+	if (h == INVALID_HANDLE_VALUE || h == NULL)
+		return 0;
+
+	return GetConsoleMode(h, &mode) != 0;
+}
+
+#define isatty(fd) fy_win32_isatty(fd)
 #endif
 
 /* S_ISREG and S_ISDIR macros */
