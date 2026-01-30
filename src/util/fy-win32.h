@@ -36,6 +36,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <stdarg.h>
 
 /* ssize_t is not defined on Windows */
 #ifndef _SSIZE_T_DEFINED
@@ -228,9 +229,15 @@ static inline int fy_win32_munmap(void *addr, size_t length)
 #define STDERR_FILENO 2
 #endif
 
+static inline int fy_win32_open(const char *pathname, int flags, ...)
+{
+	/* always use O_BINARY to avoid CRLF mangling */
+	return _open(pathname, flags | O_BINARY);
+}
+
 /* Use _open, _close on Windows */
 #ifndef open
-#define open _open
+#define open fy_win32_open
 #endif
 #ifndef close
 #define close _close

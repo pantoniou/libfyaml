@@ -406,10 +406,6 @@ int fy_reader_file_open(struct fy_reader *fyr, const char *filename)
 	if (fyr->ops && fyr->ops->file_open)
 		return fyr->ops->file_open(fyr, filename);
 
-#ifdef _WIN32
-	/* On Windows, open in binary mode to prevent CRLF conversion */
-	flags |= O_BINARY;
-#endif
 	return open(filename, flags);
 }
 

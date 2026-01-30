@@ -12,24 +12,35 @@ $ CC=cl CXX=cl cmake -S .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Window
 
 === Build with clang-cl without wine
 
-$ sudo apt-get install clang-cl	# I used clang-cl-18
+$ sudo apt-get install clang-cl	llvm # I used clang-cl-18
 $ mkdir build-clang-cl
 $ cd build-clang-cl
 $ export INCLUDE="${MSVC}/vc/tools/msvc/14.44.35207/include;${MSVC}/kits/10/include/10.0.26100.0/shared;${MSVC}/kits/10/include/10.0.26100.0/ucrt;${MSVC}/kits/10/include/10.0.26100.0/um"
 $ export LIB="${MSVC}/vc/tools/msvc/14.44.35207/lib/x64;${MSVC}/kits/10/lib/10.0.26100.0/ucrt/x64;${MSVC}/kits/10/lib/10.0.26100.0/um/x64"
-$ export PATH="${MSVC}/bin/x64:/usr/bin:$PATH"
 $ cmake .. \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_SYSTEM_NAME=Windows \
   -DCMAKE_C_COMPILER=clang-cl-18 \
   -DCMAKE_CXX_COMPILER=clang-cl-18 \
-  -DCMAKE_LINKER=lld-link \
-  -DCMAKE_MT=${MSVC}/bin/x64/mt
+  -DCMAKE_LINKER=lld-link-18 \
+  -DCMAKE_MT=llvm-mt-18 \
+  -DCMAKE_RC_COMPILER=llvm-rc-18
 
 === Build with native clang cross compiling for windows
 $ export INCLUDE="${MSVC}/vc/tools/msvc/14.44.35207/include;${MSVC}/kits/10/include/10.0.26100.0/shared;${MSVC}/kits/10/include/10.0.26100.0/ucrt;${MSVC}/kits/10/include/10.0.26100.0/um"
 $ export LIB="${MSVC}/vc/tools/msvc/14.44.35207/lib/x64;${MSVC}/kits/10/lib/10.0.26100.0/ucrt/x64;${MSVC}/kits/10/lib/10.0.26100.0/um/x64"
-$ export PATH="${MSVC}/bin/x64:/usr/bin:$PATH"
 $ cmake .. \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_TOOLCHAIN_FILE=../cmake/clang-windows-toolchain.cmake
+
+
+--- new method
+
+=== MSVC using wine
+$ cmake -DMSVC_WINE_DIR="${MSVC}" -DMSVC_WINE_COMPILER=cl ..
+
+=== clang-cl
+$ cmake -DMSVC_WINE_DIR="${MSVC}" -DMSVC_WINE_COMPILER=clang-cl ..
+
+=== clang cross
+$ cmake -DMSVC_WINE_DIR="${MSVC}" -DMSVC_WINE_COMPILER=clang ..
