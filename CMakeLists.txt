@@ -204,7 +204,7 @@ else()
     endif()
 endif()
 
-# check framework detection - try CMake config first, then pkg-config
+# check framework detection - try CMake config first, then pkg-config, then FetchContent
 set(HAVE_CHECK 0)
 set(HAVE_COMPATIBLE_CHECK 0)
 if(BUILD_TESTING)
@@ -274,6 +274,28 @@ if(BUILD_TESTING)
                 endif()
             endif()
         endif()
+    endif()
+
+    # Fall back to FetchContent if check not found (useful on Windows)
+    if(NOT HAVE_CHECK)
+        include(FetchContent)
+        message(STATUS "check framework not found, fetching via FetchContent...")
+        FetchContent_Declare(
+            check
+            GIT_REPOSITORY https://github.com/libcheck/check.git
+            GIT_TAG        0.15.2
+        )
+        # Disable check's own tests and docs
+        set(CHECK_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+        set(CHECK_ENABLE_GCOV OFF CACHE BOOL "" FORCE)
+        FetchContent_MakeAvailable(check)
+
+        set(HAVE_CHECK 1)
+        set(CHECK_LIBRARIES check)
+        set(CHECK_INCLUDE_DIRS "${check_SOURCE_DIR}/src" "${check_BINARY_DIR}" "${check_BINARY_DIR}/src")
+        set(HAVE_SRUNNER_SET_TAP 1)  # 0.15.2 has srunner_set_tap
+        set(HAVE_COMPATIBLE_CHECK 1)
+        message(STATUS "Found check framework via FetchContent")
     endif()
 endif()
 
