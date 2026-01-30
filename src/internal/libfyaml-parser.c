@@ -2764,8 +2764,10 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 		FILE *fp;
 		char *mbuf = NULL;
 		size_t msize;
+		struct fy_memstream *fyms = NULL;
 
-		fp = open_memstream(&mbuf, &msize);
+		fyms = fy_memstream_open(&fp);
+		assert(fyms);
 		assert(fp);
 
 		fy_diag_cfg_default(&dcfg);
@@ -2786,8 +2788,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 
 		fy_diag_destroy(diag);
 
-		fclose(fp);
-
+		mbuf = fy_memstream_close(fyms, &msize);
 		assert(mbuf);
 
 		printf("checking diagnostic\n");
@@ -2803,9 +2804,10 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 		FILE *fp;
 		char *mbuf = NULL;
 		size_t msize;
+		struct fy_memstream *fyms = NULL;
 
-		fp = open_memstream(&mbuf, &msize);
-		assert(fp);
+		fyms = fy_memstream_open(&fp);
+		assert(fyms);
 
 		fy_diag_cfg_default(&dcfg);
 		dcfg.fp = NULL;
@@ -2827,8 +2829,7 @@ int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 
 		fy_diag_destroy(diag);
 
-		fclose(fp);
-
+		mbuf = fy_memstream_close(fyms, &msize);
 		assert(mbuf);
 
 		printf("checking diagnostic\n");

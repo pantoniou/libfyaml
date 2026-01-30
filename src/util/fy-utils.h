@@ -696,4 +696,10 @@ uint64_t fy_iovec_xxhash64(const struct iovec *iov, int iovcnt);
 #define FY_HAVE_NESTED_FUNC_LAMBDAS
 #endif
 
+/* wrapper for memstream, on all platforms */
+struct fy_memstream;	// opaque
+
+struct fy_memstream *fy_memstream_open(FILE **fpp);
+char *fy_memstream_close(struct fy_memstream *fyms, size_t *sizep);
+
 #endif
