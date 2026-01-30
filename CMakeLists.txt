@@ -1122,7 +1122,9 @@ target_include_directories(fy-thread PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
     ${CMAKE_CURRENT_BINARY_DIR}
 )
-target_compile_definitions(fy-thread PRIVATE FY_STATIC)
+target_compile_definitions(fy-thread PRIVATE
+	${COMMON_C_DEFINITIONS}
+	FY_STATIC)
 if(NOT MSVC)
     if(APPLE)
         target_link_libraries(fy-thread PRIVATE
@@ -1161,7 +1163,9 @@ target_include_directories(fy-b3sum PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
     ${CMAKE_CURRENT_BINARY_DIR}
 )
-target_compile_definitions(fy-b3sum PRIVATE FY_STATIC)
+target_compile_definitions(fy-b3sum PRIVATE
+	${COMMON_C_DEFINITIONS}
+	FY_STATIC)
 if(NOT MSVC)
     if(APPLE)
         target_link_libraries(fy-b3sum PRIVATE
@@ -1200,7 +1204,9 @@ target_include_directories(fy-allocators PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
     ${CMAKE_CURRENT_BINARY_DIR}
 )
-target_compile_definitions(fy-allocators PRIVATE FY_STATIC)
+target_compile_definitions(fy-allocators PRIVATE
+	${COMMON_C_DEFINITIONS}
+	FY_STATIC)
 if(NOT MSVC)
     if(APPLE)
         target_link_libraries(fy-allocators PRIVATE
