@@ -366,7 +366,7 @@ static void test_worker_thread_sum_fn(void *arg)
 	uint64_t sum;
 	unsigned int pos;
 
-	pos = s->values - s->values_start;
+	pos = (unsigned int)(s->values - s->values_start);
 	assert(pos <= s->count_start);
 	assert(pos + s->count <= s->count_start);
 

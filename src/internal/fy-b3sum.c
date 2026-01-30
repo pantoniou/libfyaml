@@ -242,7 +242,7 @@ static int do_check_file(struct blake3_hasher *hasher, const char *check_filenam
 		while (isxdigit((unsigned char)*s))
 			s++;
 
-		length = s - linebuf;
+		length = (unsigned int)(s - linebuf);
 
 		if (length == 0 || length > (BLAKE3_OUT_LEN * 2) || (length % 1) || !isspace((unsigned char)*s)) {
 			fprintf(stderr, "Bad line found at file \"%s\" line #%d\n", check_filename, line);
