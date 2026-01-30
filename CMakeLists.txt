@@ -47,11 +47,6 @@ endif()
 # Usage: cmake -DMSVC_WINE_DIR=/path/to/msvc [-DMSVC_WINE_COMPILER=cl|clang-cl|clang] ..
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/MSVCCrossCompile.cmake OPTIONAL)
 
-# Default to 64-bit builds on Windows (Visual Studio generators)
-if(WIN32 AND NOT CMAKE_GENERATOR_PLATFORM)
-    set(CMAKE_GENERATOR_PLATFORM x64 CACHE STRING "Target platform" FORCE)
-endif()
-
 project(libfyaml LANGUAGES C ASM VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH})
 
 # Must use GNUInstallDirs to install libraries into correct locations on all platforms
