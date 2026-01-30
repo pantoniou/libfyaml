@@ -333,10 +333,17 @@ static inline char *fy_alloca_vsprintf_impl(const char *fmt, va_list ap)
 }
 
 /* For MSVC, we can't use variadic macros that return values easily,
- * so fy_vsprintfa needs a different approach */
-#define fy_vsprintfa(_fmt, _ap) fy_alloca_vsprintf_impl((_fmt), (_ap))
-#define fy_sprintfa(_fmt, ...) (snprintf(fy_alloca_sprintf_buf, FY_ALLOCA_SPRINTF_BUFSZ, (_fmt), __VA_ARGS__) < 0 ? NULL : fy_alloca_sprintf_buf)
-
+ * so fy_vsprintfa needs a different approach
+ * This is not very efficient and wastes memory but it's the best
+ * we can do with the potato compiler
+ */
+#define fy_vsprintfa(_fmt, _ap) \
+	strcpy(alloca(FY_ALLOCA_SPRINTF_BUFSZ + 1), \
+			fy_alloca_vsprintf_impl((_fmt), (_ap)))
+#define fy_sprintfa(_fmt, ...) \
+	strcpy(alloca(FY_ALLOCA_SPRINTF_BUFSZ + 1), \
+			(snprintf(fy_alloca_sprintf_buf, FY_ALLOCA_SPRINTF_BUFSZ, (_fmt), __VA_ARGS__) < 0 ? \
+				"" : fy_alloca_sprintf_buf))
 #else
 /* GCC/Clang version with statement expressions */
 #define fy_vsprintfa(_fmt, _ap) \

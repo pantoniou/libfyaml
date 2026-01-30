@@ -397,15 +397,17 @@ char *fy_utf8_format(int c, char *buf, const enum fy_utf8_escape esc);
 
 #ifdef _MSC_VER
 /* MSVC doesn't support GCC statement expressions - use static buffers */
-#define FY_UTF8_FORMAT_A_BUFSZ 256
-static __declspec(thread) char fy_utf8_format_a_buf[FY_UTF8_FORMAT_A_BUFSZ];
+static __declspec(thread) char fy_utf8_format_a_buf[FY_UTF8_FORMAT_BUFMIN];
 static __declspec(thread) char fy_utf8_format_text_a_buf[4096];
 
 #define fy_utf8_format_a(_c, _esc) \
-	fy_utf8_format((_c), fy_utf8_format_a_buf, (_esc))
+	strcpy(alloca(FY_UTF8_FORMAT_BUFMIN + 1), \
+		fy_utf8_format((_c), fy_utf8_format_a_buf, (_esc)))
 
 #define fy_utf8_format_text_a(_buf, _len, _esc) \
-	fy_utf8_format_text((_buf), (_len), fy_utf8_format_text_a_buf, sizeof(fy_utf8_format_text_a_buf) - 1, (_esc))
+	strcpy(alloca(sizeof(fy_utf8_format_text_a_buf) + 1), \
+		fy_utf8_format_text((_buf), (_len), \
+			fy_utf8_format_text_a_buf, sizeof(fy_utf8_format_text_a_buf) - 1, (_esc)))
 #else
 /* GCC/Clang version with statement expressions */
 #define fy_utf8_format_a(_c, _esc) \
