@@ -1369,22 +1369,6 @@ if(CAN_TEST)
         message(STATUS "Fetching JSON test suite...")
         FetchContent_MakeAvailable(json_test_suite)
 
-        # Create symlinks in test/ directory for compatibility with test scripts
-        # FetchContent puts sources in _deps/<name>-src
-        # Remove any existing directory/symlink first
-        file(REMOVE_RECURSE "${CMAKE_CURRENT_BINARY_DIR}/test/test-suite-data")
-        file(REMOVE_RECURSE "${CMAKE_CURRENT_BINARY_DIR}/test/json-test-suite-data")
-        file(CREATE_LINK
-            "${yaml_test_suite_SOURCE_DIR}"
-            "${CMAKE_CURRENT_BINARY_DIR}/test/test-suite-data"
-            SYMBOLIC
-        )
-        file(CREATE_LINK
-            "${json_test_suite_SOURCE_DIR}"
-            "${CMAKE_CURRENT_BINARY_DIR}/test/json-test-suite-data"
-            SYMBOLIC
-        )
-
         # YAML test suite tests - register individual subtests
         # Two modes (handled automatically by add_testsuite_tests):
         # 1. If test-suite-data exists (via FetchContent symlink): scan filesystem
@@ -1400,8 +1384,6 @@ if(CAN_TEST)
         add_jsontestsuite_tests()
     endif()
 
-    set(TEST_DRIVER ${CMAKE_SOURCE_DIR}/build-aux/tap-driver.sh)
-
     # Build all test dependencies as part of default 'all' target
     # Note: CMake's 'make test' target doesn't trigger builds by design.
     # Use 'make all test' or 'make check-am' or 'make build_and_test' for complete workflow.
@@ -1411,49 +1393,6 @@ if(CAN_TEST)
     endif()
     if(HAVE_LIBYAML)
         list(APPEND TEST_DEPENDENCIES libfyaml-parser)
-    endif()
-
-    add_custom_target(build_tests ALL
-        DEPENDS ${TEST_DEPENDENCIES}
-        COMMENT "Building test dependencies"
-    )
-
-    # Convenience target that builds and runs tests in one command
-    add_custom_target(build_and_test
-        COMMAND ${CMAKE_CTEST_COMMAND}
-        DEPENDS ${TEST_DEPENDENCIES}
-        COMMENT "Building and running tests"
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    )
-
-    # Autotools-compatible test runner using test-driver
-    # NOTE: Named 'check-am' instead of 'check' to avoid conflicts with check library target
-    add_custom_target(check-am
-        COMMENT "Running tests via Automake test-driver"
-    )
-
-    if(HAVE_COMPATIBLE_CHECK)
-        set(TEST_EXECUTABLES
-            libfyaml-test
-        )
-
-        foreach(exe IN LISTS TEST_EXECUTABLES)
-            add_custom_target(check_${exe}
-                    COMMAND ${CMAKE_COMMAND} -E env TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR} TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR} SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test
-                    ${TEST_DRIVER}
-                    --test-name ${exe}
-                    --log-file ${exe}.log
-                    --trs-file ${exe}.trs
-                    --comments
-                    --color-tests yes
-                    --expect-failure 0
-                    -- ${CMAKE_CURRENT_BINARY_DIR}/test/${exe}
-                WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-                COMMENT "Running ${exe}"
-            )
-            add_dependencies(check_${exe} ${exe})
-            add_dependencies(check-am check_${exe})
-        endforeach()
     endif()
 
     set(TEST_SUITES
@@ -1474,25 +1413,6 @@ if(CAN_TEST)
     if(HAVE_LIBCLANG)
         list(APPEND TEST_SUITES testreflection.test)
     endif()
-
-    foreach(suite IN LISTS TEST_SUITES)
-        add_custom_target(check_${suite}
-            COMMAND ${CMAKE_COMMAND} -E env TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR} TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR} SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test
-                ${TEST_DRIVER}
-                --test-name ${suite}
-                --log-file ${suite}.log
-                --trs-file ${suite}.trs
-                --comments
-                --color-tests yes
-                --expect-failure 0
-                -- ${CMAKE_SOURCE_DIR}/test/${suite}
-            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-            COMMENT "Running ${suite}"
-        )
-        add_dependencies(check_${suite} fy-tool)
-        add_dependencies(check-am check_${suite})
-    endforeach()
-
 endif()
 
 # Documentation
@@ -1650,15 +1570,7 @@ message(STATUS "JSONTESTSUITEURL:      ${JSONTESTSUITEURL}")
 message(STATUS "JSONTESTSUITECHECKOUT: ${JSONTESTSUITECHECKOUT}")
 message(STATUS "CAN_TEST:              ${CAN_TEST}")
 message(STATUS "")
-if(CAN_TEST)
-    message(STATUS "Test targets:")
-    message(STATUS "  make all test       - Build everything then run CTest (2464 individual tests)")
-    message(STATUS "  make build_and_test - Convenience target: build and test in one command")
-    message(STATUS "  make check-am       - Autotools-compatible TAP test runner (~10 test scripts)")
-    message(STATUS "")
-    message(STATUS "NOTE: 'make test' alone will fail if binaries aren't built. Use 'make all test'.")
-    message(STATUS "")
-elseif(CROSS_COMPILING)
+if(CROSS_COMPILING)
     message(STATUS "Tests disabled when cross-compiling (target binaries cannot execute on build host)")
     message(STATUS "")
 endif()

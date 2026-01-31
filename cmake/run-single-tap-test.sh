@@ -7,8 +7,8 @@ FY_TOOL="$1"
 test_suite="$2"
 test_id="$3"
 
-if [ x"$FY_TOOL" = x -o x"$SRCDIR" = x -o x"$test_suite" = x -o x"$test_id" = x ]; then
-    echo "Error: FY_TOOL, SRCDIR, test_suite, test_id must exist"
+if [ x"$FY_TOOL" = x -o x"$TEST_DIR" = x -o x"$test_suite" = x -o x"$test_id" = x ]; then
+    echo "Error: FY_TOOL, TEST_DIR, test_suite, test_id must exist"
 fi
 
 function is_windows_bash() {
@@ -21,7 +21,18 @@ function is_windows_bash() {
 # convert to proper posix paths
 if is_windows_bash; then
     FY_TOOL=`cygpath $FY_TOOL`
-    SRCDIR=`cygpath $SRCDIR`
+    TEST_DIR=`cygpath $TEST_DIR`
+    YAML_TEST_SUITE=`cygpath $YAML_TEST_SUITE`
+    JSON_TEST_SUITE=`cygpath $JSON_TEST_SUITE`
+fi
+
+# if not given in the environment try to adjust
+if [ x"$YAML_TEST_SUITE" = x ]; then
+	YAML_TEST_SUITE="${TEST_DIR}/test-suite-data"
+fi
+
+if [ x"$JSON_TEST_SUITE" = x ]; then
+	JSON_TEST_SUITE="${TEST_DIR}/json-test-suite-data"
 fi
 
 # Validate tool exists
@@ -30,15 +41,15 @@ if [ ! -x "$FY_TOOL" ]; then
     exit 1
 fi
 
-# Validate SRCDIR exists
-if [ ! -d "$SRCDIR" ]; then
-    echo "Error: SRCDIR not found: $SRCDIR" >&2
+# Validate TEST_DIR exists
+if [ ! -d "$TEST_DIR" ]; then
+    echo "Error: TEST_DIR not found: $TEST_DIR" >&2
     exit 1
 fi
 
 case "$test_suite" in
     testerrors)
-        dir="${SRCDIR}/test-errors/${test_id}"
+        dir="${TEST_DIR}/test-errors/${test_id}"
         desctxt=$(cat 2>/dev/null "$dir/===")
 
         t=$(mktemp)
@@ -86,7 +97,7 @@ case "$test_suite" in
         ;;
 
     testemitter)
-        f="${SRCDIR}/emitter-examples/${test_id}"
+        f="${TEST_DIR}/emitter-examples/${test_id}"
 
         t1=$(mktemp)
         t2=$(mktemp)
@@ -126,7 +137,7 @@ case "$test_suite" in
         ;;
 
     testemitter-streaming)
-        f="${SRCDIR}/emitter-examples/${test_id}"
+        f="${TEST_DIR}/emitter-examples/${test_id}"
 
         t1=$(mktemp)
         t2=$(mktemp)
@@ -166,7 +177,7 @@ case "$test_suite" in
         ;;
 
     testemitter-restreaming)
-        f="${SRCDIR}/emitter-examples/${test_id}"
+        f="${TEST_DIR}/emitter-examples/${test_id}"
 
         t1=$(mktemp)
         t2=$(mktemp)
@@ -206,7 +217,7 @@ case "$test_suite" in
         ;;
 
     testsuite|testsuite-json|testsuite-resolution)
-        tst="${SRCDIR}/test-suite-data/${test_id}"
+        tst="${YAML_TEST_SUITE}/${test_id}"
         desctxt=$(cat 2>/dev/null "$tst/===")
 
         t=$(mktemp)
@@ -252,7 +263,7 @@ case "$test_suite" in
         ;;
 
     testsuite-evstream)
-        tst="${SRCDIR}/test-suite-data/${test_id}"
+        tst="${YAML_TEST_SUITE}/${test_id}"
         desctxt=$(cat 2>/dev/null "$tst/===")
 
         # Skip tests that are expected to fail
@@ -296,7 +307,7 @@ case "$test_suite" in
 
     jsontestsuite)
         tf="$test_id"
-        f="${SRCDIR}/json-test-suite-data/test_parsing/${tf}"
+        f="${JSON_TEST_SUITE}/test_parsing/${tf}"
 
         # Determine expected result based on prefix
         case "$tf" in

@@ -15,15 +15,17 @@ function(add_tap_test test_name suite_name test_id)
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
     )
 
-    # Build environment (TOP_BUILDDIR removed - no longer needed)
+    # Build environment
     set(base_env
-        "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}"
-        "SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test"
-        "BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test"
+        "TEST_DIR=${CMAKE_CURRENT_SOURCE_DIR}/test"
+	"YAML_TEST_SUITE=${yaml_test_suite_SOURCE_DIR}"
+	"JSON_TEST_SUITE=${json_test_suite_SOURCE_DIR}"
     )
     if(TAP_EXTRA_ENV)
         list(APPEND base_env ${TAP_EXTRA_ENV})
     endif()
+
+    set_tests_properties("${test_name}" PROPERTIES DEPENDS fy-tool)
 
     set_tests_properties("${test_name}" PROPERTIES ENVIRONMENT "${base_env}")
 
@@ -84,7 +86,7 @@ endfunction()
 # Function to add testsuite tests (yaml test suite)
 # Scans test-suite-data directory (populated by FetchContent at configure time)
 function(add_testsuite_tests test_name test_script)
-    set(test_dir "${CMAKE_CURRENT_BINARY_DIR}/test/test-suite-data")
+    set(test_dir "${yaml_test_suite_SOURCE_DIR}")
 
     # Define skip/xfail lists based on test suite variant
     # These match the lists in test/*.test scripts
@@ -259,7 +261,7 @@ endfunction()
 # Function to add jsontestsuite tests
 # Scans json-test-suite-data directory (populated by FetchContent at configure time)
 function(add_jsontestsuite_tests)
-    set(test_dir "${CMAKE_CURRENT_BINARY_DIR}/test/json-test-suite-data/test_parsing")
+    set(test_dir "${json_test_suite_SOURCE_DIR}/test_parsing")
 
     message(STATUS "Registering individual jsontestsuite subtests")
 
