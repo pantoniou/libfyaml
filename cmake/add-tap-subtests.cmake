@@ -40,12 +40,65 @@ function(add_tap_test test_name suite_name test_id)
     endif()
 endfunction()
 
+# Helper macro to register a single testsuite test
+# Used by add_testsuite_tests to avoid code duplication
+macro(_register_testsuite_test test_name test_dir test_id skip_list xfail_list extra_env)
+    if(EXISTS "${test_dir}/===")
+        # Read description from === file
+        file(READ "${test_dir}/===" _test_desc)
+        string(STRIP "${_test_desc}" _test_desc)
+
+        # Build test name with description if available
+        if(_test_desc)
+            set(_test_name_full "${test_name}/${test_id} - ${_test_desc}")
+        else()
+            set(_test_name_full "${test_name}/${test_id}")
+        endif()
+
+        # Set basic properties
+        set(_test_labels "${test_name}")
+        set(_test_disabled FALSE)
+
+        # Check if test should be skipped
+        if(test_id IN_LIST skip_list)
+            set(_test_disabled TRUE)
+            set(_test_labels "${test_name};skipped")
+        endif()
+
+        # Check if test is expected to fail (xfail)
+        if(test_id IN_LIST xfail_list)
+            set(_test_labels "${test_name};xfail")
+        endif()
+
+        if(_test_disabled)
+            add_tap_test("${_test_name_full}" "${test_name}" "${test_id}"
+                LABELS "${_test_labels}"
+                EXTRA_ENV "${extra_env}"
+                DISABLED
+            )
+        else()
+            add_tap_test("${_test_name_full}" "${test_name}" "${test_id}"
+                LABELS "${_test_labels}"
+                EXTRA_ENV "${extra_env}"
+            )
+        endif()
+    endif()
+endmacro()
+
 # Function to run a single test from testerrors.test
 function(add_testerrors_tests)
-    file(GLOB error_dirs "${CMAKE_CURRENT_SOURCE_DIR}/test/test-errors/[0-9][0-9][0-9][0-9]")
+    # Use wildcard glob and filter with regex (Windows-compatible)
+    file(GLOB all_dirs "${CMAKE_CURRENT_SOURCE_DIR}/test/test-errors/*")
 
-    foreach(dir ${error_dirs})
+    foreach(dir ${all_dirs})
+        if(NOT IS_DIRECTORY "${dir}")
+            continue()
+        endif()
         get_filename_component(test_id "${dir}" NAME)
+        # Filter: must be 4 digits
+        if(NOT test_id MATCHES "^[0-9][0-9][0-9][0-9]$")
+            continue()
+        endif()
 
         # Read description from === file
         set(desc_file "${dir}/===")
@@ -104,158 +157,44 @@ function(add_testsuite_tests test_name test_script)
         set(xfail_list "")
     endif()
 
+    set(extra_env "JQ=${JQ_EXECUTABLE}")
+
     message(STATUS "Registering individual ${test_name} subtests")
 
-    # Scan the filesystem
-    file(GLOB base_tests "${test_dir}/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]")
+    # Use wildcard glob and filter with regex (Windows-compatible)
+    file(GLOB all_base_dirs "${test_dir}/*")
 
-        foreach(base_test ${base_tests})
-            get_filename_component(test_id "${base_test}" NAME)
+    foreach(base_test ${all_base_dirs})
+        if(NOT IS_DIRECTORY "${base_test}")
+            continue()
+        endif()
+        get_filename_component(base_id "${base_test}" NAME)
+        # Filter: must be 4 alphanumeric chars (YAML test suite IDs like "229Q", "2JQS")
+        if(NOT base_id MATCHES "^[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]$")
+            continue()
+        endif()
 
-            # Check for main test
-            if(EXISTS "${base_test}/===")
-                # Read description from === file
-                file(READ "${base_test}/===" test_desc)
-                string(STRIP "${test_desc}" test_desc)
+        # Register base test
+        _register_testsuite_test("${test_name}" "${base_test}" "${base_id}"
+            "${skip_list}" "${xfail_list}" "${extra_env}")
 
-                # Build test name with description if available
-                if(test_desc)
-                    set(test_name_full "${test_name}/${test_id} - ${test_desc}")
-                else()
-                    set(test_name_full "${test_name}/${test_id}")
-                endif()
-
-                # Set basic properties
-                set(test_labels "${test_name}")
-                set(test_disabled FALSE)
-
-                # Check if test should be skipped
-                if(test_id IN_LIST skip_list)
-                    set(test_disabled TRUE)
-                    set(test_labels "${test_name};skipped")
-                endif()
-
-                # Check if test is expected to fail (xfail)
-                # Note: TAP xfail (TODO) tests still pass (exit 0), they just mark the result as TODO
-                # So we don't use WILL_FAIL here, just add a label for filtering
-                if(test_id IN_LIST xfail_list)
-                    set(test_labels "${test_name};xfail")
-                endif()
-
-                if(test_disabled)
-                    add_tap_test("${test_name_full}" "${test_name}" "${test_id}"
-                        LABELS "${test_labels}"
-                        EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
-                        DISABLED
-                    )
-                else()
-                    add_tap_test("${test_name_full}" "${test_name}" "${test_id}"
-                        LABELS "${test_labels}"
-                        EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
-                    )
-                endif()
+        # Check for subtests (2-digit or 3-digit subdirectories)
+        file(GLOB all_subtests "${base_test}/*")
+        foreach(subtest ${all_subtests})
+            if(NOT IS_DIRECTORY "${subtest}")
+                continue()
+            endif()
+            get_filename_component(subtest_id "${subtest}" NAME)
+            # Filter: must be 2 or 3 digits
+            if(NOT subtest_id MATCHES "^[0-9][0-9][0-9]?$")
+                continue()
             endif()
 
-            # Check for 2-digit subtests
-            file(GLOB subtests_2d "${base_test}/[0-9][0-9]")
-            foreach(subtest ${subtests_2d})
-                if(EXISTS "${subtest}/===")
-                    get_filename_component(subtest_id "${subtest}" NAME)
-                    set(full_test_id "${test_id}/${subtest_id}")
-
-                    # Read description from === file
-                    file(READ "${subtest}/===" test_desc)
-                    string(STRIP "${test_desc}" test_desc)
-
-                    # Build test name with description if available
-                    if(test_desc)
-                        set(test_name_full "${test_name}/${full_test_id} - ${test_desc}")
-                    else()
-                        set(test_name_full "${test_name}/${full_test_id}")
-                    endif()
-
-                    # Set basic properties
-                    set(test_labels "${test_name}")
-                    set(test_disabled FALSE)
-
-                    # Check if test should be skipped
-                    if(full_test_id IN_LIST skip_list)
-                        set(test_disabled TRUE)
-                        set(test_labels "${test_name};skipped")
-                    endif()
-
-                    # Check if test is expected to fail (xfail)
-                    # Note: TAP xfail (TODO) tests still pass (exit 0), they just mark the result as TODO
-                    # So we don't use WILL_FAIL here, just add a label for filtering
-                    if(full_test_id IN_LIST xfail_list)
-                        set(test_labels "${test_name};xfail")
-                    endif()
-
-                    if(test_disabled)
-                        add_tap_test("${test_name_full}" "${test_name}" "${full_test_id}"
-                            LABELS "${test_labels}"
-                            EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
-                            DISABLED
-                        )
-                    else()
-                        add_tap_test("${test_name_full}" "${test_name}" "${full_test_id}"
-                            LABELS "${test_labels}"
-                            EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
-                        )
-                    endif()
-                endif()
-            endforeach()
-
-            # Check for 3-digit subtests
-            file(GLOB subtests_3d "${base_test}/[0-9][0-9][0-9]")
-            foreach(subtest ${subtests_3d})
-                if(EXISTS "${subtest}/===")
-                    get_filename_component(subtest_id "${subtest}" NAME)
-                    set(full_test_id "${test_id}/${subtest_id}")
-
-                    # Read description from === file
-                    file(READ "${subtest}/===" test_desc)
-                    string(STRIP "${test_desc}" test_desc)
-
-                    # Build test name with description if available
-                    if(test_desc)
-                        set(test_name_full "${test_name}/${full_test_id} - ${test_desc}")
-                    else()
-                        set(test_name_full "${test_name}/${full_test_id}")
-                    endif()
-
-                    # Set basic properties
-                    set(test_labels "${test_name}")
-                    set(test_disabled FALSE)
-
-                    # Check if test should be skipped
-                    if(full_test_id IN_LIST skip_list)
-                        set(test_disabled TRUE)
-                        set(test_labels "${test_name};skipped")
-                    endif()
-
-                    # Check if test is expected to fail (xfail)
-                    # Note: TAP xfail (TODO) tests still pass (exit 0), they just mark the result as TODO
-                    # So we don't use WILL_FAIL here, just add a label for filtering
-                    if(full_test_id IN_LIST xfail_list)
-                        set(test_labels "${test_name};xfail")
-                    endif()
-
-                    if(test_disabled)
-                        add_tap_test("${test_name_full}" "${test_name}" "${full_test_id}"
-                            LABELS "${test_labels}"
-                            EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
-                            DISABLED
-                        )
-                    else()
-                        add_tap_test("${test_name_full}" "${test_name}" "${full_test_id}"
-                            LABELS "${test_labels}"
-                            EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
-                        )
-                    endif()
-                endif()
-            endforeach()
+            set(full_test_id "${base_id}/${subtest_id}")
+            _register_testsuite_test("${test_name}" "${subtest}" "${full_test_id}"
+                "${skip_list}" "${xfail_list}" "${extra_env}")
         endforeach()
+    endforeach()
 endfunction()
 
 # Function to add jsontestsuite tests
@@ -265,47 +204,126 @@ function(add_jsontestsuite_tests)
 
     message(STATUS "Registering individual jsontestsuite subtests")
 
-    # Scan the filesystem
-    # Expected to pass (y_*.json)
-    file(GLOB pass_tests "${test_dir}/y_*.json")
-        foreach(test_file ${pass_tests})
-            get_filename_component(test_id "${test_file}" NAME)
+    # Scan for all .json files and categorize by prefix
+    file(GLOB all_tests "${test_dir}/*.json")
+    foreach(test_file ${all_tests})
+        get_filename_component(test_id "${test_file}" NAME)
 
-            add_tap_test("jsontestsuite/${test_id}" jsontestsuite "${test_id}"
-                LABELS "jsontestsuite;jsontestsuite-pass"
-                EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
-            )
-        endforeach()
+        # Categorize by first character: y=pass, n=fail, i=impl-defined
+        string(SUBSTRING "${test_id}" 0 1 prefix)
+        if(prefix STREQUAL "y")
+            set(label "jsontestsuite;jsontestsuite-pass")
+        elseif(prefix STREQUAL "n")
+            set(label "jsontestsuite;jsontestsuite-fail")
+        elseif(prefix STREQUAL "i")
+            set(label "jsontestsuite;jsontestsuite-impl")
+        else()
+            continue()
+        endif()
 
-        # Expected to fail (n_*.json)
-        file(GLOB fail_tests "${test_dir}/n_*.json")
-        foreach(test_file ${fail_tests})
-            get_filename_component(test_id "${test_file}" NAME)
-
-            add_tap_test("jsontestsuite/${test_id}" jsontestsuite "${test_id}"
-                LABELS "jsontestsuite;jsontestsuite-fail"
-                EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
-            )
-        endforeach()
-
-        # Implementation defined (i_*.json)
-        file(GLOB impl_tests "${test_dir}/i_*.json")
-        foreach(test_file ${impl_tests})
-            get_filename_component(test_id "${test_file}" NAME)
-
-            add_tap_test("jsontestsuite/${test_id}" jsontestsuite "${test_id}"
-                LABELS "jsontestsuite;jsontestsuite-impl"
-                EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
-            )
-        endforeach()
+        add_tap_test("jsontestsuite/${test_id}" jsontestsuite "${test_id}"
+            LABELS "${label}"
+            EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
+        )
+    endforeach()
 endfunction()
+
+# Helper macro for checking if a reflection test should be skipped based on env file
+macro(_should_skip_reflection_test test_path result_var)
+    set(${result_var} FALSE)
+    set(_env_file "${test_path}/env")
+    if(EXISTS "${_env_file}")
+        file(READ "${_env_file}" _env_contents)
+        string(STRIP "${_env_contents}" _env_contents)
+
+        # Parse env file for requirements
+        if(_env_contents MATCHES "intbits=([0-9]+)")
+            if(NOT "${CMAKE_MATCH_1}" STREQUAL "${_refl_intbits}")
+                set(${result_var} TRUE)
+            endif()
+        endif()
+        if(_env_contents MATCHES "shortbits=([0-9]+)")
+            if(NOT "${CMAKE_MATCH_1}" STREQUAL "${_refl_shortbits}")
+                set(${result_var} TRUE)
+            endif()
+        endif()
+        if(_env_contents MATCHES "longbits=([0-9]+)")
+            if(NOT "${CMAKE_MATCH_1}" STREQUAL "${_refl_longbits}")
+                set(${result_var} TRUE)
+            endif()
+        endif()
+        if(_env_contents MATCHES "charbits=([0-9]+)")
+            if(NOT "${CMAKE_MATCH_1}" STREQUAL "${_refl_charbits}")
+                set(${result_var} TRUE)
+            endif()
+        endif()
+        if(_env_contents MATCHES "longlongbits=([0-9]+)")
+            if(NOT "${CMAKE_MATCH_1}" STREQUAL "${_refl_longlongbits}")
+                set(${result_var} TRUE)
+            endif()
+        endif()
+        if(_env_contents MATCHES "charsigned=([yn])")
+            if(NOT "${CMAKE_MATCH_1}" STREQUAL "${_refl_charsigned}")
+                set(${result_var} TRUE)
+            endif()
+        endif()
+    endif()
+endmacro()
+
+# Helper macro to register a single reflection test
+macro(_register_reflection_test test_dir test_id xfail_list)
+    if(EXISTS "${test_dir}/===")
+        # Read description from === file
+        file(READ "${test_dir}/===" _test_desc)
+        string(STRIP "${_test_desc}" _test_desc)
+
+        # Build test name with description if available
+        if(_test_desc)
+            set(_test_name_full "testreflection/${test_id} - ${_test_desc}")
+        else()
+            set(_test_name_full "testreflection/${test_id}")
+        endif()
+
+        # Check if test should be skipped based on environment
+        _should_skip_reflection_test("${test_dir}" _test_should_skip)
+
+        # Set basic properties
+        set(_test_labels "testreflection")
+        set(_test_disabled FALSE)
+        set(_test_will_fail FALSE)
+
+        if(_test_should_skip)
+            set(_test_disabled TRUE)
+            set(_test_labels "testreflection;skipped")
+        endif()
+
+        if(test_id IN_LIST xfail_list)
+            set(_test_labels "testreflection;xfail")
+            set(_test_will_fail TRUE)
+        endif()
+
+        # Register the test with appropriate flags
+        if(_test_disabled AND _test_will_fail)
+            add_tap_test("${_test_name_full}" testreflection "${test_id}"
+                LABELS "${_test_labels}" DISABLED WILL_FAIL)
+        elseif(_test_disabled)
+            add_tap_test("${_test_name_full}" testreflection "${test_id}"
+                LABELS "${_test_labels}" DISABLED)
+        elseif(_test_will_fail)
+            add_tap_test("${_test_name_full}" testreflection "${test_id}"
+                LABELS "${_test_labels}" WILL_FAIL)
+        else()
+            add_tap_test("${_test_name_full}" testreflection "${test_id}"
+                LABELS "${_test_labels}")
+        endif()
+    endif()
+endmacro()
 
 # Function to add reflection tests
 function(add_testreflection_tests)
     set(test_dir "${CMAKE_CURRENT_SOURCE_DIR}/test/reflection-data")
 
     # Skip/xfail lists from testreflection.test
-    # xfaillist="025PB08/00 025UXE6/00 025VL2J/00"
     set(xfail_list "025PB08/00" "025UXE6/00" "025VL2J/00")
 
     # Probe system characteristics (matching testreflection.test logic)
@@ -316,12 +334,12 @@ function(add_testreflection_tests)
     check_type_size("unsigned char" SIZEOF_UCHAR)
     check_type_size("long long" SIZEOF_LONGLONG)
 
-    # Calculate bit sizes
-    math(EXPR intbits "${SIZEOF_UINT} * 8")
-    math(EXPR shortbits "${SIZEOF_USHORT} * 8")
-    math(EXPR longbits "${SIZEOF_ULONG} * 8")
-    math(EXPR charbits "${SIZEOF_UCHAR} * 8")
-    set(longlongbits 64)  # Always 64 bits as per testreflection.test
+    # Calculate bit sizes (store in _refl_ prefixed vars for macro access)
+    math(EXPR _refl_intbits "${SIZEOF_UINT} * 8")
+    math(EXPR _refl_shortbits "${SIZEOF_USHORT} * 8")
+    math(EXPR _refl_longbits "${SIZEOF_ULONG} * 8")
+    math(EXPR _refl_charbits "${SIZEOF_UCHAR} * 8")
+    set(_refl_longlongbits 64)
 
     # Check if char is signed
     include(CheckCSourceRuns)
@@ -330,256 +348,45 @@ function(add_testreflection_tests)
         int main() { return (CHAR_MIN < 0) ? 0 : 1; }
     " CHAR_IS_SIGNED)
     if(CHAR_IS_SIGNED)
-        set(charsigned "y")
+        set(_refl_charsigned "y")
     else()
-        set(charsigned "n")
+        set(_refl_charsigned "n")
     endif()
 
     message(STATUS "Reflection test system characteristics:")
-    message(STATUS "  intbits=${intbits} shortbits=${shortbits} longbits=${longbits}")
-    message(STATUS "  charbits=${charbits} longlongbits=${longlongbits} charsigned=${charsigned}")
+    message(STATUS "  intbits=${_refl_intbits} shortbits=${_refl_shortbits} longbits=${_refl_longbits}")
+    message(STATUS "  charbits=${_refl_charbits} longlongbits=${_refl_longlongbits} charsigned=${_refl_charsigned}")
 
-    # Helper function to check if test should be skipped based on env file
-    macro(should_skip_test test_path result_var)
-        set(${result_var} FALSE)
-        set(env_file "${test_path}/env")
-        if(EXISTS "${env_file}")
-            file(READ "${env_file}" env_contents)
-            string(STRIP "${env_contents}" env_contents)
+    # Use wildcard glob and filter with regex (Windows-compatible)
+    file(GLOB all_base_dirs "${test_dir}/*")
 
-            # Parse env file for requirements
-            if(env_contents MATCHES "intbits=([0-9]+)")
-                if(NOT "${CMAKE_MATCH_1}" STREQUAL "${intbits}")
-                    set(${result_var} TRUE)
-                endif()
-            endif()
-            if(env_contents MATCHES "shortbits=([0-9]+)")
-                if(NOT "${CMAKE_MATCH_1}" STREQUAL "${shortbits}")
-                    set(${result_var} TRUE)
-                endif()
-            endif()
-            if(env_contents MATCHES "longbits=([0-9]+)")
-                if(NOT "${CMAKE_MATCH_1}" STREQUAL "${longbits}")
-                    set(${result_var} TRUE)
-                endif()
-            endif()
-            if(env_contents MATCHES "charbits=([0-9]+)")
-                if(NOT "${CMAKE_MATCH_1}" STREQUAL "${charbits}")
-                    set(${result_var} TRUE)
-                endif()
-            endif()
-            if(env_contents MATCHES "longlongbits=([0-9]+)")
-                if(NOT "${CMAKE_MATCH_1}" STREQUAL "${longlongbits}")
-                    set(${result_var} TRUE)
-                endif()
-            endif()
-            if(env_contents MATCHES "charsigned=([yn])")
-                if(NOT "${CMAKE_MATCH_1}" STREQUAL "${charsigned}")
-                    set(${result_var} TRUE)
-                endif()
-            endif()
+    foreach(base_test ${all_base_dirs})
+        if(NOT IS_DIRECTORY "${base_test}")
+            continue()
         endif()
-    endmacro()
-
-    # Scan reflection-data directory for tests
-    # Note: CMake GLOB doesn't support [A-Z0-9] ranges like shell globs do
-    # We need to use a wildcard and filter in the loop
-    file(GLOB base_tests "${test_dir}/*")
-
-    # Filter to only include directories matching the pattern [0-9][0-9][0-9][A-Z][A-Z0-9][A-Z0-9][A-Z0-9]
-    set(filtered_base_tests)
-    foreach(test_candidate ${base_tests})
-        if(IS_DIRECTORY "${test_candidate}")
-            get_filename_component(test_name "${test_candidate}" NAME)
-            # Check if the name matches the pattern: 3 digits followed by 4 alphanumeric chars (starting with letter)
-            if(test_name MATCHES "^[0-9][0-9][0-9][A-Z][A-Z0-9][A-Z0-9][A-Z0-9]$")
-                list(APPEND filtered_base_tests "${test_candidate}")
-            endif()
-        endif()
-    endforeach()
-    set(base_tests ${filtered_base_tests})
-
-    foreach(base_test ${base_tests})
-        get_filename_component(test_id "${base_test}" NAME)
-
-        # Check for main test (base directory with === file)
-        if(EXISTS "${base_test}/===")
-            # Read description from === file
-            file(READ "${base_test}/===" test_desc)
-            string(STRIP "${test_desc}" test_desc)
-
-            # Build test name with description if available
-            if(test_desc)
-                set(test_name_full "testreflection/${test_id} - ${test_desc}")
-            else()
-                set(test_name_full "testreflection/${test_id}")
-            endif()
-
-            # Check if test should be skipped based on environment
-            should_skip_test("${base_test}" test_should_skip)
-
-            # Set basic properties
-            set(test_labels "testreflection")
-            set(test_disabled FALSE)
-            set(test_will_fail FALSE)
-
-            # Check if test should be skipped
-            if(test_should_skip)
-                set(test_disabled TRUE)
-                set(test_labels "testreflection;skipped")
-            endif()
-
-            # Check if test is expected to fail (xfail)
-            if(test_id IN_LIST xfail_list)
-                set(test_labels "testreflection;xfail")
-                set(test_will_fail TRUE)
-            endif()
-
-            if(test_disabled AND test_will_fail)
-                add_tap_test("${test_name_full}" testreflection "${test_id}"
-                    LABELS "${test_labels}"
-                    DISABLED
-                    WILL_FAIL
-                )
-            elseif(test_disabled)
-                add_tap_test("${test_name_full}" testreflection "${test_id}"
-                    LABELS "${test_labels}"
-                    DISABLED
-                )
-            elseif(test_will_fail)
-                add_tap_test("${test_name_full}" testreflection "${test_id}"
-                    LABELS "${test_labels}"
-                    WILL_FAIL
-                )
-            else()
-                add_tap_test("${test_name_full}" testreflection "${test_id}"
-                    LABELS "${test_labels}"
-                )
-            endif()
+        get_filename_component(base_id "${base_test}" NAME)
+        # Filter: 3 digits followed by 4 alphanumeric chars (starting with letter)
+        if(NOT base_id MATCHES "^[0-9][0-9][0-9][A-Z][A-Z0-9][A-Z0-9][A-Z0-9]$")
+            continue()
         endif()
 
-        # Check for 2-digit subtests
-        file(GLOB subtests_2d "${base_test}/[0-9][0-9]")
-        foreach(subtest ${subtests_2d})
-            if(EXISTS "${subtest}/===")
-                get_filename_component(subtest_id "${subtest}" NAME)
-                set(full_test_id "${test_id}/${subtest_id}")
+        # Register base test
+        _register_reflection_test("${base_test}" "${base_id}" "${xfail_list}")
 
-                # Read description from === file
-                file(READ "${subtest}/===" test_desc)
-                string(STRIP "${test_desc}" test_desc)
-
-                # Build test name with description if available
-                if(test_desc)
-                    set(test_name_full "testreflection/${full_test_id} - ${test_desc}")
-                else()
-                    set(test_name_full "testreflection/${full_test_id}")
-                endif()
-
-                # Check if test should be skipped based on environment
-                should_skip_test("${subtest}" test_should_skip)
-
-                # Set basic properties
-                set(test_labels "testreflection")
-                set(test_disabled FALSE)
-                set(test_will_fail FALSE)
-
-                # Check if test should be skipped
-                if(test_should_skip)
-                    set(test_disabled TRUE)
-                    set(test_labels "testreflection;skipped")
-                endif()
-
-                # Check if test is expected to fail (xfail)
-                if(full_test_id IN_LIST xfail_list)
-                    set(test_labels "testreflection;xfail")
-                    set(test_will_fail TRUE)
-                endif()
-
-                if(test_disabled AND test_will_fail)
-                    add_tap_test("${test_name_full}" testreflection "${full_test_id}"
-                        LABELS "${test_labels}"
-                        DISABLED
-                        WILL_FAIL
-                    )
-                elseif(test_disabled)
-                    add_tap_test("${test_name_full}" testreflection "${full_test_id}"
-                        LABELS "${test_labels}"
-                        DISABLED
-                    )
-                elseif(test_will_fail)
-                    add_tap_test("${test_name_full}" testreflection "${full_test_id}"
-                        LABELS "${test_labels}"
-                        WILL_FAIL
-                    )
-                else()
-                    add_tap_test("${test_name_full}" testreflection "${full_test_id}"
-                        LABELS "${test_labels}"
-                    )
-                endif()
+        # Check for subtests (2-digit or 3-digit subdirectories)
+        file(GLOB all_subtests "${base_test}/*")
+        foreach(subtest ${all_subtests})
+            if(NOT IS_DIRECTORY "${subtest}")
+                continue()
             endif()
-        endforeach()
-
-        # Check for 3-digit subtests
-        file(GLOB subtests_3d "${base_test}/[0-9][0-9][0-9]")
-        foreach(subtest ${subtests_3d})
-            if(EXISTS "${subtest}/===")
-                get_filename_component(subtest_id "${subtest}" NAME)
-                set(full_test_id "${test_id}/${subtest_id}")
-
-                # Read description from === file
-                file(READ "${subtest}/===" test_desc)
-                string(STRIP "${test_desc}" test_desc)
-
-                # Build test name with description if available
-                if(test_desc)
-                    set(test_name_full "testreflection/${full_test_id} - ${test_desc}")
-                else()
-                    set(test_name_full "testreflection/${full_test_id}")
-                endif()
-
-                # Check if test should be skipped based on environment
-                should_skip_test("${subtest}" test_should_skip)
-
-                # Set basic properties
-                set(test_labels "testreflection")
-                set(test_disabled FALSE)
-                set(test_will_fail FALSE)
-
-                # Check if test should be skipped
-                if(test_should_skip)
-                    set(test_disabled TRUE)
-                    set(test_labels "testreflection;skipped")
-                endif()
-
-                # Check if test is expected to fail (xfail)
-                if(full_test_id IN_LIST xfail_list)
-                    set(test_labels "testreflection;xfail")
-                    set(test_will_fail TRUE)
-                endif()
-
-                if(test_disabled AND test_will_fail)
-                    add_tap_test("${test_name_full}" testreflection "${full_test_id}"
-                        LABELS "${test_labels}"
-                        DISABLED
-                        WILL_FAIL
-                    )
-                elseif(test_disabled)
-                    add_tap_test("${test_name_full}" testreflection "${full_test_id}"
-                        LABELS "${test_labels}"
-                        DISABLED
-                    )
-                elseif(test_will_fail)
-                    add_tap_test("${test_name_full}" testreflection "${full_test_id}"
-                        LABELS "${test_labels}"
-                        WILL_FAIL
-                    )
-                else()
-                    add_tap_test("${test_name_full}" testreflection "${full_test_id}"
-                        LABELS "${test_labels}"
-                    )
-                endif()
+            get_filename_component(subtest_id "${subtest}" NAME)
+            # Filter: must be 2 or 3 digits
+            if(NOT subtest_id MATCHES "^[0-9][0-9][0-9]?$")
+                continue()
             endif()
+
+            set(full_test_id "${base_id}/${subtest_id}")
+            _register_reflection_test("${subtest}" "${full_test_id}" "${xfail_list}")
         endforeach()
     endforeach()
 endfunction()

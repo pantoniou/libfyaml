@@ -61,7 +61,7 @@ case "$test_suite" in
             pass_yaml=1
         fi
 
-        errmsg=$(cat "$t" | head -n1 | sed -e 's/^.*\(:[0-9]\+:[0-9]\+:\)/\1/'))
+        errmsg=$(cat "$t" | head -n1 | sed -e 's/^.*\(:[0-9]\+:[0-9]\+:\)/\1/')
         echo "errmsg: $errmsg" >&2
 
         # Replace with error message
