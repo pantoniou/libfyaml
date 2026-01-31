@@ -490,8 +490,8 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 			break;
 
 		/* if we're not ignoring stdio, open a FILE* using the fd */
-		if (!fyi->cfg.ignore_stdio) {
-			fyi->fp = fdopen(fyi->fd, "r");
+		if (sb.st_size > 0 && !fyi->cfg.ignore_stdio) {
+			fyi->fp = fdopen(fyi->fd, "rb");
 			fyr_error_check(fyr, rc != -1, err_out, "failed to fdopen %s", fyi->name);
 		} else
 			fyi->fp = NULL;
