@@ -61,7 +61,7 @@ case "$test_suite" in
             pass_yaml=1
         fi
 
-        errmsg=$(cat "$t" | head -n1 | sed -e 's/^[^:]*//')
+        errmsg=$(cat "$t" | head -n1 | sed -e 's/^.*\(:[0-9]\+:[0-9]\+:\)/\1/'))
         echo "errmsg: $errmsg" >&2
 
         # Replace with error message
@@ -74,7 +74,7 @@ case "$test_suite" in
             # diff is pointless under valgrind
             if [ "x$USE_VALGRIND" == "x" ]; then
                 diff_err=0
-                diff -u "$dir/test.error" "$t"
+                diff -uw "$dir/test.error" "$t"
                 if [ $? -eq 0 ]; then
                     res="ok"
                 else
