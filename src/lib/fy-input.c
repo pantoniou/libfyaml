@@ -593,9 +593,15 @@ int fy_reader_input_done(struct fy_reader *fyr)
 	case fyit_stream:
 	case fyit_callback:
 		/* chop extra buffer */
-		buf = realloc(fyi->buffer, current_input_pos);
-		fyr_error_check(fyr, buf || !current_input_pos, err_out,
-				"realloc() failed");
+		if (current_input_pos > 0) {
+			buf = realloc(fyi->buffer, current_input_pos);
+			fyr_error_check(fyr, buf || !current_input_pos, err_out,
+					"realloc() failed");
+		} else {
+			/* for empty stream, just free everything */
+			free(fyi->buffer);
+			buf = NULL;
+		}
 
 		/* increate input generation; required for direct input to work */
 		if (fyi->buffer != buf) {
