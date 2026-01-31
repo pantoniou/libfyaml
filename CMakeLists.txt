@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.14)
 
 if (POLICY CMP0048)
     cmake_policy(SET CMP0048 NEW) # Allow project(xxx VERSION a.b.c)
@@ -426,6 +426,14 @@ else()
 
 endif() # ENABLE_LIBCLANG
 
+# check for bash
+find_program(BASH_EXECUTABLE bash)
+if(BASH_EXECUTABLE)
+    set(HAVE_BASH 1)
+else()
+    set(HAVE_BASH 0)
+endif()
+
 # Check for tools
 find_program(GIT_EXECUTABLE git)
 if(GIT_EXECUTABLE)
@@ -448,7 +456,7 @@ else()
     set(HAVE_DOCKER 0)
 endif()
 
-# Test suite URLs
+# Test suite URLs and commits
 if(NOT TESTSUITEURL)
     set(TESTSUITEURL "https://github.com/yaml/yaml-test-suite")
 endif()
@@ -460,6 +468,23 @@ if(NOT JSONTESTSUITEURL)
 endif()
 if(NOT JSONTESTSUITECHECKOUT)
     set(JSONTESTSUITECHECKOUT "d64aefb55228d9584d3e5b2433f720ea8fd00c82")
+endif()
+
+# FetchContent for test suites (downloaded at configure time when network is available)
+include(FetchContent)
+if(ENABLE_NETWORK)
+    FetchContent_Declare(
+        yaml_test_suite
+        GIT_REPOSITORY ${TESTSUITEURL}
+        GIT_TAG        ${TESTSUITECHECKOUT}
+	GIT_SHALLOW    TRUE
+    )
+    FetchContent_Declare(
+        json_test_suite
+        GIT_REPOSITORY ${JSONTESTSUITEURL}
+        GIT_TAG        ${JSONTESTSUITECHECKOUT}
+	GIT_SHALLOW    FALSE
+    )
 endif()
 
 # SIMD capability detection
@@ -1232,8 +1257,14 @@ add_dependencies(fy-allocators fyaml_static)
 
 endif() # NOT CROSS_COMPILING (internal tools)
 
+if(BUILD_TESTING AND NOT CROSS_COMPILING AND HAVE_CHECK AND HAVE_BASH)
+    set(CAN_TEST 1)
+else()
+    set(CAN_TEST 0)
+endif()
+
 # Testing
-if(BUILD_TESTING AND NOT CROSS_COMPILING)
+if(CAN_TEST)
     # Include TAP subtest registration functions
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/add-tap-subtests.cmake)
 
@@ -1243,40 +1274,6 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
     # Create src directory for compatibility with test scripts
     # Tests expect tools at build/src/
     file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/src)
-
-    # Create symlinks for test compatibility (not on Windows - symlinks require special privileges)
-    if(NOT WIN32)
-        add_custom_command(TARGET fy-tool POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E create_symlink
-                ${CMAKE_CURRENT_BINARY_DIR}/fy-tool
-                ${CMAKE_CURRENT_BINARY_DIR}/src/fy-tool
-            COMMENT "Creating symlink for test compatibility"
-        )
-
-        # Create symlinks for internal tools
-        add_custom_command(TARGET fy-thread POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E create_symlink
-                ${CMAKE_CURRENT_BINARY_DIR}/fy-thread
-                ${CMAKE_CURRENT_BINARY_DIR}/src/fy-thread
-        )
-        add_custom_command(TARGET fy-b3sum POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E create_symlink
-                ${CMAKE_CURRENT_BINARY_DIR}/fy-b3sum
-                ${CMAKE_CURRENT_BINARY_DIR}/src/fy-b3sum
-        )
-        add_custom_command(TARGET fy-allocators POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E create_symlink
-                ${CMAKE_CURRENT_BINARY_DIR}/fy-allocators
-                ${CMAKE_CURRENT_BINARY_DIR}/src/fy-allocators
-        )
-        if(HAVE_LIBYAML)
-            add_custom_command(TARGET libfyaml-parser POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E create_symlink
-                    ${CMAKE_CURRENT_BINARY_DIR}/libfyaml-parser
-                    ${CMAKE_CURRENT_BINARY_DIR}/src/libfyaml-parser
-            )
-        endif()
-    endif()
 
     # Build libfyaml-test if check is available
     if(HAVE_COMPATIBLE_CHECK)
@@ -1349,13 +1346,10 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
             RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
         )
 
-        # Add libfyaml.test
+        # Add the libfyaml-test binary as the libfyaml test
         add_test(NAME libfyaml
-            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test/libfyaml.test
+            COMMAND $<TARGET_FILE:libfyaml-test>
             WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-        )
-        set_tests_properties(libfyaml PROPERTIES
-            ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test"
         )
     endif()
 
@@ -1367,28 +1361,34 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
     add_testemitter_tests(testemitter-streaming "--streaming")
     add_testemitter_tests(testemitter-restreaming "--streaming --recreating")
 
-    # Network and git-dependent tests
-    if(HAVE_NETWORK AND HAVE_GIT)
-        # YAML test suite - setup fixture
-        add_test(NAME yaml-test-suite-setup
-            COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_BINARY_DIR}/test
-                ${CMAKE_COMMAND}
-                -DGIT_EXECUTABLE=${GIT_EXECUTABLE}
-                -DTESTSUITEURL=${TESTSUITEURL}
-                -DTESTSUITECHECKOUT=${TESTSUITECHECKOUT}
-                -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/test
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/setup-yaml-test-suite.cmake
+    # Network-dependent tests using FetchContent
+    if(HAVE_NETWORK)
+        # Download test suites at configure time via FetchContent
+        message(STATUS "Fetching YAML test suite...")
+        FetchContent_MakeAvailable(yaml_test_suite)
+        message(STATUS "Fetching JSON test suite...")
+        FetchContent_MakeAvailable(json_test_suite)
+
+        # Create symlinks in test/ directory for compatibility with test scripts
+        # FetchContent puts sources in _deps/<name>-src
+        # Remove any existing directory/symlink first
+        file(REMOVE_RECURSE "${CMAKE_CURRENT_BINARY_DIR}/test/test-suite-data")
+        file(REMOVE_RECURSE "${CMAKE_CURRENT_BINARY_DIR}/test/json-test-suite-data")
+        file(CREATE_LINK
+            "${yaml_test_suite_SOURCE_DIR}"
+            "${CMAKE_CURRENT_BINARY_DIR}/test/test-suite-data"
+            SYMBOLIC
         )
-        set_tests_properties(yaml-test-suite-setup PROPERTIES
-            FIXTURES_SETUP yaml-test-suite-data
+        file(CREATE_LINK
+            "${json_test_suite_SOURCE_DIR}"
+            "${CMAKE_CURRENT_BINARY_DIR}/test/json-test-suite-data"
+            SYMBOLIC
         )
 
         # YAML test suite tests - register individual subtests
-        # Three modes (handled automatically by add_testsuite_tests):
-        # 1. If test-suite-data exists: scan filesystem and register tests
-        # 2. If cmake/testsuite-tests.cmake exists: use pre-generated list
-        # 3. Otherwise: use monolithic test (re-run cmake after downloading data)
-        # To generate cmake/testsuite-tests.cmake, see cmake/README-testsuite-generation.md
+        # Two modes (handled automatically by add_testsuite_tests):
+        # 1. If test-suite-data exists (via FetchContent symlink): scan filesystem
+        # 2. If cmake/testsuite-tests.cmake exists: use pre-generated list (offline builds)
         add_testsuite_tests(testsuite testsuite.test)
         add_testsuite_tests(testsuite-evstream testsuite-evstream.test)
         add_testsuite_tests(testsuite-resolution testsuite-resolution.test)
@@ -1396,27 +1396,7 @@ if(BUILD_TESTING AND NOT CROSS_COMPILING)
             add_testsuite_tests(testsuite-json testsuite-json.test)
         endif()
 
-        # JSON test suite - setup fixture
-        add_test(NAME json-test-suite-setup
-            COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_BINARY_DIR}/test
-                ${CMAKE_COMMAND}
-                -DGIT_EXECUTABLE=${GIT_EXECUTABLE}
-                -DTESTSUITEURL=${JSONTESTSUITEURL}
-                -DTESTSUITECHECKOUT=${JSONTESTSUITECHECKOUT}
-                -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/test
-                -DREPO_NAME=json-test-suite-data
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/setup-yaml-test-suite.cmake
-        )
-        set_tests_properties(json-test-suite-setup PROPERTIES
-            FIXTURES_SETUP json-test-suite-data
-        )
-
         # JSON test suite - register individual subtests
-        # Three modes (handled automatically by add_jsontestsuite_tests):
-        # 1. If json-test-suite-data exists: scan filesystem and register tests
-        # 2. If cmake/jsontestsuite-tests.cmake exists: use pre-generated list
-        # 3. Otherwise: use monolithic test (re-run cmake after downloading data)
-        # To generate cmake/jsontestsuite-tests.cmake, see cmake/README-testsuite-generation.md
         add_jsontestsuite_tests()
     endif()
 
@@ -1644,6 +1624,7 @@ message(STATUS "Target system:         ${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_PROCE
 message(STATUS "Cross compiling:       ${CROSS_COMPILING}")
 message(STATUS "C compiler:            ${CMAKE_C_COMPILER}")
 message(STATUS "Build type:            ${CMAKE_BUILD_TYPE}")
+message(STATUS "HAVE_BASH:             ${HAVE_BASH}")
 message(STATUS "HAVE_CHECK:            ${HAVE_CHECK}")
 message(STATUS "HAVE_COMPATIBLE_CHECK: ${HAVE_COMPATIBLE_CHECK}")
 message(STATUS "HAVE_LIBYAML:          ${HAVE_LIBYAML}")
@@ -1667,8 +1648,9 @@ message(STATUS "TESTSUITEURL:          ${TESTSUITEURL}")
 message(STATUS "TESTSUITECHECKOUT:     ${TESTSUITECHECKOUT}")
 message(STATUS "JSONTESTSUITEURL:      ${JSONTESTSUITEURL}")
 message(STATUS "JSONTESTSUITECHECKOUT: ${JSONTESTSUITECHECKOUT}")
+message(STATUS "CAN_TEST:              ${CAN_TEST}")
 message(STATUS "")
-if(BUILD_TESTING AND NOT CROSS_COMPILING)
+if(CAN_TEST)
     message(STATUS "Test targets:")
     message(STATUS "  make all test       - Build everything then run CTest (2464 individual tests)")
     message(STATUS "  make build_and_test - Convenience target: build and test in one command")

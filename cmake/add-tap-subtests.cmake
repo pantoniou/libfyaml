@@ -1,6 +1,43 @@
 # Helper function to add individual TAP subtests from test scripts
 # This mimics the behavior of autotools tap-driver.sh by registering each subtest individually
 
+# Helper function to add a TAP test with fy-tool path via generator expression
+# This enables proper support for multi-config generators (Visual Studio, Xcode)
+# by passing the actual tool path at runtime rather than relying on hardcoded paths.
+function(add_tap_test test_name suite_name test_id)
+    cmake_parse_arguments(TAP "DISABLED;WILL_FAIL" "" "LABELS;EXTRA_ENV" ${ARGN})
+
+    add_test(
+        NAME "${test_name}"
+	COMMAND "${BASH_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh"
+            "$<TARGET_FILE:fy-tool>"
+            "${suite_name}" "${test_id}"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
+    )
+
+    # Build environment (TOP_BUILDDIR removed - no longer needed)
+    set(base_env
+        "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test"
+        "BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test"
+    )
+    if(TAP_EXTRA_ENV)
+        list(APPEND base_env ${TAP_EXTRA_ENV})
+    endif()
+
+    set_tests_properties("${test_name}" PROPERTIES ENVIRONMENT "${base_env}")
+
+    if(TAP_LABELS)
+        set_tests_properties("${test_name}" PROPERTIES LABELS "${TAP_LABELS}")
+    endif()
+    if(TAP_DISABLED)
+        set_tests_properties("${test_name}" PROPERTIES DISABLED TRUE)
+    endif()
+    if(TAP_WILL_FAIL)
+        set_tests_properties("${test_name}" PROPERTIES WILL_FAIL TRUE)
+    endif()
+endfunction()
+
 # Function to run a single test from testerrors.test
 function(add_testerrors_tests)
     file(GLOB error_dirs "${CMAKE_CURRENT_SOURCE_DIR}/test/test-errors/[0-9][0-9][0-9][0-9]")
@@ -24,16 +61,7 @@ function(add_testerrors_tests)
             set(test_name_full "testerrors/${test_id}")
         endif()
 
-        add_test(
-            NAME "${test_name_full}"
-            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh
-                testerrors "${test_id}"
-            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-        )
-
-        # Set properties
-        set_tests_properties("${test_name_full}" PROPERTIES
-            ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test"
+        add_tap_test("${test_name_full}" testerrors "${test_id}"
             LABELS "testerrors"
         )
     endforeach()
@@ -46,26 +74,17 @@ function(add_testemitter_tests test_name extra_args)
     foreach(yaml_file ${yaml_files})
         get_filename_component(test_id "${yaml_file}" NAME)
 
-        add_test(
-            NAME "${test_name}/${test_id}"
-            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh
-                "${test_name}" "${test_id}"
-            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-        )
-
-        set_tests_properties("${test_name}/${test_id}" PROPERTIES
-            ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test;EXTRA_DUMP_ARGS=${extra_args}"
+        add_tap_test("${test_name}/${test_id}" "${test_name}" "${test_id}"
             LABELS "${test_name}"
+            EXTRA_ENV "EXTRA_DUMP_ARGS=${extra_args}"
         )
     endforeach()
 endfunction()
 
 # Function to add testsuite tests (yaml test suite)
-# Can work either by scanning the test-suite-data directory (if it exists)
-# or by using a pre-generated list of tests from testsuite-tests.cmake
+# Scans test-suite-data directory (populated by FetchContent at configure time)
 function(add_testsuite_tests test_name test_script)
     set(test_dir "${CMAKE_CURRENT_BINARY_DIR}/test/test-suite-data")
-    set(use_pregenerated_list FALSE)
 
     # Define skip/xfail lists based on test suite variant
     # These match the lists in test/*.test scripts
@@ -83,55 +102,10 @@ function(add_testsuite_tests test_name test_script)
         set(xfail_list "")
     endif()
 
-    # Check if we should use the pre-generated list
-    if(NOT EXISTS "${test_dir}")
-        # Try to use pre-generated list if available
-        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/testsuite-tests.cmake")
-            message(STATUS "Using pre-generated test list from cmake/testsuite-tests.cmake for ${test_name}")
-            include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/testsuite-tests.cmake")
-            set(use_pregenerated_list TRUE)
-        else()
-            # Neither data nor pre-generated list exists, register monolithic fallback
-            message(STATUS "Test suite data not found - registering monolithic ${test_name} test")
-            message(STATUS "Run 'ctest -R yaml-test-suite-setup' then re-run cmake to register individual subtests")
+    message(STATUS "Registering individual ${test_name} subtests")
 
-            add_test(NAME ${test_name}
-                COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test/${test_script}
-                WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-            )
-            set_tests_properties(${test_name} PROPERTIES
-                ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test;JQ=${JQ_EXECUTABLE}"
-                FIXTURES_REQUIRED yaml-test-suite-data
-            )
-            return()
-        endif()
-    else()
-        message(STATUS "Registering individual ${test_name} subtests from filesystem")
-    endif()
-
-    if(use_pregenerated_list)
-        # Use pre-generated TESTSUITE_ALL_TESTS list
-        foreach(test_id ${TESTSUITE_ALL_TESTS})
-            # test_id is either "BASE" or "BASE/SUBTEST"
-            string(REPLACE "/" ";" test_parts "${test_id}")
-            list(LENGTH test_parts parts_count)
-
-            add_test(
-                NAME "${test_name}/${test_id}"
-                COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh
-                    "${test_name}" "${test_id}"
-                WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-            )
-
-            set_tests_properties("${test_name}/${test_id}" PROPERTIES
-                ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test;JQ=${JQ_EXECUTABLE}"
-                LABELS "${test_name}"
-                FIXTURES_REQUIRED "yaml-test-suite-data"
-            )
-        endforeach()
-    else()
-        # Scan the filesystem (original behavior)
-        file(GLOB base_tests "${test_dir}/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]")
+    # Scan the filesystem
+    file(GLOB base_tests "${test_dir}/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]")
 
         foreach(base_test ${base_tests})
             get_filename_component(test_id "${base_test}" NAME)
@@ -148,13 +122,6 @@ function(add_testsuite_tests test_name test_script)
                 else()
                     set(test_name_full "${test_name}/${test_id}")
                 endif()
-
-                add_test(
-                    NAME "${test_name_full}"
-                    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh
-                        "${test_name}" "${test_id}"
-                    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-                )
 
                 # Set basic properties
                 set(test_labels "${test_name}")
@@ -173,12 +140,18 @@ function(add_testsuite_tests test_name test_script)
                     set(test_labels "${test_name};xfail")
                 endif()
 
-                set_tests_properties("${test_name_full}" PROPERTIES
-                    ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test;JQ=${JQ_EXECUTABLE}"
-                    LABELS "${test_labels}"
-                    FIXTURES_REQUIRED "yaml-test-suite-data"
-                    DISABLED ${test_disabled}
-                )
+                if(test_disabled)
+                    add_tap_test("${test_name_full}" "${test_name}" "${test_id}"
+                        LABELS "${test_labels}"
+                        EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
+                        DISABLED
+                    )
+                else()
+                    add_tap_test("${test_name_full}" "${test_name}" "${test_id}"
+                        LABELS "${test_labels}"
+                        EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
+                    )
+                endif()
             endif()
 
             # Check for 2-digit subtests
@@ -199,13 +172,6 @@ function(add_testsuite_tests test_name test_script)
                         set(test_name_full "${test_name}/${full_test_id}")
                     endif()
 
-                    add_test(
-                        NAME "${test_name_full}"
-                        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh
-                            "${test_name}" "${full_test_id}"
-                        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-                    )
-
                     # Set basic properties
                     set(test_labels "${test_name}")
                     set(test_disabled FALSE)
@@ -223,12 +189,18 @@ function(add_testsuite_tests test_name test_script)
                         set(test_labels "${test_name};xfail")
                     endif()
 
-                    set_tests_properties("${test_name_full}" PROPERTIES
-                        ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test;JQ=${JQ_EXECUTABLE}"
-                        LABELS "${test_labels}"
-                        FIXTURES_REQUIRED "yaml-test-suite-data"
-                        DISABLED ${test_disabled}
-                    )
+                    if(test_disabled)
+                        add_tap_test("${test_name_full}" "${test_name}" "${full_test_id}"
+                            LABELS "${test_labels}"
+                            EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
+                            DISABLED
+                        )
+                    else()
+                        add_tap_test("${test_name_full}" "${test_name}" "${full_test_id}"
+                            LABELS "${test_labels}"
+                            EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
+                        )
+                    endif()
                 endif()
             endforeach()
 
@@ -250,13 +222,6 @@ function(add_testsuite_tests test_name test_script)
                         set(test_name_full "${test_name}/${full_test_id}")
                     endif()
 
-                    add_test(
-                        NAME "${test_name_full}"
-                        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh
-                            "${test_name}" "${full_test_id}"
-                        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-                    )
-
                     # Set basic properties
                     set(test_labels "${test_name}")
                     set(test_disabled FALSE)
@@ -274,118 +239,39 @@ function(add_testsuite_tests test_name test_script)
                         set(test_labels "${test_name};xfail")
                     endif()
 
-                    set_tests_properties("${test_name_full}" PROPERTIES
-                        ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test;JQ=${JQ_EXECUTABLE}"
-                        LABELS "${test_labels}"
-                        FIXTURES_REQUIRED "yaml-test-suite-data"
-                        DISABLED ${test_disabled}
-                    )
+                    if(test_disabled)
+                        add_tap_test("${test_name_full}" "${test_name}" "${full_test_id}"
+                            LABELS "${test_labels}"
+                            EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
+                            DISABLED
+                        )
+                    else()
+                        add_tap_test("${test_name_full}" "${test_name}" "${full_test_id}"
+                            LABELS "${test_labels}"
+                            EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
+                        )
+                    endif()
                 endif()
             endforeach()
         endforeach()
-    endif()
 endfunction()
 
 # Function to add jsontestsuite tests
-# Can work either by scanning the json-test-suite-data directory (if it exists)
-# or by using a pre-generated list of tests from jsontestsuite-tests.cmake
+# Scans json-test-suite-data directory (populated by FetchContent at configure time)
 function(add_jsontestsuite_tests)
     set(test_dir "${CMAKE_CURRENT_BINARY_DIR}/test/json-test-suite-data/test_parsing")
-    set(use_pregenerated_list FALSE)
 
-    # Check if we should use the pre-generated list
-    if(NOT EXISTS "${test_dir}")
-        # Try to use pre-generated list if available
-        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/jsontestsuite-tests.cmake")
-            message(STATUS "Using pre-generated test list from cmake/jsontestsuite-tests.cmake")
-            include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/jsontestsuite-tests.cmake")
-            set(use_pregenerated_list TRUE)
-        else()
-            # Neither data nor pre-generated list exists, register monolithic fallback
-            message(STATUS "JSON test suite data not found - registering monolithic jsontestsuite test")
-            message(STATUS "Run 'ctest -R json-test-suite-setup' then re-run cmake to register individual subtests")
+    message(STATUS "Registering individual jsontestsuite subtests")
 
-            add_test(NAME jsontestsuite
-                COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test/jsontestsuite.test
-                WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-            )
-            set_tests_properties(jsontestsuite PROPERTIES
-                ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test;JQ=${JQ_EXECUTABLE}"
-                FIXTURES_REQUIRED json-test-suite-data
-            )
-            return()
-        endif()
-    else()
-        message(STATUS "Registering individual jsontestsuite subtests from filesystem")
-    endif()
-
-    if(use_pregenerated_list)
-        # Use pre-generated lists
-        # Expected to pass (y_*.json)
-        foreach(test_id ${JSONTESTSUITE_PASS_TESTS})
-            add_test(
-                NAME "jsontestsuite/${test_id}"
-                COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh
-                    jsontestsuite "${test_id}"
-                WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-            )
-
-            set_tests_properties("jsontestsuite/${test_id}" PROPERTIES
-                ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test;JQ=${JQ_EXECUTABLE}"
-                LABELS "jsontestsuite;jsontestsuite-pass"
-                FIXTURES_REQUIRED "json-test-suite-data"
-            )
-        endforeach()
-
-        # Expected to fail (n_*.json)
-        foreach(test_id ${JSONTESTSUITE_FAIL_TESTS})
-            add_test(
-                NAME "jsontestsuite/${test_id}"
-                COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh
-                    jsontestsuite "${test_id}"
-                WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-            )
-
-            set_tests_properties("jsontestsuite/${test_id}" PROPERTIES
-                ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test;JQ=${JQ_EXECUTABLE}"
-                LABELS "jsontestsuite;jsontestsuite-fail"
-                FIXTURES_REQUIRED "json-test-suite-data"
-            )
-        endforeach()
-
-        # Implementation defined (i_*.json)
-        foreach(test_id ${JSONTESTSUITE_IMPL_TESTS})
-            add_test(
-                NAME "jsontestsuite/${test_id}"
-                COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh
-                    jsontestsuite "${test_id}"
-                WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-            )
-
-            set_tests_properties("jsontestsuite/${test_id}" PROPERTIES
-                ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test;JQ=${JQ_EXECUTABLE}"
-                LABELS "jsontestsuite;jsontestsuite-impl"
-                FIXTURES_REQUIRED "json-test-suite-data"
-            )
-        endforeach()
-    else()
-        # Scan the filesystem (original behavior)
-        # Expected to pass (y_*.json)
-        file(GLOB pass_tests "${test_dir}/y_*.json")
+    # Scan the filesystem
+    # Expected to pass (y_*.json)
+    file(GLOB pass_tests "${test_dir}/y_*.json")
         foreach(test_file ${pass_tests})
             get_filename_component(test_id "${test_file}" NAME)
 
-            add_test(
-                NAME "jsontestsuite/${test_id}"
-                COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh
-                    jsontestsuite "${test_id}"
-                WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-            )
-
-            set_tests_properties("jsontestsuite/${test_id}" PROPERTIES
-                ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test;JQ=${JQ_EXECUTABLE}"
+            add_tap_test("jsontestsuite/${test_id}" jsontestsuite "${test_id}"
                 LABELS "jsontestsuite;jsontestsuite-pass"
-                FIXTURES_REQUIRED "json-test-suite-data"
+                EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
             )
         endforeach()
 
@@ -394,17 +280,9 @@ function(add_jsontestsuite_tests)
         foreach(test_file ${fail_tests})
             get_filename_component(test_id "${test_file}" NAME)
 
-            add_test(
-                NAME "jsontestsuite/${test_id}"
-                COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh
-                    jsontestsuite "${test_id}"
-                WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-            )
-
-            set_tests_properties("jsontestsuite/${test_id}" PROPERTIES
-                ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test;JQ=${JQ_EXECUTABLE}"
+            add_tap_test("jsontestsuite/${test_id}" jsontestsuite "${test_id}"
                 LABELS "jsontestsuite;jsontestsuite-fail"
-                FIXTURES_REQUIRED "json-test-suite-data"
+                EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
             )
         endforeach()
 
@@ -413,20 +291,11 @@ function(add_jsontestsuite_tests)
         foreach(test_file ${impl_tests})
             get_filename_component(test_id "${test_file}" NAME)
 
-            add_test(
-                NAME "jsontestsuite/${test_id}"
-                COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh
-                    jsontestsuite "${test_id}"
-                WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-            )
-
-            set_tests_properties("jsontestsuite/${test_id}" PROPERTIES
-                ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test;JQ=${JQ_EXECUTABLE}"
+            add_tap_test("jsontestsuite/${test_id}" jsontestsuite "${test_id}"
                 LABELS "jsontestsuite;jsontestsuite-impl"
-                FIXTURES_REQUIRED "json-test-suite-data"
+                EXTRA_ENV "JQ=${JQ_EXECUTABLE}"
             )
         endforeach()
-    endif()
 endfunction()
 
 # Function to add reflection tests
@@ -547,13 +416,6 @@ function(add_testreflection_tests)
             # Check if test should be skipped based on environment
             should_skip_test("${base_test}" test_should_skip)
 
-            add_test(
-                NAME "${test_name_full}"
-                COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh
-                    testreflection "${test_id}"
-                WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-            )
-
             # Set basic properties
             set(test_labels "testreflection")
             set(test_disabled FALSE)
@@ -571,12 +433,27 @@ function(add_testreflection_tests)
                 set(test_will_fail TRUE)
             endif()
 
-            set_tests_properties("${test_name_full}" PROPERTIES
-                ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test"
-                LABELS "${test_labels}"
-                DISABLED ${test_disabled}
-                WILL_FAIL ${test_will_fail}
-            )
+            if(test_disabled AND test_will_fail)
+                add_tap_test("${test_name_full}" testreflection "${test_id}"
+                    LABELS "${test_labels}"
+                    DISABLED
+                    WILL_FAIL
+                )
+            elseif(test_disabled)
+                add_tap_test("${test_name_full}" testreflection "${test_id}"
+                    LABELS "${test_labels}"
+                    DISABLED
+                )
+            elseif(test_will_fail)
+                add_tap_test("${test_name_full}" testreflection "${test_id}"
+                    LABELS "${test_labels}"
+                    WILL_FAIL
+                )
+            else()
+                add_tap_test("${test_name_full}" testreflection "${test_id}"
+                    LABELS "${test_labels}"
+                )
+            endif()
         endif()
 
         # Check for 2-digit subtests
@@ -600,13 +477,6 @@ function(add_testreflection_tests)
                 # Check if test should be skipped based on environment
                 should_skip_test("${subtest}" test_should_skip)
 
-                add_test(
-                    NAME "${test_name_full}"
-                    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh
-                        testreflection "${full_test_id}"
-                    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-                )
-
                 # Set basic properties
                 set(test_labels "testreflection")
                 set(test_disabled FALSE)
@@ -624,12 +494,27 @@ function(add_testreflection_tests)
                     set(test_will_fail TRUE)
                 endif()
 
-                set_tests_properties("${test_name_full}" PROPERTIES
-                    ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test"
-                    LABELS "${test_labels}"
-                    DISABLED ${test_disabled}
-                    WILL_FAIL ${test_will_fail}
-                )
+                if(test_disabled AND test_will_fail)
+                    add_tap_test("${test_name_full}" testreflection "${full_test_id}"
+                        LABELS "${test_labels}"
+                        DISABLED
+                        WILL_FAIL
+                    )
+                elseif(test_disabled)
+                    add_tap_test("${test_name_full}" testreflection "${full_test_id}"
+                        LABELS "${test_labels}"
+                        DISABLED
+                    )
+                elseif(test_will_fail)
+                    add_tap_test("${test_name_full}" testreflection "${full_test_id}"
+                        LABELS "${test_labels}"
+                        WILL_FAIL
+                    )
+                else()
+                    add_tap_test("${test_name_full}" testreflection "${full_test_id}"
+                        LABELS "${test_labels}"
+                    )
+                endif()
             endif()
         endforeach()
 
@@ -654,13 +539,6 @@ function(add_testreflection_tests)
                 # Check if test should be skipped based on environment
                 should_skip_test("${subtest}" test_should_skip)
 
-                add_test(
-                    NAME "${test_name_full}"
-                    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh
-                        testreflection "${full_test_id}"
-                    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-                )
-
                 # Set basic properties
                 set(test_labels "testreflection")
                 set(test_disabled FALSE)
@@ -678,12 +556,27 @@ function(add_testreflection_tests)
                     set(test_will_fail TRUE)
                 endif()
 
-                set_tests_properties("${test_name_full}" PROPERTIES
-                    ENVIRONMENT "TOP_SRCDIR=${CMAKE_CURRENT_SOURCE_DIR};TOP_BUILDDIR=${CMAKE_CURRENT_BINARY_DIR};SRCDIR=${CMAKE_CURRENT_SOURCE_DIR}/test;BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/test"
-                    LABELS "${test_labels}"
-                    DISABLED ${test_disabled}
-                    WILL_FAIL ${test_will_fail}
-                )
+                if(test_disabled AND test_will_fail)
+                    add_tap_test("${test_name_full}" testreflection "${full_test_id}"
+                        LABELS "${test_labels}"
+                        DISABLED
+                        WILL_FAIL
+                    )
+                elseif(test_disabled)
+                    add_tap_test("${test_name_full}" testreflection "${full_test_id}"
+                        LABELS "${test_labels}"
+                        DISABLED
+                    )
+                elseif(test_will_fail)
+                    add_tap_test("${test_name_full}" testreflection "${full_test_id}"
+                        LABELS "${test_labels}"
+                        WILL_FAIL
+                    )
+                else()
+                    add_tap_test("${test_name_full}" testreflection "${full_test_id}"
+                        LABELS "${test_labels}"
+                    )
+                endif()
             endif()
         endforeach()
     endforeach()
