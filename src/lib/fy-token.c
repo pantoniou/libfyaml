@@ -1338,6 +1338,7 @@ fy_token_set_comment(struct fy_token *fyt, enum fy_comment_placement which,
 	int c, lastc, w;
 	size_t sz;
 	struct fy_atom *handle;
+	struct fy_memstream *fyms = NULL;
 	FILE *fp;
 
 	if (!fyt || (unsigned int)which >= fycp_max)
@@ -1370,8 +1371,8 @@ fy_token_set_comment(struct fy_token *fyt, enum fy_comment_placement which,
 
 	data = NULL;
 
-	fp = open_memstream(&data, &sz);
-	if (!fp)
+	fyms = fy_memstream_open(&fp);
+	if (!fyms)
 		goto err_out;
 
 	s = text;
@@ -1391,8 +1392,9 @@ fy_token_set_comment(struct fy_token *fyt, enum fy_comment_placement which,
 		}
 		lastc = c;
 	}
-	fclose(fp);
-	fp = NULL;
+
+	data = fy_memstream_close(fyms, &sz);
+	fyms = NULL;
 
 	len = sz;
 
@@ -1410,8 +1412,10 @@ fy_token_set_comment(struct fy_token *fyt, enum fy_comment_placement which,
 	return 0;
 
 err_out:
-	if (fp)
-		fclose(fp);
+	if (fyms) {
+		data = fy_memstream_close(fyms, &sz);
+		fyms = NULL;
+	}
 	fy_input_unref(fyi);
 	if (data)
 		free(data);
