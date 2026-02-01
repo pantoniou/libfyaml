@@ -1358,22 +1358,6 @@ fy_token_get_text_length(struct fy_token *fyt)
 	FY_EXPORT;
 
 /**
- * fy_token_get_utf8_length() - Get length of the text of a token
- *
- * This method will return the length of the text representation
- * of a token as a utf8 string.
- *
- * @fyt: The token
- *
- * Returns:
- * The size of the utf8 text representation of a token, -1 in case of an error.
- * Note that the NULL token will return a length of zero.
- */
-size_t
-fy_token_get_utf8_length(struct fy_token *fyt)
-	FY_EXPORT;
-
-/**
  * enum fy_comment_placement - Comment placement relative to token
  *
  * @fycp_top: Comment on top of token
@@ -2738,55 +2722,6 @@ fy_emit_to_string(enum fy_emitter_cfg_flags flags)
 char *
 fy_emit_to_string_collect(struct fy_emitter *emit, size_t *sizep)
 	FY_EXPORT;
-
-/**
- * fy_emitter_vlog() - Log using the emitters diagnostics printf style (va_arg)
- *
- * Output a log on the emitter diagnostic output
- *
- * @emit: The emitter
- * @type: The error type
- * @fmt: The printf format string
- * @ap: The argument list
- */
-void
-fy_emitter_vlog(struct fy_emitter *emit, enum fy_error_type type, const char *fmt, va_list ap)
-	FY_EXPORT;
-
-/**
- * fy_emitter_log() - Log using the emitters diagnostics printf style
- *
- * Output a report on the emitter's diagnostics
- *
- * @emit: The emitter
- * @type: The error type
- * @fmt: The printf format string
- * @...: The extra arguments
- */
-void
-fy_emitter_log(struct fy_emitter *emit, enum fy_error_type type, const char *fmt, ...)
-	FY_FORMAT(printf, 3, 4)
-	FY_EXPORT;
-
-#ifndef NDEBUG
-
-#define fy_emitter_debug(_emit, _fmt, ...) \
-	fy_emitter_log((_emit), FYET_DEBUG, (_fmt) , ## __VA_ARGS__)
-#else
-
-#define fy_emitter_debug(_emit, _fmt, ...) \
-	do { } while(0)
-
-#endif
-
-#define fy_emitter_info(_emit, _fmt, ...) \
-	fy_emitter_log((_emit), FYET_INFO, (_fmt) , ## __VA_ARGS__)
-#define fy_emitter_notice(_emit, _fmt, ...) \
-	fy_emitter_log((_emit), FYET_NOTICE, (_fmt) , ## __VA_ARGS__)
-#define fy_emitter_warning(_emit, _fmt, ...) \
-	fy_emitter_log((_emit), FYET_WARNING, (_fmt) , ## __VA_ARGS__)
-#define fy_emitter_error(_emit, _fmt, ...) \
-	fy_emitter_log((_emit), FYET_ERROR, (_fmt) , ## __VA_ARGS__)
 
 /**
  * fy_node_copy() - Copy a node, associating the new node with the given document
@@ -6362,63 +6297,6 @@ fy_diag_event_report(struct fy_diag *diag, struct fy_event *fye,
 		     enum fy_event_part fyep, enum fy_error_type type,
 		     const char *fmt, ...)
 	FY_FORMAT(printf, 5, 6)
-	FY_EXPORT;
-
-/**
- * fy_diag_event_override_vreport() - Report about a token vprintf style,
- *				      overriding file, line and column info using
- * 				      the given diagnostic object
- *
- * Output a report about the given event part via the specific
- * error type. This method will use the overrides provided in order
- * to massage the reporting information.
- * If @file is NULL, no file location will be reported.
- * If either @line or @column is negative no location will be reported.
- *
- * @diag: The diag object
- * @fye: The event
- * @fyep: The event part
- * @type: The error type
- * @file: The file override
- * @line: The line override
- * @column: The column override
- * @fmt: The printf format string
- * @ap: The argument list
- */
-void
-fy_diag_event_override_vreport(struct fy_diag *diag, struct fy_event *fye,
-			       enum fy_event_part fyep, enum fy_error_type type,
-			       const char *file, int line, int column,
-			       const char *fmt, va_list ap)
-	FY_EXPORT;
-
-/**
- * fy_diag_event_override_report() - Report about a token printf style,
- * 				     overriding file, line and column info using
- * 				     the given diagnostic object
- *
- * Output a report about the given event part via the specific
- * error type. This method will use the overrides provided in order
- * to massage the reporting information.
- * If @file is NULL, no file location will be reported.
- * If either @line or @column is negative no location will be reported.
- *
- * @diag: The diag object
- * @fyt: The event
- * @fyep: The event part
- * @type: The error type
- * @file: The file override
- * @line: The line override
- * @column: The column override
- * @fmt: The printf format string
- * @...: The extra arguments.
- */
-void
-fy_diag_event_override_report(struct fy_diag *diag, struct fy_token *fyt,
-			      enum fy_event_part fyep, enum fy_error_type type,
-			      const char *file, int line, int column,
-			      const char *fmt, ...)
-	FY_FORMAT(printf, 8, 9)
 	FY_EXPORT;
 
 /**
