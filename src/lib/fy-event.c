@@ -1019,6 +1019,7 @@ fy_document_start_event_version(struct fy_event *fye)
 
 char *fy_event_to_string(struct fy_event *fye)
 {
+	struct fy_memstream *fyms = NULL;
 	FILE *fp = NULL;
 	char *mbuf = NULL;
 	const char *anchor = NULL;
@@ -1033,8 +1034,8 @@ char *fy_event_to_string(struct fy_event *fye)
 	if (!fye)
 		return NULL;
 
-	fp = open_memstream(&mbuf, &msize);
-	if (!fp)
+	fyms = fy_memstream_open(&fp);
+	if (!fyms)
 		return NULL;
 
 	/* event type */
@@ -1235,7 +1236,7 @@ char *fy_event_to_string(struct fy_event *fye)
 		break;
 	}
 
-	fclose(fp);
+	mbuf = fy_memstream_close(fyms, &msize);
 	return mbuf;
 }
 

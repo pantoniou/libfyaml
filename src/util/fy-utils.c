@@ -898,3 +898,68 @@ uint64_t fy_iovec_xxhash64(const struct iovec *iov, int iovcnt)
 		hash++;
 	return hash;
 }
+
+struct fy_memstream {
+	FILE *fp;
+	char *buf;
+	size_t size;
+};
+
+struct fy_memstream *fy_memstream_open(FILE **fpp)
+{
+	struct fy_memstream *fyms;
+
+	if (!fpp)
+		return NULL;
+
+	*fpp = NULL;
+
+	fyms = malloc(sizeof(*fyms));
+	if (!fyms)
+		return NULL;
+	memset(fyms, 0, sizeof(*fyms));
+#if !defined(_WIN32)
+	fyms->fp = open_memstream(&fyms->buf, &fyms->size);
+#else
+	fyms->fp = tmpfile();
+#endif
+	if (!fyms->fp) {
+		free(fyms);
+		return NULL;
+	}
+	*fpp = fyms->fp;
+	return fyms;
+}
+
+char *fy_memstream_close(struct fy_memstream *fyms, size_t *sizep)
+{
+	char *buf;
+#if defined(_WIN32)
+	long sz;
+#endif
+
+	if (!fyms) {
+		*sizep = 0;
+		return NULL;
+	}
+
+#if defined(_WIN32)
+	if (fyms->fp && fflush(fyms->fp) == 0 &&
+	    (sz = ftell(fyms->fp)) >= 0 &&
+	    (fyms->buf = malloc((size_t)sz + 1)) != NULL) {
+		rewind(fyms->fp);
+		fyms->size = fread(fyms->buf, 1, (size_t)sz, fyms->fp);
+		fyms->buf[fyms->size] = '\0';
+	}
+#endif
+
+	buf = fyms->buf;
+	*sizep = buf ? fyms->size : 0;
+
+	if (fyms->fp)
+		fclose(fyms->fp);
+
+	free(fyms);
+
+	return buf;
+}
