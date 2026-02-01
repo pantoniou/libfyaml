@@ -31,55 +31,31 @@
 #define FY_CACHELINE_SIZE_ALIGN(_x) FY_ALIGN(FY_CACHELINE_SIZE, _x)
 #define FY_CACHELINE_ALIGN FY_ALIGNED_TO(FY_CACHELINE_SIZE)
 
-/* provide posix_memalign for platforms that don't have it */
-#ifdef _WIN32
-static inline int posix_memalign(void **ptr, size_t align, size_t size)
-{
-	void *p;
-
-	/* must be a power of two */
-	if ((size & (size -1)) != 0) {
-		*ptr = NULL;
-		return EINVAL;
-	}
-
-	p = _aligned_malloc(size, align);
-	if (!p) {
-		*ptr = NULL;
-		return ENOMEM;
-	}
-	return p;
-}
-
-static inline void posix_memalign_free(void *p)
-{
-	_aligned_free(p);
-}
-
-#else
-/* normal implementations just use free */
-static inline void posix_memalign_free(void *p)
-{
-	free(p);
-}
-#endif
-
 static inline void *fy_align_alloc(size_t align, size_t size)
 {
 	void *p;
-	int rc;
 
 	size = FY_ALIGN(align, size);
-	rc = posix_memalign(&p, align, size);
-	if (rc)
+#ifndef _WIN32
+	if (posix_memalign(&p, align, size))
 		return NULL;
+#else
+	p = _aligned_malloc(size, align);
+	if (!p)
+		return NULL;
+#endif
 	return p;
 }
 
 static inline void fy_align_free(void *p)
 {
-	if (p)
-		posix_memalign_free(p);
+	if (!p)
+		return;
+#ifndef _WIN32
+	free(p);
+#else
+	_aligned_free(p);
+#endif
 }
 
 static inline void *fy_cacheline_alloc(size_t size)
