@@ -571,7 +571,7 @@ void fy_allocator_free(struct fy_allocator *a, int tag, void *ptr)
 {
 	if (!a || !ptr)
 		return;
-	return fy_allocator_free_nocheck(a, tag, ptr);
+	fy_allocator_free_nocheck(a, tag, ptr);
 }
 
 const void *fy_allocator_storev_hash(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
@@ -746,5 +746,5 @@ void fy_parent_allocator_free(struct fy_allocator *a, void *ptr)
 	if (!a || !ptr)
 		return;
 
-	return fy_early_parent_allocator_free(a->parent, a->parent_tag, ptr);
+	fy_early_parent_allocator_free(a->parent, a->parent_tag, ptr);
 }

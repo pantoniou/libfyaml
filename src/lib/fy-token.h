@@ -256,13 +256,13 @@ fy_token_alloc(void)
 static inline FY_ALWAYS_INLINE void
 fy_token_clean(struct fy_token *fyt)
 {
-	return fy_token_clean_rl(NULL, fyt);
+	fy_token_clean_rl(NULL, fyt);
 }
 
 static inline FY_ALWAYS_INLINE void
 fy_token_free(struct fy_token *fyt)
 {
-	return fy_token_free_rl(NULL, fyt);
+	fy_token_free_rl(NULL, fyt);
 }
 
 static inline FY_ALWAYS_INLINE struct fy_token *
@@ -280,13 +280,13 @@ fy_token_ref(struct fy_token *fyt)
 static inline FY_ALWAYS_INLINE void
 fy_token_unref(struct fy_token *fyt)
 {
-	return fy_token_unref_rl(NULL, fyt);
+	fy_token_unref_rl(NULL, fyt);
 }
 
 static inline void
 fy_token_list_unref_all(struct fy_token_list *fytl_tofree)
 {
-	return fy_token_list_unref_all_rl(NULL, fytl_tofree);
+	fy_token_list_unref_all_rl(NULL, fytl_tofree);
 }
 
 /* recycling aware */
@@ -321,11 +321,11 @@ fy_token_list_queue(struct fy_token_list *fytl, enum fy_token_type type, ...)
 	return fyt;
 }
 
-int fy_tag_token_format_text_length(const struct fy_token *fyt);
+size_t fy_tag_token_format_text_length(const struct fy_token *fyt);
 const char *fy_tag_token_format_text(const struct fy_token *fyt, char *buf, size_t maxsz);
-int fy_token_format_utf8_length(struct fy_token *fyt);
+size_t fy_token_format_utf8_length(struct fy_token *fyt);
 
-int fy_token_format_text_length(struct fy_token *fyt);
+size_t fy_token_format_text_length(struct fy_token *fyt);
 const char *fy_token_format_text(struct fy_token *fyt, char *buf, size_t maxsz);
 
 /* non-parser token methods */

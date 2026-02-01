@@ -510,7 +510,8 @@ int apply_flags_option(const char *arg, unsigned int *flagsp,
 {
 	const char *s, *e, *sn;
 	char *targ;
-	int len, rc;
+	size_t len;
+	int rc;
 
 	if (!arg || !flagsp || !modify_flags)
 		return -1;
@@ -522,7 +523,7 @@ int apply_flags_option(const char *arg, unsigned int *flagsp,
 		if (!sn)
 			sn = e;
 
-		len = sn - s;
+		len = (size_t)(sn - s);
 		targ = alloca(len + 1);
 		memcpy(targ, s, len);
 		targ[len] = '\0';
@@ -841,7 +842,8 @@ static int do_b3sum_check_file(struct fy_blake3_hasher *hasher, const char *chec
 	const uint8_t *computed_hash;
 	char *s;
 	char c;
-	unsigned int i, j, length;
+	unsigned int i, j;
+	size_t length;
 	size_t linesz;
 	int line, exit_code;
 
@@ -878,7 +880,7 @@ static int do_b3sum_check_file(struct fy_blake3_hasher *hasher, const char *chec
 		while (isxdigit((unsigned char)*s))
 			s++;
 
-		length = s - linebuf;
+		length = (size_t)(s - linebuf);
 
 		if (length == 0 || length > (FY_BLAKE3_OUT_LEN * 2) || (length % 1) || !isspace((unsigned char)*s)) {
 			fprintf(stderr, "Bad line found at file \"%s\" line #%d\n", check_filename, line);

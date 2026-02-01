@@ -100,7 +100,7 @@ uintmax_t load_bitfield_le(const void *ptr, size_t bit_offset, size_t bit_width,
 	v = 0;
 
 	width = bit_width;
-	p = ptr + bit_offset / 8;
+	p = (const uint8_t *)ptr + bit_offset / 8;
 	off = bit_offset & 7;
 	if (off) {
 		space = 8 - off;
@@ -145,7 +145,7 @@ void store_bitfield_le(void *ptr, size_t bit_offset, size_t bit_width, uintmax_t
 	uint8_t bmask;
 
 	width = bit_width;
-	p = ptr + bit_offset / 8;
+	p = (uint8_t *)ptr + bit_offset / 8;
 	off = bit_offset & 7;
 	if (off) {
 		space = 8 - off;

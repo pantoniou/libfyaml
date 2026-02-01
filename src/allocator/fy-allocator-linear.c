@@ -177,8 +177,8 @@ static void *fy_linear_alloc(struct fy_allocator *a, int tag, size_t size, size_
 	/* atomically update the pointer */
 	do {
 		next = fy_atomic_load(&la->next);
-		s = fy_ptr_align(la->start + next, align);
-		new_next = (size_t)(((char *)s + size) - la->start);
+		s = fy_ptr_align((char *)la->start + next, align);
+		new_next = (size_t)(((char *)s + size) - (char *)la->start);
 		/* handle both overflow and underflow */
 		if (new_next > la->cfg.size)
 			goto err_out;
@@ -367,7 +367,8 @@ static bool fy_linear_contains(struct fy_allocator *a, int tag, const void *ptr)
 	struct fy_linear_allocator *la;
 
 	la = container_of(a, struct fy_linear_allocator, a);
-	return ptr >= la->start && ptr < (la->start + la->cfg.size);
+	return (char *)ptr >= (char *)la->start &&
+	       (char *)ptr < ((char *)la->start + la->cfg.size);
 }
 
 const struct fy_allocator_ops fy_linear_allocator_ops = {

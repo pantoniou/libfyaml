@@ -262,24 +262,26 @@ static inline bool fy_is_flow_ws_m(const int c, const enum fy_flow_ws_mode fws_m
 static inline const void * \
 fy_find_ ## _kind (const void *s, size_t len) \
 { \
-	const void *e = s + len; \
+	const char *sc = (const char *)s; \
+	const char *e = sc + len; \
 	int c, w; \
-	for (; s < e && (c = fy_utf8_get(s,  e - s, &w)) >= 0; s += w) { \
+	for (; sc < e && (c = fy_utf8_get(sc, (size_t)(e - sc), &w)) >= 0; sc += w) { \
 		assert(w); \
 		if (fy_is_ ## _kind (c)) \
-			return s; \
+			return sc; \
 	} \
 	return NULL; \
 } \
 static inline const void * \
 fy_find_non_ ## _kind (const void *s, size_t len) \
 { \
-	const void *e = s + len; \
+	const char *sc = (const char *)s; \
+	const char *e = sc + len; \
 	int c, w; \
-	for (; s < e && (c = fy_utf8_get(s,  e - s, &w)) >= 0; s += w) { \
+	for (; sc < e && (c = fy_utf8_get(sc, (size_t)(e - sc), &w)) >= 0; sc += w) { \
 		assert(w); \
 		if (!(fy_is_ ## _kind (c))) \
-			return s; \
+			return sc; \
 		assert(w); \
 	} \
 	return NULL; \

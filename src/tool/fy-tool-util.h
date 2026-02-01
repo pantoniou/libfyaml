@@ -207,21 +207,21 @@ void store_le(void *ptr, size_t width, uintmax_t v);
 uintmax_t load_bitfield_le(const void *ptr, size_t bit_offset, size_t bit_width, bool is_signed);
 void store_bitfield_le(void *ptr, size_t bit_offset, size_t bit_width, uintmax_t v);
 
-static inline intmax_t signed_integer_max_from_bit_width(int bit_width)
+static inline intmax_t signed_integer_max_from_bit_width(size_t bit_width)
 {
-	assert((size_t)bit_width <= sizeof(intmax_t) * 8);
+	assert(bit_width <= sizeof(intmax_t) * 8);
 	return INTMAX_MAX >> (sizeof(intmax_t) * 8 - bit_width);
 }
 
-static inline intmax_t signed_integer_min_from_bit_width(int bit_width)
+static inline intmax_t signed_integer_min_from_bit_width(size_t bit_width)
 {
-	assert((size_t)bit_width <= sizeof(intmax_t) * 8);
+	assert(bit_width <= sizeof(intmax_t) * 8);
 	return INTMAX_MIN >> (sizeof(intmax_t) * 8 - bit_width);
 }
 
-static inline uintmax_t unsigned_integer_max_from_bit_width(int bit_width)
+static inline uintmax_t unsigned_integer_max_from_bit_width(size_t bit_width)
 {
-	assert((size_t)bit_width <= sizeof(uintmax_t) * 8);
+	assert(bit_width <= sizeof(uintmax_t) * 8);
 	return UINTMAX_MAX >> (sizeof(uintmax_t) * 8 - bit_width);
 }
 

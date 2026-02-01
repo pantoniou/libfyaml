@@ -4210,8 +4210,8 @@ fy_node_by_path_internal(struct fy_node *fyn,
 	const char *s, *e, *ss, *ee;
 	char *end_idx, *json_key, *t, *p, *uri_path;
 	char c;
-	int idx, rlen;
-	size_t len, json_key_len, uri_path_len;
+	int idx;
+	size_t len, rlen, json_key_len, uri_path_len;
 	bool has_json_key_esc;
 	uint8_t code[4];
 	int code_length;
@@ -4480,7 +4480,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 			while (ss < ee) {
 				/* copy run until '%' or end */
 				p = memchr(ss, '%', ee - ss);
-				rlen = (p ? p : ee) - ss;
+				rlen = (size_t)((p ? p : ee) - ss);
 				memcpy(t, ss, rlen);
 				ss += rlen;
 				t += rlen;

@@ -548,7 +548,7 @@ fy_iovec_copy_from(const struct iovec *iov, int iovcnt, void *dst)
 	size_t size;
 	int i;
 
-	for (i = 0; i < iovcnt; i++, dst += size) {
+	for (i = 0; i < iovcnt; i++, dst = (void *)((char *)dst + size)) {
 		size = iov[i].iov_len;
 		memcpy(dst, iov[i].iov_base, size);
 	}
@@ -561,7 +561,7 @@ fy_iovec_copy_to(const struct iovec *iov, int iovcnt, const void *src)
 	size_t size;
 	int i;
 
-	for (i = 0; i < iovcnt; i++, src += size) {
+	for (i = 0; i < iovcnt; i++, src = (const void *)((const char *)src + size)) {
 		size = iov[i].iov_len;
 		memcpy(iov[i].iov_base, src, size);
 	}
@@ -575,12 +575,11 @@ fy_iovec_cmp(const struct iovec *iov, int iovcnt, const void *data)
 	size_t size;
 	int i, ret;
 
-	for (i = 0; i < iovcnt; i++) {
+	for (i = 0; i < iovcnt; i++, s = (const void *)((const char *)s + size)) {
 		size = iov[i].iov_len;
 		ret = memcmp(iov[i].iov_base, s, size);
 		if (ret)
 			return ret;
-		s += size;
 	}
 	return 0;
 }
