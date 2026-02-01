@@ -231,25 +231,6 @@ _fy_atom_iter_add_chunk_copy(struct fy_atom_iter *iter, const char *str, size_t 
 	return 0;
 }
 
-/* keep it around without a warning even though it's unused */
-static int
-_fy_atom_iter_add_utf8(struct fy_atom_iter *iter, int c)
-	__attribute__((__unused__));
-
-static int
-_fy_atom_iter_add_utf8(struct fy_atom_iter *iter, int c)
-{
-	char buf[FY_UTF8_FORMAT_BUFMIN];
-	char *e;
-
-	/* only fails if invalid utf8 */
-	e = fy_utf8_put(buf, sizeof(buf), c);
-	if (!e)
-		return -1;
-
-	return _fy_atom_iter_add_chunk_copy(iter, buf, e - buf);
-}
-
 /* optimized linebreaks */
 static int
 _fy_atom_iter_add_lb(struct fy_atom_iter *iter, int c)
@@ -275,7 +256,6 @@ _fy_atom_iter_add_lb(struct fy_atom_iter *iter, int c)
 #ifndef DEBUG_CHUNK
 #define fy_atom_iter_add_chunk _fy_atom_iter_add_chunk
 #define fy_atom_iter_add_chunk_copy _fy_atom_iter_add_chunk_copy
-#define fy_atom_iter_add_utf8 _fy_atom_iter_add_utf8
 #define fy_atom_iter_add_lb _fy_atom_iter_add_lb
 #else
 #define fy_atom_iter_add_chunk(_iter, _str, _len) \
@@ -311,12 +291,6 @@ _fy_atom_iter_add_lb(struct fy_atom_iter *iter, int c)
 			free(__out); \
 		} \
 		__ret; \
-	})
-#define fy_atom_iter_add_utf8(_iter, _c) \
-	({ \
-		int __c = (_c); \
-		fprintf(stderr, "%s:%d utf8 %d\n", __func__, __LINE__, __c); \
-		_fy_atom_iter_add_utf8((_iter), (_c)); \
 	})
 #define fy_atom_iter_add_lb(_iter, _c) \
 	({ \
