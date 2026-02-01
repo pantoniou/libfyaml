@@ -474,8 +474,8 @@ int fy_thread_pool_setup(struct fy_thread_pool *tp, const struct fy_thread_pool_
 	rc = pthread_key_create(&tp->key, NULL);
 	assert(!rc);
 
-	tp->freep = (void *)tp->threads + free_offset;
-	tp->lootp = (void *)tp->threads + loot_offset;
+	tp->freep = (_Atomic(uint64_t) *)((char *)tp->threads + free_offset);
+	tp->lootp = (_Atomic(uint64_t) *)((char *)tp->threads + loot_offset);
 
 	/* prime the thread free */
 	for (i = 0; i < num_threads_words - 1; i++)
@@ -922,6 +922,7 @@ static void fy_thread_work_join_steal(struct fy_thread_pool *tp, struct fy_threa
 	resolved_t = false;
 	tid = -1;
 	(void)tid;
+	(void)rc;
 
 #ifdef FY_THREAD_DEBUG
 	t = pthread_getspecific(tp->key);

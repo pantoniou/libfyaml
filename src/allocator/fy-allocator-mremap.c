@@ -532,7 +532,7 @@ do_alloc:
 #endif
 			goto again;
 		}
-		ptr = (void *)mran + data_pos;
+		ptr = (void *)((char *)mran + data_pos);
 	} while (!fy_atomic_compare_exchange_strong(&mran->next, &old_next, new_next));
 
 	/* malloc arenas need to zero out */
@@ -575,7 +575,7 @@ static void fy_mremap_cleanup(struct fy_allocator *a)
 		fy_mremap_tag_cleanup(mra, mrt);
 	}
 
-	fy_parent_allocator_free(&mra->a, mra->ids);
+	fy_parent_allocator_free(&mra->a, (void *)mra->ids);
 	fy_parent_allocator_free(&mra->a, mra->tags);
 }
 
@@ -950,7 +950,7 @@ static int fy_mremap_set_tag_count(struct fy_allocator *a, unsigned int count)
 	}
 	if (mra->ids != ids) {
 		mra->ids = ids;
-		fy_parent_allocator_free(&mra->a, mra->ids);
+		fy_parent_allocator_free(&mra->a, (void *)mra->ids);
 	}
 	mra->tag_count = tag_count;
 	mra->tag_id_count = tag_id_count;
@@ -958,7 +958,7 @@ static int fy_mremap_set_tag_count(struct fy_allocator *a, unsigned int count)
 
 err_out:
 	fy_parent_allocator_free(&mra->a, tags);
-	fy_parent_allocator_free(&mra->a, ids);
+	fy_parent_allocator_free(&mra->a, (void *)ids);
 	return -1;
 }
 

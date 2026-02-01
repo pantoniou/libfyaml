@@ -441,7 +441,7 @@ static inline const void *fy_utf8_strchr(const void *s, int c)
 
 static inline int fy_utf8_count(const void *ptr, size_t len)
 {
-	const uint8_t *s = ptr, *e = ptr + len;
+	const uint8_t *s = (const uint8_t *)ptr, *e = (const uint8_t *)ptr + len;
 	int w, count;
 
 	count = 0;

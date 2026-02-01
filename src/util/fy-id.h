@@ -69,7 +69,7 @@ static inline int fy_id_alloc(fy_id_bits *bits, const size_t count)
 				break;
 			new_v = v | FY_ID_BIT_MASK(pos);
 			if (fy_atomic_compare_exchange_strong(bits, &v, new_v))
-				return (i * FY_ID_BITS_BITS) + pos;
+				return ((int)i * FY_ID_BITS_BITS) + pos;
 		}
 	}
 	return -1;

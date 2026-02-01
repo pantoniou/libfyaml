@@ -88,9 +88,9 @@ static void fy_dedup_tag_data_cleanup(struct fy_dedup_tag_data *dtd)
 {
 	struct fy_dedup_allocator *da = dtd->cfg.da;
 
-	fy_parent_allocator_free(&da->a, dtd->buckets);
-	fy_parent_allocator_free(&da->a, dtd->bloom_id);
-	fy_parent_allocator_free(&da->a, dtd->buckets_in_use);
+	fy_parent_allocator_free(&da->a, (void *)dtd->buckets);
+	fy_parent_allocator_free(&da->a, (void *)dtd->bloom_id);
+	fy_parent_allocator_free(&da->a, (void *)dtd->buckets_in_use);
 }
 
 static int fy_dedup_tag_data_setup(struct fy_dedup_tag_data *dtd,
@@ -129,10 +129,10 @@ static int fy_dedup_tag_data_setup(struct fy_dedup_tag_data *dtd,
 			dtd->chain_length_grow_trigger++;
 	}
 
-	dtd->bloom_filter_mask = (1U << dtd->bloom_filter_bits) - 1;
-	dtd->bucket_count_mask = (1U << dtd->bucket_count_bits) - 1;
+	dtd->bloom_filter_mask = ((unsigned int)1 << dtd->bloom_filter_bits) - 1;
+	dtd->bucket_count_mask = ((unsigned int)1 << dtd->bucket_count_bits) - 1;
 
-	dtd->bloom_id_count = ((1U << dtd->bloom_filter_bits) + FY_ID_BITS_BITS - 1) / FY_ID_BITS_BITS;
+	dtd->bloom_id_count = (((size_t)1 << dtd->bloom_filter_bits) + FY_ID_BITS_BITS - 1) / FY_ID_BITS_BITS;
 	assert(dtd->bloom_id_count > 0);
 	tmpsz = dtd->bloom_id_count * sizeof(*dtd->bloom_id);
 	dtd->bloom_id = fy_parent_allocator_alloc(&da->a, tmpsz, _Alignof(fy_id_bits));
@@ -140,7 +140,7 @@ static int fy_dedup_tag_data_setup(struct fy_dedup_tag_data *dtd,
 		goto err_out;
 	fy_id_reset(dtd->bloom_id, dtd->bloom_id_count);
 
-	dtd->bucket_count = 1U << dtd->bucket_count_bits;
+	dtd->bucket_count = (size_t)1 << dtd->bucket_count_bits;
 	assert(dtd->bucket_count);
 
 	tmpsz = sizeof(*dtd->buckets) * dtd->bucket_count;
@@ -150,7 +150,7 @@ static int fy_dedup_tag_data_setup(struct fy_dedup_tag_data *dtd,
 	for (i = 0; i < dtd->bucket_count; i++)
 		atomic_store(&dtd->buckets[i], NULL);
 
-	dtd->bucket_id_count = ((1U << dtd->bucket_count_bits) + FY_ID_BITS_BITS - 1) / FY_ID_BITS_BITS;
+	dtd->bucket_id_count = (((size_t)1 << dtd->bucket_count_bits) + FY_ID_BITS_BITS - 1) / FY_ID_BITS_BITS;
 	assert(dtd->bucket_id_count > 0);
 	tmpsz = dtd->bucket_id_count * sizeof(*dtd->buckets_in_use);
 	dtd->buckets_in_use = fy_parent_allocator_alloc(&da->a, tmpsz, _Alignof(fy_id_bits));
@@ -333,9 +333,9 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 		return -1;
 	}
 
-	bucket_count = 1U << dtd->bucket_count_bits;
+	bucket_count = (size_t)1 << dtd->bucket_count_bits;
 	bucket_used = fy_id_count_used(dtd->buckets_in_use, dtd->bucket_id_count);
-	occupancy_ratio = (double)bucket_used/(double)bucket_count;
+	occupancy_ratio = (float)((double)bucket_used/(double)bucket_count);
 
 	/* do not grow until we're over 60% full */
 	if (occupancy_ratio < da->cfg.minimum_bucket_occupancy) {
@@ -472,7 +472,7 @@ static void fy_dedup_cleanup(struct fy_allocator *a)
 		fy_dedup_tag_cleanup(da, dt);
 	}
 
-	fy_parent_allocator_free(&da->a, da->ids);
+	fy_parent_allocator_free(&da->a, (void *)da->ids);
 	fy_parent_allocator_free(&da->a, da->tags);
 }
 
@@ -502,7 +502,7 @@ static int fy_dedup_setup(struct fy_allocator *a, struct fy_allocator *parent, i
 	bucket_count_bits = cfg->bucket_count_bits;
 	if (!bucket_count_bits && has_estimate) {
 		bucket_count_bits = 1;
-		while ((1LU << bucket_count_bits) < (cfg->estimated_content_size / BUCKET_ESTIMATE_DIV))
+		while (((size_t)1 << bucket_count_bits) < (cfg->estimated_content_size / BUCKET_ESTIMATE_DIV))
 			bucket_count_bits++;
 #ifdef DEBUG_GROWS
 		fprintf(stderr, "bucket_count_bits %u\n", bucket_count_bits);
@@ -518,7 +518,7 @@ static int fy_dedup_setup(struct fy_allocator *a, struct fy_allocator *parent, i
 	bloom_filter_bits = cfg->bloom_filter_bits;
 	if (!bloom_filter_bits && has_estimate) {
 		bloom_filter_bits = 1;
-		while ((1LU << bloom_filter_bits) < (cfg->estimated_content_size / BLOOM_ESTIMATE_DIV))
+		while (((size_t)1 << bloom_filter_bits) < (cfg->estimated_content_size / BLOOM_ESTIMATE_DIV))
 			bloom_filter_bits++;
 #ifdef DEBUG_GROWS
 		fprintf(stderr, "bloom_filter_bits %u\n", bloom_filter_bits);
@@ -862,7 +862,7 @@ again:
 		/* verify it's aligned correctly */
 		assert(((uintptr_t)mem & (align - 1)) == 0);
 
-		de = (char *)mem + de_offset;
+		de = (void *)((char *)mem + de_offset);
 
 		de->hash = hash;
 		de->size = total_size;
@@ -1077,7 +1077,7 @@ static int fy_dedup_set_tag_count(struct fy_allocator *a, unsigned int count)
 
 	if (da->ids != ids) {
 		da->ids = ids;
-		fy_parent_allocator_free(&da->a, da->ids);
+		fy_parent_allocator_free(&da->a, (void *)da->ids);
 	}
 
 	da->tag_count = tag_count;
@@ -1087,7 +1087,7 @@ static int fy_dedup_set_tag_count(struct fy_allocator *a, unsigned int count)
 
 err_out:
 	fy_parent_allocator_free(&da->a, alloc_tags);
-	fy_parent_allocator_free(&da->a, alloc_ids);
+	fy_parent_allocator_free(&da->a, (void *)alloc_ids);
 	return -1;
 }
 

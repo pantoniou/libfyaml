@@ -22,7 +22,7 @@
 
 #include <libfyaml.h>
 
-#include <stdatomic.h>
+#include "fy-atomics.h"
 
 /* Test: Basic thread pool creation and destruction */
 START_TEST(thread_pool_create_destroy)
@@ -58,10 +58,10 @@ static void atomic_increment_worker(void *arg)
 	int v, exp_v;
 
 	/* Atomically increase the counter */
-	v = atomic_load(p);
+	v = fy_atomic_load(p);
 	for (;;) {
 		exp_v = v;
-		if (atomic_compare_exchange_strong(p, &exp_v, v + 1))
+		if (fy_atomic_compare_exchange_strong(p, &exp_v, v + 1))
 			return;
 		v = exp_v;
 	}
@@ -104,7 +104,7 @@ START_TEST(thread_reserve_submit_wait)
 	}
 
 	/* Verify counter was incremented 4 times */
-	ck_assert_int_eq(atomic_load(&counter), 4);
+	ck_assert_int_eq(fy_atomic_load(&counter), 4);
 
 	/* Unreserve all threads */
 	for (i = 0; i < 4; i++) {
@@ -132,10 +132,10 @@ START_TEST(thread_arg_join)
 	ck_assert_ptr_ne(tp, NULL);
 
 	/* Use arg_join to execute the same function multiple times */
-	fy_thread_arg_join(tp, atomic_increment_worker, NULL, &counter, num_tasks);
+	fy_thread_arg_join(tp, atomic_increment_worker, NULL, (void *)&counter, num_tasks);
 
 	/* Verify counter was incremented num_tasks times */
-	ck_assert_int_eq(atomic_load(&counter), (int)num_tasks);
+	ck_assert_int_eq(fy_atomic_load(&counter), (int)num_tasks);
 
 	fy_thread_pool_destroy(tp);
 }
@@ -208,10 +208,10 @@ static void steal_mode_worker(void *arg)
 
 	/* Increment counter 100 times */
 	for (i = 0; i < 100; i++) {
-		v = atomic_load(p);
+		v = fy_atomic_load(p);
 		for (;;) {
 			exp_v = v;
-			if (atomic_compare_exchange_strong(p, &exp_v, v + 1))
+			if (fy_atomic_compare_exchange_strong(p, &exp_v, v + 1))
 				break;
 			v = exp_v;
 		}
@@ -235,10 +235,10 @@ START_TEST(thread_steal_mode)
 	ck_assert_ptr_ne(tp, NULL);
 
 	/* Execute many tasks with work stealing enabled */
-	fy_thread_arg_join(tp, steal_mode_worker, NULL, &counter, num_tasks);
+	fy_thread_arg_join(tp, steal_mode_worker, NULL, (void *)&counter, num_tasks);
 
 	/* Verify all tasks completed: 16 tasks * 100 increments each */
-	ck_assert_int_eq(atomic_load(&counter), (int)(num_tasks * 100));
+	ck_assert_int_eq(fy_atomic_load(&counter), (int)(num_tasks * 100));
 
 	fy_thread_pool_destroy(tp);
 }

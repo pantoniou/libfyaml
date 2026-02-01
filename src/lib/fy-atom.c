@@ -828,13 +828,13 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 	const struct fy_atom *atom = iter->atom;
 	const struct fy_atom_iter_line_info *li;
 	const char *s, *e, *t;
-	int value, code_length, rlen, ret;
+	int value, code_length, ret;
 	uint8_t code[4], *tt;
 	int j, pending_nl;
 	int *pending_lb = NULL, *pending_lb_new = NULL;
 	int pending_lb_size = 0;
 	enum fy_utf8_escape esc_mode;
-	size_t i;
+	size_t rlen, i;
 
 	/* done? */
 	li = fy_atom_iter_line(iter);
@@ -1173,7 +1173,7 @@ fy_atom_iter_chunk_next(struct fy_atom_iter *iter, const struct fy_iter_chunk *c
 	return ic;
 }
 
-int fy_atom_format_text_length(struct fy_atom *atom)
+ssize_t fy_atom_format_text_length(struct fy_atom *atom)
 {
 	struct fy_atom_iter iter;
 	const struct fy_iter_chunk *ic;
@@ -1184,7 +1184,7 @@ int fy_atom_format_text_length(struct fy_atom *atom)
 		return -1;
 
 	if (atom->storage_hint_valid)
-		return atom->storage_hint;
+		return (ssize_t)atom->storage_hint;
 
 	len = 0;
 	fy_atom_iter_start(atom, &iter);
@@ -1194,7 +1194,7 @@ int fy_atom_format_text_length(struct fy_atom *atom)
 	fy_atom_iter_finish(&iter);
 
 	/* something funky going on here */
-	if ((int)len < 0)
+	if ((ssize_t)len < 0)
 		return -1;
 
 	if (ret != 0)
@@ -1202,7 +1202,7 @@ int fy_atom_format_text_length(struct fy_atom *atom)
 
 	atom->storage_hint = (size_t)len;
 	atom->storage_hint_valid = true;
-	return (int)len;
+	return (ssize_t)len;
 }
 
 const char *fy_atom_format_text(struct fy_atom *atom, char *buf, size_t maxsz)
@@ -1240,8 +1240,8 @@ int fy_atom_format_utf8_length(struct fy_atom *atom)
 	struct fy_atom_iter iter;
 	const struct fy_iter_chunk *ic;
 	const char *s, *e;
-	size_t len;
-	int ret, rem, run, w;
+	size_t len, run, rem;
+	int ret, w;
 
 	if (!atom)
 		return -1;
@@ -1255,7 +1255,7 @@ int fy_atom_format_utf8_length(struct fy_atom *atom)
 		e = s + ic->len;
 
 		/* add the remainder */
-		run = (e - s) > rem ? rem : (e - s);
+		run = (size_t)(e - s) > rem ? rem : (size_t)(e - s);
 		s += run;
 
 		/* count utf8 characters */

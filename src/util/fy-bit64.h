@@ -89,7 +89,7 @@ static inline unsigned int fy_bit64_ffs(uint64_t x)
 }
 
 #define FY_BIT64_LOWEST(_x) fy_bit64_lowest(_x)
-#define FY_BIT64_HIGEST(_x) fy_bit64_highest(_x)
+#define FY_BIT64_HIGHEST(_x) fy_bit64_highest(_x)
 #define FY_BIT64_POPCNT(_x) fy_bit64_popcnt(_x)
 #define FY_BIT64_FFS(_x) fy_bit64_ffs(_x)
 
