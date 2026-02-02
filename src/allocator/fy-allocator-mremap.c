@@ -100,7 +100,8 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mr
 	if (size < mra->minimum_arena_size)
 		size = mra->minimum_arena_size;
 
-	size_page_align = fy_mremap_useable_arena_size(mra, size);
+	/* need to be aligned to page boundary */
+	size_page_align = fy_size_t_align(fy_mremap_useable_arena_size(mra, size), mra->pagesz);
 	switch (mra->arena_type) {
 	case FYMRAT_MALLOC:
 		mran = malloc(size_page_align);
