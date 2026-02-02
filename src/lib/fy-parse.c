@@ -34,6 +34,12 @@
 #define ATOM_SIZE_CHECK
 #endif
 
+#ifdef ATOM_SIZE_CHECK
+#define FORCE_ATOM_SIZE_CHECK_DEFAULT	true
+#else
+#define FORCE_ATOM_SIZE_CHECK_DEFAULT	false
+#endif
+
 const char *fy_library_version(void)
 {
 #ifndef VERSION
@@ -3565,7 +3571,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	int lastc, rc, increment = 0, current_indent, new_indent, indent = 0;
 	int breaks, breaks_length, presentation_breaks_length, first_break_length;
 	bool doc_start_end_detected, empty, empty_line, prev_empty_line, indented, prev_indented, first;
-	bool has_ws, has_lb, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb;
+	bool has_ws, has_lb, has_cr, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb;
 	bool pending_nl, ends_with_eof, starts_with_eof, content_is_eof;
 	struct fy_token *fyt;
 	size_t length, line_length, trailing_ws, trailing_breaks_length;
@@ -3575,9 +3581,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	int actual_lb_length, pending_lb_length;
 	struct fy_mark indicator_mark;
 	bool generated_indent, final_lb;
-#ifdef ATOM_SIZE_CHECK
 	size_t tlength;
-#endif
 
 	fyp_error_check(fyp, c == '|' || c == '>', err_out,
 			"bad start of block scalar ('%s')",
@@ -3687,6 +3691,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	empty = true;
 	has_ws = false;
 	has_lb = false;
+	has_cr = false;
 	starts_with_ws = false;
 	starts_with_lb = false;
 	ends_with_ws = false;
@@ -3781,6 +3786,9 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 					"fy_scan_block_scalar_indent() failed");
 			if (fy_is_lb_LS_PS(c))
 				presentation_breaks_length += actual_lb_length;
+
+			/* very simple heuristic, if we hit a '\r' then force size check */
+			has_cr |= c == '\r';
 		} else {
 			has_lb = false;
 			new_indent = indent;
@@ -3957,15 +3965,16 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	handle.ends_with_eof = ends_with_eof;
 	handle.is_merge_key = false;
 
-#ifdef ATOM_SIZE_CHECK
-	tlength = fy_atom_format_text_length(&handle);
-	if (tlength != length) {
-		fyp_warning(fyp, "%s: storage hint calculation failed real %zu != hint %zu - \"%s\"", __func__,
-			tlength, length,
-			fy_utf8_format_text_a(fy_atom_data(&handle), fy_atom_size(&handle), fyue_doublequote));
-		length = tlength;
+	/* force calculation of length if we had a CR */
+	if (has_cr || FORCE_ATOM_SIZE_CHECK_DEFAULT) {
+		tlength = fy_atom_format_text_length(&handle);
+		if (!has_cr && tlength != length) {
+			fyp_warning(fyp, "%s: storage hint calculation failed real %zu != hint %zu - \"%s\"", __func__,
+				tlength, length,
+				fy_utf8_format_text_a(fy_atom_data(&handle), fy_atom_size(&handle), fyue_doublequote));
+			length = tlength;
+		}
 	}
-#endif
 
 	handle.storage_hint = length;
 	handle.storage_hint_valid = true;
@@ -4002,7 +4011,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 	int breaks_found, blanks_found, break_run, total_code_length;
 	int breaks_found_length, first_break_length, value;
 	uint32_t hi_surrogate, lo_surrogate;
-	bool is_single, is_multiline, esc_lb, ws_lb_only, has_ws, has_lb, has_esc;
+	bool is_single, is_multiline, esc_lb, ws_lb_only, has_ws, has_lb, has_cr, has_esc;
 	bool first, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb = false;
 	bool unicode_esc, is_json_unesc, has_json_esc;
 	int last_esc_lb, break_length, presentation_breaks_length;
@@ -4011,9 +4020,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 	size_t escbuf_len;
 	enum fy_utf8_escape esc_mode;
 	const char *ep;
-#ifdef ATOM_SIZE_CHECK
 	size_t tlength;
-#endif
 
 	(void)last_esc_lb;
 
@@ -4042,6 +4049,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 	ws_lb_only = true;
 	has_ws = false;
 	has_lb = false;
+	has_cr = false;
 	starts_with_ws = false;
 	starts_with_lb = false;
 	ends_with_ws = false;
@@ -4351,6 +4359,8 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 				breaks_found_length += break_length;
 				blanks_found = 0;
 				esc_lb = false;
+
+				has_cr |= c == '\r';
 			} else {
 				has_ws = true;
 				if (!esc_lb)
@@ -4397,15 +4407,15 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 	/* skip over block scalar end */
 	fy_reader_advance_by(fyr, 1);
 
-#ifdef ATOM_SIZE_CHECK
-	tlength = fy_atom_format_text_length(handle);
-	if (tlength != length) {
-		fyr_warning(fyr, "%s: storage hint calculation failed real %zu != hint %zu - \"%s\"", __func__,
-			tlength, length,
-			fy_utf8_format_text_a(fy_atom_data(handle), fy_atom_size(handle), fyue_doublequote));
-		length = tlength;
+	if (has_cr || FORCE_ATOM_SIZE_CHECK_DEFAULT) {
+		tlength = fy_atom_format_text_length(handle);
+		if (!has_cr && tlength != length) {
+			fyr_warning(fyr, "%s: storage hint calculation failed real %zu != hint %zu - \"%s\"", __func__,
+				tlength, length,
+				fy_utf8_format_text_a(fy_atom_data(handle), fy_atom_size(handle), fyue_doublequote));
+			length = tlength;
+		}
 	}
-#endif
 
 	handle->storage_hint = length;
 	handle->storage_hint_valid = true;
@@ -4431,6 +4441,7 @@ struct fy_fetch_plain_state {
 	bool has_high_ascii;
 	bool simple_key_allowed;
 	bool last_was_lb;
+	bool has_cr;
 };
 
 static FY_ALWAYS_INLINE inline int
@@ -4449,10 +4460,12 @@ fy_reader_fetch_plain_scalar_handle_inline(struct fy_reader *fyr, int c,
 		struct {
 			bool run_has_lb : 1;
 			bool run_has_ws : 1;
+			bool run_has_cr : 1;
 			bool has_json_esc : 1;
 			bool has_high_ascii : 1;
 			bool has_lb : 1;
 			bool has_ws : 1;
+			bool has_cr : 1;
 			bool had_run : 1;
 			bool flow_level_gt_0 : 1;
 			bool flow_level_le_0_indent_ge_0 : 1;
@@ -4543,6 +4556,7 @@ fy_reader_fetch_plain_scalar_handle_inline(struct fy_reader *fyr, int c,
 
 			u.has_lb |= u.run_has_lb;
 			u.has_ws |= u.run_has_ws;
+			u.has_cr |= u.run_has_cr;
 
 			fy_reader_get_mark(fyr, &state->last_mark);
 		}
@@ -4555,7 +4569,7 @@ fy_reader_fetch_plain_scalar_handle_inline(struct fy_reader *fyr, int c,
 		breaks_found_length = 0;
 		first_break_length = 0;
 		blanks_found_length = 0;
-		u.run_has_ws = u.run_has_lb = false;
+		u.run_has_ws = u.run_has_lb = u.run_has_cr = false;
 
 		width = (int)fy_utf8_width(c);
 		do {
@@ -4579,6 +4593,7 @@ fy_reader_fetch_plain_scalar_handle_inline(struct fy_reader *fyr, int c,
 					first_break_length = width;
 				breaks_found_length += width;
 				u.run_has_lb = true;
+				u.run_has_cr |= c == '\r';
 			}
 
 			c = fy_reader_peek_width(fyr, &width);
@@ -4602,6 +4617,7 @@ fy_reader_fetch_plain_scalar_handle_inline(struct fy_reader *fyr, int c,
 	state->has_json_esc = u.has_json_esc;
 	state->has_high_ascii = u.has_high_ascii;
 	state->last_was_lb = u.last_was_lb;
+	state->has_cr = u.has_cr;
 
 	return 0;
 
@@ -4679,6 +4695,7 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c,
 	const enum fy_lb_mode lb_mode = fy_reader_lb_mode(fyr);
 	bool is_merge_key, ends_with_eof, is_multiline;
 	int nextc, rc;
+	size_t tlength;
 
 	nextc = fy_reader_peek_at(fyr, 1);
 
@@ -4758,16 +4775,15 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c,
 	handle->simple_key_allowed = state->simple_key_allowed;
 	handle->high_ascii = state->has_high_ascii;
 
-#ifdef ATOM_SIZE_CHECK
-	size_t tlength;
-	tlength = fy_atom_format_text_length(handle);
-	if (tlength != state->length) {
-		fyr_warning(fyr, "%s: storage hint calculation failed real %zu != hint %zu - \"%s\"", __func__,
-			tlength, state->length,
-			fy_utf8_format_text_a(fy_atom_data(handle), fy_atom_size(handle), fyue_doublequote));
-		state->length = tlength;
+	if (state->has_cr || FORCE_ATOM_SIZE_CHECK_DEFAULT) {
+		tlength = fy_atom_format_text_length(handle);
+		if (!state->has_cr && tlength != state->length) {
+			fyr_warning(fyr, "%s: storage hint calculation failed real %zu != hint %zu - \"%s\"", __func__,
+				tlength, state->length,
+				fy_utf8_format_text_a(fy_atom_data(handle), fy_atom_size(handle), fyue_doublequote));
+			state->length = tlength;
+		}
 	}
-#endif
 
 	handle->storage_hint = state->length;
 	handle->storage_hint_valid = true;

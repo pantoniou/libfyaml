@@ -306,7 +306,7 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 {
 	const struct fy_atom *atom = iter->atom;
 	const char *s, *e, *ss;
-	int col, c, w, ts, cws, advws;
+	int col, c, cn, w, wn, ts, cws, advws;
 	bool last_was_ws, is_block;
 	int lastc;
 
@@ -418,6 +418,17 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 				li->nws_end = ss;
 				last_was_ws = true;
 			}
+
+#if defined(DEBUG_CHUNK)
+			/* special CR/LF handling */
+			if (c == '\r') {
+				cn = ss < e ? fy_utf8_get(ss + w, (e - ss - w), &wn) : FYUG_EOF;
+				if (cn == '\n') {
+					ss += w;
+					w = wn;
+				}
+			}
+#endif
 
 		} else if (fy_is_space(c)) {
 
@@ -578,6 +589,17 @@ do_nws:
 			li->trailing_breaks_ws = true;
 
 		if (fy_is_lb_m(c, atom->lb_mode)) {
+			/* special CRLF handling */
+			if (c == '\r') {
+				cn = ss < e ? fy_utf8_get(ss + w, (e - ss - w), &wn) : FYUG_EOF;
+				if (cn == '\n') {
+#if defined(DEBUG_CHUNK)
+					fprintf(stderr, "%s:%d trailing CRLF\n", __FILE__, __LINE__);
+#endif
+					ss += w;
+					w = wn;
+				}
+			}
 			li->trailing_breaks++;
 			col = 0;
 		} else {
@@ -1726,6 +1748,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 	if (l->lineno > 0 && iter->rs >= iter->ae)
 		return NULL;
 
+	c = -1;
 	while (s > iter->is) {
 		c = fy_utf8_get_right(iter->is, (size_t)(s - iter->is), &w);
 		if (c <= 0 || fy_is_lb_m(c, iter->atom->lb_mode))
@@ -1822,6 +1845,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 	l->line_count = count;
 
 	if (fy_is_lb_m(c, iter->atom->lb_mode)) {
+
 		s += w;
 		/* special case for MSDOS */
 		if (c == '\r' && (s < iter->ie && s[1] == '\n'))
