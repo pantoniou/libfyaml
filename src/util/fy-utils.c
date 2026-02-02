@@ -953,11 +953,12 @@ char *fy_memstream_close(struct fy_memstream *fyms, size_t *sizep)
 	}
 #endif
 
-	buf = fyms->buf;
-	*sizep = buf ? fyms->size : 0;
-
 	if (fyms->fp)
 		fclose(fyms->fp);
+
+	/* the buffer is updated only after close */
+	buf = fyms->buf;
+	*sizep = buf ? fyms->size : 0;
 
 	free(fyms);
 
