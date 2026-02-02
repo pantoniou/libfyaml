@@ -12,7 +12,6 @@ EXTRA_DIST = \
 	.github/workflows/ci.yaml \
 	.gitignore \
 	.libtool-version \
-	.tarball-version \
 	AUTHORS \
 	CHANGELOG.md \
 	CMakeLists.txt \
