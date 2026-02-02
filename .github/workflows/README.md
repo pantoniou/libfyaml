@@ -22,8 +22,10 @@ These workflows test a single platform without matrices, designed for local test
 
 - **`ubuntu-latest-test.yaml`** - Ubuntu latest testing (5 jobs, no matrix)
 - **`macos-latest-test.yaml`** - macOS latest testing (5 jobs, no matrix)
+- **`windows-latest-test.yaml`** - Windows latest testing (4 jobs, no matrix)
 
-✅ **These workflows work well with act for local testing.**
+✅ **Ubuntu/macOS workflows work well with act for local testing.**
+⚠️ **Windows workflow requires GitHub Actions (act cannot emulate Windows).**
 
 ## Using Workflows with act
 
@@ -107,6 +109,24 @@ act -W .github/workflows/macos-latest-test.yaml
 act -W .github/workflows/macos-latest-test.yaml -j cmake-with-llvm
 ```
 
+### windows-latest-test.yaml
+
+4 jobs testing different configurations (CMake only, no Autotools):
+
+1. **cmake-msvc-debug** - CMake Debug build with MSVC and Ninja
+2. **cmake-msvc-release** - CMake Release build with MSVC and Ninja
+3. **cmake-msvc-static-libs** - CMake Release with static libraries
+4. **cmake-msvc-vs-generator** - CMake with Visual Studio generator (no Ninja)
+
+```bash
+# Windows workflows cannot be run with act (no Windows emulation)
+# Use GitHub Actions directly or validate syntax only:
+act -W .github/workflows/windows-latest-test.yaml -n
+
+# Trigger manually via GitHub CLI:
+gh workflow run windows-latest-test.yaml
+```
+
 ## Testing Strategy
 
 ### During Development
@@ -175,6 +195,7 @@ Single-platform workflows also support manual triggering:
 # Via gh CLI:
 gh workflow run ubuntu-latest-test.yaml
 gh workflow run macos-latest-test.yaml
+gh workflow run windows-latest-test.yaml
 ```
 
 ## Debugging Workflows

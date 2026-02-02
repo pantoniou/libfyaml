@@ -1,0 +1,141 @@
+name: Windows Latest Test
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  cmake-msvc-debug:
+    name: CMake with MSVC (Debug)
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        choco install ninja pkgconfiglite
+
+    - name: Configure
+      run: |
+        cmake -B build -G Ninja `
+          -DCMAKE_BUILD_TYPE=Debug `
+          -DBUILD_TESTING=ON `
+          -DENABLE_NETWORK=ON
+
+    - name: Build
+      run: cmake --build build --config Debug
+
+    - name: Test
+      working-directory: build
+      run: ctest --output-on-failure --config Debug
+
+    - name: Upload test logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-logs-cmake-msvc-debug
+        path: |
+          build/Testing/Temporary/
+          build/**/*.log
+
+  cmake-msvc-release:
+    name: CMake with MSVC (Release)
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        choco install ninja pkgconfiglite
+
+    - name: Configure
+      run: |
+        cmake -B build -G Ninja `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DBUILD_TESTING=ON `
+          -DENABLE_NETWORK=ON
+
+    - name: Build
+      run: cmake --build build --config Release
+
+    - name: Test
+      working-directory: build
+      run: ctest --output-on-failure --config Release
+
+    - name: Upload test logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-logs-cmake-msvc-release
+        path: |
+          build/Testing/Temporary/
+          build/**/*.log
+
+  cmake-msvc-static-libs:
+    name: CMake with MSVC (Static Libs)
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        choco install ninja pkgconfiglite
+
+    - name: Configure
+      run: |
+        cmake -B build -G Ninja `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DBUILD_SHARED_LIBS=OFF `
+          -DBUILD_TESTING=ON `
+          -DENABLE_NETWORK=ON
+
+    - name: Build
+      run: cmake --build build --config Release
+
+    - name: Test
+      working-directory: build
+      run: ctest --output-on-failure --config Release
+
+    - name: Upload test logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-logs-cmake-msvc-static
+        path: |
+          build/Testing/Temporary/
+          build/**/*.log
+
+  cmake-msvc-vs-generator:
+    name: CMake with Visual Studio Generator
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Configure
+      run: |
+        cmake -B build `
+          -DBUILD_TESTING=ON `
+          -DENABLE_NETWORK=ON
+
+    - name: Build
+      run: cmake --build build --config Release
+
+    - name: Test
+      working-directory: build
+      run: ctest --output-on-failure --config Release
+
+    - name: Upload test logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-logs-cmake-vs-generator
+        path: |
+          build/Testing/Temporary/
+          build/**/*.log
