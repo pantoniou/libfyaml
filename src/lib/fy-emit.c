@@ -2665,7 +2665,9 @@ fy_emitter_create_str_internal(enum fy_emitter_cfg_flags flags, char **bufp, siz
 	memset(&emit_cfg, 0, sizeof(emit_cfg));
 	emit_cfg.output = do_buffer_output;
 	emit_cfg.userdata = state;
-	emit_cfg.flags = flags;
+	/* Strip FYECF_EXTENDED_CFG since we're only providing a basic config,
+	 * not an extended fy_emitter_xcfg structure */
+	emit_cfg.flags = flags & ~FYECF_EXTENDED_CFG;
 
 	emit = fy_emitter_create(&emit_cfg);
 	if (!emit)
@@ -2877,7 +2879,9 @@ int fy_emit_document_to_fp(struct fy_document *fyd, enum fy_emitter_cfg_flags fl
 	memset(&emit_cfg, 0, sizeof(emit_cfg));
 	emit_cfg.output = do_file_output;
 	emit_cfg.userdata = fp;
-	emit_cfg.flags = flags;
+	/* Strip FYECF_EXTENDED_CFG since we're only providing a basic config,
+	 * not an extended fy_emitter_xcfg structure */
+	emit_cfg.flags = flags & ~FYECF_EXTENDED_CFG;
 	fy_emit_setup(emit, &emit_cfg);
 
 	fy_emit_prepare_document_state(emit, fyd->fyds);
@@ -2964,7 +2968,9 @@ int fy_emit_document_to_fd(struct fy_document *fyd, enum fy_emitter_cfg_flags fl
 	memset(&emit_cfg, 0, sizeof(emit_cfg));
 	emit_cfg.output = do_fd_output;
 	emit_cfg.userdata = (void *)(uintptr_t)fd;
-	emit_cfg.flags = flags;
+	/* Strip FYECF_EXTENDED_CFG since we're only providing a basic config,
+	 * not an extended fy_emitter_xcfg structure */
+	emit_cfg.flags = flags & ~FYECF_EXTENDED_CFG;
 	fy_emit_setup(emit, &emit_cfg);
 
 	fy_emit_prepare_document_state(emit, fyd->fyds);
