@@ -50,6 +50,9 @@ static inline unsigned int fy_bit64_ffs(uint64_t x)
 
 #include <intrin.h>
 
+#if defined(_M_X64) || defined(_M_AMD64) || defined(_M_ARM64)
+/* 64-bit MSVC - use native 64-bit intrinsics */
+
 static inline unsigned int fy_bit64_lowest(uint64_t x)
 {
 	unsigned long index;
@@ -79,6 +82,59 @@ static inline unsigned int fy_bit64_ffs(uint64_t x)
 	_BitScanForward64(&index, x);
 	return (unsigned int)index + 1;
 }
+
+#else
+/* 32-bit MSVC - use 32-bit intrinsics on halves */
+
+static inline unsigned int fy_bit64_lowest(uint64_t x)
+{
+	unsigned long index;
+	uint32_t lo = (uint32_t)x;
+	uint32_t hi = (uint32_t)(x >> 32);
+
+	if (lo && _BitScanForward(&index, lo))
+		return (unsigned int)index;
+	if (hi && _BitScanForward(&index, hi))
+		return (unsigned int)index + 32;
+	return 64;
+}
+
+static inline unsigned int fy_bit64_highest(uint64_t x)
+{
+	unsigned long index;
+	uint32_t lo = (uint32_t)x;
+	uint32_t hi = (uint32_t)(x >> 32);
+
+	if (hi && _BitScanReverse(&index, hi))
+		return 63 - ((unsigned int)index + 32);
+	if (lo && _BitScanReverse(&index, lo))
+		return 63 - (unsigned int)index;
+	return 64;
+}
+
+static inline unsigned int fy_bit64_popcnt(uint64_t x)
+{
+	uint32_t lo = (uint32_t)x;
+	uint32_t hi = (uint32_t)(x >> 32);
+	return (unsigned int)(__popcnt(lo) + __popcnt(hi));
+}
+
+static inline unsigned int fy_bit64_ffs(uint64_t x)
+{
+	unsigned long index;
+	uint32_t lo = (uint32_t)x;
+	uint32_t hi = (uint32_t)(x >> 32);
+
+	if (x == 0)
+		return 0;
+	if (lo && _BitScanForward(&index, lo))
+		return (unsigned int)index + 1;
+	if (hi && _BitScanForward(&index, hi))
+		return (unsigned int)index + 33;
+	return 0;
+}
+
+#endif /* 64-bit vs 32-bit MSVC */
 
 #define FY_BIT64_LOWEST(_x) fy_bit64_lowest(_x)
 #define FY_BIT64_HIGHEST(_x) fy_bit64_highest(_x)
