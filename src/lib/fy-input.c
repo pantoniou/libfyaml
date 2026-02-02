@@ -616,6 +616,10 @@ int fy_reader_input_done(struct fy_reader *fyr)
 		}
 
 		fyi->allocated = current_input_pos;
+		/* update read to match the new buffer size, otherwise
+		 * fy_input_size() will return the old (larger) value
+		 * causing heap-buffer-overflow when iterating over atoms */
+		fyi->read = current_input_pos;
 
 		break;
 
