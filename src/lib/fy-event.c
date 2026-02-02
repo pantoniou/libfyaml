@@ -341,6 +341,15 @@ fy_eventp_vcreate_internal(struct fy_eventp_list *recycled_list, struct fy_diag 
 	case FYET_SCALAR:
 	case FYET_ALIAS:
 
+		/* Initialize event fields first to ensure clean error path */
+		if (type == FYET_SCALAR) {
+			fye->scalar.value = NULL;
+			fye->scalar.anchor = NULL;
+			fye->scalar.tag = NULL;
+		} else {
+			fye->alias.anchor = NULL;
+		}
+
 		if (type == FYET_SCALAR) {
 			sstyle = va_arg(ap, enum fy_scalar_style);
 			value = va_arg(ap, const char *);
