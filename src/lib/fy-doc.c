@@ -2256,17 +2256,17 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 		}
 	}
 
-	/* verify no funkiness on root */
-	assert(fyn_parent || fyn_to == fyd->root);
-
 	/* deleting target */
 	if (!fyn_from) {
 		fyn_to->parent = NULL;
 
 		if (!fyn_parent) {
-			fyd_doc_debug(fyd, "Deleting root node");
+			fyd_doc_debug(fyd, "Deleting %s node", fyd->root == fyn_to ? "root" : "unattached");
 			fy_node_detach_and_free(fyn_to);
-			fyd->root = NULL;
+
+			/* if destination was the root, remove it */
+			if (fyn_to == fyd->root)
+				fyd->root = NULL;
 		} else if (fyn_parent->type == FYNT_SEQUENCE) {
 			fyd_doc_debug(fyd, "Deleting sequence node");
 			fy_node_list_del(&fyn_parent->sequence, fyn_to);
@@ -2470,6 +2470,8 @@ err_out_rc:
 
 int fy_node_delete(struct fy_node *fyn)
 {
+	if (!fyn)
+		return 0;
 	return fy_node_insert(fyn, NULL);
 }
 

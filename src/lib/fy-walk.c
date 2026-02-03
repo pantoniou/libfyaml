@@ -1618,7 +1618,7 @@ fy_path_expr_to_node_internal(struct fy_document *fyd, struct fy_path_expr *expr
 	const char *style = "";
 	const char *text;
 	size_t len;
-	struct fy_node *fyn = NULL, *fyn2, *fyn_seq = NULL;
+	struct fy_node *fyn = NULL, *fyn2 = NULL, *fyn_seq = NULL;
 	int rc;
 
 	text = fy_token_get_text(expr->fyt, &len);
@@ -1678,6 +1678,7 @@ fy_path_expr_to_node_internal(struct fy_document *fyd, struct fy_path_expr *expr
 		rc = fy_node_sequence_append(fyn_seq, fyn2);
 		if (rc)
 			goto err_out;
+		fyn2 = NULL;
 	}
 
 	if (expr->type != fpet_method) {
@@ -4595,7 +4596,7 @@ fy_walk_result_perform_set_op(struct fy_path_exec *fypx, struct fy_walk_result *
 	struct fy_walk_result *fwr, *fwrrm, *fwrin;
 	struct fy_walk_result *output = NULL;
 	char *relpath = NULL;
-	struct fy_node *fyn2, *fynt;
+	struct fy_node *fyn2 = NULL, *fynt;
 	int rc;
 
 	/* no input? return it */
@@ -4667,6 +4668,8 @@ fy_walk_result_perform_set_op(struct fy_path_exec *fypx, struct fy_walk_result *
 				rc = fy_node_delete(fyn2);
 				if (rc)
 					goto err_out;
+				fyn2 = NULL;
+				fwr->fyn = NULL;
 			} else {
 
 				fynt = fyn2;
