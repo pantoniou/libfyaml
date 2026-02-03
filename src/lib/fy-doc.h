@@ -157,7 +157,8 @@ bool fy_node_is_empty(struct fy_node *fyn);
 
 bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
 		       enum fy_node_walk_flags flags,
-		       struct fy_node_walk_ctx *ctx);
+		       struct fy_node_walk_ctx *ctx,
+		       unsigned int depth);
 
 #define FYNWF_VISIT_MARKER	(FYNWF_MAX_USER_MARKER + 1)
 #define FYNWF_REF_MARKER	(FYNWF_MAX_USER_MARKER + 2)

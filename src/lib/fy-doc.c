@@ -3046,7 +3046,7 @@ int fy_document_resolve(struct fy_document *fyd)
 
 		/* for resolution to work, no reference loops should exist */
 		ret = fy_check_ref_loop(fyd, fyd->root,
-				FYNWF_MAXDEPTH_DEFAULT | FYNWF_FOLLOW, NULL);
+				FYNWF_MAXDEPTH_DEFAULT | FYNWF_FOLLOW, NULL, 0);
 
 		fy_node_clear_system_marks(fyd->root);
 
@@ -4827,9 +4827,11 @@ struct fy_node *fy_node_create_relative_reference(struct fy_node *fyn_base, stru
 	return fyn_ref;
 }
 
-bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
-		       enum fy_node_walk_flags flags,
-		       struct fy_node_walk_ctx *ctx)
+bool
+fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
+		  enum fy_node_walk_flags flags,
+		  struct fy_node_walk_ctx *ctx,
+		  unsigned int depth)
 {
 	struct fy_node *fyni;
 	struct fy_node_pair *fynp, *fynpi;
@@ -4838,6 +4840,10 @@ bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
 
 	if (!fyn)
 		return false;
+
+	/* over depth? */
+	if (depth > fy_node_walk_max_depth_from_flags(flags))
+		return true;
 
 	/* visited? no need to check */
 	if (fyn->marks & FY_BIT(FYNWF_VISIT_MARKER))
@@ -4871,7 +4877,7 @@ bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
 
 		fyni = fy_node_follow_alias(fyn, flags);
 
-		ret = fy_check_ref_loop(fyd, fyni, flags, ctxn);
+		ret = fy_check_ref_loop(fyd, fyni, flags, ctxn, depth + 1);
 
 		if (!ctx)
 			fy_node_walk_mark_end(ctxn);
@@ -4885,7 +4891,7 @@ bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
 		for (fyni = fy_node_list_head(&fyn->sequence); fyni;
 				fyni = fy_node_next(&fyn->sequence, fyni)) {
 
-			ret = fy_check_ref_loop(fyd, fyni, flags, ctx);
+			ret = fy_check_ref_loop(fyd, fyni, flags, ctx, depth + 1);
 			if (ret)
 				break;
 		}
@@ -4896,11 +4902,11 @@ bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
 
 			fynpi = fy_node_pair_next(&fyn->mapping, fynp);
 
-			ret = fy_check_ref_loop(fyd, fynp->key, flags, ctx);
+			ret = fy_check_ref_loop(fyd, fynp->key, flags, ctx, depth + 1);
 			if (ret)
 				break;
 
-			ret = fy_check_ref_loop(fyd, fynp->value, flags, ctx);
+			ret = fy_check_ref_loop(fyd, fynp->value, flags, ctx, depth + 1);
 			if (ret)
 				break;
 		}
