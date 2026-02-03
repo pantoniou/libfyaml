@@ -5,6 +5,108 @@ All notable changes to libfyaml will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.4] - 2026-02-03
+
+### Major: Full Windows Support
+
+This release adds **full native Windows support**. libfyaml now builds and runs natively on Windows with MSVC, clang-cl, and Clang compilers.
+
+**Native Windows builds:**
+- Full support for building on Windows using MSVC, clang-cl, or GCC
+- Works with Visual Studio, VSCode, and other Windows development tools
+- All tests pass on Windows
+
+**Cross-compilation from Linux:**
+- Support for msvc-wine to install MSVC redistributables on Linux
+- Compile using `cl.exe` via Wine
+- Compile using `clang-cl` without Wine
+- Compile using Clang cross-compilation triplet
+
+### Major: Comment Support Now Stable
+
+Comment parsing and emission has been moved out of experimental status. Comments can now be reliably preserved and manipulated through the API.
+
+### Added
+
+- `fy_node_set_style()`: Set the style of a node (block, flow, plain, etc.) - Fixes #78
+- `fy_token_set_comment()`: Attach comments to tokens programmatically
+- `fy_event_to_string()`: Convert events to string representation
+- `fy_diag_get_collect_errors()`: Query if error collection is enabled
+- `fy_atom_lines_containing()`: Get lines containing an atom (for diagnostics)
+- `fy_memstream`: Portable `open_memstream` alternative for cross-platform support
+- CMake-based CI workflow with improved matrix coverage
+- Emscripten platform detection for `endian.h`
+
+### Changed
+
+- libclang now defaults to OFF (will be enabled when reflection features are ready)
+- Document start token is now preserved (may contain comments)
+- Walk methods now handle error paths more systematically
+- Removed non-existent experimental function declarations from `libfyaml.h`
+
+### Fixed
+
+- **#193**: Token creation now properly clears memory to avoid undefined behavior on invalid input
+- **#186**: Reference loop nesting now respected when checking link validity
+- **#185**: Fixed crash when setting document root to NULL; also fixed input size clamping for corrupted input
+- **#184**: Walk memory leak fix with improved debugging infrastructure
+- **#183, #191**: Error out early on `FYECF_EXTENDED_CFG` with helper emit methods (prevents crash)
+- **#182**: Walk expression unref bug fix with debug infrastructure
+- **#181**: Walk double-free on node delete
+- **#178, #177**: Walk methods now handle error paths systematically (recursive alias resolution)
+- **#176**: Off-by-one error in `fy_accel_grow`
+- **#175**: Parser crash on corrupted UTF-8 at end of file
+- **#174**: Superfluous document end marker with explicit version/tag directives
+- **#173, #172**: Depth limit for node copy (prevents stack overflow under fuzzing)
+- **#143**: Document root now correctly marked as attached
+- Emit state now properly reset at end of document (fixes multi-document stream markers)
+- Flow quoting error on ANY style (test was backwards)
+- Empty file `fdopen` issue on some platforms
+- Empty stream `realloc(0)` undefined behavior
+- Removed jarring notice when alias is declared multiple times (valid YAML)
+
+### Platform Support
+
+**Supported platforms**: Linux, macOS, FreeBSD, OpenBSD, NetBSD, and **Windows**.
+
+**Windows-specific:**
+- Full native MSVC support (32-bit and 64-bit)
+- clang-cl and Clang cross-compilation support
+- msvc-wine support for Linux-based Windows cross-compilation
+- Proper CRLF (DOS line ending) handling
+- Fixed 32-bit MSVC intrinsics (`_BitScanForward64`, `_BitScanReverse64`, `__popcnt64`)
+
+**Portability fixes:**
+- Fixed void pointer arithmetic (GCC extension) for strict C compliance
+- Fixed GCC ternary operator extension (`x ? : y` -> `x ? x : y`)
+- Fixed `\e` escape sequence (GCC/clang extension) -> `\x1b`
+- Fixed enum comparison warnings across platforms
+- Align mremap initial size to page boundary (fixes BSD crashes)
+
+**macOS:**
+- Fixed ASAN support (requires `-fsanitize=address` at link time)
+- Added extra ASAN flags for Apple's clang (alloca poisoning disabled)
+
+**CI/Build:**
+- New CMake-based GitHub Actions workflow
+- Improved build matrix coverage
+- Fixed distcheck breakage
+
+### Internal
+
+- Walk expression debug infrastructure for easier debugging
+- Portable `fy_memstream` wrapper for `open_memstream`
+- Use `fy_align_alloc/free` wrappers in allocator
+- Fixed allocator `get_caps` return type (enum, not int)
+- Atomic counter function instead of macro
+- General warning cleanup pass
+
+### Statistics
+
+- 58 commits since v0.9.3
+- 18 bug fix issues closed
+- Full Windows platform support added
+
 ## [0.9.3] - 2026-01-14
 
 ### Added
@@ -174,6 +276,7 @@ Jose Luis Blanco-Claraco, Andrey Somov, Orange_233, Martin Diehl
 
 Initial public release with comprehensive YAML 1.2 support.
 
+[0.9.4]: https://github.com/pantoniou/libfyaml/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/pantoniou/libfyaml/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/pantoniou/libfyaml/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/pantoniou/libfyaml/compare/v0.9...v0.9.1
