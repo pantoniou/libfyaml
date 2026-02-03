@@ -29,6 +29,25 @@
 #undef DEBUG_EXPR
 // #define DEBUG_EXPR
 
+/* debugging for when expressions go crazy */
+#ifdef DEBUG_EXPR
+struct fy_walk_result *
+_fy_path_exec_walk_result_create(struct fy_path_exec *fypx,
+				const char *file, int line, const char *func,
+				enum fy_walk_result_type type, ...);
+#define fy_path_exec_walk_result_create(_fypx, _type, ...) \
+	_fy_path_exec_walk_result_create((_fypx), \
+			__FILE__, __LINE__, __func__, (_type) __VA_OPT__(,) __VA_ARGS__)
+
+void
+_fy_walk_result_free(struct fy_walk_result *fwr, const char *file, int line, const char *func);
+#define fy_walk_result_free(_fwr) _fy_walk_result_free((_fwr), __FILE__, __LINE__, __func__)
+
+void
+_fy_walk_result_clean(struct fy_walk_result *fwr, const char *file, int line, const char *func);
+#define fy_walk_result_clean(_fwr) _fy_walk_result_clean((_fwr), __FILE__, __LINE__, __func__)
+#endif
+
 const char *fy_walk_result_type_txt[FWRT_COUNT] = {
 	[fwrt_none]	= "none",
 	[fwrt_node_ref]	= "node-ref",
@@ -275,9 +294,11 @@ void fy_walk_result_clean_rl(struct fy_walk_result_list *fwrl, struct fy_walk_re
 	}
 
 	fwr->type = fwrt_none;
+	fwr->fypx = NULL;
 	memset(&fwr->_clean, 0, sizeof(fwr->_clean));
 }
 
+#ifndef DEBUG_EXPR
 void fy_walk_result_clean(struct fy_walk_result *fwr)
 {
 	struct fy_walk_result_list *fwrl;
@@ -288,6 +309,23 @@ void fy_walk_result_clean(struct fy_walk_result *fwr)
 	fwrl = fy_path_exec_walk_result_rl(fwr->fypx);
 	fy_walk_result_clean_rl(fwrl, fwr);
 }
+#else
+void _fy_walk_result_clean(struct fy_walk_result *fwr,
+			   const char *file, int line, const char *func)
+{
+	struct fy_walk_result_list *fwrl;
+
+	if (!fwr)
+		return;
+
+	fprintf(stderr, "%s:%4d @%-48s %-32s fwr=%p (fypx=%p refs=%u)\n",
+			file, line, func, __func__, fwr, fwr->fypx, fwr->fypx ? fwr->fypx->refs : 0);
+
+	fwrl = fy_path_exec_walk_result_rl(fwr->fypx);
+	fy_walk_result_clean_rl(fwrl, fwr);
+
+}
+#endif
 
 void fy_walk_result_free_rl(struct fy_walk_result_list *fwrl, struct fy_walk_result *fwr)
 {
@@ -300,14 +338,17 @@ void fy_walk_result_free_rl(struct fy_walk_result_list *fwrl, struct fy_walk_res
 
 	fy_walk_result_clean_rl(fwrl, fwr);
 
+#ifndef DEBUG_EXPR
 	if (fwrl)
 		fy_walk_result_list_push(fwrl, fwr);
 	else
+#endif
 		free(fwr);
 
 	fy_path_exec_unref(fypx);	/* NULL is OK */
 }
 
+#ifndef DEBUG_EXPR
 void fy_walk_result_free(struct fy_walk_result *fwr)
 {
 	struct fy_walk_result_list *fwrl;
@@ -318,6 +359,21 @@ void fy_walk_result_free(struct fy_walk_result *fwr)
 	fwrl = fy_path_exec_walk_result_rl(fwr->fypx);
 	fy_walk_result_free_rl(fwrl, fwr);
 }
+#else
+void _fy_walk_result_free(struct fy_walk_result *fwr, const char *file, int line, const char *func)
+{
+	struct fy_walk_result_list *fwrl;
+
+	if (!fwr)
+		return;
+
+	fprintf(stderr, "%s:%4d @%-48s %-32s fwr=%p (fypx=%p refs=%u)\n",
+			file, line, func, __func__, fwr, fwr->fypx, fwr->fypx ? fwr->fypx->refs : 0);
+
+	fwrl = fy_path_exec_walk_result_rl(fwr->fypx);
+	fy_walk_result_free_rl(fwrl, fwr);
+}
+#endif
 
 void fy_walk_result_list_free_rl(struct fy_walk_result_list *fwrl, struct fy_walk_result_list *results)
 {
@@ -571,6 +627,7 @@ struct fy_path_expr *fy_path_expr_alloc_recycle(struct fy_path_parser *fypp)
 {
 	struct fy_path_expr *expr = NULL;
 
+#ifndef DEBUG_EXPR
 	if (!fypp || fypp->suppress_recycling)
 		expr = fy_path_expr_alloc();
 
@@ -582,6 +639,9 @@ struct fy_path_expr *fy_path_expr_alloc_recycle(struct fy_path_parser *fypp)
 		} else
 			expr = fy_path_expr_alloc();
 	}
+#else
+	expr = fy_path_expr_alloc();
+#endif
 
 	if (!expr)
 		return NULL;
@@ -593,6 +653,7 @@ struct fy_path_expr *fy_path_expr_alloc_recycle(struct fy_path_parser *fypp)
 
 void fy_path_expr_free_recycle(struct fy_path_parser *fypp, struct fy_path_expr *expr)
 {
+#ifndef DEBUG_EXPR
 	struct fy_path_expr *exprn;
 
 	if (!fypp || fypp->suppress_recycling) {
@@ -608,6 +669,9 @@ void fy_path_expr_free_recycle(struct fy_path_parser *fypp, struct fy_path_expr 
 		expr->fyt = NULL;
 	}
 	fy_path_expr_list_add_tail(&fypp->expr_recycle, expr);
+#else
+	fy_path_expr_free(expr);
+#endif
 }
 
 void fy_expr_stack_setup(struct fy_expr_stack *stack)
@@ -5078,6 +5142,7 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 			if (output1) {
 				fy_walk_result_free(output);
 				output = output1;
+				output1 = NULL;
 			} else
 				break;
 		}
@@ -5383,6 +5448,7 @@ fy_path_exec_walk_result_vcreate(struct fy_path_exec *fypx, enum fy_walk_result_
 	return fy_walk_result_vcreate_rl(fwrl, type, ap);
 }
 
+#ifndef DEBUG_EXPR
 struct fy_walk_result *
 fy_path_exec_walk_result_create(struct fy_path_exec *fypx, enum fy_walk_result_type type, ...)
 {
@@ -5406,6 +5472,36 @@ fy_path_exec_walk_result_create(struct fy_path_exec *fypx, enum fy_walk_result_t
 
 	return fwr;
 }
+#else
+struct fy_walk_result *
+_fy_path_exec_walk_result_create(struct fy_path_exec *fypx,
+				const char *file, int line, const char *func,
+				enum fy_walk_result_type type, ...)
+{
+	struct fy_walk_result_list *fwrl;
+	struct fy_walk_result *fwr;
+	va_list ap;
+
+	if (!fypx)
+		return NULL;
+
+	fwrl = fy_path_exec_walk_result_rl(fypx);
+
+	va_start(ap, type);
+	fwr = fy_walk_result_vcreate_rl(fwrl, type, ap);
+	va_end(ap);
+
+	if (!fwr)
+		return NULL;
+
+	fwr->fypx = fy_path_exec_ref(fypx);
+
+	fprintf(stderr, "%s:%4d @%-48s %-32s fwr=%p (fypx=%p refs=%u)\n",
+			file, line, func, __func__, fwr, fwr->fypx, fwr->fypx ? fwr->fypx->refs : 0);
+
+	return fwr;
+}
+#endif
 
 void
 fy_path_exec_walk_result_free(struct fy_path_exec *fypx, struct fy_walk_result *fwr)
