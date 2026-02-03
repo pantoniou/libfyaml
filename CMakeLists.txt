@@ -567,9 +567,6 @@ endif()
 set(ASAN_C_FLAGS)
 if(HAVE_ASAN)
   set(ASAN_C_FLAGS "-fsanitize=address" "-fno-omit-frame-pointer")
-  if(APPLE)
-    list(APPEND ASAN_C_FLAGS "-mllvm" "-asan-stack-dynamic-allocs=0")
-  endif()
 endif()
 
 # Build common compiler flags for all targets
@@ -1061,7 +1058,7 @@ if(NOT MSVC AND NOT WIN32)
     if(HAVE_ASAN)
         target_compile_options(fyaml PRIVATE ${ASAN_C_FLAGS} -fno-omit-frame-pointer)
         # Use INTERFACE to propagate link flags to executables linking against this library
-        target_link_options(fyaml INTERFACE ${ASAN_C_FLAGS})
+	target_link_options(fyaml PRIVATE ${ASAN_C_FLAGS} INTERFACE ${ASAN_C_FLAGS})
     endif()
 endif()
 
