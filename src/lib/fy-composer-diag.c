@@ -33,7 +33,7 @@ int fy_composer_vdiag(struct fy_composer *fyc, unsigned int flags,
 		return -1;
 
 	/* perform the enable tests early to avoid the overhead */
-	if ((int)((flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT) < fyc->cfg.diag->cfg.level)
+	if ((int)((flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT) < (int)fyc->cfg.diag->cfg.level)
 		return 0;
 
 	/* fill in fy_diag_ctx */

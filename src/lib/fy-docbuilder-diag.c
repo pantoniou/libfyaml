@@ -33,7 +33,7 @@ int fy_document_builder_vdiag(struct fy_document_builder *fydb, unsigned int fla
 		return -1;
 
 	/* perform the enable tests early to avoid the overhead */
-	if ((int)((flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT) < fydb->cfg.diag->cfg.level)
+	if ((int)((flags & FYDF_LEVEL_MASK) >> FYDF_LEVEL_SHIFT) < (int)fydb->cfg.diag->cfg.level)
 		return 0;
 
 	/* fill in fy_diag_ctx */
