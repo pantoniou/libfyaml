@@ -1748,6 +1748,10 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 	if (l->lineno > 0 && iter->rs >= iter->ae)
 		return NULL;
 
+	/* this may happen on illegal utf8 */
+	if (!iter->is)
+		return NULL;
+
 	c = -1;
 	while (s > iter->is) {
 		c = fy_utf8_get_right(iter->is, (size_t)(s - iter->is), &w);

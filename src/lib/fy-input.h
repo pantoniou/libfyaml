@@ -154,6 +154,21 @@ fy_input_start_size(const struct fy_input *fyi, size_t *sizep)
 		break;
 	}
 
+	/* if we've parsed need to clamp */
+	if (fyi->state == FYIS_PARSED) {
+		switch (fyi->cfg.type) {
+		case fyit_file:
+		case fyit_fd:
+		case fyit_stream:
+		case fyit_callback:
+			if (fyi->allocated < size)
+				size = fyi->allocated;
+			break;
+		default:
+			break;
+		}
+	}
+
 	*sizep = size;
 	return start;
 }
