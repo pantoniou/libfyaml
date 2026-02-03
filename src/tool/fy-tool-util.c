@@ -24,15 +24,6 @@
 #include <limits.h>
 #include <math.h>
 
-#if 0
-#ifndef _WIN32
-#include <unistd.h>
-#include <regex.h>
-#else
-#include "fy-win32.h"
-#endif
-#endif
-
 #include <libfyaml.h>
 
 #include "fy-tool-util.h"

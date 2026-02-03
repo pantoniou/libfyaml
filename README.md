@@ -1,6 +1,7 @@
 # libfyaml
 
-[![CI Status](https://github.com/pantoniou/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions)
+[![Autotools CI](https://github.com/pantoniou/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22Standard+Automake+CI%22)
+[![CMake CI](https://github.com/pantoniou/libfyaml/workflows/CMake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22CMake+CI%22)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Language: C](https://img.shields.io/badge/language-C-brightgreen.svg)](https://en.wikipedia.org/wiki/C_(programming_language))
 
@@ -558,12 +559,26 @@ make doc-latexpdf
 
 ## Platform Support
 
-**Primary Platform**: Linux (Debian/Ubuntu, Fedora, Arch, etc.)
-**Also Supported**: macOS (via Homebrew)
-**Not Yet Supported**: Windows (contributions welcome!)
+**Natively Supported Platforms**:
+- Linux (Debian/Ubuntu, Fedora, Arch, Alpine, RHEL/Rocky, etc.)
+- macOS (Xcode, Homebrew)
+- Windows (native MSVC, clang-cl, Clang)
+- FreeBSD, NetBSD, OpenBSD
 
-**Architectures**: x86, x86_64, ARM, ARM64, and others
-**Compilers**: GCC, Clang, ICC
+**Architectures**: x86, x86_64, ARM, ARM64 are tested in CI, but we are portable, all should work as
+long as Linux support is available.
+
+**Compilers**:
+- GCC
+- Clang
+- MSVC (native Windows)
+- clang-cl (Windows)
+- Xcode (macOS)
+
+**Special windows cross-compilation support**:
+- Windows targets via Wine + MSVC
+- Windows targets via clang-cl cross-compile
+- Windows targets via Clang cross-compile
 
 ---
 
@@ -620,7 +635,6 @@ ctest --progress -j`nproc`
 ## Missing Features
 
 Current limitations:
-- **Windows support**: Not yet implemented (contributions welcome)
 - **Unicode**: UTF-8 only, no wide character input support
 
 ---
