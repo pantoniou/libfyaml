@@ -92,9 +92,15 @@ jobs:
         echo "CC=${{ matrix.cc }}" >> $GITHUB_ENV
         echo "CXX=${{ matrix.cxx }}" >> $GITHUB_ENV
 
-    - name: Configure CMake
+    - name: Configure CMake (Unix)
+      if: runner.os != 'Windows'
       run: |
         cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+    - name: Configure CMake (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        cmake -B build -A x64 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
     - name: Build
       run: cmake --build build --config ${{ matrix.build_type }}
