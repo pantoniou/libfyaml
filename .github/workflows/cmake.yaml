@@ -38,8 +38,8 @@ jobs:
           # Ubuntu Clang
           - os: ubuntu-latest
             compiler: clang
-            cc: clang
-            cxx: clang++
+            cc: clang-18
+            cxx: clang++-18
           # macOS GCC
           - os: macos-latest
             compiler: gcc
@@ -90,8 +90,7 @@ jobs:
 
     - name: Configure CMake
       run: |
-        cmake -B build -G Ninja \
-          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
     - name: Build
       run: cmake --build build --config ${{ matrix.build_type }}
