@@ -222,7 +222,7 @@ static int fy_document_set_anchor_internal(struct fy_document *fyd, struct fy_no
 				fyam->multiple = true;
 			fya->multiple = true;
 
-			fyd_notice(fyd, "register anchor %.*s is multiple", (int)len, text);
+			fyd_debug(fyd, "register anchor %.*s is multiple", (int)len, text);
 		}
 
 		xle = fy_accel_entry_insert(fyd->axl, fya->anchor, fya);
@@ -1110,8 +1110,8 @@ int fy_document_register_anchor(struct fy_document *fyd,
 {
 	struct fy_anchor *fya, *fyam;
 	struct fy_accel_entry *xle;
-	const char *text;
-	size_t text_len;
+	const char *text FY_DEBUG_UNUSED;
+	size_t text_len FY_DEBUG_UNUSED;
 	int rc;
 
 	fya = fy_anchor_create(fyd, fyn, anchor);
@@ -1129,7 +1129,9 @@ int fy_document_register_anchor(struct fy_document *fyd,
 			fya->multiple = true;
 
 			text = fy_anchor_get_text(fya, &text_len);
-			fyd_notice(fyd, "register anchor %.*s is multiple", (int)text_len, text);
+			assert(text);
+			assert(text_len > 0);
+			fyd_debug(fyd, "register anchor %.*s is multiple", (int)text_len, text);
 		}
 
 		xle = fy_accel_entry_insert(fyd->axl, fya->anchor, fya);
