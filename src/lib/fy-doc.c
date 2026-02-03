@@ -5361,11 +5361,12 @@ int fy_document_set_root(struct fy_document *fyd, struct fy_node *fyn)
 	fy_node_detach_and_free(fyd->root);
 	fyd->root = NULL;
 
-	fyn->parent = NULL;
 	fyd->root = fyn;
 
-	if (fyn)
+	if (fyn) {
+		fyn->parent = NULL;
 		fyn->attached = true;
+	}
 
 	return 0;
 }
