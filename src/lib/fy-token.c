@@ -401,6 +401,7 @@ struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_t
 	if (!fyt)
 		goto err_out;
 	fyt->type = type;
+	fyt->handle.fyi = NULL;
 
 	handle = va_arg(ap, struct fy_atom *);
 	if (handle)
@@ -417,13 +418,13 @@ struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_t
 		fyt->tag_directive.handle0 = NULL;
 		break;
 	case FYTT_SCALAR:
-		fyt->scalar.style = va_arg(ap, enum fy_scalar_style);
-		if (fyt->scalar.style != FYSS_ANY && (unsigned int)fyt->scalar.style >= FYSS_MAX)
-			goto err_out;
 		fyt->scalar.path_key = NULL;
 		fyt->scalar.path_key_len = 0;
 		fyt->scalar.path_key_storage = NULL;
 		fyt->scalar.is_null = false;	/* by default the scalar is not NULL */
+		fyt->scalar.style = va_arg(ap, enum fy_scalar_style);
+		if (fyt->scalar.style != FYSS_ANY && (unsigned int)fyt->scalar.style >= FYSS_MAX)
+			goto err_out;
 		break;
 	case FYTT_TAG:
 		fyt->tag.skip = va_arg(ap, unsigned int);

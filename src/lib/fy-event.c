@@ -342,6 +342,7 @@ fy_eventp_vcreate_internal(struct fy_eventp_list *recycled_list, struct fy_diag 
 	case FYET_ALIAS:
 
 		if (type == FYET_SCALAR) {
+			fye->scalar.value = fye->scalar.anchor = fye->scalar.tag = NULL;
 			sstyle = va_arg(ap, enum fy_scalar_style);
 			value = va_arg(ap, const char *);
 			len = va_arg(ap, size_t);
@@ -352,6 +353,7 @@ fy_eventp_vcreate_internal(struct fy_eventp_list *recycled_list, struct fy_diag 
 			if (len == FY_NT)
 				len = strlen(value);
 		} else {
+			fye->alias.anchor = NULL;
 			sstyle = FYSS_PLAIN;
 			value = va_arg(ap, const char *);
 			if (!value) {
