@@ -2639,6 +2639,9 @@ fy_emitter_create_str_internal(enum fy_emitter_cfg_flags flags, char **bufp, siz
 	struct fy_emitter_cfg emit_cfg;
 	struct fy_emit_buffer_state *state;
 
+	if (flags & FYECF_EXTENDED_CFG)
+		return NULL;
+
 	state = malloc(sizeof(*state));
 	if (!state)
 		return NULL;
@@ -2871,7 +2874,8 @@ int fy_emit_document_to_fp(struct fy_document *fyd, enum fy_emitter_cfg_flags fl
 	struct fy_emitter_cfg emit_cfg;
 	int rc;
 
-	if (!fp)
+	/* we don't allow an extended configuration */
+	if (!fp || (flags & FYECF_EXTENDED_CFG))
 		return -1;
 
 	memset(&emit_cfg, 0, sizeof(emit_cfg));
@@ -2958,7 +2962,7 @@ int fy_emit_document_to_fd(struct fy_document *fyd, enum fy_emitter_cfg_flags fl
 	struct fy_emitter_cfg emit_cfg;
 	int rc;
 
-	if (fd < 0)
+	if (fd < 0 || (flags & FYECF_EXTENDED_CFG))
 		return -1;
 
 	memset(&emit_cfg, 0, sizeof(emit_cfg));
