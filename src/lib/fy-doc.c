@@ -3536,7 +3536,14 @@ bool fy_node_is_null(struct fy_node *fyn)
 
 bool fy_node_is_attached(struct fy_node *fyn)
 {
-	return fyn ? fyn->attached : false;
+	if (!fyn)
+		return false;
+
+	if (fyn->attached)
+		return true;
+
+	/* finally root is attached (although the property is not set) */
+	return fyn->fyd && fyn->fyd->root == fyn;
 }
 
 struct fy_node *fy_node_get_parent(struct fy_node *fyn)
