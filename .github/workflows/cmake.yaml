@@ -96,7 +96,13 @@ jobs:
     - name: Build
       run: cmake --build build --config ${{ matrix.build_type }}
 
-    - name: Test
+    - name: Test (no config)
+      if: runner.os != 'Windows'
+      working-directory: build
+      run: ctest --output-on-failure
+
+    - name: Test (with config)
+      if: runner.os == 'Windows'
       working-directory: build
       run: ctest --output-on-failure --config ${{ matrix.build_type }}
 
