@@ -46,6 +46,15 @@ _fy_walk_result_free(struct fy_walk_result *fwr, const char *file, int line, con
 void
 _fy_walk_result_clean(struct fy_walk_result *fwr, const char *file, int line, const char *func);
 #define fy_walk_result_clean(_fwr) _fy_walk_result_clean((_fwr), __FILE__, __LINE__, __func__)
+
+struct fy_walk_result *
+_fy_walk_result_clone(struct fy_walk_result *fwr, const char *file, int line, const char *func);
+#define fy_walk_result_clone(_fwr) _fy_walk_result_clone((_fwr), __FILE__, __LINE__, __func__)
+
+struct fy_walk_result *
+_fy_walk_result_clone_deep(struct fy_walk_result *fwr, const char *file, int line, const char *func);
+#define fy_walk_result_clone_deep(_fwr) _fy_walk_result_clone((_fwr), __FILE__, __LINE__, __func__)
+
 #endif
 
 const char *fy_walk_result_type_txt[FWRT_COUNT] = {
@@ -240,6 +249,7 @@ err_out:
 	return NULL;
 }
 
+#ifndef DEBUG_EXPR
 struct fy_walk_result *fy_walk_result_clone(struct fy_walk_result *fwr)
 {
 	struct fy_walk_result_list *fwrl;
@@ -261,6 +271,45 @@ struct fy_walk_result *fy_walk_result_clone_deep(struct fy_walk_result *fwr)
 	fwrl = fy_path_exec_walk_result_rl(fwr->fypx);
 	return fy_walk_result_clone_rl(fwrl, fwr, true);
 }
+
+#else
+
+struct fy_walk_result *
+_fy_walk_result_clone(struct fy_walk_result *fwr, const char *file, int line, const char *func)
+{
+	struct fy_walk_result_list *fwrl;
+	struct fy_walk_result *fwrn;
+
+	if (!fwr)
+		return NULL;
+
+	fwrl = fy_path_exec_walk_result_rl(fwr->fypx);
+	fwrn = fy_walk_result_clone_rl(fwrl, fwr, false);
+
+	fprintf(stderr, "%s:%4d @%-48s %-32s fwr=%p (fypx=%p refs=%u)\n",
+			file, line, func, __func__, fwrn, fwrn->fypx, fwrn->fypx ? fwrn->fypx->refs : 0);
+
+	return fwrn;
+}
+
+struct fy_walk_result *
+_fy_walk_result_clone_deep(struct fy_walk_result *fwr, const char *file, int line, const char *func)
+{
+	struct fy_walk_result_list *fwrl;
+	struct fy_walk_result *fwrn;
+
+	if (!fwr)
+		return NULL;
+
+	fwrl = fy_path_exec_walk_result_rl(fwr->fypx);
+	fwrn = fy_walk_result_clone_rl(fwrl, fwr, true);
+
+	fprintf(stderr, "%s:%4d @%-48s %-32s fwr=%p (fypx=%p refs=%u)\n",
+			file, line, func, __func__, fwrn, fwrn->fypx, fwrn->fypx ? fwrn->fypx->refs : 0);
+
+	return fwrn;
+}
+#endif
 
 void fy_walk_result_clean_rl(struct fy_walk_result_list *fwrl, struct fy_walk_result *fwr)
 {
@@ -4721,8 +4770,11 @@ fy_walk_result_perform_set_op(struct fy_path_exec *fypx, struct fy_walk_result *
 
 			/* get the node at the relative path of the copy */
 			fyn2 = fy_node_by_path(fwr->fyn, relpath, FY_NT, FYNWF_DONT_FOLLOW);
-			if (!fyn2)
+			if (!fyn2) {
+				fy_walk_result_free(fwr);
+				fwr = NULL;
 				goto err_out;
+			}
 
 			free(relpath);
 			relpath = NULL;
@@ -4747,9 +4799,10 @@ fy_walk_result_perform_set_op(struct fy_path_exec *fypx, struct fy_walk_result *
 			}
 		}
 
-		if (output && fwr) {
+		if (output && fwr)
 			fy_walk_result_list_add_tail(&output->refs, fwr);
-		}
+		else if (fwr)
+			fy_walk_result_free(fwr);
 		fwr = NULL;
 	}
 
