@@ -105,15 +105,10 @@ jobs:
     - name: Build
       run: cmake --build build --config ${{ matrix.build_type }}
 
-    - name: Test (no config)
+    - name: Test
       if: runner.os != 'Windows'
       working-directory: build
       run: ctest --output-on-failure
-
-    - name: Test (with config)
-      if: runner.os == 'Windows'
-      working-directory: build
-      run: ctest --output-on-failure --config ${{ matrix.build_type }}
 
     - name: Upload test logs on failure
       if: failure()
