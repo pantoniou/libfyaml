@@ -1337,3 +1337,304 @@ class TestVersionInfo:
         """__with_libyaml__ should exist."""
         assert hasattr(yaml, '__with_libyaml__')
         assert yaml.__with_libyaml__ is True
+
+
+class TestUnhashableKeys:
+    """Test handling of mappings with unhashable keys.
+
+    In YAML, mappings and sequences can be used as mapping keys.
+    This is valid YAML but can't be represented in Python dicts.
+    These tests verify proper ConstructorError handling.
+    """
+
+    def test_mapping_key_raises_constructor_error(self):
+        """A mapping used as a key should raise ConstructorError."""
+        with pytest.raises(yaml.ConstructorError, match="unhashable key"):
+            yaml.safe_load("{}: bad")
+
+    def test_sequence_key_raises_constructor_error(self):
+        """A sequence used as a key should raise ConstructorError."""
+        with pytest.raises(yaml.ConstructorError, match="unhashable key"):
+            yaml.safe_load("[]: bad")
+
+    def test_template_braces_raises_constructor_error(self):
+        """{{ bar }} is valid YAML (nested flow mappings) but has unhashable keys."""
+        with pytest.raises(yaml.ConstructorError, match="unhashable key"):
+            yaml.safe_load("{{ bar }}")
+
+    def test_template_in_mapping_value(self):
+        """foo: {{ bar }} - template in mapping value position."""
+        with pytest.raises(yaml.ConstructorError, match="unhashable key"):
+            yaml.safe_load("foo: {{ bar }}")
+
+    def test_template_in_sequence(self):
+        """- {{ bar }} - template in sequence item position."""
+        with pytest.raises(yaml.ConstructorError, match="unhashable key"):
+            yaml.safe_load("- {{ bar }}")
+
+    def test_template_nested_in_list_and_dict(self):
+        """Deeply nested template pattern."""
+        with pytest.raises(yaml.ConstructorError, match="unhashable key"):
+            yaml.safe_load(" -  - foo: {{ bar }}")
+
+    def test_constructor_error_is_marked_yaml_error(self):
+        """ConstructorError must be a MarkedYAMLError for Ansible compatibility."""
+        assert issubclass(yaml.ConstructorError, yaml.MarkedYAMLError)
+        # Must be a real subclass, not just an alias
+        assert yaml.ConstructorError is not yaml.MarkedYAMLError
+
+    def test_constructor_error_has_problem_mark(self):
+        """ConstructorError should include problem_mark for error reporting."""
+        try:
+            yaml.safe_load("{}: bad")
+            assert False, "Should have raised"
+        except yaml.ConstructorError as e:
+            assert hasattr(e, 'problem_mark')
+            assert hasattr(e, 'problem')
+            assert 'unhashable' in e.problem
+
+    def test_unhashable_key_with_custom_loader(self):
+        """Unhashable keys should be caught even with custom Loader classes."""
+        class CustomLoader(yaml.SafeLoader):
+            pass
+
+        with pytest.raises(yaml.ConstructorError, match="unhashable key"):
+            yaml.load("{{ bar }}", Loader=CustomLoader)
+
+
+class TestFyGenericEdgeCases:
+    """Test FyGeneric C extension edge cases.
+
+    FyGeneric objects from the C extension have some surprising behaviors
+    that differ from normal Python objects. These tests document and
+    verify the workarounds.
+    """
+
+    def test_mapping_value_property_raises_typeerror_for_unhashable(self):
+        """FyGeneric.value raises TypeError for mappings with unhashable keys.
+
+        Regular mappings raise AttributeError (converted to dict first),
+        but unhashable mappings can't be converted, triggering TypeError.
+        """
+        import libfyaml as fy
+        g = fy.loads("{{ bar }}")
+        assert g.is_mapping()
+        with pytest.raises(TypeError, match="unhashable"):
+            _ = g.value
+
+    def test_mapping_hasattr_value_raises_typeerror_for_unhashable(self):
+        """hasattr() on unhashable mapping raises TypeError, not returns False.
+
+        hasattr() only catches AttributeError, so TypeError from the
+        C extension's property getter propagates to the caller.
+        """
+        import libfyaml as fy
+        g = fy.loads("{{ bar }}")
+        # hasattr only catches AttributeError, not TypeError
+        with pytest.raises(TypeError, match="unhashable"):
+            hasattr(g, 'value')
+
+    def test_regular_mapping_value_raises_attributeerror(self):
+        """Regular mapping .value raises AttributeError (converts to dict)."""
+        import libfyaml as fy
+        g = fy.loads("{a: 1}")
+        assert g.is_mapping()
+        with pytest.raises(AttributeError):
+            _ = g.value
+
+    def test_items_raises_for_unhashable_keys(self):
+        """FyGeneric.items() raises TypeError when keys are unhashable."""
+        import libfyaml as fy
+        g = fy.loads("{{ bar }}")
+        assert g.is_mapping()
+        with pytest.raises(TypeError, match="unhashable"):
+            list(g.items())
+
+    def test_to_python_raises_for_unhashable_keys(self):
+        """FyGeneric.to_python() raises TypeError for unhashable keys."""
+        import libfyaml as fy
+        g = fy.loads("{{ bar }}")
+        with pytest.raises(TypeError, match="unhashable"):
+            g.to_python()
+
+    def test_sequence_containing_unhashable_mapping(self):
+        """A sequence containing a mapping with unhashable keys."""
+        import libfyaml as fy
+        g = fy.loads("- {{ bar }}")
+        assert g.is_sequence()
+        # Iterating the sequence works, but to_python fails
+        with pytest.raises(TypeError, match="unhashable"):
+            g.to_python()
+
+
+class TestNodeConversion:
+    """Test FyGeneric to PyYAML Node tree conversion.
+
+    The _fygeneric_to_node function bridges FyGeneric objects to
+    PyYAML-style Node trees for constructors that expect them.
+    """
+
+    def test_fygeneric_to_node_basic_mapping(self):
+        """Basic mapping converts to MappingNode."""
+        import libfyaml as fy
+        doc = fy.loads("a: 1", mode='yaml1.1-pyyaml', create_markers=True)
+        node = yaml._fygeneric_to_node(doc, '<test>')
+        assert isinstance(node, yaml.MappingNode)
+        assert node.tag == 'tag:yaml.org,2002:map'
+
+    def test_fygeneric_to_node_basic_sequence(self):
+        """Basic sequence converts to SequenceNode."""
+        import libfyaml as fy
+        doc = fy.loads("[1, 2, 3]", mode='yaml1.1-pyyaml', create_markers=True)
+        node = yaml._fygeneric_to_node(doc, '<test>')
+        assert isinstance(node, yaml.SequenceNode)
+        assert node.tag == 'tag:yaml.org,2002:seq'
+
+    def test_fygeneric_to_node_scalar(self):
+        """Scalar converts to ScalarNode."""
+        import libfyaml as fy
+        doc = fy.loads("hello", mode='yaml1.1-pyyaml', create_markers=True)
+        node = yaml._fygeneric_to_node(doc, '<test>')
+        assert isinstance(node, yaml.ScalarNode)
+
+    def test_fygeneric_to_node_unhashable_key_raises(self):
+        """Converting a mapping with unhashable keys raises ConstructorError."""
+        import libfyaml as fy
+        doc = fy.loads("{{ bar }}", mode='yaml1.1-pyyaml', create_markers=True)
+        with pytest.raises(yaml.ConstructorError, match="unhashable key"):
+            yaml._fygeneric_to_node(doc, '<test>')
+
+    def test_fygeneric_to_node_nested_unhashable(self):
+        """Unhashable keys nested inside sequences are caught."""
+        import libfyaml as fy
+        doc = fy.loads("- {{ bar }}", mode='yaml1.1-pyyaml', create_markers=True)
+        with pytest.raises(yaml.ConstructorError, match="unhashable key"):
+            yaml._fygeneric_to_node(doc, '<test>')
+
+    def test_fygeneric_to_node_preserves_marks(self):
+        """Node conversion preserves start/end marks."""
+        import libfyaml as fy
+        doc = fy.loads("a: 1", mode='yaml1.1-pyyaml', create_markers=True)
+        node = yaml._fygeneric_to_node(doc, 'test.yml')
+        assert node.start_mark is not None
+        assert node.start_mark.name == 'test.yml'
+
+    def test_fygeneric_to_node_preserves_custom_tag(self):
+        """Node conversion preserves custom tags."""
+        import libfyaml as fy
+        doc = fy.loads("!custom value", mode='yaml1.1-pyyaml', create_markers=True)
+        node = yaml._fygeneric_to_node(doc, '<test>')
+        assert node.tag == '!custom'
+
+
+class TestDiagnosticSequenceGuard:
+    """Test that the diagnostic sequence check in load() handles edge cases.
+
+    When libfyaml returns a sequence, load() checks if it's an error
+    diagnostic. This check must not fail on valid sequences that
+    contain unhashable types.
+    """
+
+    def test_sequence_with_unhashable_not_mistaken_for_diag(self):
+        """A valid sequence with unhashable keys should not crash the diag check."""
+        # This should raise ConstructorError (from unhashable key), not TypeError
+        with pytest.raises(yaml.ConstructorError):
+            yaml.safe_load("- {{ bar }}")
+
+    def test_normal_sequence_not_affected(self):
+        """Normal sequences still work after the diagnostic guard."""
+        data = yaml.safe_load("- 1\n- 2\n- 3")
+        assert data == [1, 2, 3]
+
+    def test_sequence_of_mappings_works(self):
+        """Sequences of regular mappings work fine."""
+        data = yaml.safe_load("- a: 1\n- b: 2")
+        assert data == [{'a': 1}, {'b': 2}]
+
+    def test_empty_sequence_works(self):
+        """Empty sequences work fine."""
+        data = yaml.safe_load("[]")
+        assert data == []
+
+
+class TestTagNodeTypeMismatch:
+    """Test that tag/node type mismatches raise ConstructorError.
+
+    When a tag like !!map or !!seq is applied to the wrong node type
+    (e.g., !!map on a scalar), the constructor should raise a proper
+    ConstructorError rather than letting a ValueError or TypeError leak.
+    """
+
+    def test_map_tag_on_scalar_raises(self):
+        """!!map on a scalar should raise ConstructorError."""
+        with pytest.raises(yaml.ConstructorError, match="expected a mapping node, but found scalar"):
+            yaml.safe_load("!!map 1")
+
+    def test_map_tag_on_scalar_with_tabs(self):
+        """!!map on a scalar containing tabs should raise ConstructorError."""
+        with pytest.raises(yaml.ConstructorError, match="expected a mapping node, but found scalar"):
+            yaml.safe_load("!!map 1\t2\t3")
+
+    def test_map_tag_on_sequence_raises(self):
+        """!!map on a sequence should raise ConstructorError."""
+        with pytest.raises(yaml.ConstructorError, match="expected a mapping node, but found sequence"):
+            yaml.safe_load("!!map [1, 2]")
+
+    def test_seq_tag_on_scalar_raises(self):
+        """!!seq on a scalar should raise ConstructorError."""
+        with pytest.raises(yaml.ConstructorError, match="expected a sequence node, but found scalar"):
+            yaml.safe_load("!!seq hello")
+
+    def test_seq_tag_on_mapping_raises(self):
+        """!!seq on a mapping should raise ConstructorError."""
+        with pytest.raises(yaml.ConstructorError, match="expected a sequence node, but found mapping"):
+            yaml.safe_load("!!seq {a: 1}")
+
+    def test_map_tag_on_valid_mapping_works(self):
+        """!!map on an actual mapping should work fine."""
+        data = yaml.safe_load("!!map {a: 1}")
+        assert data == {'a': 1}
+
+    def test_seq_tag_on_valid_sequence_works(self):
+        """!!seq on an actual sequence should work fine."""
+        data = yaml.safe_load("!!seq [1, 2]")
+        assert data == [1, 2]
+
+
+class TestBareColonDetection:
+    """Test that bare ':' is rejected for PyYAML compatibility.
+
+    A bare ':' is valid YAML 1.2 (mapping with null key and null value),
+    but PyYAML rejects it. libfyaml detects this in pyyaml mode and raises
+    an error for compatibility.
+    """
+
+    def test_bare_colon_raises(self):
+        """Bare ':' should raise a YAML error."""
+        with pytest.raises(yaml.YAMLError, match="bare"):
+            yaml.safe_load(":")
+
+    def test_bare_colon_with_load(self):
+        """Bare ':' should also fail with yaml.load."""
+        with pytest.raises(yaml.YAMLError, match="bare"):
+            yaml.load(":", Loader=yaml.SafeLoader)
+
+    def test_explicit_null_key_works(self):
+        """Explicit null key '~:' should work (PyYAML accepts it)."""
+        data = yaml.safe_load("~:")
+        assert data == {None: None}
+
+    def test_explicit_null_key_value_works(self):
+        """Explicit null key/value '~: ~' should work."""
+        data = yaml.safe_load("~: ~")
+        assert data == {None: None}
+
+    def test_null_literal_key_works(self):
+        """'null: null' should work."""
+        data = yaml.safe_load("null: null")
+        assert data == {None: None}
+
+    def test_colon_with_value_works(self):
+        """': value' is a valid mapping with null key."""
+        data = yaml.safe_load(": value")
+        assert data == {None: 'value'}
