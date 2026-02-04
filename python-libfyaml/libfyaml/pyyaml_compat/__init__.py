@@ -875,20 +875,17 @@ class SafeDumper(BaseDumper):
     }
     yaml_multi_representers = {}
 
-    @staticmethod
-    def represent_dict(dumper, data):
+    def represent_dict(self, data):
         """Represent a dict as a mapping."""
-        return dumper.represent_mapping('tag:yaml.org,2002:map', data.items())
+        return self.represent_mapping('tag:yaml.org,2002:map', data.items())
 
-    @staticmethod
-    def represent_list(dumper, data):
+    def represent_list(self, data):
         """Represent a list/sequence."""
-        return dumper.represent_sequence('tag:yaml.org,2002:seq', data)
+        return self.represent_sequence('tag:yaml.org,2002:seq', data)
 
-    @staticmethod
-    def represent_str(dumper, data):
+    def represent_str(self, data):
         """Represent a string."""
-        return dumper.represent_scalar('tag:yaml.org,2002:str', data)
+        return self.represent_scalar('tag:yaml.org,2002:str', data)
 
 
 class Dumper(SafeDumper):
@@ -1591,18 +1588,41 @@ def dump(data, stream=None, Dumper=SafeDumper, default_flow_style=False,
         'foo: bar\\n'
     """
     # Apply representers to transform custom types
-    representers = getattr(Dumper, 'yaml_representers', {})
-    multi_representers = getattr(Dumper, 'yaml_multi_representers', {})
+    # Handle both classes and factory functions (like AnsibleDumper)
+    dumper = None
+    if callable(Dumper) and not isinstance(Dumper, type):
+        # Factory function - try calling with no args first (some factory functions
+        # like AnsibleDumper create dumper instances that don't take the standard params)
+        try:
+            dumper = Dumper()
+        except TypeError:
+            # Try with standard params
+            try:
+                dumper = Dumper(stream, default_style=default_style,
+                               default_flow_style=default_flow_style,
+                               canonical=canonical, indent=indent, width=width,
+                               allow_unicode=allow_unicode, line_break=line_break,
+                               encoding=encoding, explicit_start=explicit_start,
+                               explicit_end=explicit_end, version=version, tags=tags,
+                               sort_keys=sort_keys)
+            except TypeError:
+                dumper = None
+        representers = getattr(dumper, 'yaml_representers', {}) if dumper else {}
+        multi_representers = getattr(dumper, 'yaml_multi_representers', {}) if dumper else {}
+    else:
+        representers = getattr(Dumper, 'yaml_representers', {})
+        multi_representers = getattr(Dumper, 'yaml_multi_representers', {})
 
     if representers or multi_representers:
-        # Create dumper instance for representer methods
-        dumper = Dumper(stream, default_style=default_style,
-                       default_flow_style=default_flow_style,
-                       canonical=canonical, indent=indent, width=width,
-                       allow_unicode=allow_unicode, line_break=line_break,
-                       encoding=encoding, explicit_start=explicit_start,
-                       explicit_end=explicit_end, version=version, tags=tags,
-                       sort_keys=sort_keys)
+        # Create dumper instance if not already created (for class-based Dumpers)
+        if dumper is None:
+            dumper = Dumper(stream, default_style=default_style,
+                           default_flow_style=default_flow_style,
+                           canonical=canonical, indent=indent, width=width,
+                           allow_unicode=allow_unicode, line_break=line_break,
+                           encoding=encoding, explicit_start=explicit_start,
+                           explicit_end=explicit_end, version=version, tags=tags,
+                           sort_keys=sort_keys)
         data = _apply_representers(data, dumper)
 
     # Sort dictionary keys if requested
@@ -1655,18 +1675,41 @@ def dump_all(documents, stream=None, Dumper=SafeDumper, default_flow_style=False
         YAML string if stream is None, otherwise None
     """
     # Apply representers to transform custom types
-    representers = getattr(Dumper, 'yaml_representers', {})
-    multi_representers = getattr(Dumper, 'yaml_multi_representers', {})
+    # Handle both classes and factory functions (like AnsibleDumper)
+    dumper = None
+    if callable(Dumper) and not isinstance(Dumper, type):
+        # Factory function - try calling with no args first (some factory functions
+        # like AnsibleDumper create dumper instances that don't take the standard params)
+        try:
+            dumper = Dumper()
+        except TypeError:
+            # Try with standard params
+            try:
+                dumper = Dumper(stream, default_style=default_style,
+                               default_flow_style=default_flow_style,
+                               canonical=canonical, indent=indent, width=width,
+                               allow_unicode=allow_unicode, line_break=line_break,
+                               encoding=encoding, explicit_start=explicit_start,
+                               explicit_end=explicit_end, version=version, tags=tags,
+                               sort_keys=sort_keys)
+            except TypeError:
+                dumper = None
+        representers = getattr(dumper, 'yaml_representers', {}) if dumper else {}
+        multi_representers = getattr(dumper, 'yaml_multi_representers', {}) if dumper else {}
+    else:
+        representers = getattr(Dumper, 'yaml_representers', {})
+        multi_representers = getattr(Dumper, 'yaml_multi_representers', {})
 
     if representers or multi_representers:
-        # Create dumper instance for representer methods
-        dumper = Dumper(stream, default_style=default_style,
-                       default_flow_style=default_flow_style,
-                       canonical=canonical, indent=indent, width=width,
-                       allow_unicode=allow_unicode, line_break=line_break,
-                       encoding=encoding, explicit_start=explicit_start,
-                       explicit_end=explicit_end, version=version, tags=tags,
-                       sort_keys=sort_keys)
+        # Create dumper instance if not already created (for class-based Dumpers)
+        if dumper is None:
+            dumper = Dumper(stream, default_style=default_style,
+                           default_flow_style=default_flow_style,
+                           canonical=canonical, indent=indent, width=width,
+                           allow_unicode=allow_unicode, line_break=line_break,
+                           encoding=encoding, explicit_start=explicit_start,
+                           explicit_end=explicit_end, version=version, tags=tags,
+                           sort_keys=sort_keys)
         documents = [_apply_representers(data, dumper) for data in documents]
 
     # Sort dictionary keys if requested
