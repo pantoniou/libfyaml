@@ -685,6 +685,7 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 				end_mark->input_pos, end_mark->line, end_mark->column);
 	}
 
+
 	ret = FYCR_OK_CONTINUE;
 	switch (fye->type) {
 
