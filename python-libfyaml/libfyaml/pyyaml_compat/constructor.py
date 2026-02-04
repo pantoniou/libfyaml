@@ -6,6 +6,7 @@ including generator-based construction for mappings/sequences.
 
 import types
 
+from libfyaml.pyyaml_compat.error import MarkedYAMLError
 from libfyaml.pyyaml_compat.nodes import (
     Node,
     ScalarNode,
@@ -15,17 +16,9 @@ from libfyaml.pyyaml_compat.nodes import (
 )
 
 
-class ConstructorError(Exception):
+class ConstructorError(MarkedYAMLError):
     """YAML constructor error."""
-
-    def __init__(self, context=None, context_mark=None, problem=None, problem_mark=None, note=None):
-        self.context = context
-        self.context_mark = context_mark
-        self.problem = problem
-        self.problem_mark = problem_mark
-        self.note = note
-        msg = problem or context or 'unknown error'
-        super().__init__(msg)
+    pass
 
 
 class BaseConstructor:
@@ -136,10 +129,23 @@ class BaseConstructor:
 
     def construct_mapping(self, node, deep=False):
         """Construct a mapping from a node."""
-        if isinstance(node, MappingNode) and node.value:
+        if not isinstance(node, MappingNode):
+            raise ConstructorError(
+                None, None,
+                "expected a mapping node, but found %s" % node.id,
+                node.start_mark,
+            )
+        if node.value:
             mapping = {}
             for key_node, value_node in node.value:
                 key = self.construct_object(key_node, deep=deep)
+                try:
+                    hash(key)
+                except TypeError as exc:
+                    raise ConstructorError(
+                        "while constructing a mapping", node.start_mark,
+                        "found unhashable key", key_node.start_mark,
+                    ) from exc
                 value = self.construct_object(value_node, deep=deep)
                 mapping[key] = value
             return mapping
@@ -225,11 +231,23 @@ class SafeConstructor(BaseConstructor):
         return self.construct_scalar(node)
 
     def construct_yaml_seq(self, node):
+        if not isinstance(node, SequenceNode):
+            raise ConstructorError(
+                None, None,
+                "expected a sequence node, but found %s" % node.id,
+                node.start_mark,
+            )
         data = []
         yield data
         data.extend(self.construct_sequence(node, deep=True))
 
     def construct_yaml_map(self, node):
+        if not isinstance(node, MappingNode):
+            raise ConstructorError(
+                None, None,
+                "expected a mapping node, but found %s" % node.id,
+                node.start_mark,
+            )
         data = {}
         yield data
         value = self.construct_mapping(node, deep=True)

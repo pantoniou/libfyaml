@@ -267,10 +267,9 @@ def _represent_date(dumper, data):
 
 
 def _represent_bytes(dumper, data):
-    """Represent bytes as base64-encoded binary."""
+    """Represent bytes as base64-encoded binary with literal block style."""
     encoded = base64.standard_b64encode(data).decode('ascii')
-    # Use plain style because libfyaml doesn't handle literal style with tags properly
-    return ScalarNode('tag:yaml.org,2002:binary', encoded, style=None)
+    return ScalarNode('tag:yaml.org,2002:binary', encoded, style='|')
 
 
 def _represent_set(dumper, data):
@@ -294,12 +293,34 @@ from libfyaml.pyyaml_compat import resolver
 from libfyaml.pyyaml_compat import scanner
 from libfyaml.pyyaml_compat import composer
 from libfyaml.pyyaml_compat import error
+from libfyaml.pyyaml_compat import tokens
+from libfyaml.pyyaml_compat import events
 
 # Import error classes for direct access (yaml.YAMLError, etc.)
 from libfyaml.pyyaml_compat.error import YAMLError, MarkedYAMLError, Mark
+from libfyaml.pyyaml_compat.constructor import ConstructorError
 from libfyaml.pyyaml_compat.scanner import ScannerError
 from libfyaml.pyyaml_compat.parser import ParserError
 from libfyaml.pyyaml_compat.composer import ComposerError
+from libfyaml.pyyaml_compat.representer import RepresenterError
+
+# Import Token classes for direct access (yaml.ScalarToken, etc.)
+from libfyaml.pyyaml_compat.tokens import (
+    Token, DirectiveToken, DocumentStartToken, DocumentEndToken,
+    StreamStartToken, StreamEndToken, BlockSequenceStartToken,
+    BlockMappingStartToken, BlockEndToken, FlowSequenceStartToken,
+    FlowMappingStartToken, FlowSequenceEndToken, FlowMappingEndToken,
+    KeyToken, ValueToken, BlockEntryToken, FlowEntryToken,
+    AliasToken, AnchorToken, TagToken, ScalarToken,
+)
+
+# Import Event classes for direct access (yaml.ScalarEvent, etc.)
+from libfyaml.pyyaml_compat.events import (
+    Event, NodeEvent, CollectionStartEvent, CollectionEndEvent,
+    StreamStartEvent, StreamEndEvent, DocumentStartEvent, DocumentEndEvent,
+    AliasEvent, ScalarEvent, SequenceStartEvent, SequenceEndEvent,
+    MappingStartEvent, MappingEndEvent,
+)
 
 
 # Loader classes with add_constructor support for custom tags
@@ -353,6 +374,39 @@ class BaseLoader:
             return node.value
         return str(node)
 
+    @staticmethod
+    def _get_generic(node):
+        """Safely extract the FyGeneric from a node wrapper.
+
+        FyGeneric mapping objects raise TypeError (not AttributeError)
+        from hasattr()/getattr() calls due to C extension quirks, so
+        all attribute probing must be guarded with try/except TypeError.
+        """
+        try:
+            generic = node._generic if hasattr(node, '_generic') else node
+        except TypeError:
+            generic = node
+        try:
+            if hasattr(generic, 'value'):
+                generic = generic.value
+        except TypeError:
+            pass
+        return generic
+
+    @staticmethod
+    def _get_start_mark(node):
+        """Safely get start_mark from a node or FyGeneric.
+
+        FyGeneric objects with unhashable keys may raise TypeError
+        on attribute access, so this must be guarded.
+        """
+        try:
+            if hasattr(node, 'start_mark'):
+                return node.start_mark
+        except TypeError:
+            pass
+        return None
+
     def construct_mapping(self, node, deep=False):
         """Construct a mapping (dict) from a node.
 
@@ -365,19 +419,38 @@ class BaseLoader:
         """
         if node is None:
             return {}
-        # Get the generic from wrapper
-        generic = node._generic if hasattr(node, '_generic') else node
-        if hasattr(generic, 'value'):
-            generic = generic.value
+        generic = self._get_generic(node)
 
         if hasattr(generic, 'is_mapping') and generic.is_mapping():
-            if deep:
-                return {self.construct_object(k, deep=True): self.construct_object(v, deep=True)
-                        for k, v in generic.items()}
-            else:
-                return {k.to_python() if hasattr(k, 'to_python') else k:
-                        v.to_python() if hasattr(v, 'to_python') else v
-                        for k, v in generic.items()}
+            mapping = {}
+            try:
+                items = list(generic.items())
+            except TypeError as exc:
+                mark = self._get_start_mark(node)
+                raise ConstructorError(
+                    "while constructing a mapping", mark,
+                    "found unhashable key", mark,
+                ) from exc
+            for k, v in items:
+                if deep:
+                    key = self.construct_object(k, deep=True)
+                else:
+                    key = k.to_python() if hasattr(k, 'to_python') else k
+                try:
+                    hash(key)
+                except TypeError as exc:
+                    node_mark = self._get_start_mark(node)
+                    key_mark = self._get_start_mark(k)
+                    raise ConstructorError(
+                        "while constructing a mapping", node_mark,
+                        "found unhashable key", key_mark if key_mark else node_mark,
+                    ) from exc
+                if deep:
+                    value = self.construct_object(v, deep=True)
+                else:
+                    value = v.to_python() if hasattr(v, 'to_python') else v
+                mapping[key] = value
+            return mapping
         elif isinstance(generic, dict):
             return generic
         return {}
@@ -394,17 +467,31 @@ class BaseLoader:
         """
         if node is None:
             return []
-        # Get the generic from wrapper
-        generic = node._generic if hasattr(node, '_generic') else node
-        if hasattr(generic, 'value'):
-            generic = generic.value
+        generic = self._get_generic(node)
 
-        if hasattr(generic, 'is_sequence') and generic.is_sequence():
+        try:
+            is_seq = hasattr(generic, 'is_sequence') and generic.is_sequence()
+        except TypeError:
+            is_seq = False
+        if is_seq:
             if deep:
                 return [self.construct_object(item, deep=True) for item in generic]
             else:
-                return [item.to_python() if hasattr(item, 'to_python') else item
-                        for item in generic]
+                result = []
+                for item in generic:
+                    try:
+                        has_to_python = hasattr(item, 'to_python')
+                    except TypeError:
+                        has_to_python = False
+                    if has_to_python:
+                        try:
+                            result.append(item.to_python())
+                        except TypeError:
+                            # Item has unhashable keys - construct deeply
+                            result.append(self.construct_object(item, deep=True))
+                    else:
+                        result.append(item)
+                return result
         elif isinstance(generic, list):
             return generic
         return []
@@ -426,53 +513,114 @@ class BaseLoader:
             return None
 
         # Get the generic
-        generic = node._generic if hasattr(node, '_generic') else node
+        generic = self._get_generic(node)
 
         # Get tag
         tag = None
-        if hasattr(node, 'tag'):
-            tag = node.tag
-        elif hasattr(generic, 'get_tag'):
-            tag = generic.get_tag()
+        try:
+            if hasattr(node, 'tag'):
+                tag = node.tag
+            elif hasattr(generic, 'get_tag'):
+                tag = generic.get_tag()
+        except TypeError:
+            pass
+
+        # Helper to wrap raw FyGeneric in _NodeWrapper if needed
+        def _ensure_wrapped(n, g):
+            try:
+                is_wrapped = hasattr(n, '_generic')
+            except TypeError:
+                is_wrapped = False
+            return n if is_wrapped else _NodeWrapper(g)
 
         # Check for exact tag match in constructors
         if tag and tag in self.yaml_constructors:
             constructor = self.yaml_constructors[tag]
-            wrapped = _NodeWrapper(generic) if not hasattr(node, '_generic') else node
-            return constructor(self, wrapped)
+            return constructor(self, _ensure_wrapped(node, generic))
 
         # Check for multi-constructors (tag prefix matches)
         if tag and self.yaml_multi_constructors:
             for prefix, multi_constructor in self.yaml_multi_constructors.items():
                 if prefix and tag.startswith(prefix):
-                    wrapped = _NodeWrapper(generic) if not hasattr(node, '_generic') else node
-                    return multi_constructor(self, tag[len(prefix):], wrapped)
+                    return multi_constructor(self, tag[len(prefix):], _ensure_wrapped(node, generic))
             # Check for None prefix (catch-all multi-constructor)
             if None in self.yaml_multi_constructors:
                 multi_constructor = self.yaml_multi_constructors[None]
-                wrapped = _NodeWrapper(generic) if not hasattr(node, '_generic') else node
-                return multi_constructor(self, tag, wrapped)
+                return multi_constructor(self, tag, _ensure_wrapped(node, generic))
 
         # Check for None tag constructor (catch-all)
         if None in self.yaml_constructors:
             constructor = self.yaml_constructors[None]
-            wrapped = _NodeWrapper(generic) if not hasattr(node, '_generic') else node
-            return constructor(self, wrapped)
+            return constructor(self, _ensure_wrapped(node, generic))
+
+        # Check for tag/type mismatches (e.g., !!map on a scalar)
+        if tag:
+            try:
+                is_mapping = hasattr(generic, 'is_mapping') and generic.is_mapping()
+            except TypeError:
+                is_mapping = False
+            try:
+                is_sequence = hasattr(generic, 'is_sequence') and generic.is_sequence()
+            except TypeError:
+                is_sequence = False
+            node_type = 'mapping' if is_mapping else 'sequence' if is_sequence else 'scalar'
+            if tag in ('tag:yaml.org,2002:map', '!!map') and not is_mapping:
+                mark = self._get_start_mark(node)
+                raise ConstructorError(
+                    None, None,
+                    "expected a mapping node, but found %s" % node_type,
+                    mark,
+                )
+            if tag in ('tag:yaml.org,2002:seq', '!!seq') and not is_sequence:
+                mark = self._get_start_mark(node)
+                raise ConstructorError(
+                    None, None,
+                    "expected a sequence node, but found %s" % node_type,
+                    mark,
+                )
 
         # Default: convert based on type
-        if hasattr(generic, 'is_mapping') and generic.is_mapping():
+        # Guard all hasattr calls with try/except TypeError for FyGeneric C objects
+        try:
+            is_mapping = hasattr(generic, 'is_mapping') and generic.is_mapping()
+        except TypeError:
+            is_mapping = False
+        if is_mapping:
             return self.construct_mapping(node, deep=deep)
-        elif hasattr(generic, 'is_sequence') and generic.is_sequence():
+
+        try:
+            is_sequence = hasattr(generic, 'is_sequence') and generic.is_sequence()
+        except TypeError:
+            is_sequence = False
+        if is_sequence:
             return self.construct_sequence(node, deep=deep)
-        elif hasattr(generic, 'to_python'):
-            value = generic.to_python()
+
+        try:
+            has_to_python = hasattr(generic, 'to_python')
+        except TypeError:
+            has_to_python = False
+        if has_to_python:
+            try:
+                value = generic.to_python()
+            except TypeError:
+                # Unhashable mapping - can't convert to Python
+                mark = self._get_start_mark(node)
+                raise ConstructorError(
+                    "while constructing a mapping", mark,
+                    "found unhashable key", mark,
+                )
             # Try implicit timestamp resolution for untagged string scalars
             if not tag and isinstance(value, str):
                 timestamp = _try_implicit_timestamp(value)
                 if timestamp is not None:
                     return timestamp
             return value
-        elif hasattr(node, 'value'):
+
+        try:
+            has_value = hasattr(node, 'value')
+        except TypeError:
+            has_value = False
+        if has_value:
             return node.value
         return node
 
@@ -480,18 +628,37 @@ class BaseLoader:
         """Construct a list of (key, value) pairs from a mapping node."""
         if node is None:
             return []
-        generic = node._generic if hasattr(node, '_generic') else node
-        if hasattr(generic, 'value'):
-            generic = generic.value
+        generic = self._get_generic(node)
 
-        if hasattr(generic, 'is_mapping') and generic.is_mapping():
+        try:
+            is_mapping = hasattr(generic, 'is_mapping') and generic.is_mapping()
+        except TypeError:
+            is_mapping = False
+        if is_mapping:
+            try:
+                items_list = list(generic.items())
+            except TypeError as exc:
+                mark = self._get_start_mark(node)
+                raise ConstructorError(
+                    "while constructing a mapping", mark,
+                    "found unhashable key", mark,
+                ) from exc
             if deep:
                 return [(self.construct_object(k, deep=True), self.construct_object(v, deep=True))
-                        for k, v in generic.items()]
+                        for k, v in items_list]
             else:
-                return [(k.to_python() if hasattr(k, 'to_python') else k,
-                         v.to_python() if hasattr(v, 'to_python') else v)
-                        for k, v in generic.items()]
+                pairs = []
+                for k, v in items_list:
+                    try:
+                        pk = k.to_python() if hasattr(k, 'to_python') else k
+                    except TypeError:
+                        pk = self.construct_object(k, deep=True)
+                    try:
+                        pv = v.to_python() if hasattr(v, 'to_python') else v
+                    except TypeError:
+                        pv = self.construct_object(v, deep=True)
+                    pairs.append((pk, pv))
+                return pairs
         return []
 
     def construct_yaml_object(self, node, cls):
@@ -987,10 +1154,16 @@ def _fygeneric_to_node(generic, stream_name='<string>'):
     if hasattr(generic, 'is_mapping') and generic.is_mapping():
         tag = custom_tag or 'tag:yaml.org,2002:map'
         pairs = []
-        for k, v in generic.items():
-            key_node = _fygeneric_to_node(k, stream_name)
-            val_node = _fygeneric_to_node(v, stream_name)
-            pairs.append((key_node, val_node))
+        try:
+            for k, v in generic.items():
+                key_node = _fygeneric_to_node(k, stream_name)
+                val_node = _fygeneric_to_node(v, stream_name)
+                pairs.append((key_node, val_node))
+        except TypeError as exc:
+            raise ConstructorError(
+                "while constructing a mapping", start_mark,
+                "found unhashable key", start_mark,
+            ) from exc
         return MappingNode(tag, pairs, start_mark=start_mark, end_mark=end_mark)
 
     elif hasattr(generic, 'is_sequence') and generic.is_sequence():
@@ -1149,6 +1322,35 @@ def _is_constructor_loader(Loader):
     return False
 
 
+import codecs
+
+def _decode_bytes_stream(stream):
+    """Decode bytes stream to string, handling BOM markers.
+
+    PyYAML supports UTF-8, UTF-16-BE, and UTF-16-LE with BOM markers.
+    libfyaml only handles UTF-8, so we decode here.
+
+    Returns:
+        Decoded string
+
+    Raises:
+        YAMLError: If the encoding cannot be determined
+    """
+    if isinstance(stream, bytes):
+        try:
+            if stream.startswith(codecs.BOM_UTF16_BE):
+                return stream[len(codecs.BOM_UTF16_BE):].decode('utf-16-be')
+            elif stream.startswith(codecs.BOM_UTF16_LE):
+                return stream[len(codecs.BOM_UTF16_LE):].decode('utf-16-le')
+            elif stream.startswith(codecs.BOM_UTF8):
+                return stream[len(codecs.BOM_UTF8):].decode('utf-8')
+            else:
+                return stream.decode('utf-8')
+        except (UnicodeDecodeError, UnicodeError) as e:
+            raise YAMLError("failed to decode stream: %s" % e)
+    return stream
+
+
 def load(stream, Loader=None):
     """Parse YAML stream and return Python object.
 
@@ -1175,6 +1377,9 @@ def load(stream, Loader=None):
     if hasattr(stream, 'read'):
         stream = stream.read()
 
+    # Decode bytes with BOM detection
+    stream = _decode_bytes_stream(stream)
+
     # Handle edge cases that libfyaml doesn't parse directly
     result, handled = _normalize_yaml(stream)
     if handled:
@@ -1194,10 +1399,24 @@ def load(stream, Loader=None):
     # Check if we got an error (collect_diag returns diag sequence on error)
     if doc.is_sequence():
         # This is a diagnostic sequence, not a document
-        diag_list = doc.to_python()
+        try:
+            diag_list = doc.to_python()
+        except TypeError:
+            diag_list = None  # Not a diagnostic - contains unhashable types
         if diag_list and isinstance(diag_list, list) and len(diag_list) > 0:
             if isinstance(diag_list[0], dict) and 'message' in diag_list[0]:
                 raise _diag_to_exception(diag_list, stream_name)
+
+    # Check for multiple documents (yaml.load expects exactly one)
+    try:
+        docs = list(fy.loads_all(stream, mode='yaml1.1-pyyaml'))
+        if len(docs) > 1:
+            raise ComposerError(
+                context="expected a single document in the stream",
+                problem="but found another document",
+                problem_mark=Mark(stream_name, 0, 0, 0, None, None))
+    except ValueError:
+        pass  # Already handled above
 
     # For Loaders that have construct_document (like AnsibleLoader), use
     # the Node-tree path: convert FyGeneric → Node tree → feed to constructor
@@ -1266,6 +1485,38 @@ def safe_load(stream):
     return load(stream, SafeLoader)
 
 
+def full_load(stream):
+    """Parse YAML stream with FullLoader and return Python object.
+
+    This is equivalent to load(stream, Loader=FullLoader).
+    """
+    return load(stream, FullLoader)
+
+
+def full_load_all(stream):
+    """Parse all YAML documents with FullLoader.
+
+    This is equivalent to load_all(stream, Loader=FullLoader).
+    """
+    return load_all(stream, FullLoader)
+
+
+def unsafe_load(stream):
+    """Parse YAML stream with UnsafeLoader and return Python object.
+
+    This is equivalent to load(stream, Loader=UnsafeLoader).
+    """
+    return load(stream, UnsafeLoader)
+
+
+def unsafe_load_all(stream):
+    """Parse all YAML documents with UnsafeLoader.
+
+    This is equivalent to load_all(stream, Loader=UnsafeLoader).
+    """
+    return load_all(stream, UnsafeLoader)
+
+
 def compose(stream, Loader=SafeLoader):
     """Parse YAML stream and return node tree (FyGeneric).
 
@@ -1281,6 +1532,7 @@ def compose(stream, Loader=SafeLoader):
     """
     if hasattr(stream, 'read'):
         stream = stream.read()
+    stream = _decode_bytes_stream(stream)
 
     # Handle edge cases
     result, handled = _normalize_yaml(stream)
@@ -1293,7 +1545,10 @@ def compose(stream, Loader=SafeLoader):
     stream = result  # Use normalized text
 
     # Use yaml1.1 mode for PyYAML compatibility
-    return fy.loads(stream, mode='yaml1.1-pyyaml', create_markers=True)
+    try:
+        return fy.loads(stream, mode='yaml1.1-pyyaml', create_markers=True)
+    except ValueError as e:
+        raise ParserError(problem=str(e))
 
 
 def compose_all(stream, Loader=SafeLoader):
@@ -1308,10 +1563,14 @@ def compose_all(stream, Loader=SafeLoader):
     """
     if hasattr(stream, 'read'):
         stream = stream.read()
+    stream = _decode_bytes_stream(stream)
 
     # Use yaml1.1 mode for PyYAML compatibility
-    for doc in fy.loads_all(stream, mode='yaml1.1-pyyaml', create_markers=True):
-        yield doc
+    try:
+        for doc in fy.loads_all(stream, mode='yaml1.1-pyyaml', create_markers=True):
+            yield doc
+    except ValueError as e:
+        raise ParserError(problem=str(e))
 
 
 def load_all(stream, Loader=None):
@@ -1335,6 +1594,7 @@ def load_all(stream, Loader=None):
         raise TypeError("load_all() missing 1 required positional argument: 'Loader'")
     if hasattr(stream, 'read'):
         stream = stream.read()
+    stream = _decode_bytes_stream(stream)
 
     # Check for registered constructors on the Loader class
     constructors = getattr(Loader, 'yaml_constructors', {})
@@ -1356,11 +1616,14 @@ def load_all(stream, Loader=None):
                     loader.yaml_constructors[tag] = func
 
     # Use yaml1.1 mode for PyYAML compatibility
-    for doc in fy.loads_all(stream, mode='yaml1.1-pyyaml', create_markers=True):
-        if loader:
-            yield _convert_with_loader(doc, loader)
-        else:
-            yield doc.to_python()
+    try:
+        for doc in fy.loads_all(stream, mode='yaml1.1-pyyaml', create_markers=True):
+            if loader:
+                yield _convert_with_loader(doc, loader)
+            else:
+                yield doc.to_python()
+    except ValueError as e:
+        raise ParserError(problem=str(e))
 
 
 def safe_load_all(stream):
@@ -1400,8 +1663,8 @@ def _node_to_python(node):
         elif tag == 'tag:yaml.org,2002:float':
             return float(value)
         elif tag == 'tag:yaml.org,2002:binary':
-            # Binary data - decode from base64
-            return base64.standard_b64decode(value)
+            # Binary data - preserve as TaggedScalar for dump (style matters)
+            return TaggedScalar(tag, value, node.style)
         elif tag and tag.startswith('!'):
             # Custom tag - wrap in TaggedScalar for later emission
             return TaggedScalar(tag, value, node.style)
@@ -1415,10 +1678,21 @@ def _node_to_python(node):
             key = _node_to_python(key_node)
             value = _node_to_python(value_node)
             result[key] = value
+        # Preserve tag for non-standard mappings (like !!set)
+        tag = node.tag
+        if tag and tag not in ('tag:yaml.org,2002:map', None):
+            # Sort keys for consistent output (sets have arbitrary order)
+            sorted_result = dict(sorted(result.items(), key=lambda x: str(x[0])))
+            return fy.from_python(sorted_result, tag=tag)
         return result
 
     elif isinstance(node, SequenceNode):
-        return [_node_to_python(item) for item in node.value]
+        result = [_node_to_python(item) for item in node.value]
+        # Preserve tag for non-standard sequences (like !!omap)
+        tag = node.tag
+        if tag and tag not in ('tag:yaml.org,2002:seq', None):
+            return fy.from_python(result, tag=tag)
+        return result
 
     # Unknown node type - return as-is
     return node
@@ -1469,14 +1743,31 @@ def _apply_representers(data, dumper):
         # Recursively apply to result
         return _apply_representers(result, dumper)
 
-    # Handle basic scalar types BEFORE multi_representers
+    # Check for multi-representers (type hierarchy)
+    # Check non-collection multi_representers FIRST to allow custom types like
+    # AnsibleTaggedStr (which inherits from str) to be handled before plain str
+    import collections.abc
+    collection_types = (collections.abc.Mapping, collections.abc.Sequence,
+                        collections.abc.Collection, collections.abc.Iterable)
+
+    for base_type, representer in multi_representers.items():
+        # Skip collection types for now - check them after scalar types
+        if base_type in collection_types:
+            continue
+        if base_type is not None and isinstance(data, base_type):
+            result = representer(dumper, data)
+            return _apply_representers(result, dumper)
+
+    # Handle basic scalar types BEFORE collection multi_representers
     # This prevents str/bytes from matching Collection/Sequence/Iterable
     # Also handle datetime objects which shouldn't match Collection
     if isinstance(data, (str, bytes, int, float, bool, type(None), datetime.date, datetime.datetime)):
         return data
 
-    # Check for multi-representers (type hierarchy)
+    # Now check collection multi_representers
     for base_type, representer in multi_representers.items():
+        if base_type not in collection_types:
+            continue
         if base_type is not None and isinstance(data, base_type):
             result = representer(dumper, data)
             return _apply_representers(result, dumper)
@@ -1520,8 +1811,8 @@ def _convert_tagged_values(data):
         return data
 
     if isinstance(data, TaggedScalar):
-        # Convert TaggedScalar to tagged FyGeneric
-        return fy.from_python(data.value, tag=data.tag)
+        # Convert TaggedScalar to tagged FyGeneric, preserving style
+        return fy.from_python(data.value, tag=data.tag, style=data.style)
     elif isinstance(data, bytes):
         # Convert bytes to base64 and create tagged FyGeneric with !!binary tag
         encoded = base64.standard_b64encode(data).decode('ascii')
@@ -1639,8 +1930,48 @@ def dump(data, stream=None, Dumper=SafeDumper, default_flow_style=False,
 
     # Convert Python object to FyGeneric and use libfyaml
     # from_python() will internalize any embedded FyGeneric objects
-    doc = fy.from_python(data)
-    result = fy.dumps(doc)
+    try:
+        doc = fy.from_python(data)
+    except (ValueError, TypeError) as e:
+        from libfyaml.pyyaml_compat.representer import RepresenterError
+        raise RepresenterError("cannot represent %r: %s" % (type(data).__name__, e))
+
+    # Determine style based on default_flow_style parameter
+    # PyYAML's default_flow_style:
+    #   - None: let the library decide (block style)
+    #   - True: force flow style (oneline for compact output)
+    #   - False: force block style
+    if default_flow_style is True:
+        style = 'oneline'
+    else:
+        style = 'block'
+
+    # Pass indent if specified (default is 2 in libfyaml)
+    try:
+        result = fy.dumps(doc, style=style, indent=indent if indent else 0)
+    except ValueError as e:
+        from libfyaml.pyyaml_compat.representer import RepresenterError
+        raise RepresenterError(str(e))
+
+    # Handle explicit_end: append "...\n" if requested
+    if explicit_end:
+        result = result + '...\n'
+
+    # Handle encoding: when encoding is specified, return bytes with BOM for UTF-16
+    if encoding is not None:
+        encoded = result.encode(encoding)
+        # Add BOM for UTF-16 encodings (PyYAML behavior)
+        if encoding in ('utf-16-be', 'utf-16-le', 'utf-16'):
+            bom = codecs.BOM_UTF16_BE if encoding == 'utf-16-be' else codecs.BOM_UTF16_LE
+            encoded = bom + encoded
+        if stream is not None:
+            # Write bytes if stream accepts bytes, otherwise write string
+            try:
+                stream.write(encoded)
+            except TypeError:
+                stream.write(result)
+            return None
+        return encoded
 
     if stream is not None:
         stream.write(result)
@@ -1727,8 +2058,14 @@ def dump_all(documents, stream=None, Dumper=SafeDumper, default_flow_style=False
     # Convert all documents to FyGeneric
     docs = [fy.from_python(data) for data in documents]
 
+    # Determine style based on default_flow_style parameter
+    if default_flow_style is True:
+        style = 'oneline'
+    else:
+        style = 'block'
+
     # Use module-level dumps_all function
-    result = fy.dumps_all(docs)
+    result = fy.dumps_all(docs, style=style)
 
     if stream is not None:
         stream.write(result)
@@ -1752,9 +2089,9 @@ class YAMLLoadWarning(UserWarning):
     pass
 
 
-# Reader error and other less common errors (alias to MarkedYAMLError for now)
+# Reader error and other less common errors
 ReaderError = MarkedYAMLError
-ConstructorError = MarkedYAMLError
+# ConstructorError is imported from constructor.py (line ~299) - must be a real subclass
 EmitterError = YAMLError
 RepresenterError = YAMLError
 
