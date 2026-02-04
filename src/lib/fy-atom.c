@@ -711,6 +711,9 @@ fy_atom_iter_line(struct fy_atom_iter *iter)
 
 	/* scan next line (special handling for '\r\n') */
 	ss = li->end;
+	if (!ss)
+		return NULL;
+
 	if (ss < iter->e) {
 		if (*ss == '\r' && (ss + 1) < iter->e && ss[1] == '\n')
 			ss += 2;
