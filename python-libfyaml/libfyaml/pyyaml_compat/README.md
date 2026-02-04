@@ -18,42 +18,53 @@ output = yaml.safe_dump({"foo": "bar"})
 |---------|-------|--------|-----------|-------|
 | **pre-commit** | manual | ✓ | 100% | Full functionality, hooks run correctly |
 | **mkdocs** | 725 | 717 | 98.9% | 8 failures due to custom tags (!ENV, !relative) and auto date conversion |
-| **ansible** | 117 | 80 | 68.4% | Core loading/parsing works; failures in error messages, dump formatting, vault/custom types, column offsets |
+| **ansible** | 117 | 88 | 75.2% | Core loading/parsing works; failures in error messages, dump formatting |
 
 ## Running the Ansible Test Suite
 
-Ansible tests require a yaml package shim to redirect `import yaml` to our
-pyyaml_compat layer. The shim is at `/tmp/yaml-shim/yaml/` and re-exports
-all submodules (nodes, constructor, resolver, representer, parser, scanner,
-composer, cyaml, reader, error).
+Ansible tests require:
+1. A yaml package shim to redirect `import yaml` to pyyaml_compat
+2. Running pytest from the ansible-test directory (for conftest.py fixtures)
 
 ```bash
 # 1. Clone ansible (one-time)
 cd /tmp && git clone --depth 1 https://github.com/ansible/ansible.git ansible-test
 
-# 2. Run the yaml unit tests
-PYTHONPATH=/tmp/yaml-shim:/path/to/python-libfyaml:/tmp/ansible-test/lib:/tmp/ansible-test/test \
-    python3 -m pytest /tmp/ansible-test/test/units/parsing/yaml/ -q
+# 2. Create yaml shim (one-time)
+mkdir -p /tmp/yaml-shim/yaml
+cat > /tmp/yaml-shim/yaml/__init__.py << 'EOF'
+from libfyaml.pyyaml_compat import *
+from libfyaml.pyyaml_compat import __version__, __with_libyaml__
+EOF
+# Create submodule redirects
+for mod in representer nodes constructor parser cyaml resolver scanner composer error; do
+    echo "from libfyaml.pyyaml_compat.${mod} import *" > /tmp/yaml-shim/yaml/${mod}.py
+done
 
-# Run specific test files:
-#   test_loader.py   — 35 pass, 12 fail (core parsing works; dump/vault/column-offset failures)
-#   test_objects.py  — 20 pass, 0 fail (all pass)
-#   test_errors.py   — 17 pass, 16 fail (error message wording differences)
-#   test_dumper.py   — 6 pass, 6 fail (custom types, vault, formatting)
-#   test_vault.py    — 2 pass, 1 fail, 2 errors (vault-specific)
+# 3. Run the yaml unit tests (MUST run from ansible-test directory)
+cd /tmp/ansible-test
+PYTHONPATH=/tmp/yaml-shim:/path/to/python-libfyaml:$(pwd)/lib:$(pwd)/test \
+    python3 -m pytest test/units/parsing/yaml/ -q
 ```
 
-### Failure Categories (as of Jan 2026)
+### Failure Categories (as of Feb 2026)
 
 | Category | Count | Root Cause |
 |----------|-------|------------|
 | Error message wording | 16 | libfyaml produces different error text than PyYAML/libyaml |
-| Dump formatting | 9 | Block vs flow style, tag format (`!<tag:...>` vs `!!type`) |
-| Ansible-specific types | 8 | Vault tags, UndefinedMarker, Tripwire, CustomMapping/Sequence |
-| Column offsets | 2 | Off-by-one in marker column positions |
+| Dump formatting | 10 | Block vs flow style, tag format, literal block scalars |
+| Line/column positions | 2 | Off-by-one in marker column positions |
+| Error message case | 1 | Ansible test expects "The" but code uses "the" (Ansible bug) |
 
 None of the failures relate to scalar type resolution (booleans, integers,
 floats, nulls) — that is fully handled by the C library's `yaml1.1-pyyaml` mode.
+
+**Working features:**
+- Vault tag type validation (rejects non-string values)
+- CustomMapping/CustomSequence dump via multi_representers
+- Tripwire pattern (raises on dump)
+- Bytes/binary round-trip
+- Factory function Dumpers (like AnsibleDumper)
 
 ## Supported API
 
