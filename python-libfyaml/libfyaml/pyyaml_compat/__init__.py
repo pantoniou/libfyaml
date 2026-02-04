@@ -1469,6 +1469,12 @@ def _apply_representers(data, dumper):
         # Recursively apply to result
         return _apply_representers(result, dumper)
 
+    # Handle basic scalar types BEFORE multi_representers
+    # This prevents str/bytes from matching Collection/Sequence/Iterable
+    # Also handle datetime objects which shouldn't match Collection
+    if isinstance(data, (str, bytes, int, float, bool, type(None), datetime.date, datetime.datetime)):
+        return data
+
     # Check for multi-representers (type hierarchy)
     for base_type, representer in multi_representers.items():
         if base_type is not None and isinstance(data, base_type):
