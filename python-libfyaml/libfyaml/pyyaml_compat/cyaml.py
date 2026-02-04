@@ -98,9 +98,9 @@ def _represent_date(dumper, data):
 
 
 def _represent_bytes(dumper, data):
-    """Represent bytes as base64-encoded binary."""
+    """Represent bytes as base64-encoded binary with literal block style."""
     encoded = base64.standard_b64encode(data).decode('ascii')
-    return ScalarNode('tag:yaml.org,2002:binary', encoded, style=None)
+    return ScalarNode('tag:yaml.org,2002:binary', encoded, style='|')
 
 
 def _represent_set(dumper, data):

@@ -1,5 +1,11 @@
 """PyYAML representer module compatibility stubs."""
 
+from libfyaml.pyyaml_compat.error import YAMLError
+
+
+class RepresenterError(YAMLError):
+    pass
+
 
 class BaseRepresenter:
     """Base class for YAML representers."""

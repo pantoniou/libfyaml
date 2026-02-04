@@ -3529,7 +3529,7 @@ parse_mode_flags(const char *mode)
     }
 }
 
-/* loads(string, mode='yaml', dedup=True, trim=True, mutable=False, create_markers=False, keep_comments=False) - Parse YAML/JSON from string
+/* loads(string, mode='yaml', dedup=True, trim=True, mutable=False, create_markers=False, keep_comments=False, keep_style=False) - Parse YAML/JSON from string
  *
  * mode can be:
  *   - 'yaml' or 'yaml1.2' or '1.2': YAML 1.2 (default)
@@ -3548,9 +3548,10 @@ libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
     int collect_diag = 0;  /* Default to False */
     int create_markers = 0;  /* Default to False */
     int keep_comments = 0;  /* Default to False */
-    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", NULL};
+    int keep_style = 0;  /* Default to False */
+    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", "keep_style", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|spppppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|sppppppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style))
         return NULL;
 
     /* Parse mode string to flags */
@@ -3573,6 +3574,8 @@ libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
         parse_flags |= FYOPPF_CREATE_MARKERS;
     if (keep_comments)
         parse_flags |= FYOPPF_KEEP_COMMENTS;
+    if (keep_style)
+        parse_flags |= FYOPPF_KEEP_STYLE;
     fy_generic vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
 
     /* When collect_diag is enabled, errors return an indirect with diag attached */
@@ -3778,17 +3781,29 @@ python_to_generic(struct fy_generic_builder *gb, PyObject *obj)
     return fy_invalid;
 }
 
-/* dumps(obj, **options) - Serialize Python object to YAML/JSON string */
+/* dumps(obj, **options) - Serialize Python object to YAML/JSON string
+ *
+ * style can be:
+ *   - None (default): uses 'block' for YAML, auto for JSON
+ *   - 'default' or 'original': preserves original style from parsed document
+ *   - 'block': block style output
+ *   - 'flow': flow style output
+ *   - 'pretty': pretty output
+ *   - 'compact': compact output
+ *   - 'oneline': single-line output
+ */
 static PyObject *
 libfyaml_dumps(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     PyObject *obj;
     int compact = 0;
     int json_mode = 0;
-    static char *kwlist[] = {"obj", "compact", "json", NULL};
+    const char *style = NULL;
+    int indent = 0;  /* 0 means default/unset */
+    static char *kwlist[] = {"obj", "compact", "json", "style", "indent", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|pp", kwlist,
-                                     &obj, &compact, &json_mode))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|ppzi", kwlist,
+                                     &obj, &compact, &json_mode, &style, &indent))
         return NULL;
 
     /* Create generic builder */
@@ -3809,13 +3824,48 @@ libfyaml_dumps(PyObject *self, PyObject *args, PyObject *kwargs)
     /* Determine emit flags based on options */
     unsigned int emit_flags = FYOPEF_DISABLE_DIRECTORY | FYOPEF_OUTPUT_TYPE_STRING;
 
+    /* Apply indent flag based on requested indent value */
+    if (indent > 0) {
+        switch (indent) {
+            case 1: emit_flags |= FYOPEF_INDENT_1; break;
+            case 2: emit_flags |= FYOPEF_INDENT_2; break;
+            case 3: emit_flags |= FYOPEF_INDENT_3; break;
+            case 4: emit_flags |= FYOPEF_INDENT_4; break;
+            case 5:
+            case 6: emit_flags |= FYOPEF_INDENT_6; break;
+            case 7:
+            case 8:
+            default: emit_flags |= FYOPEF_INDENT_8; break;
+        }
+    } else {
+        /* Default indent is 2 */
+        emit_flags |= FYOPEF_INDENT_2;
+    }
+
     if (json_mode) {
         emit_flags |= FYOPEF_MODE_JSON;
-        if (!compact)
-            emit_flags |= FYOPEF_INDENT_2;
     } else {
         emit_flags |= FYOPEF_MODE_YAML_1_2;
-        if (compact) {
+        /* Parse style string if provided */
+        if (style != NULL) {
+            if (strcmp(style, "default") == 0 || strcmp(style, "original") == 0) {
+                emit_flags |= FYOPEF_STYLE_DEFAULT;
+            } else if (strcmp(style, "block") == 0) {
+                emit_flags |= FYOPEF_STYLE_BLOCK;
+            } else if (strcmp(style, "flow") == 0) {
+                emit_flags |= FYOPEF_STYLE_FLOW;
+            } else if (strcmp(style, "pretty") == 0) {
+                emit_flags |= FYOPEF_STYLE_PRETTY;
+            } else if (strcmp(style, "compact") == 0) {
+                emit_flags |= FYOPEF_STYLE_COMPACT;
+            } else if (strcmp(style, "oneline") == 0) {
+                emit_flags |= FYOPEF_STYLE_ONELINE;
+            } else {
+                fy_generic_builder_destroy(gb);
+                PyErr_Format(PyExc_ValueError, "Unknown style: '%s'. Expected: default, original, block, flow, pretty, compact, or oneline", style);
+                return NULL;
+            }
+        } else if (compact) {
             emit_flags |= FYOPEF_STYLE_FLOW;
         } else {
             emit_flags |= FYOPEF_STYLE_BLOCK;
@@ -3847,18 +3897,19 @@ libfyaml_dumps(PyObject *self, PyObject *args, PyObject *kwargs)
     return result;
 }
 
-/* from_python(obj, tag=None, mutable=False, dedup=True) - Convert Python object to FyGeneric */
+/* from_python(obj, tag=None, style=None, mutable=False, dedup=True) - Convert Python object to FyGeneric */
 static PyObject *
 libfyaml_from_python(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     PyObject *obj;
     const char *tag = NULL;
     Py_ssize_t tag_len = 0;
+    const char *style = NULL;
     int mutable = 0;  /* Default to False (read-only) */
     int dedup = 1;  /* Default to True, like loads/load */
-    static char *kwlist[] = {"obj", "tag", "mutable", "dedup", NULL};
+    static char *kwlist[] = {"obj", "tag", "style", "mutable", "dedup", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|z#pp", kwlist, &obj, &tag, &tag_len, &mutable, &dedup))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|z#zpp", kwlist, &obj, &tag, &tag_len, &style, &mutable, &dedup))
         return NULL;
 
     /* Create generic builder using helper (estimate 64KB for typical Python objects) */
@@ -3875,23 +3926,55 @@ libfyaml_from_python(PyObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    /* If tag is provided, wrap in indirect with tag */
-    if (tag != NULL && tag_len > 0) {
-        fy_generic tag_generic = fy_gb_string_size_create(gb, tag, (size_t)tag_len);
-        if (!fy_generic_is_valid(tag_generic)) {
-            fy_generic_builder_destroy(gb);
-            PyErr_SetString(PyExc_RuntimeError, "Failed to create tag string");
-            return NULL;
+    /* Parse style string to scalar style enum */
+    enum fy_scalar_style scalar_style = FYSS_ANY;
+    if (style != NULL && style[0] != '\0') {
+        if (strcmp(style, "|") == 0) {
+            scalar_style = FYSS_LITERAL;
+        } else if (strcmp(style, ">") == 0) {
+            scalar_style = FYSS_FOLDED;
+        } else if (strcmp(style, "'") == 0) {
+            scalar_style = FYSS_SINGLE_QUOTED;
+        } else if (strcmp(style, "\"") == 0) {
+            scalar_style = FYSS_DOUBLE_QUOTED;
+        } else if (strcmp(style, "") == 0 || strcmp(style, "plain") == 0) {
+            scalar_style = FYSS_PLAIN;
+        }
+        /* else leave as FYSS_ANY */
+    }
+
+    /* If tag or style is provided, wrap in indirect */
+    if ((tag != NULL && tag_len > 0) || scalar_style != FYSS_ANY) {
+        fy_generic tag_generic = fy_null;
+        uintptr_t flags = FYGIF_VALUE;
+
+        if (tag != NULL && tag_len > 0) {
+            tag_generic = fy_gb_string_size_create(gb, tag, (size_t)tag_len);
+            if (!fy_generic_is_valid(tag_generic)) {
+                fy_generic_builder_destroy(gb);
+                PyErr_SetString(PyExc_RuntimeError, "Failed to create tag string");
+                return NULL;
+            }
+            flags |= FYGIF_TAG;
+        }
+
+        /* Create style generic if needed */
+        fy_generic style_generic = fy_null;
+        if (scalar_style != FYSS_ANY) {
+            style_generic.v = fy_generic_in_place_unsigned_int((unsigned int)scalar_style);
+            flags |= FYGIF_STYLE;
         }
 
         struct fy_generic_indirect gi = {
-            .flags = FYGIF_VALUE | FYGIF_TAG,
+            .flags = flags,
             .value = g,
             .anchor = fy_null,
             .tag = tag_generic,
             .diag = fy_null,
             .marker = fy_null,
-            .comment = fy_null
+            .comment = fy_null,
+            .style = style_generic,
+            .failsafe_str = fy_null
         };
         g = fy_gb_indirect_create(gb, &gi);
         if (!fy_generic_is_valid(g)) {
@@ -3911,7 +3994,7 @@ libfyaml_from_python(PyObject *self, PyObject *args, PyObject *kwargs)
     return result;
 }
 
-/* load(file, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False) - Load YAML/JSON from file object or path */
+/* load(file, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False, keep_style=False) - Load YAML/JSON from file object or path */
 static PyObject *
 libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -3923,9 +4006,10 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
     int collect_diag = 0;  /* Default to False */
     int create_markers = 0;  /* Default to False */
     int keep_comments = 0;  /* Default to False */
-    static char *kwlist[] = {"file", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", NULL};
+    int keep_style = 0;  /* Default to False */
+    static char *kwlist[] = {"file", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", "keep_style", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|spppppp", kwlist, &file_obj, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sppppppp", kwlist, &file_obj, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style))
         return NULL;
 
     /* Check if it's a string (file path) or file object */
@@ -3955,6 +4039,8 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
             parse_flags |= FYOPPF_CREATE_MARKERS;
         if (keep_comments)
             parse_flags |= FYOPPF_KEEP_COMMENTS;
+        if (keep_style)
+            parse_flags |= FYOPPF_KEEP_STYLE;
 
         /* Parse from file - returns a directory (sequence of VDS) */
         fy_generic vdir = fy_gb_parse_file(gb, parse_flags, path);
@@ -4034,6 +4120,10 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
         PyObject *comments_obj = PyBool_FromLong(keep_comments);
         PyDict_SetItemString(loads_kwargs, "keep_comments", comments_obj);
         Py_DECREF(comments_obj);
+
+        PyObject *style_obj = PyBool_FromLong(keep_style);
+        PyDict_SetItemString(loads_kwargs, "keep_style", style_obj);
+        Py_DECREF(style_obj);
 
         /* Call loads with the content */
         PyObject *loads_args = Py_BuildValue("(O)", content);
@@ -4191,7 +4281,7 @@ FyGeneric_from_vds_with_parent(fy_generic vds, FyGenericObject *parent, int muta
     return (PyObject *)self;
 }
 
-/* loads_all(string, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False, create_markers=False, keep_comments=False) - Parse multi-document YAML */
+/* loads_all(string, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False, create_markers=False, keep_comments=False, keep_style=False) - Parse multi-document YAML */
 static PyObject *
 libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -4204,9 +4294,10 @@ libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
     int collect_diag = 0;
     int create_markers = 0;
     int keep_comments = 0;
-    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", NULL};
+    int keep_style = 0;
+    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", "keep_style", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|spppppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|sppppppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style))
         return NULL;
 
     /* Create generic builder using helper */
@@ -4229,6 +4320,8 @@ libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
         parse_flags |= FYOPPF_CREATE_MARKERS;
     if (keep_comments)
         parse_flags |= FYOPPF_KEEP_COMMENTS;
+    if (keep_style)
+        parse_flags |= FYOPPF_KEEP_STYLE;
 
     /* Parse - returns a directory (sequence of VDS) */
     fy_generic vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
@@ -4296,7 +4389,7 @@ libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
     return result;
 }
 
-/* load_all(file, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False, create_markers=False, keep_comments=False) - Parse multi-document from file */
+/* load_all(file, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False, create_markers=False, keep_comments=False, keep_style=False) - Parse multi-document from file */
 static PyObject *
 libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -4308,10 +4401,11 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
     int collect_diag = 0;
     int create_markers = 0;
     int keep_comments = 0;
-    static char *kwlist[] = {"file", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", NULL};
+    int keep_style = 0;
+    static char *kwlist[] = {"file", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", "keep_style", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|spppppp", kwlist,
-                                     &file_obj, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sppppppp", kwlist,
+                                     &file_obj, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style))
         return NULL;
 
     /* Check if it's a string (file path) or file object */
@@ -4341,6 +4435,8 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
             parse_flags |= FYOPPF_CREATE_MARKERS;
         if (keep_comments)
             parse_flags |= FYOPPF_KEEP_COMMENTS;
+        if (keep_style)
+            parse_flags |= FYOPPF_KEEP_STYLE;
 
         /* Parse from file - returns a directory (sequence of VDS) */
         fy_generic vdir = fy_gb_parse_file(gb, parse_flags, path);
@@ -4431,6 +4527,7 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
         PyObject *mutable_bool = PyBool_FromLong(mutable);
         PyObject *markers_bool = PyBool_FromLong(create_markers);
         PyObject *comments_bool = PyBool_FromLong(keep_comments);
+        PyObject *style_bool = PyBool_FromLong(keep_style);
 
         PyDict_SetItemString(loads_all_kwargs, "mode", mode_str);
         PyDict_SetItemString(loads_all_kwargs, "dedup", dedup_bool);
@@ -4438,6 +4535,7 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
         PyDict_SetItemString(loads_all_kwargs, "mutable", mutable_bool);
         PyDict_SetItemString(loads_all_kwargs, "create_markers", markers_bool);
         PyDict_SetItemString(loads_all_kwargs, "keep_comments", comments_bool);
+        PyDict_SetItemString(loads_all_kwargs, "keep_style", style_bool);
 
         Py_DECREF(mode_str);
         Py_DECREF(dedup_bool);
@@ -4445,6 +4543,7 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
         Py_DECREF(mutable_bool);
         Py_DECREF(markers_bool);
         Py_DECREF(comments_bool);
+        Py_DECREF(style_bool);
 
         PyObject *loads_all_args = PyTuple_Pack(1, content);
         PyObject *result = libfyaml_loads_all(self, loads_all_args, loads_all_kwargs);
@@ -4456,17 +4555,18 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 }
 
-/* dumps_all(documents, compact=False, json=False) - Dump FyGeneric sequence to multi-document string */
+/* dumps_all(documents, compact=False, json=False, style=None) - Dump FyGeneric sequence to multi-document string */
 static PyObject *
 libfyaml_dumps_all(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     PyObject *documents;
     int compact = 0;
     int json_mode = 0;
-    static char *kwlist[] = {"documents", "compact", "json", NULL};
+    const char *style = NULL;
+    static char *kwlist[] = {"documents", "compact", "json", "style", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|pp", kwlist,
-                                     &documents, &compact, &json_mode))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|ppz", kwlist,
+                                     &documents, &compact, &json_mode, &style))
         return NULL;
 
     /* Create generic builder for emitting */
@@ -4525,7 +4625,26 @@ libfyaml_dumps_all(PyObject *self, PyObject *args, PyObject *kwargs)
             emit_flags |= FYOPEF_INDENT_2;
     } else {
         emit_flags |= FYOPEF_MODE_YAML_1_2;
-        if (compact) {
+        /* Parse style string if provided */
+        if (style != NULL) {
+            if (strcmp(style, "default") == 0 || strcmp(style, "original") == 0) {
+                emit_flags |= FYOPEF_STYLE_DEFAULT;
+            } else if (strcmp(style, "block") == 0) {
+                emit_flags |= FYOPEF_STYLE_BLOCK;
+            } else if (strcmp(style, "flow") == 0) {
+                emit_flags |= FYOPEF_STYLE_FLOW;
+            } else if (strcmp(style, "pretty") == 0) {
+                emit_flags |= FYOPEF_STYLE_PRETTY;
+            } else if (strcmp(style, "compact") == 0) {
+                emit_flags |= FYOPEF_STYLE_COMPACT;
+            } else if (strcmp(style, "oneline") == 0) {
+                emit_flags |= FYOPEF_STYLE_ONELINE;
+            } else {
+                fy_generic_builder_destroy(gb);
+                PyErr_Format(PyExc_ValueError, "Unknown style: '%s'. Expected: default, original, block, flow, pretty, compact, or oneline", style);
+                return NULL;
+            }
+        } else if (compact) {
             emit_flags |= FYOPEF_STYLE_FLOW;
         } else {
             emit_flags |= FYOPEF_STYLE_BLOCK;
@@ -4666,6 +4785,888 @@ libfyaml_dump_all(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 }
 
+/* ========== Streaming API: _parse(), _scan(), _emit() ========== */
+
+/* Helper: convert mode string to fy_parse_cfg_flags for the low-level parser API */
+static enum fy_parse_cfg_flags
+parse_mode_to_parser_flags(const char *mode)
+{
+    if (mode == NULL || strcmp(mode, "yaml1.1") == 0 || strcmp(mode, "1.1") == 0) {
+        return FYPCF_DEFAULT_VERSION_1_1 | FYPCF_SLOPPY_FLOW_INDENTATION | FYPCF_ALLOW_DUPLICATE_KEYS;
+    } else if (strcmp(mode, "yaml1.1-pyyaml") == 0 || strcmp(mode, "pyyaml") == 0) {
+        return FYPCF_DEFAULT_VERSION_1_1 | FYPCF_SLOPPY_FLOW_INDENTATION | FYPCF_ALLOW_DUPLICATE_KEYS;
+    } else if (strcmp(mode, "yaml") == 0 || strcmp(mode, "yaml1.2") == 0 || strcmp(mode, "1.2") == 0) {
+        return FYPCF_DEFAULT_VERSION_AUTO;
+    } else if (strcmp(mode, "json") == 0) {
+        return FYPCF_JSON_FORCE;
+    } else {
+        PyErr_Format(PyExc_ValueError,
+            "Invalid mode '%s'. Use 'yaml1.1', 'yaml1.1-pyyaml', 'yaml1.2', or 'json'", mode);
+        return (enum fy_parse_cfg_flags)-1;
+    }
+}
+
+/* Helper: build a mark tuple (line, column, index) from fy_mark, or Py_None */
+static PyObject *
+mark_to_tuple(const struct fy_mark *m)
+{
+    if (!m) {
+        Py_INCREF(Py_None);
+        return Py_None;
+    }
+    return Py_BuildValue("(iin)", m->line, m->column, (Py_ssize_t)m->input_pos);
+}
+
+/* Helper: get tag string from a tag token, resolving handles to full URIs */
+static PyObject *
+tag_token_to_pystring(struct fy_token *tag_token)
+{
+    if (!tag_token) {
+        Py_INCREF(Py_None);
+        return Py_None;
+    }
+
+    const char *handle = fy_tag_token_handle0(tag_token);
+    const char *suffix = fy_tag_token_suffix0(tag_token);
+
+    if (!handle && !suffix) {
+        Py_INCREF(Py_None);
+        return Py_None;
+    }
+
+    /* If handle is "!" or "!!" or a named handle, combine with suffix */
+    if (handle && suffix) {
+        /* Resolve standard handles */
+        if (strcmp(handle, "!!") == 0) {
+            /* !! maps to tag:yaml.org,2002: */
+            return PyUnicode_FromFormat("tag:yaml.org,2002:%s", suffix);
+        }
+        return PyUnicode_FromFormat("%s%s", handle, suffix);
+    } else if (suffix) {
+        return PyUnicode_FromString(suffix);
+    } else if (handle) {
+        return PyUnicode_FromString(handle);
+    }
+
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+/* _parse(string, mode='yaml1.1') -> list of event tuples */
+static PyObject *
+libfyaml_stream_parse(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+    const char *yaml_str;
+    Py_ssize_t yaml_len;
+    const char *mode = "yaml1.1";
+    static char *kwlist[] = {"s", "mode", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|s", kwlist,
+                                     &yaml_str, &yaml_len, &mode))
+        return NULL;
+
+    enum fy_parse_cfg_flags flags = parse_mode_to_parser_flags(mode);
+    if ((int)flags == -1)
+        return NULL;
+
+    struct fy_parse_cfg cfg = { .flags = flags };
+    struct fy_parser *fyp = fy_parser_create(&cfg);
+    if (!fyp) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create parser");
+        return NULL;
+    }
+
+    if (fy_parser_set_string(fyp, yaml_str, (size_t)yaml_len) != 0) {
+        fy_parser_destroy(fyp);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to set parser input");
+        return NULL;
+    }
+
+    PyObject *result = PyList_New(0);
+    if (!result) {
+        fy_parser_destroy(fyp);
+        return NULL;
+    }
+
+    struct fy_event *fye;
+    while ((fye = fy_parser_parse(fyp)) != NULL) {
+        PyObject *evt = NULL;
+        enum fy_event_type type = fy_event_get_type(fye);
+
+        const struct fy_mark *sm = fy_event_start_mark(fye);
+        const struct fy_mark *em = fy_event_end_mark(fye);
+        PyObject *py_sm = mark_to_tuple(sm);
+        PyObject *py_em = mark_to_tuple(em);
+        if (!py_sm || !py_em) {
+            Py_XDECREF(py_sm);
+            Py_XDECREF(py_em);
+            goto parse_error;
+        }
+
+        switch (type) {
+        case FYET_STREAM_START:
+            /* (1, start_mark, end_mark) */
+            evt = Py_BuildValue("(iOO)", 1, py_sm, py_em);
+            break;
+
+        case FYET_STREAM_END:
+            /* (2, start_mark, end_mark) */
+            evt = Py_BuildValue("(iOO)", 2, py_sm, py_em);
+            break;
+
+        case FYET_DOCUMENT_START: {
+            /* (3, implicit, version_tuple_or_None, tags_list_or_None, start_mark, end_mark) */
+            int implicit = fye->document_start.implicit ? 1 : 0;
+
+            /* Version */
+            PyObject *py_ver = Py_None;
+            Py_INCREF(Py_None);
+            const struct fy_version *ver = fy_document_start_event_version(fye);
+            if (ver) {
+                Py_DECREF(py_ver);
+                py_ver = Py_BuildValue("(ii)", ver->major, ver->minor);
+                if (!py_ver) {
+                    Py_DECREF(py_sm);
+                    Py_DECREF(py_em);
+                    goto parse_error;
+                }
+            }
+
+            /* Tag directives */
+            PyObject *py_tags = Py_None;
+            Py_INCREF(Py_None);
+            struct fy_document_state *fyds = fye->document_start.document_state;
+            if (fyds) {
+                void *iter = NULL;
+                const struct fy_tag *tag;
+                int has_non_default = 0;
+
+                /* Check if there are any non-default tags */
+                while ((tag = fy_document_state_tag_directive_iterate(fyds, &iter)) != NULL) {
+                    if (!fy_document_state_tag_is_default(fyds, tag)) {
+                        has_non_default = 1;
+                        break;
+                    }
+                }
+
+                if (has_non_default) {
+                    Py_DECREF(py_tags);
+                    py_tags = PyDict_New();
+                    if (!py_tags) {
+                        Py_DECREF(py_ver);
+                        Py_DECREF(py_sm);
+                        Py_DECREF(py_em);
+                        goto parse_error;
+                    }
+                    iter = NULL;
+                    while ((tag = fy_document_state_tag_directive_iterate(fyds, &iter)) != NULL) {
+                        if (tag->handle && tag->prefix) {
+                            PyObject *key = PyUnicode_FromString(tag->handle);
+                            PyObject *val = PyUnicode_FromString(tag->prefix);
+                            if (key && val)
+                                PyDict_SetItem(py_tags, key, val);
+                            Py_XDECREF(key);
+                            Py_XDECREF(val);
+                        }
+                    }
+                }
+            }
+
+            evt = Py_BuildValue("(iiOOOO)", 3, implicit, py_ver, py_tags, py_sm, py_em);
+            Py_DECREF(py_ver);
+            Py_DECREF(py_tags);
+            break;
+        }
+
+        case FYET_DOCUMENT_END: {
+            /* (4, implicit, start_mark, end_mark) */
+            int implicit = fye->document_end.implicit ? 1 : 0;
+            evt = Py_BuildValue("(iiOO)", 4, implicit, py_sm, py_em);
+            break;
+        }
+
+        case FYET_MAPPING_START: {
+            /* (5, anchor, tag, implicit, flow_style, start_mark, end_mark) */
+            struct fy_token *anchor_tok = fy_event_get_anchor_token(fye);
+            struct fy_token *tag_tok = fy_event_get_tag_token(fye);
+
+            PyObject *py_anchor = Py_None;
+            Py_INCREF(Py_None);
+            if (anchor_tok) {
+                const char *anchor_text = fy_token_get_text0(anchor_tok);
+                if (anchor_text) {
+                    Py_DECREF(py_anchor);
+                    py_anchor = PyUnicode_FromString(anchor_text);
+                }
+            }
+
+            PyObject *py_tag = tag_token_to_pystring(tag_tok);
+
+            int implicit = (tag_tok == NULL) ? 1 : 0;
+
+            enum fy_node_style ns = fy_event_get_node_style(fye);
+            PyObject *py_flow;
+            if (ns == FYNS_FLOW)
+                py_flow = Py_True;
+            else if (ns == FYNS_BLOCK)
+                py_flow = Py_False;
+            else
+                py_flow = Py_None;
+            Py_INCREF(py_flow);
+
+            evt = Py_BuildValue("(iOOiOOO)", 5, py_anchor, py_tag, implicit, py_flow, py_sm, py_em);
+            Py_DECREF(py_anchor);
+            Py_DECREF(py_tag);
+            Py_DECREF(py_flow);
+            break;
+        }
+
+        case FYET_MAPPING_END:
+            /* (6, start_mark, end_mark) */
+            evt = Py_BuildValue("(iOO)", 6, py_sm, py_em);
+            break;
+
+        case FYET_SEQUENCE_START: {
+            /* (7, anchor, tag, implicit, flow_style, start_mark, end_mark) */
+            struct fy_token *anchor_tok = fy_event_get_anchor_token(fye);
+            struct fy_token *tag_tok = fy_event_get_tag_token(fye);
+
+            PyObject *py_anchor = Py_None;
+            Py_INCREF(Py_None);
+            if (anchor_tok) {
+                const char *anchor_text = fy_token_get_text0(anchor_tok);
+                if (anchor_text) {
+                    Py_DECREF(py_anchor);
+                    py_anchor = PyUnicode_FromString(anchor_text);
+                }
+            }
+
+            PyObject *py_tag = tag_token_to_pystring(tag_tok);
+
+            int implicit = (tag_tok == NULL) ? 1 : 0;
+
+            enum fy_node_style ns = fy_event_get_node_style(fye);
+            PyObject *py_flow;
+            if (ns == FYNS_FLOW)
+                py_flow = Py_True;
+            else if (ns == FYNS_BLOCK)
+                py_flow = Py_False;
+            else
+                py_flow = Py_None;
+            Py_INCREF(py_flow);
+
+            evt = Py_BuildValue("(iOOiOOO)", 7, py_anchor, py_tag, implicit, py_flow, py_sm, py_em);
+            Py_DECREF(py_anchor);
+            Py_DECREF(py_tag);
+            Py_DECREF(py_flow);
+            break;
+        }
+
+        case FYET_SEQUENCE_END:
+            /* (8, start_mark, end_mark) */
+            evt = Py_BuildValue("(iOO)", 8, py_sm, py_em);
+            break;
+
+        case FYET_SCALAR: {
+            /* (9, anchor, tag, implicit_tuple, value, style, start_mark, end_mark) */
+            struct fy_token *anchor_tok = fye->scalar.anchor;
+            struct fy_token *tag_tok = fye->scalar.tag;
+            struct fy_token *value_tok = fye->scalar.value;
+
+            PyObject *py_anchor = Py_None;
+            Py_INCREF(Py_None);
+            if (anchor_tok) {
+                const char *anchor_text = fy_token_get_text0(anchor_tok);
+                if (anchor_text) {
+                    Py_DECREF(py_anchor);
+                    py_anchor = PyUnicode_FromString(anchor_text);
+                }
+            }
+
+            PyObject *py_tag = tag_token_to_pystring(tag_tok);
+
+            /* Get scalar value */
+            size_t val_len = 0;
+            const char *val_text = fy_token_get_text(value_tok, &val_len);
+            PyObject *py_value;
+            if (val_text)
+                py_value = PyUnicode_FromStringAndSize(val_text, val_len);
+            else
+                py_value = PyUnicode_FromString("");
+
+            /* Scalar style */
+            enum fy_scalar_style ss = fy_token_scalar_style(value_tok);
+            PyObject *py_style;
+            switch (ss) {
+            case FYSS_SINGLE_QUOTED:
+                py_style = PyUnicode_FromString("'");
+                break;
+            case FYSS_DOUBLE_QUOTED:
+                py_style = PyUnicode_FromString("\"");
+                break;
+            case FYSS_LITERAL:
+                py_style = PyUnicode_FromString("|");
+                break;
+            case FYSS_FOLDED:
+                py_style = PyUnicode_FromString(">");
+                break;
+            default: /* FYSS_PLAIN, FYSS_ANY */
+                py_style = Py_None;
+                Py_INCREF(Py_None);
+                break;
+            }
+
+            /* Implicit tuple: (plain_implicit, non_plain_implicit) */
+            int plain_implicit = (tag_tok == NULL && ss == FYSS_PLAIN) ? 1 : 0;
+            int non_plain_implicit = (tag_tok == NULL && ss != FYSS_PLAIN) ? 1 : 0;
+            if (fye->scalar.tag_implicit)
+                non_plain_implicit = 1;
+            PyObject *py_implicit = Py_BuildValue("(ii)", plain_implicit, non_plain_implicit);
+
+            evt = Py_BuildValue("(iOOOOOOO)", 9, py_anchor, py_tag, py_implicit,
+                                py_value, py_style, py_sm, py_em);
+            Py_DECREF(py_anchor);
+            Py_DECREF(py_tag);
+            Py_DECREF(py_implicit);
+            Py_DECREF(py_value);
+            Py_DECREF(py_style);
+            break;
+        }
+
+        case FYET_ALIAS: {
+            /* (10, anchor, start_mark, end_mark) */
+            struct fy_token *anchor_tok = fye->alias.anchor;
+            PyObject *py_anchor = Py_None;
+            Py_INCREF(Py_None);
+            if (anchor_tok) {
+                const char *anchor_text = fy_token_get_text0(anchor_tok);
+                if (anchor_text) {
+                    Py_DECREF(py_anchor);
+                    py_anchor = PyUnicode_FromString(anchor_text);
+                }
+            }
+            evt = Py_BuildValue("(iOOO)", 10, py_anchor, py_sm, py_em);
+            Py_DECREF(py_anchor);
+            break;
+        }
+
+        default:
+            /* Skip unknown event types */
+            Py_DECREF(py_sm);
+            Py_DECREF(py_em);
+            fy_parser_event_free(fyp, fye);
+            continue;
+        }
+
+        Py_DECREF(py_sm);
+        Py_DECREF(py_em);
+
+        if (!evt)
+            goto parse_error;
+
+        if (PyList_Append(result, evt) < 0) {
+            Py_DECREF(evt);
+            goto parse_error;
+        }
+        Py_DECREF(evt);
+
+        fy_parser_event_free(fyp, fye);
+    }
+
+    fy_parser_destroy(fyp);
+    return result;
+
+parse_error:
+    Py_XDECREF(result);
+    fy_parser_destroy(fyp);
+    if (!PyErr_Occurred())
+        PyErr_SetString(PyExc_RuntimeError, "Error during YAML parsing");
+    return NULL;
+}
+
+/* _scan(string, mode='yaml1.1') -> list of token tuples */
+static PyObject *
+libfyaml_stream_scan(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+    const char *yaml_str;
+    Py_ssize_t yaml_len;
+    const char *mode = "yaml1.1";
+    static char *kwlist[] = {"s", "mode", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|s", kwlist,
+                                     &yaml_str, &yaml_len, &mode))
+        return NULL;
+
+    enum fy_parse_cfg_flags flags = parse_mode_to_parser_flags(mode);
+    if ((int)flags == -1)
+        return NULL;
+
+    struct fy_parse_cfg cfg = { .flags = flags };
+    struct fy_parser *fyp = fy_parser_create(&cfg);
+    if (!fyp) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create parser");
+        return NULL;
+    }
+
+    if (fy_parser_set_string(fyp, yaml_str, (size_t)yaml_len) != 0) {
+        fy_parser_destroy(fyp);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to set parser input");
+        return NULL;
+    }
+
+    PyObject *result = PyList_New(0);
+    if (!result) {
+        fy_parser_destroy(fyp);
+        return NULL;
+    }
+
+    struct fy_token *fyt;
+    while ((fyt = fy_scan(fyp)) != NULL) {
+        PyObject *tok = NULL;
+        enum fy_token_type type = fy_token_get_type(fyt);
+
+        const struct fy_mark *sm = fy_token_start_mark(fyt);
+        const struct fy_mark *em = fy_token_end_mark(fyt);
+        PyObject *py_sm = mark_to_tuple(sm);
+        PyObject *py_em = mark_to_tuple(em);
+        if (!py_sm || !py_em) {
+            Py_XDECREF(py_sm);
+            Py_XDECREF(py_em);
+            goto scan_error;
+        }
+
+        switch (type) {
+        case FYTT_STREAM_START:
+            /* (1, encoding, start_mark, end_mark) - encoding always 'utf-8' */
+            tok = Py_BuildValue("(isOO)", 1, "utf-8", py_sm, py_em);
+            break;
+
+        case FYTT_STREAM_END:
+            tok = Py_BuildValue("(iOO)", 2, py_sm, py_em);
+            break;
+
+        case FYTT_VERSION_DIRECTIVE: {
+            const struct fy_version *ver = fy_version_directive_token_version(fyt);
+            PyObject *py_ver = Py_None;
+            Py_INCREF(Py_None);
+            if (ver) {
+                Py_DECREF(py_ver);
+                py_ver = Py_BuildValue("(ii)", ver->major, ver->minor);
+            }
+            tok = Py_BuildValue("(i(sO)OO)", 3, "YAML", py_ver, py_sm, py_em);
+            Py_DECREF(py_ver);
+            break;
+        }
+
+        case FYTT_TAG_DIRECTIVE: {
+            const struct fy_tag *tag = fy_tag_directive_token_tag(fyt);
+            PyObject *py_handle = Py_None;
+            PyObject *py_prefix = Py_None;
+            Py_INCREF(Py_None);
+            Py_INCREF(Py_None);
+            if (tag) {
+                if (tag->handle) {
+                    Py_DECREF(py_handle);
+                    py_handle = PyUnicode_FromString(tag->handle);
+                }
+                if (tag->prefix) {
+                    Py_DECREF(py_prefix);
+                    py_prefix = PyUnicode_FromString(tag->prefix);
+                }
+            }
+            tok = Py_BuildValue("(i(s(OO))OO)", 4, "TAG", py_handle, py_prefix, py_sm, py_em);
+            Py_DECREF(py_handle);
+            Py_DECREF(py_prefix);
+            break;
+        }
+
+        case FYTT_DOCUMENT_START:
+            tok = Py_BuildValue("(iOO)", 5, py_sm, py_em);
+            break;
+
+        case FYTT_DOCUMENT_END:
+            tok = Py_BuildValue("(iOO)", 6, py_sm, py_em);
+            break;
+
+        case FYTT_BLOCK_SEQUENCE_START:
+            tok = Py_BuildValue("(iOO)", 7, py_sm, py_em);
+            break;
+
+        case FYTT_BLOCK_MAPPING_START:
+            tok = Py_BuildValue("(iOO)", 8, py_sm, py_em);
+            break;
+
+        case FYTT_BLOCK_END:
+            tok = Py_BuildValue("(iOO)", 9, py_sm, py_em);
+            break;
+
+        case FYTT_FLOW_SEQUENCE_START:
+            tok = Py_BuildValue("(iOO)", 10, py_sm, py_em);
+            break;
+
+        case FYTT_FLOW_SEQUENCE_END:
+            tok = Py_BuildValue("(iOO)", 11, py_sm, py_em);
+            break;
+
+        case FYTT_FLOW_MAPPING_START:
+            tok = Py_BuildValue("(iOO)", 12, py_sm, py_em);
+            break;
+
+        case FYTT_FLOW_MAPPING_END:
+            tok = Py_BuildValue("(iOO)", 13, py_sm, py_em);
+            break;
+
+        case FYTT_BLOCK_ENTRY:
+            tok = Py_BuildValue("(iOO)", 14, py_sm, py_em);
+            break;
+
+        case FYTT_FLOW_ENTRY:
+            tok = Py_BuildValue("(iOO)", 15, py_sm, py_em);
+            break;
+
+        case FYTT_KEY:
+            tok = Py_BuildValue("(iOO)", 16, py_sm, py_em);
+            break;
+
+        case FYTT_VALUE:
+            tok = Py_BuildValue("(iOO)", 17, py_sm, py_em);
+            break;
+
+        case FYTT_ALIAS: {
+            const char *val = fy_token_get_text0(fyt);
+            tok = Py_BuildValue("(isOO)", 18, val ? val : "", py_sm, py_em);
+            break;
+        }
+
+        case FYTT_ANCHOR: {
+            const char *val = fy_token_get_text0(fyt);
+            tok = Py_BuildValue("(isOO)", 19, val ? val : "", py_sm, py_em);
+            break;
+        }
+
+        case FYTT_TAG: {
+            const char *handle = fy_tag_token_handle0(fyt);
+            const char *suffix = fy_tag_token_suffix0(fyt);
+            tok = Py_BuildValue("(i(ss)OO)", 20,
+                                handle ? handle : "",
+                                suffix ? suffix : "",
+                                py_sm, py_em);
+            break;
+        }
+
+        case FYTT_SCALAR: {
+            size_t val_len = 0;
+            const char *val = fy_token_get_text(fyt, &val_len);
+            enum fy_scalar_style ss = fy_scalar_token_get_style(fyt);
+            int plain = (ss == FYSS_PLAIN || ss == FYSS_ANY) ? 1 : 0;
+            PyObject *py_style;
+            switch (ss) {
+            case FYSS_SINGLE_QUOTED:
+                py_style = PyUnicode_FromString("'");
+                break;
+            case FYSS_DOUBLE_QUOTED:
+                py_style = PyUnicode_FromString("\"");
+                break;
+            case FYSS_LITERAL:
+                py_style = PyUnicode_FromString("|");
+                break;
+            case FYSS_FOLDED:
+                py_style = PyUnicode_FromString(">");
+                break;
+            default:
+                py_style = Py_None;
+                Py_INCREF(Py_None);
+                break;
+            }
+            PyObject *py_val = val ? PyUnicode_FromStringAndSize(val, val_len)
+                                  : PyUnicode_FromString("");
+            tok = Py_BuildValue("(iOiOOO)", 21, py_val, plain, py_style, py_sm, py_em);
+            Py_DECREF(py_val);
+            Py_DECREF(py_style);
+            break;
+        }
+
+        default:
+            /* Skip non-YAML tokens (path expressions etc.) */
+            Py_DECREF(py_sm);
+            Py_DECREF(py_em);
+            fy_scan_token_free(fyp, fyt);
+            continue;
+        }
+
+        Py_DECREF(py_sm);
+        Py_DECREF(py_em);
+
+        if (!tok)
+            goto scan_error;
+
+        if (PyList_Append(result, tok) < 0) {
+            Py_DECREF(tok);
+            goto scan_error;
+        }
+        Py_DECREF(tok);
+
+        fy_scan_token_free(fyp, fyt);
+    }
+
+    fy_parser_destroy(fyp);
+    return result;
+
+scan_error:
+    Py_XDECREF(result);
+    fy_parser_destroy(fyp);
+    if (!PyErr_Occurred())
+        PyErr_SetString(PyExc_RuntimeError, "Error during YAML scanning");
+    return NULL;
+}
+
+/* _emit(events_list, canonical=False, indent=None, width=None, allow_unicode=True, line_break=None) -> string */
+static PyObject *
+libfyaml_stream_emit(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+    PyObject *events_list;
+    int canonical = 0;
+    PyObject *indent_obj = Py_None;
+    PyObject *width_obj = Py_None;
+    int allow_unicode = 1;
+    const char *line_break = NULL;
+    static char *kwlist[] = {"events", "canonical", "indent", "width",
+                             "allow_unicode", "line_break", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|iOOis", kwlist,
+                                     &events_list, &canonical, &indent_obj,
+                                     &width_obj, &allow_unicode, &line_break))
+        return NULL;
+
+    if (!PyList_Check(events_list) && !PyTuple_Check(events_list)) {
+        PyErr_SetString(PyExc_TypeError, "events must be a list or tuple");
+        return NULL;
+    }
+
+    /* Build emitter flags */
+    enum fy_emitter_cfg_flags emit_flags = FYECF_MODE_ORIGINAL | FYECF_WIDTH_INF;
+
+    if (indent_obj != Py_None) {
+        long indent_val = PyLong_AsLong(indent_obj);
+        if (indent_val == -1 && PyErr_Occurred())
+            return NULL;
+        if (indent_val >= 1 && indent_val <= 9)
+            emit_flags |= FYECF_INDENT(indent_val);
+    }
+
+    if (width_obj != Py_None) {
+        long width_val = PyLong_AsLong(width_obj);
+        if (width_val == -1 && PyErr_Occurred())
+            return NULL;
+        /* Clear the default INF width and set new one */
+        emit_flags &= ~(FYECF_WIDTH_MASK << FYECF_WIDTH_SHIFT);
+        if (width_val <= 0 || width_val > 255)
+            emit_flags |= FYECF_WIDTH_INF;
+        else
+            emit_flags |= FYECF_WIDTH(width_val);
+    }
+
+    struct fy_emitter *emit = fy_emit_to_string(emit_flags);
+    if (!emit) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create emitter");
+        return NULL;
+    }
+
+    Py_ssize_t n = PySequence_Length(events_list);
+    for (Py_ssize_t i = 0; i < n; i++) {
+        PyObject *evt_tuple = PySequence_GetItem(events_list, i);
+        if (!evt_tuple)
+            goto emit_error;
+
+        if (!PyTuple_Check(evt_tuple)) {
+            Py_DECREF(evt_tuple);
+            PyErr_SetString(PyExc_TypeError, "Each event must be a tuple");
+            goto emit_error;
+        }
+
+        int evt_type = (int)PyLong_AsLong(PyTuple_GET_ITEM(evt_tuple, 0));
+        struct fy_event *fye = NULL;
+
+        switch (evt_type) {
+        case 1: /* STREAM_START */
+            fye = fy_emit_event_create(emit, FYET_STREAM_START);
+            break;
+
+        case 2: /* STREAM_END */
+            fye = fy_emit_event_create(emit, FYET_STREAM_END);
+            break;
+
+        case 3: { /* DOCUMENT_START: (3, implicit, version, tags, sm, em) */
+            int implicit = (int)PyLong_AsLong(PyTuple_GET_ITEM(evt_tuple, 1));
+
+            /* Version */
+            struct fy_version version_struct;
+            const struct fy_version *vers_ptr = NULL;
+            PyObject *py_ver = PyTuple_GET_ITEM(evt_tuple, 2);
+            if (py_ver != Py_None && PyTuple_Check(py_ver)) {
+                version_struct.major = (int)PyLong_AsLong(PyTuple_GET_ITEM(py_ver, 0));
+                version_struct.minor = (int)PyLong_AsLong(PyTuple_GET_ITEM(py_ver, 1));
+                vers_ptr = &version_struct;
+            }
+
+            /* Tags - build NULL-terminated array */
+            PyObject *py_tags = PyTuple_GET_ITEM(evt_tuple, 3);
+            struct fy_tag **tags_array = NULL;
+            struct fy_tag *tag_storage = NULL;
+            if (py_tags != Py_None && PyDict_Check(py_tags)) {
+                Py_ssize_t tag_count = PyDict_Size(py_tags);
+                tags_array = (struct fy_tag **)calloc(tag_count + 1, sizeof(struct fy_tag *));
+                tag_storage = (struct fy_tag *)calloc(tag_count, sizeof(struct fy_tag));
+                PyObject *key, *value;
+                Py_ssize_t pos = 0;
+                Py_ssize_t idx = 0;
+                while (PyDict_Next(py_tags, &pos, &key, &value)) {
+                    tag_storage[idx].handle = PyUnicode_AsUTF8(key);
+                    tag_storage[idx].prefix = PyUnicode_AsUTF8(value);
+                    tags_array[idx] = &tag_storage[idx];
+                    idx++;
+                }
+                tags_array[tag_count] = NULL;
+            }
+
+            fye = fy_emit_event_create(emit, FYET_DOCUMENT_START, implicit,
+                                        vers_ptr, (const struct fy_tag * const *)tags_array);
+            free(tags_array);
+            free(tag_storage);
+            break;
+        }
+
+        case 4: { /* DOCUMENT_END: (4, implicit, sm, em) */
+            int implicit = (int)PyLong_AsLong(PyTuple_GET_ITEM(evt_tuple, 1));
+            fye = fy_emit_event_create(emit, FYET_DOCUMENT_END, implicit);
+            break;
+        }
+
+        case 5: { /* MAPPING_START: (5, anchor, tag, implicit, flow_style, sm, em) */
+            PyObject *py_anchor = PyTuple_GET_ITEM(evt_tuple, 1);
+            PyObject *py_tag = PyTuple_GET_ITEM(evt_tuple, 2);
+            PyObject *py_flow = PyTuple_GET_ITEM(evt_tuple, 4);
+
+            const char *anchor = (py_anchor != Py_None) ? PyUnicode_AsUTF8(py_anchor) : NULL;
+            const char *tag = (py_tag != Py_None) ? PyUnicode_AsUTF8(py_tag) : NULL;
+
+            enum fy_node_style style;
+            if (py_flow == Py_True)
+                style = FYNS_FLOW;
+            else if (py_flow == Py_False)
+                style = FYNS_BLOCK;
+            else
+                style = FYNS_ANY;
+
+            fye = fy_emit_event_create(emit, FYET_MAPPING_START, style, anchor, tag);
+            break;
+        }
+
+        case 6: /* MAPPING_END */
+            fye = fy_emit_event_create(emit, FYET_MAPPING_END);
+            break;
+
+        case 7: { /* SEQUENCE_START: (7, anchor, tag, implicit, flow_style, sm, em) */
+            PyObject *py_anchor = PyTuple_GET_ITEM(evt_tuple, 1);
+            PyObject *py_tag = PyTuple_GET_ITEM(evt_tuple, 2);
+            PyObject *py_flow = PyTuple_GET_ITEM(evt_tuple, 4);
+
+            const char *anchor = (py_anchor != Py_None) ? PyUnicode_AsUTF8(py_anchor) : NULL;
+            const char *tag = (py_tag != Py_None) ? PyUnicode_AsUTF8(py_tag) : NULL;
+
+            enum fy_node_style style;
+            if (py_flow == Py_True)
+                style = FYNS_FLOW;
+            else if (py_flow == Py_False)
+                style = FYNS_BLOCK;
+            else
+                style = FYNS_ANY;
+
+            fye = fy_emit_event_create(emit, FYET_SEQUENCE_START, style, anchor, tag);
+            break;
+        }
+
+        case 8: /* SEQUENCE_END */
+            fye = fy_emit_event_create(emit, FYET_SEQUENCE_END);
+            break;
+
+        case 9: { /* SCALAR: (9, anchor, tag, implicit, value, style, sm, em) */
+            PyObject *py_anchor = PyTuple_GET_ITEM(evt_tuple, 1);
+            PyObject *py_tag = PyTuple_GET_ITEM(evt_tuple, 2);
+            PyObject *py_value = PyTuple_GET_ITEM(evt_tuple, 4);
+            PyObject *py_style = PyTuple_GET_ITEM(evt_tuple, 5);
+
+            const char *anchor = (py_anchor != Py_None) ? PyUnicode_AsUTF8(py_anchor) : NULL;
+            const char *tag = (py_tag != Py_None) ? PyUnicode_AsUTF8(py_tag) : NULL;
+
+            Py_ssize_t val_len;
+            const char *value = PyUnicode_AsUTF8AndSize(py_value, &val_len);
+
+            enum fy_scalar_style ss = FYSS_ANY;
+            if (py_style != Py_None && PyUnicode_Check(py_style)) {
+                const char *style_str = PyUnicode_AsUTF8(py_style);
+                if (style_str && style_str[0] == '\'')
+                    ss = FYSS_SINGLE_QUOTED;
+                else if (style_str && style_str[0] == '"')
+                    ss = FYSS_DOUBLE_QUOTED;
+                else if (style_str && style_str[0] == '|')
+                    ss = FYSS_LITERAL;
+                else if (style_str && style_str[0] == '>')
+                    ss = FYSS_FOLDED;
+                else
+                    ss = FYSS_PLAIN;
+            }
+
+            fye = fy_emit_event_create(emit, FYET_SCALAR, ss, value, (size_t)val_len, anchor, tag);
+            break;
+        }
+
+        case 10: { /* ALIAS: (10, anchor, sm, em) */
+            PyObject *py_anchor = PyTuple_GET_ITEM(evt_tuple, 1);
+            const char *anchor = (py_anchor != Py_None) ? PyUnicode_AsUTF8(py_anchor) : "";
+            fye = fy_emit_event_create(emit, FYET_ALIAS, anchor);
+            break;
+        }
+
+        default:
+            Py_DECREF(evt_tuple);
+            PyErr_Format(PyExc_ValueError, "Unknown event type: %d", evt_type);
+            goto emit_error;
+        }
+
+        Py_DECREF(evt_tuple);
+
+        if (!fye) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to create emit event");
+            goto emit_error;
+        }
+
+        int rc = fy_emit_event(emit, fye);
+        if (rc != 0) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to emit event");
+            goto emit_error;
+        }
+    }
+
+    /* Collect the output */
+    size_t output_size = 0;
+    char *output = fy_emit_to_string_collect(emit, &output_size);
+    fy_emitter_destroy(emit);
+
+    if (!output) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to collect emitter output");
+        return NULL;
+    }
+
+    PyObject *result = PyUnicode_FromStringAndSize(output, output_size);
+    free(output);
+    return result;
+
+emit_error:
+    fy_emitter_destroy(emit);
+    return NULL;
+}
+
 /* Module method table */
 static PyMethodDef module_methods[] = {
     {"loads", _PyCFunction_CAST(libfyaml_loads), METH_VARARGS | METH_KEYWORDS,
@@ -4690,6 +5691,12 @@ static PyMethodDef module_methods[] = {
      "Convert path list (e.g., ['server', 'host']) to Unix-style path string (e.g., '/server/host')"},
     {"unix_path_to_path_list", _PyCFunction_CAST(libfyaml_unix_path_to_path_list), METH_O,
      "Convert Unix-style path string (e.g., '/server/host') to path list (e.g., ['server', 'host'])"},
+    {"_parse", _PyCFunction_CAST(libfyaml_stream_parse), METH_VARARGS | METH_KEYWORDS,
+     "Parse YAML string and return list of event tuples"},
+    {"_scan", _PyCFunction_CAST(libfyaml_stream_scan), METH_VARARGS | METH_KEYWORDS,
+     "Scan YAML string and return list of token tuples"},
+    {"_emit", _PyCFunction_CAST(libfyaml_stream_emit), METH_VARARGS | METH_KEYWORDS,
+     "Emit list of event tuples to YAML string"},
     {NULL}
 };
 
