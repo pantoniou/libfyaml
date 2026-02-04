@@ -35,9 +35,31 @@ class BaseResolver:
     def resolve(self, kind, value, implicit):
         """Resolve a tag for a node based on its kind and value."""
         if kind is ScalarNode and implicit[0]:
-            if value is None or value == '' or value == 'null' or value == '~':
+            # Empty string resolves to null (PyYAML behavior)
+            if value == '':
                 return 'tag:yaml.org,2002:null'
-            # Check implicit resolvers
+
+            # Use the C library to resolve scalar types - it handles all YAML 1.1
+            # scalar resolution (bool, int, float, null) consistently
+            import libfyaml as fy
+            try:
+                result = fy.loads(value, mode='yaml1.1-pyyaml')
+                py_value = result.to_python()
+
+                if py_value is None:
+                    return 'tag:yaml.org,2002:null'
+                elif isinstance(py_value, bool):
+                    return 'tag:yaml.org,2002:bool'
+                elif isinstance(py_value, int):
+                    return 'tag:yaml.org,2002:int'
+                elif isinstance(py_value, float):
+                    return 'tag:yaml.org,2002:float'
+                # If C library returns string, fall through to check Python-side
+                # implicit resolvers (e.g., timestamp which needs Python datetime)
+            except Exception:
+                pass  # Fall through to check implicit resolvers
+
+            # Check Python-side implicit resolvers (e.g., timestamp)
             for ch in [value[0] if value else None, None]:
                 if ch in self.yaml_implicit_resolvers:
                     for tag, regexp in self.yaml_implicit_resolvers[ch]:
