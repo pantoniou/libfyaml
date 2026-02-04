@@ -698,7 +698,7 @@ void fy_emit_common_node_preamble(struct fy_emitter *emit,
 	}
 
 	/* content for root always starts on a new line */
-	if ((flags & DDNF_ROOT) && emit->column != 0 &&
+	if (!fy_emit_is_oneline(emit) && (flags & DDNF_ROOT) && emit->column != 0 &&
             !(emit->flags & FYEF_HAD_DOCUMENT_START)) {
 		fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
 		emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
@@ -1415,7 +1415,8 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 		}
 
 		/* anything not empty is double quoted here */
-		style = (ta->flags & FYTTAF_EMPTY) ? FYNS_PLAIN : FYNS_DOUBLE_QUOTED;
+		style = (ta->flags & FYTTAF_EMPTY) ? FYNS_PLAIN :
+			((ta->flags & FYTTAF_CAN_BE_PLAIN) ? FYNS_PLAIN : FYNS_DOUBLE_QUOTED);
 	}
 
 	/* try to pretify */
@@ -1444,7 +1445,7 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 
 out:
 	if (style == FYNS_ANY)
-		style = (ta->flags & FYTTAF_CAN_BE_PLAIN) ?  FYNS_PLAIN : FYNS_DOUBLE_QUOTED;
+		style = (ta->flags & FYTTAF_CAN_BE_PLAIN) ? FYNS_PLAIN : FYNS_DOUBLE_QUOTED;
 
 	if (style == FYNS_PLAIN) {
 		/* plains in flow mode not being able to be plains
