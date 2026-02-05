@@ -1,3 +1,4 @@
+# vim: set ts=4:sw=4:expandtab:
 cmake_minimum_required(VERSION 3.14)
 
 if (POLICY CMP0048)
@@ -211,11 +212,16 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     if(check_FOUND)
         set(HAVE_CHECK 1)
         set(CHECK_LIBRARIES check)
-        get_target_property(CHECK_INCLUDE_DIRS check INTERFACE_INCLUDE_DIRECTORIES)
+        if(TARGET Check::check)
+            set(CHECK_TARGET Check::check)
+        else()
+            set(CHECK_TARGET check)
+        endif()
+		get_target_property(CHECK_INCLUDE_DIRS ${CHECK_TARGET} INTERFACE_INCLUDE_DIRECTORIES)
         # Get library location to extract directory
-        get_target_property(CHECK_LIB_LOCATION check IMPORTED_LOCATION)
+        get_target_property(CHECK_LIB_LOCATION ${CHECK_TARGET} IMPORTED_LOCATION)
         if(NOT CHECK_LIB_LOCATION)
-            get_target_property(CHECK_LIB_LOCATION check LOCATION)
+            get_target_property(CHECK_LIB_LOCATION ${CHECK_TARGET} LOCATION)
         endif()
         if(CHECK_LIB_LOCATION)
             get_filename_component(CHECK_LIBRARY_DIRS "${CHECK_LIB_LOCATION}" DIRECTORY)
@@ -1058,7 +1064,7 @@ if(NOT MSVC AND NOT WIN32)
     if(HAVE_ASAN)
         target_compile_options(fyaml PRIVATE ${ASAN_C_FLAGS} -fno-omit-frame-pointer)
         # Use INTERFACE to propagate link flags to executables linking against this library
-	target_link_options(fyaml PRIVATE ${ASAN_C_FLAGS} INTERFACE ${ASAN_C_FLAGS})
+		target_link_options(fyaml PRIVATE ${ASAN_C_FLAGS} INTERFACE ${ASAN_C_FLAGS})
     endif()
 endif()
 
