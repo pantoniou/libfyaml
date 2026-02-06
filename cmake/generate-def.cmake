@@ -22,8 +22,8 @@ file(READ "${INPUT_HEADER}" HEADER_CONTENT)
 # Find all function names that have FY_EXPORT
 # Pattern: function_name(...) followed by FY_EXPORT on same or next line
 # There may be FY_FORMAT(...) or other attributes between function and FY_EXPORT
-# We look for: word( ... ) whitespace [optional FY_FORMAT(...)] whitespace FY_EXPORT
-string(REGEX MATCHALL "[a-z_][a-z0-9_]*[ \t]*\\([^)]*\\)[\r\n\t ]+(FY_FORMAT\\([^)]*\\)[\r\n\t ]+)?FY_EXPORT" MATCHES "${HEADER_CONTENT}")
+# We look for: fy_ word( ... ) whitespace [optional FY_FORMAT(...)] whitespace FY_EXPORT
+string(REGEX MATCHALL "fy_[a-z_][a-z0-9_]*[ \t]*\\([^)]*\\)[\r\n\t ]+(FY_FORMAT\\([^)]*\\)[\r\n\t ]+)?FY_EXPORT" MATCHES "${HEADER_CONTENT}")
 
 # Extract just the function names
 set(FUNCTION_NAMES "")
