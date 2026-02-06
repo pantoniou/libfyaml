@@ -659,6 +659,13 @@ void fy_emit_common_node_preamble(struct fy_emitter *emit,
 
 	(void)sc;
 
+	/* content for root always starts on a new line */
+	if (!fy_emit_is_oneline(emit) && (flags & DDNF_ROOT) && emit->column != 0 &&
+            !(emit->flags & FYEF_HAD_DOCUMENT_START)) {
+		fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
+		emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
+	}
+
 	json_mode = fy_emit_is_json_mode(emit);
 
 	if (!json_mode) {
@@ -695,13 +702,6 @@ void fy_emit_common_node_preamble(struct fy_emitter *emit,
 
 			emit->flags &= ~(FYEF_WHITESPACE | FYEF_INDENTATION);
 		}
-	}
-
-	/* content for root always starts on a new line */
-	if (!fy_emit_is_oneline(emit) && (flags & DDNF_ROOT) && emit->column != 0 &&
-            !(emit->flags & FYEF_HAD_DOCUMENT_START)) {
-		fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
-		emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
 	}
 }
 
