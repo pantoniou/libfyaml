@@ -6956,6 +6956,38 @@ fy_token_end_mark(struct fy_token *fyt)
 	FY_EXPORT;
 
 /**
+ * fy_token_style_start_mark() - Get token's start marker (style)
+ *
+ * Return the token's start marker if it exists, including the style
+ * indicators. Note it is permissable for some token types to have no
+ * start marker because they are without content.
+ *
+ * @fyt: The token to get its style start marker
+ *
+ * Returns:
+ * The token's style start marker, NULL if not available.
+ */
+const struct fy_mark *
+fy_token_style_start_mark(struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
+ * fy_token_style_end_mark() - Get token's end marker (style
+ *
+ * Return the token's end marker if it exists, including the
+ * style indicators. Note it is permissable for some token types to
+ * have no end marker because they are without content.
+ *
+ * @fyt: The token to get its style end marker
+ *
+ * Returns:
+ * The token's style end marker, NULL if not available.
+ */
+const struct fy_mark *
+fy_token_style_end_mark(struct fy_token *fyt)
+	FY_EXPORT;
+
+/**
  * fy_scan() - Low level access to the scanner
  *
  * Return the next scanner token. Note this is a very
@@ -7273,6 +7305,38 @@ fy_event_start_mark(struct fy_event *fye)
  */
 const struct fy_mark *
 fy_event_end_mark(struct fy_event *fye)
+	FY_EXPORT;
+
+/**
+ * fy_event_style_start_mark() - Get event's start marker (style)
+ *
+ * Return the event's style start marker if it exists. The
+ * start marker is the one of the event's main token, including
+ * the style marks. But if the event contains a tag then the
+ * start mark is the start of the tag token.
+ *
+ * @fye: The event to get its style start marker
+ *
+ * Returns:
+ * The event's start marker, NULL if not available.
+ */
+const struct fy_mark *
+fy_event_style_start_mark(struct fy_event *fye)
+	FY_EXPORT;
+
+/**
+ * fy_event_style_end_mark() - Get event's end marker (style)
+ *
+ * Return the event's style end marker if it exists. The
+ * end marker is the one of the event's main token.
+ *
+ * @fye: The event to get its end marker
+ *
+ * Returns:
+ * The event's end marker, NULL if not available.
+ */
+const struct fy_mark *
+fy_event_style_end_mark(struct fy_event *fye)
 	FY_EXPORT;
 
 /**

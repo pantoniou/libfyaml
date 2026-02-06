@@ -447,6 +447,9 @@ struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_t
 		fyt->scalar.path_key_storage = NULL;
 		fyt->scalar.is_null = false;	/* by default the scalar is not NULL */
 		fyt->scalar.style = va_arg(ap, enum fy_scalar_style);
+		/* by default it's the same as the content */
+		fyt->scalar.style_start = handle->start_mark;
+		fyt->scalar.style_end = handle->end_mark;
 		if (fyt->scalar.style != FYSS_ANY && (unsigned int)fyt->scalar.style >= FYSS_MAX)
 			goto err_out;
 		break;
@@ -470,6 +473,7 @@ struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_t
 
 	case FYTT_ALIAS:
 		fyt->alias.expr = va_arg(ap, struct fy_path_expr *);
+		fyt->alias.style_start = fyt->handle.start_mark;
 		break;
 
 	case FYTT_KEY:
@@ -491,6 +495,10 @@ struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_t
 
 	case FYTT_NONE:
 		goto err_out;
+
+	case FYTT_ANCHOR:
+		fyt->anchor.style_start = fyt->handle.start_mark;
+		break;
 
 	default:
 		break;
@@ -2246,4 +2254,58 @@ bool
 fy_token_scalar_is_null(struct fy_token *fyt)
 {
 	return !fyt || fyt->type != FYTT_SCALAR || fyt->scalar.is_null;
+}
+
+const struct fy_mark *
+fy_token_style_start_mark(struct fy_token *fyt)
+{
+	if (!fyt)
+		return NULL;
+
+	switch (fyt->type) {
+	case FYTT_SCALAR:
+		return &fyt->scalar.style_start;
+	case FYTT_ALIAS:
+		return &fyt->alias.style_start;
+	case FYTT_ANCHOR:
+		return &fyt->anchor.style_start;
+	default:
+		break;
+	}
+	return fy_token_start_mark(fyt);
+}
+
+const struct fy_mark *
+fy_token_style_end_mark(struct fy_token *fyt)
+{
+	if (!fyt)
+		return NULL;
+
+	if (fyt->type != FYTT_SCALAR)
+		return fy_token_end_mark(fyt);
+	return &fyt->scalar.style_end;
+}
+
+struct fy_atom *
+fy_token_get_style_atom(struct fy_token *fyt, struct fy_atom *dst_handle)
+{
+	const struct fy_atom *handle;
+	const struct fy_mark *mark;
+
+	if (!fyt || !dst_handle)
+		return NULL;
+
+	handle = fy_token_atom(fyt);
+	if (!handle)
+		return NULL;
+	*dst_handle = *handle;
+	fy_input_ref(dst_handle->fyi);
+	mark = fy_token_style_start_mark(fyt);
+	if (mark)
+		dst_handle->start_mark = *mark;
+	mark = fy_token_style_end_mark(fyt);
+	if (mark)
+		dst_handle->end_mark = *mark;
+
+	return dst_handle;
 }

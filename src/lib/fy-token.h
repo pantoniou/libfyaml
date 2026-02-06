@@ -144,6 +144,8 @@ struct fy_token {
 		struct {
 			enum fy_scalar_style style;
 			/* path key (if requested only) */
+			struct fy_mark style_start;
+			struct fy_mark style_end;
 			const char *path_key;
 			size_t path_key_len;
 			char *path_key_storage;	/* if this is not null, it's \0 terminated */
@@ -175,8 +177,12 @@ struct fy_token {
 			int end_index;
 		} seq_slice;
 		struct {
+			struct fy_mark style_start;
 			struct fy_path_expr *expr;
 		} alias;
+		struct {
+			struct fy_mark style_start;
+		} anchor;
 		struct {
 			int flow_level;
 		} key;
@@ -562,5 +568,9 @@ fy_token_get_type_inline(struct fy_token *fyt)
 {
 	return fyt ? fyt->type : FYTT_NONE;
 }
+
+/* needs fy_input_unref(handle->fyi) */
+struct fy_atom *
+fy_token_get_style_atom(struct fy_token *fyt, struct fy_atom *dst_handle);
 
 #endif

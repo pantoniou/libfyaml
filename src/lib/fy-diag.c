@@ -603,7 +603,7 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 	bool first_line, last_line;
 	const char *display;
 	int display_len, line_shift;
-	char qc, first_mark;
+	char first_mark;
 	char *rowbuf = NULL, *rbs = NULL, *rbe = NULL;
 	const char *s, *e;
 	int col8, c, w;
@@ -693,17 +693,6 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 
 			content_start_col = l->content_start_col8;
 			content_end_col = l->content_end_col8;
-
-			/* adjust for single and double quoted to include the quote marks (usually works) */
-			if (fy_atom_style_is_quoted(atom->style)) {
-				qc = atom->style == FYAS_SINGLE_QUOTED ? '\'' : '"';
-				if (first_line && l->content_start > l->line_start &&
-						l->content_start[-1] == qc)
-					content_start_col--;
-				if (last_line && (l->content_start + l->content_len) < (l->line_start + l->line_len) &&
-						l->content_start[l->content_len] == qc)
-					content_end_col++;
-			}
 
 			content_width = content_end_col - content_start_col;
 
@@ -825,10 +814,14 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 
 void fy_diag_error_token_display(struct fy_diag *diag, enum fy_error_type type, struct fy_token *fyt)
 {
+	struct fy_atom style_handle;
+
 	if (!diag || !fyt)
 		return;
 
-	fy_diag_error_atom_display(diag, type, fy_token_atom(fyt));
+	fy_token_get_style_atom(fyt, &style_handle);
+	fy_diag_error_atom_display(diag, type, &style_handle);
+	fy_input_unref(style_handle.fyi);
 }
 
 void fy_diag_vreport(struct fy_diag *diag,

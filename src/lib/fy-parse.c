@@ -3334,6 +3334,11 @@ int fy_fetch_anchor_or_alias(struct fy_parser *fyp, int c)
 	fyp_error_check(fyp, fyt, err_out_rc,
 			"fy_token_queue() failed");
 
+	if (type == FYTT_ALIAS)
+		fyt->alias.style_start = skm.mark;
+	else
+		fyt->anchor.style_start = skm.mark;
+
 	/* scan forward for '-' block sequence indicator */
 	if (type == FYTT_ANCHOR && !fyp->flow_level) {
 		for (i = 0; ; i++) {
@@ -3978,6 +3983,9 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	fyt = fy_token_queue(fyp, FYTT_SCALAR, &handle, is_literal ? FYSS_LITERAL : FYSS_FOLDED);
 	fyp_error_check(fyp, fyt, err_out_rc,
 			"fy_token_queue() failed");
+
+	/* update the start of the style */
+	fyt->scalar.style_start = indicator_mark;
 
 	rc = fy_attach_comments_if_any(fyp, fyt);
 	fyp_error_check(fyp, rc >= 0, err_out_rc,
@@ -4840,6 +4848,10 @@ int fy_fetch_flow_scalar(struct fy_parser *fyp, int c)
 	fyt = fy_token_queue(fyp, FYTT_SCALAR, &handle, is_single ? FYSS_SINGLE_QUOTED : FYSS_DOUBLE_QUOTED);
 	fyp_error_check(fyp, fyt, err_out_rc,
 			"fy_token_queue() failed");
+
+	/* update style marks */
+	fyt->scalar.style_start = mark;
+	fy_get_mark(fyp, &fyt->scalar.style_end);
 
 	if (fyp->parse_flow_only && fyp->flow_level == 0) {
 		rc = fy_fetch_stream_end(fyp);
