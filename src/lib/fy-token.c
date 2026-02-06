@@ -35,6 +35,30 @@ enum fy_scalar_style fy_token_scalar_style(struct fy_token *fyt)
 	return fy_token_scalar_style_inline(fyt);
 }
 
+enum fy_collection_style fy_token_collection_style(struct fy_token *fyt)
+{
+	if (!fyt)
+		return FYCS_ANY;
+
+	switch (fyt->type) {
+	case FYTT_FLOW_SEQUENCE_START:
+	case FYTT_FLOW_SEQUENCE_END:
+	case FYTT_FLOW_MAPPING_START:
+	case FYTT_FLOW_MAPPING_END:
+		return FYCS_FLOW;
+
+	case FYTT_BLOCK_SEQUENCE_START:
+	case FYTT_BLOCK_MAPPING_START:
+	case FYTT_BLOCK_END:
+		return FYCS_BLOCK;
+
+	default:
+		break;
+	}
+
+	return FYCS_ANY;
+}
+
 enum fy_token_type fy_token_get_type(struct fy_token *fyt)
 {
 	return fy_token_get_type_inline(fyt);
