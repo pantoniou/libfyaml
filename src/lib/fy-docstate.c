@@ -462,3 +462,43 @@ fy_document_state_tag_directives(struct fy_document_state *fyds)
 
 	return tagsp;
 }
+
+int fy_document_state_shorten_tag(struct fy_document_state *fyds,
+		const char *full_tag, size_t full_tag_size,
+		const char **handlep, size_t *handle_sizep,
+		const char **suffixp, size_t *suffix_sizep)
+{
+	const char *td_handle, *td_prefix;
+	size_t td_handle_size, td_prefix_size;
+	struct fy_token *fyt;
+
+	if (!fyds || !full_tag || !handlep || !handle_sizep || !suffixp || !suffix_sizep)
+		return -1;
+
+	if (full_tag_size == FY_NT)
+		full_tag_size = strlen(full_tag);
+
+	for (fyt = fy_token_list_first(&fyds->fyt_td); fyt; fyt = fy_token_next(&fyds->fyt_td, fyt)) {
+
+		td_prefix = fy_tag_directive_token_prefix(fyt, &td_prefix_size);
+		if (!td_prefix)
+			continue;
+
+		if (td_prefix_size < full_tag_size && !memcmp(td_prefix, full_tag, td_prefix_size)) {
+
+			td_handle = fy_tag_directive_token_handle(fyt, &td_handle_size);
+			if (!td_handle)
+				continue;
+
+			*handlep = td_handle;
+			*handle_sizep = td_handle_size;
+			*suffixp = full_tag + td_prefix_size;
+			*suffix_sizep = full_tag_size - td_prefix_size;
+
+			return 0;
+		}
+
+	}
+
+	return -1;
+}

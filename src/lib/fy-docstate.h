@@ -62,4 +62,9 @@ int fy_document_state_merge(struct fy_document_state *fyds,
 struct fy_token *fy_document_state_lookup_tag_directive(struct fy_document_state *fyds,
 		const char *handle, size_t handle_size);
 
+int fy_document_state_shorten_tag(struct fy_document_state *fyds,
+		const char *full_tag, size_t full_tag_size,
+		const char **handlep, size_t *handle_sizep,
+		const char **suffixp, size_t *suffix_sizep);
+
 #endif
