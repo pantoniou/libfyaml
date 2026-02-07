@@ -1406,6 +1406,10 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 
 	ta = fy_token_text_analyze(fyt);
 
+	/* if the style is block and we're a simple scalar key, this is not going to work */
+	if ((style == FYNS_LITERAL || style == FYNS_FOLDED) && (flags & DDNF_SIMPLE_SCALAR_KEY))
+		style = (ta->flags & FYTTAF_CAN_BE_PLAIN) ? FYNS_PLAIN : FYNS_DOUBLE_QUOTED;
+
 	if (flow && (style == FYNS_ANY || style == FYNS_LITERAL || style == FYNS_FOLDED)) {
 
 		/* if there's a linebreak, or ends in a colon, use double quoted style */
