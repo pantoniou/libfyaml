@@ -166,38 +166,49 @@ class TestSafeLoadAll:
 class TestCompose:
     """Test compose() function - returns node tree instead of Python objects."""
 
-    def test_compose_returns_fygeneric(self):
-        """compose() should return FyGeneric node, not Python dict."""
-        import libfyaml as fy
+    def test_compose_returns_node(self):
+        """compose() should return a PyYAML Node object."""
+        from libfyaml.pyyaml_compat.nodes import MappingNode
         node = yaml.compose("foo: bar")
-        assert isinstance(node, fy.FyGeneric)
+        assert isinstance(node, MappingNode)
 
     def test_compose_simple_mapping(self):
-        """compose() returns node that can be converted to Python."""
+        """compose() returns a MappingNode with correct structure."""
+        from libfyaml.pyyaml_compat.nodes import MappingNode, ScalarNode
         node = yaml.compose("foo: bar")
-        # Node should be convertible to Python
-        assert node.to_python() == {'foo': 'bar'}
+        assert isinstance(node, MappingNode)
+        assert len(node.value) == 1
+        key, val = node.value[0]
+        assert isinstance(key, ScalarNode)
+        assert isinstance(val, ScalarNode)
+        assert key.value == 'foo'
+        assert val.value == 'bar'
 
     def test_compose_simple_sequence(self):
         """compose() with sequence."""
+        from libfyaml.pyyaml_compat.nodes import SequenceNode
         node = yaml.compose("[1, 2, 3]")
-        assert node.to_python() == [1, 2, 3]
+        assert isinstance(node, SequenceNode)
+        assert len(node.value) == 3
 
     def test_compose_nested(self):
         """compose() with nested structure."""
+        from libfyaml.pyyaml_compat.nodes import MappingNode
         node = yaml.compose("a:\n  b:\n    c: 1")
-        assert node.to_python() == {'a': {'b': {'c': 1}}}
+        assert isinstance(node, MappingNode)
 
     def test_compose_with_loader(self):
         """compose() accepts Loader parameter."""
+        from libfyaml.pyyaml_compat.nodes import MappingNode
         node = yaml.compose("foo: bar", Loader=yaml.SafeLoader)
-        assert node.to_python() == {'foo': 'bar'}
+        assert isinstance(node, MappingNode)
 
     def test_compose_from_file(self):
         """compose() from file-like object."""
+        from libfyaml.pyyaml_compat.nodes import MappingNode
         stream = io.StringIO("key: value")
         node = yaml.compose(stream)
-        assert node.to_python() == {'key': 'value'}
+        assert isinstance(node, MappingNode)
 
     def test_compose_empty_returns_none(self):
         """compose() with empty string returns None."""
@@ -205,25 +216,25 @@ class TestCompose:
         assert node is None
 
     def test_compose_null_returns_node(self):
-        """compose() with null returns a node representing null (like PyYAML)."""
+        """compose() with null returns a ScalarNode with null tag."""
+        from libfyaml.pyyaml_compat.nodes import ScalarNode
         node = yaml.compose("null")
-        # PyYAML returns ScalarNode(tag='tag:yaml.org,2002:null', value='null')
-        # We return FyGeneric with null value
-        assert node.to_python() is None
+        assert isinstance(node, ScalarNode)
+        assert node.tag == 'tag:yaml.org,2002:null'
 
     def test_compose_empty_mapping(self):
         """compose() with empty mapping."""
-        import libfyaml as fy
+        from libfyaml.pyyaml_compat.nodes import MappingNode
         node = yaml.compose("{}")
-        assert isinstance(node, fy.FyGeneric)
-        assert node.to_python() == {}
+        assert isinstance(node, MappingNode)
+        assert node.value == []
 
     def test_compose_empty_sequence(self):
         """compose() with empty sequence."""
-        import libfyaml as fy
+        from libfyaml.pyyaml_compat.nodes import SequenceNode
         node = yaml.compose("[]")
-        assert isinstance(node, fy.FyGeneric)
-        assert node.to_python() == []
+        assert isinstance(node, SequenceNode)
+        assert node.value == []
 
 
 class TestComposeAll:
@@ -231,18 +242,17 @@ class TestComposeAll:
 
     def test_compose_all_multi_doc(self):
         """compose_all() returns multiple nodes."""
-        import libfyaml as fy
-        nodes = list(yaml.compose_all("---\na: 1\n---\nb: 2\n"))
-        assert len(nodes) == 2
-        assert all(isinstance(n, fy.FyGeneric) for n in nodes)
-        assert nodes[0].to_python() == {'a': 1}
-        assert nodes[1].to_python() == {'b': 2}
+        from libfyaml.pyyaml_compat.nodes import MappingNode
+        result = list(yaml.compose_all("---\na: 1\n---\nb: 2\n"))
+        assert len(result) == 2
+        assert all(isinstance(n, MappingNode) for n in result)
 
     def test_compose_all_single_doc(self):
         """compose_all() with single document."""
-        nodes = list(yaml.compose_all("foo: bar"))
-        assert len(nodes) == 1
-        assert nodes[0].to_python() == {'foo': 'bar'}
+        from libfyaml.pyyaml_compat.nodes import MappingNode
+        result = list(yaml.compose_all("foo: bar"))
+        assert len(result) == 1
+        assert isinstance(result[0], MappingNode)
 
     def test_compose_all_from_file(self):
         """compose_all() from file-like object."""

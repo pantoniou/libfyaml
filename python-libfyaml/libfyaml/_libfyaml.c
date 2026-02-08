@@ -5093,6 +5093,11 @@ libfyaml_stream_parse(PyObject *self, PyObject *args, PyObject *kwargs)
                 py_value = PyUnicode_FromStringAndSize(val_text, val_len);
             else
                 py_value = PyUnicode_FromString("");
+            if (!py_value) {
+                /* Invalid UTF-8 or allocation failure - use empty string */
+                PyErr_Clear();
+                py_value = PyUnicode_FromString("");
+            }
 
             /* Scalar style */
             enum fy_scalar_style ss = fy_token_scalar_style(value_tok);
@@ -5380,6 +5385,10 @@ libfyaml_stream_scan(PyObject *self, PyObject *args, PyObject *kwargs)
             }
             PyObject *py_val = val ? PyUnicode_FromStringAndSize(val, val_len)
                                   : PyUnicode_FromString("");
+            if (!py_val) {
+                PyErr_Clear();
+                py_val = PyUnicode_FromString("");
+            }
             tok = Py_BuildValue("(iOiOOO)", 21, py_val, plain, py_style, py_sm, py_em);
             Py_DECREF(py_val);
             Py_DECREF(py_style);

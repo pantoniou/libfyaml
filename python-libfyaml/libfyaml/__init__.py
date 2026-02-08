@@ -36,6 +36,9 @@ from libfyaml._libfyaml import (
     from_python,
     path_list_to_unix_path,
     unix_path_to_path_list,
+    _parse,
+    _scan,
+    _emit,
 )
 
 import json as _json

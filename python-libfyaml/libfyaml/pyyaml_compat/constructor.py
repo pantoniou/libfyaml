@@ -33,6 +33,22 @@ class BaseConstructor:
         self.state_generators = []
         self.deep_construct = False
 
+    def check_data(self):
+        """Check if there is more data to construct."""
+        return self.check_node()
+
+    def get_data(self):
+        """Construct and return the next document."""
+        if self.check_node():
+            return self.construct_document(self.get_node())
+
+    def get_single_data(self):
+        """Construct and return a single document."""
+        node = self.get_single_node()
+        if node is not None:
+            return self.construct_document(node)
+        return None
+
     def construct_document(self, node):
         """Construct a Python object from a root node."""
         data = self.construct_object(node, deep=True)
