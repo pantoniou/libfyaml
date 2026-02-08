@@ -53,7 +53,13 @@ class BaseResolver:
                 elif isinstance(py_value, int):
                     return 'tag:yaml.org,2002:int'
                 elif isinstance(py_value, float):
-                    return 'tag:yaml.org,2002:float'
+                    # C library treats '.' as float 0.0, but PyYAML treats
+                    # bare '.' as a string
+                    stripped = value.strip()
+                    if stripped == '.':
+                        pass  # Fall through to string
+                    else:
+                        return 'tag:yaml.org,2002:float'
                 # If C library returns string, fall through to check Python-side
                 # implicit resolvers (e.g., timestamp which needs Python datetime)
             except Exception:

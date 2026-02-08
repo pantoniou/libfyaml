@@ -121,6 +121,65 @@ def _try_implicit_timestamp(value):
     return None
 
 
+def _construct_yaml_int(value):
+    """Construct an int from a YAML 1.1 integer string."""
+    value = value.replace('_', '')
+    sign = 1
+    if value.startswith('-'):
+        sign = -1
+        value = value[1:]
+    elif value.startswith('+'):
+        value = value[1:]
+    if value == '0':
+        return 0
+    elif value.startswith('0b'):
+        return sign * int(value[2:], 2)
+    elif value.startswith('0x'):
+        return sign * int(value[2:], 16)
+    elif value.startswith('0o'):
+        return sign * int(value[2:], 8)
+    elif value.startswith('0') and len(value) > 1:
+        # Octal (YAML 1.1 style)
+        return sign * int(value, 8)
+    elif ':' in value:
+        # Sexagesimal (base 60)
+        digits = [int(part) for part in value.split(':')]
+        base = 1
+        result = 0
+        for digit in reversed(digits):
+            result += digit * base
+            base *= 60
+        return sign * result
+    else:
+        return sign * int(value)
+
+
+def _construct_yaml_float(value):
+    """Construct a float from a YAML 1.1 float string."""
+    value = value.replace('_', '').lower()
+    sign = 1
+    if value.startswith('-'):
+        sign = -1
+        value = value[1:]
+    elif value.startswith('+'):
+        value = value[1:]
+    if value == '.inf':
+        return sign * float('inf')
+    elif value == '.nan':
+        return float('nan')
+    elif ':' in value:
+        # Sexagesimal (base 60)
+        digits = [float(part) for part in value.split(':')]
+        base = 1
+        result = 0.0
+        for digit in reversed(digits):
+            result += digit * base
+            base *= 60
+        return sign * result
+    else:
+        return sign * float(value)
+
+
 def _construct_yaml_timestamp(loader, node):
     """Construct a datetime from a YAML timestamp.
 
@@ -166,8 +225,11 @@ def _construct_yaml_binary(loader, node):
     value = value.replace('\n', '').replace('\r', '').replace(' ', '')
     try:
         return base64.b64decode(value)
-    except Exception:
-        return value.encode('utf-8')
+    except Exception as exc:
+        raise ConstructorError(
+            None, None,
+            "failed to decode base64 data: %s" % exc,
+            getattr(node, 'start_mark', None))
 
 
 def _construct_yaml_omap(loader, node):
@@ -178,24 +240,82 @@ def _construct_yaml_omap(loader, node):
     """
     if node is None:
         return []
+    mark = getattr(node, 'start_mark', None)
+
+    # Handle PyYAML SequenceNode
+    if isinstance(node, nodes.SequenceNode):
+        pairs = []
+        for item_node in node.value:
+            if not isinstance(item_node, nodes.MappingNode):
+                raise ConstructorError(
+                    "while constructing an ordered map", mark,
+                    "expected a mapping of length 1, but found %s"
+                    % type(item_node).__name__,
+                    getattr(item_node, 'start_mark', None))
+            if len(item_node.value) != 1:
+                raise ConstructorError(
+                    "while constructing an ordered map", mark,
+                    "expected a single mapping item, but found %d items"
+                    % len(item_node.value),
+                    getattr(item_node, 'start_mark', None))
+            for key_node, value_node in item_node.value:
+                key = loader.construct_object(key_node)
+                value = loader.construct_object(value_node)
+                pairs.append((key, value))
+        return pairs
 
     generic = node._generic if hasattr(node, '_generic') else node
     if hasattr(generic, 'value'):
         generic = generic.value
 
+    # !!omap MUST be a sequence
+    is_seq = False
+    try:
+        is_seq = hasattr(generic, 'is_sequence') and generic.is_sequence()
+    except TypeError:
+        pass
+    if not is_seq and not isinstance(generic, list):
+        raise ConstructorError(
+            "while constructing an ordered map", mark,
+            "expected a sequence, but found %s" % type(generic).__name__, mark)
+
     pairs = []
     if hasattr(generic, 'is_sequence') and generic.is_sequence():
         for item in generic:
-            if hasattr(item, 'is_mapping') and item.is_mapping():
-                for k, v in item.items():
-                    key = k.to_python() if hasattr(k, 'to_python') else k
-                    value = v.to_python() if hasattr(v, 'to_python') else v
-                    pairs.append((key, value))
+            is_map = False
+            try:
+                is_map = hasattr(item, 'is_mapping') and item.is_mapping()
+            except TypeError:
+                pass
+            if not is_map:
+                raise ConstructorError(
+                    "while constructing an ordered map", mark,
+                    "expected a mapping of length 1, but found %s"
+                    % type(item).__name__, mark)
+            item_pairs = list(item.items())
+            if len(item_pairs) != 1:
+                raise ConstructorError(
+                    "while constructing an ordered map", mark,
+                    "expected a single mapping item, but found %d items"
+                    % len(item_pairs), mark)
+            k, v = item_pairs[0]
+            key = k.to_python() if hasattr(k, 'to_python') else k
+            value = v.to_python() if hasattr(v, 'to_python') else v
+            pairs.append((key, value))
     elif isinstance(generic, list):
         for item in generic:
-            if isinstance(item, dict):
-                for k, v in item.items():
-                    pairs.append((k, v))
+            if not isinstance(item, dict):
+                raise ConstructorError(
+                    "while constructing an ordered map", mark,
+                    "expected a mapping of length 1, but found %s"
+                    % type(item).__name__, mark)
+            if len(item) != 1:
+                raise ConstructorError(
+                    "while constructing an ordered map", mark,
+                    "expected a single mapping item, but found %d items"
+                    % len(item), mark)
+            for k, v in item.items():
+                pairs.append((k, v))
     return pairs
 
 
@@ -206,6 +326,14 @@ def _construct_yaml_set(loader, node):
     """
     if node is None:
         return set()
+
+    # Handle PyYAML MappingNode
+    if isinstance(node, nodes.MappingNode):
+        result = set()
+        for key_node, value_node in node.value:
+            key = loader.construct_object(key_node)
+            result.add(key)
+        return result
 
     generic = node._generic if hasattr(node, '_generic') else node
     if hasattr(generic, 'value'):
@@ -228,25 +356,220 @@ def _construct_yaml_pairs(loader, node):
     """
     if node is None:
         return []
+    mark = getattr(node, 'start_mark', None)
+
+    # Handle PyYAML SequenceNode
+    if isinstance(node, nodes.SequenceNode):
+        pairs = []
+        for item_node in node.value:
+            if not isinstance(item_node, nodes.MappingNode):
+                raise ConstructorError(
+                    "while constructing pairs", mark,
+                    "expected a mapping of length 1, but found %s"
+                    % type(item_node).__name__,
+                    getattr(item_node, 'start_mark', None))
+            if len(item_node.value) != 1:
+                raise ConstructorError(
+                    "while constructing pairs", mark,
+                    "expected a single mapping item, but found %d items"
+                    % len(item_node.value),
+                    getattr(item_node, 'start_mark', None))
+            for key_node, value_node in item_node.value:
+                key = loader.construct_object(key_node)
+                value = loader.construct_object(value_node)
+                pairs.append((key, value))
+        return pairs
 
     generic = node._generic if hasattr(node, '_generic') else node
     if hasattr(generic, 'value'):
         generic = generic.value
 
+    # !!pairs MUST be a sequence
+    is_seq = False
+    try:
+        is_seq = hasattr(generic, 'is_sequence') and generic.is_sequence()
+    except TypeError:
+        pass
+    if not is_seq and not isinstance(generic, list):
+        raise ConstructorError(
+            "while constructing pairs", mark,
+            "expected a sequence, but found %s" % type(generic).__name__, mark)
+
     pairs = []
     if hasattr(generic, 'is_sequence') and generic.is_sequence():
         for item in generic:
-            if hasattr(item, 'is_mapping') and item.is_mapping():
-                for k, v in item.items():
-                    key = k.to_python() if hasattr(k, 'to_python') else k
-                    value = v.to_python() if hasattr(v, 'to_python') else v
-                    pairs.append((key, value))
+            is_map = False
+            try:
+                is_map = hasattr(item, 'is_mapping') and item.is_mapping()
+            except TypeError:
+                pass
+            if not is_map:
+                raise ConstructorError(
+                    "while constructing pairs", mark,
+                    "expected a mapping of length 1, but found %s"
+                    % type(item).__name__, mark)
+            item_pairs = list(item.items())
+            if len(item_pairs) != 1:
+                raise ConstructorError(
+                    "while constructing pairs", mark,
+                    "expected a single mapping item, but found %d items"
+                    % len(item_pairs), mark)
+            k, v = item_pairs[0]
+            key = k.to_python() if hasattr(k, 'to_python') else k
+            value = v.to_python() if hasattr(v, 'to_python') else v
+            pairs.append((key, value))
     elif isinstance(generic, list):
         for item in generic:
-            if isinstance(item, dict):
-                for k, v in item.items():
-                    pairs.append((k, v))
+            if not isinstance(item, dict):
+                raise ConstructorError(
+                    "while constructing pairs", mark,
+                    "expected a mapping of length 1, but found %s"
+                    % type(item).__name__, mark)
+            if len(item) != 1:
+                raise ConstructorError(
+                    "while constructing pairs", mark,
+                    "expected a single mapping item, but found %d items"
+                    % len(item), mark)
+            for k, v in item.items():
+                pairs.append((k, v))
     return pairs
+
+
+def _construct_undefined(loader, node):
+    """Raise an error for undefined/unknown tags."""
+    tag = getattr(node, 'tag', None)
+    # Don't raise for standard YAML tags - those are handled by default conversion
+    if tag is None or tag.startswith('tag:yaml.org,2002:'):
+        # Fall through to default conversion
+        generic = node._generic if hasattr(node, '_generic') else node
+        if hasattr(generic, 'to_python'):
+            return generic.to_python()
+        return getattr(node, 'value', None)
+    raise ConstructorError(
+        None, None,
+        "could not determine a constructor for the tag %r" % tag,
+        getattr(node, 'start_mark', None))
+
+
+def _construct_yaml_null(loader, node):
+    """Construct None from a !!null tagged node."""
+    return None
+
+
+def _construct_yaml_bool_tag(loader, node):
+    """Construct a bool from a !!bool tagged node."""
+    value = loader.construct_scalar(node)
+    if isinstance(value, bool):
+        return value
+    return str(value).lower() in ('true', 'yes', 'on', '1')
+
+
+def _construct_yaml_int_tag(loader, node):
+    """Construct an int from a !!int tagged node."""
+    value = loader.construct_scalar(node)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return _construct_yaml_int(str(value))
+
+
+def _construct_yaml_float_tag(loader, node):
+    """Construct a float from a !!float tagged node."""
+    value = loader.construct_scalar(node)
+    if isinstance(value, float):
+        return value
+    return _construct_yaml_float(str(value))
+
+
+def _construct_yaml_seq_tag(loader, node):
+    """Construct a list from a !!seq tagged node."""
+    if isinstance(node, nodes.SequenceNode):
+        # Pre-register empty skeleton for cycle detection
+        result = []
+        if not hasattr(loader, '_constructed_objects'):
+            loader._constructed_objects = {}
+        loader._constructed_objects[id(node)] = result
+        result.extend(loader.construct_sequence(node, deep=True))
+        return result
+    # Check FyGeneric-backed nodes
+    generic = node._generic if hasattr(node, '_generic') else node
+    try:
+        is_seq = hasattr(generic, 'is_sequence') and generic.is_sequence()
+    except TypeError:
+        is_seq = False
+    if not is_seq:
+        node_type = 'scalar'
+        try:
+            if hasattr(generic, 'is_mapping') and generic.is_mapping():
+                node_type = 'mapping'
+        except TypeError:
+            pass
+        raise ConstructorError(
+            None, None,
+            "expected a sequence node, but found %s" % node_type,
+            getattr(node, 'start_mark', None))
+    # Pre-register for cycle detection (FyGeneric path)
+    result = []
+    if not hasattr(loader, '_constructed_objects'):
+        loader._constructed_objects = {}
+    loader._constructed_objects[id(generic)] = result
+    result.extend(loader.construct_sequence(node, deep=True))
+    return result
+
+
+def _construct_yaml_map_tag(loader, node):
+    """Construct a dict from a !!map tagged node."""
+    if isinstance(node, nodes.MappingNode):
+        result = {}
+        if not hasattr(loader, '_constructed_objects'):
+            loader._constructed_objects = {}
+        loader._constructed_objects[id(node)] = result
+        result.update(loader.construct_mapping(node, deep=True))
+        return result
+    # Check FyGeneric-backed nodes
+    generic = node._generic if hasattr(node, '_generic') else node
+    try:
+        is_map = hasattr(generic, 'is_mapping') and generic.is_mapping()
+    except TypeError:
+        is_map = False
+    if not is_map:
+        node_type = 'scalar'
+        try:
+            if hasattr(generic, 'is_sequence') and generic.is_sequence():
+                node_type = 'sequence'
+        except TypeError:
+            pass
+        raise ConstructorError(
+            None, None,
+            "expected a mapping node, but found %s" % node_type,
+            getattr(node, 'start_mark', None))
+    result = {}
+    if not hasattr(loader, '_constructed_objects'):
+        loader._constructed_objects = {}
+    loader._constructed_objects[id(generic)] = result
+    result.update(loader.construct_mapping(node, deep=True))
+    return result
+
+
+def _construct_yaml_str(loader, node):
+    """Construct a string from a !!str tagged node. Must be a scalar."""
+    generic = node._generic if hasattr(node, '_generic') else node
+    is_seq = False
+    is_map = False
+    try:
+        is_seq = hasattr(generic, 'is_sequence') and generic.is_sequence()
+    except TypeError:
+        pass
+    try:
+        is_map = hasattr(generic, 'is_mapping') and generic.is_mapping()
+    except TypeError:
+        pass
+    if is_seq or is_map:
+        node_type = 'sequence' if is_seq else 'mapping'
+        raise ConstructorError(
+            None, None,
+            "expected a scalar node, but found %s" % node_type,
+            getattr(node, 'start_mark', None))
+    return loader.construct_scalar(node)
 
 
 # Representer functions for dump()
@@ -304,6 +627,17 @@ from libfyaml.pyyaml_compat.parser import ParserError
 from libfyaml.pyyaml_compat.composer import ComposerError
 from libfyaml.pyyaml_compat.representer import RepresenterError
 
+
+class SerializerError(YAMLError):
+    """YAML serializer error (e.g., serializer state violations)."""
+    pass
+
+
+class EmitterError(YAMLError):
+    """YAML emitter error (e.g., invalid anchors, tags, event sequence)."""
+    pass
+
+
 # Import Token classes for direct access (yaml.ScalarToken, etc.)
 from libfyaml.pyyaml_compat.tokens import (
     Token, DirectiveToken, DocumentStartToken, DocumentEndToken,
@@ -335,7 +669,227 @@ class BaseLoader:
 
     def __init__(self, stream=None):
         """Initialize loader with optional stream."""
-        self._stream = stream
+        if hasattr(stream, 'read'):
+            self._stream = stream.read()
+        else:
+            self._stream = stream
+        self._events = None
+        self._event_idx = 0
+        self._tokens = None
+        self._token_idx = 0
+        self._resolver = resolver.Resolver()
+        self._anchors = {}
+
+    def _ensure_events(self):
+        if self._events is None:
+            data = self._stream
+            if isinstance(data, bytes):
+                data = _decode_bytes_stream(data)
+            if data is None:
+                data = ''
+            self._events = list(parse(data))
+            self._event_idx = 0
+
+    def _ensure_tokens(self):
+        if self._tokens is None:
+            data = self._stream
+            if isinstance(data, bytes):
+                data = _decode_bytes_stream(data)
+            if data is None:
+                data = ''
+            self._tokens = list(scan(data))
+            self._token_idx = 0
+
+    def check_event(self, *choices):
+        self._ensure_events()
+        if self._event_idx >= len(self._events):
+            return False
+        if not choices:
+            return True
+        return isinstance(self._events[self._event_idx], choices)
+
+    def peek_event(self):
+        self._ensure_events()
+        if self._event_idx < len(self._events):
+            return self._events[self._event_idx]
+        return None
+
+    def get_event(self):
+        self._ensure_events()
+        if self._event_idx < len(self._events):
+            ev = self._events[self._event_idx]
+            self._event_idx += 1
+            return ev
+        return None
+
+    def check_token(self, *choices):
+        self._ensure_tokens()
+        if self._token_idx >= len(self._tokens):
+            return False
+        if not choices:
+            return True
+        return isinstance(self._tokens[self._token_idx], choices)
+
+    def peek_token(self):
+        self._ensure_tokens()
+        if self._token_idx < len(self._tokens):
+            return self._tokens[self._token_idx]
+        return None
+
+    def get_token(self):
+        self._ensure_tokens()
+        if self._token_idx < len(self._tokens):
+            tok = self._tokens[self._token_idx]
+            self._token_idx += 1
+            return tok
+        return None
+
+    def check_node(self):
+        self._ensure_events()
+        # Skip StreamStartEvent
+        if self._event_idx < len(self._events) and \
+                isinstance(self._events[self._event_idx], StreamStartEvent):
+            self._event_idx += 1
+        return self._event_idx < len(self._events) and \
+            not isinstance(self._events[self._event_idx], StreamEndEvent)
+
+    def get_node(self):
+        if not self.check_node():
+            return None
+        return self.compose_node(None, None)
+
+    def get_single_node(self):
+        self._ensure_events()
+        # Skip StreamStartEvent
+        if self._event_idx < len(self._events) and \
+                isinstance(self._events[self._event_idx], StreamStartEvent):
+            self._event_idx += 1
+        # Skip DocumentStartEvent
+        if self._event_idx < len(self._events) and \
+                isinstance(self._events[self._event_idx], DocumentStartEvent):
+            self._event_idx += 1
+        if self._event_idx >= len(self._events) or \
+                isinstance(self._events[self._event_idx], (StreamEndEvent, DocumentEndEvent)):
+            return None
+        node = self.compose_node(None, None)
+        # Skip DocumentEndEvent
+        if self._event_idx < len(self._events) and \
+                isinstance(self._events[self._event_idx], DocumentEndEvent):
+            self._event_idx += 1
+        return node
+
+    def compose_node(self, parent, index):
+        """Compose a Node from the event stream."""
+        self._ensure_events()
+        if self._event_idx >= len(self._events):
+            return None
+
+        # Skip DocumentStartEvent
+        if isinstance(self._events[self._event_idx], DocumentStartEvent):
+            self._event_idx += 1
+
+        ev = self._events[self._event_idx]
+
+        if isinstance(ev, AliasEvent):
+            self._event_idx += 1
+            anchor = ev.anchor
+            if hasattr(self, '_anchors') and anchor in self._anchors:
+                return self._anchors[anchor]
+            return ScalarNode(tag='tag:yaml.org,2002:null', value='',
+                              start_mark=ev.start_mark, end_mark=ev.end_mark)
+
+        anchor = getattr(ev, 'anchor', None)
+
+        if isinstance(ev, ScalarEvent):
+            self._event_idx += 1
+            tag = ev.tag
+            if tag is None or tag == '!':
+                # Use resolver for implicit tag resolution
+                implicit = ev.implicit if ev.implicit else (True, False)
+                if hasattr(self, '_resolver') and self._resolver:
+                    tag = self._resolver.resolve(ScalarNode, ev.value, implicit)
+                else:
+                    tag = resolver.Resolver().resolve(ScalarNode, ev.value, implicit)
+            node = ScalarNode(tag=tag, value=ev.value,
+                              start_mark=ev.start_mark, end_mark=ev.end_mark,
+                              style=ev.style)
+            if anchor is not None:
+                if not hasattr(self, '_anchors'):
+                    self._anchors = {}
+                self._anchors[anchor] = node
+            return node
+        elif isinstance(ev, SequenceStartEvent):
+            self._event_idx += 1
+            tag = ev.tag
+            if tag is None or tag == '!':
+                tag = 'tag:yaml.org,2002:seq'
+            node = SequenceNode(tag=tag, value=[],
+                                start_mark=ev.start_mark, end_mark=ev.end_mark,
+                                flow_style=ev.flow_style)
+            if anchor is not None:
+                if not hasattr(self, '_anchors'):
+                    self._anchors = {}
+                self._anchors[anchor] = node
+            while self._event_idx < len(self._events) and \
+                    not isinstance(self._events[self._event_idx], SequenceEndEvent):
+                item = self.compose_node(node, len(node.value))
+                if item is not None:
+                    node.value.append(item)
+            if self._event_idx < len(self._events):
+                node.end_mark = self._events[self._event_idx].end_mark
+                self._event_idx += 1  # skip SequenceEndEvent
+            return node
+        elif isinstance(ev, MappingStartEvent):
+            self._event_idx += 1
+            tag = ev.tag
+            if tag is None or tag == '!':
+                tag = 'tag:yaml.org,2002:map'
+            node = MappingNode(tag=tag, value=[],
+                               start_mark=ev.start_mark, end_mark=ev.end_mark,
+                               flow_style=ev.flow_style)
+            if anchor is not None:
+                if not hasattr(self, '_anchors'):
+                    self._anchors = {}
+                self._anchors[anchor] = node
+            while self._event_idx < len(self._events) and \
+                    not isinstance(self._events[self._event_idx], MappingEndEvent):
+                key = self.compose_node(node, None)
+                value = self.compose_node(node, key)
+                if key is not None and value is not None:
+                    node.value.append((key, value))
+            if self._event_idx < len(self._events):
+                node.end_mark = self._events[self._event_idx].end_mark
+                self._event_idx += 1  # skip MappingEndEvent
+            return node
+        elif isinstance(ev, AliasEvent):
+            self._event_idx += 1
+            return ScalarNode('tag:yaml.org,2002:null', '',
+                              start_mark=ev.start_mark, end_mark=ev.end_mark)
+        elif isinstance(ev, (DocumentEndEvent, StreamEndEvent)):
+            return None
+        else:
+            self._event_idx += 1
+            return None
+
+    def get_data(self):
+        """Construct and return the next document."""
+        node = self.get_node()
+        if node is not None:
+            return self.construct_document(node) if hasattr(self, 'construct_document') else \
+                self.construct_object(node, deep=True)
+        return None
+
+    def get_single_data(self):
+        """Construct and return a single document."""
+        node = self.get_single_node()
+        if node is not None:
+            return self.construct_document(node) if hasattr(self, 'construct_document') else \
+                self.construct_object(node, deep=True)
+        return None
+
+    def dispose(self):
+        """Clean up resources."""
+        pass
 
     @classmethod
     def add_constructor(cls, tag, constructor_func):
@@ -356,16 +910,39 @@ class BaseLoader:
         """Construct a scalar value from a node.
 
         Args:
-            node: A _NodeWrapper or FyGeneric node
+            node: A _NodeWrapper, FyGeneric, or PyYAML Node
 
         Returns:
             The scalar value (str, int, float, bool, or None)
         """
         if node is None:
             return ''
-        # Handle _NodeWrapper
+        # Handle PyYAML MappingNode — look for '=' default value key
+        if isinstance(node, nodes.MappingNode):
+            for key_node, value_node in node.value:
+                if key_node.tag == 'tag:yaml.org,2002:value' or \
+                   (isinstance(key_node, nodes.ScalarNode) and key_node.value == '='):
+                    return self.construct_scalar(value_node)
+            return ''
+        # Handle PyYAML Node objects (ScalarNode has .id == 'scalar')
+        if isinstance(node, nodes.ScalarNode):
+            return node.value
+        # Handle _NodeWrapper — check for mapping with '=' key
         if hasattr(node, '_generic'):
-            return node._generic.to_python()
+            generic = node._generic
+            try:
+                is_map = hasattr(generic, 'is_mapping') and generic.is_mapping()
+            except TypeError:
+                is_map = False
+            if is_map:
+                try:
+                    for k, v in generic.items():
+                        if k == '=':
+                            return v
+                except TypeError:
+                    pass
+                return ''
+            return generic.to_python()
         # Handle FyGeneric directly
         if hasattr(node, 'to_python'):
             return node.to_python()
@@ -411,7 +988,7 @@ class BaseLoader:
         """Construct a mapping (dict) from a node.
 
         Args:
-            node: A _NodeWrapper or FyGeneric mapping node
+            node: A _NodeWrapper, FyGeneric mapping node, or PyYAML MappingNode
             deep: If True, recursively construct nested objects
 
         Returns:
@@ -419,6 +996,23 @@ class BaseLoader:
         """
         if node is None:
             return {}
+
+        # Handle PyYAML MappingNode objects
+        if isinstance(node, nodes.MappingNode):
+            mapping = {}
+            for key_node, value_node in node.value:
+                key = self.construct_object(key_node, deep=deep)
+                try:
+                    hash(key)
+                except TypeError as exc:
+                    raise ConstructorError(
+                        "while constructing a mapping", node.start_mark,
+                        "found unhashable key", key_node.start_mark,
+                    ) from exc
+                value = self.construct_object(value_node, deep=deep)
+                mapping[key] = value
+            return mapping
+
         generic = self._get_generic(node)
 
         if hasattr(generic, 'is_mapping') and generic.is_mapping():
@@ -459,7 +1053,7 @@ class BaseLoader:
         """Construct a sequence (list) from a node.
 
         Args:
-            node: A _NodeWrapper or FyGeneric sequence node
+            node: A _NodeWrapper, FyGeneric sequence node, or PyYAML SequenceNode
             deep: If True, recursively construct nested objects
 
         Returns:
@@ -467,6 +1061,11 @@ class BaseLoader:
         """
         if node is None:
             return []
+
+        # Handle PyYAML SequenceNode objects
+        if isinstance(node, nodes.SequenceNode):
+            return [self.construct_object(child, deep=deep) for child in node.value]
+
         generic = self._get_generic(node)
 
         try:
@@ -497,23 +1096,23 @@ class BaseLoader:
         return []
 
     def construct_object(self, node, deep=False):
-        """Construct a Python object from a node.
-
-        This is the main entry point for constructing objects. It checks
-        for registered constructors and dispatches appropriately.
-
-        Args:
-            node: A _NodeWrapper or FyGeneric node
-            deep: If True, recursively construct nested objects
-
-        Returns:
-            The constructed Python object
-        """
+        """Construct a Python object from a node."""
         if node is None:
             return None
 
+        # Fast path for PyYAML Node objects (from streaming compose)
+        if isinstance(node, nodes.Node):
+            return self._construct_from_node(node, deep=deep)
+
         # Get the generic
         generic = self._get_generic(node)
+
+        # Cycle detection for anchor/alias (same FyGeneric object)
+        if not hasattr(self, '_constructed_objects'):
+            self._constructed_objects = {}
+        generic_id = id(generic)
+        if generic_id in self._constructed_objects:
+            return self._constructed_objects[generic_id]
 
         # Get tag
         tag = None
@@ -578,6 +1177,14 @@ class BaseLoader:
                     "expected a sequence node, but found %s" % node_type,
                     mark,
                 )
+            # Raise for truly undefined/unknown tags (not standard YAML tags)
+            if not tag.startswith('tag:yaml.org,2002:'):
+                mark = self._get_start_mark(node)
+                raise ConstructorError(
+                    None, None,
+                    "could not determine a constructor for the tag %r" % tag,
+                    mark,
+                )
 
         # Default: convert based on type
         # Guard all hasattr calls with try/except TypeError for FyGeneric C objects
@@ -624,10 +1231,114 @@ class BaseLoader:
             return node.value
         return node
 
+    def _construct_from_node(self, node, deep=False):
+        """Construct a Python object from a PyYAML Node."""
+        if not hasattr(self, '_constructed_objects'):
+            self._constructed_objects = {}
+        node_id = id(node)
+        if node_id in self._constructed_objects:
+            return self._constructed_objects[node_id]
+        tag = node.tag
+        result = None
+        found = False
+
+        # Check for exact tag match in constructors
+        if tag and tag in self.yaml_constructors:
+            constructor = self.yaml_constructors[tag]
+            result = constructor(self, node)
+            found = True
+
+        # Check for multi-constructors (tag prefix matches)
+        if not found and tag and self.yaml_multi_constructors:
+            for prefix, multi_constructor in self.yaml_multi_constructors.items():
+                if prefix and tag.startswith(prefix):
+                    result = multi_constructor(self, tag[len(prefix):], node)
+                    found = True
+                    break
+            if not found and None in self.yaml_multi_constructors:
+                multi_constructor = self.yaml_multi_constructors[None]
+                result = multi_constructor(self, tag, node)
+                found = True
+
+        # Check for None tag constructor (catch-all)
+        if not found and None in self.yaml_constructors:
+            constructor = self.yaml_constructors[None]
+            result = constructor(self, node)
+            found = True
+
+        if not found:
+            # Handle standard YAML tags for scalars
+            if isinstance(node, nodes.ScalarNode) and tag:
+                value = node.value
+                if tag in ('tag:yaml.org,2002:str', '!!str'):
+                    result = value; found = True
+                elif tag in ('tag:yaml.org,2002:null', '!!null'):
+                    result = None; found = True
+                elif tag in ('tag:yaml.org,2002:bool', '!!bool'):
+                    result = value.lower() in ('true', 'yes', 'on'); found = True
+                elif tag in ('tag:yaml.org,2002:int', '!!int'):
+                    result = _construct_yaml_int(value); found = True
+                elif tag in ('tag:yaml.org,2002:float', '!!float'):
+                    result = _construct_yaml_float(value); found = True
+
+        if not found:
+            # Handle standard collection tags
+            if tag in ('tag:yaml.org,2002:map', '!!map'):
+                if isinstance(node, nodes.MappingNode):
+                    result = self.construct_mapping(node, deep=deep); found = True
+                else:
+                    node_type = getattr(node, 'id', 'scalar')
+                    raise ConstructorError(
+                        None, None,
+                        "expected a mapping node, but found %s" % node_type,
+                        node.start_mark,
+                    )
+            elif tag in ('tag:yaml.org,2002:seq', '!!seq'):
+                if isinstance(node, nodes.SequenceNode):
+                    result = self.construct_sequence(node, deep=deep); found = True
+                else:
+                    node_type = getattr(node, 'id', 'scalar')
+                    raise ConstructorError(
+                        None, None,
+                        "expected a sequence node, but found %s" % node_type,
+                        node.start_mark,
+                    )
+
+        if not found:
+            # Raise for truly undefined/unknown tags (not standard YAML tags)
+            if tag and not tag.startswith('tag:yaml.org,2002:'):
+                raise ConstructorError(
+                    None, None,
+                    "could not determine a constructor for the tag %r" % tag,
+                    node.start_mark,
+                )
+
+            # Default: dispatch based on node type
+            if isinstance(node, nodes.MappingNode):
+                result = self.construct_mapping(node, deep=deep)
+            elif isinstance(node, nodes.SequenceNode):
+                result = self.construct_sequence(node, deep=deep)
+            elif isinstance(node, nodes.ScalarNode):
+                result = self.construct_scalar(node)
+            else:
+                result = node.value
+
+        # Register for alias/cycle detection
+        if node_id not in self._constructed_objects:
+            self._constructed_objects[node_id] = result
+        return result
+
     def construct_pairs(self, node, deep=False):
         """Construct a list of (key, value) pairs from a mapping node."""
         if node is None:
             return []
+
+        # Handle PyYAML MappingNode objects
+        if isinstance(node, nodes.MappingNode):
+            return [(self.construct_object(key_node, deep=deep),
+                     self.construct_object(value_node, deep=deep))
+                    for key_node, value_node in node.value]
+
         generic = self._get_generic(node)
 
         try:
@@ -701,38 +1412,368 @@ class SafeLoader(BaseLoader):
     - !!pairs (list of pairs)
     """
     yaml_constructors = {
-        # Standard YAML 1.1 tags
+        # Standard YAML 1.1 tags — all types must be registered so that
+        # custom catch-all (None) constructors don't accidentally receive
+        # standard-tagged nodes (e.g. EventsLoader expects only custom tags).
+        'tag:yaml.org,2002:null': _construct_yaml_null,
+        'tag:yaml.org,2002:bool': _construct_yaml_bool_tag,
+        'tag:yaml.org,2002:int': _construct_yaml_int_tag,
+        'tag:yaml.org,2002:float': _construct_yaml_float_tag,
+        'tag:yaml.org,2002:str': _construct_yaml_str,
+        'tag:yaml.org,2002:seq': _construct_yaml_seq_tag,
+        'tag:yaml.org,2002:map': _construct_yaml_map_tag,
         'tag:yaml.org,2002:binary': _construct_yaml_binary,
         'tag:yaml.org,2002:timestamp': _construct_yaml_timestamp,
         'tag:yaml.org,2002:set': _construct_yaml_set,
         'tag:yaml.org,2002:omap': _construct_yaml_omap,
         'tag:yaml.org,2002:pairs': _construct_yaml_pairs,
-        # Short forms
-        '!!binary': _construct_yaml_binary,
-        '!!timestamp': _construct_yaml_timestamp,
-        '!!set': _construct_yaml_set,
-        '!!omap': _construct_yaml_omap,
-        '!!pairs': _construct_yaml_pairs,
     }
     yaml_multi_constructors = {}
+
+
+def _construct_python_tag(loader, suffix, node):
+    """Handle !!python/* tags with validation.
+
+    Supports basic Python types and validates Python-specific tags.
+    """
+    mark = getattr(node, 'start_mark', None)
+    generic = node._generic if hasattr(node, '_generic') else node
+
+    # Check node type
+    is_scalar = True
+    is_seq = False
+    is_map = False
+    try:
+        if hasattr(generic, 'is_mapping') and generic.is_mapping():
+            is_scalar = False
+            is_map = True
+        elif hasattr(generic, 'is_sequence') and generic.is_sequence():
+            is_scalar = False
+            is_seq = True
+    except TypeError:
+        pass
+
+    # Basic Python types - value may already be converted by C library
+    if suffix in ('bool', 'bool:True', 'bool:False'):
+        value = loader.construct_scalar(node)
+        if isinstance(value, bool):
+            return value
+        return str(value).lower() in ('true', 'yes', '1', 'on')
+    elif suffix == 'none' or suffix == 'none:':
+        return None
+    elif suffix.startswith('int:') or suffix == 'int':
+        value = loader.construct_scalar(node)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+        value = str(value)
+        if suffix.startswith('int:'):
+            value = suffix[4:]
+        return int(value.strip())
+    elif suffix.startswith('float:') or suffix == 'float':
+        value = loader.construct_scalar(node)
+        if isinstance(value, float):
+            return value
+        value = str(value)
+        if suffix.startswith('float:'):
+            value = suffix[6:]
+        return float(value.strip())
+    elif suffix.startswith('complex:') or suffix == 'complex':
+        value = loader.construct_scalar(node)
+        if isinstance(value, complex):
+            return value
+        value = str(value)
+        if suffix.startswith('complex:'):
+            value = suffix[8:]
+        return complex(value.strip())
+    elif suffix.startswith('str:') or suffix == 'str':
+        value = loader.construct_scalar(node)
+        return str(value) if value is not None else ''
+    elif suffix.startswith('unicode:') or suffix == 'unicode':
+        value = loader.construct_scalar(node)
+        return str(value) if value is not None else ''
+    elif suffix.startswith('long:') or suffix == 'long':
+        value = loader.construct_scalar(node)
+        if isinstance(value, int):
+            return value
+        value = str(value)
+        if suffix.startswith('long:'):
+            value = suffix[5:]
+        return int(value.strip())
+    elif suffix == 'tuple':
+        if isinstance(node, nodes.SequenceNode):
+            return tuple(loader.construct_sequence(node, deep=True))
+        items = loader.construct_sequence(node, deep=True)
+        return tuple(items) if isinstance(items, list) else (items,)
+    elif suffix == 'list':
+        return loader.construct_sequence(node, deep=True)
+    elif suffix == 'dict':
+        return loader.construct_mapping(node, deep=True)
+
+    elif suffix.startswith('name:'):
+        name = suffix[5:]
+        if not name:
+            raise ConstructorError(
+                "while constructing a Python name", mark,
+                "expected non-empty name", mark)
+        if not is_scalar:
+            raise ConstructorError(
+                "while constructing a Python name", mark,
+                "expected a scalar node, but found non-scalar", mark)
+        value = loader.construct_scalar(node)
+        if value:
+            raise ConstructorError(
+                "while constructing a Python name", mark,
+                "expected the empty value, but found %r" % value, mark)
+        if '.' not in name:
+            # Try builtin first
+            import builtins
+            if hasattr(builtins, name):
+                return getattr(builtins, name)
+            raise ConstructorError(
+                "while constructing a Python name", mark,
+                "expected a module name separated by '.'", mark)
+        module_name, attr_name = name.rsplit('.', 1)
+        try:
+            import importlib
+            module = importlib.import_module(module_name)
+        except ImportError as exc:
+            raise ConstructorError(
+                "while constructing a Python name", mark,
+                "cannot find module %r (%s)" % (module_name, exc), mark)
+        if not hasattr(module, attr_name):
+            raise ConstructorError(
+                "while constructing a Python name", mark,
+                "module %r has no attribute %r" % (module_name, attr_name), mark)
+        return getattr(module, attr_name)
+
+    elif suffix.startswith('module:'):
+        module_name = suffix[7:]
+        if not module_name:
+            raise ConstructorError(
+                "while constructing a Python module", mark,
+                "expected non-empty module name", mark)
+        if not is_scalar:
+            raise ConstructorError(
+                "while constructing a Python module", mark,
+                "expected a scalar node, but found non-scalar", mark)
+        value = loader.construct_scalar(node)
+        if value:
+            raise ConstructorError(
+                "while constructing a Python module", mark,
+                "expected the empty value, but found %r" % value, mark)
+        try:
+            import importlib
+            return importlib.import_module(module_name)
+        except ImportError as exc:
+            raise ConstructorError(
+                "while constructing a Python module", mark,
+                "cannot find module %r (%s)" % (module_name, exc), mark)
+
+    elif suffix == 'bytes':
+        value = loader.construct_scalar(node)
+        if isinstance(value, bytes):
+            return value
+        value = value.replace('\n', '').replace('\r', '').replace(' ', '')
+        try:
+            return base64.b64decode(value)
+        except Exception as exc:
+            raise ConstructorError(
+                "while constructing Python bytes", mark,
+                "failed to decode base64 data: %s" % exc, mark)
+
+    elif suffix.startswith('object/new:'):
+        cls_name = suffix[11:]
+        # Resolve class and construct
+        return _construct_python_object_new(loader, cls_name, node, mark)
+
+    elif suffix.startswith('object/apply:'):
+        cls_name = suffix[13:]
+        return _construct_python_object_apply(loader, cls_name, node, mark)
+
+    elif suffix.startswith('object:'):
+        cls_name = suffix[7:]
+        return _construct_python_object(loader, cls_name, node, mark)
+
+    else:
+        raise ConstructorError(
+            None, None,
+            "could not determine a constructor for the tag "
+            "'tag:yaml.org,2002:python/%s'" % suffix, mark)
+
+
+def _resolve_python_class(cls_name, mark):
+    """Resolve a Python class name like 'module.Class' to the actual class."""
+    parts = cls_name.rsplit('.', 1)
+    if len(parts) < 2:
+        raise ConstructorError(
+            "while constructing a Python object", mark,
+            "expected a module name separated by '.'", mark)
+    module_name, attr_name = parts
+    try:
+        import importlib
+        module = importlib.import_module(module_name)
+    except ImportError as exc:
+        raise ConstructorError(
+            "while constructing a Python object", mark,
+            "cannot find module %r (%s)" % (module_name, exc), mark)
+    if not hasattr(module, attr_name):
+        raise ConstructorError(
+            "while constructing a Python object", mark,
+            "module %r has no attribute %r" % (module_name, attr_name), mark)
+    return getattr(module, attr_name)
+
+
+def _construct_python_object(loader, cls_name, node, mark):
+    """Construct !!python/object:cls_name from a mapping node."""
+    cls = _resolve_python_class(cls_name, mark)
+    deep = True  # need deep for __setstate__ check
+    state = loader.construct_mapping(node, deep=deep)
+    instance = cls.__new__(cls)
+    _set_python_instance_state(loader, instance, state)
+    return instance
+
+
+def _set_python_instance_state(loader, instance, state, unsafe=False):
+    """Set instance state, with optional blacklist checking for FullLoader."""
+    if hasattr(instance, '__setstate__'):
+        instance.__setstate__(state)
+    else:
+        slotstate = {}
+        if isinstance(state, tuple) and len(state) == 2:
+            state, slotstate = state
+        if hasattr(instance, '__dict__'):
+            if not unsafe and state and isinstance(state, dict):
+                if hasattr(loader, 'check_state_key'):
+                    for key in state.keys():
+                        loader.check_state_key(key)
+            if isinstance(state, dict):
+                instance.__dict__.update(state)
+        elif state:
+            slotstate.update(state) if isinstance(state, dict) and isinstance(slotstate, dict) else None
+        if isinstance(slotstate, dict):
+            for key, value in slotstate.items():
+                if not unsafe and hasattr(loader, 'check_state_key'):
+                    loader.check_state_key(key)
+                setattr(instance, key, value)
+
+
+def _construct_python_object_new(loader, cls_name, node, mark):
+    """Construct !!python/object/new:cls_name from a mapping or sequence node."""
+    cls = _resolve_python_class(cls_name, mark)
+    # If it's a sequence node, treat it as args directly
+    if isinstance(node, nodes.SequenceNode):
+        args = loader.construct_sequence(node, deep=True)
+        instance = cls.__new__(cls, *args)
+        if hasattr(loader, '_constructed_objects'):
+            loader._constructed_objects[id(node)] = instance
+        return instance
+    # Check if it's a sequence-type FyGeneric
+    generic = node._generic if hasattr(node, '_generic') else node
+    try:
+        is_seq = hasattr(generic, 'is_sequence') and generic.is_sequence()
+    except TypeError:
+        is_seq = False
+    if is_seq:
+        args = loader.construct_sequence(node, deep=True)
+        instance = cls.__new__(cls, *args)
+        if hasattr(loader, '_constructed_objects'):
+            loader._constructed_objects[id(node)] = instance
+        return instance
+    # Create instance skeleton first, register for alias detection,
+    # then fill state (which may reference this instance via aliases)
+    instance = cls.__new__(cls)
+    if hasattr(loader, '_constructed_objects'):
+        loader._constructed_objects[id(node)] = instance
+    mapping = loader.construct_mapping(node, deep=True)
+    args = mapping.get('args') or []
+    kwargs = mapping.get('kwds') or {}
+    state = mapping.get('state') or {}
+    listitems = mapping.get('listitems') or []
+    dictitems = mapping.get('dictitems') or {}
+    # Re-create with args/kwargs if provided
+    if args or kwargs:
+        instance = cls.__new__(cls, *args, **kwargs)
+        if hasattr(loader, '_constructed_objects'):
+            loader._constructed_objects[id(node)] = instance
+    if state:
+        _set_python_instance_state(loader, instance, state)
+    if listitems:
+        instance.extend(listitems)
+    if dictitems:
+        for key, value in dictitems.items():
+            instance[key] = value
+    return instance
+
+
+def _construct_python_object_apply(loader, cls_name, node, mark):
+    """Construct !!python/object/apply:cls_name from a mapping or sequence node."""
+    cls = _resolve_python_class(cls_name, mark)
+    # If it's a sequence node, treat it as args directly
+    if isinstance(node, nodes.SequenceNode):
+        args = loader.construct_sequence(node, deep=True)
+        return cls(*args)
+    generic = node._generic if hasattr(node, '_generic') else node
+    try:
+        is_seq = hasattr(generic, 'is_sequence') and generic.is_sequence()
+    except TypeError:
+        is_seq = False
+    if is_seq:
+        args = loader.construct_sequence(node, deep=True)
+        return cls(*args)
+    mapping = loader.construct_mapping(node, deep=True)
+    args = mapping.get('args') or []
+    kwargs = mapping.get('kwds') or {}
+    state = mapping.get('state') or {}
+    listitems = mapping.get('listitems') or []
+    dictitems = mapping.get('dictitems') or {}
+    instance = cls(*args, **kwargs)
+    if state:
+        _set_python_instance_state(loader, instance, state)
+    if listitems:
+        instance.extend(listitems)
+    if dictitems:
+        for key in dictitems:
+            instance[key] = dictitems[key]
+    return instance
 
 
 class FullLoader(SafeLoader):
     """Full loader class for PyYAML API compatibility."""
     yaml_constructors = SafeLoader.yaml_constructors.copy()
-    yaml_multi_constructors = {}
+    yaml_multi_constructors = {
+        'tag:yaml.org,2002:python/': _construct_python_tag,
+    }
+
+    def get_state_keys_blacklist(self):
+        return ['^extend$', '^__.*__$']
+
+    def get_state_keys_blacklist_regexp(self):
+        if not hasattr(self, 'state_keys_blacklist_regexp'):
+            self.state_keys_blacklist_regexp = re.compile(
+                '(' + '|'.join(self.get_state_keys_blacklist()) + ')')
+        return self.state_keys_blacklist_regexp
+
+    def check_state_key(self, key):
+        if self.get_state_keys_blacklist_regexp().match(key):
+            raise ConstructorError(
+                None, None,
+                "blacklisted key %r in instance state found" % key, None)
 
 
 class UnsafeLoader(SafeLoader):
     """Unsafe loader class for PyYAML API compatibility."""
     yaml_constructors = SafeLoader.yaml_constructors.copy()
-    yaml_multi_constructors = {}
+    yaml_multi_constructors = {
+        'tag:yaml.org,2002:python/': _construct_python_tag,
+    }
 
 
 class Loader(SafeLoader):
     """Default loader class (same as SafeLoader in our safe implementation)."""
     yaml_constructors = SafeLoader.yaml_constructors.copy()
-    yaml_multi_constructors = {}
+    yaml_multi_constructors = {
+        'tag:yaml.org,2002:python/': _construct_python_tag,
+    }
 
 
 # C-accelerated versions (same as regular versions in libfyaml)
@@ -768,6 +1809,33 @@ def add_multi_constructor(tag_prefix, multi_constructor, Loader=None):
     if Loader is None:
         Loader = globals()['Loader']
     Loader.add_multi_constructor(tag_prefix, multi_constructor)
+
+
+def add_implicit_resolver(tag, regexp, first=None, Loader=None, Dumper=None):
+    """Add an implicit resolver based on a regular expression."""
+    from libfyaml.pyyaml_compat.resolver import Resolver as _Resolver
+    if Loader is not None:
+        if hasattr(Loader, 'add_implicit_resolver'):
+            Loader.add_implicit_resolver(tag, regexp, first)
+        elif issubclass(Loader, BaseLoader):
+            _Resolver.add_implicit_resolver(tag, regexp, first)
+    else:
+        _Resolver.add_implicit_resolver(tag, regexp, first)
+
+
+def add_path_resolver(tag, path, kind=None, Loader=None, Dumper=None):
+    """Add a path-based resolver for the given tag.
+
+    Note: Path resolvers are not fully supported in the libfyaml compatibility
+    layer. This function stores the mapping but the resolver doesn't use it yet.
+    """
+    from libfyaml.pyyaml_compat.resolver import Resolver as _Resolver
+    if Loader is not None and hasattr(Loader, 'add_path_resolver'):
+        Loader.add_path_resolver(tag, path, kind)
+    else:
+        _Resolver.add_path_resolver(tag, path, kind)
+    if Dumper is not None and hasattr(Dumper, 'add_path_resolver'):
+        Dumper.add_path_resolver(tag, path, kind)
 
 
 def add_representer(data_type, representer, Dumper=None):
@@ -877,6 +1945,115 @@ class BaseDumper:
         self._version = version
         self._tags = tags
         self._sort_keys = sort_keys
+        self._events = []
+        self._serialized_nodes = {}
+        self._anchors = {}
+        self._anchor_count = 0
+        self._opened = False
+        self._closed = False
+        self._represented_objects = {}
+        self.alias_key = None
+
+    def ignore_aliases(self, data):
+        """Return True if aliases should not be used for this data."""
+        if data is None:
+            return True
+        if isinstance(data, (str, bytes, bool, int, float)):
+            return True
+        return False
+
+    def open(self):
+        if self._closed:
+            raise SerializerError("serializer is closed")
+        if self._opened:
+            raise SerializerError("serializer is already opened")
+        self._opened = True
+        self._events.append(StreamStartEvent())
+
+    def close(self):
+        if self._closed:
+            raise SerializerError("serializer is closed")
+        if not self._opened:
+            raise SerializerError("serializer is not opened")
+        self._events.append(StreamEndEvent())
+        self._closed = True
+
+    def represent(self, data):
+        """Represent data and emit as YAML."""
+        node = self.represent_data(data)
+        self.serialize(node)
+
+    ANCHOR_TEMPLATE = 'id%03d'
+
+    def serialize(self, node):
+        """Serialize a Node to the stream."""
+        if self._closed:
+            raise SerializerError("serializer is closed")
+        if not self._opened:
+            raise SerializerError("serializer is not opened")
+        self._events.append(DocumentStartEvent(explicit=self._explicit_start))
+        self._anchor_node(node)
+        self._serialize_node(node)
+        self._events.append(DocumentEndEvent(explicit=self._explicit_end))
+        self._serialized_nodes = {}
+        self._anchors = {}
+        self._anchor_count = 0
+
+    def _anchor_node(self, node):
+        """Pre-pass to detect nodes appearing more than once."""
+        node_id = id(node)
+        if node_id in self._anchors:
+            if self._anchors[node_id] is None:
+                self._anchor_count += 1
+                self._anchors[node_id] = self.ANCHOR_TEMPLATE % self._anchor_count
+        else:
+            self._anchors[node_id] = None
+            if isinstance(node, SequenceNode):
+                for item in node.value:
+                    self._anchor_node(item)
+            elif isinstance(node, MappingNode):
+                for key_node, val_node in node.value:
+                    self._anchor_node(key_node)
+                    self._anchor_node(val_node)
+
+    def _serialize_node(self, node):
+        node_id = id(node)
+        anchor = self._anchors.get(node_id)
+        if node_id in self._serialized_nodes:
+            self._events.append(AliasEvent(anchor=anchor))
+            return
+        self._serialized_nodes[node_id] = True
+        if isinstance(node, ScalarNode):
+            tag = node.tag
+            implicit = (tag is None or tag == 'tag:yaml.org,2002:str', tag is None)
+            style = getattr(node, 'style', None)
+            self._events.append(ScalarEvent(
+                anchor=anchor, tag=tag, implicit=implicit,
+                value=node.value, style=style))
+        elif isinstance(node, SequenceNode):
+            tag = node.tag
+            implicit = tag is None or tag == 'tag:yaml.org,2002:seq'
+            flow_style = getattr(node, 'flow_style', None)
+            self._events.append(SequenceStartEvent(
+                anchor=anchor, tag=tag, implicit=implicit,
+                flow_style=flow_style))
+            for item in node.value:
+                self._serialize_node(item)
+            self._events.append(SequenceEndEvent())
+        elif isinstance(node, MappingNode):
+            tag = node.tag
+            implicit = tag is None or tag == 'tag:yaml.org,2002:map'
+            flow_style = getattr(node, 'flow_style', None)
+            self._events.append(MappingStartEvent(
+                anchor=anchor, tag=tag, implicit=implicit,
+                flow_style=flow_style))
+            for key_node, val_node in node.value:
+                self._serialize_node(key_node)
+                self._serialize_node(val_node)
+            self._events.append(MappingEndEvent())
+
+    def dispose(self):
+        pass
 
     @classmethod
     def add_representer(cls, data_type, representer_func):
@@ -899,64 +2076,87 @@ class BaseDumper:
 
         This is the main entry point for representation. It checks for
         registered representers and dispatches appropriately.
-
-        Args:
-            data: Python object to represent
-
-        Returns:
-            Represented data (potentially modified by representer)
+        Tracks object identity for alias detection (circular references).
         """
+        if self.ignore_aliases(data):
+            alias_key = None
+        else:
+            alias_key = id(data)
+        if alias_key is not None:
+            if alias_key in self._represented_objects:
+                return self._represented_objects[alias_key]
+        self.alias_key = alias_key
+
         data_type = type(data)
 
         # Check for exact type match first
         if data_type in self.yaml_representers:
-            representer = self.yaml_representers[data_type]
-            return representer(self, data)
-
-        # Handle basic scalar types before checking multi_representers
-        # This prevents strings from matching Sequence multi_representers
-        if data is None:
-            return ScalarNode('tag:yaml.org,2002:null', 'null')
+            node = self.yaml_representers[data_type](self, data)
+        elif data is None:
+            node = ScalarNode('tag:yaml.org,2002:null', 'null')
         elif data_type is bool:
-            return ScalarNode('tag:yaml.org,2002:bool', 'true' if data else 'false')
+            node = ScalarNode('tag:yaml.org,2002:bool', 'true' if data else 'false')
         elif data_type is int:
-            return ScalarNode('tag:yaml.org,2002:int', str(data))
+            node = ScalarNode('tag:yaml.org,2002:int', str(data))
         elif data_type is float:
             if data != data:  # NaN
-                return ScalarNode('tag:yaml.org,2002:float', '.nan')
+                node = ScalarNode('tag:yaml.org,2002:float', '.nan')
             elif data == float('inf'):
-                return ScalarNode('tag:yaml.org,2002:float', '.inf')
+                node = ScalarNode('tag:yaml.org,2002:float', '.inf')
             elif data == float('-inf'):
-                return ScalarNode('tag:yaml.org,2002:float', '-.inf')
-            return ScalarNode('tag:yaml.org,2002:float', repr(data))
+                node = ScalarNode('tag:yaml.org,2002:float', '-.inf')
+            else:
+                node = ScalarNode('tag:yaml.org,2002:float', repr(data))
         elif data_type is str:
-            return ScalarNode('tag:yaml.org,2002:str', data)
+            node = ScalarNode('tag:yaml.org,2002:str', data)
+        elif data_type is list:
+            node = self.represent_sequence('tag:yaml.org,2002:seq', data)
+        elif data_type is tuple:
+            node = self.represent_sequence('tag:yaml.org,2002:python/tuple', data)
+        elif data_type is dict:
+            items = data.items()
+            if getattr(self, '_sort_keys', True):
+                try:
+                    items = sorted(items)
+                except TypeError:
+                    pass
+            node = self.represent_mapping('tag:yaml.org,2002:map', items)
+        else:
+            # Check for multi-representers (type hierarchy)
+            node = None
+            for base_type, representer in self.yaml_multi_representers.items():
+                if base_type is not None and isinstance(data, base_type):
+                    node = representer(self, data)
+                    break
 
-        # Check for multi-representers (type hierarchy)
-        for base_type, representer in self.yaml_multi_representers.items():
-            if base_type is not None and isinstance(data, base_type):
-                return representer(self, data)
+            if node is None and None in self.yaml_representers:
+                node = self.yaml_representers[None](self, data)
 
-        # Check for None type representer (catch-all)
-        if None in self.yaml_representers:
-            representer = self.yaml_representers[None]
-            return representer(self, data)
+            if node is None:
+                node = data
 
-        # Return data unchanged
-        return data
+        # Register for alias detection (if representer didn't already)
+        if alias_key is not None and isinstance(node, (ScalarNode, SequenceNode, MappingNode)):
+            if alias_key not in self._represented_objects:
+                self._represented_objects[alias_key] = node
 
-    def represent_mapping(self, tag, mapping):
-        """Represent a mapping as a MappingNode.
+        return node
 
-        Args:
-            tag: YAML tag for the mapping
-            mapping: Iterable of (key, value) pairs (dict.items(), list of tuples, etc.)
-
-        Returns:
-            MappingNode with key-value pairs as (key_node, value_node) tuples
-        """
-        # Convert mapping items to node pairs
+    def represent_mapping(self, tag, mapping, flow_style=None):
+        """Represent a mapping as a MappingNode."""
         value = []
+        node = MappingNode(tag, value, flow_style=flow_style)
+        if self.alias_key is not None:
+            self._represented_objects[self.alias_key] = node
+        if isinstance(mapping, dict):
+            if hasattr(self, 'default_flow_style') and self.default_flow_style is not None:
+                node.flow_style = self.default_flow_style
+            mapping = list(mapping.items())
+            if hasattr(self, 'sort_keys') and self.sort_keys:
+                try:
+                    mapping = sorted(mapping)
+                except TypeError:
+                    pass
         for key, val in mapping:
             key_node = self.represent_data(key)
             if not isinstance(key_node, (ScalarNode, MappingNode, SequenceNode)):
@@ -965,25 +2165,20 @@ class BaseDumper:
             if not isinstance(val_node, (ScalarNode, MappingNode, SequenceNode)):
                 val_node = ScalarNode('tag:yaml.org,2002:str', str(val))
             value.append((key_node, val_node))
-        return MappingNode(tag, value)
+        return node
 
-    def represent_sequence(self, tag, sequence):
-        """Represent a sequence as a SequenceNode.
-
-        Args:
-            tag: YAML tag for the sequence
-            sequence: Iterable of items
-
-        Returns:
-            SequenceNode with items as nodes
-        """
+    def represent_sequence(self, tag, sequence, flow_style=None):
+        """Represent a sequence as a SequenceNode."""
         value = []
+        node = SequenceNode(tag, value, flow_style=flow_style)
+        if self.alias_key is not None:
+            self._represented_objects[self.alias_key] = node
         for item in sequence:
-            node = self.represent_data(item)
-            if not isinstance(node, (ScalarNode, MappingNode, SequenceNode)):
-                node = ScalarNode('tag:yaml.org,2002:str', str(item))
-            value.append(node)
-        return SequenceNode(tag, value)
+            item_node = self.represent_data(item)
+            if not isinstance(item_node, (ScalarNode, MappingNode, SequenceNode)):
+                item_node = ScalarNode('tag:yaml.org,2002:str', str(item))
+            value.append(item_node)
+        return node
 
     def represent_scalar(self, tag, value, style=None):
         """Represent a scalar as a ScalarNode.
@@ -1054,12 +2249,72 @@ class SafeDumper(BaseDumper):
         """Represent a string."""
         return self.represent_scalar('tag:yaml.org,2002:str', data)
 
+    def represent_undefined(self, data):
+        """Represent an undefined object using __reduce__ protocol.
+
+        This is the catch-all representer for arbitrary Python objects,
+        matching PyYAML's Representer.represent_object behavior.
+        """
+        data_type = type(data)
+        if data_type.__reduce_ex__:
+            reduce = data.__reduce_ex__(2)
+        elif data_type.__reduce__:
+            reduce = data.__reduce__()
+        else:
+            raise RepresenterError("cannot represent an object: %s" % data)
+
+        if isinstance(reduce, str):
+            return self.represent_scalar(
+                'tag:yaml.org,2002:python/name:' + reduce, '')
+
+        reduce = list(reduce)
+        function = reduce[0]
+        args = reduce[1]
+        state = reduce[2] if len(reduce) > 2 else None
+        listitems = reduce[3] if len(reduce) > 3 else None
+        dictitems = reduce[4] if len(reduce) > 4 else None
+
+        # Determine function name
+        function_name = '%s.%s' % (function.__module__, function.__qualname__)
+
+        # Determine tag
+        if function.__name__ == '__newobj__':
+            function = args[0]
+            args = args[1:]
+            tag = 'tag:yaml.org,2002:python/object/new:' + \
+                '%s.%s' % (function.__module__, function.__qualname__)
+            newobj = True
+        else:
+            tag = 'tag:yaml.org,2002:python/object/apply:' + function_name
+            newobj = False
+
+        # Build the mapping for complex representations
+        if not args and not state and not listitems and not dictitems and newobj:
+            return self.represent_mapping(tag, {})
+
+        value = {}
+        if args:
+            value['args'] = list(args)
+        if state or isinstance(state, dict) and state:
+            value['state'] = state
+        if listitems:
+            value['listitems'] = list(listitems)
+        if dictitems:
+            value['dictitems'] = dict(dictitems)
+
+        return self.represent_mapping(tag, value.items())
+
 
 class Dumper(SafeDumper):
     """Full dumper class for PyYAML API compatibility."""
     yaml_representers = SafeDumper.yaml_representers.copy()
     yaml_multi_representers = {}
 
+# Register object multi-representer after class definition
+Dumper.yaml_multi_representers[object] = SafeDumper.represent_undefined
+
+
+_default_Dumper = Dumper
 
 # C-accelerated dumper versions
 CSafeDumper = SafeDumper
@@ -1104,11 +2359,36 @@ class _NodeWrapper:
     def __init__(self, generic):
         self._generic = generic
         self.tag = generic.get_tag() if hasattr(generic, 'get_tag') else None
+        # Determine node kind
+        is_map = False
+        is_seq = False
+        try:
+            is_map = hasattr(generic, 'is_mapping') and generic.is_mapping()
+        except TypeError:
+            pass
+        try:
+            is_seq = hasattr(generic, 'is_sequence') and generic.is_sequence()
+        except TypeError:
+            pass
         # For scalars, provide the value directly
-        if hasattr(generic, 'is_mapping') and not generic.is_mapping() and not generic.is_sequence():
-            self.value = generic.to_python()
+        if not is_map and not is_seq:
+            try:
+                self.value = generic.to_python() if hasattr(generic, 'to_python') else generic
+            except TypeError:
+                self.value = generic
         else:
             self.value = generic
+        # Resolve tag if None (PyYAML's Composer always resolves tags)
+        if self.tag is None:
+            if is_map:
+                self.tag = 'tag:yaml.org,2002:map'
+            elif is_seq:
+                self.tag = 'tag:yaml.org,2002:seq'
+            else:
+                # Scalar: use resolver for implicit tag resolution
+                str_value = str(self.value) if self.value is not None else ''
+                _res = resolver.Resolver()
+                self.tag = _res.resolve(ScalarNode, str_value, (True, False))
         # Extract start_mark/end_mark from marker if available
         self.start_mark = None
         self.end_mark = None
@@ -1228,9 +2508,93 @@ class _ConstructorProxy(BaseLoader):
 
     def __init__(self, loader_class, stream=None):
         super().__init__(stream)
+        self._loader_class = loader_class
         # Copy constructors from the target class
         self.yaml_constructors = getattr(loader_class, 'yaml_constructors', {})
         self.yaml_multi_constructors = getattr(loader_class, 'yaml_multi_constructors', {})
+        # Forward blacklist methods from FullLoader-derived classes
+        if hasattr(loader_class, 'get_state_keys_blacklist'):
+            # Create a temporary instance to get the bound methods
+            # We can't just copy class methods because they need 'self'
+            self._blacklist_source = loader_class.__new__(loader_class)
+            self.check_state_key = self._blacklist_source.check_state_key
+            self.get_state_keys_blacklist = self._blacklist_source.get_state_keys_blacklist
+            self.get_state_keys_blacklist_regexp = self._blacklist_source.get_state_keys_blacklist_regexp
+
+    # Provide SafeConstructor-compatible methods that user code may call directly
+    def construct_yaml_null(self, node):
+        return None
+
+    def construct_yaml_bool(self, node):
+        value = self.construct_scalar(node)
+        if isinstance(value, bool):
+            return value
+        return str(value).lower() in ('true', 'yes', 'on', '1')
+
+    def construct_yaml_int(self, node):
+        value = self.construct_scalar(node)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+        value = str(value).replace('_', '')
+        sign = 1
+        if value.startswith('-'):
+            sign = -1
+            value = value[1:]
+        elif value.startswith('+'):
+            value = value[1:]
+        if value == '0':
+            return 0
+        elif value.startswith('0x') or value.startswith('0X'):
+            return sign * int(value[2:], 16)
+        elif value.startswith('0b') or value.startswith('0B'):
+            return sign * int(value[2:], 2)
+        elif value.startswith('0o') or value.startswith('0O'):
+            return sign * int(value[2:], 8)
+        elif value.startswith('0') and len(value) > 1:
+            return sign * int(value, 8)
+        elif ':' in value:
+            # Sexagesimal
+            digits = value.split(':')
+            result = 0
+            for digit in digits:
+                result = result * 60 + int(digit)
+            return sign * result
+        return sign * int(value)
+
+    def construct_yaml_float(self, node):
+        value = self.construct_scalar(node)
+        if isinstance(value, float):
+            return value
+        value = str(value).replace('_', '').lower()
+        if value in ('.inf', '+.inf'):
+            return float('inf')
+        elif value == '-.inf':
+            return float('-inf')
+        elif value == '.nan':
+            return float('nan')
+        elif ':' in value:
+            # Sexagesimal
+            sign = 1.0
+            if value.startswith('-'):
+                sign = -1.0
+                value = value[1:]
+            elif value.startswith('+'):
+                value = value[1:]
+            digits = value.split(':')
+            result = 0.0
+            for digit in digits:
+                result = result * 60.0 + float(digit)
+            return sign * result
+        return float(value)
+
+    def construct_yaml_str(self, node):
+        return self.construct_scalar(node)
+
+    def construct_yaml_seq(self, node):
+        return self.construct_sequence(node, deep=True)
+
+    def construct_yaml_map(self, node):
+        return self.construct_mapping(node, deep=True)
 
 
 def _diag_to_exception(diag_list, stream_name='<string>'):
@@ -1322,6 +2686,27 @@ def _is_constructor_loader(Loader):
     return False
 
 
+def _is_foreign_loader(Loader):
+    """Check if Loader is a foreign (non-libfyaml) loader class.
+
+    Returns True if the Loader has its own scanning/parsing that should
+    be used instead of the C library fast path.  Foreign loaders include
+    CanonicalLoader and any other custom loader not derived from our BaseLoader.
+    """
+    if Loader is None:
+        return False
+    if not isinstance(Loader, type):
+        return False  # Factory function, not a class
+    # Our known loaders use the C fast path
+    try:
+        if issubclass(Loader, BaseLoader):
+            return False
+    except TypeError:
+        return False
+    # Foreign loader - has its own scanner/parser
+    return True
+
+
 import codecs
 
 def _decode_bytes_stream(stream):
@@ -1351,6 +2736,54 @@ def _decode_bytes_stream(stream):
     return stream
 
 
+def _load_via_compose(stream, Loader, original_stream):
+    """Load YAML via streaming compose path (handles self-referential aliases).
+
+    When the C library can't resolve cyclic aliases, fall back to:
+    _parse() → events → _events_to_node() → Node tree → construct
+    """
+    events = list(parse(stream))
+    root_node = _events_to_node(events)
+    if root_node is None:
+        return None
+
+    # Create loader and construct
+    constructors = getattr(Loader, 'yaml_constructors', {})
+    multi_constructors = getattr(Loader, 'yaml_multi_constructors', {})
+    if not constructors and not multi_constructors:
+        constructors = SafeLoader.yaml_constructors
+        multi_constructors = SafeLoader.yaml_multi_constructors
+
+    loader = _ConstructorProxy(Loader, original_stream)
+    for tag, func in SafeLoader.yaml_constructors.items():
+        if tag not in loader.yaml_constructors:
+            loader.yaml_constructors[tag] = func
+    return loader._construct_from_node(root_node, deep=True)
+
+
+def _load_all_via_compose(stream, Loader):
+    """Load all YAML documents via streaming compose path (handles unhashable keys).
+
+    When the C library can't handle unhashable mapping keys, fall back to:
+    _parse() → events → _events_to_nodes() → Node trees → construct
+    """
+    events = list(parse(stream))
+    constructors = getattr(Loader, 'yaml_constructors', {})
+    multi_constructors = getattr(Loader, 'yaml_multi_constructors', {})
+    if not constructors and not multi_constructors:
+        constructors = SafeLoader.yaml_constructors
+        multi_constructors = SafeLoader.yaml_multi_constructors
+
+    loader = _ConstructorProxy(Loader, stream)
+    for tag, func in SafeLoader.yaml_constructors.items():
+        if tag not in loader.yaml_constructors:
+            loader.yaml_constructors[tag] = func
+
+    for root_node in _events_to_nodes(events):
+        if root_node is not None:
+            yield loader._construct_from_node(root_node, deep=True)
+
+
 def load(stream, Loader=None):
     """Parse YAML stream and return Python object.
 
@@ -1371,6 +2804,13 @@ def load(stream, Loader=None):
     """
     if Loader is None:
         raise TypeError("load() missing 1 required positional argument: 'Loader'")
+    # Foreign loaders (e.g. CanonicalLoader) have their own scanner/parser
+    if _is_foreign_loader(Loader):
+        loader = Loader(stream)
+        try:
+            return loader.get_single_data()
+        finally:
+            loader.dispose()
     # Get stream name for error messages
     stream_name = getattr(stream, 'name', '<string>')
     original_stream = stream
@@ -1405,6 +2845,11 @@ def load(stream, Loader=None):
             diag_list = None  # Not a diagnostic - contains unhashable types
         if diag_list and isinstance(diag_list, list) and len(diag_list) > 0:
             if isinstance(diag_list[0], dict) and 'message' in diag_list[0]:
+                # Check if this is an alias resolution error — fall back to
+                # streaming compose which handles self-referential aliases
+                error_msg = diag_list[0].get('message', '')
+                if 'alias' in error_msg.lower():
+                    return _load_via_compose(stream, Loader, original_stream)
                 raise _diag_to_exception(diag_list, stream_name)
 
     # Check for multiple documents (yaml.load expects exactly one)
@@ -1462,7 +2907,12 @@ def load(stream, Loader=None):
             for tag, func in SafeLoader.yaml_constructors.items():
                 if tag not in loader.yaml_constructors:
                     loader.yaml_constructors[tag] = func
-        return _convert_with_loader(doc, loader)
+        try:
+            return _convert_with_loader(doc, loader)
+        except ConstructorError as exc:
+            if 'unhashable' in str(exc):
+                return _load_via_compose(stream, Loader, original_stream)
+            raise
 
     return doc.to_python()
 
@@ -1518,59 +2968,62 @@ def unsafe_load_all(stream):
 
 
 def compose(stream, Loader=SafeLoader):
-    """Parse YAML stream and return node tree (FyGeneric).
-
-    Unlike load(), this returns the FyGeneric node directly without
-    converting to Python objects. This is useful for YAML manipulation.
+    """Parse YAML stream and return a Node tree.
 
     Args:
         stream: String or file-like object containing YAML
-        Loader: Loader class (ignored)
+        Loader: Loader class
 
     Returns:
-        FyGeneric node, or None for empty/null documents
+        A ScalarNode, SequenceNode, or MappingNode, or None for empty documents
     """
+    if _is_foreign_loader(Loader):
+        loader = Loader(stream)
+        try:
+            return loader.get_single_node()
+        finally:
+            loader.dispose()
     if hasattr(stream, 'read'):
         stream = stream.read()
     stream = _decode_bytes_stream(stream)
 
-    # Handle edge cases
     result, handled = _normalize_yaml(stream)
     if handled:
-        # For compose, we need to return a node-like object or None
         if result is None:
             return None
-        # For empty collections, create FyGeneric from them
-        return fy.from_python(result)
-    stream = result  # Use normalized text
+        stream = str(result)
+    else:
+        stream = result
 
-    # Use yaml1.1 mode for PyYAML compatibility
-    try:
-        return fy.loads(stream, mode='yaml1.1-pyyaml', create_markers=True)
-    except ValueError as e:
-        raise ParserError(problem=str(e))
+    events = list(parse(stream))
+    return _events_to_node(events)
 
 
 def compose_all(stream, Loader=SafeLoader):
-    """Parse all YAML documents and return node trees.
+    """Parse all YAML documents and return Node trees.
 
     Args:
         stream: String or file-like object containing YAML
-        Loader: Loader class (ignored)
+        Loader: Loader class
 
     Yields:
-        FyGeneric nodes, one per document
+        Node trees, one per document
     """
+    if _is_foreign_loader(Loader):
+        loader = Loader(stream)
+        try:
+            while loader.check_node():
+                yield loader.get_node()
+        finally:
+            loader.dispose()
+        return
     if hasattr(stream, 'read'):
         stream = stream.read()
     stream = _decode_bytes_stream(stream)
 
-    # Use yaml1.1 mode for PyYAML compatibility
-    try:
-        for doc in fy.loads_all(stream, mode='yaml1.1-pyyaml', create_markers=True):
-            yield doc
-    except ValueError as e:
-        raise ParserError(problem=str(e))
+    events = list(parse(stream))
+    for node in _events_to_nodes(events):
+        yield node
 
 
 def load_all(stream, Loader=None):
@@ -1592,6 +3045,15 @@ def load_all(stream, Loader=None):
     """
     if Loader is None:
         raise TypeError("load_all() missing 1 required positional argument: 'Loader'")
+    # Foreign loaders (e.g. CanonicalLoader) have their own scanner/parser
+    if _is_foreign_loader(Loader):
+        loader = Loader(stream)
+        try:
+            while loader.check_data():
+                yield loader.get_data()
+        finally:
+            loader.dispose()
+        return
     if hasattr(stream, 'read'):
         stream = stream.read()
     stream = _decode_bytes_stream(stream)
@@ -1619,7 +3081,14 @@ def load_all(stream, Loader=None):
     try:
         for doc in fy.loads_all(stream, mode='yaml1.1-pyyaml', create_markers=True):
             if loader:
-                yield _convert_with_loader(doc, loader)
+                try:
+                    yield _convert_with_loader(doc, loader)
+                except ConstructorError as exc:
+                    if 'unhashable' in str(exc):
+                        # Fall back to streaming compose for unhashable keys
+                        yield from _load_all_via_compose(stream, Loader)
+                        return
+                    raise
             else:
                 yield doc.to_python()
     except ValueError as e:
@@ -1861,7 +3330,7 @@ def _sort_keys_recursive(data, sort_keys):
         return data
 
 
-def dump(data, stream=None, Dumper=SafeDumper, default_flow_style=False,
+def dump(data, stream=None, Dumper=None, default_flow_style=False,
          default_style=None, canonical=None, indent=None, width=None,
          allow_unicode=True, line_break=None, encoding=None,
          explicit_start=None, explicit_end=None, version=None, tags=None,
@@ -1884,6 +3353,8 @@ def dump(data, stream=None, Dumper=SafeDumper, default_flow_style=False,
         >>> dump({"foo": "bar"})
         'foo: bar\\n'
     """
+    if Dumper is None:
+        Dumper = _default_Dumper
     # Apply representers to transform custom types
     # Handle both classes and factory functions (like AnsibleDumper)
     dumper = None
@@ -1920,6 +3391,48 @@ def dump(data, stream=None, Dumper=SafeDumper, default_flow_style=False,
                            encoding=encoding, explicit_start=explicit_start,
                            explicit_end=explicit_end, version=version, tags=tags,
                            sort_keys=sort_keys)
+
+        # When Dumper has an `object` multi-representer (full Representer), use
+        # Node → Events → emit path. This handles complex representations like
+        # !!python/object/new: that _apply_representers can't convert to plain dicts.
+        _use_node_path = object in multi_representers
+        if _use_node_path:
+            try:
+                node = dumper.represent_data(data)
+                if isinstance(node, (ScalarNode, SequenceNode, MappingNode)):
+                    emit_kwargs = {}
+                    emit_kwargs['canonical'] = canonical or False
+                    if indent is not None:
+                        emit_kwargs['indent'] = indent
+                    if width is not None:
+                        emit_kwargs['width'] = width
+                    emit_kwargs['allow_unicode'] = allow_unicode if allow_unicode is not None else True
+                    events = list(_node_to_events(node, explicit_start=explicit_start))
+                    try:
+                        result = fy._emit([_event_to_tuple(e) for e in events], **emit_kwargs)
+                    except (RuntimeError, ValueError) as exc:
+                        raise EmitterError(str(exc)) from exc
+                    if explicit_end:
+                        result = result + '...\n'
+                    if encoding is not None:
+                        encoded = result.encode(encoding)
+                        if encoding in ('utf-16-be', 'utf-16-le', 'utf-16'):
+                            bom = codecs.BOM_UTF16_BE if encoding == 'utf-16-be' else codecs.BOM_UTF16_LE
+                            encoded = bom + encoded
+                        if stream is not None:
+                            try:
+                                stream.write(encoded)
+                            except TypeError:
+                                stream.write(result)
+                            return None
+                        return encoded
+                    if stream is not None:
+                        stream.write(result)
+                        return None
+                    return result
+            except (AttributeError, TypeError):
+                pass  # Fall through to _apply_representers path
+
         data = _apply_representers(data, dumper)
 
     # Sort dictionary keys if requested
@@ -1996,7 +3509,7 @@ def safe_dump(data, stream=None, **kwargs):
     return dump(data, stream, **kwargs)
 
 
-def dump_all(documents, stream=None, Dumper=SafeDumper, default_flow_style=False,
+def dump_all(documents, stream=None, Dumper=None, default_flow_style=False,
              default_style=None, canonical=None, indent=None, width=None,
              allow_unicode=True, line_break=None, encoding=None,
              explicit_start=None, explicit_end=None, version=None, tags=None,
@@ -2011,6 +3524,8 @@ def dump_all(documents, stream=None, Dumper=SafeDumper, default_flow_style=False
     Returns:
         YAML string if stream is None, otherwise None
     """
+    if Dumper is None:
+        Dumper = _default_Dumper
     # Apply representers to transform custom types
     # Handle both classes and factory functions (like AnsibleDumper)
     dumper = None
@@ -2080,6 +3595,691 @@ def safe_dump_all(documents, stream=None, **kwargs):
     """
     kwargs['Dumper'] = SafeDumper
     return dump_all(documents, stream, **kwargs)
+
+
+# ============================================================================
+# Streaming API: parse(), scan(), emit(), serialize(), serialize_all()
+# ============================================================================
+
+def _mk(mark_tuple):
+    """Convert a (line, col, index) tuple from C to a Mark object, or None."""
+    if mark_tuple is None:
+        return None
+    line, col, index = mark_tuple
+    return Mark('<unicode string>', index, line, col, None, None)
+
+
+def _tuple_to_event(t):
+    """Convert an event tuple from C _parse() to a PyYAML Event object."""
+    etype = t[0]
+    if etype == 1:  # STREAM_START
+        return StreamStartEvent(start_mark=_mk(t[1]), end_mark=_mk(t[2]))
+    elif etype == 2:  # STREAM_END
+        return StreamEndEvent(start_mark=_mk(t[1]), end_mark=_mk(t[2]))
+    elif etype == 3:  # DOCUMENT_START
+        # (3, implicit, version, tags, sm, em)
+        implicit = t[1]
+        version = t[2]
+        tags = t[3]
+        return DocumentStartEvent(
+            start_mark=_mk(t[4]), end_mark=_mk(t[5]),
+            explicit=not implicit,
+            version=version,
+            tags=tags)
+    elif etype == 4:  # DOCUMENT_END
+        # (4, implicit, sm, em)
+        implicit = t[1]
+        return DocumentEndEvent(
+            start_mark=_mk(t[2]), end_mark=_mk(t[3]),
+            explicit=not implicit)
+    elif etype == 5:  # MAPPING_START
+        # (5, anchor, tag, implicit, flow_style, sm, em)
+        return MappingStartEvent(
+            anchor=t[1], tag=t[2], implicit=t[3],
+            start_mark=_mk(t[5]), end_mark=_mk(t[6]),
+            flow_style=t[4])
+    elif etype == 6:  # MAPPING_END
+        return MappingEndEvent(start_mark=_mk(t[1]), end_mark=_mk(t[2]))
+    elif etype == 7:  # SEQUENCE_START
+        # (7, anchor, tag, implicit, flow_style, sm, em)
+        return SequenceStartEvent(
+            anchor=t[1], tag=t[2], implicit=t[3],
+            start_mark=_mk(t[5]), end_mark=_mk(t[6]),
+            flow_style=t[4])
+    elif etype == 8:  # SEQUENCE_END
+        return SequenceEndEvent(start_mark=_mk(t[1]), end_mark=_mk(t[2]))
+    elif etype == 9:  # SCALAR
+        # (9, anchor, tag, implicit_tuple, value, style, sm, em)
+        style = t[5]
+        return ScalarEvent(
+            anchor=t[1], tag=t[2], implicit=t[3],
+            value=t[4],
+            start_mark=_mk(t[6]), end_mark=_mk(t[7]),
+            style=style)
+    elif etype == 10:  # ALIAS
+        # (10, anchor, sm, em)
+        return AliasEvent(
+            anchor=t[1],
+            start_mark=_mk(t[2]), end_mark=_mk(t[3]))
+    else:
+        raise ValueError("Unknown event type: %d" % etype)
+
+
+def _tuple_to_token(t):
+    """Convert a token tuple from C _scan() to a PyYAML Token object."""
+    ttype = t[0]
+    if ttype == 1:  # STREAM_START
+        # (1, encoding, sm, em)
+        return StreamStartToken(start_mark=_mk(t[2]), end_mark=_mk(t[3]),
+                                encoding=t[1])
+    elif ttype == 2:  # STREAM_END
+        return StreamEndToken(_mk(t[1]), _mk(t[2]))
+    elif ttype == 3:  # VERSION_DIRECTIVE
+        # (3, ("YAML", (major, minor)), sm, em)
+        return DirectiveToken(name=t[1][0], value=t[1][1],
+                              start_mark=_mk(t[2]), end_mark=_mk(t[3]))
+    elif ttype == 4:  # TAG_DIRECTIVE
+        # (4, ("TAG", (handle, prefix)), sm, em)
+        return DirectiveToken(name=t[1][0], value=t[1][1],
+                              start_mark=_mk(t[2]), end_mark=_mk(t[3]))
+    elif ttype == 5:  # DOCUMENT_START
+        return DocumentStartToken(_mk(t[1]), _mk(t[2]))
+    elif ttype == 6:  # DOCUMENT_END
+        return DocumentEndToken(_mk(t[1]), _mk(t[2]))
+    elif ttype == 7:  # BLOCK_SEQUENCE_START
+        return BlockSequenceStartToken(_mk(t[1]), _mk(t[2]))
+    elif ttype == 8:  # BLOCK_MAPPING_START
+        return BlockMappingStartToken(_mk(t[1]), _mk(t[2]))
+    elif ttype == 9:  # BLOCK_END
+        return BlockEndToken(_mk(t[1]), _mk(t[2]))
+    elif ttype == 10:  # FLOW_SEQUENCE_START
+        return FlowSequenceStartToken(_mk(t[1]), _mk(t[2]))
+    elif ttype == 11:  # FLOW_SEQUENCE_END
+        return FlowSequenceEndToken(_mk(t[1]), _mk(t[2]))
+    elif ttype == 12:  # FLOW_MAPPING_START
+        return FlowMappingStartToken(_mk(t[1]), _mk(t[2]))
+    elif ttype == 13:  # FLOW_MAPPING_END
+        return FlowMappingEndToken(_mk(t[1]), _mk(t[2]))
+    elif ttype == 14:  # BLOCK_ENTRY
+        return BlockEntryToken(_mk(t[1]), _mk(t[2]))
+    elif ttype == 15:  # FLOW_ENTRY
+        return FlowEntryToken(_mk(t[1]), _mk(t[2]))
+    elif ttype == 16:  # KEY
+        return KeyToken(_mk(t[1]), _mk(t[2]))
+    elif ttype == 17:  # VALUE
+        return ValueToken(_mk(t[1]), _mk(t[2]))
+    elif ttype == 18:  # ALIAS
+        # (18, value, sm, em)
+        return AliasToken(value=t[1], start_mark=_mk(t[2]), end_mark=_mk(t[3]))
+    elif ttype == 19:  # ANCHOR
+        # (19, value, sm, em)
+        return AnchorToken(value=t[1], start_mark=_mk(t[2]), end_mark=_mk(t[3]))
+    elif ttype == 20:  # TAG
+        # (20, (handle, suffix), sm, em)
+        return TagToken(value=t[1], start_mark=_mk(t[2]), end_mark=_mk(t[3]))
+    elif ttype == 21:  # SCALAR
+        # (21, value, plain, style, sm, em)
+        return ScalarToken(value=t[1], plain=t[2],
+                           start_mark=_mk(t[4]), end_mark=_mk(t[5]),
+                           style=t[3])
+    else:
+        raise ValueError("Unknown token type: %d" % ttype)
+
+
+def _event_to_tuple(event):
+    """Convert a PyYAML Event object to a tuple for C _emit()."""
+    if isinstance(event, StreamStartEvent):
+        return (1,)
+    elif isinstance(event, StreamEndEvent):
+        return (2,)
+    elif isinstance(event, DocumentStartEvent):
+        implicit = not event.explicit if event.explicit is not None else True
+        version = getattr(event, 'version', None)
+        tags = getattr(event, 'tags', None)
+        return (3, implicit, version, tags, None, None)
+    elif isinstance(event, DocumentEndEvent):
+        implicit = not event.explicit if event.explicit is not None else True
+        return (4, implicit, None, None)
+    elif isinstance(event, MappingStartEvent):
+        return (5, event.anchor, event.tag, event.implicit,
+                event.flow_style, None, None)
+    elif isinstance(event, MappingEndEvent):
+        return (6, None, None)
+    elif isinstance(event, SequenceStartEvent):
+        return (7, event.anchor, event.tag, event.implicit,
+                event.flow_style, None, None)
+    elif isinstance(event, SequenceEndEvent):
+        return (8, None, None)
+    elif isinstance(event, ScalarEvent):
+        return (9, event.anchor, event.tag, event.implicit,
+                event.value, event.style, None, None)
+    elif isinstance(event, AliasEvent):
+        return (10, event.anchor, None, None)
+    else:
+        raise ValueError("Unknown event type: %s" % type(event).__name__)
+
+
+def _resolve_tag_handle(tag, tag_handles):
+    """Resolve a tag handle like '!yaml!str' to its full form using tag directives.
+
+    Args:
+        tag: Tag string that may contain an unresolved handle
+        tag_handles: Dict mapping handles to prefixes (from DocumentStartEvent)
+
+    Returns:
+        Resolved tag string
+    """
+    if tag is None or not tag_handles:
+        return tag
+    # Already resolved (starts with a known URI scheme)
+    if tag.startswith('tag:') or tag.startswith('http:') or tag.startswith('https:'):
+        return tag
+    # Try to match tag handles (longest first for specificity)
+    for handle in sorted(tag_handles.keys(), key=len, reverse=True):
+        if not handle:
+            continue
+        if tag.startswith(handle):
+            prefix = tag_handles[handle]
+            suffix = tag[len(handle):]
+            return prefix + suffix
+    # Single '!' prefix (primary tag handle)
+    if tag.startswith('!') and '!' in tag_handles:
+        # Only for local tags like '!foo' where '!' maps to a prefix
+        handle = '!'
+        prefix = tag_handles[handle]
+        if prefix != '!':
+            suffix = tag[1:]
+            return prefix + suffix
+    return tag
+
+
+def parse(data, Loader=None):
+    """Parse YAML stream and yield Event objects."""
+    if _is_foreign_loader(Loader):
+        loader = Loader(data)
+        try:
+            while loader.check_event():
+                yield loader.get_event()
+        finally:
+            loader.dispose()
+        return
+    if hasattr(data, 'read'):
+        data = data.read()
+    data = _decode_bytes_stream(data)
+
+    tag_handles = {}
+    events = fy._parse(data, mode='yaml1.1-pyyaml')
+    for ev in events:
+        event = _tuple_to_event(ev)
+        # Track tag directives from DocumentStartEvent
+        if isinstance(event, DocumentStartEvent) and event.tags:
+            tag_handles = dict(event.tags) if isinstance(event.tags, dict) else {}
+        elif isinstance(event, DocumentEndEvent):
+            tag_handles = {}
+        # Resolve tag handles in events that carry tags
+        if tag_handles and hasattr(event, 'tag') and event.tag is not None:
+            event.tag = _resolve_tag_handle(event.tag, tag_handles)
+        yield event
+
+
+def scan(data, Loader=None):
+    """Scan YAML stream and yield Token objects."""
+    if _is_foreign_loader(Loader):
+        loader = Loader(data)
+        try:
+            while loader.check_token():
+                yield loader.get_token()
+        finally:
+            loader.dispose()
+        return
+    if hasattr(data, 'read'):
+        data = data.read()
+    data = _decode_bytes_stream(data)
+
+    tokens = fy._scan(data, mode='yaml1.1-pyyaml')
+    for tok in tokens:
+        yield _tuple_to_token(tok)
+
+
+def _validate_emit_events(events):
+    """Validate event sequence before emitting, matching PyYAML's emitter checks."""
+    state = 'expect_stream_start'
+    depth = 0  # nesting depth for sequences/mappings
+    has_root_node = False
+    for event in events:
+        etype = type(event).__name__
+        if state == 'expect_stream_start':
+            if etype != 'StreamStartEvent':
+                raise EmitterError("expected StreamStartEvent, but got %s" % etype)
+            state = 'expect_document_or_stream_end'
+        elif state == 'expect_nothing':
+            raise EmitterError("expected nothing, but got %s" % etype)
+        elif state == 'expect_document_or_stream_end':
+            if etype == 'StreamEndEvent':
+                state = 'expect_nothing'
+            elif etype == 'DocumentStartEvent':
+                # Validate version
+                version = getattr(event, 'version', None)
+                if version is not None:
+                    major, minor = version
+                    if major != 1:
+                        raise EmitterError(
+                            "unsupported YAML version: %d.%d" % (major, minor))
+                # Validate tag handles
+                tags = getattr(event, 'tags', None)
+                if tags:
+                    for handle, prefix in tags.items():
+                        # Skip default tag entries added by C library parser
+                        if handle == '' and prefix == '':
+                            continue
+                        if not handle:
+                            raise EmitterError("tag handle must not be empty")
+                        if not prefix:
+                            raise EmitterError("tag prefix must not be empty")
+                        if handle != '!' and handle != '!!':
+                            if not (handle.startswith('!') and handle.endswith('!') and
+                                    len(handle) >= 3 and
+                                    all(c.isalnum() or c == '-' for c in handle[1:-1])):
+                                raise EmitterError(
+                                    "tag handle must be '!', '!!' or '!word!': %r" % handle)
+                state = 'in_document'
+                depth = 0
+                has_root_node = False
+            else:
+                raise EmitterError("expected DocumentStartEvent, but got %s" % etype)
+        elif state == 'in_document':
+            if etype == 'DocumentEndEvent':
+                if depth > 0:
+                    raise EmitterError("unexpected DocumentEndEvent inside collection")
+                if not has_root_node:
+                    raise EmitterError("expected a node, but got DocumentEndEvent")
+                state = 'expect_document_or_stream_end'
+            elif etype in ('ScalarEvent', 'AliasEvent'):
+                has_root_node = True
+                _validate_emit_node_event(event)
+            elif etype in ('SequenceStartEvent', 'MappingStartEvent'):
+                has_root_node = True
+                depth += 1
+            elif etype in ('SequenceEndEvent', 'MappingEndEvent'):
+                depth -= 1
+            else:
+                raise EmitterError("unexpected %s in document" % etype)
+
+
+def _validate_emit_node_event(event):
+    """Validate a single node event (scalar or alias)."""
+    etype = type(event).__name__
+    anchor = getattr(event, 'anchor', None)
+    if etype == 'AliasEvent':
+        if not anchor:
+            raise EmitterError("anchor is not specified for alias")
+    elif etype == 'ScalarEvent':
+        tag = getattr(event, 'tag', None)
+        implicit = getattr(event, 'implicit', (True, True))
+        if tag is not None and tag == '':
+            raise EmitterError("tag must not be empty")
+        if not implicit[0] and not implicit[1] and tag is None:
+            raise EmitterError("tag is not specified")
+
+
+def emit(events, stream=None, Dumper=None,
+         canonical=None, indent=None, width=None,
+         allow_unicode=None, line_break=None):
+    """Emit Event objects as a YAML stream."""
+    events_list = list(events)
+    _validate_emit_events(events_list)
+    events_data = [_event_to_tuple(e) for e in events_list]
+    kwargs = {}
+    kwargs['canonical'] = canonical or False
+    if indent is not None:
+        kwargs['indent'] = indent
+    if width is not None:
+        kwargs['width'] = width
+    kwargs['allow_unicode'] = allow_unicode if allow_unicode is not None else True
+    if line_break is not None:
+        kwargs['line_break'] = line_break
+    try:
+        result = fy._emit(events_data, **kwargs)
+    except (RuntimeError, ValueError) as exc:
+        raise EmitterError(str(exc)) from exc
+    if stream is not None:
+        stream.write(result)
+        return None
+    return result
+
+
+_serialize_resolver = resolver.Resolver()
+
+def _anchor_node_pass(node, anchors, counter):
+    """Pre-pass to detect nodes appearing more than once and assign anchors."""
+    node_id = id(node)
+    if node_id in anchors:
+        if anchors[node_id] is None:
+            counter[0] += 1
+            anchors[node_id] = 'id%03d' % counter[0]
+        return
+    anchors[node_id] = None
+    if isinstance(node, SequenceNode):
+        for item in node.value:
+            _anchor_node_pass(item, anchors, counter)
+    elif isinstance(node, MappingNode):
+        for key_node, val_node in node.value:
+            _anchor_node_pass(key_node, anchors, counter)
+            _anchor_node_pass(val_node, anchors, counter)
+
+
+def _serialize_node_events(node, anchors, serialized):
+    """Recursively yield events from a Node tree, handling anchors and aliases."""
+    node_id = id(node)
+    anchor = anchors.get(node_id)
+    if node_id in serialized:
+        yield AliasEvent(anchor=anchor)
+        return
+    serialized.add(node_id)
+    tag = getattr(node, 'tag', None)
+    if isinstance(node, ScalarNode):
+        resolved_tag = _serialize_resolver.resolve(ScalarNode, node.value, (True, False))
+        implicit = (tag == resolved_tag, tag is None)
+        # Suppress tag when implicit to avoid verbose output from C emitter
+        emit_tag = None if implicit[0] else tag
+        style = getattr(node, 'style', None)
+        yield ScalarEvent(anchor=anchor, tag=emit_tag, implicit=implicit,
+                          value=node.value, style=style)
+    elif isinstance(node, SequenceNode):
+        implicit = tag is None or tag == 'tag:yaml.org,2002:seq'
+        emit_tag = None if implicit else tag
+        flow_style = getattr(node, 'flow_style', None)
+        yield SequenceStartEvent(anchor=anchor, tag=emit_tag, implicit=implicit,
+                                 flow_style=flow_style)
+        for item in node.value:
+            yield from _serialize_node_events(item, anchors, serialized)
+        yield SequenceEndEvent()
+    elif isinstance(node, MappingNode):
+        implicit = tag is None or tag == 'tag:yaml.org,2002:map'
+        emit_tag = None if implicit else tag
+        flow_style = getattr(node, 'flow_style', None)
+        yield MappingStartEvent(anchor=anchor, tag=emit_tag, implicit=implicit,
+                                flow_style=flow_style)
+        for key_node, val_node in node.value:
+            yield from _serialize_node_events(key_node, anchors, serialized)
+            yield from _serialize_node_events(val_node, anchors, serialized)
+        yield MappingEndEvent()
+
+
+def _node_to_events(node, stream_name='<unicode string>', explicit_start=None):
+    """Walk a Node tree and yield Event objects, handling anchors/aliases."""
+    anchors = {}
+    counter = [0]
+    _anchor_node_pass(node, anchors, counter)
+    # Use explicit document start only when anchors exist (so aliases work)
+    has_anchors = any(v is not None for v in anchors.values())
+    explicit = explicit_start if explicit_start is not None else has_anchors
+    serialized = set()
+    yield StreamStartEvent()
+    yield DocumentStartEvent(explicit=explicit)
+    yield from _serialize_node_events(node, anchors, serialized)
+    yield DocumentEndEvent(explicit=False)
+    yield StreamEndEvent()
+
+
+def _node_to_events_inner(node):
+    """Recursively yield events from a Node tree (simple, no alias handling)."""
+    anchor = getattr(node, 'anchor', None)
+    tag = getattr(node, 'tag', None)
+    if isinstance(node, ScalarNode):
+        resolved_tag = _serialize_resolver.resolve(ScalarNode, node.value, (True, False))
+        implicit = (tag == resolved_tag, tag is None)
+        style = getattr(node, 'style', None)
+        yield ScalarEvent(anchor=anchor, tag=tag, implicit=implicit,
+                          value=node.value, style=style)
+    elif isinstance(node, SequenceNode):
+        implicit = tag is None or tag == 'tag:yaml.org,2002:seq'
+        flow_style = getattr(node, 'flow_style', None)
+        yield SequenceStartEvent(anchor=anchor, tag=tag, implicit=implicit,
+                                 flow_style=flow_style)
+        for item in node.value:
+            yield from _node_to_events_inner(item)
+        yield SequenceEndEvent()
+    elif isinstance(node, MappingNode):
+        implicit = tag is None or tag == 'tag:yaml.org,2002:map'
+        flow_style = getattr(node, 'flow_style', None)
+        yield MappingStartEvent(anchor=anchor, tag=tag, implicit=implicit,
+                                flow_style=flow_style)
+        for key_node, val_node in node.value:
+            yield from _node_to_events_inner(key_node)
+            yield from _node_to_events_inner(val_node)
+        yield MappingEndEvent()
+
+
+def serialize(node, stream=None, Dumper=None, **kwargs):
+    """Serialize a Node tree to YAML."""
+    return emit(_node_to_events(node), stream=stream, **kwargs)
+
+
+def serialize_all(nodes, stream=None, Dumper=None, **kwargs):
+    """Serialize multiple Node trees to YAML."""
+    def _gen():
+        yield StreamStartEvent()
+        for node in nodes:
+            yield DocumentStartEvent(explicit=True)
+            yield from _node_to_events_inner(node)
+            yield DocumentEndEvent(explicit=False)
+        yield StreamEndEvent()
+    return emit(_gen(), stream=stream, **kwargs)
+
+
+def _events_to_node(events):
+    """Build a Node tree from a list of Event objects.
+
+    Handles anchors and aliases. Returns the root Node for the first document.
+    """
+    anchors = {}
+    idx = [0]  # mutable index for closure
+    _resolver = resolver.Resolver()
+
+    def _next():
+        if idx[0] < len(events):
+            e = events[idx[0]]
+            idx[0] += 1
+            return e
+        return None
+
+    def _resolve_scalar_tag(ev):
+        tag = ev.tag
+        if tag is None or tag == '!':
+            # When tag is '!' (non-specific tag), PyYAML treats it as
+            # plain-implicit for resolver purposes (type resolution applies)
+            if tag == '!':
+                implicit = (True, False)
+            else:
+                implicit = ev.implicit if ev.implicit else (True, False)
+            tag = _resolver.resolve(ScalarNode, ev.value, implicit)
+        return tag
+
+    def _build_node():
+        while True:
+            ev = _next()
+            if ev is None:
+                return None
+            if isinstance(ev, (StreamStartEvent, StreamEndEvent)):
+                continue
+            if isinstance(ev, DocumentStartEvent):
+                continue
+            if isinstance(ev, DocumentEndEvent):
+                continue
+            return _build_from_event(ev)
+
+    def _build_from_event(ev):
+        if isinstance(ev, ScalarEvent):
+            tag = _resolve_scalar_tag(ev)
+            node = ScalarNode(
+                tag=tag,
+                value=ev.value,
+                start_mark=ev.start_mark,
+                end_mark=ev.end_mark,
+                style=ev.style)
+            if ev.anchor:
+                anchors[ev.anchor] = node
+            return node
+        elif isinstance(ev, SequenceStartEvent):
+            node = SequenceNode(
+                tag=ev.tag or 'tag:yaml.org,2002:seq',
+                value=[],
+                start_mark=ev.start_mark,
+                end_mark=ev.end_mark,
+                flow_style=ev.flow_style)
+            if ev.anchor:
+                anchors[ev.anchor] = node
+            while True:
+                next_ev = _next()
+                if next_ev is None or isinstance(next_ev, SequenceEndEvent):
+                    if next_ev:
+                        node.end_mark = next_ev.end_mark
+                    break
+                item = _build_from_event(next_ev)
+                if item is not None:
+                    node.value.append(item)
+            return node
+        elif isinstance(ev, MappingStartEvent):
+            node = MappingNode(
+                tag=ev.tag or 'tag:yaml.org,2002:map',
+                value=[],
+                start_mark=ev.start_mark,
+                end_mark=ev.end_mark,
+                flow_style=ev.flow_style)
+            if ev.anchor:
+                anchors[ev.anchor] = node
+            while True:
+                key_ev = _next()
+                if key_ev is None or isinstance(key_ev, MappingEndEvent):
+                    if key_ev:
+                        node.end_mark = key_ev.end_mark
+                    break
+                key_node = _build_from_event(key_ev)
+                val_ev = _next()
+                if val_ev is None:
+                    break
+                val_node = _build_from_event(val_ev)
+                if key_node is not None and val_node is not None:
+                    node.value.append((key_node, val_node))
+            return node
+        elif isinstance(ev, AliasEvent):
+            if ev.anchor in anchors:
+                return anchors[ev.anchor]
+            return ScalarNode('tag:yaml.org,2002:null', '', start_mark=ev.start_mark)
+        return None
+
+    return _build_node()
+
+
+def _events_to_nodes(events):
+    """Build multiple Node trees from events (one per document)."""
+    anchors = {}
+    idx = [0]
+    _resolver = resolver.Resolver()
+
+    def _next():
+        if idx[0] < len(events):
+            e = events[idx[0]]
+            idx[0] += 1
+            return e
+        return None
+
+    def _resolve_scalar_tag(ev):
+        tag = ev.tag
+        if tag is None or tag == '!':
+            if tag == '!':
+                implicit = (True, False)
+            else:
+                implicit = ev.implicit if ev.implicit else (True, False)
+            tag = _resolver.resolve(ScalarNode, ev.value, implicit)
+        return tag
+
+    def _build_from_event(ev):
+        if isinstance(ev, ScalarEvent):
+            tag = _resolve_scalar_tag(ev)
+            node = ScalarNode(
+                tag=tag,
+                value=ev.value,
+                start_mark=ev.start_mark,
+                end_mark=ev.end_mark,
+                style=ev.style)
+            if ev.anchor:
+                anchors[ev.anchor] = node
+            return node
+        elif isinstance(ev, SequenceStartEvent):
+            node = SequenceNode(
+                tag=ev.tag or 'tag:yaml.org,2002:seq',
+                value=[],
+                start_mark=ev.start_mark,
+                end_mark=ev.end_mark,
+                flow_style=ev.flow_style)
+            if ev.anchor:
+                anchors[ev.anchor] = node
+            while True:
+                next_ev = _next()
+                if next_ev is None or isinstance(next_ev, SequenceEndEvent):
+                    if next_ev:
+                        node.end_mark = next_ev.end_mark
+                    break
+                item = _build_from_event(next_ev)
+                if item is not None:
+                    node.value.append(item)
+            return node
+        elif isinstance(ev, MappingStartEvent):
+            node = MappingNode(
+                tag=ev.tag or 'tag:yaml.org,2002:map',
+                value=[],
+                start_mark=ev.start_mark,
+                end_mark=ev.end_mark,
+                flow_style=ev.flow_style)
+            if ev.anchor:
+                anchors[ev.anchor] = node
+            while True:
+                key_ev = _next()
+                if key_ev is None or isinstance(key_ev, MappingEndEvent):
+                    if key_ev:
+                        node.end_mark = key_ev.end_mark
+                    break
+                key_node = _build_from_event(key_ev)
+                val_ev = _next()
+                if val_ev is None:
+                    break
+                val_node = _build_from_event(val_ev)
+                if key_node is not None and val_node is not None:
+                    node.value.append((key_node, val_node))
+            return node
+        elif isinstance(ev, AliasEvent):
+            if ev.anchor in anchors:
+                return anchors[ev.anchor]
+            return ScalarNode('tag:yaml.org,2002:null', '', start_mark=ev.start_mark)
+        return None
+
+    while idx[0] < len(events):
+        ev = _next()
+        if ev is None:
+            break
+        if isinstance(ev, (StreamStartEvent, StreamEndEvent)):
+            continue
+        if isinstance(ev, DocumentStartEvent):
+            # Build one document
+            anchors.clear()
+            root_ev = _next()
+            if root_ev is None or isinstance(root_ev, DocumentEndEvent):
+                yield ScalarNode('tag:yaml.org,2002:null', '')
+                continue
+            node = _build_from_event(root_ev)
+            # Consume until DocumentEndEvent
+            while idx[0] < len(events):
+                ev2 = events[idx[0]]
+                if isinstance(ev2, DocumentEndEvent):
+                    idx[0] += 1
+                    break
+                elif isinstance(ev2, (StreamEndEvent,)):
+                    break
+                idx[0] += 1
+            if node is not None:
+                yield node
 
 
 # Additional compatibility - these are less commonly used but may be needed
