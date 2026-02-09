@@ -1123,6 +1123,61 @@ START_TEST(doc_sort)
 }
 END_TEST
 
+START_TEST(doc_mapping_sort)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn_root, *fyn_inner;
+	void *fynp;
+	void *iter;
+	int ret;
+
+	/* outer keys: c, a, b — inner mapping under "a" has keys z, x, y */
+	fyd = fy_document_build_from_string(NULL,
+		"{ c: 3, a: { z: 1, x: 2, y: 3 }, b: 2 }", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn_root = fy_document_root(fyd);
+
+	ret = fy_node_mapping_sort(fyn_root, NULL, NULL);
+	ck_assert_int_eq(ret, 0);
+
+	/* outer mapping should now be sorted: a, b, c */
+	iter = NULL;
+
+	fynp = fy_node_mapping_iterate(fyn_root, &iter);
+	ck_assert_ptr_ne(fynp, NULL);
+	ck_assert_str_eq(fy_node_get_scalar0(fy_node_pair_key(fynp)), "a");
+
+	fynp = fy_node_mapping_iterate(fyn_root, &iter);
+	ck_assert_ptr_ne(fynp, NULL);
+	ck_assert_str_eq(fy_node_get_scalar0(fy_node_pair_key(fynp)), "b");
+
+	fynp = fy_node_mapping_iterate(fyn_root, &iter);
+	ck_assert_ptr_ne(fynp, NULL);
+	ck_assert_str_eq(fy_node_get_scalar0(fy_node_pair_key(fynp)), "c");
+
+	/* inner mapping under "a" should still be unsorted: z, x, y */
+	fyn_inner = fy_node_by_path(fyn_root, "/a", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn_inner, NULL);
+
+	iter = NULL;
+
+	fynp = fy_node_mapping_iterate(fyn_inner, &iter);
+	ck_assert_ptr_ne(fynp, NULL);
+	ck_assert_str_eq(fy_node_get_scalar0(fy_node_pair_key(fynp)), "z");
+
+	fynp = fy_node_mapping_iterate(fyn_inner, &iter);
+	ck_assert_ptr_ne(fynp, NULL);
+	ck_assert_str_eq(fy_node_get_scalar0(fy_node_pair_key(fynp)), "x");
+
+	fynp = fy_node_mapping_iterate(fyn_inner, &iter);
+	ck_assert_ptr_ne(fynp, NULL);
+	ck_assert_str_eq(fy_node_get_scalar0(fy_node_pair_key(fynp)), "y");
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 START_TEST(doc_insert_at)
 {
 	struct fy_document *fyd;
@@ -2344,6 +2399,7 @@ TCase *libfyaml_case_core(void)
 	tcase_add_test(tc, doc_insert_remove_map);
 
 	tcase_add_test(tc, doc_sort);
+	tcase_add_test(tc, doc_mapping_sort);
 	tcase_add_test(tc, doc_insert_at);
 
 	tcase_add_test(tc, doc_join_scalar_to_scalar);
