@@ -4962,6 +4962,23 @@ fy_node_mapping_remove(struct fy_node *fyn_map, struct fy_node_pair *fynp)
 	FY_EXPORT;
 
 /**
+ * fy_node_mapping_sort() - Sort a single mapping's keys
+ *
+ * Sort the keys of a single mapping node using the given comparison method (if NULL use the default one).
+ * Unlike fy_node_sort(), this does not recurse into child nodes.
+ *
+ * @fyn_map: The mapping node to sort
+ * @key_cmp: The comparison method
+ * @arg: An opaque user pointer for the comparison method
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int
+fy_node_mapping_sort(struct fy_node *fyn_map, fy_node_mapping_sort_fn key_cmp, void *arg)
+	FY_EXPORT;
+
+/**
  * fy_node_mapping_remove_by_key() - Remove a node pair from a mapping returning the value
  *
  * Remove node pair from a mapping using the supplied key.
