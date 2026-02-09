@@ -1448,6 +1448,10 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 	}
 
 out:
+	/* any zero (or non newline linebreak) -> double quoted */
+	if (ta->flags & (FYTTAF_HAS_ZERO | FYTTAF_HAS_NON_NL_LB))
+		style = FYNS_DOUBLE_QUOTED;
+
 	if (style == FYNS_ANY && (ta->flags & FYTTAF_CAN_BE_PLAIN)) {
 		if (!flow || (ta->flags & FYTTAF_CAN_BE_PLAIN_FLOW))
 			style = FYNS_PLAIN;
