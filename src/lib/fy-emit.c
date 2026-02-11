@@ -1444,8 +1444,10 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 	}
 
 out:
-	if (style == FYNS_ANY)
-		style = (ta->flags & FYTTAF_CAN_BE_PLAIN) ? FYNS_PLAIN : FYNS_DOUBLE_QUOTED;
+	if (style == FYNS_ANY && (ta->flags & FYTTAF_CAN_BE_PLAIN)) {
+		if (!flow || (ta->flags & FYTTAF_CAN_BE_PLAIN_FLOW))
+			style = FYNS_PLAIN;
+	}
 
 	if (style == FYNS_PLAIN) {
 		/* plains in flow mode not being able to be plains
@@ -1460,7 +1462,23 @@ out:
 		if (style == FYNS_PLAIN && (ta->flags & (FYTTAF_HAS_LB | FYTTAF_HAS_WS)) &&
 			emit->column < fy_emit_width(emit) && (emit->column + ta->maxspan) > fy_emit_width(emit))
 			style = FYNS_DOUBLE_QUOTED;
+
+		if (style == FYNS_PLAIN && !(ta->flags & FYTTAF_CAN_BE_PLAIN))
+			style = FYNS_DOUBLE_QUOTED;
 	}
+
+	if (style == FYNS_ANY && (ta->flags & FYTTAF_CAN_BE_SINGLE_QUOTED))
+		style = FYNS_SINGLE_QUOTED;
+
+	if (style == FYNS_SINGLE_QUOTED && !(ta->flags & FYTTAF_CAN_BE_SINGLE_QUOTED))
+		style = FYNS_DOUBLE_QUOTED;
+
+	if (style == FYNS_ANY && (ta->flags & FYTTAF_CAN_BE_DOUBLE_QUOTED))
+		style = FYNS_DOUBLE_QUOTED;
+
+	/* should never happen, but still */
+	if (style == FYNS_ANY)
+		style = FYNS_DOUBLE_QUOTED;
 
 	return style;
 }
@@ -1660,7 +1678,8 @@ void fy_emit_sequence(struct fy_emitter *emit, struct fy_node *fyn, int flags, i
 		fyt_value = fy_node_value_token(fyni);
 
 		fy_emit_sequence_item_prolog(emit, sc, fyt_value);
-		fy_emit_node_internal(emit, fyni, (sc->flags & ~DDNF_ROOT), sc->indent, false);
+
+		fy_emit_node_internal(emit, fyni, sc->flags & ~DDNF_ROOT, sc->indent, false);
 		fy_emit_sequence_item_epilog(emit, sc, last, fyt_value);
 	}
 

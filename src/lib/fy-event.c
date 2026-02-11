@@ -374,7 +374,7 @@ fy_eventp_vcreate_internal(struct fy_eventp_list *recycled_list, struct fy_diag 
 		memcpy(data, value, len);
 		/* always NULL terminate */
 		data[len] = '\0';
-		fyi = fy_input_from_malloc_data(data, len, &handle, sstyle == FYSS_PLAIN);
+		fyi = fy_input_from_malloc_data_styled(data, len, &handle, sstyle);
 		if (!fyi) {
 			fy_error(diag, "fy_input_from_malloc_data() failed\n");
 			goto err_out;
@@ -424,7 +424,7 @@ fy_eventp_vcreate_internal(struct fy_eventp_list *recycled_list, struct fy_diag 
 		/* always NULL terminate */
 		data[len] = '\0';
 
-		fyi = fy_input_from_malloc_data(data, len, &handle, true);
+		fyi = fy_input_from_malloc_data(data, len, &handle, false);
 		if (!fyi) {
 			fy_error(diag, "fy_input_from_malloc_data() failed\n");
 			goto err_out;
@@ -472,7 +472,7 @@ fy_eventp_vcreate_internal(struct fy_eventp_list *recycled_list, struct fy_diag 
 			goto err_out;
 		}
 
-		fyi = fy_input_from_malloc_data(data, len, &handle, true);
+		fyi = fy_input_from_malloc_data(data, len, &handle, false);
 		if (!fyi)
 			goto err_out;
 		data = NULL;

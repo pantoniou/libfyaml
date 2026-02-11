@@ -97,8 +97,9 @@ const char *fy_input_get_filename(struct fy_input *fyi)
 	return fyi->name;
 }
 
-static void fy_input_from_data_setup(struct fy_input *fyi,
-				     struct fy_atom *handle, bool simple)
+static void
+fy_input_from_data_setup_styled(struct fy_input *fyi,
+		struct fy_atom *handle, enum fy_scalar_style sstyle)
 {
 	const char *data;
 	size_t size;
@@ -120,11 +121,16 @@ static void fy_input_from_data_setup(struct fy_input *fyi,
 
 	memset(handle, 0, sizeof(*handle));
 
-	if (size > 0)
-		aflags = fy_analyze_scalar_content(data, size,
-				false, fylb_cr_nl, fyfws_space_tab);	/* hardcoded yaml mode */
-	else
-		aflags = FYACF_EMPTY | FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN | FYACF_SIZE0;
+	aflags = fy_analyze_scalar_content(data, size,
+			false, fylb_cr_nl, fyfws_space_tab);	/* hardcoded yaml mode */
+
+	if (sstyle == FYSS_ANY) {
+		sstyle = (aflags & (FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN |
+				    FYACF_LB | FYACF_ENDS_WITH_COLON |
+				    FYACF_STARTS_WITH_WS | FYACF_STARTS_WITH_LB |
+				    FYACF_ENDS_WITH_WS | FYACF_ENDS_WITH_LB | FYACF_CONSECUTIVE_LB))
+				== (FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN) ? FYSS_PLAIN : FYAS_DOUBLE_QUOTED;
+	}
 
 	handle->start_mark.input_pos = 0;
 	handle->start_mark.line = 0;
@@ -132,19 +138,33 @@ static void fy_input_from_data_setup(struct fy_input *fyi,
 	handle->end_mark.input_pos = size;
 	handle->end_mark.line = 0;
 	handle->end_mark.column = fy_utf8_count(data, size);
-	/* if it's plain, all is good */
-	if ((simple || (aflags & FYACF_FLOW_PLAIN)) &&
-	    !(aflags & (FYACF_LB | FYACF_ENDS_WITH_COLON))) {
-		handle->storage_hint = size;	/* maximum */
-		handle->storage_hint_valid = false;
-		handle->direct_output = !!(aflags & FYACF_JSON_ESCAPE);
-		handle->style = FYAS_PLAIN;
-	} else {
-		handle->storage_hint = 0;	/* just calculate */
-		handle->storage_hint_valid = false;
-		handle->direct_output = false;
-		handle->style = FYAS_DOUBLE_QUOTED_MANUAL;
+
+	handle->storage_hint = 0;	/* just calculate */
+	handle->storage_hint_valid = false;
+	handle->direct_output = false;
+	switch (sstyle) {
+	case FYSS_PLAIN:
+		handle->style = FYAS_PLAIN | FYAS_MANUAL_MARK;
+		break;
+	case FYSS_SINGLE_QUOTED:
+		handle->style = FYAS_SINGLE_QUOTED | FYAS_MANUAL_MARK;
+		break;
+	case FYSS_DOUBLE_QUOTED:
+		handle->style = FYAS_DOUBLE_QUOTED | FYAS_MANUAL_MARK;
+		break;
+	case FYSS_LITERAL:
+		handle->style = FYAS_LITERAL | FYAS_MANUAL_MARK;
+		break;
+	case FYSS_FOLDED:
+		handle->style = FYAS_FOLDED | FYAS_MANUAL_MARK;
+		break;
+
+	case FYSS_ANY:
+	default:
+		handle->style = FYAS_DOUBLE_QUOTED_MANUAL | FYAS_MANUAL_MARK;
+		break;
 	}
+
 	handle->empty = !!(aflags & FYACF_EMPTY);
 	handle->has_lb = !!(aflags & FYACF_LB);
 	handle->has_ws = !!(aflags & FYACF_WS);
@@ -167,6 +187,14 @@ static void fy_input_from_data_setup(struct fy_input *fyi,
 	handle->directive0_mode = false;
 out:
 	fyi->state = FYIS_PARSED;
+}
+
+
+static void fy_input_from_data_setup(struct fy_input *fyi,
+				     struct fy_atom *handle, bool simple)
+{
+	return fy_input_from_data_setup_styled(fyi, handle,
+			simple ? FYSS_PLAIN : FYSS_ANY);
 }
 
 struct fy_input *fy_input_from_data(const char *data, size_t size,
@@ -209,6 +237,50 @@ struct fy_input *fy_input_from_malloc_data(char *data, size_t size,
 	fyi->cfg.alloc.size = size;
 
 	fy_input_from_data_setup(fyi, handle, simple);
+
+	return fyi;
+}
+
+struct fy_input *fy_input_from_data_styled(const char *data, size_t size,
+				    struct fy_atom *handle, enum fy_scalar_style sstyle)
+{
+	struct fy_input *fyi;
+
+	if (data && size == (size_t)-1)
+		size = strlen(data);
+
+	fyi = fy_input_alloc();
+	if (!fyi)
+		return NULL;
+
+	fyi->cfg.type = fyit_memory;
+	fyi->cfg.userdata = NULL;
+	fyi->cfg.memory.data = data;
+	fyi->cfg.memory.size = size;
+
+	fy_input_from_data_setup_styled(fyi, handle, sstyle);
+
+	return fyi;
+}
+
+struct fy_input *fy_input_from_malloc_data_styled(char *data, size_t size,
+					   struct fy_atom *handle,  enum fy_scalar_style sstyle)
+{
+	struct fy_input *fyi;
+
+	if (data && size == (size_t)-1)
+		size = strlen(data);
+
+	fyi = fy_input_alloc();
+	if (!fyi)
+		return NULL;
+
+	fyi->cfg.type = fyit_alloc;
+	fyi->cfg.userdata = NULL;
+	fyi->cfg.alloc.data = data;
+	fyi->cfg.alloc.size = size;
+
+	fy_input_from_data_setup_styled(fyi, handle, sstyle);
 
 	return fyi;
 }

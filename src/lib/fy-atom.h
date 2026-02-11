@@ -35,17 +35,24 @@ enum fy_atom_style {
 	FYAS_LITERAL,
 	FYAS_FOLDED,
 	FYAS_URI,	/* special style for URIs */
-	FYAS_DOUBLE_QUOTED_MANUAL,
-	FYAS_COMMENT	/* (possibly multi line) comment */
+	FYAS_COMMENT,	/* (possibly multi line) comment */
+	FYAS_MANUAL_MARK = FY_BIT(3),
+	FYAS_PLAIN_MANUAL = FYAS_PLAIN | FYAS_MANUAL_MARK,
+	FYAS_SINGLE_QUOTED_MANUAL = FYAS_SINGLE_QUOTED | FYAS_MANUAL_MARK,
+	FYAS_DOUBLE_QUOTED_MANUAL = FYAS_DOUBLE_QUOTED | FYAS_MANUAL_MARK,
+	FYAS_LITERAL_MANUAL = FYAS_LITERAL | FYAS_MANUAL_MARK,
+	FYAS_FOLDED_MANUAL = FYAS_FOLDED | FYAS_MANUAL_MARK,
 };
 
 static inline bool fy_atom_style_is_quoted(enum fy_atom_style style)
 {
+	style &= ~FYAS_MANUAL_MARK;
 	return style == FYAS_SINGLE_QUOTED || style == FYAS_DOUBLE_QUOTED;
 }
 
 static inline bool fy_atom_style_is_block(enum fy_atom_style style)
 {
+	style &= ~FYAS_MANUAL_MARK;
 	return style == FYAS_LITERAL || style == FYAS_FOLDED;
 }
 
@@ -299,5 +306,10 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter);
 
 const char *
 fy_atom_lines_containing(struct fy_atom *atom, size_t *lenp);
+
+
+unsigned int
+fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style,
+		     int *maxspanp, int *maxcolp);
 
 #endif

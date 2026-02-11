@@ -317,7 +317,7 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 
 	/* short circuit non multiline, non ws atoms */
 	if ((atom->direct_output && !atom->has_lb && !atom->has_ws) ||
-	    atom->style == FYAS_DOUBLE_QUOTED_MANUAL) {
+	    (atom->style & FYAS_MANUAL_MARK)) {
 		li->start = s;
 		li->end = e;
 		li->nws_start = s;
@@ -764,16 +764,16 @@ fy_atom_iter_line(struct fy_atom_iter *iter)
 	if (li->need_nl)
 		return li;
 
+	if (atom->style & FYAS_MANUAL_MARK) {
+		li->need_nl = false;
+		li->need_sep = false;
+	}
+
 	switch (atom->style) {
 	case FYAS_PLAIN:
 	case FYAS_URI:
 		li->need_nl = !li->last && li->empty;
 		li->need_sep = !li->need_nl && nli && !nli->empty;
-		break;
-
-	case FYAS_DOUBLE_QUOTED_MANUAL:
-		li->need_nl = false;
-		li->need_sep = false;
 		break;
 
 	case FYAS_COMMENT:
@@ -953,7 +953,11 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 		}
 		break;
 
+	case FYAS_PLAIN_MANUAL:
+	case FYAS_SINGLE_QUOTED_MANUAL:
 	case FYAS_DOUBLE_QUOTED_MANUAL:
+	case FYAS_LITERAL_MANUAL:
+	case FYAS_FOLDED_MANUAL:
 		/* manual scalar just goes out */
 		ret = fy_atom_iter_add_chunk(iter, s, e - s);
 		if (ret)
@@ -1934,4 +1938,258 @@ const char *fy_atom_lines_containing(struct fy_atom *atom, size_t *lenp)
 
 	*lenp = end - start;
 	return start;
+}
+
+unsigned int
+fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style, int *maxspanp, int *maxcolp)
+{
+	unsigned int flags = 0;
+	int c, cn, cnn, cp, col;
+	uint8_t col0si, col0ei;	/* mask for --- ... at indent 0 */
+	int span, maxspan, maxcol;
+	struct fy_atom_iter iter;
+
+	if (maxspanp)
+		*maxspanp = 0;
+	if (maxcolp)
+		*maxcolp = 0;
+
+	flags = FYTTAF_TEXT_TOKEN;
+
+	/* hardwired and fast for regular plain scalars */
+	if (style == FYAS_PLAIN && handle->storage_hint_valid &&
+	    handle->direct_output && !handle->high_ascii &&
+	    !handle->has_lb && !handle->has_ws && !handle->empty) {
+
+		flags |= FYTTAF_DIRECT_OUTPUT;
+
+		maxcol = (int)handle->storage_hint;
+		maxspan = maxcol - 1;
+		flags |=
+			FYTTAF_DIRECT_OUTPUT |
+			FYTTAF_CAN_BE_SIMPLE_KEY |
+			FYTTAF_CAN_BE_PLAIN |
+			FYTTAF_CAN_BE_SINGLE_QUOTED |
+			FYTTAF_CAN_BE_DOUBLE_QUOTED |
+			FYTTAF_CAN_BE_LITERAL |
+			FYTTAF_CAN_BE_PLAIN_FLOW |
+			FYTTAF_CAN_BE_UNQUOTED_PATH_KEY;
+
+		goto done;
+	}
+
+	/* can this token be a simple key initial condition */
+	if (!fy_atom_style_is_block(style) && style != FYAS_URI)
+		flags |= FYTTAF_CAN_BE_SIMPLE_KEY;
+
+	/* can this token be directly output initial condition */
+	if (!fy_atom_style_is_block(style))
+		flags |= FYTTAF_DIRECT_OUTPUT;
+
+	fy_atom_iter_start(handle, &iter);
+
+	col = 0;
+	maxcol = 0;
+	maxspan = 0;
+	span = 0;
+
+	/* get first character */
+	cn = fy_atom_iter_utf8_get(&iter);
+	if (cn < 0) {
+		/* empty? */
+		flags |= FYTTAF_SIZE0 | FYTTAF_EMPTY | FYTTAF_CAN_BE_UNQUOTED_PATH_KEY | FYTTAF_CAN_BE_SIMPLE_KEY;
+		goto out;
+	}
+
+	flags |= FYTTAF_CAN_BE_PLAIN |
+		 FYTTAF_CAN_BE_SINGLE_QUOTED |
+		 FYTTAF_CAN_BE_DOUBLE_QUOTED |
+		 FYTTAF_CAN_BE_LITERAL |
+		 FYTTAF_CAN_BE_FOLDED |
+		 FYTTAF_CAN_BE_PLAIN_FLOW |
+		 FYTTAF_CAN_BE_UNQUOTED_PATH_KEY |
+		 FYTTAF_ALL_WS_LB |
+		 FYTTAF_ALL_PRINT_ASCII |
+		 FYTTAF_EMPTY;
+
+	col0si = col0ei = 0;
+
+	/* disable folded right off the bat, it's a pain */
+	flags &= ~FYTTAF_CAN_BE_FOLDED;
+
+	/* plain scalars can't start with any indicator (or space/lb) */
+	if ((flags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW))) {
+		if (fy_is_start_indicator(cn) || fy_atom_is_lb(handle, cn) || fy_is_ws(cn))
+			flags &= ~(FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW);
+	}
+
+	/* plain scalars in flow mode can't start with a flow indicator */
+	if ((flags & FYTTAF_CAN_BE_PLAIN_FLOW) &&
+		fy_is_flow_indicator(cn))
+		flags &= ~FYTTAF_CAN_BE_PLAIN_FLOW;
+
+	if ((flags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW))) {
+		cnn = fy_atom_iter_utf8_peek(&iter);
+		if (fy_is_blankz_m(cnn, fy_atom_lb_mode(handle)) && fy_is_indicator_before_space(cn))
+			flags &= ~(FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW);
+	}
+
+	/* plain unquoted path keys can only start with [a-zA-Z_] */
+	if ((flags & FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) &&
+		!fy_is_first_alpha(cn))
+		flags &= ~FYTTAF_CAN_BE_UNQUOTED_PATH_KEY;
+
+	/* if it starts with white space can't be a plain */
+	if (fy_is_ws(cn)) {
+		flags |= FYTTAF_HAS_START_WS;
+		flags &= ~(FYTTAF_CAN_BE_PLAIN |
+			   FYTTAF_CAN_BE_PLAIN_FLOW);
+	}
+
+	cp = -1;
+	for (c = cn; c >= 0; cp = c, c = cn) {
+
+		if (col <= 2) {
+			if (cn == '-') {
+				col0si |= (uint8_t)1 << col;
+				if (col0si == 7)
+					flags |= FYTTAF_HAS_START_IND | FYTTAF_QUOTE_AT_0;
+			} else if (cn == '.') {
+				col0ei |= (uint8_t)1 << col;
+				if (col0ei == 7)
+					flags |= FYTTAF_HAS_END_IND | FYTTAF_QUOTE_AT_0;
+			}
+		}
+
+		/* can be -1 on end */
+		cn = fy_atom_iter_utf8_get(&iter);
+
+		/* zero can't be output, only in double quoted mode */
+		if (c == 0) {
+			flags &= ~(FYTTAF_DIRECT_OUTPUT |
+				   FYTTAF_CAN_BE_PLAIN |
+				   FYTTAF_CAN_BE_SINGLE_QUOTED |
+				   FYTTAF_CAN_BE_LITERAL |
+				   FYTTAF_CAN_BE_FOLDED |
+				   FYTTAF_CAN_BE_PLAIN_FLOW |
+				   FYTTAF_CAN_BE_UNQUOTED_PATH_KEY |
+				   FYTTAF_ALL_WS_LB |
+				   FYTTAF_ALL_PRINT_ASCII);
+			flags |= FYTTAF_CAN_BE_DOUBLE_QUOTED;
+			flags &= ~FYTTAF_EMPTY;
+		} else if (fy_is_ws(c)) {
+
+			flags |= FYTTAF_HAS_WS;
+			if (fy_is_ws(cn))
+				flags |= FYTTAF_HAS_CONSECUTIVE_WS;
+
+			/* non printable ascii */
+			flags &= ~FYTTAF_ALL_PRINT_ASCII;
+
+		} else if (fy_atom_is_lb(handle, c)) {
+
+			flags |= FYTTAF_HAS_LB;
+			if (fy_atom_is_lb(handle, cn))
+				flags |= FYTTAF_HAS_CONSECUTIVE_LB;
+
+			/* non printable ascii */
+			flags &= ~FYTTAF_ALL_PRINT_ASCII;
+			flags &= ~FYTTAF_EMPTY;
+
+			/* only non linebreaks can be simple keys */
+			flags &= ~FYTTAF_CAN_BE_SIMPLE_KEY;
+
+			/* anything with linebreaks, can't be direct */
+			flags &= ~FYTTAF_DIRECT_OUTPUT;
+
+		} else {
+			flags &= ~FYTTAF_EMPTY;
+			flags &= ~FYTTAF_ALL_WS_LB;
+			/* out of our comfort zone */
+			if (c < '!' || c > '~')
+				flags &= ~FYTTAF_ALL_PRINT_ASCII;
+		}
+
+		if ((flags & FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) && !fy_is_alnum(c))
+			flags &= ~FYTTAF_CAN_BE_UNQUOTED_PATH_KEY;
+
+		/* illegal plain combination */
+		if ((flags & FYTTAF_CAN_BE_PLAIN) &&
+			((c == ':' && fy_is_blankz_m(cn, fy_atom_lb_mode(handle))) ||
+			 (fy_is_blankz_m(c, fy_atom_lb_mode(handle)) && cn == '#') ||
+			 (cp < 0 && c == '#' && cn < 0) ||
+			 !fy_is_print(c))) {
+			flags &= ~(FYTTAF_CAN_BE_PLAIN |
+				   FYTTAF_CAN_BE_PLAIN_FLOW);
+		}
+
+		/* illegal plain flow combination */
+		if ((flags & FYTTAF_CAN_BE_PLAIN_FLOW) &&
+			(fy_is_flow_indicator(c) || (c == ':' && fy_is_flow_indicator(cn))))
+			flags &= ~FYTTAF_CAN_BE_PLAIN_FLOW;
+
+		/* non printable characters, turn off these styles */
+		if (!fy_is_print(c)) {
+			flags &= ~(FYTTAF_CAN_BE_SINGLE_QUOTED | FYTTAF_CAN_BE_LITERAL |
+				   FYTTAF_CAN_BE_FOLDED);
+			flags |= FYTTAF_HAS_NON_PRINT;
+		}
+
+		/* if there's an escape, it can't be direct */
+		if ((flags & FYTTAF_DIRECT_OUTPUT) &&
+		    ((style == FYAS_URI && c == '%') ||
+		     (style == FYAS_SINGLE_QUOTED && c == '\'') ||
+		     (style == FYAS_DOUBLE_QUOTED && c == '\\')))
+			flags &= ~FYTTAF_DIRECT_OUTPUT;
+
+		if (cn < 0 || !c || fy_atom_is_lb(handle, c) || fy_is_ws(c)) {
+			if (span > maxspan)
+				maxspan = span;
+			span = 0;
+		} else
+			span++;
+
+		if (fy_atom_is_lb(handle, c)) {
+			if (col > maxcol)
+				maxcol = col;
+			col = 0;
+			col0si = col0ei = 0;
+		} else
+			col++;
+
+		if (fy_is_any_lb(c))
+			flags |= FYTTAF_HAS_ANY_LB;
+
+		/* last character */
+		if (cn < 0) {
+			/* if ends with whitespace or linebreak, or : can't be plain */
+			if (fy_is_ws(c) || fy_atom_is_lb(handle, c) || c == ':') {
+				flags &= ~(FYTTAF_CAN_BE_PLAIN |
+					   FYTTAF_CAN_BE_PLAIN_FLOW);
+				if (c == ':')
+					flags |= FYTTAF_ENDS_WITH_COLON;
+			}
+		}
+	}
+
+	if (col > maxcol)
+		maxcol = col;
+	if (span > maxspan)
+		maxspan = span;
+
+out:
+	/* if it's got nothing, it can be anything */
+	if (flags & FYTTAF_SIZE0)
+		flags |= FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW |
+			 FYTTAF_CAN_BE_SINGLE_QUOTED | FYTTAF_CAN_BE_DOUBLE_QUOTED |
+			 FYTTAF_CAN_BE_LITERAL |  FYTTAF_CAN_BE_FOLDED;
+
+	fy_atom_iter_finish(&iter);
+
+done:
+	if (maxspanp)
+		*maxspanp = maxspan;
+	if (maxcolp)
+		*maxcolp = maxcol;
+	return flags;
 }

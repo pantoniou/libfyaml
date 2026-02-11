@@ -203,6 +203,11 @@ struct fy_input *fy_input_from_data(const char *data, size_t size,
 struct fy_input *fy_input_from_malloc_data(char *data, size_t size,
 					   struct fy_atom *handle, bool simple);
 
+struct fy_input *fy_input_from_data_styled(const char *data, size_t size,
+				    struct fy_atom *handle, enum fy_scalar_style sstyle);
+struct fy_input *fy_input_from_malloc_data_styled(char *data, size_t size,
+					   struct fy_atom *handle, enum fy_scalar_style sstyle);
+
 void fy_input_close(struct fy_input *fyi);
 
 static inline struct fy_input *

@@ -884,6 +884,7 @@ struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn)
 	unsigned int aflags;
 	const char *s, *e;
 	size_t size;
+	bool simple;
 
 	if (!fyn)
 		return NULL;
@@ -927,8 +928,10 @@ struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn)
 	handle.start_mark = fyt_start->handle.start_mark;
 	handle.end_mark = fyt_end->handle.end_mark;
 
+	simple = (aflags & (FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN | FYACF_LB | FYACF_ENDS_WITH_COLON))
+			== (FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN);
 	/* if it's plain, all is good */
-	if (aflags & FYACF_FLOW_PLAIN) {
+	if (simple) {
 		handle.storage_hint = size;	/* maximum */
 		handle.storage_hint_valid = false;
 		handle.direct_output = !!(aflags & FYACF_JSON_ESCAPE);	/* direct only when no json escape */
@@ -5428,7 +5431,28 @@ fy_node_create_scalar_internal(struct fy_document *fyd, const char *data, size_t
 	data_copy = NULL;
 
 	if (!alias) {
-		style = handle.style == FYAS_PLAIN ? FYSS_PLAIN : FYSS_DOUBLE_QUOTED;
+
+		switch (handle.style & ~FYAS_MANUAL_MARK) {
+		case FYAS_PLAIN:
+			style = FYSS_PLAIN;
+			break;
+		case FYAS_SINGLE_QUOTED:
+			style = FYSS_SINGLE_QUOTED;
+			break;
+		case FYAS_DOUBLE_QUOTED:
+			style = FYSS_DOUBLE_QUOTED;
+			break;
+		case FYAS_LITERAL:
+			style = FYSS_LITERAL;
+			break;
+		case FYAS_FOLDED:
+			style = FYSS_FOLDED;
+			break;
+		default:
+			style = FYSS_DOUBLE_QUOTED;
+			break;
+		}
+
 		fyn->scalar = fy_token_create(FYTT_SCALAR, &handle, style);
 	} else
 		fyn->scalar = fy_token_create(FYTT_ALIAS, &handle, NULL);
