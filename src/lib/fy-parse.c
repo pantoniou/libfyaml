@@ -5913,6 +5913,21 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 		goto return_ok;
 	}
 
+	/* handle really weird cases of empty block sequences */
+	if (fyp->state == FYPS_INDENTLESS_SEQUENCE_ENTRY) {
+		switch (fyt->type) {
+		case FYTT_BLOCK_ENTRY:
+			/* mark that we're in this weird state */
+			fyp_parse_debug(fyp, "BARE -\n");
+			goto do_empty_scalar;
+		case FYTT_KEY:
+			fyp_parse_debug(fyp, "BARE - followed by KEY\n");
+			goto do_empty_scalar;
+		default:
+			break;
+		}
+	}
+
 	if (!anchor && !tag) {
 
 		if (fyt->type == FYTT_FLOW_ENTRY &&
@@ -5938,6 +5953,8 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 
 		goto err_out;
 	}
+
+do_empty_scalar:
 
 	fyp_parse_debug(fyp, "parse_node: empty scalar...");
 
