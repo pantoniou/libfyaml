@@ -574,19 +574,19 @@ def _construct_yaml_str(loader, node):
 
 # Representer functions for dump()
 def _represent_datetime(dumper, data):
-    """Represent a datetime object as ISO format string."""
+    """Represent a datetime object as a !!timestamp scalar node."""
     if data.tzinfo is not None:
         value = data.isoformat()
     else:
         value = data.strftime('%Y-%m-%d %H:%M:%S')
         if data.microsecond:
             value += '.%06d' % data.microsecond
-    return value
+    return ScalarNode('tag:yaml.org,2002:timestamp', value)
 
 
 def _represent_date(dumper, data):
-    """Represent a date object as ISO format string."""
-    return data.isoformat()
+    """Represent a date object as a !!timestamp scalar node."""
+    return ScalarNode('tag:yaml.org,2002:timestamp', data.isoformat())
 
 
 def _represent_bytes(dumper, data):
@@ -2310,8 +2310,22 @@ class Dumper(SafeDumper):
     yaml_representers = SafeDumper.yaml_representers.copy()
     yaml_multi_representers = {}
 
+    def represent_name(self, data):
+        """Represent a Python name (class, function, etc.) as !!python/name:..."""
+        name = '%s.%s' % (data.__module__, data.__qualname__)
+        return self.represent_scalar('tag:yaml.org,2002:python/name:' + name, '')
+
+    def represent_module(self, data):
+        """Represent a Python module as !!python/module:..."""
+        return self.represent_scalar('tag:yaml.org,2002:python/module:' + data.__name__, '')
+
+import types as _types_module
 # Register object multi-representer after class definition
 Dumper.yaml_multi_representers[object] = SafeDumper.represent_undefined
+Dumper.yaml_multi_representers[type] = Dumper.represent_name
+Dumper.yaml_representers[_types_module.FunctionType] = Dumper.represent_name
+Dumper.yaml_representers[_types_module.BuiltinFunctionType] = Dumper.represent_name
+Dumper.yaml_representers[_types_module.ModuleType] = Dumper.represent_module
 
 
 _default_Dumper = Dumper
@@ -3122,8 +3136,8 @@ def _node_to_python(node):
         tag = node.tag
         value = node.value
 
-        # Handle standard YAML tags
-        if tag == 'tag:yaml.org,2002:null' or value in ('null', 'Null', 'NULL', '~', ''):
+        # Handle by explicit tag first
+        if tag == 'tag:yaml.org,2002:null':
             return None
         elif tag == 'tag:yaml.org,2002:bool':
             return value.lower() in ('true', 'yes', 'on')
@@ -3132,13 +3146,20 @@ def _node_to_python(node):
         elif tag == 'tag:yaml.org,2002:float':
             return float(value)
         elif tag == 'tag:yaml.org,2002:binary':
-            # Binary data - preserve as TaggedScalar for dump (style matters)
             return TaggedScalar(tag, value, node.style)
+        elif tag == 'tag:yaml.org,2002:timestamp':
+            # Emit as plain scalar (will be implicitly resolved on re-parse)
+            return value
         elif tag and tag.startswith('!'):
-            # Custom tag - wrap in TaggedScalar for later emission
+            # Custom tag (shorthand) - preserve as TaggedScalar
             return TaggedScalar(tag, value, node.style)
+        elif tag and tag not in ('tag:yaml.org,2002:str', None):
+            # Non-standard full tag (e.g. !!python/name:...) - preserve
+            return TaggedScalar(tag, value, node.style)
+        # No explicit tag or !!str — use implicit value resolution
+        elif value in ('null', 'Null', 'NULL', '~', ''):
+            return None
         else:
-            # Plain string
             return value
 
     elif isinstance(node, MappingNode):
@@ -3213,15 +3234,17 @@ def _apply_representers(data, dumper):
         return _apply_representers(result, dumper)
 
     # Check for multi-representers (type hierarchy)
-    # Check non-collection multi_representers FIRST to allow custom types like
+    # Check specific multi_representers FIRST to allow custom types like
     # AnsibleTaggedStr (which inherits from str) to be handled before plain str
+    # Skip catch-all types (object) and collection types
     import collections.abc
     collection_types = (collections.abc.Mapping, collections.abc.Sequence,
                         collections.abc.Collection, collections.abc.Iterable)
+    catchall_types = (object,)
 
     for base_type, representer in multi_representers.items():
-        # Skip collection types for now - check them after scalar types
-        if base_type in collection_types:
+        # Skip collection types and catch-all - check them later
+        if base_type in collection_types or base_type in catchall_types:
             continue
         if base_type is not None and isinstance(data, base_type):
             result = representer(dumper, data)
@@ -3233,9 +3256,24 @@ def _apply_representers(data, dumper):
     if isinstance(data, (str, bytes, int, float, bool, type(None), datetime.date, datetime.datetime)):
         return data
 
+    # Recursively process containers BEFORE catch-all object representer
+    if isinstance(data, dict):
+        return {_apply_representers(k, dumper): _apply_representers(v, dumper)
+                for k, v in data.items()}
+    elif isinstance(data, (list, tuple)):
+        return [_apply_representers(item, dumper) for item in data]
+
     # Now check collection multi_representers
     for base_type, representer in multi_representers.items():
         if base_type not in collection_types:
+            continue
+        if base_type is not None and isinstance(data, base_type):
+            result = representer(dumper, data)
+            return _apply_representers(result, dumper)
+
+    # Check catch-all multi_representers (object)
+    for base_type, representer in multi_representers.items():
+        if base_type not in catchall_types:
             continue
         if base_type is not None and isinstance(data, base_type):
             result = representer(dumper, data)
@@ -3246,13 +3284,6 @@ def _apply_representers(data, dumper):
         representer = representers[None]
         result = representer(dumper, data)
         return _apply_representers(result, dumper)
-
-    # Recursively process containers
-    if isinstance(data, dict):
-        return {_apply_representers(k, dumper): _apply_representers(v, dumper)
-                for k, v in data.items()}
-    elif isinstance(data, (list, tuple)):
-        return [_apply_representers(item, dumper) for item in data]
 
     # Return data unchanged
     return data
