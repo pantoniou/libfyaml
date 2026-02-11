@@ -2349,7 +2349,6 @@ int fy_emit_setup(struct fy_emitter *emit, const struct fy_emitter_cfg *cfg)
 
 void fy_emit_save_ctx_cleanup(struct fy_emitter *emit, struct fy_emit_save_ctx *sc)
 {
-	sc = &emit->s_sc;
 	fy_token_unref_rl(emit->recycled_token_list, sc->fyt_last_key);
 	sc->fyt_last_key = NULL;
 	fy_token_unref_rl(emit->recycled_token_list, sc->fyt_last_value);
