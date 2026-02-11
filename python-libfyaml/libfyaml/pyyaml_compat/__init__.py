@@ -597,9 +597,12 @@ def _represent_bytes(dumper, data):
 
 def _represent_set(dumper, data):
     """Represent a set as a tagged mapping with null values."""
-    # Convert to mapping with null values and apply !!set tag
-    set_mapping = {item: None for item in data}
-    return fy.from_python(set_mapping, tag='tag:yaml.org,2002:set')
+    value = []
+    for item in data:
+        item_node = dumper.represent_data(item)
+        null_node = dumper.represent_data(None)
+        value.append((item_node, null_node))
+    return MappingNode('tag:yaml.org,2002:set', value)
 
 
 def _represent_ordereddict(dumper, data):
