@@ -1059,10 +1059,8 @@ static void *fy_worker_thread_steal(void *arg)
 		fy_thread_unreserve_internal(t);
 
 		w_exp = w_last;
-		if (!fy_atomic_compare_exchange_strong(&t->work, &w_exp, NULL)) {
-			assert(w_exp != WORK_SHUTDOWN);
+		if (!fy_atomic_compare_exchange_strong(&t->work, &w_exp, NULL))
 			break;
-		}
 	}
 	TDBG("%s: T#%u leaving steal mode\n", __func__, t->id);
 
