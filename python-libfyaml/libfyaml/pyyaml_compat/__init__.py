@@ -3943,7 +3943,19 @@ def emit(events, stream=None, Dumper=None,
     except (RuntimeError, ValueError) as exc:
         raise EmitterError(str(exc)) from exc
     if stream is not None:
-        stream.write(result)
+        # Check if stream expects bytes (BytesIO, binary file, etc.)
+        # If so, encode the result using the encoding from StreamStartEvent
+        encoding = None
+        if events_list and hasattr(events_list[0], 'encoding'):
+            encoding = events_list[0].encoding
+        if encoding:
+            stream.write(result.encode(encoding))
+        else:
+            try:
+                stream.write(result)
+            except TypeError:
+                # Stream expects bytes but no encoding specified — use utf-8
+                stream.write(result.encode('utf-8'))
         return None
     return result
 

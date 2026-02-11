@@ -701,6 +701,190 @@ START_TEST(emit_bug_plain_multiline_key_hashbang)
 }
 END_TEST
 
+/* ═══════════════════════════════════════════════════════════════════
+ * Bug 14 (PARSER): NEL (U+0085) in block scalar trailing break
+ *                  produces spurious null byte
+ *
+ * In YAML 1.1 mode, U+0085 (NEL) is a line break character.
+ * When a block scalar's trailing line break is NEL, the parser
+ * normalizes it to \n but appends a spurious \0 null byte.
+ * This affects clip (default |) and keep (|+) chomping.
+ * Strip (|-) is unaffected because it removes the break entirely.
+ *
+ * Root cause: NEL is 2 bytes in UTF-8 (\xc2\x85) but normalizes
+ * to 1 byte (\n). The parser appears to account for the 2-byte
+ * input length, leaving a stale null byte in the output buffer.
+ *
+ * Reproduces PyYAML spec-09-22 and spec-09-23 test failures.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/*
+ * Parse a YAML string in YAML 1.1 mode, extract the nth scalar value
+ * (0-indexed). Returns allocated string in *out_val, length in *out_len.
+ * Returns 0 on success, -1 on failure.
+ */
+static int parse_yaml11_get_scalar(const char *input, size_t input_len,
+				   int scalar_index,
+				   char **out_val, size_t *out_len)
+{
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_DEFAULT_VERSION_1_1 |
+			 FYPCF_SLOPPY_FLOW_INDENTATION |
+			 FYPCF_ALLOW_DUPLICATE_KEYS,
+	};
+	struct fy_parser *fyp;
+	struct fy_event *fye;
+	int idx = 0;
+	char *val = NULL;
+	size_t val_len = 0;
+	int rc;
+
+	fyp = fy_parser_create(&cfg);
+	if (!fyp)
+		return -1;
+
+	rc = fy_parser_set_string(fyp, input, input_len);
+	if (rc) {
+		fy_parser_destroy(fyp);
+		return -1;
+	}
+
+	while ((fye = fy_parser_parse(fyp)) != NULL) {
+		if (fye->type == FYET_SCALAR) {
+			if (idx == scalar_index) {
+				const char *text;
+				size_t tlen;
+				text = fy_token_get_text(fye->scalar.value, &tlen);
+				if (text) {
+					val = malloc(tlen + 1);
+					memcpy(val, text, tlen);
+					val[tlen] = '\0';
+					val_len = tlen;
+				}
+			}
+			idx++;
+		}
+		fy_parser_event_free(fyp, fye);
+	}
+
+	fy_parser_destroy(fyp);
+
+	if (!val)
+		return -1;
+
+	if (out_val)
+		*out_val = val;
+	else
+		free(val);
+	if (out_len)
+		*out_len = val_len;
+	return 0;
+}
+
+/* clip chomping (|) with NEL as trailing break: expect "text\n", not "text\n\0" */
+START_TEST(parse_bug_nel_clip_chomping)
+{
+	/* "x: |\n  text<NEL>"  where NEL = U+0085 = \xc2\x85 */
+	const char input[] = "x: |\n  text\xc2\x85";
+	char *val = NULL;
+	size_t val_len = 0;
+	int rc;
+
+	rc = parse_yaml11_get_scalar(input, sizeof(input) - 1, 1, &val, &val_len);
+	ck_assert_int_eq(rc, 0);
+	ck_assert_ptr_ne(val, NULL);
+
+	fprintf(stderr, "clip+NEL: got %zu bytes, repr=", val_len);
+	for (size_t i = 0; i < val_len; i++)
+		fprintf(stderr, "\\x%02x", (unsigned char)val[i]);
+	fprintf(stderr, "\n");
+
+	/* expected: "text\n" = 5 bytes */
+	ck_assert_msg(val_len == 5 && memcmp(val, "text\n", 5) == 0,
+		      "clip+NEL: expected \"text\\n\" (5 bytes), got %zu bytes", val_len);
+	free(val);
+}
+END_TEST
+
+/* keep chomping (|+) with NEL as trailing break: expect "text\n", not "text\n\0" */
+START_TEST(parse_bug_nel_keep_chomping)
+{
+	const char input[] = "x: |+\n  text\xc2\x85";
+	char *val = NULL;
+	size_t val_len = 0;
+	int rc;
+
+	rc = parse_yaml11_get_scalar(input, sizeof(input) - 1, 1, &val, &val_len);
+	ck_assert_int_eq(rc, 0);
+	ck_assert_ptr_ne(val, NULL);
+
+	fprintf(stderr, "keep+NEL: got %zu bytes, repr=", val_len);
+	for (size_t i = 0; i < val_len; i++)
+		fprintf(stderr, "\\x%02x", (unsigned char)val[i]);
+	fprintf(stderr, "\n");
+
+	/* expected: "text\n" = 5 bytes */
+	ck_assert_msg(val_len == 5 && memcmp(val, "text\n", 5) == 0,
+		      "keep+NEL: expected \"text\\n\" (5 bytes), got %zu bytes", val_len);
+	free(val);
+}
+END_TEST
+
+/* strip chomping (|-) with NEL should work fine: expect "text" */
+START_TEST(parse_bug_nel_strip_chomping_ok)
+{
+	const char input[] = "x: |-\n  text\xc2\x85";
+	char *val = NULL;
+	size_t val_len = 0;
+	int rc;
+
+	rc = parse_yaml11_get_scalar(input, sizeof(input) - 1, 1, &val, &val_len);
+	ck_assert_int_eq(rc, 0);
+	ck_assert_ptr_ne(val, NULL);
+
+	fprintf(stderr, "strip+NEL: got %zu bytes, repr=", val_len);
+	for (size_t i = 0; i < val_len; i++)
+		fprintf(stderr, "\\x%02x", (unsigned char)val[i]);
+	fprintf(stderr, "\n");
+
+	/* expected: "text" = 4 bytes */
+	ck_assert_msg(val_len == 4 && memcmp(val, "text", 4) == 0,
+		      "strip+NEL: expected \"text\" (4 bytes), got %zu bytes", val_len);
+	free(val);
+}
+END_TEST
+
+/* spec-09-22 full test: strip/clip/keep with mixed NEL/LS/PS line breaks */
+START_TEST(parse_bug_nel_spec_09_22)
+{
+	/* strip: |-\n  text<PS>clip: |\n  text<NEL>keep: |+\n  text<LS> */
+	const char input[] =
+		"strip: |-\n  text\xe2\x80\xa9"
+		"clip: |\n  text\xc2\x85"
+		"keep: |+\n  text\xe2\x80\xa8";
+	char *val = NULL;
+	size_t val_len = 0;
+	int rc;
+
+	/* scalar[0]="strip", scalar[1]=strip value, scalar[2]="clip",
+	 * scalar[3]=clip value, scalar[4]="keep", scalar[5]=keep value */
+
+	/* clip value (scalar index 3): should be "text\n" */
+	rc = parse_yaml11_get_scalar(input, sizeof(input) - 1, 3, &val, &val_len);
+	ck_assert_int_eq(rc, 0);
+	ck_assert_ptr_ne(val, NULL);
+
+	fprintf(stderr, "spec-09-22 clip: got %zu bytes, repr=", val_len);
+	for (size_t i = 0; i < val_len; i++)
+		fprintf(stderr, "\\x%02x", (unsigned char)val[i]);
+	fprintf(stderr, "\n");
+
+	ck_assert_msg(val_len == 5 && memcmp(val, "text\n", 5) == 0,
+		      "spec-09-22 clip: expected \"text\\n\" (5 bytes), got %zu bytes", val_len);
+	free(val);
+}
+END_TEST
+
 /* ── registration ────────────────────────────────────────────────── */
 
 void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
@@ -770,4 +954,10 @@ void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
 
 	/* Bug 13: plain multiline key */
 	fy_check_testcase_add_test(ctc, emit_bug_plain_multiline_key_hashbang);
+
+	/* Bug 14 (PARSER): NEL block scalar spurious null byte */
+	fy_check_testcase_add_test(ctc, parse_bug_nel_clip_chomping);
+	fy_check_testcase_add_test(ctc, parse_bug_nel_keep_chomping);
+	fy_check_testcase_add_test(ctc, parse_bug_nel_strip_chomping_ok);
+	fy_check_testcase_add_test(ctc, parse_bug_nel_spec_09_22);
 }
