@@ -1751,6 +1751,12 @@ static void fy_emit_mapping_key_prolog(struct fy_emitter *emit, struct fy_emit_s
 	    ((fy_emit_is_compact(emit) || sc->flow) && emit->column >= fy_emit_width(emit)))
 		fy_emit_write_indent(emit, sc->indent);
 
+	/* emit top comment on key token (interstitial mapping comment) */
+	if (!sc->flow && fy_emit_token_has_comment(emit, fyt_key, fycp_top)) {
+		fy_emit_token_comment(emit, fyt_key, sc->flags, sc->indent, fycp_top);
+		sc->flags |= DDNF_HANGING_INDENT;
+	}
+
 	/* if we have a right comment then it's by a definition not a simple key */
 	has_comment = fy_emit_token_has_comment(emit, fyt_key, fycp_right);
 	if (simple_key /* && !has_comment */ ) {
