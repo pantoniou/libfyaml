@@ -1,6 +1,6 @@
 # PyYAML Test Suite Failure Analysis
 
-**Test run**: 1216 passed, 64 failed (95.0% pass rate)
+**Test run**: 1220 passed, 60 failed (95.3% pass rate)
 **Test suite**: PyYAML legacy test suite run against libfyaml Python bindings (pyyaml_compat)
 
 ## Summary
@@ -11,8 +11,7 @@
 | Emitter styles (block scalars) | 16 | C emitter block scalar bugs in mapping key contexts |
 | Emitter on_data | 5 | C emitter event round-trip issues |
 | Lone surrogates | 4 | C library rejects lone surrogates |
-| Composer (NEL/special chars) | 3 | C parser NEL block scalar bug + `---`/`...` handling |
-| Parser (NEL) | 2 | C parser NEL block scalar bug (YAML 1.1) |
+| Composer (`---`/`...` handling) | 1 | C parser `---`/`...` in flow context |
 | Path resolver | 2 | Not implemented in Python bindings |
 | Recursive round-trip | 2 | Anchor/alias reconstruction during load |
 | Sexagesimal | 2 | C library doesn't resolve sexagesimal notation |
@@ -259,9 +258,11 @@ The `test_emitter_styles` test iterates through all style combinations for each 
 
 ---
 
-## 5. Composer Failures (3 tests)
+## 5. Composer Failures (1 test)
 
-**Tests**: `test_composer` for spec-09-15, spec-09-22, spec-09-23.
+**Tests**: `test_composer` for spec-09-15.
+
+~~spec-09-22 and spec-09-23 previously failed here due to the NEL block scalar bug — now **FIXED**.~~
 
 ### 5a. spec-09-15 — `---` and `...` as plain scalars
 
@@ -287,39 +288,15 @@ The `test_emitter_styles` test iterates through all style combinations for each 
 
 **C library behavior**: `---` in flow context is resolved differently than PyYAML expects. This is a C-side tag resolution issue.
 
-### 5b. spec-09-22 — Block scalars with NEL (U+0085)
-
-**Input**:
-```yaml
-strip: |-
-  text⏎clip: |
-  text⏎keep: |+
-  text⏎
-```
-(where ⏎ represents actual line endings including NEL)
-
-**Root cause**: The C parser produces a spurious NUL byte (`\x00`) when parsing block scalars that end with NEL (U+0085) with clip or keep chomping. This causes the composed Node tree to have incorrect scalar values.
-
-**See**: `C-PARSER-NEL-BLOCK-SCALAR-BUG.md` for detailed analysis.
-
-### 5c. spec-09-23 — Folded block scalars with NEL
-
-Same as 5b but with folded (`>`) block scalars instead of literal (`|`).
-
 ---
 
-## 6. Parser Failures (2 tests)
+## 6. Parser Failures — FIXED
 
-**Tests**: `test_parser` for spec-09-22 and spec-09-23.
+~~**Tests**: `test_parser` for spec-09-22 and spec-09-23.~~
 
-**Root cause**: Same NEL block scalar bug as Composer failures 5b/5c. The parser produces `ScalarEvent` values with incorrect content (spurious NUL bytes) for block scalars ending with NEL U+0085.
+**Status**: **FIXED** — The NEL block scalar bug (spurious NUL byte with clip/keep chomping) has been resolved in the C library. Both spec-09-22 and spec-09-23 parser tests now pass. The NUL byte in input stream and partial/invalid UTF-8 handling has also been fixed (see Bug 15 in `test/libfyaml-test-emit-bugs.c`).
 
-**Details**: When the C parser encounters NEL (U+0085) at the end of a block scalar:
-- **Strip chomping (`|-`)**: Works correctly (trailing content stripped)
-- **Clip chomping (`|`)**: Adds a spurious `\x00` byte before the final newline
-- **Keep chomping (`|+`)**: Adds a spurious `\x00` byte
-
-**C test cases**: `test/libfyaml-test-emit-bugs.c`, Bug 14 (NEL parser tests).
+**C test cases**: `test/libfyaml-test-emit-bugs.c`, Bug 14 (NEL parser tests — all pass) and Bug 15 (NUL/UTF-8 input validation — all 11 pass).
 
 ---
 
@@ -557,6 +534,8 @@ These require changes to the C library's parser, resolver, or tag handling:
 - 1 timestamp-bugs: Single-digit timezone offsets
 - 1 duplicate-mapping-key: `*alias:` as simple key
 - 1 implicit-resolver: 103/261 schema resolution differences
+- ~~2 parser (NEL) + 2 composer (NEL): **FIXED** — NEL block scalar bug resolved~~
+- ~~1 stream-error (NUL): **FIXED** — C library now rejects NUL in streams~~
 
 ### C Library Emitter Issues (22 tests)
 These require changes to the C library's YAML emitter:
