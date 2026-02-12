@@ -5305,16 +5305,17 @@ int fy_fetch_tokens(struct fy_parser *fyp)
 	}
 
 	c = fy_parse_peek(fyp);
-	if (c < 0 || c == '\0') {
+	if (c <= 0) {
+
+		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
+				c == FYUG_EOF, err_out,
+				"Invalid UTF8 %s in the input stream",
+					c == '\0' ? "(null \\0)" :
+					c == FYUG_INV ? "(invalid)" :
+					c == FYUG_PARTIAL ? "(partial)" : "(unspecified)");
 
 		fyp->stream_end_reached = true;
 
-		FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
-				!fyp_json_mode(fyp) || c != '\0', err_out,
-				"JSON disallows '\\0' in the input stream");
-
-		if (c >= 0)
-			fy_advance(fyp, c);
 		rc = fy_fetch_stream_end(fyp);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_fetch_stream_end() failed");
