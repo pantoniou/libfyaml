@@ -104,7 +104,7 @@ fy_utf8_get_branch_64(const void *ptr, size_t left)
 	c = s[2];
 	if ((a & 0xf0) == 0xe0) {		// 3 bytes: 1110xxxx 10xxxxxx 10xxxxxx
 
-		if (((b | c) & 0xc0) != 0x80)
+		if ((b & 0xc0) != 0x80 || (c & 0xc0) != 0x80)
 			return FYUG_INV;
 
 		code = (int)(((a & 0x0f) << 12) | ((b & 0x3f) << 6) | (c & 0x3f));
@@ -120,7 +120,7 @@ fy_utf8_get_branch_64(const void *ptr, size_t left)
 	d = s[3];
 	if ((a & 0xf8) == 0xf0) {		// 4 bytes: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
 
-		if (((b | c | d) & 0xc0) != 0x80)
+		if ((b & 0xc0) != 0x80 || (c & 0xc0) != 0x80 || (d & 0xc0) != 0x80)
 			return FYUG_INV;
 
 		code = ((a & 0x07) << 18) | ((b & 0x3f) << 12) |
@@ -174,7 +174,7 @@ fy_utf8_get_branch(const void *ptr, size_t left, int *widthp)
 	c = s[2];
 	if ((a & 0xf0) == 0xe0) {		// 3 bytes: 1110xxxx 10xxxxxx 10xxxxxx
 
-		if (((b | c) & 0xc0) != 0x80)
+		if ((b & 0xc0) != 0x80 || (c & 0xc0) != 0x80)
 			goto err_inv;
 
 		code = (int)(((a & 0x0f) << 12) | ((b & 0x3f) << 6) | (c & 0x3f));
@@ -191,7 +191,7 @@ fy_utf8_get_branch(const void *ptr, size_t left, int *widthp)
 	d = s[3];
 	if ((a & 0xf8) == 0xf0) {		// 4 bytes: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
 
-		if (((b | c | d) & 0xc0) != 0x80)
+		if ((b & 0xc0) != 0x80 || (c & 0xc0) != 0x80 || (d & 0xc0) != 0x80)
 			goto err_inv;
 
 		code = ((a & 0x07) << 18) | ((b & 0x3f) << 12) |
