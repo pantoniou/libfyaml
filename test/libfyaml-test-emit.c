@@ -284,6 +284,56 @@ START_TEST(emit_interstitial_comment_flow)
 }
 END_TEST
 
+START_TEST(emit_comment_no_duplicate_mapping_in_seq)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	char *output;
+	const char *first, *second;
+
+	fyd = fy_document_build_from_string(&cfg,
+		"- name: zebra\n  val: z\n# above apple entry\n- name: apple\n  val: a\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	output = fy_emit_document_to_string(fyd, FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output, NULL);
+
+	/* comment must appear exactly once */
+	first = strstr(output, "# above apple entry");
+	ck_assert_ptr_ne(first, NULL);
+	second = strstr(first + 1, "# above apple entry");
+	ck_assert_ptr_eq(second, NULL);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(emit_comment_no_duplicate_seq_in_mapping)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	char *output;
+	const char *first, *second;
+
+	fyd = fy_document_build_from_string(&cfg,
+		"key1: val1\n# above list\nkey2:\n  - a\n  - b\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	output = fy_emit_document_to_string(fyd, FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output, NULL);
+
+	/* comment must appear exactly once */
+	first = strstr(output, "# above list");
+	ck_assert_ptr_ne(first, NULL);
+	second = strstr(first + 1, "# above list");
+	ck_assert_ptr_eq(second, NULL);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 void libfyaml_case_emit(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -299,4 +349,6 @@ void libfyaml_case_emit(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_interstitial_comment_multiline);
 	fy_check_testcase_add_test(ctc, emit_interstitial_comment_with_sort);
 	fy_check_testcase_add_test(ctc, emit_interstitial_comment_flow);
+	fy_check_testcase_add_test(ctc, emit_comment_no_duplicate_mapping_in_seq);
+	fy_check_testcase_add_test(ctc, emit_comment_no_duplicate_seq_in_mapping);
 }
