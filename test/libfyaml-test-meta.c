@@ -20,6 +20,8 @@
 
 #include <libfyaml.h>
 
+#include "fy-check.h"
+
 START_TEST(meta_basic)
 {
 	struct fy_document *fyd;
@@ -183,15 +185,13 @@ START_TEST(meta_unregister)
 }
 END_TEST
 
-TCase *libfyaml_case_meta(void)
+void libfyaml_case_meta(struct fy_check_suite *cs)
 {
-	TCase *tc;
+	struct fy_check_testcase *ctc;
 
-	tc = tcase_create("meta");
+	ctc = fy_check_suite_add_test_case(cs, "meta");
 
-	tcase_add_test(tc, meta_basic);
-	tcase_add_test(tc, meta_clear_cb);
-	tcase_add_test(tc, meta_unregister);
-
-	return tc;
+	fy_check_testcase_add_test(ctc, meta_basic);
+	fy_check_testcase_add_test(ctc, meta_clear_cb);
+	fy_check_testcase_add_test(ctc, meta_unregister);
 }

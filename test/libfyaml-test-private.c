@@ -21,6 +21,8 @@
 #include <libfyaml.h>
 #include "fy-parse.h"
 
+#include "fy-check.h"
+
 static const struct fy_parse_cfg default_parse_cfg = {
 	.search_path = "",
 	.flags = FYPCF_QUIET,
@@ -150,15 +152,13 @@ START_TEST(parse_simple)
 }
 END_TEST
 
-TCase *libfyaml_case_private(void)
+void libfyaml_case_private(struct fy_check_suite *cs)
 {
-	TCase *tc;
+	struct fy_check_testcase *ctc;
 
-	tc = tcase_create("private");
+	ctc = fy_check_suite_add_test_case(cs, "private");
 
-	tcase_add_test(tc, parser_setup);
-	tcase_add_test(tc, scan_simple);
-	tcase_add_test(tc, parse_simple);
-
-	return tc;
+	fy_check_testcase_add_test(ctc, parser_setup);
+	fy_check_testcase_add_test(ctc, scan_simple);
+	fy_check_testcase_add_test(ctc, parse_simple);
 }

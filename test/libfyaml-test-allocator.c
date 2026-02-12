@@ -21,6 +21,8 @@
 
 #include <libfyaml.h>
 
+#include "fy-check.h"
+
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(x) ((sizeof(x)/sizeof((x)[0])))
 #endif
@@ -333,22 +335,18 @@ START_TEST(allocator_dedup_inplace)
 }
 END_TEST
 
-TCase *libfyaml_case_allocator(void)
+void libfyaml_case_allocator(struct fy_check_suite *cs)
 {
-	TCase *tc;
+	struct fy_check_testcase *ctc;
 
-	tc = tcase_create("allocator");
+	ctc = fy_check_suite_add_test_case(cs, "allocator");
 
-	tcase_add_test(tc, allocator_builtins);
-
-	tcase_add_test(tc, allocator_linear_buf);
-	tcase_add_test(tc, allocator_linear_alloc);
-	tcase_add_test(tc, allocator_malloc);
-	tcase_add_test(tc, allocator_mremap);
-	tcase_add_test(tc, allocator_auto);
-
-	tcase_add_test(tc, allocator_linear_inplace);
-	tcase_add_test(tc, allocator_dedup_inplace);
-
-	return tc;
+	fy_check_testcase_add_test(ctc, allocator_builtins);
+	fy_check_testcase_add_test(ctc, allocator_linear_buf);
+	fy_check_testcase_add_test(ctc, allocator_linear_alloc);
+	fy_check_testcase_add_test(ctc, allocator_malloc);
+	fy_check_testcase_add_test(ctc, allocator_mremap);
+	fy_check_testcase_add_test(ctc, allocator_auto);
+	fy_check_testcase_add_test(ctc, allocator_linear_inplace);
+	fy_check_testcase_add_test(ctc, allocator_dedup_inplace);
 }

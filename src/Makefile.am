@@ -248,5 +248,6 @@ uninstall-hook:
 EXTRA_DIST =  \
 	getopt/getopt.c \
 	getopt/getopt.h \
-	util/fy-win32.h
+	util/fy-win32.h \
+	check/fy-check.h
 

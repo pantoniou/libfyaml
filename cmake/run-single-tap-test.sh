@@ -3,9 +3,8 @@
 # Wrapper script to run a single TAP subtest
 # Usage: run-single-tap-test.sh <fy_tool_path> <test_suite_name> <test_id>
 
-FY_TOOL="$1"
-test_suite="$2"
-test_id="$3"
+test_suite="$1"
+test_id="$2"
 
 if [ x"$FY_TOOL" = x -o x"$TEST_DIR" = x -o x"$test_suite" = x -o x"$test_id" = x ]; then
     echo "Error: FY_TOOL, TEST_DIR, test_suite, test_id must exist"
@@ -20,10 +19,21 @@ function is_windows_bash() {
 
 # convert to proper posix paths
 if is_windows_bash; then
-    FY_TOOL=`cygpath $FY_TOOL`
-    TEST_DIR=`cygpath $TEST_DIR`
-    YAML_TEST_SUITE=`cygpath $YAML_TEST_SUITE`
-    JSON_TEST_SUITE=`cygpath $JSON_TEST_SUITE`
+    if [ -n "$FY_TOOL" ]; then
+        FY_TOOL=`cygpath $FY_TOOL`
+    fi
+    if [ -n "$LIBFYAML_TEST" ]; then
+        FY_TOOL=`cygpath $FY_TOOL`
+    fi
+    if [ -n "$TEST_DIR" ]; then
+        TEST_DIR=`cygpath $TEST_DIR`
+    fi
+    if [ -n "$YAML_TEST_SUITE" ]; then
+        YAML_TEST_SUITE=`cygpath $YAML_TEST_SUITE`
+    fi
+    if [ -n "$JSON_TEST_SUITE" ]; then
+        JSON_TEST_SUITE=`cygpath $JSON_TEST_SUITE`
+    fi
 fi
 
 # if not given in the environment try to adjust
@@ -48,6 +58,11 @@ if [ ! -d "$TEST_DIR" ]; then
 fi
 
 case "$test_suite" in
+    libfyaml)
+	"${LIBFYAML_TEST}" "${test_id}"
+	exit $?
+	;;
+
     testerrors)
         dir="${TEST_DIR}/test-errors/${test_id}"
         desctxt=$(cat 2>/dev/null "$dir/===")

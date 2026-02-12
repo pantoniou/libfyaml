@@ -35,6 +35,7 @@ if HAVE_COMPATIBLE_CHECK
 
 check_PROGRAMS = libfyaml-test
 libfyaml_test_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/valgrind/ \
+			 -I$(top_srcdir)/src/check/ \
 			 -I$(top_srcdir)/src/lib/ \
 			 -I$(top_srcdir)/src/util \
 			 -I$(top_srcdir)/src/allocator

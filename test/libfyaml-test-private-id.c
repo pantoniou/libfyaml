@@ -20,13 +20,14 @@
 #include <alloca.h>
 #endif
 
-
 #include <check.h>
 
 #include <libfyaml.h>
 
 #include "fy-utils.h"
 #include "fy-id.h"
+
+#include "fy-check.h"
 
 /* check ffs works */
 START_TEST(id_ffs)
@@ -341,24 +342,22 @@ START_TEST(id_iter_seq)
 }
 END_TEST
 
-TCase *libfyaml_case_private_id(void)
+void libfyaml_case_private_id(struct fy_check_suite *cs)
 {
-	TCase *tc;
+	struct fy_check_testcase *ctc;
 
-	tc = tcase_create("private-id");
+	ctc = fy_check_suite_add_test_case(cs, "private-id");
 
-	tcase_add_test(tc, id_ffs);
+	fy_check_testcase_add_test(ctc, id_ffs);
 
-	tcase_add_test(tc, id_reset);
-	tcase_add_test(tc, id_alloc_full);
-	tcase_add_test(tc, id_alloc_almost_full);
-	tcase_add_test(tc, id_alloc_even);
-	tcase_add_test(tc, id_alloc_odd);
-	tcase_add_test(tc, id_alloc_seq);
+	fy_check_testcase_add_test(ctc, id_reset);
+	fy_check_testcase_add_test(ctc, id_alloc_full);
+	fy_check_testcase_add_test(ctc, id_alloc_almost_full);
+	fy_check_testcase_add_test(ctc, id_alloc_even);
+	fy_check_testcase_add_test(ctc, id_alloc_odd);
+	fy_check_testcase_add_test(ctc, id_alloc_seq);
 
-	tcase_add_test(tc, id_iter_single);
-	tcase_add_test(tc, id_iter_full);
-	tcase_add_test(tc, id_iter_seq);
-
-	return tc;
+	fy_check_testcase_add_test(ctc, id_iter_single);
+	fy_check_testcase_add_test(ctc, id_iter_full);
+	fy_check_testcase_add_test(ctc, id_iter_seq);
 }

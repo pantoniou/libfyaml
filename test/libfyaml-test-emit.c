@@ -20,6 +20,8 @@
 
 #include <libfyaml.h>
 
+#include "fy-check.h"
+
 struct test_emitter_data {
 	struct fy_emitter *emit;
 	struct fy_emitter_cfg cfg;
@@ -282,21 +284,19 @@ START_TEST(emit_interstitial_comment_flow)
 }
 END_TEST
 
-TCase *libfyaml_case_emit(void)
+void libfyaml_case_emit(struct fy_check_suite *cs)
 {
-	TCase *tc;
+	struct fy_check_testcase *ctc;
 
-	tc = tcase_create("emit");
+	ctc = fy_check_suite_add_test_case(cs, "emit");
 
-	tcase_add_test(tc, emit_simple);
-	tcase_add_test(tc, emit_interstitial_comment_single);
-	tcase_add_test(tc, emit_interstitial_comment_multiple);
-	tcase_add_test(tc, emit_interstitial_and_inline_comment);
-	tcase_add_test(tc, emit_interstitial_comment_nested);
-	tcase_add_test(tc, emit_interstitial_comment_first_key);
-	tcase_add_test(tc, emit_interstitial_comment_multiline);
-	tcase_add_test(tc, emit_interstitial_comment_with_sort);
-	tcase_add_test(tc, emit_interstitial_comment_flow);
-
-	return tc;
+	fy_check_testcase_add_test(ctc, emit_simple);
+	fy_check_testcase_add_test(ctc, emit_interstitial_comment_single);
+	fy_check_testcase_add_test(ctc, emit_interstitial_comment_multiple);
+	fy_check_testcase_add_test(ctc, emit_interstitial_and_inline_comment);
+	fy_check_testcase_add_test(ctc, emit_interstitial_comment_nested);
+	fy_check_testcase_add_test(ctc, emit_interstitial_comment_first_key);
+	fy_check_testcase_add_test(ctc, emit_interstitial_comment_multiline);
+	fy_check_testcase_add_test(ctc, emit_interstitial_comment_with_sort);
+	fy_check_testcase_add_test(ctc, emit_interstitial_comment_flow);
 }

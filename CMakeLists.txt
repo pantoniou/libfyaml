@@ -1295,6 +1295,7 @@ if(CAN_TEST)
 
         target_include_directories(libfyaml-test PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/check
             ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
             ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
             ${CMAKE_CURRENT_SOURCE_DIR}/src/util
@@ -1347,11 +1348,7 @@ if(CAN_TEST)
             RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
         )
 
-        # Add the libfyaml-test binary as the libfyaml test
-        add_test(NAME libfyaml
-            COMMAND $<TARGET_FILE:libfyaml-test>
-            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-        )
+	add_libfyaml_tests()
     endif()
 
     # Error tests - register individual subtests
