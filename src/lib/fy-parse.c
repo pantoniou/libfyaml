@@ -3572,7 +3572,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	int lastc, rc, increment = 0, current_indent, new_indent, indent = 0;
 	int breaks, breaks_length, presentation_breaks_length, first_break_length;
 	bool doc_start_end_detected, empty, empty_line, prev_empty_line, indented, prev_indented, first;
-	bool has_ws, has_lb, has_cr, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb;
+	bool has_ws, has_lb, has_weird_nl, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb;
 	bool pending_nl, ends_with_eof, starts_with_eof, content_is_eof;
 	struct fy_token *fyt;
 	size_t length, line_length, trailing_ws, trailing_breaks_length;
@@ -3692,7 +3692,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	empty = true;
 	has_ws = false;
 	has_lb = false;
-	has_cr = false;
+	has_weird_nl = false;
 	starts_with_ws = false;
 	starts_with_lb = false;
 	ends_with_ws = false;
@@ -3789,7 +3789,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 				presentation_breaks_length += actual_lb_length;
 
 			/* very simple heuristic, if we hit a '\r' then force size check */
-			has_cr |= c == '\r';
+			has_weird_nl |= c != '\n';
 		} else {
 			has_lb = false;
 			new_indent = indent;
@@ -3967,12 +3967,13 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	handle.is_merge_key = false;
 
 	/* force calculation of length if we had a CR */
-	if (has_cr || FORCE_ATOM_SIZE_CHECK_DEFAULT) {
+	if (has_weird_nl || FORCE_ATOM_SIZE_CHECK_DEFAULT) {
 		tlength = fy_atom_format_text_length(&handle);
-		if (!has_cr && tlength != length) {
-			fyp_warning(fyp, "%s: storage hint calculation failed real %zu != hint %zu - \"%s\"", __func__,
-				tlength, length,
-				fy_utf8_format_text_a(fy_atom_data(&handle), fy_atom_size(&handle), fyue_doublequote));
+		if (tlength != length) {
+			if (!has_weird_nl)
+				fyp_warning(fyp, "%s: storage hint calculation failed real %zu != hint %zu - \"%s\"", __func__,
+					tlength, length,
+					fy_utf8_format_text_a(fy_atom_data(&handle), fy_atom_size(&handle), fyue_doublequote));
 			length = tlength;
 		}
 	}
@@ -4015,7 +4016,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 	int breaks_found, blanks_found, break_run, total_code_length;
 	int breaks_found_length, first_break_length, value;
 	uint32_t hi_surrogate, lo_surrogate;
-	bool is_single, is_multiline, esc_lb, ws_lb_only, has_ws, has_lb, has_cr, has_esc;
+	bool is_single, is_multiline, esc_lb, ws_lb_only, has_ws, has_lb, has_weird_nl, has_esc;
 	bool first, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb = false;
 	bool unicode_esc, is_json_unesc, has_json_esc;
 	int last_esc_lb, break_length, presentation_breaks_length;
@@ -4053,7 +4054,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 	ws_lb_only = true;
 	has_ws = false;
 	has_lb = false;
-	has_cr = false;
+	has_weird_nl = false;
 	starts_with_ws = false;
 	starts_with_lb = false;
 	ends_with_ws = false;
@@ -4364,7 +4365,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 				blanks_found = 0;
 				esc_lb = false;
 
-				has_cr |= c == '\r';
+				has_weird_nl |= c != '\n';
 			} else {
 				has_ws = true;
 				if (!esc_lb)
@@ -4411,12 +4412,13 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 	/* skip over block scalar end */
 	fy_reader_advance_by(fyr, 1);
 
-	if (has_cr || FORCE_ATOM_SIZE_CHECK_DEFAULT) {
+	if (has_weird_nl || FORCE_ATOM_SIZE_CHECK_DEFAULT) {
 		tlength = fy_atom_format_text_length(handle);
-		if (!has_cr && tlength != length) {
-			fyr_warning(fyr, "%s: storage hint calculation failed real %zu != hint %zu - \"%s\"", __func__,
-				tlength, length,
-				fy_utf8_format_text_a(fy_atom_data(handle), fy_atom_size(handle), fyue_doublequote));
+		if (tlength != length) {
+			if (!has_weird_nl)
+				fyr_warning(fyr, "%s: storage hint calculation failed real %zu != hint %zu - \"%s\"", __func__,
+					tlength, length,
+					fy_utf8_format_text_a(fy_atom_data(handle), fy_atom_size(handle), fyue_doublequote));
 			length = tlength;
 		}
 	}
@@ -4445,7 +4447,7 @@ struct fy_fetch_plain_state {
 	bool has_high_ascii;
 	bool simple_key_allowed;
 	bool last_was_lb;
-	bool has_cr;
+	bool has_weird_nl;
 };
 
 static FY_ALWAYS_INLINE inline int
@@ -4464,12 +4466,12 @@ fy_reader_fetch_plain_scalar_handle_inline(struct fy_reader *fyr, int c,
 		struct {
 			bool run_has_lb : 1;
 			bool run_has_ws : 1;
-			bool run_has_cr : 1;
+			bool run_has_weird_nl : 1;
 			bool has_json_esc : 1;
 			bool has_high_ascii : 1;
 			bool has_lb : 1;
 			bool has_ws : 1;
-			bool has_cr : 1;
+			bool has_weird_nl : 1;
 			bool had_run : 1;
 			bool flow_level_gt_0 : 1;
 			bool flow_level_le_0_indent_ge_0 : 1;
@@ -4560,7 +4562,7 @@ fy_reader_fetch_plain_scalar_handle_inline(struct fy_reader *fyr, int c,
 
 			u.has_lb |= u.run_has_lb;
 			u.has_ws |= u.run_has_ws;
-			u.has_cr |= u.run_has_cr;
+			u.has_weird_nl |= u.run_has_weird_nl;
 
 			fy_reader_get_mark(fyr, &state->last_mark);
 		}
@@ -4573,7 +4575,7 @@ fy_reader_fetch_plain_scalar_handle_inline(struct fy_reader *fyr, int c,
 		breaks_found_length = 0;
 		first_break_length = 0;
 		blanks_found_length = 0;
-		u.run_has_ws = u.run_has_lb = u.run_has_cr = false;
+		u.run_has_ws = u.run_has_lb = u.run_has_weird_nl = false;
 
 		width = (int)fy_utf8_width(c);
 		do {
@@ -4597,7 +4599,7 @@ fy_reader_fetch_plain_scalar_handle_inline(struct fy_reader *fyr, int c,
 					first_break_length = width;
 				breaks_found_length += width;
 				u.run_has_lb = true;
-				u.run_has_cr |= c == '\r';
+				u.run_has_weird_nl |= c != '\n';
 			}
 
 			c = fy_reader_peek_width(fyr, &width);
@@ -4621,7 +4623,7 @@ fy_reader_fetch_plain_scalar_handle_inline(struct fy_reader *fyr, int c,
 	state->has_json_esc = u.has_json_esc;
 	state->has_high_ascii = u.has_high_ascii;
 	state->last_was_lb = u.last_was_lb;
-	state->has_cr = u.has_cr;
+	state->has_weird_nl = u.has_weird_nl;
 
 	return 0;
 
@@ -4779,12 +4781,13 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c,
 	handle->simple_key_allowed = state->simple_key_allowed;
 	handle->high_ascii = state->has_high_ascii;
 
-	if (state->has_cr || FORCE_ATOM_SIZE_CHECK_DEFAULT) {
+	if (state->has_weird_nl || FORCE_ATOM_SIZE_CHECK_DEFAULT) {
 		tlength = fy_atom_format_text_length(handle);
-		if (!state->has_cr && tlength != state->length) {
-			fyr_warning(fyr, "%s: storage hint calculation failed real %zu != hint %zu - \"%s\"", __func__,
-				tlength, state->length,
-				fy_utf8_format_text_a(fy_atom_data(handle), fy_atom_size(handle), fyue_doublequote));
+		if (tlength != state->length) {
+			if (!state->has_weird_nl)
+				fyr_warning(fyr, "%s: storage hint calculation failed real %zu != hint %zu - \"%s\"", __func__,
+					tlength, state->length,
+					fy_utf8_format_text_a(fy_atom_data(handle), fy_atom_size(handle), fyue_doublequote));
 			state->length = tlength;
 		}
 	}
