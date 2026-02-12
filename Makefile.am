@@ -34,8 +34,6 @@ EXTRA_DIST = \
 	cmake/config.h.in \
 	cmake/fyaml-config.cmake.in \
 	cmake/generate-def.cmake \
-	cmake/generate-jsontestsuite-list.sh \
-	cmake/generate-testsuite-list.sh \
 	cmake/libfyaml-config.cmake.in \
 	cmake/libfyaml.pc.in \
 	cmake/run-single-tap-test.sh \
