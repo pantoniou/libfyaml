@@ -6433,8 +6433,8 @@ int fy_node_vscanf(struct fy_node *fyn, const char *fmt, va_list ap)
 		if (t < e)
 			*t++ = '\0';
 
-		/* find by (relative) path */
-		fynv = fy_node_by_path(fyn, key, t - s, FYNWF_DONT_FOLLOW);
+		/* find by (relative) path - note that the size has changed */
+		fynv = fy_node_by_path(fyn, key, te - key, FYNWF_DONT_FOLLOW);
 		if (!fynv || fynv->type != FYNT_SCALAR)
 			break;
 
