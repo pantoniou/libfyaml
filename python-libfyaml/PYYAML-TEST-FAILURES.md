@@ -467,9 +467,9 @@ value[1].append(value[0])
 
 **Fix**: Would require implementing a `reader` submodule in `pyyaml_compat` that wraps the C library's stream processing. Low priority since this is a PyYAML internal API not used by applications.
 
-**C test coverage (Bug 15)**: 11 test cases for invalid input stream handling:
+**C test coverage (Bug 15)**: 11 test cases for invalid input stream handling — **all pass**:
 - NUL byte in scalar and in comment — both correctly rejected
-- Partial UTF-8: 2-byte truncated, at EOF — correctly rejected; 3-byte and 4-byte truncated before line break — known failures (parser doesn't validate final continuation byte when newline follows)
+- Partial UTF-8: 2-byte truncated, 3-byte truncated, 4-byte truncated, truncated at EOF — all correctly rejected
 - Invalid UTF-8: lone continuation byte, overlong encoding, 0xFE, 0xFF — all correctly rejected
 - Valid UTF-8 sanity check (multi-byte chars including emoji) — correctly accepted
 
