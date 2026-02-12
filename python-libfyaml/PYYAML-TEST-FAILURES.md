@@ -18,7 +18,7 @@
 | Sexagesimal | 2 | C library doesn't resolve sexagesimal notation |
 | Implicit resolver schema | 1 | C library YAML 1.1 schema differences (103/261 sub-tests) |
 | Timestamp bugs | 1 | C library doesn't parse single-digit timezone offsets |
-| Stream error | 1 | C library doesn't error on NUL character in context |
+| Stream error | 1 | Test uses PyYAML's `Reader` class (not implemented in bindings) |
 | Duplicate mapping key | 1 | C parser fails on `*anchor: value` syntax |
 | Tuple as mapping key | 1 | C emitter uses `!<uri>` instead of `!!shorthand` for tags |
 | Unicode transfer (UTF-16-BE) | 1 | C emitter UTF-16-BE encoding issue |
@@ -459,9 +459,19 @@ value[1].append(value[0])
 **Input**: A file containing a NUL byte (`\x00`) embedded in otherwise valid YAML text.
 
 **Expected**: Error — NUL characters are not allowed in YAML streams.
-**Actual**: libfyaml accepts the input without error.
+**Actual**: The test still fails, but NOT because of the C library.
 
-**C library behavior**: The C parser is tolerant of NUL bytes in certain positions within the stream, while PyYAML treats any NUL byte as a stream error.
+**C library status**: **FIXED** — The C library now correctly rejects NUL bytes in input streams. Running `fy-tool --dump` on this file produces: `error: Invalid UTF8 (null \0) in the input stream`. C test cases added in `test/libfyaml-test-emit-bugs.c` (Bug 15) verify NUL rejection in both scalar values and comments.
+
+**Why the PyYAML test still fails**: The `test_stream_error` test uses `yaml.reader.Reader`, a PyYAML-internal low-level character stream processor class. This class is not implemented by the libfyaml Python bindings — the `conftest_libfyaml.py` patch only replaces the top-level `yaml` module, not `yaml.reader`. The test exercises PyYAML's own `Reader` class, which never goes through our C library code path.
+
+**Fix**: Would require implementing a `reader` submodule in `pyyaml_compat` that wraps the C library's stream processing. Low priority since this is a PyYAML internal API not used by applications.
+
+**C test coverage (Bug 15)**: 11 test cases for invalid input stream handling:
+- NUL byte in scalar and in comment — both correctly rejected
+- Partial UTF-8: 2-byte truncated, at EOF — correctly rejected; 3-byte and 4-byte truncated before line break — known failures (parser doesn't validate final continuation byte when newline follows)
+- Invalid UTF-8: lone continuation byte, overlong encoding, 0xFE, 0xFF — all correctly rejected
+- Valid UTF-8 sanity check (multi-byte chars including emoji) — correctly accepted
 
 ---
 
@@ -540,12 +550,11 @@ value[1].append(value[0])
 
 ## Failure Classification Summary
 
-### C Library Parser/Resolver Issues (28 tests)
+### C Library Parser/Resolver Issues (27 tests)
 These require changes to the C library's parser, resolver, or tag handling:
 - 11 loader-error tests (x2 = 22 with string variants): More lenient parsing
 - 2 sexagesimal: Missing `nnn:nn:nn` pattern recognition
 - 1 timestamp-bugs: Single-digit timezone offsets
-- 1 stream-error: NUL byte tolerance
 - 1 duplicate-mapping-key: `*alias:` as simple key
 - 1 implicit-resolver: 103/261 schema resolution differences
 
@@ -559,10 +568,11 @@ These require changes to the C library's YAML emitter:
 - 4 lone-surrogate: Cannot serialize lone surrogates to UTF-8
 - 1 emoticons-utf16be: UTF-16-BE surrogate pair encoding
 
-### Python Bindings Issues (5 tests)
+### Python Bindings Issues (6 tests)
 These could potentially be fixed in the Python layer:
 - 2 recursive: Anchor/alias reconstruction in two-phase construction
 - 2 path-resolver: Not implemented (stub only)
+- 1 stream-error: Test uses `yaml.reader.Reader` (PyYAML internal, not implemented in bindings; C library NUL rejection is fixed)
 - 1 empty-python-module: Constructor-level tag validation (partial overlap with C)
 
 ### Not Fixable (4 tests)

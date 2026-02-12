@@ -1142,10 +1142,8 @@ void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, parse_bug_nul_in_stream);
 	fy_check_testcase_add_test(ctc, parse_bug_nul_in_comment);
 	fy_check_testcase_add_test(ctc, parse_bug_partial_utf8_2byte);
-	// XXX fy_check_testcase_add_test(ctc, parse_bug_partial_utf8_3byte);
-	(void)parse_bug_partial_utf8_3byte;	// known failure: partial 3-byte at line break
-	// XXX fy_check_testcase_add_test(ctc, parse_bug_partial_utf8_4byte);
-	(void)parse_bug_partial_utf8_4byte;	// known failure: partial 4-byte at line break
+	fy_check_testcase_add_test(ctc, parse_bug_partial_utf8_3byte);
+	fy_check_testcase_add_test(ctc, parse_bug_partial_utf8_4byte);
 	fy_check_testcase_add_test(ctc, parse_bug_invalid_utf8_lone_continuation);
 	fy_check_testcase_add_test(ctc, parse_bug_invalid_utf8_overlong);
 	fy_check_testcase_add_test(ctc, parse_bug_invalid_utf8_fe);
