@@ -938,7 +938,7 @@ endforeach()
 
 set_target_properties(fyaml_static PROPERTIES
     OUTPUT_NAME fyaml_static
-    POSITION_INDEPENDENT_CODE OFF
+    POSITION_INDEPENDENT_CODE ON
     FOLDER "Libraries"
 )
 
