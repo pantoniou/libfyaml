@@ -129,7 +129,7 @@ fy_input_from_data_setup_styled(struct fy_input *fyi,
 				    FYACF_LB | FYACF_ENDS_WITH_COLON |
 				    FYACF_STARTS_WITH_WS | FYACF_STARTS_WITH_LB |
 				    FYACF_ENDS_WITH_WS | FYACF_ENDS_WITH_LB | FYACF_CONSECUTIVE_LB))
-				== (FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN) ? FYSS_PLAIN : FYAS_DOUBLE_QUOTED;
+				== (FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN) ? FYSS_PLAIN : FYSS_DOUBLE_QUOTED;
 	}
 
 	handle->start_mark.input_pos = 0;
