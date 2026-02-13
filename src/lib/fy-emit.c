@@ -1592,7 +1592,9 @@ static void fy_emit_sequence_prolog(struct fy_emitter *emit, struct fy_emit_save
 	}
 
 	if (!fy_emit_is_oneline_or_compact(emit)) {
-		if (was_flow || (sc->flags & (DDNF_ROOT | DDNF_SEQ)))
+		if (was_flow || (sc->flags & (DDNF_ROOT | DDNF_SEQ))
+		    || ((sc->flags & DDNF_MAP)
+			&& (emit->xcfg.xflags & FYEXCF_INDENTED_SEQ_IN_MAP)))
 			sc->indent = fy_emit_increase_indent(emit, sc->flags, sc->indent);
 	}
 
