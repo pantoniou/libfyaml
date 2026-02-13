@@ -972,12 +972,10 @@ neg_inf: -.inf
         import math
         assert math.isnan(data['value'])
 
-    @pytest.mark.skip(reason="YAML 1.1 octal (0755 style) not fully supported by libfyaml")
     def test_octal_integer_yaml11(self):
         """Parse octal integer (YAML 1.1 style).
 
         Note: YAML 1.1 uses 0 prefix (e.g., 0755) for octal.
-        This is a known limitation - libfyaml parses as decimal.
         """
         data = yaml.safe_load("value: 0755")
         assert data['value'] == 0o755  # 493 in decimal
@@ -1139,13 +1137,8 @@ extended:
         assert data['extended']['name'] == 'default'
         assert data['extended']['value'] == 100
 
-    @pytest.mark.skip(reason="Multiple merge keys not fully supported - only last << takes effect")
     def test_multiple_merge(self):
-        """Multiple merge keys.
-
-        Note: Multiple << entries in same mapping is a known limitation.
-        Only the last << merge takes effect.
-        """
+        """Multiple merge keys."""
         data = yaml.safe_load("""
 a: &a {x: 1}
 b: &b {y: 2}
