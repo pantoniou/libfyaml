@@ -507,11 +507,8 @@ def _construct_yaml_seq_tag(loader, node):
             None, None,
             "expected a sequence node, but found %s" % node_type,
             getattr(node, 'start_mark', None))
-    # Pre-register for cycle detection (FyGeneric path)
+    # Construct sequence (no id-based caching for FyGeneric - ids can be reused)
     result = []
-    if not hasattr(loader, '_constructed_objects'):
-        loader._constructed_objects = {}
-    loader._constructed_objects[id(generic)] = result
     result.extend(loader.construct_sequence(node, deep=True))
     return result
 
@@ -542,10 +539,8 @@ def _construct_yaml_map_tag(loader, node):
             None, None,
             "expected a mapping node, but found %s" % node_type,
             getattr(node, 'start_mark', None))
+    # Construct mapping (no id-based caching for FyGeneric - ids can be reused)
     result = {}
-    if not hasattr(loader, '_constructed_objects'):
-        loader._constructed_objects = {}
-    loader._constructed_objects[id(generic)] = result
     result.update(loader.construct_mapping(node, deep=True))
     return result
 
@@ -672,6 +667,15 @@ class BaseLoader:
 
     def __init__(self, stream=None):
         """Initialize loader with optional stream."""
+        # Set name and stream attributes for PyYAML compatibility
+        # (used by annotatedyaml's _LoaderMixin.get_name/get_stream_name)
+        self.stream = stream
+        if isinstance(stream, str):
+            self.name = '<unicode string>'
+        elif isinstance(stream, bytes):
+            self.name = '<byte string>'
+        else:
+            self.name = getattr(stream, 'name', '<file>')
         if hasattr(stream, 'read'):
             self._stream = stream.read()
         else:
@@ -890,6 +894,21 @@ class BaseLoader:
                 self.construct_object(node, deep=True)
         return None
 
+    def construct_document(self, node):
+        """Construct a Python object from a document node.
+
+        This is the standard PyYAML interface for constructing a document.
+        It processes state generators for two-phase construction.
+        """
+        data = self.construct_object(node, deep=True)
+        # Process any pending state generators (for two-phase construction)
+        if hasattr(self, 'state_generators'):
+            for generator in self.state_generators:
+                for dummy in generator:
+                    pass
+            self.state_generators = []
+        return data
+
     def dispose(self):
         """Clean up resources."""
         pass
@@ -1029,7 +1048,13 @@ class BaseLoader:
                     "found unhashable key", mark,
                 ) from exc
             for k, v in items:
-                if deep:
+                # Check for custom tags that need constructor dispatch
+                k_tag = k.get_tag() if hasattr(k, 'get_tag') else None
+                v_tag = v.get_tag() if hasattr(v, 'get_tag') else None
+                k_has_custom_tag = k_tag and not k_tag.startswith('tag:yaml.org,2002:')
+                v_has_custom_tag = v_tag and not v_tag.startswith('tag:yaml.org,2002:')
+
+                if deep or k_has_custom_tag:
                     key = self.construct_object(k, deep=True)
                 else:
                     key = k.to_python() if hasattr(k, 'to_python') else k
@@ -1042,7 +1067,7 @@ class BaseLoader:
                         "while constructing a mapping", node_mark,
                         "found unhashable key", key_mark if key_mark else node_mark,
                     ) from exc
-                if deep:
+                if deep or v_has_custom_tag:
                     value = self.construct_object(v, deep=True)
                 else:
                     value = v.to_python() if hasattr(v, 'to_python') else v
@@ -1110,12 +1135,12 @@ class BaseLoader:
         # Get the generic
         generic = self._get_generic(node)
 
-        # Cycle detection for anchor/alias (same FyGeneric object)
+        # Initialize constructed objects cache (used by tag constructors for
+        # cycle detection with PyYAML Node objects only - NOT FyGeneric objects,
+        # since FyGeneric iteration creates temporary wrappers whose id() can
+        # be reused after garbage collection, causing false cache hits)
         if not hasattr(self, '_constructed_objects'):
             self._constructed_objects = {}
-        generic_id = id(generic)
-        if generic_id in self._constructed_objects:
-            return self._constructed_objects[generic_id]
 
         # Get tag
         tag = None
@@ -1126,6 +1151,62 @@ class BaseLoader:
                 tag = generic.get_tag()
         except TypeError:
             pass
+
+        # Resolve implicit tags when no explicit tag is set
+        # This mimics PyYAML's Composer which resolves tags on every node
+        if tag is None and hasattr(self, '_resolver'):
+            try:
+                is_mapping = hasattr(generic, 'is_mapping') and generic.is_mapping()
+            except TypeError:
+                is_mapping = False
+            try:
+                is_sequence = hasattr(generic, 'is_sequence') and generic.is_sequence()
+            except TypeError:
+                is_sequence = False
+
+            if is_mapping:
+                tag = 'tag:yaml.org,2002:map'
+            elif is_sequence:
+                tag = 'tag:yaml.org,2002:seq'
+            else:
+                # Scalar: determine tag from to_python() result type.
+                # The C library correctly handles quoting: quoted "123" returns
+                # str, unquoted 123 returns int. For non-string types (int,
+                # float, bool, None) we trust the C library's resolution.
+                # For strings, we check the Resolver: if it resolves to a type
+                # that the C library handles natively (int, float, bool, null)
+                # then the scalar must have been quoted — keep as str. If the
+                # Resolver matches something the C library doesn't handle
+                # (e.g., timestamp), apply the resolver's tag.
+                _C_LIB_NATIVE_TAGS = {
+                    'tag:yaml.org,2002:int', 'tag:yaml.org,2002:float',
+                    'tag:yaml.org,2002:bool', 'tag:yaml.org,2002:null',
+                    'tag:yaml.org,2002:str',
+                }
+                try:
+                    value = generic.to_python() if hasattr(generic, 'to_python') else str(generic)
+                    if value is None:
+                        tag = 'tag:yaml.org,2002:null'
+                    elif isinstance(value, bool):
+                        tag = 'tag:yaml.org,2002:bool'
+                    elif isinstance(value, int):
+                        tag = 'tag:yaml.org,2002:int'
+                    elif isinstance(value, float):
+                        tag = 'tag:yaml.org,2002:float'
+                    elif isinstance(value, str):
+                        resolved = self._resolver.resolve(nodes.ScalarNode, value, (True, False))
+                        if resolved in _C_LIB_NATIVE_TAGS:
+                            # C lib returned str but resolver says int/float/etc.
+                            # → scalar was quoted, keep as str
+                            tag = 'tag:yaml.org,2002:str'
+                        else:
+                            # Resolver matched something C lib doesn't handle
+                            # (e.g., timestamp) → use the resolver's tag
+                            tag = resolved
+                    else:
+                        tag = 'tag:yaml.org,2002:str'
+                except (TypeError, AttributeError):
+                    tag = 'tag:yaml.org,2002:str'
 
         # Helper to wrap raw FyGeneric in _NodeWrapper if needed
         def _ensure_wrapped(n, g):
@@ -1363,17 +1444,83 @@ class BaseLoader:
             else:
                 pairs = []
                 for k, v in items_list:
-                    try:
-                        pk = k.to_python() if hasattr(k, 'to_python') else k
-                    except TypeError:
+                    # Check for custom tags that need constructor dispatch
+                    k_tag = k.get_tag() if hasattr(k, 'get_tag') else None
+                    v_tag = v.get_tag() if hasattr(v, 'get_tag') else None
+                    k_has_custom = k_tag and not k_tag.startswith('tag:yaml.org,2002:')
+                    v_has_custom = v_tag and not v_tag.startswith('tag:yaml.org,2002:')
+
+                    if k_has_custom:
                         pk = self.construct_object(k, deep=True)
-                    try:
-                        pv = v.to_python() if hasattr(v, 'to_python') else v
-                    except TypeError:
+                    else:
+                        try:
+                            pk = k.to_python() if hasattr(k, 'to_python') else k
+                        except TypeError:
+                            pk = self.construct_object(k, deep=True)
+                    if v_has_custom:
                         pv = self.construct_object(v, deep=True)
+                    else:
+                        try:
+                            pv = v.to_python() if hasattr(v, 'to_python') else v
+                        except TypeError:
+                            pv = self.construct_object(v, deep=True)
                     pairs.append((pk, pv))
                 return pairs
         return []
+
+    def flatten_mapping(self, node):
+        """Handle merge keys (<<) in mapping nodes.
+
+        This processes PyYAML MappingNode objects for merge key support.
+        For FyGeneric nodes, this is a no-op since the C library handles merges.
+        """
+        if not isinstance(node, nodes.MappingNode):
+            return
+        merge = []
+        index = 0
+        while index < len(node.value):
+            key_node, value_node = node.value[index]
+            if key_node.tag == 'tag:yaml.org,2002:merge':
+                del node.value[index]
+                if isinstance(value_node, nodes.MappingNode):
+                    self.flatten_mapping(value_node)
+                    merge.extend(value_node.value)
+                elif isinstance(value_node, nodes.SequenceNode):
+                    submerge = []
+                    for subnode in value_node.value:
+                        if not isinstance(subnode, nodes.MappingNode):
+                            raise ConstructorError(
+                                "while constructing a mapping",
+                                node.start_mark,
+                                "expected a mapping for merging, but found %s"
+                                % subnode.id, subnode.start_mark)
+                        self.flatten_mapping(subnode)
+                        submerge.append(subnode.value)
+                    submerge.reverse()
+                    for value in submerge:
+                        merge.extend(value)
+                else:
+                    raise ConstructorError(
+                        "while constructing a mapping", node.start_mark,
+                        "expected a mapping or list of mappings for merging, "
+                        "but found %s" % value_node.id, value_node.start_mark)
+            elif key_node.tag == 'tag:yaml.org,2002:value':
+                key_node.tag = 'tag:yaml.org,2002:str'
+                index += 1
+            else:
+                index += 1
+        if merge:
+            node.value = merge + node.value
+
+    def construct_yaml_seq(self, node):
+        """Construct a YAML sequence as a generator (PyYAML compatible).
+
+        PyYAML's construct_yaml_seq is a generator that yields the list first
+        (for two-phase construction), then fills it in. We match that interface.
+        """
+        data = []
+        yield data
+        data.extend(self.construct_sequence(node, deep=True))
 
     def construct_yaml_object(self, node, cls):
         """Construct a Python object from a YAML node using __setstate__.
@@ -1957,6 +2104,22 @@ class BaseDumper:
         self._represented_objects = {}
         self.alias_key = None
 
+    @property
+    def default_flow_style(self):
+        return self._default_flow_style
+
+    @default_flow_style.setter
+    def default_flow_style(self, value):
+        self._default_flow_style = value
+
+    @property
+    def represented_objects(self):
+        return self._represented_objects
+
+    @represented_objects.setter
+    def represented_objects(self, value):
+        self._represented_objects = value
+
     def ignore_aliases(self, data):
         """Return True if aliases should not be used for this data."""
         if data is None:
@@ -2496,8 +2659,20 @@ def _fygeneric_to_node(generic, stream_name='<string>'):
         else:
             str_value = str(value) if value is not None else ''
             # Use resolver to detect implicit types (timestamps, etc.)
+            # but only for tags the C library doesn't handle natively.
+            # If the resolver says int/float/bool/null but to_python()
+            # returned str, the scalar was quoted — keep as str.
             from libfyaml.pyyaml_compat.resolver import Resolver as _Resolver
-            tag = _Resolver().resolve(ScalarNode, str_value, (True, False))
+            resolved = _Resolver().resolve(ScalarNode, str_value, (True, False))
+            _C_LIB_NATIVE = {
+                'tag:yaml.org,2002:int', 'tag:yaml.org,2002:float',
+                'tag:yaml.org,2002:bool', 'tag:yaml.org,2002:null',
+                'tag:yaml.org,2002:str',
+            }
+            if resolved in _C_LIB_NATIVE:
+                tag = 'tag:yaml.org,2002:str'
+            else:
+                tag = resolved
         return ScalarNode(tag, str_value, start_mark=start_mark, end_mark=end_mark)
 
 
@@ -2681,14 +2856,18 @@ def _diag_to_exception(diag_list, stream_name='<string>'):
 
 
 def _is_constructor_loader(Loader):
-    """Check if Loader has a real construct_document method (from SafeConstructor or similar).
+    """Check if Loader has a real construct_document method from an external hierarchy.
 
-    This detects Loaders like AnsibleLoader that inherit from SafeConstructor
+    This detects Loaders like AnsibleLoader that inherit from PyYAML's SafeConstructor
     and need proper Node trees with start_mark/end_mark for construction.
-    Also handles factory functions that wrap loader classes.
+    Our own BaseLoader subclasses are NOT constructor loaders — they use the
+    _convert_with_loader path which is faster (no Node tree conversion needed).
     """
     if not isinstance(Loader, type):
         # Not a class - could be a factory function
+        return False
+    # Skip our own loader classes — they work with _convert_with_loader
+    if issubclass(Loader, BaseLoader):
         return False
     from libfyaml.pyyaml_compat.constructor import BaseConstructor as OurBaseConstructor
     # Check if the Loader inherits from our BaseConstructor (which has construct_document)
@@ -2892,16 +3071,27 @@ def load(stream, Loader=None):
             if hasattr(loader, 'dispose'):
                 loader.dispose()
     elif callable(Loader) and not isinstance(Loader, type):
-        # Factory function (e.g., ansible.parsing.yaml.loader.AnsibleLoader)
-        # Try creating an instance and check if it has construct_document
-        root_node = _fygeneric_to_node(doc, stream_name)
+        # Factory function (e.g., annotatedyaml's lambda stream: loader(stream, secrets))
+        # Create an instance and use it directly for construction
         loader = Loader(original_stream)
         if hasattr(loader, 'construct_document'):
+            root_node = _fygeneric_to_node(doc, stream_name)
             try:
                 return loader.construct_document(root_node)
             finally:
                 if hasattr(loader, 'dispose'):
                     loader.dispose()
+        # Use the loader instance's constructors if available
+        loader_constructors = getattr(loader, 'yaml_constructors', {})
+        loader_multi = getattr(loader, 'yaml_multi_constructors', {})
+        if loader_constructors or loader_multi:
+            # Use this loader directly — it has the right constructors registered
+            try:
+                return _convert_with_loader(doc, loader)
+            except ConstructorError as exc:
+                if 'unhashable' in str(exc):
+                    return _load_via_compose(stream, Loader, original_stream)
+                raise
 
     # Check for registered constructors on the Loader class
     constructors = getattr(Loader, 'yaml_constructors', {})
