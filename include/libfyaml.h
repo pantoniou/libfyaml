@@ -2170,6 +2170,7 @@ struct fy_emitter_cfg {
  * @FYEXCF_COLOR_FORCE: Force color generation
  * @FYEXCF_VISIBLE_WS: Make white space visible
  * @FYEXCF_EXTENDED_INDICATORS: Extend the indicators generated
+ * @FYEXCF_INDENTED_SEQ_IN_MAP: Indent block sequences that are mapping values
  * @FYEXCF_OUTPUT_STDOUT: Output to stdout (default)
  * @FYEXCF_OUTPUT_STDERR: Output to stderr, instead of stdout
  * @FYEXCF_OUTPUT_FILE: Output to the fp FILE pointer
@@ -2189,6 +2190,7 @@ enum fy_emitter_xcfg_flags {
 	FYEXCF_OUTPUT_FILENAME		= FYEXCF_OUTPUT(4),
 	FYEXCF_VISIBLE_WS		= FY_BIT(5),
 	FYEXCF_EXTENDED_INDICATORS	= FY_BIT(6),
+	FYEXCF_INDENTED_SEQ_IN_MAP	= FY_BIT(7),
 };
 
 /**
