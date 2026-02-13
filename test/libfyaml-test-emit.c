@@ -333,6 +333,62 @@ START_TEST(emit_comment_no_duplicate_seq_in_mapping)
 }
 END_TEST
 
+START_TEST(emit_indented_seq_in_map)
+{
+	struct fy_parse_cfg pcfg = { .flags = 0 };
+	struct fy_document *fyd;
+	struct fy_emitter_xcfg xcfg;
+	struct fy_emitter *emit;
+	struct test_emitter_data data;
+	int rc;
+
+	fyd = fy_document_build_from_string(&pcfg,
+		"key:\n- a\n- b\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	memset(&data, 0, sizeof(data));
+	memset(&xcfg, 0, sizeof(xcfg));
+	xcfg.cfg.output = collect_output;
+	xcfg.cfg.userdata = &data;
+	xcfg.cfg.flags = FYECF_DEFAULT | FYECF_EXTENDED_CFG;
+	xcfg.xflags = FYEXCF_INDENTED_SEQ_IN_MAP;
+
+	emit = fy_emitter_create(&xcfg.cfg);
+	ck_assert_ptr_ne(emit, NULL);
+
+	rc = fy_emit_document(emit, fyd);
+	ck_assert_int_eq(rc, 0);
+
+	fy_emitter_destroy(emit);
+	ck_assert_ptr_ne(data.buf, NULL);
+	ck_assert_ptr_ne(strstr(data.buf, "key:\n  - a\n  - b"), NULL);
+
+	free(data.buf);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(emit_indented_seq_in_map_default)
+{
+	struct fy_parse_cfg pcfg = { .flags = 0 };
+	struct fy_document *fyd;
+	char *output;
+
+	fyd = fy_document_build_from_string(&pcfg,
+		"key:\n- a\n- b\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	output = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_ptr_ne(strstr(output, "key:\n- a\n- b"), NULL);
+	/* must NOT have the indented form */
+	ck_assert_ptr_eq(strstr(output, "key:\n  - a"), NULL);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 void libfyaml_case_emit(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -350,4 +406,6 @@ void libfyaml_case_emit(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_interstitial_comment_flow);
 	fy_check_testcase_add_test(ctc, emit_comment_no_duplicate_mapping_in_seq);
 	fy_check_testcase_add_test(ctc, emit_comment_no_duplicate_seq_in_mapping);
+	fy_check_testcase_add_test(ctc, emit_indented_seq_in_map);
+	fy_check_testcase_add_test(ctc, emit_indented_seq_in_map_default);
 }
