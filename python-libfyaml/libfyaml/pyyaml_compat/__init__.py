@@ -3514,6 +3514,19 @@ def _convert_tagged_values(data):
         # Convert set to mapping with null values and !!set tag
         set_mapping = {_convert_tagged_values(item): None for item in data}
         return fy.from_python(set_mapping, tag='tag:yaml.org,2002:set')
+    elif isinstance(data, str):
+        # Check if this string would be misinterpreted as a type that changes
+        # the value's meaning (int, float, bool, null). Only these need quoting.
+        # Timestamps and other string-compatible resolved types are fine plain.
+        from libfyaml.pyyaml_compat.resolver import Resolver as _Resolver
+        _NEEDS_QUOTING = {
+            'tag:yaml.org,2002:int', 'tag:yaml.org,2002:float',
+            'tag:yaml.org,2002:bool', 'tag:yaml.org,2002:null',
+        }
+        resolved = _Resolver().resolve(ScalarNode, data, (True, False))
+        if resolved in _NEEDS_QUOTING:
+            return fy.from_python(data, style="'")
+        return data
     elif isinstance(data, dict):
         return {_convert_tagged_values(k): _convert_tagged_values(v) for k, v in data.items()}
     elif isinstance(data, (list, tuple)):
@@ -4216,9 +4229,21 @@ def _serialize_node_events(node, anchors, serialized):
     if isinstance(node, ScalarNode):
         resolved_tag = _serialize_resolver.resolve(ScalarNode, node.value, (True, False))
         implicit = (tag == resolved_tag, tag is None)
+        style = getattr(node, 'style', None)
+        # When tag is !!str but the value looks like int/float/bool/null,
+        # use quoting instead of an explicit tag (matches PyYAML behavior).
+        # Only quote for types that would change the value's meaning on
+        # re-parse; timestamps and other string-compatible types are fine plain.
+        _NEEDS_QUOTING_TAGS = {
+            'tag:yaml.org,2002:int', 'tag:yaml.org,2002:float',
+            'tag:yaml.org,2002:bool', 'tag:yaml.org,2002:null',
+        }
+        if (tag == 'tag:yaml.org,2002:str' and resolved_tag in _NEEDS_QUOTING_TAGS
+                and style is None):
+            style = "'"
+            implicit = (True, True)
         # Suppress tag when implicit to avoid verbose output from C emitter
         emit_tag = None if implicit[0] else tag
-        style = getattr(node, 'style', None)
         yield ScalarEvent(anchor=anchor, tag=emit_tag, implicit=implicit,
                           value=node.value, style=style)
     elif isinstance(node, SequenceNode):
@@ -4266,6 +4291,17 @@ def _node_to_events_inner(node):
         resolved_tag = _serialize_resolver.resolve(ScalarNode, node.value, (True, False))
         implicit = (tag == resolved_tag, tag is None)
         style = getattr(node, 'style', None)
+        # When tag is !!str but the value looks like int/float/bool/null,
+        # use quoting instead of an explicit tag (matches PyYAML behavior)
+        _NEEDS_QUOTING_TAGS = {
+            'tag:yaml.org,2002:int', 'tag:yaml.org,2002:float',
+            'tag:yaml.org,2002:bool', 'tag:yaml.org,2002:null',
+        }
+        if (tag == 'tag:yaml.org,2002:str' and resolved_tag in _NEEDS_QUOTING_TAGS
+                and style is None):
+            style = "'"
+            implicit = (True, True)
+            tag = resolved_tag
         yield ScalarEvent(anchor=anchor, tag=tag, implicit=implicit,
                           value=node.value, style=style)
     elif isinstance(node, SequenceNode):

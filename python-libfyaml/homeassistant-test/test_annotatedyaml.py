@@ -835,7 +835,6 @@ def test_string_used_as_vol_schema():
 # Representing loaded data
 # ============================================================
 
-@pytest.mark.xfail(reason="C library doesn't preserve scalar quoting style for dump round-trip")
 @pytest.mark.usefixtures("try_both_loaders", "try_both_dumpers")
 def test_representing_yaml_loaded_data():
     """Test we can represent YAML loaded data."""
