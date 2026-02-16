@@ -4913,6 +4913,7 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 			output = input;
 			output->type = fwrt_node_ref;
 			output->fyn = fynn;
+			output->fypx = fypx;
 			input = NULL;
 		}
 
@@ -4999,6 +5000,7 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 		input = NULL;
 
 		output->type = fwrt_refs;
+		output->fypx = fypx;
 		fy_walk_result_list_init(&output->refs);
 
 		prevp = NULL;
@@ -5028,6 +5030,7 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 		input = NULL;
 
 		output->type = fwrt_refs;
+		output->fypx = fypx;
 		fy_walk_result_list_init(&output->refs);
 
 		rc = fy_walk_result_all_children_recursive_internal(fypx, fyn, output);
@@ -5066,6 +5069,7 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 		input = NULL;
 
 		output->type = fwrt_refs;
+		output->fypx = fypx;
 		fy_walk_result_list_init(&output->refs);
 
 		for (i = start; i < end; i++) {
