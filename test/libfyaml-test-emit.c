@@ -54,8 +54,7 @@ static int collect_output(struct fy_emitter *emit, enum fy_emitter_write_type ty
 	assert(data->alloc >= need);
 	memcpy(data->buf + data->count, str, len);
 	data->count += len;
-	*(char *)(data->buf + data->count) = '\0';
-	data->count++;
+	data->buf[data->count] = '\0';
 
 	return len;
 }
@@ -105,8 +104,8 @@ START_TEST(emit_simple)
 
 	ck_assert_ptr_ne(data.buf, NULL);
 
-	/* the contents must be 'simple' (without a newline) */
-	ck_assert_str_eq(data.buf, "simple");
+	/* the contents must be 'simple' followed by a trailing newline */
+	ck_assert_str_eq(data.buf, "simple\n");
 
 	cleanup_test_emitter(&data);
 }
