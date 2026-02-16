@@ -3490,17 +3490,17 @@ err_out_rc:
 }
 
 int fy_scan_block_scalar_indent(struct fy_parser *fyp, int indent, int *breaks, int *breaks_length,
-				int *presentation_breaks_length, int *first_break_length, int *lastc)
+				int *presentation_breaks_length, int *first_break_length, int *lastc,
+				int *max_indentp, bool first_scan)
 {
-	int c, max_indent = 0, min_indent, break_length;
+	int c, max_indent = 0, break_length, col;
 
 	*breaks = 0;
 	*breaks_length = 0;
 	*presentation_breaks_length = 0;
 	*first_break_length = 0;
 
-	/* minimum indent is 0 for zero indent scalars */
-	min_indent = fyp->document_first_content_token ? 0 : 1;
+	max_indent = -1;
 
 	/* scan over the indentation spaces */
 	/* we don't format content for display */
@@ -3527,13 +3527,19 @@ int fy_scan_block_scalar_indent(struct fy_parser *fyp, int indent, int *breaks, 
 				(!indent || fyp_column(fyp) < indent))
 				fy_advance(fyp, c);
 		}
+		col = fyp_column(fyp);
 
-		if (fyp_column(fyp) > max_indent)
-			max_indent = fyp_column(fyp);
+		if (col > max_indent)
+			max_indent = col;
 
 		/* non-empty line or EOF */
 		if (!fyp_is_lb(fyp, c)) {
 			*lastc = c;
+			indent = col;
+
+			FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
+					c < 0 || !first_scan || max_indent <= indent, err_out,
+					"block scalar with wrong indented line after spaces only");
 			break;
 		}
 
@@ -3551,14 +3557,6 @@ int fy_scan_block_scalar_indent(struct fy_parser *fyp, int indent, int *breaks, 
 			*first_break_length = break_length;
 	}
 
-	if (!indent) {
-		indent = max_indent;
-		if (indent < fyp->indent)
-			indent = fyp->indent;
-		if (indent < min_indent)
-			indent = min_indent;
-	}
-
 	return indent;
 
 err_out:
@@ -3569,8 +3567,8 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 {
 	struct fy_atom handle;
 	enum fy_atom_chomp chomp = FYAC_CLIP;	/* default */
-	int lastc, rc, increment = 0, current_indent, new_indent, indent = 0;
-	int breaks, breaks_length, presentation_breaks_length, first_break_length;
+	int lastc, rc, increment = 0, current_indent, new_indent, indent = 0, check_indent;
+	int breaks, breaks_length, presentation_breaks_length, first_break_length, max_indent, min_indent;
 	bool doc_start_end_detected, empty, empty_line, prev_empty_line, indented, prev_indented, first;
 	bool has_ws, has_lb, has_weird_nl, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb;
 	bool pending_nl, ends_with_eof, starts_with_eof, content_is_eof;
@@ -3699,9 +3697,20 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	ends_with_lb = false;
 	trailing_lb = false;
 
-	new_indent = fy_scan_block_scalar_indent(fyp, indent, &breaks, &breaks_length, &presentation_breaks_length, &first_break_length, &lastc);
+	new_indent = fy_scan_block_scalar_indent(fyp, indent, &breaks, &breaks_length,
+			&presentation_breaks_length, &first_break_length, &lastc, &max_indent, true);
 	fyp_error_check(fyp, new_indent >= 0, err_out,
 			"fy_scan_block_scalar_indent() failed");
+
+	min_indent = fyp->indent;
+
+	if (!(fyp->state == FYPS_IMPLICIT_DOCUMENT_START ||
+	     fyp->state == FYPS_DOCUMENT_START ||
+	     fyp->state == FYPS_DOCUMENT_CONTENT))
+		min_indent++;
+
+	if (new_indent < min_indent)
+		new_indent = min_indent;
 
 	length = breaks_length;
 	length += presentation_breaks_length;
@@ -3782,8 +3791,11 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 			fy_advance(fyp, c);
 
 			has_lb = true;
-			new_indent = fy_scan_block_scalar_indent(fyp, indent, &breaks, &breaks_length, &presentation_breaks_length, &first_break_length, &lastc);
-			fyp_error_check(fyp, new_indent >= 0, err_out,
+			check_indent = fy_scan_block_scalar_indent(fyp, indent, &breaks,
+					&breaks_length, &presentation_breaks_length,
+					&first_break_length, &lastc,
+					&max_indent, false);
+			fyp_error_check(fyp, check_indent >= 0, err_out,
 					"fy_scan_block_scalar_indent() failed");
 			if (fy_is_lb_LS_PS(c))
 				presentation_breaks_length += actual_lb_length;
@@ -3792,7 +3804,6 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 			has_weird_nl |= c != '\n';
 		} else {
 			has_lb = false;
-			new_indent = indent;
 			// was chomp = FYAC_STRIP, very very wrong
 
 			breaks = 0;
@@ -3874,7 +3885,6 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 
 
 		length += prefix_length + line_length + suffix_length;
-		indent = new_indent;
 
 		prev_empty_line = empty_line;
 		prev_indented = indented;
