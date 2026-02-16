@@ -115,29 +115,62 @@ def _xfail(test_func, data_file, reason):
     _LIBFYAML_XFAILS[(test_func, data_file)] = reason
 
 # --- loader_error / loader_error_string: libfyaml accepts YAML that PyYAML rejects ---
+# Most of these are cases where PyYAML is stricter than the YAML 1.2 spec requires.
 for _func in ("test_loader_error", "test_loader_error_string"):
+    # YAML 1.2 spec §3.2.2.2: no prohibition on anchor redefinition.
+    # The spec defines anchors as a mapping from name to node; redefining
+    # simply updates the mapping.  PyYAML rejects this but the spec allows it.
     _xfail(_func, "duplicate-anchor-1.loader-error",
-           "libfyaml follows YAML 1.2: anchor redefinition is allowed")
+           "YAML 1.2 §3.2.2.2: anchor redefinition is allowed")
     _xfail(_func, "duplicate-anchor-2.loader-error",
-           "libfyaml follows YAML 1.2: anchor redefinition is allowed")
-    _xfail(_func, "invalid-directive-name-1.loader-error",
-           "libfyaml treats malformed directives as warnings")
+           "YAML 1.2 §3.2.2.2: anchor redefinition is allowed")
+
+    # YAML 1.2 spec §6.8.1 [83]: unknown directives are ns-reserved-directive.
+    # Spec says: "A YAML processor should ignore unknown directives with an
+    # appropriate warning."  PyYAML rejects them; libfyaml correctly warns.
     _xfail(_func, "invalid-directive-name-2.loader-error",
-           "libfyaml treats unknown directives as warnings (YAML 1.2 compliant)")
+           "YAML 1.2 §6.8.1: unknown directives SHOULD be warned, not rejected")
+
+    # YAML 1.2 spec §6.9.2: ns-anchor-char ::= ns-char - c-flow-indicator
+    # c-flow-indicator is only: , [ ] { }
+    # '?' is a valid ns-char and NOT a c-flow-indicator, so &? is a valid
+    # anchor per spec.  PyYAML artificially restricts to [a-zA-Z0-9_-].
     _xfail(_func, "invalid-anchor-1.loader-error",
-           "libfyaml accepts broader anchor character set")
+           "YAML 1.2 §6.9.2: '?' is valid ns-anchor-char; PyYAML too restrictive")
+
+    # YAML 1.2 spec §6.8.2 [90]: c-named-tag-handle ::= '!' ns-word-char+ '!'
+    # '!foo' without trailing '!' doesn't match.  libfyaml is lenient here.
     _xfail(_func, "invalid-tag-handle-2.loader-error",
-           "libfyaml is lenient with tag handle syntax")
+           "libfyaml lenient with tag handle syntax (spec requires trailing '!')")
+
+    # YAML 1.2 spec §6.8.1 [86]: ns-yaml-directive ::= "YAML" s-separate-in-line ns-yaml-version
+    # Version is mandatory.  libfyaml is lenient here.
     _xfail(_func, "invalid-yaml-directive-version-1.loader-error",
-           "libfyaml is lenient with YAML directive syntax")
+           "libfyaml lenient with missing YAML directive version (spec requires it)")
+
+    # YAML 1.2: '? foo\n: bar\n: baz' — the third line ': baz' is a valid
+    # block mapping entry with an empty (null) key.  PyYAML rejects this but
+    # it's valid per the block mapping productions (§8.2.2).
     _xfail(_func, "no-block-mapping-end-2.loader-error",
-           "libfyaml parses bare ': value' as null-key mapping entry")
+           "YAML 1.2 §8.2.2: null-key mapping entry is valid syntax")
+
+    # YAML 1.2 spec §9.1.5: l-directive-document requires c-directives-end (---).
+    # However libfyaml is lenient and doesn't require it, which is a common
+    # real-world pattern.  Spec technically requires --- after directives.
     _xfail(_func, "no-document-start.loader-error",
-           "libfyaml does not require --- after directives")
+           "libfyaml lenient: doesn't require --- after directives (spec does)")
+
+    # Content is '-\n-0' (no trailing newline).  YAML 1.2 spec §9.2 says
+    # processors MUST allow omission of final line break for JSON compat.
+    # '-0' is a valid second sequence entry (scalar '0').  libfyaml is correct.
     _xfail(_func, "invalid-item-without-trailing-break.loader-error",
-           "libfyaml parses ambiguous sequence item differently")
+           "YAML 1.2 §9.2: final line break omission allowed; '-\\n-0' is valid")
+
+    # '--- !!python:module:' is valid YAML syntax.  The tag is just a tag;
+    # whether it maps to a valid constructor is a Python-level concern, not
+    # a parser concern.  PyYAML conflates parsing with construction.
     _xfail(_func, "empty-python-module.loader-error",
-           "valid YAML syntax; module validation is constructor-level")
+           "valid YAML syntax; tag validation is constructor-level, not parser")
 
 # --- emitter_styles: C library block scalar emission bugs ---
 for _f in ("spec-05-03.data", "spec-05-11.data", "spec-06-05.data", "spec-06-08.data",
