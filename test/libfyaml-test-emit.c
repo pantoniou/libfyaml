@@ -389,6 +389,46 @@ START_TEST(emit_indented_seq_in_map_default)
 }
 END_TEST
 
+START_TEST(emit_right_comment_on_flow_sequence_value)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	char *output;
+
+	fyd = fy_document_build_from_string(&cfg,
+		"colors: [red, green] # primary\ncount: 3\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	output = fy_emit_document_to_string(fyd,
+		FYECF_MODE_ORIGINAL | FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_ptr_ne(strstr(output, "# primary"), NULL);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(emit_right_comment_on_flow_mapping_value)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	char *output;
+
+	fyd = fy_document_build_from_string(&cfg,
+		"settings: {verbose: true} # defaults\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	output = fy_emit_document_to_string(fyd,
+		FYECF_MODE_ORIGINAL | FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_ptr_ne(strstr(output, "# defaults"), NULL);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 void libfyaml_case_emit(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -408,4 +448,6 @@ void libfyaml_case_emit(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_comment_no_duplicate_seq_in_mapping);
 	fy_check_testcase_add_test(ctc, emit_indented_seq_in_map);
 	fy_check_testcase_add_test(ctc, emit_indented_seq_in_map_default);
+	fy_check_testcase_add_test(ctc, emit_right_comment_on_flow_sequence_value);
+	fy_check_testcase_add_test(ctc, emit_right_comment_on_flow_mapping_value);
 }
