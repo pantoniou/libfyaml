@@ -4850,6 +4850,7 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 		     struct fy_walk_result *input, enum fy_path_expr_type ptype,
 		     bool *errorp)
 {
+	struct fy_path_exec *fypxt;
 	struct fy_diag *diag;
 	struct fy_walk_result *fwr = NULL, *fwrn = NULL, *fwrt = NULL, *fwrtn = NULL;
 	struct fy_walk_result *output = NULL, *input1 = NULL, *output1 = NULL, *input2 = NULL, *output2 = NULL;
@@ -4909,12 +4910,15 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 			if (!fynn)
 				goto out;
 
+			fypxt = input->fypx;
+			input->fypx = NULL;
 			fy_walk_result_clean(input);
 			output = input;
+			input = NULL;
+
 			output->type = fwrt_node_ref;
 			output->fyn = fynn;
-			output->fypx = fypx;
-			input = NULL;
+			output->fypx = fypxt;
 		}
 
 		goto out;
@@ -4995,13 +4999,15 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 		}
 
 		/* re-use input for output root */
+		fypxt = input->fypx;
+		input->fypx = NULL;
 		fy_walk_result_clean(input);
 		output = input;
 		input = NULL;
 
 		output->type = fwrt_refs;
-		output->fypx = fypx;
 		fy_walk_result_list_init(&output->refs);
+		output->fypx = fypxt;
 
 		prevp = NULL;
 		while ((fyni = fy_node_collection_iterate(fyn, &prevp)) != NULL) {
@@ -5025,13 +5031,15 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 		fyn = input->fyn;
 
 		/* re-use input for output root */
+		fypxt = input->fypx;
+		input->fypx = NULL;
 		fy_walk_result_clean(input);
 		output = input;
 		input = NULL;
 
 		output->type = fwrt_refs;
-		output->fypx = fypx;
 		fy_walk_result_list_init(&output->refs);
+		output->fypx = fypxt;
 
 		rc = fy_walk_result_all_children_recursive_internal(fypx, fyn, output);
 		if (rc)
@@ -5064,13 +5072,15 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 			end = count;
 
 		/* re-use input for output root */
+		fypxt = input->fypx;
+		input->fypx = NULL;
 		fy_walk_result_clean(input);
 		output = input;
 		input = NULL;
 
 		output->type = fwrt_refs;
-		output->fypx = fypx;
 		fy_walk_result_list_init(&output->refs);
+		output->fypx = fypxt;
 
 		for (i = start; i < end; i++) {
 
