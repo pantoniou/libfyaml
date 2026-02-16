@@ -5410,6 +5410,7 @@ static int fy_path_exec_execute_internal(struct fy_path_exec *fypx,
 	if (!fwr)
 		goto err_out;
 
+	error = true;
 	fwr = fy_path_expr_execute(fypx, 0, expr, fwr, fpet_none, &error);
 	if (error)
 		goto err_out;
