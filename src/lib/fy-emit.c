@@ -94,6 +94,17 @@ static inline bool fy_emit_is_oneline_or_compact(const struct fy_emitter *emit)
 	return fy_emit_is_oneline(emit) || fy_emit_is_compact(emit);
 }
 
+static inline bool fy_emit_sc_oneline(const struct fy_emitter *emit,
+				      const struct fy_emit_save_ctx *sc)
+{
+	return fy_emit_is_oneline_or_compact(emit) || sc->oneline_flow;
+}
+
+static inline bool fy_emit_preserve_flow_layout(const struct fy_emitter *emit)
+{
+	return !!(emit->xcfg.xflags & FYEXCF_PRESERVE_FLOW_LAYOUT);
+}
+
 static inline bool fy_emit_is_dejson_mode(const struct fy_emitter *emit)
 {
 	enum fy_emitter_cfg_flags flags = emit->xcfg.cfg.flags & FYECF_MODE(FYECF_MODE_MASK);
@@ -1584,13 +1595,13 @@ static void fy_emit_sequence_prolog(struct fy_emitter *emit, struct fy_emit_save
 		fy_emit_write_indicator(emit, di_left_bracket, sc->flags, sc->indent, fyewt_indicator);
 
 		/* we need an indent afterward if not compact */
-		if (!fy_emit_is_oneline_or_compact(emit))
+		if (!fy_emit_sc_oneline(emit, sc))
 			sc->flags |= DDNF_HANGING_INDENT;
 	} else {
 		sc->flags = (sc->flags & ~DDNF_FLOW);
 	}
 
-	if (!fy_emit_is_oneline_or_compact(emit)) {
+	if (!fy_emit_sc_oneline(emit, sc)) {
 		if (was_flow || (sc->flags & (DDNF_ROOT | DDNF_SEQ))
 		    || ((sc->flags & DDNF_MAP)
 			&& (emit->xcfg.xflags & FYEXCF_INDENTED_SEQ_IN_MAP)))
@@ -1602,7 +1613,7 @@ static void fy_emit_sequence_prolog(struct fy_emitter *emit, struct fy_emit_save
 
 static void fy_emit_sequence_epilog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc)
 {
-	if (sc->flow && (sc->flags & DDNF_HANGING_INDENT) && !fy_emit_is_oneline_or_compact(emit) && !sc->empty)
+	if (sc->flow && (sc->flags & DDNF_HANGING_INDENT) && !fy_emit_sc_oneline(emit, sc) && !sc->empty)
 		fy_emit_write_indent(emit, sc->old_indent);
 
 	if (sc->flow || fy_emit_is_json_mode(emit)) {
@@ -1619,7 +1630,7 @@ static void fy_emit_sequence_item_prolog(struct fy_emitter *emit, struct fy_emit
 
 	has_comment = fy_emit_token_has_comment(emit, fyt_value, fycp_top);
 
-	if (!fy_emit_is_oneline_or_compact(emit) ||
+	if (!fy_emit_sc_oneline(emit, sc) ||
 	    ((fy_emit_is_compact(emit) || sc->flow) && emit->column >= fy_emit_width(emit)))
 		fy_emit_write_indent(emit, sc->indent);
 
@@ -1645,7 +1656,7 @@ static void fy_emit_sequence_item_epilog(struct fy_emitter *emit, struct fy_emit
 		sc->flags |= DDNF_HANGING_INDENT;
 	}
 
-	needs_hanging_indent = sc->flow && !fy_emit_is_oneline_or_compact(emit) && !sc->empty;
+	needs_hanging_indent = sc->flow && !fy_emit_sc_oneline(emit, sc) && !sc->empty;
 
 	if (last && needs_hanging_indent && (sc->flags & DDNF_HANGING_INDENT))
 		fy_emit_write_indent(emit, sc->old_indent);
@@ -1668,6 +1679,13 @@ void fy_emit_sequence(struct fy_emitter *emit, struct fy_node *fyn, int flags, i
 	sc->indent = indent;
 	sc->empty = fy_node_list_empty(&fyn->sequence);
 	sc->flow_token = fyn->style == FYNS_FLOW;
+	sc->oneline_flow = false;
+	if (sc->flow_token && fy_emit_preserve_flow_layout(emit)) {
+		const struct fy_mark *sm = fy_token_start_mark(fyn->sequence_start);
+		const struct fy_mark *em = fy_token_end_mark(fyn->sequence_end);
+		if (sm && em && sm->line == em->line)
+			sc->oneline_flow = true;
+	}
 	sc->flow = !!(flags & DDNF_FLOW);
 	sc->xstyle = fyn->style;
 	sc->old_indent = sc->indent;
@@ -1726,13 +1744,13 @@ static void fy_emit_mapping_prolog(struct fy_emitter *emit, struct fy_emit_save_
 		fy_emit_write_indicator(emit, di_left_brace, sc->flags, sc->indent, fyewt_indicator);
 
 		/* we need an indent afterward if not compact */
-		if (!fy_emit_is_oneline_or_compact(emit))
+		if (!fy_emit_sc_oneline(emit, sc))
 			sc->flags |= DDNF_HANGING_INDENT;
 	} else {
 		sc->flags &= ~(DDNF_FLOW | DDNF_INDENTLESS);
 	}
 
-	if (!fy_emit_is_oneline_or_compact(emit) && !sc->empty)
+	if (!fy_emit_sc_oneline(emit, sc) && !sc->empty)
 		sc->indent = fy_emit_increase_indent(emit, sc->flags, sc->indent);
 
 	sc->flags &= ~DDNF_ROOT;
@@ -1741,7 +1759,7 @@ static void fy_emit_mapping_prolog(struct fy_emitter *emit, struct fy_emit_save_
 static void fy_emit_mapping_epilog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc)
 {
 	if (sc->flow || fy_emit_is_json_mode(emit)) {
-		if ((sc->flags & DDNF_HANGING_INDENT) && !fy_emit_is_oneline_or_compact(emit) && !sc->empty)
+		if ((sc->flags & DDNF_HANGING_INDENT) && !fy_emit_sc_oneline(emit, sc) && !sc->empty)
 			fy_emit_write_indent(emit, sc->old_indent);
 		fy_emit_write_indicator(emit, di_right_brace, sc->flags, sc->old_indent, fyewt_indicator);
 	}
@@ -1755,7 +1773,7 @@ static void fy_emit_mapping_key_prolog(struct fy_emitter *emit, struct fy_emit_s
 
 	sc->flags = DDNF_MAP | (sc->flags & DDNF_FLOW);
 
-	if (!fy_emit_is_oneline_or_compact(emit) ||
+	if (!fy_emit_sc_oneline(emit, sc) ||
 	    ((fy_emit_is_compact(emit) || sc->flow) && emit->column >= fy_emit_width(emit)))
 		fy_emit_write_indent(emit, sc->indent);
 
@@ -1778,7 +1796,7 @@ static void fy_emit_mapping_key_prolog(struct fy_emitter *emit, struct fy_emit_s
 	}
 
 	do_indent = false;
-	if (!has_comment && !fy_emit_is_oneline_or_compact(emit)) {
+	if (!has_comment && !fy_emit_sc_oneline(emit, sc)) {
 		if (fyt_key && fyt_key->type != FYTT_SCALAR)
 			/* always indent on non scalar keys */
 			key_over = true;
@@ -1847,7 +1865,7 @@ static void fy_emit_mapping_value_prolog(struct fy_emitter *emit, struct fy_emit
 		fy_emit_write_indent(emit, sc->indent);
 
 	/* don't do anything for those cases */
-	if (!sc->flow || fy_emit_is_oneline_or_compact(emit) || !fyt_value || fyt_value->type != FYTT_SCALAR)
+	if (!sc->flow || fy_emit_sc_oneline(emit, sc) || !fyt_value || fyt_value->type != FYTT_SCALAR)
 		return;
 
 	ta = fy_token_text_analyze(fyt_value);
@@ -1872,7 +1890,7 @@ static void fy_emit_mapping_value_epilog(struct fy_emitter *emit, struct fy_emit
 		sc->flags |= DDNF_HANGING_INDENT;
 	}
 
-	needs_hanging_indent = sc->flow && !fy_emit_is_oneline_or_compact(emit) && !sc->empty;
+	needs_hanging_indent = sc->flow && !fy_emit_sc_oneline(emit, sc) && !sc->empty;
 
 	if (last && needs_hanging_indent && (sc->flags & DDNF_HANGING_INDENT))
 		fy_emit_write_indent(emit, sc->old_indent);
@@ -1897,6 +1915,13 @@ void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, in
 	sc->indent = indent;
 	sc->empty = fy_node_pair_list_empty(&fyn->mapping);
 	sc->flow_token = fyn->style == FYNS_FLOW;
+	sc->oneline_flow = false;
+	if (sc->flow_token && fy_emit_preserve_flow_layout(emit)) {
+		const struct fy_mark *sm = fy_token_start_mark(fyn->mapping_start);
+		const struct fy_mark *em = fy_token_end_mark(fyn->mapping_end);
+		if (sm && em && sm->line == em->line)
+			sc->oneline_flow = true;
+	}
 	sc->flow = !!(flags & DDNF_FLOW);
 	sc->xstyle = fyn->style;
 	sc->old_indent = sc->indent;
@@ -3055,6 +3080,73 @@ static bool fy_emit_ready(struct fy_emitter *emit)
 	struct fy_eventp *fyep;
 	int need, count;
 
+	/* When the head event starts a flow collection in ORIGINAL mode,
+	 * buffer events on the same source line so that oneline_flow
+	 * detection can compare start/end line marks before the prolog
+	 * runs.  We only buffer events that share the start token's line;
+	 * as soon as an event is on a different line we know the collection
+	 * is multi-line and can proceed immediately.  This keeps the buffer
+	 * bounded to a single line's worth of events rather than the
+	 * entire collection.
+	 */
+	fyep = fy_eventp_list_head(&emit->queued_events);
+	if (fyep && fy_emit_preserve_flow_layout(emit)) {
+		struct fy_token *start_token = NULL;
+		const struct fy_mark *sm;
+
+		if (fyep->e.type == FYET_SEQUENCE_START)
+			start_token = fyep->e.sequence_start.sequence_start;
+		else if (fyep->e.type == FYET_MAPPING_START)
+			start_token = fyep->e.mapping_start.mapping_start;
+
+		/* Only buffer when we have a flow start token with valid
+		 * source marks (skip synthetic events with 0:0:0 marks) */
+		sm = start_token ? fy_token_start_mark(start_token) : NULL;
+
+		if (start_token &&
+		    (start_token->type == FYTT_FLOW_SEQUENCE_START ||
+		     start_token->type == FYTT_FLOW_MAPPING_START) &&
+		    sm && !(sm->line == 0 && sm->column == 0 && sm->input_pos == 0)) {
+			int depth = 0;
+
+			sm = fy_token_start_mark(start_token);
+
+			/* Skip buffering for synthetic events (no source info) */
+			if (!sm || (sm->line == 0 && sm->column == 0 && sm->input_pos == 0))
+				goto normal;
+
+			for (fyep = fy_eventp_list_head(&emit->queued_events); fyep;
+					fyep = fy_eventp_next(&emit->queued_events, fyep)) {
+
+				switch (fyep->e.type) {
+				case FYET_SEQUENCE_START:
+				case FYET_MAPPING_START:
+					depth++;
+					break;
+				case FYET_SEQUENCE_END:
+				case FYET_MAPPING_END:
+					if (--depth == 0)
+						return true;
+					break;
+				default:
+					break;
+				}
+
+				/* If any event is on a different line, the
+				 * collection is multi-line — stop buffering */
+				if (depth > 0) {
+					struct fy_token *et = fy_event_get_token(&fyep->e);
+					const struct fy_mark *em = et ? fy_token_start_mark(et) : NULL;
+
+					if (em && em->line != sm->line)
+						return true;
+				}
+			}
+			return false;
+		}
+	}
+normal:
+
 	count = 0;
 	need = -1;
 	for (fyep = fy_eventp_list_head(&emit->queued_events); fyep;
@@ -3148,6 +3240,55 @@ bool fy_emit_streaming_mapping_empty(struct fy_emitter *emit)
 		return false;
 
 	return fyepn->e.type == FYET_MAPPING_END;
+}
+
+/* Scan queued events to determine if a flow collection fits on one line.
+ * Called after the START event has been popped; the queue begins with the
+ * first child event.  We track nesting depth to find the matching END.
+ * Returns true when start and end tokens are on the same source line.
+ * Returns false for synthetic events (marks at 0:0:0) which have no
+ * meaningful source position.
+ */
+static bool fy_emit_streaming_flow_oneline(struct fy_emitter *emit,
+					   struct fy_token *start_token)
+{
+	struct fy_eventp *fyep;
+	const struct fy_mark *sm, *em;
+	struct fy_token *end_token;
+	int depth = 1;
+
+	sm = fy_token_start_mark(start_token);
+	if (!sm || (sm->line == 0 && sm->column == 0 && sm->input_pos == 0))
+		return false;
+
+	for (fyep = fy_eventp_list_head(&emit->queued_events); fyep;
+			fyep = fy_eventp_next(&emit->queued_events, fyep)) {
+
+		switch (fyep->e.type) {
+		case FYET_SEQUENCE_START:
+		case FYET_MAPPING_START:
+			depth++;
+			break;
+		case FYET_SEQUENCE_END:
+			if (--depth == 0) {
+				end_token = fyep->e.sequence_end.sequence_end;
+				em = fy_token_end_mark(end_token);
+				return em && sm->line == em->line;
+			}
+			break;
+		case FYET_MAPPING_END:
+			if (--depth == 0) {
+				end_token = fyep->e.mapping_end.mapping_end;
+				em = fy_token_end_mark(end_token);
+				return em && sm->line == em->line;
+			}
+			break;
+		default:
+			break;
+		}
+	}
+
+	return false;
 }
 
 static void fy_emit_goto_state(struct fy_emitter *emit, enum fy_emitter_state state)
@@ -3280,6 +3421,9 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_parser *fyp
 		sc->indent = emit->s_indent;
 		sc->empty = fy_emit_streaming_sequence_empty(emit);
 		sc->flow_token = xstyle == FYNS_FLOW;
+		if (sc->flow_token && fy_emit_preserve_flow_layout(emit))
+			sc->oneline_flow = fy_emit_streaming_flow_oneline(emit,
+					fye->sequence_start.sequence_start);
 		sc->flow = !!(s_flags & DDNF_FLOW);
 		sc->xstyle = xstyle;
 		sc->old_indent = sc->indent;
@@ -3321,6 +3465,9 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_parser *fyp
 		sc->indent = emit->s_indent;
 		sc->empty = fy_emit_streaming_mapping_empty(emit);
 		sc->flow_token = xstyle == FYNS_FLOW;
+		if (sc->flow_token && fy_emit_preserve_flow_layout(emit))
+			sc->oneline_flow = fy_emit_streaming_flow_oneline(emit,
+					fye->mapping_start.mapping_start);
 		sc->flow = !!(s_flags & DDNF_FLOW);
 		sc->xstyle = xstyle;
 		sc->old_indent = sc->indent;
