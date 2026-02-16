@@ -2225,13 +2225,11 @@ int fy_scan_directive(struct fy_parser *fyp)
 	struct fy_token *fyt;
 	int i, lastc;
 
-	if (!fy_parse_strcmp(fyp, "YAML") && fy_is_ws(fy_parse_peek_at(fyp, 4))) {
-		advance = 5;
+	if (!fy_parse_strcmp(fyp, "YAML") && fy_is_blank_lb_r_n(fy_parse_peek_at(fyp, 4)))
 		type = FYTT_VERSION_DIRECTIVE;
-	} else if (!fy_parse_strcmp(fyp, "TAG") && fy_is_ws(fy_parse_peek_at(fyp, 3))) {
-		advance = 4;
+	else if (!fy_parse_strcmp(fyp, "TAG") && fy_is_blank_lb_r_n(fy_parse_peek_at(fyp, 3)))
 		type = FYTT_TAG_DIRECTIVE;
-	} else {
+	else {
 		/* skip until linebreak (or #) */
 		i = 0;
 		lastc = -1;
@@ -2271,11 +2269,21 @@ int fy_scan_directive(struct fy_parser *fyp)
 		return 0;
 	}
 
-	fyp_error_check(fyp, type != FYTT_NONE, err_out,
-			"neither YAML|TAG found");
+	/* advance over the YAML/TAG part */
+	advance = type == FYTT_VERSION_DIRECTIVE ? 4 : 3;
 
 	/* advance */
 	fy_advance_by(fyp, advance);
+
+	/* must be a whitespace after YAML/TAG */
+	c = fy_parse_peek(fyp);
+
+	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
+			fy_is_ws(c), err_out,
+			"illegal empty %%%s directive",
+			type == FYTT_VERSION_DIRECTIVE ? "YAML" : "TAG");
+
+	fy_advance(fyp, c);
 
 	/* skip white space */
 	while (fy_is_ws(c = fy_parse_peek(fyp)))
