@@ -5,6 +5,10 @@ import re
 from libfyaml.pyyaml_compat.nodes import ScalarNode, SequenceNode, MappingNode
 
 
+class ResolverError(Exception):
+    pass
+
+
 class BaseResolver:
     """Base YAML tag resolver."""
     yaml_implicit_resolvers = {}
@@ -15,7 +19,8 @@ class BaseResolver:
     DEFAULT_MAPPING_TAG = 'tag:yaml.org,2002:map'
 
     def __init__(self):
-        pass
+        self.resolver_exact_paths = []
+        self.resolver_prefix_paths = []
 
     @classmethod
     def add_implicit_resolver(cls, tag, regexp, first):
@@ -30,10 +35,108 @@ class BaseResolver:
     @classmethod
     def add_path_resolver(cls, tag, path, kind=None):
         """Add a path resolver."""
-        pass
+        if 'yaml_path_resolvers' not in cls.__dict__:
+            cls.yaml_path_resolvers = cls.yaml_path_resolvers.copy()
+        new_path = []
+        for element in path:
+            if isinstance(element, (list, tuple)):
+                if len(element) == 2:
+                    node_check, index_check = element
+                elif len(element) == 1:
+                    node_check = element[0]
+                    index_check = True
+                else:
+                    raise ResolverError("Invalid path element: %s" % element)
+            else:
+                node_check = None
+                index_check = element
+            if node_check is str:
+                node_check = ScalarNode
+            elif node_check is list:
+                node_check = SequenceNode
+            elif node_check is dict:
+                node_check = MappingNode
+            elif node_check not in [ScalarNode, SequenceNode, MappingNode] \
+                    and not isinstance(node_check, str) \
+                    and node_check is not None:
+                raise ResolverError("Invalid node checker: %s" % node_check)
+            if not isinstance(index_check, (str, int)) \
+                    and index_check is not None:
+                raise ResolverError("Invalid index checker: %s" % index_check)
+            new_path.append((node_check, index_check))
+        if kind is str:
+            kind = ScalarNode
+        elif kind is list:
+            kind = SequenceNode
+        elif kind is dict:
+            kind = MappingNode
+        elif kind not in [ScalarNode, SequenceNode, MappingNode] \
+                and kind is not None:
+            raise ResolverError("Invalid node kind: %s" % kind)
+        cls.yaml_path_resolvers[tuple(new_path), kind] = tag
+
+    def descend_resolver(self, current_node, current_index):
+        if not self.yaml_path_resolvers:
+            return
+        exact_paths = {}
+        prefix_paths = []
+        if current_node:
+            depth = len(self.resolver_prefix_paths)
+            for path, kind in self.resolver_prefix_paths[-1]:
+                if self.check_resolver_prefix(depth, path, kind,
+                        current_node, current_index):
+                    if len(path) > depth:
+                        prefix_paths.append((path, kind))
+                    else:
+                        exact_paths[kind] = self.yaml_path_resolvers[path, kind]
+        else:
+            for path, kind in self.yaml_path_resolvers:
+                if not path:
+                    exact_paths[kind] = self.yaml_path_resolvers[path, kind]
+                else:
+                    prefix_paths.append((path, kind))
+        self.resolver_exact_paths.append(exact_paths)
+        self.resolver_prefix_paths.append(prefix_paths)
+
+    def ascend_resolver(self):
+        if not self.yaml_path_resolvers:
+            return
+        self.resolver_exact_paths.pop()
+        self.resolver_prefix_paths.pop()
+
+    def check_resolver_prefix(self, depth, path, kind,
+            current_node, current_index):
+        node_check, index_check = path[depth-1]
+        if isinstance(node_check, str):
+            if current_node.tag != node_check:
+                return
+        elif node_check is not None:
+            if not isinstance(current_node, node_check):
+                return
+        if index_check is True and current_index is not None:
+            return
+        if (index_check is False or index_check is None) \
+                and current_index is None:
+            return
+        if isinstance(index_check, str):
+            if not (isinstance(current_index, ScalarNode)
+                    and index_check == current_index.value):
+                return
+        elif isinstance(index_check, int) and not isinstance(index_check, bool):
+            if index_check != current_index:
+                return
+        return True
 
     def resolve(self, kind, value, implicit):
         """Resolve a tag for a node based on its kind and value."""
+        # Check path resolvers first
+        if self.yaml_path_resolvers:
+            exact_paths = self.resolver_exact_paths[-1] if self.resolver_exact_paths else {}
+            if kind in exact_paths:
+                return exact_paths[kind]
+            if None in exact_paths:
+                return exact_paths[None]
+
         if kind is ScalarNode and implicit[0]:
             # Empty string resolves to null (PyYAML behavior)
             if value == '':

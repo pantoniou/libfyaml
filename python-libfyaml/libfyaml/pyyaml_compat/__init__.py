@@ -27,6 +27,7 @@ import libfyaml as fy
 import base64
 import datetime
 import re
+import types
 from collections import OrderedDict
 
 # Version info for compatibility
@@ -327,13 +328,9 @@ def _construct_yaml_set(loader, node):
     if node is None:
         return set()
 
-    # Handle PyYAML MappingNode
+    # Handle PyYAML MappingNode - use generator for two-phase construction
     if isinstance(node, nodes.MappingNode):
-        result = set()
-        for key_node, value_node in node.value:
-            key = loader.construct_object(key_node)
-            result.add(key)
-        return result
+        return loader.construct_yaml_set(node)
 
     generic = node._generic if hasattr(node, '_generic') else node
     if hasattr(generic, 'value'):
@@ -481,15 +478,14 @@ def _construct_yaml_float_tag(loader, node):
 
 
 def _construct_yaml_seq_tag(loader, node):
-    """Construct a list from a !!seq tagged node."""
+    """Construct a list from a !!seq tagged node.
+
+    For PyYAML Node objects, delegates to construct_yaml_seq (a generator
+    for two-phase construction to support recursive structures).
+    For FyGeneric nodes, returns directly.
+    """
     if isinstance(node, nodes.SequenceNode):
-        # Pre-register empty skeleton for cycle detection
-        result = []
-        if not hasattr(loader, '_constructed_objects'):
-            loader._constructed_objects = {}
-        loader._constructed_objects[id(node)] = result
-        result.extend(loader.construct_sequence(node, deep=True))
-        return result
+        return loader.construct_yaml_seq(node)
     # Check FyGeneric-backed nodes
     generic = node._generic if hasattr(node, '_generic') else node
     try:
@@ -516,12 +512,7 @@ def _construct_yaml_seq_tag(loader, node):
 def _construct_yaml_map_tag(loader, node):
     """Construct a dict from a !!map tagged node."""
     if isinstance(node, nodes.MappingNode):
-        result = {}
-        if not hasattr(loader, '_constructed_objects'):
-            loader._constructed_objects = {}
-        loader._constructed_objects[id(node)] = result
-        result.update(loader.construct_mapping(node, deep=True))
-        return result
+        return loader.construct_yaml_map(node)
     # Check FyGeneric-backed nodes
     generic = node._generic if hasattr(node, '_generic') else node
     try:
@@ -664,6 +655,15 @@ class BaseLoader:
     """
     yaml_constructors = {}
     yaml_multi_constructors = {}
+    yaml_path_resolvers = {}
+
+    @classmethod
+    def add_path_resolver(cls, tag, path, kind=None):
+        """Add a path-based tag resolver. Delegates to BaseResolver logic."""
+        if 'yaml_path_resolvers' not in cls.__dict__:
+            cls.yaml_path_resolvers = cls.yaml_path_resolvers.copy()
+        # Reuse resolver's normalization and storage logic
+        resolver.BaseResolver.add_path_resolver.__func__(cls, tag, path, kind)
 
     def __init__(self, stream=None):
         """Initialize loader with optional stream."""
@@ -684,8 +684,17 @@ class BaseLoader:
         self._event_idx = 0
         self._tokens = None
         self._token_idx = 0
+        # Create resolver that inherits path resolvers from Loader class
         self._resolver = resolver.Resolver()
+        # Copy class-level yaml_path_resolvers to instance resolver
+        cls = type(self)
+        if hasattr(cls, 'yaml_path_resolvers') and cls.yaml_path_resolvers:
+            self._resolver.yaml_path_resolvers = cls.yaml_path_resolvers
         self._anchors = {}
+        self.constructed_objects = {}
+        self.recursive_objects = {}
+        self.state_generators = []
+        self.deep_construct = False
 
     def _ensure_events(self):
         if self._events is None:
@@ -900,13 +909,17 @@ class BaseLoader:
         This is the standard PyYAML interface for constructing a document.
         It processes state generators for two-phase construction.
         """
-        data = self.construct_object(node, deep=True)
+        data = self.construct_object(node)
         # Process any pending state generators (for two-phase construction)
-        if hasattr(self, 'state_generators'):
-            for generator in self.state_generators:
+        while self.state_generators:
+            state_generators = self.state_generators
+            self.state_generators = []
+            for generator in state_generators:
                 for dummy in generator:
                     pass
-            self.state_generators = []
+        self.constructed_objects = {}
+        self.recursive_objects = {}
+        self.deep_construct = False
         return data
 
     def dispose(self):
@@ -1316,101 +1329,78 @@ class BaseLoader:
         return node
 
     def _construct_from_node(self, node, deep=False):
-        """Construct a Python object from a PyYAML Node."""
-        if not hasattr(self, '_constructed_objects'):
-            self._constructed_objects = {}
-        node_id = id(node)
-        if node_id in self._constructed_objects:
-            return self._constructed_objects[node_id]
-        tag = node.tag
-        result = None
-        found = False
+        """Construct a Python object from a PyYAML Node.
 
-        # Check for exact tag match in constructors
+        Follows PyYAML's construct_object pattern:
+        - Two-phase generator construction for recursive structures
+        - recursive_objects tracking for cycle detection
+        - constructed_objects caching for alias resolution
+        """
+        if node in self.constructed_objects:
+            return self.constructed_objects[node]
+        if deep:
+            old_deep = self.deep_construct
+            self.deep_construct = True
+        if node in self.recursive_objects:
+            raise ConstructorError(None, None,
+                "found unconstructable recursive node", node.start_mark)
+        self.recursive_objects[node] = None
+
+        tag = node.tag
+        constructor = None
+        tag_suffix = None
+
+        # Find constructor
         if tag and tag in self.yaml_constructors:
             constructor = self.yaml_constructors[tag]
-            result = constructor(self, node)
-            found = True
-
-        # Check for multi-constructors (tag prefix matches)
-        if not found and tag and self.yaml_multi_constructors:
+        elif tag and self.yaml_multi_constructors:
             for prefix, multi_constructor in self.yaml_multi_constructors.items():
-                if prefix and tag.startswith(prefix):
-                    result = multi_constructor(self, tag[len(prefix):], node)
-                    found = True
+                if prefix is not None and tag.startswith(prefix):
+                    tag_suffix = tag[len(prefix):]
+                    constructor = multi_constructor
                     break
-            if not found and None in self.yaml_multi_constructors:
-                multi_constructor = self.yaml_multi_constructors[None]
-                result = multi_constructor(self, tag, node)
-                found = True
-
-        # Check for None tag constructor (catch-all)
-        if not found and None in self.yaml_constructors:
-            constructor = self.yaml_constructors[None]
-            result = constructor(self, node)
-            found = True
-
-        if not found:
-            # Handle standard YAML tags for scalars
-            if isinstance(node, nodes.ScalarNode) and tag:
-                value = node.value
-                if tag in ('tag:yaml.org,2002:str', '!!str'):
-                    result = value; found = True
-                elif tag in ('tag:yaml.org,2002:null', '!!null'):
-                    result = None; found = True
-                elif tag in ('tag:yaml.org,2002:bool', '!!bool'):
-                    result = value.lower() in ('true', 'yes', 'on'); found = True
-                elif tag in ('tag:yaml.org,2002:int', '!!int'):
-                    result = _construct_yaml_int(value); found = True
-                elif tag in ('tag:yaml.org,2002:float', '!!float'):
-                    result = _construct_yaml_float(value); found = True
-
-        if not found:
-            # Handle standard collection tags
-            if tag in ('tag:yaml.org,2002:map', '!!map'):
-                if isinstance(node, nodes.MappingNode):
-                    result = self.construct_mapping(node, deep=deep); found = True
-                else:
-                    node_type = getattr(node, 'id', 'scalar')
-                    raise ConstructorError(
-                        None, None,
-                        "expected a mapping node, but found %s" % node_type,
-                        node.start_mark,
-                    )
-            elif tag in ('tag:yaml.org,2002:seq', '!!seq'):
-                if isinstance(node, nodes.SequenceNode):
-                    result = self.construct_sequence(node, deep=deep); found = True
-                else:
-                    node_type = getattr(node, 'id', 'scalar')
-                    raise ConstructorError(
-                        None, None,
-                        "expected a sequence node, but found %s" % node_type,
-                        node.start_mark,
-                    )
-
-        if not found:
-            # Raise for truly undefined/unknown tags (not standard YAML tags)
-            if tag and not tag.startswith('tag:yaml.org,2002:'):
-                raise ConstructorError(
-                    None, None,
-                    "could not determine a constructor for the tag %r" % tag,
-                    node.start_mark,
-                )
-
-            # Default: dispatch based on node type
-            if isinstance(node, nodes.MappingNode):
-                result = self.construct_mapping(node, deep=deep)
-            elif isinstance(node, nodes.SequenceNode):
-                result = self.construct_sequence(node, deep=deep)
-            elif isinstance(node, nodes.ScalarNode):
-                result = self.construct_scalar(node)
             else:
-                result = node.value
+                if None in self.yaml_multi_constructors:
+                    tag_suffix = tag
+                    constructor = self.yaml_multi_constructors[None]
+                elif None in self.yaml_constructors:
+                    constructor = self.yaml_constructors[None]
+        elif None in self.yaml_constructors:
+            constructor = self.yaml_constructors[None]
 
-        # Register for alias/cycle detection
-        if node_id not in self._constructed_objects:
-            self._constructed_objects[node_id] = result
-        return result
+        if constructor is None:
+            # Fallback: dispatch based on node type
+            if isinstance(node, nodes.ScalarNode):
+                constructor = self.__class__.construct_scalar
+            elif isinstance(node, nodes.SequenceNode):
+                constructor = self.__class__.construct_sequence
+            elif isinstance(node, nodes.MappingNode):
+                constructor = self.__class__.construct_mapping
+
+        # Call constructor
+        if constructor is not None:
+            if tag_suffix is None:
+                data = constructor(self, node)
+            else:
+                data = constructor(self, tag_suffix, node)
+        else:
+            data = node.value
+
+        # Handle generator (two-phase construction)
+        if isinstance(data, types.GeneratorType):
+            generator = data
+            data = next(generator)
+            if self.deep_construct:
+                for dummy in generator:
+                    pass
+            else:
+                self.state_generators.append(generator)
+
+        self.constructed_objects[node] = data
+        del self.recursive_objects[node]
+        if deep:
+            self.deep_construct = old_deep
+        return data
 
     def construct_pairs(self, node, deep=False):
         """Construct a list of (key, value) pairs from a mapping node."""
@@ -1521,6 +1511,26 @@ class BaseLoader:
         data = []
         yield data
         data.extend(self.construct_sequence(node, deep=True))
+
+    def construct_yaml_map(self, node):
+        """Construct a YAML mapping as a generator (PyYAML compatible).
+
+        Two-phase construction: yield empty dict first, fill in later.
+        """
+        data = {}
+        yield data
+        value = self.construct_mapping(node, deep=True)
+        data.update(value)
+
+    def construct_yaml_set(self, node):
+        """Construct a YAML set as a generator (PyYAML compatible).
+
+        Two-phase construction: yield empty set first, fill in later.
+        """
+        data = set()
+        yield data
+        value = self.construct_mapping(node, deep=True)
+        data.update(value)
 
     def construct_yaml_object(self, node, cls):
         """Construct a Python object from a YAML node using __setstate__.
@@ -1651,13 +1661,13 @@ def _construct_python_tag(loader, suffix, node):
         return int(value.strip())
     elif suffix == 'tuple':
         if isinstance(node, nodes.SequenceNode):
-            return tuple(loader.construct_sequence(node, deep=True))
-        items = loader.construct_sequence(node, deep=True)
+            return tuple(loader.construct_sequence(node))
+        items = loader.construct_sequence(node)
         return tuple(items) if isinstance(items, list) else (items,)
     elif suffix == 'list':
-        return loader.construct_sequence(node, deep=True)
+        return loader.construct_sequence(node)
     elif suffix == 'dict':
-        return loader.construct_mapping(node, deep=True)
+        return loader.construct_mapping(node)
 
     elif suffix.startswith('name:'):
         name = suffix[5:]
@@ -2075,6 +2085,14 @@ class BaseDumper:
     """Base dumper class for PyYAML API compatibility."""
     yaml_representers = {}
     yaml_multi_representers = {}
+    yaml_path_resolvers = {}
+
+    @classmethod
+    def add_path_resolver(cls, tag, path, kind=None):
+        """Add a path-based tag resolver."""
+        if 'yaml_path_resolvers' not in cls.__dict__:
+            cls.yaml_path_resolvers = cls.yaml_path_resolvers.copy()
+        resolver.BaseResolver.add_path_resolver.__func__(cls, tag, path, kind)
 
     def __init__(self, stream=None, default_style=None, default_flow_style=False,
                  canonical=None, indent=None, width=None, allow_unicode=None,
@@ -2783,10 +2801,15 @@ class _ConstructorProxy(BaseLoader):
         return self.construct_scalar(node)
 
     def construct_yaml_seq(self, node):
-        return self.construct_sequence(node, deep=True)
+        data = []
+        yield data
+        data.extend(self.construct_sequence(node, deep=True))
 
     def construct_yaml_map(self, node):
-        return self.construct_mapping(node, deep=True)
+        data = {}
+        yield data
+        value = self.construct_mapping(node, deep=True)
+        data.update(value)
 
 
 def _diag_to_exception(diag_list, stream_name='<string>'):
@@ -2954,7 +2977,7 @@ def _load_via_compose(stream, Loader, original_stream):
     for tag, func in SafeLoader.yaml_constructors.items():
         if tag not in loader.yaml_constructors:
             loader.yaml_constructors[tag] = func
-    return loader._construct_from_node(root_node, deep=True)
+    return loader.construct_document(root_node)
 
 
 def _load_all_via_compose(stream, Loader):
@@ -2977,7 +3000,7 @@ def _load_all_via_compose(stream, Loader):
 
     for root_node in _events_to_nodes(events):
         if root_node is not None:
-            yield loader._construct_from_node(root_node, deep=True)
+            yield loader.construct_document(root_node)
 
 
 def load(stream, Loader=None):
@@ -3203,7 +3226,12 @@ def compose(stream, Loader=SafeLoader):
         stream = result
 
     events = list(parse(stream))
-    return _events_to_node(events)
+    # Create resolver with Loader's path resolvers if any
+    _path_resolver = None
+    if Loader is not None and hasattr(Loader, 'yaml_path_resolvers') and Loader.yaml_path_resolvers:
+        _path_resolver = resolver.Resolver()
+        _path_resolver.yaml_path_resolvers = Loader.yaml_path_resolvers
+    return _events_to_node(events, _path_resolver=_path_resolver)
 
 
 def compose_all(stream, Loader=SafeLoader):
@@ -3229,7 +3257,12 @@ def compose_all(stream, Loader=SafeLoader):
     stream = _decode_bytes_stream(stream)
 
     events = list(parse(stream))
-    for node in _events_to_nodes(events):
+    # Create resolver with Loader's path resolvers if any
+    _path_resolver = None
+    if Loader is not None and hasattr(Loader, 'yaml_path_resolvers') and Loader.yaml_path_resolvers:
+        _path_resolver = resolver.Resolver()
+        _path_resolver.yaml_path_resolvers = Loader.yaml_path_resolvers
+    for node in _events_to_nodes(events, _path_resolver=_path_resolver):
         yield node
 
 
@@ -4283,12 +4316,15 @@ def _node_to_events(node, stream_name='<unicode string>', explicit_start=None):
     yield StreamEndEvent()
 
 
-def _node_to_events_inner(node):
+def _node_to_events_inner(node, _path_resolver=None, _parent=None, _index=None):
     """Recursively yield events from a Node tree (simple, no alias handling)."""
+    if _path_resolver:
+        _path_resolver.descend_resolver(_parent, _index)
     anchor = getattr(node, 'anchor', None)
     tag = getattr(node, 'tag', None)
     if isinstance(node, ScalarNode):
-        resolved_tag = _serialize_resolver.resolve(ScalarNode, node.value, (True, False))
+        r = _path_resolver if _path_resolver else _serialize_resolver
+        resolved_tag = r.resolve(ScalarNode, node.value, (True, False))
         implicit = (tag == resolved_tag, tag is None)
         style = getattr(node, 'style', None)
         # When tag is !!str but the value looks like int/float/bool/null,
@@ -4302,25 +4338,39 @@ def _node_to_events_inner(node):
             style = "'"
             implicit = (True, True)
             tag = resolved_tag
-        yield ScalarEvent(anchor=anchor, tag=tag, implicit=implicit,
+        # Suppress tag when implicit to avoid verbose output from C emitter
+        emit_tag = None if implicit[0] else tag
+        yield ScalarEvent(anchor=anchor, tag=emit_tag, implicit=implicit,
                           value=node.value, style=style)
     elif isinstance(node, SequenceNode):
-        implicit = tag is None or tag == 'tag:yaml.org,2002:seq'
+        if _path_resolver:
+            resolved_tag = _path_resolver.resolve(SequenceNode, None, (True, True))
+            implicit = (tag == resolved_tag)
+        else:
+            implicit = tag is None or tag == 'tag:yaml.org,2002:seq'
         flow_style = getattr(node, 'flow_style', None)
-        yield SequenceStartEvent(anchor=anchor, tag=tag, implicit=implicit,
+        emit_tag = None if implicit else tag
+        yield SequenceStartEvent(anchor=anchor, tag=emit_tag, implicit=implicit,
                                  flow_style=flow_style)
-        for item in node.value:
-            yield from _node_to_events_inner(item)
+        for idx, item in enumerate(node.value):
+            yield from _node_to_events_inner(item, _path_resolver, node, idx)
         yield SequenceEndEvent()
     elif isinstance(node, MappingNode):
-        implicit = tag is None or tag == 'tag:yaml.org,2002:map'
+        if _path_resolver:
+            resolved_tag = _path_resolver.resolve(MappingNode, None, (True, True))
+            implicit = (tag == resolved_tag)
+        else:
+            implicit = tag is None or tag == 'tag:yaml.org,2002:map'
         flow_style = getattr(node, 'flow_style', None)
-        yield MappingStartEvent(anchor=anchor, tag=tag, implicit=implicit,
+        emit_tag = None if implicit else tag
+        yield MappingStartEvent(anchor=anchor, tag=emit_tag, implicit=implicit,
                                 flow_style=flow_style)
         for key_node, val_node in node.value:
-            yield from _node_to_events_inner(key_node)
-            yield from _node_to_events_inner(val_node)
+            yield from _node_to_events_inner(key_node, _path_resolver, node, None)
+            yield from _node_to_events_inner(val_node, _path_resolver, node, key_node)
         yield MappingEndEvent()
+    if _path_resolver:
+        _path_resolver.ascend_resolver()
 
 
 def serialize(node, stream=None, Dumper=None, **kwargs):
@@ -4330,24 +4380,29 @@ def serialize(node, stream=None, Dumper=None, **kwargs):
 
 def serialize_all(nodes, stream=None, Dumper=None, **kwargs):
     """Serialize multiple Node trees to YAML."""
+    # Create path resolver from Dumper if available
+    _path_resolver = None
+    if Dumper is not None and hasattr(Dumper, 'yaml_path_resolvers') and Dumper.yaml_path_resolvers:
+        _path_resolver = resolver.Resolver()
+        _path_resolver.yaml_path_resolvers = Dumper.yaml_path_resolvers
     def _gen():
         yield StreamStartEvent()
         for node in nodes:
             yield DocumentStartEvent(explicit=True)
-            yield from _node_to_events_inner(node)
+            yield from _node_to_events_inner(node, _path_resolver)
             yield DocumentEndEvent(explicit=False)
         yield StreamEndEvent()
     return emit(_gen(), stream=stream, **kwargs)
 
 
-def _events_to_node(events):
+def _events_to_node(events, _path_resolver=None):
     """Build a Node tree from a list of Event objects.
 
     Handles anchors and aliases. Returns the root Node for the first document.
     """
     anchors = {}
     idx = [0]  # mutable index for closure
-    _resolver = resolver.Resolver()
+    _resolver = _path_resolver if _path_resolver is not None else resolver.Resolver()
 
     def _next():
         if idx[0] < len(events):
@@ -4368,6 +4423,18 @@ def _events_to_node(events):
             tag = _resolver.resolve(ScalarNode, ev.value, implicit)
         return tag
 
+    def _resolve_seq_tag(ev):
+        tag = ev.tag
+        if tag is None or tag == '!':
+            tag = _resolver.resolve(SequenceNode, None, (True, True))
+        return tag or 'tag:yaml.org,2002:seq'
+
+    def _resolve_map_tag(ev):
+        tag = ev.tag
+        if tag is None or tag == '!':
+            tag = _resolver.resolve(MappingNode, None, (True, True))
+        return tag or 'tag:yaml.org,2002:map'
+
     def _build_node():
         while True:
             ev = _next()
@@ -4379,7 +4446,21 @@ def _events_to_node(events):
                 continue
             if isinstance(ev, DocumentEndEvent):
                 continue
-            return _build_from_event(ev)
+            return _compose_node(None, None, ev)
+
+    def _compose_node(parent, index, ev=None):
+        if ev is None:
+            ev = _next()
+            if ev is None:
+                return None
+        if isinstance(ev, AliasEvent):
+            if ev.anchor in anchors:
+                return anchors[ev.anchor]
+            return ScalarNode('tag:yaml.org,2002:null', '', start_mark=ev.start_mark)
+        _resolver.descend_resolver(parent, index)
+        node = _build_from_event(ev)
+        _resolver.ascend_resolver()
+        return node
 
     def _build_from_event(ev):
         if isinstance(ev, ScalarEvent):
@@ -4394,27 +4475,31 @@ def _events_to_node(events):
                 anchors[ev.anchor] = node
             return node
         elif isinstance(ev, SequenceStartEvent):
+            tag = _resolve_seq_tag(ev)
             node = SequenceNode(
-                tag=ev.tag or 'tag:yaml.org,2002:seq',
+                tag=tag,
                 value=[],
                 start_mark=ev.start_mark,
                 end_mark=ev.end_mark,
                 flow_style=ev.flow_style)
             if ev.anchor:
                 anchors[ev.anchor] = node
+            item_index = 0
             while True:
                 next_ev = _next()
                 if next_ev is None or isinstance(next_ev, SequenceEndEvent):
                     if next_ev:
                         node.end_mark = next_ev.end_mark
                     break
-                item = _build_from_event(next_ev)
+                item = _compose_node(node, item_index, next_ev)
                 if item is not None:
                     node.value.append(item)
+                item_index += 1
             return node
         elif isinstance(ev, MappingStartEvent):
+            tag = _resolve_map_tag(ev)
             node = MappingNode(
-                tag=ev.tag or 'tag:yaml.org,2002:map',
+                tag=tag,
                 value=[],
                 start_mark=ev.start_mark,
                 end_mark=ev.end_mark,
@@ -4427,28 +4512,21 @@ def _events_to_node(events):
                     if key_ev:
                         node.end_mark = key_ev.end_mark
                     break
-                key_node = _build_from_event(key_ev)
-                val_ev = _next()
-                if val_ev is None:
-                    break
-                val_node = _build_from_event(val_ev)
+                key_node = _compose_node(node, None, key_ev)
+                val_node = _compose_node(node, key_node)
                 if key_node is not None and val_node is not None:
                     node.value.append((key_node, val_node))
             return node
-        elif isinstance(ev, AliasEvent):
-            if ev.anchor in anchors:
-                return anchors[ev.anchor]
-            return ScalarNode('tag:yaml.org,2002:null', '', start_mark=ev.start_mark)
         return None
 
     return _build_node()
 
 
-def _events_to_nodes(events):
+def _events_to_nodes(events, _path_resolver=None):
     """Build multiple Node trees from events (one per document)."""
     anchors = {}
     idx = [0]
-    _resolver = resolver.Resolver()
+    _resolver = _path_resolver if _path_resolver is not None else resolver.Resolver()
 
     def _next():
         if idx[0] < len(events):
@@ -4467,6 +4545,32 @@ def _events_to_nodes(events):
             tag = _resolver.resolve(ScalarNode, ev.value, implicit)
         return tag
 
+    def _resolve_seq_tag(ev):
+        tag = ev.tag
+        if tag is None or tag == '!':
+            tag = _resolver.resolve(SequenceNode, None, (True, True))
+        return tag or 'tag:yaml.org,2002:seq'
+
+    def _resolve_map_tag(ev):
+        tag = ev.tag
+        if tag is None or tag == '!':
+            tag = _resolver.resolve(MappingNode, None, (True, True))
+        return tag or 'tag:yaml.org,2002:map'
+
+    def _compose_node(parent, index, ev=None):
+        if ev is None:
+            ev = _next()
+            if ev is None:
+                return None
+        if isinstance(ev, AliasEvent):
+            if ev.anchor in anchors:
+                return anchors[ev.anchor]
+            return ScalarNode('tag:yaml.org,2002:null', '', start_mark=ev.start_mark)
+        _resolver.descend_resolver(parent, index)
+        node = _build_from_event(ev)
+        _resolver.ascend_resolver()
+        return node
+
     def _build_from_event(ev):
         if isinstance(ev, ScalarEvent):
             tag = _resolve_scalar_tag(ev)
@@ -4480,27 +4584,31 @@ def _events_to_nodes(events):
                 anchors[ev.anchor] = node
             return node
         elif isinstance(ev, SequenceStartEvent):
+            tag = _resolve_seq_tag(ev)
             node = SequenceNode(
-                tag=ev.tag or 'tag:yaml.org,2002:seq',
+                tag=tag,
                 value=[],
                 start_mark=ev.start_mark,
                 end_mark=ev.end_mark,
                 flow_style=ev.flow_style)
             if ev.anchor:
                 anchors[ev.anchor] = node
+            item_index = 0
             while True:
                 next_ev = _next()
                 if next_ev is None or isinstance(next_ev, SequenceEndEvent):
                     if next_ev:
                         node.end_mark = next_ev.end_mark
                     break
-                item = _build_from_event(next_ev)
+                item = _compose_node(node, item_index, next_ev)
                 if item is not None:
                     node.value.append(item)
+                item_index += 1
             return node
         elif isinstance(ev, MappingStartEvent):
+            tag = _resolve_map_tag(ev)
             node = MappingNode(
-                tag=ev.tag or 'tag:yaml.org,2002:map',
+                tag=tag,
                 value=[],
                 start_mark=ev.start_mark,
                 end_mark=ev.end_mark,
@@ -4513,18 +4621,11 @@ def _events_to_nodes(events):
                     if key_ev:
                         node.end_mark = key_ev.end_mark
                     break
-                key_node = _build_from_event(key_ev)
-                val_ev = _next()
-                if val_ev is None:
-                    break
-                val_node = _build_from_event(val_ev)
+                key_node = _compose_node(node, None, key_ev)
+                val_node = _compose_node(node, key_node)
                 if key_node is not None and val_node is not None:
                     node.value.append((key_node, val_node))
             return node
-        elif isinstance(ev, AliasEvent):
-            if ev.anchor in anchors:
-                return anchors[ev.anchor]
-            return ScalarNode('tag:yaml.org,2002:null', '', start_mark=ev.start_mark)
         return None
 
     while idx[0] < len(events):
@@ -4540,7 +4641,7 @@ def _events_to_nodes(events):
             if root_ev is None or isinstance(root_ev, DocumentEndEvent):
                 yield ScalarNode('tag:yaml.org,2002:null', '')
                 continue
-            node = _build_from_event(root_ev)
+            node = _compose_node(None, None, root_ev)
             # Consume until DocumentEndEvent
             while idx[0] < len(events):
                 ev2 = events[idx[0]]
