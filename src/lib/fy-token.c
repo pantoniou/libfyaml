@@ -428,9 +428,10 @@ struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_t
 	fyt->handle.fyi = NULL;
 
 	handle = va_arg(ap, struct fy_atom *);
-	if (handle)
+	if (handle) {
 		fyt->handle = *handle;
-	else
+		fy_input_ref(fyt->handle.fyi);
+	} else
 		fy_atom_reset(&fyt->handle);
 
 	switch (fyt->type) {
@@ -503,9 +504,6 @@ struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_t
 	default:
 		break;
 	}
-
-	if (fyt->handle.fyi)
-		fy_input_ref(fyt->handle.fyi);
 
 	return fyt;
 
