@@ -505,6 +505,218 @@ START_TEST(emit_root_top_comment_still_works)
 }
 END_TEST
 
+/* Helper: emit document via extended config with PRESERVE_FLOW_LAYOUT.
+ * Caller must free() the returned buffer. */
+static char *emit_document_preserve_flow(const char *input)
+{
+	struct fy_parse_cfg pcfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	struct fy_emitter_xcfg xcfg;
+	struct fy_emitter *emit;
+	struct test_emitter_data data;
+	int rc;
+
+	fyd = fy_document_build_from_string(&pcfg, input, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	memset(&data, 0, sizeof(data));
+	memset(&xcfg, 0, sizeof(xcfg));
+	xcfg.cfg.output = collect_output;
+	xcfg.cfg.userdata = &data;
+	xcfg.cfg.flags = FYECF_MODE_ORIGINAL | FYECF_OUTPUT_COMMENTS |
+			 FYECF_WIDTH_INF | FYECF_EXTENDED_CFG;
+	xcfg.xflags = FYEXCF_PRESERVE_FLOW_LAYOUT;
+
+	emit = fy_emitter_create(&xcfg.cfg);
+	ck_assert_ptr_ne(emit, NULL);
+
+	rc = fy_emit_document(emit, fyd);
+	ck_assert_int_eq(rc, 0);
+
+	fy_emitter_destroy(emit);
+	fy_document_destroy(fyd);
+
+	return data.buf;
+}
+
+START_TEST(emit_original_flow_sequence_oneline)
+{
+	char *output;
+
+	output = emit_document_preserve_flow(
+		"on: [push, pull_request]\n");
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_ptr_ne(strstr(output, "[push, pull_request]"), NULL);
+
+	free(output);
+}
+END_TEST
+
+START_TEST(emit_original_flow_sequence_with_comment)
+{
+	char *output;
+
+	/* Test that a flow sequence stays oneline even when a sibling key
+	 * has a comment; the inline comment on a scalar is preserved */
+	output = emit_document_preserve_flow(
+		"on: [push, pull_request]\nname: ci # the name\n");
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_ptr_ne(strstr(output, "[push, pull_request]"), NULL);
+	ck_assert_ptr_ne(strstr(output, "# the name"), NULL);
+
+	free(output);
+}
+END_TEST
+
+START_TEST(emit_original_flow_mapping_oneline)
+{
+	char *output;
+
+	output = emit_document_preserve_flow(
+		"env: {FOO: bar, BAZ: qux}\n");
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_ptr_ne(strstr(output, "{FOO: bar, BAZ: qux}"), NULL);
+
+	free(output);
+}
+END_TEST
+
+START_TEST(emit_original_empty_flow)
+{
+	char *output;
+
+	output = emit_document_preserve_flow(
+		"empty_seq: []\nempty_map: {}\n");
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_ptr_ne(strstr(output, "[]"), NULL);
+	ck_assert_ptr_ne(strstr(output, "{}"), NULL);
+
+	free(output);
+}
+END_TEST
+
+START_TEST(emit_original_nested_flow)
+{
+	char *output;
+
+	output = emit_document_preserve_flow(
+		"matrix: [[1, 2], [3, 4]]\n");
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_ptr_ne(strstr(output, "[[1, 2], [3, 4]]"), NULL);
+
+	free(output);
+}
+END_TEST
+
+START_TEST(emit_original_multiline_flow_stays_multiline)
+{
+	char *output;
+
+	/* A flow sequence that spans two lines in the source */
+	output = emit_document_preserve_flow(
+		"items: [alpha,\n  beta]\n");
+	ck_assert_ptr_ne(output, NULL);
+
+	/* It should NOT be collapsed to a single line */
+	ck_assert_ptr_eq(strstr(output, "[alpha, beta]"), NULL);
+
+	free(output);
+}
+END_TEST
+
+/* Helper: streaming parse→emit round-trip with PRESERVE_FLOW_LAYOUT.
+ * Caller must free() the returned buffer. */
+static char *streaming_roundtrip(const char *input)
+{
+	struct fy_parse_cfg pcfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_emitter_xcfg xcfg;
+	struct fy_parser *fyp;
+	struct test_emitter_data data;
+	struct fy_event *fye;
+	int rc;
+
+	memset(&data, 0, sizeof(data));
+	memset(&xcfg, 0, sizeof(xcfg));
+	xcfg.cfg.output = collect_output;
+	xcfg.cfg.userdata = &data;
+	xcfg.cfg.flags = FYECF_MODE_ORIGINAL | FYECF_OUTPUT_COMMENTS |
+			 FYECF_WIDTH_INF | FYECF_EXTENDED_CFG;
+	xcfg.xflags = FYEXCF_PRESERVE_FLOW_LAYOUT;
+
+	data.emit = fy_emitter_create(&xcfg.cfg);
+	ck_assert_ptr_ne(data.emit, NULL);
+
+	fyp = fy_parser_create(&pcfg);
+	ck_assert_ptr_ne(fyp, NULL);
+
+	rc = fy_parser_set_string(fyp, input, FY_NT);
+	ck_assert_int_eq(rc, 0);
+
+	while ((fye = fy_parser_parse(fyp)) != NULL) {
+		rc = fy_emit_event_from_parser(data.emit, fyp, fye);
+		ck_assert_int_eq(rc, 0);
+	}
+
+	fy_parser_destroy(fyp);
+	fy_emitter_destroy(data.emit);
+	data.emit = NULL;
+
+	return data.buf;
+}
+
+START_TEST(emit_streaming_oneline_flow_sequence)
+{
+	char *output;
+
+	output = streaming_roundtrip(
+		"colors: [red, green]\ncount: 3\n");
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_ptr_ne(strstr(output, "[red, green]"), NULL);
+
+	free(output);
+}
+END_TEST
+
+START_TEST(emit_streaming_oneline_flow_mapping)
+{
+	char *output;
+
+	output = streaming_roundtrip(
+		"settings: {verbose: true}\ncount: 3\n");
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_ptr_ne(strstr(output, "{verbose: true}"), NULL);
+
+	free(output);
+}
+END_TEST
+
+START_TEST(emit_streaming_multiline_flow_stays_multiline)
+{
+	char *output;
+
+	output = streaming_roundtrip(
+		"items: [alpha,\n  beta]\n");
+	ck_assert_ptr_ne(output, NULL);
+	/* Should NOT be collapsed to a single line */
+	ck_assert_ptr_eq(strstr(output, "[alpha, beta]"), NULL);
+
+	free(output);
+}
+END_TEST
+
+START_TEST(emit_streaming_nested_flow_oneline)
+{
+	char *output;
+
+	output = streaming_roundtrip(
+		"x: [[1, 2], [3, 4]]\n");
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_ptr_ne(strstr(output, "[[1, 2], [3, 4]]"), NULL);
+
+	free(output);
+}
+END_TEST
+
 void libfyaml_case_emit(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -530,4 +742,14 @@ void libfyaml_case_emit(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_nested_sequence_top_comment);
 	fy_check_testcase_add_test(ctc, emit_deeply_nested_top_comment);
 	fy_check_testcase_add_test(ctc, emit_root_top_comment_still_works);
+	fy_check_testcase_add_test(ctc, emit_original_flow_sequence_oneline);
+	fy_check_testcase_add_test(ctc, emit_original_flow_sequence_with_comment);
+	fy_check_testcase_add_test(ctc, emit_original_flow_mapping_oneline);
+	fy_check_testcase_add_test(ctc, emit_original_empty_flow);
+	fy_check_testcase_add_test(ctc, emit_original_nested_flow);
+	fy_check_testcase_add_test(ctc, emit_original_multiline_flow_stays_multiline);
+	fy_check_testcase_add_test(ctc, emit_streaming_oneline_flow_sequence);
+	fy_check_testcase_add_test(ctc, emit_streaming_oneline_flow_mapping);
+	fy_check_testcase_add_test(ctc, emit_streaming_multiline_flow_stays_multiline);
+	fy_check_testcase_add_test(ctc, emit_streaming_nested_flow_oneline);
 }
