@@ -298,6 +298,14 @@ FyDocumentState_get_tags(FyDocumentStateObject *self, void *closure)
         PyObject *handle = tag->handle ? PyUnicode_FromString(tag->handle) : Py_None;
         PyObject *prefix = tag->prefix ? PyUnicode_FromString(tag->prefix) : Py_None;
 
+        if (handle == NULL || prefix == NULL) {
+            Py_XDECREF(handle == Py_None ? NULL : handle);
+            Py_XDECREF(prefix == Py_None ? NULL : prefix);
+            Py_DECREF(tag_dict);
+            Py_DECREF(result);
+            return NULL;
+        }
+
         if (handle == Py_None) Py_INCREF(handle);
         if (prefix == Py_None) Py_INCREF(prefix);
 
@@ -3894,7 +3902,7 @@ libfyaml_dumps(PyObject *self, PyObject *args, PyObject *kwargs)
     /* Clean up builder */
     fy_generic_builder_destroy(gb);
 
-    return result;
+    return result;  /* NULL propagates error to Python */
 }
 
 /* from_python(obj, tag=None, style=None, mutable=False, dedup=True) - Convert Python object to FyGeneric */
@@ -4098,6 +4106,11 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
         }
 
         PyObject *mode_str = PyUnicode_FromString(mode);
+        if (mode_str == NULL) {
+            Py_DECREF(loads_kwargs);
+            Py_DECREF(content);
+            return NULL;
+        }
         PyDict_SetItemString(loads_kwargs, "mode", mode_str);
         Py_DECREF(mode_str);
 
@@ -4522,6 +4535,11 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
         }
 
         PyObject *mode_str = PyUnicode_FromString(mode);
+        if (mode_str == NULL) {
+            Py_DECREF(loads_all_kwargs);
+            Py_DECREF(content);
+            return NULL;
+        }
         PyObject *dedup_bool = PyBool_FromLong(dedup);
         PyObject *trim_bool = PyBool_FromLong(trim);
         PyObject *mutable_bool = PyBool_FromLong(mutable);
@@ -4997,10 +5015,12 @@ libfyaml_stream_parse(PyObject *self, PyObject *args, PyObject *kwargs)
                 if (anchor_text) {
                     Py_DECREF(py_anchor);
                     py_anchor = PyUnicode_FromString(anchor_text);
+                    if (!py_anchor) goto parse_error;
                 }
             }
 
             PyObject *py_tag = tag_token_to_pystring(tag_tok);
+            if (!py_tag) { Py_DECREF(py_anchor); goto parse_error; }
 
             int implicit = (tag_tok == NULL) ? 1 : 0;
 
@@ -5038,10 +5058,12 @@ libfyaml_stream_parse(PyObject *self, PyObject *args, PyObject *kwargs)
                 if (anchor_text) {
                     Py_DECREF(py_anchor);
                     py_anchor = PyUnicode_FromString(anchor_text);
+                    if (!py_anchor) goto parse_error;
                 }
             }
 
             PyObject *py_tag = tag_token_to_pystring(tag_tok);
+            if (!py_tag) { Py_DECREF(py_anchor); goto parse_error; }
 
             int implicit = (tag_tok == NULL) ? 1 : 0;
 
@@ -5080,10 +5102,12 @@ libfyaml_stream_parse(PyObject *self, PyObject *args, PyObject *kwargs)
                 if (anchor_text) {
                     Py_DECREF(py_anchor);
                     py_anchor = PyUnicode_FromString(anchor_text);
+                    if (!py_anchor) goto parse_error;
                 }
             }
 
             PyObject *py_tag = tag_token_to_pystring(tag_tok);
+            if (!py_tag) { Py_DECREF(py_anchor); goto parse_error; }
 
             /* Get scalar value */
             size_t val_len = 0;
@@ -5120,6 +5144,7 @@ libfyaml_stream_parse(PyObject *self, PyObject *args, PyObject *kwargs)
                 Py_INCREF(Py_None);
                 break;
             }
+            if (!py_style) { Py_DECREF(py_anchor); Py_DECREF(py_tag); Py_DECREF(py_value); goto parse_error; }
 
             /* Implicit tuple: (plain_implicit, non_plain_implicit) */
             int plain_implicit = (tag_tok == NULL && ss == FYSS_PLAIN) ? 1 : 0;
@@ -5148,6 +5173,7 @@ libfyaml_stream_parse(PyObject *self, PyObject *args, PyObject *kwargs)
                 if (anchor_text) {
                     Py_DECREF(py_anchor);
                     py_anchor = PyUnicode_FromString(anchor_text);
+                    if (!py_anchor) goto parse_error;
                 }
             }
             evt = Py_BuildValue("(iOOO)", 10, py_anchor, py_sm, py_em);
@@ -5273,10 +5299,12 @@ libfyaml_stream_scan(PyObject *self, PyObject *args, PyObject *kwargs)
                 if (tag->handle) {
                     Py_DECREF(py_handle);
                     py_handle = PyUnicode_FromString(tag->handle);
+                    if (!py_handle) { Py_DECREF(py_prefix); goto scan_error; }
                 }
                 if (tag->prefix) {
                     Py_DECREF(py_prefix);
                     py_prefix = PyUnicode_FromString(tag->prefix);
+                    if (!py_prefix) { Py_DECREF(py_handle); goto scan_error; }
                 }
             }
             tok = Py_BuildValue("(i(s(OO))OO)", 4, "TAG", py_handle, py_prefix, py_sm, py_em);

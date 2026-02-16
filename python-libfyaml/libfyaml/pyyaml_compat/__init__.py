@@ -25,6 +25,7 @@ Supported API:
 
 import libfyaml as fy
 import base64
+import binascii
 import datetime
 import re
 import types
@@ -226,7 +227,7 @@ def _construct_yaml_binary(loader, node):
     value = value.replace('\n', '').replace('\r', '').replace(' ', '')
     try:
         return base64.b64decode(value)
-    except Exception as exc:
+    except (ValueError, binascii.Error) as exc:
         raise ConstructorError(
             None, None,
             "failed to decode base64 data: %s" % exc,
@@ -1736,7 +1737,7 @@ def _construct_python_tag(loader, suffix, node):
         value = value.replace('\n', '').replace('\r', '').replace(' ', '')
         try:
             return base64.b64decode(value)
-        except Exception as exc:
+        except (ValueError, binascii.Error) as exc:
             raise ConstructorError(
                 "while constructing Python bytes", mark,
                 "failed to decode base64 data: %s" % exc, mark)
@@ -1984,11 +1985,7 @@ def add_implicit_resolver(tag, regexp, first=None, Loader=None, Dumper=None):
 
 
 def add_path_resolver(tag, path, kind=None, Loader=None, Dumper=None):
-    """Add a path-based resolver for the given tag.
-
-    Note: Path resolvers are not fully supported in the libfyaml compatibility
-    layer. This function stores the mapping but the resolver doesn't use it yet.
-    """
+    """Add a path-based resolver for the given tag."""
     from libfyaml.pyyaml_compat.resolver import Resolver as _Resolver
     if Loader is not None and hasattr(Loader, 'add_path_resolver'):
         Loader.add_path_resolver(tag, path, kind)

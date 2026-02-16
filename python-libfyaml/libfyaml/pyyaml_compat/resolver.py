@@ -2,10 +2,11 @@
 
 import re
 
+from libfyaml.pyyaml_compat.error import YAMLError
 from libfyaml.pyyaml_compat.nodes import ScalarNode, SequenceNode, MappingNode
 
 
-class ResolverError(Exception):
+class ResolverError(YAMLError):
     pass
 
 
@@ -165,7 +166,7 @@ class BaseResolver:
                         return 'tag:yaml.org,2002:float'
                 # If C library returns string, fall through to check Python-side
                 # implicit resolvers (e.g., timestamp which needs Python datetime)
-            except Exception:
+            except (ValueError, TypeError):
                 pass  # Fall through to check implicit resolvers
 
             # Check Python-side implicit resolvers (e.g., timestamp)
