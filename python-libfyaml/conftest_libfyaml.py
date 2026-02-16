@@ -138,27 +138,11 @@ for _func in ("test_loader_error", "test_loader_error_string"):
     _xfail(_func, "invalid-anchor-1.loader-error",
            "YAML 1.2 §6.9.2: '?' is valid ns-anchor-char; PyYAML too restrictive")
 
-    # YAML 1.2 spec §6.8.2 [90]: c-named-tag-handle ::= '!' ns-word-char+ '!'
-    # '!foo' without trailing '!' doesn't match.  libfyaml is lenient here.
-    _xfail(_func, "invalid-tag-handle-2.loader-error",
-           "libfyaml lenient with tag handle syntax (spec requires trailing '!')")
-
-    # YAML 1.2 spec §6.8.1 [86]: ns-yaml-directive ::= "YAML" s-separate-in-line ns-yaml-version
-    # Version is mandatory.  libfyaml is lenient here.
-    _xfail(_func, "invalid-yaml-directive-version-1.loader-error",
-           "libfyaml lenient with missing YAML directive version (spec requires it)")
-
     # YAML 1.2: '? foo\n: bar\n: baz' — the third line ': baz' is a valid
     # block mapping entry with an empty (null) key.  PyYAML rejects this but
     # it's valid per the block mapping productions (§8.2.2).
     _xfail(_func, "no-block-mapping-end-2.loader-error",
            "YAML 1.2 §8.2.2: null-key mapping entry is valid syntax")
-
-    # YAML 1.2 spec §9.1.5: l-directive-document requires c-directives-end (---).
-    # However libfyaml is lenient and doesn't require it, which is a common
-    # real-world pattern.  Spec technically requires --- after directives.
-    _xfail(_func, "no-document-start.loader-error",
-           "libfyaml lenient: doesn't require --- after directives (spec does)")
 
     # Content is '-\n-0' (no trailing newline).  YAML 1.2 spec §9.2 says
     # processors MUST allow omission of final line break for JSON compat.
