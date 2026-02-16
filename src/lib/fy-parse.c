@@ -2081,7 +2081,7 @@ err_out:
 	return false;
 }
 
-int fy_scan_tag_handle_length(struct fy_parser *fyp, int start)
+int fy_scan_tag_handle_length(struct fy_parser *fyp, int start, bool req_end_bang)
 {
 	int c, length, i, width;
 	ssize_t offset;
@@ -2151,6 +2151,10 @@ int fy_scan_tag_handle_length(struct fy_parser *fyp, int start)
 		first = false;
 		c = fy_parse_peek_at_internal(fyp, start + length, &offset);
 	}
+
+	FYP_PARSE_ERROR_CHECK(fyp, start + length, 1, FYEM_SCAN,
+			!req_end_bang || c == '!', err_out,
+			"Missing required ! at end of tag handle");
 
 	/* if last character is !, copy it */
 	if (c == '!')
@@ -2300,7 +2304,7 @@ int fy_scan_directive(struct fy_parser *fyp)
 
 	} else {
 
-		tag_length = fy_scan_tag_handle_length(fyp, 0);
+		tag_length = fy_scan_tag_handle_length(fyp, 0, true);
 		fyp_error_check(fyp, tag_length > 0, err_out,
 				"fy_scan_tag_handle_length() failed");
 
@@ -3366,7 +3370,7 @@ int fy_fetch_tag(struct fy_parser *fyp, int c)
 	else {
 		/* either !suffix or !handle!suffix */
 		/* we scan back to back, and split handle/suffix */
-		handle_length = fy_scan_tag_handle_length(fyp, prefix_length);
+		handle_length = fy_scan_tag_handle_length(fyp, prefix_length, false);
 		fyp_error_check(fyp, handle_length > 0, err_out,
 				"fy_scan_tag_handle_length() failed");
 	}
