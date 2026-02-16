@@ -6316,8 +6316,8 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fyp_parse_debug(fyp, "document_start_implicit=true");
 
 			FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
-					fyt->type != FYTT_DOCUMENT_END || !had_directives, err_out,
-					"directive(s) without a document");
+					!had_directives, err_out,
+					"missing required document start indicator after directives");
 
 			fy_parse_state_set(fyp, FYPS_BLOCK_NODE);
 		} else {
