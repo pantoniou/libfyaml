@@ -2279,6 +2279,9 @@ int fy_scan_directive(struct fy_parser *fyp)
 			i++;
 		}
 
+		FYP_PARSE_ERROR_CHECK(fyp, i, 1, FYEM_SCAN, i > 0, err_out,
+			"Directive indicator %% without a directive");
+
 		FYP_PARSE_WARNING(fyp, 0, i, FYEM_SCAN,
 			"Unsupported directive");
 
