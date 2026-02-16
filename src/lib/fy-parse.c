@@ -2210,47 +2210,6 @@ err_out:
 	return -1;
 }
 
-int fy_scan_tag_handle(struct fy_parser *fyp, bool is_directive,
-		struct fy_atom *handle)
-{
-	int length;
-
-	length = fy_scan_tag_handle_length(fyp, 0);
-	fyp_error_check(fyp, length > 0, err_out,
-			"fy_scan_tag_handle_length() failed");
-
-	fy_fill_atom(fyp, length, handle);
-
-	return 0;
-
-err_out:
-	return -1;
-}
-
-
-int fy_scan_tag_uri(struct fy_parser *fyp, bool is_directive,
-		struct fy_atom *handle)
-{
-	int length;
-	bool is_valid;
-
-	length = fy_scan_tag_uri_length(fyp, 0);
-	fyp_error_check(fyp, length > 0, err_out,
-			"fy_scan_tag_uri_length() failed");
-
-	is_valid = fy_scan_tag_uri_is_valid(fyp, 0, length);
-	fyp_error_check(fyp, is_valid, err_out,
-			"tag URI is invalid");
-
-	fy_fill_atom(fyp, length, handle);
-	handle->style = FYAS_URI;	/* this is a URI, need to handle URI escapes */
-
-	return 0;
-
-err_out:
-	return -1;
-}
-
 int fy_scan_directive(struct fy_parser *fyp)
 {
 	int c, advance, version_length, tag_length, uri_length;
