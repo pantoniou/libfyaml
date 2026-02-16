@@ -2221,7 +2221,7 @@ int fy_scan_directive(struct fy_parser *fyp)
 	enum fy_reader_mode rdmode;
 	enum fy_token_type type = FYTT_NONE;
 	struct fy_atom handle;
-	bool is_uri_valid;
+	bool is_uri_valid, only_ws;
 	struct fy_token *fyt;
 	int i, lastc;
 
@@ -2235,14 +2235,17 @@ int fy_scan_directive(struct fy_parser *fyp)
 		/* skip until linebreak (or #) */
 		i = 0;
 		lastc = -1;
+		only_ws = true;
 		while ((c = fy_parse_peek_at(fyp, i)) >= 0 && !fyp_is_lb(fyp, c)) {
 			if (fy_is_ws(lastc) && c == '#')
 				break;
+			if (!fy_is_ws(c))
+				only_ws = false;
 			lastc = c;
 			i++;
 		}
 
-		FYP_PARSE_ERROR_CHECK(fyp, i, 1, FYEM_SCAN, i > 0, err_out,
+		FYP_PARSE_ERROR_CHECK(fyp, i, 1, FYEM_SCAN, !only_ws, err_out,
 			"Directive indicator %% without a directive");
 
 		FYP_PARSE_WARNING(fyp, 0, i, FYEM_SCAN,
