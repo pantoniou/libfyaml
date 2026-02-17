@@ -211,7 +211,7 @@ struct fy_walk_result *fy_walk_result_clone_rl(struct fy_walk_result_list *fwrl,
 			fwrn->fyn = fy_node_copy(fy_node_document(fwr->fyn), fwr->fyn);
 			if (!fwrn->fyn)
 				goto err_out;
-			fwrn->fyn_source = fwr->fyn;
+			fwrn->fyn_source = fwrn->fyn;
 		}
 		break;
 	case fwrt_number:
@@ -325,16 +325,20 @@ void fy_walk_result_clean_rl(struct fy_walk_result_list *fwrl, struct fy_walk_re
 		/* if deep copy, free */
 		if (fwr->fyn_source)
 			fy_node_free(fwr->fyn);
+		fwr->fyn = NULL;
+		fwr->fyn_source = NULL;
 		break;
 	case fwrt_number:
 		break;
 	case fwrt_string:
 		if (fwr->string)
 			free(fwr->string);
+		fwr->string = NULL;
 		break;
 	case fwrt_doc:
 		if (fwr->fyd)
 			fy_document_destroy(fwr->fyd);
+		fwr->fyd = NULL;
 		break;
 	case fwrt_refs:
 		while ((fwrn = fy_walk_result_list_pop(&fwr->refs)) != NULL)
@@ -450,6 +454,7 @@ struct fy_walk_result *fy_walk_result_vcreate_rl(struct fy_walk_result_list *fwr
 		break;
 	case fwrt_node_ref:
 		fwr->fyn = va_arg(ap, struct fy_node *);
+		fwr->fyn_source = NULL;
 		break;
 	case fwrt_number:
 		fwr->number = va_arg(ap, double);
@@ -4786,6 +4791,12 @@ fy_walk_result_perform_set_op(struct fy_path_exec *fypx, struct fy_walk_result *
 					goto err_out;
 				fyn2 = NULL;
 				fwr->fyn = NULL;
+#if 0
+				if (fwr->fyn_source) {
+					fy_node_free(fwr->fyn_source);
+					fwr->fyn_source = NULL;
+				}
+#endif
 			} else {
 
 				fynt = fyn2;
@@ -4863,8 +4874,11 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 	unsigned int nargs;
 	struct fy_walk_result **fwr_args;
 	void *prevp;
-	bool error;
+	bool error, was_deep;
 	int rc __FY_DEBUG_UNUSED__;
+
+	if (errorp)
+		*errorp = false;
 
 	/* error */
 	if (!fypx || !expr)
@@ -4910,6 +4924,16 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 			if (!fynn)
 				goto out;
 
+			/* was the input a deep copy? */
+			was_deep = false;
+
+			/* if the output is the same as the input, avoid use after free */
+			if (fynn == input->fyn) {
+				was_deep = input->fyn_source == input->fyn;
+				input->fyn = NULL;
+				input->fyn_source = NULL;
+			}
+
 			fypxt = input->fypx;
 			input->fypx = NULL;
 			fy_walk_result_clean(input);
@@ -4918,6 +4942,10 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 
 			output->type = fwrt_node_ref;
 			output->fyn = fynn;
+			if (was_deep)
+				output->fyn_source = fynn;
+			else
+				output->fyn_source = NULL;
 			output->fypx = fypxt;
 		}
 
@@ -5283,11 +5311,9 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 			goto out;
 
 		exprt = fy_scalar_walk_result_to_expr(fypx, output, ptype, &error);
+		output = NULL;	/* consumed by fy_scalar_walk_result_to_expr() */
 		if (error)
 			goto err_out;
-
-		fy_walk_result_free(output);
-		output = NULL;
 
 		if (!exprt)
 			break;
@@ -5968,6 +5994,10 @@ struct fy_node *fy_node_by_ypath(struct fy_node *fyn, const char *path, size_t l
 
 	iterp = NULL;
 	fyn = fy_walk_result_node_iterate(fwr, &iterp);
+
+	/* avoid freeing the result we're sending out */
+	if (fwr->type == fwrt_node_ref && fyn == fwr->fyn && fwr->fyn == fwr->fyn_source)
+		fwr->fyn_source = NULL;
 
 	fy_walk_result_free(fwr);
 
