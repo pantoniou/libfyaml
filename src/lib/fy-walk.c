@@ -5863,7 +5863,7 @@ fy_node_by_ypath_result(struct fy_node *fyn, const char *path, size_t len)
 	struct fy_document *fyd;
 	struct fy_walk_result *fwr;
 	struct fy_anchor *fya;
-	struct fy_input *fyi;
+	struct fy_input *fyi = NULL;
 	struct fy_path_expr *expr;
 	struct fy_path_exec *fypx = NULL;
 	int rc;
@@ -5905,6 +5905,8 @@ fy_node_by_ypath_result(struct fy_node *fyn, const char *path, size_t len)
 	rc = fy_path_parser_open(pxdd->fypp, fyi, NULL);
 	fyd_error_check(fyd, !rc, err_no_open,
 			"fy_path_parser_open() failed");
+	/* parser now has the ref */
+	fyi = NULL;
 
 	expr = fy_path_parse_expression(pxdd->fypp);
 	fyd_error_check(fyd, expr, err_parse,
