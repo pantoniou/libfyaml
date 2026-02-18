@@ -429,6 +429,82 @@ START_TEST(emit_right_comment_on_flow_mapping_value)
 }
 END_TEST
 
+START_TEST(emit_nested_mapping_top_comment)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	char *output;
+
+	fyd = fy_document_build_from_string(&cfg,
+		"jobs:\n  build:\n    # comment before runs-on\n    runs-on: ubuntu-latest\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	output = fy_emit_document_to_string(fyd, FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_ptr_ne(strstr(output, "# comment before runs-on"), NULL);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(emit_nested_sequence_top_comment)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	char *output;
+
+	fyd = fy_document_build_from_string(&cfg,
+		"parent:\n  # comment before first item\n  - item1\n  - item2\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	output = fy_emit_document_to_string(fyd, FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_ptr_ne(strstr(output, "# comment before first item"), NULL);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(emit_deeply_nested_top_comment)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	char *output;
+
+	fyd = fy_document_build_from_string(&cfg,
+		"a:\n  b:\n    c:\n      # deep comment\n      d: value\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	output = fy_emit_document_to_string(fyd, FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_ptr_ne(strstr(output, "# deep comment"), NULL);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(emit_root_top_comment_still_works)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	char *output;
+
+	fyd = fy_document_build_from_string(&cfg,
+		"# root comment\nkey: value\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	output = fy_emit_document_to_string(fyd, FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_ptr_ne(strstr(output, "# root comment"), NULL);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 void libfyaml_case_emit(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -450,4 +526,8 @@ void libfyaml_case_emit(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_indented_seq_in_map_default);
 	fy_check_testcase_add_test(ctc, emit_right_comment_on_flow_sequence_value);
 	fy_check_testcase_add_test(ctc, emit_right_comment_on_flow_mapping_value);
+	fy_check_testcase_add_test(ctc, emit_nested_mapping_top_comment);
+	fy_check_testcase_add_test(ctc, emit_nested_sequence_top_comment);
+	fy_check_testcase_add_test(ctc, emit_deeply_nested_top_comment);
+	fy_check_testcase_add_test(ctc, emit_root_top_comment_still_works);
 }
