@@ -5284,6 +5284,7 @@ again:
 err_out:
 	fy_parse_eventp_recycle(fyp, fyep);
 	fyd->diag->on_error = false;
+	fy_node_detach_and_free(fyn);
 	return NULL;
 }
 
