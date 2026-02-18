@@ -509,22 +509,13 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_node_by_path_star_at);
 	fy_check_testcase_add_test(ctc, fuzz_node_by_path_double_star_at_emit);
 	fy_check_testcase_add_test(ctc, fuzz_node_by_path_star_underscore_sequence);
-	// fy_check_testcase_add_test(ctc, fuzz_ypath_aliases_complex_pattern);
-	(void)fuzz_ypath_aliases_complex_pattern;	// known failure
-	// fy_check_testcase_add_test(ctc, fuzz_sloppy_flow_disable_flags);
-	(void)fuzz_sloppy_flow_disable_flags;		// known failure
-	// fy_check_testcase_add_test(ctc, fuzz_disable_recycling_ypath_aliases);
-	(void)fuzz_disable_recycling_ypath_aliases;	// known failure
-	// fy_check_testcase_add_test(ctc, fuzz_build_from_fp_sloppy_flow);
-	(void)fuzz_build_from_fp_sloppy_flow;		// known failure
-	// fy_check_testcase_add_test(ctc, fuzz_node_build_fp_flow_mapping);
-	(void)fuzz_node_build_fp_flow_mapping;		// known failure
-	// fy_check_testcase_add_test(ctc, fuzz_complex_anchors_recursive_buffering);
-	(void)fuzz_complex_anchors_recursive_buffering;	// known failure
-	// fy_check_testcase_add_test(ctc, fuzz_node_build_string_block_scalar);
-	(void)fuzz_node_build_string_block_scalar;	// known failure
-	// fy_check_testcase_add_test(ctc, fuzz_node_by_path_dot_slash_emit);
-	(void)fuzz_node_by_path_dot_slash_emit;		// known failure
-	// fy_check_testcase_add_test(ctc, fuzz_node_by_path_parens_sequence);
-	(void)fuzz_node_by_path_parens_sequence;	// known failure
+	fy_check_testcase_add_test(ctc, fuzz_ypath_aliases_complex_pattern);
+	fy_check_testcase_add_test(ctc, fuzz_sloppy_flow_disable_flags);
+	fy_check_testcase_add_test(ctc, fuzz_disable_recycling_ypath_aliases);
+	fy_check_testcase_add_test(ctc, fuzz_build_from_fp_sloppy_flow);
+	fy_check_testcase_add_test(ctc, fuzz_node_build_fp_flow_mapping);
+	fy_check_testcase_add_test(ctc, fuzz_complex_anchors_recursive_buffering);
+	fy_check_testcase_add_test(ctc, fuzz_node_build_string_block_scalar);
+	fy_check_testcase_add_test(ctc, fuzz_node_by_path_dot_slash_emit);
+	fy_check_testcase_add_test(ctc, fuzz_node_by_path_parens_sequence);
 }
