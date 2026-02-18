@@ -496,6 +496,31 @@ START_TEST(fuzz_node_by_path_parens_sequence)
 }
 END_TEST
 
+#ifdef __linux__
+
+/* Test: fy_document_build_from_fp with ":\r:" and recursive resolve + duplicate keys */
+START_TEST(fuzz_build_from_fp_recursive_duplicate_keys)
+{
+	char buf[] = "\x3a\x0d\x3a";
+	struct fy_document *fyd = NULL;
+	struct fy_parse_cfg cfg = {0};
+	FILE *f = NULL;
+
+	cfg.flags = FYPCF_RESOLVE_DOCUMENT | FYPCF_DISABLE_MMAP_OPT | FYPCF_DISABLE_ACCELERATORS | FYPCF_PREFER_RECURSIVE | FYPCF_ALLOW_DUPLICATE_KEYS;
+
+	f = fmemopen((void *)buf, strlen(buf), "r");
+	if (!f)
+		return;
+
+	fyd = fy_document_build_from_fp(&cfg, f);
+
+	if (f) fclose(f);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+#endif
+
 void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -536,4 +561,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_node_build_string_block_scalar);
 	fy_check_testcase_add_test(ctc, fuzz_node_by_path_dot_slash_emit);
 	fy_check_testcase_add_test(ctc, fuzz_node_by_path_parens_sequence);
+#ifdef __linux__
+	fy_check_testcase_add_test(ctc, fuzz_build_from_fp_recursive_duplicate_keys);
+#endif
 }
