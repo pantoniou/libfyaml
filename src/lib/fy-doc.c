@@ -4240,6 +4240,8 @@ fy_node_by_path_internal(struct fy_node *fyn,
 	const char *s, *e, *ss, *ee;
 	char *end_idx, *json_key, *t, *p, *uri_path;
 	char c;
+	char idx_buf[13];
+	size_t idx_buf_sz;
 	int idx;
 	size_t len, rlen, json_key_len, uri_path_len;
 	bool has_json_key_esc;
@@ -4320,13 +4322,20 @@ fy_node_by_path_internal(struct fy_node *fyn,
 			else if (!isdigit(c) && c != '-')
 				return NULL;
 
-			idx = (int)strtol(s, &end_idx, 10);
+			/* copy to temp buffer */
+			idx_buf_sz = (size_t)(e - s);
+			if (idx_buf_sz >= sizeof(idx_buf) - 1)
+				idx_buf_sz = sizeof(idx_buf) - 1;
+			memcpy(idx_buf, s, idx_buf_sz);
+			idx_buf[idx_buf_sz] = '\0';
+
+			idx = (int)strtol(idx_buf, &end_idx, 10);
 
 			/* no digits found at all */
-			if (idx == 0 && end_idx == s)
+			if (idx == 0 && end_idx == idx_buf)
 				return NULL;
 
-			s = end_idx;
+			s += (size_t)(end_idx - idx_buf);
 
 			while (s < e && isspace((unsigned char)*s))
 				s++;
@@ -4346,17 +4355,24 @@ fy_node_by_path_internal(struct fy_node *fyn,
 			if (*s == '-')
 				return NULL;
 
-			idx = (int)strtol(s, &end_idx, 10);
+			/* copy to temp buffer */
+			idx_buf_sz = (size_t)(e - s);
+			if (idx_buf_sz >= sizeof(idx_buf) - 1)
+				idx_buf_sz = sizeof(idx_buf) - 1;
+			memcpy(idx_buf, s, idx_buf_sz);
+			idx_buf[idx_buf_sz] = '\0';
+
+			idx = (int)strtol(idx_buf, &end_idx, 10);
 
 			/* no digits found at all */
-			if (idx == 0 && end_idx == s)
+			if (idx == 0 && end_idx == idx_buf)
 				return NULL;
 
 			/* no negatives */
 			if (idx < 0)
 				return NULL;
 
-			s = end_idx;
+			s += (size_t)(end_idx - idx_buf);
 
 			if (s < e && *s == '/')
 				s++;
@@ -4571,6 +4587,8 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 	const char *s, *e, *t, *anchor;
 	size_t alen;
 	char c;
+	char idx_buf[13];
+	size_t idx_buf_sz;
 	int idx, w;
 	char *end_idx;
 
@@ -4684,15 +4702,24 @@ regular_path_lookup:
 		if (len == 0)
 			return NULL;
 
-		idx = (int)strtol(path, &end_idx, 10);
+		/* copy to temp buffer */
+		s = path;
+		idx_buf_sz = (size_t)(e - s);
+		if (idx_buf_sz >= sizeof(idx_buf) - 1)
+			idx_buf_sz = sizeof(idx_buf) - 1;
+		memcpy(idx_buf, s, idx_buf_sz);
+		idx_buf[idx_buf_sz] = '\0';
+
+		idx = (int)strtol(idx_buf, &end_idx, 10);
 
 		/* at least one digit must exist */
-		if (idx == 0 && path == end_idx)
+		if (idx == 0 && end_idx == idx_buf)
 			return NULL;
 
-		e = path + len;
-		len = e - end_idx;
-		path = end_idx;
+		s += (size_t)(end_idx - idx_buf);
+
+		len = e - s;
+		path = s;
 
 		/* we don't do the trailing # here */
 		if (len == 1 && *path == '#')
