@@ -1557,9 +1557,8 @@ static void fy_emit_sequence_prolog(struct fy_emitter *emit, struct fy_emit_save
 	bool json = fy_emit_is_json_mode(emit);
 	bool was_flow = sc->flow;
 
-	/* only emit top comment at root level; for nested containers the
-	 * parent item prolog has already emitted it */
-	if ((sc->flags & DDNF_ROOT) && fy_emit_token_has_comment(emit, fyt, fycp_top)) {
+	/* skip top comment if parent sequence_item_prolog already emitted it */
+	if (!(sc->flags & DDNF_SEQ) && fy_emit_token_has_comment(emit, fyt, fycp_top)) {
 		fy_emit_token_comment(emit, fyt, sc->flags, sc->indent, fycp_top);
 		sc->flags |= DDNF_HANGING_INDENT;
 	}
@@ -1700,9 +1699,8 @@ static void fy_emit_mapping_prolog(struct fy_emitter *emit, struct fy_emit_save_
 	bool json = fy_emit_is_json_mode(emit);
 	bool was_flow = sc->flow;
 
-	/* only emit top comment at root level; for nested containers the
-	 * parent item prolog has already emitted it */
-	if ((sc->flags & DDNF_ROOT) && fy_emit_token_has_comment(emit, fyt, fycp_top)) {
+	/* skip top comment if parent sequence_item_prolog already emitted it */
+	if (!(sc->flags & DDNF_SEQ) && fy_emit_token_has_comment(emit, fyt, fycp_top)) {
 		fy_emit_token_comment(emit, fyt, sc->flags, sc->indent, fycp_top);
 		sc->flags |= DDNF_HANGING_INDENT;
 	}
