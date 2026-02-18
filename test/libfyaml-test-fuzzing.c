@@ -57,6 +57,8 @@ START_TEST(fuzz_emit_null_document)
 }
 END_TEST
 
+#if defined(__linux__)
+
 /* Test: fy_node_build_from_fp with invalid UTF-8 data */
 START_TEST(fuzz_node_build_fp_invalid_data)
 {
@@ -78,6 +80,8 @@ START_TEST(fuzz_node_build_fp_invalid_data)
 }
 END_TEST
 
+#endif
+
 /* Test: parse sequence with anchors and aliases, recursive resolve */
 START_TEST(fuzz_recursive_resolve_anchors_aliases)
 {
@@ -87,6 +91,8 @@ START_TEST(fuzz_recursive_resolve_anchors_aliases)
 	fy_document_destroy(fy_document_build_from_string(&cfg, buf, FY_NT));
 }
 END_TEST
+
+#if defined(__linux__)
 
 /* Test: fy_node_build_from_fp with emoji and invalid UTF-8 via file */
 START_TEST(fuzz_node_build_fp_emoji_invalid_utf8)
@@ -118,6 +124,8 @@ START_TEST(fuzz_node_build_fp_emoji_invalid_utf8)
 	fy_document_destroy(doc);
 }
 END_TEST
+
+#endif
 
 /* Test: emit event with invalid scalar style */
 START_TEST(fuzz_emit_event_invalid_scalar_style)
@@ -360,6 +368,8 @@ START_TEST(fuzz_disable_recycling_ypath_aliases)
 }
 END_TEST
 
+#if defined(__linux__)
+
 /* Test: fy_document_build_from_fp with sloppy flow indentation */
 START_TEST(fuzz_build_from_fp_sloppy_flow)
 {
@@ -405,6 +415,8 @@ out:
 	fy_document_destroy(fyd);
 }
 END_TEST
+
+#endif	// __linux__
 
 /* Test: parse complex anchors/aliases with disable buffering and recursive */
 START_TEST(fuzz_complex_anchors_recursive_buffering)
@@ -494,9 +506,13 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_resolve_disable_buffering_colon_star);
 	fy_check_testcase_add_test(ctc, fuzz_resolve_aliases_special_chars);
 	fy_check_testcase_add_test(ctc, fuzz_emit_null_document);
+#ifdef __linux__
 	fy_check_testcase_add_test(ctc, fuzz_node_build_fp_invalid_data);
+#endif
 	fy_check_testcase_add_test(ctc, fuzz_recursive_resolve_anchors_aliases);
+#ifdef __linux__
 	fy_check_testcase_add_test(ctc, fuzz_node_build_fp_emoji_invalid_utf8);
+#endif
 	fy_check_testcase_add_test(ctc, fuzz_emit_event_invalid_scalar_style);
 	fy_check_testcase_add_test(ctc, fuzz_recursive_resolve_binary_data);
 	fy_check_testcase_add_test(ctc, fuzz_node_by_path_ypath_sequence);
@@ -512,8 +528,10 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_ypath_aliases_complex_pattern);
 	fy_check_testcase_add_test(ctc, fuzz_sloppy_flow_disable_flags);
 	fy_check_testcase_add_test(ctc, fuzz_disable_recycling_ypath_aliases);
+#ifdef __linux__
 	fy_check_testcase_add_test(ctc, fuzz_build_from_fp_sloppy_flow);
 	fy_check_testcase_add_test(ctc, fuzz_node_build_fp_flow_mapping);
+#endif
 	fy_check_testcase_add_test(ctc, fuzz_complex_anchors_recursive_buffering);
 	fy_check_testcase_add_test(ctc, fuzz_node_build_string_block_scalar);
 	fy_check_testcase_add_test(ctc, fuzz_node_by_path_dot_slash_emit);
