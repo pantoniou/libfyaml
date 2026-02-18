@@ -51,10 +51,6 @@ struct fy_walk_result *
 _fy_walk_result_clone(struct fy_walk_result *fwr, const char *file, int line, const char *func);
 #define fy_walk_result_clone(_fwr) _fy_walk_result_clone((_fwr), __FILE__, __LINE__, __func__)
 
-struct fy_walk_result *
-_fy_walk_result_clone_deep(struct fy_walk_result *fwr, const char *file, int line, const char *func);
-#define fy_walk_result_clone_deep(_fwr) _fy_walk_result_clone((_fwr), __FILE__, __LINE__, __func__)
-
 #endif
 
 const char *fy_walk_result_type_txt[FWRT_COUNT] = {
@@ -188,7 +184,7 @@ struct fy_walk_result *fy_walk_result_alloc_rl(struct fy_walk_result_list *fwrl)
 	return fwr;
 }
 
-struct fy_walk_result *fy_walk_result_clone_rl(struct fy_walk_result_list *fwrl, struct fy_walk_result *fwr, bool deep)
+struct fy_walk_result *fy_walk_result_clone_rl(struct fy_walk_result_list *fwrl, struct fy_walk_result *fwr)
 {
 	struct fy_walk_result *fwrn = NULL, *fwrn2 = NULL, *fwrn3;
 
@@ -204,15 +200,7 @@ struct fy_walk_result *fy_walk_result_clone_rl(struct fy_walk_result_list *fwrl,
 	case fwrt_none:
 		break;
 	case fwrt_node_ref:
-		if (!deep) {
-			fwrn->fyn = fwr->fyn;
-			fwrn->fyn_source = NULL;
-		} else {
-			fwrn->fyn = fy_node_copy(fy_node_document(fwr->fyn), fwr->fyn);
-			if (!fwrn->fyn)
-				goto err_out;
-			fwrn->fyn_source = fwrn->fyn;
-		}
+		fwrn->fyn = fwr->fyn;
 		break;
 	case fwrt_number:
 		fwrn->number = fwr->number;
@@ -234,7 +222,7 @@ struct fy_walk_result *fy_walk_result_clone_rl(struct fy_walk_result_list *fwrl,
 		for (fwrn2 = fy_walk_result_list_head(&fwr->refs); fwrn2;
 			fwrn2 = fy_walk_result_next(&fwr->refs, fwrn2)) {
 
-			fwrn3 = fy_walk_result_clone_rl(fwrl, fwrn2, deep);
+			fwrn3 = fy_walk_result_clone_rl(fwrl, fwrn2);
 			if (!fwrn3)
 				goto err_out;
 
@@ -258,18 +246,7 @@ struct fy_walk_result *fy_walk_result_clone(struct fy_walk_result *fwr)
 		return NULL;
 
 	fwrl = fy_path_exec_walk_result_rl(fwr->fypx);
-	return fy_walk_result_clone_rl(fwrl, fwr, false);
-}
-
-struct fy_walk_result *fy_walk_result_clone_deep(struct fy_walk_result *fwr)
-{
-	struct fy_walk_result_list *fwrl;
-
-	if (!fwr)
-		return NULL;
-
-	fwrl = fy_path_exec_walk_result_rl(fwr->fypx);
-	return fy_walk_result_clone_rl(fwrl, fwr, true);
+	return fy_walk_result_clone_rl(fwrl, fwr);
 }
 
 #else
@@ -284,7 +261,7 @@ _fy_walk_result_clone(struct fy_walk_result *fwr, const char *file, int line, co
 		return NULL;
 
 	fwrl = fy_path_exec_walk_result_rl(fwr->fypx);
-	fwrn = fy_walk_result_clone_rl(fwrl, fwr, false);
+	fwrn = fy_walk_result_clone_rl(fwrl, fwr);
 
 	fprintf(stderr, "%s:%4d @%-48s %-32s fwr=%p (fypx=%p refs=%u)\n",
 			file, line, func, __func__, fwrn, fwrn->fypx, fwrn->fypx ? fwrn->fypx->refs : 0);
@@ -292,23 +269,6 @@ _fy_walk_result_clone(struct fy_walk_result *fwr, const char *file, int line, co
 	return fwrn;
 }
 
-struct fy_walk_result *
-_fy_walk_result_clone_deep(struct fy_walk_result *fwr, const char *file, int line, const char *func)
-{
-	struct fy_walk_result_list *fwrl;
-	struct fy_walk_result *fwrn;
-
-	if (!fwr)
-		return NULL;
-
-	fwrl = fy_path_exec_walk_result_rl(fwr->fypx);
-	fwrn = fy_walk_result_clone_rl(fwrl, fwr, true);
-
-	fprintf(stderr, "%s:%4d @%-48s %-32s fwr=%p (fypx=%p refs=%u)\n",
-			file, line, func, __func__, fwrn, fwrn->fypx, fwrn->fypx ? fwrn->fypx->refs : 0);
-
-	return fwrn;
-}
 #endif
 
 void fy_walk_result_clean_rl(struct fy_walk_result_list *fwrl, struct fy_walk_result *fwr)
@@ -322,11 +282,7 @@ void fy_walk_result_clean_rl(struct fy_walk_result_list *fwrl, struct fy_walk_re
 	case fwrt_none:
 		break;
 	case fwrt_node_ref:
-		/* if deep copy, free */
-		if (fwr->fyn_source)
-			fy_node_free(fwr->fyn);
 		fwr->fyn = NULL;
-		fwr->fyn_source = NULL;
 		break;
 	case fwrt_number:
 		break;
@@ -454,7 +410,6 @@ struct fy_walk_result *fy_walk_result_vcreate_rl(struct fy_walk_result_list *fwr
 		break;
 	case fwrt_node_ref:
 		fwr->fyn = va_arg(ap, struct fy_node *);
-		fwr->fyn_source = NULL;
 		break;
 	case fwrt_number:
 		fwr->number = va_arg(ap, double);
@@ -3526,6 +3481,10 @@ fy_path_parse_expression(struct fy_path_parser *fypp)
 
 		old_scan_mode = fypp->expr_mode;
 
+		FYR_TOKEN_ERROR_CHECK(fyr, expr->fyt, FYEM_PARSE,
+				expr->type != fpet_select && expr->type != fpet_unselect, err_out,
+				"select/unselect set operators are not supported anymore");
+
 		/* for rparen, need to push before */
 		if (expr->type == fpet_rparen) {
 
@@ -4708,155 +4667,6 @@ static void fy_node_delete_non_marked(struct fy_node *fyn)
 }
 
 struct fy_walk_result *
-fy_walk_result_perform_set_op(struct fy_path_exec *fypx, struct fy_walk_result *input,
-			      struct fy_walk_result *set, enum fy_walk_result_set_op op)
-{
-	struct fy_walk_result *fwr, *fwrrm, *fwrin;
-	struct fy_walk_result *output = NULL;
-	char *relpath = NULL;
-	struct fy_node *fyn2 = NULL, *fynt;
-	int rc;
-
-	/* no input? return it */
-	if (!input)
-		return NULL;
-
-	if (!set) {
-		/* on unselect, return input, on select return NULL */
-		if (op == FYWRSO_UNSELECT)
-			return input;
-
-		fy_walk_result_free(input);
-		return NULL;
-	}
-
-	if (input->type != fwrt_node_ref && input->type != fwrt_refs)
-		goto err_out;
-
-#ifdef DEBUG_EXPR
-	fy_walk_result_dump(input, fypx->cfg.diag, FYET_WARNING, 0, "set-op: input\n");
-	fy_walk_result_dump(input, fypx->cfg.diag, FYET_WARNING, 0, "set-op: set\n");
-#endif
-
-	for (fwrin = fy_walk_result_iter_start(input); fwrin; fwrin = fy_walk_result_iter_next(input, fwrin)) {
-
-#ifdef DEBUG_EXPR
-		fy_walk_result_dump(input, fypx->cfg.diag, FYET_WARNING, 0, "set-op: fwrin\n");
-#endif
-
-		fwr = NULL;
-
-		for (fwrrm = fy_walk_result_iter_start(set); fwrrm; fwrrm = fy_walk_result_iter_next(set, fwrrm)) {
-
-#ifdef DEBUG_EXPR
-			fy_walk_result_dump(fwrrm, fypx->cfg.diag, FYET_WARNING, 0, "set-op: fwrrm\n");
-#endif
-
-			if (!output) {
-				output = fy_path_exec_walk_result_create(fypx, fwrt_refs);
-				if (!output)
-					goto err_out;
-			}
-
-			/* if this fails, it means we don't have any output */
-			if (fwrin->fyn == fwrrm->fyn ||
-			    (fwrrm->type == fwrt_node_ref && (relpath = fy_node_get_path_relative_to(fwrin->fyn, fwrrm->fyn)) == NULL))
-				continue;
-#ifdef DEBUG_EXPR
-			fy_diag_diag(fypx->cfg.diag, FYDF_WARNING, "relpath: %s", relpath);
-#endif
-
-			/* ok, do a deep copy now */
-			if (!fwr) {
-				fwr = fy_walk_result_clone_deep(fwrin);
-				if (!fwr)
-					goto err_out;
-			}
-
-			/* get the node at the relative path of the copy */
-			fyn2 = fy_node_by_path(fwr->fyn, relpath, FY_NT, FYNWF_DONT_FOLLOW);
-			if (!fyn2) {
-				fy_walk_result_free(fwr);
-				fwr = NULL;
-				goto err_out;
-			}
-
-			free(relpath);
-			relpath = NULL;
-
-			if (op == FYWRSO_UNSELECT) {
-				/* and remove it */
-				rc = fy_node_delete(fyn2);
-				if (rc)
-					goto err_out;
-				fyn2 = NULL;
-				fwr->fyn = NULL;
-#if 0
-				if (fwr->fyn_source) {
-					fy_node_free(fwr->fyn_source);
-					fwr->fyn_source = NULL;
-				}
-#endif
-			} else {
-
-				fynt = fyn2;
-				while (fynt && !(fynt->marks & FY_BIT(FYNWF_INSET_MARKER))) {
-					fynt->marks |= FY_BIT(FYNWF_INSET_MARKER);
-#ifdef DEBUG_EXPR
-					fy_diag_diag(fypx->cfg.diag, FYDF_WARNING, "marking: %s", fy_node_get_path_alloca(fynt));
-#endif
-					fynt = fynt->parent;
-				}
-			}
-		}
-
-		if (output && fwr)
-			fy_walk_result_list_add_tail(&output->refs, fwr);
-		else if (fwr)
-			fy_walk_result_free(fwr);
-		fwr = NULL;
-	}
-
-	if (!output) {
-		/* nothing? nothing was removed or nothing was selected */
-		if (op == FYWRSO_UNSELECT)
-			return input;
-
-		fy_walk_result_free(input);
-		return NULL;
-	}
-
-	/* simplify (might remove everything if empty) */
-	output = fy_walk_result_simplify(output);
-
-	/* for all marked nodes */
-	if (output && op == FYWRSO_SELECT) {
-
-		/* delete all not marked */
-		for (fwr = fy_walk_result_iter_start(output); fwr; fwr = fy_walk_result_iter_next(output, fwr)) {
-#ifdef DEBUG_EXPR
-			fy_diag_diag(fypx->cfg.diag, FYDF_WARNING, "deleting non marked: %s", fy_node_get_path_alloca(fwr->fyn));
-#endif
-			fy_node_delete_non_marked(fwr->fyn);
-			fy_node_clear_system_marks(fwr->fyn);
-		}
-
-	}
-
-out:
-	/* get rid of input */
-	fy_walk_result_free(input);
-	return output;
-
-err_out:
-	fy_walk_result_free(output);
-	output = NULL;
-	if (relpath)
-		free(relpath);
-	goto out;
-}
-
-struct fy_walk_result *
 fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *expr,
 		     struct fy_walk_result *input, enum fy_path_expr_type ptype,
 		     bool *errorp)
@@ -4874,7 +4684,7 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 	unsigned int nargs;
 	struct fy_walk_result **fwr_args;
 	void *prevp;
-	bool error, was_deep;
+	bool error;
 	int rc __FY_DEBUG_UNUSED__;
 
 	if (errorp)
@@ -4924,16 +4734,6 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 			if (!fynn)
 				goto out;
 
-			/* was the input a deep copy? */
-			was_deep = false;
-
-			/* if the output is the same as the input, avoid use after free */
-			if (fynn == input->fyn) {
-				was_deep = input->fyn_source == input->fyn;
-				input->fyn = NULL;
-				input->fyn_source = NULL;
-			}
-
 			fypxt = input->fypx;
 			input->fypx = NULL;
 			fy_walk_result_clean(input);
@@ -4942,10 +4742,6 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 
 			output->type = fwrt_node_ref;
 			output->fyn = fynn;
-			if (was_deep)
-				output->fyn_source = fynn;
-			else
-				output->fyn_source = NULL;
 			output->fypx = fypxt;
 		}
 
@@ -5378,34 +5174,8 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 	case fpet_select:
 	case fpet_unselect:
 
-		/* pop the top in either case */
-		if (!input)
-			goto err_out;
-
-		/* only handle inputs of node and refs */
-		if (input->type != fwrt_node_ref && input->type != fwrt_refs)
-			goto err_out;
-
-		/* execute the expression */
-		exprn = fy_path_expr_list_head(&expr->children);
-		if (!exprn)
-			goto err_out;
-
-		fwrt = fy_walk_result_clone(input);
-		if (!fwrt)
-			goto err_out;
-
-		fwrn = fy_path_expr_execute(fypx, level + 1, exprn, fwrt, expr->type, &error);
-		fwrt = NULL;
-		if (error)
-			goto err_out;
-
-		output = fy_walk_result_perform_set_op(fypx, input, fwrn, expr->type == fpet_unselect ? FYWRSO_UNSELECT : FYWRSO_SELECT);
-		input = NULL;
-
-		fy_walk_result_free(fwrn);
-		fwrn = NULL;
-		break;
+		/* the select and unselect ops were buggy so they are removed */
+		goto err_out;
 
 	default:
 		fy_error(diag, "%s\n", fy_path_expr_type_txt[expr->type]);
@@ -5994,10 +5764,6 @@ struct fy_node *fy_node_by_ypath(struct fy_node *fyn, const char *path, size_t l
 
 	iterp = NULL;
 	fyn = fy_walk_result_node_iterate(fwr, &iterp);
-
-	/* avoid freeing the result we're sending out */
-	if (fwr->type == fwrt_node_ref && fyn == fwr->fyn && fwr->fyn == fwr->fyn_source)
-		fwr->fyn_source = NULL;
 
 	fy_walk_result_free(fwr);
 

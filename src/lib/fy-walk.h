@@ -55,10 +55,7 @@ struct fy_walk_result {
 	enum fy_walk_result_type type;
 	union {
 		uintptr_t _clean[2];
-		struct {
-			struct fy_node *fyn;
-			struct fy_node *fyn_source;	/* when deep */
-		};
+		struct fy_node *fyn;
 		double number;
 		char *string;
 		struct fy_walk_result_list refs;
