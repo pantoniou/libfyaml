@@ -907,12 +907,17 @@ int fy_path_parser_open(struct fy_path_parser *fypp,
 			struct fy_input *fyi, const struct fy_reader_input_cfg *icfg)
 {
 	int ret;
+
 	if (!fypp)
 		return -1;
 
 	ret = fy_reader_input_open(&fypp->reader, fyi, icfg);
 	if (ret)
 		return ret;
+
+	/* remove ref if there */
+	fy_input_unref(fypp->fyi);
+
 	/* take a reference to the input */
 	fypp->fyi = fy_input_ref(fyi);
 	return 0;
@@ -924,6 +929,7 @@ void fy_path_parser_close(struct fy_path_parser *fypp)
 		return;
 
 	fy_input_unref(fypp->fyi);
+	fypp->fyi = NULL;
 
 	fy_reader_input_done(&fypp->reader);
 }
@@ -5701,8 +5707,6 @@ fy_node_by_ypath_result(struct fy_node *fyn, const char *path, size_t len)
 	rc = fy_path_parser_open(pxdd->fypp, fyi, NULL);
 	fyd_error_check(fyd, !rc, err_no_open,
 			"fy_path_parser_open() failed");
-	/* parser now has the ref */
-	fyi = NULL;
 
 	expr = fy_path_parse_expression(pxdd->fypp);
 	fyd_error_check(fyd, expr, err_parse,
