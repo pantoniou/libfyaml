@@ -1859,7 +1859,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 
 		s += w;
 		/* special case for MSDOS */
-		if (c == '\r' && (s < iter->ie && s[1] == '\n'))
+		if (c == '\r' && (s + 1 < iter->ie && s[1] == '\n'))
 			s++;
 		/* len_lb includes the lb */
 		l->line_len_lb = (size_t)(s - l->line_start);
