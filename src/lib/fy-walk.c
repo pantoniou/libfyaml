@@ -5171,9 +5171,9 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 			fwr_args = NULL;
 
 		output = expr->fym->exec(expr->fym, fypx, level + 1, expr, input, fwr_args, nargs, &error);
+		input = NULL;
 		if (error)
 			goto err_out;
-		input = NULL;
 
 		break;
 
