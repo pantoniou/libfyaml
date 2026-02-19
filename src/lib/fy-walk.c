@@ -4631,47 +4631,6 @@ err_out:
 	goto out;
 }
 
-enum fy_walk_result_set_op {
-	FYWRSO_SELECT,
-	FYWRSO_UNSELECT,
-};
-
-static void fy_node_delete_non_marked(struct fy_node *fyn)
-{
-	struct fy_node *fyni, *fynin;
-	struct fy_node_pair *fynp, *fynpn;
-
-	if (!fyn)
-		return;
-
-	if (!(fyn->marks & FY_BIT(FYNWF_INSET_MARKER))) {
-		fy_node_delete(fyn);
-		return;
-	}
-
-	switch (fyn->type) {
-	case FYNT_SCALAR:
-		break;
-
-	case FYNT_SEQUENCE:
-		for (fyni = fy_node_list_head(&fyn->sequence); fyni; fyni = fynin) {
-			fynin = fy_node_next(&fyn->sequence, fyni);
-
-			fy_node_delete_non_marked(fyni);
-		}
-		break;
-
-	case FYNT_MAPPING:
-		for (fynp = fy_node_pair_list_head(&fyn->mapping); fynp; fynp = fynpn) {
-			fynpn = fy_node_pair_next(&fyn->mapping, fynp);
-
-			/* the mark is on the value */
-			fy_node_delete_non_marked(fynp->value);
-		}
-		break;
-	}
-}
-
 struct fy_walk_result *
 fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *expr,
 		     struct fy_walk_result *input, enum fy_path_expr_type ptype,
