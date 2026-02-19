@@ -122,6 +122,7 @@
 #define OPT_NO_STREAMING		2024
 #define OPT_NO_ENDING_NEWLINE		2025
 #define OPT_PRESERVE_FLOW_LAYOUT	2026
+#define OPT_INDENTED_SEQ_IN_MAP		2027
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -201,6 +202,7 @@ static struct option lopts[] = {
 	{"null-output",		no_argument,		0,	OPT_NULL_OUTPUT },
 	{"no-ending-newline",	no_argument,		0,	OPT_NO_ENDING_NEWLINE },
 	{"preserve-flow-layout",no_argument,		0,	OPT_PRESERVE_FLOW_LAYOUT },
+	{"indented-seq-in-map", no_argument,		0,	OPT_INDENTED_SEQ_IN_MAP },
 	{"collect-errors",	no_argument,		0,	OPT_COLLECT_ERRORS },
 	{"allow-duplicate-keys",no_argument,		0,	OPT_ALLOW_DUPLICATE_KEYS },
 	{"strip-empty-kv",	no_argument,		0,	OPT_STRIP_EMPTY_KV },
@@ -237,10 +239,10 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--debug-level, -d <lvl>  : Set debug level to <lvl>"
 						"(default level %d)\n",
 						DEBUG_LEVEL_DEFAULT);
-	fprintf(fp, "\t--disable-diag <x>      : Disable diag error module <x>\n");
-	fprintf(fp, "\t--enable-diag <x>       : Enable diag error module <x>\n");
-	fprintf(fp, "\t--show-diag <x>         : Show diag option <x> (source, position, type, module)\n");
-	fprintf(fp, "\t--hide-diag <x>         : Hide diag optione <x> (source, position, type, module)\n");
+	fprintf(fp, "\t--disable-diag <x>       : Disable diag error module <x>\n");
+	fprintf(fp, "\t--enable-diag <x>        : Enable diag error module <x>\n");
+	fprintf(fp, "\t--show-diag <x>          : Show diag option <x> (source, position, type, module)\n");
+	fprintf(fp, "\t--hide-diag <x>          : Hide diag optione <x> (source, position, type, module)\n");
 
 	fprintf(fp, "\t--indent, -i <indent>    : Set dump indent to <indent>"
 						" (default indent %d)\n",
@@ -295,6 +297,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	fprintf(fp, "\t--null-output            : Do not generate output (for scanner profiling)\n");
 	fprintf(fp, "\t--no-ending-newline      : Do not generate a final newline\n");
 	fprintf(fp, "\t--preserve-flow-layout   : Preserve layout of single line flow collections\n");
+	fprintf(fp, "\t--indented-seq-in-map    : Indent block sequences in block mappings\n");
 	fprintf(fp, "\t--collect-errors         : Collect errors instead of outputting directly"
 						" (default %s)\n",
 						COLLECT_ERRORS_DEFAULT ? "true" : "false");
@@ -1449,6 +1452,9 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_PRESERVE_FLOW_LAYOUT:
 			emit_xflags |= FYEXCF_PRESERVE_FLOW_LAYOUT;
+			break;
+		case OPT_INDENTED_SEQ_IN_MAP:
+			emit_xflags |= FYEXCF_INDENTED_SEQ_IN_MAP;
 			break;
 		case OPT_YAML_1_1:
 			cfg.flags &= ~(FYPCF_DEFAULT_VERSION_MASK << FYPCF_DEFAULT_VERSION_SHIFT);
