@@ -1371,7 +1371,7 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 
 	json = fy_emit_is_json_mode(emit);
 
-	is_null_scalar = !atom || fyt->scalar.is_null;
+	is_null_scalar = !atom || (fyt->type == FYTT_SCALAR && fyt->scalar.is_null);
 
 	/* is this a plain json atom? */
 	is_json_plain = (json || emit->source_json || fy_emit_is_dejson_mode(emit)) &&
