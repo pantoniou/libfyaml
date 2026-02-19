@@ -85,6 +85,15 @@ static inline PyObject *fy_py_newref(PyObject *op)
 #endif
 }
 
+/* DECREF *ptr and set *ptr = NULL — the standard "release and clear" pattern */
+static inline void fy_py_release(PyObject **op)
+{
+    if (!op)
+        return;
+    fy_py_xdecref(*op);
+    *op = NULL;
+}
+
 /* Helper: Convert a fy_generic string value directly to a Python unicode object */
 static PyObject *fy_szstr_to_pyunicode(fy_generic g)
 {
@@ -142,7 +151,7 @@ typedef struct {
 static void
 FyGenericIterator_dealloc(FyGenericIteratorObject *self)
 {
-    Py_XDECREF(self->generic_obj);
+    fy_py_xdecref(self->generic_obj);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -173,7 +182,7 @@ FyGenericIterator_next(FyGenericIteratorObject *self)
             return NULL;
 
         result = FyGeneric_from_parent(item, self->generic_obj, key_obj);
-        Py_DECREF(key_obj);
+        fy_py_xdecref(key_obj);
         break;
 
     case FYGT_MAPPING:
@@ -190,7 +199,7 @@ FyGenericIterator_next(FyGenericIteratorObject *self)
 
         /* Return the value (not the key) */
         result = FyGeneric_from_parent(item, self->generic_obj, key_obj);
-        Py_DECREF(key_obj);
+        fy_py_xdecref(key_obj);
         break;
 
     default:
@@ -266,7 +275,7 @@ FyDocumentState_dealloc(FyDocumentStateObject *self)
         /* This doc_state owns the builder - destroy it */
         fy_generic_builder_destroy(self->gb);
     }
-    Py_XDECREF(self->parent);
+    fy_py_xdecref(self->parent);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -352,13 +361,13 @@ FyDocumentState_get_tags(FyDocumentStateObject *self, void *closure)
 
         PyDict_SetItemString(tag_dict, "handle", handle);
         PyDict_SetItemString(tag_dict, "prefix", prefix);
-        fy_py_xdecref(handle); handle = NULL;
-        fy_py_xdecref(prefix); prefix = NULL;
+        fy_py_release(&handle);
+        fy_py_release(&prefix);
 
         if (PyList_Append(result, tag_dict) < 0)
             goto err_out;
 
-        Py_DECREF(tag_dict); tag_dict = NULL;
+        fy_py_release(&tag_dict);
     }
 
     return result;
@@ -366,8 +375,8 @@ FyDocumentState_get_tags(FyDocumentStateObject *self, void *closure)
 err_out:
     fy_py_xdecref(handle);
     fy_py_xdecref(prefix);
-    Py_XDECREF(tag_dict);
-    Py_DECREF(result);
+    fy_py_xdecref(tag_dict);
+    fy_py_xdecref(result);
     return NULL;
 }
 
@@ -377,7 +386,7 @@ FyDocumentState_get_tags_explicit(FyDocumentStateObject *self, void *closure)
 {
     struct fy_document_state *fyds = fy_generic_vds_get_document_state(self->vds);
     if (fyds == NULL) {
-        Py_INCREF(Py_False);
+        fy_py_incref(Py_False);
         return Py_False;
     }
 
@@ -390,7 +399,7 @@ FyDocumentState_get_json_mode(FyDocumentStateObject *self, void *closure)
 {
     struct fy_document_state *fyds = fy_generic_vds_get_document_state(self->vds);
     if (fyds == NULL) {
-        Py_INCREF(Py_False);
+        fy_py_incref(Py_False);
         return Py_False;
     }
 
@@ -465,8 +474,8 @@ FyDocumentState_create_child(fy_generic root_fyg, fy_generic vds, FyDocumentStat
 static void
 FyGeneric_dealloc(FyGenericObject *self)
 {
-    Py_XDECREF(self->doc_state);
-    Py_XDECREF(self->path);
+    fy_py_xdecref(self->doc_state);
+    fy_py_xdecref(self->path);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -505,11 +514,13 @@ FyGeneric_str(FyGenericObject *self)
             return PyUnicode_FromFormat("%lld", fy_cast(self->fyg, (long long)0));
 
         case FYGT_FLOAT: {
-            PyObject *float_obj = PyFloat_FromDouble(fy_cast(self->fyg, (double)0.0));
+            PyObject *float_obj;
+            PyObject *str_obj;
+            float_obj = PyFloat_FromDouble(fy_cast(self->fyg, (double)0.0));
             if (float_obj == NULL)
                 return NULL;
-            PyObject *str_obj = PyObject_Str(float_obj);
-            Py_DECREF(float_obj);
+            str_obj = PyObject_Str(float_obj);
+            fy_py_xdecref(float_obj);
             return str_obj;
         }
 
@@ -521,20 +532,25 @@ FyGeneric_str(FyGenericObject *self)
 
         case FYGT_SEQUENCE:
         case FYGT_MAPPING: {
+            struct fy_generic_builder *gb;
+            unsigned int emit_flags;
+            fy_generic emitted;
+            fy_generic_sized_string szstr;
+
             /* Emit collections as oneline flow */
-            struct fy_generic_builder *gb = FYG_GB(self);
+            gb = FYG_GB(self);
             assert(gb != NULL);
 
-            unsigned int emit_flags = FYOPEF_DISABLE_DIRECTORY | FYOPEF_MODE_YAML_1_2 |
-                                     FYOPEF_STYLE_ONELINE | FYOPEF_OUTPUT_TYPE_STRING;
+            emit_flags = FYOPEF_DISABLE_DIRECTORY | FYOPEF_MODE_YAML_1_2 |
+                         FYOPEF_STYLE_ONELINE | FYOPEF_OUTPUT_TYPE_STRING;
 
-            fy_generic emitted = fy_gb_emit(gb, self->fyg, emit_flags, NULL);
+            emitted = fy_gb_emit(gb, self->fyg, emit_flags, NULL);
             if (!fy_generic_is_valid(emitted)) {
                 PyErr_SetString(PyExc_RuntimeError, "Failed to emit collection as string");
                 return NULL;
             }
 
-            fy_generic_sized_string szstr = fy_cast(emitted, fy_szstr_empty);
+            szstr = fy_cast(emitted, fy_szstr_empty);
             if (szstr.data == NULL) {
                 PyErr_SetString(PyExc_RuntimeError, "Failed to extract string from emitted collection");
                 return NULL;
@@ -584,7 +600,7 @@ FyGeneric_int(FyGenericObject *self)
                 return NULL;
 
             PyObject *int_obj = PyLong_FromUnicodeObject(str_obj, 10);
-            Py_DECREF(str_obj);
+            fy_py_xdecref(str_obj);
             return int_obj;
         }
 
@@ -622,7 +638,7 @@ FyGeneric_float(FyGenericObject *self)
                 if (!py_int)
                     return NULL;
                 PyObject *py_float = PyNumber_Float(py_int);
-                Py_DECREF(py_int);
+                fy_py_xdecref(py_int);
                 return py_float;
             } else {
                 /* Regular int to float */
@@ -641,7 +657,7 @@ FyGeneric_float(FyGenericObject *self)
                 return NULL;
 
             PyObject *float_obj = PyFloat_FromString(str_obj);
-            Py_DECREF(str_obj);
+            fy_py_xdecref(str_obj);
             return float_obj;
         }
 
@@ -697,12 +713,14 @@ FyGeneric_length(FyGenericObject *self)
             return (Py_ssize_t)fy_len(self->fyg);
 
         case FYGT_STRING: {
+            PyObject *str_obj;
+            Py_ssize_t length;
             /* Return number of characters (not bytes, handles UTF-8) */
-            PyObject *str_obj = fy_szstr_to_pyunicode(self->fyg);
+            str_obj = fy_szstr_to_pyunicode(self->fyg);
             if (str_obj == NULL)
                 return -1;
-            Py_ssize_t length = PyUnicode_GET_LENGTH(str_obj);
-            Py_DECREF(str_obj);
+            length = PyUnicode_GET_LENGTH(str_obj);
+            fy_py_xdecref(str_obj);
             return length;
         }
 
@@ -726,38 +744,40 @@ FyGeneric_from_parent(fy_generic fyg, FyGenericObject *parent, PyObject *path_el
 
     /* Share parent's doc_state */
     self->doc_state = parent->doc_state;
-    Py_INCREF(self->doc_state);
+    fy_py_incref(self->doc_state);
 
     /* Build path from parent's path + this element */
     if (parent->path == NULL) {
         /* Parent is root - create new tuple with just this element */
         self->path = PyTuple_New(1);
         if (self->path == NULL) {
-            Py_DECREF(self->doc_state);
+            fy_py_xdecref(self->doc_state);
             Py_TYPE(self)->tp_free((PyObject *)self);
             return NULL;
         }
-        Py_INCREF(path_elem);
+        fy_py_incref(path_elem);
         PyTuple_SET_ITEM(self->path, 0, path_elem);
     } else {
+        Py_ssize_t parent_len;
+        Py_ssize_t i;
         /* Parent has path - copy and append */
-        Py_ssize_t parent_len = PyTuple_Size(parent->path);
+        parent_len = PyTuple_Size(parent->path);
         self->path = PyTuple_New(parent_len + 1);
         if (self->path == NULL) {
-            Py_DECREF(self->doc_state);
+            fy_py_xdecref(self->doc_state);
             Py_TYPE(self)->tp_free((PyObject *)self);
             return NULL;
         }
 
         /* Copy parent's path elements */
-        for (Py_ssize_t i = 0; i < parent_len; i++) {
+        for (i = 0; i < parent_len; i++) {
             PyObject *item = PyTuple_GET_ITEM(parent->path, i);
-            Py_INCREF(item);
+            fy_py_incref(item);
             PyTuple_SET_ITEM(self->path, i, item);
         }
 
         /* Append new element */
-        Py_INCREF(path_elem);
+        fy_py_incref(path_elem);
         PyTuple_SET_ITEM(self->path, parent_len, path_elem);
     }
 
@@ -768,14 +788,17 @@ FyGeneric_from_parent(fy_generic fyg, FyGenericObject *parent, PyObject *path_el
 static PyObject *
 FyGeneric_from_generic(fy_generic fyg, struct fy_generic_builder *gb, int mutable)
 {
+    PyObject *doc_state;
+    FyGenericObject *self;
+
     /* Create doc_state first (it owns the builder and root value) */
-    PyObject *doc_state = FyDocumentState_create(fyg, fy_invalid, gb, mutable);
+    doc_state = FyDocumentState_create(fyg, fy_invalid, gb, mutable);
     if (doc_state == NULL)
         return NULL;
 
-    FyGenericObject *self = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
+    self = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
     if (self == NULL) {
-        Py_DECREF(doc_state);
+        fy_py_xdecref(doc_state);
         return NULL;
     }
 
@@ -790,19 +813,23 @@ FyGeneric_from_generic(fy_generic fyg, struct fy_generic_builder *gb, int mutabl
 static PyObject *
 FyGeneric_from_vds(fy_generic vds, struct fy_generic_builder *gb, int mutable)
 {
+    fy_generic fyg;
+    PyObject *doc_state;
+    FyGenericObject *self;
+
     /* Extract root from VDS */
-    fy_generic fyg = fy_generic_vds_get_root(vds);
+    fyg = fy_generic_vds_get_root(vds);
     if (!fy_generic_is_valid(fyg))
         return NULL;
 
     /* Create doc_state first (it owns the builder, VDS, and root value) */
-    PyObject *doc_state = FyDocumentState_create(fyg, vds, gb, mutable);
+    doc_state = FyDocumentState_create(fyg, vds, gb, mutable);
     if (doc_state == NULL)
         return NULL;
 
-    FyGenericObject *self = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
+    self = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
     if (self == NULL) {
-        Py_DECREF(doc_state);
+        fy_py_xdecref(doc_state);
         return NULL;
     }
 
@@ -818,6 +845,12 @@ static PyObject *
 FyGeneric_subscript(FyGenericObject *self, PyObject *key)
 {
     enum fy_generic_type type = fy_get_type(self->fyg);
+    Py_ssize_t index;
+    size_t count;
+    fy_generic item;
+    PyObject *key_str;
+    const char *key_cstr;
+    fy_generic value;
 
     if (type == FYGT_SEQUENCE) {
         /* Sequence indexing */
@@ -826,11 +859,11 @@ FyGeneric_subscript(FyGenericObject *self, PyObject *key)
             return NULL;
         }
 
-        Py_ssize_t index = PyLong_AsSsize_t(key);
+        index = PyLong_AsSsize_t(key);
         if (index == -1 && PyErr_Occurred())
             return NULL;
 
-        size_t count = fy_len(self->fyg);
+        count = fy_len(self->fyg);
 
         /* Handle negative indices */
         if (index < 0)
@@ -842,7 +875,7 @@ FyGeneric_subscript(FyGenericObject *self, PyObject *key)
         }
 
         /* Use fy_get() to get item by index */
-        fy_generic item = fy_get(self->fyg, (int)index, fy_invalid);
+        item = fy_get(self->fyg, (int)index, fy_invalid);
         if (!fy_generic_is_valid(item)) {
             PyErr_SetString(PyExc_IndexError, "Invalid item at index");
             return NULL;
@@ -852,19 +885,19 @@ FyGeneric_subscript(FyGenericObject *self, PyObject *key)
 
     } else if (type == FYGT_MAPPING) {
         /* Mapping key lookup */
-        PyObject *key_str = PyObject_Str(key);
+        key_str = PyObject_Str(key);
         if (key_str == NULL)
             return NULL;
 
-        const char *key_cstr = PyUnicode_AsUTF8(key_str);
+        key_cstr = PyUnicode_AsUTF8(key_str);
         if (key_cstr == NULL) {
-            Py_DECREF(key_str);
+            fy_py_xdecref(key_str);
             return NULL;
         }
 
         /* Use fy_get() with string key */
-        fy_generic value = fy_get(self->fyg, key_cstr, fy_invalid);
-        Py_DECREF(key_str);
+        value = fy_get(self->fyg, key_cstr, fy_invalid);
+        fy_py_xdecref(key_str);
 
         if (!fy_generic_is_valid(value)) {
             PyErr_SetObject(PyExc_KeyError, key);
@@ -889,7 +922,8 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
             Py_RETURN_NONE;
 
         case FYGT_BOOL: {
-            _Bool value = fy_cast(self->fyg, (_Bool)0);
+            _Bool value;
+            value = fy_cast(self->fyg, (_Bool)0);
             if (value)
                 Py_RETURN_TRUE;
             else
@@ -897,8 +931,9 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
         }
 
         case FYGT_INT: {
+            fy_generic_decorated_int dint;
             /* Get decorated int to check if it's unsigned and large */
-            fy_generic_decorated_int dint = fy_cast(self->fyg, fy_dint_empty);
+            dint = fy_cast(self->fyg, fy_dint_empty);
             if (dint.flags & FYGDIF_UNSIGNED_RANGE_EXTEND) {
                 /* Unsigned value > LLONG_MAX */
                 return PyLong_FromUnsignedLongLong(dint.uv);
@@ -915,28 +950,31 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
             return fy_szstr_to_pyunicode(self->fyg);
 
         case FYGT_SEQUENCE: {
+            fy_generic_sequence_handle seqh;
+            PyObject *list;
+            size_t i;
 
-            fy_generic_sequence_handle seqh = fy_cast(self->fyg, fy_seq_handle_null);
+            seqh = fy_cast(self->fyg, fy_seq_handle_null);
             if (!seqh)
                 return PyList_New(0);  /* empty [] */
 
-            PyObject *list = PyList_New(seqh->count);
+            list = PyList_New(seqh->count);
             if (list == NULL)
                 return NULL;
 
-            for (size_t i = 0; i < seqh->count; i++) {
+            for (i = 0; i < seqh->count; i++) {
                 // NOT VERY EFFICIENT
                 PyObject *index_obj = PyLong_FromSize_t(i);
                 if (index_obj == NULL)
                     goto seq_err;
 
                 PyObject *item_obj = FyGeneric_from_parent(seqh->items[i], self, index_obj);
-                Py_DECREF(index_obj);
+                fy_py_xdecref(index_obj);
                 if (item_obj == NULL)
                     goto seq_err;
 
                 PyObject *converted = FyGeneric_to_python((FyGenericObject *)item_obj, NULL);
-                Py_DECREF(item_obj);
+                fy_py_xdecref(item_obj);
                 if (converted == NULL)
                     goto seq_err;
 
@@ -946,23 +984,31 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
 
         seq_err:
             /* index_obj/item_obj/converted are always NULL here (consumed before each check) */
-            Py_DECREF(list);
+            fy_py_xdecref(list);
             return NULL;
         }
 
         case FYGT_MAPPING: {
+            fy_generic_mapping_handle maph;
+            PyObject *dict;
+            PyObject *path_key;
+            PyObject *conv_key;
+            PyObject *conv_val;
+            size_t i;
 
-            fy_generic_mapping_handle maph = fy_cast(self->fyg, fy_map_handle_null);
+            maph = fy_cast(self->fyg, fy_map_handle_null);
             if (!maph)
                 return PyDict_New();  /* empty {} */
 
-            PyObject *dict = PyDict_New();
+            dict = PyDict_New();
             if (dict == NULL)
                 return NULL;
 
-            PyObject *path_key = NULL, *conv_key = NULL, *conv_val = NULL;
+            path_key = NULL;
+            conv_key = NULL;
+            conv_val = NULL;
 
-            for (size_t i = 0; i < maph->count; i++) {
+            for (i = 0; i < maph->count; i++) {
                 path_key = fy_generic_to_python_primitive(maph->pairs[i].key);
                 if (!path_key)
                     goto map_err;
@@ -972,35 +1018,35 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
                     goto map_err;
 
                 conv_key = FyGeneric_to_python((FyGenericObject *)key_obj, NULL);
-                Py_DECREF(key_obj);
+                fy_py_xdecref(key_obj);
                 if (conv_key == NULL)
                     goto map_err;
 
                 PyObject *val_obj = FyGeneric_from_parent(maph->pairs[i].value, self, path_key);
-                Py_DECREF(path_key);
+                fy_py_xdecref(path_key);
                 path_key = NULL;
                 if (val_obj == NULL)
                     goto map_err;
 
                 conv_val = FyGeneric_to_python((FyGenericObject *)val_obj, NULL);
-                Py_DECREF(val_obj);
+                fy_py_xdecref(val_obj);
                 if (conv_val == NULL)
                     goto map_err;
 
                 if (PyDict_SetItem(dict, conv_key, conv_val) < 0)
                     goto map_err;
 
-                Py_DECREF(conv_key); conv_key = NULL;
-                Py_DECREF(conv_val); conv_val = NULL;
+                fy_py_release(&conv_key);
+                fy_py_release(&conv_val);
             }
             return dict;
 
         map_err:
             /* key_obj/val_obj are always NULL here (consumed before each check) */
-            Py_XDECREF(path_key);
-            Py_XDECREF(conv_key);
-            Py_XDECREF(conv_val);
-            Py_DECREF(dict);
+            fy_py_xdecref(path_key);
+            fy_py_xdecref(conv_key);
+            fy_py_xdecref(conv_val);
+            fy_py_xdecref(dict);
             return NULL;
         }
 
@@ -1123,7 +1169,12 @@ FyGeneric_has_diag(FyGenericObject *self, PyObject *Py_UNUSED(args))
 static PyObject *
 FyGeneric_get_marker(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
-    fy_generic marker = fy_generic_get_marker(self->fyg);
+    fy_generic marker;
+    size_t len;
+    PyObject *tuple;
+    size_t i;
+
+    marker = fy_generic_get_marker(self->fyg);
 
     /* Check if marker is null or invalid - no marker available */
     if (fy_generic_is_null(marker) || fy_generic_is_invalid(marker))
@@ -1135,22 +1186,22 @@ FyGeneric_get_marker(FyGenericObject *self, PyObject *Py_UNUSED(args))
         return NULL;
     }
 
-    size_t len = fy_generic_sequence_get_item_count(marker);
+    len = fy_generic_sequence_get_item_count(marker);
     if (len != 6) {
         PyErr_Format(PyExc_RuntimeError, "marker has %zu elements, expected 6", len);
         return NULL;
     }
 
-    PyObject *tuple = PyTuple_New(6);
+    tuple = PyTuple_New(6);
     if (!tuple)
         return NULL;
 
-    for (size_t i = 0; i < 6; i++) {
+    for (i = 0; i < 6; i++) {
         fy_generic item = fy_generic_sequence_get_item_generic(marker, i);
         long long val = fy_cast(item, (long long)-1LL);
         PyObject *pyval = PyLong_FromLongLong(val);
         if (!pyval) {
-            Py_DECREF(tuple);
+            fy_py_xdecref(tuple);
             return NULL;
         }
         PyTuple_SET_ITEM(tuple, i, pyval);
@@ -1234,7 +1285,7 @@ compare_int_helper(fy_generic self_fyg, PyObject *other, int op)
                 PyErr_Clear();
                 self_pyobj = PyLong_FromLongLong(self_val);
                 if (!self_pyobj) return NULL;
-                Py_INCREF(other);
+                fy_py_incref(other);
                 other_pyobj = other;
                 use_python_cmp = 1;
             }
@@ -1246,34 +1297,24 @@ compare_int_helper(fy_generic self_fyg, PyObject *other, int op)
             /* Promote self to float and use float comparison */
             double self_as_float = use_python_cmp ? PyLong_AsDouble(self_pyobj) : (double)self_val;
             if (self_as_float == -1.0 && PyErr_Occurred()) {
-                Py_XDECREF(self_pyobj);
+                fy_py_xdecref(self_pyobj);
                 return NULL;
             }
 
             PyObject *self_float = PyFloat_FromDouble(self_as_float);
-            if (!self_float) {
-                Py_XDECREF(self_pyobj);
-                return NULL;
-            }
-
-            PyObject *other_float = FyGeneric_float((FyGenericObject *)other);
-            if (!other_float) {
-                Py_DECREF(self_float);
-                Py_XDECREF(self_pyobj);
-                return NULL;
-            }
-
-            PyObject *result = PyObject_RichCompare(self_float, other_float, op);
-            Py_DECREF(self_float);
-            Py_DECREF(other_float);
-            Py_XDECREF(self_pyobj);
+            PyObject *other_float = self_float ? FyGeneric_float((FyGenericObject *)other) : NULL;
+            PyObject *result = (self_float && other_float)
+                ? PyObject_RichCompare(self_float, other_float, op) : NULL;
+            fy_py_xdecref(self_float);
+            fy_py_xdecref(other_float);
+            fy_py_xdecref(self_pyobj);
             return result;
         }
 
         /* Convert other FyGeneric to int using __int__ (handles type conversion) */
         PyObject *other_int = FyGeneric_int((FyGenericObject *)other);
         if (!other_int) {
-            Py_XDECREF(self_pyobj);
+            fy_py_xdecref(self_pyobj);
             return NULL;
         }
 
@@ -1288,25 +1329,25 @@ compare_int_helper(fy_generic self_fyg, PyObject *other, int op)
                 PyErr_Clear();
                 self_pyobj = PyLong_FromLongLong(self_val);
                 if (!self_pyobj) {
-                    Py_DECREF(other_int);
+                    fy_py_xdecref(other_int);
                     return NULL;
                 }
                 other_pyobj = other_int;
                 use_python_cmp = 1;
             } else {
-                Py_DECREF(other_int);
+                fy_py_xdecref(other_int);
             }
         }
     } else {
-        Py_XDECREF(self_pyobj);
+        fy_py_xdecref(self_pyobj);
         Py_RETURN_NOTIMPLEMENTED;
     }
 
     /* Perform comparison */
     if (use_python_cmp) {
         cmp_result = PyObject_RichCompareBool(self_pyobj, other_pyobj, op);
-        Py_DECREF(self_pyobj);
-        Py_DECREF(other_pyobj);
+        fy_py_xdecref(self_pyobj);
+        fy_py_xdecref(other_pyobj);
         if (cmp_result < 0) return NULL;
         if (cmp_result) Py_RETURN_TRUE;
         else Py_RETURN_FALSE;
@@ -1333,7 +1374,7 @@ compare_float_helper(fy_generic self_fyg, PyObject *other, int op)
         if (!other_float)
             return NULL;
         other_val = PyFloat_AsDouble(other_float);
-        Py_DECREF(other_float);
+        fy_py_xdecref(other_float);
     } else {
         Py_RETURN_NOTIMPLEMENTED;
     }
@@ -1361,7 +1402,7 @@ compare_string_helper(fy_generic self_fyg, PyObject *other, int op)
             return NULL;
         other_str = PyUnicode_AsUTF8AndSize(other_str_obj, &other_size);
         if (!other_str) {
-            Py_DECREF(other_str_obj);
+            fy_py_xdecref(other_str_obj);
             return NULL;
         }
     } else {
@@ -1374,7 +1415,7 @@ compare_string_helper(fy_generic self_fyg, PyObject *other, int op)
     if (cmp == 0 && self_szstr.size != (size_t)other_size)
         cmp = self_szstr.size < (size_t)other_size ? -1 : 1;
 
-    RICHCMP_SCALAR(cmp, 0, op, Py_XDECREF(other_str_obj));
+    RICHCMP_SCALAR(cmp, 0, op, fy_py_xdecref(other_str_obj));
 }
 
 /* Helper: Compare booleans */
@@ -1393,7 +1434,7 @@ compare_bool_helper(fy_generic self_fyg, PyObject *other, int op)
         if (!self_int)
             return NULL;
         PyObject *result = PyObject_RichCompare(self_int, other, op);
-        Py_DECREF(self_int);
+        fy_py_xdecref(self_int);
         return result;
     } else if (PyFloat_Check(other)) {
         /* Promote to float comparison: bool(true) == float(1.0) should be True */
@@ -1402,39 +1443,27 @@ compare_bool_helper(fy_generic self_fyg, PyObject *other, int op)
         if (!self_float)
             return NULL;
         PyObject *result = PyObject_RichCompare(self_float, other, op);
-        Py_DECREF(self_float);
+        fy_py_xdecref(self_float);
         return result;
     } else if (Py_TYPE(other) == &FyGenericType) {
         enum fy_generic_type other_type = fy_get_type(((FyGenericObject *)other)->fyg);
         if (other_type == FYGT_INT) {
             /* Promote to int comparison */
-            long long self_as_int = self_val ? 1 : 0;
-            PyObject *self_int = PyLong_FromLongLong(self_as_int);
-            if (!self_int)
-                return NULL;
-            PyObject *other_int = FyGeneric_int((FyGenericObject *)other);
-            if (!other_int) {
-                Py_DECREF(self_int);
-                return NULL;
-            }
-            PyObject *result = PyObject_RichCompare(self_int, other_int, op);
-            Py_DECREF(self_int);
-            Py_DECREF(other_int);
+            PyObject *self_int = PyLong_FromLongLong(self_val ? 1 : 0);
+            PyObject *other_int = self_int ? FyGeneric_int((FyGenericObject *)other) : NULL;
+            PyObject *result = (self_int && other_int)
+                ? PyObject_RichCompare(self_int, other_int, op) : NULL;
+            fy_py_xdecref(self_int);
+            fy_py_xdecref(other_int);
             return result;
         } else if (other_type == FYGT_FLOAT) {
             /* Promote to float comparison */
-            double self_as_float = self_val ? 1.0 : 0.0;
-            PyObject *self_float = PyFloat_FromDouble(self_as_float);
-            if (!self_float)
-                return NULL;
-            PyObject *other_float = FyGeneric_float((FyGenericObject *)other);
-            if (!other_float) {
-                Py_DECREF(self_float);
-                return NULL;
-            }
-            PyObject *result = PyObject_RichCompare(self_float, other_float, op);
-            Py_DECREF(self_float);
-            Py_DECREF(other_float);
+            PyObject *self_float = PyFloat_FromDouble(self_val ? 1.0 : 0.0);
+            PyObject *other_float = self_float ? FyGeneric_float((FyGenericObject *)other) : NULL;
+            PyObject *result = (self_float && other_float)
+                ? PyObject_RichCompare(self_float, other_float, op) : NULL;
+            fy_py_xdecref(self_float);
+            fy_py_xdecref(other_float);
             return result;
         } else if (other_type == FYGT_BOOL) {
             other_val = fy_cast(((FyGenericObject *)other)->fyg, (_Bool)0);
@@ -1501,14 +1530,14 @@ fy_generic_mapping_collect(FyGenericObject *self, const char *method_name,
             break;
 
         PyObject *item = item_fn(&pairs[i], self, path_key);
-        Py_DECREF(path_key);
+        fy_py_xdecref(path_key);
         if (item == NULL)
             break;
 
         PyList_SET_ITEM(result, i, item);
     }
     if (i < count) {
-        Py_DECREF(result);
+        fy_py_xdecref(result);
         return NULL;
     }
 
@@ -1535,12 +1564,12 @@ mapping_item_kv(const fy_generic_map_pair *pair, FyGenericObject *parent, PyObje
         return NULL;
     PyObject *value = FyGeneric_from_parent(pair->value, parent, path_key);
     if (!value) {
-        Py_DECREF(key);
+        fy_py_xdecref(key);
         return NULL;
     }
     PyObject *tuple = PyTuple_Pack(2, key, value);
-    Py_DECREF(key);
-    Py_DECREF(value);
+    fy_py_xdecref(key);
+    fy_py_xdecref(value);
     return tuple;
 }
 
@@ -1612,7 +1641,7 @@ FyGeneric_format(FyGenericObject *self, PyObject *format_spec)
 
     /* Delegate to Python's __format__ */
     PyObject *result = PyObject_Format(py_obj, format_spec);
-    Py_DECREF(py_obj);
+    fy_py_xdecref(py_obj);
 
     return result;
 }
@@ -1667,7 +1696,7 @@ FyGeneric_getattro(FyGenericObject *self, PyObject *name)
 
     /* Get the attribute from the converted Python object */
     attr = PyObject_GetAttr(py_obj, name);
-    Py_DECREF(py_obj);
+    fy_py_xdecref(py_obj);
 
     return attr;
 }
@@ -1689,18 +1718,25 @@ FyGeneric_trim(FyGenericObject *self, PyObject *Py_UNUSED(args))
 static PyObject *
 FyGeneric_clone(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
-    struct fy_generic_builder *gb = FYG_GB(self);
+    struct fy_generic_builder *gb;
+    const struct fy_generic_builder_cfg *parent_cfg;
+    struct fy_generic_builder_cfg cfg;
+    struct fy_generic_builder *new_gb;
+    fy_generic cloned;
+    PyObject *result;
+
+    gb = FYG_GB(self);
     assert(gb != NULL);
 
     /* Get parent's config and copy it, but set allocator to NULL for new instance */
-    const struct fy_generic_builder_cfg *parent_cfg = fy_generic_builder_get_cfg(gb);
+    parent_cfg = fy_generic_builder_get_cfg(gb);
     assert(parent_cfg != NULL);  /* Can't fail if gb is not NULL */
 
-    struct fy_generic_builder_cfg cfg = *parent_cfg;
+    cfg = *parent_cfg;
     cfg.allocator = NULL;  /* Force creation of new allocator (and new tags) */
     cfg.parent = NULL;     /* Independent builder, no parent chain */
 
-    struct fy_generic_builder *new_gb = fy_generic_builder_create(&cfg);
+    new_gb = fy_generic_builder_create(&cfg);
 
     if (new_gb == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create builder for clone");
@@ -1709,14 +1745,14 @@ FyGeneric_clone(FyGenericObject *self, PyObject *Py_UNUSED(args))
 
     /* Internalize (copy) the generic value from THIS object (not root) */
     /* This creates a new root starting from the current value */
-    fy_generic cloned = fy_gb_internalize(new_gb, self->fyg);
+    cloned = fy_gb_internalize(new_gb, self->fyg);
     if (fy_generic_is_invalid(cloned)) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to clone generic value");
         goto err_out;
     }
 
     /* Create a new FyGeneric Python object with the cloned value */
-    PyObject *result = FyGeneric_from_generic(cloned, new_gb, FYG_MUTABLE(self));
+    result = FyGeneric_from_generic(cloned, new_gb, FYG_MUTABLE(self));
     if (result == NULL)
         goto err_out;
 
@@ -1749,6 +1785,13 @@ FyGeneric_get_path(FyGenericObject *self, PyObject *Py_UNUSED(args))
 static PyObject *
 FyGeneric_get_at_path(FyGenericObject *self, PyObject *path_obj)
 {
+    struct fy_generic_builder *gb;
+    Py_ssize_t path_len;
+    fy_generic *path_array;
+    fy_generic result;
+    FyGenericObject *child;
+    Py_ssize_t i;
+
     /* This method only works on root objects */
     if (!FYG_IS_ROOT(self)) {
         PyErr_SetString(PyExc_TypeError,
@@ -1756,7 +1799,7 @@ FyGeneric_get_at_path(FyGenericObject *self, PyObject *path_obj)
         return NULL;
     }
 
-    struct fy_generic_builder *gb = FYG_GB(self);
+    gb = FYG_GB(self);
     if (!gb) {
         PyErr_SetString(PyExc_RuntimeError, "No builder available");
         return NULL;
@@ -1768,56 +1811,56 @@ FyGeneric_get_at_path(FyGenericObject *self, PyObject *path_obj)
         return NULL;
     }
 
-    Py_ssize_t path_len = PySequence_Size(path_obj);
+    path_len = PySequence_Size(path_obj);
     if (path_len < 0)
         return NULL;
 
-    fy_generic *path_array = alloca(sizeof(fy_generic) * path_len);
+    path_array = alloca(sizeof(fy_generic) * path_len);
 
     /* Convert each path element */
-    for (Py_ssize_t i = 0; i < path_len; i++) {
+    for (i = 0; i < path_len; i++) {
         PyObject *elem = PySequence_GetItem(path_obj, i);
         if (elem == NULL)
             return NULL;
 
         /* Check for None and reject it */
         if (elem == Py_None) {
-            Py_DECREF(elem);
+            fy_py_xdecref(elem);
             PyErr_SetString(PyExc_TypeError, "Path elements cannot be None");
             return NULL;
         }
         /* Check for bool BEFORE int (bool is subclass of int in Python) */
         else if (PyBool_Check(elem)) {
             bool val = (elem == Py_True);
-            Py_DECREF(elem);
+            fy_py_xdecref(elem);
             path_array[i] = fy_value(val);
         }
         else if (PyLong_Check(elem)) {
             long idx = PyLong_AsLong(elem);
-            Py_DECREF(elem);
+            fy_py_xdecref(elem);
             if (idx == -1 && PyErr_Occurred())
                 return NULL;
             path_array[i] = fy_value((int)idx);
         } else if (PyFloat_Check(elem)) {
             double val = PyFloat_AS_DOUBLE(elem);
-            Py_DECREF(elem);
+            fy_py_xdecref(elem);
             path_array[i] = fy_value(val);
         } else if (PyUnicode_Check(elem)) {
             const char *str = PyUnicode_AsUTF8(elem);
-            Py_DECREF(elem);
+            fy_py_xdecref(elem);
             if (str == NULL)
                 return NULL;
             path_array[i] = fy_value(str);
         } else {
-            Py_DECREF(elem);
+            fy_py_xdecref(elem);
             PyErr_SetString(PyExc_TypeError, "Path elements must be integers, floats, booleans, or strings");
             return NULL;
         }
     }
 
     /* Call GET_AT_PATH operation */
-    fy_generic result = fy_generic_op(gb, FYGBOPF_GET_AT_PATH, self->fyg,
-                                     path_len, path_array);
+    result = fy_generic_op(gb, FYGBOPF_GET_AT_PATH, self->fyg,
+                           path_len, path_array);
 
     if (fy_generic_is_invalid(result)) {
         PyErr_SetString(PyExc_KeyError, "Path not found");
@@ -1825,28 +1868,26 @@ FyGeneric_get_at_path(FyGenericObject *self, PyObject *path_obj)
     }
 
     /* Convert result to Python - create a child FyGeneric */
-    FyGenericObject *child;
-
     child = (FyGenericObject *)PyObject_New(FyGenericObject, &FyGenericType);
     if (child == NULL)
         return NULL;
 
     child->fyg = result;
     child->doc_state = self->doc_state;
-    Py_INCREF(child->doc_state);
+    fy_py_incref(child->doc_state);
 
     /* Build the path as a Python tuple for the child */
     if (path_len > 0) {
         child->path = PyTuple_New(path_len);
         if (child->path == NULL) {
-            Py_DECREF(child);
+            fy_py_xdecref(child);
             return NULL;
         }
 
-        for (Py_ssize_t i = 0; i < path_len; i++) {
+        for (i = 0; i < path_len; i++) {
             PyObject *elem = PySequence_GetItem(path_obj, i);
             if (elem == NULL) {
-                Py_DECREF(child);
+                fy_py_xdecref(child);
                 return NULL;
             }
             PyTuple_SET_ITEM(child->path, i, elem);
@@ -1862,12 +1903,20 @@ FyGeneric_get_at_path(FyGenericObject *self, PyObject *path_obj)
 static PyObject *
 path_list_to_unix_path_internal(PyObject *path_list)
 {
+    Py_ssize_t path_len;
+    PyObject *parts;
+    Py_ssize_t i;
+    PyObject *sep;
+    PyObject *result;
+    PyObject *slash;
+    PyObject *final;
+
     if (!PyList_Check(path_list) && !PyTuple_Check(path_list)) {
         PyErr_SetString(PyExc_TypeError, "Path must be a list or tuple");
         return NULL;
     }
 
-    Py_ssize_t path_len = PySequence_Size(path_list);
+    path_len = PySequence_Size(path_list);
     if (path_len < 0)
         return NULL;
 
@@ -1877,14 +1926,14 @@ path_list_to_unix_path_internal(PyObject *path_list)
     }
 
     /* Build the Unix path string */
-    PyObject *parts = PyList_New(0);
+    parts = PyList_New(0);
     if (parts == NULL)
         return NULL;
 
-    for (Py_ssize_t i = 0; i < path_len; i++) {
+    for (i = 0; i < path_len; i++) {
         PyObject *elem = PySequence_GetItem(path_list, i);
         if (elem == NULL) {
-            Py_DECREF(parts);
+            fy_py_xdecref(parts);
             return NULL;
         }
 
@@ -1892,52 +1941,52 @@ path_list_to_unix_path_internal(PyObject *path_list)
         if (PyLong_Check(elem)) {
             /* Convert integer index to string */
             str_elem = PyObject_Str(elem);
-            Py_DECREF(elem);
+            fy_py_xdecref(elem);
         } else if (PyUnicode_Check(elem)) {
             str_elem = elem;  /* Already a string, transfer ownership */
         } else {
             /* Unknown type - convert to string */
             str_elem = PyObject_Str(elem);
-            Py_DECREF(elem);
+            fy_py_xdecref(elem);
         }
 
         if (str_elem == NULL) {
-            Py_DECREF(parts);
+            fy_py_xdecref(parts);
             return NULL;
         }
 
         if (PyList_Append(parts, str_elem) < 0) {
-            Py_DECREF(str_elem);
-            Py_DECREF(parts);
+            fy_py_xdecref(str_elem);
+            fy_py_xdecref(parts);
             return NULL;
         }
-        Py_DECREF(str_elem);
+        fy_py_xdecref(str_elem);
     }
 
     /* Join with "/" */
-    PyObject *sep = PyUnicode_FromString("/");
+    sep = PyUnicode_FromString("/");
     if (sep == NULL) {
-        Py_DECREF(parts);
+        fy_py_xdecref(parts);
         return NULL;
     }
 
-    PyObject *result = PyUnicode_Join(sep, parts);
-    Py_DECREF(sep);
-    Py_DECREF(parts);
+    result = PyUnicode_Join(sep, parts);
+    fy_py_xdecref(sep);
+    fy_py_xdecref(parts);
 
     if (result == NULL)
         return NULL;
 
     /* Prepend "/" */
-    PyObject *slash = PyUnicode_FromString("/");
+    slash = PyUnicode_FromString("/");
     if (slash == NULL) {
-        Py_DECREF(result);
+        fy_py_xdecref(result);
         return NULL;
     }
 
-    PyObject *final = PyUnicode_Concat(slash, result);
-    Py_DECREF(slash);
-    Py_DECREF(result);
+    final = PyUnicode_Concat(slash, result);
+    fy_py_xdecref(slash);
+    fy_py_xdecref(result);
 
     return final;
 }
@@ -1946,6 +1995,13 @@ path_list_to_unix_path_internal(PyObject *path_list)
 static PyObject *
 unix_path_to_path_list_internal(const char *path_cstr)
 {
+    PyObject *path_without_slash;
+    PyObject *sep;
+    PyObject *parts;
+    Py_ssize_t parts_len;
+    PyObject *path_list;
+    Py_ssize_t i;
+
     /* Handle empty string or just "/" as root (empty list) */
     if (path_cstr[0] == '\0' || (path_cstr[0] == '/' && path_cstr[1] == '\0')) {
         return PyList_New(0);
@@ -1958,37 +2014,37 @@ unix_path_to_path_list_internal(const char *path_cstr)
     }
 
     /* Skip leading "/" and split by "/" */
-    PyObject *path_without_slash = PyUnicode_FromString(path_cstr + 1);
+    path_without_slash = PyUnicode_FromString(path_cstr + 1);
     if (path_without_slash == NULL)
         return NULL;
 
-    PyObject *sep = PyUnicode_FromString("/");
+    sep = PyUnicode_FromString("/");
     if (sep == NULL) {
-        Py_DECREF(path_without_slash);
+        fy_py_xdecref(path_without_slash);
         return NULL;
     }
 
-    PyObject *parts = PyUnicode_Split(path_without_slash, sep, -1);
-    Py_DECREF(sep);
-    Py_DECREF(path_without_slash);
+    parts = PyUnicode_Split(path_without_slash, sep, -1);
+    fy_py_xdecref(sep);
+    fy_py_xdecref(path_without_slash);
 
     if (parts == NULL)
         return NULL;
 
     /* Convert string parts to proper types (int if numeric, string otherwise) */
-    Py_ssize_t parts_len = PyList_Size(parts);
-    PyObject *path_list = PyList_New(parts_len);
+    parts_len = PyList_Size(parts);
+    path_list = PyList_New(parts_len);
     if (path_list == NULL) {
-        Py_DECREF(parts);
+        fy_py_xdecref(parts);
         return NULL;
     }
 
-    for (Py_ssize_t i = 0; i < parts_len; i++) {
+    for (i = 0; i < parts_len; i++) {
         PyObject *part = PyList_GET_ITEM(parts, i);
         const char *part_str = PyUnicode_AsUTF8(part);
         if (part_str == NULL) {
-            Py_DECREF(path_list);
-            Py_DECREF(parts);
+            fy_py_xdecref(path_list);
+            fy_py_xdecref(parts);
             return NULL;
         }
 
@@ -1999,19 +2055,19 @@ unix_path_to_path_list_internal(const char *path_cstr)
             /* Successfully parsed as integer */
             PyObject *idx_obj = PyLong_FromLong(idx);
             if (idx_obj == NULL) {
-                Py_DECREF(path_list);
-                Py_DECREF(parts);
+                fy_py_xdecref(path_list);
+                fy_py_xdecref(parts);
                 return NULL;
             }
             PyList_SET_ITEM(path_list, i, idx_obj);
         } else {
             /* Keep as string */
-            Py_INCREF(part);
+            fy_py_incref(part);
             PyList_SET_ITEM(path_list, i, part);
         }
     }
 
-    Py_DECREF(parts);
+    fy_py_xdecref(parts);
     return path_list;
 }
 
@@ -2061,6 +2117,10 @@ FyGeneric_get_unix_path(FyGenericObject *self, PyObject *Py_UNUSED(args))
 static PyObject *
 FyGeneric_get_at_unix_path(FyGenericObject *self, PyObject *path_str)
 {
+    const char *path_cstr;
+    PyObject *path_list;
+    PyObject *result;
+
     /* This method only works on root objects */
     if (!FYG_IS_ROOT(self)) {
         PyErr_SetString(PyExc_TypeError,
@@ -2073,7 +2133,7 @@ FyGeneric_get_at_unix_path(FyGenericObject *self, PyObject *path_str)
         return NULL;
     }
 
-    const char *path_cstr = PyUnicode_AsUTF8(path_str);
+    path_cstr = PyUnicode_AsUTF8(path_str);
     if (path_cstr == NULL)
         return NULL;
 
@@ -2082,13 +2142,13 @@ FyGeneric_get_at_unix_path(FyGenericObject *self, PyObject *path_str)
         return fy_py_newref((PyObject *)self);
 
     /* Convert Unix path to path list using internal converter */
-    PyObject *path_list = unix_path_to_path_list_internal(path_cstr);
+    path_list = unix_path_to_path_list_internal(path_cstr);
     if (path_list == NULL)
         return NULL;
 
     /* Call get_at_path with the parsed path list */
-    PyObject *result = FyGeneric_get_at_path(self, path_list);
-    Py_DECREF(path_list);
+    result = FyGeneric_get_at_path(self, path_list);
+    fy_py_xdecref(path_list);
 
     return result;
 }
@@ -2116,7 +2176,14 @@ FyGeneric_set_at_path(FyGenericObject *self, PyObject *args)
         return NULL;
     }
 
-    struct fy_generic_builder *gb = FYG_GB(self);
+    struct fy_generic_builder *gb;
+    Py_ssize_t path_len;
+    fy_generic new_value;
+    fy_generic *path_array;
+    fy_generic new_root;
+    Py_ssize_t i;
+
+    gb = FYG_GB(self);
     if (!gb) {
         PyErr_SetString(PyExc_RuntimeError, "No builder available");
         return NULL;
@@ -2128,7 +2195,7 @@ FyGeneric_set_at_path(FyGenericObject *self, PyObject *args)
         return NULL;
     }
 
-    Py_ssize_t path_len = PySequence_Size(path_obj);
+    path_len = PySequence_Size(path_obj);
     if (path_len < 0)
         return NULL;
 
@@ -2138,7 +2205,7 @@ FyGeneric_set_at_path(FyGenericObject *self, PyObject *args)
     }
 
     /* Convert value to generic */
-    fy_generic new_value = python_to_generic(gb, value_obj);
+    new_value = python_to_generic(gb, value_obj);
     if (fy_generic_is_invalid(new_value)) {
         if (!PyErr_Occurred())
             PyErr_SetString(PyExc_ValueError, "Failed to convert value to generic");
@@ -2146,44 +2213,44 @@ FyGeneric_set_at_path(FyGenericObject *self, PyObject *args)
     }
 
     /* Allocate path array: path elements + value */
-    fy_generic *path_array = alloca(sizeof(fy_generic) * (path_len + 1));
+    path_array = alloca(sizeof(fy_generic) * (path_len + 1));
 
     /* Convert each path element */
-    for (Py_ssize_t i = 0; i < path_len; i++) {
+    for (i = 0; i < path_len; i++) {
         PyObject *elem = PySequence_GetItem(path_obj, i);
         if (elem == NULL)
             return NULL;
 
         /* Check for None and reject it */
         if (elem == Py_None) {
-            Py_DECREF(elem);
+            fy_py_xdecref(elem);
             PyErr_SetString(PyExc_TypeError, "Path elements cannot be None");
             return NULL;
         }
         /* Check for bool BEFORE int (bool is subclass of int in Python) */
         else if (PyBool_Check(elem)) {
             bool val = (elem == Py_True);
-            Py_DECREF(elem);
+            fy_py_xdecref(elem);
             path_array[i] = fy_value(val);
         }
         else if (PyLong_Check(elem)) {
             long idx = PyLong_AsLong(elem);
-            Py_DECREF(elem);
+            fy_py_xdecref(elem);
             if (idx == -1 && PyErr_Occurred())
                 return NULL;
             path_array[i] = fy_value((int)idx);
         } else if (PyFloat_Check(elem)) {
             double val = PyFloat_AS_DOUBLE(elem);
-            Py_DECREF(elem);
+            fy_py_xdecref(elem);
             path_array[i] = fy_value(val);
         } else if (PyUnicode_Check(elem)) {
             const char *str = PyUnicode_AsUTF8(elem);
-            Py_DECREF(elem);
+            fy_py_xdecref(elem);
             if (str == NULL)
                 return NULL;
             path_array[i] = fy_value(str);
         } else {
-            Py_DECREF(elem);
+            fy_py_xdecref(elem);
             PyErr_SetString(PyExc_TypeError, "Path elements must be integers, floats, booleans, or strings");
             return NULL;
         }
@@ -2193,7 +2260,7 @@ FyGeneric_set_at_path(FyGenericObject *self, PyObject *args)
     path_array[path_len] = new_value;
 
     /* Call SET_AT_PATH operation */
-    fy_generic new_root = fy_generic_op(gb, FYGBOPF_SET_AT_PATH, self->fyg,
+    new_root = fy_generic_op(gb, FYGBOPF_SET_AT_PATH, self->fyg,
                                        path_len + 1, path_array);
 
     if (fy_generic_is_invalid(new_root)) {
@@ -2228,7 +2295,11 @@ FyGeneric_set_at_unix_path(FyGenericObject *self, PyObject *args)
         return NULL;
     }
 
-    const char *path_cstr = PyUnicode_AsUTF8(path_str);
+    const char *path_cstr;
+    PyObject *path_list;
+    PyObject *set_args;
+
+    path_cstr = PyUnicode_AsUTF8(path_str);
     if (path_cstr == NULL)
         return NULL;
 
@@ -2239,20 +2310,20 @@ FyGeneric_set_at_unix_path(FyGenericObject *self, PyObject *args)
     }
 
     /* Convert Unix path to path list using internal converter */
-    PyObject *path_list = unix_path_to_path_list_internal(path_cstr);
+    path_list = unix_path_to_path_list_internal(path_cstr);
     if (path_list == NULL)
         return NULL;
 
     /* Create tuple of (path_list, value_obj) for set_at_path */
-    PyObject *set_args = PyTuple_Pack(2, path_list, value_obj);
-    Py_DECREF(path_list);
+    set_args = PyTuple_Pack(2, path_list, value_obj);
+    fy_py_xdecref(path_list);
 
     if (set_args == NULL)
         return NULL;
 
     /* Call set_at_path with the converted path list */
     PyObject *result = FyGeneric_set_at_path(self, set_args);
-    Py_DECREF(set_args);
+    fy_py_xdecref(set_args);
 
     return result;
 }
@@ -2294,7 +2365,7 @@ write_to_file_object(PyObject *file_obj, PyObject *content_str)
     PyObject *result = PyObject_CallMethod(file_obj, "write", "O", content_str);
     if (result == NULL)
         return -1;
-    Py_DECREF(result);
+    fy_py_xdecref(result);
     return 0;
 }
 
@@ -2307,36 +2378,45 @@ FyGeneric_dump(FyGenericObject *self, PyObject *args, PyObject *kwargs)
     int compact = 0;
     int strip_newline = 0;
     static char *kwlist[] = {"file", "mode", "compact", "strip_newline", NULL};
+    int json_mode;
+    struct fy_generic_builder *gb;
+    unsigned int emit_flags;
+    fy_generic emitted;
+    fy_generic_sized_string szstr;
+    const char *path;
+    fy_generic result_g;
+    int result_code;
+    PyObject *yaml_str;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|Ospp", kwlist,
                                      &file_obj, &mode, &compact, &strip_newline))
         return NULL;
 
-    int json_mode = (strcmp(mode, "json") == 0);
+    json_mode = (strcmp(mode, "json") == 0);
 
     /* Get builder access */
-    struct fy_generic_builder *gb = FYG_GB(self);
+    gb = FYG_GB(self);
     if (!gb) {
         PyErr_SetString(PyExc_RuntimeError, "No builder available");
         return NULL;
     }
 
     /* Build emit flags */
-    unsigned int emit_flags = build_emit_flags(json_mode, compact, 0, strip_newline);
+    emit_flags = build_emit_flags(json_mode, compact, 0, strip_newline);
 
     /* If no file specified, return as string (like dumps()) */
     if (file_obj == NULL || file_obj == Py_None) {
         emit_flags |= FYOPEF_OUTPUT_TYPE_STRING;
 
         /* Emit to string */
-        fy_generic emitted = fy_gb_emit(gb, self->fyg, emit_flags, NULL);
+        emitted = fy_gb_emit(gb, self->fyg, emit_flags, NULL);
         if (!fy_generic_is_valid(emitted)) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to emit YAML/JSON");
             return NULL;
         }
 
         /* Extract the sized string from the generic */
-        fy_generic_sized_string szstr = fy_cast(emitted, fy_szstr_empty);
+        szstr = fy_cast(emitted, fy_szstr_empty);
         if (szstr.data == NULL) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to extract string from emitted generic");
             return NULL;
@@ -2348,12 +2428,12 @@ FyGeneric_dump(FyGenericObject *self, PyObject *args, PyObject *kwargs)
 
     /* Check if it's a file path (string) */
     if (PyUnicode_Check(file_obj)) {
-        const char *path = PyUnicode_AsUTF8(file_obj);
+        path = PyUnicode_AsUTF8(file_obj);
         if (path == NULL)
             return NULL;
 
         /* Emit to file using fy_gb_emit_file() */
-        fy_generic result_g = fy_gb_emit_file(gb, self->fyg, emit_flags, path);
+        result_g = fy_gb_emit_file(gb, self->fyg, emit_flags, path);
 
         /* Check for success: should return integer 0 */
         if (!fy_generic_is_valid(result_g) || !fy_generic_is_int_type(result_g)) {
@@ -2361,7 +2441,7 @@ FyGeneric_dump(FyGenericObject *self, PyObject *args, PyObject *kwargs)
             return NULL;
         }
 
-        int result_code = fy_cast(result_g, -1);
+        result_code = fy_cast(result_g, -1);
         if (result_code != 0) {
             PyErr_Format(PyExc_RuntimeError, "Failed to emit YAML/JSON to file: %s (error code: %d)",
                         path, result_code);
@@ -2377,31 +2457,31 @@ FyGeneric_dump(FyGenericObject *self, PyObject *args, PyObject *kwargs)
      * string and write to the file object which works for all file-like objects */
     emit_flags |= FYOPEF_OUTPUT_TYPE_STRING;
 
-    fy_generic emitted = fy_gb_emit(gb, self->fyg, emit_flags, NULL);
+    emitted = fy_gb_emit(gb, self->fyg, emit_flags, NULL);
     if (!fy_generic_is_valid(emitted)) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to emit YAML/JSON");
         return NULL;
     }
 
     /* Extract the sized string from the generic */
-    fy_generic_sized_string szstr = fy_cast(emitted, fy_szstr_empty);
+    szstr = fy_cast(emitted, fy_szstr_empty);
     if (szstr.data == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to extract string from emitted generic");
         return NULL;
     }
 
     /* Create Python string */
-    PyObject *yaml_str = PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+    yaml_str = PyUnicode_FromStringAndSize(szstr.data, szstr.size);
     if (yaml_str == NULL)
         return NULL;
 
     /* Write to file object */
     if (write_to_file_object(file_obj, yaml_str) < 0) {
-        Py_DECREF(yaml_str);
+        fy_py_xdecref(yaml_str);
         return NULL;
     }
 
-    Py_DECREF(yaml_str);
+    fy_py_xdecref(yaml_str);
     Py_RETURN_NONE;
 }
 
@@ -2478,6 +2558,9 @@ static int
 FyGeneric_contains(FyGenericObject *self, PyObject *key)
 {
     enum fy_generic_type type = fy_get_type(self->fyg);
+    struct fy_generic_builder *gb;
+    fy_generic key_generic;
+    fy_generic result;
 
     if (type != FYGT_MAPPING && type != FYGT_SEQUENCE) {
         /* For non-container types, return not implemented */
@@ -2486,11 +2569,11 @@ FyGeneric_contains(FyGenericObject *self, PyObject *key)
     }
 
     /* Get builder access */
-    struct fy_generic_builder *gb = FYG_GB(self);
+    gb = FYG_GB(self);
     assert(gb != NULL);
 
     /* Convert Python key to generic */
-    fy_generic key_generic = python_to_generic(gb, key);
+    key_generic = python_to_generic(gb, key);
     if (fy_generic_is_invalid(key_generic)) {
         /* Conversion failed */
         PyErr_Clear();
@@ -2499,12 +2582,12 @@ FyGeneric_contains(FyGenericObject *self, PyObject *key)
 
     /* For mapping, check if key exists (OP_CONTAINS doesn't work for mappings) */
     if (type == FYGT_MAPPING) {
-        fy_generic result = fy_generic_mapping_get_generic_default(self->fyg, key_generic, fy_invalid);
+        result = fy_generic_mapping_get_generic_default(self->fyg, key_generic, fy_invalid);
         return fy_generic_is_invalid(result) ? 0 : 1;
     }
 
     /* For sequence, use OP_CONTAINS operation */
-    fy_generic result = fy_gb_contains(gb, self->fyg, key_generic);
+    result = fy_gb_contains(gb, self->fyg, key_generic);
     if (fy_generic_is_invalid(result)) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to perform contains operation");
         return -1;
@@ -2525,6 +2608,18 @@ static int
 FyGeneric_ass_subscript(FyGenericObject *self, PyObject *key, PyObject *value)
 {
     enum fy_generic_type type = fy_get_type(self->fyg);
+    struct fy_generic_builder *gb;
+    fy_generic new_value;
+    Py_ssize_t existing_path_len;
+    Py_ssize_t total_path_len;
+    Py_ssize_t total_len;
+    fy_generic *path_array;
+    Py_ssize_t i;
+    fy_generic new_root;
+    Py_ssize_t index;
+    size_t count;
+    PyObject *key_str;
+    const char *key_cstr;
 
     /* Check if mutation is allowed */
     if (!FYG_MUTABLE(self)) {
@@ -2533,7 +2628,7 @@ FyGeneric_ass_subscript(FyGenericObject *self, PyObject *key, PyObject *value)
         return -1;
     }
 
-    struct fy_generic_builder *gb = FYG_GB(self);
+    gb = FYG_GB(self);
     if (!gb) {
         PyErr_SetString(PyExc_RuntimeError, "No builder available for mutation");
         return -1;
@@ -2545,7 +2640,7 @@ FyGeneric_ass_subscript(FyGenericObject *self, PyObject *key, PyObject *value)
     }
 
     /* Convert Python value to generic */
-    fy_generic new_value = python_to_generic(gb, value);
+    new_value = python_to_generic(gb, value);
     if (fy_generic_is_invalid(new_value)) {
         if (!PyErr_Occurred())
             PyErr_SetString(PyExc_ValueError, "Failed to convert value to generic");
@@ -2553,15 +2648,15 @@ FyGeneric_ass_subscript(FyGenericObject *self, PyObject *key, PyObject *value)
     }
 
     /* Build full path: self->path + [key] + [value] */
-    Py_ssize_t existing_path_len = self->path ? PyTuple_Size(self->path) : 0;
-    Py_ssize_t total_path_len = existing_path_len + 1;  /* +1 for new key */
-    Py_ssize_t total_len = total_path_len + 1;  /* +1 for value */
+    existing_path_len = self->path ? PyTuple_Size(self->path) : 0;
+    total_path_len = existing_path_len + 1;  /* +1 for new key */
+    total_len = total_path_len + 1;  /* +1 for value */
 
     /* Allocate path array on stack */
-    fy_generic *path_array = alloca(sizeof(fy_generic) * total_len);
+    path_array = alloca(sizeof(fy_generic) * total_len);
 
     /* Copy existing path elements */
-    for (Py_ssize_t i = 0; i < existing_path_len; i++) {
+    for (i = 0; i < existing_path_len; i++) {
         PyObject *elem = PyTuple_GET_ITEM(self->path, i);
         if (PyBool_Check(elem)) {
             bool val = (elem == Py_True);
@@ -2584,8 +2679,6 @@ FyGeneric_ass_subscript(FyGenericObject *self, PyObject *key, PyObject *value)
     }
 
     /* Add current key to path */
-    fy_generic new_root;
-
     if (type == FYGT_SEQUENCE) {
         /* Sequence indexing */
         if (!PyLong_Check(key)) {
@@ -2593,11 +2686,11 @@ FyGeneric_ass_subscript(FyGenericObject *self, PyObject *key, PyObject *value)
             return -1;
         }
 
-        Py_ssize_t index = PyLong_AsSsize_t(key);
+        index = PyLong_AsSsize_t(key);
         if (index == -1 && PyErr_Occurred())
             return -1;
 
-        size_t count = fy_len(self->fyg);
+        count = fy_len(self->fyg);
 
         /* Handle negative indices */
         if (index < 0)
@@ -2612,18 +2705,18 @@ FyGeneric_ass_subscript(FyGenericObject *self, PyObject *key, PyObject *value)
 
     } else if (type == FYGT_MAPPING) {
         /* Mapping key lookup */
-        PyObject *key_str = PyObject_Str(key);
+        key_str = PyObject_Str(key);
         if (key_str == NULL)
             return -1;
 
-        const char *key_cstr = PyUnicode_AsUTF8(key_str);
+        key_cstr = PyUnicode_AsUTF8(key_str);
         if (key_cstr == NULL) {
-            Py_DECREF(key_str);
+            fy_py_xdecref(key_str);
             return -1;
         }
 
         path_array[existing_path_len] = fy_value(key_cstr);
-        Py_DECREF(key_str);
+        fy_py_xdecref(key_str);
 
     } else {
         PyErr_SetString(PyExc_TypeError, "Object does not support item assignment");
@@ -2725,7 +2818,7 @@ extract_numeric_operand(PyObject *obj, numeric_operand *operand, const char *op_
                 /* Overflow even for unsigned long long - use Python's arbitrary precision */
                 PyErr_Clear();
                 *py_obj = obj;
-                Py_INCREF(obj);
+                fy_py_incref(obj);
                 return -3;  /* Overflow - use Python object */
             }
             /* Check if it fits in unsigned but not signed range */
@@ -2774,11 +2867,11 @@ FyGeneric_add(PyObject *left, PyObject *right)
     /* Extract right operand */
     rc = extract_numeric_operand(right, &right_op, "+", &right_py);
     if (rc == -1) {
-        Py_XDECREF(left_py);
+        fy_py_xdecref(left_py);
         return NULL;  /* Error already set */
     }
     if (rc == -2) {
-        Py_XDECREF(left_py);
+        fy_py_xdecref(left_py);
         Py_RETURN_NOTIMPLEMENTED;
     }
 
@@ -2799,8 +2892,8 @@ FyGeneric_add(PyObject *left, PyObject *right)
         if (left_py && right_py) {
             result = PyNumber_Add(left_py, right_py);
         }
-        Py_XDECREF(left_py);
-        Py_XDECREF(right_py);
+        fy_py_xdecref(left_py);
+        fy_py_xdecref(right_py);
         return result;
     }
 
@@ -2816,8 +2909,8 @@ FyGeneric_add(PyObject *left, PyObject *right)
                 PyLong_FromUnsignedLongLong(right_op.uint_val) :
                 PyLong_FromLongLong(right_op.int_val);
             PyObject *result_obj = PyNumber_Add(left_obj, right_obj);
-            Py_DECREF(left_obj);
-            Py_DECREF(right_obj);
+            fy_py_xdecref(left_obj);
+            fy_py_xdecref(right_obj);
             return result_obj;
         }
 
@@ -2827,8 +2920,8 @@ FyGeneric_add(PyObject *left, PyObject *right)
             PyObject *left_obj = PyLong_FromLongLong(left_op.int_val);
             PyObject *right_obj = PyLong_FromLongLong(right_op.int_val);
             PyObject *result_obj = PyNumber_Add(left_obj, right_obj);
-            Py_DECREF(left_obj);
-            Py_DECREF(right_obj);
+            fy_py_xdecref(left_obj);
+            fy_py_xdecref(right_obj);
             return result_obj;
         }
         return PyLong_FromLongLong(result);
@@ -2864,11 +2957,11 @@ FyGeneric_sub(PyObject *left, PyObject *right)
 
     rc = extract_numeric_operand(right, &right_op, "-", &right_py);
     if (rc == -1) {
-        Py_XDECREF(left_py);
+        fy_py_xdecref(left_py);
         return NULL;
     }
     if (rc == -2) {
-        Py_XDECREF(left_py);
+        fy_py_xdecref(left_py);
         Py_RETURN_NOTIMPLEMENTED;
     }
 
@@ -2887,8 +2980,8 @@ FyGeneric_sub(PyObject *left, PyObject *right)
         if (left_py && right_py) {
             result = PyNumber_Subtract(left_py, right_py);
         }
-        Py_XDECREF(left_py);
-        Py_XDECREF(right_py);
+        fy_py_xdecref(left_py);
+        fy_py_xdecref(right_py);
         return result;
     }
 
@@ -2901,8 +2994,8 @@ FyGeneric_sub(PyObject *left, PyObject *right)
             PyObject *left_obj = PyLong_FromLongLong(left_op.int_val);
             PyObject *right_obj = PyLong_FromLongLong(right_op.int_val);
             PyObject *result_obj = PyNumber_Subtract(left_obj, right_obj);
-            Py_DECREF(left_obj);
-            Py_DECREF(right_obj);
+            fy_py_xdecref(left_obj);
+            fy_py_xdecref(right_obj);
             return result_obj;
         }
         return PyLong_FromLongLong(result);
@@ -2929,11 +3022,11 @@ FyGeneric_mul(PyObject *left, PyObject *right)
 
     rc = extract_numeric_operand(right, &right_op, "*", &right_py);
     if (rc == -1) {
-        Py_XDECREF(left_py);
+        fy_py_xdecref(left_py);
         return NULL;
     }
     if (rc == -2) {
-        Py_XDECREF(left_py);
+        fy_py_xdecref(left_py);
         Py_RETURN_NOTIMPLEMENTED;
     }
 
@@ -2952,8 +3045,8 @@ FyGeneric_mul(PyObject *left, PyObject *right)
         if (left_py && right_py) {
             result = PyNumber_Multiply(left_py, right_py);
         }
-        Py_XDECREF(left_py);
-        Py_XDECREF(right_py);
+        fy_py_xdecref(left_py);
+        fy_py_xdecref(right_py);
         return result;
     }
 
@@ -2966,8 +3059,8 @@ FyGeneric_mul(PyObject *left, PyObject *right)
             PyObject *left_obj = PyLong_FromLongLong(left_op.int_val);
             PyObject *right_obj = PyLong_FromLongLong(right_op.int_val);
             PyObject *result_obj = PyNumber_Multiply(left_obj, right_obj);
-            Py_DECREF(left_obj);
-            Py_DECREF(right_obj);
+            fy_py_xdecref(left_obj);
+            fy_py_xdecref(right_obj);
             return result_obj;
         }
         return PyLong_FromLongLong(result);
@@ -2994,11 +3087,11 @@ FyGeneric_truediv(PyObject *left, PyObject *right)
 
     rc = extract_numeric_operand(right, &right_op, "/", &right_py);
     if (rc == -1) {
-        Py_XDECREF(left_py);
+        fy_py_xdecref(left_py);
         return NULL;
     }
     if (rc == -2) {
-        Py_XDECREF(left_py);
+        fy_py_xdecref(left_py);
         Py_RETURN_NOTIMPLEMENTED;
     }
 
@@ -3007,7 +3100,7 @@ FyGeneric_truediv(PyObject *left, PyObject *right)
 
     if (left_py) {
         left_val = PyLong_AsDouble(left_py);
-        Py_DECREF(left_py);
+        fy_py_xdecref(left_py);
     } else if (left_op.is_int) {
         left_val = left_op.is_unsigned_large ? (double)left_op.uint_val : (double)left_op.int_val;
     } else {
@@ -3016,7 +3109,7 @@ FyGeneric_truediv(PyObject *left, PyObject *right)
 
     if (right_py) {
         right_val = PyLong_AsDouble(right_py);
-        Py_DECREF(right_py);
+        fy_py_xdecref(right_py);
     } else if (right_op.is_int) {
         right_val = right_op.is_unsigned_large ? (double)right_op.uint_val : (double)right_op.int_val;
     } else {
@@ -3046,11 +3139,11 @@ FyGeneric_floordiv(PyObject *left, PyObject *right)
 
     rc = extract_numeric_operand(right, &right_op, "//", &right_py);
     if (rc == -1) {
-        Py_XDECREF(left_py);
+        fy_py_xdecref(left_py);
         return NULL;
     }
     if (rc == -2) {
-        Py_XDECREF(left_py);
+        fy_py_xdecref(left_py);
         Py_RETURN_NOTIMPLEMENTED;
     }
 
@@ -3071,8 +3164,8 @@ FyGeneric_floordiv(PyObject *left, PyObject *right)
             if (left_py && right_py) {
                 result = PyNumber_FloorDivide(left_py, right_py);
             }
-            Py_XDECREF(left_py);
-            Py_XDECREF(right_py);
+            fy_py_xdecref(left_py);
+            fy_py_xdecref(right_py);
             return result;
         }
 
@@ -3092,7 +3185,7 @@ FyGeneric_floordiv(PyObject *left, PyObject *right)
 
         if (left_py) {
             left_val = PyLong_AsDouble(left_py);
-            Py_DECREF(left_py);
+            fy_py_xdecref(left_py);
         } else if (left_op.is_int) {
             left_val = left_op.is_unsigned_large ? (double)left_op.uint_val : (double)left_op.int_val;
         } else {
@@ -3101,7 +3194,7 @@ FyGeneric_floordiv(PyObject *left, PyObject *right)
 
         if (right_py) {
             right_val = PyLong_AsDouble(right_py);
-            Py_DECREF(right_py);
+            fy_py_xdecref(right_py);
         } else if (right_op.is_int) {
             right_val = right_op.is_unsigned_large ? (double)right_op.uint_val : (double)right_op.int_val;
         } else {
@@ -3131,11 +3224,11 @@ FyGeneric_mod(PyObject *left, PyObject *right)
 
     rc = extract_numeric_operand(right, &right_op, "%", &right_py);
     if (rc == -1) {
-        Py_XDECREF(left_py);
+        fy_py_xdecref(left_py);
         return NULL;
     }
     if (rc == -2) {
-        Py_XDECREF(left_py);
+        fy_py_xdecref(left_py);
         Py_RETURN_NOTIMPLEMENTED;
     }
 
@@ -3156,8 +3249,8 @@ FyGeneric_mod(PyObject *left, PyObject *right)
             if (left_py && right_py) {
                 result = PyNumber_Remainder(left_py, right_py);
             }
-            Py_XDECREF(left_py);
-            Py_XDECREF(right_py);
+            fy_py_xdecref(left_py);
+            fy_py_xdecref(right_py);
             return result;
         }
 
@@ -3177,7 +3270,7 @@ FyGeneric_mod(PyObject *left, PyObject *right)
 
         if (left_py) {
             left_val = PyLong_AsDouble(left_py);
-            Py_DECREF(left_py);
+            fy_py_xdecref(left_py);
         } else if (left_op.is_int) {
             left_val = left_op.is_unsigned_large ? (double)left_op.uint_val : (double)left_op.int_val;
         } else {
@@ -3186,7 +3279,7 @@ FyGeneric_mod(PyObject *left, PyObject *right)
 
         if (right_py) {
             right_val = PyLong_AsDouble(right_py);
-            Py_DECREF(right_py);
+            fy_py_xdecref(right_py);
         } else if (right_op.is_int) {
             right_val = right_op.is_unsigned_large ? (double)right_op.uint_val : (double)right_op.int_val;
         } else {
@@ -3284,7 +3377,7 @@ FyGeneric_hash(FyGenericObject *self)
     case FYGT_NULL:
         /* Hash for None */
         temp_obj = Py_None;
-        Py_INCREF(temp_obj);
+        fy_py_incref(temp_obj);
         break;
 
     case FYGT_BOOL:
@@ -3342,7 +3435,7 @@ FyGeneric_hash(FyGenericObject *self)
 
     /* Compute hash of the Python object */
     hash_value = PyObject_Hash(temp_obj);
-    Py_DECREF(temp_obj);
+    fy_py_xdecref(temp_obj);
 
     return hash_value;
 }
@@ -3451,24 +3544,31 @@ libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
     int keep_comments = 0;  /* Default to False */
     int keep_style = 0;  /* Default to False */
     static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", "keep_style", NULL};
+    unsigned int mode_flags;
+    struct fy_generic_builder *gb = NULL;
+    unsigned int parse_flags;
+    fy_generic vdir;
+    int doc_count;
+    fy_generic vds;
+    PyObject *result;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|sppppppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style))
         return NULL;
 
     /* Parse mode string to flags */
-    unsigned int mode_flags = parse_mode_flags(mode);
+    mode_flags = parse_mode_flags(mode);
     if (mode_flags == 0)
         return NULL;  /* Exception already set */
 
     /* Create generic builder using helper */
-    struct fy_generic_builder *gb = create_builder_with_config(dedup, yaml_len * 2);
+    gb = create_builder_with_config(dedup, yaml_len * 2);
     if (gb == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
         return NULL;
     }
 
     /* Parse - returns a directory (sequence of VDS) */
-    unsigned int parse_flags = FYOPPF_INPUT_TYPE_STRING | mode_flags;
+    parse_flags = FYOPPF_INPUT_TYPE_STRING | mode_flags;
     if (collect_diag)
         parse_flags |= FYOPPF_COLLECT_DIAG;
     if (create_markers)
@@ -3477,7 +3577,7 @@ libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
         parse_flags |= FYOPPF_KEEP_COMMENTS;
     if (keep_style)
         parse_flags |= FYOPPF_KEEP_STYLE;
-    fy_generic vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
+    vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
 
     /* When collect_diag is enabled, errors return an indirect with diag attached */
     if (collect_diag) {
@@ -3500,7 +3600,7 @@ libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     /* Get document count - for loads() we expect exactly one */
-    int doc_count = fy_generic_dir_get_document_count(vdir);
+    doc_count = fy_generic_dir_get_document_count(vdir);
     if (doc_count < 1) {
         fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_ValueError, "No documents found in input");
@@ -3513,7 +3613,7 @@ libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     /* Get VDS for the single document */
-    fy_generic vds = fy_generic_dir_get_document_vds(vdir, 0);
+    vds = fy_generic_dir_get_document_vds(vdir, 0);
     if (!fy_generic_is_valid(vds)) {
         fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_RuntimeError, "Failed to get document VDS");
@@ -3521,7 +3621,7 @@ libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     /* Create root wrapper with VDS - transfers gb ownership to Python object */
-    PyObject *result = FyGeneric_from_vds(vds, gb, mutable);
+    result = FyGeneric_from_vds(vds, gb, mutable);
     if (result == NULL) {
         fy_generic_builder_destroy(gb);
         return NULL;
@@ -3597,7 +3697,12 @@ python_to_generic(struct fy_generic_builder *gb, PyObject *obj)
     }
 
     if (PyList_Check(obj) || PyTuple_Check(obj)) {
-        Py_ssize_t len = PySequence_Length(obj);
+        Py_ssize_t len;
+        fy_generic *items;
+        Py_ssize_t i;
+        fy_generic result;
+
+        len = PySequence_Length(obj);
         if (len < 0)
             return fy_invalid;
 
@@ -3607,13 +3712,13 @@ python_to_generic(struct fy_generic_builder *gb, PyObject *obj)
         }
 
         /* Build array of fy_generic items */
-        fy_generic *items = malloc(len * sizeof(fy_generic));
+        items = malloc(len * sizeof(fy_generic));
         if (items == NULL) {
             PyErr_NoMemory();
             return fy_invalid;
         }
 
-        for (Py_ssize_t i = 0; i < len; i++) {
+        for (i = 0; i < len; i++) {
             PyObject *item = PySequence_GetItem(obj, i);
             if (item == NULL) {
                 free(items);
@@ -3621,7 +3726,7 @@ python_to_generic(struct fy_generic_builder *gb, PyObject *obj)
             }
 
             items[i] = python_to_generic(gb, item);
-            Py_DECREF(item);
+            fy_py_xdecref(item);
 
             if (!fy_generic_is_valid(items[i])) {
                 free(items);
@@ -3629,13 +3734,21 @@ python_to_generic(struct fy_generic_builder *gb, PyObject *obj)
             }
         }
 
-        fy_generic result = fy_gb_sequence_create(gb, len, items);
+        result = fy_gb_sequence_create(gb, len, items);
         free(items);
         return result;
     }
 
     if (PyDict_Check(obj)) {
-        Py_ssize_t len = PyDict_Size(obj);
+        Py_ssize_t len;
+        fy_generic *pairs;
+        PyObject *key;
+        PyObject *value;
+        Py_ssize_t pos;
+        Py_ssize_t idx;
+        fy_generic result;
+
+        len = PyDict_Size(obj);
         if (len < 0)
             return fy_invalid;
 
@@ -3645,15 +3758,14 @@ python_to_generic(struct fy_generic_builder *gb, PyObject *obj)
         }
 
         /* Build array of key-value pairs */
-        fy_generic *pairs = malloc(len * 2 * sizeof(fy_generic));
+        pairs = malloc(len * 2 * sizeof(fy_generic));
         if (pairs == NULL) {
             PyErr_NoMemory();
             return fy_invalid;
         }
 
-        PyObject *key, *value;
-        Py_ssize_t pos = 0;
-        Py_ssize_t idx = 0;
+        pos = 0;
+        idx = 0;
 
         while (PyDict_Next(obj, &pos, &key, &value)) {
             pairs[idx * 2] = python_to_generic(gb, key);
@@ -3671,7 +3783,7 @@ python_to_generic(struct fy_generic_builder *gb, PyObject *obj)
             idx++;
         }
 
-        fy_generic result = fy_gb_mapping_create(gb, len, pairs);
+        result = fy_gb_mapping_create(gb, len, pairs);
         free(pairs);
         return result;
     }
@@ -3702,20 +3814,26 @@ libfyaml_dumps(PyObject *self, PyObject *args, PyObject *kwargs)
     const char *style = NULL;
     int indent = 0;  /* 0 means default/unset */
     static char *kwlist[] = {"obj", "compact", "json", "style", "indent", NULL};
+    struct fy_generic_builder *gb;
+    fy_generic g;
+    unsigned int emit_flags;
+    fy_generic emitted;
+    fy_generic_sized_string szstr;
+    PyObject *result;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|ppzi", kwlist,
                                      &obj, &compact, &json_mode, &style, &indent))
         return NULL;
 
     /* Create generic builder */
-    struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
+    gb = fy_generic_builder_create(NULL);
     if (gb == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
         return NULL;
     }
 
     /* Convert Python object to fy_generic */
-    fy_generic g = python_to_generic(gb, obj);
+    g = python_to_generic(gb, obj);
     if (!fy_generic_is_valid(g)) {
         fy_generic_builder_destroy(gb);
         /* Exception already set by python_to_generic */
@@ -3723,7 +3841,7 @@ libfyaml_dumps(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     /* Determine emit flags based on options */
-    unsigned int emit_flags = FYOPEF_DISABLE_DIRECTORY | FYOPEF_OUTPUT_TYPE_STRING;
+    emit_flags = FYOPEF_DISABLE_DIRECTORY | FYOPEF_OUTPUT_TYPE_STRING;
 
     /* Apply indent flag based on requested indent value */
     if (indent > 0) {
@@ -3774,7 +3892,7 @@ libfyaml_dumps(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     /* Emit to string using new API - returns a string generic! */
-    fy_generic emitted = fy_gb_emit(gb, g, emit_flags, NULL);
+    emitted = fy_gb_emit(gb, g, emit_flags, NULL);
     if (!fy_generic_is_valid(emitted)) {
         fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_RuntimeError, "Failed to emit YAML/JSON");
@@ -3782,7 +3900,7 @@ libfyaml_dumps(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     /* Extract the sized string from the generic */
-    fy_generic_sized_string szstr = fy_cast(emitted, fy_szstr_empty);
+    szstr = fy_cast(emitted, fy_szstr_empty);
     if (szstr.data == NULL) {
         fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_RuntimeError, "Failed to extract string from emitted generic");
@@ -3790,7 +3908,7 @@ libfyaml_dumps(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     /* Create Python string (makes a copy) */
-    PyObject *result = PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+    result = PyUnicode_FromStringAndSize(szstr.data, szstr.size);
 
     /* Clean up builder */
     fy_generic_builder_destroy(gb);
@@ -3809,26 +3927,32 @@ libfyaml_from_python(PyObject *self, PyObject *args, PyObject *kwargs)
     int mutable = 0;  /* Default to False (read-only) */
     int dedup = 1;  /* Default to True, like loads/load */
     static char *kwlist[] = {"obj", "tag", "style", "mutable", "dedup", NULL};
+    struct fy_generic_builder *gb;
+    fy_generic g;
+    enum fy_scalar_style scalar_style;
+    fy_generic tag_generic;
+    fy_generic style_generic;
+    PyObject *result;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|z#zpp", kwlist, &obj, &tag, &tag_len, &style, &mutable, &dedup))
         return NULL;
 
     /* Create generic builder using helper (estimate 64KB for typical Python objects) */
-    struct fy_generic_builder *gb = create_builder_with_config(dedup, 64 * 1024);
+    gb = create_builder_with_config(dedup, 64 * 1024);
     if (gb == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
         return NULL;
     }
 
     /* Convert Python object to generic */
-    fy_generic g = python_to_generic(gb, obj);
+    g = python_to_generic(gb, obj);
     if (!fy_generic_is_valid(g)) {
         fy_generic_builder_destroy(gb);
         return NULL;
     }
 
     /* Parse style string to scalar style enum */
-    enum fy_scalar_style scalar_style = FYSS_ANY;
+    scalar_style = FYSS_ANY;
     if (style != NULL && style[0] != '\0') {
         if (strcmp(style, "|") == 0) {
             scalar_style = FYSS_LITERAL;
@@ -3846,8 +3970,8 @@ libfyaml_from_python(PyObject *self, PyObject *args, PyObject *kwargs)
 
     /* If tag or style is provided, wrap in indirect */
     if ((tag != NULL && tag_len > 0) || scalar_style != FYSS_ANY) {
-        fy_generic tag_generic = fy_null;
         uintptr_t flags = FYGIF_VALUE;
+        tag_generic = fy_null;
 
         if (tag != NULL && tag_len > 0) {
             tag_generic = fy_gb_string_size_create(gb, tag, (size_t)tag_len);
@@ -3860,7 +3984,7 @@ libfyaml_from_python(PyObject *self, PyObject *args, PyObject *kwargs)
         }
 
         /* Create style generic if needed */
-        fy_generic style_generic = fy_null;
+        style_generic = fy_null;
         if (scalar_style != FYSS_ANY) {
             style_generic.v = fy_generic_in_place_unsigned_int((unsigned int)scalar_style);
             flags |= FYGIF_STYLE;
@@ -3886,7 +4010,7 @@ libfyaml_from_python(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     /* Create root wrapper - transfers gb ownership to Python object */
-    PyObject *result = FyGeneric_from_generic(g, gb, mutable);
+    result = FyGeneric_from_generic(g, gb, mutable);
     if (result == NULL) {
         fy_generic_builder_destroy(gb);
         return NULL;
@@ -3916,24 +4040,33 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
     /* Check if it's a string (file path) or file object */
     if (PyUnicode_Check(file_obj)) {
         /* It's a file path - use fy_gb_parse_file() with mmap support */
-        const char *path = PyUnicode_AsUTF8(file_obj);
+        const char *path;
+        struct fy_generic_builder *gb;
+        unsigned int mode_flags;
+        unsigned int parse_flags;
+        fy_generic vdir;
+        int doc_count;
+        fy_generic vds;
+        PyObject *result;
+
+        path = PyUnicode_AsUTF8(file_obj);
         if (path == NULL)
             return NULL;
 
         /* Create generic builder using helper (1MB default estimate for files) */
-        struct fy_generic_builder *gb = create_builder_with_config(dedup, 1024 * 1024);
+        gb = create_builder_with_config(dedup, 1024 * 1024);
         if (gb == NULL) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
             return NULL;
         }
 
         /* Parse mode string to flags */
-        unsigned int mode_flags = parse_mode_flags(mode);
+        mode_flags = parse_mode_flags(mode);
         if (mode_flags == 0)
             return NULL;  /* Exception already set */
 
         /* Determine parse flags */
-        unsigned int parse_flags = mode_flags;
+        parse_flags = mode_flags;
         if (collect_diag)
             parse_flags |= FYOPPF_COLLECT_DIAG;
         if (create_markers)
@@ -3944,7 +4077,7 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
             parse_flags |= FYOPPF_KEEP_STYLE;
 
         /* Parse from file - returns a directory (sequence of VDS) */
-        fy_generic vdir = fy_gb_parse_file(gb, parse_flags, path);
+        vdir = fy_gb_parse_file(gb, parse_flags, path);
         if (!fy_generic_is_valid(vdir)) {
             fy_generic_builder_destroy(gb);
             PyErr_Format(PyExc_ValueError, "Failed to parse YAML/JSON from file: %s", path);
@@ -3952,7 +4085,7 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
         }
 
         /* Get document count - for load() we expect exactly one */
-        int doc_count = fy_generic_dir_get_document_count(vdir);
+        doc_count = fy_generic_dir_get_document_count(vdir);
         if (doc_count < 1) {
             fy_generic_builder_destroy(gb);
             PyErr_SetString(PyExc_ValueError, "No documents found in file");
@@ -3965,7 +4098,7 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
         }
 
         /* Get VDS for the single document */
-        fy_generic vds = fy_generic_dir_get_document_vds(vdir, 0);
+        vds = fy_generic_dir_get_document_vds(vdir, 0);
         if (!fy_generic_is_valid(vds)) {
             fy_generic_builder_destroy(gb);
             PyErr_SetString(PyExc_RuntimeError, "Failed to get document VDS");
@@ -3973,7 +4106,7 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
         }
 
         /* Create root wrapper with VDS - transfers gb ownership to Python object */
-        PyObject *result = FyGeneric_from_vds(vds, gb, mutable);
+        result = FyGeneric_from_vds(vds, gb, mutable);
         if (result == NULL) {
             fy_generic_builder_destroy(gb);
             return NULL;
@@ -3994,50 +4127,50 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
         /* Build kwargs dict for loads */
         PyObject *loads_kwargs = PyDict_New();
         if (loads_kwargs == NULL) {
-            Py_DECREF(content);
+            fy_py_xdecref(content);
             return NULL;
         }
 
         PyObject *mode_str = PyUnicode_FromString(mode);
         if (mode_str == NULL) {
-            Py_DECREF(loads_kwargs);
-            Py_DECREF(content);
+            fy_py_xdecref(loads_kwargs);
+            fy_py_xdecref(content);
             return NULL;
         }
         PyDict_SetItemString(loads_kwargs, "mode", mode_str);
-        Py_DECREF(mode_str);
+        fy_py_xdecref(mode_str);
 
         PyObject *dedup_obj = PyBool_FromLong(dedup);
         PyDict_SetItemString(loads_kwargs, "dedup", dedup_obj);
-        Py_DECREF(dedup_obj);
+        fy_py_xdecref(dedup_obj);
 
         PyObject *trim_obj = PyBool_FromLong(trim);
         PyDict_SetItemString(loads_kwargs, "trim", trim_obj);
-        Py_DECREF(trim_obj);
+        fy_py_xdecref(trim_obj);
 
         PyObject *mutable_obj = PyBool_FromLong(mutable);
         PyDict_SetItemString(loads_kwargs, "mutable", mutable_obj);
-        Py_DECREF(mutable_obj);
+        fy_py_xdecref(mutable_obj);
 
         PyObject *markers_obj = PyBool_FromLong(create_markers);
         PyDict_SetItemString(loads_kwargs, "create_markers", markers_obj);
-        Py_DECREF(markers_obj);
+        fy_py_xdecref(markers_obj);
 
         PyObject *comments_obj = PyBool_FromLong(keep_comments);
         PyDict_SetItemString(loads_kwargs, "keep_comments", comments_obj);
-        Py_DECREF(comments_obj);
+        fy_py_xdecref(comments_obj);
 
         PyObject *style_obj = PyBool_FromLong(keep_style);
         PyDict_SetItemString(loads_kwargs, "keep_style", style_obj);
-        Py_DECREF(style_obj);
+        fy_py_xdecref(style_obj);
 
         /* Call loads with the content */
         PyObject *loads_args = Py_BuildValue("(O)", content);
         PyObject *result = libfyaml_loads(self, loads_args, loads_kwargs);
 
-        Py_DECREF(loads_args);
-        Py_DECREF(loads_kwargs);
-        Py_DECREF(content);
+        fy_py_xdecref(loads_args);
+        fy_py_xdecref(loads_kwargs);
+        fy_py_xdecref(content);
         return result;
     }
 }
@@ -4134,27 +4267,27 @@ libfyaml_dump(PyObject *self, PyObject *args, PyObject *kwargs)
         PyDict_SetItemString(dumps_kwargs, "compact", compact_bool);
         PyDict_SetItemString(dumps_kwargs, "json", json_bool);
 
-        Py_DECREF(compact_bool);
-        Py_DECREF(json_bool);
+        fy_py_xdecref(compact_bool);
+        fy_py_xdecref(json_bool);
 
         /* Convert object to YAML string */
         PyObject *dumps_args = Py_BuildValue("(O)", obj);
         PyObject *yaml_str = libfyaml_dumps(self, dumps_args, dumps_kwargs);
 
-        Py_DECREF(dumps_args);
-        Py_DECREF(dumps_kwargs);
+        fy_py_xdecref(dumps_args);
+        fy_py_xdecref(dumps_kwargs);
 
         if (yaml_str == NULL)
             return NULL;
 
         /* Write to file object */
         PyObject *result = PyObject_CallMethod(file_obj, "write", "O", yaml_str);
-        Py_DECREF(yaml_str);
+        fy_py_xdecref(yaml_str);
 
         if (result == NULL)
             return NULL;
 
-        Py_DECREF(result);
+        fy_py_xdecref(result);
         Py_RETURN_NONE;
     }
 }
@@ -4163,20 +4296,25 @@ libfyaml_dump(PyObject *self, PyObject *args, PyObject *kwargs)
 static PyObject *
 FyGeneric_from_vds_with_parent(fy_generic vds, FyGenericObject *parent, int mutable)
 {
+    fy_generic fyg;
+    FyDocumentStateObject *parent_ds;
+    PyObject *doc_state;
+    FyGenericObject *self;
+
     /* Extract root from VDS */
-    fy_generic fyg = fy_generic_vds_get_root(vds);
+    fyg = fy_generic_vds_get_root(vds);
     if (!fy_generic_is_valid(fyg))
         return NULL;
 
     /* Create child doc_state that references parent's doc_state */
-    FyDocumentStateObject *parent_ds = (FyDocumentStateObject *)parent->doc_state;
-    PyObject *doc_state = FyDocumentState_create_child(fyg, vds, parent_ds);
+    parent_ds = (FyDocumentStateObject *)parent->doc_state;
+    doc_state = FyDocumentState_create_child(fyg, vds, parent_ds);
     if (doc_state == NULL)
         return NULL;
 
-    FyGenericObject *self = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
+    self = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
     if (self == NULL) {
-        Py_DECREF(doc_state);
+        fy_py_xdecref(doc_state);
         return NULL;
     }
 
@@ -4202,24 +4340,33 @@ libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
     int keep_comments = 0;
     int keep_style = 0;
     static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", "keep_style", NULL};
+    struct fy_generic_builder *gb;
+    unsigned int mode_flags;
+    unsigned int parse_flags;
+    fy_generic vdir;
+    int doc_count;
+    PyObject *holder_doc_state;
+    FyGenericObject *holder;
+    PyObject *result;
+    int i;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|sppppppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style))
         return NULL;
 
     /* Create generic builder using helper */
-    struct fy_generic_builder *gb = create_builder_with_config(dedup, yaml_len * 2);
+    gb = create_builder_with_config(dedup, yaml_len * 2);
     if (gb == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
         return NULL;
     }
 
     /* Parse mode string to flags */
-    unsigned int mode_flags = parse_mode_flags(mode);
+    mode_flags = parse_mode_flags(mode);
     if (mode_flags == 0)
         return NULL;  /* Exception already set */
 
     /* Parse flags: MULTI_DOCUMENT for multiple docs */
-    unsigned int parse_flags = FYOPPF_INPUT_TYPE_STRING | FYOPPF_MULTI_DOCUMENT | mode_flags;
+    parse_flags = FYOPPF_INPUT_TYPE_STRING | FYOPPF_MULTI_DOCUMENT | mode_flags;
     if (collect_diag)
         parse_flags |= FYOPPF_COLLECT_DIAG;
     if (create_markers)
@@ -4230,7 +4377,7 @@ libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
         parse_flags |= FYOPPF_KEEP_STYLE;
 
     /* Parse - returns a directory (sequence of VDS) */
-    fy_generic vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
+    vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
     if (!fy_generic_is_valid(vdir)) {
         fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_ValueError, "Failed to parse YAML/JSON");
@@ -4238,19 +4385,19 @@ libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     /* Get document count */
-    int doc_count = fy_generic_dir_get_document_count(vdir);
+    doc_count = fy_generic_dir_get_document_count(vdir);
 
     /* Create a holder FyGeneric that owns the builder (invisible to user) */
     /* Create doc_state first (it owns the builder) */
-    PyObject *holder_doc_state = FyDocumentState_create(vdir, fy_invalid, gb, mutable);
+    holder_doc_state = FyDocumentState_create(vdir, fy_invalid, gb, mutable);
     if (holder_doc_state == NULL) {
         fy_generic_builder_destroy(gb);
         return NULL;
     }
 
-    FyGenericObject *holder = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
+    holder = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
     if (holder == NULL) {
-        Py_DECREF(holder_doc_state);
+        fy_py_xdecref(holder_doc_state);
         return NULL;
     }
     holder->fyg = vdir;
@@ -4258,26 +4405,26 @@ libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
     holder->path = NULL;
 
     /* Create Python list to hold all documents */
-    PyObject *result = PyList_New(doc_count);
+    result = PyList_New(doc_count);
     if (result == NULL) {
-        Py_DECREF(holder);
+        fy_py_xdecref(holder);
         return NULL;
     }
 
     /* Create FyGeneric for each document from its VDS */
-    for (int i = 0; i < doc_count; i++) {
+    for (i = 0; i < doc_count; i++) {
         fy_generic vds = fy_generic_dir_get_document_vds(vdir, i);
         if (!fy_generic_is_valid(vds)) {
-            Py_DECREF(result);
-            Py_DECREF(holder);
+            fy_py_xdecref(result);
+            fy_py_xdecref(holder);
             PyErr_SetString(PyExc_RuntimeError, "Failed to get document VDS");
             return NULL;
         }
 
         PyObject *doc = FyGeneric_from_vds_with_parent(vds, holder, mutable);
         if (doc == NULL) {
-            Py_DECREF(result);
-            Py_DECREF(holder);
+            fy_py_xdecref(result);
+            fy_py_xdecref(holder);
             return NULL;
         }
 
@@ -4285,7 +4432,7 @@ libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     /* Release our reference to holder - the docs in the list keep it alive */
-    Py_DECREF(holder);
+    fy_py_xdecref(holder);
 
     /* Auto-trim if requested (default behavior) */
     if (trim && gb) {
@@ -4317,24 +4464,35 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
     /* Check if it's a string (file path) or file object */
     if (PyUnicode_Check(file_obj)) {
         /* It's a file path - use fy_gb_parse_file() for mmap-based loading */
-        const char *path = PyUnicode_AsUTF8(file_obj);
+        const char *path;
+        struct fy_generic_builder *gb;
+        unsigned int mode_flags;
+        unsigned int parse_flags;
+        fy_generic vdir;
+        int doc_count;
+        PyObject *holder_doc_state;
+        FyGenericObject *holder;
+        PyObject *result;
+        int i;
+
+        path = PyUnicode_AsUTF8(file_obj);
         if (path == NULL)
             return NULL;
 
         /* Create generic builder using helper (1MB estimate for files) */
-        struct fy_generic_builder *gb = create_builder_with_config(dedup, 1024 * 1024);
+        gb = create_builder_with_config(dedup, 1024 * 1024);
         if (gb == NULL) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
             return NULL;
         }
 
         /* Parse mode string to flags */
-        unsigned int mode_flags = parse_mode_flags(mode);
+        mode_flags = parse_mode_flags(mode);
         if (mode_flags == 0)
             return NULL;  /* Exception already set */
 
         /* Parse flags: MULTI_DOCUMENT for multiple docs */
-        unsigned int parse_flags = FYOPPF_MULTI_DOCUMENT | mode_flags;
+        parse_flags = FYOPPF_MULTI_DOCUMENT | mode_flags;
         if (collect_diag)
             parse_flags |= FYOPPF_COLLECT_DIAG;
         if (create_markers)
@@ -4345,7 +4503,7 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
             parse_flags |= FYOPPF_KEEP_STYLE;
 
         /* Parse from file - returns a directory (sequence of VDS) */
-        fy_generic vdir = fy_gb_parse_file(gb, parse_flags, path);
+        vdir = fy_gb_parse_file(gb, parse_flags, path);
         if (!fy_generic_is_valid(vdir)) {
             fy_generic_builder_destroy(gb);
             PyErr_Format(PyExc_ValueError, "Failed to parse YAML/JSON file: %s", path);
@@ -4353,19 +4511,19 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
         }
 
         /* Get document count */
-        int doc_count = fy_generic_dir_get_document_count(vdir);
+        doc_count = fy_generic_dir_get_document_count(vdir);
 
         /* Create a holder FyGeneric that owns the builder */
         /* Create doc_state first (it owns the builder) */
-        PyObject *holder_doc_state = FyDocumentState_create(vdir, fy_invalid, gb, mutable);
+        holder_doc_state = FyDocumentState_create(vdir, fy_invalid, gb, mutable);
         if (holder_doc_state == NULL) {
             fy_generic_builder_destroy(gb);
             return NULL;
         }
 
-        FyGenericObject *holder = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
+        holder = (FyGenericObject *)FyGenericType.tp_alloc(&FyGenericType, 0);
         if (holder == NULL) {
-            Py_DECREF(holder_doc_state);
+            fy_py_xdecref(holder_doc_state);
             return NULL;
         }
         holder->fyg = vdir;
@@ -4373,26 +4531,26 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
         holder->path = NULL;
 
         /* Create Python list to hold all documents */
-        PyObject *result = PyList_New(doc_count);
+        result = PyList_New(doc_count);
         if (result == NULL) {
-            Py_DECREF(holder);
+            fy_py_xdecref(holder);
             return NULL;
         }
 
         /* Create FyGeneric for each document from its VDS */
-        for (int i = 0; i < doc_count; i++) {
+        for (i = 0; i < doc_count; i++) {
             fy_generic vds = fy_generic_dir_get_document_vds(vdir, i);
             if (!fy_generic_is_valid(vds)) {
-                Py_DECREF(result);
-                Py_DECREF(holder);
+                fy_py_xdecref(result);
+                fy_py_xdecref(holder);
                 PyErr_SetString(PyExc_RuntimeError, "Failed to get document VDS");
                 return NULL;
             }
 
             PyObject *doc = FyGeneric_from_vds_with_parent(vds, holder, mutable);
             if (doc == NULL) {
-                Py_DECREF(result);
-                Py_DECREF(holder);
+                fy_py_xdecref(result);
+                fy_py_xdecref(holder);
                 return NULL;
             }
 
@@ -4400,7 +4558,7 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
         }
 
         /* Release our reference to holder - docs keep it alive */
-        Py_DECREF(holder);
+        fy_py_xdecref(holder);
 
         /* Auto-trim if requested (default behavior) */
         if (trim && gb) {
@@ -4415,7 +4573,7 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
             return NULL;
 
         PyObject *content = PyObject_CallObject(read_method, NULL);
-        Py_DECREF(read_method);
+        fy_py_xdecref(read_method);
 
         if (content == NULL)
             return NULL;
@@ -4423,14 +4581,14 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
         /* Call loads_all with the content */
         PyObject *loads_all_kwargs = PyDict_New();
         if (loads_all_kwargs == NULL) {
-            Py_DECREF(content);
+            fy_py_xdecref(content);
             return NULL;
         }
 
         PyObject *mode_str = PyUnicode_FromString(mode);
         if (mode_str == NULL) {
-            Py_DECREF(loads_all_kwargs);
-            Py_DECREF(content);
+            fy_py_xdecref(loads_all_kwargs);
+            fy_py_xdecref(content);
             return NULL;
         }
         PyObject *dedup_bool = PyBool_FromLong(dedup);
@@ -4448,20 +4606,20 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
         PyDict_SetItemString(loads_all_kwargs, "keep_comments", comments_bool);
         PyDict_SetItemString(loads_all_kwargs, "keep_style", style_bool);
 
-        Py_DECREF(mode_str);
-        Py_DECREF(dedup_bool);
-        Py_DECREF(trim_bool);
-        Py_DECREF(mutable_bool);
-        Py_DECREF(markers_bool);
-        Py_DECREF(comments_bool);
-        Py_DECREF(style_bool);
+        fy_py_xdecref(mode_str);
+        fy_py_xdecref(dedup_bool);
+        fy_py_xdecref(trim_bool);
+        fy_py_xdecref(mutable_bool);
+        fy_py_xdecref(markers_bool);
+        fy_py_xdecref(comments_bool);
+        fy_py_xdecref(style_bool);
 
         PyObject *loads_all_args = PyTuple_Pack(1, content);
         PyObject *result = libfyaml_loads_all(self, loads_all_args, loads_all_kwargs);
 
-        Py_DECREF(loads_all_args);
-        Py_DECREF(loads_all_kwargs);
-        Py_DECREF(content);
+        fy_py_xdecref(loads_all_args);
+        fy_py_xdecref(loads_all_kwargs);
+        fy_py_xdecref(content);
         return result;
     }
 }
@@ -4475,19 +4633,23 @@ libfyaml_dumps_all(PyObject *self, PyObject *args, PyObject *kwargs)
     int json_mode = 0;
     const char *style = NULL;
     static char *kwlist[] = {"documents", "compact", "json", "style", NULL};
+    struct fy_generic_builder *gb = NULL;
+    fy_generic doc_sequence;
+    unsigned int emit_flags;
+    fy_generic emitted;
+    fy_generic_sized_string szstr;
+    PyObject *result;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|ppz", kwlist,
                                      &documents, &compact, &json_mode, &style))
         return NULL;
 
     /* Create generic builder for emitting */
-    struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
+    gb = fy_generic_builder_create(NULL);
     if (gb == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
         return NULL;
     }
-
-    fy_generic doc_sequence;
 
     /* Accept either a FyGeneric sequence or a Python list of FyGeneric objects */
     if (Py_TYPE(documents) == &FyGenericType) {
@@ -4503,15 +4665,17 @@ libfyaml_dumps_all(PyObject *self, PyObject *args, PyObject *kwargs)
         /* Python list - build a sequence from it */
         Py_ssize_t count = PyList_Size(documents);
         fy_generic *items = alloca(count * sizeof(fy_generic));
+        Py_ssize_t i;
 
-        for (Py_ssize_t i = 0; i < count; i++) {
+        for (i = 0; i < count; i++) {
             PyObject *item = PyList_GET_ITEM(documents, i);
+            FyGenericObject *fyitem;
             if (Py_TYPE(item) != &FyGenericType) {
                 fy_generic_builder_destroy(gb);
                 PyErr_SetString(PyExc_TypeError, "all documents must be FyGeneric objects");
                 return NULL;
             }
-            FyGenericObject *fyitem = (FyGenericObject *)item;
+            fyitem = (FyGenericObject *)item;
             items[i] = fy_gb_internalize(gb, fyitem->fyg);
         }
         doc_sequence = fy_gb_sequence_create(gb, count, items);
@@ -4528,7 +4692,7 @@ libfyaml_dumps_all(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     /* Determine emit flags based on options - add MULTI_DOCUMENT flag */
-    unsigned int emit_flags = FYOPEF_DISABLE_DIRECTORY | FYOPEF_OUTPUT_TYPE_STRING | FYOPEF_MULTI_DOCUMENT;
+    emit_flags = FYOPEF_DISABLE_DIRECTORY | FYOPEF_OUTPUT_TYPE_STRING | FYOPEF_MULTI_DOCUMENT;
 
     if (json_mode) {
         emit_flags |= FYOPEF_MODE_JSON;
@@ -4563,7 +4727,7 @@ libfyaml_dumps_all(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     /* Emit the sequence of documents */
-    fy_generic emitted = fy_gb_emit(gb, doc_sequence, emit_flags, NULL);
+    emitted = fy_gb_emit(gb, doc_sequence, emit_flags, NULL);
 
     if (!fy_generic_is_valid(emitted) || !fy_generic_is_string(emitted)) {
         fy_generic_builder_destroy(gb);
@@ -4572,14 +4736,14 @@ libfyaml_dumps_all(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     /* Extract the sized string from the generic */
-    fy_generic_sized_string szstr = fy_cast(emitted, fy_szstr_empty);
+    szstr = fy_cast(emitted, fy_szstr_empty);
     if (szstr.data == NULL) {
         fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_RuntimeError, "Failed to extract string from emitted generic");
         return NULL;
     }
 
-    PyObject *result = PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+    result = PyUnicode_FromStringAndSize(szstr.data, szstr.size);
     fy_generic_builder_destroy(gb);
     return result;
 }
@@ -4593,6 +4757,7 @@ libfyaml_dump_all(PyObject *self, PyObject *args, PyObject *kwargs)
     int compact = 0;
     int json_mode = 0;
     static char *kwlist[] = {"file", "documents", "compact", "json", NULL};
+    FyGenericObject *fyobj;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OO|pp", kwlist,
                                      &file_obj, &documents, &compact, &json_mode))
@@ -4604,7 +4769,7 @@ libfyaml_dump_all(PyObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    FyGenericObject *fyobj = (FyGenericObject *)documents;
+    fyobj = (FyGenericObject *)documents;
     if (!fy_generic_is_sequence(fyobj->fyg)) {
         PyErr_SetString(PyExc_TypeError, "documents must be a sequence");
         return NULL;
@@ -4614,18 +4779,23 @@ libfyaml_dump_all(PyObject *self, PyObject *args, PyObject *kwargs)
     if (PyUnicode_Check(file_obj)) {
         /* It's a file path - use fy_gb_emit_file() for direct file output */
         const char *path = PyUnicode_AsUTF8(file_obj);
+        struct fy_generic_builder *gb = NULL;
+        fy_generic doc_sequence;
+        unsigned int emit_flags;
+        fy_generic result_g;
+        int result_code;
         if (path == NULL)
             return NULL;
 
         /* Create generic builder for emitting */
-        struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
+        gb = fy_generic_builder_create(NULL);
         if (gb == NULL) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
             return NULL;
         }
 
         /* Internalize the sequence into our builder */
-        fy_generic doc_sequence = fy_gb_internalize(gb, fyobj->fyg);
+        doc_sequence = fy_gb_internalize(gb, fyobj->fyg);
         if (!fy_generic_is_valid(doc_sequence)) {
             fy_generic_builder_destroy(gb);
             PyErr_SetString(PyExc_RuntimeError, "Failed to internalize document sequence");
@@ -4633,10 +4803,10 @@ libfyaml_dump_all(PyObject *self, PyObject *args, PyObject *kwargs)
         }
 
         /* Build emit flags */
-        unsigned int emit_flags = build_emit_flags(json_mode, compact, 1, 0);
+        emit_flags = build_emit_flags(json_mode, compact, 1, 0);
 
         /* Emit to file using new API - returns int 0 on success */
-        fy_generic result_g = fy_gb_emit_file(gb, doc_sequence, emit_flags, path);
+        result_g = fy_gb_emit_file(gb, doc_sequence, emit_flags, path);
 
         /* Check for success: should return integer 0 */
         if (!fy_generic_is_valid(result_g)) {
@@ -4652,7 +4822,7 @@ libfyaml_dump_all(PyObject *self, PyObject *args, PyObject *kwargs)
             return NULL;
         }
 
-        int result_code = fy_cast(result_g, -1);
+        result_code = fy_cast(result_g, -1);
         fy_generic_builder_destroy(gb);
 
         if (result_code != 0) {
@@ -4664,34 +4834,38 @@ libfyaml_dump_all(PyObject *self, PyObject *args, PyObject *kwargs)
     } else {
         /* Assume it's a file object - use dumps_all() and write */
         PyObject *dumps_all_kwargs = PyDict_New();
+        PyObject *compact_bool;
+        PyObject *json_bool;
+        PyObject *dumps_all_args;
+        PyObject *yaml_str;
         if (dumps_all_kwargs == NULL)
             return NULL;
 
-        PyObject *compact_bool = PyBool_FromLong(compact);
-        PyObject *json_bool = PyBool_FromLong(json_mode);
+        compact_bool = PyBool_FromLong(compact);
+        json_bool = PyBool_FromLong(json_mode);
 
         PyDict_SetItemString(dumps_all_kwargs, "compact", compact_bool);
         PyDict_SetItemString(dumps_all_kwargs, "json", json_bool);
 
-        Py_DECREF(compact_bool);
-        Py_DECREF(json_bool);
+        fy_py_xdecref(compact_bool);
+        fy_py_xdecref(json_bool);
 
-        PyObject *dumps_all_args = PyTuple_Pack(1, documents);
-        PyObject *yaml_str = libfyaml_dumps_all(self, dumps_all_args, dumps_all_kwargs);
+        dumps_all_args = PyTuple_Pack(1, documents);
+        yaml_str = libfyaml_dumps_all(self, dumps_all_args, dumps_all_kwargs);
 
-        Py_DECREF(dumps_all_args);
-        Py_DECREF(dumps_all_kwargs);
+        fy_py_xdecref(dumps_all_args);
+        fy_py_xdecref(dumps_all_kwargs);
 
         if (yaml_str == NULL)
             return NULL;
 
         /* Write to file object */
         if (write_to_file_object(file_obj, yaml_str) < 0) {
-            Py_DECREF(yaml_str);
+            fy_py_xdecref(yaml_str);
             return NULL;
         }
 
-        Py_DECREF(yaml_str);
+        fy_py_xdecref(yaml_str);
         Py_RETURN_NONE;
     }
 }
@@ -4764,17 +4938,24 @@ libfyaml_stream_parse(PyObject *self, PyObject *args, PyObject *kwargs)
     Py_ssize_t yaml_len;
     const char *mode = "yaml1.1";
     static char *kwlist[] = {"s", "mode", NULL};
+    enum fy_parse_cfg_flags flags;
+    struct fy_parse_cfg cfg = {0};
+    struct fy_parser *fyp = NULL;
+    PyObject *result = NULL;
+    /* Declared here so parse_error: can clean them up on any mid-case goto */
+    PyObject *py_sm = NULL, *py_em = NULL;
+    struct fy_event *fye;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|s", kwlist,
                                      &yaml_str, &yaml_len, &mode))
         return NULL;
 
-    enum fy_parse_cfg_flags flags = parse_mode_to_parser_flags(mode);
+    flags = parse_mode_to_parser_flags(mode);
     if ((int)flags == -1)
         return NULL;
 
-    struct fy_parse_cfg cfg = { .flags = flags };
-    struct fy_parser *fyp = fy_parser_create(&cfg);
+    cfg.flags = flags;
+    fyp = fy_parser_create(&cfg);
     if (!fyp) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create parser");
         return NULL;
@@ -4786,26 +4967,20 @@ libfyaml_stream_parse(PyObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    PyObject *result = PyList_New(0);
+    result = PyList_New(0);
     if (!result) {
         fy_parser_destroy(fyp);
         return NULL;
     }
 
-    struct fy_event *fye;
     while ((fye = fy_parser_parse(fyp)) != NULL) {
         PyObject *evt = NULL;
         enum fy_event_type type = fy_event_get_type(fye);
 
-        const struct fy_mark *sm = fy_event_start_mark(fye);
-        const struct fy_mark *em = fy_event_end_mark(fye);
-        PyObject *py_sm = mark_to_tuple(sm);
-        PyObject *py_em = mark_to_tuple(em);
-        if (!py_sm || !py_em) {
-            Py_XDECREF(py_sm);
-            Py_XDECREF(py_em);
+        py_sm = mark_to_tuple(fy_event_start_mark(fye));
+        py_em = mark_to_tuple(fy_event_end_mark(fye));
+        if (!py_sm || !py_em)
             goto parse_error;
-        }
 
         switch (type) {
         case FYET_STREAM_START:
@@ -4821,31 +4996,22 @@ libfyaml_stream_parse(PyObject *self, PyObject *args, PyObject *kwargs)
         case FYET_DOCUMENT_START: {
             /* (3, implicit, version_tuple_or_None, tags_list_or_None, start_mark, end_mark) */
             int implicit = fye->document_start.implicit ? 1 : 0;
-
-            /* Version */
+            /* Version: borrowed Py_None or newly built tuple */
             PyObject *py_ver = Py_None;
-            Py_INCREF(Py_None);
             const struct fy_version *ver = fy_document_start_event_version(fye);
-            if (ver) {
-                Py_DECREF(py_ver);
-                py_ver = Py_BuildValue("(ii)", ver->major, ver->minor);
-                if (!py_ver) {
-                    Py_DECREF(py_sm);
-                    Py_DECREF(py_em);
-                    goto parse_error;
-                }
-            }
-
-            /* Tag directives */
+            /* Tag directives: borrowed Py_None or newly built dict */
             PyObject *py_tags = Py_None;
-            Py_INCREF(Py_None);
             struct fy_document_state *fyds = fye->document_start.document_state;
+            if (ver) {
+                py_ver = Py_BuildValue("(ii)", ver->major, ver->minor);
+                if (!py_ver)
+                    goto parse_error;
+            }
             if (fyds) {
                 void *iter = NULL;
                 const struct fy_tag *tag;
                 int has_non_default = 0;
 
-                /* Check if there are any non-default tags */
                 while ((tag = fy_document_state_tag_directive_iterate(fyds, &iter)) != NULL) {
                     if (!fy_document_state_tag_is_default(fyds, tag)) {
                         has_non_default = 1;
@@ -4854,12 +5020,9 @@ libfyaml_stream_parse(PyObject *self, PyObject *args, PyObject *kwargs)
                 }
 
                 if (has_non_default) {
-                    Py_DECREF(py_tags);
                     py_tags = PyDict_New();
                     if (!py_tags) {
-                        Py_DECREF(py_ver);
-                        Py_DECREF(py_sm);
-                        Py_DECREF(py_em);
+                        fy_py_xdecref(py_ver);
                         goto parse_error;
                     }
                     iter = NULL;
@@ -4869,16 +5032,16 @@ libfyaml_stream_parse(PyObject *self, PyObject *args, PyObject *kwargs)
                             PyObject *val = PyUnicode_FromString(tag->prefix);
                             if (key && val)
                                 PyDict_SetItem(py_tags, key, val);
-                            Py_XDECREF(key);
-                            Py_XDECREF(val);
+                            fy_py_xdecref(key);
+                            fy_py_xdecref(val);
                         }
                     }
                 }
             }
 
             evt = Py_BuildValue("(iiOOOO)", 3, implicit, py_ver, py_tags, py_sm, py_em);
-            Py_DECREF(py_ver);
-            Py_DECREF(py_tags);
+            fy_py_xdecref(py_ver);
+            fy_py_xdecref(py_tags);
             break;
         }
 
@@ -4893,37 +5056,33 @@ libfyaml_stream_parse(PyObject *self, PyObject *args, PyObject *kwargs)
             /* (5, anchor, tag, implicit, flow_style, start_mark, end_mark) */
             struct fy_token *anchor_tok = fy_event_get_anchor_token(fye);
             struct fy_token *tag_tok = fy_event_get_tag_token(fye);
-
+            /* py_anchor: borrowed Py_None or new string */
             PyObject *py_anchor = Py_None;
-            Py_INCREF(Py_None);
+            PyObject *py_tag = NULL;
+            int implicit = 0;
+            enum fy_node_style ns = FYNS_ANY;
+            PyObject *py_flow = Py_None;
             if (anchor_tok) {
                 const char *anchor_text = fy_token_get_text0(anchor_tok);
                 if (anchor_text) {
-                    Py_DECREF(py_anchor);
                     py_anchor = PyUnicode_FromString(anchor_text);
                     if (!py_anchor) goto parse_error;
                 }
             }
 
-            PyObject *py_tag = tag_token_to_pystring(tag_tok);
-            if (!py_tag) { Py_DECREF(py_anchor); goto parse_error; }
+            py_tag = tag_token_to_pystring(tag_tok);
+            if (!py_tag) { fy_py_xdecref(py_anchor); goto parse_error; }
 
-            int implicit = (tag_tok == NULL) ? 1 : 0;
+            implicit = (tag_tok == NULL) ? 1 : 0;
 
-            enum fy_node_style ns = fy_event_get_node_style(fye);
-            PyObject *py_flow;
-            if (ns == FYNS_FLOW)
-                py_flow = Py_True;
-            else if (ns == FYNS_BLOCK)
-                py_flow = Py_False;
-            else
-                py_flow = Py_None;
-            Py_INCREF(py_flow);
+            /* py_flow: borrowed singleton (Py_True/Py_False/Py_None) */
+            ns = fy_event_get_node_style(fye);
+            py_flow = (ns == FYNS_FLOW) ? Py_True :
+                      (ns == FYNS_BLOCK) ? Py_False : Py_None;
 
             evt = Py_BuildValue("(iOOiOOO)", 5, py_anchor, py_tag, implicit, py_flow, py_sm, py_em);
-            Py_DECREF(py_anchor);
-            Py_DECREF(py_tag);
-            Py_DECREF(py_flow);
+            fy_py_xdecref(py_anchor);
+            fy_py_xdecref(py_tag);
             break;
         }
 
@@ -4936,37 +5095,33 @@ libfyaml_stream_parse(PyObject *self, PyObject *args, PyObject *kwargs)
             /* (7, anchor, tag, implicit, flow_style, start_mark, end_mark) */
             struct fy_token *anchor_tok = fy_event_get_anchor_token(fye);
             struct fy_token *tag_tok = fy_event_get_tag_token(fye);
-
+            /* py_anchor: borrowed Py_None or new string */
             PyObject *py_anchor = Py_None;
-            Py_INCREF(Py_None);
+            PyObject *py_tag = NULL;
+            int implicit = 0;
+            enum fy_node_style ns = FYNS_ANY;
+            PyObject *py_flow = Py_None;
             if (anchor_tok) {
                 const char *anchor_text = fy_token_get_text0(anchor_tok);
                 if (anchor_text) {
-                    Py_DECREF(py_anchor);
                     py_anchor = PyUnicode_FromString(anchor_text);
                     if (!py_anchor) goto parse_error;
                 }
             }
 
-            PyObject *py_tag = tag_token_to_pystring(tag_tok);
-            if (!py_tag) { Py_DECREF(py_anchor); goto parse_error; }
+            py_tag = tag_token_to_pystring(tag_tok);
+            if (!py_tag) { fy_py_xdecref(py_anchor); goto parse_error; }
 
-            int implicit = (tag_tok == NULL) ? 1 : 0;
+            implicit = (tag_tok == NULL) ? 1 : 0;
 
-            enum fy_node_style ns = fy_event_get_node_style(fye);
-            PyObject *py_flow;
-            if (ns == FYNS_FLOW)
-                py_flow = Py_True;
-            else if (ns == FYNS_BLOCK)
-                py_flow = Py_False;
-            else
-                py_flow = Py_None;
-            Py_INCREF(py_flow);
+            /* py_flow: borrowed singleton */
+            ns = fy_event_get_node_style(fye);
+            py_flow = (ns == FYNS_FLOW) ? Py_True :
+                      (ns == FYNS_BLOCK) ? Py_False : Py_None;
 
             evt = Py_BuildValue("(iOOiOOO)", 7, py_anchor, py_tag, implicit, py_flow, py_sm, py_em);
-            Py_DECREF(py_anchor);
-            Py_DECREF(py_tag);
-            Py_DECREF(py_flow);
+            fy_py_xdecref(py_anchor);
+            fy_py_xdecref(py_tag);
             break;
         }
 
@@ -4980,72 +5135,68 @@ libfyaml_stream_parse(PyObject *self, PyObject *args, PyObject *kwargs)
             struct fy_token *anchor_tok = fye->scalar.anchor;
             struct fy_token *tag_tok = fye->scalar.tag;
             struct fy_token *value_tok = fye->scalar.value;
-
+            /* py_anchor: borrowed Py_None or new string */
             PyObject *py_anchor = Py_None;
-            Py_INCREF(Py_None);
+            PyObject *py_tag = NULL;
+            size_t val_len = 0;
+            const char *val_text = NULL;
+            PyObject *py_value = NULL;
+            enum fy_scalar_style ss = FYSS_ANY;
+            PyObject *py_style = Py_None;
+            int plain_implicit = 0;
+            int non_plain_implicit = 0;
+            PyObject *py_implicit = NULL;
             if (anchor_tok) {
                 const char *anchor_text = fy_token_get_text0(anchor_tok);
                 if (anchor_text) {
-                    Py_DECREF(py_anchor);
                     py_anchor = PyUnicode_FromString(anchor_text);
                     if (!py_anchor) goto parse_error;
                 }
             }
 
-            PyObject *py_tag = tag_token_to_pystring(tag_tok);
-            if (!py_tag) { Py_DECREF(py_anchor); goto parse_error; }
+            py_tag = tag_token_to_pystring(tag_tok);
+            if (!py_tag) { fy_py_xdecref(py_anchor); goto parse_error; }
 
-            /* Get scalar value */
-            size_t val_len = 0;
-            const char *val_text = fy_token_get_text(value_tok, &val_len);
-            PyObject *py_value;
-            if (val_text)
-                py_value = PyUnicode_FromStringAndSize(val_text, val_len);
-            else
-                py_value = PyUnicode_FromString("");
+            /* Scalar value: fall back to empty string on invalid UTF-8 */
+            val_text = fy_token_get_text(value_tok, &val_len);
+            py_value = val_text
+                ? PyUnicode_FromStringAndSize(val_text, val_len)
+                : PyUnicode_FromString("");
             if (!py_value) {
-                /* Invalid UTF-8 or allocation failure - use empty string */
                 PyErr_Clear();
                 py_value = PyUnicode_FromString("");
             }
 
-            /* Scalar style */
-            enum fy_scalar_style ss = fy_token_scalar_style(value_tok);
-            PyObject *py_style;
+            /* py_style: borrowed Py_None for plain, new string otherwise */
+            ss = fy_token_scalar_style(value_tok);
             switch (ss) {
-            case FYSS_SINGLE_QUOTED:
-                py_style = PyUnicode_FromString("'");
-                break;
-            case FYSS_DOUBLE_QUOTED:
-                py_style = PyUnicode_FromString("\"");
-                break;
-            case FYSS_LITERAL:
-                py_style = PyUnicode_FromString("|");
-                break;
-            case FYSS_FOLDED:
-                py_style = PyUnicode_FromString(">");
-                break;
-            default: /* FYSS_PLAIN, FYSS_ANY */
-                py_style = Py_None;
-                Py_INCREF(Py_None);
-                break;
+            case FYSS_SINGLE_QUOTED: py_style = PyUnicode_FromString("'");  break;
+            case FYSS_DOUBLE_QUOTED: py_style = PyUnicode_FromString("\""); break;
+            case FYSS_LITERAL:       py_style = PyUnicode_FromString("|");  break;
+            case FYSS_FOLDED:        py_style = PyUnicode_FromString(">");  break;
+            default:                 py_style = Py_None;                    break;
             }
-            if (!py_style) { Py_DECREF(py_anchor); Py_DECREF(py_tag); Py_DECREF(py_value); goto parse_error; }
+            if (!py_style) {
+                fy_py_xdecref(py_anchor);
+                fy_py_xdecref(py_tag);
+                fy_py_xdecref(py_value);
+                goto parse_error;
+            }
 
             /* Implicit tuple: (plain_implicit, non_plain_implicit) */
-            int plain_implicit = (tag_tok == NULL && ss == FYSS_PLAIN) ? 1 : 0;
-            int non_plain_implicit = (tag_tok == NULL && ss != FYSS_PLAIN) ? 1 : 0;
+            plain_implicit = (tag_tok == NULL && ss == FYSS_PLAIN) ? 1 : 0;
+            non_plain_implicit = (tag_tok == NULL && ss != FYSS_PLAIN) ? 1 : 0;
             if (fye->scalar.tag_implicit)
                 non_plain_implicit = 1;
-            PyObject *py_implicit = Py_BuildValue("(ii)", plain_implicit, non_plain_implicit);
+            py_implicit = Py_BuildValue("(ii)", plain_implicit, non_plain_implicit);
 
             evt = Py_BuildValue("(iOOOOOOO)", 9, py_anchor, py_tag, py_implicit,
                                 py_value, py_style, py_sm, py_em);
-            Py_DECREF(py_anchor);
-            Py_DECREF(py_tag);
-            Py_DECREF(py_implicit);
-            Py_DECREF(py_value);
-            Py_DECREF(py_style);
+            fy_py_xdecref(py_anchor);
+            fy_py_xdecref(py_tag);
+            fy_py_xdecref(py_implicit);
+            fy_py_xdecref(py_value);
+            fy_py_xdecref(py_style);
             break;
         }
 
@@ -5053,39 +5204,37 @@ libfyaml_stream_parse(PyObject *self, PyObject *args, PyObject *kwargs)
             /* (10, anchor, start_mark, end_mark) */
             struct fy_token *anchor_tok = fye->alias.anchor;
             PyObject *py_anchor = Py_None;
-            Py_INCREF(Py_None);
             if (anchor_tok) {
                 const char *anchor_text = fy_token_get_text0(anchor_tok);
                 if (anchor_text) {
-                    Py_DECREF(py_anchor);
                     py_anchor = PyUnicode_FromString(anchor_text);
                     if (!py_anchor) goto parse_error;
                 }
             }
             evt = Py_BuildValue("(iOOO)", 10, py_anchor, py_sm, py_em);
-            Py_DECREF(py_anchor);
+            fy_py_xdecref(py_anchor);
             break;
         }
 
         default:
             /* Skip unknown event types */
-            Py_DECREF(py_sm);
-            Py_DECREF(py_em);
             fy_parser_event_free(fyp, fye);
+            fy_py_release(&py_sm);
+            fy_py_release(&py_em);
             continue;
         }
 
-        Py_DECREF(py_sm);
-        Py_DECREF(py_em);
+        fy_py_release(&py_sm);
+        fy_py_release(&py_em);
 
         if (!evt)
             goto parse_error;
 
         if (PyList_Append(result, evt) < 0) {
-            Py_DECREF(evt);
+            fy_py_xdecref(evt);
             goto parse_error;
         }
-        Py_DECREF(evt);
+        fy_py_xdecref(evt);
 
         fy_parser_event_free(fyp, fye);
     }
@@ -5094,7 +5243,9 @@ libfyaml_stream_parse(PyObject *self, PyObject *args, PyObject *kwargs)
     return result;
 
 parse_error:
-    Py_XDECREF(result);
+    fy_py_xdecref(py_sm);
+    fy_py_xdecref(py_em);
+    fy_py_xdecref(result);
     fy_parser_destroy(fyp);
     if (!PyErr_Occurred())
         PyErr_SetString(PyExc_RuntimeError, "Error during YAML parsing");
@@ -5109,17 +5260,24 @@ libfyaml_stream_scan(PyObject *self, PyObject *args, PyObject *kwargs)
     Py_ssize_t yaml_len;
     const char *mode = "yaml1.1";
     static char *kwlist[] = {"s", "mode", NULL};
+    enum fy_parse_cfg_flags flags;
+    struct fy_parse_cfg cfg = {0};
+    struct fy_parser *fyp = NULL;
+    PyObject *result = NULL;
+    /* Declared here so scan_error: can clean them up on any mid-case goto */
+    PyObject *py_sm = NULL, *py_em = NULL;
+    struct fy_token *fyt;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|s", kwlist,
                                      &yaml_str, &yaml_len, &mode))
         return NULL;
 
-    enum fy_parse_cfg_flags flags = parse_mode_to_parser_flags(mode);
+    flags = parse_mode_to_parser_flags(mode);
     if ((int)flags == -1)
         return NULL;
 
-    struct fy_parse_cfg cfg = { .flags = flags };
-    struct fy_parser *fyp = fy_parser_create(&cfg);
+    cfg.flags = flags;
+    fyp = fy_parser_create(&cfg);
     if (!fyp) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create parser");
         return NULL;
@@ -5131,26 +5289,20 @@ libfyaml_stream_scan(PyObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    PyObject *result = PyList_New(0);
+    result = PyList_New(0);
     if (!result) {
         fy_parser_destroy(fyp);
         return NULL;
     }
 
-    struct fy_token *fyt;
     while ((fyt = fy_scan(fyp)) != NULL) {
         PyObject *tok = NULL;
         enum fy_token_type type = fy_token_get_type(fyt);
 
-        const struct fy_mark *sm = fy_token_start_mark(fyt);
-        const struct fy_mark *em = fy_token_end_mark(fyt);
-        PyObject *py_sm = mark_to_tuple(sm);
-        PyObject *py_em = mark_to_tuple(em);
-        if (!py_sm || !py_em) {
-            Py_XDECREF(py_sm);
-            Py_XDECREF(py_em);
+        py_sm = mark_to_tuple(fy_token_start_mark(fyt));
+        py_em = mark_to_tuple(fy_token_end_mark(fyt));
+        if (!py_sm || !py_em)
             goto scan_error;
-        }
 
         switch (type) {
         case FYTT_STREAM_START:
@@ -5163,39 +5315,37 @@ libfyaml_stream_scan(PyObject *self, PyObject *args, PyObject *kwargs)
             break;
 
         case FYTT_VERSION_DIRECTIVE: {
+            /* py_ver: borrowed Py_None or newly built tuple */
             const struct fy_version *ver = fy_version_directive_token_version(fyt);
             PyObject *py_ver = Py_None;
-            Py_INCREF(Py_None);
             if (ver) {
-                Py_DECREF(py_ver);
                 py_ver = Py_BuildValue("(ii)", ver->major, ver->minor);
+                /* if py_ver is NULL, Py_BuildValue put it in tok via "O" which
+                 * handles NULL gracefully — tok will also be NULL */
             }
             tok = Py_BuildValue("(i(sO)OO)", 3, "YAML", py_ver, py_sm, py_em);
-            Py_DECREF(py_ver);
+            fy_py_xdecref(py_ver);
             break;
         }
 
         case FYTT_TAG_DIRECTIVE: {
+            /* py_handle/py_prefix: borrowed Py_None or new strings */
             const struct fy_tag *tag = fy_tag_directive_token_tag(fyt);
             PyObject *py_handle = Py_None;
             PyObject *py_prefix = Py_None;
-            Py_INCREF(Py_None);
-            Py_INCREF(Py_None);
             if (tag) {
                 if (tag->handle) {
-                    Py_DECREF(py_handle);
                     py_handle = PyUnicode_FromString(tag->handle);
-                    if (!py_handle) { Py_DECREF(py_prefix); goto scan_error; }
+                    if (!py_handle) goto scan_error;
                 }
                 if (tag->prefix) {
-                    Py_DECREF(py_prefix);
                     py_prefix = PyUnicode_FromString(tag->prefix);
-                    if (!py_prefix) { Py_DECREF(py_handle); goto scan_error; }
+                    if (!py_prefix) { fy_py_xdecref(py_handle); goto scan_error; }
                 }
             }
             tok = Py_BuildValue("(i(s(OO))OO)", 4, "TAG", py_handle, py_prefix, py_sm, py_em);
-            Py_DECREF(py_handle);
-            Py_DECREF(py_prefix);
+            fy_py_xdecref(py_handle);
+            fy_py_xdecref(py_prefix);
             break;
         }
 
@@ -5278,56 +5428,48 @@ libfyaml_stream_scan(PyObject *self, PyObject *args, PyObject *kwargs)
             const char *val = fy_token_get_text(fyt, &val_len);
             enum fy_scalar_style ss = fy_scalar_token_get_style(fyt);
             int plain = (ss == FYSS_PLAIN || ss == FYSS_ANY) ? 1 : 0;
-            PyObject *py_style;
+            /* py_style: borrowed Py_None for plain, new string otherwise */
+            PyObject *py_style = Py_None;
+            PyObject *py_val = NULL;
             switch (ss) {
-            case FYSS_SINGLE_QUOTED:
-                py_style = PyUnicode_FromString("'");
-                break;
-            case FYSS_DOUBLE_QUOTED:
-                py_style = PyUnicode_FromString("\"");
-                break;
-            case FYSS_LITERAL:
-                py_style = PyUnicode_FromString("|");
-                break;
-            case FYSS_FOLDED:
-                py_style = PyUnicode_FromString(">");
-                break;
-            default:
-                py_style = Py_None;
-                Py_INCREF(Py_None);
-                break;
+            case FYSS_SINGLE_QUOTED: py_style = PyUnicode_FromString("'");  break;
+            case FYSS_DOUBLE_QUOTED: py_style = PyUnicode_FromString("\""); break;
+            case FYSS_LITERAL:       py_style = PyUnicode_FromString("|");  break;
+            case FYSS_FOLDED:        py_style = PyUnicode_FromString(">");  break;
+            default:                 py_style = Py_None;                    break;
             }
-            PyObject *py_val = val ? PyUnicode_FromStringAndSize(val, val_len)
-                                  : PyUnicode_FromString("");
+
+            py_val = val ? PyUnicode_FromStringAndSize(val, val_len)
+                         : PyUnicode_FromString("");
             if (!py_val) {
                 PyErr_Clear();
                 py_val = PyUnicode_FromString("");
             }
             tok = Py_BuildValue("(iOiOOO)", 21, py_val, plain, py_style, py_sm, py_em);
-            Py_DECREF(py_val);
-            Py_DECREF(py_style);
+            fy_py_xdecref(py_val);
+            fy_py_xdecref(py_style);
             break;
         }
 
         default:
             /* Skip non-YAML tokens (path expressions etc.) */
-            Py_DECREF(py_sm);
-            Py_DECREF(py_em);
             fy_scan_token_free(fyp, fyt);
+            fy_py_release(&py_sm);
+            fy_py_release(&py_em);
             continue;
         }
 
-        Py_DECREF(py_sm);
-        Py_DECREF(py_em);
+        fy_py_release(&py_sm);
+        fy_py_release(&py_em);
 
         if (!tok)
             goto scan_error;
 
         if (PyList_Append(result, tok) < 0) {
-            Py_DECREF(tok);
+            fy_py_xdecref(tok);
             goto scan_error;
         }
-        Py_DECREF(tok);
+        fy_py_xdecref(tok);
 
         fy_scan_token_free(fyp, fyt);
     }
@@ -5336,7 +5478,9 @@ libfyaml_stream_scan(PyObject *self, PyObject *args, PyObject *kwargs)
     return result;
 
 scan_error:
-    Py_XDECREF(result);
+    fy_py_xdecref(py_sm);
+    fy_py_xdecref(py_em);
+    fy_py_xdecref(result);
     fy_parser_destroy(fyp);
     if (!PyErr_Occurred())
         PyErr_SetString(PyExc_RuntimeError, "Error during YAML scanning");
@@ -5361,14 +5505,20 @@ libfyaml_stream_emit(PyObject *self, PyObject *args, PyObject *kwargs)
                                      &width_obj, &allow_unicode, &line_break))
         return NULL;
 
+    enum fy_emitter_cfg_flags emit_flags = FYECF_MODE_ORIGINAL | FYECF_WIDTH_INF;
+    struct fy_emitter *emit = NULL;
+    Py_ssize_t n;
+    Py_ssize_t i;
+    size_t output_size;
+    char *output;
+    PyObject *result;
+
     if (!PyList_Check(events_list) && !PyTuple_Check(events_list)) {
         PyErr_SetString(PyExc_TypeError, "events must be a list or tuple");
         return NULL;
     }
 
     /* Build emitter flags */
-    enum fy_emitter_cfg_flags emit_flags = FYECF_MODE_ORIGINAL | FYECF_WIDTH_INF;
-
     if (indent_obj != Py_None) {
         long indent_val = PyLong_AsLong(indent_obj);
         if (indent_val == -1 && PyErr_Occurred())
@@ -5389,26 +5539,29 @@ libfyaml_stream_emit(PyObject *self, PyObject *args, PyObject *kwargs)
             emit_flags |= FYECF_WIDTH(width_val);
     }
 
-    struct fy_emitter *emit = fy_emit_to_string(emit_flags);
+    emit = fy_emit_to_string(emit_flags);
     if (!emit) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create emitter");
         return NULL;
     }
 
-    Py_ssize_t n = PySequence_Length(events_list);
-    for (Py_ssize_t i = 0; i < n; i++) {
+    n = PySequence_Length(events_list);
+    for (i = 0; i < n; i++) {
         PyObject *evt_tuple = PySequence_GetItem(events_list, i);
+        int evt_type;
+        struct fy_event *fye;
+        int rc;
         if (!evt_tuple)
             goto emit_error;
 
         if (!PyTuple_Check(evt_tuple)) {
-            Py_DECREF(evt_tuple);
+            fy_py_xdecref(evt_tuple);
             PyErr_SetString(PyExc_TypeError, "Each event must be a tuple");
             goto emit_error;
         }
 
-        int evt_type = (int)PyLong_AsLong(PyTuple_GET_ITEM(evt_tuple, 0));
-        struct fy_event *fye = NULL;
+        evt_type = (int)PyLong_AsLong(PyTuple_GET_ITEM(evt_tuple, 0));
+        fye = NULL;
 
         switch (evt_type) {
         case 1: /* STREAM_START */
@@ -5421,28 +5574,36 @@ libfyaml_stream_emit(PyObject *self, PyObject *args, PyObject *kwargs)
 
         case 3: { /* DOCUMENT_START: (3, implicit, version, tags, sm, em) */
             int implicit = (int)PyLong_AsLong(PyTuple_GET_ITEM(evt_tuple, 1));
-
             /* Version */
             struct fy_version version_struct;
             const struct fy_version *vers_ptr = NULL;
             PyObject *py_ver = PyTuple_GET_ITEM(evt_tuple, 2);
+            /* Tags - build NULL-terminated array */
+            PyObject *py_tags = PyTuple_GET_ITEM(evt_tuple, 3);
+            struct fy_tag **tags_array = NULL;
+            struct fy_tag *tag_storage = NULL;
             if (py_ver != Py_None && PyTuple_Check(py_ver)) {
                 version_struct.major = (int)PyLong_AsLong(PyTuple_GET_ITEM(py_ver, 0));
                 version_struct.minor = (int)PyLong_AsLong(PyTuple_GET_ITEM(py_ver, 1));
                 vers_ptr = &version_struct;
             }
 
-            /* Tags - build NULL-terminated array */
-            PyObject *py_tags = PyTuple_GET_ITEM(evt_tuple, 3);
-            struct fy_tag **tags_array = NULL;
-            struct fy_tag *tag_storage = NULL;
             if (py_tags != Py_None && PyDict_Check(py_tags)) {
                 Py_ssize_t tag_count = PyDict_Size(py_tags);
-                tags_array = (struct fy_tag **)calloc(tag_count + 1, sizeof(struct fy_tag *));
-                tag_storage = (struct fy_tag *)calloc(tag_count, sizeof(struct fy_tag));
                 PyObject *key, *value;
                 Py_ssize_t pos = 0;
                 Py_ssize_t idx = 0;
+                tags_array = (struct fy_tag **)calloc(tag_count + 1, sizeof(struct fy_tag *));
+                if (!tags_array) {
+                    PyErr_NoMemory();
+                    goto emit_error;
+                }
+                tag_storage = (struct fy_tag *)calloc(tag_count, sizeof(struct fy_tag));
+                if (!tag_storage) {
+                    free(tags_array);
+                    PyErr_NoMemory();
+                    goto emit_error;
+                }
                 while (PyDict_Next(py_tags, &pos, &key, &value)) {
                     tag_storage[idx].handle = PyUnicode_AsUTF8(key);
                     tag_storage[idx].prefix = PyUnicode_AsUTF8(value);
@@ -5552,19 +5713,19 @@ libfyaml_stream_emit(PyObject *self, PyObject *args, PyObject *kwargs)
         }
 
         default:
-            Py_DECREF(evt_tuple);
+            fy_py_xdecref(evt_tuple);
             PyErr_Format(PyExc_ValueError, "Unknown event type: %d", evt_type);
             goto emit_error;
         }
 
-        Py_DECREF(evt_tuple);
+        fy_py_xdecref(evt_tuple);
 
         if (!fye) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to create emit event");
             goto emit_error;
         }
 
-        int rc = fy_emit_event(emit, fye);
+        rc = fy_emit_event(emit, fye);
         if (rc != 0) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to emit event");
             goto emit_error;
@@ -5572,8 +5733,8 @@ libfyaml_stream_emit(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     /* Collect the output */
-    size_t output_size = 0;
-    char *output = fy_emit_to_string_collect(emit, &output_size);
+    output_size = 0;
+    output = fy_emit_to_string_collect(emit, &output_size);
     fy_emitter_destroy(emit);
 
     if (!output) {
@@ -5581,7 +5742,7 @@ libfyaml_stream_emit(PyObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    PyObject *result = PyUnicode_FromStringAndSize(output, output_size);
+    result = PyUnicode_FromStringAndSize(output, output_size);
     free(output);
     return result;
 
@@ -5654,17 +5815,17 @@ PyInit__libfyaml(void)
         return NULL;
 
     /* Add types to module */
-    Py_INCREF(&FyGenericType);
+    fy_py_incref((PyObject *)&FyGenericType);
     if (PyModule_AddObject(m, "FyGeneric", (PyObject *)&FyGenericType) < 0) {
-        Py_DECREF(&FyGenericType);
-        Py_DECREF(m);
+        fy_py_xdecref((PyObject *)&FyGenericType);
+        fy_py_xdecref(m);
         return NULL;
     }
 
-    Py_INCREF(&FyDocumentStateType);
+    fy_py_incref((PyObject *)&FyDocumentStateType);
     if (PyModule_AddObject(m, "FyDocumentState", (PyObject *)&FyDocumentStateType) < 0) {
-        Py_DECREF(&FyDocumentStateType);
-        Py_DECREF(m);
+        fy_py_xdecref((PyObject *)&FyDocumentStateType);
+        fy_py_xdecref(m);
         return NULL;
     }
 
