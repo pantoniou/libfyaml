@@ -42,6 +42,49 @@ static PyTypeObject FyGenericIteratorType;
 /* Forward declarations */
 static PyObject *FyGeneric_from_parent(fy_generic fyg, FyGenericObject *parent, PyObject *path_elem);
 
+/* Singleton-aware reference counting helpers.
+ *
+ * Python 3.12+ has built-in immortality awareness in Py_INCREF/Py_DECREF
+ * (PEP 683), so the standard macros are used directly there.
+ * Python 3.10-3.11 has Py_NewRef() but no immortality in INCREF/DECREF.
+ * Python 3.7-3.9: manual singleton guards throughout.
+ *
+ * In all cases Py_None/Py_True/Py_False are safe to leave unmodified. */
+
+/* NULL-safe DECREF, singleton-safe on all supported Python versions */
+static inline void fy_py_xdecref(PyObject *op)
+{
+#if PY_VERSION_HEX >= 0x030C0000
+    Py_XDECREF(op);                 /* 3.12+: immortality handled internally */
+#else
+    if (op != NULL && op != Py_None && op != Py_True && op != Py_False)
+        Py_DECREF(op);
+#endif
+}
+
+/* INCREF, singleton-safe on all supported Python versions */
+static inline void fy_py_incref(PyObject *op)
+{
+#if PY_VERSION_HEX >= 0x030C0000
+    Py_INCREF(op);                  /* 3.12+: immortality handled internally */
+#else
+    if (op != Py_None && op != Py_True && op != Py_False)
+        Py_INCREF(op);
+#endif
+}
+
+/* Return a new owned reference, singleton-safe on all supported Python versions.
+ * Uses Py_NewRef() on 3.10+ (which on 3.12+ also benefits from immortality). */
+static inline PyObject *fy_py_newref(PyObject *op)
+{
+#if PY_VERSION_HEX >= 0x030A0000
+    return Py_NewRef(op);           /* 3.10+: official API */
+#else
+    fy_py_incref(op);
+    return op;
+#endif
+}
+
 /* Helper: Convert a fy_generic string value directly to a Python unicode object */
 static PyObject *fy_szstr_to_pyunicode(fy_generic g)
 {
@@ -54,8 +97,7 @@ static PyObject *fy_generic_to_python_primitive(fy_generic value)
 {
     switch (fy_get_type(value)) {
     case FYGT_NULL:
-        Py_INCREF(Py_None);
-        return Py_None;
+        return fy_py_newref(Py_None);
     case FYGT_BOOL:
         return PyBool_FromLong(fy_cast(value, (_Bool)false) ? 1 : 0);
     case FYGT_INT:
@@ -108,8 +150,7 @@ FyGenericIterator_dealloc(FyGenericIteratorObject *self)
 static PyObject *
 FyGenericIterator_iter(PyObject *self)
 {
-    Py_INCREF(self);
-    return self;
+    return fy_py_newref(self);
 }
 
 /* FyGenericIterator: __next__ */
@@ -180,8 +221,7 @@ FyGeneric_iter(FyGenericObject *self)
     if (iter == NULL)
         return NULL;
 
-    Py_INCREF(self);
-    iter->generic_obj = self;
+    iter->generic_obj = fy_py_newref(self);
     iter->iter_type = type;
     iter->index = 0;
     if (type == FYGT_SEQUENCE)
@@ -250,16 +290,12 @@ static PyObject *
 FyDocumentState_get_version(FyDocumentStateObject *self, void *closure)
 {
     struct fy_document_state *fyds = fy_generic_vds_get_document_state(self->vds);
-    if (fyds == NULL) {
-        Py_INCREF(Py_None);
-        return Py_None;
-    }
+    if (fyds == NULL)
+        return fy_py_newref(Py_None);
 
     const struct fy_version *vers = fy_document_state_version(fyds);
-    if (vers == NULL) {
-        Py_INCREF(Py_None);
-        return Py_None;
-    }
+    if (vers == NULL)
+        return fy_py_newref(Py_None);
 
     return Py_BuildValue("(ii)", vers->major, vers->minor);
 }
@@ -269,10 +305,8 @@ static PyObject *
 FyDocumentState_get_version_explicit(FyDocumentStateObject *self, void *closure)
 {
     struct fy_document_state *fyds = fy_generic_vds_get_document_state(self->vds);
-    if (fyds == NULL) {
-        Py_INCREF(Py_False);
-        return Py_False;
-    }
+    if (fyds == NULL)
+        return fy_py_newref(Py_False);
 
     return PyBool_FromLong(fy_document_state_version_explicit(fyds));
 }
@@ -282,52 +316,59 @@ static PyObject *
 FyDocumentState_get_tags(FyDocumentStateObject *self, void *closure)
 {
     struct fy_document_state *fyds = fy_generic_vds_get_document_state(self->vds);
-    if (fyds == NULL) {
+    if (fyds == NULL)
         return PyList_New(0);
-    }
 
     PyObject *result = PyList_New(0);
     if (result == NULL)
         return NULL;
 
+    PyObject *tag_dict = NULL;
+    PyObject *handle = NULL;
+    PyObject *prefix = NULL;
+
     void *iter = NULL;
     const struct fy_tag *tag;
     while ((tag = fy_document_state_tag_directive_iterate(fyds, &iter)) != NULL) {
-        PyObject *tag_dict = PyDict_New();
-        if (tag_dict == NULL) {
-            Py_DECREF(result);
-            return NULL;
+        tag_dict = PyDict_New();
+        if (tag_dict == NULL)
+            goto err_out;
+
+        if (tag->handle) {
+            handle = PyUnicode_FromString(tag->handle);
+            if (handle == NULL)
+                goto err_out;
+        } else {
+            handle = Py_None;
         }
 
-        /* Add handle and prefix */
-        PyObject *handle = tag->handle ? PyUnicode_FromString(tag->handle) : Py_None;
-        PyObject *prefix = tag->prefix ? PyUnicode_FromString(tag->prefix) : Py_None;
-
-        if (handle == NULL || prefix == NULL) {
-            Py_XDECREF(handle == Py_None ? NULL : handle);
-            Py_XDECREF(prefix == Py_None ? NULL : prefix);
-            Py_DECREF(tag_dict);
-            Py_DECREF(result);
-            return NULL;
+        if (tag->prefix) {
+            prefix = PyUnicode_FromString(tag->prefix);
+            if (prefix == NULL)
+                goto err_out;
+        } else {
+            prefix = Py_None;
         }
-
-        if (handle == Py_None) Py_INCREF(handle);
-        if (prefix == Py_None) Py_INCREF(prefix);
 
         PyDict_SetItemString(tag_dict, "handle", handle);
         PyDict_SetItemString(tag_dict, "prefix", prefix);
-        Py_DECREF(handle);
-        Py_DECREF(prefix);
+        fy_py_xdecref(handle); handle = NULL;
+        fy_py_xdecref(prefix); prefix = NULL;
 
-        if (PyList_Append(result, tag_dict) < 0) {
-            Py_DECREF(tag_dict);
-            Py_DECREF(result);
-            return NULL;
-        }
-        Py_DECREF(tag_dict);
+        if (PyList_Append(result, tag_dict) < 0)
+            goto err_out;
+
+        Py_DECREF(tag_dict); tag_dict = NULL;
     }
 
     return result;
+
+err_out:
+    fy_py_xdecref(handle);
+    fy_py_xdecref(prefix);
+    Py_XDECREF(tag_dict);
+    Py_DECREF(result);
+    return NULL;
 }
 
 /* FyDocumentState: tags_explicit property getter */
@@ -413,8 +454,7 @@ FyDocumentState_create_child(fy_generic root_fyg, fy_generic vds, FyDocumentStat
     self->vds = vds;
     self->gb = NULL;              /* Child doesn't own the builder */
     self->mutable = parent->mutable;
-    self->parent = (PyObject *)parent;
-    Py_INCREF(parent);
+    self->parent = fy_py_newref((PyObject *)parent);
 
     return (PyObject *)self;
 }
@@ -1214,8 +1254,7 @@ compare_int_helper(fy_generic self_fyg, PyObject *other, int op)
     if (PyLong_Check(other)) {
         if (use_python_cmp) {
             /* Self is large unsigned, just use other as-is */
-            Py_INCREF(other);
-            other_pyobj = other;
+            other_pyobj = fy_py_newref(other);
         } else {
             /* Try to extract as long long */
             other_val = PyLong_AsLongLong(other);
@@ -1566,14 +1605,10 @@ fy_generic_to_python_primitive_or_null(FyGenericObject *self)
 
     switch (type) {
         case FYGT_NULL:
-            Py_INCREF(Py_None);
-            return Py_None;
+            return fy_py_newref(Py_None);
 
-        case FYGT_BOOL: {
-            PyObject *py_obj = fy_cast(self->fyg, (_Bool)0) ? Py_True : Py_False;
-            Py_INCREF(py_obj);
-            return py_obj;
-        }
+        case FYGT_BOOL:
+            return fy_py_newref(fy_cast(self->fyg, (_Bool)0) ? Py_True : Py_False);
 
         case FYGT_INT:
             return PyLong_FromLongLong(fy_cast(self->fyg, (long long)0));
@@ -1736,8 +1771,7 @@ FyGeneric_get_path(FyGenericObject *self, PyObject *Py_UNUSED(args))
         Py_RETURN_NONE;
     }
 
-    Py_INCREF(self->path);
-    return self->path;
+    return fy_py_newref(self->path);
 }
 
 /* FyGeneric: get_at_path(path) - Get value at path (root only) */
@@ -2073,10 +2107,8 @@ FyGeneric_get_at_unix_path(FyGenericObject *self, PyObject *path_str)
         return NULL;
 
     /* Handle empty string or just "/" as root */
-    if (path_cstr[0] == '\0' || (path_cstr[0] == '/' && path_cstr[1] == '\0')) {
-        Py_INCREF(self);
-        return (PyObject *)self;
-    }
+    if (path_cstr[0] == '\0' || (path_cstr[0] == '/' && path_cstr[1] == '\0'))
+        return fy_py_newref((PyObject *)self);
 
     /* Convert Unix path to path list using internal converter */
     PyObject *path_list = unix_path_to_path_list_internal(path_cstr);
@@ -3219,31 +3251,21 @@ FyGeneric_get_class(FyGenericObject *self, void *Py_UNUSED(closure))
 
     switch (type) {
     case FYGT_NULL:
-        /* None's type */
-        Py_INCREF(Py_TYPE(Py_None));
-        return (PyObject *)Py_TYPE(Py_None);
+        return fy_py_newref((PyObject *)Py_TYPE(Py_None));
     case FYGT_BOOL:
-        Py_INCREF(&PyBool_Type);
-        return (PyObject *)&PyBool_Type;
+        return fy_py_newref((PyObject *)&PyBool_Type);
     case FYGT_INT:
-        Py_INCREF(&PyLong_Type);
-        return (PyObject *)&PyLong_Type;
+        return fy_py_newref((PyObject *)&PyLong_Type);
     case FYGT_FLOAT:
-        Py_INCREF(&PyFloat_Type);
-        return (PyObject *)&PyFloat_Type;
+        return fy_py_newref((PyObject *)&PyFloat_Type);
     case FYGT_STRING:
-        Py_INCREF(&PyUnicode_Type);
-        return (PyObject *)&PyUnicode_Type;
+        return fy_py_newref((PyObject *)&PyUnicode_Type);
     case FYGT_SEQUENCE:
-        Py_INCREF(&PyList_Type);
-        return (PyObject *)&PyList_Type;
+        return fy_py_newref((PyObject *)&PyList_Type);
     case FYGT_MAPPING:
-        Py_INCREF(&PyDict_Type);
-        return (PyObject *)&PyDict_Type;
+        return fy_py_newref((PyObject *)&PyDict_Type);
     default:
-        /* For unknown types, return the actual FyGeneric type */
-        Py_INCREF(&FyGenericType);
-        return (PyObject *)&FyGenericType;
+        return fy_py_newref((PyObject *)&FyGenericType);
     }
 }
 
@@ -3263,15 +3285,10 @@ FyGeneric_get_document_state(FyGenericObject *self, void *Py_UNUSED(closure))
     /* This includes both single-doc roots and multi-doc documents */
 
     fy_generic vds = FYG_VDS(self);
-    if (!fy_generic_is_valid(vds)) {
-        /* No VDS stored - this is either a child object or parsed without directory */
-        Py_INCREF(Py_None);
-        return Py_None;
-    }
+    if (!fy_generic_is_valid(vds))
+        return fy_py_newref(Py_None);
 
-    /* Return the doc_state object (borrowed ref, so INCREF for return) */
-    Py_INCREF(self->doc_state);
-    return self->doc_state;
+    return fy_py_newref(self->doc_state);
 }
 
 /* FyGeneric getsetters */
@@ -4733,10 +4750,8 @@ parse_mode_to_parser_flags(const char *mode)
 static PyObject *
 mark_to_tuple(const struct fy_mark *m)
 {
-    if (!m) {
-        Py_INCREF(Py_None);
-        return Py_None;
-    }
+    if (!m)
+        return fy_py_newref(Py_None);
     return Py_BuildValue("(iin)", m->line, m->column, (Py_ssize_t)m->input_pos);
 }
 
@@ -4744,18 +4759,14 @@ mark_to_tuple(const struct fy_mark *m)
 static PyObject *
 tag_token_to_pystring(struct fy_token *tag_token)
 {
-    if (!tag_token) {
-        Py_INCREF(Py_None);
-        return Py_None;
-    }
+    if (!tag_token)
+        return fy_py_newref(Py_None);
 
     const char *handle = fy_tag_token_handle0(tag_token);
     const char *suffix = fy_tag_token_suffix0(tag_token);
 
-    if (!handle && !suffix) {
-        Py_INCREF(Py_None);
-        return Py_None;
-    }
+    if (!handle && !suffix)
+        return fy_py_newref(Py_None);
 
     /* If handle is "!" or "!!" or a named handle, combine with suffix */
     if (handle && suffix) {
@@ -4771,8 +4782,7 @@ tag_token_to_pystring(struct fy_token *tag_token)
         return PyUnicode_FromString(handle);
     }
 
-    Py_INCREF(Py_None);
-    return Py_None;
+    return fy_py_newref(Py_None);
 }
 
 /* _parse(string, mode='yaml1.1') -> list of event tuples */
