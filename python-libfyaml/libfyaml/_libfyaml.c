@@ -42,6 +42,13 @@ static PyTypeObject FyGenericIteratorType;
 /* Forward declarations */
 static PyObject *FyGeneric_from_parent(fy_generic fyg, FyGenericObject *parent, PyObject *path_elem);
 
+/* Helper: Convert a fy_generic string value directly to a Python unicode object */
+static PyObject *fy_szstr_to_pyunicode(fy_generic g)
+{
+    fy_generic_sized_string szstr = fy_cast(g, fy_szstr_empty);
+    return PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+}
+
 /* Helper: Convert primitive fy_generic to Python object (for dict keys, iteration, etc.) */
 static PyObject *fy_generic_to_python_primitive(fy_generic value)
 {
@@ -55,10 +62,8 @@ static PyObject *fy_generic_to_python_primitive(fy_generic value)
         return PyLong_FromLongLong(fy_cast(value, (long long)-1LL));
     case FYGT_FLOAT:
         return PyFloat_FromDouble(fy_cast(value, (double)0.0));
-    case FYGT_STRING: {
-        fy_generic_sized_string szstr = fy_cast(value, fy_szstr_empty);
-        return PyUnicode_FromStringAndSize(szstr.data, szstr.size);
-    }
+    case FYGT_STRING:
+        return fy_szstr_to_pyunicode(value);
     case FYGT_SEQUENCE:
         /* Sequences cannot be dict keys (unhashable in Python) */
         PyErr_SetString(PyExc_TypeError, "unhashable type: 'sequence'");
@@ -453,10 +458,8 @@ FyGeneric_str(FyGenericObject *self)
     enum fy_generic_type type = fy_get_type(self->fyg);
 
     switch (type) {
-        case FYGT_STRING: {
-            fy_generic_sized_string szstr = fy_cast(self->fyg, fy_szstr_empty);
-            return PyUnicode_FromStringAndSize(szstr.data, szstr.size);
-        }
+        case FYGT_STRING:
+            return fy_szstr_to_pyunicode(self->fyg);
 
         case FYGT_INT:
             return PyUnicode_FromFormat("%lld", fy_cast(self->fyg, (long long)0));
@@ -536,8 +539,7 @@ FyGeneric_int(FyGenericObject *self)
 
         case FYGT_STRING: {
             /* Parse string as integer using Python's int() */
-            fy_generic_sized_string szstr = fy_cast(self->fyg, fy_szstr_empty);
-            PyObject *str_obj = PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+            PyObject *str_obj = fy_szstr_to_pyunicode(self->fyg);
             if (str_obj == NULL)
                 return NULL;
 
@@ -594,8 +596,7 @@ FyGeneric_float(FyGenericObject *self)
 
         case FYGT_STRING: {
             /* Parse string as float using Python's float() */
-            fy_generic_sized_string szstr = fy_cast(self->fyg, fy_szstr_empty);
-            PyObject *str_obj = PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+            PyObject *str_obj = fy_szstr_to_pyunicode(self->fyg);
             if (str_obj == NULL)
                 return NULL;
 
@@ -656,10 +657,8 @@ FyGeneric_length(FyGenericObject *self)
             return (Py_ssize_t)fy_len(self->fyg);
 
         case FYGT_STRING: {
-            /* Return number of characters (not bytes) */
-            fy_generic_sized_string szstr = fy_cast(self->fyg, fy_szstr_empty);
-            /* Create Python string to get character count (handles UTF-8) */
-            PyObject *str_obj = PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+            /* Return number of characters (not bytes, handles UTF-8) */
+            PyObject *str_obj = fy_szstr_to_pyunicode(self->fyg);
             if (str_obj == NULL)
                 return -1;
             Py_ssize_t length = PyUnicode_GET_LENGTH(str_obj);
@@ -872,10 +871,8 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
         case FYGT_FLOAT:
             return PyFloat_FromDouble(fy_cast(self->fyg, (double)0.0));
 
-        case FYGT_STRING: {
-            fy_generic_sized_string szstr = fy_cast(self->fyg, fy_szstr_empty);
-            return PyUnicode_FromStringAndSize(szstr.data, szstr.size);
-        }
+        case FYGT_STRING:
+            return fy_szstr_to_pyunicode(self->fyg);
 
         case FYGT_SEQUENCE: {
 
@@ -1051,45 +1048,31 @@ FyGeneric_is_indirect(FyGenericObject *self, PyObject *Py_UNUSED(args))
     return PyBool_FromLong(fy_generic_is_indirect(self->fyg));
 }
 
+/* Helper: Convert a generic metadata field (tag/anchor/comment) to Python str.
+ * Returns None if null/invalid, raises RuntimeError if not a string. */
+static PyObject *
+fy_generic_metadata_to_pystr(fy_generic meta, const char *name)
+{
+    if (fy_generic_is_null(meta) || fy_generic_is_invalid(meta))
+        Py_RETURN_NONE;
+    if (!fy_generic_is_string(meta)) {
+        PyErr_Format(PyExc_RuntimeError, "%s is not a string", name);
+        return NULL;
+    }
+    return fy_szstr_to_pyunicode(meta);
+}
+
 /* FyGeneric: Tag and anchor access methods */
 static PyObject *
 FyGeneric_get_tag(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
-    fy_generic tag = fy_generic_get_tag(self->fyg);
-
-    /* Check if tag is null or invalid */
-    if (fy_generic_is_null(tag) || fy_generic_is_invalid(tag))
-        Py_RETURN_NONE;
-
-    /* Tag should be a string */
-    if (!fy_generic_is_string(tag)) {
-        PyErr_SetString(PyExc_RuntimeError, "tag is not a string");
-        return NULL;
-    }
-
-    /* Convert to Python string */
-    fy_generic_sized_string szstr = fy_cast(tag, fy_szstr_empty);
-    return PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+    return fy_generic_metadata_to_pystr(fy_generic_get_tag(self->fyg), "tag");
 }
 
 static PyObject *
 FyGeneric_get_anchor(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
-    fy_generic anchor = fy_generic_get_anchor(self->fyg);
-
-    /* Check if anchor is null or invalid */
-    if (fy_generic_is_null(anchor) || fy_generic_is_invalid(anchor))
-        Py_RETURN_NONE;
-
-    /* Anchor should be a string */
-    if (!fy_generic_is_string(anchor)) {
-        PyErr_SetString(PyExc_RuntimeError, "anchor is not a string");
-        return NULL;
-    }
-
-    /* Convert to Python string */
-    fy_generic_sized_string szstr = fy_cast(anchor, fy_szstr_empty);
-    return PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+    return fy_generic_metadata_to_pystr(fy_generic_get_anchor(self->fyg), "anchor");
 }
 
 static PyObject *
@@ -1175,21 +1158,7 @@ FyGeneric_has_marker(FyGenericObject *self, PyObject *Py_UNUSED(args))
 static PyObject *
 FyGeneric_get_comment(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
-    fy_generic comment = fy_generic_get_comment(self->fyg);
-
-    /* Check if comment is null or invalid - no comment available */
-    if (fy_generic_is_null(comment) || fy_generic_is_invalid(comment))
-        Py_RETURN_NONE;
-
-    /* Comment should be a string */
-    if (!fy_generic_is_string(comment)) {
-        PyErr_SetString(PyExc_RuntimeError, "comment is not a string");
-        return NULL;
-    }
-
-    /* Convert to Python string */
-    fy_generic_sized_string szstr = fy_cast(comment, fy_szstr_empty);
-    return PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+    return fy_generic_metadata_to_pystr(fy_generic_get_comment(self->fyg), "comment");
 }
 
 static PyObject *
@@ -1200,6 +1169,26 @@ FyGeneric_has_comment(FyGenericObject *self, PyObject *Py_UNUSED(args))
 }
 
 /* Comparison helper functions */
+
+/* Macro: rich-compare two scalar values (a, b) for the given Python op.
+ * 'cleanup' is evaluated before every return (use (void)0 if nothing to clean up).
+ * Returns True, False, or NotImplemented. */
+#define RICHCMP_SCALAR(a, b, op, cleanup) \
+    do { \
+        int _richcmp_result; \
+        switch (op) { \
+            case Py_EQ: _richcmp_result = ((a) == (b)); break; \
+            case Py_NE: _richcmp_result = ((a) != (b)); break; \
+            case Py_LT: _richcmp_result = ((a) <  (b)); break; \
+            case Py_LE: _richcmp_result = ((a) <= (b)); break; \
+            case Py_GT: _richcmp_result = ((a) >  (b)); break; \
+            case Py_GE: _richcmp_result = ((a) >= (b)); break; \
+            default: { cleanup; Py_RETURN_NOTIMPLEMENTED; } \
+        } \
+        { cleanup; } \
+        if (_richcmp_result) Py_RETURN_TRUE; \
+        else Py_RETURN_FALSE; \
+    } while(0)
 
 /* Helper: Compare integers with support for large unsigned values */
 static PyObject *
@@ -1313,18 +1302,7 @@ compare_int_helper(fy_generic self_fyg, PyObject *other, int op)
         else Py_RETURN_FALSE;
     } else {
         /* Regular C long long comparison */
-        int result;
-        switch (op) {
-            case Py_EQ: result = (self_val == other_val); break;
-            case Py_NE: result = (self_val != other_val); break;
-            case Py_LT: result = (self_val < other_val); break;
-            case Py_LE: result = (self_val <= other_val); break;
-            case Py_GT: result = (self_val > other_val); break;
-            case Py_GE: result = (self_val >= other_val); break;
-            default: Py_RETURN_NOTIMPLEMENTED;
-        }
-        if (result) Py_RETURN_TRUE;
-        else Py_RETURN_FALSE;
+        RICHCMP_SCALAR(self_val, other_val, op, (void)0);
     }
 }
 
@@ -1350,18 +1328,7 @@ compare_float_helper(fy_generic self_fyg, PyObject *other, int op)
         Py_RETURN_NOTIMPLEMENTED;
     }
 
-    int result;
-    switch (op) {
-        case Py_EQ: result = (self_val == other_val); break;
-        case Py_NE: result = (self_val != other_val); break;
-        case Py_LT: result = (self_val < other_val); break;
-        case Py_LE: result = (self_val <= other_val); break;
-        case Py_GT: result = (self_val > other_val); break;
-        case Py_GE: result = (self_val >= other_val); break;
-        default: Py_RETURN_NOTIMPLEMENTED;
-    }
-    if (result) Py_RETURN_TRUE;
-    else Py_RETURN_FALSE;
+    RICHCMP_SCALAR(self_val, other_val, op, (void)0);
 }
 
 /* Helper: Compare strings (binary-safe) */
@@ -1397,21 +1364,7 @@ compare_string_helper(fy_generic self_fyg, PyObject *other, int op)
     if (cmp == 0 && self_szstr.size != (size_t)other_size)
         cmp = self_szstr.size < (size_t)other_size ? -1 : 1;
 
-    int result;
-    switch (op) {
-        case Py_EQ: result = (cmp == 0); break;
-        case Py_NE: result = (cmp != 0); break;
-        case Py_LT: result = (cmp < 0); break;
-        case Py_LE: result = (cmp <= 0); break;
-        case Py_GT: result = (cmp > 0); break;
-        case Py_GE: result = (cmp >= 0); break;
-        default:
-            Py_XDECREF(other_str_obj);
-            Py_RETURN_NOTIMPLEMENTED;
-    }
-    Py_XDECREF(other_str_obj);
-    if (result) Py_RETURN_TRUE;
-    else Py_RETURN_FALSE;
+    RICHCMP_SCALAR(cmp, 0, op, Py_XDECREF(other_str_obj));
 }
 
 /* Helper: Compare booleans */
@@ -1482,18 +1435,7 @@ compare_bool_helper(fy_generic self_fyg, PyObject *other, int op)
         Py_RETURN_NOTIMPLEMENTED;
     }
 
-    int result;
-    switch (op) {
-        case Py_EQ: result = (self_val == other_val); break;
-        case Py_NE: result = (self_val != other_val); break;
-        case Py_LT: result = (self_val < other_val); break;
-        case Py_LE: result = (self_val <= other_val); break;
-        case Py_GT: result = (self_val > other_val); break;
-        case Py_GE: result = (self_val >= other_val); break;
-        default: Py_RETURN_NOTIMPLEMENTED;
-    }
-    if (result) Py_RETURN_TRUE;
-    else Py_RETURN_FALSE;
+    RICHCMP_SCALAR(self_val, other_val, op, (void)0);
 }
 
 /* FyGeneric: __richcompare__ - implements ==, !=, <, <=, >, >= */
@@ -1520,12 +1462,19 @@ FyGeneric_richcompare(PyObject *self, PyObject *other, int op)
 
 /* Mapping-specific methods */
 
-/* FyGeneric: keys() - return list of keys for mappings */
+/* Helper: Build a list by iterating over mapping pairs.
+ * item_fn is called once per pair and returns the element to store (new ref),
+ * or NULL on error.  path_key is a borrowed reference (caller owns it). */
+typedef PyObject *(*mapping_item_fn)(const fy_generic_map_pair *pair,
+                                     FyGenericObject *parent,
+                                     PyObject *path_key);
+
 static PyObject *
-FyGeneric_keys(FyGenericObject *self, PyObject *Py_UNUSED(args))
+fy_generic_mapping_collect(FyGenericObject *self, const char *method_name,
+                            mapping_item_fn item_fn)
 {
     if (!fy_generic_is_mapping(self->fyg)) {
-        PyErr_SetString(PyExc_TypeError, "keys() requires a mapping");
+        PyErr_Format(PyExc_TypeError, "%s requires a mapping", method_name);
         return NULL;
     }
 
@@ -1541,12 +1490,12 @@ FyGeneric_keys(FyGenericObject *self, PyObject *Py_UNUSED(args))
         if (path_key == NULL)
             break;
 
-        PyObject *key = FyGeneric_from_parent(pairs[i].key, self, path_key);
+        PyObject *item = item_fn(&pairs[i], self, path_key);
         Py_DECREF(path_key);
-        if (key == NULL)
+        if (item == NULL)
             break;
 
-        PyList_SET_ITEM(result, i, key);
+        PyList_SET_ITEM(result, i, item);
     }
     if (i < count) {
         Py_DECREF(result);
@@ -1554,96 +1503,56 @@ FyGeneric_keys(FyGenericObject *self, PyObject *Py_UNUSED(args))
     }
 
     return result;
+}
+
+static PyObject *
+mapping_item_key(const fy_generic_map_pair *pair, FyGenericObject *parent, PyObject *path_key)
+{
+    return FyGeneric_from_parent(pair->key, parent, path_key);
+}
+
+static PyObject *
+mapping_item_value(const fy_generic_map_pair *pair, FyGenericObject *parent, PyObject *path_key)
+{
+    return FyGeneric_from_parent(pair->value, parent, path_key);
+}
+
+static PyObject *
+mapping_item_kv(const fy_generic_map_pair *pair, FyGenericObject *parent, PyObject *path_key)
+{
+    PyObject *key = FyGeneric_from_parent(pair->key, parent, path_key);
+    if (!key)
+        return NULL;
+    PyObject *value = FyGeneric_from_parent(pair->value, parent, path_key);
+    if (!value) {
+        Py_DECREF(key);
+        return NULL;
+    }
+    PyObject *tuple = PyTuple_Pack(2, key, value);
+    Py_DECREF(key);
+    Py_DECREF(value);
+    return tuple;
+}
+
+/* FyGeneric: keys() - return list of keys for mappings */
+static PyObject *
+FyGeneric_keys(FyGenericObject *self, PyObject *Py_UNUSED(args))
+{
+    return fy_generic_mapping_collect(self, "keys()", mapping_item_key);
 }
 
 /* FyGeneric: values() - return list of values for mappings */
 static PyObject *
 FyGeneric_values(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
-    if (!fy_generic_is_mapping(self->fyg)) {
-        PyErr_SetString(PyExc_TypeError, "values() requires a mapping");
-        return NULL;
-    }
-
-    size_t i, count;
-    const fy_generic_map_pair *pairs = fy_generic_mapping_get_pairs(self->fyg, &count);
-
-    PyObject *result = PyList_New(count);
-    if (result == NULL)
-        return NULL;
-
-    for (i = 0; i < count; i++) {
-        PyObject *path_key = fy_generic_to_python_primitive(pairs[i].key);
-        if (path_key == NULL)
-            break;
-
-        PyObject *value = FyGeneric_from_parent(pairs[i].value, self, path_key);
-        Py_DECREF(path_key);
-        if (value == NULL)
-            break;
-
-        PyList_SET_ITEM(result, i, value);
-    }
-    if (i < count) {
-        Py_DECREF(result);
-        return NULL;
-    }
-
-    return result;
+    return fy_generic_mapping_collect(self, "values()", mapping_item_value);
 }
 
 /* FyGeneric: items() - return list of (key, value) tuples for mappings */
 static PyObject *
 FyGeneric_items(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
-    if (!fy_generic_is_mapping(self->fyg)) {
-        PyErr_SetString(PyExc_TypeError, "items() requires a mapping");
-        return NULL;
-    }
-
-    size_t i, count;
-    const fy_generic_map_pair *pairs = fy_generic_mapping_get_pairs(self->fyg, &count);
-
-    PyObject *result = PyList_New(count);
-    if (result == NULL)
-        return NULL;
-
-    PyObject *path_key = NULL, *key = NULL, *value = NULL, *tuple = NULL;
-
-    for (i = 0; i < count; i++) {
-        path_key = fy_generic_to_python_primitive(pairs[i].key);
-        if (path_key == NULL)
-            break;
-
-        key = FyGeneric_from_parent(pairs[i].key, self, path_key);
-        if (key == NULL)
-            break;
-
-        value = FyGeneric_from_parent(pairs[i].value, self, path_key);
-        Py_DECREF(path_key);  /* Done with path_key */
-        path_key = NULL;
-        if (value == NULL)
-            break;
-
-        tuple = PyTuple_Pack(2, key, value);
-        Py_DECREF(key);
-        key = NULL;
-        Py_DECREF(value);
-        value = NULL;
-        if (tuple == NULL)
-            break;
-
-        PyList_SET_ITEM(result, i, tuple);
-    }
-    if (i < count) {
-        if (path_key)
-            Py_DECREF(path_key);
-        if (key)
-            Py_DECREF(key);
-        return NULL;
-    }
-
-    return result;
+    return fy_generic_mapping_collect(self, "items()", mapping_item_kv);
 }
 
 /* Helper: Convert FyGeneric primitive types to Python objects
@@ -1672,10 +1581,8 @@ fy_generic_to_python_primitive_or_null(FyGenericObject *self)
         case FYGT_FLOAT:
             return PyFloat_FromDouble(fy_cast(self->fyg, (double)0.0));
 
-        case FYGT_STRING: {
-            fy_generic_sized_string szstr = fy_cast(self->fyg, fy_szstr_empty);
-            return PyUnicode_FromStringAndSize(szstr.data, szstr.size);
-        }
+        case FYGT_STRING:
+            return fy_szstr_to_pyunicode(self->fyg);
 
         default:
             /* Not a primitive type */
@@ -3415,12 +3322,10 @@ FyGeneric_hash(FyGenericObject *self)
         temp_obj = PyFloat_FromDouble(fy_cast(self->fyg, (double)0.0));
         break;
 
-    case FYGT_STRING: {
+    case FYGT_STRING:
         /* Hash for strings */
-        fy_generic_sized_string szstr = fy_cast(self->fyg, fy_szstr_empty);
-        temp_obj = PyUnicode_FromStringAndSize(szstr.data, szstr.size);
+        temp_obj = fy_szstr_to_pyunicode(self->fyg);
         break;
-    }
 
     case FYGT_SEQUENCE:
         /* Sequences are not hashable */
