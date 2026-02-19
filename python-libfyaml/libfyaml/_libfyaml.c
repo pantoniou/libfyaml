@@ -917,120 +917,91 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
         case FYGT_SEQUENCE: {
 
             fy_generic_sequence_handle seqh = fy_cast(self->fyg, fy_seq_handle_null);
-            if (!seqh) {
-                /* Empty flow-style sequence (e.g., []) - return empty list */
-                return PyList_New(0);
-            }
+            if (!seqh)
+                return PyList_New(0);  /* empty [] */
 
             PyObject *list = PyList_New(seqh->count);
             if (list == NULL)
                 return NULL;
 
-            PyObject *index_obj = NULL, *item_obj = NULL, *converted = NULL;
-
-            size_t i;
-            for (i = 0; i < seqh->count; i++) {
-                fy_generic item = seqh->items[i];
-
+            for (size_t i = 0; i < seqh->count; i++) {
                 // NOT VERY EFFICIENT
-                index_obj = PyLong_FromSize_t(i);
+                PyObject *index_obj = PyLong_FromSize_t(i);
                 if (index_obj == NULL)
-                    break;
-                item_obj = FyGeneric_from_parent(item, self, index_obj);
-                Py_DECREF(index_obj);
-                index_obj = NULL;
-                if (item_obj == NULL)
-                    break;
+                    goto seq_err;
 
-                converted = FyGeneric_to_python((FyGenericObject *)item_obj, NULL);
+                PyObject *item_obj = FyGeneric_from_parent(seqh->items[i], self, index_obj);
+                Py_DECREF(index_obj);
+                if (item_obj == NULL)
+                    goto seq_err;
+
+                PyObject *converted = FyGeneric_to_python((FyGenericObject *)item_obj, NULL);
                 Py_DECREF(item_obj);
-                item_obj = NULL;
                 if (converted == NULL)
-                    break;
+                    goto seq_err;
 
                 PyList_SET_ITEM(list, i, converted);
-                converted = NULL;
-            }
-            if (i < seqh->count) {
-                Py_DECREF(list);
-                if (item_obj)
-                    Py_DECREF(item_obj);
-                if (index_obj)
-                    Py_DECREF(index_obj);
-                return NULL;
             }
             return list;
+
+        seq_err:
+            /* index_obj/item_obj/converted are always NULL here (consumed before each check) */
+            Py_DECREF(list);
+            return NULL;
         }
 
         case FYGT_MAPPING: {
 
             fy_generic_mapping_handle maph = fy_cast(self->fyg, fy_map_handle_null);
-            if (!maph) {
-                /* Empty flow-style mapping (e.g., {}) - return empty dict */
-                return PyDict_New();
-            }
+            if (!maph)
+                return PyDict_New();  /* empty {} */
 
             PyObject *dict = PyDict_New();
             if (dict == NULL)
                 return NULL;
 
-            PyObject *path_key = NULL, *conv_key = NULL, *val_obj = NULL, *conv_val = NULL;
-            size_t i;
+            PyObject *path_key = NULL, *conv_key = NULL, *conv_val = NULL;
 
-            for (i = 0; i < maph->count; i++) {
-                /* First get the key as a Python object for path */
-                fy_generic key = maph->pairs[i].key;
-
-                path_key = fy_generic_to_python_primitive(key);
+            for (size_t i = 0; i < maph->count; i++) {
+                path_key = fy_generic_to_python_primitive(maph->pairs[i].key);
                 if (!path_key)
-                    break;
+                    goto map_err;
 
-                /* Convert key */
                 PyObject *key_obj = FyGeneric_from_parent(maph->pairs[i].key, self, path_key);
                 if (key_obj == NULL)
-                    break;
+                    goto map_err;
 
                 conv_key = FyGeneric_to_python((FyGenericObject *)key_obj, NULL);
                 Py_DECREF(key_obj);
-                key_obj = NULL;
                 if (conv_key == NULL)
-                    break;
+                    goto map_err;
 
-                /* Convert value */
-                val_obj = FyGeneric_from_parent(maph->pairs[i].value, self, path_key);
-                Py_DECREF(path_key);  /* Done with path_key */
+                PyObject *val_obj = FyGeneric_from_parent(maph->pairs[i].value, self, path_key);
+                Py_DECREF(path_key);
                 path_key = NULL;
                 if (val_obj == NULL)
-                    break;
+                    goto map_err;
 
                 conv_val = FyGeneric_to_python((FyGenericObject *)val_obj, NULL);
                 Py_DECREF(val_obj);
-                val_obj = NULL;
                 if (conv_val == NULL)
-                    break;
+                    goto map_err;
 
-                /* Add to dict */
                 if (PyDict_SetItem(dict, conv_key, conv_val) < 0)
-                    break;
+                    goto map_err;
 
-                Py_DECREF(conv_key);
-                conv_key = NULL;
-                Py_DECREF(conv_val);
-                conv_val = NULL;
+                Py_DECREF(conv_key); conv_key = NULL;
+                Py_DECREF(conv_val); conv_val = NULL;
             }
-
-            if (i < maph->count) {
-                Py_DECREF(dict);
-                if (path_key)
-                    Py_DECREF(path_key);
-                if (conv_key)
-                    Py_DECREF(conv_key);
-                if (conv_val)
-                    Py_DECREF(conv_val);
-                return NULL;
-            }
-
             return dict;
+
+        map_err:
+            /* key_obj/val_obj are always NULL here (consumed before each check) */
+            Py_XDECREF(path_key);
+            Py_XDECREF(conv_key);
+            Py_XDECREF(conv_val);
+            Py_DECREF(dict);
+            return NULL;
         }
 
         default:
