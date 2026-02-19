@@ -142,6 +142,7 @@ fy_input_from_data_setup_styled(struct fy_input *fyi,
 	handle->storage_hint = 0;	/* just calculate */
 	handle->storage_hint_valid = false;
 	handle->direct_output = false;
+
 	switch (sstyle) {
 	case FYSS_PLAIN:
 		handle->style = FYAS_PLAIN | FYAS_MANUAL_MARK;
@@ -154,9 +155,15 @@ fy_input_from_data_setup_styled(struct fy_input *fyi,
 		break;
 	case FYSS_LITERAL:
 		handle->style = FYAS_LITERAL | FYAS_MANUAL_MARK;
+		/* we need everything */
+		if (aflags & FYACF_ENDS_WITH_LB)
+			aflags |= FYACF_TRAILING_LB;
 		break;
 	case FYSS_FOLDED:
 		handle->style = FYAS_FOLDED | FYAS_MANUAL_MARK;
+		/* we need everything */
+		if (aflags & FYACF_ENDS_WITH_LB)
+			aflags |= FYACF_TRAILING_LB;
 		break;
 
 	case FYSS_ANY:

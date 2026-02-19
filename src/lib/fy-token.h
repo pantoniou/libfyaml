@@ -108,6 +108,8 @@ static inline bool fy_token_type_is_mapping_marker(enum fy_token_type type)
 #define FYTTAF_ALL_PRINT_ASCII		FY_BIT(24)	/* everything is >= '!' && <= '~' */
 #define FYTTAF_HAS_START_WS		FY_BIT(25)	/* leads with whitespace */
 #define FYTTAF_SIZE0			FY_BIT(26)	/* zero sized */
+#define FYTTAF_HAS_ZERO			FY_BIT(27)	/* contains a zero byte */
+#define FYTTAF_HAS_NON_NL_LB		FY_BIT(28)	/* if it has a linebreak which is not \n */
 
 #define FYTTAF_ANALYZED			FY_BIT(31)	/* analyzed mark */
 
