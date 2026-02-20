@@ -1202,18 +1202,34 @@ bool fy_emit_token_write_block_hints(struct fy_emitter *emit, struct fy_token *f
 		explicit_chomp = true;
 	}
 
-	if (!atom->ends_with_lb) {
-		emit->flags &= ~FYEF_OPEN_ENDED;
-		chomp = '-';
-		goto out;
+	if (fy_atom_style_is_block(atom->style)) {
+		/* atom was parsed as a block scalar; trust the stored chomp */
+		switch ((enum fy_atom_chomp)atom->chomp) {
+		case FYAC_STRIP:
+			emit->flags &= ~FYEF_OPEN_ENDED;
+			chomp = '-';
+			break;
+		case FYAC_KEEP:
+			emit->flags |= FYEF_OPEN_ENDED;
+			chomp = '+';
+			break;
+		case FYAC_CLIP:
+		default:
+			emit->flags &= ~FYEF_OPEN_ENDED;
+			break;
+		}
+	} else {
+		/* atom was not a block scalar; derive chomp from content */
+		if (!atom->ends_with_lb) {
+			emit->flags &= ~FYEF_OPEN_ENDED;
+			chomp = '-';
+		} else if (atom->trailing_lb) {
+			emit->flags |= FYEF_OPEN_ENDED;
+			chomp = '+';
+		} else {
+			emit->flags &= ~FYEF_OPEN_ENDED;
+		}
 	}
-
-	if (atom->trailing_lb) {
-		emit->flags |= FYEF_OPEN_ENDED;
-		chomp = '+';
-		goto out;
-	}
-	emit->flags &= ~FYEF_OPEN_ENDED;
 
 out:
 	if (chomp)

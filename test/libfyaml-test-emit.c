@@ -505,6 +505,66 @@ START_TEST(emit_root_top_comment_still_works)
 }
 END_TEST
 
+START_TEST(emit_block_scalar_clip_chomp_preserved)
+{
+	struct fy_document *fyd;
+	char *output;
+
+	/* literal block with default (clip) chomping: | */
+	fyd = fy_document_build_from_string(NULL,
+		"key: |\n  hello\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	output = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(output, NULL);
+	/* must contain "|\n" (clip) not "|+\n" (keep) */
+	ck_assert_ptr_ne(strstr(output, "|\n"), NULL);
+	ck_assert_ptr_eq(strstr(output, "|+"), NULL);
+	ck_assert_ptr_eq(strstr(output, "|-"), NULL);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(emit_block_scalar_strip_chomp_preserved)
+{
+	struct fy_document *fyd;
+	char *output;
+
+	/* literal block with strip chomping: |- */
+	fyd = fy_document_build_from_string(NULL,
+		"key: |-\n  hello\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	output = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_ptr_ne(strstr(output, "|-"), NULL);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(emit_block_scalar_keep_chomp_preserved)
+{
+	struct fy_document *fyd;
+	char *output;
+
+	/* literal block with keep chomping: |+ */
+	fyd = fy_document_build_from_string(NULL,
+		"key: |+\n  hello\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	output = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_ptr_ne(strstr(output, "|+"), NULL);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 /* Helper: emit document via extended config with PRESERVE_FLOW_LAYOUT.
  * Caller must free() the returned buffer. */
 static char *emit_document_preserve_flow(const char *input)
@@ -742,6 +802,9 @@ void libfyaml_case_emit(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_nested_sequence_top_comment);
 	fy_check_testcase_add_test(ctc, emit_deeply_nested_top_comment);
 	fy_check_testcase_add_test(ctc, emit_root_top_comment_still_works);
+	fy_check_testcase_add_test(ctc, emit_block_scalar_clip_chomp_preserved);
+	fy_check_testcase_add_test(ctc, emit_block_scalar_strip_chomp_preserved);
+	fy_check_testcase_add_test(ctc, emit_block_scalar_keep_chomp_preserved);
 	fy_check_testcase_add_test(ctc, emit_original_flow_sequence_oneline);
 	fy_check_testcase_add_test(ctc, emit_original_flow_sequence_with_comment);
 	fy_check_testcase_add_test(ctc, emit_original_flow_mapping_oneline);
