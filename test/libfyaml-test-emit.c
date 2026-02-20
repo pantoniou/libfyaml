@@ -565,6 +565,29 @@ START_TEST(emit_block_scalar_keep_chomp_preserved)
 }
 END_TEST
 
+START_TEST(emit_comment_preserves_original_indentation)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	char *output;
+
+	/* comment between sequence items at column 2; sequence indent is 0 */
+	fyd = fy_document_build_from_string(&cfg,
+		"- a: b\n  # indented comment\n- c: d\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	output = fy_emit_document_to_string(fyd, FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output, NULL);
+	/* the 2-space indent before # must be preserved */
+	ck_assert_ptr_ne(strstr(output, "  # indented comment"), NULL);
+	/* but it must NOT appear at column 0 */
+	ck_assert_ptr_eq(strstr(output, "\n# indented comment"), NULL);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 /* Helper: emit document via extended config with PRESERVE_FLOW_LAYOUT.
  * Caller must free() the returned buffer. */
 static char *emit_document_preserve_flow(const char *input)
@@ -777,6 +800,78 @@ START_TEST(emit_streaming_nested_flow_oneline)
 }
 END_TEST
 
+START_TEST(emit_subtree_comment_indent)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	struct fy_node *root, *inner;
+	char *output;
+
+	/* Parse: comment at col 2 inside nested mapping */
+	fyd = fy_document_build_from_string(&cfg,
+		"outer:\n  a: 1\n  # before b\n  b: 2\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* Emit just the inner mapping (the value of "outer") */
+	root = fy_document_root(fyd);
+	ck_assert_ptr_ne(root, NULL);
+	inner = fy_node_by_path(root, "/outer", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(inner, NULL);
+
+	output = fy_emit_node_to_string(inner, FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output, NULL);
+
+	/* Comment was at col 2 in source, but now the subtree is emitted
+	 * at root level — comment should be at col 0 (same as keys) */
+	ck_assert_ptr_ne(strstr(output, "# before b"), NULL);
+	ck_assert_ptr_eq(strstr(output, "  # before b"), NULL);  /* NOT indented */
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(emit_constructed_comment_indent)
+{
+	struct fy_document *fyd;
+	struct fy_node *root, *outer_key, *inner_map, *inner_key, *inner_val;
+	struct fy_token *fyt;
+	char *output;
+	int rc;
+
+	/* Build a nested mapping programmatically */
+	fyd = fy_document_create(NULL);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	root = fy_node_create_mapping(fyd);
+	outer_key = fy_node_create_scalar(fyd, "outer", FY_NT);
+	inner_map = fy_node_create_mapping(fyd);
+	inner_key = fy_node_create_scalar(fyd, "key", FY_NT);
+	inner_val = fy_node_create_scalar(fyd, "value", FY_NT);
+
+	rc = fy_node_mapping_append(inner_map, inner_key, inner_val);
+	ck_assert_int_eq(rc, 0);
+	rc = fy_node_mapping_append(root, outer_key, inner_map);
+	ck_assert_int_eq(rc, 0);
+	fy_document_set_root(fyd, root);
+
+	/* Attach constructed comment to inner key */
+	fyt = fy_node_get_scalar_token(inner_key);
+	ck_assert_ptr_ne(fyt, NULL);
+	rc = fy_token_set_comment(fyt, fycp_top, "constructed comment", FY_NT);
+	ck_assert_int_eq(rc, 0);
+
+	output = fy_emit_document_to_string(fyd, FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output, NULL);
+
+	/* Comment should be at scope indent (col 2), not col 0 */
+	ck_assert_ptr_ne(strstr(output, "  # constructed comment"), NULL);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 void libfyaml_case_emit(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -805,6 +900,7 @@ void libfyaml_case_emit(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_block_scalar_clip_chomp_preserved);
 	fy_check_testcase_add_test(ctc, emit_block_scalar_strip_chomp_preserved);
 	fy_check_testcase_add_test(ctc, emit_block_scalar_keep_chomp_preserved);
+	fy_check_testcase_add_test(ctc, emit_comment_preserves_original_indentation);
 	fy_check_testcase_add_test(ctc, emit_original_flow_sequence_oneline);
 	fy_check_testcase_add_test(ctc, emit_original_flow_sequence_with_comment);
 	fy_check_testcase_add_test(ctc, emit_original_flow_mapping_oneline);
@@ -815,4 +911,6 @@ void libfyaml_case_emit(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_streaming_oneline_flow_mapping);
 	fy_check_testcase_add_test(ctc, emit_streaming_multiline_flow_stays_multiline);
 	fy_check_testcase_add_test(ctc, emit_streaming_nested_flow_oneline);
+	fy_check_testcase_add_test(ctc, emit_subtree_comment_indent);
+	fy_check_testcase_add_test(ctc, emit_constructed_comment_indent);
 }
