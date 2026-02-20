@@ -122,6 +122,7 @@ struct fy_token_analysis {
 struct fy_token_comment {
 	struct fy_token_comment *next;
 	enum fy_comment_placement placement;
+	int indent_delta;		/* comment column offset from scope indent */
 	struct fy_atom handle;
 	char *comment;
 };
