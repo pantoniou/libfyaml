@@ -547,6 +547,103 @@ END_TEST
 
 #endif
 
+#if defined(__linux__)
+
+static void fuzz_dump_testsuite_event(struct fy_parser *fyp, struct fy_event *fye)
+{
+	const char *anchor = NULL;
+	const char *tag = NULL;
+	const char *text = NULL;
+	const char *alias = NULL;
+	size_t anchor_len = 0, tag_len = 0, text_len = 0, alias_len = 0;
+	const struct fy_mark *sm, *em = NULL;
+
+	sm = fy_event_start_mark(fye);
+	em = fy_event_end_mark(fye);
+	(void)sm; (void)em;
+
+	switch (fye->type) {
+	case FYET_NONE:
+	case FYET_STREAM_START:
+	case FYET_STREAM_END:
+	case FYET_DOCUMENT_START:
+	case FYET_DOCUMENT_END:
+	case FYET_MAPPING_END:
+	case FYET_SEQUENCE_END:
+	case FYET_ALIAS:
+		break;
+	case FYET_MAPPING_START:
+		if (fye->mapping_start.anchor)
+			anchor = fy_token_get_text(fye->mapping_start.anchor, &anchor_len);
+		if (fye->mapping_start.tag)
+			tag = fy_token_get_text(fye->mapping_start.tag, &tag_len);
+		break;
+	case FYET_SEQUENCE_START:
+		if (fye->sequence_start.anchor)
+			anchor = fy_token_get_text(fye->sequence_start.anchor, &anchor_len);
+		if (fye->sequence_start.tag)
+			tag = fy_token_get_text(fye->sequence_start.tag, &tag_len);
+		break;
+	case FYET_SCALAR:
+		if (fye->scalar.anchor)
+			anchor = fy_token_get_text(fye->scalar.anchor, &anchor_len);
+		if (fye->scalar.tag)
+			tag = fy_token_get_text(fye->scalar.tag, &tag_len);
+		break;
+	default:
+		break;
+	}
+
+	switch (fye->type) {
+	default:
+		break;
+	case FYET_SCALAR:
+		text = fy_token_get_text(fye->scalar.value, &text_len);
+		break;
+	case FYET_ALIAS:
+		alias = fy_token_get_text(fye->alias.anchor, &alias_len);
+		break;
+	}
+
+	(void)anchor; (void)anchor_len;
+	(void)tag; (void)tag_len;
+	(void)text; (void)text_len;
+	(void)alias; (void)alias_len;
+}
+
+/* Test: parse ">\x00\x09\x0d" via fy_parser_parse event loop */
+START_TEST(fuzz_parser_event_loop_block_scalar)
+{
+	char buf[] = "\x3e\x00\x09\x0d";
+	struct fy_parser *fyp = NULL;
+	struct fy_parse_cfg cfg = {0};
+	struct fy_event *fyev = NULL;
+	FILE *f = NULL;
+
+	f = fmemopen((void *)buf, 4, "r");
+	if (!f)
+		return;
+
+	fyp = fy_parser_create(&cfg);
+	if (!fyp)
+		goto out;
+
+	if (fy_parser_set_input_fp(fyp, NULL, f) != 0)
+		goto out;
+
+	while ((fyev = fy_parser_parse(fyp)) != NULL) {
+		fuzz_dump_testsuite_event(fyp, fyev);
+		fy_parser_event_free(fyp, fyev);
+	}
+
+out:
+	if (f) fclose(f);
+	fy_parser_destroy(fyp);
+}
+END_TEST
+
+#endif
+
 void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -590,5 +687,8 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_parse_comments_recursive_emit);
 #ifdef __linux__
 	fy_check_testcase_add_test(ctc, fuzz_build_from_fp_recursive_duplicate_keys);
+#endif
+#if defined(__linux__)
+	fy_check_testcase_add_test(ctc, fuzz_parser_event_loop_block_scalar);
 #endif
 }
