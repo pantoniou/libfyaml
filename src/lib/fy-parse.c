@@ -1395,7 +1395,7 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 						/* override comment keeps the last comment */
 						fy_input_unref(fyp->override_comment.fyi);
 						fy_atom_reset(&fyp->override_comment);
-						fyp->override_comment.fyi = fy_input_ref(fyp->last_comment.fyi);
+						/* transfer the reference, do not take an additional one */
 						fyp->override_comment = fyp->last_comment;
 					}
 
