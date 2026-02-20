@@ -496,6 +496,32 @@ START_TEST(fuzz_node_by_path_parens_sequence)
 }
 END_TEST
 
+/* Test: parse comment-heavy input with PARSE_COMMENTS | PREFER_RECURSIVE and emit with many flags */
+START_TEST(fuzz_parse_comments_recursive_emit)
+{
+	char buf[] = "\x23\x63\x3a\x0d\x0a\x23\x3a\x0a\x23\x24\x0d\x01\x7c\x23\x3a\x09\x52\x25\x42";
+	struct fy_parse_cfg cfg = {0};
+	struct fy_document *fyd = NULL;
+	FILE *fp = NULL;
+
+	cfg.flags = FYPCF_PARSE_COMMENTS | FYPCF_DISABLE_ACCELERATORS | FYPCF_PREFER_RECURSIVE;
+
+	fyd = fy_document_build_from_string(&cfg, buf, FY_NT);
+	if (!fyd)
+		return;
+
+	fp = fopen("/dev/null", "w");
+	if (!fp)
+		goto out;
+
+	fy_emit_document_to_fp(fyd, FYECF_STRIP_DOC | FYECF_NO_ENDING_NEWLINE | FYECF_MODE_BLOCK | FYECF_MODE_FLOW_ONELINE | FYECF_MODE_JSON | FYECF_MODE_JSON_TP | FYECF_MODE_JSON_ONELINE | FYECF_MODE_DEJSON | FYECF_MODE_MANUAL | FYECF_MODE_JSON_COMPACT, fp);
+
+out:
+	if (fp) fclose(fp);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 #ifdef __linux__
 
 /* Test: fy_document_build_from_fp with ":\r:" and recursive resolve + duplicate keys */
@@ -561,6 +587,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_node_build_string_block_scalar);
 	fy_check_testcase_add_test(ctc, fuzz_node_by_path_dot_slash_emit);
 	fy_check_testcase_add_test(ctc, fuzz_node_by_path_parens_sequence);
+	fy_check_testcase_add_test(ctc, fuzz_parse_comments_recursive_emit);
 #ifdef __linux__
 	fy_check_testcase_add_test(ctc, fuzz_build_from_fp_recursive_duplicate_keys);
 #endif
