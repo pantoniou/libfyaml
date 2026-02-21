@@ -1080,9 +1080,10 @@ fy_comment_atoms_seperated_by_ws(struct fy_parser *fyp, struct fy_atom *a, struc
 /* -1 error, 0, no comment attached, 1 comment attached */
 int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 {
+	struct fy_token_comment *tc;
 	struct fy_atom *handle;
 	struct fy_mark fym;
-	int c, rc, count;
+	int c, rc, count, ref_indent;
 
 	if (!fyp || !fyt)
 		return -1;
@@ -1103,6 +1104,9 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 		fy_atom_reset(handle);
 
 		*handle = fyp->override_comment;
+		tc = container_of(handle, struct fy_token_comment, handle);
+		ref_indent = fyp->indent > 0 ? fyp->indent : 0;
+		tc->indent_delta = (int)handle->start_mark.column - ref_indent;
 		count++;
 
 		fy_atom_reset(&fyp->override_comment);
@@ -1119,6 +1123,9 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 		fy_atom_reset(handle);
 
 		*handle = fyp->last_comment;
+		tc = container_of(handle, struct fy_token_comment, handle);
+		ref_indent = fyp->indent > 0 ? fyp->indent : 0;
+		tc->indent_delta = (int)handle->start_mark.column - ref_indent;
 		count++;
 
 		fy_atom_reset(&fyp->last_comment);
@@ -3068,6 +3075,7 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 		/* if a last comment exists and is valid */
 		if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS) {
 
+			struct fy_token_comment *tc_dst, *tc_src;
 			struct fy_atom *key_handle, *handle;
 
 			if (fysk && fysk->token) {
@@ -3083,6 +3091,9 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 				fy_input_unref(handle->fyi);
 				fy_atom_reset(handle);
 				*handle = *key_handle;
+				tc_dst = container_of(handle, struct fy_token_comment, handle);
+				tc_src = container_of(key_handle, struct fy_token_comment, handle);
+				tc_dst->indent_delta = tc_src->indent_delta;
 				fy_atom_reset(key_handle);
 			}
 
