@@ -1077,32 +1077,6 @@ fy_comment_atoms_seperated_by_ws(struct fy_parser *fyp, struct fy_atom *a, struc
 	return ws_or_lb;
 }
 
-static inline bool
-fy_reset_last_comment(struct fy_parser *fyp)
-{
-	if (!(fyp->cfg.flags & FYPCF_PARSE_COMMENTS))
-		return false;
-
-	if (!fy_atom_is_set(&fyp->last_comment))
-		return false;
-
-	fy_atom_reset(&fyp->last_comment);
-	return true;
-}
-
-static inline bool
-fy_reset_override_comment(struct fy_parser *fyp)
-{
-	if (!(fyp->cfg.flags & FYPCF_PARSE_COMMENTS))
-		return false;
-
-	if (!fy_atom_is_set(&fyp->override_comment))
-		return false;
-
-	fy_atom_reset(&fyp->override_comment);
-	return true;
-}
-
 /* -1 error, 0, no comment attached, 1 comment attached */
 int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 {
@@ -1131,7 +1105,7 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 		*handle = fyp->override_comment;
 		count++;
 
-		fy_reset_override_comment(fyp);
+		fy_atom_reset(&fyp->override_comment);
 	}
 
 	/* if a last comment exists and is valid */
@@ -1147,7 +1121,7 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 		*handle = fyp->last_comment;
 		count++;
 
-		fy_reset_last_comment(fyp);
+		fy_atom_reset(&fyp->last_comment);
 	}
 
 	/* right hand comment */
@@ -1391,6 +1365,7 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 					if (fy_atom_is_set(&fyp->override_comment) &&
 						fy_comment_atoms_seperated_by_ws(fyp, &fyp->override_comment, &fyp->last_comment)) {
 						fyp->override_comment.end_mark = fyp->last_comment.end_mark;
+						fy_input_unref(fyp->last_comment.fyi);
 					} else {
 						/* override comment keeps the last comment */
 						fy_input_unref(fyp->override_comment.fyi);
@@ -1399,7 +1374,6 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 						fyp->override_comment = fyp->last_comment;
 					}
 
-					fy_input_unref(fyp->last_comment.fyi);
 					fy_atom_reset(&fyp->last_comment);
 					fyp->last_comment = this_comment;
 
@@ -2785,7 +2759,7 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 	}
 
 	/* always reset the override comment */
-	fy_reset_override_comment(fyp);
+	fy_atom_reset(&fyp->override_comment);
 
 	if (c == '-' && fyp->flow_level) {
 		/* this is an error, but we let the parser catch it */
@@ -3112,16 +3086,23 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 				fy_atom_reset(key_handle);
 			}
 
-			handle = fy_token_comment_handle(fyt, fycp_top, true);
-			fyp_error_check(fyp, handle, err_out,
-				"fy_token_comment_handle() failed");
+			if (fy_atom_is_set(&fyp->override_comment) ||
+			    fy_atom_is_set(&fyp->last_comment)) {
 
-			if (fy_atom_is_set(&fyp->override_comment)) {
-				*handle = fyp->override_comment;
-				fy_atom_reset(&fyp->override_comment);
-			} else if (fy_atom_is_set(&fyp->last_comment)) {
-				*handle = fyp->last_comment;
-				fy_atom_reset(&fyp->last_comment);
+				handle = fy_token_comment_handle(fyt, fycp_top, true);
+				fyp_error_check(fyp, handle, err_out,
+					"fy_token_comment_handle() failed");
+
+				fy_input_unref(handle->fyi);
+				fy_atom_reset(handle);
+
+				if (fy_atom_is_set(&fyp->override_comment)) {
+					*handle = fyp->override_comment;
+					fy_atom_reset(&fyp->override_comment);
+				} else if (fy_atom_is_set(&fyp->last_comment)) {
+					*handle = fyp->last_comment;
+					fy_atom_reset(&fyp->last_comment);
+				}
 			}
 		}
 
