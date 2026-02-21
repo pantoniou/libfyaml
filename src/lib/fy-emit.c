@@ -1202,7 +1202,7 @@ bool fy_emit_token_write_block_hints(struct fy_emitter *emit, struct fy_token *f
 		explicit_chomp = true;
 	}
 
-	if (fy_atom_style_is_block(atom->style)) {
+	if (fy_atom_style_is_block(atom->style) && atom->chomp_explicit) {
 		/* atom was parsed as a block scalar; trust the stored chomp */
 		switch ((enum fy_atom_chomp)atom->chomp) {
 		case FYAC_STRIP:

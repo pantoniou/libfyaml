@@ -3930,6 +3930,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	/* need to process to present */
 	handle.style = is_literal ? FYAS_LITERAL : FYAS_FOLDED;
 	handle.chomp = chomp;
+	handle.chomp_explicit = true;
 	handle.increment = increment ? (unsigned int)(current_indent + increment) : chomp_amt;
 
 	/* no point in trying to do direct output in a block scalar */
