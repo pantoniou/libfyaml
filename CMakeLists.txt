@@ -50,6 +50,9 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/MSVCCrossCompile.cmake OPTIONAL)
 
 project(libfyaml LANGUAGES C ASM VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH})
 
+# Export compile commands by default for clangd LSP support
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Must use GNUInstallDirs to install libraries into correct locations on all platforms
 include(GNUInstallDirs)
 include(CheckIncludeFile)
