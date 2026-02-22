@@ -971,7 +971,7 @@ endif()
 add_libclang_to_target(fyaml_static INTERFACE)
 
 # check if blocks are available, and if so link them
-include(${CMAKE_SOURCE_DIR}/cmake/CheckClangBlocks.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckClangBlocks.cmake)
 
 # Apply flags if available
 if (HAVE_CLANG_BLOCKS)
