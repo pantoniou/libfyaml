@@ -66,6 +66,7 @@ void fy_input_free(struct fy_input *fyi)
 	switch (fyi->state) {
 	case FYIS_NONE:
 	case FYIS_QUEUED:
+	case FYIS_ERROR:
 		/* nothing to do */
 		break;
 	case FYIS_PARSE_IN_PROGRESS:
@@ -649,6 +650,7 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 
 err_out:
 	fy_input_close(fyi);
+	fyi->state = FYIS_ERROR;
 	return -1;
 }
 
@@ -710,6 +712,7 @@ int fy_reader_input_done(struct fy_reader *fyr)
 	return 0;
 
 err_out:
+	fyi->state = FYIS_ERROR;
 	return -1;
 }
 
@@ -885,7 +888,7 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 	size_t space __FY_DEBUG_UNUSED__;
 	void *buf;
 
-	if (!fyr || !fyi) {
+	if (!fyr || !fyi || fyi->state == FYIS_ERROR) {
 		if (leftp)
 			*leftp = 0;
 		return NULL;
@@ -919,6 +922,7 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 	case fyit_callback:
 
 		assert(fyi->read >= pos);
+		assert(fyi->chunk > 0);
 
 		left = fyi->read - pos;
 		p = (char *)fyi->buffer + pos;

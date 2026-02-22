@@ -84,6 +84,7 @@ enum fy_input_state {
 	FYIS_QUEUED,
 	FYIS_PARSE_IN_PROGRESS,
 	FYIS_PARSED,
+	FYIS_ERROR,
 };
 
 FY_TYPE_FWD_DECL_LIST(input);
@@ -155,7 +156,7 @@ fy_input_start_size(const struct fy_input *fyi, size_t *sizep)
 	}
 
 	/* if we've parsed need to clamp */
-	if (fyi->state == FYIS_PARSED) {
+	if (fyi->state == FYIS_PARSED || fyi->state == FYIS_ERROR) {
 		switch (fyi->cfg.type) {
 		case fyit_file:
 		case fyit_fd:
