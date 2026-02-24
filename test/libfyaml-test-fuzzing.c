@@ -644,6 +644,20 @@ END_TEST
 
 #endif
 
+/* Test: parse sequence with embedded comments using COLLECT_DIAG | DISABLE_RECYCLING | PARSE_COMMENTS | DISABLE_BUFFERING */
+START_TEST(fuzz_collect_diag_parse_comments_sequence)
+{
+	char data[] = "- foo\n#\n\n#\n- G";
+	struct fy_parse_cfg cfg = {0};
+	struct fy_document *fyd = NULL;
+
+	cfg.flags = FYPCF_COLLECT_DIAG | FYPCF_DISABLE_RECYCLING | FYPCF_PARSE_COMMENTS | FYPCF_DISABLE_BUFFERING | FYPCF_JSON_NONE;
+
+	fyd = fy_document_build_from_string(&cfg, data, FY_NT);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 /* Test: parse comment with override */
 START_TEST(fuzz_parse_comment_with_override)
 {
@@ -706,5 +720,6 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_parser_event_loop_block_scalar);
 #endif
+	fy_check_testcase_add_test(ctc, fuzz_collect_diag_parse_comments_sequence);
 	fy_check_testcase_add_test(ctc, fuzz_parse_comment_with_override);
 }
