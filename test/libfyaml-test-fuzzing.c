@@ -753,6 +753,20 @@ START_TEST(fuzz_path_expr_build_bang_triple_star)
 }
 END_TEST
 
+START_TEST(fuzz_resolve_recursive_ypath_aliases_dup_keys)
+{
+	char buf[] = "*//!!";
+	struct fy_parse_cfg cfg = {0};
+	struct fy_document *fyd;
+
+	cfg.flags = FYPCF_RESOLVE_DOCUMENT | FYPCF_PREFER_RECURSIVE |
+		    FYPCF_YPATH_ALIASES | FYPCF_ALLOW_DUPLICATE_KEYS;
+
+	fyd = fy_document_build_from_string(&cfg, buf, FY_NT);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 
 void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 {
@@ -806,6 +820,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_parse_comment_with_override);
 	fy_check_testcase_add_test(ctc, fuzz_resolve_document_ypath_null_alias);
 	fy_check_testcase_add_test(ctc, fuzz_path_expr_build_bang_triple_star);
+	fy_check_testcase_add_test(ctc, fuzz_resolve_recursive_ypath_aliases_dup_keys);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_build_from_fp_ypath_aliases_recursive);
 #endif
