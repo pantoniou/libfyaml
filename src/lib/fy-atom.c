@@ -1250,9 +1250,11 @@ const char *fy_atom_format_text(struct fy_atom *atom, char *buf, size_t maxsz)
 	fy_atom_iter_start(atom, &iter);
 	ic = NULL;
 	while ((ic = fy_atom_iter_chunk_next(&iter, ic, &ret)) != NULL) {
-		/* must fit */
-		if ((size_t)(e - s) < ic->len)
-			return NULL;
+		/* must fit (something is really off) */
+		if ((size_t)(e - s) < ic->len) {
+			ret = -1;
+			break;
+		}
 		memcpy(s, ic->str, ic->len);
 		s += ic->len;
 	}
