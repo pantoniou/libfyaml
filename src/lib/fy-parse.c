@@ -1376,7 +1376,6 @@ int fy_scan_to_next_token(struct fy_parser *fyp)
 
 					fy_atom_reset(&fyp->last_comment);
 					fyp->last_comment = this_comment;
-
 				} else
 					fyp->last_comment = this_comment;
 			}
@@ -2759,6 +2758,7 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 	}
 
 	/* always reset the override comment */
+	fy_input_unref(fyp->override_comment.fyi);
 	fy_atom_reset(&fyp->override_comment);
 
 	if (c == '-' && fyp->flow_level) {
