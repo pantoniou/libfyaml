@@ -711,6 +711,25 @@ START_TEST(fuzz_parse_comment_with_override)
 }
 END_TEST
 
+#if defined(__linux__)
+START_TEST(fuzz_build_from_fp_ypath_aliases_recursive)
+{
+	char buf[] = "\n? - :\n? - : - */**";
+	struct fy_parse_cfg cfg = {0};
+	struct fy_document *fyd;
+	FILE *f;
+
+	cfg.flags = FYPCF_RESOLVE_DOCUMENT | FYPCF_PREFER_RECURSIVE | FYPCF_YPATH_ALIASES;
+
+	f = fmemopen((void *)buf, strlen(buf), "r");
+	fyd = fy_document_build_from_fp(&cfg, f);
+	if (f)
+		fclose(f);
+	fy_document_destroy(fyd);
+}
+END_TEST
+#endif
+
 
 void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 {
@@ -762,4 +781,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_collect_diag_parse_comments_sequence);
 	fy_check_testcase_add_test(ctc, fuzz_node_compare_clone_quoted_scalar);
 	fy_check_testcase_add_test(ctc, fuzz_parse_comment_with_override);
+#if defined(__linux__)
+	fy_check_testcase_add_test(ctc, fuzz_build_from_fp_ypath_aliases_recursive);
+#endif
 }
