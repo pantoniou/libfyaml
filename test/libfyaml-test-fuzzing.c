@@ -743,6 +743,16 @@ START_TEST(fuzz_build_from_fp_ypath_aliases_recursive)
 END_TEST
 #endif
 
+START_TEST(fuzz_path_expr_build_bang_triple_star)
+{
+	struct fy_path_parse_cfg parse_cfg = {0};
+	struct fy_path_expr *expr;
+
+	expr = fy_path_expr_build_from_string(&parse_cfg, "!***", FY_NT);
+	fy_path_expr_free(expr);
+}
+END_TEST
+
 
 void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 {
@@ -795,6 +805,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_node_compare_clone_quoted_scalar);
 	fy_check_testcase_add_test(ctc, fuzz_parse_comment_with_override);
 	fy_check_testcase_add_test(ctc, fuzz_resolve_document_ypath_null_alias);
+	fy_check_testcase_add_test(ctc, fuzz_path_expr_build_bang_triple_star);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_build_from_fp_ypath_aliases_recursive);
 #endif
