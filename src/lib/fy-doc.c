@@ -787,11 +787,8 @@ int fy_node_free(struct fy_node *fyn)
 		fyn->sequence_end = NULL;
 		break;
 	case FYNT_MAPPING:
-		while ((fynp = fy_node_pair_list_pop(&fyn->mapping)) != NULL) {
-			if (fyn->xl)
-				fy_accel_remove(fyn->xl, fynp->key);
+		while ((fynp = fy_node_pair_list_pop(&fyn->mapping)) != NULL)
 			fy_node_pair_detach_and_free(fynp);
-		}
 		fy_token_unref(fyn->mapping_start);
 		fy_token_unref(fyn->mapping_end);
 		fyn->mapping_start = NULL;
