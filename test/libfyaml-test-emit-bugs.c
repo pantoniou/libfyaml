@@ -697,6 +697,27 @@ START_TEST(emit_bug_plain_multiline_key_hashbang)
 }
 END_TEST
 
+START_TEST(emit_bug_unquoted_flow_comma)
+{
+	const char input[] = "- foo, bar, baz\n";
+	struct fy_document *fyd = NULL;
+	struct fy_parse_cfg cfg = {0};
+	char *buf;
+
+	cfg.flags = FYPCF_DEFAULT_PARSE;
+	fyd = fy_document_build_from_string(&cfg, input, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	buf = fy_emit_document_to_string(fyd, FYECF_MODE_FLOW_ONELINE | FYECF_WIDTH_INF | FYECF_STRIP_LABELS | FYECF_STRIP_TAGS | FYECF_STRIP_DOC | FYECF_DOC_START_MARK_OFF);
+
+	/* verify that is now quoted */
+	ck_assert_str_eq(buf, "['foo, bar, baz']\n");
+
+	free(buf);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 /* ── registration ────────────────────────────────────────────────── */
 
 void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
@@ -763,4 +784,7 @@ void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
 
 	/* Bug 13: plain multiline key */
 	fy_check_testcase_add_test(ctc, emit_bug_plain_multiline_key_hashbang);
+
+	/* other kind of emit bugs */
+	fy_check_testcase_add_test(ctc, emit_bug_unquoted_flow_comma);
 }
