@@ -2204,7 +2204,7 @@ int push_operand_lr(struct fy_path_parser *fypp,
 {
 	struct fy_reader *fyr;
 	struct fy_path_expr *expr = NULL, *exprt;
-	const struct fy_mark *ms = NULL, *me = NULL;
+	const struct fy_mark *ms = NULL, *me = NULL, *mtmp;
 	struct fy_atom handle;
 	int ret;
 
@@ -2235,6 +2235,13 @@ int push_operand_lr(struct fy_path_parser *fypp,
 	me = fy_token_end_mark(exprr ? exprr->fyt : exprl->fyt);
 	if (!me)
 		goto err_out;
+
+	/* yes, it might be switched */
+	if (ms->input_pos > me->input_pos) {
+		mtmp = ms;
+		ms = me;
+		me = mtmp;
+	}
 
 	memset(&handle, 0, sizeof(handle));
 	handle.start_mark = *ms;
