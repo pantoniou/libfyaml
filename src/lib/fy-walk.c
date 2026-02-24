@@ -2577,6 +2577,7 @@ common_builtin_ref_exec(const struct fy_method *fym,
 
 out:
 	fy_walk_result_free(input);
+	input = NULL;
 	if (args) {
 		for (i = 0; i < nargs; i++)
 			fy_walk_result_free(args[i]);
@@ -2586,6 +2587,7 @@ err_out:
 	if (errorp)
 		*errorp = true;
 	fy_walk_result_free(output);
+	output = NULL;
 	goto out;
 }
 
