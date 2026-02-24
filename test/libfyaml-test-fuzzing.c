@@ -658,6 +658,45 @@ START_TEST(fuzz_collect_diag_parse_comments_sequence)
 }
 END_TEST
 
+/* Test: parse quoted scalar, clone document, and compare nodes via multiple compare APIs */
+START_TEST(fuzz_node_compare_clone_quoted_scalar)
+{
+	char data[] = "'''''''''''' ";
+	struct fy_parse_cfg cfg = {0};
+	struct fy_document *fyd = NULL;
+	struct fy_document *fyd2 = NULL;
+	struct fy_node *root, *root2;
+	bool same, equal, matches, text_matches;
+
+	cfg.flags = FYPCF_PREFER_RECURSIVE | FYPCF_YPATH_ALIASES | FYPCF_ALLOW_DUPLICATE_KEYS;
+
+	fyd = fy_document_build_from_string(&cfg, data, FY_NT);
+	if (!fyd)
+		return;
+
+	root = fy_document_root(fyd);
+	if (!root)
+		goto out;
+
+	same = fy_node_compare(root, root);
+	(void)same;
+
+	fyd2 = fy_document_clone(fyd);
+	if (!fyd2)
+		goto out;
+
+	root2 = fy_document_root(fyd2);
+	equal = fy_node_compare(root, root2);
+	matches = fy_node_compare_string(root, data, FY_NT);
+	text_matches = fy_node_compare_text(root, data, FY_NT);
+	(void)equal; (void)matches; (void)text_matches;
+
+out:
+	fy_document_destroy(fyd);
+	fy_document_destroy(fyd2);
+}
+END_TEST
+
 /* Test: parse comment with override */
 START_TEST(fuzz_parse_comment_with_override)
 {
@@ -721,5 +760,6 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_parser_event_loop_block_scalar);
 #endif
 	fy_check_testcase_add_test(ctc, fuzz_collect_diag_parse_comments_sequence);
+	fy_check_testcase_add_test(ctc, fuzz_node_compare_clone_quoted_scalar);
 	fy_check_testcase_add_test(ctc, fuzz_parse_comment_with_override);
 }
