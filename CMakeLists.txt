@@ -1286,6 +1286,7 @@ if(CAN_TEST)
             test/libfyaml-test-meta.c
             test/libfyaml-test-emit.c
             test/libfyaml-test-emit-bugs.c
+            test/libfyaml-test-parse-bugs.c
             test/libfyaml-test-allocator.c
             test/libfyaml-test-fuzzing.c
             test/libfyaml-test-private.c
