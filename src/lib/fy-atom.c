@@ -904,11 +904,11 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 
 			s = t;
 			/* next character single quote too */
-			if ((e - s) >= 2 && s[1] == '\'')
+			if ((e - s) >= 2 && s[1] == '\'') {
 				fy_atom_iter_add_chunk(iter, s, 1);
-
-			/* skip over this single quote char */
-			s++;
+				s += 2;	/* skip over the two single quotes */
+			} else
+				s++;	/* skip over this single quote char */
 		}
 		break;
 
