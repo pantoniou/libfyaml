@@ -1564,6 +1564,10 @@ unsigned int fy_analyze_scalar_content(const char *data, size_t size,
 		    (fy_utf8_strchr(",[]{}", c) || (c == ':' && fy_utf8_strchr(",[]{}", nextc))))
 			flags &= ~FYACF_FLOW_PLAIN;
 
+		/* , followed by space can't be a plain in flow context */
+		if ((flags & FYACF_FLOW_PLAIN) && c == ',')
+			flags &= ~FYACF_FLOW_PLAIN;
+
 		if (!(flags & FYACF_JSON_ESCAPE) && !fy_is_json_unescaped(c))
 			flags |= FYACF_JSON_ESCAPE;
 

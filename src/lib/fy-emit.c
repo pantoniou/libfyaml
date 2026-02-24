@@ -1469,6 +1469,9 @@ out:
 	}
 
 	if (style == FYNS_PLAIN) {
+		if (flow && !(ta->flags & FYTTAF_CAN_BE_PLAIN_FLOW))
+			style = (ta->flags & FYTTAF_CAN_BE_SINGLE_QUOTED) ? FYNS_SINGLE_QUOTED : FYNS_DOUBLE_QUOTED;
+
 		/* plains in flow mode not being able to be plains
 		 * - plain in block mode that can't be plain in flow mode
 		 * - special handling for plains on start of line
@@ -1482,8 +1485,9 @@ out:
 			emit->column < fy_emit_width(emit) && (emit->column + ta->maxspan) > fy_emit_width(emit))
 			style = FYNS_DOUBLE_QUOTED;
 
-		if (style == FYNS_PLAIN && !(ta->flags & FYTTAF_CAN_BE_PLAIN))
+		if (style == FYNS_PLAIN && !(ta->flags & FYTTAF_CAN_BE_PLAIN)) {
 			style = FYNS_DOUBLE_QUOTED;
+		}
 	}
 
 	if (style == FYNS_ANY && (ta->flags & FYTTAF_CAN_BE_SINGLE_QUOTED))
