@@ -1058,6 +1058,32 @@ START_TEST(parse_bug_partial_utf8_at_eof)
 }
 END_TEST
 
+/* Single quote stream of 's */
+START_TEST(parse_bug_single_quoted_single_quotes)
+{
+	/* ''''''' -> "''" */
+	const char input[] = "''''''";
+	struct fy_document *fyd = NULL;
+	struct fy_parse_cfg cfg = {0};
+	struct fy_node *root = NULL;
+	const char *text;
+
+	cfg.flags = FYPCF_DEFAULT_PARSE;
+
+	fyd = fy_document_build_from_string(&cfg, input, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	root = fy_document_root(fyd);
+	ck_assert_ptr_ne(root, NULL);
+	ck_assert(fy_node_is_scalar(root));
+	text = fy_node_get_scalar0(root);
+	ck_assert_ptr_ne(text, NULL);
+	ck_assert_str_eq(text, "''");
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 /* ── registration ────────────────────────────────────────────────── */
 
 void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
@@ -1143,4 +1169,7 @@ void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, parse_bug_invalid_utf8_ff);
 	fy_check_testcase_add_test(ctc, parse_valid_utf8_ok);
 	fy_check_testcase_add_test(ctc, parse_bug_partial_utf8_at_eof);
+
+	/* extra parse bugs */
+	fy_check_testcase_add_test(ctc, parse_bug_single_quoted_single_quotes);
 }
