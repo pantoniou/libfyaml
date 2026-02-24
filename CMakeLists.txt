@@ -575,7 +575,7 @@ endif()
 
 set(ASAN_C_FLAGS)
 if(HAVE_ASAN)
-  set(ASAN_C_FLAGS "-fsanitize=address" "-fno-omit-frame-pointer")
+  set(ASAN_C_FLAGS "-fsanitize=address,signed-integer-overflow,undefined" "-fno-omit-frame-pointer")
 endif()
 
 # Build common compiler flags for all targets
