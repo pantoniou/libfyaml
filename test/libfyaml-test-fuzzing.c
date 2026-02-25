@@ -781,6 +781,27 @@ START_TEST(fuzz_disable_recycling_ypath_aliases_dup_keys)
 }
 END_TEST
 
+#if defined(__linux__)
+START_TEST(fuzz_build_from_fp_sloppy_recursive_ypath_aliases)
+{
+	char data[] = "\x2a\x27\x2f\x2a\x27\x27\x24\x09\x09\x3a\x0a\x72\x3a\x0a\x2a\x2f\x72\x2f";
+	struct fy_parse_cfg cfg = {0};
+	struct fy_document *fyd;
+	FILE *f;
+
+	cfg.flags = FYPCF_RESOLVE_DOCUMENT | FYPCF_DISABLE_ACCELERATORS |
+		    FYPCF_SLOPPY_FLOW_INDENTATION | FYPCF_PREFER_RECURSIVE |
+		    FYPCF_YPATH_ALIASES;
+
+	f = fmemopen((void *)data, strlen(data), "r");
+	fyd = fy_document_build_from_fp(&cfg, f);
+	if (f)
+		fclose(f);
+	fy_document_destroy(fyd);
+}
+END_TEST
+#endif
+
 
 void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 {
@@ -837,6 +858,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_resolve_recursive_ypath_aliases_dup_keys);
 	fy_check_testcase_add_test(ctc, fuzz_disable_recycling_ypath_aliases_dup_keys);
 #if defined(__linux__)
+	fy_check_testcase_add_test(ctc, fuzz_build_from_fp_sloppy_recursive_ypath_aliases);
 	fy_check_testcase_add_test(ctc, fuzz_build_from_fp_ypath_aliases_recursive);
 #endif
 }
