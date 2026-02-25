@@ -5082,19 +5082,23 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 
 		exprt = fy_scalar_walk_result_to_expr(fypx, output, ptype, &error);
 		output = NULL;	/* consumed by fy_scalar_walk_result_to_expr() */
-		if (error)
+		if (error) {
+			fy_path_expr_free(exprt);
+			exprt = NULL;
 			goto err_out;
+		}
 
 		if (!exprt)
 			break;
 
 		output = fy_path_expr_execute(fypx, level + 1, exprt, input, ptype, &error);
 		input = NULL;
+		fy_path_expr_free(exprt);
+		exprt = NULL;
+
 		if (error)
 			goto err_out;
 
-		fy_path_expr_free(exprt);
-		exprt = NULL;
 		break;
 
 	case fpet_path_expr:
