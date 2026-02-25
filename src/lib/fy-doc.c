@@ -4298,7 +4298,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 
 	/* scalar can be only last element in the path (it has no key) */
 	if (fy_node_is_scalar(fyn)) {
-		if (*s)
+		if (s < e && *s)
 			fyn = NULL;	/* not end of the path - fail */
 		goto out;
 	}
