@@ -2735,6 +2735,8 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 
 	if (fyp_block_mode(fyp) && fyp->indent < fyp_column(fyp)) {
 
+		int old_indent = fyp->indent;	/* save before push for comment delta */
+
 		/* push the new indent level */
 		rc = fy_push_indent(fyp, fyp_column(fyp), false, fyp_line(fyp));
 		fyp_error_check(fyp, !rc, err_out_rc,
@@ -2747,6 +2749,8 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 		/* if a last comment exists and is valid */
 		if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
 				(fy_atom_is_set(&fyp->override_comment) || fy_atom_is_set(&fyp->last_comment))) {
+			struct fy_token_comment *tc;
+			int ref_indent;
 
 			handle = fy_token_comment_handle(fyt, fycp_top, true);
 			fyp_error_check(fyp, handle, err_out,
@@ -2761,6 +2765,13 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 				*handle = fyp->last_comment;
 				fy_atom_reset(&fyp->last_comment);
 			}
+
+			/* compute indent_delta — same logic as fy_attach_comments_if_any()
+			 * but using old_indent (before fy_push_indent) as reference, since
+			 * the emitter will use the pre-increase mapping indent as base */
+			tc = container_of(handle, struct fy_token_comment, handle);
+			ref_indent = old_indent > 0 ? old_indent : 0;
+			tc->indent_delta = (int)handle->start_mark.column - ref_indent;
 		}
 	}
 

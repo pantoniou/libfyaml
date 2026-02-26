@@ -718,6 +718,130 @@ START_TEST(emit_bug_unquoted_flow_comma)
 }
 END_TEST
 
+/* ── Bug 14: comment indent loss on block sequence in mapping ────── */
+
+struct emit_bugs_collect_data {
+	size_t alloc;
+	size_t count;
+	char *buf;
+};
+
+static int emit_bugs_collect_output(struct fy_emitter *emit, enum fy_emitter_write_type type,
+				    const char *str, int len, void *userdata)
+{
+	struct emit_bugs_collect_data *data = userdata;
+	char *newbuf;
+	size_t alloc, need;
+
+	need = data->count + len + 1;
+	alloc = data->alloc;
+	if (!alloc)
+		alloc = 512;
+	while (need > alloc)
+		alloc <<= 1;
+
+	if (alloc != data->alloc) {
+		newbuf = realloc(data->buf, alloc);
+		assert(newbuf);
+		data->buf = newbuf;
+		data->alloc = alloc;
+	}
+	memcpy(data->buf + data->count, str, len);
+	data->count += len;
+	data->buf[data->count] = '\0';
+
+	return len;
+}
+
+/*
+ * Round-trip with comment preservation and indented-seq-in-map.
+ * Caller must free the returned string.
+ */
+static char *roundtrip_comments_indented_seq(const char *input)
+{
+	struct fy_parse_cfg pcfg = {
+		.flags = FYPCF_DEFAULT_PARSE | FYPCF_PARSE_COMMENTS
+	};
+	struct fy_document *fyd;
+	struct fy_emitter_xcfg xcfg;
+	struct fy_emitter *emit;
+	struct emit_bugs_collect_data data;
+	int rc;
+
+	fyd = fy_document_build_from_string(&pcfg, input, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	memset(&data, 0, sizeof(data));
+	memset(&xcfg, 0, sizeof(xcfg));
+	xcfg.cfg.output = emit_bugs_collect_output;
+	xcfg.cfg.userdata = &data;
+	xcfg.cfg.flags = FYECF_MODE_ORIGINAL | FYECF_OUTPUT_COMMENTS
+		       | FYECF_WIDTH_INF | FYECF_INDENT_2 | FYECF_EXTENDED_CFG;
+	xcfg.xflags = FYEXCF_INDENTED_SEQ_IN_MAP;
+
+	emit = fy_emitter_create(&xcfg.cfg);
+	ck_assert_ptr_ne(emit, NULL);
+
+	rc = fy_emit_document(emit, fyd);
+	ck_assert_int_eq(rc, 0);
+
+	fy_emitter_destroy(emit);
+	fy_document_destroy(fyd);
+
+	ck_assert_ptr_ne(data.buf, NULL);
+	return data.buf;
+}
+
+START_TEST(emit_bug_comment_indent_seq_in_map_simple)
+{
+	const char input[] = "root:\n  # a comment\n  - item\n";
+	char *output = roundtrip_comments_indented_seq(input);
+
+	/* The comment must be at indent 2, same as "- item" */
+	ck_assert_ptr_ne(strstr(output, "  # a comment\n"), NULL);
+	/* Must NOT have the comment at indent 0 */
+	ck_assert_ptr_eq(strstr(output, "\n# a comment\n"), NULL);
+
+	free(output);
+}
+END_TEST
+
+START_TEST(emit_bug_comment_indent_seq_in_map_nested)
+{
+	/* Mimics GitHub Actions steps structure */
+	const char input[] =
+		"jobs:\n"
+		"  test:\n"
+		"    steps:\n"
+		"      # step comment\n"
+		"      - name: foo\n";
+	char *output = roundtrip_comments_indented_seq(input);
+
+	/* Comment must be at indent 6 (6 spaces before #) */
+	ck_assert_ptr_ne(strstr(output, "      # step comment\n"), NULL);
+	/* Must NOT be at indent 4 (the mapping indent); anchor with newline */
+	ck_assert_ptr_eq(strstr(output, "\n    # step comment\n"), NULL);
+
+	free(output);
+}
+END_TEST
+
+START_TEST(emit_bug_comment_indent_seq_in_map_multiline)
+{
+	const char input[] =
+		"root:\n"
+		"  # line 1\n"
+		"  # line 2\n"
+		"  - item\n";
+	char *output = roundtrip_comments_indented_seq(input);
+
+	ck_assert_ptr_ne(strstr(output, "  # line 1\n"), NULL);
+	ck_assert_ptr_ne(strstr(output, "  # line 2\n"), NULL);
+
+	free(output);
+}
+END_TEST
+
 /* ── registration ────────────────────────────────────────────────── */
 
 void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
@@ -784,6 +908,11 @@ void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
 
 	/* Bug 13: plain multiline key */
 	fy_check_testcase_add_test(ctc, emit_bug_plain_multiline_key_hashbang);
+
+	/* Bug 14: comment indent loss on block sequence in mapping */
+	fy_check_testcase_add_test(ctc, emit_bug_comment_indent_seq_in_map_simple);
+	fy_check_testcase_add_test(ctc, emit_bug_comment_indent_seq_in_map_nested);
+	fy_check_testcase_add_test(ctc, emit_bug_comment_indent_seq_in_map_multiline);
 
 	/* other kind of emit bugs */
 	fy_check_testcase_add_test(ctc, emit_bug_unquoted_flow_comma);
