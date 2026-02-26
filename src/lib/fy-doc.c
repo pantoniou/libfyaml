@@ -2021,6 +2021,7 @@ struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *f
 			fy_node_pair_list_add_tail(&fyn->mapping, fynpt);
 			if (fyn->xl) {
 				rc = fy_accel_insert(fyn->xl, fynpt->key, fynpt);
+				fynpt = NULL;
 				fyd_error_check(fyd, !rc, err_out,
 						"fy_accel_insert() failed");
 			}
