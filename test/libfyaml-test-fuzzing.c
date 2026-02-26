@@ -802,6 +802,58 @@ START_TEST(fuzz_build_from_fp_sloppy_recursive_ypath_aliases)
 END_TEST
 #endif
 
+START_TEST(fuzz_parse_comments_emit_many_modes)
+{
+	char data[] =
+		"\x3a\x3a\x20\x3a\x20\x3a\x3a\x20\x3a\x20\x3f\x01\x05\x3a\x20\x3a\x20"
+		"\x3f\x20\x3a\x3a\x20\x3a\x20\x3a\x20\x3a\x3a\x20\x3a\x20\x3f\x3a\x20"
+		"\x3a\x20\x3b\x20\x3f\x01\x05\x3a\x20\x3a\x20\x3f\x20\x3a\x3a\x20\x3a"
+		"\x20\x3a\x20\x3a\x3a\x20\x3a\x20\x3f\x3a\x20\x3a\x20\x3b\x20\x3f\x01"
+		"\x05\x3a\x20\x3a\x20\x3f\x20\x3a\x3a\x20\x3a\x20\x3a\x20\x3a\x3a\x20"
+		"\x3a\x20\x3f\x3a\x20\x3a\x20\x3b\x20\x3f\x20\x3a\x3f\x01\x05\x3a\x20"
+		"\x3a\x20\x3f\x20\x3a\x3a\x20\x3a\x20\x3a\x20\x3a\x3a\x20\x3a\x20\x3a"
+		"\x3a\x20\x3a\x20\x3f\x3a\x20\x3a\x20\x3b\x20\x3f\x20\x3a\x3a\x55\x55"
+		"\x55\x55\x20\x3a\x3a\x20\x3a\x20\x3a\x20\x3f\x20\x3a\x3a\x20\x3a\x20"
+		"\x3a\x20\x3a\x3a\x20\x3a\x20\x3f\x3a\x20\x3a\x20\x3b\x20\x3f\x20\x3a"
+		"\x3f\x01\x05\x3a\x20\x3a\x20\x3f\x20\x3a\x3f\x20\x3a\x3f\x01\x05\x20"
+		"\x3a\x3a\x20\x20\x3a\x20\x3f";
+	struct fy_parse_cfg cfg = {0};
+	struct fy_document *fyd;
+	struct fy_emitter *emitter;
+	char *collected;
+	char buf[4096];
+	int eflags;
+	int rc;
+
+	cfg.flags = FYPCF_DISABLE_RECYCLING | FYPCF_PARSE_COMMENTS;
+	eflags = FYECF_OUTPUT_COMMENTS |
+		 FYECF_WIDTH_DEFAULT | FYECF_WIDTH_80 | FYECF_WIDTH_132 | FYECF_WIDTH_INF |
+		 FYECF_MODE_BLOCK | FYECF_MODE_FLOW | FYECF_MODE_FLOW_ONELINE |
+		 FYECF_MODE_JSON | FYECF_MODE_JSON_TP | FYECF_MODE_JSON_ONELINE |
+		 FYECF_MODE_DEJSON | FYECF_MODE_PRETTY | FYECF_MODE_MANUAL |
+		 FYECF_MODE_FLOW_COMPACT | FYECF_MODE_JSON_COMPACT |
+		 FYECF_TAG_DIR_OFF | FYECF_TAG_DIR_ON;
+
+	fyd = fy_document_build_from_string(&cfg, data, FY_NT);
+	if (!fyd)
+		return;
+
+	memset(buf, 0, sizeof(buf));
+	rc = fy_emit_document_to_buffer(fyd, eflags, buf, sizeof(buf));
+	(void)rc;
+
+	emitter = fy_emit_to_string(eflags);
+	if (emitter) {
+		fy_emit_document(emitter, fyd);
+		size_t out_size;
+		collected = fy_emit_to_string_collect(emitter, &out_size);
+		free(collected);
+	}
+	fy_emitter_destroy(emitter);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 
 void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 {
@@ -857,6 +909,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_path_expr_build_bang_triple_star);
 	fy_check_testcase_add_test(ctc, fuzz_resolve_recursive_ypath_aliases_dup_keys);
 	fy_check_testcase_add_test(ctc, fuzz_disable_recycling_ypath_aliases_dup_keys);
+	fy_check_testcase_add_test(ctc, fuzz_parse_comments_emit_many_modes);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_build_from_fp_sloppy_recursive_ypath_aliases);
 	fy_check_testcase_add_test(ctc, fuzz_build_from_fp_ypath_aliases_recursive);
