@@ -451,7 +451,7 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 			fprintf(stderr, "%s:%d tab col=%d chomp=%d\n", __FILE__, __LINE__, col, (int)(li->chomp_start - li->start));
 #endif
 
-			if (fy_atom_style_is_block(atom->style) && col >= (int)(li->chomp_start - li->start)) {
+			if (fy_atom_style_is_block(atom->style) && li->chomp_start && col >= (int)(li->chomp_start - li->start)) {
 #if defined(DEBUG_CHUNK)
 				fprintf(stderr, "%s:%d tab col=%d chomp=%d\n", __FILE__, __LINE__, col, (int)(li->chomp_start - li->start));
 #endif
