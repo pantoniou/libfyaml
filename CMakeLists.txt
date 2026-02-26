@@ -1459,6 +1459,18 @@ else()
     set(HAVE_SPHINX FALSE)
     message(STATUS "Sphinx not found - documentation targets disabled")
     message(STATUS "  Install: pip3 install sphinx sphinx_rtd_theme sphinx-markdown-builder linuxdoc")
+
+    install(FILES doc/canned-man/fy-tool.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
+    if(NOT WIN32)
+        install(CODE "
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-dump.1 WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_MANDIR}/man1)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-filter.1 WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_MANDIR}/man1)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-testsuite.1 WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_MANDIR}/man1)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-join.1 WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_MANDIR}/man1)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-ypath.1 WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_MANDIR}/man1)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-compose.1 WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_MANDIR}/man1)
+        ")
+    endif()
 endif()
 
 # Install targets
