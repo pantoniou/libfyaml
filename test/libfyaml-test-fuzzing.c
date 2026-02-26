@@ -854,6 +854,35 @@ START_TEST(fuzz_parse_comments_emit_many_modes)
 }
 END_TEST
 
+START_TEST(fuzz_resolve_recursive_ypath_dup_keys_emit_fp)
+{
+	char data[] = "\x0a\x2a\x2f\x2a\x2f\x5e\x2f\x2a\x2f\x20\x09\x09\x3a\x0a\x72\x3a"
+		      "\x0a\x2a\x5e\x2f\x2a\x2f\x20\x09\x09\x3a\x0a\x2a\x2f\x5e";
+	struct fy_parse_cfg cfg = {0};
+	struct fy_document *fyd;
+	FILE *fp;
+	int rc;
+
+	cfg.flags = FYPCF_RESOLVE_DOCUMENT | FYPCF_PREFER_RECURSIVE |
+		    FYPCF_YPATH_ALIASES | FYPCF_ALLOW_DUPLICATE_KEYS;
+
+	fyd = fy_document_build_from_string(&cfg, data, FY_NT);
+	if (!fyd)
+		return;
+
+	fp = fopen("/dev/null", "w");
+	rc = fy_emit_document_to_fp(fyd,
+		FYECF_MODE_BLOCK | FYECF_MODE_FLOW_ONELINE | FYECF_MODE_JSON |
+		FYECF_MODE_JSON_TP | FYECF_MODE_JSON_ONELINE | FYECF_MODE_DEJSON |
+		FYECF_MODE_MANUAL | FYECF_MODE_JSON_COMPACT,
+		fp);
+	(void)rc;
+	if (fp)
+		fclose(fp);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 
 void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 {
@@ -910,6 +939,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_resolve_recursive_ypath_aliases_dup_keys);
 	fy_check_testcase_add_test(ctc, fuzz_disable_recycling_ypath_aliases_dup_keys);
 	fy_check_testcase_add_test(ctc, fuzz_parse_comments_emit_many_modes);
+	fy_check_testcase_add_test(ctc, fuzz_resolve_recursive_ypath_dup_keys_emit_fp);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_build_from_fp_sloppy_recursive_ypath_aliases);
 	fy_check_testcase_add_test(ctc, fuzz_build_from_fp_ypath_aliases_recursive);
