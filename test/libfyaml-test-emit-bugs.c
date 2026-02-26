@@ -718,6 +718,77 @@ START_TEST(emit_bug_unquoted_flow_comma)
 }
 END_TEST
 
+/* ═══════════════════════════════════════════════════════════════════
+ * Bug 14: Folded block scalar line breaks lost on re-emit
+ *
+ * Folded scalars (>, >-, >+) lose their original line break positions
+ * during a parse→emit round-trip in original mode.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* parse→emit round-trip helper: returns emitted string (caller frees) */
+static char *roundtrip_doc(const char *input)
+{
+	struct fy_document *fyd;
+	char *buf;
+
+	fyd = fy_document_build_from_string(NULL, input, FY_NT);
+	if (!fyd)
+		return NULL;
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	fy_document_destroy(fyd);
+	return buf;
+}
+
+START_TEST(emit_bug_folded_clip_roundtrip)
+{
+	const char input[] = "run: >\n  line one\n  line two\n";
+	char *buf = roundtrip_doc(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, input);
+	free(buf);
+}
+END_TEST
+
+START_TEST(emit_bug_folded_strip_roundtrip)
+{
+	const char input[] = "run: >-\n  line one\n  line two\n";
+	char *buf = roundtrip_doc(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, input);
+	free(buf);
+}
+END_TEST
+
+START_TEST(emit_bug_folded_keep_roundtrip)
+{
+	const char input[] = "run: >+\n  line one\n  line two\n\n";
+	char *buf = roundtrip_doc(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, input);
+	free(buf);
+}
+END_TEST
+
+START_TEST(emit_bug_folded_blank_lines_roundtrip)
+{
+	const char input[] = "run: >\n  line one\n\n  line three\n";
+	char *buf = roundtrip_doc(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, input);
+	free(buf);
+}
+END_TEST
+
+START_TEST(emit_bug_folded_more_indented_roundtrip)
+{
+	const char input[] = "run: >\n  normal\n    indented\n  back\n";
+	char *buf = roundtrip_doc(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, input);
+	free(buf);
+}
+END_TEST
+
 /* ── registration ────────────────────────────────────────────────── */
 
 void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
@@ -787,4 +858,11 @@ void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
 
 	/* other kind of emit bugs */
 	fy_check_testcase_add_test(ctc, emit_bug_unquoted_flow_comma);
+
+	/* Bug 14: folded block scalar line breaks lost on re-emit */
+	fy_check_testcase_add_test(ctc, emit_bug_folded_clip_roundtrip);
+	fy_check_testcase_add_test(ctc, emit_bug_folded_strip_roundtrip);
+	fy_check_testcase_add_test(ctc, emit_bug_folded_keep_roundtrip);
+	fy_check_testcase_add_test(ctc, emit_bug_folded_blank_lines_roundtrip);
+	fy_check_testcase_add_test(ctc, emit_bug_folded_more_indented_roundtrip);
 }
