@@ -1473,12 +1473,12 @@ install(TARGETS fyaml fy-tool
 # Create symlinks for fy-tool (not on Windows - symlinks require special privileges)
 if(NOT WIN32)
     install(CODE "
-        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-dump WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
-        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-filter WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
-        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-testsuite WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
-        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-join WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
-        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-ypath WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
-        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-compose WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-dump WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-filter WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-testsuite WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-join WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-ypath WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-compose WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_BINDIR})
     ")
 endif()
 
