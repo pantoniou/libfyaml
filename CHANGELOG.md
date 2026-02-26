@@ -5,6 +5,102 @@ All notable changes to libfyaml will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.5] - 2026-02-26
+
+### Added
+
+- `fy_node_mapping_sort()`: Sort a single mapping's keys without recursing into children (exposed from internal)
+- `enum fy_collection_style` / `fy_token_collection_style()`: Query the style (block/flow) of a collection token
+- `fy_token_style_start_mark()` / `fy_token_style_end_mark()`: Get token start/end marks including style indicators
+- `fy_event_style_start_mark()` / `fy_event_style_end_mark()`: Get event start/end marks including style indicators
+- `fy_document_state_shorten_tag()`: Shorten a tag using the document state's tag directives
+- `FYEXCF_INDENTED_SEQ_IN_MAP`: New emitter flag to indent block sequences that are mapping values
+- `FYEXCF_PRESERVE_FLOW_LAYOUT`: New emitter flag to preserve oneline flow collections in streaming mode
+- fy-tool: `--indented-seq-in-map` command-line option
+- fy-tool: `--preserve-flow-layout` command-line option
+- Extensive fuzz-driven test suite covering parse, emit, walk, and document operations
+
+### Changed
+
+- Atom text analysis reworked to introduce manual scalar variants for correctness
+- Token style markers introduced for more precise source location tracking
+- Walk set operations removed (dead code)
+- cmake: `CMAKE_EXPORT_COMPILE_COMMANDS` defaults to ON
+
+### Fixed
+
+**Emitter:**
+- Preserve original indentation of top and bottom comments (was using scope indent instead of original column)
+- Allow comments before first entry of nested block mapping or sequence
+- Emit right-comments on flow collection end tokens
+- Emit top comments in mapping key prolog
+- Fix duplicate top comment emission in nested containers
+- Do not reflow oneline flow collections in original mode
+- Ensure block scalars are not chomped incorrectly
+- Do not allow illegal plain scalar in flow context
+- Handle root object with a tag correctly
+- Fix emitter output on starting tag with ANY flow style
+- Fix memory leak on emit error path
+- Fix indent delta calculations
+- Guard against writing NULL byte at buffer overrun
+
+**Parser:**
+- Correctly reject malformed directives: empty `%YAML`/`%TAG`, bare `%`, invalid tag handles
+- Require document start indicator where needed
+- Fix block scalar parsing errors when empty
+- Correctly reject invalid, partial, or zero bytes in input stream
+- Fix failure to parse empty block sequence items
+- Fix `fy_tag_scan` to work with bare tags
+- Fix leaking input reference on override comment
+- Do not take duplicate input reference when merging comments
+
+**Walk (YPath):**
+- Fix memory leak on error when executing an expression
+- Fix two use-after-free bugs on error paths for method calls
+- Fix mistrack of nodes after deep copy
+- Fix input ownership issues in `fy_node_by_ypath_result()`
+- Fix losing track of path execution context
+- Fix possible uninitialized variable
+- Better handoff handling; correct input ownership on error path
+- Ensure diagnostic token has `start.pos < end.pos`
+
+**Document API:**
+- Fix out-of-bounds access in `fy_node_by_path_internal()`
+- Fix `fy_node_vscanf()` scanning over `\0`
+- Fix `strtol` out-of-bounds read
+- `fy_document_load_node()`: clean up node on error
+- Do not detach accel structure prematurely on error
+- `fy_node_copy_internal()`: do not free on error path
+
+**Atom / Token:**
+- Correctly handle streams of single-quoted single-quotes
+- Fix potential out-of-bounds access
+- Fix size calculations when NEL linebreak is used
+- Fix NULL dereference
+- Call `iter_finish` on error in `fy_atom_format_text()`
+- Guard against error return value in `fy_token_format_text_length()`
+
+**UTF-8:**
+- Fix non-detected invalid 3-byte and 4-byte UTF-8 sequences
+
+**Comment:**
+- Fix double-free error on override comment
+
+**Portability / Build:**
+- Windows: Fix fragile `.def` file generation
+- cmake: Turn PIC on for the static library build
+- cmake: Use namespace check target for newer CMake versions
+- cmake: Replace `CMAKE_SOURCE_DIR` with `CMAKE_CURRENT_SOURCE_DIR`
+- cmake: Tighten ASAN flags
+- xxhash: Disable unaligned accesses when running under ASAN
+- Makefile.am: Fix broken distcheck
+- thread: Remove bogus assertion
+
+### Statistics
+
+- 105 commits since v0.9.4
+- Extensive fuzz-driven robustness improvements across parse, emit, walk, and document layers
+
 ## [0.9.4] - 2026-02-03
 
 ### Major: Full Windows Support
@@ -276,6 +372,7 @@ Jose Luis Blanco-Claraco, Andrey Somov, Orange_233, Martin Diehl
 
 Initial public release with comprehensive YAML 1.2 support.
 
+[0.9.5]: https://github.com/pantoniou/libfyaml/compare/v0.9.4...v0.9.5
 [0.9.4]: https://github.com/pantoniou/libfyaml/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/pantoniou/libfyaml/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/pantoniou/libfyaml/compare/v0.9.1...v0.9.2
