@@ -2660,6 +2660,7 @@ struct fy_emit_buffer_state {
 	size_t pos;
 	size_t need;
 	bool allocate_buffer;
+	size_t maxsize;
 };
 
 static int do_buffer_output(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int leni, void *userdata)
@@ -2745,11 +2746,13 @@ fy_emitter_create_str_internal(enum fy_emitter_cfg_flags flags, char **bufp, siz
 		state->buf = *bufp;
 		state->sizep = sizep;
 		state->size = *sizep;
+		state->maxsize = state->size;
 	} else {
 		state->bufp = NULL;
 		state->buf = NULL;
 		state->sizep = NULL;
 		state->size = 0;
+		state->maxsize = 0;
 	}
 	state->pos = 0;
 	state->need = 0;
@@ -2795,6 +2798,10 @@ fy_emitter_collect_str_internal(struct fy_emitter *emit, char **bufp, size_t *si
 	/* terminating zero */
 	rc = do_buffer_output(emit, fyewt_terminating_zero, "\0", 1, state);
 	if (rc != 1)
+		goto err_out;
+
+	/* if we are on a fixed buffer don't output */
+	if (state->maxsize > 0 && state->need > state->maxsize)
 		goto err_out;
 
 	state->size = state->need;
