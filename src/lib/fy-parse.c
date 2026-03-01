@@ -1614,6 +1614,27 @@ int fy_parse_unroll_indent(struct fy_parser *fyp, int column)
 		fyp_error_check(fyp, !rc, err_out,
 				"fy_pop_indent() failed");
 
+		/* attach pending comment to this block-end token;
+		 * compute indent_delta relative to the parent indent
+		 * (after fy_pop_indent) so the emitter can pass old_indent
+		 * and get both correct comment column and trailing indent */
+		if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
+				fy_atom_is_set(&fyp->last_comment)) {
+
+			struct fy_atom *handle;
+			int ref_indent;
+
+			handle = fy_token_comment_handle(fyt, fycp_top, true);
+			if (handle) {
+				fy_input_unref(handle->fyi);
+				fy_atom_reset(handle);
+				*handle = fyp->last_comment;
+				ref_indent = fyp->indent > 0 ? fyp->indent : 0;
+				fy_atom_set_indent_delta(handle, (int)handle->start_mark.column - ref_indent);
+				fy_atom_reset(&fyp->last_comment);
+			}
+		}
+
 		/* the ident line has now moved */
 		fyp->indent_line = fyp_line(fyp);
 	}
@@ -1958,6 +1979,24 @@ int fy_fetch_stream_end(struct fy_parser *fyp)
 	fyt = fy_token_queue_simple(fyp, &fyp->queued_tokens, FYTT_STREAM_END, 0);
 	fyp_error_check(fyp, fyt, err_out,
 			"fy_token_queue_simple() failed");
+
+	/* attach any remaining trailing comment to stream end */
+	if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
+			fy_atom_is_set(&fyp->last_comment)) {
+
+		struct fy_atom *handle;
+		int ref_indent;
+
+		handle = fy_token_comment_handle(fyt, fycp_top, true);
+		if (handle) {
+			fy_input_unref(handle->fyi);
+			fy_atom_reset(handle);
+			*handle = fyp->last_comment;
+			ref_indent = fyp->indent > 0 ? fyp->indent : 0;
+			fy_atom_set_indent_delta(handle, (int)handle->start_mark.column - ref_indent);
+			fy_atom_reset(&fyp->last_comment);
+		}
+	}
 
 	return 0;
 

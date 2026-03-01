@@ -1007,6 +1007,82 @@ START_TEST(emit_bug_literal_keep_multiple_trailing_blanks)
 }
 END_TEST
 
+/* ═══════════════════════════════════════════════════════════════════
+ * Bug 18: Trailing comments lost during parse→emit round-trip
+ *
+ * Comments appearing after the last entry in a mapping/sequence are
+ * silently dropped because the parser never attached them to any
+ * token.  The fix attaches them to BLOCK_END tokens.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* round-trip helper with comment parsing and output enabled */
+static char *roundtrip_doc_comments(const char *input)
+{
+	struct fy_document *fyd;
+	struct fy_parse_cfg cfg;
+	char *buf;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = FYPCF_PARSE_COMMENTS;
+
+	fyd = fy_document_build_from_string(&cfg, input, FY_NT);
+	if (!fyd)
+		return NULL;
+	buf = fy_emit_document_to_string(fyd, FYECF_DEFAULT | FYECF_OUTPUT_COMMENTS);
+	fy_document_destroy(fyd);
+	return buf;
+}
+
+START_TEST(emit_bug_trailing_comment_mapping)
+{
+	const char input[] = "key: value\n# trailing\n";
+	char *buf = roundtrip_doc_comments(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, input);
+	free(buf);
+}
+END_TEST
+
+START_TEST(emit_bug_trailing_comment_sequence)
+{
+	const char input[] = "items:\n- a\n# after last item\n";
+	char *buf = roundtrip_doc_comments(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, input);
+	free(buf);
+}
+END_TEST
+
+START_TEST(emit_bug_trailing_comment_nested)
+{
+	const char input[] = "outer:\n  inner: value\n  # comment\nnext: val\n";
+	char *buf = roundtrip_doc_comments(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, input);
+	free(buf);
+}
+END_TEST
+
+START_TEST(emit_bug_trailing_comment_multiline)
+{
+	const char input[] = "key: value\n# line 1\n# line 2\n";
+	char *buf = roundtrip_doc_comments(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, input);
+	free(buf);
+}
+END_TEST
+
+START_TEST(emit_bug_trailing_comment_eof_mapping)
+{
+	const char input[] = "key: value\n# eof\n";
+	char *buf = roundtrip_doc_comments(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, input);
+	free(buf);
+}
+END_TEST
+
 /* ── registration ────────────────────────────────────────────────── */
 
 void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
@@ -1098,4 +1174,11 @@ void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
 	/* Bug 17: literal |+ extra trailing newline */
 	fy_check_testcase_add_test(ctc, emit_bug_literal_keep_no_extra_newline);
 	fy_check_testcase_add_test(ctc, emit_bug_literal_keep_multiple_trailing_blanks);
+
+	/* Bug 18: trailing comments lost during round-trip */
+	fy_check_testcase_add_test(ctc, emit_bug_trailing_comment_mapping);
+	fy_check_testcase_add_test(ctc, emit_bug_trailing_comment_sequence);
+	fy_check_testcase_add_test(ctc, emit_bug_trailing_comment_nested);
+	fy_check_testcase_add_test(ctc, emit_bug_trailing_comment_multiline);
+	fy_check_testcase_add_test(ctc, emit_bug_trailing_comment_eof_mapping);
 }
