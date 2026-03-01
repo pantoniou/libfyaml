@@ -2755,7 +2755,6 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 	struct fy_mark mark;
 	struct fy_simple_key *fysk;
 	struct fy_token *fyt;
-	struct fy_atom *handle;
 
 	fyp_error_check(fyp, c == '-', err_out,
 			"illegal block entry");
@@ -2784,8 +2783,6 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 
 	if (fyp_block_mode(fyp) && fyp->indent < fyp_column(fyp)) {
 
-		int old_indent = fyp->indent;	/* save before push for comment delta */
-
 		/* push the new indent level */
 		rc = fy_push_indent(fyp, fyp_column(fyp), false, fyp_line(fyp));
 		fyp_error_check(fyp, !rc, err_out_rc,
@@ -2795,36 +2792,21 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 		fyp_error_check(fyp, fyt, err_out,
 				"fy_token_queue_simple_internal() failed");
 
-		/* if a last comment exists and is valid */
+		/* leave comments for fy_attach_comments_if_any() on the first item token;
+		 * merge override_comment into last_comment so it flows through */
 		if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
-				(fy_atom_is_set(&fyp->override_comment) || fy_atom_is_set(&fyp->last_comment))) {
-			int ref_indent;
+				fy_atom_is_set(&fyp->override_comment)) {
 
-			handle = fy_token_comment_handle(fyt, fycp_top, true);
-			fyp_error_check(fyp, handle, err_out,
-				"fy_token_comment_handle() failed");
-			fy_input_unref(handle->fyi);
-			fy_atom_reset(handle);
-
-			if (fy_atom_is_set(&fyp->override_comment)) {
-				*handle = fyp->override_comment;
-				fy_atom_reset(&fyp->override_comment);
-			} else if (fy_atom_is_set(&fyp->last_comment)) {
-				*handle = fyp->last_comment;
-				fy_atom_reset(&fyp->last_comment);
+			if (fy_atom_is_set(&fyp->last_comment) &&
+			    fy_comment_atoms_seperated_by_ws(fyp, &fyp->override_comment, &fyp->last_comment)) {
+				fyp->override_comment.end_mark = fyp->last_comment.end_mark;
+				fy_input_unref(fyp->last_comment.fyi);
 			}
-
-			/* compute indent_delta — same logic as fy_attach_comments_if_any()
-			 * but using old_indent (before fy_push_indent) as reference, since
-			 * the emitter will use the pre-increase mapping indent as base */
-			ref_indent = old_indent > 0 ? old_indent : 0;
-			fy_atom_set_indent_delta(handle, (int)handle->start_mark.column - ref_indent);
+			fy_atom_reset(&fyp->last_comment);
+			fyp->last_comment = fyp->override_comment;
+			fy_atom_reset(&fyp->override_comment);
 		}
 	}
-
-	/* always reset the override comment */
-	fy_input_unref(fyp->override_comment.fyi);
-	fy_atom_reset(&fyp->override_comment);
 
 	if (c == '-' && fyp->flow_level) {
 		/* this is an error, but we let the parser catch it */
@@ -2860,6 +2842,12 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 	fyt = fy_token_queue_simple(fyp, &fyp->queued_tokens, FYTT_BLOCK_ENTRY, 1);
 	fyp_error_check(fyp, fyt, err_out,
 			"fy_token_queue_simple() failed");
+
+	/* Signal that the next implicit-mapping key (if any) is a sequence item's first key.
+	 * fy_fetch_value() uses this to move the key's fycp_top comment to BLOCK_MAPPING_START
+	 * so the emitter's sequence_item_prolog can find it. */
+	fyp->pending_seq_item_key = true;
+	fyp_scan_debug(fyp, "pending_seq_item_key -> true");
 
 	rc = fy_ws_indentation_check(fyp, NULL, NULL);
 	fyp_error_check(fyp, !rc, err_out_rc,
@@ -2911,24 +2899,19 @@ int fy_fetch_key(struct fy_parser *fyp, int c)
 		fyp_error_check(fyp, fyt, err_out,
 				"fy_token_queue_simple_internal() failed");
 
-		/* if a last comment exists and is valid */
+		/* leave comments for fy_attach_comments_if_any() on the first key token;
+		 * merge override_comment into last_comment so it flows through */
 		if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
-				(fy_atom_is_set(&fyp->override_comment) || fy_atom_is_set(&fyp->last_comment))) {
+				fy_atom_is_set(&fyp->override_comment)) {
 
-			handle = fy_token_comment_handle(fyt, fycp_top, true);
-			fyp_error_check(fyp, handle, err_out,
-				"fy_token_comment_handle() failed");
-
-			fy_input_unref(handle->fyi);
-			fy_atom_reset(handle);
-
-			if (fy_atom_is_set(&fyp->override_comment)) {
-				*handle = fyp->override_comment;
-				fy_atom_reset(&fyp->override_comment);
-			} else if (fy_atom_is_set(&fyp->last_comment)) {
-				*handle = fyp->last_comment;
-				fy_atom_reset(&fyp->last_comment);
+			if (fy_atom_is_set(&fyp->last_comment) &&
+			    fy_comment_atoms_seperated_by_ws(fyp, &fyp->override_comment, &fyp->last_comment)) {
+				fyp->override_comment.end_mark = fyp->last_comment.end_mark;
+				fy_input_unref(fyp->last_comment.fyi);
 			}
+			fy_atom_reset(&fyp->last_comment);
+			fyp->last_comment = fyp->override_comment;
+			fy_atom_reset(&fyp->override_comment);
 		}
 	}
 
@@ -3130,44 +3113,42 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 		fyp_error_check(fyp, fyt, err_out,
 				"fy_token_queue_simple_internal() failed");
 
-		/* if a last comment exists and is valid */
 		if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS) {
 
-			struct fy_atom *key_handle, *handle;
+			/* When the key is the first entry of a sequence item (flagged by
+			 * pending_seq_item_key set in fy_fetch_block_entry()), move the fycp_top
+			 * comment from the key scalar to BLOCK_MAPPING_START.  The emitter's
+			 * sequence_item_prolog looks for the comment on fyt_value = mapping_start,
+			 * and placing it there also ensures fy_node_sequence_sort carries the comment
+			 * with the item.  For standalone mappings, leave the comment on the key
+			 * scalar so it remains sort-stable under fy_node_mapping_sort. */
+			if (fyp->pending_seq_item_key && fysk && fysk->token) {
+				struct fy_atom *key_handle = fy_token_comment_handle(fysk->token, fycp_top, false);
+				if (key_handle && fy_atom_is_set(key_handle)) {
+					struct fy_atom *bms_handle;
 
-			if (fysk && fysk->token) {
-				key_handle = fy_token_comment_handle(fysk->token, fycp_top, true);
-				fyp_error_check(fyp, key_handle, err_out,
-					"fy_token_comment_handle() failed");
+					bms_handle = fy_token_comment_handle(fyt, fycp_top, true);
+					fyp_error_check(fyp, bms_handle, err_out,
+							"fy_token_comment_handle() failed");
 
-				handle = fy_token_comment_handle(fyt, fycp_top, true);
-				fyp_error_check(fyp, handle, err_out,
-					"fy_token_comment_handle() failed");
-
-				/* move the comment to the block mapping start */
-				fy_input_unref(handle->fyi);
-				fy_atom_reset(handle);
-				*handle = *key_handle;
-				fy_atom_reset(key_handle);
-			}
-
-			if (fy_atom_is_set(&fyp->override_comment) ||
-			    fy_atom_is_set(&fyp->last_comment)) {
-
-				handle = fy_token_comment_handle(fyt, fycp_top, true);
-				fyp_error_check(fyp, handle, err_out,
-					"fy_token_comment_handle() failed");
-
-				fy_input_unref(handle->fyi);
-				fy_atom_reset(handle);
-
-				if (fy_atom_is_set(&fyp->override_comment)) {
-					*handle = fyp->override_comment;
-					fy_atom_reset(&fyp->override_comment);
-				} else if (fy_atom_is_set(&fyp->last_comment)) {
-					*handle = fyp->last_comment;
-					fy_atom_reset(&fyp->last_comment);
+					fy_input_unref(bms_handle->fyi);
+					fy_atom_reset(bms_handle);
+					*bms_handle = *key_handle;
+					fy_atom_reset(key_handle);
 				}
+			}
+			fyp->pending_seq_item_key = false;
+			fyp_scan_debug(fyp, "pending_seq_item_key -> false");
+
+			if (fy_atom_is_set(&fyp->override_comment)) {
+				if (fy_atom_is_set(&fyp->last_comment) &&
+				    fy_comment_atoms_seperated_by_ws(fyp, &fyp->override_comment, &fyp->last_comment)) {
+					fyp->override_comment.end_mark = fyp->last_comment.end_mark;
+					fy_input_unref(fyp->last_comment.fyi);
+				}
+				fy_atom_reset(&fyp->last_comment);
+				fyp->last_comment = fyp->override_comment;
+				fy_atom_reset(&fyp->override_comment);
 			}
 		}
 
