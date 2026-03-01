@@ -1836,6 +1836,12 @@ void fy_emit_sequence(struct fy_emitter *emit, struct fy_node *fyn, int flags, i
 
 	fy_emit_sequence_epilog(emit, sc);
 
+	/* emit trailing comment attached to the block-end token;
+	 * use old_indent (parent scope) so the trailing indent
+	 * doesn't produce an extra blank line */
+	if (fy_emit_token_has_comment(emit, fyn->sequence_end, fycp_top))
+		fy_emit_token_comment(emit, fyn->sequence_end, sc->flags, sc->old_indent, fycp_top);
+
 	/* emit right-comment attached to the closing bracket token */
 	if (fy_emit_token_has_comment(emit, fyn->sequence_end, fycp_right))
 		fy_emit_token_comment(emit, fyn->sequence_end, sc->flags, sc->indent, fycp_right);
@@ -2151,6 +2157,12 @@ void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, in
 	}
 
 	fy_emit_mapping_epilog(emit, sc);
+
+	/* emit trailing comment attached to the block-end token;
+	 * use old_indent (parent scope) so the trailing indent
+	 * doesn't produce an extra blank line */
+	if (fy_emit_token_has_comment(emit, fyn->mapping_end, fycp_top))
+		fy_emit_token_comment(emit, fyn->mapping_end, sc->flags, sc->old_indent, fycp_top);
 
 	/* emit right-comment attached to the closing brace token */
 	if (fy_emit_token_has_comment(emit, fyn->mapping_end, fycp_right))
