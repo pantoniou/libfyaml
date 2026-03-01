@@ -1180,6 +1180,178 @@ START_TEST(doc_mapping_sort)
 }
 END_TEST
 
+static int seq_sort_cmp_scalar(struct fy_node *a, struct fy_node *b, void *arg)
+{
+	const char *sa = fy_node_get_scalar0(a);
+	const char *sb = fy_node_get_scalar0(b);
+	if (!sa) sa = "";
+	if (!sb) sb = "";
+	return strcmp(sa, sb);
+}
+
+START_TEST(doc_sequence_sort_basic)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn_seq;
+	struct fy_node *fyn;
+	int ret;
+
+	fyd = fy_document_build_from_string(NULL, "[c, a, b]", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn_seq = fy_document_root(fyd);
+	ck_assert_ptr_ne(fyn_seq, NULL);
+
+	ret = fy_node_sequence_sort(fyn_seq, seq_sort_cmp_scalar, NULL);
+	ck_assert_int_eq(ret, 0);
+
+	fyn = fy_node_sequence_get_by_index(fyn_seq, 0);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "a");
+
+	fyn = fy_node_sequence_get_by_index(fyn_seq, 1);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "b");
+
+	fyn = fy_node_sequence_get_by_index(fyn_seq, 2);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "c");
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(doc_sequence_sort_already_sorted)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn_seq, *fyn;
+	int ret;
+
+	fyd = fy_document_build_from_string(NULL, "[a, b, c]", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn_seq = fy_document_root(fyd);
+	ret = fy_node_sequence_sort(fyn_seq, seq_sort_cmp_scalar, NULL);
+	ck_assert_int_eq(ret, 0);
+
+	fyn = fy_node_sequence_get_by_index(fyn_seq, 0);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "a");
+	fyn = fy_node_sequence_get_by_index(fyn_seq, 1);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "b");
+	fyn = fy_node_sequence_get_by_index(fyn_seq, 2);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "c");
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(doc_sequence_sort_single)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn_seq, *fyn;
+	int ret;
+
+	fyd = fy_document_build_from_string(NULL, "[a]", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn_seq = fy_document_root(fyd);
+	ret = fy_node_sequence_sort(fyn_seq, seq_sort_cmp_scalar, NULL);
+	ck_assert_int_eq(ret, 0);
+
+	fyn = fy_node_sequence_get_by_index(fyn_seq, 0);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "a");
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(doc_sequence_sort_empty)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn_seq;
+	int ret;
+
+	fyd = fy_document_build_from_string(NULL, "[]", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn_seq = fy_document_root(fyd);
+	ret = fy_node_sequence_sort(fyn_seq, seq_sort_cmp_scalar, NULL);
+	ck_assert_int_eq(ret, 0);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(doc_sequence_sort_non_sequence)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	int ret;
+
+	fyd = fy_document_build_from_string(NULL, "{a: 1}", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn = fy_document_root(fyd);
+	ret = fy_node_sequence_sort(fyn, seq_sort_cmp_scalar, NULL);
+	ck_assert_int_eq(ret, -1);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(doc_sequence_sort_null)
+{
+	int ret;
+
+	ret = fy_node_sequence_sort(NULL, seq_sort_cmp_scalar, NULL);
+	ck_assert_int_eq(ret, -1);
+}
+END_TEST
+
+START_TEST(doc_sequence_sort_flow_style_preserved)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn_seq;
+	char *output;
+	int ret;
+
+	fyd = fy_document_build_from_string(NULL, "[c, a, b]", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn_seq = fy_document_root(fyd);
+	ret = fy_node_sequence_sort(fyn_seq, seq_sort_cmp_scalar, NULL);
+	ck_assert_int_eq(ret, 0);
+
+	output = fy_emit_document_to_string(fyd, FYECF_MODE_FLOW_ONELINE);
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_str_eq(output, "[a, b, c]\n");
+	free(output);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(doc_sequence_sort_block_style_preserved)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn_seq;
+	char *output;
+	int ret;
+
+	fyd = fy_document_build_from_string(NULL,
+		"- c\n- a\n- b\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn_seq = fy_document_root(fyd);
+	ret = fy_node_sequence_sort(fyn_seq, seq_sort_cmp_scalar, NULL);
+	ck_assert_int_eq(ret, 0);
+
+	output = fy_emit_document_to_string(fyd, FYECF_MODE_BLOCK);
+	ck_assert_ptr_ne(output, NULL);
+	ck_assert_str_eq(output, "- a\n- b\n- c\n");
+	free(output);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 START_TEST(doc_insert_at)
 {
 	struct fy_document *fyd;
@@ -2402,6 +2574,14 @@ void libfyaml_case_core(struct fy_check_suite *cs)
 
 	fy_check_testcase_add_test(ctc, doc_sort);
 	fy_check_testcase_add_test(ctc, doc_mapping_sort);
+	fy_check_testcase_add_test(ctc, doc_sequence_sort_basic);
+	fy_check_testcase_add_test(ctc, doc_sequence_sort_already_sorted);
+	fy_check_testcase_add_test(ctc, doc_sequence_sort_single);
+	fy_check_testcase_add_test(ctc, doc_sequence_sort_empty);
+	fy_check_testcase_add_test(ctc, doc_sequence_sort_non_sequence);
+	fy_check_testcase_add_test(ctc, doc_sequence_sort_null);
+	fy_check_testcase_add_test(ctc, doc_sequence_sort_flow_style_preserved);
+	fy_check_testcase_add_test(ctc, doc_sequence_sort_block_style_preserved);
 	fy_check_testcase_add_test(ctc, doc_insert_at);
 
 	fy_check_testcase_add_test(ctc, doc_join_scalar_to_scalar);
