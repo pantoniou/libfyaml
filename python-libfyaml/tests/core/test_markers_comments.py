@@ -99,9 +99,10 @@ class TestComments:
         assert doc.get_comment() is None
 
     def test_header_comment(self):
-        """Header comments should be attached to following node."""
+        """Header comments attach to the first key, not the mapping root."""
         doc = fy.loads('# header\nfoo: bar\n', keep_comments=True)
-        comment = doc.get_comment()
+        first_key = next(iter(doc.keys()))
+        comment = first_key.get_comment()
         assert comment is not None
         assert 'header' in comment
 
@@ -118,9 +119,10 @@ class TestComments:
         assert doc['baz'].get_comment() is None
 
     def test_comment_is_string(self):
-        """Comments should be returned as strings."""
+        """Comments on the first key are returned as strings."""
         doc = fy.loads('# my comment\nfoo: bar\n', keep_comments=True)
-        comment = doc.get_comment()
+        first_key = next(iter(doc.keys()))
+        comment = first_key.get_comment()
         assert isinstance(comment, str)
 
     def test_comments_with_markers(self):

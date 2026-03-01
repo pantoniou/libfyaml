@@ -2254,28 +2254,28 @@ START_TEST(parser_comments_3)
 	fyn = fy_document_root(fyd);
 	ck_assert_ptr_ne(fyn, NULL);
 
-	/* top */
+	/* comment before first item is now on the item, not on the sequence */
 	comment = fy_node_get_comment(fyn, fycp_top);
-	ck_assert_ptr_ne(comment, NULL);
-	ck_assert_ptr_ne(strstr(comment, "top seq"), NULL);
-
-	/* all */
-	comment = fy_node_get_comments(fyn);
-	ck_assert_ptr_ne(comment, NULL);
-	ck_assert_ptr_ne(strstr(comment, "top seq"), NULL);
+	ck_assert_ptr_eq(comment, NULL);
 
 	/* get the first item of the sequence */
 	fyn = fy_node_by_path(fy_document_root(fyd), "/0", FY_NT, FYNWF_DONT_FOLLOW);
 	ck_assert_ptr_ne(fyn, NULL);
+
+	/* top — comment before first item now attached here */
+	comment = fy_node_get_comment(fyn, fycp_top);
+	ck_assert_ptr_ne(comment, NULL);
+	ck_assert_ptr_ne(strstr(comment, "top seq"), NULL);
 
 	/* right */
 	comment = fy_node_get_comment(fyn, fycp_right);
 	ck_assert_ptr_ne(comment, NULL);
 	ck_assert_ptr_ne(strstr(comment, "right item"), NULL);
 
-	/* all */
+	/* all — should include both top and right */
 	comment = fy_node_get_comments(fyn);
 	ck_assert_ptr_ne(comment, NULL);
+	ck_assert_ptr_ne(strstr(comment, "top seq"), NULL);
 	ck_assert_ptr_ne(strstr(comment, "right item"), NULL);
 
 	fy_document_destroy(fyd);
