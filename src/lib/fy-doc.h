@@ -146,6 +146,13 @@ struct fy_node_pair **fy_node_mapping_sort_array(struct fy_node *fyn_map,
 
 void fy_node_mapping_release_array(struct fy_node *fyn_map, struct fy_node_pair **fynpp);
 
+struct fy_node_sequence_sort_ctx {
+	fy_node_sequence_sort_fn cmp;
+	void *arg;
+	struct fy_node **fynp;
+	int count;
+};
+
 struct fy_node_walk_ctx {
 	unsigned int max_depth;
 	unsigned int next_slot;

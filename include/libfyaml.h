@@ -4507,6 +4507,38 @@ fy_node_sequence_remove(struct fy_node *fyn_seq, struct fy_node *fyn)
 	FY_EXPORT;
 
 /**
+ * typedef fy_node_sequence_sort_fn - Sequence sorting method function
+ *
+ * @fyn_a: The first node used in the comparison
+ * @fyn_b: The second node used in the comparison
+ * @arg: The opaque user provided pointer to the sort operation
+ *
+ * Returns:
+ * <0 if @fyn_a is less than @fyn_b
+ * 0 if @fyn_a is equal to fyn_b
+ * >0 if @fyn_a is greater than @fyn_b
+ */
+typedef int (*fy_node_sequence_sort_fn)(struct fy_node *fyn_a,
+					struct fy_node *fyn_b,
+					void *arg);
+
+/**
+ * fy_node_sequence_sort() - Sort a sequence's items
+ *
+ * Sort the items of a sequence node using the given comparison method.
+ *
+ * @fyn_seq: The sequence node to sort
+ * @cmp: The comparison method
+ * @arg: An opaque user pointer for the comparison method
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int
+fy_node_sequence_sort(struct fy_node *fyn_seq, fy_node_sequence_sort_fn cmp, void *arg)
+	FY_EXPORT;
+
+/**
  * fy_node_mapping_iterate() - Iterate over a mapping node
  *
  * This method iterates over all the node pairs in the mapping node.
