@@ -54,7 +54,7 @@ int fy_composer_vdiag(struct fy_composer *fyc, unsigned int flags,
 int fy_composer_diag(struct fy_composer *fyc, unsigned int flags,
 		     const char *file, int line, const char *func,
 		     const char *fmt, ...)
-			__attribute__((format(printf, 6, 7)));
+	FY_FORMAT(printf, 6, 7);
 
 void fy_composer_diag_vreport(struct fy_composer *fyc,
 			      const struct fy_diag_report_ctx *fydrc,
@@ -62,7 +62,7 @@ void fy_composer_diag_vreport(struct fy_composer *fyc,
 void fy_composer_diag_report(struct fy_composer *fyc,
 			     const struct fy_diag_report_ctx *fydrc,
 			     const char *fmt, ...)
-			__attribute__((format(printf, 3, 4)));
+	FY_FORMAT(printf, 3, 4);
 
 #ifdef FY_DEVMODE
 

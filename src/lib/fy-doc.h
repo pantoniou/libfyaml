@@ -292,7 +292,7 @@ int fy_document_vdiag(struct fy_document *fyd, unsigned int flags,
 int fy_document_diag(struct fy_document *fyd, unsigned int flags,
 		     const char *file, int line, const char *func,
 		     const char *fmt, ...)
-			__attribute__((format(printf, 6, 7)));
+	FY_FORMAT(printf, 6, 7);
 
 void fy_document_diag_vreport(struct fy_document *fyd,
 			      const struct fy_diag_report_ctx *fydrc,
@@ -300,7 +300,7 @@ void fy_document_diag_vreport(struct fy_document *fyd,
 void fy_document_diag_report(struct fy_document *fyd,
 			     const struct fy_diag_report_ctx *fydrc,
 			     const char *fmt, ...)
-			__attribute__((format(printf, 3, 4)));
+	FY_FORMAT(printf, 3, 4);
 
 #ifdef FY_DEVMODE
 
