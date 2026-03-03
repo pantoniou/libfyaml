@@ -759,7 +759,19 @@ set(LIBSRCS
 )
 
 set(LIBHDRSPUB
-    include/libfyaml.h
+    include/libfyaml/libfyaml-util.h
+    include/libfyaml/libfyaml-core.h
+    include/libfyaml/libfyaml-path-exec.h
+    include/libfyaml/libfyaml-dociter.h
+    include/libfyaml/libfyaml-docbuild.h
+    include/libfyaml/libfyaml-composer.h
+    include/libfyaml/libfyaml-allocator.h
+    include/libfyaml/libfyaml-thread.h
+    include/libfyaml/libfyaml-blake3.h
+    include/libfyaml/libfyaml-align.h
+    include/libfyaml/libfyaml-endian.h
+    include/libfyaml/libfyaml-vlsize.h
+    include/libfyaml/libfyaml-atomics.h
 )
 
 # BLAKE3 portable library
@@ -907,18 +919,25 @@ endforeach()
 # This is needed because libfyaml uses GCC-style suffix attributes for FY_EXPORT
 # which are incompatible with MSVC's __declspec prefix requirement
 if(WIN32 AND BUILD_SHARED_LIBS)
-    # Generate the .def file from the public header during build
+    # Generate the .def file from all public headers during build
     set(GENERATED_DEF_FILE "${CMAKE_CURRENT_BINARY_DIR}/fyaml.def")
+    # Build a list of absolute paths for all public headers
+    set(ABS_LIBHDRSPUB)
+    foreach(HDR ${LIBHDRSPUB})
+        list(APPEND ABS_LIBHDRSPUB "${CMAKE_CURRENT_SOURCE_DIR}/${HDR}")
+    endforeach()
+    # Escape semicolons so the list survives being passed via -D to cmake -P
+    string(REPLACE ";" "\\;" ESCAPED_HDRS "${ABS_LIBHDRSPUB}")
     add_custom_command(
         OUTPUT ${GENERATED_DEF_FILE}
         COMMAND ${CMAKE_COMMAND}
-            -DINPUT_HEADER=${CMAKE_CURRENT_SOURCE_DIR}/include/libfyaml.h
+            "-DINPUT_HEADERS=${ESCAPED_HDRS}"
             -DOUTPUT_DEF=${GENERATED_DEF_FILE}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/generate-def.cmake
         DEPENDS
-            ${CMAKE_CURRENT_SOURCE_DIR}/include/libfyaml.h
+            ${ABS_LIBHDRSPUB}
             ${CMAKE_CURRENT_SOURCE_DIR}/cmake/generate-def.cmake
-        COMMENT "Generating fyaml.def from libfyaml.h"
+        COMMENT "Generating fyaml.def from public headers"
     )
     target_sources(fyaml PRIVATE "${GENERATED_DEF_FILE}")
 endif()
@@ -957,6 +976,8 @@ target_include_directories(fyaml_static
         ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
         ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
         ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
         ${CMAKE_CURRENT_BINARY_DIR}
 )
 
@@ -1008,7 +1029,7 @@ set_target_properties(fyaml PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${VERSION_MAJOR}
     FOLDER "Libraries"
-    PUBLIC_HEADER "${LIBHDRSPUB}"
+    PUBLIC_HEADER "include/libfyaml.h"
 )
 
 target_include_directories(fyaml
@@ -1468,6 +1489,11 @@ install(TARGETS fyaml fy-tool
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+# Install sub-headers into <prefix>/include/libfyaml/
+install(FILES ${LIBHDRSPUB}
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libfyaml
 )
 
 # Create symlinks for fy-tool (not on Windows - symlinks require special privileges)

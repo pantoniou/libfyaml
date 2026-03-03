@@ -725,7 +725,7 @@ int fy_parser_vdiag(struct fy_parser *fyp, unsigned int flags,
 int fy_parser_diag(struct fy_parser *fyp, unsigned int flags,
 		   const char *file, int line, const char *func,
 		   const char *fmt, ...)
-			__attribute__((format(printf, 6, 7)));
+	FY_FORMAT(printf, 6, 7);
 
 void fy_parser_diag_vreport(struct fy_parser *fyp,
 			    const struct fy_diag_report_ctx *fydrc,
@@ -733,7 +733,7 @@ void fy_parser_diag_vreport(struct fy_parser *fyp,
 void fy_parser_diag_report(struct fy_parser *fyp,
 			   const struct fy_diag_report_ctx *fydrc,
 			   const char *fmt, ...)
-		__attribute__((format(printf, 3, 4)));
+	FY_FORMAT(printf, 3, 4);
 
 #ifdef FY_DEVMODE
 

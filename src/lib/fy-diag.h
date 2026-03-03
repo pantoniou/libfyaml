@@ -94,7 +94,7 @@ void fy_diag_vreport(struct fy_diag *diag,
 void fy_diag_report(struct fy_diag *diag,
 		    const struct fy_diag_report_ctx *fydrc,
 		    const char *fmt, ...)
-			__attribute__((format(printf, 3, 4)));
+	FY_FORMAT(printf, 3, 4);
 
 static inline bool
 fy_diag_log_level_is_enabled(struct fy_diag *diag, enum fy_error_type level, enum fy_error_module module)

@@ -232,7 +232,23 @@ fy_tool_CFLAGS = $(AM_CFLAGS)
 fy_tool_LDFLAGS = $(AM_LDFLAGS)
 
 include_HEADERS = \
-        $(top_srcdir)/include/libfyaml.h
+	$(top_srcdir)/include/libfyaml.h
+
+libfyamldir = $(includedir)/libfyaml
+libfyaml_HEADERS = \
+	$(top_srcdir)/include/libfyaml/libfyaml-util.h \
+	$(top_srcdir)/include/libfyaml/libfyaml-core.h \
+	$(top_srcdir)/include/libfyaml/libfyaml-path-exec.h \
+	$(top_srcdir)/include/libfyaml/libfyaml-docbuild.h \
+	$(top_srcdir)/include/libfyaml/libfyaml-dociter.h \
+	$(top_srcdir)/include/libfyaml/libfyaml-composer.h \
+	$(top_srcdir)/include/libfyaml/libfyaml-allocator.h \
+	$(top_srcdir)/include/libfyaml/libfyaml-thread.h \
+	$(top_srcdir)/include/libfyaml/libfyaml-blake3.h \
+	$(top_srcdir)/include/libfyaml/libfyaml-align.h \
+	$(top_srcdir)/include/libfyaml/libfyaml-endian.h \
+	$(top_srcdir)/include/libfyaml/libfyaml-atomics.h \
+	$(top_srcdir)/include/libfyaml/libfyaml-vlsize.h
 
 install-exec-hook:
 	(cd "$(DESTDIR)$(bindir)" && $(LN_S) -f fy-tool fy-dump)

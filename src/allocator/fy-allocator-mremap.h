@@ -41,7 +41,7 @@ struct fy_mremap_arena {
 	size_t size;	/* includes the arena header */
 	FY_ATOMIC(uint64_t) flags;
 	FY_ATOMIC(size_t) next;
-	uint64_t mem[] __attribute__((aligned(16)));
+	uint64_t mem[] FY_ALIGNED_TO(16);
 };
 
 #define FY_MREMAP_ARENA_OVERHEAD (offsetof(struct fy_mremap_arena, mem))

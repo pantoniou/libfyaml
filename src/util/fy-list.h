@@ -8,7 +8,7 @@
 #ifndef FY_LIST_H
 #define FY_LIST_H
 
-#include "fy-utils.h"
+// #include "fy-utils.h"
 
 struct list_head {
 	struct list_head *next;
@@ -79,12 +79,15 @@ static inline void list_splice(const struct list_head *list,
 	next->prev = last;
 }
 
+#undef list_entry
 #define list_entry(ptr, type, member) \
 	container_of(ptr, type, member)
 
+#undef list_first_entry
 #define list_first_entry(ptr, type, member) \
 	list_entry((ptr)->next, type, member)
 
+#undef list_last_entry
 #define list_last_entry(ptr, type, member) \
 	list_entry((ptr)->prev, type, member)
 

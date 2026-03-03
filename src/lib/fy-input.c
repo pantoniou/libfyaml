@@ -201,7 +201,7 @@ out:
 static void fy_input_from_data_setup(struct fy_input *fyi,
 				     struct fy_atom *handle, bool simple)
 {
-	return fy_input_from_data_setup_styled(fyi, handle,
+	fy_input_from_data_setup_styled(fyi, handle,
 			simple ? FYSS_PLAIN : FYSS_ANY);
 }
 
