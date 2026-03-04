@@ -652,21 +652,6 @@ fy_reflection_prune_unmarked(struct fy_reflection *rfl)
 	FY_EXPORT;
 
 /**
- * fy_reflection_is_resolved() - Test whether the reflection is resolved.
- *
- * Check whether a reflection is fully resolved, i.e. no types are referring
- * to undefined types.
- *
- * @rfl: The reflection
- *
- * Returns:
- * true if the reflection is resolved, false if there are unresolved references
- */
-bool
-fy_reflection_is_resolved(struct fy_reflection *rfl)
-	FY_EXPORT;
-
-/**
  * fy_reflection_from_imports() - Create a reflection from imports
  *
  * Create a reflection by the imports of the given backend.
@@ -889,22 +874,6 @@ fy_type_info_iterate(struct fy_reflection *rfl, void **prevp)
 	FY_EXPORT;
 
 /**
- * fy_type_info_reverse_iterate() - Iterate over the types of the reflection in reverse
- *
- * This method iterates over all the types of a reflection in reverse.
- * The start of the iteration is signalled by a NULL in \*prevp.
- *
- * @rfl: The reflection
- * @prevp: The previous type sequence iterator
- *
- * Returns:
- * The next type in sequence or NULL at the end of the type sequence.
- */
-const struct fy_type_info *
-fy_type_info_reverse_iterate(struct fy_reflection *rfl, void **prevp)
-	FY_EXPORT;
-
-/**
  * fy_type_info_with_qualifiers() - Get type info with specified qualifiers
  *
  * Return a type info with the specified qualifier flags applied.
@@ -981,25 +950,6 @@ fy_type_info_generate_name(const struct fy_type_info *ti, const char *field)
  */
 char *
 fy_field_info_generate_name(const struct fy_field_info *fi)
-	FY_EXPORT;
-
-/**
- * fy_type_name_normalize() - Normalize a C type name
- *
- * Normalize a type name by removing superfluous whitespace, converting
- * it to a format that is suitable for type name comparison.
- * Note that no attempt is made to verify that the type name is a valid
- * C one, so caller beware.
- *
- * @kind: The kind of the type
- * @type_name: The type name to normalize
- *
- * Returns:
- * A malloc()'ed pointer to the normalized name, or NULL in case of an error.
- * This pointer must be free()'d when the caller is done with it.
- */
-char *
-fy_type_name_normalize(enum fy_type_kind kind, const char *type_name)
 	FY_EXPORT;
 
 /**

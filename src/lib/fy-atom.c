@@ -262,15 +262,15 @@ _fy_atom_iter_add_lb(struct fy_atom_iter *iter, int c)
 	({ \
 		const char *__str = (_str); \
 		size_t __len2 = (_len); \
-		char *__out = NULL; \
+		char *__fy_out = NULL; \
 		int __ret = 0; \
 		\
 		if (__len2 > 0) { \
-			__out = fy_utf8_format_text_alloc(__str, __len2, fyue_doublequote); \
-			assert(__out); \
-			fprintf(stderr, "%s:%d chunk #%zu \"%s\"\n", __func__, __LINE__, __len2, __out); \
+			__fy_out = fy_utf8_format_text_alloc(__str, __len2, fyue_doublequote); \
+			assert(__fy_out); \
+			fprintf(stderr, "%s:%d chunk #%zu \"%s\"\n", __func__, __LINE__, __len2, __fy_out); \
 			__ret = _fy_atom_iter_add_chunk((_iter), __str, __len2); \
-			free(__out); \
+			free(__fy_out); \
 		} \
 		__ret; \
 	})
@@ -279,16 +279,16 @@ _fy_atom_iter_add_lb(struct fy_atom_iter *iter, int c)
 	({ \
 		const char *__str = (_str); \
 		size_t __len2 = (_len); \
-		char *__out = NULL; \
+		char *__fy_out = NULL; \
 		int __ret = 0; \
 		\
 		if (__len2 > 0) { \
-			__out = fy_utf8_format_text_alloc(__str, __len2, fyue_doublequote); \
-			assert(__out); \
-			fprintf(stderr, "%s:%d chunk-copy #%zu \"%s\"\n", __func__, __LINE__, __len2, __out); \
+			__fy_out = fy_utf8_format_text_alloc(__str, __len2, fyue_doublequote); \
+			assert(__fy_out); \
+			fprintf(stderr, "%s:%d chunk-copy #%zu \"%s\"\n", __func__, __LINE__, __len2, __fy_out); \
 			/* fprintf(stderr, "%s:%d chunk-copy \"%.*s\"\n", __func__, __LINE__, (int)__len, __str); */ \
 			__ret = _fy_atom_iter_add_chunk_copy((_iter), __str, __len2); \
-			free(__out); \
+			free(__fy_out); \
 		} \
 		__ret; \
 	})

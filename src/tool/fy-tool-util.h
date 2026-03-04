@@ -30,7 +30,9 @@
 #endif
 
 #include <libfyaml.h>
+#ifdef HAVE_REFLECTION
 #include <libfyaml/libfyaml-reflection.h>
+#endif
 
 #ifndef BIT
 #define BIT(x) (1U << (x))
@@ -298,6 +300,7 @@ unsigned_integer_max_from_size(size_t size)
 	return unsigned_integer_max_from_bit_width(size * 8);
 }
 
+#ifdef HAVE_REFLECTION
 static inline intmax_t
 signed_integer_min(enum fy_type_kind type_kind)
 {
@@ -315,6 +318,7 @@ unsigned_integer_max(enum fy_type_kind type_kind)
 {
 	return unsigned_integer_max_from_size(fy_type_kind_size(type_kind));
 }
+#endif /* HAVE_REFLECTION */
 
 static inline bool str_null_eq(const char *s1, const char *s2)
 {
@@ -325,6 +329,7 @@ static inline bool str_null_eq(const char *s1, const char *s2)
 	return !strcmp(s1, s2);
 }
 
+#ifdef HAVE_REFLECTION
 int parse_integer_scalar(enum fy_type_kind type_kind, const char *text0, enum fy_parser_mode mode, union integer_scalar *nump);
 void store_integer_scalar(enum fy_type_kind type_kind, void *data, union integer_scalar num);
 union integer_scalar load_integer_scalar(enum fy_type_kind type_kind, const void *data);
@@ -352,5 +357,6 @@ int store_integer_scalar_rw(struct reflection_walker *rw, union integer_scalar n
 
 void store_boolean_scalar_rw(struct reflection_walker *rw, bool v);
 bool load_boolean_scalar_rw(struct reflection_walker *rw);
+#endif /* HAVE_REFLECTION */
 
 #endif

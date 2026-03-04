@@ -45,6 +45,17 @@ if [ x"$JSON_TEST_SUITE" = x ]; then
 	JSON_TEST_SUITE="${TEST_DIR}/json-test-suite-data"
 fi
 
+# run_tool: invoke a target executable, prepending wine when cross-running
+# Windows binaries on Linux.  When WINE_EXECUTABLE is unset this is a no-op
+# wrapper so all call-sites are identical for native and wine runs.
+function run_tool() {
+    if [ -n "$WINE_EXECUTABLE" ]; then
+        "$WINE_EXECUTABLE" "$@"
+    else
+        "$@"
+    fi
+}
+
 # Python pytest suite: handled before FY_TOOL validation (no C tool needed)
 case "$test_suite" in
     python)
@@ -60,10 +71,19 @@ case "$test_suite" in
         ;;
 esac
 
-# Validate tool exists
-if [ ! -x "$FY_TOOL" ]; then
-    echo "Error: fy-tool not found or not executable: $FY_TOOL" >&2
-    exit 1
+# Validate tool exists.  When running Windows cross-compiled binaries under
+# wine the .exe is not marked executable on the host, so we only require the
+# +x bit when wine is not in use.
+if [ -n "$WINE_EXECUTABLE" ]; then
+    if [ ! -f "$FY_TOOL" ]; then
+        echo "Error: fy-tool not found: $FY_TOOL" >&2
+        exit 1
+    fi
+else
+    if [ ! -x "$FY_TOOL" ]; then
+        echo "Error: fy-tool not found or not executable: $FY_TOOL" >&2
+        exit 1
+    fi
 fi
 
 # Validate TEST_DIR exists
@@ -74,7 +94,7 @@ fi
 
 case "$test_suite" in
     libfyaml)
-	"${LIBFYAML_TEST}" "${test_id}"
+	run_tool "${LIBFYAML_TEST}" "${test_id}"
 	exit $?
 	;;
 
@@ -86,7 +106,7 @@ case "$test_suite" in
         res="not ok"
 
         pass_yaml=0
-        ${FY_TOOL} --dump -r --no-streaming "$dir/in.yaml" >"$t" 2>&1
+        run_tool "${FY_TOOL}" --dump -r --no-streaming "$dir/in.yaml" >"$t" 2>&1
         if [ $? -eq 0 ]; then
             pass_yaml=1
         fi
@@ -135,10 +155,10 @@ case "$test_suite" in
         res="not ok"
 
         pass_parse=0
-        ${FY_TOOL} --testsuite --disable-flow-markers "$f" >"$t1"
+        run_tool "${FY_TOOL}" --testsuite --disable-flow-markers "$f" >"$t1"
         if [ $? -eq 0 ]; then
-            ${FY_TOOL} --dump "$f" | \
-                ${FY_TOOL} --testsuite --disable-flow-markers - >"$t2"
+            run_tool "${FY_TOOL}" --dump "$f" | \
+                run_tool "${FY_TOOL}" --testsuite --disable-flow-markers - >"$t2"
             if [ $? -eq 0 ]; then
                 pass_parse=1
             fi
@@ -175,10 +195,10 @@ case "$test_suite" in
         res="not ok"
 
         pass_parse=0
-        ${FY_TOOL} --testsuite --disable-flow-markers "$f" >"$t1"
+        run_tool "${FY_TOOL}" --testsuite --disable-flow-markers "$f" >"$t1"
         if [ $? -eq 0 ]; then
-            ${FY_TOOL} --dump --streaming "$f" | \
-                ${FY_TOOL} --testsuite --disable-flow-markers - >"$t2"
+            run_tool "${FY_TOOL}" --dump --streaming "$f" | \
+                run_tool "${FY_TOOL}" --testsuite --disable-flow-markers - >"$t2"
             if [ $? -eq 0 ]; then
                 pass_parse=1
             fi
@@ -215,10 +235,10 @@ case "$test_suite" in
         res="not ok"
 
         pass_parse=0
-        ${FY_TOOL} --testsuite --disable-flow-markers "$f" >"$t1"
+        run_tool "${FY_TOOL}" --testsuite --disable-flow-markers "$f" >"$t1"
         if [ $? -eq 0 ]; then
-            ${FY_TOOL} --dump --streaming --recreating "$f" | \
-                ${FY_TOOL} --testsuite --disable-flow-markers - >"$t2"
+            run_tool "${FY_TOOL}" --dump --streaming --recreating "$f" | \
+                run_tool "${FY_TOOL}" --testsuite --disable-flow-markers - >"$t2"
             if [ $? -eq 0 ]; then
                 pass_parse=1
             fi
@@ -255,7 +275,7 @@ case "$test_suite" in
         res="not ok"
 
         pass_yaml=0
-        ${FY_TOOL} --testsuite "$tst/in.yaml" >"$t"
+        run_tool "${FY_TOOL}" --testsuite "$tst/in.yaml" >"$t"
         if [ $? -eq 0 ]; then
             pass_yaml=1
         fi
@@ -303,7 +323,7 @@ case "$test_suite" in
         res="not ok"
 
         pass_yaml=0
-        ${FY_TOOL} --generic-testsuite "$tst/in.yaml" >"$t_output" 2>/dev/null
+        run_tool "${FY_TOOL}" --generic-testsuite "$tst/in.yaml" >"$t_output" 2>/dev/null
         if [ $? -eq 0 ]; then
             pass_yaml=1
         fi
@@ -384,7 +404,7 @@ case "$test_suite" in
         res="not ok"
 
 	# run the test using document-event-stream
-	${FY_TOOL} --testsuite --document-event-stream "$tst/in.yaml" >"$t" 2>/dev/null
+	run_tool "${FY_TOOL}" --testsuite --document-event-stream "$tst/in.yaml" >"$t" 2>/dev/null
 	if [ $? -eq 0 ]; then
 	    diff -u "$tst/test.event" "$t"
 	    if [ $? -eq 0 ]; then
@@ -411,7 +431,7 @@ case "$test_suite" in
         case "$tf" in
             y_*)
                 # Expected to pass
-                ${FY_TOOL} --testsuite --streaming "$f" >/dev/null 2>&1
+                run_tool "${FY_TOOL}" --testsuite --streaming "$f" >/dev/null 2>&1
                 if [ $? -eq 0 ]; then
                     res="ok"
                 else
@@ -420,7 +440,7 @@ case "$test_suite" in
                 ;;
             n_*)
                 # Expected to fail
-                ${FY_TOOL} --testsuite --streaming "$f" >/dev/null 2>&1
+                run_tool "${FY_TOOL}" --testsuite --streaming "$f" >/dev/null 2>&1
                 if [ $? -eq 0 ]; then
                     res="not ok"
                 else
@@ -429,7 +449,7 @@ case "$test_suite" in
                 ;;
             i_*)
                 # Implementation defined - we'll accept either result as ok
-                ${FY_TOOL} --testsuite --streaming "$f" >/dev/null 2>&1
+                run_tool "${FY_TOOL}" --testsuite --streaming "$f" >/dev/null 2>&1
                 res="ok"
                 ;;
             *)
@@ -470,10 +490,10 @@ case "$test_suite" in
         fi
 
         pass_yaml=0
-        ${FY_TOOL} --reflect "${def_args[@]}" "${meta_args[@]}" --entry-type "${entry}" "${in_file}" >"$t"
+        run_tool "${FY_TOOL}" --reflect "${def_args[@]}" "${meta_args[@]}" --entry-type "${entry}" "${in_file}" >"$t"
         if [ $? -eq 0 ]; then
             # generate test.event out of the file
-            ${FY_TOOL} --testsuite --disable-flow-markers --disable-doc-markers --disable-scalar-styles "$t" >"$t2"
+            run_tool "${FY_TOOL}" --testsuite --disable-flow-markers --disable-doc-markers --disable-scalar-styles "$t" >"$t2"
             if [ $? -eq 0 ]; then
                 pass_yaml=1
             fi

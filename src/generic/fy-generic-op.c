@@ -3701,7 +3701,7 @@ fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flag
 		args->common.count = 0;
 		args->common.items = NULL;
 	} else {
-		args->common.count = va_arg(ap, size_t);
+		args->common.count = FY_VA_ARG_SIZE_T(ap);
 		args->common.items = va_arg(ap, const fy_generic *);
 	}
 
@@ -3733,7 +3733,7 @@ fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flag
 	case FYGBOP_REPLACE:
 	case FYGBOP_GET_AT:
 	case FYGBOP_SET_AT:
-		args->insert_replace_get_set_at.idx = va_arg(ap, size_t);
+		args->insert_replace_get_set_at.idx = FY_VA_ARG_SIZE_T(ap);
 		break;
 
 	case FYGBOP_FILTER:
@@ -3750,21 +3750,21 @@ fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flag
 		break;
 
 	case FYGBOP_SLICE:
-		args->slice.start = va_arg(ap, size_t);
-		args->slice.end = va_arg(ap, size_t);
+		args->slice.start = FY_VA_ARG_SIZE_T(ap);
+		args->slice.end = FY_VA_ARG_SIZE_T(ap);
 		break;
 
 	case FYGBOP_SLICE_PY:
-		args->slice_py.start = va_arg(ap, ssize_t);
-		args->slice_py.end = va_arg(ap, ssize_t);
+		args->slice_py.start = FY_VA_ARG_SSIZE_T(ap);
+		args->slice_py.end = FY_VA_ARG_SSIZE_T(ap);
 		break;
 
 	case FYGBOP_TAKE:
-		args->take.n = va_arg(ap, size_t);
+		args->take.n = FY_VA_ARG_SIZE_T(ap);
 		break;
 
 	case FYGBOP_DROP:
-		args->drop.n = va_arg(ap, size_t);
+		args->drop.n = FY_VA_ARG_SIZE_T(ap);
 		break;
 
 	case FYGBOP_FIRST:

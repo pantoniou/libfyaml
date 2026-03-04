@@ -15,7 +15,9 @@
 #include <string.h>
 #include <assert.h>
 #include <getopt.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 #include <limits.h>
 
 #include <check.h>
@@ -146,7 +148,7 @@ START_TEST(generic_bool_range)
 	for (i = 0; i < ARRAY_SIZE(btable); i++) {
 		bv = btable[i];
 		v = fy_bool(bv);
-		res = fy_cast(v, false);
+		res = fy_cast(v, (_Bool)false);
 
 		pass = bv == res;
 		test_fail |= !pass;
@@ -399,14 +401,14 @@ START_TEST(generic_type_promotion)
 	v.v = fy_generic_in_place_bool((_Bool)true);
 	ck_assert(fy_generic_is_bool_type(v));
 	ck_assert(fy_generic_is_in_place(v));
-	ck_assert(fy_cast(v, false) == true);
-	ck_assert(fy_castp(&v, false) == true);
+	ck_assert(fy_cast(v, (_Bool)false) == true);
+	ck_assert(fy_castp(&v, (_Bool)false) == true);
 
 	v = fy_value((_Bool)false);
 	ck_assert(fy_generic_is_bool_type(v));
 	ck_assert(fy_generic_is_in_place(v));
-	ck_assert(fy_cast(v, true) == false);
-	ck_assert(fy_castp(&v, true) == false);
+	ck_assert(fy_cast(v, (_Bool)true) == false);
+	ck_assert(fy_castp(&v, (_Bool)true) == false);
 
 	/* int (in place) */
 	v = fy_value(100);
@@ -717,11 +719,11 @@ START_TEST(generic_casts)
 
 	/* long long */
 	v = fy_value(LLONG_MIN);
-	ck_assert(fy_cast(v, (long)0) == LLONG_MIN);
+	ck_assert(fy_cast(v, (long long)0) == LLONG_MIN);
 	v = fy_value(LLONG_MAX);
-	ck_assert(fy_cast(v, (long)0) == LLONG_MAX);
+	ck_assert(fy_cast(v, (long long)0) == LLONG_MAX);
 	v = fy_value(ULLONG_MAX);
-	ck_assert(fy_cast(v, (unsigned long)0) == ULLONG_MAX);
+	ck_assert(fy_cast(v, (unsigned long long)0) == ULLONG_MAX);
 
 	/* float */
 	v = fy_value((float)FLT_MIN);
@@ -754,12 +756,12 @@ START_TEST(generic_casts)
 
 	/* mapping */
 	v = fy_local_mapping("foo", "bar",
-			     "baz", true);
+			     "baz", (_Bool)true);
 	maph = fy_cast(v, fy_map_handle_null);
 	ck_assert(maph != fy_map_handle_null);
 
 	/* now test the invalid type casts */
-	v = fy_value(true);
+	v = fy_value((_Bool)true);
 	ck_assert(fy_cast(v, 0) == 0);
 	ck_assert(!strcmp(fy_cast(v, ""), ""));
 	ck_assert(fy_cast(v, 0.0f) == 0.0f);
@@ -879,7 +881,7 @@ START_TEST(generic_get)
 	v = fy_generic_op(gb, FYGBOPF_GET, seq, 1, (fy_generic [1]) { fy_value(0) } );
 	ck_assert(fy_cast(v, -1) == -100);
 	v = fy_generic_op(gb, FYGBOPF_GET, seq, 1, (fy_generic [1]) { fy_value(1) } );
-	ck_assert(fy_cast(v, false) == true);
+	ck_assert(fy_cast(v, (_Bool)false) == true);
 	v = fy_generic_op(gb, FYGBOPF_GET, seq, 1, (fy_generic [1]) { fy_value(2) } );
 	ck_assert(!strcmp(fy_cast(v, ""), "sh"));
 	v = fy_generic_op(gb, FYGBOPF_GET, seq, 1, (fy_generic [1]) { fy_value(3) } );

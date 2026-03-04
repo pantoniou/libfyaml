@@ -2853,7 +2853,11 @@ fy_reflection_lookup_source_file(struct fy_reflection *rfl, const char *filename
 	if (!rfl || !filename)
 		return NULL;
 
+#ifndef _WIN32
 	realname = realpath(filename, NULL);
+#else
+	realname = strdup(filename);
+#endif
 	if (!realname)
 		return NULL;
 
@@ -2887,7 +2891,11 @@ fy_source_file_create(struct fy_reflection *rfl, const char *filename)
 	srcf->filename = strdup(filename);
 	RFL_ASSERT(srcf->filename);
 
+#ifndef _WIN32
 	srcf->realpath = realpath(filename, NULL);
+#else
+	srcf->realpath = strdup(filename);
+#endif
 	RFL_ASSERT(srcf->realpath);
 
 	assert(rfl->next_source_file_id >= 0);
@@ -5078,6 +5086,7 @@ int fy_reflection_generate_c(struct fy_reflection *rfl, enum fy_c_generation_fla
 	void *prev = NULL;
 	struct fy_c_generator cgen_local, *cgen = &cgen_local;
 	int lines, ret, prev_lines, this_lines, xtra_lines;
+	struct fy_memstream *fyms = NULL;
 	FILE *one_fp = NULL;
 	char *one_buf = NULL;
 	size_t one_size = 0, wrsz;
@@ -5092,14 +5101,16 @@ int fy_reflection_generate_c(struct fy_reflection *rfl, enum fy_c_generation_fla
 		if (!c_generate_is_base_type(ti))
 			continue;
 
-		one_fp = open_memstream(&one_buf, &one_size);
-		RFL_ASSERT(one_fp);
+		fyms = fy_memstream_open(&one_fp);
+		RFL_ASSERT(fyms);
 
 		ret = c_generate_base_type(cgen, one_fp, ti);
 		RFL_ASSERT(ret >= 0);
 
-		fclose(one_fp);
+		one_buf = fy_memstream_close(fyms, &one_size);
+		fyms = NULL;
 		one_fp = NULL;
+		RFL_ASSERT(one_buf);
 
 		if (ret > 0) {
 			this_lines = ret;
@@ -5123,8 +5134,8 @@ int fy_reflection_generate_c(struct fy_reflection *rfl, enum fy_c_generation_fla
 	}
 
 out:
-	if (one_fp)
-		fclose(one_fp);
+	if (fyms)
+		one_buf = fy_memstream_close(fyms, &one_size);
 	if (one_buf)
 		free(one_buf);
 
@@ -5141,16 +5152,17 @@ char *fy_reflection_generate_c_string(struct fy_reflection *rfl, enum fy_c_gener
 {
 	char *mbuf = NULL;
 	size_t msize;
-	FILE *fp;
+	struct fy_memstream *fyms = NULL;
+	FILE *fp = NULL;
 	int ret;
 
-	fp = open_memstream(&mbuf, &msize);
-	if (!fp)
+	fyms = fy_memstream_open(&fp);
+	if (!fyms)
 		return NULL;
 
 	ret = fy_reflection_generate_c(rfl, flags, fp);
 
-	fclose(fp);
+	mbuf = fy_memstream_close(fyms, &msize);
 
 	if (ret < 0) {
 		free(mbuf);

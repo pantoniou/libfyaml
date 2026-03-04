@@ -39,7 +39,9 @@
 
 #include "fy-valgrind.h"
 #include "fy-tool-util.h"
+#ifdef HAVE_REFLECTION
 #include "fy-tool-reflect.h"
+#endif
 
 #ifdef _WIN32
 #undef SORT_DEFAULT
@@ -95,7 +97,9 @@
 #define OPT_YAML_VERSION_DUMP		1008
 #define OPT_COMPOSE			1009
 #define OPT_B3SUM			1010
+#ifdef HAVE_REFLECTION
 #define OPT_REFLECT			1011
+#endif
 
 #define OPT_STRIP_LABELS		2000
 #define OPT_STRIP_TAGS			2001
@@ -125,6 +129,7 @@
 #define OPT_NO_ENDING_NEWLINE		2025
 #define OPT_PRESERVE_FLOW_LAYOUT	2026
 #define OPT_INDENTED_SEQ_IN_MAP		2027
+#ifdef HAVE_REFLECTION
 #define OPT_CFLAGS			2028
 #define OPT_GENERATE_C			2029
 #define OPT_IMPORT_BLOB			2030
@@ -139,6 +144,7 @@
 #define OPT_DRY_RUN			2039
 #define OPT_DUMP_REFLECTION		2040
 #define OPT_DEBUG_REFLECTION		2041
+#endif
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -163,6 +169,7 @@
 #define OPT_MMAP_MIN_CHUNK		5011
 #define OPT_MMAP_MAX_CHUNK		5012
 
+#ifdef HAVE_GENERIC
 /* generic options */
 #define OPT_GENERIC			6000
 #define OPT_BUILDER_POLICY		6001
@@ -174,6 +181,7 @@
 #define OPT_CREATE_MARKERS		6007
 #define OPT_PYYAML_COMPAT		6008
 #define OPT_KEEP_STYLE			6009
+#endif
 
 static struct option lopts[] = {
 	{"include",		required_argument,	0,	'I' },
@@ -252,6 +260,7 @@ static struct option lopts[] = {
 	{"mmap-min-chunk",	required_argument,	0,	OPT_MMAP_MIN_CHUNK },
 	{"mmap-max-chunk",	required_argument,	0,	OPT_MMAP_MAX_CHUNK },
 
+#ifdef HAVE_REFLECTION
 	{"reflect",		no_argument,		0,	OPT_REFLECT },
 	{"generate-c",		no_argument,	        0,      OPT_GENERATE_C },
 	{"entry-type",		required_argument,	0,	OPT_ENTRY_TYPE },
@@ -267,7 +276,8 @@ static struct option lopts[] = {
 	{"dry-run",		no_argument,	        0,      OPT_DRY_RUN },
 	{"dump-reflection",	no_argument,	        0,      OPT_DUMP_REFLECTION },
 	{"debug-reflection",	no_argument,	        0,      OPT_DEBUG_REFLECTION },
-
+#endif
+#ifdef HAVE_GENERIC
 	{"generic",		no_argument,		0,	OPT_GENERIC },
 	{"builder-policy",	required_argument,	0,	OPT_BUILDER_POLICY },
 	{"dedup",		no_argument,		0,	OPT_DEDUP },
@@ -278,6 +288,7 @@ static struct option lopts[] = {
 	{"create-markers",	no_argument,		0,	OPT_CREATE_MARKERS },
 	{"pyyaml-compat",	no_argument,		0,	OPT_PYYAML_COMPAT },
 	{"keep-style",		no_argument,		0,	OPT_KEEP_STYLE },
+#endif
 	{"help",		no_argument,		0,	'h' },
 	{"version",		no_argument,		0,	'v' },
 	{0,			0,			0,	 0  },
@@ -428,6 +439,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--dump-path              : Dump the path while composing\n");
 	}
 
+#ifdef HAVE_REFLECTION
 	if (tool_mode == OPT_REFLECT) {
 		fprintf(fp, "\t--generate-c             : Generate C definitions from reflection input\n");
 		fprintf(fp, "\t--generate-blob <blob>   : Generate packed blob from C source files\n");
@@ -439,7 +451,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--dump-reflection        : Dump reflection structures\n");
 		fprintf(fp, "\t--debug-reflection       : Debug messages during reflection processing\n");
 	}
+#endif
 
+#ifdef HAVE_GENERIC
 	if (tool_mode == OPT_GENERIC || tool_mode == OPT_GENERIC_TESTSUITE ||
 	    tool_mode == OPT_GENERIC_PARSE_DUMP) {
 		fprintf(fp, "\t--generic                : Generics dump\n");
@@ -454,6 +468,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t--pyyaml-compat          : PYYAML compatibility mode\n");
 		fprintf(fp, "\t--keep-style             : Do not strip style\n");
 	}
+#endif
 
 	if (tool_mode == OPT_TOOL) {
 		fprintf(fp, "\t--dump                   : Dump mode, [arguments] are file names\n");
@@ -563,6 +578,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\n");
 		break;
 
+#ifdef HAVE_REFLECTION
 	case OPT_REFLECT:
 		fprintf(fp, "\tReflection parsing a C header and dumping type info\n");
 		fprintf(fp, "\t$ %s [--cflags=<>] header.h\n\t...\n", progname);
@@ -574,7 +590,9 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\t$ %s --reflect [--cflags=<>] --generate-blob=blob.bin header1.h header2.h\n\t...\n", progname);
 		fprintf(fp, "\n");
 		break;
+#endif
 
+#ifdef HAVE_GENERIC
 	case OPT_GENERIC:
 		fprintf(fp, "\tGeneric\n");
 		fprintf(fp, "\n");
@@ -589,6 +607,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		fprintf(fp, "\tGeneric parse dump\n");
 		fprintf(fp, "\n");
 		break;
+#endif
 	}
 }
 
@@ -1173,6 +1192,8 @@ do_b3sum(int argc, char *argv[], int optind, const struct b3sum_config *cfg)
 	return num_inputs == num_ok ? 0 : -1;
 }
 
+#ifdef HAVE_REFLECTION
+
 void reflection_type_info_dump(struct fy_reflection *rfl)
 {
 	const struct fy_type_info *ti;
@@ -1204,6 +1225,7 @@ void reflection_prune_system(struct fy_reflection *rfl)
 int reflection_type_filter(struct fy_reflection *rfl,
 		const char *type_include, const char *type_exclude)
 {
+#ifndef _WIN32
 	const struct fy_type_info *ti;
 	void *prev = NULL;
 	regex_t type_include_reg, type_exclude_reg;
@@ -1261,6 +1283,13 @@ err_out:
 		regfree(&type_include_reg);
 
 	return ret;
+#else
+	/* POSIX regex not available on Windows; type filtering not supported */
+	(void)rfl;
+	(void)type_include;
+	(void)type_exclude;
+	return 0;
+#endif
 }
 
 static bool type_info_equal(const struct fy_type_info *ti_a, const struct fy_type_info *ti_b, bool recurse)
@@ -8725,6 +8754,10 @@ static size_t estimate_max_file_size(int argc, char **argv)
 	return size;
 }
 
+#endif /* HAVE_REFLECTION */
+
+#ifdef HAVE_GENERIC
+
 struct generic_config {
 	bool dedup : 1;
 	bool null_output : 1;
@@ -9003,6 +9036,8 @@ err_out:
 	goto out;
 }
 
+#endif /* HAVE_GENERIC */
+
 int main(int argc, char *argv[])
 {
 	struct fy_parse_cfg cfg = {
@@ -9077,6 +9112,7 @@ int main(int argc, char *argv[])
 	/* b3sum */
 	int opti;
 	struct b3sum_config b3cfg = default_b3sum_cfg;
+#ifdef HAVE_GENERIC
 	/* generic */
 	struct generic_config gcfg = default_generic_cfg;
 	bool dedup = DEDUP_DEFAULT;
@@ -9084,6 +9120,8 @@ int main(int argc, char *argv[])
 	bool create_markers = false;
 	bool pyyaml_compat = false;
 	bool keep_style = false;
+#endif
+#ifdef HAVE_REFLECTION
 	/* reflection */
 	struct fy_reflection *rfl = NULL;
 	const char *cflags = "";
@@ -9101,6 +9139,7 @@ int main(int argc, char *argv[])
 	struct reflection_type_data *rtd_root;
 	void *rd_data = NULL;
 	bool emitted_ss;
+#endif
 
 
 	fy_valgrind_check(&argc, &argv);
@@ -9180,12 +9219,16 @@ int main(int argc, char *argv[])
 		tool_mode = OPT_YAML_VERSION_DUMP;
 	else if (!strcmp(progname, "fy-b3sum"))
 		tool_mode = OPT_B3SUM;
+#ifdef HAVE_REFLECTION
 	else if (!strcmp(progname, "fy-reflect"))
 		tool_mode = OPT_REFLECT;
+#endif
+#ifdef HAVE_GENERIC
 	else if (!strcmp(progname, "fy-generic"))
 		tool_mode = OPT_GENERIC;
 	else if (!strcmp(progname, "fy-generic-testsuite"))
 		tool_mode = OPT_GENERIC_TESTSUITE;
+#endif
 	else
 		tool_mode = OPT_TOOL;
 
@@ -9358,10 +9401,14 @@ int main(int argc, char *argv[])
 		case OPT_COMPOSE:
 		case OPT_YAML_VERSION_DUMP:
 		case OPT_B3SUM:
+#ifdef HAVE_REFLECTION
 		case OPT_REFLECT:
+#endif
+#ifdef HAVE_GENERIC
 		case OPT_GENERIC:
 		case OPT_GENERIC_TESTSUITE:
 		case OPT_GENERIC_PARSE_DUMP:
+#endif
 			tool_mode = opt;
 			break;
 		case OPT_STRIP_LABELS:
@@ -9475,6 +9522,7 @@ int main(int argc, char *argv[])
 		case OPT_TSV_FORMAT:
 			tsv_format = true;
 			break;
+#ifdef HAVE_REFLECTION
 		case OPT_GENERATE_BLOB:
 			generate_blob = optarg;
 			break;
@@ -9517,6 +9565,7 @@ int main(int argc, char *argv[])
 		case OPT_DEBUG_REFLECTION:
 			rts_cfg.flags |= RTSCF_DEBUG;
 			break;
+#endif
 
 		case OPT_DERIVE_KEY:
 			b3cfg.derive_key = true;
@@ -9584,6 +9633,7 @@ int main(int argc, char *argv[])
 			b3cfg.mmap_max_chunk = (size_t)opti;
 			break;
 
+#ifdef HAVE_GENERIC
 		case OPT_DEDUP:
 			dedup = true;
 			break;
@@ -9607,6 +9657,7 @@ int main(int argc, char *argv[])
 		case OPT_KEEP_STYLE:
 			keep_style = true;
 			break;
+#endif /* HAVE_GENERIC */
 
 		case 'h' :
 		default:
@@ -10252,6 +10303,7 @@ int main(int argc, char *argv[])
 
 		break;
 
+#ifdef HAVE_REFLECTION
 	case OPT_REFLECT:
 		rfl = NULL;
 		if (import_blob) {
@@ -10402,7 +10454,9 @@ int main(int argc, char *argv[])
 
 		/* cleanup will take care of rfl cleanup */
 		break;
+#endif /* HAVE_REFLECTION */
 
+#ifdef HAVE_GENERIC
 	case OPT_GENERIC:
 	case OPT_GENERIC_TESTSUITE:
 	case OPT_GENERIC_PARSE_DUMP:
@@ -10427,16 +10481,19 @@ int main(int argc, char *argv[])
 		}
 		exitcode = !rc ? EXIT_SUCCESS : EXIT_FAILURE;
 		goto cleanup;
+#endif /* HAVE_GENERIC */
 
 	}
 	exitcode = EXIT_SUCCESS;
 
 cleanup:
+#ifdef HAVE_REFLECTION
 	if (rts)
 		reflection_type_system_destroy(rts);
 
 	if (rfl)
 		fy_reflection_destroy(rfl);
+#endif
 
 	if (fypx)
 		fy_path_exec_destroy(fypx);

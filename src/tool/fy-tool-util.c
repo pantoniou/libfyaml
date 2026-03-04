@@ -27,7 +27,9 @@
 #include <libfyaml.h>
 
 #include "fy-tool-util.h"
+#ifdef HAVE_REFLECTION
 #include "fy-tool-reflect.h"
+#endif
 
 uintmax_t load_le(const void *ptr, size_t width, bool is_signed)
 {
@@ -247,6 +249,8 @@ STRTOX_DECLARE(uintmax_t, uintmax_1_1, STRTOXF_IS_UNSIGNED | STRTOXF_YAML_1_1);
 
 STRTOX_DECLARE(intmax_t, intmax_json, STRTOXF_IS_SIGNED | STRTOXF_JSON);
 STRTOX_DECLARE(uintmax_t, uintmax_json, STRTOXF_IS_UNSIGNED | STRTOXF_JSON);
+
+#ifdef HAVE_REFLECTION
 
 int parse_integer_scalar(enum fy_type_kind type_kind, const char *str,
 			 enum fy_parser_mode mode, union integer_scalar *nump)
@@ -842,3 +846,5 @@ load_boolean_scalar_rw(struct reflection_walker *rw)
 				rw->data_size.bit_width, rtd_is_signed(rw->rtd));
 	return v;
 }
+
+#endif /* HAVE_REFLECTION */

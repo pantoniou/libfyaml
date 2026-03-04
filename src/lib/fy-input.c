@@ -1321,6 +1321,7 @@ static struct fy_event *fy_input_generate_next_event_dociter(struct fy_input *fy
 	return fye;
 }
 
+#ifdef HAVE_GENERIC
 static struct fy_event *fy_input_generate_next_event_geniter(struct fy_input *fyi)
 {
 	struct fy_generic_iterator *fygi;
@@ -1345,6 +1346,7 @@ static struct fy_event *fy_input_generate_next_event_geniter(struct fy_input *fy
 
 	return fye;
 }
+#endif
 
 struct fy_event *fy_reader_generate_next_event(struct fy_reader *fyr)
 {
@@ -1357,8 +1359,10 @@ struct fy_event *fy_reader_generate_next_event(struct fy_reader *fyr)
 	switch (fyi->cfg.type) {
 	case fyit_dociter:
 		return fy_input_generate_next_event_dociter(fyi);
+#ifdef HAVE_GENERIC
 	case fyit_geniter:
 		return fy_input_generate_next_event_geniter(fyi);
+#endif
 	default:
 		break;
 	}
@@ -1377,9 +1381,11 @@ void fy_reader_event_free(struct fy_reader *fyr, struct fy_event *fye)
 	case fyit_dociter:
 		fy_document_iterator_event_free(fyi->cfg.dociter.fydi, fye);
 		break;
+#ifdef HAVE_GENERIC
 	case fyit_geniter:
 		fy_generic_iterator_event_free(fyi->cfg.geniter.fygi, fye);
 		break;
+#endif
 	default:
 		FY_IMPOSSIBLE_ABORT();
 	}

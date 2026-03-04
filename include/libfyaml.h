@@ -86,8 +86,10 @@ extern "C" {
 #include <libfyaml/libfyaml-endian.h>
 #include <libfyaml/libfyaml-atomics.h>
 #include <libfyaml/libfyaml-vlsize.h>
+#if !defined(_MSC_VER) || defined(__clang__)
 #include <libfyaml/libfyaml-generic.h>
 #include <libfyaml/libfyaml-reflection.h>
+#endif
 
 #ifdef __cplusplus
 }

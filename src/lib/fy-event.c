@@ -1443,6 +1443,8 @@ fy_event_get_comments(struct fy_event *fye)
 	return fy_token_get_comments(fyt);
 }
 
+#ifdef HAVE_GENERIC
+
 struct fy_eventp *
 fy_generic_iterator_eventp_alloc(struct fy_generic_iterator *fygi)
 {
@@ -1527,3 +1529,5 @@ void fy_generic_iterator_event_free(struct fy_generic_iterator *fygi, struct fy_
 
 	fy_generic_iterator_eventp_recycle(fygi, fyep);
 }
+
+#endif /* HAVE_GENERIC */

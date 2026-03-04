@@ -27,6 +27,7 @@ function(add_tap_test test_name suite_name test_id)
         "TEST_DIR=${CMAKE_CURRENT_SOURCE_DIR}/test"
         "YAML_TEST_SUITE=${yaml_test_suite_SOURCE_DIR}"
         "JSON_TEST_SUITE=${json_test_suite_SOURCE_DIR}"
+        "WINE_EXECUTABLE=${WINE_EXECUTABLE}"
     )
     if(TAP_EXTRA_ENV)
         list(APPEND base_env ${TAP_EXTRA_ENV})

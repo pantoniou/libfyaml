@@ -5205,7 +5205,7 @@ static inline void fy_generic_cast_char_ptr_default_final(fy_generic v,
 		void *p, size_t size,
 		char *default_value, char **store_value)
 {
-	return fy_generic_cast_const_char_ptr_default_final(v, p, size, default_value,
+	fy_generic_cast_const_char_ptr_default_final(v, p, size, default_value,
 			(const char **)store_value);
 }
 
@@ -8919,10 +8919,10 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 /* fy_local_get_at_path() - Traverse nested path @... from root @_in using a stack-allocated builder */
 #define fy_local_get_at_path(_in, ...) \
 	({ \
-		__typeof__(_in) __in = (_in); \
+		__typeof__(_in) __fy_in = (_in); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
 		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
-		FY_LOCAL_OP(FYGBOPF_GET_AT_PATH, __in, _count, _items); \
+		FY_LOCAL_OP(FYGBOPF_GET_AT_PATH, __fy_in, _count, _items); \
 	})
 
 /* fy_get_at_path() - Traverse nested path; dispatches to fy_gb_get_at_path or fy_local_get_at_path */

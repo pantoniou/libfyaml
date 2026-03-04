@@ -1309,6 +1309,7 @@ err_out:
 int fy_packed_generate(struct fy_packed_generator *pg)
 {
 	struct fy_reflection *rfl;
+	struct fy_memstream *fyms = NULL;
 	FILE *fp = NULL;
 	int ret;
 
@@ -1329,12 +1330,15 @@ int fy_packed_generate(struct fy_packed_generator *pg)
 		break;
 
 	case FYPGT_TO_STRING:
-		fp = open_memstream(pg->strp, pg->str_sizep);
-		if (!fp)
+		fyms = fy_memstream_open(&fp);
+		if (!fyms)
 			break;
 		ret = packed_generate_fp(pg, fp);
-		fclose(fp);
+
+		*pg->strp = fy_memstream_close(fyms, pg->str_sizep);
+		fyms = NULL;
 		fp = NULL;
+
 		break;
 
 	case FYPGT_BLOB:

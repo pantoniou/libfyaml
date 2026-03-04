@@ -1443,6 +1443,15 @@ static inline char *fy_alloca_vsprintf_impl(const char *fmt, va_list ap)
 #endif
 #endif
 
+// windows is the crazy one still
+#if defined(_WIN64) || defined(_WIN32) || defined(__CYGWIN__) || defined(__MSYS__)
+#define FY_VA_ARG_SIZE_T(ap)  ((size_t)va_arg(ap, unsigned int))
+#define FY_VA_ARG_SSIZE_T(ap)  ((ssize_t)va_arg(ap, int))
+#else
+#define FY_VA_ARG_SIZE_T(ap)  ((size_t)va_arg(ap, size_t))
+#define FY_VA_ARG_SSIZE_T(ap)  ((ssize_t)va_arg(ap, ssize_t))
+#endif
+
 #ifdef __cplusplus
 }
 #endif

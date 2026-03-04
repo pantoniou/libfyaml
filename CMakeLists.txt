@@ -105,6 +105,8 @@ option(ENABLE_ASAN "Enable ASAN support" OFF)
 option(ENABLE_NETWORK "Enable tests requiring network access" ON)
 option(ENABLE_DEVMODE "Enable development mode only debugging" OFF)
 option(BUILD_TESTING "Build tests" ON)
+option(ENABLE_GENERIC "Enable generic subsystem (requires statement expressions)" ON)
+option(ENABLE_REFLECTION "Enable reflection subsystem (requires statement expressions)" ON)
 option(ENABLE_LIBCLANG "Enable libclang support for reflection" ON)
 
 # Path to LLVM installation (optional, overrides automatic detection)
@@ -145,6 +147,20 @@ if(CMAKE_CROSSCOMPILING)
     message(STATUS "  Target system: ${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_PROCESSOR}")
 else()
     set(CROSS_COMPILING 0)
+endif()
+
+# When cross-compiling for Windows, look for wine to run target executables
+set(HAVE_WINE 0)
+if(CROSS_COMPILING AND CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    find_program(WINE_EXECUTABLE NAMES wine64 wine)
+    if(WINE_EXECUTABLE)
+        set(HAVE_WINE 1)
+        set(CMAKE_CROSSCOMPILING_EMULATOR "${WINE_EXECUTABLE}"
+            CACHE STRING "Wine emulator for Windows cross-compilation tests" FORCE)
+        message(STATUS "Found wine: ${WINE_EXECUTABLE} (tests will run under wine)")
+    else()
+        message(STATUS "wine not found; tests disabled for Windows cross-compilation")
+    endif()
 endif()
 
 # Check for required dependencies
@@ -208,82 +224,45 @@ else()
 endif()
 
 # check framework detection - try CMake config first, then pkg-config, then FetchContent
+# When cross-compiling with wine we skip find_package/pkg-config (those would
+# find host libraries) and go straight to FetchContent so check is built for
+# the target platform.
 set(HAVE_CHECK 0)
 set(HAVE_COMPATIBLE_CHECK 0)
-if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
-    find_package(check QUIET CONFIG)
-    if(check_FOUND)
-        set(HAVE_CHECK 1)
-        set(CHECK_LIBRARIES check)
-        if(TARGET Check::check)
-            set(CHECK_TARGET Check::check)
-        else()
-            set(CHECK_TARGET check)
-        endif()
-		get_target_property(CHECK_INCLUDE_DIRS ${CHECK_TARGET} INTERFACE_INCLUDE_DIRECTORIES)
-        # Get library location to extract directory
-        get_target_property(CHECK_LIB_LOCATION ${CHECK_TARGET} IMPORTED_LOCATION)
-        if(NOT CHECK_LIB_LOCATION)
-            get_target_property(CHECK_LIB_LOCATION ${CHECK_TARGET} LOCATION)
-        endif()
-        if(CHECK_LIB_LOCATION)
-            get_filename_component(CHECK_LIBRARY_DIRS "${CHECK_LIB_LOCATION}" DIRECTORY)
-        endif()
-        message(STATUS "Found check framework via CMake config")
-
-        # Check if libcheck has srunner_set_tap (jessie has outdated libcheck)
-        set(_TEMP_CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES}")
-        set(_TEMP_CMAKE_REQUIRED_INCLUDES  "${CMAKE_REQUIRED_INCLUDES}")
-        # For CMake config targets, use the target directly
-        set(CMAKE_REQUIRED_LIBRARIES check)
-        set(CMAKE_REQUIRED_INCLUDES ${CHECK_INCLUDE_DIRS})
-
-        check_symbol_exists(srunner_set_tap "check.h" HAVE_SRUNNER_SET_TAP)
-
-        set(CMAKE_REQUIRED_LIBRARIES "${_TEMP_CMAKE_REQUIRED_LIBRARIES}")
-        set(CMAKE_REQUIRED_INCLUDES  "${_TEMP_CMAKE_REQUIRED_INCLUDES}")
-        unset(_TEMP_CMAKE_REQUIRED_LIBRARIES)
-        unset(_TEMP_CMAKE_REQUIRED_INCLUDES)
-
-        if(HAVE_SRUNNER_SET_TAP)
-            set(HAVE_COMPATIBLE_CHECK 1)
-        endif()
-    else()
-        # Fall back to pkg-config
-        if(PKG_CONFIG_FOUND)
+if(BUILD_TESTING AND (NOT CMAKE_CROSSCOMPILING OR HAVE_WINE))
+    if(NOT CMAKE_CROSSCOMPILING)
+        find_package(check QUIET CONFIG)
+        if(check_FOUND)
+            set(HAVE_CHECK 1)
+            set(CHECK_LIBRARIES check)
+            if(TARGET Check::check)
+                set(CHECK_TARGET Check::check)
+            else()
+                set(CHECK_TARGET check)
+            endif()
+            get_target_property(CHECK_INCLUDE_DIRS ${CHECK_TARGET} INTERFACE_INCLUDE_DIRECTORIES)
+            # Get library location to extract directory
+            get_target_property(CHECK_LIB_LOCATION ${CHECK_TARGET} IMPORTED_LOCATION)
+            if(NOT CHECK_LIB_LOCATION)
+                get_target_property(CHECK_LIB_LOCATION ${CHECK_TARGET} LOCATION)
+            endif()
+            if(CHECK_LIB_LOCATION)
+                get_filename_component(CHECK_LIBRARY_DIRS "${CHECK_LIB_LOCATION}" DIRECTORY)
+            endif()
+            message(STATUS "Found check framework via CMake config")
+        elseif(PKG_CONFIG_FOUND)
+            # Fall back to pkg-config
             pkg_check_modules(CHECK check)
             if(CHECK_FOUND)
                 set(HAVE_CHECK 1)
                 message(STATUS "Found check framework via pkg-config")
-
-                # Check if libcheck has srunner_set_tap (jessie has outdated libcheck)
-                set(_TEMP_CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES}")
-                set(_TEMP_CMAKE_REQUIRED_INCLUDES  "${CMAKE_REQUIRED_INCLUDES}")
-                set(_TEMP_CMAKE_REQUIRED_LINK_OPTIONS "${CMAKE_REQUIRED_LINK_OPTIONS}")
-                set(CMAKE_REQUIRED_LIBRARIES ${CHECK_LIBRARIES})
-                set(CMAKE_REQUIRED_INCLUDES ${CHECK_INCLUDE_DIRS})
-                # Add library directories to linker flags
-                foreach(libdir ${CHECK_LIBRARY_DIRS})
-                    list(APPEND CMAKE_REQUIRED_LINK_OPTIONS "-L${libdir}")
-                endforeach()
-
-                check_symbol_exists(srunner_set_tap "check.h" HAVE_SRUNNER_SET_TAP)
-
-                set(CMAKE_REQUIRED_LIBRARIES "${_TEMP_CMAKE_REQUIRED_LIBRARIES}")
-                set(CMAKE_REQUIRED_INCLUDES  "${_TEMP_CMAKE_REQUIRED_INCLUDES}")
-                set(CMAKE_REQUIRED_LINK_OPTIONS "${_TEMP_CMAKE_REQUIRED_LINK_OPTIONS}")
-                unset(_TEMP_CMAKE_REQUIRED_LIBRARIES)
-                unset(_TEMP_CMAKE_REQUIRED_INCLUDES)
-                unset(_TEMP_CMAKE_REQUIRED_LINK_OPTIONS)
-
-                if(HAVE_SRUNNER_SET_TAP)
-                    set(HAVE_COMPATIBLE_CHECK 1)
-                endif()
             endif()
         endif()
     endif()
 
-    # Fall back to FetchContent if check not found (useful on Windows)
+    # Fall back to FetchContent if check not found.
+    # Always used when cross-compiling (skips host detection above) so that
+    # check is compiled for the target platform and can run under wine.
     if(NOT HAVE_CHECK)
         include(FetchContent)
         message(STATUS "check framework not found, fetching via FetchContent...")
@@ -295,7 +274,23 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
         # Disable check's own tests and docs
         set(CHECK_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
         set(CHECK_ENABLE_GCOV OFF CACHE BOOL "" FORCE)
+        if(WIN32)
+            # check's itimerspec detection only runs under CMake's MSVC mode,
+            # which bare clang doesn't set. Force the missing-struct flags so
+            # check's timer shim compiles correctly.
+            set(STRUCT_ITIMERSPEC_DEFINITION_MISSING 1 CACHE INTERNAL "" FORCE)
+            add_compile_definitions(STRUCT_ITIMERSPEC_DEFINITION_MISSING=1)
+        endif()
         FetchContent_MakeAvailable(check)
+        if(TARGET checkShared)
+            # check unconditionally creates a checkShared SHARED target alongside
+            # the static check target. We only need the static library; exclude the
+            # shared target and give it a distinct output name so that Ninja never
+            # sees two rules generating the same check.lib import library.
+            set_target_properties(checkShared PROPERTIES
+                EXCLUDE_FROM_ALL TRUE
+                OUTPUT_NAME checkDynamic)
+        endif()
 
         set(HAVE_CHECK 1)
         set(CHECK_LIBRARIES check)
@@ -303,6 +298,29 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
         set(HAVE_SRUNNER_SET_TAP 1)  # 0.15.2 has srunner_set_tap
         set(HAVE_COMPATIBLE_CHECK 1)
         message(STATUS "Found check framework via FetchContent")
+    endif()
+
+    # Check if libcheck has srunner_set_tap (jessie has outdated libcheck).
+    # FetchContent always has it (set above); only probe when using a system library.
+    if(HAVE_CHECK AND NOT HAVE_COMPATIBLE_CHECK)
+        set(_SAVED_CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES}")
+        set(_SAVED_CMAKE_REQUIRED_INCLUDES  "${CMAKE_REQUIRED_INCLUDES}")
+        set(_SAVED_CMAKE_REQUIRED_LINK_OPTIONS "${CMAKE_REQUIRED_LINK_OPTIONS}")
+        set(CMAKE_REQUIRED_LIBRARIES ${CHECK_LIBRARIES})
+        set(CMAKE_REQUIRED_INCLUDES ${CHECK_INCLUDE_DIRS})
+        foreach(libdir ${CHECK_LIBRARY_DIRS})
+            list(APPEND CMAKE_REQUIRED_LINK_OPTIONS "-L${libdir}")
+        endforeach()
+        check_symbol_exists(srunner_set_tap "check.h" HAVE_SRUNNER_SET_TAP)
+        set(CMAKE_REQUIRED_LIBRARIES "${_SAVED_CMAKE_REQUIRED_LIBRARIES}")
+        set(CMAKE_REQUIRED_INCLUDES  "${_SAVED_CMAKE_REQUIRED_INCLUDES}")
+        set(CMAKE_REQUIRED_LINK_OPTIONS "${_SAVED_CMAKE_REQUIRED_LINK_OPTIONS}")
+        unset(_SAVED_CMAKE_REQUIRED_LIBRARIES)
+        unset(_SAVED_CMAKE_REQUIRED_INCLUDES)
+        unset(_SAVED_CMAKE_REQUIRED_LINK_OPTIONS)
+        if(HAVE_SRUNNER_SET_TAP)
+            set(HAVE_COMPATIBLE_CHECK 1)
+        endif()
     endif()
 endif()
 
@@ -314,9 +332,14 @@ set(LIBCLANG_LIBS "")
 set(LIBCLANG_FOUND FALSE)
 set(LIBCLANG_DETECTION_METHOD "")
 
+if(NOT ENABLE_REFLECTION)
+    message(STATUS "libclang support disabled (ENABLE_REFLECTION=OFF)")
+    set(ENABLE_LIBCLANG OFF CACHE BOOL "Disable libclang" FORCE)
+endif()
+
 if(NOT HAVE_CMAKE_GEXPR)
     message(STATUS "libclang support disabled (CMake version is too old (<=3.27)")
-    set(ENABLE_LIBCLANG OFF CACHE BOOL "Disable my feature" FORCE)
+    set(ENABLE_LIBCLANG OFF CACHE BOOL "Disable libclang" FORCE)
 endif()
 
 if(NOT ENABLE_LIBCLANG)
@@ -580,6 +603,12 @@ endif()
 
 # Build common compiler flags for all targets
 set(COMMON_C_FLAGS)
+if(WIN32 AND CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    # MSVC compat mode (enabled by default when clang targets x86_64-windows-msvc)
+    # breaks __VA_OPT__ preprocessing — empty __VA_ARGS__ causes completely wrong
+    # macro expansion. Apply only to libfyaml targets (not FetchContent deps).
+    list(APPEND COMMON_C_FLAGS -fno-ms-compatibility)
+endif()
 if(WIN32)
     set(COMMON_C_DEFINITIONS WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
 else()
@@ -639,18 +668,66 @@ if(NOT MSVC)
     # Heap trampolines are more secure than executable stack trampolines
     # Available in GCC 14+ with -ftrampoline-impl=heap
     # Supported targets: x86_64/i386/aarch64 Linux, x86_64/i386 Darwin
+    # Note: we link-test a nested function to catch platforms (e.g. Cygwin)
+    # where the compiler accepts the flag but the runtime support is missing.
     set(HAVE_HEAP_TRAMPOLINES 0)
     if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-        check_c_compiler_flag(-ftrampoline-impl=heap COMPILER_SUPPORTS_HEAP_TRAMPOLINES)
+        set(CMAKE_REQUIRED_FLAGS_SAVE "${CMAKE_REQUIRED_FLAGS}")
+        set(CMAKE_REQUIRED_FLAGS "-ftrampoline-impl=heap")
+        check_c_source_compiles("
+typedef void (*fn_t)(void);
+fn_t make_trampoline(int x) {
+    void nested(void) { (void)x; }
+    return nested;
+}
+int main(void) {
+    fn_t f = make_trampoline(42);
+    f();
+    return 0;
+}
+" COMPILER_SUPPORTS_HEAP_TRAMPOLINES)
+        set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS_SAVE}")
         if(COMPILER_SUPPORTS_HEAP_TRAMPOLINES)
             set(HAVE_HEAP_TRAMPOLINES 1)
             list(APPEND COMMON_C_FLAGS -ftrampoline-impl=heap)
             message(STATUS "GCC heap trampolines enabled (-ftrampoline-impl=heap)")
         else()
-            message(STATUS "GCC heap trampolines not available (GCC 14+ required), using stack trampolines")
+            message(STATUS "GCC heap trampolines not available or runtime missing, using stack trampolines")
         endif()
     endif()
 
+endif()
+
+# Check for GCC statement expressions ({ ... }) support
+# MSVC does not support these; GCC and Clang do.
+check_c_source_compiles("
+int main(void) {
+    int x = ({ int y = 1; y + 1; });
+    return x - 2;
+}
+" HAVE_STATEMENT_EXPRESSIONS)
+if(HAVE_STATEMENT_EXPRESSIONS)
+    list(APPEND COMMON_C_DEFINITIONS HAVE_STATEMENT_EXPRESSIONS)
+
+    if(ENABLE_GENERIC)
+        set(HAVE_GENERIC 1)
+        list(APPEND COMMON_C_DEFINITIONS HAVE_GENERIC)
+    else()
+        set(HAVE_GENERIC 0)
+    endif()
+
+    if(ENABLE_REFLECTION)
+        set(HAVE_REFLECTION 1)
+        list(APPEND COMMON_C_DEFINITIONS HAVE_REFLECTION)
+    else()
+        set(HAVE_REFLECTION 0)
+    endif()
+else()
+    set(HAVE_GENERIC 0)
+    set(HAVE_REFLECTION 0)
+    if(ENABLE_GENERIC OR ENABLE_REFLECTION)
+        message(STATUS "Statement expressions not supported; generic and reflection disabled")
+    endif()
 endif()
 
 # the options for the libs
@@ -756,20 +833,29 @@ set(LIBSRCS
     src/lib/fy-docbuilder-diag.c
     src/lib/fy-input-diag.c
     src/lib/fy-parse-diag.c
-    src/generic/fy-generic.c
-    src/generic/fy-generic-decoder.c
-    src/generic/fy-generic-encoder.c
-    src/generic/fy-generic-op.c
-    src/generic/fy-generic-iter.c
-    src/reflection/fy-reflection.c
-    src/reflection/fy-packed-backend.c
-    src/reflection/fy-null-backend.c
-    src/reflection/fy-registry.c
 )
 
-# Conditionally add clang backend if libclang is available
-if(HAVE_LIBCLANG)
-    list(APPEND LIBSRCS src/reflection/fy-clang-backend.c)
+if(HAVE_GENERIC)
+    list(APPEND LIBSRCS
+        src/generic/fy-generic.c
+        src/generic/fy-generic-decoder.c
+        src/generic/fy-generic-encoder.c
+        src/generic/fy-generic-op.c
+        src/generic/fy-generic-iter.c
+    )
+endif()
+
+if(HAVE_REFLECTION)
+    list(APPEND LIBSRCS
+        src/reflection/fy-reflection.c
+        src/reflection/fy-packed-backend.c
+        src/reflection/fy-null-backend.c
+        src/reflection/fy-registry.c
+    )
+    # Conditionally add clang backend if libclang is available
+    if(HAVE_LIBCLANG)
+        list(APPEND LIBSRCS src/reflection/fy-clang-backend.c)
+    endif()
 endif()
 
 set(LIBHDRSPUB
@@ -786,9 +872,14 @@ set(LIBHDRSPUB
     include/libfyaml/libfyaml-endian.h
     include/libfyaml/libfyaml-vlsize.h
     include/libfyaml/libfyaml-atomics.h
-    include/libfyaml/libfyaml-reflection.h
-    include/libfyaml/libfyaml-generic.h
 )
+
+if(HAVE_REFLECTION)
+    list(APPEND LIBHDRSPUB include/libfyaml/libfyaml-reflection.h)
+endif()
+if(HAVE_GENERIC)
+    list(APPEND LIBHDRSPUB include/libfyaml/libfyaml-generic.h)
+endif()
 
 # BLAKE3 portable library
 add_library(b3portable OBJECT
@@ -942,15 +1033,21 @@ if(WIN32 AND BUILD_SHARED_LIBS)
     foreach(HDR ${LIBHDRSPUB})
         list(APPEND ABS_LIBHDRSPUB "${CMAKE_CURRENT_SOURCE_DIR}/${HDR}")
     endforeach()
-    # Escape semicolons so the list survives being passed via -D to cmake -P
-    string(REPLACE ";" "\\;" ESCAPED_HDRS "${ABS_LIBHDRSPUB}")
+    # Write header list to a response file (one path per line) to avoid
+    # issues with passing semicolon-separated lists via -D on native Windows.
+    # On cmd.exe, backslash-escaped semicolons (\;) are passed literally,
+    # corrupting the paths and causing "Invalid argument" from file(READ).
+    set(HEADER_LIST_FILE "${CMAKE_CURRENT_BINARY_DIR}/def-header-list.txt")
+    string(REPLACE ";" "\n" HEADER_LIST_CONTENT "${ABS_LIBHDRSPUB}")
+    file(WRITE "${HEADER_LIST_FILE}" "${HEADER_LIST_CONTENT}\n")
     add_custom_command(
         OUTPUT ${GENERATED_DEF_FILE}
         COMMAND ${CMAKE_COMMAND}
-            "-DINPUT_HEADERS=${ESCAPED_HDRS}"
+            -DHEADER_LIST_FILE=${HEADER_LIST_FILE}
             -DOUTPUT_DEF=${GENERATED_DEF_FILE}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/generate-def.cmake
         DEPENDS
+            ${HEADER_LIST_FILE}
             ${ABS_LIBHDRSPUB}
             ${CMAKE_CURRENT_SOURCE_DIR}/cmake/generate-def.cmake
         COMMENT "Generating fyaml.def from public headers"
@@ -1108,6 +1205,17 @@ if(NOT MSVC AND NOT WIN32)
         # Use INTERFACE to propagate link flags to executables linking against this library
 		target_link_options(fyaml PRIVATE ${ASAN_C_FLAGS} INTERFACE ${ASAN_C_FLAGS})
     endif()
+endif()
+
+# clang-cl: disable MSVC-compatible preprocessor so that statement expressions
+# in the generic API headers work correctly for both the library build and for
+# consumers that include libfyaml headers via find_package(libfyaml).
+# CMAKE_C_SIMULATE_ID is "MSVC" only for clang-cl, not for regular Clang.
+if(CMAKE_C_COMPILER_ID STREQUAL "Clang" AND CMAKE_C_SIMULATE_ID STREQUAL "MSVC")
+    foreach(_tgt fyaml fyaml_static)
+        target_compile_options(${_tgt} PUBLIC -fno-ms-compatibility)
+    endforeach()
+    message(STATUS "clang-cl detected: adding -fno-ms-compatibility to fyaml targets")
 endif()
 
 # on windows we need a fall-back getopt
@@ -1300,7 +1408,7 @@ if(HAVE_LIBCLANG)
 endif()
 add_dependencies(fy-allocators fyaml_static)
 
-if(BUILD_TESTING AND NOT CROSS_COMPILING AND HAVE_CHECK AND HAVE_BASH)
+if(BUILD_TESTING AND HAVE_BASH AND HAVE_CHECK AND (NOT CROSS_COMPILING OR HAVE_WINE))
     set(CAN_TEST 1)
 else()
     set(CAN_TEST 0)
@@ -1334,8 +1442,8 @@ if(CAN_TEST)
             test/libfyaml-test-private-id.c
             test/libfyaml-test-parser.c
             test/libfyaml-test-thread.c
-            test/libfyaml-test-generic.c
-            test/libfyaml-test-generic-scalars.c
+            $<$<BOOL:${HAVE_GENERIC}>:test/libfyaml-test-generic.c>
+            $<$<BOOL:${HAVE_GENERIC}>:test/libfyaml-test-generic-scalars.c>
             ${GETOPT_SOURCES}
         )
 
@@ -1425,7 +1533,9 @@ if(CAN_TEST)
         add_testsuite_tests(testsuite testsuite.test)
         add_testsuite_tests(testsuite-evstream testsuite-evstream.test)
         add_testsuite_tests(testsuite-resolution testsuite-resolution.test)
-        add_testsuite_tests(testsuite-generic testsuite-generic.test)
+        if(HAVE_GENERIC)
+            add_testsuite_tests(testsuite-generic testsuite-generic.test)
+        endif()
         if(HAVE_JQ)
             add_testsuite_tests(testsuite-json testsuite-json.test)
         endif()
@@ -1434,8 +1544,8 @@ if(CAN_TEST)
         add_jsontestsuite_tests()
     endif()
 
-    # Reflection tests - only if libclang is available
-    if(HAVE_LIBCLANG)
+    # Reflection tests - only if libclang is available and reflection is enabled
+    if(HAVE_REFLECTION AND HAVE_LIBCLANG)
         add_testreflection_tests()
     endif()
 
@@ -1455,13 +1565,15 @@ if(CAN_TEST)
         jsontestsuite.test
         testsuite-evstream.test
         testsuite-resolution.test
-        testsuite-generic.test
         testerrors.test
         testemitter.test
         testemitter-streaming.test
         testemitter-restreaming.test
     )
 
+    if(HAVE_GENERIC)
+        list(APPEND TEST_SUITES testsuite-generic.test)
+    endif()
     if(HAVE_JQ)
         list(APPEND TEST_SUITES testsuite-json.test)
     endif()
@@ -1587,7 +1699,8 @@ install(
 # tags and cscope support
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/tags.cmake)
 
-# Python core bindings
+# Python core bindings (not supported on Windows)
+if(NOT WIN32)
 find_package(Python3 COMPONENTS Interpreter Development)
 if(Python3_FOUND)
     set(_ENABLE_PYTHON_BINDINGS_DEFAULT ON)
@@ -1596,7 +1709,10 @@ else()
 endif()
 option(ENABLE_PYTHON_BINDINGS "Build Python core bindings (_libfyaml extension)" ${_ENABLE_PYTHON_BINDINGS_DEFAULT})
 
-if(ENABLE_PYTHON_BINDINGS)
+if(ENABLE_PYTHON_BINDINGS AND NOT HAVE_GENERIC)
+    message(STATUS "Python bindings disabled (requires statement expressions / generic support)")
+    set(HAVE_PYTHON_BINDINGS 0)
+elseif(ENABLE_PYTHON_BINDINGS)
     if(NOT Python3_FOUND)
         message(FATAL_ERROR "Python3 development headers not found (required for ENABLE_PYTHON_BINDINGS)")
     endif()
@@ -1636,6 +1752,9 @@ if(ENABLE_PYTHON_BINDINGS)
 else()
     set(HAVE_PYTHON_BINDINGS 0)
 endif()
+else()
+    set(HAVE_PYTHON_BINDINGS 0)
+endif() # NOT WIN32
 
 # Python binding tests (pytest) - one CTest entry per test function/method
 if(HAVE_PYTHON_BINDINGS AND BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
@@ -1663,6 +1782,8 @@ message(STATUS "HAVE_COMPATIBLE_CHECK: ${HAVE_COMPATIBLE_CHECK}")
 message(STATUS "HAVE_LIBYAML:          ${HAVE_LIBYAML}")
 message(STATUS "HAVE_CMAKE_GEXPR:      ${HAVE_CMAKE_GEXPR}")
 message(STATUS "HAVE_LIBCLANG:         ${HAVE_LIBCLANG}")
+message(STATUS "HAVE_GENERIC:          ${HAVE_GENERIC}")
+message(STATUS "HAVE_REFLECTION:       ${HAVE_REFLECTION}")
 message(STATUS "HAVE_PYTHON_BINDINGS:  ${HAVE_PYTHON_BINDINGS}")
 message(STATUS "HAVE_CLANG_BLOCKS:     ${HAVE_CLANG_BLOCKS}")
 message(STATUS "HAVE_NETWORK:          ${HAVE_NETWORK}")
@@ -1684,7 +1805,10 @@ message(STATUS "JSONTESTSUITEURL:      ${JSONTESTSUITEURL}")
 message(STATUS "JSONTESTSUITECHECKOUT: ${JSONTESTSUITECHECKOUT}")
 message(STATUS "CAN_TEST:              ${CAN_TEST}")
 message(STATUS "")
-if(CROSS_COMPILING)
+if(CROSS_COMPILING AND NOT HAVE_WINE)
     message(STATUS "Tests disabled when cross-compiling (target binaries cannot execute on build host)")
+    message(STATUS "")
+elseif(CROSS_COMPILING AND HAVE_WINE)
+    message(STATUS "Tests enabled via wine: ${WINE_EXECUTABLE}")
     message(STATUS "")
 endif()

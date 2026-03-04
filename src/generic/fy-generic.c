@@ -1906,8 +1906,8 @@ static inline int fy_generic_bool_compare(fy_generic a, fy_generic b)
 {
 	int ba, bb;
 
-	ba = (int)fy_cast(a, false);
-	bb = (int)fy_cast(b, false);
+	ba = (int)fy_cast(a, (_Bool)false);
+	bb = (int)fy_cast(b, (_Bool)false);
 	return ba > bb ?  1 :
 	       ba < bb ? -1 : 0;
 }

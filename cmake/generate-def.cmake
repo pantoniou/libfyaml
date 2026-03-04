@@ -1,17 +1,24 @@
 # generate-def.cmake
 # Generates fyaml.def from the libfyaml public headers by extracting FY_EXPORT functions
 #
-# Usage: cmake -DINPUT_HEADERS="path/h1.h\;path/h2.h" -DOUTPUT_DEF=path/fyaml.def -P generate-def.cmake
+# Usage: cmake -DHEADER_LIST_FILE=path/list.txt -DOUTPUT_DEF=path/fyaml.def -P generate-def.cmake
 #
-# INPUT_HEADERS is a CMake list (semicolon-separated) of absolute header paths.
+# HEADER_LIST_FILE is a text file with one absolute header path per line.
 
-if(NOT INPUT_HEADERS)
-    message(FATAL_ERROR "INPUT_HEADERS not specified")
+if(NOT HEADER_LIST_FILE)
+    message(FATAL_ERROR "HEADER_LIST_FILE not specified")
 endif()
 
 if(NOT OUTPUT_DEF)
     message(FATAL_ERROR "OUTPUT_DEF not specified")
 endif()
+
+# Read the header list file and convert to a CMake list
+file(READ "${HEADER_LIST_FILE}" HEADER_LIST_CONTENT)
+# Normalize line endings (Windows may produce \r\n) and strip whitespace
+string(REPLACE "\r" "" HEADER_LIST_CONTENT "${HEADER_LIST_CONTENT}")
+string(STRIP "${HEADER_LIST_CONTENT}" HEADER_LIST_CONTENT)
+string(REPLACE "\n" ";" INPUT_HEADERS "${HEADER_LIST_CONTENT}")
 
 # Functions declared with FY_EXPORT but not implemented as standalone functions
 # (they may be inline, macros, or not implemented)

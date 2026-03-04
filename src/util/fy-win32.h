@@ -53,6 +53,16 @@ typedef int ssize_t;
 #endif
 #endif
 
+/* POSIX types that MSVC only provides with underscore prefix */
+#ifndef _OFF_T_DEFINED_AS_OFF_T
+#define _OFF_T_DEFINED_AS_OFF_T
+typedef _off_t off_t;
+#endif
+#ifndef _DEV_T_DEFINED_AS_DEV_T
+#define _DEV_T_DEFINED_AS_DEV_T
+typedef _dev_t dev_t;
+#endif
+
 /* Provide SSIZE_MAX if not defined */
 #ifndef SSIZE_MAX
 #ifdef _WIN64

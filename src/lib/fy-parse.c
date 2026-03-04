@@ -7399,6 +7399,7 @@ err_out_rc:
 	return rc;
 }
 
+#ifdef HAVE_GENERIC
 int fy_parser_set_generic_iterator(struct fy_parser *fyp, enum fy_parser_event_generator_flags flags,
 				   struct fy_generic_iterator *fygi)
 {
@@ -7432,6 +7433,7 @@ err_out:
 err_out_rc:
 	return rc;
 }
+#endif /* HAVE_GENERIC */
 
 int fy_parser_reset(struct fy_parser *fyp)
 {
