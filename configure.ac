@@ -647,6 +647,10 @@ AC_SUBST(HAVE_HEAP_TRAMPOLINES)
 AC_DEFINE_UNQUOTED([HAVE_HEAP_TRAMPOLINES], [$HAVE_HEAP_TRAMPOLINES], [Define to 1 if GCC heap trampolines are enabled])
 AM_CONDITIONAL([HAVE_HEAP_TRAMPOLINES], [ test x$HAVE_HEAP_TRAMPOLINES = x1 ])
 
+dnl automake is only on standard unix systems generic, reflection enabled
+AC_DEFINE_UNQUOTED([HAVE_GENERIC], [1], [Define to 1 if generics are enabled])
+AC_DEFINE_UNQUOTED([HAVE_REFLECTION], [1], [Define to 1 if reflection is enabled])
+
 dnl trim cflags, cppflags, ldflags
 CFLAGS=`echo $CFLAGS | sed -e 's/^[ ]*//'`
 CPPFLAGS=`echo $CPPFLAGS | sed -e 's/^[ ]*//'`
