@@ -2,9 +2,9 @@ name: CMake CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, reflection-new5 ]
   pull_request:
-    branches: [ master ]
+    branches: [ master, reflection-new5 ]
 
 jobs:
   # ===========================================
