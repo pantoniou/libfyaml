@@ -1547,6 +1547,7 @@ if(CAN_TEST)
     # Reflection tests - only if libclang is available and reflection is enabled
     if(HAVE_REFLECTION AND HAVE_LIBCLANG)
         add_testreflection_tests()
+        add_testreflection_packed_tests()
     endif()
 
     # Build all test dependencies as part of default 'all' target

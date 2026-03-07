@@ -561,8 +561,16 @@ clang_type_equal(CXType type1, CXType type2, bool strict)
 	if (type2.kind == CXType_Elaborated)
 		type2 = clang_Type_getNamedType(type2);
 
-	if (!clang_equalTypes(type1, type2))
+	if (!clang_equalTypes(type1, type2)) {
+		/* In non-strict mode, typedef types that differ only in qualification
+		 * share the same declaration cursor - use that for matching */
+		if (!strict && type1.kind == CXType_Typedef && type2.kind == CXType_Typedef) {
+			CXCursor d1 = clang_getTypeDeclaration(type1);
+			CXCursor d2 = clang_getTypeDeclaration(type2);
+			return clang_equalCursors(d1, d2);
+		}
 		return false;
+	}
 
 	return strict ? quals1 == quals2 : true;
 }

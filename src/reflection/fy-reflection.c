@@ -2125,6 +2125,7 @@ int fy_type_fixup(struct fy_type *ft)
 	if (ft->flags & (FYTF_FIXED | FYTF_SYNTHETIC))
 		return 0;
 
+	rc = 0;
 	/* check for recursive fix, and break out */
 	if (ft->flags & FYTF_FIX_IN_PROGRESS)
 		goto out;
@@ -2310,13 +2311,13 @@ int fy_type_fixup(struct fy_type *ft)
 	}
 
 	rc = 0;
+	goto out;
+err_out:
+	rc = -1;
 out:
 	ft->flags |= FYTF_FIXED;
 	ft->flags &= ~FYTF_FIX_IN_PROGRESS;
-
-err_out:
-	rc = -1;
-	goto out;
+	return rc;
 }
 
 void fy_type_set_flags(struct fy_type *ft, enum fy_type_flags flags_set, enum fy_type_flags flags_mask)
@@ -3186,8 +3187,10 @@ static void fy_reflection_cleanup(struct fy_reflection *rfl)
 
 	backend_reflection_cleanup(rfl);
 
-	if (rfl->diag)
+	if (rfl->diag) {
 		fy_diag_unref(rfl->diag);
+		rfl->diag = NULL;
+	}
 }
 
 void fy_reflection_destroy(struct fy_reflection *rfl)

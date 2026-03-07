@@ -532,6 +532,75 @@ case "$test_suite" in
         fi
         ;;
 
+
+    testreflection-packed)
+        tst="${TEST_DIR}/reflection-data/${test_id}"
+        desctxt=$(cat 2>/dev/null "$tst/===")
+        def="$tst/definition.h"
+        meta="$tst/meta"
+        entry=$(cat 2>/dev/null "$tst/entry")
+        in_file="$tst/in.yaml"
+
+        t=$(mktemp)
+        t2=$(mktemp)
+        blob=$(mktemp)
+
+        res="not ok"
+
+        meta_args=()
+        if [ -f "$meta" ]; then
+            metaval=$(cat "$meta" | head -n 1)
+            meta_args=("--entry-meta" "${metaval}")
+        fi
+
+        # step 1: generate packed blob from C header
+        pass_blob=0
+        run_tool "${FY_TOOL}" --reflect --import-c-file "$def" --dry-run --generate-blob "$blob" 2>/dev/null
+        if [ $? -eq 0 ]; then
+            pass_blob=1
+        fi
+
+        pass_yaml=0
+        if [ $pass_blob -eq 1 ]; then
+            # step 2: use packed blob instead of C header
+            run_tool "${FY_TOOL}" --reflect --import-blob "$blob" "${meta_args[@]}" --entry-type "${entry}" "${in_file}" >"$t" 2>/dev/null
+            if [ $? -eq 0 ]; then
+                run_tool "${FY_TOOL}" --testsuite --disable-flow-markers --disable-doc-markers --disable-scalar-styles "$t" >"$t2" 2>/dev/null
+                if [ $? -eq 0 ]; then
+                    pass_yaml=1
+                fi
+            fi
+        fi
+
+        if [ -e "$tst/error" ]; then
+            if [ $pass_yaml == "0" ]; then
+                res="ok"
+            else
+                res="not ok"
+            fi
+        else
+            if [ $pass_yaml == "1" ]; then
+                diff -u "$tst/test.event" "$t2"
+                if [ $? -eq 0 ]; then
+                    res="ok"
+                else
+                    res="not ok"
+                fi
+            else
+                res="not ok"
+            fi
+        fi
+
+        rm -f "$t" "$t2" "$blob"
+
+        echo "$res 1 $test_id - $desctxt (packed)"
+
+        if [ "$res" == "ok" ]; then
+            exit 0
+        else
+            exit 1
+        fi
+        ;;
     *)
         echo "Unknown test suite: $test_suite" >&2
         exit 1

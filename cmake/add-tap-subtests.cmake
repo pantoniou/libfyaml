@@ -427,6 +427,89 @@ function(add_testreflection_tests)
     endforeach()
 endfunction()
 
+
+# Helper macro to register a single packed-reflection test
+macro(_register_reflection_packed_test test_dir test_id)
+    # Only tests with a definition.h are eligible for packed roundtrip
+    if(EXISTS "${test_dir}/===" AND EXISTS "${test_dir}/definition.h")
+        file(READ "${test_dir}/===" _test_desc)
+        string(STRIP "${_test_desc}" _test_desc)
+
+        if(_test_desc)
+            set(_test_name_full "testreflection-packed/${test_id} - ${_test_desc} (packed)")
+        else()
+            set(_test_name_full "testreflection-packed/${test_id} (packed)")
+        endif()
+
+        _should_skip_reflection_test("${test_dir}" _test_should_skip)
+
+        set(_test_labels "testreflection-packed")
+
+        if(_test_should_skip)
+            add_tap_test("${_test_name_full}" testreflection-packed "${test_id}"
+                LABELS "${_test_labels}" DISABLED)
+        else()
+            add_tap_test("${_test_name_full}" testreflection-packed "${test_id}"
+                LABELS "${_test_labels}")
+        endif()
+    endif()
+endmacro()
+
+# Function to add packed-reflection roundtrip tests
+function(add_testreflection_packed_tests)
+    set(test_dir "${CMAKE_CURRENT_SOURCE_DIR}/test/reflection-data")
+
+    include(CheckTypeSize)
+    check_type_size("unsigned int" SIZEOF_UINT)
+    check_type_size("unsigned short" SIZEOF_USHORT)
+    check_type_size("unsigned long" SIZEOF_ULONG)
+    check_type_size("unsigned char" SIZEOF_UCHAR)
+
+    math(EXPR _refl_intbits "${SIZEOF_UINT} * 8")
+    math(EXPR _refl_shortbits "${SIZEOF_USHORT} * 8")
+    math(EXPR _refl_longbits "${SIZEOF_ULONG} * 8")
+    math(EXPR _refl_charbits "${SIZEOF_UCHAR} * 8")
+    set(_refl_longlongbits 64)
+
+    include(CheckCSourceRuns)
+    check_c_source_runs("
+        #include <limits.h>
+        int main() { return (CHAR_MIN < 0) ? 0 : 1; }
+    " CHAR_IS_SIGNED_PACKED)
+    if(CHAR_IS_SIGNED_PACKED)
+        set(_refl_charsigned "y")
+    else()
+        set(_refl_charsigned "n")
+    endif()
+
+    file(GLOB all_base_dirs "${test_dir}/*")
+
+    foreach(base_test ${all_base_dirs})
+        if(NOT IS_DIRECTORY "${base_test}")
+            continue()
+        endif()
+        get_filename_component(base_id "${base_test}" NAME)
+        if(NOT base_id MATCHES "^[0-9][0-9][0-9][A-Z][A-Z0-9][A-Z0-9][A-Z0-9]$")
+            continue()
+        endif()
+
+        _register_reflection_packed_test("${base_test}" "${base_id}")
+
+        file(GLOB all_subtests "${base_test}/*")
+        foreach(subtest ${all_subtests})
+            if(NOT IS_DIRECTORY "${subtest}")
+                continue()
+            endif()
+            get_filename_component(subtest_id "${subtest}" NAME)
+            if(NOT subtest_id MATCHES "^[0-9][0-9][0-9]?$")
+                continue()
+            endif()
+            set(full_test_id "${base_id}/${subtest_id}")
+            _register_reflection_packed_test("${subtest}" "${full_test_id}")
+        endforeach()
+    endforeach()
+endfunction()
+
 # Function to add Python pytest tests, one CTest entry per test function/method.
 # Uses Python's ast module at CMake configure time to enumerate test IDs — no
 # import of libfyaml needed, immune to semicolons/special chars in source.

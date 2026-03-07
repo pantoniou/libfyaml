@@ -280,32 +280,11 @@ static int packed_do_import(struct fy_import *imp)
 
 	(void)rflb;
 
-	fprintf(stderr, "%s: types\n", __func__);
-	for (typep = ti->types, i = 0; i < ti->types_count; i++, typep++) {
-		fprintf(stderr, "<T#%d/%s D#%d DT#%d EC=%ju\n", i + FY_TYPE_ID_OFFSET,
-				fy_type_kind_name(typep->type_kind),
-				typep->decl.id,
-				typep->dependent_type.id,
-				typep->element_count);
-
-	}
-
-	fprintf(stderr, "%s: decls\n", __func__);
-	for (declp = ti->decls, i = 0; i < ti->decls_count; i++, declp++) {
-		fprintf(stderr, "<D#%d %s T#%d C=%s\n", i + FY_DECL_ID_OFFSET,
-				fy_str_from_p(ti, declp->name),
-				declp->type.id,
-				fy_str_from_p(ti, declp->comment));
-
-	}
-
 	memset(declu, 0, sizeof(*declu));
 	memset(declu_field, 0, sizeof(*declu_field));
 
 	/* first create the types */
 	for (typep = ti->types, i = 0; i < ti->types_count; i++, typep++) {
-
-		fprintf(stderr, "!T#%d D#%d\n", i + FY_TYPE_ID_OFFSET, typep->decl.id);
 
 		type_kind = typep->type_kind;
 
@@ -402,7 +381,6 @@ static int packed_do_import(struct fy_import *imp)
 
 	/* do a pass to relink decl->type if that was missing */
 	for (typep = ti->types, i = 0; i < ti->types_count; i++, typep++) {
-
 		ft = packed_lookup_type_by_typep(rfl, typep);
 		RFL_ASSERT(ft);
 
@@ -931,7 +909,10 @@ static int decl_generate_one_blob(struct fy_decl *decl, struct blob_writer *bw, 
 	rfl = decl->rfl;
 	assert(rfl);
 
-	is_anonymous = !!(decl->type->flags & (FYTF_ANONYMOUS | FYTF_ANONYMOUS_RECORD_DECL));
+	/* A decl is anonymous (unnamed) if its own name was generated (marked with '@' prefix).
+	 * Do NOT use the type's anonymous flag here - a named field (e.g. "bar") pointing to
+	 * an anonymous struct/union/enum type must still have its name serialized. */
+	is_anonymous = decl->name && decl->name[0] == '@';
 	is_generated_name = decl->decl_type == FYDT_PRIMITIVE;	/* ptr, const array etc */
 
 	flags = 0;
@@ -972,17 +953,8 @@ static int decl_generate_one_blob(struct fy_decl *decl, struct blob_writer *bw, 
 	bw->Twf(&bw->Dr, decl->type->id);
 	if (!is_anonymous && !is_generated_name)
 		str_offset = br_wstr(&bw->Sr, true, decl->name);
-	else {
-		if (decl->type) {
-			if (decl->type->type_kind == FYTK_TYPEDEF) {
-				fy_decl_dump(decl, 0, true);
-				fy_type_dump(decl->type, true);
-				fprintf(stderr, "decl->name=%s type=%s\n", decl->name, decl->type->fullname);
-			}
-			RFL_ASSERT(decl->type->type_kind != FYTK_TYPEDEF);
-		}
+	else
 		str_offset = 0;
-	}
 
 	bw->Swf(&bw->Dr, str_offset);
 	if (str_offset > bw->Si_maxval)
@@ -1075,8 +1047,8 @@ static int packed_generate_blob_H(struct fy_packed_generator *pg, struct blob_wr
 	br_w8(&bw->Hr, 'Y');
 	br_w8(&bw->Hr, 'P');
 	br_w8(&bw->Hr, 'G');
-	br_w8(&bw->Hr, 0);	/* major version */
-	br_w8(&bw->Hr, 1);	/* minor version */
+	br_w8(&bw->Hr, 1);	/* major version */
+	br_w8(&bw->Hr, 0);	/* minor version */
 	br_w8(&bw->Hr, (uint8_t)bw->Ti);	/* type id size */
 	br_w8(&bw->Hr, (uint8_t)bw->Di);	/* decl id size */
 	br_w8(&bw->Hr, (uint8_t)bw->Si);	/* string table offset size */
