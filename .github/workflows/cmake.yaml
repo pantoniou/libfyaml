@@ -66,16 +66,14 @@ jobs:
         name: "Install dependencies (Ubuntu)",
         if: runner.os == 'Linux',
         run: "sudo apt-get update -qq\n\
-              sudo apt-get install --no-install-recommends -y cmake ninja-build pkg-config check libyaml-dev libltdl-dev libblocksruntime-dev libclang-dev llvm-dev python ${{ matrix.cc }} ${{ matrix.cxx }}\n\
-              python3 -m pip install --upgrade pip\n\
-              python3 -m pip install pytest"
+              sudo apt-get install --no-install-recommends -y cmake ninja-build pkg-config check libyaml-dev libltdl-dev libblocksruntime-dev libclang-dev llvm-dev python-is-python3 python3-pytest ${{ matrix.cc }} ${{ matrix.cxx }}"
       }
 
     - &install-macos {
         name: "Install dependencies (macOS)",
         if: runner.os == 'macOS',
         run: "brew update\n\
-              brew install cmake ninja pkg-config check libyaml gcc@13 llvm python\n\
+              brew install cmake ninja pkg-config check libyaml gcc@13 llvm\n\
               python3 -m pip install --upgrade pip\n\
               python3 -m pip install pytest"
       }
