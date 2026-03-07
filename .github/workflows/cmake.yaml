@@ -20,6 +20,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         compiler: [gcc, clang, msvc]
         build_type: [Debug, Release]
+        python-version: [ "3.11" ]
         exclude: &exclude-list
         - os: windows-latest
           compiler: gcc
@@ -55,6 +56,14 @@ jobs:
     - &checkout {
         uses: actions/checkout@v4
       }
+    
+    - &setup-python {
+        name: Setup python,
+        uses: actions/setup-python@v5,
+        with: {
+          python-version: "${{ matrix.python-version }}"
+        }
+      }
 
     - &setup-msvc {
         name: Setup MSBuild,
@@ -66,22 +75,26 @@ jobs:
         name: "Install dependencies (Ubuntu)",
         if: runner.os == 'Linux',
         run: "sudo apt-get update -qq\n\
-              sudo apt-get install --no-install-recommends -y cmake ninja-build pkg-config check libyaml-dev libltdl-dev libblocksruntime-dev libclang-dev llvm-dev python-is-python3 python3-pytest ${{ matrix.cc }} ${{ matrix.cxx }}"
+              sudo apt-get install --no-install-recommends -y cmake ninja-build pkg-config check libyaml-dev libltdl-dev libblocksruntime-dev libclang-dev llvm-dev libubsan1 ${{ matrix.cc }} ${{ matrix.cxx }}"
       }
 
     - &install-macos {
         name: "Install dependencies (macOS)",
         if: runner.os == 'macOS',
         run: "brew update\n\
-              brew install cmake ninja pkg-config check libyaml gcc@13 llvm\n\
-              python3 -m pip install --upgrade pip\n\
-              python3 -m pip install pytest"
+              brew install cmake ninja pkg-config check libyaml gcc@13 llvm"
       }
 
     - &install-windows {
         name: "Install dependencies (Windows)",
         if: runner.os == 'Windows',
         run: "choco install cmake ninja pkgconfiglite",
+      }
+
+    - &install-python {
+        name: "Install python",
+        run: "python -m pip install --upgrade pip\n\
+              pip install pytest"
       }
 
     - &set-env {
@@ -108,18 +121,41 @@ jobs:
       }
 
     - &test-unix {
-        name: Test,
+        name: Test (Unix),
         if: runner.os != 'Windows',
         working-directory: build,
-        run: "ctest --output-on-failure",
+          # run: "ctest --quiet --output-on-failure",
+        run: "ctest -VV --output-on-failure",
       }
+
+    - &test-windows {
+        name: Test (Windows),
+        if: runner.os == 'Windows',
+        working-directory: build,
+          # run: "ctest --quiet --output-on-failure -C ${{ matrix.build_type }}",
+        run: "ctest -VV --output-on-failure -C ${{ matrix.build_type }}",
+      }
+
+#    - &test-rerun-failed-unix {
+#        name: Test rerun failed (Unix),
+#        if: runner.os != 'Windows',
+#        working-directory: build,
+#        run: "ctest -VV --rerun-failed",
+#      }
+#
+#    - &test-rerun-failed-windows {
+#        name: Test rerun failed (Windows),
+#        if: runner.os == 'Windows',
+#        working-directory: build,
+#        run: "ctest -VV --rerun-failed -C ${{ matrix.build_type }}",
+#      }
 
     - &upload-logs {
         name: "Upload test logs on failure",
         if: failure(),
         uses: actions/upload-artifact@v4,
         with: {
-          name: "test-logs-${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.build_type }}",
+          name: "test-logs-${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.build_type }}-build-${{ github.run_id }}",
           path: "build/Testing/Temporary/\nbuild/**/*.log"
         }
       }
@@ -156,10 +192,12 @@ jobs:
 
     steps:
     - *checkout
+    - *setup-python
     - *setup-msvc
     - *install-ubuntu
     - *install-macos
     - *install-windows
+    - *install-python
     - *set-env
     - &configure-unix-asan {
         name: "Configure ASAN (Unix)",
@@ -168,6 +206,9 @@ jobs:
       }
     - *build
     - *test-unix
+#    - *test-rerun-failed-unix
+    - *test-windows
+#    - *test-rerun-failed-windows
     - *upload-logs
 
   # ===========================================
@@ -185,10 +226,12 @@ jobs:
 
     steps:
     - *checkout
+    - *setup-python
     - *setup-msvc
     - *install-ubuntu
     - *install-macos
     - *install-windows
+    - *install-python
     - *set-env
     - &configure-unix-smoke {
         name: "Configure smoke (Unix)",
