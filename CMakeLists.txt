@@ -361,7 +361,23 @@ else()
         set(Clang_DIR "${LLVM_INSTALL_PREFIX}/lib/cmake/clang")
     endif()
 
-    find_package(Clang QUIET CONFIG)
+    # Avoid find_package(Clang CONFIG): some distros ship LLVM packages where
+    # ClangTargets.cmake references missing static libs (e.g. libclangBasic.a)
+    # and emits a CMake FATAL_ERROR that QUIET cannot suppress. Find libclang
+    # directly instead — we only need the shared lib and the include path.
+    if(LLVM_FOUND)
+        find_library(_LIBCLANG_LIB NAMES clang libclang
+                     PATHS "${LLVM_LIBRARY_DIRS}" NO_DEFAULT_PATH)
+        if(_LIBCLANG_LIB)
+            set(Clang_FOUND TRUE)
+            set(CLANG_INCLUDE_DIRS "${LLVM_INCLUDE_DIRS}")
+            set(LIBCLANG_FULL_PATH "${_LIBCLANG_LIB}")
+        else()
+            message(STATUS "LLVM ${LLVM_PACKAGE_VERSION}: libclang not found in ${LLVM_LIBRARY_DIRS}, skipping")
+            set(LLVM_FOUND FALSE)
+        endif()
+        unset(_LIBCLANG_LIB CACHE)
+    endif()
 
     if(LLVM_FOUND AND Clang_FOUND)
 
@@ -377,12 +393,13 @@ else()
         # Set up library directories
         set(LIBCLANG_LINK_DIRS ${LLVM_LIBRARY_DIRS})
 
-        # Link against libclang (C API) and LLVM core libs
-        # Need to link against LLVM core for LLVMShutdown() and other LLVM APIs
+        # Link against libclang (C API) and LLVM core libs.
+        # Use the full path found by find_library to avoid -lclang resolution
+        # issues when the lib dir isn't in the default search path.
         if(TARGET libclang)
             set(LIBCLANG_LIBS_LIST libclang LLVM)
         else()
-            set(LIBCLANG_LIBS_LIST clang LLVM)
+            set(LIBCLANG_LIBS_LIST "${LIBCLANG_FULL_PATH}" LLVM)
         endif()
 
         set(LIBCLANG_INCLUDES "${LLVM_INCLUDE_DIRS};${CLANG_INCLUDE_DIRS}")
