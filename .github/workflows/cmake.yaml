@@ -5,58 +5,96 @@ on:
     branches: [ master, reflection-new5 ]
   pull_request:
     branches: [ master, reflection-new5 ]
+  workflow_dispatch:
+    inputs:
+      os:
+        description: "OS to run (e.g. ubuntu-latest, macos-latest, windows-latest)"
+        required: false
+        default: ""
+      compiler:
+        description: "Compiler (e.g. gcc, clang, msvc)"
+        required: false
+        default: ""
+      build_type:
+        description: "Build type (Debug or Release)"
+        required: false
+        default: ""
+      job:
+        description: "Job to run (build, asan, smoke, or empty for all)"
+        required: false
+        default: ""
+      ctest_args:
+        description: "Extra ctest arguments (e.g. -R foo, -E bar, -V)"
+        required: false
+        default: ""
 
 jobs:
+  # ===========================================
+  # Generate filtered matrices for all jobs
+  # ===========================================
+  generate-matrix:
+    name: Generate matrix
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.gen.outputs.build }}
+      asan: ${{ steps.gen.outputs.asan }}
+      smoke: ${{ steps.gen.outputs.smoke }}
+    steps:
+    - id: gen
+      shell: python3 {0}
+      run: |
+        import json, os
+
+        f = {"os": "${{ inputs.os }}", "compiler": "${{ inputs.compiler }}", "build_type": "${{ inputs.build_type }}"}
+        f = {k: v for k, v in f.items() if v}
+        job = "${{ inputs.job }}"
+
+        def filt(name, rows):
+            if job and job != name:
+                return {"include": []}
+            return {"include": [r for r in rows if all(r.get(k) == v for k, v in f.items())]}
+
+        def expand(os_comps, build_types):
+            return [{"os": o, "compiler": c, "cc": cc, "cxx": cxx, "build_type": bt, "python-version": "3.11"}
+                    for o, comps in os_comps for c, cc, cxx in comps for bt in build_types]
+
+        build_comps = [
+            ("ubuntu-latest",  [("gcc", "gcc", "g++"), ("clang", "clang-18", "clang++-18")]),
+            ("macos-latest",   [("gcc", "gcc", "g++"), ("clang", "clang", "clang++")]),
+            ("windows-latest", [("msvc", "cl", "cl")]),
+        ]
+        asan_comps = [
+            ("ubuntu-latest",  [("gcc", "gcc", "g++"), ("clang", "clang-18", "clang++-18")]),
+            ("macos-latest",   [("clang", "clang", "clang++")]),
+        ]
+        smoke_oses = ["ubuntu-24.04", "ubuntu-22.04", "macos-14", "windows-2022", "ubuntu-24.04-arm"]
+
+        # manual dispatch overrides exclusions
+        manual = bool(f) or bool(job)
+
+        with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+            out.write(f"build={json.dumps(filt('build', expand(build_comps, ['Debug','Release'])))}\n")
+            out.write(f"asan={json.dumps(filt('asan', expand(build_comps if manual else asan_comps, ['Debug'])))}\n")
+            out.write(f"smoke={json.dumps(filt('smoke', [{'os': o, 'build_type': 'Release', 'python-version': '3.11'} for o in smoke_oses]))}\n")
+
   # ===========================================
   # Main build matrix - full test suite
   # ===========================================
   build:
     name: ${{ matrix.os }} - ${{ matrix.compiler }} - ${{ matrix.build_type }}
+    needs: generate-matrix
+    if: ${{ fromJson(needs.generate-matrix.outputs.build).include[0] != null }}
     runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        compiler: [gcc, clang, msvc]
-        build_type: [Debug, Release]
-        python-version: [ "3.11" ]
-        exclude: &exclude-list
-        - os: windows-latest
-          compiler: gcc
-        - os: windows-latest
-          compiler: clang
-        - os: ubuntu-latest
-          compiler: msvc
-        - os: macos-latest
-          compiler: msvc
-        include: &include-list
-        - os: ubuntu-latest
-          compiler: gcc
-          cc: gcc
-          cxx: g++
-        - os: ubuntu-latest
-          compiler: clang
-          cc: clang-18
-          cxx: clang++-18
-        - os: macos-latest
-          compiler: gcc
-          cc: gcc
-          cxx: g++
-        - os: macos-latest
-          compiler: clang
-          cc: clang
-          cxx: clang++
-        - os: windows-latest
-          compiler: msvc
-          cc: cl
-          cxx: cl
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.build) }}
 
     steps:
     - &checkout {
         uses: actions/checkout@v4
       }
-    
+
     - &setup-python {
         name: Setup python,
         uses: actions/setup-python@v5,
@@ -115,7 +153,7 @@ jobs:
         run: "cmake -B build -A x64 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}"
       }
 
-    - &build {
+    - &build-step {
         name: Build,
         run: "cmake --build build --config ${{ matrix.build_type }}"
       }
@@ -124,31 +162,15 @@ jobs:
         name: Test (Unix),
         if: runner.os != 'Windows',
         working-directory: build,
-          # run: "ctest --quiet --output-on-failure",
-        run: "ctest --output-on-failure",
+        run: "ctest --output-on-failure ${{ inputs.ctest_args }}",
       }
 
     - &test-windows {
         name: Test (Windows),
         if: runner.os == 'Windows',
         working-directory: build,
-          # run: "ctest --quiet --output-on-failure -C ${{ matrix.build_type }}",
-        run: "ctest --output-on-failure -C ${{ matrix.build_type }}",
+        run: "ctest --output-on-failure -C ${{ matrix.build_type }} ${{ inputs.ctest_args }}",
       }
-
-#    - &test-rerun-failed-unix {
-#        name: Test rerun failed (Unix),
-#        if: runner.os != 'Windows',
-#        working-directory: build,
-#        run: "ctest -VV --rerun-failed",
-#      }
-#
-#    - &test-rerun-failed-windows {
-#        name: Test rerun failed (Windows),
-#        if: runner.os == 'Windows',
-#        working-directory: build,
-#        run: "ctest -VV --rerun-failed -C ${{ matrix.build_type }}",
-#      }
 
     - &upload-logs {
         name: "Upload test logs on failure",
@@ -165,30 +187,13 @@ jobs:
   # ===========================================
   asan:
     name: ASAN - ${{ matrix.os }} - ${{ matrix.compiler }}
+    needs: generate-matrix
+    if: ${{ fromJson(needs.generate-matrix.outputs.asan).include[0] != null }}
     runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        compiler: [gcc, clang]
-        build_type: [Debug]
-        exclude:
-        - os: macos-latest
-          compiler: gcc
-        include:
-        - os: ubuntu-latest
-          compiler: gcc
-          cc: gcc
-          cxx: g++
-        - os: ubuntu-latest
-          compiler: clang
-          cc: clang-18
-          cxx: clang++-18
-        - os: macos-latest
-          compiler: clang
-          cc: clang
-          cxx: clang++
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.asan) }}
 
     steps:
     - *checkout
@@ -199,16 +204,14 @@ jobs:
     - *install-windows
     - *install-python
     - *set-env
-    - &configure-unix-asan {
+    - {
         name: "Configure ASAN (Unix)",
         if: runner.os != 'Windows',
         run: "cmake -B build -G Ninja -DENABLE_ASAN=On -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}"
       }
-    - *build
+    - *build-step
     - *test-unix
-#    - *test-rerun-failed-unix
     - *test-windows
-#    - *test-rerun-failed-windows
     - *upload-logs
 
   # ===========================================
@@ -216,13 +219,13 @@ jobs:
   # ===========================================
   smoke-pinned:
     name: Smoke - ${{ matrix.os }}
+    needs: generate-matrix
+    if: ${{ fromJson(needs.generate-matrix.outputs.smoke).include[0] != null }}
     runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, ubuntu-22.04, macos-14, windows-2022, ubuntu-24.04-arm]
-        build_type: [Release]
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.smoke) }}
 
     steps:
     - *checkout
@@ -233,15 +236,15 @@ jobs:
     - *install-windows
     - *install-python
     - *set-env
-    - &configure-unix-smoke {
+    - {
         name: "Configure smoke (Unix)",
         if: runner.os != 'Windows',
         run: "cmake -B build -G Ninja -DBUILD_TESTING=Off -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}",
       }
-    - &configure-windows-smoke {
+    - {
         name: "Configure smoke (Windows)",
         if: runner.os == 'Windows',
         run: "cmake -B build -A x64 -DBUILD_TESTING=Off -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}"
       }
-    - *build
+    - *build-step
     - *upload-logs
