@@ -1775,7 +1775,10 @@ else()
 endif() # NOT WIN32
 
 # Python binding tests (pytest) - one CTest entry per test function/method
-if(HAVE_PYTHON_BINDINGS AND BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
+# ASan + dlopen of an ASan-instrumented extension crashes on macOS and Windows,
+# so skip Python tests in those configurations.
+if(HAVE_PYTHON_BINDINGS AND BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING
+        AND NOT (HAVE_ASAN AND (APPLE OR WIN32)))
     add_python_tests()
 endif()
 

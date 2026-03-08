@@ -578,19 +578,36 @@ function(add_python_tests)
         "LIBFYAML_PYTHON_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/python-libfyaml"
     )
 
-    # ASan: find libasan and extend environment
+    # ASan: inject the runtime so Python can dlopen the instrumented extension.
+    # Only reachable on Linux (macOS+ASAN skips Python tests at the call site).
     if(HAVE_ASAN)
+        set(_ld_preloads "")
         execute_process(
             COMMAND ${CMAKE_C_COMPILER} -print-file-name=libasan.so
             OUTPUT_VARIABLE _libasan_path
             OUTPUT_STRIP_TRAILING_WHITESPACE
         )
         if(_libasan_path AND EXISTS "${_libasan_path}")
-            list(APPEND _py_env
-                "LD_PRELOAD=${_libasan_path}"
-                "ASAN_OPTIONS=detect_leaks=0:halt_on_error=1:detect_stack_use_after_return=1"
-            )
+            list(APPEND _ld_preloads "${_libasan_path}")
         endif()
+
+        execute_process(
+            COMMAND ${CMAKE_C_COMPILER} -print-file-name=libubsan.so
+            OUTPUT_VARIABLE _libubsan_path
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        if(_libubsan_path AND EXISTS "${_libubsan_path}")
+            list(APPEND _ld_preloads "${_libubsan_path}")
+        endif()
+
+        list(JOIN _ld_preloads ":" LD_PRELOAD_VALUE)
+
+        message(STATUS "ASAN LD_PRELOAD_VALUE ${LD_PRELOAD_VALUE}")
+
+        list(APPEND _py_env
+            "LD_PRELOAD=${LD_PRELOAD_VALUE}"
+            "ASAN_OPTIONS=detect_leaks=0:halt_on_error=1:detect_stack_use_after_return=1"
+        )
     endif()
 
     # AST script: walks the parse tree to find test functions and methods.
