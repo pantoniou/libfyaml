@@ -39,6 +39,9 @@ jobs:
       build: ${{ steps.gen.outputs.build }}
       asan: ${{ steps.gen.outputs.asan }}
       smoke: ${{ steps.gen.outputs.smoke }}
+      has_build: ${{ steps.gen.outputs.has_build }}
+      has_asan: ${{ steps.gen.outputs.has_asan }}
+      has_smoke: ${{ steps.gen.outputs.has_smoke }}
     steps:
     - id: gen
       shell: python3 {0}
@@ -72,10 +75,17 @@ jobs:
         # manual dispatch overrides exclusions
         manual = bool(f) or bool(job)
 
+        build_out = filt('build', expand(build_comps, ['Debug','Release']))
+        asan_out = filt('asan', expand(build_comps if manual else asan_comps, ['Debug']))
+        smoke_out = filt('smoke', [{'os': o, 'build_type': 'Release', 'python-version': '3.11'} for o in smoke_oses])
+
         with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-            out.write(f"build={json.dumps(filt('build', expand(build_comps, ['Debug','Release'])))}\n")
-            out.write(f"asan={json.dumps(filt('asan', expand(build_comps if manual else asan_comps, ['Debug'])))}\n")
-            out.write(f"smoke={json.dumps(filt('smoke', [{'os': o, 'build_type': 'Release', 'python-version': '3.11'} for o in smoke_oses]))}\n")
+            out.write(f"build={json.dumps(build_out)}\n")
+            out.write(f"asan={json.dumps(asan_out)}\n")
+            out.write(f"smoke={json.dumps(smoke_out)}\n")
+            out.write(f"has_build={'true' if build_out['include'] else 'false'}\n")
+            out.write(f"has_asan={'true' if asan_out['include'] else 'false'}\n")
+            out.write(f"has_smoke={'true' if smoke_out['include'] else 'false'}\n")
 
   # ===========================================
   # Main build matrix - full test suite
@@ -83,7 +93,7 @@ jobs:
   build:
     name: ${{ matrix.os }} - ${{ matrix.compiler }} - ${{ matrix.build_type }}
     needs: generate-matrix
-    if: ${{ fromJson(needs.generate-matrix.outputs.build).include[0] != null }}
+    if: needs.generate-matrix.outputs.has_build == 'true'
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -188,7 +198,7 @@ jobs:
   asan:
     name: ASAN - ${{ matrix.os }} - ${{ matrix.compiler }}
     needs: generate-matrix
-    if: ${{ fromJson(needs.generate-matrix.outputs.asan).include[0] != null }}
+    if: needs.generate-matrix.outputs.has_asan == 'true'
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -220,7 +230,7 @@ jobs:
   smoke-pinned:
     name: Smoke - ${{ matrix.os }}
     needs: generate-matrix
-    if: ${{ fromJson(needs.generate-matrix.outputs.smoke).include[0] != null }}
+    if: needs.generate-matrix.outputs.has_smoke == 'true'
     runs-on: ${{ matrix.os }}
 
     strategy:
