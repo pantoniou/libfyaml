@@ -1921,6 +1921,7 @@ fy_op_dummy_work(void *varg)
 static void
 fy_op_filter_sequence_fn_work(void *varg)
 {
+	assert(varg);
 	struct fy_op_work_arg *arg = varg;
 	fy_generic_filter_pred_fn fn = arg->fn.filter_pred;
 	size_t i, j;
@@ -1937,6 +1938,7 @@ fy_op_filter_sequence_fn_work(void *varg)
 static void
 fy_op_filter_mapping_fn_work(void *varg)
 {
+	assert(varg);
 	struct fy_op_work_arg *arg = varg;
 	fy_generic_filter_pred_fn fn = arg->fn.filter_pred;
 	size_t i, j;
@@ -1955,6 +1957,7 @@ fy_op_filter_mapping_fn_work(void *varg)
 static void
 fy_op_filter_sequence_block_work(void *varg)
 {
+	assert(varg);
 	struct fy_op_work_arg *arg = varg;
 	fy_generic_filter_pred_block blk = arg->fn.filter_pred_blk;
 	size_t i, j;
@@ -1971,6 +1974,7 @@ fy_op_filter_sequence_block_work(void *varg)
 static void
 fy_op_filter_mapping_block_work(void *varg)
 {
+	assert(varg);
 	struct fy_op_work_arg *arg = varg;
 	fy_generic_filter_pred_block blk = arg->fn.filter_pred_blk;
 	size_t i, j;
@@ -1989,6 +1993,7 @@ fy_op_filter_mapping_block_work(void *varg)
 static void
 fy_op_map_sequence_fn_work(void *varg)
 {
+	assert(varg);
 	struct fy_op_work_arg *arg = varg;
 	fy_generic_map_xform_fn fn = arg->fn.map_xform;
 	fy_generic v;
@@ -2008,6 +2013,7 @@ fy_op_map_sequence_fn_work(void *varg)
 static void
 fy_op_map_mapping_fn_work(void *varg)
 {
+	assert(varg);
 	struct fy_op_work_arg *arg = varg;
 	fy_generic_map_xform_fn fn = arg->fn.map_xform;
 	fy_generic v;
@@ -2028,6 +2034,7 @@ fy_op_map_mapping_fn_work(void *varg)
 static void
 fy_op_map_sequence_block_work(void *varg)
 {
+	assert(varg);
 	struct fy_op_work_arg *arg = varg;
 	fy_generic_map_xform_block blk = arg->fn.map_xform_blk;
 	fy_generic v;
@@ -2047,6 +2054,7 @@ fy_op_map_sequence_block_work(void *varg)
 static void
 fy_op_map_mapping_block_work(void *varg)
 {
+	assert(varg);
 	struct fy_op_work_arg *arg = varg;
 	fy_generic_map_xform_block blk = arg->fn.map_xform_blk;
 	fy_generic v;
@@ -2085,6 +2093,7 @@ fy_op_reduce_sequence_fn_work(void *varg)
 static void
 fy_op_reduce_mapping_fn_work(void *varg)
 {
+	assert(varg);
 	struct fy_op_work_arg *arg = varg;
 	fy_generic_reducer_fn fn = arg->fn.reducer;
 	fy_generic acc;
@@ -2103,6 +2112,7 @@ fy_op_reduce_mapping_fn_work(void *varg)
 static void
 fy_op_reduce_sequence_block_work(void *varg)
 {
+	assert(varg);
 	struct fy_op_work_arg *arg = varg;
 	fy_generic_reducer_block blk = arg->fn.reducer_blk;
 	fy_generic acc;
@@ -2120,6 +2130,7 @@ fy_op_reduce_sequence_block_work(void *varg)
 static void
 fy_op_reduce_mapping_block_work(void *varg)
 {
+	assert(varg);
 	struct fy_op_work_arg *arg = varg;
 	fy_generic_reducer_block blk = arg->fn.reducer_blk;
 	fy_generic acc;
