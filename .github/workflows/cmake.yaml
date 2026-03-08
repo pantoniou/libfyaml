@@ -125,7 +125,7 @@ jobs:
         if: runner.os != 'Windows',
         working-directory: build,
           # run: "ctest --quiet --output-on-failure",
-        run: "ctest -VV --output-on-failure",
+        run: "ctest --output-on-failure",
       }
 
     - &test-windows {
@@ -133,7 +133,7 @@ jobs:
         if: runner.os == 'Windows',
         working-directory: build,
           # run: "ctest --quiet --output-on-failure -C ${{ matrix.build_type }}",
-        run: "ctest -VV --output-on-failure -C ${{ matrix.build_type }}",
+        run: "ctest --output-on-failure -C ${{ matrix.build_type }}",
       }
 
 #    - &test-rerun-failed-unix {
