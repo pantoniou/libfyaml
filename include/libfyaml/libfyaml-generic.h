@@ -2203,7 +2203,7 @@ static inline const fy_generic *fy_generic_sequence_get_items(fy_generic seq, si
 
 /* we are making things very hard for the compiler; sometimes he gets lost */
 FY_DIAG_PUSH
-FY_DIAG_IGNORE_ARRAY_BOUNDS
+// FY_DIAG_IGNORE_ARRAY_BOUNDS
 
 /**
  * fy_generic_sequencep_get_itemp() - Get a pointer to a specific item in a sequence pointer.
@@ -3471,7 +3471,7 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 
 /* we are making things very hard for the compiler; sometimes he gets lost */
 FY_DIAG_PUSH
-FY_DIAG_IGNORE_ARRAY_BOUNDS
+// FY_DIAG_IGNORE_ARRAY_BOUNDS
 
 /**
  * fy_generic_in_place_char_ptr_len() - Attempt to encode a string inplace.
@@ -5426,7 +5426,7 @@ fy_genericp_get_generic_mapping_handle_default(const fy_generic *vp,
 
 /* we are making things very hard for the compiler; sometimes he gets lost */
 FY_DIAG_PUSH
-FY_DIAG_IGNORE_ARRAY_BOUNDS
+// FY_DIAG_IGNORE_ARRAY_BOUNDS
 
 /**
  * fy_genericp_get_generic_default() - Dereference a generic pointer, returning a default for NULL.

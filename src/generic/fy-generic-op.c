@@ -2067,6 +2067,7 @@ fy_op_map_mapping_block_work(void *varg)
 static void
 fy_op_reduce_sequence_fn_work(void *varg)
 {
+	assert(varg);
 	struct fy_op_work_arg *arg = varg;
 	fy_generic_reducer_fn fn = arg->fn.reducer;
 	fy_generic acc;
@@ -2311,8 +2312,10 @@ fy_generic_parallel_op_data_setup(struct fy_generic_parallel_op_data *pd,
 			pd->works[i].arg = &pd->work_args[i];
 		}
 		/* and the dummy ones */
-		for (; i < num_threads; i++)
+		for (; i < num_threads; i++) {
 			pd->works[i].fn = fy_op_dummy_work;
+			pd->works[i].arg = NULL;
+		}
 
 	} else {
 		pd->work_args[0].gb = pd->gb;

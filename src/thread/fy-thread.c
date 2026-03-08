@@ -963,6 +963,8 @@ static inline void fy_worker_thread_steal_execute(struct fy_thread *t, struct fy
 	struct fy_work_pool *wp;
 	bool signalled __FY_DEBUG_UNUSED__;
 
+	assert(w);
+	// assert(w->arg);
 	TDBG("%s: T#%u worker executing W:%p\n", __func__, t->id, w);
 	wp = w->wp;
 	assert(wp);
