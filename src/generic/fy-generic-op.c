@@ -2322,6 +2322,8 @@ fy_generic_parallel_op_data_setup(struct fy_generic_parallel_op_data *pd,
 
 			pd->works[i].arg = &pd->work_args[i];
 		}
+		/* chunk alignment may have caused fewer real work items than expected */
+		pd->work_num_threads = i;
 		/* and the dummy ones */
 		for (; i < num_threads; i++) {
 			pd->works[i].fn = fy_op_dummy_work;
