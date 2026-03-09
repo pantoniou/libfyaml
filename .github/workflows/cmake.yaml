@@ -6,6 +6,11 @@ run-name: >-
       github.event_name == 'workflow_dispatch'  && format('CMake CI · manual · job={0} os={1}', inputs.job || 'all', inputs.os || 'all') ||
       format('CMake CI · {0} · {1}', github.ref_name, github.event.head_commit.message) }}
 
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: ${{ vars.NUMBER_OF_PROCESSORS || 2 }}
+  CTEST_PARALLEL_LEVEL: ${{ vars.NUMBER_OF_PROCESSORS || 2 }}
+  CTEST_OUTPUT_ON_FAILURE: 1      # show output only on failure (replaces --output-on-failure)
+
 on:
   push:
     branches: [ master, reflection-new5 ]
@@ -193,14 +198,14 @@ jobs:
         name: Test (Unix),
         if: runner.os != 'Windows',
         working-directory: build,
-        run: "ctest --output-on-failure ${{ inputs.ctest_args }}",
+        run: "ctest --quiet ${{ inputs.ctest_args }}",
       }
 
     - &test-windows {
         name: Test (Windows),
         if: runner.os == 'Windows',
         working-directory: build,
-        run: "ctest --output-on-failure -C ${{ matrix.build_type }} ${{ inputs.ctest_args }}",
+        run: "ctest --quiet -C ${{ matrix.build_type }} ${{ inputs.ctest_args }}",
       }
 
     - &upload-logs {
