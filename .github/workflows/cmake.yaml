@@ -162,7 +162,8 @@ jobs:
         name: "Install dependencies (Windows)",
         if: runner.os == 'Windows',
         run: "git config --global core.autocrlf false\n\
-              choco install cmake ninja pkgconfiglite",
+              choco install cmake ninja pkgconfiglite llvm\n\
+              echo \"LLVM_INSTALL_PREFIX=C:/Program Files/LLVM\" >> $GITHUB_ENV",
       }
 
     - &install-python {
@@ -180,13 +181,13 @@ jobs:
     - &configure-unix {
         name: "Configure (Unix)",
         if: "runner.os != 'Windows' || matrix.compiler != 'msvc'",
-        run: "cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}"
+        run: "cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DLLVM_ROOT=\"${{ env.LLVM_INSTALL_PREFIX }}\""
       }
 
     - &configure-windows {
         name: "Configure (Windows)",
         if: "runner.os == 'Windows' && matrix.compiler == 'msvc'",
-        run: "cmake -B build -A x64 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}"
+        run: "cmake -B build -A x64 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DLLVM_ROOT=\"${{ env.LLVM_INSTALL_PREFIX }}\""
       }
 
     - &build-step {
@@ -275,12 +276,12 @@ jobs:
     - {
         name: "Configure smoke (Unix)",
         if: "runner.os != 'Windows' || matrix.compiler != 'msvc'",
-        run: "cmake -B build -G Ninja -DBUILD_TESTING=Off -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}",
+        run: "cmake -B build -G Ninja -DBUILD_TESTING=Off -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DLLVM_ROOT=\"${{ env.LLVM_INSTALL_PREFIX }}\"",
       }
     - {
         name: "Configure smoke (Windows)",
         if: "runner.os == 'Windows' && matrix.compiler == 'msvc'",
-        run: "cmake -B build -A x64 -DBUILD_TESTING=Off -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}"
+        run: "cmake -B build -A x64 -DBUILD_TESTING=Off -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DLLVM_ROOT=\"${{ env.LLVM_INSTALL_PREFIX }}\""
       }
     - *build-step
     - *upload-logs
