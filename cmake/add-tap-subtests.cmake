@@ -570,6 +570,11 @@ function(add_python_tests)
         unset(_pytest_prog CACHE)
     endif()
 
+    if(NOT (_pytest_check EQUAL 0) AND NOT _pytest_prog)
+        message(STATUS "pytest not found; skipping Python binding tests")
+        return()
+    endif()
+
     # Base environment
     set(_py_env
         "PYTHON3_EXECUTABLE=${Python3_EXECUTABLE}"

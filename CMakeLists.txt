@@ -274,18 +274,21 @@ if(BUILD_TESTING AND (NOT CMAKE_CROSSCOMPILING OR HAVE_WINE))
         # Disable check's own tests and docs
         set(CHECK_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
         set(CHECK_ENABLE_GCOV OFF CACHE BOOL "" FORCE)
-        if(WIN32)
-            # check's itimerspec/clock_gettime detection only runs under CMake's
-            # MSVC mode. For other compilers on Windows (e.g. clang with MinGW)
-            # probe whether these are already available before forcing shims.
+        if(MINGW)
+            # check's itimerspec/clock_gettime detection only runs under
+            # CMake's MSVC mode; probe them explicitly for MinGW.
             include(CheckTypeSize)
-            include(CheckFunctionExists)
             check_type_size("struct itimerspec" ITIMERSPEC LANGUAGE C)
             if(NOT HAVE_ITIMERSPEC)
                 set(STRUCT_ITIMERSPEC_DEFINITION_MISSING 1 CACHE INTERNAL "" FORCE)
                 add_compile_definitions(STRUCT_ITIMERSPEC_DEFINITION_MISSING=1)
             endif()
-            check_function_exists(clock_gettime HAVE_CLOCK_GETTIME)
+            # MinGW always provides clock_gettime via winpthread, but
+            # check_function_exists fails to link it without -lpthread and
+            # poisons the cache with a falsy value. Force it so check's
+            # configure_file emits #define HAVE_CLOCK_GETTIME 1 and skips
+            # compiling its own stub (which would cause a redefinition error).
+            set(HAVE_CLOCK_GETTIME 1 CACHE INTERNAL "" FORCE)
         endif()
         FetchContent_MakeAvailable(check)
         if(TARGET checkShared)
