@@ -812,7 +812,7 @@ START_TEST(generic_get)
 	fy_generic_sequence_handle seqh;
 	fy_generic_mapping_handle maph;
 	int iv;
-	bool bv;
+	_Bool bv;
 	const char *strv;
 
 	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
@@ -820,14 +820,14 @@ START_TEST(generic_get)
 	ck_assert(gb != NULL);
 
 	/* sequence */
-	seq = fy_local_sequence(-100, true, "sh", "long string");
+	seq = fy_local_sequence(-100, (_Bool)true, "sh", "long string");
 	ck_assert(fy_generic_is_sequence(seq));
 
 	/* manual access through seq generic value */
 	iv = fy_get(seq, 0, -1);
 	ck_assert(iv == -100);
-	bv = fy_get(seq, 1, false);
-	ck_assert(bv == true);
+	bv = fy_get(seq, 1, (_Bool)false);
+	ck_assert(bv == (_Bool)true);
 	strv = fy_get(seq, 2, "");
 	ck_assert(!strcmp(strv, "sh"));
 	strv = fy_get(seq, 3, "");
@@ -839,8 +839,8 @@ START_TEST(generic_get)
 
 	iv = fy_get(seqh, 0, -1);
 	ck_assert(iv == -100);
-	bv = fy_get(seqh, 1, false);
-	ck_assert(bv == true);
+	bv = fy_get(seqh, 1, (_Bool)false);
+	ck_assert(bv == (_Bool)true);
 	strv = fy_get(seqh, 2, "");
 	ck_assert(!strcmp(strv, "sh"));
 	strv = fy_get(seqh, 3, "");
@@ -877,7 +877,7 @@ START_TEST(generic_get)
 	ck_assert(iv == -1);
 
 	/* manual access through generic op */
-	seq = fy_local_sequence(-100, true, "sh", "long string");
+	seq = fy_local_sequence(-100, (_Bool)true, "sh", "long string");
 	v = fy_generic_op(gb, FYGBOPF_GET, seq, 1, (fy_generic [1]) { fy_value(0) } );
 	ck_assert(fy_cast(v, -1) == -100);
 	v = fy_generic_op(gb, FYGBOPF_GET, seq, 1, (fy_generic [1]) { fy_value(1) } );
