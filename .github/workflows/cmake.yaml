@@ -136,7 +136,8 @@ jobs:
     - &install-windows {
         name: "Install dependencies (Windows)",
         if: runner.os == 'Windows',
-        run: "choco install cmake ninja pkgconfiglite",
+        run: "git config --global core.autocrlf false\n\
+              choco install cmake ninja pkgconfiglite",
       }
 
     - &install-python {
