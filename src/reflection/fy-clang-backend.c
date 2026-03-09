@@ -11,7 +11,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <alloca.h>
+
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -20,6 +20,10 @@
 #include <assert.h>
 #include <limits.h>
 #include <ctype.h>
+
+#ifdef HAVE_ALLOCA_H
+#include <alloca.h>
+#endif
 
 #include "fy-utils.h"
 #include "fy-reflection-private.h"
@@ -749,10 +753,10 @@ fy_import_backend_root_visitor(CXCursor cursor, CXCursor parent, CXClientData cl
 		/* XXX */
 		// fprintf(stderr, "\e[31m" "%s: %s:%d ANON cursor_spelling='%s' type_spelling='%s'" "\e[0m\n", __func__, __FILE__, __LINE__, cursor_spelling, type_spelling);
 
-		if (strlen(cursor_spelling) > type_pfx_len + 1 && !memcmp(cursor_spelling, type_pfx, type_pfx_len) && isspace(cursor_spelling[type_pfx_len])) {
+		if (strlen(cursor_spelling) > type_pfx_len + 1 && !memcmp(cursor_spelling, type_pfx, type_pfx_len) && isspace((int)cursor_spelling[type_pfx_len])) {
 			type_spelling = cursor_spelling;
 			cursor_spelling += type_pfx_len;
-			while (isspace(*cursor_spelling))
+			while (isspace((int)*cursor_spelling))
 				cursor_spelling++;
 
 			// fprintf(stderr, "\e[31m" "%s: %s:%d FIXED ANON cursor_spelling='%s' type_spelling='%s'" "\e[0m\n", __func__, __FILE__, __LINE__, cursor_spelling, type_spelling);
@@ -761,7 +765,7 @@ fy_import_backend_root_visitor(CXCursor cursor, CXCursor parent, CXClientData cl
 	} else if (type_kind == FYTK_STRUCT || type_kind == FYTK_UNION || type_kind == FYTK_ENUM) {
 
 		tlen = strlen(type_spelling);
-		if (tlen < type_pfx_len + 1 || memcmp(type_pfx, type_spelling, type_pfx_len) || !isspace(type_spelling[type_pfx_len])) {
+		if (tlen < type_pfx_len + 1 || memcmp(type_pfx, type_spelling, type_pfx_len) || !isspace((int)type_spelling[type_pfx_len])) {
 
 			// fprintf(stderr, "\e[31m" "%s: %s:%d typedef %s anonymous cursor_spelling='%s' type_spelling='%s'" "\e[0m\n",
 			//		__func__, __FILE__, __LINE__, type_pfx, cursor_spelling, type_spelling);

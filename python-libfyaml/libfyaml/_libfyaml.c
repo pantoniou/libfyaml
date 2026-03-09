@@ -5,6 +5,16 @@
  * Provides NumPy-like lazy conversion with the generic API.
  */
 
+/* Polyfill 'nullptr' for compilers that claim C23 but don't support it */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ > 201710L && !defined(__cplusplus)
+    #if defined(__GNUC__) && (__GNUC__ < 13) && !defined(__clang__)
+        #define nullptr NULL
+    #elif defined(__clang__) && (__clang_major__ < 16)
+        #define nullptr NULL
+    #endif
+#endif
+
+#include <Python.h>
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <math.h>
