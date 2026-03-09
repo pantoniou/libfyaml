@@ -275,11 +275,15 @@ if(BUILD_TESTING AND (NOT CMAKE_CROSSCOMPILING OR HAVE_WINE))
         set(CHECK_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
         set(CHECK_ENABLE_GCOV OFF CACHE BOOL "" FORCE)
         if(WIN32)
-            # check's itimerspec detection only runs under CMake's MSVC mode,
-            # which bare clang doesn't set. Force the missing-struct flags so
-            # check's timer shim compiles correctly.
-            set(STRUCT_ITIMERSPEC_DEFINITION_MISSING 1 CACHE INTERNAL "" FORCE)
-            add_compile_definitions(STRUCT_ITIMERSPEC_DEFINITION_MISSING=1)
+            # check's itimerspec detection only runs under CMake's MSVC mode.
+            # For other compilers on Windows (e.g. clang with MinGW) probe
+            # whether the struct is already available before forcing the shim.
+            include(CheckTypeSize)
+            check_type_size("struct itimerspec" ITIMERSPEC LANGUAGE C)
+            if(NOT HAVE_ITIMERSPEC)
+                set(STRUCT_ITIMERSPEC_DEFINITION_MISSING 1 CACHE INTERNAL "" FORCE)
+                add_compile_definitions(STRUCT_ITIMERSPEC_DEFINITION_MISSING=1)
+            endif()
         endif()
         FetchContent_MakeAvailable(check)
         if(TARGET checkShared)

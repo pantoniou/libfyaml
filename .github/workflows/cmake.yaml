@@ -1,5 +1,11 @@
 name: CMake CI
 
+run-name: >-
+  ${{ github.event_name == 'schedule'          && 'CMake CI · daily' ||
+      github.event_name == 'pull_request'       && format('CMake CI · PR #{0}', github.event.pull_request.number) ||
+      github.event_name == 'workflow_dispatch'  && format('CMake CI · manual · job={0} os={1}', inputs.job || 'all', inputs.os || 'all') ||
+      format('CMake CI · {0} · {1}', github.ref_name, github.event.head_commit.message) }}
+
 on:
   push:
     branches: [ master, reflection-new5 ]
