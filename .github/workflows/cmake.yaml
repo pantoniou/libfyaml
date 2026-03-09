@@ -5,6 +5,8 @@ on:
     branches: [ master, reflection-new5 ]
   pull_request:
     branches: [ master, reflection-new5 ]
+  schedule:
+    - cron: '0 2 * * *'   # daily complete run at 02:00 UTC
   workflow_dispatch:
     inputs:
       os:
@@ -51,6 +53,10 @@ jobs:
         f = {"os": "${{ inputs.os }}", "compiler": "${{ inputs.compiler }}", "build_type": "${{ inputs.build_type }}"}
         f = {k: v for k, v in f.items() if v}
         job = "${{ inputs.job }}"
+        event = "${{ github.event_name }}"
+
+        # fast mode: push/PR with no manual overrides - Linux only, no asan/smoke
+        fast = event in ('push', 'pull_request') and not f and not job
 
         def filt(name, rows):
             if job and job != name:
@@ -64,7 +70,7 @@ jobs:
         build_comps = [
             ("ubuntu-latest",  [("gcc", "gcc", "g++"), ("clang", "clang-18", "clang++-18")]),
             ("macos-latest",   [("gcc", "gcc", "g++"), ("clang", "clang", "clang++")]),
-            ("windows-latest", [("msvc", "cl", "cl")]),
+            ("windows-latest", [("msvc", "cl", "cl"), ("clang", "clang", "clang++")]),
         ]
         asan_comps = [
             ("ubuntu-latest",  [("gcc", "gcc", "g++"), ("clang", "clang-18", "clang++-18")]),
@@ -72,12 +78,20 @@ jobs:
         ]
         smoke_oses = ["ubuntu-24.04", "ubuntu-22.04", "macos-14", "windows-2022", "ubuntu-24.04-arm"]
 
+        # fast matrix: ubuntu only, no asan/smoke
+        fast_comps = [("ubuntu-latest", [("gcc", "gcc", "g++"), ("clang", "clang-18", "clang++-18")])]
+
         # manual dispatch overrides exclusions
         manual = bool(f) or bool(job)
 
-        build_out = filt('build', expand(build_comps, ['Debug','Release']))
-        asan_out = filt('asan', expand(build_comps if manual else asan_comps, ['Debug']))
-        smoke_out = filt('smoke', [{'os': o, 'build_type': 'Release', 'python-version': '3.11'} for o in smoke_oses])
+        if fast:
+            build_out = {"include": expand(fast_comps, ['Debug', 'Release'])}
+            asan_out  = {"include": []}
+            smoke_out = {"include": []}
+        else:
+            build_out = filt('build', expand(build_comps, ['Debug','Release']))
+            asan_out  = filt('asan',  expand(build_comps if manual else asan_comps, ['Debug']))
+            smoke_out = filt('smoke', [{'os': o, 'build_type': 'Release', 'python-version': '3.11'} for o in smoke_oses])
 
         with open(os.environ["GITHUB_OUTPUT"], "a") as out:
             out.write(f"build={json.dumps(build_out)}\n")
@@ -147,20 +161,20 @@ jobs:
       }
 
     - &set-env {
-        name: "Set compiler environment (Unix)",
-        if: runner.os != 'Windows',
+        name: "Set compiler environment",
+        if: "runner.os != 'Windows' || matrix.compiler != 'msvc'",
         run: "echo \"CC=${{ matrix.cc }}\" >> $GITHUB_ENV && echo \"CXX=${{ matrix.cxx }}\" >> $GITHUB_ENV"
       }
 
     - &configure-unix {
         name: "Configure (Unix)",
-        if: runner.os != 'Windows',
+        if: "runner.os != 'Windows' || matrix.compiler != 'msvc'",
         run: "cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}"
       }
 
     - &configure-windows {
         name: "Configure (Windows)",
-        if: runner.os == 'Windows',
+        if: "runner.os == 'Windows' && matrix.compiler == 'msvc'",
         run: "cmake -B build -A x64 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}"
       }
 
@@ -249,12 +263,12 @@ jobs:
     - *set-env
     - {
         name: "Configure smoke (Unix)",
-        if: runner.os != 'Windows',
+        if: "runner.os != 'Windows' || matrix.compiler != 'msvc'",
         run: "cmake -B build -G Ninja -DBUILD_TESTING=Off -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}",
       }
     - {
         name: "Configure smoke (Windows)",
-        if: runner.os == 'Windows',
+        if: "runner.os == 'Windows' && matrix.compiler == 'msvc'",
         run: "cmake -B build -A x64 -DBUILD_TESTING=Off -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}"
       }
     - *build-step
