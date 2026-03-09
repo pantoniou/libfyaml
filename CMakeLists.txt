@@ -1195,6 +1195,14 @@ else()
     # Windows needs no extra libraries for threading (uses kernel32)
 endif()
 
+# Link libm where it exists as a separate library (Linux, FreeBSD, etc.).
+# macOS includes math in libSystem; Windows has no libm.
+find_library(LIBM m)
+if(LIBM)
+    target_link_libraries(fyaml PUBLIC ${LIBM})
+    target_link_libraries(fyaml_static PUBLIC ${LIBM})
+endif()
+
 # Add libclang support if available
 add_libclang_to_target(fyaml PRIVATE)
 
