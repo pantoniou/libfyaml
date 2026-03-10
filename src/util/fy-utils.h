@@ -229,7 +229,7 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 	\
 	__res = __a + __b; \
 	/* overflow when signs of a, b same, but results different */ \
-	__overflow = ((__a ^ __result) & (__b & __result)) < 0; \
+	__overflow = ((__a ^ __res) & (__b & __res)) < 0; \
 	*(_resp) = __res; \
 	__overflow; \
 })
@@ -255,7 +255,7 @@ void fy_keyword_iter_end(struct fy_keyword_iter *iter);
 	\
 	__res = __a - __b; \
 	/* overflow when signs of a, b differ, but results different from minuend */ \
-	__overflow = ((__a ^ __b) & (__a & __result)) < 0; \
+	__overflow = ((__a ^ __b) & (__a & __res)) < 0; \
 	*(_resp) = __res; \
 	__overflow; \
 })
