@@ -4189,6 +4189,10 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 				/* we are merely checking for validity */
 				c = fy_reader_peek_at(fyr, 1);
 
+				FYR_PARSE_ERROR_CHECK(fyr, 0, 1, FYEM_SCAN,
+					c > 0, err_out,
+					"Unterminated or illegal UTF8 escape");
+
 				/* hex, unicode marks - json only supports u */
 				unicode_esc = !fy_reader_json_mode(fyr) ?
 						(c == 'x' || c == 'u' || c == 'U') :
