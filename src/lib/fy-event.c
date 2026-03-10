@@ -345,7 +345,10 @@ fy_eventp_vcreate_internal(struct fy_eventp_list *recycled_list, struct fy_diag 
 			fye->scalar.value = fye->scalar.anchor = fye->scalar.tag = NULL;
 			sstyle = va_arg(ap, enum fy_scalar_style);
 			value = va_arg(ap, const char *);
-			len = va_arg(ap, size_t);
+			len = FY_VA_ARG_SIZE_T(ap);
+			// map -1 to FY_NT (like on windows)
+			if (sizeof(int) != sizeof(size_t) && (int)len == -1)
+				len = FY_NT;
 			if (!value && len) {
 				fy_error(diag, "NULL value with len > 0, illegal SCALAR\n");
 				goto err_out;
