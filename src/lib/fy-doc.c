@@ -4502,7 +4502,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 					continue;
 				}
 				/* unterminated ~ escape, or neither ~0, ~1 */
-				if (ss + 1 >= ee || (ss[1] < '0' && ss[1] > '1'))
+				if (ss + 1 >= ee || (ss[1] != '0' && ss[1] != '1'))
 					return NULL;
 				*t++ = ss[1] == '0' ? '~' : '/';
 				ss += 2;
