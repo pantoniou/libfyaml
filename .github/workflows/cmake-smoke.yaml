@@ -1,0 +1,10 @@
+name: Smoke CMake CI
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  call:
+    uses: ./.github/workflows/cmake-ci.yml
+    with:
+      job: smoke
