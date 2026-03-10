@@ -19,6 +19,10 @@
 #include <string.h>
 #include <assert.h>
 
+#ifdef _WIN32
+#include "fy-win32.h"
+#endif
+
 #include <check.h>
 
 #include "fy-typelist.h"
