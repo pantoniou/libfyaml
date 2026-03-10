@@ -145,7 +145,12 @@ jobs:
             add_row(os_name, c, cc, cxx, "Release", "OFF", "OFF", "smoke")
 
         # Fast mode: push/PR with no manual overrides - Linux build only
-        if (event in ('push', 'pull_request') and not manual) or job_name in ('push', 'pull_request'):
+        if not manual and event:
+            job_name = event
+        else:
+            job_name = "${{ inputs.job }}"
+
+        if job_name in ('push', 'pull_request'):
             rows = [r for r in rows if r["os"] == "ubuntu-latest" and r["job"] == "build"]
 
         # Final output
