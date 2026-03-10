@@ -9193,13 +9193,13 @@ err_out:
 }
 
 // just for LLVMShutdown
-#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
+#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG && defined(HAVE_LLVM_C_CORE_H)
 #include <llvm-c/Core.h>
 #endif
 
 void fy_shutdown(void)
 {
-#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
+#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG && defined(HAVE_LLVM_C_CORE_H)
 	LLVMShutdown();
 #endif
 }
