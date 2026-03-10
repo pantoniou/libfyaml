@@ -5,13 +5,19 @@
 # This enables proper support for multi-config generators (Visual Studio, Xcode)
 # by passing the actual tool path at runtime rather than relying on hardcoded paths.
 function(add_tap_test test_name suite_name test_id)
-    cmake_parse_arguments(TAP "DISABLED;WILL_FAIL" "" "LABELS;EXTRA_ENV" ${ARGN})
+    cmake_parse_arguments(TAP "DISABLED;WILL_FAIL" "WORKING_DIR" "LABELS;EXTRA_ENV" ${ARGN})
+
+    if(TAP_WORKING_DIR)
+        set(_tap_working_dir "${TAP_WORKING_DIR}")
+    else()
+        set(_tap_working_dir "${CMAKE_CURRENT_BINARY_DIR}/test")
+    endif()
 
     add_test(
         NAME "${test_name}"
         COMMAND "${BASH_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-single-tap-test.sh"
             "${suite_name}" "${test_id}"
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
+        WORKING_DIRECTORY "${_tap_working_dir}"
     )
 
     # Build environment
@@ -21,6 +27,7 @@ function(add_tap_test test_name suite_name test_id)
         "TEST_DIR=${CMAKE_CURRENT_SOURCE_DIR}/test"
         "YAML_TEST_SUITE=${yaml_test_suite_SOURCE_DIR}"
         "JSON_TEST_SUITE=${json_test_suite_SOURCE_DIR}"
+        "WINE_EXECUTABLE=${WINE_EXECUTABLE}"
     )
     if(TAP_EXTRA_ENV)
         list(APPEND base_env ${TAP_EXTRA_ENV})
