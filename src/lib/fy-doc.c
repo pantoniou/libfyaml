@@ -6139,6 +6139,90 @@ int fy_node_mapping_sort(struct fy_node *fyn_map,
 	return 0;
 }
 
+static int fy_node_sequence_sort_cmp(
+#ifdef __APPLE__
+void *arg, const void *a, const void *b
+#else
+const void *a, const void *b, void *arg
+#endif
+)
+{
+	struct fy_node_sequence_sort_ctx *ctx = arg;
+	struct fy_node * const *fynpa = a, * const *fynpb = b;
+
+	assert(fynpa >= ctx->fynp && fynpa < ctx->fynp + ctx->count);
+	assert(fynpb >= ctx->fynp && fynpb < ctx->fynp + ctx->count);
+
+	return ctx->cmp(*fynpa, *fynpb, ctx->arg);
+}
+
+/* not! thread safe! */
+#if !defined(HAVE_QSORT_R) || !HAVE_QSORT_R || defined(__EMSCRIPTEN__)
+static struct fy_node_sequence_sort_ctx *fy_node_sequence_sort_ctx_no_qsort_r;
+
+static int fy_node_sequence_sort_cmp_no_qsort_r(const void *a, const void *b)
+{
+#ifdef __APPLE__
+	return fy_node_sequence_sort_cmp(
+			fy_node_sequence_sort_ctx_no_qsort_r,
+			a, b);
+#else
+	return fy_node_sequence_sort_cmp(a, b,
+			fy_node_sequence_sort_ctx_no_qsort_r);
+#endif
+}
+
+#endif
+
+int fy_node_sequence_sort(struct fy_node *fyn_seq,
+		fy_node_sequence_sort_fn cmp, void *arg)
+{
+	struct fy_node_sequence_sort_ctx ctx;
+	struct fy_node **fynp, *fyni;
+	int count, i;
+
+	if (!fyn_seq || fyn_seq->type != FYNT_SEQUENCE || !cmp)
+		return -1;
+
+	count = fy_node_sequence_item_count(fyn_seq);
+	if (count <= 1)
+		return 0;
+
+	fynp = malloc(count * sizeof(*fynp));
+	if (!fynp)
+		return -1;
+
+	for (i = 0, fyni = fy_node_list_head(&fyn_seq->sequence); i < count && fyni;
+		fyni = fy_node_next(&fyn_seq->sequence, fyni), i++)
+		fynp[i] = fyni;
+
+	ctx.cmp = cmp;
+	ctx.arg = arg;
+	ctx.fynp = fynp;
+	ctx.count = count;
+
+#if defined(HAVE_QSORT_R) && HAVE_QSORT_R && !defined(__EMSCRIPTEN__)
+#ifdef __APPLE__
+	qsort_r(fynp, count, sizeof(*fynp), &ctx, fy_node_sequence_sort_cmp);
+#else
+	qsort_r(fynp, count, sizeof(*fynp), fy_node_sequence_sort_cmp, &ctx);
+#endif
+#else
+	/* caution, not thread safe */
+	fy_node_sequence_sort_ctx_no_qsort_r = &ctx;
+	qsort(fynp, count, sizeof(*fynp), fy_node_sequence_sort_cmp_no_qsort_r);
+	fy_node_sequence_sort_ctx_no_qsort_r = NULL;
+#endif
+
+	fy_node_list_init(&fyn_seq->sequence);
+	for (i = 0; i < count; i++)
+		fy_node_list_add_tail(&fyn_seq->sequence, fynp[i]);
+
+	free(fynp);
+
+	return 0;
+}
+
 int fy_node_sort(struct fy_node *fyn, fy_node_mapping_sort_fn key_cmp, void *arg)
 {
 	struct fy_node *fyni;
