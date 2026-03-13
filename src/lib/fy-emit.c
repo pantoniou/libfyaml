@@ -639,8 +639,7 @@ void fy_emit_token_comment(struct fy_emitter *emit, struct fy_token *fyt, int fl
 	if (placement == fycp_top || placement == fycp_bottom) {
 		int comment_indent = indent > 0 ? indent : 0;
 		if (handle && indent >= 0) {
-			struct fy_token_comment *tc = container_of(handle, struct fy_token_comment, handle);
-			comment_indent = indent + tc->indent_delta;
+			comment_indent = indent + handle->indent_delta;
 			if (comment_indent < 0)
 				comment_indent = 0;
 		}
