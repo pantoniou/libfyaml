@@ -8440,8 +8440,9 @@ struct fy_eventp *fy_parser_event_resolve_hook_merge_key_start(struct fy_parser 
 	struct fy_document_iterator *fydi = NULL;
 	struct fy_eventp *fyep_next = NULL;
 	struct fy_event *fye;
-	struct fy_streaming_alias *fysa;
-	struct fy_streaming_alias_state *fysas;
+	struct fy_streaming_alias *fysa = NULL;
+	struct fy_streaming_alias_state *fysas = NULL;
+	bool fysa_added = false, fysas_pushed = false;
 
 	FYP_TOKEN_ERROR_CHECK(fyp, fyep->e.scalar.value, FYEM_PARSE,
 			!fyp->mks.active, err_out,
@@ -8469,11 +8470,13 @@ struct fy_eventp *fy_parser_event_resolve_hook_merge_key_start(struct fy_parser 
 	}
 
 	fy_document_iterator_destroy(fydi);
+	fydi = NULL;
 	fy_document_destroy(fyd);
 	fyd = NULL;
 
 	/* and add it to the start of the list */
 	fy_streaming_alias_list_add(&fyp->streaming_aliases, fysa);
+	fysa_added = true;
 
 	/* OK, trim mapping start and end */
 	fyep_next = fy_eventp_list_head(&fysa->events);
@@ -8481,17 +8484,20 @@ struct fy_eventp *fy_parser_event_resolve_hook_merge_key_start(struct fy_parser 
 			"not a mapping merge key start");
 	fy_eventp_list_del(&fysa->events, fyep_next);
 	fy_eventp_free(fyep_next);
+	fyep_next = NULL;
 
 	fyep_next = fy_eventp_list_tail(&fysa->events);
 	fyp_error_check(fyp, fyep_next->e.type == FYET_MAPPING_END, err_out,
 			"not a mapping merge key end");
 	fy_eventp_list_del(&fysa->events, fyep_next);
 	fy_eventp_free(fyep_next);
+	fyep_next = NULL;
 
 	/* OK, push the new state */
 	fysas = fy_parse_streaming_alias_state_push(fyp, fysa);
 	fyp_error_check(fyp, fysas, err_out,
 			"fy_parse_streaming_alias_push() failed!");
+	fysas_pushed = true;
 	assert(fysas->next);
 
 	/* dispose of the event */
@@ -8510,6 +8516,12 @@ struct fy_eventp *fy_parser_event_resolve_hook_merge_key_start(struct fy_parser 
 err_out:
 	fy_document_iterator_destroy(fydi);
 	fy_document_destroy(fyd);
+	if (fysas_pushed)
+		fy_parse_streaming_alias_state_pop(fyp);
+	if (fysa_added)
+		fy_streaming_alias_list_del(&fyp->streaming_aliases, fysa);
+	fy_parse_streaming_alias_clean(fyp, fysa);
+	fy_parse_streaming_alias_recycle(fyp, fysa);
 	fy_parse_eventp_recycle(fyp, fyep_next);
 	fy_parse_eventp_recycle(fyp, fyep);
 	return NULL;
