@@ -99,7 +99,7 @@ static inline bool fy_add_overflow_size_t(size_t a, size_t b, size_t *resp)
 	\
 	__res = __a + __b; \
 	/* overflow when signs of a, b same, but results different */ \
-	__overflow = ((__a ^ __result) & (__b & __result)) < 0; \
+	__overflow = ((__a ^ __res) & (__b & __res)) < 0; \
 	*(_resp) = __res; \
 	__overflow; \
 })
@@ -132,7 +132,7 @@ static inline bool fy_sub_overflow_size_t(size_t a, size_t b, size_t *resp)
 	\
 	__res = __a - __b; \
 	/* overflow when signs of a, b differ, but results different from minuend */ \
-	__overflow = ((__a ^ __b) & (__a & __result)) < 0; \
+	__overflow = ((__a ^ __b) & (__a & __res)) < 0; \
 	*(_resp) = __res; \
 	__overflow; \
 })
