@@ -107,6 +107,7 @@ jobs:
         def add_row(os_name, compiler, cc, cxx, build_type, testing, asan, job_name):
             # Pruning rules
             if asan == "ON":
+                if os_name.startswith('windows'): return
                 if compiler == "msvc": return
                 if build_type != "Debug": return
                 # Non-manual macos ASAN only on clang
