@@ -2885,6 +2885,9 @@ int fy_emit_document_to_buffer(struct fy_document *fyd, enum fy_emitter_cfg_flag
 {
 	int rc;
 
+	if (!buf)
+		return -1;
+
 	rc = fy_emit_str_internal(fyd, flags, NULL, &buf, &size, false);
 	if (rc != 0)
 		return -1;

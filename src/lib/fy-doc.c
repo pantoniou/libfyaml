@@ -6555,6 +6555,8 @@ int fy_node_scanf(struct fy_node *fyn, const char *fmt, ...)
 
 int fy_document_vscanf(struct fy_document *fyd, const char *fmt, va_list ap)
 {
+	if (!fyd)
+		return -1;
 	return fy_node_vscanf(fyd->root, fmt, ap);
 }
 

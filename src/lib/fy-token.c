@@ -319,7 +319,10 @@ const char *fy_tag_directive_token_format_text(const struct fy_token *fyt, char 
 const char *fy_tag_directive_token_prefix(struct fy_token *fyt, size_t *lenp)
 {
 	const char *ptr;
-	size_t len;
+	size_t len, tmplen;
+
+	if (!lenp)
+		lenp = &tmplen;
 
 	if (!fyt || fyt->type != FYTT_TAG_DIRECTIVE) {
 		*lenp = 0;
@@ -369,6 +372,10 @@ const char *fy_tag_directive_token_prefix0(struct fy_token *fyt)
 const char *fy_tag_directive_token_handle(struct fy_token *fyt, size_t *lenp)
 {
 	const char *ptr;
+	size_t tmplen;
+
+	if (!lenp)
+		lenp = &tmplen;
 
 	if (!fyt || fyt->type != FYTT_TAG_DIRECTIVE) {
 		*lenp = 0;
@@ -754,7 +761,10 @@ const char *fy_tag_token_handle(struct fy_token *fyt, size_t *lenp)
 const char *fy_tag_token_suffix(struct fy_token *fyt, size_t *lenp)
 {
 	const char *tag, *prefix, *handle, *suffix;
-	size_t tag_len, prefix_len, handle_len, suffix_len;
+	size_t tag_len, prefix_len, handle_len, suffix_len, tmplen;
+
+	if (!lenp)
+		lenp = &tmplen;
 
 	if (!fyt || fyt->type != FYTT_TAG) {
 		*lenp = 0;
@@ -850,8 +860,11 @@ const char *fy_tag_token_suffix0(struct fy_token *fyt)
 const char *fy_tag_token_short(struct fy_token *fyt, size_t *lenp)
 {
 	const char *handle, *suffix;
-	size_t handle_len, suffix_len;
+	size_t handle_len, suffix_len, tmplen;
 	char *text0;
+
+	if (!lenp)
+		lenp = &tmplen;
 
 	if (!fyt || fyt->type != FYTT_TAG)
 		return NULL;
@@ -942,6 +955,11 @@ static void fy_token_prepare_text(struct fy_token *fyt)
 
 const char *fy_token_get_text(struct fy_token *fyt, size_t *lenp)
 {
+	size_t tmplen;
+
+	if (!lenp)
+		lenp = &tmplen;
+
 	/* return empty */
 	if (!fyt) {
 		*lenp = 0;
@@ -1251,9 +1269,12 @@ const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 	struct fy_atom_iter iter;
 	struct fy_emit_accum ea;	/* use an emit accumulator */
 	uint8_t non_utf8[4];
-	size_t non_utf8_len, k;
+	size_t non_utf8_len, k, tmplen;
 	int c, i, w, digit;
 	const struct fy_token_analysis *ta;
+
+	if (!lenp)
+		lenp = &tmplen;
 
 	if (!fyt || fyt->type != FYTT_SCALAR) {
 		*lenp = 0;
