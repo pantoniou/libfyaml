@@ -883,6 +883,43 @@ START_TEST(fuzz_resolve_recursive_ypath_dup_keys_emit_fp)
 }
 END_TEST
 
+START_TEST(fuzz_node_get_type_uaf)
+{
+	char data[] =
+		"\x0a\x20\x2d\x20\x2a\x2f\x2e\x2e\x2a\x0a"
+		"\x20\x2d\x20\x2a\x2f\x2a\x2a\x21\x0a"
+		"\x20\x2d\x20\x2a\x2f\x2a\x2a\x2f";
+
+	struct fy_parse_cfg cfg = {0};
+	struct fy_document *fyd = NULL;
+
+	cfg.flags = FYPCF_RESOLVE_DOCUMENT | FYPCF_PREFER_RECURSIVE |
+		    FYPCF_YPATH_ALIASES;
+
+	// this must fail
+	fyd = fy_document_build_from_string(&cfg, data, FY_NT);
+	ck_assert_ptr_eq(fyd, NULL);
+}
+END_TEST
+
+START_TEST(fuzz_emit_node_to_string_uaf)
+{
+	char buf[] =
+		"\x2a\x2f\x2a\x5e\x2f\x09\x09\x3a\x0a\x2a\x2f\x5e\x09\x3a\x0a"
+		"\x2a\x2f\x2a\x2f\x09\x3a\x0a\x5e\x2a\x09\x3a\x0a\x2a\x2f\x5e";
+
+	struct fy_parse_cfg cfg = {0};
+	struct fy_document *fyd = NULL;
+
+	cfg.flags = FYPCF_RESOLVE_DOCUMENT | FYPCF_DISABLE_ACCELERATORS |
+		    FYPCF_SLOPPY_FLOW_INDENTATION | FYPCF_PREFER_RECURSIVE |
+		    FYPCF_YPATH_ALIASES;
+
+	// this must fail
+	fyd = fy_document_build_from_string(&cfg, buf, FY_NT);
+	ck_assert_ptr_eq(fyd, NULL);
+}
+END_TEST
 
 void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 {
@@ -944,4 +981,6 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_build_from_fp_sloppy_recursive_ypath_aliases);
 	fy_check_testcase_add_test(ctc, fuzz_build_from_fp_ypath_aliases_recursive);
 #endif
+	fy_check_testcase_add_test(ctc, fuzz_node_get_type_uaf);
+	fy_check_testcase_add_test(ctc, fuzz_emit_node_to_string_uaf);
 }
