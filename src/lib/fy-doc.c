@@ -2009,7 +2009,7 @@ struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *f
 				fyd_error_check(fyd, fynpt->value, err_out,
 						"fy_node_copy_internal() key failed");
 			}
-			fynp->parent = fyn;
+			fynpt->parent = fyn;
 
 			if (fynpt->key) {
 				fynpt->key->attached = true;
@@ -2114,6 +2114,10 @@ int fy_node_copy_to_scalar(struct fy_document *fyd, struct fy_node *fyn_to, stru
 {
 	struct fy_node *fyn, *fyni;
 	struct fy_node_pair *fynp;
+	struct fy_accel_entry_iter xli;
+	struct fy_accel_entry *xle, *xlen;
+	struct fy_anchor_list *fyal;
+	struct fy_anchor *fya;
 
 	fyn = fy_node_copy(fyd, fyn_from);
 	if (!fyn)
@@ -2136,19 +2140,56 @@ int fy_node_copy_to_scalar(struct fy_document *fyd, struct fy_node *fyn_to, stru
 		break;
 	case FYNT_SEQUENCE:
 		fy_node_list_init(&fyn_to->sequence);
-		while ((fyni = fy_node_list_pop(&fyn->sequence)) != NULL)
+		fyn_to->sequence_start = fyn->sequence_start;
+		fyn->sequence_start = NULL;
+		fyn_to->sequence_end = fyn->sequence_end;
+		fyn->sequence_end = NULL;
+		while ((fyni = fy_node_list_pop(&fyn->sequence)) != NULL) {
+			fyni->parent = fyn_to;
 			fy_node_list_add_tail(&fyn_to->sequence, fyni);
+		}
 		break;
 	case FYNT_MAPPING:
 		fy_node_pair_list_init(&fyn_to->mapping);
+		/* fy_node_copy_to_scalar() is only used to replace alias scalars. */
+		assert(!fyn_to->xl);
+		fyn_to->mapping_start = fyn->mapping_start;
+		fyn->mapping_start = NULL;
+		fyn_to->mapping_end = fyn->mapping_end;
+		fyn->mapping_end = NULL;
+		fyn_to->xl = fyn->xl;
+		fyn->xl = NULL;
 		while ((fynp = fy_node_pair_list_pop(&fyn->mapping)) != NULL) {
-			if (fyn->xl)
-				fy_accel_remove(fyn->xl, fynp->key);
+			fynp->parent = fyn_to;
+			if (fynp->key)
+				fynp->key->parent = fyn_to;
+			if (fynp->value)
+				fynp->value->parent = fyn_to;
 			fy_node_pair_list_add_tail(&fyn_to->mapping, fynp);
-			if (fyn_to->xl)
-				fy_accel_insert(fyn_to->xl, fynp->key, fynp);
 		}
 		break;
+	}
+
+	/* update any anchors pointing to the temporary copy (fyn) to now
+	 * point to fyn_to, since we've moved all of fyn's data into fyn_to */
+	if (fy_document_is_accelerated(fyd)) {
+		for (xle = fy_accel_entry_iter_start(&xli, fyd->naxl, fyn);
+		     xle; xle = xlen) {
+			xlen = fy_accel_entry_iter_next(&xli);
+
+			fya = (void *)xle->value;
+			fy_accel_entry_remove(fyd->naxl, xle);
+			fya->fyn = fyn_to;
+			fy_accel_insert(fyd->naxl, fyn_to, fya);
+		}
+		fy_accel_entry_iter_finish(&xli);
+	} else {
+		fyal = &fyd->anchors;
+		for (fya = fy_anchor_list_head(fyal); fya;
+		     fya = fy_anchor_next(fyal, fya)) {
+			if (fya->fyn == fyn)
+				fya->fyn = fyn_to;
+		}
 	}
 
 	/* and free */
