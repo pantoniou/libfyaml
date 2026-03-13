@@ -69,6 +69,7 @@ struct fy_atom {
 	struct fy_input *fyi;	/* input on which atom is on */
 	uint64_t fyi_generation;	/* to detect reallocs */
 	unsigned int increment;
+	int indent_delta;		/* comment column offset from scope indent */
 	union {
 		uint64_t tozero;			/* fast way to zero everything here */
 		struct {

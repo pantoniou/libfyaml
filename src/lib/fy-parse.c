@@ -1083,7 +1083,6 @@ fy_comment_atoms_seperated_by_ws(struct fy_parser *fyp, struct fy_atom *a, struc
 /* -1 error, 0, no comment attached, 1 comment attached */
 int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 {
-	struct fy_token_comment *tc;
 	struct fy_atom *handle;
 	struct fy_mark fym;
 	int c, rc, count, ref_indent;
@@ -1107,9 +1106,8 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 		fy_atom_reset(handle);
 
 		*handle = fyp->override_comment;
-		tc = container_of(handle, struct fy_token_comment, handle);
 		ref_indent = fyp->indent > 0 ? fyp->indent : 0;
-		tc->indent_delta = (int)handle->start_mark.column - ref_indent;
+		handle->indent_delta = (int)handle->start_mark.column - ref_indent;
 		count++;
 
 		fy_atom_reset(&fyp->override_comment);
@@ -1126,9 +1124,8 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 		fy_atom_reset(handle);
 
 		*handle = fyp->last_comment;
-		tc = container_of(handle, struct fy_token_comment, handle);
 		ref_indent = fyp->indent > 0 ? fyp->indent : 0;
-		tc->indent_delta = (int)handle->start_mark.column - ref_indent;
+		handle->indent_delta = (int)handle->start_mark.column - ref_indent;
 		count++;
 
 		fy_atom_reset(&fyp->last_comment);
@@ -2752,7 +2749,6 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 		/* if a last comment exists and is valid */
 		if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
 				(fy_atom_is_set(&fyp->override_comment) || fy_atom_is_set(&fyp->last_comment))) {
-			struct fy_token_comment *tc;
 			int ref_indent;
 
 			handle = fy_token_comment_handle(fyt, fycp_top, true);
@@ -2772,9 +2768,8 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 			/* compute indent_delta — same logic as fy_attach_comments_if_any()
 			 * but using old_indent (before fy_push_indent) as reference, since
 			 * the emitter will use the pre-increase mapping indent as base */
-			tc = container_of(handle, struct fy_token_comment, handle);
 			ref_indent = old_indent > 0 ? old_indent : 0;
-			tc->indent_delta = (int)handle->start_mark.column - ref_indent;
+			handle->indent_delta = (int)handle->start_mark.column - ref_indent;
 		}
 	}
 
@@ -3089,7 +3084,6 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 		/* if a last comment exists and is valid */
 		if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS) {
 
-			struct fy_token_comment *tc_dst, *tc_src;
 			struct fy_atom *key_handle, *handle;
 
 			if (fysk && fysk->token) {
@@ -3105,9 +3099,6 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 				fy_input_unref(handle->fyi);
 				fy_atom_reset(handle);
 				*handle = *key_handle;
-				tc_dst = container_of(handle, struct fy_token_comment, handle);
-				tc_src = container_of(key_handle, struct fy_token_comment, handle);
-				tc_dst->indent_delta = tc_src->indent_delta;
 				fy_atom_reset(key_handle);
 			}
 
