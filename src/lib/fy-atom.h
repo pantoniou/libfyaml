@@ -69,7 +69,6 @@ struct fy_atom {
 	struct fy_input *fyi;	/* input on which atom is on */
 	uint64_t fyi_generation;	/* to detect reallocs */
 	unsigned int increment;
-	int indent_delta;		/* comment column offset from scope indent */
 	union {
 		uint64_t tozero;			/* fast way to zero everything here */
 		struct {
@@ -77,6 +76,7 @@ struct fy_atom {
 			unsigned int style : 8;	/* enum fy_atom_style, note that it's a big perf win for bytes */
 			unsigned int chomp : 8; /* enum fy_atom_chomp */
 			unsigned int tabsize : 8;
+			int indent_delta : 8;		/* comment column offset from scope indent, clamped to [-128,127] */
 			unsigned int lb_mode : 1; /* enum fy_lb_mode */
 			unsigned int fws_mode : 1; /* enum fy_flow_ws_mode */
 			unsigned int directive0_mode : 1;
@@ -101,6 +101,12 @@ struct fy_atom {
 		};
 	};
 };
+
+/* Set indent_delta, clamping to the [-128, 127] range of the 8-bit bitfield */
+static inline void fy_atom_set_indent_delta(struct fy_atom *atom, int delta)
+{
+	atom->indent_delta = delta < -128 ? -128 : (delta > 127 ? 127 : delta);
+}
 
 static inline bool fy_atom_is_set(const struct fy_atom *atom)
 {

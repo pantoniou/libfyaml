@@ -1107,7 +1107,7 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 
 		*handle = fyp->override_comment;
 		ref_indent = fyp->indent > 0 ? fyp->indent : 0;
-		handle->indent_delta = (int)handle->start_mark.column - ref_indent;
+		fy_atom_set_indent_delta(handle, (int)handle->start_mark.column - ref_indent);
 		count++;
 
 		fy_atom_reset(&fyp->override_comment);
@@ -1125,7 +1125,7 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 
 		*handle = fyp->last_comment;
 		ref_indent = fyp->indent > 0 ? fyp->indent : 0;
-		handle->indent_delta = (int)handle->start_mark.column - ref_indent;
+		fy_atom_set_indent_delta(handle, (int)handle->start_mark.column - ref_indent);
 		count++;
 
 		fy_atom_reset(&fyp->last_comment);
@@ -2769,7 +2769,7 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 			 * but using old_indent (before fy_push_indent) as reference, since
 			 * the emitter will use the pre-increase mapping indent as base */
 			ref_indent = old_indent > 0 ? old_indent : 0;
-			handle->indent_delta = (int)handle->start_mark.column - ref_indent;
+			fy_atom_set_indent_delta(handle, (int)handle->start_mark.column - ref_indent);
 		}
 	}
 
