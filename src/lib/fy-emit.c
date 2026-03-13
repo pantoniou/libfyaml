@@ -2055,9 +2055,6 @@ void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, in
 		fy_emit_mapping_value_epilog(emit, sc, last, fyt_value);
 	}
 
-	if (fynpp && used_malloc)
-		free(fynpp);
-
 	fy_emit_mapping_epilog(emit, sc);
 
 	/* emit right-comment attached to the closing brace token */
@@ -2065,6 +2062,8 @@ void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, in
 		fy_emit_token_comment(emit, fyn->mapping_end, sc->flags, sc->indent, fycp_right);
 
 err_out:
+	if (fynpp && used_malloc)
+		free(fynpp);
 	return;
 }
 
