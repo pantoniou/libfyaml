@@ -36,6 +36,9 @@
 #define FORCE_ATOM_SIZE_CHECK_DEFAULT	false
 #endif
 
+static struct fy_eventp *
+fy_parser_event_resolve_hook_merge_key(struct fy_parser *fyp, struct fy_eventp *fyep);
+
 const char *fy_library_version(void)
 {
 #ifndef VERSION
@@ -8503,6 +8506,24 @@ struct fy_eventp *fy_parser_event_resolve_hook_merge_key_start(struct fy_parser 
 	fy_eventp_list_del(&fysa->events, fyep_next);
 	fy_eventp_free(fyep_next);
 	fyep_next = NULL;
+
+	/* An empty merge mapping contributes no events, so skip it and
+	 * continue with the next parser event instead of pushing empty state.
+	 */
+	if (fy_eventp_list_empty(&fysa->events)) {
+		fy_streaming_alias_list_del(&fyp->streaming_aliases, fysa);
+		fysa_added = false;
+		fy_parse_streaming_alias_clean(fyp, fysa);
+		fy_parse_streaming_alias_recycle(fyp, fysa);
+		fysa = NULL;
+
+		fy_parse_eventp_recycle(fyp, fyep);
+		fyep = fy_parse_private(fyp);
+		if (!fyep)
+			return NULL;
+
+		return fy_parser_event_resolve_hook_merge_key(fyp, fyep);
+	}
 
 	/* OK, push the new state */
 	fysas = fy_parse_streaming_alias_state_push(fyp, fysa);
