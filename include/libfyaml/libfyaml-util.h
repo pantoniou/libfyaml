@@ -510,7 +510,7 @@ static __inline const char *fy_alloca_copy_free_impl(char *str, size_t len)
 	\
 	__res = __a + __b; \
 	/* overflow when signs of a, b same, but results different */ \
-	__overflow = ((__a ^ __result) & (__b & __result)) < 0; \
+	__overflow = ((__a ^ __res) & (__b & __res)) < 0; \
 	*(_resp) = __res; \
 	__overflow; \
 })
@@ -548,7 +548,7 @@ static __inline const char *fy_alloca_copy_free_impl(char *str, size_t len)
 	\
 	__res = __a - __b; \
 	/* overflow when signs of a, b differ, but results different from minuend */ \
-	__overflow = ((__a ^ __b) & (__a & __result)) < 0; \
+	__overflow = ((__a ^ __b) & (__a & __res)) < 0; \
 	*(_resp) = __res; \
 	__overflow; \
 })
