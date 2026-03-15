@@ -17,6 +17,7 @@
 #include <errno.h>
 #include <math.h>
 #include <limits.h>
+#include <float.h>
 
 #include <libfyaml.h>
 
@@ -4597,8 +4598,10 @@ fy_scalar_walk_result_to_expr(struct fy_path_exec *fypx, struct fy_walk_result *
 		break;
 
 	case fwrt_number:
+		if (!isfinite(fwr->number))
+			goto err_out;
 
-		rc = asprintf(&buf, "%d", (int)fwr->number);
+		rc = asprintf(&buf, "%.*g", DBL_DECIMAL_DIG, fwr->number);
 		if (rc == -1)
 			goto err_out;
 
@@ -4610,6 +4613,9 @@ fy_scalar_walk_result_to_expr(struct fy_path_exec *fypx, struct fy_walk_result *
 		if (!exprt)
 			goto err_out;
 		if (collection_addressing) {
+			if (trunc(fwr->number) != fwr->number ||
+			    fwr->number < INT_MIN || fwr->number > INT_MAX)
+				goto err_out;
 			exprt->type = fpet_seq_index;
 			exprt->fyt = fy_token_create(FYTT_PE_SEQ_INDEX, &handle, (int)fwr->number);
 			if (!exprt->fyt)
