@@ -1025,7 +1025,7 @@ END_TEST
 START_TEST(doc_insert_remove_map)
 {
 	struct fy_document *fyd;
-	struct fy_node *fyn;
+	struct fy_node *fyn, *fyn_key;
 	int ret;
 
 	fyd = fy_document_build_from_string(NULL, "{ one: 1, two: 2, four: 4 }", FY_NT);
@@ -1057,10 +1057,13 @@ START_TEST(doc_insert_remove_map)
 
 	ck_assert(fy_node_compare_string(fy_node_by_path(fy_document_root(fyd), "/two-and-a-half", FY_NT, FYNWF_DONT_FOLLOW), "2.5", FY_NT) == true);
 
-	fyn = fy_node_mapping_remove_by_key(fy_document_root(fyd),
-			fy_node_build_from_string(fyd, "two-and-a-half", FY_NT));
+	fyn_key = fy_node_build_from_string(fyd, "two-and-a-half", FY_NT);
+	ck_assert_ptr_ne(fyn_key, NULL);
+
+	fyn = fy_node_mapping_remove_by_key(fy_document_root(fyd), fyn_key);
 	ck_assert_ptr_ne(fyn, NULL);
 
+	fy_node_free(fyn_key);
 	fy_node_free(fyn);
 
 	/* it must be removed */

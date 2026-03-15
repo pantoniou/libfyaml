@@ -5951,9 +5951,6 @@ struct fy_node *fy_node_mapping_remove_by_key(struct fy_node *fyn_map, struct fy
 		fyn_value->attached = false;
 	}
 
-	/* do not free the key if it's the same pointer */
-	if (fyn_key != fynp->key)
-		fy_node_detach_and_free(fyn_key);
 	fynp->value = NULL;
 
 	fy_node_pair_list_del(&fyn_map->mapping, fynp);
