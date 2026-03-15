@@ -974,6 +974,39 @@ START_TEST(emit_bug_folded_mid_content_blank_preserved)
 }
 END_TEST
 
+/* ═══ Bug 17: fy_emit_token_write_literal extra newline for |+ ═══ */
+
+START_TEST(emit_bug_literal_keep_no_extra_newline)
+{
+    /* |+ (keep): trailing blank line must not cause extra newline before next element */
+    static const char input[] =
+        "key: |+\n"
+        "  content line\n"
+        "\n"
+        "other: value\n";
+    char *got = roundtrip_doc(input);
+    ck_assert_ptr_ne(got, NULL);
+    ck_assert_str_eq(got, input);
+    free(got);
+}
+END_TEST
+
+START_TEST(emit_bug_literal_keep_multiple_trailing_blanks)
+{
+    /* |+ with multiple trailing blank lines must all be preserved without extras */
+    static const char input[] =
+        "key: |+\n"
+        "  content line\n"
+        "\n"
+        "\n"
+        "other: value\n";
+    char *got = roundtrip_doc(input);
+    ck_assert_ptr_ne(got, NULL);
+    ck_assert_str_eq(got, input);
+    free(got);
+}
+END_TEST
+
 /* ── registration ────────────────────────────────────────────────── */
 
 void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
@@ -1061,4 +1094,8 @@ void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_bug_folded_strip_no_trailing_blank);
 	fy_check_testcase_add_test(ctc, emit_bug_folded_keep_trailing_blank_preserved);
 	fy_check_testcase_add_test(ctc, emit_bug_folded_mid_content_blank_preserved);
+
+	/* Bug 17: literal |+ extra trailing newline */
+	fy_check_testcase_add_test(ctc, emit_bug_literal_keep_no_extra_newline);
+	fy_check_testcase_add_test(ctc, emit_bug_literal_keep_multiple_trailing_blanks);
 }
