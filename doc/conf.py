@@ -11,6 +11,8 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 import os
+import pathlib
+import subprocess
 import sys
 sys.path.insert(0, os.path.abspath('.'))
 
@@ -21,8 +23,35 @@ project = 'libfyaml'
 copyright = '2019-2026, Pantelis Antoniou'
 author = 'Pantelis Antoniou'
 
-# The full version, including alpha/beta/rc tags
-release = '0.1'
+ROOT_DIR = pathlib.Path(__file__).resolve().parent.parent
+
+
+def get_release():
+    tarball_version = ROOT_DIR / '.tarball-version'
+    if tarball_version.exists():
+        version = tarball_version.read_text(encoding='utf-8').strip()
+        if version:
+            return version
+
+    git_version_gen = ROOT_DIR / 'build-aux' / 'git-version-gen'
+    if git_version_gen.exists():
+        try:
+            version = subprocess.check_output(
+                [str(git_version_gen), str(tarball_version)],
+                cwd=ROOT_DIR,
+                text=True,
+            ).strip()
+            if version:
+                return version
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    return os.environ.get('PACKAGE_VERSION', '0.0')
+
+
+# The short X.Y version and the full release, including alpha/beta/rc tags.
+release = get_release()
+version = release.split('-', 1)[0]
 
 
 # -- General configuration ---------------------------------------------------
