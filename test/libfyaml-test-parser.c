@@ -868,6 +868,7 @@ START_TEST(parser_mapping_remove)
 
 	fyn_val = fy_node_mapping_remove_by_key(fyn_map, fyn_key);
 	ck_assert_ptr_ne(fyn_val, NULL);
+	fy_node_free(fyn_key);
 	fy_node_free(fyn_val);
 
 	/* Verify count */
@@ -884,6 +885,45 @@ START_TEST(parser_mapping_remove)
 
 	fyn_val = fy_node_mapping_lookup_by_string(fyn_map, "c", FY_NT);
 	ck_assert_ptr_ne(fyn_val, NULL);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(parser_mapping_remove_lookup_key_owned_by_caller)
+{
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_PREFER_RECURSIVE | FYPCF_JSON_NONE,
+	};
+	struct fy_document *fyd;
+	struct fy_node *root, *key_node, *removed_val;
+	void *iter;
+	struct fy_node_pair *pair;
+
+	fyd = fy_document_build_from_string(&cfg, "?", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	root = fy_document_root(fyd);
+	ck_assert_ptr_ne(root, NULL);
+	ck_assert(fy_node_is_mapping(root));
+
+	iter = NULL;
+	while ((pair = fy_node_mapping_reverse_iterate(root, &iter)) != NULL)
+		;
+
+	ck_assert_int_eq(fy_node_mapping_item_count(root), 1);
+	(void)fy_node_mapping_lookup_by_string(root, ">", FY_NT);
+	(void)fy_node_mapping_lookup_key_by_string(root, ">", FY_NT);
+	(void)fy_node_mapping_lookup_pair_by_string(root, ">", FY_NT);
+
+	ck_assert_int_eq(fy_node_mapping_sort(root, NULL, NULL), 0);
+
+	key_node = fy_node_build_from_string(fyd, ">", FY_NT);
+	ck_assert_ptr_ne(key_node, NULL);
+
+	removed_val = fy_node_mapping_remove_by_key(root, key_node);
+	fy_node_free(key_node);
+	fy_node_free(removed_val);
 
 	fy_document_destroy(fyd);
 }
@@ -2251,6 +2291,7 @@ void libfyaml_case_parser(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, parser_mapping_key_lookup);
 	fy_check_testcase_add_test(ctc, parser_mapping_prepend);
 	fy_check_testcase_add_test(ctc, parser_mapping_remove);
+	fy_check_testcase_add_test(ctc, parser_mapping_remove_lookup_key_owned_by_caller);
 
 	/* Path query tests */
 	fy_check_testcase_add_test(ctc, parser_path_queries);
