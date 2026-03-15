@@ -1,0 +1,4208 @@
+.\" Man page generated from reStructuredText.
+.
+.
+.nr rst2man-indent-level 0
+.
+.de1 rstReportMargin
+\\$1 \\n[an-margin]
+level \\n[rst2man-indent-level]
+level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
+-
+\\n[rst2man-indent0]
+\\n[rst2man-indent1]
+\\n[rst2man-indent2]
+..
+.de1 INDENT
+.\" .rstReportMargin pre:
+. RS \\$1
+. nr rst2man-indent\\n[rst2man-indent-level] \\n[an-margin]
+. nr rst2man-indent-level +1
+.\" .rstReportMargin post:
+..
+.de UNINDENT
+. RE
+.\" indent \\n[an-margin]
+.\" old: \\n[rst2man-indent\\n[rst2man-indent-level]]
+.nr rst2man-indent-level -1
+.\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
+.in \\n[rst2man-indent\\n[rst2man-indent-level]]u
+..
+.TH "LIBFYAML-MISC" "3" "Mar 15, 2026" "" "libfyaml"
+.SH NAME
+libfyaml-misc \- libfyaml miscellaneous API
+.SH UTILITIES
+.sp
+This header provides the low\-level building blocks shared by all other
+libfyaml public headers.  It has no libfyaml dependencies of its own and
+is safe to include in isolation.
+.sp
+\fBPlatform portability\fP
+.INDENT 0.0
+.IP \(bu 2
+\fBssize_t\fP shim for MSVC / Windows toolchains
+.IP \(bu 2
+\fBstruct iovec\fP shim for Windows (\fBsys/uio.h\fP substitute)
+.IP \(bu 2
+\fBFY_EXPORT\fP / \fBFY_DEPRECATED\fP / \fBFY_FORMAT\fP — symbol visibility
+and compiler\-attribute portability macros
+.IP \(bu 2
+\fBFY_UNUSED\fP, \fBFY_ALWAYS_INLINE\fP, \fBFY_DEBUG_UNUSED\fP — compiler hint
+wrappers with safe fallbacks on non\-GCC/Clang toolchains
+.IP \(bu 2
+\fBFY_CONSTRUCTOR\fP / \fBFY_DESTRUCTOR\fP — GCC\-style constructor/destructor
+attributes with availability guards (\fBFY_HAS_CONSTRUCTOR\fP,
+\fBFY_HAS_DESTRUCTOR\fP)
+.UNINDENT
+.sp
+\fBCore constants and sentinel values\fP
+.INDENT 0.0
+.IP \(bu 2
+\fBFY_BIT(x)\fP   — single\-bit mask (\fB1U << x\fP)
+.IP \(bu 2
+\fBFY_NT\fP       — sentinel meaning “null\-terminated”; pass as a length
+argument to indicate that the string length should be inferred via strlen
+.UNINDENT
+.sp
+\fBMemory helpers\fP
+.INDENT 0.0
+.IP \(bu 2
+\fBFY_ALLOCA_COPY_FREE\fP / \fBFY_ALLOCA_COPY_FREE_NO_NULL\fP — copy a
+malloc\-returned string onto the stack and immediately free the heap
+allocation; produces an alloca\-lifetime copy in a single expression
+.IP \(bu 2
+\fBfy_vsprintfa\fP / \fBfy_sprintfa\fP — printf\-style formatting into a
+stack\-allocated (alloca) buffer; the result is valid for the lifetime
+of the enclosing function
+.UNINDENT
+.sp
+\fBContainer and array helpers\fP
+.INDENT 0.0
+.IP \(bu 2
+\fBcontainer_of\fP — recover a pointer to an enclosing struct from a
+pointer to one of its members
+.IP \(bu 2
+\fBARRAY_SIZE\fP   — number of elements in a stack\-allocated array
+.UNINDENT
+.sp
+\fBType safety and compile\-time checks\fP
+.INDENT 0.0
+.IP \(bu 2
+\fBFY_SAME_TYPE\fP / \fBFY_CHECK_SAME_TYPE\fP — assert two expressions share
+the same C type (wraps \fB__builtin_types_compatible_p\fP with a fallback)
+.IP \(bu 2
+\fBFY_COMPILE_ERROR_ON_ZERO\fP — produce a compile\-time error when the
+argument evaluates to zero; used for macro\-level static assertions
+.UNINDENT
+.sp
+\fBOverflow\-safe arithmetic\fP
+.INDENT 0.0
+.IP \(bu 2
+\fBFY_ADD_OVERFLOW\fP, \fBFY_SUB_OVERFLOW\fP, \fBFY_MUL_OVERFLOW\fP — wrappers
+around \fB__builtin_*_overflow\fP with portable fallback implementations
+.UNINDENT
+.sp
+\fBMiscellaneous\fP
+.INDENT 0.0
+.IP \(bu 2
+\fBFY_IMPOSSIBLE_ABORT\fP — mark unreachable code paths; aborts at runtime
+.IP \(bu 2
+\fBFY_STACK_SAVE\fP / \fBFY_STACK_RESTORE\fP — save and restore the stack
+pointer for alloca\-based temporary arenas
+.IP \(bu 2
+Lambda / closure macros and a CPP metaprogramming framework for
+building variadic generic APIs
+.IP \(bu 2
+Diagnostic helpers and floating\-point precision constants
+.UNINDENT
+.sp
+This section implements a portable \fBFY_CPP_*\fP macro toolkit that enables
+applying an operation to every argument in a \fB__VA_ARGS__\fP list — the
+equivalent of a compile\-time \fBmap()\fP function.
+.sp
+\fBThe core challenge\fP: The C preprocessor does not support recursion. A
+macro cannot call itself. The standard workaround is \fIdeferred evaluation\fP:
+a macro is “postponed” so that it is not expanded in the current scan pass,
+only in a future one.  Multiple passes are forced by the \fBFY_CPP_EVALn\fP
+ladder which re\-expands the token stream a power\-of\-two number of times.
+.sp
+\fBEvaluation levels\fP (\fBFY_CPP_EVAL1\fP .. \fBFY_CPP_EVAL\fP):
+.INDENT 0.0
+.IP \(bu 2
+\fBFY_CPP_EVAL1\fP  — one pass (no re\-expansion)
+.IP \(bu 2
+\fBFY_CPP_EVAL2\fP  — 2 passes
+.IP \(bu 2
+\fBFY_CPP_EVAL4\fP  — 4 passes
+.IP \(bu 2
+\fBFY_CPP_EVAL8\fP  — 8 passes
+.IP \(bu 2
+\fBFY_CPP_EVAL16\fP — 16 passes (GCC only; Clang craps out at 8)
+.IP \(bu 2
+\fBFY_CPP_EVAL\fP   — full depth (32 passes on GCC, 16 on Clang)
+.UNINDENT
+.sp
+Each doubling allows mapping over twice as many arguments.  \fBFY_CPP_EVAL\fP
+supports lists of up to ~32 elements (GCC) or ~16 elements (Clang) in practice.
+.sp
+\fBArgument accessors\fP — extract positional arguments from \fB__VA_ARGS__\fP:
+.INDENT 0.0
+.IP \(bu 2
+\fBFY_CPP_FIRST(...)\fP  — first argument (0 if list is empty)
+.IP \(bu 2
+\fBFY_CPP_SECOND(...)\fP — second argument
+.IP \(bu 2
+\fBFY_CPP_THIRD(...)\fP  — third argument
+.IP \(bu 2
+\fBFY_CPP_FOURTH(...)\fP — fourth argument
+.IP \(bu 2
+\fBFY_CPP_FIFTH(...)\fP  — fifth argument
+.IP \(bu 2
+\fBFY_CPP_SIXTH(...)\fP  — sixth argument
+.IP \(bu 2
+\fBFY_CPP_REST(...)\fP   — all arguments after the first (empty if < 2)
+.UNINDENT
+.sp
+\fBMap operations\fP:
+.INDENT 0.0
+.IP \(bu 2
+\fBFY_CPP_MAP(macro, ...)\fP — expand \fBmacro(x)\fP for each argument \fBx\fP\&.
+.IP \(bu 2
+\fBFY_CPP_MAP2(a, macro, ...)\fP — expand \fBmacro(a, x)\fP for each \fBx\fP,
+threading a fixed first argument \fBa\fP through every call.
+.UNINDENT
+.sp
+\fBUtility\fP:
+.INDENT 0.0
+.IP \(bu 2
+\fBFY_CPP_VA_COUNT(...)\fP         — number of arguments (integer expression).
+.IP \(bu 2
+\fBFY_CPP_VA_ITEMS(_type, ...)\fP  — compound\-literal array of \fB_type\fP from varargs.
+.IP \(bu 2
+\fBFY_CPP_EMPTY()\fP               — deferred empty token (used to postpone macros).
+.IP \(bu 2
+\fBFY_CPP_POSTPONE1(macro)\fP      — postpone a one\-argument macro one pass.
+.IP \(bu 2
+\fBFY_CPP_POSTPONE2(a, macro)\fP   — postpone a two\-argument macro one pass.
+.UNINDENT
+.sp
+\fBShort\-name mode\fP (\fBFY_CPP_SHORT_NAMES\fP):
+.sp
+By default the implementation uses abbreviated internal names (\fB_E1\fP,
+\fB_FM\fP, etc.) to reduce token\-expansion buffer pressure. Define
+\fBFY_CPP_SHORT_NAMES_DEBUG\fP before including this header to force the
+original long\-name implementation (\fBFY_CPP_EVAL1\fP, \fB_FY_CPP_MAP_ONE\fP,
+etc.) which is easier to read in expansion traces.
+.sp
+\fBExample\fP:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+// Count and collect variadic integer arguments into a C array:
+int do_sum(int count, int *items) { ... }
+
+#define do_sum_macro(...) \e
+    do_sum(FY_CPP_VA_COUNT(__VA_ARGS__), \e
+           FY_CPP_VA_ITEMS(int, __VA_ARGS__))
+
+// do_sum_macro(1, 2, 5, 100) expands to:
+// do_sum(4, ((int [4]){ 1, 2, 5, 100 }))
+.EE
+.UNINDENT
+.UNINDENT
+.sp
+Portable wrappers around GCC/Clang \fB#pragma GCC diagnostic\fP directives.
+Use \fI\%FY_DIAG_PUSH()\fP and \fI\%FY_DIAG_POP()\fP to bracket a region where a specific
+warning is suppressed:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+FY_DIAG_PUSH
+FY_DIAG_IGNORE_ARRAY_BOUNDS
+\&... code that triggers \-Warray\-bounds ...
+FY_DIAG_POP
+.EE
+.UNINDENT
+.UNINDENT
+.sp
+On compilers other than GCC/Clang all macros in this group expand to nothing.
+.sp
+Portable wrappers for the mantissa\-digit and decimal\-digit counts of
+\fBfloat\fP, \fBdouble\fP, and \fBlong double\fP\&.  Each macro tries three
+sources in order:
+.INDENT 0.0
+.IP 1. 3
+The standard \fB<float.h>\fP macro (e.g. \fBFLT_MANT_DIG\fP).
+.IP 2. 3
+The GCC/Clang predefined macro (e.g. \fB__FLT_MANT_DIG__\fP).
+.IP 3. 3
+A conservative hard\-coded fallback.
+.UNINDENT
+.sp
+These constants are used when formatting floating\-point values as YAML
+scalars to ensure round\-trip fidelity.
+.SS macro __has_builtin
+.INDENT 0.0
+.TP
+.B __has_builtin(x) 
+Fallback for compilers that do not provide __has_builtin.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBx\fP – The builtin name to query.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Always evaluates to 0 (false) so that all \fB#if __has_builtin(...)\fP guards
+safely fall back to the portable implementation.
+.SS Return
+.INDENT 0.0
+.IP 0. 4
+.UNINDENT
+.SS macro FY_BIT
+.INDENT 0.0
+.TP
+.B FY_BIT(x) 
+Produce an unsigned bitmask with bit \fBx\fP set.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBx\fP – Zero\-based bit position (0–31 for a 32\-bit result).
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+\fB1U << x\fP\&.
+.SS macro FY_NT
+.INDENT 0.0
+.TP
+.B FY_NT() 
+Sentinel value meaning “null\-terminated; compute length at runtime”.
+.UNINDENT
+.SS Description
+.sp
+Pass as the \fBlen\fP argument to any libfyaml function that accepts a
+\fB(const char *str, size_t len)\fP pair to indicate that \fBstr\fP is a
+NUL\-terminated C string whose length should be determined with \fBstrlen()\fP\&.
+.sp
+Value: \fB(size_t)\-1\fP
+.SS macro FY_EXPORT
+.INDENT 0.0
+.TP
+.B FY_EXPORT() 
+Mark a symbol as part of the shared\-library public ABI.
+.UNINDENT
+.SS Description
+.sp
+On GCC/Clang (version >= 4) expands to \fB__attribute__((visibility(\(dqdefault\(dq)))\fP,
+overriding \fB\-fvisibility=hidden\fP for the annotated symbol.
+On other compilers expands to nothing (all symbols are visible by default).
+.SS macro FY_DEPRECATED
+.INDENT 0.0
+.TP
+.B FY_DEPRECATED() 
+Mark a function or variable as deprecated.
+.UNINDENT
+.SS Description
+.sp
+On GCC/Clang expands to \fB__attribute__((deprecated))\fP, causing a
+compile\-time warning whenever the annotated symbol is used.
+On other compilers expands to nothing.
+.SS macro FY_FORMAT
+.INDENT 0.0
+.TP
+.B FY_FORMAT(_t, _x, _y) 
+Annotate a function with printf\-style format checking.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_t\fP – Format type token (e.g. \fBprintf\fP, \fBscanf\fP, \fBstrftime\fP).
+.IP \(bu 2
+\fB_x\fP – 1\-based index of the format\-string parameter.
+.IP \(bu 2
+\fB_y\fP – 1\-based index of the first variadic argument (0 for \fBva_list\fP wrappers).
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+On GCC/Clang expands to \fB__attribute__((format(_t, _x, _y)))\fP, enabling
+the compiler to type\-check the format string and variadic arguments.
+.SS macro FY_ALLOCA_COPY_FREE
+.INDENT 0.0
+.TP
+.B FY_ALLOCA_COPY_FREE(_str, _len) 
+Copy a heap string onto the stack and free the original.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_str\fP – Heap\-allocated string to copy and free (may be NULL).
+.IP \(bu 2
+\fB_len\fP – Length in bytes, or \fBFY_NT\fP to use \fBstrlen()\fP\&.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Expands to a statement expression that
+.INDENT 0.0
+.IP 1. 3
+Copies \fB_str\fP (up to \fB_len\fP bytes, or the full NUL\-terminated length when
+\fB_len\fP is \fBFY_NT\fP) into a NUL\-terminated stack buffer via \fBalloca()\fP\&.
+.IP 2. 3
+Calls \fBfree(@_str)\fP to release the heap allocation.
+.IP 3. 3
+Evaluates to a \fBconst char *\fP pointing to the stack copy.
+.UNINDENT
+.sp
+When \fB_str\fP is NULL the macro evaluates to NULL and performs no copy or free.
+.sp
+The stack buffer is valid only for the lifetime of the enclosing function.
+Do not call this in a loop — each invocation grows the stack frame.
+.SS Return
+.sp
+\fBconst char *\fP to the stack copy, or NULL if \fB_str\fP was NULL.
+.SS macro FY_ALLOCA_COPY_FREE_NO_NULL
+.INDENT 0.0
+.TP
+.B FY_ALLOCA_COPY_FREE_NO_NULL(_str, _len) 
+Like \fI\%FY_ALLOCA_COPY_FREE()\fP but returns “” for NULL.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_str\fP – Heap\-allocated string to copy and free (may be NULL).
+.IP \(bu 2
+\fB_len\fP – Length in bytes, or \fBFY_NT\fP to use \fBstrlen()\fP\&.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Identical to \fBFY_ALLOCA_COPY_FREE\fP but substitutes an empty string literal
+\fB\(dq\(dq\fP when \fB_str\fP is NULL, so callers never receive a NULL pointer.
+.SS Return
+.sp
+\fBconst char *\fP to the stack copy, or \fB\(dq\(dq\fP if \fB_str\fP was NULL.
+.SS macro container_of
+.INDENT 0.0
+.TP
+.B container_of(ptr, type, member) 
+Recover a pointer to a containing struct from a member pointer.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBptr\fP – Pointer to the member field.
+.IP \(bu 2
+\fBtype\fP – Type of the containing struct.
+.IP \(bu 2
+\fBmember\fP – Name of the member field within \fBtype\fP\&.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Given a pointer \fBptr\fP to a field named \fBmember\fP inside a struct of type \fBtype\fP,
+returns a pointer to the enclosing \fBtype\fP instance.
+.sp
+Uses \fB__typeof__\fP to catch type mismatches at compile time (GCC/Clang).
+.SS Return
+.sp
+Pointer to the containing struct of type \fBtype\fP\&.
+.SS macro ARRAY_SIZE
+.INDENT 0.0
+.TP
+.B ARRAY_SIZE(x) 
+Compute the number of elements in a stack\-allocated array.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBx\fP – The array expression.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Evaluates to a compile\-time constant. Only valid for arrays with a known
+size at compile time (not pointers or VLAs).
+.SS Return
+.sp
+Number of elements, as a \fBsize_t\fP\&.
+.SS macro FY_UNUSED
+.INDENT 0.0
+.TP
+.B FY_UNUSED() 
+Suppress “unused variable/parameter” warnings.
+.UNINDENT
+.SS Description
+.sp
+On GCC/Clang (version >= 4) expands to \fB__attribute__((unused))\fP\&.
+On other compilers expands to nothing.
+.sp
+Use on parameters or local variables that are intentionally unreferenced,
+e.g. in debug\-only code paths.
+.SS macro FY_CONSTRUCTOR
+.INDENT 0.0
+.TP
+.B FY_CONSTRUCTOR() 
+Run a function automatically before \fBmain()\fP\&.
+.UNINDENT
+.SS Description
+.sp
+On GCC/Clang expands to \fB__attribute__((constructor))\fP\&. Also defines
+\fBFY_HAS_CONSTRUCTOR\fP so callers can detect support at compile time.
+On other compilers expands to nothing and \fBFY_HAS_CONSTRUCTOR\fP is not defined.
+.SS macro FY_DESTRUCTOR
+.INDENT 0.0
+.TP
+.B FY_DESTRUCTOR() 
+Run a function automatically after \fBmain()\fP (or on \fBexit()\fP).
+.UNINDENT
+.SS Description
+.sp
+On GCC/Clang expands to \fB__attribute__((destructor))\fP\&. Also defines
+\fBFY_HAS_DESTRUCTOR\fP so callers can detect support at compile time.
+On other compilers expands to nothing and \fBFY_HAS_DESTRUCTOR\fP is not defined.
+.SS macro FY_DEBUG_UNUSED
+.INDENT 0.0
+.TP
+.B FY_DEBUG_UNUSED() 
+Mark a variable as potentially unused in non\-debug builds.
+.UNINDENT
+.SS Description
+.sp
+Expands to \fB__attribute__((unused))\fP on GCC/Clang when \fBNDEBUG\fP is
+defined, silencing warnings for variables that are only referenced inside
+\fBassert()\fP calls (which disappear in release builds).
+In debug builds (\fBNDEBUG\fP not set) expands to nothing.
+.SS macro FY_IMPOSSIBLE_ABORT
+.INDENT 0.0
+.TP
+.B FY_IMPOSSIBLE_ABORT(void) 
+Assert that an unreachable code path has been reached.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBvoid\fP – no arguments
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Calls \fBassert(0)\fP followed by \fBabort()\fP to terminate the process
+immediately. Use to mark code paths that must never execute in a correct
+program, such as the default branch of a switch that covers all enum values.
+.sp
+The double invocation ensures termination even when assertions are disabled
+(\fBNDEBUG\fP).
+.SS macro FY_COMPILE_ERROR_ON_ZERO
+.INDENT 0.0
+.TP
+.B FY_COMPILE_ERROR_ON_ZERO(_e) 
+Trigger a compile error if expression \fB_e\fP is zero.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_e\fP – Compile\-time expression that must be non\-zero.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Evaluates \fB_e\fP at compile time. If \fB_e\fP is zero, \fBsizeof(char[\-1])\fP is
+ill\-formed and the build fails. If \fB_e\fP is non\-zero, the expression is a
+no\-op void cast.
+.sp
+Prefer \fBFY_CHECK_SAME_TYPE\fP or \fBstatic_assert\fP for clearer error messages;
+use this primitive when a compile\-time boolean is needed in a macro context.
+.SS macro FY_SAME_TYPE
+.INDENT 0.0
+.TP
+.B FY_SAME_TYPE(_a, _b) 
+Test whether two expressions have the same type.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_a\fP – First expression.
+.IP \(bu 2
+\fB_b\fP – Second expression.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+On GCC/Clang uses \fB__builtin_types_compatible_p\fP to compare the types of
+\fB_a\fP and \fB_b\fP (via \fB__typeof__\fP). On compilers without this builtin always
+evaluates to true to avoid false negatives.
+.SS Return
+.sp
+Non\-zero (true) if the types match, zero (false) otherwise.
+.SS macro FY_CHECK_SAME_TYPE
+.INDENT 0.0
+.TP
+.B FY_CHECK_SAME_TYPE(_a, _b) 
+Trigger a compile error if two expressions have different types.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_a\fP – First expression.
+.IP \(bu 2
+\fB_b\fP – Second expression.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Combines \fBFY_SAME_TYPE\fP and \fBFY_COMPILE_ERROR_ON_ZERO\fP\&. Use in macros that
+require two operands to have the same type (e.g. overflow\-safe arithmetic).
+.SS macro FY_ADD_OVERFLOW
+.INDENT 0.0
+.TP
+.B FY_ADD_OVERFLOW(_a, _b, _resp) 
+Checked addition: detect signed/unsigned integer overflow.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_a\fP – First operand.
+.IP \(bu 2
+\fB_b\fP – Second operand (must have the same type as \fB_a\fP).
+.IP \(bu 2
+\fB_resp\fP – Pointer to receive the result (written even on overflow).
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+On GCC/Clang maps directly to \fB__builtin_add_overflow(_a, _b, _resp)\fP,
+which is a single compiler intrinsic with full type generality.
+.SS On other compilers a portable fallback is used that
+.INDENT 0.0
+.IP \(bu 2
+Requires \fB_a\fP and \fB_b\fP to have the same type (enforced at compile time via
+\fBFY_CHECK_SAME_TYPE\fP).
+.IP \(bu 2
+Computes \fB*_resp = _a + _b\fP and returns true if the addition wrapped.
+.UNINDENT
+.SS Return
+.sp
+true if the addition overflowed, false otherwise.
+.SS macro FY_SUB_OVERFLOW
+.INDENT 0.0
+.TP
+.B FY_SUB_OVERFLOW(_a, _b, _resp) 
+Checked subtraction: detect signed/unsigned integer overflow.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_a\fP – Minuend.
+.IP \(bu 2
+\fB_b\fP – Subtrahend (must have the same type as \fB_a\fP).
+.IP \(bu 2
+\fB_resp\fP – Pointer to receive the result (written even on overflow).
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+On GCC/Clang maps to \fB__builtin_sub_overflow(_a, _b, _resp)\fP\&.
+The portable fallback requires \fB_a\fP and \fB_b\fP to have the same type.
+.SS Return
+.sp
+true if the subtraction overflowed, false otherwise.
+.SS macro FY_MUL_OVERFLOW
+.INDENT 0.0
+.TP
+.B FY_MUL_OVERFLOW(_a, _b, _resp) 
+Checked multiplication: detect signed/unsigned integer overflow.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_a\fP – First factor.
+.IP \(bu 2
+\fB_b\fP – Second factor (must have the same type as \fB_a\fP).
+.IP \(bu 2
+\fB_resp\fP – Pointer to receive the result (written even on overflow).
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+On GCC/Clang maps to \fB__builtin_mul_overflow(_a, _b, _resp)\fP\&.
+The portable fallback requires \fB_a\fP and \fB_b\fP to have the same type and detects
+overflow by dividing the product back and comparing with the original operand.
+.SS Return
+.sp
+true if the multiplication overflowed, false otherwise.
+.SS macro fy_sprintfa
+.INDENT 0.0
+.TP
+.B fy_sprintfa(_fmt, \&...) 
+Format a string into a stack buffer using inline arguments.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_fmt\fP – printf\-style format string.
+.IP \(bu 2
+\fBellipsis\fP (ellipsis) – Format arguments.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Like \fBfy_vsprintfa()\fP but accepts arguments directly (uses \fB__VA_ARGS__\fP).
+Two calls to \fBsnprintf()\fP are made: the first with a NULL buffer to
+measure the required length, the second to write the result into a
+stack\-allocated buffer.
+.sp
+The returned pointer is valid only for the lifetime of the enclosing function.
+.SS Return
+.sp
+\fBchar *\fP to a NUL\-terminated stack buffer.
+.SS macro FY_CPP_EVAL1
+.INDENT 0.0
+.TP
+.B FY_CPP_EVAL1(\&...) 
+Force one additional macro\-expansion pass.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBellipsis\fP (ellipsis) – Token sequence to re\-expand.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Expands its argument list once. Use as a building block for deeper
+evaluation levels; prefer \fI\%FY_CPP_EVAL()\fP for most uses.
+.SS macro FY_CPP_EVAL2
+.INDENT 0.0
+.TP
+.B FY_CPP_EVAL2(\&...) 
+Force two additional macro\-expansion passes.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBellipsis\fP (ellipsis) – Token sequence to re\-expand.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS macro FY_CPP_EVAL4
+.INDENT 0.0
+.TP
+.B FY_CPP_EVAL4(\&...) 
+Force four additional macro\-expansion passes.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBellipsis\fP (ellipsis) – Token sequence to re\-expand.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS macro FY_CPP_EVAL8
+.INDENT 0.0
+.TP
+.B FY_CPP_EVAL8(\&...) 
+Force eight additional macro\-expansion passes.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBellipsis\fP (ellipsis) – Token sequence to re\-expand.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS macro FY_CPP_EVAL16
+.INDENT 0.0
+.TP
+.B FY_CPP_EVAL16(\&...) 
+Force 16 additional macro\-expansion passes (GCC only).
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBellipsis\fP (ellipsis) – Token sequence to re\-expand.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Not defined on Clang, which exhausts its expansion buffer before reaching
+16 levels. Wrap \fI\%FY_CPP_MAP()\fP / \fI\%FY_CPP_MAP2()\fP in \fI\%FY_CPP_EVAL()\fP instead of
+calling this directly.
+.SS macro FY_CPP_EVAL
+.INDENT 0.0
+.TP
+.B FY_CPP_EVAL(\&...) 
+Force maximum macro\-expansion depth.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBellipsis\fP (ellipsis) – Token sequence to fully expand.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+On GCC performs 32 expansion passes (supports lists up to ~32 elements).
+On Clang performs 16 passes (supports lists up to ~16 elements).
+.sp
+Always use this (rather than a specific EVALn) unless you have a known
+bound on the number of arguments.
+.SS macro FY_CPP_EMPTY
+.INDENT 0.0
+.TP
+.B FY_CPP_EMPTY(void) 
+Produce an empty token sequence (deferred).
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBvoid\fP – no arguments
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Expands to nothing. Used in combination with \fI\%FY_CPP_POSTPONE1()\fP /
+\fI\%FY_CPP_POSTPONE2()\fP to defer macro expansion by one scan pass, breaking
+the preprocessor’s blue\-paint recursion guard.
+.SS macro FY_CPP_POSTPONE1
+.INDENT 0.0
+.TP
+.B FY_CPP_POSTPONE1(macro) 
+Defer a single\-argument macro by one expansion pass.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBmacro\fP – Macro token to postpone.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Expands to the macro name \fBmacro\fP followed by a deferred \fI\%FY_CPP_EMPTY()\fP,
+so the macro call is not completed until the next pass.
+.SS macro FY_CPP_POSTPONE2
+.INDENT 0.0
+.TP
+.B FY_CPP_POSTPONE2(a, macro) 
+Defer a two\-argument macro by one expansion pass.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP – Fixed first argument (carried along, not expanded yet).
+.IP \(bu 2
+\fBmacro\fP – Macro token to postpone.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Like \fI\%FY_CPP_POSTPONE1()\fP but for macros that take a leading fixed argument \fBa\fP\&.
+.SS macro FY_CPP_FIRST
+.INDENT 0.0
+.TP
+.B FY_CPP_FIRST(\&...) 
+Extract the first argument from a variadic list.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBellipsis\fP (ellipsis) – Variadic argument list.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Returns the first argument, or 0 if the list is empty.
+.SS Return
+.sp
+First argument token, or \fB0\fP\&.
+.SS macro FY_CPP_SECOND
+.INDENT 0.0
+.TP
+.B FY_CPP_SECOND(\&...) 
+Extract the second argument from a variadic list.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBellipsis\fP (ellipsis) – Variadic argument list.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Returns the second argument, or 0 if fewer than two arguments are present.
+.SS Return
+.sp
+Second argument token, or \fB0\fP\&.
+.SS macro FY_CPP_THIRD
+.INDENT 0.0
+.TP
+.B FY_CPP_THIRD(\&...) 
+Extract the third argument.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBellipsis\fP (ellipsis) – Variadic argument list. Returns: Third argument, or \fB0\fP\&.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS macro FY_CPP_FOURTH
+.INDENT 0.0
+.TP
+.B FY_CPP_FOURTH(\&...) 
+Extract the fourth argument.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBellipsis\fP (ellipsis) – Variadic argument list. Returns: Fourth argument, or \fB0\fP\&.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS macro FY_CPP_FIFTH
+.INDENT 0.0
+.TP
+.B FY_CPP_FIFTH(\&...) 
+Extract the fifth argument.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBellipsis\fP (ellipsis) – Variadic argument list. Returns: Fifth argument, or \fB0\fP\&.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS macro FY_CPP_SIXTH
+.INDENT 0.0
+.TP
+.B FY_CPP_SIXTH(\&...) 
+Extract the sixth argument.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBellipsis\fP (ellipsis) – Variadic argument list. Returns: Sixth argument, or \fB0\fP\&.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS macro FY_CPP_REST
+.INDENT 0.0
+.TP
+.B FY_CPP_REST(\&...) 
+Return all arguments after the first.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBellipsis\fP (ellipsis) – Variadic argument list.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Expands to the tail of the variadic list with the first element removed.
+Expands to nothing if the list has zero or one element.
+.SS macro FY_CPP_MAP
+.INDENT 0.0
+.TP
+.B FY_CPP_MAP(macro, \&...) 
+Apply a macro to every argument in a variadic list.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBmacro\fP – Single\-argument macro to apply.
+.IP \(bu 2
+\fBellipsis\fP (ellipsis) – Arguments to map over.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Expands \fBmacro(x)\fP for each argument \fBx\fP in \fB__VA_ARGS__\fP, concatenating
+all the results. The argument list must be non\-empty. Uses \fI\%FY_CPP_EVAL()\fP
+internally, so the list length is bounded by the evaluation depth.
+.sp
+For example:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+#define PRINT_ITEM(x)  printf(\(dq%d\en\(dq, x);
+FY_CPP_MAP(PRINT_ITEM, 1, 2, 3)
+// expands to: printf(\(dq%d\en\(dq, 1); printf(\(dq%d\en\(dq, 2); printf(\(dq%d\en\(dq, 3);
+.EE
+.UNINDENT
+.UNINDENT
+.SS macro FY_CPP_VA_COUNT
+.INDENT 0.0
+.TP
+.B FY_CPP_VA_COUNT(\&...) 
+Count the number of arguments in a variadic list.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBellipsis\fP (ellipsis) – Variadic argument list.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Evaluates to a compile\-time integer expression equal to the number of
+arguments. Returns 0 for an empty list.
+.SS Return
+.sp
+Integer expression giving the argument count.
+.SS macro FY_CPP_VA_ITEMS
+.INDENT 0.0
+.TP
+.B FY_CPP_VA_ITEMS(_type, \&...) 
+Build a compound\-literal array from variadic arguments.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_type\fP – Element type of the resulting array.
+.IP \(bu 2
+\fBellipsis\fP (ellipsis) – Values to place in the array.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Expands to a compound literal of type \fB_type[N]\fP (where N is the number
+of arguments) initialised with the provided values. Useful for passing a
+variadic argument list as an array to a function.
+.sp
+For example:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+// FY_CPP_VA_ITEMS(int, 1, 2, 5, 100)
+// expands to: ((int [4]){ 1, 2, 5, 100 })
+.EE
+.UNINDENT
+.UNINDENT
+.SS macro FY_CPP_MAP2
+.INDENT 0.0
+.TP
+.B FY_CPP_MAP2(a, macro, \&...) 
+Apply a binary macro to every argument, threading a fixed first argument.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP – Fixed first argument threaded into every call.
+.IP \(bu 2
+\fBmacro\fP – Two\-argument macro to apply.
+.IP \(bu 2
+\fBellipsis\fP (ellipsis) – Arguments to map over.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Expands \fBmacro(a, x)\fP for each argument \fBx\fP in \fB__VA_ARGS__\fP\&. The fixed
+argument \fBa\fP is passed as the first argument to every invocation.
+.SS macro FY_CONCAT
+.INDENT 0.0
+.TP
+.B FY_CONCAT(_a, _b) 
+Token\-paste two arguments after full macro expansion.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_a\fP – Left token (expanded before pasting).
+.IP \(bu 2
+\fB_b\fP – Right token (expanded before pasting).
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Unlike the raw \fB##\fP operator, this macro forces both \fB_a\fP and \fB_b\fP to be
+fully expanded before concatenation, so macro arguments are substituted
+correctly.
+.SS macro FY_UNIQUE
+.INDENT 0.0
+.TP
+.B FY_UNIQUE(_base) 
+Generate a unique identifier using \fB__COUNTER__\fP\&.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_base\fP – Identifier prefix.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Concatenates \fB_base\fP with the current value of the \fB__COUNTER__\fP
+preprocessor counter, which increments by one for each use in a
+translation unit. Guarantees unique names across multiple macro expansions
+in the same file.
+.SS macro FY_LUNIQUE
+.INDENT 0.0
+.TP
+.B FY_LUNIQUE(_base) 
+Generate a unique identifier using \fB__LINE__\fP\&.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_base\fP – Identifier prefix.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Like \fI\%FY_UNIQUE()\fP but uses the current source line number instead of
+\fB__COUNTER__\fP\&. Sufficient when only one such identifier is needed per
+source line; prefer \fI\%FY_UNIQUE()\fP in general.
+.SS macro FY_STACK_SAVE
+.INDENT 0.0
+.TP
+.B FY_STACK_SAVE(void) 
+Save the current stack pointer.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBvoid\fP – no arguments
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+On compilers that provide \fB__builtin_stack_save()\fP (GCC, Clang) returns
+the current stack pointer as a \fBvoid *\fP, allowing it to be restored later
+with \fI\%FY_STACK_RESTORE()\fP\&. On other compilers returns \fB(void *)NULL\fP\&.
+.sp
+Use together with \fI\%FY_STACK_RESTORE()\fP to bound the stack growth of a loop
+that calls \fBalloca()\fP on each iteration.
+.SS Return
+.sp
+Opaque stack pointer value, or NULL if unsupported.
+.SS macro FY_STACK_RESTORE
+.INDENT 0.0
+.TP
+.B FY_STACK_RESTORE(_x) 
+Restore the stack pointer to a previously saved value.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_x\fP – Value previously returned by \fI\%FY_STACK_SAVE()\fP\&.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+On compilers that provide \fB__builtin_stack_restore()\fP rewinds the stack
+pointer to the value captured by \fI\%FY_STACK_SAVE()\fP\&. On other compilers this
+is a no\-op that discards \fB_x\fP\&.
+.SS macro FY_HAVE_LAMBDAS
+.INDENT 0.0
+.TP
+.B FY_HAVE_LAMBDAS() 
+Defined when the compiler supports anonymous functions.
+.UNINDENT
+.SS Set when either
+.INDENT 0.0
+.IP \(bu 2
+Clang is compiling with \fB\-fblocks\fP (Blocks extension) — also sets
+\fBFY_HAVE_BLOCK_LAMBDAS\fP; or
+.IP \(bu 2
+GCC is in use — also sets \fBFY_HAVE_NESTED_FUNC_LAMBDAS\fP (nested functions).
+.UNINDENT
+.sp
+Code using lambdas should guard against this macro and provide a fallback
+for environments where it is not defined.
+.SS macro FY_HAVE_BLOCK_LAMBDAS
+.INDENT 0.0
+.TP
+.B FY_HAVE_BLOCK_LAMBDAS() 
+Defined when Clang Block lambdas are available.
+.UNINDENT
+.SS Description
+.sp
+Set on Clang when compiled with \fB\-fblocks\fP\&. Implies \fBFY_HAVE_LAMBDAS\fP\&.
+Block lambdas use the \fB^(args){ body }\fP syntax.
+.SS macro FY_HAVE_NESTED_FUNC_LAMBDAS
+.INDENT 0.0
+.TP
+.B FY_HAVE_NESTED_FUNC_LAMBDAS() 
+Defined when GCC nested\-function lambdas are available.
+.UNINDENT
+.SS Description
+.sp
+Set on GCC. Implies \fBFY_HAVE_LAMBDAS\fP\&. Nested function lambdas are defined
+as local functions inside the enclosing function and cannot outlive it.
+.SS macro FY_DIAG_PUSH
+.INDENT 0.0
+.TP
+.B FY_DIAG_PUSH() 
+Save the current diagnostic state onto the compiler’s stack.
+.UNINDENT
+.SS Description
+.sp
+Always paired with FY_DIAG_POP.
+.SS macro FY_DIAG_POP
+.INDENT 0.0
+.TP
+.B FY_DIAG_POP() 
+Restore the diagnostic state saved by the last FY_DIAG_PUSH.
+.UNINDENT
+.SS macro FY_DIAG_IGNORE
+.INDENT 0.0
+.TP
+.B FY_DIAG_IGNORE(_warn) 
+Suppress a specific warning by pragma string.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_warn\fP – A string literal suitable for use in a \fB_Pragma()\fP call,
+e.g. \fB\(dqGCC diagnostic ignored \e\(dq\-Wsomething\e\(dq\(dq\fP .
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS macro FY_DIAG_IGNORE_ARRAY_BOUNDS
+.INDENT 0.0
+.TP
+.B FY_DIAG_IGNORE_ARRAY_BOUNDS() 
+Suppress \fB\-Warray\-bounds\fP in the current region.
+.UNINDENT
+.SS macro FY_DIAG_IGNORE_UNUSED_VARIABLE
+.INDENT 0.0
+.TP
+.B FY_DIAG_IGNORE_UNUSED_VARIABLE() 
+Suppress \fB\-Wunused\-variable\fP in the current region.
+.UNINDENT
+.SS macro FY_DIAG_IGNORE_UNUSED_PARAMETER
+.INDENT 0.0
+.TP
+.B FY_DIAG_IGNORE_UNUSED_PARAMETER() 
+Suppress \fB\-Wunused\-parameter\fP in the current region.
+.UNINDENT
+.SS macro FY_FLT_MANT_DIG
+.INDENT 0.0
+.TP
+.B FY_FLT_MANT_DIG() 
+Number of base\-2 mantissa digits in a \fBfloat\fP\&.
+.UNINDENT
+.SS Description
+.sp
+Typically 24 (IEEE 754 single precision). Fallback: 9.
+.SS macro FY_DBL_MANT_DIG
+.INDENT 0.0
+.TP
+.B FY_DBL_MANT_DIG() 
+Number of base\-2 mantissa digits in a \fBdouble\fP\&.
+.UNINDENT
+.SS Description
+.sp
+Typically 53 (IEEE 754 double precision). Fallback: 17.
+.SS macro FY_LDBL_MANT_DIG
+.INDENT 0.0
+.TP
+.B FY_LDBL_MANT_DIG() 
+Number of base\-2 mantissa digits in a \fBlong double\fP\&.
+.UNINDENT
+.SS Description
+.sp
+Varies by platform (64\-bit x87 extended: 64; MSVC/ARM \fB== double\fP: 53).
+Fallback: 17.
+.SS macro FY_FLT_DECIMAL_DIG
+.INDENT 0.0
+.TP
+.B FY_FLT_DECIMAL_DIG() 
+Decimal digits required for a round\-trip \fBfloat\fP\&.
+.UNINDENT
+.SS Description
+.sp
+The minimum number of significant decimal digits such that converting
+a \fBfloat\fP to decimal and back recovers the original value exactly.
+Typically 9. Fallback: 9.
+.SS macro FY_DBL_DECIMAL_DIG
+.INDENT 0.0
+.TP
+.B FY_DBL_DECIMAL_DIG() 
+Decimal digits required for a round\-trip \fBdouble\fP\&.
+.UNINDENT
+.SS Description
+.sp
+Typically 17. Fallback: 17.
+.SS macro FY_LDBL_DECIMAL_DIG
+.INDENT 0.0
+.TP
+.B FY_LDBL_DECIMAL_DIG() 
+Decimal digits required for a round\-trip \fBlong double\fP\&.
+.UNINDENT
+.SS Description
+.sp
+Varies by platform; same as double on most non\-x87 targets. Fallback: 17.
+.SH ALLOCATOR
+.sp
+This header exposes libfyaml’s pluggable allocator subsystem.  Rather than
+using \fBmalloc\fP/\fBfree\fP directly, the library routes certain internal
+allocations through a \fBstruct fy_allocator\fP\&.
+This lets callers trade memory footprint, speed,
+and deduplication behaviour to match their workload.
+.sp
+\fBAvailable strategies\fP (select by name when calling
+\fBfy_allocator_create()\fP):
+.INDENT 0.0
+.IP \(bu 2
+\fB\(dqlinear\(dq\fP — bump\-pointer arena.  Allocation is O(1) and
+near\-zero overhead; individual frees are a no\-op.  Ideal for
+parse\-and\-discard workflows where the entire arena is released at once.
+.IP \(bu 2
+\fB\(dqmalloc\(dq\fP — thin wrapper around the system \fBmalloc\fP/\fBfree\fP\&.
+Familiar semantics; useful when individual node lifetimes vary.
+Should never be used for regular application builds. The presence
+of it is for having a ASAN/valgrind compatible allocator where
+buffer overflows can be detected easily.
+.IP \(bu 2
+\fB\(dqmremap\(dq\fP — growable linear arena backed by \fBmremap(2)\fP\&.
+Avoids copying when the arena needs to grow.
+While mremap is Linux specific, this allocator can be configured
+to use \fBmmap()\fP or \fBmalloc()\fP areas where they work for other platforms.
+.IP \(bu 2
+\fB\(dqdedup\(dq\fP — content\-addressed store built on xxhash hashing.
+Stores each unique byte sequence exactly once and returns a shared
+pointer to all callers.  Dramatically reduces memory use when parsing
+documents with many repeated keys or values (e.g. large YAML
+configurations, test\-suite corpora).
+.IP \(bu 2
+\fB\(dqauto\(dq\fP — heuristic selection: given a policy. It usually can
+do the right thing and is a safe bet.
+.UNINDENT
+.sp
+\fBTags\fP partition an allocator’s address space.  Obtain a tag with
+\fBfy_allocator_get_tag()\fP and pass it to every \fBfy_allocator_alloc()\fP
+/ \fBfy_allocator_store()\fP call; release the whole tag’s memory in one
+shot with \fBfy_allocator_release_tag()\fP\&.  This maps naturally to
+document lifetimes.
+.sp
+\fBIn\-place variants\fP (\fBfy_linear_allocator_create_in_place()\fP,
+\fBfy_dedup_allocator_create_in_place()\fP) initialise the allocator
+inside a caller\-supplied buffer — zero dynamic setup cost, useful in
+stack\-allocated or shared\-memory contexts.
+.SS fy_allocator_iterate
+.INDENT 0.0
+.TP
+.B const char *fy_allocator_iterate(const char **prevp) 
+Iterate over available allocator names
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBprevp\fP (const char**) – The previous allocator iterator pointer
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+This method iterates over all the available allocator names.
+The start of the iteration is signalled by a NULL in *prevp.
+.SS Return
+.sp
+The next allocator name in sequence or NULL at the end.
+.SS fy_allocator_is_available
+.INDENT 0.0
+.TP
+.B bool fy_allocator_is_available(const char *name) 
+Check if an allocator is available
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBname\fP (const char*) – The name of the allocator to check
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Check if the named allocator is available.
+.SS Return
+.sp
+true if the allocator is available, false otherwise
+.SS fy_allocator_create
+.INDENT 0.0
+.TP
+.B struct fy_allocator *fy_allocator_create(const char *name, const void *cfg) 
+Create an allocator.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBname\fP (const char*) – The name of the allocator
+.IP \(bu 2
+\fBcfg\fP (const void*) – The type specific configuration for the allocator, or NULL
+for the default.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Creates an allocator of the given type, using the configuration
+argument provided.
+The allocator may be destroyed by a corresponding call to
+\fI\%fy_allocator_destroy()\fP\&.
+.sp
+You can retrieve the names of available allocators
+with the \fBfy_allocator_get_names()\fP method.
+.SS Return
+.sp
+A pointer to the allocator or NULL in case of an error.
+.SS fy_allocator_destroy
+.INDENT 0.0
+.TP
+.B void fy_allocator_destroy(struct fy_allocator *a) 
+Destroy the given allocator
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator to destroy
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Destroy an allocator created earlier via \fI\%fy_allocator_create()\fP\&.
+Tracking allocators will release all memory allocated using them.
+.SS fy_linear_allocator_create_in_place
+.INDENT 0.0
+.TP
+.B struct fy_allocator *fy_linear_allocator_create_in_place(void *buffer, size_t size) 
+Create a linear allocator in place
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBbuffer\fP (void*) – The memory buffer to use for both storage and the allocator
+.IP \(bu 2
+\fBsize\fP (size_t) – The size of the memory buffer
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Creates a linear allocator in place, using the buffer provided.
+No memory allocations will be performed, so it’s safe to embed.
+There is no need to call fy_allocator_destroy for this allocator.
+.SS Return
+.sp
+A pointer to the allocator, or NULL if there is no space
+.SS fy_dedup_allocator_create_in_place
+.INDENT 0.0
+.TP
+.B struct fy_allocator *fy_dedup_allocator_create_in_place(void *buffer, size_t size) 
+Create a dedup allocator in place
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBbuffer\fP (void*) – The memory buffer to use for both storage and the allocator
+.IP \(bu 2
+\fBsize\fP (size_t) – The size of the memory buffer
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Creates a dedup allocator in place, using the buffer provided.
+No memory allocations will be performed, so it’s safe to embed.
+There is no need to call fy_allocator_destroy for this allocator.
+The parent allocator of this will be a linear allocator.
+.SS Return
+.sp
+A pointer to the allocator, or NULL if there is no space
+.SS fy_allocator_get_tag
+.INDENT 0.0
+.TP
+.B int fy_allocator_get_tag(struct fy_allocator *a) 
+Get a tag from an allocator
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+The allocator interface requires all allocation to belong
+to a tag. This call creates a tag and returns its value,
+or an error if not available.
+.sp
+If an allocator only provides a single tag (like the linear
+allocator for instance), the same tag number, usually 0, is
+returned.
+.SS Return
+.sp
+The created tag or \-1 in case of an error.
+.SS fy_allocator_release_tag
+.INDENT 0.0
+.TP
+.B void fy_allocator_release_tag(struct fy_allocator *a, int tag) 
+Release a tag from an allocator
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator
+.IP \(bu 2
+\fBtag\fP (int) – The tag to release
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Releases a tag from an allocator and frees all memory it
+allocated (if such an operation is provided by the allocator).
+.SS fy_allocator_get_tag_count
+.INDENT 0.0
+.TP
+.B int fy_allocator_get_tag_count(struct fy_allocator *a) 
+Get the maximum number of tags a allocator supports
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Get the maximum amount of tags an allocator supports.
+.sp
+If an allocator only provides a single tag (like the linear
+allocator for instance), 1 will be returned.
+.SS Return
+.sp
+The number of tags, or \-1 on error
+.SS fy_allocator_set_tag_count
+.INDENT 0.0
+.TP
+.B int fy_allocator_set_tag_count(struct fy_allocator *a, unsigned int count) 
+Set the maximum number of tags a allocator supports
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator
+.IP \(bu 2
+\fBcount\fP (unsigned int) – The amount of tags the allocator should support
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Sets the maximum amount of tags an allocator supports.
+If the set allocator tag count is less than the current
+the additional tags will be released.
+.SS Return
+.sp
+0 on success, \-1 on error
+.SS fy_allocator_trim_tag
+.INDENT 0.0
+.TP
+.B void fy_allocator_trim_tag(struct fy_allocator *a, int tag) 
+Trim a tag
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator
+.IP \(bu 2
+\fBtag\fP (int) – The tag to trim
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Trim a tag, that is free any excess memory it allocator, fitting
+it to the size of the content it carries.
+Allocators that cannot perform this operation treat it as a NOP.
+.SS fy_allocator_reset_tag
+.INDENT 0.0
+.TP
+.B void fy_allocator_reset_tag(struct fy_allocator *a, int tag) 
+Reset a tag
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator
+.IP \(bu 2
+\fBtag\fP (int) – The tag to reset
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Reset a tag, that is free any content it carries, but do not
+release the tag.
+.SS fy_allocator_alloc
+.INDENT 0.0
+.TP
+.B void *fy_allocator_alloc(struct fy_allocator *a, int tag, size_t size, size_t align) 
+Allocate memory from an allocator
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator
+.IP \(bu 2
+\fBtag\fP (int) – The tag to allocate from
+.IP \(bu 2
+\fBsize\fP (size_t) – The size of the memory to allocate
+.IP \(bu 2
+\fBalign\fP (size_t) – The alignment of the object
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Allocate memory from the given allocator tag, satisfying the
+size and align restrictions.
+.SS Return
+.sp
+A pointer to the allocated memory or NULL
+.SS fy_allocator_free
+.INDENT 0.0
+.TP
+.B void fy_allocator_free(struct fy_allocator *a, int tag, void *ptr) 
+Free memory allocated from an allocator
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator
+.IP \(bu 2
+\fBtag\fP (int) – The tag used to allocate the memory
+.IP \(bu 2
+\fBptr\fP (void*) – The pointer to the memory to free
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Attempt to free the memory allocated previously by \fI\%fy_allocator_alloc()\fP
+Note that non per object tracking allocators treat this as a NOP
+.SS fy_allocator_store
+.INDENT 0.0
+.TP
+.B const void *fy_allocator_store(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align) 
+Store an object to an allocator
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator
+.IP \(bu 2
+\fBtag\fP (int) – The tag used to allocate the memory
+.IP \(bu 2
+\fBdata\fP (const void*) – The pointer to object to store
+.IP \(bu 2
+\fBsize\fP (size_t) – The size of the object
+.IP \(bu 2
+\fBalign\fP (size_t) – The alignment restriction of the object
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Store an object to an allocator and return a pointer to the location
+it was stored. When using a deduplicating allocator no new allocation
+will take place and a pointer to the object already stored will be
+returned.
+.sp
+The return pointer must not be modified, the objects stored are idempotent.
+.SS Return
+.sp
+A constant pointer to the object stored, or NULL in case of an error
+.SS fy_allocator_storev
+.INDENT 0.0
+.TP
+.B const void *fy_allocator_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align) 
+Store an object to an allocator (scatter gather)
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator
+.IP \(bu 2
+\fBtag\fP (int) – The tag used to allocate the memory from
+.IP \(bu 2
+\fBiov\fP (const struct iovec*) – The I/O scatter gather vector
+.IP \(bu 2
+\fBiovcnt\fP (int) – The number of vectors
+.IP \(bu 2
+\fBalign\fP (size_t) – The alignment restriction of the object
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Store an object to an allocator and return a pointer to the location
+it was stored. When using a deduplicating allocator no new allocation
+will take place and a pointer to the object already stored will be
+returned.
+.sp
+The object is created linearly from the scatter gather io vector provided.
+.sp
+The return pointer must not be modified, the objects stored are immutable.
+.SS Return
+.sp
+A constant pointer to the object stored, or NULL in case of an error
+.SS fy_allocator_lookup
+.INDENT 0.0
+.TP
+.B const void *fy_allocator_lookup(struct fy_allocator *a, int tag, const void *data, size_t size, size_t align) 
+Lookup for object in an allocator.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator
+.IP \(bu 2
+\fBtag\fP (int) – The tag used to locate the memory
+.IP \(bu 2
+\fBdata\fP (const void*) – The pointer to object to store
+.IP \(bu 2
+\fBsize\fP (size_t) – The size of the object
+.IP \(bu 2
+\fBalign\fP (size_t) – The alignment restriction of the object
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Lookup for the exact contents of an object stored in an allocator
+and return a pointer to the location it was stored.
+The allocator must have the FYACF_CAN_LOOKUP capability.
+.SS Return
+.sp
+A constant pointer to the object stored, or NULL if the object does not exist
+.SS fy_allocator_lookupv
+.INDENT 0.0
+.TP
+.B const void *fy_allocator_lookupv(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align) 
+Lookup for object in an allocator (scatter gather)
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator
+.IP \(bu 2
+\fBtag\fP (int) – The tag used to search into
+.IP \(bu 2
+\fBiov\fP (const struct iovec*) – The I/O scatter gather vector
+.IP \(bu 2
+\fBiovcnt\fP (int) – The number of vectors
+.IP \(bu 2
+\fBalign\fP (size_t) – The alignment restriction of the object
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Lookup for the exact contents of an object stored in an allocator
+and return a pointer to the location it was stored.
+The allocator must have the FYACF_CAN_LOOKUP capability.
+.sp
+The scatter gather vector is used to recreate the object.
+.SS Return
+.sp
+A constant pointer to the object stored, or NULL in case the object does not exist
+.SS fy_allocator_dump
+.INDENT 0.0
+.TP
+.B void fy_allocator_dump(struct fy_allocator *a) 
+Dump internal allocator state
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS enum fy_allocator_cap_flags
+.INDENT 0.0
+.TP
+.B enum fy_allocator_cap_flags 
+Allocator capability flags
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+enum fy_allocator_cap_flags {
+    FYACF_CAN_FREE_INDIVIDUAL,
+    FYACF_CAN_FREE_TAG,
+    FYACF_CAN_DEDUP,
+    FYACF_HAS_CONTAINS,
+    FYACF_HAS_EFFICIENT_CONTAINS,
+    FYACF_HAS_TAGS,
+    FYACF_CAN_LOOKUP
+};
+.EE
+.UNINDENT
+.UNINDENT
+.SS Constants
+.INDENT 0.0
+.TP
+.B FYACF_CAN_FREE_INDIVIDUAL
+Allocator supports freeing individual allocations
+.TP
+.B FYACF_CAN_FREE_TAG
+Allocator supports releasing entire tags
+.TP
+.B FYACF_CAN_DEDUP
+Allocator supports deduplication
+.TP
+.B FYACF_HAS_CONTAINS
+Allocator can report if it contains a pointer (even if inefficiently)
+.TP
+.B FYACF_HAS_EFFICIENT_CONTAINS
+Allocator can report if it contains a pointer (efficiently)
+.TP
+.B FYACF_HAS_TAGS
+Allocator has individual tags or not
+.TP
+.B FYACF_CAN_LOOKUP
+Allocator supports lookup for content
+.UNINDENT
+.SS Description
+.sp
+These flags describe what operations an allocator supports.
+.SS fy_allocator_get_caps
+.INDENT 0.0
+.TP
+.B enum \fI\%fy_allocator_cap_flags\fP fy_allocator_get_caps(struct fy_allocator *a) 
+Get allocator capabilities
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Retrieve the capabilities of an allocator.
+.SS Return
+.sp
+The capabilities of the allocator
+.SS fy_allocator_contains
+.INDENT 0.0
+.TP
+.B bool fy_allocator_contains(struct fy_allocator *a, int tag, const void *ptr) 
+Check if a allocator contains a pointer
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator
+.IP \(bu 2
+\fBtag\fP (int) – Tag to search in, \-1 for all
+.IP \(bu 2
+\fBptr\fP (const void*) – The object pointer
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Report if an allocator contains the pointer
+.SS Return
+.sp
+true if the pointer ptr is contained in the allocator, false otherwise
+.SS fy_allocator_get_tag_linear_size
+.INDENT 0.0
+.TP
+.B ssize_t fy_allocator_get_tag_linear_size(struct fy_allocator *a, int tag) 
+Get the linear size of an allocator tag
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator
+.IP \(bu 2
+\fBtag\fP (int) – The tag
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Retrieve the linear size of the content of a tag.
+That is the size of a buffer if one was to copy the content of the tag in
+that buffer in a linear manner.
+.SS Return
+.sp
+The linear size of the content stored in the tag or \-1 in case of an error.
+.SS fy_allocator_get_tag_single_linear
+.INDENT 0.0
+.TP
+.B const void *fy_allocator_get_tag_single_linear(struct fy_allocator *a, int tag, size_t *sizep) 
+Get the linear extend of a tag
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator
+.IP \(bu 2
+\fBtag\fP (int) – The tag
+.IP \(bu 2
+\fBsizep\fP (size_t*) – Pointer to a variable that will be filled with the size.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+If a tag stores it’s content in a single linear buffer, retrieve it
+directly. This is possible only under careful arrangement of allocator
+configuration, but it is an important optimization case.
+.SS Return
+.sp
+A pointer to the linear content of the tag, or NULL if othersize.
+.SS struct fy_linear_allocator_cfg
+.INDENT 0.0
+.TP
+.B struct fy_linear_allocator_cfg 
+linear allocator configuration
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+struct fy_linear_allocator_cfg {
+    void *buf;
+    size_t size;
+}
+.EE
+.UNINDENT
+.UNINDENT
+.SS Members
+.INDENT 0.0
+.TP
+.B buf
+A pointer to a buffer that will be used, or NULL in order to allocate
+.TP
+.B size
+Size of the buffer in bytes
+.UNINDENT
+.SS enum fy_mremap_arena_type
+.INDENT 0.0
+.TP
+.B enum fy_mremap_arena_type 
+The mremap allocator arena types
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+enum fy_mremap_arena_type {
+    FYMRAT_DEFAULT,
+    FYMRAT_MALLOC,
+    FYMRAT_MMAP
+};
+.EE
+.UNINDENT
+.UNINDENT
+.SS Constants
+.INDENT 0.0
+.TP
+.B FYMRAT_DEFAULT
+Use what’s optimal for this platform
+.TP
+.B FYMRAT_MALLOC
+Use malloc/realloc arena type (not recommended)
+.TP
+.B FYMRAT_MMAP
+Use mmap/mremap arena type
+.UNINDENT
+.SS struct fy_mremap_allocator_cfg
+.INDENT 0.0
+.TP
+.B struct fy_mremap_allocator_cfg 
+mremap allocator configuration
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+struct fy_mremap_allocator_cfg {
+    size_t big_alloc_threshold;
+    size_t empty_threshold;
+    size_t minimum_arena_size;
+    float grow_ratio;
+    float balloon_ratio;
+    enum fy_mremap_arena_type arena_type;
+}
+.EE
+.UNINDENT
+.UNINDENT
+.SS Members
+.INDENT 0.0
+.TP
+.B big_alloc_threshold
+Threshold for immediately creating a new arena.
+.TP
+.B empty_threshold
+The threshold under which an arena is moved to the full list.
+.TP
+.B minimum_arena_size
+The minimum (and starting size) of an arena.
+.TP
+.B grow_ratio
+The ratio which an arena will try to grow if full (>1.0)
+.TP
+.B balloon_ratio
+The multiplier for the vm area first allocation
+.TP
+.B arena_type
+The arena type
+.UNINDENT
+.SS Description
+.sp
+If any of the fields is zero, then the system will provide (somewhat)
+reasonable defaults.
+.SS struct fy_dedup_allocator_cfg
+.INDENT 0.0
+.TP
+.B struct fy_dedup_allocator_cfg 
+dedup allocator configuration
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+struct fy_dedup_allocator_cfg {
+    struct fy_allocator *parent_allocator;
+    unsigned int bloom_filter_bits;
+    unsigned int bucket_count_bits;
+    size_t dedup_threshold;
+    unsigned int chain_length_grow_trigger;
+    size_t estimated_content_size;
+    float minimum_bucket_occupancy;
+}
+.EE
+.UNINDENT
+.UNINDENT
+.SS Members
+.INDENT 0.0
+.TP
+.B parent_allocator
+The parent allocator (required)
+.TP
+.B bloom_filter_bits
+Number of bits of the bloom filter (or 0 for default)
+.TP
+.B bucket_count_bits
+Number of bits for the bucket count (or 0 for default)
+.TP
+.B dedup_threshold
+Number of bytes over which dedup takes place (default 0=always)
+.TP
+.B chain_length_grow_trigger
+Chain length of a bucket over which a grow takes place (or 0 for auto)
+.TP
+.B estimated_content_size
+Estimated content size (or 0 for don’t know)
+.TP
+.B minimum_bucket_occupancy
+The minimum amount that a tag bucket must be full before
+growth is allowed (default 50%, or 0.0)
+.UNINDENT
+.SS enum fy_auto_allocator_scenario_type
+.INDENT 0.0
+.TP
+.B enum fy_auto_allocator_scenario_type 
+auto allocator scenario type
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+enum fy_auto_allocator_scenario_type {
+    FYAST_PER_TAG_FREE,
+    FYAST_PER_TAG_FREE_DEDUP,
+    FYAST_PER_OBJ_FREE,
+    FYAST_PER_OBJ_FREE_DEDUP,
+    FYAST_SINGLE_LINEAR_RANGE,
+    FYAST_SINGLE_LINEAR_RANGE_DEDUP
+};
+.EE
+.UNINDENT
+.UNINDENT
+.SS Constants
+.INDENT 0.0
+.TP
+.B FYAST_PER_TAG_FREE
+only per tag freeing, no individual obj free
+.TP
+.B FYAST_PER_TAG_FREE_DEDUP
+per tag freeing, dedup obj store
+.TP
+.B FYAST_PER_OBJ_FREE
+object freeing allowed, tag freeing still works
+.TP
+.B FYAST_PER_OBJ_FREE_DEDUP
+per obj freeing, dedup obj store
+.TP
+.B FYAST_SINGLE_LINEAR_RANGE
+just a single linear range, no frees at all
+.TP
+.B FYAST_SINGLE_LINEAR_RANGE_DEDUP
+single linear range, with dedup
+.UNINDENT
+.SS struct fy_auto_allocator_cfg
+.INDENT 0.0
+.TP
+.B struct fy_auto_allocator_cfg 
+auto allocator configuration
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+struct fy_auto_allocator_cfg {
+    enum fy_auto_allocator_scenario_type scenario;
+    size_t estimated_max_size;
+}
+.EE
+.UNINDENT
+.UNINDENT
+.SS Members
+.INDENT 0.0
+.TP
+.B scenario
+Auto allocator scenario
+.TP
+.B estimated_max_size
+Estimated max content size (or 0 for don’t know)
+.UNINDENT
+.SH THREADING
+.sp
+This header provides a simple, portable thread pool built on POSIX threads.
+It is used internally by the BLAKE3 hasher and the generic type system’s
+parallel map/filter/reduce operations, and is also available as a public
+API for application use.
+.sp
+Two operational modes are supported:
+.sp
+\fBWork\-stealing mode\fP (\fBFYTPCF_STEAL_MODE\fP): the recommended mode for
+data\-parallel loops.  Submit a batch of work items with
+\fBfy_thread_work_join()\fP; the pool distributes items across threads and
+the caller participates in the execution.  About 30% faster than
+reservation mode for typical workloads.
+.sp
+\fBReservation mode\fP: explicitly reserve a thread with
+\fBfy_thread_reserve()\fP, submit a single work item with
+\fBfy_thread_submit_work()\fP, continue doing other work in the calling
+thread, then synchronise with \fBfy_thread_wait_work()\fP\&.  Release the
+thread afterwards with \fBfy_thread_unreserve()\fP\&.
+.sp
+Three convenience wrappers over \fBfy_thread_work_join()\fP cover the
+most common data\-parallel patterns:
+.INDENT 0.0
+.IP \(bu 2
+\fBfy_thread_args_join()\fP      — array of heterogeneous argument pointers
+.IP \(bu 2
+\fBfy_thread_arg_array_join()\fP — flat array of equal\-sized argument items
+.IP \(bu 2
+\fBfy_thread_arg_join()\fP       — same argument broadcast to N invocations
+.UNINDENT
+.sp
+An optional \fBfy_work_check_fn\fP callback lets each call site decide at
+runtime whether a given item is worth offloading to a thread or running
+inline.
+.SS typedef fy_work_exec_fn
+.INDENT 0.0
+.TP
+.B void fy_work_exec_fn(void *arg) 
+Work exec function
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBarg\fP (void*) – The argument to the method
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+The callback executed on work submission
+.SS typedef fy_work_check_fn
+.INDENT 0.0
+.TP
+.B bool fy_work_check_fn(const void *arg) 
+Work check function
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBarg\fP (const void*) – The argument to the method
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Work checker function to decide if it’s worth to
+offload to a thread.
+.SS Return
+.sp
+true if it should offload to thread, false otherwise
+.SS struct fy_thread_work
+.INDENT 0.0
+.TP
+.B struct fy_thread_work 
+Work submitted to a thread for execution
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+struct fy_thread_work {
+    fy_work_exec_fn fn;
+    void *arg;
+    struct fy_work_pool *wp;
+}
+.EE
+.UNINDENT
+.UNINDENT
+.SS Members
+.INDENT 0.0
+.TP
+.B fn
+The execution function for this work
+.TP
+.B arg
+The argument to the fn
+.TP
+.B wp
+Used internally, must be set to NULL on entry
+.UNINDENT
+.SS Description
+.sp
+This is the structure describing the work submitted
+to a thread for execution.
+.SS enum fy_thread_pool_cfg_flags
+.INDENT 0.0
+.TP
+.B enum fy_thread_pool_cfg_flags 
+Thread pool configuration flags
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+enum fy_thread_pool_cfg_flags {
+    FYTPCF_STEAL_MODE
+};
+.EE
+.UNINDENT
+.UNINDENT
+.SS Constants
+.INDENT 0.0
+.TP
+.B FYTPCF_STEAL_MODE
+Enable steal mode for the thread pool
+.UNINDENT
+.SS Description
+.sp
+These flags control the operation of the thread pool.
+For now only the steal mode flag is defined.
+.SS struct fy_thread_pool_cfg
+.INDENT 0.0
+.TP
+.B struct fy_thread_pool_cfg 
+thread pool configuration structure.
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+struct fy_thread_pool_cfg {
+    enum fy_thread_pool_cfg_flags flags;
+    unsigned int num_threads;
+    void *userdata;
+}
+.EE
+.UNINDENT
+.UNINDENT
+.SS Members
+.INDENT 0.0
+.TP
+.B flags
+Thread pool configuration flags
+.TP
+.B num_threads
+Number of threads, if 0 == online CPUs
+.TP
+.B userdata
+A userdata pointer
+.UNINDENT
+.SS Description
+.sp
+Argument to the \fI\%fy_thread_pool_create()\fP method.
+.SS fy_thread_pool_create
+.INDENT 0.0
+.TP
+.B struct fy_thread_pool *fy_thread_pool_create(const struct \fI\%fy_thread_pool_cfg\fP *cfg) 
+Create a thread pool
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBcfg\fP (const struct \fI\%fy_thread_pool_cfg\fP*) – The configuration for the thread pool
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Creates a thread pool with its configuration \fBcfg\fP
+The thread pool may be destroyed by a corresponding call to
+\fI\%fy_thread_pool_destroy()\fP\&.
+.SS Return
+.sp
+A pointer to the thread pool or NULL in case of an error.
+.SS fy_thread_pool_destroy
+.INDENT 0.0
+.TP
+.B void fy_thread_pool_destroy(struct fy_thread_pool *tp) 
+Destroy the given thread pool
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtp\fP (struct fy_thread_pool*) – The thread pool to destroy
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Destroy a thread pool created earlier via \fI\%fy_thread_pool_create()\fP\&.
+Note that this function will block until all threads
+of the pool are destroyed.
+.SS fy_thread_pool_get_num_threads
+.INDENT 0.0
+.TP
+.B int fy_thread_pool_get_num_threads(struct fy_thread_pool *tp) 
+Get the number of threads
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtp\fP (struct fy_thread_pool*) – The thread pool
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Returns the actual number of created threads.
+.SS Return
+.sp
+> 0 for the number of actual threads created,
+\-1 on error
+.SS fy_thread_pool_get_cfg
+.INDENT 0.0
+.TP
+.B const struct \fI\%fy_thread_pool_cfg\fP *fy_thread_pool_get_cfg(struct fy_thread_pool *tp) 
+Get the configuration of a thread pool
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtp\fP (struct fy_thread_pool*) – The thread pool
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The configuration of the thread pool
+.SS fy_thread_reserve
+.INDENT 0.0
+.TP
+.B struct fy_thread *fy_thread_reserve(struct fy_thread_pool *tp) 
+Reserve a thread from the pool.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtp\fP (struct fy_thread_pool*) – The thread pool
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Reserve a thread from the pool and return it.
+Note this is only valid for a non\-work stealing thread pool.
+You release the thread again via a call to fy_thread_unreserve.
+.SS Return
+.sp
+A reserved thread if not NULL, NULL if no threads are available.
+.SS fy_thread_unreserve
+.INDENT 0.0
+.TP
+.B void fy_thread_unreserve(struct fy_thread *t) 
+Unreserve a previously reserved thread
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBt\fP (struct fy_thread*) – The thread
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Unreserve a thread previously reserved via a call to \fI\%fy_thread_reserve()\fP
+Note this is only valid for a non\-work stealing thread pool.
+.SS fy_thread_submit_work
+.INDENT 0.0
+.TP
+.B int fy_thread_submit_work(struct fy_thread *t, struct \fI\%fy_thread_work\fP *work) 
+Submit work for execution
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBt\fP (struct fy_thread*) – The thread
+.IP \(bu 2
+\fBwork\fP (struct \fI\%fy_thread_work\fP*) – The work
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Submit work for execution. If successful the thread
+will start executing the work in parallel with the
+calling thread. You can wait for the thread to
+terminate via a call to \fI\%fy_thread_wait_work()\fP\&.
+The thread must have been reserved earlier via \fI\%fy_thread_reserve()\fP
+.sp
+Note this is only valid for a non\-work stealing thread pool.
+.SS Return
+.sp
+0 if work has been submitted, \-1 otherwise.
+.SS fy_thread_wait_work
+.INDENT 0.0
+.TP
+.B int fy_thread_wait_work(struct fy_thread *t) 
+Wait for completion of submitted work
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBt\fP (struct fy_thread*) – The thread
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Wait until submitted work to the thread has finished.
+Note this is only valid for a non\-work stealing thread pool.
+.SS Return
+.sp
+0 if work finished, \-1 on error.
+.SS fy_thread_pool_are_all_reserved
+.INDENT 0.0
+.TP
+.B bool fy_thread_pool_are_all_reserved(struct fy_thread_pool *tp) 
+Check whether no threads are free
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtp\fP (struct fy_thread_pool*) – The thread pool
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+true if all threads are currently reserved, false otherwise.
+.SS fy_thread_pool_is_any_reserved
+.INDENT 0.0
+.TP
+.B bool fy_thread_pool_is_any_reserved(struct fy_thread_pool *tp) 
+Check whether at least one thread is reserved
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtp\fP (struct fy_thread_pool*) – The thread pool
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+true if any thread is currently reserved, false otherwise.
+.SS fy_thread_work_join
+.INDENT 0.0
+.TP
+.B void fy_thread_work_join(struct fy_thread_pool *tp, struct \fI\%fy_thread_work\fP *works, size_t work_count, \fI\%fy_work_check_fn\fP check_fn) 
+Submit works for execution and wait
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtp\fP (struct fy_thread_pool*) – The thread pool
+.IP \(bu 2
+\fBworks\fP (struct \fI\%fy_thread_work\fP*) – Pointer to an array of works sized \fBwork_count\fP
+.IP \(bu 2
+\fBwork_count\fP (size_t) – The size of the \fBworks\fP array
+.IP \(bu 2
+\fBcheck_fn\fP (\fI\%fy_work_check_fn\fP) – Pointer to a check function, or NULL for no checks
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Submit works for possible parallel execution. If no offloading
+is possible at the time execute in the current context.
+It is possible to use in both stealing and non\-stealing mode
+with the difference being that stealing mode is about 30% faster.
+.SS fy_thread_args_join
+.INDENT 0.0
+.TP
+.B void fy_thread_args_join(struct fy_thread_pool *tp, \fI\%fy_work_exec_fn\fP fn, \fI\%fy_work_check_fn\fP check_fn, void **args, size_t count) 
+Execute function in parallel using arguments as pointers
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtp\fP (struct fy_thread_pool*) – The thread pool
+.IP \(bu 2
+\fBfn\fP (\fI\%fy_work_exec_fn\fP) – The function to execute in parallel
+.IP \(bu 2
+\fBcheck_fn\fP (\fI\%fy_work_check_fn\fP) – Pointer to a check function, or NULL for no checks
+.IP \(bu 2
+\fBargs\fP (void**) – An args array sized \fBcount\fP of argument pointers
+.IP \(bu 2
+\fBcount\fP (size_t) – The count of the args array items
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Execute \fBfn\fP possibly in parallel using the threads in the thread pool.
+The arguments of the function are provided by the args array.
+.SS fy_thread_arg_array_join
+.INDENT 0.0
+.TP
+.B void fy_thread_arg_array_join(struct fy_thread_pool *tp, \fI\%fy_work_exec_fn\fP fn, \fI\%fy_work_check_fn\fP check_fn, void *args, size_t argsize, size_t count) 
+Execute function in parallel using argument array
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtp\fP (struct fy_thread_pool*) – The thread pool
+.IP \(bu 2
+\fBfn\fP (\fI\%fy_work_exec_fn\fP) – The function to execute in parallel
+.IP \(bu 2
+\fBcheck_fn\fP (\fI\%fy_work_check_fn\fP) – Pointer to a check function, or NULL for no checks
+.IP \(bu 2
+\fBargs\fP (void*) – An args array of \fBargsize\fP items
+.IP \(bu 2
+\fBargsize\fP (size_t) – The size of each argument array item
+.IP \(bu 2
+\fBcount\fP (size_t) – The count of the args array items
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Execute \fBfn\fP possibly in parallel using the threads in the thread pool.
+The arguments of the function are provided by the args array.
+.SS fy_thread_arg_join
+.INDENT 0.0
+.TP
+.B void fy_thread_arg_join(struct fy_thread_pool *tp, \fI\%fy_work_exec_fn\fP fn, \fI\%fy_work_check_fn\fP check_fn, void *arg, size_t count) 
+Execute function in parallel with the same argument
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtp\fP (struct fy_thread_pool*) – The thread pool
+.IP \(bu 2
+\fBfn\fP (\fI\%fy_work_exec_fn\fP) – The function to execute in parallel
+.IP \(bu 2
+\fBcheck_fn\fP (\fI\%fy_work_check_fn\fP) – Pointer to a check function, or NULL for no checks
+.IP \(bu 2
+\fBarg\fP (void*) – The common argument
+.IP \(bu 2
+\fBcount\fP (size_t) – The count of executions
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Execute \fBfn\fP possibly in parallel using the threads in the thread pool.
+The argument of the functions is the same.
+.SH BLAKE3 HASHING
+.sp
+This header exposes libfyaml’s embedded BLAKE3 hasher.  BLAKE3 is a
+modern, highly parallelisable cryptographic hash function producing
+256\-bit (32\-byte) output.
+.sp
+Three hashing modes are supported, selected via
+\fBstruct fy_blake3_hasher_cfg\fP at creation time:
+.INDENT 0.0
+.IP \(bu 2
+\fBStandard\fP: plain BLAKE3 hash (default when key and context are NULL)
+.IP \(bu 2
+\fBKeyed\fP: MAC\-like hash using a 32\-byte key
+.IP \(bu 2
+\fBKey derivation\fP: derive a subkey from an application context string
+.UNINDENT
+.sp
+The hasher can be used in streaming fashion (\fBupdate\fP / \fBfinalize\fP)
+or for one\-shot hashing of memory regions (\fBfy_blake3_hash()\fP) and
+files (\fBfy_blake3_hash_file()\fP).  File hashing uses \fBmmap\fP by
+default for large files and can be further parallelised via a thread pool.
+.sp
+Runtime SIMD backend selection is automatic: the best available backend
+(SSE2, SSE4.1, AVX2, AVX512 on x86; NEON on ARM; portable C otherwise)
+is used unless a specific backend name is requested in the config.
+Use \fBfy_blake3_backend_iterate()\fP to enumerate available backends.
+.sp
+The hasher object is reusable: call \fBfy_blake3_hasher_reset()\fP to
+start a new hash without reallocating the object.
+.SS fy_blake3_backend_iterate
+.INDENT 0.0
+.TP
+.B const char *fy_blake3_backend_iterate(const char **prevp) 
+Iterate over the supported BLAKE3 backends
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBprevp\fP (const char**) – The previous backend pointer, or NULL at start
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+This method iterates over the supported BLAKE3 backends.
+The start of the iteration is signalled by a NULL in *prevp.
+.sp
+The default backend is always the last in sequence, so for
+example if the order is [ “portable”, “sse2”, NULL ] the
+default is “sse2”.
+.SS Return
+.sp
+The next backend or NULL at the end.
+.SS struct fy_blake3_hasher_cfg
+.INDENT 0.0
+.TP
+.B struct fy_blake3_hasher_cfg 
+BLAKE3 hasher configuration
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+struct fy_blake3_hasher_cfg {
+    const char *backend;
+    size_t file_buffer;
+    size_t mmap_min_chunk;
+    size_t mmap_max_chunk;
+    bool no_mmap;
+    const uint8_t *key;
+    const void *context;
+    size_t context_len;
+    struct fy_thread_pool *tp;
+    int num_threads;
+}
+.EE
+.UNINDENT
+.UNINDENT
+.SS Members
+.INDENT 0.0
+.TP
+.B backend
+NULL for default, or a specific backend name
+.TP
+.B file_buffer
+Use this amount of buffer for buffering, zero for default
+.TP
+.B mmap_min_chunk
+Minimum chunk size for mmap case
+.TP
+.B mmap_max_chunk
+Maximum chunk size for mmap case
+.TP
+.B no_mmap
+Disable mmap for file access
+.TP
+.B key
+pointer to a FY_BLAKE3_KEY_LEN area when in keyed mode.
+NULL otherwise.
+.TP
+.B context
+pointer to a context when in key derivation mode.
+NULL otherwise.
+.TP
+.B context_len
+The size of the context when in key derivation mode.
+0 otherwise.
+.TP
+.B tp
+The thread pool to use, if NULL, create a private one
+.TP
+.B num_threads
+Number of threads to use
+\- 0 means default: NUM_CPUS * 3 / 2
+\- > 0 specific number of threads
+\- \-1 disable threading entirely
+.UNINDENT
+.SS Description
+.sp
+Argument to the \fI\%fy_blake3_hasher_create()\fP method which
+is the fyaml’s user facing BLAKE3 API.
+It is very minimal, on purpose, since it’s meant to be
+exposing a full blown BLAKE3 API.
+.SS fy_blake3_hasher_create
+.INDENT 0.0
+.TP
+.B struct fy_blake3_hasher *fy_blake3_hasher_create(const struct \fI\%fy_blake3_hasher_cfg\fP *cfg) 
+Create a BLAKE3 hasher object.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBcfg\fP (const struct \fI\%fy_blake3_hasher_cfg\fP*) – The configuration for the BLAKE3 hasher
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Creates a BLAKE3 hasher with its configuration \fBcfg\fP
+The hasher may be destroyed by a corresponding call to
+\fI\%fy_blake3_hasher_destroy()\fP\&.
+.SS Return
+.sp
+A pointer to the BLAKE3 hasher or NULL in case of an error.
+.SS fy_blake3_hasher_destroy
+.INDENT 0.0
+.TP
+.B void fy_blake3_hasher_destroy(struct fy_blake3_hasher *fyh) 
+Destroy the given BLAKE3 hasher
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfyh\fP (struct fy_blake3_hasher*) – The BLAKE3 hasher to destroy
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Destroy a BLAKE3 hasher created earlier via \fI\%fy_blake3_hasher_create()\fP\&.
+.SS fy_blake3_hasher_update
+.INDENT 0.0
+.TP
+.B void fy_blake3_hasher_update(struct fy_blake3_hasher *fyh, const void *input, size_t input_len) 
+Update the BLAKE3 hasher state with the given input
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfyh\fP (struct fy_blake3_hasher*) – The BLAKE3 hasher
+.IP \(bu 2
+\fBinput\fP (const void*) – Pointer to the input
+.IP \(bu 2
+\fBinput_len\fP (size_t) – Size of the input in bytes
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Updates the BLAKE3 hasher state by hashing the given input.
+.SS fy_blake3_hasher_finalize
+.INDENT 0.0
+.TP
+.B const uint8_t *fy_blake3_hasher_finalize(struct fy_blake3_hasher *fyh) 
+Finalize the hash and get output
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfyh\fP (struct fy_blake3_hasher*) – The BLAKE3 hasher
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Finalizes the BLAKE3 hasher and returns the output
+.SS Return
+.sp
+A pointer to the BLAKE3 output (sized FY_BLAKE3_OUT_LEN), or NULL
+in case of an error.
+.SS fy_blake3_hasher_reset
+.INDENT 0.0
+.TP
+.B void fy_blake3_hasher_reset(struct fy_blake3_hasher *fyh) 
+Resets the hasher
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfyh\fP (struct fy_blake3_hasher*) – The BLAKE3 hasher
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Resets the hasher for re\-use
+.SS fy_blake3_hash
+.INDENT 0.0
+.TP
+.B const uint8_t *fy_blake3_hash(struct fy_blake3_hasher *fyh, const void *mem, size_t size) 
+BLAKE3 hash a memory area
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfyh\fP (struct fy_blake3_hasher*) – The BLAKE3 hasher
+.IP \(bu 2
+\fBmem\fP (const void*) – Pointer to the memory to use
+.IP \(bu 2
+\fBsize\fP (size_t) – The size of the memory in bytes
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Hash a memory area and return the BLAKE3 output.
+.SS Return
+.sp
+A pointer to the BLAKE3 output (sized FY_BLAKE3_OUT_LEN), or NULL
+in case of an error.
+.SS fy_blake3_hash_file
+.INDENT 0.0
+.TP
+.B const uint8_t *fy_blake3_hash_file(struct fy_blake3_hasher *fyh, const char *filename) 
+BLAKE3 hash a file.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfyh\fP (struct fy_blake3_hasher*) – The BLAKE3 hasher
+.IP \(bu 2
+\fBfilename\fP (const char*) – The filename
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Hash the given file (possibly using mmap)
+.SS Return
+.sp
+A pointer to the BLAKE3 output (sized FY_BLAKE3_OUT_LEN), or NULL
+in case of an error.
+.SH ALIGNMENT
+.sp
+This header provides portable utilities for working with memory alignment
+requirements, from compile\-time attributes to runtime allocation and
+pointer\-rounding helpers.  It has no libfyaml dependencies.
+.sp
+\fBCompile\-time attributes\fP
+.INDENT 0.0
+.IP \(bu 2
+\fBFY_ALIGNED_TO(x)\fP   — apply an alignment attribute to a variable or
+type; expands to \fB__attribute__((aligned(x)))\fP on GCC/Clang and
+\fB__declspec(align(x))\fP on MSVC
+.IP \(bu 2
+\fBFY_CACHELINE_ALIGN\fP — shorthand for cache\-line (64\-byte) alignment,
+useful for preventing false sharing between fields accessed concurrently
+by different threads
+.UNINDENT
+.sp
+\fBValue rounding\fP
+.INDENT 0.0
+.IP \(bu 2
+\fBFY_ALIGN(align, x)\fP         — round an integer up to the next
+multiple of \fBalign\fP (must be a power of two)
+.IP \(bu 2
+\fBFY_CACHELINE_SIZE_ALIGN(x)\fP  — round up to the next cache\-line boundary
+.IP \(bu 2
+\fBfy_ptr_align(p, align)\fP      — round a pointer up to alignment
+.IP \(bu 2
+\fBfy_size_t_align(sz, align)\fP  — round a size_t value up to alignment
+.UNINDENT
+.sp
+\fBHeap allocation\fP
+.INDENT 0.0
+.IP \(bu 2
+\fBfy_align_alloc(align, size)\fP / \fBfy_align_free(p)\fP — allocate and
+free memory with an explicit alignment (\fBposix_memalign\fP on POSIX,
+\fB_aligned_malloc\fP on Windows)
+.IP \(bu 2
+\fBfy_cacheline_alloc(size)\fP    / \fBfy_cacheline_free(p)\fP — convenience
+wrappers that fix the alignment at \fBFY_CACHELINE_SIZE\fP
+.UNINDENT
+.sp
+\fBStack allocation\fP
+.INDENT 0.0
+.IP \(bu 2
+\fBfy_alloca_align(sz, align)\fP — allocate a block on the stack with a
+specified alignment; uses plain \fBalloca\fP when alignment fits within
+\fBmax_align_t\fP, otherwise over\-allocates and advances the pointer
+.UNINDENT
+.SS macro FY_ALIGNED_TO
+.INDENT 0.0
+.TP
+.B FY_ALIGNED_TO(x) 
+Declare that a variable or type has a minimum alignment.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBx\fP – Required alignment in bytes (must be a power of two).
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Expands to the appropriate compiler\-specific alignment attribute:
+\- GCC/Clang: \fB__attribute__((aligned(x)))\fP
+\- MSVC:      should be \fB__declspec(align(x))\fP but MSVC does not support trailing alignment…
+\- Other:     empty (no enforced alignment)
+.SS macro FY_ALIGN
+.INDENT 0.0
+.TP
+.B FY_ALIGN(_align, _x) 
+Round \fB_x\fP up to the next multiple of \fB_align\fP\&.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_align\fP – Alignment boundary (power of two).
+.IP \(bu 2
+\fB_x\fP – Value to round up.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+\fB_align\fP must be a power of two. The result is always >= \fB_x\fP and
+is the smallest multiple of \fB_align\fP that is >= \fB_x\fP\&.
+.SS Return
+.sp
+\fB_x\fP rounded up to the nearest multiple of \fB_align\fP\&.
+.SS macro FY_CACHELINE_SIZE
+.INDENT 0.0
+.TP
+.B FY_CACHELINE_SIZE() 
+Size of a CPU cache line in bytes.
+.UNINDENT
+.SS Description
+.sp
+Universally 64 bytes on all currently supported architectures
+(x86, x86_64, ARM, ARM64, PowerPC).
+.SS macro FY_CACHELINE_SIZE_ALIGN
+.INDENT 0.0
+.TP
+.B FY_CACHELINE_SIZE_ALIGN(_x) 
+Round \fB_x\fP up to the next cache\-line boundary.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_x\fP – Value to round up.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+\fB_x\fP rounded up to the nearest multiple of \fBFY_CACHELINE_SIZE\fP\&.
+.SS macro FY_CACHELINE_ALIGN
+.INDENT 0.0
+.TP
+.B FY_CACHELINE_ALIGN() 
+Alignment attribute for cache\-line\-aligned objects.
+.UNINDENT
+.SS Description
+.sp
+Apply to a variable or struct field to ensure it starts on a cache\-line
+boundary, preventing false sharing between concurrent readers/writers.
+.sp
+Example:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+struct my_data {
+    FY_CACHELINE_ALIGN int hot_counter;
+    int cold_field;
+};
+.EE
+.UNINDENT
+.UNINDENT
+.SS fy_align_alloc
+.INDENT 0.0
+.TP
+.B void *fy_align_alloc(size_t align, size_t size) 
+Allocate memory with a specific alignment.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBalign\fP (size_t) – Required alignment in bytes (must be a power of two and >= \fBsizeof(void *)\fP ).
+.IP \(bu 2
+\fBsize\fP (size_t) – Number of bytes to allocate.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Allocates \fBsize\fP bytes rounded up to the nearest multiple of \fBalign\fP, with
+the returned pointer guaranteed to be a multiple of \fBalign\fP\&.
+.sp
+Uses \fBposix_memalign()\fP on POSIX systems and \fB_aligned_malloc()\fP on
+Windows. Free the result with \fI\%fy_align_free()\fP\&.
+.SS Return
+.sp
+Pointer to the allocated block, or NULL on failure.
+.SS fy_align_free
+.INDENT 0.0
+.TP
+.B void fy_align_free(void *p) 
+Free memory allocated by \fI\%fy_align_alloc()\fP\&.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBp\fP (void*) – Pointer previously returned by \fI\%fy_align_alloc()\fP, or NULL.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+A NULL \fBp\fP is silently ignored.
+.SS fy_cacheline_alloc
+.INDENT 0.0
+.TP
+.B void *fy_cacheline_alloc(size_t size) 
+Allocate cache\-line\-aligned memory.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBsize\fP (size_t) – Number of bytes to allocate.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Equivalent to \fBfy_align_alloc(FY_CACHELINE_SIZE, size)\fP\&.
+Free the result with \fI\%fy_cacheline_free()\fP\&.
+.SS Return
+.sp
+Cache\-line\-aligned pointer, or NULL on failure.
+.SS fy_cacheline_free
+.INDENT 0.0
+.TP
+.B void fy_cacheline_free(void *p) 
+Free memory allocated by \fI\%fy_cacheline_alloc()\fP\&.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBp\fP (void*) – Pointer previously returned by \fI\%fy_cacheline_alloc()\fP, or NULL.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+A NULL \fBp\fP is silently ignored.
+.SS fy_ptr_align
+.INDENT 0.0
+.TP
+.B void *fy_ptr_align(void *p, size_t align) 
+Round a pointer up to the next multiple of \fBalign\fP\&.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBp\fP (void*) – Pointer to align.
+.IP \(bu 2
+\fBalign\fP (size_t) – Alignment boundary in bytes (must be a power of two).
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Does not allocate any memory; the caller is responsible for ensuring
+the underlying buffer extends at least (@align \- 1) bytes past \fBp\fP\&.
+.SS Return
+.sp
+\fBp\fP rounded up to the nearest multiple of \fBalign\fP\&.
+.SS fy_size_t_align
+.INDENT 0.0
+.TP
+.B size_t fy_size_t_align(size_t size, size_t align) 
+Round a size_t value up to the next multiple of \fBalign\fP\&.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBsize\fP (size_t) – Value to round up.
+.IP \(bu 2
+\fBalign\fP (size_t) – Alignment boundary in bytes (must be a power of two).
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+\fBsize\fP rounded up to the nearest multiple of \fBalign\fP\&.
+.SS macro fy_alloca_align
+.INDENT 0.0
+.TP
+.B fy_alloca_align(_sz, _align) 
+Stack\-allocate a buffer with a specific alignment.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_sz\fP – Number of bytes to allocate.
+.IP \(bu 2
+\fB_align\fP – Required alignment in bytes (must be a power of two).
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Expands to a statement expression (GCC extension) that allocates \fB_sz\fP bytes
+on the stack, aligned to \fB_align\fP bytes. When \fB_align\fP <= \fBsizeof(max_align_t)\fP
+a plain \fBalloca()\fP is used; otherwise \fB_sz\fP + \fB_align\fP \- 1 bytes are allocated
+and the pointer is advanced with \fI\%fy_ptr_align()\fP\&.
+This macro does not work on MSVC.
+.sp
+The result is valid only for the lifetime of the enclosing function; do not
+return or store it beyond that scope.
+.SS Return
+.sp
+Stack pointer aligned to \fB_align\fP\&.
+.SH ENDIANNESS
+.sp
+This header provides a portable way to include the platform’s byte\-order
+detection headers and ensures the following macros are always defined:
+.INDENT 0.0
+.IP \(bu 2
+\fB__BYTE_ORDER\fP  — the byte order of the current platform
+.IP \(bu 2
+\fB__BIG_ENDIAN\fP  — big\-endian sentinel value
+.IP \(bu 2
+\fB__LITTLE_ENDIAN\fP — little\-endian sentinel value
+.UNINDENT
+.sp
+Usage:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+#include <libfyaml/fy\-internal\-endian.h>
+
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+    // little\-endian path
+#else
+    // big\-endian path
+#endif
+.EE
+.UNINDENT
+.UNINDENT
+.sp
+Supported platforms:
+\- Linux / Cygwin / OpenBSD / GNU Hurd / Emscripten — via \fB<endian.h>\fP
+\- macOS / iOS — via \fB<libkern/OSByteOrder.h>\fP + \fB<machine/endian.h>\fP
+\- NetBSD / FreeBSD / DragonFly BSD — via \fB<sys/endian.h>\fP
+\- Windows (MSVC) — via \fB<winsock2.h>\fP (+ \fB<sys/param.h>\fP for MinGW)
+.sp
+The non\-standard \fBBYTE_ORDER\fP, \fBBIG_ENDIAN\fP, and \fBLITTLE_ENDIAN\fP
+spellings are aliased to the double\-underscore variants if needed.
+.SS macro bswap_8
+.INDENT 0.0
+.TP
+.B bswap_8(x) 
+Byte\-swap an 8\-bit value (no\-op).
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBx\fP – The 8\-bit value.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Defined for symmetry with \fBbswap_16()\fP, \fBbswap_32()\fP, and \fBbswap_64()\fP\&.
+Swapping a single byte is always a no\-op.
+.SS Return
+.sp
+\fBx\fP unchanged.
+.SH VARIABLE-LENGTH SIZE ENCODING
+.sp
+Encodes unsigned integer sizes into a compact, self\-delimiting byte stream.
+The encoding is modelled after the variable\-length quantity (VLQ / LEB128
+big\-endian variant) used in MIDI and other binary formats:
+.INDENT 0.0
+.IP \(bu 2
+Each byte carries 7 bits of payload in bits 6..0.
+.IP \(bu 2
+Bit 7 (MSB) is a \fIcontinuation flag\fP: 1 means more bytes follow, 0 means
+this is the last byte.
+.IP \(bu 2
+Exception: the final (maximum\-length) byte is always 8 bits of payload
+with no continuation bit, allowing the full 64\-bit / 32\-bit range.
+.UNINDENT
+.sp
+\fB64\-bit encoding\fP (up to 9 bytes):
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+bytes   bits   value range
+1       7      0 .. 127
+2       14     128 .. 16383
+3       21     16384 .. 2097151
+4       28     2097152 .. 268435455
+5       35     268435456 .. 34359738367
+6       42     ..
+7       49     ..
+8       56     ..
+9       64     full uint64_t range
+.EE
+.UNINDENT
+.UNINDENT
+.sp
+\fB32\-bit encoding\fP (up to 5 bytes):
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+bytes   bits   value range
+1       7      0 .. 127
+2       14     128 .. 16383
+3       21     16384 .. 2097151
+4       28     2097152 .. 268435455
+5       32     full uint32_t range (top 4 bits of byte 0 ignored)
+.EE
+.UNINDENT
+.UNINDENT
+.sp
+The native\-width \fBfy_encode_size()\fP / \fBfy_decode_size()\fP family selects
+the 64\-bit or 32\-bit variant based on \fBSIZE_MAX\fP\&.
+.sp
+Each family provides four operations:
+.INDENT 0.0
+.IP \(bu 2
+\fB_bytes()\fP     — compute the encoded length without writing anything
+.IP \(bu 2
+\fBencode()\fP     — write the encoding into a bounded buffer
+.IP \(bu 2
+\fBdecode()\fP     — read and validate from a bounded buffer
+.IP \(bu 2
+\fBdecode_nocheck()\fP — read without bounds checking (caller guarantees room)
+.IP \(bu 2
+\fBskip()\fP       — advance past an encoded value in a bounded buffer
+.IP \(bu 2
+\fBskip_nocheck()\fP   — advance without bounds checking
+.UNINDENT
+.SS macro FYVL_SIZE_ENCODING_MAX_64
+.INDENT 0.0
+.TP
+.B FYVL_SIZE_ENCODING_MAX_64() 
+Maximum encoded length of a 64\-bit size value.
+.UNINDENT
+.SS Description
+.sp
+A 64\-bit value requires at most 9 bytes: 8 x 7\-bit groups plus one
+final unconstrained byte = 7 x 8 + 8 = 64 bits.
+.SS macro FYVL_SIZE_ENCODING_MAX_32
+.INDENT 0.0
+.TP
+.B FYVL_SIZE_ENCODING_MAX_32() 
+Maximum encoded length of a 32\-bit size value.
+.UNINDENT
+.SS Description
+.sp
+A 32\-bit value requires at most 5 bytes: 4 x 7\-bit groups plus one
+final unconstrained byte = 7 x 4 + 4 = 32 bits.
+.SS fy_encode_size32_bytes
+.INDENT 0.0
+.TP
+.B unsigned int fy_encode_size32_bytes(uint32_t size) 
+Compute the encoded byte count for a 32\-bit size.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBsize\fP (uint32_t) – The value whose encoded length is queried.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Returns the number of bytes that \fI\%fy_encode_size32()\fP would write for \fBsize\fP,
+without actually writing anything. Useful for pre\-allocating buffers.
+.SS Return
+.sp
+Number of bytes required (1–5).
+.SS fy_encode_size32
+.INDENT 0.0
+.TP
+.B uint8_t *fy_encode_size32(uint8_t *p, uint32_t bufsz, uint32_t size) 
+Encode a 32\-bit size into a buffer.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBp\fP (uint8_t*) – Start of the output buffer.
+.IP \(bu 2
+\fBbufsz\fP (uint32_t) – Available space in bytes.
+.IP \(bu 2
+\fBsize\fP (uint32_t) – Value to encode.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Writes the variable\-length encoding of \fBsize\fP into the buffer [@p, \fBp\fP\X'tty: link mailto:+@bufsz'\fI\%+@bufsz\fP\X'tty: link').
+.SS Return
+.INDENT 0.0
+.TP
+.B Pointer to one past the last written byte, or NULL if \fBbufsz\fP was
+too small.
+.UNINDENT
+.SS fy_decode_size32
+.INDENT 0.0
+.TP
+.B const uint8_t *fy_decode_size32(const uint8_t *start, size_t bufsz, uint32_t *sizep) 
+Decode a variable\-length 32\-bit size from a buffer.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
+.IP \(bu 2
+\fBbufsz\fP (size_t) – Available bytes to read.
+.IP \(bu 2
+\fBsizep\fP (uint32_t*) – Output: the decoded value. Set to \fB(uint32_t)\-1\fP on error.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Reads bytes from [@start, \fBstart\fP\X'tty: link mailto:+@bufsz'\fI\%+@bufsz\fP\X'tty: link') and reconstructs the encoded
+32\-bit value. Stops after \fBFYVL_SIZE_ENCODING_MAX_32\fP bytes at most.
+.SS Return
+.INDENT 0.0
+.TP
+.B Pointer to one past the last consumed byte, or NULL if the buffer
+was exhausted before a complete value was found.
+.UNINDENT
+.SS fy_decode_size32_nocheck
+.INDENT 0.0
+.TP
+.B const uint8_t *fy_decode_size32_nocheck(const uint8_t *start, uint64_t *sizep) 
+Decode a 32\-bit size without bounds checking.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
+.IP \(bu 2
+\fBsizep\fP (uint64_t*) – Output: the decoded value as a uint64_t for uniform handling.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Like \fI\%fy_decode_size32()\fP but assumes the buffer is large enough to hold a
+complete encoding. The caller must guarantee at least
+\fBFYVL_SIZE_ENCODING_MAX_32\fP bytes are available at \fBstart\fP\&.
+.SS Return
+.sp
+Pointer to one past the last consumed byte.
+.SS fy_skip_size32
+.INDENT 0.0
+.TP
+.B const uint8_t *fy_skip_size32(const uint8_t *start, size_t bufsz) 
+Skip past a variable\-length 32\-bit size in a buffer.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
+.IP \(bu 2
+\fBbufsz\fP (size_t) – Available bytes.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Advances past the encoded value without decoding it. Useful when the
+value itself is not needed.
+.SS Return
+.INDENT 0.0
+.TP
+.B Pointer to one past the last consumed byte, or NULL if the buffer
+was exhausted before a complete encoding was found.
+.UNINDENT
+.SS fy_skip_size32_nocheck
+.INDENT 0.0
+.TP
+.B const uint8_t *fy_skip_size32_nocheck(const uint8_t *p) 
+Skip a 32\-bit encoded size without bounds checking.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBp\fP (const uint8_t*) – Start of the encoded data.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Like \fI\%fy_skip_size32()\fP but assumes the buffer is large enough. The caller
+must guarantee at least \fBFYVL_SIZE_ENCODING_MAX_32\fP bytes are readable.
+.SS Return
+.sp
+Pointer to one past the last consumed byte.
+.SS fy_encode_size64_bytes
+.INDENT 0.0
+.TP
+.B unsigned int fy_encode_size64_bytes(uint64_t size) 
+Compute the encoded byte count for a 64\-bit size.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBsize\fP (uint64_t) – The value whose encoded length is queried.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Returns the number of bytes that \fI\%fy_encode_size64()\fP would write for \fBsize\fP,
+without writing anything.
+.SS Return
+.sp
+Number of bytes required (1–9).
+.SS fy_encode_size64
+.INDENT 0.0
+.TP
+.B uint8_t *fy_encode_size64(uint8_t *p, size_t bufsz, uint64_t size) 
+Encode a 64\-bit size into a buffer.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBp\fP (uint8_t*) – Start of the output buffer.
+.IP \(bu 2
+\fBbufsz\fP (size_t) – Available space in bytes.
+.IP \(bu 2
+\fBsize\fP (uint64_t) – Value to encode.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Writes the variable\-length encoding of \fBsize\fP into the buffer [@p, \fBp\fP\X'tty: link mailto:+@bufsz'\fI\%+@bufsz\fP\X'tty: link').
+.SS Return
+.INDENT 0.0
+.TP
+.B Pointer to one past the last written byte, or NULL if \fBbufsz\fP was
+too small.
+.UNINDENT
+.SS fy_decode_size64
+.INDENT 0.0
+.TP
+.B const uint8_t *fy_decode_size64(const uint8_t *start, size_t bufsz, uint64_t *sizep) 
+Decode a variable\-length 64\-bit size from a buffer.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
+.IP \(bu 2
+\fBbufsz\fP (size_t) – Available bytes to read.
+.IP \(bu 2
+\fBsizep\fP (uint64_t*) – Output: the decoded value. Set to \fB(size_t)\-1\fP on error.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Reads bytes from [@start, \fBstart\fP\X'tty: link mailto:+@bufsz'\fI\%+@bufsz\fP\X'tty: link') and reconstructs the encoded
+64\-bit value. Stops after \fBFYVL_SIZE_ENCODING_MAX_64\fP bytes at most.
+.SS Return
+.INDENT 0.0
+.TP
+.B Pointer to one past the last consumed byte, or NULL if the buffer
+was exhausted before a complete value was found.
+.UNINDENT
+.SS fy_decode_size64_nocheck
+.INDENT 0.0
+.TP
+.B const uint8_t *fy_decode_size64_nocheck(const uint8_t *start, uint64_t *sizep) 
+Decode a 64\-bit size without bounds checking.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
+.IP \(bu 2
+\fBsizep\fP (uint64_t*) – Output: the decoded value.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Like \fI\%fy_decode_size64()\fP but assumes the buffer is large enough. The caller
+must guarantee at least \fBFYVL_SIZE_ENCODING_MAX_64\fP bytes are readable.
+.SS Return
+.sp
+Pointer to one past the last consumed byte.
+.SS fy_skip_size64
+.INDENT 0.0
+.TP
+.B const uint8_t *fy_skip_size64(const uint8_t *start, size_t bufsz) 
+Skip past a variable\-length 64\-bit size in a buffer.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
+.IP \(bu 2
+\fBbufsz\fP (size_t) – Available bytes.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Advances past the encoded value without decoding it.
+.SS Return
+.INDENT 0.0
+.TP
+.B Pointer to one past the last consumed byte, or NULL if the buffer
+was exhausted before a complete encoding was found.
+.UNINDENT
+.SS fy_skip_size64_nocheck
+.INDENT 0.0
+.TP
+.B const uint8_t *fy_skip_size64_nocheck(const uint8_t *p) 
+Skip a 64\-bit encoded size without bounds checking.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBp\fP (const uint8_t*) – Start of the encoded data.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Like \fI\%fy_skip_size64()\fP but assumes the buffer is large enough. The caller
+must guarantee at least \fBFYVL_SIZE_ENCODING_MAX_64\fP bytes are readable.
+.SS Return
+.sp
+Pointer to one past the last consumed byte.
+.SS fy_encode_size_bytes
+.INDENT 0.0
+.TP
+.B unsigned int fy_encode_size_bytes(size_t size) 
+Compute encoded byte count for a native size_t.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBsize\fP (size_t) – The value whose encoded length is queried.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Selects \fI\%fy_encode_size64_bytes()\fP or \fI\%fy_encode_size32_bytes()\fP based on
+\fBSIZE_MAX\fP\&.
+.SS Return
+.sp
+Number of bytes required.
+.SS fy_encode_size
+.INDENT 0.0
+.TP
+.B uint8_t *fy_encode_size(uint8_t *p, size_t bufsz, size_t size) 
+Encode a native size_t into a buffer.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBp\fP (uint8_t*) – Start of the output buffer.
+.IP \(bu 2
+\fBbufsz\fP (size_t) – Available space in bytes.
+.IP \(bu 2
+\fBsize\fP (size_t) – Value to encode.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Selects \fI\%fy_encode_size64()\fP or \fI\%fy_encode_size32()\fP based on \fBSIZE_MAX\fP\&.
+.SS Return
+.sp
+Pointer to one past the last written byte, or NULL on overflow.
+.SS fy_decode_size
+.INDENT 0.0
+.TP
+.B const uint8_t *fy_decode_size(const uint8_t *start, size_t bufsz, size_t *sizep) 
+Decode a native size_t from a buffer.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
+.IP \(bu 2
+\fBbufsz\fP (size_t) – Available bytes.
+.IP \(bu 2
+\fBsizep\fP (size_t*) – Output: the decoded value.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Selects \fI\%fy_decode_size64()\fP or \fI\%fy_decode_size32()\fP based on \fBSIZE_MAX\fP\&.
+.SS Return
+.sp
+Pointer to one past the last consumed byte, or NULL on error.
+.SS fy_decode_size_nocheck
+.INDENT 0.0
+.TP
+.B const uint8_t *fy_decode_size_nocheck(const uint8_t *start, size_t *sizep) 
+Decode a native size_t without bounds checking.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
+.IP \(bu 2
+\fBsizep\fP (size_t*) – Output: the decoded value.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Selects the 64\-bit or 32\-bit nocheck variant based on \fBsizeof(size_t)\fP\&.
+The caller must guarantee enough bytes are available at \fBstart\fP\&.
+.SS Return
+.sp
+Pointer to one past the last consumed byte.
+.SS fy_skip_size
+.INDENT 0.0
+.TP
+.B const uint8_t *fy_skip_size(const uint8_t *start, size_t bufsz) 
+Skip a native size_t encoding in a buffer.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
+.IP \(bu 2
+\fBbufsz\fP (size_t) – Available bytes.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Selects \fI\%fy_skip_size64()\fP or \fI\%fy_skip_size32()\fP based on \fBSIZE_MAX\fP\&.
+.SS Return
+.sp
+Pointer to one past the last consumed byte, or NULL on error.
+.SS fy_skip_size_nocheck
+.INDENT 0.0
+.TP
+.B const uint8_t *fy_skip_size_nocheck(const uint8_t *start) 
+Skip a native size_t encoding without bounds checking.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Selects the 64\-bit or 32\-bit nocheck variant based on \fBSIZE_MAX\fP\&.
+The caller must guarantee enough bytes are available.
+.SS Return
+.sp
+Pointer to one past the last consumed byte.
+.SS macro FYVL_SIZE_ENCODING_MAX
+.INDENT 0.0
+.TP
+.B FYVL_SIZE_ENCODING_MAX() 
+Maximum encoded length for a native size_t.
+.UNINDENT
+.SS Description
+.sp
+Equals \fBFYVL_SIZE_ENCODING_MAX_64\fP on 64\-bit platforms,
+\fBFYVL_SIZE_ENCODING_MAX_32\fP on 32\-bit platforms.
+.SH ATOMIC OPERATIONS
+.sp
+This header provides a thin, portable abstraction over C11 \fB<stdatomic.h>\fP
+with graceful fallback for compilers that support \fB_Atomic\fP as an extension
+(GCC without \fB\-std=c11\fP, Clang) and a last\-resort non\-atomic fallback for
+toolchains that support neither.
+.sp
+\fBDetection macros\fP (defined by this header, not meant for direct use):
+.INDENT 0.0
+.IP \(bu 2
+.INDENT 2.0
+.TP
+.B \fBFY_HAVE_STDATOMIC_H\fP   — \fB<stdatomic.h>\fP was successfully included;
+the standard \fBatomic_*\fP functions and types
+are available.
+.UNINDENT
+.IP \(bu 2
+.INDENT 2.0
+.TP
+.B \fBFY_HAVE_C11_ATOMICS\fP   — the \fB_Atomic\fP qualifier is available, either
+from \fB<stdatomic.h>\fP or as a compiler extension.
+.UNINDENT
+.IP \(bu 2
+.INDENT 2.0
+.TP
+.B \fBFY_HAVE_ATOMICS\fP       — effective atomics are available (\fB_Atomic\fP
+maps to a real atomic type).  When not defined,
+\fB_Atomic(_x)\fP expands to plain \fB_x\fP and all
+operations are non\-atomic single\-threaded stubs.
+.UNINDENT
+.IP \(bu 2
+.INDENT 2.0
+.TP
+.B \fBFY_HAVE_SAFE_ATOMIC_OPS\fP — the underlying operations are properly
+memory\-ordered (i.e. \fB<stdatomic.h>\fP is in
+use).  Without this, operations are performed
+as plain loads/stores with no memory barriers.
+.UNINDENT
+.UNINDENT
+.sp
+\fBPublic API\fP — all \fBfy_atomic_*\fP macros delegate to the selected backend:
+.INDENT 0.0
+.IP \(bu 2
+\fI\%FY_ATOMIC()\fP                     — qualify a type as atomic
+.IP \(bu 2
+fy_atomic_flag                  — boolean flag type
+.IP \(bu 2
+\fI\%fy_atomic_load()\fP / \fI\%fy_atomic_store()\fP
+.IP \(bu 2
+\fI\%fy_atomic_exchange()\fP
+.IP \(bu 2
+\fI\%fy_atomic_compare_exchange_strong()\fP / \fI\%fy_atomic_compare_exchange_weak()\fP
+.IP \(bu 2
+\fI\%fy_atomic_fetch_add()\fP / \fI\%fy_atomic_fetch_sub()\fP
+.IP \(bu 2
+\fI\%fy_atomic_fetch_or()\fP / \fI\%fy_atomic_fetch_xor()\fP / \fI\%fy_atomic_fetch_and()\fP
+.IP \(bu 2
+\fI\%fy_atomic_flag_clear()\fP / \fI\%fy_atomic_flag_set()\fP / \fI\%fy_atomic_flag_test_and_set()\fP
+.IP \(bu 2
+\fI\%fy_cpu_relax()\fP                  — emit a CPU relaxation hint (PAUSE/YIELD)
+.IP \(bu 2
+\fBfy_atomic_get_and_clear_counter()\fP — atomically read and subtract a counter
+.UNINDENT
+.SS macro FY_ATOMIC
+.INDENT 0.0
+.TP
+.B FY_ATOMIC(_x) 
+Qualify a type as atomic.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_x\fP – The underlying C type.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Expands to \fB_Atomic(_x)\fP when \fBFY_HAVE_ATOMICS\fP is defined, or to plain
+\fB_x\fP otherwise (non\-atomic fallback).
+.sp
+Example:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+FY_ATOMIC(uint64_t) refcount;
+.EE
+.UNINDENT
+.UNINDENT
+.SS macro fy_atomic_flag
+.INDENT 0.0
+.TP
+.B fy_atomic_flag() 
+A boolean flag that can be set/cleared/tested atomically.
+.UNINDENT
+.SS Description
+.sp
+Backed by \fBatomic_flag\fP from \fB<stdatomic.h>\fP when available, or a plain
+\fBbool\fP in the fallback path.
+.SS macro fy_atomic_load
+.INDENT 0.0
+.TP
+.B fy_atomic_load(_ptr) 
+Atomically load the value at \fB_ptr\fP\&.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified variable.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The current value.
+.SS macro fy_atomic_store
+.INDENT 0.0
+.TP
+.B fy_atomic_store(_ptr, _v) 
+Atomically store \fB_v\fP at \fB_ptr\fP\&.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified variable.
+.IP \(bu 2
+\fB_v\fP – Value to store.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS macro fy_atomic_exchange
+.INDENT 0.0
+.TP
+.B fy_atomic_exchange(_ptr, _v) 
+Atomically replace the value at \fB_ptr\fP with \fB_v\fP\&.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified variable.
+.IP \(bu 2
+\fB_v\fP – New value to store.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The old value that was at \fB_ptr\fP before the exchange.
+.SS macro fy_atomic_compare_exchange_strong
+.INDENT 0.0
+.TP
+.B fy_atomic_compare_exchange_strong(_ptr, _e, _d) 
+Strong CAS: replace \fB_ptr\fP‘s value if it equals \fB_e\fP\&.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified variable.
+.IP \(bu 2
+\fB_e\fP – Pointer to the expected value (updated on failure).
+.IP \(bu 2
+\fB_d\fP – Desired value to store on success.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+If \fB*_ptr == *_e\fP, stores \fB_d\fP into \fB_ptr\fP and returns true.
+Otherwise, loads the current value into \fB_e\fP and returns false.
+The strong variant never spuriously fails.
+.SS Return
+.sp
+true if the exchange succeeded, false otherwise.
+.SS macro fy_atomic_compare_exchange_weak
+.INDENT 0.0
+.TP
+.B fy_atomic_compare_exchange_weak(_ptr, _e, _d) 
+Weak CAS: may spuriously fail.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified variable.
+.IP \(bu 2
+\fB_e\fP – Pointer to the expected value (updated on failure).
+.IP \(bu 2
+\fB_d\fP – Desired value to store on success.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Like \fI\%fy_atomic_compare_exchange_strong()\fP but may fail even when
+\fB*_ptr == *_e\fP\&. Prefer in retry loops where a spurious failure
+is harmless and performance matters.
+.SS Return
+.sp
+true if the exchange succeeded, false otherwise.
+.SS macro fy_atomic_fetch_add
+.INDENT 0.0
+.TP
+.B fy_atomic_fetch_add(_ptr, _v) 
+Atomically add \fB_v\fP to \fB_ptr\fP and return the old value.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified integer variable.
+.IP \(bu 2
+\fB_v\fP – Value to add.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The value of \fB_ptr\fP before the addition.
+.SS macro fy_atomic_fetch_sub
+.INDENT 0.0
+.TP
+.B fy_atomic_fetch_sub(_ptr, _v) 
+Atomically subtract \fB_v\fP from \fB_ptr\fP and return the old value.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified integer variable.
+.IP \(bu 2
+\fB_v\fP – Value to subtract.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The value of \fB_ptr\fP before the subtraction.
+.SS macro fy_atomic_fetch_or
+.INDENT 0.0
+.TP
+.B fy_atomic_fetch_or(_ptr, _v) 
+Atomically OR \fB_v\fP into \fB_ptr\fP and return the old value.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified integer variable.
+.IP \(bu 2
+\fB_v\fP – Value to OR in.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The value of \fB_ptr\fP before the operation.
+.SS macro fy_atomic_fetch_xor
+.INDENT 0.0
+.TP
+.B fy_atomic_fetch_xor(_ptr, _v) 
+Atomically XOR \fB_v\fP into \fB_ptr\fP and return the old value.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified integer variable.
+.IP \(bu 2
+\fB_v\fP – Value to XOR in.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The value of \fB_ptr\fP before the operation.
+.SS macro fy_atomic_fetch_and
+.INDENT 0.0
+.TP
+.B fy_atomic_fetch_and(_ptr, _v) 
+Atomically AND \fB_v\fP into \fB_ptr\fP and return the old value.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified integer variable.
+.IP \(bu 2
+\fB_v\fP – Value to AND in.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The value of \fB_ptr\fP before the operation.
+.SS macro fy_atomic_flag_clear
+.INDENT 0.0
+.TP
+.B fy_atomic_flag_clear(_ptr) 
+Atomically clear a flag (set to false).
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_ptr\fP – Pointer to an fy_atomic_flag.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS macro fy_atomic_flag_set
+.INDENT 0.0
+.TP
+.B fy_atomic_flag_set(_ptr) 
+Atomically set a flag (set to true).
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_ptr\fP – Pointer to an fy_atomic_flag.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Note
+.sp
+this is a libfyaml extension; standard \fB<stdatomic.h>\fP only
+provides \fBatomic_flag_test_and_set()\fP\&.  In the fallback path this
+is implemented as a plain store.
+.SS macro fy_atomic_flag_test_and_set
+.INDENT 0.0
+.TP
+.B fy_atomic_flag_test_and_set(_ptr) 
+Atomically set a flag and return its old value.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fB_ptr\fP – Pointer to an fy_atomic_flag.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Sets the flag to true and returns the value it held before the operation.
+This is the standard test\-and\-set primitive.
+.SS Return
+.sp
+true if the flag was already set, false if it was clear.
+.SS fy_cpu_relax
+.INDENT 0.0
+.TP
+.B void fy_cpu_relax(void) 
+Emit a CPU relaxation hint inside a spin\-wait loop.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBvoid\fP – no arguments
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Reduces power consumption and improves hyper\-threading performance on
+x86/x86_64 (\fBPAUSE\fP), signals a yield on AArch64/ARM (\fBYIELD\fP),
+and emits a low\-priority hint on PowerPC (\fBor 27,27,27\fP).
+Falls back to a compiler memory barrier on unsupported architectures.
+.sp
+Use inside tight spin loops to avoid memory\-ordering penalties and
+allow sibling hardware threads to make progress:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+while (!fy_atomic_load(&ready))
+    fy_cpu_relax();
+.EE
+.UNINDENT
+.UNINDENT
+.SH COPYRIGHT
+2019-2026, Pantelis Antoniou
+.\" Generated by docutils manpage writer.
+.
