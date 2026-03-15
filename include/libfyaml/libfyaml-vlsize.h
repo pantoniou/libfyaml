@@ -816,7 +816,7 @@ fy_decode_size_nocheck(const uint8_t *start, size_t *sizep)
 static inline const uint8_t *
 fy_skip_size(const uint8_t *start, size_t bufsz)
 {
-	return fy_skip_size32(start, bufsz, &sz);
+	return fy_skip_size32(start, bufsz);
 }
 
 static inline const uint8_t *
