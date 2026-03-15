@@ -47,15 +47,15 @@ fy_document_destroy(fyd);
 
 ---
 
-## What's New in v0.9.5
+## What's New in v0.9.6
 
 **Highlights:**
 
-- **Comment Emission Improvements**: Major fixes for comment indentation, top/bottom comment placement in nested containers, right-comments on flow collections, and more
-- **New Emitter Options**: `FYEXCF_INDENTED_SEQ_IN_MAP` (indent block sequences in mappings) and `FYEXCF_PRESERVE_FLOW_LAYOUT` (preserve oneline flow collections), exposed in fy-tool as `--indented-seq-in-map` and `--preserve-flow-layout`
-- **New APIs**: `fy_node_mapping_sort()`, `fy_token_collection_style()`, style start/end mark accessors for tokens and events, `fy_document_state_shorten_tag()`
-- **Robustness**: Extensive fuzz-driven testing revealed and fixed dozens of bugs across the parser, emitter, walk, document API, and atom layers
-- **Parser Correctness**: Reject malformed directives, fix empty block scalar/sequence parsing, fix invalid UTF-8 detection
+- **Public Header Split**: `libfyaml.h` split into focused sub-headers under `include/libfyaml/` — existing code unchanged, but projects can now include only what they need for faster compilation
+- **New API**: `fy_node_sequence_sort()` — sort sequence items with a custom comparator (mirrors `fy_node_mapping_sort()`)
+- **API Hardening**: Public API now guards against NULL arguments throughout, fixing crashes on invalid input (#252, #254, #255)
+- **Emitter Fixes**: Folded block scalar line breaks no longer lost; comment indentation fix for block sequences in mappings
+- **Threading Fix**: Bug when thread count reaches 64
 
 See [CHANGELOG.md](CHANGELOG.md) for complete release notes.
 
@@ -143,7 +143,7 @@ Both APIs coexist and can be mixed as needed.
 Add libfyaml to your CMake project:
 
 ```cmake
-find_package(libfyaml 0.9.5 REQUIRED)
+find_package(libfyaml 0.9.6 REQUIRED)
 target_link_libraries(your_app PRIVATE libfyaml::libfyaml)
 ```
 

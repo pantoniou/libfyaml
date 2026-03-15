@@ -5,6 +5,74 @@ All notable changes to libfyaml will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.6] - 2026-03-15
+
+### Major: Public Header Split
+
+The monolithic `libfyaml.h` has been split into focused sub-headers under `include/libfyaml/`. The main header still exists and includes everything, so **existing code requires no changes**. Projects can now include only the sub-headers they need for faster compilation:
+
+- `libfyaml/libfyaml-core.h` — parser, emitter, document, node, path
+- `libfyaml/libfyaml-composer.h` — composer interface
+- `libfyaml/libfyaml-docbuild.h` — document builder
+- `libfyaml/libfyaml-allocator.h` — allocator API
+- `libfyaml/libfyaml-atomics.h`, `libfyaml-thread.h`, `libfyaml-util.h`, and more
+
+All gaps in the API documentation have been filled as part of this work.
+
+### Added
+
+- `fy_node_sequence_sort()`: Sort a single sequence node's items using a custom comparator (mirrors `fy_node_mapping_sort()`)
+
+### Changed
+
+- Public API hardened against NULL arguments throughout (`fy_token_*`, `fy_emit_*`, `fy_doc_*`) — fixes #252, #254, #255
+- fy-tool: Usage text cleaned up and colorized on TTYs
+- Walk: Pathological YPath execution is now capped to prevent runaway resource use
+- Dedup allocator: Improvements for split entries and content tags
+- `indent_delta` refactored into atom layer for correctness
+
+### Fixed
+
+**Emitter:**
+- Folded block scalar line breaks no longer get lost
+- Fix comment indentation loss for block sequences inside mappings
+- Fix memory leak in `fy_emit_mapping()`
+
+**Parser:**
+- Fix failure on empty merge key
+- Fix `fy_parser_event_resolve_hook_merge_key_start()` error path
+- Fix extent check in `fy_reader_fetch_flow_scalar_handle()`
+- Use `HAVE_LLVM_C_CORE_H` to detect LLVM (portability fix)
+
+**Walk (YPath):**
+- Cap pathological YPath execution to prevent runaway resource use
+- Guard numeric expression conversion against overflow
+
+**Document API:**
+- Avoid rehashing anchors during cleanup
+- Fix `fy_node_copy_to_scalar()` mess
+- Fix bogus condition in `fy_node_by_path_internal()`
+- Keep remove-by-key lookup nodes caller-owned
+
+**Threading:**
+- Fix threading bug triggered when thread count hits 64
+
+**Build / Portability:**
+- cmake: Install canned man pages when Sphinx is not available
+- cmake: Respect `DESTDIR` when creating symlinks to fy-tool
+- cmake: Rework Windows CMake support for correctness
+- cmake: Fix docs build after public header move
+- windows: Fix compilation issues
+- build: Link libm in autotools builds
+- utils: Fix overflow implementations
+- `.gitattributes`: Mark all text files as LF-terminated
+
+### Statistics
+
+- 49 commits since v0.9.5
+- 3 issues closed (#252, #254, #255 — NULL argument hardening)
+- New contributor: jonathanrainer (`fy_node_sequence_sort`)
+
 ## [0.9.5] - 2026-02-26
 
 ### Added
@@ -372,6 +440,7 @@ Jose Luis Blanco-Claraco, Andrey Somov, Orange_233, Martin Diehl
 
 Initial public release with comprehensive YAML 1.2 support.
 
+[0.9.6]: https://github.com/pantoniou/libfyaml/compare/v0.9.5...v0.9.6
 [0.9.5]: https://github.com/pantoniou/libfyaml/compare/v0.9.4...v0.9.5
 [0.9.4]: https://github.com/pantoniou/libfyaml/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/pantoniou/libfyaml/compare/v0.9.2...v0.9.3
