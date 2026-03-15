@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.abspath('.'))
 # -- Project information -----------------------------------------------------
 
 project = 'libfyaml'
-copyright = '2019, Pantelis Antoniou'
+copyright = '2019-2026, Pantelis Antoniou'
 author = 'Pantelis Antoniou'
 
 # The full version, including alpha/beta/rc tags
@@ -70,4 +70,7 @@ kernel_doc_known_attrs = "FY_ALWAYS_INLINE"
 
 man_pages = [
     ('man/fy-tool', 'fy-tool', 'fy-tool documentation ', '', 1),
+    ('libfyaml', 'libfyaml', 'libfyaml API overview', '', 3),
+    ('libfyaml-core', 'libfyaml-core', 'libfyaml core API', '', 3),
+    ('libfyaml-misc', 'libfyaml-misc', 'libfyaml miscellaneous API', '', 3),
 ]

@@ -1628,6 +1628,41 @@ if(SPHINX_EXECUTABLE)
     message(STATUS "  make doc-html     - Build HTML documentation")
     message(STATUS "  make doc-man      - Build man pages")
     message(STATUS "  make doc-latexpdf - Build PDF documentation")
+
+    install(CODE "
+        execute_process(
+            COMMAND \"${SPHINX_EXECUTABLE}\" -M man \"${SPHINX_SOURCE_DIR}\" \"${SPHINX_BUILD_DIR}\"
+            WORKING_DIRECTORY \"${CMAKE_CURRENT_BINARY_DIR}\"
+            RESULT_VARIABLE sphinx_man_result
+        )
+        if(NOT sphinx_man_result EQUAL 0)
+            message(FATAL_ERROR \"Failed to generate Sphinx man pages during install\")
+        endif()
+
+        file(INSTALL
+            DESTINATION \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1\"
+            TYPE FILE
+            FILES \"${SPHINX_BUILD_DIR}/man/fy-tool.1\"
+        )
+        file(INSTALL
+            DESTINATION \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man3\"
+            TYPE FILE
+            FILES
+                \"${SPHINX_BUILD_DIR}/man/libfyaml.3\"
+                \"${SPHINX_BUILD_DIR}/man/libfyaml-core.3\"
+                \"${SPHINX_BUILD_DIR}/man/libfyaml-misc.3\"
+        )
+    ")
+    if(NOT WIN32)
+        install(CODE "
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-dump.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-filter.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-testsuite.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-join.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-ypath.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-compose.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
+        ")
+    endif()
 else()
     set(HAVE_SPHINX FALSE)
     message(STATUS "Sphinx not found - documentation targets disabled")
@@ -1636,12 +1671,12 @@ else()
     install(FILES doc/canned-man/fy-tool.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
     if(NOT WIN32)
         install(CODE "
-            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-dump.1 WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_MANDIR}/man1)
-            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-filter.1 WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_MANDIR}/man1)
-            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-testsuite.1 WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_MANDIR}/man1)
-            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-join.1 WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_MANDIR}/man1)
-            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-ypath.1 WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_MANDIR}/man1)
-            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-compose.1 WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_MANDIR}/man1)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-dump.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-filter.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-testsuite.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-join.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-ypath.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-compose.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
         ")
     endif()
 endif()
@@ -1663,12 +1698,12 @@ install(FILES ${LIBHDRSPUB}
 # Create symlinks for fy-tool (not on Windows - symlinks require special privileges)
 if(NOT WIN32)
     install(CODE "
-        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-dump WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_BINDIR})
-        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-filter WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_BINDIR})
-        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-testsuite WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_BINDIR})
-        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-join WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_BINDIR})
-        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-ypath WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_BINDIR})
-        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-compose WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_FULL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-dump WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-filter WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-testsuite WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-join WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-ypath WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool fy-compose WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
     ")
 endif()
 

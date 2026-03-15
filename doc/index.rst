@@ -13,6 +13,8 @@ Welcome to libfyaml's documentation!
    intro
    man/fy-tool
    libfyaml
+   libfyaml-core
+   libfyaml-misc
 
 
 Indices and tables

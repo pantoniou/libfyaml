@@ -604,22 +604,16 @@ static __inline const char *fy_alloca_copy_free_impl(char *str, size_t len)
 #endif
 
 /**
- * fy_vsprintfa() - Format a string into a stack buffer using a va_list.
+ * DOC: fy_vsprintfa() - Format a string into a stack buffer using a va_list
  *
- * Expands to a statement expression that:
- * 1. Calls ``vsnprintf(NULL, 0, ...)`` to compute the required buffer size.
- * 2. Allocates that many bytes + 1 on the stack via ``alloca()``.
- * 3. Calls ``vsnprintf()`` again to fill the buffer.
- * 4. Evaluates to a ``char *`` pointing to the NUL-terminated result.
+ * ``fy_vsprintfa(_fmt, _ap)`` expands to a statement expression that first
+ * measures the required output length with ``vsnprintf()``, then allocates a
+ * stack buffer with ``alloca()``, formats into it, and evaluates to a
+ * NUL-terminated ``char *``.
  *
- * The returned pointer is valid only for the lifetime of the enclosing function.
- * @_ap is consumed; the caller must not use it after this macro.
- *
- * @_fmt: printf-style format string.
- * @_ap:  Initialised ``va_list``; will be advanced past all arguments.
- *
- * Returns: ``char *`` to a NUL-terminated stack buffer containing the formatted
- *          string.
+ * The returned pointer is valid only for the lifetime of the enclosing
+ * function. The ``va_list`` argument is consumed and must not be reused
+ * afterwards.
  */
 /* alloca formatted print methods */
 #ifdef _MSC_VER
