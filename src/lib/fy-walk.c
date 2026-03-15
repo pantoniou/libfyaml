@@ -30,6 +30,8 @@
 #undef DEBUG_EXPR
 // #define DEBUG_EXPR
 
+#define FY_PATH_EXEC_STEP_LIMIT		4096
+
 /* debugging for when expressions go crazy */
 #ifdef DEBUG_EXPR
 struct fy_walk_result *
@@ -518,6 +520,21 @@ fy_walk_result_flatten(struct fy_walk_result *fwr)
 
 	fwrl = fy_path_exec_walk_result_rl(fwr->fypx);
 	return fy_walk_result_flatten_rl(fwrl, fwr);
+}
+
+static void
+fy_walk_result_refs_add_flattened(struct fy_walk_result *output, struct fy_walk_result *fwr)
+{
+	if (!output || output->type != fwrt_refs || !fwr)
+		return;
+
+	if (fwr->type != fwrt_refs) {
+		fy_walk_result_list_add_tail(&output->refs, fwr);
+		return;
+	}
+
+	fy_walk_result_flatten_internal(fwr, output);
+	fy_walk_result_free(fwr);
 }
 
 struct fy_node *
@@ -4473,7 +4490,7 @@ fy_walk_result_lhs_rhs(struct fy_path_exec *fypx,
 				goto err_out;
 
 			if (outputl)
-				fy_walk_result_list_add_tail(&output->refs, outputl);
+				fy_walk_result_refs_add_flattened(output, outputl);
 			else {
 				fy_walk_result_free(outputl);
 				outputl = NULL;
@@ -4502,7 +4519,7 @@ fy_walk_result_lhs_rhs(struct fy_path_exec *fypx,
 					goto err_out;
 
 				if (outputr)
-					fy_walk_result_list_add_tail(&output->refs, outputr);
+					fy_walk_result_refs_add_flattened(output, outputr);
 				else {
 					fy_walk_result_free(outputr);
 					outputr = NULL;
@@ -4535,7 +4552,7 @@ fy_walk_result_lhs_rhs(struct fy_path_exec *fypx,
 				FY_IMPOSSIBLE_ABORT();
 
 			if (fwr)
-				fy_walk_result_list_add_tail(&output->refs, fwr);
+				fy_walk_result_refs_add_flattened(output, fwr);
 		}
 	}
 
@@ -4675,6 +4692,10 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 		goto out;
 
 	diag = fypx->cfg.diag;
+	if (++fypx->exec_steps > FY_PATH_EXEC_STEP_LIMIT) {
+		fy_error(diag, "ypath execution step limit exceeded");
+		goto err_out;
+	}
 
 #ifdef DEBUG_EXPR
 	if (input)
@@ -4695,8 +4716,8 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 			if (error)
 				goto err_out;
 			if (fwrn)
-				fy_walk_result_list_add_tail(&output->refs, fwrn);
-		}
+				fy_walk_result_refs_add_flattened(output, fwrn);
+			}
 		fy_walk_result_free(input);
 		input = NULL;
 		goto out;
@@ -4776,7 +4797,7 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 			if (!output2)
 				continue;
 
-			fy_walk_result_list_add_tail(&output->refs, output2);
+			fy_walk_result_refs_add_flattened(output, output2);
 			output2 = NULL;
 		}
 		fy_walk_result_free(input);
@@ -5199,6 +5220,7 @@ static int fy_path_exec_execute_internal(struct fy_path_exec *fypx,
 
 	fy_walk_result_free(fypx->result);
 	fypx->result = NULL;
+	fypx->exec_steps = 0;
 
 	fwr = fy_path_exec_walk_result_create(fypx, fwrt_node_ref, fyn_start);
 	if (!fwr)

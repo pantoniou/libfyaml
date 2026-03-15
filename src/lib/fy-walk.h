@@ -360,6 +360,7 @@ struct fy_path_exec {
 	struct fy_node *fyn_start;
 	struct fy_walk_result *result;
 	struct fy_walk_result_list *fwr_recycle;
+	size_t exec_steps;
 	int refs;
 	bool supress_recycling;
 };
