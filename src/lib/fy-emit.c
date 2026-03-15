@@ -1313,6 +1313,7 @@ static void fy_emit_token_write_folded_original(struct fy_emitter *emit,
 	struct fy_atom_raw_line_iter rliter;
 	const struct fy_raw_line *rl;
 	int w;
+	int deferred_blanks = 0;
 
 	fy_atom_raw_line_iter_start(atom, &rliter);
 	fy_emit_accum_start(&emit->ea, emit->column, fy_token_atom_lb_mode(fyt));
@@ -1321,21 +1322,14 @@ static void fy_emit_token_write_folded_original(struct fy_emitter *emit,
 
 	while ((rl = fy_atom_raw_line_iter_next(&rliter)) != NULL) {
 
-		if (rl->content_len == 0) {
-			/* blank line: emit newline only */
-			fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
-			emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
-			continue;
-		}
+		/* Partial final fragment: parser lookahead consumed indent bytes of the
+		 * next element; no trailing linebreak means this is not scalar content. */
+		if (rl->line_len_lb == rl->line_len)
+			break;
 
-		/* content line: write indent, content, then newline */
-		fy_emit_write_indent(emit, indent);
-		fy_emit_output_col_sync(emit, &emit->ea);
-
+		/* Compute content after stripping base indentation */
 		const char *s = rl->content_start;
 		const char *e = s + rl->content_len;
-
-		/* skip the block scalar's base indentation */
 		{
 			unsigned int skip = orig_indent;
 			while (skip > 0 && s < e &&
@@ -1345,8 +1339,24 @@ static void fy_emit_token_write_folded_original(struct fy_emitter *emit,
 			}
 		}
 
+		if (s >= e) {
+			/* blank line: defer emission */
+			deferred_blanks++;
+			continue;
+		}
+
+		/* non-blank content line: flush any deferred blank lines first */
+		while (deferred_blanks > 0) {
+			fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
+			emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
+			deferred_blanks--;
+		}
+
+		fy_emit_write_indent(emit, indent);
+		fy_emit_output_col_sync(emit, &emit->ea);
+
 		while (s < e) {
-			const int c = fy_utf8_get(s, (size_t) (e - s), &w);
+			const int c = fy_utf8_get(s, (size_t)(e - s), &w);
 			if (c <= 0)
 				break;
 			fy_emit_accum_utf8_put(&emit->ea, c);
@@ -1355,6 +1365,15 @@ static void fy_emit_token_write_folded_original(struct fy_emitter *emit,
 		fy_emit_output_accum(emit, fyewt_folded_scalar, &emit->ea);
 		fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
 		emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
+	}
+
+	/* trailing blank lines: only keep-chomp retains them */
+	if (atom->chomp == FYAC_KEEP) {
+		while (deferred_blanks > 0) {
+			fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
+			emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
+			deferred_blanks--;
+		}
 	}
 
 	fy_emit_accum_finish(&emit->ea);
