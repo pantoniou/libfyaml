@@ -411,12 +411,12 @@ static inline bool fy_thread_pool_are_all_reserved_internal(struct fy_thread_poo
 	num_threads_words = FY_BIT64_COUNT(tp->num_threads);
 	for (i = 0, free = tp->freep; i < num_threads_words - 1; i++, free++) {
 		v = fy_atomic_load(free);
-		if (v != (uint64_t)-1)
+		if (v != 0)
 			return false;
 	}
 	v = fy_atomic_load(free);
-	m = FY_BIT64(tp->num_threads & 63) - 1;
-	return (v & m) == m;
+	m = (tp->num_threads & 63) ? FY_BIT64(tp->num_threads & 63) - 1 : (uint64_t)-1;
+	return (v & m) == 0;
 }
 
 static inline bool fy_thread_pool_is_any_reserved_internal(struct fy_thread_pool *tp)
@@ -428,12 +428,12 @@ static inline bool fy_thread_pool_is_any_reserved_internal(struct fy_thread_pool
 	num_threads_words = FY_BIT64_COUNT(tp->num_threads);
 	for (i = 0, free = tp->freep; i < num_threads_words - 1; i++, free++) {
 		v = fy_atomic_load(free);
-		if (!v)
+		if (v != (uint64_t)-1)
 			return true;
 	}
 	v = fy_atomic_load(free);
-	m = FY_BIT64(tp->num_threads & 63) - 1;
-	return !(v & m);
+	m = (tp->num_threads & 63) ? FY_BIT64(tp->num_threads & 63) - 1 : (uint64_t)-1;
+	return (v & m) != m;
 }
 
 struct fy_thread *fy_thread_reserve(struct fy_thread_pool *tp)
@@ -597,7 +597,7 @@ int fy_thread_pool_setup(struct fy_thread_pool *tp, const struct fy_thread_pool_
 	/* prime the thread free */
 	for (i = 0; i < num_threads_words - 1; i++)
 		tp->freep[i] = (uint64_t)-1;
-	tp->freep[i] = FY_BIT64(tp->num_threads & 63) - 1;
+	tp->freep[i] = (tp->num_threads & 63) ? FY_BIT64(tp->num_threads & 63) - 1 : (uint64_t)-1;
 
 	/* the lootp's are zero */
 

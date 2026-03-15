@@ -72,7 +72,8 @@ void test_worker_threads(unsigned int num_threads)
 	struct fy_thread **threads, *t;
 	struct fy_thread_work *works;
 	unsigned int i, count, num_cpus;
-	int rc, test_count;
+	int rc;
+	FY_ATOMIC(int) test_count;
 
 	(void)rc;
 
@@ -92,7 +93,7 @@ void test_worker_threads(unsigned int num_threads)
 	threads = alloca(count * sizeof(*threads));
 	works = alloca(count * sizeof(*works));
 
-	test_count = 0;
+	fy_atomic_store(&test_count, 0);
 
 	for (i = 0; i < count; i++) {
 		fprintf(stderr, "calling: fy_thread_reserve(#%u)\n", i);
@@ -116,9 +117,10 @@ void test_worker_threads(unsigned int num_threads)
 		fy_thread_wait_work(t);
 	}
 
-	fprintf(stderr, "%s: test_count=%d\n", __func__, test_count);
-	if (test_count != (int)num_cpus) {
-		fprintf(stderr, "error: test_count=%d expected %d\n", test_count, (int)num_cpus);
+	fprintf(stderr, "%s: test_count=%d\n", __func__, fy_atomic_load(&test_count));
+	if (fy_atomic_load(&test_count) != (int)num_cpus) {
+		fprintf(stderr, "error: test_count=%d expected %d\n",
+			fy_atomic_load(&test_count), (int)num_cpus);
 		abort();
 	}
 
@@ -138,7 +140,8 @@ void test_thread_join(unsigned int num_threads)
 	struct fy_thread_pool *tp;
 	void **args;
 	unsigned int count, num_cpus;
-	int rc, test_count;
+	int rc;
+	FY_ATOMIC(int) test_count;
 
 	(void)rc;
 
@@ -156,12 +159,12 @@ void test_thread_join(unsigned int num_threads)
 	count = tp->num_threads;
 	args = alloca(count * sizeof(*args));
 
-	test_count = 0;
+	fy_atomic_store(&test_count, 0);
 
 	fy_thread_arg_join(tp, test_worker_thread_fn, NULL, &test_count, count);
 
-	fprintf(stderr, "%s: test_count=%d\n", __func__, test_count);
-	assert(test_count == (int)num_cpus);
+	fprintf(stderr, "%s: test_count=%d\n", __func__, fy_atomic_load(&test_count));
+	assert(fy_atomic_load(&test_count) == (int)num_cpus);
 
 	fprintf(stderr, "calling: fy_thread_pool_destroy()\n");
 	fy_thread_pool_destroy(tp);
@@ -309,7 +312,8 @@ void test_thread_join_steal(unsigned int num_threads)
 	struct fy_thread_pool *tp;
 	void **args;
 	unsigned int count, num_cpus;
-	int rc, test_count;
+	int rc;
+	FY_ATOMIC(int) test_count;
 
 	(void)rc;
 
@@ -326,13 +330,14 @@ void test_thread_join_steal(unsigned int num_threads)
 	count = tp->num_threads * 4;
 	args = alloca(count * sizeof(*args));
 
-	test_count = 0;
+	fy_atomic_store(&test_count, 0);
 
 	fy_thread_arg_join(tp, test_worker_thread_steal_fn, NULL, &test_count, count);
 
-	fprintf(stderr, "%s: test_count=%d\n", __func__, test_count);
-	if (test_count != (int)num_cpus * STEAL_LOOP_COUNT * 4) {
-		fprintf(stderr, "error: test_count=%d expected %d\n", test_count, (int)num_cpus * STEAL_LOOP_COUNT);
+	fprintf(stderr, "%s: test_count=%d\n", __func__, fy_atomic_load(&test_count));
+	if (fy_atomic_load(&test_count) != (int)num_cpus * STEAL_LOOP_COUNT * 4) {
+		fprintf(stderr, "error: test_count=%d expected %d\n",
+			fy_atomic_load(&test_count), (int)num_cpus * STEAL_LOOP_COUNT);
 		abort();
 	}
 

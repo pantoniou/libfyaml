@@ -242,6 +242,30 @@ fy_thread_wait_work(struct fy_thread *t)
 	FY_EXPORT;
 
 /**
+ * fy_thread_pool_are_all_reserved() - Check whether no threads are free
+ *
+ * @tp: The thread pool
+ *
+ * Returns:
+ * true if all threads are currently reserved, false otherwise.
+ */
+bool
+fy_thread_pool_are_all_reserved(struct fy_thread_pool *tp)
+	FY_EXPORT;
+
+/**
+ * fy_thread_pool_is_any_reserved() - Check whether at least one thread is reserved
+ *
+ * @tp: The thread pool
+ *
+ * Returns:
+ * true if any thread is currently reserved, false otherwise.
+ */
+bool
+fy_thread_pool_is_any_reserved(struct fy_thread_pool *tp)
+	FY_EXPORT;
+
+/**
  * fy_thread_work_join() - Submit works for execution and wait
  *
  * Submit works for possible parallel execution. If no offloading

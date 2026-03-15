@@ -67,6 +67,13 @@ static void atomic_increment_worker(void *arg)
 	}
 }
 
+static void atomic_add_worker(void *arg)
+{
+	_Atomic(int) *p = arg;
+
+	fy_atomic_fetch_add(p, 1);
+}
+
 /* Test: Thread reserve, submit work, wait, unreserve */
 START_TEST(thread_reserve_submit_wait)
 {
@@ -115,6 +122,79 @@ START_TEST(thread_reserve_submit_wait)
 }
 END_TEST
 
+START_TEST(thread_reserve_state_reporting)
+{
+	struct fy_thread_pool_cfg cfg;
+	struct fy_thread_pool *tp;
+	struct fy_thread *thread, *thread2;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = 0;
+	cfg.num_threads = 2;
+	cfg.userdata = NULL;
+
+	tp = fy_thread_pool_create(&cfg);
+	ck_assert_ptr_ne(tp, NULL);
+
+	ck_assert(!fy_thread_pool_are_all_reserved(tp));
+	ck_assert(!fy_thread_pool_is_any_reserved(tp));
+
+	thread = fy_thread_reserve(tp);
+	ck_assert_ptr_ne(thread, NULL);
+
+	ck_assert(!fy_thread_pool_are_all_reserved(tp));
+	ck_assert(fy_thread_pool_is_any_reserved(tp));
+
+	thread2 = fy_thread_reserve(tp);
+	ck_assert_ptr_ne(thread2, NULL);
+	ck_assert(fy_thread_pool_are_all_reserved(tp));
+	ck_assert(fy_thread_pool_is_any_reserved(tp));
+
+	fy_thread_unreserve(thread2);
+	fy_thread_unreserve(thread);
+	fy_thread_pool_destroy(tp);
+}
+END_TEST
+
+START_TEST(thread_reserve_multiple_of_64)
+{
+	struct fy_thread_pool_cfg cfg;
+	struct fy_thread_pool *tp;
+	struct fy_thread **threads;
+	unsigned int i, count;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = 0;
+	cfg.num_threads = 64;
+	cfg.userdata = NULL;
+
+	tp = fy_thread_pool_create(&cfg);
+	ck_assert_ptr_ne(tp, NULL);
+
+	count = (unsigned int)fy_thread_pool_get_num_threads(tp);
+	ck_assert_uint_eq(count, 64);
+
+	threads = calloc(count, sizeof(*threads));
+	ck_assert_ptr_ne(threads, NULL);
+
+	for (i = 0; i < count; i++) {
+		threads[i] = fy_thread_reserve(tp);
+		ck_assert_msg(threads[i] != NULL, "reservation failed at slot %u", i);
+	}
+	ck_assert(fy_thread_pool_are_all_reserved(tp));
+	ck_assert_ptr_eq(fy_thread_reserve(tp), NULL);
+
+	for (i = 0; i < count; i++)
+		fy_thread_unreserve(threads[i]);
+
+	ck_assert(!fy_thread_pool_are_all_reserved(tp));
+	ck_assert(!fy_thread_pool_is_any_reserved(tp));
+
+	free(threads);
+	fy_thread_pool_destroy(tp);
+}
+END_TEST
+
 /* Test: Thread arg join */
 START_TEST(thread_arg_join)
 {
@@ -136,6 +216,30 @@ START_TEST(thread_arg_join)
 
 	/* Verify counter was incremented num_tasks times */
 	ck_assert_int_eq(fy_atomic_load(&counter), (int)num_tasks);
+
+	fy_thread_pool_destroy(tp);
+}
+END_TEST
+
+START_TEST(thread_arg_join_repeated_atomic_counter)
+{
+	struct fy_thread_pool_cfg cfg;
+	struct fy_thread_pool *tp;
+	_Atomic(int) counter = 0;
+	unsigned int i, rounds = 64, num_tasks = 17;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = 0;
+	cfg.num_threads = 4;
+	cfg.userdata = NULL;
+
+	tp = fy_thread_pool_create(&cfg);
+	ck_assert_ptr_ne(tp, NULL);
+
+	for (i = 0; i < rounds; i++)
+		fy_thread_arg_join(tp, atomic_add_worker, NULL, (void *)&counter, num_tasks);
+
+	ck_assert_int_eq(fy_atomic_load(&counter), (int)(rounds * num_tasks));
 
 	fy_thread_pool_destroy(tp);
 }
@@ -255,9 +359,12 @@ void libfyaml_case_thread(struct fy_check_suite *cs)
 
 	/* Thread work submission tests */
 	fy_check_testcase_add_test(ctc, thread_reserve_submit_wait);
+	fy_check_testcase_add_test(ctc, thread_reserve_state_reporting);
+	fy_check_testcase_add_test(ctc, thread_reserve_multiple_of_64);
 
 	/* Join API tests */
 	fy_check_testcase_add_test(ctc, thread_arg_join);
+	fy_check_testcase_add_test(ctc, thread_arg_join_repeated_atomic_counter);
 	fy_check_testcase_add_test(ctc, thread_arg_array_join);
 
 	/* Work stealing tests */
