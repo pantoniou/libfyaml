@@ -1079,6 +1079,52 @@ START_TEST(fuzz_path_expr_execute_oom)
 }
 END_TEST
 
+START_TEST(fuzz_anchor_accel_cleanup_scalar_borrowed_input)
+{
+	char *doc_str;
+	struct fy_document *fyd = NULL;
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PREFER_RECURSIVE | FYPCF_JSON_NONE };
+
+	doc_str = strdup("&a foo");
+	ck_assert_ptr_ne(doc_str, NULL);
+
+	fyd = fy_document_build_from_string(&cfg, doc_str, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	free(doc_str);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(fuzz_anchor_accel_cleanup_mapping_borrowed_input)
+{
+	char *doc_str;
+	struct fy_document *fyd = NULL;
+	struct fy_node *removed_val = NULL;
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PREFER_RECURSIVE | FYPCF_JSON_NONE };
+	struct fy_node *root, *key_node;
+
+	doc_str = strdup("{ &a foo: bar }");
+	ck_assert_ptr_ne(doc_str, NULL);
+
+	fyd = fy_document_build_from_string(&cfg, doc_str, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	root = fy_document_root(fyd);
+	ck_assert_ptr_ne(root, NULL);
+	ck_assert(fy_node_is_mapping(root));
+
+	key_node = fy_node_build_from_string(fyd, "foo", FY_NT);
+	ck_assert_ptr_ne(key_node, NULL);
+	removed_val = fy_node_mapping_remove_by_key(root, key_node);
+	fy_node_free(key_node);
+
+	fy_node_free(removed_val);
+	free(doc_str);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -1145,4 +1191,6 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_emit_mapping_memory_leak);
 	fy_check_testcase_add_test(ctc, fuzz_walk_number_to_expr_nonfinite);
 	fy_check_testcase_add_test(ctc, fuzz_path_expr_execute_oom);
+	fy_check_testcase_add_test(ctc, fuzz_anchor_accel_cleanup_scalar_borrowed_input);
+	fy_check_testcase_add_test(ctc, fuzz_anchor_accel_cleanup_mapping_borrowed_input);
 }
