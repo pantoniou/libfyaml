@@ -624,7 +624,7 @@ void *fy_utf8_split_posix(const char *str, int *argcp, const char * const *argvp
 	const char *s, *e;
 	enum split_state ss;
 	int c, w, val, tmp, outc, i;
-	size_t arg_alloc = strlen(str) + 1, tmplen;
+	size_t arg_alloc, tmplen;
 	char *arg = NULL, *args, *arge, *tmparg;
 	int argv_alloc = 64, argv_count = 0;
 	char **argv = NULL, **tmpargv;
@@ -632,6 +632,8 @@ void *fy_utf8_split_posix(const char *str, int *argcp, const char * const *argvp
 
 	if (!str || !argcp || !argvp)
 		return NULL;
+
+	arg_alloc = strlen(str) + 1;
 
 	/* the temporary is guaranteed to fit one split */
 	arg = alloca(arg_alloc);
