@@ -913,6 +913,67 @@ START_TEST(emit_bug_folded_more_indented_roundtrip)
 }
 END_TEST
 
+/* ═══ Bug 16: fy_emit_token_write_folded_original emits spurious blank line ═══ */
+
+START_TEST(emit_bug_folded_clip_no_trailing_blank)
+{
+    /* >  (clip): roundtrip must not add a blank line after the scalar */
+    static const char input[] =
+        "key: >\n"
+        "  content line\n"
+        "other: value\n";
+    char *got = roundtrip_doc(input);
+    ck_assert_ptr_ne(got, NULL);
+    ck_assert_str_eq(got, input);
+    free(got);
+}
+END_TEST
+
+START_TEST(emit_bug_folded_strip_no_trailing_blank)
+{
+    /* >- (strip): roundtrip must not add a blank line after the scalar */
+    static const char input[] =
+        "key: >-\n"
+        "  content line\n"
+        "other: value\n";
+    char *got = roundtrip_doc(input);
+    ck_assert_ptr_ne(got, NULL);
+    ck_assert_str_eq(got, input);
+    free(got);
+}
+END_TEST
+
+START_TEST(emit_bug_folded_keep_trailing_blank_preserved)
+{
+    /* >+ (keep): trailing blank lines must be preserved */
+    static const char input[] =
+        "key: >+\n"
+        "  content line\n"
+        "\n"
+        "other: value\n";
+    char *got = roundtrip_doc(input);
+    ck_assert_ptr_ne(got, NULL);
+    ck_assert_str_eq(got, input);
+    free(got);
+}
+END_TEST
+
+START_TEST(emit_bug_folded_mid_content_blank_preserved)
+{
+    /* mid-content blank lines must always be preserved regardless of chomp */
+    static const char input[] =
+        "key: >\n"
+        "  first line\n"
+        "\n"
+        "  second line\n"
+        "other: value\n";
+    char *got = roundtrip_doc(input);
+    ck_assert_ptr_ne(got, NULL);
+    ck_assert_str_eq(got, input);
+    free(got);
+}
+END_TEST
+
 /* ── registration ────────────────────────────────────────────────── */
 
 void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
@@ -994,4 +1055,10 @@ void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_bug_folded_keep_roundtrip);
 	fy_check_testcase_add_test(ctc, emit_bug_folded_blank_lines_roundtrip);
 	fy_check_testcase_add_test(ctc, emit_bug_folded_more_indented_roundtrip);
+
+	/* Bug 16: folded scalar spurious trailing blank line */
+	fy_check_testcase_add_test(ctc, emit_bug_folded_clip_no_trailing_blank);
+	fy_check_testcase_add_test(ctc, emit_bug_folded_strip_no_trailing_blank);
+	fy_check_testcase_add_test(ctc, emit_bug_folded_keep_trailing_blank_preserved);
+	fy_check_testcase_add_test(ctc, emit_bug_folded_mid_content_blank_preserved);
 }
