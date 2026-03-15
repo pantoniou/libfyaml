@@ -1044,6 +1044,41 @@ START_TEST(fuzz_walk_number_to_expr_nonfinite)
 }
 END_TEST
 
+START_TEST(fuzz_path_expr_execute_oom)
+{
+	char data[] =
+		"\x2f\x2f\x2c\x2e\x2f\x2f\x2f\x2f\x2e\x2c\x2e\x2f\x2e\x2c\x2e\x2f"
+		"\x2f\x2f\x2f\x2e\x2c\x33\x3a\x32\x2c\x2e\x2f\x2f\x2e\x2c\x2e\x2f"
+		"\x2f\x2e\x2c\x2e\x2c\x2e\x31\x2f\x2f\x2f\x2e\x2c\x2e\x2f\x2f\x2f"
+		"\x2f\x2e\x2c\x33\x3a\x32\x2c\x2f\x2e\x2c\x2e\x2f\x2e\x2c\x2e\x2f"
+		"\x2f\x2f\x2f\x2e\x2c\x33\x3a\x32\x2c\x2e\x2f\x2f\x2e\x2c\x2e\x2f"
+		"\x2f\x2e\x2c\x2e\x2c\x2e\x31\x2f\x2f\x2f\x2e\x2c\x2e\x2f\x2f\x2f"
+		"\x2f\x2e\x2c\x33\x3a\x32\x2c\x2e\x2f\x2f\x2e\x2c\x2e\x2f\x2f\x2e"
+		"\x2c\x2e\x2c\x2e\x31\x2f\x2f\x2e\x2c\x2e\x2f\x2e\x2c\x2e\x2f\x2e"
+		"\x2c\x2e\x2f\x2f\x2e\x2c\x2e\x2f\x2f\x2e\x2c\x2e\x2c\x2e\x31\x2f"
+		"\x2f\x2e\x2c\x2e\x2f\x2e\x2c\x2e\x2f\x2e\x2c\x2e\x2c\x2e\x2f\x2a";
+	struct fy_document *fyd = NULL;
+	struct fy_node *fyn, *root, *node;
+
+	fyd = fy_document_create(NULL);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn = fy_node_create_sequence(fyd);
+	ck_assert_ptr_ne(fyn, NULL);
+	fy_document_set_root(fyd, fyn);
+
+	root = fy_document_root(fyd);
+	ck_assert_ptr_ne(root, NULL);
+
+	node = fy_node_by_path(root, data, FY_NT,
+			FYNWF_FOLLOW | FYNWF_PTR_JSON |
+			FYNWF_PTR_RELJSON | FYNWF_PTR_YPATH);
+	(void)node;
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -1109,4 +1144,5 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_document_iterator_cleanup_uaf);
 	fy_check_testcase_add_test(ctc, fuzz_emit_mapping_memory_leak);
 	fy_check_testcase_add_test(ctc, fuzz_walk_number_to_expr_nonfinite);
+	fy_check_testcase_add_test(ctc, fuzz_path_expr_execute_oom);
 }
