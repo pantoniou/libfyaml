@@ -1278,25 +1278,26 @@ void fy_emit_token_write_literal(struct fy_emitter *emit, struct fy_token *fyt, 
 	fy_emit_accum_start(&emit->ea, emit->column, fy_token_atom_lb_mode(fyt));
 	while ((c = fy_atom_iter_utf8_get(&iter)) > 0) {
 
-		if (breaks) {
-			fy_emit_write_indent(emit, indent);
-			fy_emit_output_col_sync(emit, &emit->ea);
-			breaks = false;
-		}
-
 		if (fy_is_lb_m(c, fy_token_atom_lb_mode(fyt))) {
 			fy_emit_output_accum(emit, fyewt_literal_scalar, &emit->ea);
-			emit->flags &= ~FYEF_INDENTATION;
+			fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
+			emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
 			breaks = true;
-		} else
+		} else {
+			if (breaks) {
+				fy_emit_write_indent(emit, indent);
+				fy_emit_output_col_sync(emit, &emit->ea);
+				breaks = false;
+			}
 			fy_emit_accum_utf8_put(&emit->ea, c);
+		}
 	}
 	fy_emit_output_accum(emit, fyewt_literal_scalar, &emit->ea);
 	fy_emit_accum_finish(&emit->ea);
 	fy_atom_iter_finish(&iter);
 
 out:
-	emit->flags &= ~FYEF_INDENTATION;
+	;
 }
 
 static inline bool fy_emit_can_use_original_folded_breaks(struct fy_emitter *emit,
