@@ -150,18 +150,19 @@ static int fy_document_set_anchor_internal(struct fy_document *fyd, struct fy_no
 
 	if (!text) {
 		/* no anchor, and trying to delete? OK */
-		if (fya)
+		if (!fya)
 			return 0;
+
 		/* remove the anchor */
 		fy_anchor_list_del(&fyd->anchors, fya);
 
-		if (fy_document_is_accelerated(fyd)) {
-			xle = fy_accel_entry_lookup_key_value(fyd->axl, fya->anchor, fya);
-			fy_accel_entry_remove(fyd->axl, xle);
+			if (fy_document_is_accelerated(fyd)) {
+				xle = fy_accel_entry_lookup_value(fyd->axl, fya);
+				fy_accel_entry_remove(fyd->axl, xle);
 
-			xle = fy_accel_entry_lookup_key_value(fyd->naxl, fya->fyn, fya);
-			fy_accel_entry_remove(fyd->naxl, xle);
-		}
+				xle = fy_accel_entry_lookup_value(fyd->naxl, fya);
+				fy_accel_entry_remove(fyd->naxl, xle);
+			}
 
 		fy_anchor_destroy(fya);
 		return 0;
@@ -748,10 +749,10 @@ int fy_node_free(struct fy_node *fyn)
 
 			fy_anchor_list_del(&fyd->anchors, fya);
 
-			xle = fy_accel_entry_lookup_key_value(fyd->axl, fya->anchor, fya);
+			xle = fy_accel_entry_lookup_value(fyd->axl, fya);
 			fy_accel_entry_remove(fyd->axl, xle);
 
-			xle = fy_accel_entry_lookup_key_value(fyd->naxl, fya->fyn, fya);
+			xle = fy_accel_entry_lookup_value(fyd->naxl, fya);
 			fy_accel_entry_remove(fyd->naxl, xle);
 
 			fy_anchor_destroy(fya);
@@ -2989,13 +2990,13 @@ void fy_document_purge_anchors(struct fy_document *fyd)
 		fyan = fy_anchor_next(&fyd->anchors, fya);
 		fy_anchor_list_del(&fyd->anchors, fya);
 
-		if (fy_document_is_accelerated(fyd)) {
-			xle = fy_accel_entry_lookup_key_value(fyd->axl, fya->anchor, fya);
-			fy_accel_entry_remove(fyd->axl, xle);
+			if (fy_document_is_accelerated(fyd)) {
+				xle = fy_accel_entry_lookup_value(fyd->axl, fya);
+				fy_accel_entry_remove(fyd->axl, xle);
 
-			xle = fy_accel_entry_lookup_key_value(fyd->naxl, fya->fyn, fya);
-			fy_accel_entry_remove(fyd->naxl, xle);
-		}
+				xle = fy_accel_entry_lookup_value(fyd->naxl, fya);
+				fy_accel_entry_remove(fyd->naxl, xle);
+			}
 
 		fy_anchor_destroy(fya);
 	}

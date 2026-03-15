@@ -282,6 +282,27 @@ fy_accel_entry_lookup_key_value(struct fy_accel *xl, const void *key, const void
 	return xle;
 }
 
+struct fy_accel_entry *
+fy_accel_entry_lookup_value(struct fy_accel *xl, const void *value)
+{
+	struct fy_accel_entry_list *xlel;
+	struct fy_accel_entry *xle;
+	unsigned int i;
+
+	if (!xl)
+		return NULL;
+
+	for (i = 0, xlel = xl->buckets; i < xl->nbuckets; i++, xlel++) {
+		for (xle = fy_accel_entry_list_first(xlel); xle;
+		     xle = fy_accel_entry_next(xlel, xle)) {
+			if (xle->value == value)
+				return xle;
+		}
+	}
+
+	return NULL;
+}
+
 void
 fy_accel_entry_remove(struct fy_accel *xl, struct fy_accel_entry *xle)
 {

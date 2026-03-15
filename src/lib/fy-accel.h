@@ -79,6 +79,8 @@ struct fy_accel_entry *
 fy_accel_entry_lookup(struct fy_accel *xl, const void *key);
 struct fy_accel_entry *
 fy_accel_entry_lookup_key_value(struct fy_accel *xl, const void *key, const void *value);
+struct fy_accel_entry *
+fy_accel_entry_lookup_value(struct fy_accel *xl, const void *value);
 
 void fy_accel_entry_remove(struct fy_accel *xl, struct fy_accel_entry *xle);
 
