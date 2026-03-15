@@ -251,6 +251,14 @@ AM_CONDITIONAL([HAVE_ASAN],
 	       [ test x$HAVE_ASAN = x1 ])
 AC_DEFINE_UNQUOTED([HAVE_ASAN], [$HAVE_ASAN], [Define to 1 if ASAN is enabled])
 
+# Link libm on platforms where trunc() lives outside libc.
+AC_SEARCH_LIBS([trunc], [m])
+LIBM="$ac_cv_search_trunc"
+if test "x$LIBM" = "xno" || test "x$LIBM" = "xyes" ; then
+	LIBM=""
+fi
+AC_SUBST(LIBM)
+
 # check if there's a qsort_r available (musl does not have it)
 AC_CHECK_FUNC([qsort_r],
 	      HAVE_QSORT_R=1,
