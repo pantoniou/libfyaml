@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Welcome to libfyaml’s documentation! &mdash; libfyaml 0.1 documentation</title>
+  <title>Welcome to libfyaml’s documentation! &mdash; libfyaml 0.9.6 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=2709fde1"></script>
+      <script src="_static/documentation_options.js?v=564a08b9"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
@@ -45,7 +45,9 @@
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="intro.html">Introduction</a></li>
 <li class="toctree-l1"><a class="reference internal" href="man/fy-tool.html">fy-tool</a></li>
-<li class="toctree-l1"><a class="reference internal" href="libfyaml.html">Public API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml.html">libfyaml API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-core.html">Core API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-misc.html">Miscellaneous API</a></li>
 </ul>
 
         </div>
@@ -88,7 +90,31 @@
 <li class="toctree-l2"><a class="reference internal" href="man/fy-tool.html#see-also">See also</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="libfyaml.html">Public API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml.html">libfyaml API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml.html#subsystem-pages">Subsystem Pages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml.html#see-also">See also</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-core.html">Core API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-core.html#core">Core</a></li>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-core.html#yaml-parser-document-and-emitter">YAML Parser, Document and Emitter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-core.html#path-execution">Path Execution</a></li>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-core.html#document-iteration">Document Iteration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-core.html#document-builder">Document Builder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-core.html#composer">Composer</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-misc.html">Miscellaneous API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-misc.html#utilities">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-misc.html#allocator">Allocator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-misc.html#threading">Threading</a></li>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-misc.html#blake3-hashing">BLAKE3 Hashing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-misc.html#alignment">Alignment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-misc.html#endianness">Endianness</a></li>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-misc.html#variable-length-size-encoding">Variable-Length Size Encoding</a></li>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-misc.html#atomic-operations">Atomic Operations</a></li>
+</ul>
+</li>
 </ul>
 </div>
 </section>
@@ -111,7 +137,7 @@
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2019, Pantelis Antoniou.</p>
+    <p>&#169; Copyright 2019-2026, Pantelis Antoniou.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
