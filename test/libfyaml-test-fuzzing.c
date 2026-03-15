@@ -1011,6 +1011,39 @@ START_TEST(fuzz_emit_mapping_memory_leak)
 }
 END_TEST
 
+START_TEST(fuzz_walk_number_to_expr_nonfinite)
+{
+	char data[] = "\x2a\x28\x6e\x2a\x28\x2d\x30\x2f\x30\x29\x2f\x2a\x2a";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_COLLECT_DIAG | FYPCF_RESOLVE_DOCUMENT |
+			 FYPCF_PREFER_RECURSIVE | FYPCF_JSON_NONE |
+			 FYPCF_YPATH_ALIASES,
+	};
+	struct fy_document *fyd = NULL;
+	FILE *fp = NULL;
+	int rc;
+
+	fyd = fy_document_build_from_string(&cfg, data, FY_NT);
+	if (!fyd)
+		return;
+
+	fp = fopen("/dev/null", "w");
+	ck_assert_ptr_ne(fp, NULL);
+
+	rc = fy_emit_document_to_fp(fyd,
+		FYECF_STRIP_LABELS | FYECF_WIDTH_DEFAULT | FYECF_WIDTH_80 |
+		FYECF_WIDTH_INF | FYECF_MODE_FLOW | FYECF_MODE_FLOW_ONELINE |
+		FYECF_MODE_JSON | FYECF_MODE_JSON_TP | FYECF_MODE_JSON_ONELINE |
+		FYECF_MODE_DEJSON | FYECF_MODE_FLOW_COMPACT |
+		FYECF_MODE_JSON_COMPACT | FYECF_DOC_START_MARK_OFF,
+		fp);
+	(void)rc;
+
+	fclose(fp);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -1075,4 +1108,5 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_emit_node_to_string_uaf);
 	fy_check_testcase_add_test(ctc, fuzz_document_iterator_cleanup_uaf);
 	fy_check_testcase_add_test(ctc, fuzz_emit_mapping_memory_leak);
+	fy_check_testcase_add_test(ctc, fuzz_walk_number_to_expr_nonfinite);
 }
