@@ -229,161 +229,253 @@ static struct option lopts[] = {
 	{0,			0,			0,	 0  },
 };
 
+static bool usage_colorize(FILE *fp)
+{
+#ifdef _WIN32
+	if (fp == stdout || fp == stderr) {
+		HANDLE h = GetStdHandle(fp == stdout ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE);
+		DWORD dwMode;
+
+		return h != INVALID_HANDLE_VALUE && GetConsoleMode(h, &dwMode);
+	}
+	return _isatty(_fileno(fp)) == 1;
+#else
+	return isatty(fileno(fp)) == 1;
+#endif
+}
+
+static void usage_print_style(FILE *fp, bool colorize, const char *style, const char *text)
+{
+	if (colorize && style && *style)
+		fputs(style, fp);
+	fputs(text, fp);
+	if (colorize && style && *style)
+		fputs(A_RESET, fp);
+}
+
+static const char *usage_option_style(const char *text, size_t len)
+{
+	if (!len)
+		return NULL;
+	if (len >= 2 && text[0] == '-' && text[1] == '-')
+		return A_CYAN;
+	if (text[0] == '-')
+		return A_GREEN;
+	if (text[0] == '<' && text[len - 1] == '>')
+		return A_GREEN;
+	return NULL;
+}
+
+static void usage_print_option(FILE *fp, bool colorize, const char *opt)
+{
+	const char *s, *e, *style;
+	size_t len;
+
+	for (s = opt; *s; s = e) {
+		if (*s == ' ' || *s == ',') {
+			fputc(*s, fp);
+			e = s + 1;
+			continue;
+		}
+
+		for (e = s; *e && *e != ' ' && *e != ','; e++)
+			;
+
+		len = (size_t)(e - s);
+		style = usage_option_style(s, len);
+		if (colorize && style)
+			fputs(style, fp);
+		fwrite(s, 1, len, fp);
+		if (colorize && style)
+			fputs(A_RESET, fp);
+	}
+}
+
+static void usage_print_option_padded(FILE *fp, bool colorize, const char *opt, size_t width)
+{
+	size_t len, i;
+
+	usage_print_option(fp, colorize, opt);
+
+	len = strlen(opt);
+	for (i = len; i < width; i++)
+		fputc(' ', fp);
+}
+
 static void display_usage(FILE *fp, char *progname, int tool_mode)
 {
-	fprintf(fp, "Usage: %s [options] [args]\n", progname);
-	fprintf(fp, "\nOptions:\n\n");
-	fprintf(fp, "\t--include, -I <path>     : Add directory to include path "
-						"(default path \"%s\")\n",
-						INCLUDE_DEFAULT);
-	fprintf(fp, "\t--debug-level, -d <lvl>  : Set debug level to <lvl>"
-						"(default level %d)\n",
-						DEBUG_LEVEL_DEFAULT);
-	fprintf(fp, "\t--disable-diag <x>       : Disable diag error module <x>\n");
-	fprintf(fp, "\t--enable-diag <x>        : Enable diag error module <x>\n");
-	fprintf(fp, "\t--show-diag <x>          : Show diag option <x> (source, position, type, module)\n");
-	fprintf(fp, "\t--hide-diag <x>          : Hide diag optione <x> (source, position, type, module)\n");
+	bool colorize;
+	const char *hclr, *dclr, *vclr, *xclr, *reset;
 
-	fprintf(fp, "\t--indent, -i <indent>    : Set dump indent to <indent>"
-						" (default indent %d)\n",
-						INDENT_DEFAULT);
-	fprintf(fp, "\t--width, -w <width>      : Set dump width to <width> - inf for infinite"
-						" (default width %d)\n",
-						WIDTH_DEFAULT);
-	fprintf(fp, "\t--resolve, -r            : Perform anchor and merge key resolution"
-						" (default %s)\n",
-						RESOLVE_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--color, -C <mode>       : Color output can be one of on, off, auto"
-						" (default %s)\n",
-						COLOR_DEFAULT);
-	fprintf(fp, "\t--visible, -V            : Make all whitespace and linebreaks visible"
-						" (default %s)\n",
-						VISIBLE_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--follow, -l             : Follow aliases when using paths"
-						" (default %s)\n",
-						FOLLOW_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--strip-labels           : Strip labels when emitting"
-						" (default %s)\n",
-						STRIP_LABELS_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--strip-tags             : Strip tags when emitting"
-						" (default %s)\n",
-						STRIP_TAGS_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--strip-doc              : Strip document headers and indicators when emitting"
-						" (default %s)\n",
-						STRIP_DOC_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--disable-accel          : Disable access accelerators (slower but uses less memory)"
-						" (default %s)\n",
-						DISABLE_ACCEL_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--disable-buffering      : Disable buffering (i.e. no stdio file reads, unix fd instead)"
-						" (default %s)\n",
-						DISABLE_BUFFERING_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--disable-depth-limit    : Disable depth limit"
-						" (default %s)\n",
-						DISABLE_DEPTH_LIMIT_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--json, -j               : JSON input mode (no | force | auto)"
-						" (default %s)\n",
-						JSON_DEFAULT);
-	fprintf(fp, "\t--yaml-1.1               : Enable YAML 1.1 version instead of the library's default\n");
-	fprintf(fp, "\t--yaml-1.2               : Enable YAML 1.2 version instead of the library's default\n");
-	fprintf(fp, "\t--yaml-1.3               : Enable YAML 1.3 version instead of the library's default\n");
-	fprintf(fp, "\t--sloppy-flow-indentation: Enable sloppy indentation in flow mode)"
-						" (default %s)\n",
-						SLOPPY_FLOW_INDENTATION_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--prefer-recursive       : Prefer recursive instead of iterative algorighms"
-						" (default %s)\n",
-						PREFER_RECURSIVE_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--ypath-aliases          : Use YPATH aliases (default %s)\n",
-						YPATH_ALIASES_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--null-output            : Do not generate output (for scanner profiling)\n");
-	fprintf(fp, "\t--no-ending-newline      : Do not generate a final newline\n");
-	fprintf(fp, "\t--preserve-flow-layout   : Preserve layout of single line flow collections\n");
-	fprintf(fp, "\t--indented-seq-in-map    : Indent block sequences in block mappings\n");
-	fprintf(fp, "\t--collect-errors         : Collect errors instead of outputting directly"
-						" (default %s)\n",
-						COLLECT_ERRORS_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--allow-duplicate-keys   : Allow duplicate keys"
-						" (default %s)\n",
-						ALLOW_DUPLICATE_KEYS_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--strip-empty-kv         : Strip keys with empty values when emitting (not available in streaming mode)"
-						" (default %s)\n",
-						STRIP_EMPTY_KV_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--quiet, -q              : Quiet operation, do not "
-						"output messages (default %s)\n",
-						QUIET_DEFAULT ? "true" : "false");
-	fprintf(fp, "\t--dry-run                : Do not parse/emit\n");
-	fprintf(fp, "\t--version, -v            : Display libfyaml version\n");
-	fprintf(fp, "\t--help, -h               : Display  help message\n");
+	colorize = usage_colorize(fp);
+
+	hclr = colorize ? A_BRIGHT_YELLOW : "";
+	dclr = "";
+	vclr = colorize ? A_GREEN : "";
+	xclr = colorize ? A_CYAN : "";
+	reset = colorize ? A_RESET : "";
+
+#define USAGE_SECTION(title) \
+	fprintf(fp, "\n%s%s%s:\n", hclr, (title), reset)
+#define USAGE_ITEM(opt, desc) \
+	do { \
+		fprintf(fp, "  "); \
+		usage_print_option_padded(fp, colorize, (opt), 32); \
+		fprintf(fp, " : %s%s%s\n", dclr, (desc), reset); \
+	} while (0)
+#define USAGE_ITEM_DEFAULT(opt, desc, defval) \
+	do { \
+		fprintf(fp, "  "); \
+		usage_print_option_padded(fp, colorize, (opt), 32); \
+		fprintf(fp, " : %s%s%s (default %s%s%s)\n", \
+			dclr, (desc), reset, vclr, (defval), reset); \
+	} while (0)
+#define USAGE_ITEM_DEFAULT_INT(opt, desc, defval) \
+	do { \
+		fprintf(fp, "  "); \
+		usage_print_option_padded(fp, colorize, (opt), 32); \
+		fprintf(fp, " : %s%s%s (default %s%d%s)\n", \
+			dclr, (desc), reset, vclr, (defval), reset); \
+	} while (0)
+#define USAGE_ITEM_MAX_UINT(opt, desc, maxval) \
+	do { \
+		fprintf(fp, "  "); \
+		usage_print_option_padded(fp, colorize, (opt), 32); \
+		fprintf(fp, " : %s%s%s (max %s%u%s)\n", \
+			dclr, (desc), reset, vclr, (maxval), reset); \
+	} while (0)
+#define USAGE_CONT(text) \
+	fprintf(fp, "  %-32s   %s%s%s\n", "", dclr, (text), reset)
+#define USAGE_EXAMPLES() \
+	fprintf(fp, "%sExamples%s:\n\n", hclr, reset)
+#define USAGE_EXAMPLE_TEXT(text) \
+	fprintf(fp, "  %s\n", (text))
+#define USAGE_EXAMPLE_CMD(fmt, ...) \
+	fprintf(fp, "  %s$ " fmt "%s\n", xclr, __VA_ARGS__, reset)
+
+	fprintf(fp, "%sUsage%s: ", hclr, reset);
+	usage_print_style(fp, colorize, xclr, progname);
+	fprintf(fp, " [options] [args]\n");
+	USAGE_SECTION("General options");
+	USAGE_ITEM("--help, -h", "Display this help message");
+	USAGE_ITEM("--version, -v", "Display libfyaml version");
+	USAGE_ITEM_DEFAULT("--quiet, -q", "Quiet operation", QUIET_DEFAULT ? "true" : "false");
+	USAGE_ITEM_DEFAULT_INT("--debug-level, -d <lvl>", "Set debug level", DEBUG_LEVEL_DEFAULT);
+	USAGE_ITEM_DEFAULT("--color, -C <mode>", "Color output (on, off, auto)", COLOR_DEFAULT);
+	USAGE_ITEM_DEFAULT("--visible, -V", "Make whitespace and linebreaks visible", VISIBLE_DEFAULT ? "true" : "false");
+	USAGE_ITEM("--dry-run", "Do not parse/emit");
+
+	USAGE_SECTION("Diagnostic options");
+	USAGE_ITEM("--disable-diag <x>", "Disable diag error module <x>");
+	USAGE_ITEM("--enable-diag <x>", "Enable diag error module <x>");
+	USAGE_ITEM("--show-diag <x>", "Show diag option <x> (source, position, type, module)");
+	USAGE_ITEM("--hide-diag <x>", "Hide diag option <x> (source, position, type, module)");
+
+	USAGE_SECTION("Parser options");
+
+	USAGE_ITEM_DEFAULT("--include, -I <path>", "Add directory to include path", INCLUDE_DEFAULT);
+	USAGE_ITEM_DEFAULT("--json, -j <mode>", "JSON input mode (no, force, auto)", JSON_DEFAULT);
+	USAGE_ITEM_DEFAULT("--resolve, -r", "Perform anchor and merge key resolution", RESOLVE_DEFAULT ? "true" : "false");
+	USAGE_ITEM("--yaml-1.1", "Enable YAML 1.1");
+	USAGE_ITEM("--yaml-1.2", "Enable YAML 1.2");
+	USAGE_ITEM("--yaml-1.3", "Enable YAML 1.3");
+	USAGE_ITEM_DEFAULT("--follow, -l", "Follow aliases when using paths", FOLLOW_DEFAULT ? "true" : "false");
+	USAGE_ITEM_DEFAULT("--sloppy-flow-indentation", "Enable sloppy indentation in flow mode", SLOPPY_FLOW_INDENTATION_DEFAULT ? "true" : "false");
+	USAGE_ITEM_DEFAULT("--prefer-recursive", "Prefer recursive instead of iterative algorithms", PREFER_RECURSIVE_DEFAULT ? "true" : "false");
+	USAGE_ITEM_DEFAULT("--ypath-aliases", "Use YPATH aliases", YPATH_ALIASES_DEFAULT ? "true" : "false");
+	USAGE_ITEM_DEFAULT("--allow-duplicate-keys", "Allow duplicate keys", ALLOW_DUPLICATE_KEYS_DEFAULT ? "true" : "false");
+	USAGE_ITEM_DEFAULT("--collect-errors", "Collect errors instead of outputting directly", COLLECT_ERRORS_DEFAULT ? "true" : "false");
+	USAGE_ITEM_DEFAULT("--disable-accel", "Disable access accelerators", DISABLE_ACCEL_DEFAULT ? "true" : "false");
+	USAGE_ITEM_DEFAULT("--disable-buffering", "Disable buffering (use unix fd)", DISABLE_BUFFERING_DEFAULT ? "true" : "false");
+	USAGE_ITEM("--disable-mmap", "Disable mmap usage");
+	USAGE_ITEM_DEFAULT("--disable-depth-limit", "Disable depth limit", DISABLE_DEPTH_LIMIT_DEFAULT ? "true" : "false");
 
 	if (tool_mode == OPT_TOOL || tool_mode != OPT_TESTSUITE) {
-		fprintf(fp, "\t--sort, -s               : Perform mapping key sort (valid for dump)"
-							" (default %s)\n",
-							SORT_DEFAULT ? "true" : "false");
-		fprintf(fp, "\t--comment, -c            : Output comments (experimental)"
-							" (default %s)\n",
-							COMMENT_DEFAULT ? "true" : "false");
-		fprintf(fp, "\t--mode, -m <mode>        : Output mode can be one of original, block, flow, flow-oneline, json, json-tp, json-oneline, dejson, pretty|yamlfmt, flow-compact, json-compact"
-							" (default %s)\n",
-							MODE_DEFAULT);
-		fprintf(fp, "\t--disable-flow-markers   : Disable testsuite's flow-markers"
-							" (default %s)\n",
-							DISABLE_FLOW_MARKERS_DEFAULT ? "true" : "false");
-		fprintf(fp, "\t--disable-doc-markers    : Disable testsuite's document-markers"
-							" (default %s)\n",
-							DISABLE_DOC_MARKERS_DEFAULT ? "true" : "false");
-		fprintf(fp, "\t--disable-scalar-styles  : Disable testsuite's scalar styles (all are double quoted)"
-							" (default %s)\n",
-							DISABLE_SCALAR_STYLES_DEFAULT ? "true" : "false");
-		fprintf(fp, "\t--document-event-stream  : Generate a document and then produce the event stream"
-							" (default %s)\n",
-							DOCUMENT_EVENT_STREAM_DEFAULT ? "true" : "false");
-		fprintf(fp, "\t--tsv-format             : Display testsuite in TSV format"
-							" (default %s)\n",
-							TSV_FORMAT_DEFAULT ? "true" : "false");
+		USAGE_SECTION("Emitter options");
+		USAGE_ITEM_DEFAULT_INT("--indent, -i <indent>", "Set dump indent", INDENT_DEFAULT);
+		USAGE_ITEM_DEFAULT_INT("--width, -w <width>", "Set dump width (inf for infinite)", WIDTH_DEFAULT);
+		USAGE_ITEM_DEFAULT("--mode, -m <mode>", "Output mode", MODE_DEFAULT);
+		USAGE_CONT("(original, block, flow, flow-oneline, json, json-tp, json-oneline, dejson, pretty, flow-compact, json-compact)");
+		USAGE_ITEM_DEFAULT("--sort, -s", "Perform mapping key sort", SORT_DEFAULT ? "true" : "false");
+		USAGE_ITEM_DEFAULT("--comment, -c", "Output comments (experimental)", COMMENT_DEFAULT ? "true" : "false");
+		USAGE_ITEM_DEFAULT("--strip-labels", "Strip labels when emitting", STRIP_LABELS_DEFAULT ? "true" : "false");
+		USAGE_ITEM_DEFAULT("--strip-tags", "Strip tags when emitting", STRIP_TAGS_DEFAULT ? "true" : "false");
+		USAGE_ITEM_DEFAULT("--strip-doc", "Strip document headers and indicators", STRIP_DOC_DEFAULT ? "true" : "false");
+		USAGE_ITEM_DEFAULT("--strip-empty-kv", "Strip keys with empty values", STRIP_EMPTY_KV_DEFAULT ? "true" : "false");
+		USAGE_ITEM("--null-output", "Do not generate output");
+		USAGE_ITEM("--no-ending-newline", "Do not generate a final newline");
+		USAGE_ITEM("--preserve-flow-layout", "Preserve layout of single line flow collections");
+		USAGE_ITEM("--indented-seq-in-map", "Indent block sequences in block mappings");
+
 		if (tool_mode == OPT_TOOL || tool_mode == OPT_DUMP) {
-			fprintf(fp, "\t--streaming              : Use streaming output mode (default)");
-			fprintf(fp, "\t--no-streaming           : Don't use streaming output mode");
-			fprintf(fp, "\t--recreating             : Recreate streaming events"
-								" (default %s)\n",
-								RECREATING_DEFAULT ? "true" : "false");
+			USAGE_ITEM_DEFAULT("--streaming", "Use streaming output mode", STREAMING_DEFAULT ? "true" : "false");
+			USAGE_ITEM("--no-streaming", "Don't use streaming output mode");
+			USAGE_ITEM_DEFAULT("--recreating", "Recreate streaming events", RECREATING_DEFAULT ? "true" : "false");
 		}
 	}
 
+	if (tool_mode == OPT_TOOL || tool_mode == OPT_TESTSUITE) {
+		USAGE_SECTION("Testsuite options");
+		USAGE_ITEM_DEFAULT("--disable-flow-markers", "Disable testsuite's flow-markers", DISABLE_FLOW_MARKERS_DEFAULT ? "true" : "false");
+		USAGE_ITEM_DEFAULT("--disable-doc-markers", "Disable testsuite's document-markers", DISABLE_DOC_MARKERS_DEFAULT ? "true" : "false");
+		USAGE_ITEM_DEFAULT("--disable-scalar-styles", "Disable testsuite's scalar styles", DISABLE_SCALAR_STYLES_DEFAULT ? "true" : "false");
+		USAGE_ITEM_DEFAULT("--document-event-stream", "Generate a document and then produce events", DOCUMENT_EVENT_STREAM_DEFAULT ? "true" : "false");
+		USAGE_ITEM_DEFAULT("--tsv-format", "Display testsuite in TSV format", TSV_FORMAT_DEFAULT ? "true" : "false");
+	}
+
 	if (tool_mode == OPT_TOOL || (tool_mode != OPT_DUMP && tool_mode != OPT_TESTSUITE)) {
-		fprintf(fp, "\t--file, -f <file>        : Use given file instead of <stdin>\n"
-			    "\t                           Note that using a string with a leading '>' is equivalent to a file with the trailing content\n"
-			    "\t                           --file \">foo: bar\" is as --file file.yaml with file.yaml \"foo: bar\"\n");
+		USAGE_SECTION("Input options");
+		USAGE_ITEM("--file, -f <file>", "Use given file instead of <stdin>");
+		USAGE_CONT("(a leading '>' in the string is treated as literal content)");
 	}
 
 	if (tool_mode == OPT_TOOL || tool_mode == OPT_JOIN) {
-		fprintf(fp, "\t--to, -T <path>          : Join to <path> (default %s)\n",
-							TO_DEFAULT);
-		fprintf(fp, "\t--from, -F <path>        : Join from <path> (default %s)\n",
-							FROM_DEFAULT);
-		fprintf(fp, "\t--trim, -t <path>        : Output given path (default %s)\n",
-							TRIM_DEFAULT);
+		USAGE_SECTION("Join options");
+		USAGE_ITEM_DEFAULT("--to, -T <path>", "Join to path", TO_DEFAULT);
+		USAGE_ITEM_DEFAULT("--from, -F <path>", "Join from path", FROM_DEFAULT);
+		USAGE_ITEM_DEFAULT("--trim, -t <path>", "Output given path", TRIM_DEFAULT);
 	}
 
 	if (tool_mode == OPT_TOOL || tool_mode == OPT_YPATH) {
-		fprintf(fp, "\t--from, -F <path>        : Start from <path> (default %s)\n",
-							FROM_DEFAULT);
-		fprintf(fp, "\t--dump-pathexpr          : Dump the path expresion before the results\n");
-		fprintf(fp, "\t--noexec                 : Do not execute the expression\n");
+		USAGE_SECTION("YPATH options");
+		USAGE_ITEM_DEFAULT("--from, -F <path>", "Start from path", FROM_DEFAULT);
+		USAGE_ITEM("--dump-pathexpr", "Dump the path expression before the results");
+		USAGE_ITEM("--noexec", "Do not execute the expression");
 	}
 
 	if (tool_mode == OPT_TOOL || tool_mode == OPT_COMPOSE) {
-		fprintf(fp, "\t--dump-path              : Dump the path while composing\n");
+		USAGE_SECTION("Compose options");
+		USAGE_ITEM("--dump-path", "Dump the path while composing");
+	}
+
+	if (tool_mode == OPT_TOOL || tool_mode == OPT_B3SUM) {
+		USAGE_SECTION("B3SUM options");
+		USAGE_ITEM("--b3sum", "BLAKE3 hash b3sum mode");
+		USAGE_ITEM("--derive-key <context>", "Key derivation mode");
+		USAGE_ITEM("--no-names", "Omit filenames");
+		USAGE_ITEM("--raw", "Output result in raw bytes");
+		USAGE_ITEM_MAX_UINT("--length <n>", "Output only this amount of bytes", FY_BLAKE3_OUT_LEN);
+		USAGE_ITEM("--check", "Read files with BLAKE3 checksums and check");
+		USAGE_ITEM("--keyed", "Keyed mode (secret key from stdin)");
+		USAGE_ITEM("--backend <backend>", "Select a BLAKE3 backend");
+		USAGE_ITEM("--list-backends", "Print available backends");
+		USAGE_ITEM("--num-threads <n>", "Number of threads (-1: disable, 0: auto)");
+		USAGE_ITEM("--file-buffer <n>", "Size of file I/O buffer");
+		USAGE_ITEM("--mmap-min-chunk <n>", "Minimum mmap chunk size");
+		USAGE_ITEM("--mmap-max-chunk <n>", "Maximum mmap chunk size");
 	}
 
 	if (tool_mode == OPT_TOOL) {
-		fprintf(fp, "\t--dump                   : Dump mode, [arguments] are file names\n");
-		fprintf(fp, "\t--testsuite              : Testsuite mode, [arguments] are <file>s to output parse events\n");
-		fprintf(fp, "\t--filter                 : Filter mode, <stdin> is input, [arguments] are <path>s, outputs to stdout\n");
-		fprintf(fp, "\t--join                   : Join mode, [arguments] are <path>s, outputs to stdout\n");
-		fprintf(fp, "\t--ypath                  : YPATH mode, [arguments] are <path>s, file names, outputs to stdout\n");
-		fprintf(fp, "\t--scan-dump              : scan-dump mode, [arguments] are file names\n");
-		fprintf(fp, "\t--parse-dump             : parse-dump mode, [arguments] are file names\n");
-		fprintf(fp, "\t--compose                : composer driver dump mode, [arguments] are file names\n");
-		fprintf(fp, "\t--yaml-version           : Information about supported libfyaml's YAML versions\n");
+		USAGE_SECTION("Modes");
+		USAGE_ITEM("--dump", "Dump mode (default)");
+		USAGE_ITEM("--testsuite", "Testsuite mode");
+		USAGE_ITEM("--filter", "Filter mode");
+		USAGE_ITEM("--join", "Join mode");
+		USAGE_ITEM("--ypath", "YPATH mode");
+		USAGE_ITEM("--scan-dump", "Scan-dump mode (internal)");
+		USAGE_ITEM("--parse-dump", "Parse-dump mode (internal)");
+		USAGE_ITEM("--compose", "Composer driver dump mode");
+		USAGE_ITEM("--yaml-version-dump", "Information about YAML versions");
 	}
 
 	fprintf(fp, "\n");
@@ -393,95 +485,96 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	default:
 		break;
 	case OPT_TESTSUITE:
-		fprintf(fp, "\tParse and dump test-suite event format\n");
-		fprintf(fp, "\t$ %s input.yaml\n\t...\n", progname);
+		USAGE_EXAMPLES();
+		USAGE_EXAMPLE_TEXT("  Parse and dump test-suite event format");
+		USAGE_EXAMPLE_CMD("%s input.yaml", progname);
 		fprintf(fp, "\n");
-		fprintf(fp, "\tParse and dump of event example\n");
-		fprintf(fp, "\t$ echo \"foo: bar\" | %s -\n", progname);
-		fprintf(fp, "\t+STR\n\t+DOC\n\t+MAP\n\t=VAL :foo\n\t=VAL :bar\n\t-MAP\n\t-DOC\n\t-STR\n");
+		USAGE_EXAMPLE_TEXT("  Parse and dump of event example from stdin");
+		USAGE_EXAMPLE_CMD("echo \"foo: bar\" | %s -", progname);
+		fprintf(fp, "  +STR\n  +DOC\n  +MAP\n  =VAL :foo\n  =VAL :bar\n  -MAP\n  -DOC\n  -STR\n");
 		break;
 	case OPT_DUMP:
-		fprintf(fp, "\tParse and dump generated YAML document tree in the original YAML form\n");
-		fprintf(fp, "\t$ %s input.yaml\n\t...\n", progname);
+		USAGE_EXAMPLES();
+		USAGE_EXAMPLE_TEXT("  Parse and dump generated YAML document tree in the original YAML form");
+		USAGE_EXAMPLE_CMD("%s input.yaml", progname);
 		fprintf(fp, "\n");
-		fprintf(fp, "\tParse and dump generated YAML document tree in block YAML form (and make whitespace visible)\n");
-		fprintf(fp, "\t$ %s -V -mblock input.yaml\n\t...\n", progname);
+		USAGE_EXAMPLE_TEXT("  Parse and dump generated YAML document tree in block YAML form (and make whitespace visible)");
+		USAGE_EXAMPLE_CMD("%s -V -mblock input.yaml", progname);
 		fprintf(fp, "\n");
-		fprintf(fp, "\tParse and dump generated YAML document from the input string\n");
-		fprintf(fp, "\t$ %s -mjson \">foo: bar\"\n", progname);
-		fprintf(fp, "\t{\n\t  \"foo\": \"bar\"\n\t}\n");
+		USAGE_EXAMPLE_TEXT("  Parse and dump generated YAML document from the input string");
+		USAGE_EXAMPLE_CMD("%s -mjson \">foo: bar\"", progname);
+		fprintf(fp, "  {\n    \"foo\": \"bar\"\n  }\n");
 		break;
 	case OPT_FILTER:
-		fprintf(fp, "\tParse and filter YAML document tree starting from the '/foo' path followed by the '/bar' path\n");
-		fprintf(fp, "\t$ %s --file input.yaml /foo /bar\n\t...\n", progname);
+		USAGE_EXAMPLES();
+		USAGE_EXAMPLE_TEXT("  Parse and filter YAML document tree starting from the '/foo' path followed by the '/bar' path");
+		USAGE_EXAMPLE_CMD("%s --file input.yaml /foo /bar", progname);
 		fprintf(fp, "\n");
-		fprintf(fp, "\tParse and filter for two paths (note how a multi-document stream is produced)\n");
-		fprintf(fp, "\t$ %s --file -mblock --filter --file \">{ foo: bar, baz: [ frooz, whee ] }\" /foo /baz\n", progname);
-		fprintf(fp, "\tbar\n\t---\n\t- frooz\n\t- whee\n");
-		fprintf(fp, "\n");
-		fprintf(fp, "\tParse and filter YAML document in stdin (note how the key may be complex)\n");
-		fprintf(fp, "\t$ echo \"{ foo: bar }: baz\" | %s \"/{foo: bar}/\"\n", progname);
-		fprintf(fp, "\tbaz\n");
+		USAGE_EXAMPLE_TEXT("  Parse and filter for two paths (note how a multi-document stream is produced)");
+		USAGE_EXAMPLE_CMD("%s --file -mblock --filter --file \">{ foo: bar, baz: [ frooz, whee ] }\" /foo /baz", progname);
+		fprintf(fp, "  bar\n  ---\n  - frooz\n  - whee\n\n");
+		USAGE_EXAMPLE_TEXT("  Parse and filter YAML document in stdin (note how the key may be complex)");
+		USAGE_EXAMPLE_CMD("echo \"{ foo: bar }: baz\" | %s \"/{foo: bar}/\"", progname);
+		fprintf(fp, "  baz\n");
 		break;
 	case OPT_JOIN:
-		fprintf(fp, "\tParse and join two YAML files\n");
-		fprintf(fp, "\t$ %s file1.yaml file2.yaml\n\t...\n", progname);
+		USAGE_EXAMPLES();
+		USAGE_EXAMPLE_TEXT("  Parse and join two YAML files");
+		USAGE_EXAMPLE_CMD("%s file1.yaml file2.yaml", progname);
 		fprintf(fp, "\n");
-		fprintf(fp, "\tParse and join two YAML maps\n");
-		fprintf(fp, "\t$ %s \">foo: bar\" \">baz: frooz\"\n", progname);
-		fprintf(fp, "\tfoo: bar\n\tbaz: frooz\n");
-		fprintf(fp, "\n");
-		fprintf(fp, "\tParse and join two YAML sequences\n");
-		fprintf(fp, "\t$ %s -mblock \">[ foo ]\" \">[ bar ]\"\n", progname);
-		fprintf(fp, "\t- foo\n\t- bar\n");
-		fprintf(fp, "\n");
+		USAGE_EXAMPLE_TEXT("  Parse and join two YAML maps");
+		USAGE_EXAMPLE_CMD("%s \">foo: bar\" \">baz: frooz\"", progname);
+		fprintf(fp, "  foo: bar\n  baz: frooz\n\n");
+		USAGE_EXAMPLE_TEXT("  Parse and join two YAML sequences");
+		USAGE_EXAMPLE_CMD("%s -mblock \">[ foo ]\" \">[ bar ]\"", progname);
+		fprintf(fp, "  - foo\n  - bar\n");
 		break;
 	case OPT_YPATH:
-		fprintf(fp, "\tParse and filter YAML with the ypath expression that results to /foo followed by /bar\n");
-		fprintf(fp, "\t$ %s --ypath /foo,bar input.yaml\n\t...\n", progname);
-		fprintf(fp, "\n");
+		USAGE_EXAMPLES();
+		USAGE_EXAMPLE_TEXT("  Parse and filter YAML with the ypath expression that results to /foo followed by /bar");
+		USAGE_EXAMPLE_CMD("%s --ypath /foo,bar input.yaml", progname);
 		break;
 	case OPT_SCAN_DUMP:
-		fprintf(fp, "\tParse and dump YAML scanner tokens (internal)\n");
-		fprintf(fp, "\n");
+		USAGE_EXAMPLES();
+		USAGE_EXAMPLE_TEXT("  Parse and dump YAML scanner tokens (internal)");
 		break;
 	case OPT_PARSE_DUMP:
-		fprintf(fp, "\tParse and dump YAML parser events (internal)\n");
-		fprintf(fp, "\n");
+		USAGE_EXAMPLES();
+		USAGE_EXAMPLE_TEXT("  Parse and dump YAML parser events (internal)");
 		break;
 	case OPT_COMPOSE:
-		fprintf(fp, "\tParse and dump generated YAML document tree using the composer api\n");
-		fprintf(fp, "\t$ %s input.yaml\n\t...\n", progname);
+		USAGE_EXAMPLES();
+		USAGE_EXAMPLE_TEXT("  Parse and dump generated YAML document tree using the composer api");
+		USAGE_EXAMPLE_CMD("%s input.yaml", progname);
 		fprintf(fp, "\n");
-		fprintf(fp, "\tParse and dump generated YAML document tree in block YAML form (and make whitespace visible)\n");
-		fprintf(fp, "\t$ %s --compose -V -mblock input.yaml\n\t...\n", progname);
+		USAGE_EXAMPLE_TEXT("  Parse and dump generated YAML document tree in block YAML form (and make whitespace visible)");
+		USAGE_EXAMPLE_CMD("%s --compose -V -mblock input.yaml", progname);
 		fprintf(fp, "\n");
-		fprintf(fp, "\tParse and dump generated YAML document from the input string\n");
-		fprintf(fp, "\t$ %s --compose -mjson \">foo: bar\"\n", progname);
-		fprintf(fp, "\t{\n\t  \"foo\": \"bar\"\n\t}\n");
+		USAGE_EXAMPLE_TEXT("  Parse and dump generated YAML document from the input string");
+		USAGE_EXAMPLE_CMD("%s --compose -mjson \">foo: bar\"", progname);
+		fprintf(fp, "  {\n    \"foo\": \"bar\"\n  }\n");
 		break;
 	case OPT_YAML_VERSION_DUMP:
-		fprintf(fp, "\tDisplay information about the YAML versions libfyaml supports\n");
-		fprintf(fp, "\n");
+		USAGE_EXAMPLES();
+		USAGE_EXAMPLE_TEXT("  Display information about the YAML versions libfyaml supports");
 		break;
 
 	case OPT_B3SUM:
-		fprintf(fp, "\tBLAKE3 hash b3sum utility\n");
-		fprintf(fp, "\t--derive-key <context>    : Key derivation mode, with the given context string\n");
-		fprintf(fp, "\t--no-names                : Omit filenames\n");
-		fprintf(fp, "\t--raw                     : Output result in raw bytes (single input allowed)\n");
-		fprintf(fp, "\t--length <n>              : Output only this amount of bytes per output (max %u)\n", FY_BLAKE3_OUT_LEN);
-		fprintf(fp, "\t--check                   : Read files with BLAKE3 checksums and check files\n");
-		fprintf(fp, "\t--keyed                   : Keyed mode with secret key read from <stdin> (32 raw bytes)\n");
-		fprintf(fp, "\t--backend <backend>       : Select a BLAKE3 backend instead of the default\n");
-		fprintf(fp, "\t--list-backends           : Print out a list of available backends\n");
-		fprintf(fp, "\t--num-threads <n>         : Number of threads, -1 disable, 0 let system decide, >= 1 explicit\n");
-		fprintf(fp, "\t--file-buffer <n>         : Size of file I/O buffer (non-mmap case), 0 let system decide\n");
-		fprintf(fp, "\t--mmap-min-chunk <n>      : Size of minimum mmap chunk, 0 let system decide\n");
-		fprintf(fp, "\t--mmap-max-chunk <n>      : Size of maximum mmap chunk, 0 let system decide\n");
-		fprintf(fp, "\n");
+		USAGE_EXAMPLES();
+		USAGE_EXAMPLE_TEXT("  BLAKE3 hash b3sum utility");
 		break;
+
 	}
+
+#undef USAGE_SECTION
+#undef USAGE_ITEM
+#undef USAGE_ITEM_DEFAULT
+#undef USAGE_ITEM_DEFAULT_INT
+#undef USAGE_ITEM_MAX_UINT
+#undef USAGE_CONT
+#undef USAGE_EXAMPLES
+#undef USAGE_EXAMPLE_TEXT
+#undef USAGE_EXAMPLE_CMD
 }
 
 static int apply_mode_flags(const char *what, enum fy_emitter_cfg_flags *flagsp)
@@ -1070,7 +1163,7 @@ int main(int argc, char *argv[])
 	struct fy_parse_cfg cfg = {
 		.search_path = INCLUDE_DEFAULT,
 		.flags =
-			(QUIET_DEFAULT 			 ? FYPCF_QUIET : 0) |
+			(QUIET_DEFAULT			 ? FYPCF_QUIET : 0) |
 			(RESOLVE_DEFAULT		 ? FYPCF_RESOLVE_DOCUMENT : 0) |
 			(DISABLE_ACCEL_DEFAULT		 ? FYPCF_DISABLE_ACCELERATORS : 0) |
 			(DISABLE_BUFFERING_DEFAULT	 ? FYPCF_DISABLE_BUFFERING : 0) |
