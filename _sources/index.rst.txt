@@ -11,10 +11,14 @@ Welcome to libfyaml's documentation!
    :caption: Contents:
 
    intro
+   generics-guide
+   reflection-guide
    man/fy-tool
    libfyaml
    libfyaml-core
    libfyaml-misc
+   libfyaml-generics
+   libfyaml-reflection
 
 
 Indices and tables

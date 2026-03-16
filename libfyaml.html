@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>libfyaml API &mdash; libfyaml 0.9.6 documentation</title>
+  <title>libfyaml API &mdash; libfyaml 1.0.0-alpha1 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=564a08b9"></script>
+      <script src="_static/documentation_options.js?v=25eb954f"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
@@ -45,14 +45,22 @@
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="intro.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generics-guide.html">Generics Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reflection-guide.html">Reflection Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="man/fy-tool.html">fy-tool</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">libfyaml API</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#subsystem-pages">Subsystem Pages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#subsystem-pages">Subsystem Pages</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#guides">Guides</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#reference">Reference</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#see-also">See also</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="libfyaml-core.html">Core API</a></li>
 <li class="toctree-l1"><a class="reference internal" href="libfyaml-misc.html">Miscellaneous API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-generics.html">Generic API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-reflection.html">Reflection API</a></li>
 </ul>
 
         </div>
@@ -85,10 +93,22 @@
 work better both in HTML and as section-3 manual pages.</p>
 <section id="subsystem-pages">
 <h2>Subsystem Pages<a class="headerlink" href="#subsystem-pages" title="Link to this heading"></a></h2>
+<section id="guides">
+<h3>Guides<a class="headerlink" href="#guides" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><a class="reference internal" href="generics-guide.html"><span class="doc">Generics Guide</span></a></p></li>
+<li><p><a class="reference internal" href="reflection-guide.html"><span class="doc">Reflection Guide</span></a></p></li>
+</ul>
+</section>
+<section id="reference">
+<h3>Reference<a class="headerlink" href="#reference" title="Link to this heading"></a></h3>
 <ul class="simple">
 <li><p><a class="reference internal" href="libfyaml-core.html"><span class="doc">Core API</span></a></p></li>
 <li><p><a class="reference internal" href="libfyaml-misc.html"><span class="doc">Miscellaneous API</span></a></p></li>
+<li><p><a class="reference internal" href="libfyaml-generics.html"><span class="doc">Generic API</span></a></p></li>
+<li><p><a class="reference internal" href="libfyaml-reflection.html"><span class="doc">Reflection API</span></a></p></li>
 </ul>
+</section>
 </section>
 <section id="see-also">
 <h2>See also<a class="headerlink" href="#see-also" title="Link to this heading"></a></h2>
@@ -98,6 +118,8 @@ work better both in HTML and as section-3 manual pages.</p>
 traversal, document building, and composition.</p></li>
 <li><p><em class="manpage">libfyaml-misc(3)</em> for utilities, allocators, threading, hashing,
 alignment, endianness, variable-length size encoding, and atomics.</p></li>
+<li><p><em class="manpage">libfyaml-generics(3)</em> for the generic runtime type system.</p></li>
+<li><p><em class="manpage">libfyaml-reflection(3)</em> for reflection and meta-type support.</p></li>
 </ul>
 </section>
 </section>

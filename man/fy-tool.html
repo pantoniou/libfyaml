@@ -6,21 +6,21 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>fy-tool &mdash; libfyaml 0.9.6 documentation</title>
+  <title>fy-tool &mdash; libfyaml 1.0.0-alpha1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=564a08b9"></script>
+      <script src="../_static/documentation_options.js?v=25eb954f"></script>
       <script src="../_static/doctools.js?v=9bcbadda"></script>
       <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="libfyaml API" href="../libfyaml.html" />
-    <link rel="prev" title="Introduction" href="../intro.html" /> 
+    <link rel="prev" title="Reflection Guide" href="../reflection-guide.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -45,6 +45,8 @@
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="../intro.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generics-guide.html">Generics Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../reflection-guide.html">Reflection Guide</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">fy-tool</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#synopsis">Synopsis</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#description">Description</a></li>
@@ -58,6 +60,8 @@
 <li class="toctree-l1"><a class="reference internal" href="../libfyaml.html">libfyaml API</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../libfyaml-core.html">Core API</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../libfyaml-misc.html">Miscellaneous API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../libfyaml-generics.html">Generic API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../libfyaml-reflection.html">Reflection API</a></li>
 </ul>
 
         </div>
@@ -100,7 +104,7 @@
 <section id="description">
 <h2>Description<a class="headerlink" href="#description" title="Link to this heading"></a></h2>
 <p><strong class="program">fy-tool</strong> is the libfyaml command-line front-end for parsing,
-rewriting, querying, joining, testing and hashing YAML and
+rewriting, querying, joining, testing, reflecting on, and hashing YAML and
 JSON data.</p>
 <p>The executable changes behaviour either by the invoked program name
 (<code class="docutils literal notranslate"><span class="pre">fy-dump</span></code>, <code class="docutils literal notranslate"><span class="pre">fy-testsuite</span></code>, <code class="docutils literal notranslate"><span class="pre">fy-filter</span></code>, <code class="docutils literal notranslate"><span class="pre">fy-join</span></code>, <code class="docutils literal notranslate"><span class="pre">fy-ypath</span></code>,
@@ -544,6 +548,146 @@ disables threaded hashing.</p>
 <dd><p>Set the maximum chunk size used for memory-mapped hashing input.</p>
 </dd></dl>
 
+<p class="rubric">Reflection options</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-reflect">
+<span class="sig-name descname"><span class="pre">--reflect</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-reflect" title="Link to this definition"></a></dt>
+<dd><p>Enable reflection mode.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-generate-c">
+<span class="sig-name descname"><span class="pre">--generate-c</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-generate-c" title="Link to this definition"></a></dt>
+<dd><p>Generate C definitions from reflection input.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-generate-blob">
+<span class="sig-name descname"><span class="pre">--generate-blob</span></span><span class="sig-prename descclassname"> <span class="pre">BLOB</span></span><a class="headerlink" href="#cmdoption-fy-tool-generate-blob" title="Link to this definition"></a></dt>
+<dd><p>Generate a packed reflection blob and write it to <code class="docutils literal notranslate"><span class="pre">BLOB</span></code>.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-import-blob">
+<span class="sig-name descname"><span class="pre">--import-blob</span></span><span class="sig-prename descclassname"> <span class="pre">BLOB</span></span><a class="headerlink" href="#cmdoption-fy-tool-import-blob" title="Link to this definition"></a></dt>
+<dd><p>Import reflection metadata from <code class="docutils literal notranslate"><span class="pre">BLOB</span></code>.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-import-c-file">
+<span class="sig-name descname"><span class="pre">--import-c-file</span></span><span class="sig-prename descclassname"> <span class="pre">FILE</span></span><a class="headerlink" href="#cmdoption-fy-tool-import-c-file" title="Link to this definition"></a></dt>
+<dd><p>Import reflection metadata from <code class="docutils literal notranslate"><span class="pre">FILE</span></code>.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-cflags">
+<span class="sig-name descname"><span class="pre">--cflags</span></span><span class="sig-prename descclassname"> <span class="pre">FLAGS</span></span><a class="headerlink" href="#cmdoption-fy-tool-cflags" title="Link to this definition"></a></dt>
+<dd><p>Pass compiler flags to reflection imports of C source files.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-entry-type">
+<span class="sig-name descname"><span class="pre">--entry-type</span></span><span class="sig-prename descclassname"> <span class="pre">TYPE</span></span><a class="headerlink" href="#cmdoption-fy-tool-entry-type" title="Link to this definition"></a></dt>
+<dd><p>Select the reflection entry-point type.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-packed-roundtrip">
+<span class="sig-name descname"><span class="pre">--packed-roundtrip</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-packed-roundtrip" title="Link to this definition"></a></dt>
+<dd><p>Round-trip reflection data through the packed representation.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-no-prune-system">
+<span class="sig-name descname"><span class="pre">--no-prune-system</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-no-prune-system" title="Link to this definition"></a></dt>
+<dd><p>Keep system types in the reflection database.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-type-include">
+<span class="sig-name descname"><span class="pre">--type-include</span></span><span class="sig-prename descclassname"> <span class="pre">REGEX</span></span><a class="headerlink" href="#cmdoption-fy-tool-type-include" title="Link to this definition"></a></dt>
+<dd><p>Include only reflected types matching <code class="docutils literal notranslate"><span class="pre">REGEX</span></code>.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-type-exclude">
+<span class="sig-name descname"><span class="pre">--type-exclude</span></span><span class="sig-prename descclassname"> <span class="pre">REGEX</span></span><a class="headerlink" href="#cmdoption-fy-tool-type-exclude" title="Link to this definition"></a></dt>
+<dd><p>Exclude reflected types matching <code class="docutils literal notranslate"><span class="pre">REGEX</span></code>.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-dump-reflection">
+<span class="sig-name descname"><span class="pre">--dump-reflection</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-dump-reflection" title="Link to this definition"></a></dt>
+<dd><p>Dump reflection structures for debugging.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-debug-reflection">
+<span class="sig-name descname"><span class="pre">--debug-reflection</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-debug-reflection" title="Link to this definition"></a></dt>
+<dd><p>Enable verbose reflection debug output.</p>
+</dd></dl>
+
+<p class="rubric">Generic options</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-generic">
+<span class="sig-name descname"><span class="pre">--generic</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-generic" title="Link to this definition"></a></dt>
+<dd><p>Enable generic data-structure dumping mode.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-generic-testsuite">
+<span class="sig-name descname"><span class="pre">--generic-testsuite</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-generic-testsuite" title="Link to this definition"></a></dt>
+<dd><p>Enable generic testsuite mode.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-builder-policy">
+<span class="sig-name descname"><span class="pre">--builder-policy</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-builder-policy" title="Link to this definition"></a></dt>
+<dd><p>Select the generic builder policy.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-generic-parse-dump">
+<span class="sig-name descname"><span class="pre">--generic-parse-dump</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-generic-parse-dump" title="Link to this definition"></a></dt>
+<dd><p>Parse and dump using the generic layer.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-dedup">
+<span class="sig-name descname"><span class="pre">--dedup</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-dedup" title="Link to this definition"></a></dt>
+<dd><p>Enable generic deduplication.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-no-dedup">
+<span class="sig-name descname"><span class="pre">--no-dedup</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-no-dedup" title="Link to this definition"></a></dt>
+<dd><p>Disable generic deduplication.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-dump-primitives">
+<span class="sig-name descname"><span class="pre">--dump-primitives</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-dump-primitives" title="Link to this definition"></a></dt>
+<dd><p>Dump generic primitive values explicitly.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-create-markers">
+<span class="sig-name descname"><span class="pre">--create-markers</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-create-markers" title="Link to this definition"></a></dt>
+<dd><p>Create source markers in generated generic data.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-pyyaml-compat">
+<span class="sig-name descname"><span class="pre">--pyyaml-compat</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-pyyaml-compat" title="Link to this definition"></a></dt>
+<dd><p>Enable PyYAML compatibility mode.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-keep-style">
+<span class="sig-name descname"><span class="pre">--keep-style</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-keep-style" title="Link to this definition"></a></dt>
+<dd><p>Preserve style information in generic data.</p>
+</dd></dl>
+
 <p class="rubric">Modes</p>
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-fy-tool-dump">
@@ -656,7 +800,7 @@ disables threaded hashing.</p>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="../intro.html" class="btn btn-neutral float-left" title="Introduction" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../reflection-guide.html" class="btn btn-neutral float-left" title="Reflection Guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="../libfyaml.html" class="btn btn-neutral float-right" title="libfyaml API" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 

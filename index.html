@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Welcome to libfyaml’s documentation! &mdash; libfyaml 0.9.6 documentation</title>
+  <title>Welcome to libfyaml’s documentation! &mdash; libfyaml 1.0.0-alpha1 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=564a08b9"></script>
+      <script src="_static/documentation_options.js?v=25eb954f"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
@@ -44,10 +44,14 @@
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="intro.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generics-guide.html">Generics Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reflection-guide.html">Reflection Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="man/fy-tool.html">fy-tool</a></li>
 <li class="toctree-l1"><a class="reference internal" href="libfyaml.html">libfyaml API</a></li>
 <li class="toctree-l1"><a class="reference internal" href="libfyaml-core.html">Core API</a></li>
 <li class="toctree-l1"><a class="reference internal" href="libfyaml-misc.html">Miscellaneous API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-generics.html">Generic API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-reflection.html">Reflection API</a></li>
 </ul>
 
         </div>
@@ -79,7 +83,38 @@
 <div class="toctree-wrapper compound">
 <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="intro.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="intro.html">Introduction</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="intro.html#core-library-responsibilities">Core Library Responsibilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="intro.html#why-the-generic-subsystem-exists">Why The Generic Subsystem Exists</a></li>
+<li class="toctree-l2"><a class="reference internal" href="intro.html#why-the-reflection-subsystem-exists">Why The Reflection Subsystem Exists</a></li>
+<li class="toctree-l2"><a class="reference internal" href="intro.html#choosing-the-right-layer">Choosing The Right Layer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="intro.html#further-reading">Further Reading</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="generics-guide.html">Generics Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="generics-guide.html#fy-generic-as-the-core-type"><code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> As The Core Type</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generics-guide.html#fy-generic-layout"><code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> Layout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generics-guide.html#three-lifetime-modes">Three Lifetime Modes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generics-guide.html#schemas-matter">Schemas Matter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generics-guide.html#constructing-values">Constructing Values</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generics-guide.html#access-and-conversion">Access and Conversion</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generics-guide.html#parsing-and-emitting">Parsing and Emitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generics-guide.html#functional-operations">Functional Operations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generics-guide.html#examples">Examples</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="reflection-guide.html">Reflection Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="reflection-guide.html#core-objects">Core Objects</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reflection-guide.html#metadata-annotations">Metadata Annotations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reflection-guide.html#backends">Backends</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reflection-guide.html#choosing-between-them">Choosing Between Them</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reflection-guide.html#from-generic-values-to-typed-data">From Generic Values to Typed Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reflection-guide.html#minimal-typed-parse-emit-flow">Minimal Typed Parse/Emit Flow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reflection-guide.html#introspection">Introspection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reflection-guide.html#examples">Examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reflection-guide.html#alpha-caveats">Alpha Caveats</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="man/fy-tool.html">fy-tool</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="man/fy-tool.html#synopsis">Synopsis</a></li>
 <li class="toctree-l2"><a class="reference internal" href="man/fy-tool.html#description">Description</a></li>
@@ -113,6 +148,19 @@
 <li class="toctree-l2"><a class="reference internal" href="libfyaml-misc.html#endianness">Endianness</a></li>
 <li class="toctree-l2"><a class="reference internal" href="libfyaml-misc.html#variable-length-size-encoding">Variable-Length Size Encoding</a></li>
 <li class="toctree-l2"><a class="reference internal" href="libfyaml-misc.html#atomic-operations">Atomic Operations</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-generics.html">Generic API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-generics.html#introduction">Introduction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-generics.html#generic-storage-types">Generic Storage Types</a></li>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-generics.html#generic-type-system">Generic Type System</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-reflection.html">Reflection API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-reflection.html#introduction">Introduction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-reflection.html#reflection">Reflection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-reflection.html#yaml-metadata-annotations">YAML Metadata Annotations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="libfyaml-reflection.html#meta-type-system">Meta-Type System</a></li>
 </ul>
 </li>
 </ul>

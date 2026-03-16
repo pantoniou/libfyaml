@@ -6,20 +6,20 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Introduction &mdash; libfyaml 0.9.6 documentation</title>
+  <title>Introduction &mdash; libfyaml 1.0.0-alpha1 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=564a08b9"></script>
+      <script src="_static/documentation_options.js?v=25eb954f"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="fy-tool" href="man/fy-tool.html" />
+    <link rel="next" title="Generics Guide" href="generics-guide.html" />
     <link rel="prev" title="Welcome to libfyaml’s documentation!" href="index.html" /> 
 </head>
 
@@ -44,11 +44,22 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current">
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Introduction</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Introduction</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#core-library-responsibilities">Core Library Responsibilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#why-the-generic-subsystem-exists">Why The Generic Subsystem Exists</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#why-the-reflection-subsystem-exists">Why The Reflection Subsystem Exists</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#choosing-the-right-layer">Choosing The Right Layer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#further-reading">Further Reading</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="generics-guide.html">Generics Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reflection-guide.html">Reflection Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="man/fy-tool.html">fy-tool</a></li>
 <li class="toctree-l1"><a class="reference internal" href="libfyaml.html">libfyaml API</a></li>
 <li class="toctree-l1"><a class="reference internal" href="libfyaml-core.html">Core API</a></li>
 <li class="toctree-l1"><a class="reference internal" href="libfyaml-misc.html">Miscellaneous API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-generics.html">Generic API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-reflection.html">Reflection API</a></li>
 </ul>
 
         </div>
@@ -77,7 +88,267 @@
              
   <section id="introduction">
 <h1>Introduction<a class="headerlink" href="#introduction" title="Link to this heading"></a></h1>
-<p>This is the documentation for libfyaml, a fancy 1.2 YAML and JSON parser/writer.</p>
+<p>libfyaml is a standards-compliant YAML 1.2 processing library with JSON
+support and compatibility with older YAML 1.1 behavior where required. The
+library places correctness ahead of raw speed. Performance matters, but the
+primary goals are correct behavior, stable interfaces, predictable memory use,
+and safe operation in ordinary C programs.</p>
+<p>The library is organized in three layers:</p>
+<ul class="simple">
+<li><p>the core library for parsing, emitting, event processing, document trees,
+composition, and path-based access</p></li>
+<li><p>the generic subsystem for compact value-oriented processing with
+<code class="docutils literal notranslate"><span class="pre">fy_generic</span></code></p></li>
+<li><p>the reflection subsystem for typed YAML &lt;-&gt; C serialization and
+deserialization</p></li>
+</ul>
+<p>This structure reflects different classes of problems. The core library remains
+the foundation. The generic and reflection subsystems exist because some
+workloads require a different representation and a different level of
+abstraction than the core document API alone.</p>
+<section id="core-library-responsibilities">
+<h2>Core Library Responsibilities<a class="headerlink" href="#core-library-responsibilities" title="Link to this heading"></a></h2>
+<p>The core library provides a comprehensive C interface for YAML processing. It
+supports both event-based and document-based workflows, along with composition,
+document building, path execution, and emission. This is the part of libfyaml
+to use when the program needs explicit control over parsing and emission, or
+when it needs to work directly with YAML structure in a conventional C style.</p>
+<p>The core library is intentionally conservative in character. It is designed to
+be stable, memory-conscious, and safe to embed in long-lived C software. It
+does not attempt to hide the underlying work. The interfaces are explicit, and
+that explicitness is part of the safety model.</p>
+<p>The corresponding tradeoff is ergonomics. The core API is comprehensive and
+reliable, but it is also verbose. That is expected in a conventional C
+document-processing library, and it remains the right model when the program
+needs detailed control over events, nodes, formatting, or the mechanics of
+YAML processing itself.</p>
+<p>For the examples below, assume <code class="docutils literal notranslate"><span class="pre">intro-config.yaml</span></code> contains:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">localhost</span>
+<span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">80</span>
+</pre></div>
+</div>
+<p>A minimal document-based flow that parses this file, changes <code class="docutils literal notranslate"><span class="pre">port</span></code> to
+<code class="docutils literal notranslate"><span class="pre">8080</span></code>, and emits the result looks like this:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;libfyaml.h&gt;</span>
+
+<span class="k">struct</span><span class="w"> </span><span class="nc">fy_document</span><span class="w"> </span><span class="o">*</span><span class="n">fyd</span><span class="p">;</span>
+
+<span class="n">fyd</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_document_build_from_file</span><span class="p">(</span><span class="nb">NULL</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;intro-config.yaml&quot;</span><span class="p">);</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">fyd</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
+
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">fy_document_insert_at</span><span class="p">(</span>
+<span class="w">                </span><span class="n">fyd</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;/port&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">FY_NT</span><span class="p">,</span>
+<span class="w">                </span><span class="n">fy_node_buildf</span><span class="p">(</span><span class="n">fyd</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;8080&quot;</span><span class="p">)))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">fy_document_destroy</span><span class="p">(</span><span class="n">fyd</span><span class="p">);</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">fy_emit_document_to_fp</span><span class="p">(</span><span class="n">fyd</span><span class="p">,</span><span class="w"> </span><span class="n">FYECF_DEFAULT</span><span class="p">,</span><span class="w"> </span><span class="n">stdout</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">fy_document_destroy</span><span class="p">(</span><span class="n">fyd</span><span class="p">);</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="n">fy_document_destroy</span><span class="p">(</span><span class="n">fyd</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>The corresponding example is <code class="docutils literal notranslate"><span class="pre">examples/intro-core-update.c</span></code>.</p>
+</section>
+<section id="why-the-generic-subsystem-exists">
+<h2>Why The Generic Subsystem Exists<a class="headerlink" href="#why-the-generic-subsystem-exists" title="Link to this heading"></a></h2>
+<p>The generic subsystem exists because the core document model is not the best
+representation for every workload. It is possible to process data through the
+document subsystem, but that model carries the cost of nodes, pointers, and the
+other overheads needed to preserve a full YAML document structure. That is
+appropriate for document processing. It is less appropriate for large
+value-oriented workloads.</p>
+<p>The center of the generic subsystem is <code class="docutils literal notranslate"><span class="pre">fy_generic</span></code>, a compact sum-type
+representation of YAML and JSON values. A small scalar can often be stored
+directly in the machine word itself. For example, inline integer storage is one
+of the reasons the generic subsystem can handle large data sets more
+efficiently than the document tree representation. When an application is
+concerned with values rather than document nodes, that difference matters.</p>
+<p>The generic subsystem also lets the program keep only what is important. A
+plain integer scalar does not need positional information, style, comments, or
+other document metadata unless the application explicitly chooses to retain it.
+That selective retention reduces memory use and keeps the representation close
+to the actual data being processed.</p>
+<p>A second reason for the generic subsystem is allocator behavior. The stacked
+builders and arena-based allocators support deduplication, which reduces memory
+consumption significantly on large repeated data sets while maintaining speed.
+That makes the generic layer suitable for workloads where the document tree
+would be too expensive in space.</p>
+<p>A third reason is concurrency. The generic programming style is immutable and
+functional. New values are produced from old values rather than modified in
+place. That model makes multithreaded processing straightforward because read
+sharing requires no locking. The document subsystem is not designed as a
+multithreaded processing model at all; the library does not attempt to make
+document-based processing a general parallel API.</p>
+<p>The final reason is ergonomics. The generic subsystem has a close mapping to
+sum-type and value-tree models that are common in Python, TypeScript, Rust, and
+similar languages. A user does not need to learn the full surface of the core
+document API to work effectively with YAML and JSON values. For many programs,
+that is the right balance between performance and usability.</p>
+<p>A minimal generic flow for the same <code class="docutils literal notranslate"><span class="pre">intro-config.yaml</span></code> file looks like this:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;libfyaml.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;libfyaml/libfyaml-generic.h&gt;</span>
+
+<span class="n">fy_generic</span><span class="w"> </span><span class="n">doc</span><span class="p">,</span><span class="w"> </span><span class="n">updated</span><span class="p">,</span><span class="w"> </span><span class="n">emitted</span><span class="p">;</span>
+
+<span class="n">doc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_parse_file</span><span class="p">(</span><span class="n">FYOPPF_DISABLE_DIRECTORY</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;intro-config.yaml&quot;</span><span class="p">);</span>
+<span class="n">updated</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_assoc</span><span class="p">(</span><span class="n">doc</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;port&quot;</span><span class="p">,</span><span class="w"> </span><span class="mi">8080</span><span class="p">);</span>
+<span class="n">emitted</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_emit</span><span class="p">(</span>
+<span class="w">        </span><span class="n">updated</span><span class="p">,</span>
+<span class="w">        </span><span class="n">FYOPEF_DISABLE_DIRECTORY</span><span class="w"> </span><span class="o">|</span>
+<span class="w">        </span><span class="n">FYOPEF_MODE_YAML_1_2</span><span class="w"> </span><span class="o">|</span>
+<span class="w">        </span><span class="n">FYOPEF_STYLE_BLOCK</span><span class="p">,</span>
+<span class="w">        </span><span class="nb">NULL</span><span class="p">);</span>
+
+<span class="n">fputs</span><span class="p">(</span><span class="n">fy_cast</span><span class="p">(</span><span class="n">emitted</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="p">),</span><span class="w"> </span><span class="n">stdout</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>This example does not check the result of each intermediate call. That is
+intentional. <code class="docutils literal notranslate"><span class="pre">fy_invalid</span></code> is a no-op carrier in the generic API: operations
+propagate it, and the final conversion or use site is where failure is usually
+observed. That makes straight-line value transformations practical without
+manual error handling after every step.</p>
+<p>The corresponding example is <code class="docutils literal notranslate"><span class="pre">examples/intro-generic-update.c</span></code>.</p>
+<p>The detailed type layout, storage rules, and API model are covered in
+<a class="reference internal" href="generics-guide.html"><span class="doc">Generics Guide</span></a>.</p>
+</section>
+<section id="why-the-reflection-subsystem-exists">
+<h2>Why The Reflection Subsystem Exists<a class="headerlink" href="#why-the-reflection-subsystem-exists" title="Link to this heading"></a></h2>
+<p>The generic subsystem is intentionally schema-less. It represents values, but
+it does not assume that there is a declared schema outside the code that uses
+those values. Reflection exists to address the other side of the problem:
+typed data already described in C, or in an equivalent schema definition, that
+should serialize and deserialize with as little handwritten glue code as
+possible.</p>
+<p>The goal of the reflection subsystem is straightforward. In the ideal case, the
+user provides the C data structure and the library handles the rest. That
+includes reading YAML into typed C data, emitting typed C data back to YAML,
+and deriving part of the validation behavior from the schema that is already
+present in the type description.</p>
+<p>This matters because a large class of programs does not want a schema-less
+value model at runtime. They already have a native representation, and what
+they need from the YAML layer is reliable serdes with a low maintenance cost.
+Reflection is the subsystem that makes that practical.</p>
+<p>The reflection subsystem also covers a broad range of C language features,
+including tagged unions and less trivial layout constructs. The fixtures under
+<code class="docutils literal notranslate"><span class="pre">test/reflection-data/030JG6S/00/definition.h</span></code> show this style in practice.
+That example contains a compact schema-oriented C definition for a substantial
+variant of the YAML 1.2 core schema.</p>
+<p>The fixture itself is small enough to read directly:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span>
+<span class="c1">// yaml: { flatten-field: value }</span>
+<span class="k">struct</span><span class="w"> </span><span class="nc">node</span><span class="w"> </span><span class="p">{</span>
+<span class="w">	</span><span class="c1">// yaml: { remove-prefix: nt_ }</span>
+<span class="w">	</span><span class="k">enum</span><span class="w"> </span><span class="p">{</span>
+<span class="w">		</span><span class="n">nt_vnull</span><span class="p">,</span><span class="w">		</span><span class="c1">// yaml: { null-selector: true }</span>
+<span class="w">		</span><span class="n">nt_vbool</span><span class="p">,</span>
+<span class="w">		</span><span class="n">nt_vinteger</span><span class="p">,</span>
+<span class="w">		</span><span class="n">nt_vfloat</span><span class="p">,</span>
+<span class="w">		</span><span class="n">nt_vstring</span><span class="p">,</span>
+<span class="w">		</span><span class="n">nt_vsequence</span><span class="p">,</span>
+<span class="w">		</span><span class="n">nt_vmapping</span><span class="p">,</span>
+<span class="w">	</span><span class="p">}</span><span class="w"> </span><span class="n">node_type</span><span class="p">;</span>
+<span class="w">	</span><span class="c1">// yaml: { field-auto-select: true }</span>
+<span class="w">	</span><span class="k">union</span><span class="w"> </span><span class="p">{</span>
+<span class="w">		</span><span class="k">struct</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="n">vnull</span><span class="p">;</span><span class="w">		</span><span class="c1">// yaml: { match-null: true }</span>
+<span class="w">		</span><span class="kt">_Bool</span><span class="w"> </span><span class="n">vbool</span><span class="p">;</span>
+<span class="w">		</span><span class="kt">int</span><span class="w"> </span><span class="n">vinteger</span><span class="p">;</span>
+<span class="w">		</span><span class="kt">float</span><span class="w"> </span><span class="n">vfloat</span><span class="p">;</span>
+<span class="w">		</span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">vstring</span><span class="p">;</span>
+<span class="w">		</span><span class="k">struct</span><span class="w"> </span><span class="nc">node</span><span class="w"> </span><span class="o">**</span><span class="n">vsequence</span><span class="p">;</span><span class="w">	</span><span class="c1">// yaml: { match-seq: true }</span>
+
+<span class="w">		</span><span class="k">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">			</span><span class="k">struct</span><span class="w"> </span><span class="nc">node</span><span class="w"> </span><span class="o">*</span><span class="n">key</span><span class="p">;</span>
+<span class="w">			</span><span class="k">struct</span><span class="w"> </span><span class="nc">node</span><span class="w"> </span><span class="o">*</span><span class="n">value</span><span class="p">;</span>
+<span class="w">		</span><span class="p">}</span><span class="w"> </span><span class="o">**</span><span class="n">vmapping</span><span class="p">;</span><span class="w">	</span><span class="c1">// yaml: { key: key, match-map: true }</span>
+<span class="w">	</span><span class="p">}</span><span class="w"> </span><span class="n">value</span><span class="p">;</span>
+<span class="p">};</span>
+</pre></div>
+</div>
+<p>For a small typed configuration, the same <code class="docutils literal notranslate"><span class="pre">intro-config.yaml</span></code> example can be
+handled with a schema such as:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="k">struct</span><span class="w"> </span><span class="nc">server_config</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">host</span><span class="p">;</span>
+<span class="w">        </span><span class="kt">int</span><span class="w"> </span><span class="n">port</span><span class="p">;</span>
+<span class="p">};</span>
+</pre></div>
+</div>
+<p>The reflection-oriented parse, update, and emit flow then looks like this:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;libfyaml.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;libfyaml/libfyaml-reflection.h&gt;</span>
+
+<span class="k">struct</span><span class="w"> </span><span class="nc">fy_parse_cfg</span><span class="w"> </span><span class="n">parse_cfg</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">.</span><span class="n">flags</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">FYPCF_QUIET</span><span class="w"> </span><span class="p">};</span>
+<span class="k">struct</span><span class="w"> </span><span class="nc">fy_reflection</span><span class="w"> </span><span class="o">*</span><span class="n">rfl</span><span class="p">;</span>
+<span class="k">struct</span><span class="w"> </span><span class="nc">fy_type_context_cfg</span><span class="w"> </span><span class="n">ctx_cfg</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">};</span>
+<span class="k">struct</span><span class="w"> </span><span class="nc">fy_type_context</span><span class="w"> </span><span class="o">*</span><span class="n">ctx</span><span class="p">;</span>
+<span class="k">struct</span><span class="w"> </span><span class="nc">fy_parser</span><span class="w"> </span><span class="o">*</span><span class="n">fyp</span><span class="p">;</span>
+<span class="k">struct</span><span class="w"> </span><span class="nc">fy_emitter_cfg</span><span class="w"> </span><span class="n">emit_cfg</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">.</span><span class="n">flags</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">FYECF_DEFAULT</span><span class="w"> </span><span class="p">};</span>
+<span class="k">struct</span><span class="w"> </span><span class="nc">fy_emitter</span><span class="w"> </span><span class="o">*</span><span class="n">emit</span><span class="p">;</span>
+<span class="k">struct</span><span class="w"> </span><span class="nc">server_config</span><span class="w"> </span><span class="o">*</span><span class="n">cfg</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">NULL</span><span class="p">;</span>
+
+<span class="n">rfl</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_reflection_from_c_file_with_cflags</span><span class="p">(</span>
+<span class="w">        </span><span class="s">&quot;reflection-intro-config.h&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="p">,</span><span class="w"> </span><span class="nb">false</span><span class="p">,</span><span class="w"> </span><span class="nb">true</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">rfl</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
+
+<span class="n">ctx_cfg</span><span class="p">.</span><span class="n">rfl</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rfl</span><span class="p">;</span>
+<span class="n">ctx_cfg</span><span class="p">.</span><span class="n">entry_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;struct server_config&quot;</span><span class="p">;</span>
+<span class="n">ctx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_type_context_create</span><span class="p">(</span><span class="o">&amp;</span><span class="n">ctx_cfg</span><span class="p">);</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">ctx</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
+
+<span class="n">fyp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_parser_create</span><span class="p">(</span><span class="o">&amp;</span><span class="n">parse_cfg</span><span class="p">);</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">fyp</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">fy_parser_set_input_file</span><span class="p">(</span><span class="n">fyp</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;intro-config.yaml&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
+
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">fy_type_context_parse</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">fyp</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">**</span><span class="p">)</span><span class="o">&amp;</span><span class="n">cfg</span><span class="p">)</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">!</span><span class="n">cfg</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
+
+<span class="n">cfg</span><span class="o">-&gt;</span><span class="n">port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8080</span><span class="p">;</span>
+
+<span class="n">emit</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_emitter_create</span><span class="p">(</span><span class="o">&amp;</span><span class="n">emit_cfg</span><span class="p">);</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">emit</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
+
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">fy_type_context_emit</span><span class="p">(</span>
+<span class="w">                </span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">emit</span><span class="p">,</span><span class="w"> </span><span class="n">cfg</span><span class="p">,</span>
+<span class="w">                </span><span class="n">FYTCEF_SS</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">FYTCEF_DS</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">FYTCEF_DE</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">FYTCEF_SE</span><span class="p">)</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
+</pre></div>
+</div>
+<p>The corresponding example is <code class="docutils literal notranslate"><span class="pre">examples/intro-reflection-update.c</span></code>.</p>
+<p>The end-to-end workflow, including reflection metadata sources and packed
+representations, is described in <a class="reference internal" href="reflection-guide.html"><span class="doc">Reflection Guide</span></a>.</p>
+</section>
+<section id="choosing-the-right-layer">
+<h2>Choosing The Right Layer<a class="headerlink" href="#choosing-the-right-layer" title="Link to this heading"></a></h2>
+<p>Use the core library when the program needs a comprehensive and safe C-style
+YAML processing library with explicit control over parsing, events, documents,
+and emission.</p>
+<p>Use the generic subsystem when the program is value-oriented, when the user is
+coming from sum-type languages and wants a familiar model, or when the
+workload involves large amounts of data and needs a compact, efficient
+representation.</p>
+<p>Use the reflection subsystem when a schema already exists as C structures or a
+schema definition, and the goal is low-friction serialization and
+deserialization with a useful amount of validation derived from that schema.</p>
+</section>
+<section id="further-reading">
+<h2>Further Reading<a class="headerlink" href="#further-reading" title="Link to this heading"></a></h2>
+<p>The following pages provide the subsystem guides and API references that build
+on this introduction:</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="libfyaml-core.html"><span class="doc">Core API</span></a></p></li>
+<li><p><a class="reference internal" href="generics-guide.html"><span class="doc">Generics Guide</span></a></p></li>
+<li><p><a class="reference internal" href="reflection-guide.html"><span class="doc">Reflection Guide</span></a></p></li>
+<li><p><a class="reference internal" href="libfyaml-generics.html"><span class="doc">Generic API</span></a></p></li>
+<li><p><a class="reference internal" href="libfyaml-reflection.html"><span class="doc">Reflection API</span></a></p></li>
+</ul>
+</section>
 </section>
 
 
@@ -85,7 +356,7 @@
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="index.html" class="btn btn-neutral float-left" title="Welcome to libfyaml’s documentation!" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="man/fy-tool.html" class="btn btn-neutral float-right" title="fy-tool" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="generics-guide.html" class="btn btn-neutral float-right" title="Generics Guide" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

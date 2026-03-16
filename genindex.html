@@ -5,14 +5,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Index &mdash; libfyaml 0.9.6 documentation</title>
+  <title>Index &mdash; libfyaml 1.0.0-alpha1 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=564a08b9"></script>
+      <script src="_static/documentation_options.js?v=25eb954f"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
@@ -42,10 +42,14 @@
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="intro.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generics-guide.html">Generics Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reflection-guide.html">Reflection Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="man/fy-tool.html">fy-tool</a></li>
 <li class="toctree-l1"><a class="reference internal" href="libfyaml.html">libfyaml API</a></li>
 <li class="toctree-l1"><a class="reference internal" href="libfyaml-core.html">Core API</a></li>
 <li class="toctree-l1"><a class="reference internal" href="libfyaml-misc.html">Miscellaneous API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-generics.html">Generic API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-reflection.html">Reflection API</a></li>
 </ul>
 
         </div>
@@ -108,6 +112,20 @@
 </li>
       </ul></li>
       <li>
+    --builder-policy
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-builder-policy">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --cflags
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-cflags">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
     --check
 
       <ul>
@@ -143,10 +161,31 @@
 </li>
       </ul></li>
       <li>
+    --create-markers
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-create-markers">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
     --debug-level
 
       <ul>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-d">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --debug-reflection
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-debug-reflection">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --dedup
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-dedup">fy-tool command line option</a>
 </li>
       </ul></li>
       <li>
@@ -248,10 +287,31 @@
 </li>
       </ul></li>
       <li>
+    --dump-primitives
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-dump-primitives">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --dump-reflection
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-dump-reflection">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
     --enable-diag
 
       <ul>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-enable-diag">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --entry-type
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-entry-type">fy-tool command line option</a>
 </li>
       </ul></li>
       <li>
@@ -290,6 +350,41 @@
 </li>
       </ul></li>
       <li>
+    --generate-blob
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-generate-blob">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --generate-c
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-generate-c">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --generic
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-generic">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --generic-parse-dump
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-generic-parse-dump">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --generic-testsuite
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-generic-testsuite">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
     --help
 
       <ul>
@@ -301,6 +396,20 @@
 
       <ul>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-hide-diag">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --import-blob
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-import-blob">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --import-c-file
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-import-c-file">fy-tool command line option</a>
 </li>
       </ul></li>
       <li>
@@ -336,6 +445,13 @@
 
       <ul>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-j">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --keep-style
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-keep-style">fy-tool command line option</a>
 </li>
       </ul></li>
       <li>
@@ -381,17 +497,33 @@
 </li>
       </ul></li>
       <li>
+    --no-dedup
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-no-dedup">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
     --no-ending-newline
 
       <ul>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-no-ending-newline">fy-tool command line option</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     --no-names
 
       <ul>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-no-names">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --no-prune-system
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-no-prune-system">fy-tool command line option</a>
 </li>
       </ul></li>
       <li>
@@ -422,8 +554,13 @@
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-num-threads">fy-tool command line option</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
+      <li>
+    --packed-roundtrip
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-packed-roundtrip">fy-tool command line option</a>
+</li>
+      </ul></li>
       <li>
     --parse-dump
 
@@ -446,6 +583,13 @@
 </li>
       </ul></li>
       <li>
+    --pyyaml-compat
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-pyyaml-compat">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
     --quiet
 
       <ul>
@@ -464,6 +608,13 @@
 
       <ul>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-recreating">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --reflect
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-reflect">fy-tool command line option</a>
 </li>
       </ul></li>
       <li>
@@ -562,6 +713,20 @@
 
       <ul>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-tsv-format">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --type-exclude
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-type-exclude">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --type-include
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-type-include">fy-tool command line option</a>
 </li>
       </ul></li>
       <li>
@@ -808,6 +973,10 @@
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-backend">--backend</a>
 </li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-builder-policy">--builder-policy</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-cflags">--cflags</a>
+</li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-check">--check</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-collect-errors">--collect-errors</a>
@@ -818,7 +987,13 @@
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-compose">--compose</a>
 </li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-create-markers">--create-markers</a>
+</li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-d">--debug-level</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-debug-reflection">--debug-reflection</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-dedup">--dedup</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-derive-key">--derive-key</a>
 </li>
@@ -848,7 +1023,13 @@
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-dump-pathexpr">--dump-pathexpr</a>
 </li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-dump-primitives">--dump-primitives</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-dump-reflection">--dump-reflection</a>
+</li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-enable-diag">--enable-diag</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-entry-type">--entry-type</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-f">--file</a>
 </li>
@@ -860,9 +1041,23 @@
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-0">--from</a>, <a href="man/fy-tool.html#cmdoption-fy-tool-F">[1]</a>
 </li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-generate-blob">--generate-blob</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-generate-c">--generate-c</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-generic">--generic</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-generic-parse-dump">--generic-parse-dump</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-generic-testsuite">--generic-testsuite</a>
+</li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-h">--help</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-hide-diag">--hide-diag</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-import-blob">--import-blob</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-import-c-file">--import-c-file</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-I">--include</a>
 </li>
@@ -873,6 +1068,8 @@
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-join">--join</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-j">--json</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-keep-style">--keep-style</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-keyed">--keyed</a>
 </li>
@@ -886,9 +1083,13 @@
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-m">--mode</a>
 </li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-no-dedup">--no-dedup</a>
+</li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-no-ending-newline">--no-ending-newline</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-no-names">--no-names</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-no-prune-system">--no-prune-system</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-no-streaming">--no-streaming</a>
 </li>
@@ -898,17 +1099,23 @@
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-num-threads">--num-threads</a>
 </li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-packed-roundtrip">--packed-roundtrip</a>
+</li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-parse-dump">--parse-dump</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-prefer-recursive">--prefer-recursive</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-preserve-flow-layout">--preserve-flow-layout</a>
 </li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-pyyaml-compat">--pyyaml-compat</a>
+</li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-q">--quiet</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-raw">--raw</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-recreating">--recreating</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-reflect">--reflect</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-r">--resolve</a>
 </li>
@@ -937,6 +1144,10 @@
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-t">--trim</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-tsv-format">--tsv-format</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-type-exclude">--type-exclude</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-type-include">--type-include</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-v">--version</a>
 </li>
@@ -1115,6 +1326,10 @@
 </li>
       <li><a href="libfyaml-core.html#c.fy_block_document_build_from_string">fy_block_document_build_from_string (C function)</a>
 </li>
+      <li><a href="libfyaml-generics.html#c.fy_bool">fy_bool (C macro)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_c_generation_flags">fy_c_generation_flags (C enum)</a>
+</li>
       <li><a href="libfyaml-misc.html#c.FY_CACHELINE_ALIGN">FY_CACHELINE_ALIGN (C macro)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.fy_cacheline_alloc">fy_cacheline_alloc (C function)</a>
@@ -1126,6 +1341,8 @@
       <li><a href="libfyaml-misc.html#c.FY_CACHELINE_SIZE_ALIGN">FY_CACHELINE_SIZE_ALIGN (C macro)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.FY_CHECK_SAME_TYPE">FY_CHECK_SAME_TYPE (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_collection_storage_size">fy_collection_storage_size (C function)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_collection_style">fy_collection_style (C enum)</a>
 </li>
@@ -1160,6 +1377,8 @@
       <li><a href="libfyaml-core.html#c.fy_composer_return_is_ok">fy_composer_return_is_ok (C function)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.FY_CONCAT">FY_CONCAT (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_CONST_P_INIT">FY_CONST_P_INIT (C macro)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.FY_CONSTRUCTOR">FY_CONSTRUCTOR (C macro)</a>
 </li>
@@ -1200,6 +1419,10 @@
       <li><a href="libfyaml-misc.html#c.FY_CPP_THIRD">FY_CPP_THIRD (C macro)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.FY_CPP_VA_COUNT">FY_CPP_VA_COUNT (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_CPP_VA_GBITEMS">FY_CPP_VA_GBITEMS (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_CPP_VA_GITEMS">FY_CPP_VA_GITEMS (C macro)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.FY_CPP_VA_ITEMS">FY_CPP_VA_ITEMS (C macro)</a>
 </li>
@@ -1555,8 +1778,6 @@
 </li>
       <li><a href="libfyaml-core.html#c.fy_emitter_xcfg">fy_emitter_xcfg (C struct)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="libfyaml-core.html#c.fy_emitter_xcfg_flags">fy_emitter_xcfg_flags (C enum)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.fy_encode_size">fy_encode_size (C function)</a>
@@ -1637,13 +1858,637 @@
 </li>
       <li><a href="libfyaml-misc.html#c.FY_EXPORT">FY_EXPORT (C macro)</a>
 </li>
+      <li><a href="libfyaml-reflection.html#c.fy_field_info_flags">fy_field_info_flags (C enum)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_field_info_generate_name">fy_field_info_generate_name (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_field_info_get_bit_offset">fy_field_info_get_bit_offset (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_field_info_get_bit_width">fy_field_info_get_bit_width (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_field_info_get_comment">fy_field_info_get_comment (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_field_info_get_enum_value">fy_field_info_get_enum_value (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_field_info_get_flags">fy_field_info_get_flags (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_field_info_get_name">fy_field_info_get_name (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_field_info_get_offset">fy_field_info_get_offset (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_field_info_get_parent">fy_field_info_get_parent (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_field_info_get_type_info">fy_field_info_get_type_info (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_field_info_get_unsigned_enum_value">fy_field_info_get_unsigned_enum_value (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_field_info_get_yaml_annotation">fy_field_info_get_yaml_annotation (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_field_info_get_yaml_comment">fy_field_info_get_yaml_comment (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_field_info_index">fy_field_info_index (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_float">fy_float (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_float_alloca">fy_float_alloca (C macro)</a>
+</li>
       <li><a href="libfyaml-core.html#c.fy_flow_document_build_from_string">fy_flow_document_build_from_string (C function)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.FY_FLT_DECIMAL_DIG">FY_FLT_DECIMAL_DIG (C macro)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.FY_FLT_MANT_DIG">FY_FLT_MANT_DIG (C macro)</a>
 </li>
+      <li><a href="libfyaml-generics.html#c.fy_foreach">fy_foreach (C macro)</a>
+</li>
       <li><a href="libfyaml-misc.html#c.FY_FORMAT">FY_FORMAT (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_alias_create">fy_gb_alias_create (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_alloc">fy_gb_alloc (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_allocation_failures">fy_gb_allocation_failures (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_cfg_flags">fy_gb_cfg_flags (C enum)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_copy">fy_gb_copy (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_copy_out_of_place">fy_gb_copy_out_of_place (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_create_scalar_from_text">fy_gb_create_scalar_from_text (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_flags">fy_gb_flags (C enum)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_free">fy_gb_free (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_get_allocator_info">fy_gb_get_allocator_info (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_get_schema">fy_gb_get_schema (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_indirect_create">fy_gb_indirect_create (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_internalize">fy_gb_internalize (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_internalize_out_of_place">fy_gb_internalize_out_of_place (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_lookup">fy_gb_lookup (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_lookupv">fy_gb_lookupv (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_mapping">fy_gb_mapping (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_mapping_create">fy_gb_mapping_create (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_mapping_value">fy_gb_mapping_value (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_op">fy_gb_op (C enum)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_op_flags">fy_gb_op_flags (C enum)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_GB_OR_LOCAL_COL">FY_GB_OR_LOCAL_COL (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_GB_OR_LOCAL_COL_COUNT_ITEMS">FY_GB_OR_LOCAL_COL_COUNT_ITEMS (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_GB_OR_LOCAL_COL_IDX_COUNT_ITEMS">FY_GB_OR_LOCAL_COL_IDX_COUNT_ITEMS (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_GB_OR_LOCAL_OP">FY_GB_OR_LOCAL_OP (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_GB_OR_LOCAL_SLICE">FY_GB_OR_LOCAL_SLICE (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_GB_OR_LOCAL_SLICE_N">FY_GB_OR_LOCAL_SLICE_N (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_GB_OR_LOCAL_SLICE_PY">FY_GB_OR_LOCAL_SLICE_PY (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_release">fy_gb_release (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_sequence">fy_gb_sequence (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_sequence_create">fy_gb_sequence_create (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_sequence_value">fy_gb_sequence_value (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_set_schema">fy_gb_set_schema (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_set_schema_from_parser_mode">fy_gb_set_schema_from_parser_mode (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_store">fy_gb_store (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_storev">fy_gb_storev (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_string_create_out_of_place">fy_gb_string_create_out_of_place (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_string_createf">fy_gb_string_createf (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_string_size_create">fy_gb_string_size_create (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_string_size_create_out_of_place">fy_gb_string_size_create_out_of_place (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_string_vcreate">fy_gb_string_vcreate (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_szstr_create_out_of_place">fy_gb_szstr_create_out_of_place (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_to_generic">fy_gb_to_generic (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_to_generic_outofplace_put">fy_gb_to_generic_outofplace_put (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_to_generic_value">fy_gb_to_generic_value (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_trim">fy_gb_trim (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_validate">fy_gb_validate (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_validate_out_of_place">fy_gb_validate_out_of_place (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic">fy_generic (C type)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_cfg">fy_generic_builder_cfg (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_cleanup">fy_generic_builder_cleanup (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_contains">fy_generic_builder_contains (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_contains_out_of_place">fy_generic_builder_contains_out_of_place (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_create">fy_generic_builder_create (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_create_in_place">fy_generic_builder_create_in_place (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_destroy">fy_generic_builder_destroy (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_export">fy_generic_builder_export (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_get_allocator">fy_generic_builder_get_allocator (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_get_cfg">fy_generic_builder_get_cfg (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_get_export_builder">fy_generic_builder_get_export_builder (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_get_flags">fy_generic_builder_get_flags (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_get_free">fy_generic_builder_get_free (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_get_scope_leader">fy_generic_builder_get_scope_leader (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_get_userdata">fy_generic_builder_get_userdata (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_reset">fy_generic_builder_reset (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_set_userdata">fy_generic_builder_set_userdata (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_setup">fy_generic_builder_setup (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_cast_const_char_ptr_default">fy_generic_cast_const_char_ptr_default (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_cast_const_char_ptr_default_alloca">fy_generic_cast_const_char_ptr_default_alloca (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_cast_const_char_ptr_default_final">fy_generic_cast_const_char_ptr_default_final (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_cast_decorated_int_default">fy_generic_cast_decorated_int_default (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_cast_default">fy_generic_cast_default (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_cast_default_coerse">fy_generic_cast_default_coerse (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_cast_generic_default">fy_generic_cast_generic_default (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_cast_mapping_handle_default">fy_generic_cast_mapping_handle_default (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_cast_sequence_handle_default">fy_generic_cast_sequence_handle_default (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_cast_sized_string_default">fy_generic_cast_sized_string_default (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_cast_sized_string_default_final">fy_generic_cast_sized_string_default_final (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_cast_typed">fy_generic_cast_typed (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_collection">fy_generic_collection (C type)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_collection_get_items">fy_generic_collection_get_items (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_collectionp_get_items">fy_generic_collectionp_get_items (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_compare">fy_generic_compare (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_compare_out_of_place">fy_generic_compare_out_of_place (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_decorated_int">fy_generic_decorated_int (C type)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_dir_get_document_count">fy_generic_dir_get_document_count (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_dir_get_document_vds">fy_generic_dir_get_document_vds (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_dump_primitive">fy_generic_dump_primitive (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_emit_compact">fy_generic_emit_compact (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_emit_default">fy_generic_emit_default (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_filter_pred_fn">fy_generic_filter_pred_fn (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_GENERIC_FLOAT_LVAL_TEMPLATE">FY_GENERIC_FLOAT_LVAL_TEMPLATE (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_GENERIC_GB_LVAL_TEMPLATE">FY_GENERIC_GB_LVAL_TEMPLATE (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_alias_alloca">fy_generic_get_alias_alloca (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_anchor">fy_generic_get_anchor (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_at_default">fy_generic_get_at_default (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_bool_type_no_check">fy_generic_get_bool_type_no_check (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_comment">fy_generic_get_comment (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_default">fy_generic_get_default (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_diag">fy_generic_get_diag (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_direct_collection">fy_generic_get_direct_collection (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_direct_type_bithack">fy_generic_get_direct_type_bithack (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_direct_type_table">fy_generic_get_direct_type_table (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_float_type_no_check">fy_generic_get_float_type_no_check (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_int_type_no_check">fy_generic_get_int_type_no_check (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_key_at_default">fy_generic_get_key_at_default (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_marker">fy_generic_get_marker (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_null_type_no_check">fy_generic_get_null_type_no_check (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_string_default_alloca">fy_generic_get_string_default_alloca (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_string_inplace_size">fy_generic_get_string_inplace_size (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_string_size_alloca">fy_generic_get_string_size_alloca (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_style">fy_generic_get_style (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_tag">fy_generic_get_tag (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_type">fy_generic_get_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_type_default">fy_generic_get_type_default (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_type_indirect">fy_generic_get_type_indirect (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_uint_type_no_check">fy_generic_get_uint_type_no_check (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_in_place_bool_type">fy_generic_in_place_bool_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_in_place_char_ptr">fy_generic_in_place_char_ptr (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_in_place_char_ptr_len">fy_generic_in_place_char_ptr_len (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_in_place_const_dintp">fy_generic_in_place_const_dintp (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_in_place_const_szstrp">fy_generic_in_place_const_szstrp (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_in_place_dint">fy_generic_in_place_dint (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_in_place_float_type">fy_generic_in_place_float_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_in_place_int_type">fy_generic_in_place_int_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_in_place_mapping_handle">fy_generic_in_place_mapping_handle (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_in_place_null_type">fy_generic_in_place_null_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_in_place_sequence_handle">fy_generic_in_place_sequence_handle (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_in_place_szstr">fy_generic_in_place_szstr (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_in_place_uint_type">fy_generic_in_place_uint_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_indirect">fy_generic_indirect (C type)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_indirect_get">fy_generic_indirect_get (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_indirect_get_anchor">fy_generic_indirect_get_anchor (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_indirect_get_comment">fy_generic_indirect_get_comment (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_indirect_get_diag">fy_generic_indirect_get_diag (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_indirect_get_marker">fy_generic_indirect_get_marker (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_indirect_get_style">fy_generic_indirect_get_style (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_indirect_get_tag">fy_generic_indirect_get_tag (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_indirect_get_value">fy_generic_indirect_get_value (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_indirect_get_value_nocheck">fy_generic_indirect_get_value_nocheck (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_GENERIC_INT_LVAL_TEMPLATE">FY_GENERIC_INT_LVAL_TEMPLATE (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_direct">fy_generic_is_direct (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_alias">fy_generic_is_direct_alias (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_bool_type">fy_generic_is_direct_bool_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_collection">fy_generic_is_direct_collection (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_float_type">fy_generic_is_direct_float_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_int_type">fy_generic_is_direct_int_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_invalid">fy_generic_is_direct_invalid (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_mapping">fy_generic_is_direct_mapping (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_mapping_type">fy_generic_is_direct_mapping_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_null_type">fy_generic_is_direct_null_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_sequence">fy_generic_is_direct_sequence (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_sequence_type">fy_generic_is_direct_sequence_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_string">fy_generic_is_direct_string (C function)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_string_type">fy_generic_is_direct_string_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_uint_type">fy_generic_is_direct_uint_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_valid">fy_generic_is_direct_valid (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_in_place">fy_generic_is_in_place (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_in_place_bithack">fy_generic_is_in_place_bithack (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_in_place_normal">fy_generic_is_in_place_normal (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_indirect">fy_generic_is_indirect (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_invalid">fy_generic_is_invalid (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_GENERIC_IS_TEMPLATE_INLINE">FY_GENERIC_IS_TEMPLATE_INLINE (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_GENERIC_IS_TEMPLATE_NON_INLINE">FY_GENERIC_IS_TEMPLATE_NON_INLINE (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_valid">fy_generic_is_valid (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_iterator_body_next">fy_generic_iterator_body_next (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_iterator_cfg">fy_generic_iterator_cfg (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_iterator_cfg_flags">fy_generic_iterator_cfg_flags (C enum)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_iterator_create">fy_generic_iterator_create (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_iterator_create_cfg">fy_generic_iterator_create_cfg (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_iterator_destroy">fy_generic_iterator_destroy (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_iterator_document_end">fy_generic_iterator_document_end (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_iterator_document_start">fy_generic_iterator_document_start (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_iterator_event_free">fy_generic_iterator_event_free (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_iterator_generate_next">fy_generic_iterator_generate_next (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_iterator_generic_next">fy_generic_iterator_generic_next (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_iterator_generic_start">fy_generic_iterator_generic_start (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_iterator_get_error">fy_generic_iterator_get_error (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_iterator_stream_end">fy_generic_iterator_stream_end (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_iterator_stream_start">fy_generic_iterator_stream_start (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_len">fy_generic_len (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_GENERIC_LVAL_TEMPLATE">FY_GENERIC_LVAL_TEMPLATE (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_map_pair">fy_generic_map_pair (C type)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_map_xform_fn">fy_generic_map_xform_fn (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping">fy_generic_mapping (C type)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping_get_at_default">fy_generic_mapping_get_at_default (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping_get_at_key">fy_generic_mapping_get_at_key (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping_get_at_keyp">fy_generic_mapping_get_at_keyp (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping_get_at_value">fy_generic_mapping_get_at_value (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping_get_at_valuep">fy_generic_mapping_get_at_valuep (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping_get_default">fy_generic_mapping_get_default (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping_get_items">fy_generic_mapping_get_items (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping_get_key_at_default">fy_generic_mapping_get_key_at_default (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping_get_pair_count">fy_generic_mapping_get_pair_count (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping_get_pairs">fy_generic_mapping_get_pairs (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping_get_typed">fy_generic_mapping_get_typed (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping_get_value">fy_generic_mapping_get_value (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping_get_value_index">fy_generic_mapping_get_value_index (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping_get_valuep">fy_generic_mapping_get_valuep (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping_get_valuep_index">fy_generic_mapping_get_valuep_index (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping_resolve">fy_generic_mapping_resolve (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping_resolve_outofplace">fy_generic_mapping_resolve_outofplace (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mapping_to_handle">fy_generic_mapping_to_handle (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mappingp_get_at_default">fy_generic_mappingp_get_at_default (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mappingp_get_at_key">fy_generic_mappingp_get_at_key (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mappingp_get_at_keyp">fy_generic_mappingp_get_at_keyp (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mappingp_get_at_value">fy_generic_mappingp_get_at_value (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mappingp_get_at_valuep">fy_generic_mappingp_get_at_valuep (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mappingp_get_default">fy_generic_mappingp_get_default (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mappingp_get_key_at_default">fy_generic_mappingp_get_key_at_default (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mappingp_get_pair_count">fy_generic_mappingp_get_pair_count (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mappingp_get_valuep">fy_generic_mappingp_get_valuep (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mappingp_items">fy_generic_mappingp_items (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_mappingp_valuep_index">fy_generic_mappingp_valuep_index (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_op">fy_generic_op (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_op_args">fy_generic_op_args (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_put_bool_type">fy_generic_out_of_place_put_bool_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_put_char_ptr">fy_generic_out_of_place_put_char_ptr (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_put_const_dintp">fy_generic_out_of_place_put_const_dintp (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_put_const_szstrp">fy_generic_out_of_place_put_const_szstrp (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_put_float_type">fy_generic_out_of_place_put_float_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_put_int_type">fy_generic_out_of_place_put_int_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_put_null_type">fy_generic_out_of_place_put_null_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_put_uint_type">fy_generic_out_of_place_put_uint_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_size_bool_type">fy_generic_out_of_place_size_bool_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_size_char_ptr">fy_generic_out_of_place_size_char_ptr (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_size_const_dintp">fy_generic_out_of_place_size_const_dintp (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_size_const_szstrp">fy_generic_out_of_place_size_const_szstrp (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_size_double">fy_generic_out_of_place_size_double (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_size_float_type">fy_generic_out_of_place_size_float_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_size_int_type">fy_generic_out_of_place_size_int_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_size_null_type">fy_generic_out_of_place_size_null_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_size_uint_type">fy_generic_out_of_place_size_uint_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_reducer_fn">fy_generic_reducer_fn (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_relocate">fy_generic_relocate (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_relocate_collection_ptr">fy_generic_relocate_collection_ptr (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_relocate_ptr">fy_generic_relocate_ptr (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_resolve_collection_ptr">fy_generic_resolve_collection_ptr (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_resolve_ptr">fy_generic_resolve_ptr (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_schema">fy_generic_schema (C enum)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_schema_get_text">fy_generic_schema_get_text (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_sequence">fy_generic_sequence (C type)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_sequence_get_default">fy_generic_sequence_get_default (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_sequence_get_default_coerse">fy_generic_sequence_get_default_coerse (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_sequence_get_item_count">fy_generic_sequence_get_item_count (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_sequence_get_item_generic">fy_generic_sequence_get_item_generic (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_sequence_get_itemp">fy_generic_sequence_get_itemp (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_sequence_get_items">fy_generic_sequence_get_items (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_sequence_get_typed">fy_generic_sequence_get_typed (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_sequence_resolve">fy_generic_sequence_resolve (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_sequence_resolve_outofplace">fy_generic_sequence_resolve_outofplace (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_sequence_to_handle">fy_generic_sequence_to_handle (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_sequencep_get_default">fy_generic_sequencep_get_default (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_sequencep_get_item_count">fy_generic_sequencep_get_item_count (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_sequencep_get_itemp">fy_generic_sequencep_get_itemp (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_sequencep_items">fy_generic_sequencep_items (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_sized_string">fy_generic_sized_string (C type)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_type">fy_generic_type (C enum)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_type_is_collection">fy_generic_type_is_collection (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_type_is_scalar">fy_generic_type_is_scalar (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_type_mask">fy_generic_type_mask (C enum)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_typeof">fy_generic_typeof (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_GENERIC_UINT_LVAL_TEMPLATE">FY_GENERIC_UINT_LVAL_TEMPLATE (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_value">fy_generic_value (C type)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_value_signed">fy_generic_value_signed (C type)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_vds_create_from_document_state">fy_generic_vds_create_from_document_state (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_vds_get_document_state">fy_generic_vds_get_document_state (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_vds_get_root">fy_generic_vds_get_root (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_cast_const_char_ptr_default">fy_genericp_cast_const_char_ptr_default (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_cast_default">fy_genericp_cast_default (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_cast_generic_default">fy_genericp_cast_generic_default (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_cast_mapping_handle_default">fy_genericp_cast_mapping_handle_default (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_cast_sequence_handle_default">fy_genericp_cast_sequence_handle_default (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_cast_sized_string_default">fy_genericp_cast_sized_string_default (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_cast_typed">fy_genericp_cast_typed (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_get_char_ptr">fy_genericp_get_char_ptr (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_get_char_ptr_default">fy_genericp_get_char_ptr_default (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_get_const_char_ptr">fy_genericp_get_const_char_ptr (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_get_const_char_ptr_default">fy_genericp_get_const_char_ptr_default (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_get_generic_default">fy_genericp_get_generic_default (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_get_generic_mapping_handle_default">fy_genericp_get_generic_mapping_handle_default (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_get_generic_sequence_handle_default">fy_genericp_get_generic_sequence_handle_default (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_get_string_default">fy_genericp_get_string_default (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_get_string_genericp">fy_genericp_get_string_genericp (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_get_string_inplace">fy_genericp_get_string_inplace (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_get_string_no_check">fy_genericp_get_string_no_check (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_get_string_size">fy_genericp_get_string_size (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_get_string_size_no_check">fy_genericp_get_string_size_no_check (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_get_szstr_default">fy_genericp_get_szstr_default (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_indirect_get_valuep">fy_genericp_indirect_get_valuep (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_genericp_indirect_get_valuep_nocheck">fy_genericp_indirect_get_valuep_nocheck (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_get_generic_direct_collection_type">fy_get_generic_direct_collection_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_get_len_genericp">fy_get_len_genericp (C function)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.FY_HAVE_BLOCK_LAMBDAS">FY_HAVE_BLOCK_LAMBDAS (C macro)</a>
 </li>
@@ -1652,6 +2497,16 @@
       <li><a href="libfyaml-misc.html#c.FY_HAVE_NESTED_FUNC_LAMBDAS">FY_HAVE_NESTED_FUNC_LAMBDAS (C macro)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.FY_IMPOSSIBLE_ABORT">FY_IMPOSSIBLE_ABORT (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_indirect">fy_indirect (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_indirect_alloca">fy_indirect_alloca (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_int">fy_int (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_int_alloca">fy_int_alloca (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_int_is_unsigned">fy_int_is_unsigned (C macro)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_iter_chunk">fy_iter_chunk (C struct)</a>
 </li>
@@ -1665,9 +2520,57 @@
 </li>
       <li><a href="libfyaml-misc.html#c.fy_linear_allocator_create_in_place">fy_linear_allocator_create_in_place (C function)</a>
 </li>
+      <li><a href="libfyaml-generics.html#c.fy_local_float">fy_local_float (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_local_mapping">fy_local_mapping (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_local_mapping_create">fy_local_mapping_create (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_local_mapping_create_value">fy_local_mapping_create_value (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_local_mapping_value">fy_local_mapping_value (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_LOCAL_OP">FY_LOCAL_OP (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_local_sequence">fy_local_sequence (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_local_sequence_create">fy_local_sequence_create (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_local_sequence_create_value">fy_local_sequence_create_value (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_local_sequence_value">fy_local_sequence_value (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_local_string">fy_local_string (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_local_string_size">fy_local_string_size (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_local_to_generic">fy_local_to_generic (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_local_to_generic_value">fy_local_to_generic_value (C macro)</a>
+</li>
       <li><a href="libfyaml-misc.html#c.FY_LUNIQUE">FY_LUNIQUE (C macro)</a>
 </li>
+      <li><a href="libfyaml-generics.html#c.fy_mapping">fy_mapping (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_mapping_alloca">fy_mapping_alloca (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_mapping_storage_size">fy_mapping_storage_size (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_mapping_value">fy_mapping_value (C macro)</a>
+</li>
       <li><a href="libfyaml-core.html#c.fy_mark">fy_mark (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_MAX_ALIGNOF">FY_MAX_ALIGNOF (C macro)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_meta_field_get_field_info">fy_meta_field_get_field_info (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_meta_field_get_meta_type">fy_meta_field_get_meta_type (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_meta_type_get_field">fy_meta_type_get_field (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_meta_type_get_field_count">fy_meta_type_get_field_count (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_meta_type_get_type_info">fy_meta_type_get_type_info (C function)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.fy_mremap_allocator_cfg">fy_mremap_allocator_cfg (C struct)</a>
 </li>
@@ -1945,6 +2848,42 @@
 </li>
       <li><a href="libfyaml-misc.html#c.FY_NT">FY_NT (C macro)</a>
 </li>
+      <li><a href="libfyaml-generics.html#c.fy_op_common_args">fy_op_common_args (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_op_convert_args">fy_op_convert_args (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_op_create_scalar_args">fy_op_create_scalar_args (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_op_drop_args">fy_op_drop_args (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_op_emit_args">fy_op_emit_args (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_op_emit_flags">fy_op_emit_flags (C enum)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_op_filter_args">fy_op_filter_args (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_op_filter_map_reduce_common">fy_op_filter_map_reduce_common (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_op_insert_replace_get_set_at_args">fy_op_insert_replace_get_set_at_args (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_op_keys_values_items_args">fy_op_keys_values_items_args (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_op_map_args">fy_op_map_args (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_op_parse_args">fy_op_parse_args (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_op_parse_flags">fy_op_parse_flags (C enum)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_op_reduce_args">fy_op_reduce_args (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_op_slice_args">fy_op_slice_args (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_op_slice_py_args">fy_op_slice_py_args (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_op_sort_args">fy_op_sort_args (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_op_take_args">fy_op_take_args (C struct)</a>
+</li>
       <li><a href="libfyaml-core.html#c.fy_parse_cfg">fy_parse_cfg (C struct)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_parse_cfg_flags">fy_parse_cfg_flags (C enum)</a>
@@ -2004,6 +2943,8 @@
       <li><a href="libfyaml-core.html#c.fy_parser_set_diag">fy_parser_set_diag (C function)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_parser_set_document_iterator">fy_parser_set_document_iterator (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_parser_set_generic_iterator">fy_parser_set_generic_iterator (C function)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_parser_set_input_callback">fy_parser_set_input_callback (C function)</a>
 </li>
@@ -2119,6 +3060,48 @@
 </li>
       <li><a href="libfyaml-misc.html#c.fy_ptr_align">fy_ptr_align (C function)</a>
 </li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_clear_all_markers">fy_reflection_clear_all_markers (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_destroy">fy_reflection_destroy (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_dump">fy_reflection_dump (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_equal">fy_reflection_equal (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_from_c_file">fy_reflection_from_c_file (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_from_c_file_with_cflags">fy_reflection_from_c_file_with_cflags (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_from_c_files">fy_reflection_from_c_files (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_from_import">fy_reflection_from_import (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_from_imports">fy_reflection_from_imports (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_from_null">fy_reflection_from_null (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_from_packed_blob">fy_reflection_from_packed_blob (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_from_packed_blob_file">fy_reflection_from_packed_blob_file (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_generate_c">fy_reflection_generate_c (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_generate_c_string">fy_reflection_generate_c_string (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_get_userdata">fy_reflection_get_userdata (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_prune_system">fy_reflection_prune_system (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_prune_unmarked">fy_reflection_prune_unmarked (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_set_userdata">fy_reflection_set_userdata (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_to_packed_blob">fy_reflection_to_packed_blob (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_to_packed_blob_file">fy_reflection_to_packed_blob_file (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_reflection_type_filter">fy_reflection_type_filter (C function)</a>
+</li>
       <li><a href="libfyaml-misc.html#c.FY_SAME_TYPE">FY_SAME_TYPE (C macro)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_scalar_style">fy_scalar_style (C enum)</a>
@@ -2128,6 +3111,14 @@
       <li><a href="libfyaml-core.html#c.fy_scan">fy_scan (C function)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_scan_token_free">fy_scan_token_free (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_sequence">fy_sequence (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_sequence_alloca">fy_sequence_alloca (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_sequence_storage_size">fy_sequence_storage_size (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_sequence_value">fy_sequence_value (C macro)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_shutdown">fy_shutdown (C function)</a>
 </li>
@@ -2151,9 +3142,27 @@
 </li>
       <li><a href="libfyaml-misc.html#c.FY_STACK_SAVE">FY_STACK_SAVE (C macro)</a>
 </li>
+      <li><a href="libfyaml-generics.html#c.fy_string">fy_string (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_string_alloca">fy_string_alloca (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_STRING_SHIFT3">FY_STRING_SHIFT3 (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.FY_STRING_SHIFT7">FY_STRING_SHIFT7 (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_string_size">fy_string_size (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_string_size_alloca">fy_string_size_alloca (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_string_size_const">fy_string_size_const (C macro)</a>
+</li>
       <li><a href="libfyaml-core.html#c.fy_string_to_error_module">fy_string_to_error_module (C function)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_string_to_error_type">fy_string_to_error_type (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_stringf">fy_stringf (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_stringf_value">fy_stringf_value (C macro)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.FY_SUB_OVERFLOW">FY_SUB_OVERFLOW (C macro)</a>
 </li>
@@ -2216,6 +3225,14 @@
       <li><a href="libfyaml-misc.html#c.fy_thread_work">fy_thread_work (C struct)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.fy_thread_work_join">fy_thread_work_join (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_to_generic_inplace">fy_to_generic_inplace (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_to_generic_outofplace_put">fy_to_generic_outofplace_put (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_to_generic_outofplace_size">fy_to_generic_outofplace_size (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_to_generic_value">fy_to_generic_value (C macro)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_token_collection_style">fy_token_collection_style (C function)</a>
 </li>
@@ -2285,9 +3302,137 @@
 </li>
       <li><a href="libfyaml-core.html#c.fy_token_type_is_yaml">fy_token_type_is_yaml (C function)</a>
 </li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_context_cfg">fy_type_context_cfg (C struct)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_context_cfg_flags">fy_type_context_cfg_flags (C enum)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_context_create">fy_type_context_create (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_context_destroy">fy_type_context_destroy (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_context_emit">fy_type_context_emit (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_context_emit_flags">fy_type_context_emit_flags (C enum)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_context_free_data">fy_type_context_free_data (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_context_get_root">fy_type_context_get_root (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_context_parse">fy_type_context_parse (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_clear_marker">fy_type_info_clear_marker (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_eponymous_offset">fy_type_info_eponymous_offset (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_flags">fy_type_info_flags (C enum)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_generate_name">fy_type_info_generate_name (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_get_align">fy_type_info_get_align (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_get_comment">fy_type_info_get_comment (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_get_count">fy_type_info_get_count (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_get_dependent_type">fy_type_info_get_dependent_type (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_get_field_at">fy_type_info_get_field_at (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_get_flags">fy_type_info_get_flags (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_get_id">fy_type_info_get_id (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_get_kind">fy_type_info_get_kind (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_get_name">fy_type_info_get_name (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_get_size">fy_type_info_get_size (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_get_yaml_annotation">fy_type_info_get_yaml_annotation (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_get_yaml_comment">fy_type_info_get_yaml_comment (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_is_marked">fy_type_info_is_marked (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_iterate">fy_type_info_iterate (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_lookup">fy_type_info_lookup (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_lookup_field">fy_type_info_lookup_field (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_lookup_field_by_enum_value">fy_type_info_lookup_field_by_enum_value (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_lookup_field_by_unsigned_enum_value">fy_type_info_lookup_field_by_unsigned_enum_value (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_mark">fy_type_info_mark (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_prefixless_name">fy_type_info_prefixless_name (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_to_reflection">fy_type_info_to_reflection (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_unqualified">fy_type_info_unqualified (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_info_with_qualifiers">fy_type_info_with_qualifiers (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind">fy_type_kind (C enum)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_align">fy_type_kind_align (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_has_direct_fields">fy_type_kind_has_direct_fields (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_has_element_count">fy_type_kind_has_element_count (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_has_fields">fy_type_kind_has_fields (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_has_prefix">fy_type_kind_has_prefix (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_info">fy_type_kind_info (C struct)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_info_get">fy_type_kind_info_get (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_is_dependent">fy_type_kind_is_dependent (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_is_direct_dependent">fy_type_kind_is_direct_dependent (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_is_enum_constant_decl">fy_type_kind_is_enum_constant_decl (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_is_float">fy_type_kind_is_float (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_is_integer">fy_type_kind_is_integer (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_is_like_ptr">fy_type_kind_is_like_ptr (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_is_named">fy_type_kind_is_named (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_is_numeric">fy_type_kind_is_numeric (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_is_primary">fy_type_kind_is_primary (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_is_primitive">fy_type_kind_is_primitive (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_is_record">fy_type_kind_is_record (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_is_signed">fy_type_kind_is_signed (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_is_unsigned">fy_type_kind_is_unsigned (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_is_valid">fy_type_kind_is_valid (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_name">fy_type_kind_name (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_signess">fy_type_kind_signess (C function)</a>
+</li>
+      <li><a href="libfyaml-reflection.html#c.fy_type_kind_size">fy_type_kind_size (C function)</a>
+</li>
       <li><a href="libfyaml-misc.html#c.FY_UNIQUE">FY_UNIQUE (C macro)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.FY_UNUSED">FY_UNUSED (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_validate">fy_validate (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_validate_out_of_place">fy_validate_out_of_place (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_value">fy_value (C macro)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_vdiag">fy_vdiag (C function)</a>
 </li>

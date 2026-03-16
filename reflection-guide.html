@@ -1,0 +1,297 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reflection Guide &mdash; libfyaml 1.0.0-alpha1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=25eb954f"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="fy-tool" href="man/fy-tool.html" />
+    <link rel="prev" title="Generics Guide" href="generics-guide.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            libfyaml
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="intro.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generics-guide.html">Generics Guide</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Reflection Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#core-objects">Core Objects</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#metadata-annotations">Metadata Annotations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#backends">Backends</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#libclang-workflow">Libclang workflow</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#packed-workflow">Packed workflow</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#choosing-between-them">Choosing Between Them</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#from-generic-values-to-typed-data">From Generic Values to Typed Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#minimal-typed-parse-emit-flow">Minimal Typed Parse/Emit Flow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#introspection">Introspection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#examples">Examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#alpha-caveats">Alpha Caveats</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="man/fy-tool.html">fy-tool</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml.html">libfyaml API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-core.html">Core API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-misc.html">Miscellaneous API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-generics.html">Generic API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-reflection.html">Reflection API</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">libfyaml</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Reflection Guide</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/reflection-guide.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="reflection-guide">
+<h1>Reflection Guide<a class="headerlink" href="#reflection-guide" title="Link to this heading"></a></h1>
+<p>Reflection/meta-type support is the typed half of libfyaml 1.0-alpha1. It uses
+type metadata plus YAML annotations to map YAML documents directly into native C
+data structures and emit them back again.</p>
+<p>The generic runtime covers value-oriented workflows. Reflection covers typed C
+data.</p>
+<section id="core-objects">
+<h2>Core Objects<a class="headerlink" href="#core-objects" title="Link to this heading"></a></h2>
+<p>There are two core runtime objects:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">fy_reflection</span></code></dt><dd><p>Owns the type registry for a translation unit or packed blob.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">fy_type_context</span></code></dt><dd><p>Binds a reflection registry to one entry type and drives parse/emit for that
+typed root.</p>
+</dd>
+</dl>
+<p>The normal flow is:</p>
+<ol class="arabic simple">
+<li><p>load or build a reflection registry</p></li>
+<li><p>choose an entry type</p></li>
+<li><p>create a type context</p></li>
+<li><p>parse YAML into typed C data</p></li>
+<li><p>emit the typed data back as YAML if needed</p></li>
+<li><p>free the produced C data with the same type context</p></li>
+</ol>
+</section>
+<section id="metadata-annotations">
+<h2>Metadata Annotations<a class="headerlink" href="#metadata-annotations" title="Link to this heading"></a></h2>
+<p>Annotations live in YAML-formatted comments in C source. They describe how YAML
+collections map onto fields.</p>
+<p>Example:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="k">struct</span><span class="w"> </span><span class="nc">service_port</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">name</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">port</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="k">struct</span><span class="w"> </span><span class="nc">service_config</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">listen</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">count</span><span class="p">;</span>
+<span class="w">    </span><span class="k">struct</span><span class="w"> </span><span class="nc">service_port</span><span class="w"> </span><span class="o">*</span><span class="n">ports</span><span class="p">;</span><span class="w">   </span><span class="c1">// yaml: { key: name, counter: count }</span>
+<span class="p">};</span>
+</pre></div>
+</div>
+<p>That annotation maps a YAML mapping into an array of <code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">service_port</span></code>
+and updates the count field.</p>
+</section>
+<section id="backends">
+<h2>Backends<a class="headerlink" href="#backends" title="Link to this heading"></a></h2>
+<p>libfyaml supports two practical reflection workflows.</p>
+<section id="libclang-workflow">
+<h3>Libclang workflow<a class="headerlink" href="#libclang-workflow" title="Link to this heading"></a></h3>
+<p>Use this workflow when reflection should read C headers directly.</p>
+<ul class="simple">
+<li><p>best for development and iteration</p></li>
+<li><p>no intermediate packed artifact</p></li>
+<li><p>requires a libfyaml build with libclang support</p></li>
+</ul>
+<p>The example <code class="docutils literal notranslate"><span class="pre">examples/reflection-libclang.c</span></code> demonstrates this path.</p>
+</section>
+<section id="packed-workflow">
+<h3>Packed workflow<a class="headerlink" href="#packed-workflow" title="Link to this heading"></a></h3>
+<p>Use this workflow when deployment should not depend on runtime libclang.</p>
+<ul class="simple">
+<li><p>author metadata from C headers once</p></li>
+<li><p>export a packed blob</p></li>
+<li><p>ship the blob with the application</p></li>
+<li><p>load the blob at runtime and parse/emit typed data from it</p></li>
+</ul>
+<p>The examples <code class="docutils literal notranslate"><span class="pre">examples/reflection-export-packed.c</span></code> and
+<code class="docutils literal notranslate"><span class="pre">examples/reflection-packed.c</span></code> demonstrate this path.</p>
+</section>
+</section>
+<section id="choosing-between-them">
+<h2>Choosing Between Them<a class="headerlink" href="#choosing-between-them" title="Link to this heading"></a></h2>
+<p>Use libclang directly when:</p>
+<ul class="simple">
+<li><p>you are iterating on types</p></li>
+<li><p>reflection metadata changes frequently</p></li>
+<li><p>you want the simplest authoring loop</p></li>
+</ul>
+<p>Use packed blobs when:</p>
+<ul class="simple">
+<li><p>you want stable deployment artifacts</p></li>
+<li><p>runtime environments should not depend on libclang</p></li>
+<li><p>startup should consume precomputed metadata</p></li>
+</ul>
+</section>
+<section id="from-generic-values-to-typed-data">
+<h2>From Generic Values to Typed Data<a class="headerlink" href="#from-generic-values-to-typed-data" title="Link to this heading"></a></h2>
+<p>Reflection complements the generic runtime. It fits data that already has a
+stable C model.</p>
+<p>A common progression looks like this:</p>
+<ul class="simple">
+<li><p>start with generics for exploratory parsing and transforms</p></li>
+<li><p>settle on a real C structure</p></li>
+<li><p>add annotations for collection mapping details</p></li>
+<li><p>switch the final parse/emit path to <code class="docutils literal notranslate"><span class="pre">fy_type_context</span></code></p></li>
+</ul>
+<p>The workflow provides a direct path from value handling to native typed serdes.</p>
+</section>
+<section id="minimal-typed-parse-emit-flow">
+<h2>Minimal Typed Parse/Emit Flow<a class="headerlink" href="#minimal-typed-parse-emit-flow" title="Link to this heading"></a></h2>
+<p>Create a reflection registry:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="k">struct</span><span class="w"> </span><span class="nc">fy_reflection</span><span class="w"> </span><span class="o">*</span><span class="n">rfl</span><span class="p">;</span>
+
+<span class="n">rfl</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_reflection_from_c_file_with_cflags</span><span class="p">(</span>
+<span class="w">    </span><span class="s">&quot;reflection-config.h&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="p">,</span><span class="w"> </span><span class="nb">false</span><span class="p">,</span><span class="w"> </span><span class="nb">true</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>Create a type context:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="k">struct</span><span class="w"> </span><span class="nc">fy_type_context_cfg</span><span class="w"> </span><span class="n">cfg</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="p">.</span><span class="n">rfl</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rfl</span><span class="p">,</span>
+<span class="w">    </span><span class="p">.</span><span class="n">entry_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;struct service_config&quot;</span><span class="p">,</span>
+<span class="p">};</span>
+<span class="k">struct</span><span class="w"> </span><span class="nc">fy_type_context</span><span class="w"> </span><span class="o">*</span><span class="n">ctx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_type_context_create</span><span class="p">(</span><span class="o">&amp;</span><span class="n">cfg</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>Parse YAML into typed data:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">NULL</span><span class="p">;</span>
+<span class="n">fy_type_context_parse</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">fyp</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">data</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>Emit typed data back as YAML:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="n">fy_type_context_emit</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">emit</span><span class="p">,</span><span class="w"> </span><span class="n">data</span><span class="p">,</span>
+<span class="w">    </span><span class="n">FYTCEF_SS</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">FYTCEF_DS</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">FYTCEF_DE</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">FYTCEF_SE</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>Then free the produced data with <code class="docutils literal notranslate"><span class="pre">fy_type_context_free_data(ctx,</span> <span class="pre">data)</span></code>.</p>
+</section>
+<section id="introspection">
+<h2>Introspection<a class="headerlink" href="#introspection" title="Link to this heading"></a></h2>
+<p>Reflection is also useful when you need to inspect types. Public accessors such
+as <code class="docutils literal notranslate"><span class="pre">fy_type_info_lookup()</span></code>,
+<code class="docutils literal notranslate"><span class="pre">fy_type_info_get_field_at()</span></code>, and <code class="docutils literal notranslate"><span class="pre">fy_field_info_get_yaml_comment()</span></code> let
+applications inspect the registry and build tooling around it.</p>
+<p>This is useful for:</p>
+<ul class="simple">
+<li><p>schema visualisation</p></li>
+<li><p>generators</p></li>
+<li><p>validation tools</p></li>
+<li><p>debug dumps</p></li>
+<li><p>authoring pipelines that export packed blobs</p></li>
+</ul>
+</section>
+<section id="examples">
+<h2>Examples<a class="headerlink" href="#examples" title="Link to this heading"></a></h2>
+<p>The examples directory contains a complete companion workflow:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">reflection-config.h</span></code>: annotated schema source</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">reflection-config.yaml</span></code>: sample input</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">reflection-libclang.c</span></code>: direct-header workflow</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">reflection-export-packed.c</span></code>: create packed blob from headers</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">reflection-packed.c</span></code>: runtime load from packed blob</p></li>
+</ul>
+</section>
+<section id="alpha-caveats">
+<h2>Alpha Caveats<a class="headerlink" href="#alpha-caveats" title="Link to this heading"></a></h2>
+<p>Reflection is a major alpha feature. Keep the workflow explicit:</p>
+<ul class="simple">
+<li><p>keep authoring-time and deployment-time paths explicit</p></li>
+<li><p>prefer small focused annotations over clever ones</p></li>
+<li><p>validate the generated types with tests</p></li>
+<li><p>ship packed blobs if runtime environments should stay independent from
+libclang</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="generics-guide.html" class="btn btn-neutral float-left" title="Generics Guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="man/fy-tool.html" class="btn btn-neutral float-right" title="fy-tool" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2019-2026, Pantelis Antoniou.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

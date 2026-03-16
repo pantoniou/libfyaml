@@ -1,0 +1,417 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Generics Guide &mdash; libfyaml 1.0.0-alpha1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=25eb954f"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Reflection Guide" href="reflection-guide.html" />
+    <link rel="prev" title="Introduction" href="intro.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            libfyaml
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="intro.html">Introduction</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Generics Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#fy-generic-as-the-core-type"><code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> As The Core Type</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#fy-generic-layout"><code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> Layout</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#on-64-bit-builds">On 64-bit builds</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#on-32-bit-builds">On 32-bit builds</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#special-inline-values">Special Inline Values</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#out-of-place-values">Out-Of-Place Values</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#public-constants">Public Constants</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#three-lifetime-modes">Three Lifetime Modes</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#stack-local-literals">Stack-local literals</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#builder-backed-values">Builder-backed values</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#low-level-storage-control">Low-level storage control</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#schemas-matter">Schemas Matter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#constructing-values">Constructing Values</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#access-and-conversion">Access and Conversion</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#parsing-and-emitting">Parsing and Emitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#functional-operations">Functional Operations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#examples">Examples</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="reflection-guide.html">Reflection Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="man/fy-tool.html">fy-tool</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml.html">libfyaml API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-core.html">Core API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-misc.html">Miscellaneous API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-generics.html">Generic API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-reflection.html">Reflection API</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">libfyaml</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Generics Guide</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/generics-guide.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="generics-guide">
+<h1>Generics Guide<a class="headerlink" href="#generics-guide" title="Link to this heading"></a></h1>
+<p>The center of the generic runtime is <code class="docutils literal notranslate"><span class="pre">fy_generic</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> is the sum-type value used by libfyaml to represent YAML and
+JSON data in C. A <code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> holds one value of one runtime type:</p>
+<ul class="simple">
+<li><p>null</p></li>
+<li><p>bool</p></li>
+<li><p>int</p></li>
+<li><p>float</p></li>
+<li><p>string</p></li>
+<li><p>sequence</p></li>
+<li><p>mapping</p></li>
+<li><p>YAML-specific wrappers such as anchors, tags, and aliases</p></li>
+</ul>
+<p>The rest of the generic API is about working with <code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> values:
+creating them, storing them, parsing them, querying them, transforming them,
+and emitting them again.</p>
+<p>If you know Python <code class="docutils literal notranslate"><span class="pre">dict</span></code> / <code class="docutils literal notranslate"><span class="pre">list</span></code> / scalar workflows, or value-tree APIs
+such as <code class="docutils literal notranslate"><span class="pre">serde_json::Value</span></code>, this is the closest match in libfyaml.</p>
+<section id="fy-generic-as-the-core-type">
+<h2><code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> As The Core Type<a class="headerlink" href="#fy-generic-as-the-core-type" title="Link to this heading"></a></h2>
+<p>Think of <code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> as a tagged sum type and as the main application-facing
+generic object:</p>
+<ul class="simple">
+<li><p>scalar <code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> values stay typed</p></li>
+<li><p>sequence <code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> values are ordered collections</p></li>
+<li><p>mapping <code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> values are key/value collections</p></li>
+<li><p>the same <code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> type represents YAML or JSON input</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> values are immutable, so operations return new values and
+leave the original value unchanged</p></li>
+</ul>
+<p>The design goal is Python-like data handling in C with explicit allocation and
+schema control.</p>
+<p>In practice, most generic code is built around a small set of questions:</p>
+<ul class="simple">
+<li><p>how do I create a <code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> value?</p></li>
+<li><p>how long does this <code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> need to live?</p></li>
+<li><p>how do I read values out of it?</p></li>
+<li><p>how do I produce a new <code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> from an existing one?</p></li>
+</ul>
+</section>
+<section id="fy-generic-layout">
+<h2><code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> Layout<a class="headerlink" href="#fy-generic-layout" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> is a single pointer-sized word. The low 3 bits carry the type
+tag. The remaining bits hold either:</p>
+<ul class="simple">
+<li><p>the value itself, for small inline cases</p></li>
+<li><p>an aligned pointer to out-of-place storage</p></li>
+</ul>
+<p>That layout is what makes the sum-type model practical in regular C. A large
+part of the common scalar space fits directly in the word with no separate
+allocation.</p>
+<section id="on-64-bit-builds">
+<h3>On 64-bit builds<a class="headerlink" href="#on-64-bit-builds" title="Link to this heading"></a></h3>
+<p>The 64-bit layout is the main target for the generic API:</p>
+<ul class="simple">
+<li><p>signed inline integers use 61 bits</p></li>
+<li><p>inline integer range is <code class="docutils literal notranslate"><span class="pre">-1152921504606846976</span></code> to
+<code class="docutils literal notranslate"><span class="pre">1152921504606846975</span></code></p></li>
+<li><p>inline strings use a 7-byte NUL-terminated slot in the word, which gives
+6 bytes of payload plus the trailing <code class="docutils literal notranslate"><span class="pre">\\0</span></code></p></li>
+<li><p>32-bit floats can be stored inline; larger <code class="docutils literal notranslate"><span class="pre">double</span></code> values are stored
+out of place</p></li>
+</ul>
+<p>In practice this means that values such as <code class="docutils literal notranslate"><span class="pre">42</span></code>, <code class="docutils literal notranslate"><span class="pre">true</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;abc&quot;</span></code>, and a
+large number of short keys and enum-like strings fit directly in the
+<code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> word.</p>
+</section>
+<section id="on-32-bit-builds">
+<h3>On 32-bit builds<a class="headerlink" href="#on-32-bit-builds" title="Link to this heading"></a></h3>
+<p>The same model applies on 32-bit builds with smaller inline ranges:</p>
+<ul class="simple">
+<li><p>signed inline integers use 29 bits</p></li>
+<li><p>inline integer range is <code class="docutils literal notranslate"><span class="pre">-268435456</span></code> to <code class="docutils literal notranslate"><span class="pre">268435455</span></code></p></li>
+<li><p>inline strings use a 3-byte NUL-terminated slot, which gives 2 bytes of
+payload plus the trailing <code class="docutils literal notranslate"><span class="pre">\\0</span></code></p></li>
+<li><p>floats are stored out of place</p></li>
+</ul>
+</section>
+<section id="special-inline-values">
+<h3>Special Inline Values<a class="headerlink" href="#special-inline-values" title="Link to this heading"></a></h3>
+<p>Some values are always represented directly in the word:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">fy_null</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fy_false</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fy_true</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fy_invalid</span></code></p></li>
+<li><p>empty sequence</p></li>
+<li><p>empty mapping</p></li>
+</ul>
+<p>These are encoded as fixed tagged values, so they never need separate storage.</p>
+</section>
+<section id="out-of-place-values">
+<h3>Out-Of-Place Values<a class="headerlink" href="#out-of-place-values" title="Link to this heading"></a></h3>
+<p>When a value does not fit inline, the word stores an aligned pointer:</p>
+<ul class="simple">
+<li><p>scalar out-of-place storage uses 8-byte alignment</p></li>
+<li><p>sequence and mapping storage uses 16-byte alignment</p></li>
+<li><p>the low tag bits remain available because the pointed-to storage is aligned</p></li>
+</ul>
+<p>This is how larger integers, larger strings, full <code class="docutils literal notranslate"><span class="pre">double</span></code> values,
+sequences, mappings, and indirect YAML metadata wrappers are represented.</p>
+</section>
+<section id="public-constants">
+<h3>Public Constants<a class="headerlink" href="#public-constants" title="Link to this heading"></a></h3>
+<p>The public header exposes the constants that define this layout:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">FYGT_GENERIC_BITS</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">FYGT_INT_INPLACE_BITS</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">FYGT_INT_INPLACE_MIN</span></code> / <code class="docutils literal notranslate"><span class="pre">FYGT_INT_INPLACE_MAX</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">FYGT_STRING_INPLACE_SIZE</span></code></p></li>
+</ul>
+<p>Those constants are the authoritative description of the current <code class="docutils literal notranslate"><span class="pre">fy_generic</span></code>
+encoding.</p>
+</section>
+</section>
+<section id="three-lifetime-modes">
+<h2>Three Lifetime Modes<a class="headerlink" href="#three-lifetime-modes" title="Link to this heading"></a></h2>
+<p>The API comes in three practical tiers for storing <code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> values.</p>
+<section id="stack-local-literals">
+<h3>Stack-local literals<a class="headerlink" href="#stack-local-literals" title="Link to this heading"></a></h3>
+<p>Use these when the <code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> value only needs to live inside the current
+function.</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="n">fy_generic</span><span class="w"> </span><span class="n">cfg</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_mapping</span><span class="p">(</span>
+<span class="w">    </span><span class="s">&quot;host&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;localhost&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;port&quot;</span><span class="p">,</span><span class="w"> </span><span class="mi">8080</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;tls&quot;</span><span class="p">,</span><span class="w"> </span><span class="nb">true</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>This entry point maps directly to the Python binding model.</p>
+</section>
+<section id="builder-backed-values">
+<h3>Builder-backed values<a class="headerlink" href="#builder-backed-values" title="Link to this heading"></a></h3>
+<p>Use a <code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">fy_generic_builder</span></code> when <code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> values need to outlive
+a stack frame, or when operations may allocate larger composite values.</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="kt">char</span><span class="w"> </span><span class="n">storage</span><span class="p">[</span><span class="mi">16384</span><span class="p">];</span>
+<span class="k">struct</span><span class="w"> </span><span class="nc">fy_generic_builder</span><span class="w"> </span><span class="o">*</span><span class="n">gb</span><span class="p">;</span>
+
+<span class="n">gb</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_generic_builder_create_in_place</span><span class="p">(</span>
+<span class="w">    </span><span class="n">FYGBCF_SCHEMA_AUTO</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">FYGBCF_SCOPE_LEADER</span><span class="p">,</span>
+<span class="w">    </span><span class="nb">NULL</span><span class="p">,</span><span class="w"> </span><span class="n">storage</span><span class="p">,</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="n">storage</span><span class="p">));</span>
+
+<span class="n">fy_generic</span><span class="w"> </span><span class="n">cfg</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_gb_mapping</span><span class="p">(</span>
+<span class="w">    </span><span class="n">gb</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;host&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;localhost&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;port&quot;</span><span class="p">,</span><span class="w"> </span><span class="mi">8080</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>Builders fit persistent results, repeated transforms, and application-owned
+value stores.</p>
+</section>
+<section id="low-level-storage-control">
+<h3>Low-level storage control<a class="headerlink" href="#low-level-storage-control" title="Link to this heading"></a></h3>
+<p>The low-level helpers let you control the exact backing buffers used by
+<code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> values. They are useful when you already have prebuilt item
+arrays or you are optimizing memory placement.</p>
+</section>
+</section>
+<section id="schemas-matter">
+<h2>Schemas Matter<a class="headerlink" href="#schemas-matter" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">fy_generic</span></code> is schema-less in shape, but scalar typing still depends on the
+parse or builder schema:</p>
+<ul class="simple">
+<li><p>YAML 1.2 and JSON behave conservatively</p></li>
+<li><p>YAML 1.1 enables older implicit forms</p></li>
+<li><p>Python-compatible mode is useful when you want behavior that feels closer to
+the Python binding or PyYAML-style expectations</p></li>
+</ul>
+<p>This matters for plain scalars such as <code class="docutils literal notranslate"><span class="pre">yes</span></code>, <code class="docutils literal notranslate"><span class="pre">on</span></code>, octal numbers, or
+sexagesimal forms.</p>
+<p>The example <code class="docutils literal notranslate"><span class="pre">examples/generic-roundtrip.c</span></code> demonstrates the same input under
+different schema choices.</p>
+</section>
+<section id="constructing-values">
+<h2>Constructing Values<a class="headerlink" href="#constructing-values" title="Link to this heading"></a></h2>
+<p>The core construction macros are:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">fy_value(...)</span></code> for a single scalar or already-generic value</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fy_sequence(...)</span></code> for list-shaped data</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fy_mapping(...)</span></code> for dict-shaped data</p></li>
+</ul>
+<p>Example:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="n">fy_generic</span><span class="w"> </span><span class="n">service</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_mapping</span><span class="p">(</span>
+<span class="w">    </span><span class="s">&quot;name&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;api&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;ports&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">fy_sequence</span><span class="p">(</span><span class="mi">8080</span><span class="p">,</span><span class="w"> </span><span class="mi">8443</span><span class="p">),</span>
+<span class="w">    </span><span class="s">&quot;labels&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">fy_mapping</span><span class="p">(</span><span class="s">&quot;tier&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;edge&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;owner&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;platform&quot;</span><span class="p">));</span>
+</pre></div>
+</div>
+<p>This mirrors the Python binding closely:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">service</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;api&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;ports&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">8080</span><span class="p">,</span> <span class="mi">8443</span><span class="p">],</span>
+    <span class="s2">&quot;labels&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;tier&quot;</span><span class="p">:</span> <span class="s2">&quot;edge&quot;</span><span class="p">,</span> <span class="s2">&quot;owner&quot;</span><span class="p">:</span> <span class="s2">&quot;platform&quot;</span><span class="p">},</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="access-and-conversion">
+<h2>Access and Conversion<a class="headerlink" href="#access-and-conversion" title="Link to this heading"></a></h2>
+<p>Use <code class="docutils literal notranslate"><span class="pre">fy_get()</span></code> and casts to move between generic values and native C types.</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="n">fy_generic</span><span class="w"> </span><span class="n">server</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_get</span><span class="p">(</span><span class="n">doc</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;server&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">fy_invalid</span><span class="p">);</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">host</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_get</span><span class="p">(</span><span class="n">server</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;host&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="p">);</span>
+<span class="kt">long</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_get</span><span class="p">(</span><span class="n">server</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;port&quot;</span><span class="p">,</span><span class="w"> </span><span class="mf">0L</span><span class="n">L</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>For nested structures, prefer small intermediate values or <code class="docutils literal notranslate"><span class="pre">fy_get_at_path()</span></code>
+when it reads more naturally than repeated <code class="docutils literal notranslate"><span class="pre">fy_get()</span></code> calls.</p>
+</section>
+<section id="parsing-and-emitting">
+<h2>Parsing and Emitting<a class="headerlink" href="#parsing-and-emitting" title="Link to this heading"></a></h2>
+<p>The generic API has its own parse/emit helpers:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">fy_parse()</span></code> / <code class="docutils literal notranslate"><span class="pre">fy_parse_file()</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fy_emit()</span></code> / <code class="docutils literal notranslate"><span class="pre">fy_emit_file()</span></code></p></li>
+</ul>
+<p>Example:</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="n">fy_generic</span><span class="w"> </span><span class="n">doc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_parse</span><span class="p">(</span>
+<span class="w">    </span><span class="s">&quot;items: [1, 2, 3]&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="n">FYOPPF_DISABLE_DIRECTORY</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">FYOPPF_INPUT_TYPE_STRING</span><span class="p">,</span>
+<span class="w">    </span><span class="nb">NULL</span><span class="p">);</span>
+
+<span class="n">fy_generic</span><span class="w"> </span><span class="n">yaml</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fy_emit</span><span class="p">(</span>
+<span class="w">    </span><span class="n">doc</span><span class="p">,</span>
+<span class="w">    </span><span class="n">FYOPEF_DISABLE_DIRECTORY</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">FYOPEF_MODE_YAML_1_2</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">FYOPEF_STYLE_BLOCK</span><span class="p">,</span>
+<span class="w">    </span><span class="nb">NULL</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>Emission returns a generic string value. This is convenient for testing,
+transform pipelines, and bindings.</p>
+</section>
+<section id="functional-operations">
+<h2>Functional Operations<a class="headerlink" href="#functional-operations" title="Link to this heading"></a></h2>
+<p>The generic runtime is value-oriented. Collection operations such as
+<code class="docutils literal notranslate"><span class="pre">fy_filter()</span></code>, <code class="docutils literal notranslate"><span class="pre">fy_map()</span></code>, and <code class="docutils literal notranslate"><span class="pre">fy_reduce()</span></code> support the same style used
+in Python, functional collections, and sum-type/value-tree libraries.</p>
+<p>There are parallel variants too: <code class="docutils literal notranslate"><span class="pre">fy_pfilter()</span></code>, <code class="docutils literal notranslate"><span class="pre">fy_pmap()</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">fy_preduce()</span></code>. These accept an explicit <code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">fy_thread_pool</span> <span class="pre">*</span></code> so the
+application controls how worker threads are created and reused.</p>
+<p>Lambda forms are available for both serial and parallel operations:
+<code class="docutils literal notranslate"><span class="pre">fy_filter_lambda()</span></code>, <code class="docutils literal notranslate"><span class="pre">fy_map_lambda()</span></code>, <code class="docutils literal notranslate"><span class="pre">fy_reduce_lambda()</span></code>,
+<code class="docutils literal notranslate"><span class="pre">fy_pfilter_lambda()</span></code>, <code class="docutils literal notranslate"><span class="pre">fy_pmap_lambda()</span></code>, and <code class="docutils literal notranslate"><span class="pre">fy_preduce_lambda()</span></code>.
+These are useful for short transforms where an inline expression reads more
+clearly than a separate callback function.</p>
+<p>Compiler support follows the generic API implementation:</p>
+<ul class="simple">
+<li><p>GCC uses nested-function lambdas</p></li>
+<li><p>Clang uses Blocks when built with Blocks support</p></li>
+</ul>
+<p>The build system checks for GCC heap trampoline support and enables
+<code class="docutils literal notranslate"><span class="pre">-ftrampoline-impl=heap</span></code> automatically when it is available. Newer GCC
+releases can therefore use the lambda APIs without the executable-stack warning
+seen on older toolchains.</p>
+<p>Typical flow:</p>
+<ul class="simple">
+<li><p>parse YAML into a generic</p></li>
+<li><p>select a sub-value</p></li>
+<li><p>transform a sequence</p></li>
+<li><p>reduce to a summary value</p></li>
+<li><p>install the new values back into a mapping</p></li>
+<li><p>emit the final result</p></li>
+</ul>
+<p>See <code class="docutils literal notranslate"><span class="pre">examples/generic-transform.c</span></code> for a complete builder-backed example.</p>
+</section>
+<section id="examples">
+<h2>Examples<a class="headerlink" href="#examples" title="Link to this heading"></a></h2>
+<p>The examples directory contains companion programs for this guide:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">generic-literals.c</span></code> for Python-like construction in C</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">generic-transform.c</span></code> for value-oriented transforms</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">generic-lambda-capture.c</span></code> for explicit lambda usage with captured local
+variables</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">generic-parallel-transform.c</span></code> for serial and parallel lambda-based
+transforms over a larger sequence, with timing output and configurable
+item/thread counts</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">generic-roundtrip.c</span></code> for parse/emit and schema behavior</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">generic-adoption-bridge.c</span></code> for Python-binding-to-C mental mapping</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="intro.html" class="btn btn-neutral float-left" title="Introduction" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="reflection-guide.html" class="btn btn-neutral float-right" title="Reflection Guide" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2019-2026, Pantelis Antoniou.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
