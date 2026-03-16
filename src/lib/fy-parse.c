@@ -8020,6 +8020,7 @@ static inline int
 fy_parse_streaming_alias_collection_state_set_top(struct fy_parser *fyp, int cts)
 {
 	int pos, off, old_cts;
+	uint32_t mask, bits;
 
 	if (fyp->cts.top < 2)
 		return -1;
@@ -8030,12 +8031,14 @@ fy_parse_streaming_alias_collection_state_set_top(struct fy_parser *fyp, int cts
 	pos = (fyp->cts.top - 2) / (sizeof(*fyp->cts.stack) * 8);
 	off = (fyp->cts.top - 2) % (sizeof(*fyp->cts.stack) * 8);
 
-	old_cts = (int)((fyp->cts.stack[pos] >> off) & 3);
+	old_cts = (int)((fyp->cts.stack[pos] >> off) & UINT32_C(3));
+	mask = UINT32_C(3) << off;
+	bits = ((uint32_t)cts & UINT32_C(3)) << off;
 
 	/* clear the bits first */
-	fyp->cts.stack[pos] &= ~(3 << off);
+	fyp->cts.stack[pos] &= ~mask;
 	/* set the state */
-	fyp->cts.stack[pos] |= (cts & 3) << off;
+	fyp->cts.stack[pos] |= bits;
 
 	return old_cts;
 }
@@ -8052,7 +8055,7 @@ fy_parse_streaming_alias_collection_state_top(struct fy_parser *fyp)
 	pos = (fyp->cts.top - 2) / (sizeof(*fyp->cts.stack) * 8);
 	off = (fyp->cts.top - 2) % (sizeof(*fyp->cts.stack) * 8);
 
-	return (int)((fyp->cts.stack[pos] >> off) & 3);
+	return (int)((fyp->cts.stack[pos] >> off) & UINT32_C(3));
 }
 
 static inline bool
