@@ -13,9 +13,9 @@ env:
 
 on:
   push:
-    branches: [ master, reflection-new5 ]
+    branches: [ master, stable, reflection-new5 ]
   pull_request:
-    branches: [ master, reflection-new5 ]
+    branches: [ master, stable, reflection-new5 ]
   schedule:
     - cron: '0 2 * * *'   # daily complete run at 02:00 UTC
   workflow_dispatch:
