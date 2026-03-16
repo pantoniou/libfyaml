@@ -1125,6 +1125,8 @@ START_TEST(fuzz_anchor_accel_cleanup_mapping_borrowed_input)
 }
 END_TEST
 
+#if defined(__linux__)
+
 START_TEST(fuzz_parser_streaming_alias_collection_state_mask)
 {
 	char data[] =
@@ -1169,6 +1171,8 @@ START_TEST(fuzz_parser_streaming_alias_collection_state_mask)
 	fy_parser_destroy(fyp);
 }
 END_TEST
+
+#endif
 
 void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 {
@@ -1238,5 +1242,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_path_expr_execute_oom);
 	fy_check_testcase_add_test(ctc, fuzz_anchor_accel_cleanup_scalar_borrowed_input);
 	fy_check_testcase_add_test(ctc, fuzz_anchor_accel_cleanup_mapping_borrowed_input);
+#if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_parser_streaming_alias_collection_state_mask);
+#endif
 }
