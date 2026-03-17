@@ -21,6 +21,7 @@
 #include <libfyaml.h>
 #include <libfyaml/libfyaml-reflection.h>
 
+#include "fy-utils.h"
 #include "fy-check.h"
 
 /* suppress -Wunused warnings in test bodies */
@@ -47,37 +48,18 @@ static struct fy_parser *make_parser_from_string(const char *yaml)
 	return fyp;
 }
 
-/*
- * Helper: write a string to a temporary file.
- * Returns a malloc'd path that caller must free(), or NULL on error.
- * Caller must also unlink() the file when done.
- */
 static char *write_temp_header(const char *content)
 {
-	char *path;
-	FILE *fp;
-	int fd;
+	char path[PATH_MAX + 1];
+	char *hdr;
+	int r;
 
-	path = strdup("/tmp/libfyaml_test_XXXXXX.h");
-	if (!path)
-		return NULL;
+	r = fy_create_tmpfile(path, sizeof(path), content, strlen(content));
+	ck_assert_int_eq(r, 0);
 
-	fd = mkstemps(path, 2);
-	if (fd < 0) {
-		free(path);
-		return NULL;
-	}
-
-	fp = fdopen(fd, "w");
-	if (!fp) {
-		close(fd);
-		free(path);
-		return NULL;
-	}
-
-	fputs(content, fp);
-	fclose(fp);
-	return path;
+	hdr = strdup(path);
+	ck_assert_ptr_ne(hdr, NULL);
+	return hdr;
 }
 
 /* ------------------------------------------------------------------ */
@@ -285,7 +267,7 @@ START_TEST(reflection_clang_struct_info)
 
 	rfl = fy_reflection_from_c_file_with_cflags(hdr_path, "",
 						     false, true, NULL);
-	unlink(hdr_path);
+	remove(hdr_path);
 	free(hdr_path);
 	ck_assert_ptr_ne(rfl, NULL);
 
@@ -332,7 +314,7 @@ START_TEST(reflection_clang_struct_parse)
 
 	rfl = fy_reflection_from_c_file_with_cflags(hdr_path, "",
 						     false, true, NULL);
-	unlink(hdr_path);
+	remove(hdr_path);
 	free(hdr_path);
 	ck_assert_ptr_ne(rfl, NULL);
 
@@ -392,7 +374,7 @@ START_TEST(reflection_packed_roundtrip)
 
 	rfl = fy_reflection_from_c_file_with_cflags(hdr_path, "",
 						     false, true, NULL);
-	unlink(hdr_path);
+	remove(hdr_path);
 	free(hdr_path);
 	ck_assert_ptr_ne(rfl, NULL);
 
