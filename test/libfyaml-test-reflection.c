@@ -227,7 +227,7 @@ END_TEST
 /* Test: clang backend — struct field info  (requires HAVE_LIBCLANG)  */
 /* ------------------------------------------------------------------ */
 
-#ifdef HAVE_LIBCLANG
+#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
 
 /*
  * Definition matching test/reflection-data/025HY3Q/00/definition.h
@@ -360,7 +360,7 @@ END_TEST
 
 /* Test: pack reflection and restore; verify struct baz still introspectable */
 /* (seeds from C file, so also requires HAVE_LIBCLANG) */
-#ifdef HAVE_LIBCLANG
+#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
 START_TEST(reflection_packed_roundtrip)
 {
 	struct fy_reflection *rfl, *rfl2;
@@ -478,7 +478,7 @@ void libfyaml_case_reflection(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, reflection_parse_uint);
 	fy_check_testcase_add_test(ctc, reflection_parse_int_ptr);
 
-#ifdef HAVE_LIBCLANG
+#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
 	/* clang backend tests */
 	ctc = fy_check_suite_add_test_case(cs, "reflection-clang");
 
@@ -489,7 +489,7 @@ void libfyaml_case_reflection(struct fy_check_suite *cs)
 	/* packed backend tests */
 	ctc = fy_check_suite_add_test_case(cs, "reflection-packed");
 
-#ifdef HAVE_LIBCLANG
+#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
 	fy_check_testcase_add_test(ctc, reflection_packed_roundtrip);
 #endif
 	fy_check_testcase_add_test(ctc, reflection_packed_parse_int);
