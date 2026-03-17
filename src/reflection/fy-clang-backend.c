@@ -552,6 +552,7 @@ clang_type_get_qualifiers(CXType type)
 static bool
 clang_type_equal(CXType type1, CXType type2, bool strict)
 {
+	CXCursor d1, d2;
 	unsigned int quals1, quals2;
 
 	if (clang_equalTypes(type1, type2))
@@ -567,12 +568,15 @@ clang_type_equal(CXType type1, CXType type2, bool strict)
 		type2 = clang_Type_getNamedType(type2);
 
 	if (!clang_equalTypes(type1, type2)) {
-		/* In non-strict mode, typedef types that differ only in qualification
-		 * share the same declaration cursor - use that for matching */
-		if (!strict && type1.kind == CXType_Typedef && type2.kind == CXType_Typedef) {
-			CXCursor d1 = clang_getTypeDeclaration(type1);
-			CXCursor d2 = clang_getTypeDeclaration(type2);
-			return clang_equalCursors(d1, d2);
+		/* In non-strict mode, declaration identity is only meaningful for
+		 * named types. Pointer/array/function types may report null
+		 * declarations, and treating two null cursors as equal corrupts
+		 * dependent-type resolution. */
+		if (!strict) {
+			d1 = clang_getTypeDeclaration(type1);
+			d2 = clang_getTypeDeclaration(type2);
+			if (!clang_Cursor_isNull(d1) && !clang_Cursor_isNull(d2))
+				return clang_equalCursors(d1, d2);
 		}
 		return false;
 	}
@@ -1122,6 +1126,8 @@ clang_create_single_synthetic_type(struct fy_reflection *rfl, struct fy_import *
 
 	if (ftu->dependent_type.kind != CXType_Invalid) {
 		ft_dep = clang_lookup_type_by_type(rfl, ftu->dependent_type, true);
+		if (!ft_dep)
+			ft_dep = clang_lookup_type_by_type(rfl, ftu->dependent_type, false);
 		// if (!ft_dep) {
 		//	fprintf(stderr, "\e[31m" "%s:%d %s: no underlying type to %s (recursive definition)" "\e[0m" "\n",
 		//			__FILE__, __LINE__, __func__,
@@ -1424,6 +1430,8 @@ clang_field_visitor(CXCursor cursor, CXCursor parent, struct fy_decl *parent_dec
 
 		/* lookup (or create qualified type) */
 		ft = clang_lookup_type_by_type(rfl, type, true);
+		if (!ft)
+			ft = clang_lookup_type_by_type(rfl, type, false);
 		RFL_ASSERT(ft);
 	}
 
@@ -2026,7 +2034,6 @@ static int clang_import_done(struct fy_import *imp)
 	struct fy_type_info_wrapper *tiwn;
 	struct fy_type *ft, *ft_final, *ft_dep;
 	struct clang_type_backend *ftb;
-	struct clang_decl_backend *declb;
 	char *final_type_spell, *final_type_name = NULL;
 	const char *tmp_type;
 	const char *type_rem FY_DEBUG_UNUSED;
@@ -2034,7 +2041,7 @@ static int clang_import_done(struct fy_import *imp)
 	unsigned int tmp_quals;
 	enum fy_type_kind dep_type_kind, final_type_kind, tmp_type_kind;
 	enum fy_decl_type final_decl_type;
-	struct fy_decl *decl, *final_decl;
+	struct fy_decl *final_decl;
 	struct clang_type_user ftu_local, *ftu = &ftu_local;
 	struct clang_decl_user declu_local, *declu = &declu_local;
 	bool unresolved;
@@ -2060,12 +2067,6 @@ static int clang_import_done(struct fy_import *imp)
 		ftb = ft->backend;
 		RFL_ASSERT(ftb);
 
-		decl = fy_type_decl(ft);
-		RFL_ASSERT(decl);
-
-		declb = decl->backend;
-		RFL_ASSERT(declb);
-
 		// fprintf(stderr, "\e[31m%s: PENDING ft->dependent_type=%s", __func__,
 		//		ft->dependent_type ? ft->dependent_type->fullname : "<NULL>");
 		// fprintf(stderr, " ftb=%s:%s dependent_type=%s:%s final_dependent_type=%s:%s\e[0m\n",
@@ -2076,8 +2077,14 @@ static int clang_import_done(struct fy_import *imp)
 
 		final_type_kind = clang_map_type(ftb->final_dependent_type);
 
-		final_type_kind = clang_map_type(ftb->final_dependent_type);
+		ft_final = NULL;
 		if (fy_type_kind_is_valid(final_type_kind)) {
+			ft_final = clang_lookup_type_by_type(rfl, ftb->final_dependent_type, false);
+			if (!ft_final)
+				ft_final = fy_type_lookup(rfl, clang_str_get_alloca(clang_getTypeSpelling(ftb->final_dependent_type)), (size_t)-1);
+		}
+
+		if (fy_type_kind_is_valid(final_type_kind) && !ft_final) {
 			// fprintf(stderr, " final_type_kind=%s\n", fy_type_kind_info_get_internal(final_type_kind)->name);
 
 			final_decl_type = clang_map_type_decl(ftb->final_dependent_type);
@@ -2108,7 +2115,7 @@ static int clang_import_done(struct fy_import *imp)
 			memcpy(final_type_name, tmp_type, tmp_type_len);
 			final_type_name[tmp_type_len] = '\0';
 
-			final_decl = fy_decl_create(rfl, decl->imp, NULL, final_decl_type, final_type_name, declu);
+			final_decl = fy_decl_create(rfl, imp, NULL, final_decl_type, final_type_name, declu);
 			RFL_ASSERT(final_decl);
 
 			memset(ftu, 0, sizeof(*ftu));
@@ -2134,7 +2141,6 @@ static int clang_import_done(struct fy_import *imp)
 
 			fy_decl_list_add_tail(&rfl->decls, final_decl);
 			fy_type_list_add_tail(&rfl->types, ft_final);
-
 		}
 
 		dep_type_kind = clang_map_type(ftb->dependent_type);
@@ -2142,12 +2148,14 @@ static int clang_import_done(struct fy_import *imp)
 
 			/* we don't care about qualifiers now */
 			ft_dep = clang_lookup_type_by_type(rfl, ftb->dependent_type, false);
+			if (!ft_dep)
+				ft_dep = fy_type_lookup(rfl, clang_str_get_alloca(clang_getTypeSpelling(ftb->dependent_type)), (size_t)-1);
 			if (!ft_dep) {
 				// fprintf(stderr, "\e[33m" "%s:%d %s: primitive types leading to %s" "\e[0m" "\n",
 				//		__FILE__, __LINE__, __func__,
 				//		clang_str_get_alloca(clang_getTypeSpelling(ftb->dependent_type)));
 
-				ret = clang_create_primitive_types(rfl, decl->imp, ftb->dependent_type);
+				ret = clang_create_primitive_types(rfl, imp, ftb->dependent_type);
 				RFL_ASSERT(ret >= 0);
 
 				ft_dep = clang_lookup_type_by_type(rfl, ftb->dependent_type, false);
