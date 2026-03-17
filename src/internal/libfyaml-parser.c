@@ -146,13 +146,13 @@ const void *checkout_items16(void)
 	return mem;
 }
 
-const fy_generic checkout_items17(struct fy_generic_builder *gb)
+fy_generic checkout_items17(struct fy_generic_builder *gb)
 {
 	fy_generic seq = fy_sequence(10, "Hello this is big", true);
 	return fy_gb_internalize(gb, seq);
 }
 
-const fy_generic checkout_items18(struct fy_generic_builder *gb)
+fy_generic checkout_items18(struct fy_generic_builder *gb)
 {
 	fy_generic seq = fy_sequence(10, "Hello this is big", true);
 	return fy_gb_internalize(gb, seq);

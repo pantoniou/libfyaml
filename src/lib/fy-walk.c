@@ -2226,7 +2226,6 @@ int push_operand_lr(struct fy_path_parser *fypp,
 	struct fy_atom handle;
 	int ret;
 
-	optimize = false;
 	if (!exprl && !exprr)
 		goto err_out;
 
