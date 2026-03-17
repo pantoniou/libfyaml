@@ -3514,10 +3514,7 @@ enum_parse_single_scalar(struct fy_parser *fyp, struct reflection_walker *rw,
 	struct reflection_field_data *rfd;
 	const char *text0;
 	union integer_scalar mini, maxi;
-	enum fy_type_kind type_kind;
 	int rc;
-
-	type_kind = rw->rtd->rtd_dep->ti->kind;
 
 	fye = fy_parser_parse(fyp);
 	RP_INPUT_CHECK(fye != NULL, "premature end of input\n");
@@ -3533,16 +3530,16 @@ enum_parse_single_scalar(struct fy_parser *fyp, struct reflection_walker *rw,
 			"No enumeration value named %s in '%s'",
 			text0, rw->rtd->ti->name);
 
-	if (fy_type_kind_is_signed(type_kind))
+	if (rtd_is_signed(rw->rtd))
 		valp->sval = rfd->fi->sval;
 	else
 		valp->uval = rfd->fi->uval;
 
 	rc = store_integer_scalar_check_rw(rw, *valp, &mini, &maxi);
-	RP_INPUT_CHECK(!(rc == -ERANGE && fy_type_kind_is_signed(type_kind)),
+	RP_INPUT_CHECK(!(rc == -ERANGE && rtd_is_signed(rw->rtd)),
 			"%s value %s (%jd) cannot fit (min=%jd, max=%jd)",
 			rtd_enum->ti->name, rfd->field_name, valp->sval, mini.sval, maxi.sval);
-	RP_INPUT_CHECK(!(rc == -ERANGE && fy_type_kind_is_unsigned(type_kind)),
+	RP_INPUT_CHECK(!(rc == -ERANGE && rtd_is_unsigned(rw->rtd)),
 			"%s value %s (%ju) cannot fit (max=%ju)",
 			rtd_enum->ti->name, rfd->field_name, valp->uval, maxi.uval);
 
@@ -3568,13 +3565,10 @@ enum_parse(struct fy_parser *fyp, struct reflection_walker *rw,
 	struct fy_event *fye = NULL;
 	struct reflection_walker rw_num;
 	union integer_scalar val, tval, mini, maxi;
-	enum fy_type_kind type_kind;
 	int rc;
 
 	assert(rw->rtd);
 	assert(rw->rtd->rtd_dep);
-
-	type_kind = rw->rtd->rtd_dep->ti->kind;
 
 	fye_peek = fy_parser_parse_peek(fyp);
 	RP_INPUT_CHECK(fye_peek != NULL, "premature end of input\n");
@@ -3601,7 +3595,7 @@ enum_parse(struct fy_parser *fyp, struct reflection_walker *rw,
 			if (rc)
 				goto out;
 
-			if (fy_type_kind_is_signed(type_kind))
+			if (rtd_is_signed(rw->rtd))
 				val.sval |= tval.sval;
 			else
 				val.uval |= tval.uval;
@@ -3617,15 +3611,16 @@ enum_parse(struct fy_parser *fyp, struct reflection_walker *rw,
 	}
 
 	rc = store_integer_scalar_check_rw(rw, val, &mini, &maxi);
-	RP_INPUT_CHECK(!(rc == -ERANGE && fy_type_kind_is_signed(type_kind)),
+	RP_INPUT_CHECK(!(rc == -ERANGE && rtd_is_signed(rw->rtd)),
 			"%s (%jd) cannot fit (min=%jd, max=%jd)",
 			rw->rtd->ti->name, val.sval, mini.sval, maxi.sval);
-	RP_INPUT_CHECK(!(rc == -ERANGE && fy_type_kind_is_unsigned(type_kind)),
+	RP_INPUT_CHECK(!(rc == -ERANGE && rtd_is_unsigned(rw->rtd)),
 			"%s (%ju) cannot fit (max=%ju)",
 			rw->rtd->ti->name, val.uval, maxi.uval);
 
 	if (!(flags & RPF_NO_STORE))
-		store_integer_scalar_no_check_rw(reflection_rw_dep(&rw_num, rw), val);
+		store_integer_scalar_no_check_rw((rw->flags & RWF_BITFIELD_DATA) ?
+				rw : reflection_rw_dep(&rw_num, rw), val);
 
 out:
 	fy_parser_event_free(fyp, fye);
@@ -3649,7 +3644,7 @@ enum_emit_single_scalar(struct fy_emitter *emit, struct reflection_walker *rw,
 	int rc;
 
 	rfd = reflection_type_data_lookup_field_by_scalar_enum_value(rtd_enum, val,
-			fy_type_kind_is_signed(rw->rtd->rtd_dep->ti->kind));
+			rtd_is_signed(rw->rtd));
 	if (!rfd)
 		return -1;
 
@@ -3674,9 +3669,10 @@ enum_emit(struct fy_emitter *emit, struct reflection_walker *rw,
 	assert(rw->rtd);
 	assert(rw->rtd->rtd_dep);
 
-	is_signed = fy_type_kind_is_signed(rw->rtd->rtd_dep->ti->kind);
+	is_signed = rtd_is_signed(rw->rtd);
 
-	val = load_integer_scalar_rw(reflection_rw_dep(&rw_num, rw));
+	val = load_integer_scalar_rw((rw->flags & RWF_BITFIELD_DATA) ?
+			rw : reflection_rw_dep(&rw_num, rw));
 
 	/* can do it directly? do it */
 	rfd = reflection_type_data_lookup_field_by_scalar_enum_value(rw->rtd, val, is_signed);
@@ -3757,10 +3753,12 @@ enum_cmp(struct reflection_walker *rw_a, struct reflection_walker *rw_b)
 	assert(rw_a->rtd);
 	assert(rw_a->rtd == rw_b->rtd);
 
-	val_a = load_integer_scalar_rw(reflection_rw_dep(&rw_num_a, rw_a));
-	val_b = load_integer_scalar_rw(reflection_rw_dep(&rw_num_b, rw_b));
+	val_a = load_integer_scalar_rw((rw_a->flags & RWF_BITFIELD_DATA) ?
+			rw_a : reflection_rw_dep(&rw_num_a, rw_a));
+	val_b = load_integer_scalar_rw((rw_b->flags & RWF_BITFIELD_DATA) ?
+			rw_b : reflection_rw_dep(&rw_num_b, rw_b));
 
-	if (fy_type_kind_is_signed(rw_a->rtd->rtd_dep->ti->kind))
+	if (rtd_is_signed(rw_a->rtd))
 		rc = val_a.sval > val_b.sval ?  1 :
 		     val_a.sval < val_b.sval ? -1 : 0;
 	else
@@ -3786,8 +3784,10 @@ enum_copy(struct reflection_walker *rw_dst, struct reflection_walker *rw_src)
 	assert(rw_dst->rtd);
 	assert(rw_dst->rtd == rw_src->rtd);
 
-	val = load_integer_scalar_rw(reflection_rw_dep(&rw_num_src, rw_src));
-	return store_integer_scalar_rw(reflection_rw_dep(&rw_num_dst, rw_dst), val);
+	val = load_integer_scalar_rw((rw_src->flags & RWF_BITFIELD_DATA) ?
+			rw_src : reflection_rw_dep(&rw_num_src, rw_src));
+	return store_integer_scalar_rw((rw_dst->flags & RWF_BITFIELD_DATA) ?
+			rw_dst : reflection_rw_dep(&rw_num_dst, rw_dst), val);
 }
 
 static inline bool text_is_null(struct fy_parser *fyp, const char *text, size_t len)
