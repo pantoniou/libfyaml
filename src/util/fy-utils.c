@@ -435,7 +435,7 @@ fy_term_set_raw(int fd, struct termios *oldt)
 	newt = t;
 
 	cfmakeraw(&newt);
-    
+
 	ret = tcsetattr(fd, TCSANOW, &newt);
 	if (ret != 0)
 		return ret;
@@ -1005,4 +1005,97 @@ char *fy_memstream_close(struct fy_memstream *fyms, size_t *sizep)
 	free(fyms);
 
 	return buf;
+}
+
+// this function is merely a helper - do not use it for security stuff
+FILE *fy_tmpfile(char *path, size_t pathsz)
+{
+	int fd = -1;
+	FILE *fp = NULL;
+	char temppath[PATH_MAX + 1];
+#ifdef _WIN32
+	char tempdir[PATH_MAX + 1];
+	DWORD rc;
+#else
+	const char *tmpdir = NULL;
+#endif
+
+	if (!path || !pathsz)
+		return NULL;
+
+	path[0] = '\0';
+
+#ifdef _WIN32
+	rc = GetTempPathA(sizeof(tempdir), tempdir);
+	if (rc == 0 || rc >= sizeof(tempdir))
+		goto err_out;
+
+	rc = GetTempFileNameA(tempdir, "fyh", 0, temppath);
+	if (rc == 0)
+		goto err_out;
+#else
+	tmpdir = getenv("TMPDIR");
+	if (!tmpdir || !*tmpdir)
+		tmpdir = "/tmp";
+
+	snprintf(temppath, sizeof(temppath), "%s/libfyaml_XXXXXX", tmpdir);
+	temppath[sizeof(temppath) - 1] = '\0';
+#endif
+
+	if (strlen(temppath) + 1 > pathsz)
+		goto err_out;
+	strncpy(path, temppath, pathsz);
+
+#ifdef _WIN32
+	fd = open(path, O_BINARY | O_CREAT | O_EXCL | O_RDWR);
+#else
+	fd = mkstemp(path);
+#endif
+	if (fd < 0)
+		goto err_out;
+
+	fp = fdopen(fd, "wb");
+	if (!fp)
+		goto err_out;
+
+	return fp;
+
+err_out:
+	if (fd < 0)
+		close(fd);
+	if (fp)
+		fclose(fp);
+	if (path && path[0])
+		(void)remove(path);
+	return NULL;
+}
+
+int fy_create_tmpfile(char *path, size_t pathsz, const void *data, size_t datasz)
+{
+	FILE *fp = NULL;
+	size_t wrn;
+	int r;
+
+	fp = fy_tmpfile(path, pathsz);
+	if (!fp)
+		return -1;
+
+	if (data && datasz > 0) {
+		wrn = fwrite(data, 1, datasz, fp);
+		if (wrn != datasz)
+			goto err_out;
+	}
+	r = fclose(fp);
+	if (r)
+		goto err_out;
+
+	return 0;
+
+err_out:
+	if (fp) {
+		fclose(fp);
+		if (path[0])
+			remove(path);
+	}
+	return -1;
 }

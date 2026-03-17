@@ -219,4 +219,9 @@ struct fy_memstream;	// opaque
 struct fy_memstream *fy_memstream_open(FILE **fpp);
 char *fy_memstream_close(struct fy_memstream *fyms, size_t *sizep);
 
+/* wrapper for creating a temporary file, on all platforms */
+FILE *fy_tmpfile(char *path, size_t pathsz);
+int fy_create_tmpfile(char *path, size_t pathsz, const void *data, size_t datasz);
+
+
 #endif

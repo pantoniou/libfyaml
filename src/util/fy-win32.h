@@ -232,6 +232,9 @@ static inline int fy_win32_munmap(void *addr, size_t length)
 #ifndef O_BINARY
 #define O_BINARY _O_BINARY
 #endif
+#ifndef O_EXCL
+#define O_EXCL _O_EXCL
+#endif
 
 /* Standard file descriptor numbers */
 #ifndef STDIN_FILENO
@@ -619,6 +622,11 @@ typedef union {
     double       d;
     __int64      i64;
 } max_align_t;
+#endif
+
+// yes, I know it's kinda bogus - it's fine, we don't export
+#ifndef PATH_MAX
+#define PATH_MAX 4096
 #endif
 
 #endif /* _WIN32 */
