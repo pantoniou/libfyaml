@@ -4367,16 +4367,10 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	fy_generic ind;
 
-	printf("str=0x%08lx\n", str.v);
+	printf("str=0x%016llx\n", (unsigned long long)str.v);
 
 	ind = fy_indirect(str, fy_string("bbb"), fy_string("ccc"));
 	assert(fy_generic_is_valid(ind));
-
-	{
-		const fy_generic_value *pp = fy_generic_resolve_ptr(ind);
-		printf("ind=0x%08lx [0:3]=0x%08lx 0x%08lx 0x%08lx 0x%08lx\n",
-				ind.v, pp[0], pp[1], pp[2], pp[3]);
-	}
 
 	printf("ind:\n");
 	fy_generic_emit_default(ind);
@@ -4450,7 +4444,7 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 	printf("##### emit empty mapping\n");
 	v = fy_map_empty;
-	printf("v=%08lx\n", v.v);
+	printf("v=%016llx\n", (unsigned long long)v.v);
 	fy_generic_emit_default(v);
 
 	printf("emit a mapping'\n");
@@ -4647,11 +4641,13 @@ int do_generics(int argc, char *argv[], const char *allocator)
 
 		i = -1;
 		v = fy_to_generic((signed long)i);
-		printf("i=%d v=0x%08lx - is_int()=%d in_place()=%d\n", i, v.v, fy_generic_is_int(v), fy_generic_is_in_place(v));
+		printf("i=%d v=0x%016llx - is_int()=%d in_place()=%d\n", i,
+				(unsigned long long)v.v, fy_generic_is_int(v), fy_generic_is_in_place(v));
 		fy_generic_emit_default(v);
 
 		v = fy_to_generic(-10);
-		printf("i=%d v=0x%08lx - is_int()=%d in_place()=%d\n", -10, v.v, fy_generic_is_int(v), fy_generic_is_in_place(v));
+		printf("i=%d v=0x%016llx - is_int()=%d in_place()=%d\n", -10,
+				(unsigned long long)v.v, fy_generic_is_int(v), fy_generic_is_in_place(v));
 		fy_generic_emit_default(fy_to_generic(v));
 
 	}
@@ -5149,12 +5145,12 @@ int do_parse_generic(struct fy_parser *fyp, const char *allocator,
 				assert(rdn == sizeof(hdr));
 
 #ifdef MAP_FIXED_NOREPLACE
-				fprintf(stderr, "attempting to map fixed at %p\n", (void *)hdr[0]);
+				fprintf(stderr, "attempting to map fixed at %p\n", (void *)(uintptr_t)hdr[0]);
 				cache_mem = mmap((void *)(uintptr_t)hdr[0], cache_sz, PROT_READ, MAP_PRIVATE | MAP_FIXED_NOREPLACE, fd, 0);
 				assert(cache_mem != MAP_FAILED);
 				fprintf(stderr, "success\n");
 #else
-				fprintf(stderr, "attempting to map at %p\n", (void *)hdr[0]);
+				fprintf(stderr, "attempting to map at %p\n", (void *)(uintptr_t)hdr[0]);
 				cache_mem = mmap((void *)(uintptr_t)hdr[0], cache_sz, PROT_READ, MAP_PRIVATE, fd, 0);
 				assert(cache_mem == (void *)(uintptr_t)hdr[0]);
 				fprintf(stderr, "success\n");

@@ -2247,7 +2247,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 	fprintf(fp, "%*s", level * 2, "");
 
 	if (v.v != vv.v)
-		fprintf(fp, "(%016lx) ", vv.v);
+		fprintf(fp, "(%016llx) ", (unsigned long long)vv.v);
 	if (anchor)
 		fprintf(fp, "&%s ", anchor);
 	if (tag)
@@ -2270,7 +2270,7 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 	if (fy_generic_is_valid(vcomm))
 		fprintf(fp, "comm: %s ", fygstra(vcomm));
 
-	fprintf(fp, "%016lx ", v.v);
+	fprintf(fp, "%016llx ", (unsigned long long)v.v);
 
 	switch (type) {
 	case FYGT_NULL:

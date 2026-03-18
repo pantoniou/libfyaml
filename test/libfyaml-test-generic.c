@@ -153,8 +153,8 @@ START_TEST(generic_bool_range)
 		pass = bv == res;
 		test_fail |= !pass;
 
-		printf("boolean/%s = %016lx %s - %s\n",
-				bv ? "true" : "false", v.v,
+		printf("boolean/%s = %016llx %s - %s\n",
+				bv ? "true" : "false", (unsigned long long)v.v,
 				res ? "true" : "false",
 				pass ? "PASS" : "FAIL");
 	}
@@ -185,8 +185,8 @@ START_TEST(generic_int_range)
 		pass = iv == res;
 		test_fail |= !pass;
 
-		printf("int/%lld = %016lx %lld - %s\n",
-				iv, v.v, res,
+		printf("int/%lld = %016llx %lld - %s\n",
+				iv, (unsigned long long)v.v, res,
 				pass ? "PASS" : "FAIL");
 	}
 
@@ -229,8 +229,8 @@ START_TEST(generic_float_range)
 
 		test_fail |= !pass;
 
-		printf("float/%g = %016lx %g - %s\n",
-				fv, v.v, res,
+		printf("float/%g = %016llx %g - %s\n",
+				fv, (unsigned long long)v.v, res,
 				pass ? "PASS" : "FAIL");
 	}
 
@@ -359,8 +359,8 @@ START_TEST(generic_string_range)
 		pass = !strcmp(sv, res);
 		test_fail |= !pass;
 
-		printf("cast(v) string/%s = %016lx %s - %s\n",
-				sv, v.v, res,
+		printf("cast(v) string/%s = %016llx %s - %s\n",
+				sv, (unsigned long long)v.v, res,
 				pass ? "PASS" : "FAIL");
 	}
 
@@ -373,8 +373,8 @@ START_TEST(generic_string_range)
 		pass = !strcmp(sv, res);
 		test_fail |= !pass;
 
-		printf("cast(&v) string/%s = %016lx %s - %s\n",
-				sv, v.v, res,
+		printf("cast(&v) string/%s = %016llx %s - %s\n",
+				sv, (unsigned long long)v.v, res,
 				pass ? "PASS" : "FAIL");
 	}
 
@@ -1520,8 +1520,8 @@ START_TEST(gb_dedup_basics)
 	/* verify that the value is the same one as previously */
 	if (v.v != v_int_out_of_place.v) {
 		printf("======================================================================================\n");
-		printf("v.v=0x%016lx v_int_out_of_place.v=0x%016lx\n",
-				v.v, v_int_out_of_place.v);
+		printf("v.v=0x%016llx v_int_out_of_place.v=0x%016llx\n",
+				(unsigned long long)v.v, (unsigned long long)v_int_out_of_place.v);
 		printf("======================================================================================\n");
 	}
 	ck_assert(v.v == v_int_out_of_place.v);
@@ -1709,7 +1709,7 @@ START_TEST(gb_dedup_scoping)
 	printf("%s: internalized\n", __func__);
 	ck_assert(fy_generic_is_long_long(vexp));
 
-	fprintf(stderr, "vexp=0x%016lx\n", vexp.v);
+	fprintf(stderr, "vexp=0x%016llx\n", (unsigned long long)vexp.v);
 
 	/* verify the result is out of place */
 	ck_assert(!fy_generic_is_in_place(vexp));
@@ -1727,7 +1727,7 @@ START_TEST(gb_dedup_scoping)
 	printf("expected=%lld result=%lld\n", expected, result);
 	ck_assert(expected == result);
 
-	fprintf(stderr, "v=0x%016lx\n", v.v);
+	fprintf(stderr, "v=0x%016llx\n", (unsigned long long)v.v);
 
 	/* verify the result is out of place */
 	ck_assert(!fy_generic_is_in_place(v));
