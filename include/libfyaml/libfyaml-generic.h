@@ -2074,7 +2074,7 @@ static inline double fy_generic_get_float_type_no_check(fy_generic v)
 }
 
 /**
- * fy_generic_out_of_place_size_double() - Out-of-place allocation size for a double (32-bit).
+ * fy_generic_out_of_place_size_float_type() - Out-of-place allocation size for a float (32-bit).
  *
  * On 32-bit platforms all floats are stored out-of-place as doubles.
  *
@@ -2083,12 +2083,71 @@ static inline double fy_generic_get_float_type_no_check(fy_generic v)
  * Returns:
  * sizeof(double).
  */
-static inline size_t fy_generic_out_of_place_size_double(const double v)
+static inline size_t fy_generic_out_of_place_size_float_type(const double v)
 {
 	return sizeof(double);
 }
 
 #endif
+
+static inline bool fy_generic_cast_fetch_null_type(fy_generic v, void **xvp)
+{
+	if (!fy_generic_is_null_type(v))
+		return false;
+	*xvp = fy_generic_get_null_type_no_check(v);
+	return true;
+}
+
+static inline bool fy_generic_cast_fetch_bool_type(fy_generic v, bool *xvp)
+{
+	if (!fy_generic_is_bool_type(v))
+		return false;
+	*xvp = fy_generic_get_bool_type_no_check(v);
+	return true;
+}
+
+static inline bool fy_generic_cast_fetch_int_type(fy_generic v, long long *xvp)
+{
+	if (!fy_generic_is_int_type(v))
+		return false;
+	*xvp = fy_generic_get_int_type_no_check(v);
+	return true;
+}
+
+static inline bool fy_generic_cast_fetch_uint_type(fy_generic v, unsigned long long *xvp)
+{
+	const fy_generic_decorated_int *p;
+
+	if (!fy_generic_is_uint_type(v))
+		return false;
+
+	v = fy_generic_indirect_get_value(v);
+	if ((v.v & FY_INPLACE_TYPE_MASK) == FY_INT_INPLACE_V) {
+		long long sv = fy_generic_get_int_type_no_check(v);
+
+		if (sv < 0)
+			return false;
+		*xvp = fy_generic_get_uint_type_no_check(v);
+		return true;
+	}
+
+	p = fy_generic_resolve_ptr(v);
+	if (!p)
+		return false;
+	if (!(p->flags & FYGDIF_UNSIGNED_RANGE_EXTEND) && p->sv < 0)
+		return false;
+
+	*xvp = p->uv;
+	return true;
+}
+
+static inline bool fy_generic_cast_fetch_float_type(fy_generic v, double *xvp)
+{
+	if (!fy_generic_is_float_type(v))
+		return false;
+	*xvp = fy_generic_get_float_type_no_check(v);
+	return true;
+}
 
 /**
  * fy_generic_sequence_resolve_outofplace() - Resolve a non-direct sequence to its storage.
@@ -2790,9 +2849,9 @@ static inline fy_generic_value fy_generic_out_of_place_put_ ##_gtype (void *buf,
 \
 static inline _ctype fy_generic_cast_ ## _gtype ## _default(fy_generic v, _ctype default_value) \
 { \
-	if (!fy_generic_is_ ## _xgtype (v)) \
+	_xctype xv; \
+	if (!fy_generic_cast_fetch_ ## _xgtype (v, &xv)) \
 		return default_value; \
-	const _xctype xv = fy_generic_get_ ## _xgtype ## _no_check(v); \
 	if (!fy_ ## _gtype ## _is_in_range(xv)) \
 		return default_value; \
 	return (_ctype)xv; \
@@ -3080,7 +3139,7 @@ FY_GENERIC_FLOAT_LVAL_TEMPLATE(double, double, -DBL_MAX, DBL_MAX, 0.0);
  * @v: A generic value with tag FY_STRING_INPLACE_V. Behaviour is undefined otherwise.
  *
  * Returns:
- * Length of the inplace string in bytes (0–7 on 64-bit, 0–3 on 32-bit).
+ * Length of the inplace string in bytes (0–6 on 64-bit, 0–2 on 32-bit).
  */
 static inline size_t
 fy_generic_get_string_inplace_size(const fy_generic v)
@@ -3476,7 +3535,7 @@ FY_DIAG_IGNORE_ARRAY_BOUNDS
 /**
  * fy_generic_in_place_char_ptr_len() - Attempt to encode a string inplace.
  *
- * Packs up to 7 bytes (64-bit) or 3 bytes (32-bit) of @p directly into the
+ * Packs up to 6 bytes (64-bit) or 2 bytes (32-bit) of @p directly into the
  * generic word.  Returns fy_invalid_value when the string is too long for
  * inplace storage.
  *
@@ -3494,6 +3553,7 @@ static inline fy_generic_value fy_generic_in_place_char_ptr_len(const char *p, c
 	case 0:
 		v = (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
 		break;
+#ifdef FYGT_GENERIC_64
 	case 1:
 		v = FY_STRING_SHIFT7(p[0], 0, 0, 0, 0, 0, 0) |
 		     (1 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
@@ -3502,7 +3562,6 @@ static inline fy_generic_value fy_generic_in_place_char_ptr_len(const char *p, c
 		v = FY_STRING_SHIFT7(p[0], p[1], 0, 0, 0, 0, 0) |
 		     (2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
 		break;
-#ifdef FYGT_GENERIC_64
 	case 3:
 		v = FY_STRING_SHIFT7(p[0], p[1], p[2], 0, 0, 0, 0) |
 		     (3 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
@@ -3518,6 +3577,15 @@ static inline fy_generic_value fy_generic_in_place_char_ptr_len(const char *p, c
 	case 6:
 		v = FY_STRING_SHIFT7(p[0], p[1], p[2], p[3], p[4], p[5], 0) |
 		     (6 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
+		break;
+#else
+	case 1:
+		v = FY_STRING_SHIFT3(p[0], 0, 0) |
+		     (1 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
+		break;
+	case 2:
+		v = FY_STRING_SHIFT3(p[0], p[1], 0) |
+		     (2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
 		break;
 #endif
 	default:
