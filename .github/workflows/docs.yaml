@@ -42,6 +42,7 @@ jobs:
           libclang-dev \
           llvm-dev \
           latexmk \
+          tex-gyre \
           texlive-fonts-recommended \
           texlive-latex-base \
           texlive-latex-recommended \
