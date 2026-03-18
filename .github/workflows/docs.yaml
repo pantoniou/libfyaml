@@ -1,0 +1,68 @@
+name: Docs CI
+
+run-name: >-
+  ${{ github.event_name == 'pull_request'      && format('Docs CI · PR #{0}', github.event.pull_request.number) ||
+      github.event_name == 'workflow_dispatch' && 'Docs CI · manual' ||
+      format('Docs CI · {0} · {1}', github.ref_name, github.event.head_commit.message) }}
+
+on:
+  push:
+    branches: [ master, stable, reflection-new5 ]
+  pull_request:
+    branches: [ master, stable, reflection-new5 ]
+  workflow_dispatch:
+
+jobs:
+  docs:
+    name: ubuntu-latest
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install CMake/Ninja
+      uses: lukka/get-cmake@latest
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install --no-install-recommends -y \
+          gcc g++ \
+          pkg-config \
+          check \
+          libyaml-dev \
+          libltdl-dev \
+          libblocksruntime-dev \
+          libclang-dev \
+          llvm-dev \
+          latexmk \
+          texlive-latex-base \
+          texlive-latex-recommended \
+          texlive-latex-extra
+
+    - name: Install python packages
+      run: |
+        python -m pip install --upgrade pip
+        pip install sphinx sphinx_rtd_theme sphinx-markdown-builder linuxdoc
+
+    - name: Configure
+      run: |
+        cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build doc-man
+      run: |
+        cmake --build build --target doc-man
+
+    - name: Build doc-latexpdf
+      run: |
+        cmake --build build --target doc-latexpdf
+
+    - name: Build doc-text
+      run: |
+        cmake --build build --target doc-text
