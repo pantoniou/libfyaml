@@ -614,7 +614,7 @@ set(TARGET_HAS_NEON FALSE)
 # Use portable implementations instead
 if(WIN32)
     message(STATUS "Windows detected: using portable SIMD implementations")
-elseif(TARGET_CPU_ANY_X86 AND NOT ENABLE_PORTABLE_TARGET)
+elseif(TARGET_CPU_X86_64 AND NOT ENABLE_PORTABLE_TARGET)
     check_c_source_compiles("
         #include <emmintrin.h>
         int main() { __m128i a = _mm_setzero_si128(); return 0; }
