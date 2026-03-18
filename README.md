@@ -247,7 +247,7 @@ On Debian/Ubuntu, the practical package set is:
 
 ```bash
 python3 -m pip install sphinx sphinx_rtd_theme sphinx-markdown-builder linuxdoc
-sudo apt-get install latexmk texlive-latex-base texlive-latex-recommended texlive-latex-extra
+sudo apt-get install latexmk texlive-fonts-recommended texlive-latex-base texlive-latex-recommended texlive-latex-extra
 ```
 
 Then build the docs with:

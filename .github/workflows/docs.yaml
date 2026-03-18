@@ -42,6 +42,7 @@ jobs:
           libclang-dev \
           llvm-dev \
           latexmk \
+          texlive-fonts-recommended \
           texlive-latex-base \
           texlive-latex-recommended \
           texlive-latex-extra
