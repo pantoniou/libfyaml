@@ -61,6 +61,10 @@ jobs:
       run: |
         cmake --build build --target doc-man
 
+    - name: Build doc-html
+      run: |
+        cmake --build build --target doc-html
+
     - name: Build doc-latexpdf
       run: |
         cmake --build build --target doc-latexpdf
@@ -68,3 +72,20 @@ jobs:
     - name: Build doc-text
       run: |
         cmake --build build --target doc-text
+
+    - name: Package doc artifacts
+      run: |
+        mkdir -p artifacts
+        tar -C build/doc/_build/man -czf artifacts/libfyaml-manpages.tar.gz .
+        tar -C build/doc/_build/html -czf artifacts/libfyaml-html.tar.gz .
+        tar -C build/doc/_build/text -czf artifacts/libfyaml-text.tar.gz .
+
+    - name: Upload doc artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: libfyaml-docs-${{ github.run_id }}
+        path: |
+          artifacts/libfyaml-manpages.tar.gz
+          artifacts/libfyaml-html.tar.gz
+          artifacts/libfyaml-text.tar.gz
+          build/doc/_build/latex/libfyaml.pdf
