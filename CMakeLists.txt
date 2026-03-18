@@ -721,10 +721,12 @@ if(NOT MSVC)
         list(APPEND COMMON_C_FLAGS -Wno-stringop-overflow)
     endif()
 
-    check_c_compiler_flag(-Wno-tautological-constant-out-of-range-compare
-                          COMPILER_SUPPORTS_WNO_TAUTOLOGICAL_CONSTANT_OUT_OF_RANGE_COMPARE)
-    if(COMPILER_SUPPORTS_WNO_TAUTOLOGICAL_CONSTANT_OUT_OF_RANGE_COMPARE)
-        list(APPEND COMMON_C_FLAGS -Wno-tautological-constant-out-of-range-compare)
+    if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+        check_c_compiler_flag(-Wno-tautological-constant-out-of-range-compare
+                              COMPILER_SUPPORTS_WNO_TAUTOLOGICAL_CONSTANT_OUT_OF_RANGE_COMPARE)
+        if(COMPILER_SUPPORTS_WNO_TAUTOLOGICAL_CONSTANT_OUT_OF_RANGE_COMPARE)
+            list(APPEND COMMON_C_FLAGS -Wno-tautological-constant-out-of-range-compare)
+        endif()
     endif()
 
     set(USE_STD 0)
