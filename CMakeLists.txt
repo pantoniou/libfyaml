@@ -790,7 +790,7 @@ int main(void) {
 }
 " HAVE_STATEMENT_EXPRESSIONS)
 test_big_endian(IS_BIG_ENDIAN)
-if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT IS_BIG_ENDIAN)
+if(NOT IS_BIG_ENDIAN)
     set(HAVE_GENERIC_PLATFORM 1)
 else()
     set(HAVE_GENERIC_PLATFORM 0)
@@ -817,7 +817,7 @@ elseif(HAVE_STATEMENT_EXPRESSIONS)
 
     set(HAVE_GENERIC 0)
     if(ENABLE_GENERIC)
-        message(STATUS "Generic subsystem disabled (requires 64-bit little-endian targets)")
+        message(STATUS "Generic subsystem disabled (requires little-endian targets)")
     endif()
 
     if(ENABLE_REFLECTION)
