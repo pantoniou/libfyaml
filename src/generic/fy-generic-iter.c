@@ -218,7 +218,7 @@ fygi_event_create(struct fy_generic_iterator *fygi, fy_generic v, bool start)
 	}
 
 	if (fyt && fy_generic_is_string(gi.comment)) {
-		rc = fy_token_set_comment(fyt, fycp_top, fy_cast(gi.comment, ""), FY_NT);
+		rc = fy_token_set_comment(fyt, fycp_top, fy_castp(&gi.comment, ""), FY_NT);
 		if (rc)
 			goto err_out;
 	}

@@ -468,7 +468,7 @@ fy_generic_decoder_create_scalar(struct fy_generic_decoder *gd, struct fy_event 
 		/* default */
 		force_type = FYGT_STRING;
 
-		tag = fy_cast(vt, "");
+		tag = fy_castp(&vt, "");
 		fyp_error_check(fyp, tag[0], err_out,
 				"fy_cast() failed");
 

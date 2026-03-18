@@ -1989,8 +1989,8 @@ static inline int fy_generic_alias_compare(fy_generic a, fy_generic b)
 	aa = fy_generic_indirect_get_anchor(a);
 	ab = fy_generic_indirect_get_anchor(b);
 
-	sa = fy_cast(aa, (const char *)"");
-	sb = fy_cast(ab, (const char *)"");
+	sa = fy_castp(&aa, "");
+	sb = fy_castp(&ab, "");
 
 	return strcmp(sa, sb);
 }
