@@ -4617,7 +4617,7 @@ fy_scalar_walk_result_to_expr(struct fy_path_exec *fypx, struct fy_walk_result *
 		if (!isfinite(fwr->number))
 			goto err_out;
 
-		rc = asprintf(&buf, "%.*g", DBL_DECIMAL_DIG, fwr->number);
+		rc = asprintf(&buf, "%.*g", FY_DBL_DECIMAL_DIG, fwr->number);
 		if (rc == -1)
 			goto err_out;
 
