@@ -810,7 +810,12 @@ fy_decode_size(const uint8_t *start, size_t bufsz, size_t *sizep)
 static inline const uint8_t *
 fy_decode_size_nocheck(const uint8_t *start, size_t *sizep)
 {
-	return fy_decode_size32_nocheck(start, sizep);
+	uint64_t sz;
+	const uint8_t *ret;
+
+	ret = fy_decode_size32_nocheck(start, &sz);
+	*sizep = (size_t)sz;
+	return ret;
 }
 
 static inline const uint8_t *
