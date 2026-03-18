@@ -248,13 +248,15 @@ START_TEST(generic_size_encoding)
 		((size_t)1 << 21) - 1, ((size_t)1 << 21), ((size_t)1 << 21) + 1,
 		((size_t)1 << 28) - 1, ((size_t)1 << 28), ((size_t)1 << 28) + 1,
 		((size_t)1 << 29) - 1, ((size_t)1 << 29), ((size_t)1 << 29) + 1,
+#if SIZE_MAX > UINT32_MAX
 		((size_t)1 << 35) - 1, ((size_t)1 << 35), ((size_t)1 << 35) + 1,
 		((size_t)1 << 42) - 1, ((size_t)1 << 42), ((size_t)1 << 42) + 1,
 		((size_t)1 << 49) - 1, ((size_t)1 << 49), ((size_t)1 << 49) + 1,
 		((size_t)1 << 56) - 1, ((size_t)1 << 56), ((size_t)1 << 56) + 1,
 		((size_t)1 << 57) - 1, ((size_t)1 << 57), ((size_t)1 << 57) + 1,
-		(size_t)UINT32_MAX,
 		(size_t)UINT64_MAX,
+#endif
+		(size_t)UINT32_MAX,
 	};
 	uint8_t size_buf[FYGT_SIZE_ENCODING_MAX_64];
 	unsigned int i, j, k;
