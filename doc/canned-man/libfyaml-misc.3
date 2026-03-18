@@ -1,4 +1,5 @@
-.\" Man page generated from reStructuredText.
+.\" Man page generated from reStructuredText
+.\" by the Docutils 0.22.4 manpage writer.
 .
 .
 .nr rst2man-indent-level 0
@@ -27,7 +28,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "LIBFYAML-MISC" "3" "Mar 16, 2026" "1.0.0" "libfyaml"
+.TH "LIBFYAML-MISC" "3" "Mar 18, 2026" "1.0.0" "libfyaml"
 .SH NAME
 libfyaml-misc \- libfyaml miscellaneous API
 .SH UTILITIES
@@ -59,7 +60,7 @@ attributes with availability guards (\fBFY_HAS_CONSTRUCTOR\fP,
 .IP \(bu 2
 \fBFY_BIT(x)\fP   — single\-bit mask (\fB1U << x\fP)
 .IP \(bu 2
-\fBFY_NT\fP       — sentinel meaning \(dqnull\-terminated\(dq; pass as a length
+\fBFY_NT\fP       — sentinel meaning “null\-terminated”; pass as a length
 argument to indicate that the string length should be inferred via strlen
 .UNINDENT
 .sp
@@ -121,7 +122,7 @@ equivalent of a compile\-time \fBmap()\fP function.
 .sp
 \fBThe core challenge\fP: The C preprocessor does not support recursion. A
 macro cannot call itself. The standard workaround is \fIdeferred evaluation\fP:
-a macro is \(dqpostponed\(dq so that it is not expanded in the current scan pass,
+a macro is “postponed” so that it is not expanded in the current scan pass,
 only in a future one.  Multiple passes are forced by the \fBFY_CPP_EVALn\fP
 ladder which re\-expands the token stream a power\-of\-two number of times.
 .sp
@@ -212,7 +213,7 @@ int do_sum(int count, int *items) { ... }
 .UNINDENT
 .sp
 Portable wrappers around GCC/Clang \fB#pragma GCC diagnostic\fP directives.
-Use \fI\%FY_DIAG_PUSH()\fP and \fI\%FY_DIAG_POP()\fP to bracket a region where a specific
+Use \fBFY_DIAG_PUSH()\fP and \fBFY_DIAG_POP()\fP to bracket a region where a specific
 warning is suppressed:
 .INDENT 0.0
 .INDENT 3.5
@@ -252,7 +253,7 @@ Fallback for compilers that do not provide __has_builtin.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBx\fP \-\- The builtin name to query.
+\fBx\fP – The builtin name to query.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -274,7 +275,7 @@ Produce an unsigned bitmask with bit \fBx\fP set.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBx\fP \-\- Zero\-based bit position (0–31 for a 32\-bit result).
+\fBx\fP – Zero\-based bit position (0–31 for a 32\-bit result).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -285,7 +286,7 @@ Produce an unsigned bitmask with bit \fBx\fP set.
 .INDENT 0.0
 .TP
 .B FY_NT() 
-Sentinel value meaning \(dqnull\-terminated; compute length at runtime\(dq.
+Sentinel value meaning “null\-terminated; compute length at runtime”.
 .UNINDENT
 .SS Description
 .sp
@@ -326,11 +327,11 @@ Annotate a function with printf\-style format checking.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_t\fP \-\- Format type token (e.g. \fBprintf\fP, \fBscanf\fP, \fBstrftime\fP).
+\fB_t\fP – Format type token (e.g. \fBprintf\fP, \fBscanf\fP, \fBstrftime\fP).
 .IP \(bu 2
-\fB_x\fP \-\- 1\-based index of the format\-string parameter.
+\fB_x\fP – 1\-based index of the format\-string parameter.
 .IP \(bu 2
-\fB_y\fP \-\- 1\-based index of the first variadic argument (0 for \fBva_list\fP wrappers).
+\fB_y\fP – 1\-based index of the first variadic argument (0 for \fBva_list\fP wrappers).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -348,9 +349,9 @@ Copy a heap string onto the stack and free the original.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_str\fP \-\- Heap\-allocated string to copy and free (may be NULL).
+\fB_str\fP – Heap\-allocated string to copy and free (may be NULL).
 .IP \(bu 2
-\fB_len\fP \-\- Length in bytes, or \fBFY_NT\fP to use \fBstrlen()\fP\&.
+\fB_len\fP – Length in bytes, or \fBFY_NT\fP to use \fBstrlen()\fP\&.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -376,15 +377,15 @@ Do not call this in a loop — each invocation grows the stack frame.
 .INDENT 0.0
 .TP
 .B FY_ALLOCA_COPY_FREE_NO_NULL(_str, _len) 
-Like \fI\%FY_ALLOCA_COPY_FREE()\fP but returns \(dq\(dq for NULL.
+Like \fBFY_ALLOCA_COPY_FREE()\fP but returns “” for NULL.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_str\fP \-\- Heap\-allocated string to copy and free (may be NULL).
+\fB_str\fP – Heap\-allocated string to copy and free (may be NULL).
 .IP \(bu 2
-\fB_len\fP \-\- Length in bytes, or \fBFY_NT\fP to use \fBstrlen()\fP\&.
+\fB_len\fP – Length in bytes, or \fBFY_NT\fP to use \fBstrlen()\fP\&.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -405,11 +406,11 @@ Recover a pointer to a containing struct from a member pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBptr\fP \-\- Pointer to the member field.
+\fBptr\fP – Pointer to the member field.
 .IP \(bu 2
-\fBtype\fP \-\- Type of the containing struct.
+\fBtype\fP – Type of the containing struct.
 .IP \(bu 2
-\fBmember\fP \-\- Name of the member field within \fBtype\fP\&.
+\fBmember\fP – Name of the member field within \fBtype\fP\&.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -432,7 +433,7 @@ Compute the number of elements in a stack\-allocated array.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBx\fP \-\- The array expression.
+\fBx\fP – The array expression.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -447,7 +448,7 @@ Number of elements, as a \fBsize_t\fP\&.
 .INDENT 0.0
 .TP
 .B FY_UNUSED() 
-Suppress \(dqunused variable/parameter\(dq warnings.
+Suppress “unused variable/parameter” warnings.
 .UNINDENT
 .SS Description
 .sp
@@ -500,7 +501,7 @@ Assert that an unreachable code path has been reached.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvoid\fP \-\- no arguments
+\fBvoid\fP – no arguments
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -522,7 +523,7 @@ Trigger a compile error if expression \fB_e\fP is zero.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_e\fP \-\- Compile\-time expression that must be non\-zero.
+\fB_e\fP – Compile\-time expression that must be non\-zero.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -544,9 +545,9 @@ Test whether two expressions have the same type.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_a\fP \-\- First expression.
+\fB_a\fP – First expression.
 .IP \(bu 2
-\fB_b\fP \-\- Second expression.
+\fB_b\fP – Second expression.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -568,9 +569,9 @@ Trigger a compile error if two expressions have different types.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_a\fP \-\- First expression.
+\fB_a\fP – First expression.
 .IP \(bu 2
-\fB_b\fP \-\- Second expression.
+\fB_b\fP – Second expression.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -588,11 +589,11 @@ Checked addition: detect signed/unsigned integer overflow.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_a\fP \-\- First operand.
+\fB_a\fP – First operand.
 .IP \(bu 2
-\fB_b\fP \-\- Second operand (must have the same type as \fB_a\fP).
+\fB_b\fP – Second operand (must have the same type as \fB_a\fP).
 .IP \(bu 2
-\fB_resp\fP \-\- Pointer to receive the result (written even on overflow).
+\fB_resp\fP – Pointer to receive the result (written even on overflow).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -621,11 +622,11 @@ Checked subtraction: detect signed/unsigned integer overflow.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_a\fP \-\- Minuend.
+\fB_a\fP – Minuend.
 .IP \(bu 2
-\fB_b\fP \-\- Subtrahend (must have the same type as \fB_a\fP).
+\fB_b\fP – Subtrahend (must have the same type as \fB_a\fP).
 .IP \(bu 2
-\fB_resp\fP \-\- Pointer to receive the result (written even on overflow).
+\fB_resp\fP – Pointer to receive the result (written even on overflow).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -646,11 +647,11 @@ Checked multiplication: detect signed/unsigned integer overflow.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_a\fP \-\- First factor.
+\fB_a\fP – First factor.
 .IP \(bu 2
-\fB_b\fP \-\- Second factor (must have the same type as \fB_a\fP).
+\fB_b\fP – Second factor (must have the same type as \fB_a\fP).
 .IP \(bu 2
-\fB_resp\fP \-\- Pointer to receive the result (written even on overflow).
+\fB_resp\fP – Pointer to receive the result (written even on overflow).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -672,9 +673,9 @@ Format a string into a stack buffer using inline arguments.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_fmt\fP \-\- printf\-style format string.
+\fB_fmt\fP – printf\-style format string.
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) \-\- Format arguments.
+\fBellipsis\fP (ellipsis) – Format arguments.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -699,14 +700,14 @@ Force one additional macro\-expansion pass.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) \-\- Token sequence to re\-expand.
+\fBellipsis\fP (ellipsis) – Token sequence to re\-expand.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
 Expands its argument list once. Use as a building block for deeper
-evaluation levels; prefer \fI\%FY_CPP_EVAL()\fP for most uses.
+evaluation levels; prefer \fBFY_CPP_EVAL()\fP for most uses.
 .SS macro FY_CPP_EVAL2
 .INDENT 0.0
 .TP
@@ -717,7 +718,7 @@ Force two additional macro\-expansion passes.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) \-\- Token sequence to re\-expand.
+\fBellipsis\fP (ellipsis) – Token sequence to re\-expand.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -731,7 +732,7 @@ Force four additional macro\-expansion passes.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) \-\- Token sequence to re\-expand.
+\fBellipsis\fP (ellipsis) – Token sequence to re\-expand.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -745,7 +746,7 @@ Force eight additional macro\-expansion passes.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) \-\- Token sequence to re\-expand.
+\fBellipsis\fP (ellipsis) – Token sequence to re\-expand.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -759,14 +760,14 @@ Force 16 additional macro\-expansion passes (GCC only).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) \-\- Token sequence to re\-expand.
+\fBellipsis\fP (ellipsis) – Token sequence to re\-expand.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
 Not defined on Clang, which exhausts its expansion buffer before reaching
-16 levels. Wrap \fI\%FY_CPP_MAP()\fP / \fI\%FY_CPP_MAP2()\fP in \fI\%FY_CPP_EVAL()\fP instead of
+16 levels. Wrap \fBFY_CPP_MAP()\fP / \fBFY_CPP_MAP2()\fP in \fBFY_CPP_EVAL()\fP instead of
 calling this directly.
 .SS macro FY_CPP_EVAL
 .INDENT 0.0
@@ -778,7 +779,7 @@ Force maximum macro\-expansion depth.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) \-\- Token sequence to fully expand.
+\fBellipsis\fP (ellipsis) – Token sequence to fully expand.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -799,15 +800,15 @@ Produce an empty token sequence (deferred).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvoid\fP \-\- no arguments
+\fBvoid\fP – no arguments
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Expands to nothing. Used in combination with \fI\%FY_CPP_POSTPONE1()\fP /
-\fI\%FY_CPP_POSTPONE2()\fP to defer macro expansion by one scan pass, breaking
-the preprocessor\(aqs blue\-paint recursion guard.
+Expands to nothing. Used in combination with \fBFY_CPP_POSTPONE1()\fP /
+\fBFY_CPP_POSTPONE2()\fP to defer macro expansion by one scan pass, breaking
+the preprocessor’s blue\-paint recursion guard.
 .SS macro FY_CPP_POSTPONE1
 .INDENT 0.0
 .TP
@@ -818,13 +819,13 @@ Defer a single\-argument macro by one expansion pass.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmacro\fP \-\- Macro token to postpone.
+\fBmacro\fP – Macro token to postpone.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Expands to the macro name \fBmacro\fP followed by a deferred \fI\%FY_CPP_EMPTY()\fP,
+Expands to the macro name \fBmacro\fP followed by a deferred \fBFY_CPP_EMPTY()\fP,
 so the macro call is not completed until the next pass.
 .SS macro FY_CPP_POSTPONE2
 .INDENT 0.0
@@ -836,15 +837,15 @@ Defer a two\-argument macro by one expansion pass.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP \-\- Fixed first argument (carried along, not expanded yet).
+\fBa\fP – Fixed first argument (carried along, not expanded yet).
 .IP \(bu 2
-\fBmacro\fP \-\- Macro token to postpone.
+\fBmacro\fP – Macro token to postpone.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Like \fI\%FY_CPP_POSTPONE1()\fP but for macros that take a leading fixed argument \fBa\fP\&.
+Like \fBFY_CPP_POSTPONE1()\fP but for macros that take a leading fixed argument \fBa\fP\&.
 .SS macro FY_CPP_FIRST
 .INDENT 0.0
 .TP
@@ -855,7 +856,7 @@ Extract the first argument from a variadic list.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) \-\- Variadic argument list.
+\fBellipsis\fP (ellipsis) – Variadic argument list.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -875,7 +876,7 @@ Extract the second argument from a variadic list.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) \-\- Variadic argument list.
+\fBellipsis\fP (ellipsis) – Variadic argument list.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -895,7 +896,7 @@ Extract the third argument.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) \-\- Variadic argument list. Returns: Third argument, or \fB0\fP\&.
+\fBellipsis\fP (ellipsis) – Variadic argument list. Returns: Third argument, or \fB0\fP\&.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -909,7 +910,7 @@ Extract the fourth argument.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) \-\- Variadic argument list. Returns: Fourth argument, or \fB0\fP\&.
+\fBellipsis\fP (ellipsis) – Variadic argument list. Returns: Fourth argument, or \fB0\fP\&.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -923,7 +924,7 @@ Extract the fifth argument.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) \-\- Variadic argument list. Returns: Fifth argument, or \fB0\fP\&.
+\fBellipsis\fP (ellipsis) – Variadic argument list. Returns: Fifth argument, or \fB0\fP\&.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -937,7 +938,7 @@ Extract the sixth argument.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) \-\- Variadic argument list. Returns: Sixth argument, or \fB0\fP\&.
+\fBellipsis\fP (ellipsis) – Variadic argument list. Returns: Sixth argument, or \fB0\fP\&.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -951,7 +952,7 @@ Return all arguments after the first.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) \-\- Variadic argument list.
+\fBellipsis\fP (ellipsis) – Variadic argument list.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -969,16 +970,16 @@ Apply a macro to every argument in a variadic list.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmacro\fP \-\- Single\-argument macro to apply.
+\fBmacro\fP – Single\-argument macro to apply.
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) \-\- Arguments to map over.
+\fBellipsis\fP (ellipsis) – Arguments to map over.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
 Expands \fBmacro(x)\fP for each argument \fBx\fP in \fB__VA_ARGS__\fP, concatenating
-all the results. The argument list must be non\-empty. Uses \fI\%FY_CPP_EVAL()\fP
+all the results. The argument list must be non\-empty. Uses \fBFY_CPP_EVAL()\fP
 internally, so the list length is bounded by the evaluation depth.
 .sp
 For example:
@@ -1002,7 +1003,7 @@ Count the number of arguments in a variadic list.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) \-\- Variadic argument list.
+\fBellipsis\fP (ellipsis) – Variadic argument list.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1023,9 +1024,9 @@ Build a compound\-literal array from variadic arguments.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_type\fP \-\- Element type of the resulting array.
+\fB_type\fP – Element type of the resulting array.
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) \-\- Values to place in the array.
+\fBellipsis\fP (ellipsis) – Values to place in the array.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1055,11 +1056,11 @@ Apply a binary macro to every argument, threading a fixed first argument.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP \-\- Fixed first argument threaded into every call.
+\fBa\fP – Fixed first argument threaded into every call.
 .IP \(bu 2
-\fBmacro\fP \-\- Two\-argument macro to apply.
+\fBmacro\fP – Two\-argument macro to apply.
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) \-\- Arguments to map over.
+\fBellipsis\fP (ellipsis) – Arguments to map over.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1077,9 +1078,9 @@ Token\-paste two arguments after full macro expansion.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_a\fP \-\- Left token (expanded before pasting).
+\fB_a\fP – Left token (expanded before pasting).
 .IP \(bu 2
-\fB_b\fP \-\- Right token (expanded before pasting).
+\fB_b\fP – Right token (expanded before pasting).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1098,7 +1099,7 @@ Generate a unique identifier using \fB__COUNTER__\fP\&.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_base\fP \-\- Identifier prefix.
+\fB_base\fP – Identifier prefix.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1118,15 +1119,15 @@ Generate a unique identifier using \fB__LINE__\fP\&.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_base\fP \-\- Identifier prefix.
+\fB_base\fP – Identifier prefix.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Like \fI\%FY_UNIQUE()\fP but uses the current source line number instead of
+Like \fBFY_UNIQUE()\fP but uses the current source line number instead of
 \fB__COUNTER__\fP\&. Sufficient when only one such identifier is needed per
-source line; prefer \fI\%FY_UNIQUE()\fP in general.
+source line; prefer \fBFY_UNIQUE()\fP in general.
 .SS macro FY_STACK_SAVE
 .INDENT 0.0
 .TP
@@ -1137,7 +1138,7 @@ Save the current stack pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvoid\fP \-\- no arguments
+\fBvoid\fP – no arguments
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1145,9 +1146,9 @@ Save the current stack pointer.
 .sp
 On compilers that provide \fB__builtin_stack_save()\fP (GCC, Clang) returns
 the current stack pointer as a \fBvoid *\fP, allowing it to be restored later
-with \fI\%FY_STACK_RESTORE()\fP\&. On other compilers returns \fB(void *)NULL\fP\&.
+with \fBFY_STACK_RESTORE()\fP\&. On other compilers returns \fB(void *)NULL\fP\&.
 .sp
-Use together with \fI\%FY_STACK_RESTORE()\fP to bound the stack growth of a loop
+Use together with \fBFY_STACK_RESTORE()\fP to bound the stack growth of a loop
 that calls \fBalloca()\fP on each iteration.
 .SS Return
 .sp
@@ -1162,14 +1163,14 @@ Restore the stack pointer to a previously saved value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_x\fP \-\- Value previously returned by \fI\%FY_STACK_SAVE()\fP\&.
+\fB_x\fP – Value previously returned by \fBFY_STACK_SAVE()\fP\&.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
 On compilers that provide \fB__builtin_stack_restore()\fP rewinds the stack
-pointer to the value captured by \fI\%FY_STACK_SAVE()\fP\&. On other compilers this
+pointer to the value captured by \fBFY_STACK_SAVE()\fP\&. On other compilers this
 is a no\-op that discards \fB_x\fP\&.
 .SS macro FY_HAVE_LAMBDAS
 .INDENT 0.0
@@ -1212,7 +1213,7 @@ as local functions inside the enclosing function and cannot outlive it.
 .INDENT 0.0
 .TP
 .B FY_DIAG_PUSH() 
-Save the current diagnostic state onto the compiler\(aqs stack.
+Save the current diagnostic state onto the compiler’s stack.
 .UNINDENT
 .SS Description
 .sp
@@ -1233,7 +1234,7 @@ Suppress a specific warning by pragma string.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_warn\fP \-\- A string literal suitable for use in a \fB_Pragma()\fP call,
+\fB_warn\fP – A string literal suitable for use in a \fB_Pragma()\fP call,
 e.g. \fB\(dqGCC diagnostic ignored \e\(dq\-Wsomething\e\(dq\(dq\fP .
 .UNINDENT
 .UNINDENT
@@ -1315,7 +1316,7 @@ Decimal digits required for a round\-trip \fBlong double\fP\&.
 Varies by platform; same as double on most non\-x87 targets. Fallback: 17.
 .SH ALLOCATOR
 .sp
-This header exposes libfyaml\(aqs pluggable allocator subsystem.  Rather than
+This header exposes libfyaml’s pluggable allocator subsystem.  Rather than
 using \fBmalloc\fP/\fBfree\fP directly, the library routes certain internal
 allocations through a \fBstruct fy_allocator\fP\&.
 This lets callers trade memory footprint, speed,
@@ -1350,9 +1351,9 @@ configurations, test\-suite corpora).
 do the right thing and is a safe bet.
 .UNINDENT
 .sp
-\fBTags\fP partition an allocator\(aqs address space.  Obtain a tag with
+\fBTags\fP partition an allocator’s address space.  Obtain a tag with
 \fBfy_allocator_get_tag()\fP and pass it to every \fBfy_allocator_alloc()\fP
-/ \fBfy_allocator_store()\fP call; release the whole tag\(aqs memory in one
+/ \fBfy_allocator_store()\fP call; release the whole tag’s memory in one
 shot with \fBfy_allocator_release_tag()\fP\&.  This maps naturally to
 document lifetimes.
 .sp
@@ -1370,7 +1371,7 @@ Iterate over available allocator names
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBprevp\fP (const char**) \-\- The previous allocator iterator pointer
+\fBprevp\fP (const char**) – The previous allocator iterator pointer
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1391,7 +1392,7 @@ Check if an allocator is available
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBname\fP (const char*) \-\- The name of the allocator to check
+\fBname\fP (const char*) – The name of the allocator to check
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1411,9 +1412,9 @@ Create an allocator.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBname\fP (const char*) \-\- The name of the allocator
+\fBname\fP (const char*) – The name of the allocator
 .IP \(bu 2
-\fBcfg\fP (const void*) \-\- The type specific configuration for the allocator, or NULL
+\fBcfg\fP (const void*) – The type specific configuration for the allocator, or NULL
 for the default.
 .UNINDENT
 .UNINDENT
@@ -1423,7 +1424,7 @@ for the default.
 Creates an allocator of the given type, using the configuration
 argument provided.
 The allocator may be destroyed by a corresponding call to
-\fI\%fy_allocator_destroy()\fP\&.
+\fBfy_allocator_destroy()\fP\&.
 .sp
 You can retrieve the names of available allocators
 with the \fBfy_allocator_get_names()\fP method.
@@ -1440,13 +1441,13 @@ Destroy the given allocator
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (struct fy_allocator*) \-\- The allocator to destroy
+\fBa\fP (struct fy_allocator*) – The allocator to destroy
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Destroy an allocator created earlier via \fI\%fy_allocator_create()\fP\&.
+Destroy an allocator created earlier via \fBfy_allocator_create()\fP\&.
 Tracking allocators will release all memory allocated using them.
 .SS fy_linear_allocator_create_in_place
 .INDENT 0.0
@@ -1458,16 +1459,16 @@ Create a linear allocator in place
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBbuffer\fP (void*) \-\- The memory buffer to use for both storage and the allocator
+\fBbuffer\fP (void*) – The memory buffer to use for both storage and the allocator
 .IP \(bu 2
-\fBsize\fP (size_t) \-\- The size of the memory buffer
+\fBsize\fP (size_t) – The size of the memory buffer
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
 Creates a linear allocator in place, using the buffer provided.
-No memory allocations will be performed, so it\(aqs safe to embed.
+No memory allocations will be performed, so it’s safe to embed.
 There is no need to call fy_allocator_destroy for this allocator.
 .SS Return
 .sp
@@ -1482,16 +1483,16 @@ Create a dedup allocator in place
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBbuffer\fP (void*) \-\- The memory buffer to use for both storage and the allocator
+\fBbuffer\fP (void*) – The memory buffer to use for both storage and the allocator
 .IP \(bu 2
-\fBsize\fP (size_t) \-\- The size of the memory buffer
+\fBsize\fP (size_t) – The size of the memory buffer
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
 Creates a dedup allocator in place, using the buffer provided.
-No memory allocations will be performed, so it\(aqs safe to embed.
+No memory allocations will be performed, so it’s safe to embed.
 There is no need to call fy_allocator_destroy for this allocator.
 The parent allocator of this will be a linear allocator.
 .SS Return
@@ -1507,7 +1508,7 @@ Get a tag from an allocator
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (struct fy_allocator*) \-\- The allocator
+\fBa\fP (struct fy_allocator*) – The allocator
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1533,9 +1534,9 @@ Release a tag from an allocator
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (struct fy_allocator*) \-\- The allocator
+\fBa\fP (struct fy_allocator*) – The allocator
 .IP \(bu 2
-\fBtag\fP (int) \-\- The tag to release
+\fBtag\fP (int) – The tag to release
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1553,7 +1554,7 @@ Get the maximum number of tags a allocator supports
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (struct fy_allocator*) \-\- The allocator
+\fBa\fP (struct fy_allocator*) – The allocator
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1576,9 +1577,9 @@ Set the maximum number of tags a allocator supports
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (struct fy_allocator*) \-\- The allocator
+\fBa\fP (struct fy_allocator*) – The allocator
 .IP \(bu 2
-\fBcount\fP (unsigned int) \-\- The amount of tags the allocator should support
+\fBcount\fP (unsigned int) – The amount of tags the allocator should support
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1600,9 +1601,9 @@ Trim a tag
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (struct fy_allocator*) \-\- The allocator
+\fBa\fP (struct fy_allocator*) – The allocator
 .IP \(bu 2
-\fBtag\fP (int) \-\- The tag to trim
+\fBtag\fP (int) – The tag to trim
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1621,9 +1622,9 @@ Reset a tag
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (struct fy_allocator*) \-\- The allocator
+\fBa\fP (struct fy_allocator*) – The allocator
 .IP \(bu 2
-\fBtag\fP (int) \-\- The tag to reset
+\fBtag\fP (int) – The tag to reset
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1641,13 +1642,13 @@ Allocate memory from an allocator
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (struct fy_allocator*) \-\- The allocator
+\fBa\fP (struct fy_allocator*) – The allocator
 .IP \(bu 2
-\fBtag\fP (int) \-\- The tag to allocate from
+\fBtag\fP (int) – The tag to allocate from
 .IP \(bu 2
-\fBsize\fP (size_t) \-\- The size of the memory to allocate
+\fBsize\fP (size_t) – The size of the memory to allocate
 .IP \(bu 2
-\fBalign\fP (size_t) \-\- The alignment of the object
+\fBalign\fP (size_t) – The alignment of the object
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1668,17 +1669,17 @@ Free memory allocated from an allocator
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (struct fy_allocator*) \-\- The allocator
+\fBa\fP (struct fy_allocator*) – The allocator
 .IP \(bu 2
-\fBtag\fP (int) \-\- The tag used to allocate the memory
+\fBtag\fP (int) – The tag used to allocate the memory
 .IP \(bu 2
-\fBptr\fP (void*) \-\- The pointer to the memory to free
+\fBptr\fP (void*) – The pointer to the memory to free
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Attempt to free the memory allocated previously by \fI\%fy_allocator_alloc()\fP
+Attempt to free the memory allocated previously by \fBfy_allocator_alloc()\fP
 Note that non per object tracking allocators treat this as a NOP
 .SS fy_allocator_store
 .INDENT 0.0
@@ -1690,15 +1691,15 @@ Store an object to an allocator
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (struct fy_allocator*) \-\- The allocator
+\fBa\fP (struct fy_allocator*) – The allocator
 .IP \(bu 2
-\fBtag\fP (int) \-\- The tag used to allocate the memory
+\fBtag\fP (int) – The tag used to allocate the memory
 .IP \(bu 2
-\fBdata\fP (const void*) \-\- The pointer to object to store
+\fBdata\fP (const void*) – The pointer to object to store
 .IP \(bu 2
-\fBsize\fP (size_t) \-\- The size of the object
+\fBsize\fP (size_t) – The size of the object
 .IP \(bu 2
-\fBalign\fP (size_t) \-\- The alignment restriction of the object
+\fBalign\fP (size_t) – The alignment restriction of the object
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1723,15 +1724,15 @@ Store an object to an allocator (scatter gather)
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (struct fy_allocator*) \-\- The allocator
+\fBa\fP (struct fy_allocator*) – The allocator
 .IP \(bu 2
-\fBtag\fP (int) \-\- The tag used to allocate the memory from
+\fBtag\fP (int) – The tag used to allocate the memory from
 .IP \(bu 2
-\fBiov\fP (const struct iovec*) \-\- The I/O scatter gather vector
+\fBiov\fP (const struct iovec*) – The I/O scatter gather vector
 .IP \(bu 2
-\fBiovcnt\fP (int) \-\- The number of vectors
+\fBiovcnt\fP (int) – The number of vectors
 .IP \(bu 2
-\fBalign\fP (size_t) \-\- The alignment restriction of the object
+\fBalign\fP (size_t) – The alignment restriction of the object
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1758,15 +1759,15 @@ Lookup for object in an allocator.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (struct fy_allocator*) \-\- The allocator
+\fBa\fP (struct fy_allocator*) – The allocator
 .IP \(bu 2
-\fBtag\fP (int) \-\- The tag used to locate the memory
+\fBtag\fP (int) – The tag used to locate the memory
 .IP \(bu 2
-\fBdata\fP (const void*) \-\- The pointer to object to store
+\fBdata\fP (const void*) – The pointer to object to store
 .IP \(bu 2
-\fBsize\fP (size_t) \-\- The size of the object
+\fBsize\fP (size_t) – The size of the object
 .IP \(bu 2
-\fBalign\fP (size_t) \-\- The alignment restriction of the object
+\fBalign\fP (size_t) – The alignment restriction of the object
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1788,15 +1789,15 @@ Lookup for object in an allocator (scatter gather)
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (struct fy_allocator*) \-\- The allocator
+\fBa\fP (struct fy_allocator*) – The allocator
 .IP \(bu 2
-\fBtag\fP (int) \-\- The tag used to search into
+\fBtag\fP (int) – The tag used to search into
 .IP \(bu 2
-\fBiov\fP (const struct iovec*) \-\- The I/O scatter gather vector
+\fBiov\fP (const struct iovec*) – The I/O scatter gather vector
 .IP \(bu 2
-\fBiovcnt\fP (int) \-\- The number of vectors
+\fBiovcnt\fP (int) – The number of vectors
 .IP \(bu 2
-\fBalign\fP (size_t) \-\- The alignment restriction of the object
+\fBalign\fP (size_t) – The alignment restriction of the object
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1820,7 +1821,7 @@ Dump internal allocator state
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (struct fy_allocator*) \-\- The allocator
+\fBa\fP (struct fy_allocator*) – The allocator
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1877,14 +1878,14 @@ These flags describe what operations an allocator supports.
 .SS fy_allocator_get_caps
 .INDENT 0.0
 .TP
-.B enum \fI\%fy_allocator_cap_flags\fP fy_allocator_get_caps(struct fy_allocator *a) 
+.B enum fy_allocator_cap_flags fy_allocator_get_caps(struct fy_allocator *a) 
 Get allocator capabilities
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (struct fy_allocator*) \-\- The allocator
+\fBa\fP (struct fy_allocator*) – The allocator
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1904,11 +1905,11 @@ Check if a allocator contains a pointer
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (struct fy_allocator*) \-\- The allocator
+\fBa\fP (struct fy_allocator*) – The allocator
 .IP \(bu 2
-\fBtag\fP (int) \-\- Tag to search in, \-1 for all
+\fBtag\fP (int) – Tag to search in, \-1 for all
 .IP \(bu 2
-\fBptr\fP (const void*) \-\- The object pointer
+\fBptr\fP (const void*) – The object pointer
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1928,9 +1929,9 @@ Get the linear size of an allocator tag
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (struct fy_allocator*) \-\- The allocator
+\fBa\fP (struct fy_allocator*) – The allocator
 .IP \(bu 2
-\fBtag\fP (int) \-\- The tag
+\fBtag\fP (int) – The tag
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1952,17 +1953,17 @@ Get the linear extend of a tag
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (struct fy_allocator*) \-\- The allocator
+\fBa\fP (struct fy_allocator*) – The allocator
 .IP \(bu 2
-\fBtag\fP (int) \-\- The tag
+\fBtag\fP (int) – The tag
 .IP \(bu 2
-\fBsizep\fP (size_t*) \-\- Pointer to a variable that will be filled with the size.
+\fBsizep\fP (size_t*) – Pointer to a variable that will be filled with the size.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-If a tag stores it\(aqs content in a single linear buffer, retrieve it
+If a tag stores it’s content in a single linear buffer, retrieve it
 directly. This is possible only under careful arrangement of allocator
 configuration, but it is an important optimization case.
 .SS Return
@@ -2018,7 +2019,7 @@ enum fy_mremap_arena_type {
 .INDENT 0.0
 .TP
 .B FYMRAT_DEFAULT
-Use what\(aqs optimal for this platform
+Use what’s optimal for this platform
 .TP
 .B FYMRAT_MALLOC
 Use malloc/realloc arena type (not recommended)
@@ -2115,7 +2116,7 @@ Number of bytes over which dedup takes place (default 0=always)
 Chain length of a bucket over which a grow takes place (or 0 for auto)
 .TP
 .B estimated_content_size
-Estimated content size (or 0 for don\(aqt know)
+Estimated content size (or 0 for don’t know)
 .TP
 .B minimum_bucket_occupancy
 The minimum amount that a tag bucket must be full before
@@ -2189,12 +2190,12 @@ struct fy_auto_allocator_cfg {
 Auto allocator scenario
 .TP
 .B estimated_max_size
-Estimated max content size (or 0 for don\(aqt know)
+Estimated max content size (or 0 for don’t know)
 .UNINDENT
 .SH THREADING
 .sp
 This header provides a simple, portable thread pool built on POSIX threads.
-It is used internally by the BLAKE3 hasher and the generic type system\(aqs
+It is used internally by the BLAKE3 hasher and the generic type system’s
 parallel map/filter/reduce operations, and is also available as a public
 API for application use.
 .sp
@@ -2236,7 +2237,7 @@ Work exec function
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBarg\fP (void*) \-\- The argument to the method
+\fBarg\fP (void*) – The argument to the method
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2253,13 +2254,13 @@ Work check function
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBarg\fP (const void*) \-\- The argument to the method
+\fBarg\fP (const void*) – The argument to the method
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Work checker function to decide if it\(aqs worth to
+Work checker function to decide if it’s worth to
 offload to a thread.
 .SS Return
 .sp
@@ -2359,18 +2360,18 @@ A userdata pointer
 .UNINDENT
 .SS Description
 .sp
-Argument to the \fI\%fy_thread_pool_create()\fP method.
+Argument to the \fBfy_thread_pool_create()\fP method.
 .SS fy_thread_pool_create
 .INDENT 0.0
 .TP
-.B struct fy_thread_pool *fy_thread_pool_create(const struct \fI\%fy_thread_pool_cfg\fP *cfg) 
+.B struct fy_thread_pool *fy_thread_pool_create(const struct fy_thread_pool_cfg *cfg) 
 Create a thread pool
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct \fI\%fy_thread_pool_cfg\fP*) \-\- The configuration for the thread pool
+\fBcfg\fP (const struct fy_thread_pool_cfg*) – The configuration for the thread pool
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2378,7 +2379,7 @@ Create a thread pool
 .sp
 Creates a thread pool with its configuration \fBcfg\fP
 The thread pool may be destroyed by a corresponding call to
-\fI\%fy_thread_pool_destroy()\fP\&.
+\fBfy_thread_pool_destroy()\fP\&.
 .SS Return
 .sp
 A pointer to the thread pool or NULL in case of an error.
@@ -2392,13 +2393,13 @@ Destroy the given thread pool
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtp\fP (struct fy_thread_pool*) \-\- The thread pool to destroy
+\fBtp\fP (struct fy_thread_pool*) – The thread pool to destroy
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Destroy a thread pool created earlier via \fI\%fy_thread_pool_create()\fP\&.
+Destroy a thread pool created earlier via \fBfy_thread_pool_create()\fP\&.
 Note that this function will block until all threads
 of the pool are destroyed.
 .SS fy_thread_pool_get_num_threads
@@ -2411,7 +2412,7 @@ Get the number of threads
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtp\fP (struct fy_thread_pool*) \-\- The thread pool
+\fBtp\fP (struct fy_thread_pool*) – The thread pool
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2425,14 +2426,14 @@ Returns the actual number of created threads.
 .SS fy_thread_pool_get_cfg
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_thread_pool_cfg\fP *fy_thread_pool_get_cfg(struct fy_thread_pool *tp) 
+.B const struct fy_thread_pool_cfg *fy_thread_pool_get_cfg(struct fy_thread_pool *tp) 
 Get the configuration of a thread pool
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtp\fP (struct fy_thread_pool*) \-\- The thread pool
+\fBtp\fP (struct fy_thread_pool*) – The thread pool
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2449,7 +2450,7 @@ Reserve a thread from the pool.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtp\fP (struct fy_thread_pool*) \-\- The thread pool
+\fBtp\fP (struct fy_thread_pool*) – The thread pool
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2471,27 +2472,27 @@ Unreserve a previously reserved thread
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBt\fP (struct fy_thread*) \-\- The thread
+\fBt\fP (struct fy_thread*) – The thread
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Unreserve a thread previously reserved via a call to \fI\%fy_thread_reserve()\fP
+Unreserve a thread previously reserved via a call to \fBfy_thread_reserve()\fP
 Note this is only valid for a non\-work stealing thread pool.
 .SS fy_thread_submit_work
 .INDENT 0.0
 .TP
-.B int fy_thread_submit_work(struct fy_thread *t, struct \fI\%fy_thread_work\fP *work) 
+.B int fy_thread_submit_work(struct fy_thread *t, struct fy_thread_work *work) 
 Submit work for execution
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBt\fP (struct fy_thread*) \-\- The thread
+\fBt\fP (struct fy_thread*) – The thread
 .IP \(bu 2
-\fBwork\fP (struct \fI\%fy_thread_work\fP*) \-\- The work
+\fBwork\fP (struct fy_thread_work*) – The work
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2500,8 +2501,8 @@ Submit work for execution
 Submit work for execution. If successful the thread
 will start executing the work in parallel with the
 calling thread. You can wait for the thread to
-terminate via a call to \fI\%fy_thread_wait_work()\fP\&.
-The thread must have been reserved earlier via \fI\%fy_thread_reserve()\fP
+terminate via a call to \fBfy_thread_wait_work()\fP\&.
+The thread must have been reserved earlier via \fBfy_thread_reserve()\fP
 .sp
 Note this is only valid for a non\-work stealing thread pool.
 .SS Return
@@ -2517,7 +2518,7 @@ Wait for completion of submitted work
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBt\fP (struct fy_thread*) \-\- The thread
+\fBt\fP (struct fy_thread*) – The thread
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2538,7 +2539,7 @@ Check whether no threads are free
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtp\fP (struct fy_thread_pool*) \-\- The thread pool
+\fBtp\fP (struct fy_thread_pool*) – The thread pool
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2555,7 +2556,7 @@ Check whether at least one thread is reserved
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtp\fP (struct fy_thread_pool*) \-\- The thread pool
+\fBtp\fP (struct fy_thread_pool*) – The thread pool
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2565,20 +2566,20 @@ true if any thread is currently reserved, false otherwise.
 .SS fy_thread_work_join
 .INDENT 0.0
 .TP
-.B void fy_thread_work_join(struct fy_thread_pool *tp, struct \fI\%fy_thread_work\fP *works, size_t work_count, \fI\%fy_work_check_fn\fP check_fn) 
+.B void fy_thread_work_join(struct fy_thread_pool *tp, struct fy_thread_work *works, size_t work_count, fy_work_check_fn check_fn) 
 Submit works for execution and wait
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtp\fP (struct fy_thread_pool*) \-\- The thread pool
+\fBtp\fP (struct fy_thread_pool*) – The thread pool
 .IP \(bu 2
-\fBworks\fP (struct \fI\%fy_thread_work\fP*) \-\- Pointer to an array of works sized \fBwork_count\fP
+\fBworks\fP (struct fy_thread_work*) – Pointer to an array of works sized \fBwork_count\fP
 .IP \(bu 2
-\fBwork_count\fP (size_t) \-\- The size of the \fBworks\fP array
+\fBwork_count\fP (size_t) – The size of the \fBworks\fP array
 .IP \(bu 2
-\fBcheck_fn\fP (\fI\%fy_work_check_fn\fP) \-\- Pointer to a check function, or NULL for no checks
+\fBcheck_fn\fP (fy_work_check_fn) – Pointer to a check function, or NULL for no checks
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2591,22 +2592,22 @@ with the difference being that stealing mode is about 30% faster.
 .SS fy_thread_args_join
 .INDENT 0.0
 .TP
-.B void fy_thread_args_join(struct fy_thread_pool *tp, \fI\%fy_work_exec_fn\fP fn, \fI\%fy_work_check_fn\fP check_fn, void **args, size_t count) 
+.B void fy_thread_args_join(struct fy_thread_pool *tp, fy_work_exec_fn fn, fy_work_check_fn check_fn, void **args, size_t count) 
 Execute function in parallel using arguments as pointers
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtp\fP (struct fy_thread_pool*) \-\- The thread pool
+\fBtp\fP (struct fy_thread_pool*) – The thread pool
 .IP \(bu 2
-\fBfn\fP (\fI\%fy_work_exec_fn\fP) \-\- The function to execute in parallel
+\fBfn\fP (fy_work_exec_fn) – The function to execute in parallel
 .IP \(bu 2
-\fBcheck_fn\fP (\fI\%fy_work_check_fn\fP) \-\- Pointer to a check function, or NULL for no checks
+\fBcheck_fn\fP (fy_work_check_fn) – Pointer to a check function, or NULL for no checks
 .IP \(bu 2
-\fBargs\fP (void**) \-\- An args array sized \fBcount\fP of argument pointers
+\fBargs\fP (void**) – An args array sized \fBcount\fP of argument pointers
 .IP \(bu 2
-\fBcount\fP (size_t) \-\- The count of the args array items
+\fBcount\fP (size_t) – The count of the args array items
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2617,24 +2618,24 @@ The arguments of the function are provided by the args array.
 .SS fy_thread_arg_array_join
 .INDENT 0.0
 .TP
-.B void fy_thread_arg_array_join(struct fy_thread_pool *tp, \fI\%fy_work_exec_fn\fP fn, \fI\%fy_work_check_fn\fP check_fn, void *args, size_t argsize, size_t count) 
+.B void fy_thread_arg_array_join(struct fy_thread_pool *tp, fy_work_exec_fn fn, fy_work_check_fn check_fn, void *args, size_t argsize, size_t count) 
 Execute function in parallel using argument array
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtp\fP (struct fy_thread_pool*) \-\- The thread pool
+\fBtp\fP (struct fy_thread_pool*) – The thread pool
 .IP \(bu 2
-\fBfn\fP (\fI\%fy_work_exec_fn\fP) \-\- The function to execute in parallel
+\fBfn\fP (fy_work_exec_fn) – The function to execute in parallel
 .IP \(bu 2
-\fBcheck_fn\fP (\fI\%fy_work_check_fn\fP) \-\- Pointer to a check function, or NULL for no checks
+\fBcheck_fn\fP (fy_work_check_fn) – Pointer to a check function, or NULL for no checks
 .IP \(bu 2
-\fBargs\fP (void*) \-\- An args array of \fBargsize\fP items
+\fBargs\fP (void*) – An args array of \fBargsize\fP items
 .IP \(bu 2
-\fBargsize\fP (size_t) \-\- The size of each argument array item
+\fBargsize\fP (size_t) – The size of each argument array item
 .IP \(bu 2
-\fBcount\fP (size_t) \-\- The count of the args array items
+\fBcount\fP (size_t) – The count of the args array items
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2645,22 +2646,22 @@ The arguments of the function are provided by the args array.
 .SS fy_thread_arg_join
 .INDENT 0.0
 .TP
-.B void fy_thread_arg_join(struct fy_thread_pool *tp, \fI\%fy_work_exec_fn\fP fn, \fI\%fy_work_check_fn\fP check_fn, void *arg, size_t count) 
+.B void fy_thread_arg_join(struct fy_thread_pool *tp, fy_work_exec_fn fn, fy_work_check_fn check_fn, void *arg, size_t count) 
 Execute function in parallel with the same argument
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtp\fP (struct fy_thread_pool*) \-\- The thread pool
+\fBtp\fP (struct fy_thread_pool*) – The thread pool
 .IP \(bu 2
-\fBfn\fP (\fI\%fy_work_exec_fn\fP) \-\- The function to execute in parallel
+\fBfn\fP (fy_work_exec_fn) – The function to execute in parallel
 .IP \(bu 2
-\fBcheck_fn\fP (\fI\%fy_work_check_fn\fP) \-\- Pointer to a check function, or NULL for no checks
+\fBcheck_fn\fP (fy_work_check_fn) – Pointer to a check function, or NULL for no checks
 .IP \(bu 2
-\fBarg\fP (void*) \-\- The common argument
+\fBarg\fP (void*) – The common argument
 .IP \(bu 2
-\fBcount\fP (size_t) \-\- The count of executions
+\fBcount\fP (size_t) – The count of executions
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2670,7 +2671,7 @@ Execute \fBfn\fP possibly in parallel using the threads in the thread pool.
 The argument of the functions is the same.
 .SH BLAKE3 HASHING
 .sp
-This header exposes libfyaml\(aqs embedded BLAKE3 hasher.  BLAKE3 is a
+This header exposes libfyaml’s embedded BLAKE3 hasher.  BLAKE3 is a
 modern, highly parallelisable cryptographic hash function producing
 256\-bit (32\-byte) output.
 .sp
@@ -2707,7 +2708,7 @@ Iterate over the supported BLAKE3 backends
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBprevp\fP (const char**) \-\- The previous backend pointer, or NULL at start
+\fBprevp\fP (const char**) – The previous backend pointer, or NULL at start
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2717,8 +2718,8 @@ This method iterates over the supported BLAKE3 backends.
 The start of the iteration is signalled by a NULL in *prevp.
 .sp
 The default backend is always the last in sequence, so for
-example if the order is [ \(dqportable\(dq, \(dqsse2\(dq, NULL ] the
-default is \(dqsse2\(dq.
+example if the order is [ “portable”, “sse2”, NULL ] the
+default is “sse2”.
 .SS Return
 .sp
 The next backend or NULL at the end.
@@ -2789,21 +2790,21 @@ Number of threads to use
 .UNINDENT
 .SS Description
 .sp
-Argument to the \fI\%fy_blake3_hasher_create()\fP method which
-is the fyaml\(aqs user facing BLAKE3 API.
-It is very minimal, on purpose, since it\(aqs meant to be
+Argument to the \fBfy_blake3_hasher_create()\fP method which
+is the fyaml’s user facing BLAKE3 API.
+It is very minimal, on purpose, since it’s meant to be
 exposing a full blown BLAKE3 API.
 .SS fy_blake3_hasher_create
 .INDENT 0.0
 .TP
-.B struct fy_blake3_hasher *fy_blake3_hasher_create(const struct \fI\%fy_blake3_hasher_cfg\fP *cfg) 
+.B struct fy_blake3_hasher *fy_blake3_hasher_create(const struct fy_blake3_hasher_cfg *cfg) 
 Create a BLAKE3 hasher object.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct \fI\%fy_blake3_hasher_cfg\fP*) \-\- The configuration for the BLAKE3 hasher
+\fBcfg\fP (const struct fy_blake3_hasher_cfg*) – The configuration for the BLAKE3 hasher
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2811,7 +2812,7 @@ Create a BLAKE3 hasher object.
 .sp
 Creates a BLAKE3 hasher with its configuration \fBcfg\fP
 The hasher may be destroyed by a corresponding call to
-\fI\%fy_blake3_hasher_destroy()\fP\&.
+\fBfy_blake3_hasher_destroy()\fP\&.
 .SS Return
 .sp
 A pointer to the BLAKE3 hasher or NULL in case of an error.
@@ -2825,13 +2826,13 @@ Destroy the given BLAKE3 hasher
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfyh\fP (struct fy_blake3_hasher*) \-\- The BLAKE3 hasher to destroy
+\fBfyh\fP (struct fy_blake3_hasher*) – The BLAKE3 hasher to destroy
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Destroy a BLAKE3 hasher created earlier via \fI\%fy_blake3_hasher_create()\fP\&.
+Destroy a BLAKE3 hasher created earlier via \fBfy_blake3_hasher_create()\fP\&.
 .SS fy_blake3_hasher_update
 .INDENT 0.0
 .TP
@@ -2842,11 +2843,11 @@ Update the BLAKE3 hasher state with the given input
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfyh\fP (struct fy_blake3_hasher*) \-\- The BLAKE3 hasher
+\fBfyh\fP (struct fy_blake3_hasher*) – The BLAKE3 hasher
 .IP \(bu 2
-\fBinput\fP (const void*) \-\- Pointer to the input
+\fBinput\fP (const void*) – Pointer to the input
 .IP \(bu 2
-\fBinput_len\fP (size_t) \-\- Size of the input in bytes
+\fBinput_len\fP (size_t) – Size of the input in bytes
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2863,7 +2864,7 @@ Finalize the hash and get output
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfyh\fP (struct fy_blake3_hasher*) \-\- The BLAKE3 hasher
+\fBfyh\fP (struct fy_blake3_hasher*) – The BLAKE3 hasher
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2884,7 +2885,7 @@ Resets the hasher
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfyh\fP (struct fy_blake3_hasher*) \-\- The BLAKE3 hasher
+\fBfyh\fP (struct fy_blake3_hasher*) – The BLAKE3 hasher
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2901,11 +2902,11 @@ BLAKE3 hash a memory area
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfyh\fP (struct fy_blake3_hasher*) \-\- The BLAKE3 hasher
+\fBfyh\fP (struct fy_blake3_hasher*) – The BLAKE3 hasher
 .IP \(bu 2
-\fBmem\fP (const void*) \-\- Pointer to the memory to use
+\fBmem\fP (const void*) – Pointer to the memory to use
 .IP \(bu 2
-\fBsize\fP (size_t) \-\- The size of the memory in bytes
+\fBsize\fP (size_t) – The size of the memory in bytes
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2926,9 +2927,9 @@ BLAKE3 hash a file.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfyh\fP (struct fy_blake3_hasher*) \-\- The BLAKE3 hasher
+\fBfyh\fP (struct fy_blake3_hasher*) – The BLAKE3 hasher
 .IP \(bu 2
-\fBfilename\fP (const char*) \-\- The filename
+\fBfilename\fP (const char*) – The filename
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2998,7 +2999,7 @@ Declare that a variable or type has a minimum alignment.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBx\fP \-\- Required alignment in bytes (must be a power of two).
+\fBx\fP – Required alignment in bytes (must be a power of two).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3006,7 +3007,7 @@ Declare that a variable or type has a minimum alignment.
 .sp
 Expands to the appropriate compiler\-specific alignment attribute:
 \- GCC/Clang: \fB__attribute__((aligned(x)))\fP
-\- MSVC:      should be \fB__declspec(align(x))\fP but MSVC does not support trailing alignment...
+\- MSVC:      should be \fB__declspec(align(x))\fP but MSVC does not support trailing alignment…
 \- Other:     empty (no enforced alignment)
 .SS macro FY_ALIGN
 .INDENT 0.0
@@ -3018,9 +3019,9 @@ Round \fB_x\fP up to the next multiple of \fB_align\fP\&.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_align\fP \-\- Alignment boundary (power of two).
+\fB_align\fP – Alignment boundary (power of two).
 .IP \(bu 2
-\fB_x\fP \-\- Value to round up.
+\fB_x\fP – Value to round up.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3051,7 +3052,7 @@ Round \fB_x\fP up to the next cache\-line boundary.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_x\fP \-\- Value to round up.
+\fB_x\fP – Value to round up.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3091,9 +3092,9 @@ Allocate memory with a specific alignment.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBalign\fP (size_t) \-\- Required alignment in bytes (must be a power of two and >= \fBsizeof(void *)\fP ).
+\fBalign\fP (size_t) – Required alignment in bytes (must be a power of two and >= \fBsizeof(void *)\fP ).
 .IP \(bu 2
-\fBsize\fP (size_t) \-\- Number of bytes to allocate.
+\fBsize\fP (size_t) – Number of bytes to allocate.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3103,7 +3104,7 @@ Allocates \fBsize\fP bytes rounded up to the nearest multiple of \fBalign\fP, wi
 the returned pointer guaranteed to be a multiple of \fBalign\fP\&.
 .sp
 Uses \fBposix_memalign()\fP on POSIX systems and \fB_aligned_malloc()\fP on
-Windows. Free the result with \fI\%fy_align_free()\fP\&.
+Windows. Free the result with \fBfy_align_free()\fP\&.
 .SS Return
 .sp
 Pointer to the allocated block, or NULL on failure.
@@ -3111,13 +3112,13 @@ Pointer to the allocated block, or NULL on failure.
 .INDENT 0.0
 .TP
 .B void fy_align_free(void *p) 
-Free memory allocated by \fI\%fy_align_alloc()\fP\&.
+Free memory allocated by \fBfy_align_alloc()\fP\&.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBp\fP (void*) \-\- Pointer previously returned by \fI\%fy_align_alloc()\fP, or NULL.
+\fBp\fP (void*) – Pointer previously returned by \fBfy_align_alloc()\fP, or NULL.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3134,14 +3135,14 @@ Allocate cache\-line\-aligned memory.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBsize\fP (size_t) \-\- Number of bytes to allocate.
+\fBsize\fP (size_t) – Number of bytes to allocate.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
 Equivalent to \fBfy_align_alloc(FY_CACHELINE_SIZE, size)\fP\&.
-Free the result with \fI\%fy_cacheline_free()\fP\&.
+Free the result with \fBfy_cacheline_free()\fP\&.
 .SS Return
 .sp
 Cache\-line\-aligned pointer, or NULL on failure.
@@ -3149,13 +3150,13 @@ Cache\-line\-aligned pointer, or NULL on failure.
 .INDENT 0.0
 .TP
 .B void fy_cacheline_free(void *p) 
-Free memory allocated by \fI\%fy_cacheline_alloc()\fP\&.
+Free memory allocated by \fBfy_cacheline_alloc()\fP\&.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBp\fP (void*) \-\- Pointer previously returned by \fI\%fy_cacheline_alloc()\fP, or NULL.
+\fBp\fP (void*) – Pointer previously returned by \fBfy_cacheline_alloc()\fP, or NULL.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3172,9 +3173,9 @@ Round a pointer up to the next multiple of \fBalign\fP\&.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBp\fP (void*) \-\- Pointer to align.
+\fBp\fP (void*) – Pointer to align.
 .IP \(bu 2
-\fBalign\fP (size_t) \-\- Alignment boundary in bytes (must be a power of two).
+\fBalign\fP (size_t) – Alignment boundary in bytes (must be a power of two).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3195,9 +3196,9 @@ Round a size_t value up to the next multiple of \fBalign\fP\&.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBsize\fP (size_t) \-\- Value to round up.
+\fBsize\fP (size_t) – Value to round up.
 .IP \(bu 2
-\fBalign\fP (size_t) \-\- Alignment boundary in bytes (must be a power of two).
+\fBalign\fP (size_t) – Alignment boundary in bytes (must be a power of two).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3214,9 +3215,9 @@ Stack\-allocate a buffer with a specific alignment.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_sz\fP \-\- Number of bytes to allocate.
+\fB_sz\fP – Number of bytes to allocate.
 .IP \(bu 2
-\fB_align\fP \-\- Required alignment in bytes (must be a power of two).
+\fB_align\fP – Required alignment in bytes (must be a power of two).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3225,7 +3226,7 @@ Stack\-allocate a buffer with a specific alignment.
 Expands to a statement expression (GCC extension) that allocates \fB_sz\fP bytes
 on the stack, aligned to \fB_align\fP bytes. When \fB_align\fP <= \fBsizeof(max_align_t)\fP
 a plain \fBalloca()\fP is used; otherwise \fB_sz\fP + \fB_align\fP \- 1 bytes are allocated
-and the pointer is advanced with \fI\%fy_ptr_align()\fP\&.
+and the pointer is advanced with \fBfy_ptr_align()\fP\&.
 This macro does not work on MSVC.
 .sp
 The result is valid only for the lifetime of the enclosing function; do not
@@ -3235,7 +3236,7 @@ return or store it beyond that scope.
 Stack pointer aligned to \fB_align\fP\&.
 .SH ENDIANNESS
 .sp
-This header provides a portable way to include the platform\(aqs byte\-order
+This header provides a portable way to include the platform’s byte\-order
 detection headers and ensures the following macros are always defined:
 .INDENT 0.0
 .IP \(bu 2
@@ -3280,7 +3281,7 @@ Byte\-swap an 8\-bit value (no\-op).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBx\fP \-\- The 8\-bit value.
+\fBx\fP – The 8\-bit value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3389,13 +3390,13 @@ Compute the encoded byte count for a 32\-bit size.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBsize\fP (uint32_t) \-\- The value whose encoded length is queried.
+\fBsize\fP (uint32_t) – The value whose encoded length is queried.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Returns the number of bytes that \fI\%fy_encode_size32()\fP would write for \fBsize\fP,
+Returns the number of bytes that \fBfy_encode_size32()\fP would write for \fBsize\fP,
 without actually writing anything. Useful for pre\-allocating buffers.
 .SS Return
 .sp
@@ -3410,17 +3411,17 @@ Encode a 32\-bit size into a buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBp\fP (uint8_t*) \-\- Start of the output buffer.
+\fBp\fP (uint8_t*) – Start of the output buffer.
 .IP \(bu 2
-\fBbufsz\fP (uint32_t) \-\- Available space in bytes.
+\fBbufsz\fP (uint32_t) – Available space in bytes.
 .IP \(bu 2
-\fBsize\fP (uint32_t) \-\- Value to encode.
+\fBsize\fP (uint32_t) – Value to encode.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Writes the variable\-length encoding of \fBsize\fP into the buffer [@p, \fBp\fP\X'tty: link mailto:+@bufsz'\fI\%+@bufsz\fP\X'tty: link').
+Writes the variable\-length encoding of \fBsize\fP into the buffer [@p, \fBp\fP\%<+@\:bufsz>).
 .SS Return
 .INDENT 0.0
 .TP
@@ -3437,17 +3438,17 @@ Decode a variable\-length 32\-bit size from a buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBstart\fP (const uint8_t*) \-\- Start of the encoded data.
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
 .IP \(bu 2
-\fBbufsz\fP (size_t) \-\- Available bytes to read.
+\fBbufsz\fP (size_t) – Available bytes to read.
 .IP \(bu 2
-\fBsizep\fP (uint32_t*) \-\- Output: the decoded value. Set to \fB(uint32_t)\-1\fP on error.
+\fBsizep\fP (uint32_t*) – Output: the decoded value. Set to \fB(uint32_t)\-1\fP on error.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Reads bytes from [@start, \fBstart\fP\X'tty: link mailto:+@bufsz'\fI\%+@bufsz\fP\X'tty: link') and reconstructs the encoded
+Reads bytes from [@start, \fBstart\fP\%<+@\:bufsz>) and reconstructs the encoded
 32\-bit value. Stops after \fBFYVL_SIZE_ENCODING_MAX_32\fP bytes at most.
 .SS Return
 .INDENT 0.0
@@ -3465,15 +3466,15 @@ Decode a 32\-bit size without bounds checking.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBstart\fP (const uint8_t*) \-\- Start of the encoded data.
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
 .IP \(bu 2
-\fBsizep\fP (uint64_t*) \-\- Output: the decoded value as a uint64_t for uniform handling.
+\fBsizep\fP (uint64_t*) – Output: the decoded value as a uint64_t for uniform handling.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Like \fI\%fy_decode_size32()\fP but assumes the buffer is large enough to hold a
+Like \fBfy_decode_size32()\fP but assumes the buffer is large enough to hold a
 complete encoding. The caller must guarantee at least
 \fBFYVL_SIZE_ENCODING_MAX_32\fP bytes are available at \fBstart\fP\&.
 .SS Return
@@ -3489,9 +3490,9 @@ Skip past a variable\-length 32\-bit size in a buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBstart\fP (const uint8_t*) \-\- Start of the encoded data.
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
 .IP \(bu 2
-\fBbufsz\fP (size_t) \-\- Available bytes.
+\fBbufsz\fP (size_t) – Available bytes.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3515,13 +3516,13 @@ Skip a 32\-bit encoded size without bounds checking.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBp\fP (const uint8_t*) \-\- Start of the encoded data.
+\fBp\fP (const uint8_t*) – Start of the encoded data.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Like \fI\%fy_skip_size32()\fP but assumes the buffer is large enough. The caller
+Like \fBfy_skip_size32()\fP but assumes the buffer is large enough. The caller
 must guarantee at least \fBFYVL_SIZE_ENCODING_MAX_32\fP bytes are readable.
 .SS Return
 .sp
@@ -3536,13 +3537,13 @@ Compute the encoded byte count for a 64\-bit size.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBsize\fP (uint64_t) \-\- The value whose encoded length is queried.
+\fBsize\fP (uint64_t) – The value whose encoded length is queried.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Returns the number of bytes that \fI\%fy_encode_size64()\fP would write for \fBsize\fP,
+Returns the number of bytes that \fBfy_encode_size64()\fP would write for \fBsize\fP,
 without writing anything.
 .SS Return
 .sp
@@ -3557,17 +3558,17 @@ Encode a 64\-bit size into a buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBp\fP (uint8_t*) \-\- Start of the output buffer.
+\fBp\fP (uint8_t*) – Start of the output buffer.
 .IP \(bu 2
-\fBbufsz\fP (size_t) \-\- Available space in bytes.
+\fBbufsz\fP (size_t) – Available space in bytes.
 .IP \(bu 2
-\fBsize\fP (uint64_t) \-\- Value to encode.
+\fBsize\fP (uint64_t) – Value to encode.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Writes the variable\-length encoding of \fBsize\fP into the buffer [@p, \fBp\fP\X'tty: link mailto:+@bufsz'\fI\%+@bufsz\fP\X'tty: link').
+Writes the variable\-length encoding of \fBsize\fP into the buffer [@p, \fBp\fP\%<+@\:bufsz>).
 .SS Return
 .INDENT 0.0
 .TP
@@ -3584,17 +3585,17 @@ Decode a variable\-length 64\-bit size from a buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBstart\fP (const uint8_t*) \-\- Start of the encoded data.
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
 .IP \(bu 2
-\fBbufsz\fP (size_t) \-\- Available bytes to read.
+\fBbufsz\fP (size_t) – Available bytes to read.
 .IP \(bu 2
-\fBsizep\fP (uint64_t*) \-\- Output: the decoded value. Set to \fB(size_t)\-1\fP on error.
+\fBsizep\fP (uint64_t*) – Output: the decoded value. Set to \fB(size_t)\-1\fP on error.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Reads bytes from [@start, \fBstart\fP\X'tty: link mailto:+@bufsz'\fI\%+@bufsz\fP\X'tty: link') and reconstructs the encoded
+Reads bytes from [@start, \fBstart\fP\%<+@\:bufsz>) and reconstructs the encoded
 64\-bit value. Stops after \fBFYVL_SIZE_ENCODING_MAX_64\fP bytes at most.
 .SS Return
 .INDENT 0.0
@@ -3612,15 +3613,15 @@ Decode a 64\-bit size without bounds checking.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBstart\fP (const uint8_t*) \-\- Start of the encoded data.
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
 .IP \(bu 2
-\fBsizep\fP (uint64_t*) \-\- Output: the decoded value.
+\fBsizep\fP (uint64_t*) – Output: the decoded value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Like \fI\%fy_decode_size64()\fP but assumes the buffer is large enough. The caller
+Like \fBfy_decode_size64()\fP but assumes the buffer is large enough. The caller
 must guarantee at least \fBFYVL_SIZE_ENCODING_MAX_64\fP bytes are readable.
 .SS Return
 .sp
@@ -3635,9 +3636,9 @@ Skip past a variable\-length 64\-bit size in a buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBstart\fP (const uint8_t*) \-\- Start of the encoded data.
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
 .IP \(bu 2
-\fBbufsz\fP (size_t) \-\- Available bytes.
+\fBbufsz\fP (size_t) – Available bytes.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3660,13 +3661,13 @@ Skip a 64\-bit encoded size without bounds checking.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBp\fP (const uint8_t*) \-\- Start of the encoded data.
+\fBp\fP (const uint8_t*) – Start of the encoded data.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Like \fI\%fy_skip_size64()\fP but assumes the buffer is large enough. The caller
+Like \fBfy_skip_size64()\fP but assumes the buffer is large enough. The caller
 must guarantee at least \fBFYVL_SIZE_ENCODING_MAX_64\fP bytes are readable.
 .SS Return
 .sp
@@ -3681,13 +3682,13 @@ Compute encoded byte count for a native size_t.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBsize\fP (size_t) \-\- The value whose encoded length is queried.
+\fBsize\fP (size_t) – The value whose encoded length is queried.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Selects \fI\%fy_encode_size64_bytes()\fP or \fI\%fy_encode_size32_bytes()\fP based on
+Selects \fBfy_encode_size64_bytes()\fP or \fBfy_encode_size32_bytes()\fP based on
 \fBSIZE_MAX\fP\&.
 .SS Return
 .sp
@@ -3702,17 +3703,17 @@ Encode a native size_t into a buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBp\fP (uint8_t*) \-\- Start of the output buffer.
+\fBp\fP (uint8_t*) – Start of the output buffer.
 .IP \(bu 2
-\fBbufsz\fP (size_t) \-\- Available space in bytes.
+\fBbufsz\fP (size_t) – Available space in bytes.
 .IP \(bu 2
-\fBsize\fP (size_t) \-\- Value to encode.
+\fBsize\fP (size_t) – Value to encode.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Selects \fI\%fy_encode_size64()\fP or \fI\%fy_encode_size32()\fP based on \fBSIZE_MAX\fP\&.
+Selects \fBfy_encode_size64()\fP or \fBfy_encode_size32()\fP based on \fBSIZE_MAX\fP\&.
 .SS Return
 .sp
 Pointer to one past the last written byte, or NULL on overflow.
@@ -3726,17 +3727,17 @@ Decode a native size_t from a buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBstart\fP (const uint8_t*) \-\- Start of the encoded data.
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
 .IP \(bu 2
-\fBbufsz\fP (size_t) \-\- Available bytes.
+\fBbufsz\fP (size_t) – Available bytes.
 .IP \(bu 2
-\fBsizep\fP (size_t*) \-\- Output: the decoded value.
+\fBsizep\fP (size_t*) – Output: the decoded value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Selects \fI\%fy_decode_size64()\fP or \fI\%fy_decode_size32()\fP based on \fBSIZE_MAX\fP\&.
+Selects \fBfy_decode_size64()\fP or \fBfy_decode_size32()\fP based on \fBSIZE_MAX\fP\&.
 .SS Return
 .sp
 Pointer to one past the last consumed byte, or NULL on error.
@@ -3750,9 +3751,9 @@ Decode a native size_t without bounds checking.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBstart\fP (const uint8_t*) \-\- Start of the encoded data.
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
 .IP \(bu 2
-\fBsizep\fP (size_t*) \-\- Output: the decoded value.
+\fBsizep\fP (size_t*) – Output: the decoded value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3773,15 +3774,15 @@ Skip a native size_t encoding in a buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBstart\fP (const uint8_t*) \-\- Start of the encoded data.
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
 .IP \(bu 2
-\fBbufsz\fP (size_t) \-\- Available bytes.
+\fBbufsz\fP (size_t) – Available bytes.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Selects \fI\%fy_skip_size64()\fP or \fI\%fy_skip_size32()\fP based on \fBSIZE_MAX\fP\&.
+Selects \fBfy_skip_size64()\fP or \fBfy_skip_size32()\fP based on \fBSIZE_MAX\fP\&.
 .SS Return
 .sp
 Pointer to one past the last consumed byte, or NULL on error.
@@ -3795,7 +3796,7 @@ Skip a native size_t encoding without bounds checking.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBstart\fP (const uint8_t*) \-\- Start of the encoded data.
+\fBstart\fP (const uint8_t*) – Start of the encoded data.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3859,23 +3860,23 @@ as plain loads/stores with no memory barriers.
 \fBPublic API\fP — all \fBfy_atomic_*\fP macros delegate to the selected backend:
 .INDENT 0.0
 .IP \(bu 2
-\fI\%FY_ATOMIC()\fP                     — qualify a type as atomic
+\fBFY_ATOMIC()\fP                     — qualify a type as atomic
 .IP \(bu 2
 fy_atomic_flag                  — boolean flag type
 .IP \(bu 2
-\fI\%fy_atomic_load()\fP / \fI\%fy_atomic_store()\fP
+\fBfy_atomic_load()\fP / \fBfy_atomic_store()\fP
 .IP \(bu 2
-\fI\%fy_atomic_exchange()\fP
+\fBfy_atomic_exchange()\fP
 .IP \(bu 2
-\fI\%fy_atomic_compare_exchange_strong()\fP / \fI\%fy_atomic_compare_exchange_weak()\fP
+\fBfy_atomic_compare_exchange_strong()\fP / \fBfy_atomic_compare_exchange_weak()\fP
 .IP \(bu 2
-\fI\%fy_atomic_fetch_add()\fP / \fI\%fy_atomic_fetch_sub()\fP
+\fBfy_atomic_fetch_add()\fP / \fBfy_atomic_fetch_sub()\fP
 .IP \(bu 2
-\fI\%fy_atomic_fetch_or()\fP / \fI\%fy_atomic_fetch_xor()\fP / \fI\%fy_atomic_fetch_and()\fP
+\fBfy_atomic_fetch_or()\fP / \fBfy_atomic_fetch_xor()\fP / \fBfy_atomic_fetch_and()\fP
 .IP \(bu 2
-\fI\%fy_atomic_flag_clear()\fP / \fI\%fy_atomic_flag_set()\fP / \fI\%fy_atomic_flag_test_and_set()\fP
+\fBfy_atomic_flag_clear()\fP / \fBfy_atomic_flag_set()\fP / \fBfy_atomic_flag_test_and_set()\fP
 .IP \(bu 2
-\fI\%fy_cpu_relax()\fP                  — emit a CPU relaxation hint (PAUSE/YIELD)
+\fBfy_cpu_relax()\fP                  — emit a CPU relaxation hint (PAUSE/YIELD)
 .IP \(bu 2
 \fBfy_atomic_get_and_clear_counter()\fP — atomically read and subtract a counter
 .UNINDENT
@@ -3889,7 +3890,7 @@ Qualify a type as atomic.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_x\fP \-\- The underlying C type.
+\fB_x\fP – The underlying C type.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3927,7 +3928,7 @@ Atomically load the value at \fB_ptr\fP\&.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_ptr\fP \-\- Pointer to an FY_ATOMIC\-qualified variable.
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified variable.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3944,9 +3945,9 @@ Atomically store \fB_v\fP at \fB_ptr\fP\&.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_ptr\fP \-\- Pointer to an FY_ATOMIC\-qualified variable.
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified variable.
 .IP \(bu 2
-\fB_v\fP \-\- Value to store.
+\fB_v\fP – Value to store.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3960,9 +3961,9 @@ Atomically replace the value at \fB_ptr\fP with \fB_v\fP\&.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_ptr\fP \-\- Pointer to an FY_ATOMIC\-qualified variable.
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified variable.
 .IP \(bu 2
-\fB_v\fP \-\- New value to store.
+\fB_v\fP – New value to store.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3973,17 +3974,17 @@ The old value that was at \fB_ptr\fP before the exchange.
 .INDENT 0.0
 .TP
 .B fy_atomic_compare_exchange_strong(_ptr, _e, _d) 
-Strong CAS: replace \fB_ptr\fP\(aqs value if it equals \fB_e\fP\&.
+Strong CAS: replace \fB_ptr\fP‘s value if it equals \fB_e\fP\&.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_ptr\fP \-\- Pointer to an FY_ATOMIC\-qualified variable.
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified variable.
 .IP \(bu 2
-\fB_e\fP \-\- Pointer to the expected value (updated on failure).
+\fB_e\fP – Pointer to the expected value (updated on failure).
 .IP \(bu 2
-\fB_d\fP \-\- Desired value to store on success.
+\fB_d\fP – Desired value to store on success.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4005,17 +4006,17 @@ Weak CAS: may spuriously fail.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_ptr\fP \-\- Pointer to an FY_ATOMIC\-qualified variable.
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified variable.
 .IP \(bu 2
-\fB_e\fP \-\- Pointer to the expected value (updated on failure).
+\fB_e\fP – Pointer to the expected value (updated on failure).
 .IP \(bu 2
-\fB_d\fP \-\- Desired value to store on success.
+\fB_d\fP – Desired value to store on success.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Like \fI\%fy_atomic_compare_exchange_strong()\fP but may fail even when
+Like \fBfy_atomic_compare_exchange_strong()\fP but may fail even when
 \fB*_ptr == *_e\fP\&. Prefer in retry loops where a spurious failure
 is harmless and performance matters.
 .SS Return
@@ -4031,9 +4032,9 @@ Atomically add \fB_v\fP to \fB_ptr\fP and return the old value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_ptr\fP \-\- Pointer to an FY_ATOMIC\-qualified integer variable.
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified integer variable.
 .IP \(bu 2
-\fB_v\fP \-\- Value to add.
+\fB_v\fP – Value to add.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4050,9 +4051,9 @@ Atomically subtract \fB_v\fP from \fB_ptr\fP and return the old value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_ptr\fP \-\- Pointer to an FY_ATOMIC\-qualified integer variable.
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified integer variable.
 .IP \(bu 2
-\fB_v\fP \-\- Value to subtract.
+\fB_v\fP – Value to subtract.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4069,9 +4070,9 @@ Atomically OR \fB_v\fP into \fB_ptr\fP and return the old value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_ptr\fP \-\- Pointer to an FY_ATOMIC\-qualified integer variable.
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified integer variable.
 .IP \(bu 2
-\fB_v\fP \-\- Value to OR in.
+\fB_v\fP – Value to OR in.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4088,9 +4089,9 @@ Atomically XOR \fB_v\fP into \fB_ptr\fP and return the old value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_ptr\fP \-\- Pointer to an FY_ATOMIC\-qualified integer variable.
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified integer variable.
 .IP \(bu 2
-\fB_v\fP \-\- Value to XOR in.
+\fB_v\fP – Value to XOR in.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4107,9 +4108,9 @@ Atomically AND \fB_v\fP into \fB_ptr\fP and return the old value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_ptr\fP \-\- Pointer to an FY_ATOMIC\-qualified integer variable.
+\fB_ptr\fP – Pointer to an FY_ATOMIC\-qualified integer variable.
 .IP \(bu 2
-\fB_v\fP \-\- Value to AND in.
+\fB_v\fP – Value to AND in.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4126,7 +4127,7 @@ Atomically clear a flag (set to false).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_ptr\fP \-\- Pointer to an fy_atomic_flag.
+\fB_ptr\fP – Pointer to an fy_atomic_flag.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4140,7 +4141,7 @@ Atomically set a flag (set to true).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_ptr\fP \-\- Pointer to an fy_atomic_flag.
+\fB_ptr\fP – Pointer to an fy_atomic_flag.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4159,7 +4160,7 @@ Atomically set a flag and return its old value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_ptr\fP \-\- Pointer to an fy_atomic_flag.
+\fB_ptr\fP – Pointer to an fy_atomic_flag.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4180,7 +4181,7 @@ Emit a CPU relaxation hint inside a spin\-wait loop.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvoid\fP \-\- no arguments
+\fBvoid\fP – no arguments
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4202,7 +4203,6 @@ while (!fy_atomic_load(&ready))
 .EE
 .UNINDENT
 .UNINDENT
-.SH COPYRIGHT
+.SH Copyright
 2019-2026, Pantelis Antoniou
-.\" Generated by docutils manpage writer.
-.
+.\" End of generated man page.

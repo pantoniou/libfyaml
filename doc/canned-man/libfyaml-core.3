@@ -1,4 +1,5 @@
-.\" Man page generated from reStructuredText.
+.\" Man page generated from reStructuredText
+.\" by the Docutils 0.22.4 manpage writer.
 .
 .
 .nr rst2man-indent-level 0
@@ -27,7 +28,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "LIBFYAML-CORE" "3" "Mar 16, 2026" "1.0.0" "libfyaml"
+.TH "LIBFYAML-CORE" "3" "Mar 18, 2026" "1.0.0" "libfyaml"
 .SH NAME
 libfyaml-core \- libfyaml core API
 .SH CORE
@@ -146,16 +147,16 @@ found in the document.
 .SS fy_version_compare
 .INDENT 0.0
 .TP
-.B int fy_version_compare(const struct \fI\%fy_version\fP *va, const struct \fI\%fy_version\fP *vb) 
+.B int fy_version_compare(const struct fy_version *va, const struct fy_version *vb) 
 Compare two yaml versions
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBva\fP (const struct \fI\%fy_version\fP*) – The first version, if NULL use default version
+\fBva\fP (const struct fy_version*) – The first version, if NULL use default version
 .IP \(bu 2
-\fBvb\fP (const struct \fI\%fy_version\fP*) – The second version, if NULL use default version
+\fBvb\fP (const struct fy_version*) – The second version, if NULL use default version
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -169,7 +170,7 @@ Compare the versions
 .SS fy_version_default
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_version\fP *fy_version_default(void) 
+.B const struct fy_version *fy_version_default(void) 
 Get the default version of the library
 .INDENT 7.0
 .TP
@@ -190,14 +191,14 @@ The default YAML version of this library
 .SS fy_version_is_supported
 .INDENT 0.0
 .TP
-.B bool fy_version_is_supported(const struct \fI\%fy_version\fP *vers) 
+.B bool fy_version_is_supported(const struct fy_version *vers) 
 Check if supported version
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvers\fP (const struct \fI\%fy_version\fP*) – The version to check, NULL means default version.
+\fBvers\fP (const struct fy_version*) – The version to check, NULL means default version.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -210,7 +211,7 @@ true if version supported, false otherwise.
 .SS fy_version_supported_iterate
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_version\fP *fy_version_supported_iterate(void **prevp) 
+.B const struct fy_version *fy_version_supported_iterate(void **prevp) 
 Iterate over the supported YAML versions
 .INDENT 7.0
 .TP
@@ -530,7 +531,7 @@ Allow duplicate keys on mappings
 .SS Description
 .sp
 These flags control the operation of the parse and the debugging
-output/error reporting via filling in the \fI\%fy_parse_cfg\->flags\fP member.
+output/error reporting via filling in the \fBfy_parse_cfg\->flags\fP member.
 .SS struct fy_parse_cfg
 .INDENT 0.0
 .TP
@@ -568,7 +569,7 @@ Optional diagnostic interface to use
 .UNINDENT
 .SS Description
 .sp
-Argument to the \fI\%fy_parser_create()\fP method which
+Argument to the \fBfy_parser_create()\fP method which
 perform parsing of YAML files.
 .SS enum fy_event_type
 .INDENT 0.0
@@ -636,14 +637,14 @@ YAML alias event
 .SS fy_event_type_get_text
 .INDENT 0.0
 .TP
-.B const char *fy_event_type_get_text(enum \fI\%fy_event_type\fP type) 
+.B const char *fy_event_type_get_text(enum fy_event_type type) 
 Return text of an event type
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_event_type\fP) – The event type to get text from
+\fBtype\fP (enum fy_event_type) – The event type to get text from
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1044,55 +1045,55 @@ struct fy_event {
 .INDENT 0.0
 .TP
 .B type
-Type of the event, see \fI\%enum fy_event_type\fP
+Type of the event, see \fBenum fy_event_type\fP
 .TP
 .B {unnamed_union}
 anonymous
 .TP
 .B stream_start
 Stream start information, it is valid when
-\fI\%fy_event\->type\fP is \fBenum FYET_STREAM_START\fP
+\fBfy_event\->type\fP is \fBenum FYET_STREAM_START\fP
 .TP
 .B stream_end
 Stream end information, it is valid when
-\fI\%fy_event\->type\fP is \fBenum FYET_STREAM_END\fP
+\fBfy_event\->type\fP is \fBenum FYET_STREAM_END\fP
 .TP
 .B document_start
 Document start information, it is valid when
-\fI\%fy_event\->type\fP is \fBenum FYET_DOCUMENT_START\fP
+\fBfy_event\->type\fP is \fBenum FYET_DOCUMENT_START\fP
 .TP
 .B document_end
 Document end information, it is valid when
-\fI\%fy_event\->type\fP is \fBenum FYET_DOCUMENT_END\fP
+\fBfy_event\->type\fP is \fBenum FYET_DOCUMENT_END\fP
 .TP
 .B alias
 Alias information, it is valid when
-\fI\%fy_event\->type\fP is \fBenum FYET_ALIAS\fP
+\fBfy_event\->type\fP is \fBenum FYET_ALIAS\fP
 .TP
 .B scalar
 Scalar information, it is valid when
-\fI\%fy_event\->type\fP is \fBenum FYET_SCALAR\fP
+\fBfy_event\->type\fP is \fBenum FYET_SCALAR\fP
 .TP
 .B sequence_start
 Sequence start information, it is valid when
-\fI\%fy_event\->type\fP is \fBenum FYET_SEQUENCE_START\fP
+\fBfy_event\->type\fP is \fBenum FYET_SEQUENCE_START\fP
 .TP
 .B sequence_end
 Sequence end information, it is valid when
-\fI\%fy_event\->type\fP is \fBenum FYET_SEQUENCE_END\fP
+\fBfy_event\->type\fP is \fBenum FYET_SEQUENCE_END\fP
 .TP
 .B mapping_start
 Mapping start information, it is valid when
-\fI\%fy_event\->type\fP is \fBenum FYET_MAPPING_START\fP
+\fBfy_event\->type\fP is \fBenum FYET_MAPPING_START\fP
 .TP
 .B mapping_end
 Mapping end information, it is valid when
-\fI\%fy_event\->type\fP is \fBenum FYET_MAPPING_END\fP
+\fBfy_event\->type\fP is \fBenum FYET_MAPPING_END\fP
 .UNINDENT
 .SS Description
 .sp
 This structure is generated by the parser by each call
-to \fI\%fy_parser_parse()\fP and release by \fI\%fy_parser_event_free()\fP
+to \fBfy_parser_parse()\fP and release by \fBfy_parser_event_free()\fP
 .SS enum fy_event_part
 .INDENT 0.0
 .TP
@@ -1127,14 +1128,14 @@ The anchor of the event
 .SS fy_event_get_type
 .INDENT 0.0
 .TP
-.B enum \fI\%fy_event_type\fP fy_event_get_type(const struct \fI\%fy_event\fP *fye) 
+.B enum fy_event_type fy_event_get_type(const struct fy_event *fye) 
 Get the event’s type
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfye\fP (const struct \fI\%fy_event\fP*) – The event
+\fBfye\fP (const struct fy_event*) – The event
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1147,14 +1148,14 @@ The event type, or FYET_NONE when the event is invalid
 .SS fy_event_data
 .INDENT 0.0
 .TP
-.B void *fy_event_data(struct \fI\%fy_event\fP *fye) 
+.B void *fy_event_data(struct fy_event *fye) 
 Get a pointer to the event data
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event
+\fBfye\fP (struct fy_event*) – The event
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1189,7 +1190,7 @@ A pointer to a version string of the form
 .SS fy_string_to_error_type
 .INDENT 0.0
 .TP
-.B enum \fI\%fy_error_type\fP fy_string_to_error_type(const char *str) 
+.B enum fy_error_type fy_string_to_error_type(const char *str) 
 Return the error type from a string
 .INDENT 7.0
 .TP
@@ -1206,14 +1207,14 @@ The error type if greater or equal to zero, FYET_MAX otherwise
 .SS fy_error_type_to_string
 .INDENT 0.0
 .TP
-.B const char *fy_error_type_to_string(enum \fI\%fy_error_type\fP type) 
+.B const char *fy_error_type_to_string(enum fy_error_type type) 
 Convert an error type to string
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type to convert
+\fBtype\fP (enum fy_error_type) – The error type to convert
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1223,7 +1224,7 @@ The string value of the error type or the empty string “” on error
 .SS fy_string_to_error_module
 .INDENT 0.0
 .TP
-.B enum \fI\%fy_error_module\fP fy_string_to_error_module(const char *str) 
+.B enum fy_error_module fy_string_to_error_module(const char *str) 
 Return the error module from a string
 .INDENT 7.0
 .TP
@@ -1240,14 +1241,14 @@ The error type if greater or equal to zero, FYEM_MAX otherwise
 .SS fy_error_module_to_string
 .INDENT 0.0
 .TP
-.B const char *fy_error_module_to_string(enum \fI\%fy_error_module\fP module) 
+.B const char *fy_error_module_to_string(enum fy_error_module module) 
 Convert an error module to string
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmodule\fP (enum \fI\%fy_error_module\fP) – The error module to convert
+\fBmodule\fP (enum fy_error_module) – The error module to convert
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1257,14 +1258,14 @@ The string value of the error module or the empty string “” on error
 .SS fy_event_is_implicit
 .INDENT 0.0
 .TP
-.B bool fy_event_is_implicit(struct \fI\%fy_event\fP *fye) 
+.B bool fy_event_is_implicit(struct fy_event *fye) 
 Check whether the given event is an implicit one
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – A pointer to a \fI\%struct fy_event\fP to check.
+\fBfye\fP (struct fy_event*) – A pointer to a \fBstruct fy_event\fP to check.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1274,14 +1275,14 @@ true if the event is an implicit one.
 .SS fy_document_event_is_implicit
 .INDENT 0.0
 .TP
-.B bool fy_document_event_is_implicit(const struct \fI\%fy_event\fP *fye) 
+.B bool fy_document_event_is_implicit(const struct fy_event *fye) 
 Check whether the given document event is an implicit one
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfye\fP (const struct \fI\%fy_event\fP*) – A pointer to a \fI\%struct fy_event\fP to check.
+\fBfye\fP (const struct fy_event*) – A pointer to a \fBstruct fy_event\fP to check.
 It must be either a document start or document end event.
 .UNINDENT
 .UNINDENT
@@ -1292,14 +1293,14 @@ true if the event is an implicit one.
 .SS fy_parser_create
 .INDENT 0.0
 .TP
-.B struct fy_parser *fy_parser_create(const struct \fI\%fy_parse_cfg\fP *cfg) 
+.B struct fy_parser *fy_parser_create(const struct fy_parse_cfg *cfg) 
 Create a parser.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct \fI\%fy_parse_cfg\fP*) – The configuration for the parser
+\fBcfg\fP (const struct fy_parse_cfg*) – The configuration for the parser
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1307,7 +1308,7 @@ Create a parser.
 .sp
 Creates a parser with its configuration \fBcfg\fP
 The parser may be destroyed by a corresponding call to
-\fI\%fy_parser_destroy()\fP\&.
+\fBfy_parser_destroy()\fP\&.
 .SS Return
 .sp
 A pointer to the parser or NULL in case of an error.
@@ -1327,11 +1328,11 @@ Destroy the given parser
 .UNINDENT
 .SS Description
 .sp
-Destroy a parser created earlier via \fI\%fy_parser_create()\fP\&.
+Destroy a parser created earlier via \fBfy_parser_create()\fP\&.
 .SS fy_parser_get_cfg
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_parse_cfg\fP *fy_parser_get_cfg(struct fy_parser *fyp) 
+.B const struct fy_parse_cfg *fy_parser_get_cfg(struct fy_parser *fyp) 
 Get the configuration of a parser
 .INDENT 7.0
 .TP
@@ -1363,7 +1364,7 @@ Get the diagnostic object of a parser
 .sp
 Return a pointer to the diagnostic object of a parser object.
 Note that the returned diag object has a reference taken so
-you should \fI\%fy_diag_unref()\fP it when you’re done with it.
+you should \fBfy_diag_unref()\fP it when you’re done with it.
 .SS Return
 .sp
 A pointer to a ref’ed diagnostic object or NULL in case of an
@@ -1434,7 +1435,7 @@ Set the parser to process the given file
 .sp
 Point the parser to the given \fBfile\fP for processing. The file
 is located by honoring the search path of the configuration set
-by the earlier call to \fI\%fy_parser_create()\fP\&.
+by the earlier call to \fBfy_parser_create()\fP\&.
 While the parser is in use the file will must be available.
 .SS Return
 .sp
@@ -1566,7 +1567,7 @@ zero on success, \-1 on error
 .SS fy_parser_parse
 .INDENT 0.0
 .TP
-.B struct \fI\%fy_event\fP *fy_parser_parse(struct fy_parser *fyp) 
+.B struct fy_event *fy_parser_parse(struct fy_parser *fyp) 
 Parse and return the next event.
 .INDENT 7.0
 .TP
@@ -1579,17 +1580,17 @@ Parse and return the next event.
 .UNINDENT
 .SS Description
 .sp
-Each call to \fI\%fy_parser_parse()\fP returns the next event from
+Each call to \fBfy_parser_parse()\fP returns the next event from
 the configured input of the parser, or NULL at the end of
 the stream. The returned event must be released via
-a matching call to \fI\%fy_parser_event_free()\fP\&.
+a matching call to \fBfy_parser_event_free()\fP\&.
 .SS Return
 .sp
 The next event in the stream or NULL.
 .SS fy_parser_parse_peek
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_event\fP *fy_parser_parse_peek(struct fy_parser *fyp) 
+.B const struct fy_event *fy_parser_parse_peek(struct fy_parser *fyp) 
 Parse and peek at the next event.
 .INDENT 7.0
 .TP
@@ -1682,7 +1683,7 @@ be returned.
 .SS fy_parser_event_free
 .INDENT 0.0
 .TP
-.B void fy_parser_event_free(struct fy_parser *fyp, struct \fI\%fy_event\fP *fye) 
+.B void fy_parser_event_free(struct fy_parser *fyp, struct fy_event *fye) 
 Free an event
 .INDENT 7.0
 .TP
@@ -1691,13 +1692,13 @@ Free an event
 .IP \(bu 2
 \fBfyp\fP (struct fy_parser*) – The parser
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event to free (may be NULL)
+\fBfye\fP (struct fy_event*) – The event to free (may be NULL)
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Free a previously returned event from \fI\%fy_parser_parse()\fP\&.
+Free a previously returned event from \fBfy_parser_parse()\fP\&.
 .SS fy_parser_get_stream_error
 .INDENT 0.0
 .TP
@@ -1739,7 +1740,7 @@ The parser mode
 .SS fy_parser_vlog
 .INDENT 0.0
 .TP
-.B void fy_parser_vlog(struct fy_parser *fyp, enum \fI\%fy_error_type\fP type, const char *fmt, va_list ap) 
+.B void fy_parser_vlog(struct fy_parser *fyp, enum fy_error_type type, const char *fmt, va_list ap) 
 Log using the parsers diagnostics printf style (va_arg)
 .INDENT 7.0
 .TP
@@ -1748,7 +1749,7 @@ Log using the parsers diagnostics printf style (va_arg)
 .IP \(bu 2
 \fBfyp\fP (struct fy_parser*) – The parser
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfmt\fP (const char*) – The printf format string
 .IP \(bu 2
@@ -1762,7 +1763,7 @@ Output a log on the parser diagnostic output
 .SS fy_parser_log
 .INDENT 0.0
 .TP
-.B void fy_parser_log(struct fy_parser *fyp, enum \fI\%fy_error_type\fP type, const char *fmt, \&...) 
+.B void fy_parser_log(struct fy_parser *fyp, enum fy_error_type type, const char *fmt, \&...) 
 Log using the parsers diagnostics printf style
 .INDENT 7.0
 .TP
@@ -1771,7 +1772,7 @@ Log using the parsers diagnostics printf style
 .IP \(bu 2
 \fBfyp\fP (struct fy_parser*) – The parser
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfmt\fP (const char*) – The printf format string
 .IP \(bu 2
@@ -1785,7 +1786,7 @@ Output a report on the parser’s diagnostics
 .SS fy_parser_vreport
 .INDENT 0.0
 .TP
-.B void fy_parser_vreport(struct fy_parser *fyp, enum \fI\%fy_error_type\fP type, struct fy_token *fyt, const char *fmt, va_list ap) 
+.B void fy_parser_vreport(struct fy_parser *fyp, enum fy_error_type type, struct fy_token *fyt, const char *fmt, va_list ap) 
 Report using the parsers diagnostics printf style and mark token (va_arg)
 .INDENT 7.0
 .TP
@@ -1794,7 +1795,7 @@ Report using the parsers diagnostics printf style and mark token (va_arg)
 .IP \(bu 2
 \fBfyp\fP (struct fy_parser*) – The parser
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfyt\fP (struct fy_token*) – The token
 .IP \(bu 2
@@ -1810,7 +1811,7 @@ Output a report on the parser and indicate the token’s position
 .SS fy_parser_report
 .INDENT 0.0
 .TP
-.B void fy_parser_report(struct fy_parser *fyp, enum \fI\%fy_error_type\fP type, struct fy_token *fyt, const char *fmt, \&...) 
+.B void fy_parser_report(struct fy_parser *fyp, enum fy_error_type type, struct fy_token *fyt, const char *fmt, \&...) 
 Report using the parsers diagnostics printf style and mark token
 .INDENT 7.0
 .TP
@@ -1819,7 +1820,7 @@ Report using the parsers diagnostics printf style and mark token
 .IP \(bu 2
 \fBfyp\fP (struct fy_parser*) – The parser
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfyt\fP (struct fy_token*) – The token
 .IP \(bu 2
@@ -1835,7 +1836,7 @@ Output a report on the parser and indicate the token’s position
 .SS fy_token_scalar_style
 .INDENT 0.0
 .TP
-.B enum \fI\%fy_scalar_style\fP fy_token_scalar_style(struct fy_token *fyt) 
+.B enum fy_scalar_style fy_token_scalar_style(struct fy_token *fyt) 
 Get the style of a scalar token
 .INDENT 7.0
 .TP
@@ -1853,7 +1854,7 @@ The scalar style of the token, or FYSS_PLAIN on each other case
 .SS fy_token_collection_style
 .INDENT 0.0
 .TP
-.B enum \fI\%fy_collection_style\fP fy_token_collection_style(struct fy_token *fyt) 
+.B enum fy_collection_style fy_token_collection_style(struct fy_token *fyt) 
 Get the style of a collection token
 .INDENT 7.0
 .TP
@@ -1911,7 +1912,7 @@ Get text (and length of it) of a token
 This method will return a pointer to the text of a token
 along with the length of it. Note that this text is \fInot\fP
 NULL terminated. If you need a NULL terminated pointer
-use \fI\%fy_token_get_text0()\fP\&.
+use \fBfy_token_get_text0()\fP\&.
 .sp
 In case that the token is ‘simple’ enough (i.e. a plain scalar)
 or something similar the returned pointer is a direct pointer
@@ -1948,7 +1949,7 @@ Get zero terminated text of a token
 .sp
 This method will return a pointer to the text of a token
 which is zero terminated. It will allocate memory to hold
-it in the token structure so try to use \fI\%fy_token_get_text()\fP
+it in the token structure so try to use \fBfy_token_get_text()\fP
 instead if possible.
 .SS Return
 .sp
@@ -2010,7 +2011,7 @@ Comment to the bottom of the token
 .SS fy_token_get_comment
 .INDENT 0.0
 .TP
-.B const char *fy_token_get_comment(struct fy_token *fyt, enum \fI\%fy_comment_placement\fP which) 
+.B const char *fy_token_get_comment(struct fy_token *fyt, enum fy_comment_placement which) 
 Get zero terminated comment of a token
 .INDENT 7.0
 .TP
@@ -2019,7 +2020,7 @@ Get zero terminated comment of a token
 .IP \(bu 2
 \fBfyt\fP (struct fy_token*) – The token out of which the comment text will be returned.
 .IP \(bu 2
-\fBwhich\fP (enum \fI\%fy_comment_placement\fP) – The comment placement
+\fBwhich\fP (enum fy_comment_placement) – The comment placement
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2056,7 +2057,7 @@ NULL in case of an error or if the event has no comments.
 .SS fy_token_set_comment
 .INDENT 0.0
 .TP
-.B int fy_token_set_comment(struct fy_token *fyt, enum \fI\%fy_comment_placement\fP which, const char *text, size_t len) 
+.B int fy_token_set_comment(struct fy_token *fyt, enum fy_comment_placement which, const char *text, size_t len) 
 Attach a comment to a token
 .INDENT 7.0
 .TP
@@ -2065,7 +2066,7 @@ Attach a comment to a token
 .IP \(bu 2
 \fBfyt\fP (struct fy_token*) – The token out of which the comment text will be attached
 .IP \(bu 2
-\fBwhich\fP (enum \fI\%fy_comment_placement\fP) – The placement
+\fBwhich\fP (enum fy_comment_placement) – The placement
 .IP \(bu 2
 \fBtext\fP (const char*) – The text of the comment
 .IP \(bu 2
@@ -2084,14 +2085,14 @@ If text is NULL the comment is removed.
 .SS fy_event_get_comments
 .INDENT 0.0
 .TP
-.B const char *fy_event_get_comments(struct \fI\%fy_event\fP *fye) 
+.B const char *fy_event_get_comments(struct fy_event *fye) 
 Get all comments of an event
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event
+\fBfye\fP (struct fy_event*) – The event
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2104,7 +2105,7 @@ The pointer must be free’ed if it’s not NULL via a call to \fBfree()\fP
 .SS fy_node_get_comment
 .INDENT 0.0
 .TP
-.B const char *fy_node_get_comment(struct fy_node *fyn, enum \fI\%fy_comment_placement\fP which) 
+.B const char *fy_node_get_comment(struct fy_node *fyn, enum fy_comment_placement which) 
 Get comment of a node
 .INDENT 7.0
 .TP
@@ -2113,7 +2114,7 @@ Get comment of a node
 .IP \(bu 2
 \fBfyn\fP (struct fy_node*) – The node
 .IP \(bu 2
-\fBwhich\fP (enum \fI\%fy_comment_placement\fP) – The placement of the comment
+\fBwhich\fP (enum fy_comment_placement) – The placement of the comment
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2188,9 +2189,9 @@ Create a token iterator
 .SS Description
 .sp
 Create an iterator for operating on the given token, or
-a generic iterator for use with \fI\%fy_token_iter_start()\fP\&.
+a generic iterator for use with \fBfy_token_iter_start()\fP\&.
 The iterator must be destroyed with a matching call to
-\fI\%fy_token_iter_destroy()\fP\&.
+\fBfy_token_iter_destroy()\fP\&.
 .SS Return
 .sp
 A pointer to the newly created iterator, or NULL in case of
@@ -2211,7 +2212,7 @@ Destroy the iterator
 .UNINDENT
 .SS Description
 .sp
-Destroy the iterator created by \fI\%fy_token_iter_create()\fP\&.
+Destroy the iterator created by \fBfy_token_iter_create()\fP\&.
 .SS fy_token_iter_start
 .INDENT 0.0
 .TP
@@ -2231,7 +2232,7 @@ Start iterating over the contents of a token
 .SS Description
 .sp
 Prepare an iterator for operating on the given token.
-The iterator must be created via a previous call to \fI\%fy_token_iter_create()\fP
+The iterator must be created via a previous call to \fBfy_token_iter_create()\fP
 for user level API access.
 .SS fy_token_iter_finish
 .INDENT 0.0
@@ -2253,7 +2254,7 @@ Stop the iteration operation.
 .SS fy_token_iter_peek_chunk
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_iter_chunk\fP *fy_token_iter_peek_chunk(struct fy_token_iter *iter) 
+.B const struct fy_iter_chunk *fy_token_iter_peek_chunk(struct fy_token_iter *iter) 
 Peek at the next iterator chunk
 .INDENT 7.0
 .TP
@@ -2274,7 +2275,7 @@ no other.
 .SS fy_token_iter_chunk_next
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_iter_chunk\fP *fy_token_iter_chunk_next(struct fy_token_iter *iter, const struct \fI\%fy_iter_chunk\fP *curr, int *errp) 
+.B const struct fy_iter_chunk *fy_token_iter_chunk_next(struct fy_token_iter *iter, const struct fy_iter_chunk *curr, int *errp) 
 Get next iterator chunk
 .INDENT 7.0
 .TP
@@ -2283,7 +2284,7 @@ Get next iterator chunk
 .IP \(bu 2
 \fBiter\fP (struct fy_token_iter*) – The iterator.
 .IP \(bu 2
-\fBcurr\fP (const struct \fI\%fy_iter_chunk\fP*) – The current chunk, or NULL for the first one.
+\fBcurr\fP (const struct fy_iter_chunk*) – The current chunk, or NULL for the first one.
 .IP \(bu 2
 \fBerrp\fP (int*) – Pointer to an error return value or NULL
 .UNINDENT
@@ -2316,8 +2317,8 @@ Advance the iterator position
 .SS Description
 .sp
 Advance the read pointer of the iterator.
-Note that mixing calls of this with any call of \fI\%fy_token_iter_ungetc()\fP /
-\fI\%fy_token_iter_utf8_unget()\fP in a single iterator sequence leads
+Note that mixing calls of this with any call of \fBfy_token_iter_ungetc()\fP /
+\fBfy_token_iter_utf8_unget()\fP in a single iterator sequence leads
 to undefined behavior.
 .SS fy_token_iter_read
 .INDENT 0.0
@@ -2387,7 +2388,7 @@ Ungets a single character from an iterator
 .SS Description
 .sp
 Pushes back a single character to an iterator stream. It will be
-returned in subsequent calls of \fI\%fy_token_iter_getc()\fP\&. Currently
+returned in subsequent calls of \fBfy_token_iter_getc()\fP\&. Currently
 only a single character is allowed to be pushed back, and any
 further calls to ungetc will return an error.
 .SS Return
@@ -2517,7 +2518,7 @@ The next document from the parser stream.
 .INDENT 0.0
 .TP
 .B void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd) 
-Destroy a document created by \fI\%fy_parse_load_document()\fP
+Destroy a document created by \fBfy_parse_load_document()\fP
 .INDENT 7.0
 .TP
 .B Parameters
@@ -3069,7 +3070,7 @@ Diagnostic interface
 .UNINDENT
 .SS Description
 .sp
-Argument to the \fI\%fy_emitter_create()\fP method which
+Argument to the \fBfy_emitter_create()\fP method which
 is the way to convert a runtime document structure back to YAML.
 .SS enum fy_emitter_xcfg_flags
 .INDENT 0.0
@@ -3201,14 +3202,14 @@ set.
 .SS fy_emitter_create
 .INDENT 0.0
 .TP
-.B struct fy_emitter *fy_emitter_create(const struct \fI\%fy_emitter_cfg\fP *cfg) 
+.B struct fy_emitter *fy_emitter_create(const struct fy_emitter_cfg *cfg) 
 Create an emitter
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct \fI\%fy_emitter_cfg\fP*) – The emitter configuration
+\fBcfg\fP (const struct fy_emitter_cfg*) – The emitter configuration
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3234,11 +3235,11 @@ Destroy an emitter
 .UNINDENT
 .SS Description
 .sp
-Destroy an emitter previously created by \fI\%fy_emitter_create()\fP
+Destroy an emitter previously created by \fBfy_emitter_create()\fP
 .SS fy_emitter_get_cfg
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_emitter_cfg\fP *fy_emitter_get_cfg(struct fy_emitter *emit) 
+.B const struct fy_emitter_cfg *fy_emitter_get_cfg(struct fy_emitter *emit) 
 Get the configuration of an emitter
 .INDENT 7.0
 .TP
@@ -3270,7 +3271,7 @@ Get the diagnostic object of an emitter
 .sp
 Return a pointer to the diagnostic object of an emitter object.
 Note that the returned diag object has a reference taken so
-you should \fI\%fy_diag_unref()\fP it when you’re done with it.
+you should \fBfy_diag_unref()\fP it when you’re done with it.
 .SS Return
 .sp
 A pointer to a ref’ed diagnostic object or NULL in case of an
@@ -3358,7 +3359,7 @@ This is the argument to the default output method of the emitter.
 .SS fy_emitter_default_output
 .INDENT 0.0
 .TP
-.B int fy_emitter_default_output(struct fy_emitter *fye, enum \fI\%fy_emitter_write_type\fP type, const char *str, int len, void *userdata) 
+.B int fy_emitter_default_output(struct fy_emitter *fye, enum fy_emitter_write_type type, const char *str, int len, void *userdata) 
 The default colorizing output method
 .INDENT 7.0
 .TP
@@ -3367,7 +3368,7 @@ The default colorizing output method
 .IP \(bu 2
 \fBfye\fP (struct fy_emitter*) – The emitter
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_emitter_write_type\fP) – Type of the emitted output
+\fBtype\fP (enum fy_emitter_write_type) – Type of the emitted output
 .IP \(bu 2
 \fBstr\fP (const char*) – Pointer to the string to output
 .IP \(bu 2
@@ -3410,7 +3411,7 @@ The output will be colorized if the the file points to a tty.
 .SS fy_emit_event
 .INDENT 0.0
 .TP
-.B int fy_emit_event(struct fy_emitter *emit, struct \fI\%fy_event\fP *fye) 
+.B int fy_emit_event(struct fy_emitter *emit, struct fy_event *fye) 
 Queue (and possibly emit) an event
 .INDENT 7.0
 .TP
@@ -3419,7 +3420,7 @@ Queue (and possibly emit) an event
 .IP \(bu 2
 \fBemit\fP (struct fy_emitter*) – The emitter to use
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event to queue for emission
+\fBfye\fP (struct fy_event*) – The event to queue for emission
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3433,7 +3434,7 @@ output method which does not require creating a document.
 .SS fy_emit_vevent
 .INDENT 0.0
 .TP
-.B int fy_emit_vevent(struct fy_emitter *emit, enum \fI\%fy_event_type\fP type, va_list ap) 
+.B int fy_emit_vevent(struct fy_emitter *emit, enum fy_event_type type, va_list ap) 
 Queue (and possibly emit) an event using varargs
 .INDENT 7.0
 .TP
@@ -3442,7 +3443,7 @@ Queue (and possibly emit) an event using varargs
 .IP \(bu 2
 \fBemit\fP (struct fy_emitter*) – The emitter to use
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_event_type\fP) – The event type to create
+\fBtype\fP (enum fy_event_type) – The event type to create
 .IP \(bu 2
 \fBap\fP (va_list) – The variable argument list pointer.
 .UNINDENT
@@ -3451,14 +3452,14 @@ Queue (and possibly emit) an event using varargs
 .SS Description
 .sp
 Queue and output using the emitter. The format is identical to
-the one used in \fI\%fy_emit_event_vcreate()\fP\&.
+the one used in \fBfy_emit_event_vcreate()\fP\&.
 .SS Return
 .sp
 0 on success, \-1 on error
 .SS fy_emit_eventf
 .INDENT 0.0
 .TP
-.B int fy_emit_eventf(struct fy_emitter *emit, enum \fI\%fy_event_type\fP type, \&...) 
+.B int fy_emit_eventf(struct fy_emitter *emit, enum fy_event_type type, \&...) 
 Queue (and possibly emit) an event using variable args
 .INDENT 7.0
 .TP
@@ -3467,7 +3468,7 @@ Queue (and possibly emit) an event using variable args
 .IP \(bu 2
 \fBemit\fP (struct fy_emitter*) – The emitter to use
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_event_type\fP) – The event type to create
+\fBtype\fP (enum fy_event_type) – The event type to create
 .IP \(bu 2
 \fBellipsis\fP (ellipsis) – The optional extra arguments
 .UNINDENT
@@ -3476,14 +3477,14 @@ Queue (and possibly emit) an event using variable args
 .SS Description
 .sp
 Queue and output using the emitter. The format is identical to
-the one used in \fI\%fy_emit_event_create()\fP\&.
+the one used in \fBfy_emit_event_create()\fP\&.
 .SS Return
 .sp
 0 on success, \-1 on error
 .SS fy_emit_scalar_write
 .INDENT 0.0
 .TP
-.B int fy_emit_scalar_write(struct fy_emitter *fye, enum \fI\%fy_scalar_style\fP style, const char *anchor, const char *tag, const char *buf, size_t count) 
+.B int fy_emit_scalar_write(struct fy_emitter *fye, enum fy_scalar_style style, const char *anchor, const char *tag, const char *buf, size_t count) 
 Emit a scalar with write semantics
 .INDENT 7.0
 .TP
@@ -3492,7 +3493,7 @@ Emit a scalar with write semantics
 .IP \(bu 2
 \fBfye\fP (struct fy_emitter*) – The emitter to use
 .IP \(bu 2
-\fBstyle\fP (enum \fI\%fy_scalar_style\fP) – The scalar style to use
+\fBstyle\fP (enum fy_scalar_style) – The scalar style to use
 .IP \(bu 2
 \fBanchor\fP (const char*) – The anchor or NULL
 .IP \(bu 2
@@ -3514,7 +3515,7 @@ write interface.
 .SS fy_emit_scalar_vprintf
 .INDENT 0.0
 .TP
-.B int fy_emit_scalar_vprintf(struct fy_emitter *fye, enum \fI\%fy_scalar_style\fP style, const char *anchor, const char *tag, const char *fmt, va_list ap) 
+.B int fy_emit_scalar_vprintf(struct fy_emitter *fye, enum fy_scalar_style style, const char *anchor, const char *tag, const char *fmt, va_list ap) 
 Emit a scalar with vprintf semantics
 .INDENT 7.0
 .TP
@@ -3523,7 +3524,7 @@ Emit a scalar with vprintf semantics
 .IP \(bu 2
 \fBfye\fP (struct fy_emitter*) – The emitter to use
 .IP \(bu 2
-\fBstyle\fP (enum \fI\%fy_scalar_style\fP) – The scalar style to use
+\fBstyle\fP (enum fy_scalar_style) – The scalar style to use
 .IP \(bu 2
 \fBanchor\fP (const char*) – The anchor or NULL
 .IP \(bu 2
@@ -3545,7 +3546,7 @@ vprintf interface.
 .SS fy_emit_scalar_printf
 .INDENT 0.0
 .TP
-.B int fy_emit_scalar_printf(struct fy_emitter *fye, enum \fI\%fy_scalar_style\fP style, const char *anchor, const char *tag, const char *fmt, \&...) 
+.B int fy_emit_scalar_printf(struct fy_emitter *fye, enum fy_scalar_style style, const char *anchor, const char *tag, const char *fmt, \&...) 
 Emit a scalar with printf semantics
 .INDENT 7.0
 .TP
@@ -3554,7 +3555,7 @@ Emit a scalar with printf semantics
 .IP \(bu 2
 \fBfye\fP (struct fy_emitter*) – The emitter to use
 .IP \(bu 2
-\fBstyle\fP (enum \fI\%fy_scalar_style\fP) – The scalar style to use
+\fBstyle\fP (enum fy_scalar_style) – The scalar style to use
 .IP \(bu 2
 \fBanchor\fP (const char*) – The anchor or NULL
 .IP \(bu 2
@@ -3576,7 +3577,7 @@ printf interface.
 .SS fy_emit_event_from_parser
 .INDENT 0.0
 .TP
-.B int fy_emit_event_from_parser(struct fy_emitter *emit, struct fy_parser *fyp, struct \fI\%fy_event\fP *fye) 
+.B int fy_emit_event_from_parser(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_event *fye) 
 Queue (and possibly emit) an event generated by the parser.
 .INDENT 7.0
 .TP
@@ -3587,7 +3588,7 @@ Queue (and possibly emit) an event generated by the parser.
 .IP \(bu 2
 \fBfyp\fP (struct fy_parser*) – The parser that generated the event
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event to queue for emission
+\fBfye\fP (struct fy_event*) – The event to queue for emission
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3595,7 +3596,7 @@ Queue (and possibly emit) an event generated by the parser.
 .sp
 Queue and output using the emitter. This is the streaming
 output method which does not require creating a document.
-Similar to \fI\%fy_emit_event()\fP but it is more efficient.
+Similar to \fBfy_emit_event()\fP but it is more efficient.
 .SS Return
 .sp
 0 on success, \-1 on error
@@ -3761,7 +3762,7 @@ you need finer control over the emitting output.
 .SS fy_emit_document_to_fp
 .INDENT 0.0
 .TP
-.B int fy_emit_document_to_fp(struct fy_document *fyd, enum \fI\%fy_emitter_cfg_flags\fP flags, FILE *fp) 
+.B int fy_emit_document_to_fp(struct fy_document *fyd, enum fy_emitter_cfg_flags flags, FILE *fp) 
 Emit a document to an file pointer
 .INDENT 7.0
 .TP
@@ -3770,7 +3771,7 @@ Emit a document to an file pointer
 .IP \(bu 2
 \fBfyd\fP (struct fy_document*) – The document to emit
 .IP \(bu 2
-\fBflags\fP (enum \fI\%fy_emitter_cfg_flags\fP) – The emitter flags to use
+\fBflags\fP (enum fy_emitter_cfg_flags) – The emitter flags to use
 .IP \(bu 2
 \fBfp\fP (FILE*) – The file pointer to output to
 .UNINDENT
@@ -3785,7 +3786,7 @@ Emits a document from the root to the given file pointer.
 .SS fy_emit_document_to_file
 .INDENT 0.0
 .TP
-.B int fy_emit_document_to_file(struct fy_document *fyd, enum \fI\%fy_emitter_cfg_flags\fP flags, const char *filename) 
+.B int fy_emit_document_to_file(struct fy_document *fyd, enum fy_emitter_cfg_flags flags, const char *filename) 
 Emit a document to file
 .INDENT 7.0
 .TP
@@ -3794,7 +3795,7 @@ Emit a document to file
 .IP \(bu 2
 \fBfyd\fP (struct fy_document*) – The document to emit
 .IP \(bu 2
-\fBflags\fP (enum \fI\%fy_emitter_cfg_flags\fP) – The emitter flags to use
+\fBflags\fP (enum fy_emitter_cfg_flags) – The emitter flags to use
 .IP \(bu 2
 \fBfilename\fP (const char*) – The filename to output to, or NULL for stdout
 .UNINDENT
@@ -3810,7 +3811,7 @@ The file will be fopen’ed using a “wa” mode.
 .SS fy_emit_document_to_fd
 .INDENT 0.0
 .TP
-.B int fy_emit_document_to_fd(struct fy_document *fyd, enum \fI\%fy_emitter_cfg_flags\fP flags, int fd) 
+.B int fy_emit_document_to_fd(struct fy_document *fyd, enum fy_emitter_cfg_flags flags, int fd) 
 Emit a document to a file descriptor
 .INDENT 7.0
 .TP
@@ -3819,7 +3820,7 @@ Emit a document to a file descriptor
 .IP \(bu 2
 \fBfyd\fP (struct fy_document*) – The document to emit
 .IP \(bu 2
-\fBflags\fP (enum \fI\%fy_emitter_cfg_flags\fP) – The emitter flags to use
+\fBflags\fP (enum fy_emitter_cfg_flags) – The emitter flags to use
 .IP \(bu 2
 \fBfd\fP (int) – The file descriptor to output to
 .UNINDENT
@@ -3834,7 +3835,7 @@ Emits a document from the root to the given file descriptor
 .SS fy_emit_document_to_buffer
 .INDENT 0.0
 .TP
-.B int fy_emit_document_to_buffer(struct fy_document *fyd, enum \fI\%fy_emitter_cfg_flags\fP flags, char *buf, size_t size) 
+.B int fy_emit_document_to_buffer(struct fy_document *fyd, enum fy_emitter_cfg_flags flags, char *buf, size_t size) 
 Emit a document to a buffer
 .INDENT 7.0
 .TP
@@ -3843,7 +3844,7 @@ Emit a document to a buffer
 .IP \(bu 2
 \fBfyd\fP (struct fy_document*) – The document to emit
 .IP \(bu 2
-\fBflags\fP (enum \fI\%fy_emitter_cfg_flags\fP) – The emitter flags to use
+\fBflags\fP (enum fy_emitter_cfg_flags) – The emitter flags to use
 .IP \(bu 2
 \fBbuf\fP (char*) – Pointer to the buffer area to fill
 .IP \(bu 2
@@ -3862,7 +3863,7 @@ on the buffer on success, \-1 on error
 .SS fy_emit_document_to_string
 .INDENT 0.0
 .TP
-.B char *fy_emit_document_to_string(struct fy_document *fyd, enum \fI\%fy_emitter_cfg_flags\fP flags) 
+.B char *fy_emit_document_to_string(struct fy_document *fyd, enum fy_emitter_cfg_flags flags) 
 Emit a document to an allocated string
 .INDENT 7.0
 .TP
@@ -3871,7 +3872,7 @@ Emit a document to an allocated string
 .IP \(bu 2
 \fBfyd\fP (struct fy_document*) – The document to emit
 .IP \(bu 2
-\fBflags\fP (enum \fI\%fy_emitter_cfg_flags\fP) – The emitter flags to use
+\fBflags\fP (enum fy_emitter_cfg_flags) – The emitter flags to use
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3885,7 +3886,7 @@ A pointer to the allocated string, or NULL in case of an error
 .SS fy_emit_node_to_buffer
 .INDENT 0.0
 .TP
-.B int fy_emit_node_to_buffer(struct fy_node *fyn, enum \fI\%fy_emitter_cfg_flags\fP flags, char *buf, size_t size) 
+.B int fy_emit_node_to_buffer(struct fy_node *fyn, enum fy_emitter_cfg_flags flags, char *buf, size_t size) 
 Emit a node (recursively) to a buffer
 .INDENT 7.0
 .TP
@@ -3894,7 +3895,7 @@ Emit a node (recursively) to a buffer
 .IP \(bu 2
 \fBfyn\fP (struct fy_node*) – The node to emit
 .IP \(bu 2
-\fBflags\fP (enum \fI\%fy_emitter_cfg_flags\fP) – The emitter flags to use
+\fBflags\fP (enum fy_emitter_cfg_flags) – The emitter flags to use
 .IP \(bu 2
 \fBbuf\fP (char*) – Pointer to the buffer area to fill
 .IP \(bu 2
@@ -3913,7 +3914,7 @@ on the buffer on success, \-1 on error
 .SS fy_emit_node_to_string
 .INDENT 0.0
 .TP
-.B char *fy_emit_node_to_string(struct fy_node *fyn, enum \fI\%fy_emitter_cfg_flags\fP flags) 
+.B char *fy_emit_node_to_string(struct fy_node *fyn, enum fy_emitter_cfg_flags flags) 
 Emit a node to an allocated string
 .INDENT 7.0
 .TP
@@ -3922,7 +3923,7 @@ Emit a node to an allocated string
 .IP \(bu 2
 \fBfyn\fP (struct fy_node*) – The node to emit
 .IP \(bu 2
-\fBflags\fP (enum \fI\%fy_emitter_cfg_flags\fP) – The emitter flags to use
+\fBflags\fP (enum fy_emitter_cfg_flags) – The emitter flags to use
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3936,14 +3937,14 @@ A pointer to the allocated string, or NULL in case of an error
 .SS fy_emit_to_buffer
 .INDENT 0.0
 .TP
-.B struct fy_emitter *fy_emit_to_buffer(enum \fI\%fy_emitter_cfg_flags\fP flags, char *buf, size_t size) 
+.B struct fy_emitter *fy_emit_to_buffer(enum fy_emitter_cfg_flags flags, char *buf, size_t size) 
 Create an emitter for buffer output.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBflags\fP (enum \fI\%fy_emitter_cfg_flags\fP) – The emitter flags to use
+\fBflags\fP (enum fy_emitter_cfg_flags) – The emitter flags to use
 .IP \(bu 2
 \fBbuf\fP (char*) – Pointer to the buffer area to fill
 .IP \(bu 2
@@ -3954,8 +3955,8 @@ Create an emitter for buffer output.
 .SS Description
 .sp
 Creates a special purpose emitter for buffer output.
-Calls to \fI\%fy_emit_event()\fP populate the buffer.
-The contents are retreived by a call to \fI\%fy_emit_to_buffer_collect()\fP
+Calls to \fBfy_emit_event()\fP populate the buffer.
+The contents are retreived by a call to \fBfy_emit_to_buffer_collect()\fP
 .SS Return
 .sp
 The newly created emitter or NULL on error.
@@ -3978,9 +3979,9 @@ Collect the buffer emitter output
 .SS Description
 .sp
 Collects the output of the emitter which was created by
-\fI\%fy_emit_to_buffer()\fP and populated using \fI\%fy_emit_event()\fP calls.
+\fBfy_emit_to_buffer()\fP and populated using \fBfy_emit_event()\fP calls.
 The NULL terminated returned buffer is the same as the one used in the
-\fI\%fy_emit_to_buffer()\fP call and the sizep argument will be filled with
+\fBfy_emit_to_buffer()\fP call and the sizep argument will be filled with
 the size of the buffer.
 .SS Return
 .sp
@@ -3988,14 +3989,14 @@ The buffer or NULL in case of an error.
 .SS fy_emit_to_string
 .INDENT 0.0
 .TP
-.B struct fy_emitter *fy_emit_to_string(enum \fI\%fy_emitter_cfg_flags\fP flags) 
+.B struct fy_emitter *fy_emit_to_string(enum fy_emitter_cfg_flags flags) 
 Create an emitter to create a dynamically allocated string.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBflags\fP (enum \fI\%fy_emitter_cfg_flags\fP) – The emitter flags to use
+\fBflags\fP (enum fy_emitter_cfg_flags) – The emitter flags to use
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4003,8 +4004,8 @@ Create an emitter to create a dynamically allocated string.
 .sp
 Creates a special purpose emitter for output to a dynamically
 allocated string.
-Calls to \fI\%fy_emit_event()\fP populate the buffer.
-The contents are retreived by a call to \fI\%fy_emit_to_string_collect()\fP
+Calls to \fBfy_emit_event()\fP populate the buffer.
+The contents are retreived by a call to \fBfy_emit_to_string_collect()\fP
 .SS Return
 .sp
 The newly created emitter or NULL on error.
@@ -4027,7 +4028,7 @@ Collect the string emitter output
 .SS Description
 .sp
 Collects the output of the emitter which was created by
-\fI\%fy_emit_to_string()\fP and populated using \fI\%fy_emit_event()\fP calls.
+\fBfy_emit_to_string()\fP and populated using \fBfy_emit_event()\fP calls.
 The NULL terminated returned buffer is dynamically allocated
 and must be freed via a call to \fBfree()\fP\&.
 The sizep argument will be filled with the size of the buffer.
@@ -4361,14 +4362,14 @@ Default path type
 .SS fy_node_style_from_scalar_style
 .INDENT 0.0
 .TP
-.B enum \fI\%fy_node_style\fP fy_node_style_from_scalar_style(enum \fI\%fy_scalar_style\fP sstyle) 
+.B enum fy_node_style fy_node_style_from_scalar_style(enum fy_scalar_style sstyle) 
 Convert from scalar to node style
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBsstyle\fP (enum \fI\%fy_scalar_style\fP) – The input scalar style
+\fBsstyle\fP (enum fy_scalar_style) – The input scalar style
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4453,7 +4454,7 @@ true if the nodes contain the same content, false otherwise
 .SS fy_node_compare_user
 .INDENT 0.0
 .TP
-.B bool fy_node_compare_user(struct fy_node *fyn1, struct fy_node *fyn2, \fI\%fy_node_mapping_sort_fn\fP sort_fn, void *sort_fn_arg, \fI\%fy_node_scalar_compare_fn\fP cmp_fn, void *cmp_fn_arg) 
+.B bool fy_node_compare_user(struct fy_node *fyn1, struct fy_node *fyn2, fy_node_mapping_sort_fn sort_fn, void *sort_fn_arg, fy_node_scalar_compare_fn cmp_fn, void *cmp_fn_arg) 
 Compare two nodes for equality using user supplied sort and scalar compare methods
 .INDENT 7.0
 .TP
@@ -4464,11 +4465,11 @@ Compare two nodes for equality using user supplied sort and scalar compare metho
 .IP \(bu 2
 \fBfyn2\fP (struct fy_node*) – The second node to use in the comparison
 .IP \(bu 2
-\fBsort_fn\fP (\fI\%fy_node_mapping_sort_fn\fP) – The method to use for sorting maps, or NULL for the default
+\fBsort_fn\fP (fy_node_mapping_sort_fn) – The method to use for sorting maps, or NULL for the default
 .IP \(bu 2
 \fBsort_fn_arg\fP (void*) – The extra user supplied argument to the \fBsort_fn\fP
 .IP \(bu 2
-\fBcmp_fn\fP (\fI\%fy_node_scalar_compare_fn\fP) – The method to use for comparing scalars, or NULL for the default
+\fBcmp_fn\fP (fy_node_scalar_compare_fn) – The method to use for comparing scalars, or NULL for the default
 .IP \(bu 2
 \fBcmp_fn_arg\fP (void*) – The extra user supplied argument to the \fBcmp_fn\fP
 .UNINDENT
@@ -4506,7 +4507,7 @@ Compare a node for equality with a YAML string
 .SS Description
 .sp
 Compare a node for equality with a YAML string.
-The comparison is performed using \fI\%fy_node_compare()\fP with the
+The comparison is performed using \fBfy_node_compare()\fP with the
 first node supplied as an argument and the second being generated
 by calling fy_document_build_from_string with the YAML string.
 .SS Return
@@ -4563,14 +4564,14 @@ true if the node and the text are equal.
 .SS fy_document_create
 .INDENT 0.0
 .TP
-.B struct fy_document *fy_document_create(const struct \fI\%fy_parse_cfg\fP *cfg) 
+.B struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg) 
 Create an empty document
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct \fI\%fy_parse_cfg\fP*) – The parse configuration to use or NULL for the default.
+\fBcfg\fP (const struct fy_parse_cfg*) – The parse configuration to use or NULL for the default.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4585,7 +4586,7 @@ The created empty document, or NULL on error.
 .INDENT 0.0
 .TP
 .B void fy_document_destroy(struct fy_document *fyd) 
-Destroy a document previously created via \fI\%fy_document_create()\fP
+Destroy a document previously created via \fBfy_document_create()\fP
 .INDENT 7.0
 .TP
 .B Parameters
@@ -4601,7 +4602,7 @@ Destroy a document (along with all children documents)
 .SS fy_document_get_cfg
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_parse_cfg\fP *fy_document_get_cfg(struct fy_document *fyd) 
+.B const struct fy_parse_cfg *fy_document_get_cfg(struct fy_document *fyd) 
 Get the configuration of a document
 .INDENT 7.0
 .TP
@@ -4633,7 +4634,7 @@ Get the diagnostic object of a document
 .sp
 Return a pointer to the diagnostic object of a document object.
 Note that the returned diag object has a reference taken so
-you should \fI\%fy_diag_unref()\fP it when you’re done with it.
+you should \fBfy_diag_unref()\fP it when you’re done with it.
 .SS Return
 .sp
 A pointer to a ref’ed diagnostic object or NULL in case of an
@@ -4688,14 +4689,14 @@ Set the parent of \fBfyd_child\fP document to be \fBfyd\fP
 .SS fy_document_build_from_string
 .INDENT 0.0
 .TP
-.B struct fy_document *fy_document_build_from_string(const struct \fI\%fy_parse_cfg\fP *cfg, const char *str, size_t len) 
+.B struct fy_document *fy_document_build_from_string(const struct fy_parse_cfg *cfg, const char *str, size_t len) 
 Create a document using the provided YAML source.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct \fI\%fy_parse_cfg\fP*) – The parse configuration to use or NULL for the default.
+\fBcfg\fP (const struct fy_parse_cfg*) – The parse configuration to use or NULL for the default.
 .IP \(bu 2
 \fBstr\fP (const char*) – The YAML source to use.
 .IP \(bu 2
@@ -4712,14 +4713,14 @@ The created document, or NULL on error.
 .SS fy_document_build_from_malloc_string
 .INDENT 0.0
 .TP
-.B struct fy_document *fy_document_build_from_malloc_string(const struct \fI\%fy_parse_cfg\fP *cfg, char *str, size_t len) 
+.B struct fy_document *fy_document_build_from_malloc_string(const struct fy_parse_cfg *cfg, char *str, size_t len) 
 Create a document using the provided YAML source which was malloced.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct \fI\%fy_parse_cfg\fP*) – The parse configuration to use or NULL for the default.
+\fBcfg\fP (const struct fy_parse_cfg*) – The parse configuration to use or NULL for the default.
 .IP \(bu 2
 \fBstr\fP (char*) – The YAML source to use.
 .IP \(bu 2
@@ -4737,14 +4738,14 @@ The created document, or NULL on error.
 .SS fy_document_build_from_file
 .INDENT 0.0
 .TP
-.B struct fy_document *fy_document_build_from_file(const struct \fI\%fy_parse_cfg\fP *cfg, const char *file) 
+.B struct fy_document *fy_document_build_from_file(const struct fy_parse_cfg *cfg, const char *file) 
 Create a document parsing the given file
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct \fI\%fy_parse_cfg\fP*) – The parse configuration to use or NULL for the default.
+\fBcfg\fP (const struct fy_parse_cfg*) – The parse configuration to use or NULL for the default.
 .IP \(bu 2
 \fBfile\fP (const char*) – The name of the file to parse
 .UNINDENT
@@ -4759,14 +4760,14 @@ The created document, or NULL on error.
 .SS fy_document_build_from_fp
 .INDENT 0.0
 .TP
-.B struct fy_document *fy_document_build_from_fp(const struct \fI\%fy_parse_cfg\fP *cfg, FILE *fp) 
+.B struct fy_document *fy_document_build_from_fp(const struct fy_parse_cfg *cfg, FILE *fp) 
 Create a document parsing the given file pointer
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct \fI\%fy_parse_cfg\fP*) – The parse configuration to use or NULL for the default.
+\fBcfg\fP (const struct fy_parse_cfg*) – The parse configuration to use or NULL for the default.
 .IP \(bu 2
 \fBfp\fP (FILE*) – The file pointer
 .UNINDENT
@@ -4781,14 +4782,14 @@ The created document, or NULL on error.
 .SS fy_document_vbuildf
 .INDENT 0.0
 .TP
-.B struct fy_document *fy_document_vbuildf(const struct \fI\%fy_parse_cfg\fP *cfg, const char *fmt, va_list ap) 
+.B struct fy_document *fy_document_vbuildf(const struct fy_parse_cfg *cfg, const char *fmt, va_list ap) 
 Create a document using the provided YAML via vprintf formatting
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct \fI\%fy_parse_cfg\fP*) – The parse configuration to use or NULL for the default.
+\fBcfg\fP (const struct fy_parse_cfg*) – The parse configuration to use or NULL for the default.
 .IP \(bu 2
 \fBfmt\fP (const char*) – The format string creating the YAML source to use.
 .IP \(bu 2
@@ -4806,14 +4807,14 @@ The created document, or NULL on error.
 .SS fy_document_buildf
 .INDENT 0.0
 .TP
-.B struct fy_document *fy_document_buildf(const struct \fI\%fy_parse_cfg\fP *cfg, const char *fmt, \&...) 
+.B struct fy_document *fy_document_buildf(const struct fy_parse_cfg *cfg, const char *fmt, \&...) 
 Create a document using the provided YAML source via printf formatting
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct \fI\%fy_parse_cfg\fP*) – The parse configuration to use or NULL for the default.
+\fBcfg\fP (const struct fy_parse_cfg*) – The parse configuration to use or NULL for the default.
 .IP \(bu 2
 \fBfmt\fP (const char*) – The format string creating the YAML source to use.
 .IP \(bu 2
@@ -4831,14 +4832,14 @@ The created document, or NULL on error.
 .SS fy_flow_document_build_from_string
 .INDENT 0.0
 .TP
-.B struct fy_document *fy_flow_document_build_from_string(const struct \fI\%fy_parse_cfg\fP *cfg, const char *str, size_t len, size_t *consumed) 
+.B struct fy_document *fy_flow_document_build_from_string(const struct fy_parse_cfg *cfg, const char *str, size_t len, size_t *consumed) 
 Create a document using the provided YAML source.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct \fI\%fy_parse_cfg\fP*) – The parse configuration to use or NULL for the default.
+\fBcfg\fP (const struct fy_parse_cfg*) – The parse configuration to use or NULL for the default.
 .IP \(bu 2
 \fBstr\fP (const char*) – The YAML source to use.
 .IP \(bu 2
@@ -4870,14 +4871,14 @@ The created document, or NULL on error.
 .SS fy_block_document_build_from_string
 .INDENT 0.0
 .TP
-.B struct fy_document *fy_block_document_build_from_string(const struct \fI\%fy_parse_cfg\fP *cfg, const char *str, size_t len, size_t *consumed) 
+.B struct fy_document *fy_block_document_build_from_string(const struct fy_parse_cfg *cfg, const char *str, size_t len, size_t *consumed) 
 Create a document using the provided YAML source.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct \fI\%fy_parse_cfg\fP*) – The parse configuration to use or NULL for the default.
+\fBcfg\fP (const struct fy_parse_cfg*) – The parse configuration to use or NULL for the default.
 .IP \(bu 2
 \fBstr\fP (const char*) – The YAML source to use.
 .IP \(bu 2
@@ -4957,7 +4958,7 @@ document is set to empty.
 .SS fy_node_get_type
 .INDENT 0.0
 .TP
-.B enum \fI\%fy_node_type\fP fy_node_get_type(struct fy_node *fyn) 
+.B enum fy_node_type fy_node_get_type(struct fy_node *fyn) 
 Get the node type
 .INDENT 7.0
 .TP
@@ -4978,7 +4979,7 @@ The node type
 .SS fy_node_get_style
 .INDENT 0.0
 .TP
-.B enum \fI\%fy_node_style\fP fy_node_get_style(struct fy_node *fyn) 
+.B enum fy_node_style fy_node_get_style(struct fy_node *fyn) 
 Get the node style
 .INDENT 7.0
 .TP
@@ -4999,7 +5000,7 @@ The node style
 .SS fy_node_set_style
 .INDENT 0.0
 .TP
-.B enum \fI\%fy_node_style\fP fy_node_set_style(struct fy_node *fyn, enum \fI\%fy_node_style\fP style) 
+.B enum fy_node_style fy_node_set_style(struct fy_node *fyn, enum fy_node_style style) 
 Set the node style
 .INDENT 7.0
 .TP
@@ -5008,7 +5009,7 @@ Set the node style
 .IP \(bu 2
 \fBfyn\fP (struct fy_node*) – The node
 .IP \(bu 2
-\fBstyle\fP (enum \fI\%fy_node_style\fP) – The requested node rendering style
+\fBstyle\fP (enum fy_node_style) – The requested node rendering style
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5459,7 +5460,7 @@ The created node, or NULL on error.
 .SS fy_node_by_path
 .INDENT 0.0
 .TP
-.B struct fy_node *fy_node_by_path(struct fy_node *fyn, const char *path, size_t len, enum \fI\%fy_node_walk_flags\fP flags) 
+.B struct fy_node *fy_node_by_path(struct fy_node *fyn, const char *path, size_t len, enum fy_node_walk_flags flags) 
 Retrieve a node using the provided path spec.
 .INDENT 7.0
 .TP
@@ -5472,7 +5473,7 @@ Retrieve a node using the provided path spec.
 .IP \(bu 2
 \fBlen\fP (size_t) – The length of the path (or \-1 if ‘0’ terminated)
 .IP \(bu 2
-\fBflags\fP (enum \fI\%fy_node_walk_flags\fP) – The extra path walk flags
+\fBflags\fP (enum fy_node_walk_flags) – The extra path walk flags
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -6094,7 +6095,7 @@ Get the scalar content of the node
 This method will return a pointer to the text of the scalar
 content of a node as a null terminated string.
 Note that this call will allocate memory to hold the null terminated
-string so if possible use \fI\%fy_node_get_scalar()\fP
+string so if possible use \fBfy_node_get_scalar()\fP
 .SS Return
 .sp
 A pointer to the scalar content of the node or NULL in returned in case of an error.
@@ -6394,7 +6395,7 @@ Sequence sorting method function
 .SS fy_node_sequence_sort
 .INDENT 0.0
 .TP
-.B int fy_node_sequence_sort(struct fy_node *fyn_seq, \fI\%fy_node_sequence_sort_fn\fP cmp, void *arg) 
+.B int fy_node_sequence_sort(struct fy_node *fyn_seq, fy_node_sequence_sort_fn cmp, void *arg) 
 Sort a sequence’s items
 .INDENT 7.0
 .TP
@@ -6403,7 +6404,7 @@ Sort a sequence’s items
 .IP \(bu 2
 \fBfyn_seq\fP (struct fy_node*) – The sequence node to sort
 .IP \(bu 2
-\fBcmp\fP (\fI\%fy_node_sequence_sort_fn\fP) – The comparison method
+\fBcmp\fP (fy_node_sequence_sort_fn) – The comparison method
 .IP \(bu 2
 \fBarg\fP (void*) – An opaque user pointer for the comparison method
 .UNINDENT
@@ -6558,7 +6559,7 @@ Lookup a node pair in mapping by string
 .sp
 This method will return the node pair that contains the same key
 from the YAML node created from the \fBkey\fP argument. The comparison of the
-node is using \fI\%fy_node_compare()\fP
+node is using \fBfy_node_compare()\fP
 .SS Return
 .sp
 The value matching the given key, or NULL if not found.
@@ -6584,7 +6585,7 @@ Lookup a node value in mapping by string
 .sp
 This method will return the value of node pair that contains the same key
 from the YAML node created from the \fBkey\fP argument. The comparison of the
-node is using \fI\%fy_node_compare()\fP
+node is using \fBfy_node_compare()\fP
 .SS Return
 .sp
 The value matching the given key, or NULL if not found.
@@ -6610,9 +6611,9 @@ Lookup a node value in mapping by string
 .sp
 This method will return the value of node pair that contains the same key
 from the YAML node created from the \fBkey\fP argument. The comparison of the
-node is using \fI\%fy_node_compare()\fP
+node is using \fBfy_node_compare()\fP
 .sp
-It is synonymous with \fI\%fy_node_mapping_lookup_by_string()\fP\&.
+It is synonymous with \fBfy_node_mapping_lookup_by_string()\fP\&.
 .SS Return
 .sp
 The value matching the given key, or NULL if not found.
@@ -6638,7 +6639,7 @@ Lookup a node key in mapping by string
 .sp
 This method will return the key of node pair that contains the same key
 from the YAML node created from the \fBkey\fP argument. The comparison of the
-node is using \fI\%fy_node_compare()\fP
+node is using \fBfy_node_compare()\fP
 .SS Return
 .sp
 The key matching the given key, or NULL if not found.
@@ -7053,7 +7054,7 @@ Remove node pair from a mapping.
 .SS fy_node_mapping_sort
 .INDENT 0.0
 .TP
-.B int fy_node_mapping_sort(struct fy_node *fyn_map, \fI\%fy_node_mapping_sort_fn\fP key_cmp, void *arg) 
+.B int fy_node_mapping_sort(struct fy_node *fyn_map, fy_node_mapping_sort_fn key_cmp, void *arg) 
 Sort a single mapping’s keys
 .INDENT 7.0
 .TP
@@ -7062,7 +7063,7 @@ Sort a single mapping’s keys
 .IP \(bu 2
 \fBfyn_map\fP (struct fy_node*) – The mapping node to sort
 .IP \(bu 2
-\fBkey_cmp\fP (\fI\%fy_node_mapping_sort_fn\fP) – The comparison method
+\fBkey_cmp\fP (fy_node_mapping_sort_fn) – The comparison method
 .IP \(bu 2
 \fBarg\fP (void*) – An opaque user pointer for the comparison method
 .UNINDENT
@@ -7071,7 +7072,7 @@ Sort a single mapping’s keys
 .SS Description
 .sp
 Sort the keys of a single mapping node using the given comparison method (if NULL use the default one).
-Unlike \fI\%fy_node_sort()\fP, this does not recurse into child nodes.
+Unlike \fBfy_node_sort()\fP, this does not recurse into child nodes.
 .SS Return
 .sp
 0 on success, \-1 on error
@@ -7100,7 +7101,7 @@ The value part of removed node pair, or NULL in case of an error.
 .SS fy_node_sort
 .INDENT 0.0
 .TP
-.B int fy_node_sort(struct fy_node *fyn, \fI\%fy_node_mapping_sort_fn\fP key_cmp, void *arg) 
+.B int fy_node_sort(struct fy_node *fyn, fy_node_mapping_sort_fn key_cmp, void *arg) 
 Recursively sort node
 .INDENT 7.0
 .TP
@@ -7109,7 +7110,7 @@ Recursively sort node
 .IP \(bu 2
 \fBfyn\fP (struct fy_node*) – The node to sort
 .IP \(bu 2
-\fBkey_cmp\fP (\fI\%fy_node_mapping_sort_fn\fP) – The comparison method
+\fBkey_cmp\fP (fy_node_mapping_sort_fn) – The comparison method
 .IP \(bu 2
 \fBarg\fP (void*) – An opaque user pointer for the comparison method
 .UNINDENT
@@ -7568,7 +7569,7 @@ Places an anchor to the node with the give text name.
 Note that the data are not copied, merely a reference is taken, so
 it must be available while the node is in use.
 .sp
-Also not that this method is deprecated; use \fI\%fy_node_set_anchor()\fP
+Also not that this method is deprecated; use \fBfy_node_set_anchor()\fP
 instead.
 .SS Return
 .sp
@@ -7598,7 +7599,7 @@ Places an anchor to the node with the give text name.
 Note that the data are not copied, merely a reference is taken, so
 it must be available while the node is in use.
 .sp
-This is similar to \fI\%fy_document_set_anchor()\fP with the document set
+This is similar to \fBfy_document_set_anchor()\fP with the document set
 to the document of the \fBfyn\fP node.
 .SS Return
 .sp
@@ -7888,9 +7889,9 @@ Meta data clear method
 .IP \(bu 2
 \fBfyn\fP (struct fy_node*) – The node which the meta data is being cleared
 .IP \(bu 2
-\fBmeta\fP (void*) – The meta data of the node assigned via \fI\%fy_node_set_meta()\fP
+\fBmeta\fP (void*) – The meta data of the node assigned via \fBfy_node_set_meta()\fP
 .IP \(bu 2
-\fBuser\fP (void*) – The user pointer of \fI\%fy_document_register_meta()\fP
+\fBuser\fP (void*) – The user pointer of \fBfy_document_register_meta()\fP
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7900,7 +7901,7 @@ This is the callback called when meta data are cleared.
 .SS fy_document_register_meta
 .INDENT 0.0
 .TP
-.B int fy_document_register_meta(struct fy_document *fyd, \fI\%fy_node_meta_clear_fn\fP clear_fn, void *user) 
+.B int fy_document_register_meta(struct fy_document *fyd, fy_node_meta_clear_fn clear_fn, void *user) 
 Register a meta cleanup hook
 .INDENT 7.0
 .TP
@@ -7909,7 +7910,7 @@ Register a meta cleanup hook
 .IP \(bu 2
 \fBfyd\fP (struct fy_document*) – The document which the hook is registered to
 .IP \(bu 2
-\fBclear_fn\fP (\fI\%fy_node_meta_clear_fn\fP) – The clear hook method
+\fBclear_fn\fP (fy_node_meta_clear_fn) – The clear hook method
 .IP \(bu 2
 \fBuser\fP (void*) – Opaque user provided pointer to the clear method
 .UNINDENT
@@ -7918,7 +7919,7 @@ Register a meta cleanup hook
 .SS Description
 .sp
 Register a meta data cleanup hook, to be called when
-the node is freed via a final call to \fI\%fy_node_free()\fP\&.
+the node is freed via a final call to \fBfy_node_free()\fP\&.
 The hook is active for all nodes belonging to the document.
 .SS Return
 .sp
@@ -8015,7 +8016,7 @@ The value of the marker (invalid markers return false)
 .SS fy_node_vreport
 .INDENT 0.0
 .TP
-.B void fy_node_vreport(struct fy_node *fyn, enum \fI\%fy_error_type\fP type, const char *fmt, va_list ap) 
+.B void fy_node_vreport(struct fy_node *fyn, enum fy_error_type type, const char *fmt, va_list ap) 
 Report about a node vprintf style
 .INDENT 7.0
 .TP
@@ -8024,7 +8025,7 @@ Report about a node vprintf style
 .IP \(bu 2
 \fBfyn\fP (struct fy_node*) – The node
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfmt\fP (const char*) – The printf format string
 .IP \(bu 2
@@ -8040,7 +8041,7 @@ document.
 .SS fy_node_report
 .INDENT 0.0
 .TP
-.B void fy_node_report(struct fy_node *fyn, enum \fI\%fy_error_type\fP type, const char *fmt, \&...) 
+.B void fy_node_report(struct fy_node *fyn, enum fy_error_type type, const char *fmt, \&...) 
 Report about a node printf style
 .INDENT 7.0
 .TP
@@ -8049,7 +8050,7 @@ Report about a node printf style
 .IP \(bu 2
 \fBfyn\fP (struct fy_node*) – The node
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfmt\fP (const char*) – The printf format string
 .IP \(bu 2
@@ -8065,7 +8066,7 @@ document.
 .SS fy_node_override_vreport
 .INDENT 0.0
 .TP
-.B void fy_node_override_vreport(struct fy_node *fyn, enum \fI\%fy_error_type\fP type, const char *file, int line, int column, const char *fmt, va_list ap) 
+.B void fy_node_override_vreport(struct fy_node *fyn, enum fy_error_type type, const char *file, int line, int column, const char *fmt, va_list ap) 
 Report about a node vprintf style, overriding file, line and column info
 .INDENT 7.0
 .TP
@@ -8074,7 +8075,7 @@ Report about a node vprintf style, overriding file, line and column info
 .IP \(bu 2
 \fBfyn\fP (struct fy_node*) – The node
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfile\fP (const char*) – The file override
 .IP \(bu 2
@@ -8099,7 +8100,7 @@ If either \fBline\fP or \fBcolumn\fP is negative no location will be reported.
 .SS fy_node_override_report
 .INDENT 0.0
 .TP
-.B void fy_node_override_report(struct fy_node *fyn, enum \fI\%fy_error_type\fP type, const char *file, int line, int column, const char *fmt, \&...) 
+.B void fy_node_override_report(struct fy_node *fyn, enum fy_error_type type, const char *file, int line, int column, const char *fmt, \&...) 
 Report about a node printf style, overriding file, line and column info
 .INDENT 7.0
 .TP
@@ -8108,7 +8109,7 @@ Report about a node printf style, overriding file, line and column info
 .IP \(bu 2
 \fBfyn\fP (struct fy_node*) – The node
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfile\fP (const char*) – The file override
 .IP \(bu 2
@@ -8133,7 +8134,7 @@ If either \fBline\fP or \fBcolumn\fP is negative no location will be reported.
 .SS fy_event_vreport
 .INDENT 0.0
 .TP
-.B void fy_event_vreport(struct fy_parser *fyp, struct \fI\%fy_event\fP *fye, enum \fI\%fy_event_part\fP fyep, enum \fI\%fy_error_type\fP type, const char *fmt, va_list ap) 
+.B void fy_event_vreport(struct fy_parser *fyp, struct fy_event *fye, enum fy_event_part fyep, enum fy_error_type type, const char *fmt, va_list ap) 
 Report about an event vprintf style
 .INDENT 7.0
 .TP
@@ -8142,11 +8143,11 @@ Report about an event vprintf style
 .IP \(bu 2
 \fBfyp\fP (struct fy_parser*) – The parser of which the event was generated from
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event
+\fBfye\fP (struct fy_event*) – The event
 .IP \(bu 2
-\fBfyep\fP (enum \fI\%fy_event_part\fP) – The event part which the report is about
+\fBfyep\fP (enum fy_event_part) – The event part which the report is about
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfmt\fP (const char*) – The printf format string
 .IP \(bu 2
@@ -8161,7 +8162,7 @@ error type, focusing at the given event part.
 .SS fy_event_report
 .INDENT 0.0
 .TP
-.B void fy_event_report(struct fy_parser *fyp, struct \fI\%fy_event\fP *fye, enum \fI\%fy_event_part\fP fyep, enum \fI\%fy_error_type\fP type, const char *fmt, \&...) 
+.B void fy_event_report(struct fy_parser *fyp, struct fy_event *fye, enum fy_event_part fyep, enum fy_error_type type, const char *fmt, \&...) 
 Report about an event printf style
 .INDENT 7.0
 .TP
@@ -8170,11 +8171,11 @@ Report about an event printf style
 .IP \(bu 2
 \fBfyp\fP (struct fy_parser*) – The parser of which the event was generated from
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event
+\fBfye\fP (struct fy_event*) – The event
 .IP \(bu 2
-\fBfyep\fP (enum \fI\%fy_event_part\fP) – The event part which the report is about
+\fBfyep\fP (enum fy_event_part) – The event part which the report is about
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfmt\fP (const char*) – The printf format string
 .IP \(bu 2
@@ -8319,14 +8320,14 @@ being collected by the diagnostic object.
 .SS fy_diag_create
 .INDENT 0.0
 .TP
-.B struct fy_diag *fy_diag_create(const struct \fI\%fy_diag_cfg\fP *cfg) 
+.B struct fy_diag *fy_diag_create(const struct fy_diag_cfg *cfg) 
 Create a diagnostic object
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct \fI\%fy_diag_cfg\fP*) – The configuration for the diagnostic object (NULL is default)
+\fBcfg\fP (const struct fy_diag_cfg*) – The configuration for the diagnostic object (NULL is default)
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8359,7 +8360,7 @@ after this call.
 .SS fy_diag_get_cfg
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_diag_cfg\fP *fy_diag_get_cfg(struct fy_diag *diag) 
+.B const struct fy_diag_cfg *fy_diag_get_cfg(struct fy_diag *diag) 
 Get a diagnostic object’s configuration
 .INDENT 7.0
 .TP
@@ -8380,7 +8381,7 @@ in case where diag is NULL
 .SS fy_diag_set_cfg
 .INDENT 0.0
 .TP
-.B void fy_diag_set_cfg(struct fy_diag *diag, const struct \fI\%fy_diag_cfg\fP *cfg) 
+.B void fy_diag_set_cfg(struct fy_diag *diag, const struct fy_diag_cfg *cfg) 
 Set a diagnostic object’s configuration
 .INDENT 7.0
 .TP
@@ -8389,7 +8390,7 @@ Set a diagnostic object’s configuration
 .IP \(bu 2
 \fBdiag\fP (struct fy_diag*) – The diagnostic object
 .IP \(bu 2
-\fBcfg\fP (const struct \fI\%fy_diag_cfg\fP*) – The diagnostic configuration
+\fBcfg\fP (const struct fy_diag_cfg*) – The diagnostic configuration
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8400,7 +8401,7 @@ configuration passed as an argument.
 .SS fy_diag_set_level
 .INDENT 0.0
 .TP
-.B void fy_diag_set_level(struct fy_diag *diag, enum \fI\%fy_error_type\fP level) 
+.B void fy_diag_set_level(struct fy_diag *diag, enum fy_error_type level) 
 Set a diagnostic object’s debug error level
 .INDENT 7.0
 .TP
@@ -8409,7 +8410,7 @@ Set a diagnostic object’s debug error level
 .IP \(bu 2
 \fBdiag\fP (struct fy_diag*) – The diagnostic object
 .IP \(bu 2
-\fBlevel\fP (enum \fI\%fy_error_type\fP) – The debugging level to set
+\fBlevel\fP (enum fy_error_type) – The debugging level to set
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8568,14 +8569,14 @@ true collecting errors, false otherwise
 .SS fy_diag_cfg_default
 .INDENT 0.0
 .TP
-.B void fy_diag_cfg_default(struct \fI\%fy_diag_cfg\fP *cfg) 
+.B void fy_diag_cfg_default(struct fy_diag_cfg *cfg) 
 Fill in the configuration structure with defaults
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (struct \fI\%fy_diag_cfg\fP*) – The diagnostic configuration structure
+\fBcfg\fP (struct fy_diag_cfg*) – The diagnostic configuration structure
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8586,16 +8587,16 @@ always associates the file descriptor to stderr.
 .SS fy_diag_cfg_from_parser_flags
 .INDENT 0.0
 .TP
-.B void fy_diag_cfg_from_parser_flags(struct \fI\%fy_diag_cfg\fP *cfg, enum \fI\%fy_parse_cfg_flags\fP pflags) 
+.B void fy_diag_cfg_from_parser_flags(struct fy_diag_cfg *cfg, enum fy_parse_cfg_flags pflags) 
 Fill partial diagnostic config structure from parser config flags
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (struct \fI\%fy_diag_cfg\fP*) – The diagnostic configuration structure
+\fBcfg\fP (struct fy_diag_cfg*) – The diagnostic configuration structure
 .IP \(bu 2
-\fBpflags\fP (enum \fI\%fy_parse_cfg_flags\fP) – The parser flags
+\fBpflags\fP (enum fy_parse_cfg_flags) – The parser flags
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8719,7 +8720,7 @@ This structure contains the diagnostic context
 .SS fy_vdiag
 .INDENT 0.0
 .TP
-.B int fy_vdiag(struct fy_diag *diag, const struct \fI\%fy_diag_ctx\fP *fydc, const char *fmt, va_list ap) 
+.B int fy_vdiag(struct fy_diag *diag, const struct fy_diag_ctx *fydc, const char *fmt, va_list ap) 
 context aware diagnostic output like vprintf
 .INDENT 7.0
 .TP
@@ -8728,7 +8729,7 @@ context aware diagnostic output like vprintf
 .IP \(bu 2
 \fBdiag\fP (struct fy_diag*) – The diagnostic object to use
 .IP \(bu 2
-\fBfydc\fP (const struct \fI\%fy_diag_ctx\fP*) – The diagnostic context
+\fBfydc\fP (const struct fy_diag_ctx*) – The diagnostic context
 .IP \(bu 2
 \fBfmt\fP (const char*) – The vprintf format string
 .IP \(bu 2
@@ -8748,7 +8749,7 @@ been destroyed but not yet freed.
 .SS fy_diagf
 .INDENT 0.0
 .TP
-.B int fy_diagf(struct fy_diag *diag, const struct \fI\%fy_diag_ctx\fP *fydc, const char *fmt, \&...) 
+.B int fy_diagf(struct fy_diag *diag, const struct fy_diag_ctx *fydc, const char *fmt, \&...) 
 context aware diagnostic output like printf
 .INDENT 7.0
 .TP
@@ -8757,7 +8758,7 @@ context aware diagnostic output like printf
 .IP \(bu 2
 \fBdiag\fP (struct fy_diag*) – The diagnostic object to use
 .IP \(bu 2
-\fBfydc\fP (const struct \fI\%fy_diag_ctx\fP*) – The diagnostic context
+\fBfydc\fP (const struct fy_diag_ctx*) – The diagnostic context
 .IP \(bu 2
 \fBfmt\fP (const char*) – The vprintf format string
 .IP \(bu 2
@@ -8777,7 +8778,7 @@ been destroyed but not yet freed.
 .SS fy_diag_token_vreport
 .INDENT 0.0
 .TP
-.B void fy_diag_token_vreport(struct fy_diag *diag, struct fy_token *fyt, enum \fI\%fy_error_type\fP type, const char *fmt, va_list ap) 
+.B void fy_diag_token_vreport(struct fy_diag *diag, struct fy_token *fyt, enum fy_error_type type, const char *fmt, va_list ap) 
 Report about a token vprintf style using the given diagnostic object
 .INDENT 7.0
 .TP
@@ -8788,7 +8789,7 @@ Report about a token vprintf style using the given diagnostic object
 .IP \(bu 2
 \fBfyt\fP (struct fy_token*) – The token
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfmt\fP (const char*) – The printf format string
 .IP \(bu 2
@@ -8804,7 +8805,7 @@ document.
 .SS fy_diag_token_report
 .INDENT 0.0
 .TP
-.B void fy_diag_token_report(struct fy_diag *diag, struct fy_token *fye, enum \fI\%fy_error_type\fP type, const char *fmt, \&...) 
+.B void fy_diag_token_report(struct fy_diag *diag, struct fy_token *fye, enum fy_error_type type, const char *fmt, \&...) 
 Report about a token printf style using the given diagnostic object
 .INDENT 7.0
 .TP
@@ -8815,7 +8816,7 @@ Report about a token printf style using the given diagnostic object
 .IP \(bu 2
 \fBfye\fP (struct fy_token*) – The token
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfmt\fP (const char*) – The printf format string
 .IP \(bu 2
@@ -8831,7 +8832,7 @@ document.
 .SS fy_diag_token_override_vreport
 .INDENT 0.0
 .TP
-.B void fy_diag_token_override_vreport(struct fy_diag *diag, struct fy_token *fyt, enum \fI\%fy_error_type\fP type, const char *file, int line, int column, const char *fmt, va_list ap) 
+.B void fy_diag_token_override_vreport(struct fy_diag *diag, struct fy_token *fyt, enum fy_error_type type, const char *file, int line, int column, const char *fmt, va_list ap) 
 Report about a token vprintf style, overriding file, line and column info using the given diagnostic object
 .INDENT 7.0
 .TP
@@ -8842,7 +8843,7 @@ Report about a token vprintf style, overriding file, line and column info using 
 .IP \(bu 2
 \fBfyt\fP (struct fy_token*) – The token
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfile\fP (const char*) – The file override
 .IP \(bu 2
@@ -8867,7 +8868,7 @@ If either \fBline\fP or \fBcolumn\fP is negative no location will be reported.
 .SS fy_diag_token_override_report
 .INDENT 0.0
 .TP
-.B void fy_diag_token_override_report(struct fy_diag *diag, struct fy_token *fyt, enum \fI\%fy_error_type\fP type, const char *file, int line, int column, const char *fmt, \&...) 
+.B void fy_diag_token_override_report(struct fy_diag *diag, struct fy_token *fyt, enum fy_error_type type, const char *file, int line, int column, const char *fmt, \&...) 
 Report about a token printf style, overriding file, line and column info using the given diagnostic object
 .INDENT 7.0
 .TP
@@ -8878,7 +8879,7 @@ Report about a token printf style, overriding file, line and column info using t
 .IP \(bu 2
 \fBfyt\fP (struct fy_token*) – The token
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfile\fP (const char*) – The file override
 .IP \(bu 2
@@ -8903,7 +8904,7 @@ If either \fBline\fP or \fBcolumn\fP is negative no location will be reported.
 .SS fy_diag_node_vreport
 .INDENT 0.0
 .TP
-.B void fy_diag_node_vreport(struct fy_diag *diag, struct fy_node *fyn, enum \fI\%fy_error_type\fP type, const char *fmt, va_list ap) 
+.B void fy_diag_node_vreport(struct fy_diag *diag, struct fy_node *fyn, enum fy_error_type type, const char *fmt, va_list ap) 
 Report about a node vprintf style using the given diagnostic object
 .INDENT 7.0
 .TP
@@ -8914,7 +8915,7 @@ Report about a node vprintf style using the given diagnostic object
 .IP \(bu 2
 \fBfyn\fP (struct fy_node*) – The node
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfmt\fP (const char*) – The printf format string
 .IP \(bu 2
@@ -8930,7 +8931,7 @@ document.
 .SS fy_diag_node_report
 .INDENT 0.0
 .TP
-.B void fy_diag_node_report(struct fy_diag *diag, struct fy_node *fyn, enum \fI\%fy_error_type\fP type, const char *fmt, \&...) 
+.B void fy_diag_node_report(struct fy_diag *diag, struct fy_node *fyn, enum fy_error_type type, const char *fmt, \&...) 
 Report about a node printf style using the given diagnostic object
 .INDENT 7.0
 .TP
@@ -8941,7 +8942,7 @@ Report about a node printf style using the given diagnostic object
 .IP \(bu 2
 \fBfyn\fP (struct fy_node*) – The node
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfmt\fP (const char*) – The printf format string
 .IP \(bu 2
@@ -8957,7 +8958,7 @@ document.
 .SS fy_diag_node_override_vreport
 .INDENT 0.0
 .TP
-.B void fy_diag_node_override_vreport(struct fy_diag *diag, struct fy_node *fyn, enum \fI\%fy_error_type\fP type, const char *file, int line, int column, const char *fmt, va_list ap) 
+.B void fy_diag_node_override_vreport(struct fy_diag *diag, struct fy_node *fyn, enum fy_error_type type, const char *file, int line, int column, const char *fmt, va_list ap) 
 Report about a node vprintf style, overriding file, line and column info using the given diagnostic object
 .INDENT 7.0
 .TP
@@ -8968,7 +8969,7 @@ Report about a node vprintf style, overriding file, line and column info using t
 .IP \(bu 2
 \fBfyn\fP (struct fy_node*) – The node
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfile\fP (const char*) – The file override
 .IP \(bu 2
@@ -8993,7 +8994,7 @@ If either \fBline\fP or \fBcolumn\fP is negative no location will be reported.
 .SS fy_diag_node_override_report
 .INDENT 0.0
 .TP
-.B void fy_diag_node_override_report(struct fy_diag *diag, struct fy_node *fyn, enum \fI\%fy_error_type\fP type, const char *file, int line, int column, const char *fmt, \&...) 
+.B void fy_diag_node_override_report(struct fy_diag *diag, struct fy_node *fyn, enum fy_error_type type, const char *file, int line, int column, const char *fmt, \&...) 
 Report about a node printf style, overriding file, line and column info using the given diagnostic object
 .INDENT 7.0
 .TP
@@ -9004,7 +9005,7 @@ Report about a node printf style, overriding file, line and column info using th
 .IP \(bu 2
 \fBfyn\fP (struct fy_node*) – The node
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfile\fP (const char*) – The file override
 .IP \(bu 2
@@ -9029,7 +9030,7 @@ If either \fBline\fP or \fBcolumn\fP is negative no location will be reported.
 .SS fy_diag_event_vreport
 .INDENT 0.0
 .TP
-.B void fy_diag_event_vreport(struct fy_diag *diag, struct \fI\%fy_event\fP *fye, enum \fI\%fy_event_part\fP fyep, enum \fI\%fy_error_type\fP type, const char *fmt, va_list ap) 
+.B void fy_diag_event_vreport(struct fy_diag *diag, struct fy_event *fye, enum fy_event_part fyep, enum fy_error_type type, const char *fmt, va_list ap) 
 Report about an event vprintf style using the given diagnostic object
 .INDENT 7.0
 .TP
@@ -9038,11 +9039,11 @@ Report about an event vprintf style using the given diagnostic object
 .IP \(bu 2
 \fBdiag\fP (struct fy_diag*) – The diag object
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event
+\fBfye\fP (struct fy_event*) – The event
 .IP \(bu 2
-\fBfyep\fP (enum \fI\%fy_event_part\fP) – The event part
+\fBfyep\fP (enum fy_event_part) – The event part
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfmt\fP (const char*) – The printf format string
 .IP \(bu 2
@@ -9057,7 +9058,7 @@ error type.
 .SS fy_diag_event_report
 .INDENT 0.0
 .TP
-.B void fy_diag_event_report(struct fy_diag *diag, struct \fI\%fy_event\fP *fye, enum \fI\%fy_event_part\fP fyep, enum \fI\%fy_error_type\fP type, const char *fmt, \&...) 
+.B void fy_diag_event_report(struct fy_diag *diag, struct fy_event *fye, enum fy_event_part fyep, enum fy_error_type type, const char *fmt, \&...) 
 Report about a event printf style using the given diagnostic object
 .INDENT 7.0
 .TP
@@ -9066,11 +9067,11 @@ Report about a event printf style using the given diagnostic object
 .IP \(bu 2
 \fBdiag\fP (struct fy_diag*) – The diag object
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event
+\fBfye\fP (struct fy_event*) – The event
 .IP \(bu 2
-\fBfyep\fP (enum \fI\%fy_event_part\fP) – The event part
+\fBfyep\fP (enum fy_event_part) – The event part
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_error_type\fP) – The error type
+\fBtype\fP (enum fy_error_type) – The error type
 .IP \(bu 2
 \fBfmt\fP (const char*) – The printf format string
 .IP \(bu 2
@@ -9085,7 +9086,7 @@ error type.
 .SS fy_diag_errors_iterate
 .INDENT 0.0
 .TP
-.B struct \fI\%fy_diag_error\fP *fy_diag_errors_iterate(struct fy_diag *diag, void **prevp) 
+.B struct fy_diag_error *fy_diag_errors_iterate(struct fy_diag *diag, void **prevp) 
 Iterate over the errors of a diagnostic object
 .INDENT 7.0
 .TP
@@ -9123,8 +9124,8 @@ Create a parser checkpoint
 .sp
 Create a checkpoint of the parser’s current state. This allows you
 to save the parser state and potentially roll back to it later using
-\fI\%fy_parser_rollback()\fP\&. The checkpoint must be destroyed via
-\fI\%fy_parser_checkpoint_destroy()\fP when no longer needed.
+\fBfy_parser_rollback()\fP\&. The checkpoint must be destroyed via
+\fBfy_parser_checkpoint_destroy()\fP when no longer needed.
 .SS Return
 .sp
 A pointer to the checkpoint, or NULL in case of an error
@@ -9144,7 +9145,7 @@ Destroy a parser checkpoint
 .UNINDENT
 .SS Description
 .sp
-Destroy a checkpoint created earlier via \fI\%fy_parser_checkpoint_create()\fP\&.
+Destroy a checkpoint created earlier via \fBfy_parser_checkpoint_create()\fP\&.
 .SS fy_parser_rollback
 .INDENT 0.0
 .TP
@@ -9166,7 +9167,7 @@ Roll back the parser to a checkpoint
 Roll back the parser state to a previously created checkpoint. This allows
 you to revert the parser to an earlier state and re\-parse from that point.
 The checkpoint remains valid after rollback and can be used again or
-destroyed via \fI\%fy_parser_checkpoint_destroy()\fP\&.
+destroyed via \fBfy_parser_checkpoint_destroy()\fP\&.
 .SS Return
 .sp
 0 on success, \-1 on error
@@ -9424,14 +9425,14 @@ Path expression @ token
 .SS fy_token_type_is_valid
 .INDENT 0.0
 .TP
-.B bool fy_token_type_is_valid(enum \fI\%fy_token_type\fP type) 
+.B bool fy_token_type_is_valid(enum fy_token_type type) 
 Check token type validity
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_token_type\fP) – The token type
+\fBtype\fP (enum fy_token_type) – The token type
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -9444,14 +9445,14 @@ true if the token type is valid, false otherwise
 .SS fy_token_type_is_yaml
 .INDENT 0.0
 .TP
-.B bool fy_token_type_is_yaml(enum \fI\%fy_token_type\fP type) 
+.B bool fy_token_type_is_yaml(enum fy_token_type type) 
 Check if token type is valid for YAML
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_token_type\fP) – The token type
+\fBtype\fP (enum fy_token_type) – The token type
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -9464,14 +9465,14 @@ true if the token type is a valid YAML one, false otherwise
 .SS fy_token_type_is_content
 .INDENT 0.0
 .TP
-.B bool fy_token_type_is_content(enum \fI\%fy_token_type\fP type) 
+.B bool fy_token_type_is_content(enum fy_token_type type) 
 Check if token type is valid for YAML content
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_token_type\fP) – The token type
+\fBtype\fP (enum fy_token_type) – The token type
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -9484,14 +9485,14 @@ true if the token type is a valid YAML content one, false otherwise
 .SS fy_token_type_is_path_expr
 .INDENT 0.0
 .TP
-.B bool fy_token_type_is_path_expr(enum \fI\%fy_token_type\fP type) 
+.B bool fy_token_type_is_path_expr(enum fy_token_type type) 
 Check if token type is valid for a YPATH expression
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_token_type\fP) – The token type
+\fBtype\fP (enum fy_token_type) – The token type
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -9504,14 +9505,14 @@ true if the token type is a valid YPATH one, false otherwise
 .SS fy_token_type_is_scalar_expr
 .INDENT 0.0
 .TP
-.B bool fy_token_type_is_scalar_expr(enum \fI\%fy_token_type\fP type) 
+.B bool fy_token_type_is_scalar_expr(enum fy_token_type type) 
 Check if token type is valid for a YPATH scalar expression
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_token_type\fP) – The token type
+\fBtype\fP (enum fy_token_type) – The token type
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -9524,7 +9525,7 @@ true if the token type is a valid YPATH scalar one, false otherwise
 .SS fy_token_get_type
 .INDENT 0.0
 .TP
-.B enum \fI\%fy_token_type\fP fy_token_get_type(struct fy_token *fyt) 
+.B enum fy_token_type fy_token_get_type(struct fy_token *fyt) 
 Return the token’s type
 .INDENT 7.0
 .TP
@@ -9544,7 +9545,7 @@ The token’s type; FYTT_NONE if not a valid token (or NULL)
 .SS fy_token_start_mark
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_mark\fP *fy_token_start_mark(struct fy_token *fyt) 
+.B const struct fy_mark *fy_token_start_mark(struct fy_token *fyt) 
 Get token’s start marker
 .INDENT 7.0
 .TP
@@ -9566,7 +9567,7 @@ The token’s start marker, NULL if not available.
 .SS fy_token_end_mark
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_mark\fP *fy_token_end_mark(struct fy_token *fyt) 
+.B const struct fy_mark *fy_token_end_mark(struct fy_token *fyt) 
 Get token’s end marker
 .INDENT 7.0
 .TP
@@ -9588,7 +9589,7 @@ The token’s end marker, NULL if not available.
 .SS fy_token_style_start_mark
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_mark\fP *fy_token_style_start_mark(struct fy_token *fyt) 
+.B const struct fy_mark *fy_token_style_start_mark(struct fy_token *fyt) 
 Get token’s start marker (style)
 .INDENT 7.0
 .TP
@@ -9610,7 +9611,7 @@ The token’s style start marker, NULL if not available.
 .SS fy_token_style_end_mark
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_mark\fP *fy_token_style_end_mark(struct fy_token *fyt) 
+.B const struct fy_mark *fy_token_style_end_mark(struct fy_token *fyt) 
 Get token’s end marker (style
 .INDENT 7.0
 .TP
@@ -9648,7 +9649,7 @@ Low level access to the scanner
 Return the next scanner token. Note this is a very
 low level interface, intended for users that want/need
 to implement their own YAML parser. The returned
-token is expected to be disposed using \fI\%fy_scan_token_free()\fP
+token is expected to be disposed using \fBfy_scan_token_free()\fP
 .SS Return
 .sp
 The next token, or NULL if no more tokens are available.
@@ -9656,13 +9657,13 @@ The next token, or NULL if no more tokens are available.
 .INDENT 0.0
 .TP
 .B void fy_scan_token_free(struct fy_parser *fyp, struct fy_token *fyt) 
-Free the token returned by \fI\%fy_scan()\fP
+Free the token returned by \fBfy_scan()\fP
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfyp\fP (struct fy_parser*) – The parser of which the token was returned by \fI\%fy_scan()\fP
+\fBfyp\fP (struct fy_parser*) – The parser of which the token was returned by \fBfy_scan()\fP
 .IP \(bu 2
 \fBfyt\fP (struct fy_token*) – The token to free
 .UNINDENT
@@ -9670,7 +9671,7 @@ Free the token returned by \fI\%fy_scan()\fP
 .UNINDENT
 .SS Description
 .sp
-Free the token returned by \fI\%fy_scan()\fP\&.
+Free the token returned by \fBfy_scan()\fP\&.
 .SS fy_tag_directive_token_prefix0
 .INDENT 0.0
 .TP
@@ -9689,7 +9690,7 @@ will be returned.
 .SS Description
 .sp
 Retrieve the tag directive’s prefix contents as a zero terminated string.
-It is similar to \fI\%fy_tag_directive_token_prefix()\fP, with the difference
+It is similar to \fBfy_tag_directive_token_prefix()\fP, with the difference
 that the returned string is zero terminated and memory may be allocated
 to hold it associated with the token.
 .SS Return
@@ -9714,7 +9715,7 @@ will be returned.
 .SS Description
 .sp
 Retrieve the tag directive’s handle contents as a zero terminated string.
-It is similar to \fI\%fy_tag_directive_token_handle()\fP, with the difference
+It is similar to \fBfy_tag_directive_token_handle()\fP, with the difference
 that the returned string is zero terminated and memory may be allocated
 to hold it associated with the token.
 .SS Return
@@ -9817,7 +9818,7 @@ Get the handle contained in the tag token as zero terminated string
 .SS Description
 .sp
 Retrieve the tag handle contents as a zero terminated string.
-It is similar to \fI\%fy_tag_token_handle()\fP, with the difference
+It is similar to \fBfy_tag_token_handle()\fP, with the difference
 that the returned string is zero terminated and memory may be allocated
 to hold it associated with the token.
 .SS Return
@@ -9864,7 +9865,7 @@ Get the suffix contained in the tag token as zero terminated string
 .SS Description
 .sp
 Retrieve the tag suffix contents as a zero terminated string.
-It is similar to \fI\%fy_tag_token_suffix()\fP, with the difference
+It is similar to \fBfy_tag_token_suffix()\fP, with the difference
 that the returned string is zero terminated and memory may be allocated
 to hold it associated with the token.
 .SS Return
@@ -9874,7 +9875,7 @@ NULL in case of an error.
 .SS fy_version_directive_token_version
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_version\fP *fy_version_directive_token_version(struct fy_token *fyt) 
+.B const struct fy_version *fy_version_directive_token_version(struct fy_token *fyt) 
 Return the version of a version directive token
 .INDENT 7.0
 .TP
@@ -9895,7 +9896,7 @@ NULL in case of an error, or the token not being a version directive token.
 .SS fy_scalar_token_get_style
 .INDENT 0.0
 .TP
-.B enum \fI\%fy_scalar_style\fP fy_scalar_token_get_style(struct fy_token *fyt) 
+.B enum fy_scalar_style fy_scalar_token_get_style(struct fy_token *fyt) 
 Return the style of a scalar token
 .INDENT 7.0
 .TP
@@ -9915,7 +9916,7 @@ The scalar style of the token, or FYSS_ANY for an error
 .SS fy_tag_token_tag
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_tag\fP *fy_tag_token_tag(struct fy_token *fyt) 
+.B const struct fy_tag *fy_tag_token_tag(struct fy_token *fyt) 
 Get tag of a tag token
 .INDENT 7.0
 .TP
@@ -9935,7 +9936,7 @@ A pointer to the tag or NULL in case of an error
 .SS fy_tag_directive_token_tag
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_tag\fP *fy_tag_directive_token_tag(struct fy_token *fyt) 
+.B const struct fy_tag *fy_tag_directive_token_tag(struct fy_token *fyt) 
 Get tag of a tag directive token
 .INDENT 7.0
 .TP
@@ -9955,14 +9956,14 @@ A pointer to the tag or NULL in case of an error
 .SS fy_event_get_token
 .INDENT 0.0
 .TP
-.B struct fy_token *fy_event_get_token(struct \fI\%fy_event\fP *fye) 
+.B struct fy_token *fy_event_get_token(struct fy_event *fye) 
 Return the main token of an event
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event to get its main token
+\fBfye\fP (struct fy_event*) – The event to get its main token
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -9976,14 +9977,14 @@ The main token if it exists, NULL otherwise or in case of an error
 .SS fy_event_get_anchor_token
 .INDENT 0.0
 .TP
-.B struct fy_token *fy_event_get_anchor_token(struct \fI\%fy_event\fP *fye) 
+.B struct fy_token *fy_event_get_anchor_token(struct fy_event *fye) 
 Return the anchor token of an event
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event to get its anchor token
+\fBfye\fP (struct fy_event*) – The event to get its anchor token
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -9997,14 +9998,14 @@ The anchor token if it exists, NULL otherwise or in case of an error
 .SS fy_event_get_tag_token
 .INDENT 0.0
 .TP
-.B struct fy_token *fy_event_get_tag_token(struct \fI\%fy_event\fP *fye) 
+.B struct fy_token *fy_event_get_tag_token(struct fy_event *fye) 
 Return the tag token of an event
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event to get its tag token
+\fBfye\fP (struct fy_event*) – The event to get its tag token
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -10018,14 +10019,14 @@ The tag token if it exists, NULL otherwise or in case of an error
 .SS fy_event_start_mark
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_mark\fP *fy_event_start_mark(struct \fI\%fy_event\fP *fye) 
+.B const struct fy_mark *fy_event_start_mark(struct fy_event *fye) 
 Get event’s start marker
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event to get its start marker
+\fBfye\fP (struct fy_event*) – The event to get its start marker
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -10039,14 +10040,14 @@ The event’s start marker, NULL if not available.
 .SS fy_event_end_mark
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_mark\fP *fy_event_end_mark(struct \fI\%fy_event\fP *fye) 
+.B const struct fy_mark *fy_event_end_mark(struct fy_event *fye) 
 Get event’s end marker
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event to get its end marker
+\fBfye\fP (struct fy_event*) – The event to get its end marker
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -10060,14 +10061,14 @@ The event’s end marker, NULL if not available.
 .SS fy_event_style_start_mark
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_mark\fP *fy_event_style_start_mark(struct \fI\%fy_event\fP *fye) 
+.B const struct fy_mark *fy_event_style_start_mark(struct fy_event *fye) 
 Get event’s start marker (style)
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event to get its style start marker
+\fBfye\fP (struct fy_event*) – The event to get its style start marker
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -10083,14 +10084,14 @@ The event’s start marker, NULL if not available.
 .SS fy_event_style_end_mark
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_mark\fP *fy_event_style_end_mark(struct \fI\%fy_event\fP *fye) 
+.B const struct fy_mark *fy_event_style_end_mark(struct fy_event *fye) 
 Get event’s end marker (style)
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event to get its end marker
+\fBfye\fP (struct fy_event*) – The event to get its end marker
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -10104,14 +10105,14 @@ The event’s end marker, NULL if not available.
 .SS fy_event_get_node_style
 .INDENT 0.0
 .TP
-.B enum \fI\%fy_node_style\fP fy_event_get_node_style(struct \fI\%fy_event\fP *fye) 
+.B enum fy_node_style fy_event_get_node_style(struct fy_event *fye) 
 Get the node style of an event
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event to get it’s node style
+\fBfye\fP (struct fy_event*) – The event to get it’s node style
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -10128,14 +10129,14 @@ The event’s end marker, NULL if not available.
 .SS fy_document_start_event_version
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_version\fP *fy_document_start_event_version(struct \fI\%fy_event\fP *fye) 
+.B const struct fy_version *fy_document_start_event_version(struct fy_event *fye) 
 Return the version of a document start event
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The document start event
+\fBfye\fP (struct fy_event*) – The document start event
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -10149,7 +10150,7 @@ not being a document start event.
 .SS fy_document_state_version
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_version\fP *fy_document_state_version(struct fy_document_state *fyds) 
+.B const struct fy_version *fy_document_state_version(struct fy_document_state *fyds) 
 Return the version of a document state object
 .INDENT 7.0
 .TP
@@ -10169,7 +10170,7 @@ A pointer to the version, or NULL in case of an error
 .SS fy_document_state_start_mark
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_mark\fP *fy_document_state_start_mark(struct fy_document_state *fyds) 
+.B const struct fy_mark *fy_document_state_start_mark(struct fy_document_state *fyds) 
 Get document state’s start mark
 .INDENT 7.0
 .TP
@@ -10190,7 +10191,7 @@ The document’s start marker, NULL if not available.
 .SS fy_document_state_end_mark
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_mark\fP *fy_document_state_end_mark(struct fy_document_state *fyds) 
+.B const struct fy_mark *fy_document_state_end_mark(struct fy_document_state *fyds) 
 Get document state’s end mark
 .INDENT 7.0
 .TP
@@ -10321,7 +10322,7 @@ true if document was created in JSON mode, false otherwise
 .SS fy_document_state_tag_directive_iterate
 .INDENT 0.0
 .TP
-.B const struct \fI\%fy_tag\fP *fy_document_state_tag_directive_iterate(struct fy_document_state *fyds, void **prevp) 
+.B const struct fy_tag *fy_document_state_tag_directive_iterate(struct fy_document_state *fyds, void **prevp) 
 Iterate over the tag directives of a document state object
 .INDENT 7.0
 .TP
@@ -10345,7 +10346,7 @@ The next tag or NULL at the end of the iteration sequence.
 .SS fy_document_state_tag_directives
 .INDENT 0.0
 .TP
-.B struct \fI\%fy_tag\fP **fy_document_state_tag_directives(struct fy_document_state *fyds) 
+.B struct fy_tag **fy_document_state_tag_directives(struct fy_document_state *fyds) 
 Get all the tag directives in a malloc’ed array
 .INDENT 7.0
 .TP
@@ -10367,7 +10368,7 @@ NULL on error
 .SS fy_document_state_tag_is_default
 .INDENT 0.0
 .TP
-.B bool fy_document_state_tag_is_default(struct fy_document_state *fyds, const struct \fI\%fy_tag\fP *tag) 
+.B bool fy_document_state_tag_is_default(struct fy_document_state *fyds, const struct fy_tag *tag) 
 Test whether the given tag is a default one
 .INDENT 7.0
 .TP
@@ -10376,7 +10377,7 @@ Test whether the given tag is a default one
 .IP \(bu 2
 \fBfyds\fP (struct fy_document_state*) – The document state
 .IP \(bu 2
-\fBtag\fP (const struct \fI\%fy_tag\fP*) – The tag to check
+\fBtag\fP (const struct fy_tag*) – The tag to check
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -10452,7 +10453,7 @@ Set the document state of a document
 .SS fy_document_create_from_event
 .INDENT 0.0
 .TP
-.B struct fy_document *fy_document_create_from_event(struct fy_parser *fyp, struct \fI\%fy_event\fP *fye) 
+.B struct fy_document *fy_document_create_from_event(struct fy_parser *fyp, struct fy_event *fye) 
 Create an empty document using the event
 .INDENT 7.0
 .TP
@@ -10461,7 +10462,7 @@ Create an empty document using the event
 .IP \(bu 2
 \fBfyp\fP (struct fy_parser*) – The parser
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event
+\fBfye\fP (struct fy_event*) – The event
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -10475,7 +10476,7 @@ The created empty document, or NULL on error.
 .SS fy_document_update_from_event
 .INDENT 0.0
 .TP
-.B int fy_document_update_from_event(struct fy_document *fyd, struct fy_parser *fyp, struct \fI\%fy_event\fP *fye) 
+.B int fy_document_update_from_event(struct fy_document *fyd, struct fy_parser *fyp, struct fy_event *fye) 
 Update the document with the event
 .INDENT 7.0
 .TP
@@ -10486,7 +10487,7 @@ Update the document with the event
 .IP \(bu 2
 \fBfyp\fP (struct fy_parser*) – The parser
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event
+\fBfye\fP (struct fy_event*) – The event
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -10500,7 +10501,7 @@ by the parser.
 .SS fy_node_create_from_event
 .INDENT 0.0
 .TP
-.B struct fy_node *fy_node_create_from_event(struct fy_document *fyd, struct fy_parser *fyp, struct \fI\%fy_event\fP *fye) 
+.B struct fy_node *fy_node_create_from_event(struct fy_document *fyd, struct fy_parser *fyp, struct fy_event *fye) 
 Create a node using the event
 .INDENT 7.0
 .TP
@@ -10511,7 +10512,7 @@ Create a node using the event
 .IP \(bu 2
 \fBfyp\fP (struct fy_parser*) – The parser
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event
+\fBfye\fP (struct fy_event*) – The event
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -10525,7 +10526,7 @@ The newly created node, or NULL on error
 .SS fy_node_update_from_event
 .INDENT 0.0
 .TP
-.B int fy_node_update_from_event(struct fy_node *fyn, struct fy_parser *fyp, struct \fI\%fy_event\fP *fye) 
+.B int fy_node_update_from_event(struct fy_node *fyn, struct fy_parser *fyp, struct fy_event *fye) 
 Update a node using the event
 .INDENT 7.0
 .TP
@@ -10536,13 +10537,13 @@ Update a node using the event
 .IP \(bu 2
 \fBfyp\fP (struct fy_parser*) – The parser
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event
+\fBfye\fP (struct fy_event*) – The event
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Update information of node created using \fI\%fy_node_create_from_event()\fP
+Update information of node created using \fBfy_node_create_from_event()\fP
 Allowed events are FYET_MAPPING_END & FYET_SEQUENCE_END
 .SS Return
 .sp
@@ -10572,7 +10573,7 @@ a key. Note that the nodes _must_ have been created by fy_node_create_from_event
 and they are not interchangeable with other node pair methods.
 .sp
 The node pair will be added to the fyn_parent mapping with a subsequent call
-to \fI\%fy_node_pair_update_with_value()\fP\&.
+to \fBfy_node_pair_update_with_value()\fP\&.
 .SS Return
 .sp
 The newly created node pair, or NULL on error
@@ -10596,7 +10597,7 @@ Update a node pair with a value and add it to the parent mapping
 .sp
 Update the node pair with the given value and add it to the parent mapping.
 Note that the fyn node _must_ have been created by fy_node_create_from_event
-and the node pair created by \fI\%fy_node_pair_create_with_key()\fP\&.
+and the node pair created by \fBfy_node_pair_create_with_key()\fP\&.
 Do not intermix other node pair manipulation methods.
 .SS Return
 .sp
@@ -10650,7 +10651,7 @@ The active document state object of the emitter, NULL otherwise
 .SS fy_emit_event_create
 .INDENT 0.0
 .TP
-.B struct \fI\%fy_event\fP *fy_emit_event_create(struct fy_emitter *emit, enum \fI\%fy_event_type\fP type, \&...) 
+.B struct fy_event *fy_emit_event_create(struct fy_emitter *emit, enum fy_event_type type, \&...) 
 Create an emit event.
 .INDENT 7.0
 .TP
@@ -10659,7 +10660,7 @@ Create an emit event.
 .IP \(bu 2
 \fBemit\fP (struct fy_emitter*) – The emitter
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_event_type\fP) – The event type to create
+\fBtype\fP (enum fy_event_type) – The event type to create
 .IP \(bu 2
 \fBellipsis\fP (ellipsis) – The optional extra arguments
 .UNINDENT
@@ -10667,7 +10668,7 @@ Create an emit event.
 .UNINDENT
 .SS Description
 .sp
-Create an emit event to pass to \fI\%fy_emit_event()\fP
+Create an emit event to pass to \fBfy_emit_event()\fP
 The extra arguments differ according to the event to be created
 .SS FYET_STREAM_START
 .INDENT 0.0
@@ -10854,7 +10855,7 @@ The created event or NULL in case of an error
 .SS fy_emit_event_vcreate
 .INDENT 0.0
 .TP
-.B struct \fI\%fy_event\fP *fy_emit_event_vcreate(struct fy_emitter *emit, enum \fI\%fy_event_type\fP type, va_list ap) 
+.B struct fy_event *fy_emit_event_vcreate(struct fy_emitter *emit, enum fy_event_type type, va_list ap) 
 Create an emit event using varargs.
 .INDENT 7.0
 .TP
@@ -10863,7 +10864,7 @@ Create an emit event using varargs.
 .IP \(bu 2
 \fBemit\fP (struct fy_emitter*) – The emitter
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_event_type\fP) – The event type to create
+\fBtype\fP (enum fy_event_type) – The event type to create
 .IP \(bu 2
 \fBap\fP (va_list) – The variable argument list pointer.
 .UNINDENT
@@ -10871,16 +10872,16 @@ Create an emit event using varargs.
 .UNINDENT
 .SS Description
 .sp
-Create an emit event to pass to \fI\%fy_emit_event()\fP
-The varargs analogous to \fI\%fy_emit_event_create()\fP\&.
+Create an emit event to pass to \fBfy_emit_event()\fP
+The varargs analogous to \fBfy_emit_event_create()\fP\&.
 .SS Return
 .sp
 The created event or NULL in case of an error
 .SS fy_emit_event_free
 .INDENT 0.0
 .TP
-.B void fy_emit_event_free(struct fy_emitter *emit, struct \fI\%fy_event\fP *fye) 
-Free an event created via \fI\%fy_emit_event_create()\fP
+.B void fy_emit_event_free(struct fy_emitter *emit, struct fy_event *fye) 
+Free an event created via \fBfy_emit_event_create()\fP
 .INDENT 7.0
 .TP
 .B Parameters
@@ -10888,20 +10889,20 @@ Free an event created via \fI\%fy_emit_event_create()\fP
 .IP \(bu 2
 \fBemit\fP (struct fy_emitter*) – The emitter
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event to free
+\fBfye\fP (struct fy_event*) – The event to free
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Free an event previously created via \fI\%fy_emit_event_create()\fP\&. Note
+Free an event previously created via \fBfy_emit_event_create()\fP\&. Note
 that usually you don’t have to call this method since if you pass
-the event to \fI\%fy_emit_event()\fP it shall be disposed properly.
+the event to \fBfy_emit_event()\fP it shall be disposed properly.
 Only use is error recovery and cleanup.
 .SS fy_parse_event_create
 .INDENT 0.0
 .TP
-.B struct \fI\%fy_event\fP *fy_parse_event_create(struct fy_parser *fyp, enum \fI\%fy_event_type\fP type, \&...) 
+.B struct fy_event *fy_parse_event_create(struct fy_parser *fyp, enum fy_event_type type, \&...) 
 Create an emit event.
 .INDENT 7.0
 .TP
@@ -10910,7 +10911,7 @@ Create an emit event.
 .IP \(bu 2
 \fBfyp\fP (struct fy_parser*) – The parser
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_event_type\fP) – The event type to create
+\fBtype\fP (enum fy_event_type) – The event type to create
 .IP \(bu 2
 \fBellipsis\fP (ellipsis) – variable arguments
 .UNINDENT
@@ -10918,14 +10919,14 @@ Create an emit event.
 .UNINDENT
 .SS Description
 .sp
-See \fI\%fy_emit_event_create()\fP…
+See \fBfy_emit_event_create()\fP…
 .SS Return
 .sp
 The created event or NULL in case of an error
 .SS fy_parse_event_vcreate
 .INDENT 0.0
 .TP
-.B struct \fI\%fy_event\fP *fy_parse_event_vcreate(struct fy_parser *fyp, enum \fI\%fy_event_type\fP type, va_list ap) 
+.B struct fy_event *fy_parse_event_vcreate(struct fy_parser *fyp, enum fy_event_type type, va_list ap) 
 Create an emit event using varargs.
 .INDENT 7.0
 .TP
@@ -10934,7 +10935,7 @@ Create an emit event using varargs.
 .IP \(bu 2
 \fBfyp\fP (struct fy_parser*) – The parser
 .IP \(bu 2
-\fBtype\fP (enum \fI\%fy_event_type\fP) – The event type to create
+\fBtype\fP (enum fy_event_type) – The event type to create
 .IP \(bu 2
 \fBap\fP (va_list) – The variable argument list pointer.
 .UNINDENT
@@ -10942,8 +10943,8 @@ Create an emit event using varargs.
 .UNINDENT
 .SS Description
 .sp
-Create an emit event to pass to \fI\%fy_emit_event()\fP
-The varargs analogous to \fI\%fy_parse_event_create()\fP\&.
+Create an emit event to pass to \fBfy_emit_event()\fP
+The varargs analogous to \fBfy_parse_event_create()\fP\&.
 .SS Return
 .sp
 The created event or NULL in case of an error
@@ -11060,19 +11061,19 @@ Optional diagnostic interface to use
 .UNINDENT
 .SS Description
 .sp
-Argument to the \fI\%fy_path_parser_create()\fP method which
+Argument to the \fBfy_path_parser_create()\fP method which
 performs parsing of a ypath expression
 .SS fy_path_parser_create
 .INDENT 0.0
 .TP
-.B struct fy_path_parser *fy_path_parser_create(const struct \fI\%fy_path_parse_cfg\fP *cfg) 
+.B struct fy_path_parser *fy_path_parser_create(const struct fy_path_parse_cfg *cfg) 
 Create a ypath parser.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct \fI\%fy_path_parse_cfg\fP*) – The configuration for the path parser
+\fBcfg\fP (const struct fy_path_parse_cfg*) – The configuration for the path parser
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -11080,7 +11081,7 @@ Create a ypath parser.
 .sp
 Creates a path parser with its configuration \fBcfg\fP
 The path parser may be destroyed by a corresponding call to
-\fI\%fy_path_parser_destroy()\fP\&.
+\fBfy_path_parser_destroy()\fP\&.
 If \fBcfg\fP is NULL a default yaml parser is created.
 .SS Return
 .sp
@@ -11101,7 +11102,7 @@ Destroy the given path parser
 .UNINDENT
 .SS Description
 .sp
-Destroy a path parser created earlier via \fI\%fy_path_parser_create()\fP\&.
+Destroy a path parser created earlier via \fBfy_path_parser_create()\fP\&.
 .SS fy_path_parser_reset
 .INDENT 0.0
 .TP
@@ -11150,14 +11151,14 @@ The created path expression or NULL on error.
 .SS fy_path_expr_build_from_string
 .INDENT 0.0
 .TP
-.B struct fy_path_expr *fy_path_expr_build_from_string(const struct \fI\%fy_path_parse_cfg\fP *pcfg, const char *str, size_t len) 
+.B struct fy_path_expr *fy_path_expr_build_from_string(const struct fy_path_parse_cfg *pcfg, const char *str, size_t len) 
 Parse an expression from a given string
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBpcfg\fP (const struct \fI\%fy_path_parse_cfg\fP*) – The path parser configuration to use, or NULL for default
+\fBpcfg\fP (const struct fy_path_parse_cfg*) – The path parser configuration to use, or NULL for default
 .IP \(bu 2
 \fBstr\fP (const char*) – The ypath source to use.
 .IP \(bu 2
@@ -11189,11 +11190,11 @@ Free a path expression
 .SS Description
 .sp
 Free a previously returned expression from any of the path parser
-methods like \fI\%fy_path_expr_build_from_string()\fP
+methods like \fBfy_path_expr_build_from_string()\fP
 .SS fy_path_expr_dump
 .INDENT 0.0
 .TP
-.B void fy_path_expr_dump(struct fy_path_expr *expr, struct fy_diag *diag, enum \fI\%fy_error_type\fP errlevel, int level, const char *banner) 
+.B void fy_path_expr_dump(struct fy_path_expr *expr, struct fy_diag *diag, enum fy_error_type errlevel, int level, const char *banner) 
 Dump the contents of a path expression to the diagnostic object
 .INDENT 7.0
 .TP
@@ -11204,7 +11205,7 @@ Dump the contents of a path expression to the diagnostic object
 .IP \(bu 2
 \fBdiag\fP (struct fy_diag*) – The diagnostic object to use
 .IP \(bu 2
-\fBerrlevel\fP (enum \fI\%fy_error_type\fP) – The error level which the diagnostic will use
+\fBerrlevel\fP (enum fy_error_type) – The error level which the diagnostic will use
 .IP \(bu 2
 \fBlevel\fP (int) – The nest level; should be set to 0
 .IP \(bu 2
@@ -11303,19 +11304,19 @@ Optional diagnostic interface to use
 .UNINDENT
 .SS Description
 .sp
-Argument to the \fI\%fy_path_exec_create()\fP method which
+Argument to the \fBfy_path_exec_create()\fP method which
 performs execution of a ypath expression
 .SS fy_path_exec_create
 .INDENT 0.0
 .TP
-.B struct fy_path_exec *fy_path_exec_create(const struct \fI\%fy_path_exec_cfg\fP *xcfg) 
+.B struct fy_path_exec *fy_path_exec_create(const struct fy_path_exec_cfg *xcfg) 
 Create a ypath expression executor.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBxcfg\fP (const struct \fI\%fy_path_exec_cfg\fP*) – The configuration for the executor
+\fBxcfg\fP (const struct fy_path_exec_cfg*) – The configuration for the executor
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -11323,7 +11324,7 @@ Create a ypath expression executor.
 .sp
 Creates a ypath expression parser with its configuration \fBcfg\fP
 The executor may be destroyed by a corresponding call to
-\fI\%fy_path_exec_destroy()\fP\&.
+\fBfy_path_exec_destroy()\fP\&.
 .SS Return
 .sp
 A pointer to the executor or NULL in case of an error.
@@ -11343,7 +11344,7 @@ Destroy the given path expression executor
 .UNINDENT
 .SS Description
 .sp
-Destroy ane executor  created earlier via \fI\%fy_path_exec_create()\fP\&.
+Destroy ane executor  created earlier via \fBfy_path_exec_create()\fP\&.
 .SS fy_path_exec_reset
 .INDENT 0.0
 .TP
@@ -11385,7 +11386,7 @@ Execute a path expression starting at the given start node
 .SS Description
 .sp
 Execute the expression starting at fyn_start. If execution
-is successful the results are available via \fI\%fy_path_exec_results_iterate()\fP
+is successful the results are available via \fBfy_path_exec_results_iterate()\fP
 .sp
 Note that it is illegal to modify the state of the document that the
 results reside between this call and the results collection.
@@ -11530,7 +11531,7 @@ The root of iteration (NULL when fyd is not NULL)
 .UNINDENT
 .SS Description
 .sp
-Argument to the \fI\%fy_document_iterator_create_cfg()\fP method.
+Argument to the \fBfy_document_iterator_create_cfg()\fP method.
 .SS fy_document_iterator_create
 .INDENT 0.0
 .TP
@@ -11555,14 +11556,14 @@ The newly created document iterator or NULL on error
 .SS fy_document_iterator_create_cfg
 .INDENT 0.0
 .TP
-.B struct fy_document_iterator *fy_document_iterator_create_cfg(const struct \fI\%fy_document_iterator_cfg\fP *cfg) 
+.B struct fy_document_iterator *fy_document_iterator_create_cfg(const struct fy_document_iterator_cfg *cfg) 
 Create a document iterator using config
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct \fI\%fy_document_iterator_cfg\fP*) – The document iterator to destroy
+\fBcfg\fP (const struct fy_document_iterator_cfg*) – The document iterator to destroy
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -11630,11 +11631,11 @@ Destroy the given document iterator
 .UNINDENT
 .SS Description
 .sp
-Destroy a document iterator created earlier via \fI\%fy_document_iterator_create()\fP\&.
+Destroy a document iterator created earlier via \fBfy_document_iterator_create()\fP\&.
 .SS fy_document_iterator_event_free
 .INDENT 0.0
 .TP
-.B void fy_document_iterator_event_free(struct fy_document_iterator *fydi, struct \fI\%fy_event\fP *fye) 
+.B void fy_document_iterator_event_free(struct fy_document_iterator *fydi, struct fy_event *fye) 
 Free an event that was created by a document iterator
 .INDENT 7.0
 .TP
@@ -11643,7 +11644,7 @@ Free an event that was created by a document iterator
 .IP \(bu 2
 \fBfydi\fP (struct fy_document_iterator*) – The document iterator that created the event
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event
+\fBfye\fP (struct fy_event*) – The event
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -11653,7 +11654,7 @@ Free (possibly recycling) an event that was created by a document iterator.
 .SS fy_document_iterator_stream_start
 .INDENT 0.0
 .TP
-.B struct \fI\%fy_event\fP *fy_document_iterator_stream_start(struct fy_document_iterator *fydi) 
+.B struct fy_event *fy_document_iterator_stream_start(struct fy_document_iterator *fydi) 
 Create a stream start event using the iterator
 .INDENT 7.0
 .TP
@@ -11674,7 +11675,7 @@ The newly created stream start event, or NULL on error.
 .SS fy_document_iterator_stream_end
 .INDENT 0.0
 .TP
-.B struct \fI\%fy_event\fP *fy_document_iterator_stream_end(struct fy_document_iterator *fydi) 
+.B struct fy_event *fy_document_iterator_stream_end(struct fy_document_iterator *fydi) 
 Create a stream end event using the iterator
 .INDENT 7.0
 .TP
@@ -11695,7 +11696,7 @@ The newly created stream end event, or NULL on error.
 .SS fy_document_iterator_document_start
 .INDENT 0.0
 .TP
-.B struct \fI\%fy_event\fP *fy_document_iterator_document_start(struct fy_document_iterator *fydi, struct fy_document *fyd) 
+.B struct fy_event *fy_document_iterator_document_start(struct fy_document_iterator *fydi, struct fy_document *fyd) 
 Create a document start event using the iterator
 .INDENT 7.0
 .TP
@@ -11712,14 +11713,14 @@ Create a document start event using the iterator
 .sp
 Creates a document start event on the document iterator and advances the internal state
 of it accordingly. The document must not be released until an error, cleanup or a call
-to \fI\%fy_document_iterator_document_end()\fP\&.
+to \fBfy_document_iterator_document_end()\fP\&.
 .SS Return
 .sp
 The newly created document start event, or NULL on error.
 .SS fy_document_iterator_document_end
 .INDENT 0.0
 .TP
-.B struct \fI\%fy_event\fP *fy_document_iterator_document_end(struct fy_document_iterator *fydi) 
+.B struct fy_event *fy_document_iterator_document_end(struct fy_document_iterator *fydi) 
 Create a document end event using the iterator
 .INDENT 7.0
 .TP
@@ -11734,14 +11735,14 @@ Create a document end event using the iterator
 .sp
 Creates a document end event on the document iterator and advances the internal state
 of it accordingly. The document that was used earlier in the call of
-\fI\%fy_document_iterator_document_start()\fP can now be released.
+\fBfy_document_iterator_document_start()\fP can now be released.
 .SS Return
 .sp
 The newly created document end event, or NULL on error.
 .SS fy_document_iterator_body_next
 .INDENT 0.0
 .TP
-.B struct \fI\%fy_event\fP *fy_document_iterator_body_next(struct fy_document_iterator *fydi) 
+.B struct fy_event *fy_document_iterator_body_next(struct fy_document_iterator *fydi) 
 Create document body events until the end
 .INDENT 7.0
 .TP
@@ -11768,7 +11769,7 @@ end of the body event stream.
 .SS Return
 .sp
 The newly created document body event or NULL at an error, or an end of the
-event stream. Use \fI\%fy_document_iterator_get_error()\fP to check if an error occured.
+event stream. Use \fBfy_document_iterator_get_error()\fP to check if an error occured.
 .SS fy_document_iterator_node_start
 .INDENT 0.0
 .TP
@@ -11805,7 +11806,7 @@ Return the next node in the iteration sequence
 .SS Description
 .sp
 Returns a pointer to the next node iterating using as a start the node given
-at \fI\%fy_document_iterator_node_start()\fP\&. The first node returned will be that,
+at \fBfy_document_iterator_node_start()\fP\&. The first node returned will be that,
 followed by all the remaing nodes in the subtree.
 .SS Return
 .sp
@@ -11813,7 +11814,7 @@ The next node in the iteration sequence or NULL at the end, or if an error occur
 .SS fy_document_iterator_generate_next
 .INDENT 0.0
 .TP
-.B struct \fI\%fy_event\fP *fy_document_iterator_generate_next(struct fy_document_iterator *fydi) 
+.B struct fy_event *fy_document_iterator_generate_next(struct fy_document_iterator *fydi) 
 Create events from document iterator
 .INDENT 7.0
 .TP
@@ -11833,7 +11834,7 @@ When generation is complete a NULL event will be generated.
 .SS Return
 .sp
 The newly created event or NULL at an error, or an end of the
-event stream. Use \fI\%fy_document_iterator_get_error()\fP to check if an error occured.
+event stream. Use \fBfy_document_iterator_get_error()\fP to check if an error occured.
 .SS fy_document_iterator_get_error
 .INDENT 0.0
 .TP
@@ -11889,7 +11890,7 @@ generate all events
 .SS fy_parser_set_document_iterator
 .INDENT 0.0
 .TP
-.B int fy_parser_set_document_iterator(struct fy_parser *fyp, enum \fI\%fy_parser_event_generator_flags\fP flags, struct fy_document_iterator *fydi) 
+.B int fy_parser_set_document_iterator(struct fy_parser *fyp, enum fy_parser_event_generator_flags flags, struct fy_document_iterator *fydi) 
 Associate a parser with a document iterator
 .INDENT 7.0
 .TP
@@ -11898,7 +11899,7 @@ Associate a parser with a document iterator
 .IP \(bu 2
 \fBfyp\fP (struct fy_parser*) – The parser
 .IP \(bu 2
-\fBflags\fP (enum \fI\%fy_parser_event_generator_flags\fP) – The event generation flags
+\fBflags\fP (enum fy_parser_event_generator_flags) – The event generation flags
 .IP \(bu 2
 \fBfydi\fP (struct fy_document_iterator*) – The document iterator to associate
 .UNINDENT
@@ -11995,18 +11996,18 @@ Optional diagnostic interface to use
 .UNINDENT
 .SS Description
 .sp
-Argument to the \fI\%fy_document_builder_create()\fP method
+Argument to the \fBfy_document_builder_create()\fP method
 .SS fy_document_builder_create
 .INDENT 0.0
 .TP
-.B struct fy_document_builder *fy_document_builder_create(const struct \fI\%fy_document_builder_cfg\fP *cfg) 
+.B struct fy_document_builder *fy_document_builder_create(const struct fy_document_builder_cfg *cfg) 
 Create a document builder
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct \fI\%fy_document_builder_cfg\fP*) – The configuration for the document builder
+\fBcfg\fP (const struct fy_document_builder_cfg*) – The configuration for the document builder
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -12014,7 +12015,7 @@ Create a document builder
 .sp
 Creates a document builder with its configuration \fBcfg\fP
 The document builder may be destroyed by a corresponding call to
-\fI\%fy_document_builder_destroy()\fP\&.
+\fBfy_document_builder_destroy()\fP\&.
 .SS Return
 .sp
 A pointer to the document builder or NULL in case of an error.
@@ -12090,7 +12091,7 @@ Get the document of a builder
 .sp
 Retrieve the document of a document builder. This document
 may be incomplete. If you need to take ownership use
-\fI\%fy_document_builder_take_document()\fP\&.
+\fBfy_document_builder_take_document()\fP\&.
 .SS Return
 .sp
 The document that the builder built, or NULL in case of an error
@@ -12153,7 +12154,7 @@ Test document builder complete
 .SS Description
 .sp
 Find out if the document of the builder is complete.
-If it is complete then a call to \fI\%fy_document_builder_take_document()\fP will
+If it is complete then a call to \fBfy_document_builder_take_document()\fP will
 transfer ownership of the document to the caller.
 .SS Return
 .sp
@@ -12288,7 +12289,7 @@ The document that results from the parser, or NULL in case of an error (or EOF)
 .SS fy_document_builder_process_event
 .INDENT 0.0
 .TP
-.B int fy_document_builder_process_event(struct fy_document_builder *fydb, struct \fI\%fy_event\fP *fye) 
+.B int fy_document_builder_process_event(struct fy_document_builder *fydb, struct fy_event *fye) 
 Process an event with a builder
 .INDENT 7.0
 .TP
@@ -12297,7 +12298,7 @@ Process an event with a builder
 .IP \(bu 2
 \fBfydb\fP (struct fy_document_builder*) – The document builder
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event
+\fBfye\fP (struct fy_event*) – The event
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -12400,14 +12401,14 @@ error, stop processing
 .SS fy_composer_return_is_ok
 .INDENT 0.0
 .TP
-.B bool fy_composer_return_is_ok(enum \fI\%fy_composer_return\fP ret) 
+.B bool fy_composer_return_is_ok(enum fy_composer_return ret) 
 Check if the return code is OK
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBret\fP (enum \fI\%fy_composer_return\fP) – the composer return to check
+\fBret\fP (enum fy_composer_return) – the composer return to check
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -12420,7 +12421,7 @@ true if non error or skip condition
 .SS typedef fy_parse_composer_cb
 .INDENT 0.0
 .TP
-.B enum \fI\%fy_composer_return\fP fy_parse_composer_cb(struct fy_parser *fyp, struct \fI\%fy_event\fP *fye, struct fy_path *path, void *userdata) 
+.B enum fy_composer_return fy_parse_composer_cb(struct fy_parser *fyp, struct fy_event *fye, struct fy_path *path, void *userdata) 
 composer callback method
 .INDENT 7.0
 .TP
@@ -12429,17 +12430,17 @@ composer callback method
 .IP \(bu 2
 \fBfyp\fP (struct fy_parser*) – The parser
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event
+\fBfye\fP (struct fy_event*) – The event
 .IP \(bu 2
 \fBpath\fP (struct fy_path*) – The path that the parser is processing
 .IP \(bu 2
-\fBuserdata\fP (void*) – The user data of the \fI\%fy_parse_compose()\fP method
+\fBuserdata\fP (void*) – The user data of the \fBfy_parse_compose()\fP method
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-This method is called by the \fI\%fy_parse_compose()\fP method
+This method is called by the \fBfy_parse_compose()\fP method
 when an event must be processed.
 .SS Return
 .sp
@@ -12447,7 +12448,7 @@ fy_composer_return code telling the parser what to do
 .SS fy_parse_compose
 .INDENT 0.0
 .TP
-.B int fy_parse_compose(struct fy_parser *fyp, \fI\%fy_parse_composer_cb\fP cb, void *userdata) 
+.B int fy_parse_compose(struct fy_parser *fyp, fy_parse_composer_cb cb, void *userdata) 
 Parse using a compose callback
 .INDENT 7.0
 .TP
@@ -12456,7 +12457,7 @@ Parse using a compose callback
 .IP \(bu 2
 \fBfyp\fP (struct fy_parser*) – The parser
 .IP \(bu 2
-\fBcb\fP (\fI\%fy_parse_composer_cb\fP) – The callback that will be called
+\fBcb\fP (fy_parse_composer_cb) – The callback that will be called
 .IP \(bu 2
 \fBuserdata\fP (void*) – user pointer to pass to the callback
 .UNINDENT
@@ -13031,7 +13032,7 @@ Get the last non collection root component of a path
 .SS Description
 .sp
 Returns the last non collection root component of a path. This may not be the
-last component that is returned by \fI\%fy_path_last_component()\fP\&.
+last component that is returned by \fBfy_path_last_component()\fP\&.
 .sp
 The difference is present on MAPPING/SEQUENCE START/END events where the
 last component is present but not usuable as a object parent.
@@ -13105,14 +13106,14 @@ Configuration structure for creating a composer instance.
 .SS fy_composer_create
 .INDENT 0.0
 .TP
-.B struct fy_composer *fy_composer_create(struct \fI\%fy_composer_cfg\fP *cfg) 
+.B struct fy_composer *fy_composer_create(struct fy_composer_cfg *cfg) 
 Create a composer
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (struct \fI\%fy_composer_cfg\fP*) – The configuration for the composer
+\fBcfg\fP (struct fy_composer_cfg*) – The configuration for the composer
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -13121,7 +13122,7 @@ Create a composer
 Creates a composer with the given configuration. The composer processes
 YAML events using callback methods and maintains path information for
 intelligent document composition. The composer may be destroyed by a
-corresponding call to \fI\%fy_composer_destroy()\fP\&.
+corresponding call to \fBfy_composer_destroy()\fP\&.
 .SS Return
 .sp
 A pointer to the composer or NULL in case of an error.
@@ -13141,11 +13142,11 @@ Destroy the given composer
 .UNINDENT
 .SS Description
 .sp
-Destroy a composer created earlier via \fI\%fy_composer_create()\fP\&.
+Destroy a composer created earlier via \fBfy_composer_create()\fP\&.
 .SS fy_composer_process_event
 .INDENT 0.0
 .TP
-.B enum \fI\%fy_composer_return\fP fy_composer_process_event(struct fy_composer *fyc, struct \fI\%fy_event\fP *fye) 
+.B enum fy_composer_return fy_composer_process_event(struct fy_composer *fyc, struct fy_event *fye) 
 Process a YAML event through the composer
 .INDENT 7.0
 .TP
@@ -13154,7 +13155,7 @@ Process a YAML event through the composer
 .IP \(bu 2
 \fBfyc\fP (struct fy_composer*) – The composer
 .IP \(bu 2
-\fBfye\fP (struct \fI\%fy_event\fP*) – The event to process
+\fBfye\fP (struct fy_event*) – The event to process
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -13169,7 +13170,7 @@ A fy_composer_return code indicating how to proceed (continue, stop, skip, or er
 .SS fy_composer_get_cfg
 .INDENT 0.0
 .TP
-.B struct \fI\%fy_composer_cfg\fP *fy_composer_get_cfg(struct fy_composer *fyc) 
+.B struct fy_composer_cfg *fy_composer_get_cfg(struct fy_composer *fyc) 
 Get the configuration of a composer
 .INDENT 7.0
 .TP
@@ -13221,7 +13222,7 @@ Get the diagnostic object of a composer
 .sp
 Return a pointer to the diagnostic object of a composer object.
 Note that the returned diag object has a reference taken so
-you should \fI\%fy_diag_unref()\fP it when you’re done with it.
+you should \fBfy_diag_unref()\fP it when you’re done with it.
 .SS Return
 .sp
 A pointer to a ref’ed diagnostic object or NULL in case of an error.
@@ -13290,7 +13291,6 @@ or pass the previous path to get the next one.
 .SS Return
 .sp
 The next path in the list, or NULL if no more paths exist
-.SH COPYRIGHT
+.SH Copyright
 2019-2026, Pantelis Antoniou
-.\" Generated by docutils manpage writer.
-.
+.\" End of generated man page.

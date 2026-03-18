@@ -1766,66 +1766,62 @@ if(SPHINX_EXECUTABLE)
         COMMENT "Cleaning documentation build directory"
     )
 
+    add_custom_target(doc-canned-man
+        DEPENDS doc-man
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${SPHINX_BUILD_DIR}/man/fy-tool.1"
+            "${CMAKE_CURRENT_SOURCE_DIR}/doc/canned-man/fy-tool.1"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${SPHINX_BUILD_DIR}/man/libfyaml.3"
+            "${CMAKE_CURRENT_SOURCE_DIR}/doc/canned-man/libfyaml.3"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${SPHINX_BUILD_DIR}/man/libfyaml-core.3"
+            "${CMAKE_CURRENT_SOURCE_DIR}/doc/canned-man/libfyaml-core.3"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${SPHINX_BUILD_DIR}/man/libfyaml-misc.3"
+            "${CMAKE_CURRENT_SOURCE_DIR}/doc/canned-man/libfyaml-misc.3"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${SPHINX_BUILD_DIR}/man/libfyaml-generics.3"
+            "${CMAKE_CURRENT_SOURCE_DIR}/doc/canned-man/libfyaml-generics.3"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${SPHINX_BUILD_DIR}/man/libfyaml-reflection.3"
+            "${CMAKE_CURRENT_SOURCE_DIR}/doc/canned-man/libfyaml-reflection.3"
+        COMMENT "Updating canned man pages from the built Sphinx man pages"
+        VERBATIM
+    )
+
     message(STATUS "Sphinx found: ${SPHINX_EXECUTABLE}")
     message(STATUS "  make doc-html     - Build HTML documentation")
     message(STATUS "  make doc-man      - Build man pages")
+    message(STATUS "  make doc-canned-man - Refresh canned man pages from doc-man")
     message(STATUS "  make doc-text     - Build plain-text documentation")
     if(HAVE_DOC_LATEXPDF)
         message(STATUS "  make doc-latexpdf - Build PDF documentation")
-    endif()
-
-    install(CODE "
-        execute_process(
-            COMMAND \"${SPHINX_EXECUTABLE}\" -M man \"${SPHINX_SOURCE_DIR}\" \"${SPHINX_BUILD_DIR}\"
-            WORKING_DIRECTORY \"${CMAKE_CURRENT_BINARY_DIR}\"
-            RESULT_VARIABLE sphinx_man_result
-        )
-        if(NOT sphinx_man_result EQUAL 0)
-            message(FATAL_ERROR \"Failed to generate Sphinx man pages during install\")
-        endif()
-
-        file(INSTALL
-            DESTINATION \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1\"
-            TYPE FILE
-            FILES \"${SPHINX_BUILD_DIR}/man/fy-tool.1\"
-        )
-        file(INSTALL
-            DESTINATION \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man3\"
-            TYPE FILE
-            FILES
-                \"${SPHINX_BUILD_DIR}/man/libfyaml.3\"
-                \"${SPHINX_BUILD_DIR}/man/libfyaml-core.3\"
-                \"${SPHINX_BUILD_DIR}/man/libfyaml-misc.3\"
-                \"${SPHINX_BUILD_DIR}/man/libfyaml-generics.3\"
-                \"${SPHINX_BUILD_DIR}/man/libfyaml-reflection.3\"
-        )
-    ")
-    if(NOT WIN32)
-        install(CODE "
-            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-dump.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
-            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-filter.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
-            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-testsuite.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
-            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-join.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
-            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-ypath.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
-            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-compose.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
-        ")
     endif()
 else()
     set(HAVE_SPHINX FALSE)
     message(STATUS "Sphinx not found - documentation targets disabled")
     message(STATUS "  Install: pip3 install sphinx sphinx_rtd_theme sphinx-markdown-builder linuxdoc")
+endif()
 
-    install(FILES doc/canned-man/fy-tool.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
-    if(NOT WIN32)
-        install(CODE "
-            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-dump.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
-            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-filter.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
-            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-testsuite.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
-            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-join.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
-            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-ypath.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
-            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-compose.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
-        ")
-    endif()
+install(FILES doc/canned-man/fy-tool.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
+install(FILES
+    doc/canned-man/libfyaml.3
+    doc/canned-man/libfyaml-core.3
+    doc/canned-man/libfyaml-misc.3
+    doc/canned-man/libfyaml-generics.3
+    doc/canned-man/libfyaml-reflection.3
+    DESTINATION ${CMAKE_INSTALL_MANDIR}/man3
+)
+if(NOT WIN32)
+    install(CODE "
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-dump.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-filter.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-testsuite.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-join.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-ypath.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-compose.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
+    ")
 endif()
 
 # Install targets
