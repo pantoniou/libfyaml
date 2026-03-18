@@ -1702,15 +1702,16 @@ array_info_store_item_count(struct array_info *info, void *data, uintmax_t count
 	if (info->rfd_counter)
 		struct_integer_field_store(info->rw_struct, info->rfd_counter, info->count);
 
-	if (info->has_terminator || info->has_fill) {
-		item_size = info->rtd_dep->ti->size;
+	if (!info->has_terminator && !info->has_fill)
+		return 0;
 
-		memset(&rw_item, 0, sizeof(rw_item));
-		rw_item.rtd = info->rtd_dep;
-		rw_item.data_size.bytes = item_size;
-		rw_item.parent = info->rw;
-		rw_item.flags = RWF_SEQ_IDX;
-	}
+	item_size = info->rtd_dep->ti->size;
+
+	memset(&rw_item, 0, sizeof(rw_item));
+	rw_item.rtd = info->rtd_dep;
+	rw_item.data_size.bytes = item_size;
+	rw_item.parent = info->rw;
+	rw_item.flags = RWF_SEQ_IDX;
 
 	if (info->has_terminator) {
 
