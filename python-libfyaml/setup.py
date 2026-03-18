@@ -2,6 +2,7 @@
 """Build configuration for the libfyaml Python extension."""
 
 import os
+import re
 import struct
 import shlex
 import shutil
@@ -35,6 +36,52 @@ def resolve_repo_root() -> Path:
 
 
 REPO_ROOT = resolve_repo_root()
+
+
+def _pep440_from_libfyaml_version(raw_version: str) -> str:
+    """Translate libfyaml release versions to PEP 440."""
+    match = re.fullmatch(r"(\d+\.\d+\.\d+)(?:-(alpha|beta|rc)(\d+))?", raw_version.strip())
+    if not match:
+        raise RuntimeError(f"Unsupported libfyaml release version format: {raw_version!r}")
+
+    version = match.group(1)
+    if match.group(2):
+        version += {"alpha": "a", "beta": "b", "rc": "rc"}[match.group(2)] + match.group(3)
+    return version
+
+
+def _read_pkg_info_version() -> Optional[str]:
+    """Read the version from sdist metadata when repo version files are absent."""
+    for candidate in (THIS_DIR / "PKG-INFO", THIS_DIR / "libfyaml.egg-info" / "PKG-INFO"):
+        if not candidate.exists():
+            continue
+        for line in candidate.read_text().splitlines():
+            if line.startswith("Version: "):
+                return line.split(": ", 1)[1].strip()
+    return None
+
+
+def resolve_package_version() -> str:
+    """Resolve the Python package version from the core libfyaml release version."""
+    version_file = REPO_ROOT / ".tarball-version"
+    if version_file.exists():
+        return _pep440_from_libfyaml_version(version_file.read_text().strip())
+
+    git_version_gen = REPO_ROOT / "build-aux" / "git-version-gen"
+    if git_version_gen.exists():
+        result = subprocess.run(
+            [str(git_version_gen), str(version_file)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return _pep440_from_libfyaml_version(result.stdout.strip())
+
+    pkg_info_version = _read_pkg_info_version()
+    if pkg_info_version:
+        return pkg_info_version
+
+    raise RuntimeError("Could not determine libfyaml package version")
 
 
 def run_command(args: List[str], cwd: Optional[Path] = None) -> None:
@@ -201,6 +248,7 @@ class CustomBuildExt(build_ext):
 
 
 setup(
+    version=resolve_package_version(),
     ext_modules=[Extension("libfyaml._libfyaml", sources=["libfyaml/_libfyaml.c"])],
     packages=["libfyaml"],
     package_data={"libfyaml": ["*.pyi"]},

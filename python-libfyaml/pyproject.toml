@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "libfyaml"
-version = "1.0.0a1"
+dynamic = ["version"]
 description = "Python bindings for libfyaml's generic YAML/JSON value model"
 readme = "README.md"
 requires-python = ">=3.8"

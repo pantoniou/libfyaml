@@ -22,6 +22,8 @@ Example:
     >>> doc.to_python()  # Full conversion: {'name': 'Alice', 'age': 30}
 """
 
+from importlib.metadata import PackageNotFoundError, version as _dist_version
+
 from libfyaml._libfyaml import (
     FyGeneric,
     FyDocumentState,
@@ -99,7 +101,10 @@ def json_dump(obj, fp, **kwargs):
     return _json.dump(obj, fp, **kwargs)
 
 
-__version__ = "0.9.0"
+try:
+    __version__ = _dist_version("libfyaml")
+except PackageNotFoundError:
+    __version__ = "0+unknown"
 
 __all__ = [
     "FyGeneric",
