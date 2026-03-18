@@ -4,6 +4,10 @@ name: Python Wheels
 # This workflow covers the Python wheel matrix that is currently expected to be
 # reliable in CI: Linux and macOS. BSDs use source builds for now, and Windows
 # is not yet part of the Python wheel release path.
+#
+# Keep the matrix explicit by target platform/architecture. Using multiple
+# runner labels that resolve to the same wheel tags can produce duplicate
+# artifacts and break the publish job.
 
 on:
   push:
@@ -34,22 +38,61 @@ on:
       - ".tarball-version"
       - "build-aux/git-version-gen"
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish built distributions to PyPI"
+        required: true
+        default: false
+        type: boolean
 
 jobs:
   build_wheels:
-    name: Build Wheels (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Build Wheels (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          - ubuntu-24.04
-          - macos-14
-          - macos-latest
+        include:
+          - name: linux-x86_64
+            runner: ubuntu-latest
+            cibw_archs: x86_64
+            cibw_environment: LIBFYAML_REPO_ROOT=/project
+          - name: macos-x86_64
+            runner: macos-13
+            cibw_archs: x86_64
+            cibw_environment: LIBFYAML_REPO_ROOT=${{ github.workspace }}
+          - name: macos-arm64
+            runner: macos-14
+            cibw_archs: arm64
+            cibw_environment: LIBFYAML_REPO_ROOT=${{ github.workspace }}
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate release tag
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import re
+
+          raw_version = pathlib.Path(".tarball-version").read_text().strip()
+          match = re.fullmatch(r"(\d+\.\d+\.\d+)(?:-(alpha|beta|rc)(\d+))?", raw_version)
+          if not match:
+              raise SystemExit(f"Unsupported libfyaml release version format: {raw_version!r}")
+
+          ref_name = "${{ github.ref_name }}"
+          ref_type = "${{ github.ref_type }}"
+          if ref_type == "tag":
+              expected_tag = f"v{raw_version}"
+              if ref_name != expected_tag:
+                  raise SystemExit(
+                      f"Git tag {ref_name!r} does not match .tarball-version {raw_version!r} "
+                      f"(expected {expected_tag!r})"
+                  )
+
+          print(f"Validated core release version {raw_version}")
+          PY
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v3.3.0
@@ -57,14 +100,13 @@ jobs:
           package-dir: python-libfyaml
           output-dir: wheelhouse
         env:
-          CIBW_ARCHS_LINUX: x86_64
-          CIBW_ENVIRONMENT_LINUX: LIBFYAML_REPO_ROOT=/project
-          CIBW_ENVIRONMENT_MACOS: LIBFYAML_REPO_ROOT=${{ github.workspace }}
+          CIBW_ARCHS: ${{ matrix.cibw_archs }}
+          CIBW_ENVIRONMENT: ${{ matrix.cibw_environment }}
 
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.os }}
+          name: wheels-${{ matrix.name }}
           path: wheelhouse/*.whl
 
   build_sdist:
@@ -73,6 +115,31 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate release tag
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import re
+
+          raw_version = pathlib.Path(".tarball-version").read_text().strip()
+          match = re.fullmatch(r"(\d+\.\d+\.\d+)(?:-(alpha|beta|rc)(\d+))?", raw_version)
+          if not match:
+              raise SystemExit(f"Unsupported libfyaml release version format: {raw_version!r}")
+
+          ref_name = "${{ github.ref_name }}"
+          ref_type = "${{ github.ref_type }}"
+          if ref_type == "tag":
+              expected_tag = f"v{raw_version}"
+              if ref_name != expected_tag:
+                  raise SystemExit(
+                      f"Git tag {ref_name!r} does not match .tarball-version {raw_version!r} "
+                      f"(expected {expected_tag!r})"
+                  )
+
+          print(f"Validated core release version {raw_version}")
+          PY
 
       - uses: actions/setup-python@v5
         with:
@@ -92,7 +159,9 @@ jobs:
 
   publish:
     name: Publish To PyPI
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && inputs.publish)
     needs:
       - build_wheels
       - build_sdist
