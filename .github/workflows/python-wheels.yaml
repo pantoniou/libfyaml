@@ -58,7 +58,7 @@ jobs:
             cibw_archs: x86_64
             cibw_environment: LIBFYAML_REPO_ROOT=/project
           - name: macos-x86_64
-            runner: macos-13
+            runner: macos-15-intel
             cibw_archs: x86_64
             cibw_environment: LIBFYAML_REPO_ROOT=${{ github.workspace }}
           - name: macos-arm64
