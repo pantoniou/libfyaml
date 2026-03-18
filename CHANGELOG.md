@@ -5,6 +5,43 @@ All notable changes to libfyaml will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-alpha2] - 2026-03-18
+
+The second alpha milestone for the 1.0 line. This release does not change the
+overall shape of the new generic and reflection APIs introduced in
+`1.0.0-alpha1`; it focuses on correctness, portability, and release
+infrastructure so the new subsystems are usable on more platforms and easier to
+consume.
+
+### Changed
+
+- `generic`: harden the generic runtime for 32-bit targets
+- `reflection`: handle enums according to their underlying enum type
+- `clang`: fix LLVM 21 fallout in the reflection backend
+- `walk`: use `FY_DBL_DECIMAL_DIG` for safer double formatting
+- `doc`: add a GitHub Actions documentation build workflow and publish workflow artifacts
+- `doc`: add the missing LaTeX/doc build dependencies and refresh canned man pages in CMake
+- `utils`: add `fy_tmpfile()` and `fy_create_tmpfile()` utility helpers
+
+### Fixed
+
+- `emit`: literal `|+` scalars no longer produce an extra newline before the following element
+- `generic`: fix string access to use `fy_castp()` correctly
+- `generic`: suppress warnings during generic value printing
+- `generic`: clamp generic encoding correctly when `size_t < sizeof(int32_t)`
+- `vlsize`: handle decoding correctly when `size_t < sizeof(uint64_t)`
+- `utils`: avoid overexpanding on 32-bit builds
+- `cmake`: enable and tighten 32-bit build coverage, while keeping portable target handling correct for x86 32-bit
+- `cmake`: only enable tautological warnings on clang
+- `test`: gate reflection and streaming-alias fuzz tests correctly on unsupported platforms
+- `test`: fix reflection test coverage on Windows
+- `misc`: fix a couple of `-Wextra` warnings
+
+### Statistics
+
+- 27 commits since `v1.0.0-alpha1`
+- Focus areas: 32-bit support, reflection/clang compatibility, emitter correctness, and release documentation pipeline
+
 ## [1.0.0-alpha1] - 2026-03-16
 
 This is the first alpha milestone toward a stable 1.0 release. The core YAML
@@ -543,6 +580,7 @@ Jose Luis Blanco-Claraco, Andrey Somov, Orange_233, Martin Diehl
 
 Initial public release with comprehensive YAML 1.2 support.
 
+[1.0.0-alpha2]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha1...v1.0.0-alpha2
 [1.0.0-alpha1]: https://github.com/pantoniou/libfyaml/compare/v0.9.6...v1.0.0-alpha1
 [0.9.6]: https://github.com/pantoniou/libfyaml/compare/v0.9.5...v0.9.6
 [0.9.5]: https://github.com/pantoniou/libfyaml/compare/v0.9.4...v0.9.5

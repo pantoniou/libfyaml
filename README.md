@@ -1,4 +1,4 @@
-# libfyaml 1.0-alpha1
+# libfyaml 1.0-alpha2
 
 [![Autotools CI](https://github.com/pantoniou/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22Standard+Automake+CI%22)
 [![CMake CI](https://github.com/pantoniou/libfyaml/workflows/CMake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22CMake+CI%22)
@@ -6,7 +6,7 @@
 [![Language: C](https://img.shields.io/badge/language-C-brightgreen.svg)](https://en.wikipedia.org/wiki/C_(programming_language))
 
 libfyaml is a high-performance YAML 1.2 and JSON parser/emitter with zero-copy
-operation, full document and event APIs, and now two major 1.0-alpha1 features:
+operation, full document and event APIs, and the two major 1.0 alpha features:
 
 * generics: a schema-light, sum-type value model for YAML/JSON data in C
 * reflection/meta-type: typed YAML <-> C serdes driven by C type metadata
@@ -17,7 +17,17 @@ The alpha release adds a clear progression:
 * use generics when your problem is "work with values"
 * use reflection when your problem is "populate native C data structures"
 
-## Why 1.0-alpha1 matters
+## Why 1.0-alpha2 matters
+
+`1.0.0-alpha2` is the stabilization follow-up to `1.0.0-alpha1`.
+
+It keeps the same overall 1.0 direction, but tightens the new subsystems in the
+places that matter for early adopters:
+
+* 32-bit build and runtime fixes across generics, variable-size decoding, and CMake
+* reflection fixes for LLVM 21 / libclang fallout and enum handling
+* emitter fix for literal `|+` scalar layout
+* documentation build workflow and packaging improvements for release artifacts
 
 ### Generic runtime
 
