@@ -1305,6 +1305,12 @@ static inline char *fy_alloca_vsprintf_impl(const char *fmt, va_list ap)
 #define FY_DIAG_IGNORE_UNUSED_PARAMETER \
 	_Pragma("GCC diagnostic ignored \"-Wunused-parameter\"")
 
+/**
+ * FY_DIAG_IGNORE_TYPE_LIMITS - Suppress ``-Wtype-limits`` in the current region.
+ */
+#define FY_DIAG_IGNORE_TYPE_LIMITS \
+	_Pragma("GCC diagnostic ignored \"-Wtype-limits\"")
+
 #else
 #define FY_DIAG_PUSH
 #define FY_DIAG_POP
@@ -1313,6 +1319,7 @@ static inline char *fy_alloca_vsprintf_impl(const char *fmt, va_list ap)
 #define FY_DIAG_IGNORE_ARRAY_BOUNDS /* nothing */
 #define FY_DIAG_IGNORE_UNUSED_VARIABLE /* nothing */
 #define FY_DIAG_IGNORE_UNUSED_PARAMETER /* nothing */
+#define FY_DIAG_IGNORE_TYPE_LIMITS /* nothing */
 
 #endif
 
