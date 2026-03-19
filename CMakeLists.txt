@@ -104,6 +104,25 @@ macro(add_libclang_to_target target_name link_scope)
     endif()
 endmacro()
 
+function(link_whole_archive_static target_name static_target)
+    if(MSVC)
+        target_link_libraries(${target_name} PRIVATE ${static_target})
+    elseif(APPLE)
+        target_link_libraries(${target_name} PRIVATE
+            -Wl,-force_load,$<TARGET_FILE:${static_target}>
+        )
+    elseif(WIN32)
+        target_link_libraries(${target_name} PRIVATE ${static_target})
+        target_link_options(${target_name} PRIVATE
+            "LINKER:/WHOLEARCHIVE:$<TARGET_FILE:${static_target}>"
+        )
+    else()
+        target_link_libraries(${target_name} PRIVATE
+            -Wl,--whole-archive ${static_target} -Wl,--no-whole-archive
+        )
+    endif()
+endfunction()
+
 # Options
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 option(ENABLE_PORTABLE_TARGET "Enable portable mode (disable per-target optimizations)" OFF)
@@ -1413,26 +1432,15 @@ if(HAVE_LIBYAML)
 
     target_include_directories(libfyaml-parser PRIVATE ${INTERNAL_TOOL_INCLUDES})
     target_link_directories(libfyaml-parser PRIVATE ${LIBYAML_LIBRARY_DIRS})
+    link_whole_archive_static(libfyaml-parser fyaml_static)
+    target_link_libraries(libfyaml-parser PRIVATE
+        ${LIBYAML_LIBRARIES}
+        $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
+    )
     if(NOT MSVC)
-        # Embed libfyaml code statically, allow dynamic linking for system libraries
-        if(APPLE)
-            target_link_libraries(libfyaml-parser PRIVATE
-                -Wl,-force_load,$<TARGET_FILE:fyaml_static>
-                ${LIBYAML_LIBRARIES}
-                $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
-            )
-        else()
-            target_link_libraries(libfyaml-parser PRIVATE
-                -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
-                ${LIBYAML_LIBRARIES}
-                $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
-            )
-        endif()
         if(HAVE_ASAN)
             target_link_options(libfyaml-parser PRIVATE ${ASAN_C_FLAGS})
         endif()
-    else()
-        target_link_libraries(libfyaml-parser PRIVATE fyaml_static ${LIBYAML_LIBRARIES})
     endif()
     if(HAVE_LIBCLANG)
         target_link_directories(libfyaml-parser PRIVATE ${LIBCLANG_LINK_DIRS})
@@ -1448,23 +1456,14 @@ target_include_directories(fy-thread PRIVATE ${INTERNAL_TOOL_INCLUDES})
 target_compile_definitions(fy-thread PRIVATE
     ${COMMON_C_DEFINITIONS}
     FY_STATIC)
+link_whole_archive_static(fy-thread fyaml_static)
+target_link_libraries(fy-thread PRIVATE
+    $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
+)
 if(NOT MSVC)
-    if(APPLE)
-        target_link_libraries(fy-thread PRIVATE
-            -Wl,-force_load,$<TARGET_FILE:fyaml_static>
-            $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
-        )
-    else()
-        target_link_libraries(fy-thread PRIVATE
-            -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
-            $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
-        )
-    endif()
     if(HAVE_ASAN)
         target_link_options(fy-thread PRIVATE ${ASAN_C_FLAGS})
     endif()
-else()
-    target_link_libraries(fy-thread PRIVATE fyaml_static)
 endif()
 if(HAVE_LIBCLANG)
     target_link_directories(fy-thread PRIVATE ${LIBCLANG_LINK_DIRS})
@@ -1482,23 +1481,14 @@ target_include_directories(fy-b3sum PRIVATE
 target_compile_definitions(fy-b3sum PRIVATE
     ${COMMON_C_DEFINITIONS}
     FY_STATIC)
+link_whole_archive_static(fy-b3sum fyaml_static)
+target_link_libraries(fy-b3sum PRIVATE
+    $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
+)
 if(NOT MSVC)
-    if(APPLE)
-        target_link_libraries(fy-b3sum PRIVATE
-            -Wl,-force_load,$<TARGET_FILE:fyaml_static>
-            $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
-        )
-    else()
-        target_link_libraries(fy-b3sum PRIVATE
-            -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
-            $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
-        )
-    endif()
     if(HAVE_ASAN)
         target_link_options(fy-b3sum PRIVATE ${ASAN_C_FLAGS})
     endif()
-else()
-    target_link_libraries(fy-b3sum PRIVATE fyaml_static)
 endif()
 if(HAVE_LIBCLANG)
     target_link_directories(fy-b3sum PRIVATE ${LIBCLANG_LINK_DIRS})
@@ -1513,23 +1503,14 @@ target_include_directories(fy-allocators PRIVATE ${INTERNAL_TOOL_INCLUDES})
 target_compile_definitions(fy-allocators PRIVATE
     ${COMMON_C_DEFINITIONS}
     FY_STATIC)
+link_whole_archive_static(fy-allocators fyaml_static)
+target_link_libraries(fy-allocators PRIVATE
+    $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
+)
 if(NOT MSVC)
-    if(APPLE)
-        target_link_libraries(fy-allocators PRIVATE
-            -Wl,-force_load,$<TARGET_FILE:fyaml_static>
-            $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
-        )
-    else()
-        target_link_libraries(fy-allocators PRIVATE
-            -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
-            $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
-        )
-    endif()
     if(HAVE_ASAN)
         target_link_options(fy-allocators PRIVATE ${ASAN_C_FLAGS})
     endif()
-else()
-    target_link_libraries(fy-allocators PRIVATE fyaml_static)
 endif()
 if(HAVE_LIBCLANG)
     target_link_directories(fy-allocators PRIVATE ${LIBCLANG_LINK_DIRS})
@@ -1595,25 +1576,15 @@ if(CAN_TEST)
 
         # Link against static library to access private symbols
         # Use same pattern as internal tools
+        link_whole_archive_static(libfyaml-test fyaml_static)
+        target_link_libraries(libfyaml-test PRIVATE
+            ${CHECK_LIBRARIES}
+            $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
+        )
         if(NOT MSVC)
-            if(APPLE)
-                target_link_libraries(libfyaml-test PRIVATE
-                    -Wl,-force_load,$<TARGET_FILE:fyaml_static>
-                    ${CHECK_LIBRARIES}
-                    $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
-                )
-            else()
-                target_link_libraries(libfyaml-test PRIVATE
-                    -Wl,--whole-archive fyaml_static -Wl,--no-whole-archive
-                    ${CHECK_LIBRARIES}
-                    $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
-                )
-            endif()
             if(HAVE_ASAN)
                 target_link_options(libfyaml-test PRIVATE ${ASAN_C_FLAGS})
             endif()
-        else()
-            target_link_libraries(libfyaml-test PRIVATE fyaml_static ${CHECK_LIBRARIES})
         endif()
         if(CHECK_LIBRARY_DIRS)
             target_link_directories(libfyaml-test PRIVATE ${CHECK_LIBRARY_DIRS})
