@@ -660,22 +660,34 @@ uint64_t fy_gb_allocation_failures(struct fy_generic_builder *gb)
 fy_generic
 fy_gb_string_vcreate(struct fy_generic_builder *gb, const char *fmt, va_list ap)
 {
+	char buf[1024];
 	va_list ap2;
 	char *str;
-	size_t size;
+	int size;
+	bool alloc = false;
+	fy_generic v = fy_invalid;
 
 	va_copy(ap2, ap);
 
-	size = vsnprintf(NULL, 0, fmt, ap);
+	str = buf;
+	size = vsnprintf(buf, sizeof(buf) - 1, fmt, ap);
 	if (size < 0)
 		return fy_invalid;
 
-	str = alloca(size + 1);
-	size = vsnprintf(str, size + 1, fmt, ap2);
-	if (size < 0)
-		return fy_invalid;
+	if ((size_t)size >= sizeof(buf) - 1) {
+		str = malloc(size + 1);
+		if (!str)
+			return fy_invalid;
+		alloc = true;
+		size = vsnprintf(str, size + 1, fmt, ap2);
+	}
+	if (size >= 0)
+		v = fy_gb_string_size_create(gb, str, (size_t)size);
 
-	return fy_gb_string_size_create(gb, str, size);
+	if (alloc)
+		free(str);
+
+	return v;
 }
 
 fy_generic
