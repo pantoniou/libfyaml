@@ -444,7 +444,8 @@ err_out:
 	return -1;
 }
 
-static int packed_import_setup(struct fy_import *imp, const void *user)
+static int packed_import_setup(struct fy_import *imp,
+			       const void *user FY_UNUSED)
 {
 	struct fy_reflection *rfl;
 	struct packed_reflect_backend *rflb;
@@ -765,7 +766,9 @@ static void fp_quoted_string(FILE *fp, const char *str)
 	fprintf(fp, "\"");
 }
 
-static void decl_generate_one_fp(struct fy_packed_generator *pg, struct fy_decl *decl, FILE *fp)
+static void decl_generate_one_fp(struct fy_packed_generator *pg FY_UNUSED,
+				 struct fy_decl *decl,
+				 FILE *fp)
 {
 	const char *yaml_comment;
 	char *raw_comment;
@@ -813,7 +816,9 @@ static void decl_generate_one_fp(struct fy_packed_generator *pg, struct fy_decl 
 	fprintf(fp, "\n");
 }
 
-static void type_generate_one_fp(struct fy_packed_generator *pg, struct fy_type *ft, FILE *fp)
+static void type_generate_one_fp(struct fy_packed_generator *pg FY_UNUSED,
+				 struct fy_type *ft,
+				 FILE *fp)
 {
 	struct fy_decl *decl;
 
@@ -894,7 +899,9 @@ struct blob_writer {
 	uint64_t Si_maxval;			// in probing, maximum offset
 };
 
-static int decl_generate_one_blob(struct fy_decl *decl, struct blob_writer *bw, bool is_field)
+static int decl_generate_one_blob(struct fy_decl *decl,
+				  struct blob_writer *bw,
+				  bool is_field FY_UNUSED)
 {
 	struct fy_reflection *rfl;
 	const char *yaml_comment;
@@ -1042,7 +1049,8 @@ err_out:
 	return -1;
 }
 
-static int packed_generate_blob_H(struct fy_packed_generator *pg, struct blob_writer *bw)
+static int packed_generate_blob_H(struct fy_packed_generator *pg FY_UNUSED,
+				  struct blob_writer *bw)
 {
 	br_w8(&bw->Hr, 'F');		/* format id */
 	br_w8(&bw->Hr, 'Y');

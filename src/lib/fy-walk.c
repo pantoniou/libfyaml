@@ -2217,8 +2217,9 @@ fy_path_expr_order(struct fy_path_expr *expr1, struct fy_path_expr *expr2)
 
 int push_operand_lr(struct fy_path_parser *fypp,
 		    enum fy_path_expr_type type,
-		    struct fy_path_expr *exprl, struct fy_path_expr *exprr,
-		    bool optimize)
+		    struct fy_path_expr *exprl,
+		    struct fy_path_expr *exprr,
+		    bool optimize FY_UNUSED)
 {
 	struct fy_reader *fyr;
 	struct fy_path_expr *expr = NULL, *exprt;
@@ -2460,11 +2461,13 @@ static inline int fy_method_to_builtin_idx(const struct fy_method *fym)
 
 static struct fy_walk_result *
 common_builtin_ref_exec(const struct fy_method *fym,
-	    struct fy_path_exec *fypx, int level,
-            struct fy_path_expr *expr,
-	    struct fy_walk_result *input,
-	    struct fy_walk_result **args, int nargs,
-	    bool *errorp)
+			struct fy_path_exec *fypx,
+			int level FY_UNUSED,
+			struct fy_path_expr *expr FY_UNUSED,
+			struct fy_walk_result *input,
+			struct fy_walk_result **args,
+			int nargs,
+			bool *errorp)
 {
 	enum fy_method_idx midx;
 	struct fy_walk_result *output = NULL;
@@ -2777,12 +2780,14 @@ err_out:
 }
 
 static struct fy_walk_result *
-test_exec(const struct fy_method *fym,
-	  struct fy_path_exec *fypx, int level,
-	  struct fy_path_expr *expr,
+test_exec(const struct fy_method *fym FY_UNUSED,
+	  struct fy_path_exec *fypx,
+	  int level FY_UNUSED,
+	  struct fy_path_expr *expr FY_UNUSED,
 	  struct fy_walk_result *input,
-	  struct fy_walk_result **args, int nargs,
-	  bool *errorp)
+	  struct fy_walk_result **args,
+	  int nargs,
+	  bool *errorp FY_UNUSED)
 {
 	int i;
 	struct fy_walk_result *output = NULL;
@@ -2811,12 +2816,14 @@ out:
 }
 
 static struct fy_walk_result *
-sum_exec(const struct fy_method *fym,
-	 struct fy_path_exec *fypx, int level,
-         struct fy_path_expr *expr,
+sum_exec(const struct fy_method *fym FY_UNUSED,
+	 struct fy_path_exec *fypx FY_UNUSED,
+	 int level FY_UNUSED,
+         struct fy_path_expr *expr FY_UNUSED,
 	 struct fy_walk_result *input,
-	 struct fy_walk_result **args, int nargs,
-	 bool *errorp)
+	 struct fy_walk_result **args,
+	 int nargs,
+	 bool *errorp FY_UNUSED)
 {
 	int i;
 	struct fy_walk_result *output = NULL;
@@ -3709,7 +3716,10 @@ err_out:
 }
 
 static struct fy_node *
-fy_path_expr_execute_single_result(struct fy_diag *diag, struct fy_path_expr *expr, struct fy_node *fyn, bool *errorp)
+fy_path_expr_execute_single_result(struct fy_diag *diag FY_UNUSED,
+				   struct fy_path_expr *expr,
+				   struct fy_node *fyn,
+				   bool *errorp)
 {
 	struct fy_token *fyt;
 	struct fy_anchor *fya;
@@ -4304,8 +4314,10 @@ err_out:
 struct fy_walk_result *
 fy_walk_result_arithmetic_simple(struct fy_path_exec *fypx,
 				 struct fy_path_expr *expr,
-				 struct fy_path_expr *exprl, struct fy_walk_result *fwrl,
-				 struct fy_path_expr *exprr, struct fy_walk_result *fwrr,
+				 struct fy_path_expr *exprl FY_UNUSED,
+				 struct fy_walk_result *fwrl,
+				 struct fy_path_expr *exprr FY_UNUSED,
+				 struct fy_walk_result *fwrr,
 				 bool *errorp)
 {
 	struct fy_diag *diag;
@@ -4397,8 +4409,10 @@ err_out:
 struct fy_walk_result *
 fy_walk_result_conditional_simple(struct fy_path_exec *fypx,
 				  struct fy_path_expr *expr,
-				  struct fy_path_expr *exprl, struct fy_walk_result *fwrl,
-				  struct fy_path_expr *exprr, struct fy_walk_result *fwrr,
+				  struct fy_path_expr *exprl FY_UNUSED,
+				  struct fy_walk_result *fwrl,
+				  struct fy_path_expr *exprr FY_UNUSED,
+				  struct fy_walk_result *fwrr,
 				  bool *errorp)
 {
 	bool match, error;
@@ -4569,8 +4583,10 @@ err_out:
 }
 
 struct fy_path_expr *
-fy_scalar_walk_result_to_expr(struct fy_path_exec *fypx, struct fy_walk_result *fwr,
-		enum fy_path_expr_type ptype, bool *errorp)
+fy_scalar_walk_result_to_expr(struct fy_path_exec *fypx FY_UNUSED,
+			      struct fy_walk_result *fwr,
+			      enum fy_path_expr_type ptype,
+			      bool *errorp)
 {
 	struct fy_input *fyit = NULL;
 	struct fy_path_expr *exprt = NULL;

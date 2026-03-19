@@ -58,13 +58,15 @@ fy_malloc_tag_from_tag(struct fy_malloc_allocator *ma, int tag)
 	return &ma->tags[tag];
 }
 
-static void fy_malloc_tag_setup(struct fy_malloc_allocator *ma, struct fy_malloc_tag *mt)
+static void fy_malloc_tag_setup(struct fy_malloc_allocator *ma FY_UNUSED,
+				struct fy_malloc_tag *mt)
 {
 	fy_malloc_entry_list_init(&mt->entries);
 	atomic_flag_clear(&mt->lock);
 }
 
-static void fy_malloc_tag_cleanup(struct fy_malloc_allocator *ma, struct fy_malloc_tag *mt)
+static void fy_malloc_tag_cleanup(struct fy_malloc_allocator *ma FY_UNUSED,
+				  struct fy_malloc_tag *mt)
 {
 	struct fy_malloc_entry *me;
 
@@ -96,7 +98,10 @@ static void fy_malloc_cleanup(struct fy_allocator *a)
 	fy_parent_allocator_free(&ma->a, (void *)ma->tags);
 }
 
-static int fy_malloc_setup(struct fy_allocator *a, struct fy_allocator *parent, int parent_tag, const void *data)
+static int fy_malloc_setup(struct fy_allocator *a,
+			   struct fy_allocator *parent,
+			   int parent_tag,
+			   const void *data FY_UNUSED)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
@@ -211,7 +216,9 @@ void fy_malloc_dump(struct fy_allocator *a)
 	}
 }
 
-static void *fy_malloc_tag_alloc(struct fy_malloc_allocator *ma, struct fy_malloc_tag *mt, size_t size, size_t align)
+static void *fy_malloc_tag_alloc(struct fy_malloc_allocator *ma FY_UNUSED,
+				 struct fy_malloc_tag *mt,
+				 size_t size, size_t align)
 {
 	struct fy_malloc_entry *me;
 	size_t me_offset, max_align;
@@ -235,7 +242,9 @@ static void *fy_malloc_tag_alloc(struct fy_malloc_allocator *ma, struct fy_mallo
 	return mem;
 }
 
-static void fy_malloc_tag_free(struct fy_malloc_allocator *ma, struct fy_malloc_tag *mt, void *data)
+static void fy_malloc_tag_free(struct fy_malloc_allocator *ma FY_UNUSED,
+			       struct fy_malloc_tag *mt,
+			       void *data)
 {
 	struct fy_malloc_entry *me;
 
@@ -311,7 +320,12 @@ err_out:
 	return -1;
 }
 
-static const void *fy_malloc_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
+static const void *fy_malloc_storev(struct fy_allocator *a,
+				    int tag,
+				    const struct iovec *iov,
+				    int iovcnt,
+				    size_t align,
+				    uint64_t hash FY_UNUSED)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
@@ -343,7 +357,12 @@ err_out:
 	return NULL;
 }
 
-static const void *fy_malloc_lookupv(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
+static const void *fy_malloc_lookupv(struct fy_allocator *a FY_UNUSED,
+				     int tag FY_UNUSED,
+				     const struct iovec *iov FY_UNUSED,
+				     int iovcnt FY_UNUSED,
+				     size_t align FY_UNUSED,
+				     uint64_t hash FY_UNUSED)
 {
 	/* no lookups */
 	return NULL;
@@ -498,7 +517,8 @@ err_out:
 	return -1;
 }
 
-static void fy_malloc_trim_tag(struct fy_allocator *a, int tag)
+static void fy_malloc_trim_tag(struct fy_allocator *a FY_UNUSED,
+			       int tag FY_UNUSED)
 {
 	/* nothing */
 }
@@ -646,7 +666,7 @@ fy_malloc_get_info(struct fy_allocator *a, int tag)
 }
 
 static enum fy_allocator_cap_flags
-fy_malloc_get_caps(struct fy_allocator *a)
+fy_malloc_get_caps(struct fy_allocator *a FY_UNUSED)
 {
 	return FYACF_CAN_FREE_INDIVIDUAL | FYACF_CAN_FREE_TAG |
 	       FYACF_HAS_CONTAINS | FYACF_HAS_TAGS;

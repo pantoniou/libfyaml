@@ -55,34 +55,43 @@ void fyp_debug_dump_input(struct fy_parser *fyp, const struct fy_input_cfg *fyic
 #else
 
 static inline void
-fyp_debug_dump_token_list(struct fy_parser *fyp, struct fy_token_list *fytl,
-			  struct fy_token *fyt_highlight, const char *banner)
+fyp_debug_dump_token_list(struct fy_parser *fyp FY_UNUSED,
+			  struct fy_token_list *fytl FY_UNUSED,
+			  struct fy_token *fyt_highlight FY_UNUSED,
+			  const char *banner FY_UNUSED)
 {
 	/* nothing */
 }
 
 static inline void
-fyp_debug_dump_token(struct fy_parser *fyp, struct fy_token *fyt, const char *banner)
+fyp_debug_dump_token(struct fy_parser *fyp FY_UNUSED,
+		     struct fy_token *fyt FY_UNUSED,
+		     const char *banner FY_UNUSED)
 {
 	/* nothing */
 }
 
 static inline void
-fyp_debug_dump_simple_key_list(struct fy_parser *fyp, struct fy_simple_key_list *fyskl,
-			       struct fy_simple_key *fysk_highlight, const char *banner)
+fyp_debug_dump_simple_key_list(struct fy_parser *fyp FY_UNUSED,
+			       struct fy_simple_key_list *fyskl FY_UNUSED,
+			       struct fy_simple_key *fysk_highlight FY_UNUSED,
+			       const char *banner FY_UNUSED)
 {
 	/* nothing */
 }
 
 static inline void
-fyp_debug_dump_simple_key(struct fy_parser *fyp, struct fy_simple_key *fysk, const char *banner)
+fyp_debug_dump_simple_key(struct fy_parser *fyp FY_UNUSED,
+			  struct fy_simple_key *fysk FY_UNUSED,
+			  const char *banner FY_UNUSED)
 {
 	/* nothing */
 }
 
 static inline void
-fy_debug_dump_input(struct fy_parser *fyp, const struct fy_input_cfg *fyic,
-		    const char *banner)
+fy_debug_dump_input(struct fy_parser *fyp FY_UNUSED,
+		    const struct fy_input_cfg *fyic FY_UNUSED,
+		    const char *banner FY_UNUSED)
 {
 	/* nothing */
 }

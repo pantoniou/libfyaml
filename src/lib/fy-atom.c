@@ -492,7 +492,7 @@ do_nws:
 		}
 
 		/* if we got both break */
-		if (li->end && iter->chomp >= 0)
+		if (li->end)
 			break;
 	}
 	li->e_tb = ss;
@@ -1928,7 +1928,7 @@ void fy_atom_raw_line_iter_start(const struct fy_atom *atom,
 	iter->rs = iter->as;
 }
 
-void fy_atom_raw_line_iter_finish(struct fy_atom_raw_line_iter *iter)
+void fy_atom_raw_line_iter_finish(struct fy_atom_raw_line_iter *iter FY_UNUSED)
 {
 	/* nothing */
 }

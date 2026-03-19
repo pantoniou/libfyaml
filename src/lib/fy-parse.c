@@ -1044,7 +1044,9 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 }
 
 bool
-fy_comment_atoms_seperated_by_ws(struct fy_parser *fyp, struct fy_atom *a, struct fy_atom *b)
+fy_comment_atoms_seperated_by_ws(struct fy_parser *fyp FY_UNUSED,
+				 struct fy_atom *a,
+				 struct fy_atom *b)
 {
 	struct fy_atom *tmpatom;
 	struct fy_atom inbetween;
@@ -3504,9 +3506,15 @@ err_out_rc:
 	return rc;
 }
 
-int fy_scan_block_scalar_indent(struct fy_parser *fyp, int indent, int *breaks, int *breaks_length,
-				int *presentation_breaks_length, int *first_break_length, int *lastc,
-				int *max_indentp, bool first_scan)
+int fy_scan_block_scalar_indent(struct fy_parser *fyp,
+				int indent,
+				int *breaks,
+				int *breaks_length,
+				int *presentation_breaks_length,
+				int *first_break_length,
+				int *lastc,
+				int *max_indentp FY_UNUSED,
+				bool first_scan)
 {
 	int c, max_indent = 0, break_length, col;
 
@@ -4483,10 +4491,10 @@ struct fy_fetch_plain_state {
 static FY_ALWAYS_INLINE inline int
 fy_reader_fetch_plain_scalar_handle_inline(struct fy_reader *fyr, int c,
 					   const int indent, const int flow_level,
-					   struct fy_atom *handle,
+					   struct fy_atom *handle FY_UNUSED,
 					   const bool directive0,
 					   const enum fy_lb_mode lb_mode,
-					   const bool json_mode,
+					   const bool json_mode FY_UNUSED,
 					   struct fy_fetch_plain_state *state)
 {
 	int nextc, width;
@@ -7085,7 +7093,9 @@ const char *fy_event_type_get_text(enum fy_event_type type)
 
 #ifndef NDEBUG
 
-static void fy_parse_dump_eventp(struct fy_parser *fyp, struct fy_eventp *fyep, const char *pfx)
+static void fy_parse_dump_eventp(struct fy_parser *fyp,
+				 struct fy_eventp *fyep,
+				 const char *pfx FY_UNUSED)
 {
 	char *mbuf = NULL;
 
@@ -7106,7 +7116,12 @@ static void fy_parse_dump_eventp(struct fy_parser *fyp, struct fy_eventp *fyep, 
 
 #else
 static inline void
-fy_parse_dump_eventp(struct fy_parser *fyp, struct fy_eventp *fyep, const char *pfx) { }
+fy_parse_dump_eventp(struct fy_parser *fyp FY_UNUSED,
+		     struct fy_eventp *fyep FY_UNUSED,
+		     const char *pfx FY_UNUSED)
+{
+	return;
+}
 #endif
 
 struct fy_eventp *fy_parse_private(struct fy_parser *fyp)

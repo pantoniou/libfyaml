@@ -1712,7 +1712,7 @@ FY_GENERIC_IS_TEMPLATE_INLINE(alias);
  * @v: A generic value known to be null.
  * Returns: Always NULL.
  */
-static inline void *fy_generic_get_null_type_no_check(fy_generic v)
+static inline void *fy_generic_get_null_type_no_check(fy_generic v FY_UNUSED)
 {
 	return NULL;
 }
@@ -1722,7 +1722,8 @@ static inline void *fy_generic_get_null_type_no_check(fy_generic v)
  * @p: Must be NULL; any non-NULL pointer yields %fy_invalid_value.
  * Returns: %fy_null_value if @p is NULL, %fy_invalid_value otherwise.
  */
-static inline fy_generic_value fy_generic_in_place_null_type(void *p)
+static inline fy_generic_value
+fy_generic_in_place_null_type(void *p)
 {
 	return p == NULL ? fy_null_value : fy_invalid_value;
 }
@@ -1732,7 +1733,8 @@ static inline fy_generic_value fy_generic_in_place_null_type(void *p)
  * @v: Ignored.
  * Returns: 0 — nulls are always stored inplace.
  */
-static inline size_t fy_generic_out_of_place_size_null_type(void *v)
+static inline size_t
+fy_generic_out_of_place_size_null_type(void *v FY_UNUSED)
 {
 	return 0;
 }
@@ -1743,7 +1745,9 @@ static inline size_t fy_generic_out_of_place_size_null_type(void *v)
  * @v:   Ignored.
  * Returns: %fy_null_value.
  */
-static inline fy_generic_value fy_generic_out_of_place_put_null_type(void *buf, void *v)
+static inline fy_generic_value
+fy_generic_out_of_place_put_null_type(void *buf FY_UNUSED,
+				      void *v FY_UNUSED)
 {
 	return fy_null_value;
 }
@@ -1773,7 +1777,7 @@ static inline fy_generic_value fy_generic_in_place_bool_type(_Bool v)
  * @v: Ignored.
  * Returns: 0 — booleans are always stored inplace.
  */
-static inline size_t fy_generic_out_of_place_size_bool_type(bool v)
+static inline size_t fy_generic_out_of_place_size_bool_type(bool v FY_UNUSED)
 {
 	return 0;
 }
@@ -1784,7 +1788,9 @@ static inline size_t fy_generic_out_of_place_size_bool_type(bool v)
  * @v:   The boolean value.
  * Returns: %fy_true_value or %fy_false_value.
  */
-static inline fy_generic_value fy_generic_out_of_place_put_bool_type(void *buf, bool v)
+static inline fy_generic_value
+fy_generic_out_of_place_put_bool_type(void *buf FY_UNUSED,
+				      bool v)
 {
 	return v ? fy_true_value : fy_false_value;
 }
@@ -2260,10 +2266,6 @@ static inline const fy_generic *fy_generic_sequence_get_items(fy_generic seq, si
 	return &seqp->items[0];
 }
 
-/* we are making things very hard for the compiler; sometimes he gets lost */
-FY_DIAG_PUSH
-FY_DIAG_IGNORE_ARRAY_BOUNDS
-
 /**
  * fy_generic_sequencep_get_itemp() - Get a pointer to a specific item in a sequence pointer.
  *
@@ -2277,10 +2279,13 @@ static inline const fy_generic *fy_generic_sequencep_get_itemp(const fy_generic_
 {
 	if (!seqp || idx >= seqp->count)
 		return NULL;
-	return &seqp->items[idx];
+	/* the poor compiler gets really really confused sometimes */
+	FY_DIAG_PUSH;
+	FY_DIAG_IGNORE_ARRAY_BOUNDS;
+	const fy_generic *vp = &seqp->items[idx];
+	FY_DIAG_POP;
+	return vp;
 }
-
-FY_DIAG_POP
 
 /**
  * fy_generic_sequence_get_itemp() - Get a pointer to a specific item in a sequence.
@@ -2506,7 +2511,12 @@ static inline const fy_generic *fy_generic_mappingp_get_at_keyp(const fy_generic
 {
 	if (!mapp || idx >= mapp->count)
 		return NULL;
-	return &mapp->pairs[idx].key;
+	/* the poor compiler gets really really confused sometimes */
+	FY_DIAG_PUSH;
+	FY_DIAG_IGNORE_ARRAY_BOUNDS;
+	const fy_generic *vp = &mapp->pairs[idx].key;
+	FY_DIAG_POP;
+	return vp;
 }
 
 /**
@@ -2536,7 +2546,12 @@ static inline fy_generic fy_generic_mappingp_get_at_key(const fy_generic_mapping
 {
 	if (!mapp || idx >= mapp->count)
 		return fy_invalid;
-	return mapp->pairs[idx].key;
+	/* the poor compiler gets really really confused sometimes */
+	FY_DIAG_PUSH;
+	FY_DIAG_IGNORE_ARRAY_BOUNDS;
+	fy_generic v = mapp->pairs[idx].key;
+	FY_DIAG_POP;
+	return v;
 }
 
 /**
@@ -2614,7 +2629,12 @@ static inline const fy_generic *fy_generic_mappingp_get_at_valuep(const fy_gener
 {
 	if (!mapp || idx >= mapp->count)
 		return NULL;
-	return &mapp->pairs[idx].value;
+	/* the poor compiler gets really really confused sometimes */
+	FY_DIAG_PUSH;
+	FY_DIAG_IGNORE_ARRAY_BOUNDS;
+	const fy_generic *vp = &mapp->pairs[idx].value;
+	FY_DIAG_POP;
+	return vp;
 }
 
 /**
@@ -2703,7 +2723,12 @@ static inline fy_generic fy_generic_mappingp_get_at_value(const fy_generic_mappi
 {
 	if (!mapp || idx >= mapp->count)
 		return fy_invalid;
-	return mapp->pairs[idx].value;
+	/* the poor compiler gets really really confused sometimes */
+	FY_DIAG_PUSH;
+	FY_DIAG_IGNORE_ARRAY_BOUNDS;
+	fy_generic v = mapp->pairs[idx].value;
+	FY_DIAG_POP;
+	return v;
 }
 
 /**
@@ -2983,7 +3008,7 @@ static inline bool fy_null_is_in_range(const void *v)
 FY_GENERIC_LVAL_TEMPLATE(void *, null, NULL, void *, null_type, NULL, NULL, NULL);
 
 /* Range check: every bool value is valid */
-static inline bool fy_bool_is_in_range(const bool v)
+static inline bool fy_bool_is_in_range(const bool v FY_UNUSED)
 {
 	return true;
 }
@@ -3457,23 +3482,28 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
  * Returns:
  * A fy_generic_value encoding @_v.
  */
-#define fy_int_alloca(_v) 									\
-	({											\
-		fy_generic_typeof(_v) __v = (_v);						\
-		fy_generic_decorated_int *__vp;							\
-		fy_generic_value _r;								\
-												\
-		if (__v >= FYGT_INT_INPLACE_MIN && __v <= FYGT_INT_INPLACE_MAX)			\
-			_r = (((fy_generic_value)(signed long long)__v) << FY_INT_INPLACE_SHIFT) \
-							| FY_INT_INPLACE_V;			\
-		else {										\
-			__vp = fy_alloca_align(sizeof(*__vp), FY_GENERIC_SCALAR_ALIGN);		\
-			memset(__vp, 0, sizeof(*__vp));						\
-			__vp->sv = __v;								\
-			__vp->flags = fy_int_is_unsigned(__v) ? FYGDIF_UNSIGNED_RANGE_EXTEND : 0; \
-			_r = (fy_generic_value)__vp | FY_INT_OUTPLACE_V;			\
-		}										\
-		_r;										\
+#define fy_int_alloca(_v) 										\
+	({												\
+		fy_generic_typeof(_v) __v = (_v);							\
+		fy_generic_decorated_int *__vp;								\
+		fy_generic_value _r;									\
+		/* causes -Wtype-limits if using type < long long */					\
+		FY_DIAG_PUSH;										\
+		FY_DIAG_IGNORE_TYPE_LIMITS;								\
+		const bool __is_inplace = (long long)__v >= FYGT_INT_INPLACE_MIN &&			\
+					  (long long)__v <= FYGT_INT_INPLACE_MAX; 			\
+		FY_DIAG_POP; 										\
+		if (__is_inplace)									\
+			_r = (((fy_generic_value)(signed long long)__v) << FY_INT_INPLACE_SHIFT)	\
+							| FY_INT_INPLACE_V;				\
+		else {											\
+			__vp = fy_alloca_align(sizeof(*__vp), FY_GENERIC_SCALAR_ALIGN);			\
+			memset(__vp, 0, sizeof(*__vp));							\
+			__vp->sv = __v;									\
+			__vp->flags = fy_int_is_unsigned(__v) ? FYGDIF_UNSIGNED_RANGE_EXTEND : 0;	\
+			_r = (fy_generic_value)__vp | FY_INT_OUTPLACE_V;				\
+		}											\
+		_r;											\
 	})
 
 /* Evaluate _v only when it is a compile-time constant, returning 0 otherwise */
@@ -3492,22 +3522,22 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
  * A fy_generic_value encoding @_v with static lifetime.
  */
 /* note the builtin_constant_p guard; this makes the fy_int() macro work */
-#define fy_int_const(_v)									\
-	({											\
-		fy_generic_value _r;								\
-												\
-		if ((_v) >= FYGT_INT_INPLACE_MIN && (_v) <= FYGT_INT_INPLACE_MAX)		\
-			_r = (fy_generic_value)((((unsigned long long)(signed long long)(_v))	\
-						<< FY_INT_INPLACE_SHIFT) | FY_INT_INPLACE_V);	\
-		else {										\
-			static const fy_generic_decorated_int _vv FY_INT_ALIGNMENT = { 		\
-				.sv = (signed long long)fy_ensure_const(_v),			\
-				.flags = fy_int_is_unsigned(_v) ? FYGDIF_UNSIGNED_RANGE_EXTEND : 0, \
-			};									\
-			assert(((uintptr_t)&_vv & FY_INPLACE_TYPE_MASK) == 0);			\
-			_r = (fy_generic_value)&_vv | FY_INT_OUTPLACE_V;			\
-		}										\
-		_r;										\
+#define fy_int_const(_v)										\
+	({												\
+		fy_generic_value _r;									\
+													\
+		if ((long long)(_v) >= FYGT_INT_INPLACE_MIN && (long long)(_v) <= FYGT_INT_INPLACE_MAX)	\
+			_r = (fy_generic_value)((((unsigned long long)(signed long long)(_v))		\
+						<< FY_INT_INPLACE_SHIFT) | FY_INT_INPLACE_V);		\
+		else {											\
+			static const fy_generic_decorated_int _vv FY_INT_ALIGNMENT = { 			\
+				.sv = (signed long long)fy_ensure_const(_v),				\
+				.flags = fy_int_is_unsigned(_v) ? FYGDIF_UNSIGNED_RANGE_EXTEND : 0, 	\
+			};										\
+			assert(((uintptr_t)&_vv & FY_INPLACE_TYPE_MASK) == 0);				\
+			_r = (fy_generic_value)&_vv | FY_INT_OUTPLACE_V;				\
+		}											\
+		_r;											\
 	})
 
 /* Create an integer generic, using fy_int_const for constants and fy_int_alloca otherwise */
@@ -3527,10 +3557,6 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
  */
 #define fy_int(_v) \
 	fy_local_int((_v))
-
-/* we are making things very hard for the compiler; sometimes he gets lost */
-FY_DIAG_PUSH
-FY_DIAG_IGNORE_ARRAY_BOUNDS
 
 /**
  * fy_generic_in_place_char_ptr_len() - Attempt to encode a string inplace.
@@ -3594,8 +3620,6 @@ static inline fy_generic_value fy_generic_in_place_char_ptr_len(const char *p, c
 	}
 	return v;
 }
-
-FY_DIAG_POP
 
 /**
  * fy_generic_in_place_char_ptr() - Attempt to encode a NUL-terminated string inplace.
@@ -3735,7 +3759,8 @@ static inline fy_generic_value fy_generic_in_place_mapping_handle(fy_generic_map
 }
 
 /* fy_generic_in_place_generic_builderp() - Stub: builders cannot be inlined (always returns fy_invalid_value) */
-static inline fy_generic_value fy_generic_in_place_generic_builderp(struct fy_generic_builder *gb)
+static inline fy_generic_value
+fy_generic_in_place_generic_builderp(struct fy_generic_builder *gb FY_UNUSED)
 {
 	return fy_invalid_value;
 }
@@ -3790,7 +3815,8 @@ static inline size_t fy_generic_out_of_place_size_char_ptr(const char *p)
 }
 
 /* fy_generic_out_of_place_size_generic() - Always 0; generics do not need out-of-place storage */
-static inline size_t fy_generic_out_of_place_size_generic(fy_generic v)
+static inline size_t
+fy_generic_out_of_place_size_generic(fy_generic v FY_UNUSED)
 {
 	/* should never have to do that */
 	return 0;
@@ -3845,19 +3871,22 @@ static inline size_t fy_generic_out_of_place_size_dint(fy_generic_decorated_int 
 }
 
 /* fy_generic_out_of_place_size_sequence_handle() - Stub: deep-copy size not yet implemented */
-static inline size_t fy_generic_out_of_place_size_sequence_handle(fy_generic_sequence_handle seqh)
+static inline size_t
+fy_generic_out_of_place_size_sequence_handle(fy_generic_sequence_handle seqh FY_UNUSED)
 {
 	return 0;	// TODO calculate
 }
 
 /* fy_generic_out_of_place_size_mapping_handle() - Stub: deep-copy size not yet implemented */
-static inline size_t fy_generic_out_of_place_size_mapping_handle(fy_generic_mapping_handle maph)
+static inline size_t
+fy_generic_out_of_place_size_mapping_handle(fy_generic_mapping_handle maph FY_UNUSED)
 {
 	return 0;	// TODO calculate
 }
 
 /* fy_generic_out_of_place_size_generic_builderp() - Stub: deep-copy size not yet implemented */
-static inline size_t fy_generic_out_of_place_size_generic_builderp(struct fy_generic_builder *gb)
+static inline size_t
+fy_generic_out_of_place_size_generic_builderp(struct fy_generic_builder *gb FY_UNUSED)
 {
 	return 0;	// TODO calculate
 }
@@ -3978,26 +4007,34 @@ static inline fy_generic_value fy_generic_out_of_place_put_dint(void *buf, fy_ge
 }
 
 /* fy_generic_out_of_place_put_generic() - Stub: generics do not need out-of-place put (always fy_invalid_value) */
-static inline fy_generic_value fy_generic_out_of_place_put_generic(void *buf, fy_generic v)
+static inline fy_generic_value
+fy_generic_out_of_place_put_generic(void *buf FY_UNUSED,
+				    fy_generic v FY_UNUSED)
 {
 	/* we just pass-through, should never happen */
 	return fy_invalid_value;
 }
 
 /* fy_generic_out_of_place_put_sequence_handle() - Stub: sequence handles need no out-of-place put */
-static inline fy_generic_value fy_generic_out_of_place_put_sequence_handle(void *buf, fy_generic_sequence_handle seqh)
+static inline fy_generic_value
+fy_generic_out_of_place_put_sequence_handle(void *buf FY_UNUSED,
+					    fy_generic_sequence_handle seqh FY_UNUSED)
 {
 	return fy_invalid_value;	// shoud never happen?
 }
 
 /* fy_generic_out_of_place_put_mapping_handle() - Stub: mapping handles need no out-of-place put */
-static inline fy_generic_value fy_generic_out_of_place_put_mapping_handle(void *buf, fy_generic_mapping_handle maph)
+static inline fy_generic_value
+fy_generic_out_of_place_put_mapping_handle(void *buf FY_UNUSED,
+					   fy_generic_mapping_handle maph FY_UNUSED)
 {
 	return fy_invalid_value;	// shoud never happen?
 }
 
 /* fy_generic_out_of_place_put_generic_builderp() - Stub: builders need no out-of-place put */
-static inline fy_generic_value fy_generic_out_of_place_put_generic_builderp(void *buf, struct fy_generic_builder *gb)
+static inline fy_generic_value
+fy_generic_out_of_place_put_generic_builderp(void *buf FY_UNUSED,
+					     struct fy_generic_builder *gb FY_UNUSED)
 {
 	return fy_invalid_value;	// shoud never happen?
 }
@@ -5189,14 +5226,16 @@ static inline size_t fy_generic_cast_sized_string_default_alloca(fy_generic v)
 }
 
 /* fy_generic_cast_decorated_int_default_alloca() - Always 0; decorated ints never need alloca */
-static inline size_t fy_generic_cast_decorated_int_default_alloca(fy_generic v)
+static inline size_t
+fy_generic_cast_decorated_int_default_alloca(fy_generic v FY_UNUSED)
 {
 	return 0;
 }
 
 /* fy_generic_cast_default_should_alloca_never() - Always 0; used as the default in _Generic dispatch */
 /* never allocas for anything else */
-static inline size_t fy_generic_cast_default_should_alloca_never(fy_generic v)
+static inline size_t
+fy_generic_cast_default_should_alloca_never(fy_generic v FY_UNUSED)
 {
 	return 0;
 }
@@ -5213,9 +5252,12 @@ static inline size_t fy_generic_cast_default_should_alloca_never(fy_generic v)
  * @default_value: Unused; present for _Generic dispatch uniformity.
  * @store_value: Receives a pointer to the NUL-terminated copy in @p.
  */
-static inline void fy_generic_cast_const_char_ptr_default_final(fy_generic v,
-		void *p, size_t size,
-		const char *default_value, const char **store_value)
+static inline void
+fy_generic_cast_const_char_ptr_default_final(fy_generic v,
+					     void *p,
+					     size_t size FY_UNUSED,
+					     const char *default_value FY_UNUSED,
+					     const char **store_value)
 {
 	size_t len;
 	char *store = p;
@@ -5240,9 +5282,12 @@ static inline void fy_generic_cast_const_char_ptr_default_final(fy_generic v,
  * @default_value: Unused.
  * @store_value: Receives data/size pointing into @p.
  */
-static inline void fy_generic_cast_sized_string_default_final(fy_generic v,
-		void *p, size_t size,
-		fy_generic_sized_string default_value, fy_generic_sized_string *store_value)
+static inline void
+fy_generic_cast_sized_string_default_final(fy_generic v,
+					   void *p,
+					   size_t size FY_UNUSED,
+					   fy_generic_sized_string default_value FY_UNUSED,
+					   fy_generic_sized_string *store_value)
 {
 	size_t len;
 	char *store = p;
@@ -5261,25 +5306,33 @@ static inline void fy_generic_cast_sized_string_default_final(fy_generic v,
 }
 
 /* fy_generic_cast_decorated_int_default_final() - No-op; decorated ints never need a final copy step */
-static inline void fy_generic_cast_decorated_int_default_final(fy_generic v,
-		void *p, size_t size,
-		fy_generic_decorated_int default_value, fy_generic_decorated_int *store_value)
+static inline void
+fy_generic_cast_decorated_int_default_final(fy_generic v FY_UNUSED,
+					    void *p FY_UNUSED,
+					    size_t size FY_UNUSED,
+					    fy_generic_decorated_int default_value FY_UNUSED,
+					    fy_generic_decorated_int *store_value FY_UNUSED)
 {
 	return;
 }
 
 /* fy_generic_cast_char_ptr_default_final() - Non-const variant of fy_generic_cast_const_char_ptr_default_final() */
-static inline void fy_generic_cast_char_ptr_default_final(fy_generic v,
-		void *p, size_t size,
-		char *default_value, char **store_value)
+static inline void
+fy_generic_cast_char_ptr_default_final(fy_generic v,
+				       void *p,
+				       size_t size,
+				       char *default_value,
+				       char **store_value)
 {
 	fy_generic_cast_const_char_ptr_default_final(v, p, size, default_value,
 			(const char **)store_value);
 }
 
 /* fy_generic_cast_default_final_never() - No-op final step used as default in _Generic dispatch */
-static inline void fy_generic_cast_default_final_never(fy_generic v,
-		void *p, size_t size, ...)
+static inline void
+fy_generic_cast_default_final_never(fy_generic v FY_UNUSED,
+				    void *p FY_UNUSED,
+				    size_t size FY_UNUSED, ...)
 {
 	return;	// do nothing
 }
@@ -5492,10 +5545,6 @@ fy_genericp_get_generic_mapping_handle_default(const fy_generic *vp,
 	return maph;
 }
 
-/* we are making things very hard for the compiler; sometimes he gets lost */
-FY_DIAG_PUSH
-FY_DIAG_IGNORE_ARRAY_BOUNDS
-
 /**
  * fy_genericp_get_generic_default() - Dereference a generic pointer, returning a default for NULL.
  *
@@ -5508,10 +5557,12 @@ FY_DIAG_IGNORE_ARRAY_BOUNDS
 static inline FY_ALWAYS_INLINE fy_generic
 fy_genericp_get_generic_default(const fy_generic *vp, fy_generic default_value)
 {
+	/* the poor compiler gets really really confused sometimes */
+	FY_DIAG_PUSH;
+	FY_DIAG_IGNORE_ARRAY_BOUNDS;
 	return vp ? *vp : default_value;
+	FY_DIAG_POP;
 }
-
-FY_DIAG_POP
 
 /**
  * fy_genericp_get_string_genericp() - Return @vp itself if it points to a direct string, or NULL.
@@ -5686,42 +5737,54 @@ fy_generic_sequence_get_szstr_default(fy_generic seq, const size_t idx,
 
 /* fy_generic_sequence_get_map_pair_default() - Stub: map pairs not stored in sequences; always returns @default_value */
 static inline FY_ALWAYS_INLINE fy_generic_map_pair
-fy_generic_sequence_get_map_pair_default(fy_generic seq, const size_t idx, fy_generic_map_pair default_value)
+fy_generic_sequence_get_map_pair_default(fy_generic seq FY_UNUSED,
+					 const size_t idx FY_UNUSED,
+					 fy_generic_map_pair default_value)
 {
 	return default_value;
 }
 
 /* fy_generic_sequence_get_map_pairp_default() - Stub: always returns @default_value */
 static inline FY_ALWAYS_INLINE fy_generic_map_pair *
-fy_generic_sequence_get_map_pairp_default(fy_generic seq, const size_t idx, fy_generic_map_pair *default_value)
+fy_generic_sequence_get_map_pairp_default(fy_generic seq FY_UNUSED,
+					  const size_t idx FY_UNUSED,
+					  fy_generic_map_pair *default_value)
 {
 	return default_value;
 }
 
 /* fy_generic_sequence_get_const_map_pairp_default() - Stub: always returns @default_value */
 static inline FY_ALWAYS_INLINE const fy_generic_map_pair *
-fy_generic_sequence_get_const_map_pairp_default(fy_generic seq, const size_t idx, const fy_generic_map_pair *default_value)
+fy_generic_sequence_get_const_map_pairp_default(fy_generic seq FY_UNUSED,
+						const size_t idx FY_UNUSED,
+						const fy_generic_map_pair *default_value)
 {
 	return default_value;
 }
 
 /* fy_generic_sequencep_get_map_pair_default() - Stub: always returns @default_value */
 static inline FY_ALWAYS_INLINE fy_generic_map_pair
-fy_generic_sequencep_get_map_pair_default(const fy_generic_sequence *seqp, const size_t idx, fy_generic_map_pair default_value)
+fy_generic_sequencep_get_map_pair_default(const fy_generic_sequence *seqp FY_UNUSED,
+					  const size_t idx FY_UNUSED,
+					  fy_generic_map_pair default_value)
 {
 	return default_value;
 }
 
 /* fy_generic_sequencep_get_map_pairp_default() - Stub: always returns @default_value */
 static inline FY_ALWAYS_INLINE fy_generic_map_pair *
-fy_generic_sequencep_get_map_pairp_default(const fy_generic_sequence *seqp, const size_t idx, fy_generic_map_pair *default_value)
+fy_generic_sequencep_get_map_pairp_default(const fy_generic_sequence *seqp FY_UNUSED,
+					   const size_t idx FY_UNUSED,
+					   fy_generic_map_pair *default_value)
 {
 	return default_value;
 }
 
 /* fy_generic_sequencep_get_const_map_pairp_default() - Stub: always returns @default_value */
 static inline FY_ALWAYS_INLINE const fy_generic_map_pair *
-fy_generic_sequencep_get_const_map_pairp_default(const fy_generic_sequence *seqp, const size_t idx, const fy_generic_map_pair *default_value)
+fy_generic_sequencep_get_const_map_pairp_default(const fy_generic_sequence *seqp FY_UNUSED,
+						 const size_t idx FY_UNUSED,
+						 const fy_generic_map_pair *default_value)
 {
 	return default_value;
 }
@@ -6117,7 +6180,12 @@ static inline const fy_generic_map_pair *fy_generic_mappingp_get_at_map_pairp_de
 {
 	if (!mapp || idx >= mapp->count)
 		return default_value;
-	return &mapp->pairs[idx];
+	/* the poor compiler gets really really confused sometimes */
+	FY_DIAG_PUSH;
+	FY_DIAG_IGNORE_ARRAY_BOUNDS;
+	const fy_generic_map_pair *mpp = &mapp->pairs[idx];
+	FY_DIAG_POP;
+	return mpp;
 }
 
 /* fy_generic_mappingp_get_at_map_pair_default() - Map pair by value at index (pointer variant) */
@@ -6125,7 +6193,12 @@ static inline fy_generic_map_pair fy_generic_mappingp_get_at_map_pair_default(co
 {
 	if (!mapp || idx >= mapp->count)
 		return default_value;
-	return mapp->pairs[idx];
+	/* the poor compiler gets really really confused sometimes */
+	FY_DIAG_PUSH;
+	FY_DIAG_IGNORE_ARRAY_BOUNDS;
+	const fy_generic_map_pair mp = mapp->pairs[idx];
+	FY_DIAG_POP;
+	return mp;
 }
 
 /* fy_generic_mapping_get_at_map_pair_default() - Map pair by value at index (generic variant) */
@@ -9382,7 +9455,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_gb_filter_lambda(_gb, _col, _expr) \
 	({ \
 		fy_generic_filter_pred_fn _fn = ({ \
-			bool __fy_pred_fn(struct fy_generic_builder *gb, fy_generic v) { \
+			bool __fy_pred_fn(struct fy_generic_builder *gb FY_UNUSED, \
+					  fy_generic v) { \
 				return (_expr) ; \
 			} \
 			&__fy_pred_fn; }); \
@@ -9393,7 +9467,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_local_filter_lambda(_col, _expr) \
 	({ \
 		fy_generic_filter_pred_fn _fn = ({ \
-			bool __fy_pred_fn(struct fy_generic_builder *gb, fy_generic v) { \
+			bool __fy_pred_fn(struct fy_generic_builder *gb FY_UNUSED, \
+					  fy_generic v) { \
 				return (_expr) ; \
 			} \
 			&__fy_pred_fn; }); \
@@ -9404,7 +9479,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_gb_pfilter_lambda(_gb, _col, _tp, _expr) \
 	({ \
 		fy_generic_filter_pred_fn _fn = ({ \
-			bool __fy_pred_fn(struct fy_generic_builder *gb, fy_generic v) { \
+			bool __fy_pred_fn(struct fy_generic_builder *gb FY_UNUSED, \
+					  fy_generic v) { \
 				return (_expr) ; \
 			} \
 			&__fy_pred_fn; }); \
@@ -9415,7 +9491,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_local_pfilter_lambda(_col, _tp, _expr) \
 	({ \
 		fy_generic_filter_pred_fn _fn = ({ \
-			bool __fy_pred_fn(struct fy_generic_builder *gb, fy_generic v) { \
+			bool __fy_pred_fn(struct fy_generic_builder *gb FY_UNUSED, \
+					  fy_generic v) { \
 				return (_expr) ; \
 			} \
 			&__fy_pred_fn; }); \
@@ -9426,7 +9503,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_gb_map_lambda(_gb, _col, _expr) \
 	({ \
 		fy_generic_map_xform_fn _fn = ({ \
-			fy_generic __fy_xform_fn(struct fy_generic_builder *gb, fy_generic v) { \
+			fy_generic __fy_xform_fn(struct fy_generic_builder *gb FY_UNUSED, \
+					         fy_generic v) { \
 				return (_expr) ; \
 			} \
 			&__fy_xform_fn; }); \
@@ -9437,7 +9515,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_local_map_lambda(_col, _expr) \
 	({ \
 		fy_generic_map_xform_fn _fn = ({ \
-			fy_generic __fy_xform_fn(struct fy_generic_builder *gb, fy_generic v) { \
+			fy_generic __fy_xform_fn(struct fy_generic_builder *gb FY_UNUSED, \
+					         fy_generic v) { \
 				return (_expr) ; \
 			} \
 			&__fy_xform_fn; }); \
@@ -9448,7 +9527,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_gb_pmap_lambda(_gb, _col, _tp, _expr) \
 	({ \
 		fy_generic_map_xform_fn _fn = ({ \
-			fy_generic __fy_xform_fn(struct fy_generic_builder *gb, fy_generic v) { \
+			fy_generic __fy_xform_fn(struct fy_generic_builder *gb FY_UNUSED, \
+					         fy_generic v) { \
 				return (_expr) ; \
 			} \
 			&__fy_xform_fn; }); \
@@ -9459,7 +9539,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_local_pmap_lambda(_col, _tp, _expr) \
 	({ \
 		fy_generic_map_xform_fn _fn = ({ \
-			fy_generic __fy_xform_fn(struct fy_generic_builder *gb, fy_generic v) { \
+			fy_generic __fy_xform_fn(struct fy_generic_builder *gb FY_UNUSED, \
+					         fy_generic v) { \
 				return (_expr) ; \
 			} \
 			&__fy_xform_fn; }); \
@@ -9470,7 +9551,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_gb_reduce_lambda(_gb, _col, _acc, _expr) \
 	({ \
 		fy_generic_reducer_fn _fn = ({ \
-			fy_generic __fy_reducer_fn(struct fy_generic_builder *gb, fy_generic acc, \
+			fy_generic __fy_reducer_fn(struct fy_generic_builder *gb FY_UNUSED, \
+						   fy_generic acc, \
 						   fy_generic v) { \
 				return (_expr) ; \
 			} \
@@ -9482,7 +9564,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_local_reduce_lambda(_col, _acc, _expr) \
 	({ \
 		fy_generic_reducer_fn _fn = ({ \
-			fy_generic __fy_reducer_fn(struct fy_generic_builder *gb, fy_generic acc, \
+			fy_generic __fy_reducer_fn(struct fy_generic_builder *gb FY_UNUSED, \
+						   fy_generic acc, \
 						   fy_generic v) { \
 				return (_expr) ; \
 			} \
@@ -9494,7 +9577,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_gb_preduce_lambda(_gb, _col, _acc, _tp, _expr) \
 	({ \
 		fy_generic_reducer_fn _fn = ({ \
-			fy_generic __fy_reducer_fn(struct fy_generic_builder *gb, fy_generic acc, \
+			fy_generic __fy_reducer_fn(struct fy_generic_builder *gb FY_UNUSED, \
+						   fy_generic acc, \
 						   fy_generic v) { \
 				return (_expr) ; \
 			} \
@@ -9506,7 +9590,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_local_preduce_lambda(_col, _acc, _tp, _expr) \
 	({ \
 		fy_generic_reducer_fn _fn = ({ \
-			fy_generic __fy_reducer_fn(struct fy_generic_builder *gb, fy_generic acc, \
+			fy_generic __fy_reducer_fn(struct fy_generic_builder *gb FY_UNUSED, \
+					           fy_generic acc, \
 						   fy_generic v) { \
 				return (_expr) ; \
 			} \
@@ -9524,7 +9609,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_gb_filter_lambda(_gb, _col, _block_body) \
 	({ \
 		fy_generic_filter_pred_block _block = \
-			(^bool(struct fy_generic_builder *gb, fy_generic v) { \
+			(^bool(struct fy_generic_builder *gb FY_UNUSED, \
+			       fy_generic v) { \
 				return _block_body ; \
 			}); \
 		fy_generic_op((_gb), FYGBOPF_FILTER | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_BLOCK_FN, \
@@ -9534,7 +9620,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_local_filter_lambda(_col, _block_body) \
 	({ \
 		fy_generic_filter_pred_block _block = \
-			(^bool(struct fy_generic_builder *gb, fy_generic v) { \
+			(^bool(struct fy_generic_builder *gb FY_UNUSED, \
+			       fy_generic v) { \
 				return _block_body ; \
 			}); \
 		FY_LOCAL_OP(FYGBOPF_FILTER | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_BLOCK_FN, \
@@ -9544,7 +9631,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_gb_pfilter_lambda(_gb, _col, _tp, _block_body) \
 	({ \
 		fy_generic_filter_pred_block _block = \
-			(^bool(struct fy_generic_builder *gb, fy_generic v) { \
+			(^bool(struct fy_generic_builder *gb FY_UNUSED, \
+			       fy_generic v) { \
 				return _block_body ; \
 			}); \
 		fy_generic_op((_gb), FYGBOPF_FILTER | FYGBOPF_MAP_ITEM_COUNT | \
@@ -9555,7 +9643,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_local_pfilter_lambda(_col, _tp, _block_body) \
 	({ \
 		fy_generic_filter_pred_block _block = \
-			(^bool(struct fy_generic_builder *gb, fy_generic v) { \
+			(^bool(struct fy_generic_builder *gb FY_UNUSED, \
+			       fy_generic v) { \
 				return _block_body ; \
 			}); \
 		FY_LOCAL_OP(FYGBOPF_FILTER | FYGBOPF_MAP_ITEM_COUNT | \
@@ -9567,7 +9656,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_gb_map_lambda(_gb, _col, _block_body) \
 	({ \
 		fy_generic_map_xform_block _block = \
-			(^fy_generic(struct fy_generic_builder *gb, fy_generic v) { \
+			(^fy_generic(struct fy_generic_builder *gb FY_UNUSED, \
+				     fy_generic v) { \
 				return _block_body ; \
 			}); \
 		fy_generic_op((_gb), FYGBOPF_MAP | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_BLOCK_FN, \
@@ -9578,7 +9668,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_local_map_lambda(_col, _block_body) \
 	({ \
 		fy_generic_map_xform_block _block = \
-			(^fy_generic(struct fy_generic_builder *gb, fy_generic v) { \
+			(^fy_generic(struct fy_generic_builder *gb FY_UNUSED, \
+				     fy_generic v) { \
 				return _block_body ; \
 			}); \
 		FY_LOCAL_OP(FYGBOPF_MAP | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_BLOCK_FN, \
@@ -9589,7 +9680,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_gb_pmap_lambda(_gb, _col, _tp, _block_body) \
 	({ \
 		fy_generic_map_xform_block _block = \
-			(^fy_generic(struct fy_generic_builder *gb, fy_generic v) { \
+			(^fy_generic(struct fy_generic_builder *gb FY_UNUSED, \
+				     fy_generic v) { \
 				return _block_body ; \
 			}); \
 		fy_generic_op((_gb), FYGBOPF_MAP | FYGBOPF_MAP_ITEM_COUNT | \
@@ -9601,7 +9693,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_local_pmap_lambda(_col, _tp, _block_body) \
 	({ \
 		fy_generic_map_xform_block _block = \
-			(^fy_generic(struct fy_generic_builder *gb, fy_generic v) { \
+			(^fy_generic(struct fy_generic_builder *gb FY_UNUSED, \
+				     fy_generic v) { \
 				return _block_body ; \
 			}); \
 		FY_LOCAL_OP(FYGBOPF_MAP | FYGBOPF_MAP_ITEM_COUNT | \
@@ -9613,7 +9706,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_gb_reduce_lambda(_gb, _col, _acc, _block_body) \
 	({ \
 		fy_generic_reducer_block _block = \
-			(^fy_generic(struct fy_generic_builder *gb, fy_generic acc, fy_generic v) { \
+			(^fy_generic(struct fy_generic_builder *gb FY_UNUSED, \
+				     fy_generic acc, fy_generic v) { \
 				return _block_body ; \
 			}); \
 		fy_generic_op((_gb), FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_BLOCK_FN, \
@@ -9624,7 +9718,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_local_reduce_lambda(_col, _acc, _block_body) \
 	({ \
 		fy_generic_reducer_block _block = \
-			(^fy_generic(struct fy_generic_builder *gb, fy_generic acc, fy_generic v) { \
+			(^fy_generic(struct fy_generic_builder *gb FY_UNUSED, \
+				     fy_generic acc, fy_generic v) { \
 				return _block_body ; \
 			}); \
 		FY_LOCAL_OP(FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_BLOCK_FN, \
@@ -9635,7 +9730,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_gb_preduce_lambda(_gb, _col, _acc, _tp, _block_body) \
 	({ \
 		fy_generic_reducer_block _block = \
-			(^fy_generic(struct fy_generic_builder *gb, fy_generic acc, fy_generic v) { \
+			(^fy_generic(struct fy_generic_builder *gb FY_UNUSED, \
+				     fy_generic acc, fy_generic v) { \
 				return _block_body ; \
 			}); \
 		fy_generic_op((_gb), FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT | \
@@ -9647,7 +9743,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_local_preduce_lambda(_col, _acc, _tp, _block_body) \
 	({ \
 		fy_generic_reducer_block _block = \
-			(^fy_generic(struct fy_generic_builder *gb, fy_generic acc, fy_generic v) { \
+			(^fy_generic(struct fy_generic_builder *gb FY_UNUSED, \
+				     fy_generic acc, fy_generic v) { \
 				return _block_body ; \
 			}); \
 		FY_LOCAL_OP(FYGBOPF_REDUCE | FYGBOPF_MAP_ITEM_COUNT | \

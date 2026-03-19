@@ -956,7 +956,10 @@ again:
 	return de->mem;
 }
 
-static void fy_dedup_release(struct fy_allocator *a, int tag, const void *data, size_t size)
+static void fy_dedup_release(struct fy_allocator *a FY_UNUSED,
+			     int tag FY_UNUSED,
+			     const void *data FY_UNUSED,
+			     size_t size FY_UNUSED)
 {
 	/* we do nothing */
 }

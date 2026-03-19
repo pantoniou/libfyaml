@@ -58,8 +58,12 @@ fy_reflection_backend_lookup(const char *name)
 
 #if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
 struct fy_reflection *
-fy_reflection_from_c_files(int filec, const char * const filev[], int argc, const char * const argv[],
-			   bool display_diagnostics, bool include_comments,
+fy_reflection_from_c_files(int filec,
+			   const char * const filev[],
+			   int argc,
+			   const char * const argv[],
+			   bool display_diagnostics,
+			   bool include_comments FY_UNUSED,
 			   struct fy_diag *diag)
 {
 	struct fy_clang_backend_reflection_cfg rcfg;
@@ -159,8 +163,10 @@ fy_reflection_from_packed_blob(const void *blob, size_t blob_size, struct fy_dia
 }
 
 void *
-fy_reflection_to_packed_blob(struct fy_reflection *rfl, size_t *blob_sizep,
-			     bool include_comments, bool include_location)
+fy_reflection_to_packed_blob(struct fy_reflection *rfl,
+			     size_t *blob_sizep,
+			     bool include_comments FY_UNUSED,
+			     bool include_location FY_UNUSED)
 {
 	struct fy_packed_generator pg_local, *pg = &pg_local;
 	void *blob = NULL;

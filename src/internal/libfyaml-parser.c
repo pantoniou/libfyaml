@@ -422,7 +422,8 @@ static char *txt2esc_format(const char *s, int l, char *buf, int maxsz, int deli
 #define fy_atom_get_esc_text_a(_atom) txt2esc_a(fy_atom_get_text_a(_atom), -1)
 #define fy_token_get_esc_text_a(_atom) txt2esc_a(fy_token_get_text0(_atom), -1)
 
-void dump_event(struct fy_parser *fyp, struct fy_event *fye)
+void dump_event(struct fy_parser *fyp FY_UNUSED,
+		struct fy_event *fye)
 {
 	char mbuf[40];
 	char *mm;
@@ -506,7 +507,9 @@ int do_parse(struct fy_parser *fyp)
 	return fyp->stream_error ? -1 : 0;
 }
 
-void dump_testsuite_event(FILE *fp, struct fy_parser *fyp, struct fy_event *fye)
+void dump_testsuite_event(FILE *fp,
+			  struct fy_parser *fyp FY_UNUSED,
+			  struct fy_event *fye)
 {
 	const char *anchor = NULL, *tag = NULL, *value = NULL;
 	size_t anchor_len = 0, tag_len = 0, value_len = 0;
@@ -827,7 +830,12 @@ int do_dump(struct fy_parser *fyp, int indent, int width, bool resolve, bool sor
 	return count > 0 ? 0 : -1;
 }
 
-int do_dump2(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort, bool null_output)
+int do_dump2(struct fy_parser *fyp,
+	     int indent,
+	     int width,
+	     bool resolve,
+	     bool sort,
+	     bool null_output FY_UNUSED)
 {
 	struct fy_document *fyd;
 	struct fy_document_builder *fydb;
@@ -1063,7 +1071,12 @@ err_out:
 	return FYCR_ERROR;
 }
 
-int do_compose(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort, bool null_output)
+int do_compose(struct fy_parser *fyp,
+	       int indent FY_UNUSED,
+	       int width FY_UNUSED,
+	       bool resolve FY_UNUSED,
+	       bool sort FY_UNUSED,
+	       bool null_output)
 {
 	struct composer_data cd;
 	int rc;
@@ -1587,7 +1600,10 @@ struct fy_kv {
 FY_TYPE_FWD_DECL_LIST(kv);
 FY_TYPE_DECL_LIST(kv);
 
-static int hd_accel_kv_hash(struct fy_accel *xl, const void *key, void *userdata, void *hash)
+static int hd_accel_kv_hash(struct fy_accel *xl FY_UNUSED,
+			    const void *key,
+			    void *userdata FY_UNUSED,
+			    void *hash)
 {
 	unsigned int *hashp = hash;
 
@@ -1597,7 +1613,11 @@ static int hd_accel_kv_hash(struct fy_accel *xl, const void *key, void *userdata
 	return 0;
 }
 
-static bool hd_accel_kv_eq(struct fy_accel *xl, const void *hash, const void *key1, const void *key2, void *userdata)
+static bool hd_accel_kv_eq(struct fy_accel *xl FY_UNUSED,
+			   const void *hash FY_UNUSED,
+			   const void *key1,
+			   const void *key2,
+			   void *userdata FY_UNUSED)
 {
 	return !strcmp(key1, key2);
 }
@@ -1750,7 +1770,9 @@ const char *fy_kv_store_key_by_index(struct fy_kv_store *kvs, unsigned int index
 	return kv ? kv->key : NULL;
 }
 
-static void do_accel_kv(const struct fy_parse_cfg *cfg, int argc, char *argv[])
+static void do_accel_kv(const struct fy_parse_cfg *cfg FY_UNUSED,
+			int argc FY_UNUSED,
+			char *argv[] FY_UNUSED)
 {
 	struct fy_kv_store kvs;
 	unsigned int seed, idx;
@@ -1825,7 +1847,9 @@ static void test_diag_output(struct fy_diag *diag, void *user, const char *buf, 
 }
 #endif
 
-int do_build(const struct fy_parse_cfg *cfg, int argc, char *argv[])
+int do_build(const struct fy_parse_cfg *cfg FY_UNUSED,
+	     int argc FY_UNUSED,
+	     char *argv[] FY_UNUSED)
 {
 #if 0
 	struct fy_parse_cfg cfg_tmp;
@@ -3045,7 +3069,8 @@ err_out:
 	return -1;
 }
 
-int do_pathspec(int argc, char *argv[])
+int do_pathspec(int argc FY_UNUSED,
+		char *argv[])
 {
 	int i;
 	const char *s, *e;
@@ -3328,7 +3353,9 @@ do_close:
 	return fyn;
 }
 
-int do_bypath(struct fy_parser *fyp, const char *pathstr, const char *start)
+int do_bypath(struct fy_parser *fyp,
+	      const char *pathstr,
+	      const char *start FY_UNUSED)
 {
 	struct path path;
 	struct pathspec *ps;
@@ -3402,7 +3429,11 @@ static const struct fy_reader_ops test_parser_reader_ops = {
 	.file_open = NULL,
 };
 
-int do_reader(struct fy_parser *fyp, int indent, int width, bool resolve, bool sort)
+int do_reader(struct fy_parser *fyp,
+	      int indent FY_UNUSED,
+	      int width FY_UNUSED,
+	      bool resolve FY_UNUSED,
+	      bool sort FY_UNUSED)
 {
 	const char *data = "this is a test-testing: more data";
 	struct test_parser parser;
@@ -3629,7 +3660,9 @@ next:
 	return 0;
 }
 
-int do_crash(const struct fy_parse_cfg *cfg, int argc, char *argv[])
+int do_crash(const struct fy_parse_cfg *cfg,
+	     int argc FY_UNUSED,
+	     char *argv[] FY_UNUSED)
 {
 	struct fy_document *fyd = NULL;
 	struct fy_node *fyn = NULL;
@@ -3668,7 +3701,9 @@ failed:
 	return rc;
 }
 
-int do_bad_utf8(const struct fy_parse_cfg *cfg, int argc, char *argv[])
+int do_bad_utf8(const struct fy_parse_cfg *cfg FY_UNUSED,
+		int argc FY_UNUSED,
+		char *argv[] FY_UNUSED)
 {
 	// char key[12] = {0x26, 0x2b, 0x74, 0x68, 0x65, 0x62, 0x65, 0x86, 0x6e, 0x67, 0x77, 0x00};
 	// char key[11] = {0x26, 0x2b, 0x74, 0x68, 0x65, 0x62, 0x65, 0x6e, 0x67, 0x77, 0x00};
@@ -3763,7 +3798,8 @@ int do_bad_utf8(const struct fy_parse_cfg *cfg, int argc, char *argv[])
 	return 0;
 }
 
-int do_shell_split(int in_argc, char *in_argv[])
+int do_shell_split(int in_argc FY_UNUSED,
+		   char *in_argv[] FY_UNUSED)
 {
 	char buf[256], line[256 + 1];
 	char *s, *e;
@@ -3916,7 +3952,9 @@ int do_parse_timing(int argc, char *argv[])
 
 char *testing_export = "This is export";
 
-int do_generics(int argc, char *argv[], const char *allocator)
+int do_generics(int argc FY_UNUSED,
+		char *argv[] FY_UNUSED,
+		const char *allocator)
 {
 	struct fy_generic_builder *gb;
 	struct fy_generic_builder_cfg gcfg;
@@ -4768,7 +4806,8 @@ int do_generics(int argc, char *argv[], const char *allocator)
 	return 0;
 }
 
-int do_remap(int argc, char *argv[])
+int do_remap(int argc FY_UNUSED,
+	     char *argv[] FY_UNUSED)
 {
 	size_t pagesz = sysconf(_SC_PAGESIZE);
 	size_t sz, limit, newsz;
@@ -4934,7 +4973,8 @@ next5:
 	return 0;
 }
 
-int do_test_stuff(int argc, char *argv[])
+int do_test_stuff(int argc FY_UNUSED,
+		  char *argv[] FY_UNUSED)
 {
 	struct fy_allocator *a;
 	char buf[65536];
@@ -5342,7 +5382,7 @@ int apply_flags_option(const char *arg, unsigned int *flagsp,
 	return 0;
 }
 
-static ssize_t callback_stdin_input(void *user, void *buf, size_t count)
+static ssize_t callback_stdin_input(void *user FY_UNUSED, void *buf, size_t count)
 {
 	return fread(buf, 1, count, stdin);
 }

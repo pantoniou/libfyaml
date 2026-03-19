@@ -59,18 +59,19 @@ const struct fy_reflection_backend fy_reflection_null_backend = {
 	.ops = &null_ops,
 };
 
-static int null_reflection_setup(struct fy_reflection *rfl)
+static int null_reflection_setup(struct fy_reflection *rfl FY_UNUSED)
 {
 	/* nothing */
 	return 0;
 }
 
-static void null_reflection_cleanup(struct fy_reflection *rfl)
+static void null_reflection_cleanup(struct fy_reflection *rfl FY_UNUSED)
 {
 	/* nothing */
 }
 
-static int null_import_setup(struct fy_import *imp, const void *user)
+static int null_import_setup(struct fy_import *imp,
+			     const void *user FY_UNUSED)
 {
 	assert(imp);
 
@@ -80,29 +81,31 @@ static int null_import_setup(struct fy_import *imp, const void *user)
 	return 0;
 }
 
-static void null_import_cleanup(struct fy_import *imp)
+static void null_import_cleanup(struct fy_import *imp FY_UNUSED)
 {
 	/* nothing */
 }
 
-static int null_decl_setup(struct fy_decl *decl, void *user)
-{
-	/* nothing */
-	return 0;
-}
-
-static void null_decl_cleanup(struct fy_decl *decl)
-{
-	/* nothing */
-}
-
-static int null_type_setup(struct fy_type *ft, void *user)
+static int null_decl_setup(struct fy_decl *decl FY_UNUSED,
+			   void *user FY_UNUSED)
 {
 	/* nothing */
 	return 0;
 }
 
-static void null_type_cleanup(struct fy_type *ft)
+static void null_decl_cleanup(struct fy_decl *decl FY_UNUSED)
+{
+	/* nothing */
+}
+
+static int null_type_setup(struct fy_type *ft FY_UNUSED,
+			   void *user FY_UNUSED)
+{
+	/* nothing */
+	return 0;
+}
+
+static void null_type_cleanup(struct fy_type *ft FY_UNUSED)
 {
 	/* nothing */
 }

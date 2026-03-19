@@ -91,7 +91,9 @@ static inline bool fy_mremap_arena_check_fit(struct fy_mremap_arena *mran, size_
 }
 
 static struct fy_mremap_arena *
-fy_mremap_arena_create(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt, size_t size)
+fy_mremap_arena_create(struct fy_mremap_allocator *mra,
+		       struct fy_mremap_tag *mrt FY_UNUSED,
+		       size_t size)
 {
 	struct fy_mremap_arena *mran = NULL;
 	uint64_t flags;
@@ -162,7 +164,9 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mr
 	return mran;
 }
 
-static void fy_mremap_arena_destroy(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt, struct fy_mremap_arena *mran)
+static void fy_mremap_arena_destroy(struct fy_mremap_allocator *mra,
+				    struct fy_mremap_tag *mrt FY_UNUSED,
+				    struct fy_mremap_arena *mran)
 {
 	if (!mran)
 		return;
@@ -209,8 +213,11 @@ fy_mremap_arena_should_grow(struct fy_mremap_allocator *mra, struct fy_mremap_ar
 	return true;
 }
 
-static int fy_mremap_arena_grow(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt,
-				struct fy_mremap_arena *mran, size_t size, size_t align)
+static int fy_mremap_arena_grow(struct fy_mremap_allocator *mra,
+				struct fy_mremap_tag *mrt FY_UNUSED,
+				struct fy_mremap_arena *mran,
+				size_t size,
+				size_t align)
 {
 	void *mem;
 
@@ -253,7 +260,9 @@ static int fy_mremap_arena_grow(struct fy_mremap_allocator *mra, struct fy_mrema
 	return -1;
 }
 
-static int fy_mremap_arena_trim(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt, struct fy_mremap_arena *mran)
+static int fy_mremap_arena_trim(struct fy_mremap_allocator *mra,
+				struct fy_mremap_tag *mrt FY_UNUSED,
+				struct fy_mremap_arena *mran)
 {
 	size_t next, new_size;
 #if USE_MREMAP
@@ -785,7 +794,9 @@ err_out:
 	return NULL;
 }
 
-static void fy_mremap_free(struct fy_allocator *a, int tag, void *data)
+static void fy_mremap_free(struct fy_allocator *a FY_UNUSED,
+			   int tag FY_UNUSED,
+			   void *data FY_UNUSED)
 {
 	/* no frees */
 }
@@ -812,7 +823,12 @@ err_out:
 	return -1;
 }
 
-static const void *fy_mremap_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
+static const void *fy_mremap_storev(struct fy_allocator *a,
+				    int tag,
+				    const struct iovec *iov,
+				    int iovcnt,
+				    size_t align,
+				    uint64_t hash FY_UNUSED)
 {
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_tag *mrt;
@@ -846,13 +862,21 @@ err_out:
 	return NULL;
 }
 
-static const void *fy_mremap_lookupv(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
+static const void *fy_mremap_lookupv(struct fy_allocator *a FY_UNUSED,
+				     int tag FY_UNUSED,
+				     const struct iovec *iov FY_UNUSED,
+				     int iovcnt FY_UNUSED,
+				     size_t align FY_UNUSED,
+				     uint64_t hash FY_UNUSED)
 {
 	/* no lookups */
 	return NULL;
 }
 
-static void fy_mremap_release(struct fy_allocator *a, int tag, const void *data, size_t size)
+static void fy_mremap_release(struct fy_allocator *a FY_UNUSED,
+			      int tag FY_UNUSED,
+			      const void *data FY_UNUSED,
+			      size_t size FY_UNUSED)
 {
 	/* no releases */
 }
@@ -1148,7 +1172,7 @@ fy_mremap_get_info(struct fy_allocator *a, int tag)
 }
 
 static enum fy_allocator_cap_flags
-fy_mremap_get_caps(struct fy_allocator *a)
+fy_mremap_get_caps(struct fy_allocator *a FY_UNUSED)
 {
 	return FYACF_CAN_FREE_TAG | FYACF_HAS_EFFICIENT_CONTAINS | \
 	       FYACF_HAS_CONTAINS | FYACF_HAS_TAGS;

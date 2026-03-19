@@ -164,7 +164,10 @@ void fy_linear_dump(struct fy_allocator *a)
 			la->cfg.size, next, la->cfg.size - la->next);
 }
 
-static void *fy_linear_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
+static void *fy_linear_alloc(struct fy_allocator *a,
+			     int tag FY_UNUSED,
+			     size_t size,
+			     size_t align)
 {
 	struct fy_linear_allocator *la;
 	size_t next, new_next, real_size;
@@ -202,12 +205,16 @@ err_out:
 	return NULL;
 }
 
-static void fy_linear_free(struct fy_allocator *a, int tag, void *data)
+static void fy_linear_free(struct fy_allocator *a FY_UNUSED,
+			   int tag FY_UNUSED,
+			   void *data FY_UNUSED)
 {
 	/* linear allocator does not free anything */
 }
 
-static int fy_linear_update_stats(struct fy_allocator *a, int tag, struct fy_allocator_stats *stats)
+static int fy_linear_update_stats(struct fy_allocator *a,
+				  int tag FY_UNUSED,
+				  struct fy_allocator_stats *stats)
 {
 	struct fy_linear_allocator *la;
 
@@ -219,9 +226,12 @@ static int fy_linear_update_stats(struct fy_allocator *a, int tag, struct fy_all
 	return 0;
 }
 
-static const void *fy_linear_storev(struct fy_allocator *a, int tag,
-				    const struct iovec *iov, int iovcnt, size_t align,
-				    uint64_t hash)
+static const void *fy_linear_storev(struct fy_allocator *a,
+				    int tag,
+				    const struct iovec *iov,
+				    int iovcnt,
+				    size_t align,
+				    uint64_t hash FY_UNUSED)
 {
 	struct fy_linear_allocator *la;
 	void *p;
@@ -246,43 +256,52 @@ static const void *fy_linear_storev(struct fy_allocator *a, int tag,
 	return p;
 }
 
-static const void *fy_linear_lookupv(struct fy_allocator *a, int tag,
-				    const struct iovec *iov, int iovcnt, size_t align,
-				    uint64_t hash)
+static const void *fy_linear_lookupv(struct fy_allocator *a FY_UNUSED,
+				     int tag FY_UNUSED,
+				     const struct iovec *iov FY_UNUSED,
+				     int iovcnt FY_UNUSED,
+				     size_t align FY_UNUSED,
+				     uint64_t hash FY_UNUSED)
 {
 	/* no way to lookup */
 	return NULL;
 }
 
-static void fy_linear_release(struct fy_allocator *a, int tag, const void *data, size_t size)
+static void fy_linear_release(struct fy_allocator *a FY_UNUSED,
+			      int tag FY_UNUSED,
+			      const void *data FY_UNUSED,
+			      size_t size FY_UNUSED)
 {
 	/* nothing */
 }
 
-static int fy_linear_get_tag(struct fy_allocator *a)
+static int fy_linear_get_tag(struct fy_allocator *a FY_UNUSED)
 {
 	/* always return 0, we don't do tags for linear */
 	return 0;
 }
 
-static void fy_linear_release_tag(struct fy_allocator *a, int tag)
+static void fy_linear_release_tag(struct fy_allocator *a FY_UNUSED,
+				  int tag FY_UNUSED)
 {
 	/* nothing */
 }
 
-static int fy_linear_get_tag_count(struct fy_allocator *a)
+static int fy_linear_get_tag_count(struct fy_allocator *a FY_UNUSED)
 {
 	return 1;
 }
 
-static int fy_linear_set_tag_count(struct fy_allocator *a, unsigned int count)
+static int fy_linear_set_tag_count(struct fy_allocator *a FY_UNUSED,
+				   unsigned int count)
 {
 	if (count != 1)
 		return -1;
 	return 0;
 }
 
-static void fy_linear_trim_tag(struct fy_allocator *a, int tag)
+static void fy_linear_trim_tag(struct fy_allocator *a FY_UNUSED,
+			       int tag FY_UNUSED)
 {
 	/* nothing */
 }
@@ -357,12 +376,14 @@ static struct fy_allocator_info *fy_linear_get_info(struct fy_allocator *a, int 
 }
 
 static enum fy_allocator_cap_flags
-fy_linear_get_caps(struct fy_allocator *a)
+fy_linear_get_caps(struct fy_allocator *a FY_UNUSED)
 {
 	return FYACF_HAS_CONTAINS | FYACF_HAS_EFFICIENT_CONTAINS;
 }
 
-static bool fy_linear_contains(struct fy_allocator *a, int tag, const void *ptr)
+static bool fy_linear_contains(struct fy_allocator *a,
+			       int tag FY_UNUSED,
+			       const void *ptr)
 {
 	struct fy_linear_allocator *la;
 

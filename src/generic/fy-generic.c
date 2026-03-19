@@ -703,12 +703,16 @@ fy_gb_string_createf(struct fy_generic_builder *gb, const char *fmt, ...)
 	return v;
 }
 
-fy_generic fy_gb_null_type_create_out_of_place(struct fy_generic_builder *gb, void *p)
+fy_generic
+fy_gb_null_type_create_out_of_place(struct fy_generic_builder *gb FY_UNUSED,
+				    void *p FY_UNUSED)
 {
 	return fy_invalid;
 }
 
-fy_generic fy_gb_bool_type_create_out_of_place(struct fy_generic_builder *gb, bool state)
+fy_generic
+fy_gb_bool_type_create_out_of_place(struct fy_generic_builder *gb FY_UNUSED,
+				    bool state FY_UNUSED)
 {
 	return fy_invalid;
 }

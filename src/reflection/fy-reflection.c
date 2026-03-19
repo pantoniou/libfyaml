@@ -1816,7 +1816,9 @@ fy_type_lookup(struct fy_reflection *rfl, const char *name, size_t namelen)
 	return NULL;
 }
 
-struct fy_type_info_wrapper *fy_type_get_info_wrapper(struct fy_type *ft, struct fy_decl *decl)
+struct fy_type_info_wrapper *
+fy_type_get_info_wrapper(struct fy_type *ft,
+			 struct fy_decl *decl FY_UNUSED)
 {
 	return ft ? &ft->tiw : NULL;
 }
@@ -2148,8 +2150,9 @@ int fy_type_fixup(struct fy_type *ft)
 	/* special handling for empty structs/unions */
 	if (fy_type_kind_is_record(type_kind)) {
 		decl = fy_type_decl(ft);
-		if (fy_decl_list_empty(&decl->children))
-			;
+		if (fy_decl_list_empty(&decl->children)) {
+			/* nothing */
+		}
 	}
 
 	/* for the rest, if size, align are set don't try again */
@@ -5035,7 +5038,12 @@ static bool c_generate_is_base_type(const struct fy_type_info *ti)
 	return true;
 }
 
-static int c_generate_direct_dep_types(struct fy_c_generator *cgen, FILE *fp, const struct fy_type_info *ti, bool is_base, int level, const struct fy_type_info *top_ti)
+static int c_generate_direct_dep_types(struct fy_c_generator *cgen,
+				       FILE *fp,
+				       const struct fy_type_info *ti,
+				       bool is_base FY_UNUSED,
+				       int level,
+				       const struct fy_type_info *top_ti)
 {
 	const struct fy_field_info *fi;
 	size_t i;

@@ -94,8 +94,9 @@ void fy_anchor_destroy(struct fy_anchor *fya)
 	free(fya);
 }
 
-struct fy_anchor *fy_anchor_create(struct fy_document *fyd,
-		struct fy_node *fyn, struct fy_token *anchor)
+struct fy_anchor *
+fy_anchor_create(struct fy_document *fyd FY_UNUSED,
+		 struct fy_node *fyn, struct fy_token *anchor)
 {
 	struct fy_anchor *fya = NULL;
 
@@ -336,7 +337,8 @@ struct fy_node *fy_node_get_nearest_child_of(struct fy_node *fyn_base,
         return fyn;
 }
 
-void fy_parse_document_destroy(struct fy_parser *fyp, struct fy_document *fyd)
+void fy_parse_document_destroy(struct fy_parser *fyp FY_UNUSED,
+			       struct fy_document *fyd)
 {
 	struct fy_node *fyn;
 
@@ -1391,7 +1393,10 @@ fy_parse_document_load_node(struct fy_parser *fyp, struct fy_document *fyd,
 			    struct fy_eventp *fyep, struct fy_node **fynp,
 			    int *depthp);
 
-int fy_parse_document_load_alias(struct fy_parser *fyp, struct fy_document *fyd, struct fy_eventp *fyep, struct fy_node **fynp)
+int fy_parse_document_load_alias(struct fy_parser *fyp,
+				 struct fy_document *fyd FY_UNUSED,
+				 struct fy_eventp *fyep,
+				 struct fy_node **fynp)
 {
 	*fynp = NULL;
 
@@ -1403,9 +1408,11 @@ int fy_parse_document_load_alias(struct fy_parser *fyp, struct fy_document *fyd,
 }
 
 static int
-fy_parse_document_load_scalar(struct fy_parser *fyp, struct fy_document *fyd,
-			      struct fy_eventp *fyep, struct fy_node **fynp,
-			      int *depthp)
+fy_parse_document_load_scalar(struct fy_parser *fyp,
+			      struct fy_document *fyd,
+			      struct fy_eventp *fyep,
+			      struct fy_node **fynp,
+			      int *depthp FY_UNUSED)
 {
 	struct fy_node *fyn = NULL;
 	struct fy_event *fye;
@@ -1789,7 +1796,9 @@ err_out:
 	return -1;
 }
 
-int fy_parse_document_load_end(struct fy_parser *fyp, struct fy_document *fyd, struct fy_eventp *fyep)
+int fy_parse_document_load_end(struct fy_parser *fyp,
+			       struct fy_document *fyd FY_UNUSED,
+			       struct fy_eventp *fyep)
 {
 	struct fy_event *fye;
 	int rc;
@@ -3045,7 +3054,8 @@ void fy_node_apply(struct fy_node *fyn, fy_node_applyf func, void *user)
 	}
 }
 
-static void clear_system_marks(struct fy_node *fyn, void *user)
+static void clear_system_marks(struct fy_node *fyn,
+			       void *user FY_UNUSED)
 {
 	fyn->marks &= ~FYNWF_SYSTEM_MARKS;
 }
@@ -6007,7 +6017,7 @@ static int fy_node_mapping_sort_cmp_no_qsort_r(const void *a, const void *b)
 
 static int fy_node_scalar_cmp_default(struct fy_node *fyn_a,
 				      struct fy_node *fyn_b,
-				      void *arg)
+				      void *arg FY_UNUSED)
 {
 	/* handles NULL cases */
 	if (fyn_a == fyn_b)
@@ -6091,9 +6101,11 @@ void fy_node_mapping_fill_array(struct fy_node *fyn_map,
 
 }
 
-void fy_node_mapping_perform_sort(struct fy_node *fyn_map,
-		fy_node_mapping_sort_fn key_cmp, void *arg,
-		struct fy_node_pair **fynpp, int count)
+void fy_node_mapping_perform_sort(struct fy_node *fyn_map FY_UNUSED,
+				  fy_node_mapping_sort_fn key_cmp,
+				  void *arg,
+				  struct fy_node_pair **fynpp,
+				  int count)
 {
 	struct fy_node_mapping_sort_ctx ctx;
 	struct fy_node_cmp_arg def_arg;
@@ -6800,7 +6812,7 @@ bool fy_node_is_marker_set(struct fy_node *fyn, unsigned int marker)
 	return !!(fyn->marks & FY_BIT(marker));
 }
 
-FILE *fy_document_get_error_fp(struct fy_document *fyd)
+FILE *fy_document_get_error_fp(struct fy_document *fyd FY_UNUSED)
 {
 	/* just this for now */
 	return stderr;
@@ -6830,7 +6842,10 @@ bool fy_document_is_accelerated(struct fy_document *fyd)
 	return fyd->axl && fyd->naxl;
 }
 
-static int hd_anchor_hash(struct fy_accel *xl, const void *key, void *userdata, void *hash)
+static int hd_anchor_hash(struct fy_accel *xl FY_UNUSED,
+			  const void *key,
+			  void *userdata FY_UNUSED,
+			  void *hash)
 {
 	struct fy_token *fyt = (void *)key;
 	unsigned int *hashp = hash;
@@ -6845,7 +6860,11 @@ static int hd_anchor_hash(struct fy_accel *xl, const void *key, void *userdata, 
 	return 0;
 }
 
-static bool hd_anchor_eq(struct fy_accel *xl, const void *hash, const void *key1, const void *key2, void *userdata)
+static bool hd_anchor_eq(struct fy_accel *xl FY_UNUSED,
+			 const void *hash FY_UNUSED,
+			 const void *key1,
+			 const void *key2,
+			 void *userdata FY_UNUSED)
 {
 	struct fy_token *fyt1 = (void *)key1, *fyt2 = (void *)key2;
 	const char *text1, *text2;
@@ -6868,7 +6887,10 @@ static const struct fy_hash_desc hd_anchor = {
 	.eq = hd_anchor_eq,
 };
 
-static int hd_nanchor_hash(struct fy_accel *xl, const void *key, void *userdata, void *hash)
+static int hd_nanchor_hash(struct fy_accel *xl FY_UNUSED,
+			   const void *key,
+			   void *userdata FY_UNUSED,
+			   void *hash)
 {
 	struct fy_node *fyn = (void *)key;
 	unsigned int *hashp = hash;
@@ -6879,7 +6901,11 @@ static int hd_nanchor_hash(struct fy_accel *xl, const void *key, void *userdata,
 	return 0;
 }
 
-static bool hd_nanchor_eq(struct fy_accel *xl, const void *hash, const void *key1, const void *key2, void *userdata)
+static bool hd_nanchor_eq(struct fy_accel *xl FY_UNUSED,
+			  const void *hash FY_UNUSED,
+			  const void *key1,
+			  const void *key2,
+			  void *userdata FY_UNUSED)
 {
 	struct fy_node *fyn1 = (void *)key1, *fyn2 = (void *)key2;
 
@@ -6894,12 +6920,19 @@ static const struct fy_hash_desc hd_nanchor = {
 };
 
 
-static int hd_mapping_hash(struct fy_accel *xl, const void *key, void *userdata, void *hash)
+static int hd_mapping_hash(struct fy_accel *xl FY_UNUSED,
+			   const void *key,
+			   void *userdata FY_UNUSED,
+			   void *hash)
 {
 	return fy_node_hash_uint((struct fy_node *)key, hash);
 }
 
-static bool hd_mapping_eq(struct fy_accel *xl, const void *hash, const void *key1, const void *key2, void *userdata)
+static bool hd_mapping_eq(struct fy_accel *xl FY_UNUSED,
+			  const void *hash FY_UNUSED,
+			  const void *key1,
+			  const void *key2,
+			  void *userdata FY_UNUSED)
 {
 	return fy_node_compare((struct fy_node *)key1, (struct fy_node *)key2);
 }

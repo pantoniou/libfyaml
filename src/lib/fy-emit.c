@@ -407,9 +407,10 @@ enum document_indicator {
 };
 
 void fy_emit_write_indicator(struct fy_emitter *emit,
-		enum document_indicator indicator,
-		int flags, int indent,
-		enum fy_emitter_write_type wtype)
+			     enum document_indicator indicator,
+			     int flags FY_UNUSED,
+			     int indent FY_UNUSED,
+			     enum fy_emitter_write_type wtype)
 {
 	/* extended indicators mode? */
 	if (wtype == fyewt_indicator &&
@@ -511,7 +512,12 @@ int fy_emit_increase_indent(struct fy_emitter *emit, int flags, int indent)
 	return indent;
 }
 
-void fy_emit_write_comment(struct fy_emitter *emit, int flags, int indent, const char *str, size_t len, struct fy_atom *handle)
+void fy_emit_write_comment(struct fy_emitter *emit,
+			   int flags FY_UNUSED,
+			   int indent,
+			   const char *str,
+			   size_t len,
+			   struct fy_atom *handle)
 {
 	const char *s, *e, *sr;
 	int c, w;
@@ -562,7 +568,10 @@ void fy_emit_write_comment(struct fy_emitter *emit, int flags, int indent, const
 	emit->flags |= (FYEF_WHITESPACE | FYEF_INDENTATION);
 }
 
-struct fy_atom *fy_emit_token_comment_handle(struct fy_emitter *emit, struct fy_token *fyt, enum fy_comment_placement placement)
+struct fy_atom *
+fy_emit_token_comment_handle(struct fy_emitter *emit FY_UNUSED,
+			     struct fy_token *fyt,
+			     enum fy_comment_placement placement)
 {
 	struct fy_atom *handle;
 
@@ -644,7 +653,7 @@ void fy_emit_token_comment(struct fy_emitter *emit, struct fy_token *fyt, int fl
 		return;
 
 	len = fy_atom_format_text_length(handle);
-	if (len < 0)
+	if ((ssize_t)len < 0)
 		return;
 
 	text = alloca(len + 1);
@@ -673,10 +682,11 @@ void fy_emit_token_comment(struct fy_emitter *emit, struct fy_token *fyt, int fl
 }
 
 void fy_emit_common_node_preamble(struct fy_emitter *emit,
-		struct fy_token *fyt_value,
-		struct fy_token *fyt_anchor,
-		struct fy_token *fyt_tag,
-		int flags, int indent)
+				  struct fy_token *fyt_value FY_UNUSED,
+				  struct fy_token *fyt_anchor,
+				  struct fy_token *fyt_tag,
+				  int flags,
+				  int indent)
 {
 	const char *anchor = NULL;
 	const char *tag = NULL;
@@ -1203,7 +1213,11 @@ out:
 			flags, indent, wtype);
 }
 
-bool fy_emit_token_write_block_hints(struct fy_emitter *emit, struct fy_token *fyt, int flags, int indent, char *chompp)
+bool fy_emit_token_write_block_hints(struct fy_emitter *emit,
+				     struct fy_token *fyt,
+				     int flags FY_UNUSED,
+				     int indent FY_UNUSED,
+				     char *chompp)
 {
 	char chomp = '\0';
 	bool explicit_chomp = false;
@@ -2182,7 +2196,7 @@ err_out:
 
 int fy_emit_common_document_start(struct fy_emitter *emit,
 				  struct fy_document_state *fyds,
-				  bool root_tag_or_anchor)
+				  bool root_tag_or_anchor FY_UNUSED)
 {
 	struct fy_emit_save_ctx *sc = &emit->s_sc;
 	struct fy_token *fyt_chk;
@@ -2782,7 +2796,11 @@ struct fy_emit_buffer_state {
 	size_t maxsize;
 };
 
-static int do_buffer_output(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int leni, void *userdata)
+static int do_buffer_output(struct fy_emitter *emit,
+			    enum fy_emitter_write_type type FY_UNUSED,
+			    const char *str,
+			    int leni,
+			    void *userdata FY_UNUSED)
 {
 	struct fy_emit_buffer_state *state = emit->xcfg.cfg.userdata;
 	size_t left, pagesize, size, len;
@@ -3072,7 +3090,11 @@ fy_emit_to_string_collect(struct fy_emitter *emit, size_t *sizep)
 	return buf;
 }
 
-static int do_file_output(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int leni, void *userdata)
+static int do_file_output(struct fy_emitter *emit FY_UNUSED,
+			  enum fy_emitter_write_type type FY_UNUSED,
+			  const char *str,
+			  int leni,
+			  void *userdata)
 {
 	FILE *fp = userdata;
 	size_t len, wrn;
@@ -3135,7 +3157,11 @@ int fy_emit_document_to_file(struct fy_document *fyd,
 	return rc ? rc : 0;
 }
 
-static int do_fd_output(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *str, int leni, void *userdata)
+static int do_fd_output(struct fy_emitter *emit FY_UNUSED,
+			enum fy_emitter_write_type type FY_UNUSED,
+			const char *str,
+			int leni,
+			void *userdata)
 {
 	size_t len;
 	int fd;
@@ -3145,7 +3171,7 @@ static int do_fd_output(struct fy_emitter *emit, enum fy_emitter_write_type type
 	len = (size_t)leni;
 
 	/* no funky stuff */
-	if (len < 0)
+	if ((ssize_t)len < 0)
 		return -1;
 
 	/* get the file descriptor */
@@ -3514,7 +3540,10 @@ int fy_emit_pop_sc(struct fy_emitter *emit, struct fy_emit_save_ctx *sc)
 	return 0;
 }
 
-static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_eventp *fyep, int flags)
+static int fy_emit_streaming_node(struct fy_emitter *emit,
+				  struct fy_parser *fyp FY_UNUSED,
+				  struct fy_eventp *fyep,
+				  int flags)
 {
 	struct fy_event *fye = &fyep->e;
 	struct fy_emit_save_ctx *sc = &emit->s_sc;
@@ -3649,7 +3678,9 @@ static int fy_emit_streaming_node(struct fy_emitter *emit, struct fy_parser *fyp
 	return 0;
 }
 
-static int fy_emit_handle_stream_start(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_eventp *fyep)
+static int fy_emit_handle_stream_start(struct fy_emitter *emit,
+				       struct fy_parser *fyp FY_UNUSED,
+				       struct fy_eventp *fyep)
 {
 	struct fy_event *fye = &fyep->e;
 
@@ -3668,7 +3699,10 @@ static int fy_emit_handle_stream_start(struct fy_emitter *emit, struct fy_parser
 	return 0;
 }
 
-static int fy_emit_handle_document_start(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_eventp *fyep, bool first)
+static int fy_emit_handle_document_start(struct fy_emitter *emit,
+					 struct fy_parser *fyp FY_UNUSED,
+					 struct fy_eventp *fyep,
+					 bool first FY_UNUSED)
 {
 	struct fy_event *fye = &fyep->e;
 	struct fy_document_state *fyds;
@@ -3698,7 +3732,9 @@ static int fy_emit_handle_document_start(struct fy_emitter *emit, struct fy_pars
 	return 0;
 }
 
-static int fy_emit_handle_document_end(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_eventp *fyep)
+static int fy_emit_handle_document_end(struct fy_emitter *emit,
+				       struct fy_parser *fyp FY_UNUSED,
+				       struct fy_eventp *fyep)
 {
 	struct fy_event *fye = &fyep->e;
 	int ret;
@@ -3918,7 +3954,10 @@ static int fy_emit_handle_mapping_key(struct fy_emitter *emit, struct fy_parser 
 	return ret;
 }
 
-static int fy_emit_handle_mapping_value(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_eventp *fyep, bool simple)
+static int fy_emit_handle_mapping_value(struct fy_emitter *emit,
+					struct fy_parser *fyp,
+					struct fy_eventp *fyep,
+					bool simple FY_UNUSED)
 {
 	struct fy_event *fye = &fyep->e;
 	struct fy_emit_save_ctx *sc = &emit->s_sc;
@@ -4178,7 +4217,11 @@ static int fy_emitter_get_output_fd(struct fy_emitter *fye)
 }
 
 
-static int fy_emitter_null_output(struct fy_emitter *fye, enum fy_emitter_write_type type, const char *str, int len, void *userdata)
+static int fy_emitter_null_output(struct fy_emitter *fye FY_UNUSED,
+				  enum fy_emitter_write_type type FY_UNUSED,
+				  const char *str FY_UNUSED,
+				  int len,
+				  void *userdata FY_UNUSED)
 {
 	return len;
 }

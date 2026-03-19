@@ -30,8 +30,11 @@ struct test_emitter_data {
 	char *buf;
 };
 
-static int collect_output(struct fy_emitter *emit, enum fy_emitter_write_type type,
-			  const char *str, int len, void *userdata)
+static int collect_output(struct fy_emitter *emit FY_UNUSED,
+			  enum fy_emitter_write_type type FY_UNUSED,
+			  const char *str,
+			  int len,
+			  void *userdata)
 {
 	struct test_emitter_data *data = userdata;
 	char *newbuf;

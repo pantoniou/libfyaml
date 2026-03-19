@@ -126,7 +126,7 @@ fy_encode_generic_cleanup_data(struct fy_encode_generic_data *gd)
 }
 
 static int
-fy_encode_generic_attach_comments(struct fy_generic_encoder *fyge,
+fy_encode_generic_attach_comments(struct fy_generic_encoder *fyge FY_UNUSED,
 				  struct fy_encode_generic_data *gd,
 				  struct fy_event *fye)
 {

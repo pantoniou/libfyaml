@@ -544,7 +544,9 @@ err_out:
 }
 
 static bool
-fy_generic_decoder_is_merge_key(struct fy_generic_decoder *gd, struct fy_generic_decoder_obj *gdop, struct fy_event *fye)
+fy_generic_decoder_is_merge_key(struct fy_generic_decoder *gd,
+				struct fy_generic_decoder_obj *gdop,
+				struct fy_event *fye)
 {
 	return gd && gdop && fye &&
 		fye->type == FYET_SCALAR &&
@@ -554,7 +556,9 @@ fy_generic_decoder_is_merge_key(struct fy_generic_decoder *gd, struct fy_generic
 }
 
 static bool
-fy_generic_decoder_is_valid_merge_key_arg(struct fy_generic_decoder *gd, struct fy_generic_decoder_obj *gdop, fy_generic v)
+fy_generic_decoder_is_valid_merge_key_arg(struct fy_generic_decoder *gd FY_UNUSED,
+					  struct fy_generic_decoder_obj *gdop FY_UNUSED,
+					  fy_generic v)
 {
 	enum fy_generic_type type;
 	const fy_generic *items;

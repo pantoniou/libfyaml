@@ -855,8 +855,8 @@ fy_import_backend_root_visitor(CXCursor cursor, CXCursor parent, CXClientData cl
 				//		__FILE__, __LINE__, __func__,
 				//		clang_str_get_alloca(clang_getTypeSpelling(ftu->dependent_type)));
 
-				ret = clang_create_primitive_types(rfl, imp, ftu->dependent_type);
-				RFL_ASSERT(ret >= 0);
+				rc = clang_create_primitive_types(rfl, imp, ftu->dependent_type);
+				RFL_ASSERT(rc >= 0);
 
 				ft_dep = clang_lookup_type_by_type(rfl, ftu->dependent_type, true);
 			}

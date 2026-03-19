@@ -726,8 +726,11 @@ struct emit_bugs_collect_data {
 	char *buf;
 };
 
-static int emit_bugs_collect_output(struct fy_emitter *emit, enum fy_emitter_write_type type,
-				    const char *str, int len, void *userdata)
+static int emit_bugs_collect_output(struct fy_emitter *emit FY_UNUSED,
+				    enum fy_emitter_write_type type FY_UNUSED,
+				    const char *str,
+				    int len,
+				    void *userdata)
 {
 	struct emit_bugs_collect_data *data = userdata;
 	char *newbuf;

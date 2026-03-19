@@ -958,7 +958,9 @@ static inline void fy_work_pool_wait(struct fy_work_pool *wp)
 	}
 }
 
-static inline void fy_worker_thread_steal_execute(struct fy_thread *t, struct fy_thread_work *w)
+static inline void
+fy_worker_thread_steal_execute(struct fy_thread *t FY_UNUSED,
+			       struct fy_thread_work *w)
 {
 	struct fy_work_pool *wp;
 	bool signalled __FY_DEBUG_UNUSED__;
@@ -975,7 +977,9 @@ static inline void fy_worker_thread_steal_execute(struct fy_thread *t, struct fy
 			t->id, w, wp, signalled ? "true" : "false");
 }
 
-static inline struct fy_thread_work *fy_worker_thread_steal_work(struct fy_thread_pool *tp, struct fy_thread *t_thief)
+static inline struct fy_thread_work *
+fy_worker_thread_steal_work(struct fy_thread_pool *tp,
+			    struct fy_thread *t_thief FY_UNUSED)
 {
 	struct fy_thread *t;
 	unsigned int slot;

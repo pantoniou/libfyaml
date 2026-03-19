@@ -481,57 +481,71 @@ err_out:
 static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT];
 
 static fy_generic
-fy_generic_op_create_inv(const struct fy_generic_op_desc *desc,
-			 struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-			 fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_create_inv(const struct fy_generic_op_desc *desc FY_UNUSED,
+			 struct fy_generic_builder *gb FY_UNUSED,
+			 enum fy_gb_op_flags flags FY_UNUSED,
+			 fy_generic in FY_UNUSED,
+			 const struct fy_generic_op_args *args FY_UNUSED)
 {
 	return fy_invalid;
 }
 
 static fy_generic
-fy_generic_op_create_null(const struct fy_generic_op_desc *desc,
-			  struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-			  fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_create_null(const struct fy_generic_op_desc *desc FY_UNUSED,
+			  struct fy_generic_builder *gb FY_UNUSED,
+			  enum fy_gb_op_flags flags FY_UNUSED,
+			  fy_generic in FY_UNUSED,
+			  const struct fy_generic_op_args *args FY_UNUSED)
 {
 	return fy_null;
 }
 
 static fy_generic
-fy_generic_op_create_bool(const struct fy_generic_op_desc *desc,
-			  struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-			  fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_create_bool(const struct fy_generic_op_desc *desc FY_UNUSED,
+			  struct fy_generic_builder *gb FY_UNUSED,
+			  enum fy_gb_op_flags flags FY_UNUSED,
+			  fy_generic in FY_UNUSED,
+			  const struct fy_generic_op_args *args)
 {
 	return args->scalar.bval ? fy_true : fy_false;
 }
 
 static fy_generic
-fy_generic_op_create_int(const struct fy_generic_op_desc *desc,
-			  struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-			  fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_create_int(const struct fy_generic_op_desc *desc FY_UNUSED,
+			  struct fy_generic_builder *gb,
+			  enum fy_gb_op_flags flags FY_UNUSED,
+			  fy_generic in FY_UNUSED,
+			  const struct fy_generic_op_args *args)
 {
 	return fy_value(gb, args->scalar.ival);
 }
 
 static fy_generic
-fy_generic_op_create_float(const struct fy_generic_op_desc *desc,
-			  struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-			  fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_create_float(const struct fy_generic_op_desc *desc FY_UNUSED,
+			  struct fy_generic_builder *gb,
+			  enum fy_gb_op_flags flags FY_UNUSED,
+			  fy_generic in FY_UNUSED,
+			  const struct fy_generic_op_args *args)
 {
 	return fy_gb_to_generic(gb, args->scalar.fval);
 }
 
 static fy_generic
-fy_generic_op_create_string(const struct fy_generic_op_desc *desc,
-			  struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-			  fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_create_string(const struct fy_generic_op_desc *desc FY_UNUSED,
+			    struct fy_generic_builder *gb,
+			    enum fy_gb_op_flags flags FY_UNUSED,
+			    fy_generic in FY_UNUSED,
+			    const struct fy_generic_op_args *args)
 {
 	return fy_gb_to_generic(gb, args->scalar.sval);
 }
 
 static fy_generic
-fy_generic_op_create_sequence(const struct fy_generic_op_desc *desc,
-			  struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-			  fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_create_sequence(const struct fy_generic_op_desc *desc FY_UNUSED,
+			      struct fy_generic_builder *gb,
+			      enum fy_gb_op_flags flags,
+			      fy_generic in FY_UNUSED,
+			      const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_sequence seqh;
@@ -564,9 +578,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_create_mapping(const struct fy_generic_op_desc *desc,
-			  struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-			  fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_create_mapping(const struct fy_generic_op_desc *desc FY_UNUSED,
+			     struct fy_generic_builder *gb,
+			     enum fy_gb_op_flags flags,
+			     fy_generic in FY_UNUSED,
+			     const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_mapping maph;
@@ -610,9 +626,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_insert(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_insert(const struct fy_generic_op_desc *desc FY_UNUSED,
+		     struct fy_generic_builder *gb,
+		     enum fy_gb_op_flags flags,
+		     fy_generic in,
+		     const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_collection col;
@@ -666,9 +684,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_replace(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_replace(const struct fy_generic_op_desc *desc FY_UNUSED,
+		      struct fy_generic_builder *gb,
+		      enum fy_gb_op_flags flags,
+		      fy_generic in,
+		      const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_collection col;
@@ -731,9 +751,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_append(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_append(const struct fy_generic_op_desc *desc FY_UNUSED,
+		     struct fy_generic_builder *gb,
+		     enum fy_gb_op_flags flags,
+		     fy_generic in,
+		     const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_collection col;
@@ -776,9 +798,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_assoc(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_assoc(const struct fy_generic_op_desc *desc FY_UNUSED,
+		    struct fy_generic_builder *gb,
+		    enum fy_gb_op_flags flags,
+		    fy_generic in,
+		    const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_collection col;
@@ -859,9 +883,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_disassoc(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_disassoc(const struct fy_generic_op_desc *desc FY_UNUSED,
+		       struct fy_generic_builder *gb,
+		       enum fy_gb_op_flags flags,
+		       fy_generic in,
+		       const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_collection col;
@@ -944,9 +970,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_keys(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_keys(const struct fy_generic_op_desc *desc FY_UNUSED,
+		   struct fy_generic_builder *gb,
+		   enum fy_gb_op_flags flags,
+		   fy_generic in,
+		   const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_collection col;
@@ -993,9 +1021,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_values(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_values(const struct fy_generic_op_desc *desc FY_UNUSED,
+		     struct fy_generic_builder *gb,
+		     enum fy_gb_op_flags flags,
+		     fy_generic in,
+		     const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_collection col;
@@ -1042,9 +1072,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_items(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_items(const struct fy_generic_op_desc *desc FY_UNUSED,
+		    struct fy_generic_builder *gb,
+		    enum fy_gb_op_flags flags,
+		    fy_generic in,
+		    const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_collection col;
@@ -1095,9 +1127,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_contains(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_contains(const struct fy_generic_op_desc *desc FY_UNUSED,
+		       struct fy_generic_builder *gb,
+		       enum fy_gb_op_flags flags,
+		       fy_generic in,
+		       const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	size_t i, j, k;
@@ -1138,9 +1172,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_concat(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_concat(const struct fy_generic_op_desc *desc FY_UNUSED,
+		     struct fy_generic_builder *gb,
+		     enum fy_gb_op_flags flags,
+		     fy_generic in,
+		     const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_collection col;
@@ -1240,9 +1276,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_reverse(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_reverse(const struct fy_generic_op_desc *desc FY_UNUSED,
+		      struct fy_generic_builder *gb,
+		      enum fy_gb_op_flags flags,
+		      fy_generic in,
+		      const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_collection col;
@@ -1317,9 +1355,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_merge(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_merge(const struct fy_generic_op_desc *desc FY_UNUSED,
+		    struct fy_generic_builder *gb,
+		    enum fy_gb_op_flags flags,
+		    fy_generic in,
+		    const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_collection col;
@@ -1406,9 +1446,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_unique(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_unique(const struct fy_generic_op_desc *desc FY_UNUSED,
+		     struct fy_generic_builder *gb,
+		     enum fy_gb_op_flags flags,
+		     fy_generic in,
+		     const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_collection col;
@@ -1485,9 +1527,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_sort(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_sort(const struct fy_generic_op_desc *desc FY_UNUSED,
+		   struct fy_generic_builder *gb,
+		   enum fy_gb_op_flags flags,
+		   fy_generic in,
+		   const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_collection col;
@@ -1539,9 +1583,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_set(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_set(const struct fy_generic_op_desc *desc FY_UNUSED,
+		  struct fy_generic_builder *gb,
+		  enum fy_gb_op_flags flags,
+		  fy_generic in,
+		  const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_collection col;
@@ -1678,9 +1724,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_set_at(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_set_at(const struct fy_generic_op_desc *desc FY_UNUSED,
+		     struct fy_generic_builder *gb,
+		     enum fy_gb_op_flags flags FY_UNUSED,
+		     fy_generic in,
+		     const struct fy_generic_op_args *args)
 {
 	struct fy_generic_op_args args_local, *args_new = &args_local;
 
@@ -1698,9 +1746,11 @@ fy_generic_op_set_at(const struct fy_generic_op_desc *desc,
 }
 
 static fy_generic
-fy_generic_op_set_at_path(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_set_at_path(const struct fy_generic_op_desc *desc FY_UNUSED,
+			  struct fy_generic_builder *gb,
+			  enum fy_gb_op_flags flags,
+			  fy_generic in,
+			  const struct fy_generic_op_args *args)
 {
 	size_t i, path_count;
 	fy_generic out = fy_invalid;
@@ -1797,9 +1847,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_get(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_get(const struct fy_generic_op_desc *desc FY_UNUSED,
+		  struct fy_generic_builder *gb,
+		  enum fy_gb_op_flags flags,
+		  fy_generic in,
+		  const struct fy_generic_op_args *args)
 {
 	fy_generic key;
 	fy_generic out = fy_invalid;
@@ -1837,9 +1889,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_get_at(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_get_at(const struct fy_generic_op_desc *desc FY_UNUSED,
+		     struct fy_generic_builder *gb,
+		     enum fy_gb_op_flags flags,
+		     fy_generic in,
+		     const struct fy_generic_op_args *args)
 {
 	size_t idx;
 	fy_generic out;
@@ -1874,9 +1928,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_get_at_path(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_get_at_path(const struct fy_generic_op_desc *desc FY_UNUSED,
+			  struct fy_generic_builder *gb,
+			  enum fy_gb_op_flags flags,
+			  fy_generic in,
+			  const struct fy_generic_op_args *args)
 {
 	size_t i, path_count;
 	fy_generic out = fy_invalid;
@@ -1913,7 +1969,7 @@ err_out:
 }
 
 static void
-fy_op_dummy_work(void *varg)
+fy_op_dummy_work(void *varg FY_UNUSED)
 {
 	/* nothing */
 }
@@ -2365,9 +2421,11 @@ fy_generic_parallel_op_data_exec(struct fy_generic_parallel_op_data *pd,
 }
 
 static fy_generic
-fy_generic_op_filter(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_filter(const struct fy_generic_op_desc *desc FY_UNUSED,
+		     struct fy_generic_builder *gb,
+		     enum fy_gb_op_flags flags,
+		     fy_generic in,
+		     const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_parallel_op_data pd_local, *pd = &pd_local;
@@ -2473,9 +2531,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_map(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_map(const struct fy_generic_op_desc *desc FY_UNUSED,
+		  struct fy_generic_builder *gb,
+		  enum fy_gb_op_flags flags,
+		  fy_generic in,
+		  const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_parallel_op_data pd_local, *pd = &pd_local;
@@ -2565,9 +2625,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_reduce(const struct fy_generic_op_desc *desc,
-		     struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		     fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_reduce(const struct fy_generic_op_desc *desc FY_UNUSED,
+		     struct fy_generic_builder *gb,
+		     enum fy_gb_op_flags flags,
+		     fy_generic in,
+		     const struct fy_generic_op_args *args)
 {
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_parallel_op_data pd_local, *pd = &pd_local;
@@ -2725,17 +2787,21 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_slice(const struct fy_generic_op_desc *desc,
-		    struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		    fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_slice(const struct fy_generic_op_desc *desc FY_UNUSED,
+		    struct fy_generic_builder *gb,
+		    enum fy_gb_op_flags flags,
+		    fy_generic in,
+		    const struct fy_generic_op_args *args)
 {
 	return fy_generic_op_slice_internal(gb, flags, in, args, args->slice.start, args->slice.end);
 }
 
 static fy_generic
-fy_generic_op_slice_py(const struct fy_generic_op_desc *desc,
-		       struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		       fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_slice_py(const struct fy_generic_op_desc *desc FY_UNUSED,
+		       struct fy_generic_builder *gb,
+		       enum fy_gb_op_flags flags,
+		       fy_generic in,
+		       const struct fy_generic_op_args *args)
 {
 	const fy_generic_sequence *seqp;
 	ssize_t start_py, end_py;
@@ -2775,9 +2841,11 @@ fy_generic_op_slice_py(const struct fy_generic_op_desc *desc,
 }
 
 static fy_generic
-fy_generic_op_take(const struct fy_generic_op_desc *desc,
-		   struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		   fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_take(const struct fy_generic_op_desc *desc FY_UNUSED,
+		   struct fy_generic_builder *gb,
+		   enum fy_gb_op_flags flags,
+		   fy_generic in,
+		   const struct fy_generic_op_args *args)
 {
 	struct fy_generic_op_args local_args;
 	size_t n;
@@ -2794,9 +2862,11 @@ fy_generic_op_take(const struct fy_generic_op_desc *desc,
 }
 
 static fy_generic
-fy_generic_op_drop(const struct fy_generic_op_desc *desc,
-		   struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		   fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_drop(const struct fy_generic_op_desc *desc FY_UNUSED,
+		   struct fy_generic_builder *gb,
+		   enum fy_gb_op_flags flags,
+		   fy_generic in,
+		   const struct fy_generic_op_args *args)
 {
 	struct fy_generic_op_args local_args;
 	size_t n;
@@ -2813,9 +2883,11 @@ fy_generic_op_drop(const struct fy_generic_op_desc *desc,
 }
 
 static fy_generic
-fy_generic_op_first(const struct fy_generic_op_desc *desc,
-		    struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		    fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_first(const struct fy_generic_op_desc *desc FY_UNUSED,
+		    struct fy_generic_builder *gb FY_UNUSED,
+		    enum fy_gb_op_flags flags FY_UNUSED,
+		    fy_generic in,
+		    const struct fy_generic_op_args *args FY_UNUSED)
 {
 	const fy_generic_sequence *seqp;
 
@@ -2832,9 +2904,11 @@ fy_generic_op_first(const struct fy_generic_op_desc *desc,
 }
 
 static fy_generic
-fy_generic_op_last(const struct fy_generic_op_desc *desc,
-		   struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		   fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_last(const struct fy_generic_op_desc *desc FY_UNUSED,
+		   struct fy_generic_builder *gb FY_UNUSED,
+		   enum fy_gb_op_flags flags FY_UNUSED,
+		   fy_generic in,
+		   const struct fy_generic_op_args *args FY_UNUSED)
 {
 	const fy_generic_sequence *seqp;
 
@@ -2851,9 +2925,11 @@ fy_generic_op_last(const struct fy_generic_op_desc *desc,
 }
 
 static fy_generic
-fy_generic_op_rest(const struct fy_generic_op_desc *desc,
-		   struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		   fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_rest(const struct fy_generic_op_desc *desc FY_UNUSED,
+		   struct fy_generic_builder *gb,
+		   enum fy_gb_op_flags flags,
+		   fy_generic in,
+		   const struct fy_generic_op_args *args FY_UNUSED)
 {
 	struct fy_generic_op_args local_args;
 
@@ -2865,9 +2941,11 @@ fy_generic_op_rest(const struct fy_generic_op_desc *desc,
 }
 
 static fy_generic
-fy_generic_op_parse(const struct fy_generic_op_desc *desc,
-		    struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		    fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_parse(const struct fy_generic_op_desc *desc FY_UNUSED,
+		    struct fy_generic_builder *gb,
+		    enum fy_gb_op_flags flags FY_UNUSED,
+		    fy_generic in,
+		    const struct fy_generic_op_args *args)
 {
 	fy_generic_sized_string szstr;
 	struct fy_parse_cfg parse_cfg;
@@ -3096,9 +3174,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_emit(const struct fy_generic_op_desc *desc,
-		   struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		   fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_emit(const struct fy_generic_op_desc *desc FY_UNUSED,
+		   struct fy_generic_builder *gb,
+		   enum fy_gb_op_flags flags FY_UNUSED,
+		   fy_generic in,
+		   const struct fy_generic_op_args *args)
 {
 	struct fy_emitter *emit = NULL;
 	struct fy_generic_encoder *fyge = NULL;
@@ -3322,7 +3402,7 @@ fy_generic_op_emit(const struct fy_generic_op_desc *desc,
 	case FYOPEF_OUTPUT_TYPE_STDOUT:
 	case FYOPEF_OUTPUT_TYPE_STDERR:
 	case FYOPEF_OUTPUT_TYPE_FILENAME:
-		out = fy_int(0);
+		out = fy_value(0);
 		break;
 
 	default:
@@ -3346,9 +3426,11 @@ err_out:
 }
 
 static fy_generic
-fy_generic_op_convert(const struct fy_generic_op_desc *desc,
-		      struct fy_generic_builder *gb, enum fy_gb_op_flags flags,
-		      fy_generic in, const struct fy_generic_op_args *args)
+fy_generic_op_convert(const struct fy_generic_op_desc *desc FY_UNUSED,
+		      struct fy_generic_builder *gb,
+		      enum fy_gb_op_flags flags,
+		      fy_generic in,
+		      const struct fy_generic_op_args *args)
 {
 	fy_generic out = fy_invalid;
 	enum fy_generic_type in_type;

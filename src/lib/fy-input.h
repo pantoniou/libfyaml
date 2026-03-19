@@ -728,7 +728,7 @@ fy_reader_advance_octets(struct fy_reader *fyr, size_t advance)
 void fy_reader_advance_slow_path(struct fy_reader *fyr, int c);
 
 static FY_ALWAYS_INLINE inline void
-fy_reader_advance_printable_ascii(struct fy_reader *fyr, int c)
+fy_reader_advance_printable_ascii(struct fy_reader *fyr, int c FY_UNUSED)
 {
 	assert(fyr);
 	fy_reader_advance_octets(fyr, 1);

@@ -769,7 +769,7 @@ again:
 	return s;
 }
 
-void fy_comment_iter_end(struct fy_comment_iter *iter)
+void fy_comment_iter_end(struct fy_comment_iter *iter FY_UNUSED)
 {
 	/* nothing */
 }
@@ -918,7 +918,7 @@ void fy_keyword_iter_advance(struct fy_keyword_iter *iter, size_t advance)
 		iter->pc = '\n';
 }
 
-void fy_keyword_iter_end(struct fy_keyword_iter *iter)
+void fy_keyword_iter_end(struct fy_keyword_iter *iter FY_UNUSED)
 {
 	/* nothing */
 }

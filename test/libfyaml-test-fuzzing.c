@@ -549,7 +549,8 @@ END_TEST
 
 #if defined(__linux__)
 
-static void fuzz_dump_testsuite_event(struct fy_parser *fyp, struct fy_event *fye)
+static void fuzz_dump_testsuite_event(struct fy_parser *fyp FY_UNUSED,
+				      struct fy_event *fye)
 {
 	const char *anchor = NULL;
 	const char *tag = NULL;

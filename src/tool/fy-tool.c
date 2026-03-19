@@ -790,8 +790,9 @@ int apply_flags_option(const char *arg, unsigned int *flagsp,
 	return 0;
 }
 
-static int set_parser_input(struct fy_parser *fyp, const char *what,
-		bool default_string)
+static int set_parser_input(struct fy_parser *fyp,
+			    const char *what,
+			    bool default_string FY_UNUSED)
 {
 	int rc;
 
@@ -807,8 +808,10 @@ static int set_parser_input(struct fy_parser *fyp, const char *what,
 	return rc;
 }
 
-static void no_diag_output_fn(struct fy_diag *diag, void *user,
-				  const char *buf, size_t len)
+static void no_diag_output_fn(struct fy_diag *diag FY_UNUSED,
+			      void *user FY_UNUSED,
+			      const char *buf FY_UNUSED,
+			      size_t len FY_UNUSED)
 {
 	/* nothing */
 }
@@ -1231,7 +1234,7 @@ do_b3sum(int argc, char *argv[], int optind, const struct b3sum_config *cfg)
 	if (cfg->keyed) {
 		rdn = fread(key, 1, FY_BLAKE3_KEY_LEN, stdin);
 		if (rdn != FY_BLAKE3_KEY_LEN) {
-			if (rdn >= 0 && rdn < FY_BLAKE3_KEY_LEN)
+			if (rdn > 0 && rdn < FY_BLAKE3_KEY_LEN)
 				fprintf(stderr, "Error: could not read secret key from <stdin>: short key\n\n");
 			else
 				fprintf(stderr, "Error: could not read secret key from <stdin>: error %s\n\n", strerror(errno));

@@ -170,7 +170,8 @@ void fy_diag_cfg_default(struct fy_diag_cfg *cfg)
 	cfg->colorize = isatty(fileno(stderr)) == 1;
 }
 
-void fy_diag_cfg_from_parser_flags(struct fy_diag_cfg *cfg, enum fy_parse_cfg_flags pflags)
+void fy_diag_cfg_from_parser_flags(struct fy_diag_cfg *cfg FY_UNUSED,
+				   enum fy_parse_cfg_flags pflags FY_UNUSED)
 {
 	/* nothing */
 }

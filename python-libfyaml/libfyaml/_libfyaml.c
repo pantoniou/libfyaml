@@ -329,7 +329,7 @@ FyDocumentState_repr(FyDocumentStateObject *self)
 
 /* FyDocumentState: version property getter */
 static PyObject *
-FyDocumentState_get_version(FyDocumentStateObject *self, void *closure)
+FyDocumentState_get_version(FyDocumentStateObject *self, void *closure FY_UNUSED)
 {
     struct fy_document_state *fyds = fy_generic_vds_get_document_state(self->vds);
     if (fyds == NULL)
@@ -344,7 +344,7 @@ FyDocumentState_get_version(FyDocumentStateObject *self, void *closure)
 
 /* FyDocumentState: version_explicit property getter */
 static PyObject *
-FyDocumentState_get_version_explicit(FyDocumentStateObject *self, void *closure)
+FyDocumentState_get_version_explicit(FyDocumentStateObject *self, void *closure FY_UNUSED)
 {
     struct fy_document_state *fyds = fy_generic_vds_get_document_state(self->vds);
     if (fyds == NULL)
@@ -355,7 +355,7 @@ FyDocumentState_get_version_explicit(FyDocumentStateObject *self, void *closure)
 
 /* FyDocumentState: tags property getter - returns list of dicts */
 static PyObject *
-FyDocumentState_get_tags(FyDocumentStateObject *self, void *closure)
+FyDocumentState_get_tags(FyDocumentStateObject *self, void *closure FY_UNUSED)
 {
     struct fy_document_state *fyds = fy_generic_vds_get_document_state(self->vds);
     if (fyds == NULL)
@@ -415,7 +415,7 @@ err_out:
 
 /* FyDocumentState: tags_explicit property getter */
 static PyObject *
-FyDocumentState_get_tags_explicit(FyDocumentStateObject *self, void *closure)
+FyDocumentState_get_tags_explicit(FyDocumentStateObject *self, void *closure FY_UNUSED)
 {
     struct fy_document_state *fyds = fy_generic_vds_get_document_state(self->vds);
     if (fyds == NULL) {
@@ -428,7 +428,7 @@ FyDocumentState_get_tags_explicit(FyDocumentStateObject *self, void *closure)
 
 /* FyDocumentState: json_mode property getter */
 static PyObject *
-FyDocumentState_get_json_mode(FyDocumentStateObject *self, void *closure)
+FyDocumentState_get_json_mode(FyDocumentStateObject *self, void *closure FY_UNUSED)
 {
     struct fy_document_state *fyds = fy_generic_vds_get_document_state(self->vds);
     if (fyds == NULL) {
@@ -451,7 +451,7 @@ static PyGetSetDef FyDocumentState_getsetters[] = {
      "True if tags were explicitly set via %TAG directives", NULL},
     {"json_mode", (getter)FyDocumentState_get_json_mode, NULL,
      "True if document was parsed as JSON", NULL},
-    {NULL}  /* Sentinel */
+    {}  /* Sentinel */
 };
 
 /* FyDocumentState type object */
@@ -2583,7 +2583,7 @@ static PyMethodDef FyGeneric_methods[] = {
      "Return list of values (for mappings)"},
     {"items", _PyCFunction_CAST(FyGeneric_items), METH_NOARGS,
      "Return list of (key, value) tuples (for mappings)"},
-    {NULL}
+    {}
 };
 
 /* FyGeneric: __contains__ - implements 'in' operator */
@@ -3394,7 +3394,7 @@ static PyGetSetDef FyGeneric_getsetters[] = {
      "Dynamic class based on wrapped generic type", NULL},
     {"document_state", (getter)FyGeneric_get_document_state, NULL,
      "Document state with version and tag directives (None if not available)", NULL},
-    {NULL}  /* Sentinel */
+    {}  /* Sentinel */
 };
 
 /* FyGeneric: __hash__ - compute hash of wrapped value */
@@ -3564,7 +3564,7 @@ parse_mode_flags(const char *mode)
  *   - 'json': JSON mode
  */
 static PyObject *
-libfyaml_loads(PyObject *self, PyObject *args, PyObject *kwargs)
+libfyaml_loads(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
 {
     const char *yaml_str;
     Py_ssize_t yaml_len;
@@ -3839,7 +3839,7 @@ python_to_generic(struct fy_generic_builder *gb, PyObject *obj)
  *   - 'oneline': single-line output
  */
 static PyObject *
-libfyaml_dumps(PyObject *self, PyObject *args, PyObject *kwargs)
+libfyaml_dumps(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
 {
     PyObject *obj;
     int compact = 0;
@@ -3951,7 +3951,7 @@ libfyaml_dumps(PyObject *self, PyObject *args, PyObject *kwargs)
 
 /* from_python(obj, tag=None, style=None, mutable=False, dedup=True) - Convert Python object to FyGeneric */
 static PyObject *
-libfyaml_from_python(PyObject *self, PyObject *args, PyObject *kwargs)
+libfyaml_from_python(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
 {
     PyObject *obj;
     const char *tag = NULL;
@@ -4327,7 +4327,7 @@ libfyaml_dump(PyObject *self, PyObject *args, PyObject *kwargs)
 
 /* Helper: Create FyGeneric from VDS with reference to parent's doc_state (for multi-doc) */
 static PyObject *
-FyGeneric_from_vds_with_parent(fy_generic vds, FyGenericObject *parent, int mutable)
+FyGeneric_from_vds_with_parent(fy_generic vds, FyGenericObject *parent, int mutable FY_UNUSED)
 {
     fy_generic fyg;
     FyDocumentStateObject *parent_ds;
@@ -4360,7 +4360,7 @@ FyGeneric_from_vds_with_parent(fy_generic vds, FyGenericObject *parent, int muta
 
 /* loads_all(string, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False, create_markers=False, keep_comments=False, keep_style=False) - Parse multi-document YAML */
 static PyObject *
-libfyaml_loads_all(PyObject *self, PyObject *args, PyObject *kwargs)
+libfyaml_loads_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
 {
     const char *yaml_str;
     Py_ssize_t yaml_len;
@@ -4659,7 +4659,7 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
 
 /* dumps_all(documents, compact=False, json=False, style=None) - Dump FyGeneric sequence to multi-document string */
 static PyObject *
-libfyaml_dumps_all(PyObject *self, PyObject *args, PyObject *kwargs)
+libfyaml_dumps_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
 {
     PyObject *documents;
     int compact = 0;
@@ -4965,7 +4965,7 @@ tag_token_to_pystring(struct fy_token *tag_token)
 
 /* _parse(string, mode='yaml1.1') -> list of event tuples */
 static PyObject *
-libfyaml_stream_parse(PyObject *self, PyObject *args, PyObject *kwargs)
+libfyaml_stream_parse(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
 {
     const char *yaml_str;
     Py_ssize_t yaml_len;
@@ -5287,7 +5287,7 @@ parse_error:
 
 /* _scan(string, mode='yaml1.1') -> list of token tuples */
 static PyObject *
-libfyaml_stream_scan(PyObject *self, PyObject *args, PyObject *kwargs)
+libfyaml_stream_scan(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
 {
     const char *yaml_str;
     Py_ssize_t yaml_len;
@@ -5522,7 +5522,7 @@ scan_error:
 
 /* _emit(events_list, canonical=False, indent=None, width=None, allow_unicode=True, line_break=None) -> string */
 static PyObject *
-libfyaml_stream_emit(PyObject *self, PyObject *args, PyObject *kwargs)
+libfyaml_stream_emit(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
 {
     PyObject *events_list;
     int canonical = 0;
@@ -5814,7 +5814,7 @@ static PyMethodDef module_methods[] = {
      "Scan YAML string and return list of token tuples"},
     {"_emit", _PyCFunction_CAST(libfyaml_stream_emit), METH_VARARGS | METH_KEYWORDS,
      "Emit list of event tuples to YAML string"},
-    {NULL}
+    {} /* Sentinel */
 };
 
 /* Module definition */

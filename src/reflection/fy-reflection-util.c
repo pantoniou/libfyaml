@@ -421,8 +421,10 @@ load_integer_scalar(enum fy_type_kind type_kind, const void *data)
 }
 
 int
-parse_float_scalar(enum fy_type_kind type_kind, const char *text0,
-		   enum fy_parser_mode mode, union float_scalar *numf)
+parse_float_scalar(enum fy_type_kind type_kind,
+		   const char *text0,
+		   enum fy_parser_mode mode FY_UNUSED,
+		   union float_scalar *numf)
 {
 	enum {
 		pft_normal,
@@ -625,14 +627,17 @@ parse_boolean_scalar(const char *text0, enum fy_parser_mode mode, bool *vp)
 }
 
 void
-store_boolean_scalar(enum fy_type_kind type_kind, void *data, bool v)
+store_boolean_scalar(enum fy_type_kind type_kind FY_UNUSED,
+		     void *data,
+		     bool v)
 {
 	assert(type_kind == FYTK_BOOL);
 	*(bool *)data = v;
 }
 
 bool
-load_boolean_scalar(enum fy_type_kind type_kind, const void *data)
+load_boolean_scalar(enum fy_type_kind type_kind FY_UNUSED,
+		    const void *data)
 {
 	assert(type_kind == FYTK_BOOL);
 	return *(const _Bool *)data;

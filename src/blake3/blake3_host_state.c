@@ -94,7 +94,8 @@ static int select_backends(blake3_host_state *hs)
 	return 0;
 }
 
-static void dump_backends(blake3_host_state *hs, uint64_t backends)
+static void dump_backends(blake3_host_state *hs FY_UNUSED,
+			  uint64_t backends)
 {
 	const blake3_backend *be;
 	int i;
@@ -279,7 +280,9 @@ static int linux_block_dev_is_rotational(dev_t dev)
 	return rotational;
 }
 
-static ssize_t linux_file_cached_size(int fd, void *mem, size_t filesize)
+static ssize_t linux_file_cached_size(int fd FY_UNUSED,
+				      void *mem,
+				      size_t filesize)
 {
 	long pagesize = sysconf(_SC_PAGESIZE);
 	size_t vec_size, resident_size, i;
@@ -352,7 +355,9 @@ static size_t blake3_mmap_file_chunksize(int fd, dev_t dev, void *mem,
 
 #else
 
-static size_t blake3_mmap_file_chunksize(int fd, dev_t dev, void *mem,
+static size_t blake3_mmap_file_chunksize(int fd FY_UNUSED,
+		                         dev_t dev FY_UNUSED,
+					 void *mem FY_UNUSED,
 					 size_t filesize,
 					 size_t mmap_min_chunk, size_t mmap_max_chunk)
 {

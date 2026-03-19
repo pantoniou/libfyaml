@@ -2006,8 +2006,10 @@ struct compose_test_data {
 
 /* Composer callback function for testing */
 static enum fy_composer_return
-compose_test_callback(struct fy_parser *fyp, struct fy_event *fye,
-                      struct fy_path *path, void *userdata)
+compose_test_callback(struct fy_parser *fyp FY_UNUSED,
+		      struct fy_event *fye,
+		      struct fy_path *path,
+		      void *userdata)
 {
 	struct compose_test_data *data = userdata;
 	struct compose_record *rec;

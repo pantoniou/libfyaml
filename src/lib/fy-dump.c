@@ -186,7 +186,9 @@ char *fy_token_list_dump_format(struct fy_token_list *fytl,
 	return buf;
 }
 
-char *fy_simple_key_dump_format(struct fy_parser *fyp, struct fy_simple_key *fysk, char *buf, size_t bufsz)
+char *fy_simple_key_dump_format(struct fy_parser *fyp FY_UNUSED,
+				struct fy_simple_key *fysk,
+				char *buf, size_t bufsz)
 {
 	char tbuf[80];
 

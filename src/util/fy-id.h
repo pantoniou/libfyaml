@@ -175,13 +175,17 @@ struct fy_id_iter {
 	fy_id_bits m;
 };
 
-static inline void fy_id_iter_begin(const fy_id_bits *bits, const size_t count, struct fy_id_iter *iterp)
+static inline void fy_id_iter_begin(const fy_id_bits *bits,
+				    const size_t count FY_UNUSED,
+				    struct fy_id_iter *iterp)
 {
 	iterp->s = bits;
 	iterp->m = ~(fy_id_bits_non_atomic)0;
 }
 
-static inline int fy_id_iter_next(const fy_id_bits *bits, const size_t count, struct fy_id_iter *iterp)
+static inline int fy_id_iter_next(const fy_id_bits *bits,
+				  const size_t count,
+				  struct fy_id_iter *iterp)
 {
 	const fy_id_bits *s, *e;
 	fy_id_bits_non_atomic v, m;
@@ -231,7 +235,9 @@ static inline int fy_id_iter_next(const fy_id_bits *bits, const size_t count, st
 	return pos;
 }
 
-static inline void fy_id_iter_end(const fy_id_bits *bits, const size_t count, const struct fy_id_iter *iterp)
+static inline void fy_id_iter_end(const fy_id_bits *bits FY_UNUSED,
+				  const size_t count FY_UNUSED,
+				  const struct fy_id_iter *iterp FY_UNUSED)
 {
 	/* nothing */
 }

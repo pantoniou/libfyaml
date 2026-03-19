@@ -323,7 +323,8 @@ reflection_meta_value_set_explicit(struct reflection_meta *rm, enum reflection_m
 }
 
 static inline bool
-reflection_meta_get_bool_default(struct reflection_meta *rm, enum reflection_meta_value_id id)
+reflection_meta_get_bool_default(struct reflection_meta *rm FY_UNUSED,
+				 enum reflection_meta_value_id id)
 {
 	assert(reflection_meta_value_id_is_bool(id));
 
@@ -368,7 +369,8 @@ reflection_meta_get_bool(struct reflection_meta *rm, enum reflection_meta_value_
 }
 
 static inline const char *
-reflection_meta_get_str_default(struct reflection_meta *rm, enum reflection_meta_value_id id)
+reflection_meta_get_str_default(struct reflection_meta *rm FY_UNUSED,
+				enum reflection_meta_value_id id)
 {
 	assert(reflection_meta_value_id_is_str(id));
 
@@ -398,7 +400,8 @@ reflection_meta_get_str(struct reflection_meta *rm, enum reflection_meta_value_i
 }
 
 static inline struct reflection_any_value *
-reflection_meta_get_any_value_default(struct reflection_meta *rm, enum reflection_meta_value_id id)
+reflection_meta_get_any_value_default(struct reflection_meta *rm FY_UNUSED,
+				      enum reflection_meta_value_id id)
 {
 	assert(reflection_meta_value_id_is_any(id));
 

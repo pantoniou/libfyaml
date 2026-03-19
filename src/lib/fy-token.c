@@ -64,7 +64,8 @@ enum fy_token_type fy_token_get_type(struct fy_token *fyt)
 	return fy_token_get_type_inline(fyt);
 }
 
-void fy_token_clean_rl(struct fy_token_list *fytl, struct fy_token *fyt)
+void fy_token_clean_rl(struct fy_token_list *fytl FY_UNUSED,
+		       struct fy_token *fyt)
 {
 	struct fy_token_comment *tk;
 
@@ -1484,8 +1485,11 @@ const char *fy_token_get_scalar_path_key0(struct fy_token *fyt)
 	return fyt->scalar.path_key_storage;
 }
 
-unsigned int fy_analyze_scalar_content(const char *data, size_t size,
-		bool json_mode, enum fy_lb_mode lb_mode, enum fy_flow_ws_mode fws_mode)
+unsigned int fy_analyze_scalar_content(const char *data,
+				       size_t size,
+				       bool json_mode FY_UNUSED,
+				       enum fy_lb_mode lb_mode,
+				       enum fy_flow_ws_mode fws_mode FY_UNUSED)
 {
 	const char *s, *e;
 	int c, lastc, nextc, w, ww, col, break_run;

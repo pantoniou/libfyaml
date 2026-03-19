@@ -556,7 +556,8 @@ err_out:
 }
 
 static int
-null_scalar_parse(struct fy_parser *fyp, struct reflection_walker *rw,
+null_scalar_parse(struct fy_parser *fyp,
+		  struct reflection_walker *rw FY_UNUSED,
 		  enum reflection_parse_flags flags)
 {
 	struct fy_event *fye = NULL;
@@ -601,8 +602,11 @@ err_out:
 }
 
 static int
-integer_scalar_emit(struct fy_emitter *emit, enum fy_type_kind type_kind, union integer_scalar num,
-		    struct reflection_walker *rw, enum reflection_emit_flags flags)
+integer_scalar_emit(struct fy_emitter *emit,
+		    enum fy_type_kind type_kind,
+		    union integer_scalar num,
+		    struct reflection_walker *rw FY_UNUSED,
+		    enum reflection_emit_flags flags FY_UNUSED)
 {
 	bool is_signed;
 	char buf[3 * sizeof(uintmax_t) + 3];	/* maximum buffer space */
@@ -652,8 +656,11 @@ err_out:
 }
 
 static int
-float_scalar_emit(struct fy_emitter *emit, enum fy_type_kind type_kind, union float_scalar num,
-		  struct reflection_walker *rw, enum reflection_emit_flags flags)
+float_scalar_emit(struct fy_emitter *emit,
+		  enum fy_type_kind type_kind,
+		  union float_scalar num,
+		  struct reflection_walker *rw FY_UNUSED,
+		  enum reflection_emit_flags flags FY_UNUSED)
 {
 	enum {
 		eft_normal,
@@ -726,8 +733,11 @@ err_out:
 }
 
 static int
-bool_scalar_emit(struct fy_emitter *emit, enum fy_type_kind type_kind, bool v,
-		 struct reflection_walker *rw, enum reflection_emit_flags flags)
+bool_scalar_emit(struct fy_emitter *emit FY_UNUSED,
+		 enum fy_type_kind type_kind FY_UNUSED,
+		 bool v,
+		 struct reflection_walker *rw FY_UNUSED,
+		 enum reflection_emit_flags flags FY_UNUSED)
 {
 	const char *bool_txt[2] = { "false", "true" };
 	size_t bool_txt_sz[2] = { 5, 4 };
@@ -1008,8 +1018,9 @@ common_scalar_eq(struct reflection_walker *rw_a, struct reflection_walker *rw_b)
 }
 
 static int
-null_scalar_emit(struct fy_emitter *emit, struct reflection_walker *rw,
-		 enum reflection_emit_flags flags)
+null_scalar_emit(struct fy_emitter *emit,
+		 struct reflection_walker *rw FY_UNUSED,
+		 enum reflection_emit_flags flags FY_UNUSED)
 {
 	const char *str;
 	size_t len;
@@ -1029,21 +1040,24 @@ err_out:
 
 /* NULLs are always equal to themselves */
 static int
-null_scalar_cmp(struct reflection_walker *rw_a, struct reflection_walker *rw_b)
+null_scalar_cmp(struct reflection_walker *rw_a FY_UNUSED,
+		struct reflection_walker *rw_b FY_UNUSED)
 {
 	return 0;
 }
 
 /* NULLs are always equal to themselves */
 static int
-null_scalar_eq(struct reflection_walker *rw_a, struct reflection_walker *rw_b)
+null_scalar_eq(struct reflection_walker *rw_a FY_UNUSED,
+	       struct reflection_walker *rw_b FY_UNUSED)
 {
 	return 1;
 }
 
 /* nothing to copy */
 static int
-null_scalar_copy(struct reflection_walker *rw_a, struct reflection_walker *rw_b)
+null_scalar_copy(struct reflection_walker *rw_a FY_UNUSED,
+		 struct reflection_walker *rw_b FY_UNUSED)
 {
 	return 0;
 }
@@ -1745,8 +1759,9 @@ array_info_store_item_count(struct array_info *info, void *data, uintmax_t count
 }
 
 static int
-array_mapping_info_emit_item_prolog(struct array_mapping_info *minfo, struct reflection_walker *rw_item,
-				    enum reflection_emit_flags flags)
+array_mapping_info_emit_item_prolog(struct array_mapping_info *minfo,
+				    struct reflection_walker *rw_item,
+				    enum reflection_emit_flags flags FY_UNUSED)
 {
 	struct reflection_walker *rw_deps, *rw_last_dep, *rw_dep;
 	void *ptr, *last_data = NULL;
@@ -1793,8 +1808,9 @@ array_mapping_info_emit_item_prolog(struct array_mapping_info *minfo, struct ref
 }
 
 static int
-array_mapping_info_emit_item_epilog(struct array_mapping_info *minfo, struct reflection_walker *rw_item,
-				    enum reflection_emit_flags flags)
+array_mapping_info_emit_item_epilog(struct array_mapping_info *minfo,
+				    struct reflection_walker *rw_item,
+				    enum reflection_emit_flags flags FY_UNUSED)
 {
 	struct reflection_walker *rw_deps, *rw_dep;
 	int i, depth;
@@ -1812,7 +1828,9 @@ array_mapping_info_emit_item_epilog(struct array_mapping_info *minfo, struct ref
 }
 
 static int
-array_parse(struct array_info *info, struct fy_parser *fyp, struct reflection_walker *rw,
+array_parse(struct array_info *info,
+	    struct fy_parser *fyp,
+	    struct reflection_walker *rw FY_UNUSED,
 	    enum reflection_parse_flags flags)
 {
 	struct fy_event *fye = NULL;
@@ -2053,8 +2071,10 @@ err_input:
 }
 
 static int
-array_emit(struct array_info *info, struct fy_emitter *emit,
-	   struct reflection_walker *rw, enum reflection_emit_flags flags)
+array_emit(struct array_info *info,
+	   struct fy_emitter *emit,
+	   struct reflection_walker *rw FY_UNUSED,
+	   enum reflection_emit_flags flags)
 {
 	struct reflection_walker rw_item, rw_key, rw_value, *rw_struct = NULL;
 	void *data;
@@ -2678,7 +2698,8 @@ str_instance_data_setup(struct str_instance_data *id, struct reflection_walker *
 }
 
 static int
-str_load_length(struct str_instance_data *id, size_t *lenp)
+str_load_length(struct str_instance_data *id FY_UNUSED,
+		size_t *lenp FY_UNUSED)
 {
 	assert(id);
 	assert(lenp);
@@ -2698,7 +2719,9 @@ str_store_length_check(struct str_instance_data *id, size_t len)
 }
 
 static void
-str_store_length(struct str_instance_data *id, const char *str, size_t len)
+str_store_length(struct str_instance_data *id,
+		 const char *str FY_UNUSED,
+		 size_t len)
 {
 	assert(id);
 
@@ -2803,8 +2826,9 @@ err_input:
 }
 
 static int
-const_array_char_emit(struct fy_emitter *emit, struct reflection_walker *rw,
-		      enum reflection_emit_flags flags)
+const_array_char_emit(struct fy_emitter *emit,
+		      struct reflection_walker *rw,
+		      enum reflection_emit_flags flags FY_UNUSED)
 {
 	struct reflection_type_data *rtd, *rtd_dep;
 	enum fy_type_kind type_kind __attribute__((unused));
@@ -3637,8 +3661,10 @@ err_out:
 }
 
 static int
-enum_emit_single_scalar(struct fy_emitter *emit, struct reflection_walker *rw,
-			enum reflection_emit_flags flags, union integer_scalar val,
+enum_emit_single_scalar(struct fy_emitter *emit,
+			struct reflection_walker *rw,
+			enum reflection_emit_flags flags FY_UNUSED,
+			union integer_scalar val,
 			struct reflection_type_data *rtd_enum)
 {
 	struct reflection_field_data *rfd;
@@ -3791,7 +3817,8 @@ enum_copy(struct reflection_walker *rw_dst, struct reflection_walker *rw_src)
 			rw_dst : reflection_rw_dep(&rw_num_dst, rw_dst), val);
 }
 
-static inline bool text_is_null(struct fy_parser *fyp, const char *text, size_t len)
+static inline bool text_is_null(struct fy_parser *fyp FY_UNUSED,
+				const char *text, size_t len)
 {
 	return (len == 1 && *text == '~') ||
 	       (len == 4 && (!memcmp(text, "null", 4) || !memcmp(text, "Null", 4) || !memcmp(text, "NULL", 4)));
@@ -3814,7 +3841,8 @@ static inline bool fy_event_is_null(struct fy_parser *fyp, struct fy_event *fye)
 }
 
 static int
-emit_ptr_NULL(struct fy_emitter *emit, struct reflection_walker *rw)
+emit_ptr_NULL(struct fy_emitter *emit,
+	      struct reflection_walker *rw FY_UNUSED)
 {
 	int rc;
 
@@ -4138,8 +4166,9 @@ err_input:
 }
 
 static int
-ptr_char_emit(struct fy_emitter *emit, struct reflection_walker *rw,
-	      enum reflection_emit_flags flags)
+ptr_char_emit(struct fy_emitter *emit,
+	      struct reflection_walker *rw,
+	      enum reflection_emit_flags flags FY_UNUSED)
 {
 	struct reflection_type_data *rtd, *rtd_dep;
 	enum fy_type_kind type_kind __attribute__((unused));
@@ -4410,6 +4439,7 @@ typedef_call2(struct reflection_walker *rw_a, struct reflection_walker *rw_b,
 	switch (call_type) {
 	case TC2T_COPY:
 		rc = reflection_copy_rw(&rw_dep_a, &rw_dep_b);
+		break;
 	case TC2T_CMP:
 		rc = reflection_cmp_rw(&rw_dep_a, &rw_dep_b);
 		break;
@@ -4534,8 +4564,9 @@ err_out:
 }
 
 static int
-ptr_doc_emit(struct fy_emitter *emit, struct reflection_walker *rw,
-	     enum reflection_emit_flags flags)
+ptr_doc_emit(struct fy_emitter *emit,
+	     struct reflection_walker *rw,
+	     enum reflection_emit_flags flags FY_UNUSED)
 {
 	struct reflection_type_data *rtd, *rtd_dep;
 	enum fy_type_kind type_kind __attribute__((unused));

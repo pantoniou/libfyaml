@@ -1183,7 +1183,9 @@ START_TEST(doc_mapping_sort)
 }
 END_TEST
 
-static int seq_sort_cmp_scalar(struct fy_node *a, struct fy_node *b, void *arg)
+static int seq_sort_cmp_scalar(struct fy_node *a,
+			       struct fy_node *b,
+			       void *arg FY_UNUSED)
 {
 	const char *sa = fy_node_get_scalar0(a);
 	const char *sb = fy_node_get_scalar0(b);

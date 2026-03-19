@@ -83,7 +83,9 @@ START_TEST(meta_basic)
 }
 END_TEST
 
-static void test_meta_clear_cb(struct fy_node *fyn, void *meta, void *user)
+static void test_meta_clear_cb(struct fy_node *fyn FY_UNUSED,
+			       void *meta,
+			       void *user)
 {
 	int meta_value = (int)(uintptr_t)meta;
 	int *clear_counter_p = user;
