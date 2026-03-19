@@ -117,7 +117,7 @@ def generic_platform_supported() -> bool:
 
 def base_compile_args(compiler_type: Optional[str]) -> List[str]:
     if compiler_type == "msvc":
-        return ["/W3", "/wd4100"]
+        return ["/W3", "/wd4100", "/Zc:preprocessor", "/clang:-fno-ms-compatibility"]
 
     args = ["-Wall", "-Wextra", "-Wno-unused-parameter"]
     if sys.platform != "win32":
@@ -160,6 +160,41 @@ def windows_compiler_supported(compiler_type: Optional[str], compiler) -> bool:
     return "clang" in normalized
 
 
+def configure_windows_clang_compiler(compiler_type: Optional[str], compiler, build_temp: str) -> None:
+    """Force setuptools' MSVC path to invoke LLVM tools on Windows."""
+    if sys.platform != "win32" or compiler_type != "msvc":
+        return
+
+    required_tools = {
+        "clang-cl": "cl.exe",
+        "lld-link": "link.exe",
+        "llvm-lib": "lib.exe",
+    }
+    resolved_tools = {}
+    for source_name, target_name in required_tools.items():
+        source_path = shutil.which(source_name)
+        if not source_path:
+            raise RuntimeError(
+                f"Required LLVM tool {source_name!r} not found on PATH. "
+                "Windows Python bindings require clang/LLVM tooling."
+            )
+        resolved_tools[target_name] = str(Path(source_path).resolve())
+
+    if hasattr(compiler, "set_executables"):
+        compiler.set_executables(
+            compiler=resolved_tools["cl.exe"],
+            compiler_so=resolved_tools["cl.exe"],
+            compiler_cxx=resolved_tools["cl.exe"],
+            linker_so=resolved_tools["link.exe"],
+            linker_exe=resolved_tools["link.exe"],
+            archiver=resolved_tools["lib.exe"],
+        )
+
+    compiler.cc = resolved_tools["cl.exe"]
+    compiler.linker = resolved_tools["link.exe"]
+    compiler.lib = resolved_tools["lib.exe"]
+
+
 class CustomBuildExt(build_ext):
     """Build the extension against a bundled static libfyaml when possible."""
 
@@ -176,6 +211,7 @@ class CustomBuildExt(build_ext):
                 "Windows Python bindings require a Clang-family compiler "
                 "(clang or clang-cl)."
             )
+        configure_windows_clang_compiler(compiler_type, self.compiler, self.build_temp)
         build_info = self._resolve_libfyaml_build(compiler_type)
 
         ext.include_dirs = build_info["include_dirs"]
