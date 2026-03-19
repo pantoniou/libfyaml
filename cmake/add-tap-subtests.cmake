@@ -538,15 +538,21 @@ function(add_python_tests)
     # Homebrew into its own libexec virtualenv), locate the pytest executable,
     # read its shebang interpreter, and ask that interpreter for its
     # site-packages so we can prepend them to PYTHONPATH.
+    set(_have_pytest FALSE)
+
     execute_process(
         COMMAND "${Python3_EXECUTABLE}" -c "import pytest"
         RESULT_VARIABLE _pytest_check
         ERROR_QUIET
         OUTPUT_QUIET
     )
+    if(_pytest_check EQUAL 0)
+        set(_have_pytest TRUE)
+    endif()
     if(NOT _pytest_check EQUAL 0)
         find_program(_pytest_prog pytest)
         if(_pytest_prog)
+            set(_have_pytest TRUE)
             # Extract the shebang line (first line, strip leading #!)
             file(READ "${_pytest_prog}" _pytest_script_head LIMIT 256)
             string(REGEX MATCH "^#!([^\n]+)" _shebang_match "${_pytest_script_head}")
@@ -567,10 +573,9 @@ function(add_python_tests)
                 endif()
             endif()
         endif()
-        unset(_pytest_prog CACHE)
     endif()
 
-    if(NOT (_pytest_check EQUAL 0) AND NOT _pytest_prog)
+    if(NOT _have_pytest)
         message(STATUS "pytest not found; skipping Python binding tests")
         return()
     endif()
