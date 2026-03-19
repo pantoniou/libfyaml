@@ -1,9 +1,9 @@
 name: Python Wheels
 
 # The core libfyaml library supports Linux, macOS, the BSDs, and Windows.
-# This workflow covers the Python wheel matrix that is currently expected to be
-# reliable in CI: Linux and macOS. BSDs use source builds for now, and Windows
-# is not yet part of the Python wheel release path.
+# This workflow covers the Python wheel matrix expected to be reliable in CI.
+# BSDs still use source builds. Windows wheels require a Clang-family toolchain
+# because the binding depends on libfyaml generics.
 #
 # Keep the matrix explicit by target platform/architecture. Using multiple
 # runner labels that resolve to the same wheel tags can produce duplicate
@@ -65,9 +65,34 @@ jobs:
             runner: macos-14
             cibw_archs: arm64
             cibw_environment: LIBFYAML_REPO_ROOT=${{ github.workspace }}
+          - name: windows-amd64
+            runner: windows-latest
+            cibw_archs: AMD64
+            cibw_environment: >-
+              LIBFYAML_REPO_ROOT=${{ github.workspace }}
+              CC=clang-cl
+              CXX=clang-cl
+              CMAKE_GENERATOR=Ninja
+              LIBFYAML_CMAKE_ARGS=-DCMAKE_C_COMPILER=clang-cl
+            cibw_environment_windows: >-
+              LIBFYAML_REPO_ROOT=${{ github.workspace }}
+              CC=clang-cl
+              CXX=clang-cl
+              CMAKE_GENERATOR=Ninja
+              LIBFYAML_CMAKE_ARGS=-DCMAKE_C_COMPILER=clang-cl
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Windows Clang
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $llvm = 'C:\Program Files\LLVM\bin'
+          if (-not (Test-Path (Join-Path $llvm 'clang-cl.exe'))) {
+            throw "clang-cl.exe not found in $llvm"
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $llvm
 
       - name: Validate release tag
         shell: bash
@@ -102,6 +127,7 @@ jobs:
         env:
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
           CIBW_ENVIRONMENT: ${{ matrix.cibw_environment }}
+          CIBW_ENVIRONMENT_WINDOWS: ${{ matrix.cibw_environment_windows }}
 
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4

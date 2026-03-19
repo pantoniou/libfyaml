@@ -24,6 +24,7 @@ keywords = ["yaml", "json", "parser", "fast", "performance", "memory-efficient"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: BSD",
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS :: MacOS X",

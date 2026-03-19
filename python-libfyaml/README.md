@@ -21,8 +21,11 @@ Windows.
 The Python packaging in this directory currently targets:
 
 * wheel builds on Linux and macOS
-* source builds on macOS and the BSDs
-* Windows support is not yet part of the Python wheel build matrix
+* source builds on Windows, macOS, and the BSDs
+
+On Windows, building from source requires a Clang-family C compiler
+(`clang`/`clang-cl`). The binding depends on libfyaml generics, which use
+statement expressions not supported by `cl.exe`.
 
 ## Build Modes
 

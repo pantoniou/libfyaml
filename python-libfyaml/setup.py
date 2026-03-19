@@ -115,7 +115,10 @@ def generic_platform_supported() -> bool:
     return struct.calcsize("P") == 8 and sys.byteorder == "little"
 
 
-def base_compile_args() -> List[str]:
+def base_compile_args(compiler_type: Optional[str]) -> List[str]:
+    if compiler_type == "msvc":
+        return ["/W3", "/wd4100"]
+
     args = ["-Wall", "-Wextra", "-Wno-unused-parameter"]
     if sys.platform != "win32":
         args.insert(0, "-std=gnu2x")
@@ -133,6 +136,30 @@ def base_link_args() -> Tuple[List[str], List[str]]:
     return extra_link_args, libraries
 
 
+def windows_compiler_supported(compiler_type: Optional[str], compiler) -> bool:
+    if sys.platform != "win32":
+        return True
+
+    candidates = []
+    for env_name in ("CC", "CXX"):
+        value = os.environ.get(env_name)
+        if value:
+            candidates.extend(shlex.split(value))
+
+    for attr in ("compiler", "compiler_so", "linker_so"):
+        value = getattr(compiler, attr, None)
+        if isinstance(value, (list, tuple)):
+            candidates.extend(str(item) for item in value)
+        elif value:
+            candidates.append(str(value))
+
+    if compiler_type == "unix":
+        return True
+
+    normalized = " ".join(candidates).lower()
+    return "clang" in normalized
+
+
 class CustomBuildExt(build_ext):
     """Build the extension against a bundled static libfyaml when possible."""
 
@@ -143,7 +170,13 @@ class CustomBuildExt(build_ext):
                 "little-endian targets"
             )
 
-        build_info = self._resolve_libfyaml_build()
+        compiler_type = getattr(self.compiler, "compiler_type", None)
+        if not windows_compiler_supported(compiler_type, self.compiler):
+            raise RuntimeError(
+                "Windows Python bindings require a Clang-family compiler "
+                "(clang or clang-cl)."
+            )
+        build_info = self._resolve_libfyaml_build(compiler_type)
 
         ext.include_dirs = build_info["include_dirs"]
         ext.library_dirs = build_info["library_dirs"]
@@ -155,16 +188,16 @@ class CustomBuildExt(build_ext):
 
         super().build_extension(ext)
 
-    def _resolve_libfyaml_build(self) -> Dict[str, List[str]]:
+    def _resolve_libfyaml_build(self, compiler_type: Optional[str]) -> Dict[str, List[str]]:
         if os.environ.get("LIBFYAML_USE_SYSTEM") == "1":
-            return self._system_build_info()
+            return self._system_build_info(compiler_type)
 
         if have_repo_sources():
-            return self._bundled_build_info()
+            return self._bundled_build_info(compiler_type)
 
-        return self._system_build_info()
+        return self._system_build_info(compiler_type)
 
-    def _bundled_build_info(self) -> Dict[str, List[str]]:
+    def _bundled_build_info(self, compiler_type: Optional[str]) -> Dict[str, List[str]]:
         build_dir = Path(self.build_temp) / "libfyaml-bundled"
         if build_dir.exists():
             shutil.rmtree(build_dir)
@@ -209,11 +242,11 @@ class CustomBuildExt(build_ext):
             "runtime_library_dirs": [],
             "libraries": libraries,
             "extra_objects": [str(static_library)],
-            "extra_compile_args": base_compile_args(),
+            "extra_compile_args": base_compile_args(compiler_type),
             "extra_link_args": extra_link_args,
         }
 
-    def _system_build_info(self) -> Dict[str, List[str]]:
+    def _system_build_info(self, compiler_type: Optional[str]) -> Dict[str, List[str]]:
         include_dirs: List[str] = []
         library_dirs: List[str] = []
         runtime_library_dirs: List[str] = []
@@ -223,11 +256,27 @@ class CustomBuildExt(build_ext):
         ldflags = get_pkg_config("libfyaml", "--libs-only-L")
         libs = get_pkg_config("libfyaml", "--libs-only-l")
 
+        include_env = os.environ.get("LIBFYAML_INCLUDE_DIR")
+        library_env = os.environ.get("LIBFYAML_LIBRARY_DIR")
+        libraries_env = os.environ.get("LIBFYAML_LIBRARIES")
+
         if cflags or ldflags or libs:
             include_dirs = [flag[2:] for flag in cflags]
             library_dirs = [flag[2:] for flag in ldflags]
             libraries = [flag[2:] for flag in libs] or libraries
+        elif include_env or library_env or libraries_env:
+            if include_env:
+                include_dirs = [path for path in include_env.split(os.pathsep) if path]
+            if library_env:
+                library_dirs = [path for path in library_env.split(os.pathsep) if path]
+            if libraries_env:
+                libraries = [lib for lib in libraries_env.split(os.pathsep) if lib]
         else:
+            if sys.platform == "win32":
+                raise RuntimeError(
+                    "System libfyaml lookup on Windows requires pkg-config or "
+                    "LIBFYAML_INCLUDE_DIR/LIBFYAML_LIBRARY_DIR."
+                )
             include_dirs = ["/usr/local/include", "/usr/include"]
             library_dirs = ["/usr/local/lib", "/usr/lib"]
 
@@ -242,7 +291,7 @@ class CustomBuildExt(build_ext):
             "runtime_library_dirs": runtime_library_dirs,
             "libraries": libraries,
             "extra_objects": [],
-            "extra_compile_args": base_compile_args(),
+            "extra_compile_args": base_compile_args(compiler_type),
             "extra_link_args": extra_link_args,
         }
 

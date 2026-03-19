@@ -1903,9 +1903,8 @@ install(
 # tags and cscope support
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/tags.cmake)
 
-# Python core bindings (not supported on Windows)
-if(NOT WIN32)
-find_package(Python3 COMPONENTS Interpreter Development)
+# Python core bindings
+find_package(Python3 COMPONENTS Interpreter Development.Module)
 if(Python3_FOUND)
     set(_ENABLE_PYTHON_BINDINGS_DEFAULT ON)
 else()
@@ -1913,7 +1912,9 @@ else()
 endif()
 option(ENABLE_PYTHON_BINDINGS "Build Python core bindings (_libfyaml extension)" ${_ENABLE_PYTHON_BINDINGS_DEFAULT})
 
-if(ENABLE_PYTHON_BINDINGS AND NOT HAVE_GENERIC)
+if(WIN32 AND ENABLE_PYTHON_BINDINGS AND NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    message(FATAL_ERROR "Windows Python bindings require Clang/clang-cl because libfyaml generics depend on statement expressions")
+elseif(ENABLE_PYTHON_BINDINGS AND NOT HAVE_GENERIC)
     message(STATUS "Python bindings disabled (requires statement expressions / generic support)")
     set(HAVE_PYTHON_BINDINGS 0)
 elseif(ENABLE_PYTHON_BINDINGS)
@@ -1921,15 +1922,30 @@ elseif(ENABLE_PYTHON_BINDINGS)
         message(FATAL_ERROR "Python3 development headers not found (required for ENABLE_PYTHON_BINDINGS)")
     endif()
 
-    Python3_add_library(_libfyaml MODULE
+    Python3_add_library(_libfyaml MODULE WITH_SOABI
         "${CMAKE_CURRENT_SOURCE_DIR}/python-libfyaml/libfyaml/_libfyaml.c"
     )
     target_include_directories(_libfyaml PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
         "${CMAKE_CURRENT_BINARY_DIR}"
     )
-    target_link_libraries(_libfyaml PRIVATE fyaml)
+    target_link_libraries(_libfyaml PRIVATE fyaml_static)
     target_compile_options(_libfyaml PRIVATE ${COMMON_C_FLAGS})
+    if(WIN32 AND (NOT DEFINED Python3_LIBRARY_DEBUG OR Python3_LIBRARY_DEBUG MATCHES "-NOTFOUND$"))
+        message(STATUS "Python3 debug library not found; building _libfyaml without _DEBUG against release Python")
+        if(TARGET Python3::Python)
+            set_property(TARGET Python3::Python PROPERTY MAP_IMPORTED_CONFIG_DEBUG Release)
+        endif()
+        if(TARGET Python3::Module)
+            set_property(TARGET Python3::Module PROPERTY MAP_IMPORTED_CONFIG_DEBUG Release)
+        endif()
+        set_property(TARGET _libfyaml PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+        if(MSVC)
+            target_compile_options(_libfyaml PRIVATE $<$<CONFIG:Debug>:/U_DEBUG>)
+        else()
+            target_compile_options(_libfyaml PRIVATE $<$<CONFIG:Debug>:-U_DEBUG>)
+        endif()
+    endif()
     if(HAVE_ASAN)
         target_compile_options(_libfyaml PRIVATE ${ASAN_C_FLAGS})
         target_link_options(_libfyaml PRIVATE ${ASAN_C_FLAGS})
@@ -1939,8 +1955,8 @@ elseif(ENABLE_PYTHON_BINDINGS)
     set(_PY_PKG_DST "${CMAKE_CURRENT_BINARY_DIR}/python-libfyaml/libfyaml")
     set_target_properties(_libfyaml PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY "${_PY_PKG_DST}"
+        RUNTIME_OUTPUT_DIRECTORY "${_PY_PKG_DST}"
         PREFIX ""
-        SUFFIX ".${Python3_SOABI}${CMAKE_SHARED_MODULE_SUFFIX}"
     )
     # Link/copy source files into the build staging dir so the complete
     # package is importable directly from the build tree.
@@ -1956,9 +1972,6 @@ elseif(ENABLE_PYTHON_BINDINGS)
 else()
     set(HAVE_PYTHON_BINDINGS 0)
 endif()
-else()
-    set(HAVE_PYTHON_BINDINGS 0)
-endif() # NOT WIN32
 
 # Python binding tests (pytest) - one CTest entry per test function/method
 # ASan + dlopen of an ASan-instrumented extension crashes on macOS and Windows,

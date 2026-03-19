@@ -2,9 +2,12 @@
 
 ## Install From Source
 
-Source builds are the expected path on macOS, FreeBSD, NetBSD, and OpenBSD
-when a prebuilt wheel is not available. Windows support for the Python binding
-is still being validated.
+Source builds are the expected path on Windows, macOS, FreeBSD, NetBSD, and
+OpenBSD when a prebuilt wheel is not available.
+
+On Windows, use a Clang-family C compiler (`clang` or `clang-cl`). The Python
+binding depends on libfyaml generics, which require statement expressions not
+supported by `cl.exe`.
 
 From a full libfyaml checkout:
 

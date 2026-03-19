@@ -525,6 +525,15 @@ endfunction()
 #   LD_PRELOAD, ASAN_OPTIONS
 function(add_python_tests)
     set(_py_src_dir "${CMAKE_CURRENT_SOURCE_DIR}/python-libfyaml")
+    if(WIN32)
+        set(_pythonpath_sep ";")
+        set(_runtime_path_var "PATH")
+        set(_runtime_path "${CMAKE_CURRENT_BINARY_DIR};$ENV{PATH}")
+    else()
+        set(_pythonpath_sep ":")
+        set(_runtime_path_var "LD_LIBRARY_PATH")
+        set(_runtime_path "${CMAKE_CURRENT_BINARY_DIR}")
+    endif()
 
     # Discover test files
     file(GLOB _py_test_files
@@ -569,7 +578,7 @@ function(add_python_tests)
                 )
                 if(_r EQUAL 0 AND _pytest_site AND EXISTS "${_pytest_site}")
                     message(STATUS "pytest site-packages (${_pytest_site}) added to PYTHONPATH")
-                    set(_pythonpath "${_pytest_site}:${_pythonpath}")
+                    set(_pythonpath "${_pytest_site}${_pythonpath_sep}${_pythonpath}")
                 endif()
             endif()
         endif()
@@ -584,7 +593,7 @@ function(add_python_tests)
     set(_py_env
         "PYTHON3_EXECUTABLE=${Python3_EXECUTABLE}"
         "PYTHONPATH=${_pythonpath}"
-        "LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}"
+        "${_runtime_path_var}=${_runtime_path}"
         "LIBFYAML_PYTHON_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/python-libfyaml"
     )
 
