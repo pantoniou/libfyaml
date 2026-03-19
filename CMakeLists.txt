@@ -710,6 +710,9 @@ endif()
 
 if(NOT MSVC)
     list(APPEND COMMON_C_FLAGS -Wall -Wsign-compare)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        list(APPEND COMMON_C_FLAGS -Wextra)
+    endif()
 
     check_c_compiler_flag(-Wno-unused-function COMPILER_SUPPORTS_WNO_UNUSED_FUNCTION)
     if(COMPILER_SUPPORTS_WNO_UNUSED_FUNCTION)
