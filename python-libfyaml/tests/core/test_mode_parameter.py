@@ -9,7 +9,6 @@ The mode parameter supports:
 Run with: python3 -m pytest tests/test_mode_parameter.py -v
 """
 
-import sys
 import os
 import tempfile
 import unittest
@@ -216,13 +215,14 @@ server:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
             f.write(yaml_content)
             f.flush()
+            path = f.name
 
-            try:
-                doc = libfyaml.load(f.name, mode='yaml1.1')
-                self.assertEqual(doc['server']['host'], 'localhost')
-                self.assertEqual(doc['server']['name'], 'test')
-            finally:
-                os.unlink(f.name)
+        try:
+            doc = libfyaml.load(path, mode='yaml1.1')
+            self.assertEqual(doc['server']['host'], 'localhost')
+            self.assertEqual(doc['server']['name'], 'test')
+        finally:
+            os.unlink(path)
 
     def test_load_json_from_file(self):
         """Test loading JSON from file."""
@@ -230,13 +230,14 @@ server:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             f.write(json_content)
             f.flush()
+            path = f.name
 
-            try:
-                doc = libfyaml.load(f.name, mode='json')
-                self.assertEqual(doc['name'], 'test')
-                self.assertEqual(doc['value'], 42)
-            finally:
-                os.unlink(f.name)
+        try:
+            doc = libfyaml.load(path, mode='json')
+            self.assertEqual(doc['name'], 'test')
+            self.assertEqual(doc['value'], 42)
+        finally:
+            os.unlink(path)
 
 
 class TestModeParameterLoadsAll(unittest.TestCase):
@@ -298,14 +299,15 @@ item:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
             f.write(yaml_content)
             f.flush()
+            path = f.name
 
-            try:
-                docs = libfyaml.load_all(f.name, mode='yaml1.1')
-                self.assertEqual(len(docs), 2)
-                self.assertEqual(docs[0]['item']['value'], 100)
-                self.assertEqual(docs[1]['item']['value'], 200)
-            finally:
-                os.unlink(f.name)
+        try:
+            docs = libfyaml.load_all(path, mode='yaml1.1')
+            self.assertEqual(len(docs), 2)
+            self.assertEqual(docs[0]['item']['value'], 100)
+            self.assertEqual(docs[1]['item']['value'], 200)
+        finally:
+            os.unlink(path)
 
 
 class TestJSONMode(unittest.TestCase):
