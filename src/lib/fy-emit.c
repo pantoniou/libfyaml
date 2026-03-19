@@ -326,20 +326,26 @@ void fy_emit_putc(struct fy_emitter *emit, enum fy_emitter_write_type type, int 
 
 void fy_emit_vprintf(struct fy_emitter *emit, enum fy_emitter_write_type type, const char *fmt, va_list ap)
 {
+	char buf[128];
 	char *str;
 	int size;
 	va_list ap2;
 
 	va_copy(ap2, ap);
 
-	size = vsnprintf(NULL, 0, fmt, ap);
+	str = buf;
+	size = vsnprintf(str, sizeof(buf) - 1, fmt, ap);
+	assert(size >= 0);
 	if (size < 0)
 		return;
 
-	str = alloca(size + 1);
-	size = vsnprintf(str, size + 1, fmt, ap2);
-	if (size < 0)
-		return;
+	if ((size_t)size >= sizeof(buf) - 1) {
+		str = alloca(size + 1);
+		size = vsnprintf(str, size + 1, fmt, ap2);
+		assert(size >= 0);
+		if (size < 0)
+			return;
+	}
 
 	fy_emit_write(emit, type, str, size);
 }
