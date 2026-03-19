@@ -623,8 +623,8 @@ function(add_python_tests)
     # AST script: walks the parse tree to find test functions and methods.
     # Outputs one pytest node-ID per line; never imports the test module itself.
     set(_ast_script [=[
-import ast, sys
-tree = ast.parse(open(sys.argv[1]).read())
+import ast, pathlib, sys
+tree = ast.parse(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
 for node in ast.iter_child_nodes(tree):
     if isinstance(node, ast.FunctionDef) and node.name.startswith('test_'):
         print(node.name)
