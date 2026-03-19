@@ -1267,11 +1267,14 @@ static inline char *fy_alloca_vsprintf_impl(const char *fmt, va_list ap)
  *   FY_DIAG_POP
  *
  * On compilers other than GCC/Clang all macros in this group expand to nothing.
+ * GCC releases before 13 also expand these to nothing because statement-form
+ * ``_Pragma()`` use at the current call sites is not accepted reliably enough
+ * for us to depend on it.
  */
 
 /* Compiler diagnostic helpers */
 
-#if defined(__clang__) || defined(__GNUC__)
+#if defined(__clang__) || (defined(__GNUC__) && __GNUC__ >= 13)
 /**
  * FY_DIAG_PUSH - Save the current diagnostic state onto the compiler's stack.
  *
