@@ -160,41 +160,6 @@ def windows_compiler_supported(compiler_type: Optional[str], compiler) -> bool:
     return "clang" in normalized
 
 
-def configure_windows_clang_compiler(compiler_type: Optional[str], compiler, build_temp: str) -> None:
-    """Force setuptools' MSVC path to invoke LLVM tools on Windows."""
-    if sys.platform != "win32" or compiler_type != "msvc":
-        return
-
-    required_tools = {
-        "clang-cl": "cl.exe",
-        "lld-link": "link.exe",
-        "llvm-lib": "lib.exe",
-    }
-    resolved_tools = {}
-    for source_name, target_name in required_tools.items():
-        source_path = shutil.which(source_name)
-        if not source_path:
-            raise RuntimeError(
-                f"Required LLVM tool {source_name!r} not found on PATH. "
-                "Windows Python bindings require clang/LLVM tooling."
-            )
-        resolved_tools[target_name] = str(Path(source_path).resolve())
-
-    if hasattr(compiler, "set_executables"):
-        compiler.set_executables(
-            compiler=resolved_tools["cl.exe"],
-            compiler_so=resolved_tools["cl.exe"],
-            compiler_cxx=resolved_tools["cl.exe"],
-            linker_so=resolved_tools["link.exe"],
-            linker_exe=resolved_tools["link.exe"],
-            archiver=resolved_tools["lib.exe"],
-        )
-
-    compiler.cc = resolved_tools["cl.exe"]
-    compiler.linker = resolved_tools["link.exe"]
-    compiler.lib = resolved_tools["lib.exe"]
-
-
 class CustomBuildExt(build_ext):
     """Build the extension against a bundled static libfyaml when possible."""
 
@@ -205,13 +170,16 @@ class CustomBuildExt(build_ext):
                 "little-endian targets"
             )
 
+        if sys.platform == "win32":
+            self._build_windows_extension_with_cmake(ext)
+            return
+
         compiler_type = getattr(self.compiler, "compiler_type", None)
         if not windows_compiler_supported(compiler_type, self.compiler):
             raise RuntimeError(
                 "Windows Python bindings require a Clang-family compiler "
                 "(clang or clang-cl)."
             )
-        configure_windows_clang_compiler(compiler_type, self.compiler, self.build_temp)
         build_info = self._resolve_libfyaml_build(compiler_type)
 
         ext.include_dirs = build_info["include_dirs"]
@@ -223,6 +191,48 @@ class CustomBuildExt(build_ext):
         ext.extra_link_args = build_info["extra_link_args"]
 
         super().build_extension(ext)
+
+    def _build_windows_extension_with_cmake(self, ext: Extension) -> None:
+        build_dir = Path(self.build_temp) / "libfyaml-python"
+        if build_dir.exists():
+            shutil.rmtree(build_dir)
+
+        cmake_args = [
+            "cmake",
+            "-S",
+            str(REPO_ROOT),
+            "-B",
+            str(build_dir),
+            "-DBUILD_SHARED_LIBS=OFF",
+            "-DBUILD_TESTING=OFF",
+            "-DENABLE_NETWORK=OFF",
+            "-DENABLE_PYTHON_BINDINGS=ON",
+            "-DENABLE_REFLECTION=OFF",
+            "-DENABLE_LIBCLANG=OFF",
+            "-DENABLE_PORTABLE_TARGET=ON",
+            "-DCMAKE_BUILD_TYPE=Release",
+            f"-DPython3_EXECUTABLE={sys.executable}",
+        ]
+
+        if "CMAKE_GENERATOR" not in os.environ and shutil.which("ninja"):
+            cmake_args.extend(["-G", "Ninja"])
+
+        extra_cmake_args = os.environ.get("LIBFYAML_CMAKE_ARGS")
+        if extra_cmake_args:
+            cmake_args.extend(shlex.split(extra_cmake_args))
+
+        run_command(cmake_args)
+        run_command(
+            ["cmake", "--build", str(build_dir), "--config", "Release", "--target", "_libfyaml"]
+        )
+
+        built_extensions = sorted((build_dir / "python-libfyaml" / "libfyaml").glob("_libfyaml*.pyd"))
+        if not built_extensions:
+            raise RuntimeError("CMake did not produce a Windows _libfyaml extension")
+
+        destination = Path(self.get_ext_fullpath(ext.name))
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(built_extensions[0], destination)
 
     def _resolve_libfyaml_build(self, compiler_type: Optional[str]) -> Dict[str, List[str]]:
         if os.environ.get("LIBFYAML_USE_SYSTEM") == "1":
