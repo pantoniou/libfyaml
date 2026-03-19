@@ -1462,6 +1462,14 @@ static inline char *fy_alloca_vsprintf_impl(const char *fmt, va_list ap)
 #define FY_VA_ARG_SSIZE_T(ap)  ((ssize_t)va_arg(ap, ssize_t))
 #endif
 
+/* Windows provides _alloca in <malloc.h>; avoid dragging windows.h into a public header. */
+#ifdef _WIN32
+#include <malloc.h>
+#ifndef alloca
+#define alloca _alloca
+#endif
+#endif
+
 #ifdef __cplusplus
 }
 #endif
