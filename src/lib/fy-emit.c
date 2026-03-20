@@ -678,6 +678,17 @@ void fy_emit_token_comment(struct fy_emitter *emit, struct fy_token *fyt, int fl
 	if (placement == fycp_top || placement == fycp_bottom) {
 		fy_emit_write_indent(emit, indent);
 		emit->flags |= FYEF_WHITESPACE;
+
+		/* Preserve blank lines between comment end and owning token start.
+		 * A blank line (two consecutive newlines) is semantically significant
+		 * in YAML and must survive a parse→emit round-trip. */
+		if (placement == fycp_top && fyt) {
+			int token_line = fy_token_start_line(fyt);
+			int comment_line = (int)handle->end_mark.line;
+			int extra = token_line - comment_line - 1;
+			while (extra-- > 0)
+				fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
+		}
 	}
 }
 

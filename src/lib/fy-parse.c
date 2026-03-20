@@ -1120,6 +1120,24 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 	/* if a last comment exists and is valid */
 	if (fy_atom_is_set(&fyp->last_comment)) {
 
+		/* Detect document-level leading comment for implicit documents.
+		 * When we're at the implicit doc start and the comment is separated
+		 * from the first content token by a blank line, promote it to
+		 * override_comment so it gets attached to the DOCUMENT_START token
+		 * instead of the first content token. */
+		if (fyt->type != FYTT_DOCUMENT_START &&
+				fyp->state == FYPS_IMPLICIT_DOCUMENT_START &&
+				!fy_atom_is_set(&fyp->override_comment)) {
+			int cline = (int)fyp->last_comment.end_mark.line;
+			int tline = (int)fyt->handle.start_mark.line;
+			if (tline - cline >= 2) {
+				fy_input_unref(fyp->override_comment.fyi);
+				fyp->override_comment = fyp->last_comment;
+				fy_atom_reset(&fyp->last_comment);
+				return count;
+			}
+		}
+
 		handle = fy_token_comment_handle(fyt, count == 0 ? fycp_top : fycp_right, true);
 		fyp_error_check(fyp, handle, err_out,
 				"fy_token_comment_handle() top failed\n");
@@ -6356,6 +6374,29 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
 					!had_directives, err_out,
 					"missing required document start indicator after directives");
+
+			/* If a leading comment is separated from the first content token
+			 * by a blank line (>= 2 line difference), it is a document-level
+			 * comment.  Promote it to override_comment and attach it to the
+			 * synthetic DOCUMENT_START token so the emitter can reproduce it.
+			 *
+			 * Note: the comment will be in last_comment here even though
+			 * fy_attach_comments_if_any() promoted it to override_comment
+			 * during scalar scanning — the BLOCK_MAPPING_START code flows
+			 * override_comment back into last_comment so it reaches here. */
+			if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
+					fy_atom_is_set(&fyp->last_comment)) {
+				int comment_line = (int)fyp->last_comment.end_mark.line;
+				int token_line  = (int)handle.start_mark.line;
+				if (token_line - comment_line >= 2) {
+					fy_input_unref(fyp->override_comment.fyi);
+					fyp->override_comment = fyp->last_comment;
+					fy_atom_reset(&fyp->last_comment);
+					rc = fy_attach_comments_if_any(fyp, fye->document_start.document_start);
+					fyp_error_check(fyp, rc >= 0, err_out,
+							"fy_attach_comments_if_any() failed");
+				}
+			}
 
 			fy_parse_state_set(fyp, FYPS_BLOCK_NODE);
 		} else {

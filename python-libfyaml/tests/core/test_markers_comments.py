@@ -133,4 +133,32 @@ class TestComments:
         assert marker is not None
         assert 'note' in comment
 
+    def test_doc_leading_comment_explicit(self):
+        """A comment before '---' is a doc-level comment accessible via doc.get_comment()."""
+        doc = fy.loads('# leading\n---\nfoo: bar\n', keep_comments=True)
+        comment = doc.get_comment()
+        assert comment is not None
+        assert 'leading' in comment
+
+    def test_doc_leading_comment_blank_separated(self):
+        """A comment separated from implicit-doc content by a blank line is doc-level."""
+        doc = fy.loads('# header\n\nfoo: bar\n', keep_comments=True)
+        comment = doc.get_comment()
+        assert comment is not None
+        assert 'header' in comment
+
+    def test_doc_trailing_comment(self):
+        """A trailing comment after all mapping content is accessible via doc.get_comment()."""
+        doc = fy.loads('foo: bar\n# trailing\n', keep_comments=True)
+        comment = doc.get_comment()
+        assert comment is not None
+        assert 'trailing' in comment
+
+    def test_inline_comment_not_doc_comment(self):
+        """A comment on the same line as content (no blank line) attaches to the key, not doc."""
+        doc = fy.loads('# header\nfoo: bar\n', keep_comments=True)
+        assert doc.get_comment() is None
+        first_key = next(iter(doc.keys()))
+        assert first_key.get_comment() is not None
+
 

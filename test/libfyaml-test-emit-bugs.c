@@ -1086,6 +1086,47 @@ START_TEST(emit_bug_trailing_comment_eof_mapping)
 }
 END_TEST
 
+/* ═══════════════════════════════════════════════════════════════════
+ * Bug 19: Blank line between leading comment and document content
+ *         is dropped during parse→emit round-trip.
+ *
+ * A blank line separates a document-level comment from the content.
+ * The blank line must survive the round-trip.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+START_TEST(emit_bug_doc_leading_comment_explicit_blank_line)
+{
+	/* # leading\n\n---\nfoo: bar\n — blank line before explicit --- preserved */
+	const char input[] = "# leading\n\n---\nfoo: bar\n";
+	char *buf = roundtrip_doc_comments(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, input);
+	free(buf);
+}
+END_TEST
+
+START_TEST(emit_bug_doc_leading_comment_implicit_blank_line)
+{
+	/* # leading\n\nfoo: bar\n — blank line before implicit doc content preserved */
+	const char input[] = "# leading\n\nfoo: bar\n";
+	char *buf = roundtrip_doc_comments(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, input);
+	free(buf);
+}
+END_TEST
+
+START_TEST(emit_bug_doc_leading_and_trailing_blank_line)
+{
+	/* # leading\n\nfoo: bar\n# trailing\n — blank line before content preserved */
+	const char input[] = "# leading\n\nfoo: bar\n# trailing\n";
+	char *buf = roundtrip_doc_comments(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, input);
+	free(buf);
+}
+END_TEST
+
 /* ── registration ────────────────────────────────────────────────── */
 
 void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
@@ -1184,4 +1225,9 @@ void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_bug_trailing_comment_nested);
 	fy_check_testcase_add_test(ctc, emit_bug_trailing_comment_multiline);
 	fy_check_testcase_add_test(ctc, emit_bug_trailing_comment_eof_mapping);
+
+	/* Bug 19: blank line between leading doc comment and content dropped */
+	fy_check_testcase_add_test(ctc, emit_bug_doc_leading_comment_explicit_blank_line);
+	fy_check_testcase_add_test(ctc, emit_bug_doc_leading_comment_implicit_blank_line);
+	fy_check_testcase_add_test(ctc, emit_bug_doc_leading_and_trailing_blank_line);
 }
