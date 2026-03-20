@@ -7,9 +7,9 @@ run-name: >-
 
 on:
   push:
-    branches: [ master, stable, reflection-new5 ]
+    branches: [ master, stable, devel ]
   pull_request:
-    branches: [ master, stable, reflection-new5 ]
+    branches: [ master, stable, devel ]
   workflow_dispatch:
 
 jobs:
