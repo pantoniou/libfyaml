@@ -175,14 +175,26 @@ jobs:
       - name: Install build frontend
         run: python -m pip install --upgrade build
 
+      - name: Stage sdist source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage_root="${RUNNER_TEMP}/libfyaml-python-sdist"
+          rm -rf "${stage_root}"
+          mkdir -p "${stage_root}"
+
+          cp -R python-libfyaml/. "${stage_root}/"
+          cp -R include src cmake "${stage_root}/"
+          cp CMakeLists.txt .tarball-version .libtool-version "${stage_root}/"
+
       - name: Build sdist
-        run: python -m build --sdist python-libfyaml
+        run: python -m build --sdist "${RUNNER_TEMP}/libfyaml-python-sdist"
 
       - name: Upload sdist artifact
         uses: actions/upload-artifact@v4
         with:
           name: sdist
-          path: python-libfyaml/dist/*.tar.gz
+          path: ${{ runner.temp }}/libfyaml-python-sdist/dist/*.tar.gz
 
   publish:
     name: Publish To PyPI
