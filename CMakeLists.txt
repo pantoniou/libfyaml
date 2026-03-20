@@ -1883,24 +1883,6 @@ else()
 endif()
 option(ENABLE_PYTHON_BINDINGS "Build Python core bindings (_libfyaml extension)" ${_ENABLE_PYTHON_BINDINGS_DEFAULT})
 
-function(fy_map_imported_debug_to_release _target_name)
-    if(NOT TARGET ${_target_name})
-        return()
-    endif()
-
-    set_property(TARGET ${_target_name} PROPERTY MAP_IMPORTED_CONFIG_DEBUG Release)
-
-    get_target_property(_implib_release ${_target_name} IMPORTED_IMPLIB_RELEASE)
-    if(_implib_release AND NOT _implib_release MATCHES "-NOTFOUND$")
-        set_property(TARGET ${_target_name} PROPERTY IMPORTED_IMPLIB_DEBUG "${_implib_release}")
-    endif()
-
-    get_target_property(_location_release ${_target_name} IMPORTED_LOCATION_RELEASE)
-    if(_location_release AND NOT _location_release MATCHES "-NOTFOUND$")
-        set_property(TARGET ${_target_name} PROPERTY IMPORTED_LOCATION_DEBUG "${_location_release}")
-    endif()
-endfunction()
-
 if(WIN32 AND ENABLE_PYTHON_BINDINGS AND NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
     message(STATUS "Python bindings disabled (windows requires clang/clang-cl)")
     set(HAVE_PYTHON_BINDINGS 0)
@@ -1911,50 +1893,46 @@ elseif(ENABLE_PYTHON_BINDINGS)
     if(NOT Python3_FOUND)
         message(FATAL_ERROR "Python3 development headers not found (required for ENABLE_PYTHON_BINDINGS)")
     endif()
+    if(WIN32
+            AND CMAKE_BUILD_TYPE STREQUAL "Debug"
+            AND (NOT DEFINED Python3_LIBRARY_DEBUG OR Python3_LIBRARY_DEBUG MATCHES "-NOTFOUND$"))
+        message(STATUS "Python bindings disabled (windows Debug build requires matching Python debug import library)")
+        set(HAVE_PYTHON_BINDINGS 0)
+    else()
 
-    Python3_add_library(_libfyaml MODULE WITH_SOABI
-        "${CMAKE_CURRENT_SOURCE_DIR}/python-libfyaml/libfyaml/_libfyaml.c"
-    )
-    target_include_directories(_libfyaml PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/include"
-        "${CMAKE_CURRENT_BINARY_DIR}"
-    )
-    target_link_libraries(_libfyaml PRIVATE fyaml_static)
-    target_compile_options(_libfyaml PRIVATE ${COMMON_C_FLAGS})
-    if(WIN32 AND (NOT DEFINED Python3_LIBRARY_DEBUG OR Python3_LIBRARY_DEBUG MATCHES "-NOTFOUND$"))
-        message(STATUS "Python3 debug library not found; building _libfyaml without _DEBUG against release Python")
-        fy_map_imported_debug_to_release(Python3::Python)
-        fy_map_imported_debug_to_release(Python3::Module)
-        set_property(TARGET _libfyaml PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
-        if(MSVC)
-            target_compile_options(_libfyaml PRIVATE $<$<CONFIG:Debug>:/U_DEBUG>)
-        else()
-            target_compile_options(_libfyaml PRIVATE $<$<CONFIG:Debug>:-U_DEBUG>)
+        Python3_add_library(_libfyaml MODULE WITH_SOABI
+            "${CMAKE_CURRENT_SOURCE_DIR}/python-libfyaml/libfyaml/_libfyaml.c"
+        )
+        target_include_directories(_libfyaml PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/include"
+            "${CMAKE_CURRENT_BINARY_DIR}"
+        )
+        target_link_libraries(_libfyaml PRIVATE fyaml_static)
+        target_compile_options(_libfyaml PRIVATE ${COMMON_C_FLAGS})
+        if(HAVE_ASAN)
+            target_compile_options(_libfyaml PRIVATE ${ASAN_C_FLAGS})
+            target_link_options(_libfyaml PRIVATE ${ASAN_C_FLAGS})
         endif()
+        # Place the .so in the build tree, not the source tree
+        set(_PY_PKG_SRC "${CMAKE_CURRENT_SOURCE_DIR}/python-libfyaml/libfyaml")
+        set(_PY_PKG_DST "${CMAKE_CURRENT_BINARY_DIR}/python-libfyaml/libfyaml")
+        set_target_properties(_libfyaml PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY "${_PY_PKG_DST}"
+            RUNTIME_OUTPUT_DIRECTORY "${_PY_PKG_DST}"
+            PREFIX ""
+        )
+        # Link/copy source files into the build staging dir so the complete
+        # package is importable directly from the build tree.
+        # COPY_ON_ERROR makes this work on Windows where symlinks may be
+        # unavailable (requires Developer Mode or admin rights).
+        file(MAKE_DIRECTORY "${_PY_PKG_DST}")
+        file(GLOB _py_srcs "${_PY_PKG_SRC}/*.py" "${_PY_PKG_SRC}/*.pyi")
+        foreach(_src ${_py_srcs})
+            get_filename_component(_name "${_src}" NAME)
+            file(CREATE_LINK "${_src}" "${_PY_PKG_DST}/${_name}" SYMBOLIC COPY_ON_ERROR)
+        endforeach()
+        set(HAVE_PYTHON_BINDINGS 1)
     endif()
-    if(HAVE_ASAN)
-        target_compile_options(_libfyaml PRIVATE ${ASAN_C_FLAGS})
-        target_link_options(_libfyaml PRIVATE ${ASAN_C_FLAGS})
-    endif()
-    # Place the .so in the build tree, not the source tree
-    set(_PY_PKG_SRC "${CMAKE_CURRENT_SOURCE_DIR}/python-libfyaml/libfyaml")
-    set(_PY_PKG_DST "${CMAKE_CURRENT_BINARY_DIR}/python-libfyaml/libfyaml")
-    set_target_properties(_libfyaml PROPERTIES
-        LIBRARY_OUTPUT_DIRECTORY "${_PY_PKG_DST}"
-        RUNTIME_OUTPUT_DIRECTORY "${_PY_PKG_DST}"
-        PREFIX ""
-    )
-    # Link/copy source files into the build staging dir so the complete
-    # package is importable directly from the build tree.
-    # COPY_ON_ERROR makes this work on Windows where symlinks may be
-    # unavailable (requires Developer Mode or admin rights).
-    file(MAKE_DIRECTORY "${_PY_PKG_DST}")
-    file(GLOB _py_srcs "${_PY_PKG_SRC}/*.py" "${_PY_PKG_SRC}/*.pyi")
-    foreach(_src ${_py_srcs})
-        get_filename_component(_name "${_src}" NAME)
-        file(CREATE_LINK "${_src}" "${_PY_PKG_DST}/${_name}" SYMBOLIC COPY_ON_ERROR)
-    endforeach()
-    set(HAVE_PYTHON_BINDINGS 1)
 else()
     set(HAVE_PYTHON_BINDINGS 0)
 endif()
