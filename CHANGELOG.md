@@ -5,6 +5,29 @@ All notable changes to libfyaml will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-alpha4] - 2026-03-20
+
+The fourth alpha milestone for the 1.0 line. This is a narrow follow-up to
+`1.0.0-alpha3` focused on repairing the Python packaging and wheel-release
+story after the `alpha3` release. The core YAML engine and the 1.0 API
+direction are otherwise unchanged.
+
+### Changed
+
+- `python`: stage the full source tree for `sdist` builds so source
+  distributions contain the files needed to build correctly
+- `python`: detect the staged `sdist` repository root correctly during packaging
+- `python`: add `cp314` wheel builds to the release matrix
+
+### Fixed
+
+- `python`: fix the broken Python wheel / source distribution release flow from `alpha3`
+
+### Statistics
+
+- 3 commits since `v1.0.0-alpha3`
+- Focus area: Python packaging and wheel/sdist release correctness
+
 ## [1.0.0-alpha3] - 2026-03-20
 
 The third alpha milestone for the 1.0 line. This release keeps the generic and
@@ -613,6 +636,7 @@ Jose Luis Blanco-Claraco, Andrey Somov, Orange_233, Martin Diehl
 
 Initial public release with comprehensive YAML 1.2 support.
 
+[1.0.0-alpha4]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha3...v1.0.0-alpha4
 [1.0.0-alpha3]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha2...v1.0.0-alpha3
 [1.0.0-alpha2]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha1...v1.0.0-alpha2
 [1.0.0-alpha1]: https://github.com/pantoniou/libfyaml/compare/v0.9.6...v1.0.0-alpha1

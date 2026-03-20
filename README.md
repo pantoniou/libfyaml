@@ -1,4 +1,4 @@
-# libfyaml 1.0-alpha3
+# libfyaml 1.0-alpha4
 
 [![Autotools CI](https://github.com/pantoniou/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22Standard+Automake+CI%22)
 [![CMake CI](https://github.com/pantoniou/libfyaml/workflows/CMake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22CMake+CI%22)
@@ -17,20 +17,17 @@ The alpha release adds a clear progression:
 * use generics when your problem is "work with values"
 * use reflection when your problem is "populate native C data structures"
 
-## Why 1.0-alpha3 matters
+## Why 1.0-alpha4 matters
 
-`1.0.0-alpha3` is the portability and packaging follow-up to the earlier
-`1.0.0-alpha` releases.
+`1.0.0-alpha4` is the packaging repair follow-up to `1.0.0-alpha3`.
 
-It keeps the same overall 1.0 direction, but broadens the set of environments
-where the new subsystems are practical to consume:
+It keeps the same overall 1.0 direction, but fixes the Python release pipeline
+after the `alpha3` wheel packaging problems:
 
-* improved Windows support for the Python binding and wheel builds
-* packaging and metadata cleanup for publishing `python-libfyaml`
-* CMake shared-library builds now honor `.libtool-version` for SONAME and versioned library filenames
-* CMake logic to handle mismatched debug Python environments more safely
-* another emitter correctness fix: preserve trailing comments after block sequences and mappings
-* wider warning-clean coverage under `-Wextra`
+* `sdist` packaging now stages the full source tree correctly
+* Python packaging detects the staged source-tree root correctly during builds
+* the wheel matrix now includes `cp314`
+* the release is aimed at fixing the broken Python wheel / source-distribution flow from `alpha3`
 
 ### Generic runtime
 
@@ -280,8 +277,9 @@ python3 -m pytest tests/
 ```
 
 The binding is part of the alpha release story and shows the generic runtime's
-data model in regular use. `v1.0.0-alpha3` also improves the Windows story for
-the binding, including CMake-based extension builds and wheel-build support.
+data model in regular use. `v1.0.0-alpha3` improved the Windows story for the
+binding, and `v1.0.0-alpha4` fixes the follow-on wheel and `sdist` packaging
+problems from that release.
 
 ## License
 
