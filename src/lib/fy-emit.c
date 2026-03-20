@@ -748,6 +748,7 @@ void fy_emit_comment_prolog(struct fy_emitter *emit,
 			if (comment_indent < 0)
 				comment_indent = 0;
 		}
+
 		fy_emit_write_indent(emit, comment_indent);
 		emit->flags |= FYEF_WHITESPACE;
 	}
@@ -756,13 +757,26 @@ void fy_emit_comment_prolog(struct fy_emitter *emit,
 void fy_emit_comment_epilog(struct fy_emitter *emit,
 			    int flags FY_UNUSED,
 		            int indent,
-			    enum fy_comment_placement placement)
+			    enum fy_comment_placement placement,
+			    struct fy_token *fyt,
+			    struct fy_atom *handle)
 {
 	emit->flags &= ~FYEF_INDENTATION;
 
-	if (placement == fycp_top || placement == fycp_bottom) {
+	if (placement == fycp_top) {
 		fy_emit_write_indent(emit, indent);
 		emit->flags |= FYEF_WHITESPACE;
+
+		/* Preserve blank lines between comment end and owning token start.
+		 * A blank line (two consecutive newlines) is semantically significant
+		 * in YAML and must survive a parse→emit round-trip. */
+		if (fyt && handle) {
+			int token_line = fy_token_start_line(fyt);
+			int comment_line = (int)handle->end_mark.line;
+			int extra = token_line - comment_line - 1;
+			while (extra-- > 0)
+				fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
+		}
 	}
 }
 
@@ -770,11 +784,13 @@ void fy_emit_comment(struct fy_emitter *emit, int flags, int indent,
 		     enum fy_comment_placement placement,
 		     const char *text, size_t len,
 		     int indent_delta, enum fy_lb_mode lb_mode,
-		     bool needs_hash)
+		     bool needs_hash,
+		     struct fy_token *fyt,
+		     struct fy_atom *handle)
 {
 	fy_emit_comment_prolog(emit, flags, indent, indent_delta, placement);
 	fy_emit_write_comment(emit, flags, indent, text, len, lb_mode, needs_hash);
-	fy_emit_comment_epilog(emit, flags, indent, placement);
+	fy_emit_comment_epilog(emit, flags, indent, placement, fyt, handle);
 }
 
 void fy_emit_token_comment(struct fy_emitter *emit, struct fy_token *fyt, int flags, int indent,
@@ -809,7 +825,8 @@ void fy_emit_token_comment(struct fy_emitter *emit, struct fy_token *fyt, int fl
 	}
 
 	fy_emit_comment(emit, flags, indent, placement, t, len,
-			handle->indent_delta, fy_atom_lb_mode(handle), false);
+			handle->indent_delta, fy_atom_lb_mode(handle), false,
+			fyt, handle);
 
 	if (alloc)
 		free(alloc);
@@ -2414,10 +2431,10 @@ static void fy_emit_token_sequence_epilog(struct fy_emitter *emit, struct fy_emi
 	fy_emit_sequence_epilog(emit, sc);
 
 	/* emit trailing comment attached to the block-end token;
-	 * use old_indent (parent scope) so the trailing indent
-	 * doesn't produce an extra blank line */
-	if (fy_emit_token_has_comment(emit, fyt, fycp_top))
-		fy_emit_token_comment(emit, fyt, sc->flags, sc->old_indent, fycp_top);
+	 * use fycp_bottom with sc->indent (current block scope) so the
+	 * column is correct even after item reordering */
+	if (fy_emit_token_has_comment(emit, fyt, fycp_bottom))
+		fy_emit_token_comment(emit, fyt, sc->flags, sc->indent, fycp_bottom);
 
 	/* emit right-comment attached to the closing bracket token */
 	if (fy_emit_token_has_comment(emit, fyt, fycp_right))
@@ -2586,10 +2603,10 @@ static void fy_emit_token_mapping_epilog(struct fy_emitter *emit, struct fy_emit
 	fy_emit_mapping_epilog(emit, sc);
 
 	/* emit trailing comment attached to the block-end token;
-	 * use old_indent (parent scope) so the trailing indent
-	 * doesn't produce an extra blank line */
-	if (fy_emit_token_has_comment(emit, fyt, fycp_top))
-		fy_emit_token_comment(emit, fyt, sc->flags, sc->old_indent, fycp_top);
+	 * use fycp_bottom with sc->indent (current block scope) so the
+	 * column is correct even after item reordering */
+	if (fy_emit_token_has_comment(emit, fyt, fycp_bottom))
+		fy_emit_token_comment(emit, fyt, sc->flags, sc->indent, fycp_bottom);
 
 	/* emit right-comment attached to the closing brace token */
 	if (fy_emit_token_has_comment(emit, fyt, fycp_right))
@@ -5170,7 +5187,7 @@ void fy_emit_generic_comment(struct fy_emitter *emit, fy_generic v, int flags, i
 
 	szstr = fy_cast(vcomm, fy_szstr_empty);
 	fy_emit_comment(emit, flags, indent, placement,
-			szstr.data, szstr.size, 0, fylb_cr_nl, true);
+			szstr.data, szstr.size, 0, fylb_cr_nl, true, NULL, NULL);
 }
 
 int fy_emit_generic_scalar_prolog(struct fy_emitter *emit, fy_generic v, int flags, int indent)
