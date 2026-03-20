@@ -13,8 +13,6 @@ dynamic = ["version"]
 description = "Python bindings for libfyaml's generic YAML/JSON value model"
 readme = "README.md"
 requires-python = ">=3.8"
-license = "MIT"
-license-files = ["LICENSE"]
 authors = [
     {name = "Pantelis Antoniou", email = "pantelis.antoniou@konsulko.com"}
 ]
@@ -25,6 +23,7 @@ keywords = ["yaml", "json", "parser", "fast", "performance", "memory-efficient"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: BSD",
     "Operating System :: POSIX :: Linux",
