@@ -1553,7 +1553,7 @@ if(CAN_TEST)
             test/libfyaml-test-thread.c
             $<$<BOOL:${HAVE_GENERIC}>:test/libfyaml-test-generic.c>
             $<$<BOOL:${HAVE_GENERIC}>:test/libfyaml-test-generic-scalars.c>
-			$<$<BOOL:${HAVE_REFLECTION}>:test/libfyaml-test-reflection.c>
+            $<$<BOOL:${HAVE_REFLECTION}>:test/libfyaml-test-reflection.c>
             ${GETOPT_SOURCES}
         )
 
@@ -1884,7 +1884,8 @@ endif()
 option(ENABLE_PYTHON_BINDINGS "Build Python core bindings (_libfyaml extension)" ${_ENABLE_PYTHON_BINDINGS_DEFAULT})
 
 if(WIN32 AND ENABLE_PYTHON_BINDINGS AND NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
-    message(FATAL_ERROR "Windows Python bindings require Clang/clang-cl because libfyaml generics depend on statement expressions")
+    message(STATUS "Python bindings disabled (windows requires clang/clang-cl)")
+    set(HAVE_PYTHON_BINDINGS 0)
 elseif(ENABLE_PYTHON_BINDINGS AND NOT HAVE_GENERIC)
     message(STATUS "Python bindings disabled (requires statement expressions / generic support)")
     set(HAVE_PYTHON_BINDINGS 0)
