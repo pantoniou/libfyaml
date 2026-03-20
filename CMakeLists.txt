@@ -253,6 +253,19 @@ endif()
 # When cross-compiling with wine we skip find_package/pkg-config (those would
 # find host libraries) and go straight to FetchContent so check is built for
 # the target platform.
+function(fy_target_compile_definition_if_exists _target_name)
+    if(NOT TARGET ${_target_name})
+        return()
+    endif()
+
+    get_target_property(_aliased_target ${_target_name} ALIASED_TARGET)
+    if(_aliased_target)
+        set(_target_name ${_aliased_target})
+    endif()
+
+    target_compile_definitions(${_target_name} PRIVATE _CRT_SECURE_NO_WARNINGS)
+endfunction()
+
 set(HAVE_CHECK 0)
 set(HAVE_COMPATIBLE_CHECK 0)
 if(BUILD_TESTING AND (NOT CMAKE_CROSSCOMPILING OR HAVE_WINE))
@@ -316,6 +329,12 @@ if(BUILD_TESTING AND (NOT CMAKE_CROSSCOMPILING OR HAVE_WINE))
             set(HAVE_CLOCK_GETTIME 1 CACHE INTERNAL "" FORCE)
         endif()
         FetchContent_MakeAvailable(check)
+        if(WIN32)
+            fy_target_compile_definition_if_exists(check)
+            fy_target_compile_definition_if_exists(Check::check)
+            fy_target_compile_definition_if_exists(checkShared)
+            fy_target_compile_definition_if_exists(Check::checkShared)
+        endif()
         if(TARGET checkShared)
             # check unconditionally creates a checkShared SHARED target alongside
             # the static check target. We only need the static library; exclude the
@@ -1875,15 +1894,22 @@ install(
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/tags.cmake)
 
 # Python core bindings
-find_package(Python3 COMPONENTS Interpreter Development.Module)
-if(Python3_FOUND)
+if(NOT CMAKE_CROSSCOMPILING)
+    find_package(Python3 COMPONENTS Interpreter Development.Module)
+endif()
+if(CMAKE_CROSSCOMPILING)
+    set(_ENABLE_PYTHON_BINDINGS_DEFAULT OFF)
+elseif(Python3_FOUND)
     set(_ENABLE_PYTHON_BINDINGS_DEFAULT ON)
 else()
     set(_ENABLE_PYTHON_BINDINGS_DEFAULT OFF)
 endif()
 option(ENABLE_PYTHON_BINDINGS "Build Python core bindings (_libfyaml extension)" ${_ENABLE_PYTHON_BINDINGS_DEFAULT})
 
-if(WIN32 AND ENABLE_PYTHON_BINDINGS AND NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
+if(CMAKE_CROSSCOMPILING AND ENABLE_PYTHON_BINDINGS)
+    message(STATUS "Python bindings disabled (cross-compiling requires a target Python SDK, which is not auto-detected)")
+    set(HAVE_PYTHON_BINDINGS 0)
+elseif(WIN32 AND ENABLE_PYTHON_BINDINGS AND NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
     message(STATUS "Python bindings disabled (windows requires clang/clang-cl)")
     set(HAVE_PYTHON_BINDINGS 0)
 elseif(ENABLE_PYTHON_BINDINGS AND NOT HAVE_GENERIC)

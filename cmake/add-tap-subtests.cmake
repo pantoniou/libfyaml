@@ -542,6 +542,12 @@ function(add_python_tests)
     # Build PYTHONPATH: always include the build-tree package
     set(_pythonpath "${CMAKE_CURRENT_BINARY_DIR}/python-libfyaml")
 
+    set(_pytest_probe_cmd
+        "${CMAKE_COMMAND}" -E env
+        "PYTHONPATH=${_pythonpath}"
+        "${Python3_EXECUTABLE}" -m pytest --version
+    )
+
     # If pytest is not directly importable by Python3_EXECUTABLE (e.g. when
     # the system Python is "externally managed" and pytest was installed via
     # Homebrew into its own libexec virtualenv), locate the pytest executable,
@@ -550,7 +556,7 @@ function(add_python_tests)
     set(_have_pytest FALSE)
 
     execute_process(
-        COMMAND "${Python3_EXECUTABLE}" -c "import pytest"
+        COMMAND ${_pytest_probe_cmd}
         RESULT_VARIABLE _pytest_check
         ERROR_QUIET
         OUTPUT_QUIET
@@ -558,10 +564,9 @@ function(add_python_tests)
     if(_pytest_check EQUAL 0)
         set(_have_pytest TRUE)
     endif()
-    if(NOT _pytest_check EQUAL 0)
+    if(NOT _pytest_check EQUAL 0 AND NOT WIN32)
         find_program(_pytest_prog pytest)
         if(_pytest_prog)
-            set(_have_pytest TRUE)
             # Extract the shebang line (first line, strip leading #!)
             file(READ "${_pytest_prog}" _pytest_script_head LIMIT 256)
             string(REGEX MATCH "^#!([^\n]+)" _shebang_match "${_pytest_script_head}")
@@ -579,6 +584,17 @@ function(add_python_tests)
                 if(_r EQUAL 0 AND _pytest_site AND EXISTS "${_pytest_site}")
                     message(STATUS "pytest site-packages (${_pytest_site}) added to PYTHONPATH")
                     set(_pythonpath "${_pytest_site}${_pythonpath_sep}${_pythonpath}")
+                    execute_process(
+                        COMMAND "${CMAKE_COMMAND}" -E env
+                            "PYTHONPATH=${_pythonpath}"
+                            "${Python3_EXECUTABLE}" -m pytest --version
+                        RESULT_VARIABLE _pytest_check
+                        ERROR_QUIET
+                        OUTPUT_QUIET
+                    )
+                    if(_pytest_check EQUAL 0)
+                        set(_have_pytest TRUE)
+                    endif()
                 endif()
             endif()
         endif()
