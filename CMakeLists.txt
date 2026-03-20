@@ -1289,8 +1289,10 @@ endif()
 
 set_target_properties(fyaml PROPERTIES
     OUTPUT_NAME fyaml
-    VERSION ${PROJECT_VERSION}
-    SOVERSION ${VERSION_MAJOR}
+    # Keep package/project versioning on PROJECT_VERSION, but derive the
+    # shared-library ABI version from .libtool-version for CMake builds too.
+    VERSION ${SO_VERSION_FULL}
+    SOVERSION ${SO_VERSION}
     FOLDER "Libraries"
     PUBLIC_HEADER "include/libfyaml.h"
 )
