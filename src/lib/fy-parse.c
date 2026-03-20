@@ -1149,7 +1149,6 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 		ref_indent = fyp->indent > 0 ? fyp->indent : 0;
 		fy_atom_set_indent_delta(handle, (int)handle->start_mark.column - ref_indent);
 		count++;
-
 		fy_atom_reset(&fyp->last_comment);
 	}
 
@@ -1636,28 +1635,67 @@ int fy_parse_unroll_indent(struct fy_parser *fyp, int column)
 		fyp_error_check(fyp, fyt, err_out,
 				"fy_token_queue_simple() failed");
 
-		rc = fy_pop_indent(fyp);
-		fyp_error_check(fyp, !rc, err_out,
-				"fy_pop_indent() failed");
+		/* save indent level before popping so comment delta is relative
+		 * to the block being closed, not its parent */
+		{
+			int current_indent = fyp->indent;
 
-		/* attach pending comment to this block-end token;
-		 * compute indent_delta relative to the parent indent
-		 * (after fy_pop_indent) so the emitter can pass old_indent
-		 * and get both correct comment column and trailing indent */
-		if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
-				fy_atom_is_set(&fyp->last_comment)) {
+			rc = fy_pop_indent(fyp);
+			fyp_error_check(fyp, !rc, err_out,
+					"fy_pop_indent() failed");
 
-			struct fy_atom *handle;
-			int ref_indent;
+			/* attach pending comment(s) to this block-end token as a bottom
+			 * comment; store indent_delta relative to the current block's
+			 * indent (before fy_pop_indent) so the emitter can recover the
+			 * original column as sc->indent + indent_delta, independent of
+			 * any reordering that changes old_indent.
+			 *
+			 * Only steal the comment if it is strictly inside the block
+			 * being closed (comment column > target column).  If the
+			 * comment is at or below the target indent it belongs to the
+			 * next token at that level, not to this block-end.
+			 *
+			 * override_comment is checked first: it is the older comment
+			 * (evicted from last_comment when a second comment was scanned)
+			 * and is typically more deeply nested.  Use >= current_indent
+			 * so it is attributed to exactly the block whose indent matches
+			 * its column, rather than any shallower ancestor block. */
+			if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
+					fy_atom_is_set(&fyp->override_comment) &&
+					(int)fyp->override_comment.start_mark.column > column &&
+					(int)fyp->override_comment.start_mark.column >= current_indent) {
 
-			handle = fy_token_comment_handle(fyt, fycp_top, true);
-			if (handle) {
-				fy_input_unref(handle->fyi);
-				fy_atom_reset(handle);
-				*handle = fyp->last_comment;
-				ref_indent = fyp->indent > 0 ? fyp->indent : 0;
-				fy_atom_set_indent_delta(handle, (int)handle->start_mark.column - ref_indent);
-				fy_atom_reset(&fyp->last_comment);
+				struct fy_atom *handle;
+				int ref_indent;
+
+				handle = fy_token_comment_handle(fyt, fycp_bottom, true);
+				if (handle) {
+					fy_input_unref(handle->fyi);
+					fy_atom_reset(handle);
+					*handle = fyp->override_comment;
+					ref_indent = current_indent > 0 ? current_indent : 0;
+					fy_atom_set_indent_delta(handle, (int)handle->start_mark.column - ref_indent);
+					fy_atom_reset(&fyp->override_comment);
+				}
+			}
+
+			if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
+					fy_atom_is_set(&fyp->last_comment) &&
+					(int)fyp->last_comment.start_mark.column > column &&
+					(int)fyp->last_comment.start_mark.column >= current_indent) {
+
+				struct fy_atom *handle;
+				int ref_indent;
+
+				handle = fy_token_comment_handle(fyt, fycp_bottom, true);
+				if (handle) {
+					fy_input_unref(handle->fyi);
+					fy_atom_reset(handle);
+					*handle = fyp->last_comment;
+					ref_indent = current_indent > 0 ? current_indent : 0;
+					fy_atom_set_indent_delta(handle, (int)handle->start_mark.column - ref_indent);
+					fy_atom_reset(&fyp->last_comment);
+				}
 			}
 		}
 
@@ -3140,19 +3178,32 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 			 * and placing it there also ensures fy_node_sequence_sort carries the comment
 			 * with the item.  For standalone mappings, leave the comment on the key
 			 * scalar so it remains sort-stable under fy_node_mapping_sort. */
-			if (fyp->pending_seq_item_key && fysk && fysk->token) {
+			if (fysk && fysk->token) {
 				struct fy_atom *key_handle = fy_token_comment_handle(fysk->token, fycp_top, false);
 				if (key_handle && fy_atom_is_set(key_handle)) {
-					struct fy_atom *bms_handle;
+					if (fyp->pending_seq_item_key) {
+						/* Sequence-item first key: move comment to BLOCK_MAPPING_START so
+						 * fy_node_sequence_sort carries it with the sequence item. */
+						struct fy_atom *bms_handle;
 
-					bms_handle = fy_token_comment_handle(fyt, fycp_top, true);
-					fyp_error_check(fyp, bms_handle, err_out,
-							"fy_token_comment_handle() failed");
+						bms_handle = fy_token_comment_handle(fyt, fycp_top, true);
+						fyp_error_check(fyp, bms_handle, err_out,
+								"fy_token_comment_handle() failed");
 
-					fy_input_unref(bms_handle->fyi);
-					fy_atom_reset(bms_handle);
-					*bms_handle = *key_handle;
-					fy_atom_reset(key_handle);
+						fy_input_unref(bms_handle->fyi);
+						fy_atom_reset(bms_handle);
+						*bms_handle = *key_handle;
+						fy_atom_reset(key_handle);
+					} else {
+						/* Standalone mapping first key: leave comment on key scalar so
+						 * fy_node_mapping_sort carries it with the key.  Recompute
+						 * indent_delta relative to the new block indent (mark_insert.column)
+						 * so the emitter, which uses sc->indent = block_indent as the base,
+						 * reconstructs the correct column. */
+						int new_indent = (int)mark_insert.column;
+						fy_atom_set_indent_delta(key_handle,
+							(int)key_handle->start_mark.column - new_indent);
+					}
 				}
 			}
 			fyp->pending_seq_item_key = false;
