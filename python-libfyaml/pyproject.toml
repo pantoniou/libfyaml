@@ -55,7 +55,7 @@ packages = ["libfyaml"]
 libfyaml = ["*.pyi", "*.so", "*.pyd"]
 
 [tool.cibuildwheel]
-build = ["cp38-*", "cp39-*", "cp310-*", "cp311-*", "cp312-*", "cp313-*"]
+build = ["cp38-*", "cp39-*", "cp310-*", "cp311-*", "cp312-*", "cp313-*", "cp314-*"]
 skip = ["*-musllinux_*", "*-win32", "*_i686", "*t-*"]
 build-verbosity = 1
 test-requires = ["pytest"]
