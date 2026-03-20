@@ -25,6 +25,7 @@ def resolve_repo_root() -> Path:
     if env_root:
         candidates.append(Path(env_root))
 
+    candidates.append(THIS_DIR)
     candidates.append(THIS_DIR.parent)
 
     for candidate in candidates:
