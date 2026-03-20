@@ -4054,6 +4054,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 	bool first, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb = false;
 	bool unicode_esc, is_json_unesc, has_json_esc;
 	int last_esc_lb, break_length, presentation_breaks_length;
+	enum fy_flow_ws_mode ws_mode;
 	struct fy_mark mark, mark2;
 	char escbuf[1 + FY_UTF8_FORMAT_BUFMIN];
 	size_t escbuf_len;
@@ -4064,6 +4065,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 	(void)last_esc_lb;
 
 	is_single = c == '\'';
+	ws_mode = fy_reader_flow_ws_mode(fyr);
 	end_c = c;
 
 	fyr_error_check(fyr, c == '\'' || c == '"', err_out,
@@ -4134,15 +4136,15 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 		}
 
 		if (first) {
-			if (fy_reader_is_flow_ws(fyr, c))
+			if (fy_is_flow_ws_m(c, ws_mode))
 				starts_with_ws = true;
 			else if (fy_reader_is_lb(fyr, c))
 				starts_with_lb = true;
 		}
 
-		while (!fy_reader_is_flow_blankz(fyr, c = fy_reader_peek(fyr))) {
+		while (!fy_is_flow_blankz(c = fy_reader_peek(fyr), ws_mode, fy_reader_lb_mode(fyr))) {
 
-			if (ws_lb_only && !(fy_reader_is_flow_ws(fyr, c) || fy_reader_is_lb(fyr, c)) && c != end_c)
+			if (ws_lb_only && c != end_c)
 				ws_lb_only = false;
 
 			esc_lb = false;
@@ -4203,6 +4205,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 				}
 				length += run;
 				break_run = 0;
+				first = false;
 				continue;
 			}
 
@@ -4212,6 +4215,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 				fy_reader_advance_by(fyr, 2);
 				break_run = 0;
 				lastc = '\'';
+				first = false;
 				continue;
 			}
 
@@ -4337,6 +4341,14 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 				if (lastc == '\n')
 					break_run++;
 
+				if (first) {
+					if (fy_reader_is_lb(fyr, lastc))
+						starts_with_lb = true;
+					else if (fy_reader_is_flow_blank(fyr, lastc))
+						starts_with_ws = true;
+					first = false;
+				}
+
 				has_esc = true;
 
 				continue;
@@ -4415,7 +4427,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 
 	if (break_run > 0)
 		ends_with_lb = true;
-	else if (fy_reader_is_flow_ws(fyr, lastc))
+	else if (fy_is_flow_ws_m(lastc, ws_mode))
 		ends_with_ws = true;
 	trailing_lb = break_run > 1;
 

@@ -307,7 +307,7 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 	const struct fy_atom *atom = iter->atom;
 	const char *s, *e, *ss;
 	int col, c, cn, w, wn, ts, cws, advws;
-	bool last_was_ws, is_block;
+	bool last_was_ws, is_block, can_be_nws_end;
 	int lastc;
 
 	s = line_start;
@@ -417,6 +417,11 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 				cws = 0;
 				li->nws_end = ss;
 				last_was_ws = true;
+#if defined(DEBUG_CHUNK)
+				fprintf(stderr, "%s:%d last_was_ws=%s nws='%.*s'\n", __FILE__, __LINE__,
+						last_was_ws ? "true" : "false",
+						(int)(li->nws_end - li->nws_start), li->nws_start);
+#endif
 			}
 
 #if defined(DEBUG_CHUNK)
@@ -435,14 +440,31 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 			col++;
 			cws++;
 
-			if (!last_was_ws) {
+			can_be_nws_end = true;
+#ifdef DEBUG_CHUNK
+			if (atom->style == FYAS_DOUBLE_QUOTED) {
+				fprintf(stderr, "%s:%d \" ss[-1]=%d\n", __FILE__, __LINE__, ss[-1]);
+			}
+#endif
+
+			if (atom->style == FYAS_DOUBLE_QUOTED && ss > li->start && ss[-1] == '\\') {
+				can_be_nws_end = false;
+#ifdef DEBUG_CHUNK
+				fprintf(stderr, "%s:%d backslashed space\n", __FILE__, __LINE__);
+#endif
+			}
+
+			if (can_be_nws_end && !last_was_ws) {
 				li->nws_end = ss;
 				last_was_ws = true;
+#if defined(DEBUG_CHUNK)
+				fprintf(stderr, "%s:%d last_was_ws=%s nws='%.*s'\n", __FILE__, __LINE__,
+						last_was_ws ? "true" : "false",
+						(int)(li->nws_end - li->nws_start), li->nws_start);
+#endif
 			}
 
 		} else if (fy_is_tab(c)) {
-
-			bool can_be_nws_end;
 
 			advws = ts - (col % ts);
 			col += advws;
@@ -471,6 +493,11 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 			if (can_be_nws_end && !last_was_ws) {
 				li->nws_end = ss;
 				last_was_ws = true;
+#if defined(DEBUG_CHUNK)
+				fprintf(stderr, "%s:%d last_was_ws=%s nws='%.*s'\n", __FILE__, __LINE__,
+						last_was_ws ? "true" : "false",
+						(int)(li->nws_end - li->nws_start), li->nws_start);
+#endif
 			}
 
 		} else {
@@ -546,6 +573,9 @@ do_nws:
 			last_was_ws = true;
 #ifdef DEBUG_CHUNK
 			fprintf(stderr, "%s:%d li->final && atom->ends_with_eof && !last_was_ws\n", __FILE__, __LINE__);
+			fprintf(stderr, "%s:%d last_was_ws=%s nws='%.*s'\n", __FILE__, __LINE__,
+					last_was_ws ? "true" : "false",
+					(int)(li->nws_end - li->nws_start), li->nws_start);
 #endif
 		}
 	}
@@ -558,6 +588,12 @@ do_nws:
 
 	if (!li->nws_end)
 		li->nws_end = ss;
+
+#if defined(DEBUG_CHUNK)
+	fprintf(stderr, "%s:%d last_was_ws=%s nws='%.*s'\n", __FILE__, __LINE__,
+			last_was_ws ? "true" : "false",
+			(int)(li->nws_end - li->nws_start), li->nws_start);
+#endif
 
 	/* if we haven't hit the chomp, point use whatever we're now */
 	if (is_block && !li->chomp_start) {
@@ -1241,6 +1277,7 @@ const char *fy_atom_format_text(struct fy_atom *atom, char *buf, size_t maxsz)
 	const struct fy_iter_chunk *ic;
 	char *s, *e;
 	int ret;
+	int count = 0;
 
 	if (!atom || !buf)
 		return NULL;
@@ -1255,8 +1292,12 @@ const char *fy_atom_format_text(struct fy_atom *atom, char *buf, size_t maxsz)
 			ret = -1;
 			break;
 		}
+		assert(ic->len > 0);
 		memcpy(s, ic->str, ic->len);
 		s += ic->len;
+		count++;
+		if (count > 100)
+			FY_IMPOSSIBLE_ABORT();
 	}
 	fy_atom_iter_finish(&iter);
 
