@@ -1,4 +1,4 @@
-# libfyaml 1.0-alpha2
+# libfyaml 1.0-alpha3
 
 [![Autotools CI](https://github.com/pantoniou/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22Standard+Automake+CI%22)
 [![CMake CI](https://github.com/pantoniou/libfyaml/workflows/CMake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22CMake+CI%22)
@@ -17,17 +17,20 @@ The alpha release adds a clear progression:
 * use generics when your problem is "work with values"
 * use reflection when your problem is "populate native C data structures"
 
-## Why 1.0-alpha2 matters
+## Why 1.0-alpha3 matters
 
-`1.0.0-alpha2` is the stabilization follow-up to `1.0.0-alpha1`.
+`1.0.0-alpha3` is the portability and packaging follow-up to the earlier
+`1.0.0-alpha` releases.
 
-It keeps the same overall 1.0 direction, but tightens the new subsystems in the
-places that matter for early adopters:
+It keeps the same overall 1.0 direction, but broadens the set of environments
+where the new subsystems are practical to consume:
 
-* 32-bit build and runtime fixes across generics, variable-size decoding, and CMake
-* reflection fixes for LLVM 21 / libclang fallout and enum handling
-* emitter fix for literal `|+` scalar layout
-* documentation build workflow and packaging improvements for release artifacts
+* improved Windows support for the Python binding and wheel builds
+* packaging and metadata cleanup for publishing `python-libfyaml`
+* CMake shared-library builds now honor `.libtool-version` for SONAME and versioned library filenames
+* CMake logic to handle mismatched debug Python environments more safely
+* another emitter correctness fix: preserve trailing comments after block sequences and mappings
+* wider warning-clean coverage under `-Wextra`
 
 ### Generic runtime
 
@@ -277,7 +280,8 @@ python3 -m pytest tests/
 ```
 
 The binding is part of the alpha release story and shows the generic runtime's
-data model in regular use.
+data model in regular use. `v1.0.0-alpha3` also improves the Windows story for
+the binding, including CMake-based extension builds and wheel-build support.
 
 ## License
 

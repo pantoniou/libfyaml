@@ -5,6 +5,39 @@ All notable changes to libfyaml will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-alpha3] - 2026-03-20
+
+The third alpha milestone for the 1.0 line. This release keeps the generic and
+reflection API direction introduced in the earlier alphas, but makes the Python
+binding, packaging, and Windows build story much more practical. It also rolls
+in another round of warning cleanup and a user-visible emitter correctness fix.
+
+### Changed
+
+- `python`: build the Windows extension via CMake and use `clang-cl` for wheel builds
+- `python`: modernize `pyproject.toml` license metadata while keeping package metadata compatible
+- `python`: rework tests for Windows and fix broken `pytest` detection on macOS Homebrew
+- `cmake`: make shared-library ABI versioning follow `.libtool-version`, so CMake builds now emit the correct SONAME/versioned library names
+- `cmake`: disable Python bindings automatically when a matching debug Python is not available
+- `cmake`: unify the Python debug import fallback and make the Python AST parse use UTF-8
+- `cmake`: factor whole-archive static linking and make workflows run on the `devel` branch too
+- `util`: ensure `alloca` is available on Windows in public-header use
+- `util`: gate diagnostic pragma helpers on GCC 13+
+- `generic`: make `fy_gb_string_vcreate()` more efficient
+
+### Fixed
+
+- `emit`: preserve trailing comments after block sequences and mappings when re-emitting YAML (#18)
+- `emit`: avoid a double `vsprintf()` call in `fy_emit_vprintf()`
+- `python`: fix a batch of PyPI packaging problems for the binding
+- `python/windows`: make missing Python binding builds non-fatal where appropriate
+- `misc`: tighten `-Wextra` cleanup across the library and build configuration
+
+### Statistics
+
+- 26 commits since `v1.0.0-alpha2`
+- Focus areas: Windows support, Python packaging, warning-clean builds, emitter correctness, and CMake ABI-versioning correctness
+
 ## [1.0.0-alpha2] - 2026-03-18
 
 The second alpha milestone for the 1.0 line. This release does not change the
@@ -580,6 +613,7 @@ Jose Luis Blanco-Claraco, Andrey Somov, Orange_233, Martin Diehl
 
 Initial public release with comprehensive YAML 1.2 support.
 
+[1.0.0-alpha3]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha2...v1.0.0-alpha3
 [1.0.0-alpha2]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha1...v1.0.0-alpha2
 [1.0.0-alpha1]: https://github.com/pantoniou/libfyaml/compare/v0.9.6...v1.0.0-alpha1
 [0.9.6]: https://github.com/pantoniou/libfyaml/compare/v0.9.5...v0.9.6
