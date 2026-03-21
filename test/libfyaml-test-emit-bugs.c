@@ -1086,6 +1086,102 @@ START_TEST(emit_bug_trailing_comment_eof_mapping)
 }
 END_TEST
 
+/* ═══════════════════════════════════════════════════════════════════
+ * Bug 19: Blank line between leading comment and document content
+ *         is dropped during parse→emit round-trip.
+ *
+ * A blank line separates a document-level comment from the content.
+ * The blank line must survive the round-trip.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+START_TEST(emit_bug_doc_leading_comment_explicit_blank_line)
+{
+	/* # leading\n\n---\nfoo: bar\n — blank line before explicit --- preserved */
+	const char input[] = "# leading\n\n---\nfoo: bar\n";
+	char *buf = roundtrip_doc_comments(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, input);
+	free(buf);
+}
+END_TEST
+
+START_TEST(emit_bug_doc_leading_comment_implicit_blank_line)
+{
+	/* # leading\n\nfoo: bar\n — blank line before implicit doc content preserved */
+	const char input[] = "# leading\n\nfoo: bar\n";
+	char *buf = roundtrip_doc_comments(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, input);
+	free(buf);
+}
+END_TEST
+
+START_TEST(emit_bug_doc_leading_and_trailing_blank_line)
+{
+	/* # leading\n\nfoo: bar\n# trailing\n — blank line before content preserved */
+	const char input[] = "# leading\n\nfoo: bar\n# trailing\n";
+	char *buf = roundtrip_doc_comments(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, input);
+	free(buf);
+}
+END_TEST
+
+/* ═══════════════════════════════════════════════════════════════════
+ * Bug 20: Trailing comment after block scalar consumed as right-hand
+ *         comment and lost from the event stream.
+ *
+ * fy_attach_comments_if_any() compared the pending '#' position
+ * against end_mark.line.  After scanning a block scalar the parser
+ * has already advanced past the final linebreak, so end_mark.line
+ * lands on the line of any following comment.  The comment was
+ * therefore mis-classified as a right-hand (inline) comment on the
+ * scalar token and dropped from the output.
+ *
+ * Fix: use start_mark.line (the indicator line) for the same-line
+ * comparison when the token is a block scalar.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+START_TEST(emit_bug_block_scalar_trailing_comment_not_consumed)
+{
+	/* trailing comment after a literal block scalar must survive
+	 * round-trip as a standalone comment, not be eaten as inline */
+	const char input[] = "run: |\n  command\n# trailing\n";
+	char *buf = roundtrip_doc_comments(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, input);
+	free(buf);
+}
+END_TEST
+
+START_TEST(emit_bug_block_scalar_trailing_comment_folded)
+{
+	/* same check for folded (>) block scalars */
+	const char input[] = "run: >\n  command\n# trailing\n";
+	char *buf = roundtrip_doc_comments(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_str_eq(buf, input);
+	free(buf);
+}
+END_TEST
+
+START_TEST(emit_bug_block_scalar_trailing_comment_in_sequence)
+{
+	/* trailing comment after a block scalar step in a sequence must
+	 * survive round-trip and not be promoted to document level */
+	const char input[] =
+		"steps:\n"
+		"- run: |\n"
+		"    command\n"
+		"  # trailing\n"
+		"- run: next\n";
+	char *buf = roundtrip_doc_comments(input);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_ptr_ne(strstr(buf, "# trailing"), NULL);
+	free(buf);
+}
+END_TEST
+
 /* ── registration ────────────────────────────────────────────────── */
 
 void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
@@ -1184,4 +1280,14 @@ void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_bug_trailing_comment_nested);
 	fy_check_testcase_add_test(ctc, emit_bug_trailing_comment_multiline);
 	fy_check_testcase_add_test(ctc, emit_bug_trailing_comment_eof_mapping);
+
+	/* Bug 19: blank line between leading doc comment and content dropped */
+	fy_check_testcase_add_test(ctc, emit_bug_doc_leading_comment_explicit_blank_line);
+	fy_check_testcase_add_test(ctc, emit_bug_doc_leading_comment_implicit_blank_line);
+	fy_check_testcase_add_test(ctc, emit_bug_doc_leading_and_trailing_blank_line);
+
+	/* Bug 20: trailing comment after block scalar consumed as right-hand comment */
+	fy_check_testcase_add_test(ctc, emit_bug_block_scalar_trailing_comment_not_consumed);
+	fy_check_testcase_add_test(ctc, emit_bug_block_scalar_trailing_comment_folded);
+	fy_check_testcase_add_test(ctc, emit_bug_block_scalar_trailing_comment_in_sequence);
 }

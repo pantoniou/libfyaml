@@ -195,6 +195,7 @@ struct fy_parser {
 			bool parse_flow_only : 1;	/* document is in flow form, and stop parsing at the end */
 			bool parse_block_only : 1;	/* document is in embedded block form, and stop parsing at the end */
 			bool colon_follows_colon : 1;	/* "foo"::bar -> "foo": :bar */
+			bool pending_seq_item_key : 1;	/* next implicit-mapping key is first in a sequence item */
 			bool had_directives : 1;	/* document had directives */
 			bool is_checkpoint : 1;		/* a parser checkpoint (not a real parser) */
 		};

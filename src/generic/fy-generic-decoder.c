@@ -746,6 +746,11 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		gdo->type = FYGDOT_ROOT;
 		gdo->fyds = fy_document_state_ref(fye->document_start.document_state);
 
+		/* Store any doc-level comment (e.g. "# header" before "---") so that
+		 * fy_generic_decoder_object_finalize() wraps the root value with it,
+		 * making it accessible via fy_generic_get_comment(). */
+		gdo->comment = vcomment;
+
 		fy_path_set_root_user_data(path, gdo);
 
 		vers = fy_document_state_version(gdo->fyds);
@@ -831,6 +836,14 @@ fy_generic_compose_process_event(struct fy_parser *fyp, struct fy_event *fye, st
 		fy_path_set_last_user_data(path, NULL);
 
 		gdo->marker_end = vmarker;
+
+		/* Attach trailing comment (e.g. "# trailing" after last mapping entry)
+		 * to the collection value so it is accessible via fy_generic_get_comment().
+		 * Only set if no start-comment was already stored (start-comment wins). */
+		if (fye->type == FYET_MAPPING_END &&
+				fy_generic_is_valid(vcomment) &&
+				fy_generic_is_invalid(gdo->comment))
+			gdo->comment = vcomment;
 
 		v = fy_generic_decoder_object_finalize_and_destroy(gd, gdo);
 		fyp_error_check(fyp, fy_generic_is_valid(v), err_out, "fy_generic_decoder_object_finalize_and_destroy() failed");
