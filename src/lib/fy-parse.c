@@ -1146,8 +1146,14 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 
 	fy_get_mark(fyp, &fym);
 
-	/* only the one that in the same line */
-	if (fym.line != fyt->handle.end_mark.line)
+	/* only the one that in the same line;
+	 * for block scalars end_mark is past the content (scanner advanced
+	 * past the final linebreak), so use start_mark.line (the indicator
+	 * line) instead - inline comments on block scalars can only appear
+	 * on the same line as | or > */
+	if (fym.line != (fy_atom_style_is_block(fyt->handle.style)
+			 ? fyt->handle.start_mark.line
+			 : fyt->handle.end_mark.line))
 		return 0;
 
 	/* it's a right comment only if it's on the same line */
@@ -3593,7 +3599,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	int lastc, rc, increment = 0, current_indent, new_indent, indent = 0, check_indent;
 	int breaks, breaks_length, presentation_breaks_length, first_break_length, max_indent, min_indent;
 	bool doc_start_end_detected, empty, empty_line, prev_empty_line, indented, prev_indented, first;
-	bool has_ws, has_lb, has_weird_nl, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb;
+	bool has_ws, has_lb = false, has_weird_nl, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb;
 	bool pending_nl, ends_with_eof, starts_with_eof, content_is_eof;
 	struct fy_token *fyt;
 	size_t length, line_length, trailing_ws, trailing_breaks_length;
