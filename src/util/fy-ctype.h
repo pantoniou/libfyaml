@@ -258,6 +258,11 @@ static inline bool fy_is_flow_ws_m(const int c, const enum fy_flow_ws_mode fws_m
 	return fy_is_space(c) || (fws_mode == fyfws_space_tab && fy_is_tab(c));
 }
 
+static inline bool fy_is_flow_blankz(const int c, const enum fy_flow_ws_mode fws_mode, enum fy_lb_mode lb_mode)
+{
+	return fy_is_flow_ws_m(c, fws_mode) || fy_is_generic_lbz_m(c, lb_mode);
+}
+
 #define FY_CTYPE_AT_BUILDER(_kind) \
 static inline const void * \
 fy_find_ ## _kind (const void *s, size_t len) \

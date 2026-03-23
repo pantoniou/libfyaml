@@ -318,6 +318,6 @@ fy_atom_lines_containing(struct fy_atom *atom, size_t *lenp);
 
 unsigned int
 fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style,
-		     int *maxspanp, int *maxcolp);
+		     int *maxspanp, int *maxcolp, int *lbsp);
 
 #endif

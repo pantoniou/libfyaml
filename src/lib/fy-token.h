@@ -117,6 +117,7 @@ struct fy_token_analysis {
 	unsigned int flags;
 	int maxspan;
 	int maxcol;
+	int lbs;
 };
 
 struct fy_token_comment {

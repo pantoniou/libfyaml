@@ -546,8 +546,7 @@ fy_reader_is_flow_blank(const struct fy_reader *fyr, int c)
 static FY_ALWAYS_INLINE inline bool
 fy_reader_is_flow_blankz(const struct fy_reader *fyr, int c)
 {
-	return fy_is_flow_ws_m(c, fy_reader_flow_ws_mode(fyr)) ||
-	       fy_is_generic_lbz_m(c, fy_reader_lb_mode(fyr));
+	return fy_is_flow_blankz(c, fy_reader_flow_ws_mode(fyr), fy_reader_lb_mode(fyr));
 }
 
 static FY_ALWAYS_INLINE inline const void *

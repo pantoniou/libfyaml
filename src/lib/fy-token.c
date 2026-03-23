@@ -696,7 +696,7 @@ fy_token_text_analyze(struct fy_token *fyt)
 	if (fyt->type == FYTT_SCALAR || fyt->type == FYTT_TAG ||
 	    fyt->type == FYTT_ANCHOR || fyt->type == FYTT_ALIAS) {
 		fyt->analysis.flags = fy_atom_text_analyze(fy_token_atom(fyt), fy_token_atom_style(fyt),
-				&fyt->analysis.maxspan, &fyt->analysis.maxcol);
+				&fyt->analysis.maxspan, &fyt->analysis.maxcol, &fyt->analysis.lbs);
 	} else {
 		fyt->analysis.flags = FYTTAF_NO_TEXT_TOKEN;
 		fyt->analysis.maxspan = 0;

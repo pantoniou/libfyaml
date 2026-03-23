@@ -1970,18 +1970,22 @@ const char *fy_atom_lines_containing(struct fy_atom *atom, size_t *lenp)
 }
 
 unsigned int
-fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style, int *maxspanp, int *maxcolp)
+fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style,
+		     int *maxspanp, int *maxcolp, int *lbsp)
 {
 	unsigned int flags = 0;
 	int c, cn, cnn, cp, col;
 	uint8_t col0si, col0ei;	/* mask for --- ... at indent 0 */
-	int span, maxspan, maxcol;
+	int span, maxspan, maxcol, lbs = 0;
 	struct fy_atom_iter iter;
+	bool ws_run_has_tab;
 
 	if (maxspanp)
 		*maxspanp = 0;
 	if (maxcolp)
 		*maxcolp = 0;
+	if (lbsp)
+		*lbsp = 0;
 
 	flags = FYTTAF_TEXT_TOKEN;
 
@@ -2021,6 +2025,7 @@ fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style, int *maxs
 	maxcol = 0;
 	maxspan = 0;
 	span = 0;
+	lbs = 0;
 
 	/* get first character */
 	cn = fy_atom_iter_utf8_get(&iter);
@@ -2042,9 +2047,6 @@ fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style, int *maxs
 		 FYTTAF_EMPTY;
 
 	col0si = col0ei = 0;
-
-	/* disable folded right off the bat, it's a pain */
-	flags &= ~FYTTAF_CAN_BE_FOLDED;
 
 	/* plain scalars can't start with any indicator (or space/lb) */
 	if ((flags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW))) {
@@ -2075,6 +2077,7 @@ fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style, int *maxs
 			   FYTTAF_CAN_BE_PLAIN_FLOW);
 	}
 
+	ws_run_has_tab = false;
 	cp = -1;
 	for (c = cn; c >= 0; cp = c, c = cn) {
 
@@ -2095,6 +2098,7 @@ fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style, int *maxs
 
 		/* zero can't be output, only in double quoted mode */
 		if (c == 0) {
+
 			flags &= ~(FYTTAF_DIRECT_OUTPUT |
 				   FYTTAF_CAN_BE_PLAIN |
 				   FYTTAF_CAN_BE_SINGLE_QUOTED |
@@ -2107,7 +2111,11 @@ fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style, int *maxs
 			flags |= FYTTAF_CAN_BE_DOUBLE_QUOTED;
 			flags &= ~FYTTAF_EMPTY;
 			flags |= FYTTAF_HAS_ZERO;
+
 		} else if (fy_is_ws(c)) {
+
+			/* track if the ws run has a tab */
+			ws_run_has_tab = fy_is_tab(c);
 
 			flags |= FYTTAF_HAS_WS;
 			if (fy_is_ws(cn)) {
@@ -2122,6 +2130,11 @@ fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style, int *maxs
 			flags &= ~FYTTAF_ALL_PRINT_ASCII;
 
 		} else if (fy_atom_is_lb(handle, c)) {
+
+			/* if there was a tab before linebreak, we can't be single quoted */
+			if (style == FYAS_SINGLE_QUOTED_MANUAL && ws_run_has_tab)
+				flags &= ~FYTTAF_CAN_BE_SINGLE_QUOTED;
+			ws_run_has_tab = false;
 
 			flags |= FYTTAF_HAS_LB;
 			if (fy_atom_is_lb(handle, cn))
@@ -2145,6 +2158,7 @@ fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style, int *maxs
 			/* out of our comfort zone */
 			if (c < '!' || c > '~')
 				flags &= ~FYTTAF_ALL_PRINT_ASCII;
+			ws_run_has_tab = false;
 		}
 
 		if ((flags & FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) && !fy_is_alnum(c))
@@ -2166,7 +2180,7 @@ fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style, int *maxs
 			flags &= ~FYTTAF_CAN_BE_PLAIN_FLOW;
 
 		/* non printable characters, turn off these styles */
-		if (!fy_is_print(c)) {
+		if (!fy_is_print(c) && c != '\t') {
 			flags &= ~(FYTTAF_CAN_BE_SINGLE_QUOTED | FYTTAF_CAN_BE_LITERAL |
 				   FYTTAF_CAN_BE_FOLDED);
 			flags |= FYTTAF_HAS_NON_PRINT;
@@ -2191,6 +2205,7 @@ fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style, int *maxs
 				maxcol = col;
 			col = 0;
 			col0si = col0ei = 0;
+			lbs++;
 		} else
 			col++;
 
@@ -2206,6 +2221,12 @@ fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style, int *maxs
 				if (c == ':')
 					flags |= FYTTAF_ENDS_WITH_COLON;
 			}
+
+			/* if there was a tab before linebreak, we can't be single quoted */
+			if (style == FYAS_SINGLE_QUOTED_MANUAL && ws_run_has_tab)
+				flags &= ~FYTTAF_CAN_BE_SINGLE_QUOTED;
+			ws_run_has_tab = false;
+
 		}
 	}
 
@@ -2228,5 +2249,7 @@ done:
 		*maxspanp = maxspan;
 	if (maxcolp)
 		*maxcolp = maxcol;
+	if (lbsp)
+		*lbsp = lbs;
 	return flags;
 }
