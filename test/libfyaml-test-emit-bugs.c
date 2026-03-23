@@ -1086,6 +1086,57 @@ START_TEST(emit_bug_trailing_comment_eof_mapping)
 }
 END_TEST
 
+/* ═══════════════════════════════════════════════════════════════════
+ * Bug 19: literal block indent indicator required for leading-newline values
+ *
+ * When a scalar value begins with "\n  " (newline followed by spaces),
+ * the emitter must emit |2 (with an explicit indent indicator) instead of
+ * bare |.  Without the indicator the resulting YAML is not parseable.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+START_TEST(emit_bug_literal_indent_indicator_required)
+{
+	/* Build a document whose value starts with "\n  "; the emitter must
+	 * choose |2 (literal with explicit indent indicator) in pretty mode
+	 * so that the leading blank line is not stripped on re-parse. */
+	const char *yaml_in =
+		"test: \"\\n  one in\\n\\nout\\n1\\n2\\n3\\n4\\n\"\n";
+	const char *expected = "\n  one in\n\nout\n1\n2\n3\n4\n";
+	struct fy_document *fyd, *fyd2;
+	struct fy_node *val;
+	char *emitted;
+	const char *text;
+
+	fyd = fy_document_build_from_string(NULL, yaml_in, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	emitted = fy_emit_document_to_string(fyd, FYECF_DEFAULT | FYECF_MODE_PRETTY);
+	fy_document_destroy(fyd);
+	ck_assert_ptr_ne(emitted, NULL);
+
+	fprintf(stderr, "emitted:\n%s\n", emitted);
+
+	/* emitter must have used |2 to preserve the leading blank line */
+	ck_assert_ptr_ne(strstr(emitted, "|2"), NULL);
+
+	/* value must survive the round-trip */
+	fyd2 = fy_document_build_from_string(NULL, emitted, FY_NT);
+	ck_assert_ptr_ne(fyd2, NULL);
+
+	val = fy_node_mapping_lookup_by_string(
+		fy_document_root(fyd2), "test", FY_NT);
+	ck_assert_ptr_ne(val, NULL);
+	ck_assert(fy_node_is_scalar(val));
+	ck_assert(fy_node_get_style(val) == FYNS_LITERAL);
+	text = fy_node_get_scalar0(val);
+	ck_assert_ptr_ne(text, NULL);
+	ck_assert_str_eq(text, expected);
+
+	free(emitted);
+	fy_document_destroy(fyd2);
+}
+END_TEST
+
 /* ── registration ────────────────────────────────────────────────── */
 
 void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
@@ -1184,4 +1235,7 @@ void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_bug_trailing_comment_nested);
 	fy_check_testcase_add_test(ctc, emit_bug_trailing_comment_multiline);
 	fy_check_testcase_add_test(ctc, emit_bug_trailing_comment_eof_mapping);
+
+	/* Bug 19: literal block indent indicator required for leading-newline values */
+	fy_check_testcase_add_test(ctc, emit_bug_literal_indent_indicator_required);
 }

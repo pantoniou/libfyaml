@@ -411,6 +411,69 @@ START_TEST(parse_bug_single_quoted_single_quotes)
 }
 END_TEST
 
+/* ═══════════════════════════════════════════════════════════════════
+ * Bug 16: escaped space (\ ) followed by newline in double-quoted scalar
+ *
+ * In a double-quoted scalar, `\ ` is an escape sequence for a space
+ * character (U+0020).  When it is immediately followed by a line break,
+ * the line break is folded to an additional space.  The combined result
+ * is therefore two spaces, optionally followed by the content of the
+ * next line.
+ *
+ * The bug was that the parser dropped the folded-newline space, producing
+ * only a single space instead of two.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+START_TEST(parse_bug_escaped_space_before_newline_only)
+{
+	/* "\ \n" (backslash-space-newline-closequote) -> two spaces */
+	const char input[] = "\"\\ \n\"";
+	struct fy_document *fyd = NULL;
+	struct fy_parse_cfg cfg = {0};
+	struct fy_node *root = NULL;
+	const char *text;
+
+	cfg.flags = FYPCF_DEFAULT_PARSE;
+
+	fyd = fy_document_build_from_string(&cfg, input, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	root = fy_document_root(fyd);
+	ck_assert_ptr_ne(root, NULL);
+	ck_assert(fy_node_is_scalar(root));
+	text = fy_node_get_scalar0(root);
+	ck_assert_ptr_ne(text, NULL);
+	ck_assert_str_eq(text, "  ");
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(parse_bug_escaped_space_before_newline_with_content)
+{
+	/* "\ \na" (backslash-space-newline-a-closequote) -> two spaces + a */
+	const char input[] = "\"\\ \na\"";
+	struct fy_document *fyd = NULL;
+	struct fy_parse_cfg cfg = {0};
+	struct fy_node *root = NULL;
+	const char *text;
+
+	cfg.flags = FYPCF_DEFAULT_PARSE;
+
+	fyd = fy_document_build_from_string(&cfg, input, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	root = fy_document_root(fyd);
+	ck_assert_ptr_ne(root, NULL);
+	ck_assert(fy_node_is_scalar(root));
+	text = fy_node_get_scalar0(root);
+	ck_assert_ptr_ne(text, NULL);
+	ck_assert_str_eq(text, "  a");
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 /* ── registration ────────────────────────────────────────────────── */
 
 void libfyaml_case_parse_bugs(struct fy_check_suite *cs)
@@ -440,4 +503,8 @@ void libfyaml_case_parse_bugs(struct fy_check_suite *cs)
 
 	/* extra parse bugs */
 	fy_check_testcase_add_test(ctc, parse_bug_single_quoted_single_quotes);
+
+	/* Bug 16: escaped space followed by newline in double-quoted scalar */
+	fy_check_testcase_add_test(ctc, parse_bug_escaped_space_before_newline_only);
+	fy_check_testcase_add_test(ctc, parse_bug_escaped_space_before_newline_with_content);
 }
