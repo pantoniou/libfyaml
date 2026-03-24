@@ -255,8 +255,10 @@ AC_DEFINE_UNQUOTED([HAVE_ASAN], [$HAVE_ASAN], [Define to 1 if ASAN is enabled])
 # Link libm on platforms where trunc() lives outside libc.
 AC_SEARCH_LIBS([trunc], [m])
 LIBM="$ac_cv_search_trunc"
-if test "x$LIBM" = "xno" || test "x$LIBM" = "xyes" ; then
-	LIBM=""
+case "$ac_cv_search_trunc" in
+	no|yes|"none required") LIBM="" ;;
+	*) LIBM="$ac_cv_search_trunc" ;;
+esac
 fi
 AC_SUBST(LIBM)
 
