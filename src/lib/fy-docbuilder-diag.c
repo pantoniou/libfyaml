@@ -70,8 +70,13 @@ void fy_document_builder_diag_vreport(struct fy_document_builder *fydb,
 			      const struct fy_diag_report_ctx *fydrc,
 			      const char *fmt, va_list ap)
 {
-	if (!fydb || !fydb->cfg.diag || !fydrc || !fmt)
+	if (!fydrc || !fmt)
 		return;
+
+	if (!fydb || !fydb->cfg.diag) {
+		fy_token_unref(fydrc->fyt);
+		return;
+	}
 
 	fy_diag_vreport(fydb->cfg.diag, fydrc, fmt, ap);
 }
@@ -86,4 +91,3 @@ void fy_document_builder_diag_report(struct fy_document_builder *fydb,
 	fy_document_builder_diag_vreport(fydb, fydrc, fmt, ap);
 	va_end(ap);
 }
-

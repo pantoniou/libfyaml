@@ -68,11 +68,16 @@ int fy_reader_diag(struct fy_reader *fyr, unsigned int flags,
 }
 
 void fy_reader_diag_vreport(struct fy_reader *fyr,
-		            const struct fy_diag_report_ctx *fydrc,
-			    const char *fmt, va_list ap)
+	            const struct fy_diag_report_ctx *fydrc,
+		    const char *fmt, va_list ap)
 {
-	if (!fyr || !fyr->diag || !fydrc || !fmt)
+	if (!fydrc || !fmt)
 		return;
+
+	if (!fyr || !fyr->diag) {
+		fy_token_unref(fydrc->fyt);
+		return;
+	}
 
 	fy_diag_vreport(fyr->diag, fydrc, fmt, ap);
 }

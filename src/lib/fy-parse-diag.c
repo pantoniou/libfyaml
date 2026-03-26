@@ -74,13 +74,18 @@ int fy_parser_diag(struct fy_parser *fyp, unsigned int flags,
 }
 
 void fy_parser_diag_vreport(struct fy_parser *fyp,
-		            const struct fy_diag_report_ctx *fydrc,
+			    const struct fy_diag_report_ctx *fydrc,
 			    const char *fmt, va_list ap)
 {
 	struct fy_diag *diag;
 
-	if (!fyp || !fyp->diag || !fydrc || !fmt)
+	if (!fydrc || !fmt)
 		return;
+
+	if (!fyp || !fyp->diag) {
+		fy_token_unref(fydrc->fyt);
+		return;
+	}
 
 	diag = fyp->diag;
 
@@ -156,4 +161,3 @@ void fy_parser_report(struct fy_parser *fyp, enum fy_error_type type,
 	fy_parser_vreport(fyp, type, fyt, fmt, ap);
 	va_end(ap);
 }
-
