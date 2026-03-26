@@ -259,7 +259,6 @@ case "$ac_cv_search_trunc" in
 	no|yes|"none required") LIBM="" ;;
 	*) LIBM="$ac_cv_search_trunc" ;;
 esac
-fi
 AC_SUBST(LIBM)
 
 # check if there's a qsort_r available (musl does not have it)
