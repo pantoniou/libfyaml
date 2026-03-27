@@ -436,7 +436,7 @@ void reflection_field_data_destroy(struct reflection_field_data *rfd)
 	if (!rfd)
 		return;
 
-	rtd = rfd_rtd(rfd);
+	rtd = rfd->rtd;
 
 	if (rfd->meta)
 		reflection_meta_destroy(rfd->meta);
