@@ -244,6 +244,27 @@ START_TEST(reflection_invalid_entry_meta_fails_cleanly)
 }
 END_TEST
 
+/* Test: malformed required entry meta must fail cleanly without leaking allocations */
+START_TEST(reflection_invalid_required_entry_meta_fails_cleanly)
+{
+	static const char invalid_meta[] = "! {required}";
+	struct fy_reflection *rfl;
+	struct fy_type_context_cfg ctx_cfg = { 0 };
+	struct fy_type_context *ctx;
+
+	rfl = fy_reflection_from_null(NULL);
+	ck_assert_ptr_ne(rfl, NULL);
+
+	ctx_cfg.rfl = rfl;
+	ctx_cfg.entry_type = "unsigned char";
+	ctx_cfg.entry_meta = invalid_meta;
+	ctx = fy_type_context_create(&ctx_cfg);
+	ck_assert_ptr_eq(ctx, NULL);
+
+	fy_reflection_destroy(rfl);
+}
+END_TEST
+
 /* ------------------------------------------------------------------ */
 /* Test: clang backend — struct field info  (requires HAVE_LIBCLANG)  */
 /* ------------------------------------------------------------------ */
@@ -499,6 +520,7 @@ void libfyaml_case_reflection(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, reflection_parse_uint);
 	fy_check_testcase_add_test(ctc, reflection_parse_int_ptr);
 	fy_check_testcase_add_test(ctc, reflection_invalid_entry_meta_fails_cleanly);
+	fy_check_testcase_add_test(ctc, reflection_invalid_required_entry_meta_fails_cleanly);
 
 #if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
 	/* clang backend tests */
