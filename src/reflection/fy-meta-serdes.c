@@ -5903,7 +5903,6 @@ reflection_reference_create(struct reflection_type_system *rts, const char *name
 	if (fyd_meta) {
 		rfd->yaml_annotation = fyd_meta;
 		rfd->yaml_annotation_str = rr->meta;
-		fyd_meta = NULL;	/* rfd takes over now */
 
 		rc = reflection_meta_fill(rfd->meta, fy_document_root(rfd->yaml_annotation));
 		RTS_ASSERT(!rc);
@@ -5930,6 +5929,7 @@ reflection_reference_create(struct reflection_type_system *rts, const char *name
 
 	rr->rfd_root = rfd;
 	rfd = NULL;
+	fyd_meta = NULL;	/* rr->rfd_root takes over now */
 
 	reflection_setup_type_ctx_setup(&rstc, rr);
 	rc = reflection_setup_type(rts, ti_entry, &rstc, &rr->rtd_root, rr->rfd_root->meta);
