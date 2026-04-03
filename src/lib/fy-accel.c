@@ -103,7 +103,7 @@ int fy_accel_resize(struct fy_accel *xl, unsigned int min_buckets)
 	next_pow2 = 1;
 	exp = 0;
 	while (next_pow2 < min_buckets &&
-	       exp < sizeof(prime_lt_pow2)/sizeof(prime_lt_pow2[0])) {
+	       exp < sizeof(prime_lt_pow2)/sizeof(prime_lt_pow2[0]) - 1) {
 		next_pow2 <<= 1;
 		exp++;
 	}
