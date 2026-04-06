@@ -1263,7 +1263,7 @@ typedef const fy_generic_map_pair *fy_generic_map_pair_handle;
  * Returns:
  * The required byte count, or %SIZE_MAX on integer overflow.
  */
-static inline size_t fy_sequence_storage_size(const size_t count)
+static inline size_t fy_sequence_storage_size(size_t count)
 {
 	size_t size;
 
@@ -1284,7 +1284,7 @@ static inline size_t fy_sequence_storage_size(const size_t count)
  * Returns:
  * The required byte count, or %SIZE_MAX on integer overflow.
  */
-static inline size_t fy_mapping_storage_size(const size_t count)
+static inline size_t fy_mapping_storage_size(size_t count)
 {
 	size_t size;
 
@@ -1306,7 +1306,7 @@ static inline size_t fy_mapping_storage_size(const size_t count)
  * Returns:
  * The required byte count, or %SIZE_MAX on integer overflow.
  */
-static inline size_t fy_collection_storage_size(bool is_map, const size_t count)
+static inline size_t fy_collection_storage_size(bool is_map, size_t count)
 {
 	return !is_map ?
 		fy_sequence_storage_size(count) :
