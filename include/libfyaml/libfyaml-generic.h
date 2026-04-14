@@ -7704,6 +7704,9 @@ typedef fy_generic (*fy_generic_map_xform_fn)(struct fy_generic_builder *gb, fy_
  */
 typedef fy_generic (*fy_generic_reducer_fn)(struct fy_generic_builder *gb, fy_generic acc, fy_generic v);
 
+/* fy_generic_erased_fn - Type-erased callback carrier for varargs dispatch */
+typedef void (*fy_generic_erased_fn)(void);
+
 /* Block variants of the above — available only when compiled with -fblocks (Clang) */
 #if defined(__BLOCKS__)
 /* fy_generic_filter_pred_block - Block (closure) variant of fy_generic_filter_pred_fn */
@@ -7712,6 +7715,8 @@ typedef bool (^fy_generic_filter_pred_block)(struct fy_generic_builder *gb, fy_g
 typedef fy_generic (^fy_generic_map_xform_block)(struct fy_generic_builder *gb, fy_generic v);
 /* fy_generic_reducer_block - Block (closure) variant of fy_generic_reducer_fn */
 typedef fy_generic (^fy_generic_reducer_block)(struct fy_generic_builder *gb, fy_generic acc, fy_generic v);
+/* fy_generic_erased_block - Type-erased block callback carrier for varargs dispatch */
+typedef void (^fy_generic_erased_block)(void);
 #endif
 
 /**
@@ -7858,10 +7863,10 @@ struct fy_op_reduce_args {
 struct fy_op_filter_map_reduce_common {
 	struct fy_op_common_args common;
 	union {
-		void (*fn)(void);
+		fy_generic_erased_fn fn;
 		/* private: */
 #if defined(__BLOCKS__)
-		void (^blk)(void);
+		fy_generic_erased_block blk;
 #endif
 		/* public: */
 	};

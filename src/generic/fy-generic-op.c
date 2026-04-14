@@ -43,12 +43,12 @@ typedef union {
 	fy_generic_filter_pred_fn filter_pred;
 	fy_generic_map_xform_fn map_xform;
 	fy_generic_reducer_fn reducer;
-	void (*fn)(void);
+	fy_generic_erased_fn fn;
 #if defined(__BLOCKS__)
 	fy_generic_filter_pred_block filter_pred_blk;
 	fy_generic_map_xform_block map_xform_blk;
 	fy_generic_reducer_block reducer_blk;
-	void (^blk)(void);
+	fy_generic_erased_block blk;
 #endif
 } fy_op_fn;
 
@@ -3839,10 +3839,10 @@ fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flag
 	case FYGBOP_REDUCE:
 #if defined(__BLOCKS__)
 		if (flags & FYGBOPF_BLOCK_FN)
-			args->filter_map_reduce_common.blk = va_arg(ap, void (^)(void));
+			args->filter_map_reduce_common.blk = va_arg(ap, fy_generic_erased_block);
 		else
 #endif
-			args->filter_map_reduce_common.fn = va_arg(ap, void (*)(void));
+			args->filter_map_reduce_common.fn = va_arg(ap, fy_generic_erased_fn);
 		if (op == FYGBOP_REDUCE)
 			args->reduce.acc = va_arg(ap, fy_generic);
 		break;
