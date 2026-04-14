@@ -216,7 +216,7 @@ static inline void fy_worker_signal_work_done(struct fy_thread *t, struct fy_thr
 	/* note that the work won't be replaced if it's a shutdown */
 	exp_work = work;
 	ok = fy_atomic_compare_exchange_strong(&t->work, &exp_work, NULL);
-	assert(ok);
+	assert(ok || exp_work == WORK_SHUTDOWN);
 
 	rc = fpost(&t->done);
 	assert(!rc);
