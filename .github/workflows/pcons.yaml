@@ -1,0 +1,140 @@
+name: Pcons CI
+
+run-name: >-
+  ${{ github.event_name == 'pull_request'       && format('Pcons CI · PR #{0}', github.event.pull_request.number) ||
+      github.event_name == 'workflow_dispatch'  && 'Pcons CI · manual' ||
+      format('Pcons CI · {0} · {1}', github.ref_name, github.event.head_commit.message) }}
+
+on:
+  push:
+    branches: [ master, stable, devel ]
+  pull_request:
+    branches: [ master, stable, devel ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: "pcons · ${{ matrix.os }} · ${{ matrix.build_type }}"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        build_type: [debug, release]
+
+    steps:
+    - name: "Git Sane LF"
+      run: |
+        git config --global core.autocrlf false
+        git config --global core.eol lf
+
+    - name: "Checkout"
+      uses: actions/checkout@v4
+
+    - name: "Install uv"
+      uses: astral-sh/setup-uv@v5
+
+    - name: "Install dependencies (Ubuntu)"
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install --no-install-recommends -y pkg-config libblocksruntime-dev check
+
+    - name: "Install dependencies (macOS)"
+      if: runner.os == 'macOS'
+      run: |
+        brew install check
+
+    - name: "Clone test suites"
+      run: |
+        git clone https://github.com/yaml/yaml-test-suite test/test-suite-data
+        git -C test/test-suite-data checkout 6e6c296ae9c9d2d5c4134b4b64d01b29ac19ff6f
+        git clone https://github.com/nst/JSONTestSuite test/json-test-suite-data
+        git -C test/json-test-suite-data checkout d64aefb55228d9584d3e5b2433f720ea8fd00c82
+
+    - name: "Build with pcons"
+      run: |
+        uvx --upgrade pcons --variant=${{ matrix.build_type }}
+      env:
+        BD: build/${{ matrix.build_type }}
+
+    - name: "Verify built artifacts"
+      run: |
+        test -f $BD/fy-tool || test -f $BD/fy-tool.exe
+        echo "fy-tool built successfully"
+        test -f $BD/libfyaml-test || test -f $BD/libfyaml-test.exe
+        echo "libfyaml-test built successfully"
+      env:
+        BD: build/${{ matrix.build_type }}
+
+    - name: "Smoke test fy-tool"
+      run: |
+        ./$BD/fy-tool --version
+        echo 'hello: world' | ./$BD/fy-tool --dump -
+      env:
+        BD: build/${{ matrix.build_type }}
+
+    - name: "Run libfyaml-test"
+      run: |
+        ./$BD/libfyaml-test
+      env:
+        BD: build/${{ matrix.build_type }}
+
+    - name: "Run error tests"
+      run: |
+        export FY_TOOL=./$BD/fy-tool
+        export LIBFYAML_TEST=./$BD/libfyaml-test
+        export TEST_DIR=./test
+        for dir in test/test-errors/[0-9][0-9][0-9][0-9]; do
+          bash cmake/run-single-tap-test.sh testerrors "$(basename "$dir")"
+        done
+      env:
+        BD: build/${{ matrix.build_type }}
+
+    - name: "Run emitter tests"
+      run: |
+        export FY_TOOL=./$BD/fy-tool
+        export LIBFYAML_TEST=./$BD/libfyaml-test
+        export TEST_DIR=./test
+        ncpu=$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+        for mode in testemitter testemitter-streaming testemitter-restreaming; do
+          ls test/emitter-examples/*.yaml | xargs -n1 basename \
+            | xargs -P"$ncpu" -I{} bash cmake/run-single-tap-test.sh "$mode" {} \
+            || exit 1
+        done
+      env:
+        BD: build/${{ matrix.build_type }}
+
+    - name: "Run YAML test suite"
+      run: |
+        export FY_TOOL=./$BD/fy-tool
+        export LIBFYAML_TEST=./$BD/libfyaml-test
+        export TEST_DIR=./test
+        ncpu=$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+        # Build list of all test IDs (top-level + numbered subtests)
+        test_ids=$(mktemp)
+        for dir in test/test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]; do
+          id=$(basename "$dir")
+          [ -f "$dir/===" ] && echo "$id"
+          for sub in "$dir"/[0-9][0-9]; do
+            [ -d "$sub" ] && [ -f "$sub/===" ] && echo "$id/$(basename "$sub")"
+          done
+        done > "$test_ids"
+        for mode in testsuite testsuite-evstream testsuite-resolution testsuite-generic; do
+          xargs -P"$ncpu" -I{} bash cmake/run-single-tap-test.sh "$mode" {} < "$test_ids" \
+            || { rm -f "$test_ids"; exit 1; }
+        done
+        rm -f "$test_ids"
+      env:
+        BD: build/${{ matrix.build_type }}
+
+    - name: "Run JSON test suite"
+      run: |
+        export FY_TOOL=./$BD/fy-tool
+        export TEST_DIR=./test
+        ncpu=$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+        ls test/json-test-suite-data/test_parsing/*.json | xargs -n1 basename \
+          | xargs -P"$ncpu" -I{} bash cmake/run-single-tap-test.sh jsontestsuite {} \
+          || exit 1
+      env:
+        BD: build/${{ matrix.build_type }}
