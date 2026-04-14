@@ -372,6 +372,23 @@ static void steal_mode_worker(void *arg)
 	}
 }
 
+struct concurrent_join_arg {
+	struct fy_thread_pool *tp;
+	_Atomic(int) *counter;
+	unsigned int rounds;
+	unsigned int tasks_per_round;
+};
+
+static void concurrent_join_worker(void *arg)
+{
+	struct concurrent_join_arg *cja = arg;
+	unsigned int i;
+
+	for (i = 0; i < cja->rounds; i++)
+		fy_thread_arg_join(cja->tp, atomic_add_worker, NULL,
+				   (void *)cja->counter, cja->tasks_per_round);
+}
+
 /* Test: Work stealing mode */
 START_TEST(thread_steal_mode)
 {
@@ -398,6 +415,64 @@ START_TEST(thread_steal_mode)
 }
 END_TEST
 
+START_TEST(thread_steal_mode_concurrent_callers)
+{
+	struct fy_thread_pool_cfg cfg;
+	struct fy_thread_pool_cfg driver_cfg;
+	struct fy_thread_pool *tp;
+	struct fy_thread_pool *driver_tp;
+	struct fy_thread *threads[4];
+	struct fy_thread_work works[4];
+	struct concurrent_join_arg args[4];
+	_Atomic(int) counter = 0;
+	const unsigned int callers = ARRAY_SIZE(args);
+	const unsigned int rounds = 10000;
+	const unsigned int tasks_per_round = 8;
+	unsigned int i;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = FYTPCF_STEAL_MODE;
+	cfg.num_threads = 2;
+	cfg.userdata = NULL;
+
+	memset(&driver_cfg, 0, sizeof(driver_cfg));
+	driver_cfg.flags = 0;
+	driver_cfg.num_threads = callers;
+	driver_cfg.userdata = NULL;
+
+	tp = fy_thread_pool_create(&cfg);
+	ck_assert_ptr_ne(tp, NULL);
+
+	driver_tp = fy_thread_pool_create(&driver_cfg);
+	ck_assert_ptr_ne(driver_tp, NULL);
+
+	for (i = 0; i < callers; i++) {
+		threads[i] = fy_thread_reserve(driver_tp);
+		ck_assert_ptr_ne(threads[i], NULL);
+
+		args[i].tp = tp;
+		args[i].counter = &counter;
+		args[i].rounds = rounds;
+		args[i].tasks_per_round = tasks_per_round;
+
+		works[i].fn = concurrent_join_worker;
+		works[i].arg = &args[i];
+		fy_thread_submit_work(threads[i], &works[i]);
+	}
+
+	for (i = 0; i < callers; i++) {
+		fy_thread_wait_work(threads[i]);
+		fy_thread_unreserve(threads[i]);
+	}
+
+	ck_assert_int_eq(fy_atomic_load(&counter),
+			 (int)(callers * rounds * tasks_per_round));
+
+	fy_thread_pool_destroy(driver_tp);
+	fy_thread_pool_destroy(tp);
+}
+END_TEST
+
 void libfyaml_case_thread(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -420,4 +495,5 @@ void libfyaml_case_thread(struct fy_check_suite *cs)
 
 	/* Work stealing tests */
 	fy_check_testcase_add_test(ctc, thread_steal_mode);
+	fy_check_testcase_add_test(ctc, thread_steal_mode_concurrent_callers);
 }
