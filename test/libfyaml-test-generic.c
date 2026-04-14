@@ -3129,7 +3129,7 @@ START_TEST(gb_preduce)
 {
 	struct fy_generic_builder_cfg cfg;
 	struct fy_generic_builder *gb;
-	fy_generic seq, v;
+	fy_generic seq, map, v;
 	int sum, exp_sum;
 	size_t i, num_items;
 	fy_generic *items;
@@ -3181,6 +3181,21 @@ START_TEST(gb_preduce)
 		sum = fy_cast(v, INT_MIN);
 		ck_assert(sum == 26);
 		printf("> preduce-small-seq-sum: ");
+		fy_generic_emit_default(v);
+
+		v = fy_generic_op(gb, FYGBOPF_REDUCE | FYGBOPF_PARALLEL, seq, 0, NULL, NULL,
+				fy_generic_test_sum_reducer, fy_value(gb, 10));
+		sum = fy_cast(v, INT_MIN);
+		ck_assert(sum == 36);
+		printf("> preduce-small-seq-sum-acc10: ");
+		fy_generic_emit_default(v);
+
+		map = fy_mapping("a", 7, "b", 6, "c", 5, "d", 8);
+		v = fy_generic_op(gb, FYGBOPF_REDUCE | FYGBOPF_PARALLEL, map, 0, NULL, NULL,
+				  fy_generic_test_sum_reducer, fy_value(gb, 10));
+		sum = fy_cast(v, INT_MIN);
+		ck_assert(sum == 36);
+		printf("> preduce-map-sum-acc10: ");
 		fy_generic_emit_default(v);
 
 		fy_generic_builder_destroy(gb);
