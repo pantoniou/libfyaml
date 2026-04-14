@@ -21,6 +21,7 @@
 #include <libfyaml.h>
 
 #include "fy-atomics.h"
+#include "fy-win32.h"
 
 #include "fy-check.h"
 
@@ -72,6 +73,20 @@ static void atomic_add_worker(void *arg)
 	_Atomic(int) *p = arg;
 
 	fy_atomic_fetch_add(p, 1);
+}
+
+struct shutdown_race_arg {
+	_Atomic(int) started;
+	_Atomic(int) counter;
+};
+
+static void shutdown_race_worker(void *arg)
+{
+	struct shutdown_race_arg *sra = arg;
+
+	fy_atomic_store(&sra->started, 1);
+	usleep(20000);
+	fy_atomic_fetch_add(&sra->counter, 1);
 }
 
 /* Test: Thread reserve, submit work, wait, unreserve */
@@ -245,6 +260,41 @@ START_TEST(thread_arg_join_repeated_atomic_counter)
 }
 END_TEST
 
+START_TEST(thread_destroy_with_running_work)
+{
+	struct fy_thread_pool_cfg cfg;
+	struct fy_thread_pool *tp;
+	struct fy_thread *thread;
+	struct fy_thread_work work;
+	struct shutdown_race_arg arg;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = 0;
+	cfg.num_threads = 1;
+	cfg.userdata = NULL;
+
+	fy_atomic_store(&arg.started, 0);
+	fy_atomic_store(&arg.counter, 0);
+
+	tp = fy_thread_pool_create(&cfg);
+	ck_assert_ptr_ne(tp, NULL);
+
+	thread = fy_thread_reserve(tp);
+	ck_assert_ptr_ne(thread, NULL);
+
+	work.fn = shutdown_race_worker;
+	work.arg = &arg;
+	fy_thread_submit_work(thread, &work);
+
+	while (!fy_atomic_load(&arg.started))
+		usleep(1000);
+
+	fy_thread_pool_destroy(tp);
+
+	ck_assert_int_eq(fy_atomic_load(&arg.counter), 1);
+}
+END_TEST
+
 /* Worker function for sum test */
 struct sum_arg {
 	const int *values;
@@ -365,6 +415,7 @@ void libfyaml_case_thread(struct fy_check_suite *cs)
 	/* Join API tests */
 	fy_check_testcase_add_test(ctc, thread_arg_join);
 	fy_check_testcase_add_test(ctc, thread_arg_join_repeated_atomic_counter);
+	fy_check_testcase_add_test(ctc, thread_destroy_with_running_work);
 	fy_check_testcase_add_test(ctc, thread_arg_array_join);
 
 	/* Work stealing tests */
