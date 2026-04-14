@@ -1059,12 +1059,14 @@ static void *fy_worker_thread_steal(void *arg)
 			w = w_stolen;
 		}
 
-		/* unreserve first */
-		fy_thread_unreserve_internal(t);
-
 		w_exp = w_last;
-		if (!fy_atomic_compare_exchange_strong(&t->work, &w_exp, NULL))
+		/* Keep the worker reserved until its current work slot is clear. */
+		if (!fy_atomic_compare_exchange_strong(&t->work, &w_exp, NULL)) {
+			fy_thread_unreserve_internal(t);
 			break;
+		}
+
+		fy_thread_unreserve_internal(t);
 	}
 	TDBG("%s: T#%u leaving steal mode\n", __func__, t->id);
 
