@@ -122,26 +122,35 @@ fy_reflection_from_c_file_with_cflags(const char *file, const char *cflags,
 #else
 
 struct fy_reflection *
-fy_reflection_from_c_files(int filec, const char * const filev[], int argc, const char * const argv[],
-			   bool display_diagnostics, bool include_comments,
-			   struct fy_diag *diag)
+fy_reflection_from_c_files(int filec FY_UNUSED,
+			   const char * const filev[] FY_UNUSED,
+			   int argc FY_UNUSED,
+			   const char * const argv[] FY_UNUSED,
+			   bool display_diagnostics FY_UNUSED,
+			   bool include_comments FY_UNUSED,
+			   struct fy_diag *diag FY_UNUSED)
 {
 	return NULL;
 }
 
 
 struct fy_reflection *
-fy_reflection_from_c_file(const char *file, int argc, const char * const argv[],
-			  bool display_diagnostics, bool include_comments,
-			  struct fy_diag *diag)
+fy_reflection_from_c_file(const char *file FY_UNUSED,
+			  int argc FY_UNUSED,
+			  const char * const argv[] FY_UNUSED,
+			  bool display_diagnostics FY_UNUSED,
+			  bool include_comments FY_UNUSED,
+			  struct fy_diag *diag FY_UNUSED)
 {
 	return NULL;
 }
 
 struct fy_reflection *
-fy_reflection_from_c_file_with_cflags(const char *file, const char *cflags,
-		bool display_diagnostics, bool include_comments,
-		struct fy_diag *diag)
+fy_reflection_from_c_file_with_cflags(const char *file FY_UNUSED,
+		const char *cflags FY_UNUSED,
+		bool display_diagnostics FY_UNUSED,
+		bool include_comments FY_UNUSED,
+		struct fy_diag *diag FY_UNUSED)
 {
 	return NULL;
 }
