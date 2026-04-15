@@ -28,8 +28,10 @@ extern "C" {
  * **Work-stealing mode** (``FYTPCF_STEAL_MODE``): the recommended mode for
  * data-parallel loops.  Submit a batch of work items with
  * ``fy_thread_work_join()``; the pool distributes items across threads and
- * the caller participates in the execution.  About 30% faster than
- * reservation mode for typical workloads.
+ * the caller participates in the execution. Concurrent joins from multiple
+ * non-pool callers on the same steal-mode pool are not supported and result
+ * in undefined behavior. About 30% faster than reservation mode for typical
+ * workloads.
  *
  * **Reservation mode**: explicitly reserve a thread with
  * ``fy_thread_reserve()``, submit a single work item with
