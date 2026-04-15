@@ -14,13 +14,19 @@ on:
 
 jobs:
   build:
-    name: "pcons · ${{ matrix.os }} · ${{ matrix.build_type }}"
+    name: >-
+      pcons · ${{ matrix.os }} · ${{ matrix.build_type }}${{ matrix.asan && ' (ASAN)' || '' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         build_type: [debug, release]
+        asan: [false]
+        include:
+          - os: ubuntu-latest
+            build_type: debug
+            asan: true
 
     steps:
     - name: "Git Sane LF"
@@ -54,7 +60,7 @@ jobs:
 
     - name: "Build with pcons"
       run: |
-        uvx --upgrade pcons --variant=${{ matrix.build_type }}
+        uvx --upgrade pcons --variant=${{ matrix.build_type }} ${{ matrix.asan && 'ENABLE_ASAN=1' || '' }}
       env:
         BD: build/${{ matrix.build_type }}
 

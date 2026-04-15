@@ -15,7 +15,7 @@ Usage:
 import os
 from pathlib import Path
 
-from pcons import Project, configure_file, find_c_toolchain, get_platform, get_variant
+from pcons import Project, configure_file, find_c_toolchain, get_platform, get_var, get_variant
 from pcons.configure.config import Configure
 from pcons.configure.checks import ToolChecks
 from pcons.core.subst import PathToken
@@ -29,6 +29,7 @@ variant = get_variant("release")
 build_dir = Path(os.environ.get("PCONS_BUILD_DIR", "build")) / variant
 src_dir = project_dir / "src"
 plat = get_platform()
+enable_asan = get_var("ENABLE_ASAN", "0") == "1"
 
 # Read version from .tarball-version
 version_file = project_dir / ".tarball-version"
@@ -90,6 +91,14 @@ have_wno_tautological = checks.check_flag(
 ).success
 have_gnu2x = checks.check_flag("-std=gnu2x").success
 have_c2x = checks.check_flag("-std=c2x").success
+
+# ASAN support
+have_asan = False
+if enable_asan:
+    have_asan = checks.check_flag("-fsanitize=address").success
+    if not have_asan:
+        import sys
+        print("WARNING: ENABLE_ASAN requested but compiler does not support -fsanitize=address", file=sys.stderr)
 have_fblocks = checks.check_flag("-fblocks").success
 
 # On non-Apple platforms, -fblocks requires linking libBlocksRuntime
@@ -181,7 +190,7 @@ config_vars: dict[str, str] = {
     "HAVE_COMPATIBLE_CHECK": "",
     "HAVE_STATIC": "1",
     "HAVE_STATIC_TOOLS": "",
-    "HAVE_ASAN": "",
+    "HAVE_ASAN": "1" if have_asan else "",
     "HAVE_DEVMODE": "",
     "HAVE_PORTABLE_TARGET": "",
     "TARGET_HAS_SSE2": "1" if target_has_sse2 else "0",
@@ -246,6 +255,12 @@ if have_heap_trampolines:
 
 for d in common_defines:
     env.cc.defines.append(d)
+
+# ASAN flags (compile + link)
+if have_asan:
+    asan_flags = ["-fsanitize=address,signed-integer-overflow,undefined", "-fno-omit-frame-pointer"]
+    env.cc.flags.extend(asan_flags)
+    env.link.flags.extend(asan_flags)
 
 # Include directories
 env.cc.includes.extend([
