@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pcons>=0.14.0"]
+# dependencies = ["pcons>=0.14.1"]
 # ///
 """pcons build script for libfyaml — a YAML 1.2 parser/emitter library.
 
