@@ -5,6 +5,42 @@ All notable changes to libfyaml will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-alpha5] - 2026-04-18
+
+The fifth alpha milestone for the 1.0 line. This release broadens the build
+and CI story around the 1.0 work while hardening generic, threading, parser,
+emitter, and reflection behavior with another round of targeted fixes and
+regression coverage.
+
+### Added
+
+- `build`: add the `pcons` build system and CI workflow
+- `ci`: enable address sanitizer builds via `ENABLE_ASAN=1`
+- `test`: add regression coverage for parser/emitter bugs, reflection malformed metadata, thread-pool shutdown/join races, and generic `preduce` behavior
+
+### Changed
+
+- `build`: require `pcons >= 0.14.1` to pick up the link-flag fix needed by the new build flow
+- `generic`: use typedefs for erased `va_arg` callbacks
+- `thread`: refine steal-mode worker reservation and shutdown behavior
+- `reflection`: mark stub parameters unused when libclang is unavailable and defer meta document ownership handoff more carefully
+- `build`: avoid outputting `none required` into `LIBM` when no math linker flags are needed
+- `configure`: fix a stray `fi` in `configure.ac`
+
+### Fixed
+
+- `generic`: fix `preduce` seeding via chunk and final workers
+- `thread`: tolerate futex shutdown races and remove a bogus test document external-steal join contract
+- `parse`: correctly handle escaped space followed by newlines
+- `atom`: rework `fy_atom_text_analyze()` for literals and fix the off-by-one in `fy_accel_resize()` prime table lookup
+- `reflection`: fix field-data destroy cleanup
+- `diag`: unref report tokens correctly without a sink
+
+### Statistics
+
+- 23 commits since `v1.0.0-alpha4`
+- Focus areas: new build/CI infrastructure, ASAN coverage, and correctness fixes across generic, thread, parse/emitter, and reflection paths
+
 ## [1.0.0-alpha4] - 2026-03-20
 
 The fourth alpha milestone for the 1.0 line. This is a narrow follow-up to
@@ -636,6 +672,7 @@ Jose Luis Blanco-Claraco, Andrey Somov, Orange_233, Martin Diehl
 
 Initial public release with comprehensive YAML 1.2 support.
 
+[1.0.0-alpha5]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha4...v1.0.0-alpha5
 [1.0.0-alpha4]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha3...v1.0.0-alpha4
 [1.0.0-alpha3]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha2...v1.0.0-alpha3
 [1.0.0-alpha2]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha1...v1.0.0-alpha2

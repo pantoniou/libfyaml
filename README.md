@@ -1,4 +1,4 @@
-# libfyaml 1.0-alpha4
+# libfyaml 1.0-alpha5
 
 [![Autotools CI](https://github.com/pantoniou/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22Standard+Automake+CI%22)
 [![CMake CI](https://github.com/pantoniou/libfyaml/workflows/CMake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22CMake+CI%22)
@@ -17,17 +17,19 @@ The alpha release adds a clear progression:
 * use generics when your problem is "work with values"
 * use reflection when your problem is "populate native C data structures"
 
-## Why 1.0-alpha4 matters
+## Why 1.0-alpha5 matters
 
-`1.0.0-alpha4` is the packaging repair follow-up to `1.0.0-alpha3`.
+`1.0.0-alpha5` is the build-and-correctness follow-up to the earlier
+`1.0.0-alpha` releases.
 
-It keeps the same overall 1.0 direction, but fixes the Python release pipeline
-after the `alpha3` wheel packaging problems:
+It keeps the same overall 1.0 direction, but expands build/test coverage and
+hardens the new subsystems in the places that matter for early adopters:
 
-* `sdist` packaging now stages the full source tree correctly
-* Python packaging detects the staged source-tree root correctly during builds
-* the wheel matrix now includes `cp314`
-* the release is aimed at fixing the broken Python wheel / source-distribution flow from `alpha3`
+* new `pcons` build system support and CI coverage
+* address-sanitized CI builds via `ENABLE_ASAN=1`
+* generic and threading fixes around `preduce` seeding and steal-mode worker shutdown/join behavior
+* parser and emitter bug fixes with expanded regression coverage
+* reflection cleanup fixes and safer no-libclang stub handling
 
 ### Generic runtime
 
@@ -278,8 +280,8 @@ python3 -m pytest tests/
 
 The binding is part of the alpha release story and shows the generic runtime's
 data model in regular use. `v1.0.0-alpha3` improved the Windows story for the
-binding, and `v1.0.0-alpha4` fixes the follow-on wheel and `sdist` packaging
-problems from that release.
+binding, `v1.0.0-alpha4` repaired the wheel and `sdist` packaging flow, and
+`v1.0.0-alpha5` broadens build and CI coverage around the project as a whole.
 
 ## License
 
