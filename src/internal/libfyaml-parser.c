@@ -5687,7 +5687,7 @@ int main(int argc, char *argv[])
 
 	/* turn on comment parsing for comment mode */
 	if (!strcmp(mode, "comment"))
-		cfg.flags |= FYPCF_PARSE_COMMENTS;
+		cfg.flags |= FYPCF_KEEP_COMMENTS;
 
 	rc = fy_parse_setup(fyp, &cfg);
 	if (rc) {

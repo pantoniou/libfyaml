@@ -272,7 +272,7 @@ enum fy_error_module {
  * @FYPCF_RESOLVE_DOCUMENT: When producing documents, automatically resolve them
  * @FYPCF_DISABLE_MMAP_OPT: Disable mmap optimization
  * @FYPCF_DISABLE_RECYCLING: Disable recycling optimization
- * @FYPCF_PARSE_COMMENTS: Enable parsing of comments (experimental)
+ * @FYPCF_KEEP_COMMENTS: Retain comments from the original source
  * @FYPCF_DISABLE_DEPTH_LIMIT: Disable depth limit check, use with enlarged stack
  * @FYPCF_DISABLE_ACCELERATORS: Disable use of access accelerators (saves memory)
  * @FYPCF_DISABLE_BUFFERING: Disable use of buffering where possible
@@ -287,6 +287,8 @@ enum fy_error_module {
  * @FYPCF_JSON_FORCE: Force JSON mode always
  * @FYPCF_YPATH_ALIASES: Enable YPATH aliases mode
  * @FYPCF_ALLOW_DUPLICATE_KEYS: Allow duplicate keys on mappings
+ * @FYPCF_CREATE_MARKERS: Retain source-position markers for parsed content
+ * @FYPCF_KEEP_STYLE: Retain original scalar/collection style information
  */
 enum fy_parse_cfg_flags {
 	FYPCF_QUIET			= FY_BIT(0),
@@ -294,7 +296,7 @@ enum fy_parse_cfg_flags {
 	FYPCF_RESOLVE_DOCUMENT		= FY_BIT(2),
 	FYPCF_DISABLE_MMAP_OPT		= FY_BIT(3),
 	FYPCF_DISABLE_RECYCLING		= FY_BIT(4),
-	FYPCF_PARSE_COMMENTS		= FY_BIT(5),
+	FYPCF_KEEP_COMMENTS		= FY_BIT(5),
 	FYPCF_DISABLE_DEPTH_LIMIT	= FY_BIT(6),
 	FYPCF_DISABLE_ACCELERATORS	= FY_BIT(7),
 	FYPCF_DISABLE_BUFFERING		= FY_BIT(8),
@@ -309,7 +311,11 @@ enum fy_parse_cfg_flags {
 	FYPCF_JSON_FORCE		= FYPCF_JSON(2),
 	FYPCF_YPATH_ALIASES		= FY_BIT(18),
 	FYPCF_ALLOW_DUPLICATE_KEYS	= FY_BIT(19),
+	FYPCF_CREATE_MARKERS		= FY_BIT(20),
+	FYPCF_KEEP_STYLE		= FY_BIT(21),
 };
+
+#define FYPCF_PARSE_COMMENTS	FYPCF_KEEP_COMMENTS
 
 #define FYPCF_DEFAULT_PARSE	(0)
 
@@ -1382,7 +1388,8 @@ fy_event_get_comments(struct fy_event *fye)
  *
  * Returns:
  * A pointer to a zero terminated text representation of the comment.
- * NULL in case of an error or if the event has no such comments.
+ * NULL in case of an error, if the node has no such comments, or if
+ * comments were not retained by the parser configuration.
  */
 const char *
 fy_node_get_comment(struct fy_node *fyn, enum fy_comment_placement which)
@@ -1396,7 +1403,8 @@ fy_node_get_comment(struct fy_node *fyn, enum fy_comment_placement which)
  * Returns:
  * A pointer to a zero terminated text representation of all the comments.
  * The comments of all the placements are concatenated and returned as one.
- * NULL in case of an error or if the event has no comments.
+ * NULL in case of an error, if the node has no comments, or if comments
+ * were not retained by the parser configuration.
  */
 const char *
 fy_node_get_comments(struct fy_node *fyn)

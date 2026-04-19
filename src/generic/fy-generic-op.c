@@ -3137,7 +3137,11 @@ fy_generic_op_parse(const struct fy_generic_op_desc *desc FY_UNUSED,
 	}
 
 	if (parse_flags & FYOPPF_KEEP_COMMENTS)
-		parse_cfg.flags |= FYPCF_PARSE_COMMENTS;
+		parse_cfg.flags |= FYPCF_KEEP_COMMENTS;
+	if (parse_flags & FYOPPF_CREATE_MARKERS)
+		parse_cfg.flags |= FYPCF_CREATE_MARKERS;
+	if (parse_flags & FYOPPF_KEEP_STYLE)
+		parse_cfg.flags |= FYPCF_KEEP_STYLE;
 
 	if (parse_flags & FYOPPF_DISABLE_DIRECTORY)
 		decoder_parse_flags |= FYGDPF_DISABLE_DIRECTORY;

@@ -8011,6 +8011,9 @@ fy_node_get_comment(struct fy_node *fyn, enum fy_comment_placement placement)
 	if (!fyt)
 		return NULL;
 
+	if (!(fyn->fyd->parse_cfg.flags & FYPCF_KEEP_COMMENTS))
+		return NULL;
+
 	return fy_token_get_comment(fyt, placement);
 }
 
@@ -8038,6 +8041,9 @@ fy_node_get_comments(struct fy_node *fyn)
 	}
 
 	if (!fyt)
+		return NULL;
+
+	if (!(fyn->fyd->parse_cfg.flags & FYPCF_KEEP_COMMENTS))
 		return NULL;
 
 	return fy_token_get_comments(fyt);
