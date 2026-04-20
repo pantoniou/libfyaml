@@ -207,7 +207,7 @@ jobs:
     - name: "Install dependencies (Windows)"
       if: runner.os == 'Windows'
       run: |
-        choco install pkgconfiglite llvm
+        choco install llvm
 
     - name: "Install python"
       run: |
