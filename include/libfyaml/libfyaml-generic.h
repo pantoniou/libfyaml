@@ -72,6 +72,8 @@ extern "C" {
 
 /* struct fy_generic_builder - opaque generic value builder (heap-allocated) */
 struct fy_generic_builder;
+/* struct fy_generic_document_builder - opaque event-stream to generic builder */
+struct fy_generic_document_builder;
 
 /**
  * enum fy_generic_type - Type discriminator for fy_generic values.
@@ -7871,6 +7873,257 @@ struct fy_op_filter_map_reduce_common {
 		/* public: */
 	};
 };
+
+/**
+ * DOC: Generic document builder - event-stream to generic conversion
+ *
+ * ``struct fy_generic_document_builder`` accumulates YAML parser events and
+ * assembles them into ``fy_generic`` values one document at a time.
+ *
+ * The builder mirrors ``struct fy_document_builder`` but produces generic
+ * values instead of document trees. It supports the same pull and push modes:
+ *
+ * **Pull mode** - the builder drives a parser internally::
+ *
+ *   struct fy_generic_document_builder *fygdb =
+ *       fy_generic_document_builder_create_on_parser(fyp, gb);
+ *   fy_generic doc;
+ *   while (fy_generic_is_valid(doc =
+ *              fy_generic_document_builder_load_document(fygdb, fyp))) {
+ *       process(doc);
+ *   }
+ *   fy_generic_document_builder_destroy(fygdb);
+ *
+ * **Push mode** - the caller feeds events one at a time::
+ *
+ *   fy_generic_document_builder_set_in_stream(fygdb);
+ *   struct fy_event *fye;
+ *   while ((fye = get_next_event()) != NULL) {
+ *       fy_generic_document_builder_process_event(fygdb, fye);
+ *       if (fy_generic_document_builder_is_document_complete(fygdb)) {
+ *           fy_generic doc =
+ *               fy_generic_document_builder_take_document(fygdb);
+ *           process(doc);
+ *       }
+ *   }
+ *
+ * By default the builder returns the root document value. Clearing
+ * ``FYGDBF_DISABLE_DIRECTORY`` makes it return the document-state directory
+ * entry (vds) instead, matching the generic parser helpers.
+ */
+
+/**
+ * enum fy_generic_document_builder_flags - Configuration flags for a generic document builder.
+ *
+ * @FYGDBF_DISABLE_DIRECTORY: Return the document root instead of a vds entry
+ * @FYGDBF_TRACE:             Enable event trace output for debugging
+ * @FYGDBF_KEEP_COMMENTS:     Preserve comments in the parsed representation
+ * @FYGDBF_CREATE_MARKERS:    Attach position markers to parsed nodes
+ * @FYGDBF_PYYAML_COMPAT:     Apply YAML 1.1 PyYAML-compatible parsing quirks
+ * @FYGDBF_KEEP_STYLE:        Preserve original scalar/collection style information
+ * @FYGDBF_KEEP_FAILSAFE_STR: Keep failsafe-schema plain string tags
+ */
+enum fy_generic_document_builder_flags {
+	FYGDBF_DISABLE_DIRECTORY	= FY_BIT(0),
+	FYGDBF_TRACE			= FY_BIT(1),
+	FYGDBF_KEEP_COMMENTS		= FY_BIT(2),
+	FYGDBF_CREATE_MARKERS		= FY_BIT(3),
+	FYGDBF_PYYAML_COMPAT		= FY_BIT(4),
+	FYGDBF_KEEP_STYLE		= FY_BIT(5),
+	FYGDBF_KEEP_FAILSAFE_STR	= FY_BIT(6),
+};
+
+#define FYGDBF_DEFAULT		FYGDBF_DISABLE_DIRECTORY
+
+/**
+ * struct fy_generic_document_builder_cfg - Configuration for creating a generic document builder.
+ *
+ * @parse_cfg: Parser configuration used for defaults such as depth limits and resolution
+ * @userdata:  Opaque user data pointer
+ * @diag:      Optional diagnostic interface to use
+ * @gb:        Caller-owned generic builder used for all allocations
+ * @flags:     Generic document builder configuration flags
+ */
+struct fy_generic_document_builder_cfg {
+	struct fy_parse_cfg parse_cfg;
+	void *userdata;
+	struct fy_diag *diag;
+	struct fy_generic_builder *gb;
+	enum fy_generic_document_builder_flags flags;
+};
+
+/**
+ * fy_generic_document_builder_create() - Create a generic document builder.
+ *
+ * @cfg: Configuration for the builder; NULL uses defaults
+ *
+ * Returns:
+ * A pointer to the builder or NULL on error.
+ */
+struct fy_generic_document_builder *
+fy_generic_document_builder_create(const struct fy_generic_document_builder_cfg *cfg)
+	FY_EXPORT;
+
+/**
+ * fy_generic_document_builder_create_on_parser() - Create a generic builder associated with a parser.
+ *
+ * @fyp: Parser whose configuration and diagnostics should be mirrored
+ * @gb:  Caller-owned generic builder used for all allocations
+ *
+ * Returns:
+ * A pointer to the builder or NULL on error.
+ */
+struct fy_generic_document_builder *
+fy_generic_document_builder_create_on_parser(struct fy_parser *fyp, struct fy_generic_builder *gb)
+	FY_EXPORT;
+
+/**
+ * fy_generic_document_builder_reset() - Reset a generic document builder without destroying it.
+ *
+ * @fygdb: The generic document builder
+ */
+void
+fy_generic_document_builder_reset(struct fy_generic_document_builder *fygdb)
+	FY_EXPORT;
+
+/**
+ * fy_generic_document_builder_destroy() - Destroy a generic document builder.
+ *
+ * @fygdb: The generic document builder
+ */
+void
+fy_generic_document_builder_destroy(struct fy_generic_document_builder *fygdb)
+	FY_EXPORT;
+
+/**
+ * fy_generic_document_builder_get_document() - Get the current document generic.
+ *
+ * Returns the currently materialized document for the builder. If the current
+ * event stream has not yet produced a complete generic value, returns
+ * ``fy_invalid``.
+ *
+ * @fygdb: The generic document builder
+ *
+ * Returns:
+ * The current document generic, or ``fy_invalid`` if none is available.
+ */
+fy_generic
+fy_generic_document_builder_get_document(struct fy_generic_document_builder *fygdb)
+	FY_EXPORT;
+
+/**
+ * fy_generic_document_builder_is_in_stream() - Test whether the builder is in stream state.
+ *
+ * @fygdb: The generic document builder
+ *
+ * Returns:
+ * true if in stream, false otherwise.
+ */
+bool
+fy_generic_document_builder_is_in_stream(struct fy_generic_document_builder *fygdb)
+	FY_EXPORT;
+
+/**
+ * fy_generic_document_builder_is_in_document() - Test whether the builder is in document state.
+ *
+ * @fygdb: The generic document builder
+ *
+ * Returns:
+ * true if in a document, false otherwise.
+ */
+bool
+fy_generic_document_builder_is_in_document(struct fy_generic_document_builder *fygdb)
+	FY_EXPORT;
+
+/**
+ * fy_generic_document_builder_is_document_complete() - Test whether a document is complete.
+ *
+ * @fygdb: The generic document builder
+ *
+ * Returns:
+ * true if a document is complete and can be taken, false otherwise.
+ */
+bool
+fy_generic_document_builder_is_document_complete(struct fy_generic_document_builder *fygdb)
+	FY_EXPORT;
+
+/**
+ * fy_generic_document_builder_take_document() - Take ownership of the current document generic.
+ *
+ * @fygdb: The generic document builder
+ *
+ * Returns:
+ * The completed document generic, or ``fy_invalid`` on error.
+ */
+fy_generic
+fy_generic_document_builder_take_document(struct fy_generic_document_builder *fygdb)
+	FY_EXPORT;
+
+/**
+ * fy_generic_document_builder_peek_document() - Peek at the current document generic.
+ *
+ * Ownership remains with the builder.
+ *
+ * @fygdb: The generic document builder
+ *
+ * Returns:
+ * The current document generic, or ``fy_invalid`` if none is available.
+ */
+fy_generic
+fy_generic_document_builder_peek_document(struct fy_generic_document_builder *fygdb)
+	FY_EXPORT;
+
+/**
+ * fy_generic_document_builder_set_in_stream() - Set the builder state to stream mode.
+ *
+ * @fygdb: The generic document builder
+ */
+void
+fy_generic_document_builder_set_in_stream(struct fy_generic_document_builder *fygdb)
+	FY_EXPORT;
+
+/**
+ * fy_generic_document_builder_set_in_document() - Set the builder state to document mode.
+ *
+ * @fygdb:  The generic document builder
+ * @fyds:   The document state
+ * @single: Single-document mode; complete as soon as the root value is built
+ *
+ * Returns:
+ * 0 on success, -1 on error.
+ */
+int
+fy_generic_document_builder_set_in_document(struct fy_generic_document_builder *fygdb,
+					    struct fy_document_state *fyds, bool single)
+	FY_EXPORT;
+
+/**
+ * fy_generic_document_builder_load_document() - Load the next document generic from a parser.
+ *
+ * @fygdb: The generic document builder
+ * @fyp:   The parser
+ *
+ * Returns:
+ * The next completed document generic, or ``fy_invalid`` on error or EOF.
+ */
+fy_generic
+fy_generic_document_builder_load_document(struct fy_generic_document_builder *fygdb,
+					  struct fy_parser *fyp)
+	FY_EXPORT;
+
+/**
+ * fy_generic_document_builder_process_event() - Process a single event with a builder.
+ *
+ * @fygdb: The generic document builder
+ * @fye:   The event
+ *
+ * Returns:
+ * 0 on success, 1 when the processed event completes a document, -1 on error.
+ */
+int
+fy_generic_document_builder_process_event(struct fy_generic_document_builder *fygdb,
+					  struct fy_event *fye)
+	FY_EXPORT;
 
 /* FYOPPF_INPUT_TYPE_SHIFT - Bit position of the input-type field in fy_op_parse_flags */
 #define FYOPPF_INPUT_TYPE_SHIFT	4

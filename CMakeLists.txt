@@ -983,6 +983,7 @@ set(LIBSRCS
 if(HAVE_GENERIC)
     list(APPEND LIBSRCS
         src/generic/fy-generic.c
+        src/generic/fy-generic-docbuilder.c
         src/generic/fy-generic-decoder.c
         src/generic/fy-generic-encoder.c
         src/generic/fy-generic-op.c

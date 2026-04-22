@@ -76,19 +76,9 @@ enum fy_generic_decoder_parse_flags {
 
 struct fy_generic_decoder {
 	struct fy_parser *fyp;
-	struct fy_generic_decoder_obj_list recycled_gdos;
-	enum fy_generic_schema original_schema;
-	enum fy_parser_mode curr_parser_mode;
 	struct fy_generic_builder *gb;
-	enum fy_generic_decoder_parse_flags parse_flags;
+	struct fy_parse_cfg parse_cfg;
 	bool resolve;
-	bool document_ready;
-	bool single_document;
-	fy_generic vroot;
-	fy_generic vds;
-	struct fy_generic_anchor_list complete_anchors;
-	struct fy_generic_anchor_list collecting_anchors;
-	struct fy_generic_decoder_obj *gdo_root;
 };
 
 static inline bool

@@ -75,6 +75,7 @@ libfyaml_la_SOURCES += \
 if HAVE_GENERIC
 libfyaml_la_SOURCES += \
 	generic/fy-generic.c generic/fy-generic.h \
+	generic/fy-generic-docbuilder.c \
 	generic/fy-generic-decoder.c generic/fy-generic-decoder.h \
 	generic/fy-generic-encoder.c generic/fy-generic-encoder.h \
 	generic/fy-generic-op.c \

@@ -330,6 +330,7 @@ if have_generic:
         src_dir / "generic" / "fy-generic-encoder.c",
         src_dir / "generic" / "fy-generic-op.c",
         src_dir / "generic" / "fy-generic-iter.c",
+        src_dir / "generic" / "fy-generic-docbuilder.c",
     ])
 
 if have_reflection:
