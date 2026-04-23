@@ -1431,7 +1431,7 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 		fy_generic_builder_reset(gb);
 
 		parse_flags = FYOPPF_MULTI_DOCUMENT;
-		emit_flags = FYOPEF_MODE_YAML_1_2 | FYOPEF_MULTI_DOCUMENT;
+		emit_flags = FYOPEF_MULTI_DOCUMENT;
 
 		if (gcfg->testsuite)
 			parse_flags |= FYOPPF_DONT_RESOLVE;
@@ -1531,29 +1531,44 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 			break;
 		}
 
-		/* XXX must parse input */
-		emit_flags |= FYOPEF_MODE_AUTO;
-
-		/* we don't support arbitrary modes/styles */
+		/* generic emit supports JSON plus YAML style selection */
 		switch (gcfg->emit_cfg_flags & (FYECF_MODE_MASK << FYECF_MODE_SHIFT)) {
 		case FYECF_MODE_ORIGINAL:
 		default:
+			emit_flags |= FYOPEF_MODE_YAML_1_2;
 			emit_flags |= FYOPEF_STYLE_DEFAULT;
 			break;
 		case FYECF_MODE_BLOCK:
+			emit_flags |= FYOPEF_MODE_YAML_1_2;
 			emit_flags |= FYOPEF_STYLE_BLOCK;
 			break;
 		case FYECF_MODE_FLOW:
+			emit_flags |= FYOPEF_MODE_YAML_1_2;
 			emit_flags |= FYOPEF_STYLE_FLOW;
 			break;
 		case FYECF_MODE_PRETTY:
+			emit_flags |= FYOPEF_MODE_YAML_1_2;
 			emit_flags |= FYOPEF_STYLE_PRETTY;
 			break;
 		case FYECF_MODE_FLOW_COMPACT:
+			emit_flags |= FYOPEF_MODE_YAML_1_2;
 			emit_flags |= FYOPEF_STYLE_COMPACT;
 			break;
 		case FYECF_MODE_FLOW_ONELINE:
+			emit_flags |= FYOPEF_MODE_YAML_1_2;
 			emit_flags |= FYOPEF_STYLE_ONELINE;
+			break;
+		case FYECF_MODE_JSON:
+			emit_flags |= FYOPEF_MODE_JSON;
+			emit_flags |= FYOPEF_STYLE_DEFAULT;
+			break;
+		case FYECF_MODE_JSON_ONELINE:
+			emit_flags |= FYOPEF_MODE_JSON;
+			emit_flags |= FYOPEF_STYLE_ONELINE;
+			break;
+		case FYECF_MODE_JSON_COMPACT:
+			emit_flags |= FYOPEF_MODE_JSON;
+			emit_flags |= FYOPEF_STYLE_COMPACT;
 			break;
 		}
 
