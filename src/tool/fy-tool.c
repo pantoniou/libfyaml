@@ -1670,7 +1670,7 @@ int main(int argc, char *argv[])
 	const char *file = NULL, *trim = TRIM_DEFAULT;
 	char *tmp, *s, *progname;
 	struct fy_document *fyd, *fyd_join = NULL;
-	enum fy_emitter_cfg_flags emit_flags = 0;
+	enum fy_emitter_cfg_flags emit_flags = 0, emit_width_flags = 0;
 	enum fy_emitter_xcfg_flags emit_xflags = 0;
 	struct fy_node *fyn, *fyn_emit, *fyn_to, *fyn_from;
 	int count_ins = 0;
@@ -2333,8 +2333,6 @@ int main(int argc, char *argv[])
 	exitcode = EXIT_FAILURE;
 
 	if (tool_mode != OPT_TESTSUITE) {
-		enum fy_emitter_cfg_flags emit_width_flags;
-
 		/* if we're dumping to a non tty stdout width is infinite */
 		if (tool_mode == OPT_DUMP && !isatty(fileno(stdout)) && !manual_width)
 			emit_width_flags = FYECF_WIDTH_INF;
@@ -3066,7 +3064,9 @@ int main(int argc, char *argv[])
 		gcfg.dump_primitives = dump_primitives;
 		gcfg.create_markers = create_markers;
 		gcfg.pyyaml_compat = pyyaml_compat;
-		gcfg.emit_cfg_flags = emit_flags | FYECF_INDENT(indent);
+		gcfg.emit_cfg_flags = emit_flags |
+				      (manual_width ? emit_width_flags : 0) |
+				      FYECF_INDENT(indent);
 		gcfg.emit_xcfg_flags = emit_xflags;
 		gcfg.parse_cfg_flags = cfg.flags;
 		gcfg.testsuite = tool_mode == OPT_GENERIC_TESTSUITE;
