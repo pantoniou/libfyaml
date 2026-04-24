@@ -1323,7 +1323,9 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
 			return 0;
 		}
 
-		v = fygdb_create_scalar(fygdb, fye, va, vt, vcomment, vstyle,
+		v = fygdb_create_scalar(fygdb, fye,
+					fygdb->resolve ? fy_invalid : va,
+					vt, vcomment, vstyle,
 					vfailsafe_str, vmarker, &is_empty_plain_scalar);
 		fygdb_error_check(fygdb, fy_generic_is_valid(v), err_out,
 				  "fy_generic_document_builder scalar create failed");
@@ -1346,7 +1348,7 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
 		fygdb_error_check(fygdb, gdo, err_out, "fy_generic_decoder_object_alloc() failed");
 
 		gdo->type = fye->type == FYET_SEQUENCE_START ? FYGDOT_SEQUENCE : FYGDOT_MAPPING;
-		gdo->anchor = va;
+		gdo->anchor = fygdb->resolve ? fy_invalid : va;
 		gdo->tag = vt;
 		gdo->comment = vcomment;
 		gdo->style = vstyle;
