@@ -2503,7 +2503,8 @@ fy_generic_vds_create_from_document_state(struct fy_generic_builder *gb, fy_gene
 }
 
 struct fy_token *
-fy_document_state_generic_create_token(struct fy_document_state *fyds, fy_generic v, enum fy_token_type type)
+fy_document_state_generic_create_token(struct fy_document_state *fyds, fy_generic v,
+				       enum fy_token_type type, enum fy_scalar_style style)
 {
 	struct fy_token *fyt = NULL;
 	struct fy_input *fyi = NULL;
@@ -2511,7 +2512,7 @@ fy_document_state_generic_create_token(struct fy_document_state *fyds, fy_generi
 	struct fy_tag_scan_info info;
 	int handle_length, uri_length, prefix_length;
 	const char *handle_start;
-	struct fy_token *fyt_td;
+	struct fy_token *fyt_td = NULL;
 	fy_generic_sized_string szstr;
 	fy_generic vstr;
 	struct fy_atom handle;
@@ -2561,12 +2562,15 @@ fy_document_state_generic_create_token(struct fy_document_state *fyds, fy_generi
 		goto err_out;
 	data = NULL;
 
+	if ((unsigned int)style >= FYSS_MAX)
+		style = FYSS_ANY;
+
 	switch (type) {
 	case FYTT_SCALAR:
-		fyt = fy_token_create(FYTT_SCALAR, &handle, FYSS_ANY);
+		fyt = fy_token_create(FYTT_SCALAR, &handle, style);
 		break;
 	case FYTT_ALIAS:
-		fyt = fy_token_create(FYTT_SCALAR, &handle, NULL);
+		fyt = fy_token_create(FYTT_ALIAS, &handle, NULL);
 		break;
 	case FYTT_ANCHOR:
 		fyt = fy_token_create(FYTT_ANCHOR, &handle);

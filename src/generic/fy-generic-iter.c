@@ -151,12 +151,13 @@ void fy_generic_iterator_destroy(struct fy_generic_iterator *fygi)
 }
 
 static struct fy_token *
-fygi_create_token(struct fy_generic_iterator *fygi, fy_generic v, enum fy_token_type type)
+fygi_create_token(struct fy_generic_iterator *fygi, fy_generic v,
+		  enum fy_token_type type, enum fy_scalar_style style)
 {
 	if (!fygi)
 		return NULL;
 
-	return fy_document_state_generic_create_token(fygi->fyds, v, type);
+	return fy_document_state_generic_create_token(fygi->fyds, v, type, style);
 }
 
 static struct fy_event *
@@ -169,7 +170,10 @@ fygi_event_create(struct fy_generic_iterator *fygi, fy_generic v, bool start)
 	struct fy_token *anchor = NULL;
 	fy_generic_indirect gi;
 	enum fy_generic_type type;
+	enum fy_collection_style cstyle;
+	enum fy_scalar_style sstyle;
 	enum fy_token_type ttype;
+	bool has_style, has_comment;
 	int rc;
 
 	fyep = fy_generic_iterator_eventp_alloc(fygi);
@@ -194,30 +198,48 @@ fygi_event_create(struct fy_generic_iterator *fygi, fy_generic v, bool start)
 	if (fygi->cfg.flags & FYGICF_STRIP_FAILSAFE_STR)
 		gi.failsafe_str = fy_invalid;
 
+
+	has_style = fy_generic_is_int_type(gi.style);
+	has_comment = fy_generic_is_string(gi.comment);
+
+	cstyle = FYCS_ANY;
+	sstyle = FYSS_ANY;
+	if (has_style) {
+		if (fy_generic_type_is_scalar(type))
+			sstyle = fy_cast(gi.style, FYSS_ANY);
+		else if (fy_generic_type_is_collection(type))
+			cstyle = fy_cast(gi.style, FYCS_ANY);
+	}
+
 	if (fy_generic_is_string(gi.anchor))
-		anchor = fygi_create_token(fygi, gi.anchor, FYTT_ANCHOR);
+		anchor = fygi_create_token(fygi, gi.anchor, FYTT_ANCHOR, FYSS_ANY);
 
 	if (fy_generic_is_string(gi.tag))
-		tag = fygi_create_token(fygi, gi.tag, FYTT_TAG);
+		tag = fygi_create_token(fygi, gi.tag, FYTT_TAG, FYSS_ANY);
 
 	fyt = NULL;
 	if (fy_generic_type_is_scalar(type) || type == FYGT_ALIAS) {
-
-		fyt = fygi_create_token(fygi, v, type != FYGT_ALIAS ? FYTT_SCALAR : FYTT_ALIAS);
+		fyt = fygi_create_token(fygi, v,
+					type != FYGT_ALIAS ? FYTT_SCALAR : FYTT_ALIAS,
+					sstyle);
 		if (!fyt)
 			goto err_out;
 
-	} else if (fy_generic_type_is_collection(type) && fy_generic_is_valid(gi.comment)) {
+	} else if (fy_generic_type_is_collection(type) && (has_style || has_comment)) {
 
 		ttype = type == FYGT_SEQUENCE ?
-			(start ? FYTT_FLOW_SEQUENCE_START : FYTT_FLOW_SEQUENCE_END) :
-			(start ? FYTT_FLOW_MAPPING_START : FYTT_FLOW_MAPPING_END);
+			(start ?
+				(cstyle == FYCS_FLOW ? FYTT_FLOW_SEQUENCE_START : FYTT_BLOCK_SEQUENCE_START) :
+				FYTT_FLOW_SEQUENCE_END) :
+			(start ?
+				(cstyle == FYCS_FLOW ? FYTT_FLOW_MAPPING_START : FYTT_BLOCK_MAPPING_START) :
+				FYTT_FLOW_MAPPING_END);
 		fyt = fy_token_create(ttype, NULL, 0);
 		if (!fyt)
 			goto err_out;
 	}
 
-	if (fyt && fy_generic_is_string(gi.comment)) {
+	if (has_comment && fyt) {
 		rc = fy_token_set_comment(fyt, fycp_top, fy_castp(&gi.comment, ""), FY_NT);
 		if (rc)
 			goto err_out;
