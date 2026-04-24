@@ -176,15 +176,14 @@
 #ifdef HAVE_GENERIC
 /* generic options */
 #define OPT_GENERIC			6000
-#define OPT_BUILDER_POLICY		6001
+#define OPT_SCHEMA			6001
 #define OPT_DEDUP			6002
 #define OPT_NO_DEDUP			6003
 #define OPT_GENERIC_TESTSUITE		6004
 #define OPT_DUMP_PRIMITIVES		6005
 #define OPT_GENERIC_PARSE_DUMP		6006
 #define OPT_CREATE_MARKERS		6007
-#define OPT_PYYAML_COMPAT		6008
-#define OPT_KEEP_STYLE			6009
+#define OPT_KEEP_STYLE			6008
 #endif
 
 static struct option lopts[] = {
@@ -284,14 +283,13 @@ static struct option lopts[] = {
 #endif
 #ifdef HAVE_GENERIC
 	{"generic",		no_argument,		0,	OPT_GENERIC },
-	{"builder-policy",	required_argument,	0,	OPT_BUILDER_POLICY },
+	{"schema",		required_argument,	0,	OPT_SCHEMA },
 	{"dedup",		no_argument,		0,	OPT_DEDUP },
 	{"no-dedup",		no_argument,		0,	OPT_NO_DEDUP },
 	{"generic-testsuite",	no_argument,		0,	OPT_GENERIC_TESTSUITE },
 	{"dump-primitives",	no_argument,		0,	OPT_DUMP_PRIMITIVES },
 	{"generic-parse-dump",	no_argument,		0,	OPT_GENERIC_PARSE_DUMP },
 	{"create-markers",	no_argument,		0,	OPT_CREATE_MARKERS },
-	{"pyyaml-compat",	no_argument,		0,	OPT_PYYAML_COMPAT },
 	{"keep-style",		no_argument,		0,	OPT_KEEP_STYLE },
 #endif
 	{"help",		no_argument,		0,	'h' },
@@ -560,13 +558,13 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		USAGE_SECTION("Generic options");
 		USAGE_ITEM("--generic", "Generics dump");
 		USAGE_ITEM("--generic-testsuite", "Generics testsuite");
-		USAGE_ITEM("--builder-policy", "Builder policy");
 		USAGE_ITEM("--generic-parse-dump", "Generics parse-dump");
 		USAGE_ITEM_DEFAULT("--dedup", "Dedup mode on", DEDUP_DEFAULT ? "true" : "false");
 		USAGE_ITEM("--no-dedup", "Dedup mode off");
 		USAGE_ITEM("--dump-primitives", "Dump primitives");
 		USAGE_ITEM("--create-markers", "Create markers");
-		USAGE_ITEM("--pyyaml-compat", "PYYAML compatibility mode");
+		USAGE_ITEM_DEFAULT("--schema <schema>", "Schema: auto, yaml1.2-failsafe, yaml1.2-core, "
+				"yaml1.2-json, yaml1.1-failsafe, yaml1.1, yaml1.1-pyyaml, json, python", "auto");
 		USAGE_ITEM("--keep-style", "Do not strip style");
 	}
 #endif
@@ -1351,7 +1349,7 @@ struct generic_config {
 	bool create_markers : 1;
 	bool testsuite : 1;
 	bool parse_dump : 1;
-	bool pyyaml_compat : 1;
+	enum fy_generic_schema schema;
 	size_t estimated_max_size;
 	enum fy_parse_cfg_flags parse_cfg_flags;
 	enum fy_emitter_cfg_flags emit_cfg_flags;
@@ -1365,6 +1363,7 @@ struct generic_config {
 struct generic_config default_generic_cfg = {
 	.dedup = true,
 	.null_output = false,
+	.schema = FYGS_AUTO,
 	.estimated_max_size = 0,	/* adapt to input */
 };
 
@@ -1413,10 +1412,7 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 	gb_cfg.allocator = allocator;
 	gb_cfg.estimated_max_size = max_size;
 	gb_cfg.flags = FYGBCF_SCOPE_LEADER | (gcfg->dedup ? FYGBCF_DEDUP_ENABLED : 0);
-	if (!gcfg->pyyaml_compat)
-		gb_cfg.flags |= FYGBCF_SCHEMA_AUTO;
-	else
-		gb_cfg.flags |= FYGBCF_SCHEMA_YAML1_1_PYYAML;
+	gb_cfg.flags |= FYGBCF_SCHEMA(gcfg->schema);
 	gb_cfg.diag = gcfg->diag;
 	gb = fy_generic_builder_create(&gb_cfg);
 	if (!gb)
@@ -1719,7 +1715,7 @@ int main(int argc, char *argv[])
 	bool dedup = DEDUP_DEFAULT;
 	bool dump_primitives = false;
 	bool create_markers = false;
-	bool pyyaml_compat = false;
+	enum fy_generic_schema schema = FYGS_AUTO;
 	bool keep_style = false;
 #endif
 #ifdef HAVE_REFLECTION
@@ -2251,8 +2247,12 @@ int main(int argc, char *argv[])
 			create_markers = true;
 			break;
 
-		case OPT_PYYAML_COMPAT:
-			pyyaml_compat = true;
+		case OPT_SCHEMA:
+			schema = fy_generic_schema_from_text(optarg);
+			if (!fy_generic_schema_is_valid(schema)) {
+				fprintf(stderr, "bad schema option %s\n", optarg);
+				goto err_out_usage;
+			}
 			break;
 
 		case OPT_KEEP_STYLE:
@@ -3063,7 +3063,7 @@ int main(int argc, char *argv[])
 		gcfg.null_output = null_output;
 		gcfg.dump_primitives = dump_primitives;
 		gcfg.create_markers = create_markers;
-		gcfg.pyyaml_compat = pyyaml_compat;
+		gcfg.schema = schema;
 		gcfg.emit_cfg_flags = emit_flags |
 				      (manual_width ? emit_width_flags : 0) |
 				      FYECF_INDENT(indent);
