@@ -2415,6 +2415,7 @@ struct fy_document_state *
 fy_generic_vds_get_document_state(fy_generic vds)
 {
 	struct fy_version vers_local, *vers = NULL;
+	struct fy_document_state *fyds;
 	const struct fy_tag **tags = NULL;
 	struct fy_tag *tag;
 	fy_generic vmap, vseq, v;
@@ -2447,7 +2448,16 @@ fy_generic_vds_get_document_state(fy_generic vds)
 	} else
 		tags = NULL;
 
-	return fy_document_state_default(vers, tags);
+	fyds = fy_document_state_default(vers, tags);
+	if (!fyds)
+		return NULL;
+
+	fyds->version_explicit = fy_get(vds, "version-explicit", (_Bool)false);
+	fyds->tags_explicit = fy_get(vds, "tags-explicit", (_Bool)false);
+	fyds->start_implicit = fy_get(vds, "start-implicit", (_Bool)true);
+	fyds->end_implicit = fy_get(vds, "end-implicit", (_Bool)true);
+
+	return fyds;
 }
 
 fy_generic
@@ -2460,6 +2470,8 @@ fy_generic_vds_create_from_document_state(struct fy_generic_builder *gb, fy_gene
 	fy_generic *vtags_items;
 	bool version_explicit;
 	bool tags_explicit;
+	bool start_implicit;
+	bool end_implicit;
 	const char *schema_txt;
 	fy_generic vds, vtags;
 
@@ -2474,6 +2486,8 @@ fy_generic_vds_create_from_document_state(struct fy_generic_builder *gb, fy_gene
 
 	version_explicit = fy_document_state_version_explicit(fyds);
 	tags_explicit = fy_document_state_tags_explicit(fyds);
+	start_implicit = fy_document_state_start_implicit(fyds);
+	end_implicit = fy_document_state_end_implicit(fyds);
 
 	vtags_items = alloca(sizeof(*vtags_items) * count);
 	for (i = 0; i < count; i++)
@@ -2495,6 +2509,8 @@ fy_generic_vds_create_from_document_state(struct fy_generic_builder *gb, fy_gene
 				"major", vers->major,
 				"minor", vers->minor),
 		"version-explicit", (_Bool)version_explicit,
+		"start-implicit", (_Bool)start_implicit,
+		"end-implicit", (_Bool)end_implicit,
 		"tags", vtags,
 		"tags-explicit", (_Bool)tags_explicit,
 		"schema", schema_txt);

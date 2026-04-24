@@ -394,7 +394,7 @@ fy_generic_iterator_document_start_internal(struct fy_generic_iterator *fygi)
 	fye->type = FYET_DOCUMENT_START;
 	fye->document_start.document_start = NULL;
 	fye->document_start.document_state = fy_document_state_ref(fygi->fyds);
-	fye->document_start.implicit = true;
+	fye->document_start.implicit = fy_document_state_start_implicit(fygi->fyds);
 
 	/* and go into body */
 	fygi->state = FYGIS_WAITING_BODY_START_OR_DOCUMENT_END;
@@ -442,7 +442,8 @@ fy_generic_iterator_document_end(struct fy_generic_iterator *fygi)
 	if (fy_generic_is_invalid(fygi->vds) || fygi->state != FYGIS_WAITING_DOCUMENT_END)
 		goto err_out;
 
-	fye = fy_generic_iterator_event_create(fygi, FYET_DOCUMENT_END, (int)1);
+	fye = fy_generic_iterator_event_create(fygi, FYET_DOCUMENT_END,
+			fy_document_state_end_implicit(fygi->fyds) ? 1 : 0);
 	if (!fye)
 		goto err_out;
 
