@@ -2366,9 +2366,10 @@ int fy_emit_common_document_end(struct fy_emitter *emit, bool override_state, bo
 	fyds = emit->fyds;
 
 	implicit = fyds->end_implicit;
-	if (fyds->started_explicit)
+	if (emit->s_flags & DDNF_FORCE_EXPLICIT) {	/* force explicit */
+		emit->s_flags &= ~DDNF_FORCE_EXPLICIT;
 		implicit = false;
-	else if (override_state)
+	} else if (override_state)
 		implicit = implicit_override;
 
 	dem = ((dem_flags == FYECF_DOC_END_MARK_AUTO && !implicit) ||
@@ -3584,7 +3585,7 @@ static int fy_emit_streaming_node(struct fy_emitter *emit,
 		if ((emit->s_flags & DDNF_ROOT) && fy_emit_is_pretty_mode(emit) && !emit->column &&
 				!fy_emit_is_flow_mode(emit) && !(emit->s_flags & DDNF_FLOW)) {
 			fy_emit_document_start_indicator(emit);
-			emit->fyds->started_explicit = true;
+			emit->s_flags |= DDNF_FORCE_EXPLICIT;
 		}
 		fy_emit_common_node_preamble(emit, fye->scalar.value, fye->scalar.anchor, fye->scalar.tag, emit->s_flags, emit->s_indent);
 		style = fye->scalar.value ?

@@ -74,6 +74,7 @@ struct fy_emit_save_ctx {
 #define DDNF_INDENTLESS		0x0020
 #define DDNF_SIMPLE_SCALAR_KEY	0x0040
 #define DDNF_HANGING_INDENT	0x0080
+#define DDNF_FORCE_EXPLICIT	0x0100
 
 struct fy_emitter {
 	int line;
