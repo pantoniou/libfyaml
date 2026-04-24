@@ -3329,7 +3329,7 @@ fy_generic_op_emit(const struct fy_generic_op_desc *desc FY_UNUSED,
 	emit_flags = args->emit.flags;
 
 	/* try to output something pretty */
-	emit_cfg_flags = FYECF_WIDTH_INF | FYECF_STRIP_DOC | FYECF_STRIP_LABELS;
+	emit_cfg_flags = FYECF_WIDTH_INF;
 	emit_cfg_xflags = FYEXCF_COLOR_AUTO;
 
 	emit_cfg_flags &= ~(FYECF_MODE(FYECF_MODE_MASK) |
