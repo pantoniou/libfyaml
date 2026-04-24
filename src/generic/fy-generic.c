@@ -2182,6 +2182,30 @@ const char *fy_generic_schema_get_text(enum fy_generic_schema schema)
 	return txt ? txt : "";
 }
 
+enum fy_generic_schema
+fy_generic_schema_from_text(const char *text)
+{
+	enum fy_generic_schema schema;
+
+	if (!text || !*text)
+		return FYGS_INVALID;
+
+	/* aliases */
+	if (!strcmp(text, "failsafe"))
+		return FYGS_YAML1_2_FAILSAFE;
+	if (!strcmp(text, "core"))
+		return FYGS_YAML1_2_CORE;
+	if (!strcmp(text, "pyyaml"))
+		return FYGS_YAML1_1_PYYAML;
+
+	for (schema = 0; schema < FYGS_COUNT; schema++) {
+		if (!strcmp(text, fy_generic_schema_get_text(schema)))
+			return schema;
+	}
+
+	return FYGS_INVALID;
+}
+
 enum fy_generic_schema fy_gb_get_schema(struct fy_generic_builder *gb)
 {
 	return gb ? gb->schema : FYGS_AUTO;

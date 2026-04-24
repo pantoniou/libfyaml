@@ -6737,6 +6737,7 @@ static inline size_t fy_get_len_map_handle(const void *p)
 /**
  * enum fy_generic_schema - YAML/JSON schema variant used during parsing and builder operations.
  *
+ * @FYGS_INVALID:          Invalid schema
  * @FYGS_AUTO:             Automatically select schema based on input
  * @FYGS_YAML1_2_FAILSAFE: YAML 1.2 failsafe schema (all values are strings)
  * @FYGS_YAML1_2_CORE:     YAML 1.2 core schema
@@ -6748,8 +6749,9 @@ static inline size_t fy_get_len_map_handle(const void *p)
  * @FYGS_PYTHON:           Python-compatible schema
  */
 enum fy_generic_schema {
+	FYGS_INVALID = -1,
 	// Core YAML/JSON schemas
-	FYGS_AUTO,
+	FYGS_AUTO = 0,
 	FYGS_YAML1_2_FAILSAFE,
 	FYGS_YAML1_2_CORE,
 	FYGS_YAML1_2_JSON,
@@ -6762,6 +6764,12 @@ enum fy_generic_schema {
 };
 /* FYGS_COUNT - Total number of schema variants */
 #define FYGS_COUNT (FYGS_PYTHON + 1)
+
+/* fy_generic_schema_is_valid() - Return true if @schema is a valid one (even auto) */
+static inline bool fy_generic_schema_is_valid(enum fy_generic_schema schema)
+{
+	return schema >= 0 && schema < FYGS_COUNT;
+}
 
 /* fy_generic_schema_is_json() - Return true if @schema is one of the JSON schemas */
 static inline bool fy_generic_schema_is_json(enum fy_generic_schema schema)
@@ -6791,6 +6799,18 @@ static inline bool fy_generic_schema_is_yaml_1_1(enum fy_generic_schema schema)
  */
 const char *
 fy_generic_schema_get_text(enum fy_generic_schema schema)
+	FY_EXPORT;
+
+/**
+ * fy_generic_schema_from_text() - Given text return the matching schema
+ *
+ * @text: The text to match to schema
+ *
+ * Returns:
+ * The parsed generic schema value or FYGS_INVALID in case of an error.
+ */
+enum fy_generic_schema
+fy_generic_schema_from_text(const char *text)
 	FY_EXPORT;
 
 /* Shift amount of the schema mode option */
