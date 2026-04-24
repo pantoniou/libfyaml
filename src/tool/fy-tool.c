@@ -1429,7 +1429,10 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 		parse_flags = FYOPPF_MULTI_DOCUMENT;
 		emit_flags = FYOPEF_MULTI_DOCUMENT;
 
-		if (gcfg->testsuite)
+		/* propagate resolve document flag */
+		if (gcfg->parse_cfg_flags & FYPCF_RESOLVE_DOCUMENT)
+			parse_flags &= ~FYOPPF_DONT_RESOLVE;
+		else
 			parse_flags |= FYOPPF_DONT_RESOLVE;
 
 		switch (gcfg->parse_cfg_flags & (FYPCF_JSON_MASK << FYPCF_JSON_SHIFT)) {
