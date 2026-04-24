@@ -377,6 +377,16 @@ bool fy_document_state_end_implicit(struct fy_document_state *fyds)
 	return fyds ? fyds->end_implicit : true;
 }
 
+bool fy_document_state_start_explicit(struct fy_document_state *fyds)
+{
+	return fyds ? !fyds->start_implicit : false;
+}
+
+bool fy_document_state_end_explicit(struct fy_document_state *fyds)
+{
+	return fyds ? !fyds->end_implicit : false;
+}
+
 bool fy_document_state_json_mode(struct fy_document_state *fyds)
 {
 	return fyds ? fyds->json_mode : true;

@@ -7168,6 +7168,38 @@ fy_document_state_end_implicit(struct fy_document_state *fyds)
 	FY_EXPORT;
 
 /**
+ * fy_document_state_start_explicit() - Started explicitly?
+ *
+ * Find out if a document state object's document was
+ * started explicitly.
+ * Note that for synthetic documents this method returns true.
+ *
+ * @fyds: The document state object
+ *
+ * Returns:
+ * true if document was started explicitly, false otherwise
+ */
+bool
+fy_document_state_start_explicit(struct fy_document_state *fyds)
+	FY_EXPORT;
+
+/**
+ * fy_document_state_end_explicit() - Ended explicitly?
+ *
+ * Find out if a document state object's document was
+ * ended explicitly.
+ * Note that for synthetic documents this method returns true.
+ *
+ * @fyds: The document state object
+ *
+ * Returns:
+ * true if document was ended explicitly, false otherwise
+ */
+bool
+fy_document_state_end_explicit(struct fy_document_state *fyds)
+	FY_EXPORT;
+
+/**
  * fy_document_state_json_mode() - Input was JSON?
  *
  * Find out if a document state object's document was
