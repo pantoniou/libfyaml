@@ -484,6 +484,7 @@ fy_generic_encoder_emit_document(struct fy_generic_encoder *fyge, fy_generic vro
 	struct fy_version *vers = NULL, vers_local;
 	struct fy_tag **tags = NULL, *tag;
 	bool is_version_explicit, are_tags_explicit;
+	bool is_start_implicit, is_end_implicit;
 	int rc;
 	size_t i, j;
 
@@ -496,6 +497,8 @@ fy_generic_encoder_emit_document(struct fy_generic_encoder *fyge, fy_generic vro
 
 	vers = NULL;
 	tags = NULL;
+	is_start_implicit = true;
+	is_end_implicit = true;
 	vds_map = fy_cast(vds, fy_map_handle_null);
 	if (vds_map) {
 		maph = fy_get_default(vds_map, "version", fy_map_handle_null);
@@ -526,6 +529,8 @@ fy_generic_encoder_emit_document(struct fy_generic_encoder *fyge, fy_generic vro
 		}
 		is_version_explicit = fy_get_default(vds_map, "version-explicit", false);
 		are_tags_explicit = fy_get_default(vds_map, "tags-explicit", false);
+		is_start_implicit = fy_get_default(vds_map, "start-implicit", true);
+		is_end_implicit = fy_get_default(vds_map, "end-implicit", true);
 
 		if (!is_version_explicit)
 			vers = NULL;
@@ -540,7 +545,8 @@ fy_generic_encoder_emit_document(struct fy_generic_encoder *fyge, fy_generic vro
 		fyge->emitted_stream_start = true;
 	}
 
-	rc = fy_emit_eventf(fyge->emit, FYET_DOCUMENT_START, 1, vers, tags);
+	rc = fy_emit_eventf(fyge->emit, FYET_DOCUMENT_START,
+			    is_start_implicit ? 1 : 0, vers, tags);
 	if (rc)
 		goto err_out;
 
@@ -548,7 +554,8 @@ fy_generic_encoder_emit_document(struct fy_generic_encoder *fyge, fy_generic vro
 	if (rc)
 		goto err_out;
 
-	rc = fy_emit_eventf(fyge->emit, FYET_DOCUMENT_END, 1);
+	rc = fy_emit_eventf(fyge->emit, FYET_DOCUMENT_END,
+			    is_end_implicit ? 1 : 0);
 	if (rc)
 		goto err_out;
 
