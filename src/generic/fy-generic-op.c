@@ -3512,7 +3512,7 @@ fy_generic_op_emit(const struct fy_generic_op_desc *desc FY_UNUSED,
 		encoder_emit_flags |= FYGEEF_TRACE;
 
 	/* Emit the value */
-	rc = fy_generic_encoder_emit(fyge, encoder_emit_flags | FYGEEF_TRACE, in);
+	rc = fy_generic_encoder_emit(fyge, encoder_emit_flags, in);
 	if (rc)
 		goto err_out;
 
