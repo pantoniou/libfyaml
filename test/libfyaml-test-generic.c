@@ -4303,6 +4303,35 @@ START_TEST(parse_emit_ops)
 }
 END_TEST
 
+START_TEST(generic_failsafe_schema_preserves_empty_scalars)
+{
+	char buf[16384];
+	struct fy_generic_builder *gb;
+	fy_generic parsed, value, seq, item;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_YAML1_2_FAILSAFE | FYGBCF_SCOPE_LEADER,
+			NULL, buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	parsed = fy_parse(gb,
+			  "a:\n"
+			  "seq:\n"
+			  "  - \n",
+			  FYOPPF_DISABLE_DIRECTORY | FYOPPF_INPUT_TYPE_STRING, NULL);
+	ck_assert(fy_generic_is_valid(parsed));
+
+	value = fy_get(parsed, "a", fy_invalid);
+	ck_assert(fy_generic_is_string(value));
+	ck_assert_str_eq(fy_cast(value, ""), "");
+
+	seq = fy_get(parsed, "seq", fy_invalid);
+	ck_assert(fy_generic_is_sequence(seq));
+	item = fy_get(seq, 0, fy_invalid);
+	ck_assert(fy_generic_is_string(item));
+	ck_assert_str_eq(fy_cast(item, ""), "");
+}
+END_TEST
+
 START_TEST(generic_document_builder_pull_mode)
 {
 	char buf[65536];
@@ -5720,6 +5749,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 
 	/* parse and emit operations */
 	fy_check_testcase_add_test(ctc, parse_emit_ops);
+	fy_check_testcase_add_test(ctc, generic_failsafe_schema_preserves_empty_scalars);
 	fy_check_testcase_add_test(ctc, generic_document_builder_pull_mode);
 	fy_check_testcase_add_test(ctc, generic_document_builder_push_mode_metadata);
 	fy_check_testcase_add_test(ctc, generic_document_builder_directory_mode);
