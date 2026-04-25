@@ -2518,6 +2518,87 @@ fy_generic_vds_create_from_document_state(struct fy_generic_builder *gb, fy_gene
 	return vds;
 }
 
+size_t
+fy_document_state_format_tag(struct fy_document_state *fyds,
+			     const char *tag, size_t tag_size,
+			     char *buf, size_t maxsz)
+{
+	const char *full_tag;
+	size_t full_tag_size;
+	const char *tag_handle, *tag_suffix;
+	size_t tag_handle_size, tag_suffix_size;
+	int rc;
+	size_t formatted_tag_size;
+
+	if (!tag)
+		return 0;
+
+	if (tag_size == FY_NT)
+		tag_size = strlen(tag);
+
+	full_tag = tag;
+	full_tag_size = tag_size;
+	if (tag_size >= 4 && tag[0] == '!' && tag[1] == '<' && tag[tag_size - 1] == '>') {
+		full_tag = tag + 2;
+		full_tag_size = tag_size - 3;
+	}
+
+	rc = fy_document_state_shorten_tag(fyds, full_tag, full_tag_size,
+			&tag_handle, &tag_handle_size,
+			&tag_suffix, &tag_suffix_size);
+	if (!rc) {
+		formatted_tag_size = tag_handle_size + tag_suffix_size;
+		if (buf && maxsz > 0) {
+			if (tag_handle_size >= maxsz)
+				tag_handle_size = maxsz - 1;
+			memcpy(buf, tag_handle, tag_handle_size);
+			if (tag_handle_size < maxsz - 1) {
+				size_t copy = tag_suffix_size;
+				if (tag_handle_size + copy >= maxsz)
+					copy = maxsz - 1 - tag_handle_size;
+				memcpy(buf + tag_handle_size, tag_suffix, copy);
+				buf[tag_handle_size + copy] = '\0';
+			} else
+				buf[tag_handle_size] = '\0';
+		}
+	} else {
+		formatted_tag_size = tag_size;
+		if (buf && maxsz > 0) {
+			size_t copy = tag_size;
+			if (copy >= maxsz)
+				copy = maxsz - 1;
+			memcpy(buf, tag, copy);
+			buf[copy] = '\0';
+		}
+	}
+
+	return formatted_tag_size;
+}
+
+char *
+fy_document_state_format_tag_alloc(struct fy_document_state *fyds,
+				   const char *tag, size_t tag_size,
+				   size_t *formatted_tag_sizep)
+{
+	char *formatted_tag;
+	size_t formatted_tag_size;
+
+	formatted_tag_size = fy_document_state_format_tag(fyds, tag, tag_size, NULL, 0);
+	if (!formatted_tag_size && !tag)
+		return NULL;
+
+	formatted_tag = malloc(formatted_tag_size + 1);
+	if (!formatted_tag)
+		return NULL;
+
+	(void)fy_document_state_format_tag(fyds, tag, tag_size,
+					   formatted_tag, formatted_tag_size + 1);
+	if (formatted_tag_sizep)
+		*formatted_tag_sizep = formatted_tag_size;
+
+	return formatted_tag;
+}
+
 struct fy_token *
 fy_document_state_generic_create_token(struct fy_document_state *fyds, fy_generic v,
 				       enum fy_token_type type, enum fy_scalar_style style)
@@ -2540,12 +2621,11 @@ fy_document_state_generic_create_token(struct fy_document_state *fyds, fy_generi
 
 	szstr = fy_cast(vstr, fy_szstr_empty);
 
-	data = malloc(szstr.size);
-	if (!data)
-		goto err_out;
-	memcpy(data, szstr.data, szstr.size);
-
 	if (type == FYTT_TAG) {
+		data = fy_document_state_format_tag_alloc(fyds, szstr.data, szstr.size, &szstr.size);
+		if (!data)
+			goto err_out;
+
 		memset(&info, 0, sizeof(info));
 
 		rc = fy_tag_scan(data, szstr.size, &info);
@@ -2568,6 +2648,10 @@ fy_document_state_generic_create_token(struct fy_document_state *fyds, fy_generi
 		handle.storage_hint = 0;
 		handle.storage_hint_valid = false;
 	} else {
+		data = malloc(szstr.size);
+		if (!data)
+			goto err_out;
+		memcpy(data, szstr.data, szstr.size);
 		handle_length = 0;
 		uri_length = 0;
 		prefix_length = 0;

@@ -112,5 +112,13 @@ fy_generic_iterator_body_next_internal(struct fy_generic_iterator *fygi,
 struct fy_token *
 fy_document_state_generic_create_token(struct fy_document_state *fyds, fy_generic v,
 				       enum fy_token_type type, enum fy_scalar_style style);
+size_t
+fy_document_state_format_tag(struct fy_document_state *fyds,
+			     const char *tag, size_t tag_size,
+			     char *buf, size_t maxsz);
+char *
+fy_document_state_format_tag_alloc(struct fy_document_state *fyds,
+				   const char *tag, size_t tag_size,
+				   size_t *formatted_tag_sizep);
 
 #endif

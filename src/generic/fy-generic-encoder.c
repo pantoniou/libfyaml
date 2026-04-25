@@ -59,11 +59,6 @@ struct fy_encode_generic_data {
 	const char *tag;
 	const char *comment;
 	int style;
-	/* when shortening */
-	const char *tag_handle;
-	size_t tag_handle_size;
-	const char *tag_suffix;
-	size_t tag_suffix_size;
 	char tag_buf_local[128];
 	char *tag_buf_alloc;
 } FY_GENERIC_CONTAINER_ALIGNMENT;
@@ -72,8 +67,6 @@ static void
 fy_encode_generic_get_data(struct fy_generic_encoder *fyge, fy_generic v,
 			   struct fy_encode_generic_data *gd)
 {
-	int r, len;
-
 	memset(gd, 0, sizeof(*gd));
 	gd->style = -1;
 
@@ -87,31 +80,22 @@ fy_encode_generic_get_data(struct fy_generic_encoder *fyge, fy_generic v,
 	gd->comment = fy_castp(&gd->gi.comment, (const char *)NULL);
 	gd->style = fy_cast(gd->gi.style, -1);
 
-	/* shorten the tag if possible */
 	if (gd->tag) {
-		r = fy_document_state_shorten_tag(fy_emitter_get_document_state(fyge->emit), gd->tag, FY_NT,
-				&gd->tag_handle, &gd->tag_handle_size,
-				&gd->tag_suffix, &gd->tag_suffix_size);
-		if (!r) {
-			len = snprintf(gd->tag_buf_local, sizeof(gd->tag_buf_local), "%.*s%.*s",
-					(int)gd->tag_handle_size, gd->tag_handle,
-					(int)gd->tag_suffix_size, gd->tag_suffix);
-			if (len < (int)sizeof(gd->tag_buf_local)) {
-				gd->tag = gd->tag_buf_local;
-			} else {
-				len = asprintf(&gd->tag_buf_alloc, "%.*s%.*s",
-					(int)gd->tag_handle_size, gd->tag_handle,
-					(int)gd->tag_suffix_size, gd->tag_suffix);
-				if (len >= 0) {
-					gd->tag = gd->tag_buf_alloc;
-				} else {
-					/* XXX something very funky, but not fatal */
-					gd->tag_buf_alloc = NULL;
-				}
-			}
-		} else {
-			gd->tag_handle = gd->tag_suffix = NULL;
-			gd->tag_handle_size = gd->tag_suffix_size = 0;
+		size_t formatted_tag_size;
+
+		formatted_tag_size = fy_document_state_format_tag(
+				fy_emitter_get_document_state(fyge->emit),
+				gd->tag, FY_NT,
+				gd->tag_buf_local, sizeof(gd->tag_buf_local));
+		if (formatted_tag_size < sizeof(gd->tag_buf_local))
+			gd->tag = gd->tag_buf_local;
+		else {
+			gd->tag_buf_alloc =
+				fy_document_state_format_tag_alloc(
+					fy_emitter_get_document_state(fyge->emit),
+					gd->tag, FY_NT, NULL);
+			if (gd->tag_buf_alloc)
+				gd->tag = gd->tag_buf_alloc;
 		}
 	}
 }
