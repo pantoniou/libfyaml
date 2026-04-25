@@ -590,7 +590,17 @@ fygdb_create_scalar(struct fy_generic_document_builder *fygdb, struct fy_event *
 					  "invalid scalar created");
 		}
 	} else {
+		bool coerce_explicit_tag = true;
+
 		force_type = FYGT_STRING;
+		switch (fy_gb_get_schema(fygdb->cfg.gb)) {
+		case FYGS_YAML1_2_FAILSAFE:
+		case FYGS_YAML1_1_FAILSAFE:
+			coerce_explicit_tag = false;
+			break;
+		default:
+			break;
+		}
 
 		tag = fy_castp(&vt, "");
 		fygdb_error_check(fygdb, tag[0], err_out, "fy_cast() failed");
@@ -599,6 +609,8 @@ fygdb_create_scalar(struct fy_generic_document_builder *fygdb, struct fy_event *
 		p = strrchr(tag, ':');
 		if (!(p && (size_t)(p - tag) == yaml_tag_pfx_size &&
 		      !memcmp(tag, yaml_tag_pfx, yaml_tag_pfx_size)))
+			goto create_scalar;
+		if (!coerce_explicit_tag)
 			goto create_scalar;
 		sfx = p + 1;
 		if (!strcmp(sfx, "null"))
