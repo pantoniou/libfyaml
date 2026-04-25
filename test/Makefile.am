@@ -135,6 +135,9 @@ TESTS += testerrors.test
 TESTS += testemitter.test
 TESTS += testemitter-streaming.test
 TESTS += testemitter-restreaming.test
+if HAVE_GENERIC
+TESTS += testemitter-generic-failsafe.test
+endif
 
 if HAVE_LIBCLANG
 TESTS += testreflection.test

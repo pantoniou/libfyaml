@@ -56,6 +56,51 @@ function run_tool() {
     fi
 }
 
+function emitter_subtest() {
+    local dump_args="$1"
+    local parse_args="$2"
+    local f="${TEST_DIR}/emitter-examples/${test_id}"
+    local t1
+    local t2
+    local res
+    local pass_parse
+
+    t1=$(mktemp)
+    t2=$(mktemp)
+
+    res="not ok"
+    pass_parse=0
+
+    # Intentionally expand the argument variables as shell words.
+    run_tool "${FY_TOOL}" ${parse_args} "$f" >"$t1"
+    if [ $? -eq 0 ]; then
+        run_tool "${FY_TOOL}" ${dump_args} "$f" | \
+            run_tool "${FY_TOOL}" ${parse_args} - >"$t2"
+        if [ $? -eq 0 ]; then
+            pass_parse=1
+        fi
+    fi
+
+    if [ "$pass_parse" == "1" ]; then
+        diff -u "$t1" "$t2"
+        if [ $? -eq 0 ]; then
+            res="ok"
+        else
+            res="not ok"
+        fi
+    fi
+
+    rm -f "$t1" "$t2"
+
+    echo "$res 1 - $test_id"
+
+    if [ "$res" == "ok" ]; then
+        exit 0
+    else
+        exit 1
+    fi
+}
+
 # Python pytest suite: handled before FY_TOOL validation (no C tool needed)
 case "$test_suite" in
     python)
@@ -147,123 +192,18 @@ case "$test_suite" in
         ;;
 
     testemitter)
-        f="${TEST_DIR}/emitter-examples/${test_id}"
-
-        t1=$(mktemp)
-        t2=$(mktemp)
-
-        res="not ok"
-
-        pass_parse=0
-        run_tool "${FY_TOOL}" --testsuite --disable-flow-markers "$f" >"$t1"
-        if [ $? -eq 0 ]; then
-            run_tool "${FY_TOOL}" --dump "$f" | \
-                run_tool "${FY_TOOL}" --testsuite --disable-flow-markers - >"$t2"
-            if [ $? -eq 0 ]; then
-                pass_parse=1
-            fi
-        fi
-
-        if [ "$pass_parse" == "1" ]; then
-            diff -u "$t1" "$t2"
-            if [ $? -eq 0 ]; then
-                res="ok"
-            else
-                res="not ok"
-            fi
-        else
-            res="not ok"
-        fi
-
-        rm -f "$t1" "$t2"
-
-        echo "$res 1 - $test_id"
-
-        if [ "$res" == "ok" ]; then
-            exit 0
-        else
-            exit 1
-        fi
+        emitter_subtest "${EMITTER_DUMP_ARGS:---dump} ${EXTRA_DUMP_ARGS}" \
+            "${EMITTER_PARSE_ARGS:---testsuite --disable-flow-markers}"
         ;;
 
     testemitter-streaming)
-        f="${TEST_DIR}/emitter-examples/${test_id}"
-
-        t1=$(mktemp)
-        t2=$(mktemp)
-
-        res="not ok"
-
-        pass_parse=0
-        run_tool "${FY_TOOL}" --testsuite --disable-flow-markers "$f" >"$t1"
-        if [ $? -eq 0 ]; then
-            run_tool "${FY_TOOL}" --dump --streaming "$f" | \
-                run_tool "${FY_TOOL}" --testsuite --disable-flow-markers - >"$t2"
-            if [ $? -eq 0 ]; then
-                pass_parse=1
-            fi
-        fi
-
-        if [ "$pass_parse" == "1" ]; then
-            diff -u "$t1" "$t2"
-            if [ $? -eq 0 ]; then
-                res="ok"
-            else
-                res="not ok"
-            fi
-        else
-            res="not ok"
-        fi
-
-        rm -f "$t1" "$t2"
-
-        echo "$res 1 - $test_id"
-
-        if [ "$res" == "ok" ]; then
-            exit 0
-        else
-            exit 1
-        fi
+        emitter_subtest "${EMITTER_DUMP_ARGS:---dump} --streaming ${EXTRA_DUMP_ARGS}" \
+            "${EMITTER_PARSE_ARGS:---testsuite --disable-flow-markers}"
         ;;
 
     testemitter-restreaming)
-        f="${TEST_DIR}/emitter-examples/${test_id}"
-
-        t1=$(mktemp)
-        t2=$(mktemp)
-
-        res="not ok"
-
-        pass_parse=0
-        run_tool "${FY_TOOL}" --testsuite --disable-flow-markers "$f" >"$t1"
-        if [ $? -eq 0 ]; then
-            run_tool "${FY_TOOL}" --dump --streaming --recreating "$f" | \
-                run_tool "${FY_TOOL}" --testsuite --disable-flow-markers - >"$t2"
-            if [ $? -eq 0 ]; then
-                pass_parse=1
-            fi
-        fi
-
-        if [ "$pass_parse" == "1" ]; then
-            diff -u "$t1" "$t2"
-            if [ $? -eq 0 ]; then
-                res="ok"
-            else
-                res="not ok"
-            fi
-        else
-            res="not ok"
-        fi
-
-        rm -f "$t1" "$t2"
-
-        echo "$res 1 - $test_id"
-
-        if [ "$res" == "ok" ]; then
-            exit 0
-        else
-            exit 1
-        fi
+        emitter_subtest "${EMITTER_DUMP_ARGS:---dump} --streaming --recreating ${EXTRA_DUMP_ARGS}" \
+            "${EMITTER_PARSE_ARGS:---testsuite --disable-flow-markers}"
         ;;
 
     testsuite|testsuite-json|testsuite-resolution)

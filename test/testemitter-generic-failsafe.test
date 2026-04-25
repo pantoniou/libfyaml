@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+EMITTER_DUMP_ARGS="--generic --keep-style --schema yaml1.2-failsafe" \
+${SRCDIR}/testemitter.test

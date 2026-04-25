@@ -1639,6 +1639,12 @@ if(CAN_TEST)
     add_testemitter_tests(testemitter "")
     add_testemitter_tests(testemitter-streaming "--streaming")
     add_testemitter_tests(testemitter-restreaming "--streaming --recreating")
+    if(HAVE_GENERIC)
+        add_testemitter_tests(testemitter-generic-failsafe ""
+            SUITE_NAME testemitter
+            EXTRA_ENV "EMITTER_DUMP_ARGS=--generic --keep-style --schema yaml1.2-failsafe"
+        )
+    endif()
 
     # Network-dependent tests using FetchContent
     if(HAVE_NETWORK)
@@ -1695,7 +1701,10 @@ if(CAN_TEST)
     )
 
     if(HAVE_GENERIC)
-        list(APPEND TEST_SUITES testsuite-generic.test)
+        list(APPEND TEST_SUITES
+            testsuite-generic.test
+            testemitter-generic-failsafe.test
+        )
     endif()
     if(HAVE_JQ)
         list(APPEND TEST_SUITES testsuite-json.test)

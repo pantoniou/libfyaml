@@ -160,14 +160,29 @@ endfunction()
 
 # Function to add testemitter tests
 function(add_testemitter_tests test_name extra_args)
-    file(GLOB yaml_files "${CMAKE_CURRENT_SOURCE_DIR}/test/emitter-examples/*.yaml")
+    cmake_parse_arguments(TE "" "SUITE_NAME" "EXTRA_ENV" ${ARGN})
 
+    if(TE_SUITE_NAME)
+        set(suite_name "${TE_SUITE_NAME}")
+    else()
+        set(suite_name "${test_name}")
+    endif()
+
+    file(GLOB yaml_files "${CMAKE_CURRENT_SOURCE_DIR}/test/emitter-examples/*.yaml")
+    set(test_ids "")
     foreach(yaml_file ${yaml_files})
         get_filename_component(test_id "${yaml_file}" NAME)
+        list(APPEND test_ids "${test_id}")
+    endforeach()
 
-        add_tap_test("${test_name}/${test_id}" "${test_name}" "${test_id}"
+    foreach(test_id ${test_ids})
+        if(test_id STREQUAL "" OR test_id MATCHES "^#")
+            continue()
+        endif()
+
+        add_tap_test("${test_name}/${test_id}" "${suite_name}" "${test_id}"
             LABELS "${test_name}"
-            EXTRA_ENV "EXTRA_DUMP_ARGS=${extra_args}"
+            EXTRA_ENV "EXTRA_DUMP_ARGS=${extra_args};${TE_EXTRA_ENV}"
         )
     endforeach()
 endfunction()
