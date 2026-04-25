@@ -2,14 +2,12 @@
 #
 # testsuite-generic.test
 #
-# Test suite for generic-based YAML parsing
+# Test suite for styling-preserving generic-based YAML parsing
 #
 # This test runs the same test suite as testsuite.test but uses the
-# generic test suite mode which strips formatting information.
-#
-# Since generics don't preserve styling (scalar styles, flow markers)
-# we need to normalize both the expected output and the actual output
-# before comparison.
+# generic testsuite mode with style preservation and failsafe schema,
+# comparing the emitted testsuite events directly against the expected
+# output.
 #
 
 count=0
@@ -27,14 +25,7 @@ done
 echo 1..$count
 
 skiplist=""
-# C4HZ: Hex value conversion (0xFFEEBB -> 16772795) - requires yaml1.2-failsafe schema
-xfaillist="C4HZ"
-
-# Additional tests to skip for generic mode
-# Generics don't preserve:
-# - Scalar styles (all scalars are normalized)
-# - Flow markers (block vs flow is not preserved)
-generic_skiplist=""
+xfaillist=""
 
 i=0
 for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
@@ -58,10 +49,8 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 		desctxt=`cat 2>/dev/null "$tst/==="`
 
 		t_output=`mktemp`
-		t_expected=`mktemp`
-
 		directive=""
-		for skip in $skiplist $generic_skiplist; do
+		for skip in $skiplist; do
 			if [ "$test_subtest_id" == "$skip" ]; then
 				directive=" # SKIP"
 				break
@@ -73,8 +62,8 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 			res="not ok"
 
 			pass_yaml=0
-			# Use generic test suite mode
-			${TOP_BUILDDIR}/src/fy-tool --generic-testsuite "$tst/in.yaml" >"$t_output" 2>/dev/null
+			${TOP_BUILDDIR}/src/fy-tool --generic-testsuite --keep-style \
+				--schema yaml1.2-failsafe "$tst/in.yaml" >"$t_output" 2>/dev/null
 			if [ $? -eq 0 ]; then
 				pass_yaml=1
 			fi
@@ -87,25 +76,13 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 					res="not ok"
 				fi
 			else
-				# test is expected to pass
 				if [ $pass_yaml == "1" ]; then
-					# Strip formatting from expected output
-					${TOP_SRCDIR}/scripts/strip-testsuite-formatting.sh "$tst/test.event" > "$t_expected"
-
-					# Strip formatting from actual generic output too
-					t_output_stripped=`mktemp`
-					${TOP_SRCDIR}/scripts/strip-testsuite-formatting.sh "$t_output" > "$t_output_stripped"
-
-					# Compare both stripped outputs
-					diff_yaml=0
-					diff -u "$t_expected" "$t_output_stripped"
+					diff -u "$tst/test.event" "$t_output"
 					if [ $? -eq 0 ]; then
 						res="ok"
 					else
 						res="not ok"
 					fi
-
-					rm -f "$t_output_stripped"
 				else
 					res="not ok"
 				fi
@@ -119,7 +96,7 @@ for basetst in test-suite-data/[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/; do
 			done
 		fi
 
-		rm -f "$t_output" "$t_expected"
+		rm -f "$t_output"
 
 		echo "$res $i $test_subtest_id - $desctxt$directive"
 	done
