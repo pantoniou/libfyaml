@@ -63,6 +63,7 @@ struct fy_generic_iterator {
 	struct fy_generic_iterator_cfg cfg;
 	enum fy_generic_iterator_state state;
 	struct fy_document_state *fyds;
+	enum fy_generic_schema schema;
 	fy_generic vds;
 	fy_generic iterate_root;
 	size_t idx;	/* document index */
@@ -99,6 +100,8 @@ int fy_generic_iterator_setup(struct fy_generic_iterator *fygi, const struct fy_
 void fy_generic_iterator_cleanup(struct fy_generic_iterator *fygi);
 struct fy_generic_iterator *fy_generic_iterator_create(void);
 void fy_generic_iterator_destroy(struct fy_generic_iterator *fygi);
+struct fy_event *
+fy_generic_iterator_generate_emit_next(struct fy_generic_iterator *fygi, struct fy_emitter *emit);
 
 struct fy_generic_iterator_body_result {
 	fy_generic v;

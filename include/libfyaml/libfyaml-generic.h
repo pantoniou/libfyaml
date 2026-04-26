@@ -10516,10 +10516,13 @@ enum fy_generic_iterator_cfg_flags {
  *
  * @flags: The document iterator flags
  * @vdir: The directory of the parsed input
+ * @schema: The schema to use for scalar formatting when a document does not
+ *          carry schema metadata
  */
 struct fy_generic_iterator_cfg {
 	enum fy_generic_iterator_cfg_flags flags;
 	fy_generic vdir;
+	enum fy_generic_schema schema;
 };
 
 /**
