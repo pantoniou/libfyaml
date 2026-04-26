@@ -204,6 +204,7 @@ struct fy_document_state *fy_document_state_copy(struct fy_document_state *fyds)
 
 		/* take reference */
 		fy_input_ref(fyt->handle.fyi);
+		fyt->handle.token_atom = true;
 
 		fyds_new->fyt_ds = fyt;
 	}
@@ -219,6 +220,7 @@ struct fy_document_state *fy_document_state_copy(struct fy_document_state *fyds)
 
 		/* take reference */
 		fy_input_ref(fyt->handle.fyi);
+		fyt->handle.token_atom = true;
 
 		fyds_new->fyt_vd = fyt;
 	}
@@ -238,6 +240,7 @@ struct fy_document_state *fy_document_state_copy(struct fy_document_state *fyds)
 
 		/* take reference */
 		fy_input_ref(fyt_td->handle.fyi);
+		fyt_td->handle.token_atom = true;
 
 		/* append to the new document state */
 		fy_token_list_add_tail(&fyds_new->fyt_td, fyt_td);

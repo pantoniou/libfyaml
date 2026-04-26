@@ -202,6 +202,7 @@ fy_token_queue_simple_internal(struct fy_parser *fyp, struct fy_token_list *fytl
 	fy_reader_fill_atom_end(fyr, &fyt->handle);
 
 	fy_input_ref(fyt->handle.fyi);
+	fyt->handle.token_atom = true;
 
 	fy_token_list_add_tail(fytl, fyt);
 
@@ -5869,6 +5870,7 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 		fytn->handle = fyt->handle;
 		fytn->handle.end_mark = fytn->handle.start_mark;	/* no extent */
 		fy_input_ref(fytn->handle.fyi);
+		fytn->handle.token_atom = true;
 
 		fye->sequence_start.sequence_start = fytn;
 
@@ -6610,6 +6612,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			fytn->handle = fyt->handle;
 			fytn->handle.end_mark = fytn->handle.start_mark;	/* no extent */
 			fy_input_ref(fytn->handle.fyi);
+			fytn->handle.token_atom = true;
 
 			fye->sequence_end.sequence_end = fytn;
 		} else
@@ -6888,6 +6891,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		fytn->handle = fyt->handle;
 		fytn->handle.end_mark = fytn->handle.start_mark;	/* no extent */
 		fy_input_ref(fytn->handle.fyi);
+		fytn->handle.token_atom = true;
 
 		fye->mapping_end.mapping_end = fytn;
 

@@ -580,4 +580,13 @@ fy_token_get_type_inline(struct fy_token *fyt)
 struct fy_atom *
 fy_token_get_style_atom(struct fy_token *fyt, struct fy_atom *dst_handle);
 
+/* return the token this handle is embedded to (if token_atom is set) */
+static inline struct fy_token *
+fy_atom_to_token(struct fy_atom *handle)
+{
+	return handle && handle->token_atom ?
+		container_of(handle, struct fy_token, handle) :
+		NULL;
+}
+
 #endif

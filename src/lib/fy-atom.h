@@ -98,6 +98,7 @@ struct fy_atom {
 			bool simple_key_allowed : 1;	/* atom allows a simple key */
 			bool high_ascii : 1;		/* atom has utf code point >= 0x80 (only for plains) */
 			bool chomp_explicit : 1;	/* chomp was set during block scalar parsing */
+			bool token_atom : 1;		/* we're an atom embedded in a token */
 		};
 	};
 };
