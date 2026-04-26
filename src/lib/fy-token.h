@@ -150,12 +150,8 @@ struct fy_token {
 		} tag_directive;
 		struct {
 			enum fy_scalar_style style;
-			/* path key (if requested only) */
 			struct fy_mark style_start;
 			struct fy_mark style_end;
-			const char *path_key;
-			size_t path_key_len;
-			char *path_key_storage;	/* if this is not null, it's \0 terminated */
 			bool is_null;		/* special case; the scalar was NULL */
 		} scalar;
 		struct {
@@ -552,9 +548,7 @@ static inline bool fy_token_is_number(struct fy_token *fyt)
 struct fy_atom *fy_token_comment_handle(struct fy_token *fyt, enum fy_comment_placement placement, bool alloc);
 bool fy_token_has_any_comment(struct fy_token *fyt);
 
-const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp);
-size_t fy_token_get_scalar_path_key_length(struct fy_token *fyt);
-const char *fy_token_get_scalar_path_key0(struct fy_token *fyt);
+char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp);
 
 struct fy_atom *fy_token_comment_handle(struct fy_token *fyt, enum fy_comment_placement placement, bool alloc);
 

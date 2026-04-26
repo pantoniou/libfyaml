@@ -5012,7 +5012,7 @@ char *fy_node_get_parent_address(struct fy_node *fyn)
 	struct fy_node_pair *fynp;
 	struct fy_node *fyna;
 	char *path = NULL;
-	const char *str;
+	char *scalar_path_key;
 	size_t len;
 	int idx;
 	bool is_key_root;
@@ -5069,10 +5069,13 @@ char *fy_node_get_parent_address(struct fy_node *fyn)
 
 		/* if key is a plain scalar try to not use a complex style (even for quoted) */
 		if (fyna && fy_node_is_scalar(fyna) && !fy_node_is_alias(fyna) &&
-				(str = fy_token_get_scalar_path_key(fyna->scalar, &len)) != NULL) {
+				(scalar_path_key = fy_token_get_scalar_path_key(fyna->scalar, &len)) != NULL) {
 
 			fmt = !is_key_root ? "%.*s" : ".key(%.*s)";
-			ret = asprintf(&path, fmt, (int)len, str);
+			ret = asprintf(&path, fmt, (int)len, scalar_path_key);
+			free(scalar_path_key);
+			scalar_path_key = NULL;
+
 			if (ret == -1)
 				return NULL;
 

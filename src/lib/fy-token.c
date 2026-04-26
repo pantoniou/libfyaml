@@ -126,10 +126,6 @@ void fy_token_clean_rl(struct fy_token_list *fytl FY_UNUSED,
 		break;
 
 	case FYTT_SCALAR:
-		if (fyt->scalar.path_key_storage) {
-			free(fyt->scalar.path_key_storage);
-			fyt->scalar.path_key_storage = NULL;
-		}
 		break;
 
 	case FYTT_ALIAS:
@@ -452,9 +448,6 @@ struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_t
 		fyt->tag_directive.handle0 = NULL;
 		break;
 	case FYTT_SCALAR:
-		fyt->scalar.path_key = NULL;
-		fyt->scalar.path_key_len = 0;
-		fyt->scalar.path_key_storage = NULL;
 		fyt->scalar.is_null = false;	/* by default the scalar is not NULL */
 		fyt->scalar.style = va_arg(ap, enum fy_scalar_style);
 		/* by default it's the same as the content */
@@ -1265,7 +1258,7 @@ err_out:
 	return -1;
 }
 
-const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
+char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 {
 	struct fy_atom *atom;
 	struct fy_atom_iter iter;
@@ -1274,6 +1267,9 @@ const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 	size_t non_utf8_len, k, tmplen;
 	int c, i, w, digit;
 	const struct fy_token_analysis *ta;
+	char *str;
+	const char *text;
+	size_t len;
 
 	if (!lenp)
 		lenp = &tmplen;
@@ -1283,20 +1279,19 @@ const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 		return NULL;
 	}
 
-	/* was it cached? return */
-	if (fyt->scalar.path_key) {
-		*lenp = fyt->scalar.path_key_len;
-		return fyt->scalar.path_key;
-	}
-
 	/* analyze the token */
 	ta = fy_token_text_analyze(fyt);
 
 	/* simple one? perfect */
 	if ((ta->flags & FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) == FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) {
-		fyt->scalar.path_key = fy_token_get_text(fyt, &fyt->scalar.path_key_len);
-		*lenp = fyt->scalar.path_key_len;
-		return fyt->scalar.path_key;
+		text = fy_token_get_text(fyt, &len);
+		str = strdup(text);
+		if (!str) {
+			*lenp = 0;
+			return NULL;
+		}
+		*lenp = len;
+		return str;
 	}
 
 	/* not possible, need to quote (and escape) */
@@ -1304,10 +1299,8 @@ const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 	/* no atom? i.e. empty */
 	atom = fy_token_atom(fyt);
 	if (!atom) {
-		fyt->scalar.path_key = "";
-		fyt->scalar.path_key_len = 0;
 		*lenp = 0;
-		return fyt->scalar.path_key;
+		return NULL;
 	}
 
 	/* no inplace buffer; we will need the malloc'ed contents anyway */
@@ -1431,59 +1424,11 @@ const char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 	fy_emit_accum_make_0_terminated(&ea);
 
 	/* get the output (note it's now NULL terminated) */
-	fyt->scalar.path_key_storage = fy_emit_accum_steal(&ea, &fyt->scalar.path_key_len);
-	fyt->scalar.path_key = fyt->scalar.path_key_storage;
+	str = fy_emit_accum_steal(&ea, &len);
 	fy_emit_accum_cleanup(&ea);
 
-	*lenp = fyt->scalar.path_key_len;
-
-	return fyt->scalar.path_key;
-}
-
-size_t fy_token_get_scalar_path_key_length(struct fy_token *fyt)
-{
-	const char *text;
-	size_t len;
-
-	text = fy_token_get_scalar_path_key(fyt, &len);
-	if (!text)
-		return 0;
-	return len;
-}
-
-const char *fy_token_get_scalar_path_key0(struct fy_token *fyt)
-{
-	const char *text;
-	size_t len;
-
-	if (!fyt || fyt->type != FYTT_SCALAR) {
-		return NULL;
-	}
-
-	/* storage is \0 terminated */
-	if (fyt->scalar.path_key_storage)
-		return fyt->scalar.path_key_storage;
-
-	text = fyt->scalar.path_key;
-	len = fyt->scalar.path_key_len;
-	if (!text)
-		text = fy_token_get_scalar_path_key(fyt, &len);
-
-	/* something is catastrophically wrong */
-	if (!text)
-		return NULL;
-
-	if (fyt->scalar.path_key_storage)
-		return fyt->scalar.path_key_storage;
-
-	fyt->scalar.path_key_storage = malloc(len + 1);
-	if (!fyt->scalar.path_key_storage)
-		return NULL;
-
-	memcpy(fyt->scalar.path_key_storage, text, len);
-	fyt->scalar.path_key_storage[len] = '\0';
-
-	return fyt->scalar.path_key_storage;
+	*lenp = len;
+	return str;
 }
 
 unsigned int fy_analyze_scalar_content(const char *data,
