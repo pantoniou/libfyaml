@@ -1296,8 +1296,6 @@ const char *fy_atom_format_text(struct fy_atom *atom, char *buf, size_t maxsz)
 		memcpy(s, ic->str, ic->len);
 		s += ic->len;
 		count++;
-		if (count > 100)
-			FY_IMPOSSIBLE_ABORT();
 	}
 	fy_atom_iter_finish(&iter);
 
