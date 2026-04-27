@@ -832,6 +832,7 @@ fy_reader_fill_atom_start(struct fy_reader *fyr, struct fy_atom *handle)
 
 	handle->increment = 0;
 	handle->tozero = 0;
+	memset(&handle->analysis, 0, sizeof(handle->analysis));
 
 	/* note that handle->data may be zero for empty input */
 }

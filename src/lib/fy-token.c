@@ -145,7 +145,6 @@ void fy_token_clean_rl(struct fy_token_list *fytl FY_UNUSED,
 	}
 
 	fyt->type = FYTT_NONE;
-	memset(&fyt->analysis, 0, sizeof(fyt->analysis));
 	fyt->text_len = 0;
 	fyt->text = NULL;
 }
@@ -670,35 +669,44 @@ const struct fy_mark *fy_token_end_mark(struct fy_token *fyt)
 	return NULL;
 }
 
-const struct fy_token_analysis *
+const struct fy_text_analysis *
 fy_token_text_analyze(struct fy_token *fyt)
 {
-	static const struct fy_token_analysis null_analysis = {
+	static const struct fy_text_analysis null_analysis = {
 		.flags = FYTTAF_CAN_BE_SIMPLE_KEY | FYTTAF_DIRECT_OUTPUT |
 		         FYTTAF_EMPTY | FYTTAF_CAN_BE_DOUBLE_QUOTED |
 		         FYTTAF_ANALYZED,
 		.maxspan = 0,
 		.maxcol = 0,
+		.preferred_style = FYSS_DOUBLE_QUOTED,
 	};
+	static const struct fy_text_analysis non_text_analysis = {
+		.flags = FYTTAF_NO_TEXT_TOKEN | FYTTAF_ANALYZED,
+		.maxspan = 0,
+		.maxcol = 0,
+		.preferred_style = FYSS_DOUBLE_QUOTED,
+	};
+	struct fy_atom *handle;
+	int rc;
+
 	if (!fyt)
 		return &null_analysis;
 
-	if (fyt->analysis.flags & FYTTAF_ANALYZED)
-		return &fyt->analysis;
+	handle = fy_token_atom(fyt);
+
+	if (fyt->handle.analysis.flags & FYTTAF_ANALYZED)
+		return &fyt->handle.analysis;
 
 	/* only tokens that can generate text */
-	if (fyt->type == FYTT_SCALAR || fyt->type == FYTT_TAG ||
-	    fyt->type == FYTT_ANCHOR || fyt->type == FYTT_ALIAS) {
-		fyt->analysis.flags = fy_atom_text_analyze(fy_token_atom(fyt), fy_token_atom_style(fyt),
-				&fyt->analysis.maxspan, &fyt->analysis.maxcol, &fyt->analysis.lbs);
-	} else {
-		fyt->analysis.flags = FYTTAF_NO_TEXT_TOKEN;
-		fyt->analysis.maxspan = 0;
-		fyt->analysis.maxcol = 0;
+	if (fy_token_type_is_text(fyt->type)) {
+		rc = fy_atom_text_analyze(handle, handle->style, &handle->analysis);
+		if (!rc)
+			return &handle->analysis;
 	}
 
-	fyt->analysis.flags |= FYTTAF_ANALYZED;
-	return &fyt->analysis;
+	/* non text fall-through */
+	memcpy(&handle->analysis, &non_text_analysis, sizeof(handle->analysis));
+	return &handle->analysis;
 }
 
 const char *fy_tag_token_get_directive_handle(struct fy_token *fyt, size_t *td_handle_sizep)
@@ -1266,7 +1274,7 @@ char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 	uint8_t non_utf8[4];
 	size_t non_utf8_len, k, tmplen;
 	int c, i, w, digit;
-	const struct fy_token_analysis *ta;
+	const struct fy_text_analysis *ta;
 	char *str;
 	const char *text;
 	size_t len;
@@ -1431,143 +1439,85 @@ char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 	return str;
 }
 
-unsigned int fy_analyze_scalar_content(const char *data,
-				       size_t size,
-				       bool json_mode FY_UNUSED,
-				       enum fy_lb_mode lb_mode,
-				       enum fy_flow_ws_mode fws_mode FY_UNUSED)
+struct fy_scalar_content_iter {
+	const char *s;
+	const char *e;
+	int eofc;
+};
+
+static int fy_scalar_content_iter_read_block(void *user, int *buf, int count)
 {
+	struct fy_scalar_content_iter *iter = user;
+	int c, rdn, w;
 	const char *s, *e;
-	int c, lastc, nextc, w, ww, col, break_run;
-	unsigned int flags;
-	bool first;
 
-	if (!size)
-		return FYACF_EMPTY | FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN | FYACF_SIZE0;
+	assert(count > 0);
+	assert(buf);
 
-	flags = FYACF_EMPTY | FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN |
-		FYACF_PRINTABLE | FYACF_SINGLE_QUOTED | FYACF_DOUBLE_QUOTED |
-		FYACF_SIZE0 | FYACF_VALID_ANCHOR;
+	if (iter->eofc)
+		return iter->eofc;
 
-	s = data;
-	e = data + size;
-
-	/* if it ends in : can't be a plain */
-	if (e > s && e[-1] == ':') {
-		flags &= ~(FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN);
-		flags |= FYACF_ENDS_WITH_COLON;
-	}
-
-	col = 0;
-	first = true;
-	lastc = -1;
-	break_run = 0;
-	while (s < e && (c = fy_utf8_get(s, e - s, &w)) >= 0) {
-
-		flags &= ~FYACF_SIZE0;
-
-		lastc = c;
-
-		if (first) {
-			if (fy_is_ws(c))
-				flags |= FYACF_STARTS_WITH_WS;
-			else if (fy_is_generic_lb_m(c, lb_mode))
-				flags |= FYACF_STARTS_WITH_LB;
-			/* scalars starting with & or * must be quoted */
-			if (c == '&' || c == '*')
-				flags &= ~(FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN);
-			first = false;
+	rdn = 0;
+	s = iter->s;
+	e = iter->e;
+	while (rdn < count) {
+		c = fy_utf8_get(s, e - s, &w);
+		if (c < 0) {
+			iter->eofc = c;
+			break;
 		}
-		nextc = fy_utf8_get(s + w, e - (s + w), &ww);
-
-		/* anything other than white space or linebreak */
-		if ((flags & FYACF_EMPTY) &&
-		    !fy_is_ws(c) && !fy_is_generic_lb_m(c, lb_mode))
-			flags &= ~FYACF_EMPTY;
-
-		if ((flags & FYACF_VALID_ANCHOR) &&
-		    (fy_utf8_strchr(",[]{}&*:", c) || fy_is_ws(c) ||
-		     fy_is_any_lb(c) || fy_is_unicode_control(c) ||
-		     fy_is_unicode_space(c)))
-			flags &= ~FYACF_VALID_ANCHOR;
-
-		/* linebreak */
-		if (fy_is_generic_lb_m(c, lb_mode)) {
-			flags |= FYACF_LB;
-			if (!(flags & FYACF_CONSECUTIVE_LB) &&
-			    fy_is_generic_lb_m(nextc, lb_mode))
-				flags |= FYACF_CONSECUTIVE_LB;
-			break_run++;
-		} else
-			break_run = 0;
-
-		/* white space */
-		if (!(flags & FYACF_WS) && fy_is_ws(c)) {
-			flags |= FYACF_WS;
-			flags &= ~FYACF_VALID_ANCHOR;
-		}
-
-		/* anything not printable (or \r, \n) */
-		if ((flags & FYACF_PRINTABLE) &&
-		    !fy_is_printq(c)) {
-			flags &= ~FYACF_PRINTABLE;
-			flags &= ~(FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN |
-				   FYACF_SINGLE_QUOTED | FYACF_VALID_ANCHOR);
-		}
-
-		/* check for document indicators (at column 0) */
-		if (!(flags & FYACF_DOC_IND) &&
-		    ((col == 0 && (e - s) >= 3 &&
-		      (!strncmp(s, "---", 3) || !strncmp(s, "...", 3))))) {
-			flags |= FYACF_DOC_IND;
-			flags &= ~(FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN | FYACF_VALID_ANCHOR);
-		}
-
-		/* comment indicator can't be present after a space or lb */
-		/* : followed by blank can't be any plain */
-		if ((flags & (FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN)) &&
-		    (((fy_is_blank(c) || fy_is_generic_lb_m(c, lb_mode)) && nextc == '#') ||
-		     (c == ':' && fy_is_blankz_m(nextc, lb_mode))))
-			flags &= ~(FYACF_BLOCK_PLAIN | FYACF_FLOW_PLAIN);
-
-		/* : followed by flow markers can't be a plain in flow context */
-		if ((flags & FYACF_FLOW_PLAIN) &&
-		    (fy_utf8_strchr(",[]{}", c) || (c == ':' && fy_utf8_strchr(",[]{}", nextc))))
-			flags &= ~FYACF_FLOW_PLAIN;
-
-		/* , followed by space can't be a plain in flow context */
-		if ((flags & FYACF_FLOW_PLAIN) && c == ',')
-			flags &= ~FYACF_FLOW_PLAIN;
-
-		if (!(flags & FYACF_JSON_ESCAPE) && !fy_is_json_unescaped(c))
-			flags |= FYACF_JSON_ESCAPE;
-
-		if (fy_is_generic_lb_m(c, lb_mode))
-			col = 0;
-		else
-			col++;
-
+		buf[rdn++] = c;
 		s += w;
 	}
+	iter->s = s;
+	return rdn > 0 ? rdn : iter->eofc;
+}
 
-	/* this contains arbitrary binany values, mark it as such */
-	if (s < e)
-		return FYACF_DOUBLE_QUOTED;
+int fy_analyze_scalar_content(const char *data, size_t size,
+			      enum fy_scalar_style sstyle,
+			      enum fy_lb_mode lb_mode,
+			      struct fy_text_analysis *analysis)
+{
+	struct fy_scalar_content_iter iter;
+	enum fy_atom_style style;
+	struct fy_utf8_buf ubuf;
+	int buf[32];
 
-	if (fy_is_ws(lastc))
-		flags |= FYACF_ENDS_WITH_WS;
-	else if (fy_is_generic_lb_m(lastc, lb_mode))
-		flags |= FYACF_ENDS_WITH_LB;
+	assert(analysis);
 
-	if (break_run > 1)
-		flags |= FYACF_TRAILING_LB;
+	memset(analysis, 0, sizeof(*analysis));
 
-	/* if it's empty it can be plain */
-	if (!(flags & FYACF_EMPTY) && (flags & (FYACF_STARTS_WITH_WS | FYACF_STARTS_WITH_LB |
-		      FYACF_ENDS_WITH_WS | FYACF_ENDS_WITH_LB)))
-		flags &= ~(FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN);
+	iter.s = data;
+	iter.e = data + size;
+	iter.eofc = 0;
 
-	return flags;
+	fy_utf8_buf_reset(&ubuf,
+			fy_scalar_content_iter_read_block,
+			&iter,
+			buf, (int)ARRAY_SIZE(buf));
+
+	switch (sstyle) {
+	case FYSS_PLAIN:
+		style = FYAS_PLAIN_MANUAL;
+		break;
+	case FYSS_SINGLE_QUOTED:
+		style = FYAS_SINGLE_QUOTED_MANUAL;
+		break;
+	case FYSS_DOUBLE_QUOTED:
+		style = FYAS_DOUBLE_QUOTED_MANUAL;
+		break;
+	case FYSS_LITERAL:
+		style = FYAS_LITERAL_MANUAL;
+		break;
+	case FYSS_FOLDED:
+		style = FYAS_FOLDED_MANUAL;
+		break;
+	default:
+		style = FYAS_PLAIN;
+		break;
+	}
+
+	return fy_atom_text_analyze_internal(&ubuf, style, lb_mode, analysis);
 }
 
 char *fy_token_debug_text(struct fy_token *fyt)

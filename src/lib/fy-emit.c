@@ -938,7 +938,7 @@ void fy_emit_token_write_alias(struct fy_emitter *emit, struct fy_token *fyt, in
 
 void fy_emit_token_write_quoted(struct fy_emitter *emit, struct fy_token *fyt, int flags, int indent, char qc)
 {
-	const struct fy_token_analysis *ta;
+	const struct fy_text_analysis *ta;
 	bool allow_breaks, spaces, breaks;
 	int c, i, w, digit;
 	enum fy_emitter_write_type wtype;
@@ -1508,7 +1508,7 @@ fy_emit_token_scalar_style(struct fy_emitter *emit, struct fy_token *fyt,
 			   int flags, int indent, enum fy_node_style style,
 			   struct fy_token *fyt_tag)
 {
-	const struct fy_token_analysis *ta = NULL;
+	const struct fy_text_analysis *ta = NULL;
 	bool json, flow, is_null_scalar, is_json_plain;
 	struct fy_atom *atom;
 	const char *tag;
@@ -1937,7 +1937,7 @@ static void fy_emit_mapping_epilog(struct fy_emitter *emit, struct fy_emit_save_
 static void fy_emit_mapping_key_prolog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
 				       struct fy_token *fyt_key, bool simple_key)
 {
-	const struct fy_token_analysis *ta;
+	const struct fy_text_analysis *ta;
 	bool do_indent, key_over, has_comment;
 
 	sc->flags = DDNF_MAP | (sc->flags & DDNF_FLOW);
@@ -2027,7 +2027,7 @@ static void fy_emit_mapping_key_epilog(struct fy_emitter *emit, struct fy_emit_s
 static void fy_emit_mapping_value_prolog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
 					 struct fy_token *fyt_value)
 {
-	const struct fy_token_analysis *ta;
+	const struct fy_text_analysis *ta;
 	bool value_over;
 
 	if (sc->flags & DDNF_HANGING_INDENT)
@@ -2074,7 +2074,7 @@ void fy_emit_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flags, in
 	struct fy_node_pair *fynp, *fynpn, **fynpp = NULL;
 	struct fy_token *fyt_key, *fyt_value;
 	bool last, simple_key, used_malloc = false;
-	const struct fy_token_analysis *tak = NULL, *tav;
+	const struct fy_text_analysis *tak = NULL, *tav;
 	int i, count;
 	struct fy_emit_save_ctx sct, *sc = &sct;
 
@@ -3874,7 +3874,7 @@ static int fy_emit_handle_mapping_key(struct fy_emitter *emit, struct fy_parser 
 	struct fy_event *fye = &fyep->e;
 	struct fy_emit_save_ctx *sc = &emit->s_sc;
 	struct fy_token *fyt_key = NULL;
-	const struct fy_token_analysis *ta;
+	const struct fy_text_analysis *ta;
 	int ret;
 	bool simple_key;
 
