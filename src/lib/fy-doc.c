@@ -881,7 +881,8 @@ struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn)
 	struct fy_token *fyt;
 	struct fy_input *fyi;
 	struct fy_atom handle;
-	unsigned int aflags;
+	struct fy_text_analysis ta;
+	uint64_t aflags;
 	const char *s, *e;
 	size_t size;
 	bool simple;
@@ -917,24 +918,26 @@ struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn)
 	size = (size_t)(e - s);
 
 	if (size > 0)
-		aflags = fy_analyze_scalar_content(s, size,
-				fy_token_atom_json_mode(fyt_start),
-				fy_token_atom_lb_mode(fyt_start),
-				fy_token_atom_flow_ws_mode(fyt_start));
-	else
-		aflags = FYACF_EMPTY | FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN;
+		fy_analyze_scalar_content(s, size,
+				FYSS_PLAIN,
+				fy_token_atom_lb_mode(fyt_start), &ta);
+	else {
+		memset(&ta, 0, sizeof(ta));
+		ta.flags = FYTTAF_EMPTY | FYTTAF_CAN_BE_PLAIN_FLOW | FYTTAF_CAN_BE_PLAIN;
+	}
+	aflags = ta.flags;
 
 	memset(&handle, 0, sizeof(handle));
 	handle.start_mark = fyt_start->handle.start_mark;
 	handle.end_mark = fyt_end->handle.end_mark;
 
-	simple = (aflags & (FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN | FYACF_LB | FYACF_ENDS_WITH_COLON))
-			== (FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN);
+	simple = (aflags & (FYTTAF_CAN_BE_PLAIN_FLOW | FYTTAF_CAN_BE_PLAIN | FYTTAF_HAS_LB | FYTTAF_ENDS_WITH_COLON))
+			== (FYTTAF_CAN_BE_PLAIN_FLOW | FYTTAF_CAN_BE_PLAIN);
 	/* if it's plain, all is good */
 	if (simple) {
 		handle.storage_hint = size;	/* maximum */
 		handle.storage_hint_valid = false;
-		handle.direct_output = !!(aflags & FYACF_JSON_ESCAPE);	/* direct only when no json escape */
+		handle.direct_output = !!(aflags & FYTTAF_JSON_ESCAPE);	/* direct only when no json escape */
 		handle.style = FYAS_PLAIN;
 	} else {
 		handle.storage_hint = 0;	/* just calculate */
@@ -942,16 +945,16 @@ struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn)
 		handle.direct_output = false;
 		handle.style = FYAS_DOUBLE_QUOTED_MANUAL;
 	}
-	handle.empty = !!(aflags & FYACF_EMPTY);
-	handle.has_lb = !!(aflags & FYACF_LB);
-	handle.has_ws = !!(aflags & FYACF_WS);
-	handle.starts_with_ws = !!(aflags & FYACF_STARTS_WITH_WS);
-	handle.starts_with_lb = !!(aflags & FYACF_STARTS_WITH_LB);
-	handle.ends_with_ws = !!(aflags & FYACF_ENDS_WITH_WS);
-	handle.ends_with_lb = !!(aflags & FYACF_ENDS_WITH_LB);
-	handle.trailing_lb = !!(aflags & FYACF_TRAILING_LB);
-	handle.size0 = !!(aflags & FYACF_SIZE0);
-	handle.valid_anchor = !!(aflags & FYACF_VALID_ANCHOR);
+	handle.empty = !!(aflags & FYTTAF_EMPTY);
+	handle.has_lb = !!(aflags & FYTTAF_HAS_LB);
+	handle.has_ws = !!(aflags & FYTTAF_HAS_WS);
+	handle.starts_with_ws = !!(aflags & FYTTAF_HAS_START_WS);
+	handle.starts_with_lb = !!(aflags & FYTTAF_HAS_START_LB);
+	handle.ends_with_ws = !!(aflags & FYTTAF_HAS_END_WS);
+	handle.ends_with_lb = !!(aflags & FYTTAF_HAS_END_LB);
+	handle.trailing_lb = !!(aflags & FYTTAF_HAS_TRAILING_LB);
+	handle.size0 = !!(aflags & FYTTAF_SIZE0);
+	handle.valid_anchor = !!(aflags & FYTTAF_VALID_ANCHOR);
 	handle.json_mode = false;		/* always false */
 	handle.lb_mode = fylb_cr_nl;		/* always \r\n */
 	handle.fws_mode = fyfws_space_tab;	/* always space + tab */
@@ -3465,7 +3468,7 @@ enum fy_node_style fy_node_get_style(struct fy_node *fyn)
 
 enum fy_node_style fy_node_set_style(struct fy_node *fyn, enum fy_node_style style)
 {
-	const struct fy_token_analysis *ta;
+	const struct fy_text_analysis *ta;
 
 	/* a NULL node is always plain */
 	if (!fyn)

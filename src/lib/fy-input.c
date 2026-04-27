@@ -100,13 +100,14 @@ const char *fy_input_get_filename(struct fy_input *fyi)
 	return fyi->name;
 }
 
-static void
+static int
 fy_input_from_data_setup_styled(struct fy_input *fyi,
 		struct fy_atom *handle, enum fy_scalar_style sstyle)
 {
 	const char *data;
 	size_t size;
-	unsigned int aflags;
+	uint64_t aflags;
+	int rc;
 
 	/* this is an internal method, you'd better to pass garbage */
 	data = fy_input_start(fyi);
@@ -124,16 +125,15 @@ fy_input_from_data_setup_styled(struct fy_input *fyi,
 
 	memset(handle, 0, sizeof(*handle));
 
-	aflags = fy_analyze_scalar_content(data, size,
-			false, fylb_cr_nl, fyfws_space_tab);	/* hardcoded yaml mode */
+	rc = fy_analyze_scalar_content(data, size, sstyle, fylb_cr_nl, &handle->analysis);
+	if (rc)
+		return -1;
 
-	if (sstyle == FYSS_ANY) {
-		sstyle = (aflags & (FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN |
-				    FYACF_LB | FYACF_ENDS_WITH_COLON |
-				    FYACF_STARTS_WITH_WS | FYACF_STARTS_WITH_LB |
-				    FYACF_ENDS_WITH_WS | FYACF_ENDS_WITH_LB | FYACF_CONSECUTIVE_LB))
-				== (FYACF_FLOW_PLAIN | FYACF_BLOCK_PLAIN) ? FYSS_PLAIN : FYSS_DOUBLE_QUOTED;
-	}
+	aflags = handle->analysis.flags;
+
+	/* if any would do, just select the preferred one */
+	if (sstyle == FYSS_ANY)
+		sstyle = handle->analysis.preferred_style;
 
 	handle->start_mark.input_pos = 0;
 	handle->start_mark.line = 0;
@@ -159,14 +159,14 @@ fy_input_from_data_setup_styled(struct fy_input *fyi,
 	case FYSS_LITERAL:
 		handle->style = FYAS_LITERAL | FYAS_MANUAL_MARK;
 		/* we need everything */
-		if (aflags & FYACF_ENDS_WITH_LB)
-			aflags |= FYACF_TRAILING_LB;
+		if (aflags & FYTTAF_HAS_END_LB)
+			aflags |= FYTTAF_HAS_TRAILING_LB;
 		break;
 	case FYSS_FOLDED:
 		handle->style = FYAS_FOLDED | FYAS_MANUAL_MARK;
 		/* we need everything */
-		if (aflags & FYACF_ENDS_WITH_LB)
-			aflags |= FYACF_TRAILING_LB;
+		if (aflags & FYTTAF_HAS_END_LB)
+			aflags |= FYTTAF_HAS_TRAILING_LB;
 		break;
 
 	case FYSS_ANY:
@@ -175,16 +175,16 @@ fy_input_from_data_setup_styled(struct fy_input *fyi,
 		break;
 	}
 
-	handle->empty = !!(aflags & FYACF_EMPTY);
-	handle->has_lb = !!(aflags & FYACF_LB);
-	handle->has_ws = !!(aflags & FYACF_WS);
-	handle->starts_with_ws = !!(aflags & FYACF_STARTS_WITH_WS);
-	handle->starts_with_lb = !!(aflags & FYACF_STARTS_WITH_LB);
-	handle->ends_with_ws = !!(aflags & FYACF_ENDS_WITH_WS);
-	handle->ends_with_lb = !!(aflags & FYACF_ENDS_WITH_LB);
-	handle->trailing_lb = !!(aflags & FYACF_TRAILING_LB);
-	handle->size0 = !!(aflags & FYACF_SIZE0);
-	handle->valid_anchor = !!(aflags & FYACF_VALID_ANCHOR);
+	handle->empty = !!(aflags & FYTTAF_EMPTY);
+	handle->has_lb = !!(aflags & FYTTAF_HAS_LB);
+	handle->has_ws = !!(aflags & FYTTAF_HAS_WS);
+	handle->starts_with_ws = !!(aflags & FYTTAF_HAS_START_WS);
+	handle->starts_with_lb = !!(aflags & FYTTAF_HAS_START_LB);
+	handle->ends_with_ws = !!(aflags & FYTTAF_HAS_END_WS);
+	handle->ends_with_lb = !!(aflags & FYTTAF_HAS_END_LB);
+	handle->trailing_lb = !!(aflags & FYTTAF_HAS_TRAILING_LB);
+	handle->size0 = !!(aflags & FYTTAF_SIZE0);
+	handle->valid_anchor = !!(aflags & FYTTAF_VALID_ANCHOR);
 
 	handle->chomp = FYAC_STRIP;
 	handle->increment = 0;
@@ -195,15 +195,18 @@ fy_input_from_data_setup_styled(struct fy_input *fyi,
 	handle->lb_mode = fylb_cr_nl;
 	handle->fws_mode = fyfws_space_tab;
 	handle->directive0_mode = false;
+
 out:
 	fyi->state = FYIS_PARSED;
+
+	return 0;
 }
 
 
-static void fy_input_from_data_setup(struct fy_input *fyi,
+static int fy_input_from_data_setup(struct fy_input *fyi,
 				     struct fy_atom *handle, bool simple)
 {
-	fy_input_from_data_setup_styled(fyi, handle,
+	return fy_input_from_data_setup_styled(fyi, handle,
 			simple ? FYSS_PLAIN : FYSS_ANY);
 }
 
@@ -211,6 +214,7 @@ struct fy_input *fy_input_from_data(const char *data, size_t size,
 				    struct fy_atom *handle, bool simple)
 {
 	struct fy_input *fyi;
+	int rc;
 
 	if (data && size == (size_t)-1)
 		size = strlen(data);
@@ -224,7 +228,11 @@ struct fy_input *fy_input_from_data(const char *data, size_t size,
 	fyi->cfg.memory.data = data;
 	fyi->cfg.memory.size = size;
 
-	fy_input_from_data_setup(fyi, handle, simple);
+	rc = fy_input_from_data_setup(fyi, handle, simple);
+	if (rc) {
+		fy_input_free(fyi);
+		return NULL;
+	}
 
 	return fyi;
 }
@@ -233,6 +241,7 @@ struct fy_input *fy_input_from_malloc_data(char *data, size_t size,
 					   struct fy_atom *handle, bool simple)
 {
 	struct fy_input *fyi;
+	int rc;
 
 	if (data && size == (size_t)-1)
 		size = strlen(data);
@@ -246,7 +255,11 @@ struct fy_input *fy_input_from_malloc_data(char *data, size_t size,
 	fyi->cfg.alloc.data = data;
 	fyi->cfg.alloc.size = size;
 
-	fy_input_from_data_setup(fyi, handle, simple);
+	rc = fy_input_from_data_setup(fyi, handle, simple);
+	if (rc) {
+		fy_input_free(fyi);
+		return NULL;
+	}
 
 	return fyi;
 }
@@ -255,6 +268,7 @@ struct fy_input *fy_input_from_data_styled(const char *data, size_t size,
 				    struct fy_atom *handle, enum fy_scalar_style sstyle)
 {
 	struct fy_input *fyi;
+	int rc;
 
 	if (data && size == (size_t)-1)
 		size = strlen(data);
@@ -268,7 +282,11 @@ struct fy_input *fy_input_from_data_styled(const char *data, size_t size,
 	fyi->cfg.memory.data = data;
 	fyi->cfg.memory.size = size;
 
-	fy_input_from_data_setup_styled(fyi, handle, sstyle);
+	rc = fy_input_from_data_setup_styled(fyi, handle, sstyle);
+	if (rc) {
+		fy_input_free(fyi);
+		return NULL;
+	}
 
 	return fyi;
 }
@@ -277,6 +295,7 @@ struct fy_input *fy_input_from_malloc_data_styled(char *data, size_t size,
 					   struct fy_atom *handle,  enum fy_scalar_style sstyle)
 {
 	struct fy_input *fyi;
+	int rc;
 
 	if (data && size == (size_t)-1)
 		size = strlen(data);
@@ -290,7 +309,11 @@ struct fy_input *fy_input_from_malloc_data_styled(char *data, size_t size,
 	fyi->cfg.alloc.data = data;
 	fyi->cfg.alloc.size = size;
 
-	fy_input_from_data_setup_styled(fyi, handle, sstyle);
+	rc = fy_input_from_data_setup_styled(fyi, handle, sstyle);
+	if (rc) {
+		fy_input_free(fyi);
+		return NULL;
+	}
 
 	return fyi;
 }

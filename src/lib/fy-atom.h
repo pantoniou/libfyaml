@@ -62,6 +62,54 @@ enum fy_atom_chomp {
 	FYAC_KEEP,
 };
 
+/* analysis flags */
+#define FYTTAF_BIT(x) ((uint64_t)1 << (x))
+
+#define FYTTAF_HAS_LB			FYTTAF_BIT(0)
+#define FYTTAF_HAS_WS			FYTTAF_BIT(1)
+#define FYTTAF_HAS_CONSECUTIVE_LB	FYTTAF_BIT(2)
+#define FYTTAF_HAS_START_LB		FYTTAF_BIT(3)	/* starts with linebreak */
+#define FYTTAF_HAS_CONSECUTIVE_WS	FYTTAF_BIT(4)
+#define FYTTAF_EMPTY			FYTTAF_BIT(5)
+#define FYTTAF_CAN_BE_SIMPLE_KEY	FYTTAF_BIT(6)
+#define FYTTAF_DIRECT_OUTPUT		FYTTAF_BIT(7)
+#define FYTTAF_NO_TEXT_TOKEN		FYTTAF_BIT(8)
+#define FYTTAF_TEXT_TOKEN		FYTTAF_BIT(9)
+#define FYTTAF_CAN_BE_PLAIN		FYTTAF_BIT(10)
+#define FYTTAF_CAN_BE_SINGLE_QUOTED	FYTTAF_BIT(11)
+#define FYTTAF_CAN_BE_DOUBLE_QUOTED	FYTTAF_BIT(12)
+#define FYTTAF_CAN_BE_LITERAL		FYTTAF_BIT(13)
+#define FYTTAF_CAN_BE_FOLDED		FYTTAF_BIT(14)
+#define FYTTAF_CAN_BE_PLAIN_FLOW	FYTTAF_BIT(15)
+#define FYTTAF_QUOTE_AT_0		FYTTAF_BIT(16)
+#define FYTTAF_CAN_BE_UNQUOTED_PATH_KEY	FYTTAF_BIT(17)
+#define FYTTAF_HAS_ANY_LB		FYTTAF_BIT(18)	/* any LB including unicode, not per input */
+#define FYTTAF_HAS_START_IND		FYTTAF_BIT(19)	/* has --- at col 0 */
+#define FYTTAF_HAS_END_IND		FYTTAF_BIT(20)	/* has ... at col 0 */
+#define FYTTAF_HAS_NON_PRINT		FYTTAF_BIT(21)	/* has any non printable utf8 */
+#define FYTTAF_ENDS_WITH_COLON		FYTTAF_BIT(22)	/* ends with a colon */
+#define FYTTAF_ALL_WS_LB		FYTTAF_BIT(23)	/* everything is ws or linebreak */
+#define FYTTAF_ALL_PRINT_ASCII		FYTTAF_BIT(24)	/* everything is >= '!' && <= '~' */
+#define FYTTAF_HAS_START_WS		FYTTAF_BIT(25)	/* leads with whitespace */
+#define FYTTAF_SIZE0			FYTTAF_BIT(26)	/* zero sized */
+#define FYTTAF_HAS_ZERO			FYTTAF_BIT(27)	/* contains a zero byte */
+#define FYTTAF_HAS_NON_NL_LB		FYTTAF_BIT(28)	/* if it has a linebreak which is not \n */
+#define FYTTAF_HAS_END_WS		FYTTAF_BIT(29)	/* ends with whitespace */
+#define FYTTAF_HAS_END_LB		FYTTAF_BIT(30)	/* ends with linebreak */
+#define FYTTAF_HAS_TRAILING_LB		FYTTAF_BIT(32)	/* ends with trailing lb > 1 */
+#define FYTTAF_VALID_ANCHOR		FYTTAF_BIT(33)	/* valid anchor content (without & prefix) */
+#define FYTTAF_JSON_ESCAPE		FYTTAF_BIT(34)	/* contains a character that JSON escapes */
+
+#define FYTTAF_ANALYZED			FYTTAF_BIT(63)	/* analyzed mark */
+
+struct fy_text_analysis {
+	uint64_t flags;
+	int maxspan;
+	int maxcol;
+	int lbs;
+	enum fy_scalar_style preferred_style;
+};
+
 struct fy_atom {
 	struct fy_mark start_mark;
 	struct fy_mark end_mark;
@@ -101,6 +149,7 @@ struct fy_atom {
 			bool token_atom : 1;		/* we're an atom embedded in a token */
 		};
 	};
+	struct fy_text_analysis analysis;
 };
 
 /* Set indent_delta, clamping to the [-128, 127] range of the 8-bit bitfield */
@@ -316,9 +365,14 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter);
 const char *
 fy_atom_lines_containing(struct fy_atom *atom, size_t *lenp);
 
+int
+fy_atom_text_analyze_internal(
+		struct fy_utf8_buf *ubuf,
+		enum fy_atom_style style, enum fy_lb_mode lb_mode,
+		struct fy_text_analysis *analysis);
 
-unsigned int
+int
 fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style,
-		     int *maxspanp, int *maxcolp, int *lbsp);
+		     struct fy_text_analysis *analysis);
 
 #endif

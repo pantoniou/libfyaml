@@ -58,67 +58,11 @@ static inline bool fy_token_type_is_mapping_marker(enum fy_token_type type)
 	return fy_token_type_is_mapping_start(type) || fy_token_type_is_mapping_end(type);
 }
 
-/* analyze content flags */
-#define FYACF_EMPTY		0x000001	/* is empty (only ws & lb) */
-#define FYACF_LB		0x000002	/* has a linebreak */
-#define FYACF_BLOCK_PLAIN	0x000004	/* can be a plain scalar in block context */
-#define FYACF_FLOW_PLAIN	0x000008	/* can be a plain scalar in flow context */
-#define FYACF_PRINTABLE		0x000010	/* every character is printable */
-#define FYACF_SINGLE_QUOTED	0x000020	/* can be a single quoted scalar */
-#define FYACF_DOUBLE_QUOTED	0x000040	/* can be a double quoted scalar */
-#define FYACF_CONTAINS_ZERO	0x000080	/* contains a zero */
-#define FYACF_DOC_IND		0x000100	/* contains document indicators */
-#define FYACF_CONSECUTIVE_LB 	0x000200	/* has consecutive linebreaks */
-#define FYACF_SIMPLE_KEY	0x000400	/* can be a simple key */
-#define FYACF_WS		0x000800	/* has at least one whitespace */
-#define FYACF_STARTS_WITH_WS	0x001000	/* starts with whitespace */
-#define FYACF_STARTS_WITH_LB	0x002000	/* starts with whitespace */
-#define FYACF_ENDS_WITH_WS	0x004000	/* ends with whitespace */
-#define FYACF_ENDS_WITH_LB	0x008000	/* ends with linebreak */
-#define FYACF_TRAILING_LB	0x010000	/* ends with trailing lb > 1 */
-#define FYACF_SIZE0		0x020000	/* contains absolutely nothing */
-#define FYACF_VALID_ANCHOR	0x040000	/* contains valid anchor (without & prefix) */
-#define FYACF_JSON_ESCAPE	0x080000	/* contains a character that JSON escapes */
-#define FYACF_ENDS_WITH_COLON	0x100000	/* ends with : */
-
-/* analysis flags */
-#define FYTTAF_HAS_LB			FY_BIT(0)
-#define FYTTAF_HAS_WS			FY_BIT(1)
-#define FYTTAF_HAS_CONSECUTIVE_LB	FY_BIT(2)
-#define FYTTAF_HAS_CONSECUTIVE_WS	FY_BIT(4)
-#define FYTTAF_EMPTY			FY_BIT(5)
-#define FYTTAF_CAN_BE_SIMPLE_KEY	FY_BIT(6)
-#define FYTTAF_DIRECT_OUTPUT		FY_BIT(7)
-#define FYTTAF_NO_TEXT_TOKEN		FY_BIT(8)
-#define FYTTAF_TEXT_TOKEN		FY_BIT(9)
-#define FYTTAF_CAN_BE_PLAIN		FY_BIT(10)
-#define FYTTAF_CAN_BE_SINGLE_QUOTED	FY_BIT(11)
-#define FYTTAF_CAN_BE_DOUBLE_QUOTED	FY_BIT(12)
-#define FYTTAF_CAN_BE_LITERAL		FY_BIT(13)
-#define FYTTAF_CAN_BE_FOLDED		FY_BIT(14)
-#define FYTTAF_CAN_BE_PLAIN_FLOW	FY_BIT(15)
-#define FYTTAF_QUOTE_AT_0		FY_BIT(16)
-#define FYTTAF_CAN_BE_UNQUOTED_PATH_KEY	FY_BIT(17)
-#define FYTTAF_HAS_ANY_LB		FY_BIT(18)	/* any LB including unicode, not per input */
-#define FYTTAF_HAS_START_IND		FY_BIT(19)	/* has --- at col 0 */
-#define FYTTAF_HAS_END_IND		FY_BIT(20)	/* has ... at col 0 */
-#define FYTTAF_HAS_NON_PRINT		FY_BIT(21)	/* has any non printable utf8 */
-#define FYTTAF_ENDS_WITH_COLON		FY_BIT(22)	/* ends with a colon */
-#define FYTTAF_ALL_WS_LB		FY_BIT(23)	/* everything is ws or linebreak */
-#define FYTTAF_ALL_PRINT_ASCII		FY_BIT(24)	/* everything is >= '!' && <= '~' */
-#define FYTTAF_HAS_START_WS		FY_BIT(25)	/* leads with whitespace */
-#define FYTTAF_SIZE0			FY_BIT(26)	/* zero sized */
-#define FYTTAF_HAS_ZERO			FY_BIT(27)	/* contains a zero byte */
-#define FYTTAF_HAS_NON_NL_LB		FY_BIT(28)	/* if it has a linebreak which is not \n */
-
-#define FYTTAF_ANALYZED			FY_BIT(31)	/* analyzed mark */
-
-struct fy_token_analysis {
-	unsigned int flags;
-	int maxspan;
-	int maxcol;
-	int lbs;
-};
+static inline bool fy_token_type_is_text(enum fy_token_type type)
+{
+	return type == FYTT_SCALAR || type == FYTT_TAG ||
+	       type == FYTT_ANCHOR || type == FYTT_ALIAS;
+}
 
 struct fy_token_comment {
 	struct fy_token_comment *next;
@@ -132,7 +76,6 @@ struct fy_token {
 	struct list_head node;
 	enum fy_token_type type;
 	int refs;		/* when on document, we switch to reference counting */
-	struct fy_token_analysis analysis;
 	size_t text_len;
 	const char *text;
 	char *text0;		/* this is allocated */
@@ -219,7 +162,6 @@ fy_token_alloc_rl(struct fy_token_list *fytl)
 
 	fyt->type = FYTT_NONE;
 	fyt->refs = 1;
-	memset(&fyt->analysis, 0, sizeof(fyt->analysis));
 	fyt->text_len = 0;
 	fyt->text = NULL;
 	fyt->text0 = NULL;
@@ -477,10 +419,11 @@ static inline bool fy_token_is_flow_ws(struct fy_token *fyt, int c)
 	return fy_atom_is_flow_ws(&fyt->handle, c);
 }
 
-const struct fy_token_analysis *fy_token_text_analyze(struct fy_token *fyt);
+const struct fy_text_analysis *fy_token_text_analyze(struct fy_token *fyt);
 
-unsigned int fy_analyze_scalar_content(const char *data, size_t size,
-		bool json_mode, enum fy_lb_mode lb_mode, enum fy_flow_ws_mode fws_mode);
+int fy_analyze_scalar_content(const char *data, size_t size,
+		enum fy_scalar_style sstyle,
+		enum fy_lb_mode lb_mode, struct fy_text_analysis *analysis);
 
 /* must be freed */
 char *fy_token_debug_text(struct fy_token *fyt);
