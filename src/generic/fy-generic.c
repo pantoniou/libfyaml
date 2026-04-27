@@ -2621,6 +2621,10 @@ fy_document_state_generic_create_token(struct fy_document_state *fyds, fy_generi
 
 	szstr = fy_cast(vstr, fy_szstr_empty);
 
+	handle_length = 0;
+	uri_length = 0;
+	prefix_length = 0;
+
 	if (type == FYTT_TAG) {
 		data = fy_document_state_format_tag_alloc(fyds, szstr.data, szstr.size, &szstr.size);
 		if (!data)
@@ -2643,24 +2647,25 @@ fy_document_state_generic_create_token(struct fy_document_state *fyds, fy_generi
 		if (!fyt_td)
 			goto err_out;
 
+		fyi = fy_input_from_malloc_data(data, szstr.size, &handle, false);
+		if (!fyi)
+			goto err_out;
+		data = NULL;
+
 		handle.style = FYAS_URI;
-		handle.direct_output = false;
-		handle.storage_hint = 0;
-		handle.storage_hint_valid = false;
+
 	} else {
 		data = malloc(szstr.size);
 		if (!data)
 			goto err_out;
 		memcpy(data, szstr.data, szstr.size);
-		handle_length = 0;
-		uri_length = 0;
-		prefix_length = 0;
-	}
 
-	fyi = fy_input_from_malloc_data(data, szstr.size, &handle, false);
-	if (!fyi)
-		goto err_out;
-	data = NULL;
+		fyi = fy_input_from_malloc_data(data, szstr.size, &handle, false);
+		if (!fyi)
+			goto err_out;
+		data = NULL;
+
+	}
 
 	if ((unsigned int)style >= FYSS_MAX)
 		style = FYSS_ANY;
