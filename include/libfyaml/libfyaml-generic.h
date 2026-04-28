@@ -3425,6 +3425,61 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 	return fy_genericp_get_char_ptr_default(vp, "");
 }
 
+static inline fy_generic_value fy_generic_in_place_char_ptr_len0(void)
+{
+	return (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
+}
+
+#ifdef FYGT_GENERIC_64
+static inline fy_generic_value fy_generic_in_place_char_ptr_len1(const char p[static 1])
+{
+	return FY_STRING_SHIFT7(p[0], 0, 0, 0, 0, 0, 0) |
+	       (1 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
+}
+
+static inline fy_generic_value fy_generic_in_place_char_ptr_len2(const char p[static 2])
+{
+	return FY_STRING_SHIFT7(p[0], p[1], 0, 0, 0, 0, 0) |
+	       (2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
+}
+
+static inline fy_generic_value fy_generic_in_place_char_ptr_len3(const char p[static 3])
+{
+	return FY_STRING_SHIFT7(p[0], p[1], p[2], 0, 0, 0, 0) |
+	       (3 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
+}
+
+static inline fy_generic_value fy_generic_in_place_char_ptr_len4(const char p[static 4])
+{
+	return FY_STRING_SHIFT7(p[0], p[1], p[2], p[3], 0, 0, 0) |
+	       (4 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
+}
+
+static inline fy_generic_value fy_generic_in_place_char_ptr_len5(const char p[static 5])
+{
+	return FY_STRING_SHIFT7(p[0], p[1], p[2], p[3], p[4], 0, 0) |
+	       (5 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
+}
+
+static inline fy_generic_value fy_generic_in_place_char_ptr_len6(const char p[static 6])
+{
+	return FY_STRING_SHIFT7(p[0], p[1], p[2], p[3], p[4], p[5], 0) |
+	       (6 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
+}
+#else
+static inline fy_generic_value fy_generic_in_place_char_ptr_len1(const char p[static 1])
+{
+	return FY_STRING_SHIFT3(p[0], 0, 0) |
+	       (1 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
+}
+
+static inline fy_generic_value fy_generic_in_place_char_ptr_len2(const char p[static 2])
+{
+	return FY_STRING_SHIFT3(p[0], p[1], 0) |
+	       (2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
+}
+#endif
+
 /**
  * fy_generic_get_alias_alloca() - Get the anchor name string from an alias generic.
  *
@@ -3534,7 +3589,7 @@ static inline char *fy_genericp_get_char_ptr(fy_generic *vp)
 		else {											\
 			static const fy_generic_decorated_int _vv FY_INT_ALIGNMENT = { 			\
 				.sv = (signed long long)fy_ensure_const(_v),				\
-				.flags = fy_int_is_unsigned(_v) ? FYGDIF_UNSIGNED_RANGE_EXTEND : 0, 	\
+				.flags = fy_int_is_unsigned(fy_ensure_const(_v)) ? FYGDIF_UNSIGNED_RANGE_EXTEND : 0, \
 			};										\
 			assert(((uintptr_t)&_vv & FY_INPLACE_TYPE_MASK) == 0);				\
 			_r = (fy_generic_value)&_vv | FY_INT_OUTPLACE_V;				\
@@ -3579,47 +3634,33 @@ static inline fy_generic_value fy_generic_in_place_char_ptr_len(const char *p, c
 
 	switch (len) {
 	case 0:
-		v = (0 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
+		v = fy_generic_in_place_char_ptr_len0();
+		break;
+	case 1:
+		v = fy_generic_in_place_char_ptr_len1(p);
+		break;
+	case 2:
+		v = fy_generic_in_place_char_ptr_len2(p);
 		break;
 #ifdef FYGT_GENERIC_64
-	case 1:
-		v = FY_STRING_SHIFT7(p[0], 0, 0, 0, 0, 0, 0) |
-		     (1 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
-		break;
-	case 2:
-		v = FY_STRING_SHIFT7(p[0], p[1], 0, 0, 0, 0, 0) |
-		     (2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
-		break;
 	case 3:
-		v = FY_STRING_SHIFT7(p[0], p[1], p[2], 0, 0, 0, 0) |
-		     (3 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
+		v = fy_generic_in_place_char_ptr_len3(p);
 		break;
 	case 4:
-		v = FY_STRING_SHIFT7(p[0], p[1], p[2], p[3], 0, 0, 0) |
-		     (4 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
+		v = fy_generic_in_place_char_ptr_len4(p);
 		break;
 	case 5:
-		v = FY_STRING_SHIFT7(p[0], p[1], p[2], p[3], p[4], 0, 0) |
-		     (5 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
+		v = fy_generic_in_place_char_ptr_len5(p);
 		break;
 	case 6:
-		v = FY_STRING_SHIFT7(p[0], p[1], p[2], p[3], p[4], p[5], 0) |
-		     (6 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
-		break;
-#else
-	case 1:
-		v = FY_STRING_SHIFT3(p[0], 0, 0) |
-		     (1 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
-		break;
-	case 2:
-		v = FY_STRING_SHIFT3(p[0], p[1], 0) |
-		     (2 << FY_STRING_INPLACE_SIZE_SHIFT) | FY_STRING_INPLACE_V;
+		v = fy_generic_in_place_char_ptr_len6(p);
 		break;
 #endif
 	default:
 		v = fy_invalid_value;
 		break;
 	}
+
 	return v;
 }
 
