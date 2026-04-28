@@ -63,6 +63,7 @@ int fy_utf8_get_generic(const void *ptr, size_t left, int *widthp);
 #define FYUG_EOF	-1
 #define FYUG_INV	-2
 #define FYUG_PARTIAL	-3
+#define FYUG_UNKNOWN	-4
 
 #define FY_UTF8_64_C(_x)	((int)(int32_t)(_x))
 #define FY_UTF8_64_W(_x)	(((int)((_x) >> 32)))
@@ -660,6 +661,53 @@ static inline bool fy_utf8_is_hex(const int c)
 static inline bool fy_utf8_is_flow_indicator(const int c)
 {
 	return fy_utf8_is_low_ascii(c) && fy_utf8_is_flow_indicator_no_check(c);
+}
+
+/* utf8 buf methods */
+
+typedef int (*fy_utf8_buf_read_block_fn)(void *user, int *buf, int buf_size);
+
+struct fy_utf8_buf {
+	fy_utf8_buf_read_block_fn read_block;
+	void *user;
+	int count;
+	int next;
+	int eofc;
+	int *buf;
+	int buf_size;	/* in utf8 chars */
+};
+
+static inline void
+fy_utf8_buf_reset(struct fy_utf8_buf *ubuf,
+		  fy_utf8_buf_read_block_fn read_block,
+		  void *user, int *buf, int size)
+{
+	ubuf->read_block = read_block;
+	ubuf->user = user;
+	ubuf->count = ubuf->next = 0;
+	ubuf->eofc = 0;
+	ubuf->buf = buf;
+	ubuf->buf_size = size;
+}
+
+static inline int
+fy_utf8_buf_get(struct fy_utf8_buf *ubuf)
+{
+	int c;
+
+	if (ubuf->eofc < 0)
+		return ubuf->eofc;
+
+	/* refill */
+	if (ubuf->next >= ubuf->count) {
+		ubuf->next = ubuf->count = 0;
+		c = ubuf->read_block(ubuf->user, ubuf->buf, ubuf->buf_size);
+		if (c < 0)
+			return ubuf->eofc = c;
+		ubuf->count = c;
+	}
+
+	return ubuf->buf[ubuf->next++];
 }
 
 #endif
