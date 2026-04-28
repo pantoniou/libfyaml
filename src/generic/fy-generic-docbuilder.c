@@ -1271,6 +1271,11 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
 		vers = gdo->fyds ? fy_document_state_version(gdo->fyds) : NULL;
 		gdo->supports_merge_key = vers && vers->major == 1 && vers->minor == 1;
 
+		/* Store any doc-level comment (e.g. "# header" before "---") so that
+		 * fygdb_object_finalize() wraps the root value with it, making it
+		 * accessible via fy_generic_get_comment(). */
+		gdo->comment = vcomment;
+
 		rc = fygdb_stack_push(fygdb, gdo, fyt);
 		fygdb_error_check(fygdb, !rc, err_out, "fygdb_stack_push() failed");
 
@@ -1388,6 +1393,15 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
 					"missing parent container");
 
 		gdo->marker_end = vmarker;
+
+		/* Attach trailing comment (e.g. "# trailing" after last mapping entry)
+		 * to the collection value so it is accessible via fy_generic_get_comment().
+		 * Only set if no start-comment was already stored (start-comment wins). */
+		if (fye->type == FYET_MAPPING_END &&
+				fy_generic_is_valid(vcomment) &&
+				fy_generic_is_invalid(gdo->comment))
+			gdo->comment = vcomment;
+
 		v = fygdb_object_finalize_and_destroy(fygdb, gdo);
 		fygdb_error_check(fygdb, fy_generic_is_valid(v), err_out,
 				  "fy_generic_document_builder finalize failed");
