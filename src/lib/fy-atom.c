@@ -1378,15 +1378,12 @@ void fy_atom_iter_destroy(struct fy_atom_iter *iter)
 	free(iter);
 }
 
-ssize_t fy_atom_iter_read(struct fy_atom_iter *iter, void *buf, size_t count)
+static ssize_t fy_atom_iter_read_chunks(struct fy_atom_iter *iter, void *buf, size_t count)
 {
 	ssize_t nread;
 	size_t nrun;
 	const struct fy_iter_chunk *ic;
 	int ret;
-
-	if (!iter || !buf)
-		return -1;
 
 	ret = 0;
 	nread = 0;
@@ -1395,6 +1392,7 @@ ssize_t fy_atom_iter_read(struct fy_atom_iter *iter, void *buf, size_t count)
 		if (ic) {
 			nrun = count > ic->len ? ic->len : count;
 			memcpy(buf, ic->str, nrun);
+			buf = (char *)buf + nrun;
 			nread += nrun;
 			count -= nrun;
 			fy_atom_iter_advance(iter, nrun);
@@ -1413,6 +1411,37 @@ ssize_t fy_atom_iter_read(struct fy_atom_iter *iter, void *buf, size_t count)
 	}
 
 	return nread;
+}
+
+ssize_t fy_atom_iter_read(struct fy_atom_iter *iter, void *buf, size_t count)
+{
+	size_t cached, take;
+	ssize_t nread, more;
+
+	if (!iter || !buf)
+		return -1;
+
+	nread = 0;
+
+	/* drain anything pending in the utf8 staging buffer first */
+	cached = iter->cache_len - iter->cache_pos;
+	if (cached) {
+		take = cached > count ? count : cached;
+		memcpy(buf, iter->cache_buf + iter->cache_pos, take);
+		iter->cache_pos += take;
+		if (iter->cache_pos == iter->cache_len)
+			iter->cache_pos = iter->cache_len = 0;
+		buf = (char *)buf + take;
+		nread += (ssize_t)take;
+		count -= take;
+		if (count == 0)
+			return nread;
+	}
+
+	more = fy_atom_iter_read_chunks(iter, buf, count);
+	if (more < 0)
+		return nread > 0 ? nread : more;
+	return nread + more;
 }
 
 int fy_atom_iter_getc(struct fy_atom_iter *iter)
@@ -1470,7 +1499,7 @@ int fy_atom_iter_peekc(struct fy_atom_iter *iter)
 
 int fy_atom_iter_utf8_get(struct fy_atom_iter *iter)
 {
-	uint8_t buf[4];	/* maximum utf8 is 4 octets */
+	size_t avail;
 	ssize_t nread;
 	int c, w;
 
@@ -1484,25 +1513,31 @@ int fy_atom_iter_utf8_get(struct fy_atom_iter *iter)
 		return c;
 	}
 
-	/* read first octet */
-	nread = fy_atom_iter_read(iter, &buf[0], 1);
-	if (nread != 1)
-		return -1;
+	/* refill the staging buffer if it can't hold a maximum-width utf8 char */
+	avail = iter->cache_len - iter->cache_pos;
+	if (avail < FY_UTF8_MAX_WIDTH) {
+		if (avail > 0)
+			memmove(iter->cache_buf, iter->cache_buf + iter->cache_pos, avail);
+		iter->cache_pos = 0;
+		iter->cache_len = avail;
 
-	/* get width from it (0 means illegal) */
-	w = fy_utf8_width_by_first_octet(buf[0]);
-	if (!w)
-		return -1;
+		/* pull directly from chunks; we've already consumed the cache */
+		nread = fy_atom_iter_read_chunks(iter, iter->cache_buf + avail,
+						 sizeof(iter->cache_buf) - avail);
+		if (nread > 0)
+			iter->cache_len += (size_t)nread;
 
-	/* read the rest octets (if possible) */
-	if (w > 1) {
-		nread = fy_atom_iter_read(iter, buf + 1, w - 1);
-		if (nread != (w - 1))
-			return -1;
+		avail = iter->cache_len;
+		if (avail == 0)
+			return FYUG_EOF;
 	}
 
-	/* and return the decoded utf8 character */
-	return fy_utf8_get(buf, w, &w);
+	c = fy_utf8_get(iter->cache_buf + iter->cache_pos, avail, &w);
+	if (c < 0)
+		return c;
+
+	iter->cache_pos += (unsigned int)w;
+	return c;
 }
 
 int fy_atom_iter_utf8_quoted_get(struct fy_atom_iter *iter, size_t *lenp, uint8_t *buf)

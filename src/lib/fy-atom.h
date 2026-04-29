@@ -268,6 +268,7 @@ struct fy_atom_iter_chunk {
 
 #define NR_STARTUP_CHUNKS	8
 #define SZ_STARTUP_COPY_BUFFER	32
+#define SZ_UTF8_CACHE		128
 
 struct fy_atom_iter {
 	const struct fy_atom *atom;
@@ -287,6 +288,10 @@ struct fy_atom_iter {
 	struct fy_atom_iter_chunk *chunks;
 	struct fy_atom_iter_chunk startup_chunks[NR_STARTUP_CHUNKS];
 	int unget_c;
+	/* small staging buffer to amortize chunk reads in fy_atom_iter_utf8_get() */
+	size_t cache_pos;
+	size_t cache_len;
+	uint8_t cache_buf[SZ_UTF8_CACHE];
 };
 
 void fy_atom_iter_start(const struct fy_atom *atom, struct fy_atom_iter *iter);
