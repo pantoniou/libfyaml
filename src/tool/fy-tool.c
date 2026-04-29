@@ -88,6 +88,7 @@
 #define TSV_FORMAT_DEFAULT		false
 #define NO_ENDING_NEWLINE_DEFAULT	false
 #define DEDUP_DEFAULT			false
+#define RELAXED_FLOW_DOC_DEFAULT	false
 
 #define OPT_DUMP			1000
 #define OPT_TESTSUITE			1001
@@ -132,6 +133,7 @@
 #define OPT_NO_ENDING_NEWLINE		2025
 #define OPT_PRESERVE_FLOW_LAYOUT	2026
 #define OPT_INDENTED_SEQ_IN_MAP		2027
+#define OPT_RELAXED_FLOW_DOC		2028
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -232,6 +234,7 @@ static struct option lopts[] = {
 	{"yaml-1.2",		no_argument,		0,	OPT_YAML_1_2 },
 	{"yaml-1.3",		no_argument,		0,	OPT_YAML_1_3 },
 	{"sloppy-flow-indentation", no_argument,	0,	OPT_SLOPPY_FLOW_INDENTATION },
+	{"relaxed-flow-doc",	no_argument,		0,	OPT_RELAXED_FLOW_DOC },
 	{"prefer-recursive",	no_argument,		0,	OPT_PREFER_RECURSIVE },
 	{"ypath-aliases",	no_argument,		0,	OPT_YPATH_ALIASES },
 	{"disable-flow-markers",no_argument,		0,	OPT_DISABLE_FLOW_MARKERS },
@@ -451,6 +454,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	USAGE_ITEM("--yaml-1.3", "Enable YAML 1.3");
 	USAGE_ITEM_DEFAULT("--follow, -l", "Follow aliases when using paths", FOLLOW_DEFAULT ? "true" : "false");
 	USAGE_ITEM_DEFAULT("--sloppy-flow-indentation", "Enable sloppy indentation in flow mode", SLOPPY_FLOW_INDENTATION_DEFAULT ? "true" : "false");
+	USAGE_ITEM_DEFAULT("--relaxed-flow-doc", "Enable relaxed flow docs (i.e. jsonl style)", RELAXED_FLOW_DOC_DEFAULT ? "true" : "false");
 	USAGE_ITEM_DEFAULT("--prefer-recursive", "Prefer recursive instead of iterative algorithms", PREFER_RECURSIVE_DEFAULT ? "true" : "false");
 	USAGE_ITEM_DEFAULT("--ypath-aliases", "Use YPATH aliases", YPATH_ALIASES_DEFAULT ? "true" : "false");
 	USAGE_ITEM_DEFAULT("--allow-duplicate-keys", "Allow duplicate keys", ALLOW_DUPLICATE_KEYS_DEFAULT ? "true" : "false");
@@ -1360,6 +1364,8 @@ struct generic_config {
 	bool collect_diag;
 	bool keep_comments;
 	bool keep_style;
+	bool sloppy_flow_indentation;
+	bool relaxed_flow_doc;
 };
 
 struct generic_config default_generic_cfg = {
@@ -1475,6 +1481,12 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 
 		if (gcfg->create_markers)
 			parse_flags |= FYOPPF_CREATE_MARKERS;
+
+		if (gcfg->sloppy_flow_indentation)
+			parse_flags |= FYOPPF_SLOPPY_FLOW_INDENTATION;
+
+		if (gcfg->relaxed_flow_doc)
+			parse_flags |= FYOPPF_RELAXED_FLOW_DOC;
 
 		if (!strcmp(filename, "-"))
 			v = fy_parse(gb, fy_invalid,
@@ -2090,6 +2102,9 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_SLOPPY_FLOW_INDENTATION:
 			cfg.flags |= FYPCF_SLOPPY_FLOW_INDENTATION;
+			break;
+		case OPT_RELAXED_FLOW_DOC:
+			cfg.flags |= FYPCF_RELAXED_FLOW_DOC;
 			break;
 		case OPT_PREFER_RECURSIVE:
 			cfg.flags |= FYPCF_PREFER_RECURSIVE;
@@ -3080,6 +3095,8 @@ int main(int argc, char *argv[])
 		gcfg.collect_diag = collect_errors;
 		gcfg.keep_comments = !!(cfg.flags & FYPCF_PARSE_COMMENTS);
 		gcfg.keep_style = keep_style;
+		gcfg.sloppy_flow_indentation = !!(cfg.flags & FYPCF_SLOPPY_FLOW_INDENTATION);
+		gcfg.relaxed_flow_doc = !!(cfg.flags & FYPCF_RELAXED_FLOW_DOC);
 		rc = do_generic(argc, argv, optind, &gcfg);
 		if (rc == 1) {
 			/* display usage */
