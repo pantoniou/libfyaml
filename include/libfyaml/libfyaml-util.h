@@ -1470,6 +1470,20 @@ static inline char *fy_alloca_vsprintf_impl(const char *fmt, va_list ap)
 #endif
 #endif
 
+/* supported static array params i.e. char p[static 1] */
+#if !defined(__cplusplus) && \
+	defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L) && \
+	(defined(__clang__) || defined(__GNUC__))
+#define FY_HAS_STATIC_ARRAY_PARAMS
+#endif
+
+/* wrap it in a portable way */
+#ifdef FY_HAS_STATIC_ARRAY_PARAMS
+#define FY_STATIC_ARRAY_PARAM(_x)	static _x
+#else
+#define FY_STATIC_ARRAY_PARAM(_x)	_x
+#endif
+
 #ifdef __cplusplus
 }
 #endif
