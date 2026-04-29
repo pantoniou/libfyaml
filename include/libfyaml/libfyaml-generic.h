@@ -8214,25 +8214,27 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
  * Control how input is located and how the YAML parser behaves during a
  * fy_parse() / fy_local_parse() / fy_gb_parse() call.
  *
- * @FYOPPF_DISABLE_DIRECTORY:     Do not include a document-state directory in the result
- * @FYOPPF_MULTI_DOCUMENT:        Allow multiple YAML documents in the input
- * @FYOPPF_TRACE:                 Enable parser trace output for debugging
- * @FYOPPF_DONT_RESOLVE:          Skip tag/anchor resolution (used by the YAML test-suite)
- * @FYOPPF_INPUT_TYPE_STRING:     Input data is a NUL-terminated or sized string
- * @FYOPPF_INPUT_TYPE_FILENAME:   Input data is a filename (const char \*)
- * @FYOPPF_INPUT_TYPE_INT_FD:     Input data is a file descriptor (int cast to void \*)
- * @FYOPPF_INPUT_TYPE_STDIN:      Read input from stdin (input_data ignored)
- * @FYOPPF_MODE_AUTO:             Auto-detect YAML version / JSON from content
- * @FYOPPF_MODE_YAML_1_1:         Force YAML 1.1 parsing rules
- * @FYOPPF_MODE_YAML_1_2:         Force YAML 1.2 parsing rules
- * @FYOPPF_MODE_YAML_1_3:         Force YAML 1.3 parsing rules
- * @FYOPPF_MODE_JSON:             Force JSON parsing rules
- * @FYOPPF_MODE_YAML_1_1_PYYAML: Force YAML 1.1 PyYAML-compatible parsing rules
- * @FYOPPF_COLLECT_DIAG:          Collect diagnostic messages into the result
- * @FYOPPF_KEEP_COMMENTS:         Preserve comments in the parsed representation
- * @FYOPPF_CREATE_MARKERS:        Attach position markers to parsed nodes
- * @FYOPPF_KEEP_STYLE:            Preserve original scalar/collection style information
- * @FYOPPF_KEEP_FAILSAFE_STR:     Keep failsafe-schema plain string tags
+ * @FYOPPF_DISABLE_DIRECTORY:       Do not include a document-state directory in the result
+ * @FYOPPF_MULTI_DOCUMENT:          Allow multiple YAML documents in the input
+ * @FYOPPF_TRACE:                   Enable parser trace output for debugging
+ * @FYOPPF_DONT_RESOLVE:            Skip tag/anchor resolution (used by the YAML test-suite)
+ * @FYOPPF_INPUT_TYPE_STRING:       Input data is a NUL-terminated or sized string
+ * @FYOPPF_INPUT_TYPE_FILENAME:     Input data is a filename (const char \*)
+ * @FYOPPF_INPUT_TYPE_INT_FD:       Input data is a file descriptor (int cast to void \*)
+ * @FYOPPF_INPUT_TYPE_STDIN:        Read input from stdin (input_data ignored)
+ * @FYOPPF_MODE_AUTO:               Auto-detect YAML version / JSON from content
+ * @FYOPPF_MODE_YAML_1_1:           Force YAML 1.1 parsing rules
+ * @FYOPPF_MODE_YAML_1_2:           Force YAML 1.2 parsing rules
+ * @FYOPPF_MODE_YAML_1_3:           Force YAML 1.3 parsing rules
+ * @FYOPPF_MODE_JSON:               Force JSON parsing rules
+ * @FYOPPF_MODE_YAML_1_1_PYYAML:    Force YAML 1.1 PyYAML-compatible parsing rules
+ * @FYOPPF_COLLECT_DIAG:            Collect diagnostic messages into the result
+ * @FYOPPF_KEEP_COMMENTS:           Preserve comments in the parsed representation
+ * @FYOPPF_CREATE_MARKERS:          Attach position markers to parsed nodes
+ * @FYOPPF_KEEP_STYLE:              Preserve original scalar/collection style information
+ * @FYOPPF_KEEP_FAILSAFE_STR:       Keep failsafe-schema plain string tags
+ * @FYOPPF_SLOPPY_FLOW_INDENTATION: Allow sloppy indentation in flow mode
+ * @FYOPPF_RELAX_FLOW_DOC:          Documents are implicitly started via flow markers
  */
 enum fy_op_parse_flags {
 	FYOPPF_DISABLE_DIRECTORY	= FY_BIT(0),
@@ -8254,6 +8256,8 @@ enum fy_op_parse_flags {
 	FYOPPF_CREATE_MARKERS		= FY_BIT(16),
 	FYOPPF_KEEP_STYLE		= FY_BIT(17),
 	FYOPPF_KEEP_FAILSAFE_STR	= FY_BIT(18),
+	FYOPPF_SLOPPY_FLOW_INDENTATION	= FY_BIT(19),
+	FYOPPF_RELAXED_FLOW_DOC		= FY_BIT(20),
 };
 
 /* FYOPPF_DEFAULT - Recommended default parse flags (disables directory) */

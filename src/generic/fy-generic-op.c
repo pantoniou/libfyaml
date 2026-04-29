@@ -3109,6 +3109,12 @@ fy_generic_op_parse(const struct fy_generic_op_desc *desc FY_UNUSED,
 	if (!(parse_flags & FYOPPF_DONT_RESOLVE))
 		parse_cfg.flags |= FYPCF_RESOLVE_DOCUMENT;
 
+	if (parse_flags & FYOPPF_SLOPPY_FLOW_INDENTATION)
+		parse_cfg.flags |= FYPCF_SLOPPY_FLOW_INDENTATION;
+
+	if (parse_flags & FYOPPF_RELAXED_FLOW_DOC)
+		parse_cfg.flags |= FYPCF_RELAXED_FLOW_DOC;
+
 	parse_cfg.flags &= ~(FYPCF_DEFAULT_VERSION(FYPCF_DEFAULT_VERSION_MASK) |
 			     FYPCF_JSON(FYPCF_JSON_MASK));
 
