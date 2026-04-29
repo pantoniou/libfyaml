@@ -289,6 +289,7 @@ enum fy_error_module {
  * @FYPCF_ALLOW_DUPLICATE_KEYS: Allow duplicate keys on mappings
  * @FYPCF_CREATE_MARKERS: Retain source-position markers for parsed content
  * @FYPCF_KEEP_STYLE: Retain original scalar/collection style information
+ * @FYPCF_RELAXED_FLOW_DOC: Documents are implicitly started via flow markers
  */
 enum fy_parse_cfg_flags {
 	FYPCF_QUIET			= FY_BIT(0),
@@ -313,6 +314,7 @@ enum fy_parse_cfg_flags {
 	FYPCF_ALLOW_DUPLICATE_KEYS	= FY_BIT(19),
 	FYPCF_CREATE_MARKERS		= FY_BIT(20),
 	FYPCF_KEEP_STYLE		= FY_BIT(21),
+	FYPCF_RELAXED_FLOW_DOC		= FY_BIT(22),
 };
 
 #define FYPCF_PARSE_COMMENTS	FYPCF_KEEP_COMMENTS
