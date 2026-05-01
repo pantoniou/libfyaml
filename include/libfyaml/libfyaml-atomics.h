@@ -407,6 +407,8 @@ static inline void fy_cpu_relax(void)
 	__builtin_ia32_pause();
 #elif defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
 	_mm_pause();
+#elif defined(_MSC_VER) && (defined(_M_ARM64) || defined(_M_ARM))
+	__yield();
 #elif defined(__aarch64__) || defined(__arm__)
 	__asm__ volatile ("yield");
 #elif defined(__powerpc__)
