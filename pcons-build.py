@@ -567,6 +567,7 @@ if have_check:
         test_dir / "libfyaml-test-private-id.c",
         test_dir / "libfyaml-test-parser.c",
         test_dir / "libfyaml-test-thread.c",
+        test_dir / "libfyaml-test-atom-analysis.c",
     ]
     if have_generic:
         test_sources.extend([
