@@ -611,6 +611,11 @@ static inline bool fy_utf8_is_low_ascii(const int c)
 	return (unsigned int)c < 128;
 }
 
+static inline bool fy_utf8_is_high_ascii(const int c)
+{
+	return (unsigned int)c >= 128;
+}
+
 static inline bool fy_utf8_is_simple_scalar(const int c)
 {
 	return fy_utf8_is_low_ascii(c) && fy_utf8_is_simple_scalar_no_check(c);
