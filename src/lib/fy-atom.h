@@ -99,6 +99,7 @@ enum fy_atom_chomp {
 #define FYTTAF_HAS_TRAILING_LB		FYTTAF_BIT(32)	/* ends with trailing lb > 1 */
 #define FYTTAF_VALID_ANCHOR		FYTTAF_BIT(33)	/* valid anchor content (without & prefix) */
 #define FYTTAF_JSON_ESCAPE		FYTTAF_BIT(34)	/* contains a character that JSON escapes */
+#define FYTTAF_HIGH_ASCII		FYTTAF_BIT(35) 	/* contains a least one utf8 code >= 0x80 */
 
 #define FYTTAF_ANALYZED			FYTTAF_BIT(63)	/* analyzed mark */
 

@@ -2074,19 +2074,27 @@ fy_atom_text_analyze_internal(struct fy_utf8_buf *ubuf,
 		enum fy_atom_style style, enum fy_lb_mode lb_mode,
 		struct fy_text_analysis *analysis)
 {
-	uint64_t flags = 0;
-	int c, cn, cnn, cp, col;
+	uint64_t flags;
+	int c, cn, cp, col;
 	uint8_t col0si, col0ei;	/* mask for --- ... at indent 0 */
-	int span, maxspan, maxcol, lbs = 0, break_run = 0;
+	int span, maxspan, maxcol, lbs, break_run;
 	bool ws_run_has_tab;
 
-	flags = FYTTAF_TEXT_TOKEN;
+	flags = FYTTAF_TEXT_TOKEN |
+		FYTTAF_SIZE0 |
+		FYTTAF_EMPTY |
+		FYTTAF_CAN_BE_UNQUOTED_PATH_KEY |
+		FYTTAF_CAN_BE_PLAIN |
+		FYTTAF_CAN_BE_SINGLE_QUOTED |
+		FYTTAF_CAN_BE_DOUBLE_QUOTED |
+		FYTTAF_CAN_BE_LITERAL |
+		FYTTAF_CAN_BE_FOLDED |
+		FYTTAF_CAN_BE_PLAIN_FLOW |
+		FYTTAF_CAN_BE_UNQUOTED_PATH_KEY;
 
-	/* can this token be a simple key initial condition */
 	if (!fy_atom_style_is_block(style) && style != FYAS_URI)
 		flags |= FYTTAF_CAN_BE_SIMPLE_KEY;
 
-	/* can this token be directly output initial condition */
 	if (!fy_atom_style_is_block(style))
 		flags |= FYTTAF_DIRECT_OUTPUT;
 
@@ -2095,98 +2103,60 @@ fy_atom_text_analyze_internal(struct fy_utf8_buf *ubuf,
 	maxspan = 0;
 	span = 0;
 	lbs = 0;
-
-	/* get first character (the next after is unknown yet) */
-	cnn = FYUG_UNKNOWN;
-	cn = fy_utf8_buf_get(ubuf);
-	if (cn < 0) {
-		if (cn == FYUG_EOF) {
-			/* empty */
-			flags |= FYTTAF_SIZE0 | FYTTAF_EMPTY | FYTTAF_CAN_BE_UNQUOTED_PATH_KEY | FYTTAF_CAN_BE_SIMPLE_KEY;
-			goto out;
-		}
-		/* error (invalid/partial UTF-8) */
-		analysis->flags = FYTTAF_CAN_BE_DOUBLE_QUOTED;
-		return cn;
-	}
-
-	flags |= FYTTAF_CAN_BE_PLAIN |
-		 FYTTAF_CAN_BE_SINGLE_QUOTED |
-		 FYTTAF_CAN_BE_DOUBLE_QUOTED |
-		 FYTTAF_CAN_BE_LITERAL |
-		 FYTTAF_CAN_BE_FOLDED |
-		 FYTTAF_CAN_BE_PLAIN_FLOW |
-		 FYTTAF_CAN_BE_UNQUOTED_PATH_KEY |
-		 FYTTAF_ALL_WS_LB |
-		 FYTTAF_ALL_PRINT_ASCII |
-		 FYTTAF_VALID_ANCHOR |
-		 FYTTAF_SIZE0 |
-		 FYTTAF_EMPTY;
-
+	break_run = 0;
+	ws_run_has_tab = false;
 	col0si = col0ei = 0;
 
-	/* plain scalars can't start with any indicator (or space/lb) */
-	if ((flags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW))) {
-		if (fy_is_start_indicator(cn) || fy_is_generic_lb_m(cn, lb_mode) || fy_is_ws(cn))
-			flags &= ~(FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW);
+	/* previous, current and next characters */
+	cp = FYUG_UNKNOWN;
+	c = fy_utf8_buf_get(ubuf);
+	cn = c >= 0 ? fy_utf8_buf_get(ubuf) : FYUG_UNKNOWN;
+
+	if (c == FYUG_EOF) {
+		flags |= FYTTAF_CAN_BE_SIMPLE_KEY;
+		goto out;
 	}
 
-	/* plain scalars in flow mode can't start with a flow indicator */
-	if ((flags & FYTTAF_CAN_BE_PLAIN_FLOW) &&
-		fy_is_flow_indicator(cn))
-		flags &= ~FYTTAF_CAN_BE_PLAIN_FLOW;
+	if (c >= 0x80)
+		flags |= FYTTAF_HIGH_ASCII;
+	if (cn >= 0x80)
+		flags |= FYTTAF_HIGH_ASCII;
 
-	if ((flags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW))) {
-		if (cnn == FYUG_UNKNOWN) {
-			cnn = fy_utf8_buf_get(ubuf);
+	while (c >= 0) {
+
+		if (cp < 0) {
+			/* prime the all flag bits */
+			if (fy_is_blankz_m(c, lb_mode))
+				flags |= FYTTAF_ALL_WS_LB;
+			if (c >= '!' && c < '~')
+				flags |= FYTTAF_ALL_PRINT_ASCII;
+			if (fy_is_valid_anchor(c))
+				flags |= FYTTAF_VALID_ANCHOR ;
+			if (fy_is_generic_lb_m(c, lb_mode))
+				flags |= FYTTAF_HAS_START_LB;
+			if (fy_is_ws(c))
+				flags |= FYTTAF_HAS_START_WS;
+
+			/* plain scalars can't start with any indicator (or space/lb) */
+			if (fy_is_start_indicator(c) || fy_is_generic_lb_m(c, lb_mode) || fy_is_ws(c))
+				flags &= ~(FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW);
+
+			/* plain scalars in flow mode can't start with a flow indicator */
+			if (fy_is_flow_indicator(c))
+				flags &= ~FYTTAF_CAN_BE_PLAIN_FLOW;
+
+			/* plain scalars can't start with an indicator followed by space */
+			if (fy_is_indicator_before_space(c) && fy_is_blankz_m(cn, lb_mode))
+				flags &= ~(FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW);
+
+			/* plain unquoted path keys can only start with [a-zA-Z_] */
+			if (!fy_is_first_alpha(c))
+				flags &= ~FYTTAF_CAN_BE_UNQUOTED_PATH_KEY;
+
+			/* if it starts with white space can't be a plain */
+			if (fy_is_ws(c))
+				flags &= ~(FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW);
 		}
-		if (fy_is_blankz_m(cnn, lb_mode) && fy_is_indicator_before_space(cn))
-			flags &= ~(FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW);
-	}
-
-	/* plain unquoted path keys can only start with [a-zA-Z_] */
-	if ((flags & FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) &&
-		!fy_is_first_alpha(cn))
-		flags &= ~FYTTAF_CAN_BE_UNQUOTED_PATH_KEY;
-
-	/* if it starts with linebreak */
-	if (fy_is_generic_lb_m(cn, lb_mode))
-		flags |= FYTTAF_HAS_START_LB;
-
-	/* if it starts with white space can't be a plain */
-	if (fy_is_ws(cn)) {
-		flags |= FYTTAF_HAS_START_WS;
-		flags &= ~(FYTTAF_CAN_BE_PLAIN |
-			   FYTTAF_CAN_BE_PLAIN_FLOW);
-	}
-
-	ws_run_has_tab = false;
-	cp = -1;
-	for (c = cn; c >= 0; cp = c, c = cn) {
-
-		if (col <= 2) {
-			if (cn == '-') {
-				col0si |= (uint8_t)1 << col;
-				if (col0si == 7)
-					flags |= FYTTAF_HAS_START_IND | FYTTAF_QUOTE_AT_0;
-			} else if (cn == '.') {
-				col0ei |= (uint8_t)1 << col;
-				if (col0ei == 7)
-					flags |= FYTTAF_HAS_END_IND | FYTTAF_QUOTE_AT_0;
-			}
-		}
-
-		/* can be < 0 on end or error */
-		if (cnn == FYUG_UNKNOWN) {
-			cn = fy_utf8_buf_get(ubuf);
-		} else {
-			cn = cnn;
-			cnn = FYUG_UNKNOWN;
-		}
-
-		/* error mid-stream (invalid/partial UTF-8) */
-		if (cn < FYUG_EOF)
-			return cn;
 
 		/* clear SIZE0 once we've seen any character */
 		flags &= ~FYTTAF_SIZE0;
@@ -2264,10 +2234,7 @@ fy_atom_text_analyze_internal(struct fy_utf8_buf *ubuf,
 			break_run = 0;
 
 			/* check valid anchor content */
-			if ((flags & FYTTAF_VALID_ANCHOR) &&
-			    (fy_utf8_strchr(",[]{}&*:", c) ||
-			     fy_is_unicode_control(c) ||
-			     fy_is_unicode_space(c)))
+			if ((flags & FYTTAF_VALID_ANCHOR) && !fy_is_valid_anchor(c))
 				flags &= ~FYTTAF_VALID_ANCHOR;
 		}
 
@@ -2284,8 +2251,7 @@ fy_atom_text_analyze_internal(struct fy_utf8_buf *ubuf,
 			 (fy_is_blankz_m(c, lb_mode) && cn == '#') ||
 			 (cp < 0 && c == '#' && cn < 0) ||
 			 !fy_is_print(c))) {
-			flags &= ~(FYTTAF_CAN_BE_PLAIN |
-				   FYTTAF_CAN_BE_PLAIN_FLOW);
+			flags &= ~(FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW);
 		}
 
 		/* illegal plain flow combination */
@@ -2312,40 +2278,60 @@ fy_atom_text_analyze_internal(struct fy_utf8_buf *ubuf,
 			flags &= ~FYTTAF_DIRECT_OUTPUT;
 
 		if (cn < 0 || !c || fy_is_generic_lb_m(c, lb_mode) || fy_is_ws(c)) {
+			span = 0;
+		} else {
+			span++;
 			if (span > maxspan)
 				maxspan = span;
-			span = 0;
-		} else
-			span++;
+		}
 
 		if (fy_is_generic_lb_m(c, lb_mode)) {
-			if (col > maxcol)
-				maxcol = col;
 			col = 0;
 			col0si = col0ei = 0;
 			lbs++;
-		} else
+		} else {
+			if (col <= 2) {
+				if (c == '-') {
+					col0si |= (uint8_t)1 << col;
+					if (col0si == 7)
+						flags |= FYTTAF_HAS_START_IND | FYTTAF_QUOTE_AT_0;
+				} else if (c == '.') {
+					col0ei |= (uint8_t)1 << col;
+					if (col0ei == 7)
+						flags |= FYTTAF_HAS_END_IND | FYTTAF_QUOTE_AT_0;
+				}
+			}
 			col++;
+			if (col > maxcol)
+				maxcol = col;
+		}
 
 		if (fy_is_any_lb(c))
 			flags |= FYTTAF_HAS_ANY_LB;
 
-		/* last character */
+		/* pump */
+		cp = c;
+		c = cn;
+		cn = c >= 0 ? fy_utf8_buf_get(ubuf) : FYUG_UNKNOWN;
+		if (cn >= 0x80)
+			flags |= FYTTAF_HIGH_ASCII;
+
 		if (cn < 0) {
+			int endc = c >= 0 ? c : cp;
+
 			/* if ends with whitespace or linebreak, or : can't be plain */
-			if (fy_is_ws(c) || fy_is_generic_lb_m(c, lb_mode) || c == ':') {
-				flags &= ~(FYTTAF_CAN_BE_PLAIN |
-					   FYTTAF_CAN_BE_PLAIN_FLOW);
-				if (c == ':')
+			if (fy_is_ws(endc) || fy_is_generic_lb_m(endc, lb_mode) || endc == ':') {
+				flags &= ~(FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW);
+				if (endc == ':')
 					flags |= FYTTAF_ENDS_WITH_COLON;
 			}
 
-			if (fy_is_ws(c))
+			if (fy_is_ws(endc))
 				flags |= FYTTAF_HAS_END_WS;
-			else if (fy_is_generic_lb_m(c, lb_mode))
+			else if (fy_is_generic_lb_m(endc, lb_mode))
 				flags |= FYTTAF_HAS_END_LB;
 
-			if (break_run > 1)
+			if (fy_is_generic_lb_m(endc, lb_mode) && break_run > 1)
 				flags |= FYTTAF_HAS_TRAILING_LB;
 
 			/* if there was a tab before linebreak, we can't be single quoted */
@@ -2353,21 +2339,40 @@ fy_atom_text_analyze_internal(struct fy_utf8_buf *ubuf,
 				flags &= ~FYTTAF_CAN_BE_SINGLE_QUOTED;
 			ws_run_has_tab = false;
 
+			/* final bits */
+
+			/* if it's got nothing, it can be anything */
+			if (flags & FYTTAF_SIZE0)
+				flags |= FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW |
+					 FYTTAF_CAN_BE_SINGLE_QUOTED | FYTTAF_CAN_BE_DOUBLE_QUOTED |
+					 FYTTAF_CAN_BE_LITERAL | FYTTAF_CAN_BE_FOLDED;
+
 		}
 	}
 
-	if (col > maxcol)
-		maxcol = col;
-	if (span > maxspan)
-		maxspan = span;
+	/* error mid-stream (invalid/partial UTF-8) */
+	if (c < FYUG_EOF)
+		return cn;
 
 out:
-	analysis->flags = flags;
 	analysis->maxspan = maxspan;
 	analysis->maxcol = maxcol;
 	analysis->lbs = lbs;
 
-	fy_atom_text_analyze_final(analysis);
+	if ((flags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW)) ==
+			(FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW) &&
+	    !(flags & (FYTTAF_HAS_LB | FYTTAF_ENDS_WITH_COLON)))
+		analysis->preferred_style = FYSS_PLAIN;
+	else if (flags & FYTTAF_CAN_BE_SINGLE_QUOTED)
+		analysis->preferred_style = FYSS_SINGLE_QUOTED;
+	else
+		analysis->preferred_style = FYSS_DOUBLE_QUOTED;
+
+	/* we're commited now */
+	flags |= FYTTAF_ANALYZED;
+
+	analysis->flags = flags;
+
 	return 0;
 }
 
