@@ -101,20 +101,19 @@ function(add_libfyaml_tests)
     set(CREATE_PATTERN "fy_check_suite_add_test_case[ \t]*[(][^,]*,[ \t]*\"([^\"]+)\"")
     set(ADD_PATTERN "fy_check_testcase_add_test[ \t]*[(][^,]*,[ \t]*([^)]+)")
     foreach(FILE_PATH IN LISTS C_FILES)
-        # Read the file line by line
-        file(STRINGS "${FILE_PATH}" LINES)
+        file(READ "${FILE_PATH}" FILE_CONTENTS)
         set(SUITE "")
-        foreach(LINE IN LISTS LINES)
-            if(LINE MATCHES "${CREATE_PATTERN}")
-                string(REGEX REPLACE ".*${CREATE_PATTERN}.*" "\\1" SUITE "${LINE}")
-            endif()
+        string(REGEX MATCH "${CREATE_PATTERN}" CREATE_MATCH "${FILE_CONTENTS}")
+        if(CREATE_MATCH)
+            string(REGEX REPLACE ".*${CREATE_PATTERN}.*" "\\1" SUITE "${CREATE_MATCH}")
+        endif()
 
-            if(LINE MATCHES "${ADD_PATTERN}")
-                string(REGEX REPLACE ".*${ADD_PATTERN}.*" "\\1" TEST_NAME "${LINE}")
-                add_tap_test("libfyaml/${SUITE}/${TEST_NAME}" libfyaml "${TEST_NAME}"
-                    LABELS "libfyaml"
-                )
-            endif()
+        string(REGEX MATCHALL "fy_check_testcase_add_test[ \t]*[(][^,]*,[ \t]*[^)]+[)]" ADD_MATCHES "${FILE_CONTENTS}")
+        foreach(ADD_MATCH IN LISTS ADD_MATCHES)
+            string(REGEX REPLACE ".*${ADD_PATTERN}.*" "\\1" TEST_NAME "${ADD_MATCH}")
+            add_tap_test("libfyaml/${SUITE}/${TEST_NAME}" libfyaml "${TEST_NAME}"
+                LABELS "libfyaml"
+            )
         endforeach()
     endforeach()
 
