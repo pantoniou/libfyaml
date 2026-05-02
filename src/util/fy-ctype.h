@@ -263,6 +263,11 @@ static inline bool fy_is_flow_blankz(const int c, const enum fy_flow_ws_mode fws
 	return fy_is_flow_ws_m(c, fws_mode) || fy_is_generic_lbz_m(c, lb_mode);
 }
 
+static inline bool fy_is_valid_anchor(const int c)
+{
+	return !(fy_utf8_strchr(",[]{}&*:", c) || fy_is_unicode_control(c) || fy_is_unicode_space(c));
+}
+
 #define FY_CTYPE_AT_BUILDER(_kind) \
 static inline const void * \
 fy_find_ ## _kind (const void *s, size_t len) \
