@@ -74,7 +74,7 @@ void fy_token_clean_rl(struct fy_token_list *fytl FY_UNUSED,
 
 	/* release reference */
 	fy_input_unref(fyt->handle.fyi);
-	fyt->handle.fyi = NULL;
+	fy_atom_reset(&fyt->handle);
 
 	/* release the token comments */
 	while ((tk = fyt->token_comment) != NULL) {
@@ -428,7 +428,7 @@ struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_t
 	if (!fyt)
 		goto err_out;
 	fyt->type = type;
-	fyt->handle.fyi = NULL;
+	fy_atom_reset(&fyt->handle);
 
 	handle = va_arg(ap, struct fy_atom *);
 	if (handle) {

@@ -165,9 +165,9 @@ fy_token_alloc_rl(struct fy_token_list *fytl)
 	fyt->text_len = 0;
 	fyt->text = NULL;
 	fyt->text0 = NULL;
-	fyt->handle.fyi = NULL;
 	fyt->token_comment = NULL;
 	fyt->comments = NULL;
+	fy_atom_reset(&fyt->handle);
 
 	return fyt;
 }
