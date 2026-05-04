@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs: &inputs
       os:
-        description: "OS to run (e.g. ubuntu-latest, macos-latest, windows-latest)"
+        description: "OS to run (e.g. ubuntu-latest, macos-latest, windows-latest, windows-11-arm)"
         required: false
         default: ""
         type: string
@@ -92,6 +92,7 @@ jobs:
             "ubuntu-latest":  [("gcc", "gcc", "g++"), ("clang", "clang-18", "clang++-18")],
             "macos-latest":   [("gcc", "gcc", "g++"), ("clang", "clang", "clang++")],
             "windows-latest": [("msvc", "cl", "cl"), ("clang", "clang", "clang++")],
+            "windows-11-arm": [("msvc", "cl", "cl"), ("clang", "clang", "clang++")],
         }
 
         smoke_configs = [
@@ -100,6 +101,7 @@ jobs:
             ("macos-14", "clang", "clang", "clang++"),
             ("windows-2022", "msvc", "cl", "cl"),
             ("ubuntu-24.04-arm", "gcc", "gcc", "g++"),
+            ("windows-11-arm", "msvc", "cl", "cl"),
         ]
 
         rows = []
