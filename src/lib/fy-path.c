@@ -320,7 +320,7 @@ static int fy_path_get_text_internal(struct fy_emit_accum *ea, struct fy_path *f
 	const char *text;
 	size_t len;
 	bool local_key = false;
-	int rc, count;
+	int rc;
 
 	if (fypp->parent) {
 		rc = fy_path_get_text_internal(ea, fypp->parent);
@@ -330,8 +330,8 @@ static int fy_path_get_text_internal(struct fy_emit_accum *ea, struct fy_path *f
 	}
 
 	/* OK, we have to iterate and rebuild the paths */
-	for (fypc = fy_path_component_list_head(&fypp->components), count = 0; fypc;
-			fypc = fy_path_component_next(&fypp->components, fypc), count++) {
+	for (fypc = fy_path_component_list_head(&fypp->components); fypc;
+			fypc = fy_path_component_next(&fypp->components, fypc)) {
 
 		fy_emit_accum_utf8_put_raw(ea, '/');
 
