@@ -4290,8 +4290,8 @@ fy_node_by_path_internal(struct fy_node *fyn,
 {
 	enum fy_node_walk_flags ptr_flags;
 	struct fy_node *fynt, *fyni;
-	const char *s, *e, *ss, *ee;
-	char *end_idx, *json_key, *t, *p, *uri_path;
+	const char *s, *e, *ss, *ee, *p;
+	char *end_idx, *json_key, *t, *uri_path;
 	char c;
 	char idx_buf[13];
 	size_t idx_buf_sz;
