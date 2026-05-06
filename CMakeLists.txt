@@ -787,6 +787,14 @@ if(NOT MSVC)
         endif()
     endif()
 
+    if(NOT USE_STD)
+        check_c_compiler_flag(-std=gnu11 COMPILER_SUPPORTS_GNU11)
+        if(COMPILER_SUPPORTS_GNU11)
+            list(APPEND COMMON_C_FLAGS -std=gnu11)
+            set(USE_STD 1)
+        endif()
+    endif()
+
     # GCC heap trampolines support (for nested functions)
     # Heap trampolines are more secure than executable stack trampolines
     # Available in GCC 14+ with -ftrampoline-impl=heap
