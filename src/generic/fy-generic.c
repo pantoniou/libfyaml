@@ -1503,64 +1503,6 @@ do_string:
 
 /* Type conversion functions - schema-aware where appropriate */
 
-/* Helper: Parse bool from string according to schema
- * Returns: -1 on error/no match, 0 for false, 1 for true
- */
-static int fy_parse_bool_from_string(enum fy_generic_schema schema, const char *text, size_t len)
-{
-	/* JSON schemas - strict */
-	if (schema == FYGS_YAML1_2_JSON || schema == FYGS_JSON) {
-		if (len == 4 && !memcmp(text, "true", 4))
-			return 1;
-		if (len == 5 && !memcmp(text, "false", 5))
-			return 0;
-		return -1;
-	}
-
-	/* YAML 1.2 Core */
-	if (schema == FYGS_YAML1_2_CORE) {
-		if (len == 4) {
-			if (!memcmp(text, "true", 4) || !memcmp(text, "True", 4) || !memcmp(text, "TRUE", 4))
-				return 1;
-		}
-		if (len == 5) {
-			if (!memcmp(text, "false", 5) || !memcmp(text, "False", 5) || !memcmp(text, "FALSE", 5))
-				return 0;
-		}
-		return -1;
-	}
-
-	/* YAML 1.1 - most permissive */
-	if (schema == FYGS_YAML1_1 || schema == FYGS_YAML1_1_PYYAML) {
-		if (schema != FYGS_YAML1_1_PYYAML && len == 1) {
-			if (*text == 'y' || *text == 'Y')
-				return 1;
-			if (*text == 'n' || *text == 'N')
-				return 0;
-		}
-		if (len == 2) {
-			if (!memcmp(text, "on", 2) || !memcmp(text, "On", 2) || !memcmp(text, "ON", 2))
-				return 1;
-		}
-		if (len == 3) {
-			if (!memcmp(text, "off", 3) || !memcmp(text, "Off", 3) || !memcmp(text, "OFF", 3))
-				return 0;
-		}
-		if (len == 4) {
-			if (!memcmp(text, "true", 4) || !memcmp(text, "True", 4) || !memcmp(text, "TRUE", 4))
-				return 1;
-		}
-		if (len == 5) {
-			if (!memcmp(text, "false", 5) || !memcmp(text, "False", 5) || !memcmp(text, "FALSE", 5))
-				return 0;
-		}
-		return -1;
-	}
-
-	/* Unknown schema - no match */
-	return -1;
-}
-
 fy_generic fy_gb_to_int(struct fy_generic_builder *gb, fy_generic v)
 {
 	enum fy_generic_type type;
