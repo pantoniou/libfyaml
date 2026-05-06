@@ -2790,13 +2790,6 @@ static fy_generic test_map_double2(struct fy_generic_builder *gb, fy_generic v)
 	return fy_value(j);
 }
 
-static fy_generic test_map_filter_double_if_over_10(struct fy_generic_builder *gb, fy_generic v)
-{
-	int iv;
-	iv = fy_cast(v, 0);
-	return iv >= 10 ? fy_value(gb, iv * 2) : fy_invalid;
-}
-
 static fy_generic test_map_prefix_str(struct fy_generic_builder *gb, fy_generic v)
 {
 	/* verify that export to the builder works */
