@@ -37,7 +37,7 @@ m4_pattern_allow([^(AM_EXTRA_RECURSIVE_TARGETS|AM_PROG_AR)$])dnl
 # include them
 m4_ifdef([AM_EXTRA_RECURSIVE_TARGETS],
 	 [AM_EXTRA_RECURSIVE_TARGETS([doc-help doc-html doc-latexpdf doc-man doc-clean doc-markdown])],
-	 [AC_MSG_WARN([Old automake version without AM_EXTRA_RECURSIVE_TARGETS, doc-* rules won't be available at top level])])
+	 [AC_MSG_WARN([Old automake version without AM_EXTRA_RECURSIVE_TARGETS, doc-* rules will not be available at top level])])
 
 m4_define(fyaml_major, `echo $VERSION | cut -d. -f1 | cut -d- -f1`)
 m4_define(fyaml_minor, `echo $VERSION | cut -d. -f2 | cut -d- -f1`)
@@ -685,6 +685,38 @@ AM_CONDITIONAL([HAVE_REFLECTION], [ test x$HAVE_REFLECTION = x1 ])
 
 FY_DEFINE_IF_YES([HAVE_GENERIC], [$HAVE_GENERIC], [Define to 1 if generics are enabled])
 FY_DEFINE_IF_YES([HAVE_REFLECTION], [$HAVE_REFLECTION], [Define to 1 if generics are enabled])
+
+dnl check if -latomic is needed
+AC_CACHE_CHECK([whether 8-byte atomics need -latomic],
+  [ac_cv_libatomic_needed],
+  [
+    save_LIBS="$LIBS"
+
+    AC_LINK_IFELSE(
+      [AC_LANG_PROGRAM([[]], [[
+        volatile unsigned long long v = 1;
+        return (int)__atomic_fetch_sub(&v, 1, __ATOMIC_SEQ_CST);
+      ]])],
+      [ac_cv_libatomic_needed=no],
+      [
+        LIBS="$save_LIBS -latomic"
+        AC_LINK_IFELSE(
+          [AC_LANG_PROGRAM([[]], [[
+            volatile unsigned long long v = 1;
+            return (int)__atomic_fetch_sub(&v, 1, __ATOMIC_SEQ_CST);
+          ]])],
+          [ac_cv_libatomic_needed=yes],
+          [ac_cv_libatomic_needed=unknown])
+      ])
+
+    LIBS="$save_LIBS"
+  ])
+
+AS_IF([test "x$ac_cv_libatomic_needed" = "xyes"], [LIBS="$LIBS -latomic" ],
+      [test "x$ac_cv_libatomic_needed" = "xunknown"],
+	[ AC_MSG_ERROR([compiler supports __atomic builtins but linking 8-byte atomics failed, even with -latomic]) ])
+AS_IF([test "x$ac_cv_libatomic_needed" = "xyes"], [ATOMIC_LIBS="-latomic"], [ ATOMIC_LIBS="" ])
+AC_SUBST([ATOMIC_LIBS])
 
 dnl trim cflags, cppflags, ldflags
 CFLAGS=`echo $CFLAGS | sed -e 's/^[ ]*//'`

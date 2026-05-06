@@ -106,7 +106,7 @@ libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)
 libfyaml_la_CFLAGS = $(AM_CFLAGS)
 libfyaml_la_LDFLAGS = -no-undefined $(AM_LDFLAGS) $(AM_LIBLDFLAGS) \
 		      -version $(LIBTOOL_VERSION)
-libfyaml_la_LIBADD = $(LIBM)
+libfyaml_la_LIBADD = $(LIBM) $(ATOMIC_LIBS)
 
 # blake3 section
 libfyaml_la_CPPFLAGS += -I$(top_srcdir)/src/blake3
