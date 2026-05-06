@@ -308,7 +308,7 @@ typedef intptr_t fy_generic_value_signed;
 	(\
 		((fy_generic_value)(uint8_t)_v2 <<  8) | \
 		((fy_generic_value)(uint8_t)_v1 << 16) | \
-		((fy_generic_value)(uint8_t)_v0 << 24) | \
+		((fy_generic_value)(uint8_t)_v0 << 24)   \
 	)
 #endif
 
