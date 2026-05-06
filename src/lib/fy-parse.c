@@ -1044,6 +1044,15 @@ int fy_scan_comment(struct fy_parser *fyp, struct fy_atom *handle, bool single_l
 	return 0;
 }
 
+/* fy_comment_atoms_seperated_by_ws - test whether two comment atoms are
+ * adjacent in the input with only whitespace/linebreaks between them.
+ *
+ * Returns true when atoms a and b (in either order) are on the same input
+ * and the region between a.end_mark and b.start_mark contains nothing but
+ * whitespace or linebreak characters.  This is used to decide whether two
+ * separately-buffered comment atoms form a single logical comment block that
+ * can be merged into one span (by extending the earlier atom's end_mark to
+ * cover the later one). */
 bool
 fy_comment_atoms_seperated_by_ws(struct fy_parser *fyp FY_UNUSED,
 				 struct fy_atom *a,
@@ -1085,6 +1094,88 @@ fy_comment_atoms_seperated_by_ws(struct fy_parser *fyp FY_UNUSED,
 	return ws_or_lb;
 }
 
+/* fy_consolidate_pending_comments - fold override_comment back into last_comment.
+ *
+ * Structural tokens (BLOCK_SEQUENCE_START, BLOCK_MAPPING_START, …) must not
+ * consume buffered comments — those belong on the first content token and will
+ * be picked up by fy_attach_comments_if_any().  But by the time a structural
+ * token is emitted, a second comment may have displaced the first one into
+ * override_comment.  This function merges them back into a single last_comment
+ * so nothing is lost when fy_attach_comments_if_any() runs next.
+ *
+ * If the two atoms are adjacent (only whitespace between them) they form one
+ * logical block: extend override_comment's span to cover both and release the
+ * separate last_comment input reference.  Otherwise drop last_comment —
+ * override_comment is the outer, structurally significant comment and wins.
+ * Either way the result lands in last_comment, ready for the next attach. */
+static void
+fy_consolidate_pending_comments(struct fy_parser *fyp)
+{
+	if (!fy_atom_is_set(&fyp->override_comment))
+		return;
+
+	if (fy_atom_is_set(&fyp->last_comment) &&
+	    fy_comment_atoms_seperated_by_ws(fyp, &fyp->override_comment, &fyp->last_comment)) {
+		fyp->override_comment.end_mark = fyp->last_comment.end_mark;
+		fy_input_unref(fyp->last_comment.fyi);
+	}
+	fy_atom_reset(&fyp->last_comment);
+	fyp->last_comment = fyp->override_comment;
+	fy_atom_reset(&fyp->override_comment);
+}
+
+/* fy_steal_comment_bottom - move a comment atom onto a token as fycp_bottom.
+ *
+ * Takes ownership of *src (resetting it on success) and stores the comment on
+ * fyt at placement fycp_bottom with an indent_delta computed from ref_indent,
+ * so the emitter can reconstruct the original column as
+ * sc->indent + indent_delta regardless of any subsequent node reordering.
+ * Does nothing if fy_token_comment_handle() returns NULL. */
+static void
+fy_steal_comment_bottom(struct fy_parser *fyp FY_UNUSED, struct fy_token *fyt,
+			struct fy_atom *src, int ref_indent)
+{
+	struct fy_atom *handle;
+
+	handle = fy_token_comment_handle(fyt, fycp_bottom, true);
+	if (!handle)
+		return;
+
+	fy_input_unref(handle->fyi);
+	fy_atom_reset(handle);
+	*handle = *src;
+	if (ref_indent < 0)
+		ref_indent = 0;
+	fy_atom_set_indent_delta(handle, (int)handle->start_mark.column - ref_indent);
+	fy_atom_reset(src);
+}
+
+/* fy_steal_block_end_comments - attach any buffered comments that belong to a
+ * closing block onto its BLOCK_END token (fycp_bottom placement).
+ *
+ * A comment belongs to the block being closed when its column is strictly
+ * greater than the target indent (column) AND at least as deep as the block's
+ * own indent (current_indent).  override_comment is checked first because it
+ * is the older, typically more deeply nested comment.
+ * See doc/COMMENT-HANDLING.md - "Block-end attribution rule" */
+static void
+fy_steal_block_end_comments(struct fy_parser *fyp, struct fy_token *fyt,
+			    int column, int current_indent)
+{
+	if (!(fyp->cfg.flags & FYPCF_PARSE_COMMENTS))
+		return;
+
+	if (fy_atom_is_set(&fyp->override_comment) &&
+			(int)fyp->override_comment.start_mark.column > column &&
+			(int)fyp->override_comment.start_mark.column >= current_indent)
+		fy_steal_comment_bottom(fyp, fyt, &fyp->override_comment, current_indent);
+
+	if (fy_atom_is_set(&fyp->last_comment) &&
+			(int)fyp->last_comment.start_mark.column > column &&
+			(int)fyp->last_comment.start_mark.column >= current_indent)
+		fy_steal_comment_bottom(fyp, fyt, &fyp->last_comment, current_indent);
+}
+
 /* -1 error, 0, no comment attached, 1 comment attached */
 int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 {
@@ -1121,6 +1212,25 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 	/* if a last comment exists and is valid */
 	if (fy_atom_is_set(&fyp->last_comment)) {
 
+		/* Detect document-level leading comment for implicit documents.
+		 * When we're at the implicit doc start and the comment is separated
+		 * from the first content token by a blank line, promote it to
+		 * override_comment so it gets attached to the DOCUMENT_START token
+		 * instead of the first content token.
+		 * See doc/COMMENT-HANDLING.md - "Document-level comment rule" */
+		if (fyt->type != FYTT_DOCUMENT_START &&
+				fyp->state == FYPS_IMPLICIT_DOCUMENT_START &&
+				!fy_atom_is_set(&fyp->override_comment)) {
+			int cline = (int)fyp->last_comment.end_mark.line;
+			int tline = (int)fyt->handle.start_mark.line;
+			if (tline - cline >= 2) {
+				fy_input_unref(fyp->override_comment.fyi);
+				fyp->override_comment = fyp->last_comment;
+				fy_atom_reset(&fyp->last_comment);
+				return count;
+			}
+		}
+
 		handle = fy_token_comment_handle(fyt, count == 0 ? fycp_top : fycp_right, true);
 		fyp_error_check(fyp, handle, err_out,
 				"fy_token_comment_handle() top failed\n");
@@ -1132,7 +1242,6 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 		ref_indent = fyp->indent > 0 ? fyp->indent : 0;
 		fy_atom_set_indent_delta(handle, (int)handle->start_mark.column - ref_indent);
 		count++;
-
 		fy_atom_reset(&fyp->last_comment);
 	}
 
@@ -1147,9 +1256,19 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 
 	fy_get_mark(fyp, &fym);
 
-	/* only the one that in the same line */
-	if (fym.line != fyt->handle.end_mark.line)
-		return 0;
+	/* only the one that in the same line;
+	 * for block scalars end_mark is past the content (scanner advanced
+	 * past the final linebreak), so use start_mark.line (the indicator
+	 * line) instead - inline comments on block scalars can only appear
+	 * on the same line as | or >
+	 * See doc/COMMENT-HANDLING.md - "Block scalar rule" */
+	{
+		int ref_line = fy_atom_style_is_block(fyt->handle.style)
+				? fyt->handle.start_mark.line
+				: fyt->handle.end_mark.line;
+		if (fym.line != ref_line)
+			return 0;
+	}
 
 	/* it's a right comment only if it's on the same line */
 	handle = fy_token_comment_handle(fyt, fycp_right, true);
@@ -1613,29 +1732,18 @@ int fy_parse_unroll_indent(struct fy_parser *fyp, int column)
 		fyp_error_check(fyp, fyt, err_out,
 				"fy_token_queue_simple() failed");
 
-		rc = fy_pop_indent(fyp);
-		fyp_error_check(fyp, !rc, err_out,
-				"fy_pop_indent() failed");
+		/* save indent level before popping so comment delta is relative
+		 * to the block being closed, not its parent */
+		{
+			int current_indent = fyp->indent;
 
-		/* attach pending comment to this block-end token;
-		 * compute indent_delta relative to the parent indent
-		 * (after fy_pop_indent) so the emitter can pass old_indent
-		 * and get both correct comment column and trailing indent */
-		if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
-				fy_atom_is_set(&fyp->last_comment)) {
+			rc = fy_pop_indent(fyp);
+			fyp_error_check(fyp, !rc, err_out,
+					"fy_pop_indent() failed");
 
-			struct fy_atom *handle;
-			int ref_indent;
-
-			handle = fy_token_comment_handle(fyt, fycp_top, true);
-			if (handle) {
-				fy_input_unref(handle->fyi);
-				fy_atom_reset(handle);
-				*handle = fyp->last_comment;
-				ref_indent = fyp->indent > 0 ? fyp->indent : 0;
-				fy_atom_set_indent_delta(handle, (int)handle->start_mark.column - ref_indent);
-				fy_atom_reset(&fyp->last_comment);
-			}
+			/* Attach any comments that belong to this block to the
+			 * BLOCK_END token before the indent level is forgotten. */
+			fy_steal_block_end_comments(fyp, fyt, column, current_indent);
 		}
 
 		/* the ident line has now moved */
@@ -2750,7 +2858,6 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 	struct fy_mark mark;
 	struct fy_simple_key *fysk;
 	struct fy_token *fyt;
-	struct fy_atom *handle;
 
 	fyp_error_check(fyp, c == '-', err_out,
 			"illegal block entry");
@@ -2779,8 +2886,6 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 
 	if (fyp_block_mode(fyp) && fyp->indent < fyp_column(fyp)) {
 
-		int old_indent = fyp->indent;	/* save before push for comment delta */
-
 		/* push the new indent level */
 		rc = fy_push_indent(fyp, fyp_column(fyp), false, fyp_line(fyp));
 		fyp_error_check(fyp, !rc, err_out_rc,
@@ -2790,36 +2895,12 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 		fyp_error_check(fyp, fyt, err_out,
 				"fy_token_queue_simple_internal() failed");
 
-		/* if a last comment exists and is valid */
-		if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
-				(fy_atom_is_set(&fyp->override_comment) || fy_atom_is_set(&fyp->last_comment))) {
-			int ref_indent;
-
-			handle = fy_token_comment_handle(fyt, fycp_top, true);
-			fyp_error_check(fyp, handle, err_out,
-				"fy_token_comment_handle() failed");
-			fy_input_unref(handle->fyi);
-			fy_atom_reset(handle);
-
-			if (fy_atom_is_set(&fyp->override_comment)) {
-				*handle = fyp->override_comment;
-				fy_atom_reset(&fyp->override_comment);
-			} else if (fy_atom_is_set(&fyp->last_comment)) {
-				*handle = fyp->last_comment;
-				fy_atom_reset(&fyp->last_comment);
-			}
-
-			/* compute indent_delta — same logic as fy_attach_comments_if_any()
-			 * but using old_indent (before fy_push_indent) as reference, since
-			 * the emitter will use the pre-increase mapping indent as base */
-			ref_indent = old_indent > 0 ? old_indent : 0;
-			fy_atom_set_indent_delta(handle, (int)handle->start_mark.column - ref_indent);
-		}
+		/* Do NOT attach buffered comments to BLOCK_SEQUENCE_START here —
+		 * they belong on the first item token and will be picked up by
+		 * fy_attach_comments_if_any() when that token is produced. */
+		if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS)
+			fy_consolidate_pending_comments(fyp);
 	}
-
-	/* always reset the override comment */
-	fy_input_unref(fyp->override_comment.fyi);
-	fy_atom_reset(&fyp->override_comment);
 
 	if (c == '-' && fyp->flow_level) {
 		/* this is an error, but we let the parser catch it */
@@ -2855,6 +2936,12 @@ int fy_fetch_block_entry(struct fy_parser *fyp, int c)
 	fyt = fy_token_queue_simple(fyp, &fyp->queued_tokens, FYTT_BLOCK_ENTRY, 1);
 	fyp_error_check(fyp, fyt, err_out,
 			"fy_token_queue_simple() failed");
+
+	/* Signal that the next implicit-mapping key (if any) is a sequence item's first key.
+	 * fy_fetch_value() uses this to move the key's fycp_top comment to BLOCK_MAPPING_START
+	 * so the emitter's sequence_item_prolog can find it. */
+	fyp->pending_seq_item_key = true;
+	fyp_scan_debug(fyp, "pending_seq_item_key -> true");
 
 	rc = fy_ws_indentation_check(fyp, NULL, NULL);
 	fyp_error_check(fyp, !rc, err_out_rc,
@@ -2906,25 +2993,11 @@ int fy_fetch_key(struct fy_parser *fyp, int c)
 		fyp_error_check(fyp, fyt, err_out,
 				"fy_token_queue_simple_internal() failed");
 
-		/* if a last comment exists and is valid */
-		if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
-				(fy_atom_is_set(&fyp->override_comment) || fy_atom_is_set(&fyp->last_comment))) {
-
-			handle = fy_token_comment_handle(fyt, fycp_top, true);
-			fyp_error_check(fyp, handle, err_out,
-				"fy_token_comment_handle() failed");
-
-			fy_input_unref(handle->fyi);
-			fy_atom_reset(handle);
-
-			if (fy_atom_is_set(&fyp->override_comment)) {
-				*handle = fyp->override_comment;
-				fy_atom_reset(&fyp->override_comment);
-			} else if (fy_atom_is_set(&fyp->last_comment)) {
-				*handle = fyp->last_comment;
-				fy_atom_reset(&fyp->last_comment);
-			}
-		}
+		/* Do NOT attach buffered comments to BLOCK_MAPPING_START here —
+		 * they belong on the key scalar token and will be picked up by
+		 * fy_attach_comments_if_any() when the key is produced. */
+		if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS)
+			fy_consolidate_pending_comments(fyp);
 	}
 
 	rc = fy_remove_simple_key(fyp, FYTT_KEY);
@@ -3125,45 +3198,50 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 		fyp_error_check(fyp, fyt, err_out,
 				"fy_token_queue_simple_internal() failed");
 
-		/* if a last comment exists and is valid */
 		if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS) {
 
-			struct fy_atom *key_handle, *handle;
-
+			/* When the key is the first entry of a sequence item (flagged by
+			 * pending_seq_item_key set in fy_fetch_block_entry()), move the fycp_top
+			 * comment from the key scalar to BLOCK_MAPPING_START.  The emitter's
+			 * sequence_item_prolog looks for the comment on fyt_value = mapping_start,
+			 * and placing it there also ensures fy_node_sequence_sort carries the comment
+			 * with the item.  For standalone mappings, leave the comment on the key
+			 * scalar so it remains sort-stable under fy_node_mapping_sort.
+			 * See doc/COMMENT-HANDLING.md - "Sort-stability contract" */
 			if (fysk && fysk->token) {
-				key_handle = fy_token_comment_handle(fysk->token, fycp_top, true);
-				fyp_error_check(fyp, key_handle, err_out,
-					"fy_token_comment_handle() failed");
+				struct fy_atom *key_handle = fy_token_comment_handle(fysk->token, fycp_top, false);
+				if (key_handle && fy_atom_is_set(key_handle)) {
+					if (fyp->pending_seq_item_key) {
+						/* Sequence-item first key: move comment to BLOCK_MAPPING_START so
+						 * fy_node_sequence_sort carries it with the sequence item. */
+						struct fy_atom *bms_handle;
 
-				handle = fy_token_comment_handle(fyt, fycp_top, true);
-				fyp_error_check(fyp, handle, err_out,
-					"fy_token_comment_handle() failed");
+						bms_handle = fy_token_comment_handle(fyt, fycp_top, true);
+						fyp_error_check(fyp, bms_handle, err_out,
+								"fy_token_comment_handle() failed");
 
-				/* move the comment to the block mapping start */
-				fy_input_unref(handle->fyi);
-				fy_atom_reset(handle);
-				*handle = *key_handle;
-				fy_atom_reset(key_handle);
-			}
-
-			if (fy_atom_is_set(&fyp->override_comment) ||
-			    fy_atom_is_set(&fyp->last_comment)) {
-
-				handle = fy_token_comment_handle(fyt, fycp_top, true);
-				fyp_error_check(fyp, handle, err_out,
-					"fy_token_comment_handle() failed");
-
-				fy_input_unref(handle->fyi);
-				fy_atom_reset(handle);
-
-				if (fy_atom_is_set(&fyp->override_comment)) {
-					*handle = fyp->override_comment;
-					fy_atom_reset(&fyp->override_comment);
-				} else if (fy_atom_is_set(&fyp->last_comment)) {
-					*handle = fyp->last_comment;
-					fy_atom_reset(&fyp->last_comment);
+						fy_input_unref(bms_handle->fyi);
+						fy_atom_reset(bms_handle);
+						*bms_handle = *key_handle;
+						fy_atom_reset(key_handle);
+					} else {
+						/* Standalone mapping first key: leave comment on key scalar so
+						 * fy_node_mapping_sort carries it with the key.  Recompute
+						 * indent_delta relative to the new block indent (mark_insert.column)
+						 * so the emitter, which uses sc->indent = block_indent as the base,
+						 * reconstructs the correct column. */
+						int new_indent = (int)mark_insert.column;
+						fy_atom_set_indent_delta(key_handle,
+							(int)key_handle->start_mark.column - new_indent);
+					}
 				}
 			}
+			fyp->pending_seq_item_key = false;
+			fyp_scan_debug(fyp, "pending_seq_item_key -> false");
+
+			/* Consolidate buffered comments so fy_attach_comments_if_any()
+			 * can attach them to the VALUE token. */
+			fy_consolidate_pending_comments(fyp);
 		}
 
 		/* update with this mark */
@@ -3594,7 +3672,8 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	int lastc, rc, increment = 0, current_indent, new_indent, indent = 0, check_indent;
 	int breaks, breaks_length, presentation_breaks_length, first_break_length, max_indent, min_indent;
 	bool doc_start_end_detected, empty, empty_line, prev_empty_line, indented, prev_indented, first;
-	bool has_ws, has_lb, has_weird_nl, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb;
+	/* has_lb initialised to false; the loop may not execute on empty scalars */
+	bool has_ws, has_lb = false, has_weird_nl, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb;
 	bool pending_nl, ends_with_eof, starts_with_eof, content_is_eof;
 	struct fy_token *fyt;
 	size_t length, line_length, trailing_ws, trailing_breaks_length;
@@ -6389,6 +6468,29 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			FYP_TOKEN_ERROR_CHECK(fyp, fyt, FYEM_PARSE,
 					!had_directives, err_out,
 					"missing required document start indicator after directives");
+
+			/* If a leading comment is separated from the first content token
+			 * by a blank line (>= 2 line difference), it is a document-level
+			 * comment.  Promote it to override_comment and attach it to the
+			 * synthetic DOCUMENT_START token so the emitter can reproduce it.
+			 *
+			 * Note: the comment will be in last_comment here even though
+			 * fy_attach_comments_if_any() promoted it to override_comment
+			 * during scalar scanning — the BLOCK_MAPPING_START code flows
+			 * override_comment back into last_comment so it reaches here. */
+			if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
+					fy_atom_is_set(&fyp->last_comment)) {
+				int comment_line = (int)fyp->last_comment.end_mark.line;
+				int token_line  = (int)handle.start_mark.line;
+				if (token_line - comment_line >= 2) {
+					fy_input_unref(fyp->override_comment.fyi);
+					fyp->override_comment = fyp->last_comment;
+					fy_atom_reset(&fyp->last_comment);
+					rc = fy_attach_comments_if_any(fyp, fye->document_start.document_start);
+					fyp_error_check(fyp, rc >= 0, err_out,
+							"fy_attach_comments_if_any() failed");
+				}
+			}
 
 			fy_parse_state_set(fyp, FYPS_BLOCK_NODE);
 
