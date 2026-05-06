@@ -4639,7 +4639,7 @@ struct fy_node *fy_node_by_path(struct fy_node *fyn,
 	struct fy_anchor *fya;
 	const char *s, *e, *t, *anchor;
 	size_t alen;
-	char c;
+	int c;
 	char idx_buf[13];
 	size_t idx_buf_sz;
 	int idx, w;
