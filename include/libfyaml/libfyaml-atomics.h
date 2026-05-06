@@ -54,38 +54,38 @@
 extern "C" {
 #endif
 
-/* Detect standard C11 atomics */
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L && !defined(__STDC_NO_ATOMICS__)
-#include <stdatomic.h>
 /*
  * FY_HAVE_STDATOMIC_H - Defined when ``<stdatomic.h>`` is available.
  *
  * When defined, the standard ``atomic_*`` types and functions are in scope
  * and all ``fy_atomic_*`` macros delegate to them.
+ *
+ * This macro is defined if STDC version >= 201112L or
+ * for GCC version >= 4.9
+ * for clang version >= 3.6
+ *
+ * The check is required only for _really_ old compilers
  */
+#if !defined(__STDC__NO_ATOMICS__) && \
+	(defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) || \
+	(defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 9))) || \
+	(defined(__clang__) && (__clang_major__ > 3 || (__clang_major__ == 3 && __clang_minor__ >= 6)))
 #define FY_HAVE_STDATOMIC_H
+#endif
+
+/* Detect standard C11 atomics */
+#ifdef FY_HAVE_STDATOMIC_H
+#include <stdatomic.h>
 /*
  * FY_HAVE_C11_ATOMICS - Defined when the ``_Atomic`` qualifier is usable.
  *
  * Set when C11 ``<stdatomic.h>`` is available, or when the compiler supports
  * ``_Atomic`` as an extension (GCC without ``-std=c11``, Clang).
  * When not defined, ``_Atomic(_x)`` is a no-op and operations are non-atomic.
+ *
+ * We unconditionally enable it if we have stdatomic.h
  */
 #define FY_HAVE_C11_ATOMICS
-#endif
-
-/* Detect compiler extensions for _Atomic */
-#if !defined(FY_HAVE_C11_ATOMICS)
-#undef FY_HAVE_STDATOMIC_H
-
-#if defined(__GNUC__) && !defined(__STRICT_ANSI__) && !defined(__cplusplus)
-#define FY_HAVE_C11_ATOMICS
-#elif defined(__clang__) && defined(__has_extension)
-#if __has_extension(c_atomic)
-#define FY_HAVE_C11_ATOMICS
-#endif
-#endif
-
 #endif
 
 /* Decide macro */
