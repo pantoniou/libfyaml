@@ -48,6 +48,7 @@ static struct fy_parser *make_parser_from_string(const char *yaml)
 	return fyp;
 }
 
+#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
 static char *write_temp_header(const char *content)
 {
 	char path[PATH_MAX + 1];
@@ -61,6 +62,7 @@ static char *write_temp_header(const char *content)
 	ck_assert_ptr_ne(hdr, NULL);
 	return hdr;
 }
+#endif
 
 /* ------------------------------------------------------------------ */
 /* Test: null backend creation and fy_type_info accessors              */
