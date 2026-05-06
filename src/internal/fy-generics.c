@@ -473,7 +473,10 @@ out:
 	return linear_data;
 }
 
-void fy_generic_builder_linearize_release(struct fy_generic_builder *gb, fy_generic v, const void *data, size_t size)
+void fy_generic_builder_linearize_release(struct fy_generic_builder *gb FY_UNUSED,
+					  fy_generic v FY_UNUSED,
+					  const void *data FY_UNUSED,
+					  size_t size FY_UNUSED)
 {
 	/* nothing */
 }
