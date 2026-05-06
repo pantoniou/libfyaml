@@ -1602,7 +1602,10 @@ if(CAN_TEST)
         )
 
         target_compile_options(libfyaml-test PRIVATE ${COMMON_C_FLAGS})
-        target_compile_definitions(libfyaml-test PRIVATE ${COMMON_C_DEFINITIONS})
+        target_compile_definitions(libfyaml-test PRIVATE
+            HAVE_CONFIG_H
+            ${COMMON_C_DEFINITIONS}
+        )
 
         target_include_directories(libfyaml-test PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
