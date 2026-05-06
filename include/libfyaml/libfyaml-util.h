@@ -509,8 +509,12 @@ static __inline const char *fy_alloca_copy_free_impl(char *str, size_t len)
 	FY_CHECK_SAME_TYPE(__a, __b); \
 	\
 	__res = __a + __b; \
-	/* overflow when signs of a, b same, but results different */ \
-	__overflow = ((__a ^ __res) & (__b & __res)) < 0; \
+	if ((__typeof__(__a)) -1 < 0) \
+		/* signed overflow when signs of a, b same, but result differs */ \
+		__overflow = ((__a ^ __res) & (__b & __res)) < 0; \
+	else \
+		/* unsigned overflow when the result wraps below the first operand */ \
+		__overflow = __res < __a; \
 	*(_resp) = __res; \
 	__overflow; \
 })
@@ -547,8 +551,12 @@ static __inline const char *fy_alloca_copy_free_impl(char *str, size_t len)
 	FY_CHECK_SAME_TYPE(__a, __b); \
 	\
 	__res = __a - __b; \
-	/* overflow when signs of a, b differ, but results different from minuend */ \
-	__overflow = ((__a ^ __b) & (__a & __res)) < 0; \
+	if ((__typeof__(__a)) -1 < 0) \
+		/* signed overflow when signs differ and result differs from minuend */ \
+		__overflow = ((__a ^ __b) & (__a & __res)) < 0; \
+	else \
+		/* unsigned overflow when subtracting a larger value */ \
+		__overflow = __a < __b; \
 	*(_resp) = __res; \
 	__overflow; \
 })
