@@ -6,6 +6,13 @@ AC_INIT([libfyaml],
 
 AC_CONFIG_AUX_DIR([build-aux])
 
+dnl define if set, undef if unset
+AC_DEFUN([FY_DEFINE_IF_YES], [
+	AS_IF([test "x$$1" = "x1"], [
+		AC_DEFINE([$1], [1], [$2])
+	])
+])
+
 AC_PATH_PROG([M4], [m4 gm4], [no])
 if test "x$M4" = xno ; then
    AC_MSG_ERROR([m4 missing])
@@ -675,8 +682,9 @@ AC_SUBST(HAVE_GENERIC)
 AC_SUBST(HAVE_REFLECTION)
 AM_CONDITIONAL([HAVE_GENERIC], [ test x$HAVE_GENERIC = x1 ])
 AM_CONDITIONAL([HAVE_REFLECTION], [ test x$HAVE_REFLECTION = x1 ])
-AC_DEFINE_UNQUOTED([HAVE_GENERIC], [$HAVE_GENERIC], [Define to 1 if generics are enabled])
-AC_DEFINE_UNQUOTED([HAVE_REFLECTION], [$HAVE_REFLECTION], [Define to 1 if reflection is enabled])
+
+FY_DEFINE_IF_YES([HAVE_GENERIC], [$HAVE_GENERIC], [Define to 1 if generics are enabled])
+FY_DEFINE_IF_YES([HAVE_REFLECTION], [$HAVE_REFLECTION], [Define to 1 if generics are enabled])
 
 dnl trim cflags, cppflags, ldflags
 CFLAGS=`echo $CFLAGS | sed -e 's/^[ ]*//'`
