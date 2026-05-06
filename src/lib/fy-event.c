@@ -28,7 +28,9 @@
 #include "fy-utf8.h"
 #include "fy-utils.h"
 
+#ifdef HAVE_GENERIC
 #include "fy-generic.h"
+#endif
 
 #include "fy-event.h"
 

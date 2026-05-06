@@ -21,7 +21,10 @@
 #include <libfyaml.h>
 
 #include "fy-win32.h"
+
+#ifdef HAVE_GENERIC
 #include "fy-generic.h"
+#endif
 
 #include "fy-parse.h"
 

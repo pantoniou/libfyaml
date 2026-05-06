@@ -32,7 +32,9 @@
 #include "fy-parse.h"
 #include "fy-ctype.h"
 
+#ifdef HAVE_GENERIC
 #include "fy-generic.h"
+#endif
 
 #include "fy-input.h"
 
