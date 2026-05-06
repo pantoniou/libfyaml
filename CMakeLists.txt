@@ -779,24 +779,6 @@ if(NOT MSVC)
         list(APPEND COMMON_C_FLAGS -Wextra)
     endif()
 
-    check_c_compiler_flag(-Wno-unused-function COMPILER_SUPPORTS_WNO_UNUSED_FUNCTION)
-    if(COMPILER_SUPPORTS_WNO_UNUSED_FUNCTION)
-        list(APPEND COMMON_C_FLAGS -Wno-unused-function)
-    endif()
-
-    check_c_compiler_flag(-Wno-stringop-overflow COMPILER_SUPPORTS_WNO_STRINGOP_OVERFLOW)
-    if(COMPILER_SUPPORTS_WNO_STRINGOP_OVERFLOW)
-        list(APPEND COMMON_C_FLAGS -Wno-stringop-overflow)
-    endif()
-
-    if(CMAKE_C_COMPILER_ID MATCHES "Clang")
-        check_c_compiler_flag(-Wno-tautological-constant-out-of-range-compare
-                              COMPILER_SUPPORTS_WNO_TAUTOLOGICAL_CONSTANT_OUT_OF_RANGE_COMPARE)
-        if(COMPILER_SUPPORTS_WNO_TAUTOLOGICAL_CONSTANT_OUT_OF_RANGE_COMPARE)
-            list(APPEND COMMON_C_FLAGS -Wno-tautological-constant-out-of-range-compare)
-        endif()
-    endif()
-
     set(USE_STD 0)
 
     if(NOT USE_STD)
