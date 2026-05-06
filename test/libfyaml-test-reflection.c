@@ -48,7 +48,7 @@ static struct fy_parser *make_parser_from_string(const char *yaml)
 	return fyp;
 }
 
-#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
+#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG && !defined(_WIN32)
 static char *write_temp_header(const char *content)
 {
 	char path[PATH_MAX + 1];
@@ -273,7 +273,7 @@ END_TEST
 /* Test: clang backend — struct field info  (requires HAVE_LIBCLANG)  */
 /* ------------------------------------------------------------------ */
 
-#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
+#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG && !defined(_WIN32)
 
 /*
  * Minimal clang-backed smoke test for the C reflection API.
@@ -374,15 +374,12 @@ START_TEST(reflection_clang_struct_parse)
 }
 END_TEST
 
-#endif /* HAVE_LIBCLANG */
-
 /* ------------------------------------------------------------------ */
 /* Test: packed backend round-trip                                     */
 /* ------------------------------------------------------------------ */
 
 /* Test: pack reflection and restore; verify struct baz still introspectable */
 /* (seeds from C file, so also requires HAVE_LIBCLANG) */
-#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
 START_TEST(reflection_packed_roundtrip)
 {
 	struct fy_reflection *rfl, *rfl2;
@@ -501,7 +498,7 @@ void libfyaml_case_reflection(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, reflection_invalid_entry_meta_fails_cleanly);
 	fy_check_testcase_add_test(ctc, reflection_invalid_required_entry_meta_fails_cleanly);
 
-#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
+#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG && !defined(_WIN32)
 	/* clang backend tests */
 	ctc = fy_check_suite_add_test_case(cs, "reflection-clang");
 
@@ -512,7 +509,7 @@ void libfyaml_case_reflection(struct fy_check_suite *cs)
 	/* packed backend tests */
 	ctc = fy_check_suite_add_test_case(cs, "reflection-packed");
 
-#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
+#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG && !defined(_WIN32)
 	fy_check_testcase_add_test(ctc, reflection_packed_roundtrip);
 #endif
 	fy_check_testcase_add_test(ctc, reflection_packed_parse_int);
