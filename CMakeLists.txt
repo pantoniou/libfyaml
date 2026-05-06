@@ -65,6 +65,7 @@ include(CMakeDependentOption)
 include(CTest)
 include(TestBigEndian)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckLibClang.cmake)
+include(FetchContent)
 
 # does this CMake version understand generator expressions?
 if(${CMAKE_VERSION} VERSION_LESS "3.27")
@@ -303,7 +304,6 @@ if(BUILD_TESTING AND (NOT CMAKE_CROSSCOMPILING OR HAVE_WINE))
     # Always used when cross-compiling (skips host detection above) so that
     # check is compiled for the target platform and can run under wine.
     if(NOT HAVE_CHECK)
-        include(FetchContent)
         message(STATUS "check framework not found, fetching via FetchContent...")
         FetchContent_Declare(
             check
@@ -625,7 +625,6 @@ if(NOT JSONTESTSUITECHECKOUT)
 endif()
 
 # FetchContent for test suites (downloaded at configure time when network is available)
-include(FetchContent)
 if(ENABLE_NETWORK)
     FetchContent_Declare(
         yaml_test_suite
