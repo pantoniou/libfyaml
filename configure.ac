@@ -131,12 +131,18 @@ AC_CHECK_FUNCS([__builtin_bswap16 __builtin_bswap32 __builtin_bswap64])
 
 dnl for old autoconf version AX_APPEND_COMPILE_FLAGS does not work
 m4_version_prereq(2.64,
-	 [AX_APPEND_COMPILE_FLAGS([-Wall -Wsign-compare -Wno-stringop-overflow \
-				   -fvisibility=hidden -Wno-unused-function \
-				   -Wno-tautological-constant-out-of-range-compare \
-				   -std=c2x],
-				  [CFLAGS], [-pedantic -Werror])],
-         [CFLAGS="$CFLAGS -Wall -Wsign-compare"])
+	 [AX_APPEND_COMPILE_FLAGS([-Wall -Wextra], [CFLAGS], [])],
+         [CFLAGS="$CFLAGS -Wall -Wextra"])
+
+dnl try c2x and if that fails stick c11
+m4_version_prereq(2.64,
+	[ AS_CASE([" $CFLAGS "],
+		[*" -std="*], [],
+		[ AX_APPEND_COMPILE_FLAGS([-std=c2x], [CFLAGS]) ])
+	  AS_CASE([" $CFLAGS "],
+		[*" -std="*], [],
+		[ AX_APPEND_COMPILE_FLAGS([-std=c11], [CFLAGS]) ]) ],
+         [CFLAGS="$CFLAGS -std=c11"])
 
 dnl -O2 is universal no need for AX_APPEND_COMPILE_FLAGS
 if test "x$ax_enable_debug" != "xyes" ; then
