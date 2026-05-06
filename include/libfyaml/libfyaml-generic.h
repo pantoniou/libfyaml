@@ -1905,7 +1905,7 @@ static inline fy_generic_value fy_generic_in_place_float_type(const double v)
 
 #else
 
-static inline fy_generic_value fy_generic_in_place_float_type(const double v)
+static inline fy_generic_value fy_generic_in_place_float_type(const double v FY_UNUSED)
 {
 	return fy_invalid_value;
 }
@@ -2091,7 +2091,7 @@ static inline double fy_generic_get_float_type_no_check(fy_generic v)
  * Returns:
  * sizeof(double).
  */
-static inline size_t fy_generic_out_of_place_size_float_type(const double v)
+static inline size_t fy_generic_out_of_place_size_float_type(const double v FY_UNUSED)
 {
 	return sizeof(double);
 }
@@ -8679,8 +8679,10 @@ static inline fy_generic
 fy_gb_sequence_create(struct fy_generic_builder *gb, size_t count, const fy_generic *items)
 {
 	struct fy_generic_op_args args = {
-		.common.count = count,
-		.common.items = items,
+		.common = {
+			.count = count,
+			.items = items,
+		}
 	};
 	return fy_generic_op_args(gb, FYGBOPF_CREATE_SEQ, fy_seq_empty, &args);
 }
@@ -8699,8 +8701,10 @@ static inline fy_generic
 fy_gb_mapping_create(struct fy_generic_builder *gb, size_t count, const fy_generic *pairs)
 {
 	struct fy_generic_op_args args = {
-		.common.count = count,
-		.common.items = pairs,
+		.common = {
+			.count = count,
+			.items = pairs,
+		}
 	};
 	return fy_generic_op_args(gb, FYGBOPF_CREATE_MAP, fy_seq_empty, &args);
 }

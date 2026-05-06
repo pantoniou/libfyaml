@@ -1077,6 +1077,11 @@ fy_generic fy_gb_alias_create(struct fy_generic_builder *gb, fy_generic anchor)
 		.value = fy_null,
 		.anchor = anchor,
 		.tag = fy_invalid,
+		.diag = fy_invalid,
+		.marker = fy_invalid,
+		.comment = fy_invalid,
+		.style = fy_invalid,
+		.failsafe_str = fy_invalid,
 	};
 
 	return fy_gb_indirect_create(gb, &gi);
