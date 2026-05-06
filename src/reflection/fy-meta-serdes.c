@@ -2698,40 +2698,6 @@ str_instance_data_setup(struct str_instance_data *id, struct reflection_walker *
 }
 
 static int
-str_load_length(struct str_instance_data *id FY_UNUSED,
-		size_t *lenp FY_UNUSED)
-{
-	assert(id);
-	assert(lenp);
-
-	return 0;
-}
-
-static bool
-str_store_length_check(struct str_instance_data *id, size_t len)
-{
-	assert(id);
-
-	if (!id->rfd_counter)
-		return 0;
-
-	return integer_field_store_check(id->rfd_counter, len + (id->not_null_terminated ? 0 : 1));
-}
-
-static void
-str_store_length(struct str_instance_data *id,
-		 const char *str FY_UNUSED,
-		 size_t len)
-{
-	assert(id);
-
-	if (!id->rfd_counter)
-		return;
-
-	struct_integer_field_store(id->rw_struct, id->rfd_counter, len);
-}
-
-static int
 str_instance_len(struct str_instance_data *id, const char *text, size_t *lenp)
 {
 	assert(id);
