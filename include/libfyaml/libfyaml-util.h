@@ -478,6 +478,13 @@ static __inline const char *fy_alloca_copy_free_impl(char *str, size_t len)
 #define FY_CHECK_SAME_TYPE(_a, _b) \
     FY_COMPILE_ERROR_ON_ZERO(!FY_SAME_TYPE(_a, _b))
 
+/* type test that does not trigger type-limits warnings */
+#define FY_TYPE_IS_UNSIGNED(_x) \
+	(((__typeof__(_x))0 - (__typeof__(_x))1) > (__typeof__(_x))0)
+
+#define FY_SIGN_BIT(_x) \
+	(((__typeof__(_x))1) << (sizeof(__typeof__(_x)) * CHAR_BIT - 1))
+
 /**
  * FY_ADD_OVERFLOW() - Checked addition: detect signed/unsigned integer overflow.
  *
@@ -509,12 +516,9 @@ static __inline const char *fy_alloca_copy_free_impl(char *str, size_t len)
 	FY_CHECK_SAME_TYPE(__a, __b); \
 	\
 	__res = __a + __b; \
-	if ((__typeof__(__a)) -1 < 0) \
-		/* signed overflow when signs of a, b same, but result differs */ \
-		__overflow = ((__a ^ __res) & (__b & __res)) < 0; \
-	else \
-		/* unsigned overflow when the result wraps below the first operand */ \
-		__overflow = __res < __a; \
+	__overflow = __builtin_choose_expr(FY_TYPE_IS_UNSIGNED(__a), \
+		(__res < __a), \
+		((!((__a ^ __b) & FY_SIGN_BIT(__a))) && (((__a ^ __res) & FY_SIGN_BIT(__a)) != 0))); \
 	*(_resp) = __res; \
 	__overflow; \
 })
@@ -551,12 +555,9 @@ static __inline const char *fy_alloca_copy_free_impl(char *str, size_t len)
 	FY_CHECK_SAME_TYPE(__a, __b); \
 	\
 	__res = __a - __b; \
-	if ((__typeof__(__a)) -1 < 0) \
-		/* signed overflow when signs differ and result differs from minuend */ \
-		__overflow = ((__a ^ __b) & (__a & __res)) < 0; \
-	else \
-		/* unsigned overflow when subtracting a larger value */ \
-		__overflow = __a < __b; \
+	__overflow = __builtin_choose_expr(FY_TYPE_IS_UNSIGNED(__a), \
+		(__a < __b), \
+		((((__a ^ __b) & FY_SIGN_BIT(__a)) != 0) && (((__a ^ __res) & FY_SIGN_BIT(__a)) != 0))); \
 	*(_resp) = __res; \
 	__overflow; \
 })
@@ -599,7 +600,9 @@ static __inline const char *fy_alloca_copy_free_impl(char *str, size_t len)
 	} else { \
 	    __res = __a * __b; \
 	    /* overflow when division of the result differs */ \
-	    __overflow = (__res / __a) != __b; \
+	    __overflow = __builtin_choose_expr(FY_TYPE_IS_UNSIGNED(__a), \
+		    (__b > ((__typeof__(__a))~(__typeof__(__a))0 / __a)), \
+		    ((__res / __a) != __b)); \
 	} \
 	*(_resp) = __res; \
 	__overflow; \
