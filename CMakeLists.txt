@@ -719,6 +719,34 @@ if(HAVE_ASAN)
   set(ASAN_C_FLAGS "-fsanitize=address,signed-integer-overflow,undefined" "-fno-omit-frame-pointer")
 endif()
 
+# Some older toolchains need libatomic for 8-byte atomics.
+set(ATOMIC_LIBS "")
+if(NOT WIN32 AND NOT MSVC)
+    set(CMAKE_REQUIRED_LIBRARIES_SAVE "${CMAKE_REQUIRED_LIBRARIES}")
+    set(CMAKE_REQUIRED_LIBRARIES "")
+    check_c_source_compiles("
+        volatile unsigned long long v = 1;
+        int main(void) {
+            return (int)__atomic_fetch_sub(&v, 1, __ATOMIC_SEQ_CST);
+        }
+    " ATOMIC_LINKS_WITHOUT_LIBATOMIC)
+    if(NOT ATOMIC_LINKS_WITHOUT_LIBATOMIC)
+        set(CMAKE_REQUIRED_LIBRARIES "atomic")
+        check_c_source_compiles("
+            volatile unsigned long long v = 1;
+            int main(void) {
+                return (int)__atomic_fetch_sub(&v, 1, __ATOMIC_SEQ_CST);
+            }
+        " ATOMIC_LINKS_WITH_LIBATOMIC)
+        if(ATOMIC_LINKS_WITH_LIBATOMIC)
+            set(ATOMIC_LIBS "-latomic")
+        else()
+            message(FATAL_ERROR "compiler supports __atomic builtins but linking 8-byte atomics failed, even with -latomic")
+        endif()
+    endif()
+    set(CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES_SAVE}")
+endif()
+
 # Build common compiler flags for all targets
 set(COMMON_C_FLAGS)
 if(WIN32 AND CMAKE_C_COMPILER_ID STREQUAL "Clang")
@@ -1335,6 +1363,10 @@ find_library(LIBM m)
 if(LIBM)
     target_link_libraries(fyaml PUBLIC ${LIBM})
     target_link_libraries(fyaml_static PUBLIC ${LIBM})
+endif()
+if(ATOMIC_LIBS)
+    target_link_libraries(fyaml PUBLIC ${ATOMIC_LIBS})
+    target_link_libraries(fyaml_static PUBLIC ${ATOMIC_LIBS})
 endif()
 
 # Add libclang support if available
