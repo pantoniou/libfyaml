@@ -1307,15 +1307,7 @@ do_b3sum(int argc, char *argv[], int optind, const struct b3sum_config *cfg)
 	return num_inputs == num_ok ? 0 : -1;
 }
 
-#ifdef HAVE_REFLECTION
-
-/*
- * Reflection meta-type implementation moved to library files:
- *   src/reflection/fy-type-meta.c  - meta/annotation system
- *   src/reflection/fy-meta-type.c  - type data management
- *   src/reflection/fy-type-context.c - type system context
- *   src/reflection/fy-meta-serdes.c - serialization/deserialization
- */
+#ifdef HAVE_GENERIC
 
 static size_t estimate_max_file_size(int argc, char **argv)
 {
@@ -1342,11 +1334,6 @@ static size_t estimate_max_file_size(int argc, char **argv)
 
 	return size;
 }
-
-
-#endif /* HAVE_REFLECTION */
-
-#ifdef HAVE_GENERIC
 
 struct generic_config {
 	bool dedup : 1;
