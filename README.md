@@ -1,4 +1,4 @@
-# libfyaml 1.0-alpha5
+# libfyaml 1.0-alpha6
 
 [![Autotools CI](https://github.com/pantoniou/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22Standard+Automake+CI%22)
 [![CMake CI](https://github.com/pantoniou/libfyaml/workflows/CMake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22CMake+CI%22)
@@ -17,19 +17,20 @@ The alpha release adds a clear progression:
 * use generics when your problem is "work with values"
 * use reflection when your problem is "populate native C data structures"
 
-## Why 1.0-alpha5 matters
+## Why 1.0-alpha6 matters
 
-`1.0.0-alpha5` is the build-and-correctness follow-up to the earlier
+`1.0.0-alpha6` is the feature-and-portability follow-up to the earlier
 `1.0.0-alpha` releases.
 
-It keeps the same overall 1.0 direction, but expands build/test coverage and
-hardens the new subsystems in the places that matter for early adopters:
+It keeps the same overall 1.0 direction, but makes the generic layer more
+capable, improves text and formatting fidelity, and broadens platform/build
+coverage in the places that matter for early adopters:
 
-* new `pcons` build system support and CI coverage
-* address-sanitized CI builds via `ENABLE_ASAN=1`
-* generic and threading fixes around `preduce` seeding and steal-mode worker shutdown/join behavior
-* parser and emitter bug fixes with expanded regression coverage
-* reflection cleanup fixes and safer no-libclang stub handling
+* generic document-builder support, schema controls, and formatting/style parity work
+* relaxed-flow document parsing for JSONL-like inputs and matching tool/generic flags
+* major atom/text-analysis rework with better literal handling and new coverage
+* wider build portability across Windows ARM, Android, older compilers, and `libatomic`-requiring platforms
+* another round of CMake/autoconf cleanup with stricter warning handling
 
 ### Generic runtime
 
@@ -280,8 +281,9 @@ python3 -m pytest tests/
 
 The binding is part of the alpha release story and shows the generic runtime's
 data model in regular use. `v1.0.0-alpha3` improved the Windows story for the
-binding, `v1.0.0-alpha4` repaired the wheel and `sdist` packaging flow, and
-`v1.0.0-alpha5` broadens build and CI coverage around the project as a whole.
+binding, `v1.0.0-alpha4` repaired the wheel and `sdist` packaging flow,
+`v1.0.0-alpha5` broadened build and CI coverage, and `v1.0.0-alpha6` expands
+generic formatting/document handling while continuing the portability push.
 
 ## License
 

@@ -5,6 +5,44 @@ All notable changes to libfyaml will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-alpha6] - 2026-05-07
+
+The sixth alpha milestone for the 1.0 line. This release expands the generic
+and document-building feature set, improves atom/text-analysis fidelity, and
+keeps pushing portability and build-system correctness across more targets and
+toolchains.
+
+### Added
+
+- `generic`: add `fy_generic_document_builder` with builder tests and supporting document-state APIs
+- `parse`: add relaxed-flow document parsing for JSONL-like inputs, with matching generic and tool flags
+- `tool`: add `--relaxed-flow-doc` and schema-selection support to `fy-tool`
+- `test`: add atom text-analysis coverage plus more generic emit/document-builder verification
+- `ci`: add a Windows 11 ARM runner for broader coverage
+
+### Changed
+
+- `generic`: extend iterator/encoder paths to preserve more style, implicit/explicit marker, anchor, and tag behavior
+- `atom`: rework token and atom text analysis around literals, iterators, and staging buffers
+- `build`: probe for `libatomic` in CMake and autoconf where required
+- `build`: fall back to `gnu11` when `c2x` is unavailable and avoid `pthread` probing on Android
+- `cmake`: align tests and warnings for `-Wextra`, including passing `HAVE_CONFIG_H` into tests
+- `reflection`: gate libclang tests properly on Windows and clean up warning-prone helper code
+
+### Fixed
+
+- `generic`: fix big-endian `FY_STRING_SHIFT3` handling and multiple warning/const-correctness issues
+- `atom`: clear token analysis on reset and remove text-analysis edge-case failures
+- `autoconf`: handle `HAVE_GENERIC` and `HAVE_REFLECTION` properly across more platforms
+- `util`: fix older-compiler overflow-warning handling
+- `doc`: fix a path-scan helper to use `int` instead of `char`
+- `misc`: remove assorted unused code and warning-triggering paths in generic, reflection, and core helpers
+
+### Statistics
+
+- 73 commits since `v1.0.0-alpha5`
+- Focus areas: generic/document formatting, atom/text fidelity, and broader platform/build portability
+
 ## [1.0.0-alpha5] - 2026-04-18
 
 The fifth alpha milestone for the 1.0 line. This release broadens the build
@@ -672,6 +710,7 @@ Jose Luis Blanco-Claraco, Andrey Somov, Orange_233, Martin Diehl
 
 Initial public release with comprehensive YAML 1.2 support.
 
+[1.0.0-alpha6]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha5...v1.0.0-alpha6
 [1.0.0-alpha5]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha4...v1.0.0-alpha5
 [1.0.0-alpha4]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha3...v1.0.0-alpha4
 [1.0.0-alpha3]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha2...v1.0.0-alpha3
