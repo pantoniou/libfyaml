@@ -195,7 +195,7 @@ scenario_is_single_tagged(int scenario)
 	       scenario <= FYAST_SINGLE_LINEAR_RANGE_DEDUP;
 }
 
-static inline bool
+static inline FY_UNUSED bool
 scenario_is_dedup(int scenario)
 {
 	return scenario == FYAST_PER_TAG_FREE_DEDUP ||

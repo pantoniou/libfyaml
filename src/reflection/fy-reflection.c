@@ -109,12 +109,14 @@ enum fy_c_standard {
 	fycstd_23,
 };
 
-static inline bool fy_c_keyword_is_valid(enum fy_c_keyword ckw)
+static inline FY_UNUSED bool
+fy_c_keyword_is_valid(enum fy_c_keyword ckw)
 {
 	return (int)ckw >= fyckw_auto && (int)ckw <= fyckw__Decimal128;
 }
 
-static inline enum fy_c_standard fy_c_keyword_standard(enum fy_c_keyword ckw)
+static inline FY_UNUSED enum fy_c_standard
+fy_c_keyword_standard(enum fy_c_keyword ckw)
 {
 	if (ckw >= fyckw_auto && ckw <= fyckw_while)
 		return fycstd_89;
@@ -127,22 +129,26 @@ static inline enum fy_c_standard fy_c_keyword_standard(enum fy_c_keyword ckw)
 	return fycstd_invalid;
 }
 
-static inline bool fy_c_keyword_is_c89(enum fy_c_keyword ckw)
+static inline FY_UNUSED bool
+fy_c_keyword_is_c89(enum fy_c_keyword ckw)
 {
 	return ckw >= fyckw_auto && ckw <= fyckw_while;
 }
 
-static inline bool fy_c_keyword_is_c99(enum fy_c_keyword ckw)
+static inline FY_UNUSED bool
+fy_c_keyword_is_c99(enum fy_c_keyword ckw)
 {
 	return ckw >= fyckw_inline && ckw <= fyckw__Imaginary;
 }
 
-static inline bool fy_c_keyword_is_c11(enum fy_c_keyword ckw)
+static inline FY_UNUSED bool
+fy_c_keyword_is_c11(enum fy_c_keyword ckw)
 {
 	return ckw >= fyckw__Alignas && ckw <= fyckw__Generic;
 }
 
-static inline bool fy_c_keyword_is_c23(enum fy_c_keyword ckw)
+static inline FY_UNUSED bool
+fy_c_keyword_is_c23(enum fy_c_keyword ckw)
 {
 	return ckw >= fyckw_alignas && ckw <= fyckw__Decimal128;
 }
@@ -509,11 +515,6 @@ static inline int backend_import_setup(struct fy_import *imp, const void *user)
 }
 
 static inline void backend_import_cleanup(struct fy_import *imp)
-{
-	imp->rfl->cfg.backend->ops->import_cleanup(imp);
-}
-
-static inline void backend_import_complete(struct fy_import *imp)
 {
 	imp->rfl->cfg.backend->ops->import_cleanup(imp);
 }
@@ -4450,7 +4451,8 @@ struct fy_c_generator {
 	FILE *fp;
 };
 
-static inline bool fy_c_generator_any_comments(struct fy_c_generator *cgen)
+static inline FY_UNUSED bool
+fy_c_generator_any_comments(struct fy_c_generator *cgen)
 {
 	return (cgen->flags & FYCGF_COMMENT_MASK) == FYCGF_COMMENT_NONE;
 }

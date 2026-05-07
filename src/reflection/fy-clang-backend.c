@@ -479,7 +479,7 @@ clang_type_get_dependent(CXType type)
 	return type;
 }
 
-static inline CXType
+static inline FY_UNUSED CXType
 clang_type_get_base(CXType type)
 {
 	CXType ttype;
