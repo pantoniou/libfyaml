@@ -2,7 +2,10 @@
 requires = [
     "setuptools>=69.0",
     "wheel",
-    "cmake>=3.22",
+    # CMake 3.26 is required for Python3_add_library(USE_SABI 3.10), which
+    # configures the Windows build to target the Stable ABI properly
+    # (define Py_LIMITED_API, link against python3.lib, name output *.abi3.pyd).
+    "cmake>=3.26",
     "ninja; platform_system != 'Windows'",
 ]
 build-backend = "setuptools.build_meta"
@@ -12,7 +15,7 @@ name = "libfyaml"
 dynamic = ["version"]
 description = "Python bindings for libfyaml's generic YAML/JSON value model"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 authors = [
     {name = "Pantelis Antoniou", email = "pantelis.antoniou@konsulko.com"}
 ]
@@ -30,12 +33,11 @@ classifiers = [
     "Operating System :: MacOS :: MacOS X",
     "Programming Language :: C",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Implementation :: CPython",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Text Processing :: Markup",
@@ -55,7 +57,9 @@ packages = ["libfyaml"]
 libfyaml = ["*.pyi", "*.so", "*.pyd"]
 
 [tool.cibuildwheel]
-build = ["cp38-*", "cp39-*", "cp310-*", "cp311-*", "cp312-*", "cp313-*", "cp314-*"]
+# Stable ABI / abi3 wheels: one wheel built against the lowest supported
+# CPython (3.10) is loadable on every newer interpreter (3.11, 3.12, 3.13, ...).
+build = ["cp310-*"]
 skip = ["*-musllinux_*", "*-win32", "*_i686", "*t-*"]
 build-verbosity = 1
 test-requires = ["pytest"]

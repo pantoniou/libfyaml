@@ -1932,7 +1932,14 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/tags.cmake)
 
 # Python core bindings
 if(NOT CMAKE_CROSSCOMPILING)
-    find_package(Python3 COMPONENTS Interpreter Development.Module)
+    # Development.SABIModule is needed for Python3_add_library(USE_SABI ...);
+    # it was added in CMake 3.26. Request it conditionally so older CMake
+    # (which still works for non-abi3 fallback builds) doesn't error out.
+    if(NOT CMAKE_VERSION VERSION_LESS "3.26")
+        find_package(Python3 COMPONENTS Interpreter Development.Module Development.SABIModule)
+    else()
+        find_package(Python3 COMPONENTS Interpreter Development.Module)
+    endif()
 endif()
 if(CMAKE_CROSSCOMPILING)
     set(_ENABLE_PYTHON_BINDINGS_DEFAULT OFF)
@@ -1963,9 +1970,20 @@ elseif(ENABLE_PYTHON_BINDINGS)
         set(HAVE_PYTHON_BINDINGS 0)
     else()
 
-        Python3_add_library(_libfyaml MODULE WITH_SOABI
-            "${CMAKE_CURRENT_SOURCE_DIR}/python-libfyaml/libfyaml/_libfyaml.c"
-        )
+        # Build the extension against the Python Stable ABI (abi3) so a
+        # single cp310 wheel loads on every newer CPython. USE_SABI is a
+        # CMake 3.26 feature; on older CMake fall back to a non-abi3 build
+        # (the abi3 wheels then come from non-CMake build paths).
+        if(NOT CMAKE_VERSION VERSION_LESS "3.26")
+            Python3_add_library(_libfyaml MODULE USE_SABI 3.10 WITH_SOABI
+                "${CMAKE_CURRENT_SOURCE_DIR}/python-libfyaml/libfyaml/_libfyaml.c"
+            )
+        else()
+            Python3_add_library(_libfyaml MODULE WITH_SOABI
+                "${CMAKE_CURRENT_SOURCE_DIR}/python-libfyaml/libfyaml/_libfyaml.c"
+            )
+            target_compile_definitions(_libfyaml PRIVATE Py_LIMITED_API=0x030A0000)
+        endif()
         target_include_directories(_libfyaml PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/include"
             "${CMAKE_CURRENT_BINARY_DIR}"

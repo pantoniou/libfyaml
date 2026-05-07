@@ -227,7 +227,9 @@ class CustomBuildExt(build_ext):
             ["cmake", "--build", str(build_dir), "--config", "Release", "--target", "_libfyaml"]
         )
 
-        built_extensions = sorted((build_dir / "python-libfyaml" / "libfyaml").glob("_libfyaml*.pyd"))
+        ext_dir = build_dir / "python-libfyaml" / "libfyaml"
+        built_extensions = sorted(ext_dir.glob("_libfyaml*.abi3.pyd")) or \
+                           sorted(ext_dir.glob("_libfyaml*.pyd"))
         if not built_extensions:
             raise RuntimeError("CMake did not produce a Windows _libfyaml extension")
 
@@ -345,8 +347,16 @@ class CustomBuildExt(build_ext):
 
 setup(
     version=resolve_package_version(),
-    ext_modules=[Extension("libfyaml._libfyaml", sources=["libfyaml/_libfyaml.c"])],
+    ext_modules=[
+        Extension(
+            "libfyaml._libfyaml",
+            sources=["libfyaml/_libfyaml.c"],
+            define_macros=[("Py_LIMITED_API", "0x030A0000")],
+            py_limited_api=True,
+        ),
+    ],
     packages=["libfyaml"],
     package_data={"libfyaml": ["*.pyi"]},
     cmdclass={"build_ext": CustomBuildExt},
+    options={"bdist_wheel": {"py_limited_api": "cp310"}},
 )
