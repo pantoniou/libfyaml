@@ -58,6 +58,10 @@ jobs:
             runner: ubuntu-latest
             cibw_archs: x86_64
             cibw_environment: LIBFYAML_REPO_ROOT=/project
+          - name: linux-aarch64
+            runner: ubuntu-24.04-arm
+            cibw_archs: aarch64
+            cibw_environment: LIBFYAML_REPO_ROOT=/project
           - name: macos-x86_64
             runner: macos-15-intel
             cibw_archs: x86_64
@@ -69,6 +73,21 @@ jobs:
           - name: windows-amd64
             runner: windows-latest
             cibw_archs: AMD64
+            cibw_environment: >-
+              LIBFYAML_REPO_ROOT=${{ github.workspace }}
+              CC=clang-cl
+              CXX=clang-cl
+              CMAKE_GENERATOR=Ninja
+              LIBFYAML_CMAKE_ARGS=-DCMAKE_C_COMPILER=clang-cl
+            cibw_environment_windows: >-
+              LIBFYAML_REPO_ROOT=${{ github.workspace }}
+              CC=clang-cl
+              CXX=clang-cl
+              CMAKE_GENERATOR=Ninja
+              LIBFYAML_CMAKE_ARGS=-DCMAKE_C_COMPILER=clang-cl
+          - name: windows-arm64
+            runner: windows-11-arm
+            cibw_archs: ARM64
             cibw_environment: >-
               LIBFYAML_REPO_ROOT=${{ github.workspace }}
               CC=clang-cl
