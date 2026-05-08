@@ -3576,7 +3576,8 @@ libfyaml_loads(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
     int create_markers = 0;  /* Default to False */
     int keep_comments = 0;  /* Default to False */
     int keep_style = 0;  /* Default to False */
-    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", "keep_style", NULL};
+    int keep_anchors = 0;  /* Default to False */
+    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", "keep_style", "keep_anchors", NULL};
     unsigned int mode_flags;
     struct fy_generic_builder *gb = NULL;
     unsigned int parse_flags;
@@ -3585,7 +3586,7 @@ libfyaml_loads(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
     fy_generic vds;
     PyObject *result;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|sppppppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|spppppppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style, &keep_anchors))
         return NULL;
 
     /* Parse mode string to flags */
@@ -3610,6 +3611,8 @@ libfyaml_loads(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
         parse_flags |= FYOPPF_KEEP_COMMENTS;
     if (keep_style)
         parse_flags |= FYOPPF_KEEP_STYLE;
+    if (keep_anchors)
+        parse_flags |= FYOPPF_KEEP_ANCHORS;
     vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
 
     /* When collect_diag is enabled, errors return an indirect with diag attached */
@@ -4372,7 +4375,8 @@ libfyaml_loads_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
     int create_markers = 0;
     int keep_comments = 0;
     int keep_style = 0;
-    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", "keep_style", NULL};
+    int keep_anchors = 0;
+    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", "keep_style", "keep_anchors", NULL};
     struct fy_generic_builder *gb;
     unsigned int mode_flags;
     unsigned int parse_flags;
@@ -4383,7 +4387,7 @@ libfyaml_loads_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
     PyObject *result;
     int i;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|sppppppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|spppppppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style, &keep_anchors))
         return NULL;
 
     /* Create generic builder using helper */
@@ -4408,6 +4412,8 @@ libfyaml_loads_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
         parse_flags |= FYOPPF_KEEP_COMMENTS;
     if (keep_style)
         parse_flags |= FYOPPF_KEEP_STYLE;
+    if (keep_anchors)
+        parse_flags |= FYOPPF_KEEP_ANCHORS;
 
     /* Parse - returns a directory (sequence of VDS) */
     vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
