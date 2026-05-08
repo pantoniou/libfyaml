@@ -353,7 +353,6 @@ int fy_generic_builder_setup(struct fy_generic_builder *gb, const struct fy_gene
 			goto err_out;
 		gb->flags |= FYGBF_OWNS_ALLOCATOR;
 	} else {
-		gb->flags &= ~FYGBF_OWNS_ALLOCATOR;
 		gb->allocator = cfg->allocator;
 	}
 
